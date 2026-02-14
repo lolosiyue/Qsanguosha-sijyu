@@ -1,0 +1,82 @@
+-- translation for Bei Package
+
+return {
+	["bei"] = "文德武备·备",
+	
+	["jin_zhanghuyuechen"] = "张虎＆乐綝",
+	["&jin_zhanghuyuechen"] = "张虎乐綝",
+	["#jin_zhanghuyuechen"] = "不辱门庭",
+	["illustrator:jin_zhanghuyuechen"] = "",
+	["jinxijue"] = "袭爵",
+	[":jinxijue"] = "游戏开始时，你获得4枚“爵”标记。回合结束时，你获得X枚“爵”标记（X为你本回合造成伤害的点数）。摸牌阶段摸牌时，你可以弃置一枚“爵”触发“突袭”。其他角色的结束阶段，你可以弃置一枚“爵”触发“骁果”。",
+	["jxjjue"] = "爵",
+	
+	["jin_xiahouhui"] = "夏侯徽",
+	["#jin_xiahouhui"] = "景怀皇后",
+	["illustrator:jin_xiahouhui"] = "",
+	["jinbaoqie"] = "宝箧",
+	[":jinbaoqie"] = "隐匿技，锁定技，当你登场后，你从牌堆或弃牌堆获得一张宝物牌，然后你可以使用之。",
+	["jinbaoqie:jinbaoqie_use"] = "你是否使用【%src】？",
+	["jinyishi"] = "宜室",
+	[":jinyishi"] = "每个回合限一次，当一名其他角色于其出牌阶段内弃置手牌后，你可以令其获得其中一张牌，然后你获得其余的牌。",
+	["@jinyishi"] = "你可以令 %src 获得其中一张牌，然后你获得其余的牌",
+	["#jinyishi"] = "宜室",
+	["jinshidu"] = "识度",
+	[":jinshidu"] = "出牌阶段限一次，你可以与一名其他角色拼点，若你赢，你获得其所有手牌，然后将你一半的手牌交给其（向下取整）。",
+	["jinshidu-give"] = "请交给 %src %arg张手牌",
+	
+	["jin_simashi"] = "司马师",
+	["#jin_simashi"] = "晋景王",
+	["illustrator:jin_simashi"] = "",
+	["jintaoyin"] = "韬隐",
+	[":jintaoyin"] = "隐匿技，当你于其他角色的回合登场后，你可以令当前回合角色本回合手牌上限-2。",
+	["jinyimie"] = "夷灭",
+	[":jinyimie"] = "每个回合限一次，当你对其他角色造成伤害时，你可以失去1点体力令此伤害+X，此伤害结算完后，其回复X点体力（X为其体力值-此伤害值）。",
+	["jinyimie:jinyimie"] = "你是否发动“夷灭”，对 %src 的伤害增加%arg点？",
+	["jintairan"] = "泰然",
+	[":jintairan"] = "锁定技，回合结束时，你将体力回复至体力上限，将手牌摸至手牌上限。出牌阶段开始时，你失去以此法恢复的体力值，弃置以此法获得的手牌。",
+	["jintairanrecover"] = "泰然回血",
+	["jinruilve"] = "睿略",
+	[":jinruilve"] = "主公技，<font color=\"green\"><b>其他晋势力角色的出牌阶段限一次，</b></font>该角色可以交给你一张【杀】或伤害类锦囊牌。",
+	["jinruilve_give"] = "睿略给牌",
+	
+	["jin_yanghuiyu"] = "羊徽瑜",
+	["#jin_yanghuiyu"] = "景献皇后",
+	["illustrator:jin_yanghuiyu"] = "",
+	["jinhuirong"] = "慧容",
+	[":jinhuirong"] = "隐匿技，锁定技，当你登场后，你令一名角色将手牌补至或弃置至其体力值（至多摸至五张）。",
+	["@jinhuirong-invoke"] = "请令一名角色将手牌补至或弃置至其体力值",
+	["jinciwei"] = "慈威",
+	[":jinciwei"] = "其他角色于其回合内使用第二张牌时，若此牌为基本牌或非延时类锦囊牌，你可弃置一张牌令此牌无效。",
+	["@jinciwei-discard"] = "你可以弃置一张牌令 %src 使用的【%arg】无效",
+	["jincaiyuan"] = "才媛",
+	[":jincaiyuan"] = "锁定技，结束阶段，若你于上回合结束至今未扣减过体力，你摸两张牌。",
+	
+	["jin_shibao"] = "石苞",
+	["#jin_shibao"] = "乐陵郡公",
+	["illustrator:jin_shibao"] = "",
+	["jinzhuosheng"] = "擢升",
+	[":jinzhuosheng"] = "你于出牌阶段内使用本轮不以此法获得的牌时，若此牌是：基本牌，此牌不计次且无距离限制；非延时类锦囊牌，此牌目标可+1或-1；装备牌，你可以摸一张牌。",
+	["jinzhuosheng:add"] = "增加一个目标",
+	["jinzhuosheng:remove"] = "减少一个目标",
+
+	["ol_ercheng"] = "成济&成倅",
+	["&ol_ercheng"] = "成济成倅",
+	["#ol_ercheng"] = "袒忿半瓦",
+	["illustrator:ol_ercheng"] = "",
+	["tousui"] = "透髓",
+	[":tousui"] = "你可以将任意张牌置于牌堆底，视为使用一张需要等量张【闪】才能抵消的【杀】。",
+	["chuming"] = "畜鸣",
+	[":chuming"] = "锁定技，当你对其他角色造成伤害时，或受到其他角色造成的伤害时，若没有实体伤害牌，则此伤害+1，否则当前回合结束时，其将伤害牌当【借刀杀人】或【过河拆桥】对你使用。",
+	["chuming0"] = "畜鸣：请使用【%src】",
+	["$tousui1"] = "区区黄口孺帝，能有何作为？",
+	["$tousui2"] = "昔年沙场茹血，今欲饮帝血！",
+	["$chuming1"] = "明公为何如此待我兄弟？",
+	["$chuming2"] = "栖佳木之良禽，其鸣亦哀乎。",
+	["~ol_ercheng"] = "今为贼子贾充所害！",
+
+
+
+
+
+}
