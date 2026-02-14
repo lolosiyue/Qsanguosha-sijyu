@@ -1,0 +1,81 @@
+<?xml version="1.0"?>
+<manifest package="org.qsanguosha.game" xmlns:android="http://schemas.android.com/apk/res/android" android:versionName="1.0" android:versionCode="1" android:installLocation="auto">
+
+    <!-- Qt 5.14.2 compatible target SDK -->
+    <uses-sdk android:minSdkVersion="21" android:targetSdkVersion="28"/>
+
+    <!-- Permissions -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+
+    <!-- External storage access for user-modifiable files -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+
+    <!-- Screen support -->
+    <supports-screens android:largeScreens="true"
+                      android:normalScreens="true"
+                      android:anyDensity="true"
+                      android:smallScreens="true"
+                      android:xlargeScreens="true"/>
+
+    <!-- Density support -->
+    <uses-feature android:name="android.hardware.screen.landscape" android:required="false"/>
+    <uses-feature android:name="android.hardware.screen.portrait" android:required="false"/>
+
+    <!-- Optional permissions for audio -->
+	<uses-permission android:name="android.permission.RECORD_AUDIO"/>
+	<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
+
+    <!-- Application -->
+    <application android:hardwareAccelerated="true" 
+                 android:name="org.qtproject.qt5.android.bindings.QtApplication" 
+                 android:label="QSanguosha"
+                 android:icon="@drawable/icon"
+                 android:theme="@android:style/Theme.NoTitleBar">
+
+        <activity android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
+                  android:name="org.qtproject.qt5.android.bindings.QtActivity"
+                  android:label="QSanguosha"
+                  android:screenOrientation="landscape"
+                  android:launchMode="singleTop"
+                  android:theme="@android:style/Theme.NoTitleBar"
+                  android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+
+            <!-- Qt configuration for standalone APK -->
+            <meta-data android:name="android.app.lib_name" android:value="QSanguosha"/>
+            <meta-data android:name="android.app.qt_sources_resource_id" android:resource="@array/qt_sources"/>
+            <meta-data android:name="android.app.repository" android:value="default"/>
+            <meta-data android:name="android.app.qt_libs_resource_id" android:resource="@array/qt_libs"/>
+            <meta-data android:name="android.app.bundled_libs_resource_id" android:resource="@array/bundled_libs"/>
+            <meta-data android:name="android.app.load_local_libs_resource_id" android:resource="@array/load_local_libs"/>
+
+            <!-- Disable Ministro - use bundled Qt libraries -->
+            <meta-data android:name="android.app.use_local_qt_libs" android:value="1"/>
+            <meta-data android:name="android.app.libs_prefix" android:value="/data/data/org.qsanguosha.game/"/>
+            <meta-data android:name="android.app.load_local_libs" android:value="1"/>
+            <meta-data android:name="android.app.bundle_local_qt_libs" android:value="1"/>
+
+            <!-- Splash screen -->
+            <!-- <meta-data android:name="android.app.splash_screen_drawable" android:resource="@drawable/logo"/> -->
+            <!-- <meta-data android:name="android.app.splash_screen_sticky" android:value="true"/> -->
+
+            <!-- Background running -->
+            <meta-data android:name="android.app.background_running" android:value="false"/>
+
+            <!-- Screen scaling configuration for mobile -->
+            <meta-data android:name="android.app.auto_screen_scale_factor" android:value="false"/>
+            <meta-data android:name="android.app.screen_scale_factor" android:value="1.0"/>
+            <meta-data android:name="android.app.use_system_ui_visibility" android:value="true"/>
+
+            <!-- Extract android style -->
+            <meta-data android:name="android.app.extract_android_style" android:value="minimal"/>
+        </activity>
+    </application>
+</manifest>

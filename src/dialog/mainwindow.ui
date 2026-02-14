@@ -1,0 +1,681 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>600</width>
+    <height>400</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Sanguosha</string>
+  </property>
+  <widget class="QWidget" name="centralWidget"/>
+  <widget class="QMenuBar" name="menuBar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>600</width>
+     <height>23</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuGame">
+    <property name="title">
+     <string>Game</string>
+    </property>
+    <addaction name="actionStart_Game"/>
+    <addaction name="actionStart_Server"/>
+    <addaction name="actionReplay"/>
+    <addaction name="separator"/>
+    <addaction name="actionRestart_Game"/>
+    <addaction name="actionReturn_to_Main_Menu"/>
+    <addaction name="separator"/>
+    <addaction name="actionExit"/>
+   </widget>
+   <widget class="QMenu" name="menuOptions">
+    <property name="title">
+     <string>Tools</string>
+    </property>
+    <addaction name="actionConfigure"/>
+    <addaction name="actionGeneral_Overview"/>
+    <addaction name="actionCard_Overview"/>
+    <addaction name="actionScenario_Overview"/>
+    <addaction name="actionView_ban_list"/>
+    <addaction name="actionManage_Ban_IP"/>
+    <addaction name="actionBroadcast"/>
+    <addaction name="actionReplay_file_convert"/>
+    <addaction name="actionRecord_analysis"/>
+    <addaction name="separator"/>
+    <addaction name="actionEnable_Hotkey"/>
+    <addaction name="actionNever_nullify_my_trick"/>
+    <addaction name="actionView_Discarded"/>
+    <addaction name="actionView_distance"/>
+    <addaction name="actionView_Maxcards"/>
+    <addaction name="actionServerInformation"/>
+    <addaction name="actionSurrender"/>
+    <addaction name="actionSaveRecord"/>
+    <addaction name="separator"/>
+    <addaction name="actionPause_Resume"/>
+    <addaction name="actionHide_Show_chat_box"/>
+   </widget>
+   <widget class="QMenu" name="menuHelp">
+    <property name="title">
+     <string>Help</string>
+    </property>
+    <widget class="QMenu" name="menuKjj">
+     <property name="title">
+      <string>shortcut</string>
+     </property>
+     <addaction name="actionTrust"/>
+     <addaction name="action1"/>
+     <addaction name="action2"/>
+     <addaction name="action3"/>
+     <addaction name="action4"/>
+     <addaction name="action5"/>
+     <addaction name="actionKey_D"/>
+     <addaction name="actionKey_Z"/>
+     <addaction name="action6"/>
+     <addaction name="actionKey_Return"/>
+     <addaction name="actionKey_Escape"/>
+     <addaction name="actionKey_Space"/>
+     <addaction name="actionKey_Left"/>
+     <addaction name="actionKey_Right"/>
+     <addaction name="action7"/>
+    </widget>
+    <addaction name="menuKjj"/>
+    <addaction name="separator"/>
+    <addaction name="actionAbout"/>
+    <addaction name="actionAbout_Qt"/>
+    <addaction name="actionAbout_GPLv3"/>
+    <addaction name="actionAbout_Lua"/>
+    <addaction name="actionAbout_fmod"/>
+    <addaction name="separator"/>
+    <addaction name="actionAcknowledgement_2"/>
+    <addaction name="separator"/>
+    <addaction name="actionRole_assign_table"/>
+   </widget>
+   <widget class="QMenu" name="menuView">
+    <property name="title">
+     <string>View</string>
+    </property>
+    <addaction name="actionShow_Hide_Menu"/>
+    <addaction name="actionFullscreen"/>
+    <addaction name="actionMinimize_to_system_tray"/>
+   </widget>
+   <widget class="QMenu" name="menuCheat">
+    <property name="enabled">
+     <bool>false</bool>
+    </property>
+    <property name="title">
+     <string>Cheat</string>
+    </property>
+    <addaction name="actionDamage_maker"/>
+    <addaction name="actionDeath_note"/>
+    <addaction name="actionRevive_wand"/>
+    <addaction name="actionState_editor"/>
+    <addaction name="actionExecute_script_at_server_side"/>
+   </widget>
+   <widget class="QMenu" name="menuDIY">
+    <property name="title">
+     <string>DIY</string>
+    </property>
+    <addaction name="actionCard_editor"/>
+   </widget>
+   <addaction name="menuGame"/>
+   <addaction name="menuView"/>
+   <addaction name="menuOptions"/>
+   <addaction name="menuDIY"/>
+   <addaction name="menuCheat"/>
+   <addaction name="menuHelp"/>
+  </widget>
+  <action name="actionExit">
+   <property name="text">
+    <string>Exit</string>
+   </property>
+  </action>
+  <action name="actionConfigure">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
+   <property name="icon">
+    <iconset>
+     <normaloff>../image/system/settings.png</normaloff>../image/system/settings.png</iconset>
+   </property>
+   <property name="text">
+    <string>Configure</string>
+   </property>
+  </action>
+  <action name="actionStart_Server">
+   <property name="text">
+    <string>Start server</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+S</string>
+   </property>
+  </action>
+  <action name="actionStart_Game">
+   <property name="text">
+    <string>Start game</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+G</string>
+   </property>
+  </action>
+  <action name="actionGeneral_Overview">
+   <property name="text">
+    <string>General overview</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+E</string>
+   </property>
+  </action>
+  <action name="actionAbout">
+   <property name="text">
+    <string>About</string>
+   </property>
+  </action>
+  <action name="actionCard_Overview">
+   <property name="text">
+    <string>Card overview</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+R</string>
+   </property>
+  </action>
+  <action name="actionEnable_Hotkey">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Enable hotkey</string>
+   </property>
+  </action>
+  <action name="actionAbout_Qt">
+   <property name="text">
+    <string>About Qt</string>
+   </property>
+  </action>
+  <action name="actionView_Discarded">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>View Discarded</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+D</string>
+   </property>
+  </action>
+  <action name="actionView_distance">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>View distance</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+I</string>
+   </property>
+  </action>
+  <action name="actionServerInformation">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Server information</string>
+   </property>
+  </action>
+  <action name="actionReplay">
+   <property name="text">
+    <string>Replay</string>
+   </property>
+  </action>
+  <action name="actionSaveRecord">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Save battle record</string>
+   </property>
+  </action>
+  <action name="actionFullscreen">
+   <property name="text">
+    <string>Fullscreen</string>
+   </property>
+   <property name="shortcut">
+    <string>Alt+Return</string>
+   </property>
+  </action>
+  <action name="actionShow_Hide_Menu">
+   <property name="text">
+    <string>Show/Hide menu</string>
+   </property>
+   <property name="shortcut">
+    <string>Alt+M</string>
+   </property>
+  </action>
+  <action name="actionSurrender">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Surrender</string>
+   </property>
+  </action>
+  <action name="actionMinimize_to_system_tray">
+   <property name="text">
+    <string>Minimize to system tray</string>
+   </property>
+   <property name="shortcut">
+    <string>Alt+S</string>
+   </property>
+  </action>
+  <action name="actionRole_assign_table">
+   <property name="text">
+    <string>Role assign table</string>
+   </property>
+  </action>
+  <action name="actionScenario_Overview">
+   <property name="text">
+    <string>Scenario overview</string>
+   </property>
+  </action>
+  <action name="actionScript_editor">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Script editor</string>
+   </property>
+  </action>
+  <action name="actionBroadcast">
+   <property name="text">
+    <string>Broadcast ...</string>
+   </property>
+  </action>
+  <action name="actionAcknowledgement">
+   <property name="text">
+    <string>Acknowledgement</string>
+   </property>
+  </action>
+  <action name="actionDamage_maker">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Damage maker</string>
+   </property>
+  </action>
+  <action name="actionExpand_dashboard">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Expand dashboard</string>
+   </property>
+  </action>
+  <action name="actionDeath_note">
+   <property name="text">
+    <string>Death note ...</string>
+   </property>
+  </action>
+  <action name="actionRevive_wand">
+   <property name="text">
+    <string>Revive wand ...</string>
+   </property>
+  </action>
+  <action name="actionCard_editor">
+   <property name="text">
+    <string>Card editor ...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+T</string>
+   </property>
+  </action>
+  <action name="actionPackaging">
+   <property name="text">
+    <string>Package manager ...</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+P</string>
+   </property>
+  </action>
+  <action name="actionAI_Melee">
+   <property name="text">
+    <string>AI Melee</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+M</string>
+   </property>
+  </action>
+  <action name="actionReplay_file_convert">
+   <property name="text">
+    <string>Replay file convert ...</string>
+   </property>
+  </action>
+  <action name="actionSend_lowlevel_command">
+   <property name="text">
+    <string>Send lowlevel command ...</string>
+   </property>
+  </action>
+  <action name="actionView_ban_list">
+   <property name="text">
+    <string>View ban list</string>
+   </property>
+  </action>
+  <action name="actionAbout_fmod">
+   <property name="text">
+    <string>About fmod</string>
+   </property>
+  </action>
+  <action name="actionAbout_Lua">
+   <property name="text">
+    <string>About Lua</string>
+   </property>
+  </action>
+  <action name="actionExecute_script_at_server_side">
+   <property name="text">
+    <string>Execute script at server side ...</string>
+   </property>
+  </action>
+  <action name="actionRecord_analysis">
+   <property name="text">
+    <string>Record analysis</string>
+   </property>
+  </action>
+  <action name="actionAbout_GPLv3">
+   <property name="text">
+    <string>About GPLv3</string>
+   </property>
+  </action>
+  <action name="actionNever_nullify_my_trick">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Never nullify my trick</string>
+   </property>
+  </action>
+  <action name="actionAcknowledgement_2">
+   <property name="text">
+    <string>Acknowledgement</string>
+   </property>
+  </action>
+  <action name="actionPause_Resume">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Pause/Resume</string>
+   </property>
+   <property name="shortcut">
+    <string>F6</string>
+   </property>
+  </action>
+  <action name="actionHide_Show_chat_box">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Hide/Show chat box</string>
+   </property>
+   <property name="shortcut">
+    <string>F8</string>
+   </property>
+  </action>
+  <action name="actionRestart_Game">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Restart Game</string>
+   </property>
+  </action>
+  <action name="actionReturn_to_Main_Menu">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>Return to Main Menu</string>
+   </property>
+  </action>
+  <action name="actionManage_Ban_IP">
+   <property name="text">
+    <string>Manage Ban IP</string>
+   </property>
+  </action>
+  <action name="actionState_editor">
+   <property name="text">
+    <string>State editor</string>
+   </property>
+  </action>
+  <action name="actionView_Maxcards">
+   <property name="enabled">
+    <bool>false</bool>
+   </property>
+   <property name="text">
+    <string>View Maxcards</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+L</string>
+   </property>
+  </action>
+  <action name="action1">
+   <property name="text">
+    <string>选择技能发动</string>
+   </property>
+   <property name="shortcut">
+    <string>F2</string>
+   </property>
+  </action>
+  <action name="action2">
+   <property name="text">
+    <string>手牌默认排序</string>
+   </property>
+   <property name="shortcut">
+    <string>F3</string>
+   </property>
+  </action>
+  <action name="action3">
+   <property name="text">
+    <string>反选手牌</string>
+   </property>
+   <property name="shortcut">
+    <string>F4</string>
+   </property>
+  </action>
+  <action name="action4">
+   <property name="text">
+    <string>刷新场景</string>
+   </property>
+   <property name="shortcut">
+    <string>F5</string>
+   </property>
+  </action>
+  <action name="action5">
+   <property name="text">
+    <string>添加电脑</string>
+   </property>
+   <property name="shortcut">
+    <string>F7</string>
+   </property>
+  </action>
+  <action name="action6">
+   <property name="text">
+    <string>查看化身</string>
+   </property>
+   <property name="shortcut">
+    <string>F12</string>
+   </property>
+  </action>
+  <action name="action7">
+   <property name="text">
+    <string>牌名首字母选择</string>
+   </property>
+   <property name="toolTip">
+    <string notr="true">在牌局中可以通过字母键按牌名首字母选择可用牌</string>
+   </property>
+  </action>
+  <action name="action8">
+   <property name="text">
+    <string>Key_J</string>
+   </property>
+  </action>
+  <action name="action9">
+   <property name="text">
+    <string>Key_P</string>
+   </property>
+  </action>
+  <action name="actionKey_O">
+   <property name="text">
+    <string>Key_O</string>
+   </property>
+  </action>
+  <action name="actionKey_E">
+   <property name="text">
+    <string>Key_E</string>
+   </property>
+  </action>
+  <action name="actionKey_W">
+   <property name="text">
+    <string>Key_W</string>
+   </property>
+  </action>
+  <action name="actionKey_F">
+   <property name="text">
+    <string>Key_F</string>
+   </property>
+  </action>
+  <action name="actionKey_H">
+   <property name="text">
+    <string>Key_H</string>
+   </property>
+  </action>
+  <action name="actionKey_T">
+   <property name="text">
+    <string>Key_T</string>
+   </property>
+  </action>
+  <action name="actionKey_A">
+   <property name="text">
+    <string>Key_A</string>
+   </property>
+  </action>
+  <action name="actionKey_N">
+   <property name="text">
+    <string>Key_N</string>
+   </property>
+  </action>
+  <action name="actionKey_Q">
+   <property name="text">
+    <string>Key_Q</string>
+   </property>
+  </action>
+  <action name="actionKey_C">
+   <property name="text">
+    <string>Key_C</string>
+   </property>
+  </action>
+  <action name="actionKey_U">
+   <property name="text">
+    <string>Key_U</string>
+   </property>
+  </action>
+  <action name="actionKey_L">
+   <property name="text">
+    <string>Key_L</string>
+   </property>
+  </action>
+  <action name="actionKey_I">
+   <property name="text">
+    <string>Key_I</string>
+   </property>
+  </action>
+  <action name="actionKey_B">
+   <property name="text">
+    <string>Key_B</string>
+   </property>
+  </action>
+  <action name="actionKey_Left">
+   <property name="text">
+    <string>往左选牌</string>
+   </property>
+   <property name="shortcut">
+    <string>Left</string>
+   </property>
+  </action>
+  <action name="actionKey_Right">
+   <property name="text">
+    <string>往右选牌</string>
+   </property>
+   <property name="shortcut">
+    <string>Right</string>
+   </property>
+  </action>
+  <action name="actionKey_Return">
+   <property name="text">
+    <string>确定操作</string>
+   </property>
+   <property name="shortcut">
+    <string>Return</string>
+   </property>
+  </action>
+  <action name="actionKey_Escape">
+   <property name="text">
+    <string>取消操作</string>
+   </property>
+   <property name="shortcut">
+    <string>Esc</string>
+   </property>
+  </action>
+  <action name="actionKey_Space">
+   <property name="text">
+    <string>结束操作</string>
+   </property>
+   <property name="shortcut">
+    <string>Space</string>
+   </property>
+  </action>
+  <action name="action0_4">
+   <property name="text">
+    <string>Key_0~4</string>
+   </property>
+  </action>
+  <action name="actionKey_5_9">
+   <property name="text">
+    <string>Key_5~9</string>
+   </property>
+  </action>
+  <action name="actionKey_D">
+   <property name="text">
+    <string>显示距离</string>
+   </property>
+   <property name="shortcut">
+    <string>F9</string>
+   </property>
+  </action>
+  <action name="actionKey_Z">
+   <property name="text">
+    <string>折叠技能按钮</string>
+   </property>
+   <property name="shortcut">
+    <string>F10</string>
+   </property>
+  </action>
+  <action name="actionTrust">
+   <property name="text">
+    <string>托管</string>
+   </property>
+   <property name="shortcut">
+    <string>F1</string>
+   </property>
+  </action>
+ </widget>
+ <layoutdefault spacing="6" margin="11"/>
+ <resources/>
+ <connections/>
+</ui>
