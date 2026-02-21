@@ -44,6 +44,7 @@ public:
     QString getLimitMark() const;
     QString getWakedSkills() const;
     QStringList getSources() const;
+    bool setProperty(const char* name, const QVariant& value);
 
 protected:
     Frequency frequency;

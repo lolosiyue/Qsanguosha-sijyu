@@ -640,10 +640,22 @@ const QList<EventTriplet>*RoomThread::getEventStack() const
 	return &event_stack;
 }
 
-static bool CompareByPriority(TriggerSkill*a, TriggerSkill*b)
+static bool CompareByPriority(TriggerSkill* a, TriggerSkill* b)
 {
-	if (a->getDynamicPriority()!=b->getDynamicPriority()) return a->getDynamicPriority()>b->getDynamicPriority();
-	return b->inherits("WeaponSkill")||b->inherits("ArmorSkill")||b->inherits("TreasureSkill")||b->inherits("GameRule");
+	if (a->getDynamicPriority() != b->getDynamicPriority()) {
+		return a->getDynamicPriority() > b->getDynamicPriority();
+	}
+
+	bool a_is_equip_or_rule = a->inherits("WeaponSkill") || a->inherits("ArmorSkill") ||
+		a->inherits("TreasureSkill") || a->inherits("GameRule");
+
+	bool b_is_equip_or_rule = b->inherits("WeaponSkill") || b->inherits("ArmorSkill") ||
+		b->inherits("TreasureSkill") || b->inherits("GameRule");
+
+	if (!a_is_equip_or_rule && b_is_equip_or_rule) {
+		return true;
+	}
+	return false;
 }
 
 bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*target, QVariant &data)

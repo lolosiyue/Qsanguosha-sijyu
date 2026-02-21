@@ -197,6 +197,7 @@ public:
     {
         return;
     }
+    bool setProperty(const char* name, const QVariant& value);
 
     // static functions
     static bool CompareByNumber(const Card *a, const Card *b);

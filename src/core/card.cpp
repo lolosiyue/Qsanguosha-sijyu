@@ -9,6 +9,7 @@
 #include "clientplayer.h"
 #include "wrapped-card.h"
 #include "roomthread.h"
+#include <src/util/ThreadSafeHelper.h>
 
 const int Card::S_UNKNOWN_CARD_ID = -1;
 
@@ -401,6 +402,11 @@ bool Card::isZhinangCard() const
 
 void Card::addCharTag(QString tag)
 {
+	// 絕對防禦：如果 Qt 的核心應用程式還沒啟動（靜態初始化階段），禁止操作動態屬性
+	if (QCoreApplication::instance() == nullptr) {
+		qWarning() << "Warning: addCharTag called before QCoreApplication is ready. Tag:" << tag;
+		return;
+	}
 	QStringList CharTag = property("CharTag").toStringList();
 	CharTag << tag;
 	setProperty("CharTag", CharTag);
@@ -917,6 +923,10 @@ bool Card::sameNameWith(const QString &card_name, bool different_slash) const
 	if (!different_slash && isKindOf("Slash"))
 		return card_name.endsWith("slash");
 	return objectName() == card_name;
+}
+
+bool Card::setProperty(const char* name, const QVariant& value) {
+	return ThreadSafeHelper::setProperty(this, name, value);
 }
 
 // --------- Skill card ------------------

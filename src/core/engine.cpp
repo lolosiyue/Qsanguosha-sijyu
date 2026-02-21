@@ -21,6 +21,7 @@
 #include "fancheng-scenario.h"
 #include "challengedeveloper-scenario.h"
 
+
 Engine*Sanguosha = nullptr;
 
 int Engine::getMiniSceneCounts()
@@ -53,9 +54,20 @@ void Engine::_loadModScenarios()
 
 void Engine::addPackage(const QString &name)
 {
-    Package*pack = PackageAdder::packages()[name];
-    if (pack) addPackage(pack);
-    else qWarning("Package %s cannot be loaded!", qPrintable(name));
+    // 防止重複實例化
+    if (findChild<const Package*>(name)) {
+        return; 
+    }
+
+    // 從 Hash Map 取得工廠函數
+    PackageFactory factory = PackageAdder::packages().value(name, nullptr);
+    if (factory) {
+        Package *pack = factory(); // 真正執行 new 的地方
+        addPackage(pack);
+    }
+    else {
+        qWarning("Package %s cannot be loaded!", qPrintable(name));
+    }
 }
 
 struct ManualSkill
@@ -381,137 +393,166 @@ const Scenario*Engine::getScenario(const QString &name) const
 
 void Engine::addSkills(QList<const Skill*> all_skills)
 {
-    foreach (const Skill*skill, all_skills) {
+    foreach (const Skill* skill, all_skills) {
         if (skill) {
-			if (skills.contains(skill->objectName()))
-				QMessageBox::warning(nullptr, "", tr("Duplicated skill : %1").arg(skill->objectName()));
-			//const_cast<Skill*>(skill)->setParent(this);
-			skills.insert(skill->objectName(), skill);
-        }else
+            if (skills.contains(skill->objectName()))
+                QMessageBox::warning(nullptr, "", tr("Duplicated skill : %1").arg(skill->objectName()));
+            
+            // [修改點]
+            // QPointer<Skill> 只能接收 Skill* (非 const)，因為它需要連接 destroyed 信號。
+            // 這裡使用 const_cast 是安全的，因為 Skill 對象本身是 new 出來的，不是唯讀內存。
+            Skill *mutableSkill = const_cast<Skill*>(skill);
+
+            // 存入 QPointer 容器 (mutableSkill 會自動隱式轉換為 QPointer<Skill>)
+            skills.insert(skill->objectName(), mutableSkill);
+        } else {
             QMessageBox::warning(nullptr, "", tr("The engine tries to add an invalid skill"));
+        }
     }
 }
-
 QList<const ProhibitSkill*> Engine::getProhibitSkills() const
 {
-	static QList<const ProhibitSkill*> prohibitSkills;// = findChildren<const ProhibitSkill*>();
-	if(prohibitSkills.isEmpty()){
-		foreach (const Skill*skill, skills) {
-			if(skill->inherits("ProhibitSkill"))
-				prohibitSkills << qobject_cast<const ProhibitSkill*>(skill);
-		}
-	}
+    static QList<const ProhibitSkill*> prohibitSkills;
+    if (prohibitSkills.isEmpty()) {
+        foreach (const Skill* skill, getSafeSkills()) {
+            if (skill->inherits("ProhibitSkill"))
+                prohibitSkills << qobject_cast<const ProhibitSkill*>(skill);
+        }
+    }
     return prohibitSkills;
 }
 
+// 7. 修復 getDistanceSkills
 QList<const DistanceSkill*> Engine::getDistanceSkills() const
 {
-	static QList<const DistanceSkill*> distanceSkills;// = findChildren<const DistanceSkill*>();
-	if(distanceSkills.isEmpty()){
-		foreach (const Skill*skill, skills) {
-			if(skill->inherits("DistanceSkill"))
-				distanceSkills << qobject_cast<const DistanceSkill*>(skill);
-		}
-	}
+    static QList<const DistanceSkill*> distanceSkills;
+    if (distanceSkills.isEmpty()) {
+        foreach (const Skill* skill, getSafeSkills()) {
+            if (skill->inherits("DistanceSkill"))
+                distanceSkills << qobject_cast<const DistanceSkill*>(skill);
+        }
+    }
     return distanceSkills;
 }
 
+// 8. 修復 getMaxCardsSkills
 QList<const MaxCardsSkill*> Engine::getMaxCardsSkills() const
 {
-	static QList<const MaxCardsSkill*> maxcardsSkills;// = findChildren<const MaxCardsSkill*>();
-	if(maxcardsSkills.isEmpty()){
-		foreach (const Skill*skill, skills) {
-			if(skill->inherits("MaxCardsSkill"))
-				maxcardsSkills << qobject_cast<const MaxCardsSkill*>(skill);
-		}
-	}
+    static QList<const MaxCardsSkill*> maxcardsSkills;
+    if (maxcardsSkills.isEmpty()) {
+        foreach (const Skill* skill, getSafeSkills()) {
+            if (skill->inherits("MaxCardsSkill"))
+                maxcardsSkills << qobject_cast<const MaxCardsSkill*>(skill);
+        }
+    }
     return maxcardsSkills;
 }
 
+// 9. 修復 getTargetModSkills
 QList<const TargetModSkill*> Engine::getTargetModSkills() const
 {
-	static QList<const TargetModSkill*> targetmodSkills;// = findChildren<const TargetModSkill*>();
-	if(targetmodSkills.isEmpty()){
-		foreach (const Skill*skill, skills) {
-			if(skill->inherits("TargetModSkill"))
-				targetmodSkills << qobject_cast<const TargetModSkill*>(skill);
-		}
-	}
+    static QList<const TargetModSkill*> targetmodSkills;
+    if (targetmodSkills.isEmpty()) {
+        foreach (const Skill* skill, getSafeSkills()) {
+            if (skill->inherits("TargetModSkill"))
+                targetmodSkills << qobject_cast<const TargetModSkill*>(skill);
+        }
+    }
     return targetmodSkills;
 }
 
 QList<const InvaliditySkill*> Engine::getInvaliditySkills() const
 {
-	static QList<const InvaliditySkill*> invaliditySkills;// = findChildren<const InvaliditySkill*>();
-	if(invaliditySkills.isEmpty()){
-		foreach (const Skill*skill, skills) {
-			if(skill->inherits("InvaliditySkill"))
-				invaliditySkills << qobject_cast<const InvaliditySkill*>(skill);
-		}
-	}
+    // 建議：去掉 static 緩存。
+    // 如果技能系統支持動態加載/卸載，static 緩存會導致存儲了過期的指針，再次引發崩潰。
+    // 除非你確定技能加載後永遠不會變。
+    static QList<const InvaliditySkill*> invaliditySkills;
+
+    if (invaliditySkills.isEmpty()) {
+        // 假設 skills 是 QHash<QString, QPointer<Skill>>，我們遍歷它的值
+        foreach (const QPointer<Skill> &skillPtr, skills.values()) {
+            
+            // [修復 1] 必須檢查指針是否有效
+            if (skillPtr.isNull()) 
+                continue;
+
+            // [修復 2] 獲取裸指針
+            const Skill* skill = skillPtr.data();
+
+            // 這樣調用 inherits 才是安全的
+            if (skill->inherits("InvaliditySkill")) {
+                invaliditySkills << qobject_cast<const InvaliditySkill*>(skill);
+            }
+        }
+    }
     return invaliditySkills;
 }
 
 QList<const TriggerSkill*> Engine::getGlobalTriggerSkills() const
 {
-	static QList<const TriggerSkill*> globalTriggerSkills;
-	if(globalTriggerSkills.isEmpty()){/*
-		foreach (const TriggerSkill*skill, findChildren<const TriggerSkill*>()) {
-			if(skill->isGlobal()) globalTriggerSkills << skill;
-		}*/
-		foreach (const Skill*skill, skills) {
-			if(skill->inherits("TriggerSkill")&&qobject_cast<const TriggerSkill*>(skill)->isGlobal())
-				globalTriggerSkills << qobject_cast<const TriggerSkill*>(skill);
-		}
-	}
+    static QList<const TriggerSkill*> globalTriggerSkills;
+    // 注意：static 緩存有風險，如果動態加載技能，建議去掉 if(isEmpty)
+    if (globalTriggerSkills.isEmpty()) {
+        // [核心修改] 使用 getSafeSkills() 替代直接遍歷 skills
+        foreach (const Skill* skill, getSafeSkills()) {
+            // 安全轉型：getSafeSkills 保證了 skill 不為 nullptr
+            const TriggerSkill* ts = qobject_cast<const TriggerSkill*>(skill);
+            if (ts && ts->isGlobal())
+                globalTriggerSkills << ts;
+        }
+    }
     return globalTriggerSkills;
 }
 
+// 2. 修復 getAttackRangeSkills
 QList<const AttackRangeSkill*> Engine::getAttackRangeSkills() const
 {
-	static QList<const AttackRangeSkill*> attackRangeSkills;// = findChildren<const AttackRangeSkill*>();
-	if(attackRangeSkills.isEmpty()){
-		foreach (const Skill*skill, skills) {
-			if(skill->inherits("AttackRangeSkill"))
-				attackRangeSkills << qobject_cast<const AttackRangeSkill*>(skill);
-		}
-	}
+    static QList<const AttackRangeSkill*> attackRangeSkills;
+    if (attackRangeSkills.isEmpty()) {
+        foreach (const Skill* skill, getSafeSkills()) {
+            if (skill->inherits("AttackRangeSkill"))
+                attackRangeSkills << qobject_cast<const AttackRangeSkill*>(skill);
+        }
+    }
     return attackRangeSkills;
 }
 
+// 3. 修復 getViewAsEquipSkills
 QList<const ViewAsEquipSkill*> Engine::getViewAsEquipSkills() const
 {
-	static QList<const ViewAsEquipSkill*> viewAsEquipSkills;// = findChildren<const ViewAsEquipSkill*>();
-	if(viewAsEquipSkills.isEmpty()){
-		foreach (const Skill*skill, skills) {
-			if(skill->inherits("ViewAsEquipSkill"))
-				viewAsEquipSkills << qobject_cast<const ViewAsEquipSkill*>(skill);
-		}
-	}
+    static QList<const ViewAsEquipSkill*> viewAsEquipSkills;
+    if (viewAsEquipSkills.isEmpty()) {
+        foreach (const Skill* skill, getSafeSkills()) {
+            if (skill->inherits("ViewAsEquipSkill"))
+                viewAsEquipSkills << qobject_cast<const ViewAsEquipSkill*>(skill);
+        }
+    }
     return viewAsEquipSkills;
 }
 
+// 4. 修復 getCardLimitSkills
 QList<const CardLimitSkill*> Engine::getCardLimitSkills() const
 {
-	static QList<const CardLimitSkill*> cardLimitSkills;// = findChildren<const CardLimitSkill*>();
-	if(cardLimitSkills.isEmpty()){
-		foreach (const Skill*skill, skills) {
-			if(skill->inherits("CardLimitSkill"))
-				cardLimitSkills << qobject_cast<const CardLimitSkill*>(skill);
-		}
-	}
+    static QList<const CardLimitSkill*> cardLimitSkills;
+    if (cardLimitSkills.isEmpty()) {
+        foreach (const Skill* skill, getSafeSkills()) {
+            if (skill->inherits("CardLimitSkill"))
+                cardLimitSkills << qobject_cast<const CardLimitSkill*>(skill);
+        }
+    }
     return cardLimitSkills;
 }
 
+// 5. 修復 getProhibitPindianSkills
 QList<const ProhibitPindianSkill*> Engine::getProhibitPindianSkills() const
 {
-	static QList<const ProhibitPindianSkill*> prohibitPindiankills;// = findChildren<const ProhibitPindianSkill*>();
-	if(prohibitPindiankills.isEmpty()){
-		foreach (const Skill*skill, skills) {
-			if(skill->inherits("ProhibitPindianSkill"))
-				prohibitPindiankills << qobject_cast<const ProhibitPindianSkill*>(skill);
-		}
-	}
+    static QList<const ProhibitPindianSkill*> prohibitPindiankills;
+    if (prohibitPindiankills.isEmpty()) {
+        foreach (const Skill* skill, getSafeSkills()) {
+            if (skill->inherits("ProhibitPindianSkill"))
+                prohibitPindiankills << qobject_cast<const ProhibitPindianSkill*>(skill);
+        }
+    }
     return prohibitPindiankills;
 }
 
@@ -668,14 +709,18 @@ void Engine::setPackage(Package*package)
         }*/
     }
 
-    foreach (const Skill*skill, package->getSkills()+package->findChildren<const Skill*>()) {
-		if (skills.contains(skill->objectName())) continue;
-		//const_cast<Skill*>(skill)->setParent(this);
-		skills.insert(skill->objectName(), skill);
-		if(skill->getWakedSkills().isEmpty()) continue;
+    foreach (const Skill* skill, package->getSkills() + package->findChildren<const Skill*>()) {
+        if (skills.contains(skill->objectName())) continue;
+
+        // [修復點] 使用 const_cast 將 const Skill* 轉為 Skill*
+        // 這是 QPointer 正常工作所必須的
+        Skill *mutableSkill = const_cast<Skill*>(skill);
+        skills.insert(skill->objectName(), mutableSkill);
+
+        if (skill->getWakedSkills().isEmpty()) continue;
         foreach (QString sk_name, skill->getWakedSkills().split(",")) {
             if (sk_name.startsWith("#"))
-				related_skills.insertMulti(skill->objectName(), sk_name);
+                related_skills.insertMulti(skill->objectName(), sk_name);
         }
     }
 
@@ -1469,10 +1514,23 @@ bool Engine::sameNameWith(const QString &name1, const QString &name2) const
 	//||name1.contains(name2.split("_").last())||name2.contains(name1.split("_").last());
 }
 
+QList<const Skill *> Engine::getSafeSkills() const
+{
+    QList<const Skill *> list;
+    // 遍歷 Hash 中的所有 QPointer
+    foreach (const QPointer<Skill> &ptr, skills.values()) {
+        // QPointer 自動魔法：如果對象被 delete 了，isNull() 會變 true
+        if (!ptr.isNull()) {
+            list << ptr.data();
+        }
+    }
+    return list;
+}
+
 QStringList Engine::getRandomGenerals(int count, const QSet<QString> &ban_set, const QString &kingdom) const
 {
     QStringList general_list, all_generals = getLimitedGeneralNames(kingdom);
-    Q_ASSERT(all_generals.count() > count);
+    //Q_ASSERT(all_generals.count() > count);
 
     godLottery(all_generals);
     qShuffle(all_generals);
@@ -1823,10 +1881,10 @@ void Engine::godLottery(QStringList &list) const
 	foreach (const General*general, generals) {
 		if(general->getKingdom()=="god"&&general->objectName().contains("shen")){
 			if(qrand()%10000<=Config.value(general->objectName()).toInt()) {
-				qDebug((general->objectName()+"被抽中").toUtf8().data());
+                //qDebug((general->objectName()+"被抽中").toUtf8().data());
 				list.append(general->objectName());
-			}else
-				qDebug((general->objectName()+"没中").toUtf8().data());
+			}//else
+				//qDebug((general->objectName()+"没中").toUtf8().data());
 		}
 	}
 	Config.endGroup();

@@ -98,20 +98,25 @@ protected:
     QMap<QString, const CardPattern *> patterns;
     QMultiMap<QString, QString> related_skills, convert_pairs;
 };
+typedef Package* (*PackageFactory)();
 
-typedef QHash<QString, Package *> PackageHash;
+// 2. 將原本的 PackageHash 改為儲存 PackageFactory
+typedef QHash<QString, PackageFactory> PackageHash;
 
 class PackageAdder
 {
 public:
-    PackageAdder(const QString &name, Package *pack)
+    PackageAdder(const QString &name, PackageFactory factory)
     {
-		packages()[name] = pack;
+        packages()[name] = factory;
     }
 
     static PackageHash &packages(void);
 };
 
-#define ADD_PACKAGE(name) static PackageAdder name##PackageAdder(#name, new name##Package);
+// 3. 延遲實例化的巨集
+#define ADD_PACKAGE(name) \
+    static Package* create##name##Package() { return new name##Package; } \
+    static PackageAdder name##PackageAdder(#name, create##name##Package);
 
-#endif
+#endif // _PACKAGE_H

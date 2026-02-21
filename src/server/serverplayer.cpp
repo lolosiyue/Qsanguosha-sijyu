@@ -1892,12 +1892,12 @@ void ServerPlayer::setSkillDescriptionSwap(const QString &skill_name, const QStr
 	Player::setSkillDescriptionSwap(skill_name, key, value);
 }
 
-void ServerPlayer::setAvatarIcon(const QString &avatar_name, bool small)
+void ServerPlayer::setAvatarIcon(const QString &avatar_name, bool isSmall)
 {
-	if(small) room->setPlayerProperty(this,"avatarIcon2",avatar_name);
+	if(isSmall) room->setPlayerProperty(this,"avatarIcon2",avatar_name);
 	else room->setPlayerProperty(this,"avatarIcon",avatar_name);
 	JsonArray args;
-	args << (int)QSanProtocol::S_GAME_EVENT_AVATAR_ICON << objectName() << small << avatar_name;
+	args << (int)QSanProtocol::S_GAME_EVENT_AVATAR_ICON << objectName() << isSmall << avatar_name;
 	room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
 }
 
