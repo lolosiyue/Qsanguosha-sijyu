@@ -316,6 +316,7 @@ public:
     QHash<QString, QString> getSkillDescriptionSwap(const QString &skill_name) const;
 
     QVariantMap tag;
+    bool setProperty(const char* name, const QVariant& value);
 
     static bool isNostalGeneral(const Player *p, const QString &general_name);
 

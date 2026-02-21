@@ -45,7 +45,8 @@ Room::Room(QObject*parent, const QString&mode)
 		m_lua = nullptr;
 	}
 
-	connect(this,SIGNAL(signalSetProperty(ServerPlayer*,const char*,QVariant)),this, SLOT(slotSetProperty(ServerPlayer*,const char*,QVariant)),Qt::QueuedConnection);
+	//connect(this,SIGNAL(signalSetProperty(ServerPlayer*,const char*,QVariant)),this, SLOT(slotSetProperty(ServerPlayer*,const char*,QVariant)),Qt::QueuedConnection);
+	connect(this, SIGNAL(signalSetProperty(ServerPlayer*, const char*, QVariant)), this, SLOT(slotSetProperty(ServerPlayer*, const char*, QVariant)), Qt::BlockingQueuedConnection);
 }
 
 Room::~Room()
@@ -1754,23 +1755,25 @@ void Room::_setAreaMark(ServerPlayer*player, int i, bool flag)
 
 void Room::setPlayerProperty(ServerPlayer*player, const char*property_name, const QVariant&value)
 {
-	int old = player->getMaxHp();
-	bool same = player->property(property_name).toString()==value.toString();
+	if (!player) return; // 防禦性檢查
 
-#ifdef QT_DEBUG
-	if(currentThread()==player->thread()){
+	int old = player->getMaxHp();
+	bool same = player->property(property_name).toString() == value.toString();
+
+	// 核心修正：統一處理跨執行緒寫入，移除 #ifdef QT_DEBUG 遮蔽
+	if (QThread::currentThread() == player->thread()) {
+		// 同一執行緒，直接安全寫入
 		player->setProperty(property_name, value);
-	}else{
-		playerPropertySet = false;
-		emit signalSetProperty(player,property_name,value);
-		//while (!playerPropertySet){}
 	}
-#else
-	player->setProperty(property_name, value);
-#endif // QT_DEBUG
+	else {
+		// 跨執行緒：發送信號交由主執行緒處理
+		// 由於已改為 Qt::BlockingQueuedConnection，emit 會在此阻塞，直到 slot 執行完畢才返回
+		emit signalSetProperty(player, property_name, value);
+	}
+
 	broadcastProperty(player, property_name);
 
-	if(same) return;
+	if (same) return;
 
 	QString propertyName = QString(property_name);
 	if (propertyName == "hp"){
@@ -2818,7 +2821,6 @@ void Room::assignGeneralsForPlayers(const QList<ServerPlayer*>&to_assign)
 	const int total = Sanguosha->getGeneralCount();
 	const int max_available = (total - existed.size()) / to_assign.length();
 	const int choice_count = qMin(max_choice, max_available);
-
 	QStringList choices = Sanguosha->getRandomGenerals(total - existed.size(), existed);
 
 	if (Config.EnableHegemony){
@@ -5597,8 +5599,12 @@ void Room::askForLuckCard(QList<CardsMoveStruct>&cards_moves)
 		doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_drawPile->length());
 	}
 	for (int i = 0; i < cards_moves.length(); i++){
+		if (!cards_moves[i].to) {
+			continue;
+		}
 		cards_moves[i].card_ids = cards_moves[i].to->handCards();
-		cards_moves[i].to->setProperty("InitialHandCards", ListI2V(cards_moves[i].card_ids));
+		//cards_moves[i].to->setProperty("InitialHandCards", ListI2V(cards_moves[i].card_ids));
+		this->setPlayerProperty(this->findPlayerByObjectName(cards_moves[i].to->objectName()), "InitialHandCards", ListI2V(cards_moves[i].card_ids));
 	}
 }
 

@@ -10,6 +10,7 @@
 #include "clientstruct.h"
 //#include "util.h"
 #include "exppattern.h"
+#include <src/util/ThreadSafeHelper.h>
 
 Skill::Skill(const QString &name, Frequency frequency)
     : frequency(frequency), attached_lord_skill(name.endsWith("&")), change_skill(false),
@@ -800,3 +801,6 @@ void MarkAssignSkill::onGameStart(ServerPlayer *player) const
     player->getRoom()->setPlayerMark(player, mark_name, player->getMark(mark_name) + n);
 }
 
+bool Skill::setProperty(const char* name, const QVariant& value) {
+	return ThreadSafeHelper::setProperty(this, name, value);
+}

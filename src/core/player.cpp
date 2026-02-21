@@ -7,6 +7,7 @@
 #include "clientstruct.h"
 #include "exppattern.h"
 #include "wrapped-card.h"
+#include <src/util/ThreadSafeHelper.h>
 
 Player::Player(QObject *parent)
     : QObject(parent), owner(false), general(nullptr), general2(nullptr),
@@ -1880,7 +1881,9 @@ QHash<QString, QString> Player::getSkillDescriptionSwap(const QString &skill_nam
     return description_s2k2v[skill_name];
 }
 
-
+bool Player::setProperty(const char* name, const QVariant& value) {
+    return ThreadSafeHelper::setProperty(this, name, value);
+}
 
 
 

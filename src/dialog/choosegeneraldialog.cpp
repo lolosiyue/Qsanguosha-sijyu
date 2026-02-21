@@ -211,8 +211,8 @@ ChooseGeneralDialog::ChooseGeneralDialog(const QStringList &general_names, QWidg
 void ChooseGeneralDialog::done(int result)
 {
     if (m_freeChooseDialog != nullptr) {
-        m_freeChooseDialog->reject();
-        delete m_freeChooseDialog;
+        // 安全釋放：將銷毀任務排入事件迴圈，確保 FreeChooseDialog 執行完所有程式碼後才真正死亡
+        m_freeChooseDialog->deleteLater();
         m_freeChooseDialog = nullptr;
     }
     QDialog::done(result);
@@ -298,12 +298,11 @@ FreeChooseDialog::FreeChooseDialog(const QString &name, QWidget *parent, ButtonG
     if (type == Exclusive)
         group->buttons().first()->click();
 }
-
 void FreeChooseDialog::chooseGeneral()
 {
     if (type == Pair) {
         QString first, second;
-        foreach (QAbstractButton *button, group->buttons()) {
+        foreach(QAbstractButton * button, group->buttons()) {
             if (!button->isChecked())
                 continue;
 
@@ -315,21 +314,26 @@ void FreeChooseDialog::chooseGeneral()
                 break;
             }
         }
-        if (second.isEmpty())
-			emit general_chosen(first);
-    } else if (type == Multi) {
+        if (second.isEmpty() && !first.isEmpty())
+            emit general_chosen(first);
+
+    }
+    else if (type == Multi) {
         QStringList general_names;
-        foreach (QAbstractButton *button, group->buttons()) {
+        foreach(QAbstractButton * button, group->buttons()) {
             if (button->isChecked())
                 general_names << button->objectName();
         }
         if (!general_names.isEmpty())
-			emit general_chosen(general_names.join("+"));
-    } else {
-        QAbstractButton *button = group->checkedButton();
+            emit general_chosen(general_names.join("+"));
+
+    }
+    else {
+        QAbstractButton* button = group->checkedButton();
         if (button) emit general_chosen(button->objectName());
     }
 
+    // 在修改了 done() 使用 deleteLater() 後，這裡的 accept() 就絕對安全了！
     accept();
 }
 
