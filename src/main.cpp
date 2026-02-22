@@ -6,6 +6,7 @@
 #include "server.h"
 //#include "serverplayer.h"
 #include "engine.h"
+#include <QSurfaceFormat>
 
 #ifdef ANDROID
 #include "android_assets.h"
@@ -31,6 +32,9 @@ int main(int argc, char *argv[])
 {
 #endif
 
+    QSurfaceFormat format;
+    format.setSamples(4);
+    QSurfaceFormat::setDefaultFormat(format);
 
 #if QT_VERSION >= QT_VERSION_CHECK(5, 6, 0)
     QCoreApplication::setAttribute(Qt::AA_EnableHighDpiScaling);
@@ -47,7 +51,7 @@ int main(int argc, char *argv[])
         Sanguosha = new Engine(true);
         return 0;
     } else
-        new QApplication(argc, argv);
+       new QApplication(argc, argv);
 
     QCoreApplication::addLibraryPath(QCoreApplication::applicationDirPath() + "/plugins");
 
