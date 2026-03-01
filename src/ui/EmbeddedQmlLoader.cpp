@@ -115,7 +115,6 @@ bool EmbeddedQmlLoader::loadQmlOverlay(QWidget *parentWindow,
     m_qmlWidget->setSource(QUrl::fromLocalFile(fullPath));
     return true;
 }
-
 void EmbeddedQmlLoader::setupQmlWidget()
 {
     if (!m_qmlWidget) return;
@@ -130,9 +129,21 @@ void EmbeddedQmlLoader::setupQmlWidget()
     m_qmlWidget->setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
 
 #else
-    // PC平台：使用透明背景
+    // PC平台：完美相容 QOpenGLWidget 的透明背景設定
+    
+    // 1. 強制 QML 引擎使用帶有 8-bit Alpha 通道的渲染格式
+    QSurfaceFormat format = m_qmlWidget->format();
+    format.setAlphaBufferSize(8);
+    m_qmlWidget->setFormat(format);
+
+    // 2. 設置 QML 畫布的清除色為全透明
     m_qmlWidget->setClearColor(Qt::transparent);
-    m_qmlWidget->setAttribute(Qt::WA_AlwaysStackOnTop);
+
+    // 3. 關鍵：告訴 Qt 視窗系統這個 Widget 背景可穿透 (這行原本漏掉了)
+    m_qmlWidget->setAttribute(Qt::WA_TranslucentBackground, true);
+
+    // 4. 確保疊加在最上層
+    m_qmlWidget->setAttribute(Qt::WA_AlwaysStackOnTop, true);
 #endif
 
     m_qmlWidget->setResizeMode(QQuickWidget::SizeRootObjectToView);
