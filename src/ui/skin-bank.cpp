@@ -246,8 +246,7 @@ QString QSanRoomSkin::getButtonPixmapPath(const QString &groupName,
 	const QString &buttonName,
 	QSanButton::ButtonState state) const
 {
-	QString qkey = QString(QSanRoomSkin::S_SKIN_KEY_BUTTON).arg(groupName);
-	const char *key = qkey.toLatin1().constData();
+	QString key = QString(QSanRoomSkin::S_SKIN_KEY_BUTTON).arg(groupName);
 	if (!isImageKeyDefined(key)) return "";
 	QString path = _m_imageConfig[key].toString();
 	QString stateKey;

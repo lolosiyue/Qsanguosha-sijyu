@@ -29,6 +29,8 @@
 #include "chatwidget.h"
 #include "sprite.h"
 #include "EmbeddedQmlLoader.h"
+#include "SpineGlItem.h"
+#include <QOpenGLWidget>
 
 #include "ui-utils.h"
 
@@ -4492,7 +4494,7 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 	QRect rect = main_window->rect();
 	QGraphicsRectItem*lightbox = addRect(rect);
 
-    if(!word.startsWith("skill=")&&!word.startsWith("ghost=")&&!word.startsWith("background=")){
+    if(!word.startsWith("skill=")&&!word.startsWith("ghost=")&&!word.startsWith("background=")&&!word.startsWith("spine=")){
 		lightbox->setBrush(QColor(32,32,32,204));
 		lightbox->setZValue(21);
 		word = Sanguosha->translate(word);
@@ -4653,6 +4655,97 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 
         if(!success)
             embeddedLoader->deleteLater();
+    }
+    else if(word.startsWith("spine=")){
+        // Spine 动态全屏特效 — render as QGraphicsItem (SpineGlItem)
+        // NOTE: Cannot use QOpenGLWidget overlay because FitView already
+        // uses QOpenGLWidget as viewport; Qt 5 forbids nested QOpenGLWidgets.
+        QString spineArg = word.mid(6);
+        QString animName;
+		QString runtimeVersion;
+
+		int atPos = spineArg.lastIndexOf('@');
+		if (atPos > 0) {
+			runtimeVersion = spineArg.mid(atPos + 1).trimmed();
+			spineArg = spineArg.left(atPos);
+		}
+
+        if(spineArg.contains(":")){
+            QStringList parts = spineArg.split(":");
+            spineArg = parts.at(0);
+            animName = parts.at(1);
+        }
+
+		qWarning("[RoomScene] spine= branch: spineArg='%s' animName='%s' runtime='%s'",
+				 qPrintable(spineArg), qPrintable(animName), qPrintable(runtimeVersion));
+
+        // Ensure the viewport's GL context is current so that
+        // atlas texture loading (QOpenGLTexture) succeeds.
+        QOpenGLWidget *glViewport = nullptr;
+        if(!this->views().isEmpty()){
+            QGraphicsView *gv = this->views().first();
+            glViewport = qobject_cast<QOpenGLWidget*>(gv->viewport());
+            if(glViewport){
+                glViewport->makeCurrent();
+                qWarning("[RoomScene] GL viewport context made current for texture loading");
+            }
+        }
+
+        SpineGlItem *spineItem = new SpineGlItem();
+		if (!runtimeVersion.isEmpty())
+			spineItem->setRuntimeVersionHint(runtimeVersion);
+        addItem(spineItem);
+		spineItem->setZValue(9999); // force on top of all scene elements
+
+        bool loaded = spineItem->loadSpine(spineArg, animName);
+
+        if(glViewport)
+            glViewport->doneCurrent();
+
+        if(loaded){
+            // Position: fill the entire scene
+            QRectF sr = sceneRect();
+            spineItem->setRenderRect(sr);
+            float cx = (float)(sr.width()  / 2.0);
+            float cy = (float)(sr.height() / 2.0);
+            spineItem->setSpinePosition(QPointF(cx, cy));
+
+            spineItem->play(false);
+            qWarning("[RoomScene] SpineGlItem playing, duration=%.3f",
+                     spineItem->animationDuration());
+
+            // Auto-remove when the animation finishes
+            connect(spineItem, &SpineGlItem::animationFinished, spineItem, [spineItem](){
+                qWarning("[RoomScene] SpineGlItem animation finished, removing");
+                spineItem->stop();
+                if(spineItem->scene())
+                    spineItem->scene()->removeItem(spineItem);
+                spineItem->deleteLater();
+            });
+
+            // Safety timer: remove even if signal doesn't fire
+            float dur = spineItem->animationDuration();
+            if(dur > 0){
+                QTimer::singleShot((int)(dur * 1000) + 1000, spineItem, [spineItem](){
+                    if(spineItem->isPlaying()){
+                        qWarning("[RoomScene] SpineGlItem safety timer fired, removing");
+                        spineItem->stop();
+                        if(spineItem->scene())
+                            spineItem->scene()->removeItem(spineItem);
+                        spineItem->deleteLater();
+                    }
+                });
+            }
+        } else {
+            qWarning("[RoomScene] SpineGlItem loadSpine FAILED for '%s'", qPrintable(spineArg));
+            if(spineItem->scene())
+                spineItem->scene()->removeItem(spineItem);
+            delete spineItem;
+        }
+
+        // Remove lightbox since spine overlay handles its own display
+        delete lightbox;
+        return;
     }
 #endif
 	else {
