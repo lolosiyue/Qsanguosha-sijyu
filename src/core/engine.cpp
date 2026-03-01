@@ -1391,7 +1391,11 @@ QStringList Engine::getRandomLords() const
     qShuffle(gns);
 	bool ban = false;
     int n = Config.value("LordMaxChoice", -1).toInt();
-	if (n>0) {
+    if (n <= 0)
+        n = Config.value("MaxChoice", 5).toInt();
+    if (n <= 0)
+        n = 1;
+    if (n > 0) {
 		QStringList _lords = lords;
 		lords.clear();
 		foreach (QString g, gns) {

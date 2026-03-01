@@ -5,6 +5,61 @@
 #include "room.h"
 #include "clientplayer.h"
 
+static QString zhizheEquipObjectNameByArea(int area)
+{
+	if (area == 0) return "_zhizhe_weapon";
+	if (area == 1) return "_zhizhe_armor";
+	if (area == 2) return "_zhizhe_defensivehorse";
+	if (area == 3) return "_zhizhe_offensivehorse";
+	if (area == 4) return "_zhizhe_treasure";
+	return QString();
+}
+
+static bool safeTurnCardToEquip(Room *room, ServerPlayer *source, int cardId, const QString &equipObjectName, const QString &skillName)
+{
+	if (!room || !source || equipObjectName.isEmpty())
+		return false;
+	if (room->getCardPlace(cardId) != Player::PlaceHand)
+		return false;
+
+	const Card *rawCard = Sanguosha->getCard(cardId);
+	if (!rawCard)
+		return false;
+
+	Card *equipCard = Sanguosha->cloneCard(equipObjectName, rawCard->getSuit(), rawCard->getNumber());
+	if (!equipCard || !equipCard->isKindOf("EquipCard"))
+		return false;
+
+	const EquipCard *equip = qobject_cast<const EquipCard *>(equipCard->getRealCard());
+	if (!equip)
+		return false;
+
+	int location = equip->location();
+	if (!source->hasEquipArea(location))
+		return false;
+
+	WrappedCard *wrapped = Sanguosha->getWrappedCard(cardId);
+	if (!wrapped)
+		return false;
+	wrapped->takeOver(equipCard);
+	room->notifyUpdateCard(source, cardId, wrapped);
+
+	QList<CardsMoveStruct> exchangeMove;
+	if (source->getEquips(location).length() >= source->getEquipArea(location)) {
+		const Card *oldEquip = source->getEquip(location);
+		if (oldEquip) {
+			CardsMoveStruct moveOld(oldEquip->getEffectiveId(), nullptr, Player::DiscardPile,
+				CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP, source->objectName(), skillName, "change equip"));
+			exchangeMove.append(moveOld);
+		}
+	}
+	CardsMoveStruct moveNew(cardId, source, Player::PlaceEquip,
+		CardMoveReason(CardMoveReason::S_REASON_USE, source->objectName(), skillName, ""));
+	exchangeMove.append(moveNew);
+	room->moveCardsAtomic(exchangeMove, true);
+	return true;
+}
+
 
 
 
@@ -95,25 +150,13 @@ void GongqiaoCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 	QString choice = room->askForChoice(source,"gongqiao",choices.join("+"));
 	choice.remove("EquipArea");
 	int n = choice.toInt();
-	if(choice.contains("0")) choice = "_zhizhe_weapon";
-	else if(choice.contains("1")) choice = "_zhizhe_armor";
-	else if(choice.contains("2")) choice = "_zhizhe_defensivehorse";
-	else if(choice.contains("3")) choice = "_zhizhe_offensivehorse";
-	else if(choice.contains("4")) choice = "_zhizhe_treasure";
-	WrappedCard *card = Sanguosha->getWrappedCard(getEffectiveId());
-	card->takeOver(Sanguosha->cloneCard(choice,getSuit(),getNumber()));
-	room->notifyUpdateCard(source,getEffectiveId(),card);
-	QList<CardsMoveStruct> exchangeMove;
-	if (source->getEquips(n).length()>=source->getEquipArea(n)){
-		CardsMoveStruct move2(source->getEquip(n)->getEffectiveId(), nullptr, Player::DiscardPile,
-			CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP, source->objectName(), "gongqiao", "change equip"));
-		exchangeMove.append(move2);
-	}
-	CardsMoveStruct move1(getEffectiveId(), source, Player::PlaceEquip,
-		CardMoveReason(CardMoveReason::S_REASON_USE, source->objectName(), "gongqiao", ""));
-	exchangeMove.append(move1);
+	QString equipObjectName = zhizheEquipObjectNameByArea(n);
+	if (equipObjectName.isEmpty())
+		return;
+	if (!safeTurnCardToEquip(room, source, getEffectiveId(), equipObjectName, "gongqiao"))
+		return;
 	QStringList info;
-	info << choice << getSuitString() << QString::number(getNumber());
+	info << equipObjectName << getSuitString() << QString::number(getNumber());
 	room->setTag("ZhizheFilter_" + QString::number(getEffectiveId()), info.join("+"));
 	info = room->getTag("gongqiaoEquip").toStringList();
 	info << QString::number(getEffectiveId());
@@ -121,7 +164,6 @@ void GongqiaoCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 
     foreach (ServerPlayer *q, room->getAlivePlayers())
 		room->acquireSkill(q, "#zhizhe");
-	room->moveCardsAtomic(exchangeMove, true);
 }
 
 class GongqiaoVs : public OneCardViewAsSkill

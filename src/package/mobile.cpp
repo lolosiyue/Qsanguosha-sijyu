@@ -11972,7 +11972,8 @@ public:
 				room->moveField(player, objectName(), false, "ej");
 			else {
 				QList<int> ids;
-				const char *ch = choice.toStdString().c_str();
+				const std::string chStr = choice.toStdString();
+				const char *ch = chStr.c_str();
 				foreach (int id, room->getDrawPile()) {
 					if (Sanguosha->getCard(id)->isKindOf(ch))
 						ids << id;
