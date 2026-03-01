@@ -34,6 +34,9 @@ int main(int argc, char *argv[])
 
     QSurfaceFormat format;
     format.setSamples(4);
+    format.setDepthBufferSize(24);
+    format.setStencilBufferSize(8);
+    format.setAlphaBufferSize(8);
     QSurfaceFormat::setDefaultFormat(format);
 
 #if QT_VERSION >= QT_VERSION_CHECK(5, 6, 0)

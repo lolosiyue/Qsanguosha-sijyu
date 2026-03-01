@@ -5214,6 +5214,22 @@ void Room::doSuperLightbox(ServerPlayer*player, const QString&skillName, bool de
 void Room::doAnimate(QSanProtocol::AnimateType type, const QString&arg1, const QString&arg2,
 	QList<ServerPlayer*> players)
 {
+	// TODO(AI/Future): 预留“沙盒模式/模拟模式”动画副作用保护点。
+	// 当前主分支尚未具备 m_simulation_mode / markSimulationEffect 等完整基础设施，
+	// 暂不直接引入行为改动，避免破坏现有流程。
+	//
+	// 未来若引入沙盒机制，可在这里接入（示意）：
+	// if (m_simulation_mode) {
+	// 	DEBUG_LOG("SANDBOX", QString("doAnimate detected: type=%1, arg1=%2 -> INTERRUPT").arg(type).arg(arg1));
+	// 	markSimulationEffect();
+	// 	return;
+	// }
+	//
+	// 接入前请先确保：
+	// 1) Room 成员与生命周期：m_simulation_mode / m_simulation_has_effect
+	// 2) 接口：enterSimulation()/exitSimulation()/markSimulationEffect()/simulationHasEffect()
+	// 3) RoomThread 触发链路的异常与回滚策略已联动。
+
 	JsonArray arg;
 	arg << (int)type << arg1 << arg2;
 	if (players.isEmpty()) players = m_players;
