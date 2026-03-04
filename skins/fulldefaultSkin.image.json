@@ -214,6 +214,9 @@
 "heroSkinContainerGeneralIcon-panzhangmazhong-0": ["image/fullskin/generals/full/panzhangmazhong.jpg", [52, 0, 170, 292]],
 "heroSkinContainerGeneralIcon-panzhangmazhong": ["image/heroskin/fullskin/generals/full/panzhangmazhong_%1.jpg", [52, 0, 170, 292]],
 
+"heroSkinContainerGeneralIcon-bf_lijueguosi-0": ["image/fullskin/generals/full/bf_lijueguosi.jpg", [52, 0, 170, 292]],
+"heroSkinContainerGeneralIcon-bf_lijueguosi": ["image/heroskin/fullskin/generals/full/bf_lijueguosi_%1.jpg", [52, 0, 170, 292]],
+
 // buttons
 "dashboardButtonSetBg": "image/system/button/platter/bg.png",
 "button-platter": "image/system/button/platter/%1/%2.png",
@@ -235,14 +238,7 @@
 
 // equips
 "photoEquip-default": "image/fullskin/small-equips/%1.png",
-"photoEquip-chitu": "image/fullskin/small-equips/offensivehorse.png",
-"photoEquip-dayuan": "image/fullskin/small-equips/offensivehorse.png",
-"photoEquip-zixing": "image/fullskin/small-equips/offensivehorse.png",
-"photoEquip-dilu": "image/fullskin/small-equips/defensivehorse.png",
-"photoEquip-jueying": "image/fullskin/small-equips/defensivehorse.png",
-"photoEquip-hualiu": "image/fullskin/small-equips/defensivehorse.png",
-"photoEquip-zhuahuangfeidian": "image/fullskin/small-equips/defensivehorse.png",
-"dashboardEquip-default": "image/equips/%1.jpg",
+"dashboardEquip-default": "image/equips/%1.png",
 
 // kingdoms
 "kingdomColorMask-default": "image/fullskin/kingdom/frame/%1.png",
