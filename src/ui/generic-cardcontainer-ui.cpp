@@ -486,11 +486,45 @@ void PlayerCardContainer::updateDuanchang()
 
 void PlayerCardContainer::updateHandcardNum()
 {
-    //QString num = "0 /  0";
-    //if (m_player) num = QString("%1 /  %2").arg(m_player->getHandcardNum()).arg(m_player->property("handMax").toInt());
     QString num = "0";
-    if (m_player) num = QString::number(m_player->getHandcardNum());
-    _m_layout->m_handCardFont.paintText(_m_handCardNumText, _m_layout->m_handCardArea, Qt::AlignCenter, num);
+    QRect area = _m_layout->m_handCardArea;
+    const int extraW = 55;
+    QRect wideArea(area.x() - extraW, area.y(), area.width() + extraW * 2, area.height());
+    QRect innerRect(0, 0, wideArea.width(), wideArea.height());
+
+    QImage image(wideArea.width(), wideArea.height(), QImage::Format_ARGB32);
+    image.fill(Qt::transparent);
+    QPainter imagePainter(&image);
+
+    if (m_player) {
+        int handcardNum = m_player->getHandcardNum();
+        int maxCards = m_player->property("handMax").toInt();
+        int hp = m_player->getHp();
+
+        int W = wideArea.width(), H = wideArea.height();
+        int seg = W * 2 / 5;
+        QRect leftZone (0,       0, seg,       H);
+        QRect midZone  (seg,     0, W - seg*2, H);
+        QRect rightZone(W - seg, 0, seg,       H);
+
+        IQSanComponentSkin::QSanShadowTextFont limitFont = _m_layout->m_handCardFont;
+        if (maxCards != hp)
+            limitFont.m_color = (maxCards > hp) ? QColor(0, 255, 0) : QColor(255, 0, 0);
+
+        _m_layout->m_handCardFont.paintText(&imagePainter, leftZone,  Qt::AlignRight  | Qt::AlignVCenter, QString::number(handcardNum));
+        _m_layout->m_handCardFont.paintText(&imagePainter, midZone,   Qt::AlignCenter, "/");
+        limitFont.paintText               (&imagePainter, rightZone, Qt::AlignLeft   | Qt::AlignVCenter, QString::number(maxCards));
+    } else {
+        _m_layout->m_handCardFont.paintText(&imagePainter, innerRect, Qt::AlignCenter, num);
+    }
+
+    _m_handCardNumText->setPixmap(QPixmap::fromImage(image));
+
+    if (_m_handCardNumText->parentItem() != this) {
+        _m_handCardNumText->setParentItem(this);
+        _m_handCardNumText->setZValue(100);
+    }
+    _m_handCardNumText->setPos(mapFromItem(_getAvatarParent(), QPointF(wideArea.x(), wideArea.y())));
     _m_handCardNumText->setVisible(true);
 }
 

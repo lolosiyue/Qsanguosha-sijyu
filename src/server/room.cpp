@@ -4479,6 +4479,7 @@ static bool CompareByActionOrder_OneTime(CardsMoveOneTimeStruct move1, CardsMove
 	if (b == nullptr) b = move2.to;
 
 	if (a == nullptr || b == nullptr) return a != nullptr;
+	if (a == b) return false;
 	ServerPlayer*sa = (ServerPlayer*)a;
 	return sa->getRoom()->getFront(sa, (ServerPlayer*)b) == sa;
 }
@@ -4490,6 +4491,7 @@ static bool CompareByActionOrder(CardsMoveStruct move1, CardsMoveStruct move2)
 	if (b == nullptr) b = move2.to;
 
 	if (a == nullptr || b == nullptr) return a != nullptr;
+	if (a == b) return false;
 	ServerPlayer*sa = (ServerPlayer*)a;
 	return sa->getRoom()->getFront(sa, (ServerPlayer*)b) == sa;
 }

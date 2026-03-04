@@ -380,6 +380,9 @@ void Client::updateProperty(const QVariant &arg)
 		if(args[1].toString().endsWith("area")){
 			emit update_areas(args[0].toString());
 		}
+		if(args[1].toString() == "handMax"){
+			emit update_handcards(args[0].toString());
+		}
 	}
 }
 

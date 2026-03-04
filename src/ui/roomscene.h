@@ -221,6 +221,7 @@ public slots:
     void killPlayer(const QString &who);
     void revivePlayer(const QString &who);
     void updateAreas(const QString &who);
+    void updateHandcards(const QString &who);
     void showServerInformation();
     void surrender();
     void saveReplayRecord();
