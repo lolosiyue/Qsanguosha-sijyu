@@ -52,6 +52,7 @@
 "tableBgwu" : "image/system/backdrop/wu.jpg",
 "tableBgqun": "image/system/backdrop/qun.jpg",
 "tableBgjin": "image/system/backdrop/jin.jpg",
+"tableBggod": "image/system/backdrop/god.jpg",
 "photoExtraSkillBg": "image/system/huashenSkillBg.png",
 "dashboardExtraSkillBg": "image/system/huashenSkillBg.png",
 
@@ -253,14 +254,7 @@
 "generalCardBack": "image/system/unknown.png",
 
 // equips
-"photoEquip-default": "image/small-equips/%1.png",
-"photoEquip-chitu": "image/small-equips/offensivehorse.png",
-"photoEquip-dayuan": "image/small-equips/offensivehorse.png",
-"photoEquip-zixing": "image/small-equips/offensivehorse.png",
-"photoEquip-dilu": "image/small-equips/defensivehorse.png",
-"photoEquip-jueying": "image/small-equips/defensivehorse.png",
-"photoEquip-hualiu": "image/small-equips/defensivehorse.png",
-"photoEquip-zhuahuangfeidian": "image/small-equips/defensivehorse.png",
+"photoEquip-default": "image/fullskin/small-equips/%1.png",
 "dashboardEquip-default": "image/equips/%1.jpg",
 
 // kingdoms
