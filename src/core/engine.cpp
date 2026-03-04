@@ -346,6 +346,11 @@ lua_State*Engine::getLuaState() const
     return lua;
 }
 
+QRecursiveMutex &Engine::getLuaMutex() const
+{
+    return lua_mutex;
+}
+
 void Engine::addTranslationEntry(const QString &key, const QString &value)
 {
     if (!translations.contains(key))
@@ -1764,7 +1769,8 @@ const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card,
 
 int Engine::correctDistance(const Player*from, const Player*to, bool fixed) const
 {
-	int correct = 0;
+    QMutexLocker locker(&lua_mutex);
+    int correct = 0;
 	if (fixed){
 		foreach (const DistanceSkill*skill, getDistanceSkills()) {
             int f = skill->getFixed(from, to);
@@ -1779,7 +1785,8 @@ int Engine::correctDistance(const Player*from, const Player*to, bool fixed) cons
 
 int Engine::correctMaxCards(const Player*target, bool fixed) const
 {
-	int ex = -1;
+    QMutexLocker locker(&lua_mutex);
+    int ex = -1;
     if (fixed) {
         foreach (const MaxCardsSkill*skill, getMaxCardsSkills()) {
 			int f = skill->getFixed(target);
@@ -1795,6 +1802,8 @@ int Engine::correctMaxCards(const Player*target, bool fixed) const
 
 int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*from, const Card*card, const Player*to) const
 {
+    QMutexLocker locker(&lua_mutex);
+    if (!from || !card) return 0;
     int x = 0;
 	QStringList subcardNames;
 	if (card->isVirtualCard()){
@@ -1833,7 +1842,8 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
 
 bool Engine::correctSkillValidity(const Player*player, const Skill*skill) const
 {
-	foreach (const InvaliditySkill*is, getInvaliditySkills()) {
+    QMutexLocker locker(&lua_mutex);
+    foreach (const InvaliditySkill*is, getInvaliditySkills()) {
         if (is->isSkillValid(player, skill)) continue;
 		return false;
     }
@@ -1842,7 +1852,8 @@ bool Engine::correctSkillValidity(const Player*player, const Skill*skill) const
 
 int Engine::correctAttackRange(const Player*target, bool include_weapon, bool fixed) const
 {
-	int extra = -1;
+    QMutexLocker locker(&lua_mutex);
+    int extra = -1;
     if (fixed) {
 		foreach (const AttackRangeSkill*skill, getAttackRangeSkills()) {
             int f = skill->getFixed(target, include_weapon);

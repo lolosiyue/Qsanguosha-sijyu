@@ -325,6 +325,7 @@ signals:
     void status_changed(Client::Status oldStatus, Client::Status newStatus);
     void avatars_hiden();
     void update_areas(const QString &who);
+    void update_handcards(const QString &who);
     void pile_reset();
     //void round_add();
     void player_killed(const QString &who);

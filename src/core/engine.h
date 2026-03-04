@@ -6,6 +6,7 @@
 #include "audio.h"
 #include "util.h"
 #include <QPointer>
+#include <QMutex>
 
 class Scenario;
 class CardPattern;
@@ -23,6 +24,7 @@ public:
     void addTranslationEntry(const QString &key, const QString &value);
     QString translate(const QString &to_translate, bool initial = false) const;
     lua_State *getLuaState() const;
+    QRecursiveMutex &getLuaMutex() const;
     void addModes(const QString &key, const QString &value, const QString &roles = "");
 
     int getMiniSceneCounts();
@@ -175,6 +177,7 @@ private:
     Scenario *m_customScene;
 
     lua_State *lua;
+    mutable QRecursiveMutex lua_mutex;
 
     //QHash<QString,const Card *> luaBasicCards, luaTrickCards;
     //QHash<QString,const Card *> luaWeapons, luaArmors ,luaTreasures;

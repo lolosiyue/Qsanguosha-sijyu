@@ -222,6 +222,9 @@ void Dashboard::_updateFrames()
     rightFramePath.addRect(leftFrameAndMiddleFrameRect);
 
     trusting_item->setPath(kingdomColorMaskPath.united(rightFramePath));
+
+    // Keep hand card number text position in sync after _m_rightFrame moves.
+    if (_m_handCardNumText) updateHandcardNum();
 }
 
 void Dashboard::_paintLeftFrame()

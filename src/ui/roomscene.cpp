@@ -145,6 +145,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(ClientInstance,SIGNAL(maxhp_changed(QString,int)),SLOT(changeMaxHp(QString,int)));
 	connect(ClientInstance,SIGNAL(pile_reset()),this,SLOT(resetPiles()));
 	connect(ClientInstance,SIGNAL(update_areas(QString)),this,SLOT(updateAreas(QString)));
+	connect(ClientInstance,SIGNAL(update_handcards(QString)),this,SLOT(updateHandcards(QString)));
 	//connect(ClientInstance,SIGNAL(round_add()),this,SLOT(addRound()));
 	connect(ClientInstance,SIGNAL(player_killed(QString)),this,SLOT(killPlayer(QString)));
 	connect(ClientInstance,SIGNAL(player_revived(QString)),this,SLOT(revivePlayer(QString)));
@@ -3916,6 +3917,15 @@ void RoomScene::updateAreas(const QString&who)
 		PlayerCardContainer*container = (PlayerCardContainer*)_getGenericCardContainer(Player::PlaceHand,player);
 		container->_updateEquips();
 		container->updateDelayedTricks();
+	}
+}
+
+void RoomScene::updateHandcards(const QString&who)
+{
+	ClientPlayer*player = ClientInstance->getPlayer(who);
+	if(player){
+		PlayerCardContainer*container = (PlayerCardContainer*)_getGenericCardContainer(Player::PlaceHand,player);
+		container->updateHandcardNum();
 	}
 }
 
