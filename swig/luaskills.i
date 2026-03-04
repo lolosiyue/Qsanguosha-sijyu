@@ -869,6 +869,8 @@ int LuaTargetModSkill::getResidueNum(const Player *from, const Card *card, const
 {
 	if (residue_func == 0)
 		return TargetModSkill::getResidueNum(from,card,to);
+	if (!from || !card)
+		return TargetModSkill::getResidueNum(from,card,to);
 
 	lua_State*L = Sanguosha->getLuaState();
 
@@ -892,6 +894,8 @@ int LuaTargetModSkill::getDistanceLimit(const Player *from, const Card *card, co
 {
 	if (distance_limit_func == 0)
 		return TargetModSkill::getDistanceLimit(from,card,to);
+	if (!from || !card)
+		return TargetModSkill::getDistanceLimit(from,card,to);
 
 	lua_State*L = Sanguosha->getLuaState();
 
@@ -914,6 +918,8 @@ int LuaTargetModSkill::getDistanceLimit(const Player *from, const Card *card, co
 int LuaTargetModSkill::getExtraTargetNum(const Player *from, const Card *card) const
 {
 	if (extra_target_func == 0)
+		return TargetModSkill::getExtraTargetNum(from,card);
+	if (!from || !card)
 		return TargetModSkill::getExtraTargetNum(from,card);
 
 	lua_State*L = Sanguosha->getLuaState();
