@@ -12,6 +12,7 @@
 #include "cardcontainer.h"
 #include "recorder.h"
 #include "indicatoritem.h"
+#include "generaloverview.h"
 #include "pixmapanimation.h"
 #include "audio.h"
 //#include "skin-bank.h"
@@ -397,6 +398,19 @@ RoomScene::RoomScene(QMainWindow*main_window)
 
 	animations = new EffectAnimation();
 	animations->setParent(this);
+
+	// ── Spine pop-out action controller ──
+	_spineActionController = new CharacterSpineActionController(this, this);
+	_spineActionController->setAssetPathPrefix("assets/dynamic");
+	_spineActionController->loadConfigFromJson("assets/dynamic/dynamicSkinConfig.json");
+	connect(_spineActionController, &CharacterSpineActionController::actionStarted,
+		this, [](const QString &pid, ActionType) {
+		qWarning("[RoomScene] Spine action started for %s", qPrintable(pid));
+	});
+	connect(_spineActionController, &CharacterSpineActionController::actionFinished,
+		this, [](const QString &pid, ActionType) {
+		qWarning("[RoomScene] Spine action finished for %s", qPrintable(pid));
+	});
 
 	pausing_item = new QGraphicsRectItem;
 	pausing_text = new QGraphicsSimpleTextItem(tr("Paused ..."));
@@ -1025,17 +1039,27 @@ void RoomScene::updateTable()
 	// ------------------------
 	// region 5 = 0+3,region 6 = 2+4,region 7 = 0+1+2
 
-	static int regularSeatIndex[][9] = {
-		{ 1 },
-		{ 5,6 },
-		{ 5,1,6 },
-		{ 3,1,1,4 },
-		{ 3,1,1,1,4 },
-		{ 5,5,1,1,6,6 },
-		{ 5,5,1,1,1,6,6 },
-		{ 3,3,7,7,7,7,4,4 },
-		{ 3,3,7,7,7,7,7,4,4 }
-	};
+	static int regularSeatIndex[][20] = {
+        { 1 },
+        { 5, 6 },
+        { 5, 1, 6 },
+        { 3, 1, 1, 4 },
+        { 3, 1, 1, 1, 4 },
+        { 5, 5, 1, 1, 6, 6 },
+        { 5, 5, 1, 1, 1, 6, 6 },
+        { 3, 3, 7, 7, 7, 7, 4, 4 },
+        { 3, 3, 7, 7, 7, 7, 7, 4, 4 },
+        {}, // 11 players
+        {},//12
+        {},//13
+        {},//14
+        {},//15
+        {}, // 16 players
+        {},//17
+        {},//18
+        {},//19
+        {3, 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4, 4}//20 players
+    };
 	static int hulaoSeatIndex[][3] = {
 		{ 1,1,1 },// if self is shenlvbu
 		{ 3,3,1 },
@@ -1170,6 +1194,9 @@ void RoomScene::updateTable()
 			photo->setFloatingArea(floatingArea);
 		_dispersePhotos(photosInRegion[i],seatRegions[i],orients[i],align);
 	}
+
+	// ── Spine pop-out: refresh seat geometry after layout changes ──
+	updateSpineSeatGeometry();
 }
 
 void RoomScene::addPlayer(ClientPlayer*player)
@@ -1478,10 +1505,70 @@ void RoomScene::keyReleaseEvent(QKeyEvent*event)
 		}
 		break;
 	}
-	case Qt::Key_F12: {
-		if(Self->property("Huashens").toString().isEmpty()) break;
-		static HuashenDialog*dialog = new HuashenDialog;
-		dialog->popup();
+	case Qt::Key_F11: {
+		if (!Self) break;
+
+		QStringList available_piles;
+		QStringList excluded_piles = { "yinni_general" }; // 排除
+
+		// 1. 獲取所有屬性名稱 (包含動態屬性與靜態 Q_PROPERTY)
+		QList<QByteArray> all_props = Self->dynamicPropertyNames();
+		const QMetaObject *meta = Self->metaObject();
+		for (int i = 0; meta && i < meta->propertyCount(); ++i) {
+			if (meta->property(i).name()) {
+				all_props << meta->property(i).name();
+			}
+		}
+
+		foreach (const QByteArray &prop_name, all_props) {
+			QString tag = QString::fromLatin1(prop_name);
+
+			// 檢查後綴、去重複、排除特定牌堆
+			if (tag.endsWith("_general", Qt::CaseInsensitive) && 
+				!available_piles.contains(tag) && 
+				!excluded_piles.contains(tag)) {
+
+				// 解析武將清單 (神殺屬性標準：以 '+' 分隔的字串)
+				QStringList generals = Self->property(prop_name).toString().split("+", QString::SkipEmptyParts);
+				if (generals.isEmpty()) continue;
+
+				// 驗證是否所有名稱都是合法武將
+				bool all_valid = true;
+				foreach (const QString &gen_name, generals) {
+					if (!Sanguosha->getGeneral(gen_name)) {
+						all_valid = false;
+						break;
+					}
+				}
+
+				// 完全合法才加入選單
+				if (all_valid) {
+					available_piles << tag;
+				}
+			}
+		}
+
+		if (available_piles.isEmpty()) break;
+
+		// 3. UI 顯示邏輯
+		if (available_piles.length() == 1) {
+			showGeneralPile(available_piles.first());
+		} else {
+			QDialog *dialog = new QDialog(main_window);
+			dialog->setWindowTitle(tr("Select skill"));
+
+			QVBoxLayout *layout = new QVBoxLayout;
+			foreach (const QString &tag, available_piles) {
+				QString skill_name = tag.left(tag.length() - 8);
+				QCommandLinkButton *button = new QCommandLinkButton(Sanguosha->translate(skill_name));
+				connect(button, &QCommandLinkButton::clicked, this, [this, tag]() { showGeneralPile(tag); });
+				connect(button, SIGNAL(clicked()), dialog, SLOT(accept()));
+				layout->addWidget(button);
+			}
+
+			dialog->setLayout(layout);
+			dialog->exec();
+		}
 		break;
 	}
 
@@ -3395,7 +3482,6 @@ void RoomScene::onGameOver()
 {
 	log_box->append(QString(tr("<font color='%1'>---------- Game Finish ----------</font>").arg(Config.TextEditColor.name())));
 
-	m_roomMutex.lock();
 	freeze();
 
 	bool victory = Self->property("win").toBool();
@@ -3456,7 +3542,6 @@ void RoomScene::onGameOver()
 
 	addRestartButton(dialog);
 	connect(dialog,SIGNAL(rejected()),this,SIGNAL(game_over_dialog_rejected()));
-	m_roomMutex.unlock();
 	dialog->exec();
 }
 
@@ -3931,7 +4016,6 @@ void RoomScene::updateHandcards(const QString&who)
 
 void RoomScene::killPlayer(const QString&who)
 {
-	m_roomMutex.lock();
 	const General*general = nullptr;
 	if(who==Self->objectName()){
 		dashboard->stopHuaShen();
@@ -3956,7 +4040,10 @@ void RoomScene::killPlayer(const QString&who)
 	}
 	if(Config.EnableEffects&&Config.EnableLastWord&&!Self->hasFlag("marshalling"))
 		general->lastWord();
-	m_roomMutex.unlock();
+
+	// ── Spine pop-out: mark player dead → cancels any running action ──
+	if (_spineActionController)
+		_spineActionController->setPlayerAlive(who, false);
 }
 
 void RoomScene::revivePlayer(const QString&who)
@@ -3972,6 +4059,10 @@ void RoomScene::revivePlayer(const QString&who)
 		item2player.insert(photo,photo->getPlayer());
 		//photo->updateAvatarTooltip();
 	}
+
+	// ── Spine pop-out: revive → allow actions again ──
+	if (_spineActionController)
+		_spineActionController->setPlayerAlive(who, true);
 }
 
 void RoomScene::takeAmazingGrace(ClientPlayer*taker,int card_id,bool move_cards)
@@ -4291,6 +4382,27 @@ void RoomScene::onGameStart()
 
 	game_started = true;
 
+	// ── Spine pop-out: register skins + preload once game starts ──
+	registerDynamicSkinsForAllPlayers();
+	updateSpineSeatGeometry();
+	// Preload all registered player skins in the background
+	if (_spineActionController) {
+		foreach (Photo *photo, photos) {
+			const ClientPlayer *p = photo->getPlayer();
+			if (p) _spineActionController->preloadPlayer(p->objectName());
+		}
+		if (Self) _spineActionController->preloadPlayer(Self->objectName());
+
+		// Trigger entrance animations for all players with entrance action
+		foreach (Photo *photo, photos) {
+			const ClientPlayer *p = photo->getPlayer();
+			if (p) _spineActionController->triggerAction(
+				p->objectName(), ActionType::Entrance);
+		}
+		if (Self) _spineActionController->triggerAction(
+			Self->objectName(), ActionType::Entrance, QList<QPointF>(), true);
+	}
+
 	// for tablebg change
 	if(Config.EnableAutoBackgroundChange&&Self){
 		QString kingdom = Self->getKingdom();
@@ -4344,6 +4456,15 @@ void RoomScene::freeze()
 #endif
 	dashboard->hideProgressBar();
 	main_window->setStatusBar(nullptr);
+
+	// ── Spine pop-out: cancel all running actions on game freeze ──
+	if (_spineActionController) {
+		if (Self) _spineActionController->cancelAction(Self->objectName());
+		foreach (Photo *photo, photos) {
+			const ClientPlayer *p = photo->getPlayer();
+			if (p) _spineActionController->cancelAction(p->objectName());
+		}
+	}
 }
 
 void RoomScene::_cancelAllFocus()
@@ -4411,6 +4532,13 @@ void RoomScene::showSkillInvocation(const QString&who,const QString&skill_name)
 		//if(skill&&skill->inherits("SPConvertSkill")) return;
 		log_box->appendLog("#InvokeSkill",who,QStringList(),"",skill_name);
 	//}
+
+	// ── Spine pop-out: trigger Special action on non-attack skill invocation ──
+	if (_spineActionController && game_started) {
+		bool isLocal = (who == Self->objectName());
+		_spineActionController->triggerAction(who, ActionType::Special,
+		                                      QList<QPointF>(), isLocal);
+	}
 }
 
 void RoomScene::removeLightBox()
@@ -4821,6 +4949,18 @@ void RoomScene::showIndicator(const QString&from,const QString&to)
 
 	addItem(indicator);
 	indicator->doAnimation();
+
+	// ── Spine pop-out: trigger Attack action on indicator (from → to) ──
+	if (_spineActionController && game_started) {
+		bool isLocal = (from == Self->objectName());
+		QList<QPointF> targets;
+		targets << finish;
+		QPointF dir = finish - start;
+		double len = qSqrt(dir.x() * dir.x() + dir.y() * dir.y());
+		if (len > 0.001) dir /= len;
+		_spineActionController->triggerAction(from, ActionType::Attack,
+		                                      targets, isLocal, dir);
+	}
 }
 
 void RoomScene::doIndicate(const QString&,const QStringList&args)
@@ -4982,19 +5122,15 @@ void RoomScene::fillGenerals(const QStringList&names)
 
 void RoomScene::bringToFront(QGraphicsItem*front_item)
 {
-	m_zValueMutex.lock();
 	if(_m_last_front_item!=nullptr)
 		_m_last_front_item->setZValue(_m_last_front_ZValue);
 	_m_last_front_item = front_item;
 	_m_last_front_ZValue = front_item->zValue();
 	if(pindian_box&&front_item!=pindian_box&&pindian_box->isVisible()){
-		m_zValueMutex.unlock();
 		bringToFront(pindian_box);
-		m_zValueMutex.lock();
 		front_item->setZValue(9);
 	} else
 		front_item->setZValue(10);
-	m_zValueMutex.unlock();
 }
 
 void RoomScene::takeGeneral(const QString&who,const QString&name,const QString&rule)
@@ -5541,4 +5677,81 @@ void PromptInfoItem::paint(QPainter*painter,const QStyleOptionGraphicsItem*,QWid
 		}
 	}
 }*/
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Spine pop-out action controller helpers
+// ═══════════════════════════════════════════════════════════════════════════
+
+void RoomScene::registerDynamicSkinForPlayer(const QString &playerName,
+                                              const QString &generalName,
+                                              bool isPrimary)
+{
+	if (!_spineActionController || generalName.isEmpty()) return;
+	if (!_spineActionController->hasDynamicSkin(generalName)) return;
+
+	QString skinName = _spineActionController->defaultSkinNameForGeneral(generalName);
+	if (skinName.isEmpty()) return;
+
+	SkinConfig config;
+	if (!_spineActionController->buildSkinConfigForGeneral(generalName, skinName, config))
+		return;
+
+	QString skinId = generalName + "/" + skinName;
+	_spineActionController->registerSkin(playerName, skinId, config, isPrimary);
+
+	qWarning("[RoomScene] Registered dynamic skin '%s' for player %s (primary=%d)",
+	         qPrintable(skinId), qPrintable(playerName), (int)isPrimary);
+}
+
+void RoomScene::registerDynamicSkinsForAllPlayers()
+{
+	if (!_spineActionController) return;
+
+	// Dashboard (self)
+	if (Self) {
+		const General *g1 = Self->getGeneral();
+		if (g1) registerDynamicSkinForPlayer(Self->objectName(), g1->objectName(), true);
+		const General *g2 = Self->getGeneral2();
+		if (g2) registerDynamicSkinForPlayer(Self->objectName(), g2->objectName(), false);
+	}
+
+	// All photo players (remote)
+	foreach (Photo *photo, photos) {
+		const ClientPlayer *player = photo->getPlayer();
+		if (!player) continue;
+		const General *g1 = player->getGeneral();
+		if (g1) registerDynamicSkinForPlayer(player->objectName(), g1->objectName(), true);
+		const General *g2 = player->getGeneral2();
+		if (g2) registerDynamicSkinForPlayer(player->objectName(), g2->objectName(), false);
+	}
+}
+
+void RoomScene::updateSpineSeatGeometry()
+{
+	if (!_spineActionController) return;
+
+	// Dashboard (self) seat geometry
+	if (Self && dashboard) {
+		QRectF rect = dashboard->sceneBoundingRect();
+		_spineActionController->updateSeatGeometry(
+			Self->objectName(), rect.topLeft(), rect.size());
+	}
+
+	// Photo players
+	foreach (Photo *photo, photos) {
+		const ClientPlayer *player = photo->getPlayer();
+		if (!player) continue;
+		QRectF rect = photo->sceneBoundingRect();
+		_spineActionController->updateSeatGeometry(
+			player->objectName(), rect.topLeft(), rect.size());
+	}
+}
+
+void RoomScene::showGeneralPile(const QString &tag_name) {
+	if (Self == nullptr || tag_name.isEmpty())
+		return;
+	HuashenDialog *dialog = new HuashenDialog(tag_name);
+	dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->popup();
+}
 

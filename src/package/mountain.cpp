@@ -1103,8 +1103,9 @@ public:
         if (list.isEmpty()) return;
         qShuffle(list);
         n = qMin(n, list.length());
+        
         QStringList huashens = zuoci->property("Huashens").toString().split("+");
-		if(zuoci->property("Huashens").toString().isEmpty()) huashens.clear();
+        if(zuoci->property("Huashens").toString().isEmpty()) huashens.clear();
 
         QStringList acquired = list.mid(0, n);
         foreach (QString name, acquired) {
@@ -1115,12 +1116,17 @@ public:
                     room->getThread()->addTriggerSkill(skill);
             }
         }
-		room->setPlayerProperty(zuoci,"Huashens",huashens.join("+"));
+        
+        QString pile_str = huashens.join("+");
+        
+        room->setPlayerProperty(zuoci, "Huashens", pile_str);
+        
+        room->setPlayerProperty(zuoci, "huashen_general", pile_str);
 
         QStringList hidden;
         for (int i = 0; i < n; i++) hidden << "unknown";
-		room->doAnimate(QSanProtocol::S_ANIMATE_HUASHEN, zuoci->objectName(), hidden.join(":"), room->getOtherPlayers(zuoci));
-		room->doAnimate(QSanProtocol::S_ANIMATE_HUASHEN, zuoci->objectName(), acquired.join(":"), QList<ServerPlayer *>() << zuoci);
+        room->doAnimate(QSanProtocol::S_ANIMATE_HUASHEN, zuoci->objectName(), hidden.join(":"), room->getOtherPlayers(zuoci));
+        room->doAnimate(QSanProtocol::S_ANIMATE_HUASHEN, zuoci->objectName(), acquired.join(":"), QList<ServerPlayer *>() << zuoci);
 
         LogMessage log;
         log.type = "#GetHuashen";
@@ -1258,24 +1264,61 @@ public:
         static HuashenDialog *dialog;
 
         if (dialog == nullptr)
-            dialog = new HuashenDialog;
+            dialog = new HuashenDialog(objectName());
 
         return dialog;
     }
 };
 
-HuashenDialog::HuashenDialog()
+
+// 1. 建構子實作：接收參數並賦值給 m_propertyName
+HuashenDialog::HuashenDialog(const QString &propertyName)
+    : GeneralOverview(), m_propertyName(propertyName)
 {
-    setWindowTitle(Sanguosha->translate("huashen"));
+    setPreviewMode(true);
 }
 
+// 2. 彈出視窗與載入資料實作
 void HuashenDialog::popup()
 {
-    QList<const General *> huashens;
-    foreach(QString huashen, Self->property("Huashens").toString().split("+"))
-        huashens << Sanguosha->getGeneral(huashen);
+    if (Self == nullptr || m_propertyName.isEmpty())
+        return;
 
-    fillGenerals(huashens);
+    QString skill_name = m_propertyName;
+    if (skill_name.endsWith("_general", Qt::CaseInsensitive))
+        skill_name.chop(8);
+
+    QByteArray key = m_propertyName.toLatin1();
+    QVariant pile_value = Self->property(key.constData());
+
+    QStringList general_names;
+    if (pile_value.type() == QVariant::String) {
+        QString pile_str = pile_value.toString();
+        if (!pile_str.isEmpty())
+            general_names = pile_str.split("+", QString::SkipEmptyParts);
+    } else if (pile_value.type() == QVariant::List) {
+        foreach (const QVariant &v, pile_value.toList()) {
+            QString name = v.toString();
+            if (!name.isEmpty())
+                general_names << name;
+        }
+    } else if (pile_value.canConvert<QStringList>()) {
+        general_names = pile_value.toStringList();
+    } else {
+        QString pile_str = pile_value.toString();
+        if (!pile_str.isEmpty())
+            general_names = pile_str.split("+", QString::SkipEmptyParts);
+    }
+
+    QList<const General *> generals;
+    foreach (const QString &general_name, general_names) {
+        const General *general = Sanguosha->getGeneral(general_name);
+        if (general != nullptr)
+            generals << general;
+    }
+
+    fillGenerals(generals);
+    setWindowTitle(Sanguosha->translate(skill_name));
     show();
 }
 

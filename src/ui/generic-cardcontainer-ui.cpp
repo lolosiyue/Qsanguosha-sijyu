@@ -488,7 +488,7 @@ void PlayerCardContainer::updateHandcardNum()
 {
     QString num = "0";
     QRect area = _m_layout->m_handCardArea;
-    const int extraW = 55;
+    const int extraW = 50;
     QRect wideArea(area.x() - extraW, area.y(), area.width() + extraW * 2, area.height());
     QRect innerRect(0, 0, wideArea.width(), wideArea.height());
 
@@ -502,10 +502,11 @@ void PlayerCardContainer::updateHandcardNum()
         int hp = m_player->getHp();
 
         int W = wideArea.width(), H = wideArea.height();
-        int seg = W * 2 / 5;
-        QRect leftZone (0,       0, seg,       H);
-        QRect midZone  (seg,     0, W - seg*2, H);
-        QRect rightZone(W - seg, 0, seg,       H);
+        int midW = W / 10;
+        int seg  = (W - midW) / 2;
+        QRect leftZone (0,          0, seg,  H);
+        QRect midZone  (seg,        0, midW, H);
+        QRect rightZone(seg + midW, 0, seg,  H);
 
         IQSanComponentSkin::QSanShadowTextFont limitFont = _m_layout->m_handCardFont;
         if (maxCards != hp)

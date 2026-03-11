@@ -76,12 +76,14 @@ class HuashenDialog : public GeneralOverview
     Q_OBJECT
 
 public:
-    HuashenDialog();
+    explicit HuashenDialog(const QString &propertyName = "Huashens");
 
 public slots:
     void popup();
-};
 
+private:
+    QString m_propertyName; 
+};
 class MountainPackage : public Package
 {
     Q_OBJECT

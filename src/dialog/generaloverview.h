@@ -55,6 +55,7 @@ public:
     GeneralOverview(QWidget *parent = 0);
     ~GeneralOverview();
     void fillGenerals(const QList<const General *> &generals, bool init = true);
+    void setPreviewMode(bool preview);
 
     static GeneralOverview *getInstance(QWidget *main_window);
 
@@ -62,6 +63,7 @@ private:
     Ui::GeneralOverview *ui;
     QVBoxLayout *button_layout;
     GeneralSearch *general_search;
+    bool m_previewMode;
 
     QString origin_window_title;
     QList<const General *> all_generals;

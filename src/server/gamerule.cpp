@@ -127,8 +127,8 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 			if((difficulty & (1 << GameRule::BMDIncMaxHp))>0) {
 				foreach (ServerPlayer *p,room->getPlayers()) {
 					if(p==lord) continue;
-					p->setProperty("maxhp",p->getMaxHp()+2);
-					p->setProperty("hp",p->getHp()+2);
+					room->safeSetPlayerProperty(p,"maxhp",p->getMaxHp()+2);
+					room->safeSetPlayerProperty(p,"hp",p->getHp()+2);
 					room->broadcastProperty(p,"maxhp");
 					room->broadcastProperty(p,"hp");
 				}
@@ -1286,7 +1286,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
                 if(hands.contains(QVariant(id)))
 					hands.removeOne(id);
 			}
-            player->setProperty("InitialHandCards",hands);
+            room->safeSetPlayerProperty(player,"InitialHandCards",hands);
         }
         break;
     }
@@ -1452,8 +1452,8 @@ void GameRule::changeGeneralBossMode(ServerPlayer *player,Room *room) const
 	}
 
 	if(actualmaxhp != player->getMaxHp()) {
-		player->setProperty("maxhp",actualmaxhp);
-		player->setProperty("hp",actualmaxhp);
+		room->safeSetPlayerProperty(player,"maxhp",actualmaxhp);
+		room->safeSetPlayerProperty(player,"hp",actualmaxhp);
 		room->broadcastProperty(player,"maxhp");
 		room->broadcastProperty(player,"hp");
 	}
@@ -1517,7 +1517,7 @@ void GameRule::doBossModeDifficultySettings(ServerPlayer *lord) const
                     p->turnOver();
                 if(p->isChained())
                     room->setPlayerChained(p);
-                p->setProperty("hp",qMin(p->getMaxHp(),4));
+                room->safeSetPlayerProperty(p,"hp",qMin(p->getMaxHp(),4));
                 room->broadcastProperty(p,"hp");
                 QStringList acquired = p->tag["BossModeAcquiredSkills"].toStringList();
                 foreach (QString skillname,acquired) {
@@ -1536,7 +1536,7 @@ void GameRule::doBossModeDifficultySettings(ServerPlayer *lord) const
     if((difficulty & (1 << BMDRecover))>0) {
         foreach (ServerPlayer *p,unions) {
             if(p->isAlive()&&p->isWounded()) {
-                p->setProperty("hp",p->getMaxHp());
+                room->safeSetPlayerProperty(p,"hp",p->getMaxHp());
                 room->broadcastProperty(p,"hp");
             }
         }
@@ -1667,11 +1667,11 @@ void GameRule::doBossModeDifficultySettings(ServerPlayer *lord) const
                         int hp = p->getHp();
                         int maxhp = p->getMaxHp();
                         if(type.contains("maxhp")) {
-                            p->setProperty("maxhp",maxhp + 1);
+                            room->safeSetPlayerProperty(p,"maxhp",maxhp + 1);
                             room->broadcastProperty(p,"maxhp");
                         }
                         if(type.contains("recover")) {
-                            p->setProperty("hp",hp + 1);
+                            room->safeSetPlayerProperty(p,"hp",hp + 1);
                             room->broadcastProperty(p,"hp");
                         }
 
@@ -1791,7 +1791,7 @@ QString GameRule::getWinner(ServerPlayer *victim,Room *room) const
                 }
                 if(Config.Enable2ndGeneral&&player->getGeneral2Name()=="anjiang")
                     room->changePlayerGeneral2(player,generals.takeLast());
-				player->setProperty("basara_generals",generals.join("+"));
+				room->safeSetPlayerProperty(player,"basara_generals",generals.join("+"));
 				room->notifyProperty(player,player,"basara_generals");
             }
 			winner = winners.join("+");
@@ -2027,7 +2027,7 @@ void BasaraMode::generalShowed(ServerPlayer *player,QString general_name) const
     Room *room = player->getRoom();
     QStringList names = name.split("+");
     names.removeOne(general_name);
-    player->setProperty("basara_generals",names.join("+"));
+    room->safeSetPlayerProperty(player,"basara_generals",names.join("+"));
     room->notifyProperty(player,player,"basara_generals");
     if(player->getGeneralName()=="anjiang") {
         room->changeHero(player,general_name,false,false,false,false);
@@ -2128,13 +2128,13 @@ bool BasaraMode::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *play
             if(Config.EnableHegemony)
                 room->setPlayerProperty(player,"role",getMappedRole(player->getKingdom()));
 
-            player->setProperty("basara_generals",generals.join("+"));
+            room->safeSetPlayerProperty(player,"basara_generals",generals.join("+"));
             room->notifyProperty(player,player,"basara_generals");
         }
         if(Config.Enable2ndGeneral&&player->getGeneral2Name()=="anjiang") {
             QStringList generals = player->property("basara_generals").toString().split("+");
             room->changePlayerGeneral2(player,generals.last());
-            player->setProperty("basara_generals","");
+            room->safeSetPlayerProperty(player,"basara_generals",QString(""));
             room->notifyProperty(player,player,"basara_generals");
         }
         break;

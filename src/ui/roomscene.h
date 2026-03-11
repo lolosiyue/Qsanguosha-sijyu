@@ -252,8 +252,6 @@ protected:
     virtual void keyReleaseEvent(QKeyEvent *event);
     //this method causes crashes
     virtual void contextMenuEvent(QGraphicsSceneContextMenuEvent *event);
-    QMutex m_roomMutex;
-    QMutex m_zValueMutex;
 
 private:
     void _getSceneSizes(QSize &minSize, QSize &maxSize);
@@ -467,6 +465,7 @@ private slots:
 
     void appendChatEdit(QString txt);
     void showBubbleChatBox(const QString &who, const QString &words);
+    void showGeneralPile(const QString &tag_name);
 
     //animations
     void onEnabledChange();

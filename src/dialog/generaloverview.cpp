@@ -273,7 +273,7 @@ GeneralOverview *GeneralOverview::getInstance(QWidget *main_window)
 }
 
 GeneralOverview::GeneralOverview(QWidget *parent)
-    : QDialog(parent), ui(new Ui::GeneralOverview)
+    : QDialog(parent), ui(new Ui::GeneralOverview), m_previewMode(false)
 {
 	ui->setupUi(this);
     origin_window_title = windowTitle();
@@ -299,6 +299,19 @@ GeneralOverview::GeneralOverview(QWidget *parent)
     connect(ui->searchButton, SIGNAL(clicked()), general_search, SLOT(show()));
     ui->returnButton->hide();
     connect(ui->returnButton, SIGNAL(clicked()), this, SLOT(fillAllGenerals()));
+}
+
+void GeneralOverview::setPreviewMode(bool preview)
+{
+    m_previewMode = preview;
+    if (preview) {
+        ui->changeGeneralButton->hide();
+        ui->changeGeneral2Button->hide();
+        ui->changeHeroSkinButton->hide();
+        ui->banGeneral->hide();
+        ui->untieGeneral->hide();
+        ui->searchButton->hide(); // 把搜尋按鈕也隱藏起來，保持介面乾淨
+    }
 }
 
 void GeneralOverview::fillGenerals(const QList<const General *> &generals, bool init)
@@ -403,7 +416,13 @@ void GeneralOverview::fillGenerals(const QList<const General *> &generals, bool 
     ui->tableWidget->setColumnWidth(4, 40);
     ui->tableWidget->setColumnWidth(5, 111);
 
-    ui->tableWidget->setCurrentItem(ui->tableWidget->item(0, 0));
+    if (!copy_generals.isEmpty())
+        ui->tableWidget->setCurrentItem(ui->tableWidget->item(0, 0));
+    else {
+        ui->generalPhoto->setPixmap(QPixmap());
+        ui->skillTextEdit->clear();
+        resetButtons();
+    }
 }
 
 void GeneralOverview::resetButtons()
@@ -567,13 +586,31 @@ void GeneralOverview::copyLines()
 void GeneralOverview::on_tableWidget_itemSelectionChanged()
 {
 	int row = ui->tableWidget->currentRow();
-	QString general_name = ui->tableWidget->item(row, 0)->data(Qt::UserRole).toString();
+    QTableWidgetItem *item = ui->tableWidget->item(row, 0);
+    if (row < 0 || item == nullptr)
+        return;
+
+    QString general_name = item->data(Qt::UserRole).toString();
+    if (general_name.isEmpty())
+        return;
+
 	ui->generalPhoto->setPixmap(G_ROOM_SKIN.getCardMainPixmap(general_name));
-	ui->changeHeroSkinButton->setVisible(hasSkin(general_name));
-	ui->banGeneral->setVisible(!Config.value("Banlist/Roles").toStringList().contains(general_name));
-	ui->untieGeneral->setVisible(Config.value("Banlist/Roles").toStringList().contains(general_name));
+
+	// 【修改區塊 1】如果是預覽模式，強制隱藏；否則正常判斷
+    if (m_previewMode) {
+        ui->changeHeroSkinButton->hide();
+        ui->banGeneral->hide();
+        ui->untieGeneral->hide();
+    } else {
+        ui->changeHeroSkinButton->setVisible(hasSkin(general_name));
+        ui->banGeneral->setVisible(!Config.value("Banlist/Roles").toStringList().contains(general_name));
+        ui->untieGeneral->setVisible(Config.value("Banlist/Roles").toStringList().contains(general_name));
+    }
 
 	const General *general = Sanguosha->getGeneral(general_name);
+    if (general == nullptr)
+        return;
+
 	QList<const Skill *> skills = general->getVisibleSkillList();
 
 	foreach (const Skill *skill, skills) {
@@ -681,15 +718,15 @@ void GeneralOverview::on_tableWidget_itemSelectionChanged()
 
 	button_layout->addStretch();
 	ui->skillTextEdit->append(general->getSkillDescription(true));
-	if (ServerInfo.DuringGame && ServerInfo.EnableCheat) {
-		ui->changeGeneralButton->show();
-		ui->changeGeneral2Button->show();
-		ui->changeGeneralButton->setEnabled(Self && Self->getGeneralName() != general_name);
-		ui->changeGeneral2Button->setEnabled(Self && Self->getGeneral2Name() != general_name);
-	}else{
-		ui->changeGeneralButton->hide();
-		ui->changeGeneral2Button->hide();
-	}
+	if (!m_previewMode && ServerInfo.DuringGame && ServerInfo.EnableCheat) {
+        ui->changeGeneralButton->show();
+        ui->changeGeneral2Button->show();
+        ui->changeGeneralButton->setEnabled(Self && Self->getGeneralName() != general_name);
+        ui->changeGeneral2Button->setEnabled(Self && Self->getGeneral2Name() != general_name);
+    } else {
+        ui->changeGeneralButton->hide();
+        ui->changeGeneral2Button->hide();
+    }
 }
 
 void GeneralOverview::playAudioEffect()
