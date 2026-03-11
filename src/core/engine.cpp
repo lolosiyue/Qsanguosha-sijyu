@@ -331,6 +331,7 @@ Engine::Engine(bool isManualMode)
     modes["10pd"] = tr("10 players");
     modes["10p"] = tr("10 players (1 renegade)");
     modes["10pz"] = tr("10 players (0 renegade)");
+    modes["20p"] = tr("20 players (1 renegade)");
 
 	ZhinangCards << "ExNihilo" << "Dismantlement" << "Nullification" << "Qizhengxiangsheng"
 			<< "Mantianguohai" << "Tiaojiyanmei" << "Binglinchengxia";//添加初始智囊牌名
@@ -1304,7 +1305,17 @@ QString Engine::getRoles(const QString &mode) const
             "ZCCFFFN", // 7
             "ZCCFFFFN", // 8
             "ZCCCFFFFN", // 9
-            "ZCCCFFFFFN" // 10
+            "ZCCCFFFFFN", // 10
+            "ZCCCFFFFFN", // 11
+            "ZCCCFFFFFN", // 12
+            "ZCCCFFFFFN", // 13
+            "ZCCCFFFFFN", // 14
+            "ZCCCFFFFFN", // 15
+            "ZCCCFFFFFN", // 16
+            "ZCCCFFFFFN", // 17
+            "ZCCCFFFFFN", // 18
+            "ZCCCFFFFFN", // 19
+            "ZCCCCCCCCFFFFFFFFFFN" // 20
         };
 
         static const char*table2[] = {
@@ -1347,7 +1358,7 @@ QStringList Engine::getRoleList(const QString &mode) const
 {
     QStringList role_list;
     QString roles = getRoles(mode);
-    for (int i = 0; roles[i] != '\0'; i++) {
+    for (int i = 0; i < roles.length(); i++) {
         switch (roles[i].toLatin1()) {
         case 'Z': role_list << "lord"; break;
         case 'C': role_list << "loyalist"; break;

@@ -19,6 +19,7 @@
 #include "wrapped-card.h"
 #include "roomthread.h"
 #include "clientstruct.h"
+#include <ctime>
 
 #ifdef QSAN_UI_LIBRARY_AVAILABLE
 #pragma message WARN("UI elements detected in server side!!!")
@@ -308,7 +309,7 @@ void Room::revivePlayer(ServerPlayer*player, bool sendlog, bool throw_mark, bool
 	turn = rev.toInt();
 	rev = turn+1;
 	thread->trigger(Revived, this, player, rev);
-	player->setProperty("Revived_Times",rev);
+	safeSetPlayerProperty(player, "Revived_Times", rev);
 }
 
 static bool CompareByRole(ServerPlayer*player1, ServerPlayer*player2)
@@ -318,7 +319,7 @@ static bool CompareByRole(ServerPlayer*player1, ServerPlayer*player2)
 
 	if (role1 != role2)
 		return role1 < role2;
-	return player1->isAlive();
+	return player1->isAlive() && !player2->isAlive();
 }
 
 void Room::updateStateItem()
@@ -857,13 +858,15 @@ ServerPlayer*Room::getRaceResult(QList<ServerPlayer*> players, QSanProtocol::Com
 			if (timeRemain < 0) timeRemain = 0;
 			tryAcquireResult = _m_semRaceRequest.tryAcquire(1, timeRemain);
 		}
-
+		bool roomMutexHeld = false;
 		if (!tryAcquireResult)
-			_m_semRoomMutex.tryAcquire(1);
+			roomMutexHeld = _m_semRoomMutex.tryAcquire(1);
+		else
+			roomMutexHeld = true; // _m_semRaceRequest.acquire() guarantees the mutex
 		// So that processResponse cannot update raceWinner when we are reading it.
 
 		if (_m_raceWinner == nullptr){
-			_m_semRoomMutex.release();
+			if (roomMutexHeld) _m_semRoomMutex.release();
 			continue;
 		}
 
@@ -874,7 +877,7 @@ ServerPlayer*Room::getRaceResult(QList<ServerPlayer*> players, QSanProtocol::Com
 			// Don't give this player any more chance for this race
 			_m_raceWinner->m_isWaitingReply = false;
 			_m_raceWinner = nullptr;
-			_m_semRoomMutex.release();
+			if (roomMutexHeld) _m_semRoomMutex.release();
 		}
 	}
 
@@ -977,9 +980,13 @@ bool Room::getResult(ServerPlayer*player, time_t timeOut)
 	if (player->isOnline()){
 		player->releaseLock(ServerPlayer::SEMA_MUTEX);
 
-		if (Config.OperationNoLimit)
-			player->acquireLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
-		else
+		if (Config.OperationNoLimit){
+			// Avoid blocking forever: fall back to a large but finite
+			// timeout (10 min) so a silent disconnect cannot freeze the
+			// room thread permanently at 0% CPU.
+			const time_t kMaxWaitMs = 600000;
+			player->tryAcquireLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE, kMaxWaitMs);
+		} else
 			player->tryAcquireLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE, timeOut);
 
 		// Note that we rely on processResponse to filter out all unrelevant packet.
@@ -1859,6 +1866,15 @@ void Room::slotSetProperty(ServerPlayer*player, const char*property_name, const 
 	playerPropertySet = true;
 }
 
+void Room::safeSetPlayerProperty(ServerPlayer*player, const char*property_name, const QVariant&value)
+{
+	if (!player) return;
+	if (QThread::currentThread() == player->thread())
+		player->setProperty(property_name, value);
+	else
+		emit signalSetProperty(player, property_name, value);
+}
+
 void Room::setPlayerMark(ServerPlayer*player, const QString&mark, int value, QList<ServerPlayer*> only_viewers)
 {
 	if (value==player->getMark(mark)) return;
@@ -2049,8 +2065,20 @@ void Room::tryPause()
 	//tag["callback"] = true;
 	if (canPause(getOwner())){
 		QMutexLocker locker(&m_mutex);
-		while (game_paused)
-			m_waitCond.wait(locker.mutex());
+		// Use a timed wait instead of unconditional wait: if the owner
+		// disconnects while game_paused == true no one will ever call
+		// wakeAll(), which would leave the room thread frozen at 0% CPU.
+		const unsigned long kPauseCheckIntervalMs = 500;
+		while (game_paused){
+			bool woken = m_waitCond.wait(locker.mutex(), kPauseCheckIntervalMs);
+			// If we timed out (not woken by wakeAll), re-evaluate canPause:
+			// if the owner has gone offline, canPause() returns false and we
+			// break out of the deadlock automatically.
+			if (!woken && !canPause(getOwner())){
+				game_paused = false;
+				break;
+			}
+		}
 	}
 }
 
@@ -2720,7 +2748,19 @@ void Room::addRobotCommand(ServerPlayer*player, const QVariant&arg)
 		if (p->getState() == "robot") r++;
 	}
 
+	static bool seeded = false;
+	if (!seeded) {
+		qsrand(time(NULL));
+		seeded = true;
+	}
+
 	static QStringList devs;
+	static QStringList all_generals;
+	if (all_generals.isEmpty()) {
+		foreach(const General* general, Sanguosha->findChildren<const General*>()) {
+			all_generals << general->objectName();
+		}
+	}
 	if(devs.length()<add_num){
 		foreach(const General*general, Sanguosha->findChildren<const General*>()){
 			if(general->objectName().contains("dev_"))
@@ -2738,7 +2778,17 @@ void Room::addRobotCommand(ServerPlayer*player, const QVariant&arg)
 
 		//QString robot_name = tr("Computer %1").arg(QChar('A' + r));
 		r++;
-		signup(robot, QString("神小杀0%1号").arg(r), devs.takeFirst(), true);
+		QString avatar;
+		if (!devs.isEmpty()) {
+			avatar = devs.takeFirst();
+		} else {
+			if (!all_generals.isEmpty()) {
+				avatar = all_generals.at(qrand() % all_generals.size());
+			} else {
+				avatar = "";
+			}
+		}
+		signup(robot, QString("神小杀0%1号").arg(r), avatar, true);
 
 		//robot_name = tr("Hello, I'm a robot").toUtf8().toBase64();
 		//speakCommand(robot, robot_name);
@@ -2763,7 +2813,7 @@ void Room::toggleReadyCommand(ServerPlayer*, const QVariant&)
 void Room::signup(ServerPlayer*player, const QString&screen_name, const QString&avatar, bool is_robot)
 {
 	player->setObjectName(generatePlayerName());
-	player->setProperty("avatar", avatar);
+	safeSetPlayerProperty(player, "avatar", avatar);
 	player->setScreenName(screen_name);
 
 	if (!is_robot){
@@ -3046,7 +3096,7 @@ void Room::chooseGenerals(QList<ServerPlayer*> players)
 				player->setGeneral2Name("anjiang");
 				notifyProperty(player, player, "general2");
 			}
-			player->setProperty("basara_generals", names.join("+"));
+			safeSetPlayerProperty(player, "basara_generals", names.join("+"));
 			notifyProperty(player, player, "basara_generals");
 		}
 	}else{
@@ -3391,6 +3441,7 @@ void Room::assignRoles()
 		qShuffle(roles);
 
 	for (int i = 0; i < m_players.count(); i++){
+		if (i >= roles.count()) break;
 		m_players[i]->setRole(roles[i]);
 		if (mode.contains("_") || (roles[i] == "lord"&&!ServerInfo.EnableHegemony))
 			//|| mode == "06_ol"|| mode == "05_ol" || mode == "04_1v3" || mode == "04_boss" || mode == "08_defense" || mode == "03_1v2" || mode == "04_2v2")
@@ -7383,6 +7434,7 @@ void Room::sortByActionOrder(QList<ServerPlayer*>&players)
 
 int Room::getBossModeExpMult(int level) const
 {
+	// m_lua is owned exclusively by this Room thread — no engine-level lock needed
 	lua_getglobal(m_lua, "bossModeExpMult");
 	lua_pushinteger(m_lua, level);
 	int res = 0;

@@ -510,6 +510,7 @@ public:
     int getBossModeExpMult(int level) const;
 
     const Card*_askForNullification(const Card*trick, ServerPlayer*from, ServerPlayer*to, bool positive);
+    void safeSetPlayerProperty(ServerPlayer*player, const char*property_name, const QVariant&value);
 
 protected:
     virtual void run();
