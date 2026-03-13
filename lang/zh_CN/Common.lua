@@ -115,14 +115,14 @@ CommonTranslationTable = {
 	["drawPile"] = "牌堆",
 	["drawPileTop"] = "牌堆顶",
 	["drawPileEnd"] = "牌堆底",
+	["judge_area"] = "判定区",
+	["hand_area"] = "手牌区",
 	["equip_area"] = "装备区",
 	["weapon_area"] = "武器栏",
 	["armor_area"] = "防具栏",
 	["defensive_horse_area"] = "+1坐骑栏",
 	["offensive_horse_area"] = "-1坐骑栏",
 	["treasure_area"] = "宝物栏",
-	["judge_area"] = "判定区",
-	["hand_area"] = "手牌区",
 	["luck_card"] = "手气卡",
 	["cheat"] = "作弊",
 	["EquipArea0"] = "武器栏",
@@ -130,6 +130,7 @@ CommonTranslationTable = {
 	["EquipArea2"] = "+1坐骑栏",
 	["EquipArea3"] = "-1坐骑栏",
 	["EquipArea4"] = "宝物栏",
+	["kill"] = "",
 
 	["use upon"] = "对",
 	["yourself"] = "你",
@@ -146,8 +147,8 @@ CommonTranslationTable = {
 	["damage_spread"] = "伤害传导",
 	["weapon"] = "武器",
 	["armor"] = "防具",
-	["defensive_horse"] = "+1坐骑",
-	["offensive_horse"] = "-1坐骑",
+	["defensive_horse"] = "防御坐骑",
+	["offensive_horse"] = "进攻坐骑",
 	["treasure"] = "宝物",
 
 	["wei"] = "魏",
@@ -168,7 +169,7 @@ CommonTranslationTable = {
 	["10_num"] = "⑩",
 
 	["#Murder"] = "%to【%arg】阵亡，伤害来源为 %from",
-	["#Suicide"] = "%to【%arg】自杀",
+	["#Suicide"] = "%from【%arg】自杀",
 	["#Revive"] = "%from 复活",
 	["#InvokeSkill"] = "%from 发动“%arg”",
 	["#InvokeOthersSkill"] = "%from 发动 %to 的“%arg”",
@@ -178,12 +179,12 @@ CommonTranslationTable = {
 	["#ShiMingFailed"] = "%from 的“%arg”使命失败",
 	["#TriggerEquipSkill"] = "%from 的装备技能“%arg”触发",
 	["#Pindian"] = "%from 向 %to 发起拼点",
-	["#PindianSuccess"] = "%from (对 %to) 拼点赢！",
-	["#PindianFailure"] = "%from (对 %to) 拼点没赢",
+	["#PindianSuccess"] = "%from（对 %to）拼点赢！",
+	["#PindianFailure"] = "%from（对 %to）拼点没赢",
 	["#Damage"] = "%from 对 %to 造成 %arg 点伤害[%arg2]",
-	["#DamageNoSource"] = "%to 受到了 %arg 点伤害[%arg2]",
-	["#DamageCard"] = "%from 的 %card 对 %to 造成 %arg 点伤害[%arg2]",
-	["#DamageNoSourceCard"] = "%to 受到 %card 的 %arg 点伤害[%arg2]",
+	["#DamageNoSource"] = "%to 受到 %arg 点伤害[%arg2]",
+	["#DamageCard"] = "%from（%card）对 %to 造成 %arg 点伤害[%arg2]",
+	["#DamageNoSourceCard"] = "%to 受到（%card）%arg 点伤害[%arg2]",
 	["#Recover"] = "%from 回复 %arg 点体力",
 	["#enterDying"] = "%from 陷入了濒死状态",
 	["#AskForPeaches"] = "%from 向 %to 请求 %arg 张【<font color=\"yellow\"><b>桃</b></font>】",
@@ -272,8 +273,8 @@ CommonTranslationTable = {
 	["#LoseHuJia"] = "%from 失去 %arg 点护甲，抵消了 %arg 点体力扣减",
 	["$AddToPile"] = "%card 被作为 %from 的 %arg 牌移出游戏",
 	["#RemoveFromGame"] = "%arg2 张牌被作为 %from 的 %arg 牌移出游戏",
-	["$GotCardFromPile"] = "%to 从 %from 的 %arg 堆中获得 %card",
-	["#GotNCardFromPile"] = "%to 从 %from 的 %arg 堆中获得 %arg2 张牌 %card",
+	["$GotCardFromPile"] = "%from 从 %to 的 %arg 堆中获得 %card",
+	["#GotNCardFromPile"] = "%from 从 %to 的 %arg 堆中获得 %arg2 张牌 %card",
 	["#BecomeUser"] = "%from 成为 %card 的使用者",
 	["#BecomeTarget"] = "%from 成为 %card 的目标",
 	["@askforslash"] = "你可以对你攻击范围内的一名角色使用一张【杀】",
@@ -333,6 +334,33 @@ CommonTranslationTable = {
 	["CAPITAL(8)"] = "八",
 	["CAPITAL(9)"] = "九",
 	["CAPITAL(10)"] = "十",
-}
+	["CAPITAL(11)"] = "十一",
+	["CAPITAL(12)"] = "十二",
+	["CAPITAL(13)"] = "十三",
+	["CAPITAL(14)"] = "十四",
+	["CAPITAL(15)"] = "十五",
+	["CAPITAL(16)"] = "十六",
+	["CAPITAL(17)"] = "十七",
+	["CAPITAL(18)"] = "十八",
+	["CAPITAL(19)"] = "十九",
+	["CAPITAL(20)"] = "二十",
 
+	
+
+	["fail"] = "失效",
+	["used"] = "已使用",
+	["#skill_add_damage_byother1"] = "%from的技能【<font color=\"yellow\"><b> %arg </b></font>】被触发，", --add
+	["#skill_add_damage_byother2"] = "%from 对%to造成的伤害增加至%arg点。", --add
+	["#skill_cant_jink"] = "%from的技能【<font color=\"yellow\"><b> %arg </b></font>】被触发，%to 不能使用【闪】响应 %from 对 %to 使用的【杀】。", --add
+	["#BecomeTargetBySkill"] = "%from的技能【<font color=\"yellow\"><b> %arg </b></font>】被触发，%to 成为了 %card 的目标", --add
+	["#ArmorNullifyDamage"] = "%from 的防具【%arg】效果被触发，抵消 %arg2 點傷害", --add
+	["#SkillNullifyDamage"] = "%from 的技能【%arg】效果被触发，抵消 %arg2 點傷害", --add
+	["$NoRespond"] = "%from 的“%arg”被触发， %to 不能响应 %from 使用的【%card】",--add
+	["#skill_add_damage"] = "%from的技能【<font color=\"yellow\"><b> %arg </b></font>】被触发，%from对%to造成的伤害增加至%arg2点。", --add
+	["#choice"] = "%from 选择了 %arg", --add
+	["maxcard"] = "手牌上限", --add
+	["#IgnoreArmor"] = "%from 使用的 %card 无视防具",
+
+
+}
 return CommonTranslationTable
