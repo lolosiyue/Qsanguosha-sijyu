@@ -142,8 +142,12 @@ QList<const Skill *> General::getSkillList() const
         const Skill *skill = Sanguosha->getSkill(skill_name);
 		if(skill&&!skills.contains(skill)){
 			skills << skill;
-			if(skill->isVisible())
-				skills << Sanguosha->getRelatedSkills(skill_name);
+			if(skill->isVisible()){
+				foreach (const Skill *related_skill, Sanguosha->getRelatedSkills(skill_name)) {
+					if(skills.contains(related_skill)) continue;
+					skills << related_skill;
+				}
+			}
 		}
     }
     return skills;

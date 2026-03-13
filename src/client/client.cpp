@@ -476,7 +476,9 @@ void Client::loseCards(const QVariant &arg)
 			if (move.from_place == Player::PlaceSpecial)
 				from->changePile(move.from_pile_name, false, move.card_ids);
 			else {
-				bool SWAP = move.reason.m_reason==CardMoveReason::S_REASON_SWAP&&move.from_place==Player::PlaceHand;
+				bool SWAP = move.reason.m_reason==CardMoveReason::S_REASON_SWAP
+					&& move.from_place==Player::PlaceHand
+					&& move.card_ids.length()==from->getHandcardNum();
 				if(SWAP){
 					from->setFlags("S_REASON_SWAP");
 					if(i==1){
@@ -487,7 +489,7 @@ void Client::loseCards(const QVariant &arg)
 				}
 				foreach (int card_id, move.card_ids){
 					if (move.from_place == Player::DiscardPile)
-						discarded_list.removeOne(card_id);
+						discarded_list.removeAll(card_id);
 					else if (move.from_place == Player::DrawPile){
 						if(!Self->hasFlag("marshalling"))
 							pile_num--;
@@ -842,17 +844,17 @@ void Client::onPlayerInvokeSkill(bool invoke)
 QString Client::setPromptList(const QStringList &texts)
 {
 	QString prompt = Sanguosha->translate(texts.at(0));
-	if (texts.length() >= 2)
-		prompt.replace("%src", getPlayerName(texts.at(1)));
-
-	if (texts.length() >= 3)
-		prompt.replace("%dest", getPlayerName(texts.at(2)));
-
 	if (texts.length() >= 5)
 		prompt.replace("%arg2", Sanguosha->translate(texts.at(4)));
 
 	if (texts.length() >= 4)
 		prompt.replace("%arg", Sanguosha->translate(texts.at(3)));
+
+	if (texts.length() >= 3)
+		prompt.replace("%dest", getPlayerName(texts.at(2)));
+
+	if (texts.length() >= 2)
+		prompt.replace("%src", getPlayerName(texts.at(1)));
 
 	prompt_doc->setHtml(prompt);
 	return prompt;

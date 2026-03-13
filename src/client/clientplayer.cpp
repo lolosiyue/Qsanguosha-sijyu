@@ -69,7 +69,7 @@ void ClientPlayer::removeCard(int id, Place place)
 			known_cards.clear();
 		else{
 			foreach (const Card *kc, known_cards) {
-				if(kc->getId()==id) known_cards.removeAll(kc);
+				if(kc->getId()==id) known_cards.removeOne(kc);
 			}
 		}
 	}
@@ -150,6 +150,7 @@ void ClientPlayer::addHandIds(JsonArray args)
 	JsonUtils::tryParse(args.first(), ids);
 	foreach(int id, ids){
 		Player::addCard(id,PlaceHand);
+		if(hand_ids.contains(id)) continue;
 		hand_ids << id;
 	}
 	if (hand_ids.size()>1)
