@@ -53,7 +53,7 @@ return {
 	["designer:jianyong"] = "Nocihoo",
 	["illustrator:jianyong"] = "Thinking",
 	["qiaoshui"] = "巧说",
-	[":qiaoshui"] = "出牌阶段开始时，你可以与一名其他角色拼点：若你赢，本回合你使用的下一张基本牌或非延时锦囊牌可以增加一个额外目标（无距离限制）或减少一名目标（若原有至少两名目标）；若你没赢，你不能使用锦囊牌，直到回合结束。",
+	[":qiaoshui"] = "出牌阶段开始时，你可以拼点：若你赢，本回合你使用的下一张基本牌或非延时锦囊牌可以增加一个额外目标（无距离限制）或减少一名目标（若原有至少两名目标）；若你没赢，你不能使用锦囊牌，直到回合结束。",
 	["qiaoshui:add"] = "增加一名目标",
 	["qiaoshui:remove"] = "减少一名目标",
 	["@qiaoshui-card"] = "你可以发动“巧说”",
@@ -63,8 +63,8 @@ return {
 	["~qiaoshui"] = "选择【借刀杀人】的目标角色→选择【杀】的目标角色→点击确定",
 	["zongshih"] = "纵适",
 	[":zongshih"] = "当你拼点赢，你可以获得对方的拼点牌。当你拼点没赢，你可以获得你的拼点牌。",
-	["#QiaoshuiAdd"] = "%from 发动了“%arg”为 %card 增加了额外目标 %to",
-	["#QiaoshuiRemove"] = "%from 发动了“%arg”为 %card 减少了目标 %to",
+	["#QiaoshuiAdd"] = "%from 发动“%arg”效果为 %card 增加额外目标 %to",
+	["#QiaoshuiRemove"] = "%from 发动“%arg”效果为 %card 减少目标 %to",
 
 	["#liufeng"] = "骑虎之殇",
 	["liufeng"] = "刘封",
@@ -100,6 +100,7 @@ return {
 	["zhiyan"] = "直言",
 	[":zhiyan"] = "结束阶段，你可以令一名角色摸一张牌并展示之：若此牌为装备牌，该角色回复1点体力，然后使用之。",
 	["@zhiyan-invoke"] = "你可以发动“直言”",
+	["#zongxuan"] = "弃置牌",
 
 	["#zhuran"] = "不动之督",
 	["zhuran"] = "朱然",

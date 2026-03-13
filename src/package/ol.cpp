@@ -30206,13 +30206,11 @@ public:
 		events << GameStart;
 		frequency = Compulsory;
 	}
-	bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &) const
+	bool trigger(TriggerEvent, Room*room, ServerPlayer*player, QVariant &) const
 	{
-		if(event==GameStart){
-			room->sendCompulsoryTriggerLog(player,this);
-			player->throwEquipArea(1);
-			player->addEquipArea(0);
-		}
+		room->sendCompulsoryTriggerLog(player,this);
+		player->throwEquipArea(1);
+		player->addEquipArea(0);
 		return false;
 	}
 };
@@ -30225,52 +30223,51 @@ public:
 		events << EventPhaseStart;
 		frequency = Compulsory;
 	}
-	bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &) const
+	bool trigger(TriggerEvent, Room*room, ServerPlayer*player, QVariant &) const
 	{
-		if(event==EventPhaseStart){
-			if(player->getPhase()==Player::Start){
-				int n = player->getEquipArea(0)-player->getEquips(0).length();
-				if (n>0){
-					room->sendCompulsoryTriggerLog(player,this);
-					QStringList choices,gns = Sanguosha->getLimitedGeneralNames();
-					foreach(ServerPlayer*p, room->getAlivePlayers()){
-						gns.removeOne(p->getGeneralName());
-						gns.removeOne(p->getGeneral2Name());
+		if(player->getPhase()==Player::Start){
+			int n = player->getEquipArea(0)-player->getEquips(0).length();
+			if (n>0){
+				room->sendCompulsoryTriggerLog(player,this);
+				QStringList choices,gns = Sanguosha->getLimitedGeneralNames();
+				foreach(ServerPlayer*p, room->getAlivePlayers()){
+					gns.removeOne(p->getGeneralName());
+					gns.removeOne(p->getGeneral2Name());
+				}
+				qShuffle(gns);
+				foreach(QString gn, gns){
+					foreach(const Skill*s, Sanguosha->getGeneral(gn)->getVisibleSkillList()){
+						if(s->isLordSkill()||s->isChangeSkill()||s->isHideSkill()||s->isShiMingSkill()) continue;
+						if(s->getFrequency()<=Compulsory&&s->getDescription().contains("【杀】")){
+							choices << gn;
+							break;
+						}
 					}
-					qShuffle(gns);
-					foreach(QString gn, gns){
+					if(choices.length()>=5) break;
+				}
+				gns.clear();
+				gns << "__zhuobang" << "__youbi" << "cancel";
+				for (int i = 0; i < n; i++) {
+					if(choices.isEmpty()||player->isDead()) break;
+					QString gn = room->askForGeneral(player,choices);
+					foreach(const Card*c, player->getEquips(0)){
+						gns.removeOne(c->objectName());
+					}
+					choices.removeOne(gn);
+					QString en = room->askForChoice(player,objectName(),gns.join("+"));
+					if(en=="cancel") break;
+					int id = player->getDerivativeCard(en,Player::PlaceTable);
+					if(id>0){
 						foreach(const Skill*s, Sanguosha->getGeneral(gn)->getVisibleSkillList()){
 							if(s->isLordSkill()||s->isChangeSkill()||s->isHideSkill()||s->isShiMingSkill()) continue;
 							if(s->getFrequency()<=Compulsory&&s->getDescription().contains("【杀】")){
-								choices << gn;
+								room->setPlayerProperty(player,(en+"Skill").toStdString().c_str(),s->objectName());
+								room->setPlayerProperty(player,"pingjian_triggerskill",s->objectName());
 								break;
 							}
 						}
-						if(choices.length()>=5) break;
-					}
-					gns.clear();
-					gns << "__zhuobang" << "__youbi" << "cancel";
-					for (int i = 0; i < n; i++) {
-						if(choices.isEmpty()||player->isDead()) break;
-						QString gn = room->askForGeneral(player,choices);
-						choices.removeOne(gn);
-						foreach(const Card*c, player->getEquips(0)){
-							gns.removeOne(c->objectName());
-						}
-						QString en = room->askForChoice(player,objectName(),gns.join("+"));
-						if(en=="cancel") break;
-						int id = player->getDerivativeCard(en,Player::PlaceTable);
-						if(id>0){
-							foreach(const Skill*s, Sanguosha->getGeneral(gn)->getVisibleSkillList()){
-								if(s->isLordSkill()||s->isChangeSkill()||s->isHideSkill()||s->isShiMingSkill()) continue;
-								if(s->getFrequency()<=Compulsory&&s->getDescription().contains("【杀】")){
-									room->setPlayerProperty(player,(en+"Skill").toStdString().c_str(),s->objectName());
-									break;
-								}
-							}
-							room->setPlayerProperty(player,(en+"Range").toStdString().c_str(),Sanguosha->getGeneral(gn)->getMaxHp());
-							room->moveCardTo(Sanguosha->getEngineCard(id),player,Player::PlaceEquip,true);
-						}
+						room->setPlayerProperty(player,(en+"Range").toStdString().c_str(),Sanguosha->getGeneral(gn)->getMaxHp());
+						room->moveCardTo(Sanguosha->getEngineCard(id),player,Player::PlaceEquip,true);
 					}
 				}
 			}
@@ -30278,6 +30275,58 @@ public:
 		return false;
 	}
 };
+
+CuijueCard::CuijueCard()
+{
+}
+
+bool CuijueCard::targetFilter(const QList<const Player*> &targets, const Player*to_select, const Player*Self) const
+{
+	if(targets.isEmpty()&&to_select->getMark("cuijueTo-Clear")<1){
+		int n = 1;
+		foreach(const Player*p,Self->getAliveSiblings()){
+			if(Self->inMyAttackRange(p))
+				n = qMax(n,Self->distanceTo(p));
+		}
+		return Self->distanceTo(to_select)==n;
+	}
+	return false;
+}
+
+void CuijueCard::use(Room*room, ServerPlayer*source, QList<ServerPlayer*> &targets) const
+{
+	foreach(ServerPlayer*p, targets){
+		room->addPlayerMark(p,"cuijueTo-Clear");
+		room->damage(DamageStruct("cuijue",source,p));
+	}
+}
+
+class Cuijue : public OneCardViewAsSkill
+{
+public:
+	Cuijue() : OneCardViewAsSkill("cuijue")
+	{
+	}
+
+	bool viewFilter(const Card*to_select) const
+	{
+		return !Self->isJilei(to_select);
+	}
+
+	const Card*viewAs(const Card*original) const
+	{
+		CuijueCard*dc = new CuijueCard;
+		dc->addSubcard(original);
+		return dc;
+	}
+
+	bool isEnabledAtPlay(const Player*player) const
+	{
+		return player->usedTimes("CuijueCard")<1;
+	}
+};
+
+
 
 
 
@@ -30302,7 +30351,9 @@ GodPackage::GodPackage()
 
 	/*General*shendianwei = new General(this, "shendianwei", "god");
 	shendianwei->addSkill(new Juanjia);
-	shendianwei->addSkill(new Moxie);*/
+	shendianwei->addSkill(new Moxie);
+	shendianwei->addSkill(new Cuijue);*/
+	addMetaObject<CuijueCard>();
 
 	skills << new Tianxing;
 }

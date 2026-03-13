@@ -1,8 +1,22 @@
 -- translation for MobileJXTP Package
 
 return {
-	["MobileJXTP"] = "手杀界限突破",
-	
+	["MobileStStandard"] = "手杀界·标准",
+	["MobileStWind"] = "手杀界·风",
+	["MobileStThicket"] = "手杀界·林",
+	["MobileStFire"] = "手杀界·火",
+	["MobileStMountain"] = "手杀界·山",
+	["MobileStYJ2011"] = "手杀界·一将2011",
+	["MobileStYJ2012"] = "手杀界·一将2012",
+	["MobileStYJ2013"] = "手杀界·一将2013",
+	["MobileStYJ2014"] = "手杀界·一将2014",
+	["MobileStYJ2015"] = "手杀界·一将2015",
+
+
+
+
+
+
 	["mobile_zhangfei"] = "界张飞[手杀]",
 	["&mobile_zhangfei"] = "界张飞",
 	["illustrator:mobile_zhangfei"] = "SONGQIJIN",
@@ -75,7 +89,7 @@ return {
 	["&mobile_zhurong"] = "界祝融",
 	["illustrator:mobile_zhurong"] = "alien",
 	["mobilelieren"] = "烈刃",
-	[":mobilelieren"] = "当你使用【杀】指定目标后，你可以与目标角色拼点，若你：赢，你获得其一张牌；没赢，你与其交换拼点的牌。",
+	[":mobilelieren"] = "当你使用【杀】指定目标后，你可以与目标拼点，若你：赢，你获得其一张牌；没赢，你与其交换拼点的牌。",
 	
 	["mobile_caopi"] = "界曹丕[手杀]",
 	["&mobile_caopi"] = "界曹丕",
@@ -269,7 +283,7 @@ return {
 	["&mobile_gaoshun"] = "界高顺",
 	["illustrator:mobile_gaoshun"] = "蛋费鸡丁",
 	["mobilexianzhen"] = "陷阵",
-	[":mobilexianzhen"] = "出牌阶段限一次，你可以与一名角色拼点，若你：赢，此阶段你无视该角色的防具，对其使用牌无距离和次数限制；没赢，此阶段你不能使用【杀】。若你发动“陷阵”拼点的牌为【杀】，本回合你的【杀】不计入手牌上限。",
+	[":mobilexianzhen"] = "出牌阶段限一次，你可以拼点，若你：赢，此阶段你无视其的防具，对其使用牌无距离和次数限制；没赢，此阶段你不能使用【杀】。若你发动“陷阵”拼点的牌为【杀】，本回合你的【杀】不计入手牌上限。",
 	["mobilejinjiu"] = "禁酒",
 	[":mobilejinjiu"] = "锁定技，你的【酒】视为【杀】；当你受到【酒】【杀】的伤害时，此伤害-X（X为增加此【杀】伤害的【酒】的数量）；你的回合内，其他角色不能使用【酒】。",
 	["#MobilejinjiuReduce"] = "%from 的“%arg”触发，伤害减为了 %arg2 点",
@@ -279,7 +293,7 @@ return {
 	["&mobile_jianyong"] = "界简雍",
 	["illustrator:mobile_jianyong"] = "",
 	["mobileqiaoshui"] = "巧说",
-	[":mobileqiaoshui"] = "出牌阶段限一次，你可以与一名角色拼点，若你：赢，本阶段你使用的下一张基本牌或非延时类锦囊牌可以多选择或少选择一个目标（无距离限制）；没赢，本阶段你不能使用锦囊牌。",
+	[":mobileqiaoshui"] = "出牌阶段限一次，你可以拼点，若你：赢，本阶段你使用的下一张基本牌或非延时类锦囊牌可以多选择或少选择一个目标（无距离限制）；没赢，本阶段你不能使用锦囊牌。",
 	["mobileqiaoshui:add"] = "增加一名目标",
 	["mobileqiaoshui:remove"] = "减少一名目标",
 	["mobilezongshih"] = "纵适",

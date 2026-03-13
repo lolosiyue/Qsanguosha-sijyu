@@ -1,7 +1,17 @@
 -- translation for OLJXTP Package
 
 return {
-	["OLJXTP"] = "OL界限突破",
+	["OLStStandard"] = "OL界·标准",
+	["OLStWind"] = "OL界·风",
+	["OLStThicket"] = "OL界·林",
+	["OLStFire"] = "OL界·火",
+	["OLStMountain"] = "OL界·山",
+	["OLStYJ2011"] = "OL界·一将2011",
+	["OLStYJ2012"] = "OL界·一将2012",
+	["OLStYJ2013"] = "OL界·一将2013",
+	["OLStYJ2014"] = "OL界·一将2014",
+
+
 	["ol_caocao"] = "界曹操[OL]",
 	["&ol_caocao"] = "界曹操",
 	["illustrator:ol_caocao"] = "青骑士",
@@ -23,7 +33,7 @@ return {
 	["olpaoxiao"] = "咆哮",
 	[":olpaoxiao"] = "锁定技，你使用【杀】无次数限制。若你使用的【杀】被【闪】抵消，你本回合下一次造成【杀】的伤害时，此伤害+1。",
 	["olpaoxiao_missed"] = "咆哮加伤",
-	["#OlpaoxiaoDamage"] = "%from 的“<font color=\"yellow\"><b>咆哮</b></font>”触发，对 %to 的伤害由 %arg 点增至 %arg2 点",
+	["#OLpaoxiaoDamage"] = "%from 的“<font color=\"yellow\"><b>咆哮</b></font>”触发，对 %to 的伤害由 %arg 点增至 %arg2 点",
 	["oltishen"] = "替身",
 	[":oltishen"] = "限定技，准备阶段，你可以将体力回复至体力上限，然后摸X张牌（X为你回复的体力值）。",
 	
@@ -177,7 +187,7 @@ return {
 	["@olwulie"] = "你可以发动“武烈”",
 	["~olwulie"] = "选择至多等于你体力值数量的角色→点“确定”",
 	["ollie"] = "烈",
-	["#OlwuliePrevent"] = "%from 的“%arg”效果触发，防止了 %arg2 点伤害",
+	["#OLwuliePrevent"] = "%from 的“%arg”效果触发，防止了 %arg2 点伤害",
 	
 	["second_ol_sunjian"] = "界孙坚[OL二版]",
 	["&second_ol_sunjian"] = "界孙坚",
@@ -443,7 +453,11 @@ return {
 	["illustrator:oljie_caozhi"] = "",
 	["oljiushi"] = "酒诗",
 	[":oljiushi"] = "当你需要使用【酒】时，若你的武将牌正面朝上，你可以翻面，视为使用一张【酒】；若你的武将牌背面朝上，你使用“落英”牌无距离限制且不能被响应；当你受到伤害后，或你于回合外获得了至少体力上限张“落英”牌后，若你的武将牌背面朝上（若此时为受到伤害后，则你须于受到此伤害时也背面朝上），你可以翻面。",
-	["~oljie_caozhi"] = "界曹植",
+	["~oljie_caozhi"] = "酒醉不知归路，唯见星河漫天……",
+	["$oljiushi1"] = "绿蚁洗墨锋，入喉酒香浓",
+	["$oljiushi2"] = "新酒赋旧词，墨香正醉人",
+	["$luoying5"] = "花落白宣上，秉笔有天工",
+	["$luoying6"] = "泼墨染秋意，落花亦有情",
 
 	["oljie_huangyueying"] = "界黄月英[OL]",
 	["&oljie_huangyueying"] = "界黄月英",
@@ -454,16 +468,19 @@ return {
 	[":olqicai"] = "锁定技，你使用锦囊牌无距离限制；其他角色不能弃置你装备区里的防具牌和宝物牌。",
 
 	["oljie_liaohua"] = "界廖化[OL]",
-	["&oljie_liaohua"] = "界廖化",
 	["illustrator:oljie_liaohua"] = "",
 	["oldangxian"] = "当先",
 	[":oldangxian"] = "锁定技，回合开始时。你执行一个额外出牌阶段；此阶段开始时，你可以从牌堆或弃牌堆中获得一张【杀】，然后若你未于此阶段中造成伤害，阶段结束时你对自己造成1点伤害。",
 	["olfuli"] = "伏枥",
 	[":olfuli"] = "限定技，当你处于濒死状态时，你可以将体力回复至X点并且手牌摸至X张（X为场上存活势力数），然后若X大于你造成的伤害数，你翻面。",
 	["oldangxian:draw"] = "当先：你可以获得一张【杀】",
+	["$oldangxian1"] = "老将临战，亦可一马当先",
+	["$oldangxian2"] = "我乃昭烈旧将，岂能居小辈之后！",
+	["$olfuli1"] = "廉颇尚能古稀挂帅，我如何不能？",
+	["$olfuli2"] = "吾虽老，然能食饭三斗、开弓五石！",
+	["~oljie_liaohua"] = "国破家亡，老卒死有余辜",
 
 	["oljie_fazheng"] = "界法正[OL]",
-	["&oljie_fazheng"] = "界法正",
 	["illustrator:oljie_fazheng"] = "",
 	["olxuanhuo"] = "眩惑",
 	[":olxuanhuo"] = "摸牌阶段结束时，你可以将两张手牌交给一名其他角色，并选择另一名角色，然后令该角色选择一项：1.对你选择的角色使用一张【杀】；2.令你观看其手牌并获得其两张牌。",
@@ -480,7 +497,6 @@ return {
 	["~oljie_fazheng"] = "孝直不忠，不能佑主公复汉室了……",
 
 	["oljie_caozhang"] = "界曹彰[OL]",
-	["&oljie_caozhang"] = "界曹彰",
 	["illustrator:oljie_caozhang"] = "枭瞳",
 	["oljiangchi"] = "将驰",
 	[":oljiangchi"] = "摸牌阶段结束时，你可以选择一项：1.摸一张牌，然后本回合使用【杀】的次数上限-1且【杀】不计入你的手牌上限；2.重铸一张牌，然后本回合使用【杀】无距离限制且使用【杀】的次数上限+1。",
@@ -490,7 +506,6 @@ return {
 	["~oljie_caozhang"] = "黄须金甲，也难敌骨肉毒心！",
 
 	["oljie_yufan"] = "界虞翻[OL]",
-	["&oljie_yufan"] = "界虞翻",
 	["illustrator:oljie_yufan"] = "YanBai",
 	["olzongxuan"] = "纵玄",
 	[":olzongxuan"] = "当你的牌因弃置而置入弃牌堆时，或上家的牌每回合第一次因弃置而置入弃牌堆时，你可以将其中任意张牌置于牌堆顶。",
@@ -506,15 +521,20 @@ return {
 	["~oljie_yufan"] = "彼皆死人，何语神仙？",
 
 	["oljie_liubiao"] = "界刘表[OL]",
-	--["#oljie_liubiao"] = "界刘表",
+	["#oljie_liubiao"] = "儁才秀拔",
 	["illustrator:oljie_liubiao"] = "",
 	["oljiezishou"] = "自守",
 	[":oljiezishou"] = "摸牌阶段，你可以多摸X张牌，若如此做，本回合结束阶段，若你本回合对其他角色造成过伤害，你弃置X张牌（X为场上势力数）。",
 	["olzongshi"] = "宗室",
 	[":olzongshi"] = "锁定技，你的手牌上限+X（X为场上势力数）。每个势力限一次，其他角色对你造成伤害时，防止此伤害并令其摸一张牌。",
+	["$oljiezishou1"] = "九州烽烟起，此地犹姓刘",
+	["$oljiezishou2"] = "守一方水土，定乱世太平",
+	["$olzongshi1"] = "非刘姓者，不可为王",
+	["$olzongshi2"] = "万千志士，皆为一姓天下",
+	["~oljie_liubiao"] = "乱世无义，尽是失德之徒",
 
 	["oljie_fuhuanghou"] = "界伏皇后[OL]",
-	--["#oljie_fuhuanghou"] = "界伏皇后",
+	["#oljie_fuhuanghou"] = "巾帼拚生",
 	["illustrator:oljie_fuhuanghou"] = "",
 	["olzhuikong"] = "惴恐",
 	[":olzhuikong"] = "其他角色回合开始时，若你已受伤，你可以与其拼点：若你赢，其本回合不能对除其以外的角色使用牌；若你没赢，你获得其拼点牌，然后其视为对你使用一张【杀】。",
@@ -529,10 +549,79 @@ return {
 	["~oljie_fuhuanghou"] = "只恨邪风不静，不能杀了老贼……",
 
 	["oljie_guohuai"] = "界郭淮[OL]",
-	--["#oljie_guohuai"] = "界郭淮",
+	["#oljie_guohuai"] = "垂问秦雍",
 	["illustrator:oljie_guohuai"] = "",
 	["oljiejingce"] = "精策",
 	[":oljiejingce"] = "你每于回合内使用一种花色的手牌，本回合的手牌上限便+1；出牌阶段结束时，你可以摸X张牌（X为你本回合使用过牌的类型数）。",
+	["$oljiejingce1"] = "此地薄弱，当加强防御",
+	["$oljiejingce2"] = "诸葛小计，吾早已预料",
+	["~oljie_guohuai"] = "无五子，亦无淮也",
+
+	["oljie_guanxingzhangbao"] = "界关兴张苞[OL]",
+	["#oljie_guanxingzhangbao"] = "父魂子魄",
+	["illustrator:oljie_guanxingzhangbao"] = "",
+	["olfuhun"] = "父魂",
+	[":olfuhun"] = "当你需要使用或打出【杀】时，你可以将两张牌当一张【杀】使用或打出；当你使用转化的【杀】指定一名角色为目标后，该角色只能使用与此【杀】颜色相同的手牌来响应此【杀】；当你于出牌阶段内使用【杀】造成伤害后，你本回合拥有技能“武圣”和“咆哮”。",
+
+	["$olfuhun1"] = "东吴锦帆何处寻，且到我兄弟刀下问亡魂！",
+	["$olfuhun2"] = "青龙啸西川，蛇矛震祁山，此刃当饮仇雠血！",
+	["~oljie_guanxingzhangbao"] = "兴/苞死无碍，唯汉志长存！",
+
+	["oljie_sunluban"] = "界孙鲁班[OL]",
+	--["#oljie_sunluban"] = "",
+	["illustrator:oljie_sunluban"] = "",
+	["olzenhui"] = "谮毁",
+	[":olzenhui"] = "出牌阶段各限一次，当你使用【杀】或普通锦囊牌（不含【借刀杀人】）指定目标时，你可以令另一名能成为此牌合法目标的角色选择一项：1.交给你一张牌，然后代替你成为此牌的使用者；2.也成为此牌的目标。",
+	["oljiaojin"] = "骄矜",
+	[":oljiaojin"] = "当你受到伤害时，你可以弃置一张装备牌，防止此伤害并获得造成此伤害的牌。",
+	["olzenhui0"] = "你可以发动“谮毁”选择一名角色",
+	["olzenhui1"] = "谮毁：请交给%src一张牌，否则也成为此牌目标",
+	["oljiaojin0"] = "你可以发动“骄矜”弃置装备牌，防止伤害并获得伤害牌",
+
+	["$olzhuikong1"] = "",
+	["$olzhuikong2"] = "",
+	["$olqiuyuan1"] = "",
+	["$olqiuyuan2"] = "",
+	["~oljie_sunluban"] = "",
+
+	["oljie_madai"] = "界马岱[OL]",
+	["#oljie_madai"] = "狮宗继血",
+	["illustrator:oljie_madai"] = "",
+	["oljieqianxi"] = "潜袭",
+	[":oljieqianxi"] = "出牌阶段开始时，你可以展示一张牌，令距离为1的其他角色本回合不能使用或打出与展示牌颜色相同的手牌。若如此做，你本回合使用此牌造成的伤害+1。",
+	["oljieqianxi0"] = "你可以发动“潜袭”选择展示一张牌",
+
+	["$oljieqianxi1"] = "藏锋弑血头上刀，须臾剑影斩麒麟！",
+	["$oljieqianxi2"] = "长史为其外，余暗为其内，魏延足定！",
+	["~oljie_madai"] = "文...文长，君何兀自回头？",
+
+	["oljie_guohuanghou"] = "界郭皇后[OL]",
+	--["#oljie_guohuanghou"] = "",
+	["illustrator:oljie_guohuanghou"] = "",
+	["oljiaozhao"] = "矫诏",
+	[":oljiaozhao"] = "出牌阶段限一次，你可以展示一张手牌并声明一种未以此法声明过的基本牌或普通锦囊牌，你本回合可将此牌当声明的牌使用（不能对自己使用）。",
+	[":oljiaozhao1"] = "出牌阶段限一次，你可以展示一张手牌并声明一种基本牌或普通锦囊牌，你本回合可将此牌当声明的牌使用（不能对自己使用）。",
+	[":oljiaozhao2"] = "出牌阶段限一次，你可以视为使用一张基本牌或普通锦囊牌（不能对自己使用）。",
+	["oldanxin"] = "殚心",
+	[":oldanxin"] = "当你受到伤害后，你可以摸一张牌，然后修改“矫诏”。",
+
+	["$oljiaozhao1"] = "",
+	["$oljiaozhao2"] = "",
+	["$oldanxin1"] = "",
+	["$oldanxin2"] = "",
+	["~oljie_guohuanghou"] = "",
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

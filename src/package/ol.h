@@ -1457,6 +1457,16 @@ public:
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
+class CuijueCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE CuijueCard();
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+};
+
 
 
 

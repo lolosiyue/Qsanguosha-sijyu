@@ -307,13 +307,14 @@ public:
     void onEffect(CardEffectStruct &effect) const;
 };
 
-class JuejinCard : public SkillCard
+class ShenpeiCard : public SkillCard
 {
     Q_OBJECT
 
 public:
-    Q_INVOKABLE JuejinCard();
-    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const;
+    Q_INVOKABLE ShenpeiCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_selet, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
 class XingzhenCard : public SkillCard
@@ -322,11 +323,7 @@ class XingzhenCard : public SkillCard
 
 public:
     Q_INVOKABLE XingzhenCard();
-    bool targetFixed() const;
-    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
-    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const;
-    const Card *validate(CardUseStruct &card_use) const;
-    const Card *validateInResponse(ServerPlayer *user) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const;
 };
 
 

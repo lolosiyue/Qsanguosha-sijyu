@@ -2,7 +2,7 @@
 
 return {
 	["standard"] = "标准版",
-	["breakthrough"] = "界限突破",
+	["strengthen"] = "界限突破",
 
 	-- 魏势力
 	["#caocao"] = "魏武帝",

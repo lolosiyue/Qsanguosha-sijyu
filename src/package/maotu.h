@@ -91,4 +91,86 @@ public:
     const Card *validateInResponse(ServerPlayer *user) const;
 };
 
+class MTJishiCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE MTJishiCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class MTYitaoCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE MTYitaoCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class MTZongqingCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE MTZongqingCard();
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const;
+};
+
+class MTZanzhangCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE MTZanzhangCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class MTYinglveCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE MTYinglveCard();
+    bool targetFixed() const;
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const;
+    void onUse(Room *room, CardUseStruct &card_use) const;
+};
+
+class MTZhuluCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE MTZhuluCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void onUse(Room *room, CardUseStruct &card_use) const;
+};
+
+class MTZhuizunCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE MTZhuizunCard();
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const;
+};
+
+class MTHongwuCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE MTHongwuCard();
+    bool targetFixed() const;
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const;
+    void onUse(Room *room, CardUseStruct &card_use) const;
+};
+
 #endif
