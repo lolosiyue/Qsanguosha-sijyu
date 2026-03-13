@@ -728,11 +728,10 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 		std::stable_sort(skill_table[triggerEvent].begin(), skill_table[triggerEvent].end(), CompareByPriority);
 	}
 		foreach(ServerPlayer*p, room->getAlivePlayers()){
-			room->safeSetPlayerProperty(p,"handMax",p->getMaxCards());
-			foreach (ServerPlayer*q, room->getPlayers()){
-				if (q->isOffline()) continue;
-				room->notifyProperty(q,p,"handMax");
-			}
+			int hand_max = p->getMaxCards();
+			if (p->property("handMax").toInt() == hand_max) continue;
+			room->safeSetPlayerProperty(p, "handMax", hand_max);
+			room->broadcastProperty(p, "handMax");
 		}
 	try {
 		QList<TriggerSkill*>triggered;

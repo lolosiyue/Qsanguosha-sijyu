@@ -16,6 +16,7 @@
 #include <QCoreApplication>
 #include <QtMath>
 #include <cstring>
+#include <cstddef>
 #include <limits>
 
 // spine-cpp includes
@@ -34,12 +35,10 @@ QtSpineTextureLoader::~QtSpineTextureLoader() {
 
 void QtSpineTextureLoader::load(void *&textureHandle, const spine::String &path) {
     QString qpath = QString::fromUtf8(path.buffer());
-    qWarning("[TexLoader] load() called: path='%s'", qPrintable(qpath));
 
     // Try application-relative path first
     if (!QFile::exists(qpath)) {
         QString appDir = QCoreApplication::applicationDirPath() + "/" + qpath;
-        qWarning("[TexLoader] '%s' not found, trying '%s'", qPrintable(qpath), qPrintable(appDir));
         if (QFile::exists(appDir))
             qpath = appDir;
     }
@@ -52,29 +51,20 @@ void QtSpineTextureLoader::load(void *&textureHandle, const spine::String &path)
 
     QImage image(qpath);
     if (image.isNull()) {
-        qWarning("[TexLoader] FATAL: Failed to load image: '%s'", qPrintable(qpath));
+        qWarning("[TexLoader] Failed to load image: '%s'", qPrintable(qpath));
         textureHandle = nullptr;
         return;
     }
-    qWarning("[TexLoader] Image loaded: %dx%d format=%d path='%s'",
-             image.width(), image.height(), (int)image.format(), qPrintable(qpath));
 
-    // Check GL context
     QOpenGLContext *ctx = QOpenGLContext::currentContext();
-    if (!ctx) {
-        qWarning("[TexLoader] WARNING: No current OpenGL context! Texture creation may fail.");
-    } else {
-        qWarning("[TexLoader] GL context=%p surface=%p", ctx, ctx->surface());
-    }
+    if (!ctx)
+        qWarning("[TexLoader] No current OpenGL context — texture creation may fail");
 
     // Must be called within a valid OpenGL context
     QOpenGLTexture *tex = new QOpenGLTexture(image, QOpenGLTexture::DontGenerateMipMaps);
     tex->setMinificationFilter(QOpenGLTexture::Linear);
     tex->setMagnificationFilter(QOpenGLTexture::Linear);
     tex->setWrapMode(QOpenGLTexture::ClampToEdge);
-
-    qWarning("[TexLoader] Texture created: id=%u valid=%d size=%dx%d handle=%p",
-             tex->textureId(), (int)tex->isCreated(), tex->width(), tex->height(), tex);
 
     _textures.append(tex);
     textureHandle = tex;
@@ -101,11 +91,18 @@ SpineGlItem::SpineGlItem(QGraphicsItem *parent)
     , _skeletonData(nullptr)
     , _shader(nullptr)
     , _vbo(QOpenGLBuffer::VertexBuffer)
+    , _ibo(QOpenGLBuffer::IndexBuffer)
     , _glInitialized(false)
+    , _vboCapacity(0)
+    , _iboCapacity(0)
     , _spineScale(1.0f)
     , _playing(false)
     , _loop(false)
     , _lastTime(0)
+    , _opacity(1.0)
+    , _flipX(false)
+    , _vertexCount(0)
+    , _indexCount(0)
 {
     setFlag(QGraphicsItem::ItemHasNoContents, false);
     // Fullscreen by default (will be set by fitToScene or setRenderRect)
@@ -175,6 +172,9 @@ bool SpineGlItem::loadSpineFiles(const QString &atlasPath, const QString &skelPa
         return false;
     }
 
+    qDebug("[SpineGlItem] Atlas: pages=%d, parsing skeleton '%s'...",
+            (int)_atlas->getPages().size(), qPrintable(resolvedSkel));
+
     // Load skeleton binary with multi-version routing (reference: multi-runtime manager idea).
     // If explicit runtime hint exists, try only that hint. Otherwise, auto-probe all supported
     // runtime variants and pick the best parse result by quality score.
@@ -196,18 +196,21 @@ bool SpineGlItem::loadSpineFiles(const QString &atlasPath, const QString &skelPa
     };
 
     QList<QPair<spine::SkeletonBinary::RuntimeVersion, QString>> candidates;
+    // Always try all runtime versions. If a hint is provided, try it first for speed,
+    // then fall back to all others. This makes runtimeVersion an optional optimization
+    // hint rather than a hard requirement — auto-detection always works.
     if (!_runtimeVersionHint.isEmpty()) {
         QString v = _runtimeVersionHint.trimmed();
         candidates.append(qMakePair(spine::SkeletonBinary::RuntimeAuto, v));
-        qWarning("[SpineGlItem] runtime version hint: '%s'", qPrintable(v));
-    } else {
-        candidates.append(qMakePair(spine::SkeletonBinary::RuntimeAuto, QString("auto")));
-        candidates.append(qMakePair(spine::SkeletonBinary::Runtime3_5_35, QString("3.5.35")));
-        candidates.append(qMakePair(spine::SkeletonBinary::Runtime3_7, QString("3.7")));
-        candidates.append(qMakePair(spine::SkeletonBinary::Runtime3_8, QString("3.8")));
-        candidates.append(qMakePair(spine::SkeletonBinary::Runtime4_0, QString("4.0")));
-        candidates.append(qMakePair(spine::SkeletonBinary::Runtime4_1, QString("4.1")));
     }
+    // Add all versions as fallback (duplicates with hint are harmless — same version
+    // won't produce a better score, so the first successful parse wins)
+    candidates.append(qMakePair(spine::SkeletonBinary::RuntimeAuto, QString("auto")));
+    candidates.append(qMakePair(spine::SkeletonBinary::Runtime3_5_35, QString("3.5.35")));
+    candidates.append(qMakePair(spine::SkeletonBinary::Runtime3_7, QString("3.7")));
+    candidates.append(qMakePair(spine::SkeletonBinary::Runtime3_8, QString("3.8")));
+    candidates.append(qMakePair(spine::SkeletonBinary::Runtime4_0, QString("4.0")));
+    candidates.append(qMakePair(spine::SkeletonBinary::Runtime4_1, QString("4.1")));
 
     QVector<ParseCandidate> parsed;
     QStringList errors;
@@ -220,7 +223,8 @@ bool SpineGlItem::loadSpineFiles(const QString &atlasPath, const QString &skelPa
             binary.setRuntimeVersionHint(spine::String(hintName.toUtf8().constData()));
         }
 
-        spine::SkeletonData *sd = binary.readSkeletonDataFile(
+        spine::SkeletonData *sd = nullptr;
+        sd = binary.readSkeletonDataFile(
             spine::String(resolvedSkel.toUtf8().constData()));
 
         if (!sd) {
@@ -236,10 +240,6 @@ bool SpineGlItem::loadSpineFiles(const QString &atlasPath, const QString &skelPa
         cand.hasDefaultSkin = (sd->getDefaultSkin() != nullptr);
         cand.score = scoreData(sd);
         parsed.append(cand);
-
-        qWarning("[SpineGlItem] parse candidate hint=%s score=%d defaultSkin=%d anims=%d",
-                 qPrintable(cand.hintName), cand.score,
-                 (int)cand.hasDefaultSkin, cand.animCount);
     }
 
     if (parsed.isEmpty()) {
@@ -256,9 +256,8 @@ bool SpineGlItem::loadSpineFiles(const QString &atlasPath, const QString &skelPa
     }
 
     _skeletonData = parsed[bestIdx].data;
-    qWarning("[SpineGlItem] selected parser hint=%s score=%d defaultSkin=%d anims=%d",
-             qPrintable(parsed[bestIdx].hintName), parsed[bestIdx].score,
-             (int)parsed[bestIdx].hasDefaultSkin, parsed[bestIdx].animCount);
+    qDebug("[SpineGlItem] Selected runtime=%s anims=%d",
+           qPrintable(parsed[bestIdx].hintName), parsed[bestIdx].animCount);
 
     for (int i = 0; i < parsed.size(); ++i) {
         if (i != bestIdx && parsed[i].data)
@@ -275,8 +274,6 @@ bool SpineGlItem::loadSpineFiles(const QString &atlasPath, const QString &skelPa
 
     // Set up completion listener
     _animState->listener = [this](spine::EventType type, spine::TrackEntry &entry, spine::Event *event) {
-        qWarning("[SpineGlItem] AnimState event: type=%d loop=%d trackTime=%.3f",
-                 (int)type, (int)entry.getLoop(), entry.getTrackTime());
         if (type == spine::EventType_Complete && !entry.getLoop()) {
             QMetaObject::invokeMethod(this, [this]() {
                 emit animationFinished();
@@ -312,7 +309,6 @@ bool SpineGlItem::loadSpineFiles(const QString &atlasPath, const QString &skelPa
                 QString got = QString::fromUtf8(anims[ai]->getName().buffer());
                 if (QString::compare(got, want, Qt::CaseInsensitive) == 0) {
                     _pendingAnim = got;
-                    qWarning("[SpineGlItem] Using preferred animation: '%s'", qPrintable(_pendingAnim));
                     break;
                 }
             }
@@ -322,18 +318,13 @@ bool SpineGlItem::loadSpineFiles(const QString &atlasPath, const QString &skelPa
         float bestDur = 0;
         for (size_t ai = 0; ai < anims.size(); ++ai) {
             float dur = anims[ai]->getDuration();
-            qWarning("[SpineGlItem]   anim[%d] '%s' dur=%.3f",
-                     (int)ai, anims[ai]->getName().buffer(), dur);
             if (dur > bestDur) { bestDur = dur; bestIdx = (int)ai; }
         }
 
         if (_pendingAnim.isEmpty() && bestIdx >= 0) {
             _pendingAnim = QString::fromUtf8(anims[bestIdx]->getName().buffer());
-            qWarning("[SpineGlItem] Using longest-duration animation: '%s' (%.3f sec)",
-                     qPrintable(_pendingAnim), bestDur);
         } else if (_pendingAnim.isEmpty() && anims.size() > 0) {
             _pendingAnim = QString::fromUtf8(anims[0]->getName().buffer());
-            qWarning("[SpineGlItem] Using first animation: '%s'", qPrintable(_pendingAnim));
         }
     }
 
@@ -347,11 +338,13 @@ bool SpineGlItem::loadSpineFiles(const QString &atlasPath, const QString &skelPa
     _skeleton->setToSetupPose();
     _skeleton->updateWorldTransform();
 
-    qWarning("[SpineGlItem] loadSpineFiles OK: bones=%d slots=%d anims=%d pendingAnim='%s'",
-             (int)_skeletonData->getBones().size(),
-             (int)_skeletonData->getSlots().size(),
-             (int)_skeletonData->getAnimations().size(),
-             qPrintable(_pendingAnim));
+    // Build animation cache for fast lookups
+    buildAnimationCache();
+
+    qDebug("[SpineGlItem] Loaded: bones=%d anims=%d anim='%s'",
+           (int)_skeletonData->getBones().size(),
+           (int)_skeletonData->getAnimations().size(),
+           qPrintable(_pendingAnim));
 
     update();
     return true;
@@ -477,16 +470,8 @@ void SpineGlItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *optio
     Q_UNUSED(option);
     Q_UNUSED(widget);
 
-    static int paintLogCount = 0;
-    if (++paintLogCount <= 10)
-        qWarning("[SpineGlItem] paint() called #%d, skeleton=%p animState=%p scene=%p",
-                 paintLogCount, _skeleton.get(), _animState.get(), scene());
-
-    if (!_skeleton || !_animState) {
-        if (paintLogCount <= 10)
-            qWarning("[SpineGlItem] paint() early return: skeleton or animState null");
+    if (!_skeleton || !_animState)
         return;
-    }
 
     // We need to render via OpenGL directly
     painter->beginNativePainting();
@@ -503,14 +488,10 @@ void SpineGlItem::onTimer() {
     float delta = currentTime - _lastTime;
     _lastTime = currentTime;
 
-    static int timerLogCount = 0;
-    if (++timerLogCount <= 5)
-        qWarning("[SpineGlItem] onTimer #%d: time=%.3f delta=%.3f scene=%p visible=%d",
-                 timerLogCount, currentTime, delta, scene(), isVisible());
-
     // Clamp delta to avoid large jumps
     if (delta > 0.1f) delta = 0.1f;
 
+    updateTweens(delta);
     updateSkeleton(delta);
     update(); // Trigger repaint
 }
@@ -560,6 +541,11 @@ void SpineGlItem::initGL() {
     _shader->link();
 
     _vbo.create();
+    _vbo.setUsagePattern(QOpenGLBuffer::DynamicDraw);
+    _ibo.create();
+    _ibo.setUsagePattern(QOpenGLBuffer::DynamicDraw);
+    _vboCapacity = 0;
+    _iboCapacity = 0;
     _glInitialized = true;
 }
 
@@ -570,6 +556,10 @@ void SpineGlItem::cleanupGL() {
     }
     if (_vbo.isCreated())
         _vbo.destroy();
+    if (_ibo.isCreated())
+        _ibo.destroy();
+    _vboCapacity = 0;
+    _iboCapacity = 0;
     _glInitialized = false;
 }
 
@@ -597,14 +587,34 @@ void SpineGlItem::renderSpine(QPainter *painter) {
     bool doLog = (++renderLogCount <= 10);
 
     // Build vertex data from skeleton draw order
-    _vertices.clear();
-    _indices.clear();
+    // ── Reuse vectors instead of clear()+append() every frame ──
+    // We write directly into pre-allocated storage using _vertexCount/_indexCount
+    // as running cursors, then only upload the used portion to the GPU via VBO/IBO.
+    _vertexCount = 0;
+    _indexCount  = 0;
 
     spine::Vector<spine::Slot *> &drawOrder = _skeleton->getDrawOrder();
     GLuint baseVertex = 0;
 
     if (doLog)
         qWarning("[SpineGlItem] renderSpine: drawOrder.size=%d", (int)drawOrder.size());
+
+    // ── Estimate capacity and pre-reserve once ──
+    // Typical Spine skeleton: ~4 verts per region, ~20–80 per mesh.
+    // Reserve generously on first frame; subsequent frames reuse the allocation.
+    {
+        int estimatedVerts = static_cast<int>(drawOrder.size()) * 20;
+        int estimatedIdx   = static_cast<int>(drawOrder.size()) * 60;
+        if (_vertices.capacity() < estimatedVerts)
+            _vertices.reserve(estimatedVerts);
+        if (_indices.capacity() < estimatedIdx)
+            _indices.reserve(estimatedIdx);
+        // Ensure size covers the maximum we may write (resize is no-op if already large enough)
+        if (_vertices.size() < estimatedVerts)
+            _vertices.resize(estimatedVerts);
+        if (_indices.size() < estimatedIdx)
+            _indices.resize(estimatedIdx);
+    }
 
     struct BatchCmd {
         QOpenGLTexture *texture;
@@ -721,21 +731,32 @@ void SpineGlItem::renderSpine(QPainter *painter) {
 
         if (a <= 0) { if (doLog) qWarning("[SpineGlItem]   SKIP: alpha <= 0"); continue; }
 
-        // Append vertices
-        int indexStart = _indices.size();
+        // Append vertices — direct indexed write instead of append()
+        int indexStart = _indexCount;
+
+        // Grow vectors if needed (rare after first frame)
+        int requiredVerts = _vertexCount + vertexCount;
+        int requiredIdx   = _indexCount + triangleCount;
+        if (_vertices.size() < requiredVerts)
+            _vertices.resize(requiredVerts * 2);
+        if (_indices.size() < requiredIdx)
+            _indices.resize(requiredIdx * 2);
+
+        Vertex *vDst = _vertices.data() + _vertexCount;
         for (int vi = 0; vi < vertexCount; ++vi) {
-            Vertex v;
-            v.x = worldPtr[vi * 2];
-            v.y = worldPtr[vi * 2 + 1];
-            v.u = uvs[vi * 2];
-            v.v = uvs[vi * 2 + 1];
-            v.r = r; v.g = g; v.b = b; v.a = a;
-            _vertices.append(v);
+            vDst->x = worldPtr[vi * 2];
+            vDst->y = worldPtr[vi * 2 + 1];
+            vDst->u = uvs[vi * 2];
+            vDst->v = uvs[vi * 2 + 1];
+            vDst->r = r; vDst->g = g; vDst->b = b; vDst->a = a;
+            ++vDst;
         }
 
+        GLuint *iDst = _indices.data() + _indexCount;
         for (int ti = 0; ti < triangleCount; ++ti) {
-            _indices.append(baseVertex + triangles[ti]);
+            iDst[ti] = baseVertex + triangles[ti];
         }
+        _indexCount += triangleCount;
 
         int blendMode = static_cast<int>(slot->getData().getBlendMode());
 
@@ -752,16 +773,17 @@ void SpineGlItem::renderSpine(QPainter *painter) {
             batches.append(cmd);
         }
 
+        _vertexCount += vertexCount;
         baseVertex += vertexCount;
     }
 
-    if (_vertices.isEmpty()) {
+    if (_vertexCount == 0) {
         if (doLog) qWarning("[SpineGlItem] renderSpine: NO vertices (drawOrder=%d)", (int)drawOrder.size());
         return;
     }
 
     if (doLog) qWarning("[SpineGlItem] renderSpine: %d vertices, %d indices, %d batches",
-                        _vertices.size(), _indices.size(), batches.size());
+                        _vertexCount, _indexCount, batches.size());
 
     // ─── OpenGL rendering ───────────────────────────────────────────────
 
@@ -796,7 +818,7 @@ void SpineGlItem::renderSpine(QPainter *painter) {
     float minY = std::numeric_limits<float>::max();
     float maxX = -std::numeric_limits<float>::max();
     float maxY = -std::numeric_limits<float>::max();
-    for (int vi = 0; vi < _vertices.size(); ++vi) {
+    for (int vi = 0; vi < _vertexCount; ++vi) {
         const Vertex &vv = _vertices.at(vi);
         minX = qMin(minX, vv.x);
         minY = qMin(minY, vv.y);
@@ -852,7 +874,7 @@ void SpineGlItem::renderSpine(QPainter *painter) {
     _shader->setUniformValue("uMVP", mvp);
     _shader->setUniformValue("uTexture", 0);
 
-    // Upload vertex data
+    // Upload vertex data to VBO (GPU buffer)
     int posLoc   = _shader->attributeLocation("aPos");
     int uvLoc    = _shader->attributeLocation("aUV");
     int colorLoc = _shader->attributeLocation("aColor");
@@ -861,12 +883,31 @@ void SpineGlItem::renderSpine(QPainter *painter) {
     gl->glEnableVertexAttribArray(uvLoc);
     gl->glEnableVertexAttribArray(colorLoc);
 
-    const Vertex *vData = _vertices.constData();
     int stride = sizeof(Vertex);
+    int vboBytes = _vertexCount * stride;
+    int iboBytes = _indexCount * static_cast<int>(sizeof(GLuint));
 
-    gl->glVertexAttribPointer(posLoc,   2, GL_FLOAT, GL_FALSE, stride, &vData->x);
-    gl->glVertexAttribPointer(uvLoc,    2, GL_FLOAT, GL_FALSE, stride, &vData->u);
-    gl->glVertexAttribPointer(colorLoc, 4, GL_FLOAT, GL_FALSE, stride, &vData->r);
+    // ── VBO: upload vertices to GPU ──
+    _vbo.bind();
+    if (_vertexCount > _vboCapacity) {
+        // Grow with 1.5× headroom to avoid frequent re-alloc
+        _vboCapacity = _vertexCount + (_vertexCount >> 1);
+        _vbo.allocate(_vboCapacity * stride);
+    }
+    _vbo.write(0, _vertices.constData(), vboBytes);
+
+    // Set attribute pointers as offsets into the bound VBO (not CPU addresses)
+    gl->glVertexAttribPointer(posLoc,   2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<const void *>(offsetof(Vertex, x)));
+    gl->glVertexAttribPointer(uvLoc,    2, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<const void *>(offsetof(Vertex, u)));
+    gl->glVertexAttribPointer(colorLoc, 4, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<const void *>(offsetof(Vertex, r)));
+
+    // ── IBO: upload indices to GPU ──
+    _ibo.bind();
+    if (_indexCount > _iboCapacity) {
+        _iboCapacity = _indexCount + (_indexCount >> 1);
+        _ibo.allocate(_iboCapacity * static_cast<int>(sizeof(GLuint)));
+    }
+    _ibo.write(0, _indices.constData(), iboBytes);
 
     // Draw batches
     for (const BatchCmd &cmd : batches) {
@@ -891,9 +932,9 @@ void SpineGlItem::renderSpine(QPainter *painter) {
             cmd.texture->bind(0);
         }
 
-        // Draw elements
+        // Draw elements (indices come from bound IBO, so pass byte offset)
         gl->glDrawElements(GL_TRIANGLES, cmd.indexCount, GL_UNSIGNED_INT,
-                           _indices.constData() + cmd.indexStart);
+                           reinterpret_cast<const void *>(cmd.indexStart * sizeof(GLuint)));
 
         if (doLog) {
             GLenum err = gl->glGetError();
@@ -909,6 +950,156 @@ void SpineGlItem::renderSpine(QPainter *painter) {
     gl->glDisableVertexAttribArray(uvLoc);
     gl->glDisableVertexAttribArray(colorLoc);
 
+    _ibo.release();
+    _vbo.release();
+
     _shader->release();
     gl->glDepthMask(GL_TRUE); // restore
+}
+// ═══════════════════════════════════════════════════════════════════════════
+//  Tween / Motion
+// ═══════════════════════════════════════════════════════════════════════════
+
+static float easeInOutQuad(float t) {
+    return t < 0.5f ? 2.0f * t * t : 1.0f - (-2.0f * t + 2.0f) * (-2.0f * t + 2.0f) * 0.5f;
+}
+
+void SpineGlItem::moveTo(const QPointF &target, int durationMs) {
+    _tweenMove.active = true;
+    _tweenMove.elapsed = 0;
+    _tweenMove.duration = durationMs / 1000.0f;
+    _tweenMove.startPos = _spinePos;
+    _tweenMove.endPos = target;
+
+    if (!_timer.isActive())
+        _timer.start();
+}
+
+void SpineGlItem::scaleTo(float targetScale, int durationMs) {
+    _tweenScale.active = true;
+    _tweenScale.elapsed = 0;
+    _tweenScale.duration = durationMs / 1000.0f;
+    _tweenScale.startScale = _spineScale;
+    _tweenScale.endScale = targetScale;
+
+    if (!_timer.isActive())
+        _timer.start();
+}
+
+void SpineGlItem::fadeTo(qreal targetOpacity, int durationMs) {
+    _tweenFade.active = true;
+    _tweenFade.elapsed = 0;
+    _tweenFade.duration = durationMs / 1000.0f;
+    _tweenFade.startOpacity = _opacity;
+    _tweenFade.endOpacity = targetOpacity;
+
+    if (!_timer.isActive())
+        _timer.start();
+}
+
+void SpineGlItem::setSpineOpacity(qreal opacity) {
+    _opacity = qBound(0.0, opacity, 1.0);
+    if (_skeleton) {
+        spine::Color &c = _skeleton->getColor();
+        c.a = static_cast<float>(_opacity);
+    }
+}
+
+bool SpineGlItem::isTweening() const {
+    return _tweenMove.active || _tweenScale.active || _tweenFade.active;
+}
+
+void SpineGlItem::cancelTweens() {
+    _tweenMove.active = false;
+    _tweenScale.active = false;
+    _tweenFade.active = false;
+}
+
+void SpineGlItem::setFlipX(bool flip) {
+    _flipX = flip;
+    if (_skeleton) {
+        float absScale = qAbs(_spineScale);
+        _skeleton->setScaleX(flip ? -absScale : absScale);
+    }
+}
+
+void SpineGlItem::updateTweens(float deltaSeconds) {
+    bool anyActive = false;
+
+    // Move tween
+    if (_tweenMove.active) {
+        _tweenMove.elapsed += deltaSeconds;
+        float t = qBound(0.0f, _tweenMove.elapsed / qMax(0.001f, _tweenMove.duration), 1.0f);
+        float e = easeInOutQuad(t);
+        QPointF p = _tweenMove.startPos + e * (_tweenMove.endPos - _tweenMove.startPos);
+        setSpinePosition(p);
+        if (t >= 1.0f)
+            _tweenMove.active = false;
+        else
+            anyActive = true;
+    }
+
+    // Scale tween
+    if (_tweenScale.active) {
+        _tweenScale.elapsed += deltaSeconds;
+        float t = qBound(0.0f, _tweenScale.elapsed / qMax(0.001f, _tweenScale.duration), 1.0f);
+        float e = easeInOutQuad(t);
+        float s = _tweenScale.startScale + e * (_tweenScale.endScale - _tweenScale.startScale);
+        setSpineScale(s);
+        if (t >= 1.0f)
+            _tweenScale.active = false;
+        else
+            anyActive = true;
+    }
+
+    // Fade tween
+    if (_tweenFade.active) {
+        _tweenFade.elapsed += deltaSeconds;
+        float t = qBound(0.0f, _tweenFade.elapsed / qMax(0.001f, _tweenFade.duration), 1.0f);
+        float e = easeInOutQuad(t);
+        qreal o = _tweenFade.startOpacity + e * (_tweenFade.endOpacity - _tweenFade.startOpacity);
+        setSpineOpacity(o);
+        if (t >= 1.0f)
+            _tweenFade.active = false;
+        else
+            anyActive = true;
+    }
+
+    if (!anyActive && (_tweenMove.elapsed > 0 || _tweenScale.elapsed > 0 || _tweenFade.elapsed > 0)) {
+        emit tweenFinished();
+        _tweenMove.elapsed = 0;
+        _tweenScale.elapsed = 0;
+        _tweenFade.elapsed = 0;
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Animation cache
+// ═══════════════════════════════════════════════════════════════════════════
+
+void SpineGlItem::buildAnimationCache() {
+    _cachedAnimations.clear();
+    _animDurationMap.clear();
+    if (!_skeletonData) return;
+
+    auto &anims = _skeletonData->getAnimations();
+    for (size_t i = 0; i < anims.size(); ++i) {
+        AnimationInfo info;
+        info.name = QString::fromUtf8(anims[i]->getName().buffer());
+        info.duration = anims[i]->getDuration();
+        _cachedAnimations.append(info);
+        _animDurationMap.insert(info.name, info.duration);
+    }
+    qWarning("[SpineGlItem] animation cache built: %d entries", _cachedAnimations.size());
+}
+
+bool SpineGlItem::hasAnimation(const QString &name) const {
+    return _animDurationMap.contains(name);
+}
+
+float SpineGlItem::animationDurationByName(const QString &name) const {
+    auto it = _animDurationMap.find(name);
+    if (it != _animDurationMap.end())
+        return it.value();
+    return -1.0f;
 }

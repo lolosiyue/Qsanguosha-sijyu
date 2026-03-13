@@ -118,6 +118,13 @@ public:
     QPixmap _getAvatarIcon(const QString &heroName);
     QPixmap getSmallAvatarIcon(const QString &generalName);
 
+    /// Set a per-skin background image behind the avatar area.
+    /// @param imagePath  Absolute or relative path to the background image.
+    void setDynamicBackground(const QString &imagePath);
+
+    /// Remove the dynamic background, reverting to the default avatar.
+    void clearDynamicBackground();
+
 public slots:
     virtual void updateAvatar();
     void updateSmallAvatar();
@@ -207,6 +214,7 @@ protected:
     QGraphicsPixmapItem *_m_extraSkillText;
     QGraphicsTextItem *_m_markItem;
     QGraphicsPixmapItem *_m_selectedFrame;
+    QGraphicsPixmapItem *_m_dynamicBgItem;   ///< Dynamic skin background image (behind avatar)
     QMap<QString, QGraphicsProxyWidget *> _m_privatePiles;
 
     // The frame that is maintained by roomscene. Items in this area has positions

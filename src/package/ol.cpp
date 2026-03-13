@@ -15460,7 +15460,7 @@ public:
 	bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &data) const
 	{
 		if (event == EventPhaseChanging){
-			player->setProperty("lianpian_targets", QStringList());
+			room->safeSetPlayerProperty(player,"lianpian_targets", QStringList());
 		} else {
 			CardUseStruct use = data.value<CardUseStruct>();
 			if (use.card->isKindOf("SkillCard")) return false;
@@ -15490,7 +15490,7 @@ public:
 				foreach(ServerPlayer*p, use.to){
 					if (p->isAlive()) names << p->objectName();
 				}
-				use.from->setProperty("lianpian_targets", names);
+				room->safeSetPlayerProperty(use.from,"lianpian_targets", names);
 			}
 		}
 		return false;
@@ -23291,7 +23291,7 @@ public:
 					if(dc->isAvailable(p))
 						room->askForUseCard(p,"@@xianying1","xianying1:"+pn);
 					dc->deleteLater();
-					p->setProperty("xianyingName","");
+					room->safeSetPlayerProperty(p,"xianyingName",QString(""));
 				}
 			}
 		}else{
@@ -28077,7 +28077,7 @@ public:
 		if(x!=player->getHp()){
 			player->peiyin(objectName(),qrand()%2+4);
 			x = player->getHp();
-			player->setProperty("FuzhaiHp",x);
+			room->safeSetPlayerProperty(player,"FuzhaiHp",x);
 			QStringList esn;
 			QList<int>ids = Sanguosha->getRandomCards();
 			if(player->hasEquipArea(0)){

@@ -3,6 +3,7 @@
 //#include "skin-bank.h"
 #include "engine.h"
 #include "roomscene.h"
+#include <QMutexLocker>
 
 QSanButton::QSanButton(QGraphicsItem *parent) : QGraphicsObject(parent)
 {
@@ -315,7 +316,10 @@ void QSanSkillButton::setSkill(const Skill *skill)
     } else
 		Q_ASSERT(false);
 
-    setToolTip(skill->getDescription(Self));
+    {
+        QMutexLocker locker(&Sanguosha->getLuaMutex());
+        setToolTip(skill->getDescription(Self));
+    }
 
     Q_ASSERT((int)_m_skillType <= 6 && _m_state <= 3);
     _repaint();

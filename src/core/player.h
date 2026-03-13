@@ -3,6 +3,7 @@
 
 #include "general.h"
 #include "card.h"
+#include <QMutex>
 //#include "wrapped-card.h"
 
 class EquipCard;
@@ -324,6 +325,8 @@ protected:
     QMap<QString, int> marks;
     QMap<QString, QList<int> > piles;
     QStringList skills, acquired_skills;
+    mutable QMutex m_skillCacheMutex;
+    mutable QMap<QString, bool> m_skillValidityCache;
     QHash<QString, int> history;
     QSet<QString> flags;
     QMap<QString, QHash<QString, QString> > description_s2k2v;

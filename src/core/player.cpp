@@ -430,8 +430,13 @@ bool Player::hasSkill(const QString &skill_name, bool include_lose) const
 		||property("pingjian_triggerskill").toString()==skill_name){
 		if(include_lose) return true;//||hasEquipSkill(skill_name)
 		const Skill *skill = Sanguosha->getSkill(skill_name);
-		if(skill) return skill->isAttachedLordSkill()||skill->property("IgnoreInvalidity").toBool()
-		||!skill->isVisible()||Sanguosha->correctSkillValidity(this,skill);
+		if(skill) {
+			bool valid = skill->isAttachedLordSkill()||skill->property("IgnoreInvalidity").toBool()
+				||!skill->isVisible()||Sanguosha->correctSkillValidity(this,skill);
+			QMutexLocker locker(&m_skillCacheMutex);
+			m_skillValidityCache[skill_name] = valid;
+			return valid;
+		}
 	}
     return false;
 }
@@ -1276,7 +1281,21 @@ QString Player::getSkillDescription() const
         if (skill->isAttachedLordSkill() || basara_list.contains(skill))
             continue;
         QString desc = skill->getDescription(this);
-		if (!hasSkill(skill->objectName())) desc = "<font color=\"#bab8ba\">"+desc+"</font>";
+		{
+			// Use cached skill validity to avoid calling into Lua from UI thread
+			bool skillOwned = skills.contains(skill->objectName()) || acquired_skills.contains(skill->objectName())
+				|| property("pingjian_triggerskill").toString() == skill->objectName();
+			bool skillValid = true;
+			if (skillOwned) {
+				if (!skill->isAttachedLordSkill() && !skill->property("IgnoreInvalidity").toBool() && skill->isVisible()) {
+					QMutexLocker locker(&m_skillCacheMutex);
+					skillValid = m_skillValidityCache.value(skill->objectName(), true);
+				}
+			} else {
+				skillValid = false;
+			}
+			if (!skillValid) desc = "<font color=\"#bab8ba\">" + desc + "</font>";
+		}
         description += QString("<b>%1</b>：%2<br/><br/>").arg(Sanguosha->translate(skill->objectName())).arg(desc);
 		desc = skill->getWakedSkills();
 		if(desc.isEmpty()) continue;

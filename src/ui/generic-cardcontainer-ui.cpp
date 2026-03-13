@@ -10,6 +10,7 @@
 #include "clientstruct.h"
 #include "carditem.h"
 #include "generaloverview.h"
+#include <QMutexLocker>
 
 using namespace QSanProtocol;
 
@@ -968,7 +969,10 @@ void PlayerCardContainer::startHuaShen(QString generalName, QString skillName)
     if (!skillName.isEmpty()) {
         _m_extraSkillBg->show();
         _m_extraSkillText->show();
-        _m_extraSkillBg->setToolTip(Sanguosha->getSkill(skillName)->getDescription(m_player));
+        {
+            QMutexLocker locker(&Sanguosha->getLuaMutex());
+            _m_extraSkillBg->setToolTip(Sanguosha->getSkill(skillName)->getDescription(m_player));
+        }
     }
     _adjustComponentZValues();
 }
@@ -1066,6 +1070,7 @@ PlayerCardContainer::PlayerCardContainer()
     _m_roleComboBox = nullptr;
     m_player = nullptr;
     _m_selectedFrame = nullptr;
+    _m_dynamicBgItem = nullptr;
 
     for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
         _m_equipCards[i] = nullptr;
@@ -1177,6 +1182,7 @@ void PlayerCardContainer::_adjustComponentZValues(bool killed)
         _layUnder(_m_huashenItem);
     if (second_zuoci)
         _layUnder(_m_smallAvatarIcon);
+    _layUnder(_m_dynamicBgItem);
     _layUnder(_m_avatarIcon);
 }
 
@@ -1468,5 +1474,58 @@ bool PlayerCardContainer::canBeSelected()
 {
     QGraphicsItem *item1 = getMouseClickReceiver();
     return item1 && isEnabled() && (flags() & QGraphicsItem::ItemIsSelectable);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  Dynamic skin background
+// ═══════════════════════════════════════════════════════════════════════════
+
+void PlayerCardContainer::setDynamicBackground(const QString &imagePath)
+{
+    if (imagePath.isEmpty()) {
+        clearDynamicBackground();
+        return;
+    }
+
+    QPixmap bgPixmap(imagePath);
+    if (bgPixmap.isNull()) {
+        qWarning("[PlayerCardContainer] Cannot load dynamic background: %s",
+                 qPrintable(imagePath));
+        clearDynamicBackground();
+        return;
+    }
+
+    // Paint the background into the avatar area, parented under the avatar parent
+    QGraphicsItem *parent = _getAvatarParent();
+    if (!_m_dynamicBgItem) {
+        _m_dynamicBgItem = new QGraphicsPixmapItem(parent);
+        _m_dynamicBgItem->setTransformationMode(Qt::SmoothTransformation);
+    }
+
+    // Scale the pixmap to fit the avatar area
+    QRect avatarRect = _m_layout->m_avatarArea;
+    QPixmap scaled = bgPixmap.scaled(avatarRect.size(), Qt::KeepAspectRatioByExpanding,
+                                      Qt::SmoothTransformation);
+    // Center-crop if necessary
+    if (scaled.size() != avatarRect.size()) {
+        int x = (scaled.width() - avatarRect.width()) / 2;
+        int y = (scaled.height() - avatarRect.height()) / 2;
+        scaled = scaled.copy(x, y, avatarRect.width(), avatarRect.height());
+    }
+    _m_dynamicBgItem->setPixmap(scaled);
+    _m_dynamicBgItem->setPos(avatarRect.topLeft());
+    _m_dynamicBgItem->show();
+
+    // Force Z-ordering refresh so the bg item sits just above _m_avatarIcon
+    _allZAdjusted = false;
+    _adjustComponentZValues();
+}
+
+void PlayerCardContainer::clearDynamicBackground()
+{
+    if (_m_dynamicBgItem) {
+        _m_dynamicBgItem->hide();
+        _m_dynamicBgItem->setPixmap(QPixmap());
+    }
 }
 

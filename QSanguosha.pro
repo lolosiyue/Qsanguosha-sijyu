@@ -5,7 +5,7 @@
 TARGET = QSanguosha
 
 # Qt 5.14 compatible modules
-QT += widgets quickwidgets #multimedia multimediawidgets sql network core gui qml quick
+QT += widgets quickwidgets qml quick #multimedia multimediawidgets sql network core gui 
 
 # Add required Qt 5.14 modules (保留用于技能特效)
 #QT += qmlmodels
@@ -130,6 +130,26 @@ SOURCES += \
 	src/ui/graphicspixmaphoveritem.cpp \
 	src/core/filehandler.cpp \
 	src/ui/EmbeddedQmlLoader.cpp \
+	src/ui/SpineGlItem.cpp \
+	src/ui/SpineEffectWidget.cpp \
+	src/ui/SpineAnimationManager.cpp \
+	src/ui/CharacterSpineActionController.cpp \
+	src/ui/SpineIndicatorLine.cpp \
+	src/spine/Atlas.cpp \
+	src/spine/Bone.cpp \
+	src/spine/Slot.cpp \
+	src/spine/Skin.cpp \
+	src/spine/RegionAttachment.cpp \
+	src/spine/MeshAttachment.cpp \
+	src/spine/SkeletonData.cpp \
+	src/spine/Skeleton.cpp \
+	src/spine/Animation.cpp \
+	src/spine/AnimationState.cpp \
+	src/spine/AnimationStateData.cpp \
+	src/spine/SkeletonBinary.cpp \
+	src/spine/SkeletonClipping.cpp \
+	src/spine/IkConstraint.cpp \
+	src/spine/TransformConstraint.cpp \
 	src/package/assassins.cpp \
 	src/package/bgm.cpp \
 	src/package/boss.cpp \
@@ -307,6 +327,33 @@ HEADERS += \
 	src/ui/graphicspixmaphoveritem.h \
 	src/core/filehandler.h \
 	src/ui/EmbeddedQmlLoader.h \
+	src/ui/SpineGlItem.h \
+	src/ui/SpineEffectWidget.h \
+	src/ui/SpineAnimationManager.h \
+	src/ui/CharacterSpineActionController.h \
+	src/ui/SpineIndicatorLine.h \
+	include/spine-cpp/spine/spine.h \
+	include/spine-cpp/spine/SpineString.h \
+	include/spine-cpp/spine/Color.h \
+	include/spine-cpp/spine/Vector.h \
+	include/spine-cpp/spine/TextureLoader.h \
+	include/spine-cpp/spine/Atlas.h \
+	include/spine-cpp/spine/BoneData.h \
+	include/spine-cpp/spine/Bone.h \
+	include/spine-cpp/spine/SlotData.h \
+	include/spine-cpp/spine/Slot.h \
+	include/spine-cpp/spine/Attachment.h \
+	include/spine-cpp/spine/RegionAttachment.h \
+	include/spine-cpp/spine/MeshAttachment.h \
+	include/spine-cpp/spine/SkeletonData.h \
+	include/spine-cpp/spine/Skin.h \
+	include/spine-cpp/spine/Animation.h \
+	include/spine-cpp/spine/Skeleton.h \
+	include/spine-cpp/spine/AnimationStateData.h \
+	include/spine-cpp/spine/EventData.h \
+	include/spine-cpp/spine/AnimationState.h \
+	include/spine-cpp/spine/SkeletonBinary.h \
+	include/spine-cpp/spine/SkeletonClipping.h \
 	src/package/thicket.h \
 	src/package/wind.h \
 	src/dialog/banipdialog.h \
@@ -344,6 +391,7 @@ CONFIG(buildbot) {
 }
 
 INCLUDEPATH += include
+INCLUDEPATH += include/spine-cpp
 INCLUDEPATH += src/client
 INCLUDEPATH += src/core
 INCLUDEPATH += src/dialog
@@ -364,6 +412,8 @@ macx{
 LIBS += -L.
 win32-msvc*{
 	DEFINES += _CRT_SECURE_NO_WARNINGS
+	QMAKE_CXXFLAGS += /utf-8
+	LIBS += legacy_stdio_definitions.lib
 	!contains(QMAKE_HOST.arch, x86_64) {
 		DEFINES += WIN32
 		LIBS += -L"$$_PRO_FILE_PWD_/lib/win/x86"

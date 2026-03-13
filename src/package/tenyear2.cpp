@@ -13,6 +13,7 @@
 #include "ol.h"
 #include "wind.h"
 #include "mobile.h"
+#include <QMutexLocker>
 
 class Choutao : public TriggerSkill
 {
@@ -2108,7 +2109,10 @@ QAbstractButton*PingjianDialog::createSkillButton(const QString&skill_name)
 	}
 	QCommandLinkButton*button = new QCommandLinkButton(Sanguosha->translate(skill_name));
 	button->setObjectName(skill_name);
-	if(skill)button->setToolTip(skill->getDescription());
+	if(skill){
+		QMutexLocker locker(&Sanguosha->getLuaMutex());
+		button->setToolTip(skill->getDescription());
+	}
 	group->addButton(button);
 	return button;
 }
