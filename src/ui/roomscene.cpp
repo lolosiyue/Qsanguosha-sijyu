@@ -3165,6 +3165,13 @@ void RoomScene::onSkillActivated()
 		//ok_button->setEnabled(false);
 		cancel_button->setEnabled(true);
 
+		QString prompt = skill->objectName()+"-click";
+		if(Sanguosha->translate(prompt)!=prompt){
+			prompt_box->disappear();
+			prompt_box_widget->setHtml(Sanguosha->translate(prompt));
+			showPromptBox();
+		}
+
 		const Card*card = dashboard->pendingCard();
 		if(card&&card->targetFixed()&&card->isAvailable(Self)){
 			if(!skill->inherits("ZeroCardViewAsSkill")){
