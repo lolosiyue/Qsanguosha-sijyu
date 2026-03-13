@@ -12,6 +12,7 @@
 #include "skin-bank.h"
 //#include "sprite.h"
 #include "timed-progressbar.h"
+#include "CharacterSpineActionController.h"
 
 class Window;
 class Button;
@@ -404,6 +405,20 @@ private:
     EffectAnimation *animations;
     bool pindian_success;
 
+    // ─── Spine pop-out action controller ────────────────────────
+    CharacterSpineActionController *_spineActionController;
+
+    /// Register skins for all known players whose generals have dynamic skins.
+    void registerDynamicSkinsForAllPlayers();
+
+    /// Register dynamic skin for one player (primary or deputy general).
+    void registerDynamicSkinForPlayer(const QString &playerName,
+                                      const QString &generalName,
+                                      bool isPrimary);
+
+    /// Update _spineActionController seat geometry for all photos + dashboard.
+    void updateSpineSeatGeometry();
+
     // re-layout attempts
     bool game_started;
     void _dispersePhotos(QList<Photo *> &photos, QRectF disperseRegion, Qt::Orientation orientation, Qt::Alignment align);
@@ -495,6 +510,7 @@ private slots:
     void changeGeneral(const QString &general);
     void revealGeneral(bool self, const QString &general);
     void trust();
+
 
 signals:
     void restart();

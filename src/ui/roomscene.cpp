@@ -31,7 +31,9 @@
 #include "sprite.h"
 #include "EmbeddedQmlLoader.h"
 #include "SpineGlItem.h"
+#include "graphicspixmaphoveritem.h"
 #include <QOpenGLWidget>
+#include <QMutexLocker>
 
 #include "ui-utils.h"
 
@@ -404,13 +406,20 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	_spineActionController->setAssetPathPrefix("assets/dynamic");
 	_spineActionController->loadConfigFromJson("assets/dynamic/dynamicSkinConfig.json");
 	connect(_spineActionController, &CharacterSpineActionController::actionStarted,
-		this, [](const QString &pid, ActionType) {
-		qWarning("[RoomScene] Spine action started for %s", qPrintable(pid));
-	});
+		this, [](const QString &, ActionType) {});
 	connect(_spineActionController, &CharacterSpineActionController::actionFinished,
-		this, [](const QString &pid, ActionType) {
-		qWarning("[RoomScene] Spine action finished for %s", qPrintable(pid));
+		this, [](const QString &, ActionType) {});
+	connect(_spineActionController, &CharacterSpineActionController::skinBackgroundChanged,
+		this, [this](const QString &playerId, const QString &bgPath) {
+		// Find the matching Photo or Dashboard and set its dynamic background
+		if (Self && playerId == Self->objectName()) {
+			if (dashboard) dashboard->setDynamicBackground(bgPath);
+		} else if (name2photo.contains(playerId)) {
+			name2photo[playerId]->setDynamicBackground(bgPath);
+		}
 	});
+	connect(_spineActionController, &CharacterSpineActionController::actionUnavailable,
+		this, [](const QString &, ActionType) {});
 
 	pausing_item = new QGraphicsRectItem;
 	pausing_text = new QGraphicsSimpleTextItem(tr("Paused ..."));
@@ -456,6 +465,14 @@ RoomScene::~RoomScene()
 {
 	/*if(RoomSceneInstance==this)
 		RoomSceneInstance = nullptr;*/
+
+	// Explicitly destroy the spine controller BEFORE the scene tears down its
+	// child QGraphicsItems.  Otherwise the controller's destructor tries to
+	// remove items from a half-destroyed scene, causing stack corruption.
+	if (_spineActionController) {
+		delete _spineActionController;
+		_spineActionController = nullptr;
+	}
 }
 
 void RoomScene::handleGameEvent(const QVariant&args)
@@ -668,6 +685,22 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		}
 		if(player->getMark("secondMode")>0&&player->getGeneralName()=="shenlvbu1"&&(newHeroName.startsWith("shenlvbu")))
 			Sanguosha->playSystemAudioEffect("stagechange");
+
+		// ── Spine pop-out: register dynamic skin for the NEW hero ──
+		// This is the deferred activation path: if the new hero has a
+		// dynamic skin entry in JSON, register + preload + entrance now.
+		if (_spineActionController && player) {
+			bool isPrimary = !isSecondaryHero;
+			registerDynamicSkinForPlayer(player->objectName(), newHeroName, isPrimary);
+			if (_spineActionController->hasDynamicSkin(newHeroName)) {
+				_spineActionController->preloadPlayer(player->objectName());
+				bool isLocal = (player == Self);
+				_spineActionController->triggerAction(
+					player->objectName(), ActionType::Entrance,
+					QList<QPointF>(), isLocal);
+			}
+		}
+
 		if(player!=Self) break;
 		const General*ghero = isSecondaryHero ? player->getGeneral2() : player->getGeneral();
 		if(ghero){
@@ -1885,6 +1918,7 @@ QGroupBox*RoomScene::createOptionBox(const QString&skillName,const QStringList&o
 
 		const Skill*s = Sanguosha->getSkill(option);
 		if(s){
+			QMutexLocker locker(&Sanguosha->getLuaMutex());
 			button->setToolTip(s->getDescription(Self));
 		}else{
 			QString original_tooltip = QString(":%1").arg(text);
@@ -4041,7 +4075,7 @@ void RoomScene::killPlayer(const QString&who)
 	if(Config.EnableEffects&&Config.EnableLastWord&&!Self->hasFlag("marshalling"))
 		general->lastWord();
 
-	// ── Spine pop-out: mark player dead → cancels any running action ──
+	// ── Spine pop-out: mark player dead → fade out any running action ──
 	if (_spineActionController)
 		_spineActionController->setPlayerAlive(who, false);
 }
@@ -4060,9 +4094,15 @@ void RoomScene::revivePlayer(const QString&who)
 		//photo->updateAvatarTooltip();
 	}
 
-	// ── Spine pop-out: revive → allow actions again ──
-	if (_spineActionController)
+	// ── Spine pop-out: revive → allow actions again + trigger entrance ──
+	if (_spineActionController) {
+		qWarning("[RoomScene] revivePlayer '%s': marking alive + triggering entrance", qPrintable(who));
 		_spineActionController->setPlayerAlive(who, true);
+		// Trigger entrance animation as a visual revival effect
+		bool isLocal = (who == Self->objectName());
+		_spineActionController->triggerAction(who, ActionType::Entrance,
+		                                      QList<QPointF>(), isLocal);
+	}
 }
 
 void RoomScene::takeAmazingGrace(ClientPlayer*taker,int card_id,bool move_cards)
@@ -4158,7 +4198,10 @@ void RoomScene::updateSkill(const QString&skill_name)
 {
 	foreach(QSanSkillButton*button,m_skillButtons){
 		if(button->getSkill()->objectName()==skill_name)
+		{
+			QMutexLocker locker(&Sanguosha->getLuaMutex());
 			button->setToolTip(button->getSkill()->getDescription(Self));
+		}
 	}/*
 	bool effectMark = false;
 	QString effectMarkName = "ViewAsSkill_"+skill_name+"Effect";// Be care!! Before using RoomScene::detachSkill to remove the skill button,we should guarentee this mark doesn't exist
@@ -4383,24 +4426,40 @@ void RoomScene::onGameStart()
 	game_started = true;
 
 	// ── Spine pop-out: register skins + preload once game starts ──
+	// Only register and preload for players that actually have dynamic skins
+	// in the JSON config. Players without skins pay zero cost.
 	registerDynamicSkinsForAllPlayers();
 	updateSpineSeatGeometry();
-	// Preload all registered player skins in the background
+	// Preload only players that got at least one skin registered
 	if (_spineActionController) {
 		foreach (Photo *photo, photos) {
 			const ClientPlayer *p = photo->getPlayer();
-			if (p) _spineActionController->preloadPlayer(p->objectName());
+			if (!p) continue;
+			const General *g = p->getGeneral();
+			if (g && _spineActionController->hasDynamicSkin(g->objectName()))
+				_spineActionController->preloadPlayer(p->objectName());
 		}
-		if (Self) _spineActionController->preloadPlayer(Self->objectName());
+		if (Self) {
+			const General *g = Self->getGeneral();
+			if (g && _spineActionController->hasDynamicSkin(g->objectName()))
+				_spineActionController->preloadPlayer(Self->objectName());
+		}
 
-		// Trigger entrance animations for all players with entrance action
+		// Trigger entrance animations only for players with an entrance action
 		foreach (Photo *photo, photos) {
 			const ClientPlayer *p = photo->getPlayer();
-			if (p) _spineActionController->triggerAction(
-				p->objectName(), ActionType::Entrance);
+			if (!p) continue;
+			const General *g = p->getGeneral();
+			if (g && _spineActionController->hasDynamicSkin(g->objectName()))
+				_spineActionController->triggerAction(
+					p->objectName(), ActionType::Entrance);
 		}
-		if (Self) _spineActionController->triggerAction(
-			Self->objectName(), ActionType::Entrance, QList<QPointF>(), true);
+		if (Self) {
+			const General *g = Self->getGeneral();
+			if (g && _spineActionController->hasDynamicSkin(g->objectName()))
+				_spineActionController->triggerAction(
+					Self->objectName(), ActionType::Entrance, QList<QPointF>(), true);
+		}
 	}
 
 	// for tablebg change
@@ -5686,21 +5745,24 @@ void RoomScene::registerDynamicSkinForPlayer(const QString &playerName,
                                               const QString &generalName,
                                               bool isPrimary)
 {
-	if (!_spineActionController || generalName.isEmpty()) return;
-	if (!_spineActionController->hasDynamicSkin(generalName)) return;
+	if (!_spineActionController || generalName.isEmpty())
+		return;
+	if (!_spineActionController->hasDynamicSkin(generalName))
+		return;
 
 	QString skinName = _spineActionController->defaultSkinNameForGeneral(generalName);
-	if (skinName.isEmpty()) return;
+	if (skinName.isEmpty())
+		return;
 
 	SkinConfig config;
-	if (!_spineActionController->buildSkinConfigForGeneral(generalName, skinName, config))
+	if (!_spineActionController->buildSkinConfigForGeneral(generalName, skinName, config)) {
+		qWarning("[RoomScene] buildSkinConfig FAILED: '%s'/'%s'",
+		         qPrintable(generalName), qPrintable(skinName));
 		return;
+	}
 
 	QString skinId = generalName + "/" + skinName;
 	_spineActionController->registerSkin(playerName, skinId, config, isPrimary);
-
-	qWarning("[RoomScene] Registered dynamic skin '%s' for player %s (primary=%d)",
-	         qPrintable(skinId), qPrintable(playerName), (int)isPrimary);
 }
 
 void RoomScene::registerDynamicSkinsForAllPlayers()
@@ -5710,8 +5772,8 @@ void RoomScene::registerDynamicSkinsForAllPlayers()
 	// Dashboard (self)
 	if (Self) {
 		const General *g1 = Self->getGeneral();
-		if (g1) registerDynamicSkinForPlayer(Self->objectName(), g1->objectName(), true);
 		const General *g2 = Self->getGeneral2();
+		if (g1) registerDynamicSkinForPlayer(Self->objectName(), g1->objectName(), true);
 		if (g2) registerDynamicSkinForPlayer(Self->objectName(), g2->objectName(), false);
 	}
 
@@ -5720,8 +5782,8 @@ void RoomScene::registerDynamicSkinsForAllPlayers()
 		const ClientPlayer *player = photo->getPlayer();
 		if (!player) continue;
 		const General *g1 = player->getGeneral();
-		if (g1) registerDynamicSkinForPlayer(player->objectName(), g1->objectName(), true);
 		const General *g2 = player->getGeneral2();
+		if (g1) registerDynamicSkinForPlayer(player->objectName(), g1->objectName(), true);
 		if (g2) registerDynamicSkinForPlayer(player->objectName(), g2->objectName(), false);
 	}
 }
@@ -5730,18 +5792,24 @@ void RoomScene::updateSpineSeatGeometry()
 {
 	if (!_spineActionController) return;
 
-	// Dashboard (self) seat geometry
+	// Dashboard (self) — use the avatar area (right frame), not the entire dashboard
 	if (Self && dashboard) {
-		QRectF rect = dashboard->sceneBoundingRect();
+		QRectF rect = dashboard->getAvatarAreaSceneBoundingRect();
 		_spineActionController->updateSeatGeometry(
 			Self->objectName(), rect.topLeft(), rect.size());
 	}
 
-	// Photo players
+	// Photo players — use the avatar icon rect if available, else photo rect
 	foreach (Photo *photo, photos) {
 		const ClientPlayer *player = photo->getPlayer();
 		if (!player) continue;
-		QRectF rect = photo->sceneBoundingRect();
+		QRectF rect;
+		GraphicsPixmapHoverItem *avatarIcon = photo->getAvartarItem();
+		if (avatarIcon) {
+			rect = avatarIcon->sceneBoundingRect();
+		} else {
+			rect = photo->sceneBoundingRect();
+		}
 		_spineActionController->updateSeatGeometry(
 			player->objectName(), rect.topLeft(), rect.size());
 	}

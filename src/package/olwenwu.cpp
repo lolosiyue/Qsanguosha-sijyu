@@ -392,7 +392,7 @@ public:
 				target_names << p->objectName();
 				num++;
 			}
-			player->setProperty("jinqingleng_targets", target_names);
+			room->safeSetPlayerProperty(player,"jinqingleng_targets", target_names);
 			if (num > 0) {
 				room->sendCompulsoryTriggerLog(player, objectName(), true, true);
 				player->drawCards(num, objectName());

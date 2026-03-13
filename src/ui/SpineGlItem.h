@@ -106,9 +106,51 @@ public:
     float spineScale() const { return _spineScale; }
 
     void setSpinePosition(const QPointF &pos);
+    QPointF spinePosition() const { return _spinePos; }
 
     /// Fit animation to fill the scene.
     void fitToScene();
+
+    // ─── Tween / Motion ─────────────────────────────────────────
+    /// Smoothly move the spine position to `target` over `durationMs` milliseconds.
+    void moveTo(const QPointF &target, int durationMs);
+
+    /// Smoothly scale the spine to `targetScale` over `durationMs` milliseconds.
+    void scaleTo(float targetScale, int durationMs);
+
+    /// Smoothly change opacity to `targetOpacity` (0.0–1.0) over `durationMs` milliseconds.
+    void fadeTo(qreal targetOpacity, int durationMs);
+
+    /// Set opacity (0.0–1.0) immediately.
+    void setSpineOpacity(qreal opacity);
+    qreal spineOpacity() const { return _opacity; }
+
+    /// Whether any tween (move/scale/fade) is currently active.
+    bool isTweening() const;
+
+    /// Cancel all active tweens.
+    void cancelTweens();
+
+    /// Mirror the skeleton horizontally.
+    void setFlipX(bool flip);
+    bool flipX() const { return _flipX; }
+
+    // ─── Animation list query ───────────────────────────────────
+    /// Describes one animation track found in the skeleton data.
+    struct AnimationInfo {
+        QString name;
+        float   duration; // seconds
+    };
+
+    /// Return cached list of all animation names and durations.
+    /// Available after a successful loadSpine / loadSpineFiles.
+    QList<AnimationInfo> availableAnimations() const { return _cachedAnimations; }
+
+    /// Find a specific animation by name (returns nullptr-equivalent if not found).
+    bool hasAnimation(const QString &name) const;
+
+    /// Lookup duration of an animation by name, returns -1 if not found.
+    float animationDurationByName(const QString &name) const;
 
     // ─── QGraphicsItem overrides ────────────────────────────────
     QRectF boundingRect() const override;
@@ -127,6 +169,9 @@ signals:
     /// Emitted when loading fails.
     void loadError(const QString &error);
 
+    /// Emitted when all tweens finish.
+    void tweenFinished();
+
 private slots:
     void onTimer();
 
@@ -135,6 +180,8 @@ private:
     void cleanupGL();
     void renderSpine(QPainter *painter);
     void updateSkeleton(float deltaSeconds);
+    void updateTweens(float deltaSeconds);
+    void buildAnimationCache();
 
     // ─── Spine data ─────────────────────────────────────────────
     std::unique_ptr<QtSpineTextureLoader> _textureLoader;
@@ -148,7 +195,10 @@ private:
     // ─── GL resources ───────────────────────────────────────────
     QOpenGLShaderProgram *_shader;
     QOpenGLBuffer         _vbo;
+    QOpenGLBuffer         _ibo;           ///< Index buffer object (ElementArray)
     bool                  _glInitialized;
+    int                   _vboCapacity;   ///< Current VBO allocation in vertex count
+    int                   _iboCapacity;   ///< Current IBO allocation in index count
 
     // ─── State ──────────────────────────────────────────────────
     QRectF          _renderRect;
@@ -161,6 +211,31 @@ private:
     float           _lastTime;
     QString         _pendingAnim;
     QString         _runtimeVersionHint;
+    qreal           _opacity;
+    bool            _flipX;
+
+    // ─── Tween state ────────────────────────────────────────────
+    struct Tween {
+        bool   active;
+        float  elapsed;
+        float  duration;     // seconds
+        // Move
+        QPointF startPos, endPos;
+        // Scale
+        float   startScale, endScale;
+        // Opacity
+        qreal   startOpacity, endOpacity;
+        Tween() : active(false), elapsed(0), duration(0),
+                  startScale(1), endScale(1),
+                  startOpacity(1), endOpacity(1) {}
+    };
+    Tween _tweenMove;
+    Tween _tweenScale;
+    Tween _tweenFade;
+
+    // ─── Animation cache ────────────────────────────────────────
+    QList<AnimationInfo> _cachedAnimations;
+    QHash<QString, float> _animDurationMap;
 
     // ─── Vertex buffer data ─────────────────────────────────────
     struct Vertex {
@@ -170,6 +245,8 @@ private:
     };
     QVector<Vertex> _vertices;
     QVector<GLuint> _indices;
+    int _vertexCount;   ///< Actual vertex count this frame (avoids clear+append)
+    int _indexCount;    ///< Actual index count this frame
 };
 
 #endif // SPINE_GL_ITEM_H

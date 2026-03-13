@@ -426,6 +426,7 @@ QString LuaAI::askForUseCard(const QString &pattern, const QString &prompt, cons
     if (callback == 0)
         return TrustAI::askForUseCard(pattern, prompt, method);
 
+    QMutexLocker locker(&Sanguosha->getLuaMutex());
     lua_State*L = room->getLuaState();
 
     pushCallback(L, __FUNCTION__);
@@ -446,6 +447,7 @@ QString LuaAI::askForUseCard(const QString &pattern, const QString &prompt, cons
 
 QList<int> LuaAI::askForDiscard(const QString &reason, int discard_num, int min_num, bool optional, bool include_equip, const QString &pattern)
 {
+    QMutexLocker locker(&Sanguosha->getLuaMutex());
     lua_State*L = room->getLuaState();
 
     pushCallback(L, __FUNCTION__);
@@ -486,6 +488,7 @@ bool LuaAI::getTable(lua_State*L, QList<int> &table)
 
 int LuaAI::askForAG(const QList<int> &card_ids, bool refusable, const QString &reason)
 {
+    QMutexLocker locker(&Sanguosha->getLuaMutex());
     lua_State*L = room->getLuaState();
 
     pushCallback(L, __FUNCTION__);
@@ -526,6 +529,7 @@ void LuaAI::pushQIntList(lua_State*L, const QList<int> &list)
 
 void LuaAI::askForGuanxing(const QList<int> &cards, QList<int> &up, QList<int> &bottom, int guanxing_type)
 {
+    QMutexLocker locker(&Sanguosha->getLuaMutex());
     lua_State*L = room->getLuaState();
 
     pushCallback(L, __FUNCTION__);

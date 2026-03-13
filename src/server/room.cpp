@@ -430,8 +430,15 @@ void Room::killPlayer(ServerPlayer*victim, DamageStruct*reason, HpLostStruct*hpl
 			if (continue_list.contains(Config.GameMode))
 				return;
 
-			if (Config.AlterAIDelayAD)
+			if (Config.AlterAIDelayAD) {
 				Config.AIDelay = Config.AIDelayAD;
+				// Keep the same player-count scaling applied at game start.
+				if (Config.AIDelay > 0) {
+					int n = m_players.length();
+					if (n > 10)
+						Config.AIDelay = qMax(Config.AIDelay * 8 / n, 100);
+				}
+			}
 			if (victim->isOnline()&&Config.SurrenderAtDeath&&mode != "02_1v1"
 				&&mode != "06_XMode"&&askForSkillInvoke(victim, "surrender", "yes", false))
 				makeSurrender(victim);
@@ -3219,6 +3226,13 @@ void Room::run()
 	qsrand(QTime(0, 0, 0).secsTo(QTime::currentTime()));
 	AIHumanized = Config.value("AIHumanized", true).toBool();
 	Config.AIDelay = Config.OriginAIDelay;
+	// Scale AIDelay down for large player counts (>8) to reduce lag in 20-player games.
+	// Formula: delay * 8 / playerCount, minimum 100 ms.
+	if (Config.AIDelay > 0) {
+		int n = m_players.length();
+		if (n > 8)
+			Config.AIDelay = qMax(Config.AIDelay * 8 / n, 100);
+	}
 
 	foreach(ServerPlayer*player, m_players){
 		//Ensure that the game starts with all player's mutex locked

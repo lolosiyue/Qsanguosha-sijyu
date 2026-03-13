@@ -2821,7 +2821,7 @@ public:
 			QStringList botu_str = player->property("olbotu_suit").toStringList();
 			if (botu_str.contains(suit)) return false;
 			botu_str << suit;
-			player->setProperty("olbotu_suit", botu_str);
+			room->safeSetPlayerProperty(player,"olbotu_suit", botu_str);
 
 			if (player->hasSkill("olbotu", true)){
 				foreach (QString m, player->getMarkNames()) {
@@ -3501,7 +3501,7 @@ public:
 		if (records.contains(hand)) return false;
 		bool empty = records.isEmpty();
 		records << hand;
-		player->setProperty("SkillDescriptionRecord_olqiaobian", records);
+		room->safeSetPlayerProperty(player,"SkillDescriptionRecord_olqiaobian", records);
 		player->setSkillDescriptionSwap("olqiaobian","%arg11",records.join(","));
 		room->changeTranslation(player, "olqiaobian", 1);
 		if (!empty && player->hasSkill("olqiaobian")) {

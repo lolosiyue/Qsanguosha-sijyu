@@ -1110,7 +1110,7 @@ public:
 				list << tocard->toString();
 				room->setPlayerCardLimitation(player, "use,response", tocard->toString(), true);
 			}
-			player->setProperty("funan_limitlist", list);
+			room->safeSetPlayerProperty(player,"funan_limitlist", list);
 			player->obtainCard(tocard, true);
 			if (room->getCardOwner(card->getEffectiveId())||who->isDead()) return false;
 		}
@@ -1145,7 +1145,7 @@ public:
 		foreach(ServerPlayer *p, room->getPlayers()) {
 			foreach (QString str, p->property("funan_limitlist").toStringList())
 				room->removePlayerCardLimitation(p, "use,response", str + "$1");
-			p->setProperty("funan_limitlist", QVariant());
+			room->safeSetPlayerProperty(p,"funan_limitlist", QVariant());
 		}
 		return false;
 	}
@@ -1189,7 +1189,7 @@ public:
 				room->sendLog(log);
 			}
 			room->setPlayerMark(player, "&funan", 1);
-			player->setProperty("funan_level_up", true);
+			room->safeSetPlayerProperty(player,"funan_level_up", true);
 			room->changeTranslation(player,"funan", 2);
 		}
 		return false;
