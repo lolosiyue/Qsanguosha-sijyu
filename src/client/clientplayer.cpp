@@ -218,8 +218,11 @@ QString ClientPlayer::getDeathPixmapPath() const
 			basename = "guard";
 	}
 
-	if (ServerInfo.EnableHegemony||property("RestPlayer").toBool())
+	if (ServerInfo.EnableHegemony)
 		basename = "unknown";
+
+	if (property("RestPlayer").toBool())
+		basename = "rest";
 
 	return QString("image/system/death/%1.png").arg(basename);
 }

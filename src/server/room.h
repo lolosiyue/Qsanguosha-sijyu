@@ -68,6 +68,11 @@ public:
     ServerPlayer*getCardUser(const Card*card) const;
     void killPlayer(ServerPlayer*victim, DamageStruct*reason = nullptr, HpLostStruct*hplost = nullptr);
     void revivePlayer(ServerPlayer*player, bool sendlog = true, bool throw_mark = true, bool visible_only = false);
+    void restPlayer(ServerPlayer*player, const QString&reason = QString(), bool discard_cards = false);
+    void directRestPlayer(ServerPlayer*player, const QString&reason = QString(), bool discard_cards = false);
+    void unrestPlayer(ServerPlayer*player, bool restore_full_hp = true);
+    bool isRest(ServerPlayer*player) const;
+    QList<ServerPlayer*> getRestPlayers() const;
     QStringList aliveRoles(ServerPlayer*except = nullptr) const;
     void gameOver(const QString&winner);
     void slashEffect(const SlashEffectStruct&effect);

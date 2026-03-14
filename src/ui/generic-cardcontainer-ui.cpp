@@ -407,19 +407,19 @@ void PlayerCardContainer::updateMark(const QString &mark_name, int mark_num)
 				else if (name.endsWith("_lun"))
 					dest.remove("_lun");
             }else if (name.startsWith("arg:")) {
-				arg = name.mid(1);
+                arg = name.mid(QString("arg:").length());
 				if (name.endsWith("Clear") || name.endsWith("-Keep"))
 					arg = arg.split("-").first();
 				else if (name.endsWith("_lun"))
 					arg.remove("_lun");
             }else if (name.startsWith("arg2:")) {
-				arg2 = name.mid(1);
+                arg2 = name.mid(QString("arg2:").length());
 				if (name.endsWith("Clear") || name.endsWith("-Keep"))
 					arg2 = arg2.split("-").first();
 				else if (name.endsWith("_lun"))
 					arg2.remove("_lun");
             }else if (name.startsWith("arg3:")) {
-				arg3 = name.mid(1);
+                arg3 = name.mid(QString("arg3:").length());
 				if (name.endsWith("Clear") || name.endsWith("-Keep"))
 					arg3 = arg3.split("-").first();
 				else if (name.endsWith("_lun"))
@@ -1347,10 +1347,12 @@ void PlayerCardContainer::killPlayer()
     //_m_saveMeIcon->hide();
     if (_m_votesItem) _m_votesItem->hide();
     if (_m_distanceItem) _m_distanceItem->hide();
-    QGraphicsColorizeEffect *effect = new QGraphicsColorizeEffect();
-    effect->setColor(_m_layout->m_deathEffectColor);
-    effect->setStrength(1.0);
-    _m_groupMain->setGraphicsEffect(effect);
+    if (!m_player->property("RestPlayer").toBool()) {
+        QGraphicsColorizeEffect *effect = new QGraphicsColorizeEffect();
+        effect->setColor(_m_layout->m_deathEffectColor);
+        effect->setStrength(1.0);
+        _m_groupMain->setGraphicsEffect(effect);
+    }
     refresh(true);
     if (ServerInfo.GameMode == "04_1v3" && !m_player->isLord()) {
         _m_deathIcon->hide();

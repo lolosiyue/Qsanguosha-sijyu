@@ -847,27 +847,25 @@ public:
 			if(death.who==player&&player->getMaxHp()>0&&player->hasSkill(objectName())
 				&&!player->tag["ChangshiCards"].toStringList().isEmpty()){
 				room->sendCompulsoryTriggerLog(player,this);
-				room->setPlayerProperty(player,"RestPlayer",true);
-				room->broadcastProperty(player, "alive");
+				room->restPlayer(player, objectName(), true);
 				QString csai = player->property("avatarIcon").toString();
 				if(!csai.isEmpty()) player->setAvatarIcon(csai+"2");
 				csai = player->property("avatarIcon2").toString();
 				if(!csai.isEmpty()) player->setAvatarIcon(csai+"2",true);
-				room->doBroadcastNotify(QSanProtocol::S_COMMAND_KILL_PLAYER, player->objectName());
-				player->detachAllSkills();
 				player->tag["RestTurn"] = room->getTag("TurnLengthCount");
-				player->throwAllCards();
+				player->tag["MowangRestActive"] = true;
 				return true;
 			}
 		} else if (triggerEvent == EventPhaseStart) {
-			if (player->getPhase() != Player::NotActive) return false;
-			foreach (ServerPlayer *p, room->getOtherPlayers(player,true)) {
-				if(p->isAlive()) break;
-				if(p->property("RestPlayer").toBool()&&p->tag["RestTurn"].toInt()<room->getTag("TurnLengthCount").toInt()){
-					room->setPlayerProperty(p,"RestPlayer",false);
+			if (player->getPhase() != Player::RoundStart) return false;
+			foreach (ServerPlayer *p, room->getAllPlayers(true)) {
+				if (!p->property("RestPlayer").toBool()) continue;
+				if (!p->tag["MowangRestActive"].toBool()) continue;
+				if (p->tag["RestTurn"].toInt() < room->getTag("TurnLengthCount").toInt()) {
 					room->sendCompulsoryTriggerLog(p,this);
-					room->revivePlayer(p);
-					room->setPlayerProperty(p,"hp",p->getMaxHp());
+					room->unrestPlayer(p, true);
+					p->tag.remove("MowangRestActive");
+					p->tag.remove("RestTurn");
 					break;
 				}
 			}

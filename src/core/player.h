@@ -123,6 +123,7 @@ public:
 
     bool isAlive() const;
     bool isDead() const;
+    bool isRest() const;
     void setAlive(bool alive);
 
     QString getFlags() const;
@@ -320,6 +321,9 @@ public:
     bool setProperty(const char* name, const QVariant& value);
 
     static bool isNostalGeneral(const Player *p, const QString &general_name);
+    
+    bool hasLordSkillKingdom(const QString &kingdom) const;
+
 
 protected:
     QMap<QString, int> marks;
