@@ -281,10 +281,12 @@ void Dashboard::killPlayer()
     _m_saveMeIcon->hide();
     if (_m_votesItem) _m_votesItem->hide();
     if (_m_distanceItem) _m_distanceItem->hide();
-    QGraphicsColorizeEffect *effect = new QGraphicsColorizeEffect();
-    effect->setColor(_m_layout->m_deathEffectColor);
-    effect->setStrength(1.0);
-    setGraphicsEffect(effect);
+    if (!m_player->property("RestPlayer").toBool()) {
+        QGraphicsColorizeEffect *effect = new QGraphicsColorizeEffect();
+        effect->setColor(_m_layout->m_deathEffectColor);
+        effect->setStrength(1.0);
+        setGraphicsEffect(effect);
+    }
     refresh(true);
 	_m_deathIcon->show();
     if (ServerInfo.GameMode == "04_1v3" && !m_player->isLord()) {

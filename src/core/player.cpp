@@ -172,6 +172,11 @@ bool Player::isDead() const
     return !alive;
 }
 
+bool Player::isRest() const
+{
+    return property("RestPlayer").toBool();
+}
+
 void Player::setAlive(bool alive)
 {
     this->alive = alive;
@@ -1905,5 +1910,33 @@ bool Player::setProperty(const char* name, const QVariant& value) {
 }
 
 
+/**
+ * 檢查玩家是否符合特定的主公技勢力要求
+ * @param player 玩家對象指針
+ * @param targetKingdom 目標勢力代碼 (例如 "qun", "wei", "shu")
+ */
+bool Player::hasLordSkillKingdom(const QString& targetKingdom, const Player *player) const {
+    // 1. 優先檢查：如果玩家本國勢力直接符合，無需檢查屬性
+    if (this->getKingdom() == targetKingdom) {
+        return true;
+    }
 
+    // 2. 獲取特殊屬性
+    const QString lordskill_kingdom = this->property("lordskill_kingdom").toString();
+    
+    // 3. 如果屬性為空，且第1步已失敗，則返回 false
+    if (lordskill_kingdom.isEmpty()) {
+        return false;
+    }
+
+    // 4. 解析屬性：檢查是否包含目標勢力或 "all"
+    const QStringList kingdoms = lordskill_kingdom.split('+');
+    if (player) {
+        // 如果提供了目標玩家，還可以檢查目標玩家是否符合要求
+        if (kingdoms.contains(player->objectName())) {
+            return true;
+        }
+    }
+    return kingdoms.contains(targetKingdom) || kingdoms.contains("all");
+}
 

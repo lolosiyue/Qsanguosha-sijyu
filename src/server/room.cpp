@@ -163,6 +163,116 @@ QList<ServerPlayer*> Room::getAllPlayers(bool include_dead) const
 	return all_players;
 }
 
+void Room::restPlayer(ServerPlayer *player, const QString &reason, bool discard_cards)
+{
+	if (!player)
+		return;
+
+	setPlayerProperty(player, "RestPlayer", true);
+
+	if (!reason.isEmpty())
+		player->tag["RestReason"] = reason;
+
+	QStringList skillNames;
+	foreach (const Skill *skill, player->getVisibleSkillList())
+		skillNames << skill->objectName();
+	player->tag["RestPlayerSkills"] = skillNames;
+
+	if (discard_cards && !player->isKongcheng())
+		player->throwAllCards(reason);
+
+	broadcastProperty(player, "alive");
+	doBroadcastNotify(QSanProtocol::S_COMMAND_KILL_PLAYER, QVariant(player->objectName()));
+
+	player->detachAllSkills();
+
+	foreach (ServerPlayer *p, getAllPlayers(true)) {
+		if (p->getAI())
+			resetAI(p);
+	}
+}
+
+void Room::directRestPlayer(ServerPlayer *player, const QString &reason, bool discard_cards)
+{
+	if (!player)
+		return;
+
+	player->setAlive(false);
+
+	int n = m_alivePlayers.indexOf(player) + 1;
+	for (int i = n; i < m_alivePlayers.length(); i++) {
+		m_alivePlayers[i]->setSeat(m_alivePlayers[i]->getSeat() - 1);
+		broadcastProperty(m_alivePlayers[i], "seat");
+	}
+
+	m_alivePlayers.removeOne(player);
+
+	setPlayerProperty(player, "RestPlayer", true);
+
+	if (!reason.isEmpty())
+		player->tag["RestReason"] = reason;
+
+	QStringList skillNames;
+	foreach (const Skill *skill, player->getVisibleSkillList())
+		skillNames << skill->objectName();
+	player->tag["RestPlayerSkills"] = skillNames;
+
+	if (discard_cards && !player->isKongcheng())
+		player->throwAllCards(reason);
+
+	broadcastProperty(player, "alive");
+	doBroadcastNotify(QSanProtocol::S_COMMAND_KILL_PLAYER, QVariant(player->objectName()));
+
+	player->detachAllSkills();
+	updateStateItem();
+
+	foreach (ServerPlayer *p, getAllPlayers(true)) {
+		if (p->getAI())
+			resetAI(p);
+	}
+}
+
+void Room::unrestPlayer(ServerPlayer *player, bool restore_full_hp)
+{
+	if (!player)
+		return;
+
+	setPlayerProperty(player, "RestPlayer", false);
+	player->tag.remove("RestReason");
+
+	revivePlayer(player);
+
+	QStringList skillNames = player->tag["RestPlayerSkills"].toStringList();
+	foreach (const QString &skillName, skillNames)
+		acquireSkill(player, skillName);
+	player->tag.remove("RestPlayerSkills");
+
+	if (restore_full_hp)
+		setPlayerProperty(player, "hp", player->getMaxHp());
+
+	foreach (ServerPlayer *p, getAllPlayers(true)) {
+		if (p->getAI())
+			resetAI(p);
+	}
+}
+
+bool Room::isRest(ServerPlayer *player) const
+{
+	if (!player)
+		return false;
+
+	return player->property("RestPlayer").toBool();
+}
+
+QList<ServerPlayer *> Room::getRestPlayers() const
+{
+	QList<ServerPlayer *> restPlayers;
+	foreach (ServerPlayer *player, getAllPlayers(true)) {
+		if (isRest(player))
+			restPlayers << player;
+	}
+	return restPlayers;
+}
 QList<ServerPlayer*> Room::getOtherPlayers(ServerPlayer*except, bool include_dead) const
 {
 	QList<ServerPlayer*> other_players = getAllPlayers(include_dead);	
