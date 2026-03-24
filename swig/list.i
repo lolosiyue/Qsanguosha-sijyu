@@ -38,3 +38,4 @@ public:
 %template(PlaceList) QList<Player::Place>;
 %template(PhaseList) QList<Player::Phase>;
 %template(GeneralList) QList<const General *>;
+%template(EquipCardList) QList<const EquipCard *>;
