@@ -61,6 +61,11 @@ public:
     QList<ServerPlayer*> getPlayers() const;
     QList<ServerPlayer*> getAllPlayers(bool include_dead = false) const;
     QList<ServerPlayer*> getAlivePlayers() const;
+    QList<ServerPlayer *> getPathBetween(ServerPlayer *from, ServerPlayer *to, bool include_from = false, bool include_to = false) const;
+    QList<ServerPlayer *> getClockwisePath(ServerPlayer *from, ServerPlayer *to, bool include_from = false, bool include_to = false) const;
+    QList<ServerPlayer *> getCounterclockwisePath(ServerPlayer *from, ServerPlayer *to, bool include_from = false, bool include_to = false) const;
+    void reversePlayOrder();
+    bool isPlayOrderReversed() const;
     void output(const QString&message);
     void outputEventStack();
     void enterDying(ServerPlayer*player, DamageStruct*reason, HpLostStruct*hplost = nullptr);
@@ -334,8 +339,10 @@ public:
     void removeTag(const QString&key);
 
     void setEmotion(ServerPlayer*target, const QString&emotion);
+    void setLoopEmotion(ServerPlayer*target, const QString&emotion);
 
     void changeTableBg(const QString&tableBg);
+    void changeBackground(const QString name, QList<ServerPlayer *> players = QList<ServerPlayer *>());
 
     Player::Place getCardPlace(int card_id) const;
     ServerPlayer*getCardOwner(int card_id) const;
@@ -358,6 +365,13 @@ public:
     void throwCard(const Card*card, const QString&skill_name, ServerPlayer*who, ServerPlayer*thrower = nullptr);
     void throwCard(QList<int> card_ids, const QString&skill_name, ServerPlayer*who, ServerPlayer*thrower = nullptr);
     void throwCard(QList<int> card_ids, const CardMoveReason&reason, ServerPlayer*who, ServerPlayer*thrower = nullptr);
+
+    void recastCard(ServerPlayer *player, const Card *card, const QString &skill_name = QString());
+    void recastCard(ServerPlayer *player, int card_id, const QString &skill_name = QString());
+    void recastCards(ServerPlayer *player, const QList<int> &card_ids, const QString &skill_name = QString());
+    void recastCardWithDraw(ServerPlayer *player, const Card *card, int draw_count, const QString &skill_name = QString());
+    void recastCardWithDraw(ServerPlayer *player, int card_id, int draw_count, const QString &skill_name = QString());
+    void recastCardsWithDraw(ServerPlayer *player, const QList<int> &card_ids, int draw_count, const QString &skill_name = QString());
 
     void moveCardTo(const Card*card, ServerPlayer*dstPlayer, Player::Place dstPlace, bool visible = false, bool guanxin = false);
     void moveCardTo(const Card*card, ServerPlayer*dstPlayer, Player::Place dstPlace, const CardMoveReason&reason,
@@ -492,6 +506,7 @@ public:
     void notifyMoveToPile(ServerPlayer*player, const QList<int>&cards, const QString&reason, Player::Place place = Player::PlaceUnknown, bool in = true, bool visible = true);
     QString ZhizheCardViewAsEquip(const Card*card);
     void notifyWeaponRange(const QString&weapon_name, int range = 1);
+    void updateCardDescription(const QString &card_name, const QVariantMap &placeholders);
 
     inline RoomState*getRoomState()
     {
@@ -671,6 +686,7 @@ private:
 
     bool m_surrenderRequestReceived;
     bool _virtual;
+    bool m_playOrderReversed;
     RoomState _m_roomState;
 
     JsonArray m_fillAGarg;

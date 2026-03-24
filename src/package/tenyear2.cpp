@@ -2110,7 +2110,7 @@ QAbstractButton*PingjianDialog::createSkillButton(const QString&skill_name)
 	QCommandLinkButton*button = new QCommandLinkButton(Sanguosha->translate(skill_name));
 	button->setObjectName(skill_name);
 	if(skill){
-		QMutexLocker locker(&Sanguosha->getLuaMutex());
+		LuaLocker locker;
 		button->setToolTip(skill->getDescription());
 	}
 	group->addButton(button);
@@ -21135,7 +21135,7 @@ public:
 		} else {
 			DamageStruct damage = data.value<DamageStruct>();
 			if(!damage.card || !damage.card->isKindOf("Slash")|| damage.to->isDead())return false;
-			//int n = damage.card->tag["XiliDamage"].toInt(); //ai����ʱ�޷���ȡ���tag
+			//int n = damage.card->tag["XiliDamage"].toInt(); //ai运行时无法获取这个tag
 			int n = room->getTag("XiliDamage" + damage.card->toString()).toInt();
 			if(n <= 0)return false;
 			damage.damage += n;

@@ -20,7 +20,7 @@ RoleAssignDialog::RoleAssignDialog(QWidget *parent)
     list->setFlow(QListView::TopToBottom);
     list->setMovement(QListView::Static);
 
-    QStringList role_list = Sanguosha->getRoleList(Config.GameMode);
+    QStringList role_list = Sanguosha->getRoleList(Config.GameMode.mode_id);
 
     if (Config.FreeAssignSelf) {
         QString text = QString("%1[%2]").arg(Self->screenName()).arg(Sanguosha->translate(role_list.first()));
@@ -44,7 +44,7 @@ RoleAssignDialog::RoleAssignDialog(QWidget *parent)
     QVBoxLayout *vlayout = new QVBoxLayout;
 
     role_ComboBox = new QComboBox;/*
-	QString roles = Sanguosha->getRoles(Config.GameMode);
+	QString roles = Sanguosha->getRoles(Config.GameMode.mode_id);
 	if (roles.contains("Z"))
 		role_ComboBox->addItem(tr("Lord"), "lord");
 	if (roles.contains("C"))
@@ -91,7 +91,7 @@ RoleAssignDialog::RoleAssignDialog(QWidget *parent)
 
 void RoleAssignDialog::accept()
 {
-    QStringList real_list,role_list = Sanguosha->getRoleList(Config.GameMode);
+    QStringList real_list,role_list = Sanguosha->getRoleList(Config.GameMode.mode_id);
 
     QList<QString> roles,names;
     if (Config.FreeAssignSelf) {

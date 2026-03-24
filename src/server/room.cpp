@@ -41,9 +41,12 @@ Room::Room(QObject*parent, const QString&mode)
 
 	initCallbacks();
 
-	if (_m_Id<1&&!DoLuaScript(m_lua, "lua/ai/smart-ai.lua")){
-		QMessageBox::warning(nullptr, "", "LuaAI加载失败，程序将无法进行AI操作");
-		m_lua = nullptr;
+	if (_m_Id<1){
+		LuaLocker locker;
+		if (!DoLuaScript(m_lua, "lua/ai/smart-ai.lua")){
+			QMessageBox::warning(nullptr, "", "LuaAI加载失败，程序无法进行AI操作");
+			m_lua = nullptr;
+		}
 	}
 
 	//connect(this,SIGNAL(signalSetProperty(ServerPlayer*,const char*,QVariant)),this, SLOT(slotSetProperty(ServerPlayer*,const char*,QVariant)),Qt::QueuedConnection);
@@ -283,6 +286,83 @@ QList<ServerPlayer*> Room::getOtherPlayers(ServerPlayer*except, bool include_dea
 QList<ServerPlayer*> Room::getAlivePlayers() const
 {
 	return m_alivePlayers;
+}
+
+QList<ServerPlayer *> Room::getPathBetween(ServerPlayer *from, ServerPlayer *to, bool include_from, bool include_to) const
+{
+    if (!from || !to || from == to) return QList<ServerPlayer *>();
+    
+    // 计算两个方向的路径，返回较短的那个
+    QList<ServerPlayer *> clockwise = getClockwisePath(from, to, include_from, include_to);
+    QList<ServerPlayer *> counterclockwise = getCounterclockwisePath(from, to, include_from, include_to);
+    
+    return (clockwise.length() <= counterclockwise.length()) ? clockwise : counterclockwise;
+}
+
+QList<ServerPlayer *> Room::getClockwisePath(ServerPlayer *from, ServerPlayer *to, bool include_from, bool include_to) const
+{
+    QList<ServerPlayer *> path;
+    if (!from || !to) return path;
+    
+    // 如果起点和终点相同，根据参数决定是否包含该点
+    if (from == to) {
+        if (include_from && include_to) {
+            path << from;
+        }
+        return path;
+    }
+    
+    // 如果包含起点，则添加起点
+    if (include_from) {
+        path << from;
+    }
+    
+    // 添加路径中的玩家
+    ServerPlayer *current = from->getNextAlive();
+    while (current && current != to) {
+        path << current;
+        current = current->getNextAlive();
+    }
+    
+    // 如果包含终点，添加终点
+    if (include_to && current == to) {
+        path << to;
+    }
+    
+    return path;
+}
+
+QList<ServerPlayer *> Room::getCounterclockwisePath(ServerPlayer *from, ServerPlayer *to, bool include_from, bool include_to) const
+{
+    QList<ServerPlayer *> path;
+    if (!from || !to) return path;
+    
+    // 如果起点和终点相同，根据参数决定是否包含该点
+    if (from == to) {
+        if (include_from && include_to) {
+            path << from;
+        }
+        return path;
+    }
+    
+    // 如果包含终点，添加终点
+    if (include_to) {
+        path << to;
+    }
+    
+    // 此时按路径方向从to开始顺序遍历到from的路径
+    ServerPlayer *current = to->getNextAlive();
+    while (current && current != from) {
+        path << current;
+        current = current->getNextAlive();
+    }
+    
+    // 如果包含起点，则添加起点
+    if (include_from && current == from) {
+        path << from;
+    }
+    
+    return path;
 }
 
 void Room::output(const QString&message)
@@ -570,7 +650,7 @@ void Room::judge(JudgeStruct&judge_struct)
 		if(getCardPlace(judge_struct.card->getEffectiveId())==Player::PlaceJudge)
 			moveCardTo(judge_struct.card,nullptr,Player::DiscardPile,CardMoveReason(CardMoveReason::S_REASON_NATURAL_ENTER, judge_struct.who->objectName(),"judge",""),true);
 		judge_struct.card = nullptr;
-		judge(judge_struct);//终止判定后的再判
+		judge(judge_struct);//终止并重新判定
 	}else
 		thread->trigger(FinishJudge, this, judge_struct.who, data);
 }
@@ -963,6 +1043,7 @@ ServerPlayer*Room::doBroadcastRaceRequest(QList<ServerPlayer*> players, QSanProt
 ServerPlayer*Room::getRaceResult(QList<ServerPlayer*> players, QSanProtocol::CommandType, time_t timeOut,
 	ResponseVerifyFunction validateFunc, void*funcArg)
 {
+	LuaUnlocker unlocker; // Release lua_mutex while waiting for race reply
 	QElapsedTimer timer;
 	timer.start();
 	bool validResult = false;
@@ -1090,6 +1171,7 @@ void Room::broadcastInvoke(const QSanProtocol::AbstractPacket*packet, ServerPlay
 
 bool Room::getResult(ServerPlayer*player, time_t timeOut)
 {
+	LuaUnlocker unlocker; // Release lua_mutex while waiting for client reply
 	//Q_ASSERT(player->m_isWaitingReply);
 	bool validResult = false;
 	player->acquireLock(ServerPlayer::SEMA_MUTEX);
@@ -1270,6 +1352,102 @@ void Room::obtainCard(ServerPlayer*target, const Card*card, const QString&skill_
 void Room::obtainCard(ServerPlayer*target, int card_id, const QString&skill_name, bool visible)
 {
 	obtainCard(target, Sanguosha->getCard(card_id), skill_name, visible);
+}
+
+void Room::recastCard(ServerPlayer *player, const Card *card, const QString &skill_name)
+{
+    recastCardWithDraw(player, card, 1, skill_name);
+}
+
+void Room::recastCard(ServerPlayer *player, int card_id, const QString &skill_name)
+{
+    recastCardWithDraw(player, card_id, 1, skill_name);
+}
+
+void Room::recastCards(ServerPlayer *player, const QList<int> &card_ids, const QString &skill_name)
+{
+    if (!player || card_ids.isEmpty()) return;
+    
+    QList<int> valid_ids;
+    foreach (int id, card_ids) {
+        if (id >= 0 && Sanguosha->getCard(id)) {
+            valid_ids << id;
+        }
+    }
+    
+    // 丢弃多少补多少
+    recastCardsWithDraw(player, valid_ids, valid_ids.length(), skill_name);
+}
+void Room::recastCardWithDraw(ServerPlayer *player, const Card *card, int draw_count, const QString &skill_name)
+{
+    if (!card || !player) return;
+    
+    // 播放重铸音效
+    player->broadcastSkillInvoke("@recast");
+    
+    // 发送重铸日志
+    LogMessage log;
+    log.type = "$RecastCard";
+    log.from = player;
+    log.card_str = card->toString();
+    sendLog(log);
+    
+    // 移动卡牌到弃牌堆
+    QString final_skill_name = skill_name.isEmpty() ? card->getSkillName() : skill_name;
+    CardMoveReason reason(CardMoveReason::S_REASON_RECAST, player->objectName(), final_skill_name, "");
+    moveCardTo(card, player, NULL, Player::DiscardPile, reason, true);
+    
+    // 摸牌
+    if (draw_count > 0) {
+        player->drawCards(draw_count, "recast");
+    }
+}
+
+void Room::recastCardWithDraw(ServerPlayer *player, int card_id, int draw_count, const QString &skill_name)
+{
+    if (!player || card_id < 0) return;
+    
+    const Card *card = Sanguosha->getCard(card_id);
+    if (!card) return;
+    
+    recastCardWithDraw(player, card, draw_count, skill_name);
+}
+
+void Room::recastCardsWithDraw(ServerPlayer *player, const QList<int> &card_ids, int draw_count, const QString &skill_name)
+{
+    if (!player || card_ids.isEmpty()) return;
+    
+    QList<int> valid_ids;
+    foreach (int id, card_ids) {
+        if (id >= 0 && Sanguosha->getCard(id)) {
+            valid_ids << id;
+        }
+    }
+    
+    if (valid_ids.isEmpty()) return;
+    
+    // 播放重铸音效
+    player->broadcastSkillInvoke("@recast");
+    
+    // 创造虚拟卡牌用于日志记录
+    DummyCard dummy(valid_ids);
+    
+    // 发送重铸日志
+    LogMessage log;
+    log.type = "$RecastCard";
+    log.from = player;
+    log.card_str = dummy.toString();
+    sendLog(log);
+    
+    // 移动所有卡牌到弃牌堆
+    CardMoveReason reason(CardMoveReason::S_REASON_RECAST, player->objectName(), skill_name, "");
+    CardsMoveStruct move(valid_ids, player, NULL, Player::PlaceUnknown, Player::DiscardPile, reason);
+    moveCardsAtomic(move, true);
+    
+    // 摸牌
+    if (draw_count > 0) {
+        player->drawCards(draw_count, "recast");
+    }
 }
 
 bool Room::useNullified(const Card*use_card)
@@ -1879,19 +2057,19 @@ void Room::_setAreaMark(ServerPlayer*player, int i, bool flag)
 
 void Room::setPlayerProperty(ServerPlayer*player, const char*property_name, const QVariant&value)
 {
-	if (!player) return; // 防禦性檢查
+	if (!player) return; // 防禦空檢查
 
 	int old = player->getMaxHp();
 	bool same = player->property(property_name).toString() == value.toString();
 
-	// 核心修正：統一處理跨執行緒寫入，移除 #ifdef QT_DEBUG 遮蔽
+	// 安全修正：統一處理跨執行緒寫入，移除#ifdef QT_DEBUG 遮蔽
 	if (QThread::currentThread() == player->thread()) {
 		// 同一執行緒，直接安全寫入
 		player->setProperty(property_name, value);
 	}
 	else {
 		// 跨執行緒：發送信號交由主執行緒處理
-		// 由於已改為 Qt::BlockingQueuedConnection，emit 會在此阻塞，直到 slot 執行完畢才返回
+		// 由於已改用Qt::BlockingQueuedConnection，emit 會在此阻塞直到 slot 執行完畢才返回
 		emit signalSetProperty(player, property_name, value);
 	}
 
@@ -2179,6 +2357,7 @@ bool Room::canPause(ServerPlayer*player) const
 
 void Room::tryPause()
 {
+	LuaUnlocker unlocker; // Release lua_mutex while game is paused
 	//tag["callback"] = true;
 	if (canPause(getOwner())){
 		QMutexLocker locker(&m_mutex);
@@ -2330,7 +2509,7 @@ void Room::resetAI(ServerPlayer*player)
 	if (smart_ai){
 		index = ais.indexOf(smart_ai);
 		ais.removeOne(smart_ai);
-		//delete smart_ai;  changeHero后返回主菜单会闪退
+		//delete smart_ai;  changeHero在非主线程会闪退
 		smart_ai->deleteLater();
 	}
 	AI*new_ai = cloneAI(player);
@@ -2948,7 +3127,7 @@ void Room::signup(ServerPlayer*player, const QString&screen_name, const QString&
 	if (is_robot)
 		toggleReadyCommand(player, QVariant());
 	else{
-		QString greetingStr = "<font color=#EEB422>成功加入游戏</font>";//tr("<font color=#EEB422>Player <b>%1</b> joined the game</font>").arg(screen_name);
+		QString greetingStr = "<font color=#EEB422>已加入游戏</font>";//tr("<font color=#EEB422>Player <b>%1</b> joined the game</font>").arg(screen_name);
 		speakCommand(player, greetingStr.toUtf8().toBase64());
 		player->startNetworkDelayTest();
 
@@ -3393,14 +3572,17 @@ void Room::run()
 		return;
 	} else if (mode == "04_1v3"){
 		ServerPlayer*lord = m_players.first();
-		QStringList lords = GetConfigFromLuaState(m_lua, "extra_boss").toStringList();
+		QStringList lords;
+		{ LuaLocker locker; lords = GetConfigFromLuaState(m_lua, "extra_boss").toStringList(); }
 		if(lords.isEmpty()){
 			setPlayerProperty(lord, "general", "shenlvbu1");
 		}else
 			setPlayerProperty(lord, "general", askForGeneral(lord, lords));
 
 		QStringList names;
-		foreach(QString gen_name, GetConfigFromLuaState(m_lua, "hulao_generals").toStringList()){
+		QStringList hulao_gens;
+		{ LuaLocker locker; hulao_gens = GetConfigFromLuaState(m_lua, "hulao_generals").toStringList(); }
+		foreach(QString gen_name, hulao_gens){
 			if (gen_name.startsWith("-")){ // means banned generals
 				names.removeOne(gen_name.mid(1));
 			} else if (gen_name.startsWith("package:")){
@@ -3431,7 +3613,8 @@ void Room::run()
 			boss_lv_1.clear();
 			boss_lv_1 << "yl_qinguang";
 		}
-		QStringList lords = GetConfigFromLuaState(m_lua, "extra_boss").toStringList();
+		QStringList lords;
+		{ LuaLocker locker; lords = GetConfigFromLuaState(m_lua, "extra_boss").toStringList(); }
 		if(lords.length()>0) boss_lv_1 = lords;
 		ServerPlayer*lord = m_players.first();
 
@@ -3448,7 +3631,8 @@ void Room::run()
 		QStringList jiang_list, bing_list;
 		jiang_list << "godlai_zhangji" << "godlai_fanchou" << "godlai_niufudongxie" << "godlai_dongyue" << "godlai_lijue" << "godlai_guosi";
 		bing_list << "godlai_longxiang" << "godlai_huben" << "godlai_fengyao" << "godlai_baolve" << "godlai_feixiong_right" << "godlai_feixiong_right";
-		QStringList lords = GetConfigFromLuaState(m_lua, "extra_boss").toStringList();
+		QStringList lords;
+		{ LuaLocker locker; lords = GetConfigFromLuaState(m_lua, "extra_boss").toStringList(); }
 		if(lords.length()>0) jiang_list = lords;
 		foreach(ServerPlayer*player, m_players){
 			if (player->isLord()){
@@ -3479,7 +3663,8 @@ void Room::run()
 	} else if (mode == "06_ol"){
 		QStringList gui_list, list, god_list;
 		gui_list << "hundun" << "qiongqi" << "taowu" << "taotie" << "yingzhao" << "xiangliu" << "zhuyan" << "bifang";
-		QStringList lords = GetConfigFromLuaState(m_lua, "extra_boss").toStringList();
+		QStringList lords;
+		{ LuaLocker locker; lords = GetConfigFromLuaState(m_lua, "extra_boss").toStringList(); }
 		if(lords.length()>0) gui_list = lords;
 		foreach(ServerPlayer*player, m_players){
 			if (player->getRole() == "loyalist")
@@ -4131,6 +4316,7 @@ void Room::changeKingdom(ServerPlayer*player, const QString&kingdom)
 	log.arg2 = data.toString();
 	static QMap<QString, QString> colorQString;
 	if (colorQString.isEmpty()){
+		LuaLocker locker;
 		QVariantMap map = GetValueFromLuaState(m_lua, "config", "kingdom_colors").toMap();
 		QMapIterator<QString, QVariant> itor(map);
 		while (itor.hasNext()){
@@ -7558,7 +7744,7 @@ void Room::sortByActionOrder(QList<ServerPlayer*>&players)
 
 int Room::getBossModeExpMult(int level) const
 {
-	// m_lua is owned exclusively by this Room thread — no engine-level lock needed
+	LuaLocker locker;
 	lua_getglobal(m_lua, "bossModeExpMult");
 	lua_pushinteger(m_lua, level);
 	int res = 0;

@@ -507,6 +507,14 @@
 #define LUA_IEEEENDIAN		0
 #define LUA_NANTRICK
 
+/* Microsoft compiler on x64 (64 bit) */
+#elif defined(LUA_WIN) && defined(_MSC_VER) && defined(_M_X64)	/* }{ */
+
+#define LUA_IEEE754TRICK
+#define LUA_IEEEENDIAN		0
+/* LUA_NANTRICK must NOT be used on 64-bit: pointers are 8 bytes */
+/* LUA_IEEELL must NOT be used: LUA_INTEGER is 64-bit (ptrdiff_t) */
+/* LUA_MSASMTRICK must NOT be used: x87 inline asm is not available on x64 */
 
 /* pentium 32 bits? */
 #elif defined(__i386__) || defined(__i386) || defined(__X86__) /* }{ */

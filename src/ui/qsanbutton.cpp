@@ -317,7 +317,7 @@ void QSanSkillButton::setSkill(const Skill *skill)
 		Q_ASSERT(false);
 
     {
-        QMutexLocker locker(&Sanguosha->getLuaMutex());
+        LuaLocker locker;
         setToolTip(skill->getDescription(Self));
     }
 

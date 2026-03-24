@@ -2,6 +2,7 @@
 #include "room.h"
 #include "engine.h"
 #include "settings.h"
+#include <QMutexLocker>
 //#include "generalselector.h"
 //#include "json.h"
 //#include "package.h"
@@ -30,7 +31,9 @@ void RoomThreadXMode::run()
             break;
         }
     }
-    foreach (QString gen_name, GetConfigFromLuaState(Sanguosha->getLuaState(), "xmode_generals").toStringList()) {
+    QStringList xmode_gens;
+    { LuaLocker locker; xmode_gens = GetConfigFromLuaState(Sanguosha->getLuaState(), "xmode_generals").toStringList(); }
+    foreach (QString gen_name, xmode_gens) {
         if (gen_name.startsWith("-")) { // means banned generals
             general_names.removeOne(gen_name.mid(1));
         } else if (gen_name.startsWith("package:")) {

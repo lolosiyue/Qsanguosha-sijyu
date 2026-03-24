@@ -134,6 +134,7 @@ void RoomThread3v3::askForTakeGeneral(ServerPlayer *player)
             takeGeneral(player, name);
         }
     } else {
+        LuaUnlocker unlocker; // Release lua_mutex during AI delay
         msleep(Config.AIDelay);
         takeGeneral(player, name);
     }

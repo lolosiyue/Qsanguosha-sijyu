@@ -144,8 +144,8 @@ void StartScene::printServerInfo()
 	}
 
 	server_log->append(tr("Binding port number is %1").arg(Config.ServerPort));
-	server_log->append(tr("Game mode is %1").arg(Sanguosha->getModeName(Config.GameMode)));
-	server_log->append(tr("Player count is %1").arg(Sanguosha->getPlayerCount(Config.GameMode)));
+	server_log->append(tr("Game mode is %1").arg(Sanguosha->getModeName(Config.GameMode.mode_id)));
+	server_log->append(tr("Player count is %1").arg(Sanguosha->getPlayerCount(Config.GameMode.mode_id)));
 	server_log->append(Config.OperationNoLimit ?
 		tr("There is no time limit") :
 		tr("Operation timeout is %1 seconds").arg(Config.OperationTimeout));

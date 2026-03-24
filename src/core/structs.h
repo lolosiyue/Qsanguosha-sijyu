@@ -5,6 +5,30 @@ class Card;
 
 #include "serverplayer.h"
 
+struct GameModeStruct {
+    GameModeStruct();
+    GameModeStruct(const QString &mode_id, const QString &display_name = QString(),
+                   int player_count = -1, const QString &roles = QString());
+
+    QString mode_id;
+    QString display_name;
+    int player_count;
+    QString roles;
+    QString rule_mode;
+    bool is_scenario;
+    bool is_mini_scene;
+    bool shuffle_roles;
+    bool lord_welfare;
+
+    bool isValid() const;
+    bool operator==(const GameModeStruct &other) const;
+    bool operator!=(const GameModeStruct &other) const;
+    QString toString() const;
+    
+    void setShuffleRoles(bool shuffle) { shuffle_roles = shuffle; }
+};
+
+
 struct DamageStruct {
     enum Nature
     {

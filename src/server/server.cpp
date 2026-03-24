@@ -964,7 +964,7 @@ QGroupBox *ServerDialog::createGameModeBox()
 				button0 = button;
 			}*/
 		}
-		button->setChecked(itor.key() == Config.GameMode);
+		button->setChecked(itor.key() == Config.GameMode.mode_id);
 	}
 
 	// add scenario modes
@@ -983,7 +983,7 @@ QGroupBox *ServerDialog::createGameModeBox()
 	}
 
 	if (mode_group->checkedButton() == nullptr) {
-		int index = names.indexOf(Config.GameMode);
+		int index = names.indexOf(Config.GameMode.mode_id);
 		if (index != -1) {
 			scenario_button->setChecked(true);
 			scenario_ComboBox->setCurrentIndex(index);
@@ -1006,13 +1006,13 @@ QGroupBox *ServerDialog::createGameModeBox()
 		QString text = tr("%1 (%2 persons)").arg(scenario_name).arg(count);
 		mini_scene_ComboBox->addItem(text, name);
 
-		if (name == Config.GameMode) index = i - 1;
+		if (name == Config.GameMode.mode_id) index = i - 1;
 	}
 
 	if (index >= 0) {
 		mini_scene_ComboBox->setCurrentIndex(index);
 		mini_scenes->setChecked(true);
-	} else if (Config.GameMode == "custom_scenario")
+	} else if (Config.GameMode.mode_id == "custom_scenario")
 		mini_scenes->setChecked(true);
 
 	mini_scene_button = new QPushButton(tr("Custom Mini Scene"));
@@ -1386,18 +1386,18 @@ int ServerDialog::config()
 	if (mode_group->checkedButton()) {
 		QString objname = mode_group->checkedButton()->objectName();
 		if (objname == "scenario")
-			Config.GameMode = scenario_ComboBox->itemData(scenario_ComboBox->currentIndex()).toString();
+			Config.GameMode = Sanguosha->getGameMode(scenario_ComboBox->itemData(scenario_ComboBox->currentIndex()).toString());
 		else if (objname == "mini") {
 			if (mini_scene_ComboBox->isEnabled())
-				Config.GameMode = mini_scene_ComboBox->itemData(mini_scene_ComboBox->currentIndex()).toString();
+				Config.GameMode = Sanguosha->getGameMode(mini_scene_ComboBox->itemData(mini_scene_ComboBox->currentIndex()).toString());
 			else
-				Config.GameMode = "custom_scenario";
+				Config.GameMode = Sanguosha->getGameMode("custom_scenario");
 		} else
-			Config.GameMode = objname;
+			Config.GameMode = Sanguosha->getGameMode(objname);
 	}
 
 	Config.setValue("ServerName", Config.ServerName);
-	Config.setValue("GameMode", Config.GameMode);
+	Config.setValue("GameMode", Config.GameMode.mode_id);
 	Config.setValue("OperationTimeout", Config.OperationTimeout);
 	Config.setValue("OperationNoLimit", Config.OperationNoLimit);
 	Config.setValue("RandomSeat", Config.RandomSeat);
@@ -1510,7 +1510,7 @@ void Server::daemonize()
 
 Room *Server::createNewRoom()
 {
-	current = new Room(this, Config.GameMode);
+	current = new Room(this, Config.GameMode.mode_id);
 	if (!current->getLuaState()) {
 		delete current;
 		return nullptr;
