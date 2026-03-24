@@ -223,6 +223,7 @@ public slots:
     void revivePlayer(const QString &who);
     void updateAreas(const QString &who);
     void updateHandcards(const QString &who);
+    void updateCardDescription(const QString &card_name);
     void showServerInformation();
     void surrender();
     void saveReplayRecord();

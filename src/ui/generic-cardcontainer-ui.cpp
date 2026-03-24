@@ -424,6 +424,8 @@ void PlayerCardContainer::updateMark(const QString &mark_name, int mark_num)
 					arg3 = arg3.split("-").first();
 				else if (name.endsWith("_lun"))
 					arg3.remove("_lun");
+            } else if (name.contains("sys_")) {
+                continue; 
             }else if (name.endsWith("Clear") || name.endsWith("-Keep")) {
                 name = name.split("-").first();
                 new_mark.append(name);
@@ -528,6 +530,60 @@ void PlayerCardContainer::updateHandcardNum()
     }
     _m_handCardNumText->setPos(mapFromItem(_getAvatarParent(), QPointF(wideArea.x(), wideArea.y())));
     _m_handCardNumText->setVisible(true);
+
+    if (!m_player) return;
+    int maxCards = m_player->getMaxCards();
+    int limitBase = m_player->getMaxHp();
+     // 當手牌上限不等於體力上限時，進行 Tooltip 設定
+    if (maxCards != limitBase) {
+        QStringList tooltipInfo;
+        tooltipInfo << tr("手牌上限: %1").arg(maxCards);
+        tooltipInfo << tr("體力上限: %1").arg(limitBase);
+        tooltipInfo << tr("--- 影響技能與來源 ---");
+
+        // 遍歷遊戲中所有已註冊的技能
+        foreach (const Skill *skill, Sanguosha->getSkillList()) {
+            const MaxCardsSkill *mc_skill = qobject_cast<const MaxCardsSkill *>(skill);
+            if (mc_skill) {
+                // 詢問該技能：對「當前玩家(m_player)」造成的固定值(Fixed)或增減值(Extra)是多少
+                int fixed = mc_skill->getFixed(m_player);
+                int extra = mc_skill->getExtra(m_player);
+
+                // 在神殺中，getFixed 回傳 -1 代表沒有鎖定上限；大於等於 0 才是被影響
+                if (fixed >= 0 || extra != 0) {
+                    // 找出是場上哪位玩家擁有這個技能 (技能來源)
+                    QStringList sourceNames;
+                    foreach (const ClientPlayer *p, ClientInstance->getAlivePlayers()) {
+                        if (p->hasSkill(skill->objectName())) {
+                            sourceNames << p->screenName(); // 獲取擁有該技能的玩家暱稱
+                        }
+                    }
+
+                    // 有些全局規則類技能可能沒有具體玩家擁有，給予預設值
+                    QString source = sourceNames.isEmpty() ? tr("系統") : sourceNames.join(", ");
+                    QString skillName = Sanguosha->translate(skill->objectName());
+
+                    // 寫入 Tooltip
+                    if (fixed >= 0) {
+                        tooltipInfo << QString("%1: 固定為 %2 (來源: %3)")
+                                       .arg(skillName).arg(fixed).arg(source);
+                    } else if (extra != 0) {
+                        QString sign = extra > 0 ? "+" : "";
+                        tooltipInfo << QString("%1: %2%3 (來源: %4)")
+                                       .arg(skillName).arg(sign).arg(extra).arg(source);
+                    }
+                }
+            }
+        }
+
+        // 把 Tooltip 綁定在用來顯示數字的元件，或直接綁定在 Container 上
+        // 若類別內有 m_handcardNumItem 等 QGraphicsItem，可替換 this 為該指標
+        this->setToolTip(tooltipInfo.join("\n"));
+        
+    } else {
+        // 條件不符（手牌上限恢復等於體力上限）時，務必清空 Tooltip
+        this->setToolTip(QString());
+    }
 }
 
 void PlayerCardContainer::updateMarks()
@@ -545,26 +601,104 @@ void PlayerCardContainer::updateMarks()
 void PlayerCardContainer::_updateEquips()
 {
     if(!m_player) return;
-	for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
-		if(m_player->hasEquipArea(i)){
-			if(_m_equipCards[i]){
-				const Card *card = _m_equipCards[i]->getCard();
-				_m_equipLabel[i]->setPixmap(_getEquipPixmap(card));
-				_m_equipRegions[i]->setPos(_m_layout->m_equipAreas[i].topLeft());
-				_m_equipRegions[i]->setToolTip(card->getDescription());
-			}else
-				_m_equipRegions[i]->setOpacity(0);
-			//_m_equipRegions[i]->setEnabled(true);
-			//_m_equipLabel[i]->setEnabled(true);
-		}else{
-			_m_equipLabel[i]->setPixmap(_getEquipPixmap(nullptr,QString("equip%1lose").arg(i)));
-			_m_equipRegions[i]->setPos(_m_layout->m_equipAreas[i].topLeft());
-			_m_equipRegions[i]->setToolTip("");
-			_m_equipRegions[i]->setOpacity(1);
-			_m_equipRegions[i]->show();
-			//_m_equipRegions[i]->setEnabled(false);
-			//_m_equipLabel[i]->setEnabled(false);
-		}
+    // --- 1. 獲取當前玩家所有的虛擬裝備及對應技能名稱 ---
+    QMap<int, Card *> simulated_equips;
+    QMap<int, QString> simulated_equip_skills;
+    
+    // 遍歷玩家的所有技能，找出繼承自 ViewAsEquipSkill 的技能
+    foreach (const Skill *skill, m_player->getSkills(true, false)) {
+        const ViewAsEquipSkill *vaes = qobject_cast<const ViewAsEquipSkill *>(skill);
+        if (vaes) {
+            QString cns = vaes->viewAsEquip(m_player);
+            if (!cns.isEmpty() && m_player->hasSkill(vaes->objectName())) {
+                QStringList eq_names = cns.split(",", QString::SkipEmptyParts);
+                foreach (QString eq_name, eq_names) {
+                    Card *ec = Sanguosha->cloneCard(eq_name);
+                    if (ec) {
+                        const EquipCard *equip = qobject_cast<const EquipCard *>(ec);
+                        // 確保該欄位不衝突
+                        if (equip && !simulated_equips.contains(equip->location())) {
+                            simulated_equips[equip->location()] = ec;
+                            // 記錄該裝備是由哪個技能轉化的
+                            simulated_equip_skills[equip->location()] = vaes->objectName(); 
+                        } else {
+                            ec->deleteLater();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // 兼容部分透過 "View_As_Equips_List" 屬性賦予裝備效果的技能
+    QStringList property_equips = m_player->property("View_As_Equips_List").toString().split("+", QString::SkipEmptyParts);
+    foreach (QString eq_name, property_equips) {
+        Card *ec = Sanguosha->cloneCard(eq_name);
+        if (ec) {
+            const EquipCard *equip = qobject_cast<const EquipCard *>(ec);
+            if (equip && !simulated_equips.contains(equip->location())) {
+                simulated_equips[equip->location()] = ec;
+                simulated_equip_skills[equip->location()] = ""; // 屬性賦予的不知道具體技能名，暫時留空
+            } else {
+                ec->deleteLater();
+            }
+        }
+    }
+    // ------------------------------------
+
+    for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
+        if(m_player->hasEquipArea(i)){
+            if(_m_equipCards[i]){
+                // --- 實體裝備 ---
+                const Card *card = _m_equipCards[i]->getCard();
+                _m_equipLabel[i]->setPixmap(_getEquipPixmap(card));
+                _m_equipRegions[i]->setPos(_m_layout->m_equipAreas[i].topLeft());
+                _m_equipRegions[i]->setToolTip(card->getDescription());
+                _m_equipRegions[i]->setOpacity(1.0);
+                _m_equipRegions[i]->show();
+            } else if (simulated_equips.contains(i)) {
+                // --- 虛擬裝備 ---
+                const Card *card = simulated_equips[i];
+                QString skill_name = simulated_equip_skills[i];
+                
+                _m_equipLabel[i]->setPixmap(_getEquipPixmap(card));
+                _m_equipRegions[i]->setPos(_m_layout->m_equipAreas[i].topLeft());
+                
+                // 👇 [修改這裡] 處理技能名稱的字串串接
+                QString skillText;
+                if (skill_name.isEmpty()) {
+                    skillText = tr("技能轉化"); // 若無具體技能名，顯示 (技能轉化)
+                } else {
+                    skillText = Sanguosha->translate(skill_name) + tr("技能轉化"); // 顯示 (XX技能轉化)
+                }
+                
+                // 設置 ToolTip 顯示是哪個技能轉化的
+                QString tooltip = QString("<b>【%1】</b> (%2)<br/>%3")
+                                    .arg(Sanguosha->translate(card->objectName()))
+                                    .arg(skillText)
+                                    .arg(card->getDescription());
+                _m_equipRegions[i]->setToolTip(tooltip);
+                
+                // 設置為 80% 不透明度來稍微區別於實體裝備
+                _m_equipRegions[i]->setOpacity(0.8); 
+                _m_equipRegions[i]->show();
+            } else {
+                // --- 無裝備 ---
+                _m_equipRegions[i]->setOpacity(0);
+            }
+        } else {
+            // --- 失去裝備欄 ---
+            _m_equipLabel[i]->setPixmap(_getEquipPixmap(nullptr,QString("equip%1lose").arg(i)));
+            _m_equipRegions[i]->setPos(_m_layout->m_equipAreas[i].topLeft());
+            _m_equipRegions[i]->setToolTip("");
+            _m_equipRegions[i]->setOpacity(1.0);
+            _m_equipRegions[i]->show();
+        }
+    }
+    
+    // --- 3. 釋放臨時生成的卡牌對象 ---
+    foreach(Card *ec, simulated_equips.values()) {
+        ec->deleteLater();
     }
 }
 
@@ -583,6 +717,7 @@ void PlayerCardContainer::refresh(bool killed)
         _m_actionIcon->setVisible(false);
         _m_saveMeIcon->setVisible(false);
 	}
+    _updateEquips();
     updateHandcardNum();
     _adjustComponentZValues(killed);
 }
@@ -772,6 +907,7 @@ QPixmap PlayerCardContainer::_getEquipPixmap(const Card *equip, const QString &a
     QPainter painter(&equipIcon);
 	if(equip){
 		const Card *realCard = Sanguosha->getEngineCard(equip->getEffectiveId());
+        if (realCard == nullptr) realCard = equip;
 		if (realCard->objectName().contains("_zhizhe_")) realCard = equip;
 		// icon / background
 		QRect imageArea = _m_layout->m_equipImageArea;
@@ -970,8 +1106,11 @@ void PlayerCardContainer::startHuaShen(QString generalName, QString skillName)
         _m_extraSkillBg->show();
         _m_extraSkillText->show();
         {
-            QMutexLocker locker(&Sanguosha->getLuaMutex());
-            _m_extraSkillBg->setToolTip(Sanguosha->getSkill(skillName)->getDescription(m_player));
+            SafeLuaMutex &lua_mutex = Sanguosha->getLuaMutex();
+            if (lua_mutex.tryLock(50)) {
+                _m_extraSkillBg->setToolTip(Sanguosha->getSkill(skillName)->getDescription(m_player));
+                lua_mutex.unlock();
+            }
         }
     }
     _adjustComponentZValues();

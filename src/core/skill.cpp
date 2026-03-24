@@ -558,7 +558,7 @@ bool SPConvertSkill::triggerable(const ServerPlayer *target) const
     if (target == nullptr) return false;
     if (Config.EnableHegemony) return false;
     if (!Config.value("EnableSPConvert", true).toBool()) return false;
-    if (!isNormalGameMode(Config.GameMode)) return false;
+    if (!isNormalGameMode(Config.GameMode.mode_id)) return false;
     foreach (QString to_gen, to_list) {
         if(Config.value("Banlist/Roles").toStringList().contains(to_gen)) continue;
 		const General *gen = Sanguosha->getGeneral(to_gen);

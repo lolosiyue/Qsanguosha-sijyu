@@ -619,44 +619,110 @@ bool Player::hasEquip() const
     return !equips.isEmpty();//weapon != nullptr || armor != nullptr || defensive_horse != nullptr || offensive_horse != nullptr || treasure != nullptr;
 }
 
+QList<int> Player::getEquipRealSlots(int card_id) const
+{
+    const Card *card = Sanguosha->getCard(card_id);
+    if (card) {
+        const EquipCard *equip = qobject_cast<const EquipCard *>(card->getRealCard());
+        if (equip) {
+            return equip->getOccupyLocations();
+        }
+    }
+    return QList<int>();
+}
+
+QList<const EquipCard *> Player::getWeapons() const
+{
+    QList<const EquipCard *> _equips;
+    foreach(const EquipCard *e, equips){
+        if (getEquipRealSlots(e->getEffectiveId()).contains(0))
+            _equips << e;
+    }
+    return _equips;
+}
+
+QList<const EquipCard *> Player::getArmors() const {
+    QList<const EquipCard *> _equips;
+    foreach(const EquipCard *e, equips){
+        if (getEquipRealSlots(e->getEffectiveId()).contains(1)) _equips << e;
+    }
+    return _equips;
+}
+
+QList<const EquipCard *> Player::getDefensiveHorses() const {
+    QList<const EquipCard *> _equips;
+    foreach(const EquipCard *e, equips){
+        if (getEquipRealSlots(e->getEffectiveId()).contains(2)) _equips << e;
+    }
+    return _equips;
+}
+
+QList<const EquipCard *> Player::getOffensiveHorses() const {
+    QList<const EquipCard *> _equips;
+    foreach(const EquipCard *e, equips){
+        if (getEquipRealSlots(e->getEffectiveId()).contains(3)) _equips << e;
+    }
+    return _equips;
+}
+
+QList<const EquipCard *> Player::getTreasures() const {
+    QList<const EquipCard *> _equips;
+    foreach(const EquipCard *e, equips){
+        if (getEquipRealSlots(e->getEffectiveId()).contains(4)) _equips << e;
+    }
+    return _equips;
+}
+
+bool Player::hasWeapons() const { return !getWeapons().isEmpty(); }
+bool Player::hasArmors() const { return !getArmors().isEmpty(); }
+bool Player::hasDefensiveHorses() const { return !getDefensiveHorses().isEmpty(); }
+bool Player::hasOffensiveHorses() const { return !getOffensiveHorses().isEmpty(); }
+bool Player::hasTreasures() const { return !getTreasures().isEmpty(); }
+
+int Player::getWeaponsCount() const { return getWeapons().length(); }
+int Player::getArmorsCount() const { return getArmors().length(); }
+int Player::getDefensiveHorsesCount() const { return getDefensiveHorses().length(); }
+int Player::getOffensiveHorsesCount() const { return getOffensiveHorses().length(); }
+int Player::getTreasuresCount() const { return getTreasures().length(); }
+
 const EquipCard *Player::getWeapon() const
 {
     foreach(const EquipCard *e, equips){
-        if (e->location()==0) return e;
+        if (getEquipRealSlots(e->getEffectiveId()).contains(0)) return e;
     }
-	return nullptr;//weapon;
+	return nullptr;
 }
 
 const EquipCard *Player::getArmor() const
 {
     foreach(const EquipCard *e, equips){
-        if (e->location()==1) return e;
+        if (getEquipRealSlots(e->getEffectiveId()).contains(1)) return e;
     }
-	return nullptr;//armor;
+	return nullptr;
 }
 
 const EquipCard *Player::getDefensiveHorse() const
 {
     foreach(const EquipCard *e, equips){
-        if (e->location()==2) return e;
+        if (getEquipRealSlots(e->getEffectiveId()).contains(2)) return e;
     }
-    return nullptr;//defensive_horse;
+    return nullptr;
 }
 
 const EquipCard *Player::getOffensiveHorse() const
 {
     foreach(const EquipCard *e, equips){
-        if (e->location()==3) return e;
+        if (getEquipRealSlots(e->getEffectiveId()).contains(3)) return e;
     }
-    return nullptr;//offensive_horse;
+    return nullptr;
 }
 
 const EquipCard *Player::getTreasure() const
 {
     foreach(const EquipCard *e, equips){
-        if (e->location()==4) return e;
+        if (getEquipRealSlots(e->getEffectiveId()).contains(4)) return e;
     }
-    return nullptr;//treasure;
+    return nullptr;
 }
 
 QList<const Card *> Player::getEquips(int index) const

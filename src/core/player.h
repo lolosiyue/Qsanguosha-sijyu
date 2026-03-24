@@ -185,6 +185,24 @@ public:
     const EquipCard *getDefensiveHorse() const;
     const EquipCard *getOffensiveHorse() const;
     const EquipCard *getTreasure() const;
+
+    QList<const EquipCard *> getWeapons() const;
+    QList<const EquipCard *> getArmors() const;
+    QList<const EquipCard *> getDefensiveHorses() const;
+    QList<const EquipCard *> getOffensiveHorses() const;
+    QList<const EquipCard *> getTreasures() const;
+    bool hasWeapons() const;
+    bool hasArmors() const;
+    bool hasDefensiveHorses() const;
+    bool hasOffensiveHorses() const;
+    bool hasTreasures() const;
+    int getWeaponsCount() const;
+    int getArmorsCount() const;
+    int getDefensiveHorsesCount() const;
+    int getOffensiveHorsesCount() const;
+    int getTreasuresCount() const;
+    QList<int> getEquipRealSlots(int card_id) const;
+
     QList<const Card *> getEquips(int index = -1) const;
     QList<int> getEquipsId() const;
     const EquipCard *getEquip(int index) const;
@@ -322,7 +340,7 @@ public:
 
     static bool isNostalGeneral(const Player *p, const QString &general_name);
     
-    bool hasLordSkillKingdom(const QString &kingdom) const;
+    bool hasLordSkillKingdom(const QString &kingdom, const Player *player = nullptr) const;
 
 
 protected:

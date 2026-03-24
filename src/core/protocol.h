@@ -36,7 +36,8 @@ namespace QSanProtocol {
         S_CHEAT_REVIVE_PLAYER,
         S_CHEAT_MAKE_DAMAGE,
         S_CHEAT_RUN_SCRIPT,
-        S_CHEAT_STATE_EDITOR
+        S_CHEAT_STATE_EDITOR,
+        S_CHEAT_REVERSE_PLAY_ORDER
     };
 
     enum CheatCategory
@@ -171,7 +172,8 @@ namespace QSanProtocol {
         S_COMMAND_OPERATION_TIMEOUT,
         S_COMMAND_WEAPON_RANGE,
         S_COMMAND_PLAY_AUDIO,
-        S_COMMAND_ADD_EQUIP_AREA
+        S_COMMAND_ADD_EQUIP_AREA,
+        S_COMMAND_UPDATE_CARD_DESC
     };
 
     enum GameEventType

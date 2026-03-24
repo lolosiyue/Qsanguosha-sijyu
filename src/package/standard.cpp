@@ -58,19 +58,33 @@ Card::CardType EquipCard::getTypeId() const
 
 bool EquipCard::isAvailable(const Player *player) const
 {
-    if (targetFixed()){
-		if(!player->hasEquipArea(location())||player->isProhibited(player,this))
-			return false;
-	}
+    if (targetFixed()) {
+        // 检查所有需要的装备栏是否都存在（支持双栏装备）
+        QList<int> occupy_slots = getOccupyLocations();
+        foreach (int slot, occupy_slots) {
+            if (!player->hasEquipArea(slot)) {
+                return false;  // 有任何一个栏位不存在，就不能使用
+            }
+        }
+        return Card::isAvailable(player) && !player->isProhibited(player, this);
+    }
     return Card::isAvailable(player);
 }
 
 bool EquipCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
 {
-	return targets.isEmpty()&&to_select->hasEquipArea(location())
-	&&!Self->isProhibited(to_select,this);
+	if (!targets.isEmpty() || Self->isProhibited(to_select, this))
+		return false;
+	
+	// 检查目标是否拥有所有需要的装备栏（支持双栏装备）
+	QList<int> occupy_slots = getOccupyLocations();
+	foreach (int slot, occupy_slots) {
+		if (!to_select->hasEquipArea(slot)) {
+			return false;  // 有任何一个栏位不存在，就不能选择该目标
+		}
+	}
+	return true;
 }
-
 void EquipCard::onUse(Room *room, CardUseStruct &use) const
 {
     if (use.to.isEmpty())
@@ -104,8 +118,32 @@ void EquipCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &tar
 {
     if (!room->CardInTable(this)) return;
     CardUseStruct use = room->getTag("UseHistory"+toString()).value<CardUseStruct>();
+    
+    // 获取装备占用的所有栏位
+    QList<int> occupy_slots = getOccupyLocations();
+    
     foreach (ServerPlayer *to, targets) {
-		if (to->isDead()||!to->hasEquipArea(location())) continue;
+		if (to->isDead()) continue;
+		
+		// 检查是否所有需要的栏位都存在（没有被废除）
+		bool all_slots_available = true;
+		foreach (int slot, occupy_slots) {
+			if (!to->hasEquipArea(slot)) {
+				all_slots_available = false;
+				break;
+			}
+		}
+		
+		if (!all_slots_available) {
+			// 某个栏位被废除了，装备失败
+			LogMessage log;
+			log.type = "#EquipAreaAbandoned";
+			log.from = to;
+			log.card_str = toString();
+			room->sendLog(log);
+			continue;
+		}
+		
 		if (use.nullified_list.contains("_ALL_TARGETS")||use.nullified_list.contains(to->objectName())){
 			LogMessage log;
 			log.type = "#CardNullified";
@@ -115,24 +153,66 @@ void EquipCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &tar
 			room->setEmotion(to, "skill_nullify");
 			continue;
 		}
+		
 		QList<CardsMoveStruct> exchangeMove;
-		if (to->getEquips(location()).length()>=to->getEquipArea(location())){
-			CardsMoveStruct move2(to->getEquip(location())->getEffectiveId(), nullptr, Player::DiscardPile,
-				CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP, to->objectName(), "", "change equip"));
-			exchangeMove.append(move2);
+		QList<int> replaced_ids;  // 记录已经处理过的装备ID，避免重复
+		
+		// 遍历每个需要占用的栏位，收集需要替换的装备
+		foreach (int slot, occupy_slots) {
+			if (to->getEquips(slot).length() >= to->getEquipArea(slot)) {
+				// 该栏位已满，需要替换
+				QList<const Card *> same_type_equips = to->getEquips(slot);
+				const EquipCard *to_replace = NULL;
+				
+				// 如果有多个同类型装备，让玩家选择替换哪个
+				if (same_type_equips.length() > 1) {
+					QList<int> equip_ids;
+					foreach (const Card *equip, same_type_equips) {
+						int eid = equip->getEffectiveId();
+						if (!replaced_ids.contains(eid)) {
+							equip_ids << eid;
+						}
+					}
+					if (!equip_ids.isEmpty()) {
+						room->fillAG(equip_ids, to);
+						int id = room->askForAG(to, equip_ids, false, objectName());
+						room->clearAG(to);
+						if (id > 0) {
+							to_replace = qobject_cast<const EquipCard *>(Sanguosha->getCard(id)->getRealCard());
+						}
+					}
+				}
+				
+				// 如果没有选择（只有1个或选择失败），使用第一个
+				if (!to_replace) {
+					foreach (const Card *equip, same_type_equips) {
+						int eid = equip->getEffectiveId();
+						if (!replaced_ids.contains(eid)) {
+							to_replace = qobject_cast<const EquipCard *>(equip->getRealCard());
+							break;
+						}
+					}
+				}
+				
+				if (to_replace) {
+					int replace_id = to_replace->getEffectiveId();
+					if (!replaced_ids.contains(replace_id)) {
+						CardsMoveStruct move2(replace_id, NULL, Player::DiscardPile,
+							CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP, to->objectName(), QString(), "change equip"));
+						exchangeMove.append(move2);
+						replaced_ids << replace_id;
+					}
+				}
+			}
 		}
-		if (isVirtualCard(true)){
-			WrappedCard *wrapped = Sanguosha->getWrappedCard(getEffectiveId());
-			wrapped->takeOver(Sanguosha->cloneCard(this));
-            room->broadcastUpdateCard(room->getPlayers(), getEffectiveId(), wrapped);
-		}
+		
         CardsMoveStruct move1(getEffectiveId(), to, Player::PlaceEquip,
-            CardMoveReason(CardMoveReason::S_REASON_USE, to->objectName(), getSkillName(), ""));
+            CardMoveReason(CardMoveReason::S_REASON_USE, to->objectName(), getSkillName(), QString()));
         exchangeMove.append(move1);
 		room->moveCardsAtomic(exchangeMove, true);
         return;
 	}
-	room->moveCardTo(this, nullptr, Player::DiscardPile, CardMoveReason(CardMoveReason::S_REASON_USE, source->objectName(), getSkillName(), ""), true);
+	room->moveCardTo(this, NULL, Player::DiscardPile, CardMoveReason(CardMoveReason::S_REASON_USE, source->objectName(), getSkillName(), ""), true);
 }
 
 static bool isEquipSkillViewAsSkill(const Skill *skill)
@@ -159,6 +239,24 @@ void EquipCard::onInstall(ServerPlayer *player) const
 void EquipCard::onUninstall(ServerPlayer *player) const
 {
 	player->getRoom()->detachSkillFromPlayer(player,objectName(),true,true,false);
+}
+
+// 双栏装备支持：获取装备实际占用的栏位列表
+QList<int> EquipCard::getOccupyLocations() const
+{
+    if (!occupy_locations.isEmpty())
+        return occupy_locations;
+    
+    // 默认返回单个location
+    QList<int> result;
+    result << location();
+    return result;
+}
+
+// 设置装备占用的栏位（用于Lua创建的装备）
+void EquipCard::setOccupyLocations(const QList<int> &locations)
+{
+    this->occupy_locations = locations;
 }
 
 QString GlobalEffect::getSubtype() const

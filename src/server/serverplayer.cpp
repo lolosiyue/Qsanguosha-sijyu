@@ -151,8 +151,8 @@ void ServerPlayer::throwAllMarks(bool visible_only)
 	foreach (QString m, marks.keys()) {
 		if(m=="@bossExp"||m.endsWith("-Keep")) continue;
 		if(visible_only){
-			if(m.startsWith("@")||m.startsWith("&")){
-			}else continue;
+			if(!(m.startsWith("@") || m.startsWith("&") || m.contains("sys_"))) 
+				continue;
 		}
 		room->setPlayerMark(this, m, 0);
 	}
@@ -330,13 +330,13 @@ QString ServerPlayer::findReasonable(const QStringList &generals, bool no_unreas
 	QStringList ban_list;
 	if (Config.EnableBasara)
 		ban_list << Config.value("Banlist/Basara").toStringList();
-	if (Config.GameMode == "zombie_mode")
+	if (Config.GameMode.mode_id == "zombie_mode")
 		ban_list << Config.value("Banlist/Zombie").toStringList();
-	if (Config.GameMode.endsWith("p")
-		|| Config.GameMode.endsWith("pd")
-		|| Config.GameMode.endsWith("pz")
-		|| Config.GameMode.contains("_mini_")
-		|| Config.GameMode == "custom_scenario") {
+	if (Config.GameMode.mode_id.endsWith("p")
+		|| Config.GameMode.mode_id.endsWith("pd")
+		|| Config.GameMode.mode_id.endsWith("pz")
+		|| Config.GameMode.mode_id.contains("_mini_")
+		|| Config.GameMode.mode_id == "custom_scenario") {
 		ban_list << Config.value("Banlist/Roles").toStringList();
 	}
 	foreach (QString name, generals) {
@@ -1012,10 +1012,28 @@ ServerPlayer *ServerPlayer::getNextAlive(int n) const
 	ServerPlayer *next = const_cast<ServerPlayer *>(this);
 	if (room->getAlivePlayers().length()<2) return next;
 	for (int i = 0; i < n; i++) {
+		do next = next->next; while (next->isDead() || (next != this && next->getMark("&heg_lure_tiger-Clear") > 0));
+	}
+	return next;
+}
+
+ServerPlayer *ServerPlayer::getNextGamePlayer(int n) const
+{
+	ServerPlayer *next = const_cast<ServerPlayer *>(this);
+	if (room->getAlivePlayers().length()<2) return next;
+	for (int i = 0; i < n; i++) {
 		do next = next->next; while (next->isDead());
 	}
 	return next;
 }
+
+ServerPlayer *ServerPlayer::getPreviousAlive(int n) const
+{
+	int count = aliveCount();
+	if (count < 2) return const_cast<ServerPlayer *>(this);
+	return getNextAlive(count - n);
+}
+
 
 int ServerPlayer::getGeneralMaxHp() const
 {
@@ -1023,7 +1041,7 @@ int ServerPlayer::getGeneralMaxHp() const
 
 	if (getGeneral2()){
 		int plan = Config.MaxHpScheme;
-		if (Config.GameMode.contains("_mini_") || Config.GameMode == "custom_scenario") plan = 1;
+		if (Config.GameMode.mode_id.contains("_mini_") || Config.GameMode.mode_id == "custom_scenario") plan = 1;
 		int second = getGeneral2()->getMaxHp();
 
 		switch (plan) {
@@ -1048,7 +1066,7 @@ int ServerPlayer::getGeneralStartHp() const
 
 	if (getGeneral2()){
 		int plan = Config.MaxHpScheme;
-		if (Config.GameMode.contains("_mini_") || Config.GameMode == "custom_scenario") plan = 1;
+		if (Config.GameMode.mode_id.contains("_mini_") || Config.GameMode.mode_id == "custom_scenario") plan = 1;
 		int second = getGeneral2()->getStartHp();
 
 		switch (plan) {

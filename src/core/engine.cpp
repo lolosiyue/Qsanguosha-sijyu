@@ -5,6 +5,7 @@
 //#include "scenario.h"
 #include "lua.hpp"
 #include "banpair.h"
+#include <QMutexLocker>
 //#include "protocol.h"
 #include "lua-wrapper.h"
 //#include "room-state.h"
@@ -23,6 +24,42 @@
 
 
 Engine*Sanguosha = nullptr;
+
+// --- SafeLuaMutex implementation ---
+void SafeLuaMutex::lock() {
+    if (m_owner == QThread::currentThread()) { m_count++; return; }
+    m_mutex.lock();
+    m_owner = QThread::currentThread();
+    m_count = 1;
+}
+void SafeLuaMutex::unlock() {
+    if (m_owner == QThread::currentThread()) {
+        if (--m_count == 0) { m_owner = nullptr; m_mutex.unlock(); }
+    }
+}
+bool SafeLuaMutex::tryLock(int timeout) {
+    if (m_owner == QThread::currentThread()) { m_count++; return true; }
+    if (m_mutex.tryLock(timeout)) {
+        m_owner = QThread::currentThread();
+        m_count = 1;
+        return true;
+    }
+    return false;
+}
+int SafeLuaMutex::yield() {
+    if (m_owner != QThread::currentThread()) return 0;
+    int saved_count = m_count;
+    m_count = 0;
+    m_owner = nullptr;
+    m_mutex.unlock();
+    return saved_count;
+}
+void SafeLuaMutex::restore(int count) {
+    if (count <= 0) return;
+    m_mutex.lock();
+    m_owner = QThread::currentThread();
+    m_count = count;
+}
 
 int Engine::getMiniSceneCounts()
 {
@@ -347,7 +384,7 @@ lua_State*Engine::getLuaState() const
     return lua;
 }
 
-QRecursiveMutex &Engine::getLuaMutex() const
+SafeLuaMutex &Engine::getLuaMutex() const
 {
     return lua_mutex;
 }
@@ -1147,6 +1184,7 @@ QStringList Engine::getExtensions() const
 
 QStringList Engine::getKingdoms() const
 {
+    LuaLocker locker;
     static QStringList kingdoms = GetConfigFromLuaState(lua, "kingdoms").toStringList();
     return kingdoms;
 }
@@ -1155,6 +1193,7 @@ QColor Engine::getKingdomColor(const QString &kingdom) const
 {
     static QMap<QString, QColor> color_map;
     if (color_map.isEmpty()) {
+        LuaLocker locker;
         QVariantMap map = GetValueFromLuaState(lua, "config", "kingdom_colors").toMap();
         QMapIterator<QString, QVariant> itor(map);
         while (itor.hasNext()) {
@@ -1175,6 +1214,7 @@ QMap<QString, QColor> Engine::getSkillTypeColorMap() const
 {
     static QMap<QString, QColor> color_map;
     if (color_map.isEmpty()) {
+        LuaLocker locker;
         QVariantMap map = GetValueFromLuaState(lua, "config", "skill_type_colors").toMap();
         QMapIterator<QString, QVariant> itor(map);
         while (itor.hasNext()) {
@@ -1193,6 +1233,7 @@ QMap<QString, QColor> Engine::getSkillTypeColorMap() const
 
 QStringList Engine::getChattingEasyTexts() const
 {
+    LuaLocker locker;
     static QStringList easy_texts = GetConfigFromLuaState(lua, "easy_text").toStringList();
     return easy_texts;
 }

@@ -804,6 +804,7 @@ void RoomThread::addTriggerSkill(const TriggerSkill*skill)
 
 void RoomThread::delay(long secs)
 {
+	LuaUnlocker unlocker; // Release lua_mutex during AI delay sleep
 	//Q_ASSERT(secs >= 0);
 	if (secs<0) secs = Config.AIDelay;
 	if (Config.AIDelay>0&&room->property("to_test").isNull())

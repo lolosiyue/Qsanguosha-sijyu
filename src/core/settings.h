@@ -1,7 +1,9 @@
 #ifndef _SETTINGS_H
 #define _SETTINGS_H
 
+#include <QSettings>
 //#include "protocol.h"
+#include "structs.h"
 
 class Settings : public QSettings
 {
@@ -28,7 +30,7 @@ public:
     int CountDownSeconds;
     int NullificationCountDown;
     bool EnableMinimizeDialog;
-    QString GameMode;
+    GameModeStruct GameMode;
     QStringList BanPackages;
     bool RandomSeat;
     bool EnableCheat;

@@ -177,6 +177,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(ClientInstance,SIGNAL(start_in_xs()),this,SLOT(startInXs()));
 
 	connect(ClientInstance,&Client::skill_updated,this,&RoomScene::updateSkill);
+	connect(ClientInstance,SIGNAL(card_description_updated(QString)),this,SLOT(updateCardDescription(QString)));
 
 	guanxing_x_box = new GuanxingXBox;
 	guanxing_x_box->hide();
@@ -303,7 +304,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 
 	m_timerLabel = new TimerLabel(this);
 	m_timerLabel->resize(60,30);
-	m_timerLabel->setStyleSheet("background-color:transparent"); //变透明
+	m_timerLabel->setStyleSheet("background-color:transparent"); //半透明
 
 	/*prompt_box = new Window(nullptr,QSize(480,200));
 	prompt_box->setOpacity(0);
@@ -1082,15 +1083,15 @@ void RoomScene::updateTable()
         { 5, 5, 1, 1, 1, 6, 6 },
         { 3, 3, 7, 7, 7, 7, 4, 4 },
         { 3, 3, 7, 7, 7, 7, 7, 4, 4 },
-        {}, // 11 players
-        {},//12
-        {},//13
-        {},//14
-        {},//15
-        {}, // 16 players
-        {},//17
-        {},//18
-        {},//19
+        { 3, 3, 7, 7, 7, 7, 7, 7, 7, 4, 4 },        // 11 players
+        { 3, 3, 3, 7, 7, 7, 7, 7, 7, 4, 4, 4 },     // 12 players
+        { 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4 },  // 13 players
+        { 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4 }, // 14 players
+        { 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4 }, // 15 players
+        { 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4 }, // 16 players
+        { 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4 }, // 17 players
+        { 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4 }, // 18 players
+        { 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4 }, // 19 players
         {3, 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4, 4}//20 players
     };
 	static int hulaoSeatIndex[][3] = {
@@ -1918,7 +1919,7 @@ QGroupBox*RoomScene::createOptionBox(const QString&skillName,const QStringList&o
 
 		const Skill*s = Sanguosha->getSkill(option);
 		if(s){
-			QMutexLocker locker(&Sanguosha->getLuaMutex());
+			LuaLocker locker;
 			button->setToolTip(s->getDescription(Self));
 		}else{
 			QString original_tooltip = QString(":%1").arg(text);
@@ -4036,6 +4037,20 @@ void RoomScene::fillTable(QTableWidget*table,const QList<const ClientPlayer*>&pl
 		table->resizeColumnToContents(i);
 }
 
+void RoomScene::updateCardDescription(const QString &card_name)
+{
+    // 刷新所有玩家的装备区，让新的卡牌描述立即显示
+    if (dashboard) {
+        dashboard->_updateEquips();
+    }
+    
+    foreach (Photo *photo, photos) {
+        if (photo) {
+            photo->_updateEquips();
+        }
+    }
+}
+
 void RoomScene::updateAreas(const QString&who)
 {
 	ClientPlayer*player = ClientInstance->getPlayer(who);
@@ -4206,7 +4221,7 @@ void RoomScene::updateSkill(const QString&skill_name)
 	foreach(QSanSkillButton*button,m_skillButtons){
 		if(button->getSkill()->objectName()==skill_name)
 		{
-			QMutexLocker locker(&Sanguosha->getLuaMutex());
+			LuaLocker locker;
 			button->setToolTip(button->getSkill()->getDescription(Self));
 		}
 	}/*
@@ -4407,7 +4422,7 @@ void RoomScene::onGameStart()
 {
 	main_window->activateWindow();
 	if(ServerInfo.GameMode.contains("_mini_")){
-		QString id = Config.GameMode;
+		QString id = Config.GameMode.mode_id;
 		id.replace("_mini_","");
 		_m_currentStage = id.toInt();
 	} else if(ServerInfo.GameMode=="06_3v3"||ServerInfo.GameMode=="06_XMode"||ServerInfo.GameMode=="02_1v1"){
@@ -4695,6 +4710,15 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 	int duration = disp_arg.first().toInt();
 	int pixelSize = disp_arg.last().toInt();
 
+	// 支援動態參數替換：duration:pixelSize:arg1:arg2:...
+	if (disp_arg.size() > 2) {
+		for (int i = 2; i < disp_arg.size(); ++i) {
+			QString arg = disp_arg.at(i);
+			QString translatedArg = Sanguosha->translate(arg);
+			word = word.arg(translatedArg);
+		}
+	}
+
 	QRect rect = main_window->rect();
 	QGraphicsRectItem*lightbox = addRect(rect);
 
@@ -4731,19 +4755,42 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 		}
 	}
 #ifndef Q_OS_WINRT
-    else if(word.startsWith("skill=")){  // 重新启用技能特效，使用同步方式
-        const QString hero = word.mid(6);
+    else if(word.startsWith("skill=")){  // 重新启用武将特效的使用异步动画
+        QString hero = word.mid(6);
         const QString skill = args.value(1,QString());
+
+        // 提取武將名字和皮膚編號
+        QString heroName = hero;
+        int skinId = 0;  // 0 表示原皮
+        if (hero.contains("/")) {
+            int lastSlash = hero.lastIndexOf("/");
+            QString fileName = hero.mid(lastSlash + 1);
+            int dotPos = fileName.lastIndexOf(".");
+            if (dotPos > 0) fileName = fileName.left(dotPos);
+            int underscorePos = fileName.lastIndexOf("_");
+            if (underscorePos > 0) {
+                QString suffix = fileName.mid(underscorePos + 1);
+                bool isNumber = false;
+                int num = suffix.toInt(&isNumber);
+                if (isNumber) {
+                    skinId = num;
+                    fileName = fileName.left(underscorePos);
+                }
+            }
+            heroName = fileName;
+        }
 
         // 使用嵌入式QML加载器
         QString qmlPath = "ui-script/animation.qml";
         int effectWidth = sceneRect().width();
         int effectHeight = sceneRect().height();
 
-        // 准备上下文变量
+        // 配置上面的参数
         QVariantMap params;
         params.insert("hero",hero);
         params.insert("heroName",Sanguosha->translate(hero));
+        params.insert("skinId", skinId);
+        params.insert("heroName",Sanguosha->translate(heroName));
         params.insert("skill",Sanguosha->translate(skill));
         params.insert("sceneWidth",effectWidth);
         params.insert("sceneHeight",effectHeight);
@@ -4757,25 +4804,25 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
         // 连接信号
         connect(embeddedLoader,&EmbeddedQmlLoader::effectFinished,[embeddedLoader,this](){
 #ifdef ANDROID
-            // 安卓平台：特效结束后恢复按钮显示
+            // 安卓平台：特效结束后更新按钮位置
             QPointer<Dashboard> safeDashboard = dashboard;
             if(safeDashboard){
                 QTimer::singleShot(300,[safeDashboard](){
-                    // 使用QPointer确保dashboard仍然有效
+                    // 使用QPointer确保dashboard仍然存在
                     if(safeDashboard){
                         //safeDashboard->_updateMobileBigButtonsPosition();
                     }
                 });
             }
 #endif
-            // embeddedLoader 会自动删除自己
+            // embeddedLoader 会自动清理自己
         });
 
         connect(embeddedLoader,&EmbeddedQmlLoader::effectError,[embeddedLoader](const QString&){
             embeddedLoader->deleteLater();
         });
 
-        // 加载QML叠加层
+        // 加载QML覆盖层
         QWidget*parentWidget = nullptr;
         if(!this->views().isEmpty()){
             parentWidget = this->views().first(); // 获取第一个QGraphicsView
@@ -4798,14 +4845,14 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
         const QString hero = word.mid(6);
         const QString skill = args.value(1,QString());
 
-        // 使用嵌入式QML加载器（幽灵特效）
+        // 使用嵌入式QML加载器
         QString qmlPath = "ui-script/animation.qml";
 
         // 使用游戏场景的实际尺寸
         int effectWidth = sceneRect().width();
         int effectHeight = sceneRect().height();
 
-        // 准备上下文变量
+        // 配置上面的参数
         QVariantMap params;
         params.insert("hero",hero);
         params.insert("heroName",Sanguosha->translate(hero));
@@ -4814,7 +4861,7 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
         params.insert("sceneHeight",effectHeight);
         params.insert("tableWidth",m_tableCenterPos.x()*2);
 
-        // 设置幽灵特效参数
+        // 设置幽灵效果参数
 
         // 创建嵌入式QML加载器
         EmbeddedQmlLoader*embeddedLoader = new EmbeddedQmlLoader(this);
@@ -4822,25 +4869,25 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
         // 连接信号
         connect(embeddedLoader,&EmbeddedQmlLoader::effectFinished,[embeddedLoader,this](){
 #ifdef ANDROID
-            // 安卓平台：幽灵特效结束后恢复按钮显示
+            // 安卓平台：幽灵特效结束后更新按钮位置
             QPointer<Dashboard> safeDashboard = dashboard;
             if(safeDashboard){
                 QTimer::singleShot(300,[safeDashboard](){
-                    // 使用QPointer确保dashboard仍然有效
+                    // 使用QPointer确保dashboard仍然存在
                     if(safeDashboard){
                         //safeDashboard->_updateMobileBigButtonsPosition();
                     }
                 });
             }
 #endif
-            // embeddedLoader会自动删除自己
+            // embeddedLoader 会自动清理自己
         });
 
         connect(embeddedLoader,&EmbeddedQmlLoader::effectError,[embeddedLoader](const QString&){
             embeddedLoader->deleteLater();
         });
 
-        // 加载QML叠加层（启用点击穿透）
+        // 加载QML覆盖层，启用点击穿透
         QWidget*parentWidget = nullptr;
         if(!this->views().isEmpty()){
             parentWidget = this->views().first(); // 获取第一个QGraphicsView
@@ -4854,14 +4901,14 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
             effectWidth,
             effectHeight,
             params,
-            true  // 启用点击穿透功能
+            true// 启用点击穿透模式
         );
 
         if(!success)
             embeddedLoader->deleteLater();
     }
     else if(word.startsWith("spine=")){
-        // Spine 动态全屏特效 — render as QGraphicsItem (SpineGlItem)
+        // Spine 动态全屏特效——render as QGraphicsItem (SpineGlItem)
         // NOTE: Cannot use QOpenGLWidget overlay because FitView already
         // uses QOpenGLWidget as viewport; Qt 5 forbids nested QOpenGLWidgets.
         QString spineArg = word.mid(6);
@@ -4948,6 +4995,18 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
         }
 
         // Remove lightbox since spine overlay handles its own display
+        delete lightbox;
+        return;
+    }
+    else if (word.startsWith("background=")) {
+        QString bg = word.mid(11);
+        QPixmap pixmap = G_ROOM_SKIN.getPixmap("image/system/backdrop/" + bg);
+        if (pixmap.width() > 1 && pixmap.height() > 1) {
+            m_tableBgPixmapOrig = pixmap;
+            m_tableBgPixmap = pixmap.scaled(m_tablew, m_tableh + _m_roomLayout->m_photoDashboardPadding, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+            m_tableBg->setPixmap(m_tableBgPixmap);
+        }
+        removeItem(lightbox);
         delete lightbox;
         return;
     }

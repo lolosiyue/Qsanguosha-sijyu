@@ -2,6 +2,7 @@
 //#include "photo.h"
 //#include "card.h"
 #include "engine.h"
+#include <QMutexLocker>
 
 Settings Config;
 
@@ -61,6 +62,7 @@ void Settings::init()
     reinitializeConfigFile();
 #endif
     lua_State *lua = Sanguosha->getLuaState();
+    LuaLocker lua_locker;
     if (!qApp->arguments().contains("-server")) {
         QString font_path = value("DefaultFontPath", "font/simli.ttf").toString();
         int font_id = QFontDatabase::addApplicationFont(font_path);

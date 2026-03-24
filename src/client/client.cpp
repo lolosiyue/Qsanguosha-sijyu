@@ -123,6 +123,7 @@ Client::Client(QObject *parent, const QString &filename)
 	m_callbacks[S_COMMAND_ADD_ROUND] = &Client::addRound;
 	m_callbacks[S_COMMAND_SKILL_DESCRIPTION_SWAP] = &Client::setSkillDescriptionSwap;
 	m_callbacks[S_COMMAND_ADD_EQUIP_AREA] = &Client::addEquipArea;
+	m_callbacks[S_COMMAND_UPDATE_CARD_DESC] = &Client::updateCardDescription;
 
 	m_noNullificationThisTime = false;
 	m_noNullificationTrickName = ".";
@@ -1110,6 +1111,55 @@ void Client::playAudio(const QVariant &history)
 	if (args.size() != 2) return;
 
 	Sanguosha->playAudioEffect(args[0].toString(),args[1].toBool());
+}
+
+void Client::updateCardDescription(const QVariant &arg)
+{
+    JsonArray req = arg.value<JsonArray>();
+    if (req.length() < 2) return;
+    
+    QString card_name = req[0].toString();
+    QVariantMap placeholders = req[1].toMap();
+    
+    // 获取翻译模板（必须使用 :card_name1）
+    QString translated = Sanguosha->translate(":" + card_name + "1");
+    
+    // 如果翻译不存在（返回的是键本身），说明没有定义模板，直接返回
+    if (translated == (":" + card_name + "1") || translated.startsWith(":")) {
+        return;
+    }
+    
+    // 按照占位符长度从长到短排序（避免短的先替换导致问题）
+    QList<QString> keys = placeholders.keys();
+    std::sort(keys.begin(), keys.end(), [](const QString &a, const QString &b) {
+        return a.length() > b.length();
+    });
+    
+    // 遍历所有占位符进行替换
+    foreach (const QString &placeholder, keys) {
+        QString value = placeholders[placeholder].toString();
+        QString replaced_value;
+        
+        // 如果值包含|，说明是列表，需要分割后逐个翻译
+        if (value.contains("|")) {
+            QStringList parts = value.split("|", QString::SkipEmptyParts);
+            QStringList translated_parts;
+            foreach (const QString &part, parts) {
+                translated_parts << Sanguosha->translate(part);
+            }
+            replaced_value = translated_parts.join("<br/>");
+        } else {
+            // 单个值，直接翻译
+            replaced_value = Sanguosha->translate(value);
+        }
+        
+        translated.replace(placeholder, replaced_value);
+    }
+    
+    Sanguosha->addTranslationEntry(":" + card_name, translated);
+    
+    // 触发装备区刷新，让新的描述立即显示
+    emit card_description_updated(card_name);
 }
 
 int Client::alivePlayerCount() const

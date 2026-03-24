@@ -145,6 +145,7 @@ public:
     void updateWeaponRange(const QVariant &arg);
     void playAudio(const QVariant &history);
     void addEquipArea(const QVariant &reveal);
+    void updateCardDescription(const QVariant &arg);
 
     void fillAG(const QVariant &cards_str);
     void takeAG(const QVariant &take_str);
@@ -308,6 +309,9 @@ signals:
     void error_message(const QString &msg);
     void player_added(ClientPlayer *new_player);
     void player_removed(const QString &player_name);
+    void boss_level_changed();
+    void add_equip_area(const QString &area);
+    void card_description_updated(const QString &card_name);
     // choice signal
     void generals_got(const QStringList &generals);
     void kingdoms_got(const QStringList &kingdoms);

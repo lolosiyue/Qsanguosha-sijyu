@@ -234,7 +234,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 		}
 		room->drawCards(room->getAlivePlayers(),n_list,"InitialHandCards");
 
-		kof_mode = Config.value("EnableSPConvert",true).toBool()&&isNormalGameMode(Config.GameMode);
+		kof_mode = Config.value("EnableSPConvert",true).toBool()&&isNormalGameMode(Config.GameMode.mode_id);
 		foreach (ServerPlayer *p,room->getAlivePlayers()){
 			//p->setProperty("InitialHandCards",ListI2V(p->handCards()));
 			if(kof_mode&&Sanguosha->spConvertPairs().contains(p->getGeneralName())){

@@ -129,8 +129,10 @@ void RoomThread1v1::askForTakeGeneral(ServerPlayer *player)
 			GeneralSelector *selector = GeneralSelector::getInstance();
 			name = selector->select1v1(general_names);
 		}
-	} else
+	} else {
+		LuaUnlocker unlocker; // Release lua_mutex during AI delay
 		msleep(Config.AIDelay);
+	}
 	takeGeneral(player, name);
 }
 

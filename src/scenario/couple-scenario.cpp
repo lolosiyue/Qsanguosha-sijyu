@@ -4,6 +4,7 @@
 #include "room.h"
 #include "roomthread.h"
 //#include "util.h"
+#include <QMutexLocker>
 
 class CoupleScenarioRule : public ScenarioRule
 {
@@ -113,7 +114,7 @@ private:
 CoupleScenario::CoupleScenario()
     : Scenario("couple")
 {
-    lord = GetConfigFromLuaState(Sanguosha->getLuaState(), "couple_lord").toString();
+    { LuaLocker locker; lord = GetConfigFromLuaState(Sanguosha->getLuaState(), "couple_lord").toString(); }
     //loadCoupleMap();
 
     rule = new CoupleScenarioRule(this);
@@ -122,7 +123,9 @@ CoupleScenario::CoupleScenario()
 void CoupleScenario::loadCoupleMap()
 {
 	QStringList GeneralNames = Sanguosha->getLimitedGeneralNames();
-    foreach (QString couple, GetConfigFromLuaState(Sanguosha->getLuaState(), "couple_couples").toStringList()) {
+    QStringList couple_list;
+    { LuaLocker locker; couple_list = GetConfigFromLuaState(Sanguosha->getLuaState(), "couple_couples").toStringList(); }
+    foreach (QString couple, couple_list) {
         QStringList husbands = couple.split("+").first().split("|");
         QStringList wifes = couple.split("+").last().split("|");
         foreach(QString wife, wifes){

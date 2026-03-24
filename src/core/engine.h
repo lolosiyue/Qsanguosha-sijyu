@@ -7,6 +7,25 @@
 #include "util.h"
 #include <QPointer>
 #include <QMutex>
+#include <QThread>
+
+// Recursive mutex with yield/restore support.
+// Unlike QRecursiveMutex, it allows atomically releasing all recursive
+// lock levels (yield) and re-acquiring them later (restore), which is
+// essential for preventing deadlocks when the server thread sleeps
+// while holding the Lua lock.
+class SafeLuaMutex {
+public:
+    void lock();
+    void unlock();
+    bool tryLock(int timeout = 0);
+    int yield();
+    void restore(int count);
+private:
+    QMutex m_mutex;
+    QThread *m_owner = nullptr;
+    int m_count = 0;
+};
 
 class Scenario;
 class CardPattern;
@@ -24,7 +43,7 @@ public:
     void addTranslationEntry(const QString &key, const QString &value);
     QString translate(const QString &to_translate, bool initial = false) const;
     lua_State *getLuaState() const;
-    QRecursiveMutex &getLuaMutex() const;
+    SafeLuaMutex &getLuaMutex() const;
     void addModes(const QString &key, const QString &value, const QString &roles = "");
 
     int getMiniSceneCounts();
@@ -177,7 +196,7 @@ private:
     Scenario *m_customScene;
 
     lua_State *lua;
-    mutable QRecursiveMutex lua_mutex;
+    mutable SafeLuaMutex lua_mutex;
 
     //QHash<QString,const Card *> luaBasicCards, luaTrickCards;
     //QHash<QString,const Card *> luaWeapons, luaArmors ,luaTreasures;
@@ -206,5 +225,28 @@ static inline QVariant GetConfigFromLuaState(lua_State *L, const char *key)
 }
 
 extern Engine *Sanguosha;
+
+// RAII helper: locks the Lua SafeLuaMutex for the current scope.
+class LuaLocker {
+public:
+    LuaLocker() { Sanguosha->getLuaMutex().lock(); }
+    ~LuaLocker() { Sanguosha->getLuaMutex().unlock(); }
+    LuaLocker(const LuaLocker &) = delete;
+    LuaLocker &operator=(const LuaLocker &) = delete;
+};
+
+// RAII helper: temporarily yields ALL recursive lua_mutex locks during blocking waits,
+// so the UI thread can freely query card/skill state (isAvailable, targetFilter, etc.).
+// The destructor restores all locks before the server thread resumes Lua execution.
+// If the current thread does NOT hold the mutex, this is a safe no-op.
+class LuaUnlocker {
+public:
+    LuaUnlocker() : m_savedCount(Sanguosha->getLuaMutex().yield()) {}
+    ~LuaUnlocker() { Sanguosha->getLuaMutex().restore(m_savedCount); }
+    LuaUnlocker(const LuaUnlocker &) = delete;
+    LuaUnlocker &operator=(const LuaUnlocker &) = delete;
+private:
+    int m_savedCount;
+};
 
 #endif
