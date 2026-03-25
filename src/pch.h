@@ -20,6 +20,18 @@
 
 // Qt 5.14 compatibility: Include algorithm for std::sort and std::stable_sort
 #include <algorithm>
+#include <memory>
+#include <utility>
+
+#if __cplusplus < 201402L
+namespace std {
+template <class T, class... Args>
+inline unique_ptr<T> make_unique(Args&&... args)
+{
+    return unique_ptr<T>(new T(std::forward<Args>(args)...));
+}
+}
+#endif
 
 #ifndef Q_OS_WINRT
 #include <QtQml>

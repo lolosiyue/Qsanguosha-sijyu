@@ -580,6 +580,7 @@ enum TriggerEvent {
     EventPhaseChanging,
     EventPhaseSkipping,
     EventPhaseSkipped,
+    EventPlayPhaseLoop,
 
     DrawNCards,
     AfterDrawNCards,
@@ -643,6 +644,9 @@ enum TriggerEvent {
 
 	KingdomChange,
 	KingdomChanged,
+
+    GeneralChange,
+    GeneralChanged,
 
     PreChangeSlash,
     ChangeSlash,
