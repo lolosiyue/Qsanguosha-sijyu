@@ -617,7 +617,7 @@ void Room::killPlayer(ServerPlayer*victim, DamageStruct*reason, HpLostStruct*hpl
 			static QStringList continue_list;
 			if (continue_list.isEmpty())
 				continue_list << "02_1v1" << "04_1v3" << "06_XMode";
-			if (continue_list.contains(Config.GameMode))
+			if (continue_list.contains(Config.GameMode.mode_id))
 				return;
 
 			if (Config.AlterAIDelayAD) {
@@ -709,7 +709,7 @@ void Room::gameOver(const QString&winner)
 		foreach(ServerPlayer*sp, m_players){
 			if (sp->getState() != "robot"&&(winners.contains(sp->getRole())
 				|| winners.contains(sp->objectName()))){
-				QString id = Config.GameMode;
+				QString id = Config.GameMode.mode_id;
 				id.replace("_mini_", "");
 				int current = id.toInt();
 				if (current < Sanguosha->getMiniSceneCounts()){
@@ -717,7 +717,7 @@ void Room::gameOver(const QString&winner)
 					if (current + 1 > stage) Config.setValue("MiniSceneStage", current + 1);
 					id = QString(MiniScene::S_KEY_MINISCENE).arg(current + 1);
 					Config.setValue("GameMode", id);
-					Config.GameMode = id;
+					Config.GameMode = GameModeStruct(id);
 				}
 				break;
 			}
@@ -727,7 +727,7 @@ void Room::gameOver(const QString&winner)
 
 	QString name = getTag("NextGameMode").toString();
 	if (!name.isEmpty()){
-		Config.GameMode = name;
+		Config.GameMode = GameModeStruct(name);
 		Config.setValue("GameMode", name);
 		removeTag("NextGameMode");
 	}
@@ -2521,6 +2521,10 @@ void Room::resetAI(ServerPlayer*player)
 void Room::changeHero(ServerPlayer*player, const QString&new_general, bool full_state, bool invokeStart,
 	bool isSecondaryHero, bool sendLog, int start_hp)
 {
+	QVariant changing_data = QString(new_general);
+	if (thread->trigger(GeneralChange, this, player, changing_data))
+		return;
+
 	JsonArray arg;
 	arg << (int)S_GAME_EVENT_CHANGE_HERO << player->objectName();
 	arg << new_general << isSecondaryHero << sendLog;
@@ -2595,6 +2599,9 @@ void Room::changeHero(ServerPlayer*player, const QString&new_general, bool full_
 		}
 	}
 	resetAI(player);
+
+	QVariant changed_data = new_general;
+	thread->trigger(GeneralChanged, this, player, changed_data);
 }
 
 lua_State*Room::getLuaState() const
@@ -5839,6 +5846,8 @@ void Room::activate(ServerPlayer*player, CardUseStruct&card_use)
 {
 	tryPause();
 
+	thread->trigger(EventPlayPhaseLoop, this, player);
+	
 	if (player->getPhase()!=Player::Play||player->hasFlag("Global_PlayPhaseTerminated")){
 		setPlayerFlag(player, "-Global_PlayPhaseTerminated");
 		return;
