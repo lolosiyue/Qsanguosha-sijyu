@@ -780,7 +780,7 @@ void ServerDialog::edit1v1Banlist()
 QGroupBox *ServerDialog::create1v1Box()
 {
 	QGroupBox *box = new QGroupBox(tr("1v1 options"));
-	box->setEnabled(Config.GameMode == "02_1v1");
+	box->setEnabled(Config.GameMode.mode_id == "02_1v1");
 	box->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
 	QVBoxLayout *vlayout = new QVBoxLayout;
@@ -821,7 +821,7 @@ QGroupBox *ServerDialog::create1v1Box()
 QGroupBox *ServerDialog::create3v3Box()
 {
 	QGroupBox *box = new QGroupBox(tr("3v3 options"));
-	box->setEnabled(Config.GameMode == "06_3v3");
+	box->setEnabled(Config.GameMode.mode_id == "06_3v3");
 	box->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
 	QVBoxLayout *vlayout = new QVBoxLayout;
@@ -881,7 +881,7 @@ QGroupBox *ServerDialog::create3v3Box()
 QGroupBox *ServerDialog::createXModeBox()
 {
 	QGroupBox *box = new QGroupBox(tr("XMode options"));
-	box->setEnabled(Config.GameMode == "06_XMode");
+	box->setEnabled(Config.GameMode.mode_id == "06_XMode");
 	box->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
 	QComboBox *roleChooseComboBox = new QComboBox;
@@ -935,7 +935,7 @@ QGroupBox *ServerDialog::createGameModeBox()
 			item_list << button << box;
 		} else if (itor.key() == "04_boss") {
 			boss_mode_button = new QPushButton("自定义驱鬼逐邪");//tr("Custom Boss Mode")
-			boss_mode_button->setChecked(itor.key() == Config.GameMode);
+			boss_mode_button->setChecked(itor.key() == Config.GameMode.mode_id);
 			connect(boss_mode_button, SIGNAL(clicked()), this, SLOT(doBossModeCustomAssign()));
 			item_list << HLay(button, boss_mode_button);/*
 		} else if (itor.key() == "08_defense") {
@@ -1386,14 +1386,14 @@ int ServerDialog::config()
 	if (mode_group->checkedButton()) {
 		QString objname = mode_group->checkedButton()->objectName();
 		if (objname == "scenario")
-			Config.GameMode = Sanguosha->getGameMode(scenario_ComboBox->itemData(scenario_ComboBox->currentIndex()).toString());
+			Config.GameMode = GameModeStruct(scenario_ComboBox->itemData(scenario_ComboBox->currentIndex()).toString());
 		else if (objname == "mini") {
 			if (mini_scene_ComboBox->isEnabled())
-				Config.GameMode = Sanguosha->getGameMode(mini_scene_ComboBox->itemData(mini_scene_ComboBox->currentIndex()).toString());
+				Config.GameMode = GameModeStruct(mini_scene_ComboBox->itemData(mini_scene_ComboBox->currentIndex()).toString());
 			else
-				Config.GameMode = Sanguosha->getGameMode("custom_scenario");
+				Config.GameMode = GameModeStruct("custom_scenario");
 		} else
-			Config.GameMode = Sanguosha->getGameMode(objname);
+			Config.GameMode = GameModeStruct(objname);
 	}
 
 	Config.setValue("ServerName", Config.ServerName);

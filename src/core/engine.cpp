@@ -1271,7 +1271,7 @@ QString Engine::getSetupString() const
         flags.append(c);
     }
 
-    QString mode = Config.GameMode;
+    QString mode = Config.GameMode.mode_id;
     if (mode == "02_1v1")
         mode += Config.value("1v1/Rule", "2013").toString();
     else if (mode == "06_3v3")
@@ -1617,9 +1617,9 @@ QStringList Engine::getRandomGenerals(int count, const QSet<QString> &ban_set, c
 
 QList<int> Engine::getRandomCards(bool derivative) const
 {
-    bool exclude_disaster = Config.GameMode == "04_1v3", using_2012_3v3 = false,
-		using_2013_3v3 = false, challengedeveloper = Config.GameMode == "challengedeveloper";
-    if (Config.GameMode == "06_3v3") {
+    bool exclude_disaster = Config.GameMode.mode_id == "04_1v3", using_2012_3v3 = false,
+		using_2013_3v3 = false, challengedeveloper = Config.GameMode.mode_id == "challengedeveloper";
+    if (Config.GameMode.mode_id == "06_3v3") {
         using_2012_3v3 = Config.value("3v3/OfficialRule").toString() == "2012";
         using_2013_3v3 = Config.value("3v3/OfficialRule", "2013").toString() == "2013";
         exclude_disaster = !Config.value("3v3/UsingExtension").toBool() || Config.value("3v3/ExcludeDisasters", true).toBool();
@@ -1645,13 +1645,13 @@ QList<int> Engine::getRandomCards(bool derivative) const
 			if(using_2013_3v3)
 				list << card->getId();
 		}else if(pn == "New1v1Card"){
-			if(Config.GameMode == "02_1v1")
+			if(Config.GameMode.mode_id == "02_1v1")
                 list << card->getId();
 		}else{
 			if(ServerInfo.BanPackages.contains(pn)) continue;
-			if(Config.GameMode == "06_3v3"){
+			if(Config.GameMode.mode_id == "06_3v3"){
 				if(!Config.value("3v3/UsingExtension").toBool() && !pn.startsWith("standard_")) continue;
-			}else if(Config.GameMode == "02_1v1"){
+			}else if(Config.GameMode.mode_id == "02_1v1"){
 				if(!Config.value("1v1/UsingCardExtension").toBool()) continue;
 			}
 			list << card->getId();

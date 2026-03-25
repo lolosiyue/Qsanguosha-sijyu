@@ -542,7 +542,8 @@ void PlayerCardContainer::updateHandcardNum()
         tooltipInfo << tr("--- 影響技能與來源 ---");
 
         // 遍歷遊戲中所有已註冊的技能
-        foreach (const Skill *skill, Sanguosha->getSkillList()) {
+        foreach (const QString &skillName, Sanguosha->getSkillNames()) {
+            const Skill *skill = Sanguosha->getSkill(skillName);
             const MaxCardsSkill *mc_skill = qobject_cast<const MaxCardsSkill *>(skill);
             if (mc_skill) {
                 // 詢問該技能：對「當前玩家(m_player)」造成的固定值(Fixed)或增減值(Extra)是多少
@@ -553,8 +554,8 @@ void PlayerCardContainer::updateHandcardNum()
                 if (fixed >= 0 || extra != 0) {
                     // 找出是場上哪位玩家擁有這個技能 (技能來源)
                     QStringList sourceNames;
-                    foreach (const ClientPlayer *p, ClientInstance->getAlivePlayers()) {
-                        if (p->hasSkill(skill->objectName())) {
+                    foreach (const ClientPlayer *p, ClientInstance->getPlayers()) {
+                        if (p->isAlive() && p->hasSkill(skill->objectName())) {
                             sourceNames << p->screenName(); // 獲取擁有該技能的玩家暱稱
                         }
                     }

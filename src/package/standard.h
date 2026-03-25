@@ -76,6 +76,9 @@ public:
     virtual Location location() const = 0;
     virtual QList<int> getOccupyLocations() const;
     void setOccupyLocations(const QList<int> &locations);
+
+protected:
+    QList<int> occupy_locations;
 };
 
 class GlobalEffect : public TrickCard
