@@ -1581,7 +1581,11 @@ public:
 	void removeTag(const char*key);
 
 	void setEmotion(ServerPlayer*target, const char*emotion);
+	void setLoopEmotion(ServerPlayer*target, const char*emotion);
 	void changeTableBg(const char*tableBg);
+	void changeBackground(const char*name, QList<ServerPlayer*> players = QList<ServerPlayer*>());
+	void reversePlayOrder();
+	bool isPlayOrderReversed() const;
 
 	Player::Place getCardPlace(int card_id) const;
 	ServerPlayer*getCardOwner(int card_id) const;
@@ -1732,7 +1736,10 @@ public:
 
 %extend Room {
 	ServerPlayer*nextPlayer() const{
-		return $self->getCurrent()->getNextAlive();
+		return $self->getCurrent()->getNextGamePlayer();
+	}
+	void updateCardDescription(const char*card_name, const QVariant&placeholders) {
+		$self->updateCardDescription(card_name, placeholders.toMap());
 	}
 	void output(const char*msg) {
 		if(Config.value("DebugOutput", false).toBool())

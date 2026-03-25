@@ -38,6 +38,7 @@ Room::Room(QObject*parent, const QString&mode)
 	static int s_global_room_id = 0;
 	_m_Id = s_global_room_id++;
 	_m_lastMovementId = 0;
+	m_playOrderReversed = false;
 
 	initCallbacks();
 
@@ -3791,7 +3792,8 @@ void Room::swapSeat(ServerPlayer*a, ServerPlayer*b)
 		player->setPlayerSeat(i+1);
 		broadcastProperty(player, "player_seat");
 
-		player->setNext(m_players[(i+1)%m_players.length()]);
+		int nextIndex = m_playOrderReversed ? (i - 1 + m_players.length()) % m_players.length() : (i + 1) % m_players.length();
+		player->setNext(m_players[nextIndex]);
 	}
 }
 
@@ -5833,6 +5835,12 @@ void Room::setEmotion(ServerPlayer*target, const QString&emotion)
 	doBroadcastNotify(S_COMMAND_SET_EMOTION, arg);
 }
 
+void Room::setLoopEmotion(ServerPlayer*target, const QString&emotion)
+{
+	if (!target) return;
+	doAnimate(S_ANIMATE_LIGHTBOX, QString("loopmove=%1").arg(emotion), target->objectName());
+}
+
 void Room::changeTableBg(const QString&tableBg)
 {
 	QString tb = QString("image/system/backdrop/%1.jpg").arg(tableBg);
@@ -5840,6 +5848,40 @@ void Room::changeTableBg(const QString&tableBg)
 	JsonArray arg;
 	arg << tb;
 	doBroadcastNotify(S_COMMAND_CHANGE_TABLE_BG, arg);
+}
+
+void Room::changeBackground(const QString name, QList<ServerPlayer *> players)
+{
+	if (players.isEmpty()) players = m_players;
+	doAnimate(S_ANIMATE_LIGHTBOX, "background=" + name, "", players);
+}
+
+void Room::reversePlayOrder()
+{
+	m_playOrderReversed = !m_playOrderReversed;
+	int count = m_players.length();
+	if (count < 2) return;
+
+	for (int i = 0; i < count; i++) {
+		int nextIndex = m_playOrderReversed ? (i - 1 + count) % count : (i + 1) % count;
+		m_players[i]->setNext(m_players[nextIndex]);
+	}
+
+	LogMessage log;
+	log.type = m_playOrderReversed ? "#ReversePlayOrder" : "#RestorePlayOrder";
+	sendLog(log);
+}
+
+bool Room::isPlayOrderReversed() const
+{
+	return m_playOrderReversed;
+}
+
+void Room::updateCardDescription(const QString &card_name, const QVariantMap &placeholders)
+{
+	JsonArray arg;
+	arg << card_name << placeholders;
+	doBroadcastNotify(S_COMMAND_UPDATE_CARD_DESC, arg);
 }
 
 void Room::activate(ServerPlayer*player, CardUseStruct&card_use)
@@ -6745,6 +6787,8 @@ bool Room::makeCheat(ServerPlayer*player)
 			|| !JsonUtils::isNumber(arg1[1]) || !JsonUtils::isNumber(arg1[2]))
 			return false;
 		stateChange(arg1[0].toString(), (QSanProtocol::StateEditorCheat)arg1[1].toInt(), arg1[2].toInt());
+	} else if (code == S_CHEAT_REVERSE_PLAY_ORDER) {
+		reversePlayOrder();
 	}
 	return true;
 }

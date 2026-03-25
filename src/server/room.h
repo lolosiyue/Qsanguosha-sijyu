@@ -343,6 +343,8 @@ public:
 
     void changeTableBg(const QString&tableBg);
     void changeBackground(const QString name, QList<ServerPlayer *> players = QList<ServerPlayer *>());
+    void reversePlayOrder();
+    bool isPlayOrderReversed() const;
 
     Player::Place getCardPlace(int card_id) const;
     ServerPlayer*getCardOwner(int card_id) const;
