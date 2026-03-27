@@ -7,6 +7,7 @@
 #include "util.h"
 #include <QPointer>
 #include <QMutex>
+#include <QReadWriteLock>
 #include <QThread>
 
 // Recursive mutex with yield/restore support.
@@ -176,14 +177,14 @@ private:
     void godLottery(QStringList &) const;
 	void godLottery(QSet<QString> &) const;
     QList<const Skill *> getSafeSkills() const;
-
-    QMutex m_mutex;
+    mutable QReadWriteLock m_rwLock;
     QHash<QString, QString> translations, engine_translations;
     QHash<QString, const General *> generals, available_generals;
     QHash<QString, const QMetaObject *> metaobjects;
     //QHash<QString, QString> className2objectName;
     QHash<QString, QPointer<Skill>> skills;
     QHash<QThread *, QObject *> m_rooms;
+    mutable QMutex m_mutex;
     QMap<QString, QString> modes, mode_roles;
     QMultiMap<QString, QString> related_skills;
     mutable QMap<QString, const CardPattern *> patterns;
