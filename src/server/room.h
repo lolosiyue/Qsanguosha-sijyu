@@ -343,8 +343,6 @@ public:
 
     void changeTableBg(const QString&tableBg);
     void changeBackground(const QString name, QList<ServerPlayer *> players = QList<ServerPlayer *>());
-    void reversePlayOrder();
-    bool isPlayOrderReversed() const;
 
     Player::Place getCardPlace(int card_id) const;
     ServerPlayer*getCardOwner(int card_id) const;
@@ -477,7 +475,7 @@ public:
     void swapCards(ServerPlayer*first, ServerPlayer*second, QList<int> first_ids, QList<int> second_ids, const QString&reason = "", bool visible = false);
     void setPlayerChained(ServerPlayer*player);
     void setPlayerChained(ServerPlayer*player, bool is_chained);
-    void addMaxCards(ServerPlayer*player, int num, bool one_turn = true);
+    void addMaxCards(ServerPlayer*player, int num, bool one_turn = false, const QString& reason = "", ServerPlayer* source = nullptr);
     void addAttackRange(ServerPlayer*player, int num, bool one_turn = true);
     void addSlashCishu(ServerPlayer*player, int num, bool one_turn = true);
     void addSlashJuli(ServerPlayer*player, int num, bool one_turn = true);

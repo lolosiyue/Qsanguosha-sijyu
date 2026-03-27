@@ -2071,6 +2071,7 @@ void Room::setPlayerProperty(ServerPlayer*player, const char*property_name, cons
 	else {
 		// 跨執行緒：發送信號交由主執行緒處理
 		// 由於已改用Qt::BlockingQueuedConnection，emit 會在此阻塞直到 slot 執行完畢才返回
+		LuaUnlocker unlocker;
 		emit signalSetProperty(player, property_name, value);
 	}
 
@@ -2167,8 +2168,10 @@ void Room::safeSetPlayerProperty(ServerPlayer*player, const char*property_name, 
 	if (!player) return;
 	if (QThread::currentThread() == player->thread())
 		player->setProperty(property_name, value);
-	else
+	else {
+		LuaUnlocker unlocker;
 		emit signalSetProperty(player, property_name, value);
+	}
 }
 
 void Room::setPlayerMark(ServerPlayer*player, const QString&mark, int value, QList<ServerPlayer*> only_viewers)
@@ -7327,13 +7330,25 @@ CardsMoveStruct Room::askForYijiStruct(ServerPlayer*guojia, QList<int>&cards, co
 	return move;
 }
 
-void Room::addMaxCards(ServerPlayer*player, int num, bool one_turn)
+void Room::addMaxCards(ServerPlayer*player, int num, bool one_turn, const QString& reason, ServerPlayer* source)
 {
-	if (num == 0) return;
-	if (one_turn) addPlayerMark(player, "ExtraBfMaxCards-Clear", num);
-	else addPlayerMark(player, "ExtraBfMaxCards", num);
-}
+    if (num == 0) return;
+    
+    QString mark_name = "ExtraBfMaxCards";
 
+    if (!reason.isEmpty()) {
+        mark_name += "_" + reason;
+        if (source) {
+            mark_name += "_" + source->objectName();
+        }
+    }
+    
+    if (one_turn) {
+        mark_name += "-Clear";
+    }
+
+    addPlayerMark(player, mark_name, num);
+}
 void Room::addAttackRange(ServerPlayer*player, int num, bool one_turn)
 {
 	if (num == 0) return;
