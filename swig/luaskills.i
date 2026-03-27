@@ -548,23 +548,6 @@ public:
 
 #include "lua-wrapper.h"
 #include "clientplayer.h"
-#include <QMutexLocker>
-
-// RAII tryLock wrapper for UI-thread Lua queries.
-// Attempts to acquire the mutex with a timeout; if it fails,
-// isLocked() returns false so the caller can return a safe default
-// instead of blocking the UI thread indefinitely.
-class LuaTryLocker {
-	SafeLuaMutex *m_mutex;
-	bool m_locked;
-public:
-	LuaTryLocker(SafeLuaMutex *mutex, int timeout = 50)
-		: m_mutex(mutex), m_locked(mutex->tryLock(timeout)) {}
-	~LuaTryLocker() { if (m_locked) m_mutex->unlock(); }
-	bool isLocked() const { return m_locked; }
-	LuaTryLocker(const LuaTryLocker &) = delete;
-	LuaTryLocker &operator=(const LuaTryLocker &) = delete;
-};
 
 static QList<lua_State*>lua_list;
 static lua_State*luaState()
@@ -583,7 +566,6 @@ bool LuaTriggerSkill::triggerable(ServerPlayer *target, Room *room, TriggerEvent
 	if (can_trigger == 0)
 		return TriggerSkill::triggerable(target, room, event, owner, data);
 
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	// the callback function
@@ -612,7 +594,6 @@ bool LuaTriggerSkill::canWake(TriggerEvent event, ServerPlayer *player, QVariant
 	if (can_wake == 0)
 		return TriggerSkill::canWake(event, player, data, room);
 
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	// the callback function
@@ -640,7 +621,6 @@ bool LuaTriggerSkill::trigger(TriggerEvent event, Room *room, ServerPlayer *play
 	if (on_trigger == 0)
 		return false;
 
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	// the callback
@@ -672,7 +652,6 @@ bool LuaScenarioRule::triggerable(const ServerPlayer *target) const
 	if (can_trigger == 0)
 		return ScenarioRule::triggerable(target);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback function
@@ -697,7 +676,6 @@ bool LuaScenarioRule::trigger(TriggerEvent event, Room *room, ServerPlayer *play
 	if (on_trigger == 0)
 		return false;
 
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	// the callback
@@ -734,7 +712,6 @@ Skill::Frequency LuaTriggerSkill::getFrequency(const Player *target) const
 	if (dynamic_frequency == 0)
 		return Skill::getFrequency(target);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, dynamic_frequency);
@@ -756,7 +733,6 @@ bool LuaProhibitSkill::isProhibited(const Player *from, const Player *to, const 
 	if (is_prohibited == 0)
 		return false;
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, is_prohibited);
@@ -786,7 +762,6 @@ bool LuaProhibitPindianSkill::isPindianProhibited(const Player *from, const Play
 	if (is_pindianprohibited == 0)
 		return false;
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, is_pindianprohibited);
@@ -809,8 +784,6 @@ int LuaDistanceSkill::getCorrect(const Player *from, const Player *to) const
 	if (correct_func == 0)
 		return DistanceSkill::getCorrect(from,to);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return 0;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, correct_func);
@@ -833,7 +806,6 @@ int LuaDistanceSkill::getFixed(const Player *from, const Player *to) const
 	if (fixed_func == 0)
 		return DistanceSkill::getFixed(from,to);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, fixed_func);
@@ -856,7 +828,6 @@ int LuaMaxCardsSkill::getExtra(const Player *target) const
 	if (extra_func == 0)
 		return MaxCardsSkill::getExtra(target);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, extra_func);
@@ -878,7 +849,6 @@ int LuaMaxCardsSkill::getFixed(const Player *target) const
 	if (fixed_func == 0)
 		return MaxCardsSkill::getFixed(target);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, fixed_func);
@@ -902,7 +872,6 @@ int LuaTargetModSkill::getResidueNum(const Player *from, const Card *card, const
 	if (!from || !card)
 		return TargetModSkill::getResidueNum(from,card,to);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, residue_func);
@@ -928,7 +897,6 @@ int LuaTargetModSkill::getDistanceLimit(const Player *from, const Card *card, co
 	if (!from || !card)
 		return TargetModSkill::getDistanceLimit(from,card,to);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, distance_limit_func);
@@ -954,7 +922,6 @@ int LuaTargetModSkill::getExtraTargetNum(const Player *from, const Card *card) c
 	if (!from || !card)
 		return TargetModSkill::getExtraTargetNum(from,card);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, extra_target_func);
@@ -977,7 +944,6 @@ int LuaAttackRangeSkill::getExtra(const Player *target, bool include_weapon) con
 	if (extra_func == 0)
 		return AttackRangeSkill::getExtra(target, include_weapon);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, extra_func);
@@ -1000,7 +966,6 @@ int LuaAttackRangeSkill::getFixed(const Player *target, bool include_weapon) con
 	if (fixed_func == 0)
 		return AttackRangeSkill::getFixed(target, include_weapon);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, fixed_func);
@@ -1023,7 +988,6 @@ bool LuaInvaliditySkill::isSkillValid(const Player *player, const Skill *skill) 
 	if (skill_valid == 0)
 		return true;
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, skill_valid);
@@ -1046,8 +1010,6 @@ bool LuaFilterSkill::viewFilter(const Card *to_select) const
 	if (view_filter == 0)
 		return false;
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, view_filter);
@@ -1069,8 +1031,6 @@ const Card *LuaFilterSkill::viewAs(const Card *originalCard) const
 	if (view_as == 0)
 		return nullptr;
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return nullptr;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, view_as);
@@ -1095,7 +1055,6 @@ QString LuaViewAsEquipSkill::viewAsEquip(const Player *target) const
 	if (view_as_equip == 0)
 		return QString();
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, view_as_equip);
@@ -1117,8 +1076,6 @@ QString LuaCardLimitSkill::limitList(const Player *target, const Card *card) con
 	if (limit_list == 0)
 		return QString();
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return QString();
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, limit_list);
@@ -1141,8 +1098,6 @@ QString LuaCardLimitSkill::limitPattern(const Player *target, const Card *card) 
 	if (limit_pattern == 0)
 		return QString();
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return QString();
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, limit_pattern);
@@ -1167,8 +1122,6 @@ bool LuaViewAsSkill::viewFilter(const QList<const Card *> &selected, const Card 
 	if (view_filter == 0)
 		return false;
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, view_filter);
@@ -1195,8 +1148,6 @@ const Card *LuaViewAsSkill::viewAs(const QList<const Card *> &cards) const
 	if (view_as == 0)
 		return nullptr;
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return nullptr;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, view_as);
@@ -1225,8 +1176,6 @@ bool LuaViewAsSkill::shouldBeVisible(const Player *player) const
 	if (should_be_visible == 0)
 		return ViewAsSkill::shouldBeVisible(player);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1249,8 +1198,6 @@ bool LuaViewAsSkill::isEnabledAtPlay(const Player *player) const
 	if (enabled_at_play == 0)
 		return ViewAsSkill::isEnabledAtPlay(player);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1273,8 +1220,6 @@ bool LuaViewAsSkill::isEnabledAtResponse(const Player *player, const QString &pa
 	if (enabled_at_response == 0)
 		return ViewAsSkill::isEnabledAtResponse(player, pattern);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1299,8 +1244,6 @@ bool LuaViewAsSkill::isEnabledAtNullification(const ServerPlayer *player) const
 	if (enabled_at_nullification == 0)
 		return ViewAsSkill::isEnabledAtNullification(player);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1326,8 +1269,6 @@ bool LuaSkillCard::targetFilter(const QList<const Player *> &targets, const Play
 	if (filter == 0)
 		return SkillCard::targetFilter(targets, to_select, self, maxVotes);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1360,8 +1301,6 @@ bool LuaSkillCard::targetsFeasible(const QList<const Player *> &targets, const P
 	if (feasible == 0)
 		return SkillCard::targetsFeasible(targets, self);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1389,7 +1328,6 @@ void LuaSkillCard::onUse(Room *room, CardUseStruct &card_use) const
 	if (about_to_use == 0)
 		return SkillCard::onUse(room, card_use);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1410,7 +1348,6 @@ void LuaSkillCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 	if (on_use == 0)
 		return SkillCard::use(room, source, targets);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1436,7 +1373,6 @@ void LuaSkillCard::onEffect(CardEffectStruct &effect) const
 	if (on_effect == 0)
 		return SkillCard::onEffect(effect);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1456,7 +1392,6 @@ const Card *LuaSkillCard::validate(CardUseStruct &cardUse) const
 	if (on_validate == 0)
 		return SkillCard::validate(cardUse);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1482,7 +1417,6 @@ const Card *LuaSkillCard::validateInResponse(ServerPlayer *user) const
 	if (on_validate_in_response == 0)
 		return SkillCard::validateInResponse(user);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1510,8 +1444,6 @@ bool LuaBasicCard::targetFilter(const QList<const Player *> &targets, const Play
 	if (filter == 0)
 		return BasicCard::targetFilter(targets, to_select, self);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1541,8 +1473,6 @@ bool LuaBasicCard::targetFilter(const QList<const Player *> &targets, const Play
 	if (filter == 0)
 		return BasicCard::targetFilter(targets, to_select, self, maxVotes);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1575,8 +1505,6 @@ bool LuaBasicCard::targetsFeasible(const QList<const Player *> &targets, const P
 	if (feasible == 0)
 		return BasicCard::targetsFeasible(targets, self);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1604,7 +1532,6 @@ void LuaBasicCard::onUse(Room *room, CardUseStruct &card_use) const
 	if (about_to_use == 0)
 		return BasicCard::onUse(room, card_use);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1625,7 +1552,6 @@ void LuaBasicCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 	if (on_use == 0)
 		return BasicCard::use(room, source, targets);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1651,7 +1577,6 @@ void LuaBasicCard::onEffect(CardEffectStruct &effect) const
 	if (on_effect == 0)
 		return BasicCard::onEffect(effect);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1671,8 +1596,6 @@ bool LuaBasicCard::isAvailable(const Player *player) const
 	if (available == 0)
 		return BasicCard::isAvailable(player);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1695,8 +1618,6 @@ const Card *LuaBasicCard::validate(CardUseStruct &cardUse) const
 	if (on_validate == 0)
 		return BasicCard::validate(cardUse);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1722,8 +1643,6 @@ const Card *LuaBasicCard::validateInResponse(ServerPlayer *user) const
 	if (on_validate_in_response == 0)
 		return BasicCard::validateInResponse(user);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1751,8 +1670,6 @@ bool LuaTrickCard::targetFilter(const QList<const Player *> &targets, const Play
 	if (filter == 0)
 		return TrickCard::targetFilter(targets, to_select, self);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1782,8 +1699,6 @@ bool LuaTrickCard::targetFilter(const QList<const Player *> &targets, const Play
 	if (filter == 0)
 		return TrickCard::targetFilter(targets, to_select, self, maxVotes);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1816,8 +1731,6 @@ bool LuaTrickCard::targetsFeasible(const QList<const Player *> &targets, const P
 	if (feasible == 0)
 		return TrickCard::targetsFeasible(targets, self);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1845,7 +1758,6 @@ void LuaTrickCard::onNullified(ServerPlayer *target) const
 	if (on_nullified == 0)
 		return TrickCard::onNullified(target);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1865,8 +1777,6 @@ bool LuaTrickCard::isCancelable(const CardEffectStruct &effect) const
 	if (is_cancelable == 0)
 		return TrickCard::isCancelable(effect);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1888,7 +1798,6 @@ void LuaTrickCard::onUse(Room *room, CardUseStruct &card_use) const
 	if (about_to_use == 0)
 		return TrickCard::onUse(room, card_use);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1909,7 +1818,6 @@ void LuaTrickCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 	if (on_use == 0)
 		return TrickCard::use(room, source, targets);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1936,7 +1844,6 @@ void LuaTrickCard::onEffect(CardEffectStruct &effect) const
 	if (on_effect == 0)
 		return TrickCard::onEffect(effect);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1956,8 +1863,6 @@ bool LuaTrickCard::isAvailable(const Player *player) const
 	if (available == 0)
 		return TrickCard::isAvailable(player);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1980,8 +1885,6 @@ const Card *LuaTrickCard::validate(CardUseStruct &cardUse) const
 	if (on_validate == 0)
 		return TrickCard::validate(cardUse);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2007,8 +1910,6 @@ const Card *LuaTrickCard::validateInResponse(ServerPlayer *user) const
 	if (on_validate_in_response == 0)
 		return TrickCard::validateInResponse(user);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2034,8 +1935,6 @@ bool LuaWeapon::targetFilter(const QList<const Player *> &targets, const Player 
 	if (filter == 0)
 		return Weapon::targetFilter(targets, to_select, self);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2064,8 +1963,6 @@ bool LuaWeapon::targetsFeasible(const QList<const Player *> &targets, const Play
 	if (feasible == 0)
 		return Weapon::targetsFeasible(targets, self);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2093,8 +1990,6 @@ bool LuaWeapon::isAvailable(const Player *player) const
 	if (available == 0)
 		return Weapon::isAvailable(player);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2117,7 +2012,6 @@ void LuaWeapon::onInstall(ServerPlayer *player) const
 	if (on_install == 0)
 		return Weapon::onInstall(player);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2137,7 +2031,6 @@ void LuaWeapon::onUninstall(ServerPlayer *player) const
 	if (on_uninstall == 0)
 		return Weapon::onUninstall(player);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2157,8 +2050,6 @@ bool LuaArmor::targetFilter(const QList<const Player *> &targets, const Player *
 	if (filter == 0)
 		return Armor::targetFilter(targets, to_select, self);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2187,8 +2078,6 @@ bool LuaArmor::targetsFeasible(const QList<const Player *> &targets, const Playe
 	if (feasible == 0)
 		return Armor::targetsFeasible(targets, self);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2216,8 +2105,6 @@ bool LuaArmor::isAvailable(const Player *player) const
 	if (available == 0)
 		return Armor::isAvailable(player);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2240,7 +2127,6 @@ void LuaArmor::onInstall(ServerPlayer *player) const
 	if (on_install == 0)
 		return Armor::onInstall(player);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2260,7 +2146,6 @@ void LuaArmor::onUninstall(ServerPlayer *player) const
 	if (on_uninstall == 0)
 		return Armor::onUninstall(player);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2280,8 +2165,6 @@ bool LuaHorse::targetFilter(const QList<const Player *> &targets, const Player *
 	if (filter == 0)
 		return Horse::targetFilter(targets, to_select, self);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2310,8 +2193,6 @@ bool LuaHorse::targetsFeasible(const QList<const Player *> &targets, const Playe
 	if (feasible == 0)
 		return Horse::targetsFeasible(targets, self);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2339,8 +2220,6 @@ bool LuaHorse::isAvailable(const Player *player) const
 	if (available == 0)
 		return Horse::isAvailable(player);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2363,7 +2242,6 @@ void LuaHorse::onInstall(ServerPlayer *player) const
 	if (on_install == 0)
 		return Horse::onInstall(player);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2383,7 +2261,6 @@ void LuaHorse::onUninstall(ServerPlayer *player) const
 	if (on_uninstall == 0)
 		return Horse::onUninstall(player);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2403,8 +2280,6 @@ int LuaHorse::getCorrect(const Player *player) const
 	if (correct_func == 0)
 		return Horse::getCorrect(player);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return 0;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, correct_func);
@@ -2426,8 +2301,6 @@ bool LuaOffensiveHorse::targetFilter(const QList<const Player *> &targets, const
 	if (filter == 0)
 		return OffensiveHorse::targetFilter(targets, to_select, self);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2456,8 +2329,6 @@ bool LuaOffensiveHorse::isAvailable(const Player *player) const
 	if (available == 0)
 		return OffensiveHorse::isAvailable(player);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2480,8 +2351,6 @@ bool LuaOffensiveHorse::targetsFeasible(const QList<const Player *> &targets, co
 	if (feasible == 0)
 		return OffensiveHorse::targetsFeasible(targets, self);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2509,7 +2378,6 @@ void LuaOffensiveHorse::onInstall(ServerPlayer *player) const
 	if (on_install == 0)
 		return OffensiveHorse::onInstall(player);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2529,7 +2397,6 @@ void LuaOffensiveHorse::onUninstall(ServerPlayer *player) const
 	if (on_uninstall == 0)
 		return OffensiveHorse::onUninstall(player);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2549,8 +2416,6 @@ int LuaOffensiveHorse::getCorrect(const Player *player) const
 	if (correct_func == 0)
 		return OffensiveHorse::getCorrect(player);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return 0;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, correct_func);
@@ -2572,8 +2437,6 @@ bool LuaDefensiveHorse::targetFilter(const QList<const Player *> &targets, const
 	if (filter == 0)
 		return DefensiveHorse::targetFilter(targets, to_select, self);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2603,8 +2466,6 @@ bool LuaDefensiveHorse::targetsFeasible(const QList<const Player *> &targets, co
 	if (feasible == 0)
 		return DefensiveHorse::targetsFeasible(targets, self);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2632,8 +2493,6 @@ bool LuaDefensiveHorse::isAvailable(const Player *player) const
 	if (available == 0)
 		return DefensiveHorse::isAvailable(player);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2656,7 +2515,6 @@ void LuaDefensiveHorse::onInstall(ServerPlayer *player) const
 	if (on_install == 0)
 		return DefensiveHorse::onInstall(player);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2676,7 +2534,6 @@ void LuaDefensiveHorse::onUninstall(ServerPlayer *player) const
 	if (on_uninstall == 0)
 		return DefensiveHorse::onUninstall(player);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2696,8 +2553,6 @@ int LuaDefensiveHorse::getCorrect(const Player *player) const
 	if (correct_func == 0)
 		return DefensiveHorse::getCorrect(player);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return 0;
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, correct_func);
@@ -2719,8 +2574,6 @@ bool LuaTreasure::targetFilter(const QList<const Player *> &targets, const Playe
 	if (filter == 0)
 		return Treasure::targetFilter(targets, to_select, self);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2749,8 +2602,6 @@ bool LuaTreasure::targetsFeasible(const QList<const Player *> &targets, const Pl
 	if (feasible == 0)
 		return Treasure::targetsFeasible(targets, self);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2778,8 +2629,6 @@ bool LuaTreasure::isAvailable(const Player *player) const
 	if (available == 0)
 		return Treasure::isAvailable(player);
 
-	LuaTryLocker locker(&Sanguosha->getLuaMutex());
-	if (!locker.isLocked()) return false;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2802,7 +2651,6 @@ void LuaTreasure::onInstall(ServerPlayer *player) const
 	if (on_install == 0)
 		return Treasure::onInstall(player);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -2822,7 +2670,6 @@ void LuaTreasure::onUninstall(ServerPlayer *player) const
 	if (on_uninstall == 0)
 		return Treasure::onUninstall(player);
 
-	LuaLocker locker;
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback

@@ -1,7 +1,6 @@
 %{
 
 #include "ai.h"
-#include <QMutexLocker>
 
 %}
 
@@ -97,12 +96,11 @@ bool LuaAI::askForSkillInvoke(const QString &skill_name, const QVariant &data)
 	if (callback == 0)
 		return TrustAI::askForSkillInvoke(skill_name, data);
 
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
 	lua_pushstring(L, skill_name.toLatin1());
-	SWIG_NewPointerObj(L, const_cast<QVariant*>(&data), SWIGTYPE_p_QVariant, 0);
+	SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);
 
 	if (lua_pcall(L, 3, 1, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
@@ -120,12 +118,11 @@ QString LuaAI::askForChoice(const QString &skill_name, const QString &choices, c
 	if (callback == 0)
 		return TrustAI::askForChoice(skill_name, choices, data);
 
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 	pushCallback(L, __FUNCTION__);
 	lua_pushstring(L, skill_name.toLatin1());
 	lua_pushstring(L, choices.toLatin1());
-	SWIG_NewPointerObj(L, const_cast<QVariant*>(&data), SWIGTYPE_p_QVariant, 0);
+	SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);
 	int error = lua_pcall(L, 4, 1, 0);
 	const char *result = lua_tostring(L, -1);
 	lua_pop(L, 1);
@@ -140,7 +137,6 @@ void LuaAI::activate(CardUseStruct &card_use)
 {
 	Q_ASSERT(callback);
 
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -160,7 +156,6 @@ AI *Room::cloneAI(ServerPlayer *player)
 	if (m_lua == nullptr || !Config.EnableAI)
 		return new TrustAI(player);
 
-	LuaLocker locker;
 	lua_getglobal(m_lua, "CloneAI");
 
 	SWIG_NewPointerObj(m_lua, player, SWIGTYPE_p_ServerPlayer, 0);
@@ -184,7 +179,6 @@ ServerPlayer *LuaAI::askForYiji(const QList<int> &cards, const QString &reason, 
 	if (callback == 0)
 		return TrustAI::askForYiji(cards, reason, card_id);
 
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -222,13 +216,12 @@ void LuaAI::filterEvent(TriggerEvent event, ServerPlayer *player, const QVariant
 	if (callback == 0)
 		return;
 
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
 	lua_pushinteger(L, event);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
-	SWIG_NewPointerObj(L, const_cast<QVariant*>(&data), SWIGTYPE_p_QVariant, 0);
+	SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);
 
 	if (lua_pcall(L, 4, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
@@ -239,13 +232,12 @@ void LuaAI::filterEvent(TriggerEvent event, ServerPlayer *player, const QVariant
 
 const Card *LuaAI::askForCard(const QString &pattern, const QString &prompt, const QVariant &data, const Card::HandlingMethod method)
 {
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
 	lua_pushstring(L, pattern.toLatin1());
 	lua_pushstring(L, prompt.toLatin1());
-	SWIG_NewPointerObj(L, const_cast<QVariant*>(&data), SWIGTYPE_p_QVariant, 0);
+	SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);
 	lua_pushinteger(L, (int)method);
 
 	int error = lua_pcall(L, 5, 1, 0);
@@ -261,7 +253,6 @@ const Card *LuaAI::askForCard(const QString &pattern, const QString &prompt, con
 
 int LuaAI::askForCardChosen(ServerPlayer *who, const QString &flags, const QString &reason, Card::HandlingMethod method)
 {
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -288,7 +279,6 @@ int LuaAI::askForCardChosen(ServerPlayer *who, const QString &flags, const QStri
 
 ServerPlayer *LuaAI::askForPlayerChosen(const QList<ServerPlayer *> &targets, const QString &reason)
 {
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -311,7 +301,6 @@ ServerPlayer *LuaAI::askForPlayerChosen(const QList<ServerPlayer *> &targets, co
 
 QList<ServerPlayer *> LuaAI::askForPlayersChosen(const QList<ServerPlayer *> &targets, const QString &reason, int max_num, int min_num)
 {
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -320,7 +309,7 @@ QList<ServerPlayer *> LuaAI::askForPlayersChosen(const QList<ServerPlayer *> &ta
 	lua_pushnumber(L, max_num);
 	lua_pushnumber(L, min_num);
 
-	if (lua_pcall(L, 5, 1, 0)!=0) {
+	if (lua_pcall(L, 5, 1, 0)!-0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -349,7 +338,6 @@ QList<ServerPlayer *> LuaAI::askForPlayersChosen(const QList<ServerPlayer *> &ta
 
 const Card *LuaAI::askForNullification(const Card *trick, ServerPlayer *from, ServerPlayer *to, bool positive)
 {
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -376,7 +364,6 @@ const Card *LuaAI::askForNullification(const Card *trick, ServerPlayer *from, Se
 
 const Card *LuaAI::askForCardShow(ServerPlayer *requestor, const QString &reason)
 {
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -400,7 +387,6 @@ const Card *LuaAI::askForCardShow(ServerPlayer *requestor, const QString &reason
 
 const Card *LuaAI::askForSinglePeach(ServerPlayer *dying)
 {
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -418,7 +404,6 @@ const Card *LuaAI::askForSinglePeach(ServerPlayer *dying)
 
 const Card *LuaAI::askForPindian(ServerPlayer *requestor, const QString &reason)
 {
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -440,7 +425,6 @@ const Card *LuaAI::askForPindian(ServerPlayer *requestor, const QString &reason)
 
 Card::Suit LuaAI::askForSuit(const QString &reason)
 {
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);

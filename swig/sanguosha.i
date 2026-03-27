@@ -7,7 +7,6 @@
 #include "wrapped-card.h"
 #include "room.h"
 #include "roomthread.h"
-#include <QMutexLocker>
 
 //#include <QDir>
 
@@ -1763,7 +1762,6 @@ public:
 
 void Room::doScript(const QString&script)
 {
-	LuaLocker locker;
 	SWIG_NewPointerObj(m_lua, this, SWIGTYPE_p_Room, 0);
 	lua_setglobal(m_lua, "R");
 
