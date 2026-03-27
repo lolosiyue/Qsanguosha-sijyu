@@ -727,12 +727,32 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 		}
 		std::stable_sort(skill_table[triggerEvent].begin(), skill_table[triggerEvent].end(), CompareByPriority);
 	}
-		foreach(ServerPlayer*p, room->getAlivePlayers()){
-			int hand_max = p->getMaxCards();
-			if (p->property("handMax").toInt() == hand_max) continue;
-			room->safeSetPlayerProperty(p, "handMax", hand_max);
-			room->broadcastProperty(p, "handMax");
-		}
+	bool need_check_handmax = false;
+    switch (triggerEvent) {
+        case HpChanged:
+        case MaxHpChanged:
+        case CardsMoveOneTime:
+        case EventAcquireSkill:
+        case EventLoseSkill:
+        case MarkChanged:
+        case KingdomChanged:
+        case Death:
+        case Revive: 
+        case TurnStart:
+        case GameStart:
+            need_check_handmax = true;
+            break;
+        default:
+            break;
+    }
+    if (need_check_handmax) {
+        foreach(ServerPlayer*p, room->getAlivePlayers()){
+            int hand_max = p->getMaxCards();
+            if (p->property("handMax").toInt() == hand_max) continue;
+            room->safeSetPlayerProperty(p, "handMax", hand_max);
+            room->broadcastProperty(p, "handMax");
+        }
+    }
 	try {
 		QList<TriggerSkill*>triggered;
 		for (int i = 0; i < skill_table[triggerEvent].length(); i++) {
