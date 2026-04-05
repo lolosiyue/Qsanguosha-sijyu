@@ -1,6 +1,6 @@
 # 太陽神三國殺-v2 (QSanguosha-v2)
 
-English | [中文版](./README_zh.md)
+[English](./README.md) | 中文版
 
 本项目是一個基於 C++ 和 Qt 框架的開源三國殺克隆版。定位類似於 **Minecraft 的整合包 (Modpack)**，重心在於海量 AI 擴展的大雜燴亂鬥。
 
