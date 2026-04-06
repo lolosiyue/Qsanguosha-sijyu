@@ -1010,6 +1010,14 @@ bool LuaFilterSkill::viewFilter(const Card *to_select) const
 	if (view_filter == 0)
 		return false;
 
+	// 【核心修復：Try-Lock 避讓機制】
+	bool locked = Sanguosha->getLuaMutex().tryLock();
+	if (!locked) {
+		// 拿不到鎖 (代表 Server 正在算 AI)，UI 絕對不能死等！
+		// 直接回傳 false (牌在畫面上暫時反灰 1 毫秒)，避開死鎖與崩潰。
+		return false;
+	}
+
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, view_filter);
@@ -1018,11 +1026,13 @@ bool LuaFilterSkill::viewFilter(const Card *to_select) const
 
 	if (lua_pcall(L, 2, 1, 0)!=0) {
 		Error(L);
+		Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 		return false;
 	}
 
 	bool result = lua_toboolean(L, -1);
 	lua_pop(L, 1);
+	Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 	return result;
 }
 
@@ -1030,6 +1040,13 @@ const Card *LuaFilterSkill::viewAs(const Card *originalCard) const
 {
 	if (view_as == 0)
 		return nullptr;
+
+	// 【核心修復：Try-Lock 避讓機制】
+	bool locked = Sanguosha->getLuaMutex().tryLock();
+	if (!locked) {
+		// 拿不到鎖，當作沒有這張牌
+		return nullptr;
+	}
 
 	lua_State*L = Sanguosha->getLuaState();
 
@@ -1039,12 +1056,14 @@ const Card *LuaFilterSkill::viewAs(const Card *originalCard) const
 
 	if (lua_pcall(L, 2, 1, 0)!=0) {
 		Error(L);
+		Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 		return nullptr;
 	}
 
 	void *card_ptr;
 	int result = SWIG_ConvertPtr(L, -1, &card_ptr, SWIGTYPE_p_Card, 0);
 	lua_pop(L, 1);
+	Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 	if (SWIG_IsOK(result))
 		return static_cast<const Card *>(card_ptr);
 	return nullptr;
@@ -1122,6 +1141,14 @@ bool LuaViewAsSkill::viewFilter(const QList<const Card *> &selected, const Card 
 	if (view_filter == 0)
 		return false;
 
+	// 【核心修復：Try-Lock 避讓機制】
+	bool locked = Sanguosha->getLuaMutex().tryLock();
+	if (!locked) {
+		// 拿不到鎖 (代表 Server 正在算 AI)，UI 絕對不能死等！
+		// 直接回傳 false (牌在畫面上暫時反灰 1 毫秒)，避開死鎖與崩潰。
+		return false;
+	}
+
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, view_filter);
@@ -1135,11 +1162,13 @@ bool LuaViewAsSkill::viewFilter(const QList<const Card *> &selected, const Card 
 
 	if (lua_pcall(L, 3, 1, 0)!=0) {
 		Error(L);
+		Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 		return false;
 	}
 
 	bool result = lua_toboolean(L, -1);
 	lua_pop(L, 1);
+	Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 	return result;
 }
 
@@ -1147,6 +1176,13 @@ const Card *LuaViewAsSkill::viewAs(const QList<const Card *> &cards) const
 {
 	if (view_as == 0)
 		return nullptr;
+
+	// 【核心修復：Try-Lock 避讓機制】
+	bool locked = Sanguosha->getLuaMutex().tryLock();
+	if (!locked) {
+		// 拿不到鎖，當作沒有這張牌
+		return nullptr;
+	}
 
 	lua_State*L = Sanguosha->getLuaState();
 
@@ -1160,12 +1196,14 @@ const Card *LuaViewAsSkill::viewAs(const QList<const Card *> &cards) const
 
 	if (lua_pcall(L, 2, 1, 0)!=0) {
 		Error(L);
+		Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 		return nullptr;
 	}
 
 	void *card_ptr;
 	int result = SWIG_ConvertPtr(L, -1, &card_ptr, SWIGTYPE_p_Card, 0);
 	lua_pop(L, 1);
+	Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 	if (SWIG_IsOK(result))
 		return static_cast<const Card *>(card_ptr);
 	return nullptr;
@@ -1176,6 +1214,13 @@ bool LuaViewAsSkill::shouldBeVisible(const Player *player) const
 	if (should_be_visible == 0)
 		return ViewAsSkill::shouldBeVisible(player);
 
+	// 【核心修復：Try-Lock 避讓機制】
+	bool locked = Sanguosha->getLuaMutex().tryLock();
+	if (!locked) {
+		// 拿不到鎖，返回 false (暫時不顯示)
+		return false;
+	}
+
 	lua_State*L = Sanguosha->getLuaState();
 
 	// the callback
@@ -1185,11 +1230,13 @@ bool LuaViewAsSkill::shouldBeVisible(const Player *player) const
 
 	if (lua_pcall(L, 2, 1, 0)!=0) {
 		Error(L);
+		Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 		return false;
 	}
 
 	bool result = lua_toboolean(L, -1);
 	lua_pop(L, 1);
+	Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 	return result;
 }
 
@@ -1197,6 +1244,13 @@ bool LuaViewAsSkill::isEnabledAtPlay(const Player *player) const
 {
 	if (enabled_at_play == 0)
 		return ViewAsSkill::isEnabledAtPlay(player);
+
+	// 【核心修復：Try-Lock 避讓機制】
+	bool locked = Sanguosha->getLuaMutex().tryLock();
+	if (!locked) {
+		// 拿不到鎖，返回 false (暫時禁用)
+		return false;
+	}
 
 	lua_State*L = Sanguosha->getLuaState();
 
@@ -1207,11 +1261,13 @@ bool LuaViewAsSkill::isEnabledAtPlay(const Player *player) const
 
 	if (lua_pcall(L, 2, 1, 0)!=0) {
 		Error(L);
+		Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 		return false;
 	}
 
 	bool result = lua_toboolean(L, -1);
 	lua_pop(L, 1);
+	Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 	return result;
 }
 
@@ -1219,6 +1275,13 @@ bool LuaViewAsSkill::isEnabledAtResponse(const Player *player, const QString &pa
 {
 	if (enabled_at_response == 0)
 		return ViewAsSkill::isEnabledAtResponse(player, pattern);
+
+	// 【核心修復：Try-Lock 避讓機制】
+	bool locked = Sanguosha->getLuaMutex().tryLock();
+	if (!locked) {
+		// 拿不到鎖，返回 false (暫時禁用)
+		return false;
+	}
 
 	lua_State*L = Sanguosha->getLuaState();
 
@@ -1231,11 +1294,13 @@ bool LuaViewAsSkill::isEnabledAtResponse(const Player *player, const QString &pa
 
 	if (lua_pcall(L, 3, 1, 0)!=0) {
 		Error(L);
+		Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 		return false;
 	}
 
 	bool result = lua_toboolean(L, -1);
 	lua_pop(L, 1);
+	Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 	return result;
 }
 
@@ -1243,6 +1308,13 @@ bool LuaViewAsSkill::isEnabledAtNullification(const ServerPlayer *player) const
 {
 	if (enabled_at_nullification == 0)
 		return ViewAsSkill::isEnabledAtNullification(player);
+
+	// 【核心修復：Try-Lock 避讓機制】
+	bool locked = Sanguosha->getLuaMutex().tryLock();
+	if (!locked) {
+		// 拿不到鎖，返回 false (暫時禁用)
+		return false;
+	}
 
 	lua_State*L = Sanguosha->getLuaState();
 
@@ -1253,11 +1325,13 @@ bool LuaViewAsSkill::isEnabledAtNullification(const ServerPlayer *player) const
 
 	if (lua_pcall(L, 2, 1, 0)!=0) {
 		Error(L);
+		Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 		return false;
 	}
 
 	bool result = lua_toboolean(L, -1);
 	lua_pop(L, 1);
+	Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 	return result;
 }
 

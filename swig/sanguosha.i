@@ -99,6 +99,8 @@ public:
 	bool isMale() const;
 	bool isFemale() const;
 	bool isNeuter() const;
+	bool isOwner() const;
+	void setOwner(bool owner);
 
 	bool hasShownRole() const;
 	void setShownRole(bool shown);
@@ -198,7 +200,7 @@ public:
 	WrappedCard*getDefensiveHorse() const;
 	WrappedCard*getOffensiveHorse() const;
 	WrappedCard*getTreasure() const;
-	QList<const Card*> getEquips() const;
+	QList<const Card*> getEquips(int index = -1) const;
 	QList<int> getEquipsId() const;
 	const EquipCard*getEquip(int index) const;
 
@@ -259,7 +261,7 @@ public:
 
 	virtual bool isProhibited(const Player*to, const Card*card, const QList<const Player*>&others = QList<const Player*>()) const;
 	virtual bool isPindianProhibited(const Player*to) const;
-	bool canSlashWithoutCrossbow() const;
+	bool canSlashWithoutCrossbow(const Card*slash = nullptr) const;
 	virtual bool isLastHandCard(const Card*card, bool contain = false) const;
 
 	bool hasEquipArea(int i) const;
@@ -332,15 +334,15 @@ public:
 
 %extend Player {
 	void setTag(const char*key, QVariant&value) {
-		$self->tag[key] = value;
+		$self->setTag(key, value);
 	}
 
 	QVariant getTag(const char*key) {
-		return $self->tag[key];
+		return $self->getTag(key);
 	}
 
 	void removeTag(const char*tag_name) {
-		$self->tag.remove(tag_name);
+		$self->removeTag(tag_name);
 	}
 };
 
@@ -349,7 +351,9 @@ public:
 	ServerPlayer(Room*room);
 
 	void setSocket(ClientSocket*socket);
+	void kick();
 	QString reportHeader() const;
+	void unicast(const char*message);
 	Room*getRoom() const;
 	void setOnsoleOwner(ServerPlayer*onsole_owner);
 	ServerPlayer*getOnsoleOwner() const;
@@ -400,6 +404,7 @@ public:
 	void setAI(AI*ai);
 	AI*getAI() const;
 	AI*getSmartAI() const;
+	bool isOnline() const;
 
 	virtual int aliveCount() const;
 	virtual void removeCard(int id, Place place);
@@ -414,6 +419,8 @@ public:
 	void setNext(ServerPlayer*next);
 	ServerPlayer*getNext() const;
 	ServerPlayer*getNextAlive(int n = 1) const;
+	ServerPlayer*getNextGamePlayer(int n = 1) const;
+	ServerPlayer*getPreviousAlive(int n = 1) const;
 
 	// 3v3 methods
 	void addToSelected(const char*general);
@@ -461,6 +468,10 @@ public:
 	int getDerivativeCard(const char*card_name, Player::Place place = Player::PlaceEquip, bool visible = true) const;
 	void setCanWake(const char*skill_name, const char*waked_skill_name);
 	bool canWake(const char*waked_skill_name);
+	QList<int> getHandPile() const;
+	void copyFrom(ServerPlayer*sp);
+	void startNetworkDelayTest();
+	qint64 endNetworkDelayTest();
 	QList<ServerPlayer*> assignmentCards(QList<int>&cards, const char*prompt = "", QList<ServerPlayer*> players = QList<ServerPlayer*>(), int max_num = -1, int min_num = 0, bool visible = false);
 	void skillInvoked(const char*skill_name, int type = -1, ServerPlayer*owner = nullptr);
 	void skillInvoked(const Skill*skill, int type = -1, ServerPlayer*owner = nullptr);
@@ -1146,7 +1157,7 @@ public:
 	}
 
 	QVariant getTag(const char*key) const{
-		return $self->tag[key];
+		return $self->getTag(key);
 	}
 };
 
@@ -1678,7 +1689,7 @@ public:
 	QList<ServerPlayer*> askForPlayersChosen(ServerPlayer*player, const QList<ServerPlayer*>&targets,
 		const char*reason, int min_num = 0, int max_num = 2, const char*prompt = "",
 		bool notify_skill = false, bool sort_ActionOrder = true);
-	QString askForGeneral(ServerPlayer*player, const char*generals, const char*default_choice = "");
+	QString askForGeneral(ServerPlayer*player, const char*generals, const char*default_choice = "", const char*reason = "");
 	const Card*askForSinglePeach(ServerPlayer*player, ServerPlayer*dying);
 	void addPlayerHistory(ServerPlayer*player, const char*key, int times = 1);
 	bool changeBGM(const char*bgm_name, bool reset = false, QList<ServerPlayer*> to_assign = QList<ServerPlayer*>());
