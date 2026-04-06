@@ -195,7 +195,7 @@ bool DevLvedongCard::targetFixed() const
     } else if (Sanguosha->currentRoomState()->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_RESPONSE)
         return true;
 
-    card = Self->tag.value("dev_lvedong").value<const Card *>();
+    card = Self->getTag("dev_lvedong").value<const Card *>();
     return !card || card->targetFixed();
 }
 
@@ -214,7 +214,7 @@ bool DevLvedongCard::targetFilter(const QList<const Player *> &targets, const Pl
         return card && card->targetFilter(targets, to_select, Self);
     }
 
-    card = Self->tag.value("dev_lvedong").value<const Card *>();
+    card = Self->getTag("dev_lvedong").value<const Card *>();
     return card && card->targetFilter(targets, to_select, Self);
 }
 
@@ -233,7 +233,7 @@ bool DevLvedongCard::targetsFeasible(const QList<const Player *> &targets, const
         return card && card->targetsFeasible(targets, Self);
     }
 
-    card = Self->tag.value("dev_lvedong").value<const Card *>();
+    card = Self->getTag("dev_lvedong").value<const Card *>();
     return card && card->targetsFeasible(targets, Self);
 }
 
@@ -408,7 +408,7 @@ public:
             return card;
         }
 
-        const Card *c = Self->tag.value("dev_lvedong").value<const Card *>();
+        const Card *c = Self->getTag("dev_lvedong").value<const Card *>();
         if (c && c->isAvailable(Self)) {
             DevLvedongCard *card = new DevLvedongCard;
             card->setUserString(c->objectName());
@@ -461,7 +461,7 @@ public:
         foreach (ServerPlayer *p, use.to) {
             if (p->isDead()||!player->askForSkillInvoke(this, p)) continue;
             room->broadcastSkillInvoke(this);
-			player->tag["dev_caiyiUse"] = data;
+			player->setTag("dev_caiyiUse", data);
             if (room->askForDiscard(p, objectName(), 1, 1, true, false, "@dev_caiyi-discard", "Slash")) continue;
             use.no_respond_list << p->objectName();
             data = QVariant::fromValue(use);
@@ -665,9 +665,9 @@ public:
                 if (room->getCardOwner(id) != player || room->getCardPlace(id) != Player::PlaceHand) return false;
                 if (!card->isKindOf("BasicCard") || !player->canDiscard(player, id)) return false;
                 room->fillAG(list, player);
-                player->tag["tenyearjizhi_id"] = id;
+                player->setTag("tenyearjizhi_id", id);
                 bool invoke = room->askForSkillInvoke(player, "tenyearjizhi_discard", "discard", false);
-                player->tag.remove("tenyearjizhi_id");
+                player->removeTag("tenyearjizhi_id");
                 room->clearAG(player);
                 if (!invoke) return false;
                 room->throwCard(card, player, nullptr);
@@ -782,9 +782,9 @@ void DevPofengCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> 
         if (p->isDead()) continue;
         p->drawCards(1, "dev_pofeng");
         if (p->canDiscard(p, "he")) {
-            p->tag["dev_pofeng_num"] = source_num;
+            p->setTag("dev_pofeng_num", source_num);
             const Card *card = room->askForDiscard(p, "dev_pofeng", 1, 1, false, true, "@PofengAsk:" + QString::number(source_num));
-            p->tag.remove("dev_pofeng_num");
+            p->removeTag("dev_pofeng_num");
             if (source_num < 0) continue;
 
             int p_num = card->getNumber();
@@ -1474,7 +1474,7 @@ void DevGengxinCard::onEffect(CardEffectStruct &effect) const
 {
     time_t t;
     int tt = time(&t);
-    effect.from->tag["DevGengxinTime"] = tt;
+    effect.from->setTag("DevGengxinTime", tt);
 
     Room *room = effect.from->getRoom();
 
@@ -1549,7 +1549,7 @@ public:
 
         time_t t;
         int tt = time(&t);
-        int old_t = player->tag["DevGengxinTime"].toInt();
+        int old_t = player->getTag("DevGengxinTime").toInt();
         if (old_t == 0 || tt - old_t >= 90)
             room->askForUseCard(player, "@@dev_gengxin", "@dev_gengxin");
         else {
@@ -1881,10 +1881,10 @@ public:
         if (!damage.card || !damage.card->isKindOf("TrickCard")) return false;
         if (!damage.from || damage.from->isDead() || damage.from == player || player->isNude()) return false;
 
-        player->tag["dev_saodong_damage"] = data;
+        player->setTag("dev_saodong_damage", data);
         const Card *card = room->askForExchange(player, objectName(), 1, 1, true,
                     QString("@dev_saodong-diamond:%1::%2").arg(damage.from->objectName()).arg(damage.card->objectName()), true, ".|diamond");
-        player->tag.remove("dev_saodong_damage");
+        player->removeTag("dev_saodong_damage");
         if (!card) return false;
 
         LogMessage log;
@@ -1901,7 +1901,7 @@ public:
         damage.to = damage.from;
         damage.transfer = true;
         damage.transfer_reason = "dev_saodong";
-        player->tag["TransferDamage"] = QVariant::fromValue(damage);
+        player->setTag("TransferDamage", QVariant::fromValue(damage));
         return true;
     }
 };
@@ -2077,9 +2077,9 @@ public:
             if (player->isDead()) return false;
             if (p->isDead() || !p->hasSkill(objectName())) continue;
 
-            p->tag["dev_jiaodao_data"] = data;
+            p->setTag("dev_jiaodao_data", data);
             bool invoke = p->askForSkillInvoke(this, QString("dev_jiaodao:%1::%2").arg(player->objectName()).arg(use.card->objectName()));
-            p->tag.remove("dev_jiaodao_data");
+            p->removeTag("dev_jiaodao_data");
 
             if (!invoke) continue;
             room->broadcastSkillInvoke(this);
@@ -2605,8 +2605,8 @@ public:
         if (event == PreCardUsed) {
             CardUseStruct use = data.value<CardUseStruct>();
             if (player->hasFlag("CurrentPlayer") && use.card->isNDTrick()) {
-                int n = player->tag["dev_yegeng_num"].toInt()+1;
-                player->tag["dev_yegeng_num"] = n;
+                int n = player->getTag("dev_yegeng_num").toInt()+1;
+                player->setTag("dev_yegeng_num", n);
                 if (player->hasSkill("dev_yegeng", true))
                     room->addPlayerMark(player, "&dev_yegeng");
             }
@@ -2636,7 +2636,7 @@ public:
                     room->addPlayerMark(player, "&dev_juanlao+:+" + name);
                 }
             } else if (data.toString() == "dev_yegeng" && player->hasSkill("dev_yegeng", true)) {
-                int n = player->tag["dev_yegeng_num"].toInt();
+                int n = player->getTag("dev_yegeng_num").toInt();
                 room->setPlayerMark(player, "&dev_yegeng", n);
             }
         } else if (event == EventLoseSkill) {
@@ -2670,8 +2670,8 @@ public:
     {
         if (player->getPhase() != Player::NotActive) return false;
         room->setPlayerMark(player, "&dev_yegeng", 0);
-        int n = player->tag["dev_yegeng_num"].toInt();
-        player->tag["dev_yegeng_num"] = 0;
+        int n = player->getTag("dev_yegeng_num").toInt();
+        player->setTag("dev_yegeng_num", 0);
         if (n >= 3&&player->hasSkill(objectName())) {
             room->sendCompulsoryTriggerLog(player, this);
             player->gainAnExtraTurn();
@@ -2692,7 +2692,7 @@ public:
     {
         CardUseStruct use = data.value<CardUseStruct>();
         if (!use.card->isKindOf("Slash")) return false;
-        QVariantList jink_list = player->tag["Jink_" + use.card->toString()].toList();
+        QVariantList jink_list = player->getTag("Jink_" + use.card->toString()).toList();
         int i = -1;
         foreach (ServerPlayer *p, use.to) {
             i++;
@@ -2716,10 +2716,10 @@ public:
 
                 if (jink_list.at(i) == 1)
                     jink_list.replace(i, QVariant(2));
-                player->tag["Jink_" + use.card->toString()] = QVariant::fromValue(jink_list);
+                player->setTag("Jink_" + use.card->toString(), QVariant::fromValue(jink_list));
             }
         }
-        player->tag["Jink_" + use.card->toString()] = QVariant::fromValue(jink_list);
+        player->setTag("Jink_" + use.card->toString(), QVariant::fromValue(jink_list));
         return false;
     }
 };
@@ -2815,9 +2815,9 @@ public:
         CardUseStruct use = data.value<CardUseStruct>();
         if (!use.card->isKindOf("Slash") || !use.to.contains(player) || player->getEquips().isEmpty() || player->isKongcheng()) return false;
 
-        player->tag["dev_jiaohua_data"] = data;
+        player->setTag("dev_jiaohua_data", data);
         const Card *card = room->askForUseCard(player, "@@dev_jiaohua", "@dev_jiaohua");
-        player->tag.remove("dev_jiaohua_data");
+        player->removeTag("dev_jiaohua_data");
 
         if (card) {
             use.to.clear();
@@ -2849,7 +2849,7 @@ bool DevTumouCard::targetFixed() const
 		return !card || card->targetFixed();
     }
 
-    card = Self->tag.value("dev_tumou").value<const Card *>();
+    card = Self->getTag("dev_tumou").value<const Card *>();
     return !card || card->targetFixed();
 }
 
@@ -2868,7 +2868,7 @@ bool DevTumouCard::targetFilter(const QList<const Player *> &targets, const Play
         return card && card->targetFilter(targets, to_select, Self);
     }
 
-    card = Self->tag.value("dev_tumou").value<const Card *>();
+    card = Self->getTag("dev_tumou").value<const Card *>();
     return card && card->targetFilter(targets, to_select, Self);
 }
 
@@ -2886,7 +2886,7 @@ bool DevTumouCard::targetsFeasible(const QList<const Player *> &targets, const P
 		}
         return card && card->targetsFeasible(targets, Self);
     }
-    card = Self->tag.value("dev_tumou").value<const Card *>();
+    card = Self->getTag("dev_tumou").value<const Card *>();
     return card && card->targetsFeasible(targets, Self);
 }
 
@@ -2952,7 +2952,7 @@ public:
 			dc->addSubcard(card);
 			return dc;
         }else{
-			const Card *c = Self->tag.value("dev_tumou").value<const Card *>();
+			const Card *c = Self->getTag("dev_tumou").value<const Card *>();
 			if (c && c->isAvailable(Self)){
 				DevTumouCard *dc = new DevTumouCard;
 				dc->setUserString(c->objectName());

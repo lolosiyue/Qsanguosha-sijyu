@@ -1763,20 +1763,44 @@ const CardLimitSkill*Engine::getCardLimitSkill(const QString &skill_name) const
 
 const ProhibitSkill*Engine::isProhibited(const Player*from, const Player*to, const Card*card, const QList<const Player*> &others) const
 {
-	foreach (const ProhibitSkill*skill, getProhibitSkills()) {
-        if (skill->isProhibited(from, to, card, others))
-            return skill;
+    bool locked = lua_mutex.tryLock();
+    if (!locked) {
+        if (from && from->inherits("ClientPlayer")) return nullptr;
+        lua_mutex.lock();
+        locked = true;
     }
-    return nullptr;
+
+    const ProhibitSkill *ret = nullptr;
+    foreach (const ProhibitSkill*skill, getProhibitSkills()) {
+        if (skill->isProhibited(from, to, card, others)) {
+            ret = skill;
+            break;
+        }
+    }
+
+    if (locked) lua_mutex.unlock();
+    return ret;
 }
 
 const ProhibitPindianSkill*Engine::isPindianProhibited(const Player*from, const Player*to) const
 {
-    foreach (const ProhibitPindianSkill*skill, getProhibitPindianSkills()) {
-        if (skill->isPindianProhibited(from, to))
-            return skill;
+    bool locked = lua_mutex.tryLock();
+    if (!locked) {
+        if (from && from->inherits("ClientPlayer")) return nullptr;
+        lua_mutex.lock();
+        locked = true;
     }
-    return nullptr;
+
+    const ProhibitPindianSkill *ret = nullptr;
+    foreach (const ProhibitPindianSkill*skill, getProhibitPindianSkills()) {
+        if (skill->isPindianProhibited(from, to)) {
+            ret = skill;
+            break;
+        }
+    }
+
+    if (locked) lua_mutex.unlock();
+    return ret;
 }
 
 const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card, Card::HandlingMethod method, bool isHandcard) const
@@ -1794,6 +1818,15 @@ const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card,
     QString method_name = method_map.value(method, "");
 	if(method_name=="") return nullptr;
 
+    bool locked = lua_mutex.tryLock();
+    if (!locked) {
+        if (player && player->inherits("ClientPlayer")) return nullptr;
+        lua_mutex.lock();
+        locked = true;
+    }
+
+    const CardLimitSkill *ret = nullptr;
+
     if (card->inherits("SkillCard") && method == card->getHandlingMethod()) {
         foreach (int id, card->getSubcards()) {
             const Card*c = Sanguosha->getCard(id);
@@ -1802,7 +1835,10 @@ const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card,
 					QString pattern = skill->limitPattern(player,c);
 					if(pattern.isEmpty()) continue;
 					if(isHandcard) pattern.replace("hand", ".");
-					if(matchExpPattern(pattern,player,c)) return skill;
+                    if(matchExpPattern(pattern,player,c)) {
+                        ret = skill;
+                        goto end_check;
+                    }
 				}
             }
         }
@@ -1812,15 +1848,28 @@ const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card,
 				QString pattern = skill->limitPattern(player,card);
 				if(pattern.isEmpty()) continue;
 				if(isHandcard) pattern.replace("hand", ".");
-				if(matchExpPattern(pattern,player,card)) return skill;
+                if(matchExpPattern(pattern,player,card)) {
+                    ret = skill;
+                    goto end_check;
+                }
 			}
         }
     }
-    return nullptr;
+
+end_check:
+    if (locked) lua_mutex.unlock();
+    return ret;
 }
 
 int Engine::correctDistance(const Player*from, const Player*to, bool fixed) const
 {
+    bool locked = lua_mutex.tryLock();
+    if (!locked) {
+        if (from && from->inherits("ClientPlayer")) return 0;
+        lua_mutex.lock();
+        locked = true;
+    }
+
     int correct = 0;
 	if (fixed){
 		foreach (const DistanceSkill*skill, getDistanceSkills()) {
@@ -1831,11 +1880,19 @@ int Engine::correctDistance(const Player*from, const Player*to, bool fixed) cons
 		foreach (const DistanceSkill*skill, getDistanceSkills())
 			correct += skill->getCorrect(from, to);
 	}
+    if (locked) lua_mutex.unlock();
 	return correct;
 }
 
 int Engine::correctMaxCards(const Player*target, bool fixed) const
 {
+    bool locked = lua_mutex.tryLock();
+    if (!locked) {
+        if (target && target->inherits("ClientPlayer")) return 0;
+        lua_mutex.lock();
+        locked = true;
+    }
+
     int ex = -1;
     if (fixed) {
         foreach (const MaxCardsSkill*skill, getMaxCardsSkills()) {
@@ -1847,12 +1904,21 @@ int Engine::correctMaxCards(const Player*target, bool fixed) const
         foreach(const MaxCardsSkill*skill, getMaxCardsSkills())
             ex += skill->getExtra(target);
     }
+    if (locked) lua_mutex.unlock();
 	return ex;
 }
 
 int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*from, const Card*card, const Player*to) const
 {
     if (!from || !card) return 0;
+
+    bool locked = lua_mutex.tryLock();
+    if (!locked) {
+        if (from && from->inherits("ClientPlayer")) return 0;
+        lua_mutex.lock();
+        locked = true;
+    }
+
     int x = 0;
 	QStringList subcardNames;
 	if (card->isVirtualCard()){
@@ -1886,20 +1952,42 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
 			}
         }
     }
+    if (locked) lua_mutex.unlock();
     return x;
 }
 
 bool Engine::correctSkillValidity(const Player*player, const Skill*skill) const
 {
+    if (player && player->isClientPlayer()) {
+        return true; 
+    }
+
+    bool locked = lua_mutex.tryLock();
+    if (!locked) {
+        lua_mutex.lock();
+        locked = true;
+    }
+
+    bool ret = true;
     foreach (const InvaliditySkill*is, getInvaliditySkills()) {
         if (is->isSkillValid(player, skill)) continue;
-		return false;
+        ret = false;
+        break;
     }
-    return true;
+
+    if (locked) lua_mutex.unlock();
+    return ret;
 }
 
 int Engine::correctAttackRange(const Player*target, bool include_weapon, bool fixed) const
 {
+    bool locked = lua_mutex.tryLock();
+    if (!locked) {
+        if (target && target->inherits("ClientPlayer")) return 0;
+        lua_mutex.lock();
+        locked = true;
+    }
+
     int extra = -1;
     if (fixed) {
 		foreach (const AttackRangeSkill*skill, getAttackRangeSkills()) {
@@ -1911,6 +1999,7 @@ int Engine::correctAttackRange(const Player*target, bool include_weapon, bool fi
 		foreach (const AttackRangeSkill*skill, getAttackRangeSkills())
             extra += skill->getExtra(target, include_weapon);
     }
+    if (locked) lua_mutex.unlock();
 	return extra;
 }
 

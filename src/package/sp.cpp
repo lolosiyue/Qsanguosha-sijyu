@@ -240,7 +240,7 @@ public:
 
     bool viewFilter(const QList<const Card *> &selected, const Card *to_select) const
     {
-        QString skill_name = Self->tag["weidi"].toString();
+        QString skill_name = Self->getTag("weidi").toString();
         if (skill_name.isEmpty()) return false;
         const ViewAsSkill *vs_skill = Sanguosha->getViewAsSkill(skill_name);
         if (vs_skill) return vs_skill->viewFilter(selected, to_select);
@@ -249,7 +249,7 @@ public:
 
     const Card *viewAs(const QList<const Card *> &cards) const
     {
-        QString skill_name = Self->tag["weidi"].toString();
+        QString skill_name = Self->getTag("weidi").toString();
         if (skill_name.isEmpty()) return nullptr;
         const ViewAsSkill *vs_skill = Sanguosha->getViewAsSkill(skill_name);
         if (vs_skill) return vs_skill->viewAs(cards);
@@ -279,7 +279,7 @@ WeidiDialog::WeidiDialog()
 
 void WeidiDialog::popup()
 {
-    Self->tag.remove(objectName());
+    Self->removeTag(objectName());
     foreach (QAbstractButton *button, group->buttons()) {
         button_layout->removeWidget(button);
         group->removeButton(button);
@@ -304,7 +304,7 @@ void WeidiDialog::popup()
         emit onButtonClick();
         return;
     } else if (count == 1) {
-        Self->tag[objectName()] = name;
+        Self->setTag(objectName(), name);
         emit onButtonClick();
         return;
     }
@@ -314,7 +314,7 @@ void WeidiDialog::popup()
 
 void WeidiDialog::selectSkill(QAbstractButton *button)
 {
-    Self->tag[objectName()] = button->objectName();
+    Self->setTag(objectName(), button->objectName());
     emit onButtonClick();
     accept();
 }
@@ -508,13 +508,13 @@ public:
     bool trigger(TriggerEvent, Room *room, ServerPlayer *, QVariant &) const
     {
         ServerPlayer *xiahoushi = room->findPlayerBySkillName(objectName());
-        if (!xiahoushi || !xiahoushi->tag["XiaodeSkill"].toString().isEmpty()) return false;
-        QStringList skill_list = xiahoushi->tag["XiaodeVictimSkills"].toStringList();
+        if (!xiahoushi || !xiahoushi->getTag("XiaodeSkill").toString().isEmpty()) return false;
+        QStringList skill_list = xiahoushi->getTag("XiaodeVictimSkills").toStringList();
         if (skill_list.isEmpty()) return false;
         if (!room->askForSkillInvoke(xiahoushi, objectName(), QVariant::fromValue(skill_list))) return false;
         QString skill_name = room->askForChoice(xiahoushi, objectName(), skill_list.join("+"));
         room->broadcastSkillInvoke(objectName());
-        xiahoushi->tag["XiaodeSkill"] = skill_name;
+        xiahoushi->setTag("XiaodeSkill", skill_name);
         room->acquireSkill(xiahoushi, skill_name);
         return false;
     }
@@ -538,24 +538,24 @@ public:
         if (triggerEvent == EventPhaseChanging) {
             PhaseChangeStruct change = data.value<PhaseChangeStruct>();
             if (change.to == Player::NotActive) {
-                QString skill_name = player->tag["XiaodeSkill"].toString();
+                QString skill_name = player->getTag("XiaodeSkill").toString();
                 if (!skill_name.isEmpty()) {
                     room->detachSkillFromPlayer(player, skill_name, false, true);
-                    player->tag.remove("XiaodeSkill");
+                    player->removeTag("XiaodeSkill");
                 }
             }
         } else if (triggerEvent == EventLoseSkill && data.toString() == "xiaode") {
-            QString skill_name = player->tag["XiaodeSkill"].toString();
+            QString skill_name = player->getTag("XiaodeSkill").toString();
             if (!skill_name.isEmpty()) {
                 room->detachSkillFromPlayer(player, skill_name, false, true);
-                player->tag.remove("XiaodeSkill");
+                player->removeTag("XiaodeSkill");
             }
         } else if (triggerEvent == Death && TriggerSkill::triggerable(player)) {
             DeathStruct death = data.value<DeathStruct>();
             QStringList skill_list;
             skill_list.append(addSkillList(death.who->getGeneral()));
             skill_list.append(addSkillList(death.who->getGeneral2()));
-            player->tag["XiaodeVictimSkills"] = QVariant::fromValue(skill_list);
+            player->setTag("XiaodeVictimSkills", QVariant::fromValue(skill_list));
         }
         return false;
     }
@@ -954,9 +954,9 @@ public:
                         data = QVariant::fromValue(use);
                     } else {
                         room->broadcastSkillInvoke(objectName(), 3);
-                        QVariantList jink_list = player->tag["Jink_" + use.card->toString()].toList();
+                        QVariantList jink_list = player->getTag("Jink_" + use.card->toString()).toList();
                         jink_list[n] = QVariant(0);
-                        player->tag["Jink_" + use.card->toString()] = QVariant::fromValue(jink_list);
+                        player->setTag("Jink_" + use.card->toString(), QVariant::fromValue(jink_list));
                         LogMessage log;
                         log.type = "#NoJink";
                         log.from = target;
@@ -1679,7 +1679,7 @@ bool ZhanyiViewAsBasicCard::targetFilter(const QList<const Player *> &targets, c
         return false;
     }
 
-    const Card *card = Self->tag.value("zhanyi").value<const Card *>();
+    const Card *card = Self->getTag("zhanyi").value<const Card *>();
     return card && card->targetFilter(targets, to_select, Self);
 }
 
@@ -1693,7 +1693,7 @@ bool ZhanyiViewAsBasicCard::targetFixed() const
         return true;
     }
 
-    const Card *card = Self->tag.value("zhanyi").value<const Card *>();
+    const Card *card = Self->getTag("zhanyi").value<const Card *>();
     return card && card->targetFixed();
 }
 
@@ -1708,7 +1708,7 @@ bool ZhanyiViewAsBasicCard::targetsFeasible(const QList<const Player *> &targets
         return true;
     }
 
-    const Card *card = Self->tag.value("zhanyi").value<const Card *>();
+    const Card *card = Self->getTag("zhanyi").value<const Card *>();
     return card && card->targetsFeasible(targets, Self);
 }
 
@@ -1917,7 +1917,7 @@ public:
             return card;
         }
 
-        const Card *c = Self->tag.value("zhanyi").value<const Card *>();
+        const Card *c = Self->getTag("zhanyi").value<const Card *>();
         if (c && c->isAvailable(Self)) {
             ZhanyiViewAsBasicCard *card = new ZhanyiViewAsBasicCard;
             card->setUserString(c->objectName());

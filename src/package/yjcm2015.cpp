@@ -63,7 +63,7 @@ public:
         DummyCard d(player->handCards());
         room->obtainCard(target, &d, r, false);
 
-        player->tag["mingjian"] = QVariant::fromValue(target);
+        player->setTag("mingjian", QVariant::fromValue(target));
         throw TurnBroken;
 
         return false;
@@ -79,13 +79,13 @@ public:
 
     bool triggerable(const ServerPlayer *target) const
     {
-        return target && target->getPhase() == Player::NotActive && target->tag.contains("mingjian");
+        return target && target->getPhase() == Player::NotActive && target->getTag("mingjian").isValid();
     }
 
     bool onPhaseChange(ServerPlayer *target, Room *) const
     {
-        ServerPlayer *p = target->tag.value("mingjian").value<ServerPlayer *>();
-        target->tag.remove("mingjian");
+        ServerPlayer *p = target->getTag("mingjian").value<ServerPlayer *>();
+        target->removeTag("mingjian");
         if (p){
 			p->changePhase(p->getPhase(), Player::Play);
 			p->changePhase(p->getPhase(), Player::NotActive);
@@ -172,7 +172,7 @@ public:
             CardUseStruct use = data.value<CardUseStruct>();
             if (use.card && use.card->getTypeId() != Card::TypeSkill && use.to.length() == 1) {
                 ServerPlayer *to = use.to.first();
-                player->tag["taoxi_carduse"] = data;
+                player->setTag("taoxi_carduse", data);
                 if (to != player && !to->isKongcheng() && player->askForSkillInvoke(objectName(), QVariant::fromValue(to))) {
                     room->broadcastSkillInvoke(objectName());
                     room->setPlayerFlag(player, "TaoxiUsed");
@@ -180,12 +180,12 @@ public:
                     int id = room->askForCardChosen(player, to, "h", objectName(), false);
                     room->showCard(to, id);
                     TaoxiMove(id, true, player);
-                    player->tag["TaoxiId"] = id;
+                    player->setTag("TaoxiId", id);
                 }
             }
         } else if (triggerEvent == CardsMoveOneTime && player->hasFlag("TaoxiRecord")) {
             bool ok = false;
-            int id = player->tag["TaoxiId"].toInt(&ok);
+            int id = player->getTag("TaoxiId").toInt(&ok);
             if (!ok) {
                 room->setPlayerFlag(player, "-TaoxiRecord");
                 return false;
@@ -197,7 +197,7 @@ public:
                     if (room->getCardOwner(id) != nullptr)
                         room->showCard(room->getCardOwner(id), id);
                     room->setPlayerFlag(player, "-TaoxiRecord");
-                    player->tag.remove("TaoxiId");
+                    player->removeTag("TaoxiId");
                 }
             }
         } else if (triggerEvent == EventPhaseChanging && player->hasFlag("TaoxiRecord")) {
@@ -205,7 +205,7 @@ public:
             if (change.to != Player::NotActive)
                 return false;
             bool ok = false;
-            int id = player->tag["TaoxiId"].toInt(&ok);
+            int id = player->getTag("TaoxiId").toInt(&ok);
             if (!ok) {
                 room->setPlayerFlag(player, "-TaoxiRecord");
                 return false;
@@ -220,7 +220,7 @@ public:
                 room->showCard(owner, id);
                 room->loseHp(HpLostStruct(player, 1, objectName(), player));
                 room->setPlayerFlag(player, "-TaoxiRecord");
-                player->tag.remove("TaoxiId");
+                player->removeTag("TaoxiId");
             }
         }
         return false;
@@ -246,12 +246,12 @@ private:
 		_caoxiu << caoxiu;
 		room->notifyMoveCards(true, moves, false, _caoxiu);
 		room->notifyMoveCards(false, moves, false, _caoxiu);
-        caoxiu->tag["TaoxiHere"] = movein;
+        caoxiu->setTag("TaoxiHere", movein);
     }
 
     static bool TaoxiHere(ServerPlayer *caoxiu)
     {
-        return caoxiu->tag.value("TaoxiHere", false).toBool();
+        return caoxiu->getTag("TaoxiHere", false).toBool();
     }
 };
 
@@ -785,7 +785,7 @@ public:
     {
         QString pattern;
         if (Sanguosha->currentRoomState()->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_PLAY) {
-            const Card *c = Self->tag["zhenshan"].value<const Card *>();
+            const Card *c = Self->getTag("zhenshan").value<const Card *>();
             if (c == nullptr) return nullptr;
             pattern = c->objectName();
         } else {
@@ -1291,7 +1291,7 @@ bool HuomoCard::targetFilter(const QList<const Player *> &targets, const Player 
         return card && card->targetFilter(targets, to_select, Self);
     }
 
-    const Card *_card = Self->tag.value("huomo").value<const Card *>();
+    const Card *_card = Self->getTag("huomo").value<const Card *>();
     if (_card == nullptr)
         return false;
 
@@ -1312,7 +1312,7 @@ bool HuomoCard::targetFixed() const
         return card && card->targetFixed();
     }
 
-    const Card *_card = Self->tag.value("huomo").value<const Card *>();
+    const Card *_card = Self->getTag("huomo").value<const Card *>();
     if (_card == nullptr)
         return false;
 
@@ -1333,7 +1333,7 @@ bool HuomoCard::targetsFeasible(const QList<const Player *> &targets, const Play
         return card && card->targetsFeasible(targets, Self);
     }
 
-    const Card *_card = Self->tag.value("huomo").value<const Card *>();
+    const Card *_card = Self->getTag("huomo").value<const Card *>();
     if (_card == nullptr)
         return false;
 
@@ -1376,9 +1376,9 @@ const Card *HuomoCard::validate(CardUseStruct &card_use) const
 
     room->setPlayerMark(zhongyao, "Huomo_" + classname, 1);
 
-    QStringList huomoList = zhongyao->tag.value("huomoClassName").toStringList();
+    QStringList huomoList = zhongyao->getTag("huomoClassName").toStringList();
     huomoList << classname;
-    zhongyao->tag["huomoClassName"] = huomoList;
+    zhongyao->setTag("huomoClassName", huomoList);
 
     c->setSkillName("huomo");
     c->deleteLater();
@@ -1427,9 +1427,9 @@ const Card *HuomoCard::validateInResponse(ServerPlayer *zhongyao) const
 
     room->setPlayerMark(zhongyao, "Huomo_" + classname, 1);
 
-    QStringList huomoList = zhongyao->tag.value("huomoClassName").toStringList();
+    QStringList huomoList = zhongyao->getTag("huomoClassName").toStringList();
     huomoList << classname;
-    zhongyao->tag["huomoClassName"] = huomoList;
+    zhongyao->setTag("huomoClassName", huomoList);
 
     c->setSkillName("huomo");
     c->deleteLater();
@@ -1449,7 +1449,7 @@ public:
     {
         QString pattern;
         if (Sanguosha->currentRoomState()->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_PLAY) {
-            const Card *c = Self->tag["huomo"].value<const Card *>();
+            const Card *c = Self->getTag("huomo").value<const Card *>();
             if (c == nullptr || Self->getMark("Huomo_" + (c->isKindOf("Slash") ? "Slash" : c->getClassName())) > 0)
                 return nullptr;
 
@@ -1561,11 +1561,11 @@ public:
             return false;
 
         foreach (ServerPlayer *p, room->getAlivePlayers()) {
-            QStringList sl = p->tag.value("huomoClassName").toStringList();
+            QStringList sl = p->getTag("huomoClassName").toStringList();
             foreach (const QString &t, sl)
                 room->setPlayerMark(p, "Huomo_" + t, 0);
             
-            p->tag["huomoClassName"] = QStringList();
+            p->setTag("huomoClassName", QStringList());
         }
 
         return false;

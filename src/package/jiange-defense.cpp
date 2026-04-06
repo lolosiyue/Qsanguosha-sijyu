@@ -937,7 +937,7 @@ public:
             if (judge.card->getColor() == Card::Red) {
                 const TriggerSkill *kuangfeng = Sanguosha->getTriggerSkill("kuangfeng");
                 room->getThread()->addTriggerSkill(kuangfeng);
-				player->tag["kuangfengUse"] = true;
+				player->setTag("kuangfengUse", true);
                 foreach (ServerPlayer *p, room->getAllPlayers()) {
                     if (!isJianGeFriend(p, player)) {
                         room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, player->objectName(), p->objectName());
@@ -947,7 +947,7 @@ public:
             } else if (judge.card->getColor() == Card::Black) {
                 const TriggerSkill *dawu = Sanguosha->getTriggerSkill("dawu");
                 room->getThread()->addTriggerSkill(dawu);
-				player->tag["dawuUse"] = true;
+				player->setTag("dawuUse", true);
                 foreach (ServerPlayer *p, room->getAllPlayers()) {
                     if (isJianGeFriend(p, player)) {
                         room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, player->objectName(), p->objectName());

@@ -756,7 +756,7 @@ GuzhengCard::GuzhengCard()
 
 void GuzhengCard::use(Room *, ServerPlayer *source, QList<ServerPlayer *> &) const
 {
-    source->tag["guzheng_card"] = subcards.first();
+    source->setTag("guzheng_card", subcards.first());
 }
 
 class GuzhengVS : public OneCardViewAsSkill
@@ -821,7 +821,7 @@ public:
 			if(ids.isEmpty()||player->isDead()) return false;
 			lids = ListI2V(ids);
 			foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
-				p->tag["GuzhengToGet"] = lids;
+				p->setTag("GuzhengToGet", lids);
 				if(p->isAlive()&&p->hasSkill(objectName())&&p->askForSkillInvoke(objectName()+"$-1",player)){
 					room->fillAG(ids,p);
 					int id = room->askForAG(p,ids,false,objectName(),"@guzheng:" + player->objectName());
@@ -836,10 +836,10 @@ public:
             if (erzhang == nullptr)
                 return false;
 
-            QVariantList guzheng_cardsToGet = erzhang->tag["GuzhengToGet"].toList();
-            QVariantList guzheng_cardsOther = erzhang->tag["GuzhengOther"].toList();
-            erzhang->tag.remove("GuzhengToGet");
-            erzhang->tag.remove("GuzhengOther");
+            QVariantList guzheng_cardsToGet = erzhang->getTag("GuzhengToGet").toList();
+            QVariantList guzheng_cardsOther = erzhang->getTag("GuzhengOther").toList();
+            erzhang->removeTag("GuzhengToGet");
+            erzhang->removeTag("GuzhengOther");
 
             if (player->isDead())
                 return false;
@@ -868,7 +868,7 @@ public:
             QString toGetList = ListI2S(cardsToGet).join("+");
             room->setPlayerProperty(erzhang, "guzheng_toget", toGetList);
 
-            erzhang->tag.remove("guzheng_card");
+            erzhang->removeTag("guzheng_card");
             room->setPlayerFlag(erzhang, "guzheng_InTempMoving");
             CardMoveReason r(CardMoveReason::S_REASON_UNKNOWN, erzhang->objectName());
             CardsMoveStruct fake_move(cards, nullptr, erzhang, Player::DiscardPile, Player::PlaceHand, r);
@@ -886,9 +886,9 @@ public:
             room->notifyMoveCards(false, moves2, true, _erzhang);
             room->setPlayerFlag(erzhang, "-guzheng_InTempMoving");
 
-            if (invoke && erzhang->tag.contains("guzheng_card")) {
+            if (invoke && erzhang->getTag("guzheng_card").isValid()) {
                 bool ok = false;
-                int to_back = erzhang->tag["guzheng_card"].toInt(&ok);
+                int to_back = erzhang->getTag("guzheng_card").toInt(&ok);
                 if (ok) {
                     player->obtainCard(Sanguosha->getCard(to_back));
                     cards.removeOne(to_back);
@@ -1148,10 +1148,10 @@ public:
         Room *room = zuoci->getRoom();
         if (room->getMode() == "06_XMode") {
             foreach(ServerPlayer *p, room->getAlivePlayers())
-                all << p->tag["XModeBackup"].toStringList();
+                all << p->getTag("XModeBackup").toStringList();
         } else if (room->getMode() == "02_1v1") {
             foreach(ServerPlayer *p, room->getAlivePlayers())
-                all << p->tag["1v1Arrange"].toStringList();
+                all << p->getTag("1v1Arrange").toStringList();
         }
         QSet<QString> huashen_set, room_set;
         foreach(QString huashen, zuoci->property("Huashens").toString().split("+")){
@@ -1191,7 +1191,7 @@ public:
 		if(zuoci->property("Huashens").toString().isEmpty()) huashens.clear();
         if (huashens.isEmpty()) return;
         QStringList ac_dt_list;
-        QString huashen_skill = zuoci->tag["HuashenSkill"].toString();
+        QString huashen_skill = zuoci->getTag("HuashenSkill").toString();
         if (!huashen_skill.isEmpty())
             ac_dt_list.append("-" + huashen_skill);
 
@@ -1247,7 +1247,7 @@ public:
         room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, arg);
 
         ac_dt_list.append(skill_name);
-        zuoci->tag["HuashenSkill"] = skill_name;
+        zuoci->setTag("HuashenSkill", skill_name);
         room->handleAcquireDetachSkills(zuoci, ac_dt_list, true);
     }
 
@@ -1361,7 +1361,7 @@ public:
             room->setPlayerProperty(player, "kingdom", player->getGeneral()->getKingdom());
         if (player->getGender() != player->getGeneral()->getGender())
             player->setGender(player->getGeneral()->getGender());
-        QString huashen_skill = player->tag["HuashenSkill"].toString();
+        QString huashen_skill = player->getTag("HuashenSkill").toString();
         if (!huashen_skill.isEmpty())
             room->detachSkillFromPlayer(player, huashen_skill, false, true);
 		room->setPlayerProperty(player,"Huashens","");
@@ -1508,7 +1508,7 @@ void JilveCard::onUse(Room *room, CardUseStruct &card_use) const
     shensimayi->loseMark("&bear");
 
     if (choice.contains("wansha")) {
-        shensimayi->tag["JilveWansha"] = choice;
+        shensimayi->setTag("JilveWansha", choice);
         room->setPlayerFlag(shensimayi, "JilveWansha");
         room->acquireSkill(shensimayi, choice);
     } else {
@@ -1636,7 +1636,7 @@ public:
     {
         PhaseChangeStruct change = data.value<PhaseChangeStruct>();
         if (change.to != Player::NotActive) return false;
-        QString wansha = target->tag["JilveWansha"].toString();
+        QString wansha = target->getTag("JilveWansha").toString();
         if (wansha.isEmpty()) return false;
         room->detachSkillFromPlayer(target, wansha, false, true);
         return false;
@@ -2115,18 +2115,18 @@ public:
         if (event == ChoiceMade) {
             QStringList promptlist = data.toString().split(":");
             if(promptlist.first()=="cardResponded"&&promptlist.last()==""){
-				QStringList asked = player->tag["mobilerenjieAsked"].toStringList();
+				QStringList asked = player->getTag("mobilerenjieAsked").toStringList();
 				if(asked.length()<4||player->getMark("bear_lun")>3||!player->hasSkill(objectName())) return false;
-				player->tag.remove("mobilerenjieAsked");
+				player->removeTag("mobilerenjieAsked");
 				if(promptlist[1]==asked[0]&&asked[1].contains(promptlist[2])){
 					room->sendCompulsoryTriggerLog(player, this);
 					player->gainMark("&bear");
 					player->addMark("bear_lun");
 				}
 			}else if(promptlist.first()=="cardUsed"){
-				QStringList asked = player->tag["mobilerenjieAsked"].toStringList();
+				QStringList asked = player->getTag("mobilerenjieAsked").toStringList();
 				if(asked.length()<4||player->getMark("bear_lun")>3||!player->hasSkill(objectName())) return false;
-				player->tag.remove("mobilerenjieAsked");
+				player->removeTag("mobilerenjieAsked");
 				if(promptlist[1]==asked[0]&&asked[1].contains(promptlist[2])){
 					room->sendCompulsoryTriggerLog(player, this);
 					player->gainMark("&bear");
@@ -2134,8 +2134,8 @@ public:
 				}
 			}else if(promptlist.first()=="Nullification"){
 				foreach (ServerPlayer *p, room->findPlayersBySkillName(objectName())) {
-					CardEffectStruct effect = p->tag["mobilerenjieEffect"].value<CardEffectStruct>();
-					p->tag.remove("mobilerenjieEffect");
+					CardEffectStruct effect = p->getTag("mobilerenjieEffect").value<CardEffectStruct>();
+					p->removeTag("mobilerenjieEffect");
 					if(p!=player&&effect.card&&effect.card->getClassName()==promptlist[1]&&effect.from!=p&&p->getMark("bear_lun")<4){
 						room->sendCompulsoryTriggerLog(p, this);
 						p->gainMark("&bear");
@@ -2146,13 +2146,13 @@ public:
         } else if (event == CardAsked) {
             QStringList asked = data.toStringList();
             if(asked.length()<4) return false;
-			player->tag["mobilerenjieAsked"] = data;
+			player->setTag("mobilerenjieAsked", data);
         } else if (event == CardOnEffect) {
             CardEffectStruct effect = data.value<CardEffectStruct>();
 			if(effect.card->getTypeId()==2){
 				foreach (ServerPlayer *p, room->findPlayersBySkillName(objectName())) {
-					CardEffectStruct asked = p->tag["mobilerenjieEffect"].value<CardEffectStruct>();
-					p->tag.remove("mobilerenjieEffect");
+					CardEffectStruct asked = p->getTag("mobilerenjieEffect").value<CardEffectStruct>();
+					p->removeTag("mobilerenjieEffect");
 					if(effect.from!=p&&effect.card==asked.card&&p->getMark("bear_lun")<4){
 						room->sendCompulsoryTriggerLog(p, this);
 						p->gainMark("&bear");
@@ -2161,7 +2161,7 @@ public:
 				}
 			}
         } else {
-			player->tag["mobilerenjieEffect"] = data;
+			player->setTag("mobilerenjieEffect", data);
         }
         return false;
     }

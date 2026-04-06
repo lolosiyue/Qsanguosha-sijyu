@@ -36,7 +36,7 @@ public:
         log.from = player;
         room->sendLog(log);
 
-        player->tag.remove("zombie");
+        player->removeTag("zombie");
     }
 
     void gameOverJudge(Room *room) const
@@ -114,10 +114,10 @@ public:
                 } else if (room->getTag("TurnLengthCount").toInt() == 2) {
                     QList<ServerPlayer *> players = room->getOtherPlayers(player);
                     qShuffle(players);
-                    players.first()->tag["zombie"] = true;
-                    players.last()->tag["zombie"] = true;
+                    players.first()->setTag("zombie", true);
+                    players.last()->setTag("zombie", true);
                 }
-            } else if (player->tag.contains("zombie")) {
+            } else if (player->getTag("zombie").isValid()) {
 
                 //player->bury();
                 room->killPlayer(player);

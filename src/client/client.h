@@ -89,6 +89,8 @@ public:
     QString getSkillNameToInvoke() const;
     QString getSkillNameToInvokeData() const;
 
+    lua_State *getLuaState() const;
+
     QTextDocument *getLinesDoc() const;
     QTextDocument *getPromptDoc() const;
 
@@ -283,6 +285,7 @@ private:
     QMap<int, Player::Place> place_map;
 
     unsigned int _m_lastServerSerial;
+    lua_State *m_client_lua;
 
     void updatePileNum();
     QString setPromptList(const QStringList &text);

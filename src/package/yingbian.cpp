@@ -161,7 +161,7 @@ public:
 
     bool viewFilter(const Card *to_select) const
     {
-        const Card *card = Self->tag.value("wuxinghelingshan").value<const Card *>();
+        const Card *card = Self->getTag("wuxinghelingshan").value<const Card *>();
         return to_select->objectName() != card->objectName() && to_select->isKindOf("NatureSlash");
     }
 
@@ -178,7 +178,7 @@ public:
 
     const Card *viewAs(const Card *originalCard) const
     {
-        const Card *card = Self->tag.value("wuxinghelingshan").value<const Card *>();
+        const Card *card = Self->getTag("wuxinghelingshan").value<const Card *>();
         Card *slash = Sanguosha->cloneCard(card->objectName(), originalCard->getSuit(), originalCard->getNumber());
         slash->addSubcard(originalCard);
         slash->setSkillName(objectName());
@@ -452,7 +452,7 @@ public:
 					room->sendLog(log);
 					room->setEmotion(player, "treasure/tianjitu");
 					room->notifySkillInvoked(player, objectName());
-					player->tag["TianjituDiscardForAI"] = move.card_ids[i];
+					player->setTag("TianjituDiscardForAI", move.card_ids[i]);
 					room->askForDiscard(player, objectName(), 1, 1, false, true, "", "^" + card->toString());
                 }
             }

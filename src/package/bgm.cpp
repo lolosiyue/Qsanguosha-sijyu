@@ -709,7 +709,7 @@ void TanhuCard::use(Room *room, ServerPlayer *lvmeng, QList<ServerPlayer *> &tar
     if (lvmeng->pindian(targets.first(), "tanhu")) {
         room->broadcastSkillInvoke("tanhu", 2);
         targets.first()->setFlags("TanhuTarget");
-        lvmeng->tag["TanhuInvoke"] = QVariant::fromValue(targets.first());
+        lvmeng->setTag("TanhuInvoke", QVariant::fromValue(targets.first()));
         room->setFixedDistance(lvmeng, targets.first(), 1);
     } else
         room->broadcastSkillInvoke("tanhu", 3);
@@ -751,7 +751,7 @@ public:
     {
         if (triggerEvent == TrickCardCanceling) {
             CardEffectStruct effect = data.value<CardEffectStruct>();
-            if (effect.from && effect.from->tag["TanhuInvoke"].value<ServerPlayer *>() == player)
+            if (effect.from && effect.from->getTag("TanhuInvoke").value<ServerPlayer *>() == player)
                 return player->hasFlag("TanhuTarget");
         } else {
             if (triggerEvent == EventPhaseChanging) {
@@ -761,11 +761,11 @@ public:
                 DeathStruct death = data.value<DeathStruct>();
                 if (death.who != player) return false;
             }
-            ServerPlayer *target = player->tag["TanhuInvoke"].value<ServerPlayer *>();
+            ServerPlayer *target = player->getTag("TanhuInvoke").value<ServerPlayer *>();
 			if (!target) return false;
             target->setFlags("-TanhuTarget");
             room->removeFixedDistance(player, target, 1);
-            player->tag.remove("TanhuInvoke");
+            player->removeTag("TanhuInvoke");
         }
         return false;
     }
@@ -793,7 +793,7 @@ public:
     {
         if (triggerEvent == TrickCardCanceling) {
             CardEffectStruct effect = data.value<CardEffectStruct>();
-            if (effect.from && effect.from->tag["TanhuInvoke"].value<ServerPlayer *>() == player)
+            if (effect.from && effect.from->getTag("TanhuInvoke").value<ServerPlayer *>() == player)
                 return player->hasFlag("TanhuTarget");
         } else {
             if (triggerEvent == EventPhaseChanging) {
@@ -803,11 +803,11 @@ public:
                 DeathStruct death = data.value<DeathStruct>();
                 if (death.who != player) return false;
             }
-            ServerPlayer *target = player->tag["TanhuInvoke"].value<ServerPlayer *>();
+            ServerPlayer *target = player->getTag("TanhuInvoke").value<ServerPlayer *>();
 			if (!target) return false;
             target->setFlags("-TanhuTarget");
             room->removeFixedDistance(player, target, 1);
-            player->tag.remove("TanhuInvoke");
+            player->removeTag("TanhuInvoke");
         }
         return false;
     }
@@ -1167,7 +1167,7 @@ public:
             newdamage.to = target;
             newdamage.transfer = true;
             newdamage.transfer_reason = "shichou";
-            player->tag["TransferDamage"] = QVariant::fromValue(newdamage);
+            player->setTag("TransferDamage", QVariant::fromValue(newdamage));
             return true;
         } else if (triggerEvent == Dying) {
             DyingStruct dying = data.value<DyingStruct>();
@@ -1267,7 +1267,7 @@ public:
             newdamage.to = target;
             newdamage.transfer = true;
             newdamage.transfer_reason = "shichou";
-            player->tag["TransferDamage"] = QVariant::fromValue(newdamage);
+            player->setTag("TransferDamage", QVariant::fromValue(newdamage));
             return true;
         } else if (triggerEvent == Dying) {
             player->loseAllMarks("@hate_to");
@@ -2321,9 +2321,9 @@ bool HuangenCard::targetFilter(const QList<const Player *> &targets, const Playe
 
 void HuangenCard::onEffect(CardEffectStruct &effect) const
 {
-    CardUseStruct use = effect.from->tag["huangen"].value<CardUseStruct>();
+    CardUseStruct use = effect.from->getTag("huangen").value<CardUseStruct>();
     use.nullified_list << effect.to->objectName();
-    effect.from->tag["huangen"] = QVariant::fromValue(use);
+    effect.from->setTag("huangen", QVariant::fromValue(use));
     effect.to->drawCards(1, "huangen");
 }
 
@@ -2362,9 +2362,9 @@ public:
         foreach(ServerPlayer *p, use.to)
             target_list << p->objectName();
         room->setPlayerProperty(liuxie, "huangen_targets", target_list.join("+"));
-        liuxie->tag["huangen"] = data;
+        liuxie->setTag("huangen", data);
         room->askForUseCard(liuxie, "@@huangen", "@huangen-card");
-        data = liuxie->tag["huangen"];
+        data = liuxie->getTag("huangen");
 
         return false;
     }
@@ -2397,9 +2397,9 @@ public:
         foreach(ServerPlayer *p, use.to)
             target_list << p->objectName();
         room->setPlayerProperty(liuxie, "huangen_targets", target_list.join("+"));
-        liuxie->tag["huangen"] = data;
+        liuxie->setTag("huangen", data);
         room->askForUseCard(liuxie, "@@huangen", "@huangen-card");
-        data = liuxie->tag["huangen"];
+        data = liuxie->getTag("huangen");
 
         return false;
     }
@@ -2539,7 +2539,7 @@ public:
     {
 		if(event == EventPhaseChanging){
 			PhaseChangeStruct change = data.value<PhaseChangeStruct>();
-			return change.to==Player::NotActive&&owner->isAlive()&&owner->tag.value("Hantong_use").toBool();
+			return change.to==Player::NotActive&&owner->isAlive()&&owner->getTag("Hantong_use").toBool();
 		}
         if (owner->getPile("edict").isEmpty())
             return false;
@@ -2561,18 +2561,18 @@ public:
 
     bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *liuxie, QVariant &data,ServerPlayer*owner) const
     {
-        liuxie->tag["Hantong_use"] = true;
+        liuxie->setTag("Hantong_use", true);
         switch (triggerEvent) {
         case CardAsked: {
             QString pattern = data.toStringList().first();
 			if (pattern == "jink") {
-                liuxie->tag["HantongOriginData"] = data; // For AI
+                liuxie->setTag("HantongOriginData", data); // For AI
                 if (room->askForSkillInvoke(liuxie, "hantong_acquire", "hujia",false)) {
                     RemoveEdict(liuxie);
                     room->acquireSkill(liuxie, "hujia");
                 }
             }else{
-                liuxie->tag["HantongOriginData"] = data; // For AI
+                liuxie->setTag("HantongOriginData", data); // For AI
                 if (room->askForSkillInvoke(liuxie, "hantong_acquire", "jijiang",false)) {
                     RemoveEdict(liuxie);
                     room->acquireSkill(liuxie, "jijiang");
@@ -2593,7 +2593,7 @@ public:
             break;
         }case EventPhaseChanging: {
             room->handleAcquireDetachSkills(owner, "-hujia|-jijiang|-jiuyuan|-xueyi", true);
-            owner->tag.remove("Hantong_use");
+            owner->removeTag("Hantong_use");
         }default:
             break;
         }
@@ -2648,13 +2648,13 @@ public:
         case CardAsked: {
             QString pattern = data.toStringList().first();
             if ((pattern.contains("slash") || pattern.contains("Slash")) && !liuxie->hasFlag("Global_JijiangFailed")) {
-                liuxie->tag["HantongOriginData"] = data; // For AI
+                liuxie->setTag("HantongOriginData", data); // For AI
                 if (room->askForSkillInvoke(liuxie, "hantong_acquire", "jijiang",false)) {
                     RemoveEdict(liuxie);
                     room->acquireSkill(liuxie, "jijiang");
                 }
             } else if (pattern == "jink") {
-                liuxie->tag["HantongOriginData"] = data; // For AI
+                liuxie->setTag("HantongOriginData", data); // For AI
                 if (room->askForSkillInvoke(liuxie, "hantong_acquire", "hujia",false)) {
                     RemoveEdict(liuxie);
                     room->acquireSkill(liuxie, "hujia");
@@ -2683,7 +2683,7 @@ public:
         }default:
             break;
         }
-        liuxie->tag["Hantong_use"] = true;
+        liuxie->setTag("Hantong_use", true);
         return false;
     }
 };
@@ -2708,9 +2708,9 @@ public:
             return false;
 
         foreach (ServerPlayer *p, room->getAllPlayers()) {
-            if (!p->tag.value("Hantong_use").toBool()) continue;
+            if (!p->getTag("Hantong_use").toBool()) continue;
             room->handleAcquireDetachSkills(p, "-hujia|-jijiang|-jiuyuan|-xueyi", true);
-            p->tag.remove("Hantong_use");
+            p->removeTag("Hantong_use");
         }
         return false;
     }
@@ -2722,7 +2722,7 @@ const Card *HantongCard::validate(CardUseStruct &cardUse) const
     Room *room = cardUse.from->getRoom();
 
     HantongAcquire::RemoveEdict(cardUse.from);
-    cardUse.from->tag["Hantong_use"] = true;
+    cardUse.from->setTag("Hantong_use", true);
     room->acquireSkill(cardUse.from, "jijiang");
     if (!room->askForUseCard(cardUse.from, "@jijiang", "@hantong-jijiang")) {
         room->setPlayerFlag(cardUse.from, "Global_JijiangFailed");

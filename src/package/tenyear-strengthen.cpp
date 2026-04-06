@@ -669,9 +669,9 @@ public:
 			if (room->getCardOwner(id) != player || room->getCardPlace(id) != Player::PlaceHand) return false;
 			if (!card->isKindOf("BasicCard") || !player->canDiscard(player, id)) return false;
 			room->fillAG(list, player);
-			player->tag["tenyearjizhi_id"] = id;
+			player->setTag("tenyearjizhi_id", id);
 			bool invoke = room->askForSkillInvoke(player, "tenyearjizhi_discard", "discard", false);
-			player->tag.remove("tenyearjizhi_id");
+			player->removeTag("tenyearjizhi_id");
 			room->clearAG(player);
 			if (!invoke) return false;
 			room->throwCard(card, player, nullptr);
@@ -809,9 +809,9 @@ public:
 			room->sendCompulsoryTriggerLog(player, objectName(), true, true);
 			QList<int> ids = room->showDrawPile(player, 3, objectName());
 			QList<int> card_to_throw;
-			player->tag["tenyearluoyi_ids"] = ListI2V(ids);
+			player->setTag("tenyearluoyi_ids", ListI2V(ids));
 			bool invoke = player->askForSkillInvoke(this);
-			player->tag.remove("tenyearluoyi_ids");
+			player->removeTag("tenyearluoyi_ids");
 			if (!invoke) {
 				foreach (int id, ids) {
 					if (room->getCardPlace(id) == Player::PlaceTable)
@@ -1278,7 +1278,7 @@ public:
 	bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
 	{
 		DamageStruct damage = data.value<DamageStruct>();
-		if (player->tag["InvokeKuanggu"].toBool()) {
+		if (player->getTag("InvokeKuanggu").toBool()) {
 			for (int i = 0; i < damage.damage; i++) {
 				if (!player->isAlive()||!player->askForSkillInvoke(this)) break;
 				int index = qrand() % 2 + 1;
@@ -2624,7 +2624,7 @@ public:
 		if (use.to.length() == 1 && (use.card->isKindOf("Slash") || use.card->isNDTrick())) {
 			QList<ServerPlayer *> targets = room->getOtherPlayers(use.to.first());
 			targets.removeOne(player);
-			player->tag["tenyearzenhui"] = data;
+			player->setTag("tenyearzenhui", data);
 			ServerPlayer *target = room->askForPlayerChosen(player, targets, objectName(), "@tenyearzenhui-invoke:" + use.to.first()->objectName(), true, true);
 			if (target) {
 				room->broadcastSkillInvoke(objectName());
@@ -2786,8 +2786,8 @@ public:
 						tos << objectName();
 						room->setPlayerProperty(player, "extra_collateral", tos.join("+"));
 						room->askForUseCard(player, "@@tenyearbenxi!", "@tenyearbenxi-extra:" + use.card->objectName());
-						target = player->tag["ExtraCollateralTarget"].value<ServerPlayer *>();
-						player->tag.remove("ExtraCollateralTarget");
+						target = player->getTag("ExtraCollateralTarget").value<ServerPlayer *>();
+						player->removeTag("ExtraCollateralTarget");
 						if (!target) {
 							QList<ServerPlayer *> victims;
 							target = available_targets.at(qrand() % available_targets.length() - 1);
@@ -2795,7 +2795,7 @@ public:
 								if (target->canSlash(p))
 									victims << p;
 							}
-							target->tag["attachTarget"] = QVariant::fromValue((victims.at(qrand() % victims.length() - 1)));
+							target->setTag("attachTarget", QVariant::fromValue((victims.at(qrand() % victims.length() - 1))));
 							log.type = "#QiaoshuiAdd";
 							log.to << target;
 							log.card_str = use.card->toString();
@@ -3186,7 +3186,7 @@ public:
 		if (event == DamageCaused) {
 			DamageStruct damage = data.value<DamageStruct>();
 			if (!damage.card || !damage.card->isKindOf("Slash")) return false;
-			//damage.damage += damage.card->tag["Tenyearanjian_Damage"].toInt();
+			//damage.damage += damage.card->getTag("Tenyearanjian_Damage").toInt();
 			damage.damage += room->getTag("Tenyearanjian_Damage" + damage.card->toString()).toInt();
 			data = QVariant::fromValue(damage);
 		} else {
@@ -3198,8 +3198,8 @@ public:
 					room->sendCompulsoryTriggerLog(player, objectName(), true, true);
 					p->addQinggangTag(use.card);
 					room->setCardFlag(use.card, "tenyearanjian_" + p->objectName());
-					//int damage = use.card->tag["Tenyearanjian_Damage"].toInt();
-					//use.card->tag["Tenyearanjian_Damage"] = ++damage;
+					//int damage = use.card->getTag("Tenyearanjian_Damage").toInt();
+					//use.card->setTag("Tenyearanjian_Damage", ++damage);
 					int damage = room->getTag("Tenyearanjian_Damage" + use.card->toString()).toInt();
 					room->setTag("Tenyearanjian_Damage" + use.card->toString(), ++damage);
 				}
@@ -3231,11 +3231,11 @@ public:
 			if (dying.who != player) return false;
 			if (!dying.damage || !dying.damage->card || !dying.damage->card->isKindOf("Slash")) return false;
 			if (!dying.damage->card->hasFlag("tenyearanjian_" + player->objectName())) return false;
-			player->tag["TenyearanjianForbidden"] = true;
+			player->setTag("TenyearanjianForbidden", true);
 			room->setPlayerCardLimitation(player, "use", "Peach", false);
 		} else {
-			if (!player->tag["TenyearanjianForbidden"].toBool()) return false;
-			player->tag.remove("TenyearanjianForbidden");
+			if (!player->getTag("TenyearanjianForbidden").toBool()) return false;
+			player->removeTag("TenyearanjianForbidden");
 			room->removePlayerCardLimitation(player, "use", "Peach$0");
 		}
 		return false;
@@ -3540,8 +3540,8 @@ public:
 					tos << objectName();
 					room->setPlayerProperty(player, "extra_collateral", tos.join("+"));
 					if (!room->askForUseCard(player, "@@tenyearqiaoshui2", "@tenyearqiaoshui1:" + use.card->objectName(), 1)) break;
-					ServerPlayer *p = player->tag["ExtraCollateralTarget"].value<ServerPlayer *>();
-					player->tag.remove("ExtraCollateralTarget");
+					ServerPlayer *p = player->getTag("ExtraCollateralTarget").value<ServerPlayer *>();
+					player->removeTag("ExtraCollateralTarget");
 					if (p) use.to.append(p);
 				}
 			} else {
@@ -4181,9 +4181,9 @@ public:
 					room->broadcastSkillInvoke(objectName());
 					const Card *card = nullptr;
 					if (!source->isKongcheng()) {
-						source->tag["tenyearenyuan_data"] = data;
+						source->setTag("tenyearenyuan_data", data);
 						card = room->askForExchange(source, objectName(), 1, 1, false, "EnyuanGive::" + player->objectName(), true);
-						source->tag.remove("tenyearenyuan_data");
+						source->removeTag("tenyearenyuan_data");
 					}
 					if (card) {
 						CardMoveReason reason(CardMoveReason::S_REASON_GIVE, source->objectName(),
@@ -4260,9 +4260,9 @@ void TenyearXuanhuoCard::onEffect(CardEffectStruct &effect) const
 					room->obtainCard(effect.from, handcards, reason, false);
 				}
 			} else {
-				effect.from->tag["tenyearxuanhuo_target"] = QVariant::fromValue(effect.to);
+				effect.from->setTag("tenyearxuanhuo_target", QVariant::fromValue(effect.to));
 				ServerPlayer *target = room->askForPlayerChosen(effect.from, targets, "tenyearxuanhuo", "@tenyearxuanhuo-target:" + effect.to->objectName());
-				effect.from->tag.remove("tenyearxuanhuo_target");
+				effect.from->removeTag("tenyearxuanhuo_target");
 
 				LogMessage log;
 				log.type = "#TenyearxuanhuoTarget";
@@ -4421,7 +4421,7 @@ public:
 
 		const Card *card = nullptr;
 		if (!target->isKongcheng()) {
-			target->tag["tenyearqiuyuan_from"] = QVariant::fromValue(player);
+			target->setTag("tenyearqiuyuan_from", QVariant::fromValue(player));
 			card = room->askForCard(target, "BasicCard+^Slash", "@tenyearqiuyuan-give:" + player->objectName(), data, Card::MethodNone);
 		}
 		if (card) {
@@ -4700,12 +4700,12 @@ public:
 		if (event == DamageCaused) {
 			if (player->getMark(objectName()) > 0) return false;
 			if (damage.to->isDead()) return false;
-			player->tag["tenyearjueqing_data"] = data;
+			player->setTag("tenyearjueqing_data", data);
 			if (!player->askForSkillInvoke(objectName(), damage.to)) {
-				player->tag.remove("tenyearjueqing_data");
+				player->removeTag("tenyearjueqing_data");
 				return false;
 			};
-			player->tag.remove("tenyearjueqing_data");
+			player->removeTag("tenyearjueqing_data");
 			room->broadcastSkillInvoke(objectName());
 			room->loseHp(HpLostStruct(player, damage.damage, "tenyearjueqing", player));
 
@@ -4827,22 +4827,22 @@ void TenyearJiefanCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer
 
 	room->removePlayerMark(source, "@tenyearjiefanMark");
 	ServerPlayer *target = targets.first();
-	source->tag["TenyearJiefanTarget"] = QVariant::fromValue(target);
+	source->setTag("TenyearJiefanTarget", QVariant::fromValue(target));
 	room->doSuperLightbox(source, "tenyearjiefan");
 
 	foreach (ServerPlayer *player, room->getAllPlayers()) {
 		if (player->isAlive() && player->inMyAttackRange(target))
 			room->cardEffect(this, source, player);
 	}
-	source->tag.remove("TenyearJiefanTarget");
+	source->removeTag("TenyearJiefanTarget");
 }
 
 void TenyearJiefanCard::onEffect(CardEffectStruct &effect) const
 {
 	Room *room = effect.to->getRoom();
 
-	ServerPlayer *target = effect.from->tag["TenyearJiefanTarget"].value<ServerPlayer *>();
-	QVariant data = effect.from->tag["TenyearJiefanTarget"];
+	ServerPlayer *target = effect.from->getTag("TenyearJiefanTarget").value<ServerPlayer *>();
+	QVariant data = effect.from->getTag("TenyearJiefanTarget");
 	if (target && !room->askForCard(effect.to, ".Weapon", "@jiefan-discard::" + target->objectName(), data))
 		target->drawCards(1, "tenyearjiefan");
 }
@@ -4901,7 +4901,7 @@ public:
 		if (event == CardOffset) {
 			CardEffectStruct effect = data.value<CardEffectStruct>();
 			if (!effect.card->isKindOf("Slash")) return false;
-			QVariantList slash = effect.from->tag["tenyearzhongyong_slash" + effect.card->toString()].toList();
+			QVariantList slash = effect.from->getTag("tenyearzhongyong_slash" + effect.card->toString()).toList();
 			if (effect.card->isVirtualCard() && effect.card->subcardsLength() > 0) {
 				foreach (int id, effect.card->getSubcards()) {
 					if (slash.contains(QVariant(id))) continue;
@@ -4911,10 +4911,10 @@ public:
 				if (!slash.contains(QVariant(effect.card->getEffectiveId())))
 					slash << effect.card->getEffectiveId();
 			}
-			player->tag["tenyearzhongyong_slash" + effect.card->toString()] = slash;
+			player->setTag("tenyearzhongyong_slash" + effect.card->toString(), slash);
 
 			if (!effect.offset_card) return false;
-			QVariantList jink = player->tag["tenyearzhongyong_jink" + effect.card->toString()].toList();
+			QVariantList jink = player->getTag("tenyearzhongyong_jink" + effect.card->toString()).toList();
 			if (effect.offset_card->isVirtualCard() && effect.offset_card->subcardsLength() > 0) {
 				foreach (int id, effect.offset_card->getSubcards()) {
 					if (jink.contains(QVariant(id))) continue;
@@ -4924,13 +4924,13 @@ public:
 				if (!jink.contains(QVariant(effect.offset_card->getEffectiveId())))
 					jink << effect.offset_card->getEffectiveId();
 			}
-			effect.from->tag["tenyearzhongyong_jink" + effect.card->toString()] = jink;
+			effect.from->setTag("tenyearzhongyong_jink" + effect.card->toString(), jink);
 		} else {
 			CardUseStruct use = data.value<CardUseStruct>();
 			if (!use.card->isKindOf("Slash")) return false;
 
-			QVariantList slash = player->tag["tenyearzhongyong_slash" + use.card->toString()].toList();
-			QVariantList jink = player->tag["tenyearzhongyong_jink" + use.card->toString()].toList();
+			QVariantList slash = player->getTag("tenyearzhongyong_slash" + use.card->toString()).toList();
+			QVariantList jink = player->getTag("tenyearzhongyong_jink" + use.card->toString()).toList();
 			QList<int> slash_ids = ListV2I(slash);
 			QList<int> jink_ids = ListV2I(jink);
 
@@ -5686,10 +5686,10 @@ public:
 	{
 		if (player->getPhase() == Player::NotActive){
 			foreach (ServerPlayer *p, room->getAlivePlayers()) {
-				QString an = p->tag["tenyearqianxi"+player->objectName()].toString();
+				QString an = p->getTag("tenyearqianxi"+player->objectName()).toString();
 				if (an != ""){
 					p->removeEquipsNullified("Armor|"+an);
-					p->tag.remove("tenyearqianxi"+player->objectName());
+					p->removeTag("tenyearqianxi"+player->objectName());
 				}
 			}
 		}
@@ -5721,7 +5721,7 @@ public:
 		if (!color.isEmpty()) {
 			room->addPlayerMark(t, "&tenyearqianxi+" + color + "-Clear");
 			t->addEquipsNullified("Armor|"+color);
-			t->tag["tenyearqianxi"+player->objectName()] = color;
+			t->setTag("tenyearqianxi"+player->objectName(), color);
 		}
 		return false;
 	}
@@ -5862,7 +5862,7 @@ public:
 
 	bool viewFilter(const Card *to_select) const
 	{
-		QString choice = Self->tag["tenyearjiaozhao"].toString();
+		QString choice = Self->getTag("tenyearjiaozhao").toString();
 		if (choice == "show") return !to_select->isEquipped();
 		if (choice.startsWith("use")) {
 			int basic = Self->getMark("tenyearjiaozhao_basic-Clear") - 1;
@@ -5881,7 +5881,7 @@ public:
 	const Card *viewAs(const Card *originalCard) const
 	{
 		if (Sanguosha->currentRoomState()->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_PLAY) {
-			QString choice = Self->tag["tenyearjiaozhao"].toString();
+			QString choice = Self->getTag("tenyearjiaozhao").toString();
 			if (choice == "show") {
 				TenyearJiaozhaoCard *card = new TenyearJiaozhaoCard;
 				card->addSubcard(originalCard);

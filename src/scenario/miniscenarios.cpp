@@ -46,9 +46,9 @@ bool MiniSceneRule::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer 
         }
 
         if (player->getPhase() == Player::RoundStart && this->players.first()["beforeNext"] != "") {
-            if (player->tag["playerHasPlayed"].toBool())
+            if (player->getTag("playerHasPlayed").toBool())
                 room->gameOver(this->players.first()["beforeNext"]);
-            else player->tag["playerHasPlayed"] = true;
+            else player->setTag("playerHasPlayed", true);
         }
 
         if (player->getPhase() != Player::NotActive) return false;

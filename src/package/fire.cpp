@@ -865,7 +865,7 @@ void KuangfengCard::onEffect(CardEffectStruct &effect) const
     CardMoveReason reason(CardMoveReason::S_REASON_REMOVE_FROM_PILE, effect.from->objectName(), "kuangfeng", "");
     effect.to->getRoom()->throwCard(this, reason, nullptr);
     effect.to->gainMark("&kuangfeng");
-	effect.from->tag["kuangfengUse"] = true;
+	effect.from->setTag("kuangfengUse", true);
 }
 
 class KuangfengViewAsSkill : public OneCardViewAsSkill
@@ -925,8 +925,8 @@ public:
                 DeathStruct death = data.value<DeathStruct>();
                 if (death.who != player) return false;
 			}
-			if(player->tag["kuangfengUse"].toBool()){
-				player->tag["kuangfengUse"] = false;
+			if(player->getTag("kuangfengUse").toBool()){
+				player->setTag("kuangfengUse", false);
 				foreach (ServerPlayer *p, room->getAllPlayers()) {
 					p->loseMark("&kuangfeng");
 				}
@@ -957,7 +957,7 @@ void DawuCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targ
     CardMoveReason reason(CardMoveReason::S_REASON_REMOVE_FROM_PILE, source->objectName(), "dawu", "");
     room->throwCard(this, reason, nullptr);
 
-    source->tag["dawuUse"] = true;
+    source->setTag("dawuUse", true);
 
     foreach(ServerPlayer *target, targets)
         target->gainMark("&dawu");
@@ -1030,8 +1030,8 @@ public:
                 DeathStruct death = data.value<DeathStruct>();
                 if (death.who != player) return false;
 			}
-			if(player->tag["dawuUse"].toBool()){
-				player->tag["dawuUse"] = false;
+			if(player->getTag("dawuUse").toBool()){
+				player->setTag("dawuUse", false);
 				foreach (ServerPlayer *p, room->getAllPlayers()) {
 					p->loseMark("&dawu");
 				}

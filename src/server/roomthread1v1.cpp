@@ -245,7 +245,7 @@ void RoomThread1v1::arrange(ServerPlayer *player, const QStringList &arranged)
 
 	QString general = arranged.first();
 	QStringList left = arranged.mid(1);
-	player->tag["1v1Arrange"] = QVariant::fromValue(left);
+	player->setTag("1v1Arrange", QVariant::fromValue(left));
 	player->setGeneralName(general);
 	if (player->hasHideSkill()){
 		room->setPlayerProperty(player, "yinni_general", general);

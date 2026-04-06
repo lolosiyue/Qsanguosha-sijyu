@@ -165,7 +165,7 @@ bool FenxunCard::targetFilter(const QList<const Player *> &targets, const Player
 void FenxunCard::onEffect(CardEffectStruct &effect) const
 {
     Room *room = effect.from->getRoom();
-    effect.from->tag["FenxunTarget"] = QVariant::fromValue(effect.to);
+    effect.from->setTag("FenxunTarget", QVariant::fromValue(effect.to));
     room->setFixedDistance(effect.from, effect.to, 1);
 }
 
@@ -202,7 +202,7 @@ public:
 
     bool triggerable(const ServerPlayer *target) const
     {
-        return target != nullptr && target->tag["FenxunTarget"].value<ServerPlayer *>() != nullptr;
+        return target != nullptr && target->getTag("FenxunTarget").value<ServerPlayer *>() != nullptr;
     }
 
     bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *dingfeng, QVariant &data) const
@@ -216,11 +216,11 @@ public:
             if (death.who != dingfeng)
                 return false;
         }
-        ServerPlayer *target = dingfeng->tag["FenxunTarget"].value<ServerPlayer *>();
+        ServerPlayer *target = dingfeng->getTag("FenxunTarget").value<ServerPlayer *>();
 
         if (target) {
             room->removeFixedDistance(dingfeng, target, 1);
-            dingfeng->tag.remove("FenxunTarget");
+            dingfeng->removeTag("FenxunTarget");
         }
         return false;
     }
@@ -664,9 +664,9 @@ void QingchengCard::onUse(Room *room, CardUseStruct &card_use) const
         log.arg = skill_qc;
         room->sendLog(log);
 
-        QStringList Qingchenglist = to->tag["Qingcheng"].toStringList();
+        QStringList Qingchenglist = to->getTag("Qingcheng").toStringList();
         Qingchenglist << skill_qc;
-        to->tag["Qingcheng"] = QVariant::fromValue(Qingchenglist);
+        to->setTag("Qingcheng", QVariant::fromValue(Qingchenglist));
         room->addPlayerMark(to, "Qingcheng" + skill_qc);
 
         foreach(ServerPlayer *p, room->getAllPlayers())
@@ -739,7 +739,7 @@ public:
     bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const
     {
         if (player->getPhase() == Player::RoundStart) {
-            QStringList Qingchenglist = player->tag["Qingcheng"].toStringList();
+            QStringList Qingchenglist = player->getTag("Qingcheng").toStringList();
             if (Qingchenglist.isEmpty()) return false;
             foreach (QString skill_name, Qingchenglist) {
                 room->setPlayerMark(player, "Qingcheng" + skill_name, 0);
@@ -751,7 +751,7 @@ public:
                     room->sendLog(log);
                 }
             }
-            player->tag.remove("Qingcheng");
+            player->removeTag("Qingcheng");
             foreach(ServerPlayer *p, room->getAllPlayers())
                 room->filterCards(p, p->getCards("he"), false);
 

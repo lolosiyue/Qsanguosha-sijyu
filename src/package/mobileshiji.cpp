@@ -1022,7 +1022,7 @@ bool MobileZhiMiewuCard::targetFilter(const QList<const Player*> &targets, const
 		return card->targetFilter(targets, to_select, Self);
 	}
 
-    const Card*_card = Self->tag.value("mobilezhimiewu").value<const Card*>();
+    const Card*_card = Self->getTag("mobilezhimiewu").value<const Card*>();
     if (_card == nullptr)
         return false;
 
@@ -1044,7 +1044,7 @@ bool MobileZhiMiewuCard::targetFixed() const
 		return card->targetFixed();
 	}
 
-	const Card*_card = Self->tag.value("mobilezhimiewu").value<const Card*>();
+	const Card*_card = Self->getTag("mobilezhimiewu").value<const Card*>();
 	if (_card == nullptr)
 		return false;
 
@@ -1064,7 +1064,7 @@ bool MobileZhiMiewuCard::targetsFeasible(const QList<const Player*> &targets, co
 		return card->targetsFeasible(targets, Self);
 	}
 
-    const Card*_card = Self->tag.value("mobilezhimiewu").value<const Card*>();
+    const Card*_card = Self->getTag("mobilezhimiewu").value<const Card*>();
     if (_card == nullptr)
         return false;
 
@@ -1195,7 +1195,7 @@ public:
             return card;
         }
 
-        const Card*c = Self->tag.value("mobilezhimiewu").value<const Card*>();
+        const Card*c = Self->getTag("mobilezhimiewu").value<const Card*>();
         if (c && c->isAvailable(Self)) {
             MobileZhiMiewuCard*card = new MobileZhiMiewuCard;
             card->setUserString(c->objectName());
@@ -2311,7 +2311,7 @@ public:
         if (player->getPhase() != Player::Finish || player->isNude()) return false;
         const Card*card = room->askForCard(player, "..", "@mobilexinmingfa-show", QVariant(), Card::MethodNone);
         if (!card) return false;
-        player->tag["MobileXinMingfaCard"] = QVariant::fromValue(card);
+        player->setTag("MobileXinMingfaCard", QVariant::fromValue(card));
         LogMessage log;
         log.type = "#InvokeSkill";
         log.from = player;
@@ -2341,8 +2341,8 @@ public:
     {
         if (triggerEvent == EventPhaseStart) {
             if (player->isDead() || player->getPhase() != Player::Play) return false;
-            const Card*card = player->tag["MobileXinMingfaCard"].value<const Card*>();
-            player->tag.remove("MobileXinMingfaCard");
+            const Card*card = player->getTag("MobileXinMingfaCard").value<const Card*>();
+            player->removeTag("MobileXinMingfaCard");
             if (!card || !player->hasCard(card->getEffectiveId())) return false;
             QList<ServerPlayer*> targets;
             foreach (ServerPlayer*p, room->getOtherPlayers(player)) {
@@ -3108,10 +3108,10 @@ public:
             int give_num = qMax(1, p->getHp());
             if (p->getCardCount() < give_num) continue;
 
-            p->tag["mobilerensheyi_data"] = data;
+            p->setTag("mobilerensheyi_data", data);
             QString prompt = QString("@mobilerensheyi-give:%1:%2:%3").arg(player->objectName()).arg(give_num).arg(damage.damage);
             const Card*card = room->askForExchange(p, objectName(), 999, give_num, true, prompt, true);
-            p->tag.remove("mobilerensheyi_data");
+            p->removeTag("mobilerensheyi_data");
             if (!card) continue;
 
             LogMessage log;
@@ -3267,7 +3267,7 @@ public:
 
         ServerPlayer*to = (ServerPlayer*)move.to;
         foreach (int id, move.card_ids) {
-            QStringList ejian_names = player->tag["mobilerenejian_names"].toStringList();
+            QStringList ejian_names = player->getTag("mobilerenejian_names").toStringList();
             if (ejian_names.contains(move.to->objectName())) return false;
 
             const Card*card = Sanguosha->getCard(id);
@@ -3275,7 +3275,7 @@ public:
 
             room->sendCompulsoryTriggerLog(player, this);
             ejian_names << move.to->objectName();
-            player->tag["mobilerenejian_names"] = ejian_names;
+            player->setTag("mobilerenejian_names", ejian_names);
             room->setPlayerMark(to, "&mobilerenejian", 1);
 
             QStringList choices;

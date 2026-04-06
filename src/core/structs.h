@@ -716,6 +716,9 @@ enum TriggerEvent {
 
     TurnBroken, // For the skill 'DanShou'. Do not use it to trigger events
 
+    GeneralChoosing, // Before asking for general selection
+    GeneralChosen,   // After general selection is completed
+
     EventForDiy, // For lua or diy to trigger special event
 
     NumOfEvents

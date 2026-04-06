@@ -192,9 +192,9 @@ void CoupleScenario::marryAll(Room *room) const
 void CoupleScenario::setSpouse(ServerPlayer *player, ServerPlayer *spouse) const
 {
     if (spouse)
-        player->tag["spouse_player"] = spouse->objectName();
+        player->setTag("spouse_player", spouse->objectName());
     else
-        player->tag.remove("spouse_player");
+        player->removeTag("spouse_player");
 }
 
 void CoupleScenario::marry(ServerPlayer *husband, ServerPlayer *wife) const
@@ -243,11 +243,15 @@ void CoupleScenario::remarry(ServerPlayer *enkemann, ServerPlayer *widow) const
 
 ServerPlayer *CoupleScenario::getSpouse(const ServerPlayer *player) const
 {
-    foreach (ServerPlayer *p, player->getRoom()->getPlayers()) {
-		if(p->objectName()==player->tag["spouse_player"].toString())
-			return p;
-	}
-	return nullptr;
+    QString spouseName = player->getTag("spouse_player").toString();
+    if (spouseName.isEmpty())
+        return nullptr;
+
+    foreach(ServerPlayer * p, player->getRoom()->getPlayers()) {
+        if (p->objectName() == spouseName)
+            return p;
+    }
+    return nullptr;
 }
 
 bool CoupleScenario::isWidow(ServerPlayer *player) const

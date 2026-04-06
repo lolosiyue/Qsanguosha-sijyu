@@ -222,8 +222,8 @@ public:
 						tos << objectName();
 						room->setPlayerProperty(player, "extra_collateral", tos.join("+"));
                         room->askForUseCard(player, "@@_shuibojian1", "@_shuibojian:" + use.card->objectName());
-						ServerPlayer*extra = player->tag["ExtraCollateralTarget"].value<ServerPlayer*>();
-						player->tag.remove("ExtraCollateralTarget");
+						ServerPlayer*extra = player->getTag("ExtraCollateralTarget").value<ServerPlayer*>();
+						player->removeTag("ExtraCollateralTarget");
 						if (extra) {
 							room->setEmotion(player, "weapon/_shuibojian");
 							room->addPlayerMark(player, "_shuibojian-Clear");
@@ -243,7 +243,7 @@ public:
                         }
                     }
                     if (!canextra) return false;
-                    player->tag["_shuibojianData"] = data;
+                    player->setTag("_shuibojianData", data);
                     if (!room->askForUseCard(player, "@@_shuibojian", "@_shuibojian:" + use.card->objectName()))
                         return false;
                     LogMessage log;

@@ -22,11 +22,11 @@ ZiliangCard::ZiliangCard()
 
 void ZiliangCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const
 {
-    ServerPlayer *target = source->tag["ZiliangCurrentTarget"].value<ServerPlayer *>();
+    ServerPlayer *target = source->getTag("ZiliangCurrentTarget").value<ServerPlayer *>();
     if (target == nullptr)
         return;
 
-    source->tag.remove("ZiliangCurrentTarget");
+    source->removeTag("ZiliangCurrentTarget");
 
     if (target == source) {
         LogMessage log;
@@ -78,7 +78,7 @@ public:
             if (!TriggerSkill::triggerable(dengai) || !player->isAlive()) continue;
             if (dengai->getPile("field").isEmpty()) continue;
 
-            dengai->tag["ZiliangCurrentTarget"] = QVariant::fromValue(player);
+            dengai->setTag("ZiliangCurrentTarget", QVariant::fromValue(player));
             room->askForUseCard(dengai, "@@ziliang", "@ziliang", -1, Card::MethodNone);
         }
 
@@ -236,7 +236,7 @@ void HeyiCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targ
     {
         if (!p->isAlive()) continue;
         list.append(p->objectName());
-        source->tag["heyi"] = QVariant::fromValue(list);
+        source->setTag("heyi", QVariant::fromValue(list));
         room->acquireSkill(p, "feiying");
     }
 }
@@ -283,8 +283,8 @@ public:
         }
         if (room->getTag("HeyiSource").value<ServerPlayer *>() == player) {
             room->removeTag("HeyiSource");
-            QStringList list = player->tag[objectName()].toStringList();
-            player->tag.remove(objectName());
+            QStringList list = player->getTag(objectName()).toStringList();
+            player->removeTag(objectName());
             foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
                 if (list.contains(p->objectName()))
                     room->detachSkillFromPlayer(p, "feiying", false, true);
@@ -422,11 +422,11 @@ void ShangyiCard::onEffect(CardEffectStruct &effect) const
         || room->getMode() == "06_3v3" || room->getMode() == "08_defense") {
         ;
     } else if (room->getMode() == "06_XMode") {
-        QStringList backup = player->tag["XModeBackup"].toStringList();
+        QStringList backup = player->getTag("XModeBackup").toStringList();
         if (backup.length() > 0)
             choicelist.append("remainedgenerals");
     } else if (room->getMode() == "02_1v1") {
-        QStringList list = player->tag["1v1Arrange"].toStringList();
+        QStringList list = player->getTag("1v1Arrange").toStringList();
         if (list.length() > 0)
             choicelist.append("remainedgenerals");
     } else if (Config.EnableBasara) {
@@ -455,15 +455,15 @@ void ShangyiCard::onEffect(CardEffectStruct &effect) const
 
         int card_id = room->doGongxin(effect.from, player, ids, "shangyi");
         if (card_id == -1) return;
-        effect.from->tag.remove("shangyi");
+        effect.from->removeTag("shangyi");
         CardMoveReason reason(CardMoveReason::S_REASON_DISMANTLE, effect.from->objectName(), "", "shangyi", "");
         room->throwCard(Sanguosha->getCard(card_id), reason, effect.to, effect.from);
     } else if (choice == "remainedgenerals") {
         QStringList list;
         if (room->getMode() == "02_1v1")
-            list = player->tag["1v1Arrange"].toStringList();
+            list = player->getTag("1v1Arrange").toStringList();
         else if (room->getMode() == "06_XMode")
-            list = player->tag["XModeBackup"].toStringList();
+            list = player->getTag("XModeBackup").toStringList();
         foreach (QString name, list) {
             LogMessage log;
             log.type = "$ShangyiViewRemained";
@@ -534,7 +534,7 @@ public:
     {
         CardUseStruct use = data.value<CardUseStruct>();
         if (use.card->isKindOf("Slash") && use.from->isAlive()) {
-            QVariantList jink_list = use.from->tag["Jink_" + use.card->toString()].toList();
+            QVariantList jink_list = use.from->getTag("Jink_" + use.card->toString()).toList();
             for (int i = 0; i < use.to.length(); i++) {
                 ServerPlayer *to = use.to.at(i);
                 if (to->isAlive() && to->isAdjacentTo(player) && to->isAdjacentTo(use.from)
@@ -544,7 +544,7 @@ public:
                         jink_list.replace(i, QVariant(2));
                 }
             }
-            use.from->tag["Jink_" + use.card->toString()] = QVariant::fromValue(jink_list);
+            use.from->setTag("Jink_" + use.card->toString(), QVariant::fromValue(jink_list));
         }
 
         return false;

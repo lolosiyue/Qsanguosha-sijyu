@@ -906,6 +906,11 @@ void Card::setTag(const QString &key, const QVariant &data) const
 	tag[key] = data;
 }
 
+QVariant Card::getTag(const QString &key, const QVariant &defaultValue) const
+{
+	return tag.value(key, defaultValue);
+}
+
 void Card::removeTag(const QString &key) const
 {
 	tag.remove(key);

@@ -124,11 +124,11 @@ public:
                     log.card_str = ListI2S(player->handCards()).join("+");
                     room->sendLog(log, judge->who);
                 }
-                judge->who->tag["HuanshiJudge"] = QVariant::fromValue(judge);
+                judge->who->setTag("HuanshiJudge", QVariant::fromValue(judge));
                 room->fillAG(ids + disabled_ids, judge->who, disabled_ids);
                 int card_id = room->askForAG(judge->who, ids, false, objectName());
                 room->clearAG(judge->who);
-                judge->who->tag.remove("HuanshiJudge");
+                judge->who->removeTag("HuanshiJudge");
                 card = Sanguosha->getCard(card_id);
             }
         }

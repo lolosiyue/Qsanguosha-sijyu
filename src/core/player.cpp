@@ -148,6 +148,10 @@ void Player::setPlayerSeat(int player_seat)
     this->player_seat = player_seat;
 }
 
+bool Player::isClientPlayer() const {
+    return inherits("ClientPlayer");
+}
+
 bool Player::isAdjacentTo(const Player *another) const
 {
     if (seat<0||another->seat<0) return false;
@@ -306,6 +310,43 @@ int Player::distanceTo(const Player *other, int distance_fix) const
 	if(other->seat<0)
 		return 999;
 
+    if (inherits("ClientPlayer")) {
+        if (fixed_distance.contains(other)) {
+            int fixed = 999;
+            foreach (int d, fixed_distance.values(other)) {
+                if (fixed > d) fixed = d;
+            }
+            return fixed;
+        }
+
+        QString prop_name = QString("distanceTo_%1").arg(other->objectName());
+        QVariant cached_distance = property(prop_name.toLatin1().constData());
+        if (cached_distance.isValid()) {
+            int result = cached_distance.toInt() + distance_fix;
+            return qMax(result, 1);
+        }
+
+        int right = qAbs(seat - other->seat);
+        right = qMin(aliveCount() - right, right);
+
+        const EquipCard *self_oh = getOffensiveHorse();
+        if (self_oh) {
+            const Horse *horse = qobject_cast<const Horse *>(self_oh);
+            if (horse)
+                right -= horse->getCorrect(this);
+        }
+
+        const EquipCard *other_dh = other->getDefensiveHorse();
+        if (other_dh) {
+            const Horse *horse = qobject_cast<const Horse *>(other_dh);
+            if (horse)
+                right += horse->getCorrect(other);
+        }
+
+        right += distance_fix;
+        return qMax(right, 1);
+    }
+
 	int right = Sanguosha->correctDistance(this, other, true);
 	if (right>0) return right;
 
@@ -433,11 +474,25 @@ bool Player::hasSkill(const QString &skill_name, bool include_lose) const
     if(skill_name.isEmpty()) return false;
 	if(skills.contains(skill_name)||acquired_skills.contains(skill_name)
 		||property("pingjian_triggerskill").toString()==skill_name){
-		if(include_lose) return true;//||hasEquipSkill(skill_name)
+        if(include_lose) return true;
 		const Skill *skill = Sanguosha->getSkill(skill_name);
 		if(skill) {
-			bool valid = skill->isAttachedLordSkill()||skill->property("IgnoreInvalidity").toBool()
-				||!skill->isVisible()||Sanguosha->correctSkillValidity(this,skill);
+            bool valid = true;
+            if (skill->isAttachedLordSkill()||skill->property("IgnoreInvalidity").toBool()||!skill->isVisible()) {
+                valid = true;
+            } else {
+                bool locked = Sanguosha->getLuaMutex().tryLock();
+                if (!locked) {
+                    if (inherits("ClientPlayer")) {
+                        QMutexLocker locker(&m_skillCacheMutex);
+                        return m_skillValidityCache.value(skill_name, true);
+                    }
+                    Sanguosha->getLuaMutex().lock();
+                    locked = true;
+                }
+                valid = Sanguosha->correctSkillValidity(this, skill);
+                if (locked) Sanguosha->getLuaMutex().unlock();
+            }
 			QMutexLocker locker(&m_skillCacheMutex);
 			m_skillValidityCache[skill_name] = valid;
 			return valid;
@@ -448,8 +503,26 @@ bool Player::hasSkill(const QString &skill_name, bool include_lose) const
 
 bool Player::hasSkill(const Skill *skill, bool include_lose) const
 {
-    //Q_ASSERT(skill != nullptr);
-    return skill&&hasSkill(skill->objectName(), include_lose);
+    if (!skill) return false;
+    if (skill->isLordSkill() && !hasLordSkill(skill->objectName())) return false;
+
+    if (isClientPlayer()) {
+        if (!m_skillValidityCache.value(skill->objectName(), true))
+            return false;
+
+        if (include_lose)
+            return skills.contains(skill->objectName()) || acquired_skills.contains(skill->objectName());
+        else
+            return skills.contains(skill->objectName());
+    }
+
+    if (!include_lose && !skills.contains(skill->objectName())) return false;
+    if (include_lose && !skills.contains(skill->objectName()) && !acquired_skills.contains(skill->objectName())) return false;
+
+    if (Sanguosha->correctSkillValidity(this, skill))
+        return true;
+
+    return false;
 }
 
 bool Player::hasSkills(const QString &skill_name, bool include_lose) const
@@ -777,19 +850,32 @@ bool Player::viewAsEquip(const QString &equip_name) const
 {
     QString view = property("View_As_Equips_List").toString();
     if (view!=""&&view.split("+").contains(equip_name)) return true;
+
+    bool locked = Sanguosha->getLuaMutex().tryLock();
+    if (!locked) {
+        if (inherits("ClientPlayer")) return false;
+        Sanguosha->getLuaMutex().lock();
+        locked = true;
+    }
+
+    bool ret = false;
     foreach(QString skill_name, skills + acquired_skills){
 		const ViewAsEquipSkill *vaes = Sanguosha->getViewAsEquipSkill(skill_name);
 		if(vaes==nullptr) continue;
 		view = vaes->viewAsEquip(this);
-		if(view!=""&&view.split(",").contains(equip_name)&&hasSkill(skill_name))
-			return true;
+        if(view!=""&&view.split(",").contains(equip_name)&&hasSkill(skill_name)){
+            ret = true;
+            break;
+        }
     }/*
 	static QList<const EquipCard *> Equips = Sanguosha->findChildren<const EquipCard *>();
 	foreach(const EquipCard *equip, Equips){
 		if (equip->objectName()==equip_name||equip->getClassName()==equip_name)
 			return view_as_equips.contains(equip->getClassName())||view_as_equips.contains(equip->objectName());
 	}*/
-    return false;
+
+    if (locked) Sanguosha->getLuaMutex().unlock();
+    return ret;
 }
 
 bool Player::isLocked(const Card *card, bool isHandcard) const
@@ -993,6 +1079,13 @@ void Player::setFaceUp(bool face_up)
 
 int Player::getMaxCards() const
 {
+    if (inherits("ClientPlayer")) {
+        QVariant handMaxVar = property("handMax");
+        if (handMaxVar.isValid()) {
+            return handMaxVar.toInt();
+        }
+        return qMax(hp, 0);
+    }
     int origin = Sanguosha->correctMaxCards(this, true);
     if (origin < 0) origin = qMax(hp, 0);
     if (general2&&Config.MaxHpScheme==3){
@@ -1467,25 +1560,50 @@ bool Player::isCardLimited(const Card *card, Card::HandlingMethod method, bool i
             if (Sanguosha->matchExpPattern(pattern,this, card)) return true;
         }
     }
+
+    if (inherits("ClientPlayer")) {
+        QString cache_key = QString("%1|%2|%3")
+            .arg(card->toString())
+            .arg(static_cast<int>(method))
+            .arg(isHandcard ? 1 : 0);
+        QVariantMap cache = property("client_card_limited_cache").toMap();
+
+        SafeLuaMutex &lua_mutex = Sanguosha->getLuaMutex();
+        if (lua_mutex.tryLock(0)) {
+            bool limited_by_engine = Sanguosha->isCardLimited(this, card, method, isHandcard) != nullptr;
+            lua_mutex.unlock();
+
+            cache.insert(cache_key, limited_by_engine);
+            const_cast<Player *>(this)->setProperty("client_card_limited_cache", cache);
+            return limited_by_engine;
+        }
+
+        if (cache.contains(cache_key))
+            return cache.value(cache_key).toBool();
+
+        // Fallback: local card_limitation checks above already ran; return not-limited to keep UI responsive.
+        return false;
+    }
+
     return Sanguosha->isCardLimited(this, card, method, isHandcard)!=nullptr;
 }
 
 void Player::addQinggangTag(const Card *card)
 {
-    QStringList qinggang = tag["Qinggang"].toStringList();
+    QStringList qinggang = getTag("Qinggang").toStringList();
     qinggang.append(card->toString());
-    tag["Qinggang"] = qinggang;
+    setTag("Qinggang", QVariant(qinggang));
 	addEquipsNullified("Armor");
 }
 
 void Player::removeQinggangTag(const Card *card)
 {
-    QStringList qinggang = tag["Qinggang"].toStringList();
+    QStringList qinggang = getTag("Qinggang").toStringList();
 	foreach(QString qg, qinggang){
 		if(qg==card->toString()){
 			qinggang.removeOne(qg);
 			removeEquipsNullified("Armor");
-			tag["Qinggang"] = qinggang;
+			setTag("Qinggang", QVariant(qinggang));
 		}
 	}
 }
@@ -1969,6 +2087,19 @@ void Player::setSkillDescriptionSwap(const QString &skill_name, const QString &k
 QHash<QString, QString> Player::getSkillDescriptionSwap(const QString &skill_name) const
 {
     return description_s2k2v[skill_name];
+}
+
+void Player::setTag(const QString &key, const QVariant &value) {
+    if (tag.value(key) == value) return;
+    tag[key] = value;
+}
+
+QVariant Player::getTag(const QString &key, const QVariant &defaultValue) const {
+    return tag.value(key, defaultValue);
+}
+
+void Player::removeTag(const QString &key) {
+    tag.remove(key);
 }
 
 bool Player::setProperty(const char* name, const QVariant& value) {

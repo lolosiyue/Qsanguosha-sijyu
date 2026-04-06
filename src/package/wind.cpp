@@ -397,7 +397,7 @@ public:
         CardUseStruct use = data.value<CardUseStruct>();
         if (player != use.from || player->getPhase() != Player::Play || !use.card->isKindOf("Slash"))
             return false;
-        QVariantList jink_list = player->tag["Jink_" + use.card->toString()].toList();
+        QVariantList jink_list = player->getTag("Jink_" + use.card->toString()).toList();
         int index = 0;
         foreach (ServerPlayer *p, use.to) {
             int handcardnum = p->getHandcardNum();
@@ -413,7 +413,7 @@ public:
             }
             index++;
         }
-        player->tag["Jink_" + use.card->toString()] = QVariant::fromValue(jink_list);
+        player->setTag("Jink_" + use.card->toString(), QVariant::fromValue(jink_list));
         return false;
     }
 };
@@ -430,7 +430,7 @@ public:
     bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
     {
         DamageStruct damage = data.value<DamageStruct>();
-        if (player->tag.value("InvokeKuanggu").toBool() && player->isWounded()) {
+        if (player->getTag("InvokeKuanggu").toBool() && player->isWounded()) {
             room->broadcastSkillInvoke(objectName());
             room->sendCompulsoryTriggerLog(player, objectName());
             room->recover(player, RecoverStruct(player, nullptr, damage.damage, "kuanggu"));
@@ -451,7 +451,7 @@ public:
     bool trigger(TriggerEvent, Room *, ServerPlayer *, QVariant &data) const
     {
         DamageStruct damage = data.value<DamageStruct>();
-		if (damage.from) damage.from->tag["InvokeKuanggu"] = (damage.from->distanceTo(damage.to) <= 1);
+		if (damage.from) damage.from->setTag("InvokeKuanggu", (damage.from->distanceTo(damage.to) <= 1));
         return false;
     }
 };
@@ -571,11 +571,11 @@ TianxiangCard::TianxiangCard()
 
 void TianxiangCard::onEffect(CardEffectStruct &effect) const
 {
-    DamageStruct damage = effect.from->tag.value("TianxiangDamage").value<DamageStruct>();
+    DamageStruct damage = effect.from->getTag("TianxiangDamage").value<DamageStruct>();
     damage.to = effect.to;
     damage.transfer = true;
     damage.transfer_reason = "tianxiang";
-    effect.from->tag["TransferDamage"] = QVariant::fromValue(damage);
+    effect.from->setTag("TransferDamage", QVariant::fromValue(damage));
 }
 
 class TianxiangViewAsSkill : public OneCardViewAsSkill
@@ -607,7 +607,7 @@ public:
     bool trigger(TriggerEvent, Room *room, ServerPlayer *xiaoqiao, QVariant &data) const
     {
         if (xiaoqiao->canDiscard(xiaoqiao, "h")) {
-            xiaoqiao->tag["TianxiangDamage"] = data;
+            xiaoqiao->setTag("TianxiangDamage", data);
             return room->askForUseCard(xiaoqiao, "@@tianxiang", "@tianxiang-card", -1, Card::MethodDiscard);
         }
         return false;
@@ -715,7 +715,7 @@ bool GuhuoDialog::isButtonEnabled(const QString &button_name) const
 
 void GuhuoDialog::popup()
 {
-    Self->tag.remove(objectName());/*
+    Self->removeTag(objectName());/*
     if (objectName() == "zhanyi" && Self->getMark("ViewAsSkill_zhanyiEffect")<1) {
         emit onButtonClick();
         return;
@@ -742,18 +742,18 @@ void GuhuoDialog::popup()
 
 void GuhuoDialog::selectCard(QAbstractButton *button)
 {
-    Self->tag[objectName()] = QVariant::fromValue(map[button->objectName()]);
+    Self->setTag(objectName(), QVariant::fromValue(map[button->objectName()]));
     if (button->objectName().contains("slash")) {
         if (objectName() == "guhuo")
-            Self->tag["GuhuoSlash"] = button->objectName();
+            Self->setTag("GuhuoSlash", button->objectName());
         else if (objectName() == "nosguhuo")
-            Self->tag["NosGuhuoSlash"] = button->objectName();
+            Self->setTag("NosGuhuoSlash", button->objectName());
         else if (objectName() == "olguhuo")
-            Self->tag["OLGuhuoSlash"] = button->objectName();
+            Self->setTag("OLGuhuoSlash", button->objectName());
         else if (objectName() == "zhanyi")
-            Self->tag["ZhanyiSlash"] = button->objectName();
+            Self->setTag("ZhanyiSlash", button->objectName());
         else if (objectName() == "yizan")
-            Self->tag["YizanSlash"] = button->objectName();
+            Self->setTag("YizanSlash", button->objectName());
     }
     emit onButtonClick();
     accept();
@@ -962,7 +962,7 @@ bool GuhuoCard::guhuo(ServerPlayer *yuji) const
     } else {
         const Card *card = Sanguosha->getCard(subcards.first());
         if (user_string == "peach+analeptic")
-            success = card->objectName() == yuji->tag["GuhuoSaveSelf"].toString();
+            success = card->objectName() == yuji->getTag("GuhuoSaveSelf").toString();
         else if (user_string == "slash")
             success = card->objectName().contains("slash");
         else if (user_string == "normal_slash")
@@ -980,8 +980,8 @@ bool GuhuoCard::guhuo(ServerPlayer *yuji) const
                 CardMoveReason(CardMoveReason::S_REASON_PUT, yuji->objectName(), "", "guhuo"), true);
         }
     }
-    yuji->tag.remove("GuhuoSaveSelf");
-    yuji->tag.remove("GuhuoSlash");
+    yuji->removeTag("GuhuoSaveSelf");
+    yuji->removeTag("GuhuoSlash");
     return success;
 }
 
@@ -998,7 +998,7 @@ bool GuhuoCard::targetFilter(const QList<const Player *> &targets, const Player 
         return false;
     }
 
-    const Card *_card = Self->tag.value("guhuo").value<const Card *>();
+    const Card *_card = Self->getTag("guhuo").value<const Card *>();
     if (_card == nullptr)
         return false;
 
@@ -1021,7 +1021,7 @@ bool GuhuoCard::targetFixed() const
         return true;
     }
 
-    const Card *_card = Self->tag.value("guhuo").value<const Card *>();
+    const Card *_card = Self->getTag("guhuo").value<const Card *>();
     if (_card == nullptr)
         return false;
 
@@ -1044,7 +1044,7 @@ bool GuhuoCard::targetsFeasible(const QList<const Player *> &targets, const Play
         return true;
     }
 
-    const Card *_card = Self->tag.value("guhuo").value<const Card *>();
+    const Card *_card = Self->getTag("guhuo").value<const Card *>();
     if (_card == nullptr)
         return false;
 
@@ -1072,7 +1072,7 @@ const Card *GuhuoCard::validate(CardUseStruct &card_use) const
 
         if (guhuo_list.isEmpty()) guhuo_list << "slash";
         to_guhuo = room->askForChoice(yuji, "guhuo_slash", guhuo_list.join("+"));
-        yuji->tag["GuhuoSlash"] = QVariant(to_guhuo);
+        yuji->setTag("GuhuoSlash", QVariant(to_guhuo));
     }
     room->broadcastSkillInvoke("guhuo");
 
@@ -1169,7 +1169,7 @@ const Card *GuhuoCard::validateInResponse(ServerPlayer *yuji) const
         if (guhuo_list.isEmpty())
             guhuo_list << "peach";
         to_guhuo = room->askForChoice(yuji, "guhuo_saveself", guhuo_list.join("+"));
-        yuji->tag["GuhuoSaveSelf"] = QVariant(to_guhuo);
+        yuji->setTag("GuhuoSaveSelf", QVariant(to_guhuo));
     } else if (user_string.contains("slash") || user_string.contains("Slash")) {
         QStringList guhuo_list;
 		static QList<const Slash *> slashs = Sanguosha->findChildren<const Slash *>();
@@ -1182,7 +1182,7 @@ const Card *GuhuoCard::validateInResponse(ServerPlayer *yuji) const
         if (guhuo_list.isEmpty())
             guhuo_list << "slash";
         to_guhuo = room->askForChoice(yuji, "guhuo_slash", guhuo_list.join("+"));
-        yuji->tag["GuhuoSlash"] = QVariant(to_guhuo);
+        yuji->setTag("GuhuoSlash", QVariant(to_guhuo));
     } else
         to_guhuo = user_string;
 
@@ -1258,13 +1258,13 @@ public:
             return card;
         }
 
-        const Card *c = Self->tag.value("guhuo").value<const Card *>();
+        const Card *c = Self->getTag("guhuo").value<const Card *>();
         if (c) {
             GuhuoCard *card = new GuhuoCard;
             if (!c->objectName().contains("slash"))
                 card->setUserString(c->objectName());
             else
-                card->setUserString(Self->tag["GuhuoSlash"].toString());
+                card->setUserString(Self->getTag("GuhuoSlash").toString());
             card->addSubcard(originalCard);
             return card;
         }
@@ -1624,7 +1624,7 @@ bool NosGuhuoCard::nosguhuo(ServerPlayer *yuji) const
         const Card *card = Sanguosha->getCard(subcards.first());
         bool real = card->match(user_string);
         if (user_string == "peach+analeptic")
-            real = card->objectName() == yuji->tag["NosGuhuoSaveSelf"].toString();
+            real = card->objectName() == yuji->getTag("NosGuhuoSaveSelf").toString();
         else if (user_string == "slash")
             real = card->objectName().contains("slash");
         else if (user_string == "normal_slash")
@@ -1645,8 +1645,8 @@ bool NosGuhuoCard::nosguhuo(ServerPlayer *yuji) const
         CardsMoveStruct move(getSubcards(), yuji, nullptr, Player::PlaceUnknown, Player::PlaceTable, reason);
         room->moveCardsAtomic(move, true);
     }
-    yuji->tag.remove("NosGuhuoSaveSelf");
-    yuji->tag.remove("NosGuhuoSlash");
+    yuji->removeTag("NosGuhuoSaveSelf");
+    yuji->removeTag("NosGuhuoSlash");
     return success;
 }
 
@@ -1663,7 +1663,7 @@ bool NosGuhuoCard::targetFilter(const QList<const Player *> &targets, const Play
         return false;
     }
 
-    const Card *_card = Self->tag.value("nosguhuo").value<const Card *>();
+    const Card *_card = Self->getTag("nosguhuo").value<const Card *>();
     if (_card == nullptr)
         return false;
 
@@ -1686,7 +1686,7 @@ bool NosGuhuoCard::targetFixed() const
         return true;
     }
 
-    const Card *_card = Self->tag.value("nosguhuo").value<const Card *>();
+    const Card *_card = Self->getTag("nosguhuo").value<const Card *>();
     if (_card == nullptr)
         return false;
 
@@ -1709,7 +1709,7 @@ bool NosGuhuoCard::targetsFeasible(const QList<const Player *> &targets, const P
         return true;
     }
 
-    const Card *_card = Self->tag.value("nosguhuo").value<const Card *>();
+    const Card *_card = Self->getTag("nosguhuo").value<const Card *>();
     if (_card == nullptr)
         return false;
 
@@ -1738,7 +1738,7 @@ const Card *NosGuhuoCard::validate(CardUseStruct &card_use) const
         if (nosguhuo_list.isEmpty())
             nosguhuo_list << "slash";
         to_nosguhuo = room->askForChoice(yuji, "nosguhuo_slash", nosguhuo_list.join("+"));
-        yuji->tag["NosGuhuoSlash"] = QVariant(to_nosguhuo);
+        yuji->setTag("NosGuhuoSlash", QVariant(to_nosguhuo));
     }
     room->broadcastSkillInvoke("nosguhuo");
 
@@ -1797,7 +1797,7 @@ const Card *NosGuhuoCard::validateInResponse(ServerPlayer *yuji) const
         if (nosguhuo_list.isEmpty())
             nosguhuo_list << "peach";
         to_nosguhuo = room->askForChoice(yuji, "nosguhuo_saveself", nosguhuo_list.join("+"));
-        yuji->tag["NosGuhuoSaveSelf"] = QVariant(to_nosguhuo);
+        yuji->setTag("NosGuhuoSaveSelf", QVariant(to_nosguhuo));
     } else if (user_string.contains("slash") || user_string.contains("Slash")) {
         QStringList nosguhuo_list;
         static QList<const Slash *> slashs = Sanguosha->findChildren<const Slash *>();
@@ -1810,7 +1810,7 @@ const Card *NosGuhuoCard::validateInResponse(ServerPlayer *yuji) const
         if (nosguhuo_list.isEmpty())
             nosguhuo_list << "slash";
         to_nosguhuo = room->askForChoice(yuji, "nosguhuo_slash", nosguhuo_list.join("+"));
-        yuji->tag["NosGuhuoSlash"] = QVariant(to_nosguhuo);
+        yuji->setTag("NosGuhuoSlash", QVariant(to_nosguhuo));
     } else
         to_nosguhuo = user_string;
 
@@ -1879,12 +1879,12 @@ public:
             return card;
         }
 
-        const Card *c = Self->tag.value("nosguhuo").value<const Card *>();
+        const Card *c = Self->getTag("nosguhuo").value<const Card *>();
         if (c) {
             NosGuhuoCard *card = new NosGuhuoCard;
 			card->setUserString(c->objectName());
             if (c->objectName().contains("slash"))
-                card->setUserString(Self->tag["NosGuhuoSlash"].toString());
+                card->setUserString(Self->getTag("NosGuhuoSlash").toString());
             card->addSubcard(originalCard);
             return card;
         }
@@ -2192,7 +2192,7 @@ void GongxinCard::onEffect(CardEffectStruct &effect) const
         if (card_id == -1) return;
 
         QString result = room->askForChoice(effect.from, "gongxin", "discard+put");
-        effect.from->tag.remove("gongxin");
+        effect.from->removeTag("gongxin");
         if (result == "discard") {
             CardMoveReason reason(CardMoveReason::S_REASON_DISMANTLE, effect.from->objectName(), "", "gongxin", "");
             room->throwCard(Sanguosha->getCard(card_id), reason, effect.to, effect.from);

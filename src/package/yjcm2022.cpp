@@ -186,7 +186,7 @@ public:
     {
 
         if (event == EventPhaseStart) {
-			QStringList sangus = player->tag["SanguCards"].toStringList();
+			QStringList sangus = player->getTag("SanguCards").toStringList();
             if (player->getPhase() != Player::Play || sangus.isEmpty()) return false;
 
 			LogMessage log;
@@ -246,7 +246,7 @@ public:
 			}
 	
 			if (choices.isEmpty()) return false;
-			t->tag["SanguCards"] = choices;
+			t->setTag("SanguCards", choices);
 	
 			foreach (QString name, choices) {
 				if (player->getMark("SanguRecord_" + name + "-PlayClear") <= 0) {
@@ -261,13 +261,13 @@ public:
 			QString name = use.card->objectName();
 			if (use.card->isKindOf("Slash")) name = "slash";
 			player->addMark("SanguRecord_" + name + "-PlayClear");
-			QStringList sangus = player->tag["SanguCards"].toStringList();
+			QStringList sangus = player->getTag("SanguCards").toStringList();
 
             if (sangus.isEmpty()) return false;
 
             name = sangus.first();
             sangus.removeOne(name);
-			player->tag["SanguCards"] = sangus;
+			player->setTag("SanguCards", sangus);
 
             if (sangus.isEmpty())
                 room->filterCards(player, player->getHandcards(), true);
@@ -282,14 +282,14 @@ public:
             }
         } else if (event == EventPhaseChanging) {
             if (data.value<PhaseChangeStruct>().from != Player::Play) return false;
-            player->tag.remove("SanguCards");
+            player->removeTag("SanguCards");
 			QList<const Card *>fc;
 			foreach (const Card *h, player->getHandcards()) {
 				if(h->getSkillName()=="sangu") fc << h;
 			}
             room->filterCards(player, fc, true);
         } else if (event == CardsMoveOneTime) {
-			QStringList sangus = player->tag["SanguCards"].toStringList();
+			QStringList sangus = player->getTag("SanguCards").toStringList();
             if (sangus.isEmpty()||player->getPhase()!=Player::Play) return false;
             CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
             if (move.to == player && move.to_place == Player::PlaceHand) {
@@ -541,7 +541,7 @@ public:
 
             if (player->isDead() || player->isKongcheng()) return false;
             room->fillAG(shows, player);
-            player->tag["KoujingShowCards"] = ListI2V(shows);
+            player->setTag("KoujingShowCards", ListI2V(shows));
             bool invoke = player->askForSkillInvoke("koujing", "koujing", false);
             room->clearAG(player);
             if (!invoke) return false;
