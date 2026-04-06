@@ -103,13 +103,13 @@ public:
                 if (!TriggerSkill::triggerable(zumao) || use.from == zumao || !use.from->inMyAttackRange(zumao))
                     return false;
 
-                if (!use.from->tag.value("tijin").canConvert(QVariant::Map))
-                    use.from->tag["tijin"] = QVariantMap();
+                if (!use.from->getTag("tijin").canConvert(QVariant::Map))
+                    use.from->setTag("tijin", QVariantMap());
 
-                QVariantMap tijin_map = use.from->tag.value("tijin").toMap();
+                QVariantMap tijin_map = use.from->getTag("tijin").toMap();
                 if (tijin_map.contains(use.card->toString())) {
                     tijin_map.remove(use.card->toString());
-                    use.from->tag["tijin"] = tijin_map;
+                    use.from->setTag("tijin", tijin_map);
                 }
 
                 if (zumao->askForSkillInvoke(this, data)) {
@@ -121,12 +121,12 @@ public:
                     data = QVariant::fromValue(use);
 
                     tijin_map[use.card->toString()] = QVariant::fromValue(zumao);
-                    use.from->tag["tijin"] = tijin_map;
+                    use.from->setTag("tijin", tijin_map);
                 }
             }
         } else {
             if (use.from != nullptr && use.card != nullptr) {
-                QVariantMap tijin_map = use.from->tag.value("tijin").toMap();
+                QVariantMap tijin_map = use.from->getTag("tijin").toMap();
                 if (tijin_map.contains(use.card->toString())) {
                     ServerPlayer *zumao = tijin_map.value(use.card->toString()).value<ServerPlayer *>();
                     if (zumao != nullptr && zumao->isAlive() && zumao->canDiscard(use.from, "he")) {
@@ -135,7 +135,7 @@ public:
                     }
                 }
                 tijin_map.remove(use.card->toString());
-                use.from->tag["tijin"] = tijin_map;
+                use.from->setTag("tijin", tijin_map);
             }
 
         }
@@ -166,13 +166,13 @@ public:
                 if (!TriggerSkill::triggerable(caoang) || use.to.first() == caoang)
                     return false;
 
-                if (!caoang->tag.value("xiaolian").canConvert(QVariant::Map))
-                    caoang->tag["xiaolian"] = QVariantMap();
+                if (!caoang->getTag("xiaolian").canConvert(QVariant::Map))
+                    caoang->setTag("xiaolian", QVariantMap());
 
-                QVariantMap xiaolian_map = caoang->tag.value("xiaolian").toMap();
+                QVariantMap xiaolian_map = caoang->getTag("xiaolian").toMap();
                 if (xiaolian_map.contains(use.card->toString())) {
                     xiaolian_map.remove(use.card->toString());
-                    caoang->tag["xiaolian"] = xiaolian_map;
+                    caoang->setTag("xiaolian", xiaolian_map);
                 }
 
                 if (caoang->askForSkillInvoke(this, data)) {
@@ -185,16 +185,16 @@ public:
                     data = QVariant::fromValue(use);
 
                     xiaolian_map[use.card->toString()] = QVariant::fromValue(target);
-                    caoang->tag["xiaolian"] = xiaolian_map;
+                    caoang->setTag("xiaolian", xiaolian_map);
                 }
             }
         } else {
             DamageStruct damage = data.value<DamageStruct>();
             if (damage.card != nullptr) {
-                if (!player->tag.value("xiaolian").canConvert(QVariant::Map))
+                if (!player->getTag("xiaolian").canConvert(QVariant::Map))
                     return false;
 
-                QVariantMap xiaolian_map = player->tag.value("xiaolian").toMap();
+                QVariantMap xiaolian_map = player->getTag("xiaolian").toMap();
                 if (xiaolian_map.contains(damage.card->toString())) {
                     ServerPlayer *target = xiaolian_map.value(damage.card->toString()).value<ServerPlayer *>();
                     if (target != nullptr && player->getCardCount(true) > 0) {
@@ -204,7 +204,7 @@ public:
                     }
                 }
                 xiaolian_map.remove(damage.card->toString());
-                player->tag["xiaolian"] = xiaolian_map;
+                player->setTag("xiaolian", xiaolian_map);
             }
         }
 

@@ -268,6 +268,7 @@ protected slots:
 
     void showHeroSkinList();
     void heroSkinBtnMouseOutsideClicked();
+    void showHandcardViewer();
     virtual void onAvatarHoverEnter();
     virtual void onAvatarHoverLeave();
     virtual void doAvatarHoverLeave() {}

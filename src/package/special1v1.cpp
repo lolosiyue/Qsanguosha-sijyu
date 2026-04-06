@@ -295,7 +295,7 @@ public:
                     equip_list.append(QVariant(equip->getEffectiveId()));
                     move.card_ids.append(equip->getEffectiveId());
                 }
-                player->tag[objectName()] = QVariant::fromValue(equip_list);
+                player->setTag(objectName(), QVariant::fromValue(equip_list));
                 room->moveCardsAtomic(move, true);
             }
         } else {
@@ -320,18 +320,18 @@ public:
 
     bool triggerable(const ServerPlayer *target) const
     {
-        return !target->tag["cangji"].isNull();
+        return !target->getTag("cangji").isNull();
     }
 
     bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const
     {
         QList<int> equip_list;
-        foreach (QVariant id, player->tag["cangji"].toList()) {
+        foreach (QVariant id, player->getTag("cangji").toList()) {
             int card_id = id.toInt();
             if (Sanguosha->getCard(card_id)->getTypeId() == Card::TypeEquip)
                 equip_list << card_id;
         }
-        player->tag.remove("cangji");
+        player->removeTag("cangji");
         if (equip_list.isEmpty())
             return false;
         CardsMoveStruct move(equip_list, player, Player::PlaceEquip, CardMoveReason());
@@ -353,7 +353,7 @@ public:
         CardUseStruct use = data.value<CardUseStruct>();
         if (player->getPhase() != Player::Play || !use.card->isKindOf("Slash"))
             return false;
-        QVariantList jink_list = player->tag["Jink_" + use.card->toString()].toList();
+        QVariantList jink_list = player->getTag("Jink_" + use.card->toString()).toList();
         int index = 0;
         foreach (ServerPlayer *p, use.to) {
             int handcardnum = p->getHandcardNum();
@@ -368,7 +368,7 @@ public:
             }
             index++;
         }
-        player->tag["Jink_" + use.card->toString()] = QVariant::fromValue(jink_list);
+        player->setTag("Jink_" + use.card->toString(), QVariant::fromValue(jink_list));
         return false;
     }
 };
@@ -901,7 +901,7 @@ public:
 			if(draw.reason!="InitialHandCards") return false;
 			int n = 3;
             if (room->getMode() == "02_1v1") {
-                n = player->tag["1v1Arrange"].toStringList().length();
+                n = player->getTag("1v1Arrange").toStringList().length();
                 if (Config.value("1v1/Rule", "2013").toString() != "2013")
                     n += 3;
                 int origin = (Config.value("1v1/Rule", "2013").toString() == "Classical") ? 4 : player->getMaxHp();

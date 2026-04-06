@@ -81,6 +81,7 @@ public:
     virtual void addSkill(const QString &skill_name);
     virtual void loseSkill(const QString &skill_name);
     virtual void setGender(General::Gender gender);
+    virtual void setTag(const QString &key, const QVariant &value);
 
     void setAI(AI *ai);
     AI *getAI() const;
@@ -235,6 +236,8 @@ public:
     void setSkillDescriptionSwap(const QString &skill_name, const QString &key, const QString &value);
     void setAvatarIcon(const QString &avatar_name, bool isSmall = false);
     bool damageRevises(QVariant &data, int n);
+    void markTooltipDirty();
+    Q_INVOKABLE void calculateUITooltips();
 
 protected:
     //Synchronization helpers
@@ -259,6 +262,7 @@ private:
     QString m_clientResponseString;
     QVariant _m_clientResponse;
     QSet<const char *> propertys;
+    bool m_tooltipDirty;
 
 private slots:
     void getMessage(const char *message);

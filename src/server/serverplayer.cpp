@@ -24,7 +24,7 @@ const int ServerPlayer::S_NUM_SEMAPHORES = 6;
 ServerPlayer::ServerPlayer(Room *room)
 	: Player(room), m_isClientResponseReady(false), m_isWaitingReply(false),
 	socket(nullptr), room(room), ai(nullptr), trust_ai(new TrustAI(this)),
-	recorder(nullptr), _m_phases_index(NotActive), next(nullptr)
+	recorder(nullptr), _m_phases_index(NotActive), next(nullptr), m_tooltipDirty(false)
 {
 	semas = new QSemaphore *[S_NUM_SEMAPHORES];
 	for (int i = 0; i < S_NUM_SEMAPHORES; i++)
@@ -38,6 +38,113 @@ ServerPlayer::~ServerPlayer()
 		delete semas[i];
 	delete[] semas;
 	delete trust_ai;
+}
+
+void ServerPlayer::setTag(const QString &key, const QVariant &value)
+{
+	if (tag.value(key) == value) {
+        return; 
+    }
+	Player::setTag(key, value);
+	if (!room) return;
+
+	bool safe = false;
+	switch (value.type()) {
+		case QVariant::Int:
+		case QVariant::Bool:
+		case QVariant::String:
+		case QVariant::StringList:
+		case QVariant::Invalid:
+			safe = true;
+			break;
+		default:
+			break;
+	}
+
+	if (safe) {
+		QString valueStr;
+		if (value.type() == QVariant::StringList) {
+			valueStr = "SLIST:" + value.toStringList().join("|");
+		} else if (!value.isValid()) {
+			valueStr = QString();
+		} else {
+			valueStr = value.toString();
+		}
+		room->broadcastTagProperty(this, key, valueStr);
+	}
+}
+
+void ServerPlayer::calculateUITooltips()
+{
+    if (!room || !getGeneral() || !isAlive()) return;
+
+    QStringList mc_list;
+    int off_dist = 0, def_dist = 0;
+    QStringList off_skills, def_skills;
+
+    // 1. 計算手牌上限
+    foreach (const MaxCardsSkill *mc_skill, Sanguosha->getMaxCardsSkills()) {
+        if (!mc_skill || mc_skill->objectName() == "gamerulemaxcards") continue;
+
+        ServerPlayer *source = nullptr;
+        foreach (ServerPlayer *p, room->getAlivePlayers()) {
+            if (p->hasSkill(mc_skill->objectName())) { 
+                source = p; 
+                break;
+            }
+        }
+
+        if (!source) continue;
+
+        int fixed = mc_skill->getFixed(this); 
+        int extra = mc_skill->getExtra(this); 
+
+        if (fixed >= 0 || extra != 0) {
+            QString sourceName = source->objectName();
+            if (fixed >= 0) {
+                mc_list << QString("%1^F%2^%3").arg(mc_skill->objectName()).arg(fixed).arg(sourceName);
+            } else if (extra != 0) {
+                mc_list << QString("%1^%2^%3").arg(mc_skill->objectName()).arg(extra).arg(sourceName);
+            }
+        }
+    }
+    mc_list.removeDuplicates(); 
+
+    // 2. 計算距離修正
+    QList<ServerPlayer *> siblings = room->getOtherPlayers(this);
+    if (!siblings.isEmpty()) {
+        foreach (const Skill *skill, this->getSkills(true, false)) { 
+            const DistanceSkill *dist_skill = qobject_cast<const DistanceSkill *>(skill);
+            if (dist_skill) {
+                int off_val = dist_skill->getCorrect(this, siblings.first()); 
+                if (off_val < 0) { off_dist += off_val; off_skills << dist_skill->objectName(); }
+                int def_val = dist_skill->getCorrect(siblings.first(), this); 
+                if (def_val > 0) { def_dist += def_val; def_skills << dist_skill->objectName(); }
+            }
+        }
+    }
+    QStringList vae_list;
+    foreach (const Skill *skill, this->getSkills(true, false)) {
+        const ViewAsEquipSkill *vaes = qobject_cast<const ViewAsEquipSkill *>(skill);
+        if (vaes) {
+            QString cns = vaes->viewAsEquip(this);
+            if (!cns.isEmpty()) {
+                foreach (const QString &eq, cns.split(",", QString::SkipEmptyParts)) {
+                    vae_list << QString("%1^%2").arg(eq).arg(vaes->objectName());
+                }
+            }
+        }
+    }
+    setTag("UI_VAE_Skills", QVariant(vae_list));
+
+    int final_max_cards = this->getMaxCards(); 
+
+    setTag("UI_MC_Skills", QVariant(mc_list));
+    setTag("UI_Off_Dist", off_dist);
+    setTag("UI_Off_Skills", QVariant(off_skills));
+    setTag("UI_Def_Dist", def_dist);
+    setTag("UI_Def_Skills", QVariant(def_skills));
+    setTag("UI_Hand_Max", final_max_cards);
 }
 
 /*void ServerPlayer::drawCard(const Card *card)
@@ -499,9 +606,9 @@ DummyCard *ServerPlayer::wholeHandCards() const
 QList<int> ServerPlayer::getHandPile() const
 {
 	QList<int> handpile = Player::getHandPile();
-	if (tag["TaoxiHere"].toBool()) {
+	if (getTag("TaoxiHere").toBool()) {
 		bool ok = false;
-		int id = tag.value("TaoxiId").toInt(&ok);
+		int id = getTag("TaoxiId").toInt(&ok);
 		if (ok) handpile << id;
 	}
 	foreach (ServerPlayer *p, room->getAlivePlayers()) {
@@ -714,7 +821,7 @@ void ServerPlayer::play(QList<Phase> set_phases)
 	if(all_phases.isEmpty()) all_phases << RoundStart << Start << Judge << Draw << Play << Discard << Finish;
 	if (set_phases.isEmpty()) {
 		if(getMark("@extra_turn")>0){
-			foreach (QVariant v, tag["extraTurnPhases"].toList())
+			foreach (QVariant v, getTag("extraTurnPhases").toList())
 				set_phases << Phase(v.toInt());
 		}else
 			set_phases = all_phases;
@@ -943,6 +1050,7 @@ void ServerPlayer::addSkill(const QString &skill_name)
 	JsonArray args;
 	args << (int)QSanProtocol::S_GAME_EVENT_ADD_SKILL << objectName() << skill_name;
 	room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+	calculateUITooltips();
 }
 
 void ServerPlayer::loseSkill(const QString &skill_name)
@@ -951,6 +1059,7 @@ void ServerPlayer::loseSkill(const QString &skill_name)
 	JsonArray args;
 	args << (int)QSanProtocol::S_GAME_EVENT_LOSE_SKILL << objectName() << skill_name;
 	room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+	calculateUITooltips();
 }
 
 void ServerPlayer::setGender(General::Gender gender)
@@ -1395,7 +1504,7 @@ void ServerPlayer::gainAnExtraTurn(QList<Phase> phases)
 		QVariantList Qphases;
 		foreach (Phase p, phases)
 			Qphases << (int)p;
-		tag["extraTurnPhases"] = Qphases;
+		setTag("extraTurnPhases", QVariant(Qphases));
 		room->setTag("Global_ExtraTurn" + objectName(), true);
 		room->getThread()->trigger(TurnStart, room, this);
 		room->removeTag("Global_ExtraTurn" + objectName());
@@ -1739,18 +1848,18 @@ int ServerPlayer::getDerivativeCard(const QString &card_name, Place place, bool 
 
 void ServerPlayer::setCanWake(const QString &skill_name, const QString &waked_skill_name)
 {
-	QStringList names = tag[waked_skill_name + "_SKILLCANWAKE"].toStringList();
+	QStringList names = getTag(waked_skill_name + "_SKILLCANWAKE").toStringList();
 	if (names.contains(skill_name)) return;
 	names << skill_name;
-	tag[waked_skill_name + "_SKILLCANWAKE"] = names;
+	setTag(waked_skill_name + "_SKILLCANWAKE", QVariant(names));
 	room->setPlayerMark(this, "&" + skill_name + "+:+" + waked_skill_name, 1);
 }
 
 bool ServerPlayer::canWake(const QString &waked_skill_name)
 {
-	QStringList names = tag[waked_skill_name + "_SKILLCANWAKE"].toStringList();
+	QStringList names = getTag(waked_skill_name + "_SKILLCANWAKE").toStringList();
 	if (names.isEmpty()) return false;
-	tag.remove(waked_skill_name + "_SKILLCANWAKE");
+	removeTag(waked_skill_name + "_SKILLCANWAKE");
 
 	LogMessage log;
 	log.type = "#WakeSkillCanWake";

@@ -269,6 +269,7 @@ public:
     bool broadcastResetCard(const QList<ServerPlayer*>&players, int cardId);
 
     bool broadcastProperty(ServerPlayer*owner, const char*property_name, const QString&value = "");
+    void broadcastTagProperty(ServerPlayer *owner, const QString &tagKey, const QString &value);
     void notifySkillInvoked(ServerPlayer*player, const QString&skill_name);
     void broadcastSkillInvoke(const QString&skillName, const ServerPlayer*player = nullptr);
     void broadcastSkillInvoke(const QString&skillName, const QString&category);
@@ -447,8 +448,8 @@ public:
     QList<ServerPlayer*> askForPlayersChosen(ServerPlayer*player, const QList<ServerPlayer*>&targets,
         const QString&reason, int min_num = 0, int max_num = 2, const QString&prompt = "",
         bool notify_skill = false, bool sort_ActionOrder = true);
-    QString askForGeneral(ServerPlayer*player, const QStringList&generals, const QString&default_choice = "");
-    QString askForGeneral(ServerPlayer*player, const QString&generals, const QString&default_choice = "");
+    QString askForGeneral(ServerPlayer*player, const QStringList&generals, const QString&default_choice = "", const QString&reason = QString());
+    QString askForGeneral(ServerPlayer*player, const QString&generals, const QString&default_choice = "", const QString&reason = QString());
     const Card*askForSinglePeach(ServerPlayer*player, ServerPlayer*dying);
     void addPlayerHistory(ServerPlayer*player, const QString&key, int times = 1);
     bool changeBGM(const QString&bgm_name, bool reset = false, QList<ServerPlayer*> to_assign = QList<ServerPlayer*>());

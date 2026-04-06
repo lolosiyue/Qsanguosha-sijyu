@@ -1,6 +1,7 @@
 #include "client.h"
 #include "settings.h"
 #include "engine.h"
+#include "lua.hpp"
 #include "choosegeneraldialog.h"
 #include "nativesocket.h"
 #include "recorder.h"
@@ -18,11 +19,16 @@ static bool recorder_eventsave = false;
 
 Client::Client(QObject *parent, const QString &filename)
 	: QObject(parent), m_isDiscardActionRefusable(true), m_bossLevel(0),
-	status(NotActive), alive_count(1), swap_pile(0), add_round(0), _m_roomState(true)
+	status(NotActive), alive_count(1), swap_pile(0), add_round(0), _m_roomState(true),
+	m_client_lua(nullptr)
 {
 	ClientInstance = this;
 	m_isGameOver = false;
 	m_isDisconnected = true;
+
+	// Init Local Lua VM
+	m_client_lua = CreateLuaState();
+	DoLuaScript(m_client_lua, "lua/config.lua");
 
 	m_callbacks[S_COMMAND_CHECK_VERSION] = &Client::checkVersion;
 	m_callbacks[S_COMMAND_SETUP] = &Client::setup;
@@ -173,6 +179,10 @@ Client::~Client()
 {
 	foreach (const ClientPlayer *p, m_players)
 		delete p;
+	if (m_client_lua) {
+		lua_close(m_client_lua);
+		m_client_lua = nullptr;
+	}
 	ClientInstance = nullptr;
 }
 
@@ -377,13 +387,33 @@ void Client::updateProperty(const QVariant &arg)
 	if (!JsonUtils::isStringArray(args, 0, 2)) return;
 	ClientPlayer *player = getPlayer(args[0].toString());
 	if (player){
-		player->setProperty(args[1].toString().toLatin1().constData(), args[2].toString());
-		if(args[1].toString().endsWith("area")){
+		QString propName = args[1].toString();
+		if (propName.startsWith("tag:")) {
+			QString tagKey = propName.mid(4);
+			QString rawVal = args[2].toString();
+			if (rawVal.startsWith("SLIST:")) {
+				QString listStr = rawVal.mid(6);
+				player->setTag(tagKey, QVariant(listStr.split("|", QString::SkipEmptyParts)));
+			} else if (rawVal.isEmpty()) {
+				player->removeTag(tagKey);
+			} else {
+				player->setTag(tagKey, QVariant(rawVal));
+			}
+			if (tagKey.startsWith("UI_")) {
+				emit player->state_changed();
+			}
+			return;
+		}
+		player->setProperty(propName.toLatin1().constData(), args[2].toString());
+		if(propName.endsWith("area")){
 			emit update_areas(args[0].toString());
 		}
-		if(args[1].toString() == "handMax"){
+		if(propName == "handMax"){
 			emit update_handcards(args[0].toString());
 		}
+		 if(propName == "View_As_Equips_List"){
+            emit player->state_changed();
+        }
 	}
 }
 
@@ -2205,3 +2235,9 @@ void Client::addEquipArea(const QVariant &reveal)
 	if(player) player->addEquipArea(args[1].toInt());
 }
 
+
+
+lua_State *Client::getLuaState() const
+{
+    return m_client_lua;
+}

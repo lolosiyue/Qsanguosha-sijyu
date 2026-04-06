@@ -247,18 +247,18 @@ public:
             if (player->getPhase() != Player::Discard) return false;
             CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
             if ((move.reason.m_reason & CardMoveReason::S_MASK_BASIC_REASON) == CardMoveReason::S_REASON_DISCARD) {
-                QVariantList discardlist = player->tag["guizao_dis"].toList();
+                QVariantList discardlist = player->getTag("guizao_dis").toList();
                 int i = 0;
                 foreach (int card_id, move.card_ids) {
                     if (move.from == player && (move.from_places[i] == Player::PlaceHand || move.from_places[i] == Player::PlaceEquip))
                         discardlist << card_id;
                     i++;
                 }
-                player->tag["guizao_dis"] = discardlist;
+                player->setTag("guizao_dis", discardlist);
             }
         } else if (triggerEvent == EventPhaseEnd) {
-            QVariantList discardlist = player->tag["guizao_dis"].toList();
-            player->tag.remove("guizao_dis");
+            QVariantList discardlist = player->getTag("guizao_dis").toList();
+            player->removeTag("guizao_dis");
             if (discardlist.length() < 2) return false;
             QStringList suits;
             bool ok = true;
@@ -284,7 +284,7 @@ public:
         } else {
             PhaseChangeStruct change = data.value<PhaseChangeStruct>();
             if (change.from == Player::Discard) {
-                player->tag.remove("guizao_dis");
+                player->removeTag("guizao_dis");
             }
         }
         return false;
@@ -668,10 +668,10 @@ public:
             room->obtainCard(damage.from, Sanguosha->getCard(id), reason, room->getCardPlace(id) != Player::PlaceHand);
             return true;
         } else {
-            damage.from->tag["huisheng_ag_ids"] = ListI2V(ids);
+            damage.from->setTag("huisheng_ag_ids", ListI2V(ids));
             if (!room->askForDiscard(damage.from, "huisheng", ids.length(), ids.length(), true, true,
                                      "huisheng-discard:" + QString::number(ids.length()))) {
-                damage.from->tag.remove("huisheng_ag_ids");
+                damage.from->removeTag("huisheng_ag_ids");
                 room->removeTag("HuishengDamage");
                 list << damage.from->objectName();
                 room->setPlayerProperty(player, "huisheng_targets", list);
@@ -681,7 +681,7 @@ public:
                 room->obtainCard(damage.from, Sanguosha->getCard(id), reason, room->getCardPlace(id) != Player::PlaceHand);
                 return true;
             } else {
-                damage.from->tag.remove("huisheng_ag_ids");
+                damage.from->removeTag("huisheng_ag_ids");
                 room->removeTag("HuishengDamage");
                 room->clearAG(damage.from);
             }
@@ -703,12 +703,12 @@ void KuangbiCard::onEffect(CardEffectStruct &effect) const{
     if (effect.to->isNude()) return;
     Room *room = effect.from->getRoom();
     const Card *card = room->askForExchange(effect.to, "kuangbi", 3, 1, true, "kuangbi-put:" + effect.from->objectName());
-    QVariantList ids = effect.to->tag["kuangbi_ids" + effect.from->objectName()].toList();
+    QVariantList ids = effect.to->getTag("kuangbi_ids" + effect.from->objectName()).toList();
     foreach (int id, card->getSubcards()) {
         if (ids.contains(id)) continue;
         ids << id;
     }
-    effect.to->tag["kuangbi_ids" + effect.from->objectName()] = ids;
+    effect.to->setTag("kuangbi_ids" + effect.from->objectName(), ids);
     effect.from->addToPile("kuangbi", card, true);
 }
 
@@ -742,9 +742,9 @@ public:
     {
         if (player->getPhase() != Player::RoundStart) return false;
         foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
-            QVariantList ids = p->tag["kuangbi_ids" + player->objectName()].toList();
+            QVariantList ids = p->getTag("kuangbi_ids" + player->objectName()).toList();
             if (ids.isEmpty()) continue;
-            p->tag.remove("kuangbi_ids" + player->objectName());
+            p->removeTag("kuangbi_ids" + player->objectName());
             DummyCard *dummy = new DummyCard;
             foreach (QVariant card_data, ids) {
                 if (player->getPile("kuangbi").contains(card_data.toInt())) {
@@ -1001,7 +1001,7 @@ bool TaoluanCard::targetFilter(const QList<const Player *> &targets, const Playe
     } else if (Sanguosha->currentRoomState()->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_RESPONSE) {
         return false;
     }
-    const Card *card = Self->tag.value(this_skill_name).value<const Card *>();
+    const Card *card = Self->getTag(this_skill_name).value<const Card *>();
     return card && card->targetFilter(targets, to_select, Self);
 }
 
@@ -1017,7 +1017,7 @@ bool TaoluanCard::targetFixed() const
         return true;
     }
 
-    const Card *card = Self->tag.value(this_skill_name).value<const Card *>();
+    const Card *card = Self->getTag(this_skill_name).value<const Card *>();
     return card && card->targetFixed();
 }
 
@@ -1033,7 +1033,7 @@ bool TaoluanCard::targetsFeasible(const QList<const Player *> &targets, const Pl
         return true;
     }
 
-    const Card *card = Self->tag.value(this_skill_name).value<const Card *>();
+    const Card *card = Self->getTag(this_skill_name).value<const Card *>();
     return card && card->targetsFeasible(targets, Self);
 }
 
@@ -1157,7 +1157,7 @@ public:
             return card;
         }
 
-        const Card *c = Self->tag.value("taoluan").value<const Card *>();
+        const Card *c = Self->getTag("taoluan").value<const Card *>();
         if (c && c->isAvailable(Self)) {
             TaoluanCard *card = new TaoluanCard;
             card->setUserString(c->objectName());
@@ -1274,7 +1274,7 @@ public:
             return card;
         }
 
-        const Card *c = Self->tag.value("tenyeartaoluan").value<const Card *>();
+        const Card *c = Self->getTag("tenyeartaoluan").value<const Card *>();
         if (c && c->isAvailable(Self)) {
             TenyearTaoluanCard *card = new TenyearTaoluanCard;
             card->setUserString(c->objectName());

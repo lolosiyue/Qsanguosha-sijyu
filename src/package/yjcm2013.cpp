@@ -278,8 +278,8 @@ void ExtraCollateralCard::onUse(Room *room, CardUseStruct &use) const
     ServerPlayer *killer = use.to.first(), *victim = use.to.last();
 
     QStringList tos = use.from->property("extra_collateral").toString().split("+");
-    use.from->tag["ExtraCollateralTarget"] = QVariant::fromValue(killer);
-    killer->tag["attachTarget"] = QVariant::fromValue(victim);
+    use.from->setTag("ExtraCollateralTarget", QVariant::fromValue(killer));
+    killer->setTag("attachTarget", QVariant::fromValue(victim));
 
 	LogMessage log;
 	log.type = "#QiaoshuiAdd";
@@ -412,8 +412,8 @@ public:
 						tos << "qiaoshui";
 						room->setPlayerProperty(jianyong, "extra_collateral", tos.join("+"));
 						room->askForUseCard(jianyong, "@@qiaoshui!", "@qiaoshui-add:::collateral");
-						extra = jianyong->tag["ExtraCollateralTarget"].value<ServerPlayer *>();
-						jianyong->tag.remove("ExtraCollateralTarget");
+						extra = jianyong->getTag("ExtraCollateralTarget").value<ServerPlayer *>();
+						jianyong->removeTag("ExtraCollateralTarget");
 						if (!extra) {
 							QList<ServerPlayer *> victims;
 							extra = available_targets.at(qrand() % available_targets.length());
@@ -422,7 +422,7 @@ public:
 									victims << p;
 							}
 							if(victims.length()>0)
-								extra->tag["attachTarget"] = QVariant::fromValue(victims.at(qrand() % victims.length()));
+								extra->setTag("attachTarget", QVariant::fromValue(victims.at(qrand() % victims.length())));
 						}
 					}else{
 						extra = room->askForPlayerChosen(jianyong, available_targets, "qiaoshui", "@qiaoshui-add:::" + use.card->objectName());
@@ -1232,9 +1232,9 @@ public:
                     room->setPlayerFlag(player, "zhuikong");
                 } else {
                     room->setFixedDistance(player, fuhuanghou, 1);
-                    QVariantList zhuikonglist = player->tag[objectName()].toList();
+                    QVariantList zhuikonglist = player->getTag(objectName()).toList();
                     zhuikonglist.append(QVariant::fromValue(fuhuanghou));
-                    player->tag[objectName()] = QVariant::fromValue(zhuikonglist);
+                    player->setTag(objectName(), QVariant::fromValue(zhuikonglist));
                 }
             }
         }
@@ -1261,13 +1261,13 @@ public:
         if (change.to != Player::NotActive)
             return false;
 
-        QVariantList zhuikonglist = player->tag["zhuikong"].toList();
+        QVariantList zhuikonglist = player->getTag("zhuikong").toList();
         if (zhuikonglist.isEmpty()) return false;
         foreach (QVariant p, zhuikonglist) {
             ServerPlayer *fuhuanghou = p.value<ServerPlayer *>();
             room->removeFixedDistance(player, fuhuanghou, 1);
         }
-        player->tag.remove("zhuikong");
+        player->removeTag("zhuikong");
         return false;
     }
 };
@@ -1485,9 +1485,9 @@ public:
                     }
                 } else {
                     room->setFixedDistance(player, fuhuanghou, 1);
-                    QVariantList zhuikonglist = player->tag[objectName()].toList();
+                    QVariantList zhuikonglist = player->getTag(objectName()).toList();
                     zhuikonglist.append(QVariant::fromValue(fuhuanghou));
-                    player->tag[objectName()] = QVariant::fromValue(zhuikonglist);
+                    player->setTag(objectName(), QVariant::fromValue(zhuikonglist));
                 }
             }
         }
@@ -1514,13 +1514,13 @@ public:
         if (change.to != Player::NotActive)
             return false;
 
-        QVariantList zhuikonglist = player->tag["noszhuikong"].toList();
+        QVariantList zhuikonglist = player->getTag("noszhuikong").toList();
         if (zhuikonglist.isEmpty()) return false;
         foreach (QVariant p, zhuikonglist) {
             ServerPlayer *fuhuanghou = p.value<ServerPlayer *>();
             room->removeFixedDistance(player, fuhuanghou, 1);
         }
-        player->tag.remove("noszhuikong");
+        player->removeTag("noszhuikong");
         return false;
     }
 };

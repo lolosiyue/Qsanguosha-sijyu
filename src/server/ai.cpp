@@ -416,6 +416,16 @@ void TrustAI::askForGuanxing(const QList<int> &cards, QList<int> &up, QList<int>
     }
 }
 
+QString TrustAI::askForGeneral(const QStringList &generals, const QString &default_choice, const QString &reason)
+{
+    Q_UNUSED(reason);
+    if (!default_choice.isEmpty() && generals.contains(default_choice))
+        return default_choice;
+    if (!generals.isEmpty())
+        return generals.at(qrand() % generals.length());
+    return "caocao";
+}
+
 LuaAI::LuaAI(ServerPlayer *player)
     : TrustAI(player), callback(0)
 {
@@ -556,5 +566,38 @@ void LuaAI::askForGuanxing(const QList<int> &cards, QList<int> &up, QList<int> &
     }
     //getTable(L, bottom);
     //getTable(L, up);
+}
+
+QString LuaAI::askForGeneral(const QStringList &generals, const QString &default_choice, const QString &reason)
+{
+    if (callback == 0)
+        return TrustAI::askForGeneral(generals, default_choice, reason);
+
+    LuaLocker locker;
+    lua_State *L = room->getLuaState();
+
+    pushCallback(L, __FUNCTION__);
+    lua_createtable(L, generals.length(), 0);
+    for (int i = 0; i < generals.length(); i++) {
+        lua_pushstring(L, generals.at(i).toLatin1().data());
+        lua_rawseti(L, -2, i + 1);
+    }
+    lua_pushstring(L, default_choice.toLatin1().data());
+    lua_pushstring(L, reason.toLatin1().data());
+
+    if (lua_pcall(L, 4, 1, 0) != 0) {
+        const QString &error_msg = lua_tostring(L, -1);
+        lua_pop(L, 1);
+        room->output(error_msg);
+        return TrustAI::askForGeneral(generals, default_choice, reason);
+    }
+
+    QString result = lua_tostring(L, -1);
+    lua_pop(L, 1);
+
+    if (result.isEmpty())
+        return TrustAI::askForGeneral(generals, default_choice, reason);
+
+    return result;
 }
 

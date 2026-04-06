@@ -911,14 +911,14 @@ public:
 			foreach (QString k, yun.keys()) {
 				foreach (QString v, yun[k]) {
 					if(tye.endsWith(v)){
-						tye = player->tag["shixian_yun"].toString();
+						tye = player->getTag("shixian_yun").toString();
 						if(tye==k&&player->getMark("&shixian+:+"+tye+"-Clear")>0
 						&&player->askForSkillInvoke(objectName()+"$-1",data)){
 							player->drawCards(1,objectName());
 							use.card->setFlags("shixianBf");
 						}
 						room->setPlayerMark(player,"&shixian+:+"+tye+"-Clear",0);
-						player->tag["shixian_yun"] = k;
+						player->setTag("shixian_yun", k);
 						room->setPlayerMark(player,"&shixian+:+"+k+"-Clear",1);
 						return false;
 					}
@@ -962,7 +962,7 @@ public:
 				foreach (QString k, shixian_yun.keys()) {
 					foreach (QString v, shixian_yun[k]) {
 						if(tye.endsWith(v)){
-							tye = player->tag["shixian_yun"].toString();
+							tye = player->getTag("shixian_yun").toString();
 							if(tye==k&&player->getMark("&shixian+:+"+tye+"-Clear")>0){
 								return owner->hasSkill(objectName());
 							}
@@ -1024,9 +1024,9 @@ public:
 			foreach (QString k, shixian_yun.keys()) {
 				foreach (QString v, shixian_yun[k]) {
 					if(tye.endsWith(v)){
-						tye = player->tag["shixian_yun"].toString();
+						tye = player->getTag("shixian_yun").toString();
 						room->setPlayerMark(player,"&shixian+:+"+tye+"-Clear",0);
-						player->tag["shixian_yun"] = k;
+						player->setTag("shixian_yun", k);
 						room->setPlayerMark(player,"&shixian+:+"+k+"-Clear",1);
 						return false;
 					}
@@ -1284,13 +1284,13 @@ public:
 						if(Sanguosha->getSkill(sk)){
 							room->setChangeSkillState(player, objectName(), 2);
 							room->broadcastSkillInvoke(sk,skills[sk],player);
-							player->tag["ddz_benxiSkill"] = sk;
+							player->setTag("ddz_benxiSkill", sk);
 							break;
 						}
 					}
 				}else{
 					room->setChangeSkillState(player, objectName(), 1);
-					QString sk = player->tag["ddz_benxiSkill"].toString();
+					QString sk = player->getTag("ddz_benxiSkill").toString();
 					if(player->hasSkill(sk,true)){
 						ServerPlayer *tp = room->askForPlayerChosen(player,room->getAlivePlayers(),objectName(),"ddzbenxi0:");
 						if (tp) {
@@ -1358,13 +1358,13 @@ public:
 					if(Sanguosha->getSkill(sk)){
 						room->setChangeSkillState(owner, objectName(), 2);
 						room->broadcastSkillInvoke(sk,skills[sk],owner);
-						owner->tag["ddz_benxiSkill"] = sk;
+						owner->setTag("ddz_benxiSkill", sk);
 						break;
 					}
 				}
 			}else{
 				room->setChangeSkillState(owner, objectName(), 1);
-				QString sk = owner->tag["ddz_benxiSkill"].toString();
+				QString sk = owner->getTag("ddz_benxiSkill").toString();
 				if(owner->hasSkill(sk,true)){
 					ServerPlayer *tp = room->askForPlayerChosen(owner,room->getAlivePlayers(),objectName(),"ddzbenxi0:");
 					if (tp) {
@@ -1627,8 +1627,8 @@ void QixinCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) c
 		room->setChangeSkillState(source, getSkillName(), 2);
 		const General*g = Sanguosha->getGeneral("caojie");
 		source->setGender(g->getGender());
-		n = source->tag["qixinCaojieHp"].toInt();
-		source->tag["qixinLiuxieHp"] = source->getHp();
+		n = source->getTag("qixinCaojieHp").toInt();
+		source->setTag("qixinLiuxieHp", source->getHp());
 		if(n>0) room->setPlayerProperty(source,"hp",n);
 		else room->setPlayerProperty(source,"hp",g->getStartHp());
 		source->setAvatarIcon("caojie",source->getGeneral2()&&source->getGeneral2()->hasSkill(getSkillName()));
@@ -1636,8 +1636,8 @@ void QixinCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) c
 		room->setChangeSkillState(source, getSkillName(), 1);
 		const General*g = Sanguosha->getGeneral("liuxie");
 		source->setGender(g->getGender());
-		n = source->tag["qixinLiuxieHp"].toInt();
-		source->tag["qixinCaojieHp"] = source->getHp();
+		n = source->getTag("qixinLiuxieHp").toInt();
+		source->setTag("qixinCaojieHp", source->getHp());
 		if(n>0) room->setPlayerProperty(source,"hp",n);
 		else room->setPlayerProperty(source,"hp",g->getStartHp());
 		source->setAvatarIcon("liuxie",source->getGeneral2()&&source->getGeneral2()->hasSkill(getSkillName()));
@@ -1681,11 +1681,11 @@ public:
 						QString str = s.split("/").last().split(".").first();
 						if(Sanguosha->translate("$"+str).contains("谋")
 							&&player->askForSkillInvoke(objectName()+"$-1",data)){
-							str = player->tag["zhinangSkill1"].toString();
+							str = player->getTag("zhinangSkill1").toString();
 							QStringList sks;
 							sks << sk;
 							if(!str.isEmpty()) sks << "-"+str;
-							player->tag["zhinangSkill1"] = sk;
+							player->setTag("zhinangSkill1", sk);
 							room->handleAcquireDetachSkills(player,sks);
 							return false;
 						}
@@ -1696,11 +1696,11 @@ public:
 					if(player->hasSkill(sk,true)) continue;
 					if(Sanguosha->translate(sk).contains("谋")
 						&&player->askForSkillInvoke(objectName()+"$-1",data)){
-						QString str = player->tag["zhinangSkill2"].toString();
+						QString str = player->getTag("zhinangSkill2").toString();
 						QStringList sks;
 						sks << sk;
 						if(!str.isEmpty()) sks << "-"+str;
-						player->tag["zhinangSkill2"] = sk;
+						player->setTag("zhinangSkill2", sk);
 						room->handleAcquireDetachSkills(player,sks);
 						break;
 					}
@@ -1780,18 +1780,18 @@ public:
 			qShuffle(skills);
 			QStringList sks = skills.mid(0, 3);
 			QString sk = room->askForChoice(player,objectName(),sks.join("+"));
-			sks = player->tag["huyiSkills"].toStringList();
+			sks = player->getTag("huyiSkills").toStringList();
 			sks << sk;
-			player->tag["huyiSkills"] = sks;
+			player->setTag("huyiSkills", sks);
 			room->acquireSkill(player,sk);
 		}else if(event==EventPhaseChanging){
             PhaseChangeStruct change = data.value<PhaseChangeStruct>();
 			if(change.to==Player::NotActive){
-				QStringList sks = player->tag["huyiSkills"].toStringList();
+				QStringList sks = player->getTag("huyiSkills").toStringList();
 				if(sks.length()>0&&player->askForSkillInvoke(this,"huyi0")){
 					QString sk = room->askForChoice(player,objectName(),sks.join("+"));
 					sks.removeOne(sk);
-					player->tag["huyiSkills"] = sks;
+					player->setTag("huyiSkills", sks);
 					room->detachSkillFromPlayer(player,sk);
 				}
 			}
@@ -1802,7 +1802,7 @@ public:
 			else
 				card = data.value<CardResponseStruct>().m_card;
 			if(card&&card->isKindOf("BasicCard")){
-				QStringList sks = player->tag["huyiSkills"].toStringList();
+				QStringList sks = player->getTag("huyiSkills").toStringList();
 				if(sks.length()<5){
 					qShuffle(skills);
 					QString cn = "【"+Sanguosha->translate(card->objectName())+"】";
@@ -1812,7 +1812,7 @@ public:
 						if(Sanguosha->translate(":"+sk).contains(cn)){
 							room->sendCompulsoryTriggerLog(player,this);
 							sks << sk;
-							player->tag["huyiSkills"] = sks;
+							player->setTag("huyiSkills", sks);
 							room->acquireSkill(player,sk);
 							break;
 						}
@@ -2005,7 +2005,7 @@ public:
     {
         QString pattern = Sanguosha->getCurrentCardUsePattern();
 		if(pattern.isEmpty()){
-			const Card *dc = Self->tag.value(objectName()).value<const Card *>();
+			const Card *dc = Self->getTag(objectName()).value<const Card *>();
 			if(!dc) return nullptr;
 			pattern = dc->objectName();
 		}
@@ -2603,7 +2603,7 @@ public:
 				int id = room->askForCardChosen(use.from,use.to.last(),"he",objectName(),false,Card::MethodDiscard);
 				room->throwCard(id,objectName(),use.to.last(),use.from);
 			}
-			if(use.card->tag["drank"].toInt()>0&&use.from->canDiscard(use.to.last(),"he")){
+			if(use.card->getTag("drank").toInt()>0&&use.from->canDiscard(use.to.last(),"he")){
 				int id = room->askForCardChosen(use.from,use.to.last(),"he",objectName(),false,Card::MethodDiscard);
 				room->throwCard(id,objectName(),use.to.last(),use.from);
 			}

@@ -67,7 +67,7 @@ public:
 		CardUseStruct use = data.value<CardUseStruct>();
 		if (!use.card->isKindOf("Slash")) return false;
 		if (event == TargetSpecified) {
-			QVariantList jink_list = player->tag["Jink_" + use.card->toString()].toList();
+			QVariantList jink_list = player->getTag("Jink_" + use.card->toString()).toList();
 			int index = 0;
 			foreach (ServerPlayer *p, use.to) {
 				if (!player->isAlive()) break;
@@ -83,7 +83,7 @@ public:
 				}
 				index++;
 			}
-			player->tag["Jink_" + use.card->toString()] = QVariant::fromValue(jink_list);
+			player->setTag("Jink_" + use.card->toString(), QVariant::fromValue(jink_list));
 		} else {
 			if (use.from&&use.from->isAlive() && use.to.contains(player) && player->canPindian(use.from)
 				&& player->askForSkillInvoke(this, use.from)) {
@@ -261,10 +261,10 @@ public:
 						tos << t->objectName();
 					tos << objectName();
 					room->setPlayerProperty(player, "extra_collateral", tos.join("+"));
-					player->tag["FuMianUse"] = data;
+					player->setTag("FuMianUse", data);
 					if (!room->askForUseCard(player, "@@fumian1", "@fumian:" + use.card->objectName())) break;
-					ServerPlayer *p = player->tag["ExtraCollateralTarget"].value<ServerPlayer *>();
-					player->tag.remove("ExtraCollateralTarget");
+					ServerPlayer *p = player->getTag("ExtraCollateralTarget").value<ServerPlayer *>();
+					player->removeTag("ExtraCollateralTarget");
 					if (p) {
 						use.to.append(p);
 						room->sortByActionOrder(use.to);
@@ -283,7 +283,7 @@ public:
 				}
 				room->setCardFlag(use.card, "-fumian_distance");
 				if (!canextra) return false;
-				player->tag["FuMianUse"] = data;
+				player->setTag("FuMianUse", data);
 				if (!room->askForUseCard(player, "@@fumian", "@fumian:" + use.card->objectName())) return false;
 				LogMessage log;
 				foreach(ServerPlayer *p, room->getAlivePlayers()) {
@@ -1092,7 +1092,7 @@ public:
 
 		if (room->getCardUser(tocard) != who) return false;
 
-		who->tag["FunanCard"] = QVariant::fromValue(tocard);
+		who->setTag("FunanCard", QVariant::fromValue(tocard));
 
 		if (who->property("funan_level_up").toBool()) {
 			if (room->getCardOwner(card->getEffectiveId())) return false;

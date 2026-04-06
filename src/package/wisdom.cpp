@@ -713,7 +713,7 @@ public:
 		} else {
 			CardUseStruct use = data.value<CardUseStruct>();
 			if (use.card->isKindOf("Slash") && use.card->isRed() && use.to.contains(player)) {
-				QVariantList jink_list = use.from->tag["Jink_" + use.card->toString()].toList();
+				QVariantList jink_list = use.from->getTag("Jink_" + use.card->toString()).toList();
 				room->sendCompulsoryTriggerLog(player,this, 2);
 				int index = use.to.indexOf(player);
 				LogMessage log;
@@ -721,7 +721,7 @@ public:
 				log.from = player;
 				room->sendLog(log);
 				jink_list.replace(index, QVariant(0));
-				use.from->tag["Jink_" + use.card->toString()] = jink_list;
+				use.from->setTag("Jink_" + use.card->toString(), jink_list);
 			}
 		}
 		return false;

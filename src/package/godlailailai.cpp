@@ -1380,7 +1380,7 @@ public:
         if (!use.card->isKindOf("Slash") || !use.card->isRed())
             return false;
 		room->sendCompulsoryTriggerLog(player, objectName());
-        QVariantList jink_list = player->tag["Jink_" + use.card->toString()].toList();
+        QVariantList jink_list = player->getTag("Jink_" + use.card->toString()).toList();
         int index = 0;
         foreach (ServerPlayer *p, use.to) {
             LogMessage log;
@@ -1390,7 +1390,7 @@ public:
             jink_list.replace(index, QVariant(0));
             ++index;
         }
-        player->tag["Jink_" + use.card->toString()] = QVariant::fromValue(jink_list);
+        player->setTag("Jink_" + use.card->toString(), QVariant::fromValue(jink_list));
 		return false;
     }
 };
@@ -2089,7 +2089,7 @@ bool GodSpeel::targetFilter(const QList<const Player *> &targets, const Player *
 }
 
 void GodSpeel::onEffect(CardEffectStruct &effect) const{
-	QStringList sks,skills = effect.to->tag["god_speelSkills"].toStringList();
+	QStringList sks,skills = effect.to->getTag("god_speelSkills").toStringList();
 	Room *room = effect.to->getRoom();
 	foreach(const Skill *skill, effect.to->getVisibleSkillList())
 		if (!skill->isAttachedLordSkill()) sks << skill->objectName();
@@ -2097,7 +2097,7 @@ void GodSpeel::onEffect(CardEffectStruct &effect) const{
 	QString sk = sks.at(qrand() % sks.length());
 	if (!skills.contains(sk)){
 		skills << sk;
-		effect.to->tag["god_speelSkills"] = skills;
+		effect.to->setTag("god_speelSkills", skills);
 		room->addPlayerMark(effect.to,"Qingcheng"+sk);
 		room->setPlayerMark(effect.to,"&god_speel+:+"+sk,1);
 	}

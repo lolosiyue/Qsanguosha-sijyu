@@ -2808,7 +2808,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 		onsole_target = Self->property("onsole_target").toString();
 		QList<Photo*>photos2;
 		if(onsole_target.isEmpty()){
-			ClientPlayer*self = ClientInstance->getPlayer(Self->tag["onsoleFrom"].toString());
+			ClientPlayer*self = ClientInstance->getPlayer(Self->getTag("onsoleFrom").toString());
 			item2player.insert(dashboard,self);
 			dashboard->setPlayer(self);
 			for (int i = 0;i < photos.length();i++){
@@ -2845,7 +2845,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 			}
 		}else{
 			ClientPlayer*player = ClientInstance->getPlayer(onsole_target);
-			player->tag["onsoleFrom"] = Self->objectName();
+			player->setTag("onsoleFrom", Self->objectName());
 			item2player.insert(dashboard,player);
 			dashboard->setPlayer(player);
 			for (int i = 0;i < photos.length();i++){//swapItemsAt
@@ -3213,7 +3213,7 @@ void RoomScene::doOkButton()
 	useSelectedCard();
 	if(onsole_target!=""){
 		onsole_target = "";
-		ClientPlayer*self = ClientInstance->getPlayer(Self->tag["onsoleFrom"].toString());
+		ClientPlayer*self = ClientInstance->getPlayer(Self->getTag("onsoleFrom").toString());
 		dashboard->setPlayer(self);
 		item2player.insert(dashboard,self);
 		for (int i = 0;i < photos.length();i++){
@@ -3333,7 +3333,7 @@ void RoomScene::doCancelButton()
 	}
 	if(onsole_target!=""){
 		onsole_target = "";
-		ClientPlayer*self = ClientInstance->getPlayer(Self->tag["onsoleFrom"].toString());
+		ClientPlayer*self = ClientInstance->getPlayer(Self->getTag("onsoleFrom").toString());
 		dashboard->setPlayer(self);
 		item2player.insert(dashboard,self);
 		for (int i = 0;i < photos.length();i++){
@@ -3385,7 +3385,7 @@ void RoomScene::doDiscardButton()
 		ClientInstance->onPlayerResponseCard(nullptr);
 	if(onsole_target!=""){
 		onsole_target = "";
-		ClientPlayer*self = ClientInstance->getPlayer(Self->tag["onsoleFrom"].toString());
+		ClientPlayer*self = ClientInstance->getPlayer(Self->getTag("onsoleFrom").toString());
 		dashboard->setPlayer(self);
 		item2player.insert(dashboard,self);
 		for (int i = 0;i < photos.length();i++){

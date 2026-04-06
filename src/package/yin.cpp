@@ -722,10 +722,10 @@ public:
                 CardMoveReason reason(CardMoveReason::S_REASON_GIVE, player->objectName(), damage.from->objectName(), "shenshi", "");
                 room->obtainCard(damage.from, card, reason, false);
                 int id = card->getSubcards().first();
-                QVariantList ids = damage.from->tag["shenshi_" + player->objectName()].toList();
+                QVariantList ids = damage.from->getTag("shenshi_" + player->objectName()).toList();
                 if (!ids.contains(QVariant(id)))
                     ids << id;
-                damage.from->tag["shenshi_" + player->objectName()] = ids;
+                damage.from->setTag("shenshi_" + player->objectName(), ids);
             }
         }
         return false;
@@ -755,9 +755,9 @@ public:
             QList<ServerPlayer *> draws;
             foreach (ServerPlayer *p, room->getAlivePlayers()) {
                 foreach (ServerPlayer *pp, room->getOtherPlayers(p)) {
-                    QVariantList ids = p->tag["shenshi_" + pp->objectName()].toList();
+                    QVariantList ids = p->getTag("shenshi_" + pp->objectName()).toList();
                     if (!ids.isEmpty()) {
-                        p->tag.remove("shenshi_" + pp->objectName());
+                        p->removeTag("shenshi_" + pp->objectName());
                         bool has = false;
                         QList<int> idds = ListV2I(ids);
                         foreach (int id, idds) {
@@ -788,7 +788,7 @@ public:
                 if (data.toString() != "shenshi") return false;
             }
             foreach (ServerPlayer *p, room->getOtherPlayers(player, true)) {
-                p->tag.remove("shenshi_" + player->objectName());
+                p->removeTag("shenshi_" + player->objectName());
             }
         }
         return false;

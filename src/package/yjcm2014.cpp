@@ -812,9 +812,9 @@ public:
                     targets << p;
             }
             if (targets.isEmpty()) return false;
-            use.from->tag["zenhui"] = data;
+            use.from->setTag("zenhui", data);
             ServerPlayer *target = room->askForPlayerChosen(player, targets, objectName(), "zenhui-invoke:" + use.to.first()->objectName(), true, true);
-            use.from->tag.remove("zenhui");
+            use.from->removeTag("zenhui");
             if (target) {
                 player->setFlags(objectName());
                 room->broadcastSkillInvoke(objectName());
@@ -1390,7 +1390,7 @@ public:
             CardEffectStruct effect = data.value<CardEffectStruct>();
             if (!effect.card->isKindOf("Slash")) return false;
             if (!effect.offset_card||!effect.offset_card->isKindOf("Jink")) return false;
-            QVariantList jink = effect.from->tag["newzhongyong_jink" + effect.card->toString()].toList();
+            QVariantList jink = effect.from->getTag("newzhongyong_jink" + effect.card->toString()).toList();
             if (effect.offset_card->isVirtualCard() && effect.offset_card->subcardsLength() > 0) {
                 foreach (int id, effect.offset_card->getSubcards()) {
                     if (jink.contains(QVariant(id))) continue;
@@ -1400,7 +1400,7 @@ public:
                 if (!jink.contains(QVariant(effect.offset_card->getEffectiveId())))
                     jink << effect.offset_card->getEffectiveId();
             }
-            effect.from->tag["newzhongyong_jink" + effect.card->toString()] = jink;
+            effect.from->setTag("newzhongyong_jink" + effect.card->toString(), jink);
         } else {
             CardUseStruct use = data.value<CardUseStruct>();
             if (!use.card->isKindOf("Slash")) return false;
@@ -1412,7 +1412,7 @@ public:
             }
             if (targets.isEmpty()) return false;
 
-            QVariantList jink = player->tag["newzhongyong_jink" + use.card->toString()].toList();
+            QVariantList jink = player->getTag("newzhongyong_jink" + use.card->toString()).toList();
             QList<int> slash_ids,jink_ids = ListV2I(jink);
 
             foreach (int id, use.card->getSubcards()) {
@@ -1656,13 +1656,13 @@ public:
 							tos.append(t->objectName());
 						room->setPlayerProperty(player, "extra_collateral", tos.join("+"));
                         room->askForUseCard(player, "@@olbenxi!", "@olbenxi-extra:" + use.card->objectName());
-                        target = player->tag["ExtraCollateralTarget"].value<ServerPlayer *>();
-						player->tag.remove("ExtraCollateralTarget");
+                        target = player->getTag("ExtraCollateralTarget").value<ServerPlayer *>();
+						player->removeTag("ExtraCollateralTarget");
                         if (!target) {
                             target = available_targets.at(qrand() % available_targets.length() - 1);
                             foreach (ServerPlayer *p, room->getOtherPlayers(target)) {
                                 if (target->canSlash(p)){
-									target->tag["attachTarget"] = QVariant::fromValue(p);
+									target->setTag("attachTarget", QVariant::fromValue(p));
 									break;
 								}
                             }

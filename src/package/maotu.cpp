@@ -326,7 +326,7 @@ public:
 
     const Card *viewAs() const
     {
-        QString choice = Self->tag["mtjieli"].toString();
+        QString choice = Self->getTag("mtjieli").toString();
 
         Duel *duel = new Duel(Card::SuitToBeDecided, -1);
         duel->setSkillName(objectName());
@@ -1329,9 +1329,9 @@ public:
                 QString kingdom1 = player->getKingdom(), kingdom2 = p->getKingdom();
                 if (kingdom1 == kingdom2) {
                     if (!player->canDiscard(p, "he")) continue;
-                    player->tag["MTRenyuData"] = data;
+                    player->setTag("MTRenyuData", data);
                     bool invoke = player->askForSkillInvoke(this, p);
-                    player->tag.remove("MTRenyuData");
+                    player->removeTag("MTRenyuData");
 
                     if (!invoke) continue;
                     player->peiyin(this);
@@ -1342,9 +1342,9 @@ public:
                     use.nullified_list << p->objectName();
                     data = QVariant::fromValue(use);
                 } else {
-                    p->tag["MTRenyuData"] = data;
+                    p->setTag("MTRenyuData", data);
                     bool invoke = p->askForSkillInvoke("mtrenyu_jin", "mtrenyu_jin");
-                    p->tag.remove("MTRenyuData");
+                    p->removeTag("MTRenyuData");
                     if (!invoke) continue;
 
                     LogMessage log;
@@ -1823,8 +1823,8 @@ public:
         QStringList all_suits;
         all_suits << "heart" << "diamond" << "spade" << "club";
 
-        QStringList records = player->tag["MTGuquRecord"].toStringList();
-        player->tag.remove("MTGuquRecord");
+        QStringList records = player->getTag("MTGuquRecord").toStringList();
+        player->removeTag("MTGuquRecord");
         foreach (QString suit, records)
             all_suits.removeOne(suit);
         if (all_suits.isEmpty()) return false;
@@ -2118,7 +2118,7 @@ bool MTZhiheCard::targetFilter(const QList<const Player *> &targets, const Playe
 		return card->targetFilter(targets, to_select, Self);
 	}
 
-    const Card *_card = Self->tag.value("mtzhihe").value<const Card *>();
+    const Card *_card = Self->getTag("mtzhihe").value<const Card *>();
     if (_card == nullptr)
         return false;
 
@@ -2140,7 +2140,7 @@ bool MTZhiheCard::targetFixed() const
 		return card->targetFixed();
 	}
 
-    const Card *_card = Self->tag.value("mtzhihe").value<const Card *>();
+    const Card *_card = Self->getTag("mtzhihe").value<const Card *>();
     if (_card == nullptr)
         return true;
 
@@ -2157,7 +2157,7 @@ bool MTZhiheCard::targetsFeasible(const QList<const Player *> &targets, const Pl
 		return card->targetsFeasible(targets, Self);
 	}
 
-    const Card *_card = Self->tag.value("mtzhihe").value<const Card *>();
+    const Card *_card = Self->getTag("mtzhihe").value<const Card *>();
     if (_card == nullptr)
         return false;
 
@@ -2337,7 +2337,7 @@ public:
             return card;
         }
 
-        const Card *c = Self->tag.value("mtzhihe").value<const Card *>();
+        const Card *c = Self->getTag("mtzhihe").value<const Card *>();
         if (c && c->isAvailable(Self)) {
             MTZhiheCard *card = new MTZhiheCard;
             card->setUserString(c->objectName());
@@ -2555,7 +2555,7 @@ public:
 
     const Card *viewAs() const
     {
-        QString choice = Self->tag["mtjishi"].toString();
+        QString choice = Self->getTag("mtjishi").toString();
         if (choice.isEmpty()) return NULL;
         MTJishiCard *card = new MTJishiCard;
         card->setUserString(choice);
@@ -2696,7 +2696,7 @@ public:
 
     const Card *viewAs() const
     {
-        QString choice = Self->tag["mtyitao"].toString();
+        QString choice = Self->getTag("mtyitao").toString();
         if (choice.isEmpty()) return NULL;
         MTYitaoCard *card = new MTYitaoCard;
         card->setUserString(choice);
@@ -3065,7 +3065,7 @@ public:
             room->sendLog(log);
 
             if (num > 2 && player->isAlive())
-                player->tag["mtfeiyan"] = "qun";  //不考虑如果发动多次“飞燕”，应该在出牌阶段结束时多次触发效果了
+                player->setTag("mtfeiyan", "qun");  //不考虑如果发动多次“飞燕”，应该在出牌阶段结束时多次触发效果了
         } else if (kim == "qun") {
             if (to->isNude()) return false;
             if (!player->askForSkillInvoke(this, QString("qun:%1::%2").arg(to->objectName()).arg(num))) return false;
@@ -3083,7 +3083,7 @@ public:
             room->obtainCard(player, dummy, objectName());
 
             if (num > 2 && player->isAlive())
-                player->tag["mtfeiyan"] = "wei";  //不考虑如果发动多次“飞燕”，应该在出牌阶段结束时多次触发效果了
+                player->setTag("mtfeiyan", "wei");  //不考虑如果发动多次“飞燕”，应该在出牌阶段结束时多次触发效果了
         }
         return false;
     }
@@ -3100,7 +3100,7 @@ public:
     bool triggerable(const ServerPlayer *target, Room *, TriggerEvent event) const
     {
         if (event == EventPhaseEnd)
-            return target && target->isAlive() && target->getPhase() == Player::Play && !target->tag["mtfeiyan"].toString().isEmpty();
+            return target && target->isAlive() && target->getPhase() == Player::Play && !target->getTag("mtfeiyan").toString().isEmpty();
         else
             return target && target->isAlive();
     }
@@ -3108,8 +3108,8 @@ public:
     bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
     {
         if (event == EventPhaseEnd) {
-            QString kim = player->tag["mtfeiyan"].toString();
-            player->tag.remove("mtfeiyan");
+            QString kim = player->getTag("mtfeiyan").toString();
+            player->removeTag("mtfeiyan");
             /*if (kim == "qun" || kim == "wei")
                 room->changeKingdom(player, kim);
             else {
@@ -3838,7 +3838,7 @@ public:
             draw.num = INT_MIN;
             data = QVariant::fromValue(draw);
 
-            QVariantList used = player->tag["MTChunzuUsedIds"].toList(), got = player->tag["MTChunzuGotIds"].toList();;
+            QVariantList used = player->getTag("MTChunzuUsedIds").toList(), got = player->getTag("MTChunzuGotIds").toList();;
 
             QList<int> used_ids;
             foreach (QVariant id, used) {
@@ -3871,7 +3871,7 @@ public:
                 got << id;
                 dummy->addSubcard(id);
             }
-            player->tag["MTChunzuGotIds"] = got;
+            player->setTag("MTChunzuGotIds", got);
             player->obtainCard(dummy);
         }
         return false;
@@ -3892,11 +3892,11 @@ public:
     {
         CardUseStruct use = data.value<CardUseStruct>();
         if (use.card->isKindOf("SkillCard") || use.card->isVirtualCard() || !use.card->getSkillName().isEmpty()) return false;
-        QVariantList used = player->tag["MTChunzuUsedIds"].toList();
+        QVariantList used = player->getTag("MTChunzuUsedIds").toList();
         int id = use.card->getEffectiveId();
         if (used.contains(id)) return false;
         used << id;
-        player->tag["MTChunzuUsedIds"] = used;
+        player->setTag("MTChunzuUsedIds", used);
         return false;
     }
 };
@@ -4002,7 +4002,7 @@ public:
                 room->acquireNextTurnSkills(player, QString(), "olkanpo");
                 foreach (ServerPlayer *p, players) {
                     if (p->isDead() || p->hasSkill("bazhen", true)) continue;
-                    p->tag["MTChushi"] = QVariant::fromValue(player);
+                    p->setTag("MTChushi", QVariant::fromValue(player));
                     p->acquireSkill("bazhen");
                 }
             } else {
@@ -4015,7 +4015,7 @@ public:
                 else {
                     foreach (ServerPlayer *p, players) {
                         if (p->isDead() || p->hasSkill("bazhen", true)) continue;
-                        p->tag["MTChushi"] = QVariant::fromValue(player);
+                        p->setTag("MTChushi", QVariant::fromValue(player));
                         room->acquireSkill(p, "bazhen");
                     }
                 }
@@ -4023,9 +4023,9 @@ public:
 
         } else if (phase == Player::RoundStart) {
             foreach (ServerPlayer *p, room->getAllPlayers()) {
-                ServerPlayer *t = p->tag["MTChushi"].value<ServerPlayer *>();
+                ServerPlayer *t = p->getTag("MTChushi").value<ServerPlayer *>();
                 if (!t || t != player) continue;
-                p->tag.remove("MTChushi");
+                p->removeTag("MTChushi");
 
                 LogMessage log;
                 log.type = "#ZhafuEffect";
@@ -4070,7 +4070,7 @@ public:
                 room->addPlayerMark(p, "mtjijing-Clear");
                 room->addPlayerMark(p, "mtjijing_lun");
 
-                QString mtjijing = p->tag["mtjijing_list"].toString();
+                QString mtjijing = p->getTag("mtjijing_list").toString();
                 if (!mtjijing.isEmpty()) {
                     QList<int> ids = ListS2I(mtjijing.split("+"));
                     foreach (int id, p->handCards()) {
@@ -4088,12 +4088,12 @@ public:
 
             QList<ServerPlayer *> targets;
             if (from->isAlive() && from->getMark("mtjijing-Clear") > 0) {
-                QString mtjijing = from->tag["mtjijing_list"].toString();
+                QString mtjijing = from->getTag("mtjijing_list").toString();
                 if (mtjijing.split("+").contains(QString::number(c->getEffectiveId())))
                     targets << from;
             }
             if (to->isAlive() && to->getMark("mtjijing-Clear") > 0) {
-                QString mtjijing = to->tag["mtjijing_list"].toString();
+                QString mtjijing = to->getTag("mtjijing_list").toString();
                 if (mtjijing.split("+").contains(QString::number(cc->getEffectiveId())))
                     targets << to;
             }
@@ -4128,7 +4128,7 @@ public:
             PhaseChangeStruct change = data.value<PhaseChangeStruct>();
             if (change.to != Player::NotActive) return false;
             foreach (ServerPlayer *p, room->getAllPlayers(true)) {
-                p->tag.remove("mtjijing_list");
+                p->removeTag("mtjijing_list");
                 foreach (int id, p->handCards() + p->getEquipsId())
                     room->setCardTip(id, "-mtjijing");
             }
@@ -4136,7 +4136,7 @@ public:
             if (!room->hasCurrent(true)) return false;
 
             QStringList mtjijinglist;
-            QString mtjijing = player->tag["mtjijing_list"].toString();
+            QString mtjijing = player->getTag("mtjijing_list").toString();
             if (!mtjijing.isEmpty())
                 mtjijinglist = mtjijing.split("+");
 
@@ -4149,11 +4149,11 @@ public:
                     if (mtjijinglist.contains(str)) continue;
                     mtjijinglist << str;
                 }
-                player->tag["mtjijing_list"] = mtjijinglist.join("+");
+                player->setTag("mtjijing_list", mtjijinglist.join("+"));
             }
         } else if (triggerEvent == EventAcquireSkill) {
             if (data.toString() != "mtjijing" || !player->hasSkill("mtjijing", true) || player->getMark("mtjijing-Clear") <= 0) return false;
-            QString mtjijing = player->tag["mtjijing_list"].toString();
+            QString mtjijing = player->getTag("mtjijing_list").toString();
             if (mtjijing.isEmpty()) return false;
             QList<int> ids = ListS2I(mtjijing.split("+"));
             foreach (int id, player->handCards()) {
@@ -4366,10 +4366,10 @@ public:
             if (t->isKongcheng()) return false;
             int id = room->askForCardChosen(player, t, "h", objectName());
 
-            /*QVariantList ids = t->tag["MTZhuluShow"].toList();
+            /*QVariantList ids = t->getTag("MTZhuluShow").toList();
             if (!ids.contains(QVariant(id))) {
                 ids << id;
-                t->tag["MTZhuluShow"] = ids;
+                t->setTag("MTZhuluShow", ids);
             }*/
 
             room->setPlayerMark(t, QString("MTZhuluShow_%1-Clear").arg(id), 1);
@@ -4541,12 +4541,12 @@ void MTZhuizunCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> 
         choices << "olsishu1";
     if (choices.isEmpty()) return;
 
-    QStringList skills = source->tag["MTZhuizunSkills"].toStringList();
+    QStringList skills = source->getTag("MTZhuizunSkills").toStringList();
     QString choice = room->askForChoice(source, "mtzhuizun", choices.join("+"));
     choice.chop(1);
     if (!skills.contains(choice)) {
         skills << choice;
-        source->tag["MTZhuizunSkills"] = skills;
+        source->setTag("MTZhuizunSkills", skills);
     }
 
     room->acquireSkill(source, choice);
@@ -4649,9 +4649,9 @@ public:
     bool trigger(TriggerEvent, Room *room, ServerPlayer *, QVariant &) const
     {
         foreach (ServerPlayer *p, room->getAllPlayers()) {
-            QStringList skills = p->tag["MTZhuizunSkills"].toStringList();
+            QStringList skills = p->getTag("MTZhuizunSkills").toStringList();
             if (skills.isEmpty()) continue;
-            p->tag.remove("MTZhuizunSkills");
+            p->removeTag("MTZhuizunSkills");
             QStringList loses;
             foreach (QString sk, skills) {
                 if (!loses.contains("-" + sk) && p->hasSkill(sk, true))
@@ -4676,10 +4676,10 @@ public:
     {
         if (event == EventPhaseStart) {
             if (player->getPhase() != Player::Play || player->getMark("MTZhanhuaEventPhaseStart") > 0) return false;
-            int num = player->tag["MTZhanhuaHandcardNum"].toInt(), hand = player->getHandcardNum();
+            int num = player->getTag("MTZhanhuaHandcardNum").toInt(), hand = player->getHandcardNum();
             if (hand > num) {
                 num = hand;
-                player->tag["MTZhanhuaHandcardNum"] = hand;
+                player->setTag("MTZhanhuaHandcardNum", hand);
                 player->setSkillDescriptionSwap(objectName(), "%arg2", QString::number(hand));
                 room->changeTranslation(player, objectName(), 1);
             }
@@ -4694,18 +4694,18 @@ public:
             DyingStruct dying = data.value<DyingStruct>();
             if (dying.who != player || player->getMark("MTZhanhuaDying") > 0) return false;
 
-            int max = player->tag["MTZhanhuaMaxHp"].toInt(), maxhp = player->getMaxHp();
+            int max = player->getTag("MTZhanhuaMaxHp").toInt(), maxhp = player->getMaxHp();
             if (maxhp > max) {
                 max = maxhp;
-                player->tag["MTZhanhuaMaxHp"] = maxhp;
+                player->setTag("MTZhanhuaMaxHp", maxhp);
                 player->setSkillDescriptionSwap(objectName(), "%arg3", QString::number(maxhp));
                 room->changeTranslation(player, objectName(), 1);
             }
 
-            int hp = player->tag["MTZhanhuaHp"].toInt(), hpp = player->getHp();
+            int hp = player->getTag("MTZhanhuaHp").toInt(), hpp = player->getHp();
             if (hpp > hp) {
                 hp = hpp;
-                player->tag["MTZhanhuaHp"] = hpp;
+                player->setTag("MTZhanhuaHp", hpp);
                 player->setSkillDescriptionSwap(objectName(), "%arg4", QString::number(hpp));
                 room->changeTranslation(player, objectName(), 1);
             }
@@ -4745,38 +4745,38 @@ public:
     {
         if (event == DamageCaused) {
             DamageStruct damage = data.value<DamageStruct>();
-            int d = player->tag["MTZhanhuaDamage"].toInt(), dd = damage.damage;
+            int d = player->getTag("MTZhanhuaDamage").toInt(), dd = damage.damage;
             if (dd > d) {
-                player->tag["MTZhanhuaDamage"] = dd;
+                player->setTag("MTZhanhuaDamage", dd);
                 player->setSkillDescriptionSwap("mtzhanhua", "%arg1", QString::number(dd));
                 room->changeTranslation(player, "mtzhanhua", 1);
             }
             if (!player->hasSkill(this) || player->getMark("MTZhanhuaDamageCaused") > 0) return false;
 
-            player->tag["MTZhanhuaDamageCaused"] = data;
+            player->setTag("MTZhanhuaDamageCaused", data);
             bool invoke = player->askForSkillInvoke("mtzhanhua", QString("damage:%1:%2").arg(damage.to->objectName()).arg(qMax(dd, d) + 1));
-            player->tag.remove("MTZhanhuaDamageCaused");
+            player->removeTag("MTZhanhuaDamageCaused");
             if (!invoke) return false;
 
             player->peiyin("mtzhanhua");
             room->setPlayerMark(player, "MTZhanhuaDamageCaused", 1);
             d = qMax(dd, d) + 1;
-            player->tag["MTZhanhuaDamage"] = d;
+            player->setTag("MTZhanhuaDamage", d);
             player->setSkillDescriptionSwap("mtzhanhua", "%arg1", QString::number(d));
             room->changeTranslation(player, "mtzhanhua", 1);
 
             damage.damage = d;
             data = QVariant::fromValue(damage);
         } else if (event == GameReady) {
-            int d = player->tag["MTZhanhuaDamage"].toInt(), num = player->tag["MTZhanhuaHandcardNum"].toInt(),
-                max = player->tag["MTZhanhuaMaxHp"].toInt(), hp = player->tag["MTZhanhuaHp"].toInt();
+            int d = player->getTag("MTZhanhuaDamage").toInt(), num = player->getTag("MTZhanhuaHandcardNum").toInt(),
+                max = player->getTag("MTZhanhuaMaxHp").toInt(), hp = player->getTag("MTZhanhuaHp").toInt();
             num = qMax(num, player->getHandcardNum());
             max = qMax(num, player->getMaxHp());
             hp = qMax(num, player->getHp());
 
-            player->tag["MTZhanhuaHandcardNum"] = num;
-            player->tag["MTZhanhuaMaxHp"] = max;
-            player->tag["MTZhanhuaHp"] = hp;
+            player->setTag("MTZhanhuaHandcardNum", num);
+            player->setTag("MTZhanhuaMaxHp", max);
+            player->setTag("MTZhanhuaHp", hp);
 
             player->setSkillDescriptionSwap("mtzhanhua", "%arg1", QString::number(d));
             player->setSkillDescriptionSwap("mtzhanhua", "%arg2", QString::number(num));
@@ -4786,24 +4786,24 @@ public:
         } else if (event == CardsMoveOneTime) {
             CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
             if (move.to == player && move.to_place == Player::PlaceHand) {
-                int num = player->tag["MTZhanhuaHandcardNum"].toInt(), hand = player->getHandcardNum();
+                int num = player->getTag("MTZhanhuaHandcardNum").toInt(), hand = player->getHandcardNum();
                 if (hand > num) {
-                    player->tag["MTZhanhuaHandcardNum"] = hand;
+                    player->setTag("MTZhanhuaHandcardNum", hand);
                     player->setSkillDescriptionSwap("mtzhanhua", "%arg2", QString::number(hand));
                     room->changeTranslation(player, "mtzhanhua", 1);
                 }
             }
         } else if (event == MaxHpChanged) {
-            int max = player->tag["MTZhanhuaMaxHp"].toInt(), maxhp = player->getMaxHp();
+            int max = player->getTag("MTZhanhuaMaxHp").toInt(), maxhp = player->getMaxHp();
             if (maxhp > max) {
-                player->tag["MTZhanhuaMaxHp"] = maxhp;
+                player->setTag("MTZhanhuaMaxHp", maxhp);
                 player->setSkillDescriptionSwap("mtzhanhua", "%arg3", QString::number(maxhp));
                 room->changeTranslation(player, "mtzhanhua", 1);
             }
         } else if (event == HpChanged) {
-            int hp = player->tag["MTZhanhuaHp"].toInt(), hpp = player->getMaxHp();
+            int hp = player->getTag("MTZhanhuaHp").toInt(), hpp = player->getMaxHp();
             if (hpp > hp) {
-                player->tag["MTZhanhuaHp"] = hpp;
+                player->setTag("MTZhanhuaHp", hpp);
                 player->setSkillDescriptionSwap("mtzhanhua", "%arg4", QString::number(hpp));
                 room->changeTranslation(player, "mtzhanhua", 1);
             }
@@ -4909,7 +4909,7 @@ public:
 
                 Card::Suit suit = room->askForSuit(player, objectName());
                 QString suit_str = Card::Suit2String(suit);
-                p->tag["MTHongwu_" + player->objectName()] = suit_str;
+                p->setTag("MTHongwu_" + player->objectName(), suit_str);
 
                 LogMessage log;
                 log.type = "#ChooseSuit";
@@ -4923,7 +4923,7 @@ public:
 
             foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
                 if (p->isDead()) continue;
-                QString suit = p->tag["MTHongwu_" + player->objectName()].toString();
+                QString suit = p->getTag("MTHongwu_" + player->objectName()).toString();
                 if (suit.isEmpty()) continue;
 
                 Card::Suit suitt = room->askForSuit(p, objectName());

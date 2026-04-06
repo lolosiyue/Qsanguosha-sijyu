@@ -728,6 +728,7 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 		std::stable_sort(skill_table[triggerEvent].begin(), skill_table[triggerEvent].end(), CompareByPriority);
 	}
 	bool need_check_handmax = false;
+	bool need_check_distance_cache = false;
     switch (triggerEvent) {
         case HpChanged:
         case MaxHpChanged:
@@ -741,18 +742,17 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
         case TurnStart:
         case GameStart:
             need_check_handmax = true;
+			need_check_distance_cache = true;
             break;
         default:
             break;
     }
     if (need_check_handmax) {
-        foreach(ServerPlayer*p, room->getAlivePlayers()){
-            int hand_max = p->getMaxCards();
-            if (p->property("handMax").toInt() == hand_max) continue;
-            room->safeSetPlayerProperty(p, "handMax", hand_max);
-            room->broadcastProperty(p, "handMax");
-        }
+		room->setTag("HandMaxDirty", QVariant(true));
     }
+	if (need_check_distance_cache) {
+		room->setTag("DistanceCacheDirty", QVariant(true));
+	}
 	try {
 		QList<TriggerSkill*>triggered;
 		for (int i = 0; i < skill_table[triggerEvent].length(); i++) {
@@ -766,8 +766,8 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 				if(ts->getFrequency(target)==Skill::Wake&&!ts->canWake(triggerEvent,target,data,room)) continue;
 				room->tryPause();
 				broken = ts->trigger(triggerEvent,room,target,data);
-				if(triggerEvent!=SkillTriggered&&room->tag["notifyInvoked:"+ts->objectName()].toBool()){
-					room->tag.remove("notifyInvoked:"+ts->objectName());
+				if(triggerEvent!=SkillTriggered&&room->getTag("notifyInvoked:"+ts->objectName()).toBool()){
+					room->removeTag("notifyInvoked:"+ts->objectName());
 					QVariant skillName = ts->objectName();
 					trigger(SkillTriggered,room,target,skillName);
 				}
@@ -777,9 +777,73 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 		}
 		if (target) target->getSmartAI()->filterEvent(triggerEvent, target, data);
 		event_stack.pop_back();// pop event stack
+
+		if (event_stack.isEmpty()) {
+			if (room->getTag("HandMaxDirty").toBool()) {
+				room->setTag("HandMaxDirty", false);
+
+				LuaLocker locker;
+				foreach(ServerPlayer*p, room->getAlivePlayers()){
+					int hand_max = p->getMaxCards();
+					if (p->property("handMax").toInt() == hand_max) continue;
+					room->safeSetPlayerProperty(p, "handMax", hand_max);
+					room->broadcastProperty(p, "handMax");
+				}
+			}
+
+			if (room->getTag("DistanceCacheDirty").toBool()) {
+				room->setTag("DistanceCacheDirty", false);
+
+				LuaLocker locker;
+				QList<ServerPlayer *> players = room->getAlivePlayers();
+				foreach(ServerPlayer *from, players) {
+					foreach(ServerPlayer *to, players) {
+						if (from == to) continue;
+						int cached_distance = from->distanceTo(to, 0);
+						QString prop_name = QString("distanceTo_%1").arg(to->objectName());
+						QByteArray prop_name_latin = prop_name.toLatin1();
+						if (from->property(prop_name_latin.constData()).toInt() == cached_distance) continue;
+						room->safeSetPlayerProperty(from, prop_name_latin.constData(), cached_distance);
+						room->broadcastProperty(from, prop_name_latin.constData());
+					}
+				}
+			}
+		}
+	
 	}catch (TriggerEvent throwed_event) {
 		if (target) target->getSmartAI()->filterEvent(triggerEvent, target, data);
 		event_stack.pop_back();// pop event stack
+
+		if (event_stack.isEmpty()) {
+			if (room->getTag("HandMaxDirty").toBool()) {
+				room->setTag("HandMaxDirty", false);
+				LuaLocker locker;
+				foreach(ServerPlayer*p, room->getAlivePlayers()){
+					int hand_max = p->getMaxCards();
+					if (p->property("handMax").toInt() == hand_max) continue;
+					room->safeSetPlayerProperty(p, "handMax", hand_max);
+					room->broadcastProperty(p, "handMax");
+				}
+			}
+
+			if (room->getTag("DistanceCacheDirty").toBool()) {
+				room->setTag("DistanceCacheDirty", false);
+
+				LuaLocker locker;
+				QList<ServerPlayer *> players = room->getAlivePlayers();
+				foreach(ServerPlayer *from, players) {
+					foreach(ServerPlayer *to, players) {
+						if (from == to) continue;
+						int cached_distance = from->distanceTo(to, 0);
+						QString prop_name = QString("distanceTo_%1").arg(to->objectName());
+						QByteArray prop_name_latin = prop_name.toLatin1();
+						if (from->property(prop_name_latin.constData()).toInt() == cached_distance) continue;
+						room->safeSetPlayerProperty(from, prop_name_latin.constData(), cached_distance);
+						room->broadcastProperty(from, prop_name_latin.constData());
+					}
+				}
+			}
+		}
 		throw throwed_event;
 	}
 	//room->tryPause();
@@ -800,7 +864,7 @@ void RoomThread::addTriggerSkill(const TriggerSkill*skill)
 	foreach (TriggerEvent event, skill->getTriggerEvents()) {
 		skill_table[event] << const_cast<TriggerSkill*>(skill);
 		if(skill_table[event].length()<2) continue;
-		if(skill->inherits("GameRule")||room->tag["TurnLengthCount"].toInt()>0){
+		if(skill->inherits("GameRule")||room->getTag("TurnLengthCount").toInt()>0){
 			QList<ServerPlayer*> players = room->getAllPlayers(true);
 			foreach (TriggerSkill*ts, skill_table[event]) {
 				double len = players.length(), priority = ts->getPriority(event);

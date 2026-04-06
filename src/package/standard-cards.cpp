@@ -160,14 +160,14 @@ void Slash::onUse(Room *room, CardUseStruct &use) const
 			}
         }
     }
-	use.from->tag.remove("Jink_" + use.card->toString());
+	use.from->removeTag("Jink_" + use.card->toString());
     BasicCard::onUse(room, use);
 }
 
 void Slash::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
 {
     CardUseStruct cardUse = room->getTag("UseHistory"+toString()).value<CardUseStruct>();
-	QVariantList jink_list = source->tag["Jink_"+toString()].toList();
+	QVariantList jink_list = source->getTag("Jink_"+toString()).toList();
     foreach (ServerPlayer *target, targets) {
 		CardEffectStruct effect;
 
@@ -209,12 +209,12 @@ void Slash::onEffect(CardEffectStruct &effect) const
     effect.multiple = card_effect.multiple;
 
     if (!effect.no_offset && !effect.no_respond) {
-        QVariantList jink_list = effect.from->tag["Jink_" + toString()].toList();
+        QVariantList jink_list = effect.from->getTag("Jink_" + toString()).toList();
         effect.jink_num = jink_list.takeFirst().toInt();
         if (jink_list.isEmpty())
-            effect.from->tag.remove("Jink_" + toString());
+            effect.from->removeTag("Jink_" + toString());
         else
-            effect.from->tag["Jink_" + toString()] = QVariant::fromValue(jink_list);
+            effect.from->setTag("Jink_" + toString(), QVariant::fromValue(jink_list));
     }
     effect.from->getRoom()->slashEffect(effect);*/
 }
@@ -898,7 +898,7 @@ void Collateral::onUse(Room *room, CardUseStruct &card_use) const
 		if (n%2==1){
 			tos << p;
 			if(card_use.to.length()>n)
-				p->tag["attachTarget"] = QVariant::fromValue(card_use.to[n]);
+				p->setTag("attachTarget", QVariant::fromValue(card_use.to[n]));
 		}
 		n++;
 	}
@@ -909,7 +909,7 @@ void Collateral::onUse(Room *room, CardUseStruct &card_use) const
 void Collateral::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
 {
     foreach (ServerPlayer *p, targets) {
-		ServerPlayer *victim = p->tag["attachTarget"].value<ServerPlayer *>();
+		ServerPlayer *victim = p->getTag("attachTarget").value<ServerPlayer *>();
 		if (victim==nullptr){
 			QList<ServerPlayer *> tops;
 			foreach (ServerPlayer *tp, room->getOtherPlayers(p)) {
@@ -918,7 +918,7 @@ void Collateral::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &ta
 					tops << tp;
 			}
 			victim = room->askForPlayerChosen(source,tops,objectName());
-			if(victim) p->tag["attachTarget"] = QVariant::fromValue(victim);
+			if(victim) p->setTag("attachTarget", QVariant::fromValue(victim));
 			else continue;
 		}
 		room->doAnimate(1, p->objectName(), victim->objectName());
@@ -942,8 +942,8 @@ bool Collateral::doCollateral(Room *room, ServerPlayer *killer, ServerPlayer *vi
 void Collateral::onEffect(CardEffectStruct &effect) const
 {
     Room *room = effect.from->getRoom();
-    ServerPlayer *victim = effect.to->tag["attachTarget"].value<ServerPlayer *>();
-    effect.to->tag.remove("attachTarget");
+    ServerPlayer *victim = effect.to->getTag("attachTarget").value<ServerPlayer *>();
+    effect.to->removeTag("attachTarget");
     if (victim && victim->isAlive() && effect.to->isAlive()) {
         QString prompt = QString("collateral-slash:%1:%2").arg(victim->objectName()).arg(effect.from->objectName());
         if (doCollateral(room, effect.to, victim, prompt, effect.from)) return;
@@ -973,7 +973,7 @@ void Nullification::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> 
 {
     CardUseStruct card_use = room->getTag("UseHistory"+toString()).value<CardUseStruct>();
 	if(card_use.nullified_list.contains("_ALL_TARGETS")) return;
-	CardEffectStruct effect = source->tag["NullifyingEffect"].value<CardEffectStruct>();
+	CardEffectStruct effect = source->getTag("NullifyingEffect").value<CardEffectStruct>();
 	QString tn = source->objectName();
 	if (effect.to) tn = effect.to->objectName();
     QVariant data = "Nullification:"+card_use.whocard->getClassName()+":"+tn+":"+(effect.nullified?"true":"false");
@@ -1062,19 +1062,19 @@ void Duel::onEffect(CardEffectStruct &effect) const
 
     room->setEmotion(first, "duel-pk");
     room->setEmotion(second, "duel-pk");
-    first->tag.remove("DuelSlash" + toString());
-    second->tag.remove("DuelSlash" + toString());
+    first->removeTag("DuelSlash" + toString());
+    second->removeTag("DuelSlash" + toString());
 
 	while(first->isAlive()){
 		const Card *slash = room->askForCard(first,"slash","duel-slash:"+second->objectName(),
 			QVariant::fromValue(effect),Card::MethodResponse,second,false,"",false,this);
 		if (!slash) break;
-		QVariantList slash_list_first = first->tag["DuelSlash" + toString()].toList();
+		QVariantList slash_list_first = first->getTag("DuelSlash" + toString()).toList();
 		foreach (int id, slash->getSubcards()) {
 			if (slash_list_first.contains(QVariant(id))) continue;
 			slash_list_first << id;
 		}
-		first->tag["DuelSlash" + toString()] = slash_list_first;
+		first->setTag("DuelSlash" + toString(), slash_list_first);
 		qSwap(first, second);
 	}
     DamageStruct damage(this, second, first);

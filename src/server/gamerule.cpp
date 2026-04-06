@@ -352,13 +352,13 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 		//ServerPlayer *current = room->getCurrent();
         if(change.to==Player::RoundStart) {
             QStringList lose;
-			foreach (QString str,player->tag["NextTurnSkill"].toStringList()) {
-				foreach (QString sk,player->tag[str].toStringList()) {
+			foreach (QString str,player->getTag("NextTurnSkill").toStringList()) {
+				foreach (QString sk,player->getTag(str).toStringList()) {
 					if(player->hasSkill(sk,true)) lose << "-" + sk;
 				}
-				player->tag.remove(str);
+				player->removeTag(str);
 			}
-			player->tag.remove("NextTurnSkill");
+			player->removeTag("NextTurnSkill");
             room->handleAcquireDetachSkills(player,lose);
 		}else if(change.to==Player::NotActive) {
             room->setPlayerFlag(player,".");
@@ -392,19 +392,19 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 				log.type = "#UnsetDrankEndOfTurn";
 				room->sendLog(log);
 			}
-			foreach (QString sk,player->tag["god_speelSkills"].toStringList()){
+			foreach (QString sk,player->getTag("god_speelSkills").toStringList()){
 				room->removePlayerMark(player,"&god_speel+:+"+sk);
 				room->removePlayerMark(player,"Qingcheng"+sk);
 			}
-			player->tag.remove("god_speelSkills");
+			player->removeTag("god_speelSkills");
 
 			QStringList lose;
-			foreach (QString str,player->tag["OneTurnSkill"].toStringList()) {
-				foreach (QString sk,player->tag[str].toStringList())
+			foreach (QString str,player->getTag("OneTurnSkill").toStringList()) {
+				foreach (QString sk,player->getTag(str).toStringList())
 					if(player->hasSkill(sk,true)) lose << "-" + sk;
-				player->tag.remove(str);
+				player->removeTag(str);
 			}
-			player->tag.remove("OneTurnSkill");
+			player->removeTag("OneTurnSkill");
 			room->handleAcquireDetachSkills(player,lose);
         } else if(change.from==Player::Play||change.to==Player::Play) {
             int ana = player->usedTimes("Analeptic");
@@ -494,12 +494,12 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 			card_use.card->doPreAction(room,card_use);
 
 		if(card_use.card->getTypeId()>0){
-			if(player->tag.contains("ComboMovesCard")){
-				delete player->tag["ComboMovesCard"].value<const Card*>();
-				player->tag.remove("ComboMovesCard");
+			if(player->getTag("ComboMovesCard").isValid()){
+				delete player->getTag("ComboMovesCard").value<const Card*>();
+				player->removeTag("ComboMovesCard");
 			}
 			if(!card_use.card->hasFlag("ComboMoves"))
-				player->tag["ComboMovesCard"] = QVariant::fromValue((const Card*)Sanguosha->cloneCard(card_use.card));
+				player->setTag("ComboMovesCard", QVariant::fromValue((const Card*)Sanguosha->cloneCard(card_use.card)));
 		}
 
 		const Card *ec = Sanguosha->getEngineCard(card_use.card->getId());
@@ -525,7 +525,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 						card_use.no_respond_list << "_ALL_TARGETS";
 					} else if(yingbian=="yb_fujia2") {
 						if(card_use.to.length()>1) {
-							player->tag["yb_fujia2_data"] = data;
+							player->setTag("yb_fujia2_data", data);
 							ServerPlayer *reduce = room->askForPlayerChosen(player,card_use.to,"yb_fujia2","yb_fujia2-reduce:" + card_use.card->objectName(),true);
 							if(reduce) {
 								LogMessage log;
@@ -553,7 +553,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 					}
 				} else if(yingbian=="yb_kongchao3") {
 					ServerPlayer *add = nullptr;
-					player->tag["yb_kongchao3_data"] = data;
+					player->setTag("yb_kongchao3_data", data);
 					QList<ServerPlayer *> adds = room->getCardTargets(card_use.from,card_use.card,card_use.to);
 					if(adds.length()>0){
 						if(card_use.card->isKindOf("Collateral")){
@@ -563,8 +563,8 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 								tos.append(t->objectName());
 							room->setPlayerProperty(card_use.from,"extra_collateral",tos.join("+"));
 							room->askForUseCard(card_use.from,"@@extra_collateral","@qiaoshui-add:::collateral");
-							add = card_use.from->tag["ExtraCollateralTarget"].value<ServerPlayer *>();
-							card_use.from->tag.remove("ExtraCollateralTarget");
+							add = card_use.from->getTag("ExtraCollateralTarget").value<ServerPlayer *>();
+							card_use.from->removeTag("ExtraCollateralTarget");
 						}else
 							add = room->askForPlayerChosen(player,adds,"yb_kongchao3","yb_kongchao3-add:" + card_use.card->objectName(),true);
 					}
@@ -586,7 +586,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 					room->setCardFlag(card_use.card,"yb_canqu1_add_damage");
 				else if(yingbian=="yb_canqu2") {
 					ServerPlayer *add = nullptr;
-					player->tag["yb_canqu2_data"] = data;
+					player->setTag("yb_canqu2_data", data);
 					QList<ServerPlayer *> adds = room->getCardTargets(card_use.from,card_use.card,card_use.to);
 					if(adds.length()>0){
 						if(card_use.card->isKindOf("Collateral")) {
@@ -596,8 +596,8 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 								tos.append(t->objectName());
 							room->setPlayerProperty(card_use.from,"extra_collateral",tos.join("+"));
 							room->askForUseCard(card_use.from,"@@extra_collateral","@qiaoshui-add:::collateral");
-							add = card_use.from->tag["ExtraCollateralTarget"].value<ServerPlayer *>();
-							card_use.from->tag.remove("ExtraCollateralTarget");
+							add = card_use.from->getTag("ExtraCollateralTarget").value<ServerPlayer *>();
+							card_use.from->removeTag("ExtraCollateralTarget");
 						} else
 							add = room->askForPlayerChosen(player,adds,"yb_canqu2","yb_canqu2-add:" + card_use.card->objectName(),true);
 					}
@@ -632,9 +632,9 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 		}
 		if(card_use.to.length()>0) {
 			if(card_use.card->isKindOf("Slash")) {
-				QVariantList jink_list = card_use.from->tag["Jink_"+card_use.card->toString()].toList();
+				QVariantList jink_list = card_use.from->getTag("Jink_"+card_use.card->toString()).toList();
 				for (int i=jink_list.length();i<card_use.to.length();i++) jink_list << 1;
-				card_use.from->tag["Jink_"+card_use.card->toString()] = jink_list;
+				card_use.from->setTag("Jink_"+card_use.card->toString(), jink_list);
 			}
 			room->getThread()->trigger(TargetSpecified,room,card_use.from,data);
 			foreach(ServerPlayer *p,room->getAllPlayers())
@@ -667,7 +667,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 					else if(use.card->isKindOf("EquipCard")) pattern = "EquipCard";
 					foreach (ServerPlayer *p,room->getOtherPlayers(use.from)) {
 						if(use.to.contains(p)||!p->canDiscard(p,"h")) continue;
-						p->tag["yb_zhuzhan_data"] = data;
+						p->setTag("yb_zhuzhan_data", data);
 						if(room->askForDiscard(p,yingbian,1,1,true,false,"yb_zhuzhan-discard:" + use.card->objectName(),pattern)) {
 							buff = true;
 							break;
@@ -681,7 +681,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 						QList<ServerPlayer *> adds = room->getCardTargets(use.from,use.card,use.to);
 						if(adds.length()>0) {
 							ServerPlayer *add = nullptr;
-							player->tag["yb_zhuzhan2_data"] = data;
+							player->setTag("yb_zhuzhan2_data", data);
 							if(use.card->isKindOf("Collateral")) {
 								QStringList tos;
 								tos.append(use.card->toString());
@@ -689,8 +689,8 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 									tos.append(t->objectName());
 								room->setPlayerProperty(use.from,"extra_collateral",tos.join("+"));
 								room->askForUseCard(use.from,"@@extra_collateral","@qiaoshui-add:::collateral");
-								add = use.from->tag["ExtraCollateralTarget"].value<ServerPlayer *>();
-								use.from->tag.remove("ExtraCollateralTarget");
+								add = use.from->getTag("ExtraCollateralTarget").value<ServerPlayer *>();
+								use.from->removeTag("ExtraCollateralTarget");
 							} else
 								add = room->askForPlayerChosen(player,adds,"yb_zhuzhan2","yb_zhuzhan2-add:" + use.card->objectName(),true);
 							if(add) {
@@ -826,33 +826,33 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 		}
 		QString st = Sanguosha->getSkill(skill_name)->getLimitMark();
 		if(st!="") room->setPlayerMark(player,st,0);
-		QStringList lose,skilllist = player->tag["OneTurnSkill"].toStringList();
+		QStringList lose,skilllist = player->getTag("OneTurnSkill").toStringList();
 		st = "OneTurnSkill_"+skill_name;
 		if(skilllist.contains(st)) {
-			foreach (QString str,player->tag[st].toStringList()) {
+			foreach (QString str,player->getTag(st).toStringList()) {
 				if(player->hasSkill(str,true)) lose << "-"+str;
 			}
-			player->tag.remove(st);
+			player->removeTag(st);
 			skilllist.removeOne(st);
-			player->tag["OneTurnSkill"] = skilllist;
+			player->setTag("OneTurnSkill", skilllist);
 		}
-		skilllist = player->tag["NextTurnSkill"].toStringList();
+		skilllist = player->getTag("NextTurnSkill").toStringList();
 		st = "NextTurnSkill_"+skill_name;
 		if(skilllist.contains(st)) {
-			foreach (QString str,player->tag[st].toStringList()) {
+			foreach (QString str,player->getTag(st).toStringList()) {
 				if(player->hasSkill(str,true)) lose << "-"+str;
 			}
-			player->tag.remove(st);
+			player->removeTag(st);
 			skilllist.removeOne(st);
-			player->tag["NextTurnSkill"] = skilllist;
+			player->setTag("NextTurnSkill", skilllist);
 		}
 		room->handleAcquireDetachSkills(player,lose);
         break;
     }
     case HpChanged: {
         player->breakYinniState();
-		if(room->getMode()=="06_ol"&&player->isLord()&&player->getHp()<player->getMaxHp()/2&&!player->tag["BossWake"].toBool()){
-			player->tag["BossWake"] = true;
+		if(room->getMode()=="06_ol"&&player->isLord()&&player->getHp()<player->getMaxHp()/2&&!player->getTag("BossWake").toBool()){
+			player->setTag("BossWake", true);
             foreach (QString skillName,player->getGeneral()->getRelatedSkillNames()) {
                 const Skill *skill = Sanguosha->getSkill(skillName);
                 if(skill&&skill->isVisible())
@@ -897,9 +897,9 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 				log.from = damage.from;
 				log.to << damage.to;
 				log.card_str = damage.card->toString();
-				log.arg = "+"+damage.card->tag["drank"].toString();
+				log.arg = "+"+damage.card->getTag("drank").toString();
 				room->sendLog(log);
-				damage.damage += damage.card->tag["drank"].toInt();
+				damage.damage += damage.card->getTag("drank").toInt();
 				data.setValue(damage);
 			}
 			if(damage.card->hasFlag("yb_canqu1_add_damage")){
@@ -920,7 +920,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
         if(damage.from&&!damage.chain){
 			if(damage.nature==DamageStruct::Ice) {
 				if(damage.from->canDiscard(damage.to,"he")){
-					damage.from->tag["IceDamageData"] = data;
+					damage.from->setTag("IceDamageData", data);
 					LogMessage log;
 					log.arg2 = QString("info:%1::%2").arg(damage.to->objectName()).arg(damage.damage);
 					if(damage.from->askForSkillInvoke("IceDamagePrevent",log.arg2,false)) {
@@ -1144,7 +1144,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
         if(room->getMode()=="04_boss"&&player->isLord()&&(Config.value("BossModeEndless").toBool()||room->getTag("BossModeLevel").toInt() < Config.BossLevel - 1))
             break;
         else if(room->getMode()=="02_1v1") {
-            QStringList list = player->tag["1v1Arrange"].toStringList();
+            QStringList list = player->getTag("1v1Arrange").toStringList();
             QString rule = Config.value("1v1/Rule","2013").toString();
             if(list.length()>((rule=="2013") ? 3 : 0)) break;
         }
@@ -1174,14 +1174,14 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 				}
 			}
 		}else if(room->getMode()=="02_1v1") {
-            QStringList list = player->tag["1v1Arrange"].toStringList();
+            QStringList list = player->getTag("1v1Arrange").toStringList();
             QString rule = Config.value("1v1/Rule","2013").toString();
             if(list.length() <= ((rule=="2013") ? 3 : 0)) break;
             if(rule=="Classical") {
-                player->tag["1v1ChangeGeneral"] = list.takeFirst();
-                player->tag["1v1Arrange"] = list;
+                player->setTag("1v1ChangeGeneral", list.takeFirst());
+                player->setTag("1v1Arrange", list);
             } else
-                player->tag["1v1ChangeGeneral"] = list.first();
+                player->setTag("1v1ChangeGeneral", list.first());
             changeGeneral1v1(player);
             if(death.damage)
                 player->setFlags("Global_DebutFlag");
@@ -1304,14 +1304,14 @@ void GameRule::changeGeneral1v1(ServerPlayer *player) const
     bool classical = (Config.value("1v1/Rule","2013").toString()=="Classical");
     QString new_general;
     if(classical) {
-        new_general = player->tag["1v1ChangeGeneral"].toString();
-        player->tag.remove("1v1ChangeGeneral");
+        new_general = player->getTag("1v1ChangeGeneral").toString();
+        player->removeTag("1v1ChangeGeneral");
     } else {
-        QStringList list = player->tag["1v1Arrange"].toStringList();
+        QStringList list = player->getTag("1v1Arrange").toStringList();
         if(player->getAI()) new_general = list.first();
         else new_general = room->askForGeneral(player,list);
         list.removeOne(new_general);
-        player->tag["1v1Arrange"] = list;
+        player->setTag("1v1Arrange", list);
     }
 
     if(player->getPhase() != Player::NotActive)
@@ -1360,13 +1360,13 @@ void GameRule::changeGeneralXMode(ServerPlayer *player) const
     Config.AIDelay = Config.OriginAIDelay;
 
     Room *room = player->getRoom();
-    ServerPlayer *leader = player->tag["XModeLeader"].value<ServerPlayer *>();
+    ServerPlayer *leader = player->getTag("XModeLeader").value<ServerPlayer *>();
     //Q_ASSERT(leader);
-    QStringList backup = leader->tag["XModeBackup"].toStringList();
+    QStringList backup = leader->getTag("XModeBackup").toStringList();
     QString general_name = room->askForGeneral(leader,backup);
     if(backup.contains(general_name)) backup.removeOne(general_name);
     else backup.takeFirst();
-    leader->tag["XModeBackup"] = backup;
+    leader->setTag("XModeBackup", backup);
 
     if(player->getPhase() != Player::NotActive)
         player->changePhase(player->getPhase(),Player::NotActive);
@@ -1519,12 +1519,12 @@ void GameRule::doBossModeDifficultySettings(ServerPlayer *lord) const
                     room->setPlayerChained(p);
                 room->safeSetPlayerProperty(p,"hp",qMin(p->getMaxHp(),4));
                 room->broadcastProperty(p,"hp");
-                QStringList acquired = p->tag["BossModeAcquiredSkills"].toStringList();
+                QStringList acquired = p->getTag("BossModeAcquiredSkills").toStringList();
                 foreach (QString skillname,acquired) {
                     if(p->hasSkill(skillname,true))
                         acquired.removeOne(skillname);
                 }
-                p->tag["BossModeAcquiredSkills"] = QVariant::fromValue(acquired);
+                p->setTag("BossModeAcquiredSkills", QVariant::fromValue(acquired));
                 room->handleAcquireDetachSkills(p,acquired,true);
                 foreach (const Skill *skill,p->getSkillList()) {
                     if(!skill->getLimitMark().isEmpty())
@@ -1590,7 +1590,7 @@ void GameRule::doBossModeDifficultySettings(ServerPlayer *lord) const
                         choices << QString("[%1]|%2").arg(exp_map[c]).arg(c);
                 }
 
-                QStringList acquired = p->tag["BossModeAcquiredSkills"].toStringList();
+                QStringList acquired = p->getTag("BossModeAcquiredSkills").toStringList();
                 foreach (QString a,acquired) {
                     if(!p->getAcquiredSkills().contains(a))
                         acquired.removeOne(a);
@@ -1632,7 +1632,7 @@ void GameRule::doBossModeDifficultySettings(ServerPlayer *lord) const
                         acquired.removeOne(skilldetach);
                     }
                     acquired.append(skillattach);
-                    p->tag["BossModeAcquiredSkills"] = QVariant::fromValue(acquired);
+                    p->setTag("BossModeAcquiredSkills", QVariant::fromValue(acquired));
                     int cost = choice.split("]").first().mid(1).toInt();
                     skilllist.append(skillattach);
 
@@ -1743,8 +1743,8 @@ QString GameRule::getWinner(ServerPlayer *victim,Room *room) const
         }
     } else if(room->getMode()=="06_XMode") {
         QString role = victim->getRole();
-        ServerPlayer *leader = victim->tag["XModeLeader"].value<ServerPlayer *>();
-        if(leader->tag["XModeBackup"].toStringList().isEmpty()) {
+        ServerPlayer *leader = victim->getTag("XModeLeader").value<ServerPlayer *>();
+        if(leader->getTag("XModeBackup").toStringList().isEmpty()) {
             if(role.startsWith('r'))
                 winner = "lord+loyalist";
             else
@@ -2050,8 +2050,8 @@ bool BasaraMode::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *play
 {
     // Handle global events
 	if(player){
-		player->tag["triggerEvent"] = triggerEvent;
-		player->tag["triggerEventData"] = data; // For AI
+		player->setTag("triggerEvent", triggerEvent);
+		player->setTag("triggerEventData", data); // For AI
 	}
     switch (triggerEvent) {
     case GameReady: {

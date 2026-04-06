@@ -10,6 +10,8 @@
 #include "clientstruct.h"
 #include "carditem.h"
 #include "generaloverview.h"
+#include "window.h"
+#include "button.h"
 #include <QMutexLocker>
 
 using namespace QSanProtocol;
@@ -295,6 +297,7 @@ void PlayerCardContainer::updateHp()
     _m_hpBox->update();
     _m_saveMeIcon->setVisible(m_player->isAlive()&&m_player->hasFlag("Global_Dying"));
     _updateEquips();
+    updateHandcardNum();
 }
 
 static bool CompareByNumber(const Card *card1, const Card *card2)
@@ -502,8 +505,8 @@ void PlayerCardContainer::updateHandcardNum()
 
     if (m_player) {
         int handcardNum = m_player->getHandcardNum();
-        int maxCards = m_player->property("handMax").toInt();
         int hp = m_player->getHp();
+        int maxCards = m_player->getTag("UI_Hand_Max").isValid() ? m_player->getTag("UI_Hand_Max").toInt() : qMax(hp, 0);
 
         int W = wideArea.width(), H = wideArea.height();
         int midW = W / 10;
@@ -533,74 +536,75 @@ void PlayerCardContainer::updateHandcardNum()
     _m_handCardNumText->setVisible(true);
 
     if (!m_player) return;
-    int maxCards = m_player->getMaxCards();
     int limitBase = m_player->getHp();
+    int maxCards = m_player->getTag("UI_Hand_Max").isValid() ? m_player->getTag("UI_Hand_Max").toInt() : qMax(limitBase, 0);
     if (maxCards != limitBase) {
         QStringList tooltipInfo;
         tooltipInfo << tr("手牌上限: %1").arg(maxCards);
         foreach (const MaxCardsSkill *mc_skill, Sanguosha->getMaxCardsSkills()) {
-            if (mc_skill) {
-                if (mc_skill->objectName() == "gamerulemaxcards") {
-                    foreach (const QString &mark_name, m_player->getMarkNames()) {
-                        if (mark_name.startsWith("ExtraBfMaxCards_")) {
-                            QString data = mark_name.mid(16); 
-                            if (data.endsWith("-Clear")) {
-                                data.chop(6);
-                            }
-                            int val = m_player->getMark(mark_name);
-                            if (val != 0) {
-                                QStringList parts = data.split("_");
-                                QString real_reason = parts.at(0);
-                                QString source_objname = parts.length() > 1 ? parts.at(1) : "";
-                                
-                                QString sign = val > 0 ? "+" : "";
-                                QString translatedReason = Sanguosha->translate(real_reason);
-                                
-                                QString source = tr("全局規則/系統");
-                                if (!source_objname.isEmpty()) {
-                                    ClientPlayer *src_player = ClientInstance->getPlayer(source_objname);
-                                    if (src_player) {
-                                        source = src_player->screenName();
-                                    }
+            if (mc_skill && mc_skill->objectName() == "gamerulemaxcards") {
+                foreach (const QString &mark_name, m_player->getMarkNames()) {
+                    if (mark_name.startsWith("ExtraBfMaxCards_")) {
+                        QString data = mark_name.mid(16); 
+                        if (data.endsWith("-Clear")) {
+                            data.chop(6);
+                        }
+                        int val = m_player->getMark(mark_name);
+                        if (val != 0) {
+                            QStringList parts = data.split("_");
+                            QString real_reason = parts.at(0);
+                            QString source_objname = parts.length() > 1 ? parts.at(1) : "";
+                            
+                            QString sign = val > 0 ? "+" : "";
+                            QString translatedReason = Sanguosha->translate(real_reason);
+                            
+                            QString source = tr("全局規則/系統");
+                            if (!source_objname.isEmpty()) {
+                                ClientPlayer *src_player = ClientInstance->getPlayer(source_objname);
+                                if (src_player) {
+                                    source = src_player->screenName();
                                 }
-
-                                tooltipInfo << QString("%1: %2%3 (來源: %4)")
-                                               .arg(translatedReason).arg(sign).arg(val).arg(source);
                             }
+
+                            tooltipInfo << QString("%1: %2%3 (來源: %4)")
+                                           .arg(translatedReason).arg(sign).arg(val).arg(source);
                         }
                     }
-
-                    int base_extra = m_player->getMark("ExtraBfMaxCards") + m_player->getMark("ExtraBfMaxCards-Clear");
-                    if (base_extra != 0) {
-                        QString sign = base_extra > 0 ? "+" : "";
-                        tooltipInfo << QString("其他額外效果: %1%2").arg(sign).arg(base_extra);
-                    }
-                    
-                    continue; 
                 }
-                int fixed = mc_skill->getFixed(m_player);
-                int extra = mc_skill->getExtra(m_player);
 
-                if (fixed >= 0 || extra != 0) {
-                    QStringList sourceNames;
-                    foreach (const ClientPlayer *p, ClientInstance->getPlayers()) {
-                        if (p->isAlive() && p->hasSkill(mc_skill->objectName())) {
-                            sourceNames << p->objectName();
-                        }
-                    }
-
-                    QString source = sourceNames.isEmpty() ? tr("系統") : sourceNames.join(", ");
-                    QString skillName = Sanguosha->translate(mc_skill->objectName());
-
-                    if (fixed >= 0) {
-                        tooltipInfo << QString("%1: 固定為 %2 (來源: %3)")
-                                       .arg(skillName).arg(fixed).arg(source);
-                    } else if (extra != 0) {
-                        QString sign = extra > 0 ? "+" : "";
-                        tooltipInfo << QString("%1: %2%3 (來源: %4)")
-                                       .arg(skillName).arg(sign).arg(extra).arg(source);
-                    }
+                int base_extra = m_player->getMark("ExtraBfMaxCards") + m_player->getMark("ExtraBfMaxCards-Clear");
+                if (base_extra != 0) {
+                    QString sign = base_extra > 0 ? "+" : "";
+                    tooltipInfo << QString("其他額外效果: %1%2").arg(sign).arg(base_extra);
                 }
+                break;
+            }
+        }
+
+        // 從 Server 推播的 Tag 讀取各技能對手牌上限的影響（零 Lua 呼叫）
+        QStringList mc_tag = m_player->getTag("UI_MC_Skills").toStringList();
+        foreach (const QString &entry, mc_tag) {
+            if (!entry.contains("^")) continue;
+            QStringList parts = entry.split("^");
+            QString skillName = Sanguosha->translate(parts[0]);
+            QString valueStr  = parts.size() > 1 ? parts[1] : "";
+            QString srcName   = parts.size() > 2 ? parts[2] : QString();
+            QString sourceDisplay = tr("自身/系統");
+
+            if (!srcName.isEmpty()) {
+                ClientPlayer *src_player = ClientInstance->getPlayer(srcName);
+                sourceDisplay = src_player ? src_player->screenName() : srcName;
+            }
+
+            if (valueStr.startsWith("F")) {
+                int fixed = valueStr.mid(1).toInt();
+                tooltipInfo << QString("%1: 固定為 %2 (來源: %3)")
+                               .arg(skillName).arg(fixed).arg(sourceDisplay);
+            } else {
+                int extra = valueStr.toInt();
+                QString sign = extra > 0 ? "+" : "";
+                tooltipInfo << QString("%1: %2%3 (來源: %4)")
+                               .arg(skillName).arg(sign).arg(extra).arg(sourceDisplay);
             }
         }
 
@@ -680,56 +684,25 @@ void PlayerCardContainer::_updateEquips()
         }
     };
 
-    foreach (const Skill *skill, m_player->getSkills(true, false)) {
-        const ViewAsEquipSkill *vaes = qobject_cast<const ViewAsEquipSkill *>(skill);
-        if (!vaes) continue;
-        if (!m_player->hasSkill(vaes->objectName())) continue;
-
-        QString cns = vaes->viewAsEquip(m_player);
-        if (cns.isEmpty()) continue;
-
-        QStringList eq_names = cns.split(",", QString::SkipEmptyParts);
-        foreach (QString eq_name, eq_names) {
-            Card *ec = Sanguosha->cloneCard(eq_name);
-            if (ec) try_add_simulated_equip(ec, vaes->objectName());
-        }
-    }
-
     QStringList property_equips = m_player->property("View_As_Equips_List").toString().split("+", QString::SkipEmptyParts);
     foreach (QString eq_name, property_equips) {
         Card *ec = Sanguosha->cloneCard(eq_name);
         if (ec) try_add_simulated_equip(ec, QString());
     }
-
-    int off_dist = 0;
-    int def_dist = 0;
-    QStringList off_skills, def_skills;
-
-    QList<const Player *> siblings = m_player->getAliveSiblings();
-    if (!siblings.isEmpty()) {
-        foreach (const Skill *skill, m_player->getSkills(true, false)) {
-            const DistanceSkill *dist_skill = qobject_cast<const DistanceSkill *>(skill);
-            if (dist_skill) {
-                int off_val = dist_skill->getCorrect(m_player, siblings.first());
-                if (off_val < 0) {
-                    bool is_generic_off = true;
-                    foreach (const Player *p, siblings) {
-                        if (dist_skill->getCorrect(m_player, p) != off_val) { is_generic_off = false; break; }
-                    }
-                    if (is_generic_off) { off_dist += off_val; off_skills << dist_skill->objectName(); }
-                }
-
-                int def_val = dist_skill->getCorrect(siblings.first(), m_player);
-                if (def_val > 0) {
-                    bool is_generic_def = true;
-                    foreach (const Player *p, siblings) {
-                        if (dist_skill->getCorrect(p, m_player) != def_val) { is_generic_def = false; break; }
-                    }
-                    if (is_generic_def) { def_dist += def_val; def_skills << dist_skill->objectName(); }
-                }
-            }
+    QStringList vae_tag = m_player->getTag("UI_VAE_Skills").toStringList();
+    foreach (QString entry, vae_tag) {
+        QStringList parts = entry.split("^"); // 記得用 ^ 切割
+        if (parts.length() >= 2) {
+            Card *ec = Sanguosha->cloneCard(parts[0]);
+            if (ec) try_add_simulated_equip(ec, parts[1]);
         }
     }
+
+    // 從 Server 推播的 Tag 讀取距離修正（零 Lua 呼叫）
+    int off_dist = m_player->getTag("UI_Off_Dist").toInt();
+    QStringList off_skills = m_player->getTag("UI_Off_Skills").toStringList();
+    int def_dist = m_player->getTag("UI_Def_Dist").toInt();
+    QStringList def_skills = m_player->getTag("UI_Def_Skills").toStringList();
 
     for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
         bool is_def = (i == 2);
@@ -1678,8 +1651,15 @@ void PlayerCardContainer::revivePlayer()
     refresh();
 }
 
-void PlayerCardContainer::mousePressEvent(QGraphicsSceneMouseEvent *)
+void PlayerCardContainer::mousePressEvent(QGraphicsSceneMouseEvent *event)
 {
+    if (!_m_handCardBg || !m_player || m_player == Self)
+        return;
+
+    if (_m_handCardBg->sceneBoundingRect().contains(event->scenePos())) {
+        showHandcardViewer();
+        event->accept();
+    }
 }
 
 void PlayerCardContainer::updateVotes(bool need_select, bool display_1)
@@ -1782,6 +1762,117 @@ bool PlayerCardContainer::canBeSelected()
 {
     QGraphicsItem *item1 = getMouseClickReceiver();
     return item1 && isEnabled() && (flags() & QGraphicsItem::ItemIsSelectable);
+}
+
+void PlayerCardContainer::showHandcardViewer()
+{
+    if (!m_player || m_player == Self) return;
+
+    QList<const Card *> known_cards;
+    int total_handcard_num = m_player->getHandcardNum();
+
+    if (Self->canSeeHandcard(m_player)) {
+        foreach (int id, m_player->handCards()) {
+            const Card *card = Sanguosha->getEngineCard(id);
+            if (card) known_cards << card;
+        }
+    } else {
+        known_cards = m_player->getKnownCards();
+    }
+
+    QList<const Card *> sorted_known = known_cards;
+    std::sort(sorted_known.begin(), sorted_known.end(), [](const Card *a, const Card *b) {
+        if (a->getSuit() != b->getSuit())
+            return a->getSuit() < b->getSuit();
+        return a->getNumber() < b->getNumber();
+    });
+
+    QString title = QString("%1%2").arg(m_player->getLogName()).arg(tr("'s Handcards"));
+    Window *handcardWindow = new Window(title, QSize(800, 500));
+    handcardWindow->setZValue(20);
+    RoomSceneInstance->addItem(handcardWindow);
+
+    QRectF sceneRect = RoomSceneInstance->sceneRect();
+    QPointF centerPos = sceneRect.center();
+    QRectF windowRect = handcardWindow->boundingRect();
+    handcardWindow->setPos(centerPos.x() - windowRect.width() / 2,
+                           centerPos.y() - windowRect.height() / 2);
+
+    QGraphicsRectItem *cardContainer = new QGraphicsRectItem(15, 50, 770, 400, handcardWindow);
+    cardContainer->setFlag(QGraphicsItem::ItemClipsChildrenToShape);
+    cardContainer->setPen(Qt::NoPen);
+
+    QGraphicsTextItem *totalText = new QGraphicsTextItem(handcardWindow);
+    totalText->setPlainText(QString("%1%2").arg(tr("Total: ")).arg(total_handcard_num));
+    totalText->setDefaultTextColor(Qt::white);
+    totalText->setFont(Config.SmallFont);
+    totalText->setPos(25, 20);
+
+    const int cardWidth = 93;
+    const int cardHeight = 130;
+    const int cardsPerRow = 7;
+    const int horizontalSpacing = 15;
+    const int verticalSpacing = 20;
+    const int startX = 20;
+    const int startY = 10;
+
+    int x = startX;
+    int y = startY;
+    int count = 0;
+
+    foreach (const Card *card, sorted_known) {
+        QGraphicsPixmapItem *cardItem = new QGraphicsPixmapItem(cardContainer);
+
+        QPixmap cardPixmap(cardWidth, cardHeight);
+        cardPixmap.fill(Qt::transparent);
+        QPainter painter(&cardPixmap);
+        painter.setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
+
+        painter.drawPixmap(G_COMMON_LAYOUT.m_cardMainArea, G_ROOM_SKIN.getCardMainPixmap(card->objectName()));
+        painter.drawPixmap(G_COMMON_LAYOUT.m_cardSuitArea, G_ROOM_SKIN.getCardSuitPixmap(card->getSuit()));
+        painter.drawPixmap(G_COMMON_LAYOUT.m_cardNumberArea, G_ROOM_SKIN.getCardNumberPixmap(card->getNumber(), card->isBlack()));
+        painter.end();
+
+        cardItem->setPixmap(cardPixmap);
+        cardItem->setPos(x, y);
+        cardItem->setToolTip(card->getDescription());
+
+        count++;
+        x += cardWidth + horizontalSpacing;
+        if (count % cardsPerRow == 0) {
+            x = startX;
+            y += cardHeight + verticalSpacing;
+        }
+    }
+
+    int unknown_count = qMax(0, total_handcard_num - known_cards.size());
+    for (int i = 0; i < unknown_count; i++) {
+        QGraphicsPixmapItem *cardItem = new QGraphicsPixmapItem(cardContainer);
+        QPixmap unknownPixmap = G_ROOM_SKIN.getCardMainPixmap("unknown");
+        cardItem->setPixmap(unknownPixmap.scaled(cardWidth, cardHeight, Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
+        cardItem->setPos(x, y);
+        cardItem->setToolTip(tr("Unknown Card"));
+
+        count++;
+        x += cardWidth + horizontalSpacing;
+        if (count % cardsPerRow == 0) {
+            x = startX;
+            y += cardHeight + verticalSpacing;
+        }
+    }
+
+    if (total_handcard_num == 0) {
+        QGraphicsTextItem *emptyText = new QGraphicsTextItem(cardContainer);
+        emptyText->setPlainText(tr("This player has no handcards"));
+        emptyText->setDefaultTextColor(Qt::white);
+        QFont font = Config.BigFont;
+        font.setPointSize(14);
+        emptyText->setFont(font);
+        emptyText->setPos(250, 160);
+    }
+
+    handcardWindow->addCloseButton(tr("Close"));
+    handcardWindow->appear();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

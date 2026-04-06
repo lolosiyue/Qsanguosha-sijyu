@@ -128,6 +128,7 @@ public:
     bool hasTip(const QString &tip, bool split = true) const;
 
     virtual void setTag(const QString &key, const QVariant &data) const;
+    virtual QVariant getTag(const QString &key, const QVariant &defaultValue = QVariant()) const;
     virtual void removeTag(const QString &key) const;
 
     virtual QString getPackage() const;

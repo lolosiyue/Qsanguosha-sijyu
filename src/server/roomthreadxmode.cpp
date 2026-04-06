@@ -63,13 +63,15 @@ void RoomThreadXMode::run()
     QStringList warm_backup, cool_backup;
     foreach (ServerPlayer *player, room->m_players) {
         if (player->getRole().startsWith("r")) {
-            player->tag["XModeLeader"] = QVariant::fromValue(cool_leader);
-            cool_backup.append(player->tag["XModeBackup"].toStringList());
-        } else {
-            player->tag["XModeLeader"] = QVariant::fromValue(warm_leader);
-            warm_backup.append(player->tag["XModeBackup"].toStringList());
+            // ­×¥¿¡G¨Ï¥Î setTag
+            player->setTag("XModeLeader", QVariant::fromValue(cool_leader));
+            cool_backup.append(player->getTag("XModeBackup").toStringList());
         }
-        player->tag.remove("XModeBackup");
+        else {
+            player->setTag("XModeLeader", QVariant::fromValue(warm_leader));
+            warm_backup.append(player->getTag("XModeBackup").toStringList());
+        }
+        player->removeTag("XModeBackup");
     }
     startArrange(QList<ServerPlayer *>() << warm_leader << cool_leader, QList<QStringList>() << warm_backup << cool_backup);
 }
@@ -111,17 +113,17 @@ void RoomThreadXMode::startArrange(QList<ServerPlayer *> players, QList<QStringL
     }
 }
 
-void RoomThreadXMode::arrange(ServerPlayer *player, QStringList arranged)
+void RoomThreadXMode::arrange(ServerPlayer* player, QStringList arranged)
 {
-    //Q_ASSERT(arranged.length() == 3);
     if (player->hasFlag("Global_XModeGeneralSelected")) {
         player->setFlags("-Global_XModeGeneralSelected");
-        player->tag["XModeBackup"] = arranged;
-    } else {
+        player->setTag("XModeBackup", QVariant::fromValue(arranged));
+    }
+    else {
         player->setGeneralName(arranged.first());
         player->setFlags("Global_XModeGeneralSelected");
-		arranged.removeAt(0);
-        player->tag["XModeBackup"] = arranged;
+        arranged.removeAt(0);
+        player->setTag("XModeBackup", QVariant::fromValue(arranged));
     }
 }
 

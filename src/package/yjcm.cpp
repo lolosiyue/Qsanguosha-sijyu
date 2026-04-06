@@ -149,10 +149,10 @@ public:
             if (use.card->getSkillNames().contains("jiushi"))
                 player->turnOver();
         } else if (triggerEvent == DamageDone) {
-            player->tag["PredamagedFace"] = !player->faceUp();
+            player->setTag("PredamagedFace", !player->faceUp());
         } else if (triggerEvent == DamageComplete) {
-            bool facedown = player->tag.value("PredamagedFace").toBool();
-            player->tag.remove("PredamagedFace");
+            bool facedown = player->getTag("PredamagedFace").toBool();
+            player->removeTag("PredamagedFace");
             if (facedown && !player->faceUp() && player->hasSkill("jiushi") && player->askForSkillInvoke("jiushi", data)) {
                 room->broadcastSkillInvoke("jiushi", 3);
                 player->turnOver();
@@ -313,9 +313,9 @@ public:
                     room->broadcastSkillInvoke(objectName(), 2);
                     const Card *card = nullptr;
                     if (!source->isKongcheng()) {
-                        source->tag["enyuan_data"] = data;
+                        source->setTag("enyuan_data", data);
                         card = room->askForExchange(source, objectName(), 1, 1, false, "EnyuanGive::" + player->objectName(), true);
-                        source->tag.remove("enyuan_data");
+                        source->removeTag("enyuan_data");
                     }
                     if (card) {
                         CardMoveReason reason(CardMoveReason::S_REASON_GIVE, source->objectName(),
@@ -543,7 +543,7 @@ void XianzhenCard::onEffect(CardEffectStruct &effect) const
 {
     Room *room = effect.from->getRoom();
     if (effect.from->pindian(effect.to, "xianzhen", nullptr)) {
-        effect.from->tag["XianzhenTarget"] = QVariant::fromValue(effect.to);
+        effect.from->setTag("XianzhenTarget", QVariant::fromValue(effect.to));
         room->setPlayerFlag(effect.from, "XianzhenSuccess");
         room->addPlayerMark(effect.from, effect.to->objectName()+"xianzhen-Clear");
         room->addPlayerMark(effect.to, "Armor_Nullified");
@@ -580,7 +580,7 @@ public:
 
     bool triggerable(const ServerPlayer *target) const
     {
-        return target != nullptr && target->tag["XianzhenTarget"].value<ServerPlayer *>() != nullptr;
+        return target != nullptr && target->getTag("XianzhenTarget").value<ServerPlayer *>() != nullptr;
     }
 
     bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *gaoshun, QVariant &data) const
@@ -589,13 +589,13 @@ public:
             PhaseChangeStruct change = data.value<PhaseChangeStruct>();
             if (change.to != Player::NotActive) return false;
         }
-        ServerPlayer *target = gaoshun->tag["XianzhenTarget"].value<ServerPlayer *>();
+        ServerPlayer *target = gaoshun->getTag("XianzhenTarget").value<ServerPlayer *>();
         if (triggerEvent == Death) {
             DeathStruct death = data.value<DeathStruct>();
             if (death.who != gaoshun) {
                 if (death.who == target) {
                     room->removeFixedDistance(gaoshun, target, 1);
-                    gaoshun->tag.remove("XianzhenTarget");
+                    gaoshun->removeTag("XianzhenTarget");
                     room->setPlayerFlag(gaoshun, "-XianzhenSuccess");
                 }
                 return false;
@@ -606,7 +606,7 @@ public:
             assignee_list.removeOne(target->objectName());
             room->setPlayerProperty(gaoshun, "extra_slash_specific_assignee", assignee_list.join("+"));
             room->removeFixedDistance(gaoshun, target, 1);
-            gaoshun->tag.remove("XianzhenTarget");
+            gaoshun->removeTag("XianzhenTarget");
             room->removePlayerMark(target, "Armor_Nullified");
         }
         return false;
@@ -1260,7 +1260,7 @@ bool OLSanyaoCard::targetFilter(const QList<const Player *> &targets, const Play
     if (!targets.isEmpty()) return false;
     QList<const Player *> players = Self->getAliveSiblings();
     players << Self;
-    QString choice = Self->tag["olsanyao"].toString();
+    QString choice = Self->getTag("olsanyao").toString();
     int max = -1000;
     if (choice == "hp") {
         foreach (const Player *p, players) {
@@ -1309,7 +1309,7 @@ public:
 
     const Card *viewAs(const Card *originalcard) const
     {
-        QString choice = Self->tag["olsanyao"].toString();
+        QString choice = Self->getTag("olsanyao").toString();
         OLSanyaoCard *first = new OLSanyaoCard;
         first->addSubcard(originalcard);
         first->setUserString(choice);

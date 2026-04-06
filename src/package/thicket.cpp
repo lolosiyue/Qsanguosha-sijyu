@@ -802,7 +802,7 @@ public:
     {
         CardUseStruct use = data.value<CardUseStruct>();
         if (use.card->isKindOf("Slash")) {
-            QVariantList jink_list = use.from->tag["Jink_" + use.card->toString()].toList();
+            QVariantList jink_list = use.from->getTag("Jink_" + use.card->toString()).toList();
             int index = 0;
             bool play_effect = false;
             if (triggerEvent == TargetSpecified) {
@@ -814,7 +814,7 @@ public:
                     }
                     index++;
                 }
-                use.from->tag["Jink_" + use.card->toString()] = jink_list;
+                use.from->setTag("Jink_" + use.card->toString(), jink_list);
                 if (play_effect) {
                     index = (qrand() % 2)+1;
                     if (use.from->isJieGeneral()) index += 2;
@@ -831,10 +831,10 @@ public:
                     }
                     index++;
                 }
-                use.from->tag["Jink_" + use.card->toString()] = jink_list;
+                use.from->setTag("Jink_" + use.card->toString(), jink_list);
 
                 if (play_effect) {
-                    //bool drunk = (use.card->tag.value("drunk", 0).toInt() > 0);
+                    //bool drunk = (use.card->getTag("drunk", 0).toInt() > 0);
                     index = (qrand() % 2)+1;
                     if (player->isJieGeneral()) index += 2;
                     room->broadcastSkillInvoke(objectName(), index);

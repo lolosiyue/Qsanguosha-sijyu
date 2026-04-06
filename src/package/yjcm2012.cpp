@@ -151,7 +151,7 @@ public:
 
     const Card *viewAs(const QList<const Card *> &) const
     {
-        const Card *c = Self->tag.value("qice").value<const Card *>();
+        const Card *c = Self->getTag("qice").value<const Card *>();
         if (c) {
             QiceCard *card = new QiceCard;
             card->setUserString(c->objectName());
@@ -324,7 +324,7 @@ public:
             if (judge->reason != objectName() || !target->isAlive()) return false;
 
             QString color = judge->card->isRed() ? "red" : "black";
-            target->tag[objectName()] = QVariant::fromValue(color);
+            target->setTag(objectName(), QVariant::fromValue(color));
             judge->pattern = color;
         }
         return false;
@@ -341,7 +341,7 @@ public:
 
     bool triggerable(const ServerPlayer *target) const
     {
-        return !target->tag["qianxi"].toString().isEmpty();
+        return !target->getTag("qianxi").toString().isEmpty();
     }
 
     bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
@@ -356,7 +356,7 @@ public:
                 return false;
         }
 
-        QString color = player->tag["qianxi"].toString();
+        QString color = player->getTag("qianxi").toString();
         foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
             if (p->hasFlag("QianxiTarget")) {
                 room->removePlayerCardLimitation(p, "use,response", QString(".|%1|.|hand$0").arg(color));
@@ -690,7 +690,7 @@ void JiefanCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &ta
 {
     room->removePlayerMark(source, "@rescue");
     ServerPlayer *target = targets.first();
-    source->tag["JiefanTarget"] = QVariant::fromValue(target);
+    source->setTag("JiefanTarget", QVariant::fromValue(target));
     room->broadcastSkillInvoke("jiefan");
     //room->doLightbox("$JiefanAnimate", 2500);
     room->doSuperLightbox(source, "jiefan");
@@ -699,15 +699,15 @@ void JiefanCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &ta
         if (player->isAlive() && player->inMyAttackRange(target))
             room->cardEffect(this, source, player);
     }
-    source->tag.remove("JiefanTarget");
+    source->removeTag("JiefanTarget");
 }
 
 void JiefanCard::onEffect(CardEffectStruct &effect) const
 {
     Room *room = effect.to->getRoom();
 
-    ServerPlayer *target = effect.from->tag["JiefanTarget"].value<ServerPlayer *>();
-    QVariant data = effect.from->tag["JiefanTarget"];
+    ServerPlayer *target = effect.from->getTag("JiefanTarget").value<ServerPlayer *>();
+    QVariant data = effect.from->getTag("JiefanTarget");
     if (target && !room->askForCard(effect.to, ".Weapon", "@jiefan-discard::" + target->objectName(), data))
         target->drawCards(1, "jiefan");
 }
@@ -878,9 +878,9 @@ public:
         if (triggerEvent == DamageDone) {
             DamageStruct damage = data.value<DamageStruct>();
             if (damage.card && damage.card->isKindOf("Slash") && damage.card->getSkillNames().contains(objectName())) {
-                QVariantList slash_list = damage.from->tag["InvokeLihuo"].toList();
+                QVariantList slash_list = damage.from->getTag("InvokeLihuo").toList();
                 slash_list << QVariant::fromValue(damage.card);
-                damage.from->tag["InvokeLihuo"] = slash_list;
+                damage.from->setTag("InvokeLihuo", slash_list);
             }
         } else if (triggerEvent == ChangeSlash) {
             if (!TriggerSkill::triggerable(player)) return false;
@@ -919,12 +919,12 @@ public:
                 return false;
 
             bool can_invoke = false;
-            QVariantList slash_list = use.from->tag["InvokeLihuo"].toList();
+            QVariantList slash_list = use.from->getTag("InvokeLihuo").toList();
             foreach (QVariant card, slash_list) {
                 if (card.value<const Card *>() == use.card) {
                     can_invoke = true;
                     slash_list.removeOne(card);
-                    use.from->tag["InvokeLihuo"] = QVariant::fromValue(slash_list);
+                    use.from->setTag("InvokeLihuo", QVariant::fromValue(slash_list));
                     break;
                 }
             }
@@ -1598,7 +1598,7 @@ public:
 
             ServerPlayer *victim = room->askForPlayerChosen(target, to_choose, objectName());
             QString pattern = QString(".|%1|.|hand$0").arg(color);
-            target->tag[objectName()] = QVariant::fromValue(color);
+            target->setTag(objectName(), QVariant::fromValue(color));
 
             room->setPlayerFlag(victim, "OlQianxiTarget");
             room->addPlayerMark(victim, QString("@qianxi_%1").arg(color));
@@ -1624,7 +1624,7 @@ public:
 
     bool triggerable(const ServerPlayer *target) const
     {
-        return !target->tag["olqianxi"].toString().isEmpty();
+        return !target->getTag("olqianxi").toString().isEmpty();
     }
 
     bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
@@ -1639,7 +1639,7 @@ public:
                 return false;
         }
 
-        QString color = player->tag["olqianxi"].toString();
+        QString color = player->getTag("olqianxi").toString();
         foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
             if (p->hasFlag("OlQianxiTarget")) {
                 room->removePlayerCardLimitation(p, "use,response", QString(".|%1|.|hand$0").arg(color));

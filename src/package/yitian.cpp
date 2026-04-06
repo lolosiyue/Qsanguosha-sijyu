@@ -783,7 +783,7 @@ public:
 		if (xuandi == nullptr)
 			return false;
 
-		QString wuling = xuandi->tag.value("wuling").toString();
+		QString wuling = xuandi->getTag("wuling").toString();
 		if(event==PreHpRecover){
 			RecoverStruct rec = data.value<RecoverStruct>();
 			if (rec.card && rec.card->isKindOf("Peach") && wuling == "water") {
@@ -861,7 +861,7 @@ public:
 		}
 
 		if (xuandi->getPhase() == Player::Start) {
-			QString current = xuandi->tag.value("wuling").toString();
+			QString current = xuandi->getTag("wuling").toString();
 			QStringList choices;
 			foreach (QString effect, effects) {
 				if (effect != current)
@@ -873,7 +873,7 @@ public:
 				xuandi->loseMark("@" + current);
 
 			xuandi->gainMark("@" + choice);
-			xuandi->tag["wuling"] = choice;
+			xuandi->setTag("wuling", choice);
 
 			room->broadcastSkillInvoke(objectName(), effects.indexOf(choice) + 1);
 		}
@@ -976,11 +976,11 @@ public:
 				if (judge.isBad())
 					break;
 			}
-			if (canRetrial && caizhaoji->tag.contains(objectName())) {
-				DummyCard *dummy = new DummyCard(ListV2I(caizhaoji->tag[objectName()].toList()));
+			if (canRetrial && caizhaoji->getTag(objectName()).isValid()) {
+				DummyCard *dummy = new DummyCard(ListV2I(caizhaoji->getTag(objectName()).toList()));
 				if (dummy->subcardsLength() > 0)
 					caizhaoji->obtainCard(dummy);
-				caizhaoji->tag.remove(objectName());
+				caizhaoji->removeTag(objectName());
 				delete dummy;
 			}
 		} else if (triggerEvent == FinishJudge) {
@@ -992,19 +992,19 @@ public:
 						if (canRetrial) {
 							CardMoveReason reason(CardMoveReason::S_REASON_JUDGEDONE, caizhaoji->objectName(), "", judge->reason);
 							room->moveCardTo(judge->card, caizhaoji, nullptr, Player::PlaceTable, reason, true);
-							QVariantList luoshen_list = caizhaoji->tag[objectName()].toList();
+							QVariantList luoshen_list = caizhaoji->getTag(objectName()).toList();
 							luoshen_list << judge->card->getEffectiveId();
-							caizhaoji->tag[objectName()] = luoshen_list;
+							caizhaoji->setTag(objectName(), luoshen_list);
 						} else {
 							caizhaoji->obtainCard(judge->card);
 						}
 					}
 				} else {
 					if (canRetrial) {
-						DummyCard *dummy = new DummyCard(ListV2I(caizhaoji->tag[objectName()].toList()));
+						DummyCard *dummy = new DummyCard(ListV2I(caizhaoji->getTag(objectName()).toList()));
 						if (dummy->subcardsLength() > 0)
 							caizhaoji->obtainCard(dummy);
-						caizhaoji->tag.remove(objectName());
+						caizhaoji->removeTag(objectName());
 						delete dummy;
 					}
 				}
@@ -1116,7 +1116,7 @@ public:
 					log.arg = objectName();
 					room->sendLog(log);
 
-					damage.from->tag["ShaoyingTarget"] = QVariant::fromValue(target);
+					damage.from->setTag("ShaoyingTarget", QVariant::fromValue(target));
 				}
 			}
 
@@ -1124,8 +1124,8 @@ public:
 		} else if (triggerEvent == DamageComplete) {
 			if (damage.from == nullptr)
 				return false;
-			ServerPlayer * target = damage.from->tag.value("ShaoyingTarget", QVariant()).value<ServerPlayer *>();
-			damage.from->tag.remove("ShaoyingTarget");
+			ServerPlayer * target = damage.from->getTag("ShaoyingTarget", QVariant()).value<ServerPlayer *>();
+			damage.from->removeTag("ShaoyingTarget");
 			if (!target || !damage.from || damage.from->isDead())
 				return false;
 
@@ -1423,7 +1423,7 @@ void XunzhiCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) 
 	}
 
 	QString general = room->askForGeneral(source, shu_generals);
-	source->tag["newgeneral"] = general;
+	source->setTag("newgeneral", general);
 	bool isSecondaryHero = (source->getGeneralName() != "jiangboyue");
 	room->changeHero(source, general, false, true, isSecondaryHero);
 	room->acquireSkill(source, "xunzhi", false);
@@ -1462,7 +1462,7 @@ public:
 		PhaseChangeStruct change = data.value<PhaseChangeStruct>();
 		if (change.to != Player::NotActive) return false;
 		if (target->hasFlag("xunzhi")) {
-			bool isSecondaryHero = !(target->getGeneralName() == target->tag.value("newgeneral", "").toString());
+			bool isSecondaryHero = !(target->getGeneralName() == target->getTag("newgeneral", "").toString());
 			room->changeHero(target, parent()->objectName(), false, false, isSecondaryHero);
 			room->killPlayer(target);
 		}

@@ -159,6 +159,7 @@ public:
     bool hasLordSkill(const QString &skill_name, bool include_lose = false) const;
     bool hasLordSkill(const Skill *skill, bool include_lose = false) const;
     virtual QString getGameMode() const = 0;
+    bool isClientPlayer() const;
 
     void setEquip(const Card *equip);
     void removeEquip(const Card *equip);
@@ -335,7 +336,10 @@ public:
     void setSkillDescriptionSwap(const QString &skill_name, const QString &key, const QString &value);
     QHash<QString, QString> getSkillDescriptionSwap(const QString &skill_name) const;
 
-    QVariantMap tag;
+    void setTag(const QString &key, const QVariant &value);
+    QVariant getTag(const QString &key, const QVariant &defaultValue = QVariant()) const;
+    void removeTag(const QString &key);
+
     bool setProperty(const char* name, const QVariant& value);
 
     static bool isNostalGeneral(const Player *p, const QString &general_name);
@@ -352,6 +356,7 @@ protected:
     QHash<QString, int> history;
     QSet<QString> flags;
     QMap<QString, QHash<QString, QString> > description_s2k2v;
+    QVariantMap tag;
 
 private:
     QString screen_name;

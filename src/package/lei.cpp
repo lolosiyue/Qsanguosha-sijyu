@@ -821,17 +821,17 @@ public:
         if (triggerEvent == CardsMoveOneTime) {
             CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
             if (move.from && move.from == player && (move.reason.m_reason & CardMoveReason::S_MASK_BASIC_REASON) == CardMoveReason::S_REASON_DISCARD) {
-                QVariantList discard_list = player->tag["leiweidi_ids"].toList();
+                QVariantList discard_list = player->getTag("leiweidi_ids").toList();
                 foreach (int id, move.card_ids) {
                     if (discard_list.contains(QVariant(id))) continue;
                     discard_list << id;
                 }
-                player->tag["leiweidi_ids"] = discard_list;
+                player->setTag("leiweidi_ids", discard_list);
             }
         } else {
             if (player->getPhase() != Player::Discard) return false;
-            QVariantList discard_list = player->tag["leiweidi_ids"].toList();
-            player->tag.remove("leiweidi_ids");
+            QVariantList discard_list = player->getTag("leiweidi_ids").toList();
+            player->removeTag("leiweidi_ids");
             QList<ServerPlayer *> quns;
             foreach(ServerPlayer *p, room->getOtherPlayers(player)) {
                 if (p->getKingdom() == "qun")
@@ -1488,10 +1488,10 @@ public:
             room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
         }
 
-        QStringList geters = damage.to->tag["duorui_geters"].toStringList();
+        QStringList geters = damage.to->getTag("duorui_geters").toStringList();
         if (!geters.contains(player->objectName())) {
             geters << player->objectName();
-            damage.to->tag["duorui_geters"] = geters;
+            damage.to->setTag("duorui_geters", geters);
         }
         if (get_skills.contains(skill)) return false;
         if (!player->hasSkill(skill, true)) {
@@ -1540,7 +1540,7 @@ public:
         args << QSanProtocol::S_GAME_EVENT_UPDATE_SKILL;
         room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
 
-        QStringList geters = player->tag["duorui_geters"].toStringList();
+        QStringList geters = player->getTag("duorui_geters").toStringList();
         foreach (QString name, geters) {
             ServerPlayer *p = room->findChild<ServerPlayer *>(name);
             if (!p || p->isDead()) continue;
