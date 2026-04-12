@@ -21,6 +21,24 @@
 import QtQuick 2.12
 
 Item {
+    function resolveAnimateImageSource(heroSpec) {
+        var spec = heroSpec ? String(heroSpec) : ""
+        var arr = spec.split(":")
+        var token = arr.length > 1 ? arr.slice(1).join(":") : spec
+
+        if (!token) return ""
+
+        var lower = token.toLowerCase()
+        var hasExt = lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".webp")
+        if (token.indexOf("/") >= 0 || hasExt) {
+            if (token.startsWith("../")) return token
+            if (token.startsWith("image/")) return "../" + token
+            return token
+        }
+
+        return "../image/animate/" + token + ".png"
+    }
+
     Rectangle {
         id: mask
         x: 0
@@ -37,7 +55,7 @@ Item {
         x: sceneWidth
         y: sceneHeight*0.17
         fillMode: Image.PreserveAspectFit
-        source: "../image/animate/" + hero.split(":")[1] + ".png"
+        source: resolveAnimateImageSource(hero)
         scale: 0.7
         z: 2
     }
@@ -50,7 +68,7 @@ Item {
         opacity: 0
         Image {
             fillMode: Image.PreserveAspectFit
-            source: "../image/animate/" + hero.split(":")[1] + ".png"
+			source: resolveAnimateImageSource(hero)
 			scale: 2
             opacity: 0.5
 			z: 1
