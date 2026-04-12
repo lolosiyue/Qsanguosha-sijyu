@@ -42,9 +42,8 @@ ServerPlayer::~ServerPlayer()
 
 void ServerPlayer::setTag(const QString &key, const QVariant &value)
 {
-	if (tag.value(key) == value) {
-        return; 
-    }
+	if (!tag.contains(key) && !value.isValid()) return;
+	if (tag.contains(key) && tag.value(key) == value) return;
 	Player::setTag(key, value);
 	if (!room) return;
 

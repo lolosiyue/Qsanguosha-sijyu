@@ -2550,7 +2550,13 @@ void Room::changeHero(ServerPlayer*player, const QString&new_general, bool full_
 	doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, arg);
 
 	QString old_kingdom = player->getKingdom();
-	if (isSecondaryHero) changePlayerGeneral2(player, new_general);
+	const bool had_secondary_hero = (player->getGeneral2() != nullptr);
+	if (isSecondaryHero) {
+		changePlayerGeneral2(player, new_general);
+		// Ensure client avatar refresh when converting from single-general to dual-general.
+		if (!had_secondary_hero)
+			broadcastProperty(player, "general2");
+	}
 	else changePlayerGeneral(player, new_general);
 
 	int maxhp = player->getGeneralMaxHp();
