@@ -675,6 +675,14 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		const General*hero = Sanguosha->getGeneral(newHeroName);
 		if(hero==nullptr) break;
 		ClientPlayer*player = ClientInstance->getPlayer(playerName);
+		PlayerCardContainer *container = qobject_cast<PlayerCardContainer *>(
+			_getGenericCardContainer(Player::PlaceHand, player));
+		if (container) {
+			if (isSecondaryHero || player->getGeneral2())
+				container->updateSmallAvatar();
+			else
+				container->updateAvatar();
+		}
 		if(sendLog){
 			QString arg2,type = "#Transfigure";
 			if(player->getGeneral2()||isSecondaryHero){

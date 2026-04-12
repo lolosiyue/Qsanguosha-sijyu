@@ -190,6 +190,7 @@ QPixmap PlayerCardContainer::_getAvatarIcon(const QString &heroName)
 
 void PlayerCardContainer::updateAvatar()
 {
+    _allZAdjusted = false;
     if (_m_avatarIcon == nullptr) {
         _m_avatarIcon = new GraphicsPixmapHoverItem(this, _getAvatarParent());
         _m_avatarIcon->setTransformationMode(Qt::SmoothTransformation);
@@ -249,7 +250,7 @@ void PlayerCardContainer::updateSmallAvatar()
     if (_m_smallAvatarIcon == nullptr) {
         _m_smallAvatarIcon = new GraphicsPixmapHoverItem(this, _getAvatarParent());
         _m_smallAvatarIcon->setTransformationMode(Qt::SmoothTransformation);
-        _m_smallAvatarIcon->setFlag(QGraphicsItem::ItemStacksBehindParent);
+        _m_smallAvatarIcon->setFlag(QGraphicsItem::ItemStacksBehindParent, false);
     }
 
     QString name;
@@ -271,6 +272,7 @@ void PlayerCardContainer::updateSmallAvatar()
         _m_layout->m_smallAvatarNameFont.paintText(_m_smallAvatarNameItem, _m_layout->m_smallAvatarNameArea, Qt::AlignLeft | Qt::AlignJustify, name);
         _m_smallAvatarIcon->show();
     }
+    _allZAdjusted = false;
     _adjustComponentZValues();
 }
 
@@ -488,6 +490,7 @@ void PlayerCardContainer::updateDrankState()
 
 void PlayerCardContainer::updateDuanchang()
 {
+        _allZAdjusted = false;
     return;
 }
 
@@ -1190,7 +1193,7 @@ QList<CardItem *> PlayerCardContainer::removeEquips(const QList<int> &cardIds)
 			_m_equipCards[index]->setHomeOpacity(0.0);
 			result.append(_m_equipCards[index]);
 			_mutexEquipAnim.lock();
-			_m_equipAnim[index]->stop();
+        _allZAdjusted = false;
 			_m_equipAnim[index]->clear();
 			
 			QPropertyAnimation *anim = new QPropertyAnimation(_m_equipRegions[index], "pos");
@@ -1415,9 +1418,8 @@ void PlayerCardContainer::_adjustComponentZValues(bool killed)
     // all components use negative zvalues to ensure that no other generated
     // cards can be under us.
 
-    // layout
-    //if (!_startLaying()) return;
-    if (_allZAdjusted) return;
+    // Always recompute because avatar composition can change at runtime
+    // (e.g. changeHero adds/removes secondary hero).
     _allZAdjusted = true;
     _lastZ = -1;
 
@@ -1445,7 +1447,7 @@ void PlayerCardContainer::_adjustComponentZValues(bool killed)
     _layUnder(_m_kingdomIcon);
     _layUnder(_m_kingdomColorMaskIcon);
     _layUnder(_m_screenNameItem);
-    for (int i = S_EQUIP_AREA_LENGTH; i > 0; i--)
+    for (int i = S_EQUIP_AREA_LENGTH - 1; i >= 0; i--)
         _layUnder(_m_equipRegions[i]);
     _layUnder(_m_selectedFrame);
     _layUnder(_m_extraSkillText);
@@ -1461,8 +1463,8 @@ void PlayerCardContainer::_adjustComponentZValues(bool killed)
         _layUnder(_m_huashenItem);
     if (second_zuoci)
         _layUnder(_m_smallAvatarIcon);
-    _layUnder(_m_dynamicBgItem);
     _layUnder(_m_avatarIcon);
+    _layUnder(_m_dynamicBgItem);
 }
 
 void PlayerCardContainer::updateRole(const QString &role)
@@ -1707,7 +1709,7 @@ void PlayerCardContainer::updateScreenName(const QString &screenName)
     if (_m_screenNameItem){
 		_m_screenNameItem->setVisible(Self != m_player);
         _m_layout->m_screenNameFont.paintText(_m_screenNameItem, _m_layout->m_screenNameArea, Qt::AlignCenter, screenName);
-	}
+    }
 }
 
 void PlayerCardContainer::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
@@ -1899,6 +1901,7 @@ void PlayerCardContainer::setDynamicBackground(const QString &imagePath)
     if (!_m_dynamicBgItem) {
         _m_dynamicBgItem = new QGraphicsPixmapItem(parent);
         _m_dynamicBgItem->setTransformationMode(Qt::SmoothTransformation);
+        _m_dynamicBgItem->setFlag(QGraphicsItem::ItemStacksBehindParent);
     }
 
     // Scale the pixmap to fit the avatar area
