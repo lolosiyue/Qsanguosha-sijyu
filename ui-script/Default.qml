@@ -21,6 +21,24 @@
 import QtQuick 2.12
 
 Item {
+    function resolveFullskinImageSource(heroSpec) {
+        var spec = heroSpec ? String(heroSpec) : ""
+        var arr = spec.split(":")
+        var token = arr.length > 1 ? arr.slice(1).join(":") : spec
+
+        if (!token) return ""
+
+        var lower = token.toLowerCase()
+        var hasExt = lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".webp")
+        if (token.indexOf("/") >= 0 || hasExt) {
+            if (token.startsWith("../")) return token
+            if (token.startsWith("image/")) return "../" + token
+            return token
+        }
+
+        return "../image/fullskin/generals/full/" + token + ".jpg"
+    }
+
     Rectangle {
         id:mask
         x:0
@@ -36,7 +54,7 @@ Item {
 		x:sceneWidth
 		y:sceneHeight*0.35
 		fillMode:Image.PreserveAspectFit
-		source:"../image/fullskin/generals/full/"+hero
+        source:resolveFullskinImageSource(hero)
 		opacity:0.6
 		scale:0.8
 		z:1
@@ -51,7 +69,7 @@ Item {
         Image {
 			y:sceneHeight*0.073
             fillMode:Image.PreserveAspectFit
-            source:"../image/fullskin/generals/full/"+hero
+            source:resolveFullskinImageSource(hero)
             scale:1.4
         }
         Image {
