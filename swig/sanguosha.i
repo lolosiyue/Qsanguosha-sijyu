@@ -204,6 +204,22 @@ public:
 	QList<int> getEquipsId() const;
 	const EquipCard*getEquip(int index) const;
 
+	QList<const EquipCard *> getWeapons() const;
+	QList<const EquipCard *> getArmors() const;
+	QList<const EquipCard *> getDefensiveHorses() const;
+	QList<const EquipCard *> getOffensiveHorses() const;
+	QList<const EquipCard *> getTreasures() const;
+	bool hasWeapons() const;
+	bool hasArmors() const;
+	bool hasDefensiveHorses() const;
+	bool hasOffensiveHorses() const;
+	bool hasTreasures() const;
+	int getWeaponsCount() const;
+	int getArmorsCount() const;
+	int getDefensiveHorsesCount() const;
+	int getOffensiveHorsesCount() const;
+	int getTreasuresCount() const;
+
 	bool viewAsEquip(const char*equip_name) const;
 	bool hasWeapon(const char*weapon_name, bool need_area = true) const;
 	bool hasArmorEffect(const char*armor_name, bool need_area = true) const;
@@ -266,6 +282,7 @@ public:
 
 	bool hasEquipArea(int i) const;
 	bool hasEquipArea() const;
+	QList<int> getEquipRealSlots(int card_id) const;
 	void setEquipArea(int i, bool flag);
 	void addEquipArea(int i);
 	int getEquipArea(int i = -1);
@@ -1329,6 +1346,10 @@ public:
 	bool isGeneralHidden(const char*general_name) const;
 	
 	QString removeNumberInQString(const char*str) const;
+
+	// Resource Alias System
+	void addResourceAlias(const char*category, const char*original, const char*alias);
+	QString getResourceAlias(const char*category, const char*original) const;
 };
 
 extern Engine*Sanguosha;
@@ -1695,7 +1716,7 @@ public:
 	bool changeBGM(const char*bgm_name, bool reset = false, QList<ServerPlayer*> to_assign = QList<ServerPlayer*>());
 	void playAudioEffect(const char*filename, bool superpose = true);
 
-	void addMaxCards(ServerPlayer*player, int num, bool one_turn = true);
+	void addMaxCards(ServerPlayer*player, int num, bool one_turn = false, const QString& reason = "", ServerPlayer* source = nullptr);
 	void addAttackRange(ServerPlayer*player, int num, bool one_turn = true);
 	void addSlashCishu(ServerPlayer*player, int num, bool one_turn = true);
 	void addSlashJuli(ServerPlayer*player, int num, bool one_turn = true);
@@ -1708,6 +1729,7 @@ public:
 						QList<ServerPlayer*> tos = QList<ServerPlayer*>());
 	bool moveField(ServerPlayer*player, const char*reason, bool optional = false, const char*flags = "ej", QList<ServerPlayer*> froms = QList<ServerPlayer*>(),
 					QList<ServerPlayer*> tos = QList<ServerPlayer*>());
+	void swapEquips(ServerPlayer*first, ServerPlayer*second, const char*skill_name = "");
 	void changeTranslation(ServerPlayer*player, const char*skill_name, const char*new_translation, int num = 0);
 	void changeTranslation(ServerPlayer*player, const char*skill_name, int num = 1);
 	int getChangeSkillState(ServerPlayer*player, const char*skill_name);

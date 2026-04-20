@@ -30183,6 +30183,91 @@ public:
 	}
 };
 
+QiexieWeapon::QiexieWeapon(Card::Suit suit, int number)
+    : Weapon(suit, number, 1)
+{
+}
+
+void QiexieWeapon::onInstall(ServerPlayer *player) const
+{
+    Weapon::onInstall(player);
+
+    Room *room = player->getRoom();
+    QString weapon_name = objectName();
+    QString tag_key = weapon_name;
+
+    QVariantMap weapon_data = room->getTag(tag_key).toMap();
+
+    if (weapon_data.isEmpty()) {
+        return;
+    }
+
+    int range = weapon_data["range"].toInt();
+    const_cast<QiexieWeapon *>(this)->setRange(range);
+    const_cast<QiexieWeapon *>(this)->setSkillName("qiexie");
+
+    QStringList skills = weapon_data["skills"].toStringList();
+    QString general_name = weapon_data["general"].toString();
+
+    Weapon *w = Sanguosha->findChild<Weapon*>(weapon_name);
+    if (w) w->setRange(range);
+
+    QString skill_names_str;
+    QString skill_descs_str;
+
+    foreach (const QString &skill_name, skills) {
+        if (!skill_names_str.isEmpty()) {
+            skill_names_str += "|";
+            skill_descs_str += "|";
+        }
+        skill_names_str += skill_name;
+        skill_descs_str += ":" + skill_name;
+    }
+
+    QVariantMap placeholders;
+    placeholders["%src"] = QString::number(range);
+    placeholders["%skill_name%"] = skill_names_str;
+    placeholders["%skill_desc%"] = skill_descs_str;
+    placeholders["%general_name%"] = general_name;
+    room->updateCardDescription(weapon_name, placeholders);
+
+    foreach (const QString &skill_name, skills) {
+        room->acquireSkill(player, skill_name);
+    }
+
+    int weapon_id = getEffectiveId();
+    QString player_tag_key = QString("qiexie_equipped_skills_%1").arg(weapon_id);
+    player->setTag(player_tag_key, skills);
+}
+
+void QiexieWeapon::onUninstall(ServerPlayer *player) const
+{
+    Room *room = player->getRoom();
+
+    QString weapon_name = objectName();
+    int weapon_id = getEffectiveId();
+
+    QString player_tag_key = QString("qiexie_equipped_skills_%1").arg(weapon_id);
+    QStringList equipped_skills = player->getTag(player_tag_key).toStringList();
+
+    if (!equipped_skills.isEmpty()) {
+        foreach (const QString &skill_name, equipped_skills) {
+            room->detachSkillFromPlayer(player, skill_name);
+        }
+        player->setTag(player_tag_key, QVariant());
+    } else {
+        QVariantMap weapon_data = room->getTag(weapon_name).toMap();
+        if (!weapon_data.isEmpty()) {
+            QStringList skills = weapon_data["skills"].toStringList();
+            foreach (const QString &skill_name, skills) {
+                room->detachSkillFromPlayer(player, skill_name);
+            }
+        }
+    }
+
+    Weapon::onUninstall(player);
+}
+
 class Qixian : public MaxCardsSkill
 {
 public:
@@ -30198,82 +30283,21 @@ public:
 	}
 };
 
-class Juanjia : public TriggerSkill
+class Juanjia : public GameStartSkill
 {
 public:
-	Juanjia() : TriggerSkill("juanjia")
-	{
-		events << GameStart;
-		frequency = Compulsory;
-	}
-	bool trigger(TriggerEvent, Room*room, ServerPlayer*player, QVariant &) const
-	{
-		room->sendCompulsoryTriggerLog(player,this);
-		player->throwEquipArea(1);
-		player->addEquipArea(0);
-		return false;
-	}
-};
+    Juanjia() : GameStartSkill("juanjia")
+    {
+        frequency = Compulsory;
+    }
 
-class Moxie : public TriggerSkill
-{
-public:
-	Moxie() : TriggerSkill("moxie")
-	{
-		events << EventPhaseStart;
-		frequency = Compulsory;
-	}
-	bool trigger(TriggerEvent, Room*room, ServerPlayer*player, QVariant &) const
-	{
-		if(player->getPhase()==Player::Start){
-			int n = player->getEquipArea(0)-player->getEquips(0).length();
-			if (n>0){
-				room->sendCompulsoryTriggerLog(player,this);
-				QStringList choices,gns = Sanguosha->getLimitedGeneralNames();
-				foreach(ServerPlayer*p, room->getAlivePlayers()){
-					gns.removeOne(p->getGeneralName());
-					gns.removeOne(p->getGeneral2Name());
-				}
-				qShuffle(gns);
-				foreach(QString gn, gns){
-					foreach(const Skill*s, Sanguosha->getGeneral(gn)->getVisibleSkillList()){
-						if(s->isLordSkill()||s->isChangeSkill()||s->isHideSkill()||s->isShiMingSkill()) continue;
-						if(s->getFrequency()<=Compulsory&&s->getDescription().contains("【杀】")){
-							choices << gn;
-							break;
-						}
-					}
-					if(choices.length()>=5) break;
-				}
-				gns.clear();
-				gns << "__zhuobang" << "__youbi" << "cancel";
-				for (int i = 0; i < n; i++) {
-					if(choices.isEmpty()||player->isDead()) break;
-					QString gn = room->askForGeneral(player,choices);
-					foreach(const Card*c, player->getEquips(0)){
-						gns.removeOne(c->objectName());
-					}
-					choices.removeOne(gn);
-					QString en = room->askForChoice(player,objectName(),gns.join("+"));
-					if(en=="cancel") break;
-					int id = player->getDerivativeCard(en,Player::PlaceTable);
-					if(id>0){
-						foreach(const Skill*s, Sanguosha->getGeneral(gn)->getVisibleSkillList()){
-							if(s->isLordSkill()||s->isChangeSkill()||s->isHideSkill()||s->isShiMingSkill()) continue;
-							if(s->getFrequency()<=Compulsory&&s->getDescription().contains("【杀】")){
-								room->setPlayerProperty(player,(en+"Skill").toStdString().c_str(),s->objectName());
-								room->setPlayerProperty(player,"pingjian_triggerskill",s->objectName());
-								break;
-							}
-						}
-						room->setPlayerProperty(player,(en+"Range").toStdString().c_str(),Sanguosha->getGeneral(gn)->getMaxHp());
-						room->moveCardTo(Sanguosha->getEngineCard(id),player,Player::PlaceEquip,true);
-					}
-				}
-			}
-		}
-		return false;
-	}
+    void onGameStart(ServerPlayer *player) const
+    {
+        Room *room = player->getRoom();
+        room->sendCompulsoryTriggerLog(player, this);
+        player->throwEquipArea(1);
+        player->addEquipArea(0);
+    }
 };
 
 CuijueCard::CuijueCard()
@@ -30320,16 +30344,158 @@ public:
 		return dc;
 	}
 
-	bool isEnabledAtPlay(const Player*player) const
+bool isEnabledAtPlay(const Player*player) const
 	{
 		return player->usedTimes("CuijueCard")<1;
 	}
 };
 
+class Qiexie : public TriggerSkill
+{
+public:
+    Qiexie() : TriggerSkill("qiexie")
+    {
+        events << EventPhaseStart;
+        frequency = Compulsory;
+    }
 
+    bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const
+    {
+        if (player->getPhase() != Player::Start)
+            return false;
 
+        QList<const General *> all_generals = Sanguosha->findChildren<const General *>();
+        QStringList valid_generals;
 
+        foreach (const General *general, all_generals) {
+            if (general->isHidden() || general->isTotallyHidden())
+                continue;
 
+            QList<const Skill *> skills = general->getVisibleSkillList();
+            bool has_slash_skill = false;
+
+            foreach (const Skill *skill, skills) {
+                if (skill->getFrequency() == Skill::Wake) continue;
+                if (skill->getFrequency() == Skill::Limited) continue;
+                if (skill->isLordSkill()) continue;
+
+                QString desc = skill->getDescription();
+                if (desc.contains("【杀】")) {
+                    has_slash_skill = true;
+                    break;
+                }
+            }
+
+            if (has_slash_skill) {
+                valid_generals << general->objectName();
+            }
+        }
+
+        if (valid_generals.isEmpty())
+            return false;
+
+        QStringList selected;
+        for (int i = 0; i < 5 && !valid_generals.isEmpty(); ++i) {
+            int index = qrand() % valid_generals.size();
+            selected << valid_generals.at(index);
+            valid_generals.removeAt(index);
+        }
+
+        if (selected.isEmpty())
+            return false;
+
+        QVariantList weapon_ids_variant = player->getTag("qiexie_weapon_ids").toList();
+        QList<int> qiexie_weapon_ids;
+
+        if (weapon_ids_variant.isEmpty()) {
+            int weapon1_id = player->getDerivativeCard("_qiexie_weapon1", Player::PlaceTable);
+            int weapon2_id = player->getDerivativeCard("_qiexie_weapon2", Player::PlaceTable);
+
+            if (weapon1_id >= 0)
+                qiexie_weapon_ids << weapon1_id;
+            if (weapon2_id >= 0)
+                qiexie_weapon_ids << weapon2_id;
+
+            QVariantList ids_to_save;
+            foreach (int id, qiexie_weapon_ids)
+                ids_to_save << id;
+            player->setTag("qiexie_weapon_ids", ids_to_save);
+        } else {
+            foreach (const QVariant &v, weapon_ids_variant)
+                qiexie_weapon_ids << v.toInt();
+        }
+
+        foreach (int weapon_id, qiexie_weapon_ids) {
+            const Card *card = Sanguosha->getCard(weapon_id);
+            Player::Place current_place = room->getCardPlace(weapon_id);
+
+            if (current_place == Player::PlaceEquip) {
+                room->moveCardTo(card, player, NULL, Player::DiscardPile,
+                    CardMoveReason(CardMoveReason::S_REASON_PUT, player->objectName(), "qiexie", QString()));
+            }
+        }
+
+        foreach (int weapon_id, qiexie_weapon_ids) {
+            const Card *card = Sanguosha->getCard(weapon_id);
+            Player::Place current_place = room->getCardPlace(weapon_id);
+
+            if (current_place != Player::PlaceTable) {
+                room->moveCardTo(card, NULL, Player::PlaceTable,
+                    CardMoveReason(CardMoveReason::S_REASON_PUT, player->objectName(), "qiexie", QString()));
+            }
+        }
+
+        for (int i = 0; i < qiexie_weapon_ids.size(); ++i) {
+            if (selected.isEmpty())
+                break;
+
+            int weapon_id = qiexie_weapon_ids[i];
+            const Card *weapon_card = Sanguosha->getCard(weapon_id);
+            QString weapon_name = weapon_card->objectName();
+
+            QString choice = room->askForGeneral(player, selected.join("+"), QString(), "qiexie");
+            if (choice.isEmpty())
+                break;
+
+            selected.removeOne(choice);
+
+            const General *chosen_general = Sanguosha->getGeneral(choice);
+            if (!chosen_general)
+                continue;
+
+            QStringList weapon_skills;
+            foreach (const Skill *skill, chosen_general->getVisibleSkillList()) {
+                if (skill->getFrequency() == Skill::Wake) continue;
+                if (skill->getFrequency() == Skill::Limited) continue;
+                if (skill->isLordSkill()) continue;
+
+                QString desc = skill->getDescription();
+                if (desc.contains("【杀】")) {
+                    weapon_skills << skill->objectName();
+                }
+            }
+
+            if (weapon_skills.isEmpty())
+                continue;
+
+            int weapon_range = chosen_general->getMaxHp();
+            QString tag_key = weapon_name;
+
+            QVariantMap weapon_data;
+            weapon_data["range"] = weapon_range;
+            weapon_data["skills"] = weapon_skills;
+            weapon_data["general"] = choice;
+            room->setTag(tag_key, weapon_data);
+
+            CardUseStruct use;
+            use.card = weapon_card;
+            use.from = player;
+            room->useCard(use);
+        }
+
+        return false;
+    }
+};
 
 GodPackage::GodPackage()
 	: Package("ol_god")
@@ -30349,11 +30515,20 @@ GodPackage::GodPackage()
 	shenzhenji->addSkill(new Shenfu);
 	shenzhenji->addSkill(new Qixian);
 
-	/*General*shendianwei = new General(this, "shendianwei", "god");
+	General*shendianwei = new General(this, "shendianwei", "god");
 	shendianwei->addSkill(new Juanjia);
-	shendianwei->addSkill(new Moxie);
-	shendianwei->addSkill(new Cuijue);*/
+	shendianwei->addSkill(new Qiexie);
+	shendianwei->addSkill(new Cuijue);
 	addMetaObject<CuijueCard>();
+	addMetaObject<QiexieWeapon>();
+
+	QiexieWeapon *weapon1 = new QiexieWeapon(Card::NoSuit, 0);
+	weapon1->setObjectName("_qiexie_weapon1");
+	weapon1->setParent(this);
+
+	QiexieWeapon *weapon2 = new QiexieWeapon(Card::NoSuit, 0);
+	weapon2->setObjectName("_qiexie_weapon2");
+	weapon2->setParent(this);
 
 	skills << new Tianxing;
 }

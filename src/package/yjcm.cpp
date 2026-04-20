@@ -860,22 +860,8 @@ GanluCard::GanluCard()
 
 void GanluCard::swapEquip(ServerPlayer *first, ServerPlayer *second) const
 {
-    Room *room = first->getRoom();
-
-    QList<int> equips1, equips2;
-    foreach(const Card *equip, first->getEquips())
-        equips1.append(equip->getId());
-    foreach(const Card *equip, second->getEquips())
-        equips2.append(equip->getId());
-
-    QList<CardsMoveStruct> exchangeMove;
-    CardsMoveStruct move1(equips1, second, Player::PlaceEquip,
-        CardMoveReason(CardMoveReason::S_REASON_SWAP, first->objectName(), second->objectName(), "ganlu", ""));
-    CardsMoveStruct move2(equips2, first, Player::PlaceEquip,
-        CardMoveReason(CardMoveReason::S_REASON_SWAP, second->objectName(), first->objectName(), "ganlu", ""));
-    exchangeMove.push_back(move2);
-    exchangeMove.push_back(move1);
-    room->moveCardsAtomic(exchangeMove, false);
+	Room *room = first->getRoom();
+	room->swapEquips(first, second, "ganlu");
 }
 
 bool GanluCard::targetsFeasible(const QList<const Player *> &targets, const Player *) const

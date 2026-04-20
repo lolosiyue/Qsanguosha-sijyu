@@ -2510,12 +2510,31 @@ void Room::installEquip(ServerPlayer*player, const QString&equip_name)
 		QList<CardsMoveStruct> moves;
 		const Card*card = Sanguosha->getCard(card_id);
 		const EquipCard*equip = (const EquipCard*)card->getRealCard();
-		if(!player->hasEquipArea(equip->location())) return;
-		card = player->getEquip(equip->location());
-		if(card){
-			reason.m_reason = CardMoveReason::S_REASON_PUT;
-			moves << CardsMoveStruct(card->getEffectiveId(), nullptr, Player::DiscardPile, reason);
+		QList<int> occupy_slots = equip->getOccupyLocations();
+		foreach(int slot, occupy_slots){
+			if(!player->hasEquipArea(slot)) return;
 		}
+		QList<int> replaced_ids;
+        foreach(int slot, occupy_slots) {
+            QList<const Card*> slot_equips;
+            foreach(const Card* c, player->getEquips()) {
+                const EquipCard* e = qobject_cast<const EquipCard*>(c->getRealCard());
+                if (e && e->getOccupyLocations().contains(slot))
+                    slot_equips << c;
+            }
+
+            if (slot_equips.length() >= player->getEquipArea(slot)) {
+                foreach(const Card* c, slot_equips) {
+                    const EquipCard* e = qobject_cast<const EquipCard*>(c->getRealCard());
+                    if (!replaced_ids.contains(e->getEffectiveId())) {
+                        reason.m_reason = CardMoveReason::S_REASON_PUT;
+                        moves << CardsMoveStruct(e->getEffectiveId(), nullptr, Player::DiscardPile, reason);
+                        replaced_ids.append(e->getEffectiveId());
+                        break;
+                    }
+                }
+            }
+        }
 		moves << CardsMoveStruct(card_id, player, Player::PlaceEquip, reason);
 		moveCardsAtomic(moves, true);
 	}
@@ -5118,6 +5137,77 @@ void Room::moveCardsAtomic(QList<CardsMoveStruct> cards_moves, bool visible, boo
 	if(cards_moves.first().reason.m_skillName=="InitialHandCards"&&cards_moves.first().reason.m_reason==CardMoveReason::S_REASON_DRAW){
 		askForLuckCard(cards_moves);
 	}
+	
+	QList<int> selected_to_discard;
+	QList<int> processed_ids;
+	QList<CardsMoveStruct> invalidEquipMoves;
+	foreach(CardsMoveStruct move, cards_moves){
+		if (move.to_place == Player::PlaceEquip && move.to){
+			ServerPlayer *to_sp = (ServerPlayer *)move.to;
+			foreach(int id, move.card_ids){
+				if (processed_ids.contains(id)) continue;
+				const Card *c = Sanguosha->getCard(id);
+				const EquipCard *equip = qobject_cast<const EquipCard *>(c->getRealCard());
+				if (equip){
+					QList<int> occupyingSlots = equip->getOccupyLocations();
+					foreach(int slot, occupyingSlots){
+						if (!to_sp->hasEquipArea(slot)){
+							to_sp->removeCard(id, Player::PlaceEquip);
+							m_discardPile->prepend(id);
+							setCardMapping(id, nullptr, Player::DiscardPile);
+							invalidEquipMoves << CardsMoveStruct(id, nullptr, Player::DiscardPile,
+								CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP, to_sp->objectName(), QString(), "change equip"));
+							processed_ids.append(id);
+							break;
+						} else {
+							QList<const Card*> slot_equips;
+							foreach(const Card* ec, to_sp->getEquips()){
+								const EquipCard* e = qobject_cast<const EquipCard*>(ec->getRealCard());
+								if (e && e->getOccupyLocations().contains(slot))
+									slot_equips << ec;
+							}
+							if (slot_equips.length() > to_sp->getEquipArea(slot)){
+								QList<int> equip_ids;
+								foreach(const Card* ec, slot_equips){
+									if (!selected_to_discard.contains(ec->getId()))
+										equip_ids << ec->getId();
+								}
+								if (equip_ids.isEmpty()){
+									to_sp->removeCard(id, Player::PlaceEquip);
+									m_discardPile->prepend(id);
+									setCardMapping(id, nullptr, Player::DiscardPile);
+									invalidEquipMoves << CardsMoveStruct(id, nullptr, Player::DiscardPile,
+										CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP, to_sp->objectName(), QString(), "change equip"));
+									processed_ids.append(id);
+								} else if (equip_ids.length() == 1){
+									int card_id = equip_ids.first();
+									selected_to_discard.append(card_id);
+									to_sp->removeCard(card_id, Player::PlaceEquip);
+									m_discardPile->prepend(card_id);
+									setCardMapping(card_id, nullptr, Player::DiscardPile);
+									invalidEquipMoves << CardsMoveStruct(card_id, nullptr, Player::DiscardPile,
+										CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP, to_sp->objectName(), QString(), "change equip"));
+								} else {
+									int card_id = askForCardChosen(to_sp, to_sp, "e", "@replace-equip:" + QString::number(slot), false, Card::MethodDiscard, QList<int>());
+									if (card_id > 0 && !selected_to_discard.contains(card_id)){
+										selected_to_discard.append(card_id);
+										to_sp->removeCard(card_id, Player::PlaceEquip);
+										m_discardPile->prepend(card_id);
+										setCardMapping(card_id, nullptr, Player::DiscardPile);
+										invalidEquipMoves << CardsMoveStruct(card_id, nullptr, Player::DiscardPile,
+											CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP, to_sp->objectName(), QString(), "change equip"));
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	if (!invalidEquipMoves.isEmpty())
+		notifyMoveCards(false, invalidEquipMoves, true);
+
 	foreach (CardsMoveStruct move, cards_moves) {
 		if (move.to_place == Player::PlaceEquip && move.to) {
 			ServerPlayer *to_sp = (ServerPlayer *)move.to;
@@ -5205,11 +5295,7 @@ void Room::moveCardsToEndOfDrawpile(ServerPlayer*player, QList<int> card_ids, co
 		QVariant data = QVariant::fromValue(moveOneTime);
 		foreach(ServerPlayer*p, getAllPlayers())
 			thread->trigger(CardsMoveOneTime, this, p, data);
-	}/*
-	foreach(CardsMoveOneTimeStruct moveOneTime, moveOneTimes){
-		QVariant data = QVariant::fromValue(moveOneTime);
-		thread->trigger(CardsMoveOneTime, this, current, data);
-	}*/
+	}
 }
 
 void Room::moveCardsInToDrawpile(ServerPlayer*player, const Card*card, const QString&skill_name, int n, bool visible)
@@ -6137,6 +6223,8 @@ QString Room::askForKingdom(ServerPlayer*player, const QString&reason, QStringLi
 			}
 		}
 	}
+	if (!kingdoms.contains(result))
+		result = kingdoms.at(qrand() % kingdoms.length());
 	if(send_log){
 		LogMessage log;
 		log.type = "#ChooseKingdom";
@@ -7517,7 +7605,16 @@ bool Room::canMoveField(const QString&flags, QList<ServerPlayer*> froms, QList<S
 		foreach(const Card*c, p->getCards(flags)){
 			foreach(ServerPlayer*d, new_tos){
 				if (c->isKindOf("EquipCard")){
-					if (!d->getEquip(((const EquipCard*)c->getRealCard())->location())&&!p->isProhibited(d, c))
+					const EquipCard *equip = qobject_cast<const EquipCard *>(c->getRealCard());
+					QList<int> occupy_slots = equip->getOccupyLocations();
+					bool all_slots_empty = true;
+					foreach(int slot, occupy_slots){
+						if(d->getEquip(slot)){
+							all_slots_empty = false;
+							break;
+						}
+					}
+					if (all_slots_empty && !p->isProhibited(d, c))
 						return true;
 				} else if (c->isKindOf("DelayedTrick")){
 					if (!p->isProhibited(d, c))
@@ -7560,7 +7657,16 @@ bool Room::moveField(ServerPlayer*player, const QString&reason, bool optional, c
 		foreach(ServerPlayer*d, tos){
 			if (player->isProhibited(d, c)) continue;
 			if (c->isKindOf("EquipCard")){
-				if (d->getEquip(((const EquipCard*)c->getRealCard())->location()))
+				const EquipCard *equip = qobject_cast<const EquipCard *>(c->getRealCard());
+				QList<int> occupy_slots = equip->getOccupyLocations();
+				bool all_slots_empty = true;
+				foreach(int slot, occupy_slots){
+					if(d->getEquip(slot)){
+						all_slots_empty = false;
+						break;
+					}
+				}
+				if (all_slots_empty)
 					continue;
 			}
 			has = false;
@@ -7578,7 +7684,16 @@ bool Room::moveField(ServerPlayer*player, const QString&reason, bool optional, c
 	foreach(ServerPlayer*p, tos){
 		if (player->isProhibited(p, c)) continue;
 		if (place == Player::PlaceEquip){
-			if (p->getEquip(((const EquipCard*)c->getRealCard())->location()))
+			const EquipCard *equip = qobject_cast<const EquipCard *>(c->getRealCard());
+			QList<int> occupy_slots = equip->getOccupyLocations();
+			bool all_slots_empty = true;
+			foreach(int slot, occupy_slots){
+				if(p->getEquip(slot)){
+					all_slots_empty = false;
+					break;
+				}
+			}
+			if (all_slots_empty)
 				continue;
 		}
 		to_players << p;
@@ -7589,6 +7704,26 @@ bool Room::moveField(ServerPlayer*player, const QString&reason, bool optional, c
 	doAnimate(S_ANIMATE_INDICATE, player->objectName(), to->objectName());
 	moveCardTo(c, from, to, place, CardMoveReason(CardMoveReason::S_REASON_TRANSFER, player->objectName(), reason, ""), true);
 	return true;
+}
+
+void Room::swapEquips(ServerPlayer*first, ServerPlayer*second, const QString&skill_name)
+{
+	QList<int> ids1, ids2;
+	foreach(const Card *equip, first->getEquips())
+		ids1.append(equip->getId());
+	foreach(const Card *equip, second->getEquips())
+		ids2.append(equip->getId());
+
+	QList<CardsMoveStruct> exchangeMove;
+
+	CardsMoveStruct move1(ids1, second, Player::PlaceEquip,
+		CardMoveReason(CardMoveReason::S_REASON_SWAP, first->objectName(), second->objectName(), skill_name, ""));
+	CardsMoveStruct move2(ids2, first, Player::PlaceEquip,
+		CardMoveReason(CardMoveReason::S_REASON_SWAP, second->objectName(), first->objectName(), skill_name, ""));
+	exchangeMove.append(move2);
+	exchangeMove.append(move1);
+
+	moveCardsAtomic(exchangeMove, false);
 }
 
 void Room::changeTranslation(ServerPlayer*player, const QString&skill_name, const QString&new_translation, int num)

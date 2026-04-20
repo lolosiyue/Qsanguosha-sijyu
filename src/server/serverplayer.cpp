@@ -1820,7 +1820,7 @@ void ServerPlayer::enterYinniState(int type)
 	}
 }
 
-int ServerPlayer::getDerivativeCard(const QString &card_name, Place place, bool visible) const
+	int ServerPlayer::getDerivativeCard(const QString &card_name, Place place, bool visible) const
 {
 	foreach (int id, Sanguosha->getRandomCards(true)) {
 		const Card *card = Sanguosha->getEngineCard(id);
@@ -1831,10 +1831,17 @@ int ServerPlayer::getDerivativeCard(const QString &card_name, Place place, bool 
 		if(place == PlaceEquip){
 			if(card->isKindOf("EquipCard")){
 				const EquipCard *equip = qobject_cast<const EquipCard *>(card->getRealCard());
-				if(!hasEquipArea(equip->location())) return id;
-				equip = getEquip(equip->location());
-				reason.m_reason = CardMoveReason::S_REASON_PUT;
-				if(equip) moves << CardsMoveStruct(equip->getId(), nullptr, DiscardPile, reason);
+				QList<int> occupy_slots = equip->getOccupyLocations();
+				foreach(int slot, occupy_slots){
+					if(!hasEquipArea(slot)) return id;
+				}
+				foreach(int slot, occupy_slots){
+					const Card *exEquip = getEquip(slot);
+					if(exEquip){
+						reason.m_reason = CardMoveReason::S_REASON_PUT;
+						moves << CardsMoveStruct(exEquip->getId(), nullptr, DiscardPile, reason);
+					}
+				}
 			}else
 				return id;
 		}

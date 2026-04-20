@@ -1467,8 +1467,14 @@ public:
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
 };
 
-
-
+class QiexieWeapon : public Weapon
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE QiexieWeapon(Card::Suit suit = Card::NoSuit, int number = 0);
+    void onInstall(ServerPlayer *player) const;
+    void onUninstall(ServerPlayer *player) const;
+};
 
 
 

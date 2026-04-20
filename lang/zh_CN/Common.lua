@@ -232,6 +232,7 @@ CommonTranslationTable = {
 	["#PutCardEnd"] = "%from 的 %arg 张牌被置于牌堆底",
 	["$PutCardEnd2"] = "%from 将 %card 置于牌堆底",
 	["$RecastCard"] = "%from 重铸了 %card",
+    ["#UseCard_Recast"] = "%from 重铸了 %card",
 	["normal_nature"] = "无属性",
 	["fire_nature"] = "火属性",
 	["thunder_nature"] = "雷属性",
@@ -315,6 +316,7 @@ CommonTranslationTable = {
 	["cool"] = "冷色方",
 	["#VsTakeGeneral"] = "%arg 选择了 %arg2",
 	["#TrickDirection"] = "%from 选择了 %arg 作为结算顺序",
+	["#PlayOrderReversed"] = "出牌顺序变更为%arg",
 	["custom"] = "自定义模式",
 	["UnknowNick"] = "",
 	["DefaultIllustrator"] = "KayaK",
@@ -360,6 +362,9 @@ CommonTranslationTable = {
 	["#choice"] = "%from 选择了 %arg", --add
 	["maxcard"] = "手牌上限", --add
 	["#IgnoreArmor"] = "%from 使用的 %card 无视防具",
+	["skill_transform"] = "技能转化",
+	["skill_transform_from"] = "%1技能转化",
+	["equip_slot_occupied"] = "此装备位被 %1 占据",
 
 
 }

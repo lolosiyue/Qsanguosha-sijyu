@@ -635,7 +635,7 @@ void Player::setPhaseString(const QString &phase_str)
 
 static bool CompareByLocation(const EquipCard *a, const EquipCard *b)
 {
-    return a->location() <= b->location();
+    return a->location() < b->location();
 }
 
 void Player::setEquip(const Card *equip)
@@ -1760,6 +1760,13 @@ void Player::setEquipArea(int i, bool flag)
 void Player::addEquipArea(int i)
 {
     equip_area << i;
+    switch (i) {
+        case 0: weapon_area = true; break;
+        case 1: armor_area = true; break;
+        case 2: defensive_horse_area = true; break;
+        case 3: offensive_horse_area = true; break;
+        case 4: treasure_area = true; break;
+    }
 }
 
 int Player::getEquipArea(int i)
