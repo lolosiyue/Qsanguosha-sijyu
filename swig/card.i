@@ -57,6 +57,11 @@ public:
 	virtual void onUninstall(ServerPlayer *player) const;
 
 	virtual Location location() const = 0;
+	virtual QList<int> getOccupyLocations() const;
+	void setOccupyLocations(const QList<int> &locations);
+
+protected:
+	QList<int> occupy_locations;
 };
 
 %extend EquipCard {

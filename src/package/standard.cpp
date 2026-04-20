@@ -155,19 +155,22 @@ void EquipCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &tar
 		}
 		
 		QList<CardsMoveStruct> exchangeMove;
-		QList<int> replaced_ids;  // 记录已经处理过的装备ID，避免重复
+		QList<int> replaced_ids;
 		
-		// 遍历每个需要占用的栏位，收集需要替换的装备
 		foreach (int slot, occupy_slots) {
-			if (to->getEquips(slot).length() >= to->getEquipArea(slot)) {
-				// 该栏位已满，需要替换
-				QList<const Card *> same_type_equips = to->getEquips(slot);
+			QList<const Card*> slot_equips;
+			foreach(const Card* c, to->getEquips()) {
+				const EquipCard* e = qobject_cast<const EquipCard*>(c->getRealCard());
+				if (e && e->getOccupyLocations().contains(slot))
+					slot_equips << e;
+			}
+			
+			if (slot_equips.length() >= to->getEquipArea(slot)) {
 				const EquipCard *to_replace = NULL;
 				
-				// 如果有多个同类型装备，让玩家选择替换哪个
-				if (same_type_equips.length() > 1) {
+				if (slot_equips.length() > 1) {
 					QList<int> equip_ids;
-					foreach (const Card *equip, same_type_equips) {
+					foreach (const Card *equip, slot_equips) {
 						int eid = equip->getEffectiveId();
 						if (!replaced_ids.contains(eid)) {
 							equip_ids << eid;
@@ -183,9 +186,8 @@ void EquipCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &tar
 					}
 				}
 				
-				// 如果没有选择（只有1个或选择失败），使用第一个
 				if (!to_replace) {
-					foreach (const Card *equip, same_type_equips) {
+					foreach (const Card *equip, slot_equips) {
 						int eid = equip->getEffectiveId();
 						if (!replaced_ids.contains(eid)) {
 							to_replace = qobject_cast<const EquipCard *>(equip->getRealCard());

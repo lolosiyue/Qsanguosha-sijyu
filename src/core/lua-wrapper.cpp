@@ -394,6 +394,7 @@ LuaOffensiveHorse *LuaOffensiveHorse::clone(Card::Suit suit, int number) const
     new_card->on_install = on_install;
     new_card->on_uninstall = on_uninstall;
     new_card->correct_func = correct_func;
+    new_card->occupy_locations = occupy_locations;
 
     return new_card;
 }
@@ -420,6 +421,7 @@ LuaDefensiveHorse *LuaDefensiveHorse::clone(Card::Suit suit, int number) const
     new_card->on_install = on_install;
     new_card->on_uninstall = on_uninstall;
     new_card->correct_func = correct_func;
+    new_card->occupy_locations = occupy_locations;
 
     return new_card;
 }

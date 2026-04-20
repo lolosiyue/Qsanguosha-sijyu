@@ -3,6 +3,7 @@
 //#include "settings.h"
 #include "carditem.h"
 #include "engine.h"
+#include "graphicspixmaphoveritem.h"
 //#include "standard.h"
 //#include "client.h"
 //#include "playercarddialog.h"
@@ -48,7 +49,7 @@ Photo::Photo() : PlayerCardContainer()
     _m_duanchangMask->setBrush(duanchang_brush);
 
     _createControls();
-	repaintAll();
+    repaintAll();
 }
 
 Photo::~Photo()
@@ -102,7 +103,21 @@ void Photo::_adjustComponentZValues(bool killed)
     PlayerCardContainer::_adjustComponentZValues(killed);
     //_layBetween(emotion_item, _m_chainIcon, _m_roleComboBox);
     _layBetween(_m_skillNameItem, _m_chainIcon, _m_roleComboBox);
-    _layBetween(_m_mainFrame, _m_faceTurnedIcon, _m_equipRegions[3]);
+    // Place mainFrame between smallAvatarArea and faceTurnedIcon so it sits
+    // well below equips (~4 Z-units gap) instead of right next to them.
+    // When face-up faceTurnedIcon is hidden, so the frame and deputy avatar
+    // behind it are both visible.  When face-down the mask correctly covers them.
+    _layBetween(_m_mainFrame, _m_smallAvatarArea, _m_faceTurnedIcon);
+    // Deputy avatar + circle: place just above mainFrame.
+    // They end up ~4 Z-units below the lowest equip region, eliminating
+    // the intermittent overlap that the old 0.2-gap approach caused.
+    if (_m_smallAvatarIcon && _m_mainFrame
+        && !(m_player && m_player->getGeneral2Name().contains("zuoci") && _m_huashenAnimation != nullptr)) {
+        double z = _m_mainFrame->zValue();
+        _m_smallAvatarIcon->setZValue(z + 0.2);
+        if (_m_circleItem)
+            _m_circleItem->setZValue(z + 0.3);
+    }
     _m_progressBarItem->setZValue(_m_groupMain->zValue() + 1);
 }
 
@@ -219,6 +234,12 @@ bool Photo::_addCardItems(QList<CardItem *> &card_items, const CardsMoveStruct &
 		return true;
     }
     return false;
+}
+
+void Photo::addEquips(QList<CardItem *> &equips)
+{
+    PlayerCardContainer::addEquips(equips);
+    _adjustComponentZValues();
 }
 
 void Photo::setFrame(FrameType type)

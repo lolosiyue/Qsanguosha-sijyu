@@ -725,6 +725,14 @@ void PlayerCardContainer::_updateEquips()
             opacity = 1.0;
             has_card_image = true;
         } 
+        
+        else if (occupied_slots.contains(i)) {
+            const Card *occupying_card = occupied_slots[i];
+            pixmap = _getEquipPixmap(occupying_card);
+            tooltip = occupying_card ? occupying_card->getDescription() : QString();
+            opacity = 1.0;
+            has_card_image = true;
+        }
         else if (simulated_equips.contains(i)) {
             const Card *card = simulated_equips[i];
             QString skill_name = simulated_equip_skills[i];
@@ -738,28 +746,29 @@ void PlayerCardContainer::_updateEquips()
                           .arg(Sanguosha->translate(card->objectName()))
                           .arg(skillText)
                           .arg(card->getDescription());
-            opacity = 0.8;
+            opacity = 0.8f;
             has_card_image = true;
         } 
-        else if (occupied_slots.contains(i)) {
-            const Card *occupying_card = occupied_slots[i];
-            pixmap = _getEquipPixmap(occupying_card);
-            tooltip = Sanguosha->translate("equip_slot_occupied").arg(Sanguosha->translate(occupying_card->objectName()));
-            opacity = 0.35;
-            has_card_image = true;
-        }
 
         if (has_card_image) {
             if (skill_dist != 0) {
                 QPainter painter(&pixmap);
+                painter.setRenderHint(QPainter::Antialiasing);
                 QString skill_val_str = (skill_dist > 0 ? "+" : "") + QString::number(skill_dist);
-                QRect overlayArea(0, 0, pixmap.width() - 5, pixmap.height());
-                
-                if (skill_dist > 0) {
-                    _m_layout->m_equipPointFontRed.paintText(&painter, overlayArea, Qt::AlignRight | Qt::AlignVCenter, skill_val_str);
-                } else {
-                    _m_layout->m_equipPointFontBlack.paintText(&painter, overlayArea, Qt::AlignRight | Qt::AlignVCenter, skill_val_str);
-                }
+                QRect pointArea = (is_def || is_off) ? _m_layout->m_horsePointArea : _m_layout->m_equipPointArea;
+                QRect overlayArea(0, 0, pointArea.left() - 3, pixmap.height());
+                QFont boldFont;
+                boldFont.setPointSize(13);
+                boldFont.setBold(true);
+                painter.setFont(boldFont);
+                QColor mainColor = (skill_dist > 0) ? QColor(255, 220, 0) : QColor(255, 80, 80);
+                painter.setPen(QColor(0, 0, 0, 210));
+                for (int ddx = -1; ddx <= 1; ddx++)
+                    for (int ddy = -1; ddy <= 1; ddy++)
+                        if (ddx || ddy)
+                            painter.drawText(overlayArea.translated(ddx, ddy), Qt::AlignRight | Qt::AlignVCenter, skill_val_str);
+                painter.setPen(mainColor);
+                painter.drawText(overlayArea, Qt::AlignRight | Qt::AlignVCenter, skill_val_str);
 
                 QStringList translated_skills;
                 foreach (QString sk, skills) translated_skills << Sanguosha->translate(sk);
@@ -781,14 +790,22 @@ void PlayerCardContainer::_updateEquips()
                 QPixmap empty_pixmap(_m_layout->m_equipAreas[i].size());
                 empty_pixmap.fill(Qt::transparent);
                 QPainter painter(&empty_pixmap);
+                painter.setRenderHint(QPainter::Antialiasing);
                 QString val_str = (skill_dist > 0 ? "+" : "") + QString::number(skill_dist);
+                QRect textArea(0, 0, empty_pixmap.width(), empty_pixmap.height());
+                QFont boldFont;
+                boldFont.setPointSize(13);
+                boldFont.setBold(true);
+                painter.setFont(boldFont);
+                QColor mainColor = (skill_dist > 0) ? QColor(255, 220, 0) : QColor(255, 80, 80);
+                painter.setPen(QColor(0, 0, 0, 210));
+                for (int ddx = -1; ddx <= 1; ddx++)
+                    for (int ddy = -1; ddy <= 1; ddy++)
+                        if (ddx || ddy)
+                            painter.drawText(textArea.translated(ddx, ddy), Qt::AlignCenter, val_str);
+                painter.setPen(mainColor);
+                painter.drawText(textArea, Qt::AlignCenter, val_str);
 
-                if (skill_dist > 0) {
-                    _m_layout->m_equipPointFontRed.paintText(&painter, _m_layout->m_horsePointArea, Qt::AlignLeft | Qt::AlignVCenter, val_str);
-                } else {
-                    _m_layout->m_equipPointFontBlack.paintText(&painter, _m_layout->m_horsePointArea, Qt::AlignLeft | Qt::AlignVCenter, val_str);
-                }
-                
                 _m_equipLabel[i]->setPixmap(empty_pixmap);
                 _m_equipRegions[i]->setPos(_m_layout->m_equipAreas[i].topLeft());
                 

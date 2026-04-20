@@ -96,6 +96,7 @@ protected:
         return QSanRoomSkin::S_SKIN_KEY_PHOTO;
     }
     virtual void _adjustComponentZValues(bool killed = false);
+    virtual void addEquips(QList<CardItem *> &equips);
     bool _addCardItems(QList<CardItem *> &card_items, const CardsMoveStruct &moveInfo);
 
     virtual void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
