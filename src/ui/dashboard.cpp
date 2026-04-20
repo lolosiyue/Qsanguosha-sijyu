@@ -828,7 +828,6 @@ QList<CardItem *> Dashboard::cloneCardItems(QList<int> card_ids)
     foreach (int card_id, card_ids) {
         CardItem *card_item = CardItem::FindItem(m_handCards, card_id);
         CardItem *new_card = _createCard(card_id);
-        Q_ASSERT(card_item);
         if (card_item) {
             new_card->setPos(card_item->pos());
             new_card->setHomePos(card_item->homePos());

@@ -10,14 +10,7 @@
 #include "protocol.h"
 //#include "rolecombobox.h"
 
-//#include <QGraphicsScene>
-//#include <QGraphicsItem>
-//#include <QMutex>
-
-//#include <qparallelanimationgroup.h>
-//#include <qgraphicseffect.h>
-//#include <qvariant.h>
-//#include <qlabel.h>
+#include "window.h"
 
 class CardItem;
 struct CardsMoveStruct;
@@ -278,6 +271,13 @@ private:
     void clearVotes();
     int _lastZ;
     bool _allZAdjusted;
+
+    Window *m_handcardWindow;
+    QGraphicsRectItem *m_handcardContainer = nullptr;
+    QGraphicsTextItem *m_totalText = nullptr;
+    QGraphicsTextItem *m_emptyText = nullptr;
+
+    void updateHandcardViewer();
 
     void showHeroSkinListHelper(const General *general,
         GraphicsPixmapHoverItem *avatarIcon,

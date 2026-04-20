@@ -616,6 +616,10 @@ void PlayerCardContainer::updateHandcardNum()
     } else {
         _m_handCardNumText->setToolTip(QString());
     }
+
+    if (m_handcardWindow && m_handcardWindow->isVisible()) {
+        updateHandcardViewer();
+    }
 }
 
 void PlayerCardContainer::updateMarks()
@@ -1398,6 +1402,10 @@ PlayerCardContainer::PlayerCardContainer()
     m_changeSecondaryHeroSkinBtn = nullptr;
     m_primaryHeroSkinContainer = nullptr;
     m_secondaryHeroSkinContainer = nullptr;
+    m_handcardWindow = nullptr;
+    m_handcardContainer = nullptr;
+    m_totalText = nullptr;
+    m_emptyText = nullptr;
 }
 
 void PlayerCardContainer::hideAvatars()
@@ -1783,13 +1791,65 @@ bool PlayerCardContainer::canBeSelected()
     return item1 && isEnabled() && (flags() & QGraphicsItem::ItemIsSelectable);
 }
 
+
 void PlayerCardContainer::showHandcardViewer()
 {
     if (!m_player || m_player == Self) return;
 
-    QList<const Card *> known_cards;
+    if (m_handcardWindow) {
+        updateHandcardViewer();
+        m_handcardWindow->setZValue(20);
+        m_handcardWindow->show();
+        return;
+    }
+
+    QString title = QString("%1%2").arg(m_player->getLogName()).arg(tr("'s Handcards"));
+    Window *handcardWindow = new Window(title, QSize(800, 500));
+    m_handcardWindow = handcardWindow;
+
+    connect(handcardWindow, &QObject::destroyed, this, [this]() {
+        m_handcardWindow = nullptr;
+        m_handcardContainer = nullptr;
+        m_totalText = nullptr;
+        m_emptyText = nullptr;
+    });
+
+    handcardWindow->setZValue(20);
+    RoomSceneInstance->addItem(handcardWindow);
+
+    QRectF sceneRect = RoomSceneInstance->sceneRect();
+    QPointF centerPos = sceneRect.center();
+    QRectF windowRect = handcardWindow->boundingRect();
+    handcardWindow->setPos(centerPos.x() - windowRect.width() / 2,
+                           centerPos.y() - windowRect.height() / 2);
+
+    m_totalText = new QGraphicsTextItem(handcardWindow);
+    m_totalText->setDefaultTextColor(Qt::white);
+    m_totalText->setFont(Config.SmallFont);
+    m_totalText->setPos(25, 20);
+
+    m_handcardContainer = new QGraphicsRectItem(0, 0, 770, 400, handcardWindow);
+    m_handcardContainer->setPos(15, 50);
+    m_handcardContainer->setFlag(QGraphicsItem::ItemClipsChildrenToShape);
+    m_handcardContainer->setPen(Qt::NoPen);
+
+    handcardWindow->addCloseButton(tr("Close"));
+    handcardWindow->appear();
+
+    updateHandcardViewer();
+}
+
+void PlayerCardContainer::updateHandcardViewer()
+{
+    if (!m_handcardWindow || !m_handcardContainer || !m_player) return;
+
     int total_handcard_num = m_player->getHandcardNum();
 
+    if (m_totalText) {
+        m_totalText->setPlainText(QString("%1%2").arg(tr("Total: ")).arg(total_handcard_num));
+    }
+
+    QList<const Card *> known_cards;
     if (Self->canSeeHandcard(m_player)) {
         foreach (int id, m_player->handCards()) {
             const Card *card = Sanguosha->getEngineCard(id);
@@ -1806,27 +1866,6 @@ void PlayerCardContainer::showHandcardViewer()
         return a->getNumber() < b->getNumber();
     });
 
-    QString title = QString("%1%2").arg(m_player->getLogName()).arg(tr("'s Handcards"));
-    Window *handcardWindow = new Window(title, QSize(800, 500));
-    handcardWindow->setZValue(20);
-    RoomSceneInstance->addItem(handcardWindow);
-
-    QRectF sceneRect = RoomSceneInstance->sceneRect();
-    QPointF centerPos = sceneRect.center();
-    QRectF windowRect = handcardWindow->boundingRect();
-    handcardWindow->setPos(centerPos.x() - windowRect.width() / 2,
-                           centerPos.y() - windowRect.height() / 2);
-
-    QGraphicsRectItem *cardContainer = new QGraphicsRectItem(15, 50, 770, 400, handcardWindow);
-    cardContainer->setFlag(QGraphicsItem::ItemClipsChildrenToShape);
-    cardContainer->setPen(Qt::NoPen);
-
-    QGraphicsTextItem *totalText = new QGraphicsTextItem(handcardWindow);
-    totalText->setPlainText(QString("%1%2").arg(tr("Total: ")).arg(total_handcard_num));
-    totalText->setDefaultTextColor(Qt::white);
-    totalText->setFont(Config.SmallFont);
-    totalText->setPos(25, 20);
-
     const int cardWidth = 93;
     const int cardHeight = 130;
     const int cardsPerRow = 7;
@@ -1839,14 +1878,30 @@ void PlayerCardContainer::showHandcardViewer()
     int y = startY;
     int count = 0;
 
+    QList<QGraphicsItem *> existingItems = m_handcardContainer->childItems();
+    int existingCount = existingItems.size();
+    int itemIndex = 0;
+
+    auto getOrMakeItem = [&]() -> QGraphicsPixmapItem* {
+        if (itemIndex < existingCount) {
+            QGraphicsPixmapItem* item = qgraphicsitem_cast<QGraphicsPixmapItem*>(existingItems[itemIndex]);
+            item->show();
+            itemIndex++;
+            return item;
+        } else {
+            QGraphicsPixmapItem* newItem = new QGraphicsPixmapItem(m_handcardContainer);
+            itemIndex++;
+            return newItem;
+        }
+    };
+
     foreach (const Card *card, sorted_known) {
-        QGraphicsPixmapItem *cardItem = new QGraphicsPixmapItem(cardContainer);
+        QGraphicsPixmapItem *cardItem = getOrMakeItem();
 
         QPixmap cardPixmap(cardWidth, cardHeight);
         cardPixmap.fill(Qt::transparent);
         QPainter painter(&cardPixmap);
         painter.setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
-
         painter.drawPixmap(G_COMMON_LAYOUT.m_cardMainArea, G_ROOM_SKIN.getCardMainPixmap(card->objectName()));
         painter.drawPixmap(G_COMMON_LAYOUT.m_cardSuitArea, G_ROOM_SKIN.getCardSuitPixmap(card->getSuit()));
         painter.drawPixmap(G_COMMON_LAYOUT.m_cardNumberArea, G_ROOM_SKIN.getCardNumberPixmap(card->getNumber(), card->isBlack()));
@@ -1865,10 +1920,11 @@ void PlayerCardContainer::showHandcardViewer()
     }
 
     int unknown_count = qMax(0, total_handcard_num - known_cards.size());
+    QPixmap unknownPixmap = G_ROOM_SKIN.getCardMainPixmap("unknown").scaled(cardWidth, cardHeight, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+
     for (int i = 0; i < unknown_count; i++) {
-        QGraphicsPixmapItem *cardItem = new QGraphicsPixmapItem(cardContainer);
-        QPixmap unknownPixmap = G_ROOM_SKIN.getCardMainPixmap("unknown");
-        cardItem->setPixmap(unknownPixmap.scaled(cardWidth, cardHeight, Qt::IgnoreAspectRatio, Qt::SmoothTransformation));
+        QGraphicsPixmapItem *cardItem = getOrMakeItem();
+        cardItem->setPixmap(unknownPixmap);
         cardItem->setPos(x, y);
         cardItem->setToolTip(tr("Unknown Card"));
 
@@ -1880,19 +1936,26 @@ void PlayerCardContainer::showHandcardViewer()
         }
     }
 
-    if (total_handcard_num == 0) {
-        QGraphicsTextItem *emptyText = new QGraphicsTextItem(cardContainer);
-        emptyText->setPlainText(tr("This player has no handcards"));
-        emptyText->setDefaultTextColor(Qt::white);
-        QFont font = Config.BigFont;
-        font.setPointSize(14);
-        emptyText->setFont(font);
-        emptyText->setPos(250, 160);
+    while (itemIndex < existingCount) {
+        existingItems[itemIndex]->hide();
+        itemIndex++;
     }
 
-    handcardWindow->addCloseButton(tr("Close"));
-    handcardWindow->appear();
+    if (total_handcard_num == 0) {
+        if (!m_emptyText) {
+            m_emptyText = new QGraphicsTextItem(m_handcardWindow);
+            m_emptyText->setDefaultTextColor(Qt::white);
+            QFont font = Config.BigFont;
+            font.setPointSize(14);
+            m_emptyText->setFont(font);
+            m_emptyText->setPos(250, 160);
+        }
+        m_emptyText->show();
+    } else if (m_emptyText) {
+        m_emptyText->hide();
+    }
 }
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Dynamic skin background
