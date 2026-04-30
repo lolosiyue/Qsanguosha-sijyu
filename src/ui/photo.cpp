@@ -25,7 +25,7 @@ using namespace QSanProtocol;
 // kingdom mask and kingdom icon (decouple from player)
 // make layers (drawing order) configurable
 
-Photo::Photo() : PlayerCardContainer()
+Photo::Photo() : PlayerCardContainer(), m_giftHighlighted(false), m_giftHighlightFrame(nullptr)
 {
     _m_mainFrame = nullptr;
     m_player = nullptr;
@@ -57,6 +57,10 @@ Photo::~Photo()
     if (emotion_item) {
         delete emotion_item;
         emotion_item = nullptr;
+    }
+    if (m_giftHighlightFrame) {
+        delete m_giftHighlightFrame;
+        m_giftHighlightFrame = nullptr;
     }
 }
 
@@ -130,7 +134,7 @@ void Photo::setEmotion(const QString &emotion, bool permanent)
 
     QString path = QString("image/system/emotion/%1.png").arg(emotion);
     if (QFile::exists(path)) {
-        QPixmap pixmap = QPixmap(path);
+        QPixmap pixmap = PixmapAnimation::GetFrameFromCache(path);
         emotion_item->setPixmap(pixmap);
         emotion_item->setPos((G_PHOTO_LAYOUT.m_normalWidth - pixmap.width()) / 2, (G_PHOTO_LAYOUT.m_normalHeight - pixmap.height()) / 2);
         _layBetween(emotion_item, _m_chainIcon, _m_roleComboBox);
@@ -281,5 +285,54 @@ void Photo::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *
 QGraphicsItem *Photo::getMouseClickReceiver()
 {
     return this;
+}
+
+void Photo::setGiftHighlight(bool highlight)
+{
+    if (m_giftHighlighted == highlight) return;
+
+    m_giftHighlighted = highlight;
+
+    if (highlight) {
+        if (!m_giftHighlightFrame) {
+            m_giftHighlightFrame = new QGraphicsPixmapItem(_m_groupMain);
+
+            QPixmap highlightPixmap(G_PHOTO_LAYOUT.m_normalWidth, G_PHOTO_LAYOUT.m_normalHeight);
+            highlightPixmap.fill(Qt::transparent);
+
+            QPainter painter(&highlightPixmap);
+            painter.setRenderHint(QPainter::Antialiasing);
+
+            QPen pen(QColor(255, 215, 0, 200));
+            pen.setWidth(3);
+            painter.setPen(pen);
+            painter.setBrush(QBrush(QColor(255, 215, 0, 30)));
+            painter.drawRoundedRect(2, 2, G_PHOTO_LAYOUT.m_normalWidth - 4,
+                                  G_PHOTO_LAYOUT.m_normalHeight - 4, 8, 8);
+
+            m_giftHighlightFrame->setPixmap(highlightPixmap);
+            m_giftHighlightFrame->setZValue(_m_groupMain->zValue() + 0.1);
+        }
+        m_giftHighlightFrame->show();
+    } else {
+        if (m_giftHighlightFrame) {
+            m_giftHighlightFrame->hide();
+        }
+    }
+}
+
+bool Photo::isGiftHighlighted() const
+{
+    return m_giftHighlighted;
+}
+
+void Photo::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
+{
+    if (m_giftHighlighted && event->button() == Qt::LeftButton) {
+        emit giftClicked();
+        return;
+    }
+
+    PlayerCardContainer::mouseReleaseEvent(event);
 }
 

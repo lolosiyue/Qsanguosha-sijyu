@@ -1,5 +1,6 @@
 #include "generic-cardcontainer-ui.h"
 #include "engine.h"
+#include "oracle_helper.h"
 #include "standard.h"
 #include "graphicspixmaphoveritem.h"
 #include "roomscene.h"
@@ -202,15 +203,15 @@ void PlayerCardContainer::updateAvatar()
 		_m_screenNameItem->setVisible(Self != m_player);
 		_m_layout->m_screenNameFont.paintText(_m_screenNameItem, _m_layout->m_screenNameArea, Qt::AlignCenter, m_player->screenName());
     }
-	QGraphicsPixmapItem *avatarIconTmp = _m_avatarIcon;
+    QGraphicsPixmapItem *avatarIconTmp = _m_avatarIcon;
     if (general) {
         QString name = m_player->property("avatarIcon").toString();
         if (name.isEmpty()) name = general->objectName();
-		
+
         QPixmap avatarIcon;
 		if(m_player->property("avatarIcon2").toString().isEmpty()) avatarIcon = _getAvatarIcon(name);
 		else avatarIcon = G_ROOM_SKIN.getGeneralPixmap(name, QSanRoomSkin::GeneralIconSize(_m_layout->m_primaryAvatarSize));
-        _paintPixmap(avatarIconTmp, _m_layout->m_avatarArea, avatarIcon, _getAvatarParent());
+        _m_avatarIcon->setGeneralImage(avatarIcon, _m_layout->m_avatarArea.size());
         // this is just avatar general, perhaps game has not started yet.
         if (m_player->getGeneral()) {
             _paintPixmap(_m_kingdomIcon, _m_layout->m_kingdomIconArea, G_ROOM_SKIN.getPixmap(QSanRoomSkin::S_SKIN_KEY_KINGDOM_ICON, m_player->getKingdom()), _getAvatarParent());
@@ -1030,7 +1031,7 @@ void PlayerCardContainer::addDelayedTricks(QList<CardItem *> &tricks)
         QString toolTip = Sanguosha->getEngineCard(tc->getId())->getLogName();
 		toolTip.append("<br/>").append(tc->getDescription());
 		if(tc->isKindOf("Xumou")) toolTip = "";
-        item->setToolTip(toolTip);
+        item->setToolTip(buildOracleTooltip(QString(), toolTip));
         _m_judgeCards.append(trick);
         _m_judgeIcons.append(item);
     }
@@ -1272,7 +1273,8 @@ void PlayerCardContainer::startHuaShen(QString generalName, QString skillName)
         {
             SafeLuaMutex &lua_mutex = Sanguosha->getLuaMutex();
             if (lua_mutex.tryLock(50)) {
-                _m_extraSkillBg->setToolTip(Sanguosha->getSkill(skillName)->getDescription(m_player));
+                const Skill *s = Sanguosha->getSkill(skillName);
+                _m_extraSkillBg->setToolTip(buildOracleTooltip(s ? s->getOracleText(m_player) : QString(), s->getDescription(m_player)));
                 lua_mutex.unlock();
             }
         }
@@ -1346,10 +1348,13 @@ void PlayerCardContainer::onAvatarHoverLeave()
 void PlayerCardContainer::updateAvatarTooltip()
 {
     if (m_player) {
+        const General *general = m_player->getGeneral();
+        QString oracle = general ? general->getOracleText() : QString();
         QString description = m_player->getSkillDescription();
-        _m_avatarArea->setToolTip(description);
+        QString fullTooltip = buildOracleTooltip(oracle, description);
+        _m_avatarArea->setToolTip(fullTooltip);
         if (m_player->getGeneral2()||m_player->property("avatarIcon2").toString()!="")
-            _m_smallAvatarArea->setToolTip(description);
+            _m_smallAvatarArea->setToolTip(fullTooltip);
     }
 }
 
@@ -1909,7 +1914,7 @@ void PlayerCardContainer::updateHandcardViewer()
 
         cardItem->setPixmap(cardPixmap);
         cardItem->setPos(x, y);
-        cardItem->setToolTip(card->getDescription());
+        cardItem->setToolTip(buildOracleTooltip(QString(), card->getDescription()));
 
         count++;
         x += cardWidth + horizontalSpacing;
@@ -1926,7 +1931,7 @@ void PlayerCardContainer::updateHandcardViewer()
         QGraphicsPixmapItem *cardItem = getOrMakeItem();
         cardItem->setPixmap(unknownPixmap);
         cardItem->setPos(x, y);
-        cardItem->setToolTip(tr("Unknown Card"));
+        cardItem->setToolTip(buildOracleTooltip(QString(), tr("Unknown Card")));
 
         count++;
         x += cardWidth + horizontalSpacing;

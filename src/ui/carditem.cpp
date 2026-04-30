@@ -1,5 +1,6 @@
 #include "carditem.h"
 #include "engine.h"
+#include "oracle_helper.h"
 //#include "skill.h"
 //#include "clientplayer.h"
 //#include "settings.h"
@@ -55,7 +56,16 @@ void CardItem::setCard(const Card *card)
 	setObjectName(card->objectName());
 	QString description = card->getDescription();
 	if (m_isShiny) description = QString("<font color=#FF0000>%1</font>").arg(description);
-	setToolTip(description);
+	setToolTip(buildOracleTooltip(QString(), description));
+}
+
+void CardItem::refreshTooltip()
+{
+    const Card *card = getCard();
+    if (!card) return;
+    QString description = card->getDescription();
+    if (m_isShiny) description = QString("<font color=#FF0000>%1</font>").arg(description);
+    setToolTip(buildOracleTooltip(QString(), description));
 }
 
 void CardItem::setEnabled(bool enabled)
@@ -78,7 +88,7 @@ void CardItem::changeGeneral(const QString &general_name)
     setObjectName(general_name);
     const General *general = Sanguosha->getGeneral(general_name);
     if (general) {
-        setToolTip(general->getSkillDescription(true));
+        setToolTip(buildOracleTooltip(general->getOracleText(), general->getSkillDescription(true)));
     } else {
         _m_isUnknownGeneral = true;
         setToolTip("");
@@ -104,11 +114,11 @@ void CardItem::goBack(bool playAnimation, bool doFade)
 {
     if (playAnimation) {
         getGoBackAnimation(doFade);
-        if (m_currentAnimation != nullptr)
+        if (m_currentAnimation)
             m_currentAnimation->start();
     } else {
         m_animationMutex.lock();
-        if (m_currentAnimation != nullptr) {
+        if (m_currentAnimation) {
             m_currentAnimation->stop();
             delete m_currentAnimation;
             m_currentAnimation = nullptr;
@@ -121,15 +131,16 @@ void CardItem::goBack(bool playAnimation, bool doFade)
 QAbstractAnimation *CardItem::getGoBackAnimation(bool doFade, bool smoothTransition, int duration)
 {
     m_animationMutex.lock();
-    if (m_currentAnimation != nullptr) {
+    if (m_currentAnimation) {
         m_currentAnimation->stop();
         delete m_currentAnimation;
+        m_currentAnimation = nullptr;
     }
     QPropertyAnimation *goback = new QPropertyAnimation(this, "pos");
     goback->setEasingCurve(QEasingCurve::OutQuad);
     goback->setDuration(duration);
     goback->setEndValue(home_pos);
-	m_currentAnimation = goback;
+    m_currentAnimation = goback;
 
     if (doFade) {
         QParallelAnimationGroup *group = new QParallelAnimationGroup;
@@ -149,8 +160,9 @@ QAbstractAnimation *CardItem::getGoBackAnimation(bool doFade, bool smoothTransit
         m_currentAnimation = group;
     }
     m_animationMutex.unlock();
-    connect(m_currentAnimation, SIGNAL(finished()), this, SIGNAL(movement_animation_finished()));
-    connect(m_currentAnimation, SIGNAL(destroyed()), this, SLOT(currentAnimationDestroyed()));
+    if (m_currentAnimation) {
+        connect(m_currentAnimation, SIGNAL(finished()), this, SIGNAL(movement_animation_finished()));
+    }
     return m_currentAnimation;
 }
 
@@ -284,7 +296,7 @@ void CardItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidge
 			footnotes << Sanguosha->translate(card_now->getSkillName());
 			QString description = card_now->getDescription();
 			if (m_isShiny) description = QString("<font color=#FF0000>%1</font>").arg(description);
-			setToolTip(description);
+			setToolTip(buildOracleTooltip(QString(), description));
         }
 		QString info = card->property("YingBianEffects").toString();
 		if (!info.isEmpty()) footnotes << Sanguosha->translate(":" + info);

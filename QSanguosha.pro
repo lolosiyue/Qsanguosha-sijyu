@@ -53,6 +53,7 @@ SOURCES += \
 	src/core/skill.cpp \
 	src/core/structs.cpp \
 	src/core/util.cpp \
+	src/core/oracle_helper.cpp \
 	src/dialog/cardeditor.cpp \
 	src/dialog/cardoverview.cpp \
 	src/dialog/choosegeneraldialog.cpp \
@@ -101,6 +102,7 @@ SOURCES += \
 	src/ui/chatwidget.cpp \
 	src/ui/clientlogbox.cpp \
 	src/ui/dashboard.cpp \
+	src/ui/giftitem.cpp \
 	src/ui/indicatoritem.cpp \
 	src/ui/magatamas-item.cpp \
 	src/ui/photo.cpp \
@@ -121,6 +123,8 @@ SOURCES += \
 	src/core/room-state.cpp \
 	src/core/wrapped-card.cpp \
 	src/ui/bubblechatbox.cpp \
+	src/ui/emotionpanel.cpp \
+	src/ui/gifchatbox.cpp \
 	src/ui/generic-cardcontainer-ui.cpp \
 	src/ui/qsan-selectable-item.cpp \
 	src/ui/skin-bank.cpp \
@@ -194,6 +198,7 @@ SOURCES += \
 	src/server/qtupnpportmapping.cpp \
 	src/package/olwenwu.cpp \
 	src/package/yinhu.cpp \
+	src/package/zombine.cpp \
 	src/package/maotu.cpp
 
 # Android-specific sources
@@ -220,6 +225,7 @@ HEADERS += \
 	src/core/skill.h \
 	src/core/structs.h \
 	src/core/util.h \
+	src/core/oracle_helper.h \
 	src/dialog/cardeditor.h \
 	src/dialog/cardoverview.h \
 	src/dialog/choosegeneraldialog.h \
@@ -264,6 +270,8 @@ HEADERS += \
 	src/ui/chatwidget.h \
 	src/ui/clientlogbox.h \
 	src/ui/dashboard.h \
+	src/ui/gifchatbox.h \
+	src/ui/giftitem.h \
 	src/ui/indicatoritem.h \
 	src/ui/magatamas-item.h \
 	src/ui/photo.h \
@@ -318,6 +326,7 @@ HEADERS += \
 	src/core/room-state.h \
 	src/core/wrapped-card.h \
 	src/ui/bubblechatbox.h \
+	src/ui/emotionpanel.h \
 	src/ui/generic-cardcontainer-ui.h \
 	src/ui/qsan-selectable-item.h \
 	src/ui/skin-bank.h \
@@ -369,6 +378,7 @@ HEADERS += \
 	src/package/mobilemougong.h \
 	src/package/olwenwu.h \
 	src/package/yinhu.h \
+	src/package/zombine.h \
 	src/package/maotu.h
 
 # Android-specific headers
@@ -414,41 +424,75 @@ win32-msvc*{
 	DEFINES += _CRT_SECURE_NO_WARNINGS
 	QMAKE_CXXFLAGS += /utf-8
 	LIBS += legacy_stdio_definitions.lib
-	!contains(QMAKE_HOST.arch, x86_64) {
-		DEFINES += WIN32
-		LIBS += -L"$$_PRO_FILE_PWD_/lib/win/x86"
-	} else {
+
+	# ASan for memory debugging
+	QMAKE_CXXFLAGS += /fsanitize=address
+	QMAKE_LFLAGS += /fsanitize=address
+
+	# 修正 1：使用 QT_ARCH 而非 QMAKE_HOST.arch 判斷目標編譯器架構
+	contains(QT_ARCH, x86_64) {
 		DEFINES += WIN64
 		LIBS += -L"$$_PRO_FILE_PWD_/lib/win/x64"
-	}
-	CONFIG(debug, debug|release) {
-		!winrt:INCLUDEPATH += include/vld
+
+		CONFIG(debug, debug|release) {
+			# 修正 2：64-bit 模式下強制關閉 VLD！嚴禁讓 VLD 干擾 64-bit Lua 的記憶體池
+			# !winrt:INCLUDEPATH += include/vld
+		} else {
+			QMAKE_LFLAGS_RELEASE = $$QMAKE_LFLAGS_RELEASE_WITH_DEBUGINFO
+			DEFINES += USE_BREAKPAD
+
+			SOURCES += src/breakpad/client/windows/crash_generation/client_info.cc \
+				src/breakpad/client/windows/crash_generation/crash_generation_client.cc \
+				src/breakpad/client/windows/crash_generation/crash_generation_server.cc \
+				src/breakpad/client/windows/crash_generation/minidump_generator.cc \
+				src/breakpad/client/windows/handler/exception_handler.cc \
+				src/breakpad/common/windows/guid_string.cc
+
+			HEADERS += src/breakpad/client/windows/crash_generation/client_info.h \
+				src/breakpad/client/windows/crash_generation/crash_generation_client.h \
+				src/breakpad/client/windows/crash_generation/crash_generation_server.h \
+				src/breakpad/client/windows/crash_generation/minidump_generator.h \
+				src/breakpad/client/windows/handler/exception_handler.h \
+				src/breakpad/common/windows/guid_string.h
+
+			INCLUDEPATH += src/breakpad
+			INCLUDEPATH += src/breakpad/client/windows
+		}
 	} else {
-		QMAKE_LFLAGS_RELEASE = $$QMAKE_LFLAGS_RELEASE_WITH_DEBUGINFO
-		DEFINES += USE_BREAKPAD
+		DEFINES += WIN32
+		LIBS += -L"$$_PRO_FILE_PWD_/lib/win/x86"
 
-		SOURCES += src/breakpad/client/windows/crash_generation/client_info.cc \
-			src/breakpad/client/windows/crash_generation/crash_generation_client.cc \
-			src/breakpad/client/windows/crash_generation/crash_generation_server.cc \
-			src/breakpad/client/windows/crash_generation/minidump_generator.cc \
-			src/breakpad/client/windows/handler/exception_handler.cc \
-			src/breakpad/common/windows/guid_string.cc
+		CONFIG(debug, debug|release) {
+			!winrt:INCLUDEPATH += include/vld
+		} else {
+			QMAKE_LFLAGS_RELEASE = $$QMAKE_LFLAGS_RELEASE_WITH_DEBUGINFO
+			DEFINES += USE_BREAKPAD
 
-		HEADERS += src/breakpad/client/windows/crash_generation/client_info.h \
-			src/breakpad/client/windows/crash_generation/crash_generation_client.h \
-			src/breakpad/client/windows/crash_generation/crash_generation_server.h \
-			src/breakpad/client/windows/crash_generation/minidump_generator.h \
-			src/breakpad/client/windows/handler/exception_handler.h \
-			src/breakpad/common/windows/guid_string.h
+			SOURCES += src/breakpad/client/windows/crash_generation/client_info.cc \
+				src/breakpad/client/windows/crash_generation/crash_generation_client.cc \
+				src/breakpad/client/windows/crash_generation/crash_generation_server.cc \
+				src/breakpad/client/windows/crash_generation/minidump_generator.cc \
+				src/breakpad/client/windows/handler/exception_handler.cc \
+				src/breakpad/common/windows/guid_string.cc
 
-		INCLUDEPATH += src/breakpad
-		INCLUDEPATH += src/breakpad/client/windows
+			HEADERS += src/breakpad/client/windows/crash_generation/client_info.h \
+				src/breakpad/client/windows/crash_generation/crash_generation_client.h \
+				src/breakpad/client/windows/crash_generation/crash_generation_server.h \
+				src/breakpad/client/windows/crash_generation/minidump_generator.h \
+				src/breakpad/client/windows/handler/exception_handler.h \
+				src/breakpad/common/windows/guid_string.h
+
+			INCLUDEPATH += src/breakpad
+			INCLUDEPATH += src/breakpad/client/windows
+		}
 	}
 }
 win32-g++{
 	DEFINES += WIN32
 	LIBS += -L"$$_PRO_FILE_PWD_/lib/win/MinGW"
 	DEFINES += GPP
+	QMAKE_CXXFLAGS += -fsanitize=address
+	QMAKE_LFLAGS += -fsanitize=address
 }
 winrt{
 	DEFINES += _CRT_SECURE_NO_WARNINGS

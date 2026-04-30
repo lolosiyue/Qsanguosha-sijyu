@@ -22,6 +22,7 @@ public:
 
     const Card *getCard() const;
     void setCard(const Card *card);
+    void refreshTooltip();
     inline int getId() const
     {
         return m_cardId;

@@ -19,6 +19,10 @@ class Photo : public PlayerCardContainer
 {
     Q_OBJECT
 
+private:
+    bool m_giftHighlighted;
+    QGraphicsPixmapItem* m_giftHighlightFrame;
+
 public:
     explicit Photo();
     ~Photo();
@@ -43,6 +47,9 @@ public:
     virtual QRectF boundingRect() const;
     QGraphicsItem *getMouseClickReceiver();
 
+    void setGiftHighlight(bool highlight);
+    bool isGiftHighlighted() const;
+
 public slots:
     void updatePhase();
     void hideEmotion();
@@ -50,7 +57,11 @@ public slots:
     virtual void updateDuanchang();
     virtual void refresh(bool killed = false);
 
+signals:
+    void giftClicked();
+
 protected:
+    virtual void mouseReleaseEvent(QGraphicsSceneMouseEvent *event);
     inline virtual QGraphicsItem *_getEquipParent()
     {
         return _m_groupMain;

@@ -201,6 +201,12 @@ QString Skill::getNotice(int index) const
     return Sanguosha->translate(QString("~%1%2").arg(objectName()).arg(index));
 }
 
+QString Skill::getOracleText(const Player *target) const
+{
+    Q_UNUSED(target);
+    return Sanguosha->translate("^" + objectName());
+}
+
 bool Skill::isVisible() const
 {
     return !(objectName().startsWith("#")||inherits("SPConvertSkill"));

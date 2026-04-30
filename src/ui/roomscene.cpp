@@ -2,6 +2,7 @@
 //#include "settings.h"
 #include "carditem.h"
 #include "engine.h"
+#include "oracle_helper.h"
 #include "cardoverview.h"
 #include "distanceviewdialog.h"
 #include "maxcardsviewdialog.h"
@@ -28,6 +29,9 @@
 #include "aux-skills.h"
 #include "clientlogbox.h"
 #include "chatwidget.h"
+#include "emotionpanel.h"
+#include "gifchatbox.h"
+#include "giftitem.h"
 #include "sprite.h"
 #include "EmbeddedQmlLoader.h"
 #include "SpineGlItem.h"
@@ -69,6 +73,8 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	m_skillButtonSank = false;
 	m_ShefuAskState = ShefuAskNecessary;
 	guhuo_log = "";
+	gift_selection_mode = false;
+	current_gift_type = QString();
 
 	// create photos
 	for (int i = 1;i < Sanguosha->getPlayerCount(ServerInfo.GameMode);i++){
@@ -254,7 +260,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	}
 
 	// chat box
-	chat_box = new QTextEdit;
+	chat_box = new GifChatBox;
 	chat_box->setObjectName("chat_box");
 	chat_box_widget = addWidget(chat_box);
 	chat_box_widget->setObjectName("chat_box_widget");
@@ -287,6 +293,10 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	addItem(chat_widget);
 	connect(chat_widget,SIGNAL(return_button_click()),this,SLOT(speak()));
 	connect(chat_widget,SIGNAL(chat_widget_msg(QString)),this,SLOT(appendChatEdit(QString)));
+	connect(chat_widget, SIGNAL(gift_mode_activated(QString)), this, SLOT(onGiftModeActivated(QString)));
+
+	m_emotionPanel = new EmotionPanel();
+	connect(m_emotionPanel, SIGNAL(emotionSelected(int)), this, SLOT(onEmotionIconSelected(int)));
 
 	if(ServerInfo.DisableChat)
 		chat_edit_widget->hide();
@@ -517,8 +527,9 @@ void RoomScene::handleGameEvent(const QVariant&args)
 			const General*general = player->getGeneral();
 			if(general&&general->hasSkill(skillName,true)){
 				int skin_index = Config.value(QString("HeroSkin/%1").arg(general->objectName()),0).toInt();
+				QString actualGn = Sanguosha->getResourceAlias("heroskin", general->objectName());
 				if(skin_index > 0){
-					QString heroskin = QString("image/heroskin/audio/%1_%2/skill").arg(general->objectName()).arg(skin_index);
+					QString heroskin = QString("image/heroskin/audio/%1_%2/skill").arg(actualGn).arg(skin_index);
 					if(QFile::exists(heroskin)){
 						QStringList oggs,files;
 						QDir dir(heroskin);
@@ -543,8 +554,9 @@ void RoomScene::handleGameEvent(const QVariant&args)
 			general = player->getGeneral2();
 			if(general&&general->hasSkill(skillName,true)){
 				int skin_index = Config.value(QString("HeroSkin/%1").arg(general->objectName()),0).toInt();
+				QString actualGn = Sanguosha->getResourceAlias("heroskin", general->objectName());
 				if(skin_index > 0){
-					QString heroskin = QString("image/heroskin/audio/%1_%2/skill").arg(general->objectName()).arg(skin_index);
+					QString heroskin = QString("image/heroskin/audio/%1_%2/skill").arg(actualGn).arg(skin_index);
 					if(QFile::exists(heroskin)){
 						QStringList oggs,files;
 						QDir dir(heroskin);
@@ -914,39 +926,9 @@ void RoomScene::adjustItems()
 {
 	QRectF displayRegion = sceneRect();
 
-	// switch between default&compact skin depending on scene size
 	QSanSkinFactory&factory = QSanSkinFactory::getInstance();
-
-	bool use_full = Config.value("UseFullSkin",true).toBool();
-	QString suf = use_full ? "full" : "";
-	factory.S_DEFAULT_SKIN_NAME = suf+"default";
-	factory.S_COMPACT_SKIN_NAME = suf+"compact";
-
-	QString skinName = factory.getCurrentSkinName();
-
-	QString to_switch;
 	QSize minSize,maxSize;
 	_getSceneSizes(minSize,maxSize);
-	if(skinName.contains("default")){
-		if(displayRegion.width() < minSize.width()||displayRegion.height() < minSize.height())
-			to_switch = factory.S_COMPACT_SKIN_NAME;
-		else if(skinName!=factory.S_DEFAULT_SKIN_NAME)
-			to_switch = factory.S_DEFAULT_SKIN_NAME;
-	} else if(skinName.contains("compact")){
-		if(displayRegion.width() > maxSize.width()&&displayRegion.height() > maxSize.height())
-			to_switch = factory.S_DEFAULT_SKIN_NAME;
-		else if(skinName!=factory.S_COMPACT_SKIN_NAME)
-			to_switch = factory.S_COMPACT_SKIN_NAME;
-	}
-	if(!to_switch.isEmpty()){
-		QThread*thread = QCoreApplication::instance()->thread();
-		thread->blockSignals(true);
-		factory.switchSkin(to_switch);
-		thread->blockSignals(false);
-		foreach(Photo*photo,photos)
-			photo->repaintAll();
-		dashboard->repaintAll();
-	}
 
 	// update the sizes since we have reloaded the skin.
 	_getSceneSizes(minSize,maxSize);
@@ -1531,6 +1513,15 @@ void RoomScene::keyReleaseEvent(QKeyEvent*event)
 	switch (event->key()){
 	case Qt::Key_F1: trust();break;
 	case Qt::Key_F2: chooseSkillButton();break;
+	case Qt::Key_F8: {
+		if (m_emotionPanel) {
+			if (m_emotionPanel->isVisible())
+				m_emotionPanel->hidePanel();
+			else
+				m_emotionPanel->showPanel();
+		}
+		break;
+	}
 	case Qt::Key_F3: dashboard->beginSorting();break;
 	case Qt::Key_F4: dashboard->reverseSelection();break;
 	case Qt::Key_F5: {
@@ -1928,7 +1919,7 @@ QGroupBox*RoomScene::createOptionBox(const QString&skillName,const QStringList&o
 		const Skill*s = Sanguosha->getSkill(option);
 		if(s){
 			LuaLocker locker;
-			button->setToolTip(s->getDescription(Self));
+			button->setToolTip(buildOracleTooltip(s->getOracleText(Self), s->getDescription(Self)));
 		}else{
 			QString original_tooltip = QString(":%1").arg(text);
 			QString tooltip = Sanguosha->translate(original_tooltip);
@@ -2002,7 +1993,8 @@ void RoomScene::chooseOption(const QString&skillName,const QStringList&options,c
 				if(!options.contains(option))
 					button->setEnabled(false);
 
-				button->setToolTip(Sanguosha->translate(":"+skill));
+				const Skill *s = Sanguosha->getSkill(skill);
+				button->setToolTip(buildOracleTooltip(s ? s->getOracleText(Self) : QString(), Sanguosha->translate(":"+skill)));
 
 				Q_ASSERT(box&&gridlayout);
 				row = index/6;
@@ -4047,11 +4039,11 @@ void RoomScene::fillTable(QTableWidget*table,const QList<const ClientPlayer*>&pl
 
 void RoomScene::updateCardDescription(const QString &card_name)
 {
-    // 刷新所有玩家的装备区，让新的卡牌描述立即显示
     if (dashboard) {
         dashboard->_updateEquips();
+        dashboard->refreshHandCardTooltips();
     }
-    
+
     foreach (Photo *photo, photos) {
         if (photo) {
             photo->_updateEquips();
@@ -4230,7 +4222,8 @@ void RoomScene::updateSkill(const QString&skill_name)
 		if(button->getSkill()->objectName()==skill_name)
 		{
 			LuaLocker locker;
-			button->setToolTip(button->getSkill()->getDescription(Self));
+			const Skill *s = button->getSkill();
+			button->setToolTip(buildOracleTooltip(s->getOracleText(Self), s->getDescription(Self)));
 		}
 	}/*
 	bool effectMark = false;
@@ -4317,6 +4310,12 @@ void RoomScene::speak()
 		}
 	}
 	chat_edit->clear();
+}
+
+void RoomScene::onEmotionIconSelected(int emotionId)
+{
+	QString emotionText = QString("<#%1#>").arg(emotionId);
+	ClientInstance->speakToServer(emotionText);
 }
 
 void RoomScene::fillCards(const QList<int>&card_ids,const QList<int>&disabled_ids)
@@ -4406,7 +4405,7 @@ void KOFOrderBox::revealGeneral(const QString&name)
 		avatars[revealed]->setObjectName(name);
 		const General*general = Sanguosha->getGeneral(name);
 		if(general)
-			avatars[revealed]->setToolTip(general->getSkillDescription(true));
+			avatars[revealed]->setToolTip(buildOracleTooltip(general->getOracleText(), general->getSkillDescription(true)));
 		revealed++;
 	}
 }
@@ -5114,6 +5113,8 @@ void RoomScene::doAnimation(int name,const QStringList&args)
 		map[S_ANIMATE_LIGHTBOX] =&RoomScene::doLightboxAnimation;
 		map[S_ANIMATE_HUASHEN] =&RoomScene::doHuashen;
 		map[S_ANIMATE_INDICATE] =&RoomScene::doIndicate;
+		map[S_ANIMATE_FLOWER] =&RoomScene::doGiftAnimation;
+		map[S_ANIMATE_EGG] =&RoomScene::doGiftAnimation;
 	}
 
 	static QMap<AnimateType,QString> anim_name;
@@ -5127,10 +5128,107 @@ void RoomScene::doAnimation(int name,const QStringList&args)
 		anim_name[S_ANIMATE_LIGHTBOX] = "lightbox";
 		anim_name[S_ANIMATE_HUASHEN] = "huashen";
 		anim_name[S_ANIMATE_INDICATE] = "indicate";
+		anim_name[S_ANIMATE_FLOWER] = "flower";
+		anim_name[S_ANIMATE_EGG] = "egg";
 	}
 
 	AnimationFunc func = map.value((AnimateType)name,nullptr);
 	if(func) (this->*func)(anim_name.value((AnimateType)name,""),args);
+}
+
+void RoomScene::doGiftAnimation(const QString &gift_type, const QStringList &args)
+{
+	if (args.size() < 2) return;
+
+	QString from = args.first();
+	QString to = args.last();
+
+	if (from == to || Config.value("NoIndicator", false).toBool())
+		return;
+
+	QGraphicsObject *obj1 = getAnimationObject(from);
+	QGraphicsObject *obj2 = getAnimationObject(to);
+
+	if (!obj1 || !obj2)
+		return;
+
+	QPointF start = obj1->sceneBoundingRect().center();
+	QPointF finish = obj2->sceneBoundingRect().center();
+
+	GiftItem *gift = new GiftItem(start, finish, gift_type, ClientInstance->getPlayer(from));
+	gift->setPos(start);
+	gift->setZValue(INT_MAX);
+
+	addItem(gift);
+	gift->doAnimation();
+}
+
+void RoomScene::onGiftModeActivated(const QString &gift_type)
+{
+	if (gift_selection_mode) {
+		exitGiftSelectionMode();
+	}
+
+	gift_selection_mode = true;
+	current_gift_type = gift_type;
+
+	gift_highlighted_photos.clear();
+	foreach (Photo *photo, photos) {
+		const ClientPlayer *player = photo->getPlayer();
+		if (player && player != Self) {
+			photo->setGiftHighlight(true);
+			gift_highlighted_photos.append(photo);
+		}
+	}
+
+	static bool gift_signals_connected = false;
+	if (!gift_signals_connected) {
+		foreach (Photo *photo, photos) {
+			connect(photo, SIGNAL(giftClicked()), this, SLOT(onPlayerSelectedForGift()));
+		}
+		gift_signals_connected = true;
+	}
+}
+
+void RoomScene::onPlayerSelectedForGift()
+{
+	if (!gift_selection_mode) return;
+
+	Photo *photo = qobject_cast<Photo *>(sender());
+	if (!photo) return;
+
+	handleGiftSelection(photo);
+}
+
+void RoomScene::handleGiftSelection(Photo *photo)
+{
+	if (!gift_selection_mode || !photo) return;
+
+	const ClientPlayer *target = photo->getPlayer();
+	if (!target || target == Self) return;
+
+	if (!gift_highlighted_photos.contains(photo)) return;
+
+	QString command = QString(".%1 %2").arg(current_gift_type).arg(target->objectName());
+	chat_edit->setText(command);
+	speak();
+
+	exitGiftSelectionMode();
+}
+
+void RoomScene::exitGiftSelectionMode()
+{
+	if (!gift_selection_mode) return;
+
+	gift_selection_mode = false;
+	current_gift_type = QString();
+
+	foreach (Photo *photo, gift_highlighted_photos) {
+		if (photo) {
+			photo->setGiftHighlight(false);
+		}
+	}
+	gift_highlighted_photos.clear();
 }
 
 void RoomScene::showServerInformation()
@@ -5529,7 +5627,7 @@ void RoomScene::showPindianBox(const QString&from_name,int from_id,const QString
 
 	pindian_from_card = new CardItem(Sanguosha->getEngineCard(from_id));
 	pindian_from_card->setParentItem(pindian_box);
-	pindian_from_card->setPos(QPointF(28+pindian_from_card->boundingRect().width()/2,44+pindian_from_card->boundingRect().height()/2));
+	pindian_from_card->setPos(QPointF(77.5, 112));
 	//pindian_from_card->setFlag(QGraphicsItem::ItemIsMovable,false);
 	pindian_from_card->setHomePos(pindian_from_card->pos());
 	pindian_from_card->setFootnote(ClientInstance->getPlayerName(from_name));
@@ -5537,7 +5635,7 @@ void RoomScene::showPindianBox(const QString&from_name,int from_id,const QString
 
 	pindian_to_card = new CardItem(Sanguosha->getEngineCard(to_id));
 	pindian_to_card->setParentItem(pindian_box);
-	pindian_to_card->setPos(QPointF(126+pindian_to_card->boundingRect().width()/2,44+pindian_to_card->boundingRect().height()/2));
+	pindian_to_card->setPos(QPointF(174.5, 112));
 	//pindian_to_card->setFlag(QGraphicsItem::ItemIsMovable,false);
 	pindian_to_card->setHomePos(pindian_to_card->pos());
 	pindian_to_card->setFootnote(ClientInstance->getPlayerName(to_name));

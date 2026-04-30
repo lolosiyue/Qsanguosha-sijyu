@@ -394,6 +394,43 @@ QString QSanRoomSkin::getPlayerAudioEffectPath(const QString &eventName, const Q
 		if(fileName.isEmpty())
 			fileName = _m_audioConfig[QString(S_SKIN_KEY_PLAYER_AUDIO_EFFECT).arg(category).arg("default")].toString().arg(eventName);
 	}
+
+	// Resource Alias fallback: if original eventName yielded no audio, retry with alias
+	if ((fileName.isEmpty() || !QFile::exists(fileName)) && !eventName.isEmpty()) {
+		QString aliasEvent = Sanguosha->getResourceAlias("audios", eventName);
+		if (aliasEvent != eventName) {
+			QString aliasFileName = QString(S_SKIN_KEY_PLAYER_AUDIO_EFFECT).arg(category).arg(aliasEvent);
+			if (index < 1)
+				aliasFileName = getRandomAudioFileName(aliasFileName);
+			else {
+				QStringList fileNames = getAudioFileNames(aliasFileName);
+				if (fileNames.length()>0) {
+					if (index>fileNames.length()) aliasFileName = fileNames.last();
+					else aliasFileName = fileNames[index-1];
+				} else
+					aliasFileName = "";
+			}
+			if (aliasFileName.isEmpty()) {
+				const Skill *skill = Sanguosha->getSkill(aliasEvent);
+				if (skill) {
+					QStringList fileNames = skill->getSources();
+					if (fileNames.length()>0) {
+						if (index < 1)
+							aliasFileName = fileNames.at(qrand()%fileNames.length());
+						else {
+							if (index>fileNames.length()) aliasFileName = fileNames.last();
+							else aliasFileName = fileNames[index-1];
+						}
+					}
+				}
+				if (aliasFileName.isEmpty())
+					aliasFileName = _m_audioConfig[QString(S_SKIN_KEY_PLAYER_AUDIO_EFFECT).arg(category).arg("default")].toString().arg(aliasEvent);
+			}
+			if (!aliasFileName.isEmpty())
+				fileName = aliasFileName;
+		}
+	}
+
 	return fileName;
 }
 
@@ -629,9 +666,28 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 		QString fileNameToResolve = _readImageConfig(groupKey, clipRegion, clipping, scaleRegion, scaled);
 		fileName = fileNameToResolve.arg(arg);
 		if (!QFile::exists(fileName)) {
-			groupKey = key.arg(S_SKIN_KEY_DEFAULT_SECOND);
-			fileNameToResolve = _readImageConfig(groupKey, clipRegion, clipping, scaleRegion, scaled);
-			fileName = fileNameToResolve.arg(arg);
+			bool isGeneralCard = Sanguosha->getGeneral(arg) != nullptr;
+			if (isGeneralCard) {
+				groupKey = key.arg(S_SKIN_KEY_DEFAULT_SECOND);
+				fileNameToResolve = _readImageConfig(groupKey, clipRegion, clipping, scaleRegion, scaled);
+				fileName = fileNameToResolve.arg(arg);
+			}
+		}
+	}
+
+	// Image parameter fallback: use setImage general's picture when file doesn't exist
+	if (!QFile::exists(fileName) && !arg.isEmpty()) {
+		QString general_name = arg;
+		const General *general = Sanguosha->getGeneral(general_name);
+		if (general && !general->getImage().isEmpty()) {
+			QString groupKey = key.arg(S_SKIN_KEY_DEFAULT);
+			QString fileNameToResolve = _readImageConfig(groupKey, clipRegion, clipping, scaleRegion, scaled);
+			fileName = fileNameToResolve.arg(general->getImage());
+			if (!QFile::exists(fileName)) {
+				groupKey = key.arg(S_SKIN_KEY_DEFAULT_SECOND);
+				fileNameToResolve = _readImageConfig(groupKey, clipRegion, clipping, scaleRegion, scaled);
+				fileName = fileNameToResolve.arg(general->getImage());
+			}
 		}
 	}
 
@@ -639,12 +695,46 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 	if (fileName.contains("/generals")) {
 		QString gn = fileName.split("/").last().split(".").first();
 		if(Sanguosha->getGeneral(gn)){
+			QString actualGn = Sanguosha->getResourceAlias("heroskin", gn);
 			int skin_index = Config.value("HeroSkin/"+gn, 0).toInt();
 			if (skin_index > 0) {
 				fileName.replace("image/", "image/heroskin/");
-				fileName.replace(gn, QString(gn+"_%1").arg(skin_index));
+				fileName.replace(gn, QString(actualGn+"_%1").arg(skin_index));
 			}else if(!QFile::exists(fileName)){
 				fileName.replace(gn, gn.split("_").last());
+			}
+		}
+	}
+
+	// Resource Alias fallback: if file still not found, try alias mapping
+	// Skip when on a heroskin path — skins are general-specific, alias is for base images only
+	if (!QFile::exists(fileName) && !arg.isEmpty() && !fileName.contains("/heroskin/")) {
+		QString aliasArg = Sanguosha->getResourceAlias("generals", arg);
+		if (aliasArg != arg) {
+			QString aliasKey = key.arg(aliasArg);
+			if (isImageKeyDefined(aliasKey))
+				fileName = _readImageConfig(aliasKey, clipRegion, clipping, scaleRegion, scaled);
+			else {
+				QString groupKey = key.arg(S_SKIN_KEY_DEFAULT);
+				QString fileNameToResolve = _readImageConfig(groupKey, clipRegion, clipping, scaleRegion, scaled);
+				fileName = fileNameToResolve.arg(aliasArg);
+				if (!QFile::exists(fileName)) {
+					groupKey = key.arg(S_SKIN_KEY_DEFAULT_SECOND);
+					fileNameToResolve = _readImageConfig(groupKey, clipRegion, clipping, scaleRegion, scaled);
+					fileName = fileNameToResolve.arg(aliasArg);
+				}
+			}
+			// Also check hero skin for the aliased general
+			if (fileName.contains("/generals")) {
+				QString gn = fileName.split("/").last().split(".").first();
+				if(Sanguosha->getGeneral(gn)){
+					QString actualGn = Sanguosha->getResourceAlias("heroskin", gn);
+					int skin_index = Config.value("HeroSkin/"+gn, 0).toInt();
+					if (skin_index > 0) {
+						fileName.replace("image/", "image/heroskin/");
+						fileName.replace(gn, QString(actualGn+"_%1").arg(skin_index));
+					}
+				}
 			}
 		}
 	}
@@ -676,21 +766,60 @@ QPixmap IQSanComponentSkin::getPixmapFileName(const QString &key) const
 
 QPixmap IQSanComponentSkin::getPixmapFromFileName(const QString &fileName, bool cache) const
 {
-	if (fileName == "deprecated" || fileName.isEmpty())
-		return QPixmap(1, 1);
-	else {
-		QPixmap pixmap;
-		bool success = true;
-		if (cache) {
-			if (!QPixmapCache::find(fileName, &pixmap)) {
-				success = pixmap.load(fileName);
-				if (success) QPixmapCache::insert(fileName, pixmap);
-			}
-		} else
-			success = pixmap.load(fileName);
-		if (success) return pixmap;
-		else return QPixmap(1, 1); // make Qt happy
-	}
+    if (fileName == "deprecated" || fileName.isEmpty())
+        return QPixmap(1, 1);
+    else {
+        QPixmap pixmap;
+        bool success = true;
+        if (!QFile::exists(fileName)) {
+            QString name = extractCardNameFromPath(fileName);
+            if (!name.isEmpty()) {
+                bool isCardPath = fileName.contains("image/card/") && !fileName.contains("image/generals/card");
+                bool isEquipPath = fileName.contains("image/equips/") || fileName.contains("image/fullskin/small-equips/");
+                QString fallbackKey;
+
+                if (isCardPath) {
+                    fallbackKey = "fallback_" + name;
+                } else if (isEquipPath) {
+                    fallbackKey = "fallback_equip_" + name;
+                } else {
+                    return QPixmap(1, 1);
+                }
+
+                if (cache && QPixmapCache::find(fallbackKey, &pixmap)) {
+                    return pixmap;
+                }
+
+                if (isCardPath) {
+                    pixmap = generateFallbackCardImage(name);
+                } else {
+                    QSize equipSize;
+                    if (fileName.contains("image/fullskin/small-equips/")) {
+                        bool isHorseEquip = isHorseEquipByName(name);
+                        equipSize = isHorseEquip ? QSize(70, 19) : QSize(140, 19);
+                    } else {
+                        equipSize = QSize(149, 25);
+                    }
+                    pixmap = generateFallbackEquipImage(name, equipSize);
+                }
+                if (cache && !pixmap.isNull()) {
+                    QPixmapCache::insert(fallbackKey, pixmap);
+                }
+                if (!pixmap.isNull())
+                    return pixmap;
+            }
+            return QPixmap(1, 1);
+        }
+        if (cache) {
+            if (!QPixmapCache::find(fileName, &pixmap)) {
+                success = pixmap.load(fileName);
+                if (success) QPixmapCache::insert(fileName, pixmap);
+            }
+        } else
+            success = pixmap.load(fileName);
+        if (success) return pixmap;
+        else return QPixmap(1, 1); // make Qt happy
+    }
 }
 
 bool QSanRoomSkin::_loadAnimationConfig(const QVariant &)
@@ -1046,10 +1175,8 @@ bool QSanSkinFactory::switchSkin(QString skinName)
 
 QSanSkinFactory::QSanSkinFactory(const char *fileName)
 {
-	bool use_full = Config.value("UseFullSkin", true).toBool();
-	QString suf = use_full ? "full" : "";
-	S_DEFAULT_SKIN_NAME = suf + "default";
-	S_COMPACT_SKIN_NAME = suf + "compact";
+	S_DEFAULT_SKIN_NAME = "fulldefault";
+	S_COMPACT_SKIN_NAME = "fullcompact";
 
 	JsonDocument doc = JsonDocument::fromFilePath(fileName);
 	_m_skinList = doc.object();
@@ -1077,4 +1204,326 @@ void GraphicsWidgetHoverItem::hoverLeaveEvent(QGraphicsSceneHoverEvent *)
 {
 	emit hover_leave();
 }*/
+
+QString IQSanComponentSkin::extractCardNameFromPath(const QString &filePath)
+{
+	if (filePath.isEmpty())
+		return QString();
+
+	QString fileName = filePath;
+	int lastSlash = fileName.lastIndexOf('/');
+	if (lastSlash >= 0)
+		fileName = fileName.mid(lastSlash + 1);
+
+	int lastDot = fileName.lastIndexOf('.');
+	if (lastDot >= 0)
+		fileName = fileName.left(lastDot);
+
+	return fileName;
+}
+
+QString IQSanComponentSkin::getCardDisplayName(const QString &cardObjectName)
+{
+	if (cardObjectName.isEmpty())
+		return QString();
+
+	QString translated = Sanguosha->translate(cardObjectName);
+	if (translated.isEmpty() || translated == cardObjectName)
+		return cardObjectName;
+
+	return translated;
+}
+
+void IQSanComponentSkin::drawHorizontalText(QPainter &painter, const QRect &rect,
+	const QString &text, const QFont &font)
+{
+	if (text.isEmpty() || rect.width() <= 0 || rect.height() <= 0)
+		return;
+
+	painter.save();
+
+	QFont actualFont = font;
+	QFontDatabase fontDb;
+	QStringList availableFonts = fontDb.families();
+
+	if (!availableFonts.contains(font.family())) {
+		QStringList fallbackFonts;
+		fallbackFonts << "SimHei" << "SimSun" << "Microsoft YaHei" << "Arial";
+
+		bool fontFound = false;
+		for (const QString &fallbackFont : fallbackFonts) {
+			if (availableFonts.contains(fallbackFont)) {
+				actualFont.setFamily(fallbackFont);
+				fontFound = true;
+				break;
+			}
+		}
+
+		if (!fontFound) {
+			actualFont = QFont();
+			actualFont.setPointSize(font.pointSize());
+			actualFont.setBold(font.bold());
+		}
+	}
+
+	painter.setFont(actualFont);
+
+	QFontMetrics fm(actualFont);
+	int textWidth = fm.horizontalAdvance(text);
+	int fontSize = actualFont.pointSize();
+
+	if (textWidth > rect.width()) {
+		int newSize = actualFont.pointSize() * rect.width() / textWidth;
+		if (newSize < 8) newSize = 8;
+		actualFont.setPointSize(newSize);
+		painter.setFont(actualFont);
+		QFontMetrics newFm(actualFont);
+		textWidth = newFm.horizontalAdvance(text);
+	}
+
+	int x = rect.left() + (rect.width() - textWidth) / 2;
+	int y = rect.top() + rect.height() / 2 + fm.ascent() / 2;
+
+	painter.drawText(x, y, text);
+
+	painter.restore();
+}
+
+void IQSanComponentSkin::drawVerticalText(QPainter &painter, const QRect &rect,
+	const QString &text, const QFont &font)
+{
+	if (text.isEmpty() || rect.width() <= 0 || rect.height() <= 0)
+		return;
+
+	painter.save();
+
+	QFont actualFont = font;
+	QFontDatabase fontDb;
+	QStringList availableFonts = fontDb.families();
+
+	if (!availableFonts.contains(font.family())) {
+		QStringList fallbackFonts;
+		fallbackFonts << "SimHei" << "SimSun" << "Microsoft YaHei" << "Arial";
+
+		bool fontFound = false;
+		for (const QString &fallbackFont : fallbackFonts) {
+			if (availableFonts.contains(fallbackFont)) {
+				actualFont.setFamily(fallbackFont);
+				fontFound = true;
+				break;
+			}
+		}
+
+		if (!fontFound) {
+			actualFont = QFont();
+			actualFont.setPointSize(font.pointSize());
+			actualFont.setBold(font.bold());
+		}
+	}
+
+	painter.setFont(actualFont);
+
+	QFontMetrics fm(actualFont);
+	int charHeight = fm.height();
+	int charWidth = fm.maxWidth();
+
+	int spacing = 10;
+	int totalHeight = text.length() * charHeight + (text.length() - 1) * spacing;
+
+	QFont adjustedFont = actualFont;
+	if (totalHeight > rect.height()) {
+		int minSpacing = 2;
+		spacing = qMax(minSpacing, (rect.height() - text.length() * charHeight) / (text.length() - 1));
+		totalHeight = text.length() * charHeight + (text.length() - 1) * spacing;
+
+		if (totalHeight > rect.height()) {
+			int newSize = actualFont.pointSize() * rect.height() / totalHeight;
+			if (newSize < 8) newSize = 8;
+			adjustedFont.setPointSize(newSize);
+			painter.setFont(adjustedFont);
+
+			QFontMetrics newFm(adjustedFont);
+			charHeight = newFm.height();
+			charWidth = newFm.maxWidth();
+			spacing = minSpacing;
+			totalHeight = text.length() * charHeight + (text.length() - 1) * spacing;
+		}
+	}
+
+	int startY = rect.top() + qMax(0, (rect.height() - totalHeight) / 2);
+
+	for (int i = 0; i < text.length(); ++i) {
+		QString ch = text.at(i);
+
+		int charX = rect.left() + qMax(0, (rect.width() - charWidth) / 2);
+		int charY = startY + i * (charHeight + spacing);
+
+		if (charY + charHeight > rect.bottom())
+			break;
+
+		painter.drawText(QRect(charX, charY, charWidth, charHeight),
+			Qt::AlignCenter, ch);
+	}
+
+	painter.restore();
+}
+
+bool IQSanComponentSkin::isHorseEquipByName(const QString &equipName)
+{
+	if (equipName.isEmpty())
+		return false;
+
+	Card *card = Sanguosha->cloneCard(equipName, Card::SuitToBeDecided, 0);
+	if (card == nullptr)
+		return false;
+
+	bool isHorse = card->isKindOf("OffensiveHorse") || card->isKindOf("DefensiveHorse");
+	delete card;
+	return isHorse;
+}
+
+QPixmap IQSanComponentSkin::generateFallbackCardImage(const QString &cardName, const QSize &size)
+{
+	bool enabled = Config.value("FallbackImage/Enabled", true).toBool();
+	if (!enabled)
+		return QPixmap(1, 1);
+
+	if (cardName.isEmpty())
+		return QPixmap(1, 1);
+
+	QColor textColor = QColor(Config.value("FallbackImage/TextColor", "#000000").toString());
+	QString fontFamily = Config.value("FallbackImage/FontFamily", "SimHei").toString();
+	int fontSize = Config.value("FallbackImage/FontSize", 20).toInt();
+	int imageWidth = Config.value("FallbackImage/ImageWidth", size.width()).toInt();
+	int imageHeight = Config.value("FallbackImage/ImageHeight", size.height()).toInt();
+	QString backgroundImagePath = Config.value("FallbackImage/BackgroundImage", "").toString();
+
+	if (imageWidth <= 0 || imageHeight <= 0) {
+		imageWidth = size.width() > 0 ? size.width() : 150;
+		imageHeight = size.height() > 0 ? size.height() : 210;
+	}
+
+	if (fontSize < 8 || fontSize > 100)
+		fontSize = 20;
+
+	QSize actualSize(imageWidth, imageHeight);
+
+	QPixmap pixmap(actualSize);
+	if (pixmap.isNull())
+		return QPixmap(1, 1);
+
+	if (!backgroundImagePath.isEmpty() && QFile::exists(backgroundImagePath)) {
+		QPixmap bg(backgroundImagePath);
+		if (!bg.isNull()) {
+			pixmap = bg.scaled(actualSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+		} else {
+			pixmap.fill(Qt::white);
+		}
+	} else {
+		QColor backgroundColor = QColor(Config.value("FallbackImage/BackgroundColor", "#FFFFFF").toString());
+		pixmap.fill(backgroundColor);
+	}
+
+	QPainter painter(&pixmap);
+	if (!painter.isActive())
+		return QPixmap(1, 1);
+
+	painter.setRenderHint(QPainter::Antialiasing);
+	painter.setRenderHint(QPainter::TextAntialiasing);
+
+	QPen borderPen(textColor, 2);
+	painter.setPen(borderPen);
+	painter.drawRect(1, 1, actualSize.width() - 2, actualSize.height() - 2);
+
+	QString displayName = getCardDisplayName(cardName);
+	if (displayName.isEmpty())
+		displayName = cardName;
+
+	QFont font;
+	font.setFamily(fontFamily);
+	font.setPointSize(fontSize);
+	font.setBold(true);
+
+	QRect textRect(10, 10, actualSize.width() - 20, actualSize.height() - 20);
+	painter.setPen(textColor);
+	drawVerticalText(painter, textRect, displayName, font);
+
+	painter.end();
+
+	return pixmap;
+}
+
+QPixmap IQSanComponentSkin::generateFallbackEquipImage(const QString &equipName, const QSize &size)
+{
+	bool enabled = Config.value("FallbackImage/Enabled", true).toBool();
+	if (!enabled)
+		return QPixmap(1, 1);
+
+	if (equipName.isEmpty())
+		return QPixmap(1, 1);
+
+	QColor textColor = QColor(Config.value("FallbackImage/EquipTextColor", "#000000").toString());
+	QString fontFamily = Config.value("FallbackImage/FontFamily", "SimHei").toString();
+	int fontSize = Config.value("FallbackImage/EquipFontSize", 12).toInt();
+
+	int imageWidth = size.width() > 0 ? size.width() : 149;
+	int imageHeight = size.height() > 0 ? size.height() : 25;
+
+	if (fontSize < 8 || fontSize > 100)
+		fontSize = 12;
+
+	QSize actualSize(imageWidth, imageHeight);
+
+	QPixmap pixmap(actualSize);
+	if (pixmap.isNull())
+		return QPixmap(1, 1);
+
+	bool isHorseEquip = false;
+	if (size.height() <= 19) {
+		isHorseEquip = isHorseEquipByName(equipName);
+	}
+	QString backgroundImagePath;
+	if (isHorseEquip) {
+		backgroundImagePath = Config.value("FallbackImage/SmallEquipHorseBackgroundImage", "image/fullskin/small-equips/default.png").toString();
+	} else if (size.height() <= 19) {
+		backgroundImagePath = Config.value("FallbackImage/SmallEquipBackgroundImage", "image/fullskin/small-equips/default.png").toString();
+	} else {
+		backgroundImagePath = Config.value("FallbackImage/EquipBackgroundImage", "image/equips/default.png").toString();
+	}
+
+	if (!backgroundImagePath.isEmpty() && QFile::exists(backgroundImagePath)) {
+		QPixmap bg(backgroundImagePath);
+		if (!bg.isNull()) {
+			pixmap = bg.scaled(actualSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+		} else {
+			pixmap.fill(Qt::white);
+		}
+	} else {
+		pixmap.fill(Qt::white);
+	}
+
+	QPainter painter(&pixmap);
+	if (!painter.isActive())
+		return QPixmap(1, 1);
+
+	painter.setRenderHint(QPainter::Antialiasing);
+	painter.setRenderHint(QPainter::TextAntialiasing);
+
+	QString displayName = getCardDisplayName(equipName);
+	if (displayName.isEmpty())
+		displayName = equipName;
+
+	QFont font;
+	font.setFamily(fontFamily);
+	font.setPointSize(fontSize);
+	font.setBold(true);
+
+	QRect textRect(2, 2, actualSize.width() - 4, actualSize.height() - 4);
+	painter.setPen(textColor);
+	drawHorizontalText(painter, textRect, displayName, font);
+
+	painter.end();
+
+	return pixmap;
+}
 

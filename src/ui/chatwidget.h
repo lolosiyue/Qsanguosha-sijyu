@@ -51,6 +51,8 @@ private:
     QPushButton *returnButton;
     QPushButton *chatfaceButton;
     QPushButton *easytextButton;
+    QPushButton *flowerButton;
+    QPushButton *eggButton;
     MyPixmapItem *chat_face_board, *easy_text_board;
     QGraphicsRectItem *base;
 
@@ -62,10 +64,13 @@ private slots:
     void showEasyTextBoard();
     void showFaceBoard();
     void sendText();
+    void onFlowerButtonClicked();
+    void onEggButtonClicked();
 
 signals:
     void chat_widget_msg(QString);
     void return_button_click();
+    void gift_mode_activated(QString gift_type);
 };
 
 #endif

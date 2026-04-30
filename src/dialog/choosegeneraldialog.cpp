@@ -1,6 +1,7 @@
 #include "choosegeneraldialog.h"
 //#include "general.h"
 #include "engine.h"
+#include "oracle_helper.h"
 #include "client.h"
 //#include "settings.h"
 //#include "protocol.h"
@@ -81,7 +82,7 @@ ChooseGeneralDialog::ChooseGeneralDialog(const QStringList &general_names, QWidg
             button->setIcon(QIcon(G_ROOM_SKIN.getGeneralPixmap(general->objectName(), icon_type)));
             button->setIconSize(icon_size);
         }
-        button->setToolTip(general->getSkillDescription(true));
+        button->setToolTip(buildOracleTooltip(general->getOracleText(), general->getSkillDescription(true)));
         buttons << button;
 
         if (!view_only) {
@@ -112,7 +113,8 @@ ChooseGeneralDialog::ChooseGeneralDialog(const QStringList &general_names, QWidg
         if (lord_name.size()>0 && !ServerInfo.EnableHegemony && !tooManyManyGenerals) {
             QLabel *label = new QLabel;
             label->setPixmap(G_ROOM_SKIN.getGeneralPixmap(lord_name, icon_type));
-            label->setToolTip(Sanguosha->getGeneral(lord_name)->getSkillDescription(true));
+            const General *lord = Sanguosha->getGeneral(lord_name);
+            label->setToolTip(buildOracleTooltip(lord ? lord->getOracleText() : QString(), lord ? lord->getSkillDescription(true) : QString()));
             layout->addWidget(label);
         }
 
@@ -125,7 +127,8 @@ ChooseGeneralDialog::ChooseGeneralDialog(const QStringList &general_names, QWidg
         if (lord_name.size()>0 && !ServerInfo.EnableHegemony && !tooManyManyGenerals) {
             QLabel *label = new QLabel;
             label->setPixmap(G_ROOM_SKIN.getCardMainPixmap(lord_name));
-            label->setToolTip(Sanguosha->getGeneral(lord_name)->getSkillDescription(true));
+            const General *lord = Sanguosha->getGeneral(lord_name);
+            label->setToolTip(buildOracleTooltip(lord ? lord->getOracleText() : QString(), lord ? lord->getSkillDescription(true) : QString()));
             lord_layout->addWidget(label);
         }
         lord_layout->addStretch();
@@ -340,7 +343,8 @@ void FreeChooseDialog::chooseGeneral()
 void FreeChooseDialog::onAvatarHoverEnter()
 {
 	QAbstractButton *button = (QAbstractButton *)sender();
-    button->setToolTip(Sanguosha->getGeneral(button->objectName())->getSkillDescription(true));
+    const General *g = Sanguosha->getGeneral(button->objectName());
+    button->setToolTip(buildOracleTooltip(g ? g->getOracleText() : QString(), g ? g->getSkillDescription(true) : QString()));
 }
 
 QWidget *FreeChooseDialog::createTab(const QList<const General *> &generals)
@@ -363,7 +367,7 @@ QWidget *FreeChooseDialog::createTab(const QList<const General *> &generals)
 			button = new QCheckBox(text);
 
         button->setObjectName(generals[i]->objectName());
-        button->setToolTip(generals[i]->getSkillDescription(true));
+        button->setToolTip(buildOracleTooltip(generals[i]->getOracleText(), generals[i]->getSkillDescription(true)));
 		//connect(button, SIGNAL(hover_enter()), this, SLOT(onAvatarHoverEnter()));
 
         if (generals[i]->isLord())

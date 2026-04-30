@@ -73,6 +73,14 @@ public:
     bool isImageKeyDefined(const QString &key) const;
     QStringList getAnimationFileNames() const;
 
+    static QPixmap generateFallbackCardImage(const QString &cardName, const QSize &size = QSize(150, 210));
+    static QPixmap generateFallbackEquipImage(const QString &equipName, const QSize &size);
+    static QString extractCardNameFromPath(const QString &filePath);
+    static QString getCardDisplayName(const QString &cardObjectName);
+    static void drawVerticalText(QPainter &painter, const QRect &rect, const QString &text, const QFont &font);
+    static void drawHorizontalText(QPainter &painter, const QRect &rect, const QString &text, const QFont &font);
+    static bool isHorseEquipByName(const QString &equipName);
+
 protected:
     virtual bool _loadLayoutConfig(const QVariant &config) = 0;
     virtual bool _loadImageConfig(const QVariant &config);

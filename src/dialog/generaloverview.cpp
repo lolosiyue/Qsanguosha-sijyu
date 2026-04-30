@@ -636,10 +636,11 @@ void GeneralOverview::on_tableWidget_itemSelectionChanged()
 	QString oggtxt = "audio/death/"+general_name+".ogg";
 	QString last_word = Sanguosha->translate("~" + general_name);
 	int skin_index = Config.value("HeroSkin/"+general_name, 0).toInt();
+	QString actualGn = Sanguosha->getResourceAlias("heroskin", general_name);
 	if (skin_index > 0) {
 		QString hero_skin = Sanguosha->translate(QString("~%1-%2_%3").arg(general_name).arg(general_name).arg(skin_index));
 		if (!hero_skin.startsWith("~")){
-			oggtxt = QString("image/heroskin/audio/%1_%2/death/%3.ogg").arg(general_name).arg(skin_index).arg(general_name);
+			oggtxt = QString("image/heroskin/audio/%1_%2/death/%3.ogg").arg(actualGn).arg(skin_index).arg(actualGn);
 			last_word = hero_skin;
 		}
 	}
@@ -648,10 +649,11 @@ void GeneralOverview::on_tableWidget_itemSelectionChanged()
 		oggtxt = "audio/death/"+new_general_name+".ogg";
 		last_word = Sanguosha->translate("~" + new_general_name);
 		skin_index = Config.value("HeroSkin/"+new_general_name, 0).toInt();
+		QString actualNewGn = Sanguosha->getResourceAlias("heroskin", new_general_name);
 		if (skin_index > 0) {
 			QString hero_skin = Sanguosha->translate(QString("~%1-%2_%3").arg(new_general_name).arg(new_general_name).arg(skin_index));
 			if (!hero_skin.startsWith("~")){
-				oggtxt = QString("image/heroskin/audio/%1_%2/death/%3.ogg").arg(new_general_name).arg(skin_index).arg(new_general_name);
+				oggtxt = QString("image/heroskin/audio/%1_%2/death/%3.ogg").arg(actualNewGn).arg(skin_index).arg(actualNewGn);
 				last_word = hero_skin;
 			}
 		}

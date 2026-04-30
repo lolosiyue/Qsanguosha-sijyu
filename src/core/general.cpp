@@ -274,10 +274,19 @@ QString General::getBriefName() const
     return name;
 }
 
+QString General::getOracleText() const
+{
+    QString oracle = Sanguosha->translate("oracle:" + objectName());
+    if (oracle.startsWith("oracle:"))
+        oracle.clear();
+    return oracle;
+}
+
 void General::lastWord() const
 {
     int skin = Config.value("HeroSkin/"+objectName(), 0).toInt();
-	if (skin>0&&Sanguosha->playAudioEffect(QString("image/heroskin/audio/%1_%2/death/%1.ogg").arg(objectName()).arg(skin)))
+    QString actualGn = Sanguosha->getResourceAlias("heroskin", objectName());
+	if (skin>0&&Sanguosha->playAudioEffect(QString("image/heroskin/audio/%1_%2/death/%1.ogg").arg(actualGn).arg(skin)))
 		return;
 
     if (Sanguosha->playAudioEffect(QString("audio/death/%1.ogg").arg(objectName())))
@@ -286,7 +295,8 @@ void General::lastWord() const
     QStringList origins = objectName().split("_");
     if (origins.length()>1&&Sanguosha->getGeneral(origins.last())) {
 		skin = Config.value("HeroSkin/"+origins.last(), 0).toInt();
-		if (skin>0&&Sanguosha->playAudioEffect(QString("image/heroskin/audio/%1_%2/death/%1.ogg").arg(origins.last()).arg(skin)))
+		QString actualOrigin = Sanguosha->getResourceAlias("heroskin", origins.last());
+		if (skin>0&&Sanguosha->playAudioEffect(QString("image/heroskin/audio/%1_%2/death/%1.ogg").arg(actualOrigin).arg(skin)))
 			return;
 		Sanguosha->playAudioEffect(QString("audio/death/%1.ogg").arg(origins.last()));
     }
@@ -309,5 +319,15 @@ QString General::getSubPackage() const
 void General::setAudioType(const QString &filename, const QString &types)
 {
     Sanguosha->setAudioType(objectName(),filename,types);
+}
+
+void General::setImage(const QString &general_name)
+{
+    this->image = general_name;
+}
+
+QString General::getImage() const
+{
+    return image;
 }
 

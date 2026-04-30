@@ -58,6 +58,7 @@ public:
 
     QString getPackage() const;
     QString getSkillDescription(bool include_name = false) const;
+    QString getOracleText() const;
     QString getBriefName() const;
 
     inline QSet<QString> getExtraSkillSet() const
@@ -68,6 +69,9 @@ public:
     QString getSubPackage() const;
 
     void setAudioType(const QString &filename, const QString &types);
+
+    void setImage(const QString &general_name);
+    QString getImage() const;
 
 public slots:
     void lastWord() const;
@@ -84,6 +88,7 @@ private:
     int start_hp;
     int start_hujia;
     QString sub_package;
+    QString image;
 };
 
 #endif
