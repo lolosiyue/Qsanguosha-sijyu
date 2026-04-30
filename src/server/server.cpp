@@ -15,6 +15,11 @@
 #include "qtupnpportmapping.h"
 #include "defines.h"
 
+#include <QFile>
+#include <QTextStream>
+#include <QDateTime>
+#include <QTimer>
+
 using namespace QSanProtocol;
 
 static QLayout *HLay(QWidget *left, QWidget *right)
@@ -1759,4 +1764,75 @@ void Server::listServerReply()
 	QTimer::singleShot(time,Qt::VeryCoarseTimer,this,SLOT(addToListServer()));
 	networkReply->deleteLater();
 	networkReply = nullptr;
+}
+
+bool Server::isHeadlessMode = false;
+
+void Server::writeHeadlessLog(const QString &msg)
+{
+    static QFile *logFile = nullptr;
+    static QTextStream *logStream = nullptr;
+
+    if (logStream == nullptr) {
+        QString filename = QString("headless_log_%1.txt")
+            .arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
+        logFile = new QFile(filename);
+        if (logFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append)) {
+            logStream = new QTextStream(logFile);
+            logStream->setCodec("UTF-8");
+        }
+    }
+
+    if (logStream) {
+        *logStream << QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz")
+                    << " " << msg << "\n";
+        logStream->flush();
+        logFile->flush();
+    }
+    qDebug().noquote() << msg;
+}
+
+void Server::startHeadlessGame()
+{
+    isHeadlessMode = true;
+
+    static int gameCount = 0;
+
+    if (gameCount == 0) {
+        Server::writeHeadlessLog(">>> Headless stress test started - 10000 games <<<");
+    }
+
+    gameCount++;
+    Server::writeHeadlessLog(QString(">>> Starting headless game %1 <<<").arg(gameCount));
+
+    Room *room = new Room(this, "08p");
+    if (!room->getLuaState()) {
+        delete room;
+        Server::writeHeadlessLog(QString("Game %1 FAILED - Lua state is null").arg(gameCount));
+        return;
+    }
+
+    connect(room, &Room::game_over, this, [this, room](const QString &winner) {
+        Server::writeHeadlessLog(QString(">>> Game %1 finished. Winner: %2 <<<").arg(gameCount).arg(winner));
+
+        QTimer::singleShot(500, this, [this, room]() {
+            room->deleteLater();
+            if (gameCount < 10000) {
+                startHeadlessGame();
+            } else {
+                Server::writeHeadlessLog(">>> All 10000 games completed. Exiting. <<<");
+                qApp->quit();
+            }
+        });
+    });
+
+    for (int i = 0; i < 8; i++) {
+        ServerPlayer *player = room->addAIPlayer();
+        player->setAI(new TrustAI(player));
+        if (i == 0)
+            player->setOwner(true);
+        room->signup(player, QString("AI_Bot_%1").arg(i), "", true);
+    }
+
+    room->start();
 }

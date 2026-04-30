@@ -42,6 +42,7 @@ public:
     explicit Room(QObject*parent, const QString&mode);
     ~Room();
     ServerPlayer*addSocket(ClientSocket*socket);
+    ServerPlayer*addAIPlayer();
     inline int getId() const
     {
         return _m_Id;
@@ -75,7 +76,7 @@ public:
     void revivePlayer(ServerPlayer*player, bool sendlog = true, bool throw_mark = true, bool visible_only = false);
     void restPlayer(ServerPlayer*player, const QString&reason = QString(), bool discard_cards = false);
     void directRestPlayer(ServerPlayer*player, const QString&reason = QString(), bool discard_cards = false);
-    void unrestPlayer(ServerPlayer*player, bool restore_full_hp = true);
+    void unrestPlayer(ServerPlayer*player, bool restore_full_hp = true, bool restore_original_skills = false);
     bool isRest(ServerPlayer*player) const;
     QList<ServerPlayer*> getRestPlayers() const;
     QStringList aliveRoles(ServerPlayer*except = nullptr) const;
@@ -287,6 +288,9 @@ public:
     {
         doAnimate((QSanProtocol::AnimateType)type, arg1, arg2, players);
     }
+
+    void showFlower(const QString &from, const QString &to, QList<ServerPlayer *> players = QList<ServerPlayer *>());
+    void showEgg(const QString &from, const QString &to, QList<ServerPlayer *> players = QList<ServerPlayer *>());
 
     void preparePlayers();
     void changePlayerGeneral(ServerPlayer*player, const QString&new_general);

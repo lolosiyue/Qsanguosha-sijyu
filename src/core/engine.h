@@ -5,6 +5,7 @@
 #include "skill.h"
 #include "audio.h"
 #include "util.h"
+#include "json.h"
 #include <QPointer>
 #include <QMutex>
 #include <QReadWriteLock>
@@ -77,6 +78,13 @@ public:
     QString getRoles(const QString &mode) const;
     QStringList getRoleList(const QString &mode) const;
     int getRoleIndex() const;
+
+    QMap<QString, QString> roleMap;
+    void initializeRoleMap();
+    void addRoleMapping(const QString& roleName, const QString& abbreviation);
+    QString getRoleAbbreviation(const QString& roleName) const;
+    QString getRoleByAbbreviation(const QString &targetValue, const QString &defaultKey = "") const;
+    QStringList getAllRegisteredRoles() const;
 
     const CardPattern *getPattern(const QString &name, bool extra = true) const;
     bool matchPattern(const QString &pattern, const Player *player, const Card *card) const;
@@ -166,6 +174,10 @@ public:
 
     QString removeNumberInQString(const QString &str) const;
 
+    // Resource Alias System
+    void addResourceAlias(const QString &category, const QString &original, const QString &alias);
+    QString getResourceAlias(const QString &category, const QString &original) const;
+
     inline QMultiMap<QString, QString> spConvertPairs() const
     {
         return sp_convert_pairs;
@@ -190,6 +202,7 @@ private:
     mutable QMap<QString, const CardPattern *> patterns;
     mutable QMap<QString, ExpPattern *> exp_patterns;
     QHash<QString, QList<int> > audio_type;
+    QHash<QString, QHash<QString, QString> > m_resourceAliases;
 
     QList<Card *> cards;
     QStringList ban_package;
