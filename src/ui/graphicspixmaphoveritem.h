@@ -1,8 +1,11 @@
 #ifndef GRAPHICSPIXMAPHOVERITEM_H
 #define GRAPHICSPIXMAPHOVERITEM_H
 
-//#include <QObject>
-//#include <QGraphicsPixmapItem>
+#include <QObject>
+#include <QGraphicsPixmapItem>
+#include <QMovie>
+#include <QLabel>
+#include <QGraphicsProxyWidget>
 
 class PlayerCardContainer;
 
@@ -22,6 +25,12 @@ public:
     bool isSkinChangingFinished() const { return 0 == m_timer; }
 
     virtual void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *);
+
+    void setGeneralImage(const QString &imagePath, const QSize &targetSize);
+    void setGeneralImage(const QPixmap &pixmap, const QSize &targetSize);
+    void stopGifAnimation();
+    void startGifAnimation();
+    bool isAnimated() const { return m_isAnimated; }
 
 public slots:
     void startChangeHeroSkinAnimation(const QString &generalName);
@@ -51,6 +60,15 @@ private:
     static int m_skinChangingFrameCount;
 
     int m_currentSkinChangingFrameIndex;
+
+    QMovie *m_movie;
+    QLabel *m_movieLabel;
+    QGraphicsProxyWidget *m_proxyWidget;
+    bool m_isAnimated;
+    QString m_currentImagePath;
+    QPixmap m_staticPixmap;
+    QString m_targetImagePath;
+    QString m_targetGeneralName;
 
 signals:
     void hover_enter();

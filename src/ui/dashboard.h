@@ -16,6 +16,8 @@
 
 class Card;
 class CardItem;
+class CardContainer;
+class Button;
 class EffectAnimation;
 class ViewAsSkill;
 class FilterSkill;
@@ -72,6 +74,7 @@ public:
 
     void sortHandCards(QList<int>hands);
     void adjustCards(bool playAnimation = true);
+    void refreshHandCardTooltips();
 
     virtual QGraphicsItem *getMouseClickReceiver();
 
@@ -155,6 +158,9 @@ public slots:
     void selectAll();
     void controlNullificationButton(bool show);
     void cardTip();
+    void showCardFilterContainer();
+    void filterCardChosen(int card_id);
+    void hideFilterContainer();
 
 protected:
     void _createExtraButtons();
@@ -222,6 +228,7 @@ protected:
     QMutex m_mutexEnableCards;
 
     QSanButton *m_btnReverseSelection;
+    QSanButton *m_btnFilterCard;
     QSanButton *m_btnSortHandcard;
     QSanButton *m_btnNoNullification;
     QSanButton *m_btnShefu;
@@ -237,6 +244,11 @@ protected:
 
     QGraphicsPathItem *trusting_item;
     QGraphicsSimpleTextItem *trusting_text;
+
+    CardContainer *_m_filterContainer;
+    QString _m_filterCurrentCategory;
+    QList<QGraphicsItem *> _m_filterUIElements;
+    void clearFilterUIElements();
 
     QSanInvokeSkillDock* _m_skillDock;
     const QSanRoomSkin::DashboardLayout *_dlayout;

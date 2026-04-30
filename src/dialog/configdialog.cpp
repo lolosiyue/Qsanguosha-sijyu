@@ -27,10 +27,11 @@ ConfigDialog::ConfigDialog(QWidget *parent)
     //ui->enableBgMusicCheckBox->setChecked(Config.EnableBgMusic);
 
     bool enabled_full = QFile::exists("skins/fulldefaultSkin.layout.json");
-    ui->fullSkinCheckBox->setEnabled(enabled_full);
-    ui->fullSkinCheckBox->setChecked(enabled_full && Config.value("UseFullSkin", true).toBool());
+    ui->fullSkinCheckBox->setEnabled(false);
+    ui->fullSkinCheckBox->setChecked(true);
     ui->noIndicatorCheckBox->setChecked(Config.value("NoIndicator").toBool());
     ui->noEquipAnimCheckBox->setChecked(Config.value("NoEquipAnim").toBool());
+    ui->enableAnimatedGeneralsCheckBox->setChecked(Config.value("EnableAnimatedGenerals", true).toBool());
 
     ui->bgmVolumeSlider->setValue(Config.BGMVolume*100);
     ui->effectVolumeSlider->setValue(Config.EffectVolume*100);
@@ -144,9 +145,9 @@ void ConfigDialog::saveConfig()
 		Audio::stopBGM();
 #endif
 
-    Config.setValue("UseFullSkin", ui->fullSkinCheckBox->isChecked());
     Config.setValue("NoIndicator", ui->noIndicatorCheckBox->isChecked());
     Config.setValue("NoEquipAnim", ui->noEquipAnimCheckBox->isChecked());
+    Config.setValue("EnableAnimatedGenerals", ui->enableAnimatedGeneralsCheckBox->isChecked());
 
     Config.NeverNullifyMyTrick = ui->neverNullifyMyTrickCheckBox->isChecked();
     Config.setValue("NeverNullifyMyTrick", Config.NeverNullifyMyTrick);
