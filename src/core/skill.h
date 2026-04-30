@@ -32,6 +32,7 @@ public:
     bool isShiMingSkill() const;
     virtual bool shouldBeVisible(const Player *Self) const; // usually for attached skill
     QString getDescription(const Player *target = nullptr) const;
+    QString getOracleText(const Player *target = nullptr) const;
     QString getNotice(int index) const;
     bool isVisible() const;
 

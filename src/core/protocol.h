@@ -212,7 +212,9 @@ namespace QSanProtocol {
         S_ANIMATE_LIGHTNING,
 		S_ANIMATE_ICE,
 		S_ANIMATE_GOD,
-		S_ANIMATE_POISON
+		S_ANIMATE_POISON,
+		S_ANIMATE_FLOWER,
+		S_ANIMATE_EGG
     };
 
     enum Game3v3ChooseOrderCommand

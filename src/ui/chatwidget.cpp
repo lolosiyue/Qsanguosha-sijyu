@@ -133,6 +133,8 @@ ChatWidget::ChatWidget()
     returnButton = addButton("returnBt", -1);
     chatfaceButton = addButton("chatfaceBt", 24);
     easytextButton = addButton("easytextBt", 48 + 1);
+    flowerButton = addButton("flowerBt", 72 + 2);
+    eggButton = addButton("eggBt", 96 + 3);
 
     chat_face_board = new MyPixmapItem(QPixmap("image/system/chatface/faceboard.png"), this);
     chat_face_board->setSize(160, 180);
@@ -153,6 +155,8 @@ ChatWidget::ChatWidget()
     connect(chatfaceButton, SIGNAL(clicked()), this, SLOT(showFaceBoard()));
     connect(easytextButton, SIGNAL(clicked()), this, SLOT(showEasyTextBoard()));
     connect(returnButton, SIGNAL(clicked()), this, SLOT(sendText()));
+    connect(flowerButton, SIGNAL(clicked()), this, SLOT(onFlowerButtonClicked()));
+    connect(eggButton, SIGNAL(clicked()), this, SLOT(onEggButtonClicked()));
 }
 
 ChatWidget::~ChatWidget()
@@ -179,9 +183,23 @@ void ChatWidget::sendText()
     emit(return_button_click());
 }
 
+void ChatWidget::onFlowerButtonClicked()
+{
+    chat_face_board->setVisible(false);
+    easy_text_board->setVisible(false);
+    emit gift_mode_activated("flower");
+}
+
+void ChatWidget::onEggButtonClicked()
+{
+    chat_face_board->setVisible(false);
+    easy_text_board->setVisible(false);
+    emit gift_mode_activated("egg");
+}
+
 QRectF ChatWidget::boundingRect() const
 {
-    return QRectF(-1, 0, 24 * 3 + 2, 24);
+    return QRectF(-1, 0, 24 * 5 + 4, 24);
 }
 
 void ChatWidget::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)

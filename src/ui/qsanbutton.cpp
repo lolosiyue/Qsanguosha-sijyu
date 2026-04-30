@@ -175,6 +175,7 @@ void QSanButton::_onMouseClick(bool inside)
     update();
 
     if (inside) emit clicked();
+    else emit clicked_mouse_outside();
 }
 
 void QSanButton::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)

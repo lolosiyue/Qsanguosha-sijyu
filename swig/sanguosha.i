@@ -72,6 +72,8 @@ public:
 	QString getBriefName() const;
 
 	void setAudioType(const char*filename, const char*types);
+	void setImage(const char*general_name);
+	QString getImage() const;
 
 	void lastWord() const;
 };
@@ -1269,6 +1271,13 @@ public:
 	QStringList getRoleList(const char*mode) const;
 	int getRoleIndex() const;
 
+	QMap<QString, QString> roleMap;
+	void initializeRoleMap();
+	void addRoleMapping(const char* roleName, const char* abbreviation);
+	QString getRoleAbbreviation(const char* roleName) const;
+	QString getRoleByAbbreviation(const char* targetValue, const char* defaultKey = "") const;
+	QStringList getAllRegisteredRoles() const;
+
 	const CardPattern*getPattern(const char*name) const;
 	bool matchPattern(const char*pattern, const Player*player, const Card*card) const;
 	bool matchExpPattern(const char*pattern, const Player*player, const Card*card) const;
@@ -1466,7 +1475,7 @@ public:
 	void revivePlayer(ServerPlayer*player, bool sendlog = true, bool throw_mark = true, bool visible_only = false);
 	void restPlayer(ServerPlayer*player, const char*reason = nullptr, bool discard_cards = false);
 	void directRestPlayer(ServerPlayer*player, const char*reason = nullptr, bool discard_cards = false);
-	void unrestPlayer(ServerPlayer*player, bool restore_full_hp = true);
+	void unrestPlayer(ServerPlayer*player, bool restore_full_hp = true, bool restore_original_skills = false);
 	bool isRest(ServerPlayer*player) const;
 	QList<ServerPlayer*> getRestPlayers() const;
 	QStringList aliveRoles(ServerPlayer*except = nullptr) const;

@@ -31,6 +31,7 @@ public:
     explicit CardContainer();
     virtual QList<CardItem *> removeCardItems(const QList<int> &card_ids, Player::Place place);
     int getFirstEnabled() const;
+    QList<CardItem *> getItems() const { return items; }
     void startChoose();
     void startGongxin(const QList<int> &enabled_ids);
     void addCloseButton();

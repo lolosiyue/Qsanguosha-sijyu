@@ -3,6 +3,7 @@
 #include "skin-bank.h"
 #include "settings.h"
 #include "engine.h"
+#include "oracle_helper.h"
 
 static QLayout *HLay(QWidget *left, QWidget *right, QWidget *mid = nullptr,
     QWidget *rear = nullptr, bool is_vertically = false)
@@ -1635,7 +1636,7 @@ QWidget *GeneralAssignDialog::createTab(const QList<const General *> &generals)
             continue;
 
         QAbstractButton *button = new QRadioButton(QString("%1[%2]").arg(generals[i]->getBriefName()).arg(Sanguosha->translate(generals[i]->getPackage())));
-        button->setToolTip(generals[i]->getSkillDescription(true));
+        button->setToolTip(buildOracleTooltip(generals[i]->getOracleText(), generals[i]->getSkillDescription(true)));
         if (generals[i]->isLord()) button->setIcon(lord_icon);
         button->setObjectName(generals[i]->objectName());
 
@@ -1850,7 +1851,7 @@ void SkillAssignDialog::getSkillFromGeneral(QString general_name)
         QCommandLinkButton *button = new QCommandLinkButton;
         button->setObjectName(skill->objectName());
         button->setText(Sanguosha->translate(skill->objectName()));
-        button->setToolTip(Sanguosha->translate(":" + skill->objectName()));
+        button->setToolTip(buildOracleTooltip(skill->getOracleText(), Sanguosha->translate(":" + skill->objectName())));
 
         connect(button, SIGNAL(clicked()), select_dialog, SLOT(accept()));
         connect(button, SIGNAL(clicked()), this, SLOT(addSkill()));

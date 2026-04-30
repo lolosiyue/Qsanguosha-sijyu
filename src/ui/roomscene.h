@@ -35,8 +35,11 @@ class NosYijiViewAsSkill;
 class ChoosePlayerSkill;
 class ClientLogBox;
 class ChatWidget;
+class EmotionPanel;
+class GifChatBox;
 class QSanSelectableItem;
 class EffectAnimation;
+class GiftItem;
 
 #ifndef Q_OS_WINRT
 #include <QQmlEngine>
@@ -241,6 +244,7 @@ public slots:
     void doDiscardButton();
 
     void setChatBoxVisibleSlot();
+    void onEmotionIconSelected(int emotionId);
     void pause();
 
     void addRobot();
@@ -311,13 +315,14 @@ private:
     QList<CardItem *> gongxin_items;
 
     ClientLogBox *log_box;
-    QTextEdit *chat_box;
+    GifChatBox *chat_box;
     QLineEdit *chat_edit;
     QGraphicsProxyWidget *chat_box_widget;
     QGraphicsProxyWidget *log_box_widget;
     QGraphicsProxyWidget *chat_edit_widget;
     QGraphicsTextItem *prompt_box_widget;
     ChatWidget *chat_widget;
+    EmotionPanel *m_emotionPanel;
     QPixmap m_rolesBoxBackground;
     QGraphicsPixmapItem *m_rolesBox;
     QGraphicsTextItem *m_pileCardNumInfoTextBox;
@@ -333,6 +338,10 @@ private:
     TimerLabel *m_timerLabel;
 
     QMap<QString, BubbleChatBox *> bubbleChatBoxes;
+
+    bool gift_selection_mode;
+    QString current_gift_type;
+    QList<Photo *> gift_highlighted_photos;
     //QMap<QString, QGraphicsProxyWidget *> _m_privatePiles;
     QGraphicsProxyWidget *ren_widget;
 
@@ -403,6 +412,11 @@ private:
     void doLightboxAnimation(const QString &name, const QStringList &args);
     void doHuashen(const QString &name, const QStringList &args);
     void doIndicate(const QString &name, const QStringList &args);
+    void doGiftAnimation(const QString &name, const QStringList &args);
+    void onPlayerSelectedForGift();
+    void exitGiftSelectionMode();
+    void handleGiftSelection(Photo *photo);
+
     EffectAnimation *animations;
     bool pindian_success;
 
@@ -475,13 +489,15 @@ private slots:
 
     void speak();
 
-    void onGameStart();
+void onGameStart();
     void onGameOver();
     void onStandoff();
 
     void appendChatEdit(QString txt);
-    void showBubbleChatBox(const QString &who, const QString &words);
+    void showBubbleChatBox(const QString &who, const QString &line);
     void showGeneralPile(const QString &tag_name);
+
+    void onGiftModeActivated(const QString &gift_type);
 
     //animations
     void onEnabledChange();
