@@ -14,6 +14,10 @@
 #include "carditem.h"
 #include "aux-skills.h"
 #include "sprite.h"
+#include "cardcontainer.h"
+#include "button.h"
+
+#include <QGraphicsTextItem>
 
 using namespace QSanProtocol;
 
@@ -29,6 +33,8 @@ Dashboard::Dashboard(QGraphicsPixmapItem *widget)
     animations = new EffectAnimation();
     pending_card = nullptr;
     _m_pile_expanded = QMap<QString, QList<int> >();
+    _m_filterContainer = nullptr;
+    _m_filterCurrentCategory = "";
     for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
         _m_equipSkillBtns[i] = nullptr;
         _m_isEquipsAnimOn[i] = false;
@@ -62,6 +68,7 @@ bool Dashboard::isAvatarUnderMouse()
 void Dashboard::hideControlButtons()
 {
     m_btnReverseSelection->hide();
+    m_btnFilterCard->hide();
     m_btnSortHandcard->hide();
     m_btnShefu->hide();
     m_btnRenPile->hide();
@@ -70,6 +77,7 @@ void Dashboard::hideControlButtons()
 void Dashboard::showControlButtons()
 {
     m_btnReverseSelection->show();
+    m_btnFilterCard->show();
     m_btnSortHandcard->show();
 }
 
@@ -254,15 +262,9 @@ void Dashboard::_paintRightFrame()
 
     _paintPixmap(_m_rightFrame, QRect(0, 0, rect.width(), rect.height()), rightFramePixmap, _m_groupMain);
 
-    if (Config.value("UseFullSkin", true).toBool()) {
-        _m_skillDock->setPos(G_DASHBOARD_LAYOUT.m_skillDockLeftMargin,
-                             rightFrameHeight - G_DASHBOARD_LAYOUT.m_skillDockBottomMargin);
-        _m_skillDock->setWidth(rightFrameWidth - G_DASHBOARD_LAYOUT.m_skillDockRightMargin);
-    } else {
-        QRect avatar = G_DASHBOARD_LAYOUT.m_avatarArea;
-        _m_skillDock->setPos(avatar.left(), avatar.bottom() + G_DASHBOARD_LAYOUT.m_skillButtonsSize[0].height());
-        _m_skillDock->setWidth(avatar.width());
-    }
+    _m_skillDock->setPos(G_DASHBOARD_LAYOUT.m_skillDockLeftMargin,
+                         rightFrameHeight - G_DASHBOARD_LAYOUT.m_skillDockBottomMargin);
+    _m_skillDock->setWidth(rightFrameWidth - G_DASHBOARD_LAYOUT.m_skillDockRightMargin);
 }
 
 void Dashboard::setTrust(bool trust)
@@ -562,6 +564,7 @@ void Dashboard::highlightEquip(QString skillName, bool highlight)
 void Dashboard::_createExtraButtons()
 {
     m_btnReverseSelection = new QSanButton("handcard", "reverse-selection", this);
+    m_btnFilterCard = new QSanButton("handcard", "filter", this);
     m_btnSortHandcard = new QSanButton("handcard", "sort", this);
     m_btnNoNullification = new QSanButton("handcard", "nullification", this);
     m_btnNoNullification->setStyle(QSanButton::S_STYLE_TOGGLE);
@@ -571,6 +574,12 @@ void Dashboard::_createExtraButtons()
     qreal pos = G_DASHBOARD_LAYOUT.m_leftWidth, height=-m_btnReverseSelection->boundingRect().height();
     m_btnReverseSelection->setPos(pos, height);
     pos += m_btnReverseSelection->boundingRect().right();
+
+    m_btnFilterCard->setPos(pos, height);
+    pos += m_btnFilterCard->boundingRect().right();
+
+    m_btnFilterCard->setZValue(100);
+
     m_btnSortHandcard->setPos(pos, height);
     pos += m_btnSortHandcard->boundingRect().right();
     m_btnNoNullification->setPos(pos, height);
@@ -583,6 +592,7 @@ void Dashboard::_createExtraButtons()
     m_btnShefu->hide();
     m_btnRenPile->hide();
     connect(m_btnReverseSelection, SIGNAL(clicked()), this, SLOT(reverseSelection()));
+    connect(m_btnFilterCard, SIGNAL(clicked()), this, SLOT(showCardFilterContainer()));
     connect(m_btnSortHandcard, SIGNAL(clicked()), this, SLOT(sortCards()));
     connect(m_btnNoNullification, SIGNAL(clicked()), this, SLOT(cancelNullification()));
     connect(m_btnShefu, SIGNAL(clicked()), this, SLOT(setShefuState()));
@@ -776,6 +786,13 @@ void Dashboard::adjustCards(bool playAnimation)
     _adjustCards();
     foreach(CardItem *card, m_handCards)
         card->goBack(playAnimation);
+}
+
+void Dashboard::refreshHandCardTooltips()
+{
+    foreach (CardItem *item, m_handCards) {
+        if (item) item->refreshTooltip();
+    }
 }
 
 void Dashboard::_adjustCards()
@@ -1395,5 +1412,190 @@ const ViewAsSkill *Dashboard::currentSkill() const
 const Card *Dashboard::pendingCard() const
 {
     return pending_card;
+}
+
+void Dashboard::clearFilterUIElements()
+{
+    qDeleteAll(_m_filterUIElements);
+    _m_filterUIElements.clear();
+}
+
+void Dashboard::hideFilterContainer()
+{
+    clearFilterUIElements();
+    _m_filterContainer->clear();
+    _m_filterContainer->hide();
+    _m_filterCurrentCategory = "";
+}
+
+void Dashboard::showCardFilterContainer()
+{
+    if (m_handCards.isEmpty() || (m_player && m_player->property("NotSortHands").toBool())) return;
+
+    _m_filterCurrentCategory = "";
+    clearFilterUIElements();
+
+    QMap<QString, QList<int>> categoryMap;
+    QList<int> representative_ids;
+
+    foreach (CardItem *item, m_handCards){
+        if (!item->isEnabled()) continue;
+        const Card *c = item->getCard();
+        QString cat = c->isKindOf("Slash") ? "Slash" : c->getClassName();
+
+        if (!categoryMap.contains(cat)) {
+            representative_ids.append(c->getId());
+        }
+        categoryMap[cat].append(c->getId());
+    }
+
+    if (representative_ids.isEmpty()) return;
+
+    if (!_m_filterContainer) {
+        _m_filterContainer = new CardContainer();
+        _m_filterContainer->setParentItem(this);
+        _m_filterContainer->setZValue(20000);
+        connect(_m_filterContainer, SIGNAL(item_chosen(int)), this, SLOT(filterCardChosen(int)), Qt::QueuedConnection);
+    }
+
+    _m_filterContainer->clear();
+    _m_filterContainer->fillCards(representative_ids);
+    _m_filterContainer->show();
+
+    foreach (CardItem *item, _m_filterContainer->getItems()) {
+        connect(item, SIGNAL(clicked()), _m_filterContainer, SLOT(chooseItem()));
+    }
+
+    int container_width = representative_ids.length() * G_COMMON_LAYOUT.m_cardNormalWidth;
+    _m_filterContainer->setPos(G_DASHBOARD_LAYOUT.m_leftWidth + (getMiddleWidth() - container_width) / 2, -200);
+
+    QList<QGraphicsItem*> children = _m_filterContainer->childItems();
+    foreach (QGraphicsItem* child, children) {
+        CardItem* cItem = qgraphicsitem_cast<CardItem*>(child);
+        if (cItem && cItem->getCard()) {
+            QString cat = cItem->getCard()->isKindOf("Slash") ? "Slash" : cItem->getCard()->getClassName();
+            int count = categoryMap[cat].length();
+
+            QGraphicsTextItem *label = new QGraphicsTextItem(cItem);
+            QString cardName = Sanguosha->translate(cItem->getCard()->objectName());
+            QString text = QString("%1 (%2)").arg(cardName).arg(count);
+
+            label->setHtml(QString("<div style='background-color:rgba(0,0,0,200); color:#FFD700; padding:2px 8px; font-weight:bold; font-size:14px; border:1px solid #FFD700; border-radius:4px; text-align:center;'>%1</div>").arg(text));
+            label->setTextWidth(-1);
+
+            QRectF textBounds = label->boundingRect();
+            label->setPos(-textBounds.width() / 2, -textBounds.height() / 2 + 15);
+
+            _m_filterUIElements.append(label);
+        }
+    }
+
+    Button *closeBtn = new Button(tr("Close"), 0.8);
+    closeBtn->setParentItem(_m_filterContainer);
+    closeBtn->setPos(container_width - 80, G_COMMON_LAYOUT.m_cardNormalHeight + 20);
+    connect(closeBtn, SIGNAL(clicked()), this, SLOT(hideFilterContainer()), Qt::QueuedConnection);
+    _m_filterUIElements.append(closeBtn);
+}
+
+void Dashboard::filterCardChosen(int card_id)
+{
+    const Card *target_c = Sanguosha->getCard(card_id);
+    if (!target_c) return;
+
+    QString target_cat = target_c->isKindOf("Slash") ? "Slash" : target_c->getClassName();
+
+    if (_m_filterCurrentCategory.isEmpty()) {
+        QList<int> cat_cards;
+        foreach (CardItem *item, m_handCards) {
+            if (!item->isEnabled()) continue;
+            const Card *c = item->getCard();
+            QString cat = c->isKindOf("Slash") ? "Slash" : c->getClassName();
+            if (cat == target_cat) cat_cards.append(c->getId());
+        }
+
+        if (cat_cards.length() == 1) {
+            unselectAll();
+            CardItem *targetItem = nullptr;
+            foreach (CardItem *item, m_handCards) {
+                if (item->getCard()->getId() == cat_cards.first()) {
+                    targetItem = item;
+                    break;
+                }
+            }
+
+            foreach (CardItem *item, _m_filterContainer->getItems()) {
+                disconnect(item, nullptr, nullptr, nullptr);
+                item->setFlag(QGraphicsItem::ItemIsSelectable, false);
+                item->setAcceptedMouseButtons(Qt::NoButton);
+            }
+
+            if (targetItem) {
+                targetItem->clickItem();
+            }
+
+            clearFilterUIElements();
+            _m_filterContainer->clear();
+            _m_filterContainer->hide();
+
+            if (targetItem) {
+                targetItem->goBack(true);
+            }
+        } else {
+            _m_filterCurrentCategory = target_cat;
+            clearFilterUIElements();
+
+            _m_filterContainer->clear();
+            _m_filterContainer->fillCards(cat_cards);
+            _m_filterContainer->show();
+
+            foreach (CardItem *item, _m_filterContainer->getItems()) {
+                connect(item, SIGNAL(clicked()), _m_filterContainer, SLOT(chooseItem()));
+            }
+
+            int container_width = cat_cards.length() * G_COMMON_LAYOUT.m_cardNormalWidth;
+            _m_filterContainer->setPos(G_DASHBOARD_LAYOUT.m_leftWidth + (getMiddleWidth() - container_width) / 2, -200);
+
+            Button *backBtn = new Button(tr("Back"), 0.8);
+            backBtn->setParentItem(_m_filterContainer);
+            backBtn->setPos(10, G_COMMON_LAYOUT.m_cardNormalHeight + 20);
+            connect(backBtn, SIGNAL(clicked()), this, SLOT(showCardFilterContainer()), Qt::QueuedConnection);
+
+            _m_filterUIElements.append(backBtn);
+
+            Button *closeBtn = new Button(tr("Close"), 0.8);
+            closeBtn->setParentItem(_m_filterContainer);
+            closeBtn->setPos(container_width - 80, G_COMMON_LAYOUT.m_cardNormalHeight + 20);
+            connect(closeBtn, SIGNAL(clicked()), this, SLOT(hideFilterContainer()), Qt::QueuedConnection);
+            _m_filterUIElements.append(closeBtn);
+        }
+    } else {
+        unselectAll();
+        CardItem *targetItem = nullptr;
+        foreach (CardItem *item, m_handCards) {
+            if (item->getCard()->getId() == card_id) {
+                targetItem = item;
+                break;
+            }
+        }
+
+        foreach (CardItem *item, _m_filterContainer->getItems()) {
+            disconnect(item, nullptr, nullptr, nullptr);
+            item->setFlag(QGraphicsItem::ItemIsSelectable, false);
+            item->setAcceptedMouseButtons(Qt::NoButton);
+        }
+
+        if (targetItem) {
+            targetItem->clickItem();
+        }
+
+        clearFilterUIElements();
+        _m_filterContainer->clear();
+        _m_filterContainer->hide();
+        _m_filterCurrentCategory = "";
+
+        if (targetItem) {
+            targetItem->goBack(true);
+        }
+    }
 }
 

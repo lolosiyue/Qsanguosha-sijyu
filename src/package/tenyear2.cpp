@@ -10516,6 +10516,7 @@ public:
 			if(tos.length()>= num.toInt())break;
 			QList<int> hands = player->handCards();
 			ServerPlayer*to = room->askForYiji(player,hands,objectName(),false,false,false,1,alives,CardMoveReason(),"liangying-give");
+			if(!to) break;
 			tos << to;
 			alives.removeOne(to);
 			room->addPlayerMark(to,"liangying-Clear");

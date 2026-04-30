@@ -378,6 +378,19 @@
        <string>Use full skin</string>
       </property>
      </widget>
+     <widget class="QCheckBox" name="enableAnimatedGeneralsCheckBox">
+      <property name="geometry">
+       <rect>
+        <x>140</x>
+        <y>100</y>
+        <width>220</width>
+        <height>16</height>
+       </rect>
+      </property>
+      <property name="text">
+       <string>Enable animated generals (GIF)</string>
+      </property>
+     </widget>
     </widget>
     <widget class="QGroupBox" name="fontSetupGroupBox">
      <property name="geometry">

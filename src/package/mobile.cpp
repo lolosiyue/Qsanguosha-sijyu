@@ -782,7 +782,7 @@ public:
 			}
 		}
 		player->setTag("DangguSkills", cssk);
-		room->handleAcquireDetachSkills(player,cssk,true);
+		room->handleAcquireDetachSkills(player,cssk,false);
 		player->setTag("ChangshiCards", cs);
 		room->setPlayerMark(player,"&chang_shi",cs.length());
 	}
@@ -825,7 +825,7 @@ class Mowang : public TriggerSkill
 public:
 	Mowang() : TriggerSkill("mowang")
 	{
-		events << BeforeGameOverJudge << EventPhaseChanging << EventPhaseStart;
+		events << BeforeGameOverJudge << EventPhaseChanging;
 		frequency = Compulsory;
 	}
 
@@ -845,7 +845,8 @@ public:
 		if (triggerEvent == BeforeGameOverJudge) {
 			DeathStruct death = data.value<DeathStruct>();
 			if(death.who==player&&player->getMaxHp()>0&&player->hasSkill(objectName())
-				&&!player->getTag("ChangshiCards").toStringList().isEmpty()){
+				&&!player->getTag("ChangshiCards").toStringList().isEmpty()
+				&&!player->isRest()){
 				room->sendCompulsoryTriggerLog(player,this);
 				room->restPlayer(player, objectName(), true);
 				QString csai = player->property("avatarIcon").toString();
@@ -856,22 +857,19 @@ public:
 				player->setTag("MowangRestActive", true);
 				return true;
 			}
-		} else if (triggerEvent == EventPhaseStart) {
-			if (player->getPhase() != Player::RoundStart) return false;
-			foreach (ServerPlayer *p, room->getAllPlayers(true)) {
-				if (!p->property("RestPlayer").toBool()) continue;
-				if (!p->getTag("MowangRestActive").toBool()) continue;
-				if (p->getTag("RestTurn").toInt() < room->getTag("TurnLengthCount").toInt()) {
-					room->sendCompulsoryTriggerLog(p,this);
-					room->unrestPlayer(p, true);
-					p->removeTag("MowangRestActive");
-					p->removeTag("RestTurn");
-					break;
-				}
-			}
 		} else if (triggerEvent == EventPhaseChanging) {
 			PhaseChangeStruct change = data.value<PhaseChangeStruct>();
-			if (change.to != Player::NotActive || player->isDead() || !player->hasSkill(objectName())) return false;
+    
+			if (change.to == Player::NotActive) {
+				ServerPlayer *p = player->getNext();
+				if (p && room->isRest(p) && p->getTag("MowangRestActive").toBool()) {
+					room->sendCompulsoryTriggerLog(p, this);
+					room->unrestPlayer(p, true, false);
+					p->removeTag("MowangRestActive");
+					p->removeTag("RestTurn");
+				}
+			}
+			if (change.to != Player::NotActive || player->isDead() || !player->hasSkill(objectName()) || player->isRest()) return false;
 			room->sendCompulsoryTriggerLog(player,this);
 			room->killPlayer(player);
 		}

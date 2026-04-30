@@ -1,9 +1,14 @@
 #include "graphicspixmaphoveritem.h"
 #include "generic-cardcontainer-ui.h"
 #include "pixmapanimation.h"
+#include "engine.h"
+#include "settings.h"
 
-//#include <QPainter>
-//#include <QStyleOptionGraphicsItem>
+#include <QPainter>
+#include <QStyleOptionGraphicsItem>
+#include <QFile>
+#include <QRegExp>
+#include <QFileInfo>
 
 const char *CHANGE_SKIN_EMOTION_NAME = "skin_changing";
 
@@ -11,7 +16,10 @@ QList<QPixmap> GraphicsPixmapHoverItem::m_skinChangingFrames;
 int GraphicsPixmapHoverItem::m_skinChangingFrameCount = 0;
 
 GraphicsPixmapHoverItem::GraphicsPixmapHoverItem(PlayerCardContainer *playerCardContainer, QGraphicsItem *parent)
-	: QGraphicsPixmapItem(parent), m_playerCardContainer(playerCardContainer), m_timer(0), m_val(0), m_currentSkinChangingFrameIndex(-1)
+    : QGraphicsPixmapItem(parent), m_playerCardContainer(playerCardContainer), m_timer(0), m_val(0),
+    m_currentSkinChangingFrameIndex(-1),
+    m_movie(nullptr), m_movieLabel(nullptr), m_proxyWidget(nullptr), m_isAnimated(false),
+    m_targetImagePath(), m_targetGeneralName()
 {
     setAcceptHoverEvents(true);
 
@@ -148,7 +156,13 @@ void GraphicsPixmapHoverItem::timerEvent(QTimerEvent *)
     m_val += m_step;
     if (m_val >= m_max) {
         stopChangeHeroSkinAnimation();
-        setPixmap(m_heroSkinPixmap);
+
+        if (!m_targetImagePath.isEmpty()) {
+            QSize targetSize = boundingRect().size().toSize();
+            setGeneralImage(m_targetImagePath, targetSize);
+            m_targetImagePath.clear();
+            m_targetGeneralName.clear();
+        }
         return;
     }
 
@@ -163,19 +177,52 @@ void GraphicsPixmapHoverItem::startChangeHeroSkinAnimation(const QString &genera
 
     emit skin_changing_start();
 
+    m_targetGeneralName = generalName;
+
+    QString actualGeneralName = generalName;
+    const General *general = Sanguosha->getGeneral(generalName);
+    if (general && !general->getImage().isEmpty()) {
+        actualGeneralName = general->getImage();
+    }
+
+    QString basePath = "image/fullskin/generals/full/";
+    m_targetImagePath = basePath + actualGeneralName + ".jpg";
+
+    QString actualGn = Sanguosha->getResourceAlias("heroskin", generalName);
+    int skin_index = Config.value(QString("HeroSkin/%1").arg(generalName), 0).toInt();
+    if (skin_index > 0) {
+        m_targetImagePath = "image/heroskin/fullskin/generals/full/"
+                          + actualGn + "_" + QString::number(skin_index) + ".jpg";
+    }
+
+    if (m_isAnimated && m_movie) {
+        m_movie->stop();
+    }
+    if (m_proxyWidget) {
+        m_proxyWidget->hide();
+    }
+
+    if (pixmap().isNull() && !m_staticPixmap.isNull()) {
+        setPixmap(m_staticPixmap);
+    }
+    QGraphicsPixmapItem::show();
+
     if (m_playerCardContainer) {
-        if (isPrimaryAvartarItem()) {
-            m_heroSkinPixmap = m_playerCardContainer->_getAvatarIcon(generalName);
-        }else {
-            m_heroSkinPixmap = m_playerCardContainer->getSmallAvatarIcon(generalName);
+        QPixmap staticPixmap(m_targetImagePath);
+        if (!staticPixmap.isNull()) {
+            m_heroSkinPixmap = staticPixmap;
+            QSize itemSize = boundingRect().size().toSize();
+            if (m_heroSkinPixmap.size() != itemSize) {
+                m_heroSkinPixmap = m_heroSkinPixmap.scaled(itemSize, Qt::IgnoreAspectRatio,
+                                                           Qt::SmoothTransformation);
+            }
+        } else {
+            if (isPrimaryAvartarItem()) {
+                m_heroSkinPixmap = m_playerCardContainer->_getAvatarIcon(generalName);
+            } else {
+                m_heroSkinPixmap = m_playerCardContainer->getSmallAvatarIcon(generalName);
+            }
         }
-
-        QSize itemSize = boundingRect().size().toSize();
-        if (m_heroSkinPixmap.size() != itemSize) {
-            m_heroSkinPixmap = m_heroSkinPixmap.scaled(itemSize, Qt::IgnoreAspectRatio,
-                Qt::SmoothTransformation);
-        }
-
         m_timer = startTimer(m_interval);
     }
 }
@@ -213,5 +260,173 @@ bool GraphicsPixmapHoverItem::isPrimaryAvartarItem() const
 bool GraphicsPixmapHoverItem::isSecondaryAvartarItem() const
 {
     return (this == m_playerCardContainer->getSmallAvartarItem());
+}
+
+void GraphicsPixmapHoverItem::setGeneralImage(const QString &imagePath, const QSize &targetSize)
+{
+    m_currentImagePath = imagePath;
+
+    QString gifPath = imagePath;
+    bool hasGif = false;
+
+    if (!imagePath.toLower().endsWith(".gif")) {
+        gifPath.replace(QRegExp("\\.(jpg|png)$", Qt::CaseInsensitive), ".gif");
+
+        if (gifPath.contains("/heroskin/")) {
+            if (gifPath.contains("/full/") && !gifPath.contains("/full/gif/")) {
+                QString gifPathInSubdir = gifPath;
+                gifPathInSubdir.replace("/full/", "/full/gif/");
+                if (QFile::exists(gifPathInSubdir)) {
+                    gifPath = gifPathInSubdir;
+                    hasGif = true;
+                } else if (QFile::exists(gifPath)) {
+                    hasGif = true;
+                }
+            }
+        }
+        else if (gifPath.contains("/full/") && !gifPath.contains("/full/gif/")) {
+            QString gifPathInSubdir = gifPath;
+            gifPathInSubdir.replace("/full/", "/full/gif/");
+            if (QFile::exists(gifPathInSubdir)) {
+                gifPath = gifPathInSubdir;
+                hasGif = true;
+            } else if (QFile::exists(gifPath)) {
+                hasGif = true;
+            }
+        } else if (QFile::exists(gifPath)) {
+            hasGif = true;
+        }
+    } else {
+        hasGif = QFile::exists(gifPath);
+    }
+
+    QString generalName = QFileInfo(imagePath).baseName();
+    generalName = generalName.section("_", 0, -2);
+
+    QString animatedAlias = Sanguosha->getResourceAlias("animatedgeneral", generalName);
+    if (animatedAlias != generalName) {
+        QString aliasGifPath = QFileInfo(gifPath).absoluteDir().absolutePath() + "/" + animatedAlias;
+        if (animatedAlias.contains("/") || animatedAlias.contains("\\")) {
+            if (QFile::exists(animatedAlias)) {
+                gifPath = animatedAlias;
+                hasGif = true;
+            }
+        } else if (QFile::exists(aliasGifPath)) {
+            gifPath = aliasGifPath;
+            hasGif = true;
+        }
+    }
+
+    QPixmap staticPixmap(imagePath);
+    if (!staticPixmap.isNull()) {
+        if (targetSize.width() > 0 && targetSize.height() > 0
+            && staticPixmap.size() != targetSize) {
+            staticPixmap = staticPixmap.scaled(targetSize, Qt::IgnoreAspectRatio,
+                                               Qt::SmoothTransformation);
+        }
+        setPixmap(staticPixmap);
+        m_staticPixmap = staticPixmap;
+    }
+
+    if (hasGif && Config.value("EnableAnimatedGenerals", true).toBool()) {
+        if (!m_movie) {
+            m_movie = new QMovie(gifPath, QByteArray(), this);
+        } else {
+            m_movie->stop();
+            m_movie->setFileName(gifPath);
+        }
+
+        if (m_movie->isValid()) {
+            m_isAnimated = true;
+
+            if (targetSize.width() > 0 && targetSize.height() > 0) {
+                m_movie->setScaledSize(targetSize);
+            }
+
+            if (!m_movieLabel) {
+                m_movieLabel = new QLabel();
+                m_movieLabel->setStyleSheet("QLabel { background-color: transparent; }");
+                m_movieLabel->setAttribute(Qt::WA_TranslucentBackground, true);
+            }
+
+            m_movieLabel->setMovie(m_movie);
+            if (targetSize.width() > 0 && targetSize.height() > 0) {
+                m_movieLabel->setFixedSize(targetSize);
+            }
+
+            if (!m_proxyWidget) {
+                if (scene()) {
+                    m_proxyWidget = scene()->addWidget(m_movieLabel);
+                    m_proxyWidget->setParentItem(this);
+                    m_proxyWidget->setPos(0, 0);
+                    m_proxyWidget->setZValue(-1);
+                }
+            } else {
+                m_proxyWidget->setWidget(m_movieLabel);
+                m_proxyWidget->setPos(0, 0);
+            }
+
+            m_movie->start();
+            m_proxyWidget->show();
+            setPixmap(QPixmap());
+            return;
+        }
+    }
+
+    m_isAnimated = false;
+    if (m_movie) {
+        m_movie->stop();
+    }
+    if (m_proxyWidget) {
+        m_proxyWidget->hide();
+    }
+    QGraphicsPixmapItem::show();
+}
+
+void GraphicsPixmapHoverItem::stopGifAnimation()
+{
+    if (m_movie) {
+        m_movie->stop();
+    }
+    if (m_proxyWidget) {
+        m_proxyWidget->hide();
+    }
+    if (!m_staticPixmap.isNull()) {
+        setPixmap(m_staticPixmap);
+        QGraphicsPixmapItem::show();
+    }
+}
+
+void GraphicsPixmapHoverItem::setGeneralImage(const QPixmap &pixmap, const QSize &targetSize)
+{
+    QPixmap scaledPixmap = pixmap;
+    if (targetSize.width() > 0 && targetSize.height() > 0
+        && pixmap.size() != targetSize) {
+        scaledPixmap = pixmap.scaled(targetSize, Qt::IgnoreAspectRatio,
+                                     Qt::SmoothTransformation);
+    }
+
+    setPixmap(scaledPixmap);
+    m_staticPixmap = scaledPixmap;
+    m_isAnimated = false;
+
+    if (m_movie) {
+        m_movie->stop();
+    }
+    if (m_proxyWidget) {
+        m_proxyWidget->hide();
+    }
+    QGraphicsPixmapItem::show();
+}
+
+void GraphicsPixmapHoverItem::startGifAnimation()
+{
+    if (m_isAnimated && m_movie && m_movie->isValid()) {
+        if (m_proxyWidget) {
+            m_proxyWidget->show();
+        }
+        m_movie->start();
+        setPixmap(QPixmap());
+    }
 }
 
