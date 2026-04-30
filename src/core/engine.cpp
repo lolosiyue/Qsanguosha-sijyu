@@ -256,9 +256,31 @@ Engine::Engine(bool isManualMode)
     _loadModScenarios();
     m_customScene = new CustomScenario;
 
+    initializeRoleMap();
+
     connect(qApp, SIGNAL(aboutToQuit()), this, SLOT(deleteLater()));
 
     if (!DoLuaScript(lua, "lua/sanguosha.lua")) exit(1);
+
+    // Load resource aliases from JSON
+    {
+        QString aliasPath = "skins/resource_aliases.json";
+        if (QFile::exists(aliasPath)) {
+            JsonDocument doc = JsonDocument::fromFilePath(aliasPath);
+            if (doc.isObject()) {
+                JsonObject root = doc.object();
+                for (auto catIt = root.constBegin(); catIt != root.constEnd(); ++catIt) {
+                    QString category = catIt.key();
+                    QVariant catVal = catIt.value();
+                    if (catVal.canConvert<JsonObject>()) {
+                        JsonObject entries = catVal.value<JsonObject>();
+                        for (auto it = entries.constBegin(); it != entries.constEnd(); ++it)
+                            addResourceAlias(category, it.key(), it.value().toString());
+                    }
+                }
+            }
+        }
+    }
 
 #ifdef ANDROID
 	foreach (Skill*skill, findChildren<Skill*>()) {
@@ -1400,14 +1422,47 @@ QStringList Engine::getRoleList(const QString &mode) const
     QStringList role_list;
     QString roles = getRoles(mode);
     for (int i = 0; i < roles.length(); i++) {
-        switch (roles[i].toLatin1()) {
-        case 'Z': role_list << "lord"; break;
-        case 'C': role_list << "loyalist"; break;
-        case 'N': role_list << "renegade"; break;
-        case 'F': role_list << "rebel"; break;
+        QString abbr = QString(roles[i]);
+        QString roleName = getRoleByAbbreviation(abbr);
+        if (!roleName.isEmpty()) {
+            role_list << roleName;
         }
     }
     return role_list;
+}
+
+void Engine::initializeRoleMap()
+{
+    addRoleMapping("lord",     "Z");
+    addRoleMapping("loyalist", "C");
+    addRoleMapping("rebel",    "F");
+    addRoleMapping("renegade", "N");
+}
+
+void Engine::addRoleMapping(const QString& roleName, const QString& abbreviation)
+{
+    roleMap.insert(roleName, abbreviation);
+}
+
+QStringList Engine::getAllRegisteredRoles() const
+{
+    return roleMap.keys();
+}
+
+QString Engine::getRoleAbbreviation(const QString& roleName) const
+{
+    return roleMap.value(roleName, "");
+}
+
+QString Engine::getRoleByAbbreviation(const QString& targetValue, const QString& defaultKey) const
+{
+    QMap<QString, QString>::const_iterator it;
+    for (it = roleMap.begin(); it != roleMap.end(); ++it) {
+        if (it.value() == targetValue) {
+            return it.key();
+        }
+    }
+    return defaultKey;
 }
 
 int Engine::getCardCount() const
@@ -2011,6 +2066,22 @@ QString Engine::removeNumberInQString(const QString &str) const
         else _str.append(str[i]);
     }
     return _str;
+}
+
+// --- Resource Alias System ---
+void Engine::addResourceAlias(const QString &category, const QString &original, const QString &alias)
+{
+    m_resourceAliases[category][original] = alias;
+}
+
+QString Engine::getResourceAlias(const QString &category, const QString &original) const
+{
+    if (m_resourceAliases.contains(category)) {
+        const QHash<QString, QString> &categoryMap = m_resourceAliases[category];
+        if (categoryMap.contains(original))
+            return categoryMap[original];
+    }
+    return original;
 }
 
 #ifdef LOGNETWORK

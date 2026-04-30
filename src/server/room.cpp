@@ -236,7 +236,7 @@ void Room::directRestPlayer(ServerPlayer *player, const QString &reason, bool di
 	}
 }
 
-void Room::unrestPlayer(ServerPlayer *player, bool restore_full_hp)
+void Room::unrestPlayer(ServerPlayer *player, bool restore_full_hp, bool restore_original_skills)
 {
 	if (!player)
 		return;
@@ -246,10 +246,14 @@ void Room::unrestPlayer(ServerPlayer *player, bool restore_full_hp)
 
 	revivePlayer(player);
 
-	QStringList skillNames = player->getTag("RestPlayerSkills").toStringList();
-	foreach (const QString &skillName, skillNames)
-		acquireSkill(player, skillName);
-	player->removeTag("RestPlayerSkills");
+	if (restore_original_skills) {
+		QStringList skillNames = player->getTag("RestPlayerSkills").toStringList();
+		foreach (const QString &skillName, skillNames)
+			acquireSkill(player, skillName);
+		player->removeTag("RestPlayerSkills");
+	} else {
+		player->removeTag("RestPlayerSkills");
+	}
 
 	if (restore_full_hp)
 		setPlayerProperty(player, "hp", player->getMaxHp());
@@ -368,6 +372,8 @@ QList<ServerPlayer *> Room::getCounterclockwisePath(ServerPlayer *from, ServerPl
 
 void Room::output(const QString&message)
 {
+	if (Server::isHeadlessMode)
+		Server::writeHeadlessLog(message);
 	emit room_message(message);
 }
 
@@ -699,7 +705,37 @@ QStringList Room::aliveRoles(ServerPlayer*except) const
 void Room::gameOver(const QString&winner)
 {
 	QVariant data = winner;
-	thread->trigger(GameOver, this, m_alivePlayers.first(), data);
+
+	ServerPlayer* target = nullptr;
+
+	// 直接從全體玩家清單中尋找有效目標
+	// 優先順序：存活玩家 > RestPlayer > 任何玩家
+	foreach (ServerPlayer* p, m_players) {
+		if (!p) continue;
+		// 生還玩家優先
+		if (p->isAlive()) {
+			target = p;
+			break;
+		}
+	}
+
+	// 降級策略：若無生還玩家，嘗試 RestPlayer
+	if (!target) {
+		foreach (ServerPlayer* p, m_players) {
+			if (!p) continue;
+			if (p->property("RestPlayer").toBool()) {
+				target = p;
+				break;
+			}
+		}
+	}
+
+	// 最終降級：使用任何可用的玩家
+	if (!target) {
+		target = m_players.first();
+	}
+
+	thread->trigger(GameOver, this, target, data);
 
 	game_state = -1;
 
@@ -708,6 +744,7 @@ void Room::gameOver(const QString&winner)
 	if (mode.contains("_mini_")){
 		QStringList winners = winner.split("+");
 		foreach(ServerPlayer*sp, m_players){
+			if (!sp) continue;
 			if (sp->getState() != "robot"&&(winners.contains(sp->getRole())
 				|| winners.contains(sp->objectName()))){
 				QString id = Config.GameMode.mode_id;
@@ -740,8 +777,11 @@ void Room::gameOver(const QString&winner)
 	}
 
 	QStringList all_roles;
-	foreach(ServerPlayer*player, m_players)
+	QList<ServerPlayer*> playersCopy = m_players;
+	foreach(ServerPlayer*player, playersCopy){
+		if (!player) continue;
 		all_roles << player->getRole();
+	}
 	JsonArray arg;
 	arg << winner << JsonUtils::toJsonArray(all_roles);
 	doBroadcastNotify(S_COMMAND_GAME_OVER, arg);
@@ -2352,6 +2392,18 @@ ServerPlayer*Room::addSocket(ClientSocket*socket)
 	return player;
 }
 
+ServerPlayer*Room::addAIPlayer()
+{
+	ServerPlayer*player = new ServerPlayer(this);
+	player->setState("robot");
+	m_players << player;
+
+	connect(player, SIGNAL(disconnected()), this, SLOT(reportDisconnection()));
+	connect(player, SIGNAL(request_got(QString)), this, SLOT(processClientPacket(QString)));
+
+	return player;
+}
+
 bool Room::isFull() const
 {
 	return m_players.length() >= player_count;
@@ -2364,6 +2416,8 @@ bool Room::isFinished() const
 
 bool Room::canPause(ServerPlayer*player) const
 {
+	if (!player) return false;
+
 	if (player->isOwner()&&isFull()){
 		foreach(ServerPlayer*p, m_alivePlayers){
 			if (p==player||p->getState()=="robot") continue;
@@ -3983,6 +4037,41 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 				doBroadcastNotify(S_COMMAND_SPEAK, body);
 			}
 			Sanguosha->playAudioEffect(filename);
+			return;
+		}
+		if (sentence.startsWith(".flower ") || sentence.startsWith(".egg ")){
+			QString command = sentence.split(" ").first();
+			QString target_name = sentence.mid(command.length() + 1).trimmed();
+
+			ServerPlayer *target = NULL;
+			foreach (ServerPlayer *p, m_players){
+				if (p->objectName() == target_name ||
+					p->getGeneralName() == target_name ||
+					p->screenName() == target_name){
+					target = p;
+					break;
+				}
+			}
+
+			if (target && target != player){
+				if (command == ".flower"){
+					showFlower(player->objectName(), target->objectName());
+				} else if (command == ".egg"){
+					showEgg(player->objectName(), target->objectName());
+				}
+
+				QString friendly_msg;
+				if (command == ".flower"){
+					friendly_msg = QString("%1 送了一朵花给 %2").arg(player->screenName()).arg(target->screenName());
+				} else {
+					friendly_msg = QString("%1 砸了一个蛋给 %2").arg(player->screenName()).arg(target->screenName());
+				}
+
+				QString msg_base64 = friendly_msg.toUtf8().toBase64();
+				JsonArray body;
+				body << QString("server") << msg_base64;
+				doBroadcastNotify(S_COMMAND_SPEAK, body);
+			}
 			return;
 		}
 		if(Config.EnableCheat){
@@ -5735,6 +5824,22 @@ void Room::doAnimate(QSanProtocol::AnimateType type, const QString&arg1, const Q
 	doBroadcastNotify(players, S_COMMAND_ANIMATE, arg);
 }
 
+void Room::showFlower(const QString &from, const QString &to, QList<ServerPlayer *> players)
+{
+	if (from == to)
+		return;
+
+	doAnimate(S_ANIMATE_FLOWER, from, to, players);
+}
+
+void Room::showEgg(const QString &from, const QString &to, QList<ServerPlayer *> players)
+{
+	if (from == to)
+		return;
+
+	doAnimate(S_ANIMATE_EGG, from, to, players);
+}
+
 void Room::preparePlayers()
 {
 	foreach(ServerPlayer*player, m_players){
@@ -5965,8 +6070,13 @@ void Room::setEmotion(ServerPlayer*target, const QString&emotion)
 
 void Room::setLoopEmotion(ServerPlayer*target, const QString&emotion)
 {
-	if (!target) return;
-	doAnimate(S_ANIMATE_LIGHTBOX, QString("loopmove=%1").arg(emotion), target->objectName());
+    // TODO: setLoopEmotion 尚未正確實現
+    // 預期功能：在玩家頭像區域附加或移除持續性的動態視覺特效（如鐵索連環狀態）
+    // 現況：目前只是發送 "loopmove=xxx" 到客戶端，會被當作普通文字顯示
+    // 正確實現需要：在 doLightboxAnimation 中新增 loopmove= 處理分支，
+    //               在玩家頭像區域顯示持續性視覺特效，支援 "." 參數移除特效
+    if (!target) return;
+    doAnimate(S_ANIMATE_LIGHTBOX, QString("loopmove=%1").arg(emotion), target->objectName());
 }
 
 void Room::changeTableBg(const QString&tableBg)
@@ -7158,6 +7268,13 @@ QList<ServerPlayer*> Room::getLieges(const QString&kingdom, ServerPlayer*lord) c
 void Room::sendLog(const LogMessage&log, QList<ServerPlayer*>players)
 {
 	if (log.type.isEmpty()) return;
+	if (Server::isHeadlessMode) {
+		QString msg = QString("[LOG] %1").arg(log.type);
+		if (!log.arg.isEmpty()) msg += QString(" | %1").arg(log.arg);
+		if (!log.arg2.isEmpty()) msg += QString(" | %1").arg(log.arg2);
+		if (log.from) msg += QString(" | from: %1").arg(log.from->objectName());
+		Server::writeHeadlessLog(msg);
+	}
 	if (players.isEmpty()) doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_SKILL, log.toVariant());
 	else doBroadcastNotify(players, QSanProtocol::S_COMMAND_LOG_SKILL, log.toVariant());
 }

@@ -1083,11 +1083,13 @@ void ServerPlayer::setAI(AI *ai)
 
 AI *ServerPlayer::getAI() const
 {
-	if (getState()=="online"||onsole_owner->getState()=="online")
-		return nullptr;
-	else if (Config.EnableCheat||getState()!="trust")
-		return ai;
-	return trust_ai;
+    if (getState()=="online")
+        return nullptr;
+    if (onsole_owner == nullptr || onsole_owner->getState()=="online")
+        return nullptr;
+    else if (Config.EnableCheat||getState()!="trust")
+        return ai;
+    return trust_ai;
 }
 
 AI *ServerPlayer::getSmartAI() const
@@ -1128,7 +1130,12 @@ ServerPlayer *ServerPlayer::getNextAlive(int n) const
 ServerPlayer *ServerPlayer::getNextGamePlayer(int n) const
 {
 	ServerPlayer *next = const_cast<ServerPlayer *>(this);
-	if (room->getAlivePlayers().length()<2) return next;
+	if (room->getAlivePlayers().length()<2) {
+		do {
+			next = next->next;
+		} while (next->isDead());
+		return next;
+	}
 	for (int i = 0; i < n; i++) {
 		do next = next->next; while (next->isDead());
 	}

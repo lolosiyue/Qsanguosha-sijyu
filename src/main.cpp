@@ -1,4 +1,5 @@
 #include <cstring>
+#include <QTimer>
 
 #include "mainwindow.h"
 #include "settings.h"
@@ -97,6 +98,11 @@ int main(int argc, char *argv[])
             printf("Starting failed!\n");
         }
 
+        return qApp->exec();
+    } else if (qApp->arguments().contains("--headless")) {
+        Server *server = new Server(qApp);
+        qDebug() << ">>> Headless Mode: Starting stress test with 10000 games <<<";
+        QTimer::singleShot(0, server, &Server::startHeadlessGame);
         return qApp->exec();
     }
 

@@ -217,12 +217,16 @@ public:
 
     friend class BanIpDialog;
 
+    static void writeHeadlessLog(const QString &msg);
+    static bool isHeadlessMode;
+
     void broadcast(const QString &msg);
     bool listen();
     void daemonize();
     Room *createNewRoom();
     void signupPlayer(ServerPlayer *player);
     void checkUpnpAndListServer();
+    void startHeadlessGame();
 
 private:
     ServerSocket *server;
