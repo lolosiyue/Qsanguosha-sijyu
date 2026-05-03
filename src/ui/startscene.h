@@ -5,6 +5,8 @@
 //#include "qsan-selectable-item.h"
 //#include "server.h"
 
+#include <QKeyEvent>
+
 class Button;
 class QSanSelectableItem;
 class Server;
@@ -20,12 +22,21 @@ public:
     void setServerLogBackground();
     void switchToServer(Server *server);
 
+protected:
+    virtual void keyPressEvent(QKeyEvent *event);
+
 private:
     void printServerInfo();
+    void selectButton(int index);
+    void navigateUp();
+    void navigateDown();
+    void navigateLeft();
+    void navigateRight();
 
     QSanSelectableItem *logo;
     QTextEdit *server_log;
     QList<Button *> buttons;
+    int m_currentIndex;
 };
 
 #endif

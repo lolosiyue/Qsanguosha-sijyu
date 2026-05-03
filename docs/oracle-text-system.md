@@ -16,11 +16,11 @@
 ### 1. 效果外文本翻译键
 
 #### 技能级别
-使用 `~技能名` 作为翻译键：
+使用 `^技能名` 作为翻译键：
 
 ```lua
 sgs.LoadTranslationTable{
-    ["~wushen"] = "出牌阶段，你可以额外使用一张【杀】。",
+    ["^wushen"] = "出牌阶段，你可以额外使用一张【杀】。",
 }
 ```
 
@@ -39,8 +39,8 @@ sgs.LoadTranslationTable{
 
 ```lua
 sgs.LoadTranslationTable{
-    ["~wushen"] = "出牌阶段，你可以额外使用一张【杀】。<a href=\"#play_phase\">出牌阶段</a>",
-    ["oracle:shencaocao"] = "<a href=\"#turn_end\">回合结束</a>时，你可以...",
+    ["^wushen"] = "出牌阶段，你可以额外使用一张【杀】。<a href=\"#play_phase\">出牌阶段</a>",
+    ["oracle:shencaocao"] = "魏武帝曹操，乱世之枭雄。<a href=\"#turn_end\">回合结束</a>时，可以...",
 }
 ```
 
@@ -125,8 +125,8 @@ sgs.LoadTranslationTable{
 
 sgs.LoadTranslationTable{
     -- 效果外文本
-    ["~wushen"] = "你可以额外使用一张【杀】。<a href=\"#play_phase\">出牌阶段</a>",
-    ["~tianyi"] = "当你使用第一张杀时可以指定者+1。<a href=\"#play_phase\">出牌阶段</a>开始时...",
+    ["^wushen"] = "你可以额外使用一张【杀】。<a href=\"#play_phase\">出牌阶段</a>",
+    ["^tianyi"] = "当你使用第一张杀时可以指定者+1。<a href=\"#play_phase\">出牌阶段</a>开始时...",
     ["oracle:shenlvbu1"] = "神吕布，暴虐无道。<a href=\"#play_phase\">出牌阶段</a>开始时...",
 
     -- 概念翻译

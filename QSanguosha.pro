@@ -426,8 +426,7 @@ win32-msvc*{
 	LIBS += legacy_stdio_definitions.lib
 
 	# ASan for memory debugging
-	QMAKE_CXXFLAGS += /fsanitize=address
-	QMAKE_LFLAGS += /fsanitize=address
+
 
 	# 修正 1：使用 QT_ARCH 而非 QMAKE_HOST.arch 判斷目標編譯器架構
 	contains(QT_ARCH, x86_64) {
@@ -491,8 +490,6 @@ win32-g++{
 	DEFINES += WIN32
 	LIBS += -L"$$_PRO_FILE_PWD_/lib/win/MinGW"
 	DEFINES += GPP
-	QMAKE_CXXFLAGS += -fsanitize=address
-	QMAKE_LFLAGS += -fsanitize=address
 }
 winrt{
 	DEFINES += _CRT_SECURE_NO_WARNINGS
