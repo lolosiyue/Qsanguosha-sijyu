@@ -136,7 +136,7 @@ void ServerPlayer::calculateUITooltips()
     }
     setTag("UI_VAE_Skills", QVariant(vae_list));
 
-    int final_max_cards = this->getMaxCards(); 
+    int final_max_cards = this->getMaxCards();
 
     setTag("UI_MC_Skills", QVariant(mc_list));
     setTag("UI_Off_Dist", off_dist);
@@ -1083,8 +1083,27 @@ void ServerPlayer::setAI(AI *ai)
 
 AI *ServerPlayer::getAI() const
 {
+	if (room != nullptr) {
+		ServerPlayer *actualController = room->getActualController(const_cast<ServerPlayer *>(this));
+		if (actualController != nullptr && actualController->getState() == "trust" && ai != nullptr) {
+			if (actualController != this)
+				return ai;
+
+			foreach (ServerPlayer *candidate, room->getAllPlayers(true)) {
+				if (candidate == this)
+					continue;
+				if (room->getActualController(candidate) == this)
+					return ai;
+			}
+		}
+
+		if (actualController != nullptr && actualController != this && actualController->isOnline())
+			return nullptr;
+	}
+
     if (getState()=="online")
         return nullptr;
+
     if (onsole_owner == nullptr || onsole_owner->getState()=="online")
         return nullptr;
     else if (Config.EnableCheat||getState()!="trust")
@@ -1338,7 +1357,7 @@ void ServerPlayer::marshal(ServerPlayer *player) const
 
 	foreach (QString item, history.keys()) {
 		JsonArray arg;
-		arg << item << history.value(item);
+		arg << objectName() << item << history.value(item);
 		room->doNotify(player, S_COMMAND_ADD_HISTORY, arg);
 	}
 
@@ -1543,6 +1562,15 @@ bool ServerPlayer::CompareByActionOrder(ServerPlayer *a, ServerPlayer *b)
 	return a->getRoom()->getFront(a, b) == a;
 }
 
+void ServerPlayer::syncEquipAreaCount(int i)
+{
+	if (i < 0 || i > 4)
+		return;
+	JsonArray arg;
+	arg << objectName() << i << getEquipArea(i);
+	room->doBroadcastNotify(S_COMMAND_SET_EQUIP_AREA_COUNT, arg);
+}
+
 void ServerPlayer::throwEquipArea(int i)
 {
 	throwEquipArea(QList<int>() << i);
@@ -1559,6 +1587,7 @@ void ServerPlayer::throwEquipArea(QList<int> list)
 		if (hasEquipArea(i)) {
 			setEquipArea(i, false);
 			if (getEquip(i)) ids << getEquip(i)->getId();
+			syncEquipAreaCount(i);
 			room->broadcastProperty(this, areas[i]);
 			newlist << i;
 
@@ -1583,9 +1612,10 @@ void ServerPlayer::throwEquipArea()
 	for (int i = 0; i < 5; i++) {
 		for (int n = 0; n < getEquipArea(i); n++) {
 			setEquipArea(i, false);
-			room->broadcastProperty(this, areas[i]);
 			list << i;
 		}
+		syncEquipAreaCount(i);
+		room->broadcastProperty(this, areas[i]);
 	}
 	if (list.isEmpty()) return;
 	LogMessage log;
@@ -1598,12 +1628,11 @@ void ServerPlayer::throwEquipArea()
 	room->getThread()->trigger(ThrowEquipArea, room, this, data);
 }
 
+
 void ServerPlayer::addEquipArea(int i)
 {
-	JsonArray arg;
-	arg << objectName() << i;
-	room->doBroadcastNotify(S_COMMAND_ADD_EQUIP_AREA, arg);
 	Player::addEquipArea(i);
+	syncEquipAreaCount(i);
 }
 
 void ServerPlayer::obtainEquipArea(int i)
@@ -1619,6 +1648,7 @@ void ServerPlayer::obtainEquipArea(QList<int> list)
 	foreach (int i, list) {
 		if (i<0||i>4||hasEquipArea(i)) continue;
 		setEquipArea(i, true);
+		syncEquipAreaCount(i);
 		room->broadcastProperty(this, areas[i]);
 		newlist << i;
 
@@ -1642,6 +1672,7 @@ void ServerPlayer::obtainEquipArea()
 	for (int i = 0; i < 5; i++) {
 		if (hasEquipArea(i)) continue;
 		setEquipArea(i, true);
+		syncEquipAreaCount(i);
 		room->broadcastProperty(this, areas[i]);
 		list << i;
 	}

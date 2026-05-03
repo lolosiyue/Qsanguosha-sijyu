@@ -176,10 +176,12 @@ public:
     void adjustItems();
     void showIndicator(const QString &from, const QString &to);
     void showPromptBox();
+    void closeAllDialogs();
     static void FillPlayerNames(QComboBox *ComboBox, bool add_none);
     void updateTable();
     void updateVolumeConfig();
     void redrawDashboardButtons();
+    const ClientPlayer *getDashboardPlayer() const;
     inline QMainWindow *mainWindow()
     {
         return main_window;
@@ -251,6 +253,10 @@ public slots:
     void doAddRobotAction();
     void fillRobots();
 
+    void onPlayerSelectedForGift();
+    void exitGiftSelectionMode();
+    void handleGiftSelection(Photo *photo);
+
 protected:
     virtual void mousePressEvent(QGraphicsSceneMouseEvent *event);
     virtual void mouseMoveEvent(QGraphicsSceneMouseEvent *event);
@@ -291,7 +297,7 @@ private:
     QGraphicsRectItem *pausing_item;
     QGraphicsSimpleTextItem *pausing_text;
 
-    QString guhuo_log, onsole_target;
+    QString guhuo_log, onsole_target, onsole_owner;
 
     QList<QGraphicsPixmapItem *> role_items;
     CardContainer *card_container;
@@ -387,6 +393,9 @@ private:
     void selectNextTarget(bool multiple);
     void unselectAllTargets(const QGraphicsItem *except = nullptr);
     void updateTargetsEnablity(const Card *card = nullptr);
+    QString currentOnsoleTarget() const;
+    void enterOnsoleContext(const QString &target_name);
+    void exitOnsoleContext();
 
     void callViewAsSkill();
     void cancelViewAsSkill();
@@ -413,9 +422,6 @@ private:
     void doHuashen(const QString &name, const QStringList &args);
     void doIndicate(const QString &name, const QStringList &args);
     void doGiftAnimation(const QString &name, const QStringList &args);
-    void onPlayerSelectedForGift();
-    void exitGiftSelectionMode();
-    void handleGiftSelection(Photo *photo);
 
     EffectAnimation *animations;
     bool pindian_success;
@@ -504,12 +510,15 @@ void onGameStart();
 
     void takeAmazingGrace(ClientPlayer *taker, int card_id, bool move_cards);
 
+    void attachSkill(const ClientPlayer *player, const QString &skill_name);
     void attachSkill(const QString &skill_name);
+    void detachSkill(const ClientPlayer *player, const QString &skill_name);
     void detachSkill(const QString &skill_name);
     void updateSkill(const QString &skill_name);
 
     void doGongxin(const QList<int> &card_ids, bool enable_heart, QList<int> enabled_ids);
     void hideContainer();
+    void switchControlContext(const QString &target_name);
 
     void startAssign();
 

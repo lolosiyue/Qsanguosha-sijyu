@@ -2,7 +2,19 @@
 #include "clientplayer.h"
 //#include "standard-generals.h"
 #include "engine.h"
+#include "roomscene.h"
 //#include "util.h"
+
+static const Player *GetCurrentRequestPlayer()
+{
+    if (RoomSceneInstance != nullptr) {
+        const ClientPlayer *dashboard_player = RoomSceneInstance->getDashboardPlayer();
+        if (dashboard_player != nullptr)
+            return dashboard_player;
+    }
+
+    return Self;
+}
 
 DiscardSkill::DiscardSkill()
     : ViewAsSkill("discard"), card(new DummyCard),
@@ -38,16 +50,20 @@ void DiscardSkill::setPattern(const QString &pattern)
 
 bool DiscardSkill::viewFilter(const QList<const Card *> &selected, const Card *card) const
 {
+    const Player *player = GetCurrentRequestPlayer();
+    if (player == nullptr)
+        return false;
+
     if (selected.length() >= num)
         return false;
 
     if (!include_equip && card->isEquipped())
         return false;
 
-    if (!Sanguosha->matchExpPattern(pattern, Self, card))
+    if (!Sanguosha->matchExpPattern(pattern, player, card))
         return false;
 
-    if (is_discard && Self->isCardLimited(card, Card::MethodDiscard))
+    if (is_discard && player->isCardLimited(card, Card::MethodDiscard))
         return false;
 
     return true;
@@ -91,7 +107,8 @@ bool ResponseSkill::matchPattern(const Player *player, const Card *card) const
 
 bool ResponseSkill::viewFilter(const Card *card) const
 {
-    return matchPattern(Self, card);
+    const Player *player = GetCurrentRequestPlayer();
+    return player != nullptr && matchPattern(player, card);
 }
 
 const Card *ResponseSkill::viewAs(const Card *originalCard) const

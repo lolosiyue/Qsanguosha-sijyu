@@ -173,7 +173,10 @@ namespace QSanProtocol {
         S_COMMAND_WEAPON_RANGE,
         S_COMMAND_PLAY_AUDIO,
         S_COMMAND_ADD_EQUIP_AREA,
-        S_COMMAND_UPDATE_CARD_DESC
+        S_COMMAND_SET_EQUIP_AREA_COUNT,
+        S_COMMAND_UPDATE_CARD_DESC,
+        S_COMMAND_SWITCH_CONTEXT = 128,
+        S_COMMAND_SYNC_PILE = 129
     };
 
     enum GameEventType

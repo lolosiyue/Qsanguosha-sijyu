@@ -10,6 +10,7 @@
 #include "clientstruct.h"
 //#include "util.h"
 #include "wrapped-card.h"
+#include <QSet>
 
 using namespace std;
 using namespace QSanProtocol;
@@ -17,10 +18,37 @@ using namespace QSanProtocol;
 Client *ClientInstance = nullptr;
 static bool recorder_eventsave = false;
 
+static ClientPlayer *getControlRootPlayer(ClientPlayer *player)
+{
+	if (player == nullptr)
+		return nullptr;
+
+	QSet<QString> visited;
+	ClientPlayer *current = player;
+	while (current != nullptr) {
+		QString currentName = current->objectName();
+		if (visited.contains(currentName))
+			return current;
+
+		visited.insert(currentName);
+		QString controllerName = current->getTag("Controller_Name").toString();
+		if (controllerName.isEmpty())
+			return current;
+
+		ClientPlayer *next = ClientInstance != nullptr ? ClientInstance->getPlayer(controllerName) : nullptr;
+		if (next == nullptr)
+			return current;
+
+		current = next;
+	}
+
+	return player;
+}
+
 Client::Client(QObject *parent, const QString &filename)
 	: QObject(parent), m_isDiscardActionRefusable(true), m_bossLevel(0),
 	status(NotActive), alive_count(1), swap_pile(0), add_round(0), _m_roomState(true),
-	m_client_lua(nullptr)
+	m_client_lua(nullptr), m_original_self(nullptr)
 {
 	ClientInstance = this;
 	m_isGameOver = false;
@@ -68,6 +96,7 @@ Client::Client(QObject *parent, const QString &filename)
 	m_callbacks[S_COMMAND_ENABLE_SURRENDER] = &Client::enableSurrender;
 	m_callbacks[S_COMMAND_EXCHANGE_KNOWN_CARDS] = &Client::exchangeKnownCards;
 	m_callbacks[S_COMMAND_SET_KNOWN_CARDS] = &Client::setKnownCards;
+	m_callbacks[S_COMMAND_SWITCH_CONTEXT] = &Client::processContextSwitch;
 	m_callbacks[S_COMMAND_VIEW_GENERALS] = &Client::viewGenerals;
 	m_callbacks[S_COMMAND_PLAY_AUDIO] = &Client::playAudio;
 
@@ -81,6 +110,7 @@ Client::Client(QObject *parent, const QString &filename)
 	m_callbacks[S_COMMAND_RESET_PILE] = &Client::resetPiles;
 	m_callbacks[S_COMMAND_UPDATE_PILE] = &Client::setPileNumber;
 	m_callbacks[S_COMMAND_SYNCHRONIZE_DISCARD_PILE] = &Client::synchronizeDiscardPile;
+	m_callbacks[S_COMMAND_SYNC_PILE] = &Client::syncPile;
 	m_callbacks[S_COMMAND_CARD_MARK] = &Client::setCardMark;
 	m_callbacks[S_COMMAND_CARD_FLAG] = &Client::setCardFlag;
 	m_callbacks[S_COMMAND_OPERATION_TIMEOUT] = &Client::setTimeout;
@@ -129,6 +159,7 @@ Client::Client(QObject *parent, const QString &filename)
 	m_callbacks[S_COMMAND_ADD_ROUND] = &Client::addRound;
 	m_callbacks[S_COMMAND_SKILL_DESCRIPTION_SWAP] = &Client::setSkillDescriptionSwap;
 	m_callbacks[S_COMMAND_ADD_EQUIP_AREA] = &Client::addEquipArea;
+	m_callbacks[S_COMMAND_SET_EQUIP_AREA_COUNT] = &Client::setEquipAreaCount;
 	m_callbacks[S_COMMAND_UPDATE_CARD_DESC] = &Client::updateCardDescription;
 
 	m_noNullificationThisTime = false;
@@ -140,6 +171,7 @@ Client::Client(QObject *parent, const QString &filename)
 	Self = new ClientPlayer(this);
 	Self->setScreenName(Config.UserName);
 	Self->setProperty("avatar", Config.UserAvatar);
+	m_original_self = Self;
 	connect(Self, SIGNAL(phase_changed()), this, SLOT(alertFocus()));
 	connect(Self, SIGNAL(role_changed(QString)), this, SLOT(notifyRoleChange(QString)));
 
@@ -184,6 +216,43 @@ Client::~Client()
 		m_client_lua = nullptr;
 	}
 	ClientInstance = nullptr;
+}
+
+void Client::setSelf(ClientPlayer *newSelf)
+{
+	if (newSelf == nullptr)
+		newSelf = m_original_self;
+	if (newSelf == nullptr)
+		return;
+
+	ClientPlayer *oldSelf = Self;
+	if (oldSelf != nullptr && oldSelf != newSelf && !newSelf->canSeeHandcard(oldSelf))
+		oldSelf->retainVisibleKnownHandcards();
+
+	if (oldSelf != nullptr && oldSelf != newSelf) {
+		disconnect(oldSelf, SIGNAL(phase_changed()), this, SLOT(alertFocus()));
+		disconnect(oldSelf, SIGNAL(role_changed(QString)), this, SLOT(notifyRoleChange(QString)));
+	}
+
+	Self = newSelf;
+	if (m_noNullificationTrickName == ".")
+		m_noNullificationThisTime = false;
+	else
+		m_noNullificationThisTime = m_noNullificationPlayers.contains(Self->objectName());
+	connect(Self, SIGNAL(phase_changed()), this, SLOT(alertFocus()), Qt::UniqueConnection);
+	connect(Self, SIGNAL(role_changed(QString)), this, SLOT(notifyRoleChange(QString)), Qt::UniqueConnection);
+	emit switch_control_context(Self->objectName());
+}
+
+void Client::processContextSwitch(const QVariant &target_name)
+{
+	ClientPlayer *target = getPlayer(target_name.toString());
+	if (target == nullptr || target->isDead()) {
+		setSelf(m_original_self);
+		return;
+	}
+
+	setSelf(target);
 }
 
 void Client::updateCard(const QVariant &val)
@@ -401,15 +470,15 @@ void Client::updateProperty(const QVariant &arg)
 			}
 			if (tagKey.startsWith("UI_")) {
 				emit player->state_changed();
+				if (tagKey == "UI_Hand_Max") {
+					emit update_handcards(args[0].toString());
+				}
 			}
 			return;
 		}
 		player->setProperty(propName.toLatin1().constData(), args[2].toString());
 		if(propName.endsWith("area")){
 			emit update_areas(args[0].toString());
-		}
-		if(propName == "handMax"){
-			emit update_handcards(args[0].toString());
 		}
 		 if(propName == "View_As_Equips_List"){
             emit player->state_changed();
@@ -421,6 +490,8 @@ void Client::removePlayer(const QVariant &player_name)
 {
 	ClientPlayer *player = findChild<ClientPlayer *>(player_name.toString());
 	if (player) {
+		if (player == Self && m_original_self != nullptr && player != m_original_self)
+			setSelf(m_original_self);
 		foreach (const ClientPlayer *p, m_players){
 			if(p==player) m_players.removeOne(p);
 		}
@@ -446,10 +517,14 @@ void Client::getCards(const QVariant &arg)
 	QList<CardsMoveStruct> moves;
 	for (int i = 1; i < args.length(); i++) {
 		CardsMoveStruct move;
+		QList<int> actual_card_ids;
+		JsonUtils::tryParse(args[i].value<JsonArray>().first(), actual_card_ids);
 		if (move.tryParse(args[i])){
 			ClientPlayer *to = getPlayer(move.to_player_name);
 			move.from = getPlayer(move.from_player_name);
 			move.to = to;
+			if (move.to_place == Player::PlaceHand && to == Self)
+				move.card_ids = actual_card_ids;
 			if (move.to_place == Player::PlaceSpecial)
 				to->changePile(move.to_pile_name, true, move.card_ids);
 			else {
@@ -463,9 +538,7 @@ void Client::getCards(const QVariant &arg)
 				}
 			}
 			moves.append(move);
-			QList<int> card_ids;
-			JsonUtils::tryParse(args[i].value<JsonArray>().first(), card_ids);
-			foreach(int card_id, card_ids){
+			foreach(int card_id, actual_card_ids){
 				owner_map.insert(card_id, to);
 				place_map.insert(card_id, move.to_place);
 			}
@@ -499,11 +572,15 @@ void Client::loseCards(const QVariant &arg)
 	QList<CardsMoveStruct> moves;
 	for (int i = 1; i < args.length(); i++) {
 		CardsMoveStruct move;
+		QList<int> actual_card_ids;
+		JsonUtils::tryParse(args[i].value<JsonArray>().first(), actual_card_ids);
 		if (move.tryParse(args[i])){
 			ClientPlayer *from = getPlayer(move.from_player_name);
 			ClientPlayer *to = getPlayer(move.to_player_name);
 			move.from = from;
 			move.to = to;
+			if (move.from_place == Player::PlaceHand && from == Self)
+				move.card_ids = actual_card_ids;
 			if (move.from_place == Player::PlaceSpecial)
 				from->changePile(move.from_pile_name, false, move.card_ids);
 			else {
@@ -789,11 +866,13 @@ void Client::setNullification(const QVariant &str)
 	QString astr = str.toString();
 	if (astr != ".") {
 		if (m_noNullificationTrickName == ".") {
-			m_noNullificationThisTime = false;
+			m_noNullificationPlayers.clear();
 			m_noNullificationTrickName = astr;
 			emit nullification_asked(true);
 		}
+		m_noNullificationThisTime = Self != nullptr && m_noNullificationPlayers.contains(Self->objectName());
 	} else {
+		m_noNullificationPlayers.clear();
 		m_noNullificationThisTime = false;
 		m_noNullificationTrickName = ".";
 		emit nullification_asked(false);
@@ -1034,7 +1113,11 @@ void Client::askForNullification(const QVariant &arg)
 			return;
 		}
 	}
-	if (m_noNullificationThisTime && m_noNullificationTrickName == trick_name) {
+	QString currentPlayerName = Self != nullptr ? Self->objectName() : QString();
+	m_noNullificationThisTime = !currentPlayerName.isEmpty()
+		&& m_noNullificationTrickName == trick_name
+		&& m_noNullificationPlayers.contains(currentPlayerName);
+	if (m_noNullificationThisTime) {
 		//if (trick_card->isKindOf("AOE") || trick_card->isKindOf("GlobalEffect")) {
 			onPlayerResponseCard(nullptr);
 			return;
@@ -1091,9 +1174,12 @@ void Client::onPlayerChoosePlayer(const QList<const Player *> &players)
 
 void Client::trust()
 {
-	notifyServer(S_COMMAND_TRUST);
+	ClientPlayer *trustPlayer = getControlRootPlayer(Self);
+	if (trustPlayer != nullptr && trustPlayer != Self)
+		setSelf(trustPlayer);
+	notifyServer(S_COMMAND_TRUST, trustPlayer != nullptr ? QVariant(trustPlayer->objectName()) : QVariant());
 
-	if (Self->getState() == "trust")
+	if (trustPlayer != nullptr && trustPlayer->getState() == "trust")
 		Sanguosha->playSystemAudioEffect("untrust");
 	else
 		Sanguosha->playSystemAudioEffect("trust");
@@ -1119,19 +1205,28 @@ void Client::speakToServer(const QString &text)
 void Client::addHistory(const QVariant &history)
 {
 	JsonArray args = history.value<JsonArray>();
-	if (args.size() != 2/* || !JsonUtils::isString(args[0]) || !JsonUtils::isNumber(args[1])*/) return;
+	if (args.size() != 2 && args.size() != 3/* || !JsonUtils::isString(args[0]) || !JsonUtils::isNumber(args[1])*/) return;
 
-	QString add_str = args[0].toString();
+	ClientPlayer *target = Self;
+	int offset = 0;
+	if (args.size() == 3) {
+		target = getPlayer(args[0].toString());
+		offset = 1;
+	}
+	if (target == nullptr)
+		return;
+
+	QString add_str = args[offset].toString();
 	if (add_str == "pushPile")
 		emit card_used();
 	else if (add_str == ".")
-		Self->clearHistory();
+		target->clearHistory();
 	else{
-		int times = args[1].toInt();
+		int times = args[offset + 1].toInt();
 		if (times == 0)
-			Self->clearHistory(add_str);
+			target->clearHistory(add_str);
 		else
-			Self->addHistory(add_str, times);
+			target->addHistory(add_str, times);
 	}
 }
 
@@ -1283,6 +1378,22 @@ void Client::synchronizeDiscardPile(const QVariant &discard_pile)
 		updatePileNum();
 }
 
+void Client::syncPile(const QVariant &pile_info)
+{
+	JsonArray arr = pile_info.value<JsonArray>();
+	if (arr.size() != 3)
+		return;
+
+	QString player_name = arr[0].toString();
+	QString pile_name = arr[1].toString();
+	QList<int> card_ids;
+	JsonUtils::tryParse(arr[2], card_ids);
+
+	ClientPlayer *player = getPlayer(player_name);
+	if (player)
+		player->syncPileCards(pile_name, card_ids);
+}
+
 void Client::setCardMark(const QVariant &pattern_str)
 {
 	JsonArray pattern = pattern_str.value<JsonArray>();
@@ -1432,12 +1543,15 @@ void Client::killPlayer(const QVariant &player_name)
 {
 	ClientPlayer *player = getPlayer(player_name.toString());
 	if (!player) return;
+	bool restoreOriginal = player == Self && m_original_self != nullptr && player != m_original_self;
 
 	if (player == Self) {
 		foreach (const Skill *skill, Self->getVisibleSkills())
-			emit skill_detached(skill->objectName());
+			emit skill_detached(Self, skill->objectName());
 	}
 	player->detachAllSkills();
+	if (restoreOriginal)
+		setSelf(m_original_self);
 
 	if (!Self->hasFlag("marshalling"))
 		updatePileNum();
@@ -1576,7 +1690,7 @@ void Client::setMark(const QVariant &mark_var)
 		skill_name.chop(6);
 
 		if (!Self->hasSkill(skill_name, true)) {
-			emit skill_detached(skill_name);
+			emit skill_detached(Self, skill_name);
 		}
 	}
 }
@@ -1754,11 +1868,26 @@ void Client::showCard(const QVariant &show_str)
 
 void Client::attachSkill(const QVariant &skill)
 {
-	if (!JsonUtils::isString(skill)) return;
+	QString player_name;
+	QString skill_name;
+	if (JsonUtils::isString(skill)) {
+		skill_name = skill.toString();
+		if (Self != nullptr)
+			player_name = Self->objectName();
+	} else {
+		JsonArray args = skill.value<JsonArray>();
+		if (args.size() != 2)
+			return;
+		player_name = args[0].toString();
+		skill_name = args[1].toString();
+	}
 
-	QString skill_name = skill.toString();
-	Self->acquireSkill(skill_name);
-	emit skill_attached(skill_name);
+	ClientPlayer *player = player_name.isEmpty() ? Self : getPlayer(player_name);
+	if (player == nullptr || skill_name.isEmpty())
+		return;
+
+	player->acquireSkill(skill_name);
+	emit skill_attached(player, skill_name);
 }
 
 void Client::askForAssign(const QVariant &)
@@ -2232,7 +2361,20 @@ void Client::addEquipArea(const QVariant &reveal)
 	JsonArray args = reveal.value<JsonArray>();
 	if (args.length()<2) return;
 	ClientPlayer *player = getPlayer(args[0].toString());
-	if(player) player->addEquipArea(args[1].toInt());
+	if(player) {
+		player->addEquipArea(args[1].toInt());
+		emit update_areas(args[0].toString());
+	}
+}
+
+void Client::setEquipAreaCount(const QVariant &reveal)
+{
+	JsonArray args = reveal.value<JsonArray>();
+	if (args.length() < 3) return;
+	ClientPlayer *player = getPlayer(args[0].toString());
+	if (player == nullptr) return;
+	player->setEquipAreaCount(args[1].toInt(), args[2].toInt());
+	emit update_areas(args[0].toString());
 }
 
 

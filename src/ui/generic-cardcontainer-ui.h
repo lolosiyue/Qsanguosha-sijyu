@@ -43,6 +43,7 @@ protected:
     int _m_highestZ;
 
 protected slots:
+    void updateContainer();
     virtual void onAnimationFinished();
 
 private slots:

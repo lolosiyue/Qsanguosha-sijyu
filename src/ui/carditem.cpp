@@ -1,6 +1,7 @@
 #include "carditem.h"
 #include "engine.h"
 #include "oracle_helper.h"
+#include "roomscene.h"
 //#include "skill.h"
 //#include "clientplayer.h"
 //#include "settings.h"
@@ -192,7 +193,10 @@ bool CardItem::isEquipped() const
 {
     const Card *card = getCard();
     Q_ASSERT(card);
-    return Self->hasEquip(card);
+    const ClientPlayer *currentPlayer = Self;
+    if (RoomSceneInstance != nullptr && RoomSceneInstance->getDashboardPlayer() != nullptr)
+        currentPlayer = RoomSceneInstance->getDashboardPlayer();
+    return currentPlayer != nullptr && currentPlayer->hasEquip(card);
 }
 
 void CardItem::setFrozen(bool is_frozen)

@@ -1758,6 +1758,8 @@ public:
 	void notifyWeaponRange(const char*weapon_name, int range = 1);
 
 	void broadcastInvoke(const char*method, const char*arg = ".", ServerPlayer*except = nullptr);
+	ServerPlayer*getActualController(ServerPlayer *player) const;
+	void setPlayerController(ServerPlayer *target, ServerPlayer *controller = nullptr);
 	bool doNotify(ServerPlayer*player, int command, const char*arg);
 	bool doBroadcastNotify(int command, const char*arg);
 	bool doBroadcastNotify(const QList<ServerPlayer*>&players, int command, const char*arg);

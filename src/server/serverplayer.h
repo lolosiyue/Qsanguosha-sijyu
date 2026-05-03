@@ -142,6 +142,7 @@ public:
     void obtainEquipArea(QList<int> list);
     void obtainEquipArea(int i);
     void obtainEquipArea();
+    void syncEquipAreaCount(int i);
     void throwJudgeArea();
     void obtainJudgeArea();
     ServerPlayer *getSaver() const;

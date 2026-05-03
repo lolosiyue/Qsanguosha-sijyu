@@ -50,6 +50,7 @@ public:
     void hideControlButtons();
     void showControlButtons();
     virtual void showProgressBar(QSanProtocol::Countdown countdown);
+    void bindPlayer(ClientPlayer *player);
 
     QSanSkillButton *removeSkillButton(const QString &skillName);
     QSanSkillButton *addSkillButton(const QString &skillName);
@@ -223,6 +224,7 @@ protected:
     void _adjustCards(const QList<CardItem *> &list, int y);
 
     int _m_width;
+    ClientPlayer *m_currentPlayer;
     // sync objects
     QMutex m_mutex;
     QMutex m_mutexEnableCards;
@@ -277,6 +279,9 @@ protected:
     QSanSkillButton *_m_equipSkillBtns[S_EQUIP_AREA_LENGTH];
     bool _m_isEquipsAnimOn[S_EQUIP_AREA_LENGTH];
 
+    int _findEquipSkillButtonIndex(const QString &skillName) const;
+    QSanSkillButton *_getEquipSkillButton(const CardItem *equip) const;
+    void _setEquipSkillHighlight(const QString &skillName, bool turnOn);
     void _createEquipBorderAnimations();
     void _setEquipBorderAnimation(int index, bool turnOn);
 

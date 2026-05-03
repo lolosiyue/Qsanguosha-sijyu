@@ -57,6 +57,10 @@ public:
     RoomThread*getThread() const;
     ServerPlayer*getCurrent() const;
     void setCurrent(ServerPlayer*current);
+    ServerPlayer*getActualController(ServerPlayer*player) const;
+    void setPlayerController(ServerPlayer *target, ServerPlayer *controller = nullptr);
+    void syncControllerPileVisible(ServerPlayer *target, ServerPlayer *controller);
+    void clearControllerPileVisible(ServerPlayer *target, ServerPlayer *controller);
     int alivePlayerCount() const;
     QList<ServerPlayer*> getOtherPlayers(ServerPlayer*except, bool include_dead = false) const;
     QList<ServerPlayer*> getPlayers() const;
@@ -244,6 +248,7 @@ public:
 
     // Verification functions
     bool verifyNullificationResponse(ServerPlayer*, const QVariant&, void*);
+    bool verifyRaceReply(ServerPlayer*, const QVariant&, void*);
 
     // Notification functions
     bool notifyMoveFocus(ServerPlayer*player);
@@ -650,6 +655,9 @@ private:
     QList<CardsMoveStruct> _separateMoves(QList<CardsMoveOneTimeStruct> moveOneTimes);
     QString _chooseDefaultGeneral(ServerPlayer*player) const;
     bool _setPlayerGeneral(ServerPlayer*player, const QString&generalName, bool isFirst);
+    ServerPlayer*getRequestTarget(ServerPlayer*player) const;
+    void notifyArrangeSeats(ServerPlayer *player);
+    void clearDualControlRequest(ServerPlayer*player, bool restore_context = true);
     QString mode;
     QList<ServerPlayer*> m_players, m_alivePlayers;
     int player_count;
@@ -676,6 +684,9 @@ private:
     // this map for anything else but S_CLIENT_REQUEST!!!!!
     QHash<QSanProtocol::CommandType, QSanProtocol::CommandType> m_requestResponsePair;
     // Stores the expected client response for each server request, any unmatched client response will be discarded.
+
+    QHash<QString, QString> m_dualControlReplyOwners;
+    QHash<QString, QString> m_dualControlRequestTargets;
 
     QElapsedTimer _m_timeSinceLastSurrenderRequest; // Timer used to ensure that surrender polls are not initiated too frequently
     bool _m_isFirstSurrenderRequest; // We allow the first surrender poll to go through regardless of the timer.

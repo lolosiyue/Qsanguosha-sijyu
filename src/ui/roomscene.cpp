@@ -38,6 +38,34 @@
 #include "graphicspixmaphoveritem.h"
 #include <QOpenGLWidget>
 #include <QMutexLocker>
+#include <QSet>
+
+static ClientPlayer *getControlRootPlayer(const ClientPlayer *player)
+{
+	ClientPlayer *current = const_cast<ClientPlayer *>(player);
+	if (current == nullptr)
+		return nullptr;
+
+	QSet<QString> visited;
+	while (current != nullptr) {
+		QString currentName = current->objectName();
+		if (visited.contains(currentName))
+			return current;
+
+		visited.insert(currentName);
+		QString controllerName = current->getTag("Controller_Name").toString();
+		if (controllerName.isEmpty())
+			return current;
+
+		ClientPlayer *next = ClientInstance != nullptr ? ClientInstance->getPlayer(controllerName) : nullptr;
+		if (next == nullptr)
+			return current;
+
+		current = next;
+	}
+
+	return const_cast<ClientPlayer *>(player);
+}
 
 #include "ui-utils.h"
 
@@ -45,6 +73,18 @@ using namespace QSanProtocol;
 
 //RoomScene*RoomSceneInstance = nullptr;
 RoomScene*RoomSceneInstance;
+
+static const ClientPlayer *getCurrentOperationPlayer(const Dashboard *dashboard)
+{
+	if (dashboard != nullptr && dashboard->getPlayer() != nullptr)
+		return dashboard->getPlayer();
+	return Self;
+}
+
+static ClientPlayer *getCurrentOperationPlayer(Dashboard *dashboard)
+{
+	return const_cast<ClientPlayer *>(getCurrentOperationPlayer(static_cast<const Dashboard *>(dashboard)));
+}
 
 void RoomScene::resetPiles()
 {
@@ -167,6 +207,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(ClientInstance,SIGNAL(skill_acquired(const ClientPlayer*,QString)),this,SLOT(acquireSkill(const ClientPlayer*,QString)));
 	connect(ClientInstance,SIGNAL(animated(int,QStringList)),this,SLOT(doAnimation(int,QStringList)));
 	connect(ClientInstance,SIGNAL(role_state_changed(QString)),this,SLOT(updateRoles(QString)));
+	connect(ClientInstance,SIGNAL(switch_control_context(QString)),this,SLOT(switchControlContext(QString)));
 	connect(ClientInstance,SIGNAL(event_received(const QVariant)),this,SLOT(handleGameEvent(const QVariant)));
 
 	connect(ClientInstance,SIGNAL(game_started()),this,SLOT(onGameStart()));
@@ -226,8 +267,8 @@ RoomScene::RoomScene(QMainWindow*main_window)
 
 	card_container->moveBy(-120,0);
 
-	connect(ClientInstance,SIGNAL(skill_attached(QString)),this,SLOT(attachSkill(QString)));
-	connect(ClientInstance,SIGNAL(skill_detached(QString)),this,SLOT(detachSkill(QString)));
+	connect(ClientInstance,SIGNAL(skill_attached(const ClientPlayer*,QString)),this,SLOT(attachSkill(const ClientPlayer*,QString)));
+	connect(ClientInstance,SIGNAL(skill_detached(const ClientPlayer*,QString)),this,SLOT(detachSkill(const ClientPlayer*,QString)));
 
 	enemy_box = nullptr;
 	self_box = nullptr;
@@ -470,6 +511,74 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	_m_animationContext = new QQmlContext(_m_animationEngine->rootContext(),this);
 	_m_animationComponent = new QQmlComponent(_m_animationEngine,QUrl::fromLocalFile("ui-script/animation.qml"),this);
 #endif*/
+}
+
+const ClientPlayer *RoomScene::getDashboardPlayer() const
+{
+	return dashboard != nullptr ? dashboard->getPlayer() : nullptr;
+}
+
+QString RoomScene::currentOnsoleTarget() const
+{
+	ClientPlayer *controller = nullptr;
+	if (!onsole_owner.isEmpty())
+		controller = ClientInstance->getPlayer(onsole_owner);
+	if (controller == nullptr && Self != nullptr) {
+		QString ownerName = Self->getTag("onsoleFrom").toString();
+		if (!ownerName.isEmpty())
+			controller = ClientInstance->getPlayer(ownerName);
+	}
+	if (controller == nullptr)
+		controller = Self;
+	return controller != nullptr ? controller->property("onsole_target").toString() : QString();
+}
+
+void RoomScene::enterOnsoleContext(const QString &target_name)
+{
+	if (target_name.isEmpty() || Self == nullptr)
+		return;
+
+	ClientPlayer *controller = nullptr;
+	if (!onsole_owner.isEmpty())
+		controller = ClientInstance->getPlayer(onsole_owner);
+	if (controller == nullptr) {
+		QString ownerName = Self->getTag("onsoleFrom").toString();
+		if (!ownerName.isEmpty())
+			controller = ClientInstance->getPlayer(ownerName);
+	}
+	if (controller == nullptr)
+		controller = Self;
+
+	ClientPlayer *target = ClientInstance->getPlayer(target_name);
+	if (target == nullptr || target == Self)
+		return;
+
+	if (Self != controller)
+		Self->removeTag("onsoleFrom");
+
+	onsole_owner = controller->objectName();
+	target->setTag("onsoleFrom", onsole_owner);
+	Self = target;
+	switchControlContext(target->objectName());
+}
+
+void RoomScene::exitOnsoleContext()
+{
+	QString controllerName = onsole_owner;
+	if (controllerName.isEmpty() && Self != nullptr)
+		controllerName = Self->getTag("onsoleFrom").toString();
+
+	ClientPlayer *controlled = Self;
+	ClientPlayer *controller = ClientInstance->getPlayer(controllerName);
+	if (controlled != nullptr)
+		controlled->removeTag("onsoleFrom");
+	onsole_owner.clear();
+
+	if (controller == nullptr || controller == controlled)
+		return;
+
+	Self = controller;
+	switchControlContext(controller->objectName());
 }
 
 RoomScene::~RoomScene()
@@ -1370,19 +1479,20 @@ void RoomScene::mouseMoveEvent(QGraphicsSceneMouseEvent*event)
 void RoomScene::enableTargets(const Card*card)
 {
 	Client::Status status = ClientInstance->getStatus();
+	const Player *activePlayer = getCurrentOperationPlayer(dashboard);
 	if(card!=nullptr){
 		bool enabled = true;
 		if(status==Client::Playing)
-			enabled = card->isAvailable(Self);
+			enabled = activePlayer != nullptr && card->isAvailable(activePlayer);
 		else if(status==Client::Responding||status==Client::RespondingUse){
 			Card::HandlingMethod method = card->getHandlingMethod();
 			if(status==Client::Responding&&method==Card::MethodUse)
 				method = Card::MethodResponse;
-			enabled = !Self->isCardLimited(card,method);
+			enabled = activePlayer != nullptr && !activePlayer->isCardLimited(card,method);
 			if(enabled&&status==Client::RespondingUse&&ClientInstance->m_respondingUseFixedTarget)
-				enabled = !Sanguosha->isProhibited(Self,ClientInstance->m_respondingUseFixedTarget,card);
+				enabled = !Sanguosha->isProhibited(activePlayer,ClientInstance->m_respondingUseFixedTarget,card);
 		}else if(status==Client::RespondingForDiscard)
-			enabled = !Self->isCardLimited(card,Card::MethodDiscard);
+			enabled = activePlayer != nullptr && !activePlayer->isCardLimited(card,Card::MethodDiscard);
 		if(!enabled){
 			ok_button->setEnabled(false);
 			return;
@@ -1413,7 +1523,7 @@ void RoomScene::enableTargets(const Card*card)
 	}
 	updateTargetsEnablity(card);
 	if(selected_targets.isEmpty()){
-		if(card->isKindOf("Slash")&&Self->hasFlag("slashTargetFixToOne")){
+		if(card->isKindOf("Slash") && activePlayer != nullptr && activePlayer->hasFlag("slashTargetFixToOne")){
 			unselectAllTargets();
 			foreach (Photo*photo,photos){
 				if(photo->flags()&QGraphicsItem::ItemIsSelectable){
@@ -1423,7 +1533,7 @@ void RoomScene::enableTargets(const Card*card)
 				}
 			}
 		} else if(Config.EnableAutoTarget){
-			if(!card->targetsFeasible(selected_targets,Self)){
+			if(activePlayer != nullptr && !card->targetsFeasible(selected_targets, activePlayer)){
 				unselectAllTargets();
 				int count = 0;
 				foreach(Photo*photo,photos)
@@ -1436,7 +1546,7 @@ void RoomScene::enableTargets(const Card*card)
 			}
 		}
 	}
-	ok_button->setEnabled(card->targetsFeasible(selected_targets,Self));
+	ok_button->setEnabled(activePlayer != nullptr && card->targetsFeasible(selected_targets, activePlayer));
 }
 
 void RoomScene::updateTargetsEnablity(const Card*card)
@@ -1459,10 +1569,11 @@ void RoomScene::updateTargetsEnablity(const Card*card)
 		if(card)
 			item->setFlag(QGraphicsItem::ItemIsSelectable,!card||maxVotes > 0);
 	}*/
+	const Player *activePlayer = getCurrentOperationPlayer(dashboard);
 	foreach (PlayerCardContainer*item,item2player.keys()){
 		int maxVotes = 0;
 		if(card){
-			card->targetFilter(selected_targets,item2player[item],Self,maxVotes);
+			card->targetFilter(selected_targets,item2player[item],activePlayer,maxVotes);
 			item->setMaxVotes(maxVotes);
 		}
 		if(item->isSelected()) continue;
@@ -1481,6 +1592,7 @@ void RoomScene::updateSelectedTargets()
 	PlayerCardContainer*item = qobject_cast<PlayerCardContainer*>(sender());
 	if(item==nullptr) return;
 	const Card*card = dashboard->getSelected();
+	const Player *activePlayer = getCurrentOperationPlayer(dashboard);
 	if(card){
 		const ClientPlayer*player = item2player.value(item,nullptr);
 		if(item->isSelected())
@@ -1490,13 +1602,13 @@ void RoomScene::updateSelectedTargets()
 			foreach (const Player*cp,selected_targets){
 				QList<const Player*> tempPlayers = QList<const Player*>(selected_targets);
 				tempPlayers.removeAll(cp);
-				if(card->targetFilter(tempPlayers,cp,Self)) continue;
+				if(card->targetFilter(tempPlayers,cp,activePlayer)) continue;
 				selected_targets.clear();
 				unselectAllTargets();
 				return;
 			}
 		}
-		ok_button->setEnabled(card->targetsFeasible(selected_targets,Self));
+		ok_button->setEnabled(activePlayer != nullptr && card->targetsFeasible(selected_targets, activePlayer));
 	} else
 		selected_targets.clear();
 	updateTargetsEnablity(card);
@@ -1513,7 +1625,7 @@ void RoomScene::keyReleaseEvent(QKeyEvent*event)
 	switch (event->key()){
 	case Qt::Key_F1: trust();break;
 	case Qt::Key_F2: chooseSkillButton();break;
-	case Qt::Key_F8: {
+	case Qt::Key_F12: {
 		if (m_emotionPanel) {
 			if (m_emotionPanel->isVisible())
 				m_emotionPanel->hidePanel();
@@ -2214,7 +2326,15 @@ GenericCardContainer*RoomScene::_getGenericCardContainer(Player::Place place,con
 	if(place==Player::DiscardPile||place==Player::PlaceJudge||place==Player::DrawPile||place==Player::PlaceTable)
 		return m_tablePile;// @todo: AG must be a pile with name rather than simply using the name special...
 	if(player==Self) return dashboard;
-	if(player) return name2photo.value(player->objectName(),nullptr);
+	if(player){
+		Photo *photo = name2photo.value(player->objectName(), nullptr);
+		if (photo != nullptr)
+			return photo;
+		for (int i = 0; i < photos.length(); i++) {
+			if (photos[i]->getPlayer() == player)
+				return photos[i];
+		}
+	}
 	if(place==Player::PlaceSpecial) return card_container;
 	Q_ASSERT(false);
 	return nullptr;
@@ -2503,8 +2623,20 @@ void RoomScene::addSkillButton(const Skill*skill)
 	if(!skill) return;
 	//if(!skill||skill->inherits("SPConvertSkill")) return;
 	// check duplication
-	foreach(QSanSkillButton*button,m_skillButtons)
-		if(button->getSkill()==skill) return;
+	foreach(QSanSkillButton*button,m_skillButtons) {
+		if(button->getSkill()==skill) {
+			const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
+			if (activePlayer != nullptr) {
+				foreach (const Card *equip, activePlayer->getEquips()) {
+					if (equip != nullptr && equip->objectName() == skill->objectName()) {
+						dashboard->addSkillButton(skill->objectName());
+						break;
+					}
+				}
+			}
+			return;
+		}
+	}
 	
 	QSanSkillButton*btn = dashboard->addSkillButton(skill->objectName());
 	if(!btn||m_skillButtons.contains(btn)) return;
@@ -2539,27 +2671,54 @@ void RoomScene::acquireSkill(const ClientPlayer*,const QString&skill_name)
 
 void RoomScene::updateSkillButtons(bool isPrepare)
 {
+	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
 	QList<const Skill*> skill_list;
-	if(isPrepare){
-		if(Self->getGeneral())
-			skill_list << Self->getGeneral()->getVisibleSkillList();
-		if(Self->getGeneral2())
-			skill_list << Self->getGeneral2()->getVisibleSkillList();
-	} else
-		skill_list = Self->getVisibleSkillList();
+	QList<const Skill*> desired_skills;
+	QStringList desired_skill_names;
+	QStringList equip_view_as_skills;
+	if(activePlayer != nullptr && isPrepare){
+		if(activePlayer->getGeneral())
+			skill_list << activePlayer->getGeneral()->getVisibleSkillList();
+		if(activePlayer->getGeneral2())
+			skill_list << activePlayer->getGeneral2()->getVisibleSkillList();
+	} else if(activePlayer != nullptr)
+		skill_list = activePlayer->getVisibleSkillList();
 	foreach (const Skill*skill,skill_list){
-		if(skill->isLordSkill()&&!Self->hasLordSkill(skill,true))
+		if(skill->isLordSkill() && !activePlayer->hasLordSkill(skill,true))
 			continue;
-		addSkillButton(skill);
+		if (!desired_skill_names.contains(skill->objectName())) {
+			desired_skills << skill;
+			desired_skill_names << skill->objectName();
+		}
+	}
+	if (activePlayer != nullptr) {
+		foreach (const Card *equip, activePlayer->getEquips()) {
+			if (equip == nullptr)
+				continue;
+			const Skill *skill = Sanguosha->getSkill(equip->objectName());
+			if (skill == nullptr)
+				continue;
+			if (ViewAsSkill::parseViewAsSkill(skill) == nullptr)
+				continue;
+			equip_view_as_skills << skill->objectName();
+			if (!desired_skill_names.contains(skill->objectName())) {
+				desired_skills << skill;
+				desired_skill_names << skill->objectName();
+			}
+		}
 	}
 
-	// disable all skill buttons
-	foreach(QSanSkillButton*button,m_skillButtons){
-		if(Self->hasSkill(button->objectName(),true))
+	QList<QSanSkillButton*> existing_buttons = m_skillButtons;
+	foreach(QSanSkillButton*button, existing_buttons){
+		if(activePlayer != nullptr && (activePlayer->hasSkill(button->objectName(),true)
+			|| equip_view_as_skills.contains(button->objectName())))
 			button->setEnabled(false);
 		else
 			detachSkill(button->objectName());
 	}
+
+	foreach (const Skill *skill, desired_skills)
+		addSkillButton(skill);
 }
 
 void RoomScene::useSelectedCard()
@@ -2639,7 +2798,10 @@ void RoomScene::useSelectedCard()
 	if(dashboard->currentSkill())
 		dashboard->stopPending();
 	else{
-		foreach (const QString&pile,Self->getPileNames()){
+		const Player *activePlayer = getCurrentOperationPlayer(dashboard);
+		if (activePlayer == nullptr)
+			return;
+		foreach (const QString&pile,activePlayer->getPileNames()){
 			if(pile.startsWith("&")||pile=="wooden_ox")
 				dashboard->retractPileCards(pile);
 		}
@@ -2658,7 +2820,8 @@ void RoomScene::onEnabledChange()
 
 void RoomScene::useCard(const Card*card)
 {
-	if(card->targetFixed()||card->targetsFeasible(selected_targets,Self))
+	const Player *activePlayer = getCurrentOperationPlayer(dashboard);
+	if(activePlayer != nullptr && (card->targetFixed()||card->targetsFeasible(selected_targets,activePlayer)))
 		ClientInstance->onPlayerResponseCard(card,selected_targets);
 	enableTargets(nullptr);
 }
@@ -2666,7 +2829,8 @@ void RoomScene::useCard(const Card*card)
 void RoomScene::callViewAsSkill()
 {
 	const Card*card = dashboard->pendingCard();
-	if(card&&card->isAvailable(Self)){
+	const Player *activePlayer = getCurrentOperationPlayer(dashboard);
+	if(card && activePlayer != nullptr && card->isAvailable(activePlayer)){
 		// use card
 		dashboard->stopPending();
 		useCard(card);
@@ -2802,87 +2966,132 @@ void RoomScene::showPromptBox()
 	prompt_box->appear();
 }
 
-void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
+void RoomScene::closeAllDialogs()
 {
-	if(Self->property("onsole_target").toString()!=onsole_target){
-		onsole_target = Self->property("onsole_target").toString();
-		QList<Photo*>photos2;
-		if(onsole_target.isEmpty()){
-			ClientPlayer*self = ClientInstance->getPlayer(Self->getTag("onsoleFrom").toString());
-			item2player.insert(dashboard,self);
-			dashboard->setPlayer(self);
-			for (int i = 0;i < photos.length();i++){
-				if(photos[i]->getPlayer()==self){
-					photos[i]->setPlayer(Self);
-					item2player.insert(photos[i],Self);
-					Self = self;
-					photos[i]->repaintAll(true);
-				}
-			}
-			dashboard->repaintAll(true);
-			foreach (QSanSkillButton*button,m_skillButtons){
-				dashboard->removeSkillButton(button->objectName());
-				m_skillButtons.removeAll(button);
-				button->deleteLater();
-			}
-			int n = -1;
-			updateSkillButtons();
-			foreach (const ClientPlayer*cp,ClientInstance->getPlayers()){
-				if(cp==Self) n = 0;
-				else if(n==0){
-					for (int i = 0;i < photos.length();i++){
-						if(photos[i]->getPlayer()==cp)
-							photos2 << photos[i];
-					}
-				}
-			}
-			foreach (const ClientPlayer*cp,ClientInstance->getPlayers()){
-				if(cp==Self) break;
-				for (int i = 0;i < photos.length();i++){
-					if(photos[i]->getPlayer()==cp)
-						photos2 << photos[i];
-				}
-			}
-		}else{
-			ClientPlayer*player = ClientInstance->getPlayer(onsole_target);
-			player->setTag("onsoleFrom", Self->objectName());
-			item2player.insert(dashboard,player);
-			dashboard->setPlayer(player);
-			for (int i = 0;i < photos.length();i++){//swapItemsAt
-				if(photos[i]->getPlayer()==player){
-					item2player.insert(photos[i],Self);
-					photos[i]->setPlayer(Self);
-					Self = player;
-					photos[i]->repaintAll(true);
-				}
-			}
-			dashboard->repaintAll(true);
-			foreach (QSanSkillButton*button,m_skillButtons){
-				dashboard->removeSkillButton(button->objectName());
-				m_skillButtons.removeAll(button);
-				button->deleteLater();
-			}
-			int n = -1;
-			updateSkillButtons();
-			foreach (const ClientPlayer*cp,ClientInstance->getPlayers()){
-				if(cp==Self) n = 0;
-				else if(n==0){
-					for (int i = 0;i < photos.length();i++){
-						if(photos[i]->getPlayer()==cp)
-							photos2 << photos[i];
-					}
-				}
-			}
-			foreach (const ClientPlayer*cp,ClientInstance->getPlayers()){
-				if(cp==Self) break;
-				for (int i = 0;i < photos.length();i++){
-					if(photos[i]->getPlayer()==cp)
-						photos2 << photos[i];
-				}
+	dashboard->skillButtonDeactivated();
+	dashboard->stopPending();
+	dashboard->unselectAll();
+	if (m_choiceDialog != nullptr && m_choiceDialog->isVisible())
+		m_choiceDialog->reject();
+	foreach (QDialog *dialog, main_window->findChildren<QDialog *>()) {
+		if (dialog == nullptr || dialog == m_choiceDialog)
+			continue;
+		if (dialog->isVisible())
+			dialog->reject();
+	}
+}
+
+void RoomScene::switchControlContext(const QString &target_name)
+{
+	ClientPlayer *target = ClientInstance->getPlayer(target_name);
+	if (target == nullptr)
+		target = Self;
+
+	ClientPlayer *previous = const_cast<ClientPlayer *>(dashboard->getPlayer());
+	ClientPlayer *previousController = getControlRootPlayer(previous);
+	closeAllDialogs();
+
+	if (previous != nullptr && previous != Self) {
+		disconnect(previous, SIGNAL(owner_changed(bool)), this, SLOT(showOwnerButtons(bool)));
+		disconnect(previous, SIGNAL(state_changed()), this, SLOT(updateTrustButton()));
+	}
+	if (previousController != nullptr && previousController != previous)
+		disconnect(previousController, SIGNAL(state_changed()), this, SLOT(updateTrustButton()));
+	connect(Self, SIGNAL(owner_changed(bool)), this, SLOT(showOwnerButtons(bool)), Qt::UniqueConnection);
+	connect(Self, SIGNAL(state_changed()), this, SLOT(updateTrustButton()), Qt::UniqueConnection);
+	ClientPlayer *controller = getControlRootPlayer(target);
+	if (controller != nullptr && controller != Self)
+		connect(controller, SIGNAL(state_changed()), this, SLOT(updateTrustButton()), Qt::UniqueConnection);
+
+	if (previous != nullptr && previous != target) {
+		for (int i = 0; i < photos.length(); i++) {
+			if (photos[i]->getPlayer() != target)
+				continue;
+			photos[i]->setPlayer(previous);
+			item2player.insert(photos[i], previous);
+			photos[i]->repaintAll(true);
+			break;
+		}
+	}
+
+	name2photo.clear();
+	for (int i = 0; i < photos.length(); i++) {
+		const ClientPlayer *photoPlayer = photos[i]->getPlayer();
+		if (photoPlayer != nullptr)
+			name2photo[photoPlayer->objectName()] = photos[i];
+	}
+
+	dashboard->bindPlayer(target);
+	item2player.insert(dashboard, target);
+	dashboard->repaintAll(true);
+	dashboard->controlNullificationButton(ClientInstance->m_noNullificationTrickName != ".");
+
+	while (!m_skillButtons.isEmpty())
+		detachSkill(m_skillButtons.first()->objectName());
+	updateSkillButtons();
+	updateTrustButton();
+	showOwnerButtons(Self->isOwner());
+
+	QList<Photo *> reordered;
+	int seenSelf = -1;
+	foreach (const ClientPlayer *cp, ClientInstance->getPlayers()) {
+		if (cp == Self) seenSelf = 0;
+		else if (seenSelf == 0) {
+			for (int i = 0; i < photos.length(); i++) {
+				if (photos[i]->getPlayer() == cp)
+					reordered << photos[i];
 			}
 		}
-		photos = photos2;
-		updateTable();
+	}
+	foreach (const ClientPlayer *cp, ClientInstance->getPlayers()) {
+		if (cp == Self) break;
+		for (int i = 0; i < photos.length(); i++) {
+			if (photos[i]->getPlayer() == cp)
+				reordered << photos[i];
+		}
+	}
+	photos = reordered;
+	updateTable();
+
+	Client::Status status = ClientInstance->getStatus();
+	QString pattern = Sanguosha->getCurrentCardUsePattern();
+	CardUseStruct::CardUseReason reason = CardUseStruct::CARD_USE_REASON_UNKNOWN;
+	ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
+	if (status == Client::Playing) {
+		reason = CardUseStruct::CARD_USE_REASON_PLAY;
+		dashboard->enableCards();
+	} else if ((status & Client::ClientStatusBasicMask) == Client::Responding) {
+		if (status == Client::RespondingUse)
+			reason = CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
+		else {
+			static QRegExp rx("@@?([_A-Za-z]+)(\\d+)?!?");
+			if (rx.exactMatch(pattern) || status == Client::Responding)
+				reason = CardUseStruct::CARD_USE_REASON_RESPONSE;
+		}
+	}
+
+	foreach (QSanSkillButton *button, m_skillButtons) {
+		const ViewAsSkill *vsSkill = button->getViewAsSkill();
+		if (vsSkill != nullptr) {
+			button->setEnabled(activePlayer != nullptr && vsSkill->isAvailable(activePlayer, reason, pattern));
+		} else {
+			button->setEnabled(activePlayer != nullptr
+				&& button->getSkill()->getFrequency(activePlayer) == Skill::Wake
+				&& activePlayer->getMark(button->objectName()) > 0);
+		}
+	}
+}
+
+void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
+{
+	ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
+	QString requestOnsoleTarget = currentOnsoleTarget();
+	if(requestOnsoleTarget != onsole_target){
+		onsole_target = requestOnsoleTarget;
+		if(onsole_target.isEmpty())
+			exitOnsoleContext();
+		else
+			enterOnsoleContext(onsole_target);
 	}
 	foreach (QSanSkillButton*button,m_skillButtons){
 		const ViewAsSkill*vsSkill = button->getViewAsSkill();
@@ -2910,9 +3119,11 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 						reason = CardUseStruct::CARD_USE_REASON_RESPONSE;
 				}
 			}
-			button->setEnabled(/*!pattern.endsWith("!")&&*/vsSkill->isAvailable(Self,reason,pattern));
+			button->setEnabled(activePlayer != nullptr && vsSkill->isAvailable(activePlayer,reason,pattern));
 		} else
-			button->setEnabled(button->getSkill()->getFrequency(Self)==Skill::Wake&&Self->getMark(button->objectName())>0);
+			button->setEnabled(activePlayer != nullptr
+				&& button->getSkill()->getFrequency(activePlayer)==Skill::Wake
+				&& activePlayer->getMark(button->objectName())>0);
 	}
 
 	_m_superDragStarted = false;
@@ -2959,16 +3170,20 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 			if(skill){
 				CardUseStruct::CardUseReason reason = CardUseStruct::CARD_USE_REASON_RESPONSE;
 				if(newStatus==Client::RespondingUse) reason = CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
-				Self->addMark("ViewAsSkill_"+skill_name+"Effect");
-				bool available = skill->isAvailable(Self,reason,pattern);
-				Self->removeMark("ViewAsSkill_"+skill_name+"Effect");
+				if (activePlayer == nullptr) {
+					ClientInstance->onPlayerResponseCard(nullptr);
+					return;
+				}
+				activePlayer->addMark("ViewAsSkill_"+skill_name+"Effect");
+				bool available = skill->isAvailable(activePlayer,reason,pattern);
+				activePlayer->removeMark("ViewAsSkill_"+skill_name+"Effect");
 				if(!available){
 					ClientInstance->onPlayerResponseCard(nullptr);
 					return;
 				}
 				foreach (QSanSkillButton*button,m_skillButtons){
 					if(button->getViewAsSkill()!=skill) continue;
-					if(skill->isAvailable(Self,reason,pattern)){
+					if(skill->isAvailable(activePlayer,reason,pattern)){
 						button->click();
 						QDialog*dialog = button->getSkill()->getDialog();
 						if(dialog&&dialog->parent()!=main_window){
@@ -3154,6 +3369,7 @@ void RoomScene::onSkillActivated()
 {
 	QSanSkillButton*button = qobject_cast<QSanSkillButton*>(sender());
 	const ViewAsSkill*skill = nullptr;
+	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
 	if(button)
 		skill = button->getViewAsSkill();
 	else {
@@ -3174,18 +3390,18 @@ void RoomScene::onSkillActivated()
 		}
 
 		const Card*card = dashboard->pendingCard();
-		if(card&&card->targetFixed()&&card->isAvailable(Self)){
+		if(card && activePlayer != nullptr && card->targetFixed() && card->isAvailable(activePlayer)){
 			if(!skill->inherits("ZeroCardViewAsSkill")){
-				foreach (const Card*c,Self->getKnownCards()){
+				foreach (const Card*c,activePlayer->getKnownCards()){
 					if(skill->viewFilter(QList<const Card*>(),c))
 						return;
 				}
-				foreach (const Card*c,Self->getEquips()){
+				foreach (const Card*c,activePlayer->getEquips()){
 					if(skill->viewFilter(QList<const Card*>(),c))
 						return;
 				}
 				foreach (const QString&name,dashboard->getPileExpanded()){
-					foreach(int id,Self->getPile(name)){
+					foreach(int id,activePlayer->getPile(name)){
 						if(skill->viewFilter(QList<const Card*>(),Sanguosha->getCard(id)))
 							return;
 					}
@@ -3200,7 +3416,10 @@ void RoomScene::onSkillActivated()
 void RoomScene::updateTrustButton()
 {
 	if(!ClientInstance->getReplayer()){
-		bool trusting = Self->getState()=="trust";
+		ClientPlayer *trustPlayer = getControlRootPlayer(dashboard->getPlayer());
+		if (trustPlayer == nullptr)
+			trustPlayer = Self;
+		bool trusting = trustPlayer != nullptr && trustPlayer->getState()=="trust";
 		trust_button->update();
 		dashboard->setTrust(trusting);
 	}
@@ -3213,46 +3432,7 @@ void RoomScene::doOkButton()
 	useSelectedCard();
 	if(onsole_target!=""){
 		onsole_target = "";
-		ClientPlayer*self = ClientInstance->getPlayer(Self->getTag("onsoleFrom").toString());
-		dashboard->setPlayer(self);
-		item2player.insert(dashboard,self);
-		for (int i = 0;i < photos.length();i++){
-			if(photos[i]->getPlayer()==self){
-				photos[i]->setPlayer(Self);
-				item2player.insert(photos[i],Self);
-				Self = self;
-				photos[i]->repaintAll(true);
-			}
-		}
-		dashboard->repaintAll(true);
-		foreach (QSanSkillButton*button,m_skillButtons){
-			dashboard->removeSkillButton(button->objectName());
-			m_skillButtons.removeAll(button);
-			button->deleteLater();
-		}
-		updateSkillButtons();
-		int n = -1;
-		QList<Photo*>photos2;
-		foreach (const ClientPlayer*cp,ClientInstance->getPlayers()){
-			if(cp==Self) n = 0;
-			else if(n==0){
-				for (int i = 0;i < photos.length();i++){
-					if(photos[i]->getPlayer()==cp){
-						photos2 << photos[i];
-					}
-				}
-			}
-		}
-		foreach (const ClientPlayer*cp,ClientInstance->getPlayers()){
-			if(cp==Self) break;
-			for (int i = 0;i < photos.length();i++){
-				if(photos[i]->getPlayer()==cp){
-					photos2 << photos[i];
-				}
-			}
-		}
-		photos = photos2;
-		updateTable();
+		exitOnsoleContext();
 	}
 }
 
@@ -3333,46 +3513,7 @@ void RoomScene::doCancelButton()
 	}
 	if(onsole_target!=""){
 		onsole_target = "";
-		ClientPlayer*self = ClientInstance->getPlayer(Self->getTag("onsoleFrom").toString());
-		dashboard->setPlayer(self);
-		item2player.insert(dashboard,self);
-		for (int i = 0;i < photos.length();i++){
-			if(photos[i]->getPlayer()==self){
-				photos[i]->setPlayer(Self);
-				item2player.insert(photos[i],Self);
-                Self = self;
-				photos[i]->repaintAll(true);
-			}
-		}
-		dashboard->repaintAll(true);
-		foreach (QSanSkillButton*button,m_skillButtons){
-			dashboard->removeSkillButton(button->objectName());
-			m_skillButtons.removeAll(button);
-			button->deleteLater();
-		}
-		updateSkillButtons();
-		int n = -1;
-		QList<Photo*>photos2;
-		foreach (const ClientPlayer*cp,ClientInstance->getPlayers()){
-			if(cp==Self) n = 0;
-			else if(n==0){
-				for (int i = 0;i < photos.length();i++){
-					if(photos[i]->getPlayer()==cp){
-						photos2 << photos[i];
-					}
-				}
-			}
-		}
-		foreach (const ClientPlayer*cp,ClientInstance->getPlayers()){
-			if(cp==Self) break;
-			for (int i = 0;i < photos.length();i++){
-				if(photos[i]->getPlayer()==cp){
-					photos2 << photos[i];
-				}
-			}
-		}
-		photos = photos2;
-		updateTable();
+		exitOnsoleContext();
 	}
 }
 
@@ -3385,46 +3526,7 @@ void RoomScene::doDiscardButton()
 		ClientInstance->onPlayerResponseCard(nullptr);
 	if(onsole_target!=""){
 		onsole_target = "";
-		ClientPlayer*self = ClientInstance->getPlayer(Self->getTag("onsoleFrom").toString());
-		dashboard->setPlayer(self);
-		item2player.insert(dashboard,self);
-		for (int i = 0;i < photos.length();i++){
-			if(photos[i]->getPlayer()==self){
-				photos[i]->setPlayer(Self);
-				item2player.insert(photos[i],Self);
-				Self = self;
-				photos[i]->repaintAll(true);
-			}
-		}
-		dashboard->repaintAll(true);
-		foreach (QSanSkillButton*button,m_skillButtons){
-			dashboard->removeSkillButton(button->objectName());
-			m_skillButtons.removeAll(button);
-			button->deleteLater();
-		}
-		updateSkillButtons();
-		int n = -1;
-		QList<Photo*>photos2;
-		foreach (const ClientPlayer*cp,ClientInstance->getPlayers()){
-			if(cp==Self) n = 0;
-			else if(n==0){
-				for (int i = 0;i < photos.length();i++){
-					if(photos[i]->getPlayer()==cp){
-						photos2 << photos[i];
-					}
-				}
-			}
-		}
-		foreach (const ClientPlayer*cp,ClientInstance->getPlayers()){
-			if(cp==Self) break;
-			for (int i = 0;i < photos.length();i++){
-				if(photos[i]->getPlayer()==cp){
-					photos2 << photos[i];
-				}
-			}
-		}
-		photos = photos2;
-		updateTable();
+		exitOnsoleContext();
 	}
 }
 
@@ -4200,30 +4302,49 @@ void RoomScene::attachSkill(const QString&skill_name)
 	const Skill*skill = Sanguosha->getSkill(skill_name);
 	//if(skill&&!Self->hasSkill(skill_name,true))  如果不添加的话，再变身一次就没这些图标了
 	if(skill){
-		if(skill->isLordSkill()&&!Self->isLord()) return;
+		const Player *activePlayer = getCurrentOperationPlayer(dashboard);
+		if(skill->isLordSkill() && (activePlayer == nullptr || !activePlayer->isLord())) return;
 		addSkillButton(skill);
 	}
+}
+
+void RoomScene::attachSkill(const ClientPlayer *player, const QString &skill_name)
+{
+	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
+	if (player != nullptr && activePlayer != nullptr && player != activePlayer)
+		return;
+	attachSkill(skill_name);
 }
 
 void RoomScene::detachSkill(const QString&skill_name)
 {
 	// for all the skills has a ViewAsSkill Effect { Client::setMark(const Json::Value&) }
 	// this is a DIRTY HACK!!! for we should prevent the ViewAsSkill button been removed temporily by duanchang
-	if(Self->getMark("ViewAsSkill_"+skill_name+"Effect")>0) return;
+	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
+	if(activePlayer != nullptr && activePlayer->getMark("ViewAsSkill_"+skill_name+"Effect")>0) return;
 	QSanSkillButton*btn = dashboard->removeSkillButton(skill_name);
 	if(!btn) return;//be care LordSkill and SPConvertSkill
 	m_skillButtons.removeAll(btn);
 	btn->deleteLater();
 }
 
+void RoomScene::detachSkill(const ClientPlayer *player, const QString &skill_name)
+{
+	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
+	if (player != nullptr && activePlayer != nullptr && player != activePlayer)
+		return;
+	detachSkill(skill_name);
+}
+
 void RoomScene::updateSkill(const QString&skill_name)
 {
+	const Player *activePlayer = getCurrentOperationPlayer(dashboard);
 	foreach(QSanSkillButton*button,m_skillButtons){
 		if(button->getSkill()->objectName()==skill_name)
 		{
 			LuaLocker locker;
 			const Skill *s = button->getSkill();
-			button->setToolTip(buildOracleTooltip(s->getOracleText(Self), s->getDescription(Self)));
+			button->setToolTip(buildOracleTooltip(s->getOracleText(activePlayer), s->getDescription(activePlayer)));
 		}
 	}/*
 	bool effectMark = false;

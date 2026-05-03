@@ -16,6 +16,13 @@ int ClientPlayer::aliveCount() const
 	return ClientInstance->alivePlayerCount();
 }
 
+bool ClientPlayer::useExactHandInfo() const
+{
+	if (Self == nullptr)
+		return false;
+	return Self == this || Self->canSeeHandcard(this);
+}
+
 void ClientPlayer::addKnownHandCard(const Card *card)
 {
 	foreach (const Card *kc, known_cards) {
@@ -30,11 +37,24 @@ void ClientPlayer::addCard(int id, Place place)
 	if(id<0) return;
 	Player::addCard(id, place);
 	if(place==PlaceHand){
-		known_cards << Sanguosha->getCard(id);
+		if (this != Self)
+			addKnownHandCard(Sanguosha->getCard(id));
 		if(!hand_ids.contains(id)) hand_ids << id;
 		if(hand_ids.size()>1) qShuffle(hand_ids);
 	}
-	/*switch (place) {
+}
+
+void ClientPlayer::removeCard(int id, Place place)
+{
+	if(id<0) return;
+	Player::removeCard(id, place);
+	if(place==PlaceHand){
+		known_cards.removeAll(Sanguosha->getCard(id));
+		hand_ids.removeAll(id);
+	}
+}
+
+/*switch (place) {
 	case PlaceHand: {
 		handcard_num++;
 		if (card){
@@ -44,60 +64,25 @@ void ClientPlayer::addCard(int id, Place place)
 				if (hand_ids.size()>1) qShuffle(hand_ids);
 			}
 		}
-		break;
 	}
-	case PlaceEquip: {
-		setEquip(card);
-		break;
-	}
-	case PlaceDelayedTrick: {
-		addDelayedTrick(card);
-		break;
-	}
-	default:
-		break;
-	}*/
-}
+}*/
 
-void ClientPlayer::removeCard(int id, Place place)
+int ClientPlayer::getMaxCards() const
 {
-	if(id<0) return;
-	Player::removeCard(id,place);
-	if(place==PlaceHand){
-		hand_ids.removeAll(id);
-		if(hand_ids.isEmpty()&&!hasFlag("S_REASON_SWAP"))
-			known_cards.clear();
-		else{
-			foreach (const Card *kc, known_cards) {
-				if(kc->getId()==id) known_cards.removeOne(kc);
-			}
-		}
-	}
-	/*switch (place) {
-	case PlaceHand: {
-		handcard_num--;
-		if (card){
-			known_cards.removeAll(card);
-			hand_ids.removeAll(card->getId());
-		}
-		break;
-	}
-	case PlaceEquip:{
-		removeEquip(card);
-		break;
-	}
-	case PlaceDelayedTrick:{
-		removeDelayedTrick(card);
-		break;
-	}
-	default:
-		break;
-	}*/
+    QVariant handMaxVar = getTag("UI_Hand_Max");
+    if (handMaxVar.isValid()) {
+        return handMaxVar.toInt();
+    }
+    return qMax(getHp(), 0);
 }
 
-/*
 bool ClientPlayer::isLastHandCard(const Card *card, bool contain) const
 {
+	if (!useExactHandInfo())
+		return Player::isLastHandCard(card, contain);
+	if (card == nullptr)
+		return false;
+
 	if(card->isVirtualCard()){
 		QList<int> ids = card->getSubcards();
 		if(ids.length()>0){
@@ -122,17 +107,26 @@ bool ClientPlayer::isLastHandCard(const Card *card, bool contain) const
 
 QList<const Card *> ClientPlayer::getHandcards() const
 {
+	if (!useExactHandInfo())
+		return Player::getHandcards();
+
 	QList<const Card *> cards;
-	foreach (int id, hand_ids)
-		cards << Sanguosha->getCard(id);
+	foreach (int id, hand_ids) {
+		if (id < 0) continue;
+		const Card *card = Sanguosha->getCard(id);
+		if (card != nullptr)
+			cards << card;
+	}
 
 	return cards;
 }
 
 int ClientPlayer::getHandcardNum() const
 {
+	if (!useExactHandInfo())
+		return Player::getHandcardNum();
 	return hand_ids.size();
-}*/
+}
 
 QList<int> ClientPlayer::handCards() const
 {
@@ -142,6 +136,21 @@ QList<int> ClientPlayer::handCards() const
 QList<const Card *> ClientPlayer::getKnownCards() const
 {
 	return known_cards;
+}
+
+void ClientPlayer::retainVisibleKnownHandcards()
+{
+	QList<const Card *> visible_cards;
+	foreach (const Card *card, known_cards) {
+		if (card == nullptr)
+			continue;
+		if (!hand_ids.contains(card->getId()))
+			continue;
+		if (!card->hasFlag("visible"))
+			continue;
+		visible_cards << card;
+	}
+	known_cards = visible_cards;
 }
 
 void ClientPlayer::addHandIds(JsonArray args)
@@ -172,15 +181,33 @@ void ClientPlayer::removeHandIds(JsonArray args)
 void ClientPlayer::setKnownCards(QList<int> card_ids)
 {
 	known_cards.clear();
+	QList<int> exact_ids;
 	foreach(int cardId, card_ids){
 		if(cardId < 0) continue;
 		known_cards << Sanguosha->getCard(cardId);
+		exact_ids << cardId;
 	}
+	if (this == Self)
+		return;
+	hand_ids = exact_ids;
+	if (hand_ids.size() > 1)
+		qShuffle(hand_ids);
 }
 
 void ClientPlayer::setKnownCards(QList<const Card*> cards)
 {
+	known_cards.clear();
 	known_cards = cards;
+	QList<int> exact_ids;
+	foreach (const Card *card, cards) {
+		if (card == nullptr || card->getId() < 0) continue;
+		exact_ids << card->getId();
+	}
+	if (this == Self)
+		return;
+	hand_ids = exact_ids;
+	if (hand_ids.size() > 1)
+		qShuffle(hand_ids);
 }
 
 QTextDocument *ClientPlayer::getMarkDoc() const
@@ -206,6 +233,12 @@ void ClientPlayer::changePile(const QString &name, bool add, QList<int> card_ids
 	}
 	if (name.startsWith("#")) return;
 	emit pile_changed(name);
+}
+
+void ClientPlayer::syncPileCards(const QString &pile_name, QList<int> card_ids)
+{
+	piles[pile_name] = card_ids;
+	emit pile_changed(pile_name);
 }
 
 QString ClientPlayer::getDeathPixmapPath() const

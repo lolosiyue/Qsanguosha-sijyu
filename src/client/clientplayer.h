@@ -15,29 +15,33 @@ class ClientPlayer : public Player
 
 public:
     explicit ClientPlayer(Client *client);
-    //QList<const Card *> getHandcards() const;
+    QList<const Card *> getHandcards() const override;
     QList<int> handCards() const;
     void addHandIds(JsonArray args);
     void removeHandIds(JsonArray args);
     void setKnownCards(QList<int> card_ids);
     void setKnownCards(QList<const Card*> cards);
     QList<const Card *> getKnownCards() const;
+    void retainVisibleKnownHandcards();
     QTextDocument *getMarkDoc() const;
     void changePile(const QString &name, bool add, QList<int> card_ids);
+    void syncPileCards(const QString &pile_name, QList<int> card_ids);
     QString getDeathPixmapPath() const;
     //void setHandcardNum(int n);
     QString getGameMode() const;
 
     void setFlags(const QString &flag);
     int aliveCount() const;
-    //int getHandcardNum() const;
+    int getHandcardNum() const override;
     void removeCard(int id, Place place);
     void addCard(int id, Place place);
     void addKnownHandCard(const Card *card);
-    //bool isLastHandCard(const Card *card, bool contain = false) const;
+    bool isLastHandCard(const Card *card, bool contain = false) const override;
+    int getMaxCards() const override;
     void setMark(const QString &mark, int value);
 
 private:
+    bool useExactHandInfo() const;
     int handcard_num;
     QList<const Card *> known_cards;
     QList<int> hand_ids;
