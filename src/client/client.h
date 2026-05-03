@@ -112,6 +112,7 @@ public:
     void setPileNumber(const QVariant &pile_str);
     void setTimeout(const QVariant &time);
     void synchronizeDiscardPile(const QVariant &discard_pile);
+    void syncPile(const QVariant &pile_info);
     void gameOver(const QVariant &);
     void loseCards(const QVariant &);
     void getCards(const QVariant &);
@@ -147,6 +148,7 @@ public:
     void updateWeaponRange(const QVariant &arg);
     void playAudio(const QVariant &history);
     void addEquipArea(const QVariant &reveal);
+    void setEquipAreaCount(const QVariant &reveal);
     void updateCardDescription(const QVariant &arg);
 
     void fillAG(const QVariant &cards_str);
@@ -232,6 +234,7 @@ public:
     QString m_cardDiscardPattern;
     bool m_noNullificationThisTime;
     QString m_noNullificationTrickName;
+    QSet<QString> m_noNullificationPlayers;
     const ClientPlayer *m_respondingUseFixedTarget;
     int discard_num;
     int min_num;
@@ -244,6 +247,7 @@ public:
 
 public slots:
     void signup();
+    void processContextSwitch(const QVariant &target_name);
     void onPlayerChooseGeneral(const QString &_name);
     void onPlayerMakeChoice();
     void onPlayerChooseCard(int card_id = -2);
@@ -269,6 +273,7 @@ private:
     ClientSocket *socket;
     bool m_isGameOver;
     bool m_isDisconnected;
+    ClientPlayer *m_original_self;
     QHash<QSanProtocol::CommandType, Callback> m_interactions;
     QHash<QSanProtocol::CommandType, Callback> m_callbacks;
     QList<const ClientPlayer *> m_players;
@@ -294,6 +299,7 @@ private:
 
     bool _loseSingleCard(int card_id, CardsMoveStruct move);
     bool _getSingleCard(int card_id, CardsMoveStruct move);
+    void setSelf(ClientPlayer *newSelf);
 
 private slots:
     void processServerPacket(const QString &cmd);
@@ -359,8 +365,8 @@ signals:
     void move_cards_lost(int moveId, QList<CardsMoveStruct> moves);
     void move_cards_got(int moveId, QList<CardsMoveStruct> moves);
 
-    void skill_attached(const QString &skill_name);
-    void skill_detached(const QString &skill_name);
+    void skill_attached(const ClientPlayer *player, const QString &skill_name);
+    void skill_detached(const ClientPlayer *player, const QString &skill_name);
     void do_filter();
 
     void nullification_asked(bool asked);
@@ -380,6 +386,7 @@ signals:
     void role_state_changed(const QString &state_str);
     void generals_viewed(const QString &reason, const QStringList &names);
     void card_tip();
+    void switch_control_context(const QString &target_name);
 
     void assign_asked();
     void start_in_xs();

@@ -784,10 +784,10 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 
 				LuaLocker locker;
 				foreach(ServerPlayer*p, room->getAlivePlayers()){
+					p->calculateUITooltips();
 					int hand_max = p->getMaxCards();
-					if (p->property("handMax").toInt() == hand_max) continue;
-					room->safeSetPlayerProperty(p, "handMax", hand_max);
-					room->broadcastProperty(p, "handMax");
+					if (p->getTag("UI_Hand_Max").toInt() == hand_max) continue;
+					p->setTag("UI_Hand_Max", hand_max);
 				}
 			}
 
@@ -819,10 +819,10 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 				room->setTag("HandMaxDirty", false);
 				LuaLocker locker;
 				foreach(ServerPlayer*p, room->getAlivePlayers()){
+					p->calculateUITooltips();
 					int hand_max = p->getMaxCards();
-					if (p->property("handMax").toInt() == hand_max) continue;
-					room->safeSetPlayerProperty(p, "handMax", hand_max);
-					room->broadcastProperty(p, "handMax");
+					if (p->getTag("UI_Hand_Max").toInt() == hand_max) continue;
+					p->setTag("UI_Hand_Max", hand_max);
 				}
 			}
 

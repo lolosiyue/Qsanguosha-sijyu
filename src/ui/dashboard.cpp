@@ -27,7 +27,8 @@ Dashboard::Dashboard(QGraphicsPixmapItem *widget)
     Q_ASSERT(button_widget);
     _dlayout = &G_DASHBOARD_LAYOUT;
     _m_layout = _dlayout;
-    m_player = Self;
+    m_currentPlayer = Self;
+    m_player = m_currentPlayer;
     _m_leftFrame = _m_rightFrame = _m_middleFrame = nullptr;
     //_m_rightFrameBg = nullptr;
     animations = new EffectAnimation();
@@ -58,6 +59,69 @@ Dashboard::Dashboard(QGraphicsPixmapItem *widget)
 
     _m_sort_menu = new QMenu(RoomSceneInstance->mainWindow());
     _m_shefu_menu = new QMenu(RoomSceneInstance->mainWindow());
+}
+
+void Dashboard::bindPlayer(ClientPlayer *player)
+{
+    if (player == nullptr || player == m_currentPlayer)
+        return;
+
+    if (m_currentPlayer != nullptr) {
+        disconnect(m_currentPlayer, nullptr, this, nullptr);
+        if (_m_roleComboBox != nullptr)
+            disconnect(m_currentPlayer, nullptr, _m_roleComboBox, nullptr);
+        disconnect(m_currentPlayer->getMarkDoc(), SIGNAL(contentsChanged()), this, SLOT(updateMarks()));
+    }
+
+    m_currentPlayer = player;
+    m_player = m_currentPlayer;
+    PlayerCardContainer::setPlayer(m_currentPlayer);
+
+    QList<CardItem *> card_items = _createCards(m_currentPlayer->handCards());
+    for (int i = 0; i < m_handCards.length(); i++)
+        delete m_handCards[i];
+    m_handCards.clear();
+    addHandCards(card_items);
+    adjustCards(true);
+    _updateFrames();
+    updateAvatar();
+    updateSmallAvatar();
+    updateHp();
+    _updateEquips();
+    updateDelayedTricks();
+    refreshHandCardTooltips();
+    refresh();
+}
+
+int Dashboard::_findEquipSkillButtonIndex(const QString &skillName) const
+{
+    for (int i = 0; i < S_EQUIP_AREA_LENGTH; ++i) {
+        if (_m_equipSkillBtns[i] != nullptr && _m_equipSkillBtns[i]->objectName() == skillName)
+            return i;
+    }
+    return -1;
+}
+
+QSanSkillButton *Dashboard::_getEquipSkillButton(const CardItem *equip) const
+{
+    if (equip == nullptr)
+        return nullptr;
+
+    for (int i = 0; i < S_EQUIP_AREA_LENGTH; ++i) {
+        if (_m_equipCards[i] == equip && _m_equipSkillBtns[i] != nullptr)
+            return _m_equipSkillBtns[i];
+    }
+
+    int buttonIndex = _findEquipSkillButtonIndex(equip->objectName());
+    return buttonIndex >= 0 ? _m_equipSkillBtns[buttonIndex] : nullptr;
+}
+
+void Dashboard::_setEquipSkillHighlight(const QString &skillName, bool turnOn)
+{
+    for (int i = 0; i < S_EQUIP_AREA_LENGTH; ++i) {
+        if (_m_equipCards[i] != nullptr && _m_equipCards[i]->objectName() == skillName)
+            _setEquipBorderAnimation(i, turnOn);
+    }
 }
 
 bool Dashboard::isAvatarUnderMouse()
@@ -398,7 +462,16 @@ void Dashboard::selectCard(const QString &pattern, bool forward, bool multiple)
 void Dashboard::selectEquip(int position)
 {
     int i = position - 1;
-    if (_m_equipCards[i] && _m_equipCards[i]->isMarkable()) {
+    if (i < 0 || i >= S_EQUIP_AREA_LENGTH || _m_equipCards[i] == nullptr)
+        return;
+
+    QSanSkillButton *equipSkillButton = _getEquipSkillButton(_m_equipCards[i]);
+    if (equipSkillButton != nullptr && equipSkillButton->isEnabled()) {
+        equipSkillButton->click();
+        return;
+    }
+
+    if (_m_equipCards[i]->isMarkable()) {
         _m_equipCards[i]->mark(!_m_equipCards[i]->isMarked());
         update();
     }
@@ -502,6 +575,7 @@ QSanSkillButton *Dashboard::addSkillButton(const QString &skillName)
 {
     // if it's a equip skill, add it to equip bar
     _mutexEquipAnim.lock();
+    int existingSkillIndex = _findEquipSkillButtonIndex(skillName);
     for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
         //if (!_m_equipCards[i]) continue;
         //const EquipCard *equip = qobject_cast<const EquipCard *>(_m_equipCards[i]->getCard()->getRealCard());
@@ -511,9 +585,24 @@ QSanSkillButton *Dashboard::addSkillButton(const QString &skillName)
         //const Skill *skill = Sanguosha->getSkill(equip);
         //if (skill && skill->objectName() == skillName) {
         if (_m_equipCards[i] && _m_equipCards[i]->objectName() == skillName) {
-            // If there is already a button there, then we haven't removed the last skill before attaching
-            // a new one. The server must have sent the requests out of order. So crash.
-            Q_ASSERT(_m_equipSkillBtns[i] == nullptr);
+            if (_m_equipSkillBtns[i] != nullptr) {
+                if (_m_equipSkillBtns[i]->objectName() == skillName) {
+                    _mutexEquipAnim.unlock();
+                    return _m_equipSkillBtns[i];
+                }
+                if (existingSkillIndex >= 0) {
+                    _mutexEquipAnim.unlock();
+                    return _m_equipSkillBtns[existingSkillIndex];
+                }
+            }
+
+            if (existingSkillIndex >= 0 && existingSkillIndex != i && _m_equipSkillBtns[i] == nullptr) {
+                _m_equipSkillBtns[i] = _m_equipSkillBtns[existingSkillIndex];
+                _m_equipSkillBtns[existingSkillIndex] = nullptr;
+                _mutexEquipAnim.unlock();
+                return _m_equipSkillBtns[i];
+            }
+
             _m_equipSkillBtns[i] = new QSanInvokeSkillButton(this);
             _m_equipSkillBtns[i]->setSkill(Sanguosha->getSkill(skillName));
             _m_equipSkillBtns[i]->setVisible(false);
@@ -553,12 +642,7 @@ QSanSkillButton *Dashboard::removeSkillButton(const QString &skillName)
 
 void Dashboard::highlightEquip(QString skillName, bool highlight)
 {
-    for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
-        if (_m_equipCards[i]&&_m_equipCards[i]->objectName()==skillName){
-            _setEquipBorderAnimation(i, highlight);
-			break;
-		}
-    }
+    _setEquipSkillHighlight(skillName, highlight);
 }
 
 void Dashboard::_createExtraButtons()
@@ -676,13 +760,14 @@ void Dashboard::mouseReleaseEvent(QGraphicsSceneMouseEvent *mouseEvent)
         }
     }
     if (!to_select) return;
-    if (_m_equipSkillBtns[i] != nullptr && _m_equipSkillBtns[i]->isEnabled())
-        _m_equipSkillBtns[i]->click();
+    QSanSkillButton *equipSkillButton = _getEquipSkillButton(to_select);
+    if (equipSkillButton != nullptr && equipSkillButton->isEnabled())
+        equipSkillButton->click();
     else if (to_select->isMarkable()) {
         // According to the game rule, you cannot select a weapon as a card when
         // you are invoking the skill of that equip. So something must be wrong.
         // Crash.
-        Q_ASSERT(_m_equipSkillBtns[i] == nullptr || !_m_equipSkillBtns[i]->isDown());
+        Q_ASSERT(equipSkillButton == nullptr || !equipSkillButton->isDown());
         to_select->mark(!to_select->isMarked());
         update();
     }
@@ -692,12 +777,7 @@ void Dashboard::_onEquipSelectChanged()
 {
     QSanSkillButton *btn = qobject_cast<QSanSkillButton *>(sender());
     if (btn) {
-        for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
-            if (_m_equipSkillBtns[i] == btn) {
-                _setEquipBorderAnimation(i, btn->isDown());
-                break;
-            }
-        }
+        _setEquipSkillHighlight(btn->objectName(), btn->isDown());
     } else {
         CardItem *equip = qobject_cast<CardItem *>(sender());
         // Do not remove this assertion. If equip is nullptr here, some other
@@ -1011,7 +1091,14 @@ void Dashboard::reverseSelection()
 
 void Dashboard::cancelNullification()
 {
-    ClientInstance->m_noNullificationThisTime = !ClientInstance->m_noNullificationThisTime;
+    QString currentPlayerName = Self != nullptr ? Self->objectName() : QString();
+    if (!currentPlayerName.isEmpty() && ClientInstance->m_noNullificationTrickName != ".") {
+        if (ClientInstance->m_noNullificationPlayers.contains(currentPlayerName))
+            ClientInstance->m_noNullificationPlayers.remove(currentPlayerName);
+        else
+            ClientInstance->m_noNullificationPlayers.insert(currentPlayerName);
+        ClientInstance->m_noNullificationThisTime = ClientInstance->m_noNullificationPlayers.contains(currentPlayerName);
+    }
     if (Sanguosha->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_RESPONSE_USE
         && Sanguosha->getCurrentCardUsePattern() == "nullification"
         && RoomSceneInstance->isCancelButtonEnabled()) {
@@ -1022,7 +1109,9 @@ void Dashboard::cancelNullification()
 void Dashboard::controlNullificationButton(bool show)
 {
     if (ClientInstance->getReplayer()) return;
-    m_btnNoNullification->setState(QSanButton::S_STATE_UP);
+    m_btnNoNullification->setState(ClientInstance->m_noNullificationThisTime
+        ? QSanButton::S_STATE_DOWN
+        : QSanButton::S_STATE_UP);
     m_btnNoNullification->setVisible(show);
 }
 
@@ -1313,7 +1402,8 @@ void Dashboard::updatePending()
             if(!_m_equipCards[i]->isMarked())
 				_m_equipCards[i]->setMarkable(view_as_skill->viewFilter(pended,_m_equipCards[i]->getCard()));
 
-			if(_m_equipCards[i]->isMarkable()||(_m_equipSkillBtns[i]&&_m_equipSkillBtns[i]->isEnabled()))
+			QSanSkillButton *equipSkillButton = _getEquipSkillButton(_m_equipCards[i]);
+			if(_m_equipCards[i]->isMarkable()||(equipSkillButton&&equipSkillButton->isEnabled()))
                 _m_equipRegions[i]->setOpacity(1.0);
 			else
                 _m_equipRegions[i]->setOpacity(0.7);

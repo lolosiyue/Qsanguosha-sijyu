@@ -20,12 +20,165 @@
 #include "roomthread.h"
 #include "clientstruct.h"
 #include <ctime>
+#include <functional>
+#include <QSet>
 
 #ifdef QSAN_UI_LIBRARY_AVAILABLE
 #pragma message WARN("UI elements detected in server side!!!")
 #endif
 
 using namespace QSanProtocol;
+
+namespace {
+
+static const char *kControllerNameTag = "Controller_Name";
+
+static QString getControllerMarkName(const QString &controllerName)
+{
+	return controllerName.isEmpty() ? QString() : "&controllby+#" + controllerName + "+sys_";
+}
+
+static QString getControllerVisibleHandMarkName(const QString &targetName)
+{
+	return targetName.isEmpty() ? QString() : "HandcardVisible_" + targetName + "+dualcontrol+sys_";
+}
+
+static QString getOnsoleVisibleHandMarkName(const QString &targetName)
+{
+	return targetName.isEmpty() ? QString() : "HandcardVisible_" + targetName + "+onsole+sys_";
+}
+
+static void setViewerHandcardVisible(Room *room, ServerPlayer *viewer, const QString &markName, bool visible)
+{
+	if (room == nullptr || viewer == nullptr || markName.isEmpty())
+		return;
+
+	QList<ServerPlayer *> onlyViewers;
+	onlyViewers << viewer;
+	room->setPlayerMark(viewer, markName, visible ? 1 : 0, onlyViewers);
+}
+
+static void syncKnownHandcards(Room *room, ServerPlayer *viewer, ServerPlayer *target)
+{
+	if (room == nullptr || viewer == nullptr || target == nullptr)
+		return;
+
+	JsonArray knownCardsArg;
+	knownCardsArg << target->objectName() << JsonUtils::toJsonArray(target->handCards());
+	room->doNotify(viewer, S_COMMAND_SET_KNOWN_CARDS, knownCardsArg);
+}
+
+struct RaceVerifyContext
+{
+	Room::ResponseVerifyFunction validateFunc;
+	void *funcArg;
+};
+
+class ScopedCallback
+{
+public:
+	explicit ScopedCallback(const std::function<void()> &callback)
+		: m_callback(callback)
+	{
+	}
+
+	~ScopedCallback()
+	{
+		if (m_callback)
+			m_callback();
+	}
+
+private:
+	std::function<void()> m_callback;
+};
+
+static void clearControllerRelation(Room *room, ServerPlayer *player)
+{
+	if (room == nullptr || player == nullptr)
+		return;
+
+	QString controllerName = player->getTag(kControllerNameTag).toString();
+	ServerPlayer *controller = controllerName.isEmpty() ? nullptr : room->findPlayerByObjectName(controllerName, true);
+	if (controller != nullptr && controller != player) {
+		setViewerHandcardVisible(room, controller, getControllerVisibleHandMarkName(player->objectName()), false);
+	}
+
+	QString controllerMark = getControllerMarkName(controllerName);
+	if (!controllerMark.isEmpty())
+		room->setPlayerMark(player, controllerMark, 0);
+
+	player->removeTag(kControllerNameTag);
+	QString controlledMark = getControllerMarkName(player->objectName());
+
+	foreach (ServerPlayer *candidate, room->getAllPlayers(true)) {
+		if (candidate == player)
+			continue;
+		if (candidate->getTag(kControllerNameTag).toString() != player->objectName())
+			continue;
+
+		setViewerHandcardVisible(room, player, getControllerVisibleHandMarkName(candidate->objectName()), false);
+		room->setPlayerMark(candidate, controlledMark, 0);
+		candidate->removeTag(kControllerNameTag);
+		if (candidate->getState() == "offline") {
+			room->setPlayerProperty(candidate, "state", "trust");
+			room->resetAI(candidate);
+		}
+	}
+}
+
+static QList<ServerPlayer *> collectBroadcastRecipients(const Room *room, const QList<ServerPlayer *> &players)
+{
+	QList<ServerPlayer *> recipients;
+	QSet<ServerPlayer *> delivered;
+	foreach (ServerPlayer *player, players) {
+		if (player == nullptr)
+			continue;
+		if (!delivered.contains(player)) {
+			delivered.insert(player);
+			recipients << player;
+		}
+
+		ServerPlayer *controller = room->getActualController(player);
+		if (controller != nullptr && controller != player && controller->isOnline() && !delivered.contains(controller)) {
+			delivered.insert(controller);
+			recipients << controller;
+		}
+	}
+	return recipients;
+}
+
+}
+
+void Room::syncControllerPileVisible(ServerPlayer *target, ServerPlayer *controller)
+{
+	if (!target || !controller)
+		return;
+
+	foreach (QString pile_name, target->getPileNames()) {
+		target->setPileOpen(pile_name, controller->objectName());
+	}
+
+	foreach (QString pile_name, target->getPileNames()) {
+		QList<int> pile_cards = target->getPile(pile_name);
+		if (!pile_cards.isEmpty()) {
+			JsonArray arg;
+			arg << target->objectName();
+			arg << pile_name;
+			arg << JsonUtils::toJsonArray(pile_cards);
+			doNotify(controller, S_COMMAND_SYNC_PILE, arg);
+		}
+	}
+}
+
+void Room::clearControllerPileVisible(ServerPlayer *target, ServerPlayer *controller)
+{
+	if (!target || !controller)
+		return;
+
+	foreach (QString pile_name, target->getPileNames()) {
+		target->removePileOpen(pile_name, controller->objectName());
+	}
+}
 
 Room::Room(QObject*parent, const QString&mode)
 	: QThread(parent), mode(mode), player_count(Sanguosha->getPlayerCount(mode)), current(nullptr),
@@ -535,6 +688,7 @@ void Room::updateStateItem()
 
 void Room::killPlayer(ServerPlayer*victim, DamageStruct*reason, HpLostStruct*hplost)
 {
+	clearControllerRelation(this, victim);
 	victim->setAlive(false);
 
 	int n = m_alivePlayers.indexOf(victim)+1;
@@ -826,7 +980,9 @@ void Room::slashResult(const SlashEffectStruct&effect, const Card*jink)
 void Room::attachSkillToPlayer(ServerPlayer*player, const QString&skill_name)
 {
 	player->acquireSkill(skill_name);
-	doNotify(player, S_COMMAND_ATTACH_SKILL, skill_name);
+	JsonArray args;
+	args << player->objectName() << skill_name;
+	doNotify(player, S_COMMAND_ATTACH_SKILL, args);
 	thread->addTriggerSkill(Sanguosha->getTriggerSkill(skill_name));
 }
 
@@ -1011,34 +1167,216 @@ bool Room::doRequest(ServerPlayer*player, QSanProtocol::CommandType command, con
 	return doRequest(player, command, arg, ServerInfo.getCommandTimeout(command, S_SERVER_INSTANCE), wait);
 }
 
+ServerPlayer *Room::getActualController(ServerPlayer *player) const
+{
+	if (player == nullptr)
+		return nullptr;
+
+	QSet<ServerPlayer *> visited;
+	ServerPlayer *current = player;
+	while (current != nullptr) {
+		if (visited.contains(current)) {
+			QString controllerMark = getControllerMarkName(current->getTag(kControllerNameTag).toString());
+			if (!controllerMark.isEmpty())
+				const_cast<Room *>(this)->setPlayerMark(current, controllerMark, 0);
+			current->removeTag(kControllerNameTag);
+			return current;
+		}
+
+		visited.insert(current);
+		QString controllerName = current->getTag(kControllerNameTag).toString();
+		if (controllerName.isEmpty())
+			return current;
+
+		ServerPlayer *next = findPlayerByObjectName(controllerName, true);
+		if (next == nullptr) {
+			const_cast<Room *>(this)->setPlayerMark(current, getControllerMarkName(controllerName), 0);
+			current->removeTag(kControllerNameTag);
+			return current;
+		}
+
+		current = next;
+	}
+
+	return player;
+}
+
+void Room::setPlayerController(ServerPlayer *target, ServerPlayer *controller)
+{
+	if (target == nullptr)
+		return;
+
+	QString oldControllerName = target->getTag(kControllerNameTag).toString();
+	QString newControllerName = (controller == nullptr || controller == target) ? QString() : controller->objectName();
+	ServerPlayer *oldController = oldControllerName.isEmpty() ? nullptr : findPlayerByObjectName(oldControllerName, true);
+	QString visibleHandMark = getControllerVisibleHandMarkName(target->objectName());
+
+	if (controller != nullptr && controller != target && getActualController(controller) == target)
+		return;
+
+	if (oldController != nullptr && oldController != target && oldController != controller) {
+		setViewerHandcardVisible(this, oldController, visibleHandMark, false);
+		clearControllerPileVisible(target, oldController);
+	}
+
+	if (!oldControllerName.isEmpty() && oldControllerName != newControllerName)
+		setPlayerMark(target, getControllerMarkName(oldControllerName), 0);
+
+	if (controller == nullptr || controller == target) {
+		target->removeTag(kControllerNameTag);
+		if (oldController != nullptr && oldController != target) {
+			syncKnownHandcards(this, oldController, oldController);
+			clearControllerPileVisible(target, oldController);
+		}
+		if (target->getState() == "offline") {
+			setPlayerProperty(target, "state", "trust");
+			resetAI(target);
+		}
+		return;
+	}
+
+	target->setTag(kControllerNameTag, newControllerName);
+	if (oldControllerName != newControllerName)
+		addPlayerMark(target, getControllerMarkName(newControllerName));
+	setViewerHandcardVisible(this, controller, visibleHandMark, true);
+
+	syncKnownHandcards(this, controller, target);
+	syncControllerPileVisible(target, controller);
+}
+
+ServerPlayer *Room::getRequestTarget(ServerPlayer *player) const
+{
+	if (player == nullptr)
+		return nullptr;
+
+	ServerPlayer *actual = getActualController(player);
+	if (actual != nullptr && actual != player && actual->isOnline() && actual->getState() != "trust")
+		return actual;
+
+	ServerPlayer *onsole = player->getOnsoleOwner();
+	if (actual == player && onsole != nullptr && onsole != player && onsole->isOnline())
+		return onsole;
+
+	return player;
+}
+
+void Room::notifyArrangeSeats(ServerPlayer *player)
+{
+	if (player == nullptr)
+		return;
+
+	QStringList player_circle;
+	foreach (ServerPlayer *seatPlayer, m_players)
+		player_circle << seatPlayer->objectName();
+
+	doNotify(player, S_COMMAND_ARRANGE_SEATS, JsonUtils::toJsonArray(player_circle));
+}
+
+void Room::clearDualControlRequest(ServerPlayer *player, bool restore_context)
+{
+	if (player == nullptr)
+		return;
+
+	QString requestTargetName;
+	{
+		QMutexLocker locker(&m_mutex);
+		requestTargetName = m_dualControlRequestTargets.take(player->objectName());
+		if (!requestTargetName.isEmpty())
+			m_dualControlReplyOwners.remove(requestTargetName);
+	}
+
+	if (requestTargetName.isEmpty())
+		return;
+
+	ServerPlayer *requestTarget = findPlayerByObjectName(requestTargetName, true);
+	if (requestTarget == nullptr)
+		return;
+
+	if (player->getClientReply().isNull() && !requestTarget->getClientReply().isNull())
+		player->setClientReply(requestTarget->getClientReply());
+
+	requestTarget->acquireLock(ServerPlayer::SEMA_MUTEX);
+	requestTarget->m_expectedReplyCommand = S_COMMAND_UNKNOWN;
+	requestTarget->m_isWaitingReply = false;
+	requestTarget->m_expectedReplySerial = -1;
+	requestTarget->m_isClientResponseReady = false;
+	requestTarget->setClientReplyString("");
+	requestTarget->releaseLock(ServerPlayer::SEMA_MUTEX);
+
+	if (restore_context && requestTarget->isOnline()) {
+		doNotify(requestTarget, S_COMMAND_SWITCH_CONTEXT, requestTarget->objectName());
+		notifyArrangeSeats(requestTarget);
+	}
+}
+
 bool Room::doRequest(ServerPlayer*player, QSanProtocol::CommandType command, const QVariant&arg, time_t timeOut, bool wait)
 {
-	ServerPlayer*onsole = player->getOnsoleOwner();
-	if(onsole!=player){
-		setPlayerProperty(onsole,"onsole_target",player->objectName());
-		bool has = doRequest(onsole, command, arg, timeOut, wait);
-		setPlayerProperty(onsole,"onsole_target","");
-		player->setClientReply(onsole->getClientReply());
-		return has;
+	ServerPlayer *actual = getActualController(player);
+	ServerPlayer *requestTarget = getRequestTarget(player);
+	bool redirectedToController = actual != nullptr && requestTarget == actual && actual != player && actual->isOnline();
+	ScopedCallback restoreContextGuard([this, player, wait, redirectedToController]() {
+		if (wait && redirectedToController)
+			clearDualControlRequest(player);
+	});
+
+	if (!redirectedToController) {
+		ServerPlayer *onsole = player->getOnsoleOwner();
+		if (actual == player && onsole != player) {
+			QString onsoleVisibleMark = getOnsoleVisibleHandMarkName(player->objectName());
+			setViewerHandcardVisible(this, onsole, onsoleVisibleMark, true);
+			syncKnownHandcards(this, onsole, player);
+			setPlayerProperty(onsole, "onsole_target", player->objectName());
+			bool has = doRequest(onsole, command, arg, timeOut, wait);
+			setPlayerProperty(onsole, "onsole_target", "");
+			setViewerHandcardVisible(this, onsole, onsoleVisibleMark, false);
+			player->setClientReply(onsole->getClientReply());
+			return has;
+		}
 	}
 	Packet packet(S_SRC_ROOM | S_TYPE_REQUEST | S_DEST_CLIENT, command);
 	packet.setMessageBody(arg);
-	player->acquireLock(ServerPlayer::SEMA_MUTEX);
-	player->m_isClientResponseReady = false;
-	player->drainLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
-	player->setClientReply(QVariant());
-	player->setClientReplyString("");
-	player->m_isWaitingReply = true;
-	player->m_expectedReplySerial = packet.globalSerial;
-	if (m_requestResponsePair.contains(command))
-		player->m_expectedReplyCommand = m_requestResponsePair[command];
-	else
-		player->m_expectedReplyCommand = command;
+	QSanProtocol::CommandType expectedReply = m_requestResponsePair.contains(command)
+		? m_requestResponsePair[command]
+		: command;
 
-	player->invoke(&packet);
-	player->releaseLock(ServerPlayer::SEMA_MUTEX);
+	requestTarget->acquireLock(ServerPlayer::SEMA_MUTEX);
+	requestTarget->m_isClientResponseReady = false;
+	requestTarget->drainLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
+	requestTarget->setClientReply(QVariant());
+	requestTarget->setClientReplyString("");
+	requestTarget->m_isWaitingReply = true;
+	requestTarget->m_expectedReplySerial = packet.globalSerial;
+	requestTarget->m_expectedReplyCommand = expectedReply;
+	requestTarget->releaseLock(ServerPlayer::SEMA_MUTEX);
 
-	return !wait || getResult(player, timeOut);
+	ServerPlayer *resultTarget = requestTarget;
+	if (redirectedToController) {
+		syncKnownHandcards(this, actual, player);
+		doNotify(actual, S_COMMAND_SWITCH_CONTEXT, player->objectName());
+		notifyArrangeSeats(actual);
+
+		player->acquireLock(ServerPlayer::SEMA_MUTEX);
+		player->m_isClientResponseReady = false;
+		player->drainLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
+		player->setClientReply(QVariant());
+		player->setClientReplyString("");
+		player->m_isWaitingReply = true;
+		player->m_expectedReplySerial = packet.globalSerial;
+		player->m_expectedReplyCommand = expectedReply;
+		player->releaseLock(ServerPlayer::SEMA_MUTEX);
+
+		{
+			QMutexLocker locker(&m_mutex);
+			m_dualControlReplyOwners[actual->objectName()] = player->objectName();
+			m_dualControlRequestTargets[player->objectName()] = actual->objectName();
+		}
+
+		resultTarget = player;
+	}
+
+	requestTarget->invoke(&packet);
+
+	return !wait || getResult(resultTarget, timeOut);
 }
 
 bool Room::doBroadcastRequest(QList<ServerPlayer*> players, QSanProtocol::CommandType command)
@@ -1048,11 +1386,32 @@ bool Room::doBroadcastRequest(QList<ServerPlayer*> players, QSanProtocol::Comman
 
 bool Room::doBroadcastRequest(QList<ServerPlayer*> players, QSanProtocol::CommandType command, time_t timeOut)
 {
-	foreach(ServerPlayer*player, players)
-		doRequest(player, command, player->m_commandArgs, timeOut, false);
+	QMap<ServerPlayer *, QList<ServerPlayer *> > controllerMap;
+	foreach (ServerPlayer *player, players)
+		controllerMap[getRequestTarget(player)] << player;
+
+	QList<ServerPlayer *> pendingPlayers;
 	QElapsedTimer timer;
 	timer.start();
-	foreach(ServerPlayer*player, players){
+	for (QMap<ServerPlayer *, QList<ServerPlayer *> >::const_iterator it = controllerMap.constBegin(); it != controllerMap.constEnd(); ++it) {
+		const QList<ServerPlayer *> &group = it.value();
+		if (group.length() == 1) {
+			time_t remainTime = timeOut - timer.elapsed();
+			if (remainTime < 0) remainTime = 0;
+			doRequest(group.first(), command, group.first()->m_commandArgs, remainTime, false);
+			pendingPlayers << group.first();
+			continue;
+		}
+
+		int index = 0;
+		while (index < group.length()) {
+			time_t remainTime = timeOut - timer.elapsed();
+			if (remainTime < 0) remainTime = 0;
+			doRequest(group.at(index), command, group.at(index)->m_commandArgs, remainTime, true);
+			++index;
+		}
+	}
+	foreach(ServerPlayer*player, pendingPlayers){
 		time_t remainTime = timeOut - timer.elapsed();
 		if (remainTime < 0) remainTime = 0;
 		getResult(player, remainTime);
@@ -1063,23 +1422,59 @@ bool Room::doBroadcastRequest(QList<ServerPlayer*> players, QSanProtocol::Comman
 ServerPlayer*Room::doBroadcastRaceRequest(QList<ServerPlayer*> players, QSanProtocol::CommandType command,
 	time_t timeOut, ResponseVerifyFunction validateFunc, void*funcArg)
 {
-	_m_semRoomMutex.acquire();
-	_m_raceStarted = true;
-	_m_raceWinner = nullptr;
-	while (_m_semRaceRequest.tryAcquire(1)){
-	} //drain lock
-	_m_semRoomMutex.release();
-	Countdown countdown;
-	countdown.max = timeOut;
-	countdown.type = Countdown::S_COUNTDOWN_USE_SPECIFIED;
-	if (command == S_COMMAND_NULLIFICATION)
-		notifyMoveFocus(m_alivePlayers, command, countdown);
-	else
-		notifyMoveFocus(players, command, countdown);
-	foreach(ServerPlayer*player, players)
-		doRequest(player, command, player->m_commandArgs, timeOut, false);
+	QMap<ServerPlayer *, QList<ServerPlayer *> > controllerMap;
+	foreach (ServerPlayer *player, players)
+		controllerMap[getRequestTarget(player)] << player;
 
-	return getRaceResult(players, command, timeOut, validateFunc, funcArg);
+	QMap<ServerPlayer *, int> controllerIndex;
+	RaceVerifyContext context = { validateFunc, funcArg };
+	QElapsedTimer timer;
+	timer.start();
+
+	while (true) {
+		QList<ServerPlayer *> activePlayers;
+		for (QMap<ServerPlayer *, QList<ServerPlayer *> >::const_iterator it = controllerMap.constBegin(); it != controllerMap.constEnd(); ++it) {
+			int index = controllerIndex.value(it.key(), 0);
+			if (index < it.value().length())
+				activePlayers << it.value().at(index);
+		}
+
+		if (activePlayers.isEmpty())
+			return nullptr;
+
+		time_t remainTime = timeOut - timer.elapsed();
+		if (remainTime < 0) remainTime = 0;
+
+		_m_semRoomMutex.acquire();
+		_m_raceStarted = true;
+		_m_raceWinner = nullptr;
+		while (_m_semRaceRequest.tryAcquire(1)) {
+		}
+		_m_semRoomMutex.release();
+
+		Countdown countdown;
+		countdown.max = remainTime;
+		countdown.type = Countdown::S_COUNTDOWN_USE_SPECIFIED;
+		if (command == S_COMMAND_NULLIFICATION)
+			notifyMoveFocus(m_alivePlayers, command, countdown);
+		else
+			notifyMoveFocus(activePlayers, command, countdown);
+
+		foreach (ServerPlayer *player, activePlayers)
+			doRequest(player, command, player->m_commandArgs, remainTime, false);
+
+		ServerPlayer *winner = getRaceResult(activePlayers, command, remainTime, &Room::verifyRaceReply, &context);
+		foreach (ServerPlayer *player, activePlayers)
+			clearDualControlRequest(player);
+		if (winner != nullptr)
+			return winner;
+
+		for (QMap<ServerPlayer *, QList<ServerPlayer *> >::const_iterator it = controllerMap.constBegin(); it != controllerMap.constEnd(); ++it)
+			controllerIndex[it.key()] = controllerIndex.value(it.key(), 0) + 1;
+
+		if (timer.elapsed() >= timeOut)
+			return nullptr;
+	}
 }
 
 ServerPlayer*Room::getRaceResult(QList<ServerPlayer*> players, QSanProtocol::CommandType, time_t timeOut,
@@ -1139,13 +1534,18 @@ bool Room::doNotify(ServerPlayer*player, QSanProtocol::CommandType command, cons
 	Packet packet(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT, command);
 	packet.setMessageBody(arg);
 	player->invoke(&packet);
+	ServerPlayer *controller = getActualController(player);
+	if (controller != nullptr && controller != player && controller->isOnline())
+		controller->invoke(&packet);
 	return true;
 }
 
 bool Room::doBroadcastNotify(const QList<ServerPlayer*>&players, QSanProtocol::CommandType command, const QVariant&arg)
 {
-	foreach(ServerPlayer*player, players)
-		doNotify(player, command, arg);
+	Packet packet(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT, command);
+	packet.setMessageBody(arg);
+	foreach (ServerPlayer *recipient, collectBroadcastRecipients(this, players))
+		recipient->invoke(&packet);
 	return true;
 }
 
@@ -1162,6 +1562,9 @@ bool Room::doNotify(ServerPlayer*player, int command, const char*arg)
 	if (doc.isValid()){
 		packet.setMessageBody(doc.toVariant());
 		player->invoke(&packet);
+		ServerPlayer *controller = getActualController(player);
+		if (controller != nullptr && controller != player && controller->isOnline())
+			controller->invoke(&packet);
 	} else
 		output(QString("Fail to parse the Json Value %1").arg(arg));
 	return true;
@@ -1169,8 +1572,15 @@ bool Room::doNotify(ServerPlayer*player, int command, const char*arg)
 
 bool Room::doBroadcastNotify(const QList<ServerPlayer*>&players, int command, const char*arg)
 {
-	foreach(ServerPlayer*player, players)
-		doNotify(player, command, arg);
+	Packet packet(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT, (QSanProtocol::CommandType)command);
+	JsonDocument doc = JsonDocument::fromJson(arg);
+	if (!doc.isValid()) {
+		output(QString("Fail to parse the Json Value %1").arg(arg));
+		return true;
+	}
+	packet.setMessageBody(doc.toVariant());
+	foreach (ServerPlayer *recipient, collectBroadcastRecipients(this, players))
+		recipient->invoke(&packet);
 	return true;
 }
 
@@ -1184,13 +1594,18 @@ bool Room::doNotify(ServerPlayer*player, int command, const QVariant&arg)
 	Packet packet(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT, (QSanProtocol::CommandType)command);
 	packet.setMessageBody(arg);
 	player->invoke(&packet);
+	ServerPlayer *controller = getActualController(player);
+	if (controller != nullptr && controller != player && controller->isOnline())
+		controller->invoke(&packet);
 	return true;
 }
 
 bool Room::doBroadcastNotify(const QList<ServerPlayer*>&players, int command, const QVariant&arg)
 {
-	foreach(ServerPlayer*player, players)
-		doNotify(player, command, arg);
+	Packet packet(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT, (QSanProtocol::CommandType)command);
+	packet.setMessageBody(arg);
+	foreach (ServerPlayer *recipient, collectBroadcastRecipients(this, players))
+		recipient->invoke(&packet);
 	return true;
 }
 
@@ -1216,9 +1631,14 @@ bool Room::getResult(ServerPlayer*player, time_t timeOut)
 	LuaUnlocker unlocker; // Release lua_mutex while waiting for client reply
 	//Q_ASSERT(player->m_isWaitingReply);
 	bool validResult = false;
+	QString redirectedTargetName;
+	{
+		QMutexLocker locker(&m_mutex);
+		redirectedTargetName = m_dualControlRequestTargets.value(player->objectName());
+	}
 	player->acquireLock(ServerPlayer::SEMA_MUTEX);
 
-	if (player->isOnline()){
+	if (player->isOnline() || !redirectedTargetName.isEmpty()){
 		player->releaseLock(ServerPlayer::SEMA_MUTEX);
 
 		if (Config.OperationNoLimit){
@@ -1244,7 +1664,21 @@ bool Room::getResult(ServerPlayer*player, time_t timeOut)
 	player->m_isWaitingReply = false;
 	player->m_expectedReplySerial = -1;
 	player->releaseLock(ServerPlayer::SEMA_MUTEX);
+	if (!redirectedTargetName.isEmpty())
+		clearDualControlRequest(player);
 	return validResult&&!player->getClientReply().isNull();
+}
+
+bool Room::verifyRaceReply(ServerPlayer *player, const QVariant &reply, void *funcArg)
+{
+	if (!reply.isValid() || reply.toString() == "cancel")
+		return false;
+
+	RaceVerifyContext *context = static_cast<RaceVerifyContext *>(funcArg);
+	if (context == nullptr || context->validateFunc == nullptr)
+		return true;
+
+	return (this->*context->validateFunc)(player, reply, context->funcArg);
 }
 
 bool Room::notifyMoveFocus(ServerPlayer*player)
@@ -1562,7 +1996,7 @@ const Card*Room::_askForNullification(const Card*trick, ServerPlayer*from, Serve
 		trickEffect.to = to;
 	}
 	
-	QList<ServerPlayer*> validPlayers,validHumanPlayers;
+	QList<ServerPlayer*> validPlayers, raceHumanPlayers, controlledHumanPlayers;
 	QVariant data = QVariant::fromValue(trickEffect);
 	foreach(ServerPlayer*player, getAllPlayers()){
 		if (card_use.no_respond_list.contains(player->objectName())||card_use.no_offset_list.contains(player->objectName())) continue;
@@ -1579,22 +2013,45 @@ const Card*Room::_askForNullification(const Card*trick, ServerPlayer*from, Serve
 	args << (from?from->objectName():"");
 	args << (to?to->objectName():"");
 	foreach(ServerPlayer*player, validPlayers){
-		if (player->isOnline()){
-			validHumanPlayers << player;
-			player->m_commandArgs = args;
-			if (card_use.to.length()>1)
-				doNotify(player, S_COMMAND_NULLIFICATION_ASKED, trick->objectName());
-		}
+		if (!player->isOnline())
+			continue;
+
+		ServerPlayer *actual = getActualController(player);
+		bool redirectedToController = actual != nullptr && actual != player && actual->isOnline() && getRequestTarget(player) == actual;
+		if (redirectedToController)
+			controlledHumanPlayers << player;
+		else
+			raceHumanPlayers << player;
+
+		if (card_use.to.length()>1)
+			doNotify(player, S_COMMAND_NULLIFICATION_ASKED, trick->objectName());
 	}
 	
 	CardUseStruct use(nullptr,nullptr);
-	if (validHumanPlayers.length()>0){
-		time_t timeOut = ServerInfo.getCommandTimeout(S_COMMAND_NULLIFICATION, S_SERVER_INSTANCE);
-		use.from = doBroadcastRaceRequest(validHumanPlayers, S_COMMAND_NULLIFICATION, timeOut,&Room::verifyNullificationResponse);
-		if (use.from){
-			args = use.from->getClientReply().value<JsonArray>();
-			if (args.size()>0&&JsonUtils::isString(args[0]))
-				use.card = Card::Parse(args[0].toString());
+	time_t timeOut = ServerInfo.getCommandTimeout(S_COMMAND_NULLIFICATION, S_SERVER_INSTANCE);
+	if (!raceHumanPlayers.isEmpty()) {
+		use.from = doBroadcastRaceRequest(raceHumanPlayers, S_COMMAND_NULLIFICATION, timeOut, &Room::verifyNullificationResponse);
+		if (use.from) {
+			JsonArray reply = use.from->getClientReply().value<JsonArray>();
+			if (reply.size() > 0 && JsonUtils::isString(reply[0]))
+				use.card = Card::Parse(reply[0].toString());
+		}
+	}
+	if (!use.card) {
+		foreach(ServerPlayer*player, controlledHumanPlayers){
+			notifyMoveFocus(player, S_COMMAND_NULLIFICATION);
+			if (!doRequest(player, S_COMMAND_NULLIFICATION, args, timeOut, true))
+				continue;
+			if (!verifyNullificationResponse(player, player->getClientReply(), nullptr))
+				continue;
+
+			JsonArray reply = player->getClientReply().value<JsonArray>();
+			if (reply.size() > 0 && JsonUtils::isString(reply[0]))
+				use.card = Card::Parse(reply[0].toString());
+			if (use.card != nullptr) {
+				use.from = player;
+				break;
+			}
 		}
 	}
 	if (!use.card){
@@ -2060,10 +2517,14 @@ void Room::addPlayerHistory(ServerPlayer*player, const QString&key, int times)
 	}
 
 	JsonArray arg;
-	arg << key << times;
-
-	if (player) doNotify(player, S_COMMAND_ADD_HISTORY, arg);
-	else doBroadcastNotify(S_COMMAND_ADD_HISTORY, arg);
+	if (player) {
+		arg << player->objectName() << key << times;
+		doNotify(player, S_COMMAND_ADD_HISTORY, arg);
+	}
+	else {
+		arg << key << times;
+		doBroadcastNotify(S_COMMAND_ADD_HISTORY, arg);
+	}
 }
 
 void Room::playAudioEffect(const QString&filename, bool superpose)
@@ -2921,6 +3382,7 @@ void Room::reportDisconnection()
 {
 	ServerPlayer*player = qobject_cast<ServerPlayer*>(sender());
 	if (player == nullptr) return;
+	clearControllerRelation(this, player);
 
 	// send disconnection message to server log
 	emit room_message(player->reportHeader() + tr("disconnected"));
@@ -2983,20 +3445,44 @@ void Room::reportDisconnection()
 	}
 }
 
-void Room::trustCommand(ServerPlayer*player, const QVariant&)
+void Room::trustCommand(ServerPlayer*player, const QVariant&arg)
 {
-	player->acquireLock(ServerPlayer::SEMA_MUTEX);
-	if (player->isOnline()){
-		player->setState("trust");
-		if (player->m_isWaitingReply){
-			player->releaseLock(ServerPlayer::SEMA_MUTEX);
-			player->releaseLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
-		}
-	} else
-		player->setState("online");
+	Q_UNUSED(arg);
+	ServerPlayer *target = getActualController(player);
+	if (target == nullptr)
+		target = player;
 
-	player->releaseLock(ServerPlayer::SEMA_MUTEX);
-	broadcastProperty(player, "state");
+	QList<ServerPlayer *> waitingPlayers;
+	target->acquireLock(ServerPlayer::SEMA_MUTEX);
+	bool enteringTrust = target->isOnline();
+	target->releaseLock(ServerPlayer::SEMA_MUTEX);
+
+	if (enteringTrust) {
+		foreach (ServerPlayer *candidate, getAllPlayers(true)) {
+			if (candidate == nullptr)
+				continue;
+			if (getActualController(candidate) != target)
+				continue;
+
+			candidate->acquireLock(ServerPlayer::SEMA_MUTEX);
+			bool isWaitingReply = candidate->m_isWaitingReply;
+			candidate->releaseLock(ServerPlayer::SEMA_MUTEX);
+			if (isWaitingReply)
+				waitingPlayers << candidate;
+		}
+	}
+
+	target->acquireLock(ServerPlayer::SEMA_MUTEX);
+	if (target->isOnline())
+		target->setState("trust");
+	else
+		target->setState("online");
+	target->releaseLock(ServerPlayer::SEMA_MUTEX);
+
+	foreach (ServerPlayer *waitingPlayer, waitingPlayers)
+		waitingPlayer->releaseLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
+
+	broadcastProperty(target, "state");
 	return;
 }
 
@@ -4194,6 +4680,14 @@ void Room::processResponse(ServerPlayer*player, const Packet*packet)
 {
 	player->acquireLock(ServerPlayer::SEMA_MUTEX);
 	bool success = false;
+	QString replyOwnerName;
+	{
+		QMutexLocker locker(&m_mutex);
+		replyOwnerName = m_dualControlReplyOwners.value(player->objectName());
+	}
+	ServerPlayer *replyOwner = replyOwnerName.isEmpty() ? player : findPlayerByObjectName(replyOwnerName, true);
+	if (replyOwner == nullptr)
+		replyOwner = player;
 	if (player == nullptr)
 		emit room_message(tr("Unable to parse player"));
 	else if (!player->m_isWaitingReply || player->m_isClientResponseReady)
@@ -4208,10 +4702,22 @@ void Room::processResponse(ServerPlayer*player, const Packet*packet)
 		success = true;
 
 	if (success){
+		const QVariant reply = packet->getMessageBody();
+		player->setClientReply(reply);
+		player->m_isClientResponseReady = true;
+		player->m_isWaitingReply = false;
+		player->m_expectedReplyCommand = S_COMMAND_UNKNOWN;
+		player->m_expectedReplySerial = -1;
+
+		if (replyOwner != player) {
+			replyOwner->acquireLock(ServerPlayer::SEMA_MUTEX);
+			replyOwner->setClientReply(reply);
+			replyOwner->m_isClientResponseReady = true;
+			replyOwner->releaseLock(ServerPlayer::SEMA_MUTEX);
+		}
+
 		_m_semRoomMutex.acquire();
 		if (_m_raceStarted){
-			player->setClientReply(packet->getMessageBody());
-			player->m_isClientResponseReady = true;
 			// Warning: the statement below must be the last one before releasing the lock!!!
 			// Any statement after this statement will totally compromise the synchronization
 			// because getRaceResult will then be able to acquire the lock, reading a non-null
@@ -4220,14 +4726,13 @@ void Room::processResponse(ServerPlayer*player, const Packet*packet)
 			// @todo: Find a Qt atomic semantic or use _asm to ensure the following line is atomic
 			// on a multi-core machine. This is the core to the whole synchornization mechanism for
 			// broadcastRaceRequest.
-			_m_raceWinner = player;
+			_m_raceWinner = replyOwner;
 			// the _m_semRoomMutex.release() signal is in getRaceResult();
 			_m_semRaceRequest.release();
 		} else {
 			_m_semRoomMutex.release();
-			player->setClientReply(packet->getMessageBody());
-			player->m_isClientResponseReady = true;
-			player->releaseLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
+			if (replyOwner == player || replyOwner->m_isWaitingReply)
+				replyOwner->releaseLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
 		}
 	}
 	player->releaseLock(ServerPlayer::SEMA_MUTEX);
@@ -4665,6 +5170,17 @@ void Room::marshal(ServerPlayer*player)
 
 	foreach(ServerPlayer*p, m_players)
 		p->marshal(player);
+
+	foreach (ServerPlayer *controlled, getAllPlayers(true)) {
+		if (controlled == player)
+			continue;
+		if (getActualController(controlled) != player)
+			continue;
+
+		JsonArray knownCardsArg;
+		knownCardsArg << controlled->objectName() << JsonUtils::toJsonArray(controlled->handCards());
+		doNotify(player, S_COMMAND_SET_KNOWN_CARDS, knownCardsArg);
+	}
 
 	notifyProperty(player, player, "flags", "-marshalling");
 
@@ -7216,8 +7732,7 @@ void Room::takeAG(ServerPlayer*player, int card_id, bool move_cards, QList<Serve
 			}
 			arg[2] = move.card_ids.length()>0;
 		}
-		foreach(ServerPlayer*p, to_notify)
-			doNotify(p, S_COMMAND_TAKE_AMAZING_GRACE, arg);
+		doBroadcastNotify(to_notify, S_COMMAND_TAKE_AMAZING_GRACE, arg);
 		if (move.card_ids.length()>0){
 			QVariant data = QVariant::fromValue(move);
 			foreach(ServerPlayer*p, getAllPlayers())
@@ -7225,8 +7740,7 @@ void Room::takeAG(ServerPlayer*player, int card_id, bool move_cards, QList<Serve
 			//thread->trigger(CardsMoveOneTime, this, current, data);
 		}
 	} else {
-		foreach(ServerPlayer*p, to_notify)
-			doNotify(p, S_COMMAND_TAKE_AMAZING_GRACE, arg);
+		doBroadcastNotify(to_notify, S_COMMAND_TAKE_AMAZING_GRACE, arg);
 		if (!move_cards) return;
 		LogMessage log;
 		log.type = "$EnterDiscardPile";
@@ -7383,6 +7897,11 @@ void Room::showCard(ServerPlayer*player, QList<int> card_ids, QList<ServerPlayer
 	notifyMoveFocus(player);
 	JsonArray show_arg;
 	show_arg << player->objectName() << ListI2S(card_ids).join("+");
+
+	if (players.isEmpty()) {
+		foreach (int card_id, card_ids)
+			setCardFlag(card_id, "visible");
+	}
 
 	if(players.isEmpty()) players = m_players;
 	doBroadcastNotify(players, S_COMMAND_SHOW_CARD, show_arg);

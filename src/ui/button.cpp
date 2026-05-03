@@ -113,6 +113,12 @@ void Button::setFont(const QFont &font)
     title_item->setPixmap(title);
 }
 
+void Button::setGlow(int value)
+{
+    glow = value;
+    update();
+}
+
 void Button::hoverEnterEvent(QGraphicsSceneHoverEvent *)
 {
     setFocus(Qt::MouseFocusReason);

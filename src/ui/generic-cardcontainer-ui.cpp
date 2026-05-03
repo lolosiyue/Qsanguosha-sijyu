@@ -17,6 +17,96 @@
 
 using namespace QSanProtocol;
 
+namespace {
+
+int getEquipPrimarySlot(const Card *card, const ClientPlayer *player)
+{
+    if (card == nullptr)
+        return 0;
+
+    if (player != nullptr) {
+        QList<int> real_slots = player->getEquipRealSlots(card->getEffectiveId());
+        if (!real_slots.isEmpty())
+            return real_slots.first();
+    }
+
+    const EquipCard *equip = qobject_cast<const EquipCard *>(card->getRealCard());
+    return equip ? equip->location() : 0;
+}
+
+QList<int> getEquipDisplaySearchOrder(int primary_slot)
+{
+    QList<int> order;
+    order << primary_slot;
+
+    if (primary_slot == 0) {
+        static const int weapon_fallback[] = { 1, 4, 2, 3, 0 };
+        for (int idx = 0; idx < int(sizeof(weapon_fallback) / sizeof(weapon_fallback[0])); ++idx) {
+            int slot = weapon_fallback[idx];
+            if (!order.contains(slot))
+                order << slot;
+        }
+    }
+
+    static const int default_fallback[] = { 0, 1, 4, 2, 3 };
+    for (int idx = 0; idx < int(sizeof(default_fallback) / sizeof(default_fallback[0])); ++idx) {
+        int slot = default_fallback[idx];
+        if (!order.contains(slot))
+            order << slot;
+    }
+
+    for (int slot = 0; slot < S_EQUIP_AREA_LENGTH; ++slot) {
+        if (!order.contains(slot))
+            order << slot;
+    }
+
+    return order;
+}
+
+QMap<int, int> getEquipDisplaySlotsById(const ClientPlayer *player)
+{
+    QMap<int, int> display_slots;
+    if (player == nullptr)
+        return display_slots;
+
+    QSet<int> reserved_visual_slots;
+    foreach (int card_id, player->getEquipsId()) {
+        const Card *card = Sanguosha->getCard(card_id);
+        if (card == nullptr)
+            continue;
+
+        int primary_slot = getEquipPrimarySlot(card, player);
+        QList<int> real_slots = player->getEquipRealSlots(card->getEffectiveId());
+        if (real_slots.isEmpty())
+            real_slots << primary_slot;
+
+        int display_slot = -1;
+        foreach (int candidate, getEquipDisplaySearchOrder(primary_slot)) {
+            if (reserved_visual_slots.contains(candidate))
+                continue;
+            display_slot = candidate;
+            break;
+        }
+
+        if (display_slot < 0)
+            display_slot = primary_slot;
+
+        display_slots[card->getEffectiveId()] = display_slot;
+        reserved_visual_slots.insert(display_slot);
+
+        if (real_slots.contains(display_slot)) {
+            foreach (int slot, real_slots) {
+                if (slot != display_slot)
+                    reserved_visual_slots.insert(slot);
+            }
+        }
+    }
+
+    return display_slots;
+}
+
+}
+
 QList<CardItem *> GenericCardContainer::cloneCardItems(QList<int> card_ids)
 {
     return _createCards(card_ids);
@@ -75,6 +165,11 @@ void GenericCardContainer::_disperseCards(QList<CardItem *> &cards, QRectF fillR
     }
 }
 
+void GenericCardContainer::updateContainer()
+{
+    update();
+}
+
 void GenericCardContainer::onAnimationFinished()
 {
     QParallelAnimationGroup *animation = qobject_cast<QParallelAnimationGroup *>(sender());
@@ -94,7 +189,7 @@ void GenericCardContainer::_playMoveCardsAnimation(QList<CardItem *> &cards, boo
         animation->addAnimation(card_item->getGoBackAnimation(true));
     }
 
-    connect(animation, SIGNAL(finished()), this, SLOT(update()));
+    connect(animation, SIGNAL(finished()), this, SLOT(updateContainer()));
     connect(animation, SIGNAL(finished()), this, SLOT(onAnimationFinished()));
     animation->start();
 }
@@ -510,7 +605,13 @@ void PlayerCardContainer::updateHandcardNum()
     if (m_player) {
         int handcardNum = m_player->getHandcardNum();
         int hp = m_player->getHp();
-        int maxCards = m_player->getTag("UI_Hand_Max").isValid() ? m_player->getTag("UI_Hand_Max").toInt() : qMax(hp, 0);
+        int maxCards = 0;
+        QVariant uiHandMax = m_player->getTag("UI_Hand_Max");
+        if (uiHandMax.isValid()) {
+            maxCards = uiHandMax.toInt();
+        } else {
+            maxCards = qMax(m_player->getMaxCards(), 0);
+        }
 
         int W = wideArea.width(), H = wideArea.height();
         int midW = W / 10;
@@ -530,6 +631,8 @@ void PlayerCardContainer::updateHandcardNum()
         _m_layout->m_handCardFont.paintText(&imagePainter, innerRect, Qt::AlignCenter, num);
     }
 
+    imagePainter.end();
+
     _m_handCardNumText->setPixmap(QPixmap::fromImage(image));
 
     if (_m_handCardNumText->parentItem() != this) {
@@ -541,10 +644,32 @@ void PlayerCardContainer::updateHandcardNum()
 
     if (!m_player) return;
     int limitBase = m_player->getHp();
-    int maxCards = m_player->getTag("UI_Hand_Max").isValid() ? m_player->getTag("UI_Hand_Max").toInt() : qMax(limitBase, 0);
+    int maxCards = 0;
+    QVariant uiHandMax = m_player->getTag("UI_Hand_Max");
+    if (uiHandMax.isValid()) {
+        maxCards = uiHandMax.toInt();
+    } else {
+        maxCards = qMax(m_player->getMaxCards(), 0);
+    }
     if (maxCards != limitBase) {
         QStringList tooltipInfo;
+        QStringList mc_tag = m_player->getTag("UI_MC_Skills").toStringList();
+        bool hasFixedMaxCards = false;
+
+        foreach (const QString &entry, mc_tag) {
+            if (!entry.contains("^")) continue;
+            QStringList parts = entry.split("^");
+            QString valueStr = parts.size() > 1 ? parts[1] : QString();
+            if (valueStr.startsWith("F")) {
+                hasFixedMaxCards = true;
+                break;
+            }
+        }
+
         tooltipInfo << tr("手牌上限: %1").arg(maxCards);
+        if (!hasFixedMaxCards) {
+            tooltipInfo << tr("基礎體力: %1").arg(qMax(limitBase, 0));
+        }
         foreach (const MaxCardsSkill *mc_skill, Sanguosha->getMaxCardsSkills()) {
             if (mc_skill && mc_skill->objectName() == "gamerulemaxcards") {
                 foreach (const QString &mark_name, m_player->getMarkNames()) {
@@ -586,7 +711,6 @@ void PlayerCardContainer::updateHandcardNum()
         }
 
         // 從 Server 推播的 Tag 讀取各技能對手牌上限的影響（零 Lua 呼叫）
-        QStringList mc_tag = m_player->getTag("UI_MC_Skills").toStringList();
         foreach (const QString &entry, mc_tag) {
             if (!entry.contains("^")) continue;
             QStringList parts = entry.split("^");
@@ -639,22 +763,68 @@ void PlayerCardContainer::updateMarks()
 void PlayerCardContainer::_updateEquips()
 {
     if(!m_player) return;
-    
-    QMap<int, const Card *> occupied_slots;
+
+    QMap<int, CardItem *> equip_items_by_id;
     for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
-        if (_m_equipCards[i]) {
-            const Card *card = _m_equipCards[i]->getCard();
-            if (!card) continue;
-            QList<int> real_slots = m_player->getEquipRealSlots(card->getEffectiveId());
+        if (_m_equipCards[i] == nullptr)
+            continue;
+        const Card *card = _m_equipCards[i]->getCard();
+        if (card == nullptr)
+            continue;
+        equip_items_by_id[card->getEffectiveId()] = _m_equipCards[i];
+    }
+
+    QMap<int, CardItem *> normalized_equip_cards;
+    QMap<int, const Card *> displayed_real_equips;
+    QMap<int, const Card *> shadow_slots;
+    QMap<int, int> real_equip_counts;
+    QSet<int> reserved_visual_slots;
+
+    foreach (int card_id, m_player->getEquipsId()) {
+        const Card *card = Sanguosha->getCard(card_id);
+        if (card == nullptr)
+            continue;
+
+        int primary_slot = getEquipPrimarySlot(card, m_player);
+        QList<int> real_slots = m_player->getEquipRealSlots(card->getEffectiveId());
+        if (real_slots.isEmpty())
+            real_slots << primary_slot;
+
+        int display_slot = -1;
+        foreach (int candidate, getEquipDisplaySearchOrder(primary_slot)) {
+            if (reserved_visual_slots.contains(candidate))
+                continue;
+            display_slot = candidate;
+            break;
+        }
+
+        if (display_slot < 0)
+            display_slot = primary_slot;
+
+        displayed_real_equips[display_slot] = card;
+        reserved_visual_slots.insert(display_slot);
+        real_equip_counts[primary_slot] = real_equip_counts.value(primary_slot) + 1;
+
+        if (equip_items_by_id.contains(card->getEffectiveId()))
+            normalized_equip_cards[display_slot] = equip_items_by_id.value(card->getEffectiveId());
+
+        if (real_slots.contains(display_slot)) {
             foreach (int slot, real_slots) {
-                if (slot != i) occupied_slots[slot] = card;
+                if (slot == display_slot)
+                    continue;
+                shadow_slots[slot] = card;
+                reserved_visual_slots.insert(slot);
             }
         }
     }
 
+    for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++)
+        _m_equipCards[i] = normalized_equip_cards.value(i, nullptr);
+
     QMap<int, Card *> simulated_equips;
     QMap<int, QString> simulated_equip_skills;
     QMap<int, QList<int> > simulated_equip_real_slots;
+    QMap<int, int> simulated_equip_counts;
 
     auto try_add_simulated_equip = [&](Card *ec, const QString &skill_name) {
         const EquipCard *equip = qobject_cast<const EquipCard *>(ec);
@@ -667,17 +837,17 @@ void PlayerCardContainer::_updateEquips()
         int display_slot = equip->location();
         if (!real_slots.isEmpty()) display_slot = real_slots.first();
 
-        if (simulated_equips.contains(display_slot) || _m_equipCards[display_slot]) {
+        if (simulated_equips.contains(display_slot)
+            || displayed_real_equips.contains(display_slot)
+            || shadow_slots.contains(display_slot)) {
             ec->deleteLater();
             return;
         }
 
         foreach (int slot, real_slots) {
-            if (_m_equipCards[slot] || simulated_equips.contains(slot)) {
-                ec->deleteLater();
-                return;
-            }
-            if (occupied_slots.contains(slot)) {
+            if (displayed_real_equips.contains(slot)
+                || shadow_slots.contains(slot)
+                || simulated_equips.contains(slot)) {
                 ec->deleteLater();
                 return;
             }
@@ -686,9 +856,14 @@ void PlayerCardContainer::_updateEquips()
         simulated_equips[display_slot] = ec;
         simulated_equip_skills[display_slot] = skill_name;
         simulated_equip_real_slots[display_slot] = real_slots;
+        simulated_equip_counts[equip->location()] = simulated_equip_counts.value(equip->location()) + 1;
 
-        foreach (int slot, real_slots) {
-            if (slot != display_slot) occupied_slots[slot] = ec;
+        if (real_slots.contains(display_slot)) {
+            foreach (int slot, real_slots) {
+                if (slot == display_slot)
+                    continue;
+                shadow_slots[slot] = ec;
+            }
         }
     };
 
@@ -703,6 +878,41 @@ void PlayerCardContainer::_updateEquips()
         if (parts.length() >= 2) {
             Card *ec = Sanguosha->cloneCard(parts[0]);
             if (ec) try_add_simulated_equip(ec, parts[1]);
+        }
+    }
+
+    QSet<int> reserved_display_slots = reserved_visual_slots;
+    foreach (int slot, simulated_equips.keys())
+        reserved_display_slots.insert(slot);
+    foreach (int slot, shadow_slots.keys())
+        reserved_display_slots.insert(slot);
+
+    QMap<int, int> extra_empty_slots;
+    for (int slot = 0; slot < S_EQUIP_AREA_LENGTH; ++slot) {
+        bool primary_slot_reserved = reserved_display_slots.contains(slot);
+        int primary_placeholder_count = (m_player->hasEquipArea(slot) && !primary_slot_reserved) ? 1 : 0;
+        if (primary_placeholder_count > 0)
+            reserved_display_slots.insert(slot);
+
+        int extra_needed = m_player->getEquipArea(slot)
+            - real_equip_counts.value(slot)
+            - simulated_equip_counts.value(slot)
+            - primary_placeholder_count;
+        while (extra_needed > 0) {
+            int display_slot = -1;
+            foreach (int candidate, getEquipDisplaySearchOrder(slot)) {
+                if (reserved_display_slots.contains(candidate))
+                    continue;
+                display_slot = candidate;
+                break;
+            }
+
+            if (display_slot < 0)
+                break;
+
+            extra_empty_slots[display_slot] = slot;
+            reserved_display_slots.insert(display_slot);
+            --extra_needed;
         }
     }
 
@@ -723,16 +933,24 @@ void PlayerCardContainer::_updateEquips()
         float opacity = 1.0;
         bool has_card_image = false;
 
-        if (_m_equipCards[i]) {
-            const Card *card = _m_equipCards[i]->getCard();
+        if (displayed_real_equips.contains(i)) {
+            const Card *card = displayed_real_equips[i];
             pixmap = _getEquipPixmap(card);
             tooltip = card ? card->getDescription() : QString();
             opacity = 1.0;
             has_card_image = true;
         } 
-        
-        else if (occupied_slots.contains(i)) {
-            const Card *occupying_card = occupied_slots[i];
+
+        else if (_m_equipCards[i]) {
+            const Card *card = _m_equipCards[i]->getCard();
+            pixmap = _getEquipPixmap(card);
+            tooltip = card ? card->getDescription() : QString();
+            opacity = 1.0;
+            has_card_image = true;
+        }
+
+        else if (shadow_slots.contains(i)) {
+            const Card *occupying_card = shadow_slots[i];
             pixmap = _getEquipPixmap(occupying_card);
             tooltip = occupying_card ? occupying_card->getDescription() : QString();
             opacity = 1.0;
@@ -928,6 +1146,10 @@ void PlayerCardContainer::repaintAll(bool all)
 		_m_privatePiles.clear();
 		foreach (QString pn, m_player->getPileNames())
 			updatePile(pn);
+        foreach (const QString &markName, m_player->getMarkNames()) {
+            if (markName.startsWith("&"))
+                updateMark(markName, m_player->getMark(markName));
+        }
 		_allZAdjusted = false;
 	}
 
@@ -939,10 +1161,27 @@ void PlayerCardContainer::_createRoleComboBox()
     _m_roleComboBox = new RoleComboBox(_getRoleComboBoxParent());
 }
 
+const ClientPlayer *PlayerCardContainer::getPlayer() const
+{
+    return m_player;
+}
+
 void PlayerCardContainer::setPlayer(ClientPlayer *player)
 {
+    ClientPlayer *previous = m_player;
+    if (previous != nullptr && previous != player) {
+        disconnect(previous, nullptr, this, nullptr);
+        if (_m_roleComboBox != nullptr)
+            disconnect(previous, nullptr, _m_roleComboBox, nullptr);
+        disconnect(previous->getMarkDoc(), SIGNAL(contentsChanged()), this, SLOT(updateMarks()));
+    }
+
     m_player = player;
     if (player) {
+        foreach (QGraphicsProxyWidget *widget, _m_privatePiles.values())
+            delete widget;
+        _m_privatePiles.clear();
+
         connect(player, SIGNAL(general_changed()), this, SLOT(updateAvatar()));
         connect(player, SIGNAL(general2_changed()), this, SLOT(updateSmallAvatar()));
         connect(player, SIGNAL(state_changed()), this, SLOT(refresh()));
@@ -958,9 +1197,29 @@ void PlayerCardContainer::setPlayer(ClientPlayer *player)
         Q_ASSERT(_m_markItem);
         _m_markItem->setDocument(textDoc);
         connect(textDoc, SIGNAL(contentsChanged()), this, SLOT(updateMarks()));
+
+        foreach (const QString &markName, player->getMarkNames()) {
+            if (markName.startsWith("&"))
+                updateMark(markName, player->getMark(markName));
+        }
+
+        if (_m_roleComboBox != nullptr)
+            _m_roleComboBox->fix(player->getRole());
+    } else if (_m_roleComboBox != nullptr) {
+        _m_roleComboBox->fix("unknown");
     }
-    updateAvatar();
-    refresh();
+
+    if (m_handcardWindow != nullptr && player != nullptr) {
+        m_handcardWindow->setTitle(QString("%1%2").arg(player->getLogName()).arg(tr("'s Handcards")));
+    }
+
+    if (player != nullptr) {
+        updateMarks();
+        repaintAll(true);
+    } else {
+        updateAvatar();
+        refresh();
+    }
 }
 
 QList<CardItem *> PlayerCardContainer::removeDelayedTricks(const QList<int> &cardIds)
@@ -1104,30 +1363,12 @@ void PlayerCardContainer::addEquips(QList<CardItem *> &equips)
 {
     foreach (CardItem *equip, equips) {
         const Card *card = equip->getCard();
-        const EquipCard *equipCard = qobject_cast<const EquipCard *>(card->getRealCard());
 
-        int index = equipCard ? equipCard->location() : 0;
-        if (m_player && card) {
-            QList<int> real_slots = m_player->getEquipRealSlots(card->getEffectiveId());
-            if (!real_slots.isEmpty()) index = real_slots.first();
-        }
-
-        if (m_player && equipCard && _m_equipCards[index] != nullptr) {
-            const Card *existing = _m_equipCards[index]->getCard();
-            const EquipCard *existingEquip = existing ? qobject_cast<const EquipCard *>(existing->getRealCard()) : nullptr;
-            if (existingEquip && existingEquip->location() == equipCard->location()) {
-                int alternate_index = -1;
-                static const int search_order[] = { 1, 4, 2, 3, 0 };
-                for (int j = 0; j < 5; j++) {
-                    int candidate = search_order[j];
-                    if (candidate == index) continue;
-                    if (!m_player->hasEquipArea(candidate) && _m_equipCards[candidate] == nullptr) {
-                        alternate_index = candidate;
-                        break;
-                    }
-                }
-                if (alternate_index >= 0) index = alternate_index;
-            }
+        int index = getEquipPrimarySlot(card, m_player);
+        if (m_player != nullptr && card != nullptr) {
+            QMap<int, int> display_slots = getEquipDisplaySlotsById(m_player);
+            if (display_slots.contains(card->getEffectiveId()))
+                index = display_slots.value(card->getEffectiveId());
         }
 
         connect(equip, SIGNAL(mark_changed()), this, SLOT(_onEquipSelectChanged()));
@@ -1848,17 +2089,25 @@ void PlayerCardContainer::updateHandcardViewer()
 {
     if (!m_handcardWindow || !m_handcardContainer || !m_player) return;
 
+    m_handcardWindow->setTitle(QString("%1%2").arg(m_player->getLogName()).arg(tr("'s Handcards")));
+
     int total_handcard_num = m_player->getHandcardNum();
 
     if (m_totalText) {
         m_totalText->setPlainText(QString("%1%2").arg(tr("Total: ")).arg(total_handcard_num));
     }
 
+    const bool canSeeExactHandcards = Self != nullptr && (Self == m_player || Self->canSeeHandcard(m_player));
+
     QList<const Card *> known_cards;
-    if (Self->canSeeHandcard(m_player)) {
-        foreach (int id, m_player->handCards()) {
-            const Card *card = Sanguosha->getEngineCard(id);
-            if (card) known_cards << card;
+    if (canSeeExactHandcards) {
+        QList<const Card *> handCards = m_player->getHandcards();
+        if (!handCards.isEmpty()) {
+            foreach (const Card *card, handCards) {
+                if (card) known_cards << card;
+            }
+        } else {
+            known_cards = m_player->getKnownCards();
         }
     } else {
         known_cards = m_player->getKnownCards();

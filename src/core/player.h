@@ -87,7 +87,7 @@ public:
     bool hasShownRole() const;
     void setShownRole(bool shown);
 
-    int getMaxCards() const;
+    virtual int getMaxCards() const;
 
     QString getKingdom() const;
     void setKingdom(const QString &kingdom);
@@ -243,6 +243,7 @@ public:
     QString getPileName(int card_id) const;
     bool pileOpen(const QString &pile_name, const QString &player) const;
     void setPileOpen(const QString &pile_name, const QString &player);
+    void removePileOpen(const QString &pile_name, const QString &player);
     virtual QList<int> getHandPile() const;
 
     void addHistory(const QString &name, int times = 1);
@@ -268,6 +269,7 @@ public:
     bool hasEquipArea(int i) const;
     bool hasEquipArea() const;
     void setEquipArea(int i, bool flag);
+    void setEquipAreaCount(int i, int count);
     int getEquipArea(int i = -1);
     void addEquipArea(int i);
     bool hasWeaponArea() const;

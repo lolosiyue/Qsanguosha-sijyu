@@ -1079,20 +1079,19 @@ void Player::setFaceUp(bool face_up)
 
 int Player::getMaxCards() const
 {
-    if (inherits("ClientPlayer")) {
-        QVariant handMaxVar = property("handMax");
-        if (handMaxVar.isValid()) {
-            return handMaxVar.toInt();
-        }
-        return qMax(hp, 0);
-    }
     int origin = Sanguosha->correctMaxCards(this, true);
-    if (origin < 0) origin = qMax(hp, 0);
-    if (general2&&Config.MaxHpScheme==3){
-        if (getMark("AwakenLostMaxHp")<1&&(general->getMaxHp()+general2->getMaxHp())%2!=0)
-            origin++;
+    if (origin < 0) {
+        origin = qMax(hp, 0);
     }
-    return qMax(origin+Sanguosha->correctMaxCards(this),0);
+    if (general2 && Config.MaxHpScheme == 3) {
+        int genMaxHp = general->getMaxHp() + general2->getMaxHp();
+        if (getMark("AwakenLostMaxHp") < 1 && genMaxHp % 2 != 0) {
+            origin++;
+        }
+    }
+    int extra = Sanguosha->correctMaxCards(this);
+    int result = qMax(origin + extra, 0);
+    return result;
 }
 
 QString Player::getKingdom() const
@@ -1311,6 +1310,11 @@ void Player::setPileOpen(const QString &pile_name, const QString &player)
 {
     if(player==".") pile_open[pile_name].clear();
 	else pile_open[pile_name].append(player);
+}
+
+void Player::removePileOpen(const QString &pile_name, const QString &player)
+{
+    pile_open[pile_name].removeOne(player);
 }
 
 QList<int> Player::getHandPile() const
@@ -1750,6 +1754,24 @@ void Player::setEquipArea(int i, bool flag)
     if (flag){
 		if (!equip_area.contains(i)) equip_area << i;
 	}else equip_area.removeOne(i);
+    weapon_area = equip_area.contains(0);
+    armor_area = equip_area.contains(1);
+    defensive_horse_area = equip_area.contains(2);
+    offensive_horse_area = equip_area.contains(3);
+    treasure_area = equip_area.contains(4);
+}
+
+void Player::setEquipAreaCount(int i, int count)
+{
+    if (i < 0 || i > 4)
+        return;
+
+    while (equip_area.removeOne(i)) {
+    }
+
+    for (int n = 0; n < count; ++n)
+        equip_area << i;
+
     weapon_area = equip_area.contains(0);
     armor_area = equip_area.contains(1);
     defensive_horse_area = equip_area.contains(2);

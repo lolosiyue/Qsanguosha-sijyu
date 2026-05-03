@@ -13,6 +13,7 @@ public:
     ~Button();
     void setMute(bool mute);
     void setFont(const QFont &font);
+    void setGlow(int value);
 
     virtual QRectF boundingRect() const;
 
