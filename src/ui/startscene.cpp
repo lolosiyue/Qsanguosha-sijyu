@@ -22,6 +22,7 @@ StartScene::StartScene()
 	website_text->setPos(Config.Rect.width() / 2 - website_text->boundingRect().width(),
 		Config.Rect.height() / 2 - website_text->boundingRect().height());
 	server_log = nullptr;
+	m_currentIndex = -1;
 }
 
 StartScene::~StartScene()
@@ -179,5 +180,119 @@ void StartScene::printServerInfo()
 		server_log->append(tr("This server is AI enabled, AI delay is %1 milliseconds").arg(Config.AIDelay));
 	} else
 		server_log->append(tr("This server is AI disabled"));
+}
+
+void StartScene::keyPressEvent(QKeyEvent *event)
+{
+	if (buttons.isEmpty()) {
+		QGraphicsScene::keyPressEvent(event);
+		return;
+	}
+
+	switch (event->key()) {
+	case Qt::Key_Up:
+		navigateUp();
+		break;
+	case Qt::Key_Down:
+		navigateDown();
+		break;
+	case Qt::Key_Left:
+		navigateLeft();
+		break;
+	case Qt::Key_Right:
+		navigateRight();
+		break;
+	case Qt::Key_Enter:
+	case Qt::Key_Return:
+		if (m_currentIndex >= 0 && m_currentIndex < buttons.length()) {
+			emit buttons.at(m_currentIndex)->clicked();
+		}
+		break;
+	default:
+		QGraphicsScene::keyPressEvent(event);
+		break;
+	}
+}
+
+void StartScene::selectButton(int index)
+{
+	if (index < 0 || index >= buttons.length()) return;
+
+	if (m_currentIndex >= 0 && m_currentIndex < buttons.length()) {
+		Button *oldBtn = buttons.at(m_currentIndex);
+		oldBtn->setGlow(0);
+		oldBtn->clearFocus();
+	}
+
+	m_currentIndex = index;
+	Button *btn = buttons.at(index);
+	btn->setGlow(5);
+	btn->setFocus();
+}
+
+void StartScene::navigateUp()
+{
+	if (buttons.isEmpty()) return;
+
+	if (m_currentIndex <= 0) {
+		selectButton(buttons.length() - 1);
+	} else {
+		selectButton(m_currentIndex - 1);
+	}
+}
+
+void StartScene::navigateDown()
+{
+	if (buttons.isEmpty()) return;
+
+	if (m_currentIndex < 0 || m_currentIndex >= buttons.length() - 1) {
+		selectButton(0);
+	} else {
+		selectButton(m_currentIndex + 1);
+	}
+}
+
+void StartScene::navigateLeft()
+{
+	if (buttons.isEmpty()) return;
+
+	int col = (m_currentIndex < 4) ? 0 : 1;
+	int row = (m_currentIndex < 4) ? m_currentIndex : (m_currentIndex - 4);
+
+	int targetIndex;
+	if (col == 1) {
+		targetIndex = row;
+	} else {
+		targetIndex = row - 1;
+		if (targetIndex < 0) targetIndex = 3;
+	}
+
+	if (targetIndex >= buttons.length()) {
+		targetIndex = buttons.length() - 1;
+	}
+
+	selectButton(targetIndex);
+}
+
+void StartScene::navigateRight()
+{
+	if (buttons.isEmpty()) return;
+
+	int col = (m_currentIndex < 4) ? 0 : 1;
+	int row = (m_currentIndex < 4) ? m_currentIndex : (m_currentIndex - 4);
+
+	int targetIndex;
+	if (col == 0) {
+		targetIndex = 4 + row;
+	} else {
+		targetIndex = row + 1;
+		if (targetIndex >= 4) targetIndex = 0;
+	}
+
+	if (targetIndex >= buttons.length()) {
+		targetIndex = buttons.length() - 1;
+	}
+
+	selectButton(targetIndex);
 }
 
