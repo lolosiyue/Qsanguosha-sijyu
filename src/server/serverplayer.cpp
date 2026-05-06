@@ -1271,7 +1271,7 @@ void ServerPlayer::marshal(ServerPlayer *player) const
 		room->notifyProperty(player, this, "seat");
 		if (getPhase() != NotActive)
 			room->notifyProperty(player, this, "phase");
-	} else {
+	} else if (!isRest()) {
 		room->notifyProperty(player, this, "alive");
 		room->notifyProperty(player, this, "role");
 		room->doNotify(player, S_COMMAND_KILL_PLAYER, objectName());
