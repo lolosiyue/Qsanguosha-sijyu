@@ -455,8 +455,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 
 	// ── Spine pop-out action controller ──
 	_spineActionController = new CharacterSpineActionController(this, this);
-	_spineActionController->setAssetPathPrefix("assets/dynamic");
-	_spineActionController->loadConfigFromJson("assets/dynamic/dynamicSkinConfig.json");
+	_spineActionController->setAssetPathPrefix("image");
 	connect(_spineActionController, &CharacterSpineActionController::actionStarted,
 		this, [](const QString &, ActionType) {});
 	connect(_spineActionController, &CharacterSpineActionController::actionFinished,
@@ -821,8 +820,10 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		// dynamic skin entry in JSON, register + preload + entrance now.
 		if (_spineActionController && player) {
 			bool isPrimary = !isSecondaryHero;
+			int skinIndex = Config.value(QString("HeroSkin/%1").arg(newHeroName), 0).toInt();
+			QString resolvedGeneral = Sanguosha->getResourceAlias("heroskin", newHeroName);
 			registerDynamicSkinForPlayer(player->objectName(), newHeroName, isPrimary);
-			if (_spineActionController->hasDynamicSkin(newHeroName)) {
+			if (_spineActionController->hasDynamicSkin(resolvedGeneral, skinIndex)) {
 				_spineActionController->preloadPlayer(player->objectName());
 				bool isLocal = (player == Self);
 				_spineActionController->triggerAction(
@@ -4609,13 +4610,20 @@ void RoomScene::onGameStart()
 			const ClientPlayer *p = photo->getPlayer();
 			if (!p) continue;
 			const General *g = p->getGeneral();
-			if (g && _spineActionController->hasDynamicSkin(g->objectName()))
+			if (!g) continue;
+			int skinIndex = Config.value(QString("HeroSkin/%1").arg(g->objectName()), 0).toInt();
+			QString resolvedGeneral = Sanguosha->getResourceAlias("heroskin", g->objectName());
+			if (_spineActionController->hasDynamicSkin(resolvedGeneral, skinIndex))
 				_spineActionController->preloadPlayer(p->objectName());
 		}
 		if (Self) {
 			const General *g = Self->getGeneral();
-			if (g && _spineActionController->hasDynamicSkin(g->objectName()))
-				_spineActionController->preloadPlayer(Self->objectName());
+			if (g) {
+				int skinIndex = Config.value(QString("HeroSkin/%1").arg(g->objectName()), 0).toInt();
+				QString resolvedGeneral = Sanguosha->getResourceAlias("heroskin", g->objectName());
+				if (_spineActionController->hasDynamicSkin(resolvedGeneral, skinIndex))
+					_spineActionController->preloadPlayer(Self->objectName());
+			}
 		}
 
 		// Trigger entrance animations only for players with an entrance action
@@ -4623,15 +4631,22 @@ void RoomScene::onGameStart()
 			const ClientPlayer *p = photo->getPlayer();
 			if (!p) continue;
 			const General *g = p->getGeneral();
-			if (g && _spineActionController->hasDynamicSkin(g->objectName()))
+			if (!g) continue;
+			int skinIndex = Config.value(QString("HeroSkin/%1").arg(g->objectName()), 0).toInt();
+			QString resolvedGeneral = Sanguosha->getResourceAlias("heroskin", g->objectName());
+			if (_spineActionController->hasDynamicSkin(resolvedGeneral, skinIndex))
 				_spineActionController->triggerAction(
 					p->objectName(), ActionType::Entrance);
 		}
 		if (Self) {
 			const General *g = Self->getGeneral();
-			if (g && _spineActionController->hasDynamicSkin(g->objectName()))
-				_spineActionController->triggerAction(
-					Self->objectName(), ActionType::Entrance, QList<QPointF>(), true);
+			if (g) {
+				int skinIndex = Config.value(QString("HeroSkin/%1").arg(g->objectName()), 0).toInt();
+				QString resolvedGeneral = Sanguosha->getResourceAlias("heroskin", g->objectName());
+				if (_spineActionController->hasDynamicSkin(resolvedGeneral, skinIndex))
+					_spineActionController->triggerAction(
+						Self->objectName(), ActionType::Entrance, QList<QPointF>(), true);
+			}
 		}
 	}
 
@@ -6063,22 +6078,11 @@ void RoomScene::registerDynamicSkinForPlayer(const QString &playerName,
 {
 	if (!_spineActionController || generalName.isEmpty())
 		return;
-	if (!_spineActionController->hasDynamicSkin(generalName))
-		return;
 
-	QString skinName = _spineActionController->defaultSkinNameForGeneral(generalName);
-	if (skinName.isEmpty())
-		return;
+	int skinIndex = Config.value(QString("HeroSkin/%1").arg(generalName), 0).toInt();
+	QString resolvedGeneral = Sanguosha->getResourceAlias("heroskin", generalName);
 
-	SkinConfig config;
-	if (!_spineActionController->buildSkinConfigForGeneral(generalName, skinName, config)) {
-		qWarning("[RoomScene] buildSkinConfig FAILED: '%s'/'%s'",
-		         qPrintable(generalName), qPrintable(skinName));
-		return;
-	}
-
-	QString skinId = generalName + "/" + skinName;
-	_spineActionController->registerSkin(playerName, skinId, config, isPrimary);
+	_spineActionController->registerDynamicSkin(playerName, resolvedGeneral, skinIndex, isPrimary);
 }
 
 void RoomScene::registerDynamicSkinsForAllPlayers()
