@@ -1334,15 +1334,30 @@ void RoomScene::updateTable()
 
 void RoomScene::addPlayer(ClientPlayer*player)
 {
-	for (int i = 0;i < photos.length();i++){
-		if(photos[i]->getPlayer()==nullptr){
-			photos[i]->setPlayer(player);
-			name2photo[player->objectName()] = photos[i];
-			if(!Self->hasFlag("marshalling"))
-				Sanguosha->playSystemAudioEffect("add-player",false);
-			break;
-		}
-	}
+    for (int i = 0;i < photos.length();i++){
+        if(photos[i]->getPlayer()==nullptr){
+            photos[i]->setPlayer(player);
+            name2photo[player->objectName()] = photos[i];
+            if(!Self->hasFlag("marshalling"))
+                Sanguosha->playSystemAudioEffect("add-player",false);
+            return;
+        }
+    }
+
+    Photo* photo = new Photo;
+    photo->setZValue(1);
+    addItem(photo);
+
+    photo->setPlayer(player);
+    photos << photo;
+    name2photo[player->objectName()] = photo;
+
+    item2player.insert(photo, player);
+    connect(photo, SIGNAL(selected_changed()), this, SLOT(updateSelectedTargets()));
+    connect(photo, SIGNAL(enable_changed()), this, SLOT(onEnabledChange()));
+
+    if(!Self->hasFlag("marshalling"))
+        Sanguosha->playSystemAudioEffect("add-player",false);
 }
 
 void RoomScene::removePlayer(const QString&player_name)
@@ -1382,6 +1397,14 @@ void RoomScene::arrangeSeats(const QList<const ClientPlayer*>&seats)
 			item2player.insert(photo,photo->getPlayer());
 			connect(photo,SIGNAL(selected_changed()),this,SLOT(updateSelectedTargets()));
 			connect(photo,SIGNAL(enable_changed()),this,SLOT(onEnabledChange()));
+		}
+	}else{
+		foreach (Photo*photo,photos){
+			if(!item2player.contains(photo)){
+				item2player.insert(photo,photo->getPlayer());
+				connect(photo,SIGNAL(selected_changed()),this,SLOT(updateSelectedTargets()));
+				connect(photo,SIGNAL(enable_changed()),this,SLOT(onEnabledChange()));
+			}
 		}
 	}
 
