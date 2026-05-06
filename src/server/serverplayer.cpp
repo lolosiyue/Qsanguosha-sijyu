@@ -1331,6 +1331,14 @@ void ServerPlayer::marshal(ServerPlayer *player) const
 		}
 	}
 
+	for (int i = 0; i < 5; i++) {
+		JsonArray arg;
+		arg << objectName() << i << getEquipArea(i);
+		room->doNotify(player, S_COMMAND_SET_EQUIP_AREA_COUNT, arg);
+	}
+
+	room->notifyProperty(player, this, "hasjudgearea");
+
 	if (moves.length()>0) {
 		QList<ServerPlayer*> players;
 		players << player;
