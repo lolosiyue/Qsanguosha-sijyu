@@ -295,6 +295,10 @@ void Client::signup()
 		arg << Config.value("EnableReconnection").toBool();
 		arg << QString(Config.UserName.toUtf8().toBase64());
 		arg << Config.UserAvatar;
+
+		if (m_original_self == nullptr)
+			m_original_self = Self;
+
 		notifyServer(S_COMMAND_SIGNUP, arg);
 	}
 }

@@ -5207,6 +5207,8 @@ void Room::marshal(ServerPlayer*player)
 
 	notifyProperty(player, player, "flags", "-marshalling");
 
+	doNotify(player, S_COMMAND_SWITCH_CONTEXT, player->objectName());
+
 	if (game_state>0){
 		doNotify(player, S_COMMAND_UPDATE_PILE, QVariant(m_drawPile->length()));
 
