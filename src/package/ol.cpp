@@ -30229,7 +30229,9 @@ void QiexieWeapon::onInstall(ServerPlayer *player) const
     placeholders["%skill_name%"] = skill_names_str;
     placeholders["%skill_desc%"] = skill_descs_str;
     placeholders["%general_name%"] = general_name;
-    room->updateCardDescription(weapon_name, placeholders);
+    foreach (const QString &key, placeholders.keys()) {
+        player->setCardDescriptionSwap(weapon_name, key, placeholders[key].toString());
+    }
 
     foreach (const QString &skill_name, skills) {
         room->acquireSkill(player, skill_name);

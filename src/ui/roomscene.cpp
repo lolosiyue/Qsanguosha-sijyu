@@ -224,7 +224,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(ClientInstance,SIGNAL(start_in_xs()),this,SLOT(startInXs()));
 
 	connect(ClientInstance,&Client::skill_updated,this,&RoomScene::updateSkill);
-	connect(ClientInstance,SIGNAL(card_description_updated(QString)),this,SLOT(updateCardDescription(QString)));
+	connect(ClientInstance,&Client::card_description_updated,this,&RoomScene::updateCardDescription);
 
 	guanxing_x_box = new GuanxingXBox;
 	guanxing_x_box->hide();
@@ -4162,15 +4162,15 @@ void RoomScene::fillTable(QTableWidget*table,const QList<const ClientPlayer*>&pl
 		table->resizeColumnToContents(i);
 }
 
-void RoomScene::updateCardDescription(const QString &card_name)
+void RoomScene::updateCardDescription(const QString &player_name, const QString &card_name)
 {
-    if (dashboard) {
+    if (dashboard && dashboard->getPlayer() && dashboard->getPlayer()->objectName() == player_name) {
         dashboard->_updateEquips();
         dashboard->refreshHandCardTooltips();
     }
 
     foreach (Photo *photo, photos) {
-        if (photo) {
+        if (photo && photo->getPlayer() && photo->getPlayer()->objectName() == player_name) {
             photo->_updateEquips();
         }
     }

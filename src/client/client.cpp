@@ -1268,50 +1268,19 @@ void Client::playAudio(const QVariant &history)
 void Client::updateCardDescription(const QVariant &arg)
 {
     JsonArray req = arg.value<JsonArray>();
-    if (req.length() < 2) return;
-    
-    QString card_name = req[0].toString();
-    QVariantMap placeholders = req[1].toMap();
-    
-    // 获取翻译模板（必须使用 :card_name1）
-    QString translated = Sanguosha->translate(":" + card_name + "1");
-    
-    // 如果翻译不存在（返回的是键本身），说明没有定义模板，直接返回
-    if (translated == (":" + card_name + "1") || translated.startsWith(":")) {
-        return;
-    }
-    
-    // 按照占位符长度从长到短排序（避免短的先替换导致问题）
-    QList<QString> keys = placeholders.keys();
-    std::sort(keys.begin(), keys.end(), [](const QString &a, const QString &b) {
-        return a.length() > b.length();
-    });
-    
-    // 遍历所有占位符进行替换
-    foreach (const QString &placeholder, keys) {
-        QString value = placeholders[placeholder].toString();
-        QString replaced_value;
-        
-        // 如果值包含|，说明是列表，需要分割后逐个翻译
-        if (value.contains("|")) {
-            QStringList parts = value.split("|", QString::SkipEmptyParts);
-            QStringList translated_parts;
-            foreach (const QString &part, parts) {
-                translated_parts << Sanguosha->translate(part);
-            }
-            replaced_value = translated_parts.join("<br/>");
-        } else {
-            // 单个值，直接翻译
-            replaced_value = Sanguosha->translate(value);
-        }
-        
-        translated.replace(placeholder, replaced_value);
-    }
-    
-    Sanguosha->addTranslationEntry(":" + card_name, translated);
-    
-    // 触发装备区刷新，让新的描述立即显示
-    emit card_description_updated(card_name);
+    if (req.length() < 4) return;
+
+    QString player_name = req[0].toString();
+    QString card_name = req[1].toString();
+    QString key = req[2].toString();
+    QString value = req[3].toString();
+
+    ClientPlayer *player = qobject_cast<ClientPlayer*>(Sanguosha->getPlayer(player_name));
+    if (!player) return;
+
+    player->setCardDescriptionSwap(card_name, key, value);
+
+    emit card_description_updated(player_name, card_name);
 }
 
 int Client::alivePlayerCount() const
