@@ -5283,6 +5283,21 @@ void Room::marshal(ServerPlayer*player)
 		}
 	}
 
+	foreach(ServerPlayer*p, m_players){
+		QMap<QString, QHash<QString, QString> > swaps = p->getAllCardDescriptionSwaps();
+		foreach(QString card_name, swaps.keys()){
+			QHash<QString, QString> swap = swaps[card_name];
+			foreach(QString key, swap.keys()){
+				JsonArray arg;
+				arg << p->objectName();
+				arg << card_name;
+				arg << key;
+				arg << swap[key];
+				doNotify(player, S_COMMAND_UPDATE_CARD_DESC, arg);
+			}
+		}
+	}
+
 	foreach (ServerPlayer *controlled, getAllPlayers(true)) {
 		if (controlled == player)
 			continue;

@@ -2123,6 +2123,29 @@ const QMap<QString, QHash<QString, QString> > &Player::getAllSkillDescriptionSwa
     return description_s2k2v;
 }
 
+void Player::setCardDescriptionSwap(const QString &card_name, const QString &key, const QString &value)
+{
+    QHash<QString, QString> swap = card_description_swaps[card_name];
+    QString _value;
+    if(value.contains("+")){
+        foreach (QString v, value.split("+"))
+            _value.append(Sanguosha->translate(v));
+    }else
+        _value = Sanguosha->translate(value);
+    swap[key] = _value;
+    card_description_swaps[card_name] = swap;
+}
+
+QHash<QString, QString> Player::getCardDescriptionSwap(const QString &card_name) const
+{
+    return card_description_swaps[card_name];
+}
+
+const QMap<QString, QHash<QString, QString> > &Player::getAllCardDescriptionSwaps() const
+{
+    return card_description_swaps;
+}
+
 void Player::setTag(const QString &key, const QVariant &value) {
     if (tag.value(key) == value) return;
     tag[key] = value;

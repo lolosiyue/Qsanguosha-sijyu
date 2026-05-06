@@ -320,7 +320,7 @@ signals:
     void player_removed(const QString &player_name);
     void boss_level_changed();
     void add_equip_area(const QString &area);
-    void card_description_updated(const QString &card_name);
+    void card_description_updated(const QString &player_name, const QString &card_name);
     // choice signal
     void generals_got(const QStringList &generals);
     void kingdoms_got(const QStringList &kingdoms);

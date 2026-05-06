@@ -936,15 +936,15 @@ void PlayerCardContainer::_updateEquips()
         if (displayed_real_equips.contains(i)) {
             const Card *card = displayed_real_equips[i];
             pixmap = _getEquipPixmap(card);
-            tooltip = card ? card->getDescription() : QString();
+            tooltip = card ? card->getDescription(m_player) : QString();
             opacity = 1.0;
             has_card_image = true;
-        } 
+        }
 
         else if (_m_equipCards[i]) {
             const Card *card = _m_equipCards[i]->getCard();
             pixmap = _getEquipPixmap(card);
-            tooltip = card ? card->getDescription() : QString();
+            tooltip = card ? card->getDescription(m_player) : QString();
             opacity = 1.0;
             has_card_image = true;
         }
@@ -952,7 +952,7 @@ void PlayerCardContainer::_updateEquips()
         else if (shadow_slots.contains(i)) {
             const Card *occupying_card = shadow_slots[i];
             pixmap = _getEquipPixmap(occupying_card);
-            tooltip = occupying_card ? occupying_card->getDescription() : QString();
+            tooltip = occupying_card ? occupying_card->getDescription(m_player) : QString();
             opacity = 1.0;
             has_card_image = true;
         }
@@ -968,7 +968,7 @@ void PlayerCardContainer::_updateEquips()
             tooltip = QString("<b>【%1】</b> (%2)<br/>%3")
                           .arg(Sanguosha->translate(card->objectName()))
                           .arg(skillText)
-                          .arg(card->getDescription());
+                          .arg(card->getDescription(m_player));
             opacity = 0.8f;
             has_card_image = true;
         } 
@@ -1288,7 +1288,7 @@ void PlayerCardContainer::addDelayedTricks(QList<CardItem *> &tricks)
         trick->setHomeOpacity(0);
         trick->setHomePos(start.center());
         QString toolTip = Sanguosha->getEngineCard(tc->getId())->getLogName();
-		toolTip.append("<br/>").append(tc->getDescription());
+		toolTip.append("<br/>").append(tc->getDescription(m_player));
 		if(tc->isKindOf("Xumou")) toolTip = "";
         item->setToolTip(buildOracleTooltip(QString(), toolTip));
         _m_judgeCards.append(trick);
@@ -1378,7 +1378,7 @@ void PlayerCardContainer::addEquips(QList<CardItem *> &equips)
         equip->setHomePos(homePos);
         equip->setHomeOpacity(0.0);
         _m_equipCards[index] = equip;
-        QString description = card->getDescription();
+        QString description = card->getDescription(m_player);
         _m_equipRegions[index]->setToolTip(description);
 		
         QPixmap pixmap = _getEquipPixmap(card);
@@ -2163,7 +2163,7 @@ void PlayerCardContainer::updateHandcardViewer()
 
         cardItem->setPixmap(cardPixmap);
         cardItem->setPos(x, y);
-        cardItem->setToolTip(buildOracleTooltip(QString(), card->getDescription()));
+        cardItem->setToolTip(buildOracleTooltip(QString(), card->getDescription(m_player)));
 
         count++;
         x += cardWidth + horizontalSpacing;

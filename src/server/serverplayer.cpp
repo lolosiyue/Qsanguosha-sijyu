@@ -2071,6 +2071,17 @@ void ServerPlayer::setSkillDescriptionSwap(const QString &skill_name, const QStr
 	Player::setSkillDescriptionSwap(skill_name, key, value);
 }
 
+void ServerPlayer::setCardDescriptionSwap(const QString &card_name, const QString &key, const QString &value)
+{
+	JsonArray arg;
+	arg << objectName();
+	arg << card_name;
+	arg << key;
+	arg << value;
+	room->doBroadcastNotify(S_COMMAND_UPDATE_CARD_DESC, arg);
+	Player::setCardDescriptionSwap(card_name, key, value);
+}
+
 void ServerPlayer::setAvatarIcon(const QString &avatar_name, bool isSmall)
 {
 	if(isSmall) room->setPlayerProperty(this,"avatarIcon2",avatar_name);
