@@ -4496,6 +4496,7 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 					if (Sanguosha->translate(sentence) != sentence){
 						JsonArray body;
 						body << player->objectName() << Sanguosha->translate(sentence).toUtf8().toBase64();
+						m_chatHistory << body;
 						doBroadcastNotify(S_COMMAND_SPEAK, body);
 					}
 					broadcastSkillInvoke(new_sentence);
@@ -4507,6 +4508,7 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 					if (Sanguosha->translate(_sentence) != _sentence){
 						JsonArray body;
 						body << player->objectName() << Sanguosha->translate(_sentence).toUtf8().toBase64();
+						m_chatHistory << body;
 						doBroadcastNotify(S_COMMAND_SPEAK, body);
 					}
 					broadcastSkillInvoke(_new_sentence.first(), _new_sentence.last().toInt());
@@ -4520,6 +4522,7 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 			if (Sanguosha->translate(sentence) != sentence){
 				JsonArray body;
 				body << player->objectName() << Sanguosha->translate(sentence).toUtf8().toBase64();
+				m_chatHistory << body;
 				doBroadcastNotify(S_COMMAND_SPEAK, body);
 			}
 			Sanguosha->playAudioEffect(filename);
@@ -4556,6 +4559,7 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 				QString msg_base64 = friendly_msg.toUtf8().toBase64();
 				JsonArray body;
 				body << QString("server") << msg_base64;
+				m_chatHistory << body;
 				doBroadcastNotify(S_COMMAND_SPEAK, body);
 			}
 			return;
@@ -4669,6 +4673,7 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 		if (broadcast){
 			JsonArray body;
 			body << player->objectName() << arg;
+			m_chatHistory << body;
 			doBroadcastNotify(S_COMMAND_SPEAK, body);
 		}
 	}
@@ -5197,6 +5202,9 @@ void Room::marshal(ServerPlayer*player)
 		doNotify(player, S_COMMAND_SET_KNOWN_CARDS, knownCardsArg);
 	}
 
+	foreach(const QVariant &chatMsg, m_chatHistory)
+		doNotify(player, S_COMMAND_SPEAK, chatMsg);
+
 	notifyProperty(player, player, "flags", "-marshalling");
 
 	if (game_state>0){
@@ -5214,7 +5222,8 @@ void Room::marshal(ServerPlayer*player)
 
 void Room::startGame()
 {
-	m_alivePlayers = m_players;/*
+	m_alivePlayers = m_players;
+	m_chatHistory.clear();/*
 	if (mode == "08_defense"){
 		QList<int> next_list;
 		next_list << 0 << 7 << 1 << 6 << 2 << 5 << 3 << 4;
