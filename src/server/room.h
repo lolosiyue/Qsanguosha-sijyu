@@ -542,6 +542,9 @@ public:
 
     const Card*_askForNullification(const Card*trick, ServerPlayer*from, ServerPlayer*to, bool positive);
     void safeSetPlayerProperty(ServerPlayer*player, const char*property_name, const QVariant&value);
+    void requestSummonBetween(ServerPlayer *before, ServerPlayer *after, const QString &general_name);
+    void processPendingSummons();
+    bool hasPendingSummons() const;
 
 protected:
     virtual void run();
@@ -750,6 +753,17 @@ private:
         ServerPlayer*m_to;
     };
     void _setupChooseGeneralRequestArgs(ServerPlayer*player);
+
+    struct SummonRequest {
+        ServerPlayer *before;
+        ServerPlayer *after;
+        QString general_name;
+    };
+
+    QList<SummonRequest> m_pendingSummons;
+    QList<ServerPlayer*> m_dynamicPlayers;
+
+    ServerPlayer* insertPlayerMidGame(ServerPlayer *before, ServerPlayer *after, const QString &general_name);
 
 private slots:
     void reportDisconnection();

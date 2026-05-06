@@ -62,6 +62,7 @@ Client::Client(QObject *parent, const QString &filename)
 	m_callbacks[S_COMMAND_SETUP] = &Client::setup;
 	m_callbacks[S_COMMAND_NETWORK_DELAY_TEST] = &Client::networkDelayTest;
 	m_callbacks[S_COMMAND_ADD_PLAYER] = &Client::addPlayer;
+	m_callbacks[S_COMMAND_ADD_PLAYER_DYNAMIC] = &Client::onPlayerAddedMidGame;
 	m_callbacks[S_COMMAND_REMOVE_PLAYER] = &Client::removePlayer;
 	m_callbacks[S_COMMAND_START_IN_X_SECONDS] = &Client::startInXs;
 	m_callbacks[S_COMMAND_ARRANGE_SEATS] = &Client::arrangeSeats;
@@ -451,6 +452,28 @@ void Client::addPlayer(const QVariant &player_info)
 
 	m_players << player;
 	//alive_count++;
+	emit player_added(player);
+}
+
+void Client::onPlayerAddedMidGame(const QVariant &player_info)
+{
+	if (!player_info.canConvert<JsonArray>()) return;
+	JsonArray info = player_info.value<JsonArray>();
+	if (info.size() < 3) return;
+
+	QString name = info[0].toString();
+	QString screen_name = QString::fromUtf8(QByteArray::fromBase64(info[1].toString().toLatin1()));
+	QString avatar = info[2].toString();
+
+	if (getPlayer(name)) return;
+
+	ClientPlayer *player = new ClientPlayer(this);
+	player->setObjectName(name);
+	player->setScreenName(screen_name);
+	player->setProperty("avatar", avatar);
+	player->setSeat(m_players.length() + 1);
+
+	m_players << player;
 	emit player_added(player);
 }
 

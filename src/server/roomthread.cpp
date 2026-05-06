@@ -791,26 +791,30 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 				}
 			}
 
-			if (room->getTag("DistanceCacheDirty").toBool()) {
-				room->setTag("DistanceCacheDirty", false);
+if (room->getTag("DistanceCacheDirty").toBool()) {
+                room->setTag("DistanceCacheDirty", false);
 
-				LuaLocker locker;
-				QList<ServerPlayer *> players = room->getAlivePlayers();
-				foreach(ServerPlayer *from, players) {
-					foreach(ServerPlayer *to, players) {
-						if (from == to) continue;
-						int cached_distance = from->distanceTo(to, 0);
-						QString prop_name = QString("distanceTo_%1").arg(to->objectName());
-						QByteArray prop_name_latin = prop_name.toLatin1();
-						if (from->property(prop_name_latin.constData()).toInt() == cached_distance) continue;
-						room->safeSetPlayerProperty(from, prop_name_latin.constData(), cached_distance);
-						room->broadcastProperty(from, prop_name_latin.constData());
-					}
-				}
-			}
-		}
-	
-	}catch (TriggerEvent throwed_event) {
+                LuaLocker locker;
+                QList<ServerPlayer *> players = room->getAlivePlayers();
+                foreach(ServerPlayer *from, players) {
+                    foreach(ServerPlayer *to, players) {
+                        if (from == to) continue;
+                        int cached_distance = from->distanceTo(to, 0);
+                        QString prop_name = QString("distanceTo_%1").arg(to->objectName());
+                        QByteArray prop_name_latin = prop_name.toLatin1();
+                        if (from->property(prop_name_latin.constData()).toInt() == cached_distance) continue;
+                        room->safeSetPlayerProperty(from, prop_name_latin.constData(), cached_distance);
+                        room->broadcastProperty(from, prop_name_latin.constData());
+                    }
+                }
+            }
+
+            if (room->hasPendingSummons()) {
+                room->processPendingSummons();
+            }
+        }
+
+    }catch (TriggerEvent throwed_event) {
 		if (target) target->getSmartAI()->filterEvent(triggerEvent, target, data);
 		event_stack.pop_back();// pop event stack
 
@@ -826,25 +830,29 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 				}
 			}
 
-			if (room->getTag("DistanceCacheDirty").toBool()) {
-				room->setTag("DistanceCacheDirty", false);
+if (room->getTag("DistanceCacheDirty").toBool()) {
+                room->setTag("DistanceCacheDirty", false);
 
-				LuaLocker locker;
-				QList<ServerPlayer *> players = room->getAlivePlayers();
-				foreach(ServerPlayer *from, players) {
-					foreach(ServerPlayer *to, players) {
-						if (from == to) continue;
-						int cached_distance = from->distanceTo(to, 0);
-						QString prop_name = QString("distanceTo_%1").arg(to->objectName());
-						QByteArray prop_name_latin = prop_name.toLatin1();
-						if (from->property(prop_name_latin.constData()).toInt() == cached_distance) continue;
-						room->safeSetPlayerProperty(from, prop_name_latin.constData(), cached_distance);
-						room->broadcastProperty(from, prop_name_latin.constData());
-					}
-				}
-			}
-		}
-		throw throwed_event;
+                LuaLocker locker;
+                QList<ServerPlayer *> players = room->getAlivePlayers();
+                foreach(ServerPlayer *from, players) {
+                    foreach(ServerPlayer *to, players) {
+                        if (from == to) continue;
+                        int cached_distance = from->distanceTo(to, 0);
+                        QString prop_name = QString("distanceTo_%1").arg(to->objectName());
+                        QByteArray prop_name_latin = prop_name.toLatin1();
+                        if (from->property(prop_name_latin.constData()).toInt() == cached_distance) continue;
+                        room->safeSetPlayerProperty(from, prop_name_latin.constData(), cached_distance);
+                        room->broadcastProperty(from, prop_name_latin.constData());
+                    }
+                }
+            }
+
+            if (room->hasPendingSummons()) {
+                room->processPendingSummons();
+            }
+        }
+        throw throwed_event;
 	}
 	//room->tryPause();
 	return broken;
