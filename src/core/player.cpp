@@ -2118,6 +2118,11 @@ QHash<QString, QString> Player::getSkillDescriptionSwap(const QString &skill_nam
     return description_s2k2v[skill_name];
 }
 
+const QMap<QString, QHash<QString, QString> > &Player::getAllSkillDescriptionSwaps() const
+{
+    return description_s2k2v;
+}
+
 void Player::setTag(const QString &key, const QVariant &value) {
     if (tag.value(key) == value) return;
     tag[key] = value;

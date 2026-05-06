@@ -5171,6 +5171,21 @@ void Room::marshal(ServerPlayer*player)
 	foreach(ServerPlayer*p, m_players)
 		p->marshal(player);
 
+	foreach(ServerPlayer*p, m_players){
+		QMap<QString, QHash<QString, QString> > swaps = p->getAllSkillDescriptionSwaps();
+		foreach(QString skill_name, swaps.keys()){
+			QHash<QString, QString> swap = swaps[skill_name];
+			foreach(QString key, swap.keys()){
+				JsonArray arg;
+				arg << p->objectName();
+				arg << skill_name;
+				arg << key;
+				arg << swap[key];
+				doNotify(player, S_COMMAND_SKILL_DESCRIPTION_SWAP, arg);
+			}
+		}
+	}
+
 	foreach (ServerPlayer *controlled, getAllPlayers(true)) {
 		if (controlled == player)
 			continue;
