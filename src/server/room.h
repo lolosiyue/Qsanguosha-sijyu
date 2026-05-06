@@ -688,6 +688,8 @@ private:
     QHash<QString, QString> m_dualControlReplyOwners;
     QHash<QString, QString> m_dualControlRequestTargets;
 
+    QVariantList m_chatHistory;
+
     QElapsedTimer _m_timeSinceLastSurrenderRequest; // Timer used to ensure that surrender polls are not initiated too frequently
     bool _m_isFirstSurrenderRequest; // We allow the first surrender poll to go through regardless of the timer.
 
