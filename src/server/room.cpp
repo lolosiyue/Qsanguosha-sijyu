@@ -5168,6 +5168,7 @@ void Room::marshal(ServerPlayer*player)
 			notifyProperty(player, p, "general2");
 
 		notifyProperty(player, p, "state");
+		notifyProperty(player, p, "RestPlayer");
 	}
 
 	if (game_state>0)
