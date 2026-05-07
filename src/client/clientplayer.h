@@ -25,6 +25,7 @@ public:
     void retainVisibleKnownHandcards();
     QTextDocument *getMarkDoc() const;
     void changePile(const QString &name, bool add, QList<int> card_ids);
+    void changeGeneralPile(const QString &name, bool add, QStringList general_names);
     void syncPileCards(const QString &pile_name, QList<int> card_ids);
     QString getDeathPixmapPath() const;
     //void setHandcardNum(int n);
@@ -49,6 +50,7 @@ private:
 
 signals:
     void pile_changed(const QString &name);
+    void general_pile_changed(const QString &name);
     void drank_changed();
     void action_taken();
     void duanchang_invoked();

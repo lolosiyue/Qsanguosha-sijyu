@@ -134,6 +134,11 @@ public:
     void addToRenPile(int card_id, const QString &skill_name = "");
     void addToRenPile(QList<int> card_ids, const QString &skill_name = "");
     void exchangeFreelyFromPrivatePile(const QString &skill_name, const QString &pile_name, int upperlimit = 1000, bool include_equip = false);
+    void addGeneralToPile(const QString &pile_name, const QString &general_name, bool open = true, QList<ServerPlayer *> open_players = QList<ServerPlayer *>());
+    void addGeneralToPile(const QString &pile_name, const QStringList &general_names, bool open = true, QList<ServerPlayer *> open_players = QList<ServerPlayer *>());
+    void removeGeneralFromPile(const QString &pile_name, const QString &general_name);
+    void clearOneGeneralPile(const QString &pile_name);
+    void clearGeneralPiles();
     void gainAnExtraTurn(QList<Player::Phase> phases = QList<Player::Phase>());
     void throwEquipArea(int i);
     void throwEquipArea(QList<int> list);

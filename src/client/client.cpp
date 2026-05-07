@@ -11,6 +11,7 @@
 //#include "util.h"
 #include "wrapped-card.h"
 #include <QSet>
+#include <QJsonDocument>
 
 using namespace std;
 using namespace QSanProtocol;
@@ -501,6 +502,15 @@ void Client::updateProperty(const QVariant &arg)
 					emit update_handcards(args[0].toString());
 				}
 			}
+			return;
+		}
+		if (propName == "general_pile_changed") {
+			QVariantMap data = QJsonDocument::fromJson(args[2].toString().toUtf8()).toVariant().toMap();
+			QString pile_name = data["pile_name"].toString();
+			QStringList general_names = data["general_names"].toStringList();
+			bool add = data["add"].toBool();
+
+			player->changeGeneralPile(pile_name, add, general_names);
 			return;
 		}
 		player->setProperty(propName.toLatin1().constData(), args[2].toString());
