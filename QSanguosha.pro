@@ -99,9 +99,10 @@ SOURCES += \
 	src/ui/button.cpp \
 	src/ui/cardcontainer.cpp \
 	src/ui/carditem.cpp \
-	src/ui/chatwidget.cpp \
-	src/ui/clientlogbox.cpp \
-	src/ui/dashboard.cpp \
+src/ui/chatwidget.cpp \
+    src/ui/clientlogbox.cpp \
+    src/ui/dashboard.cpp \
+    src/ui/easytextpanel.cpp \
 	src/ui/giftitem.cpp \
 	src/ui/indicatoritem.cpp \
 	src/ui/magatamas-item.cpp \
@@ -269,8 +270,9 @@ HEADERS += \
 	src/ui/carditem.h \
 	src/ui/chatwidget.h \
 	src/ui/clientlogbox.h \
-	src/ui/dashboard.h \
-	src/ui/gifchatbox.h \
+src/ui/dashboard.h \
+    src/ui/easytextpanel.h \
+    src/ui/gifchatbox.h \
 	src/ui/giftitem.h \
 	src/ui/indicatoritem.h \
 	src/ui/magatamas-item.h \

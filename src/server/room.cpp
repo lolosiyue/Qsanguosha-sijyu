@@ -4759,6 +4759,8 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 	if ((!use.card->canRecast()||use.from->isCardLimited(use.card,Card::MethodRecast))&&use.from->isCardLimited(use.card,use.card->getHandlingMethod()))
 		return false;
 	use.m_addHistory = add_history;
+	if (Sanguosha->hasResidueUnlimited(use.from, use.card, use.to.isEmpty() ? nullptr : use.to.first()))
+		use.m_addHistory = false;
 	const Card*card = use.card->validate(use);
 	if(card==nullptr) return false;
 	QList<int> ids;

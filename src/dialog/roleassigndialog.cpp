@@ -20,7 +20,7 @@ RoleAssignDialog::RoleAssignDialog(QWidget *parent)
     list->setFlow(QListView::TopToBottom);
     list->setMovement(QListView::Static);
 
-    QStringList role_list = Sanguosha->getRoleList(Config.GameMode.mode_id);
+    QStringList role_list = Sanguosha->getRoleList(ServerInfo.GameMode);
 
     if (Config.FreeAssignSelf) {
         QString text = QString("%1[%2]").arg(Self->screenName()).arg(Sanguosha->translate(role_list.first()));
@@ -43,18 +43,14 @@ RoleAssignDialog::RoleAssignDialog(QWidget *parent)
 
     QVBoxLayout *vlayout = new QVBoxLayout;
 
-    role_ComboBox = new QComboBox;/*
-	QString roles = Sanguosha->getRoles(Config.GameMode.mode_id);
-	if (roles.contains("Z"))
-		role_ComboBox->addItem(tr("Lord"), "lord");
-	if (roles.contains("C"))
-		role_ComboBox->addItem(tr("Loyalist"), "loyalist");
-	if (roles.contains("N"))
-		role_ComboBox->addItem(tr("Renegade"), "renegade");
-	if (roles.contains("F"))
-		role_ComboBox->addItem(tr("Rebel"), "rebel");*/
-	foreach (QString r, role_list)
-		role_ComboBox->addItem(Sanguosha->translate(r), r);
+    role_ComboBox = new QComboBox;
+    QString roles = Sanguosha->getRolesSingle(Config.GameMode.mode_id);
+    for (int i = 0; i < roles.size(); i++) {
+        QChar curChar = roles[i];
+        QString currentChar = curChar;
+        QString role = Sanguosha->getRoleByAbbreviation(currentChar);
+        role_ComboBox->addItem(Sanguosha->translate(role), role);
+    }
 
     QPushButton *moveUpButton = new QPushButton(tr("Move up"));
     QPushButton *moveDownButton = new QPushButton(tr("Move down"));
@@ -91,7 +87,8 @@ RoleAssignDialog::RoleAssignDialog(QWidget *parent)
 
 void RoleAssignDialog::accept()
 {
-    QStringList real_list,role_list = Sanguosha->getRoleList(Config.GameMode.mode_id);
+    QStringList role_list = Sanguosha->getRoleList(ServerInfo.GameMode);
+    QStringList real_list;
 
     QList<QString> roles,names;
     if (Config.FreeAssignSelf) {

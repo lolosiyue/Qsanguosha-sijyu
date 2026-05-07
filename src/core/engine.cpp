@@ -6,6 +6,9 @@
 #include "lua.hpp"
 #include "banpair.h"
 #include <QMutexLocker>
+#include <QFileInfo>
+#include <QDir>
+#include <QFile>
 //#include "protocol.h"
 #include "lua-wrapper.h"
 //#include "room-state.h"
@@ -420,9 +423,19 @@ void Engine::addTranslationEntry(const QString &key, const QString &value)
 
 void Engine::addModes(const QString &key, const QString &value, const QString &roles)
 {
-    modes[key] = value;
+    GameModeStruct mode(key, translate(value));
+    if (!roles.isEmpty()) {
+        mode.roles = roles;
+        mode.player_count = roles.length();
+    }
+    modes[key] = mode;
 	if (!roles.isEmpty())
 		mode_roles[key] = roles;
+}
+
+void Engine::addGameMode(const GameModeStruct &mode)
+{
+    modes[mode.mode_id] = mode;
 }
 
 Engine::~Engine()
@@ -1260,6 +1273,192 @@ QStringList Engine::getChattingEasyTexts() const
     return easy_texts;
 }
 
+QList<EasyTextItem> Engine::getChattingEasyTextItems(const QString &general_name) const
+{
+    QList<EasyTextItem> items;
+
+    lua_State *chat_lua = CreateLuaState();
+    if (DoLuaScript(chat_lua, "lua/chat_config.lua")) {
+        QVariant base_texts = GetValueFromLuaState(chat_lua, "chat_config", "easy_text");
+        if (base_texts.canConvert<QStringList>()) {
+            QStringList easy_texts = base_texts.toStringList();
+            foreach (const QString &text, easy_texts) {
+                if (!text.isEmpty()) {
+                    items << EasyTextItem(text, QString(), 0);
+                }
+            }
+        }
+    }
+    lua_close(chat_lua);
+
+    if (!general_name.isEmpty()) {
+        QStringList general_names = general_name.split(",");
+
+        foreach (const QString &gname, general_names) {
+            QString trimmed_name = gname.trimmed();
+            if (trimmed_name.isEmpty()) continue;
+
+            const General *general = getGeneral(trimmed_name);
+            if (!general) continue;
+
+            QString actualGn = getResourceAlias("heroskin", trimmed_name);
+
+            QList<const Skill *> skills = general->getVisibleSkillList();
+
+            foreach (const Skill *skill, skills) {
+                foreach (QString sk, skill->getWakedSkills().split(",")) {
+                    const Skill *ski = Sanguosha->getSkill(sk);
+                    if (ski && ski->isVisible() && !skills.contains(ski))
+                        skills << ski;
+                }
+            }
+
+            foreach (QString skill_name, general->getRelatedSkillNames()) {
+                const Skill *skill = Sanguosha->getSkill(skill_name);
+                if (skill && skill->isVisible() && !skills.contains(skill))
+                    skills << skill;
+            }
+
+            foreach (const Skill *skill, skills) {
+                QString skill_obj_name = skill->objectName();
+
+                int skin_index = Config.value("HeroSkin/" + trimmed_name, 0).toInt();
+
+                QStringList audio_sources = skill->getSources();
+                QStringList actual_files;
+
+                if (skin_index > 0) {
+                    QString heroskin_path = QString("image/heroskin/audio/%1_%2/skill")
+                        .arg(actualGn).arg(skin_index);
+                    if (QFile::exists(heroskin_path)) {
+                        QDir dir(heroskin_path);
+                        QStringList filters;
+                        filters << "*.wav";
+                        foreach (QString file, dir.entryList(filters, QDir::Files | QDir::Readable, QDir::Name)) {
+                            if (file.startsWith(skill_obj_name) && file.endsWith(".wav")) {
+                                actual_files << heroskin_path + "/" + file;
+                            }
+                        }
+                    }
+                }
+
+                if (actual_files.isEmpty() && !audio_sources.isEmpty()) {
+                    actual_files = audio_sources;
+                }
+
+                if (actual_files.isEmpty()) {
+                    QString aliasSkill = getResourceAlias("audios", skill_obj_name);
+                    if (aliasSkill != skill_obj_name) {
+                        const Skill *aliasSk = getSkill(aliasSkill);
+                        if (aliasSk) {
+                            actual_files = aliasSk->getSources();
+                        }
+                    }
+                }
+
+                if (!actual_files.isEmpty()) {
+                    for (int i = 0; i < actual_files.size(); i++) {
+                        QString audio_file = actual_files[i];
+                        QString line_key;
+
+                        if (skin_index > 0) {
+                            QString basename = QFileInfo(audio_file).baseName();
+                            line_key = QString("$%1-%2_%3").arg(basename).arg(actualGn).arg(skin_index);
+                        } else {
+                            line_key = QString("$%1%2").arg(skill_obj_name).arg(i + 1);
+                        }
+
+                        QString skill_line = translate(line_key);
+                        if (skill_line.startsWith("$")) {
+                            line_key = QString("$%1%2").arg(skill_obj_name).arg(i + 1);
+                            skill_line = translate(line_key);
+                        }
+
+                        if (!skill_line.startsWith("$")) {
+                            items << EasyTextItem(skill_line, audio_file, 1);
+                        }
+                    }
+                } else {
+                    bool has_lines = false;
+                    for (int i = 1; i <= 10; i++) {
+                        QString line_key = QString("$%1%2").arg(skill_obj_name).arg(i);
+                        QString skill_line = translate(line_key);
+
+                        if (!skill_line.startsWith("$")) {
+                            items << EasyTextItem(skill_line, QString(), 1);
+                            has_lines = true;
+                        } else {
+                            break;
+                        }
+                    }
+
+                    if (!has_lines) {
+                        QString line_key = QString("$%1").arg(skill_obj_name);
+                        QString skill_line = translate(line_key);
+
+                        if (!skill_line.startsWith("$")) {
+                            items << EasyTextItem(skill_line, QString(), 1);
+                        }
+                    }
+                }
+            }
+
+            int skin_index = Config.value("HeroSkin/" + trimmed_name, 0).toInt();
+            QString death_audio;
+            QString death_line;
+
+            if (skin_index > 0) {
+                QString hero_skin = translate(QString("~%1-%2_%3").arg(actualGn).arg(actualGn).arg(skin_index));
+                if (!hero_skin.startsWith("~")) {
+                    death_audio = QString("image/heroskin/audio/%1_%2/death/%3.wav")
+                        .arg(actualGn).arg(skin_index).arg(actualGn);
+                    death_line = hero_skin;
+                }
+            }
+
+            if (death_line.isEmpty()) {
+                death_line = translate("~" + actualGn);
+                if (!death_line.startsWith("~") && death_line != " ") {
+                    death_audio = QString("audio/death/%1.wav").arg(actualGn);
+                }
+            }
+
+            if (death_line.startsWith("~") && actualGn.contains("_")) {
+                QString new_name = actualGn.split("_").last();
+                death_line = translate("~" + new_name);
+
+                if (!death_line.startsWith("~") && death_line != " ") {
+                    int new_skin_index = Config.value("HeroSkin/" + new_name, 0).toInt();
+                    if (new_skin_index > 0) {
+                        QString hero_skin = translate(QString("~%1-%2_%3").arg(new_name).arg(new_name).arg(new_skin_index));
+                        if (!hero_skin.startsWith("~")) {
+                            death_audio = QString("image/heroskin/audio/%1_%2/death/%3.wav")
+                                .arg(new_name).arg(new_skin_index).arg(new_name);
+                            death_line = hero_skin;
+                        }
+                    } else {
+                        death_audio = QString("audio/death/%1.wav").arg(new_name);
+                    }
+                }
+            }
+
+            if (!death_line.isEmpty() && !death_line.startsWith("~") && death_line != " ") {
+                items << EasyTextItem(death_line, death_audio, 2);
+            }
+
+            QString win_audio = QString("audio/win/%1.wav").arg(actualGn);
+            if (QFile::exists(win_audio)) {
+                QString win_line = translate("$" + actualGn);
+                if (!win_line.startsWith("$")) {
+                    items << EasyTextItem(win_line, win_audio, 3);
+                }
+            }
+        }
+    }
+
+    return items;
+}
+
 QString Engine::getSetupString() const
 {
     QString flags;
@@ -1307,19 +1506,37 @@ QString Engine::getSetupString() const
     return setup_items.join(":");
 }
 
-QMap<QString, QString> Engine::getAvailableModes() const
+QMap<QString, GameModeStruct> Engine::getAvailableModes() const
 {
     return modes;
 }
 
+GameModeStruct Engine::getGameMode(const QString &mode_id) const
+{
+    if (modes.contains(mode_id)) {
+        return modes.value(mode_id);
+    }
+    return GameModeStruct(mode_id);
+}
+
 QString Engine::getModeName(const QString &mode) const
 {
-    if (modes.contains(mode)) return modes.value(mode);
+    if (modes.contains(mode)) return modes.value(mode).display_name;
     else return tr("%1 [Scenario mode]").arg(translate(mode));
 }
 
 int Engine::getPlayerCount(const QString &mode) const
 {
+    if (modes.contains(mode)) {
+        GameModeStruct gameMode = modes.value(mode);
+        if (gameMode.player_count > 0) {
+            return gameMode.player_count;
+        }
+        if (!gameMode.roles.isEmpty()) {
+            return gameMode.roles.length();
+        }
+    }
+
     if (modes.contains(mode) || isNormalGameMode(mode)) { // hidden pz settings?
 		if (mode_roles.contains(mode))
 			return mode_roles.value(mode).length();
@@ -1337,6 +1554,13 @@ int Engine::getPlayerCount(const QString &mode) const
 
 QString Engine::getRoles(const QString &mode) const
 {
+    if (modes.contains(mode)) {
+        GameModeStruct gameMode = modes.value(mode);
+        if (!gameMode.roles.isEmpty()) {
+            return gameMode.roles;
+        }
+    }
+
 	if (mode_roles.contains(mode))
 		return mode_roles.value(mode);
     else if (mode == "02_1v1")
@@ -1429,6 +1653,93 @@ QStringList Engine::getRoleList(const QString &mode) const
         }
     }
     return role_list;
+}
+
+QString Engine::getRolesSingle(const QString &mode) const
+{
+    QString roles = getRoles(mode);
+    QString result;
+    QSet<QChar> seenChars;
+    for (int i = 0; i < roles.size(); i++) {
+        QChar currentChar = roles[i];
+        if (!seenChars.contains(currentChar)) {
+            seenChars.insert(currentChar);
+            result.append(currentChar);
+        }
+    }
+    return result;
+}
+
+bool Engine::hasSkipGeneralSelection(const QString &mode) const
+{
+    return m_skipGeneralModes.contains(mode);
+}
+
+void Engine::addSkipGeneralMode(const QString &mode)
+{
+    if (!m_skipGeneralModes.contains(mode)) {
+        m_skipGeneralModes.append(mode);
+    }
+}
+
+void Engine::removeSkipGeneralMode(const QString &mode)
+{
+    m_skipGeneralModes.removeAll(mode);
+}
+
+bool Engine::hasShowRoleMode(const QString &mode) const
+{
+    return m_showRoleModes.contains(mode);
+}
+
+void Engine::addShowRoleMode(const QString &mode)
+{
+    if (!m_showRoleModes.contains(mode)) {
+        m_showRoleModes.append(mode);
+    }
+}
+
+void Engine::removeShowRoleMode(const QString &mode)
+{
+    m_showRoleModes.removeAll(mode);
+}
+
+void Engine::setGameModeShuffleRoles(const QString &mode_id, bool shuffle_roles)
+{
+    if (modes.contains(mode_id)) {
+        modes[mode_id].setShuffleRoles(shuffle_roles);
+    }
+}
+
+void Engine::setGameModeLordWelfare(const QString &mode_id, bool lord_welfare)
+{
+    if (modes.contains(mode_id)) {
+        modes[mode_id].lord_welfare = lord_welfare;
+    }
+}
+
+void Engine::addModeGroup(const QString& groupName, const QStringList& modeIds)
+{
+    for (int i = 0; i < modeIds.size(); ++i) {
+        m_modeGroups.insert(groupName, modeIds);
+    }
+}
+
+QStringList Engine::getGroupModes(const QString& groupName) const
+{
+    return m_modeGroups.value(groupName);
+}
+
+QString Engine::getModeGroup(const QString& modeId) const
+{
+    QMapIterator<QString, QStringList> it(m_modeGroups);
+    while (it.hasNext()) {
+        it.next();
+        if (it.value().contains(modeId)) {
+            return it.key();
+        }
+    }
+    return QString();
 }
 
 void Engine::initializeRoleMap()
@@ -2013,6 +2324,38 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
     }
     if (locked) lua_mutex.unlock();
     return x;
+}
+
+bool Engine::hasResidueUnlimited(const Player *from, const Card *card, const Player *to) const
+{
+    if (!from || !card) return false;
+
+    bool locked = lua_mutex.tryLock();
+    if (!locked) {
+        if (from && from->inherits("ClientPlayer")) return false;
+        lua_mutex.lock();
+        locked = true;
+    }
+
+    QStringList subcardNames;
+    if (card->isVirtualCard()){
+        foreach (const Card*e, from->getEquips()){
+            if (card->getSubcards().contains(e->getId()))
+                subcardNames << e->objectName();
+        }
+    }
+    foreach (const TargetModSkill*skill, getTargetModSkills()) {
+        if (subcardNames.contains(skill->objectName())) continue;
+        if (matchExpPattern(skill->getPattern(), from, card)) {
+            int n = skill->getResidueNum(from, card, to);
+            if (n == -1) {
+                if (locked) lua_mutex.unlock();
+                return true;
+            }
+        }
+    }
+    if (locked) lua_mutex.unlock();
+    return false;
 }
 
 bool Engine::correctSkillValidity(const Player*player, const Skill*skill) const

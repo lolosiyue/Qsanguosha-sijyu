@@ -51,6 +51,8 @@ private:
     QList<RoleComboBoxItem *> items;
     RoleComboBoxItem *m_currentRole;
 
+    void createRoleItems();
+
 private slots:
     void collapse();
     void expand();

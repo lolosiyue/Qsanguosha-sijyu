@@ -1,6 +1,18 @@
 #ifndef _CHAT_WIDGET_H
 #define _CHAT_WIDGET_H
 
+#include <QObject>
+#include <QGraphicsObject>
+#include <QGraphicsPixmapItem>
+#include <QGraphicsRectItem>
+#include <QGraphicsProxyWidget>
+#include <QPushButton>
+#include <QPixmap>
+#include <QRect>
+#include <QString>
+#include "easytextpanel.h"
+#include "clientplayer.h"
+
 class MyPixmapItem : public QObject, public QGraphicsPixmapItem
 {
     Q_OBJECT
@@ -55,6 +67,7 @@ private:
     QPushButton *eggButton;
     MyPixmapItem *chat_face_board, *easy_text_board;
     QGraphicsRectItem *base;
+    EasyTextPanel *easyTextPanel;
 
     QGraphicsProxyWidget *addWidget(QWidget *widget, int x);
     QPushButton *addButton(const QString &name, int x);
@@ -66,6 +79,10 @@ private slots:
     void sendText();
     void onFlowerButtonClicked();
     void onEggButtonClicked();
+    void onEasyTextSelected(const QString &text);
+
+public:
+    void updateEasyTexts(const QString &general_name = QString());
 
 signals:
     void chat_widget_msg(QString);

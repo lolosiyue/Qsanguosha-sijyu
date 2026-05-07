@@ -34,6 +34,16 @@ class CardPattern;
 class RoomState;
 class ExpPattern;
 
+struct EasyTextItem {
+    QString text;
+    QString audioPath;
+    int type;
+
+    EasyTextItem() : type(0) {}
+    EasyTextItem(const QString &t, const QString &audio = QString(), int tp = 0)
+        : text(t), audioPath(audio), type(tp) {}
+};
+
 class Engine : public QObject
 {
     Q_OBJECT
@@ -47,6 +57,14 @@ public:
     lua_State *getLuaState() const;
     SafeLuaMutex &getLuaMutex() const;
     void addModes(const QString &key, const QString &value, const QString &roles = "");
+    void addGameMode(const GameModeStruct &mode);
+
+    void setGameModeShuffleRoles(const QString &mode_id, bool shuffle_roles);
+    void setGameModeLordWelfare(const QString &mode_id, bool lord_welfare);
+
+    void addModeGroup(const QString& groupName, const QStringList& modeIds);
+    QStringList getGroupModes(const QString& groupName) const;
+    QString getModeGroup(const QString& modeId) const;
 
     int getMiniSceneCounts();
 
@@ -70,14 +88,24 @@ public:
     QColor getKingdomColor(const QString &kingdom) const;
     QMap<QString, QColor> getSkillTypeColorMap() const;
     QStringList getChattingEasyTexts() const;
+    QList<EasyTextItem> getChattingEasyTextItems(const QString &general_name) const;
     QString getSetupString() const;
 
-    QMap<QString, QString> getAvailableModes() const;
+    QMap<QString, GameModeStruct> getAvailableModes() const;
+    GameModeStruct getGameMode(const QString &mode_id) const;
     QString getModeName(const QString &mode) const;
     int getPlayerCount(const QString &mode) const;
     QString getRoles(const QString &mode) const;
+    QString getRolesSingle(const QString &mode) const;
     QStringList getRoleList(const QString &mode) const;
     int getRoleIndex() const;
+
+    bool hasSkipGeneralSelection(const QString &mode) const;
+    void addSkipGeneralMode(const QString &mode);
+    void removeSkipGeneralMode(const QString &mode);
+    bool hasShowRoleMode(const QString &mode) const;
+    void addShowRoleMode(const QString &mode);
+    void removeShowRoleMode(const QString &mode);
 
     QMap<QString, QString> roleMap;
     void initializeRoleMap();
@@ -154,6 +182,7 @@ public:
     int correctDistance(const Player *from, const Player *to, bool fixed = false) const;
     int correctMaxCards(const Player *target, bool fixed = false) const;
     int correctCardTarget(const TargetModSkill::ModType type, const Player *from, const Card *card, const Player *to = nullptr) const;
+    bool hasResidueUnlimited(const Player *from, const Card *card, const Player *to = nullptr) const;
     bool correctSkillValidity(const Player *player, const Skill *skill) const;
     int correctAttackRange(const Player *target, bool include_weapon = true, bool fixed = false) const;
 
@@ -197,12 +226,16 @@ private:
     QHash<QString, QPointer<Skill>> skills;
     QHash<QThread *, QObject *> m_rooms;
     mutable QMutex m_mutex;
-    QMap<QString, QString> modes, mode_roles;
+    QMap<QString, GameModeStruct> modes;
+    QMap<QString, QString> mode_roles;
     QMultiMap<QString, QString> related_skills;
     mutable QMap<QString, const CardPattern *> patterns;
     mutable QMap<QString, ExpPattern *> exp_patterns;
     QHash<QString, QList<int> > audio_type;
     QHash<QString, QHash<QString, QString> > m_resourceAliases;
+    QStringList m_skipGeneralModes;
+    QStringList m_showRoleModes;
+    QMap<QString, QStringList> m_modeGroups;
 
     QList<Card *> cards;
     QStringList ban_package;
