@@ -1806,6 +1806,13 @@ public:
 	bool broadcastProperty(ServerPlayer*player, const char*property_name, const char*value = nullptr);
 
 	int getBossModeExpMult(int level) const;
+
+	bool hasAura();
+	bool hasAura(const char *aura);
+	QString getAura();
+	void clearAura();
+	bool doAura(ServerPlayer* player, const char *aura);
+	ServerPlayer *getAuraPlayer();
 };
 
 %extend Room {

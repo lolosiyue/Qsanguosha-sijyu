@@ -4888,10 +4888,14 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 	QRect rect = main_window->rect();
 	QGraphicsRectItem*lightbox = addRect(rect);
 
-    if(!word.startsWith("skill=")&&!word.startsWith("ghost=")&&!word.startsWith("background=")&&!word.startsWith("spine=")){
+    if(!word.startsWith("skill=")&&!word.startsWith("ghost=")&&!word.startsWith("background=")&&!word.startsWith("spine=")&&!word.startsWith("lani=")){
 		lightbox->setBrush(QColor(32,32,32,204));
 		lightbox->setZValue(21);
 		word = Sanguosha->translate(word);
+	}
+
+	if(word.startsWith("lani=")){
+		lightbox->setBrush(QColor(32,32,32,100));
 	}
 
 	if(word.startsWith("image=")){
@@ -4912,7 +4916,7 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 
 		connect(appear,SIGNAL(finished()),line,SLOT(deleteLater()));
 		connect(appear,SIGNAL(finished()),this,SLOT(removeLightBox()));
-	} else if(word.startsWith("anim=")){
+	} else if(word.startsWith("anim=") || word.startsWith("lani=")){
 		PixmapAnimation*pma = PixmapAnimation::GetPixmapAnimation(lightbox,word.mid(5));
 		if(pma){
 			pma->setZValue(22);
