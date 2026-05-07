@@ -353,6 +353,13 @@ public:
 
     void changeTableBg(const QString&tableBg);
     void changeBackground(const QString name, QList<ServerPlayer *> players = QList<ServerPlayer *>());
+    void setAura(ServerPlayer* player, QString aura);
+    bool hasAura();
+    bool hasAura(QString aura);
+    QString getAura();
+    ServerPlayer* getAuraPlayer();
+    void clearAura();
+    bool doAura(ServerPlayer* player, QString aura);
 
     Player::Place getCardPlace(int card_id) const;
     ServerPlayer*getCardOwner(int card_id) const;

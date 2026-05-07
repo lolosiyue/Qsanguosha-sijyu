@@ -6745,6 +6745,53 @@ void Room::changeBackground(const QString name, QList<ServerPlayer *> players)
 	doAnimate(S_ANIMATE_LIGHTBOX, "background=" + name, "", players);
 }
 
+void Room::setAura(ServerPlayer* player, QString aura)
+{
+	if (hasAura(aura)){
+		return;
+	}
+
+	setTag("aura", QVariant::fromValue(aura));
+	setTag("aura_player", QVariant::fromValue(player));
+	changeBGM(aura, false);
+	changeBackground(aura);
+	doAnimate(QSanProtocol::S_ANIMATE_LIGHTBOX, "lani=aura", QString("%1:%2").arg(3000).arg(0));
+}
+
+bool Room::hasAura(){
+	return getTag("aura").value<QString>().length() > 0;
+}
+
+bool Room::hasAura(QString aura){
+	return getTag("aura").value<QString>() == aura;
+}
+
+QString Room::getAura(){
+	return getTag("aura").value<QString>();
+}
+
+ServerPlayer* Room::getAuraPlayer(){
+	return getTag("aura_player").value<ServerPlayer *>();
+}
+
+void Room::clearAura(){
+	if (!hasAura()){
+		return;
+	}
+	changeBGM("", false);
+	changeBackground("");
+	removeTag("aura");
+	removeTag("aura_player");
+}
+
+bool Room::doAura(ServerPlayer* player, QString aura){
+	if (hasAura(aura)){
+		return false;
+	}
+	setAura(player, aura);
+	return true;
+}
+
 void Room::reversePlayOrder()
 {
 	m_playOrderReversed = !m_playOrderReversed;
