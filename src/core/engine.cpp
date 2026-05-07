@@ -1986,7 +1986,11 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
         foreach (const TargetModSkill*skill, getTargetModSkills()) {
 			if (subcardNames.contains(skill->objectName())) continue;
             if (matchExpPattern(skill->getPattern(),from, card)) {
-                x += skill->getResidueNum(from, card, to);
+                int n = skill->getResidueNum(from, card, to);
+                if (n == -1) {
+                    n = 1000;  // -1 視為 1000（無限）
+                }
+                x += n;
                 if (x > 500) break;
             }
         }
