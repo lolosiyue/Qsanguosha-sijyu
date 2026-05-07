@@ -337,6 +337,11 @@ public:
     QList<const Player *> getAliveSiblings(bool include_self = false) const;
     void setSkillDescriptionSwap(const QString &skill_name, const QString &key, const QString &value);
     QHash<QString, QString> getSkillDescriptionSwap(const QString &skill_name) const;
+    const QMap<QString, QHash<QString, QString> > &getAllSkillDescriptionSwaps() const;
+
+    void setCardDescriptionSwap(const QString &card_name, const QString &key, const QString &value);
+    QHash<QString, QString> getCardDescriptionSwap(const QString &card_name) const;
+    const QMap<QString, QHash<QString, QString> > &getAllCardDescriptionSwaps() const;
 
     void setTag(const QString &key, const QVariant &value);
     QVariant getTag(const QString &key, const QVariant &defaultValue = QVariant()) const;
@@ -358,6 +363,7 @@ protected:
     QHash<QString, int> history;
     QSet<QString> flags;
     QMap<QString, QHash<QString, QString> > description_s2k2v;
+    QMap<QString, QHash<QString, QString> > card_description_swaps;
     QVariantMap tag;
 
 private:

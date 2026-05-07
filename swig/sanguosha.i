@@ -1608,6 +1608,7 @@ public:
 	void reverseFor3v3(const Card*card, ServerPlayer*player, QList<ServerPlayer*>&list);
 	bool hasWelfare(const ServerPlayer*player) const;
 	ServerPlayer*getFront(ServerPlayer*a, ServerPlayer*b) const;
+	void requestSummonBetween(ServerPlayer*before, ServerPlayer*after, const char*general_name);
 	void signup(ServerPlayer*player, const char*screen_name, const char*avatar, bool is_robot);
 	ServerPlayer*getOwner() const;
 

@@ -14,10 +14,12 @@
 #include <QtMath>
 #include <QTimer>
 #include <QPointer>
+#include <QDir>
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QRegularExpression>
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Construction / destruction
@@ -287,128 +289,131 @@ void CharacterSpineActionController::autoDiscoverActions(SpineGlItem *probe, Ski
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  JSON config loading
+//  Dynamic skin registration (path-based)
 // ═══════════════════════════════════════════════════════════════════════════
 
-bool CharacterSpineActionController::loadConfigFromJson(const QString &jsonPath)
+/// Determines the skin root path based on the resolved general name.
+/// Heroskin names contain "_[digit]" suffix (e.g. "heg_zhonghui_2") → heroskin path
+/// Native generals have no such suffix (e.g. "guanyu") → image/fullskin path
+static QString buildDynamicSkinRoot(const QString &resolvedGeneral)
 {
-    QFile file(jsonPath);
-    if (!file.exists()) {
-        // Try relative to app dir
-        QString resolved = QCoreApplication::applicationDirPath() + "/" + jsonPath;
-        file.setFileName(resolved);
-    }
-    if (!file.open(QIODevice::ReadOnly)) {
-        qWarning("[SpineActionController] Cannot open config: %s (exists=%d)",
-                 qPrintable(file.fileName()), (int)file.exists());
-        return false;
-    }
-
-    QByteArray data = file.readAll();
-    file.close();
-
-    QJsonParseError parseError;
-    QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
-    if (doc.isNull()) {
-        qWarning("[SpineActionController] JSON parse error: %s",
-                 qPrintable(parseError.errorString()));
-        return false;
-    }
-
-    QJsonObject root = doc.object();
-    _jsonSkinDatabase.clear();
-
-    for (auto it = root.begin(); it != root.end(); ++it) {
-        const QString &generalName = it.key();
-        if (generalName.startsWith("_")) continue; // skip meta keys
-
-        if (!it.value().isObject()) continue;
-        QJsonObject generalObj = it.value().toObject();
-
-        QHash<QString, QJsonObject> skinMap;
-        for (auto sit = generalObj.begin(); sit != generalObj.end(); ++sit) {
-            if (sit.value().isObject())
-                skinMap[sit.key()] = sit.value().toObject();
-        }
-        if (!skinMap.isEmpty())
-            _jsonSkinDatabase[generalName] = skinMap;
-    }
-
-    qDebug("[SpineAction] Loaded config: %d generals", _jsonSkinDatabase.size());
-    return true;
+    // Check if resolvedGeneral ends with "_[digit]" (heroskin)
+    QRegularExpression heroskinPattern(R"(_\d+$)");
+    if (heroskinPattern.match(resolvedGeneral).hasMatch())
+        return QString("heroskin/dynamicSkin/%1/dynamicSkin").arg(resolvedGeneral);
+    return QString("fullskin/dynamicSkin/%1/dynamicSkin").arg(resolvedGeneral);
 }
 
-static ActionMetadata parseActionFromJson(const QJsonObject &obj, const QString &parentVersion)
+static void parseSkinConfigFromJson(const QJsonObject &obj, SkinConfig &out)
 {
-    ActionMetadata meta;
-    meta.animationName = obj.value("animationName").toString();
-    meta.skelBasePath  = obj.value("skelBasePath").toString();
-    meta.scale         = static_cast<float>(obj.value("scale").toDouble(0.35));
-    meta.flipX         = obj.value("flipX").toBool(false);
-    meta.showTime      = static_cast<float>(obj.value("showTime").toDouble(0));
-    meta.runtimeVersion= obj.value("runtimeVersion").toString(parentVersion);
-    meta.autoPosition  = true;
-    meta.available     = false; // will be resolved during preload
-    return meta;
-}
-
-bool CharacterSpineActionController::buildSkinConfigForGeneral(const QString &generalName,
-                                                                const QString &skinName,
-                                                                SkinConfig &out) const
-{
-    if (!_jsonSkinDatabase.contains(generalName)) return false;
-    const QHash<QString, QJsonObject> &skins = _jsonSkinDatabase[generalName];
-    if (!skins.contains(skinName)) return false;
-
-    const QJsonObject &obj = skins[skinName];
-    out = SkinConfig(); // reset
-
-    out.basePath       = obj.value("basePath").toString();
     out.runtimeVersion = obj.value("runtimeVersion").toString();
-    out.idleScale      = static_cast<float>(obj.value("scale").toDouble(0.35));
-    out.idleAlpha      = static_cast<float>(obj.value("idleAlpha").toDouble(1.0));
-    out.background     = obj.value("background").toString();
+    out.idleScale = static_cast<float>(obj.value("scale").toDouble(0.35));
+    out.idleAlpha = static_cast<float>(obj.value("idleAlpha").toDouble(1.0));
+    out.background = obj.value("background").toString();
 
-    // Parse action sub-objects
-    if (obj.contains("attack") && obj.value("attack").isObject()) {
-        out.actions[ActionType::Attack] = parseActionFromJson(
-            obj.value("attack").toObject(), out.runtimeVersion);
-    }
-    if (obj.contains("special") && obj.value("special").isObject()) {
-        out.actions[ActionType::Special] = parseActionFromJson(
-            obj.value("special").toObject(), out.runtimeVersion);
-    }
-    if (obj.contains("entrance") && obj.value("entrance").isObject()) {
-        out.actions[ActionType::Entrance] = parseActionFromJson(
-            obj.value("entrance").toObject(), out.runtimeVersion);
-    }
+    auto parseAction = [&](const QString &key, ActionType type) {
+        if (obj.contains(key) && obj.value(key).isObject()) {
+            QJsonObject a = obj.value(key).toObject();
+            ActionMetadata meta;
+            meta.animationName = a.value("animationName").toString();
+            meta.skelBasePath = a.value("skelBasePath").toString();
+            meta.scale = static_cast<float>(a.value("scale").toDouble(out.idleScale));
+            meta.flipX = a.value("flipX").toBool(false);
+            meta.showTime = static_cast<float>(a.value("showTime").toDouble(0));
+            meta.runtimeVersion = a.value("runtimeVersion").toString(out.runtimeVersion);
+            meta.available = false;
+            out.actions[type] = meta;
+        }
+    };
 
-    // Indicator line config
+    parseAction("attack", ActionType::Attack);
+    parseAction("special", ActionType::Special);
+    parseAction("entrance", ActionType::Entrance);
+
     if (obj.contains("indicator") && obj.value("indicator").isObject()) {
-        QJsonObject indObj = obj.value("indicator").toObject();
-        out.indicator.enabled      = indObj.value("enabled").toBool(false);
-        out.indicator.skelName     = indObj.value("skelName").toString();
-        out.indicator.effectName   = indObj.value("effectName").toString();
-        out.indicator.delay        = static_cast<float>(indObj.value("delay").toDouble(0.3));
-        out.indicator.speed        = static_cast<float>(indObj.value("speed").toDouble(1.0));
-        out.indicator.effectDelay  = static_cast<float>(indObj.value("effectDelay").toDouble(0.5));
-        out.indicator.runtimeVersion = indObj.value("runtimeVersion").toString(out.runtimeVersion);
+        QJsonObject ind = obj.value("indicator").toObject();
+        out.indicator.enabled = ind.value("enabled").toBool(false);
+        out.indicator.skelName = ind.value("skelName").toString();
+        out.indicator.effectName = ind.value("effectName").toString();
+        out.indicator.delay = static_cast<float>(ind.value("delay").toDouble(0.3));
+        out.indicator.speed = static_cast<float>(ind.value("speed").toDouble(1.0));
+        out.indicator.effectDelay = static_cast<float>(ind.value("effectDelay").toDouble(0.5));
+        out.indicator.runtimeVersion = ind.value("runtimeVersion").toString(out.runtimeVersion);
+    }
+}
+
+void CharacterSpineActionController::registerDynamicSkin(const QString &playerId,
+                                                          const QString &resolvedGeneral,
+                                                          int skinIndex,
+                                                          bool isPrimary)
+{
+    Q_UNUSED(skinIndex);
+    QString rootPath = buildDynamicSkinRoot(resolvedGeneral);
+    QString fullBasePath = rootPath; // relative, combined with asset prefix later
+
+    qDebug("[SpineAction] registerDynamicSkin player='%s' general='%s' root='%s'",
+           qPrintable(playerId), qPrintable(resolvedGeneral), qPrintable(rootPath));
+
+    // Probe skeleton to discover animations
+    SpineGlItem *probe = new SpineGlItem();
+    if (!probe->loadSpine(fullBasePath)) {
+        qDebug("[SpineAction]   no dynamic skin at '%s'", qPrintable(fullBasePath));
+        delete probe;
+        return;
     }
 
-    return true;
+    // Build SkinConfig: start with defaults
+    SkinConfig config;
+    config.basePath = fullBasePath;
+    config.idleScale = 0.35f;
+    config.idleAlpha = 1.0f;
+
+    // Load config.json if present (override defaults)
+    QString configPath = _assetPrefix + rootPath + "/config.json";
+    QFile configFile(configPath);
+    if (configFile.open(QIODevice::ReadOnly)) {
+        QJsonDocument doc = QJsonDocument::fromJson(configFile.readAll());
+        if (!doc.isNull() && doc.isObject()) {
+            parseSkinConfigFromJson(doc.object(), config);
+            qDebug("[SpineAction]   loaded config.json");
+        }
+    }
+
+    // Auto-discover actions from skeleton (fills in missing actions)
+    autoDiscoverActions(probe, config);
+
+    // Cache durations
+    for (auto it = config.actions.begin(); it != config.actions.end(); ++it) {
+        ActionMetadata &meta = it.value();
+        float dur = probe->animationDurationByName(meta.animationName);
+        if (dur > 0) {
+            meta.duration = dur;
+            if (meta.showTime <= 0)
+                meta.showTime = dur;
+            meta.available = true;
+        } else {
+            qWarning("[SpineAction] action '%s' anim '%s' NOT found in skeleton",
+                     actionTypeName(it.key()), qPrintable(meta.animationName));
+        }
+    }
+    delete probe;
+
+    if (config.actions.isEmpty()) {
+        qDebug("[SpineAction]   no actions discovered, skipping");
+        return;
+    }
+
+    QString skinId = QString("%1_%2").arg(resolvedGeneral).arg(skinIndex);
+    registerSkin(playerId, skinId, config, isPrimary);
 }
 
-bool CharacterSpineActionController::hasDynamicSkin(const QString &generalName) const
+bool CharacterSpineActionController::hasDynamicSkin(const QString &resolvedGeneral,
+                                                    int skinIndex) const
 {
-    return _jsonSkinDatabase.contains(generalName);
-}
-
-QString CharacterSpineActionController::defaultSkinNameForGeneral(const QString &generalName) const
-{
-    if (!_jsonSkinDatabase.contains(generalName)) return QString();
-    const QHash<QString, QJsonObject> &skins = _jsonSkinDatabase[generalName];
-    if (skins.isEmpty()) return QString();
-    return skins.begin().key();
+    Q_UNUSED(skinIndex);
+    QString rootPath = buildDynamicSkinRoot(resolvedGeneral);
+    QString fullPath = _assetPrefix + rootPath;
+    return QDir(fullPath).exists();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

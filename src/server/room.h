@@ -542,6 +542,9 @@ public:
 
     const Card*_askForNullification(const Card*trick, ServerPlayer*from, ServerPlayer*to, bool positive);
     void safeSetPlayerProperty(ServerPlayer*player, const char*property_name, const QVariant&value);
+    void requestSummonBetween(ServerPlayer *before, ServerPlayer *after, const QString &general_name);
+    void processPendingSummons();
+    bool hasPendingSummons() const;
 
 protected:
     virtual void run();
@@ -688,6 +691,8 @@ private:
     QHash<QString, QString> m_dualControlReplyOwners;
     QHash<QString, QString> m_dualControlRequestTargets;
 
+    QVariantList m_chatHistory;
+
     QElapsedTimer _m_timeSinceLastSurrenderRequest; // Timer used to ensure that surrender polls are not initiated too frequently
     bool _m_isFirstSurrenderRequest; // We allow the first surrender poll to go through regardless of the timer.
 
@@ -748,6 +753,17 @@ private:
         ServerPlayer*m_to;
     };
     void _setupChooseGeneralRequestArgs(ServerPlayer*player);
+
+    struct SummonRequest {
+        ServerPlayer *before;
+        ServerPlayer *after;
+        QString general_name;
+    };
+
+    QList<SummonRequest> m_pendingSummons;
+    QList<ServerPlayer*> m_dynamicPlayers;
+
+    ServerPlayer* insertPlayerMidGame(ServerPlayer *before, ServerPlayer *after, const QString &general_name);
 
 private slots:
     void reportDisconnection();

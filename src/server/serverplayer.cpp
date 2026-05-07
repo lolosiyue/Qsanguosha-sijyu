@@ -1271,7 +1271,7 @@ void ServerPlayer::marshal(ServerPlayer *player) const
 		room->notifyProperty(player, this, "seat");
 		if (getPhase() != NotActive)
 			room->notifyProperty(player, this, "phase");
-	} else {
+	} else if (!isRest()) {
 		room->notifyProperty(player, this, "alive");
 		room->notifyProperty(player, this, "role");
 		room->doNotify(player, S_COMMAND_KILL_PLAYER, objectName());
@@ -1330,6 +1330,14 @@ void ServerPlayer::marshal(ServerPlayer *player) const
 			moves << move;
 		}
 	}
+
+	for (int i = 0; i < 5; i++) {
+		JsonArray arg;
+		arg << objectName() << i << getEquipArea(i);
+		room->doNotify(player, S_COMMAND_SET_EQUIP_AREA_COUNT, arg);
+	}
+
+	room->notifyProperty(player, this, "hasjudgearea");
 
 	if (moves.length()>0) {
 		QList<ServerPlayer*> players;
@@ -2061,6 +2069,17 @@ void ServerPlayer::setSkillDescriptionSwap(const QString &skill_name, const QStr
 	arg << value;
 	room->doBroadcastNotify(S_COMMAND_SKILL_DESCRIPTION_SWAP, arg);
 	Player::setSkillDescriptionSwap(skill_name, key, value);
+}
+
+void ServerPlayer::setCardDescriptionSwap(const QString &card_name, const QString &key, const QString &value)
+{
+	JsonArray arg;
+	arg << objectName();
+	arg << card_name;
+	arg << key;
+	arg << value;
+	room->doBroadcastNotify(S_COMMAND_UPDATE_CARD_DESC, arg);
+	Player::setCardDescriptionSwap(card_name, key, value);
 }
 
 void ServerPlayer::setAvatarIcon(const QString &avatar_name, bool isSmall)

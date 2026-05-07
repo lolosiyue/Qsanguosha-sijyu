@@ -153,25 +153,21 @@ public:
     /// are cached from the resulting animation list.
     void preloadPlayer(const QString &playerId);
 
+    // ─── Dynamic skin registration (path-based) ─────────────────────────────
 
-    // ─── JSON config loading ────────────────────────────────────
+    /// Register a dynamic skin by resolved general name + skinIndex.
+    /// The skin is identified by path: heroskin/dynamicSkin/[general]_[skinIndex]/dynamicSkin/
+    /// @param playerId  Unique seat id (e.g. "player_0").
+    /// @param resolvedGeneral The resolved general name (after addResourceAlias lookup).
+    /// @param skinIndex The heroskin index (0 = default).
+    /// @param isPrimary Whether this is the primary (true) or deputy (false) skin.
+    void registerDynamicSkin(const QString &playerId,
+                              const QString &resolvedGeneral,
+                              int skinIndex,
+                              bool isPrimary);
 
-    /// Load the master dynamic-skin configuration JSON.
-    /// @param jsonPath  Path to dynamicSkinConfig.json.
-    /// @return true if parsed successfully.
-    bool loadConfigFromJson(const QString &jsonPath);
-
-    /// Look up a SkinConfig for a general + skin name from the loaded JSON.
-    /// Returns true and fills `out` if found.
-    bool buildSkinConfigForGeneral(const QString &generalName,
-                                   const QString &skinName,
-                                   SkinConfig &out) const;
-
-    /// Check whether any dynamic skin entry exists for a given general.
-    bool hasDynamicSkin(const QString &generalName) const;
-
-    /// Return the first available skin name for a general (or empty).
-    QString defaultSkinNameForGeneral(const QString &generalName) const;
+    /// Check if a dynamic skin path exists.
+    bool hasDynamicSkin(const QString &resolvedGeneral, int skinIndex) const;
 
     // ─── Action triggering ──────────────────────────────────────
 
@@ -196,6 +192,19 @@ public:
 
     /// Mark player as dead (blocks future actions, fades out pop-outs).
     void setPlayerAlive(const QString &playerId, bool alive);
+
+    // ─── Dynamic skin registration (path-based) ─────────────────────────────
+
+    /// Register a dynamic skin by resolved general name + skinIndex.
+    /// The skin is identified by path: heroskin/dynamicSkin/[general]_[skinIndex]/dynamicSkin/
+    /// @param playerId  Unique seat id (e.g. "player_0").
+    /// @param resolvedGeneral The resolved general name (after addResourceAlias lookup).
+    /// @param skinIndex The heroskin index (0 = default).
+    /// @param isPrimary Whether this is the primary (true) or deputy (false) skin.
+    void registerDynamicSkin(const QString &playerId,
+                              const QString &resolvedGeneral,
+                              int skinIndex,
+                              bool isPrimary);
 
     // ─── Cooldown settings ──────────────────────────────────────
 
@@ -256,9 +265,6 @@ private:
 
     /// Active indicator line items (auto-cleaned).
     QList<SpineIndicatorLine *> _activeIndicators;
-
-    /// Loaded JSON config: generalName → { skinName → QJsonObject }
-    QHash<QString, QHash<QString, QJsonObject>> _jsonSkinDatabase;
 
     // ─── Tuning ─────────────────────────────────────────────────
     int   _cooldownMs      = 40;

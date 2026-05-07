@@ -62,6 +62,7 @@ Client::Client(QObject *parent, const QString &filename)
 	m_callbacks[S_COMMAND_SETUP] = &Client::setup;
 	m_callbacks[S_COMMAND_NETWORK_DELAY_TEST] = &Client::networkDelayTest;
 	m_callbacks[S_COMMAND_ADD_PLAYER] = &Client::addPlayer;
+	m_callbacks[S_COMMAND_ADD_PLAYER_DYNAMIC] = &Client::onPlayerAddedMidGame;
 	m_callbacks[S_COMMAND_REMOVE_PLAYER] = &Client::removePlayer;
 	m_callbacks[S_COMMAND_START_IN_X_SECONDS] = &Client::startInXs;
 	m_callbacks[S_COMMAND_ARRANGE_SEATS] = &Client::arrangeSeats;
@@ -295,6 +296,10 @@ void Client::signup()
 		arg << Config.value("EnableReconnection").toBool();
 		arg << QString(Config.UserName.toUtf8().toBase64());
 		arg << Config.UserAvatar;
+
+		if (m_original_self == nullptr)
+			m_original_self = Self;
+
 		notifyServer(S_COMMAND_SIGNUP, arg);
 	}
 }
@@ -447,6 +452,28 @@ void Client::addPlayer(const QVariant &player_info)
 
 	m_players << player;
 	//alive_count++;
+	emit player_added(player);
+}
+
+void Client::onPlayerAddedMidGame(const QVariant &player_info)
+{
+	if (!player_info.canConvert<JsonArray>()) return;
+	JsonArray info = player_info.value<JsonArray>();
+	if (info.size() < 3) return;
+
+	QString name = info[0].toString();
+	QString screen_name = QString::fromUtf8(QByteArray::fromBase64(info[1].toString().toLatin1()));
+	QString avatar = info[2].toString();
+
+	if (getPlayer(name)) return;
+
+	ClientPlayer *player = new ClientPlayer(this);
+	player->setObjectName(name);
+	player->setScreenName(screen_name);
+	player->setProperty("avatar", avatar);
+	player->setSeat(m_players.length() + 1);
+
+	m_players << player;
 	emit player_added(player);
 }
 
@@ -1241,50 +1268,19 @@ void Client::playAudio(const QVariant &history)
 void Client::updateCardDescription(const QVariant &arg)
 {
     JsonArray req = arg.value<JsonArray>();
-    if (req.length() < 2) return;
-    
-    QString card_name = req[0].toString();
-    QVariantMap placeholders = req[1].toMap();
-    
-    // 获取翻译模板（必须使用 :card_name1）
-    QString translated = Sanguosha->translate(":" + card_name + "1");
-    
-    // 如果翻译不存在（返回的是键本身），说明没有定义模板，直接返回
-    if (translated == (":" + card_name + "1") || translated.startsWith(":")) {
-        return;
-    }
-    
-    // 按照占位符长度从长到短排序（避免短的先替换导致问题）
-    QList<QString> keys = placeholders.keys();
-    std::sort(keys.begin(), keys.end(), [](const QString &a, const QString &b) {
-        return a.length() > b.length();
-    });
-    
-    // 遍历所有占位符进行替换
-    foreach (const QString &placeholder, keys) {
-        QString value = placeholders[placeholder].toString();
-        QString replaced_value;
-        
-        // 如果值包含|，说明是列表，需要分割后逐个翻译
-        if (value.contains("|")) {
-            QStringList parts = value.split("|", QString::SkipEmptyParts);
-            QStringList translated_parts;
-            foreach (const QString &part, parts) {
-                translated_parts << Sanguosha->translate(part);
-            }
-            replaced_value = translated_parts.join("<br/>");
-        } else {
-            // 单个值，直接翻译
-            replaced_value = Sanguosha->translate(value);
-        }
-        
-        translated.replace(placeholder, replaced_value);
-    }
-    
-    Sanguosha->addTranslationEntry(":" + card_name, translated);
-    
-    // 触发装备区刷新，让新的描述立即显示
-    emit card_description_updated(card_name);
+    if (req.length() < 4) return;
+
+    QString player_name = req[0].toString();
+    QString card_name = req[1].toString();
+    QString key = req[2].toString();
+    QString value = req[3].toString();
+
+    ClientPlayer *player = qobject_cast<ClientPlayer*>(Sanguosha->getPlayer(player_name));
+    if (!player) return;
+
+    player->setCardDescriptionSwap(card_name, key, value);
+
+    emit card_description_updated(player_name, card_name);
 }
 
 int Client::alivePlayerCount() const

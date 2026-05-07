@@ -412,7 +412,7 @@ void Card::addCharTag(QString tag)
 	setProperty("CharTag", CharTag);
 }
 
-QString Card::getDescription() const
+QString Card::getDescription(const Player *owner) const
 {
 	QString desc = Sanguosha->translate(":" + objectName());
 	QString schar = property("YingBianEffects").toString();
@@ -447,6 +447,13 @@ QString Card::getDescription() const
 		}
 	}
 	desc.replace("\n", "<br/>");
+
+	if (owner) {
+		QHash<QString, QString> swap = owner->getCardDescriptionSwap(objectName());
+		foreach (QString key, swap.keys())
+			desc.replace(key, swap[key]);
+	}
+
 	if(Config.EnableCardDescription)
 		return QString("<b>【%1】</b> %2 %3").arg(getName()).arg(getClassName()).arg(desc);
 	return QString("<b>【%1】</b> %2").arg(getName()).arg(desc);
