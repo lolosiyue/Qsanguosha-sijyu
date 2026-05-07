@@ -246,6 +246,12 @@ public:
     void removePileOpen(const QString &pile_name, const QString &player);
     virtual QList<int> getHandPile() const;
 
+    QStringList getGeneralPile(const QString &pile_name) const;
+    QStringList getGeneralPileNames() const;
+    QString getGeneralPileName(const QString &general_name) const;
+    bool generalPileOpen(const QString &pile_name, const QString &player) const;
+    void setGeneralPileOpen(const QString &pile_name, const QString &player);
+
     void addHistory(const QString &name, int times = 1);
     void clearHistory(const QString &name = "");
     bool hasUsed(const QString &card_class, bool actual = false) const;
@@ -357,6 +363,8 @@ public:
 protected:
     QMap<QString, int> marks;
     QMap<QString, QList<int> > piles;
+    QMap<QString, QStringList> general_piles;
+    QMap<QString, QStringList> general_pile_open;
     QStringList skills, acquired_skills;
     mutable QMutex m_skillCacheMutex;
     mutable QMap<QString, bool> m_skillValidityCache;

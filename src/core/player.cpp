@@ -1327,6 +1327,38 @@ QList<int> Player::getHandPile() const
     return result;
 }
 
+QStringList Player::getGeneralPile(const QString &pile_name) const
+{
+    return general_piles.value(pile_name);
+}
+
+QStringList Player::getGeneralPileNames() const
+{
+    return general_piles.keys();
+}
+
+QString Player::getGeneralPileName(const QString &general_name) const
+{
+    foreach(QString pile_name, general_piles.keys()){
+        if (general_piles[pile_name].contains(general_name))
+            return pile_name;
+    }
+    return QString();
+}
+
+bool Player::generalPileOpen(const QString &pile_name, const QString &player) const
+{
+    return general_pile_open[pile_name].contains(player);
+}
+
+void Player::setGeneralPileOpen(const QString &pile_name, const QString &player)
+{
+    if (player == ".")
+        general_pile_open[pile_name].clear();
+    else if (!general_pile_open[pile_name].contains(player))
+        general_pile_open[pile_name].append(player);
+}
+
 void Player::addHistory(const QString &name, int times)
 {
     history[name] += times;
@@ -1616,6 +1648,8 @@ void Player::copyFrom(Player *p)
 {
     marks = QMap<QString, int>(p->marks);
     piles = QMap<QString, QList<int> >(p->piles);
+    general_piles = QMap<QString, QStringList>(p->general_piles);
+    general_pile_open = QMap<QString, QStringList>(p->general_pile_open);
     acquired_skills = QStringList(p->acquired_skills);
     flags = QSet<QString>(p->flags);
     history = QHash<QString, int>(p->history);

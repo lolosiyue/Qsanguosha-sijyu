@@ -473,6 +473,89 @@ void PlayerCardContainer::updatePile(const QString &pile_name)
     }
 }
 
+void PlayerCardContainer::updateGeneralPile(const QString &pile_name)
+{
+    ClientPlayer *player = (ClientPlayer *)sender();
+    if (!player) player = m_player;
+    if (!player) return;
+
+    QStringList generals = player->getGeneralPile(pile_name);
+
+    if (generals.isEmpty()) {
+        if (_m_privatePiles.contains(pile_name)) {
+            _m_privatePiles[pile_name]->deleteLater();
+            _m_privatePiles.remove(pile_name);
+        }
+    } else {
+        QPushButton *button;
+        if (_m_privatePiles.contains(pile_name)) {
+            button = (QPushButton *)_m_privatePiles[pile_name]->widget();
+            if(button->menu()) button->menu()->deleteLater();
+        } else {
+            button = new QPushButton;
+            button->setObjectName(pile_name);
+            button->setProperty("general_pile", "true");
+            button->setStyleSheet("background-color:darkblue; color:white;");
+            button->setFixedSize(60, 30);
+            _m_privatePiles[pile_name] = new QGraphicsProxyWidget(_getPileParent());
+            _m_privatePiles[pile_name]->setObjectName(pile_name);
+            _m_privatePiles[pile_name]->setZValue(-2.0);
+            _m_privatePiles[pile_name]->setFlag(QGraphicsItem::ItemIsMovable, false);
+            _m_privatePiles[pile_name]->setFlag(QGraphicsItem::ItemIsSelectable, false);
+            _m_privatePiles[pile_name]->setAcceptHoverEvents(false);
+            _m_privatePiles[pile_name]->setWidget(button);
+        }
+
+        QMenu* menu = new QMenu(button);
+
+        QString text = Sanguosha->translate(pile_name);
+        text.append(QString("(%1)").arg(generals.length()));
+        button->setText(text);
+        menu->setProperty("general_pile", "true");
+
+        foreach(const QString &general_name, generals) {
+            const General *general = Sanguosha->getGeneral(general_name);
+            if (general) {
+                QAction *action = menu->addAction(QIcon(G_ROOM_SKIN.getGeneralPixmap(general_name, QSanRoomSkin::S_GENERAL_ICON_SIZE_TINY)),
+                                                Sanguosha->translate(general_name));
+                action->setToolTip(general->getSkillDescription(true));
+                action->setData(general_name);
+            }
+        }
+
+        if(generals.length() > 0)
+            button->setMenu(menu);
+        else {
+            delete menu;
+            button->setMenu(NULL);
+        }
+    }
+
+    QStringList treasureNames;
+    foreach(const Card *e, player->getEquips())
+        treasureNames << e->objectName();
+
+    QList<QGraphicsProxyWidget *> widgets_treasure, widgets_general, widgets_card;
+    foreach (QGraphicsProxyWidget *widget, _m_privatePiles.values()) {
+        QPushButton *btn = (QPushButton *)widget->widget();
+        QString pile_name = widget->objectName();
+
+        if (treasureNames.contains(pile_name)) {
+            widgets_treasure << widget;
+        } else if (btn && btn->property("general_pile").toBool()) {
+            widgets_general << widget;
+        } else {
+            widgets_card << widget;
+        }
+    }
+
+    QList<QGraphicsProxyWidget *> sorted_widgets = widgets_treasure + widgets_general + widgets_card;
+
+    for (int i = 0; i < sorted_widgets.length(); i++) {
+        sorted_widgets[i]->setPos(_m_layout->m_privatePileStartPos + i * _m_layout->m_privatePileStep);
+    }
+}
+
 void PlayerCardContainer::updateMark(const QString &mark_name, int mark_num)
 {
     /*ClientPlayer *player = (ClientPlayer *)sender();
@@ -1189,6 +1272,7 @@ void PlayerCardContainer::setPlayer(ClientPlayer *player)
         connect(player, SIGNAL(drank_changed()), this, SLOT(updateDrankState()));
         connect(player, SIGNAL(duanchang_invoked()), this, SLOT(updateDuanchang()));
         connect(player, SIGNAL(pile_changed(QString)), this, SLOT(updatePile(QString)));
+        connect(player, SIGNAL(general_pile_changed(QString)), this, SLOT(updateGeneralPile(QString)));
         connect(player, SIGNAL(Mark_changed(QString, int)), this, SLOT(updateMark(QString, int)));
         connect(player, SIGNAL(role_changed(QString)), _m_roleComboBox, SLOT(fix(QString)));
         connect(player, SIGNAL(hp_changed()), this, SLOT(updateHp()));

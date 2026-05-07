@@ -241,6 +241,21 @@ void ClientPlayer::syncPileCards(const QString &pile_name, QList<int> card_ids)
 	emit pile_changed(pile_name);
 }
 
+void ClientPlayer::changeGeneralPile(const QString &name, bool add, QStringList general_names)
+{
+	if (add)
+		general_piles[name].append(general_names);
+	else {
+		foreach (QString general_name, general_names) {
+			general_piles[name].removeOne(general_name);
+		}
+		if (general_piles[name].isEmpty())
+			general_piles.remove(name);
+	}
+	if (!name.startsWith("#"))
+		emit general_pile_changed(name);
+}
+
 QString ClientPlayer::getDeathPixmapPath() const
 {
 	QString basename = getRole();

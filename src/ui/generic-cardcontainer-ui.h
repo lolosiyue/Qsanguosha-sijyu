@@ -128,6 +128,7 @@ public slots:
     void updateDrankState();
     virtual void updateDuanchang();
     void updatePile(const QString &pile_name);
+    void updateGeneralPile(const QString &pile_name);
     void updateMark(const QString &mark_name, int mark_num);
     void updateRole(const QString &role);
     void updateMarks();

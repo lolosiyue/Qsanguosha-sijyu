@@ -8,7 +8,7 @@
 #include "recorder.h"
 #include "banpair.h"
 //#include "lua-wrapper.h"
-//#include "json.h"
+#include "json.h"
 #include "gamerule.h"
 //#include "util.h"
 #include "exppattern.h"
@@ -1526,6 +1526,89 @@ void ServerPlayer::exchangeFreelyFromPrivatePile(const QString &skill_name, cons
 	DummyCard *dummy = new DummyCard(will_to_handcard_x);
 	room->obtainCard(this, dummy, CardMoveReason(CardMoveReason::S_REASON_EXCHANGE_FROM_PILE, objectName()), false);
 	delete dummy;
+}
+
+void ServerPlayer::clearOneGeneralPile(const QString &pile_name)
+{
+	if (!general_piles.contains(pile_name)) return;
+
+	general_piles.remove(pile_name);
+	general_pile_open.remove(pile_name);
+
+	QVariantMap data;
+	data["pile_name"] = pile_name;
+	data["general_names"] = QStringList();
+	data["add"] = false;
+
+	QJsonDocument doc = QJsonDocument::fromVariant(data);
+	room->broadcastProperty(this, "general_pile_changed", doc.toJson(QJsonDocument::Compact));
+}
+
+void ServerPlayer::clearGeneralPiles()
+{
+	foreach(QString pile_name, general_piles.keys())
+		clearOneGeneralPile(pile_name);
+	general_piles.clear();
+	general_pile_open.clear();
+}
+
+void ServerPlayer::addGeneralToPile(const QString &pile_name, const QString &general_name, bool open, QList<ServerPlayer *> open_players)
+{
+	QStringList general_names;
+	general_names << general_name;
+	return addGeneralToPile(pile_name, general_names, open, open_players);
+}
+
+void ServerPlayer::addGeneralToPile(const QString &pile_name, const QStringList &general_names, bool open, QList<ServerPlayer *> open_players)
+{
+	if (general_names.isEmpty()) return;
+
+	if (open)
+		open_players = room->getAlivePlayers();
+	else {
+		setGeneralPileOpen(pile_name, ".");
+		if (open_players.isEmpty()) {
+			open_players << this;
+		}
+	}
+
+	foreach(ServerPlayer *p, open_players)
+		setGeneralPileOpen(pile_name, p->objectName());
+
+	general_piles[pile_name].append(general_names);
+
+	QVariantMap data;
+	data["pile_name"] = pile_name;
+	data["general_names"] = general_names;
+	data["add"] = true;
+
+	QStringList open_player_names;
+	foreach(ServerPlayer *p, open_players)
+		open_player_names << p->objectName();
+	data["open_players"] = open_player_names;
+
+	QJsonDocument doc = QJsonDocument::fromVariant(data);
+	room->broadcastProperty(this, "general_pile_changed", doc.toJson(QJsonDocument::Compact));
+}
+
+void ServerPlayer::removeGeneralFromPile(const QString &pile_name, const QString &general_name)
+{
+	if (!general_piles.contains(pile_name)) return;
+
+	general_piles[pile_name].removeOne(general_name);
+
+	if (general_piles[pile_name].isEmpty()) {
+		general_piles.remove(pile_name);
+		general_pile_open.remove(pile_name);
+	}
+
+	QVariantMap data;
+	data["pile_name"] = pile_name;
+	data["general_names"] = QStringList() << general_name;
+	data["add"] = false;
+
+	QJsonDocument doc = QJsonDocument::fromVariant(data);
+	room->broadcastProperty(this, "general_pile_changed", doc.toJson(QJsonDocument::Compact));
 }
 
 void ServerPlayer::gainAnExtraTurn(QList<Phase> phases)
