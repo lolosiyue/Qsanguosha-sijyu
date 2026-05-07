@@ -96,7 +96,7 @@ public:
     QString getSkillName(bool removePrefix = true) const;
     virtual void setSkillName(const QString &skill_name);
     virtual void addCharTag(QString tag);
-    QString getDescription() const;
+    QString getDescription(const Player *owner = nullptr) const;
     virtual bool isGift() const;
     virtual void setGift(bool flag);
 

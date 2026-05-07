@@ -4496,6 +4496,7 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 					if (Sanguosha->translate(sentence) != sentence){
 						JsonArray body;
 						body << player->objectName() << Sanguosha->translate(sentence).toUtf8().toBase64();
+						m_chatHistory << body;
 						doBroadcastNotify(S_COMMAND_SPEAK, body);
 					}
 					broadcastSkillInvoke(new_sentence);
@@ -4507,6 +4508,7 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 					if (Sanguosha->translate(_sentence) != _sentence){
 						JsonArray body;
 						body << player->objectName() << Sanguosha->translate(_sentence).toUtf8().toBase64();
+						m_chatHistory << body;
 						doBroadcastNotify(S_COMMAND_SPEAK, body);
 					}
 					broadcastSkillInvoke(_new_sentence.first(), _new_sentence.last().toInt());
@@ -4520,6 +4522,7 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 			if (Sanguosha->translate(sentence) != sentence){
 				JsonArray body;
 				body << player->objectName() << Sanguosha->translate(sentence).toUtf8().toBase64();
+				m_chatHistory << body;
 				doBroadcastNotify(S_COMMAND_SPEAK, body);
 			}
 			Sanguosha->playAudioEffect(filename);
@@ -4556,6 +4559,7 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 				QString msg_base64 = friendly_msg.toUtf8().toBase64();
 				JsonArray body;
 				body << QString("server") << msg_base64;
+				m_chatHistory << body;
 				doBroadcastNotify(S_COMMAND_SPEAK, body);
 			}
 			return;
@@ -4669,6 +4673,7 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 		if (broadcast){
 			JsonArray body;
 			body << player->objectName() << arg;
+			m_chatHistory << body;
 			doBroadcastNotify(S_COMMAND_SPEAK, body);
 		}
 	}
@@ -5122,6 +5127,89 @@ bool Room::hasWelfare(const ServerPlayer*player) const
 	return player->isLord()&&player_count > 4;
 }
 
+bool Room::hasPendingSummons() const
+{
+    return !m_pendingSummons.isEmpty();
+}
+
+void Room::requestSummonBetween(ServerPlayer *before, ServerPlayer *after,
+                                const QString &general_name)
+{
+    SummonRequest req;
+    req.before = before;
+    req.after = after;
+    req.general_name = general_name;
+    m_pendingSummons.append(req);
+}
+
+void Room::processPendingSummons()
+{
+    foreach (SummonRequest req, m_pendingSummons) {
+        insertPlayerMidGame(req.before, req.after, req.general_name);
+    }
+    m_pendingSummons.clear();
+    m_dynamicPlayers.append(new_player);
+}
+
+ServerPlayer* Room::insertPlayerMidGame(ServerPlayer *before, ServerPlayer *after,
+                                       const QString &general_name)
+{
+    Q_ASSERT(before != NULL && after != NULL && !general_name.isEmpty());
+    if (!before || !after || general_name.isEmpty()) return NULL;
+
+    if (before->getNextAlive() != after) {
+        Q_ASSERT(false);
+        return NULL;
+    }
+
+    ServerPlayer *new_player = new ServerPlayer(this);
+
+    new_player->setObjectName(QString("sgs%1").arg(m_players.length() + 1));
+    new_player->setGeneralName(general_name);
+    new_player->setProperty("avatar_general", general_name);
+
+    const General *gen = Sanguosha->getGeneral(general_name);
+    int hp = gen ? gen->getMaxHp() : 3;
+    new_player->setMaxHp(hp);
+    new_player->setHp(hp);
+    new_player->setState("robot");
+
+    before->setNext(new_player);
+    new_player->setNext(after);
+
+    int idx = m_players.indexOf(before);
+    m_players.insert(idx + 1, new_player);
+
+    idx = m_alivePlayers.indexOf(before);
+    if (idx >= 0 || before->isAlive())
+        m_alivePlayers.insert(idx + 1, new_player);
+
+    JsonArray info;
+    info << new_player->objectName()
+         << QString::fromUtf8(QByteArray::fromBase64(new_player->screenName().toUtf8().toBase64()))
+         << general_name;
+    doBroadcastNotify(S_COMMAND_ADD_PLAYER_DYNAMIC, info);
+
+    for (int i = 0; i < m_players.length(); ++i) {
+        m_players[i]->setSeat(i + 1);
+        broadcastProperty(m_players[i], "seat");
+    }
+
+    QStringList player_circle;
+    for (int i = 0; i < m_players.length(); i++)
+        player_circle << m_players[i]->objectName();
+    doBroadcastNotify(S_COMMAND_ARRANGE_SEATS, JsonUtils::toJsonArray(player_circle));
+
+    foreach (const Skill *skill, new_player->getVisibleSkillList()) {
+        const TriggerSkill *ts = qobject_cast<const TriggerSkill*>(skill);
+        if (ts) getThread()->addTriggerSkill(ts);
+    }
+
+    drawCards(new_player, 4, "InitialHandCards");
+
+    return new_player;
+}
+
 ServerPlayer*Room::getFront(ServerPlayer*a, ServerPlayer*b) const
 {
 	QList<ServerPlayer*> players = getAllPlayers(true);
@@ -5154,6 +5242,14 @@ void Room::marshal(ServerPlayer*player)
 
 	doNotify(player, S_COMMAND_ARRANGE_SEATS, JsonUtils::toJsonArray(player_circle));
 
+	foreach(ServerPlayer*p, m_dynamicPlayers){
+		JsonArray info;
+		info << p->objectName()
+		     << QString::fromUtf8(QByteArray::fromBase64(p->screenName().toUtf8().toBase64()))
+		     << p->getGeneralName();
+		doNotify(player, S_COMMAND_ADD_PLAYER_DYNAMIC, info);
+	}
+
 	doNotify(player, S_COMMAND_START_IN_X_SECONDS, QVariant(0));
 
 	foreach(ServerPlayer*p, m_players){
@@ -5163,6 +5259,7 @@ void Room::marshal(ServerPlayer*player)
 			notifyProperty(player, p, "general2");
 
 		notifyProperty(player, p, "state");
+		notifyProperty(player, p, "RestPlayer");
 	}
 
 	if (game_state>0)
@@ -5170,6 +5267,36 @@ void Room::marshal(ServerPlayer*player)
 
 	foreach(ServerPlayer*p, m_players)
 		p->marshal(player);
+
+	foreach(ServerPlayer*p, m_players){
+		QMap<QString, QHash<QString, QString> > swaps = p->getAllSkillDescriptionSwaps();
+		foreach(QString skill_name, swaps.keys()){
+			QHash<QString, QString> swap = swaps[skill_name];
+			foreach(QString key, swap.keys()){
+				JsonArray arg;
+				arg << p->objectName();
+				arg << skill_name;
+				arg << key;
+				arg << swap[key];
+				doNotify(player, S_COMMAND_SKILL_DESCRIPTION_SWAP, arg);
+			}
+		}
+	}
+
+	foreach(ServerPlayer*p, m_players){
+		QMap<QString, QHash<QString, QString> > swaps = p->getAllCardDescriptionSwaps();
+		foreach(QString card_name, swaps.keys()){
+			QHash<QString, QString> swap = swaps[card_name];
+			foreach(QString key, swap.keys()){
+				JsonArray arg;
+				arg << p->objectName();
+				arg << card_name;
+				arg << key;
+				arg << swap[key];
+				doNotify(player, S_COMMAND_UPDATE_CARD_DESC, arg);
+			}
+		}
+	}
 
 	foreach (ServerPlayer *controlled, getAllPlayers(true)) {
 		if (controlled == player)
@@ -5182,7 +5309,12 @@ void Room::marshal(ServerPlayer*player)
 		doNotify(player, S_COMMAND_SET_KNOWN_CARDS, knownCardsArg);
 	}
 
+	foreach(const QVariant &chatMsg, m_chatHistory)
+		doNotify(player, S_COMMAND_SPEAK, chatMsg);
+
 	notifyProperty(player, player, "flags", "-marshalling");
+
+	doNotify(player, S_COMMAND_SWITCH_CONTEXT, player->objectName());
 
 	if (game_state>0){
 		doNotify(player, S_COMMAND_UPDATE_PILE, QVariant(m_drawPile->length()));
@@ -5199,7 +5331,8 @@ void Room::marshal(ServerPlayer*player)
 
 void Room::startGame()
 {
-	m_alivePlayers = m_players;/*
+	m_alivePlayers = m_players;
+	m_chatHistory.clear();/*
 	if (mode == "08_defense"){
 		QList<int> next_list;
 		next_list << 0 << 7 << 1 << 6 << 2 << 5 << 3 << 4;
