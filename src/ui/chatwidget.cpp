@@ -138,7 +138,7 @@ ChatWidget::ChatWidget()
 
     chat_face_board = new MyPixmapItem(QPixmap("image/system/chatface/faceboard.png"), this);
     chat_face_board->setSize(160, 180);
-    chat_face_board->setPos(-160 + 74, -180 - 1); // 24 + 24 + 24 + 2 = 74
+    chat_face_board->setPos(-160 + 74, -180 - 1);
     chat_face_board->setZValue(10000);
     chat_face_board->setVisible(false);
     chat_face_board->itemName = "faceboard";
@@ -157,6 +157,9 @@ ChatWidget::ChatWidget()
     connect(returnButton, SIGNAL(clicked()), this, SLOT(sendText()));
     connect(flowerButton, SIGNAL(clicked()), this, SLOT(onFlowerButtonClicked()));
     connect(eggButton, SIGNAL(clicked()), this, SLOT(onEggButtonClicked()));
+
+    easyTextPanel = new EasyTextPanel();
+    connect(easyTextPanel, SIGNAL(textSelected(QString)), this, SLOT(onEasyTextSelected(QString)));
 }
 
 ChatWidget::~ChatWidget()
@@ -165,8 +168,35 @@ ChatWidget::~ChatWidget()
 
 void ChatWidget::showEasyTextBoard()
 {
-    easy_text_board->setVisible(!easy_text_board->isVisible());
+    easy_text_board->setVisible(false);
     chat_face_board->setVisible(false);
+
+    if (easyTextPanel->isVisible()) {
+        easyTextPanel->hidePanel();
+    } else {
+        QString general_names;
+        if (Self) {
+            QString general1 = Self->getGeneralName();
+            QString general2 = Self->getGeneral2Name();
+
+            if (!general1.isEmpty() && !general2.isEmpty())
+                general_names = general1 + "," + general2;
+            else if (!general1.isEmpty())
+                general_names = general1;
+            else if (!general2.isEmpty())
+                general_names = general2;
+        }
+
+        easyTextPanel->updateEasyTexts(general_names);
+
+        QPointF chatPos = scenePos();
+        QPoint globalPos = scene()->views().first()->mapToGlobal(
+            scene()->views().first()->mapFromScene(chatPos)
+        );
+
+        easyTextPanel->move(globalPos.x() - 320, globalPos.y() - 400);
+        easyTextPanel->showPanel();
+    }
 }
 
 
@@ -195,6 +225,30 @@ void ChatWidget::onEggButtonClicked()
     chat_face_board->setVisible(false);
     easy_text_board->setVisible(false);
     emit gift_mode_activated("egg");
+}
+
+void ChatWidget::onEasyTextSelected(const QString &text)
+{
+    emit chat_widget_msg(text);
+    easyTextPanel->hidePanel();
+}
+
+void ChatWidget::updateEasyTexts(const QString &general_name)
+{
+    QString target = general_name;
+    if (target.isEmpty() && Self) {
+        QString general1 = Self->getGeneralName();
+        QString general2 = Self->getGeneral2Name();
+
+        if (!general1.isEmpty() && !general2.isEmpty())
+            target = general1 + "," + general2;
+        else if (!general1.isEmpty())
+            target = general1;
+        else if (!general2.isEmpty())
+            target = general2;
+    }
+
+    easyTextPanel->updateEasyTexts(target);
 }
 
 QRectF ChatWidget::boundingRect() const

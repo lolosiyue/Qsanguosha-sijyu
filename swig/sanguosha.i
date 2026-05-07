@@ -464,6 +464,11 @@ public:
 	void addToRenPile(int card_id, const char*skill_name = "");
 	void addToRenPile(QList<int> card_ids, const char*skill_name = "");
 	void exchangeFreelyFromPrivatePile(const char*skill_name, const char*pile_name, int upperlimit = 1000, bool include_equip = false);
+	void addGeneralToPile(const char*pile_name, const char*general_name, bool open = true, QList<ServerPlayer*> open_players = QList<ServerPlayer*>());
+	void addGeneralToPile(const char*pile_name, QStringList &general_names, bool open = true, QList<ServerPlayer*> open_players = QList<ServerPlayer*>());
+	void removeGeneralFromPile(const char*pile_name, const char*general_name);
+	void clearOneGeneralPile(const char*pile_name);
+	void clearGeneralPiles();
 	void gainAnExtraTurn(QList<Player::Phase> phases = QList<Player::Phase>());
 
 	void throwEquipArea(int i);
@@ -1246,6 +1251,36 @@ public:
 	void addTranslationEntry(const char*key, const char*value);
 	QString translate(const char*to_translate, bool initial = false) const;
 	void addModes(const char*key, const char*value, const char*roles = "");
+	void addGameMode(const GameModeStruct &mode);
+	void setGameModeShuffleRoles(const char *mode_id, bool shuffle_roles);
+	void setGameModeLordWelfare(const char *mode_id, bool lord_welfare);
+
+	void addModeGroup(const char *groupName, QStringList modeIds);
+	QStringList getGroupModes(const char *groupName) const;
+	QString getModeGroup(const char *modeId) const;
+
+	bool hasSkipGeneralSelection(const char *mode) const;
+	void addSkipGeneralMode(const char *mode);
+	void removeSkipGeneralMode(const char *mode);
+	bool hasShowRoleMode(const char *mode) const;
+	void addShowRoleMode(const char *mode);
+	void removeShowRoleMode(const char *mode);
+
+	QMap<QString, GameModeStruct> getAvailableModes() const;
+	GameModeStruct getGameMode(const char *mode_id) const;
+	QString getModeName(const char*mode) const;
+	int getPlayerCount(const char*mode) const;
+	QString getRoles(const char*mode) const;
+	QString getRolesSingle(const char*mode) const;
+	QStringList getRoleList(const char*mode) const;
+	int getRoleIndex() const;
+
+	QMap<QString, QString> roleMap;
+	void initializeRoleMap();
+	void addRoleMapping(const char* roleName, const char* abbreviation);
+	QString getRoleAbbreviation(const char* roleName) const;
+	QString getRoleByAbbreviation(const char* targetValue, const char* defaultKey = "") const;
+	QStringList getAllRegisteredRoles() const;
 
 	void addPackage(Package*package);
 	void addBanPackage(const char*package_name);
@@ -1264,19 +1299,14 @@ public:
 	QColor getKingdomColor(const char*kingdom) const;
 	QString getSetupString() const;
 
-	QMap<QString, QString> getAvailableModes() const;
+	QMap<QString, GameModeStruct> getAvailableModes() const;
+	GameModeStruct getGameMode(const char*mode_id) const;
 	QString getModeName(const char*mode) const;
 	int getPlayerCount(const char*mode) const;
 	QString getRoles(const char*mode) const;
+	QString getRolesSingle(const char*mode) const;
 	QStringList getRoleList(const char*mode) const;
 	int getRoleIndex() const;
-
-	QMap<QString, QString> roleMap;
-	void initializeRoleMap();
-	void addRoleMapping(const char* roleName, const char* abbreviation);
-	QString getRoleAbbreviation(const char* roleName) const;
-	QString getRoleByAbbreviation(const char* targetValue, const char* defaultKey = "") const;
-	QStringList getAllRegisteredRoles() const;
 
 	const CardPattern*getPattern(const char*name) const;
 	bool matchPattern(const char*pattern, const Player*player, const Card*card) const;
