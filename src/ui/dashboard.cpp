@@ -1570,11 +1570,12 @@ void Dashboard::showCardFilterContainer()
             QString cardName = Sanguosha->translate(cItem->getCard()->objectName());
             QString text = QString("%1 (%2)").arg(cardName).arg(count);
 
-            label->setHtml(QString("<div style='background-color:rgba(0,0,0,200); color:#FFD700; padding:2px 8px; font-weight:bold; font-size:14px; border:1px solid #FFD700; border-radius:4px; text-align:center;'>%1</div>").arg(text));
-            label->setTextWidth(-1);
+            label->setHtml(QString("<div style='background-color:rgba(0,0,0,200); color:#FFD700; padding:2px 8px; font-weight:bold; font-size:14px; border:1px solid #FFD700; border-radius:4px;'>%1</div>").arg(text));
+            label->setTextWidth(G_COMMON_LAYOUT.m_cardNormalWidth);
+            label->setAlignment(Qt::AlignHCenter);
 
             QRectF textBounds = label->boundingRect();
-            label->setPos(-textBounds.width() / 2, -textBounds.height() / 2 + 15);
+            label->setPos(-G_COMMON_LAYOUT.m_cardNormalWidth / 2, -textBounds.height() / 2 + 15);
 
             _m_filterUIElements.append(label);
         }
@@ -1582,7 +1583,7 @@ void Dashboard::showCardFilterContainer()
 
     Button *closeBtn = new Button(tr("Close"), 0.8);
     closeBtn->setParentItem(_m_filterContainer);
-    closeBtn->setPos(container_width - 80, G_COMMON_LAYOUT.m_cardNormalHeight + 20);
+    closeBtn->setPos(_m_filterContainer->boundingRect().width() - 80, G_COMMON_LAYOUT.m_cardNormalHeight + 20);
     connect(closeBtn, SIGNAL(clicked()), this, SLOT(hideFilterContainer()), Qt::QueuedConnection);
     _m_filterUIElements.append(closeBtn);
 }
@@ -1654,7 +1655,7 @@ void Dashboard::filterCardChosen(int card_id)
 
             Button *closeBtn = new Button(tr("Close"), 0.8);
             closeBtn->setParentItem(_m_filterContainer);
-            closeBtn->setPos(container_width - 80, G_COMMON_LAYOUT.m_cardNormalHeight + 20);
+            closeBtn->setPos(_m_filterContainer->boundingRect().width() - 80, G_COMMON_LAYOUT.m_cardNormalHeight + 20);
             connect(closeBtn, SIGNAL(clicked()), this, SLOT(hideFilterContainer()), Qt::QueuedConnection);
             _m_filterUIElements.append(closeBtn);
         }
