@@ -656,6 +656,12 @@ void Room::revivePlayer(ServerPlayer*player, bool sendlog, bool throw_mark, bool
 		log.from = player;
 		sendLog(log);
 	}
+
+    foreach(const Skill *skill, player->getSkillList()){
+        if (skill->getFrequency() == Skill::Club && !skill->getClubName().isEmpty())
+            player->addClub(skill->getClubName());
+    }
+
 	turn = rev.toInt();
 	rev = turn+1;
 	thread->trigger(Revived, this, player, rev);
@@ -734,6 +740,11 @@ void Room::killPlayer(ServerPlayer*victim, DamageStruct*reason, HpLostStruct*hpl
 	}
 	//thread->trigger(Death, this, victim, data);
 	if (victim->isAlive()) return;
+
+    foreach(const Skill* skill, victim->getSkillList()){
+        if (skill->getFrequency() == Skill::Club && !skill->getClubName().isEmpty())
+            clearClub(skill->getClubName());
+    }
 
 	try {
 		thread->trigger(BuryVictim, this, victim, data);
@@ -980,6 +991,13 @@ void Room::slashResult(const SlashEffectStruct&effect, const Card*jink)
 void Room::attachSkillToPlayer(ServerPlayer*player, const QString&skill_name)
 {
 	player->acquireSkill(skill_name);
+
+    const Skill *skill = Sanguosha->getSkill(skill_name);
+    if (skill && skill->isVisible()) {
+        if (skill->getFrequency() == Skill::Club && !skill->getClubName().isEmpty())
+            player->addClub(skill->getClubName());
+    }
+
 	JsonArray args;
 	args << player->objectName() << skill_name;
 	doNotify(player, S_COMMAND_ATTACH_SKILL, args);
@@ -996,6 +1014,9 @@ void Room::detachSkillFromPlayer(ServerPlayer*player, const QString&skill_name, 
 		const Skill*skill = Sanguosha->getSkill(skill_name);
 		if(skill){
 			if (skill->isVisible()){
+                if (skill->getFrequency() == Skill::Club && !skill->getClubName().isEmpty())
+                    clearClub(skill->getClubName());
+
 				JsonArray args;
 				args << QSanProtocol::S_GAME_EVENT_DETACH_SKILL << player->objectName() << skill_name;
 				doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
@@ -2719,6 +2740,32 @@ void Room::setPlayerMark(ServerPlayer*player, const QString&mark, int value, QLi
 	else doBroadcastNotify(only_viewers, S_COMMAND_SET_MARK, arg);
 
 	if (trigger) thread->trigger(MarkChanged, this, player, data);
+}
+
+void Room::clearClub(const QString &club_name){
+    foreach(ServerPlayer *p, getAlivePlayers()){
+        if (p->hasClub(club_name)){
+            p->removeCurrentClub();
+        }
+    }
+}
+
+QList<ServerPlayer *> Room::getPlayersByClub(const QString &club_name) const{
+    QList<ServerPlayer *> ps;
+    foreach(ServerPlayer *p, getAlivePlayers()){
+        if (p->hasClub(club_name))
+            ps.append(p);
+    }
+    return ps;
+}
+
+QList<ServerPlayer *> Room::getPlayersWithNoClub() const{
+    QList<ServerPlayer *> ps;
+    foreach(ServerPlayer *p, getAlivePlayers()){
+        if (!p->hasClub())
+            ps.append(p);
+    }
+    return ps;
 }
 
 void Room::addPlayerMark(ServerPlayer*player, const QString&mark, int add_num, QList<ServerPlayer*> only_viewers)
@@ -6668,6 +6715,8 @@ void Room::acquireSkill(ServerPlayer*player, const Skill*skill, bool open, bool 
 	if (skill->isVisible()){
 		if (getmark&&!skill->getLimitMark().isEmpty())
 			setPlayerMark(player, skill->getLimitMark(), 1);
+        if (skill->getFrequency() == Skill::Club && !skill->getClubName().isEmpty())
+            player->addClub(skill->getClubName());
 		if (open){
 			JsonArray args;
 			args << QSanProtocol::S_GAME_EVENT_ACQUIRE_SKILL << player->objectName() << skill->objectName();

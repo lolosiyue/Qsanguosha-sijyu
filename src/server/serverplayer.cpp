@@ -983,6 +983,28 @@ void ServerPlayer::loseAllMarks(const QString &mark_name)
 	loseMark(mark_name, getMark(mark_name));
 }
 
+void ServerPlayer::removeCurrentClub(){
+    if (hasClub()){
+        QString club_name = getClubName();
+        LogMessage log;
+        log.type = "$quit_club";
+        log.from = this;
+        log.arg = club_name;
+        room->sendLog(log);
+        loseAllMarks("@amclub_" + club_name);
+    }
+}
+
+void ServerPlayer::addClub(const QString &club_name){
+    removeCurrentClub();
+    LogMessage log;
+    log.type = "$join_club";
+    log.from = this;
+    log.arg = club_name;
+    room->sendLog(log);
+    gainMark("@amclub_" + club_name);
+}
+
 void ServerPlayer::gainHujia(int n, int max_num)
 {
 	if (n <= 0) return;

@@ -150,6 +150,9 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 			foreach (const Skill *skill,p->getVisibleSkillList()) {
 				if(skill->isLimitedSkill()&&(!skill->isLordSkill()||p->hasLordSkill(skill,true)))
 					room->setPlayerMark(p,skill->getLimitMark(),1);
+                if(skill->getFrequency() == Skill::Club && !skill->getClubName().isEmpty()
+                    && (!skill->isLordSkill() || p->hasLordSkill(skill->objectName())))
+                    p->addClub(skill->getClubName());
 			}
 		}
 		if(room->getMode()=="06_ol") {
@@ -1529,6 +1532,8 @@ void GameRule::doBossModeDifficultySettings(ServerPlayer *lord) const
                 foreach (const Skill *skill,p->getSkillList()) {
                     if(!skill->getLimitMark().isEmpty())
                         room->setPlayerMark(p,skill->getLimitMark(),1);
+                    if(skill->getFrequency() == Skill::Club && !skill->getClubName().isEmpty())
+                        p->addClub(skill->getClubName());
                 }
             }
         }

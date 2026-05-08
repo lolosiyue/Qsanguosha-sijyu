@@ -19,7 +19,7 @@ public:
         Compulsory,
         Limited,
         Wake,
-        //Change,
+        Club,
         NotCompulsory
     };
 
@@ -43,6 +43,8 @@ public:
     void playAudioEffect(int index = -1, bool superpose = true) const;
     virtual Frequency getFrequency(const Player *target = nullptr) const;
     QString getLimitMark() const;
+    QString getClubName() const;
+    QString getClubMark() const;
     QString getWakedSkills() const;
     QStringList getSources() const;
     bool setProperty(const char* name, const QVariant& value);
@@ -50,6 +52,7 @@ public:
 protected:
     Frequency frequency;
     QString limit_mark;
+    QString club_name;
     bool attached_lord_skill;
     bool change_skill;
     bool limited_skill;

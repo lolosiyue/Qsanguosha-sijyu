@@ -74,6 +74,9 @@ public:
     void loseMark(const QString &mark, int n = 1);
     void loseAllMarks(const QString &mark_name);
 
+    void addClub(const QString &club_name);
+    void removeCurrentClub();
+
     void gainHujia(int n = 1, int max_num = 5);
     void loseHujia(int n = 1);
     void loseAllHujias();
