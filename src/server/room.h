@@ -66,6 +66,9 @@ public:
     QList<ServerPlayer*> getPlayers() const;
     QList<ServerPlayer*> getAllPlayers(bool include_dead = false) const;
     QList<ServerPlayer*> getAlivePlayers() const;
+    void clearClub(const QString &club_name);
+    QList<ServerPlayer *> getPlayersByClub(const QString &club_name) const;
+    QList<ServerPlayer *> getPlayersWithNoClub() const;
     QList<ServerPlayer *> getPathBetween(ServerPlayer *from, ServerPlayer *to, bool include_from = false, bool include_to = false) const;
     QList<ServerPlayer *> getClockwisePath(ServerPlayer *from, ServerPlayer *to, bool include_from = false, bool include_to = false) const;
     QList<ServerPlayer *> getCounterclockwisePath(ServerPlayer *from, ServerPlayer *to, bool include_from = false, bool include_to = false) const;

@@ -245,6 +245,10 @@ public:
 	int getHujia() const;
 	QStringList getMarkNames() const;
 
+	bool hasClub(const char *club_name) const;
+	bool hasClub() const;
+	QString getClubName() const;
+
 	void setChained(bool chained);
 	bool isChained() const;
 

@@ -274,6 +274,16 @@ QString Skill::getLimitMark() const
     return limit_mark;
 }
 
+QString Skill::getClubName() const
+{
+    return club_name;
+}
+
+QString Skill::getClubMark() const
+{
+    return "@amclub_" + club_name;
+}
+
 QString Skill::getWakedSkills() const
 {
     return waked_skills;

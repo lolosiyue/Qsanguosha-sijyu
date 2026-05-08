@@ -1235,6 +1235,25 @@ QStringList Player::getMarkNames() const
     return marks.keys();
 }
 
+bool Player::hasClub(const QString &club_name) const
+{
+    return getMark("@amclub_" + club_name) > 0;
+}
+
+bool Player::hasClub() const
+{
+    return getClubName() != "";
+}
+
+QString Player::getClubName() const{
+    foreach(QString name, getMarkNames()){
+        if (name.startsWith("@amclub_")){
+            return name.right(name.length() - 8);
+        }
+    }
+    return "";
+}
+
 bool Player::canSlash(const Player *other, const Card *slash, bool distance_limit,
     int rangefix, const QList<const Player *> &others) const
 {
