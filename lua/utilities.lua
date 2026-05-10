@@ -1,12 +1,30 @@
 
 -- the iterator of QList object
 local qlist_iterator = function(list,n)
-	if n<list:length()-1 then
-		return n+1,list:at(n+1) -- the next element of list
+	-- Add error checking to prevent nil method calls
+	if not list then
+		error("qlist_iterator: list is nil", 2)
+	end
+	if type(list) ~= "userdata" and type(list) ~= "table" then
+		error("qlist_iterator: list is not a valid type (got " .. type(list) .. ")", 2)
+	end
+	if type(list) == "userdata" and not list.length then
+		error("qlist_iterator: list object has no 'length' method. Type: " .. tostring(list), 2)
+	end
+	
+	-- Original logic with safe call
+	local len = type(list) == "table" and #list or list:length()
+	if n < len - 1 then
+		local next_item = type(list) == "table" and list[n+2] or list:at(n+1)
+		return n+1, next_item -- the next element of list
 	end
 end
 
 function sgs.qlist(list)
+	-- Add validation before passing to iterator
+	if not list then
+		error("sgs.qlist: received nil list\n" .. debug.traceback(), 2)
+	end
 	return qlist_iterator,list,-1
 end
 
@@ -241,7 +259,8 @@ sgs.CommandType = {
 	"S_COMMAND_CHANGE_TABLE_BG",
 	"S_COMMAND_OPERATION_TIMEOUT",
 	"S_COMMAND_WEAPON_RANGE",
-	"S_COMMAND_PLAY_AUDIO"
+	"S_COMMAND_PLAY_AUDIO",
+    "S_COMMAND_CHANGE_MOVIE"
 }
 
 for i,command in ipairs(sgs.CommandType)do
