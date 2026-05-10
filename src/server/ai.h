@@ -37,6 +37,8 @@ public:
     virtual QString askForKingdom(QStringList kingdoms) = 0;
     virtual bool askForSkillInvoke(const QString &skill_name, const QVariant &data) = 0;
     virtual QString askForChoice(const QString &skill_name, const QString &choices, const QVariant &data) = 0;
+    virtual QString askForTriggerOrder(const QString &reason, QMap<ServerPlayer*, QStringList> &skills,
+                                      bool optional, const QVariant &data) = 0;
     virtual QList<int> askForDiscard(const QString &reason, int discard_num, int min_num, bool optional, bool include_equip, const QString &pattern = ".") = 0;
     virtual const Card *askForNullification(const Card *trick, ServerPlayer *from, ServerPlayer *to, bool positive) = 0;
     virtual int askForCardChosen(ServerPlayer *who, const QString &flags, const QString &reason, Card::HandlingMethod method) = 0;
@@ -70,6 +72,8 @@ public:
     virtual QString askForKingdom(QStringList kingdoms);
     virtual bool askForSkillInvoke(const QString &skill_name, const QVariant &data);
     virtual QString askForChoice(const QString &skill_name, const QString &choices, const QVariant &data);
+    virtual QString askForTriggerOrder(const QString &reason, QMap<ServerPlayer*, QStringList> &skills,
+                                      bool optional, const QVariant &data);
     virtual QList<int> askForDiscard(const QString &reason, int discard_num, int min_num, bool optional, bool include_equip, const QString &pattern = ".");
     virtual const Card *askForNullification(const Card *trick, ServerPlayer *from, ServerPlayer *to, bool positive);
     virtual int askForCardChosen(ServerPlayer *who, const QString &flags, const QString &reason, Card::HandlingMethod method);

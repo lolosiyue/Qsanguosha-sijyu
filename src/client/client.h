@@ -36,6 +36,7 @@ public:
         AskForShowOrPindian = 0x0C,
         AskForGeneralTaken = 0x0D,
         AskForArrangement = 0x0E,
+        AskForTriggerOrder = 0x0F,
 
         RespondingUse = 0x11,
         RespondingForDiscard = 0x21,
@@ -100,6 +101,7 @@ public:
     void setup(const QVariant &setup_str);
     void networkDelayTest(const QVariant &);
     void addPlayer(const QVariant &player_info);
+    void onPlayerAddedMidGame(const QVariant &player_info);
     void removePlayer(const QVariant &player_name);
     void startInXs(const QVariant &);
     void arrangeSeats(const QVariant &seats);
@@ -175,6 +177,7 @@ public:
     void askForGuanxing(const QVariant &);
     void showAllCards(const QVariant &);
     void askForGongxin(const QVariant &);
+    void askForTriggerOrder(const QVariant &);
     void askForAssign(const QVariant &); // Assign roles at the beginning of game
     void askForSurrender(const QVariant &);
     void askForLuckCard(const QVariant &);
@@ -331,6 +334,7 @@ signals:
     void roles_got(const QString &scheme, const QStringList &roles);
     void directions_got();
     void orders_got(QSanProtocol::Game3v3ChooseOrderCommand reason);
+    void triggers_got(const QString &reason, const QStringList &skills, bool optional);
 
     void seats_arranged(const QList<const ClientPlayer *> &seats);
     void hp_changed(const QString &who, int delta, int nature, int losthj);

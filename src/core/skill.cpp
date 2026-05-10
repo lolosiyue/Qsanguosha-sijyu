@@ -12,9 +12,12 @@
 #include "exppattern.h"
 #include <src/util/ThreadSafeHelper.h>
 
+int Skill::m_globalInstanceCount = 0;
+
 Skill::Skill(const QString &name, Frequency frequency)
     : frequency(frequency), attached_lord_skill(name.endsWith("&")), change_skill(false),
-	hide_skill(false), shiming_skill(false), lord_skill(name.endsWith("$"))
+	hide_skill(false), shiming_skill(false), lord_skill(name.endsWith("$")),
+	m_instanceId(++m_globalInstanceCount)
 {
     limited_skill = frequency == Limited;
     QString copy = name;
@@ -58,6 +61,11 @@ bool Skill::isShiMingSkill() const
 bool Skill::shouldBeVisible(const Player *Self) const
 {
     return Self != nullptr;
+}
+
+bool Skill::isEquipSkill() const
+{
+    return false;
 }
 
 QString Skill::getDescription(const Player *target) const
@@ -456,6 +464,10 @@ bool TriggerSkill::canWake(TriggerEvent, ServerPlayer *player, QVariant, Room *)
     return player->getMark(objectName())<1;//||getFrequency(player) != Skill::Wake;
 }
 
+void TriggerSkill::record(TriggerEvent, Room *, ServerPlayer *, QVariant &, ServerPlayer *) const
+{
+}
+
 bool TriggerSkill::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data, ServerPlayer *) const
 {
     return trigger(triggerEvent,room,player,data);
@@ -545,6 +557,99 @@ bool GameStartSkill::trigger(TriggerEvent, Room *, ServerPlayer *player, QVarian
 {
     onGameStart(player);
     return false;
+}
+
+TriggerV2Skill::TriggerV2Skill(const QString &name)
+    : TriggerSkill(name)
+{
+}
+
+TriggerList TriggerV2Skill::triggerable(TriggerEvent, Room*, ServerPlayer*, QVariant&) const
+{
+    return TriggerList();
+}
+
+void TriggerV2Skill::record(TriggerEvent, Room *, ServerPlayer *, QVariant &, ServerPlayer *) const
+{
+}
+
+bool TriggerV2Skill::cost(TriggerEvent, Room *, ServerPlayer *, QVariant &, ServerPlayer *) const
+{
+    return true;
+}
+
+bool TriggerV2Skill::effect(TriggerEvent, Room *, ServerPlayer *, QVariant &, ServerPlayer *) const
+{
+    return false;
+}
+
+bool TriggerV2Skill::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+                             QVariant &data, ServerPlayer *owner) const
+{
+    bool do_cost = cost(triggerEvent, room, player, data, owner);
+    if (!do_cost) return false;
+    return effect(triggerEvent, room, player, data, owner);
+}
+
+void TriggerV2Skill::willInvoke(SkillContext &ctx) const
+{
+    Q_UNUSED(ctx);
+}
+
+void TriggerV2Skill::targetConfirming(SkillContext &ctx) const
+{
+    Q_UNUSED(ctx);
+}
+
+void TriggerV2Skill::invoking(SkillContext &ctx) const
+{
+    Q_UNUSED(ctx);
+}
+
+void TriggerV2Skill::effect(SkillContext &ctx) const
+{
+    Q_UNUSED(ctx);
+}
+
+void TriggerV2Skill::effectFinished(SkillContext &ctx) const
+{
+    Q_UNUSED(ctx);
+}
+
+QString TriggerV2Skill::parseSkillName(const QString &fullName, QString *source,
+                                       QString *target, int *multiplier, int *instanceId)
+{
+    if (multiplier) *multiplier = 1;
+    if (source) *source = QString();
+    if (target) *target = QString();
+    if (instanceId) *instanceId = 0;
+
+    QString name = fullName;
+
+    int split = -1;
+    if ((split = name.indexOf('*')) != -1) {
+        if (multiplier) *multiplier = name.mid(split + 1).toInt();
+        name = name.left(split);
+    }
+
+    if ((split = name.indexOf('#')) != -1) {
+        if (instanceId) *instanceId = name.mid(split + 1).toInt();
+        name = name.left(split);
+    }
+
+    if (name.contains("'")) {
+        QStringList parts = name.split("'");
+        if (source) *source = parts.first();
+        name = parts.last();
+    }
+
+    if (name.contains("->")) {
+        QStringList parts = name.split("->");
+        if (target) *target = parts.last();
+        name = parts.first();
+    }
+
+    return name;
 }
 
 RetrialSkill::RetrialSkill(const QString &name, bool exchange)
@@ -783,6 +888,11 @@ bool WeaponSkill::triggerable(const ServerPlayer *target) const
     return target && target->hasWeapon(objectName());
 }
 
+bool WeaponSkill::isEquipSkill() const
+{
+    return true;
+}
+
 ArmorSkill::ArmorSkill(const QString &name)
     : TriggerSkill(name)
 {
@@ -793,6 +903,11 @@ ArmorSkill::ArmorSkill(const QString &name)
 bool ArmorSkill::triggerable(const ServerPlayer *target) const
 {
     return target && target->hasArmorEffect(objectName());
+}
+
+bool ArmorSkill::isEquipSkill() const
+{
+    return true;
 }
 
 TreasureSkill::TreasureSkill(const QString &name)
@@ -807,6 +922,11 @@ bool TreasureSkill::triggerable(const ServerPlayer *target) const
     return target && target->hasTreasure(objectName());
 }
 
+bool TreasureSkill::isEquipSkill() const
+{
+    return true;
+}
+
 MarkAssignSkill::MarkAssignSkill(const QString &mark, int n)
     : GameStartSkill(QString("#%1-%2").arg(mark).arg(n)), mark_name(mark), n(n)
 {
@@ -819,4 +939,100 @@ void MarkAssignSkill::onGameStart(ServerPlayer *player) const
 
 bool Skill::setProperty(const char* name, const QVariant& value) {
 	return ThreadSafeHelper::setProperty(this, name, value);
+}
+
+Skill::LimitScope Skill::getLimitScope() const
+{
+    return Limit_None;
+}
+
+int Skill::getMaxUsageLimit(const SkillContext &) const
+{
+    return 1;
+}
+
+bool Skill::isUsable(const SkillContext &ctx) const
+{
+    if (!ctx.invoker) return false;
+
+    LimitScope scope = getLimitScope();
+    if (scope == Limit_None) return true;
+    if (scope == Limit_Custom) return checkCustomUsage(ctx);
+
+    int max_limit = getMaxUsageLimit(ctx);
+    QString tag_key = getUsageTagKey(ctx);
+    int current_usage = ctx.invoker->getTag(tag_key).toInt();
+    return current_usage < max_limit;
+}
+
+void Skill::addUsage(const SkillContext &ctx) const
+{
+    if (!ctx.invoker) return;
+
+    LimitScope scope = getLimitScope();
+    if (scope == Limit_None || scope == Limit_Custom) return;
+
+    ServerPlayer *holder = getUsageHolder(ctx);
+    QString tag_key = getUsageTagKey(ctx);
+    int current_usage = holder->getTag(tag_key).toInt();
+    holder->setTag(tag_key, current_usage + 1);
+}
+
+void Skill::resetUsage(ServerPlayer *owner, ServerPlayer *target) const
+{
+    if (!owner) return;
+
+    SkillContext ctx;
+    ctx.invoker = owner;
+    ctx.instanceID = m_instanceId;
+
+    LimitScope scope = getLimitScope();
+    if (scope == Limit_None || scope == Limit_Custom) return;
+
+    if (scope == Limit_Target) {
+        if (!target) return;
+        QString key = QString("Usage_%1_%2_%3-Clear")
+                          .arg(objectName())
+                          .arg(m_instanceId)
+                          .arg(target->objectName());
+        owner->removeTag(key);
+    } else {
+        QString key = getUsageTagKey(ctx);
+        owner->removeTag(key);
+    }
+}
+
+bool Skill::checkCustomUsage(const SkillContext &) const
+{
+    return true;
+}
+
+ServerPlayer *Skill::getUsageHolder(const SkillContext &ctx) const
+{
+    return ctx.owner ? ctx.owner : ctx.invoker;
+}
+
+QString Skill::getUsageTagKey(const SkillContext &ctx) const
+{
+    LimitScope scope = getLimitScope();
+    int instance_id = ctx.instanceID > 0 ? ctx.instanceID : m_instanceId;
+
+    switch (scope) {
+        case Limit_Turn:
+            return QString("Usage_%1_%2-Clear").arg(objectName()).arg(instance_id);
+        case Limit_Round:
+            return QString("Usage_%1_%2_lun").arg(objectName()).arg(instance_id);
+        case Limit_Phase:
+            return QString("Usage_%1_%2-PhaseClear").arg(objectName()).arg(instance_id);
+        case Limit_Game:
+            return QString("Usage_%1_%2_game").arg(objectName()).arg(instance_id);
+        case Limit_Target:
+            if (ctx.targets.isEmpty()) return QString();
+            return QString("Usage_%1_%2_%3-Clear")
+                .arg(objectName())
+                .arg(instance_id)
+                .arg(ctx.targets.first()->objectName());
+        default:
+            return QString();
+    }
 }

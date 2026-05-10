@@ -1303,15 +1303,6 @@ public:
 	QColor getKingdomColor(const char*kingdom) const;
 	QString getSetupString() const;
 
-	QMap<QString, GameModeStruct> getAvailableModes() const;
-	GameModeStruct getGameMode(const char*mode_id) const;
-	QString getModeName(const char*mode) const;
-	int getPlayerCount(const char*mode) const;
-	QString getRoles(const char*mode) const;
-	QString getRolesSingle(const char*mode) const;
-	QStringList getRoleList(const char*mode) const;
-	int getRoleIndex() const;
-
 	const CardPattern*getPattern(const char*name) const;
 	bool matchPattern(const char*pattern, const Player*player, const Card*card) const;
 	bool matchExpPattern(const char*pattern, const Player*player, const Card*card) const;
@@ -1397,9 +1388,26 @@ public:
 
 extern Engine*Sanguosha;
 
+struct SkillContext {
+	SkillContext();
+	QString skill_name;
+	ServerPlayer* invoker;
+	ServerPlayer* owner;
+	QList<ServerPlayer*> targets;
+	QList<ServerPlayer*> updated_targets;
+	const Card* use_card;
+	QVariant original_data;
+	int instanceID;
+	bool is_forced;
+	bool is_canceled;
+	bool bypass_cost;
+	TriggerEvent current_event;
+};
+
 class Skill: public QObject {
 public:
 	enum Frequency { Frequent, NotFrequent, Compulsory, Limited, Wake, NotCompulsory, }; //Change
+	enum LimitScope { Limit_None, Limit_Round, Limit_Turn, Limit_Phase, Limit_Game, Limit_Target, Limit_Custom };
 
 	explicit Skill(const char*name, Frequency frequent = NotFrequent);
 	bool isLordSkill() const;
@@ -1423,6 +1431,15 @@ public:
 	QString getLimitMark() const;
 	QString getWakedSkills() const;
 	bool setProperty(const char*name, const QVariant&value);
+
+	virtual LimitScope getLimitScope() const;
+	virtual int getMaxUsageLimit(const SkillContext& ctx) const;
+	virtual bool isUsable(const SkillContext& ctx) const;
+	virtual void addUsage(const SkillContext& ctx) const;
+	virtual void resetUsage(ServerPlayer* owner, ServerPlayer* target = nullptr) const;
+	virtual bool checkCustomUsage(const SkillContext& ctx) const;
+	virtual ServerPlayer* getUsageHolder(const SkillContext& ctx) const;
+	QString getUsageTagKey(const SkillContext& ctx) const;
 };
 
 %extend Skill {
@@ -1448,6 +1465,27 @@ public:
 	virtual bool canWake(TriggerEvent event, ServerPlayer*player, QVariant&data, Room*room) const;
 
 	bool isGlobal() const;
+};
+
+class TriggerV2Skill: public TriggerSkill {
+public:
+	TriggerV2Skill(const char*name);
+
+	virtual TriggerList triggerable(TriggerEvent triggerEvent, Room*room,
+	                                 ServerPlayer*player, QVariant&data) const;
+	virtual void record(TriggerEvent triggerEvent, Room*room, ServerPlayer*player,
+	                   QVariant&data, ServerPlayer*owner) const;
+	virtual bool cost(TriggerEvent triggerEvent, Room*room, ServerPlayer*player,
+	                  QVariant&data, ServerPlayer*ask_who = NULL) const;
+	virtual bool effect(TriggerEvent triggerEvent, Room*room, ServerPlayer*player,
+	                    QVariant&data, ServerPlayer*ask_who = NULL) const;
+	virtual bool trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*player,
+	                     QVariant&data, ServerPlayer*owner) const;
+	virtual void willInvoke(SkillContext&ctx) const;
+	virtual void targetConfirming(SkillContext&ctx) const;
+	virtual void invoking(SkillContext&ctx) const;
+	virtual void effect(SkillContext&ctx) const;
+	virtual void effectFinished(SkillContext&ctx) const;
 };
 
 class QThread: public QObject {

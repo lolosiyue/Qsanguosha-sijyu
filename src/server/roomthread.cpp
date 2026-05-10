@@ -658,6 +658,191 @@ static bool CompareByPriority(TriggerSkill* a, TriggerSkill* b)
 	return false;
 }
 
+static QStringList mergeSkillNames(const QStringList &names)
+{
+	QStringList result;
+	QMap<QString, int> count;
+	foreach (const QString &name, names) {
+		QString skillName = name;
+		int multiplier = 1;
+		int split = -1;
+		if ((split = name.indexOf('*')) != -1) {
+			skillName = name.left(split);
+			multiplier = name.mid(split + 1).toInt();
+		}
+		count[skillName] += multiplier;
+	}
+	QMap<QString, int>::iterator it;
+	for (it = count.begin(); it != count.end(); ++it) {
+		if (it.value() > 1)
+			result << QString("%1*%2").arg(it.key()).arg(it.value());
+		else
+			result << it.key();
+	}
+	return result;
+}
+
+bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, QVariant &data)
+{
+	QList<const TriggerSkill *> v2_skills;
+	foreach (TriggerSkill *ts, skill_table[triggerEvent]) {
+		if (ts->inherits("TriggerV2Skill"))
+			v2_skills << ts;
+	}
+	if (v2_skills.isEmpty())
+		return false;
+
+	TriggerList trigger_who;
+	foreach (const TriggerSkill *ts, v2_skills) {
+		TriggerV2Skill *v2 = const_cast<TriggerV2Skill *>(qobject_cast<const TriggerV2Skill *>(ts));
+		if (!v2) continue;
+		v2->record(triggerEvent, room, target, data, target);
+		TriggerList list = v2->triggerable(triggerEvent, room, target, data);
+		QMap<ServerPlayer *, QStringList>::iterator it;
+		for (it = list.begin(); it != list.end(); ++it) {
+			ServerPlayer *p = it.key();
+			QStringList &skills = it.value();
+			if (!skills.isEmpty()) {
+				skills = mergeSkillNames(skills);
+				foreach (const QString &skill, skills) {
+					QString skillName = skill;
+					int instanceId = 0;
+					int split = skill.indexOf('#');
+					if (split != -1) {
+						instanceId = skill.mid(split + 1).toInt();
+						skillName = skill.left(split);
+					}
+					if (!p->isSkillInvalid(skillName, instanceId) && !trigger_who[p].contains(skill))
+						trigger_who[p] << skill;
+				}
+			}
+		}
+	}
+
+	if (trigger_who.isEmpty())
+		return false;
+
+	bool broken = false;
+	bool has_compulsory = false;
+	foreach (const QStringList &skills, trigger_who) {
+		foreach (const QString &skill, skills) {
+			QString skillName = skill;
+			int instanceId = 0;
+			int split = -1;
+			if ((split = skill.indexOf('#')) != -1) {
+				instanceId = skill.mid(split + 1).toInt();
+				skillName = skill.left(split);
+			}
+			const TriggerSkill *ts = Sanguosha->getTriggerSkill(skillName, instanceId);
+			if (ts && ts->getFrequency(target) == Skill::Compulsory) {
+				has_compulsory = true;
+				break;
+			}
+		}
+		if (has_compulsory) break;
+	}
+
+	while (!broken && !trigger_who.isEmpty()) {
+		QMap<ServerPlayer *, QStringList> available = trigger_who;
+		QStringList allSkills;
+		QMap<ServerPlayer *, QStringList>::iterator it;
+		for (it = available.begin(); it != available.end(); ++it) {
+			foreach (const QString &skill, it.value()) {
+				if (!allSkills.contains(skill))
+					allSkills << skill;
+			}
+		}
+
+		if (allSkills.isEmpty())
+			break;
+
+		ServerPlayer *p = target;
+		QString reason = "GameRule:TriggerOrder";
+		QString name = room->askForTriggerOrder(p, reason, available, !has_compulsory, data);
+
+		if (name == "cancel" || name.isEmpty())
+			break;
+
+		QString skillName = name;
+		int split = -1;
+		if ((split = name.indexOf('*')) != -1)
+			skillName = name.left(split);
+
+		int instanceId = 0;
+		if ((split = skillName.indexOf('#')) != -1) {
+			instanceId = skillName.mid(split + 1).toInt();
+			skillName = skillName.left(split);
+		}
+
+		const TriggerSkill *result_skill = Sanguosha->getTriggerSkill(skillName, instanceId);
+		if (!result_skill) continue;
+
+		TriggerV2Skill *v2 = const_cast<TriggerV2Skill *>(qobject_cast<const TriggerV2Skill *>(result_skill));
+		if (!v2) continue;
+
+		bool do_effect = v2->cost(triggerEvent, room, target, data, p);
+		if (do_effect) {
+			SkillContext ctx;
+			ctx.skill_name = skillName;
+			ctx.invoker = p;
+			ctx.owner = target;
+			ctx.instanceID = instanceId;
+			ctx.current_event = EventSkillWillInvoke;
+
+			QVariant ctx_data = QVariant::fromValue(ctx);
+			trigger(EventSkillWillInvoke, room, p, ctx_data);
+			ctx = ctx_data.value<SkillContext>();
+			if (ctx.is_canceled) {
+				QStringList &skills = trigger_who[p];
+				skills.removeOne(name);
+				if (skills.isEmpty())
+					trigger_who.remove(p);
+				if (trigger_who.isEmpty())
+					break;
+				continue;
+			}
+
+			ctx.current_event = EventSkillTargetConfirming;
+			ctx.updated_targets = ctx.targets;
+			ctx_data = QVariant::fromValue(ctx);
+			trigger(EventSkillTargetConfirming, room, p, ctx_data);
+			ctx = ctx_data.value<SkillContext>();
+
+			ctx.current_event = EventSkillInvoking;
+			ctx_data = QVariant::fromValue(ctx);
+			trigger(EventSkillInvoking, room, p, ctx_data);
+
+			broken = v2->effect(triggerEvent, room, target, data, p);
+
+			ctx.current_event = EventSkillEffect;
+			ctx_data = QVariant::fromValue(ctx);
+			trigger(EventSkillEffect, room, p, ctx_data);
+
+			ctx.current_event = EventSkillEffectFinished;
+			ctx_data = QVariant::fromValue(ctx);
+			trigger(EventSkillEffectFinished, room, p, ctx_data);
+
+			QStringList &skills = trigger_who[p];
+			skills.removeOne(name);
+			if (skills.isEmpty())
+				trigger_who.remove(p);
+
+			if (trigger_who.isEmpty())
+				break;
+		} else {
+			QStringList &skills = trigger_who[p];
+			skills.removeOne(name);
+			if (skills.isEmpty())
+				trigger_who.remove(p);
+
+			if (trigger_who.isEmpty())
+				break;
+		}
+	}
+
+	return broken;
+}
+
 bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*target, QVariant &data)
 {
 	// push it to event stack
@@ -738,7 +923,7 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
         case MarkChanged:
         case KingdomChanged:
         case Death:
-        case Revive: 
+        case Revive:
         case TurnStart:
         case GameStart:
             need_check_handmax = true;
@@ -754,6 +939,11 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 		room->setTag("DistanceCacheDirty", QVariant(true));
 	}
 	try {
+		broken = triggerV2Skills(triggerEvent, room, target, data);
+		if (broken) {
+			event_stack.pop_back();
+			return broken;
+		}
 		QList<TriggerSkill*>triggered;
 		for (int i = 0; i < skill_table[triggerEvent].length(); i++) {
 			TriggerSkill*ts = skill_table[triggerEvent][i];

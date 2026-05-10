@@ -147,6 +147,7 @@ public:
     bool isLord() const;
 
     void acquireSkill(const QString &skill_name);
+    void acquireSkill(const QString &skill_name, int instanceId);
     void detachSkill(const QString &skill_name);
     void detachAllSkills();
     virtual void addSkill(const QString &skill_name);
@@ -158,6 +159,8 @@ public:
     bool hasInnateSkill(const Skill *skill) const;
     bool hasLordSkill(const QString &skill_name, bool include_lose = false) const;
     bool hasLordSkill(const Skill *skill, bool include_lose = false) const;
+    bool isSkillInvalid(const Skill *skill) const;
+    bool isSkillInvalid(const QString &skill_name, int instanceId = 0) const;
     virtual QString getGameMode() const = 0;
     bool isClientPlayer() const;
 
@@ -280,7 +283,7 @@ public:
     bool hasEquipArea() const;
     void setEquipArea(int i, bool flag);
     void setEquipAreaCount(int i, int count);
-    int getEquipArea(int i = -1);
+    int getEquipArea(int i = -1) const;
     void addEquipArea(int i);
     bool hasWeaponArea() const;
     bool hasArmorArea() const;

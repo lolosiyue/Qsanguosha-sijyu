@@ -1819,6 +1819,65 @@ QString Room::askForChoice(ServerPlayer*player, const QString&skill_name, const 
 	return answer;
 }
 
+QString Room::askForTriggerOrder(ServerPlayer*player, const QString&reason, QMap<ServerPlayer*, QStringList>& skills,
+                               bool optional, const QVariant&data)
+{
+    tryPause();
+    notifyMoveFocus(player, S_COMMAND_TRIGGER_ORDER);
+
+    QStringList allSkills;
+    QMap<ServerPlayer*, QStringList>::iterator it;
+    for (it = skills.begin(); it != skills.end(); ++it) {
+        foreach (const QString &skill, it.value()) {
+            if (!allSkills.contains(skill))
+                allSkills << skill;
+        }
+    }
+
+    if (allSkills.isEmpty())
+        return optional ? "cancel" : QString();
+
+    QString answer;
+    if (allSkills.length() == 1 && optional) {
+        answer = allSkills.first();
+    } else {
+        AI*ai = player->getAI();
+        if (ai) {
+            QElapsedTimer timer;
+            timer.start();
+            answer = ai->askForTriggerOrder(reason, skills, optional, data);
+            if (Config.AIDelay > timer.elapsed())
+                thread->delay(Config.AIDelay - timer.elapsed());
+        } else {
+            answer = "cancel";
+            JsonArray args;
+            args << reason;
+            JsonArray skillsJson;
+            foreach (const QString &skill, allSkills) {
+                skillsJson << skill;
+            }
+            args << skillsJson;
+            args << optional;
+            if (doRequest(player, S_COMMAND_TRIGGER_ORDER, args, !optional)) {
+                QVariant clientReply = player->getClientReply();
+                if (clientReply.canConvert<QString>())
+                    answer = clientReply.toString();
+            }
+        }
+    }
+
+    if (optional && answer == "cancel")
+        return "cancel";
+
+    if (!allSkills.contains(answer)) {
+        answer = allSkills.at(qrand() % allSkills.length());
+    }
+
+    QVariant decisionData = "triggerOrder:" + reason + ":" + answer;
+    thread->trigger(ChoiceMade, this, player, decisionData);
+    return answer;
+}
+
 void Room::obtainCard(ServerPlayer*target, const Card*card, const CardMoveReason&reason, bool visible)
 {
 	moveCardTo(card, target, Player::PlaceHand, reason, visible);
@@ -2044,6 +2103,7 @@ const Card*Room::_askForNullification(const Card*trick, ServerPlayer*from, Serve
 		else
 			raceHumanPlayers << player;
 
+		player->m_commandArgs = args;
 		if (card_use.to.length()>1)
 			doNotify(player, S_COMMAND_NULLIFICATION_ASKED, trick->objectName());
 	}
@@ -5194,10 +5254,11 @@ void Room::requestSummonBetween(ServerPlayer *before, ServerPlayer *after,
 void Room::processPendingSummons()
 {
     foreach (SummonRequest req, m_pendingSummons) {
-        insertPlayerMidGame(req.before, req.after, req.general_name);
+        ServerPlayer *new_player = insertPlayerMidGame(req.before, req.after, req.general_name);
+        if (new_player)
+            m_dynamicPlayers.append(new_player);
     }
     m_pendingSummons.clear();
-    m_dynamicPlayers.append(new_player);
 }
 
 ServerPlayer* Room::insertPlayerMidGame(ServerPlayer *before, ServerPlayer *after,
@@ -6696,8 +6757,19 @@ void Room::filterCards(ServerPlayer*player, QList<const Card*> cards, bool refil
 void Room::acquireSkill(ServerPlayer*player, const Skill*skill, bool open, bool getmark, bool event_and_log)
 {
 	//Q_ASSERT(skill != nullptr);
-	if (!skill||player->hasSkill(skill->objectName(), true)) return;
-	player->acquireSkill(skill->objectName());
+	if (!skill) return;
+
+	int instanceId = 0;
+	const TriggerV2Skill *v2 = qobject_cast<const TriggerV2Skill *>(skill);
+	if (v2) instanceId = v2->getInstanceId();
+
+	if (instanceId > 0) {
+		if (player->hasSkill(QString("%1#%2").arg(skill->objectName()).arg(instanceId), true)) return;
+	} else {
+		if (player->hasSkill(skill->objectName(), true)) return;
+	}
+
+	player->acquireSkill(skill->objectName(), instanceId);
 	/*if (Sanguosha->getSkill(skill_name)==nullptr)
 		Sanguosha->addSkills(QList<const Skill*>() << skill);*/
 	if (skill->inherits("TriggerSkill"))
@@ -6741,7 +6813,166 @@ void Room::acquireSkill(ServerPlayer*player, const Skill*skill, bool open, bool 
 
 void Room::acquireSkill(ServerPlayer*player, const QString&skill_name, bool open, bool getmark, bool event_and_log)
 {
-	acquireSkill(player, Sanguosha->getSkill(skill_name), open, getmark, event_and_log);
+    const Skill *skill = Sanguosha->getSkill(skill_name);
+    if (!skill) return;
+
+    const TriggerV2Skill *v2 = qobject_cast<const TriggerV2Skill *>(skill);
+    if (v2) {
+        int maxInstance = 0;
+        foreach (const QString &acquired, player->getAcquiredSkills()) {
+            QString base;
+            int instId = 0;
+            int split = acquired.indexOf('#');
+            if (split != -1) {
+                base = acquired.left(split);
+                instId = acquired.mid(split + 1).toInt();
+            } else {
+                base = acquired;
+            }
+            if (base == skill_name)
+                maxInstance = qMax(maxInstance, instId);
+        }
+
+        if (player->hasSkill(skill_name, true))
+            ++maxInstance;
+
+        int newInstanceId = maxInstance + 1;
+        QString newKey = QString("%1#%2").arg(skill_name).arg(newInstanceId);
+        if (player->hasSkill(newKey, true)) return;
+
+        player->acquireSkill(skill_name, newInstanceId);
+
+        if (skill->inherits("TriggerSkill"))
+            thread->addTriggerSkill(qobject_cast<const TriggerSkill*>(skill));
+
+        if (skill->isVisible()){
+            if (getmark&&!skill->getLimitMark().isEmpty())
+                setPlayerMark(player, skill->getLimitMark(), 1);
+            if (skill->getFrequency() == Skill::Club && !skill->getClubName().isEmpty())
+                player->addClub(skill->getClubName());
+            if (open){
+                JsonArray args;
+                args << QSanProtocol::S_GAME_EVENT_ACQUIRE_SKILL << player->objectName() << skill->objectName();
+                doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+                if (event_and_log){
+                    LogMessage log;
+                    log.from = player;
+                    log.type = "#AcquireSkill";
+                    log.arg = skill->objectName();
+                    sendLog(log);
+                }
+            }
+            foreach(const Skill*rs, Sanguosha->getRelatedSkills(skill->objectName()))
+                acquireSkill(player, rs);
+            if (event_and_log){
+                QVariant data = skill->objectName();
+                thread->trigger(EventAcquireSkill, this, player, data);
+            }
+        }
+        player->calculateUITooltips();
+        return;
+    }
+
+    acquireSkill(player, skill, open, getmark, event_and_log);
+}
+
+void Room::addSkillInvalidity(ServerPlayer *target, const QString &skillName, const QString &sourceName, const QString &reason, int instanceId)
+{
+    if (!target) return;
+
+    QStringList records = target->getTag("SkillInvalidityRecords").toStringList();
+    QString recordSkillName = skillName;
+    if (instanceId > 0)
+        recordSkillName = QString("%1#%2").arg(skillName).arg(instanceId);
+    QString newRecord = QString("%1|%2|%3").arg(recordSkillName, sourceName, reason);
+
+    if (!records.contains(newRecord)) {
+        QVariant data = recordSkillName;
+        if (thread->trigger(EventSkillInvalidated, this, target, data)) {
+            return;
+        }
+
+        records.append(newRecord);
+        target->setTag("SkillInvalidityRecords", records);
+
+        QString notifyName = skillName;
+        if (instanceId > 0)
+            notifyName = QString("%1#%2").arg(skillName).arg(instanceId);
+        doNotify(target, S_COMMAND_UPDATE_SKILL, notifyName);
+    }
+}
+
+void Room::removeSkillInvalidity(ServerPlayer *target, const QString &skillName, const QString &sourceName, const QString &reason, int instanceId)
+{
+    if (!target) return;
+
+    QStringList records = target->getTag("SkillInvalidityRecords").toStringList();
+    QString recordSkillName = skillName;
+    if (instanceId > 0)
+        recordSkillName = QString("%1#%2").arg(skillName).arg(instanceId);
+    QString targetRecord = QString("%1|%2|%3").arg(recordSkillName, sourceName, reason);
+
+    if (records.removeOne(targetRecord)) {
+        target->setTag("SkillInvalidityRecords", records);
+
+        QString notifyName = skillName;
+        if (instanceId > 0)
+            notifyName = QString("%1#%2").arg(skillName).arg(instanceId);
+        doNotify(target, S_COMMAND_UPDATE_SKILL, notifyName);
+
+        QVariant data = notifyName;
+        thread->trigger(EventSkillValidityRestored, this, target, data);
+    }
+}
+
+void Room::clearSkillInvalidityBySource(ServerPlayer *source)
+{
+    if (!source) return;
+    QString sourceName = source->objectName();
+
+    foreach (ServerPlayer *p, getAlivePlayers()) {
+        QStringList records = p->getTag("SkillInvalidityRecords").toStringList();
+        QStringList recordsToKeep;
+        bool changed = false;
+
+        foreach (const QString &record, records) {
+            QStringList parts = record.split("|");
+            if (parts.size() >= 2) {
+                QString recordSource = parts.at(1);
+                if (recordSource == sourceName) {
+                    changed = true;
+                } else {
+                    recordsToKeep.append(record);
+                }
+            }
+        }
+
+        if (changed) {
+            p->setTag("SkillInvalidityRecords", recordsToKeep);
+
+            foreach (const QString &removed, records) {
+                if (!recordsToKeep.contains(removed)) {
+                    QStringList parts = removed.split("|");
+                    if (parts.size() >= 1) {
+                        QString skillName = parts.at(0);
+                        int instanceId = 0;
+                        int split = skillName.indexOf('#');
+                        if (split != -1) {
+                            instanceId = skillName.mid(split + 1).toInt();
+                            skillName = skillName.left(split);
+                        }
+                        QString notifyName = skillName;
+                        if (instanceId > 0)
+                            notifyName = QString("%1#%2").arg(skillName).arg(instanceId);
+                        doNotify(p, S_COMMAND_UPDATE_SKILL, notifyName);
+
+                        QVariant data = notifyName;
+                        thread->trigger(EventSkillValidityRestored, this, p, data);
+                    }
+                }
+            }
+        }
+    }
 }
 
 void Room::setTag(const QString&key, const QVariant&value)

@@ -134,6 +134,7 @@ public:
     QStringList getSkillNames() const;
     Skill *getRealSkill(const QString &skill_name);
     const TriggerSkill *getTriggerSkill(const QString &skill_name) const;
+    const TriggerSkill *getTriggerSkill(const QString &skill_name, int instanceId) const;
     const ViewAsSkill *getViewAsSkill(const QString &skill_name) const;
     const ViewAsEquipSkill *getViewAsEquipSkill(const QString &skill_name) const;
     const CardLimitSkill *getCardLimitSkill(const QString &skill_name) const;
@@ -224,6 +225,7 @@ private:
     QHash<QString, const QMetaObject *> metaobjects;
     //QHash<QString, QString> className2objectName;
     QHash<QString, QPointer<Skill>> skills;
+    QMap<QPair<QString, int>, const TriggerSkill*> m_triggerSkillsByInstance;
     QHash<QThread *, QObject *> m_rooms;
     mutable QMutex m_mutex;
     QMap<QString, GameModeStruct> modes;

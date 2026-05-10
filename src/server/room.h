@@ -307,6 +307,9 @@ public:
 
     void acquireSkill(ServerPlayer*player, const Skill*skill, bool open = true, bool getmark = true, bool event_and_log = true);
     void acquireSkill(ServerPlayer*player, const QString&skill_name, bool open = true, bool getmark = true, bool event_and_log = true);
+    void addSkillInvalidity(ServerPlayer *target, const QString &skillName, const QString &sourceName, const QString &reason, int instanceId = 0);
+    void removeSkillInvalidity(ServerPlayer *target, const QString &skillName, const QString &sourceName, const QString &reason, int instanceId = 0);
+    void clearSkillInvalidityBySource(ServerPlayer *source);
     void adjustSeats();
     void swapPile();
     inline QList<int> getDiscardPile()
@@ -413,6 +416,8 @@ public:
     bool askForSkillInvoke(ServerPlayer*player, const QString&skill_name, const QVariant&data = QVariant(), bool notify = true);
     QString askForChoice(ServerPlayer*player, const QString&skill_name, const QString&choices, const QVariant&data = QVariant(),
                         const QString&except_choices = "", const QString&tip = "");
+    QString askForTriggerOrder(ServerPlayer*player, const QString&reason, QMap<ServerPlayer*, QStringList>& skills,
+                               bool optional = true, const QVariant&data = QVariant());
     Card*askForDiscard(ServerPlayer*player, const QString&reason, int discard_num, int min_num,
         bool optional = false, bool include_equip = false, const QString&prompt = "", const QString&pattern = ".",
         const QString&skill_name = "");

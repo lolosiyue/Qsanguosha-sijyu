@@ -70,6 +70,67 @@ protected:
     QString tiansuan_type;
 };
 
+class LuaTriggerV2Skill : public TriggerV2Skill
+{
+    Q_OBJECT
+
+public:
+    LuaTriggerV2Skill(const QString &name, Frequency frequency, const QString &limit_mark);
+    LuaTriggerV2Skill(const char *name, Frequency frequency, const char *limit_mark);
+    inline void addEvent(TriggerEvent triggerEvent)
+    {
+        events << triggerEvent;
+    }
+    inline void setViewAsSkill(ViewAsSkill *view_as_skill)
+    {
+        this->view_as_skill = view_as_skill;
+    }
+    inline void setGlobal(bool global)
+    {
+        this->global = global;
+    }
+
+    virtual int getPriority() const;
+
+    virtual TriggerList triggerable(TriggerEvent triggerEvent, Room *room,
+                                     ServerPlayer *player, QVariant &data) const override;
+    virtual void record(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+                       QVariant &data, ServerPlayer *owner) const override;
+    virtual bool cost(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+                     QVariant &data, ServerPlayer *ask_who = NULL) const override;
+    virtual bool effect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+                       QVariant &data, ServerPlayer *ask_who = NULL) const override;
+    virtual void willInvoke(SkillContext &ctx) const override;
+    virtual void targetConfirming(SkillContext &ctx) const override;
+    virtual void invoking(SkillContext &ctx) const override;
+    virtual void effect(SkillContext &ctx) const override;
+    virtual void effectFinished(SkillContext &ctx) const override;
+    virtual bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+                         QVariant &data, ServerPlayer *owner) const override;
+    virtual bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+                         QVariant &data) const override;
+    void onTurnBroken(const char *function_name, TriggerEvent triggerEvent, Room *room,
+                     ServerPlayer *player, QVariant &data, ServerPlayer *ask_who = NULL) const;
+    virtual bool checkCustomUsage(const SkillContext &ctx) const override;
+
+    LuaFunction on_record;
+    LuaFunction can_trigger;
+    LuaFunction on_cost;
+    LuaFunction on_effect;
+    LuaFunction on_turn_broken;
+    LuaFunction check_custom_usage;
+    LuaFunction on_willInvoke;
+    LuaFunction on_targetConfirming;
+    LuaFunction on_invoking;
+    LuaFunction on_effectContext;
+    LuaFunction on_effectFinished;
+
+    int priority;
+
+protected:
+    QString guhuo_type;
+};
+
 class LuaScenarioRule : public ScenarioRule
 {
     Q_OBJECT

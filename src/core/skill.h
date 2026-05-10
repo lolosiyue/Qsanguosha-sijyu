@@ -6,10 +6,32 @@ class QDialog;
 #include "structs.h"
 #include "scenario.h"
 
+struct SkillContext {
+    QString skill_name;
+    ServerPlayer *invoker;
+    ServerPlayer *owner;
+    QList<ServerPlayer *> targets;
+    QList<ServerPlayer *> updated_targets;
+    const Card *use_card;
+    QVariant original_data;
+    int instanceID;
+
+    bool is_forced;
+    bool is_canceled;
+    bool bypass_cost;
+    TriggerEvent current_event;
+
+    SkillContext() : invoker(nullptr), owner(nullptr), use_card(nullptr),
+                     instanceID(0), is_forced(false), is_canceled(false),
+                     bypass_cost(false), current_event(NonTrigger) {}
+};
+Q_DECLARE_METATYPE(SkillContext)
+
 class Skill : public QObject
 {
     Q_OBJECT
     Q_ENUMS(Frequency)
+    Q_ENUMS(LimitScope)
 
 public:
     enum Frequency
@@ -23,6 +45,17 @@ public:
         NotCompulsory
     };
 
+    enum LimitScope
+    {
+        Limit_None,
+        Limit_Round,
+        Limit_Turn,
+        Limit_Phase,
+        Limit_Game,
+        Limit_Target,
+        Limit_Custom
+    };
+
     explicit Skill(const QString &name, Frequency frequent = NotFrequent);
     bool isLordSkill() const;
     bool isAttachedLordSkill() const;
@@ -30,7 +63,7 @@ public:
     bool isLimitedSkill() const;
     bool isHideSkill() const;
     bool isShiMingSkill() const;
-    virtual bool shouldBeVisible(const Player *Self) const; // usually for attached skill
+    virtual bool shouldBeVisible(const Player *Self) const;
     QString getDescription(const Player *target = nullptr) const;
     QString getOracleText(const Player *target = nullptr) const;
     QString getNotice(int index) const;
@@ -43,11 +76,24 @@ public:
     void playAudioEffect(int index = -1, bool superpose = true) const;
     virtual Frequency getFrequency(const Player *target = nullptr) const;
     QString getLimitMark() const;
+    int getInstanceId() const { return m_instanceId; }
+    static int getGlobalInstanceCount() { return m_globalInstanceCount; }
     QString getClubName() const;
     QString getClubMark() const;
     QString getWakedSkills() const;
     QStringList getSources() const;
     bool setProperty(const char* name, const QVariant& value);
+
+    virtual LimitScope getLimitScope() const;
+    virtual int getMaxUsageLimit(const SkillContext &ctx) const;
+    virtual bool isUsable(const SkillContext &ctx) const;
+    virtual void addUsage(const SkillContext &ctx) const;
+    virtual void resetUsage(ServerPlayer *owner, ServerPlayer *target = nullptr) const;
+    virtual bool checkCustomUsage(const SkillContext &ctx) const;
+    virtual ServerPlayer *getUsageHolder(const SkillContext &ctx) const;
+    QString getUsageTagKey(const SkillContext &ctx) const;
+
+    virtual bool isEquipSkill() const;
 
 protected:
     Frequency frequency;
@@ -63,7 +109,14 @@ protected:
 private:
     bool lord_skill;
     QStringList sources;
+    int m_instanceId;
+    static int m_globalInstanceCount;
 };
+
+inline int Skill_getInstanceId(const Skill *skill)
+{
+    return skill ? skill->getInstanceId() : 0;
+}
 
 class ViewAsSkill : public Skill
 {
@@ -133,6 +186,8 @@ public:
     FilterSkill(const QString &name);
 };
 
+typedef QMap<ServerPlayer*, QStringList> TriggerList;
+
 class TriggerSkill : public Skill
 {
     Q_OBJECT
@@ -147,6 +202,7 @@ public:
     virtual bool triggerable(const ServerPlayer *target, Room *room, TriggerEvent event) const;
     virtual bool triggerable(const ServerPlayer *target) const;
     virtual bool canWake(TriggerEvent event, ServerPlayer *player,QVariant data, Room *room) const;
+    virtual void record(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data, ServerPlayer *owner) const;
     virtual bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data, ServerPlayer *owner) const;
     virtual bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const = 0;
     virtual bool hasEvent(TriggerEvent event) const;
@@ -232,6 +288,35 @@ public:
 
     bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const;
     virtual void onGameStart(ServerPlayer *player) const = 0;
+};
+
+class TriggerV2Skill : public TriggerSkill
+{
+    Q_OBJECT
+
+public:
+    TriggerV2Skill(const QString &name);
+
+    virtual TriggerList triggerable(TriggerEvent triggerEvent, Room *room,
+                                     ServerPlayer *player, QVariant &data) const;
+    virtual void record(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+                       QVariant &data, ServerPlayer *owner) const;
+    virtual bool cost(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+                      QVariant &data, ServerPlayer *ask_who = NULL) const;
+    virtual bool effect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+                        QVariant &data, ServerPlayer *ask_who = NULL) const;
+    virtual bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+                         QVariant &data, ServerPlayer *owner) const override;
+
+    virtual void willInvoke(SkillContext &ctx) const;
+    virtual void targetConfirming(SkillContext &ctx) const;
+    virtual void invoking(SkillContext &ctx) const;
+    virtual void effect(SkillContext &ctx) const;
+    virtual void effectFinished(SkillContext &ctx) const;
+
+    static QString parseSkillName(const QString &fullName, QString *source = NULL,
+                                   QString *target = NULL, int *multiplier = NULL,
+                                   int *instanceId = NULL);
 };
 
 class RetrialSkill : public TriggerSkill
@@ -410,6 +495,7 @@ public:
     WeaponSkill(const QString &name);
 
     virtual bool triggerable(const ServerPlayer *target) const;
+    virtual bool isEquipSkill() const override;
 };
 
 class ArmorSkill : public TriggerSkill
@@ -420,6 +506,7 @@ public:
     ArmorSkill(const QString &name);
 
     virtual bool triggerable(const ServerPlayer *target) const;
+    virtual bool isEquipSkill() const override;
 };
 
 class TreasureSkill : public TriggerSkill
@@ -430,6 +517,7 @@ public:
     TreasureSkill(const QString &name);
 
     virtual bool triggerable(const ServerPlayer *target) const;
+    virtual bool isEquipSkill() const override;
 };
 
 class MarkAssignSkill : public GameStartSkill
