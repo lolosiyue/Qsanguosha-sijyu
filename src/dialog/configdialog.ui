@@ -56,15 +56,15 @@
     <attribute name="title">
      <string>Environment</string>
     </attribute>
-    <widget class="QGroupBox" name="audioGroupBox">
-     <property name="geometry">
-      <rect>
-       <x>10</x>
-       <y>140</y>
-       <width>441</width>
-       <height>221</height>
-      </rect>
-     </property>
+     <widget class="QGroupBox" name="audioGroupBox">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>160</y>
+        <width>441</width>
+        <height>221</height>
+       </rect>
+      </property>
      <property name="title">
       <string>Audio</string>
      </property>
@@ -263,15 +263,15 @@
       </layout>
      </widget>
     </widget>
-    <widget class="QGroupBox" name="bgGroupBox">
-     <property name="geometry">
-      <rect>
-       <x>10</x>
-       <y>10</y>
-       <width>441</width>
-       <height>121</height>
-      </rect>
-     </property>
+     <widget class="QGroupBox" name="bgGroupBox">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>10</y>
+        <width>441</width>
+        <height>141</height>
+       </rect>
+      </property>
      <property name="title">
       <string>Background</string>
      </property>
@@ -378,29 +378,29 @@
        <string>Use full skin</string>
       </property>
      </widget>
-     <widget class="QCheckBox" name="enableAnimatedGeneralsCheckBox">
+      <widget class="QCheckBox" name="enableAnimatedGeneralsCheckBox">
+       <property name="geometry">
+        <rect>
+         <x>10</x>
+         <y>120</y>
+         <width>220</width>
+         <height>16</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>Enable animated generals (GIF)</string>
+       </property>
+      </widget>
+    </widget>
+     <widget class="QGroupBox" name="fontSetupGroupBox">
       <property name="geometry">
        <rect>
-        <x>140</x>
-        <y>100</y>
-        <width>220</width>
-        <height>16</height>
+        <x>10</x>
+        <y>390</y>
+        <width>441</width>
+        <height>91</height>
        </rect>
       </property>
-      <property name="text">
-       <string>Enable animated generals (GIF)</string>
-      </property>
-     </widget>
-    </widget>
-    <widget class="QGroupBox" name="fontSetupGroupBox">
-     <property name="geometry">
-      <rect>
-       <x>10</x>
-       <y>370</y>
-       <width>441</width>
-       <height>91</height>
-      </rect>
-     </property>
      <property name="minimumSize">
       <size>
        <width>50</width>
@@ -627,15 +627,15 @@
         </property>
        </widget>
       </item>
-      <item>
-       <widget class="QCheckBox" name="backgroundCardDescription">
-        <property name="text">
-         <string>The card description shows the English name</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
+       <item>
+        <widget class="QCheckBox" name="backgroundCardDescription">
+         <property name="text">
+          <string>The card description shows the English name</string>
+         </property>
+        </widget>
+       </item>
+      </layout>
+     </widget>
     <widget class="QGroupBox" name="groupBoxRecorder">
      <property name="geometry">
       <rect>

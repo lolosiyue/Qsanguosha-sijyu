@@ -193,19 +193,6 @@ public:
     /// Mark player as dead (blocks future actions, fades out pop-outs).
     void setPlayerAlive(const QString &playerId, bool alive);
 
-    // ─── Dynamic skin registration (path-based) ─────────────────────────────
-
-    /// Register a dynamic skin by resolved general name + skinIndex.
-    /// The skin is identified by path: heroskin/dynamicSkin/[general]_[skinIndex]/dynamicSkin/
-    /// @param playerId  Unique seat id (e.g. "player_0").
-    /// @param resolvedGeneral The resolved general name (after addResourceAlias lookup).
-    /// @param skinIndex The heroskin index (0 = default).
-    /// @param isPrimary Whether this is the primary (true) or deputy (false) skin.
-    void registerDynamicSkin(const QString &playerId,
-                              const QString &resolvedGeneral,
-                              int skinIndex,
-                              bool isPrimary);
-
     // ─── Cooldown settings ──────────────────────────────────────
 
     /// Minimum milliseconds between two actions on the same seat.

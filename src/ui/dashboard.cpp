@@ -1572,7 +1572,7 @@ void Dashboard::showCardFilterContainer()
 
             label->setHtml(QString("<div style='background-color:rgba(0,0,0,200); color:#FFD700; padding:2px 8px; font-weight:bold; font-size:14px; border:1px solid #FFD700; border-radius:4px;'>%1</div>").arg(text));
             label->setTextWidth(G_COMMON_LAYOUT.m_cardNormalWidth);
-            label->setAlignment(Qt::AlignHCenter);
+            label->document()->setDefaultTextOption(QTextOption(Qt::AlignHCenter));
 
             QRectF textBounds = label->boundingRect();
             label->setPos(-G_COMMON_LAYOUT.m_cardNormalWidth / 2, -textBounds.height() / 2 + 15);
