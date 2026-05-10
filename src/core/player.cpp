@@ -472,11 +472,19 @@ bool Player::isLord() const
 bool Player::hasSkill(const QString &skill_name, bool include_lose) const
 {
     if(skill_name.isEmpty()) return false;
-	if(skills.contains(skill_name)||acquired_skills.contains(skill_name)
-		||property("pingjian_triggerskill").toString()==skill_name){
+
+    QString baseName = skill_name;
+    int instanceId = 0;
+    int split = skill_name.indexOf('#');
+    if (split != -1) {
+        baseName = skill_name.left(split);
+        instanceId = skill_name.mid(split + 1).toInt();
+    }
+
+    if(skills.contains(baseName)){
         if(include_lose) return true;
-		const Skill *skill = Sanguosha->getSkill(skill_name);
-		if(skill) {
+        const Skill *skill = Sanguosha->getSkill(baseName);
+        if(skill) {
             bool valid = true;
             if (skill->isAttachedLordSkill()||skill->property("IgnoreInvalidity").toBool()||!skill->isVisible()) {
                 valid = true;
@@ -485,7 +493,7 @@ bool Player::hasSkill(const QString &skill_name, bool include_lose) const
                 if (!locked) {
                     if (inherits("ClientPlayer")) {
                         QMutexLocker locker(&m_skillCacheMutex);
-                        return m_skillValidityCache.value(skill_name, true);
+                        return m_skillValidityCache.value(baseName, true);
                     }
                     Sanguosha->getLuaMutex().lock();
                     locked = true;
@@ -493,11 +501,54 @@ bool Player::hasSkill(const QString &skill_name, bool include_lose) const
                 valid = Sanguosha->correctSkillValidity(this, skill);
                 if (locked) Sanguosha->getLuaMutex().unlock();
             }
-			QMutexLocker locker(&m_skillCacheMutex);
-			m_skillValidityCache[skill_name] = valid;
-			return valid;
-		}
-	}
+            QMutexLocker locker(&m_skillCacheMutex);
+            m_skillValidityCache[baseName] = valid;
+            return valid;
+        }
+    }
+
+    bool hasAcquired = false;
+    if (instanceId > 0) {
+        hasAcquired = acquired_skills.contains(skill_name);
+    } else {
+        foreach (const QString &acquired, acquired_skills) {
+            QString aBase = acquired;
+            int aSplit = acquired.indexOf('#');
+            if (aSplit != -1)
+                aBase = acquired.left(aSplit);
+            if (aBase == baseName) {
+                hasAcquired = true;
+                break;
+            }
+        }
+    }
+
+    if (hasAcquired || property("pingjian_triggerskill").toString() == baseName) {
+        if (include_lose) return true;
+        const Skill *skill = Sanguosha->getSkill(baseName);
+        if (skill) {
+            bool valid = true;
+            if (skill->isAttachedLordSkill()||skill->property("IgnoreInvalidity").toBool()||!skill->isVisible()) {
+                valid = true;
+            } else {
+                bool locked = Sanguosha->getLuaMutex().tryLock();
+                if (!locked) {
+                    if (inherits("ClientPlayer")) {
+                        QMutexLocker locker(&m_skillCacheMutex);
+                        return m_skillValidityCache.value(baseName, true);
+                    }
+                    Sanguosha->getLuaMutex().lock();
+                    locked = true;
+                }
+                valid = Sanguosha->correctSkillValidity(this, skill);
+                if (locked) Sanguosha->getLuaMutex().unlock();
+            }
+            QMutexLocker locker(&m_skillCacheMutex);
+            m_skillValidityCache[baseName] = valid;
+            return valid;
+        }
+    }
+
     return false;
 }
 
@@ -574,15 +625,94 @@ bool Player::hasLordSkill(const Skill *skill, bool include_lose) const
     return skill&&hasLordSkill(skill->objectName(), include_lose);
 }
 
+bool Player::isSkillInvalid(const Skill *skill) const
+{
+    if (!skill) return false;
+
+    if (skill->property("IgnoreInvalidity").toBool())
+        return false;
+
+    QStringList records = this->tag["SkillInvalidityRecords"].toStringList();
+    if (records.isEmpty()) {
+        bool valid = Sanguosha->correctSkillValidity(this, skill);
+        return !valid;
+    }
+
+    QString skillObjName = skill->objectName();
+    int skillInstanceId = skill->getInstanceId();
+    bool isEquip = skill->isEquipSkill();
+
+    foreach (const QString &record, records) {
+        QStringList parts = record.split("|");
+        if (parts.size() < 3) continue;
+
+        QString invalidRecord = parts.at(0);
+        QString recordSkillName = invalidRecord;
+        int recordInstanceId = 0;
+
+        int split = invalidRecord.indexOf('#');
+        if (split != -1) {
+            recordInstanceId = invalidRecord.mid(split + 1).toInt();
+            recordSkillName = invalidRecord.left(split);
+        }
+
+        if (recordSkillName == "all" && !isEquip) {
+            bool valid = Sanguosha->correctSkillValidity(this, skill);
+            return !valid;
+        }
+
+        if (recordSkillName == skillObjName) {
+            if (recordInstanceId == 0 || recordInstanceId == skillInstanceId) {
+                bool valid = Sanguosha->correctSkillValidity(this, skill);
+                return !valid;
+            }
+        }
+    }
+
+    return false;
+}
+
+bool Player::isSkillInvalid(const QString &skill_name, int instanceId) const
+{
+    const Skill *skill = Sanguosha->getSkill(skill_name);
+    if (!skill) return false;
+
+    if (instanceId > 0) {
+        skill = Sanguosha->getTriggerSkill(skill_name, instanceId);
+        if (!skill) return false;
+    }
+
+    return isSkillInvalid(skill);
+}
+
 void Player::acquireSkill(const QString &skill_name)
 {
-    if(acquired_skills.contains(skill_name)) return;
-    acquired_skills << skill_name;
+    acquireSkill(skill_name, 0);
+}
+
+void Player::acquireSkill(const QString &skill_name, int instanceId)
+{
+    QString name = skill_name;
+    if (instanceId > 0)
+        name = QString("%1#%2").arg(skill_name).arg(instanceId);
+    if(acquired_skills.contains(name)) return;
+    acquired_skills << name;
 }
 
 void Player::detachSkill(const QString &skill_name)
 {
-    acquired_skills.removeOne(skill_name);
+    int split = skill_name.indexOf('#');
+    if (split == -1) {
+        QString prefix = skill_name + "#";
+        for (int i = 0; i < acquired_skills.size(); ++i) {
+            if (acquired_skills[i] == skill_name || acquired_skills[i].startsWith(prefix)) {
+                acquired_skills.removeAt(i);
+                return;
+            }
+        }
+    } else {
+        acquired_skills.removeOne(skill_name);
+    }
 }
 
 void Player::detachAllSkills()
@@ -1844,7 +1974,7 @@ void Player::addEquipArea(int i)
     }
 }
 
-int Player::getEquipArea(int i)
+int Player::getEquipArea(int i) const
 {
     int n = 0;
 	foreach(int ea, equip_area){

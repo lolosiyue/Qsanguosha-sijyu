@@ -1,8 +1,13 @@
 #include "lua-wrapper.h"
+#include "engine.h"
 #include "util.h"
 #include "wind.h"
 #include "mobile.h"
 #include "ol.h"
+
+extern "C" {
+#include "lua.hpp"
+}
 
 LuaTriggerSkill::LuaTriggerSkill(const QString &name, Frequency frequency, const QString &limit_mark,
 	bool change_skill, bool limited_skill, bool hide_skill, bool shiming_skill, const QString &waked_skills)

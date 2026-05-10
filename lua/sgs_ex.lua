@@ -59,6 +59,32 @@ function sgs.CreateTriggerSkill(spec)
 	return skill
 end
 
+function sgs.CreateTriggerV2Skill(spec)
+	assert(type(spec.name)=="string")
+	if spec.frequency then assert(type(spec.frequency)=="number") end
+	if spec.limit_mark then assert(type(spec.limit_mark)=="string") end
+	local frequency = spec.frequency or sgs.Skill_NotFrequent
+	local limit_mark = spec.limit_mark or ""
+	local skill = sgs.LuaTriggerV2Skill(spec.name, frequency, limit_mark)
+	if type(spec.events)=="number" then
+		skill:addEvent(spec.events)
+	elseif type(spec.events)=="table" then
+		for _,event in ipairs(spec.events)do
+			skill:addEvent(event)
+		end
+	end
+	if type(spec.global)=="boolean" then skill:setGlobal(spec.global) end
+	if spec.on_cost then skill.on_cost = spec.on_cost end
+	if spec.on_effect then skill.on_effect = spec.on_effect end
+	if spec.on_record then skill.on_record = spec.on_record end
+	if spec.on_turn_broken then skill.on_turn_broken = spec.on_turn_broken end
+	if spec.can_trigger then skill.can_trigger = spec.can_trigger end
+	if spec.check_custom_usage then skill.check_custom_usage = spec.check_custom_usage end
+	if spec.view_as_skill then skill:setViewAsSkill(spec.view_as_skill) end
+	if type(spec.priority)=="number" then skill.priority = spec.priority end
+	return skill
+end
+
 function sgs.CreateScenarioRule(spec)
 	--assert(type(spec.on_trigger)=="function")
 	assert(spec.scenario)

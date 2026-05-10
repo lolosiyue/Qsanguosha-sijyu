@@ -721,6 +721,15 @@ enum TriggerEvent {
 
     EventForDiy, // For lua or diy to trigger special event
 
+    EventSkillInvalidated,
+    EventSkillValidityRestored,
+
+    EventSkillWillInvoke,
+    EventSkillTargetConfirming,
+    EventSkillInvoking,
+    EventSkillEffect,
+    EventSkillEffectFinished,
+
     NumOfEvents
 };
 

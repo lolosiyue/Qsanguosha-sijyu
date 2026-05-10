@@ -1,11 +1,7 @@
 #include "gamerule.h"
-//#include "serverplayer.h"
 #include "room.h"
-//#include "standard.h"
-//#include "maneuvering.h"
 #include "engine.h"
 #include "settings.h"
-//#include "json.h"
 #include "roomthread.h"
 #include "wrapped-card.h"
 
@@ -1161,6 +1157,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
         player->bury();
         if(room->getTag("SkipNormalDeathProcess").toBool())
             return false;
+        room->clearSkillInvalidityBySource(player);
         ServerPlayer *killer = death.damage ? death.damage->from : nullptr;
         //if(killer)
             rewardAndPunish(killer,player);

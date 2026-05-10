@@ -374,6 +374,9 @@ QWidget *ServerDialog::createAdvancedTab()
 	connect(basara_checkbox, SIGNAL(toggled(bool)), hegemony_checkbox, SLOT(setChecked(bool)));
 	connect(basara_checkbox, SIGNAL(toggled(bool)), hegemony_checkbox, SLOT(setEnabled(bool)));
 
+	melee_mode_checkbox = new QCheckBox(tr("Enable Melee Mode (Peach as Slash/Jink in late game)"));
+	melee_mode_checkbox->setChecked(Config.EnableMeleeMode);
+
 	hegemony_maxchoice_label = new QLabel(tr("Upperlimit for hegemony"));
 	hegemony_maxchoice_spinbox = new QSpinBox;
 	hegemony_maxchoice_spinbox->setRange(5, 21);
@@ -418,6 +421,7 @@ QWidget *ServerDialog::createAdvancedTab()
 	layout->addLayout(HLay(scheme0_subtraction_label, scheme0_subtraction_spinbox));
 	layout->addWidget(prevent_awaken_below3_checkbox);
 	layout->addLayout(HLay(basara_checkbox, hegemony_checkbox));
+	layout->addWidget(melee_mode_checkbox);
 	layout->addLayout(HLay(hegemony_maxchoice_label, hegemony_maxchoice_spinbox));
 	layout->addLayout(HLay(hegemony_maxshown_label, hegemony_maxshown_spinbox));
 	layout->addWidget(same_checkbox);
@@ -917,12 +921,12 @@ QGroupBox *ServerDialog::createGameModeBox()
 	//QString n = "2";
 	//QStringList modenames;
 	//QRadioButton *button0;
-	QMap<QString, QString> modes = Sanguosha->getAvailableModes();
-	QMapIterator<QString, QString> itor(modes);
+	QMap<QString, GameModeStruct> modes = Sanguosha->getAvailableModes();
+	QMapIterator<QString, GameModeStruct> itor(modes);
 	while (itor.hasNext()) {
 		itor.next();
 
-		QRadioButton *button = new QRadioButton(itor.value());
+		QRadioButton *button = new QRadioButton(itor.value().display_name);
 		button->setObjectName(itor.key());
 		mode_group->addButton(button);
 
@@ -1365,6 +1369,7 @@ int ServerDialog::config()
 	Config.EnableSame = same_checkbox->isChecked();
 	Config.EnableBasara = basara_checkbox->isChecked() && basara_checkbox->isEnabled();
 	Config.EnableHegemony = hegemony_checkbox->isChecked() && hegemony_checkbox->isEnabled();
+	Config.EnableMeleeMode = melee_mode_checkbox->isChecked();
 	Config.MaxHpScheme = max_hp_scheme_ComboBox->currentIndex();
 	if (Config.MaxHpScheme == 0) {
 		Config.Scheme0Subtraction = scheme0_subtraction_spinbox->value();
@@ -1422,6 +1427,7 @@ int ServerDialog::config()
 	Config.setValue("EnableSame", Config.EnableSame);
 	Config.setValue("EnableBasara", Config.EnableBasara);
 	Config.setValue("EnableHegemony", Config.EnableHegemony);
+	Config.setValue("EnableMeleeMode", Config.EnableMeleeMode);
 	Config.setValue("HegemonyMaxChoice", hegemony_maxchoice_spinbox->value());
 	Config.setValue("HegemonyMaxShown", hegemony_maxshown_spinbox->value());
 	Config.setValue("MaxHpScheme", Config.MaxHpScheme);

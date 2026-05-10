@@ -135,6 +135,7 @@ Client::Client(QObject *parent, const QString &filename)
 	m_interactions[S_COMMAND_RESPONSE_CARD] = &Client::askForCardOrUseCard;
 	m_interactions[S_COMMAND_INVOKE_SKILL] = &Client::askForSkillInvoke;
 	m_interactions[S_COMMAND_MULTIPLE_CHOICE] = &Client::askForChoice;
+	m_interactions[S_COMMAND_TRIGGER_ORDER] = &Client::askForTriggerOrder;
 	m_interactions[S_COMMAND_NULLIFICATION] = &Client::askForNullification;
 	m_interactions[S_COMMAND_SHOW_CARD] = &Client::askForCardShow;
 	m_interactions[S_COMMAND_AMAZING_GRACE] = &Client::askForAG;
@@ -1285,7 +1286,7 @@ void Client::updateCardDescription(const QVariant &arg)
     QString key = req[2].toString();
     QString value = req[3].toString();
 
-    ClientPlayer *player = qobject_cast<ClientPlayer*>(Sanguosha->getPlayer(player_name));
+    ClientPlayer *player = getPlayer(player_name);
     if (!player) return;
 
     player->setCardDescriptionSwap(card_name, key, value);
@@ -1625,6 +1626,24 @@ void Client::askForChoice(const QVariant &ask_str)
 	QString tip = ask[3].toString();
 	emit options_got(skill_name, options, except_options, tip);
 	setStatus(ExecDialog);
+}
+
+void Client::askForTriggerOrder(const QVariant &ask_str)
+{
+	JsonArray ask = ask_str.value<JsonArray>();
+	if (ask.size() != 3
+		|| !JsonUtils::isString(ask[0]) || !ask[1].canConvert<JsonArray>()
+		|| !JsonUtils::isBool(ask[2])) return;
+
+	QString reason = ask[0].toString();
+
+	QStringList choices;
+	JsonUtils::tryParse(ask[1], choices);
+
+	bool optional = ask[2].toBool();
+
+	emit triggers_got(reason, choices, optional);
+	setStatus(AskForTriggerOrder);
 }
 
 void Client::askForCardChosen(const QVariant &ask_str)

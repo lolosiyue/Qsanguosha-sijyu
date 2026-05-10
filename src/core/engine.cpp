@@ -378,8 +378,8 @@ Engine::Engine(bool isManualMode)
     modes["04_boss"] = tr("4 players(Boss)");
     modes["04_2v2"] = tr("4 players (Happy)");
     modes["05p"] = tr("5 players");
-	modes["05_ol"] = "5 人局 [诸侯伐董]";
-	modes["06_ol"] = "6 人局 [神武在世]";
+	modes["05_ol"] = QString("5 人局 [诸侯伐董]");
+	modes["06_ol"] = QString("6 人局 [神武在世]");
     modes["06p"] = tr("6 players");
     modes["06pd"] = tr("6 players (2 renegades)");
     modes["06_3v3"] = tr("6 players (3v3)");
@@ -473,16 +473,21 @@ void Engine::addSkills(QList<const Skill*> all_skills)
 {
     foreach (const Skill* skill, all_skills) {
         if (skill) {
-            if (skills.contains(skill->objectName()))
-                QMessageBox::warning(nullptr, "", tr("Duplicated skill : %1").arg(skill->objectName()));
-            
-            // [修改點]
-            // QPointer<Skill> 只能接收 Skill* (非 const)，因為它需要連接 destroyed 信號。
-            // 這裡使用 const_cast 是安全的，因為 Skill 對象本身是 new 出來的，不是唯讀內存。
             Skill *mutableSkill = const_cast<Skill*>(skill);
+            const QString &name = skill->objectName();
+            int instanceId = skill->getInstanceId();
 
-            // 存入 QPointer 容器 (mutableSkill 會自動隱式轉換為 QPointer<Skill>)
-            skills.insert(skill->objectName(), mutableSkill);
+            if (skills.contains(name)) {
+                QMessageBox::warning(nullptr, "", tr("Duplicated skill : %1 (instanceId=%2)")
+                    .arg(name).arg(instanceId));
+            }
+
+            skills.insert(name, mutableSkill);
+
+            const TriggerSkill *ts = qobject_cast<const TriggerSkill*>(skill);
+            if (ts) {
+                m_triggerSkillsByInstance.insert(qMakePair(name, instanceId), ts);
+            }
         } else {
             QMessageBox::warning(nullptr, "", tr("The engine tries to add an invalid skill"));
         }
@@ -1476,6 +1481,8 @@ QString Engine::getSetupString() const
         flags.append("B");
     if (Config.EnableHegemony)
         flags.append("H");
+    if (Config.EnableMeleeMode)
+        flags.append("E");
     if (Config.EnableAI)
         flags.append("A");
     if (Config.DisableChat)
@@ -2098,6 +2105,17 @@ const TriggerSkill*Engine::getTriggerSkill(const QString &skill_name) const
 {
     const Skill*skill = getSkill(skill_name);
     if (skill) return qobject_cast<const TriggerSkill*>(skill);
+    return nullptr;
+}
+
+const TriggerSkill*Engine::getTriggerSkill(const QString &skill_name, int instanceId) const
+{
+    if (instanceId <= 0)
+        return getTriggerSkill(skill_name);
+    auto key = qMakePair(skill_name, instanceId);
+    auto it = m_triggerSkillsByInstance.find(key);
+    if (it != m_triggerSkillsByInstance.end())
+        return it.value();
     return nullptr;
 }
 

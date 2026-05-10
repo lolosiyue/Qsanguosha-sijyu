@@ -291,6 +291,22 @@ QString TrustAI::askForChoice(const QString &, const QString &choice, const QVar
     return choices.at(qrand() % choices.length());
 }
 
+QString TrustAI::askForTriggerOrder(const QString &, QMap<ServerPlayer*, QStringList> &skills,
+                                   bool, const QVariant &)
+{
+    QStringList allSkills;
+    QMap<ServerPlayer*, QStringList>::iterator it;
+    for (it = skills.begin(); it != skills.end(); ++it) {
+        foreach (const QString &skill, it.value()) {
+            if (!allSkills.contains(skill))
+                allSkills << skill;
+        }
+    }
+    if (allSkills.isEmpty())
+        return QString();
+    return allSkills.at(qrand() % allSkills.length());
+}
+
 QList<int> TrustAI::askForDiscard(const QString &, int, int min_num, bool optional, bool include_equip, const QString &pattern)
 {
     if (optional) return QList<int>();
