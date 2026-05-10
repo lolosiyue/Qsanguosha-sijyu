@@ -420,16 +420,42 @@ int QSanInvokeSkillDock::width() const
 
 int QSanInvokeSkillDock::height() const
 {
-    return _m_buttons.length() / 3 * G_DASHBOARD_LAYOUT.m_skillButtonsSize[0].height();
+    int visibleRegularButtons = 0;
+    foreach (QSanInvokeSkillButton *button, _m_buttons) {
+        if (button == nullptr)
+            continue;
+
+        const Skill *skill = button->getSkill();
+        if (skill == nullptr)
+            continue;
+
+        if (Self != nullptr && !skill->shouldBeVisible(Self))
+            continue;
+
+        if (!skill->isAttachedLordSkill())
+            visibleRegularButtons++;
+    }
+
+    if (visibleRegularButtons == 0)
+        return 0;
+
+    int rows = (visibleRegularButtons - 1) / 2 + 1;
+    return rows * G_DASHBOARD_LAYOUT.m_skillButtonsSize[0].height();
 }
 
 void QSanInvokeSkillDock::setWidth(int width)
 {
+    if (_m_width == width)
+        return;
+
+    prepareGeometryChange();
     _m_width = width;
 }
 
 void QSanInvokeSkillDock::update()
 {
+    prepareGeometryChange();
+
     if (!_m_buttons.isEmpty()) {
         QList<QSanInvokeSkillButton *> regular_buttons, lordskill_buttons/*, all_buttons*/;
         foreach (QSanInvokeSkillButton *btn, _m_buttons) {
@@ -495,12 +521,13 @@ void QSanInvokeSkillDock::update()
 			}
 		}*/
         for (int i = 0; i < rows; i++) {
-            int btnWidth = _m_width / btnNum[i];
             int rowTop = (RoomSceneInstance->m_skillButtonSank) ? (-rowH - 2 * (rows - i - 1)) : ((-rows + i) * rowH);
+            int pixWidth = G_DASHBOARD_LAYOUT.m_skillButtonsSize[btnNum[i] - 1].width();
+            int rowLeft = qMax(0, (_m_width - pixWidth * btnNum[i]) / 2);
             for (int j = 0; j < btnNum[i]; j++) {
                 QSanInvokeSkillButton *button = regular_buttons[m++];
                 button->setButtonWidth((QSanInvokeSkillButton::SkillButtonWidth)(btnNum[i] - 1));
-                button->setPos(btnWidth * j, rowTop);
+                button->setPos(rowLeft + pixWidth * j, rowTop);
             }
         }
         int m1 = 0;

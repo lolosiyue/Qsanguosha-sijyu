@@ -40,6 +40,7 @@ class GifChatBox;
 class QSanSelectableItem;
 class EffectAnimation;
 class GiftItem;
+class SpineGlItem;
 
 #ifndef Q_OS_WINRT
 #include <QQmlEngine>
@@ -202,6 +203,7 @@ public:
 public slots:
     void addPlayer(ClientPlayer *player);
     void removePlayer(const QString &player_name);
+    void updateSkillButtons(bool isPrepare = false);
     void loseCards(int moveId, QList<CardsMoveStruct> moves);
     void getCards(int moveId, QList<CardsMoveStruct> moves);
     void keepLoseCardLog(const CardsMoveStruct &move);
@@ -268,6 +270,7 @@ protected:
 
 private:
     void _getSceneSizes(QSize &minSize, QSize &maxSize);
+    void _calculateDynamicPhotoSize();
     bool _shouldIgnoreDisplayMove(CardsMoveStruct &movement);
     bool _processCardsMove(CardsMoveStruct &move, bool isLost);
     bool _m_isInDragAndUseMode;
@@ -430,6 +433,9 @@ private:
     // ─── Spine pop-out action controller ────────────────────────
     CharacterSpineActionController *_spineActionController;
 
+    /// Active fullscreen SpineGlItem instances (for resize handling)
+    QList<SpineGlItem *> _activeSpineItems;
+
     /// Register skins for all known players whose generals have dynamic skins.
     void registerDynamicSkinsForAllPlayers();
 
@@ -446,10 +452,13 @@ private:
     void _dispersePhotos(QList<Photo *> &photos, QRectF disperseRegion, Qt::Orientation orientation, Qt::Alignment align);
 
     void _cancelAllFocus();
+    bool isPrimarySkill(const Skill *skill) const;
     // for miniscenes
     int _m_currentStage;
 
     QRectF _m_infoPlane;
+    int _m_cachedPhotoWidth;
+    int _m_cachedPhotoHeight;
 
     bool _m_bgEnabled;
     QString _m_bgMusicPath;
@@ -465,7 +474,6 @@ private:
 
 private slots:
     void fillCards(const QList<int> &card_ids, const QList<int> &disabled_ids = QList<int>());
-    void updateSkillButtons(bool isPrepare = false);
     void acquireSkill(const ClientPlayer *player, const QString &skill_name);
     void updateSelectedTargets();
     void updateTrustButton();
@@ -515,6 +523,7 @@ void onGameStart();
     void attachSkill(const QString &skill_name);
     void detachSkill(const ClientPlayer *player, const QString &skill_name);
     void detachSkill(const QString &skill_name);
+    void onSkillButtonDestroyed(QObject *button);
     void updateSkill(const QString &skill_name);
 
     void doGongxin(const QList<int> &card_ids, bool enable_heart, QList<int> enabled_ids);

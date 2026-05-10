@@ -25,7 +25,8 @@ using namespace QSanProtocol;
 // kingdom mask and kingdom icon (decouple from player)
 // make layers (drawing order) configurable
 
-Photo::Photo() : PlayerCardContainer(), m_giftHighlighted(false), m_giftHighlightFrame(nullptr)
+Photo::Photo() : PlayerCardContainer(), m_giftHighlighted(false), m_giftHighlightFrame(nullptr),
+    _m_cachedWidth(G_PHOTO_LAYOUT.m_normalWidth), _m_cachedHeight(G_PHOTO_LAYOUT.m_normalHeight)
 {
     _m_mainFrame = nullptr;
     m_player = nullptr;
@@ -87,18 +88,54 @@ void Photo::refresh(bool killed)
 
 QRectF Photo::boundingRect() const
 {
-    return QRect(0, 0, G_PHOTO_LAYOUT.m_normalWidth, G_PHOTO_LAYOUT.m_normalHeight);
+	const QSanRoomSkin::PhotoLayout *photoLayout = static_cast<const QSanRoomSkin::PhotoLayout*>(_m_layout);
+	if (photoLayout)
+		return QRect(0, 0, photoLayout->m_normalWidth, photoLayout->m_normalHeight);
+	return QRect(0, 0, _m_cachedWidth, _m_cachedHeight);
+}
+
+void Photo::updatePhotoSize(int width, int height)
+{
+	if (_m_cachedWidth == width && _m_cachedHeight == height)
+		return;
+
+	_m_cachedWidth = width;
+	_m_cachedHeight = height;
+
+	QSanRoomSkin::PhotoSizeType sizeType = G_ROOM_SKIN.getPhotoSizeType(width, height);
+	const QSanRoomSkin::PhotoLayout &layout = G_ROOM_SKIN.getPhotoLayout(sizeType);
+	setPhotoLayout(&layout);
+}
+
+void Photo::setPhotoLayout(const QSanRoomSkin::PhotoLayout *layout)
+{
+	if (_m_layout == layout)
+		return;
+
+	_m_layout = layout;
+
+	resetTransform();
+	setTransform(QTransform::fromTranslate(-layout->m_normalWidth / 2, -layout->m_normalHeight / 2), true);
+
+	if (_m_duanchangMask) {
+		_m_duanchangMask->setRect(QRect(0, 0, layout->m_normalWidth, layout->m_normalHeight));
+	}
+
+	prepareGeometryChange();
+	repaintAll();
 }
 
 void Photo::repaintAll(bool all)
 {
-    resetTransform();
-    setTransform(QTransform::fromTranslate(-G_PHOTO_LAYOUT.m_normalWidth / 2, -G_PHOTO_LAYOUT.m_normalHeight / 2), true);
-    _paintPixmap(_m_mainFrame, G_PHOTO_LAYOUT.m_mainFrameArea, QSanRoomSkin::S_SKIN_KEY_MAINFRAME);
-    setFrame(_m_frameType);
-    hideSkillName(); // @todo: currently we don't adjust skillName's position for simplicity,
-    // consider repainting it instead of hiding it in the future.
-    PlayerCardContainer::repaintAll(all);
+	const QSanRoomSkin::PhotoLayout *photoLayout = static_cast<const QSanRoomSkin::PhotoLayout*>(_m_layout);
+	if (!photoLayout) photoLayout = &G_PHOTO_LAYOUT;
+
+	resetTransform();
+	setTransform(QTransform::fromTranslate(-photoLayout->m_normalWidth / 2, -photoLayout->m_normalHeight / 2), true);
+	_paintPixmap(_m_mainFrame, photoLayout->m_mainFrameArea, QSanRoomSkin::S_SKIN_KEY_MAINFRAME);
+	setFrame(_m_frameType);
+	hideSkillName();
+	PlayerCardContainer::repaintAll(all);
 	_adjustComponentZValues();
 }
 

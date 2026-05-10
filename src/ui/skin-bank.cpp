@@ -1,6 +1,6 @@
 #include "skin-bank.h"
-//#include "json.h"
-//#include "protocol.h"
+#include "json.h"
+#include "protocol.h"
 #include "ui-utils.h"
 #include "engine.h"
 //#include "settings.h"
@@ -697,7 +697,16 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 		if(Sanguosha->getGeneral(gn)){
 			QString actualGn = Sanguosha->getResourceAlias("heroskin", gn);
 			int skin_index = Config.value("HeroSkin/"+gn, 0).toInt();
-			if (skin_index > 0) {
+			
+			// Check fulldual path first (for dual-general combinations)
+			QString fulldualPath = QString("image/fullskin/generals/fulldual/%1.jpg").arg(gn);
+			QString fulldualSkinPath = QString("image/heroskin/fullskin/generals/fulldual/%1_%2.jpg").arg(actualGn).arg(skin_index);
+			
+			if (skin_index > 0 && QFile::exists(fulldualSkinPath)) {
+				fileName = fulldualSkinPath;
+			} else if (QFile::exists(fulldualPath)) {
+				fileName = fulldualPath;
+			} else if (skin_index > 0) {
 				fileName.replace("image/", "image/heroskin/");
 				fileName.replace(gn, QString(actualGn+"_%1").arg(skin_index));
 			}else if(!QFile::exists(fileName)){
@@ -730,7 +739,16 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 				if(Sanguosha->getGeneral(gn)){
 					QString actualGn = Sanguosha->getResourceAlias("heroskin", gn);
 					int skin_index = Config.value("HeroSkin/"+gn, 0).toInt();
-					if (skin_index > 0) {
+					
+					// Check fulldual path first (for dual-general combinations)
+					QString fulldualPath = QString("image/fullskin/generals/fulldual/%1.jpg").arg(gn);
+					QString fulldualSkinPath = QString("image/heroskin/fullskin/generals/fulldual/%1_%2.jpg").arg(actualGn).arg(skin_index);
+					
+					if (skin_index > 0 && QFile::exists(fulldualSkinPath)) {
+						fileName = fulldualSkinPath;
+					} else if (QFile::exists(fulldualPath)) {
+						fileName = fulldualPath;
+					} else if (skin_index > 0) {
 						fileName.replace("image/", "image/heroskin/");
 						fileName.replace(gn, QString(actualGn+"_%1").arg(skin_index));
 					}
@@ -867,9 +885,51 @@ const QSanRoomSkin::PhotoLayout &QSanRoomSkin::getPhotoLayout() const
 	return _m_photoLayout;
 }
 
+const QSanRoomSkin::PhotoLayout &QSanRoomSkin::getPhotoLayoutSmall() const
+{
+	return _m_photoLayoutSmall;
+}
+
+const QSanRoomSkin::PhotoLayout &QSanRoomSkin::getPhotoLayoutBig() const
+{
+	return _m_photoLayoutBig;
+}
+
+QSanRoomSkin::PhotoSizeType QSanRoomSkin::getPhotoSizeType(int width, int height) const
+{
+	static const int PHOTO_SIZE_SMALL = 94;
+	static const int PHOTO_SIZE_NORMAL = 157;
+	static const int PHOTO_SIZE_BIG = 235;
+
+	int avgSize = (width + height) / 2;
+	if (avgSize <= (PHOTO_SIZE_SMALL + PHOTO_SIZE_NORMAL) / 2)
+		return PhotoSizeSmall;
+	else if (avgSize >= (PHOTO_SIZE_NORMAL + PHOTO_SIZE_BIG) / 2)
+		return PhotoSizeBig;
+	else
+		return PhotoSizeNormal;
+}
+
+const QSanRoomSkin::PhotoLayout &QSanRoomSkin::getPhotoLayout(PhotoSizeType type) const
+{
+	switch (type) {
+	case PhotoSizeSmall:
+		return _m_photoLayoutSmall;
+	case PhotoSizeBig:
+		return _m_photoLayoutBig;
+	default:
+		return _m_photoLayout;
+	}
+}
+
 const QSanRoomSkin::DashboardLayout &QSanRoomSkin::getDashboardLayout() const
 {
 	return _m_dashboardLayout;
+}
+
+const QSanRoomSkin::DashboardLayout &QSanRoomSkin::getDashboardLayoutDouble() const
+{
+	return _m_dashboardLayoutDouble;
 }
 
 const QSanRoomSkin::CommonLayout &QSanRoomSkin::getCommonLayout() const
@@ -887,6 +947,99 @@ QSanInvokeSkillButton::SkillButtonWidth width) const
 	font.m_color = m_skillTextColors[i];
 	font.m_shadowColor = m_skillTextShadowColors[i];
 	return font;
+}
+
+void QSanRoomSkin::_loadPhotoLayoutConfig(const JsonObject &playerConfig, PhotoLayout &layout)
+{
+	tryParse(playerConfig["normalWidth"], layout.m_normalWidth);
+	tryParse(playerConfig["normalHeight"], layout.m_normalHeight);
+	tryParse(playerConfig["mainFrameArea"], layout.m_mainFrameArea);
+	tryParse(playerConfig["canvasArea"], layout.m_boundingRect);
+
+	tryParse(playerConfig["handCardNumIconArea"], layout.m_handCardArea);
+	layout.m_handCardFont.tryParse(playerConfig["handCardFont"]);
+
+	JsonArray equipAreas = playerConfig["equipAreas"].value<JsonArray>();
+	for (int j = 0; j < S_EQUIP_AREA_LENGTH && j < equipAreas.size(); j++)
+		tryParse(equipAreas[j], layout.m_equipAreas[j]);
+	tryParse(playerConfig["equipImageArea"], layout.m_equipImageArea);
+	tryParse(playerConfig["equipSuitArea"], layout.m_equipSuitArea);
+	tryParse(playerConfig["equipPointArea"], layout.m_equipPointArea);
+	tryParse(playerConfig["horseImageArea"], layout.m_horseImageArea);
+	tryParse(playerConfig["horseSuitArea"], layout.m_horseSuitArea);
+	tryParse(playerConfig["horsePointArea"], layout.m_horsePointArea);
+	if (!layout.m_equipPointFontBlack.tryParse(playerConfig["equipPointFontBlack"]))
+		layout.m_equipPointFontBlack.tryParse(playerConfig["equipPointFont"]);
+	if (!layout.m_equipPointFontRed.tryParse(playerConfig["equipPointFontRed"]))
+		layout.m_equipPointFontRed.tryParse(playerConfig["equipPointFont"]);
+
+	tryParse(playerConfig["delayedTrickFirstRegion"], layout.m_delayedTrickFirstRegion);
+	tryParse(playerConfig["delayedTrickStep"], layout.m_delayedTrickStep);
+
+	tryParse(playerConfig["roleComboBoxPos"], layout.m_roleComboBoxPos);
+	tryParse(playerConfig["changePrimaryHeroSkinBtnPos"], layout.m_changePrimaryHeroSkinBtnPos);
+	tryParse(playerConfig["changeSecondaryHeroSkinBtnPos"], layout.m_changeSecondaryHeroSkinBtnPos);
+
+	tryParse(playerConfig["avatarArea"], layout.m_avatarArea);
+	tryParse(playerConfig["secondaryAvatarArea"], layout.m_smallAvatarArea);
+	tryParse(playerConfig["circleArea"], layout.m_circleArea);
+	tryParse(playerConfig["avatarImageType"], layout.m_avatarSize);
+	tryParse(playerConfig["secondaryAvatarImageType"], layout.m_smallAvatarSize);
+	tryParse(playerConfig["primaryAvatarImageType"], layout.m_primaryAvatarSize);
+	tryParse(playerConfig["circleImageType"], layout.m_circleImageSize);
+	tryParse(playerConfig["avatarNameArea"], layout.m_avatarNameArea);
+	layout.m_avatarNameFont.tryParse(playerConfig["avatarNameFont"]);
+	tryParse(playerConfig["smallAvatarNameArea"], layout.m_smallAvatarNameArea);
+	layout.m_smallAvatarNameFont.tryParse(playerConfig["smallAvatarNameFont"]);
+	tryParse(playerConfig["kingdomIconArea"], layout.m_kingdomIconArea);
+	tryParse(playerConfig["kingdomMaskArea"], layout.m_kingdomMaskArea);
+
+	tryParse(playerConfig["screenNameArea"], layout.m_screenNameArea);
+	layout.m_screenNameFont.tryParse(playerConfig["screenNameFont"]);
+
+	tryParse(playerConfig["magatamaSize"], layout.m_magatamaSize);
+	tryParse(playerConfig["magatamaImageArea"], layout.m_magatamaImageArea);
+	tryParse(playerConfig["magatamasHorizontal"], layout.m_magatamasHorizontal);
+	tryParse(playerConfig["magatamasBgVisible"], layout.m_magatamasBgVisible);
+	JsonArray magatamasAnchor = playerConfig["magatamasAnchor"].value<JsonArray>();
+	if (!magatamasAnchor.isEmpty()) {
+		if (magatamasAnchor.size() > 1)
+			tryParse(magatamasAnchor[1], layout.m_magatamasAnchor);
+		if (JsonUtils::isString(magatamasAnchor[0]))
+			tryParse(magatamasAnchor[0], layout.m_magatamasAlign);
+	}
+
+	layout.m_phaseArea.tryParse(playerConfig["phaseArea"]);
+	layout.m_progressBarArea.tryParse(playerConfig["progressBarArea"]);
+	tryParse(playerConfig["progressBarHorizontal"], layout.m_isProgressBarHorizontal);
+
+	tryParse(playerConfig["privatePileStartPos"], layout.m_privatePileStartPos);
+	tryParse(playerConfig["privatePileStep"], layout.m_privatePileStep);
+	tryParse(playerConfig["privatePileButtonSize"], layout.m_privatePileButtonSize);
+
+	tryParse(playerConfig["actionedIconRegion"], layout.m_actionedIconRegion);
+	tryParse(playerConfig["saveMeIconRegion"], layout.m_saveMeIconRegion);
+	tryParse(playerConfig["chainedIconRegion"], layout.m_chainedIconRegion);
+	layout.m_deathIconRegion.tryParse(playerConfig["deathIconRegion"]);
+	tryParse(playerConfig["votesIconRegion"], layout.m_votesIconRegion);
+	tryParse(playerConfig["drankMaskColor"], layout.m_drankMaskColor);
+	tryParse(playerConfig["duanchangMaskColor"], layout.m_duanchangMaskColor);
+	tryParse(playerConfig["deathEffectColor"], layout.m_deathEffectColor);
+
+	tryParse(playerConfig["onlineStatusArea"], layout.m_onlineStatusArea);
+	tryParse(playerConfig["onlineStatusBgColor"], layout.m_onlineStatusBgColor);
+	layout.m_onlineStatusFont.tryParse(playerConfig["onlineStatusFont"]);
+
+	tryParse(playerConfig["cardMoveArea"], layout.m_cardMoveRegion);
+	tryParse(playerConfig["skillNameArea"], layout.m_skillNameArea);
+	layout.m_skillNameFont.tryParse(playerConfig["skillNameFont"]);
+
+	int borderWidth = 0;
+	if (tryParse(playerConfig["borderWidth"], borderWidth)) {
+		layout.m_focusFrameArea = QRect(-borderWidth, -borderWidth,
+			layout.m_normalWidth + 2 * borderWidth,
+			layout.m_normalHeight + 2 * borderWidth);
+	}
 }
 
 bool QSanRoomSkin::_loadLayoutConfig(const QVariant &layout)
@@ -1113,6 +1266,105 @@ bool QSanRoomSkin::_loadLayoutConfig(const QVariant &layout)
 			tryParse(config[0], _m_dashboardLayout.m_skillTextColors[index]);
 			tryParse(config[1], _m_dashboardLayout.m_skillTextShadowColors[index]);
 		}
+	}
+
+	JsonObject dashboardDoubleConfig = layoutConfig["dashboardDouble"].value<JsonObject>();
+	if (!dashboardDoubleConfig.isEmpty()) {
+		_m_dashboardLayoutDouble = _m_dashboardLayout;
+
+		tryParse(dashboardDoubleConfig["normalHeight"], _m_dashboardLayoutDouble.m_normalHeight);
+		tryParse(dashboardDoubleConfig["handCardNumIconArea"], _m_dashboardLayoutDouble.m_handCardArea);
+		JsonArray equipAreas = dashboardDoubleConfig["equipAreas"].value<JsonArray>();
+		for (int j = 0; j < S_EQUIP_AREA_LENGTH && j < equipAreas.size(); j++)
+			tryParse(equipAreas[j], _m_dashboardLayoutDouble.m_equipAreas[j]);
+		tryParse(dashboardDoubleConfig["equipImageArea"], _m_dashboardLayoutDouble.m_equipImageArea);
+		tryParse(dashboardDoubleConfig["equipSuitArea"], _m_dashboardLayoutDouble.m_equipSuitArea);
+		tryParse(dashboardDoubleConfig["equipPointArea"], _m_dashboardLayoutDouble.m_equipPointArea);
+		tryParse(dashboardDoubleConfig["horseImageArea"], _m_dashboardLayoutDouble.m_horseImageArea);
+		tryParse(dashboardDoubleConfig["horseSuitArea"], _m_dashboardLayoutDouble.m_horseSuitArea);
+		tryParse(dashboardDoubleConfig["horsePointArea"], _m_dashboardLayoutDouble.m_horsePointArea);
+		if (!_m_dashboardLayoutDouble.m_equipPointFontBlack.tryParse(dashboardDoubleConfig["equipPointFontBlack"]))
+			_m_dashboardLayoutDouble.m_equipPointFontBlack.tryParse(dashboardDoubleConfig["equipPointFont"]);
+		if (!_m_dashboardLayoutDouble.m_equipPointFontRed.tryParse(dashboardDoubleConfig["equipPointFontRed"]))
+			_m_dashboardLayoutDouble.m_equipPointFontRed.tryParse(dashboardDoubleConfig["equipPointFont"]);
+
+		tryParse(dashboardDoubleConfig["delayedTrickFirstRegion"], _m_dashboardLayoutDouble.m_delayedTrickFirstRegion);
+		tryParse(dashboardDoubleConfig["delayedTrickStep"], _m_dashboardLayoutDouble.m_delayedTrickStep);
+
+		_m_dashboardLayoutDouble.m_markTextArea.tryParse(dashboardDoubleConfig["markTextArea"]);
+		tryParse(dashboardDoubleConfig["roleComboBoxPos"], _m_dashboardLayoutDouble.m_roleComboBoxPos);
+
+		tryParse(dashboardDoubleConfig["changePrimaryHeroSkinBtnPos"], _m_dashboardLayoutDouble.m_changePrimaryHeroSkinBtnPos);
+		tryParse(dashboardDoubleConfig["changeSecondaryHeroSkinBtnPos"], _m_dashboardLayoutDouble.m_changeSecondaryHeroSkinBtnPos);
+
+		tryParse(dashboardDoubleConfig["avatarArea"], _m_dashboardLayoutDouble.m_avatarArea);
+		tryParse(dashboardDoubleConfig["secondaryAvatarArea"], _m_dashboardLayoutDouble.m_smallAvatarArea);
+		tryParse(dashboardDoubleConfig["circleArea"], _m_dashboardLayoutDouble.m_circleArea);
+		tryParse(dashboardDoubleConfig["avatarImageType"], _m_dashboardLayoutDouble.m_avatarSize);
+		tryParse(dashboardDoubleConfig["secondaryAvatarImageType"], _m_dashboardLayoutDouble.m_smallAvatarSize);
+		tryParse(dashboardDoubleConfig["primaryAvatarImageType"], _m_dashboardLayoutDouble.m_primaryAvatarSize);
+		tryParse(dashboardDoubleConfig["circleImageType"], _m_dashboardLayoutDouble.m_circleImageSize);
+		tryParse(dashboardDoubleConfig["avatarNameArea"], _m_dashboardLayoutDouble.m_avatarNameArea);
+		_m_dashboardLayoutDouble.m_avatarNameFont.tryParse(dashboardDoubleConfig["avatarNameFont"]);
+		tryParse(dashboardDoubleConfig["smallAvatarNameArea"], _m_dashboardLayoutDouble.m_smallAvatarNameArea);
+		_m_dashboardLayoutDouble.m_smallAvatarNameFont.tryParse(dashboardDoubleConfig["smallAvatarNameFont"]);
+		tryParse(dashboardDoubleConfig["kingdomMaskArea"], _m_dashboardLayoutDouble.m_kingdomMaskArea);
+		tryParse(dashboardDoubleConfig["kingdomIconArea"], _m_dashboardLayoutDouble.m_kingdomIconArea);
+
+		_m_dashboardLayoutDouble.m_handCardFont.tryParse(dashboardDoubleConfig["handCardFont"]);
+		tryParse(dashboardDoubleConfig["screenNameArea"], _m_dashboardLayoutDouble.m_screenNameArea);
+		_m_dashboardLayoutDouble.m_screenNameFont.tryParse(dashboardDoubleConfig["screenNameFont"]);
+
+		_m_dashboardLayoutDouble.m_progressBarArea.tryParse(dashboardDoubleConfig["progressBarArea"]);
+		tryParse(dashboardDoubleConfig["progressBarHorizontal"], _m_dashboardLayoutDouble.m_isProgressBarHorizontal);
+		tryParse(dashboardDoubleConfig["magatamaSize"], _m_dashboardLayoutDouble.m_magatamaSize);
+		tryParse(dashboardDoubleConfig["magatamaImageArea"], _m_dashboardLayoutDouble.m_magatamaImageArea);
+		tryParse(dashboardDoubleConfig["magatamasHorizontal"], _m_dashboardLayoutDouble.m_magatamasHorizontal);
+		tryParse(dashboardDoubleConfig["magatamasBgVisible"], _m_dashboardLayoutDouble.m_magatamasBgVisible);
+		JsonArray magatamasAnchor = dashboardDoubleConfig["magatamasAnchor"].value<JsonArray>();
+		if (!magatamasAnchor.isEmpty()) {
+			if (magatamasAnchor.size() > 1)
+				tryParse(magatamasAnchor[1], _m_dashboardLayoutDouble.m_magatamasAnchor);
+			if (JsonUtils::isString(magatamasAnchor[0]))
+				tryParse(magatamasAnchor[0], _m_dashboardLayoutDouble.m_magatamasAlign);
+		}
+
+		_m_dashboardLayoutDouble.m_phaseArea.tryParse(dashboardDoubleConfig["phaseArea"]);
+		tryParse(dashboardDoubleConfig["privatePileStartPos"], _m_dashboardLayoutDouble.m_privatePileStartPos);
+		tryParse(dashboardDoubleConfig["privatePileStep"], _m_dashboardLayoutDouble.m_privatePileStep);
+		tryParse(dashboardDoubleConfig["privatePileButtonSize"], _m_dashboardLayoutDouble.m_privatePileButtonSize);
+		tryParse(dashboardDoubleConfig["actionedIconRegion"], _m_dashboardLayoutDouble.m_actionedIconRegion);
+		tryParse(dashboardDoubleConfig["saveMeIconRegion"], _m_dashboardLayoutDouble.m_saveMeIconRegion);
+		tryParse(dashboardDoubleConfig["chainedIconRegion"], _m_dashboardLayoutDouble.m_chainedIconRegion);
+		_m_dashboardLayoutDouble.m_deathIconRegion.tryParse(dashboardDoubleConfig["deathIconRegion"]);
+		tryParse(dashboardDoubleConfig["votesIconRegion"], _m_dashboardLayoutDouble.m_votesIconRegion);
+		tryParse(dashboardDoubleConfig["drankMaskColor"], _m_dashboardLayoutDouble.m_drankMaskColor);
+		tryParse(dashboardDoubleConfig["duanchangMaskColor"], _m_dashboardLayoutDouble.m_duanchangMaskColor);
+		tryParse(dashboardDoubleConfig["deathEffectColor"], _m_dashboardLayoutDouble.m_deathEffectColor);
+		tryParse(dashboardDoubleConfig["extraSkillArea"], _m_dashboardLayoutDouble.m_extraSkillArea);
+		_m_dashboardLayoutDouble.m_extraSkillFont.tryParse(dashboardDoubleConfig["extraSkillFont"]);
+		tryParse(dashboardDoubleConfig["extraSkillTextArea"], _m_dashboardLayoutDouble.m_extraSkillTextArea);
+
+		tryParse(dashboardDoubleConfig["leftWidth"], _m_dashboardLayoutDouble.m_leftWidth);
+		tryParse(dashboardDoubleConfig["rightWidth"], _m_dashboardLayoutDouble.m_rightWidth);
+		tryParse(dashboardDoubleConfig["floatingAreaHeight"], _m_dashboardLayoutDouble.m_floatingAreaHeight);
+		tryParse(dashboardDoubleConfig["focusFrameArea"], _m_dashboardLayoutDouble.m_focusFrameArea);
+
+	} else {
+		_m_dashboardLayoutDouble = _m_dashboardLayout;
+	}
+
+	_m_photoLayoutSmall = _m_photoLayout;
+	_m_photoLayoutBig = _m_photoLayout;
+
+	JsonObject photoSmallConfig = layoutConfig["photoSmall"].value<JsonObject>();
+	if (!photoSmallConfig.isEmpty()) {
+		_loadPhotoLayoutConfig(photoSmallConfig, _m_photoLayoutSmall);
+	}
+
+	JsonObject photoBigConfig = layoutConfig["photoBig"].value<JsonObject>();
+	if (!photoBigConfig.isEmpty()) {
+		_loadPhotoLayoutConfig(photoBigConfig, _m_photoLayoutBig);
 	}
 
 	return true;
