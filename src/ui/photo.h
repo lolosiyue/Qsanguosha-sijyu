@@ -45,6 +45,8 @@ public:
 
     void setFrame(FrameType type);
     virtual QRectF boundingRect() const;
+    void updatePhotoSize(int width, int height);
+    void setPhotoLayout(const QSanRoomSkin::PhotoLayout *layout);
     QGraphicsItem *getMouseClickReceiver();
 
     void setGiftHighlight(bool highlight);
@@ -114,6 +116,8 @@ protected:
 
     bool _m_isReadyIconVisible;
     FrameType _m_frameType;
+    int _m_cachedWidth;
+    int _m_cachedHeight;
     QGraphicsPixmapItem *_m_mainFrame;
     Sprite *emotion_item;
     QGraphicsPixmapItem *_m_skillNameItem;

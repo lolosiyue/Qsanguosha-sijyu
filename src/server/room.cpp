@@ -6685,46 +6685,46 @@ void Room::changePlayerGeneral(ServerPlayer*player, const QString&new_general)
 }
 
 void Room::changePlayerGeneral2(ServerPlayer*player, const QString&new_general)
-{
-	const General*gen = player->getGeneral2();
-	QStringList sks;
-	if (gen){
-		foreach(const Skill*skill, gen->getSkillList()){
-			sks << skill->objectName();
-			player->loseSkill(sks.last());
-			if (skill->isChangeSkill()){
-				foreach(QString mark, player->getMarkNames()){
-					if (mark.startsWith("&" + sks.last())&&mark.endsWith("_num"))
-						setPlayerMark(player, mark, 0);
+	{
+		const General*gen = player->getGeneral2();
+		QStringList sks;
+		if (gen){
+			foreach(const Skill*skill, gen->getSkillList()){
+				sks << skill->objectName();
+				player->loseSkill(sks.last());
+				if (skill->isChangeSkill()){
+					foreach(QString mark, player->getMarkNames()){
+						if (mark.startsWith("&" + sks.last())&&mark.endsWith("_num"))
+							setPlayerMark(player, mark, 0);
+					}
+				}
+				QString limit_mark = skill->getLimitMark();
+				if(limit_mark!="") setPlayerMark(player,limit_mark,0);
+				if (skill->inherits("ViewAsEquipSkill")){
+					const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(sks.last());
+					QString view = vaes->viewAsEquip(player);
+					if(view.isEmpty()) continue;
+					foreach(QString equip_name, view.split(",")){
+						if (Sanguosha->getViewAsSkill(equip_name))
+							detachSkillFromPlayer(player,equip_name,true);
+					}
 				}
 			}
-			QString limit_mark = skill->getLimitMark();
-			if(limit_mark!="") setPlayerMark(player,limit_mark,0);
-			if (skill->inherits("ViewAsEquipSkill")){
-				const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(sks.last());
-				QString view = vaes->viewAsEquip(player);
-				if(view.isEmpty()) continue;
-				foreach(QString equip_name, view.split(",")){
-					if (Sanguosha->getViewAsSkill(equip_name))
-						detachSkillFromPlayer(player,equip_name,true);
-				}
+			foreach(const Card*c, player->getCards("he")){
+				if (sks.contains(c->getSkillName()))
+					filterCards(player, QList<const Card*>() << c, true);
 			}
 		}
-	}
-	foreach(const Card*c, player->getCards("he")){
-		if (sks.contains(c->getSkillName()))
-			filterCards(player, QList<const Card*>() << c, true);
-	}
-	setPlayerProperty(player, "general2", new_general);
-	gen = player->getGeneral2();
-	if (gen){
-		foreach(const Skill*skill, gen->getSkillList()){
-			if (player->hasSkill(skill->objectName(),true)) continue;
-			player->addSkill(skill->objectName());
+		setPlayerProperty(player, "general2", new_general);
+		gen = player->getGeneral2();
+		if (gen){
+			foreach(const Skill*skill, gen->getSkillList()){
+				if (player->hasSkill(skill->objectName(),true)) continue;
+				player->addSkill(skill->objectName());
+			}
 		}
+		filterCards(player, player->getCards("he"), false);
 	}
-	filterCards(player, player->getCards("he"), false);
-}
 
 void Room::filterCards(ServerPlayer*player, QList<const Card*> cards, bool refilter)
 {

@@ -304,8 +304,21 @@ public:
 
     const RoomLayout &getRoomLayout() const;
     const PhotoLayout &getPhotoLayout() const;
+    const PhotoLayout &getPhotoLayoutSmall() const;
+    const PhotoLayout &getPhotoLayoutBig() const;
     const CommonLayout &getCommonLayout() const;
     const DashboardLayout &getDashboardLayout() const;
+    const DashboardLayout &getDashboardLayoutDouble() const;
+
+    enum PhotoSizeType
+    {
+        PhotoSizeSmall = 0,
+        PhotoSizeNormal = 1,
+        PhotoSizeBig = 2
+    };
+
+    PhotoSizeType getPhotoSizeType(int width, int height) const;
+    const PhotoLayout &getPhotoLayout(PhotoSizeType type) const;
 
     QString getButtonPixmapPath(const QString &groupName, const QString &buttonName, QSanButton::ButtonState state) const;
     QPixmap getButtonPixmap(const QString &groupName, const QString &buttonName, QSanButton::ButtonState state) const;
@@ -388,9 +401,13 @@ public:
 protected:
     RoomLayout _m_roomLayout;
     PhotoLayout _m_photoLayout;
+    PhotoLayout _m_photoLayoutSmall;
+    PhotoLayout _m_photoLayoutBig;
     CommonLayout _m_commonLayout;
     DashboardLayout _m_dashboardLayout;
+    DashboardLayout _m_dashboardLayoutDouble;
     virtual bool _loadLayoutConfig(const QVariant &layoutConfig);
+    void _loadPhotoLayoutConfig(const JsonObject &playerConfig, PhotoLayout &layout);
     virtual bool _loadAnimationConfig(const QVariant &animationConfig);
 };
 
@@ -428,6 +445,7 @@ protected:
 
 #define G_ROOM_SKIN (QSanSkinFactory::getInstance().getCurrentSkinScheme().getRoomSkin())
 #define G_DASHBOARD_LAYOUT (G_ROOM_SKIN.getDashboardLayout())
+#define G_DASHBOARD_LAYOUT_DOUBLE (G_ROOM_SKIN.getDashboardLayoutDouble())
 #define G_ROOM_LAYOUT (G_ROOM_SKIN.getRoomLayout())
 #define G_PHOTO_LAYOUT (G_ROOM_SKIN.getPhotoLayout())
 #define G_COMMON_LAYOUT (G_ROOM_SKIN.getCommonLayout())

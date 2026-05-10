@@ -104,12 +104,17 @@ EmphasizeEffect::EmphasizeEffect(bool stay, QObject *parent)
 
 void EmphasizeEffect::draw(QPainter *painter)
 {
+    if (!painter || !painter->isActive()) return;
+
     QSizeF s = this->sourceBoundingRect().size();
     qreal scale = (-qAbs(index - 50) + 50) / 1000.0;
     scale = 0.1 - scale;
 
     QPoint offset;
     QPixmap pixmap = sourcePixmap(Qt::LogicalCoordinates, &offset);
+
+    if (pixmap.isNull()) return;
+
     const QRectF target = boundingRect().adjusted(s.width() * scale - 1,
         s.height() * scale,
         -s.width() * scale,
@@ -181,8 +186,13 @@ QRectF SentbackEffect::boundingRectFor(const QRectF &sourceRect) const
 
 void SentbackEffect::draw(QPainter *painter)
 {
+    if (!painter || !painter->isActive()) return;
+    if (source() == nullptr) return;
+
     QPoint offset;
     QPixmap pixmap = sourcePixmap(Qt::LogicalCoordinates, &offset);
+
+    if (pixmap.isNull()) return;
 
     if (!grayed) {
         grayed = new QImage(pixmap.size(), QImage::Format_ARGB32);
@@ -204,8 +214,11 @@ void SentbackEffect::draw(QPainter *painter)
     }
 
     painter->drawPixmap(offset, pixmap);
-    painter->setOpacity((40 - qAbs(index - 40)) / 80.0);
-    painter->drawImage(offset, *grayed);
+    
+    if (painter && painter->isActive()) {
+        painter->setOpacity((40 - qAbs(index - 40)) / 80.0);
+        painter->drawImage(offset, *grayed);
+    }
 
     return;
 }
@@ -226,8 +239,13 @@ FadeEffect::FadeEffect(bool stay, QObject *parent)
 
 void FadeEffect::draw(QPainter *painter)
 {
+    if (!painter || !painter->isActive()) return;
+
     QPoint offset;
     QPixmap pixmap = sourcePixmap(Qt::LogicalCoordinates, &offset);
+
+    if (pixmap.isNull()) return;
+
     painter->setOpacity(index / 40.0);
     painter->drawPixmap(offset, pixmap);
 }

@@ -95,7 +95,8 @@ void RoomScene::resetPiles()
 
 
 RoomScene::RoomScene(QMainWindow*main_window)
-	: main_window(main_window),m_tableBgPixmap(1,1),m_tableBgPixmapOrig(1,1),game_started(false)
+	: main_window(main_window),m_tableBgPixmap(1,1),m_tableBgPixmapOrig(1,1),game_started(false),
+	  _m_cachedPhotoWidth(0), _m_cachedPhotoHeight(0)
 {
 	setParent(main_window);
 
@@ -139,6 +140,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	dashboard->setPlayer(Self);
 	connect(Self,SIGNAL(general_changed()),dashboard,SLOT(updateAvatar()));
 	connect(Self,SIGNAL(general2_changed()),dashboard,SLOT(updateSmallAvatar()));
+	connect(Self,SIGNAL(general2_changed()),dashboard,SLOT(refreshLayout()));
 	connect(dashboard,SIGNAL(card_selected(const Card*)),this,SLOT(enableTargets(const Card*)));
 	connect(dashboard,SIGNAL(card_to_use()),this,SLOT(doOkButton()));
 	//connect(dashboard,SIGNAL(add_equip_skill(const Skill*,bool)),this,SLOT(addSkillButton(const Skill*,bool)));
@@ -586,9 +588,8 @@ RoomScene::~RoomScene()
 	/*if(RoomSceneInstance==this)
 		RoomSceneInstance = nullptr;*/
 
-	// Explicitly destroy the spine controller BEFORE the scene tears down its
-	// child QGraphicsItems.  Otherwise the controller's destructor tries to
-	// remove items from a half-destroyed scene, causing stack corruption.
+	_activeSpineItems.clear();
+
 	if (_spineActionController) {
 		delete _spineActionController;
 		_spineActionController = nullptr;
@@ -793,9 +794,28 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		QString newHeroName = arg[2].toString();
 		bool isSecondaryHero = arg[3].toBool();
 		bool sendLog = arg[4].toBool();
+		qDebug() << "S_GAME_EVENT_CHANGE_HERO - playerName:" << playerName << "newHeroName:" << newHeroName << "isSecondaryHero:" << isSecondaryHero;
 		const General*hero = Sanguosha->getGeneral(newHeroName);
-		if(hero==nullptr) break;
 		ClientPlayer*player = ClientInstance->getPlayer(playerName);
+		qDebug() << "S_GAME_EVENT_CHANGE_HERO - player:" << (player ? player->objectName() : "null") << "Self:" << (Self ? Self->objectName() : "null") << "player==Self:" << (player == Self);
+		if (isSecondaryHero && newHeroName.isEmpty()) {
+			if (player) {
+				const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
+				const General *oldGeneral = player->getGeneral2();
+				if (player == activePlayer && oldGeneral) {
+					foreach (const Skill *skill, oldGeneral->getVisibleSkills())
+						detachSkill(skill->objectName());
+				}
+				player->setGeneral2Name("");
+				PlayerCardContainer *container = qobject_cast<PlayerCardContainer *>(
+					_getGenericCardContainer(Player::PlaceHand, player));
+				if (container)
+					container->updateSmallAvatar();
+			}
+			break;
+		}
+		if(hero==nullptr) break;
+		qDebug() << "S_GAME_EVENT_CHANGE_HERO - hero:" << hero->objectName() << "visibleSkills:" << hero->getVisibleSkillList().length();
 		PlayerCardContainer *container = qobject_cast<PlayerCardContainer *>(
 			_getGenericCardContainer(Player::PlaceHand, player));
 		if (container) {
@@ -834,16 +854,21 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		}
 
 		if(player!=Self) break;
+		qDebug() << "S_GAME_EVENT_CHANGE_HERO - processing for Self, isSecondaryHero:" << isSecondaryHero << "player->getGeneral2():" << (player->getGeneral2() ? player->getGeneral2()->objectName() : "null");
 		const General*ghero = isSecondaryHero ? player->getGeneral2() : player->getGeneral();
+		qDebug() << "S_GAME_EVENT_CHANGE_HERO - ghero:" << (ghero ? ghero->objectName() : "null");
 		if(ghero){
 			foreach(const Skill*skill,ghero->getVisibleSkills()){
+				qDebug() << "S_GAME_EVENT_CHANGE_HERO - detaching skill:" << skill->objectName();
 				detachSkill(skill->objectName());
 				if(skill->objectName().contains("huashen"))
 					dashboard->stopHuaShen();
 			}
 		}
-		foreach(const Skill*skill,hero->getVisibleSkills())
+		foreach(const Skill*skill,hero->getVisibleSkills()){
+			qDebug() << "S_GAME_EVENT_CHANGE_HERO - attaching skill:" << skill->objectName();
 			attachSkill(skill->objectName());
+		}
 		break;
 	}
 	case S_GAME_EVENT_PLAYER_REFORM: {
@@ -1033,6 +1058,64 @@ void RoomScene::_getSceneSizes(QSize&minSize,QSize&maxSize)
 	}
 }
 
+void RoomScene::_calculateDynamicPhotoSize()
+{
+	int numPlayers = photos.size() + 1;
+	if (numPlayers < 1) numPlayers = 1;
+
+	int sceneWidth = static_cast<int>(sceneRect().width());
+	int sceneHeight = static_cast<int>(sceneRect().height());
+
+	int availableWidth = sceneWidth - static_cast<int>(_m_roomLayout->m_infoPlaneWidthPercentage * sceneWidth);
+	int availableHeight = sceneHeight - G_DASHBOARD_LAYOUT.m_normalHeight - G_DASHBOARD_LAYOUT.m_floatingAreaHeight;
+
+	static const int PHOTO_SIZE_SMALL = 94;
+	static const int PHOTO_SIZE_NORMAL = 157;
+	static const int PHOTO_SIZE_BIG = 235;
+
+	static const int PHOTO_HEIGHT_SMALL = 108;
+	static const int PHOTO_HEIGHT_NORMAL = 181;
+	static const int PHOTO_HEIGHT_BIG = 271;
+
+	int maxPhotosVertical = qMax(1, (numPlayers - 1) / 4 + 1);
+	int maxPhotosHorizontal = qMax(1, (numPlayers + 1) / 2);
+
+	int requiredWidthNormal = maxPhotosHorizontal * PHOTO_SIZE_NORMAL + (maxPhotosHorizontal + 1) * G_ROOM_LAYOUT.m_photoHDistance;
+	int requiredHeightNormal = maxPhotosVertical * PHOTO_HEIGHT_NORMAL + (maxPhotosVertical + 1) * G_ROOM_LAYOUT.m_photoVDistance;
+
+	int requiredWidthSmall = maxPhotosHorizontal * PHOTO_SIZE_SMALL + (maxPhotosHorizontal + 1) * G_ROOM_LAYOUT.m_photoHDistance;
+	int requiredHeightSmall = maxPhotosVertical * PHOTO_HEIGHT_SMALL + (maxPhotosVertical + 1) * G_ROOM_LAYOUT.m_photoVDistance;
+
+	int requiredWidthBig = maxPhotosHorizontal * PHOTO_SIZE_BIG + (maxPhotosHorizontal + 1) * G_ROOM_LAYOUT.m_photoHDistance;
+	int requiredHeightBig = maxPhotosVertical * PHOTO_HEIGHT_BIG + (maxPhotosVertical + 1) * G_ROOM_LAYOUT.m_photoVDistance;
+
+	int targetWidth = PHOTO_SIZE_NORMAL;
+	int targetHeight = PHOTO_HEIGHT_NORMAL;
+
+	bool canFitBig = (availableWidth >= requiredWidthBig && availableHeight >= requiredHeightBig);
+	bool canFitNormal = (availableWidth >= requiredWidthNormal && availableHeight >= requiredHeightNormal);
+	bool canFitSmall = (availableWidth >= requiredWidthSmall && availableHeight >= requiredHeightSmall);
+
+	if (canFitBig) {
+		int extraSpaceBig = (availableWidth - requiredWidthBig) + (availableHeight - requiredHeightBig);
+		int extraSpaceNormal = (availableWidth - requiredWidthNormal) + (availableHeight - requiredHeightNormal);
+
+		if (extraSpaceBig < extraSpaceNormal * 0.3) {
+			targetWidth = PHOTO_SIZE_BIG;
+			targetHeight = PHOTO_HEIGHT_BIG;
+		}
+	} else if (!canFitNormal && canFitSmall) {
+		targetWidth = PHOTO_SIZE_SMALL;
+		targetHeight = PHOTO_HEIGHT_SMALL;
+	} else if (!canFitSmall) {
+		targetWidth = PHOTO_SIZE_SMALL;
+		targetHeight = PHOTO_HEIGHT_SMALL;
+	}
+
+	_m_cachedPhotoWidth = targetWidth;
+	_m_cachedPhotoHeight = targetHeight;
+}
+
 void RoomScene::adjustItems()
 {
 	QRectF displayRegion = sceneRect();
@@ -1055,6 +1138,8 @@ void RoomScene::adjustItems()
 		displayRegion.setRight(scale*displayRegion.width());
 		setSceneRect(displayRegion);
 	}
+
+	_calculateDynamicPhotoSize();
 
 	int padding = _m_roomLayout->m_scenePadding;
 	displayRegion.moveLeft(displayRegion.x()+padding);
@@ -1111,6 +1196,18 @@ void RoomScene::adjustItems()
 	updateRolesBox();
 	setChatBoxVisible(chat_box_widget->isVisible());
 
+	foreach(Photo *photo, photos) {
+		photo->updatePhotoSize(_m_cachedPhotoWidth, _m_cachedPhotoHeight);
+	}
+
+	foreach (SpineGlItem *spineItem, _activeSpineItems) {
+		QRectF sr = sceneRect();
+		spineItem->setRenderRect(sr);
+		float cx = (float)(sr.width() / 2.0);
+		float cy = (float)(sr.height() / 2.0);
+		spineItem->setSpinePosition(QPointF(cx, cy));
+	}
+
 	QMapIterator<QString,BubbleChatBox*> iter(bubbleChatBoxes);
 	while (iter.hasNext()){
 		iter.next();
@@ -1123,8 +1220,8 @@ void RoomScene::_dispersePhotos(QList<Photo*>&photos,QRectF fillRegion,
 {
 	int numPhotos = photos.size();
 	if(numPhotos==0) return;
-	double photoWidth = _m_photoLayout->m_normalWidth;
-	double photoHeight = _m_photoLayout->m_normalHeight;
+	double photoWidth = _m_cachedPhotoWidth > 0 ? _m_cachedPhotoWidth : _m_photoLayout->m_normalWidth;
+	double photoHeight = _m_cachedPhotoHeight > 0 ? _m_cachedPhotoHeight : _m_photoLayout->m_normalHeight;
 	Qt::Alignment hAlign = align&Qt::AlignHorizontal_Mask;
 	Qt::Alignment vAlign = align&Qt::AlignVertical_Mask;
 
@@ -1133,7 +1230,14 @@ void RoomScene::_dispersePhotos(QList<Photo*>&photos,QRectF fillRegion,
 	if(orientation==Qt::Horizontal){
 		stepX = qMax(photoWidth+G_ROOM_LAYOUT.m_photoHDistance, fillRegion.width()/numPhotos);
 	} else {
-		stepY = G_ROOM_LAYOUT.m_photoVDistance+photoHeight;
+		double minStepY = G_ROOM_LAYOUT.m_photoVDistance + photoHeight;
+		double availableHeight = fillRegion.height();
+		if (numPhotos > 1) {
+			double maxStepY = availableHeight / numPhotos;
+			stepY = qMax(minStepY, maxStepY);
+		} else {
+			stepY = minStepY;
+		}
 	}
 
 	switch (vAlign){
@@ -1160,8 +1264,8 @@ void RoomScene::updateTable()
 	int tableh = sceneRect().height()-pad*2-dashboard->boundingRect().height();
 	if((ServerInfo.GameMode=="04_1v3"||ServerInfo.GameMode=="06_3v3")&&game_started)
 		tableh -= _m_roomLayout->m_photoVDistance;
-	int photow = _m_photoLayout->m_normalWidth;
-	int photoh = _m_photoLayout->m_normalHeight;
+	int photow = _m_cachedPhotoWidth > 0 ? _m_cachedPhotoWidth : _m_photoLayout->m_normalWidth;
+	int photoh = _m_cachedPhotoHeight > 0 ? _m_cachedPhotoHeight : _m_photoLayout->m_normalHeight;
 
 	// Layout:
 	//    col1           col2
@@ -2056,7 +2160,20 @@ QGroupBox*RoomScene::createOptionBox(const QString&skillName,const QStringList&o
 		const Skill*s = Sanguosha->getSkill(option);
 		if(s){
 			LuaLocker locker;
-			button->setToolTip(buildOracleTooltip(s->getOracleText(Self), s->getDescription(Self)));
+			QString oracle = s->getOracleText(Self);
+			QString oracle_key = "^" + option;
+			if(oracle != oracle_key){
+				button->setToolTip(buildOracleTooltip(oracle, s->getDescription(Self)));
+			}else{
+				QString original_tooltip = QString(":%1").arg(text);
+				QString tooltip = Sanguosha->translate(original_tooltip);
+				if(tooltip==original_tooltip){
+					original_tooltip = QString(":%1").arg(option);
+					tooltip = Sanguosha->translate(original_tooltip);
+				}
+				if(tooltip!=original_tooltip)
+					button->setToolTip(tooltip);
+			}
 		}else{
 			QString original_tooltip = QString(":%1").arg(text);
 			QString tooltip = Sanguosha->translate(original_tooltip);
@@ -2704,11 +2821,35 @@ void RoomScene::keepGetCardLog(const CardsMoveStruct&move)
 		log_box->appendLog("$TurnOver",move.reason.m_playerId,QStringList(),ListI2S(move.card_ids).join("+"));
 }
 
+bool RoomScene::isPrimarySkill(const Skill *skill) const
+{
+	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
+	if (!skill || !activePlayer) return true;
+	
+	QString skillName = skill->objectName();
+	
+	if (activePlayer->getGeneral() && activePlayer->getGeneral()->hasSkill(skillName))
+		return true;
+	
+	if (skill->isAttachedLordSkill())
+		return true;
+	
+	if (activePlayer->getGeneral()) {
+		foreach (const Skill *genSkill, activePlayer->getGeneral()->getVisibleSkillList()) {
+			QList<const Skill *> related = Sanguosha->getRelatedSkills(genSkill->objectName());
+			foreach (const Skill *rs, related) {
+				if (rs == skill || rs->objectName() == skillName)
+					return true;
+			}
+		}
+	}
+	
+	return false;
+}
+
 void RoomScene::addSkillButton(const Skill*skill)
 {
-	if(!skill) return;
-	//if(!skill||skill->inherits("SPConvertSkill")) return;
-	// check duplication
+	if(!skill || skill->isHideSkill()) return;
 	foreach(QSanSkillButton*button,m_skillButtons) {
 		if(button->getSkill()==skill) {
 			const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
@@ -2724,8 +2865,12 @@ void RoomScene::addSkillButton(const Skill*skill)
 		}
 	}
 	
-	QSanSkillButton*btn = dashboard->addSkillButton(skill->objectName());
+	bool isPrimary = isPrimarySkill(skill);
+	qDebug() << "RoomScene::addSkillButton - skill:" << skill->objectName() << "isPrimary:" << isPrimary;
+	QSanSkillButton*btn = dashboard->addSkillButton(skill->objectName(), isPrimary);
+	qDebug() << "RoomScene::addSkillButton - btn created:" << (btn != nullptr);
 	if(!btn||m_skillButtons.contains(btn)) return;
+	connect(btn, SIGNAL(destroyed(QObject*)), this, SLOT(onSkillButtonDestroyed(QObject*)));
 	if(!m_replayControl){
 		if(btn->getViewAsSkill()){
 			connect(btn,SIGNAL(skill_activated()),dashboard,SLOT(skillButtonActivated()));
@@ -2770,6 +2915,8 @@ void RoomScene::updateSkillButtons(bool isPrepare)
 	} else if(activePlayer != nullptr)
 		skill_list = activePlayer->getVisibleSkillList();
 	foreach (const Skill*skill,skill_list){
+		if (skill == nullptr || skill->isHideSkill())
+			continue;
 		if(skill->isLordSkill() && !activePlayer->hasLordSkill(skill,true))
 			continue;
 		if (!desired_skill_names.contains(skill->objectName())) {
@@ -2796,11 +2943,22 @@ void RoomScene::updateSkillButtons(bool isPrepare)
 
 	QList<QSanSkillButton*> existing_buttons = m_skillButtons;
 	foreach(QSanSkillButton*button, existing_buttons){
-		if(activePlayer != nullptr && (activePlayer->hasSkill(button->objectName(),true)
-			|| equip_view_as_skills.contains(button->objectName())))
+		if (button == nullptr) continue;
+		QString skillName = button->objectName();
+		if (skillName.isEmpty()) continue;
+		bool keepButton = activePlayer != nullptr && (activePlayer->hasSkill(skillName, true)
+			|| equip_view_as_skills.contains(skillName));
+		if (keepButton && !equip_view_as_skills.contains(skillName)) {
+			const Skill *buttonSkill = button->getSkill();
+			bool isDockButton = dashboard->isPrimarySkillButton(button) || dashboard->isSecondarySkillButton(button);
+			if (buttonSkill == nullptr || buttonSkill->isHideSkill()
+				|| (isDockButton && dashboard->isPrimarySkillButton(button) != isPrimarySkill(buttonSkill)))
+				keepButton = false;
+		}
+		if (keepButton)
 			button->setEnabled(false);
 		else
-			detachSkill(button->objectName());
+			detachSkill(skillName);
 	}
 
 	foreach (const Skill *skill, desired_skills)
@@ -4414,6 +4572,11 @@ void RoomScene::detachSkill(const QString&skill_name)
 	btn->deleteLater();
 }
 
+void RoomScene::onSkillButtonDestroyed(QObject *button)
+{
+	m_skillButtons.removeAll(static_cast<QSanSkillButton *>(button));
+}
+
 void RoomScene::detachSkill(const ClientPlayer *player, const QString &skill_name)
 {
 	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
@@ -5186,7 +5349,8 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
             glViewport->doneCurrent();
 
         if(loaded){
-            // Position: fill the entire scene
+            _activeSpineItems.append(spineItem);
+
             QRectF sr = sceneRect();
             spineItem->setRenderRect(sr);
             float cx = (float)(sr.width()  / 2.0);
@@ -5197,21 +5361,21 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
             qWarning("[RoomScene] SpineGlItem playing, duration=%.3f",
                      spineItem->animationDuration());
 
-            // Auto-remove when the animation finishes
-            connect(spineItem, &SpineGlItem::animationFinished, spineItem, [spineItem](){
+            connect(spineItem, &SpineGlItem::animationFinished, this, [this, spineItem](){
                 qWarning("[RoomScene] SpineGlItem animation finished, removing");
+                _activeSpineItems.removeAll(spineItem);
                 spineItem->stop();
                 if(spineItem->scene())
                     spineItem->scene()->removeItem(spineItem);
                 spineItem->deleteLater();
             });
 
-            // Safety timer: remove even if signal doesn't fire
             float dur = spineItem->animationDuration();
             if(dur > 0){
-                QTimer::singleShot((int)(dur * 1000) + 1000, spineItem, [spineItem](){
+                QTimer::singleShot((int)(dur * 1000) + 1000, this, [this, spineItem](){
                     if(spineItem->isPlaying()){
                         qWarning("[RoomScene] SpineGlItem safety timer fired, removing");
+                        _activeSpineItems.removeAll(spineItem);
                         spineItem->stop();
                         if(spineItem->scene())
                             spineItem->scene()->removeItem(spineItem);

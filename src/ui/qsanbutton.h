@@ -180,17 +180,20 @@ class QSanInvokeSkillDock : public QGraphicsObject
 public:
     QSanInvokeSkillDock(QGraphicsItem *parent) : QGraphicsObject(parent)
     {
+    _m_width = 0;
     }
     int width() const;
     int height() const;
     void setWidth(int width);
     inline void addSkillButton(QSanInvokeSkillButton *button)
     {
+        prepareGeometryChange();
         _m_buttons.push_back(button);
     }
     inline void removeSkillButton(QSanInvokeSkillButton *button)
     {
         if (button == nullptr) return;
+        prepareGeometryChange();
         _m_buttons.removeAll(button);
         disconnect(button);
     }

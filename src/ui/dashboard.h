@@ -53,7 +53,15 @@ public:
     void bindPlayer(ClientPlayer *player);
 
     QSanSkillButton *removeSkillButton(const QString &skillName);
-    QSanSkillButton *addSkillButton(const QString &skillName);
+    QSanSkillButton *addSkillButton(const QString &skillName, bool isPrimary = true);
+    inline bool isPrimarySkillButton(const QSanSkillButton *button) const
+    {
+        return button != nullptr && button->parentItem() == _m_skillDock;
+    }
+    inline bool isSecondarySkillButton(const QSanSkillButton *button) const
+    {
+        return button != nullptr && m_secondarySkillDock != nullptr && button->parentItem() == m_secondarySkillDock;
+    }
     bool isAvatarUnderMouse();
 
     void highlightEquip(QString skillName, bool hightlight);
@@ -137,6 +145,8 @@ public:
     {
         if (_m_skillDock)
             _m_skillDock->update();
+        if (m_secondarySkillDock)
+            m_secondarySkillDock->update();
     }
 
     inline QRectF getAvatarAreaSceneBoundingRect() const
@@ -146,6 +156,7 @@ public:
 
 public slots:
     virtual void updateAvatar();
+    void refreshLayout();
 
     void sortCards();
     void beginSorting();
@@ -253,7 +264,9 @@ protected:
     void clearFilterUIElements();
 
     QSanInvokeSkillDock* _m_skillDock;
+    QSanInvokeSkillDock* m_secondarySkillDock;
     const QSanRoomSkin::DashboardLayout *_dlayout;
+    const QSanRoomSkin::DashboardLayout *_dlayoutDouble;
 
     //for animated effects
     EffectAnimation *animations;
@@ -263,6 +276,8 @@ protected:
     void _createRight();
     void _createMiddle();
     void _updateFrames();
+    void _updateSkillDockGeometry();
+    void _clearSkillDock(QSanInvokeSkillDock *dock);
 
     void _paintLeftFrame();
     void _paintMiddleFrame(const QRect &rect);

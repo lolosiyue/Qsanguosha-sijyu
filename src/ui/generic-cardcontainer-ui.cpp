@@ -358,14 +358,23 @@ void PlayerCardContainer::updateSmallAvatar()
         _clearPixmap(_m_smallAvatarIcon);
         _clearPixmap(_m_circleItem);
         _m_layout->m_smallAvatarNameFont.paintText(_m_smallAvatarNameItem, _m_layout->m_smallAvatarNameArea, Qt::AlignLeft | Qt::AlignJustify, name);
-        _m_smallAvatarArea->setToolTip(name);
+        _m_smallAvatarArea->setToolTip(QString());
+        _m_smallAvatarIcon->setToolTip(QString());
     } else {
+		QString tooltip;
+		const General *general2 = m_player ? m_player->getGeneral2() : nullptr;
+		if (general2)
+			tooltip = buildOracleTooltip(general2->getOracleText(), general2->getSkillDescription(true));
+		else
+			tooltip = Sanguosha->translate(name);
 		QGraphicsPixmapItem *smallAvatarIconTmp = _m_smallAvatarIcon;
         _paintPixmap(smallAvatarIconTmp, _m_layout->m_smallAvatarArea, paintByMask(G_ROOM_SKIN.getGeneralPixmap(name, QSanRoomSkin::GeneralIconSize(_m_layout->m_smallAvatarSize))), _getAvatarParent());
         _paintPixmap(_m_circleItem, _m_layout->m_circleArea, QString(QSanRoomSkin::S_SKIN_KEY_GENERAL_CIRCLE_IMAGE).arg(_m_layout->m_circleImageSize), _getAvatarParent());
 		if(m_player->getGeneral2()) name = m_player->getGeneral2()->getBriefName();
 		else name = Sanguosha->translate(name);
         _m_layout->m_smallAvatarNameFont.paintText(_m_smallAvatarNameItem, _m_layout->m_smallAvatarNameArea, Qt::AlignLeft | Qt::AlignJustify, name);
+        _m_smallAvatarArea->setToolTip(tooltip);
+        _m_smallAvatarIcon->setToolTip(tooltip);
         _m_smallAvatarIcon->show();
     }
     _allZAdjusted = false;
@@ -1678,8 +1687,19 @@ void PlayerCardContainer::updateAvatarTooltip()
         QString description = m_player->getSkillDescription();
         QString fullTooltip = buildOracleTooltip(oracle, description);
         _m_avatarArea->setToolTip(fullTooltip);
-        if (m_player->getGeneral2()||m_player->property("avatarIcon2").toString()!="")
-            _m_smallAvatarArea->setToolTip(fullTooltip);
+        if (_m_avatarIcon)
+            _m_avatarIcon->setToolTip(fullTooltip);
+
+        QString deputyTooltip;
+        const General *general2 = m_player->getGeneral2();
+        if (general2)
+            deputyTooltip = buildOracleTooltip(general2->getOracleText(), general2->getSkillDescription(true));
+        else if (m_player->property("avatarIcon2").toString() != "")
+            deputyTooltip = Sanguosha->translate(m_player->property("avatarIcon2").toString());
+
+        _m_smallAvatarArea->setToolTip(deputyTooltip);
+        if (_m_smallAvatarIcon)
+            _m_smallAvatarIcon->setToolTip(deputyTooltip);
     }
 }
 
