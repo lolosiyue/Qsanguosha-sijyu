@@ -1124,6 +1124,15 @@
         <translation>卡牌描述显示英文名</translation>
     </message>
     <message>
+        <location filename="../src/dialog/configdialog.ui" line="638"/>
+        <source>Enable Melee Mode (Peach as Slash/Jink in late game)</source>
+        <translation>启用鏖战模式（残局桃当杀/闪）</translation>
+    </message>
+    <message>
+        <source>EnableMeleeMode</source>
+        <translation>启用鏖战模式</translation>
+    </message>
+    <message>
         <location filename="../src/dialog/configdialog.ui" line="580"/>
         <source>录像</source>
         <translation>录像</translation>
@@ -1995,6 +2004,11 @@
         <location filename="../src/core/engine.cpp" line="339"/>
         <source>10 players (0 renegade)</source>
         <translation>10 人局 [无内奸]</translation>
+    </message>
+    <message>
+        <location filename="../src/core/engine.cpp" line="340"/>
+        <source>20 players (1 renegade)</source>
+        <translation>20 人局 [单内奸]</translation>
     </message>
     <message>
         <location filename="../src/core/engine.cpp" line="393"/>
@@ -3800,6 +3814,16 @@
         <translation>请选择方向</translation>
     </message>
     <message>
+        <location filename="../src/ui/roomscene.cpp" line="2341"/>
+        <source>Please select trigger order</source>
+        <translation>请选择触发顺序</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/roomscene.cpp" line="2348"/>
+        <source>Please select the skill to trigger</source>
+        <translation>请选择触发的技能</translation>
+    </message>
+    <message>
         <location filename="../src/ui/roomscene.cpp" line="1847"/>
         <source>CW</source>
         <translation>顺时针</translation>
@@ -5001,6 +5025,34 @@ P = 你自己, R = 你所在的房间</translation>
         <location filename="../src/dialog/connectiondialog.cpp" line="148"/>
         <source>Refresh</source>
         <translation>刷新</translation>
+    </message>
+</context>
+<context>
+    <name>PlayerCardContainer</name>
+    <message>
+        <location filename="../src/ui/generic-cardcontainer-ui.cpp" line="1762"/>
+        <source>&apos;s Handcards</source>
+        <translation>的手牌</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/generic-cardcontainer-ui.cpp" line="1823"/>
+        <source>Total: </source>
+        <translation>总计：</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/generic-cardcontainer-ui.cpp" line="1829"/>
+        <source>Unknown Card</source>
+        <translation>未知牌</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/generic-cardcontainer-ui.cpp" line="1837"/>
+        <source>This player has no handcards</source>
+        <translation>该角色没有手牌</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/generic-cardcontainer-ui.cpp" line="1846"/>
+        <source>Close</source>
+        <translation>关闭</translation>
     </message>
 </context>
 </TS>

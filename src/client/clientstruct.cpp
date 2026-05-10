@@ -55,6 +55,7 @@ bool ServerInfoStruct::parse(const QString &_str)
         EnableSame = flags.contains("T");
         EnableBasara = flags.contains("B");
         EnableHegemony = flags.contains("H");
+        EnableMeleeMode = flags.contains("E");
         EnableAI = flags.contains("A");
         DisableChat = flags.contains("M");
 

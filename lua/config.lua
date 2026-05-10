@@ -64,6 +64,7 @@ config = {
 		"Disaster",
 		"JoyEquip",
 		"ExclusiveCards",
+		"MeleeMode",
 
 		"Standard",
 		"Wind",
@@ -143,6 +144,7 @@ config = {
 		"BGM",
 		"Assassins",
 		"Doudizhu",
+		"MeleeMode",
 		"BGMDIY",
 		"TaiwanSP",
 		"TaiwanYJCM" ,
@@ -150,6 +152,7 @@ config = {
 		"Wisdom",
 		"Yinhu",
 		"Maotu",
+		"Zombine",
 		"Miscellaneous",
 		"Special1v1",
 		"Special1v1Ext",

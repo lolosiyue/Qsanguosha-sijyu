@@ -24,6 +24,7 @@ struct ServerInfoStruct
     bool EnableSame;
     bool EnableBasara;
     bool EnableHegemony;
+    bool EnableMeleeMode;
     bool EnableAI;
     bool DisableChat;
     int MaxHpScheme;
