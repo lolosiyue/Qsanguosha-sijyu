@@ -200,7 +200,8 @@ src/ui/chatwidget.cpp \
 	src/package/olwenwu.cpp \
 	src/package/yinhu.cpp \
 	src/package/zombine.cpp \
-	src/package/maotu.cpp
+	src/package/maotu.cpp \
+	src/package/meleemode.cpp
 
 # Android-specific sources
 android {
@@ -381,7 +382,8 @@ src/ui/dashboard.h \
 	src/package/olwenwu.h \
 	src/package/yinhu.h \
 	src/package/zombine.h \
-	src/package/maotu.h
+	src/package/maotu.h \
+	src/package/meleemode.h
 
 # Android-specific headers
 android {

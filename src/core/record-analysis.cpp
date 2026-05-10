@@ -72,6 +72,7 @@ void RecAnalysis::initialize(QString dir)
                 if (flags.contains("T")) m_recordServerOptions << tr("EnableSame");
                 if (flags.contains("B")) m_recordServerOptions << tr("EnableBasara");
                 if (flags.contains("H")) m_recordServerOptions << tr("EnableHegemony");
+                if (flags.contains("E")) m_recordServerOptions << tr("EnableMeleeMode");
                 if (flags.contains("A")) m_recordServerOptions << tr("EnableAI");
 
                 continue;

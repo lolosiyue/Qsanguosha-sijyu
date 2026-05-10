@@ -112,6 +112,7 @@ void Settings::init()
     EnableSame = value("EnableSame", false).toBool();
     EnableBasara = value("EnableBasara", false).toBool();
     EnableHegemony = value("EnableHegemony", false).toBool();
+    EnableMeleeMode = value("EnableMeleeMode", false).toBool();
     MaxHpScheme = value("MaxHpScheme", 0).toInt();
     Scheme0Subtraction = value("Scheme0Subtraction", 3).toInt();
     PreventAwakenBelow3 = value("PreventAwakenBelow3", false).toBool();
