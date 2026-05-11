@@ -1254,9 +1254,11 @@ void Dashboard::showCardFilterContainer()
             label->setTextWidth(G_COMMON_LAYOUT.m_cardNormalWidth);
             label->document()->setDefaultTextOption(QTextOption(Qt::AlignHCenter));
 
+            QRectF cardBounds = cItem->boundingRect();
+            QPointF cardCenter = cardBounds.center();
+
             QRectF textBounds = label->boundingRect();
-            qreal cardCenterX = 0;
-            label->setPos(cardCenterX - textBounds.width() / 2, -textBounds.height() / 2 + 15);
+            label->setPos(cardCenter.x() - textBounds.width() / 2, cardCenter.y() - textBounds.height() / 2);
 
             _m_filterUIElements.append(label);
         }
