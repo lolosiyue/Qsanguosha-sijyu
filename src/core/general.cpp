@@ -331,3 +331,19 @@ QString General::getImage() const
     return image;
 }
 
+bool General::hasPreSelectionSkill() const
+{
+    return !preselection_skills.isEmpty();
+}
+
+QStringList General::getPreSelectionSkills() const
+{
+    return preselection_skills;
+}
+
+void General::addPreSelectionSkill(const QString &skill_name)
+{
+    if (!preselection_skills.contains(skill_name))
+        preselection_skills << skill_name;
+}
+

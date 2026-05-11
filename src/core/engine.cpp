@@ -695,24 +695,27 @@ void Engine::addPackage(Package*package)
 
 	QList<const Skill*> sks = package->getSkills();
 	sks << package->findChildren<const Skill*>();
-    foreach (const Skill*skill, sks) {
+	foreach (const Skill*skill, sks) {
 		if(skill->getWakedSkills().isEmpty()) continue;
-        foreach (QString sk_name, skill->getWakedSkills().split(",")) {
-            if (sk_name.startsWith("#"))
+		foreach (QString sk_name, skill->getWakedSkills().split(",")) {
+			if (sk_name.startsWith("#"))
 				related_skills.insertMulti(skill->objectName(), sk_name);
-        }
-    }
+		}
+	}
 	addSkills(sks);
 
-    foreach (General*general, package->findChildren<General*>()) {
-        foreach (QString skill_name, general->getExtraSkillSet()) {
-            if (skill_name.startsWith("#")) continue;
+	foreach (General*general, package->findChildren<General*>()) {
+		foreach (QString skill_name, general->getExtraSkillSet()) {
+			if (skill_name.startsWith("#")) continue;
 			foreach(QString name, related_skills.values(skill_name)){
 				if (name.startsWith("#")) general->addSkill(name);
 			}
-        }
-        generals.insert(general->objectName(), general);
-    }
+			const Skill *skill = getSkill(skill_name);
+			if (skill && skill->inherits("PreSelectionMetaSkill"))
+				general->addPreSelectionSkill(skill_name);
+		}
+		generals.insert(general->objectName(), general);
+	}
 
     foreach(const QMetaObject*meta, package->getMetaObjects()){
 		//name2cards.insert(meta->className(),(const Card*)meta->newInstance());

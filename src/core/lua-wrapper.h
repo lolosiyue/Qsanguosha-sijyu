@@ -348,6 +348,23 @@ public:
     LuaFunction limit_pattern;
 };
 
+class LuaPreSelectionMetaSkill : public PreSelectionMetaSkill
+{
+    Q_OBJECT
+
+public:
+    LuaPreSelectionMetaSkill(const QString &name, const QString &active_skills);
+
+    virtual QStringList onGeneralChoosing(Room *room, ServerPlayer *player,
+                                          QStringList generals, const QString &reason) const;
+    virtual void onGeneralNotChosen(Room *room, ServerPlayer *player,
+                                     const QStringList &generals, const QString &chosen,
+                                     const QString &reason) const;
+
+    LuaFunction on_general_choosing;
+    LuaFunction on_general_not_chosen;
+};
+
 class LuaSkillCard : public SkillCard
 {
     Q_OBJECT
