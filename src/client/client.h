@@ -124,6 +124,7 @@ public:
     void warn(const QVariant &reason_json);
     void setMark(const QVariant &mark_str);
     void showCard(const QVariant &show_str);
+    void showVirtualCard(const QVariant &arg);
     void log(const QVariant &log_str);
     void speak(const QVariant &speak_data);
     void addHistory(const QVariant &history);
@@ -348,6 +349,8 @@ signals:
     void player_killed(const QString &who);
     void player_revived(const QString &who);
     void card_shown(const QString &player_name, QList<int> card_ids);
+    void virtual_card_shown(const QString &player_name, const QString &card_name, 
+                            const QString &suit, int number, const QString &skill_name);
     void log_received(const QStringList &log_str);
     void guanxing(const QList<int> &card_ids, int single_side);
     void gongxin(const QList<int> &card_ids, bool enable_heart, QList<int> enabled_ids);

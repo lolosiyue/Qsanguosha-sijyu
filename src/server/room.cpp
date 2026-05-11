@@ -4893,6 +4893,8 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 				WrappedCard*wrapped = Sanguosha->getWrappedCard(ids.first());
 				if (wrapped->isModified()) broadcastUpdateCard(m_players, ids.first(), wrapped);
 				//else broadcastResetCard(m_players, ids.first());
+			} else if (use.card->getTypeId() != Card::TypeSkill) {
+				showVirtualCard(use.from, use.card);
 			}
 			use.card->onUse(this, use);
 		} else {
@@ -8372,6 +8374,23 @@ void Room::showCard(ServerPlayer*player, QList<int> card_ids, QList<ServerPlayer
 	data = QString("viewCards:%1:%2").arg(player->objectName()).arg(show_arg[1].toString());
 	foreach(ServerPlayer*p, players)
 		thread->trigger(ChoiceMade, this, p, data);
+}
+
+void Room::showVirtualCard(ServerPlayer* player, const Card* card)
+{
+	if (!player || !card) return;
+
+	tryPause();
+	notifyMoveFocus(player);
+
+	JsonArray args;
+	args << player->objectName();
+	args << card->objectName();
+	args << Card::Suit2String(card->getSuit());
+	args << card->getNumber();
+	args << card->getSkillName();
+
+	doBroadcastNotify(S_COMMAND_SHOW_VIRTUAL_CARD, args);
 }
 
 void Room::showAllCards(ServerPlayer*player, ServerPlayer*to)
