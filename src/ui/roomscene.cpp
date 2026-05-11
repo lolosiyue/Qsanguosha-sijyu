@@ -1,4 +1,6 @@
 #include "roomscene.h"
+#include "wind.h"
+#include "ol.h"
 //#include "settings.h"
 #include "carditem.h"
 #include "engine.h"
@@ -2848,13 +2850,27 @@ void RoomScene::addSkillButton(const Skill*skill)
 
 		QDialog*dialog = skill->getDialog();
 		if(dialog){
-			dialog->setParent(main_window,Qt::Dialog);
-			connect(btn,SIGNAL(skill_activated()),dialog,SLOT(popup()));
-			connect(btn,SIGNAL(skill_deactivated()),dialog,SLOT(reject()));
-			disconnect(btn,SIGNAL(skill_activated()),this,SLOT(onSkillActivated()));
-			connect(dialog,SIGNAL(onButtonClick()),this,SLOT(onSkillActivated()));
-			if(dialog->objectName()=="qice")
-				connect(dialog,SIGNAL(onButtonClick()),dashboard,SLOT(selectAll()));
+			GuhuoDialog *guhuoDialog = qobject_cast<GuhuoDialog *>(dialog);
+			JuguanDialog *juguanDialog = qobject_cast<JuguanDialog *>(dialog);
+			if (guhuoDialog) {
+				connect(btn, SIGNAL(skill_activated()), this, SLOT(onGuhuoSkillActivated()));
+				connect(btn, SIGNAL(skill_deactivated()), this, SLOT(onGuhuoSkillDeactivated()));
+				connect(dashboard, SIGNAL(guhuoCardSelected(const Card*)), this, SLOT(onGuhuoCardSelected(const Card*)));
+				connect(dashboard, SIGNAL(guhuoCancelled()), this, SLOT(onGuhuoCancelled()));
+			} else if (juguanDialog) {
+				connect(btn, SIGNAL(skill_activated()), this, SLOT(onJuguanSkillActivated()));
+				connect(btn, SIGNAL(skill_deactivated()), this, SLOT(onJuguanSkillDeactivated()));
+				connect(dashboard, SIGNAL(guhuoCardSelected(const Card*)), this, SLOT(onJuguanCardSelected(const Card*)));
+				connect(dashboard, SIGNAL(guhuoCancelled()), this, SLOT(onJuguanCancelled()));
+			} else {
+				dialog->setParent(main_window,Qt::Dialog);
+				connect(btn,SIGNAL(skill_activated()),dialog,SLOT(popup()));
+				connect(btn,SIGNAL(skill_deactivated()),dialog,SLOT(reject()));
+				disconnect(btn,SIGNAL(skill_activated()),this,SLOT(onSkillActivated()));
+				connect(dialog,SIGNAL(onButtonClick()),this,SLOT(onSkillActivated()));
+				if(dialog->objectName()=="qice")
+					connect(dialog,SIGNAL(onButtonClick()),dashboard,SLOT(selectAll()));
+			}
 		}
 	}
 	m_skillButtons << btn;
@@ -6339,4 +6355,89 @@ void RoomScene::showGeneralPile(const QString &tag_name) {
 	dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->popup();
 }
+
+void RoomScene::onGuhuoSkillActivated()
+{
+    QSanSkillButton *button = qobject_cast<QSanSkillButton *>(sender());
+    if (!button) return;
+
+    const ViewAsSkill *skill = button->getViewAsSkill();
+    if (!skill) return;
+
+    QDialog *dialog = skill->getDialog();
+    GuhuoDialog *guhuoDialog = qobject_cast<GuhuoDialog *>(dialog);
+    if (!guhuoDialog) return;
+
+    QList<Card *> cards = guhuoDialog->getAvailableCards();
+    dashboard->showGuhuoCards(skill->objectName(), cards);
+    
+    ok_button->setEnabled(true);
+    disconnect(ok_button, SIGNAL(clicked()), dashboard, SLOT(_onGuhuoConfirm()));
+    connect(ok_button, SIGNAL(clicked()), dashboard, SLOT(_onGuhuoConfirm()), Qt::UniqueConnection);
+}
+
+void RoomScene::onGuhuoSkillDeactivated()
+{
+    if (dashboard->isGuhuoActive()) {
+        dashboard->hideGuhuoCards();
+    }
+    disconnect(ok_button, SIGNAL(clicked()), dashboard, SLOT(_onGuhuoConfirm()));
+}
+
+void RoomScene::onGuhuoCardSelected(const Card *card)
+{
+    const ViewAsSkill *skill = dashboard->currentSkill();
+    if (skill) {
+        useSelectedCard();
+    }
+}
+
+void RoomScene::onGuhuoCancelled()
+{
+    dashboard->skillButtonDeactivated();
+    disconnect(ok_button, SIGNAL(clicked()), dashboard, SLOT(_onGuhuoConfirm()));
+}
+
+void RoomScene::onJuguanSkillActivated()
+{
+    QSanSkillButton *button = qobject_cast<QSanSkillButton *>(sender());
+    if (!button) return;
+
+    const ViewAsSkill *skill = button->getViewAsSkill();
+    if (!skill) return;
+
+    QDialog *dialog = skill->getDialog();
+    JuguanDialog *juguanDialog = qobject_cast<JuguanDialog *>(dialog);
+    if (!juguanDialog) return;
+
+    QList<Card *> cards = juguanDialog->getAvailableCards();
+    dashboard->showGuhuoCards(skill->objectName(), cards);
+    
+    ok_button->setEnabled(true);
+    disconnect(ok_button, SIGNAL(clicked()), dashboard, SLOT(_onGuhuoConfirm()));
+    connect(ok_button, SIGNAL(clicked()), dashboard, SLOT(_onGuhuoConfirm()), Qt::UniqueConnection);
+}
+
+void RoomScene::onJuguanSkillDeactivated()
+{
+    if (dashboard->isGuhuoActive()) {
+        dashboard->hideGuhuoCards();
+    }
+    disconnect(ok_button, SIGNAL(clicked()), dashboard, SLOT(_onGuhuoConfirm()));
+}
+
+void RoomScene::onJuguanCardSelected(const Card *card)
+{
+    const ViewAsSkill *skill = dashboard->currentSkill();
+    if (skill) {
+        useSelectedCard();
+    }
+}
+
+void RoomScene::onJuguanCancelled()
+{
+    dashboard->skillButtonDeactivated();
+    disconnect(ok_button, SIGNAL(clicked()), dashboard, SLOT(_onGuhuoConfirm()));
+}
+
 

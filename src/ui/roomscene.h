@@ -221,6 +221,16 @@ public slots:
     void chooseDirection();
     void chooseTrigger(const QString &reason, const QStringList &choices, bool optional);
 
+    void onGuhuoSkillActivated();
+    void onGuhuoSkillDeactivated();
+    void onGuhuoCardSelected(const Card *card);
+    void onGuhuoCancelled();
+
+    void onJuguanSkillActivated();
+    void onJuguanSkillDeactivated();
+    void onJuguanCardSelected(const Card *card);
+    void onJuguanCancelled();
+
     void bringToFront(QGraphicsItem *item);
     void arrangeSeats(const QList<const ClientPlayer *> &seats);
     void toggleDiscards();
