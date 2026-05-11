@@ -509,6 +509,8 @@ private slots:
     void removeLightBox();
 
     void showCard(const QString &player_name, QList<int> card_ids);
+    void showVirtualCard(const QString &player_name, const QString &card_name,
+                         const QString &suit, int number, const QString &skill_name);
     void viewDistance();
     void viewMaxCards();
 

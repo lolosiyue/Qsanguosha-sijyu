@@ -78,6 +78,7 @@ Client::Client(QObject *parent, const QString &filename)
 	m_callbacks[S_COMMAND_KILL_PLAYER] = &Client::killPlayer;
 	m_callbacks[S_COMMAND_REVIVE_PLAYER] = &Client::revivePlayer;
 	m_callbacks[S_COMMAND_SHOW_CARD] = &Client::showCard;
+	m_callbacks[S_COMMAND_SHOW_VIRTUAL_CARD] = &Client::showVirtualCard;
 	m_callbacks[S_COMMAND_UPDATE_CARD] = &Client::updateCard;
 	m_callbacks[S_COMMAND_SET_MARK] = &Client::setMark;
 	m_callbacks[S_COMMAND_LOG_SKILL] = &Client::log;
@@ -1889,6 +1890,21 @@ void Client::showCard(const QVariant &show_str)
 	}
 
 	emit card_shown(player_name, card_ids);
+}
+
+void Client::showVirtualCard(const QVariant &arg)
+{
+	JsonArray args = arg.value<JsonArray>();
+	if (args.size() != 5)
+		return;
+
+	QString player_name = args[0].toString();
+	QString card_name = args[1].toString();
+	QString suit = args[2].toString();
+	int number = args[3].toInt();
+	QString skill_name = args[4].toString();
+
+	emit virtual_card_shown(player_name, card_name, suit, number, skill_name);
 }
 
 void Client::attachSkill(const QVariant &skill)

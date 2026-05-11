@@ -160,6 +160,7 @@ public:
     void showCard(ServerPlayer*player, int card_id, ServerPlayer*only_viewer , bool self_can_see = true);
     void showCard(ServerPlayer*player, int card_id, QList<ServerPlayer*> players = QList<ServerPlayer*>());
     void showCard(ServerPlayer*player, QList<int> card_ids, QList<ServerPlayer*> players = QList<ServerPlayer*>());
+    void showVirtualCard(ServerPlayer* player, const Card* card);
     void showAllCards(ServerPlayer*player, ServerPlayer*to);
     void showAllCards(ServerPlayer*player, QList<ServerPlayer*> players = QList<ServerPlayer*>());
     void retrial(const Card*card, ServerPlayer*player, JudgeStruct*judge, const QString&skill_name, bool exchange = false);
