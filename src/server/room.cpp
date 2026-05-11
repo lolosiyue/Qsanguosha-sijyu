@@ -4036,13 +4036,34 @@ void Room::chooseGenerals(QList<ServerPlayer*> players)
 	}
 
 	assignGeneralsForPlayers(players);
-	foreach(ServerPlayer*player, players)
+	foreach(ServerPlayer*player, players){
+		QStringList selected = player->getSelected();
+		selected = triggerPreSelectionSkills(player, selected, "for_general");
+		player->clearSelected();
+		foreach(const QString &gen, selected)
+			player->addToSelected(gen);
 		_setupChooseGeneralRequestArgs(player);
+	}
 
 	doBroadcastRequest(players, S_COMMAND_CHOOSE_GENERAL);
 	foreach(ServerPlayer*player, players){
-		if ((player->m_isClientResponseReady&&_setPlayerGeneral(player, player->getClientReply().toString(), true))
-			||_setPlayerGeneral(player, _chooseDefaultGeneral(player), true)){
+		QString clientChoice;
+		bool playerChose = false;
+		if (player->m_isClientResponseReady){
+			clientChoice = player->getClientReply().toString();
+			if (player->getSelected().contains(clientChoice))
+				playerChose = true;
+		}
+		QString chosen;
+		if (playerChose)
+			chosen = clientChoice;
+		else
+			chosen = _chooseDefaultGeneral(player);
+
+		if (!playerChose)
+			triggerGeneralNotChosen(player, player->getSelected(), chosen, "for_general");
+
+		if (_setPlayerGeneral(player, chosen, true)){
 			if (player->hasHideSkill()){
 				setPlayerProperty(player, "yinni_general", player->getGeneralName());
 				player->setGeneralName("yinni_hide");
@@ -7902,6 +7923,58 @@ QList<ServerPlayer*> Room::askForPlayersChosen(ServerPlayer*player, const QList<
 		thread->trigger(ChoiceMade, this, player, data);
 	}
 	return log.to;
+}
+
+QStringList Room::triggerPreSelectionSkills(ServerPlayer *player, QStringList generals, const QString &reason)
+{
+	QSet<QString> processedSkills;
+	QStringList result = generals;
+
+	foreach (const QString &generalName, generals) {
+		const General *general = Sanguosha->getGeneral(generalName);
+		if (!general || !general->hasPreSelectionSkill()) continue;
+
+		foreach (const QString &skillName, general->getPreSelectionSkills()) {
+			if (processedSkills.contains(skillName)) continue;
+			processedSkills.insert(skillName);
+
+			const PreSelectionMetaSkill *skill = qobject_cast<const PreSelectionMetaSkill*>(Sanguosha->getSkill(skillName));
+			if (!skill) continue;
+
+			result = skill->onGeneralChoosing(this, player, result, reason);
+
+			QString activeSkills = skill->getActiveSkills();
+			if (!activeSkills.isEmpty()) {
+				QString existingActive = player->property("preselection_active_skills").toString();
+				if (!existingActive.isEmpty()) existingActive += ",";
+				existingActive += activeSkills;
+				setPlayerProperty(player, "preselection_active_skills", existingActive);
+			}
+		}
+	}
+
+	return result;
+}
+
+void Room::triggerGeneralNotChosen(ServerPlayer *player, const QStringList &generals, const QString &chosen, const QString &reason)
+{
+	const General *general = Sanguosha->getGeneral(chosen);
+	if (!general || !general->hasPreSelectionSkill()) return;
+
+	foreach (const QString &skillName, general->getPreSelectionSkills()) {
+		const PreSelectionMetaSkill *skill = qobject_cast<const PreSelectionMetaSkill*>(Sanguosha->getSkill(skillName));
+		if (!skill) continue;
+
+		skill->onGeneralNotChosen(this, player, generals, chosen, reason);
+
+		QString activeSkills = skill->getActiveSkills();
+		if (!activeSkills.isEmpty()) {
+			QString existingActive = player->property("preselection_active_skills").toString();
+			if (!existingActive.isEmpty()) existingActive += ",";
+			existingActive += activeSkills;
+			setPlayerProperty(player, "preselection_active_skills", existingActive);
+		}
+	}
 }
 
 void Room::_setupChooseGeneralRequestArgs(ServerPlayer*player)

@@ -743,6 +743,8 @@ private:
     void assignGeneralsForPlayersOfJianGeDefenseMode(const QList<ServerPlayer*>&to_assign);
     void chooseGenerals(QList<ServerPlayer*> players = QList<ServerPlayer*>());
     void chooseGeneralsOfJianGeDefenseMode();
+    QStringList triggerPreSelectionSkills(ServerPlayer *player, QStringList generals, const QString &reason);
+    void triggerGeneralNotChosen(ServerPlayer *player, const QStringList &generals, const QString &chosen, const QString &reason);
     AI*cloneAI(ServerPlayer*player);
     void broadcast(const QString&message, ServerPlayer*except = nullptr);
     void initCallbacks();

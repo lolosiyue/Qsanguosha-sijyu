@@ -326,6 +326,19 @@ function sgs.CreateRetrialSkill(spec)
 	return sgs.CreateTriggerSkill(spec)
 end
 
+function sgs.CreatePreSelectionMetaSkill(spec)
+	assert(type(spec.name)=="string")
+	local active_skills = spec.active_skills or ""
+	local skill = sgs.LuaPreSelectionMetaSkill(spec.name, active_skills)
+	if spec.on_general_choosing then
+		skill.on_general_choosing = spec.on_general_choosing
+	end
+	if spec.on_general_not_chosen then
+		skill.on_general_not_chosen = spec.on_general_not_chosen
+	end
+	return skill
+end
+
 --------------------------------------------
 
 -- skill cards

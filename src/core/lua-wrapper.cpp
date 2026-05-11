@@ -129,6 +129,12 @@ LuaCardLimitSkill::LuaCardLimitSkill(const QString &name, Frequency frequency)
     this->frequency = frequency;
 }
 
+LuaPreSelectionMetaSkill::LuaPreSelectionMetaSkill(const QString &name, const QString &active_skills)
+    : PreSelectionMetaSkill(name), on_general_choosing(0), on_general_not_chosen(0)
+{
+    this->active_skills = active_skills;
+}
+
 static QHash<QString, const LuaSkillCard *> LuaSkillCards;
 
 LuaSkillCard::LuaSkillCard(const QString &name, const QString &skillName)
