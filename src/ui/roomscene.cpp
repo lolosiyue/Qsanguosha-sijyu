@@ -632,66 +632,33 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		QString skillName = arg[1].toString();
 
 		ClientPlayer*player = ClientInstance->getPlayer(arg[4].toString());
-		//const Card*card = Sanguosha->findChild<const Card*>(skillName);
-		if(player){//&&!card
-			const General*general = player->getGeneral();
-			if(general&&general->hasSkill(skillName,true)){
-				int skin_index = Config.value(QString("HeroSkin/%1").arg(general->objectName()),0).toInt();
-				QString actualGn = Sanguosha->getResourceAlias("heroskin", general->objectName());
-				if(skin_index > 0){
-					QString heroskin = QString("image/heroskin/audio/%1_%2/skill").arg(actualGn).arg(skin_index);
-					if(QFile::exists(heroskin)){
-						QStringList oggs,files;
-						QDir dir(heroskin);
-						oggs << "*.ogg";
-						foreach (QString file,dir.entryList(oggs,QDir::Files|QDir::Readable,QDir::Name)){
-							if(file.startsWith(skillName)&&file.endsWith(".ogg"))
-								files << file;
-						}
-						if(files.length()>0){
-							QString file = QString("%1%2.ogg").arg(skillName).arg(type);
-							if(!files.contains(file)){
-								if(type>0) file = files.at(type%files.length());
-								else file = files.at(qrand()%files.length());
-							}
-							Sanguosha->playAudioEffect(heroskin+"/"+file);
-							break;
-						}
-					}
-				}
-				type = Sanguosha->revisesAudioType(general->objectName(),skillName,type);
-			}
-			general = player->getGeneral2();
-			if(general&&general->hasSkill(skillName,true)){
-				int skin_index = Config.value(QString("HeroSkin/%1").arg(general->objectName()),0).toInt();
-				QString actualGn = Sanguosha->getResourceAlias("heroskin", general->objectName());
-				if(skin_index > 0){
-					QString heroskin = QString("image/heroskin/audio/%1_%2/skill").arg(actualGn).arg(skin_index);
-					if(QFile::exists(heroskin)){
-						QStringList oggs,files;
-						QDir dir(heroskin);
-						oggs << "*.ogg";
-						foreach (QString file,dir.entryList(oggs,QDir::Files|QDir::Readable,QDir::Name)){
-							if(file.startsWith(skillName)&&file.endsWith(".ogg"))
-								files << file;
-						}
-						if(files.length()>0){
-							QString file = QString("%1%2.ogg").arg(skillName).arg(type);
-							if(!files.contains(file)){
-								if(type>0) file = files.at(type%files.length());
-								else file = files.at(qrand()%files.length());
-							}
-							Sanguosha->playAudioEffect(heroskin+"/"+file);
-							break;
-						}
-					}
-				}
-				type = Sanguosha->revisesAudioType(general->objectName(),skillName,type);
-			}
-		}
 		QString category;
 		if(JsonUtils::isBool(arg[2])) category = arg[2].toBool() ? "male" : "female";
 		else category = arg[2].toString();
+
+		if(player){
+			QString generalName;
+			int skinIndex = 0;
+			const General*general = player->getGeneral();
+			if(general && general->hasSkill(skillName, true)){
+				generalName = general->objectName();
+				skinIndex = Config.value(QString("HeroSkin/%1").arg(generalName), 0).toInt();
+				type = Sanguosha->revisesAudioType(generalName, skillName, type);
+			}
+			if(generalName.isEmpty()){
+				general = player->getGeneral2();
+				if(general && general->hasSkill(skillName, true)){
+					generalName = general->objectName();
+					skinIndex = Config.value(QString("HeroSkin/%1").arg(generalName), 0).toInt();
+					type = Sanguosha->revisesAudioType(generalName, skillName, type);
+				}
+			}
+			if(!generalName.isEmpty()){
+				Sanguosha->playAudioEffect(G_ROOM_SKIN.getPlayerAudioEffectPathWithGeneral(
+					skillName, category, type, generalName, skinIndex));
+				break;
+			}
+		}
 
 		Sanguosha->playAudioEffect(G_ROOM_SKIN.getPlayerAudioEffectPath(skillName,category,type));
 		break;

@@ -70,6 +70,7 @@ private:
 
     void resetButtons();
     void addLines(const Skill *skill);
+    void addCardAudioLines(const QString &generalName, int skinIndex);
     void addCopyAction(QCommandLinkButton *button);
     bool hasSkin(const QString &general_name);
     QString getIllustratorInfo(const QString &general_name);

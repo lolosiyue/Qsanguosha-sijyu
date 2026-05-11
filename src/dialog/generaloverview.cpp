@@ -563,6 +563,98 @@ void GeneralOverview::addLines(const Skill *skill)
     }
 }
 
+void GeneralOverview::addCardAudioLines(const QString &generalName, int skinIndex)
+{
+    QString actualGn = Sanguosha->getResourceAlias("heroskin", generalName);
+    QString cardAudioGn = Sanguosha->getResourceAlias("card_audio", generalName);
+    if (cardAudioGn == generalName) cardAudioGn = actualGn;
+
+    QStringList foundCardAudios;
+
+    if (skinIndex > 0) {
+        QString heroskinCardPath = QString("image/heroskin/audio/%1_%2/card").arg(actualGn).arg(skinIndex);
+        if (QFile::exists(heroskinCardPath)) {
+            QStringList filters;
+            filters << "*.ogg" << "*.wav";
+            QDir dir(heroskinCardPath);
+            QStringList files = dir.entryList(filters, QDir::Files | QDir::Readable, QDir::Name);
+            foreach (QString file, files) {
+                QString baseName = file;
+                baseName.chop(4);
+                if (!foundCardAudios.contains(baseName))
+                    foundCardAudios << baseName;
+            }
+        }
+    }
+
+    QString nativeCardPath = QString("audio/card/%1").arg(cardAudioGn);
+    if (QFile::exists(nativeCardPath)) {
+        QStringList filters;
+        filters << "*.ogg" << "*.wav";
+        QDir dir(nativeCardPath);
+        QStringList files = dir.entryList(filters, QDir::Files | QDir::Readable, QDir::Name);
+        foreach (QString file, files) {
+            QString baseName = file;
+            baseName.chop(4);
+            if (!foundCardAudios.contains(baseName))
+                foundCardAudios << baseName;
+        }
+    }
+
+    foreach (QString cardName, foundCardAudios) {
+        QString cardTranslate = Sanguosha->translate(cardName);
+
+        QString audioPath;
+        if (skinIndex > 0) {
+            QString heroskinCardPath = QString("image/heroskin/audio/%1_%2/card").arg(actualGn).arg(skinIndex);
+            if (QFile::exists(heroskinCardPath + "/" + cardName + ".ogg"))
+                audioPath = heroskinCardPath + "/" + cardName + ".ogg";
+            else if (QFile::exists(heroskinCardPath + "/" + cardName + ".wav"))
+                audioPath = heroskinCardPath + "/" + cardName + ".wav";
+        }
+        if (audioPath.isEmpty()) {
+            QString nativePath = QString("audio/card/%1").arg(cardAudioGn);
+            if (QFile::exists(nativePath + "/" + cardName + ".ogg"))
+                audioPath = nativePath + "/" + cardName + ".ogg";
+            else if (QFile::exists(nativePath + "/" + cardName + ".wav"))
+                audioPath = nativePath + "/" + cardName + ".wav";
+        }
+
+        QString cardLine;
+        QString lineKey;
+
+        if (skinIndex > 0) {
+            lineKey = QString("$%1-%2_%3").arg(cardName).arg(generalName).arg(skinIndex);
+            cardLine = Sanguosha->translate(lineKey);
+        }
+        if (cardLine.isEmpty() || cardLine == lineKey) {
+            lineKey = QString("$%1-%2").arg(cardName).arg(generalName);
+            cardLine = Sanguosha->translate(lineKey);
+        }
+        if (cardLine.isEmpty() || cardLine == lineKey) {
+            lineKey = QString("$%1").arg(cardName);
+            cardLine = Sanguosha->translate(lineKey);
+        }
+
+        QCommandLinkButton *button = new QCommandLinkButton(cardTranslate);
+        button_layout->addWidget(button);
+
+        if (!cardLine.isEmpty() && cardLine != lineKey)
+            button->setDescription(cardLine);
+        else
+            button->setDescription(tr("Translation missing."));
+
+        if (!audioPath.isEmpty()) {
+            button->setObjectName(audioPath);
+            connect(button, SIGNAL(clicked()), this, SLOT(playAudioEffect()));
+        } else {
+            button->setEnabled(false);
+        }
+
+        addCopyAction(button);
+    }
+}
+
 void GeneralOverview::addCopyAction(QCommandLinkButton *button)
 {
     QAction *action = new QAction(button);
@@ -633,9 +725,11 @@ void GeneralOverview::on_tableWidget_itemSelectionChanged()
 	foreach(const Skill *skill, skills)
 		addLines(skill);
 
+	int skin_index = Config.value("HeroSkin/"+general_name, 0).toInt();
+	addCardAudioLines(general_name, skin_index);
+
 	QString oggtxt = "audio/death/"+general_name+".ogg";
 	QString last_word = Sanguosha->translate("~" + general_name);
-	int skin_index = Config.value("HeroSkin/"+general_name, 0).toInt();
 	QString actualGn = Sanguosha->getResourceAlias("heroskin", general_name);
 	if (skin_index > 0) {
 		QString hero_skin = Sanguosha->translate(QString("~%1-%2_%3").arg(general_name).arg(general_name).arg(skin_index));
