@@ -647,6 +647,150 @@ public:
 
 static QHash<QString,GuhuoDialog *> GuhuoDialogs;
 
+QList<Card *> GuhuoDialog::getAvailableCards() const
+{
+    QList<Card *> cards;
+    
+    cards << _getBasicCards();
+    cards << _getTrickCards();
+    
+    return cards;
+}
+
+QList<Card *> GuhuoDialog::_getBasicCards() const
+{
+    QList<Card *> cards;
+    
+    if (objectName() == "fuping") {
+        foreach (QString rec, Self->property("SkillDescriptionRecord_fuping").toString().split("+")) {
+            Card *dc = Sanguosha->cloneCard(rec);
+            if (dc && dc->isKindOf("BasicCard")) {
+                dc->setSkillName(objectName());
+                dc->setCanRecast(false);
+                cards.append(dc);
+            } else if (dc) {
+                delete dc;
+            }
+        }
+    } else if (objectName() == "wuxinghelingshan") {
+        static QList<const NatureSlash *> natureSlashes = Sanguosha->findChildren<const NatureSlash *>();
+        foreach (const Card *c, natureSlashes) {
+            if (c->objectName().startsWith("_") || ServerInfo.BanPackages.contains(c->getPackage())) continue;
+            Card *dc = Sanguosha->cloneCard(c->objectName());
+            if (dc) {
+                dc->setSkillName(objectName());
+                dc->setCanRecast(false);
+                cards.append(dc);
+            }
+        }
+    } else if (objectName() == "dunshi") {
+        QStringList cardNames;
+        cardNames << "slash" << "jink" << "peach" << "analeptic";
+        foreach (QString cn, cardNames) {
+            Card *dc = Sanguosha->cloneCard(cn);
+            if (dc) {
+                dc->setSkillName(objectName());
+                dc->setCanRecast(false);
+                cards.append(dc);
+            }
+        }
+    } else if (objectName() == "fengying") {
+        foreach (QString rec, Self->property("SkillDescriptionRecord_fengying").toString().split("+")) {
+            Card *dc = Sanguosha->cloneCard(rec);
+            if (dc && dc->isKindOf("BasicCard")) {
+                dc->setSkillName(objectName());
+                dc->setCanRecast(false);
+                cards.append(dc);
+            } else if (dc) {
+                delete dc;
+            }
+        }
+    } else if (objectName() == "tenyeargue") {
+        static QList<const Slash *> slashes = Sanguosha->findChildren<const Slash *>();
+        foreach (const Card *c, slashes) {
+            if (c->objectName().startsWith("_") || ServerInfo.BanPackages.contains(c->getPackage())) continue;
+            Card *dc = Sanguosha->cloneCard(c->objectName());
+            if (dc) {
+                dc->setSkillName(objectName());
+                dc->setCanRecast(false);
+                cards.append(dc);
+            }
+        }
+    } else {
+        static QList<const BasicCard *> basicCards = Sanguosha->findChildren<const BasicCard *>();
+        foreach (const Card *c, basicCards) {
+            if (c->objectName().startsWith("_") || ServerInfo.BanPackages.contains(c->getPackage())) continue;
+            if (slash_combined && c->isKindOf("Slash") && c->objectName() != "slash") continue;
+            Card *dc = Sanguosha->cloneCard(c->objectName());
+            if (dc) {
+                dc->setSkillName(objectName());
+                dc->setCanRecast(false);
+                cards.append(dc);
+            }
+        }
+    }
+    
+    return cards;
+}
+
+QList<Card *> GuhuoDialog::_getTrickCards() const
+{
+    QList<Card *> cards;
+    
+    if (objectName() == "fuping") {
+        foreach (QString rec, Self->property("SkillDescriptionRecord_fuping").toString().split("+")) {
+            Card *dc = Sanguosha->cloneCard(rec);
+            if (dc && dc->isKindOf("TrickCard")) {
+                dc->setSkillName(objectName());
+                dc->setCanRecast(false);
+                cards.append(dc);
+            } else if (dc) {
+                delete dc;
+            }
+        }
+    } else if (objectName() == "fengying") {
+        foreach (QString rec, Self->property("SkillDescriptionRecord_fengying").toString().split("+")) {
+            Card *dc = Sanguosha->cloneCard(rec);
+            if (dc && dc->isKindOf("TrickCard")) {
+                dc->setSkillName(objectName());
+                dc->setCanRecast(false);
+                cards.append(dc);
+            } else if (dc) {
+                delete dc;
+            }
+        }
+    } else {
+        static QList<const TrickCard *> trickCards = Sanguosha->findChildren<const TrickCard *>();
+        foreach (const Card *c, trickCards) {
+            if (c->objectName().startsWith("_") || ServerInfo.BanPackages.contains(c->getPackage())) continue;
+            if (!delayed_tricks && c->isKindOf("DelayedTrick")) continue;
+            if (!delayed_tricks && !c->isNDTrick()) continue;
+            Card *dc = Sanguosha->cloneCard(c->objectName());
+            if (dc) {
+                dc->setSkillName(objectName());
+                dc->setCanRecast(false);
+                cards.append(dc);
+            }
+        }
+        if (objectName().endsWith("jingong")) {
+            Card *dc = Sanguosha->cloneCard("__meirenji");
+            if (dc) {
+                dc->setSkillName(objectName());
+                dc->setCanRecast(false);
+                cards.append(dc);
+            }
+            dc = Sanguosha->cloneCard("__xiaolicangdao");
+            if (dc) {
+                dc->setSkillName(objectName());
+                dc->setCanRecast(false);
+                cards.append(dc);
+            }
+        }
+    }
+    
+    return cards;
+}
+
 GuhuoDialog *GuhuoDialog::getInstance(const QString &object, bool left, bool right, bool play_only, bool slash_combined, bool delayed_tricks, bool update)
 {
     if(GuhuoDialogs[object]==nullptr||update){
