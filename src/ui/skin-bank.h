@@ -334,6 +334,8 @@ public:
     QPixmap getGeneralPixmap(const QString &generalName, GeneralIconSize size) const;
     QString getPlayerAudioEffectPath(const QString &eventName, bool isMale, int index = -1) const;
     QString getPlayerAudioEffectPath(const QString &eventName, const QString &category, int index = -1) const;
+    QString getPlayerAudioEffectPathWithGeneral(const QString &eventName, const QString &category, int index,
+                                                 const QString &generalName, int skinIndex) const;
     QPixmap getProgressBarPixmap(int percentile) const;
 
     // Animations

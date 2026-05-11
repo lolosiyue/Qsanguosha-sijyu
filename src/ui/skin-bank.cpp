@@ -3,10 +3,9 @@
 #include "protocol.h"
 #include "ui-utils.h"
 #include "engine.h"
-//#include "settings.h"
 #include "clientstruct.h"
 #include "settings.h"
-//#include "general.h"
+#include "general.h"
 
 using namespace JsonUtils;
 
@@ -437,6 +436,120 @@ QString QSanRoomSkin::getPlayerAudioEffectPath(const QString &eventName, const Q
 QString QSanRoomSkin::getPlayerAudioEffectPath(const QString &eventName, bool isMale, int index) const
 {
 	return getPlayerAudioEffectPath(eventName, QString(isMale ? "male" : "female"), index);
+}
+
+QString QSanRoomSkin::getPlayerAudioEffectPathWithGeneral(const QString &eventName, const QString &category, int index,
+                                                          const QString &generalName, int skinIndex) const
+{
+	QString actualGn = Sanguosha->getResourceAlias("heroskin", generalName);
+	QString cardAudioGn = Sanguosha->getResourceAlias("card_audio", generalName);
+	if (cardAudioGn == generalName) cardAudioGn = actualGn;
+
+	if (skinIndex > 0) {
+		QString heroskinSkillPath = QString("image/heroskin/audio/%1_%2/skill").arg(actualGn).arg(skinIndex);
+		if (QFile::exists(heroskinSkillPath)) {
+			QStringList filters;
+			filters << "*.ogg" << "*.wav";
+			QDir dir(heroskinSkillPath);
+			QStringList files = dir.entryList(filters, QDir::Files | QDir::Readable, QDir::Name);
+			QStringList matchedFiles;
+			foreach (QString file, files) {
+				if (file.startsWith(eventName))
+					matchedFiles << file;
+			}
+			if (!matchedFiles.isEmpty()) {
+				QString targetFile;
+				if (index < 1) {
+					targetFile = matchedFiles.at(qrand() % matchedFiles.length());
+				} else {
+					QString indexedFile = QString("%1%2.ogg").arg(eventName).arg(index);
+					if (matchedFiles.contains(indexedFile)) {
+						targetFile = indexedFile;
+					} else {
+						QString indexedFileWav = QString("%1%2.wav").arg(eventName).arg(index);
+						if (matchedFiles.contains(indexedFileWav)) {
+							targetFile = indexedFileWav;
+						} else if (index > matchedFiles.length()) {
+							targetFile = matchedFiles.last();
+						} else {
+							targetFile = matchedFiles.at(index - 1);
+						}
+					}
+				}
+				return heroskinSkillPath + "/" + targetFile;
+			}
+		}
+
+		QString heroskinCardPath = QString("image/heroskin/audio/%1_%2/card").arg(cardAudioGn).arg(skinIndex);
+		if (QFile::exists(heroskinCardPath)) {
+			QStringList filters;
+			filters << "*.ogg" << "*.wav";
+			QDir dir(heroskinCardPath);
+			QStringList files = dir.entryList(filters, QDir::Files | QDir::Readable, QDir::Name);
+			QStringList matchedFiles;
+			foreach (QString file, files) {
+				if (file.startsWith(eventName))
+					matchedFiles << file;
+			}
+			if (!matchedFiles.isEmpty()) {
+				QString targetFile;
+				if (index < 1) {
+					targetFile = matchedFiles.at(qrand() % matchedFiles.length());
+				} else {
+					QString indexedFile = QString("%1%2.ogg").arg(eventName).arg(index);
+					if (matchedFiles.contains(indexedFile)) {
+						targetFile = indexedFile;
+					} else {
+						QString indexedFileWav = QString("%1%2.wav").arg(eventName).arg(index);
+						if (matchedFiles.contains(indexedFileWav)) {
+							targetFile = indexedFileWav;
+						} else if (index > matchedFiles.length()) {
+							targetFile = matchedFiles.last();
+						} else {
+							targetFile = matchedFiles.at(index - 1);
+						}
+					}
+				}
+				return heroskinCardPath + "/" + targetFile;
+			}
+		}
+	}
+
+	QString nativeCardPath = QString("audio/card/%1").arg(cardAudioGn);
+	if (QFile::exists(nativeCardPath)) {
+		QStringList filters;
+		filters << "*.ogg" << "*.wav";
+		QDir dir(nativeCardPath);
+		QStringList files = dir.entryList(filters, QDir::Files | QDir::Readable, QDir::Name);
+		QStringList matchedFiles;
+		foreach (QString file, files) {
+			if (file.startsWith(eventName))
+				matchedFiles << file;
+		}
+		if (!matchedFiles.isEmpty()) {
+			QString targetFile;
+			if (index < 1) {
+				targetFile = matchedFiles.at(qrand() % matchedFiles.length());
+			} else {
+				QString indexedFile = QString("%1%2.ogg").arg(eventName).arg(index);
+				if (matchedFiles.contains(indexedFile)) {
+					targetFile = indexedFile;
+				} else {
+					QString indexedFileWav = QString("%1%2.wav").arg(eventName).arg(index);
+					if (matchedFiles.contains(indexedFileWav)) {
+						targetFile = indexedFileWav;
+					} else if (index > matchedFiles.length()) {
+						targetFile = matchedFiles.last();
+					} else {
+						targetFile = matchedFiles.at(index - 1);
+					}
+				}
+			}
+			return nativeCardPath + "/" + targetFile;
+		}
+	}
+
+	return getPlayerAudioEffectPath(eventName, category, index);
 }
 
 QRect IQSanComponentSkin::AnchoredRect::getTranslatedRect(QRect parentRect, QSize size) const
