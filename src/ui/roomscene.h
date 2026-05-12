@@ -234,6 +234,9 @@ public slots:
     void onAnytimeSkillActivated();
     void onAnytimeSkillDone(const QString &skill_name);
 
+    void onQmlInteract(const QString &qmlPath, const QVariantMap &params);
+    void onQmlResultReady(const QVariant &result);
+
     void bringToFront(QGraphicsItem *item);
     void arrangeSeats(const QList<const ClientPlayer *> &seats);
     void toggleDiscards();

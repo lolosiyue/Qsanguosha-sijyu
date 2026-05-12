@@ -189,10 +189,9 @@ void EmbeddedQmlLoader::connectQmlSignals()
         return;
     }
 
-    // 连接QML中的完成信号
     connect(rootItem, SIGNAL(animationCompleted()), this, SLOT(onAnimationCompleted()));
+    connect(rootItem, SIGNAL(finished(QVariant)), this, SLOT(receiveQmlResult(QVariant)));
 
-    // 暴露控制对象到QML
     m_qmlWidget->rootContext()->setContextProperty("qmlLoader", this);
 }
 
@@ -285,7 +284,18 @@ QString EmbeddedQmlLoader::getLastError() const
 
 void EmbeddedQmlLoader::closeFromQml()
 {
-    // QML请求关闭特效
+    close();
+}
+
+void EmbeddedQmlLoader::receiveQmlResult(const QVariant &result)
+{
+    emit qmlResultReady(result);
+    close();
+}
+
+void EmbeddedQmlLoader::timeout()
+{
+    emit qmlResultReady(QVariant());
     close();
 }
 

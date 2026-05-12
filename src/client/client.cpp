@@ -168,6 +168,8 @@ m_callbacks[S_COMMAND_UPDATE_CARD_DESC] = &Client::updateCardDescription;
 
     m_callbacks[S_COMMAND_ANYTIME_SKILL_DONE] = &Client::handleAnytimeSkillDone;
 
+    m_interactions[S_COMMAND_QML_INTERACT] = &Client::askForQml;
+
     m_noNullificationThisTime = false;
 	m_noNullificationTrickName = ".";
 	m_respondingUseFixedTarget = nullptr;
@@ -2444,4 +2446,21 @@ void Client::handleAnytimeSkillDone(const QVariant &arg)
     QString skill_name = arg.toString();
     m_anytimeSkillPending.remove(skill_name);
     emit anytime_skill_done(skill_name);
+}
+
+void Client::askForQml(const QVariant &arg)
+{
+    JsonArray args = arg.value<JsonArray>();
+    if (args.size() < 2) return;
+
+    QString qmlPath = args[0].toString();
+    QVariantMap params = args[1].toMap();
+
+    emit qml_interact(qmlPath, params);
+    setStatus(AskForQml);
+}
+
+void Client::replyQml(const QVariant &result)
+{
+    replyToServer(S_COMMAND_QML_INTERACT, result);
 }
