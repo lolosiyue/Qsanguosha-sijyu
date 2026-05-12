@@ -2864,20 +2864,23 @@ void RoomScene::addSkillButton(const Skill*skill)
 			} else if (juguanDialog) {
 				connect(btn, SIGNAL(skill_activated()), this, SLOT(onJuguanSkillActivated()));
 				connect(btn, SIGNAL(skill_deactivated()), this, SLOT(onJuguanSkillDeactivated()));
-				connect(dashboard, SIGNAL(guhuoCardSelected(const Card*)), this, SLOT(onJuguanCardSelected(const Card*)));
-				connect(dashboard, SIGNAL(guhuoCancelled()), this, SLOT(onJuguanCancelled()));
-			} else {
-				dialog->setParent(main_window,Qt::Dialog);
-				connect(btn,SIGNAL(skill_activated()),dialog,SLOT(popup()));
-				connect(btn,SIGNAL(skill_deactivated()),dialog,SLOT(reject()));
-				disconnect(btn,SIGNAL(skill_activated()),this,SLOT(onSkillActivated()));
-				connect(dialog,SIGNAL(onButtonClick()),this,SLOT(onSkillActivated()));
-				if(dialog->objectName()=="qice")
-					connect(dialog,SIGNAL(onButtonClick()),dashboard,SLOT(selectAll()));
-			}
-		}
-	}
-	m_skillButtons << btn;
+connect(dashboard, SIGNAL(guhuoCardSelected(const Card*)), this, SLOT(onJuguanCardSelected(const Card*)));
+                connect(dashboard, SIGNAL(guhuoCancelled()), this, SLOT(onJuguanCancelled()));
+            } else {
+                dialog->setParent(main_window,Qt::Dialog);
+                connect(btn,SIGNAL(skill_activated()),dialog,SLOT(popup()));
+                connect(btn,SIGNAL(skill_deactivated()),dialog,SLOT(reject()));
+                disconnect(btn,SIGNAL(skill_activated()),this,SLOT(onSkillActivated()));
+                connect(dialog,SIGNAL(onButtonClick()),this,SLOT(onSkillActivated()));
+                if(dialog->objectName()=="qice")
+                    connect(dialog,SIGNAL(onButtonClick()),dashboard,SLOT(selectAll()));
+            }
+        } else if (skill->inherits("AnytimeSkill")) {
+            connect(btn, SIGNAL(skill_activated()), this, SLOT(onAnytimeSkillActivated()));
+            connect(ClientInstance, SIGNAL(anytime_skill_done(QString)), this, SLOT(onAnytimeSkillDone(QString)));
+        }
+    }
+    m_skillButtons << btn;
 }
 
 void RoomScene::acquireSkill(const ClientPlayer*,const QString&skill_name)
@@ -6474,6 +6477,34 @@ void RoomScene::onJuguanCancelled()
 {
     dashboard->skillButtonDeactivated();
     disconnect(ok_button, SIGNAL(clicked()), dashboard, SLOT(_onGuhuoConfirm()));
+}
+
+void RoomScene::onAnytimeSkillActivated()
+{
+    QSanSkillButton *button = qobject_cast<QSanSkillButton *>(sender());
+    if (!button) return;
+
+    const Skill *skill = button->getSkill();
+    if (!skill) return;
+
+    QString skill_name = skill->objectName();
+    if (ClientInstance->isAnytimeSkillPending(skill_name)) {
+        button->setEnabled(false);
+        return;
+    }
+
+    ClientInstance->triggerAnytimeSkill(skill_name);
+    button->setEnabled(false);
+}
+
+void RoomScene::onAnytimeSkillDone(const QString &skill_name)
+{
+    foreach (QSanSkillButton *button, m_skillButtons) {
+        if (button && button->getSkill() && button->getSkill()->objectName() == skill_name) {
+            button->setEnabled(true);
+            break;
+        }
+    }
 }
 
 

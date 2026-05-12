@@ -242,6 +242,7 @@ void Room::initCallbacks()
 
 	//Client request
 	m_callbacks[S_COMMAND_NETWORK_DELAY_TEST] = &Room::networkDelayTestCommand;
+    m_callbacks[S_COMMAND_ANYTIME_SKILL] = &Room::handleAnytimeSkillRequest;
 }
 
 ServerPlayer*Room::getCurrent() const
@@ -9216,5 +9217,35 @@ int Room::getBossModeExpMult(int level) const
 		lua_pop(m_lua, 1);
 	}
 	return res;
+}
+
+void Room::handleAnytimeSkillRequest(ServerPlayer *player, const QVariant &arg)
+{
+    if (!player || !arg.canConvert<QString>()) return;
+    QString skill_name = arg.toString();
+    const AnytimeSkill *skill = qobject_cast<const AnytimeSkill *>(Sanguosha->getSkill(skill_name));
+    if (!skill || !player->hasSkill(skill_name)) return;
+    if (!skill->canTrigger(player)) return;
+    player->addPendingAnytimeSkill(skill_name);
+}
+
+void Room::processPendingAnytimeSkills()
+{
+    foreach (ServerPlayer *player, getAlivePlayers()) {
+        QStringList pending = player->getPendingAnytimeSkills();
+        if (pending.isEmpty()) continue;
+        foreach (const QString &skill_name, pending) {
+            const AnytimeSkill *skill = qobject_cast<const AnytimeSkill *>(Sanguosha->getSkill(skill_name));
+            if (!skill) continue;
+            skill->onTrigger(this, player);
+            notifyAnytimeSkillDone(player, skill_name);
+        }
+        player->clearPendingAnytimeSkills();
+    }
+}
+
+void Room::notifyAnytimeSkillDone(ServerPlayer *player, const QString &skill_name)
+{
+    doNotify(player, S_COMMAND_ANYTIME_SKILL_DONE, skill_name);
 }
 

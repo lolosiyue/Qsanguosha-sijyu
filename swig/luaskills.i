@@ -292,8 +292,27 @@ public:
 									 const QStringList &generals, const QString &chosen,
 									 const QString &reason) const;
 
-	LuaFunction on_general_choosing;
-	LuaFunction on_general_not_chosen;
+LuaFunction on_general_choosing;
+    LuaFunction on_general_not_chosen;
+};
+
+class AnytimeSkill : public Skill {
+public:
+    AnytimeSkill(const QString &name);
+
+    virtual bool canTrigger(ServerPlayer *player) const;
+    virtual bool onTrigger(Room *room, ServerPlayer *player) const;
+};
+
+class LuaAnytimeSkill : public AnytimeSkill {
+public:
+    LuaAnytimeSkill(const char *name, Frequency frequency);
+
+    virtual bool canTrigger(ServerPlayer *player) const;
+    virtual bool onTrigger(Room *room, ServerPlayer *player) const;
+
+    LuaFunction can_trigger;
+    LuaFunction on_trigger;
 };
 
 class ViewAsSkill: public Skill {
@@ -1585,9 +1604,54 @@ void LuaPreSelectionMetaSkill::onGeneralNotChosen(Room *room, ServerPlayer *play
 	lua_pushstring(L, chosen.toLatin1().data());
 	lua_pushstring(L, reason.toLatin1().data());
 
-	if (lua_pcall(L, 6, 0, 0) != 0) {
-		Error(L);
-	}
+if (lua_pcall(L, 6, 0, 0) != 0) {
+        Error(L);
+    }
+}
+
+// ----------------------
+// LuaAnytimeSkill implementation
+// ----------------------
+
+bool LuaAnytimeSkill::canTrigger(ServerPlayer *player) const
+{
+    if (can_trigger == 0)
+        return AnytimeSkill::canTrigger(player);
+
+    lua_State *L = Sanguosha->getLuaState();
+    lua_rawgeti(L, LUA_REGISTRYINDEX, can_trigger);
+    SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaAnytimeSkill, 0);
+    SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
+
+    if (lua_pcall(L, 2, 1, 0) != 0) {
+        Error(L);
+        return false;
+    }
+
+    bool result = lua_toboolean(L, -1);
+    lua_pop(L, 1);
+    return result;
+}
+
+bool LuaAnytimeSkill::onTrigger(Room *room, ServerPlayer *player) const
+{
+    if (on_trigger == 0)
+        return AnytimeSkill::onTrigger(room, player);
+
+    lua_State *L = room->getLuaState();
+    lua_rawgeti(L, LUA_REGISTRYINDEX, on_trigger);
+    SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaAnytimeSkill, 0);
+    SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
+    SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
+
+    if (lua_pcall(L, 3, 1, 0) != 0) {
+        Error(L);
+        return false;
+    }
+
+    bool result = lua_toboolean(L, -1);
+    lua_pop(L, 1);
+    return result;
 }
 
 // ----------------------

@@ -1055,3 +1055,18 @@ QString Skill::getUsageTagKey(const SkillContext &ctx) const
             return QString();
     }
 }
+
+AnytimeSkill::AnytimeSkill(const QString &name)
+    : Skill(name, NotFrequent)
+{
+}
+
+bool AnytimeSkill::canTrigger(ServerPlayer *) const
+{
+    return true;
+}
+
+bool AnytimeSkill::onTrigger(Room *, ServerPlayer *) const
+{
+    return false;
+}

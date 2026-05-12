@@ -154,6 +154,8 @@ public:
     void setEquipAreaCount(const QVariant &reveal);
     void updateCardDescription(const QVariant &arg);
 
+    void handleAnytimeSkillDone(const QVariant &arg);
+
     void fillAG(const QVariant &cards_str);
     void takeAG(const QVariant &take_str);
     void clearAG(const QVariant &);
@@ -262,6 +264,9 @@ public slots:
 
     void onPlayerReplyGongxin(int card_id = -1);
 
+    void triggerAnytimeSkill(const QString &skill_name);
+    bool isAnytimeSkillPending(const QString &skill_name) const;
+
 protected:
     // operation countdown
     QSanProtocol::Countdown m_countdown;
@@ -289,6 +294,8 @@ private:
     QString skill_to_invoke;
     QString skill_to_invoke_data;
     QList<int> available_cards;
+
+    QSet<QString> m_anytimeSkillPending;
 
     QMap<int, const Player*> owner_map;
     QMap<int, Player::Place> place_map;
@@ -399,6 +406,8 @@ signals:
     void start_in_xs();
 
     void skill_updated(const QString &skill_name);
+
+    void anytime_skill_done(const QString &skill_name);
 };
 
 extern Client *ClientInstance;
