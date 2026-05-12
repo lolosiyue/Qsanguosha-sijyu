@@ -459,11 +459,6 @@ void PlayerCardContainer::updateHp()
     updateHandcardNum();
 }
 
-static bool CompareByNumber(const Card *card1, const Card *card2)
-{
-    return card1->getNumber() < card2->getNumber();
-}
-
 void PlayerCardContainer::updatePile(const QString &pile_name)
 {
     if (!m_player) return;
@@ -502,24 +497,8 @@ void PlayerCardContainer::updatePile(const QString &pile_name)
 
         button->setText(QString("%1(%2)").arg(Sanguosha->translate(pile_name)).arg(pile.length()));
 
-        //Sort the cards in pile by number can let players know what is in this pile more clear.
-        //If someone has "buqu", we can got which card he need or which he hate easier.
-        QList<const Card *> cards;
-        foreach (int id, pile){
-            const Card *card = Sanguosha->getEngineCard(id);
-			if(card) cards << card;
-		}
-        if(cards.isEmpty()){
-			button->setMenu(nullptr);
-		}else{
-			QMenu* menu = new QMenu(button);
-			std::sort(cards.begin(), cards.end(), CompareByNumber);
-			foreach(const Card *card, cards)
-				menu->addAction(G_ROOM_SKIN.getCardSuitPixmap(card->getSuit()), card->getFullName());
-			if (treasureNames.contains(pile_name)) menu->setProperty("treasure", "true");
-			else menu->setProperty("private_pile", "true");
-			button->setMenu(menu);
-		}
+        disconnect(button, &QPushButton::clicked, this, &PlayerCardContainer::showPile);
+        connect(button, &QPushButton::clicked, this, &PlayerCardContainer::showPile);
     }
 
     QList<QGraphicsProxyWidget *> widgets, widgets_p;
@@ -531,6 +510,16 @@ void PlayerCardContainer::updatePile(const QString &pile_name)
     for (int i = 0; i < widgets.length(); i++) {
         //widgets[i]->resize(_m_layout->m_privatePileButtonSize);
         widgets[i]->setPos(_m_layout->m_privatePileStartPos + i * _m_layout->m_privatePileStep);
+    }
+}
+
+void PlayerCardContainer::showPile()
+{
+    QPushButton *button = qobject_cast<QPushButton *>(sender());
+    if (button) {
+        QList<int> card_ids = m_player->getPile(button->objectName());
+        if (card_ids.isEmpty() || card_ids.contains(-1)) return;
+        RoomSceneInstance->doGongxin(card_ids, false, QList<int>());
     }
 }
 

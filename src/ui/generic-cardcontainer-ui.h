@@ -129,6 +129,7 @@ public slots:
     virtual void updateDuanchang();
     void updatePile(const QString &pile_name);
     void updateGeneralPile(const QString &pile_name);
+    void showPile();
     void updateMark(const QString &mark_name, int mark_num);
     void updateRole(const QString &role);
     void updateMarks();
