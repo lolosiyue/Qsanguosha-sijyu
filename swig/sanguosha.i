@@ -1830,6 +1830,8 @@ public:
 	QString ZhizheCardViewAsEquip(const Card*card);
 	void notifyWeaponRange(const char*weapon_name, int range = 1);
 
+	QVariant askForQml(ServerPlayer *player, const char*qmlPath, const QVariantMap &params, int timeout = 30000);
+
 	void broadcastInvoke(const char*method, const char*arg = ".", ServerPlayer*except = nullptr);
 	ServerPlayer*getActualController(ServerPlayer *player) const;
 	void setPlayerController(ServerPlayer *target, ServerPlayer *controller = nullptr);

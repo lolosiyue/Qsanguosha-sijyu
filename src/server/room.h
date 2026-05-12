@@ -535,6 +535,8 @@ public:
     void notifyWeaponRange(const QString&weapon_name, int range = 1);
     void updateCardDescription(const QString &card_name, const QVariantMap &placeholders);
 
+    QVariant askForQml(ServerPlayer *player, const QString &qmlPath, const QVariantMap &params, int timeout = 30000);
+
     inline RoomState*getRoomState()
     {
         return&_m_roomState;

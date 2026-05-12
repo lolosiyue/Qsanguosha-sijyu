@@ -7124,6 +7124,21 @@ void Room::updateCardDescription(const QString &card_name, const QVariantMap &pl
 	doBroadcastNotify(S_COMMAND_UPDATE_CARD_DESC, arg);
 }
 
+QVariant Room::askForQml(ServerPlayer *player, const QString &qmlPath, const QVariantMap &params, int timeout)
+{
+	tryPause();
+	notifyMoveFocus(player, S_COMMAND_QML_INTERACT);
+
+	JsonArray arg;
+	arg << qmlPath << params;
+
+	if (doRequest(player, S_COMMAND_QML_INTERACT, arg, timeout, true)) {
+		return player->getClientReply();
+	}
+
+	return QVariant();
+}
+
 void Room::activate(ServerPlayer*player, CardUseStruct&card_use)
 {
 	tryPause();

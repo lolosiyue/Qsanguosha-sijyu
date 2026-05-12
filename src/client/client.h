@@ -38,6 +38,8 @@ public:
         AskForArrangement = 0x0E,
         AskForTriggerOrder = 0x0F,
 
+        AskForQml = 0x10,
+
         RespondingUse = 0x11,
         RespondingForDiscard = 0x21,
         RespondingNonTrigger = 0x31,
@@ -155,6 +157,9 @@ public:
     void updateCardDescription(const QVariant &arg);
 
     void handleAnytimeSkillDone(const QVariant &arg);
+
+    void askForQml(const QVariant &arg);
+    void replyQml(const QVariant &result);
 
     void fillAG(const QVariant &cards_str);
     void takeAG(const QVariant &take_str);
@@ -408,6 +413,8 @@ signals:
     void skill_updated(const QString &skill_name);
 
     void anytime_skill_done(const QString &skill_name);
+
+    void qml_interact(const QString &qmlPath, const QVariantMap &params);
 };
 
 extern Client *ClientInstance;

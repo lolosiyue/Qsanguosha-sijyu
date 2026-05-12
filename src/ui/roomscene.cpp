@@ -232,6 +232,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 
 	connect(ClientInstance,&Client::skill_updated,this,&RoomScene::updateSkill);
 	connect(ClientInstance,&Client::card_description_updated,this,&RoomScene::updateCardDescription);
+	connect(ClientInstance,&Client::qml_interact,this,&RoomScene::onQmlInteract);
 
 	guanxing_x_box = new GuanxingXBox;
 	guanxing_x_box->hide();
@@ -6505,6 +6506,26 @@ void RoomScene::onAnytimeSkillDone(const QString &skill_name)
             break;
         }
     }
+}
+
+void RoomScene::onQmlInteract(const QString &qmlPath, const QVariantMap &params)
+{
+    EmbeddedQmlLoader *loader = new EmbeddedQmlLoader(this);
+
+    connect(loader, &EmbeddedQmlLoader::qmlResultReady, this, &RoomScene::onQmlResultReady);
+
+    int timeout = params.value("timeout", 30000).toInt();
+    QTimer::singleShot(timeout, [loader]() {
+        loader->timeout();
+    });
+
+    QWidget *central = mainWindow()->centralWidget();
+    loader->loadQmlOverlay(central, qmlPath, central->width(), central->height(), params, false);
+}
+
+void RoomScene::onQmlResultReady(const QVariant &result)
+{
+    ClientInstance->replyQml(result);
 }
 
 
