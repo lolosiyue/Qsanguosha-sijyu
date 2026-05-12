@@ -783,6 +783,12 @@ private:
 
     ServerPlayer* insertPlayerMidGame(ServerPlayer *before, ServerPlayer *after, const QString &general_name);
 
+    void handleAnytimeSkillRequest(ServerPlayer *player, const QString &skill_name);
+    void processPendingAnytimeSkills();
+    void notifyAnytimeSkillDone(ServerPlayer *player, const QString &skill_name);
+
+    ServerPlayer* insertPlayerMidGame(ServerPlayer *before, ServerPlayer *after, const QString &general_name);
+
 private slots:
     void reportDisconnection();
     void processClientPacket(const QString&packet);

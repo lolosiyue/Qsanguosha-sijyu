@@ -164,9 +164,11 @@ Client::Client(QObject *parent, const QString &filename)
 	m_callbacks[S_COMMAND_SKILL_DESCRIPTION_SWAP] = &Client::setSkillDescriptionSwap;
 	m_callbacks[S_COMMAND_ADD_EQUIP_AREA] = &Client::addEquipArea;
 	m_callbacks[S_COMMAND_SET_EQUIP_AREA_COUNT] = &Client::setEquipAreaCount;
-	m_callbacks[S_COMMAND_UPDATE_CARD_DESC] = &Client::updateCardDescription;
+m_callbacks[S_COMMAND_UPDATE_CARD_DESC] = &Client::updateCardDescription;
 
-	m_noNullificationThisTime = false;
+    m_callbacks[S_COMMAND_ANYTIME_SKILL_DONE] = &Client::handleAnytimeSkillDone;
+
+    m_noNullificationThisTime = false;
 	m_noNullificationTrickName = ".";
 	m_respondingUseFixedTarget = nullptr;
 
@@ -2423,4 +2425,23 @@ void Client::setEquipAreaCount(const QVariant &reveal)
 lua_State *Client::getLuaState() const
 {
     return m_client_lua;
+}
+
+void Client::triggerAnytimeSkill(const QString &skill_name)
+{
+    if (m_anytimeSkillPending.contains(skill_name)) return;
+    m_anytimeSkillPending.insert(skill_name);
+    notifyServer(S_COMMAND_ANYTIME_SKILL, skill_name);
+}
+
+bool Client::isAnytimeSkillPending(const QString &skill_name) const
+{
+    return m_anytimeSkillPending.contains(skill_name);
+}
+
+void Client::handleAnytimeSkillDone(const QVariant &arg)
+{
+    QString skill_name = arg.toString();
+    m_anytimeSkillPending.remove(skill_name);
+    emit anytime_skill_done(skill_name);
 }

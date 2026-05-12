@@ -553,4 +553,17 @@ protected:
     QString active_skills;
 };
 
+class AnytimeSkill : public Skill
+{
+    Q_OBJECT
+
+public:
+    AnytimeSkill(const QString &name);
+
+    virtual bool canTrigger(ServerPlayer *player) const;
+    virtual bool onTrigger(Room *room, ServerPlayer *player) const;
+
+    inline bool isAnytime() const { return true; }
+};
+
 #endif

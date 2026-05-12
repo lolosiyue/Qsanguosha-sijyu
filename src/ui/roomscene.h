@@ -231,6 +231,9 @@ public slots:
     void onJuguanCardSelected(const Card *card);
     void onJuguanCancelled();
 
+    void onAnytimeSkillActivated();
+    void onAnytimeSkillDone(const QString &skill_name);
+
     void bringToFront(QGraphicsItem *item);
     void arrangeSeats(const QList<const ClientPlayer *> &seats);
     void toggleDiscards();

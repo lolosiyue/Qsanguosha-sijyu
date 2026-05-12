@@ -365,6 +365,20 @@ public:
     LuaFunction on_general_not_chosen;
 };
 
+class LuaAnytimeSkill : public AnytimeSkill
+{
+    Q_OBJECT
+
+public:
+    LuaAnytimeSkill(const QString &name, Frequency frequency);
+
+    virtual bool canTrigger(ServerPlayer *player) const;
+    virtual bool onTrigger(Room *room, ServerPlayer *player) const;
+
+    LuaFunction can_trigger;
+    LuaFunction on_trigger;
+};
+
 class LuaSkillCard : public SkillCard
 {
     Q_OBJECT

@@ -146,6 +146,27 @@ void ServerPlayer::calculateUITooltips()
     setTag("UI_Hand_Max", final_max_cards);
 }
 
+QStringList ServerPlayer::getPendingAnytimeSkills() const
+{
+    return m_pendingAnytimeSkills;
+}
+
+void ServerPlayer::addPendingAnytimeSkill(const QString &skill_name)
+{
+    if (!m_pendingAnytimeSkills.contains(skill_name))
+        m_pendingAnytimeSkills << skill_name;
+}
+
+void ServerPlayer::removePendingAnytimeSkill(const QString &skill_name)
+{
+    m_pendingAnytimeSkills.removeAll(skill_name);
+}
+
+void ServerPlayer::clearPendingAnytimeSkills()
+{
+    m_pendingAnytimeSkills.clear();
+}
+
 /*void ServerPlayer::drawCard(const Card *card)
 {
 	handcards << card;
