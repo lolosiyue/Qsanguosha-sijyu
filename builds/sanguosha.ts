@@ -4314,6 +4314,11 @@ P = 你自己, R = 你所在的房间</translation>
         <translation>启用国战模式</translation>
     </message>
     <message>
+        <location filename="../src/server/server.cpp" line="295"/>
+        <source>Enable Melee Mode (Peach as Slash/Jink in late game)</source>
+        <translation>启用鏖战模式（残局桃当杀/闪）</translation>
+    </message>
+    <message>
         <location filename="../src/server/server.cpp" line="303"/>
         <source>Max shown num for hegemony</source>
         <translation>同势力最大亮将数</translation>
