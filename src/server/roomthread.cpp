@@ -1002,8 +1002,6 @@ if (room->getTag("DistanceCacheDirty").toBool()) {
             if (room->hasPendingSummons()) {
                 room->processPendingSummons();
             }
-
-            room->processPendingAnytimeSkills();
         }
 
     }catch (TriggerEvent throwed_event) {
@@ -1043,8 +1041,6 @@ if (room->getTag("DistanceCacheDirty").toBool()) {
             if (room->hasPendingSummons()) {
                 room->processPendingSummons();
             }
-
-            room->processPendingAnytimeSkills();
         }
         throw throwed_event;
 	}

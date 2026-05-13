@@ -35,15 +35,14 @@ public:
     QString getLastError() const;
 
 public slots:
+    // 供QML调用的关闭方法
     void closeFromQml();
-    void receiveQmlResult(const QVariant &result);
-    void timeout();
 
 signals:
+    // 特效完成信号
     void effectFinished();
     void effectError(const QString &error);
-    void qmlResultReady(const QVariant &result);
-
+    
 private slots:
     void onQmlStatusChanged(QQuickWidget::Status status);
     void onAnimationCompleted();

@@ -129,59 +129,6 @@ LuaCardLimitSkill::LuaCardLimitSkill(const QString &name, Frequency frequency)
     this->frequency = frequency;
 }
 
-LuaPreSelectionMetaSkill::LuaPreSelectionMetaSkill(const QString &name, const QString &active_skills)
-    : PreSelectionMetaSkill(name), on_general_choosing(0), on_general_not_chosen(0)
-{
-    this->active_skills = active_skills;
-}
-
-LuaAnytimeSkill::LuaAnytimeSkill(const QString &name, Frequency frequency)
-    : AnytimeSkill(name), can_trigger(0), on_trigger(0)
-{
-    this->frequency = frequency;
-}
-
-bool LuaAnytimeSkill::canTrigger(ServerPlayer *player) const
-{
-    if (can_trigger == 0)
-        return AnytimeSkill::canTrigger(player);
-    LuaLocker locker;
-    lua_State *L = Sanguosha->getLuaState();
-    lua_pushinteger(L, can_trigger);
-    lua_gettable(L, LUA_REGISTRYINDEX);
-    lua_pushlightuserdata(L, player);
-    int result = lua_pcall(L, 1, 1, 0);
-    if (result != 0) {
-        qWarning("LuaAnytimeSkill::canTrigger error: %s", lua_tostring(L, -1));
-        lua_pop(L, 1);
-        return false;
-    }
-    bool ret = lua_toboolean(L, -1);
-    lua_pop(L, 1);
-    return ret;
-}
-
-bool LuaAnytimeSkill::onTrigger(Room *room, ServerPlayer *player) const
-{
-    if (on_trigger == 0)
-        return AnytimeSkill::onTrigger(room, player);
-    LuaLocker locker;
-    lua_State *L = Sanguosha->getLuaState();
-    lua_pushinteger(L, on_trigger);
-    lua_gettable(L, LUA_REGISTRYINDEX);
-    lua_pushlightuserdata(L, room);
-    lua_pushlightuserdata(L, player);
-    int result = lua_pcall(L, 2, 1, 0);
-    if (result != 0) {
-        qWarning("LuaAnytimeSkill::onTrigger error: %s", lua_tostring(L, -1));
-        lua_pop(L, 1);
-        return false;
-    }
-    bool ret = lua_toboolean(L, -1);
-    lua_pop(L, 1);
-    return ret;
-}
-
 static QHash<QString, const LuaSkillCard *> LuaSkillCards;
 
 LuaSkillCard::LuaSkillCard(const QString &name, const QString &skillName)

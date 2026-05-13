@@ -174,20 +174,6 @@ public slots:
     void filterCardChosen(int card_id);
     void hideFilterContainer();
 
-    void showGuhuoCards(const QString &skillName, QList<Card *> cards);
-    void hideGuhuoCards();
-    bool isGuhuoActive() const { return _m_guhuoActive; }
-
-private:
-    void _adjustGuhuoCards();
-
-private slots:
-    void _onGuhuoCardClicked();
-
-signals:
-    void guhuoCardSelected(const Card *card);
-    void guhuoCancelled();
-
 protected:
     void _createExtraButtons();
     virtual void _adjustComponentZValues(bool killed = false);
@@ -322,13 +308,6 @@ protected:
     QMenu *_m_renpile_menu;
 
     int m_middleFrameAndRightFrameHeightDiff;
-
-    QList<CardItem *> m_guhuoItems;
-    QHash<CardItem *, Card *> m_guhuoCardMap;
-    bool _m_guhuoActive;
-    QString _m_guhuoSkillName;
-    CardItem *_m_guhuoSelected;
-
 protected slots:
     virtual void _onEquipSelectChanged();
 
@@ -341,14 +320,11 @@ private slots:
     void onCardItemHover();
     void onCardItemLeaveHover();
     void onMarkChanged();
-    void _onGuhuoConfirm();
 
 signals:
     void card_selected(const Card *card);
     void card_to_use();
     void progressBarTimedOut();
-    void guhuoCardSelected(const Card *card);
-    void guhuoCancelled();
 };
 
 #endif
