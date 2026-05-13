@@ -534,4 +534,36 @@ private:
     int n;
 };
 
+class PreSelectionMetaSkill : public Skill
+{
+    Q_OBJECT
+
+public:
+    PreSelectionMetaSkill(const QString &name);
+
+    virtual QStringList onGeneralChoosing(Room *room, ServerPlayer *player,
+                                          QStringList generals, const QString &reason) const;
+    virtual void onGeneralNotChosen(Room *room, ServerPlayer *player,
+                                    const QStringList &generals, const QString &chosen,
+                                    const QString &reason) const;
+
+    QString getActiveSkills() const;
+
+protected:
+    QString active_skills;
+};
+
+class AnytimeSkill : public Skill
+{
+    Q_OBJECT
+
+public:
+    AnytimeSkill(const QString &name);
+
+    virtual bool canTrigger(ServerPlayer *player) const;
+    virtual bool onTrigger(Room *room, ServerPlayer *player) const;
+
+    inline bool isAnytime() const { return true; }
+};
+
 #endif

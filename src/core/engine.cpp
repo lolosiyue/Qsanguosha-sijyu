@@ -710,6 +710,9 @@ void Engine::addPackage(Package*package)
 			foreach(QString name, related_skills.values(skill_name)){
 				if (name.startsWith("#")) general->addSkill(name);
 			}
+			const Skill *skill = getSkill(skill_name);
+			if (skill && skill->inherits("PreSelectionMetaSkill"))
+				general->addPreSelectionSkill(skill_name);
         }
         generals.insert(general->objectName(), general);
     }
