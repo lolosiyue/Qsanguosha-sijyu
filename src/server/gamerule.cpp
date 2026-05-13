@@ -264,6 +264,15 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 		room->setTag("FirstRound",false);
 		foreach(ServerPlayer *p,room->getAllPlayers()){
 			room->getThread()->trigger(GameStart,room,p);
+            QString activeSkills = p->property("preselection_active_skills").toString();
+            if (!activeSkills.isEmpty()) {
+                foreach (QString skName, activeSkills.split(",")) {
+                    const TriggerSkill *skill = Sanguosha->getTriggerSkill(skName);
+                    if (skill) {
+                        room->getThread()->addTriggerSkill(skill);
+                    }
+                }
+            }
 		}
 		//room->getThread()->trigger(GameStart,room,room->getCurrent());
 		foreach (int id,room->getDrawPile())
