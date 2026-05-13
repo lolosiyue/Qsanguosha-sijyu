@@ -308,6 +308,9 @@ private:
 
     QList<QSanSkillButton *> m_skillButtons;
 
+    QSanSkillButton *m_presentedDialogSkillButton;
+    QDialog *m_presentedDialog;
+
     ResponseSkill *response_skill;
     ShowOrPindianSkill *showorpindian_skill;
     DiscardSkill *discard_skill;
@@ -404,6 +407,13 @@ private:
     void callViewAsSkill();
     void cancelViewAsSkill();
 
+    bool shouldUseDashboardDialogPresenter(QDialog *dialog) const;
+    void wireSkillDialog(QSanSkillButton *button, QDialog *dialog);
+    void presentSkillDialog(QSanSkillButton *button, QDialog *dialog);
+    void clearPresentedDialogSkill(bool resetButtonState);
+    void activateSkill(const ViewAsSkill *skill);
+    bool applyPresentedDialogOption(const QString &optionName);
+
     void freeze();
     void addRestartButton(QDialog *dialog);
     QGraphicsPixmapItem *createDashboardButtons();
@@ -479,6 +489,8 @@ private slots:
     void updateTrustButton();
     void onSkillActivated();
     void onSkillDeactivated();
+    void onPresentedDialogSkillActivated();
+    void onDialogOptionSelectionChanged(bool hasSelection);
     void doTimeout();
     void startInXs();
     void hideAvatars();

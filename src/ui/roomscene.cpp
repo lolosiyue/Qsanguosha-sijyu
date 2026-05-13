@@ -21,6 +21,7 @@
 #include "mountain.h"
 #include "bubblechatbox.h"
 #include "mountain.h"
+#include "ol.h"
 //#include "clientplayer.h"
 #include "clientstruct.h"
 #include "photo.h"
@@ -86,6 +87,21 @@ static ClientPlayer *getCurrentOperationPlayer(Dashboard *dashboard)
 	return const_cast<ClientPlayer *>(getCurrentOperationPlayer(static_cast<const Dashboard *>(dashboard)));
 }
 
+template <typename DialogType>
+static void collectDialogPresenterOptions(DialogType *dialog, QStringList &optionNames,
+	QStringList &enabledOptions, QMap<QString, QString> &tooltips)
+{
+	optionNames = dialog->getOptionNames();
+	foreach (const QString &optionName, optionNames) {
+		if (dialog->isButtonEnabled(optionName))
+			enabledOptions << optionName;
+
+		const Card *card = dialog->getOptionCard(optionName);
+		if (card != nullptr)
+			tooltips.insert(optionName, card->getDescription());
+	}
+}
+
 void RoomScene::resetPiles()
 {
 	// @todo: fix this...
@@ -96,7 +112,8 @@ void RoomScene::resetPiles()
 
 RoomScene::RoomScene(QMainWindow*main_window)
 	: main_window(main_window),m_tableBgPixmap(1,1),m_tableBgPixmapOrig(1,1),game_started(false),
-	  _m_cachedPhotoWidth(0), _m_cachedPhotoHeight(0)
+	  _m_cachedPhotoWidth(0), _m_cachedPhotoHeight(0),
+	  m_presentedDialogSkillButton(nullptr), m_presentedDialog(nullptr)
 {
 	setParent(main_window);
 
@@ -143,6 +160,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(Self,SIGNAL(general2_changed()),dashboard,SLOT(refreshLayout()));
 	connect(dashboard,SIGNAL(card_selected(const Card*)),this,SLOT(enableTargets(const Card*)));
 	connect(dashboard,SIGNAL(card_to_use()),this,SLOT(doOkButton()));
+	connect(dashboard,SIGNAL(dialogOptionSelectionChanged(bool)),this,SLOT(onDialogOptionSelectionChanged(bool)));
 	//connect(dashboard,SIGNAL(add_equip_skill(const Skill*,bool)),this,SLOT(addSkillButton(const Skill*,bool)));
 	//connect(dashboard,SIGNAL(remove_equip_skill(QString)),this,SLOT(detachSkill(QString)));
 
@@ -2850,16 +2868,137 @@ void RoomScene::addSkillButton(const Skill*skill)
 
 		QDialog*dialog = skill->getDialog();
 		if(dialog){
-			dialog->setParent(main_window,Qt::Dialog);
-			connect(btn,SIGNAL(skill_activated()),dialog,SLOT(popup()));
-			connect(btn,SIGNAL(skill_deactivated()),dialog,SLOT(reject()));
-			disconnect(btn,SIGNAL(skill_activated()),this,SLOT(onSkillActivated()));
-			connect(dialog,SIGNAL(onButtonClick()),this,SLOT(onSkillActivated()));
-			if(dialog->objectName()=="qice")
-				connect(dialog,SIGNAL(onButtonClick()),dashboard,SLOT(selectAll()));
+			wireSkillDialog(btn, dialog);
 		}
 	}
 	m_skillButtons << btn;
+}
+
+bool RoomScene::shouldUseDashboardDialogPresenter(QDialog *dialog) const
+{
+	return qobject_cast<JuguanDialog *>(dialog) != nullptr;
+}
+
+void RoomScene::wireSkillDialog(QSanSkillButton *button, QDialog *dialog)
+{
+	if (button == nullptr || dialog == nullptr)
+		return;
+
+	if (dialog->parent() != main_window)
+		dialog->setParent(main_window, Qt::Dialog);
+
+	disconnect(button, SIGNAL(skill_activated()), dialog, SLOT(popup()));
+	disconnect(button, SIGNAL(skill_deactivated()), dialog, SLOT(reject()));
+	disconnect(button, SIGNAL(skill_activated()), this, SLOT(onSkillActivated()));
+	disconnect(button, SIGNAL(skill_activated()), this, SLOT(onPresentedDialogSkillActivated()));
+	disconnect(dialog, SIGNAL(onButtonClick()), this, SLOT(onSkillActivated()));
+	disconnect(dialog, SIGNAL(onButtonClick()), dashboard, SLOT(selectAll()));
+
+	if (shouldUseDashboardDialogPresenter(dialog)) {
+		connect(button, SIGNAL(skill_activated()), this, SLOT(onPresentedDialogSkillActivated()), Qt::UniqueConnection);
+		return;
+	}
+
+	connect(button, SIGNAL(skill_activated()), dialog, SLOT(popup()), Qt::UniqueConnection);
+	connect(button, SIGNAL(skill_deactivated()), dialog, SLOT(reject()), Qt::UniqueConnection);
+	connect(dialog, SIGNAL(onButtonClick()), this, SLOT(onSkillActivated()), Qt::UniqueConnection);
+	if (dialog->objectName() == "qice")
+		connect(dialog, SIGNAL(onButtonClick()), dashboard, SLOT(selectAll()), Qt::UniqueConnection);
+}
+
+void RoomScene::presentSkillDialog(QSanSkillButton *button, QDialog *dialog)
+{
+	if (button == nullptr || dialog == nullptr)
+		return;
+
+	clearPresentedDialogSkill(false);
+
+	const ViewAsSkill *skill = button->getViewAsSkill();
+	QStringList optionNames, enabledOptions;
+	QMap<QString, QString> tooltips;
+	bool activateDirectly = false;
+
+	if (JuguanDialog *juguanDialog = qobject_cast<JuguanDialog *>(dialog)) {
+		juguanDialog->prepareOptions();
+		if (!juguanDialog->shouldPopup())
+			activateDirectly = true;
+		else
+			collectDialogPresenterOptions(juguanDialog, optionNames, enabledOptions, tooltips);
+	} else {
+		return;
+	}
+
+	if (activateDirectly || enabledOptions.isEmpty()) {
+		activateSkill(skill);
+		return;
+	}
+
+	m_presentedDialogSkillButton = button;
+	m_presentedDialog = dialog;
+	dashboard->showDialogOptions(dialog->objectName(), optionNames, enabledOptions, tooltips);
+	ok_button->setEnabled(false);
+	cancel_button->setEnabled(true);
+}
+
+void RoomScene::clearPresentedDialogSkill(bool resetButtonState)
+{
+	if (dashboard->isShowingDialogOptions())
+		dashboard->hideDialogOptions();
+
+	if (resetButtonState && m_presentedDialogSkillButton != nullptr && m_presentedDialogSkillButton->isDown())
+		m_presentedDialogSkillButton->setState(QSanButton::S_STATE_UP);
+
+	m_presentedDialogSkillButton = nullptr;
+	m_presentedDialog = nullptr;
+}
+
+void RoomScene::activateSkill(const ViewAsSkill *skill)
+{
+	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
+	if (!skill)
+		return;
+
+	dashboard->startPending(skill);
+	cancel_button->setEnabled(true);
+
+	QString prompt = skill->objectName() + "-click";
+	if (Sanguosha->translate(prompt) != prompt) {
+		prompt_box->disappear();
+		prompt_box_widget->setHtml(Sanguosha->translate(prompt));
+		showPromptBox();
+	}
+
+	const Card *card = dashboard->pendingCard();
+	if (card && activePlayer != nullptr && card->targetFixed() && card->isAvailable(activePlayer)) {
+		if (!skill->inherits("ZeroCardViewAsSkill")) {
+			foreach (const Card *c, activePlayer->getKnownCards()) {
+				if (skill->viewFilter(QList<const Card *>(), c))
+					return;
+			}
+			foreach (const Card *c, activePlayer->getEquips()) {
+				if (skill->viewFilter(QList<const Card *>(), c))
+					return;
+			}
+			foreach (const QString &name, dashboard->getPileExpanded()) {
+				foreach (int id, activePlayer->getPile(name)) {
+					if (skill->viewFilter(QList<const Card *>(), Sanguosha->getCard(id)))
+						return;
+				}
+			}
+		}
+		useSelectedCard();
+	} else if (skill->inherits("OneCardViewAsSkill") && Config.EnableIntellectualSelection && !skill->getDialog())
+		dashboard->selectOnlyCard(ClientInstance->getStatus() == Client::Playing);
+}
+
+bool RoomScene::applyPresentedDialogOption(const QString &optionName)
+{
+	if (optionName.isEmpty() || m_presentedDialog == nullptr)
+		return false;
+
+	if (JuguanDialog *juguanDialog = qobject_cast<JuguanDialog *>(m_presentedDialog))
+		return juguanDialog->applyOption(optionName);
+	return false;
 }
 
 void RoomScene::acquireSkill(const ClientPlayer*,const QString&skill_name)
@@ -3574,6 +3713,13 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 
 void RoomScene::onSkillDeactivated()
 {
+	if (dashboard->isShowingDialogOptions()) {
+		clearPresentedDialogSkill(false);
+		ok_button->setEnabled(false);
+		cancel_button->setEnabled(false);
+		return;
+	}
+
 	const ViewAsSkill*current = dashboard->currentSkill();
 	if(current) cancel_button->click();
 }
@@ -3582,7 +3728,6 @@ void RoomScene::onSkillActivated()
 {
 	QSanSkillButton*button = qobject_cast<QSanSkillButton*>(sender());
 	const ViewAsSkill*skill = nullptr;
-	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
 	if(button)
 		skill = button->getViewAsSkill();
 	else {
@@ -3590,40 +3735,28 @@ void RoomScene::onSkillActivated()
 		if(dialog) skill = Sanguosha->getViewAsSkill(dialog->objectName());
 	}
 
-	if(skill){
-		dashboard->startPending(skill);
-		//ok_button->setEnabled(false);
-		cancel_button->setEnabled(true);
+	activateSkill(skill);
+}
 
-		QString prompt = skill->objectName()+"-click";
-		if(Sanguosha->translate(prompt)!=prompt){
-			prompt_box->disappear();
-			prompt_box_widget->setHtml(Sanguosha->translate(prompt));
-			showPromptBox();
-		}
+void RoomScene::onPresentedDialogSkillActivated()
+{
+	QSanSkillButton *button = qobject_cast<QSanSkillButton *>(sender());
+	if (button == nullptr || button->getSkill() == nullptr)
+		return;
 
-		const Card*card = dashboard->pendingCard();
-		if(card && activePlayer != nullptr && card->targetFixed() && card->isAvailable(activePlayer)){
-			if(!skill->inherits("ZeroCardViewAsSkill")){
-				foreach (const Card*c,activePlayer->getKnownCards()){
-					if(skill->viewFilter(QList<const Card*>(),c))
-						return;
-				}
-				foreach (const Card*c,activePlayer->getEquips()){
-					if(skill->viewFilter(QList<const Card*>(),c))
-						return;
-				}
-				foreach (const QString&name,dashboard->getPileExpanded()){
-					foreach(int id,activePlayer->getPile(name)){
-						if(skill->viewFilter(QList<const Card*>(),Sanguosha->getCard(id)))
-							return;
-					}
-				}
-			}
-			useSelectedCard();
-		} else if(skill->inherits("OneCardViewAsSkill")&&Config.EnableIntellectualSelection&&!skill->getDialog())
-			dashboard->selectOnlyCard(ClientInstance->getStatus()==Client::Playing);
+	QDialog *dialog = button->getSkill()->getDialog();
+	if (dialog == nullptr) {
+		activateSkill(button->getViewAsSkill());
+		return;
 	}
+
+	presentSkillDialog(button, dialog);
+}
+
+void RoomScene::onDialogOptionSelectionChanged(bool hasSelection)
+{
+	if (dashboard->isShowingDialogOptions())
+		ok_button->setEnabled(hasSelection);
 }
 
 void RoomScene::updateTrustButton()
@@ -3641,6 +3774,15 @@ void RoomScene::updateTrustButton()
 void RoomScene::doOkButton()
 {
 	if(!ok_button->isEnabled()) return;
+	if (dashboard->isShowingDialogOptions()) {
+		const ViewAsSkill *skill = m_presentedDialogSkillButton != nullptr ? m_presentedDialogSkillButton->getViewAsSkill() : nullptr;
+		QString optionName = dashboard->selectedDialogOption();
+		if (!applyPresentedDialogOption(optionName))
+			return;
+		clearPresentedDialogSkill(false);
+		activateSkill(skill);
+		return;
+	}
 	if(card_container->retained()) card_container->clear();
 	useSelectedCard();
 	if(onsole_target!=""){
@@ -3652,6 +3794,14 @@ void RoomScene::doOkButton()
 void RoomScene::doCancelButton()
 {
 	if(card_container->retained()) card_container->clear();
+	if (dashboard->isShowingDialogOptions()) {
+		dashboard->skillButtonDeactivated();
+		clearPresentedDialogSkill(true);
+		dashboard->enableCards();
+		ok_button->setEnabled(false);
+		cancel_button->setEnabled(false);
+		return;
+	}
 	switch (ClientInstance->getStatus()&Client::ClientStatusBasicMask){
 	case Client::Playing: {
 		dashboard->skillButtonDeactivated();

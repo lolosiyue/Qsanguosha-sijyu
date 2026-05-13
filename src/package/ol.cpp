@@ -11878,6 +11878,82 @@ JuguanDialog::JuguanDialog(const QString &object, const QString &card_names)
 	connect(group, SIGNAL(buttonClicked(QAbstractButton*)), this, SLOT(selectCard(QAbstractButton*)));
 }
 
+void JuguanDialog::prepareOptions()
+{
+	clearChoice();
+	clearButtons();
+	if (!shouldPopup())
+		return;
+
+	QString cards2 = cards;
+	cards2.remove("!");
+	cards2.remove("$");
+	foreach(QString name, cards2.split(",")){
+		if(name=="all_slashs"){
+			foreach(QString slash_name, Sanguosha->getSlashNames()){
+				Card *card = Sanguosha->cloneCard(slash_name);
+				if (card)
+					button_layout->addWidget(createButton(card));
+			}
+			continue;
+		}
+		Card *card = Sanguosha->cloneCard(name);
+		if (card)
+			button_layout->addWidget(createButton(card));
+	}
+}
+
+QStringList JuguanDialog::getOptionNames() const
+{
+	return option_names;
+}
+
+const Card *JuguanDialog::getOptionCard(const QString &option_name) const
+{
+	return map.value(option_name, nullptr);
+}
+
+bool JuguanDialog::applyOption(const QString &option_name)
+{
+	const Card *card = getOptionCard(option_name);
+	if (card == nullptr)
+		return false;
+
+	Self->setTag(objectName(), QVariant::fromValue(card));
+	return true;
+}
+
+void JuguanDialog::clearChoice() const
+{
+	Self->removeTag(objectName());
+}
+
+bool JuguanDialog::shouldPopup() const
+{
+	return !cards.isEmpty() && (cards.endsWith("!") || Sanguosha->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_PLAY);
+}
+
+bool JuguanDialog::hasEnabledOptions() const
+{
+	foreach (const QString &option_name, option_names) {
+		if (isButtonEnabled(option_name))
+			return true;
+	}
+	return false;
+}
+
+void JuguanDialog::clearButtons()
+{
+	foreach(QAbstractButton *button, group->buttons()){
+		button_layout->removeWidget(button);
+		group->removeButton(button);
+		delete button;
+	}
+	qDeleteAll(map);
+	map.clear();
+	option_names.clear();
+}
+
 bool JuguanDialog::isButtonEnabled(const QString &button_name) const
 {
 	QString mark = objectName() + "_juguan_remove_" + button_name;
@@ -11891,41 +11967,11 @@ bool JuguanDialog::isButtonEnabled(const QString &button_name) const
 
 void JuguanDialog::popup()
 {
-	Self->removeTag(objectName());
+	prepareOptions();
 
-	if (cards.isEmpty()||(!cards.endsWith("!")&&Sanguosha->getCurrentCardUseReason()!=CardUseStruct::CARD_USE_REASON_PLAY)){
+	if (!shouldPopup()){
 		emit onButtonClick();
 		return;
-	}
-	foreach(QAbstractButton*button, group->buttons()){
-		button_layout->removeWidget(button);
-		delete map[button->objectName()];
-		map.remove(button->objectName());
-		group->removeButton(button);
-		delete button;
-	}
-
-	QString cards2 = cards;
-	cards2.remove("!");
-	cards2.remove("$");
-	foreach(QString name, cards2.split(",")){
-		if(name=="all_slashs"){
-			foreach(QString name, Sanguosha->getSlashNames()){
-				Card*card = Sanguosha->cloneCard(name);
-				if (card) {
-					card->setParent(this);
-					card->setSkillName(objectName());
-					button_layout->addWidget(createButton(card));
-				}
-			}
-			continue;
-		}
-		Card*card = Sanguosha->cloneCard(name);
-		if (card) {
-			card->setParent(this);
-			card->setSkillName(objectName());
-			button_layout->addWidget(createButton(card));
-		}
 	}
 
 	bool has_enabled_button = false;
@@ -11943,18 +11989,23 @@ void JuguanDialog::popup()
 
 void JuguanDialog::selectCard(QAbstractButton*button)
 {
-	Self->setTag(objectName(), QVariant::fromValue(map[button->objectName()]));
+	if (button == nullptr || !applyOption(button->objectName()))
+		return;
 	emit onButtonClick();
 	accept();
 }
 
-QAbstractButton*JuguanDialog::createButton(const Card*card)
+QAbstractButton*JuguanDialog::createButton(Card *card)
 {
+	card->setParent(this);
+	card->setSkillName(objectName());
+	card->setCanRecast(false);
 	QCommandLinkButton*button = new QCommandLinkButton(Sanguosha->translate(card->objectName()));
 	button->setObjectName(card->objectName());
 	button->setToolTip(card->getDescription());
 
 	map.insert(card->objectName(), card);
+	option_names.append(card->objectName());
 	group->addButton(button);
 	return button;
 }

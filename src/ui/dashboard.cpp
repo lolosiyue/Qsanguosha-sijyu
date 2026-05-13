@@ -13,7 +13,151 @@
 #include "button.h"
 #include "magatamas-item.h"
 
+#include <QGraphicsSceneMouseEvent>
 #include <QGraphicsTextItem>
+
+namespace {
+
+class DashboardDialogOptionItem : public QGraphicsObject
+{
+public:
+    DashboardDialogOptionItem(Dashboard *dashboard, const QString &optionName, const QString &tooltip,
+        const QSize &size, QGraphicsItem *parent = nullptr)
+        : QGraphicsObject(parent), m_dashboard(dashboard), m_optionName(optionName), m_size(size),
+          m_selected(false), m_hovered(false), m_baseZValue(0)
+    {
+        setObjectName(optionName);
+        setAcceptedMouseButtons(Qt::LeftButton);
+        setAcceptHoverEvents(true);
+        setToolTip(tooltip);
+        setEnabled(true);
+        updateVisualState();
+    }
+
+    QRectF boundingRect() const
+    {
+        return QRectF(0, 0, m_size.width(), m_size.height());
+    }
+
+    void setOptionSelected(bool selected)
+    {
+        if (m_selected == selected)
+            return;
+        m_selected = selected;
+        updateVisualState();
+        update();
+    }
+
+    void setHomePos(const QPointF &homePos)
+    {
+        m_homePos = homePos;
+        updateVisualState();
+    }
+
+    void setBaseZValue(qreal baseZValue)
+    {
+        m_baseZValue = baseZValue;
+        updateVisualState();
+    }
+
+protected:
+    void paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)
+    {
+        painter->setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
+
+        QPixmap pixmap = G_ROOM_SKIN.getCardMainPixmap(m_optionName, true)
+            .scaled(m_size, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        painter->drawPixmap(QRect(QPoint(0, 0), m_size), pixmap);
+
+        QRectF borderRect = boundingRect().adjusted(1, 1, -1, -1);
+        QColor borderColor = m_selected ? QColor(0xF5, 0xD7, 0x6E)
+            : (m_hovered ? QColor(0xF8, 0xF8, 0xF8, 0xC8) : QColor(0xF0, 0xF0, 0xF0, 0x90));
+        painter->setPen(QPen(borderColor, m_selected ? 4 : (m_hovered ? 3 : 2)));
+        painter->setBrush(Qt::NoBrush);
+        painter->drawRoundedRect(borderRect, 6, 6);
+
+        if (!isEnabled())
+            painter->fillRect(boundingRect(), QColor(40, 40, 40, 160));
+    }
+
+    void mousePressEvent(QGraphicsSceneMouseEvent *event)
+    {
+        event->accept();
+    }
+
+    void mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
+    {
+        event->accept();
+        if (!isEnabled() || m_dashboard == nullptr)
+            return;
+
+        QMetaObject::invokeMethod(m_dashboard, "_onDialogOptionClicked", Qt::DirectConnection,
+            Q_ARG(QString, m_optionName));
+    }
+
+    void hoverEnterEvent(QGraphicsSceneHoverEvent *)
+    {
+        if (!isEnabled())
+            return;
+
+        m_hovered = true;
+        updateVisualState();
+        update();
+    }
+
+    void hoverLeaveEvent(QGraphicsSceneHoverEvent *)
+    {
+        if (!isEnabled())
+            return;
+
+        m_hovered = false;
+        updateVisualState();
+        update();
+    }
+
+    QVariant itemChange(GraphicsItemChange change, const QVariant &value)
+    {
+        QVariant result = QGraphicsObject::itemChange(change, value);
+        if (change == ItemEnabledHasChanged)
+            updateVisualState();
+        return result;
+    }
+
+private:
+    void updateVisualState()
+    {
+        QPointF pos = m_homePos;
+        if (m_selected)
+            pos.setY(pos.y() - 20);
+        else if (m_hovered)
+            pos.setY(pos.y() - 12);
+        QGraphicsObject::setPos(pos);
+
+        qreal zValue = m_baseZValue;
+        if (m_hovered)
+            zValue += 100;
+        if (m_selected)
+            zValue += 200;
+        QGraphicsObject::setZValue(zValue);
+
+        if (!isEnabled())
+            QGraphicsObject::setOpacity(0.55);
+        else if (m_selected || m_hovered)
+            QGraphicsObject::setOpacity(1.0);
+        else
+            QGraphicsObject::setOpacity(0.92);
+    }
+
+    Dashboard *m_dashboard;
+    QString m_optionName;
+    QSize m_size;
+    bool m_selected;
+    bool m_hovered;
+    QPointF m_homePos;
+    qreal m_baseZValue;
+};
+
+}
 
 using namespace QSanProtocol;
 
@@ -862,6 +1006,127 @@ void Dashboard::skillButtonDeactivated()
     }
 }
 
+void Dashboard::showDialogOptions(const QString &skillName, const QStringList &optionNames,
+    const QStringList &enabledOptions, const QMap<QString, QString> &tooltips)
+{
+    hideDialogOptions();
+    hideFilterContainer();
+    unselectAll();
+
+    foreach (CardItem *item, m_handCards)
+        item->hide();
+
+    if (m_btnFilterCard)
+        m_btnFilterCard->setEnabled(false);
+
+    m_dialogOptionSkillName = skillName;
+    qreal availableWidth = qMax<qreal>(G_COMMON_LAYOUT.m_cardNormalWidth,
+        _m_middleFrame->boundingRect().width() - getButtonWidgetWidth() - 16);
+    qreal overlapStep = G_COMMON_LAYOUT.m_cardNormalWidth * 0.36;
+    qreal scale = 0.92;
+    if (optionNames.length() > 1) {
+        qreal requiredWidth = G_COMMON_LAYOUT.m_cardNormalWidth + (optionNames.length() - 1) * overlapStep;
+        if (requiredWidth > availableWidth)
+            scale = qMax<qreal>(0.76, availableWidth / requiredWidth);
+    }
+    QSize optionSize(qRound(G_COMMON_LAYOUT.m_cardNormalWidth * scale), qRound(G_COMMON_LAYOUT.m_cardNormalHeight * scale));
+
+    foreach (const QString &optionName, optionNames) {
+        QString tooltip = tooltips.value(optionName);
+        if (tooltip.isEmpty())
+            tooltip = Sanguosha->translate(optionName);
+
+        DashboardDialogOptionItem *item = new DashboardDialogOptionItem(this, optionName, tooltip, optionSize, _m_middleFrame);
+        item->setZValue(5);
+        item->setEnabled(enabledOptions.contains(optionName));
+        m_dialogOptionItems << item;
+        m_dialogOptionItemMap.insert(optionName, item);
+    }
+
+    _layoutDialogOptions();
+    emit dialogOptionSelectionChanged(false);
+}
+
+void Dashboard::hideDialogOptions()
+{
+    if (!isShowingDialogOptions())
+        return;
+
+    qDeleteAll(m_dialogOptionItems);
+    m_dialogOptionItems.clear();
+    m_dialogOptionItemMap.clear();
+    m_dialogOptionSkillName.clear();
+    m_selectedDialogOption.clear();
+
+    foreach (CardItem *item, m_handCards)
+        item->show();
+    if (m_btnFilterCard)
+        m_btnFilterCard->setEnabled(true);
+    adjustCards(true);
+    update();
+
+    emit dialogOptionSelectionChanged(false);
+}
+
+bool Dashboard::isShowingDialogOptions() const
+{
+    return !m_dialogOptionItems.isEmpty();
+}
+
+QString Dashboard::selectedDialogOption() const
+{
+    return m_selectedDialogOption;
+}
+
+void Dashboard::_layoutDialogOptions()
+{
+    if (m_dialogOptionItems.isEmpty() || _m_middleFrame == nullptr)
+        return;
+
+    DashboardDialogOptionItem *firstItem = static_cast<DashboardDialogOptionItem *>(m_dialogOptionItems.first());
+    QSizeF itemSize = firstItem->boundingRect().size();
+    int count = m_dialogOptionItems.length();
+    qreal leftPadding = 8;
+    qreal availableWidth = qMax<qreal>(itemSize.width(),
+        _m_middleFrame->boundingRect().width() - getButtonWidgetWidth() - leftPadding * 2);
+    qreal step = itemSize.width();
+    if (count > 1)
+        step = qMin<qreal>(itemSize.width() * 0.62, (availableWidth - itemSize.width()) / (count - 1));
+
+    qreal totalWidth = itemSize.width() + step * (count - 1);
+    qreal startX = qMax<qreal>(leftPadding, (availableWidth - totalWidth) / 2.0 + leftPadding);
+    qreal startY = qMax<qreal>(8, _m_middleFrame->boundingRect().height() - itemSize.height() - 8);
+
+    for (int index = 0; index < m_dialogOptionItems.length(); ++index) {
+        DashboardDialogOptionItem *item = static_cast<DashboardDialogOptionItem *>(m_dialogOptionItems.at(index));
+        qreal x = startX + index * step;
+        item->setHomePos(QPointF(x, startY));
+        item->setBaseZValue(index);
+    }
+}
+
+void Dashboard::_onDialogOptionClicked(const QString &optionName)
+{
+    if (!m_dialogOptionItemMap.contains(optionName))
+        return;
+
+    bool clearSelection = (m_selectedDialogOption == optionName);
+    m_selectedDialogOption.clear();
+
+    foreach (QGraphicsObject *item, m_dialogOptionItems) {
+        DashboardDialogOptionItem *optionItem = static_cast<DashboardDialogOptionItem *>(item);
+        optionItem->setOptionSelected(false);
+    }
+
+    if (!clearSelection) {
+        m_selectedDialogOption = optionName;
+        DashboardDialogOptionItem *selectedItem = static_cast<DashboardDialogOptionItem *>(m_dialogOptionItemMap.value(optionName));
+        selectedItem->setOptionSelected(true);
+    }
+
+    emit dialogOptionSelectionChanged(!m_selectedDialogOption.isEmpty());
+}
+
 void Dashboard::selectAll()
 {
     foreach (const QString &pile, m_player->getPileNames()) {
@@ -1180,7 +1445,7 @@ static bool CompareByType(const CardItem *a, const CardItem *b)
 
 void Dashboard::sortCards()
 {
-    if (m_handCards.isEmpty()||(m_player&&m_player->property("NotSortHands").toBool())) return;
+    if (isShowingDialogOptions() || m_handCards.isEmpty()||(m_player&&m_player->property("NotSortHands").toBool())) return;
 
     QMenu *menu = _m_sort_menu;
     menu->clear();
@@ -1667,7 +1932,7 @@ void Dashboard::hideFilterContainer()
 
 void Dashboard::showCardFilterContainer()
 {
-    if (m_handCards.isEmpty() || (m_player && m_player->property("NotSortHands").toBool())) return;
+    if (isShowingDialogOptions() || m_handCards.isEmpty() || (m_player && m_player->property("NotSortHands").toBool())) return;
 
     _m_filterCurrentCategory = "";
     clearFilterUIElements();

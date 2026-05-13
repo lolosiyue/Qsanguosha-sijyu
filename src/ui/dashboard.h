@@ -95,6 +95,11 @@ public:
     void stopPending();
     void updatePending();
     void clearPendings();
+    void showDialogOptions(const QString &skillName, const QStringList &optionNames,
+        const QStringList &enabledOptions, const QMap<QString, QString> &tooltips);
+    void hideDialogOptions();
+    bool isShowingDialogOptions() const;
+    QString selectedDialogOption() const;
 
     QRectF getProgressBarSceneBoundingRect() const {
         return _m_progressBarItem->sceneBoundingRect();
@@ -306,6 +311,12 @@ protected:
     QMenu *_m_sort_menu;
     QMenu *_m_shefu_menu;
     QMenu *_m_renpile_menu;
+    QList<QGraphicsObject *> m_dialogOptionItems;
+    QMap<QString, QGraphicsObject *> m_dialogOptionItemMap;
+    QString m_dialogOptionSkillName;
+    QString m_selectedDialogOption;
+
+    void _layoutDialogOptions();
 
     int m_middleFrameAndRightFrameHeightDiff;
 protected slots:
@@ -320,10 +331,12 @@ private slots:
     void onCardItemHover();
     void onCardItemLeaveHover();
     void onMarkChanged();
+    void _onDialogOptionClicked(const QString &optionName);
 
 signals:
     void card_selected(const Card *card);
     void card_to_use();
+    void dialogOptionSelectionChanged(bool hasSelection);
     void progressBarTimedOut();
 };
 
