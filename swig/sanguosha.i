@@ -1829,6 +1829,7 @@ public:
 	void notifyMoveToPile(ServerPlayer*player, const QList<int>&cards, const char*reason, Player::Place place = Player::PlaceUnknown, bool in = true, bool visible = true);
 	QString ZhizheCardViewAsEquip(const Card*card);
 	void notifyWeaponRange(const char*weapon_name, int range = 1);
+	QVariant askForQml(ServerPlayer *player, const char*qmlPath, const QVariantMap &params, int timeout = 30000);
 
 	void broadcastInvoke(const char*method, const char*arg = ".", ServerPlayer*except = nullptr);
 	ServerPlayer*getActualController(ServerPlayer *player) const;

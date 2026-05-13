@@ -937,6 +937,25 @@ void MarkAssignSkill::onGameStart(ServerPlayer *player) const
     player->getRoom()->setPlayerMark(player, mark_name, player->getMark(mark_name) + n);
 }
 
+PreSelectionMetaSkill::PreSelectionMetaSkill(const QString &name)
+    : Skill(name)
+{
+}
+
+QStringList PreSelectionMetaSkill::onGeneralChoosing(Room *, ServerPlayer *, QStringList generals, const QString &) const
+{
+    return generals;
+}
+
+void PreSelectionMetaSkill::onGeneralNotChosen(Room *, ServerPlayer *, const QStringList &, const QString &, const QString &) const
+{
+}
+
+QString PreSelectionMetaSkill::getActiveSkills() const
+{
+    return active_skills;
+}
+
 bool Skill::setProperty(const char* name, const QVariant& value) {
 	return ThreadSafeHelper::setProperty(this, name, value);
 }
@@ -1035,4 +1054,19 @@ QString Skill::getUsageTagKey(const SkillContext &ctx) const
         default:
             return QString();
     }
+}
+
+AnytimeSkill::AnytimeSkill(const QString &name)
+    : Skill(name, NotFrequent)
+{
+}
+
+bool AnytimeSkill::canTrigger(ServerPlayer *) const
+{
+    return true;
+}
+
+bool AnytimeSkill::onTrigger(Room *, ServerPlayer *) const
+{
+    return false;
 }
