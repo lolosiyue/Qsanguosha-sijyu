@@ -13,11 +13,47 @@
 #include "generaloverview.h"
 #include "window.h"
 #include "button.h"
+#include <QElapsedTimer>
 #include <QMutexLocker>
 
 using namespace QSanProtocol;
 
 namespace {
+
+qint64 currentCardMoveMonitorMs()
+{
+    static QElapsedTimer timer;
+    static bool started = false;
+    if (!started) {
+        timer.start();
+        started = true;
+    }
+    return timer.elapsed();
+}
+
+qint64 g_skipCardMoveAnimUntilMs = 0;
+
+bool shouldSkipCardMoveAnimation()
+{
+    return Config.value("NoCardMoveAnim", false).toBool()
+        || currentCardMoveMonitorMs() < g_skipCardMoveAnimUntilMs;
+}
+
+void updateAdaptiveCardMoveAnimationState(QObject *animation)
+{
+    if (animation == nullptr || Config.value("NoCardMoveAnim", false).toBool())
+        return;
+
+    const qint64 startedAtMs = animation->property("cardMoveAnimStartedAt").toLongLong();
+    const int expectedDurationMs = animation->property("cardMoveAnimExpectedDuration").toInt();
+    if (startedAtMs <= 0 || expectedDurationMs <= 0)
+        return;
+
+    const qint64 elapsedMs = currentCardMoveMonitorMs() - startedAtMs;
+    const int lagTriggerMs = qMax(expectedDurationMs * 2, expectedDurationMs + 500);
+    if (elapsedMs >= lagTriggerMs)
+        g_skipCardMoveAnimUntilMs = currentCardMoveMonitorMs() + 5000;
+}
 
 int getEquipPrimarySlot(const Card *card, const ClientPlayer *player)
 {
@@ -174,6 +210,7 @@ void GenericCardContainer::onAnimationFinished()
 {
     QParallelAnimationGroup *animation = qobject_cast<QParallelAnimationGroup *>(sender());
     if (animation) {
+        updateAdaptiveCardMoveAnimationState(animation);
         while (animation->animationCount() > 0)
             animation->takeAnimation(0);
         animation->deleteLater();
@@ -182,6 +219,19 @@ void GenericCardContainer::onAnimationFinished()
 
 void GenericCardContainer::_playMoveCardsAnimation(QList<CardItem *> &cards, bool destroyCards)
 {
+    if (shouldSkipCardMoveAnimation()) {
+        foreach (CardItem *card_item, cards) {
+            card_item->goBack(false);
+            card_item->setOpacity(card_item->getHomeOpacity());
+            if (destroyCards) {
+                card_item->setVisible(false);
+                card_item->deleteLater();
+            }
+        }
+        updateContainer();
+        return;
+    }
+
     QParallelAnimationGroup *animation = new QParallelAnimationGroup;
     foreach (CardItem *card_item, cards) {
 		if (destroyCards)
@@ -189,6 +239,8 @@ void GenericCardContainer::_playMoveCardsAnimation(QList<CardItem *> &cards, boo
         animation->addAnimation(card_item->getGoBackAnimation(true));
     }
 
+    animation->setProperty("cardMoveAnimStartedAt", currentCardMoveMonitorMs());
+    animation->setProperty("cardMoveAnimExpectedDuration", Config.S_MOVE_CARD_ANIMATION_DURATION);
     connect(animation, SIGNAL(finished()), this, SLOT(updateContainer()));
     connect(animation, SIGNAL(finished()), this, SLOT(onAnimationFinished()));
     animation->start();

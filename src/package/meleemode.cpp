@@ -133,8 +133,9 @@ public:
 
     const Card *MeleePeach::viewAs(const Card *originalCard) const
     {
+        CardUseStruct::CardUseReason reason = Sanguosha->getCurrentCardUseReason();
         QString pattern = Sanguosha->getCurrentCardUsePattern();
-        if (pattern.contains("slash", Qt::CaseInsensitive)) {
+        if (reason == CardUseStruct::CARD_USE_REASON_PLAY || pattern.contains("slash", Qt::CaseInsensitive)) {
             Slash *slash = new Slash(originalCard->getSuit(), originalCard->getNumber());
             slash->addSubcard(originalCard);
             slash->setSkillName("_" + objectName());

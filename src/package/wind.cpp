@@ -12,8 +12,354 @@
 #include "room.h"
 #include "roomthread.h"
 #include "maneuvering.h"
+#include "skin-bank.h"
+
+#include <QPainter>
+#include <QPainterPath>
+#include <QPixmapCache>
+#include <QScrollArea>
+
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#include <dwmapi.h>
+#pragma comment(lib, "dwmapi.lib")
+#endif
 
 //#include "json.h"
+
+namespace {
+
+static const int GuhuoDialogMaxHeight = 700;
+static const int GuhuoDialogDefaultHeight = 560;
+static const int GuhuoDialogLeftWidth = 340;
+static const int GuhuoDialogRightWidth = 470;
+static const int GuhuoDialogOuterMargin = 18;
+static const int GuhuoDialogSectionSpacing = 14;
+static const int GuhuoOptionHeight = 82;
+static const int GuhuoOptionThumbWidth = 56;
+static const int GuhuoOptionThumbHeight = 70;
+static const int GuhuoDialogUiRevision = 3;
+
+#ifdef Q_OS_WIN
+struct GuhuoAccentPolicy {
+    int accentState;
+    int accentFlags;
+    int gradientColor;
+    int animationId;
+};
+
+struct GuhuoWindowCompositionAttribData {
+    int attrib;
+    PVOID data;
+    SIZE_T size;
+};
+
+enum GuhuoAccentState {
+    GuhuoAccentDisabled = 0,
+    GuhuoAccentEnableGradient = 1,
+    GuhuoAccentEnableTransparentGradient = 2,
+    GuhuoAccentEnableBlurBehind = 3,
+    GuhuoAccentEnableAcrylicBlurBehind = 4,
+    GuhuoAccentEnableHostBackdrop = 5
+};
+
+enum GuhuoWindowCompositionAttrib {
+    GuhuoWcaAccentPolicy = 19
+};
+
+typedef BOOL (WINAPI *SetWindowCompositionAttributePtr)(HWND, GuhuoWindowCompositionAttribData *);
+#endif
+
+QString getGuhuoCardTypeText(const Card *card)
+{
+    if (card == nullptr)
+        return QString();
+    if (card->isKindOf("DelayedTrick"))
+        return Sanguosha->translate("delayed_trick");
+    if (card->isKindOf("SingleTargetTrick"))
+        return Sanguosha->translate("single_target_trick");
+    if (card->isKindOf("TrickCard"))
+        return Sanguosha->translate("multiple_target_trick");
+    return Sanguosha->translate("basic");
+}
+
+QPixmap buildGuhuoOptionThumbnail(const QString &cardName)
+{
+    QString cacheKey = QString("GuhuoOptionThumbnail:%1:%2x%3")
+        .arg(cardName)
+        .arg(GuhuoOptionThumbWidth)
+        .arg(GuhuoOptionThumbHeight);
+    QPixmap cachedThumbnail;
+    if (QPixmapCache::find(cacheKey, &cachedThumbnail))
+        return cachedThumbnail;
+
+    QPixmap pixmap = G_ROOM_SKIN.getCardMainPixmap(cardName, true);
+    if (pixmap.isNull())
+        return pixmap;
+
+    QRect sourceRect = pixmap.rect();
+    int horizontalMargin = qMax(4, sourceRect.width() / 7);
+    int verticalMargin = qMax(4, sourceRect.height() / 10);
+    sourceRect.adjust(horizontalMargin, verticalMargin, -horizontalMargin, -verticalMargin);
+
+    QSize targetSize(GuhuoOptionThumbWidth, GuhuoOptionThumbHeight);
+    qreal targetRatio = (qreal)targetSize.width() / (qreal)targetSize.height();
+    int cropWidth = sourceRect.width();
+    int cropHeight = sourceRect.height();
+    if (cropHeight <= 0)
+        cropHeight = 1;
+
+    if ((qreal)cropWidth / (qreal)cropHeight > targetRatio)
+        cropWidth = qMax(1, qRound(cropHeight * targetRatio));
+    else
+        cropHeight = qMax(1, qRound(cropWidth / targetRatio));
+
+    QRect cropRect(sourceRect.x() + (sourceRect.width() - cropWidth) / 2,
+        sourceRect.y() + (sourceRect.height() - cropHeight) / 2,
+        cropWidth, cropHeight);
+    QPixmap thumbnail = pixmap.copy(cropRect).scaled(targetSize, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    if (!thumbnail.isNull())
+        QPixmapCache::insert(cacheKey, thumbnail);
+    return thumbnail;
+}
+
+void applyGuhuoDialogWindowBlur(QWidget *widget)
+{
+#ifdef Q_OS_WIN
+    if (widget == nullptr)
+        return;
+
+    HWND hwnd = reinterpret_cast<HWND>(widget->winId());
+    if (hwnd == nullptr)
+        return;
+
+    const DWORD immersiveDarkModeAttribute = 20;
+    const DWORD systemBackdropTypeAttribute = 38;
+    const DWORD transientWindowBackdrop = 3;
+
+    BOOL useDarkMode = TRUE;
+    DwmSetWindowAttribute(hwnd, immersiveDarkModeAttribute, &useDarkMode, sizeof(useDarkMode));
+
+    if (SUCCEEDED(DwmSetWindowAttribute(hwnd, systemBackdropTypeAttribute,
+        &transientWindowBackdrop, sizeof(transientWindowBackdrop)))) {
+        return;
+    }
+
+    HMODULE user32 = GetModuleHandleW(L"user32.dll");
+    if (user32 != nullptr) {
+        SetWindowCompositionAttributePtr setWindowCompositionAttribute =
+            reinterpret_cast<SetWindowCompositionAttributePtr>(GetProcAddress(user32, "SetWindowCompositionAttribute"));
+        if (setWindowCompositionAttribute != nullptr) {
+            GuhuoAccentPolicy accentPolicy = {};
+            accentPolicy.accentState = GuhuoAccentEnableBlurBehind;
+            GuhuoWindowCompositionAttribData data = {
+                GuhuoWcaAccentPolicy,
+                &accentPolicy,
+                sizeof(accentPolicy)
+            };
+            if (setWindowCompositionAttribute(hwnd, &data))
+                return;
+        }
+    }
+
+    DWM_BLURBEHIND blurBehind = {};
+    blurBehind.dwFlags = DWM_BB_ENABLE;
+    blurBehind.fEnable = TRUE;
+    DwmEnableBlurBehindWindow(hwnd, &blurBehind);
+#else
+    Q_UNUSED(widget);
+#endif
+}
+
+bool shouldRebuildGuhuoDialog(GuhuoDialog *dialog)
+{
+    if (dialog == nullptr)
+        return true;
+
+    if (dialog->property("guhuoUiRevision").toInt() != GuhuoDialogUiRevision)
+        return true;
+
+    foreach (QGroupBox *box, dialog->findChildren<QGroupBox *>()) {
+        QString title = box->title();
+        if (title == Sanguosha->translate("basic") || title == Sanguosha->translate("trick"))
+            return true;
+    }
+
+    return false;
+}
+
+QScrollArea *createGuhuoSectionScrollArea(QWidget *widget, int width)
+{
+    QScrollArea *scrollArea = new QScrollArea;
+    scrollArea->setWidget(widget);
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setFrameShape(QFrame::NoFrame);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scrollArea->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Expanding);
+    scrollArea->setFixedWidth(width);
+    scrollArea->viewport()->setAutoFillBackground(false);
+    widget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    return scrollArea;
+}
+
+class GuhuoOptionButton : public QAbstractButton
+{
+public:
+    explicit GuhuoOptionButton(const Card *card, QWidget *parent = nullptr)
+        : QAbstractButton(parent),
+          m_title(Sanguosha->translate(card->objectName())),
+          m_typeText(getGuhuoCardTypeText(card)),
+          m_thumbnail(buildGuhuoOptionThumbnail(card->objectName()))
+    {
+        setText(m_title);
+        setObjectName(card->objectName());
+        setToolTip(card->getDescription());
+        setCursor(Qt::PointingHandCursor);
+        setFocusPolicy(Qt::StrongFocus);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+        setMinimumHeight(GuhuoOptionHeight);
+    }
+
+    QSize sizeHint() const
+    {
+        return QSize(280, GuhuoOptionHeight);
+    }
+
+    QSize minimumSizeHint() const
+    {
+        return QSize(220, GuhuoOptionHeight);
+    }
+
+protected:
+    void enterEvent(QEvent *event)
+    {
+        QAbstractButton::enterEvent(event);
+        update();
+    }
+
+    void leaveEvent(QEvent *event)
+    {
+        QAbstractButton::leaveEvent(event);
+        update();
+    }
+
+    void focusInEvent(QFocusEvent *event)
+    {
+        QAbstractButton::focusInEvent(event);
+        update();
+    }
+
+    void focusOutEvent(QFocusEvent *event)
+    {
+        QAbstractButton::focusOutEvent(event);
+        update();
+    }
+
+    void changeEvent(QEvent *event)
+    {
+        QAbstractButton::changeEvent(event);
+        if (event->type() == QEvent::EnabledChange)
+            update();
+    }
+
+    void paintEvent(QPaintEvent *)
+    {
+        const bool hovered = isEnabled() && underMouse();
+        const bool selected = isDown() || hasFocus();
+
+        QColor borderColor = !isEnabled() ? QColor(92, 92, 92, 180)
+            : selected ? QColor(231, 198, 112)
+            : hovered ? QColor(152, 185, 212, 190)
+            : QColor(112, 124, 138, 160);
+        QColor panelColor = !isEnabled() ? QColor(26, 28, 32, 215)
+            : selected ? QColor(44, 50, 58, 240)
+            : hovered ? QColor(36, 42, 49, 236)
+            : QColor(30, 35, 42, 228);
+        QColor accentColor = !isEnabled() ? QColor(116, 116, 116, 120)
+            : selected ? QColor(228, 185, 82, 220)
+            : hovered ? QColor(118, 170, 202, 180)
+            : QColor(84, 110, 128, 150);
+        QColor titleColor = !isEnabled() ? QColor(188, 188, 188)
+            : QColor(244, 240, 229);
+        QColor detailColor = !isEnabled() ? QColor(146, 146, 146)
+            : QColor(182, 188, 194);
+
+        QPainter painter(this);
+        painter.setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
+
+        QRectF outerRect = rect().adjusted(0.5, 0.5, -0.5, -0.5);
+        QPainterPath outerPath;
+        outerPath.addRoundedRect(outerRect, 10, 10);
+
+        QLinearGradient panelGradient(0, outerRect.top(), 0, outerRect.bottom());
+        panelGradient.setColorAt(0.0, panelColor.lighter(selected ? 118 : 110));
+        panelGradient.setColorAt(1.0, panelColor.darker(116));
+        painter.setPen(QPen(borderColor, selected ? 2.0 : 1.4));
+        painter.setBrush(panelGradient);
+        painter.drawPath(outerPath);
+
+        QRectF innerRect = outerRect.adjusted(2.0, 2.0, -2.0, -2.0);
+        QLinearGradient innerGradient(0, innerRect.top(), 0, innerRect.bottom());
+        innerGradient.setColorAt(0.0, QColor(255, 255, 255, hovered ? 18 : 12));
+        innerGradient.setColorAt(1.0, QColor(0, 0, 0, 36));
+        painter.setPen(Qt::NoPen);
+        painter.setBrush(innerGradient);
+        painter.drawRoundedRect(innerRect, 9, 9);
+
+        QRectF accentRect(innerRect.left() + 12, innerRect.bottom() - 8, innerRect.width() - 24, 4);
+        painter.setBrush(accentColor);
+        painter.drawRoundedRect(accentRect, 2, 2);
+
+        QRect thumbRect(12, 6, GuhuoOptionThumbWidth, GuhuoOptionThumbHeight);
+        QPainterPath thumbPath;
+        thumbPath.addRoundedRect(QRectF(thumbRect), 8, 8);
+        painter.save();
+        painter.setClipPath(thumbPath);
+        if (!m_thumbnail.isNull())
+            painter.drawPixmap(thumbRect, m_thumbnail);
+        else
+            painter.fillRect(thumbRect, QColor(20, 24, 28, 220));
+        painter.restore();
+        painter.setPen(QPen(QColor(255, 255, 255, 36), 1));
+        painter.setBrush(Qt::NoBrush);
+        painter.drawRoundedRect(QRectF(thumbRect).adjusted(0.5, 0.5, -0.5, -0.5), 8, 8);
+
+        QRect textRect(thumbRect.right() + 12, 14,
+            width() - thumbRect.right() - 28, height() - 28);
+        QRect titleRect = textRect;
+        titleRect.setHeight(28);
+        QRect typeRect = textRect;
+        typeRect.setTop(titleRect.bottom() + 2);
+
+        QFont titleFont = font();
+        titleFont.setBold(true);
+        titleFont.setPixelSize(15);
+        painter.setFont(titleFont);
+        painter.setPen(titleColor);
+        QFontMetrics titleMetrics(titleFont);
+        painter.drawText(titleRect, Qt::AlignLeft | Qt::AlignVCenter,
+            titleMetrics.elidedText(m_title, Qt::ElideRight, titleRect.width()));
+
+        QFont detailFont = font();
+        detailFont.setPixelSize(11);
+        painter.setFont(detailFont);
+        painter.setPen(detailColor);
+        QFontMetrics detailMetrics(detailFont);
+        painter.drawText(typeRect, Qt::AlignLeft | Qt::AlignTop,
+            detailMetrics.elidedText(m_typeText, Qt::ElideRight, typeRect.width()));
+
+        if (!isEnabled())
+            painter.fillPath(outerPath, QColor(88, 88, 88, 110));
+    }
+
+private:
+    QString m_title;
+    QString m_typeText;
+    QPixmap m_thumbnail;
+};
+
+}
 
 class Guidao : public RetrialSkill
 {
@@ -649,7 +995,7 @@ static QHash<QString,GuhuoDialog *> GuhuoDialogs;
 
 GuhuoDialog *GuhuoDialog::getInstance(const QString &object, bool left, bool right, bool play_only, bool slash_combined, bool delayed_tricks, bool update)
 {
-    if(GuhuoDialogs[object]==nullptr||update){
+    if (update || shouldRebuildGuhuoDialog(GuhuoDialogs.value(object, nullptr))) {
 		if(GuhuoDialogs[object]){
 			foreach (Card *c, GuhuoDialogs[object]->findChildren<Card *>())
 				delete c;
@@ -669,14 +1015,137 @@ GuhuoDialog::GuhuoDialog(const QString &object, bool left, bool right, bool play
 {
     setObjectName(object);
     setWindowTitle(Sanguosha->translate(object));
+    setProperty("guhuoUiRevision", GuhuoDialogUiRevision);
+    setAttribute(Qt::WA_StyledBackground, true);
+    setStyleSheet(
+        "QDialog {"
+        "background-color: rgba(14, 17, 21, 236);"
+        "}"
+        "QGroupBox {"
+        "color: rgb(236, 229, 210);"
+        "font-weight: 600;"
+        "border: 1px solid rgba(210, 191, 151, 92);"
+        "border-radius: 14px;"
+        "margin-top: 20px;"
+        "background: rgba(255, 255, 255, 18);"
+        "padding-top: 8px;"
+        "}"
+        "QGroupBox::title {"
+        "subcontrol-origin: margin;"
+        "subcontrol-position: top left;"
+        "left: 14px;"
+        "padding: 0 8px;"
+        "color: rgb(234, 211, 160);"
+        "background: rgba(14, 17, 21, 228);"
+        "}"
+        "QGroupBox[guhuoRootGroup='true'] {"
+        "margin-top: 0px;"
+        "padding-top: 0px;"
+        "}"
+        "QGroupBox[guhuoRootGroup='true']::title {"
+        "padding: 0px;"
+        "margin: 0px;"
+        "height: 0px;"
+        "}"
+        "QScrollArea {"
+        "background: rgba(8, 10, 12, 138);"
+        "border: 1px solid rgba(210, 191, 151, 72);"
+        "border-radius: 16px;"
+        "}"
+        "QScrollArea > QWidget > QWidget {"
+        "background: transparent;"
+        "}"
+        "QScrollBar:vertical {"
+        "background: rgba(255, 255, 255, 18);"
+        "width: 10px;"
+        "margin: 10px 3px 10px 0;"
+        "border-radius: 5px;"
+        "}"
+        "QScrollBar::handle:vertical {"
+        "background: rgba(214, 192, 140, 170);"
+        "min-height: 28px;"
+        "border-radius: 5px;"
+        "}"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {"
+        "height: 0px;"
+        "}"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {"
+        "background: transparent;"
+        "}");
     group = new QButtonGroup(this);
+    group->setExclusive(false);
 
-    QHBoxLayout *layout = new QHBoxLayout;
-    if (left) layout->addWidget(createLeft());
-    if (right) layout->addWidget(createRight());
+    QVBoxLayout *layout = new QVBoxLayout;
+    layout->setContentsMargins(GuhuoDialogOuterMargin, GuhuoDialogOuterMargin,
+        GuhuoDialogOuterMargin, GuhuoDialogOuterMargin);
+    layout->setSpacing(0);
+
+    QHBoxLayout *contentLayout = new QHBoxLayout;
+    contentLayout->setContentsMargins(0, 0, 0, 0);
+    contentLayout->setSpacing(GuhuoDialogSectionSpacing);
+    if (left)
+        contentLayout->addWidget(createGuhuoSectionScrollArea(createLeft(), GuhuoDialogLeftWidth));
+    if (right)
+        contentLayout->addWidget(createGuhuoSectionScrollArea(createRight(), GuhuoDialogRightWidth));
+    layout->addLayout(contentLayout);
     setLayout(layout);
 
+    int dialogWidth = GuhuoDialogOuterMargin * 2;
+    if (left)
+        dialogWidth += GuhuoDialogLeftWidth;
+    if (right)
+        dialogWidth += GuhuoDialogRightWidth;
+    if (left && right)
+        dialogWidth += GuhuoDialogSectionSpacing;
+    setFixedWidth(dialogWidth);
+    setMaximumHeight(GuhuoDialogMaxHeight);
+    resize(width(), qMin(qMax(sizeHint().height(), GuhuoDialogDefaultHeight), GuhuoDialogMaxHeight));
+
     connect(group, SIGNAL(buttonClicked(QAbstractButton *)), this, SLOT(selectCard(QAbstractButton *)));
+}
+
+void GuhuoDialog::prepareOptions()
+{
+    clearChoice();
+}
+
+QStringList GuhuoDialog::getOptionNames() const
+{
+    return option_names;
+}
+
+const Card *GuhuoDialog::getOptionCard(const QString &option_name) const
+{
+    return map.value(option_name, nullptr);
+}
+
+bool GuhuoDialog::applyOption(const QString &option_name)
+{
+    const Card *card = getOptionCard(option_name);
+    if (card == nullptr)
+        return false;
+
+    Self->setTag(objectName(), QVariant::fromValue(card));
+    return true;
+}
+
+void GuhuoDialog::clearChoice() const
+{
+    Self->removeTag(objectName());
+}
+
+bool GuhuoDialog::shouldPopup() const
+{
+    return !play_only || Sanguosha->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_PLAY;
+}
+
+bool GuhuoDialog::hasEnabledOptions() const
+{
+    foreach (const QString &option_name, option_names) {
+        if (isButtonEnabled(option_name))
+            return true;
+    }
+    return false;
 }
 
 bool GuhuoDialog::isButtonEnabled(const QString &button_name) const
@@ -715,7 +1184,7 @@ bool GuhuoDialog::isButtonEnabled(const QString &button_name) const
 
 void GuhuoDialog::popup()
 {
-    Self->removeTag(objectName());/*
+    prepareOptions();/*
     if (objectName() == "zhanyi" && Self->getMark("ViewAsSkill_zhanyiEffect")<1) {
         emit onButtonClick();
         return;
@@ -723,7 +1192,7 @@ void GuhuoDialog::popup()
         emit onButtonClick();
         return;
     }*/
-    if (play_only && Sanguosha->getCurrentCardUseReason() != CardUseStruct::CARD_USE_REASON_PLAY) {
+    if (!shouldPopup()) {
         emit onButtonClick();
         return;
     }
@@ -735,6 +1204,7 @@ void GuhuoDialog::popup()
         button->setEnabled(enabled);
     }
     if (has_enabled_button) {
+		applyGuhuoDialogWindowBlur(this);
 		exec();
     }else
         emit onButtonClick();
@@ -742,19 +1212,8 @@ void GuhuoDialog::popup()
 
 void GuhuoDialog::selectCard(QAbstractButton *button)
 {
-    Self->setTag(objectName(), QVariant::fromValue(map[button->objectName()]));
-    if (button->objectName().contains("slash")) {
-        if (objectName() == "guhuo")
-            Self->setTag("GuhuoSlash", button->objectName());
-        else if (objectName() == "nosguhuo")
-            Self->setTag("NosGuhuoSlash", button->objectName());
-        else if (objectName() == "olguhuo")
-            Self->setTag("OLGuhuoSlash", button->objectName());
-        else if (objectName() == "zhanyi")
-            Self->setTag("ZhanyiSlash", button->objectName());
-        else if (objectName() == "yizan")
-            Self->setTag("YizanSlash", button->objectName());
-    }
+    if (button == nullptr || !applyOption(button->objectName()))
+        return;
     emit onButtonClick();
     accept();
 }
@@ -762,6 +1221,8 @@ void GuhuoDialog::selectCard(QAbstractButton *button)
 QGroupBox *GuhuoDialog::createLeft()
 {
     QVBoxLayout *layout = new QVBoxLayout;
+    layout->setContentsMargins(12, 10, 12, 12);
+    layout->setSpacing(8);
 
     if (objectName() == "fuping") {
         foreach (QString rec, Self->property("SkillDescriptionRecord_fuping").toString().split("+")) {
@@ -803,19 +1264,15 @@ QGroupBox *GuhuoDialog::createLeft()
 			||map.contains(c->objectName())||(slash_combined&&c->isKindOf("Slash")&&c->objectName()!="slash")) continue;
 			Card *dc = Sanguosha->cloneCard(c->objectName());
 			layout->addWidget(createButton(dc));
-			if (c->objectName()=="slash"&&!slash_combined) {
-				dc->setObjectName("normal_slash");
-				layout->addWidget(createButton(dc));
-            }
         }
     }
 
     QGroupBox *box = new QGroupBox;
-    box->setTitle(Sanguosha->translate("basic"));
-    if(layout->count()>0){
+        box->setProperty("guhuoRootGroup", true);
+    box->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    if (layout->count() > 0)
 		layout->addStretch();
-		box->setLayout(layout);
-	}
+	box->setLayout(layout);
     return box;
 }
 
@@ -823,12 +1280,18 @@ QGroupBox *GuhuoDialog::createRight()
 {
     QGroupBox *box1 = new QGroupBox(Sanguosha->translate("single_target_trick"));
     QVBoxLayout *layout1 = new QVBoxLayout;
+    layout1->setContentsMargins(10, 10, 10, 12);
+    layout1->setSpacing(8);
 
     QGroupBox *box2 = new QGroupBox(Sanguosha->translate("multiple_target_trick"));
     QVBoxLayout *layout2 = new QVBoxLayout;
+    layout2->setContentsMargins(10, 10, 10, 12);
+    layout2->setSpacing(8);
 
     QGroupBox *box3 = new QGroupBox(Sanguosha->translate("delayed_trick"));
     QVBoxLayout *layout3 = new QVBoxLayout;
+    layout3->setContentsMargins(10, 10, 10, 12);
+    layout3->setSpacing(8);
 
     if (objectName() == "fuping") {
         foreach (QString rec, Self->property("SkillDescriptionRecord_fuping").toString().split("+")) {
@@ -878,13 +1341,20 @@ QGroupBox *GuhuoDialog::createRight()
             if (dc) layout1->addWidget(createButton(dc));
         }
     }
-    QGroupBox *box = new QGroupBox(Sanguosha->translate("trick"));
-    QHBoxLayout *layout = new QHBoxLayout;
+    QGroupBox *box = new QGroupBox;
+    QVBoxLayout *layout = new QVBoxLayout;
+	layout->setContentsMargins(12, 10, 12, 12);
+	layout->setSpacing(10);
 
     box->setLayout(layout);
     box1->setLayout(layout1);
     box2->setLayout(layout2);
     box3->setLayout(layout3);
+    box->setProperty("guhuoRootGroup", true);
+    box->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    box1->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    box2->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
+    box3->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Maximum);
 
     layout1->addStretch();
     layout2->addStretch();
@@ -894,6 +1364,7 @@ QGroupBox *GuhuoDialog::createRight()
     layout->addWidget(box2);
     if (delayed_tricks)
         layout->addWidget(box3);
+    layout->addStretch();
     return box;
 }
 
@@ -903,9 +1374,8 @@ QAbstractButton *GuhuoDialog::createButton(Card *card)
 	card->setCanRecast(false);
 	card->setParent(this);
 	map.insert(card->objectName(), card);
-	QCommandLinkButton *button = new QCommandLinkButton(Sanguosha->translate(card->objectName()));
-	button->setToolTip(card->getDescription());
-	button->setObjectName(card->objectName());
+    option_names << card->objectName();
+	GuhuoOptionButton *button = new GuhuoOptionButton(card);
 	group->addButton(button);
 	return button;
 }
@@ -1261,10 +1731,7 @@ public:
         const Card *c = Self->getTag("guhuo").value<const Card *>();
         if (c) {
             GuhuoCard *card = new GuhuoCard;
-            if (!c->objectName().contains("slash"))
-                card->setUserString(c->objectName());
-            else
-                card->setUserString(Self->getTag("GuhuoSlash").toString());
+            card->setUserString(c->objectName());
             card->addSubcard(originalCard);
             return card;
         }
@@ -1883,8 +2350,6 @@ public:
         if (c) {
             NosGuhuoCard *card = new NosGuhuoCard;
 			card->setUserString(c->objectName());
-            if (c->objectName().contains("slash"))
-                card->setUserString(Self->getTag("NosGuhuoSlash").toString());
             card->addSubcard(originalCard);
             return card;
         }

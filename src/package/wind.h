@@ -60,6 +60,14 @@ class GuhuoDialog : public QDialog
 public:
     static GuhuoDialog *getInstance(const QString &object, bool left = true, bool right = true,
         bool play_only = true, bool slash_combined = false, bool delayed_tricks = false, bool update = false);
+    void prepareOptions();
+    QStringList getOptionNames() const;
+    const Card *getOptionCard(const QString &option_name) const;
+    bool applyOption(const QString &option_name);
+    void clearChoice() const;
+    bool shouldPopup() const;
+    bool hasEnabledOptions() const;
+    bool isButtonEnabled(const QString &button_name) const;
 
 public slots:
     void popup();
@@ -68,10 +76,10 @@ public slots:
 protected:
     explicit GuhuoDialog(const QString &object, bool left = true, bool right = true,
         bool play_only = true, bool slash_combined = false, bool delayed_tricks = false);
-    virtual bool isButtonEnabled(const QString &button_name) const;
     QAbstractButton *createButton(Card *card);
 
     QHash<QString, const Card *> map;
+    QStringList option_names;
 
 private:
     QGroupBox *createLeft();

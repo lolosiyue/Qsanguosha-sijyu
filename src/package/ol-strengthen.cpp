@@ -1001,10 +1001,7 @@ public:
 		const Card *c = Self->getTag("olguhuo").value<const Card *>();
 		if (c) {
 			OLGuhuoCard *card = new OLGuhuoCard;
-			if (!c->objectName().contains("slash"))
-				card->setUserString(c->objectName());
-			else
-				card->setUserString(Self->getTag("OLGuhuoSlash").toString());
+			card->setUserString(c->objectName());
 			card->addSubcard(originalCard);
 			return card;
 		}
