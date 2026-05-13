@@ -73,10 +73,6 @@ public:
     void setImage(const QString &general_name);
     QString getImage() const;
 
-    bool hasPreSelectionSkill() const;
-    QStringList getPreSelectionSkills() const;
-    void addPreSelectionSkill(const QString &skill_name);
-
 public slots:
     void lastWord() const;
 
@@ -86,7 +82,7 @@ private:
     Gender gender;
     bool lord;
     QSet<QString> extra_set;
-    QStringList skillname_list, related_skills, preselection_skills;
+    QStringList skillname_list, related_skills;
     bool hidden;
     bool never_shown;
     int start_hp;

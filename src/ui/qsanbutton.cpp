@@ -310,27 +310,19 @@ void QSanSkillButton::setSkill(const Skill *skill)
             _setSkillType(QSanInvokeSkillButton::S_SKILL_COMPULSORY);
         }
         setStyle(QSanButton::S_STYLE_PUSH);
-_m_emitDeactivateSignal = false;
-        _m_emitActivateSignal = true;
+        _m_emitDeactivateSignal = false;
+        _m_emitActivateSignal = false;
         _m_canDisable = true;
         _m_canEnable = true;
-    } else if (skill->inherits("AnytimeSkill")) {
-        setState(QSanButton::S_STATE_UP);
-        _setSkillType(QSanInvokeSkillButton::S_SKILL_ANYTIME);
-        setStyle(QSanButton::S_STYLE_PUSH);
-        _m_emitDeactivateSignal = false;
-        _m_emitActivateSignal = true;
-        _m_canDisable = false;
-        _m_canEnable = true;
     } else
-        Q_ASSERT(false);
+		Q_ASSERT(false);
 
     {
         LuaLocker locker;
         setToolTip(skill->getDescription(Self));
     }
 
-    Q_ASSERT((int)_m_skillType <= 7 && _m_state <= 3);
+    Q_ASSERT((int)_m_skillType <= 6 && _m_state <= 3);
     _repaint();
 }
 

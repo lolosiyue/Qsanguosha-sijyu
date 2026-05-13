@@ -11858,37 +11858,6 @@ public:
 
 static QHash<QString,JuguanDialog*>JuguanDialogs;
 
-QList<Card *> JuguanDialog::getAvailableCards() const
-{
-    QList<Card *> result;
-    
-    QString cards2 = cards;
-    cards2.remove("!");
-    cards2.remove("$");
-    
-    foreach (QString name, cards2.split(",")) {
-        if (name == "all_slashs") {
-            foreach (QString slashName, Sanguosha->getSlashNames()) {
-                Card *card = Sanguosha->cloneCard(slashName);
-                if (card) {
-                    card->setSkillName(objectName());
-                    card->setCanRecast(false);
-                    result.append(card);
-                }
-            }
-            continue;
-        }
-        Card *card = Sanguosha->cloneCard(name);
-        if (card) {
-            card->setSkillName(objectName());
-            card->setCanRecast(false);
-            result.append(card);
-        }
-    }
-    
-    return result;
-}
-
 JuguanDialog*JuguanDialog::getInstance(const QString &object, const QString &card_names)
 {
 	if (JuguanDialogs[object] == nullptr)

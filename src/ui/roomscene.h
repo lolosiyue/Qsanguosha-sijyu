@@ -221,22 +221,6 @@ public slots:
     void chooseDirection();
     void chooseTrigger(const QString &reason, const QStringList &choices, bool optional);
 
-    void onGuhuoSkillActivated();
-    void onGuhuoSkillDeactivated();
-    void onGuhuoCardSelected(const Card *card);
-    void onGuhuoCancelled();
-
-    void onJuguanSkillActivated();
-    void onJuguanSkillDeactivated();
-    void onJuguanCardSelected(const Card *card);
-    void onJuguanCancelled();
-
-    void onAnytimeSkillActivated();
-    void onAnytimeSkillDone(const QString &skill_name);
-
-    void onQmlInteract(const QString &qmlPath, const QVariantMap &params);
-    void onQmlResultReady(const QVariant &result);
-
     void bringToFront(QGraphicsItem *item);
     void arrangeSeats(const QList<const ClientPlayer *> &seats);
     void toggleDiscards();
@@ -515,8 +499,6 @@ private slots:
     void removeLightBox();
 
     void showCard(const QString &player_name, QList<int> card_ids);
-    void showVirtualCard(const QString &player_name, const QString &card_name,
-                         const QString &suit, int number, const QString &skill_name);
     void viewDistance();
     void viewMaxCards();
 
