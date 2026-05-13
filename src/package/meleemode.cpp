@@ -4,6 +4,7 @@
 #include "engine.h"
 #include "settings.h"
 #include "roomthread.h"
+#include "util.h"
 #include <QDateTime>
 
 class MeleeMode : public TriggerSkill
@@ -31,7 +32,14 @@ class MeleeMode : public TriggerSkill
             return false;
 
         QString mode = room->getMode();
+        int modePlayerCount = Sanguosha->getPlayerCount(mode);
         bool isDoudizhu = mode.startsWith("02_1v2") || mode == "03_1v2" || mode.contains("doudizhu");
+        bool isHegemonyMode = Config.EnableHegemony;
+        bool isSupportedIdentityMode = !isHegemonyMode && isNormalGameMode(mode) && modePlayerCount >= 8;
+        bool usesAliveThreshold = isHegemonyMode || isSupportedIdentityMode;
+
+        if (!isDoudizhu && !usesAliveThreshold)
+            return false;
 
         switch (triggerEvent) {
         case GameStart: {
@@ -46,7 +54,7 @@ class MeleeMode : public TriggerSkill
             int aliveCount = room->getAlivePlayers().count();
             bool shouldActivate = false;
 
-            if (!isDoudizhu) {
+            if (usesAliveThreshold) {
                 int playerCount = room->getPlayers().count();
                 int threshold = qMax(3, playerCount / 2);
                 if (aliveCount <= threshold)
@@ -103,7 +111,7 @@ class MeleeMode : public TriggerSkill
             int playerCount = room->getPlayers().count();
             int threshold = qMax(3, playerCount / 2);
 
-            if (aliveCount <= threshold && !isDoudizhu) {
+            if (aliveCount <= threshold && usesAliveThreshold) {
                 room->setTag("MeleeModeActive", true);
                 LogMessage log;
                 log.type = "#MeleeModeStart";
