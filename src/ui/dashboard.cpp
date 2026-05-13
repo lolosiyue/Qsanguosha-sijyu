@@ -561,6 +561,8 @@ void Dashboard::_updateFrames()
 
     // Keep hand card number text position in sync after _m_rightFrame moves.
     if (_m_handCardNumText) updateHandcardNum();
+    if (isShowingDialogOptions())
+        _layoutDialogOptions();
 }
 
 void Dashboard::_paintLeftFrame()
@@ -1100,8 +1102,8 @@ void Dashboard::_layoutDialogOptions()
     for (int index = 0; index < m_dialogOptionItems.length(); ++index) {
         DashboardDialogOptionItem *item = static_cast<DashboardDialogOptionItem *>(m_dialogOptionItems.at(index));
         qreal x = startX + index * step;
-        item->setHomePos(QPointF(x, startY));
         item->setBaseZValue(index);
+        item->setHomePos(QPointF(x, startY));
     }
 }
 
@@ -1445,7 +1447,7 @@ static bool CompareByType(const CardItem *a, const CardItem *b)
 
 void Dashboard::sortCards()
 {
-    if (isShowingDialogOptions() || m_handCards.isEmpty()||(m_player&&m_player->property("NotSortHands").toBool())) return;
+    if (m_handCards.isEmpty()||(m_player&&m_player->property("NotSortHands").toBool())) return;
 
     QMenu *menu = _m_sort_menu;
     menu->clear();
@@ -1922,12 +1924,32 @@ void Dashboard::clearFilterUIElements()
     _m_filterUIElements.clear();
 }
 
-void Dashboard::hideFilterContainer()
+void Dashboard::ensureFilterContainer()
+{
+    if (_m_filterContainer != nullptr)
+        return;
+
+    _m_filterContainer = new CardContainer();
+    _m_filterContainer->setParentItem(this);
+    _m_filterContainer->setZValue(20000);
+    connect(_m_filterContainer, SIGNAL(item_chosen(int)), this, SLOT(filterCardChosen(int)), Qt::QueuedConnection);
+}
+
+void Dashboard::destroyFilterContainer(bool resetCategory)
 {
     clearFilterUIElements();
-    _m_filterContainer->clear();
-    _m_filterContainer->hide();
-    _m_filterCurrentCategory = "";
+    if (_m_filterContainer != nullptr) {
+        _m_filterContainer->hide();
+        delete _m_filterContainer;
+        _m_filterContainer = nullptr;
+    }
+    if (resetCategory)
+        _m_filterCurrentCategory = "";
+}
+
+void Dashboard::hideFilterContainer()
+{
+    destroyFilterContainer();
 }
 
 void Dashboard::showCardFilterContainer()
@@ -1935,7 +1957,7 @@ void Dashboard::showCardFilterContainer()
     if (isShowingDialogOptions() || m_handCards.isEmpty() || (m_player && m_player->property("NotSortHands").toBool())) return;
 
     _m_filterCurrentCategory = "";
-    clearFilterUIElements();
+    destroyFilterContainer(false);
 
     QMap<QString, QList<int>> categoryMap;
     QList<int> representative_ids;
@@ -1953,14 +1975,7 @@ void Dashboard::showCardFilterContainer()
 
     if (representative_ids.isEmpty()) return;
 
-    if (!_m_filterContainer) {
-        _m_filterContainer = new CardContainer();
-        _m_filterContainer->setParentItem(this);
-        _m_filterContainer->setZValue(20000);
-        connect(_m_filterContainer, SIGNAL(item_chosen(int)), this, SLOT(filterCardChosen(int)), Qt::QueuedConnection);
-    }
-
-    _m_filterContainer->clear();
+    ensureFilterContainer();
     _m_filterContainer->fillCards(representative_ids);
     _m_filterContainer->show();
 
@@ -2039,18 +2054,16 @@ void Dashboard::filterCardChosen(int card_id)
                 targetItem->clickItem();
             }
 
-            clearFilterUIElements();
-            _m_filterContainer->clear();
-            _m_filterContainer->hide();
+            hideFilterContainer();
 
             if (targetItem) {
                 targetItem->goBack(true);
             }
         } else {
             _m_filterCurrentCategory = target_cat;
-            clearFilterUIElements();
+            destroyFilterContainer(false);
 
-            _m_filterContainer->clear();
+            ensureFilterContainer();
             _m_filterContainer->fillCards(cat_cards);
             _m_filterContainer->show();
 
@@ -2094,10 +2107,7 @@ void Dashboard::filterCardChosen(int card_id)
             targetItem->clickItem();
         }
 
-        clearFilterUIElements();
-        _m_filterContainer->clear();
-        _m_filterContainer->hide();
-        _m_filterCurrentCategory = "";
+        hideFilterContainer();
 
         if (targetItem) {
             targetItem->goBack(true);

@@ -391,6 +391,19 @@
         <string>Enable animated generals (GIF)</string>
        </property>
       </widget>
+      <widget class="QCheckBox" name="noCardMoveAnimCheckBox">
+       <property name="geometry">
+        <rect>
+         <x>240</x>
+         <y>120</y>
+         <width>181</width>
+         <height>16</height>
+        </rect>
+       </property>
+       <property name="text">
+        <string>No card move anim</string>
+       </property>
+      </widget>
     </widget>
      <widget class="QGroupBox" name="fontSetupGroupBox">
       <property name="geometry">

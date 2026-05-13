@@ -19,6 +19,7 @@ class CardItem;
 class CardContainer;
 class Button;
 class EffectAnimation;
+class QGraphicsObject;
 class ViewAsSkill;
 class FilterSkill;
 class PixmapAnimation;
@@ -317,6 +318,8 @@ protected:
     QString m_selectedDialogOption;
 
     void _layoutDialogOptions();
+    void ensureFilterContainer();
+    void destroyFilterContainer(bool resetCategory = true);
 
     int m_middleFrameAndRightFrameHeightDiff;
 protected slots:

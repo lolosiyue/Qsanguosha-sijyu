@@ -76,6 +76,7 @@ void TablePile::clear(bool delayRequest)
 void TablePile::_fadeOutCardsLocked(const QList<CardItem *> &cards)
 {
 	if (cards.isEmpty()) return;
+
 	QParallelAnimationGroup *group = new QParallelAnimationGroup;
 	foreach (CardItem *toRemove, cards) {
 		toRemove->setZValue(0.0);
@@ -157,6 +158,7 @@ void TablePile::adjustCards()
 {
 	if (m_visibleCards.isEmpty()) return;
 	_disperseCards(m_visibleCards, m_cardsDisplayRegion, Qt::AlignCenter, true, true);
+
 	QParallelAnimationGroup *animation = new QParallelAnimationGroup;
 	foreach(CardItem *card_item, m_visibleCards){
 		animation->addAnimation(card_item->getGoBackAnimation(true));

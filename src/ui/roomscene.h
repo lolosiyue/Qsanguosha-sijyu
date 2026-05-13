@@ -307,7 +307,6 @@ private:
     CardContainer *card_container;
 
     QList<QSanSkillButton *> m_skillButtons;
-
     QSanSkillButton *m_presentedDialogSkillButton;
     QDialog *m_presentedDialog;
 
@@ -407,13 +406,6 @@ private:
     void callViewAsSkill();
     void cancelViewAsSkill();
 
-    bool shouldUseDashboardDialogPresenter(QDialog *dialog) const;
-    void wireSkillDialog(QSanSkillButton *button, QDialog *dialog);
-    void presentSkillDialog(QSanSkillButton *button, QDialog *dialog);
-    void clearPresentedDialogSkill(bool resetButtonState);
-    void activateSkill(const ViewAsSkill *skill);
-    bool applyPresentedDialogOption(const QString &optionName);
-
     void freeze();
     void addRestartButton(QDialog *dialog);
     QGraphicsPixmapItem *createDashboardButtons();
@@ -474,6 +466,12 @@ private:
     QString _m_bgMusicPath;
 
     void recorderAutoSave();
+    bool shouldUseDashboardDialogPresenter(QDialog *dialog) const;
+    void wireSkillDialog(QSanSkillButton *button, QDialog *dialog);
+    void presentSkillDialog(QSanSkillButton *button, QDialog *dialog);
+    void clearPresentedDialogSkill(bool resetButtonState = false);
+    void activateSkill(const ViewAsSkill *skill);
+    bool applyPresentedDialogOption(const QString &optionName);
 
 #ifndef Q_OS_WINRT
     // for animation effects
@@ -488,8 +486,8 @@ private slots:
     void updateSelectedTargets();
     void updateTrustButton();
     void onSkillActivated();
-    void onSkillDeactivated();
     void onPresentedDialogSkillActivated();
+    void onSkillDeactivated();
     void onDialogOptionSelectionChanged(bool hasSelection);
     void doTimeout();
     void startInXs();

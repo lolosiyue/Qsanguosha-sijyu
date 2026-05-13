@@ -31,6 +31,7 @@ ConfigDialog::ConfigDialog(QWidget *parent)
     ui->fullSkinCheckBox->setChecked(true);
     ui->noIndicatorCheckBox->setChecked(Config.value("NoIndicator").toBool());
     ui->noEquipAnimCheckBox->setChecked(Config.value("NoEquipAnim").toBool());
+    ui->noCardMoveAnimCheckBox->setChecked(Config.value("NoCardMoveAnim", false).toBool());
     ui->enableAnimatedGeneralsCheckBox->setChecked(Config.value("EnableAnimatedGenerals", true).toBool());
 
     ui->bgmVolumeSlider->setValue(Config.BGMVolume*100);
@@ -147,6 +148,7 @@ void ConfigDialog::saveConfig()
 
     Config.setValue("NoIndicator", ui->noIndicatorCheckBox->isChecked());
     Config.setValue("NoEquipAnim", ui->noEquipAnimCheckBox->isChecked());
+    Config.setValue("NoCardMoveAnim", ui->noCardMoveAnimCheckBox->isChecked());
     Config.setValue("EnableAnimatedGenerals", ui->enableAnimatedGeneralsCheckBox->isChecked());
 
     Config.NeverNullifyMyTrick = ui->neverNullifyMyTrickCheckBox->isChecked();

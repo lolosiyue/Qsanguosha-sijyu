@@ -12005,7 +12005,7 @@ QAbstractButton*JuguanDialog::createButton(Card *card)
 	button->setToolTip(card->getDescription());
 
 	map.insert(card->objectName(), card);
-	option_names.append(card->objectName());
+	option_names << card->objectName();
 	group->addButton(button);
 	return button;
 }
