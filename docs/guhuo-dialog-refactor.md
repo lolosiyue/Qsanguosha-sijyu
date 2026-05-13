@@ -2,12 +2,43 @@
 
 ## 概述
 
-將 `GuhuoDialog` 和 `JuguanDialog` 從彈出式對話框改為 Dashboard 手牌區渲染虛擬卡牌。
+目前定案是只將 `JuguanDialog` 改為 Dashboard 手牌區 presenter；`GuhuoDialog` 因候選牌數量過大、擴展包會繼續膨脹，回退為原本的彈出式對話框流程。
+
+另見：`docs/guhuo-juguan-presenter-impact.md`，說明這一輪是否影響 SmartAI、哪些層級有變更、哪些協議保持不變。
+
+## 安全分階段方案
+
+### 第一階段：抽離選項邏輯，不更動主流程
+
+- 保留既有 `RoomScene::onSkillActivated()` → `Dashboard::startPending()` 流程
+- 在 `GuhuoDialog` / `JuguanDialog` 抽出可重用 API：`prepareOptions()`、`getOptionNames()`、`getOptionCard()`、`applyOption()`、`shouldPopup()`、`hasEnabledOptions()`
+- 共享 dialog 只保留選項準備與可用性判斷；`GuhuoSlash` / `NosGuhuoSlash` / `OLGuhuoSlash` 等狀態仍留在各自 `validate()` / `validateInResponse()` 路徑
+- `normal_slash` 改為獨立 clone card，避免不同選項共用同一個 `Card *`
+
+### 第二階段：新增 Dashboard presenter
+
+- Dashboard 只負責顯示 `juguan` 類選項，不直接重寫規則
+- presenter 應使用第一階段 API 讀取選項，確認後仍呼叫 `applyOption()` 回寫原本 tag
+- `RoomScene` 只增加很薄的一層 presenter：目前只攔 `JuguanDialog` 的 skill activation，先在 `Dashboard` 顯示專用 option item，按下確認後才回到既有 `onSkillActivated()` / `startPending()`
+- `Dashboard` 的 option item 只保存 `optionName` / `tooltip` / `enabled` 狀態，不直接持有或重用 `CardItem`，避免虛擬牌 id 與生命週期耦合
+- option item UX 改成單列疊放，滑鼠移入或選中時再抬高顯示，接近既有手牌區視覺
+- presenter 顯示期間會封住 `showCardFilterContainer()`，避免手牌分類視窗覆蓋在 option item 上
+
+### Guhuo 的回退決策
+
+- `GuhuoDialog` 曾短暫接入同一條 presenter 路徑，但 `yuji` 類技能可列出幾十種候選牌，單列疊放在擴展包較多時仍然過度擁擠
+- `Guhuo` 還保留 `slash` / `normal_slash` / 回應路徑等歷史兼容負擔，UI 壓縮時可讀性明顯比 `Juguan` 差
+- 因此目前把 `GuhuoDialog` 恢復到原本 `popup()/exec()` 的 modal 選牌方式；`JuguanDialog` 保留 presenter，避免兩種問題混在一起
+
+### 第三階段：切換 UI 載體
+
+- 等 Dashboard presenter 驗證穩定後，再把 `popup()/exec()` 換成非阻塞 UI
+- 此時才移除舊 dialog 外殼，避免同時存在兩套狀態機
 
 ## 交互流程
 
 ```
-1. 點擊視為技能按鈕 → Dashboard 顯示虛擬卡牌（替換手牌區）
+1. 點擊 `Juguan` 類視為技能按鈕 → Dashboard 顯示虛擬卡牌（替換手牌區）
 2. 點擊虛擬卡牌 → 卡牌高亮選中
 3. 點擊確定按鈕 → 發送技能使用請求
 4. 再次點擊技能按鈕 → 取消選擇，恢復手牌區
@@ -22,42 +53,42 @@
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                    2. RoomScene 攔截                             │
-│  onGuhuoSkillActivated() / onJuguanSkillActivated()            │
-│  ├── dialog->getAvailableCards()                                │
-│  ├── dashboard->showGuhuoCards()                                │
-│  ├── ok_button->setEnabled(true)                                │
-│  └── connect(ok_button, clicked, _onGuhuoConfirm)              │
+│                    2. RoomScene 薄 presenter                     │
+│  onPresentedDialogSkillActivated()                              │
+│  ├── 目前只處理 JuguanDialog                                     │
+│  ├── dialog->prepareOptions()                                   │
+│  ├── dialog->shouldPopup() / isButtonEnabled()                  │
+│  ├── dashboard->showDialogOptions()                             │
+│  └── 僅保存目前 skill button / dialog                           │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                    3. Dashboard 渲染虛擬卡牌                      │
-│  showGuhuoCards()                                               │
+│                    3. Dashboard 顯示 option item                │
+│  showDialogOptions()                                            │
 │  ├── 隱藏手牌 m_handCards                                        │
-│  ├── 建立 CardItem（虛擬卡牌）                                    │
-│  └── _m_guhuoSelected = nullptr                                 │
+│  ├── 建立專用 DashboardDialogOptionItem                         │
+│  └── 只保存 optionName / tooltip / enabled                      │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
-│                    4. 點擊虛擬卡牌                                │
-│  _onGuhuoCardClicked()                                          │
+│                    4. 點擊 option                                │
+│  _onDialogOptionClicked()                                       │
 │  ├── 清除舊選中狀態                                               │
-│  ├── 設置新選中狀態（高亮）                                        │
-│  ├── Self->setTag(skillName, card)                              │
-│  └── _m_guhuoSelected = item                                    │
+│  ├── 記錄新的 optionName                                          │
+│  └── emit dialogOptionSelectionChanged(true)                    │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │                    5. 點擊確定按鈕                                │
-│  ok_button::click() → _onGuhuoConfirm()                         │
-│  ├── 檢查 _m_guhuoSelected                                      │
-│  ├── emit guhuoCardSelected(card)                               │
-│  └── hideGuhuoCards()                                           │
+│  RoomScene::doOkButton()                                        │
+│  ├── dialog->applyOption(optionName)                            │
+│  ├── dashboard->hideDialogOptions()                             │
+│  └── 回到 activateSkill()                                        │
 └─────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────┐
 │                    6. 發送請求                                   │
-│  onGuhuoCardSelected() → useSelectedCard()                      │
+│  既有 onSkillActivated() → startPending() → useSelectedCard()   │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -69,7 +100,7 @@
 | **JuguanDialog** | 選擇指定卡牌名稱 | 傳入 `card_names` 字串 | `juguan_type = "slash,duel"` |
 | **TiansuanDialog** | 選擇選項（非卡牌） | 傳入 `choices` 字串 | `tiansuan_type = "hp,hand"` |
 
-> **注意**：`TiansuanDialog` 選擇的是選項而非卡牌，不適用此渲染方式。
+> **注意**：目前 Dashboard presenter 只實作在 `JuguanDialog`；`GuhuoDialog` 已回退到原本 modal 流程。`TiansuanDialog` 選擇的是選項而非卡牌，也不適用此渲染方式。
 
 ## Lua 技能定義範例
 
@@ -93,8 +124,8 @@ tiansuan_type = "hp,hand"
 
 | 檔案 | 變更 |
 |------|------|
-| `src/ui/dashboard.h` | 新增 `m_guhuoItems`、`m_guhuoCardMap`、`_m_guhuoActive`、`_m_guhuoSkillName`、`_m_guhuoSelected` |
-| `src/ui/dashboard.cpp` | 實作 `showGuhuoCards()`、`hideGuhuoCards()`、`_adjustGuhuoCards()`、`_onGuhuoCardClicked()`、`_onGuhuoConfirm()` |
+| `src/ui/dashboard.h` | 新增 `showDialogOptions()` / `hideDialogOptions()` / `selectedDialogOption()` 與 option item 狀態 |
+| `src/ui/dashboard.cpp` | 實作專用 `DashboardDialogOptionItem`，負責顯示、選中與灰化不可用選項 |
 
 ### GuhuoDialog
 
@@ -114,43 +145,44 @@ tiansuan_type = "hp,hand"
 
 | 檔案 | 變更 |
 |------|------|
-| `src/ui/roomscene.h` | 新增 `onGuhuoSkillActivated()`、`onGuhuoSkillDeactivated()`、`onGuhuoCardSelected()`、`onGuhuoCancelled()` 及 Juguan 對應方法 |
-| `src/ui/roomscene.cpp` | 攔截技能按鈕點擊，連接確定按鈕 |
+| `src/ui/roomscene.h` | 新增 presenter helper：`wireSkillDialog()`、`presentSkillDialog()`、`activateSkill()` |
+| `src/ui/roomscene.cpp` | `GuhuoDialog` / `JuguanDialog` 改走 presenter；確認後仍回到既有 pending 流程 |
 
 ## 技術細節
 
 ### 虛擬卡牌渲染
 
 ```cpp
-// Dashboard::showGuhuoCards()
-foreach (Card *card, cards) {
-    CardItem *item = new CardItem(card);  // 直接使用 Card*，不依賴 ID
-    item->setParentItem(_m_middleFrame);
-    item->setZValue(100);
-    connect(item, SIGNAL(clicked()), this, SLOT(_onGuhuoCardClicked()));
-    m_guhuoItems.append(item);
-    m_guhuoCardMap[item] = card;
+// Dashboard::showDialogOptions()
+foreach (const QString &optionName, optionNames) {
+    DashboardDialogOptionItem *item = new DashboardDialogOptionItem(
+        this, optionName, tooltips.value(optionName), optionSize, _m_middleFrame);
+    item->setEnabled(enabledOptions.contains(optionName));
+    m_dialogOptionItems << item;
 }
 ```
 
 ### 選中狀態管理
 
 ```cpp
-// Dashboard::_onGuhuoCardClicked()
-if (_m_guhuoSelected) {
-    _m_guhuoSelected->setSelected(false);  // 清除舊選中
-}
-item->setSelected(true);  // 設置新選中
-_m_guhuoSelected = item;
-Self->setTag(_m_guhuoSkillName, QVariant::fromValue(card));
+// Dashboard::_onDialogOptionClicked()
+if (m_selectedDialogOption == optionName)
+    m_selectedDialogOption.clear();
+else
+    m_selectedDialogOption = optionName;
+
+emit dialogOptionSelectionChanged(!m_selectedDialogOption.isEmpty());
 ```
 
 ### 確定按鈕連接
 
 ```cpp
-// RoomScene::onGuhuoSkillActivated()
-ok_button->setEnabled(true);
-connect(ok_button, SIGNAL(clicked()), dashboard, SLOT(_onGuhuoConfirm()), Qt::UniqueConnection);
+// RoomScene::doOkButton()
+if (dashboard->isShowingDialogOptions()) {
+    dialog->applyOption(dashboard->selectedDialogOption());
+    dashboard->hideDialogOptions();
+    activateSkill(skill);
+}
 ```
 
 ## 與原有彈窗流程的差異

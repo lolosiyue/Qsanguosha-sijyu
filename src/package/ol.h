@@ -383,6 +383,14 @@ class JuguanDialog : public QDialog
 
 public:
     static JuguanDialog *getInstance(const QString &object, const QString &card_names);
+    void prepareOptions();
+    QStringList getOptionNames() const;
+    const Card *getOptionCard(const QString &option_name) const;
+    bool applyOption(const QString &option_name);
+    void clearChoice() const;
+    bool shouldPopup() const;
+    bool hasEnabledOptions() const;
+    bool isButtonEnabled(const QString &button_name) const;
 
 public slots:
     void popup();
@@ -391,9 +399,10 @@ public slots:
 private:
     explicit JuguanDialog(const QString &object, const QString &card_names);
 
-    virtual bool isButtonEnabled(const QString &button_name) const;
-    QAbstractButton *createButton(const Card *card);
+    void clearButtons();
+    QAbstractButton *createButton(Card *card);
     QHash<QString, const Card *> map;
+    QStringList option_names;
     QButtonGroup *group;
     QVBoxLayout *button_layout;
     QString cards;
