@@ -5,6 +5,7 @@
 #include "settings.h"
 #include "roomthread.h"
 #include <QDateTime>
+
 class MeleeMode : public TriggerSkill
 {
     public:
@@ -87,8 +88,9 @@ class MeleeMode : public TriggerSkill
                 room->sendLog(log);
 
                 foreach (ServerPlayer *p, room->getAlivePlayers()) {
-                    room->addPlayerMark(p, "melee_extra_slash");
+                    room->addSlashCishu(p, 1);
                     room->attachSkillToPlayer(p, "melee_peach_filter");
+                    room->filterCards(p, p->getHandcards(), false);
                 }
             }
             break;
@@ -135,12 +137,12 @@ public:
         if (pattern.contains("slash", Qt::CaseInsensitive)) {
             Slash *slash = new Slash(originalCard->getSuit(), originalCard->getNumber());
             slash->addSubcard(originalCard);
-            slash->setSkillName(objectName());
+            slash->setSkillName("_" + objectName());
             return slash;
         } else if (pattern.contains("jink", Qt::CaseInsensitive)) {
             Jink *jink = new Jink(originalCard->getSuit(), originalCard->getNumber());
             jink->addSubcard(originalCard);
-            jink->setSkillName(objectName());
+            jink->setSkillName("_" + objectName());
             return jink;
         }
         return nullptr;
@@ -173,7 +175,7 @@ public:
     const Card *MeleePeachFilter::viewAs(const Card *originalCard) const
     {
         MeleeSlashJink *card = new MeleeSlashJink(originalCard->getSuit(), originalCard->getNumber());
-        card->setSkillName(objectName());
+        card->setSkillName("_" + objectName());
         return card;
     }
 
@@ -203,23 +205,45 @@ bool MeleeSlashJink::isAvailable(const Player *player) const
     return Slash::IsAvailable(player);
 }
 
+bool MeleeSlashJink::targetFixed() const
+{
+    CardUseStruct::CardUseReason reason = Sanguosha->getCurrentCardUseReason();
+    return reason == CardUseStruct::CARD_USE_REASON_RESPONSE
+        || (reason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE
+            && Sanguosha->getCurrentCardUsePattern().contains("jink", Qt::CaseInsensitive));
+}
+
+bool MeleeSlashJink::targetsFeasible(const QList<const Player *> &targets, const Player *Self) const
+{
+    if (targetFixed())
+        return true;
+
+    return Card::targetsFeasible(targets, Self);
+}
+
 bool MeleeSlashJink::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
 {
+    if (targetFixed())
+        return false;
+
     return Slash::IsAvailable(Self) && Self->inMyAttackRange(to_select) && !targets.contains(to_select);
 }
 
 void MeleeSlashJink::onUse(Room *room, CardUseStruct &card_use) const
 {
     QString pattern = Sanguosha->getCurrentCardUsePattern();
+    QString skillName = card_use.card->getSkillName(false);
+    if (skillName.isEmpty())
+        skillName = "_" + objectName();
     if (pattern.contains("jink", Qt::CaseInsensitive)) {
         Jink *jink = new Jink(card_use.card->getSuit(), card_use.card->getNumber());
-        jink->setSkillName(objectName());
+        jink->setSkillName(skillName);
         jink->addSubcard(card_use.card);
         card_use.card = jink;
         BasicCard::onUse(room, card_use);
     } else {
         Slash *slash = new Slash(card_use.card->getSuit(), card_use.card->getNumber());
-        slash->setSkillName(objectName());
+        slash->setSkillName(skillName);
         slash->addSubcard(card_use.card);
         card_use.card = slash;
         BasicCard::onUse(room, card_use);
