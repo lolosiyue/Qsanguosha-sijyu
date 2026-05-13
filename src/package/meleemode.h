@@ -12,6 +12,8 @@ public:
     QString getSubtype() const;
     bool isKindOf(const char *cardType) const;
     bool isAvailable(const Player *player) const;
+    bool targetFixed() const;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const;
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
     void onUse(Room *room, CardUseStruct &card_use) const;
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
