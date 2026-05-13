@@ -487,6 +487,10 @@ private slots:
     void updateTrustButton();
     void onSkillActivated();
     void onPresentedDialogSkillActivated();
+    void onAnytimeSkillActivated();
+    void onAnytimeSkillDone(const QString &skill_name);
+    void onQmlInteract(const QString &qmlPath, const QVariantMap &params);
+    void onQmlResultReady(const QVariant &result);
     void onSkillDeactivated();
     void onDialogOptionSelectionChanged(bool hasSelection);
     void doTimeout();
@@ -509,6 +513,8 @@ private slots:
     void removeLightBox();
 
     void showCard(const QString &player_name, QList<int> card_ids);
+    void showVirtualCard(const QString &player_name, const QString &card_name,
+        const QString &suit, int number, const QString &skill_name);
     void viewDistance();
     void viewMaxCards();
 

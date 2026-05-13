@@ -221,6 +221,8 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(ClientInstance,SIGNAL(player_killed(QString)),this,SLOT(killPlayer(QString)));
 	connect(ClientInstance,SIGNAL(player_revived(QString)),this,SLOT(revivePlayer(QString)));
 	connect(ClientInstance,SIGNAL(card_shown(QString,QList<int>)),this,SLOT(showCard(QString,QList<int>)));
+	connect(ClientInstance,SIGNAL(virtual_card_shown(QString,QString,QString,int,QString)),
+		this,SLOT(showVirtualCard(QString,QString,QString,int,QString)));
 	connect(ClientInstance,SIGNAL(gongxin(QList<int>,bool,QList<int>)),this,SLOT(doGongxin(QList<int>,bool,QList<int>)));
 	connect(ClientInstance,SIGNAL(focus_moved(QStringList,QSanProtocol::Countdown,int)),this,SLOT(moveFocus(QStringList,QSanProtocol::Countdown,int)));
 	connect(ClientInstance,SIGNAL(emotion_set(QString,QString)),this,SLOT(setEmotion(QString,QString)));
@@ -231,6 +233,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(ClientInstance,SIGNAL(role_state_changed(QString)),this,SLOT(updateRoles(QString)));
 	connect(ClientInstance,SIGNAL(switch_control_context(QString)),this,SLOT(switchControlContext(QString)));
 	connect(ClientInstance,SIGNAL(event_received(const QVariant)),this,SLOT(handleGameEvent(const QVariant)));
+	connect(ClientInstance,&Client::qml_interact,this,&RoomScene::onQmlInteract);
 
 	connect(ClientInstance,SIGNAL(game_started()),this,SLOT(onGameStart()));
 	connect(ClientInstance,SIGNAL(game_over()),this,SLOT(onGameOver()));
@@ -2870,6 +2873,9 @@ void RoomScene::addSkillButton(const Skill*skill)
 		QDialog*dialog = skill->getDialog();
 		if(dialog){
 			wireSkillDialog(btn, dialog);
+		} else if (skill->inherits("AnytimeSkill")) {
+			connect(btn, SIGNAL(skill_activated()), this, SLOT(onAnytimeSkillActivated()));
+			connect(ClientInstance, SIGNAL(anytime_skill_done(QString)), this, SLOT(onAnytimeSkillDone(QString)), Qt::UniqueConnection);
 		}
 	}
 	m_skillButtons << btn;
@@ -3754,6 +3760,55 @@ void RoomScene::onPresentedDialogSkillActivated()
 	presentSkillDialog(button, dialog);
 }
 
+void RoomScene::onAnytimeSkillActivated()
+{
+	QSanSkillButton *button = qobject_cast<QSanSkillButton *>(sender());
+	if (button == nullptr)
+		return;
+
+	const Skill *skill = button->getSkill();
+	if (skill == nullptr)
+		return;
+
+	QString skill_name = skill->objectName();
+	if (ClientInstance->isAnytimeSkillPending(skill_name)) {
+		button->setEnabled(false);
+		return;
+	}
+
+	ClientInstance->triggerAnytimeSkill(skill_name);
+	button->setEnabled(false);
+}
+
+void RoomScene::onAnytimeSkillDone(const QString &skill_name)
+{
+	foreach (QSanSkillButton *button, m_skillButtons) {
+		if (button != nullptr && button->getSkill() != nullptr && button->getSkill()->objectName() == skill_name) {
+			button->setEnabled(true);
+			break;
+		}
+	}
+}
+
+void RoomScene::onQmlInteract(const QString &qmlPath, const QVariantMap &params)
+{
+	EmbeddedQmlLoader *loader = new EmbeddedQmlLoader(this);
+	connect(loader, &EmbeddedQmlLoader::qmlResultReady, this, &RoomScene::onQmlResultReady);
+
+	int timeout = params.value("timeout", 30000).toInt();
+	QTimer::singleShot(timeout, loader, SLOT(timeout()));
+
+	QWidget *central = main_window->centralWidget();
+	if (central == nullptr)
+		central = main_window;
+	loader->loadQmlOverlay(central, qmlPath, central->width(), central->height(), params, false);
+}
+
+void RoomScene::onQmlResultReady(const QVariant &result)
+{
+	ClientInstance->replyQml(result);
+}
+
 void RoomScene::onDialogOptionSelectionChanged(bool hasSelection)
 {
 	if (dashboard->isShowingDialogOptions())
@@ -4634,6 +4689,42 @@ void RoomScene::showCard(const QString&player_name,QList<int> card_ids)
 	m_tablePile->addCardItems(card_items,move);
 
 	log_box->appendLog("$ShowCard",player_name,QStringList(),ListI2S(card_ids).join("+"));
+}
+
+void RoomScene::showVirtualCard(const QString &player_name, const QString &card_name,
+	const QString &suit, int number, const QString &skill_name)
+{
+	Card *card = Sanguosha->cloneCard(card_name);
+	if (card == nullptr)
+		return;
+
+	static QMap<QString, Card::Suit> suit_map;
+	if (suit_map.isEmpty()) {
+		suit_map.insert("spade", Card::Spade);
+		suit_map.insert("club", Card::Club);
+		suit_map.insert("heart", Card::Heart);
+		suit_map.insert("diamond", Card::Diamond);
+		suit_map.insert("no_suit_red", Card::NoSuitRed);
+		suit_map.insert("no_suit_black", Card::NoSuitBlack);
+	}
+
+	card->setSuit(suit_map.value(suit, Card::NoSuit));
+	card->setNumber(number);
+	card->setSkillName(skill_name);
+
+	CardItem *card_item = new CardItem(card);
+	card_item->setParentItem(m_tablePile);
+	card->deleteLater();
+
+	bringToFront(m_tablePile);
+	CardsMoveStruct move;
+	move.from_place = Player::PlaceUnknown;
+	move.to_place = Player::PlaceTable;
+	move.reason = CardMoveReason(CardMoveReason::S_REASON_USE, player_name, QString(), skill_name, QString());
+	card_item->setFootnote(_translateMovement(move));
+	QList<CardItem*> card_items;
+	card_items << card_item;
+	m_tablePile->addCardItems(card_items,move);
 }
 
 void RoomScene::chooseSkillButton()

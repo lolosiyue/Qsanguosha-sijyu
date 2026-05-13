@@ -240,6 +240,15 @@ void QSanSkillButton::setSkill(const Skill *skill)
     // Since the trigger skill is not relevant, we flatten it before we create the button.
     _m_viewAsSkill = ViewAsSkill::parseViewAsSkill(skill);
 
+    if (skill->inherits("AnytimeSkill")) {
+        setState(QSanButton::S_STATE_UP);
+        _setSkillType(QSanInvokeSkillButton::S_SKILL_ANYTIME);
+        setStyle(QSanButton::S_STYLE_PUSH);
+        _m_emitDeactivateSignal = false;
+        _m_emitActivateSignal = true;
+        _m_canDisable = true;
+        _m_canEnable = true;
+    } else {
     Skill::Frequency freq = skill->getFrequency(Self);
     if (freq == Skill::Frequent
 	|| (freq == Skill::NotFrequent && skill->inherits("TriggerSkill")
@@ -316,13 +325,14 @@ void QSanSkillButton::setSkill(const Skill *skill)
         _m_canEnable = true;
     } else
 		Q_ASSERT(false);
+    }
 
     {
         LuaLocker locker;
         setToolTip(skill->getDescription(Self));
     }
 
-    Q_ASSERT((int)_m_skillType <= 6 && _m_state <= 3);
+    Q_ASSERT((int)_m_skillType < QSanInvokeSkillButton::S_NUM_SKILL_TYPES && _m_state <= 3);
     _repaint();
 }
 
