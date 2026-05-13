@@ -249,6 +249,11 @@ public:
     void markTooltipDirty();
     Q_INVOKABLE void calculateUITooltips();
 
+    QStringList getPendingAnytimeSkills() const;
+    void addPendingAnytimeSkill(const QString &skill_name);
+    void removePendingAnytimeSkill(const QString &skill_name);
+    void clearPendingAnytimeSkills();
+
 protected:
     //Synchronization helpers
     QSemaphore **semas;
@@ -273,6 +278,7 @@ private:
     QVariant _m_clientResponse;
     QSet<const char *> propertys;
     bool m_tooltipDirty;
+    QStringList m_pendingAnytimeSkills;
 
 private slots:
     void getMessage(const char *message);
