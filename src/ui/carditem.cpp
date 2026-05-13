@@ -18,6 +18,10 @@ void CardItem::_initialize()
     _m_showFootnote = true;
     m_isSelected = false;
     m_isShiny = false;
+    m_hasVirtualCardVisual = false;
+    m_virtualCardSuit = Card::NoSuit;
+    m_virtualCardNumber = 0;
+    m_virtualCardBlack = true;
     auto_back = true;
     frozen = false;
     resetTransform();
@@ -48,6 +52,28 @@ QRectF CardItem::boundingRect() const
 void CardItem::setCard(const Card *card)
 {
     if (!card) return;
+    m_hasVirtualCardVisual = false;
+    if (card->isVirtualCard()) {
+        m_cardId = Card::S_UNKNOWN_CARD_ID;
+        m_hasVirtualCardVisual = true;
+        m_virtualCardSuit = card->getSuit();
+        m_virtualCardNumber = card->getNumber();
+        m_virtualCardBlack = card->isBlack();
+        setObjectName(card->objectName());
+        QString description;
+        for (int i = 0; i < Sanguosha->getCardCount(); ++i) {
+            const Card *engineCard = Sanguosha->getEngineCard(i);
+            if (engineCard != nullptr && engineCard->objectName() == card->objectName()) {
+                description = engineCard->getDescription();
+                break;
+            }
+        }
+        if (description.isEmpty())
+            description = card->getDescription();
+        if (m_isShiny) description = QString("<font color=#FF0000>%1</font>").arg(description);
+        setToolTip(buildOracleTooltip(QString(), description));
+        return;
+    }
 	m_cardId = card->getId();
 	const Card *c = Sanguosha->getCard(m_cardId);
 	if(c!=nullptr){
@@ -331,6 +357,12 @@ void CardItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidge
                 painter->drawImage(G_COMMON_LAYOUT.m_cardFootnoteArea, _m_footnoteImage);
             }
 		}
+	} else if (m_hasVirtualCardVisual) {
+		painter->drawPixmap(G_COMMON_LAYOUT.m_cardSuitArea, G_ROOM_SKIN.getCardSuitPixmap(m_virtualCardSuit));
+		if (m_virtualCardNumber > 0)
+			painter->drawPixmap(G_COMMON_LAYOUT.m_cardNumberArea, G_ROOM_SKIN.getCardNumberPixmap(m_virtualCardNumber, m_virtualCardBlack));
+		if (_m_showFootnote)
+			painter->drawImage(G_COMMON_LAYOUT.m_cardFootnoteArea, _m_footnoteImage);
     }
 
     if (!_m_avatarName.isEmpty())

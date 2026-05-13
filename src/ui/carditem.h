@@ -113,6 +113,10 @@ protected:
 
 private:
     int m_cardId;
+    bool m_hasVirtualCardVisual;
+    Card::Suit m_virtualCardSuit;
+    int m_virtualCardNumber;
+    bool m_virtualCardBlack;
     QString _m_avatarName;
     QPointF home_pos;
     QPointF _m_lastMousePressScenePos;

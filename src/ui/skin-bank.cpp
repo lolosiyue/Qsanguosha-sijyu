@@ -269,6 +269,11 @@ QPixmap QSanRoomSkin::getSkillButtonPixmap(QSanButton::ButtonState state,
 	QString path = getButtonPixmapPath(S_SKIN_KEY_BUTTON_SKILL,
 		QSanInvokeSkillButton::getSkillTypeString(type),
 		state);
+	if (path.isEmpty() && type == QSanInvokeSkillButton::S_SKILL_ANYTIME) {
+		path = getButtonPixmapPath(S_SKIN_KEY_BUTTON_SKILL,
+			QSanInvokeSkillButton::getSkillTypeString(QSanInvokeSkillButton::S_SKILL_PROACTIVE),
+			state);
+	}
 	if (path.isEmpty())
 		return QPixmap(1, 1); // older Qt version cries for non-zero QPixmap...
 	else {
@@ -1364,6 +1369,7 @@ bool QSanRoomSkin::_loadLayoutConfig(const QVariant &layout)
 		case QSanInvokeSkillButton::S_SKILL_FREQUENT: key = "frequentFontColor"; break;
 		case QSanInvokeSkillButton::S_SKILL_ONEOFF_SPELL: key = "oneoffFontColor"; break;
 		case QSanInvokeSkillButton::S_SKILL_PROACTIVE: key = "proactiveFontColor"; break;
+		case QSanInvokeSkillButton::S_SKILL_ANYTIME: key = "proactiveFontColor"; break;
 		case QSanInvokeSkillButton::S_SKILL_ATTACHEDLORD: key = "attachedlordFontColor"; break;
 		case QSanInvokeSkillButton::S_SKILL_CHANGE: key = "changeFontColor"; break;
 		default:
