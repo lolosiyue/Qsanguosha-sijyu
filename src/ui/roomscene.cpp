@@ -1877,9 +1877,11 @@ void RoomScene::keyReleaseEvent(QKeyEvent*event)
 		break;
 	}
 	case Qt::Key_Space: {
-		if(cancel_button->isEnabled())
+		if (m_choiceDialog != nullptr && m_choiceDialog->isVisible() && m_choiceDialog->objectName() == "cancel") {
+			m_choiceDialog->reject();
+		} else if (cancel_button->isEnabled())
 			doCancelButton();
-		else if(discard_button->isEnabled())
+		else if (discard_button->isEnabled())
 			doDiscardButton();
 		break;
 	}
