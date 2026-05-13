@@ -242,6 +242,7 @@ void Room::initCallbacks()
 
 	//Client request
 	m_callbacks[S_COMMAND_NETWORK_DELAY_TEST] = &Room::networkDelayTestCommand;
+	m_callbacks[S_COMMAND_ANYTIME_SKILL] = &Room::handleAnytimeSkillRequest;
 }
 
 ServerPlayer*Room::getCurrent() const
@@ -4036,13 +4037,34 @@ void Room::chooseGenerals(QList<ServerPlayer*> players)
 	}
 
 	assignGeneralsForPlayers(players);
-	foreach(ServerPlayer*player, players)
+	foreach(ServerPlayer*player, players){
+		QStringList selected = player->getSelected();
+		selected = triggerPreSelectionSkills(player, selected, "for_general");
+		player->clearSelected();
+		foreach(const QString &gen, selected)
+			player->addToSelected(gen);
 		_setupChooseGeneralRequestArgs(player);
+	}
 
 	doBroadcastRequest(players, S_COMMAND_CHOOSE_GENERAL);
 	foreach(ServerPlayer*player, players){
-		if ((player->m_isClientResponseReady&&_setPlayerGeneral(player, player->getClientReply().toString(), true))
-			||_setPlayerGeneral(player, _chooseDefaultGeneral(player), true)){
+		QString clientChoice;
+		bool playerChose = false;
+		if (player->m_isClientResponseReady){
+			clientChoice = player->getClientReply().toString();
+			if (player->getSelected().contains(clientChoice))
+				playerChose = true;
+		}
+		QString chosen;
+		if (playerChose)
+			chosen = clientChoice;
+		else
+			chosen = _chooseDefaultGeneral(player);
+
+		if (!playerChose)
+			triggerGeneralNotChosen(player, player->getSelected(), chosen, "for_general");
+
+		if (_setPlayerGeneral(player, chosen, true)){
 			if (player->hasHideSkill()){
 				setPlayerProperty(player, "yinni_general", player->getGeneralName());
 				player->setGeneralName("yinni_hide");
@@ -4893,6 +4915,8 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 				WrappedCard*wrapped = Sanguosha->getWrappedCard(ids.first());
 				if (wrapped->isModified()) broadcastUpdateCard(m_players, ids.first(), wrapped);
 				//else broadcastResetCard(m_players, ids.first());
+			} else if (use.card->getTypeId() != Card::TypeSkill) {
+				showVirtualCard(use.from, use.card);
 			}
 			use.card->onUse(this, use);
 		} else {
@@ -7100,6 +7124,21 @@ void Room::updateCardDescription(const QString &card_name, const QVariantMap &pl
 	doBroadcastNotify(S_COMMAND_UPDATE_CARD_DESC, arg);
 }
 
+QVariant Room::askForQml(ServerPlayer *player, const QString &qmlPath, const QVariantMap &params, int timeout)
+{
+	tryPause();
+	notifyMoveFocus(player, S_COMMAND_QML_INTERACT);
+
+	JsonArray arg;
+	arg << qmlPath << params;
+
+	if (doRequest(player, S_COMMAND_QML_INTERACT, arg, timeout, true)) {
+		return player->getClientReply();
+	}
+
+	return QVariant();
+}
+
 void Room::activate(ServerPlayer*player, CardUseStruct&card_use)
 {
 	tryPause();
@@ -7902,6 +7941,58 @@ QList<ServerPlayer*> Room::askForPlayersChosen(ServerPlayer*player, const QList<
 	return log.to;
 }
 
+QStringList Room::triggerPreSelectionSkills(ServerPlayer *player, QStringList generals, const QString &reason)
+{
+	QSet<QString> processedSkills;
+	QStringList result = generals;
+
+	foreach (const QString &generalName, generals) {
+		const General *general = Sanguosha->getGeneral(generalName);
+		if (!general || !general->hasPreSelectionSkill()) continue;
+
+		foreach (const QString &skillName, general->getPreSelectionSkills()) {
+			if (processedSkills.contains(skillName)) continue;
+			processedSkills.insert(skillName);
+
+			const PreSelectionMetaSkill *skill = qobject_cast<const PreSelectionMetaSkill*>(Sanguosha->getSkill(skillName));
+			if (!skill) continue;
+
+			result = skill->onGeneralChoosing(this, player, result, reason);
+
+			QString activeSkills = skill->getActiveSkills();
+			if (!activeSkills.isEmpty()) {
+				QString existingActive = player->property("preselection_active_skills").toString();
+				if (!existingActive.isEmpty()) existingActive += ",";
+				existingActive += activeSkills;
+				setPlayerProperty(player, "preselection_active_skills", existingActive);
+			}
+		}
+	}
+
+	return result;
+}
+
+void Room::triggerGeneralNotChosen(ServerPlayer *player, const QStringList &generals, const QString &chosen, const QString &reason)
+{
+	const General *general = Sanguosha->getGeneral(chosen);
+	if (!general || !general->hasPreSelectionSkill()) return;
+
+	foreach (const QString &skillName, general->getPreSelectionSkills()) {
+		const PreSelectionMetaSkill *skill = qobject_cast<const PreSelectionMetaSkill*>(Sanguosha->getSkill(skillName));
+		if (!skill) continue;
+
+		skill->onGeneralNotChosen(this, player, generals, chosen, reason);
+
+		QString activeSkills = skill->getActiveSkills();
+		if (!activeSkills.isEmpty()) {
+			QString existingActive = player->property("preselection_active_skills").toString();
+			if (!existingActive.isEmpty()) existingActive += ",";
+			existingActive += activeSkills;
+			setPlayerProperty(player, "preselection_active_skills", existingActive);
+		}
+	}
+}
+
 void Room::_setupChooseGeneralRequestArgs(ServerPlayer*player)
 {
 	QStringList selected = player->getSelected();
@@ -8372,6 +8463,24 @@ void Room::showCard(ServerPlayer*player, QList<int> card_ids, QList<ServerPlayer
 	data = QString("viewCards:%1:%2").arg(player->objectName()).arg(show_arg[1].toString());
 	foreach(ServerPlayer*p, players)
 		thread->trigger(ChoiceMade, this, p, data);
+}
+
+void Room::showVirtualCard(ServerPlayer *player, const Card *card)
+{
+	if (player == nullptr || card == nullptr)
+		return;
+
+	tryPause();
+	notifyMoveFocus(player);
+
+	JsonArray args;
+	args << player->objectName();
+	args << card->objectName();
+	args << Card::Suit2String(card->getSuit());
+	args << card->getNumber();
+	args << card->getSkillName();
+
+	doBroadcastNotify(S_COMMAND_SHOW_VIRTUAL_CARD, args);
 }
 
 void Room::showAllCards(ServerPlayer*player, ServerPlayer*to)
@@ -9124,5 +9233,35 @@ int Room::getBossModeExpMult(int level) const
 		lua_pop(m_lua, 1);
 	}
 	return res;
+}
+
+void Room::handleAnytimeSkillRequest(ServerPlayer *player, const QVariant &arg)
+{
+	if (!player || !arg.canConvert<QString>()) return;
+	QString skill_name = arg.toString();
+	const AnytimeSkill *skill = qobject_cast<const AnytimeSkill *>(Sanguosha->getSkill(skill_name));
+	if (!skill || !player->hasSkill(skill_name)) return;
+	if (!skill->canTrigger(player)) return;
+	player->addPendingAnytimeSkill(skill_name);
+}
+
+void Room::processPendingAnytimeSkills()
+{
+	foreach (ServerPlayer *player, getAlivePlayers()) {
+		QStringList pending = player->getPendingAnytimeSkills();
+		if (pending.isEmpty()) continue;
+		foreach (const QString &skill_name, pending) {
+			const AnytimeSkill *skill = qobject_cast<const AnytimeSkill *>(Sanguosha->getSkill(skill_name));
+			if (!skill) continue;
+			skill->onTrigger(this, player);
+			notifyAnytimeSkillDone(player, skill_name);
+		}
+		player->clearPendingAnytimeSkills();
+	}
+}
+
+void Room::notifyAnytimeSkillDone(ServerPlayer *player, const QString &skill_name)
+{
+	doNotify(player, S_COMMAND_ANYTIME_SKILL_DONE, skill_name);
 }
 

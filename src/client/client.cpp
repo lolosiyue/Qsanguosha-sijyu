@@ -78,6 +78,7 @@ Client::Client(QObject *parent, const QString &filename)
 	m_callbacks[S_COMMAND_KILL_PLAYER] = &Client::killPlayer;
 	m_callbacks[S_COMMAND_REVIVE_PLAYER] = &Client::revivePlayer;
 	m_callbacks[S_COMMAND_SHOW_CARD] = &Client::showCard;
+	m_callbacks[S_COMMAND_SHOW_VIRTUAL_CARD] = &Client::showVirtualCard;
 	m_callbacks[S_COMMAND_UPDATE_CARD] = &Client::updateCard;
 	m_callbacks[S_COMMAND_SET_MARK] = &Client::setMark;
 	m_callbacks[S_COMMAND_LOG_SKILL] = &Client::log;
@@ -164,6 +165,8 @@ Client::Client(QObject *parent, const QString &filename)
 	m_callbacks[S_COMMAND_ADD_EQUIP_AREA] = &Client::addEquipArea;
 	m_callbacks[S_COMMAND_SET_EQUIP_AREA_COUNT] = &Client::setEquipAreaCount;
 	m_callbacks[S_COMMAND_UPDATE_CARD_DESC] = &Client::updateCardDescription;
+	m_callbacks[S_COMMAND_ANYTIME_SKILL_DONE] = &Client::handleAnytimeSkillDone;
+	m_interactions[S_COMMAND_QML_INTERACT] = &Client::askForQml;
 
 	m_noNullificationThisTime = false;
 	m_noNullificationTrickName = ".";
@@ -1891,6 +1894,21 @@ void Client::showCard(const QVariant &show_str)
 	emit card_shown(player_name, card_ids);
 }
 
+void Client::showVirtualCard(const QVariant &arg)
+{
+	JsonArray args = arg.value<JsonArray>();
+	if (args.size() != 5)
+		return;
+
+	QString player_name = args[0].toString();
+	QString card_name = args[1].toString();
+	QString suit = args[2].toString();
+	int number = args[3].toInt();
+	QString skill_name = args[4].toString();
+
+	emit virtual_card_shown(player_name, card_name, suit, number, skill_name);
+}
+
 void Client::attachSkill(const QVariant &skill)
 {
 	QString player_name;
@@ -2407,4 +2425,40 @@ void Client::setEquipAreaCount(const QVariant &reveal)
 lua_State *Client::getLuaState() const
 {
     return m_client_lua;
+}
+
+void Client::triggerAnytimeSkill(const QString &skill_name)
+{
+	if (m_anytimeSkillPending.contains(skill_name)) return;
+	m_anytimeSkillPending.insert(skill_name);
+	notifyServer(S_COMMAND_ANYTIME_SKILL, skill_name);
+}
+
+bool Client::isAnytimeSkillPending(const QString &skill_name) const
+{
+	return m_anytimeSkillPending.contains(skill_name);
+}
+
+void Client::handleAnytimeSkillDone(const QVariant &arg)
+{
+	QString skill_name = arg.toString();
+	m_anytimeSkillPending.remove(skill_name);
+	emit anytime_skill_done(skill_name);
+}
+
+void Client::askForQml(const QVariant &arg)
+{
+	JsonArray args = arg.value<JsonArray>();
+	if (args.size() < 2) return;
+
+	QString qmlPath = args[0].toString();
+	QVariantMap params = args[1].toMap();
+
+	emit qml_interact(qmlPath, params);
+	setStatus(AskForQml);
+}
+
+void Client::replyQml(const QVariant &result)
+{
+	replyToServer(S_COMMAND_QML_INTERACT, result);
 }

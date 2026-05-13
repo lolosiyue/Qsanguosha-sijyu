@@ -38,6 +38,8 @@ public:
         AskForArrangement = 0x0E,
         AskForTriggerOrder = 0x0F,
 
+        AskForQml = 0x10,
+
         RespondingUse = 0x11,
         RespondingForDiscard = 0x21,
         RespondingNonTrigger = 0x31,
@@ -124,6 +126,7 @@ public:
     void warn(const QVariant &reason_json);
     void setMark(const QVariant &mark_str);
     void showCard(const QVariant &show_str);
+    void showVirtualCard(const QVariant &arg);
     void log(const QVariant &log_str);
     void speak(const QVariant &speak_data);
     void addHistory(const QVariant &history);
@@ -152,6 +155,11 @@ public:
     void addEquipArea(const QVariant &reveal);
     void setEquipAreaCount(const QVariant &reveal);
     void updateCardDescription(const QVariant &arg);
+
+    void handleAnytimeSkillDone(const QVariant &arg);
+
+    void askForQml(const QVariant &arg);
+    void replyQml(const QVariant &result);
 
     void fillAG(const QVariant &cards_str);
     void takeAG(const QVariant &take_str);
@@ -261,6 +269,9 @@ public slots:
 
     void onPlayerReplyGongxin(int card_id = -1);
 
+    void triggerAnytimeSkill(const QString &skill_name);
+    bool isAnytimeSkillPending(const QString &skill_name) const;
+
 protected:
     // operation countdown
     QSanProtocol::Countdown m_countdown;
@@ -288,6 +299,7 @@ private:
     QString skill_to_invoke;
     QString skill_to_invoke_data;
     QList<int> available_cards;
+    QSet<QString> m_anytimeSkillPending;
 
     QMap<int, const Player*> owner_map;
     QMap<int, Player::Place> place_map;
@@ -348,6 +360,8 @@ signals:
     void player_killed(const QString &who);
     void player_revived(const QString &who);
     void card_shown(const QString &player_name, QList<int> card_ids);
+    void virtual_card_shown(const QString &player_name, const QString &card_name,
+        const QString &suit, int number, const QString &skill_name);
     void log_received(const QStringList &log_str);
     void guanxing(const QList<int> &card_ids, int single_side);
     void gongxin(const QList<int> &card_ids, bool enable_heart, QList<int> enabled_ids);
@@ -396,6 +410,8 @@ signals:
     void start_in_xs();
 
     void skill_updated(const QString &skill_name);
+    void anytime_skill_done(const QString &skill_name);
+    void qml_interact(const QString &qmlPath, const QVariantMap &params);
 };
 
 extern Client *ClientInstance;

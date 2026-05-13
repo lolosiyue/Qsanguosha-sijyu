@@ -160,6 +160,7 @@ public:
     void showCard(ServerPlayer*player, int card_id, ServerPlayer*only_viewer , bool self_can_see = true);
     void showCard(ServerPlayer*player, int card_id, QList<ServerPlayer*> players = QList<ServerPlayer*>());
     void showCard(ServerPlayer*player, QList<int> card_ids, QList<ServerPlayer*> players = QList<ServerPlayer*>());
+    void showVirtualCard(ServerPlayer *player, const Card *card);
     void showAllCards(ServerPlayer*player, ServerPlayer*to);
     void showAllCards(ServerPlayer*player, QList<ServerPlayer*> players = QList<ServerPlayer*>());
     void retrial(const Card*card, ServerPlayer*player, JudgeStruct*judge, const QString&skill_name, bool exchange = false);
@@ -534,6 +535,8 @@ public:
     void notifyWeaponRange(const QString&weapon_name, int range = 1);
     void updateCardDescription(const QString &card_name, const QVariantMap &placeholders);
 
+    QVariant askForQml(ServerPlayer *player, const QString &qmlPath, const QVariantMap &params, int timeout = 30000);
+
     inline RoomState*getRoomState()
     {
         return&_m_roomState;
@@ -742,6 +745,8 @@ private:
     void assignGeneralsForPlayersOfJianGeDefenseMode(const QList<ServerPlayer*>&to_assign);
     void chooseGenerals(QList<ServerPlayer*> players = QList<ServerPlayer*>());
     void chooseGeneralsOfJianGeDefenseMode();
+    QStringList triggerPreSelectionSkills(ServerPlayer *player, QStringList generals, const QString &reason);
+    void triggerGeneralNotChosen(ServerPlayer *player, const QStringList &generals, const QString &chosen, const QString &reason);
     AI*cloneAI(ServerPlayer*player);
     void broadcast(const QString&message, ServerPlayer*except = nullptr);
     void initCallbacks();
@@ -777,6 +782,10 @@ private:
 
     QList<SummonRequest> m_pendingSummons;
     QList<ServerPlayer*> m_dynamicPlayers;
+
+    void handleAnytimeSkillRequest(ServerPlayer *player, const QVariant &arg);
+    void processPendingAnytimeSkills();
+    void notifyAnytimeSkillDone(ServerPlayer *player, const QString &skill_name);
 
     ServerPlayer* insertPlayerMidGame(ServerPlayer *before, ServerPlayer *after, const QString &general_name);
 
