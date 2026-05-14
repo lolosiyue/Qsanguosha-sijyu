@@ -142,6 +142,8 @@ private:
     QCheckBox *add_god_general;
     QCheckBox *checkBoxUpnp;
     QCheckBox *checkBoxAddToListServer;
+    QComboBox *hegemony_companion;
+    QLabel *hegemony_companion_label;
     QPushButton *select_all_generals_button;
     QPushButton *deselect_all_generals_button;
     QPushButton *select_reverse_generals_button;

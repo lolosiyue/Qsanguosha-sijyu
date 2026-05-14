@@ -33,18 +33,18 @@
     <layout class="QVBoxLayout" name="verticalLayout_2">
      <item>
       <widget class="QFrame" name="frame1">
-       <property name="minimumSize">
-        <size>
-         <width>210</width>
-         <height>70</height>
-        </size>
-       </property>
-       <property name="maximumSize">
-        <size>
-         <width>220</width>
-         <height>91</height>
-        </size>
-       </property>
+<property name="minimumSize">
+         <size>
+          <width>210</width>
+          <height>91</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>220</width>
+          <height>112</height>
+         </size>
+        </property>
        <widget class="QLineEdit" name="cvLineEdit">
         <property name="geometry">
          <rect>
@@ -125,6 +125,38 @@
           <x>46</x>
           <y>46</y>
           <width>161</width>
+          <height>20</height>
+         </rect>
+        </property>
+        <property name="frame">
+         <bool>true</bool>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+        </property>
+        <property name="readOnly">
+         <bool>true</bool>
+        </property>
+       </widget>
+       <widget class="QLabel" name="companionLabel">
+        <property name="geometry">
+         <rect>
+          <x>5</x>
+          <y>72</y>
+          <width>100</width>
+          <height>16</height>
+         </rect>
+        </property>
+        <property name="text">
+         <string>Companion</string>
+        </property>
+       </widget>
+       <widget class="QLineEdit" name="companionLineEdit">
+        <property name="geometry">
+         <rect>
+          <x>105</x>
+          <y>69</y>
+          <width>102</width>
           <height>20</height>
          </rect>
         </property>

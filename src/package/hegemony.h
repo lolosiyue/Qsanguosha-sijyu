@@ -69,5 +69,17 @@ public:
     void onUse(Room *room, CardUseStruct &card_use) const;
 };
 
+class CompanionCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE CompanionCard();
+
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+extern TriggerSkill *CompanionEffectSkill;
+
 #endif
 

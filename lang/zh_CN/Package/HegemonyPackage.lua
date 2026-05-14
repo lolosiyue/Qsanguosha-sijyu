@@ -95,4 +95,16 @@ return {
 	[":qingcheng"] = "出牌阶段，你可以弃置一张装备牌，令一名其他角色的一项武将技能无效，直到其回合开始时。",
 	["$QingchengNullify"] = "%to 的技能“%arg”由于“<font color=\"yellow\"><b>倾城</b></font>”效果无效直到其回合开始时",
 	["$QingchengReset"] = "%from 回合开始，“%arg”恢复有效",
+
+	["Companion Reward"] = "珠联璧合奖励",
+	["Instant"] = "即时",
+	["Postponed"] = "延后",
+	["CompanionEffect"] = "珠联璧合",
+	["#CompanionEffect"] = "%from 触发“珠联璧合”，可以选择回复1点体力或者摸两张牌",
+	["CompanionEffect:recover"] = "回复1点体力",
+	["CompanionEffect:draw"] = "摸两张牌",
+	["@CompanionEffect"] = "珠联璧合奖励",
+	["companion_attach"] = "珠联璧合奖励",
+	["@companion_attach"] = "出牌阶段，你可以结算“珠联璧合”奖励，摸两张牌或回复1点体力。一名角色向你求【桃】时，你可以结算“珠联璧合”奖励，令其回复1点体力。",
+	["#DoCompanionEffect"] = "%from 结算“珠联璧合”奖励",
 }

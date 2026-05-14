@@ -347,3 +347,28 @@ void General::addPreSelectionSkill(const QString &skill_name)
 		preselection_skills << skill_name;
 }
 
+void General::addCompanion(const QString &name)
+{
+    companions << name;
+}
+
+bool General::isCompanionWith(const QString &name) const
+{
+    const General *other = Sanguosha->getGeneral(name);
+    if (!other) return false;
+    return companions.contains(name) || other->companions.contains(objectName());
+}
+
+QString General::getCompanions() const
+{
+    QStringList names;
+    foreach (const QString &general, companions)
+        names << Sanguosha->translate(general);
+    foreach (const QString &gname, Sanguosha->getAllGenerals()) {
+        const General *gnr = Sanguosha->getGeneral(gname);
+        if (gnr && gnr->companions.contains(objectName()))
+            names << Sanguosha->translate(gnr->objectName());
+    }
+    return names.join(" ");
+}
+

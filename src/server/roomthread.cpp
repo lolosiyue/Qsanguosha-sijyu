@@ -577,6 +577,12 @@ void RoomThread::run()
 	if (Config.EnableBasara)
 		addTriggerSkill(new BasaraMode(this));
 
+	if (Config.EnableHegemony && Config.Enable2ndGeneral) {
+		extern TriggerSkill *CompanionEffectSkill;
+		if (CompanionEffectSkill)
+			addTriggerSkill(CompanionEffectSkill);
+	}
+
 	GameRule*game_rule = room->getMode() == "04_1v3" ? new HulaoPassMode(this) : new GameRule(this);
 	addTriggerSkill(game_rule);
 
