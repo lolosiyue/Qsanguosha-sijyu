@@ -692,7 +692,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 	if (v2_skills.isEmpty())
 		return false;
 
-	TriggerList trigger_who;
+	QList<SkillContext> skillContexts;
 	foreach (const TriggerSkill *ts, v2_skills) {
 		TriggerV2Skill *v2 = const_cast<TriggerV2Skill *>(qobject_cast<const TriggerV2Skill *>(ts));
 		if (!v2) continue;
@@ -712,48 +712,36 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 						instanceId = skill.mid(split + 1).toInt();
 						skillName = skill.left(split);
 					}
-					if (!p->isSkillInvalid(skillName, instanceId) && !trigger_who[p].contains(skill))
-						trigger_who[p] << skill;
+					if (!p->isSkillInvalid(skillName, instanceId)) {
+						SkillContext ctx;
+						ctx.skill_name = skillName;
+						ctx.owner = p;
+						ctx.invoker = target;
+						ctx.instanceID = instanceId;
+						skillContexts << ctx;
+					}
 				}
 			}
 		}
 	}
 
-	if (trigger_who.isEmpty())
+	if (skillContexts.isEmpty())
 		return false;
 
 	bool broken = false;
 	bool has_compulsory = false;
-	foreach (const QStringList &skills, trigger_who) {
-		foreach (const QString &skill, skills) {
-			QString skillName = skill;
-			int instanceId = 0;
-			int split = -1;
-			if ((split = skill.indexOf('#')) != -1) {
-				instanceId = skill.mid(split + 1).toInt();
-				skillName = skill.left(split);
-			}
-			const TriggerSkill *ts = Sanguosha->getTriggerSkill(skillName, instanceId);
-			if (ts && ts->getFrequency(target) == Skill::Compulsory) {
-				has_compulsory = true;
-				break;
-			}
+	foreach (const SkillContext &ctx, skillContexts) {
+		const TriggerSkill *ts = Sanguosha->getTriggerSkill(ctx.skill_name, ctx.instanceID);
+		if (ts && ts->getFrequency(target) == Skill::Compulsory) {
+			has_compulsory = true;
+			break;
 		}
-		if (has_compulsory) break;
 	}
 
-	while (!broken && !trigger_who.isEmpty()) {
-		QMap<ServerPlayer *, QStringList> available = trigger_who;
-		QStringList allSkills;
-		QMap<ServerPlayer *, QStringList>::iterator it;
-		for (it = available.begin(); it != available.end(); ++it) {
-			foreach (const QString &skill, it.value()) {
-				if (!allSkills.contains(skill))
-					allSkills << skill;
-			}
-		}
+	while (!broken && !skillContexts.isEmpty()) {
+		QList<SkillContext> available = skillContexts;
 
-		if (allSkills.isEmpty())
+		if (available.isEmpty())
 			break;
 
 		ServerPlayer *p = target;
@@ -793,11 +781,13 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			trigger(EventSkillWillInvoke, room, p, ctx_data);
 			ctx = ctx_data.value<SkillContext>();
 			if (ctx.is_canceled) {
-				QStringList &skills = trigger_who[p];
-				skills.removeOne(name);
-				if (skills.isEmpty())
-					trigger_who.remove(p);
-				if (trigger_who.isEmpty())
+				for (int i = skillContexts.size() - 1; i >= 0; --i) {
+					if (skillContexts[i].skill_name == skillName && skillContexts[i].instanceID == instanceId) {
+						skillContexts.removeAt(i);
+						break;
+					}
+				}
+				if (skillContexts.isEmpty())
 					break;
 				continue;
 			}
@@ -822,20 +812,24 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 			ctx_data = QVariant::fromValue(ctx);
 			trigger(EventSkillEffectFinished, room, p, ctx_data);
 
-			QStringList &skills = trigger_who[p];
-			skills.removeOne(name);
-			if (skills.isEmpty())
-				trigger_who.remove(p);
+			for (int i = skillContexts.size() - 1; i >= 0; --i) {
+				if (skillContexts[i].skill_name == skillName && skillContexts[i].instanceID == instanceId) {
+					skillContexts.removeAt(i);
+					break;
+				}
+			}
 
-			if (trigger_who.isEmpty())
+			if (skillContexts.isEmpty())
 				break;
 		} else {
-			QStringList &skills = trigger_who[p];
-			skills.removeOne(name);
-			if (skills.isEmpty())
-				trigger_who.remove(p);
+			for (int i = skillContexts.size() - 1; i >= 0; --i) {
+				if (skillContexts[i].skill_name == skillName && skillContexts[i].instanceID == instanceId) {
+					skillContexts.removeAt(i);
+					break;
+				}
+			}
 
-			if (trigger_who.isEmpty())
+			if (skillContexts.isEmpty())
 				break;
 		}
 	}

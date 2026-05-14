@@ -1633,20 +1633,13 @@ void Client::askForChoice(const QVariant &ask_str)
 
 void Client::askForTriggerOrder(const QVariant &ask_str)
 {
-	JsonArray ask = ask_str.value<JsonArray>();
-	if (ask.size() != 3
-		|| !JsonUtils::isString(ask[0]) || !ask[1].canConvert<JsonArray>()
-		|| !JsonUtils::isBool(ask[2])) return;
+    QVariantList options = ask_str.toList();
+    if (options.size() < 2) return;
 
-	QString reason = ask[0].toString();
-
-	QStringList choices;
-	JsonUtils::tryParse(ask[1], choices);
-
-	bool optional = ask[2].toBool();
-
-	emit triggers_got(reason, choices, optional);
-	setStatus(AskForTriggerOrder);
+    QVariantList skillOptions = options[0].toList();
+    bool optional = options[1].toBool();
+    emit trigger_order_got(skillOptions, optional);
+    setStatus(AskForTriggerOrder);
 }
 
 void Client::askForCardChosen(const QVariant &ask_str)

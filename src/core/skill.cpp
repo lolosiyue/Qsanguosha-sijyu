@@ -1070,3 +1070,19 @@ bool AnytimeSkill::onTrigger(Room *, ServerPlayer *) const
 {
     return false;
 }
+
+QVariant SkillContext::toVariant() const
+{
+    QVariantMap map;
+    if (!skill_name.isEmpty())
+        map["skill"] = skill_name;
+    if (owner != nullptr)
+        map["owner"] = owner->objectName();
+    if (invoker != nullptr)
+        map["invoker"] = invoker->objectName();
+    if (preferredTarget != nullptr) {
+        map["preferredtarget"] = preferredTarget->objectName();
+        map["preferredtargetseat"] = preferredTargetSeat;
+    }
+    return map;
+}

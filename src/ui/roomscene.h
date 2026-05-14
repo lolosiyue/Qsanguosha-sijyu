@@ -22,6 +22,7 @@ class GuanxingXBox;
 class QSanButton;
 class QGroupBox;
 class BubbleChatBox;
+class ChooseTriggerOrderBox;
 struct RoomLayout;
 class Photo;
 class Dashboard;
@@ -188,6 +189,11 @@ public:
         return main_window;
     }
 
+    inline QPointF tableCenterPos() const
+    {
+        return m_tableCenterPos;
+    }
+
     inline bool isCancelButtonEnabled() const
     {
         return cancel_button != nullptr && cancel_button->isEnabled();
@@ -219,7 +225,7 @@ public slots:
     void chooseOrder(QSanProtocol::Game3v3ChooseOrderCommand reason);
     void chooseRole(const QString &scheme, const QStringList &roles);
     void chooseDirection();
-    void chooseTrigger(const QString &reason, const QStringList &choices, bool optional);
+    void chooseTriggerOrder(const QVariantList &options, bool optional);
 
     void bringToFront(QGraphicsItem *item);
     void arrangeSeats(const QList<const ClientPlayer *> &seats);
@@ -321,6 +327,8 @@ private:
     QList<int> RenPile;
 
     GuanxingBox *guanxing_box3,*guanxing_box,*guanxing_box7,*guanxing_box9;
+
+    ChooseTriggerOrderBox *m_chooseTriggerOrderBox;
 
     GuanxingXBox *guanxing_x_box;
 

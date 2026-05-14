@@ -1,4 +1,5 @@
 #include "roomscene.h"
+#include "choosetriggerorderbox.h"
 //#include "settings.h"
 #include "carditem.h"
 #include "engine.h"
@@ -207,7 +208,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(ClientInstance,SIGNAL(roles_got(QString,QStringList)),this,SLOT(chooseRole(QString,QStringList)));
 	connect(ClientInstance,SIGNAL(directions_got()),this,SLOT(chooseDirection()));
 	connect(ClientInstance,SIGNAL(orders_got(QSanProtocol::Game3v3ChooseOrderCommand)),this,SLOT(chooseOrder(QSanProtocol::Game3v3ChooseOrderCommand)));
-	connect(ClientInstance,SIGNAL(triggers_got(QString,QStringList,bool)),this,SLOT(chooseTrigger(QString,QStringList,bool)));
+	connect(ClientInstance,SIGNAL(trigger_order_got(QVariantList,bool)),this,SLOT(chooseTriggerOrder(QVariantList,bool)));
 	connect(ClientInstance,SIGNAL(kingdoms_got(QStringList)),this,SLOT(chooseKingdom(QStringList)));
 	connect(ClientInstance,SIGNAL(seats_arranged(QList<const ClientPlayer*>)),SLOT(arrangeSeats(QList<const ClientPlayer*>)));
 	connect(ClientInstance,SIGNAL(status_changed(Client::Status,Client::Status)),this,SLOT(updateStatus(Client::Status,Client::Status)));
@@ -277,6 +278,11 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	guanxing_box9->moveBy(-120,0);
 	guanxing_x_box->addBox9(guanxing_box9);
 	addItem(guanxing_box9);
+
+	m_chooseTriggerOrderBox = new ChooseTriggerOrderBox();
+	m_chooseTriggerOrderBox->hide();
+	addItem(m_chooseTriggerOrderBox);
+	m_chooseTriggerOrderBox->setZValue(21);
 
 	card_container = new CardContainer();
 	card_container->hide();
@@ -2443,65 +2449,9 @@ void RoomScene::chooseDirection()
 	m_choiceDialog = dialog;
 }
 
-void RoomScene::chooseTrigger(const QString &reason, const QStringList &choices, bool optional)
+void RoomScene::chooseTriggerOrder(const QVariantList &options, bool optional)
 {
-	QDialog *dialog = new QDialog;
-	dialog->setWindowTitle(reason.isEmpty() ? tr("Please select trigger order") : Sanguosha->translate(reason));
-
-	if (!optional)
-		dialog->setWindowFlags(dialog->windowFlags() & ~Qt::WindowCloseButtonHint);
-
-	QVBoxLayout *layout = new QVBoxLayout;
-
-	QLabel *prompt = new QLabel(tr("Please select the skill to trigger"));
-	layout->addWidget(prompt);
-
-	QDialogButtonBox *buttonBox = new QDialogButtonBox;
-	QPushButton *cancelBtn = nullptr;
-
-	if (optional) {
-		cancelBtn = new QPushButton(tr("Cancel"));
-		buttonBox->addButton(cancelBtn, QDialogButtonBox::RejectRole);
-		connect(cancelBtn, &QPushButton::clicked, [=]() {
-			ClientInstance->replyToServer(S_COMMAND_TRIGGER_ORDER, QString("cancel"));
-			dialog->accept();
-		});
-		connect(dialog, &QDialog::rejected, [=]() {
-			ClientInstance->replyToServer(S_COMMAND_TRIGGER_ORDER, QString("cancel"));
-		});
-	}
-
-	QGroupBox *group = new QGroupBox;
-	QVBoxLayout *groupLayout = new QVBoxLayout;
-	group->setLayout(groupLayout);
-
-	for (const QString &choice : choices) {
-		QPushButton *button = new QPushButton(Sanguosha->translate(choice));
-		button->setObjectName(choice);
-		button->setMinimumWidth(120);
-		groupLayout->addWidget(button);
-		connect(button, &QPushButton::clicked, [=]() {
-			ClientInstance->replyToServer(S_COMMAND_TRIGGER_ORDER, choice);
-			dialog->accept();
-		});
-	}
-
-	layout->addWidget(group);
-
-	if (!optional)
-		buttonBox->setStandardButtons(QDialogButtonBox::NoButton);
-	else
-		buttonBox->setStandardButtons(QDialogButtonBox::Cancel);
-
-	layout->addWidget(buttonBox);
-	dialog->setLayout(layout);
-
-	if (m_choiceDialog != nullptr)
-		delete m_choiceDialog;
-	m_choiceDialog = dialog;
-
-	dialog->show();
-    dialog->activateWindow();
+    m_chooseTriggerOrderBox->chooseOption(options, optional);
 }
 
 void RoomScene::toggleDiscards()

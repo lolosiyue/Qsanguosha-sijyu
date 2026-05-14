@@ -1820,44 +1820,41 @@ QString Room::askForChoice(ServerPlayer*player, const QString&skill_name, const 
 	return answer;
 }
 
-QString Room::askForTriggerOrder(ServerPlayer*player, const QString&reason, QMap<ServerPlayer*, QStringList>& skills,
+QString Room::askForTriggerOrder(ServerPlayer*player, const QString&reason, QList<SkillContext> &contexts,
                                bool optional, const QVariant&data)
 {
     tryPause();
     notifyMoveFocus(player, S_COMMAND_TRIGGER_ORDER);
 
-    QStringList allSkills;
-    QMap<ServerPlayer*, QStringList>::iterator it;
-    for (it = skills.begin(); it != skills.end(); ++it) {
-        foreach (const QString &skill, it.value()) {
-            if (!allSkills.contains(skill))
-                allSkills << skill;
-        }
-    }
-
-    if (allSkills.isEmpty())
+    if (contexts.isEmpty())
         return optional ? "cancel" : QString();
 
     QString answer;
-    if (allSkills.length() == 1 && optional) {
-        answer = allSkills.first();
+    if (contexts.length() == 1 && optional) {
+        answer = contexts.first().skill_name;
     } else {
         AI*ai = player->getAI();
         if (ai) {
             QElapsedTimer timer;
             timer.start();
-            answer = ai->askForTriggerOrder(reason, skills, optional, data);
+            QStringList allSkills;
+            foreach (const SkillContext &ctx, contexts) {
+                allSkills << ctx.skill_name;
+            }
+            QMap<ServerPlayer*, QStringList> skillsMap;
+            foreach (const SkillContext &ctx, contexts) {
+                skillsMap[ctx.owner] << ctx.skill_name;
+            }
+            answer = ai->askForTriggerOrder(reason, skillsMap, optional, data);
             if (Config.AIDelay > timer.elapsed())
                 thread->delay(Config.AIDelay - timer.elapsed());
         } else {
-            answer = "cancel";
             JsonArray args;
-            args << reason;
-            JsonArray skillsJson;
-            foreach (const QString &skill, allSkills) {
-                skillsJson << skill;
+            JsonArray skillOptions;
+            foreach (const SkillContext &ctx, contexts) {
+                skillOptions << ctx.toVariant();
             }
-            args << skillsJson;
+            args << skillOptions;
             args << optional;
             if (doRequest(player, S_COMMAND_TRIGGER_ORDER, args, !optional)) {
                 QVariant clientReply = player->getClientReply();
@@ -1870,13 +1867,24 @@ QString Room::askForTriggerOrder(ServerPlayer*player, const QString&reason, QMap
     if (optional && answer == "cancel")
         return "cancel";
 
-    if (!allSkills.contains(answer)) {
-        answer = allSkills.at(qrand() % allSkills.length());
+    QStringList replyParts = answer.split(":");
+    QString skillName = replyParts.value(0);
+    
+    bool found = false;
+    foreach (const SkillContext &ctx, contexts) {
+        if (ctx.skill_name == skillName) {
+            found = true;
+            break;
+        }
     }
 
-    QVariant decisionData = "triggerOrder:" + reason + ":" + answer;
+    if (!found && !contexts.isEmpty()) {
+        skillName = contexts.at(qrand() % contexts.size()).skill_name;
+    }
+
+    QVariant decisionData = "triggerOrder:" + reason + ":" + skillName;
     thread->trigger(ChoiceMade, this, player, decisionData);
-    return answer;
+    return skillName;
 }
 
 void Room::obtainCard(ServerPlayer*target, const Card*card, const CardMoveReason&reason, bool visible)

@@ -16,14 +16,20 @@ struct SkillContext {
     QVariant original_data;
     int instanceID;
 
+    ServerPlayer *preferredTarget;
+    int preferredTargetSeat;
+
     bool is_forced;
     bool is_canceled;
     bool bypass_cost;
     TriggerEvent current_event;
 
     SkillContext() : invoker(nullptr), owner(nullptr), use_card(nullptr),
-                     instanceID(0), is_forced(false), is_canceled(false),
+                     instanceID(0), preferredTarget(nullptr), preferredTargetSeat(-1),
+                     is_forced(false), is_canceled(false),
                      bypass_cost(false), current_event(NonTrigger) {}
+
+    QVariant toVariant() const;
 };
 Q_DECLARE_METATYPE(SkillContext)
 

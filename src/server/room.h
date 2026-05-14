@@ -1,6 +1,8 @@
 #ifndef _ROOM_H
 #define _ROOM_H
 
+#include "skill.h"
+
 class ProhibitSkill;
 class ProhibitPindianSkill;
 class Scenario;
@@ -417,7 +419,7 @@ public:
     bool askForSkillInvoke(ServerPlayer*player, const QString&skill_name, const QVariant&data = QVariant(), bool notify = true);
     QString askForChoice(ServerPlayer*player, const QString&skill_name, const QString&choices, const QVariant&data = QVariant(),
                         const QString&except_choices = "", const QString&tip = "");
-    QString askForTriggerOrder(ServerPlayer*player, const QString&reason, QMap<ServerPlayer*, QStringList>& skills,
+    QString askForTriggerOrder(ServerPlayer*player, const QString&reason, QList<SkillContext> &contexts,
                                bool optional = true, const QVariant&data = QVariant());
     Card*askForDiscard(ServerPlayer*player, const QString&reason, int discard_num, int min_num,
         bool optional = false, bool include_equip = false, const QString&prompt = "", const QString&pattern = ".",
