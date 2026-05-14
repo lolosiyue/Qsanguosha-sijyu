@@ -1,0 +1,78 @@
+#include "graphicsbox.h"
+#include "skin-bank.h"
+#include "roomscene.h"
+#include "settings.h"
+
+#include <QGraphicsDropShadowEffect>
+#include <QPainter>
+
+static int roundedRectRadius = 5;
+static QColor graphicsBoxBackgroundColor = QColor(30, 30, 30, 200);
+static QColor graphicsBoxBorderColor = QColor(100, 100, 100);
+static QFont graphicsBoxTitleFont;
+
+GraphicsBox::GraphicsBox(const QString &title)
+    : title(title)
+{
+    stylize(this);
+    if (graphicsBoxTitleFont.pixelSize() <= 0) {
+        graphicsBoxTitleFont = Config.SmallFont;
+        graphicsBoxTitleFont.setBold(true);
+    }
+}
+
+GraphicsBox::~GraphicsBox() = default;
+
+void GraphicsBox::paintGraphicsBoxStyle(QPainter *painter, const QString &boxTitle, const QRectF &rect)
+{
+    painter->setRenderHints(QPainter::HighQualityAntialiasing | QPainter::SmoothPixmapTransform);
+
+    painter->save();
+    painter->setBrush(QBrush(graphicsBoxBackgroundColor));
+    const int x = rect.x();
+    const int y = rect.y();
+    const int w = rect.width();
+    const int h = rect.height();
+    painter->drawRoundedRect(x, y, w, h, roundedRectRadius, roundedRectRadius);
+    painter->drawRoundedRect(x, y, w, 27, roundedRectRadius, roundedRectRadius);
+    painter->setFont(graphicsBoxTitleFont);
+    painter->setPen(Qt::white);
+    painter->drawText(QRect(x, y, w, 27), Qt::AlignCenter, boxTitle);
+    painter->restore();
+    painter->setPen(graphicsBoxBorderColor);
+    painter->drawRoundedRect(x + 1, y + 1, w - 2, h - 2, roundedRectRadius, roundedRectRadius);
+}
+
+void GraphicsBox::stylize(QGraphicsObject *target)
+{
+    target->setFlags(ItemIsFocusable | ItemIsMovable);
+
+    QGraphicsDropShadowEffect *shadow = new QGraphicsDropShadowEffect(target);
+    shadow->setOffset(4);
+    shadow->setBlurRadius(5);
+    shadow->setColor(QColor(0, 0, 0, 180));
+    target->setGraphicsEffect(shadow);
+}
+
+void GraphicsBox::moveToCenter(QGraphicsObject *target)
+{
+    const QRectF rect = target->boundingRect();
+    target->setPos(RoomSceneInstance->tableCenterPos() - QPointF(rect.width() / 2, rect.height() / 2));
+}
+
+void GraphicsBox::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)
+{
+    paintGraphicsBoxStyle(painter, title, boundingRect());
+    paintLayout(painter);
+}
+
+void GraphicsBox::moveToCenter()
+{
+    moveToCenter(this);
+}
+
+void GraphicsBox::disappear()
+{
+    prepareGeometryChange();
+    hide();
+}

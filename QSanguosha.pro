@@ -111,6 +111,8 @@ src/ui/chatwidget.cpp \
 	src/ui/qsanbutton.cpp \
 	src/ui/rolecombobox.cpp \
 	src/ui/roomscene.cpp \
+	src/ui/graphicsbox.cpp \
+	src/ui/choosetriggerorderbox.cpp \
 	src/ui/sprite.cpp \
 	src/ui/startscene.cpp \
 	src/ui/window.cpp \
@@ -282,6 +284,8 @@ src/ui/dashboard.h \
 	src/ui/qsanbutton.h \
 	src/ui/rolecombobox.h \
 	src/ui/roomscene.h \
+	src/ui/graphicsbox.h \
+	src/ui/choosetriggerorderbox.h \
 	src/ui/sprite.h \
 	src/ui/startscene.h \
 	src/ui/window.h \
