@@ -461,6 +461,17 @@ QWidget *ServerDialog::createAdvancedTab()
 	hegemony_maxshown_spinbox->setVisible(Config.EnableHegemony);
 	connect(hegemony_checkbox, SIGNAL(toggled(bool)), hegemony_maxshown_spinbox, SLOT(setVisible(bool)));
 
+	hegemony_companion = new QComboBox;
+	hegemony_companion->addItem(tr("Instant"), "Instant");
+	hegemony_companion->addItem(tr("Postponed"), "Postponed");
+	hegemony_companion->setCurrentIndex(Config.value("HegemonyCompanionReward", "Postponed").toString() == "Postponed" ? 1 : 0);
+	hegemony_companion_label = new QLabel(tr("Companion Reward"));
+	layout->addLayout(HLay(hegemony_companion_label, hegemony_companion));
+	hegemony_companion_label->setVisible(Config.EnableHegemony);
+	connect(hegemony_checkbox, SIGNAL(toggled(bool)), hegemony_companion_label, SLOT(setVisible(bool)));
+	hegemony_companion->setVisible(Config.EnableHegemony);
+	connect(hegemony_checkbox, SIGNAL(toggled(bool)), hegemony_companion, SLOT(setVisible(bool)));
+
 	return widget;
 }
 
@@ -1430,6 +1441,7 @@ int ServerDialog::config()
 	Config.setValue("EnableMeleeMode", Config.EnableMeleeMode);
 	Config.setValue("HegemonyMaxChoice", hegemony_maxchoice_spinbox->value());
 	Config.setValue("HegemonyMaxShown", hegemony_maxshown_spinbox->value());
+	Config.setValue("HegemonyCompanionReward", hegemony_companion->itemData(hegemony_companion->currentIndex()).toString());
 	Config.setValue("MaxHpScheme", Config.MaxHpScheme);
 	Config.setValue("Scheme0Subtraction", Config.Scheme0Subtraction);
 	Config.setValue("PreventAwakenBelow3", Config.PreventAwakenBelow3);

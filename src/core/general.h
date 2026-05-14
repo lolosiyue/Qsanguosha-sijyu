@@ -77,6 +77,10 @@ public:
     QStringList getPreSelectionSkills() const;
     void addPreSelectionSkill(const QString &skill_name);
 
+    void addCompanion(const QString &name);
+    bool isCompanionWith(const QString &name) const;
+    QString getCompanions() const;
+
 public slots:
     void lastWord() const;
 
@@ -93,6 +97,7 @@ private:
     int start_hujia;
     QString sub_package;
     QString image;
+    QStringList companions;
 };
 
 #endif

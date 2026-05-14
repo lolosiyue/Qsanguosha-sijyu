@@ -75,6 +75,10 @@ public:
 	void setImage(const char*general_name);
 	QString getImage() const;
 
+	void addCompanion(const char*name);
+	bool isCompanionWith(const char*name) const;
+	QString getCompanions() const;
+
 	void lastWord() const;
 };
 

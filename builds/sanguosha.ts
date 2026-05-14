@@ -2163,6 +2163,11 @@
         <translation>插画</translation>
     </message>
     <message>
+        <location filename="../src/dialog/generaloverview.ui" line="215"/>
+        <source>Companion</source>
+        <translation>珠联璧合</translation>
+    </message>
+    <message>
         <location filename="../src/dialog/generaloverview.ui" line="257"/>
         <location filename="../src/dialog/generaloverview.cpp" line="706"/>
         <source>Search...</source>
@@ -4322,6 +4327,21 @@ P = 你自己, R = 你所在的房间</translation>
         <location filename="../src/server/server.cpp" line="303"/>
         <source>Max shown num for hegemony</source>
         <translation>同势力最大亮将数</translation>
+    </message>
+    <message>
+        <location filename="../src/server/server.cpp" line="307"/>
+        <source>Companion Reward</source>
+        <translation>珠联璧合奖励</translation>
+    </message>
+    <message>
+        <location filename="../src/server/server.cpp" line="308"/>
+        <source>Instant</source>
+        <translation>即时</translation>
+    </message>
+    <message>
+        <location filename="../src/server/server.cpp" line="309"/>
+        <source>Postponed</source>
+        <translation>延后</translation>
     </message>
     <message>
         <location filename="../src/server/server.cpp" line="321"/>

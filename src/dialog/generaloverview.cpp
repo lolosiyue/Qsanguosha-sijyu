@@ -812,6 +812,12 @@ void GeneralOverview::on_tableWidget_itemSelectionChanged()
 
 	ui->illustratorLineEdit->setText(getIllustratorInfo(general_name));
 
+	QString companions_text = general->getCompanions();
+	if (companions_text.isEmpty())
+		ui->companionLineEdit->clear();
+	else
+		ui->companionLineEdit->setText(companions_text);
+
 	button_layout->addStretch();
 	ui->skillTextEdit->append(general->getSkillDescription(true));
 	if (!m_previewMode && ServerInfo.DuringGame && ServerInfo.EnableCheat) {

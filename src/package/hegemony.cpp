@@ -9,6 +9,11 @@
 //#include "util.h"
 #include "standard.h"
 #include "roomthread.h"
+#include "settings.h"
+
+class CompanionVS;
+class CompanionEffect;
+extern TriggerSkill *CompanionEffectSkill;
 
 class Xiaoguo : public TriggerSkill
 {
@@ -763,6 +768,94 @@ public:
     }
 };
 
+class CompanionVS : public ZeroCardViewAsSkill
+{
+public:
+    CompanionVS()
+        : ZeroCardViewAsSkill("companion_attach")
+    {
+        attached_lord_skill = true;
+    }
+
+    bool isEnabledAtPlay(const Player *player) const override
+    {
+        return player->getMark("@CompanionEffect") > 0;
+    }
+
+    bool isEnabledAtResponse(const Player *, const QString &pattern) const override
+    {
+        return pattern.contains("peach");
+    }
+
+    const Card *viewAs() const override
+    {
+        return new CompanionCard;
+    }
+};
+
+class CompanionEffect : public TriggerSkill
+{
+public:
+    CompanionEffect()
+        : TriggerSkill("companion_effect")
+    {
+        events << GameStart;
+        frequency = Compulsory;
+    }
+
+    bool triggerable(const ServerPlayer *target) const override
+    {
+        return target != nullptr && Config.EnableHegemony && Config.Enable2ndGeneral;
+    }
+
+    int getPriority(TriggerEvent) const override
+    {
+        return 0;
+    }
+
+    bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
+    {
+        if (player->getGeneralName() == "anjiang" || player->getGeneral2Name() == "anjiang")
+            return false;
+
+        const General *general1 = player->getGeneral();
+        const General *general2 = player->getGeneral2();
+        if (!general1 || !general2)
+            return false;
+
+        if (general1->isCompanionWith(general2->objectName())) {
+            player->setMark("CompanionEffect", 1);
+
+            if (Config.value("HegemonyCompanionReward", "Instant").toString() == "Postponed") {
+                player->gainMark("@CompanionEffect");
+                if (!player->hasSkill("companion_attach"))
+                    room->attachSkillToPlayer(player, "companion_attach");
+            } else {
+                QStringList choices;
+                if (player->isWounded())
+                    choices << "recover";
+                choices << "draw" << "cancel";
+
+                LogMessage log;
+                log.type = "#CompanionEffect";
+                log.from = player;
+                room->sendLog(log);
+
+                QString choice = room->askForChoice(player, "CompanionEffect", choices.join("+"));
+                if (choice == "recover") {
+                    RecoverStruct recover;
+                    recover.who = player;
+                    recover.recover = 1;
+                    room->recover(player, recover);
+                } else if (choice == "draw")
+                    player->drawCards(2, "companion_effect");
+            }
+            room->setEmotion(player, "companion");
+        }
+        return false;
+    }
+};
+
 class QingchengInvalidity : public InvaliditySkill
 {
 public:
@@ -859,5 +952,53 @@ HegemonyPackage::HegemonyPackage()
     addMetaObject<ShuangrenCard>();
     addMetaObject<XiongyiCard>();
     addMetaObject<QingchengCard>();
+    addMetaObject<CompanionCard>();
+
+    skills << new CompanionVS;
+    CompanionEffectSkill = new CompanionEffect;
 }
 ADD_PACKAGE(Hegemony)
+
+CompanionCard::CompanionCard()
+{
+    will_throw = false;
+    handling_method = Card::MethodNone;
+    m_skillName = "companion_attach";
+    target_fixed = true;
+}
+
+void CompanionCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const
+{
+    source->loseMark("@CompanionEffect", 1);
+    room->detachSkillFromPlayer(source, "companion_attach", true);
+
+    QString choice;
+    if (Sanguosha->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_PLAY) {
+        QStringList choices;
+        if (source->isWounded())
+            choices << "recover";
+        choices << "draw";
+
+        choice = room->askForChoice(source, "CompanionEffect", choices.join("+"));
+        if (choice == "recover") {
+            RecoverStruct recover;
+            recover.who = source;
+            recover.recover = 1;
+            room->recover(source, recover);
+        } else if (choice == "draw")
+            source->drawCards(2, "companion_attach");
+
+    } else {
+        foreach (ServerPlayer *p, room->getAlivePlayers()) {
+            if (p->hasFlag("Global_Dying")) {
+                RecoverStruct recover;
+                recover.who = source;
+                recover.recover = 1;
+                room->recover(p, recover);
+                break;
+            }
+        }
+    }
+
+    room->setEmotion(source, "companion");
+}
