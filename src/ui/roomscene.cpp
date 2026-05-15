@@ -2764,28 +2764,10 @@ void RoomScene::keepGetCardLog(const CardsMoveStruct&move)
 
 bool RoomScene::isPrimarySkill(const Skill *skill) const
 {
-	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
-	if (!skill || !activePlayer) return true;
-	
-	QString skillName = skill->objectName();
-	
-	if (activePlayer->getGeneral() && activePlayer->getGeneral()->hasSkill(skillName))
-		return true;
-	
-	if (skill->isAttachedLordSkill())
-		return true;
-	
-	if (activePlayer->getGeneral()) {
-		foreach (const Skill *genSkill, activePlayer->getGeneral()->getVisibleSkillList()) {
-			QList<const Skill *> related = Sanguosha->getRelatedSkills(genSkill->objectName());
-			foreach (const Skill *rs, related) {
-				if (rs == skill || rs->objectName() == skillName)
-					return true;
-			}
-		}
-	}
-	
-	return false;
+    const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
+    if (!skill || !activePlayer) return true;
+    
+    return activePlayer->inHeadSkills(skill->objectName());
 }
 
 void RoomScene::addSkillButton(const Skill*skill)

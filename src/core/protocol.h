@@ -141,6 +141,7 @@ namespace QSanProtocol {
         S_COMMAND_SYNCHRONIZE_DISCARD_PILE,
         S_COMMAND_UPDATE_BOSS_LEVEL,
         S_COMMAND_UPDATE_STATE_ITEM,
+        S_COMMAND_PRESHOW,
         S_COMMAND_SPEAK,
         S_COMMAND_ASK_GENERAL, // the following 6 for 1v1 and 3v3
         S_COMMAND_ARRANGE_GENERAL,

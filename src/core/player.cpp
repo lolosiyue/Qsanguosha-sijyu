@@ -13,12 +13,10 @@ Player::Player(QObject *parent)
     : QObject(parent), owner(false), general(nullptr), general2(nullptr),
     m_gender(General::Sexless), hp(-1), max_hp(-1), role("unknown"), state("online"),
     seat(0), player_seat(0), alive(true), removed(false), phase(NotActive),
-    //equip_area(QList<int>()), equips(QList<const EquipCard *>()),
-    //weapon(nullptr), armor(nullptr), defensive_horse(nullptr), offensive_horse(nullptr), treasure(nullptr),
+    general_showed(false), general2_showed(false),
     face_up(true), chained(false),
-    //hasweaponarea(true), hasarmorarea(true), hasdefensivehorsearea(true), hasoffensivehorsearea(true), hastreasurearea(true),
     hasjudgearea(true),
-    role_shown(false)//, pile_open(QMap<QString, QStringList>())
+    role_shown(false)
 {
 	equip_area << 0 << 1 << 2 << 3 << 4;
 	static QList<const char*> areas;
@@ -699,6 +697,16 @@ void Player::acquireSkill(const QString &skill_name, int instanceId)
     acquired_skills << name;
 }
 
+void Player::acquireSkill(const QString &skill_name, bool head, int instanceId)
+{
+    QString name = skill_name;
+    if (instanceId > 0)
+        name = QString("%1#%2").arg(skill_name).arg(instanceId);
+    
+    QSet<QString> &targetSet = head ? head_acquired_skills : deputy_acquired_skills;
+    targetSet.insert(name);
+}
+
 void Player::detachSkill(const QString &skill_name)
 {
     int split = skill_name.indexOf('#');
@@ -715,6 +723,25 @@ void Player::detachSkill(const QString &skill_name)
     }
 }
 
+void Player::detachSkill(const QString &skill_name, bool head)
+{
+    QSet<QString> &targetSet = head ? head_acquired_skills : deputy_acquired_skills;
+    
+    int split = skill_name.indexOf('#');
+    if (split == -1) {
+        QString prefix = skill_name + "#";
+        QStringList toRemove;
+        foreach (const QString &s, targetSet) {
+            if (s == skill_name || s.startsWith(prefix))
+                toRemove << s;
+        }
+        foreach (const QString &s, toRemove)
+            targetSet.remove(s);
+    } else {
+        targetSet.remove(skill_name);
+    }
+}
+
 void Player::detachAllSkills()
 {
     acquired_skills.clear();
@@ -726,9 +753,29 @@ void Player::addSkill(const QString &skill_name)
     skills << skill_name;
 }
 
+void Player::addSkill(const QString &skill_name, bool head_skill)
+{
+    const Skill *skill = Sanguosha->getSkill(skill_name);
+    if (!skill) return;
+    
+    if (head_skill) {
+        head_skills[skill_name] = !skill->canPreshow() || general_showed;
+    } else {
+        deputy_skills[skill_name] = !skill->canPreshow() || general2_showed;
+    }
+}
+
 void Player::loseSkill(const QString &skill_name)
 {
     skills.removeOne(skill_name);
+}
+
+void Player::loseSkill(const QString &skill_name, bool head)
+{
+    if (head)
+        head_skills.remove(skill_name);
+    else
+        deputy_skills.remove(skill_name);
 }
 
 QString Player::getPhaseString() const
@@ -2472,12 +2519,22 @@ bool Player::hasShownOneGeneral() const
 
 bool Player::hasShownGeneral() const
 {
-    return property("general_showed").toBool();
+    return general_showed;
 }
 
 bool Player::hasShownGeneral2() const
 {
-    return property("general2_showed").toBool();
+    return general2_showed;
+}
+
+void Player::setGeneralShowed(bool showed)
+{
+    general_showed = showed;
+}
+
+void Player::setGeneral2Showed(bool showed)
+{
+    general2_showed = showed;
 }
 
 bool Player::canShowGeneral(const QString &position) const
@@ -2491,7 +2548,108 @@ bool Player::canShowGeneral(const QString &position) const
 
 bool Player::inHeadSkills(const QString &skill_name) const
 {
-    QStringList headSkills = property("head_skills").toStringList();
-    return headSkills.contains(skill_name);
+    const Skill *skill = Sanguosha->getSkill(skill_name);
+    if (skill == nullptr) return false;
+    
+    if (skill->isAttachedLordSkill())
+        return true;
+    
+    if (!skill->isVisible()) {
+        const Skill *main_skill = Sanguosha->getMainSkill(skill_name);
+        if (main_skill != nullptr)
+            return inHeadSkills(main_skill->objectName());
+    }
+    
+    if (general2 != nullptr) {
+        return head_skills.contains(skill_name) 
+            || head_acquired_skills.contains(skill_name);
+    }
+    
+    return skills.contains(skill_name) || acquired_skills.contains(skill_name);
+}
+
+bool Player::inDeputySkills(const QString &skill_name) const
+{
+    if (general2 == nullptr) return false;
+    
+    const Skill *skill = Sanguosha->getSkill(skill_name);
+    if (skill == nullptr) return false;
+    
+    if (!skill->isVisible()) {
+        const Skill *main_skill = Sanguosha->getMainSkill(skill_name);
+        if (main_skill != nullptr)
+            return inDeputySkills(main_skill->objectName());
+    }
+    
+    return deputy_skills.contains(skill_name) 
+        || deputy_acquired_skills.contains(skill_name);
+}
+
+void Player::setSkillPreshowed(const QString &skill, bool preshowed)
+{
+    if (head_skills.contains(skill))
+        head_skills[skill] = preshowed;
+    else if (deputy_skills.contains(skill))
+        deputy_skills[skill] = preshowed;
+}
+
+void Player::setSkillsPreshowed(const QString &flag, bool preshowed)
+{
+    if (flag.contains("h")) {
+        foreach (const QString &skill, head_skills.keys()) {
+            if (!Sanguosha->getSkill(skill)->canPreshow())
+                continue;
+            head_skills[skill] = preshowed;
+        }
+    }
+
+    if (flag.contains("d")) {
+        foreach (const QString &skill, deputy_skills.keys()) {
+            if (!Sanguosha->getSkill(skill)->canPreshow())
+                continue;
+            deputy_skills[skill] = preshowed;
+        }
+    }
+}
+
+bool Player::hasPreshowedSkill(const QString &name) const
+{
+    return head_skills.value(name, false) || deputy_skills.value(name, false);
+}
+
+bool Player::hasPreshowedSkill(const Skill *skill) const
+{
+    return hasPreshowedSkill(skill->objectName());
+}
+
+bool Player::hasShownSkill(const QString &skill_name) const
+{
+    if (general_showed && head_skills.contains(skill_name))
+        return true;
+    if (general2_showed && deputy_skills.contains(skill_name))
+        return true;
+    return false;
+}
+
+bool Player::hasShownSkill(const Skill *skill) const
+{
+    return hasShownSkill(skill->objectName());
+}
+
+bool Player::isHidden(bool head_general) const
+{
+    if (head_general ? general_showed : general2_showed)
+        return false;
+    
+    const QMap<QString, bool> &skillMap = head_general ? head_skills : deputy_skills;
+    int count = 0;
+    foreach (const QString &skillName, skillMap.keys()) {
+        const Skill *skill = Sanguosha->getSkill(skillName);
+        if (skill && skill->canPreshow() && hasPreshowedSkill(skillName))
+            return false;
+        else if (skill && !skill->canPreshow())
+            ++count;
+    }
+    return count != skillMap.size();
 }
 
