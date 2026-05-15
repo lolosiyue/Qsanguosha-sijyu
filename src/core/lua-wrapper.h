@@ -379,6 +379,18 @@ public:
     LuaFunction on_trigger;
 };
 
+class LuaBattleArraySkill : public BattleArraySkill
+{
+    Q_OBJECT
+
+public:
+    LuaBattleArraySkill(const QString &name, const QString &arrayType, Frequency frequency);
+
+    virtual void summonFriends(ServerPlayer *player) const;
+
+    LuaFunction on_summon;
+};
+
 class LuaSkillCard : public SkillCard
 {
     Q_OBJECT

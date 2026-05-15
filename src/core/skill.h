@@ -572,4 +572,30 @@ public:
     inline bool isAnytime() const { return true; }
 };
 
+class BattleArraySkill : public TriggerSkill
+{
+    Q_OBJECT
+
+public:
+    BattleArraySkill(const QString &name, const QString &arrayType);
+
+    virtual void summonFriends(ServerPlayer *player) const;
+
+    inline QString getArrayType() const { return array_type; }
+
+private:
+    QString array_type;
+};
+
+class ArraySummonSkill : public ZeroCardViewAsSkill
+{
+    Q_OBJECT
+
+public:
+    explicit ArraySummonSkill(const QString &name);
+
+    const Card *viewAs() const override;
+    bool isEnabledAtPlay(const Player *player) const override;
+};
+
 #endif

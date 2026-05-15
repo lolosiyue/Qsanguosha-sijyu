@@ -3,6 +3,7 @@
 
 #include "package.h"
 #include "card.h"
+#include "skill.h"
 
 class HegemonyPackage : public Package
 {
@@ -78,8 +79,6 @@ public:
 
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
-
-extern TriggerSkill *CompanionEffectSkill;
 
 #endif
 

@@ -190,6 +190,9 @@ public:
         return flags;
     }
 
+    QString showSkill() const;
+    void setShowSkill(const QString &skillName);
+
     inline virtual bool isModified() const
     {
         return false;
@@ -225,6 +228,7 @@ protected:
     int m_number;
     int m_id;
     QString m_skillName;
+    QString show_skill;
     bool is_gift;
     bool damage_card;
     bool single_target;
@@ -262,6 +266,16 @@ public:
     QString getType() const;
     QString toString(bool hidden = false) const;
     void onUse(Room *, CardUseStruct &) const;
+};
+
+class ArraySummonCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE ArraySummonCard(const QString &name);
+
+    const Card *validate(CardUseStruct &card_use) const override;
 };
 
 #endif

@@ -1365,17 +1365,18 @@ bool QSanRoomSkin::_loadLayoutConfig(const QVariant &layout)
 		QString key;
 		switch ((QSanInvokeSkillButton::SkillType)i) {
 		case QSanInvokeSkillButton::S_SKILL_AWAKEN: key = "awakenFontColor"; break;
-		case QSanInvokeSkillButton::S_SKILL_COMPULSORY: key = "compulsoryFontColor"; break;
-		case QSanInvokeSkillButton::S_SKILL_FREQUENT: key = "frequentFontColor"; break;
-		case QSanInvokeSkillButton::S_SKILL_ONEOFF_SPELL: key = "oneoffFontColor"; break;
-		case QSanInvokeSkillButton::S_SKILL_PROACTIVE: key = "proactiveFontColor"; break;
-		case QSanInvokeSkillButton::S_SKILL_ANYTIME: key = "proactiveFontColor"; break;
-		case QSanInvokeSkillButton::S_SKILL_ATTACHEDLORD: key = "attachedlordFontColor"; break;
-		case QSanInvokeSkillButton::S_SKILL_CHANGE: key = "changeFontColor"; break;
-		default:
-			Q_ASSERT(false);
-			break;
-		}
+case QSanInvokeSkillButton::S_SKILL_COMPULSORY: key = "compulsoryFontColor"; break;
+        case QSanInvokeSkillButton::S_SKILL_FREQUENT: key = "frequentFontColor"; break;
+        case QSanInvokeSkillButton::S_SKILL_ONEOFF_SPELL: key = "oneoffFontColor"; break;
+        case QSanInvokeSkillButton::S_SKILL_PROACTIVE: key = "proactiveFontColor"; break;
+        case QSanInvokeSkillButton::S_SKILL_ANYTIME: key = "proactiveFontColor"; break;
+        case QSanInvokeSkillButton::S_SKILL_ARRAY: key = "arrayFontColor"; break;
+        case QSanInvokeSkillButton::S_SKILL_ATTACHEDLORD: key = "attachedlordFontColor"; break;
+        case QSanInvokeSkillButton::S_SKILL_CHANGE: key = "changeFontColor"; break;
+        default:
+            Q_ASSERT(false);
+            break;
+        }
 
 		JsonArray subconfig = config[key].value<JsonArray>();
 		for (int j = 0; j < 4 && j < subconfig.size(); j++) {

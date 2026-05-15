@@ -353,7 +353,17 @@ QString Card::getSkillName(bool removePrefix) const
 
 void Card::setSkillName(const QString &name)
 {
-	this->m_skillName = name;
+    this->m_skillName = name;
+}
+
+QString Card::showSkill() const
+{
+    return show_skill;
+}
+
+void Card::setShowSkill(const QString &skillName)
+{
+    show_skill = skillName;
 }
 
 bool Card::isGift() const
@@ -1012,5 +1022,24 @@ QString DummyCard::toString(bool) const
 
 void DummyCard::onUse(Room*, CardUseStruct &) const
 {
+}
+
+ArraySummonCard::ArraySummonCard(const QString &name)
+{
+    setObjectName(name);
+    m_skillName = name;
+    mute = true;
+    target_fixed = true;
+    handling_method = Card::MethodNone;
+}
+
+const Card *ArraySummonCard::validate(CardUseStruct &card_use) const
+{
+    const BattleArraySkill *skill = qobject_cast<const BattleArraySkill *>(Sanguosha->getTriggerSkill(objectName()));
+    if (skill != nullptr) {
+        card_use.from->showHiddenSkill(skill->objectName());
+        skill->summonFriends(card_use.from);
+    }
+    return nullptr;
 }
 

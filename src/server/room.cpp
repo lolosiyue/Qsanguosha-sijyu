@@ -6631,6 +6631,37 @@ void Room::showEgg(const QString &from, const QString &to, QList<ServerPlayer *>
 	doAnimate(S_ANIMATE_EGG, from, to, players);
 }
 
+void Room::doBattleArrayAnimate(ServerPlayer *player, ServerPlayer *target)
+{
+	if (getAlivePlayers().length() < 4)
+		return;
+	if (target == nullptr) {
+		QStringList names;
+		foreach (const Player *p, player->getFormation())
+			names << p->objectName();
+		if (names.length() > 1)
+			doAnimate(QSanProtocol::S_ANIMATE_BATTLEARRAY, player->objectName(), names.join("+"));
+	} else {
+		foreach (ServerPlayer *p, getOtherPlayers(player))
+			if (p->inSiegeRelation(player, target))
+				doAnimate(QSanProtocol::S_ANIMATE_BATTLEARRAY, player->objectName(), QString("%1+%2").arg(p->objectName(), player->objectName()));
+	}
+}
+
+void Room::showGeneral(ServerPlayer *player, const QString &position)
+{
+	if (position == "h") {
+		setPlayerProperty(player, "general_showed", true);
+	} else if (position == "d") {
+		setPlayerProperty(player, "general2_showed", true);
+	}
+	JsonArray args;
+	args << (int)QSanProtocol::S_GAME_EVENT_SHOW_GENERAL;
+	args << player->objectName();
+	args << position;
+	doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+}
+
 void Room::preparePlayers()
 {
 	foreach(ServerPlayer*player, m_players){

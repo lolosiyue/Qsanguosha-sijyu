@@ -96,7 +96,7 @@ public:
         return getState() == "robot" || getState() == "offline";
     }
 
-    virtual int aliveCount() const;
+    virtual int aliveCount(bool includeRemoved = false) const;
     //virtual int getHandcardNum() const;
     virtual void removeCard(int id, Place place);
     virtual void addCard(int id, Place place);
@@ -113,6 +113,7 @@ public:
     ServerPlayer *getNextAlive(int n = 1) const;
     ServerPlayer *getNextGamePlayer(int n = 1) const;
     ServerPlayer *getPreviousAlive(int n = 1) const;
+    ServerPlayer *getLastAlive(int n = 1) const;
 
     // 3v3 methods
     void addToSelected(const QString &general);
@@ -253,6 +254,12 @@ public:
     void addPendingAnytimeSkill(const QString &skill_name);
     void removePendingAnytimeSkill(const QString &skill_name);
     void clearPendingAnytimeSkills();
+
+    void summonFriends(const QString &type);
+    bool inSiegeRelation(const ServerPlayer *skill_owner, const ServerPlayer *victim) const;
+    bool inFormationRalation(ServerPlayer *teammate) const;
+    void askForGeneralShow();
+    void showHiddenSkill(const QString &skill_name);
 
 protected:
     //Synchronization helpers

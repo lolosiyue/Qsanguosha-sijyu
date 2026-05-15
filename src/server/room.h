@@ -302,6 +302,8 @@ public:
 
     void showFlower(const QString &from, const QString &to, QList<ServerPlayer *> players = QList<ServerPlayer *>());
     void showEgg(const QString &from, const QString &to, QList<ServerPlayer *> players = QList<ServerPlayer *>());
+    void doBattleArrayAnimate(ServerPlayer *player, ServerPlayer *target = nullptr);
+    void showGeneral(ServerPlayer *player, const QString &position);
 
     void preparePlayers();
     void changePlayerGeneral(ServerPlayer*player, const QString&new_general);

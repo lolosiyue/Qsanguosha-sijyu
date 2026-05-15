@@ -311,8 +311,26 @@ public:
 	virtual bool canTrigger(ServerPlayer *player) const;
 	virtual bool onTrigger(Room *room, ServerPlayer *player) const;
 
-	LuaFunction can_trigger;
-	LuaFunction on_trigger;
+LuaFunction can_trigger;
+    LuaFunction on_trigger;
+};
+
+class BattleArraySkill : public TriggerSkill {
+public:
+    BattleArraySkill(const QString &name, const QString &arrayType);
+
+    virtual void summonFriends(ServerPlayer *player) const;
+
+    QString getArrayType() const;
+};
+
+class LuaBattleArraySkill : public BattleArraySkill {
+public:
+    LuaBattleArraySkill(const char *name, const char *arrayType, Frequency frequency);
+
+    virtual void summonFriends(ServerPlayer *player) const;
+
+    LuaFunction on_summon;
 };
 
 class ViewAsSkill: public Skill {

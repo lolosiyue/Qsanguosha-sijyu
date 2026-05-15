@@ -141,6 +141,30 @@ LuaAnytimeSkill::LuaAnytimeSkill(const QString &name, Frequency frequency)
     this->frequency = frequency;
 }
 
+LuaBattleArraySkill::LuaBattleArraySkill(const QString &name, const QString &arrayType, Frequency frequency)
+    : BattleArraySkill(name, arrayType), on_summon(0)
+{
+    this->frequency = frequency;
+}
+
+void LuaBattleArraySkill::summonFriends(ServerPlayer *player) const
+{
+    if (on_summon == 0) {
+        BattleArraySkill::summonFriends(player);
+        return;
+    }
+    LuaLocker locker;
+    lua_State *L = Sanguosha->getLuaState();
+    lua_pushinteger(L, on_summon);
+    lua_gettable(L, LUA_REGISTRYINDEX);
+    lua_pushlightuserdata(L, player);
+    int result = lua_pcall(L, 1, 0, 0);
+    if (result != 0) {
+        qWarning("LuaBattleArraySkill::summonFriends error: %s", lua_tostring(L, -1));
+        lua_pop(L, 1);
+    }
+}
+
 static QHash<QString, const LuaSkillCard *> LuaSkillCards;
 
 LuaSkillCard::LuaSkillCard(const QString &name, const QString &skillName)
