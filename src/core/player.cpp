@@ -2653,3 +2653,44 @@ bool Player::isHidden(bool head_general) const
     return count != skillMap.size();
 }
 
+QList<int> Player::getShownHandcards() const
+{
+    return shown_handcards;
+}
+
+void Player::setShownHandcards(QList<int> &ids)
+{
+    shown_handcards = ids;
+    emit showncards_changed();
+}
+
+bool Player::isShownHandcard(int id) const
+{
+    if (shown_handcards.isEmpty() || id < 0)
+        return false;
+    return shown_handcards.contains(id);
+}
+
+QList<int> Player::getBrokenEquips() const
+{
+    return broken_equips;
+}
+
+void Player::setBrokenEquips(QList<int> &ids)
+{
+    broken_equips = ids;
+    emit brokenEquips_changed();
+}
+
+bool Player::isBrokenEquip(int id) const
+{
+    if (broken_equips.isEmpty() || id < 0)
+        return false;
+    return broken_equips.contains(id);
+}
+
+bool Player::isAbnormal() const
+{
+    return chained || !shown_handcards.isEmpty() || !broken_equips.isEmpty();
+}
+

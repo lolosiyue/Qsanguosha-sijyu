@@ -166,6 +166,8 @@ Client::Client(QObject *parent, const QString &filename)
 	m_callbacks[S_COMMAND_SET_EQUIP_AREA_COUNT] = &Client::setEquipAreaCount;
 	m_callbacks[S_COMMAND_UPDATE_CARD_DESC] = &Client::updateCardDescription;
 	m_callbacks[S_COMMAND_ANYTIME_SKILL_DONE] = &Client::handleAnytimeSkillDone;
+	m_callbacks[S_COMMAND_SET_SHOWN_HANDCARD] = &Client::setShownHandCards;
+	m_callbacks[S_COMMAND_SET_BROKEN_EQUIP] = &Client::setBrokenEquips;
 	m_interactions[S_COMMAND_QML_INTERACT] = &Client::askForQml;
 
 	m_noNullificationThisTime = false;
@@ -2480,4 +2482,37 @@ void Client::askForQml(const QVariant &arg)
 void Client::replyQml(const QVariant &result)
 {
 	replyToServer(S_COMMAND_QML_INTERACT, result);
+}
+
+void Client::setShownHandCards(const QVariant &card_var)
+{
+    JsonArray card_str = card_var.value<JsonArray>();
+    if (card_str.size() != 2)
+        return;
+    if (!JsonUtils::isString(card_str[0]))
+        return;
+
+    QString who = card_str[0].toString();
+    QList<int> card_ids;
+    JsonUtils::tryParse(card_str[1], card_ids);
+
+    ClientPlayer *player = getPlayer(who);
+    player->setShownHandcards(card_ids);
+    player->changePile("shown_card", true, card_ids);
+}
+
+void Client::setBrokenEquips(const QVariant &card_var)
+{
+    JsonArray card_str = card_var.value<JsonArray>();
+    if (card_str.size() != 2)
+        return;
+    if (!JsonUtils::isString(card_str[0]))
+        return;
+
+    QString who = card_str[0].toString();
+    QList<int> card_ids;
+    JsonUtils::tryParse(card_str[1], card_ids);
+
+    ClientPlayer *player = getPlayer(who);
+    player->setBrokenEquips(card_ids);
 }

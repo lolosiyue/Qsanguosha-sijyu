@@ -170,6 +170,19 @@ public:
     bool canWake(const QString &waked_skill_name);
     QList<int> getHandPile() const;
 
+    void summonFriends(const QString &type);
+    bool inSiegeRelation(const ServerPlayer *skill_owner, const ServerPlayer *victim) const;
+    bool inFormationRalation(ServerPlayer *teammate) const;
+    void askForGeneralShow();
+    void showHiddenSkill(const QString &skill_name);
+    void showGeneral(bool head_general = true, bool trigger_event = true, bool sendLog = true);
+    void notifyPreshow();
+
+    void addToShownHandCards(const QList<int> &card_ids);
+    void removeShownHandCards(const QList<int> &card_ids, bool sendLog = false, bool moveFromHand = false);
+    void addBrokenEquips(const QList<int> &card_ids);
+    void removeBrokenEquips(const QList<int> &card_ids, bool sendLog = true, bool moveFromEquip = false);
+
     void copyFrom(ServerPlayer *sp);
 
     void startNetworkDelayTest();

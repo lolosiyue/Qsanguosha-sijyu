@@ -329,6 +329,12 @@ public:
 	bool isEquipsNullified(const Card*card) const;
     bool hasTurn() const;
 
+	QList<int> getShownHandcards() const;
+	bool isShownHandcard(int id) const;
+	QList<int> getBrokenEquips() const;
+	bool isBrokenEquip(int id) const;
+	bool isAbnormal() const;
+
 	bool isJilei(const Card*card, bool isHandcard = false) const;
 	bool isLocked(const Card*card, bool isHandcard = false) const;
 
@@ -898,6 +904,22 @@ struct DrawStruct {
 	QList<int> card_ids;//摸到的牌id表
 };
 
+struct ShownCardChangedStruct {
+	ShownCardChangedStruct();
+	ServerPlayer *player;
+	QList<int> ids;
+	bool shown;
+	bool moveFromHand;
+};
+
+struct BrokenEquipChangedStruct {
+	BrokenEquipChangedStruct();
+	ServerPlayer *player;
+	QList<int> ids;
+	bool broken;
+	bool moveFromEquip;
+};
+
 enum TriggerEvent {
 	NonTrigger,
 
@@ -1047,6 +1069,9 @@ enum TriggerEvent {
 	TurnBroken, // For the skill 'DanShou'. Do not use it to trigger events
 
 	EventForDiy, // For lua or diy to trigger special event
+
+	ShownCardChanged,
+	BrokenEquipChanged,
 
 	NumOfEvents
 };

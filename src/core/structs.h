@@ -275,6 +275,8 @@ struct CardsMoveOneTimeStruct {
     QList<bool> open; // helper to prevent sending card_id to unrelevant clients
     bool is_last_handcard;
     QStringList last_hand_suits;
+    QList<int> shown_ids;
+    QList<int> broken_ids;
 
     inline void removeCardIds(const QList<int>&to_remove)
     {
@@ -567,6 +569,22 @@ struct DrawStruct {
     QList<int> card_ids;
 };
 
+struct ShownCardChangedStruct {
+    ShownCardChangedStruct();
+    ServerPlayer *player;
+    QList<int> ids;
+    bool shown;
+    bool moveFromHand;
+};
+
+struct BrokenEquipChangedStruct {
+    BrokenEquipChangedStruct();
+    ServerPlayer *player;
+    QList<int> ids;
+    bool broken;
+    bool moveFromEquip;
+};
+
 enum TriggerEvent {
     NonTrigger,
 
@@ -730,6 +748,9 @@ enum TriggerEvent {
     EventSkillEffect,
     EventSkillEffectFinished,
 
+    ShownCardChanged,
+    BrokenEquipChanged,
+
     NumOfEvents
 };
 
@@ -752,4 +773,6 @@ Q_DECLARE_METATYPE(MarkStruct)
 Q_DECLARE_METATYPE(HpLostStruct)
 Q_DECLARE_METATYPE(MaxHpStruct)
 Q_DECLARE_METATYPE(DrawStruct)
+Q_DECLARE_METATYPE(ShownCardChangedStruct)
+Q_DECLARE_METATYPE(BrokenEquipChangedStruct)
 #endif

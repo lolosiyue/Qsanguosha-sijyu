@@ -326,6 +326,14 @@ public:
     bool isEquipsNullified(const Card *card) const;
     bool hasTurn() const;
 
+    QList<int> getShownHandcards() const;
+    void setShownHandcards(QList<int> &ids);
+    bool isShownHandcard(int id) const;
+    QList<int> getBrokenEquips() const;
+    void setBrokenEquips(QList<int> &ids);
+    bool isBrokenEquip(int id) const;
+    bool isAbnormal() const;
+
     inline bool isJilei(const Card *card, bool isHandcard = false) const
     {
         return isCardLimited(card, Card::MethodDiscard, isHandcard);
@@ -415,6 +423,8 @@ protected:
     QMap<QString, QHash<QString, QString> > description_s2k2v;
     QMap<QString, QHash<QString, QString> > card_description_swaps;
     QVariantMap tag;
+    QList<int> shown_handcards;
+    QList<int> broken_equips;
 
 private:
     QString screen_name;
@@ -457,6 +467,8 @@ signals:
     void kingdom_changed();
     void phase_changed();
     void owner_changed(bool owner);
+    void showncards_changed();
+    void brokenEquips_changed();
 };
 
 #endif
