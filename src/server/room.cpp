@@ -6664,130 +6664,130 @@ void Room::showGeneral(ServerPlayer *player, const QString &position)
 
 void Room::preparePlayers()
 {
-	foreach(ServerPlayer*player, m_players){
-		const General*gen = player->getGeneral();
-		if(!gen) continue;
-		player->setGender(gen->getGender());
-		foreach(const Skill*skill, gen->getSkillList()){
-			if(player->hasSkill(skill->objectName(),true)) continue;
-			player->addSkill(skill->objectName());
-			if (skill->inherits("ViewAsEquipSkill")){
-				const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(skill->objectName());
-				QString view = vaes->viewAsEquip(player);
-				if(view!=""){
-					foreach(QString equip_name, view.split(",")){
-						if (Sanguosha->getViewAsSkill(equip_name))
-							attachSkillToPlayer(player,equip_name);
-					}
-				}
-			}
-		}
-		gen = player->getGeneral2();
-		if (gen){
-			foreach(const Skill*skill, gen->getSkillList()){
-				if(player->hasSkill(skill->objectName(),true)) continue;
-				player->addSkill(skill->objectName());
-				if (skill->inherits("ViewAsEquipSkill")){
-					const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(skill->objectName());
-					QString view = vaes->viewAsEquip(player);
-					if(view!=""){
-						foreach(QString equip_name, view.split(",")){
-							if (Sanguosha->getViewAsSkill(equip_name))
-								attachSkillToPlayer(player,equip_name);
-						}
-					}
-				}
-			}
-		}
-	}
-	JsonArray args;
-	args << (int)QSanProtocol::S_GAME_EVENT_PREPARE_SKILL;
-	doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+    foreach(ServerPlayer*player, m_players){
+        const General*gen = player->getGeneral();
+        if(!gen) continue;
+        player->setGender(gen->getGender());
+        foreach(const Skill*skill, gen->getSkillList()){
+            if(player->hasSkill(skill->objectName(),true)) continue;
+            player->addSkill(skill->objectName(), true);
+            if (skill->inherits("ViewAsEquipSkill")){
+                const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(skill->objectName());
+                QString view = vaes->viewAsEquip(player);
+                if(view!=""){
+                    foreach(QString equip_name, view.split(",")){
+                        if (Sanguosha->getViewAsSkill(equip_name))
+                            attachSkillToPlayer(player,equip_name);
+                    }
+                }
+            }
+        }
+        gen = player->getGeneral2();
+        if (gen){
+            foreach(const Skill*skill, gen->getSkillList()){
+                if(player->hasSkill(skill->objectName(),true)) continue;
+                player->addSkill(skill->objectName(), false);
+                if (skill->inherits("ViewAsEquipSkill")){
+                    const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(skill->objectName());
+                    QString view = vaes->viewAsEquip(player);
+                    if(view!=""){
+                        foreach(QString equip_name, view.split(",")){
+                            if (Sanguosha->getViewAsSkill(equip_name))
+                                attachSkillToPlayer(player,equip_name);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    JsonArray args;
+    args << (int)QSanProtocol::S_GAME_EVENT_PREPARE_SKILL;
+    doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
 }
 
 void Room::changePlayerGeneral(ServerPlayer*player, const QString&new_general)
 {
-	const General*gen = player->getGeneral();
-	QStringList sks;
-	if (gen){
-		foreach(const Skill*skill, gen->getSkillList()){
-			sks << skill->objectName();
-			player->loseSkill(sks.last());
-			if (skill->isChangeSkill()){
-				foreach(QString mark, player->getMarkNames()){
-					if (mark.startsWith("&" + sks.last())&&mark.endsWith("_num"))
-						setPlayerMark(player, mark, 0);
-				}
-			}
-			QString limit_mark = skill->getLimitMark();
-			if(limit_mark!="") setPlayerMark(player,limit_mark,0);
-			if (skill->inherits("ViewAsEquipSkill")){
-				const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(sks.last());
-				QString view = vaes->viewAsEquip(player);
-				if(view.isEmpty()) continue;
-				foreach(QString equip_name, view.split(",")){
-					if (Sanguosha->getViewAsSkill(equip_name))
-						detachSkillFromPlayer(player,equip_name,true);
-				}
-			}
-		}
-	}
-	foreach(const Card*c, player->getCards("he")){
-		if (sks.contains(c->getSkillName()))
-			filterCards(player, QList<const Card*>() << c, true);
-	}
-	setPlayerProperty(player, "general", new_general);
-	gen = player->getGeneral();
-	player->setGender(gen->getGender());
-	setPlayerProperty(player,"kingdom",gen->getKingdom());
-	foreach(const Skill*skill, gen->getSkillList()){
-		if (player->hasSkill(skill->objectName(),true)) continue;
-		player->addSkill(skill->objectName());
-	}
-	filterCards(player, player->getCards("he"), false);
+    const General*gen = player->getGeneral();
+    QStringList sks;
+    if (gen){
+        foreach(const Skill*skill, gen->getSkillList()){
+            sks << skill->objectName();
+            player->loseSkill(sks.last(), true);
+            if (skill->isChangeSkill()){
+                foreach(QString mark, player->getMarkNames()){
+                    if (mark.startsWith("&" + sks.last())&&mark.endsWith("_num"))
+                        setPlayerMark(player, mark, 0);
+                }
+            }
+            QString limit_mark = skill->getLimitMark();
+            if(limit_mark!="") setPlayerMark(player,limit_mark,0);
+            if (skill->inherits("ViewAsEquipSkill")){
+                const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(sks.last());
+                QString view = vaes->viewAsEquip(player);
+                if(view.isEmpty()) continue;
+                foreach(QString equip_name, view.split(",")){
+                    if (Sanguosha->getViewAsSkill(equip_name))
+                        detachSkillFromPlayer(player,equip_name,true);
+                }
+            }
+        }
+    }
+    foreach(const Card*c, player->getCards("he")){
+        if (sks.contains(c->getSkillName()))
+            filterCards(player, QList<const Card*>() << c, true);
+    }
+    setPlayerProperty(player, "general", new_general);
+    gen = player->getGeneral();
+    player->setGender(gen->getGender());
+    setPlayerProperty(player,"kingdom",gen->getKingdom());
+    foreach(const Skill*skill, gen->getSkillList()){
+        if (player->hasSkill(skill->objectName(),true)) continue;
+        player->addSkill(skill->objectName(), true);
+    }
+    filterCards(player, player->getCards("he"), false);
 }
 
 void Room::changePlayerGeneral2(ServerPlayer*player, const QString&new_general)
-	{
-		const General*gen = player->getGeneral2();
-		QStringList sks;
-		if (gen){
-			foreach(const Skill*skill, gen->getSkillList()){
-				sks << skill->objectName();
-				player->loseSkill(sks.last());
-				if (skill->isChangeSkill()){
-					foreach(QString mark, player->getMarkNames()){
-						if (mark.startsWith("&" + sks.last())&&mark.endsWith("_num"))
-							setPlayerMark(player, mark, 0);
-					}
-				}
-				QString limit_mark = skill->getLimitMark();
-				if(limit_mark!="") setPlayerMark(player,limit_mark,0);
-				if (skill->inherits("ViewAsEquipSkill")){
-					const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(sks.last());
-					QString view = vaes->viewAsEquip(player);
-					if(view.isEmpty()) continue;
-					foreach(QString equip_name, view.split(",")){
-						if (Sanguosha->getViewAsSkill(equip_name))
-							detachSkillFromPlayer(player,equip_name,true);
-					}
-				}
-			}
-			foreach(const Card*c, player->getCards("he")){
-				if (sks.contains(c->getSkillName()))
-					filterCards(player, QList<const Card*>() << c, true);
-			}
-		}
-		setPlayerProperty(player, "general2", new_general);
-		gen = player->getGeneral2();
-		if (gen){
-			foreach(const Skill*skill, gen->getSkillList()){
-				if (player->hasSkill(skill->objectName(),true)) continue;
-				player->addSkill(skill->objectName());
-			}
-		}
-		filterCards(player, player->getCards("he"), false);
-	}
+{
+    const General*gen = player->getGeneral2();
+    QStringList sks;
+    if (gen){
+        foreach(const Skill*skill, gen->getSkillList()){
+            sks << skill->objectName();
+            player->loseSkill(sks.last(), false);
+            if (skill->isChangeSkill()){
+                foreach(QString mark, player->getMarkNames()){
+                    if (mark.startsWith("&" + sks.last())&&mark.endsWith("_num"))
+                        setPlayerMark(player, mark, 0);
+                }
+            }
+            QString limit_mark = skill->getLimitMark();
+            if(limit_mark!="") setPlayerMark(player,limit_mark,0);
+            if (skill->inherits("ViewAsEquipSkill")){
+                const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(sks.last());
+                QString view = vaes->viewAsEquip(player);
+                if(view.isEmpty()) continue;
+                foreach(QString equip_name, view.split(",")){
+                    if (Sanguosha->getViewAsSkill(equip_name))
+                        detachSkillFromPlayer(player,equip_name,true);
+                }
+            }
+        }
+        foreach(const Card*c, player->getCards("he")){
+            if (sks.contains(c->getSkillName()))
+                filterCards(player, QList<const Card*>() << c, true);
+        }
+    }
+    setPlayerProperty(player, "general2", new_general);
+    gen = player->getGeneral2();
+    if (gen){
+        foreach(const Skill*skill, gen->getSkillList()){
+            if (player->hasSkill(skill->objectName(),true)) continue;
+            player->addSkill(skill->objectName(), false);
+        }
+    }
+    filterCards(player, player->getCards("he"), false);
+}
 
 void Room::filterCards(ServerPlayer*player, QList<const Card*> cards, bool refilter)
 {

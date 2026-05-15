@@ -58,6 +58,15 @@ bool Skill::isShiMingSkill() const
     return shiming_skill;
 }
 
+bool Skill::canPreshow() const
+{
+    if (inherits("TriggerSkill")) {
+        const TriggerSkill *triskill = qobject_cast<const TriggerSkill *>(this);
+        return triskill && triskill->getViewAsSkill() == nullptr;
+    }
+    return false;
+}
+
 bool Skill::shouldBeVisible(const Player *Self) const
 {
     return Self != nullptr;

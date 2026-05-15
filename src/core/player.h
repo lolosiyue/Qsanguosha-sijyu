@@ -35,6 +35,8 @@ class Player : public QObject
     Q_PROPERTY(bool owner READ isOwner WRITE setOwner)
     Q_PROPERTY(bool role_shown READ hasShownRole WRITE setShownRole)
     Q_PROPERTY(General::Gender gender READ getGender WRITE setGender)
+    Q_PROPERTY(bool general_showed READ hasShownGeneral WRITE setGeneralShowed)
+    Q_PROPERTY(bool general2_showed READ hasShownGeneral2 WRITE setGeneral2Showed)
     //Q_PROPERTY(QList<int> equip_area READ getEquipAreas WRITE setEquipAreas)
     Q_PROPERTY(bool weapon_area READ hasWeaponArea WRITE setWeaponArea)
     Q_PROPERTY(bool armor_area READ hasArmorArea WRITE setArmorArea)
@@ -151,10 +153,14 @@ public:
 
     void acquireSkill(const QString &skill_name);
     void acquireSkill(const QString &skill_name, int instanceId);
+    void acquireSkill(const QString &skill_name, bool head, int instanceId);
     void detachSkill(const QString &skill_name);
+    void detachSkill(const QString &skill_name, bool head);
     void detachAllSkills();
     virtual void addSkill(const QString &skill_name);
+    virtual void addSkill(const QString &skill_name, bool head_skill);
     virtual void loseSkill(const QString &skill_name);
+    virtual void loseSkill(const QString &skill_name, bool head);
     bool hasSkill(const QString &skill_name, bool include_lose = false) const;
     bool hasSkill(const Skill *skill, bool include_lose = false) const;
     bool hasSkills(const QString &skill_name, bool include_lose = false) const;
@@ -375,8 +381,18 @@ public:
     bool hasShownOneGeneral() const;
     bool hasShownGeneral() const;
     bool hasShownGeneral2() const;
+    void setGeneralShowed(bool showed);
+    void setGeneral2Showed(bool showed);
     bool canShowGeneral(const QString &position) const;
     bool inHeadSkills(const QString &skill_name) const;
+    bool inDeputySkills(const QString &skill_name) const;
+    void setSkillPreshowed(const QString &skill, bool preshowed = true);
+    void setSkillsPreshowed(const QString &flag = "hd", bool preshowed = true);
+    bool hasPreshowedSkill(const QString &name) const;
+    bool hasPreshowedSkill(const Skill *skill) const;
+    bool hasShownSkill(const QString &skill_name) const;
+    bool hasShownSkill(const Skill *skill) const;
+    bool isHidden(bool head_general) const;
     virtual Player *getNextAlive(int n = 1) const = 0;
     virtual Player *getLastAlive(int n = 1) const = 0;
 
@@ -387,6 +403,11 @@ protected:
     QMap<QString, QStringList> general_piles;
     QMap<QString, QStringList> general_pile_open;
     QStringList skills, acquired_skills;
+    QMap<QString, bool> head_skills;
+    QMap<QString, bool> deputy_skills;
+    QSet<QString> head_acquired_skills, deputy_acquired_skills;
+    bool general_showed;
+    bool general2_showed;
     mutable QMutex m_skillCacheMutex;
     mutable QMap<QString, bool> m_skillValidityCache;
     QHash<QString, int> history;

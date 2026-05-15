@@ -84,6 +84,8 @@ public:
     }
     void speakToServer(const QString &text);
     ClientPlayer *getPlayer(const QString &name);
+    ClientPlayer *getNextPlayer(ClientPlayer *player) const;
+    ClientPlayer *getLastPlayer(ClientPlayer *player) const;
     bool save(const QString &filename) const;
     QList<QByteArray> getRecords() const;
     QString getReplayPath() const;

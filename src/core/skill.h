@@ -69,6 +69,7 @@ public:
     bool isLimitedSkill() const;
     bool isHideSkill() const;
     bool isShiMingSkill() const;
+    virtual bool canPreshow() const;
     virtual bool shouldBeVisible(const Player *Self) const;
     QString getDescription(const Player *target = nullptr) const;
     QString getOracleText(const Player *target = nullptr) const;

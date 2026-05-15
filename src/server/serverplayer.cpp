@@ -1090,10 +1090,49 @@ void ServerPlayer::loseAllHujias()
 
 void ServerPlayer::addSkill(const QString &skill_name)
 {
-	if(room->getMode() == "03_1v2"){
-		const Skill *skill = Sanguosha->getMainSkill(skill_name);
-		if (skill && skill->isLordSkill()) return;
-	}
+    if(room->getMode() == "03_1v1"){
+        const Skill *skill = Sanguosha->getMainSkill(skill_name);
+        if (skill && skill->isLordSkill()) return;
+    }
+
+    Player::addSkill(skill_name);
+    JsonArray args;
+    args << (int)QSanProtocol::S_GAME_EVENT_ADD_SKILL << objectName() << skill_name;
+    room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+    calculateUITooltips();
+}
+
+void ServerPlayer::addSkill(const QString &skill_name, bool head_skill)
+{
+    if(room->getMode() == "03_1v1"){
+        const Skill *skill = Sanguosha->getMainSkill(skill_name);
+        if (skill && skill->isLordSkill()) return;
+    }
+
+    Player::addSkill(skill_name, head_skill);
+    JsonArray args;
+    args << (int)QSanProtocol::S_GAME_EVENT_ADD_SKILL << objectName() << skill_name << head_skill;
+    room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+    calculateUITooltips();
+}
+
+void ServerPlayer::loseSkill(const QString &skill_name)
+{
+    Player::loseSkill(skill_name);
+    JsonArray args;
+    args << (int)QSanProtocol::S_GAME_EVENT_LOSE_SKILL << objectName() << skill_name;
+    room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+    calculateUITooltips();
+}
+
+void ServerPlayer::loseSkill(const QString &skill_name, bool head)
+{
+    Player::loseSkill(skill_name, head);
+    JsonArray args;
+    args << (int)QSanProtocol::S_GAME_EVENT_LOSE_SKILL << objectName() << skill_name << head;
+    room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+    calculateUITooltips();
+}
 
 	Player::addSkill(skill_name);
 	JsonArray args;
@@ -2400,9 +2439,92 @@ void ServerPlayer::askForGeneralShow()
 
 void ServerPlayer::showHiddenSkill(const QString &skill_name)
 {
-	if (inHeadSkills(skill_name))
-		room->showGeneral(this, "h");
-	else
-		room->showGeneral(this, "d");
+    if (inHeadSkills(skill_name))
+        room->showGeneral(this, "h");
+    else
+        room->showGeneral(this, "d");
+}
+
+void ServerPlayer::showGeneral(bool head_general, bool trigger_event, bool sendLog)
+{
+    QStringList names = room->getTag(objectName()).toStringList();
+    if (names.isEmpty())
+        return;
+
+    QString general_name;
+
+    if (head_general) {
+        if (getGeneralName() != "anjiang")
+            return;
+
+        setSkillsPreshowed("h");
+        notifyPreshow();
+        room->setPlayerProperty(this, "general_showed", true);
+
+        general_name = names.first();
+
+        JsonArray arg;
+        arg << (int)QSanProtocol::S_GAME_EVENT_CHANGE_HERO;
+        arg << objectName();
+        arg << general_name;
+        arg << false;
+        arg << false;
+        room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, arg);
+        room->changePlayerGeneral(this, general_name);
+
+        if (sendLog) {
+            LogMessage log;
+            log.type = "#ShowGeneral";
+            log.from = this;
+            log.arg = general_name;
+            room->sendLog(log);
+        }
+
+    } else {
+        if (getGeneral2Name() != "anjiang")
+            return;
+
+        setSkillsPreshowed("d");
+        notifyPreshow();
+        room->setPlayerProperty(this, "general2_showed", true);
+
+        general_name = names.last();
+
+        JsonArray arg;
+        arg << (int)QSanProtocol::S_GAME_EVENT_CHANGE_HERO;
+        arg << objectName();
+        arg << general_name;
+        arg << true;
+        arg << false;
+        room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, arg);
+        room->changePlayerGeneral2(this, general_name);
+
+        if (sendLog) {
+            LogMessage log;
+            log.type = "#ShowGeneral";
+            log.from = this;
+            log.arg = general_name;
+            room->sendLog(log);
+        }
+    }
+
+    calculateUITooltips();
+}
+
+void ServerPlayer::notifyPreshow()
+{
+    JsonArray args;
+    args << objectName();
+    
+    QMap<QString, bool> preshowMap;
+    foreach (const QString &skill, head_skills.keys()) {
+        preshowMap[skill] = head_skills.value(skill);
+    }
+    foreach (const QString &skill, deputy_skills.keys()) {
+        preshowMap[skill] = deputy_skills.value(skill);
+    }
+    args << QVariant::fromValue(preshowMap);
+    
+    room->doNotify(this, QSanProtocol::S_COMMAND_PRESHOW, args);
 }
 

@@ -1858,7 +1858,33 @@ void Client::onPlayerChooseAG(int card_id)
 
 QList<const ClientPlayer *> Client::getPlayers() const
 {
-	return m_players;
+    return m_players;
+}
+
+ClientPlayer *Client::getNextPlayer(ClientPlayer *player) const
+{
+    if (m_players.isEmpty() || player == nullptr)
+        return nullptr;
+    
+    int index = m_players.indexOf(player);
+    if (index == -1)
+        return nullptr;
+    
+    index = (index + 1) % m_players.length();
+    return const_cast<ClientPlayer *>(m_players.at(index));
+}
+
+ClientPlayer *Client::getLastPlayer(ClientPlayer *player) const
+{
+    if (m_players.isEmpty() || player == nullptr)
+        return nullptr;
+    
+    int index = m_players.indexOf(player);
+    if (index == -1)
+        return nullptr;
+    
+    index = (index - 1 + m_players.length()) % m_players.length();
+    return const_cast<ClientPlayer *>(m_players.at(index));
 }
 
 void Client::alertFocus()

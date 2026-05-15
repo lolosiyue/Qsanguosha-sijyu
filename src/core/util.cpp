@@ -121,6 +121,11 @@ bool isNormalGameMode(const QString &mode)
     return moderx.exactMatch(mode);
 }
 
+bool isHegemonyGameMode(const QString &mode)
+{
+    return mode.startsWith("hegemony");
+}
+
 DummyCard* dummyCard(const QList<int> &ids)
 {
     DummyCard*dc = new DummyCard(ids);
