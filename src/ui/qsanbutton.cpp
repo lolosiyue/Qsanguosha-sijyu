@@ -248,6 +248,12 @@ void QSanSkillButton::setSkill(const Skill *skill)
         _m_emitActivateSignal = true;
         _m_canDisable = true;
         _m_canEnable = true;
+    } else if (skill->inherits("BattleArraySkill")) {
+        setStyle(QSanButton::S_STYLE_TOGGLE);
+        setState(QSanButton::S_STATE_DISABLED);
+        _setSkillType(QSanInvokeSkillButton::S_SKILL_ARRAY);
+        _m_emitActivateSignal = true;
+        _m_emitDeactivateSignal = true;
     } else {
     Skill::Frequency freq = skill->getFrequency(Self);
     if (freq == Skill::Frequent

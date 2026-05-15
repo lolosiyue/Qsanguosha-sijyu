@@ -12,8 +12,8 @@
 Player::Player(QObject *parent)
     : QObject(parent), owner(false), general(nullptr), general2(nullptr),
     m_gender(General::Sexless), hp(-1), max_hp(-1), role("unknown"), state("online"),
-	seat(0), player_seat(0), alive(true), phase(NotActive),
-	//equip_area(QList<int>()), equips(QList<const EquipCard *>()),
+    seat(0), player_seat(0), alive(true), removed(false), phase(NotActive),
+    //equip_area(QList<int>()), equips(QList<const EquipCard *>()),
     //weapon(nullptr), armor(nullptr), defensive_horse(nullptr), offensive_horse(nullptr), treasure(nullptr),
     face_up(true), chained(false),
     //hasweaponarea(true), hasarmorarea(true), hasdefensivehorsearea(true), hasoffensivehorsearea(true), hastreasurearea(true),
@@ -1207,6 +1207,16 @@ void Player::setFaceUp(bool face_up)
     }
 }
 
+bool Player::isRemoved() const
+{
+    return removed;
+}
+
+void Player::setRemoved(bool removed)
+{
+    this->removed = removed;
+}
+
 int Player::getMaxCards() const
 {
     int origin = Sanguosha->correctMaxCards(this, true);
@@ -2375,5 +2385,113 @@ bool Player::hasLordSkillKingdom(const QString& targetKingdom, const Player *pla
         }
     }
     return kingdoms.contains(targetKingdom) || kingdoms.contains("all");
+}
+
+bool Player::isFriendWith(const Player *player, bool considerAnjiang) const
+{
+    Q_ASSERT(player);
+    if (this == player)
+        return true;
+
+    if (player == nullptr)
+        return false;
+
+    if (considerAnjiang) {
+        if (!player->hasShownOneGeneral() && this != player)
+            return false;
+    } else {
+        if (!hasShownOneGeneral() || !player->hasShownOneGeneral())
+            return false;
+    }
+    if (!Config.EnableHegemony)
+        return isYourFriend(player);
+
+    if (role == "careerist" || player->role == "careerist")
+        return false;
+
+    return role == player->role;
+}
+
+bool Player::willBeFriendWith(const Player *player) const
+{
+    if (this == player)
+        return true;
+    if (isFriendWith(player))
+        return true;
+    if (player == nullptr)
+        return false;
+    if (!player->hasShownOneGeneral())
+        return false;
+    if (!hasShownGeneral()) {
+        QString myRole = getRole();
+        int i = 1;
+        foreach (const Player *p, getSiblings()) {
+            if (p->getRole() == myRole) {
+                if (p->hasShownGeneral() && p->getRole() != "careerist")
+                    ++i;
+            }
+        }
+        if (i > (getSiblings().length() / 2))
+            return false;
+    }
+    return role == player->role;
+}
+
+QList<const Player *> Player::getFormation() const
+{
+    QList<const Player *> teammates;
+    teammates << this;
+    int n = aliveCount(false);
+    int num = n;
+    for (int i = 1; i < n; ++i) {
+        Player *target = getNextAlive(i);
+        if (isFriendWith(target))
+            teammates << target;
+        else {
+            num = i;
+            break;
+        }
+    }
+
+    n -= num;
+    for (int i = 1; i < n; ++i) {
+        Player *target = getLastAlive(i);
+        if (isFriendWith(target))
+            teammates << target;
+        else
+            break;
+    }
+
+    return teammates;
+}
+
+bool Player::hasShownOneGeneral() const
+{
+    return hasShownGeneral() || hasShownGeneral2();
+}
+
+bool Player::hasShownGeneral() const
+{
+    return property("general_showed").toBool();
+}
+
+bool Player::hasShownGeneral2() const
+{
+    return property("general2_showed").toBool();
+}
+
+bool Player::canShowGeneral(const QString &position) const
+{
+    if (position == "h")
+        return !hasShownGeneral();
+    else if (position == "d")
+        return getGeneral2() && !hasShownGeneral2();
+    return false;
+}
+
+bool Player::inHeadSkills(const QString &skill_name) const
+{
+    QStringList headSkills = property("head_skills").toStringList();
+    return headSkills.contains(skill_name);
 }
 

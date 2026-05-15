@@ -340,16 +340,27 @@ function sgs.CreatePreSelectionMetaSkill(spec)
 end
 
 function sgs.CreateAnytimeSkill(spec)
-	assert(type(spec.name)=="string")
-	local frequency = spec.frequency or sgs.Skill_NotFrequent
-	local skill = sgs.LuaAnytimeSkill(spec.name, frequency)
-	if spec.can_trigger then
-		skill.can_trigger = spec.can_trigger
-	end
-	if spec.on_trigger then
-		skill.on_trigger = spec.on_trigger
-	end
-	return skill
+    assert(type(spec.name)=="string")
+    local frequency = spec.frequency or sgs.Skill_NotFrequent
+    local skill = sgs.LuaAnytimeSkill(spec.name, frequency)
+    if spec.can_trigger then
+        skill.can_trigger = spec.can_trigger
+    end
+    if spec.on_trigger then
+        skill.on_trigger = spec.on_trigger
+    end
+    return skill
+end
+
+function sgs.CreateBattleArraySkill(spec)
+    assert(type(spec.name)=="string")
+    assert(type(spec.array_type)=="string")
+    local frequency = spec.frequency or sgs.Skill_NotFrequent
+    local skill = sgs.LuaBattleArraySkill(spec.name, spec.array_type, frequency)
+    if spec.on_summon then
+        skill.on_summon = spec.on_summon
+    end
+    return skill
 end
 
 --------------------------------------------

@@ -205,8 +205,9 @@ namespace QSanProtocol {
         S_GAME_EVENT_PAUSE,
         S_GAME_EVENT_REVEAL_PINDIAN,
         S_GAME_EVENT_CHANGE_BGM,
-		S_GAME_EVENT_AVATAR_ICON,
-		S_GAME_EVENT_SORT_HAND
+        S_GAME_EVENT_AVATAR_ICON,
+        S_GAME_EVENT_SORT_HAND,
+        S_GAME_EVENT_SHOW_GENERAL
     };
 
     enum AnimateType
@@ -222,8 +223,9 @@ namespace QSanProtocol {
 		S_ANIMATE_ICE,
 		S_ANIMATE_GOD,
 		S_ANIMATE_POISON,
-		S_ANIMATE_FLOWER,
-		S_ANIMATE_EGG
+        S_ANIMATE_FLOWER,
+        S_ANIMATE_EGG,
+        S_ANIMATE_BATTLEARRAY
     };
 
     enum Game3v3ChooseOrderCommand

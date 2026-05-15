@@ -364,8 +364,7 @@ QString General::getCompanions() const
     QStringList names;
     foreach (const QString &general, companions)
         names << Sanguosha->translate(general);
-    foreach (const QString &gname, Sanguosha->getAllGenerals()) {
-        const General *gnr = Sanguosha->getGeneral(gname);
+    foreach (const General *gnr, Sanguosha->getAllGenerals()) {
         if (gnr && gnr->companions.contains(objectName()))
             names << Sanguosha->translate(gnr->objectName());
     }

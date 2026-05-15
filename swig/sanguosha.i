@@ -351,10 +351,22 @@ public:
 	void setSkillDescriptionSwap(const char*skill_name, const char*key, const char*value);
 	QHash<QString, QString> getSkillDescriptionSwap(const char*skill_name) const;
 
-	static bool isNostalGeneral(const Player*p, const char*general_name);
-	bool hasLordSkillKingdom(const char*kingdom, const Player*player = nullptr) const;
+static bool isNostalGeneral(const Player*p, const char*general_name);
+    bool hasLordSkillKingdom(const char*kingdom, const Player*player = nullptr) const;
 
-	void drawCard(const Card*card);
+    bool isFriendWith(const Player *player, bool considerAnjiang = false) const;
+    bool willBeFriendWith(const Player *player) const;
+    QList<const Player *> getFormation() const;
+    bool hasShownOneGeneral() const;
+    bool hasShownGeneral() const;
+    bool hasShownGeneral2() const;
+    bool canShowGeneral(const QString &position) const;
+    bool inHeadSkills(const QString &skill_name) const;
+
+    bool isRemoved() const;
+    void setRemoved(bool removed);
+
+    void drawCard(const Card*card);
 	int getRandomHandCardId() const;
 	const Card*getRandomHandCard() const;
 };
@@ -370,12 +382,12 @@ public:
 
 	void removeTag(const char*tag_name) {
 		$self->removeTag(tag_name);
-	}
+    }
 };
 
 class ServerPlayer: public Player {
 public:
-	ServerPlayer(Room*room);
+    ServerPlayer(Room*room);
 
 	void setSocket(ClientSocket*socket);
 	void kick();
@@ -510,9 +522,17 @@ public:
 	QList<ServerPlayer*> getRandomTargets(const Card*card, QList<ServerPlayer*> players = QList<ServerPlayer*>());
 	void setSkillDescriptionSwap(const char*skill_name, const char*key, const char*value);
 	void setAvatarIcon(const char*avatar_name, bool small = false);
-	bool damageRevises(QVariant&data, int n);
+bool damageRevises(QVariant&data, int n);
 
-	QString getClientReplyString();
+    void summonFriends(const QString &type);
+    bool inSiegeRelation(const ServerPlayer *skill_owner, const ServerPlayer *victim) const;
+    bool inFormationRalation(ServerPlayer *teammate) const;
+    void askForGeneralShow();
+    void showHiddenSkill(const QString &skill_name);
+
+    ServerPlayer *getLastAlive(int n = 1) const;
+
+    QString getClientReplyString();
 	const QVariant&getClientReply() const;
 };
 

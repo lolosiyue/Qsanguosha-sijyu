@@ -11,9 +11,38 @@ ClientPlayer::ClientPlayer(Client *client)
 	mark_doc = new QTextDocument(this);
 }
 
-int ClientPlayer::aliveCount() const
+int ClientPlayer::aliveCount(bool includeRemoved) const
 {
-	return ClientInstance->alivePlayerCount();
+    if (includeRemoved)
+        return ClientInstance->alivePlayerCount();
+    int count = 0;
+    foreach (const Player *p, getSiblings()) {
+        if (p->isAlive() && !p->isRemoved())
+            ++count;
+    }
+    return count + (isAlive() && !isRemoved() ? 1 : 0);
+}
+
+ClientPlayer *ClientPlayer::getNextAlive(int n) const
+{
+    ClientPlayer *p = const_cast<ClientPlayer *>(this);
+    for (int i = 0; i < n; ++i) {
+        do {
+            p = ClientInstance->getNextPlayer(p);
+        } while (!p->isAlive() || p->isRemoved());
+    }
+    return p;
+}
+
+ClientPlayer *ClientPlayer::getLastAlive(int n) const
+{
+    ClientPlayer *p = const_cast<ClientPlayer *>(this);
+    for (int i = 0; i < n; ++i) {
+        do {
+            p = ClientInstance->getLastPlayer(p);
+        } while (!p->isAlive() || p->isRemoved());
+    }
+    return p;
 }
 
 bool ClientPlayer::useExactHandInfo() const

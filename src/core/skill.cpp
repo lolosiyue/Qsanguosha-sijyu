@@ -1086,3 +1086,83 @@ QVariant SkillContext::toVariant() const
     }
     return map;
 }
+
+BattleArraySkill::BattleArraySkill(const QString &name, const QString &type)
+    : TriggerSkill(name)
+    , array_type(type)
+{
+    if (!inherits("LuaBattleArraySkill"))
+        view_as_skill = new ArraySummonSkill(objectName());
+}
+
+void BattleArraySkill::summonFriends(ServerPlayer *player) const
+{
+    player->summonFriends(array_type);
+}
+
+ArraySummonSkill::ArraySummonSkill(const QString &name)
+    : ZeroCardViewAsSkill(name)
+{
+}
+
+const Card *ArraySummonSkill::viewAs() const
+{
+    QString name = objectName();
+    name[0] = name[0].toUpper();
+    name += "Summon";
+    Card *card = Sanguosha->cloneSkillCard(name);
+    card->setShowSkill(objectName());
+    return card;
+}
+
+bool ArraySummonSkill::isEnabledAtPlay(const Player *player) const
+{
+    if (player->getAliveSiblings().length() < 3)
+        return false;
+    if (player->hasFlag("Global_SummonFailed"))
+        return false;
+    if (!player->canShowGeneral(player->inHeadSkills(objectName()) ? "h" : "d"))
+        return false;
+    const BattleArraySkill *skill = qobject_cast<const BattleArraySkill *>(Sanguosha->getTriggerSkill(objectName()));
+    if (skill != nullptr) {
+        QString type = skill->getArrayType();
+
+        if (type == "Siege") {
+            if (player->willBeFriendWith(player->getNextAlive()) && player->willBeFriendWith(player->getLastAlive()))
+                return false;
+            if (!player->willBeFriendWith(player->getNextAlive())) {
+                if (!player->getNextAlive(2)->hasShownOneGeneral() && player->getNextAlive()->hasShownOneGeneral())
+                    return true;
+            }
+            if (!player->willBeFriendWith(player->getLastAlive()))
+                return !player->getLastAlive(2)->hasShownOneGeneral() && player->getLastAlive()->hasShownOneGeneral();
+
+        } else if (type == "Formation") {
+            int n = player->aliveCount(false);
+            int asked = n;
+            for (int i = 1; i < n; ++i) {
+                Player *target = player->getNextAlive(i);
+                if (player->isFriendWith(target))
+                    continue;
+                else if (!target->hasShownOneGeneral())
+                    return true;
+                else {
+                    asked = i;
+                    break;
+                }
+            }
+
+            n -= asked;
+            for (int i = 1; i < n; ++i) {
+                Player *target = player->getLastAlive(i);
+                if (player->isFriendWith(target))
+                    continue;
+                else if (!target->hasShownOneGeneral())
+                    return true;
+                else
+                    break;
+            }
+        }
+    }
+    return false;
+}

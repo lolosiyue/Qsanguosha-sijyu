@@ -13,7 +13,8 @@
 
 class CompanionVS;
 class CompanionEffect;
-extern TriggerSkill *CompanionEffectSkill;
+
+TriggerSkill *CompanionEffectSkill = nullptr;
 
 class Xiaoguo : public TriggerSkill
 {

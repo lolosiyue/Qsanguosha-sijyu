@@ -365,9 +365,16 @@ QList<int> ServerPlayer::forceToDiscard(int discard_num, bool include_equip, boo
 	return to_discard;
 }
 
-int ServerPlayer::aliveCount() const
+int ServerPlayer::aliveCount(bool includeRemoved) const
 {
-	return room->alivePlayerCount();
+    if (includeRemoved)
+        return room->alivePlayerCount();
+    int count = 0;
+    foreach (ServerPlayer *p, room->getAlivePlayers()) {
+        if (!p->isRemoved())
+            ++count;
+    }
+    return count;
 }
 
 /*int ServerPlayer::getHandcardNum() const
@@ -1181,12 +1188,12 @@ ServerPlayer *ServerPlayer::getNext() const
 
 ServerPlayer *ServerPlayer::getNextAlive(int n) const
 {
-	ServerPlayer *next = const_cast<ServerPlayer *>(this);
-	if (room->getAlivePlayers().length()<2) return next;
-	for (int i = 0; i < n; i++) {
-		do next = next->next; while (next->isDead() || (next != this && next->getMark("&heg_lure_tiger-Clear") > 0));
-	}
-	return next;
+    ServerPlayer *next = const_cast<ServerPlayer *>(this);
+    if (room->getAlivePlayers().length()<2) return next;
+    for (int i = 0; i < n; i++) {
+        do next = next->next; while (next->isDead() || (next != this && next->isRemoved()));
+    }
+    return next;
 }
 
 ServerPlayer *ServerPlayer::getNextGamePlayer(int n) const
@@ -1206,9 +1213,18 @@ ServerPlayer *ServerPlayer::getNextGamePlayer(int n) const
 
 ServerPlayer *ServerPlayer::getPreviousAlive(int n) const
 {
-	int count = aliveCount();
-	if (count < 2) return const_cast<ServerPlayer *>(this);
-	return getNextAlive(count - n);
+    int count = aliveCount();
+    if (count < 2) return const_cast<ServerPlayer *>(this);
+    return getNextAlive(count - n);
+}
+
+ServerPlayer *ServerPlayer::getLastAlive(int n) const
+{
+    ServerPlayer *p = const_cast<ServerPlayer *>(this);
+    for (int i = 0; i < n; ++i) {
+        p = getPreviousAlive(1);
+    }
+    return p;
 }
 
 
@@ -2235,5 +2251,158 @@ bool ServerPlayer::damageRevises(QVariant &data, int n)
 	damage.prevented = x<1;
 	data.setValue(damage);
 	return x<1;
+}
+
+bool ServerPlayer::inSiegeRelation(const ServerPlayer *skill_owner, const ServerPlayer *victim) const
+{
+	if (isFriendWith(victim) || !isFriendWith(skill_owner) || !victim->hasShownOneGeneral())
+		return false;
+	if (this == skill_owner)
+		return (getNextAlive() == victim && getNextAlive(2)->isFriendWith(this)) || (getPreviousAlive() == victim && getPreviousAlive(2)->isFriendWith(this));
+	else
+		return (getNextAlive() == victim && getNextAlive(2) == skill_owner) || (getPreviousAlive() == victim && getPreviousAlive(2) == skill_owner);
+}
+
+bool ServerPlayer::inFormationRalation(ServerPlayer *teammate) const
+{
+	QList<const Player *> teammates = getFormation();
+	return teammates.length() > 1 && teammates.contains(teammate);
+}
+
+void ServerPlayer::summonFriends(const QString &type)
+{
+	room->tryPause();
+
+	if (aliveCount() < 4)
+		return;
+	LogMessage log;
+	log.type = "#InvokeSkill";
+	log.from = this;
+	log.arg = "GameRule_AskForArraySummon";
+	room->sendLog(log);
+	LogMessage log2;
+	log2.type = "#SummonType";
+	log2.arg = (type == "Siege") ? "summon_type_siege" : "summon_type_formation";
+	room->sendLog(log2);
+
+	if (type == "Siege") {
+		if (isFriendWith(getNextAlive()) && isFriendWith(getPreviousAlive()))
+			return;
+		bool failed = true;
+		if (!isFriendWith(getNextAlive()) && getNextAlive()->hasShownOneGeneral()) {
+			ServerPlayer *target = getNextAlive(2);
+			if (!target->hasShownOneGeneral()) {
+				QString prompt = target->willBeFriendWith(this) ? "SiegeSummon" : "SiegeSummon!";
+				bool success = room->askForSkillInvoke(target, prompt);
+				LogMessage log;
+				log.type = "#SummonResult";
+				log.from = target;
+				log.arg = success ? "summon_success" : "summon_failed";
+				room->sendLog(log);
+				if (success) {
+					target->askForGeneralShow();
+					failed = false;
+				}
+			}
+		}
+		if (!isFriendWith(getPreviousAlive()) && getPreviousAlive()->hasShownOneGeneral()) {
+			ServerPlayer *target = getPreviousAlive(2);
+			if (!target->hasShownOneGeneral()) {
+				QString prompt = target->willBeFriendWith(this) ? "SiegeSummon" : "SiegeSummon!";
+				bool success = room->askForSkillInvoke(target, prompt);
+				LogMessage log;
+				log.type = "#SummonResult";
+				log.from = target;
+				log.arg = success ? "summon_success" : "summon_failed";
+				room->sendLog(log);
+				if (success) {
+					target->askForGeneralShow();
+					failed = false;
+				}
+			}
+		}
+		if (failed)
+			room->setPlayerFlag(this, "Global_SummonFailed");
+
+	} else if (type == "Formation") {
+		int n = aliveCount(false);
+		int asked = n;
+		bool failed = true;
+		for (int i = 1; i < n; ++i) {
+			ServerPlayer *target = getNextAlive(i);
+			if (isFriendWith(target))
+				continue;
+			else if (!target->hasShownOneGeneral()) {
+				QString prompt = target->willBeFriendWith(this) ? "FormationSummon" : "FormationSummon!";
+				bool success = room->askForSkillInvoke(target, prompt);
+				LogMessage log;
+				log.type = "#SummonResult";
+				log.from = target;
+				log.arg = success ? "summon_success" : "summon_failed";
+				room->sendLog(log);
+
+				if (success) {
+					target->askForGeneralShow();
+					room->doBattleArrayAnimate(target);
+					failed = false;
+					break;
+				}
+			} else {
+				asked = i;
+				break;
+			}
+		}
+
+		if (failed) {
+			n -= asked;
+			for (int i = 1; i < n; ++i) {
+				ServerPlayer *target = getPreviousAlive(i);
+				if (isFriendWith(target))
+					continue;
+				else if (!target->hasShownOneGeneral()) {
+					QString prompt = target->willBeFriendWith(this) ? "FormationSummon" : "FormationSummon!";
+					bool success = room->askForSkillInvoke(target, prompt);
+					LogMessage log;
+					log.type = "#SummonResult";
+					log.from = target;
+					log.arg = success ? "summon_success" : "summon_failed";
+					room->sendLog(log);
+
+					if (success) {
+						target->askForGeneralShow();
+						room->doBattleArrayAnimate(target);
+						break;
+					}
+				} else
+					break;
+			}
+		}
+	}
+}
+
+void ServerPlayer::askForGeneralShow()
+{
+	if (hasShownGeneral() && hasShownGeneral2())
+		return;
+	QStringList choices;
+	if (!hasShownGeneral())
+		choices << "showhead";
+	if (!hasShownGeneral2() && getGeneral2())
+		choices << "showdeputy";
+	if (choices.isEmpty())
+		return;
+	QString choice = room->askForChoice(this, "GameRule_AskForGeneralShow", choices.join("+"));
+	if (choice == "showhead")
+		room->showGeneral(this, "h");
+	else if (choice == "showdeputy")
+		room->showGeneral(this, "d");
+}
+
+void ServerPlayer::showHiddenSkill(const QString &skill_name)
+{
+	if (inHeadSkills(skill_name))
+		room->showGeneral(this, "h");
+	else
+		room->showGeneral(this, "d");
 }
 

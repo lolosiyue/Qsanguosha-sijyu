@@ -32,7 +32,9 @@ public:
     QString getGameMode() const;
 
     void setFlags(const QString &flag);
-    int aliveCount() const;
+    int aliveCount(bool includeRemoved = false) const;
+    ClientPlayer *getNextAlive(int n = 1) const;
+    ClientPlayer *getLastAlive(int n = 1) const;
     int getHandcardNum() const override;
     void removeCard(int id, Place place);
     void addCard(int id, Place place);

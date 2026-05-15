@@ -135,7 +135,10 @@ public:
     bool faceUp() const;
     void setFaceUp(bool face_up);
 
-    virtual int aliveCount() const = 0;
+    bool isRemoved() const;
+    void setRemoved(bool removed);
+
+    virtual int aliveCount(bool includeRemoved = false) const = 0;
     void setFixedDistance(const Player *player, int distance);
     void removeFixedDistance(const Player *player, int distance);
     void insertAttackRangePair(const Player *player);
@@ -366,6 +369,17 @@ public:
     
     bool hasLordSkillKingdom(const QString &kingdom, const Player *player = nullptr) const;
 
+    bool isFriendWith(const Player *player, bool considerAnjiang = false) const;
+    bool willBeFriendWith(const Player *player) const;
+    QList<const Player *> getFormation() const;
+    bool hasShownOneGeneral() const;
+    bool hasShownGeneral() const;
+    bool hasShownGeneral2() const;
+    bool canShowGeneral(const QString &position) const;
+    bool inHeadSkills(const QString &skill_name) const;
+    virtual Player *getNextAlive(int n = 1) const = 0;
+    virtual Player *getLastAlive(int n = 1) const = 0;
+
 
 protected:
     QMap<QString, int> marks;
@@ -390,6 +404,7 @@ private:
     QString kingdom, role, state;
     int seat, player_seat;
     bool alive;
+    bool removed;
 
     Phase phase;
     QList<int> equip_area;
