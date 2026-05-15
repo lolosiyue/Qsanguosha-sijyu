@@ -1134,22 +1134,6 @@ void ServerPlayer::loseSkill(const QString &skill_name, bool head)
     calculateUITooltips();
 }
 
-	Player::addSkill(skill_name);
-	JsonArray args;
-	args << (int)QSanProtocol::S_GAME_EVENT_ADD_SKILL << objectName() << skill_name;
-	room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
-	calculateUITooltips();
-}
-
-void ServerPlayer::loseSkill(const QString &skill_name)
-{
-	Player::loseSkill(skill_name);
-	JsonArray args;
-	args << (int)QSanProtocol::S_GAME_EVENT_LOSE_SKILL << objectName() << skill_name;
-	room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
-	calculateUITooltips();
-}
-
 void ServerPlayer::setGender(General::Gender gender)
 {
 	if (gender == getGender())
@@ -2551,7 +2535,7 @@ void ServerPlayer::addToShownHandCards(const QList<int> &card_ids)
 	LogMessage log;
 	log.type = "$AddShownHand";
 	log.from = this;
-	log.card_str = IntList2StringList(add_ids).join("+");
+	log.card_str = ListI2S(add_ids).join("+");
 	room->sendLog(log);
 	foreach (int id, add_ids)
 		room->showCard(this, id);
@@ -2589,7 +2573,7 @@ void ServerPlayer::removeShownHandCards(const QList<int> &card_ids, bool sendLog
 		LogMessage log;
 		log.type = "$RemoveShownHand";
 		log.from = this;
-		log.card_str = IntList2StringList(removed_ids).join("+");
+		log.card_str = ListI2S(removed_ids).join("+");
 		room->sendLog(log);
 		room->getThread()->delay();
 	}
@@ -2629,7 +2613,7 @@ void ServerPlayer::addBrokenEquips(const QList<int> &card_ids)
 	LogMessage log;
 	log.type = "$AddBrokenEquip";
 	log.from = this;
-	log.card_str = IntList2StringList(add_ids).join("+");
+	log.card_str = ListI2S(add_ids).join("+");
 	room->sendLog(log);
 	room->getThread()->delay();
 
@@ -2663,7 +2647,7 @@ void ServerPlayer::removeBrokenEquips(const QList<int> &card_ids, bool sendLog, 
 		LogMessage log;
 		log.type = "$RemoveBrokenEquip";
 		log.from = this;
-		log.card_str = IntList2StringList(removed_ids).join("+");
+		log.card_str = ListI2S(removed_ids).join("+");
 		room->sendLog(log);
 		room->getThread()->delay();
 	}
