@@ -691,6 +691,15 @@ void Dashboard::_addHandCard(CardItem *card_item, bool prepend, const QString &f
     connect(card_item, SIGNAL(thrown()), this, SLOT(onCardItemThrown()));
     connect(card_item, SIGNAL(enter_hover()), this, SLOT(onCardItemHover()));
     connect(card_item, SIGNAL(leave_hover()), this, SLOT(onCardItemLeaveHover()));
+    connect(card_item, SIGNAL(mark_changed()), this, SLOT(onMarkChanged()));
+
+    if (!footnote.isEmpty())
+        card_item->setFootnote(footnote);
+
+    if (m_player != nullptr && m_player->isShownHandcard(card_item->getCard()->getEffectiveId())) {
+        card_item->setFootnote(Sanguosha->translate("shown_card"));
+        card_item->showFootnote();
+    }
 }
 
 void Dashboard::selectCard(const QString &pattern, bool forward, bool multiple)

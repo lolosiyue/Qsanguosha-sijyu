@@ -159,6 +159,8 @@ public:
     void updateCardDescription(const QVariant &arg);
 
     void handleAnytimeSkillDone(const QVariant &arg);
+    void setShownHandCards(const QVariant &arg);
+    void setBrokenEquips(const QVariant &arg);
 
     void askForQml(const QVariant &arg);
     void replyQml(const QVariant &result);

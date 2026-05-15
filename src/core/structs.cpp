@@ -116,3 +116,13 @@ QString GameModeStruct::toString() const
             .arg(roles, rule_mode)
             .arg(shuffle_roles ? "true" : "false");
 }
+
+ShownCardChangedStruct::ShownCardChangedStruct()
+    : player(nullptr), shown(false), moveFromHand(false)
+{
+}
+
+BrokenEquipChangedStruct::BrokenEquipChangedStruct()
+    : player(nullptr), broken(false), moveFromEquip(false)
+{
+}

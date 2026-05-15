@@ -26,6 +26,7 @@ GameRule::GameRule(QObject *)
         << ConfirmDamage << DamageCaused << DamageDone << DamageComplete
         << StartJudge << FinishRetrial << FinishJudge
         << ChoiceMade
+        << BeforeCardsMove
         << CardsMoveOneTime;
 }
 
@@ -1258,6 +1259,34 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
             foreach (QString flag,p->getFlagList()) {
                 if(flag.endsWith("Failed"))
                     room->setPlayerFlag(p,"-" + flag);
+            }
+        }
+        break;
+    }
+    case BeforeCardsMove: {
+        CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+        ServerPlayer *player = qobject_cast<ServerPlayer *>(move.from);
+        if (player != nullptr) {
+            QList<int> shownIds;
+            foreach (int id, move.card_ids) {
+                if (player->isShownHandcard(id))
+                    shownIds << id;
+            }
+            if (!shownIds.isEmpty()) {
+                player->removeShownHandCards(shownIds, false, true);
+                move.shown_ids = shownIds;
+                data = QVariant::fromValue(move);
+            }
+
+            QList<int> brokenIds;
+            foreach (int id, move.card_ids) {
+                if (player->isBrokenEquip(id))
+                    brokenIds << id;
+            }
+            if (!brokenIds.isEmpty()) {
+                player->removeBrokenEquips(brokenIds, false, true);
+                move.broken_ids = brokenIds;
+                data = QVariant::fromValue(move);
             }
         }
         break;
