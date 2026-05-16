@@ -757,7 +757,10 @@ void Player::addSkill(const QString &skill_name, bool head_skill)
 {
     const Skill *skill = Sanguosha->getSkill(skill_name);
     if (!skill) return;
-    
+
+    if (!skills.contains(skill_name))
+        skills << skill_name;
+
     if (head_skill) {
         head_skills[skill_name] = !skill->canPreshow() || general_showed;
     } else {

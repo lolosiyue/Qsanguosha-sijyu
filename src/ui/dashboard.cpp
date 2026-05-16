@@ -218,6 +218,8 @@ void Dashboard::bindPlayer(ClientPlayer *player)
     m_player = m_currentPlayer;
     PlayerCardContainer::setPlayer(m_currentPlayer);
 
+    connect(m_currentPlayer, SIGNAL(Mark_changed(QString, int)), this, SLOT(updateMark(QString, int)));
+
     QList<CardItem *> card_items = _createCards(m_currentPlayer->handCards());
     for (int i = 0; i < m_handCards.length(); i++)
         delete m_handCards[i];
