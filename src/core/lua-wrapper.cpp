@@ -492,6 +492,29 @@ LuaTreasure *LuaTreasure::clone(Card::Suit suit, int number) const
     return new_card;
 }
 
+LuaCardActionButton::LuaCardActionButton(const QString &name)
+    : m_name(name), m_actionMode(0), filter(0), on_click(0)
+{
+}
+
+LuaCardActionButton::~LuaCardActionButton()
+{
+}
+
+void LuaCardActionButton::setIcon(const QString &iconName)
+{
+    m_iconName = iconName;
+}
+
+void LuaCardActionButton::setTooltip(const QString &tooltip)
+{
+    m_tooltip = tooltip;
+}
+
+void LuaCardActionButton::setActionMode(int mode)
+{
+    m_actionMode = mode;
+}
 
 LuaScenarioRule::LuaScenarioRule(Scenario *scenario)
     : ScenarioRule(scenario), can_trigger(0), on_trigger(0)

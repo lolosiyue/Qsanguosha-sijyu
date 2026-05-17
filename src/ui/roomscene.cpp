@@ -42,6 +42,8 @@
 #include "distanceviewdialog.h"
 #include "maxcardsviewdialog.h"
 #include "oracle_helper.h"
+#include "lua-wrapper.h"
+#include "lua.hpp"
 #include <QOpenGLWidget>
 #include <QMutexLocker>
 #include <QSet>
@@ -167,6 +169,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(dashboard,SIGNAL(card_selected(const Card*)),this,SLOT(enableTargets(const Card*)));
 	connect(dashboard,SIGNAL(card_to_use()),this,SLOT(doOkButton()));
 	connect(dashboard,SIGNAL(dialogOptionSelectionChanged(bool)),this,SLOT(onDialogOptionSelectionChanged(bool)));
+	connect(dashboard,SIGNAL(cardActionButtonClicked(QString,int)),this,SLOT(onCardActionButtonClicked(QString,int)));
 	//connect(dashboard,SIGNAL(add_equip_skill(const Skill*,bool)),this,SLOT(addSkillButton(const Skill*,bool)));
 	//connect(dashboard,SIGNAL(remove_equip_skill(QString)),this,SLOT(detachSkill(QString)));
 
@@ -3383,6 +3386,9 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 		else
 			enterOnsoleContext(onsole_target);
 	}
+
+	dashboard->updateTransferButtons();
+
 	foreach (QSanSkillButton*button,m_skillButtons){
 		const ViewAsSkill*vsSkill = button->getViewAsSkill();
 		if(vsSkill){
@@ -6521,5 +6527,89 @@ void RoomScene::showGeneralPile(const QString &tag_name) {
 	HuashenDialog *dialog = new HuashenDialog(tag_name);
 	dialog->setAttribute(Qt::WA_DeleteOnClose);
     dialog->popup();
+}
+
+void RoomScene::onCardActionButtonClicked(const QString &buttonId, int cardId)
+{
+	CardItem *cardItem = nullptr;
+	foreach (CardItem *item, dashboard->getHandCards()) {
+		if (item->getId() == cardId) {
+			cardItem = item;
+			break;
+		}
+	}
+
+	if (!cardItem)
+		return;
+
+	CardActionButton *button = nullptr;
+	foreach (CardActionButton *btn, cardItem->getActionButtons()) {
+		if (btn->getButtonId() == buttonId) {
+			button = btn;
+			break;
+		}
+	}
+
+	if (!button)
+		return;
+
+	if (buttonId == "transfer") {
+		Sanguosha->getTransfer()->setToSelect(cardId);
+
+		foreach (CardItem *item, dashboard->getHandCards()) {
+			foreach (CardActionButton *btn, item->getActionButtons()) {
+				if (btn->getButtonId() == "transfer" && btn != button && btn->isDown())
+					btn->setState(QSanButton::S_STATE_UP);
+			}
+		}
+
+		dashboard->startPending(Sanguosha->getTransfer());
+		dashboard->unselectAll();
+		dashboard->addPending(cardItem);
+		dashboard->selectCard(cardItem, true);
+		dashboard->updatePending();
+		dashboard->adjustCards();
+		cancel_button->setEnabled(true);
+		return;
+	}
+
+	CardActionButton::ActionMode mode = button->getActionMode();
+	int luaCallback = button->getLuaCallback();
+	QString callbackKey = button->getCallbackKey();
+
+	if (luaCallback != 0) {
+		lua_State *L = ClientInstance->getLuaState();
+		if (L) {
+			LuaLocker locker;
+			lua_rawgeti(L, LUA_REGISTRYINDEX, luaCallback);
+			lua_pushstring(L, buttonId.toUtf8().constData());
+			lua_pushinteger(L, cardId);
+			lua_pushinteger(L, mode);
+			if (lua_pcall(L, 3, 0, 0) != 0) {
+				QString error = lua_tostring(L, -1);
+				lua_pop(L, 1);
+			}
+		}
+	} else if (!callbackKey.isEmpty()) {
+		lua_State *L = ClientInstance->getLuaState();
+		if (L) {
+			LuaLocker locker;
+			lua_getglobal(L, "sgs");
+			lua_getfield(L, -1, "GetCardActionButtonCallback");
+			lua_remove(L, -2);
+			lua_pushstring(L, callbackKey.toUtf8().constData());
+			if (lua_pcall(L, 1, 1, 0) == 0 && lua_isfunction(L, -1)) {
+				lua_pushstring(L, buttonId.toUtf8().constData());
+				lua_pushinteger(L, cardId);
+				lua_pushinteger(L, mode);
+				if (lua_pcall(L, 3, 0, 0) != 0) {
+					QString error = lua_tostring(L, -1);
+					lua_pop(L, 1);
+				}
+			} else {
+				lua_pop(L, 1);
+			}
+		}
+	}
 }
 

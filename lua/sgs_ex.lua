@@ -428,6 +428,9 @@ function sgs.CreateBasicCard(spec)
 	if type(spec.is_gift)=="boolean" then
 		card:setGift(spec.is_gift)
 	end
+	if type(spec.is_transferable)=="boolean" then
+		card:setTransferable(spec.is_transferable)
+	end
 	if type(spec.single_target)=="boolean" then
 		card:setSingleTargetCard(spec.single_target)
 	end
@@ -719,6 +722,7 @@ function sgs.CreateTrickCard(spec)
 	if type(spec.can_recast)=="boolean" then card:setCanRecast(spec.can_recast) end
 	if type(spec.damage_card)=="boolean" then card:setDamageCard(spec.damage_card) end
 	if type(spec.is_gift)=="boolean" then card:setGift(spec.is_gift) end
+	if type(spec.is_transferable)=="boolean" then card:setTransferable(spec.is_transferable) end
 	if type(spec.single_target)=="boolean" then card:setSingleTargetCard(spec.single_target) end
 	if type(spec.subclass)=="number" then card:setSubClass(spec.subclass)
 	else card:setSubClass(sgs.LuaTrickCard_TypeNormal) end
@@ -844,6 +848,7 @@ function sgs.CreateEquipCard(spec)
 	assert(card)
 	if spec.equip_skill then addToSkills(spec.equip_skill) end
 	if type(spec.is_gift)=="boolean" then card:setGift(spec.is_gift) end
+	if type(spec.is_transferable)=="boolean" then card:setTransferable(spec.is_transferable) end
 	if type(spec.target_fixed)=="boolean" then card:setTargetFixed(spec.target_fixed)end
 	--if type(spec.feasible)=="function" then
 		card.feasible = spec.feasible
@@ -895,4 +900,65 @@ function sgs.LoadTranslationTable(t)
 	for key,value in pairs(t)do
 		sgs.AddTranslationEntry(key,value)
 	end
+end
+
+function sgs.CreateCardActionButton(spec)
+	assert(type(spec.name) == "string", "CardActionButton name must be a string")
+	local button = sgs.LuaCardActionButton(spec.name)
+	
+	if spec.icon then
+		assert(type(spec.icon) == "string", "CardActionButton icon must be a string")
+		button:setIcon(spec.icon)
+	end
+	
+	if spec.tooltip then
+		button:setTooltip(spec.tooltip)
+	end
+	
+	if spec.action_mode then
+		button:setActionMode(spec.action_mode)
+	end
+	
+	if spec.filter then
+		assert(type(spec.filter) == "function", "CardActionButton filter must be a function")
+		button.filter = spec.filter
+	end
+	
+	if spec.on_click then
+		assert(type(spec.on_click) == "function", "CardActionButton on_click must be a function")
+		button.on_click = spec.on_click
+	end
+	
+	return button
+end
+
+sgs._card_action_callbacks = {}
+
+function sgs.SetCardActionButtons(card, buttons)
+	if not card or type(buttons) ~= "table" then return end
+	
+	local cardName = card:objectName()
+	local buttonDefs = {}
+	
+	for _, btn in ipairs(buttons) do
+		local name = btn.name or "button"
+		local icon = btn.icon or ""
+		local tooltip = btn.tooltip or ""
+		local actionMode = btn.action_mode or 0
+		local callbackKey = ""
+		
+		if btn.on_click and type(btn.on_click) == "function" then
+			callbackKey = cardName .. "_" .. name
+			sgs._card_action_callbacks[callbackKey] = btn.on_click
+		end
+		
+		local def = string.format("%s|%s|%s|%d|%s", name, icon, tooltip, actionMode, callbackKey)
+		table.insert(buttonDefs, def)
+	end
+	
+	card:setTag("action_buttons", sgs.QVariant(buttonDefs))
+end
+
+function sgs.GetCardActionButtonCallback(key)
+	return sgs._card_action_callbacks[key]
 end

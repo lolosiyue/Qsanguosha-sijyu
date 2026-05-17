@@ -97,4 +97,29 @@ private:
     ChoosePlayerCard *card;
 };
 
+class TransferCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE TransferCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void onUse(Room *room, const CardUseStruct &card_use) const;
+};
+
+class TransferSkill : public OneCardViewAsSkill
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE TransferSkill();
+    void setToSelect(int cardId);
+    bool viewFilter(const Card *to_select) const;
+    const Card *viewAs(const Card *originalCard) const;
+    bool isAvailable(const Player *player, const Card *card) const;
+
+private:
+    int m_toSelect;
+};
+
 #endif

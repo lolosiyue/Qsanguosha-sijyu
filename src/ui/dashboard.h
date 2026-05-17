@@ -91,6 +91,10 @@ public:
     QList<CardItem *> removeCardItems(const QList<int> &card_ids, Player::Place place);
     virtual QList<CardItem *> cloneCardItems(QList<int> card_ids);
 
+    void setCardTransferable(CardItem *card, bool transferable);
+    void updateTransferButtons();
+    void updateCustomActionButtons(CardItem *card);
+
     // pending operations
     void startPending(const ViewAsSkill *skill);
     void stopPending();
@@ -113,6 +117,10 @@ public:
     inline QList<CardItem *> getPendings() const
     {
         return pendings;
+    }
+    inline QList<CardItem *> getHandCards() const
+    {
+        return m_handCards;
     }
     inline bool hasHandCard(CardItem *item) const
     {
@@ -341,6 +349,7 @@ signals:
     void card_to_use();
     void dialogOptionSelectionChanged(bool hasSelection);
     void progressBarTimedOut();
+    void cardActionButtonClicked(const QString &buttonId, int cardId);
 };
 
 #endif

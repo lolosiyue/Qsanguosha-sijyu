@@ -24,7 +24,7 @@ static unsigned int cardId = 0;
 
 Card::Card(Suit suit, int number, bool target_fixed, bool damage_card, bool is_gift, bool single_target)
 	:target_fixed(target_fixed), mute(false), will_throw(true), has_preact(false), can_recast(false),
-	m_suit(suit), m_number(number), m_id(--cardId), is_gift(is_gift), damage_card(damage_card),
+	m_suit(suit), m_number(number), m_id(--cardId), is_gift(is_gift), is_transferable(false), damage_card(damage_card),
 	single_target(single_target),handling_method(MethodUse)
 {
 }
@@ -375,6 +375,17 @@ void Card::setGift(bool flag)
 {
 	if (this->is_gift != flag)
 		this->is_gift = flag;
+}
+
+bool Card::isTransferable() const
+{
+	return getRealCard()->is_transferable;
+}
+
+void Card::setTransferable(bool flag)
+{
+	if (this->is_transferable != flag)
+		this->is_transferable = flag;
 }
 
 bool Card::isDamageCard() const

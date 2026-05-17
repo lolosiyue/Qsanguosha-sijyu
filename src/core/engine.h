@@ -33,6 +33,7 @@ class Scenario;
 class CardPattern;
 class RoomState;
 class ExpPattern;
+class TransferSkill;
 
 struct EasyTextItem {
     QString text;
@@ -121,6 +122,7 @@ public:
     QList<const Skill *> getRelatedSkills(const QString &skill_name) const;
     const Skill *getMainSkill(const QString &skill_name) const;
     
+    TransferSkill *getTransfer();
 
     QStringList getModScenarioNames() const;
     void addScenario(Scenario *scenario);
@@ -256,6 +258,7 @@ private:
     QStringList extra_hidden_generals, removed_hidden_generals;
     QStringList extra_default_lords, removed_default_lords;
     QStringList lord_list, ZhinangCards;
+    TransferSkill *m_transfer;
 
 #ifdef LOGNETWORK
 signals:

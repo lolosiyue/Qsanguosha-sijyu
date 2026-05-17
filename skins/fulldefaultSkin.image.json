@@ -137,6 +137,7 @@
 "button-replay": "image/system/button/replay/%1/%2.png",
 "button-card_container": "image/system/button/card_container/%1/%2.png",
 "button-player_container": "image/system/button/player_container/%1/%2.png",
+"button-carditem": "image/system/button/carditem/%1/%2.png",
 
 // icons
 "saveMe": "image/system/death/save-me.png",

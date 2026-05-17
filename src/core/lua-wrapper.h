@@ -830,8 +830,6 @@ public:
     Q_INVOKABLE LuaTreasure(Card::Suit suit, int number, const QString &obj_name, const QString &class_name);
     LuaTreasure *clone(Card::Suit suit = Card::SuitToBeDecided, int number = -1) const;
 
-    // member functions that do not expose to Lua interpreter
-
     bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const;
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
     bool isAvailable(const Player *player) const;
@@ -854,7 +852,6 @@ public:
         this->target_fixed = target_fixed;
     }
 
-    // the lua callbacks
     LuaFunction filter;
     LuaFunction feasible;
     LuaFunction available;
@@ -864,6 +861,26 @@ public:
 private:
     QStringList class_names;
     QString class_name;
+};
+
+class LuaCardActionButton
+{
+public:
+    LuaCardActionButton(const QString &name);
+    ~LuaCardActionButton();
+
+    void setIcon(const QString &iconName);
+    void setTooltip(const QString &tooltip);
+    void setActionMode(int mode);
+
+    LuaFunction filter;
+    LuaFunction on_click;
+
+private:
+    QString m_name;
+    QString m_iconName;
+    QString m_tooltip;
+    int m_actionMode;
 };
 
 #endif
