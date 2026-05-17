@@ -295,6 +295,9 @@ public:
         QColor graphicsBoxBackgroundColor;
         QColor graphicsBoxBorderColor;
         QSanSimpleTextFont graphicsBoxTitleFont;
+
+        //GuanxingBox
+        QSanSimpleTextFont m_chooseGeneralBoxDestSeatFont;
     };
 
     enum GeneralIconSize
@@ -404,6 +407,7 @@ public:
     static const char *S_SKIN_KEY_PROGRESS_BAR_IMAGE;
     static const char *S_SKIN_KEY_GENERAL_CIRCLE_IMAGE;
     static const char *S_SKIN_KEY_GENERAL_CIRCLE_MASK;
+    static const char *S_SKIN_KEY_CHOOSE_GENERAL_BOX_DEST_SEAT;
 
     // Animations
     static const char *S_SKIN_KEY_ANIMATIONS;

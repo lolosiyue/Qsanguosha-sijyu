@@ -50,12 +50,16 @@ protected:
     QRectF _m_boundingRect;
     virtual bool _addCardItems(QList<CardItem *> &card_items, const CardsMoveStruct &moveInfo);
 
-private:
     QList<CardItem *> items;
     CloseButton *close_button;
     QPixmap _m_background;
     QStack<QList<CardItem *> > items_stack;
     QStack<bool> retained_stack;
+
+    int scene_width;
+    int itemCount;
+
+    static const int cardInterval = 3;
 
     void _addCardItem(int card_id, const QPointF &pos);
 
@@ -69,28 +73,36 @@ signals:
     void item_gongxined(int card_id);
 };
 
-class GuanxingBox : public QSanSelectableItem
+class GuanxingBox : public CardContainer
 {
     Q_OBJECT
 
 public:
-    GuanxingBox(const QString &box = "image/system/guanxing-box.png");
-    void clear();
+    GuanxingBox();
     void reply();
+    virtual QRectF boundingRect() const;
+
+protected:
+    virtual void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
 
 public slots:
     void doGuanxing(const QList<int> &card_ids, int type);
-    void adjust();
+    void clear();
+
+    void mirrorGuanxingStart(const QString &who, bool up_only, const QList<int> &cards);
+    void mirrorGuanxingMove(int from, int to);
+
+private slots:
+    void onItemReleased();
+    void onItemClicked();
 
 private:
-    QList<CardItem *> up_items, down_items;
+    QList<CardItem *> upItems, downItems;
     int type;
-
-    static const int start_x = 76;
-    static const int start_y1 = 105;
-    static const int start_y2 = 249;
-    static const int middle_y = 173;
-    static const int skip = 102;
+    void adjust();
+    int itemNumberOfFirstRow() const;
+    bool isOneRow() const;
+    QString zhuge;
 };
 
 class GuanxingXBox : public GuanxingBox
