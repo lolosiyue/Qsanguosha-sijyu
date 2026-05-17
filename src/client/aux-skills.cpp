@@ -232,3 +232,71 @@ const Card *ChoosePlayerSkill::viewAs() const
     return card;
 }
 
+// TransferSkill/TransferCard implementation
+
+TransferCard::TransferCard()
+{
+    setObjectName("transfer");
+    target_fixed = false;
+}
+
+bool TransferCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
+{
+    if (!Self || Self == to_select)
+        return false;
+
+    if (!targets.isEmpty())
+        return false;
+
+    return Self->canDiscard(to_select, "he");
+}
+
+void TransferCard::onUse(Room *room, const CardUseStruct &card_use) const
+{
+    CardUseStruct new_use = card_use;
+    new_use.card = this;
+    room->useCard(new_use);
+}
+
+TransferSkill::TransferSkill()
+    : OneCardViewAsSkill("transfer"), m_toSelect(-1)
+{
+}
+
+void TransferSkill::setToSelect(int cardId)
+{
+    m_toSelect = cardId;
+}
+
+bool TransferSkill::viewFilter(const Card *to_select) const
+{
+    if (m_toSelect < 0)
+        return false;
+
+    return to_select->getId() == m_toSelect;
+}
+
+const Card *TransferSkill::viewAs(const Card *originalCard) const
+{
+    if (!originalCard || originalCard->getId() != m_toSelect)
+        return nullptr;
+
+    TransferCard *card = new TransferCard;
+    card->addSubcard(originalCard);
+    return card;
+}
+
+bool TransferSkill::isAvailable(const Player *player, const Card *card) const
+{
+    if (!player)
+        return false;
+
+    if (player->getPhase() != Player::Play)
+        return false;
+
+    if (card && player->isCardLimited(card, Card::MethodUse))
+        return false;
+
+    return true;
+}
+

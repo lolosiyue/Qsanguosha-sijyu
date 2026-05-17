@@ -572,6 +572,8 @@ void onGameStart();
     void revealGeneral(bool self, const QString &general);
     void trust();
 
+    void onCardActionButtonClicked(const QString &buttonId, int cardId);
+
 
 signals:
     void restart();

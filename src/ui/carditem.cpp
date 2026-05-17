@@ -2,9 +2,7 @@
 #include "engine.h"
 #include "oracle_helper.h"
 #include "roomscene.h"
-//#include "skill.h"
-//#include "clientplayer.h"
-//#include "settings.h"
+#include "qsanbutton.h"
 #include "skin-bank.h"
 
 void CardItem::_initialize()
@@ -397,4 +395,166 @@ void CardItem::setYingbiannote(const QString &desc)
     QPainter painter(&_m_yingbiannoteImage);
     font.paintText(&painter, QRect(QPoint(0, 0), rect.size()),
         (Qt::AlignmentFlag)((int)Qt::AlignHCenter | Qt::AlignBottom | Qt::TextWrapAnywhere), desc);
+}
+
+void CardItem::addActionButton(CardActionButton *button)
+{
+    if (!button || m_actionButtons.contains(button))
+        return;
+    button->setParentItem(this);
+    m_actionButtons.append(button);
+}
+
+void CardItem::removeActionButton(const QString &buttonId)
+{
+    foreach (CardActionButton *btn, m_actionButtons) {
+        if (btn->getButtonId() == buttonId) {
+            m_actionButtons.removeOne(btn);
+            btn->hide();
+            btn->deleteLater();
+            break;
+        }
+    }
+}
+
+QList<CardActionButton *> CardItem::getActionButtons() const
+{
+    return m_actionButtons;
+}
+
+void CardItem::updateActionButtonsLayout()
+{
+    if (m_actionButtons.isEmpty())
+        return;
+
+    int n = m_actionButtons.size();
+    int buttonWidth = 24;
+    int buttonHeight = 24;
+    int gap = 4;
+    int totalWidth = n * buttonWidth + (n - 1) * gap;
+    int startX = -totalWidth / 2;
+    int y = -G_COMMON_LAYOUT.m_cardNormalHeight / 2 - buttonHeight - 4;
+
+    for (int i = 0; i < n; ++i) {
+        CardActionButton *btn = m_actionButtons[i];
+        btn->setPos(startX + i * (buttonWidth + gap), y);
+    }
+}
+
+void CardItem::clearActionButtons()
+{
+    foreach (CardActionButton *btn, m_actionButtons) {
+        btn->hide();
+        btn->deleteLater();
+    }
+    m_actionButtons.clear();
+}
+
+// CardActionButton implementation
+
+CardActionButton::CardActionButton(CardItem *parent)
+    : QSanButton(parent), m_cardItem(parent), m_actionMode(S_MODE_DIRECT), m_luaCallback(0)
+{
+    setObjectName("CardActionButton");
+    _m_width = 24;
+    _m_height = 24;
+}
+
+CardActionButton::~CardActionButton()
+{
+}
+
+void CardActionButton::setButtonId(const QString &id)
+{
+    m_buttonId = id;
+}
+
+QString CardActionButton::getButtonId() const
+{
+    return m_buttonId;
+}
+
+void CardActionButton::setIconName(const QString &iconName)
+{
+    m_iconName = iconName;
+}
+
+QString CardActionButton::getIconName() const
+{
+    return m_iconName;
+}
+
+void CardActionButton::setTooltip(const QString &tooltip)
+{
+    m_tooltip = tooltip;
+    setToolTip(tooltip);
+}
+
+QString CardActionButton::getTooltip() const
+{
+    return m_tooltip;
+}
+
+void CardActionButton::setActionMode(ActionMode mode)
+{
+    m_actionMode = mode;
+}
+
+CardActionButton::ActionMode CardActionButton::getActionMode() const
+{
+    return m_actionMode;
+}
+
+void CardActionButton::setLuaCallback(int callbackRef)
+{
+    m_luaCallback = callbackRef;
+}
+
+int CardActionButton::getLuaCallback() const
+{
+    return m_luaCallback;
+}
+
+void CardActionButton::setCallbackKey(const QString &key)
+{
+    m_callbackKey = key;
+}
+
+QString CardActionButton::getCallbackKey() const
+{
+    return m_callbackKey;
+}
+
+QRectF CardActionButton::boundingRect() const
+{
+    return QRectF(0, 0, _m_width, _m_height);
+}
+
+void CardActionButton::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)
+{
+    painter->setRenderHints(QPainter::Antialiasing | QPainter::SmoothPixmapTransform);
+
+    QString stateStr = isEnabled() ? "normal" : "disabled";
+    QString path = QString("button-carditem/%1/%2").arg(m_iconName).arg(stateStr);
+    QPixmap pixmap = G_ROOM_SKIN.getPixmap(path);
+    if (!pixmap.isNull()) {
+        QPixmap scaled = pixmap.scaled(_m_width, _m_height, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        painter->drawPixmap(0, 0, scaled);
+    } else {
+        painter->setBrush(isEnabled() ? QColor(100, 150, 200) : QColor(100, 100, 100));
+        painter->setPen(Qt::NoPen);
+        painter->drawRoundedRect(0, 0, _m_width, _m_height, 4, 4);
+    }
+}
+
+void CardActionButton::mousePressEvent(QGraphicsSceneMouseEvent *event)
+{
+    if (!isEnabled())
+        return;
+
+    if (m_cardItem) {
+        emit m_cardItem->actionButtonClicked(m_buttonId, m_cardItem->getId());
+    }
+
+    QSanButton::mousePressEvent(event);
 }

@@ -28,6 +28,7 @@ class Card : public QObject
     Q_PROPERTY(Color color READ getColor)
     Q_PROPERTY(bool can_recast READ canRecast WRITE setCanRecast)
     Q_PROPERTY(bool is_gift READ isGift WRITE setGift)
+    Q_PROPERTY(bool is_transferable READ isTransferable WRITE setTransferable)
     Q_PROPERTY(bool damage_card READ isDamageCard WRITE setDamageCard)
     Q_PROPERTY(bool single_target READ isSingleTargetCard WRITE setSingleTargetCard)
 
@@ -99,6 +100,9 @@ public:
     QString getDescription(const Player *owner = nullptr) const;
     virtual bool isGift() const;
     virtual void setGift(bool flag);
+
+    virtual bool isTransferable() const;
+    virtual void setTransferable(bool flag);
 
     virtual bool isMute() const;
     virtual void setMute(bool flag);
@@ -230,6 +234,7 @@ protected:
     QString m_skillName;
     QString show_skill;
     bool is_gift;
+    bool is_transferable;
     bool damage_card;
     bool single_target;
     Card::HandlingMethod handling_method;

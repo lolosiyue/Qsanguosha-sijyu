@@ -2,11 +2,13 @@
 #define _CARD_ITEM_H
 
 #include "qsan-selectable-item.h"
+#include "qsanbutton.h"
 #include "settings.h"
 
 class FilterSkill;
 class General;
 class Card;
+class CardActionButton;
 
 class CardItem : public QSanSelectableItem
 {
@@ -28,7 +30,6 @@ public:
         return m_cardId;
     }
 
-    // For move card animation
     void setHomePos(QPointF home_pos);
     QPointF homePos() const;
     QAbstractAnimation *getGoBackAnimation(bool doFadeEffect, bool smoothTransition = false,
@@ -87,6 +88,12 @@ public:
         emit clicked();
     }
 
+    void addActionButton(CardActionButton *button);
+    void removeActionButton(const QString &buttonId);
+    QList<CardActionButton *> getActionButtons() const;
+    void updateActionButtonsLayout();
+    void clearActionButtons();
+
 private slots:
     void currentAnimationDestroyed();
 
@@ -96,7 +103,6 @@ protected:
     QImage _m_footnoteImage;
     QImage _m_yingbiannoteImage;
     bool _m_showFootnote;
-    // QGraphicsPixmapItem *_m_footnoteItem;
     QMutex m_animationMutex;
     double m_opacityAtHome;
     bool m_isSelected;
@@ -122,6 +128,7 @@ private:
     QPointF _m_lastMousePressScenePos;
     bool auto_back, frozen;
     bool m_isShiny;
+    QList<CardActionButton *> m_actionButtons;
 
 signals:
     void toggle_discards();
@@ -132,6 +139,58 @@ signals:
     void enter_hover();
     void leave_hover();
     void movement_animation_finished();
+    void actionButtonClicked(const QString &buttonId, int cardId);
+};
+
+class CardActionButton : public QSanButton
+{
+    Q_OBJECT
+
+public:
+    enum ActionMode
+    {
+        S_MODE_DIRECT,
+        S_MODE_SELECT_CARD,
+        S_MODE_SELECT_PLAYER
+    };
+
+    CardActionButton(CardItem *parent);
+    ~CardActionButton();
+
+    void setButtonId(const QString &id);
+    QString getButtonId() const;
+
+    void setIconName(const QString &iconName);
+    QString getIconName() const;
+
+    void setTooltip(const QString &tooltip);
+    QString getTooltip() const;
+
+    void setActionMode(ActionMode mode);
+    ActionMode getActionMode() const;
+
+    void setLuaCallback(int callbackRef);
+    int getLuaCallback() const;
+
+    void setCallbackKey(const QString &key);
+    QString getCallbackKey() const;
+
+    virtual QRectF boundingRect() const;
+
+protected:
+    virtual void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
+    virtual void mousePressEvent(QGraphicsSceneMouseEvent *event);
+
+private:
+    QString m_buttonId;
+    QString m_iconName;
+    QString m_tooltip;
+    QString m_callbackKey;
+    ActionMode m_actionMode;
+    int m_luaCallback;
+    CardItem *m_cardItem;
+    int _m_width;
+    int _m_height;
 };
 
 #endif

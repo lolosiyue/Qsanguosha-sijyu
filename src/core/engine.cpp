@@ -1,5 +1,6 @@
 #include "engine.h"
 #include "client.h"
+#include "aux-skills.h"
 //#include "ai.h"
 #include "settings.h"
 //#include "scenario.h"
@@ -2450,6 +2451,15 @@ QString Engine::getResourceAlias(const QString &category, const QString &origina
             return categoryMap[original];
     }
     return original;
+}
+
+TransferSkill *Engine::getTransfer()
+{
+    if (!m_transfer) {
+        m_transfer = new TransferSkill;
+        m_transfer->setParent(this);
+    }
+    return m_transfer;
 }
 
 #ifdef LOGNETWORK

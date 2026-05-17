@@ -694,6 +694,7 @@ void Dashboard::_addHandCard(CardItem *card_item, bool prepend, const QString &f
     connect(card_item, SIGNAL(enter_hover()), this, SLOT(onCardItemHover()));
     connect(card_item, SIGNAL(leave_hover()), this, SLOT(onCardItemLeaveHover()));
     connect(card_item, SIGNAL(mark_changed()), this, SLOT(onMarkChanged()));
+    connect(card_item, SIGNAL(actionButtonClicked(QString,int)), this, SIGNAL(cardActionButtonClicked(QString,int)));
 
     if (!footnote.isEmpty())
         card_item->setFootnote(footnote);
@@ -1357,6 +1358,106 @@ QList<CardItem *> Dashboard::cloneCardItems(QList<int> card_ids)
         result.append(new_card);
     }
     return result;
+}
+
+void Dashboard::setCardTransferable(CardItem *card, bool transferable)
+{
+    if (!card) return;
+
+    if (transferable) {
+        CardActionButton *button = nullptr;
+        foreach (CardActionButton *btn, card->getActionButtons()) {
+            if (btn->getButtonId() == "transfer") {
+                button = btn;
+                break;
+            }
+        }
+
+        if (!button) {
+            button = new CardActionButton(card);
+            button->setButtonId("transfer");
+            button->setIconName("give");
+            button->setTooltip(tr("Transfer this card"));
+            button->setActionMode(CardActionButton::S_MODE_SELECT_PLAYER);
+            card->addActionButton(button);
+        }
+
+        button->setEnabled(true);
+        button->show();
+    } else {
+        card->removeActionButton("transfer");
+    }
+
+    card->updateActionButtonsLayout();
+}
+
+void Dashboard::updateTransferButtons()
+{
+    bool enabled = false;
+    if (Self && Self->getPhase() == Player::Play) {
+        enabled = Sanguosha->getTransfer()->isAvailable(Self, nullptr);
+    }
+
+    foreach (CardItem *card, m_handCards) {
+        bool cardEnabled = enabled;
+        if (cardEnabled) {
+            const Card *c = card->getCard();
+            if (c && Self->isCardLimited(c, Card::MethodUse))
+                cardEnabled = false;
+            if (c && !c->isTransferable())
+                cardEnabled = false;
+        }
+
+        setCardTransferable(card, cardEnabled);
+        updateCustomActionButtons(card);
+    }
+}
+
+void Dashboard::updateCustomActionButtons(CardItem *card)
+{
+    if (!card) return;
+
+    const Card *c = card->getCard();
+    if (!c) return;
+
+    QVariant buttonsVar = c->getTag("action_buttons");
+    if (!buttonsVar.isValid()) return;
+
+    QStringList buttonDefs = buttonsVar.toStringList();
+    foreach (const QString &def, buttonDefs) {
+        QStringList parts = def.split("|");
+        if (parts.size() < 5) continue;
+
+        QString buttonId = parts[0];
+        QString iconName = parts[1];
+        QString tooltip = parts[2];
+        int actionMode = parts[3].toInt();
+        QString callbackKey = parts[4];
+
+        bool exists = false;
+        foreach (CardActionButton *btn, card->getActionButtons()) {
+            if (btn->getButtonId() == buttonId) {
+                exists = true;
+                break;
+            }
+        }
+
+        if (!exists) {
+            CardActionButton *button = new CardActionButton(card);
+            button->setButtonId(buttonId);
+            button->setIconName(iconName);
+            button->setTooltip(tooltip);
+            button->setActionMode(static_cast<CardActionButton::ActionMode>(actionMode));
+            if (!callbackKey.isEmpty()) {
+                button->setCallbackKey(callbackKey);
+            }
+            button->setEnabled(true);
+            button->show();
+            card->addActionButton(button);
+        }
+    }
+
+    card->updateActionButtonsLayout();
 }
 
 QList<CardItem *> Dashboard::removeHandCards(const QList<int> &card_ids)
