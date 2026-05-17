@@ -64,7 +64,6 @@ SOURCES += \
 	src/dialog/maxcardsviewdialog.cpp \
 	src/dialog/generaloverview.cpp \
 	src/dialog/mainwindow.cpp \
-	src/dialog/playercarddialog.cpp \
 	src/dialog/roleassigndialog.cpp \
 	src/dialog/scenario-overview.cpp \
 	src/package/exppattern.cpp \
@@ -242,7 +241,6 @@ HEADERS += \
 	src/dialog/maxcardsviewdialog.h \
 	src/dialog/generaloverview.h \
 	src/dialog/mainwindow.h \
-	src/dialog/playercarddialog.h \
 	src/dialog/roleassigndialog.h \
 	src/dialog/scenario-overview.h \
 	src/package/exppattern.h \
