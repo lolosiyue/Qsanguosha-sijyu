@@ -328,15 +328,13 @@ private:
 
     QList<const Player *> selected_targets;
 
-    QList<int> RenPile;
+	QList<int> RenPile;
 
-    GuanxingBox *guanxing_box3,*guanxing_box,*guanxing_box7,*guanxing_box9;
+	ChooseTriggerOrderBox *m_chooseTriggerOrderBox;
 
-    ChooseTriggerOrderBox *m_chooseTriggerOrderBox;
+	GuanxingBox *m_guanxingBox;
 
-    GuanxingXBox *guanxing_x_box;
-
-    QList<CardItem *> gongxin_items;
+	QList<CardItem *> gongxin_items;
 
     ClientLogBox *log_box;
     GifChatBox *chat_box;

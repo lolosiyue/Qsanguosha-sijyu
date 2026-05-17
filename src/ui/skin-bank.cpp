@@ -58,6 +58,7 @@ const char *QSanRoomSkin::S_SKIN_KEY_MAGATAMAS = "magatamas%1";
 const char *QSanRoomSkin::S_SKIN_KEY_PROGRESS_BAR_IMAGE = "progressBar";
 const char *QSanRoomSkin::S_SKIN_KEY_GENERAL_CIRCLE_IMAGE = "generalCircleImage-%1";
 const char *QSanRoomSkin::S_SKIN_KEY_GENERAL_CIRCLE_MASK = "generalCircleMask-%1";
+const char *QSanRoomSkin::S_SKIN_KEY_CHOOSE_GENERAL_BOX_DEST_SEAT = "chooseGeneralBoxDestSeat";
 
 // Animations
 const char *QSanRoomSkin::S_SKIN_KEY_ANIMATIONS = "preloads";
@@ -1193,6 +1194,7 @@ bool QSanRoomSkin::_loadLayoutConfig(const QVariant &layout)
 	tryParse(config["promptInfoSize"], _m_commonLayout.m_promptInfoSize);
 	_m_commonLayout.m_promptInfoFont.tryParse(config["promptInfoFont"]);
 	_m_commonLayout.playerCardBoxPlaceNameText.tryParse(config["playerCardBoxPlaceNameText"]);
+	_m_commonLayout.m_chooseGeneralBoxDestSeatFont.tryParse(config["chooseGeneralBoxDestSeatFont"]);
 
 	JsonArray magatamaFont = config["magatamaFont"].value<JsonArray>();
 	for (int i = 0; i < 6 && i < magatamaFont.size(); i++) {

@@ -5111,4 +5111,23 @@ P = 你自己, R = 你所在的房间</translation>
         <translation>关闭</translation>
     </message>
 </context>
+<context>
+    <name>GuanxingBox</name>
+    <message>
+        <source>Please arrange the cards</source>
+        <translation>觀星</translation>
+    </message>
+    <message>
+        <source>%1 is arranging the cards</source>
+        <translation>%1 正在觀星</translation>
+    </message>
+    <message>
+        <source>cards on the top of the pile</source>
+        <translation>牌堆頂</translation>
+    </message>
+    <message>
+        <source>cards at the bottom of the pile</source>
+        <translation>牌堆底</translation>
+    </message>
+</context>
 </TS>

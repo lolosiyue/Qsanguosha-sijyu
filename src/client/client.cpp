@@ -118,6 +118,7 @@ Client::Client(QObject *parent, const QString &filename)
 	m_callbacks[S_COMMAND_CARD_FLAG] = &Client::setCardFlag;
 	m_callbacks[S_COMMAND_OPERATION_TIMEOUT] = &Client::setTimeout;
 	m_callbacks[S_COMMAND_WEAPON_RANGE] = &Client::updateWeaponRange;
+	m_callbacks[S_COMMAND_MIRROR_GUANXING_STEP] = &Client::mirrorGuanxingStep;
 
 	// interactive methods
 	m_interactions[S_COMMAND_CHOOSE_GENERAL] = &Client::askForGeneral;
@@ -2136,6 +2137,46 @@ void Client::onPlayerReplyGuanxing(const QList<int> &up_cards, const QList<int> 
 	replyToServer(S_COMMAND_SKILL_GUANXING, decks);
 
 	setStatus(NotActive);
+}
+
+void Client::onPlayerDoGuanxingStep(int from, int to)
+{
+	JsonArray args;
+	args << S_GUANXING_MOVE << from << to;
+	notifyServer(S_COMMAND_MIRROR_GUANXING_STEP, args);
+
+	if (recorder) {
+		Packet packet(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT, S_COMMAND_MIRROR_GUANXING_STEP);
+		packet.setMessageBody(args);
+		recorder->recordLine(packet.toJson());
+	}
+}
+
+void Client::mirrorGuanxingStep(const QVariant &arg)
+{
+	JsonArray args = arg.value<JsonArray>();
+	if (args.isEmpty()) return;
+
+	int step = args.at(0).toInt();
+	if (step == S_GUANXING_MOVE) {
+		if (args.size() >= 3) {
+			int from = args.at(1).toInt();
+			int to = args.at(2).toInt();
+			emit mirror_guanxing_move(from, to);
+		}
+	} else if (step == S_GUANXING_FINISH) {
+		emit mirror_guanxing_finish();
+	} else {
+		QString who = args.at(1).toString();
+		bool upOnly = args.at(2).toBool();
+		QList<int> cards;
+		if (args.size() >= 5) {
+			JsonUtils::tryParse(args.at(4), cards);
+		} else if (args.size() >= 4) {
+			JsonUtils::tryParse(args.at(3), cards);
+		}
+		emit mirror_guanxing_start(who, upOnly, cards);
+	}
 }
 
 void Client::log(const QVariant &log_str)

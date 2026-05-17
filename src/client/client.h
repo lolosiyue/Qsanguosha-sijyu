@@ -76,6 +76,7 @@ public:
     void onPlayerDiscardCards(const Card *card);
     void onPlayerReplyYiji(const Card *card, const Player *to);
     void onPlayerReplyGuanxing(const QList<int> &up_cards, const QList<int> &down_cards);
+    void onPlayerDoGuanxingStep(int from, int to);
     void onPlayerAssignRole(const QList<QString> &names, const QList<QString> &roles);
     QList<const ClientPlayer *> getPlayers() const;
     inline int getPlayerCount() const
@@ -188,6 +189,7 @@ public:
     void askForYiji(const QVariant &);
     void askForGuanxing(const QVariant &);
     void showAllCards(const QVariant &);
+    void mirrorGuanxingStep(const QVariant &arg);
     void askForGongxin(const QVariant &);
     void askForTriggerOrder(const QVariant &);
     void askForAssign(const QVariant &); // Assign roles at the beginning of game
@@ -368,6 +370,9 @@ signals:
         const QString &suit, int number, const QString &skill_name);
     void log_received(const QStringList &log_str);
     void guanxing(const QList<int> &card_ids, int single_side);
+    void mirror_guanxing_start(const QString &who, bool up_only, const QList<int> &cards);
+    void mirror_guanxing_move(int from, int to);
+    void mirror_guanxing_finish();
     void gongxin(const QList<int> &card_ids, bool enable_heart, QList<int> enabled_ids);
     void focus_moved(const QStringList &focus, QSanProtocol::Countdown countdown, int command);
     void emotion_set(const QString &target, const QString &emotion);

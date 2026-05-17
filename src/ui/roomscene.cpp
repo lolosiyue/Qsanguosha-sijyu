@@ -256,32 +256,16 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(ClientInstance,&Client::skill_updated,this,&RoomScene::updateSkill);
 	connect(ClientInstance,&Client::card_description_updated,this,&RoomScene::updateCardDescription);
 
-	guanxing_x_box = new GuanxingXBox;
-	guanxing_x_box->hide();
-	addItem(guanxing_x_box);
-	guanxing_x_box->setZValue(21);
+	m_guanxingBox = new GuanxingBox;
+	m_guanxingBox->hide();
+	addItem(m_guanxingBox);
+	m_guanxingBox->setZValue(20000.0);
 
-	connect(ClientInstance,SIGNAL(guanxing(QList<int>,int)),guanxing_x_box,SLOT(doGuanxing(QList<int>,int)));
-	guanxing_x_box->moveBy(-120,0);
-
-	guanxing_box3 = new GuanxingBox("image/system/guanxing-box3.png");
-	guanxing_box3->hide();
-	guanxing_box3->setZValue(21);
-	guanxing_box3->moveBy(-120,0);
-	guanxing_x_box->addBox3(guanxing_box3);
-	addItem(guanxing_box3);
-	guanxing_box7 = new GuanxingBox("image/system/guanxing-box7.png");
-	guanxing_box7->hide();
-	guanxing_box7->setZValue(21);
-	guanxing_box7->moveBy(-120,0);
-	guanxing_x_box->addBox7(guanxing_box7);
-	addItem(guanxing_box7);
-	guanxing_box9 = new GuanxingBox("image/system/guanxing-box9.png");
-	guanxing_box9->hide();
-	guanxing_box9->setZValue(21);
-	guanxing_box9->moveBy(-120,0);
-	guanxing_x_box->addBox9(guanxing_box9);
-	addItem(guanxing_box9);
+	connect(ClientInstance, &Client::guanxing, m_guanxingBox, &GuanxingBox::doGuanxing);
+	connect(ClientInstance, &Client::mirror_guanxing_start, m_guanxingBox, &GuanxingBox::mirrorGuanxingStart);
+	connect(ClientInstance, &Client::mirror_guanxing_move, m_guanxingBox, &GuanxingBox::mirrorGuanxingMove);
+	connect(ClientInstance, &Client::mirror_guanxing_finish, m_guanxingBox, &GuanxingBox::clear);
+	m_guanxingBox->moveBy(-120, 0);
 
 	m_chooseTriggerOrderBox = new ChooseTriggerOrderBox();
 	m_chooseTriggerOrderBox->hide();
@@ -1375,10 +1359,7 @@ void RoomScene::updateTable()
 		_m_roomLayout->m_discardPileMinWidth),_m_commonLayout->m_cardNormalHeight);
 	m_tablePile->adjustCards();
 	card_container->setPos(m_tableCenterPos);
-	guanxing_x_box->setPos(m_tableCenterPos);
-	guanxing_box3->setPos(m_tableCenterPos);
-	guanxing_box7->setPos(m_tableCenterPos);
-	guanxing_box9->setPos(m_tableCenterPos);
+	m_guanxingBox->setPos(m_tableCenterPos - QPointF(m_guanxingBox->boundingRect().width() / 2, m_guanxingBox->boundingRect().height() / 2));
 
 	m_timerLabel->setPos(QPointF(width()*0.77,-1));
 
@@ -3094,7 +3075,7 @@ void RoomScene::useSelectedCard()
 		break;
 	}
 	case Client::AskForGuanxing: {
-		guanxing_x_box->reply();
+		m_guanxingBox->reply();
 		break;
 	}
 	case Client::AskForGongxin: {
@@ -3441,7 +3422,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 			if(m_choiceDialog!=nullptr&&m_choiceDialog->isVisible())
 				m_choiceDialog->hide();
 		} else if(oldStatus==Client::AskForGuanxing||oldStatus==Client::AskForGongxin){
-			guanxing_x_box->clear();
+			m_guanxingBox->clear();
 			if(!card_container->retained())
 				card_container->clear();
 		}
