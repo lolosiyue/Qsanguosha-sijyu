@@ -287,6 +287,14 @@ public:
 
         // avatar size
         QSize m_tinyAvatarSize;
+
+        //PlayerCardBox
+        QSanSimpleTextFont playerCardBoxPlaceNameText;
+
+        //GraphicsBox
+        QColor graphicsBoxBackgroundColor;
+        QColor graphicsBoxBorderColor;
+        QSanSimpleTextFont graphicsBoxTitleFont;
     };
 
     enum GeneralIconSize

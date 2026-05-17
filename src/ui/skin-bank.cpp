@@ -1192,6 +1192,7 @@ bool QSanRoomSkin::_loadLayoutConfig(const QVariant &layout)
 	_m_commonLayout.m_cardFootnoteFont.tryParse(config["cardFootnoteFont"]);
 	tryParse(config["promptInfoSize"], _m_commonLayout.m_promptInfoSize);
 	_m_commonLayout.m_promptInfoFont.tryParse(config["promptInfoFont"]);
+	_m_commonLayout.playerCardBoxPlaceNameText.tryParse(config["playerCardBoxPlaceNameText"]);
 
 	JsonArray magatamaFont = config["magatamaFont"].value<JsonArray>();
 	for (int i = 0; i < 6 && i < magatamaFont.size(); i++) {

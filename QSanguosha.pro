@@ -127,9 +127,11 @@ src/ui/chatwidget.cpp \
 	src/core/wrapped-card.cpp \
 	src/ui/bubblechatbox.cpp \
 	src/ui/emotionpanel.cpp \
-	src/ui/gifchatbox.cpp \
-	src/ui/generic-cardcontainer-ui.cpp \
-	src/ui/qsan-selectable-item.cpp \
+src/ui/gifchatbox.cpp \
+    src/ui/generic-cardcontainer-ui.cpp \
+    src/ui/graphicsbox.cpp \
+    src/ui/playercardbox.cpp \
+    src/ui/qsan-selectable-item.cpp \
 	src/ui/skin-bank.cpp \
 	src/ui/table-pile.cpp \
 	src/ui/timed-progressbar.cpp \
@@ -334,8 +336,10 @@ src/ui/dashboard.h \
 	src/core/wrapped-card.h \
 	src/ui/bubblechatbox.h \
 	src/ui/emotionpanel.h \
-	src/ui/generic-cardcontainer-ui.h \
-	src/ui/qsan-selectable-item.h \
+src/ui/generic-cardcontainer-ui.h \
+    src/ui/graphicsbox.h \
+    src/ui/playercardbox.h \
+    src/ui/qsan-selectable-item.h \
 	src/ui/skin-bank.h \
 	src/ui/table-pile.h \
 	src/ui/timed-progressbar.h \
