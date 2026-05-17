@@ -14,6 +14,7 @@
     "cardFootnoteFont": ["SimSun", [12, 12, 1], 0, [228, 213, 160, 255], 1, 10, [0, 0], [20, 20, 20, 255]],
     "promptInfoSize": [900, 110],
     "promptInfoFont": ["SimHei", [20, 20, 4], 20, [255, 255, 255, 255], 2, 10, [0, 0], [7, 50, 78, 255]],
+    "playerCardBoxPlaceNameText": ["@SimHei", 14, 0, [255, 255, 255, 255]],
     "chooseGeneralBoxSwitchIconSizeThreshold": 12,
     "chooseGeneralBoxSwitchIconEachRow": 6,
     "chooseGeneralBoxSwitchIconEachRowForTooManyGenerals": 7,

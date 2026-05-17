@@ -1,34 +1,32 @@
 #include "roomscene.h"
 #include "choosetriggerorderbox.h"
-//#include "settings.h"
+#include "photo.h"
+#include "dashboard.h"
+#include "table-pile.h"
 #include "carditem.h"
 #include "engine.h"
-#include "oracle_helper.h"
-#include "cardoverview.h"
-#include "distanceviewdialog.h"
-#include "maxcardsviewdialog.h"
-#include "playercarddialog.h"
-#include "choosegeneraldialog.h"
+#include "client.h"
+#include "settings.h"
+#include "cardcontainer.h"
+#include "standard.h"
+#include "clientplayer.h"
+#include "generic-cardcontainer-ui.h"
+#include "qsanbutton.h"
 #include "window.h"
 #include "button.h"
+#include "playercardbox.h"
 #include "cardcontainer.h"
 #include "recorder.h"
 #include "indicatoritem.h"
 #include "generaloverview.h"
 #include "pixmapanimation.h"
 #include "audio.h"
-//#include "skin-bank.h"
 #include "record-analysis.h"
 #include "mountain.h"
 #include "wind.h"
 #include "ol.h"
 #include "bubblechatbox.h"
-#include "mountain.h"
-//#include "clientplayer.h"
 #include "clientstruct.h"
-#include "photo.h"
-#include "dashboard.h"
-#include "table-pile.h"
 #include "aux-skills.h"
 #include "clientlogbox.h"
 #include "chatwidget.h"
@@ -39,6 +37,11 @@
 #include "EmbeddedQmlLoader.h"
 #include "SpineGlItem.h"
 #include "graphicspixmaphoveritem.h"
+#include "choosegeneraldialog.h"
+#include "cardoverview.h"
+#include "distanceviewdialog.h"
+#include "maxcardsviewdialog.h"
+#include "oracle_helper.h"
 #include <QOpenGLWidget>
 #include <QMutexLocker>
 #include <QSet>
@@ -120,6 +123,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	setParent(main_window);
 
 	m_choiceDialog = nullptr;
+    m_playerCardBox = nullptr;
 	RoomSceneInstance = this;
 	_m_last_front_item = nullptr;
 	_m_last_front_ZValue = 0;
@@ -2326,15 +2330,21 @@ void RoomScene::chooseOption(const QString&skillName,const QStringList&options,c
 }
 
 void RoomScene::chooseCard(const ClientPlayer*player,const QString&flags,const QString&reason,
-	bool handcard_visible,Card::HandlingMethod method,QList<int> disabled_ids,bool can_cancel)
+    bool handcard_visible,Card::HandlingMethod method,QList<int> disabled_ids,bool can_cancel)
 {
-	PlayerCardDialog*dialog = new PlayerCardDialog(player,flags,handcard_visible,method,disabled_ids,can_cancel);
-	dialog->setWindowTitle(Sanguosha->translate(reason));
-	connect(dialog,SIGNAL(card_id_chosen(int)),ClientInstance,SLOT(onPlayerChooseCard(int)));
-	connect(dialog,SIGNAL(rejected()),ClientInstance,SLOT(onPlayerChooseCard()));
-	if(m_choiceDialog!=nullptr)
-		delete m_choiceDialog;
-	m_choiceDialog = dialog;
+    if (m_playerCardBox) {
+        m_playerCardBox->clear();
+        delete m_playerCardBox;
+        m_playerCardBox = nullptr;
+    }
+    if (m_choiceDialog) {
+        m_choiceDialog->hide();
+        delete m_choiceDialog;
+        m_choiceDialog = nullptr;
+    }
+    m_playerCardBox = new PlayerCardBox();
+    addItem(m_playerCardBox);
+    m_playerCardBox->chooseCard(reason, player, flags, handcard_visible, method, disabled_ids, can_cancel);
 }
 
 void RoomScene::chooseOrder(QSanProtocol::Game3v3ChooseOrderCommand reason)
@@ -3423,6 +3433,11 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 	switch (newStatus&Client::ClientStatusBasicMask){
 	case Client::NotActive: {
 		if(oldStatus==Client::ExecDialog){
+			if(m_playerCardBox){
+				m_playerCardBox->clear();
+				delete m_playerCardBox;
+				m_playerCardBox = nullptr;
+			}
 			if(m_choiceDialog!=nullptr&&m_choiceDialog->isVisible())
 				m_choiceDialog->hide();
 		} else if(oldStatus==Client::AskForGuanxing||oldStatus==Client::AskForGongxin){
@@ -3546,7 +3561,9 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 		break;
 	}
 	case Client::ExecDialog: {
-		if(m_choiceDialog!=nullptr){
+		if (m_playerCardBox) {
+			// PlayerCardBox exists, don't show m_choiceDialog
+		} else if(m_choiceDialog!=nullptr){
 			m_choiceDialog->setParent(main_window,Qt::Dialog);
 			m_choiceDialog->show();
 			ok_button->setEnabled(false);
@@ -3833,7 +3850,11 @@ void RoomScene::doCancelButton()
 		break;
 	}
 	case Client::ExecDialog: {
-		m_choiceDialog->reject();
+		if (m_playerCardBox) {
+			m_playerCardBox->clear();
+		} else if (m_choiceDialog) {
+			m_choiceDialog->reject();
+		}
 		break;
 	}
 	case Client::AskForSkillInvoke: {

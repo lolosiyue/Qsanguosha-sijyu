@@ -3267,6 +3267,37 @@
     </message>
 </context>
 <context>
+    <name>PlayerCardBox</name>
+    <message>
+        <source>%1: please choose %2's card</source>
+        <translation>%1：请选择%2的牌</translation>
+    </message>
+    <message>
+        <source>Handcard area</source>
+        <translation>手牌区</translation>
+    </message>
+    <message>
+        <source>Weapon area</source>
+        <translation>武器区</translation>
+    </message>
+    <message>
+        <source>Armor area</source>
+        <translation>防具区</translation>
+    </message>
+    <message>
+        <source>Defensive horse</source>
+        <translation>+1马</translation>
+    </message>
+    <message>
+        <source>Offensive horse</source>
+        <translation>-1马</translation>
+    </message>
+    <message>
+        <source>Judging area</source>
+        <translation>判定区</translation>
+    </message>
+</context>
+<context>
     <name>QObject</name>
     <message>
         <location filename="../src/core/util.cpp" line="75"/>
