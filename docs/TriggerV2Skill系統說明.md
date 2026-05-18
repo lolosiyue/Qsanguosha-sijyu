@@ -106,10 +106,18 @@ triggerV2Skills(event, room, target, data)
     └─ 5. 對每個被選中的技能：
             │
             ├─ cost() → bool
+            │     └─ 詢問是否發動 + 選目標
             │     └─ 返回 false 則跳過
             │
             ├─ trigger(EventSkillWillInvoke, ctx)    ← 公共事件
-            │     └─ 註冊該事件的技能執行，可修改 ctx.is_canceled
+            │     └─ 註冊該事件的技能執行，可修改 ctx.is_canceled、ctx.bypass_cost
+            │
+            ├─ trigger(EventSkillPay, ctx)           ← 公共事件（若 bypass_cost = true 則跳過）
+            │     └─ 可修改代價相關數值
+            │
+            ├─ pay() → bool（若 bypass_cost = true 則跳過）
+            │     └─ 支付代價
+            │     └─ 返回 false 則跳過
             │
             ├─ trigger(EventSkillTargetConfirming, ctx)  ← 公共事件
             │     └─ 註冊該事件的技能執行，可修改 ctx.updated_targets
@@ -117,12 +125,47 @@ triggerV2Skills(event, room, target, data)
             ├─ trigger(EventSkillInvoking, ctx)     ← 公共事件
             │     └─ 註冊該事件的技能執行
             │
-            ├─ effect() → bool
+            ├─ trigger(EventSkillEffect, ctx)       ← 公共事件
+            │     └─ 返回 true 則跳過全部效果
+            │
+            ├─ effect() → bool（若 EventSkillEffect 返回 true 則跳過）
+            │     └─ 一次性效果
+            │     └─ 可手動調用 skill:skillEffect(target) 處理目標
+            │     └─ 若 ctx.manual_effect = true，框架不自動遍歷
             │     └─ 返回 true 表示 broken
             │
-            ├─ trigger(EventSkillEffect, ctx)       ← 公共事件
+            ├─ if ctx.manual_effect == false and ctx.targets 不為空:
+            │     │
+            │     └─ for each target:
+            │           │
+            │           └─ skillEffect(target) → 內部觸發 EventSkillEffectTarget
+            │                 └─ 若 EventSkillEffectTarget 未跳過，調用 effectTarget()
             │
             └─ trigger(EventSkillEffectFinished, ctx) ← 公共事件
+```
+
+### skillEffect 方法
+
+用於手動調用目標效果，觸發 `EventSkillEffectTarget`：
+
+```lua
+on_effect = function(skill, event, room, player, data)
+    local ctx = data:toSkillContext()
+    
+    -- 一次性效果
+    player:drawCards(1)
+    
+    -- 手動調用目標效果
+    for _, target in ipairs(ctx.targets) do
+        skill:skillEffect(target, data)  -- 觸發 EventSkillEffectTarget + effectTarget
+    end
+    ctx.manual_effect = true  -- 標記已手動處理，框架不自動遍歷
+    
+    -- 清理資料
+    -- ...
+    
+    return false
+end
 ```
 
 ### ctx 傳遞方式
@@ -147,10 +190,12 @@ ctx = ctx_data.value<SkillContext>();  // 取回修改後的 ctx
 | 枚舉值 | 觸發時機 | 典型應用 | data 類型 |
 |--------|----------|----------|-----------|
 | `EventSkillWillInvoke` | 代價支付前 | 封印技能 (`is_canceled=true`)、免費施放 (`bypass_cost=true`) | `SkillContext` |
+| `EventSkillPay` | 代價支付時 | 修改代價數值、代價類型 | `SkillContext` |
 | `EventSkillTargetConfirming` | 目標確認 | 目標轉移（修改 `updated_targets`） | `SkillContext` |
 | `EventSkillInvoking` | 正式宣告 | 觸發「技能發動後」的聯動技能 | `SkillContext` |
-| `EventSkillEffect` | 結算前 | 終極無效化判定（預留） | `SkillContext` |
-| `EventSkillEffectFinished` | 結算後 | 清理臨時數據、後續事件 | `SkillContext` |
+| `EventSkillEffect` | 效果執行前 | 替換效果（返回 `true` 跳過原效果） | `SkillContext` |
+| `EventSkillEffectTarget` | 單目標效果前 | 對特定目標無效化（返回 `true` 跳過該目標） | `SkillContext` |
+| `EventSkillEffectFinished` | 效果執行後 | 清理臨時數據、後續事件 | `SkillContext` |
 
 ## Lua 綁定
 
@@ -162,14 +207,16 @@ ctx = ctx_data.value<SkillContext>();  // 取回修改後的 ctx
 
 #### 核心流程回調
 
-| 欄位 | 類型 | 對應 C++ 方法 |
-|------|------|---------------|
-| `can_trigger` | `LuaFunction` | `triggerable()` |
-| `on_record` | `LuaFunction` | `record()` |
-| `on_cost` | `LuaFunction` | `cost()` |
-| `on_effect` | `LuaFunction` | `effect()` |
-| `on_turn_broken` | `LuaFunction` | 回合被打斷 |
-| `check_custom_usage` | `LuaFunction` | `checkCustomUsage()` |
+| 欄位 | 類型 | 對應 C++ 方法 | 職責 |
+|------|------|---------------|------|
+| `can_trigger` | `LuaFunction` | `triggerable()` | 條件檢查 |
+| `on_record` | `LuaFunction` | `record()` | 記錄階段 |
+| `on_cost` | `LuaFunction` | `cost()` | 詢問是否發動 + 選目標 |
+| `on_pay` | `LuaFunction` | `pay()` | 支付代價 |
+| `on_effect` | `LuaFunction` | `effect()` | 一次性效果（無論有無目標都執行） |
+| `on_effect_target` | `LuaFunction` | `effectTarget()` | 對單一目標執行效果 |
+| `on_turn_broken` | `LuaFunction` | 回合被打斷 | - |
+| `check_custom_usage` | `LuaFunction` | `checkCustomUsage()` | 自定義次數限制 |
 
 
 ### Lua 工廠函數
@@ -392,6 +439,84 @@ local baGua = sgs.CreateTriggerV2Skill {
 }
 ```
 
+## 技能數值系統 (Amount)
+
+### 概述
+
+`amount` 系統允許技能的數值被其他技能動態修改，支援 Roguelike 玩法和技能互動。
+
+### SkillContext 新增欄位
+
+```cpp
+struct SkillContext {
+    // ... 其他欄位 ...
+    int amount;           // 技能基礎數值（預設 1）
+    int modified_amount;  // 修改後數值（0 表示未被修改）
+};
+```
+
+### TriggerV2Skill 新增方法
+
+| 方法 | 說明 |
+|------|------|
+| `getBaseAmount()` | 返回技能基礎數值，預設 1 |
+| `getEffectiveAmount(ctx)` | 返回有效數值（優先 `modified_amount`，其次 `amount`，最後 `baseAmount`） |
+
+### Lua 技能定義
+
+```lua
+s4_cangzhuo = sgs.CreateTriggerV2Skill{
+    name = "s4_cangzhuo",
+    base_amount = 1,  -- 可選，預設 1
+    -- ...
+    on_effect = function(skill, event, room, player, data)
+        local ctx = data:toSkillContext()
+        local amount = skill:getEffectiveAmount(ctx)
+        
+        for _, p in sgs.qlist(ctx.targets) do
+            for i = 1, amount do
+                getYing(p)
+            end
+        end
+        return false
+    end
+}
+```
+
+### 修改技能數值
+
+其他技能可在 `EventSkillWillInvoke` 時機修改 `ctx.modified_amount`：
+
+```lua
+modifier = sgs.CreateTriggerV2Skill{
+    name = "modifier",
+    events = {sgs.EventSkillWillInvoke},
+    can_trigger = function(skill, event, room, player, data)
+        local ctx = data:toSkillContext()
+        if ctx.skill_name == "s4_cangzhuo" then
+            return "modifier"
+        end
+        return false
+    end,
+    on_effect = function(skill, event, room, player, data)
+        local ctx = data:toSkillContext()
+        ctx.modified_amount = (ctx.amount or 1) * 2  -- 雙倍效果
+        return false
+    end
+}
+```
+
+### 數值優先級
+
+```
+getEffectiveAmount(ctx) 返回值：
+1. ctx.modified_amount > 0 → 使用 modified_amount
+2. ctx.amount > 0 → 使用 amount
+3. 否則 → 使用 skill:getBaseAmount()
+```
+
+---
+
 ## 技能使用次數限制系統
 
 ### SkillContext 結構
@@ -412,7 +537,11 @@ struct SkillContext {
     bool is_forced;                // 是否強制發動
     bool is_canceled;              // 是否被無效化（willInvoke 用）
     bool bypass_cost;              // 是否免除代價（willInvoke 用）
+    bool manual_effect;            // 是否手動調用 skillEffect（框架不自動遍歷）
     TriggerEvent current_event;    // 當前觸發時機
+
+    int amount;                    // 技能基礎數值
+    int modified_amount;           // 修改後數值
 };
 ```
 
@@ -790,3 +919,21 @@ room->removeSkillInvalidity(target, "qingcheng", source->objectName(), "reason")
 | 2026-05-09 | 新增 TriggerEvent：EventSkillWillInvoke、EventSkillTargetConfirming、EventSkillInvoking、EventSkillEffect、EventSkillEffectFinished |
 | 2026-05-09 | LuaTriggerV2Skill 新增五個時機回調 |
 | 2026-05-09 | 改為通過 `trigger()` 觸發時機事件，技能需註冊監聽對應 TriggerEvent |
+| 2026-05-18 | 新增技能數值系統（amount、modified_amount） |
+| 2026-05-18 | TriggerV2Skill 新增 `getBaseAmount()`、`getEffectiveAmount()` |
+| 2026-05-18 | LuaTriggerV2Skill 新增 `setBaseAmount()` |
+| 2026-05-18 | `CreateTriggerV2Skill` 支援 `base_amount` 參數 |
+| 2026-05-18 | `EventSkillEffect` 移至 `effect()` 前，返回 `true` 可跳過原效果 |
+| 2026-05-18 | 分離 `cost()` 和 `pay()`，新增 `EventSkillPay` 時機 |
+| 2026-05-18 | `cost()` 負責詢問是否發動 + 選目標，`pay()` 負責支付代價 |
+| 2026-05-18 | `bypass_cost` 可跳過 `pay()` 階段 |
+| 2026-05-18 | 新增 `use()` 和 `effectTarget()`，支援單目標結算 |
+| 2026-05-18 | 新增 `EventSkillEffectTarget` 時機，可攔截單目標效果 |
+| 2026-05-18 | `on_effect` 改名為 `on_use`，新增 `on_effect_target` |
+| 2026-05-18 | 流程：`use()` → 遍歷目標 → `EventSkillEffectTarget` → `effectTarget(target)` |
+| 2026-05-18 | 移除 `on_use`，恢復 `on_effect` 命名 |
+| 2026-05-18 | `on_effect` 無論有無目標都執行 |
+| 2026-05-18 | `EventSkillEffectTarget` 返回 `true` 只跳過該目標，不 `break` |
+| 2026-05-18 | 新增 `skillEffect()` 方法，手動調用目標效果 |
+| 2026-05-18 | 新增 `ctx.manual_effect` 欄位，標記是否手動處理目標 |
+| 2026-05-18 | 若 `manual_effect = true`，框架不自動遍歷目標 |
