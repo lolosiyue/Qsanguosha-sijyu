@@ -569,7 +569,7 @@ bool GameStartSkill::trigger(TriggerEvent, Room *, ServerPlayer *player, QVarian
 }
 
 TriggerV2Skill::TriggerV2Skill(const QString &name)
-    : TriggerSkill(name)
+    : TriggerSkill(name), m_baseAmount(1)
 {
 }
 
@@ -587,9 +587,36 @@ bool TriggerV2Skill::cost(TriggerEvent, Room *, ServerPlayer *, QVariant &, Serv
     return true;
 }
 
+bool TriggerV2Skill::pay(TriggerEvent, Room *, ServerPlayer *, QVariant &, ServerPlayer *) const
+{
+    return true;
+}
+
 bool TriggerV2Skill::effect(TriggerEvent, Room *, ServerPlayer *, QVariant &, ServerPlayer *) const
 {
     return false;
+}
+
+bool TriggerV2Skill::effectTarget(TriggerEvent, Room *, ServerPlayer *, QVariant &, ServerPlayer *) const
+{
+    return false;
+}
+
+bool TriggerV2Skill::skillEffect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+                                  QVariant &data, ServerPlayer *target) const
+{
+    SkillContext ctx = data.value<SkillContext>();
+    ctx.current_event = EventSkillEffectTarget;
+    QVariant ctx_data = QVariant::fromValue(ctx);
+    
+    bool skip = room->getThread()->trigger(EventSkillEffectTarget, room, player, ctx_data);
+    ctx = ctx_data.value<SkillContext>();
+    data = QVariant::fromValue(ctx);
+    
+    if (skip)
+        return false;
+    
+    return effectTarget(triggerEvent, room, player, data, target);
 }
 
 bool TriggerV2Skill::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
@@ -597,6 +624,8 @@ bool TriggerV2Skill::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer
 {
     bool do_cost = cost(triggerEvent, room, player, data, owner);
     if (!do_cost) return false;
+    bool do_pay = pay(triggerEvent, room, player, data, owner);
+    if (!do_pay) return false;
     return effect(triggerEvent, room, player, data, owner);
 }
 
@@ -623,6 +652,18 @@ void TriggerV2Skill::effect(SkillContext &ctx) const
 void TriggerV2Skill::effectFinished(SkillContext &ctx) const
 {
     Q_UNUSED(ctx);
+}
+
+int TriggerV2Skill::getBaseAmount() const
+{
+    return m_baseAmount;
+}
+
+int TriggerV2Skill::getEffectiveAmount(const SkillContext &ctx) const
+{
+    if (ctx.modified_amount > 0)
+        return ctx.modified_amount;
+    return ctx.amount > 0 ? ctx.amount : m_baseAmount;
 }
 
 QString TriggerV2Skill::parseSkillName(const QString &fullName, QString *source,

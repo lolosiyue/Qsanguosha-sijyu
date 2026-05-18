@@ -743,9 +743,11 @@ enum TriggerEvent {
     EventSkillValidityRestored,
 
     EventSkillWillInvoke,
+    EventSkillPay,
     EventSkillTargetConfirming,
     EventSkillInvoking,
     EventSkillEffect,
+    EventSkillEffectTarget,
     EventSkillEffectFinished,
 
     ShownCardChanged,

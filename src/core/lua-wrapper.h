@@ -89,6 +89,10 @@ public:
     {
         this->global = global;
     }
+    inline void setBaseAmount(int amount)
+    {
+        m_baseAmount = amount;
+    }
 
     virtual int getPriority() const;
 
@@ -97,9 +101,13 @@ public:
     virtual void record(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
                        QVariant &data, ServerPlayer *owner) const override;
     virtual bool cost(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+                      QVariant &data, ServerPlayer *ask_who = NULL) const override;
+    virtual bool pay(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
                      QVariant &data, ServerPlayer *ask_who = NULL) const override;
     virtual bool effect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
-                       QVariant &data, ServerPlayer *ask_who = NULL) const override;
+                        QVariant &data, ServerPlayer *ask_who = NULL) const override;
+    virtual bool effectTarget(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+                              QVariant &data, ServerPlayer *target) const override;
     virtual void willInvoke(SkillContext &ctx) const override;
     virtual void targetConfirming(SkillContext &ctx) const override;
     virtual void invoking(SkillContext &ctx) const override;
@@ -116,7 +124,9 @@ public:
     LuaFunction on_record;
     LuaFunction can_trigger;
     LuaFunction on_cost;
+    LuaFunction on_pay;
     LuaFunction on_effect;
+    LuaFunction on_effect_target;
     LuaFunction on_turn_broken;
     LuaFunction check_custom_usage;
     LuaFunction on_willInvoke;

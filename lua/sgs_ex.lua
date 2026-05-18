@@ -75,13 +75,16 @@ function sgs.CreateTriggerV2Skill(spec)
 	end
 	if type(spec.global)=="boolean" then skill:setGlobal(spec.global) end
 	if spec.on_cost then skill.on_cost = spec.on_cost end
+	if spec.on_pay then skill.on_pay = spec.on_pay end
 	if spec.on_effect then skill.on_effect = spec.on_effect end
+	if spec.on_effect_target then skill.on_effect_target = spec.on_effect_target end
 	if spec.on_record then skill.on_record = spec.on_record end
 	if spec.on_turn_broken then skill.on_turn_broken = spec.on_turn_broken end
 	if spec.can_trigger then skill.can_trigger = spec.can_trigger end
 	if spec.check_custom_usage then skill.check_custom_usage = spec.check_custom_usage end
 	if spec.view_as_skill then skill:setViewAsSkill(spec.view_as_skill) end
 	if type(spec.priority)=="number" then skill.priority = spec.priority end
+	if type(spec.base_amount)=="number" then skill:setBaseAmount(spec.base_amount) end
 	return skill
 end
 
