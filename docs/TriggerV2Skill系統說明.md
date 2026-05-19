@@ -937,3 +937,128 @@ room->removeSkillInvalidity(target, "qingcheng", source->objectName(), "reason")
 | 2026-05-18 | 新增 `skillEffect()` 方法，手動調用目標效果 |
 | 2026-05-18 | 新增 `ctx.manual_effect` 欄位，標記是否手動處理目標 |
 | 2026-05-18 | 若 `manual_effect = true`，框架不自動遍歷目標 |
+| 2026-05-19 | 新增動態重檢機制：每次技能結算後重新調用 `triggerable()` |
+| 2026-05-19 | 支援 multiplier：`can_trigger` 返回 `"skillName*3"` 觸發 3 次 |
+| 2026-05-19 | `SkillContext` 新增 `trigger_count` 欄位，記錄已觸發次數 |
+| 2026-05-19 | 移除 `mergeSkillNames()` 依賴，直接解析 multiplier |
+
+---
+
+## 動態重檢機制
+
+### 概述
+
+動態重檢機制允許技能在每次結算後重新評估 `can_trigger`，支援：
+- 技能結算後狀態變化導致其他技能不再適合發動
+- 根據傷害值等動態觸發多次
+
+### 核心變更
+
+#### 舊流程
+
+```
+收集 skillContexts → while 循環 → 選擇 → 結算 → 移除
+```
+
+#### 新流程
+
+```
+while 循環：
+    重新調用所有 v2 技能的 triggerable()
+    解析 multiplier，加入對應數量的 SkillContext
+    注入 trigger_count（已觸發次數）
+    若 skillContexts 為空，break
+    選擇技能 → 結算
+    更新 triggerCounts[key]++
+    不移除，讓下次循環重新決定
+```
+
+### SkillContext 新增欄位
+
+```cpp
+struct SkillContext {
+    // ... 其他欄位 ...
+    int trigger_count;  // 該技能實例在本次事件中已觸發次數
+};
+```
+
+### trigger_count 計算邏輯
+
+`triggerCounts` 的 key 為 `"skillName#instanceId"`，每個實例獨立計算：
+
+| 情況 | key | trigger_count |
+|------|-----|---------------|
+| 實例 1 (`baGua#1`) | `"baGua#1"` | 獨立計算 |
+| 實例 2 (`baGua#2`) | `"baGua#2"` | 獨立計算 |
+| 實例 3 (`baGua#3`) | `"baGua#3"` | 獨立計算 |
+
+**結論**：不同實例的相同技能，`trigger_count` 互不影響。
+
+### multiplier 支援
+
+`can_trigger` 可返回 `"skillName*multiplier"` 格式，系統會自動加入對應數量的 SkillContext：
+
+```lua
+-- 返回 "xxx*3" 表示觸發 3 次
+can_trigger = function(skill, event, room, player, data)
+    local damage = data:toDamage()
+    if damage and damage.damage > 0 then
+        return skill:objectName() .. "*" .. damage.damage
+    end
+    return false
+end
+```
+
+### Lua 使用範例
+
+#### 方式一：使用 multiplier（系統自動觸發多次）
+
+```lua
+skill = sgs.CreateTriggerV2Skill{
+    name = "xxx",
+    events = {sgs.Damaged},
+    can_trigger = function(skill, event, room, player, data)
+        local damage = data:toDamage()
+        if damage and damage.damage > 0 then
+            -- 返回 "xxx*3" 表示觸發 3 次
+            return skill:objectName() .. "*" .. damage.damage
+        end
+        return false
+    end,
+    on_effect = function(skill, event, room, player, data)
+        player:drawCards(1)
+        return false
+    end
+}
+```
+
+#### 方式二：使用 trigger_count（手動控制）
+
+```lua
+skill = sgs.CreateTriggerV2Skill{
+    name = "yyy",
+    events = {sgs.Damaged},
+    can_trigger = function(skill, event, room, player, data)
+        local damage = data:toDamage()
+        if not damage or damage.damage <= 0 then return false end
+        
+        local ctx = data:toSkillContext()
+        -- ctx.trigger_count 是該技能實例在本次事件中已觸發次數
+        if ctx.trigger_count >= damage.damage then
+            return false  -- 已觸發足夠次數
+        end
+        
+        return skill:objectName()
+    end,
+    on_effect = function(skill, event, room, player, data)
+        player:drawCards(1)
+        return false
+    end
+}
+```
+
+### 注意事項
+
+1. **避免無限循環**：`can_trigger` 必須在適當條件下返回 `false`，否則會無限循環
+2. **性能考量**：每次循環都會重新調用所有 v2 技能的 `triggerable()`
+3. **實例獨立**：不同 instanceId 的技能實例，`trigger_count` 獨立計算
