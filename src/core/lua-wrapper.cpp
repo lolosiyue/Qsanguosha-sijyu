@@ -124,7 +124,7 @@ LuaViewAsEquipSkill::LuaViewAsEquipSkill(const QString &name, Frequency frequenc
 }
 
 LuaCardLimitSkill::LuaCardLimitSkill(const QString &name, Frequency frequency)
-    : CardLimitSkill(name), limit_list(0), limit_pattern(0)
+    : CardLimitSkill(name), limit_list(0), limit_pattern(0), limit_reason(0)
 {
     this->frequency = frequency;
 }

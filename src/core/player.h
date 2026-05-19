@@ -349,10 +349,17 @@ public:
 		return role!="lord"&&hasSkill("weidi");
     }
 
-    void setCardLimitation(const QString &limit_list, const QString &pattern, bool single_turn = false);
-    void removeCardLimitation(const QString &limit_list, const QString &pattern);
+    void setCardLimitation(const QString &limit_list, const QString &pattern, const QString &reason = "", bool single_turn = false);
+    void removeCardLimitation(const QString &limit_list, const QString &pattern, const QString &reason = "");
+    void removeCardLimitationByReason(const QString &reason);
     void clearCardLimitation(bool single_turn = false);
     bool isCardLimited(const Card *card, Card::HandlingMethod method, bool isHandcard = false) const;
+    QStringList getCardLimitationReasons(Card::HandlingMethod method) const;
+
+    bool canMove(const Player *to, const QString &flags) const;
+    bool canMove(const Player *to, int card_id) const;
+    bool canMove(const QString &flags, const Player *to = nullptr) const;
+    bool canMove(int card_id, const Player *to = nullptr) const;
     QString getLogName() const;
     void sortHandCards(const QString &hands);
     void sortHandCards(QList<int>hands);
@@ -457,6 +464,7 @@ private:
     QList<const Player *> attack_range_pair;
 
     QMap<Card::HandlingMethod, QStringList> card_limitation;
+    QMap<Card::HandlingMethod, QMap<QString, QString>> card_limitation_reasons;
 
 signals:
     void general_changed();

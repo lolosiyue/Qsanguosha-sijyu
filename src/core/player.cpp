@@ -1359,6 +1359,42 @@ bool Player::canDiscard(int card_id, const Player *to) const
 	return canDiscard(to,card_id);
 }
 
+bool Player::canMove(const Player *to, const QString &flags) const
+{
+    if (!to || isDead() || to->isDead()) return false;
+    if (flags.contains("h")){
+        foreach(const Card *h, to->getHandcards())
+            if (canMove(to, h->getId())) return true;
+    }
+    if (flags.contains("e")){
+        foreach(const Card *e, to->getEquips())
+            if (canMove(to, e->getId())) return true;
+    }
+    if (flags.contains("j")){
+        foreach(const Card *j, to->getJudgingArea())
+            if (canMove(to, j->getId())) return true;
+    }
+    return false;
+}
+
+bool Player::canMove(const Player *to, int card_id) const
+{
+    if (this == to) return !isCardLimited(Sanguosha->getCard(card_id), Card::MethodMove);
+    return Sanguosha->isCardLimited(this, Sanguosha->getCard(card_id), Card::MethodMove) == nullptr;
+}
+
+bool Player::canMove(const QString &flags, const Player *to) const
+{
+    if (to == nullptr) to = this;
+    return canMove(to, flags);
+}
+
+bool Player::canMove(int card_id, const Player *to) const
+{
+    if (to == nullptr) to = this;
+    return canMove(to, card_id);
+}
+
 void Player::addDelayedTrick(const Card *trick)
 {
     judging_area << trick;
@@ -1749,39 +1785,77 @@ bool Player::canSlashWithoutCrossbow(const Card *slash) const
     return false;
 }
 
-void Player::setCardLimitation(const QString &limit_list, const QString &pattern, bool single_turn)
+void Player::setCardLimitation(const QString &limit_list, const QString &pattern, const QString &reason, bool single_turn)
 {
     QString _pattern = pattern;
     if (!pattern.contains("$"))
         _pattern.append(single_turn ? "$1" : "$0");
-    foreach(QString limit, limit_list.split(","))
-        card_limitation[Sanguosha->getCardHandlingMethod(limit)] << _pattern;
+    foreach(QString limit, limit_list.split(",")) {
+        Card::HandlingMethod method = Sanguosha->getCardHandlingMethod(limit);
+        card_limitation[method] << _pattern;
+        if (!reason.isEmpty())
+            card_limitation_reasons[method][_pattern] = reason;
+    }
 }
 
-void Player::removeCardLimitation(const QString &limit_list, const QString &pattern)
+void Player::removeCardLimitation(const QString &limit_list, const QString &pattern, const QString &reason)
 {
     QString _pattern = pattern;
     if (!pattern.contains("$"))
         _pattern.append("$0");
-    foreach(QString limit, limit_list.split(","))
-        card_limitation[Sanguosha->getCardHandlingMethod(limit)].removeOne(_pattern);
+    foreach(QString limit, limit_list.split(",")) {
+        Card::HandlingMethod method = Sanguosha->getCardHandlingMethod(limit);
+        card_limitation[method].removeOne(_pattern);
+        if (reason.isEmpty())
+            card_limitation_reasons[method].remove(_pattern);
+        else if (card_limitation_reasons[method].value(_pattern) == reason)
+            card_limitation_reasons[method].remove(_pattern);
+        if (card_limitation[method].isEmpty())
+            card_limitation.remove(method);
+        if (card_limitation_reasons[method].isEmpty())
+            card_limitation_reasons.remove(method);
+    }
+}
+
+void Player::removeCardLimitationByReason(const QString &reason)
+{
+    if (reason.isEmpty()) return;
+    foreach(Card::HandlingMethod method, card_limitation_reasons.keys()) {
+        QStringList patternsToRemove;
+        foreach(QString pattern, card_limitation_reasons[method].keys()) {
+            if (card_limitation_reasons[method][pattern] == reason)
+                patternsToRemove << pattern;
+        }
+        foreach(QString pattern, patternsToRemove) {
+            card_limitation[method].removeOne(pattern);
+            card_limitation_reasons[method].remove(pattern);
+        }
+        if (card_limitation[method].isEmpty())
+            card_limitation.remove(method);
+        if (card_limitation_reasons[method].isEmpty())
+            card_limitation_reasons.remove(method);
+    }
 }
 
 void Player::clearCardLimitation(bool single_turn)
 {
-    /*static QList<Card::HandlingMethod> limit_type;
-	if(limit_type.isEmpty())
-		limit_type << Card::MethodUse << Card::MethodResponse << Card::MethodDiscard
-        << Card::MethodRecast << Card::MethodPindian << Card::MethodIgnore << Card::MethodEffect;*/
     foreach(Card::HandlingMethod method, card_limitation.keys()){
         foreach(QString pattern, card_limitation[method]){
             if (!single_turn || pattern.endsWith("$1")){
                 card_limitation[method].removeOne(pattern);
-				if(card_limitation[method].isEmpty())
-					card_limitation.remove(method);
-			}
+                card_limitation_reasons[method].remove(pattern);
+                if(card_limitation[method].isEmpty())
+                    card_limitation.remove(method);
+                if(card_limitation_reasons[method].isEmpty())
+                    card_limitation_reasons.remove(method);
+            }
         }
     }
+}
+
+QStringList Player::getCardLimitationReasons(Card::HandlingMethod method) const
+{
+    return card_limitation_reasons.value(method).values();
 }
 
 bool Player::isCardLimited(const Card *card, Card::HandlingMethod method, bool isHandcard) const

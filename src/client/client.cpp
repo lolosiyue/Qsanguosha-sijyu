@@ -889,18 +889,35 @@ Client::Status Client::getStatus() const
 void Client::cardLimitation(const QVariant &limit)
 {
 	JsonArray args = limit.value<JsonArray>();
-	if (args.size() != 4) return;
+	if (args.size() < 4) return;
+
+	int op = args[0].toInt();
+	
+	if (op == 2) {
+		QString reason = args[1].toString();
+		Self->removeCardLimitationByReason(reason);
+		return;
+	}
 
 	QString limit_list = args[1].toString();
 	QString pattern = args[2].toString();
-	bool single_turn = args[3].toBool();
+	QString reason;
+	bool single_turn = false;
+	
+	if (args.size() >= 5) {
+		reason = args[3].toString();
+		single_turn = args[4].toBool();
+	} else {
+		single_turn = args[3].toBool();
+	}
+	
 	if (limit_list.isEmpty() && pattern.isEmpty()) {
 		Self->clearCardLimitation(single_turn);
 	} else {
-		if (args[0].toBool())
-			Self->setCardLimitation(limit_list, pattern, single_turn);
+		if (op == 1)
+			Self->setCardLimitation(limit_list, pattern, reason, single_turn);
 		else
-			Self->removeCardLimitation(limit_list, pattern);
+			Self->removeCardLimitation(limit_list, pattern, reason);
 	}
 }
 

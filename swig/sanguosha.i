@@ -338,10 +338,17 @@ public:
 	bool isJilei(const Card*card, bool isHandcard = false) const;
 	bool isLocked(const Card*card, bool isHandcard = false) const;
 
-	void setCardLimitation(const char*limit_list, const char*pattern, bool single_turn = false);
-	void removeCardLimitation(const char*limit_list, const char*pattern);
+	bool canDiscard(const Player*to, const char*flags) const;
+	bool canDiscard(const Player*to, int card_id) const;
+	bool canMove(const Player*to, const char*flags) const;
+	bool canMove(const Player*to, int card_id) const;
+
+	void setCardLimitation(const char*limit_list, const char*pattern, const char*reason = "", bool single_turn = false);
+	void removeCardLimitation(const char*limit_list, const char*pattern, const char*reason = "");
+	void removeCardLimitationByReason(const char*reason);
 	void clearCardLimitation(bool single_turn = false);
 	bool isCardLimited(const Card*card, Card::HandlingMethod method, bool isHandcard = false) const;
+	QStringList getCardLimitationReasons(Card::HandlingMethod method) const;
 	QString getLogName() const;
 	void sortHandCards(const char*hands);
 	void sortHandCards(QList<int>hands);
@@ -1636,8 +1643,9 @@ public:
 	void setPlayerMark(ServerPlayer*player, const char*mark, int value, QList<ServerPlayer*> only_viewers = QList<ServerPlayer*>());
 	void addPlayerMark(ServerPlayer*player, const char*mark, int add_num = 1, QList<ServerPlayer*> only_viewers = QList<ServerPlayer*>());
 	void removePlayerMark(ServerPlayer*player, const char*mark, int remove_num = 1);
-	void setPlayerCardLimitation(ServerPlayer*player, const char*limit_list, const char*pattern, bool single_turn);
-	void removePlayerCardLimitation(ServerPlayer*player, const char*limit_list, const char*pattern);
+	void setPlayerCardLimitation(ServerPlayer*player, const char*limit_list, const char*pattern, const char*reason, bool single_turn);
+	void removePlayerCardLimitation(ServerPlayer*player, const char*limit_list, const char*pattern, const char*reason);
+	void removePlayerCardLimitationByReason(ServerPlayer*player, const char*reason);
 	void clearPlayerCardLimitation(ServerPlayer*player, bool single_turn);
 	void addCardMark(int card_id, const char*mark, int add_num = 1, ServerPlayer*who = nullptr);
 	void addCardMark(const Card*card, const char*mark, int add_num = 1, ServerPlayer*who = nullptr);

@@ -365,9 +365,11 @@ public:
 
     QString limitList(const Player *target, const Card *card) const;
     QString limitPattern(const Player *target, const Card *card) const;
+    QString limitReason(const Player *target, const Card *card) const;
 
     LuaFunction limit_list;
     LuaFunction limit_pattern;
+    LuaFunction limit_reason;
 };
 
 class LuaPreSelectionMetaSkill : public PreSelectionMetaSkill
