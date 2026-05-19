@@ -85,6 +85,8 @@ function sgs.CreateTriggerV2Skill(spec)
 	if spec.view_as_skill then skill:setViewAsSkill(spec.view_as_skill) end
 	if type(spec.priority)=="number" then skill.priority = spec.priority end
 	if type(spec.base_amount)=="number" then skill:setBaseAmount(spec.base_amount) end
+	if type(spec.limit_scope)=="number" then skill:setLimitScope(spec.limit_scope) end
+	if type(spec.max_usage_limit)=="number" then skill:setMaxUsageLimit(spec.max_usage_limit) end
 	return skill
 end
 

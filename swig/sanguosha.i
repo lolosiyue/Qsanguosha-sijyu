@@ -1537,15 +1537,26 @@ public:
 	                   QVariant&data, ServerPlayer*owner) const;
 	virtual bool cost(TriggerEvent triggerEvent, Room*room, ServerPlayer*player,
 	                  QVariant&data, ServerPlayer*ask_who = NULL) const;
+	virtual bool pay(TriggerEvent triggerEvent, Room*room, ServerPlayer*player,
+	                 QVariant&data, ServerPlayer*ask_who = NULL) const;
 	virtual bool effect(TriggerEvent triggerEvent, Room*room, ServerPlayer*player,
 	                    QVariant&data, ServerPlayer*ask_who = NULL) const;
+	virtual bool effectTarget(TriggerEvent triggerEvent, Room*room, ServerPlayer*player,
+	                          QVariant&data, ServerPlayer*target) const;
 	virtual bool trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*player,
 	                     QVariant&data, ServerPlayer*owner) const;
+
+	bool skillEffect(TriggerEvent triggerEvent, Room*room, ServerPlayer*player,
+	                 QVariant&data, ServerPlayer*target) const;
+
 	virtual void willInvoke(SkillContext&ctx) const;
 	virtual void targetConfirming(SkillContext&ctx) const;
 	virtual void invoking(SkillContext&ctx) const;
 	virtual void effect(SkillContext&ctx) const;
 	virtual void effectFinished(SkillContext&ctx) const;
+
+	virtual int getBaseAmount() const;
+	int getEffectiveAmount(const SkillContext&ctx) const;
 };
 
 class QThread: public QObject {

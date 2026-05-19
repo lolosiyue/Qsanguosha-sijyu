@@ -93,8 +93,18 @@ public:
     {
         m_baseAmount = amount;
     }
+    inline void setLimitScope(Skill::LimitScope scope)
+    {
+        m_limitScope = scope;
+    }
+    inline void setMaxUsageLimit(int limit)
+    {
+        m_maxUsageLimit = limit;
+    }
 
     virtual int getPriority() const;
+    virtual Skill::LimitScope getLimitScope() const override;
+    virtual int getMaxUsageLimit(const SkillContext &ctx) const override;
 
     virtual TriggerList triggerable(TriggerEvent triggerEvent, Room *room,
                                      ServerPlayer *player, QVariant &data) const override;
@@ -139,6 +149,8 @@ public:
 
 protected:
     QString guhuo_type;
+    Skill::LimitScope m_limitScope;
+    int m_maxUsageLimit;
 };
 
 class LuaScenarioRule : public ScenarioRule
