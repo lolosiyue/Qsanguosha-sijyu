@@ -2848,22 +2848,31 @@ void Room::removePlayerMark(ServerPlayer*player, const QString&mark, int remove_
 }
 
 void Room::setPlayerCardLimitation(ServerPlayer*player, const QString&limit_list,
-	const QString&pattern, bool single_turn)
+	const QString&pattern, const QString&reason, bool single_turn)
 {
-	player->setCardLimitation(limit_list, pattern, single_turn);
+	player->setCardLimitation(limit_list, pattern, reason, single_turn);
 
 	JsonArray arg;
-	arg << true << limit_list << pattern << single_turn;
+	arg << true << limit_list << pattern << reason << single_turn;
 	doNotify(player, S_COMMAND_CARD_LIMITATION, arg);
 }
 
 void Room::removePlayerCardLimitation(ServerPlayer*player, const QString&limit_list,
-	const QString&pattern)
+	const QString&pattern, const QString&reason)
 {
-	player->removeCardLimitation(limit_list, pattern);
+	player->removeCardLimitation(limit_list, pattern, reason);
 
 	JsonArray arg;
-	arg << false << limit_list << pattern << false;
+	arg << false << limit_list << pattern << reason << false;
+	doNotify(player, S_COMMAND_CARD_LIMITATION, arg);
+}
+
+void Room::removePlayerCardLimitationByReason(ServerPlayer*player, const QString&reason)
+{
+	player->removeCardLimitationByReason(reason);
+
+	JsonArray arg;
+	arg << 2 << reason;
 	doNotify(player, S_COMMAND_CARD_LIMITATION, arg);
 }
 
@@ -2872,7 +2881,7 @@ void Room::clearPlayerCardLimitation(ServerPlayer*player, bool single_turn)
 	player->clearCardLimitation(single_turn);
 
 	JsonArray arg;
-	arg << true << QVariant() << QVariant() << single_turn;
+	arg << true << QVariant() << QVariant() << QVariant() << single_turn;
 	doNotify(player, S_COMMAND_CARD_LIMITATION, arg);
 }
 
@@ -5962,6 +5971,22 @@ void Room::moveCardsAtomic(QList<CardsMoveStruct> cards_moves, bool visible, boo
 {
 	cards_moves = _breakDownCardMoves(cards_moves);
 	if(cards_moves.isEmpty()) return;
+	
+	QList<CardsMoveStruct> filtered_moves;
+	foreach(CardsMoveStruct move, cards_moves){
+		CardsMoveStruct filtered_move = move;
+		filtered_move.card_ids.clear();
+		foreach(int id, move.card_ids){
+			if (move.from && !move.from->canMove(move.from, id))
+				continue;
+			filtered_move.card_ids << id;
+		}
+		if (!filtered_move.card_ids.isEmpty())
+			filtered_moves << filtered_move;
+	}
+	cards_moves = filtered_moves;
+	if(cards_moves.isEmpty()) return;
+	
 	QList<CardsMoveOneTimeStruct> moveOneTimes = _mergeMoves(cards_moves);
 	for (int i = 0; i < moveOneTimes.length(); i++){
 		QVariant data = QVariant::fromValue(moveOneTimes[i]);
@@ -8849,6 +8874,7 @@ bool Room::canMoveField(const QString&flags, QList<ServerPlayer*> froms, QList<S
 		QList<ServerPlayer*> new_tos = tos;
 		if (new_tos.isEmpty()) new_tos = getOtherPlayers(p);
 		foreach(const Card*c, p->getCards(flags)){
+			if (!p->canMove(p, c->getEffectiveId())) continue;
 			foreach(ServerPlayer*d, new_tos){
 				if (c->isKindOf("EquipCard")){
 					const EquipCard *equip = qobject_cast<const EquipCard *>(c->getRealCard());
@@ -8899,6 +8925,10 @@ bool Room::moveField(ServerPlayer*player, const QString&reason, bool optional, c
 	QList<int> disabled_ids;
 	if (tos.isEmpty()) tos = getOtherPlayers(from);
 	foreach(const Card*c, from->getCards(flags)){
+		if (!from->canMove(from, c->getEffectiveId())){
+			disabled_ids << c->getId();
+			continue;
+		}
 		bool has = true;
 		foreach(ServerPlayer*d, tos){
 			if (player->isProhibited(d, c)) continue;

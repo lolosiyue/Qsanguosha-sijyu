@@ -890,6 +890,11 @@ QString CardLimitSkill::limitPattern(const Player *) const
     return "";
 }
 
+QString CardLimitSkill::limitReason(const Player *) const
+{
+    return "";
+}
+
 QString CardLimitSkill::limitList(const Player *player, const Card *) const
 {
     return limitList(player);
@@ -898,6 +903,11 @@ QString CardLimitSkill::limitList(const Player *player, const Card *) const
 QString CardLimitSkill::limitPattern(const Player *player, const Card *) const
 {
     return limitPattern(player);
+}
+
+QString CardLimitSkill::limitReason(const Player *player, const Card *) const
+{
+    return limitReason(player);
 }
 
 DetachEffectSkill::DetachEffectSkill(const QString &skillname, const QString &pilename)

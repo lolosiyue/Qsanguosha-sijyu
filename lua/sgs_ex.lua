@@ -269,6 +269,9 @@ function sgs.CreateCardLimitSkill(spec)
 	--if type(spec.limit_pattern)=="function" then
 		skill.limit_pattern = spec.limit_pattern
 	--end
+	--if type(spec.limit_reason)=="function" then
+		skill.limit_reason = spec.limit_reason
+	--end
 	return skill
 end
 

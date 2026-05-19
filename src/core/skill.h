@@ -494,8 +494,10 @@ public:
 
     virtual QString limitList(const Player *target) const;
     virtual QString limitPattern(const Player *target) const;
+    virtual QString limitReason(const Player *target) const;
     virtual QString limitList(const Player *target, const Card *card) const;
     virtual QString limitPattern(const Player *target, const Card *card) const;
+    virtual QString limitReason(const Player *target, const Card *card) const;
 };
 
 class DetachEffectSkill : public TriggerSkill

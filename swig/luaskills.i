@@ -264,6 +264,7 @@ public:
 
 	virtual QString limitList(const Player *target, const Card *card) const;
 	virtual QString limitPattern(const Player *target, const Card *card) const;
+	virtual QString limitReason(const Player *target, const Card *card) const;
 };
 
 class LuaCardLimitSkill : public CardLimitSkill {
@@ -272,9 +273,11 @@ public:
 
 	virtual QString limitList(const Player *target, const Card *card) const;
 	virtual QString limitPattern(const Player *target, const Card *card) const;
+	virtual QString limitReason(const Player *target, const Card *card) const;
 
 	LuaFunction limit_list;
 	LuaFunction limit_pattern;
+	LuaFunction limit_reason;
 };
 
 class PreSelectionMetaSkill : public Skill {
@@ -1656,6 +1659,28 @@ QString LuaCardLimitSkill::limitPattern(const Player *target, const Card *card) 
 	lua_State*L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, limit_pattern);
+	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaCardLimitSkill, 0);
+	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
+	SWIG_NewPointerObj(L, card, SWIGTYPE_p_Card, 0);
+
+	if (lua_pcall(L, 3, 1, 0)!=0) {
+		Error(L);
+		return QString();
+	}
+
+	const QString &result = lua_tostring(L, -1);
+	lua_pop(L, 1);
+	return result;
+}
+
+QString LuaCardLimitSkill::limitReason(const Player *target, const Card *card) const
+{
+	if (limit_reason == 0)
+		return QString();
+
+	lua_State*L = Sanguosha->getLuaState();
+
+	lua_rawgeti(L, LUA_REGISTRYINDEX, limit_reason);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaCardLimitSkill, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, card, SWIGTYPE_p_Card, 0);

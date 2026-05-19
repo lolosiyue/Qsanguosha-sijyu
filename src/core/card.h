@@ -49,7 +49,7 @@ public:
     enum HandlingMethod
     {
         MethodNone, MethodUse, MethodResponse, MethodDiscard, MethodRecast,
-		MethodPindian, MethodIgnore, MethodEffect, MethodPlay
+		MethodPindian, MethodIgnore, MethodEffect, MethodPlay, MethodMove
     };
 
     static const Suit AllSuits[4];
