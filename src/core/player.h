@@ -221,8 +221,8 @@ public:
     const EquipCard *getEquip(int index) const;
 
     bool viewAsEquip(const QString &equip_name) const;
-    bool hasWeapon(const QString &weapon_name, bool need_area = true) const;
-    bool hasArmorEffect(const QString &armor_name, bool need_area = true) const;
+    bool hasWeapon(const QString &weapon_name, const Player *sourcePlayer = nullptr, bool need_area = true) const;
+    bool hasArmorEffect(const QString &armor_name, const Player *sourcePlayer = nullptr, bool need_area = true) const;
     bool hasDefensiveHorse(const QString &horse_name, bool need_area = true) const;
     bool hasOffensiveHorse(const QString &horse_name, bool need_area = true) const;
     bool hasTreasure(const QString &treasure_name, bool need_area = true) const;
@@ -321,9 +321,9 @@ public:
     bool hasHideSkill(int general = 1) const;
     bool inYinniState() const;
     bool canSeeHandcard(const Player *player) const;
-    void addEquipsNullified(const QString &pattern, bool single_turn = true);
-    void removeEquipsNullified(const QString &pattern, bool single_turn = true);
-    bool isEquipsNullified(const Card *card) const;
+    void addEquipsNullified(const QString &pattern, const QString &reason = "", bool single_turn = true);
+    void removeEquipsNullified(const QString &pattern, const QString &reason = "", bool single_turn = true);
+    bool isEquipsNullified(const Card *card, const Player *sourcePlayer = nullptr) const;
     bool hasTurn() const;
 
     QList<int> getShownHandcards() const;
