@@ -2885,6 +2885,35 @@ void Room::clearPlayerCardLimitation(ServerPlayer*player, bool single_turn)
 	doNotify(player, S_COMMAND_CARD_LIMITATION, arg);
 }
 
+void Room::setPlayerEquipsNullified(ServerPlayer*player, const QString&pattern,
+	const QString&reason, bool single_turn)
+{
+	player->addEquipsNullified(pattern, reason, single_turn);
+
+	QString fullPattern = pattern;
+	if (!pattern.contains("|.|.|"))
+		fullPattern = pattern + "|.|.|";
+
+	JsonArray arg;
+	arg << true << "effect" << fullPattern << reason << single_turn;
+	doNotify(player, S_COMMAND_CARD_LIMITATION, arg);
+}
+
+void Room::removePlayerEquipsNullified(ServerPlayer*player, const QString&pattern, const QString&reason)
+{
+	player->removeEquipsNullified(pattern, reason);
+
+	QString fullPattern = pattern;
+	if (!pattern.contains("|.|.|"))
+		fullPattern = pattern + "|.|.|";
+	if (!fullPattern.endsWith("$1") && !fullPattern.endsWith("$0"))
+		fullPattern = fullPattern + "$0";
+
+	JsonArray arg;
+	arg << false << "effect" << fullPattern << reason << false;
+	doNotify(player, S_COMMAND_CARD_LIMITATION, arg);
+}
+
 void Room::addCardMark(int card_id, const QString&mark, int add_num, ServerPlayer*who)
 {
 	addCardMark(Sanguosha->getCard(card_id), mark, add_num, who);

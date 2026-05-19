@@ -1065,25 +1065,47 @@ bool Player::isLocked(const Card *card, bool isHandcard) const
 	return isCardLimited(card, Card::MethodUse, isHandcard);
 }
 
-void Player::addEquipsNullified(const QString &pattern, bool single_turn)
-{
-	setCardLimitation("effect",pattern,single_turn);
-}
-
-void Player::removeEquipsNullified(const QString &pattern, bool single_turn)
+void Player::addEquipsNullified(const QString &pattern, const QString &reason, bool single_turn)
 {
 	QString _pattern = pattern;
-	if (!_pattern.endsWith("$1") && !_pattern.endsWith("$0"))
-		_pattern = single_turn?_pattern+"$1":_pattern+"$0";
-	removeCardLimitation("effect",_pattern);
+	if (!pattern.contains("|.|.|"))
+		_pattern = pattern + "|.|.|";
+	setCardLimitation("effect", _pattern, reason, single_turn);
 }
 
-bool Player::isEquipsNullified(const Card *card) const
+void Player::removeEquipsNullified(const QString &pattern, const QString &reason, bool single_turn)
 {
-    return isCardLimited(card,Card::MethodEffect);
+	QString _pattern = pattern;
+	if (!pattern.contains("|.|.|"))
+		_pattern = pattern + "|.|.|";
+	if (!_pattern.endsWith("$1") && !_pattern.endsWith("$0"))
+		_pattern = single_turn ? _pattern + "$1" : _pattern + "$0";
+	removeCardLimitation("effect", _pattern, reason);
 }
 
-bool Player::hasWeapon(const QString &weapon_name, bool need_area) const
+bool Player::isEquipsNullified(const Card *card, const Player *sourcePlayer) const
+{
+	if (!card) return false;
+	
+	QString basePattern = card->objectName();
+	if (basePattern.isEmpty()) return false;
+	
+	QString pattern = basePattern + "|.|.|";
+	if (isCardLimited(card, Card::MethodEffect))
+		return true;
+	
+	if (sourcePlayer) {
+		QString targetPattern = basePattern + "|.|.|.|target:" + sourcePlayer->objectName();
+		Card *tempCard = Sanguosha->cloneCard(basePattern);
+		tempCard->deleteLater();
+		if (isCardLimited(tempCard, Card::MethodEffect))
+			return true;
+	}
+	
+	return false;
+}
+
+bool Player::hasWeapon(const QString &weapon_name, const Player *sourcePlayer, bool need_area) const
 {
     if (!alive||(need_area&&getMark("IgnoreArea0")<1&&!hasEquipArea(0))) return false;
 	static QStringList w_equips;
@@ -1093,24 +1115,24 @@ bool Player::hasWeapon(const QString &weapon_name, bool need_area) const
 	}
 	if(w_equips.contains(weapon_name)){
 		foreach(const EquipCard*w,equips){
-			if(w->objectName()==weapon_name&&!isEquipsNullified(w))
+			if(w->objectName()==weapon_name&&!isEquipsNullified(w, sourcePlayer))
 				return true;
 		}
 		if(viewAsEquip(weapon_name)){
 			Card *ec = Sanguosha->cloneCard(weapon_name);
 			ec->deleteLater();
-			return !isEquipsNullified(ec);
+			return !isEquipsNullified(ec, sourcePlayer);
 		}
 	}else{
 		foreach(const EquipCard*w,equips){
 			if(w->inherits("Weapon")&&w->inherits(weapon_name.toStdString().c_str()))
-				return !isEquipsNullified(w);
+				return !isEquipsNullified(w, sourcePlayer);
 		}
 	}
 	return false;
 }
 
-bool Player::hasArmorEffect(const QString &armor_name, bool need_area) const
+bool Player::hasArmorEffect(const QString &armor_name, const Player *sourcePlayer, bool need_area) const
 {
 	if (!alive||(need_area&&getMark("IgnoreArea1")<1&&!hasEquipArea(1))||getMark("Armor_Nullified")>0)
         return false;
@@ -1121,7 +1143,7 @@ bool Player::hasArmorEffect(const QString &armor_name, bool need_area) const
 	}
     if (armor_name.isEmpty()){
 		foreach(const EquipCard*a,equips){
-			if(a->inherits("Armor")&&!isEquipsNullified(a))
+			if(a->inherits("Armor")&&!isEquipsNullified(a, sourcePlayer))
 				return true;
 		}
 		QStringList view_as_equips = property("View_As_Equips_List").toString().split("+");
@@ -1136,19 +1158,19 @@ bool Player::hasArmorEffect(const QString &armor_name, bool need_area) const
 			if(a_equips.contains(an)){
 				Card *ac = Sanguosha->cloneCard(an);
 				ac->deleteLater();
-				if(!isEquipsNullified(ac))
+				if(!isEquipsNullified(ac, sourcePlayer))
 					return true;
 			}
 		}
     } else if(a_equips.contains(armor_name)){
 		foreach(const EquipCard*a,equips){
-			if(a->objectName()==armor_name&&!isEquipsNullified(a))
+			if(a->objectName()==armor_name&&!isEquipsNullified(a, sourcePlayer))
 				return true;
 		}
 		if(viewAsEquip(armor_name)){
 			Card *ec = Sanguosha->cloneCard(armor_name);
 			ec->deleteLater();
-			return !isEquipsNullified(ec);
+			return !isEquipsNullified(ec, sourcePlayer);
 		}
     }
 	return false;

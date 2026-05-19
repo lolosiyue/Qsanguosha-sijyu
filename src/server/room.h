@@ -111,6 +111,9 @@ public:
         const QString&pattern, const QString&reason);
     void removePlayerCardLimitationByReason(ServerPlayer*player, const QString&reason);
     void clearPlayerCardLimitation(ServerPlayer*player, bool single_turn);
+    void setPlayerEquipsNullified(ServerPlayer*player, const QString&pattern,
+        const QString&reason, bool single_turn);
+    void removePlayerEquipsNullified(ServerPlayer*player, const QString&pattern, const QString&reason);
     void addCardMark(int card_id, const QString&mark, int add_num = 1, ServerPlayer*who = nullptr);
     void addCardMark(const Card*card, const QString&mark, int add_num = 1, ServerPlayer*who = nullptr);
     void removeCardMark(int card_id, const QString&mark, int remove_num = 1);

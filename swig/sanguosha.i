@@ -227,8 +227,8 @@ public:
 	int getTreasuresCount() const;
 
 	bool viewAsEquip(const char*equip_name) const;
-	bool hasWeapon(const char*weapon_name, bool need_area = true) const;
-	bool hasArmorEffect(const char*armor_name, bool need_area = true) const;
+	bool hasWeapon(const char*weapon_name, const Player*sourcePlayer = nullptr, bool need_area = true) const;
+	bool hasArmorEffect(const char*armor_name, const Player*sourcePlayer = nullptr, bool need_area = true) const;
 	bool hasDefensiveHorse(const char*horse_name, bool need_area = true) const;
 	bool hasOffensiveHorse(const char*horse_name, bool need_area = true) const;
 	bool hasTreasure(const char*treasure_name, bool need_area = true) const;
@@ -324,9 +324,9 @@ public:
 	bool hasHideSkill(int general = 1) const;
 	bool inYinniState() const;
 	bool canSeeHandcard(const Player*player) const;
-	void addEquipsNullified(char* pattern, bool single_turn = true);
-	void removeEquipsNullified(char* pattern, bool single_turn = true);
-	bool isEquipsNullified(const Card*card) const;
+	void addEquipsNullified(char* pattern, const char* reason = "", bool single_turn = true);
+	void removeEquipsNullified(char* pattern, const char* reason = "", bool single_turn = true);
+	bool isEquipsNullified(const Card*card, const Player*sourcePlayer = nullptr) const;
     bool hasTurn() const;
 
 	QList<int> getShownHandcards() const;
@@ -1647,6 +1647,8 @@ public:
 	void removePlayerCardLimitation(ServerPlayer*player, const char*limit_list, const char*pattern, const char*reason);
 	void removePlayerCardLimitationByReason(ServerPlayer*player, const char*reason);
 	void clearPlayerCardLimitation(ServerPlayer*player, bool single_turn);
+	void setPlayerEquipsNullified(ServerPlayer*player, const char*pattern, const char*reason, bool single_turn);
+	void removePlayerEquipsNullified(ServerPlayer*player, const char*pattern, const char*reason);
 	void addCardMark(int card_id, const char*mark, int add_num = 1, ServerPlayer*who = nullptr);
 	void addCardMark(const Card*card, const char*mark, int add_num = 1, ServerPlayer*who = nullptr);
 	void removeCardMark(int card_id, const char*, int remove_num = 1);

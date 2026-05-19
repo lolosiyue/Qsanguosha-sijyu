@@ -257,6 +257,112 @@ player->setCardLimitation("discard", "Slash", "", true);
 
 ---
 
+## 裝備無效化系統
+
+### 概述
+
+裝備無效化系統用於讓裝備對特定玩家無效，實現「A 的裝備對 B 無效」的互動。此系統基於 CardLimitation 擴展而來。
+
+### API 說明
+
+#### Player 方法
+
+```cpp
+// 設置裝備無效
+void addEquipsNullified(const QString &pattern, const QString &reason = "", bool single_turn = true);
+
+// 移除裝備無效
+void removeEquipsNullified(const QString &pattern, const QString &reason = "", bool single_turn = true);
+
+// 檢查裝備是否無效
+bool isEquipsNullified(const Card *card, const Player *sourcePlayer = nullptr) const;
+
+// 檢查是否有對特定玩家有效的武器/防具
+bool hasWeapon(const QString &weapon_name, const Player *sourcePlayer = nullptr, bool need_area = true) const;
+bool hasArmorEffect(const QString &armor_name, const Player *sourcePlayer = nullptr, bool need_area = true) const;
+```
+
+#### Room 方法
+
+```cpp
+// 設置裝備無效（同步至客戶端）
+void setPlayerEquipsNullified(ServerPlayer*player, const QString&pattern, 
+                              const QString&reason, bool single_turn);
+
+// 移除裝備無效
+void removePlayerEquipsNullified(ServerPlayer*player, const QString&pattern, const QString&reason);
+```
+
+### Pattern 格式擴展
+
+裝備無效化支援目標玩家標識：
+
+```
+Armor|.|.|.|target:playerName
+```
+
+| 欄位 | 說明 |
+|------|------|
+| Armor | 裝備名稱 |
+| . | 花色（任意） |
+| . | 數值（任意） |
+| . | 區域（任意） |
+| target:playerName | 目標玩家名稱（可選） |
+
+### 使用範例
+
+#### C++ 使用
+
+```cpp
+// A 的防具對 B 無效
+room->setPlayerEquipsNullified(b, "Armor|.|.|.|target:" + a->objectName(), "skill_name", true);
+
+// 檢查 A 的裝備對 B 是否無效
+if (!a->isEquipsNullified(armorCard, b)) {
+    // 裝備對 B 有效
+}
+
+// 檢查 A 是否有對 B 有效的防具
+if (a->hasArmorEffect("eight_diagram", b)) {
+    // 防具對 B 有效
+}
+
+// 移除裝備無效化
+room->removePlayerEquipsNullified(b, "Armor", "skill_name");
+```
+
+#### Lua 使用
+
+```lua
+-- 設置裝備無效
+room:setPlayerEquipsNullified(target, "Armor|.|.|.|target:" .. source:objectName(), "skill", true)
+
+-- 檢查裝備是否無效
+if not source:isEquipsNullified(card, target) then
+    -- 裝備對 target 有效
+end
+
+-- 檢查是否有對特定玩家有效的防具
+if player:hasArmorEffect("eight_diagram", attacker) then
+    -- 防具對 attacker 有效
+end
+
+-- 移除裝備無效化
+room:removePlayerEquipsNullified(target, "Armor", "skill")
+```
+
+### 向後相容
+
+現有 API 仍然可用，內部會自動處理：
+
+| 現有 API | 處理方式 |
+|----------|----------|
+| `addEquipsNullified(pattern, single_turn)` | 內部調用新 API，reason 預設為空 |
+| `isEquipsNullified(card)` | 內部調用新 API，sourcePlayer 預設為 nullptr（全局檢查） |
+| `hasWeapon(weapon_name)` | 內部調用新 API，sourcePlayer 預設為 nullptr |
+
+---
+
 ## 相關文件
 
 - [TriggerV2Skill 系統說明](TriggerV2Skill系統說明.md)
