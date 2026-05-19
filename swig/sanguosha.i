@@ -1461,6 +1461,7 @@ struct SkillContext {
 	bool is_canceled;
 	bool bypass_cost;
 	TriggerEvent current_event;
+	int trigger_count;
 };
 
 class Skill: public QObject {
