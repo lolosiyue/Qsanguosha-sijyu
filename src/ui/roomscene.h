@@ -28,6 +28,8 @@ class Photo;
 class Dashboard;
 class GenericCardContainer;
 class TablePile;
+class ReplayTimeline;
+class ReplayIndex;
 class PlayerCardContainer;
 class ResponseSkill;
 class ShowOrPindianSkill;
@@ -377,6 +379,9 @@ private:
     KOFOrderBox *enemy_box, *self_box;
     QPointF m_tableCenterPos;
     ReplayerControlBar *m_replayControl;
+    ReplayTimeline *m_replayTimeline;
+    QAction *m_switchPerspectiveAction;
+    QString m_currentPerspective;
 
     struct _MoveCardsClassifier
     {
@@ -420,6 +425,10 @@ private:
     void addRestartButton(QDialog *dialog);
     QGraphicsPixmapItem *createDashboardButtons();
     void createReplayControlBar();
+    void createReplayTimeline();
+    void updateReplayTimeline(int secs);
+    void onReplayTimelineTimeChanged(int secs);
+    void onReplayTimelineNodeClicked(int nodeIndex);
 
     void fillGenerals1v1(const QStringList &names);
     void fillGenerals3v3(const QStringList &names);
@@ -554,6 +563,7 @@ void onGameStart();
 
     void hideContainer();
     void switchControlContext(const QString &target_name);
+    void switchReplayPerspective(const QString &player_name);
 
     void startAssign();
 

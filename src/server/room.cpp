@@ -11,17 +11,17 @@
 #include "roomthread1v1.h"
 #include "server.h"
 #include "generalselector.h"
-//#include "structs.h"
 #include "miniscenarios.h"
 #include "lua.hpp"
 #include "exppattern.h"
-//#include "util.h"
 #include "wrapped-card.h"
 #include "roomthread.h"
 #include "clientstruct.h"
+#include "game-snapshot.h"
 #include <ctime>
 #include <functional>
 #include <QSet>
+#include <QDir>
 
 #ifdef QSAN_UI_LIBRARY_AVAILABLE
 #pragma message WARN("UI elements detected in server side!!!")
@@ -186,7 +186,8 @@ Room::Room(QObject*parent, const QString&mode)
 	game_state(0), game_paused(false), m_lua(Sanguosha->getLuaState()),
 	thread(nullptr),//game_started(false), game_finished(false),
 	thread_3v3(nullptr), thread_xmode(nullptr), thread_1v1(nullptr), _m_semRaceRequest(0), _m_semRoomMutex(1),
-	_m_raceStarted(false), scenario(Sanguosha->getScenario(mode)), m_surrenderRequestReceived(false), _virtual(false), _m_roomState(false)
+	_m_raceStarted(false), scenario(Sanguosha->getScenario(mode)), m_surrenderRequestReceived(false), _virtual(false), _m_roomState(false),
+	m_lastSnapshotTurn(0)
 {
 	static int s_global_room_id = 0;
 	_m_Id = s_global_room_id++;
@@ -213,6 +214,8 @@ Room::~Room()
 		delete player;
 	if (thread != nullptr)
 		delete thread;
+	foreach (GameSnapshot *snapshot, m_snapshots)
+		delete snapshot;
 	//lua_close(m_lua);
 }
 
@@ -9361,5 +9364,65 @@ void Room::processPendingAnytimeSkills()
 void Room::notifyAnytimeSkillDone(ServerPlayer *player, const QString &skill_name)
 {
 	doNotify(player, S_COMMAND_ANYTIME_SKILL_DONE, skill_name);
+}
+
+void Room::saveSnapshot(const QString &type, const QString &playerName)
+{
+	int turnCount = getTag("TurnLengthCount").toInt();
+	if (type == "turn" && turnCount == m_lastSnapshotTurn)
+		return;
+
+	GameSnapshot *snapshot = new GameSnapshot(this);
+	snapshot->setSnapshotType(type);
+	snapshot->setReplayPath(m_replayPath);
+
+	QString description;
+	if (type == "turn") {
+		description = QString("Turn %1").arg(turnCount);
+		m_lastSnapshotTurn = turnCount;
+	} else if (type == "death") {
+		description = QString("%1 died").arg(playerName);
+	}
+	snapshot->setDescription(description);
+
+	QString snapshotDir = getSnapshotDir();
+	QDir dir;
+	if (!dir.exists(snapshotDir))
+		dir.mkpath(snapshotDir);
+
+	QString filename = GameSnapshot::generateSnapshotFilename(turnCount, type, playerName);
+	QString filepath = snapshotDir + "/" + filename;
+
+	if (snapshot->save(filepath)) {
+		m_snapshots.append(snapshot);
+	} else {
+		delete snapshot;
+	}
+}
+
+GameSnapshot* Room::getSnapshot(int turnCount) const
+{
+	foreach (GameSnapshot *snapshot, m_snapshots) {
+		if (snapshot->getTurnCount() == turnCount)
+			return snapshot;
+	}
+	return nullptr;
+}
+
+QString Room::getSnapshotDir() const
+{
+	if (m_replayPath.isEmpty())
+		return QString();
+	return GameSnapshot::getSnapshotDir(m_replayPath);
+}
+
+void Room::setReplayPath(const QString &path)
+{
+	m_replayPath = path;
+}
+
+QString Room::getReplayPath() const
+{
+	return m_replayPath;
 }
 

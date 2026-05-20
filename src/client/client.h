@@ -10,6 +10,7 @@ class Recorder;
 class Replayer;
 class QTextDocument;
 class ClientSocket;
+class ReplayTakeoverManager;
 
 class Client : public QObject
 {
@@ -63,6 +64,11 @@ public:
     void requestSurrender();
 
     bool isReplayState() const { return nullptr != replayer; }
+    bool isTakeoverMode() const;
+    QString getTakeoverTarget() const;
+    void enableTakeover(const QString &playerName);
+    void disableTakeover();
+    void saveTakeoverReplay(const QString &filepath);
 
     void disconnectFromHost();
     void replyToServer(QSanProtocol::CommandType command, const QVariant &arg = QVariant());
@@ -300,6 +306,7 @@ private:
     QStringList ban_packages;
     Recorder *recorder;
     Replayer *replayer;
+    ReplayTakeoverManager *m_takeoverManager;
     QTextDocument *lines_doc, *prompt_doc;
     int pile_num;
     QString skill_to_invoke;

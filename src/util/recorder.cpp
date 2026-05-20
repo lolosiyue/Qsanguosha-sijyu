@@ -1,6 +1,11 @@
 ﻿#include "recorder.h"
-//#include "client.h"
 #include "serverplayer.h"
+#include "replay-index.h"
+#include "game-snapshot.h"
+
+#include <QFile>
+#include <QBuffer>
+#include <QDir>
 
 using namespace QSanProtocol;
 
@@ -77,7 +82,8 @@ QByteArray Recorder::PNG2TXT(const QString filename)
 
 Replayer::Replayer(QObject *parent, const QString &filename)
     : QThread(parent), m_commandSeriesCounter(1),
-    filename(filename), speed(1.0), playing(true)
+    filename(filename), speed(1.0), playing(true), m_seeking(false), m_currentPairIndex(0),
+    m_index(nullptr)
 {
     QIODevice *device = nullptr;
     if (filename.endsWith(".png")) {
@@ -117,7 +123,85 @@ Replayer::Replayer(QObject *parent, const QString &filename)
         pairs << pair;
     }
 
-    delete device;
+	delete device;
+
+    m_index = new ReplayIndex(this);
+    buildIndex();
+    loadSnapshots();
+}
+
+Replayer::~Replayer()
+{
+    foreach (GameSnapshot *snapshot, m_snapshots)
+        delete snapshot;
+    if (m_index)
+        delete m_index;
+}
+
+void Replayer::buildIndex()
+{
+    if (!m_index)
+        return;
+
+    QList<QPair<int, QString>> pairList;
+    foreach (const Pair &p, pairs) {
+        pairList << qMakePair(p.elapsed, p.cmd);
+    }
+    m_index->buildIndex(pairList);
+
+    QString snapshotPath = GameSnapshot::getSnapshotDir(filename);
+    m_index->setSnapshotPath(snapshotPath);
+}
+
+void Replayer::loadSnapshots()
+{
+    QString snapshotPath = GameSnapshot::getSnapshotDir(filename);
+    QDir dir(snapshotPath);
+    if (!dir.exists())
+        return;
+
+    QStringList filters;
+    filters << "*.json";
+    QStringList files = dir.entryList(filters, QDir::Files | QDir::Name);
+
+    foreach (const QString &file, files) {
+        QString filepath = snapshotPath + "/" + file;
+        GameSnapshot *snapshot = new GameSnapshot(filepath, this);
+        m_snapshots.append(snapshot);
+    }
+}
+
+GameSnapshot* Replayer::getSnapshot(int nodeIndex) const
+{
+    if (!m_index || nodeIndex < 0 || nodeIndex >= m_index->getNodeCount())
+        return nullptr;
+
+    ReplayNode node = m_index->getNode(nodeIndex);
+    if (node.snapshotIndex < 0)
+        return nullptr;
+
+    foreach (GameSnapshot *snapshot, m_snapshots) {
+        if (snapshot->getTurnCount() == node.turnCount)
+            return snapshot;
+    }
+    return nullptr;
+}
+
+int Replayer::getCurrentPairIndex() const
+{
+    return m_currentPairIndex;
+}
+
+int Replayer::getCurrentElapsed() const
+{
+    if (m_currentPairIndex >= 0 && m_currentPairIndex < pairs.size())
+        return pairs[m_currentPairIndex].elapsed;
+    return 0;
+}
+
+ReplayIndex* Replayer::getIndex() const
+{
+    return m_index;
 }
 
 int Replayer::getDuration() const
@@ -188,7 +272,19 @@ void Replayer::run()
         << S_COMMAND_REMOVE_PLAYER
         << S_COMMAND_SPEAK;
 
-    foreach (Pair pair, pairs) {
+    for (m_currentPairIndex = 0; m_currentPairIndex < pairs.size(); m_currentPairIndex++) {
+        if (m_seeking) {
+            mutex.lock();
+            bool shouldSeek = m_seeking;
+            int seekTarget = m_currentPairIndex;
+            mutex.unlock();
+
+            if (shouldSeek) {
+                emit seek_finished();
+            }
+        }
+
+        Pair pair = pairs[m_currentPairIndex];
         int delay = qMin(pair.elapsed - last, 2500);
         last = pair.elapsed;
 
@@ -210,6 +306,62 @@ void Replayer::run()
         }
 
         emit command_parsed(pair.cmd);
+
+        int nodeIndex = m_index ? m_index->findNearestNode(m_currentPairIndex) : -1;
+        if (nodeIndex >= 0) {
+            emit node_reached(nodeIndex);
+        }
+    }
+}
+
+void Replayer::jumpToNode(int nodeIndex)
+{
+    if (!m_index || nodeIndex < 0 || nodeIndex >= m_index->getNodeCount())
+        return;
+
+    ReplayNode node = m_index->getNode(nodeIndex);
+    seekToPosition(node.pairIndex);
+}
+
+void Replayer::jumpToElapsed(int elapsed)
+{
+    int bestIndex = 0;
+    int bestDiff = INT_MAX;
+
+    for (int i = 0; i < pairs.size(); i++) {
+        int diff = qAbs(pairs[i].elapsed - elapsed);
+        if (diff < bestDiff) {
+            bestDiff = diff;
+            bestIndex = i;
+        }
+    }
+
+    seekToPosition(bestIndex);
+}
+
+void Replayer::seekToPosition(int pairIndex)
+{
+    if (pairIndex < 0 || pairIndex >= pairs.size())
+        return;
+
+    mutex.lock();
+    m_seeking = true;
+    m_currentPairIndex = pairIndex;
+    mutex.unlock();
+
+    emit elasped(pairs[pairIndex].elapsed / 1000.0);
+
+    for (int i = 0; i <= pairIndex; i++) {
+        emit command_parsed(pairs[i].cmd);
+    }
+
+    emit seek_finished();
+}
+
+void Replayer::emitCommand(int pairIndex)
+{
+    if (pairIndex >= 0 && pairIndex < pairs.size()) {
+        emit command_parsed(pairs[pairIndex].cmd);
     }
 }
 
