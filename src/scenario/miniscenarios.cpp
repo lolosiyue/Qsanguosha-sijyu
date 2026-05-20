@@ -360,3 +360,12 @@ void MiniScene::onTagSet(Room *, const QString &) const
 {
 }
 
+const char *TestScenario::S_KEY_TESTSCENE = "test_scenario";
+
+TestScenario::TestScenario(const QString &filePath)
+    : MiniScene(S_KEY_TESTSCENE)
+{
+    MiniSceneRule *rule = qobject_cast<MiniSceneRule *>(getRule());
+    rule->loadSetting(filePath);
+}
+

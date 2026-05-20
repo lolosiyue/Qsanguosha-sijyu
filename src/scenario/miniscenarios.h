@@ -75,5 +75,14 @@ public:
     }
 };
 
+class TestScenario : public MiniScene
+{
+    Q_OBJECT
+
+public:
+    static const char *S_KEY_TESTSCENE;
+    TestScenario(const QString &filePath);
+};
+
 #endif
 

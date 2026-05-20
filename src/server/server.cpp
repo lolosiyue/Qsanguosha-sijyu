@@ -1854,3 +1854,51 @@ void Server::startHeadlessGame()
 
     room->start();
 }
+
+void Server::startTestGame(const QString &scenarioFile, bool headless)
+{
+    if (!Sanguosha->loadTestScenario(scenarioFile)) {
+        qDebug() << "Failed to load test scenario:" << scenarioFile;
+        qApp->quit();
+        return;
+    }
+
+    int playerCount = Sanguosha->getTestScenarioPlayerCount();
+    if (playerCount <= 0) {
+        qDebug() << "Invalid test scenario: no players defined";
+        qApp->quit();
+        return;
+    }
+
+    qDebug() << "Starting test game with" << playerCount << "players";
+
+    Room *room = new Room(this, "test_scenario");
+    if (!room->getLuaState()) {
+        delete room;
+        qDebug() << "Test game FAILED - Lua state is null";
+        qApp->quit();
+        return;
+    }
+
+    connect(room, &Room::game_over, this, [this, room, headless](const QString &winner) {
+        qDebug() << "Test game finished. Winner:" << winner;
+
+        QTimer::singleShot(500, this, [this, room, headless]() {
+            room->deleteLater();
+            if (headless) {
+                qDebug() << "Test completed. Exiting.";
+                qApp->quit();
+            }
+        });
+    });
+
+    for (int i = 0; i < playerCount; i++) {
+        ServerPlayer *player = room->addAIPlayer();
+        player->setAI(new TrustAI(player));
+        if (i == 0)
+            player->setOwner(true);
+        room->signup(player, QString("TestBot_%1").arg(i), "", true);
+    }
+
+    room->start();
+}

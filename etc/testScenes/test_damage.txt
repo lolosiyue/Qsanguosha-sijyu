@@ -1,0 +1,14 @@
+# Test Scenario: Damage test
+# Usage: QSanguosha.exe --test-scenario test_damage --headless
+
+# Player 1: Attacker with Slash
+general:guanyu|role:lord|hp:4|hand:1,2,3,4
+
+# Player 2: Defender
+general:zhangfei|role:rebel|hp:4|hand:5,6,7,8
+
+# Card IDs:
+# 1-4: Slash cards (for attacker)
+# 5-8: Jink cards (for defender)
+
+setPile:1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20
