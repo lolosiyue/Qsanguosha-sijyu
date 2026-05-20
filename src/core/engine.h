@@ -69,6 +69,9 @@ public:
 
     int getMiniSceneCounts();
 
+    bool loadTestScenario(const QString &filePath);
+    int getTestScenarioPlayerCount() const;
+
     void addPackage(Package *package);
     void addBanPackage(const QString &package_name);
     QList<const Package *> getPackages() const;
@@ -245,6 +248,7 @@ private:
     QStringList ban_package;
     QHash<QString, Scenario *> m_scenarios, m_miniScenes;
     Scenario *m_customScene;
+    Scenario *m_testScene;
 
     lua_State *lua;
     mutable SafeLuaMutex lua_mutex;

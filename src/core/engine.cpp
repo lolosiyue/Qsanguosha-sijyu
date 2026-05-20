@@ -83,6 +83,34 @@ void Engine::_loadMiniScenarios()
     loaded = true;
 }
 
+bool Engine::loadTestScenario(const QString &filePath)
+{
+    QString fullPath = filePath;
+    if (!QFile::exists(fullPath)) {
+        fullPath = QString("etc/testScenes/%1.txt").arg(filePath);
+    }
+
+    if (!QFile::exists(fullPath)) {
+        qDebug() << "Test scenario file not found:" << filePath;
+        return false;
+    }
+
+    delete m_testScene;
+    m_testScene = new TestScenario(fullPath);
+    qDebug() << "Test scenario loaded:" << fullPath;
+    return true;
+}
+
+int Engine::getTestScenarioPlayerCount() const
+{
+    if (m_testScene) {
+        QStringList generals, roles;
+        m_testScene->assign(generals, roles);
+        return roles.length();
+    }
+    return 0;
+}
+
 void Engine::_loadModScenarios()
 {
     addScenario(new GuanduScenario());
@@ -259,6 +287,7 @@ Engine::Engine(bool isManualMode)
     _loadMiniScenarios();
     _loadModScenarios();
     m_customScene = new CustomScenario;
+    m_testScene = nullptr;
 
     initializeRoleMap();
 
@@ -442,6 +471,7 @@ void Engine::addGameMode(const GameModeStruct &mode)
 Engine::~Engine()
 {
     delete m_customScene;
+    delete m_testScene;
 #ifdef AUDIO_SUPPORT
     Audio::quit();
 #endif
@@ -461,6 +491,8 @@ void Engine::addScenario(Scenario*scenario)
 
 const Scenario*Engine::getScenario(const QString &name) const
 {
+	if (name == "test_scenario" && m_testScene)
+		return m_testScene;
 	if (m_scenarios.contains(name))
 		return m_scenarios[name];
 	else if (m_miniScenes.contains(name))

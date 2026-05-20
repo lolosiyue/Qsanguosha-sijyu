@@ -106,6 +106,30 @@ int main(int argc, char *argv[])
         return qApp->exec();
     }
 
+    auto getTestScenarioArg = []() -> QString {
+        foreach (QString arg, qApp->arguments()) {
+            if (arg.startsWith("--test-scenario=")) {
+                return arg.mid(16);
+            }
+        }
+        int idx = qApp->arguments().indexOf("--test-scenario");
+        if (idx >= 0 && idx + 1 < qApp->arguments().size()) {
+            return qApp->arguments().at(idx + 1);
+        }
+        return QString();
+    };
+
+    QString testScenario = getTestScenarioArg();
+    if (!testScenario.isEmpty()) {
+        bool headless = qApp->arguments().contains("--headless") || qApp->arguments().contains("-h");
+        Server *server = new Server(qApp);
+        qDebug() << ">>> Test Scenario Mode:" << testScenario << (headless ? "(headless)" : "(with GUI)") << "<<<";
+        QTimer::singleShot(0, [server, testScenario, headless]() {
+            server->startTestGame(testScenario, headless);
+        });
+        return qApp->exec();
+    }
+
     QFile file("qss/sanguosha.qss");
     if (file.open(QIODevice::ReadOnly)) {
         QTextStream stream(&file);

@@ -230,6 +230,7 @@ public:
     void signupPlayer(ServerPlayer *player);
     void checkUpnpAndListServer();
     void startHeadlessGame();
+    void startTestGame(const QString &scenarioFile, bool headless);
 
 private:
     ServerSocket *server;
