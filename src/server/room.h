@@ -7,6 +7,7 @@ class ProhibitSkill;
 class ProhibitPindianSkill;
 class Scenario;
 class TrickCard;
+class GameSnapshot;
 
 struct lua_State;
 struct LogMessage;
@@ -353,6 +354,12 @@ public:
 
     void reconnect(ServerPlayer*player, ClientSocket*socket);
     void marshal(ServerPlayer*player);
+
+    void saveSnapshot(const QString &type = "turn", const QString &playerName = QString());
+    GameSnapshot* getSnapshot(int turnCount) const;
+    QString getSnapshotDir() const;
+    void setReplayPath(const QString &path);
+    QString getReplayPath() const;
 
     void sortByActionOrder(QList<ServerPlayer*>&players);
 
@@ -718,6 +725,9 @@ private:
     QHash<QString, QString> m_dualControlRequestTargets;
 
     QVariantList m_chatHistory;
+    QList<GameSnapshot*> m_snapshots;
+    QString m_replayPath;
+    int m_lastSnapshotTurn;
 
     QElapsedTimer _m_timeSinceLastSurrenderRequest; // Timer used to ensure that surrender polls are not initiated too frequently
     bool _m_isFirstSurrenderRequest; // We allow the first surrender poll to go through regardless of the timer.

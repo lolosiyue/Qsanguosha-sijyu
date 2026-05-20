@@ -17,6 +17,8 @@
 #include "playercardbox.h"
 #include "cardcontainer.h"
 #include "recorder.h"
+#include "replay-timeline.h"
+#include "replay-index.h"
 #include "indicatoritem.h"
 #include "generaloverview.h"
 #include "pixmapanimation.h"
@@ -47,6 +49,7 @@
 #include <QOpenGLWidget>
 #include <QMutexLocker>
 #include <QSet>
+#include <QMenu>
 
 static ClientPlayer *getControlRootPlayer(const ClientPlayer *player)
 {
@@ -179,9 +182,13 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(Self,SIGNAL(role_changed(QString)),dashboard,SLOT(updateRole(QString)));
 
 	m_replayControl = nullptr;
+	m_replayTimeline = nullptr;
+	m_switchPerspectiveAction = nullptr;
+	m_currentPerspective = QString();
 	if(ClientInstance->getReplayer()){
 		dashboard->hideControlButtons();
 		createReplayControlBar();
+		createReplayTimeline();
 	}
 
 	response_skill = new ResponseSkill;
@@ -1031,6 +1038,62 @@ void ReplayerControlBar::setTime(int secs)
 void RoomScene::createReplayControlBar()
 {
 	m_replayControl = new ReplayerControlBar(dashboard);
+}
+
+void RoomScene::createReplayTimeline()
+{
+	if (!ClientInstance->getReplayer())
+		return;
+
+	m_replayTimeline = new ReplayTimeline();
+	addItem(m_replayTimeline);
+
+	ReplayIndex *index = ClientInstance->getReplayer()->getIndex();
+	if (index) {
+		m_replayTimeline->setIndex(index);
+	}
+	m_replayTimeline->setDuration(ClientInstance->getReplayer()->getDuration());
+
+	connect(m_replayTimeline, &ReplayTimeline::timeChanged, this, &RoomScene::onReplayTimelineTimeChanged);
+	connect(m_replayTimeline, &ReplayTimeline::nodeClicked, this, &RoomScene::onReplayTimelineNodeClicked);
+	connect(ClientInstance->getReplayer(), &Replayer::elasped, this, &RoomScene::updateReplayTimeline);
+
+	m_replayTimeline->setPos(100, sceneRect().height() - 50);
+}
+
+void RoomScene::updateReplayTimeline(int secs)
+{
+	if (m_replayTimeline) {
+		m_replayTimeline->setCurrentTime(secs);
+	}
+}
+
+void RoomScene::onReplayTimelineTimeChanged(int secs)
+{
+	if (ClientInstance->getReplayer()) {
+		ClientInstance->getReplayer()->jumpToElapsed(secs * 1000);
+	}
+}
+
+void RoomScene::onReplayTimelineNodeClicked(int nodeIndex)
+{
+	if (ClientInstance->getReplayer()) {
+		ClientInstance->getReplayer()->jumpToNode(nodeIndex);
+	}
+}
+
+void RoomScene::switchReplayPerspective(const QString &player_name)
+{
+	if (!ClientInstance->getReplayer())
+		return;
+
+	ClientPlayer *target = ClientInstance->getPlayer(player_name);
+	if (!target || target->isDead())
+		return;
+
+	m_currentPerspective = player_name;
+	ClientInstance->setSelf(target);
+	emit ClientInstance->switch_control_context(player_name);
 }
 
 void RoomScene::_getSceneSizes(QSize&minSize,QSize&maxSize)

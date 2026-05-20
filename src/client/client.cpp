@@ -5,10 +5,10 @@
 #include "choosegeneraldialog.h"
 #include "nativesocket.h"
 #include "recorder.h"
+#include "replay-takeover.h"
 #include "json.h"
 #include "clientplayer.h"
 #include "clientstruct.h"
-//#include "util.h"
 #include "wrapped-card.h"
 #include <QSet>
 #include <QJsonDocument>
@@ -49,7 +49,7 @@ static ClientPlayer *getControlRootPlayer(ClientPlayer *player)
 Client::Client(QObject *parent, const QString &filename)
 	: QObject(parent), m_isDiscardActionRefusable(true), m_bossLevel(0),
 	status(NotActive), alive_count(1), swap_pile(0), add_round(0), _m_roomState(true),
-	m_client_lua(nullptr), m_original_self(nullptr)
+	m_client_lua(nullptr), m_original_self(nullptr), m_takeoverManager(nullptr)
 {
 	ClientInstance = this;
 	m_isGameOver = false;
@@ -223,6 +223,10 @@ Client::~Client()
 	if (m_client_lua) {
 		lua_close(m_client_lua);
 		m_client_lua = nullptr;
+	}
+	if (m_takeoverManager) {
+		delete m_takeoverManager;
+		m_takeoverManager = nullptr;
 	}
 	ClientInstance = nullptr;
 }
@@ -2573,4 +2577,52 @@ void Client::setBrokenEquips(const QVariant &card_var)
 
     ClientPlayer *player = getPlayer(who);
     player->setBrokenEquips(card_ids);
+}
+
+bool Client::isTakeoverMode() const
+{
+    return m_takeoverManager && m_takeoverManager->isTakeoverEnabled();
+}
+
+QString Client::getTakeoverTarget() const
+{
+    return m_takeoverManager ? m_takeoverManager->getTakeoverTarget() : QString();
+}
+
+void Client::enableTakeover(const QString &playerName)
+{
+    if (!replayer || playerName.isEmpty())
+        return;
+
+    if (!m_takeoverManager) {
+        m_takeoverManager = new ReplayTakeoverManager(replayer, this);
+    }
+
+    m_takeoverManager->setTakeoverTarget(playerName);
+    m_takeoverManager->enableTakeover();
+
+    ClientPlayer *target = getPlayer(playerName);
+    if (target) {
+        setSelf(target);
+        emit switch_control_context(playerName);
+    }
+}
+
+void Client::disableTakeover()
+{
+    if (m_takeoverManager) {
+        m_takeoverManager->disableTakeover();
+    }
+
+    if (m_original_self) {
+        setSelf(m_original_self);
+        emit switch_control_context(m_original_self->objectName());
+    }
+}
+
+void Client::saveTakeoverReplay(const QString &filepath)
+{
+    if (m_takeoverManager) {
+        m_takeoverManager->saveNewReplay(filepath);
+    }
 }

@@ -118,6 +118,11 @@ src/ui/chatwidget.cpp \
 	src/util/detector.cpp \
 	src/util/nativesocket.cpp \
 	src/util/recorder.cpp \
+	src/util/game-snapshot.cpp \
+	src/util/replay-index.cpp \
+	src/util/replay-game-state.cpp \
+	src/util/replay-takeover.cpp \
+	src/ui/replay-timeline.cpp \
 	src/core/record-analysis.cpp \
 	src/package/hegemony.cpp \
 	src/scenario/fancheng-scenario.cpp \
@@ -292,6 +297,11 @@ src/ui/dashboard.h \
 	src/util/detector.h \
 	src/util/nativesocket.h \
 	src/util/recorder.h \
+	src/util/game-snapshot.h \
+	src/util/replay-index.h \
+	src/util/replay-game-state.h \
+	src/util/replay-takeover.h \
+	src/ui/replay-timeline.h \
 	src/util/socket.h \
 	src/core/record-analysis.h \
 	src/package/hegemony.h \
