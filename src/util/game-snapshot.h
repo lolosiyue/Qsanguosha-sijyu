@@ -47,6 +47,8 @@ struct PlayerSnapshot
     QVariantMap serialize() const;
     static PlayerSnapshot deserialize(const QVariantMap &map);
     static PlayerSnapshot fromPlayer(ServerPlayer *player);
+
+    bool operator==(const PlayerSnapshot &other) const { return objectName == other.objectName; }
 };
 
 struct GlobalSnapshot
@@ -105,6 +107,7 @@ private:
     QString m_replayPath;
     QString m_snapshotType;
     QString m_description;
+    int m_turnCount;
 };
 
 #endif

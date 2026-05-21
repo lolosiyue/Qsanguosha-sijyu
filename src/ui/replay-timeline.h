@@ -4,8 +4,8 @@
 #include <QGraphicsObject>
 #include <QList>
 #include <QRectF>
+#include "replay-index.h"
 
-class ReplayNode;
 class ReplayIndex;
 
 class ReplayTimeline : public QGraphicsObject

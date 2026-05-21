@@ -162,7 +162,7 @@ void Replayer::loadSnapshots()
 
     QStringList filters;
     filters << "*.json";
-    QStringList files = dir.entryList(filters, QDir::Files | QDir::Name);
+    QStringList files = dir.entryList(filters, QDir::Files, QDir::Name);
 
     foreach (const QString &file, files) {
         QString filepath = snapshotPath + "/" + file;

@@ -1643,8 +1643,8 @@ public:
 	void setPlayerMark(ServerPlayer*player, const char*mark, int value, QList<ServerPlayer*> only_viewers = QList<ServerPlayer*>());
 	void addPlayerMark(ServerPlayer*player, const char*mark, int add_num = 1, QList<ServerPlayer*> only_viewers = QList<ServerPlayer*>());
 	void removePlayerMark(ServerPlayer*player, const char*mark, int remove_num = 1);
-	void setPlayerCardLimitation(ServerPlayer*player, const char*limit_list, const char*pattern, const char*reason, bool single_turn);
-	void removePlayerCardLimitation(ServerPlayer*player, const char*limit_list, const char*pattern, const char*reason);
+	void setPlayerCardLimitation(ServerPlayer*player, const char*limit_list, const char*pattern, bool single_turn, const char*reason = "");
+	void removePlayerCardLimitation(ServerPlayer*player, const char*limit_list, const char*pattern, const char*reason = "");
 	void removePlayerCardLimitationByReason(ServerPlayer*player, const char*reason);
 	void clearPlayerCardLimitation(ServerPlayer*player, bool single_turn);
 	void setPlayerEquipsNullified(ServerPlayer*player, const char*pattern, const char*reason, bool single_turn);

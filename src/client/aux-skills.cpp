@@ -1,9 +1,8 @@
 #include "aux-skills.h"
 #include "clientplayer.h"
-//#include "standard-generals.h"
 #include "engine.h"
 #include "roomscene.h"
-//#include "util.h"
+#include "room.h"
 
 static const Player *GetCurrentRequestPlayer()
 {
