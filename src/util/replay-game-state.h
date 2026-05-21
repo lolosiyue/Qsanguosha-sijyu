@@ -6,10 +6,9 @@
 #include <QList>
 #include <QString>
 #include <QVariant>
+#include "game-snapshot.h"
 
 class GameSnapshot;
-struct GlobalSnapshot;
-struct PlayerSnapshot;
 
 class ReplayGameState : public QObject
 {

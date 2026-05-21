@@ -107,9 +107,9 @@ public:
     void addPlayerMark(ServerPlayer*player, const QString&mark, int add_num = 1, QList<ServerPlayer*> only_viewers = QList<ServerPlayer*>());
     void removePlayerMark(ServerPlayer*player, const QString&mark, int remove_num = 1);
     void setPlayerCardLimitation(ServerPlayer*player, const QString&limit_list,
-        const QString&pattern, const QString&reason, bool single_turn);
+        const QString&pattern, bool single_turn, const QString&reason = QString());
     void removePlayerCardLimitation(ServerPlayer*player, const QString&limit_list,
-        const QString&pattern, const QString&reason);
+        const QString&pattern, const QString&reason = QString());
     void removePlayerCardLimitationByReason(ServerPlayer*player, const QString&reason);
     void clearPlayerCardLimitation(ServerPlayer*player, bool single_turn);
     void setPlayerEquipsNullified(ServerPlayer*player, const QString&pattern,
@@ -368,6 +368,7 @@ public:
 
     void setTag(const QString&key, const QVariant&value);
     QVariant getTag(const QString&key) const;
+    QVariantMap getAllTags() const { return tag; }
     void removeTag(const QString&key);
 
     void setEmotion(ServerPlayer*target, const QString&emotion);

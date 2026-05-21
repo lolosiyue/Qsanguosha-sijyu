@@ -189,8 +189,8 @@ PlayerSnapshot PlayerSnapshot::fromPlayer(ServerPlayer *player)
         snapshot.skills << skill->objectName();
     }
 
-    foreach (const QString &key, player->getHistoryKeys()) {
-        snapshot.history[key] = player->getHistoryValue(key);
+    foreach (const QString &key, player->getHistory().keys()) {
+        snapshot.history[key] = player->getHistory().value(key);
     }
 
     for (int i = 0; i < 5; i++) {
@@ -259,7 +259,7 @@ GlobalSnapshot GlobalSnapshot::deserialize(const QVariantMap &map)
 }
 
 GameSnapshot::GameSnapshot(QObject *parent)
-    : QObject(parent), m_turnCount(0)
+    : QObject(parent)
 {
     m_timestamp = QDateTime::currentDateTime();
 }
@@ -290,11 +290,7 @@ GameSnapshot::GameSnapshot(Room *room, QObject *parent)
     m_state.drawPile = room->getDrawPile();
     m_state.discardPile = room->getDiscardPile();
 
-    m_state.roomTags = room->getTags();
-
-    foreach (const QVariant &chat, room->getChatHistory()) {
-        m_state.chatHistory << chat.toString();
-    }
+    m_state.roomTags = room->getAllTags();
 
     m_turnCount = m_state.turnCount;
 }

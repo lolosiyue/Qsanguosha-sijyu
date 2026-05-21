@@ -1,5 +1,5 @@
 #include "replay-takeover.h"
-#include "replayer.h"
+#include "recorder.h"
 #include "replay-game-state.h"
 #include "game-snapshot.h"
 #include "recorder.h"
@@ -111,7 +111,7 @@ void ReplayTakeoverManager::syncHandcards(const QString &playerName)
     knownCardsArg << playerName << JsonUtils::toJsonArray(snapshot->handcards);
     ClientInstance->processServerPacket(QString("{\"command\":%1,\"body\":%2}")
         .arg(S_COMMAND_SET_KNOWN_CARDS)
-        .arg(QString::fromUtf8(QJsonDocument::fromVariant(knownCardsArg).toJson())).toLatin1());
+        .arg(QString::fromUtf8(QJsonDocument::fromVariant(knownCardsArg).toJson())));
 }
 
 void ReplayTakeoverManager::processRequest(const QString &cmd)

@@ -48,7 +48,7 @@ bool ReplayGameState::applyCommand(const QString &cmd)
         return processSetProperty(body);
     case S_COMMAND_SET_MARK:
         return processSetMark(body);
-    case S_COMMAND_MOVE_CARDS:
+    case S_COMMAND_MOVE_CARD:
         return processMoveCards(body);
     case S_COMMAND_CHANGE_HP:
         return processChangeHp(body);

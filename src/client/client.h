@@ -268,6 +268,8 @@ public:
     int choose_min_num;
     int m_bossLevel;
 
+    void setSelf(ClientPlayer *newSelf);
+
 public slots:
     void signup();
     void processContextSwitch(const QVariant &target_name);
@@ -327,10 +329,11 @@ private:
 
     bool _loseSingleCard(int card_id, CardsMoveStruct move);
     bool _getSingleCard(int card_id, CardsMoveStruct move);
-    void setSelf(ClientPlayer *newSelf);
+
+public slots:
+    void processServerPacket(const QString &cmd);
 
 private slots:
-    void processServerPacket(const QString &cmd);
     void processServerPacket(const char *cmd);
     bool processServerRequest(const QSanProtocol::Packet &packet);
     void notifyRoleChange(const QString &new_role);

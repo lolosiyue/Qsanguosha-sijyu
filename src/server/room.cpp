@@ -2851,9 +2851,9 @@ void Room::removePlayerMark(ServerPlayer*player, const QString&mark, int remove_
 }
 
 void Room::setPlayerCardLimitation(ServerPlayer*player, const QString&limit_list,
-	const QString&pattern, const QString&reason, bool single_turn)
+	const QString&pattern, bool single_turn, const QString&reason)
 {
-	player->setCardLimitation(limit_list, pattern, reason, single_turn);
+	player->setCardLimitation(limit_list, pattern, reason.isEmpty() ? objectName() : reason, single_turn);
 
 	JsonArray arg;
 	arg << true << limit_list << pattern << reason << single_turn;
@@ -2863,7 +2863,7 @@ void Room::setPlayerCardLimitation(ServerPlayer*player, const QString&limit_list
 void Room::removePlayerCardLimitation(ServerPlayer*player, const QString&limit_list,
 	const QString&pattern, const QString&reason)
 {
-	player->removeCardLimitation(limit_list, pattern, reason);
+	player->removeCardLimitation(limit_list, pattern, reason.isEmpty() ? objectName() : reason);
 
 	JsonArray arg;
 	arg << false << limit_list << pattern << reason << false;

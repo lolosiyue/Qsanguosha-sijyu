@@ -270,14 +270,6 @@ public:
     void removePendingAnytimeSkill(const QString &skill_name);
     void clearPendingAnytimeSkills();
 
-    void summonFriends(const QString &type);
-    bool inSiegeRelation(const ServerPlayer *skill_owner, const ServerPlayer *victim) const;
-    bool inFormationRalation(ServerPlayer *teammate) const;
-    void askForGeneralShow();
-    void showHiddenSkill(const QString &skill_name);
-    void showGeneral(bool head_general = true, bool trigger_event = true, bool sendLog = true);
-    void notifyPreshow();
-
 protected:
     //Synchronization helpers
     QSemaphore **semas;
