@@ -182,4 +182,12 @@ public:
 	MaxHpStruct toMaxHp() const{
 		return $self->value<MaxHpStruct>();
 	}
+
+	void setValue(SkillContext *ctx) {
+		$self->setValue(QVariant::fromValue(*ctx));
+	}
+
+	SkillContext toSkillContext() const{
+		return $self->value<SkillContext>();
+	}
 };

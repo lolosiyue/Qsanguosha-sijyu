@@ -338,8 +338,6 @@ public:
 	bool isJilei(const Card*card, bool isHandcard = false) const;
 	bool isLocked(const Card*card, bool isHandcard = false) const;
 
-	bool canDiscard(const Player*to, const char*flags) const;
-	bool canDiscard(const Player*to, int card_id) const;
 	bool canMove(const Player*to, const char*flags) const;
 	bool canMove(const Player*to, int card_id) const;
 
@@ -1462,12 +1460,20 @@ struct SkillContext {
 	QList<ServerPlayer*> targets;
 	QList<ServerPlayer*> updated_targets;
 	const Card* use_card;
-	QVariant original_data;
+	QVariant* original_data;
 	int instanceID;
+
+	ServerPlayer* preferredTarget;
+	int preferredTargetSeat;
+
 	bool is_forced;
 	bool is_canceled;
 	bool bypass_cost;
+	bool manual_effect;
 	TriggerEvent current_event;
+
+	int amount;
+	int modified_amount;
 	int trigger_count;
 };
 
@@ -1542,20 +1548,20 @@ public:
 	virtual TriggerList triggerable(TriggerEvent triggerEvent, Room*room,
 	                                 ServerPlayer*player, QVariant&data) const;
 	virtual void record(TriggerEvent triggerEvent, Room*room, ServerPlayer*player,
-	                   QVariant&data, ServerPlayer*owner) const;
+	                   SkillContext&ctx) const;
 	virtual bool cost(TriggerEvent triggerEvent, Room*room, ServerPlayer*player,
-	                  QVariant&data, ServerPlayer*ask_who = NULL) const;
+	                  SkillContext&ctx) const;
 	virtual bool pay(TriggerEvent triggerEvent, Room*room, ServerPlayer*player,
-	                 QVariant&data, ServerPlayer*ask_who = NULL) const;
+	                 SkillContext&ctx) const;
 	virtual bool effect(TriggerEvent triggerEvent, Room*room, ServerPlayer*player,
-	                    QVariant&data, ServerPlayer*ask_who = NULL) const;
+	                    SkillContext&ctx) const;
 	virtual bool effectTarget(TriggerEvent triggerEvent, Room*room, ServerPlayer*player,
-	                          QVariant&data, ServerPlayer*target) const;
+	                          SkillContext&ctx, ServerPlayer*target) const;
 	virtual bool trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*player,
 	                     QVariant&data, ServerPlayer*owner) const;
 
 	bool skillEffect(TriggerEvent triggerEvent, Room*room, ServerPlayer*player,
-	                 QVariant&data, ServerPlayer*target) const;
+	                 SkillContext&ctx, ServerPlayer*target) const;
 
 	virtual void willInvoke(SkillContext&ctx) const;
 	virtual void targetConfirming(SkillContext&ctx) const;

@@ -34,25 +34,25 @@ public:
 	void setViewAsSkill(ViewAsSkill *view_as_skill);
 	void setGlobal(bool global);
 	void setBaseAmount(int amount);
-	void setLimitScope(LimitScope scope);
+	void setLimitScope(Skill::LimitScope scope);
 	void setMaxUsageLimit(int limit);
 
 	virtual int getPriority() const;
-	virtual LimitScope getLimitScope() const;
+	virtual Skill::LimitScope getLimitScope() const;
 	virtual int getMaxUsageLimit(const SkillContext &ctx) const;
 
 	virtual TriggerList triggerable(TriggerEvent triggerEvent, Room *room,
 	                                 ServerPlayer *player, QVariant &data) const;
 	virtual void record(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
-	                   QVariant &data, ServerPlayer *owner) const;
+	                   SkillContext &ctx) const;
 	virtual bool cost(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
-	                 QVariant &data, ServerPlayer *ask_who = NULL) const;
+	                 SkillContext &ctx) const;
 	virtual bool pay(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
-	                 QVariant &data, ServerPlayer *ask_who = NULL) const;
+	                 SkillContext &ctx) const;
 	virtual bool effect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
-	                   QVariant &data, ServerPlayer *ask_who = NULL) const;
+	                   SkillContext &ctx) const;
 	virtual bool effectTarget(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
-	                          QVariant &data, ServerPlayer *target) const;
+	                          SkillContext &ctx, ServerPlayer *target) const;
 	virtual void willInvoke(SkillContext &ctx) const;
 	virtual void targetConfirming(SkillContext &ctx) const;
 	virtual void invoking(SkillContext &ctx) const;
@@ -63,7 +63,7 @@ public:
 	                     QVariant &data, ServerPlayer *owner) const;
 	virtual bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const;
 	void onTurnBroken(const char *function_name, TriggerEvent triggerEvent, Room *room,
-	                 ServerPlayer *player, QVariant &data, ServerPlayer *ask_who = NULL) const;
+	                 ServerPlayer *player, SkillContext &ctx) const;
 
 	LuaFunction on_record;
 	LuaFunction can_trigger;
@@ -789,7 +789,7 @@ int LuaTriggerV2Skill::getPriority() const
 	return priority;
 }
 
-LimitScope LuaTriggerV2Skill::getLimitScope() const
+Skill::LimitScope LuaTriggerV2Skill::getLimitScope() const
 {
 	return m_limitScope;
 }
@@ -799,10 +799,10 @@ int LuaTriggerV2Skill::getMaxUsageLimit(const SkillContext &) const
 	return m_maxUsageLimit;
 }
 
-bool LuaTriggerV2Skill::cost(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data, ServerPlayer *ask_who) const
+bool LuaTriggerV2Skill::cost(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const
 {
 	if (on_cost == 0)
-		return TriggerV2Skill::cost(triggerEvent, room, player, data, ask_who);
+		return TriggerV2Skill::cost(triggerEvent, room, player, ctx);
 	try {
 		lua_State *L = room->getLuaState();
 
@@ -819,11 +819,9 @@ bool LuaTriggerV2Skill::cost(TriggerEvent triggerEvent, Room *room, ServerPlayer
 
 		SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-		SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);
+		SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
-		SWIG_NewPointerObj(L, ask_who, SWIGTYPE_p_ServerPlayer, 0);
-
-		int error = lua_pcall(L, 6, 1, 0);
+		int error = lua_pcall(L, 5, 1, 0);
 		if (error) {
 			const char *error_msg = lua_tostring(L, -1);
 			lua_pop(L, 1);
@@ -837,15 +835,15 @@ bool LuaTriggerV2Skill::cost(TriggerEvent triggerEvent, Room *room, ServerPlayer
 	}
 	catch (TriggerEvent e) {
 		if (e == TurnBroken || e == StageChange)
-			onTurnBroken("on_cost", triggerEvent, room, player, data, ask_who);
+			onTurnBroken("on_cost", triggerEvent, room, player, ctx);
 		throw e;
 	}
 }
 
-bool LuaTriggerV2Skill::pay(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data, ServerPlayer *ask_who) const
+bool LuaTriggerV2Skill::pay(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const
 {
 	if (on_pay == 0)
-		return TriggerV2Skill::pay(triggerEvent, room, player, data, ask_who);
+		return TriggerV2Skill::pay(triggerEvent, room, player, ctx);
 	try {
 		lua_State *L = room->getLuaState();
 
@@ -862,11 +860,9 @@ bool LuaTriggerV2Skill::pay(TriggerEvent triggerEvent, Room *room, ServerPlayer 
 
 		SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-		SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);
+		SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
-		SWIG_NewPointerObj(L, ask_who, SWIGTYPE_p_ServerPlayer, 0);
-
-		int error = lua_pcall(L, 6, 1, 0);
+		int error = lua_pcall(L, 5, 1, 0);
 		if (error) {
 			const char *error_msg = lua_tostring(L, -1);
 			lua_pop(L, 1);
@@ -880,15 +876,15 @@ bool LuaTriggerV2Skill::pay(TriggerEvent triggerEvent, Room *room, ServerPlayer 
 	}
 	catch (TriggerEvent e) {
 		if (e == TurnBroken || e == StageChange)
-			onTurnBroken("on_pay", triggerEvent, room, player, data, ask_who);
+			onTurnBroken("on_pay", triggerEvent, room, player, ctx);
 		throw e;
 	}
 }
 
-bool LuaTriggerV2Skill::effect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data, ServerPlayer *ask_who) const
+bool LuaTriggerV2Skill::effect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const
 {
 	if (on_effect == 0)
-		return TriggerV2Skill::effect(triggerEvent, room, player, data, ask_who);
+		return TriggerV2Skill::effect(triggerEvent, room, player, ctx);
 
 	try {
 		lua_State *L = room->getLuaState();
@@ -906,11 +902,9 @@ bool LuaTriggerV2Skill::effect(TriggerEvent triggerEvent, Room *room, ServerPlay
 
 		SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-		SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);
+		SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
-		SWIG_NewPointerObj(L, ask_who, SWIGTYPE_p_ServerPlayer, 0);
-
-		int error = lua_pcall(L, 6, 1, 0);
+		int error = lua_pcall(L, 5, 1, 0);
 		if (error) {
 			const char *error_msg = lua_tostring(L, -1);
 			lua_pop(L, 1);
@@ -924,15 +918,15 @@ bool LuaTriggerV2Skill::effect(TriggerEvent triggerEvent, Room *room, ServerPlay
 	}
 	catch (TriggerEvent e) {
 		if (e == TurnBroken || e == StageChange)
-			onTurnBroken("on_effect", triggerEvent, room, player, data, ask_who);
+			onTurnBroken("on_effect", triggerEvent, room, player, ctx);
 		throw e;
 	}
 }
 
-bool LuaTriggerV2Skill::effectTarget(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data, ServerPlayer *target) const
+bool LuaTriggerV2Skill::effectTarget(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const
 {
 	if (on_effect_target == 0)
-		return TriggerV2Skill::effectTarget(triggerEvent, room, player, data, target);
+		return TriggerV2Skill::effectTarget(triggerEvent, room, player, ctx, target);
 
 	try {
 		lua_State *L = room->getLuaState();
@@ -950,7 +944,7 @@ bool LuaTriggerV2Skill::effectTarget(TriggerEvent triggerEvent, Room *room, Serv
 
 		SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-		SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);
+		SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
 		SWIG_NewPointerObj(L, target, SWIGTYPE_p_ServerPlayer, 0);
 
@@ -968,13 +962,13 @@ bool LuaTriggerV2Skill::effectTarget(TriggerEvent triggerEvent, Room *room, Serv
 	}
 	catch (TriggerEvent e) {
 		if (e == TurnBroken || e == StageChange)
-			onTurnBroken("on_effect_target", triggerEvent, room, player, data, target);
+			onTurnBroken("on_effect_target", triggerEvent, room, player, ctx);
 		throw e;
 	}
 }
 
 void LuaTriggerV2Skill::onTurnBroken(const char *function_name, TriggerEvent triggerEvent, Room *room,
-                                    ServerPlayer *player, QVariant &data, ServerPlayer *ask_who) const
+                                    ServerPlayer *player, SkillContext &ctx) const
 {
 	if (on_turn_broken == 0) return;
 
@@ -993,14 +987,12 @@ void LuaTriggerV2Skill::onTurnBroken(const char *function_name, TriggerEvent tri
 
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);
+	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
-	SWIG_NewPointerObj(L, ask_who, SWIGTYPE_p_ServerPlayer, 0);
-
-	lua_pcall(L, 7, 0, 0);
+	lua_pcall(L, 6, 0, 0);
 }
 
-void LuaTriggerV2Skill::record(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data, ServerPlayer *owner) const
+void LuaTriggerV2Skill::record(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const
 {
 	if (on_record == 0) return;
 
@@ -1017,11 +1009,9 @@ void LuaTriggerV2Skill::record(TriggerEvent triggerEvent, Room *room, ServerPlay
 
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);
+	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
-	SWIG_NewPointerObj(L, owner, SWIGTYPE_p_ServerPlayer, 0);
-
-	lua_pcall(L, 6, 0, 0);
+	lua_pcall(L, 5, 0, 0);
 }
 
 TriggerList LuaTriggerV2Skill::triggerable(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
@@ -1049,15 +1039,22 @@ TriggerList LuaTriggerV2Skill::triggerable(TriggerEvent triggerEvent, Room *room
 		return result;
 	}
 
+	// 檢查第一個返回值（L[-2]）是否是 false
+	if (lua_isboolean(L, -2) && !lua_toboolean(L, -2)) {
+		lua_pop(L, 2);
+		return result;
+	}
+
+	// 檢查第二個返回值（L[-1]）是否是 ask_who (ServerPlayer*)
 	ServerPlayer *ask_who = NULL;
 	if (lua_isuserdata(L, -1)) {
 		SWIG_ConvertPtr(L, -1, (void**)&ask_who, SWIGTYPE_p_ServerPlayer, 0);
-		lua_pop(L, 1);
 	}
 
-	if (lua_isstring(L, -1)) {
-		QString names = QString::fromUtf8(lua_tostring(L, -1));
-		lua_pop(L, 1);
+	// 檢查第一個返回值（L[-2]）是否是 skillName (string)
+	if (lua_isstring(L, -2)) {
+		QString names = QString::fromUtf8(lua_tostring(L, -2));
+		lua_pop(L, 2);
 
 		if (!names.isEmpty()) {
 			QStringList nameList = names.split("+");
@@ -1066,7 +1063,7 @@ TriggerList LuaTriggerV2Skill::triggerable(TriggerEvent triggerEvent, Room *room
 			}
 		}
 	} else {
-		lua_pop(L, 1);
+		lua_pop(L, 2);
 	}
 
 	return result;

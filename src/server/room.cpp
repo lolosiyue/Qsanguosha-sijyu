@@ -4101,7 +4101,7 @@ void Room::chooseGenerals(QList<ServerPlayer*> players)
 		bool playerChose = false;
 		if (player->m_isClientResponseReady){
 			clientChoice = player->getClientReply().toString();
-			if (player->getSelected().contains(clientChoice))
+			if (player->getSelected().contains(clientChoice) || Config.FreeChoose)
 				playerChose = true;
 		}
 		QString chosen;

@@ -699,6 +699,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		return false;
 
 	QMap<QString, int> triggerCounts;
+	QSet<QString> triggeredSkills;
 
 	bool broken = false;
 
@@ -709,7 +710,12 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		foreach (const TriggerSkill *ts, v2_skills) {
 			TriggerV2Skill *v2 = const_cast<TriggerV2Skill *>(qobject_cast<const TriggerV2Skill *>(ts));
 			if (!v2) continue;
-			v2->record(triggerEvent, room, target, data, target);
+			
+			SkillContext record_ctx;
+			record_ctx.original_data = &data;
+			record_ctx.current_event = triggerEvent;
+			v2->record(triggerEvent, room, target, record_ctx);
+			
 			TriggerList list = v2->triggerable(triggerEvent, room, target, data);
 			QMap<ServerPlayer *, QStringList>::iterator it;
 			for (it = list.begin(); it != list.end(); ++it) {
@@ -733,13 +739,17 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 						if (!p->isSkillInvalid(skillName, instanceId)) {
 							QString key = QString("%1#%2").arg(skillName).arg(instanceId);
 							int currentTriggerCount = triggerCounts.value(key, 0);
-							for (int i = 0; i < multiplier; ++i) {
+							if (currentTriggerCount >= multiplier)
+								continue;
+							for (int i = 0; i < multiplier - currentTriggerCount; ++i) {
 								SkillContext ctx;
 								ctx.skill_name = skillName;
 								ctx.owner = p;
 								ctx.invoker = target;
 								ctx.instanceID = instanceId;
-								ctx.trigger_count = currentTriggerCount;
+								ctx.trigger_count = currentTriggerCount + i;
+								ctx.original_data = &data;
+								ctx.current_event = triggerEvent;
 								skillContexts << ctx;
 							}
 						}
@@ -785,65 +795,71 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 
 		QString key = QString("%1#%2").arg(skillName).arg(instanceId);
 		triggerCounts[key] = triggerCounts.value(key, 0) + 1;
+		triggeredSkills.insert(key);
 
-		bool do_cost = v2->cost(triggerEvent, room, target, data, p);
+		SkillContext *selected_ctx = nullptr;
+		for (int i = 0; i < skillContexts.size(); ++i) {
+			if (skillContexts[i].skill_name == skillName &&
+				skillContexts[i].instanceID == instanceId &&
+				skillContexts[i].owner == p) {
+				selected_ctx = &skillContexts[i];
+				break;
+			}
+		}
+		if (!selected_ctx) continue;
+
+		bool do_cost = v2->cost(triggerEvent, room, target, *selected_ctx);
 		if (!do_cost)
 			continue;
 
-		SkillContext ctx;
-		ctx.skill_name = skillName;
-		ctx.invoker = p;
-		ctx.owner = target;
-		ctx.instanceID = instanceId;
-		ctx.current_event = EventSkillWillInvoke;
-
-		QVariant ctx_data = QVariant::fromValue(ctx);
+		selected_ctx->current_event = EventSkillWillInvoke;
+		QVariant ctx_data = QVariant::fromValue(*selected_ctx);
 		trigger(EventSkillWillInvoke, room, p, ctx_data);
-		ctx = ctx_data.value<SkillContext>();
-		if (ctx.is_canceled)
+		*selected_ctx = ctx_data.value<SkillContext>();
+		if (selected_ctx->is_canceled)
 			continue;
 
-		if (!ctx.bypass_cost) {
-			ctx.current_event = EventSkillPay;
-			ctx_data = QVariant::fromValue(ctx);
+		if (!selected_ctx->bypass_cost) {
+			selected_ctx->current_event = EventSkillPay;
+			ctx_data = QVariant::fromValue(*selected_ctx);
 			trigger(EventSkillPay, room, p, ctx_data);
-			ctx = ctx_data.value<SkillContext>();
+			*selected_ctx = ctx_data.value<SkillContext>();
 
-			bool do_pay = v2->pay(triggerEvent, room, target, data, p);
+			bool do_pay = v2->pay(triggerEvent, room, target, *selected_ctx);
 			if (!do_pay)
 				continue;
 		}
 
-		ctx.current_event = EventSkillTargetConfirming;
-		ctx.updated_targets = ctx.targets;
-		ctx_data = QVariant::fromValue(ctx);
+		selected_ctx->current_event = EventSkillTargetConfirming;
+		selected_ctx->updated_targets = selected_ctx->targets;
+		ctx_data = QVariant::fromValue(*selected_ctx);
 		trigger(EventSkillTargetConfirming, room, p, ctx_data);
-		ctx = ctx_data.value<SkillContext>();
+		*selected_ctx = ctx_data.value<SkillContext>();
 
-		ctx.current_event = EventSkillInvoking;
-		ctx_data = QVariant::fromValue(ctx);
+		selected_ctx->current_event = EventSkillInvoking;
+		ctx_data = QVariant::fromValue(*selected_ctx);
 		trigger(EventSkillInvoking, room, p, ctx_data);
+		*selected_ctx = ctx_data.value<SkillContext>();
 
-		ctx.current_event = EventSkillEffect;
-		ctx_data = QVariant::fromValue(ctx);
+		selected_ctx->current_event = EventSkillEffect;
+		ctx_data = QVariant::fromValue(*selected_ctx);
 		bool skip_effect = trigger(EventSkillEffect, room, p, ctx_data);
-		ctx = ctx_data.value<SkillContext>();
+		*selected_ctx = ctx_data.value<SkillContext>();
 
 		if (!skip_effect) {
-			broken = v2->effect(triggerEvent, room, target, data, p);
-			ctx = data.value<SkillContext>();
+			broken = v2->effect(triggerEvent, room, target, *selected_ctx);
 
-			if (!broken && !ctx.manual_effect && !ctx.targets.isEmpty()) {
-				foreach (ServerPlayer *t, ctx.targets) {
-					bool target_broken = v2->skillEffect(triggerEvent, room, target, data, t);
+			if (!broken && !selected_ctx->manual_effect && !selected_ctx->targets.isEmpty()) {
+				foreach (ServerPlayer *t, selected_ctx->targets) {
+					bool target_broken = v2->skillEffect(triggerEvent, room, target, *selected_ctx, t);
 					if (target_broken)
 						broken = true;
 				}
 			}
 		}
 
-		ctx.current_event = EventSkillEffectFinished;
-		ctx_data = QVariant::fromValue(ctx);
+		selected_ctx->current_event = EventSkillEffectFinished;
+		ctx_data = QVariant::fromValue(*selected_ctx);
 		trigger(EventSkillEffectFinished, room, p, ctx_data);
 	}
 
@@ -954,6 +970,7 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 		QList<TriggerSkill*>triggered;
 		for (int i = 0; i < skill_table[triggerEvent].length(); i++) {
 			TriggerSkill*ts = skill_table[triggerEvent][i];
+			if (ts->inherits("TriggerV2Skill")) continue;
 			if (triggered.contains(ts)) continue;
 			triggered << ts;
 			if(triggerEvent==EnterDying||triggerEvent==Dying||triggerEvent==AskForPeaches){
