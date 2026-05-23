@@ -500,6 +500,16 @@ void GeneralOverview::addLines(const Skill *skill)
     QString skill_name = Sanguosha->translate(skill->objectName());
 
     if (sources.isEmpty()) {
+        QString aliasSkill = Sanguosha->getResourceAlias("audios", skill->objectName());
+        if (aliasSkill != skill->objectName()) {
+            const Skill *aliasSk = Sanguosha->getSkill(aliasSkill);
+            if (aliasSk) {
+                sources = aliasSk->getSources();
+            }
+        }
+    }
+
+    if (sources.isEmpty()) {
 		bool has = false;
 		for (int i = 1; i < 99; i++) {
 			QString skill_line = Sanguosha->translate(QString("$%1%2").arg(skill->objectName()).arg(i));
