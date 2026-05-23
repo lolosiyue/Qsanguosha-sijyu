@@ -109,15 +109,15 @@ public:
     virtual TriggerList triggerable(TriggerEvent triggerEvent, Room *room,
                                      ServerPlayer *player, QVariant &data) const override;
     virtual void record(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
-                       QVariant &data, ServerPlayer *owner) const override;
+                       SkillContext &ctx) const override;
     virtual bool cost(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
-                      QVariant &data, ServerPlayer *ask_who = NULL) const override;
+                      SkillContext &ctx) const override;
     virtual bool pay(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
-                     QVariant &data, ServerPlayer *ask_who = NULL) const override;
+                     SkillContext &ctx) const override;
     virtual bool effect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
-                        QVariant &data, ServerPlayer *ask_who = NULL) const override;
+                        SkillContext &ctx) const override;
     virtual bool effectTarget(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
-                              QVariant &data, ServerPlayer *target) const override;
+                              SkillContext &ctx, ServerPlayer *target) const override;
     virtual void willInvoke(SkillContext &ctx) const override;
     virtual void targetConfirming(SkillContext &ctx) const override;
     virtual void invoking(SkillContext &ctx) const override;
@@ -128,7 +128,7 @@ public:
     virtual bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
                          QVariant &data) const override;
     void onTurnBroken(const char *function_name, TriggerEvent triggerEvent, Room *room,
-                     ServerPlayer *player, QVariant &data, ServerPlayer *ask_who = NULL) const;
+                     ServerPlayer *player, SkillContext &ctx) const;
     virtual bool checkCustomUsage(const SkillContext &ctx) const override;
 
     LuaFunction on_record;

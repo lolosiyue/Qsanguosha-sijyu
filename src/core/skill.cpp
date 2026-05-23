@@ -575,55 +575,64 @@ TriggerList TriggerV2Skill::triggerable(TriggerEvent, Room*, ServerPlayer*, QVar
     return TriggerList();
 }
 
-void TriggerV2Skill::record(TriggerEvent, Room *, ServerPlayer *, QVariant &, ServerPlayer *) const
+void TriggerV2Skill::record(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const
 {
 }
 
-bool TriggerV2Skill::cost(TriggerEvent, Room *, ServerPlayer *, QVariant &, ServerPlayer *) const
-{
-    return true;
-}
-
-bool TriggerV2Skill::pay(TriggerEvent, Room *, ServerPlayer *, QVariant &, ServerPlayer *) const
+bool TriggerV2Skill::cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const
 {
     return true;
 }
 
-bool TriggerV2Skill::effect(TriggerEvent, Room *, ServerPlayer *, QVariant &, ServerPlayer *) const
+bool TriggerV2Skill::pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const
+{
+    return true;
+}
+
+bool TriggerV2Skill::effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const
 {
     return false;
 }
 
-bool TriggerV2Skill::effectTarget(TriggerEvent, Room *, ServerPlayer *, QVariant &, ServerPlayer *) const
+bool TriggerV2Skill::effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &, ServerPlayer *) const
 {
     return false;
 }
 
 bool TriggerV2Skill::skillEffect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
-                                  QVariant &data, ServerPlayer *target) const
+                                  SkillContext &ctx, ServerPlayer *target) const
 {
-    SkillContext ctx = data.value<SkillContext>();
     ctx.current_event = EventSkillEffectTarget;
     QVariant ctx_data = QVariant::fromValue(ctx);
     
     bool skip = room->getThread()->trigger(EventSkillEffectTarget, room, player, ctx_data);
-    ctx = ctx_data.value<SkillContext>();
-    data = QVariant::fromValue(ctx);
+    
+    const SkillContext &updated = ctx_data.value<SkillContext>();
+    ctx.is_canceled = updated.is_canceled;
+    ctx.bypass_cost = updated.bypass_cost;
+    ctx.updated_targets = updated.updated_targets;
+    ctx.is_forced = updated.is_forced;
+    ctx.modified_amount = updated.modified_amount;
     
     if (skip)
         return false;
     
-    return effectTarget(triggerEvent, room, player, data, target);
+    return effectTarget(triggerEvent, room, player, ctx, target);
 }
 
 bool TriggerV2Skill::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
                              QVariant &data, ServerPlayer *owner) const
 {
-    bool do_cost = cost(triggerEvent, room, player, data, owner);
+    SkillContext ctx;
+    ctx.original_data = &data;
+    ctx.owner = owner;
+    ctx.invoker = player;
+    
+    bool do_cost = cost(triggerEvent, room, player, ctx);
     if (!do_cost) return false;
-    bool do_pay = pay(triggerEvent, room, player, data, owner);
+    bool do_pay = pay(triggerEvent, room, player, ctx);
     if (!do_pay) return false;
-    return effect(triggerEvent, room, player, data, owner);
+    return effect(triggerEvent, room, player, ctx);
 }
 
 void TriggerV2Skill::willInvoke(SkillContext &ctx) const

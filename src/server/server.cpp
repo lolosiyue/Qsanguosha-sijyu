@@ -19,6 +19,7 @@
 #include <QTextStream>
 #include <QDateTime>
 #include <QTimer>
+#include <QPointer>
 
 using namespace QSanProtocol;
 
@@ -1609,7 +1610,9 @@ void Server::processRequest(const char *request)
 			ServerPlayer *player = players.value(objname,nullptr);
 			if (player) {
 				has = true;
-				if(player->getState()!="offline"||player->getRoom()->isFinished()) continue;
+				QString state = player->getState();
+				if (state != "offline" && state != "robot") continue;
+				if (player->getRoom()->isFinished()) continue;
 				player->getRoom()->reconnect(player, socket);
 				return;
 			}
@@ -1830,12 +1833,16 @@ void Server::startHeadlessGame()
         return;
     }
 
-    connect(room, &Room::game_over, this, [this, room](const QString &winner) {
-        Server::writeHeadlessLog(QString(">>> Game %1 finished. Winner: %2 <<<").arg(gameCount).arg(winner));
+    QPointer<Room> roomPtr(room);
+    int currentGameCount = gameCount;
+    connect(room, &Room::game_over, this, [this, roomPtr, currentGameCount](const QString &winner) {
+        Server::writeHeadlessLog(QString(">>> Game %1 finished. Winner: %2 <<<").arg(currentGameCount).arg(winner));
 
-        QTimer::singleShot(500, this, [this, room]() {
-            room->deleteLater();
-            if (gameCount < 10000) {
+        QTimer::singleShot(500, this, [this, roomPtr, currentGameCount]() {
+            if (roomPtr) {
+                roomPtr->deleteLater();
+            }
+            if (currentGameCount < 10000) {
                 startHeadlessGame();
             } else {
                 Server::writeHeadlessLog(">>> All 10000 games completed. Exiting. <<<");
@@ -1857,10 +1864,20 @@ void Server::startHeadlessGame()
 
 void Server::startTestGame(const QString &scenarioFile, bool headless)
 {
-    if (!Sanguosha->loadTestScenario(scenarioFile)) {
-        qDebug() << "Failed to load test scenario:" << scenarioFile;
-        qApp->quit();
-        return;
+    Q_UNUSED(scenarioFile);
+
+    if (headless) {
+        isHeadlessMode = true;
+        writeHeadlessLog(">>> Test Scenario Headless Mode Started <<<");
+    }
+
+    if (!headless) {
+        if (!listen()) {
+            qDebug() << "Failed to start server for test game";
+            qApp->quit();
+            return;
+        }
+        qDebug() << "Server listening on port" << Config.ServerPort;
     }
 
     int playerCount = Sanguosha->getTestScenarioPlayerCount();
@@ -1871,6 +1888,9 @@ void Server::startTestGame(const QString &scenarioFile, bool headless)
     }
 
     qDebug() << "Starting test game with" << playerCount << "players";
+    if (headless) {
+        writeHeadlessLog(QString("Starting test game with %1 players").arg(playerCount));
+    }
 
     Room *room = new Room(this, "test_scenario");
     if (!room->getLuaState()) {
@@ -1880,11 +1900,14 @@ void Server::startTestGame(const QString &scenarioFile, bool headless)
         return;
     }
 
-    connect(room, &Room::game_over, this, [this, room, headless](const QString &winner) {
+    QPointer<Room> roomPtr(room);
+    connect(room, &Room::game_over, this, [this, roomPtr, headless](const QString &winner) {
         qDebug() << "Test game finished. Winner:" << winner;
 
-        QTimer::singleShot(500, this, [this, room, headless]() {
-            room->deleteLater();
+        QTimer::singleShot(500, this, [this, roomPtr, headless]() {
+            if (roomPtr) {
+                roomPtr->deleteLater();
+            }
             if (headless) {
                 qDebug() << "Test completed. Exiting.";
                 qApp->quit();
@@ -1895,9 +1918,15 @@ void Server::startTestGame(const QString &scenarioFile, bool headless)
     for (int i = 0; i < playerCount; i++) {
         ServerPlayer *player = room->addAIPlayer();
         player->setAI(new TrustAI(player));
-        if (i == 0)
+        if (i == 0) {
             player->setOwner(true);
-        room->signup(player, QString("TestBot_%1").arg(i), "", true);
+        }
+        QString screenName = (i == 0 && !headless) ? "Player" : QString("TestBot_%1").arg(i);
+        room->signup(player, screenName, "", true);
+        if (i == 0 && !headless) {
+            name2objname.insert(screenName, player->objectName());
+            players.insert(player->objectName(), player);
+        }
     }
 
     room->start();

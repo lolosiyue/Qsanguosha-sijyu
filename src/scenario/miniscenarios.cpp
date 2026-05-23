@@ -322,6 +322,7 @@ void MiniSceneRule::loadSetting(QString path)
         while (!stream.atEnd()) {
             QString aline = stream.readLine();
             if (aline.isEmpty()) continue;
+            if (aline.startsWith("#")) continue;
 
             if (aline.startsWith("setPile"))
                 setPile(aline.split(":").at(1));

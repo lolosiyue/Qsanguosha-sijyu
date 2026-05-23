@@ -2546,7 +2546,7 @@ void ServerPlayer::addToShownHandCards(const QList<int> &card_ids)
 	s.player = this;
 	s.shown = true;
 	QVariant v = QVariant::fromValue(s);
-	room->getThread()->trigger(ShownCardChanged, room, v);
+	room->getThread()->trigger(ShownCardChanged, room, this, v);
 
 	room->filterCards(this, this->getCards("hs"), true);
 }
@@ -2584,7 +2584,7 @@ void ServerPlayer::removeShownHandCards(const QList<int> &card_ids, bool sendLog
 	s.shown = false;
 	s.moveFromHand = moveFromHand;
 	QVariant v = QVariant::fromValue(s);
-	room->getThread()->trigger(ShownCardChanged, room, v);
+	room->getThread()->trigger(ShownCardChanged, room, this, v);
 }
 
 void ServerPlayer::addBrokenEquips(const QList<int> &card_ids)
@@ -2622,7 +2622,7 @@ void ServerPlayer::addBrokenEquips(const QList<int> &card_ids)
 	b.player = this;
 	b.broken = true;
 	QVariant bv = QVariant::fromValue(b);
-	room->getThread()->trigger(BrokenEquipChanged, room, bv);
+	room->getThread()->trigger(BrokenEquipChanged, room, this, bv);
 }
 
 void ServerPlayer::removeBrokenEquips(const QList<int> &card_ids, bool sendLog, bool moveFromEquip)
@@ -2658,6 +2658,6 @@ void ServerPlayer::removeBrokenEquips(const QList<int> &card_ids, bool sendLog, 
 	b.broken = false;
 	b.moveFromEquip = moveFromEquip;
 	QVariant bv = QVariant::fromValue(b);
-	room->getThread()->trigger(BrokenEquipChanged, room, bv);
+	room->getThread()->trigger(BrokenEquipChanged, room, this, bv);
 }
 

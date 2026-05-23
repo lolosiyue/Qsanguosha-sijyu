@@ -122,7 +122,46 @@ int main(int argc, char *argv[])
     QString testScenario = getTestScenarioArg();
     if (!testScenario.isEmpty()) {
         bool headless = qApp->arguments().contains("--headless") || qApp->arguments().contains("-h");
+
+        if (!Sanguosha->loadTestScenario(testScenario)) {
+            qDebug() << "Failed to load test scenario:" << testScenario;
+            return 1;
+        }
+
+        Config.GameMode = GameModeStruct("test_scenario");
+        Config.setValue("GameMode", "test_scenario");
+
         Server *server = new Server(qApp);
+
+        if (!headless) {
+            QFile file("qss/sanguosha.qss");
+            if (file.open(QIODevice::ReadOnly)) {
+                QTextStream stream(&file);
+                qApp->setStyleSheet(stream.readAll());
+            }
+
+            MainWindow *main_window = new MainWindow;
+            Sanguosha->setParent(main_window);
+            main_window->show();
+
+#ifdef AUDIO_SUPPORT
+            Audio::init();
+            Config.FrontBGMVolume = Config.value("FrontBGMVolume", 1.0f).toFloat();
+            if (Config.FrontBGMVolume > 0 && QFile::exists("audio/system/BGM/front-bgm.ogg")) {
+                Audio::playBGM("audio/system/BGM/front-bgm.ogg");
+                Audio::setBGMVolume(Config.FrontBGMVolume);
+            }
+#endif
+
+            Config.HostAddress = "127.0.0.1";
+            Config.setValue("HostAddress", "127.0.0.1");
+            Config.UserName = "Player";
+            Config.setValue("UserName", "Player");
+            Config.setValue("EnableReconnection", true);
+
+            QTimer::singleShot(1000, main_window, &MainWindow::startConnection);
+        }
+
         qDebug() << ">>> Test Scenario Mode:" << testScenario << (headless ? "(headless)" : "(with GUI)") << "<<<";
         QTimer::singleShot(0, [server, testScenario, headless]() {
             server->startTestGame(testScenario, headless);
