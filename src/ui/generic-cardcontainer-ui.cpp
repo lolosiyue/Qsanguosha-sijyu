@@ -333,7 +333,14 @@ QPixmap PlayerCardContainer::getSmallAvatarIcon(const QString &generalName)
 QPixmap PlayerCardContainer::_getAvatarIcon(const QString &heroName)
 {
     int avatarSize = m_player->getGeneral2() ? _m_layout->m_primaryAvatarSize : _m_layout->m_avatarSize;
-    return G_ROOM_SKIN.getGeneralPixmap(heroName, (QSanRoomSkin::GeneralIconSize)avatarSize);
+    bool isPhoto = inherits("Photo");
+    bool isDualGeneral = m_player && m_player->getGeneral2() != nullptr;
+    
+    if (isPhoto) {
+        return G_ROOM_SKIN.getGeneralPixmapForPhoto(heroName, (QSanRoomSkin::GeneralIconSize)avatarSize, isDualGeneral);
+    } else {
+        return G_ROOM_SKIN.getGeneralPixmap(heroName, (QSanRoomSkin::GeneralIconSize)avatarSize);
+    }
 }
 
 void PlayerCardContainer::updateAvatar()

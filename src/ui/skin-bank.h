@@ -343,6 +343,7 @@ public:
     QPixmap getCardFramePixmap(const QString &frameType) const;
     QPixmap getCardAvatarPixmap(const QString &generalName) const;
     QPixmap getGeneralPixmap(const QString &generalName, GeneralIconSize size) const;
+    QPixmap getGeneralPixmapForPhoto(const QString &generalName, GeneralIconSize size, bool isDualGeneral) const;
     QString getPlayerAudioEffectPath(const QString &eventName, bool isMale, int index = -1) const;
     QString getPlayerAudioEffectPath(const QString &eventName, const QString &category, int index = -1) const;
     QString getPlayerAudioEffectPathWithGeneral(const QString &eventName, const QString &category, int index,
