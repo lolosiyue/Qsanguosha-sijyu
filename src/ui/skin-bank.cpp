@@ -368,6 +368,69 @@ QPixmap QSanRoomSkin::getGeneralPixmap(const QString &generalName, GeneralIconSi
 	}
 }
 
+QPixmap QSanRoomSkin::getGeneralPixmapForPhoto(const QString &generalName, GeneralIconSize size, bool isDualGeneral) const
+{
+	QString name = generalName;
+	if (ServerInfo.GameMode == "06_3v3" && name.startsWith("vs_"))
+		name = name.mid(3);
+	else if (ServerInfo.GameMode == "02_1v1" && name.startsWith("kof_"))
+		name = name.mid(4);
+	
+	if (size == S_GENERAL_ICON_SIZE_CARD)
+		return getCardMainPixmap(name);
+	
+	QString key = QString(S_SKIN_KEY_PLAYER_GENERAL_ICON).arg(size).arg(name);
+	QString fileName;
+	QRect clipRegion;
+	bool clipping = false;
+	QSize scaleRegion;
+	bool scaled = false;
+	
+	if (isImageKeyDefined(key))
+		fileName = _readImageConfig(key, clipRegion, clipping, scaleRegion, scaled);
+	else
+		fileName = _readImageConfig(QString(S_SKIN_KEY_PLAYER_GENERAL_ICON).arg(size), clipRegion, clipping, scaleRegion, scaled).arg(name);
+	
+	if (isDualGeneral && fileName.contains("/generals")) {
+		QString gn = fileName.split("/").last().split(".").first();
+		if (Sanguosha->getGeneral(gn)) {
+			QString actualGn = Sanguosha->getResourceAlias("heroskin", gn);
+			int skin_index = Config.value("HeroSkin/" + gn, 0).toInt();
+			
+			QString fulldualPath = QString("image/fullskin/generals/fulldual/%1.jpg").arg(gn);
+			QString fulldualSkinPath = QString("image/heroskin/fullskin/generals/fulldual/%1_%2.jpg").arg(actualGn).arg(skin_index);
+			
+			if (skin_index > 0 && QFile::exists(fulldualSkinPath)) {
+				fileName = fulldualSkinPath;
+			} else if (QFile::exists(fulldualPath)) {
+				fileName = fulldualPath;
+			} else if (skin_index > 0) {
+				fileName.replace("image/", "image/heroskin/");
+				fileName.replace(gn, QString(actualGn + "_%1").arg(skin_index));
+			}
+		}
+	}
+	
+	QPixmap pixmap = getPixmapFromFileName(fileName);
+	if (clipping) {
+		QRect clipRegion2 = clipRegion;
+		if (clipRegion2.right() > pixmap.width())
+			clipRegion2.setRight(pixmap.width());
+		if (clipRegion2.bottom() > pixmap.height())
+			clipRegion2.setBottom(pixmap.height());
+		
+		QPixmap clipped = QPixmap(clipRegion.size());
+		clipped.fill(Qt::transparent);
+		QPainter painter(&clipped);
+		painter.drawPixmap(0, 0, pixmap.copy(clipRegion2));
+		
+		if (scaled)
+			clipped = clipped.scaled(scaleRegion, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+		pixmap = clipped;
+	}
+	return pixmap;
+}
+
 QString QSanRoomSkin::getPlayerAudioEffectPath(const QString &eventName, const QString &category, int index) const
 {
 	QString fileName = QString(S_SKIN_KEY_PLAYER_AUDIO_EFFECT).arg(category).arg(eventName);
@@ -817,15 +880,7 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 			QString actualGn = Sanguosha->getResourceAlias("heroskin", gn);
 			int skin_index = Config.value("HeroSkin/"+gn, 0).toInt();
 			
-			// Check fulldual path first (for dual-general combinations)
-			QString fulldualPath = QString("image/fullskin/generals/fulldual/%1.jpg").arg(gn);
-			QString fulldualSkinPath = QString("image/heroskin/fullskin/generals/fulldual/%1_%2.jpg").arg(actualGn).arg(skin_index);
-			
-			if (skin_index > 0 && QFile::exists(fulldualSkinPath)) {
-				fileName = fulldualSkinPath;
-			} else if (QFile::exists(fulldualPath)) {
-				fileName = fulldualPath;
-			} else if (skin_index > 0) {
+			if (skin_index > 0) {
 				fileName.replace("image/", "image/heroskin/");
 				fileName.replace(gn, QString(actualGn+"_%1").arg(skin_index));
 			}else if(!QFile::exists(fileName)){
@@ -859,15 +914,7 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 					QString actualGn = Sanguosha->getResourceAlias("heroskin", gn);
 					int skin_index = Config.value("HeroSkin/"+gn, 0).toInt();
 					
-					// Check fulldual path first (for dual-general combinations)
-					QString fulldualPath = QString("image/fullskin/generals/fulldual/%1.jpg").arg(gn);
-					QString fulldualSkinPath = QString("image/heroskin/fullskin/generals/fulldual/%1_%2.jpg").arg(actualGn).arg(skin_index);
-					
-					if (skin_index > 0 && QFile::exists(fulldualSkinPath)) {
-						fileName = fulldualSkinPath;
-					} else if (QFile::exists(fulldualPath)) {
-						fileName = fulldualPath;
-					} else if (skin_index > 0) {
+					if (skin_index > 0) {
 						fileName.replace("image/", "image/heroskin/");
 						fileName.replace(gn, QString(actualGn+"_%1").arg(skin_index));
 					}
