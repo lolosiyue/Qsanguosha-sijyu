@@ -380,54 +380,29 @@ QPixmap QSanRoomSkin::getGeneralPixmapForPhoto(const QString &generalName, Gener
 		return getCardMainPixmap(name);
 	
 	QString key = QString(S_SKIN_KEY_PLAYER_GENERAL_ICON).arg(size).arg(name);
-	QString fileName;
-	QRect clipRegion;
-	bool clipping = false;
-	QSize scaleRegion;
-	bool scaled = false;
+	QPixmap pixmap;
 	
+	// 使用 getPixmap() 取得 base pixmap，確保完整 fallback 鏈
 	if (isImageKeyDefined(key))
-		fileName = _readImageConfig(key, clipRegion, clipping, scaleRegion, scaled);
+		pixmap = getPixmap(key);
 	else
-		fileName = _readImageConfig(QString(S_SKIN_KEY_PLAYER_GENERAL_ICON).arg(size), clipRegion, clipping, scaleRegion, scaled).arg(name);
+		pixmap = getPixmap(QString(S_SKIN_KEY_PLAYER_GENERAL_ICON).arg(size), name);
 	
-	if (isDualGeneral && fileName.contains("/generals")) {
-		QString gn = fileName.split("/").last().split(".").first();
-		if (Sanguosha->getGeneral(gn)) {
-			QString actualGn = Sanguosha->getResourceAlias("heroskin", gn);
-			int skin_index = Config.value("HeroSkin/" + gn, 0).toInt();
-			
-			QString fulldualPath = QString("image/fullskin/generals/fulldual/%1.jpg").arg(gn);
-			QString fulldualSkinPath = QString("image/heroskin/fullskin/generals/fulldual/%1_%2.jpg").arg(actualGn).arg(skin_index);
-			
-			if (skin_index > 0 && QFile::exists(fulldualSkinPath)) {
-				fileName = fulldualSkinPath;
-			} else if (QFile::exists(fulldualPath)) {
-				fileName = fulldualPath;
-			} else if (skin_index > 0) {
-				fileName.replace("image/", "image/heroskin/");
-				fileName.replace(gn, QString(actualGn + "_%1").arg(skin_index));
-			}
+	// 雙將時檢查是否有 fulldual 圖片可覆蓋
+	if (isDualGeneral && !pixmap.isNull()) {
+		QString gn = name;
+		QString fulldualPath = QString("image/fullskin/generals/fulldual/%1.jpg").arg(gn);
+		QString actualGn = Sanguosha->getResourceAlias("heroskin", gn);
+		int skin_index = Config.value("HeroSkin/" + gn, 0).toInt();
+		QString fulldualSkinPath = QString("image/heroskin/fullskin/generals/fulldual/%1_%2.jpg").arg(actualGn).arg(skin_index);
+		
+		if (skin_index > 0 && QFile::exists(fulldualSkinPath)) {
+			pixmap.load(fulldualSkinPath);
+		} else if (QFile::exists(fulldualPath)) {
+			pixmap.load(fulldualPath);
 		}
 	}
 	
-	QPixmap pixmap = getPixmapFromFileName(fileName);
-	if (clipping) {
-		QRect clipRegion2 = clipRegion;
-		if (clipRegion2.right() > pixmap.width())
-			clipRegion2.setRight(pixmap.width());
-		if (clipRegion2.bottom() > pixmap.height())
-			clipRegion2.setBottom(pixmap.height());
-		
-		QPixmap clipped = QPixmap(clipRegion.size());
-		clipped.fill(Qt::transparent);
-		QPainter painter(&clipped);
-		painter.drawPixmap(0, 0, pixmap.copy(clipRegion2));
-		
-		if (scaled)
-			clipped = clipped.scaled(scaleRegion, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-		pixmap = clipped;
-	}
 	return pixmap;
 }
 
