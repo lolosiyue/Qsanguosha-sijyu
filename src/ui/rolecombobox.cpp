@@ -1,5 +1,4 @@
 #include "rolecombobox.h"
-//#include "photo.h"
 #include "engine.h"
 #include "clientstruct.h"
 #include "settings.h"
@@ -76,10 +75,13 @@ void RoleComboBox::createRoleItems()
     int index = Sanguosha->getRoleIndex();
     QSize size(S_ROLE_COMBO_BOX_WIDTH, S_ROLE_COMBO_BOX_HEIGHT);
 
+    bool lordShown = !ServerInfo.EnableHegemony;
+
     QString currentMode = ServerInfo.GameMode;
     if (currentMode.isEmpty()) {
         QStringList allRoles = Sanguosha->getAllRegisteredRoles();
         foreach(QString roleName, allRoles) {
+            if (roleName == "lord" && lordShown) continue;
             items << new RoleComboBoxItem(roleName, index, size);
         }
     } else {
@@ -89,6 +91,7 @@ void RoleComboBox::createRoleItems()
             QString abbr = QString(roleAbbrs[i]);
             QString roleName = Sanguosha->getRoleByAbbreviation(abbr);
             if (!roleName.isEmpty()) {
+                if (roleName == "lord" && lordShown) continue;
                 items << new RoleComboBoxItem(roleName, index, size);
             }
         }
@@ -161,6 +164,14 @@ void RoleComboBox::fix(const QString &role)
         return;
     }
 
+    if (role == "unknown" && _m_fixedRole.isEmpty()) {
+        if (items.isEmpty()) {
+            createRoleItems();
+        }
+        m_currentRole->setRole("unknown");
+        return;
+    }
+
     if (_m_fixedRole.isEmpty()) {
         disconnect(m_currentRole, SIGNAL(clicked()), this, SLOT(expand()));
         connect(m_currentRole, SIGNAL(clicked()), this, SLOT(toggle()));
@@ -171,4 +182,3 @@ void RoleComboBox::fix(const QString &role)
         delete item;
     items.clear();
 }
-
