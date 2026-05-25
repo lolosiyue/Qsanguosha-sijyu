@@ -526,7 +526,7 @@ void PlayerCardContainer::showPile()
     if (button) {
         QList<int> card_ids = m_player->getPile(button->objectName());
         if (card_ids.isEmpty() || card_ids.contains(-1)) return;
-        RoomSceneInstance->doGongxin(card_ids, false, QList<int>());
+        RoomSceneInstance->showPile(card_ids, button->objectName());
     }
 }
 

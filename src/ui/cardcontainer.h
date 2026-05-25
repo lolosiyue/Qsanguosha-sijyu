@@ -123,4 +123,31 @@ private:
 	GuanxingBox *guanxing_box3, *guanxing_box7, *guanxing_box9;
 };
 
+class PileContainer : public GenericCardContainer
+{
+    Q_OBJECT
+
+public:
+    explicit PileContainer();
+    void setPileName(const QString &pile_name);
+    QString pileName() const { return m_pileName; }
+    virtual QList<CardItem *> removeCardItems(const QList<int> &card_ids, Player::Place place);
+    virtual QRectF boundingRect() const;
+    virtual void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
+
+public slots:
+    void fillCards(const QList<int> &card_ids = QList<int>());
+    void clear();
+
+protected:
+    virtual bool _addCardItems(QList<CardItem *> &card_items, const CardsMoveStruct &moveInfo);
+    QList<CardItem *> m_items;
+    QString m_pileName;
+    CloseButton *m_closeButton;
+    int m_itemCount;
+    int m_sceneWidth;
+
+    static const int cardInterval = 3;
+};
+
 #endif

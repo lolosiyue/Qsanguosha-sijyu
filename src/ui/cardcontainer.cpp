@@ -690,3 +690,148 @@ void GuanxingXBox::reply()
 		guanxing_box9->reply();
 }
 
+PileContainer::PileContainer()
+    : m_closeButton(new CloseButton()), m_itemCount(0), m_sceneWidth(0)
+{
+    m_closeButton->setParentItem(this);
+    m_closeButton->hide();
+    connect(m_closeButton, SIGNAL(clicked()), this, SLOT(clear()));
+    GraphicsBox::stylize(this);
+}
+
+void PileContainer::setPileName(const QString &pile_name)
+{
+    m_pileName = pile_name;
+}
+
+void PileContainer::fillCards(const QList<int> &card_ids)
+{
+    if (card_ids.isEmpty())
+        return;
+
+    m_sceneWidth = RoomSceneInstance->sceneRect().width();
+
+    QList<CardItem *> card_items = _createCards(card_ids);
+    m_items.append(card_items);
+    m_itemCount = m_items.length();
+    prepareGeometryChange();
+
+    int card_width = G_COMMON_LAYOUT.m_cardNormalWidth;
+    int card_height = G_COMMON_LAYOUT.m_cardNormalHeight;
+    bool one_row = true;
+    int width = (card_width + cardInterval) * m_itemCount - cardInterval + 50;
+    if (width * 1.5 > m_sceneWidth) {
+        width = (card_width + cardInterval) * ((m_itemCount + 1) / 2) - cardInterval + 50;
+        one_row = false;
+    }
+    int first_row = one_row ? m_itemCount : (m_itemCount + 1) / 2;
+
+    for (int i = 0; i < m_itemCount; i++) {
+        QPointF pos;
+        if (i < first_row) {
+            pos.setX(25 + (card_width + cardInterval) * i);
+            pos.setY(45);
+        } else {
+            if (m_itemCount % 2 == 1)
+                pos.setX(25 + card_width / 2 + cardInterval / 2
+                + (card_width + cardInterval) * (i - first_row));
+            else
+                pos.setX(25 + (card_width + cardInterval) * (i - first_row));
+            pos.setY(45 + card_height + cardInterval);
+        }
+        CardItem *item = m_items[i];
+        item->setParentItem(this);
+        item->resetTransform();
+        item->setPos(pos);
+        item->setHomePos(pos);
+        item->setOpacity(1.0);
+        item->setHomeOpacity(1.0);
+        item->setFlag(QGraphicsItem::ItemIsFocusable);
+        item->show();
+    }
+
+    QRectF rect = boundingRect();
+    m_closeButton->setPos(rect.width() - 40, 5);
+    m_closeButton->show();
+}
+
+void PileContainer::clear()
+{
+    foreach (CardItem *item, m_items) {
+        item->hide();
+        item->deleteLater();
+    }
+    m_items.clear();
+    m_pileName.clear();
+    m_itemCount = 0;
+    m_closeButton->hide();
+    prepareGeometryChange();
+    hide();
+}
+
+QRectF PileContainer::boundingRect() const
+{
+    const int card_width = G_COMMON_LAYOUT.m_cardNormalWidth;
+    const int card_height = G_COMMON_LAYOUT.m_cardNormalHeight;
+    bool one_row = true;
+    int width = (card_width + cardInterval) * m_itemCount - cardInterval + 50;
+    if (width * 1.5 > (m_sceneWidth ? m_sceneWidth : 800)) {
+        width = (card_width + cardInterval) * ((m_itemCount + 1) / 2) - cardInterval + 50;
+        one_row = false;
+    }
+    int height = (one_row ? 1 : 2) * card_height + 90 + (one_row ? 0 : cardInterval);
+
+    return QRectF(0, 0, width, height);
+}
+
+void PileContainer::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)
+{
+    QString title = m_pileName.isEmpty() ? tr("Pile") : Sanguosha->translate(m_pileName);
+    GraphicsBox::paintGraphicsBoxStyle(painter, title, boundingRect());
+
+    const int card_width = G_COMMON_LAYOUT.m_cardNormalWidth;
+    const int card_height = G_COMMON_LAYOUT.m_cardNormalHeight;
+    bool one_row = true;
+    int width = (card_width + cardInterval) * m_itemCount - cardInterval + 50;
+    if (width * 1.5 > RoomSceneInstance->sceneRect().width()) {
+        width = (card_width + cardInterval) * ((m_itemCount + 1) / 2) - cardInterval + 50;
+        one_row = false;
+    }
+    int first_row = one_row ? m_itemCount : (m_itemCount + 1) / 2;
+
+    for (int i = 0; i < m_itemCount; ++i) {
+        int x, y = 0;
+        if (i < first_row) {
+            x = 25 + (card_width + cardInterval) * i;
+            y = 45;
+        } else {
+            if (m_itemCount % 2 == 1)
+                x = 25 + card_width / 2 + cardInterval / 2
+                + (card_width + cardInterval) * (i - first_row);
+            else
+                x = 25 + (card_width + cardInterval) * (i - first_row);
+            y = 45 + card_height + cardInterval;
+        }
+        QPixmap pixmap = G_ROOM_SKIN.getPixmap(QSanRoomSkin::S_SKIN_KEY_CHOOSE_GENERAL_BOX_DEST_SEAT);
+        if (pixmap.isNull()) {
+            painter->save();
+            painter->setBrush(QColor(30, 30, 30, 180));
+            painter->setPen(QColor(100, 100, 100));
+            painter->drawRoundedRect(x, y, card_width, card_height, 5, 5);
+            painter->restore();
+        } else {
+            painter->drawPixmap(x, y, card_width, card_height, pixmap);
+        }
+    }
+}
+
+QList<CardItem *> PileContainer::removeCardItems(const QList<int> &, Player::Place)
+{
+    return QList<CardItem *>();
+}
+
+bool PileContainer::_addCardItems(QList<CardItem *> &, const CardsMoveStruct &)
+{
+    return true;
+}
+

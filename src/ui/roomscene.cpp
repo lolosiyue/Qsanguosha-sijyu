@@ -296,6 +296,11 @@ RoomScene::RoomScene(QMainWindow*main_window)
 
 	card_container->moveBy(-120,0);
 
+	pileContainer = new PileContainer();
+	pileContainer->hide();
+	addItem(pileContainer);
+	pileContainer->setZValue(12);
+
 	connect(ClientInstance,SIGNAL(skill_attached(const ClientPlayer*,QString)),this,SLOT(attachSkill(const ClientPlayer*,QString)));
 	connect(ClientInstance,SIGNAL(skill_detached(const ClientPlayer*,QString)),this,SLOT(detachSkill(const ClientPlayer*,QString)));
 
@@ -4928,6 +4933,23 @@ void RoomScene::doGongxin(const QList<int>&card_ids,bool enable_heart,QList<int>
 void RoomScene::hideContainer()
 {
     card_container->clear();
+}
+
+void RoomScene::showPile(const QList<int> &card_ids, const QString &pile_name)
+{
+    if (card_ids.isEmpty())
+        return;
+
+    pileContainer->clear();
+    pileContainer->setPileName(pile_name);
+    pileContainer->fillCards(card_ids);
+    pileContainer->setPos(m_tableCenterPos - QPointF(pileContainer->boundingRect().width() / 2, pileContainer->boundingRect().height() / 2));
+    pileContainer->show();
+}
+
+void RoomScene::hidePile()
+{
+    pileContainer->clear();
 }
 
 void RoomScene::showOwnerButtons(bool owner)

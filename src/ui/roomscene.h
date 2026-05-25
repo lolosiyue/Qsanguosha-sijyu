@@ -17,6 +17,7 @@
 class Window;
 class Button;
 class CardContainer;
+class PileContainer;
 class GuanxingBox;
 class GuanxingXBox;
 class QSanButton;
@@ -258,6 +259,8 @@ public slots:
     void doDiscardButton();
 
     void doGongxin(const QList<int> &card_ids, bool enable_heart, QList<int> enabled_ids);
+    void showPile(const QList<int> &card_ids, const QString &pile_name);
+    void hidePile();
 
     void setChatBoxVisibleSlot();
     void onEmotionIconSelected(int emotionId);
@@ -317,6 +320,7 @@ private:
 
     QList<QGraphicsPixmapItem *> role_items;
     CardContainer *card_container;
+    PileContainer *pileContainer;
 
     QList<QSanSkillButton *> m_skillButtons;
     QSanSkillButton *m_presentedDialogSkillButton;
