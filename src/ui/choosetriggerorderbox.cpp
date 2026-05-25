@@ -8,6 +8,7 @@
 #include "engine.h"
 #include "settings.h"
 
+#include <QDebug>
 #include <QGraphicsProxyWidget>
 #include <QGraphicsSceneMouseEvent>
 #include <QPropertyAnimation>
@@ -28,6 +29,8 @@ ClientSkillContext::ClientSkillContext()
     , invoker(nullptr)
     , preferredTarget(nullptr)
     , preferredTargetSeat(-1)
+    , trigger_count(0)
+    , multiplier(1)
 {
 }
 
@@ -54,15 +57,27 @@ bool ClientSkillContext::tryParse(const QVariantMap &map)
 {
     *this = ClientSkillContext();
 
-    if (map.contains("skill"))
-        skill = Sanguosha->getSkill(map.value("skill").toString());
-    if (skill == nullptr)
+    if (map.contains("skill")) {
+        QString skillName = map.value("skill").toString();
+        qDebug() << "[ChooseTriggerOrderBox] Received skill name:" << skillName;
+        skill = Sanguosha->getSkill(skillName);
+        qDebug() << "[ChooseTriggerOrderBox] getSkill() returned:" << (skill ? skill->objectName() : "nullptr");
+    }
+    if (skill == nullptr) {
+        qDebug() << "[ChooseTriggerOrderBox] Skill is nullptr, returning false";
         return false;
+    }
 
-    if (map.contains("invoker"))
-        invoker = ClientInstance->getPlayer(map.value("invoker").toString());
-    if (invoker == nullptr)
+    if (map.contains("invoker")) {
+        QString invokerName = map.value("invoker").toString();
+        qDebug() << "[ChooseTriggerOrderBox] Received invoker name:" << invokerName;
+        invoker = ClientInstance->getPlayer(invokerName);
+        qDebug() << "[ChooseTriggerOrderBox] getPlayer(invoker) returned:" << (invoker ? invoker->objectName() : "nullptr");
+    }
+    if (invoker == nullptr) {
+        qDebug() << "[ChooseTriggerOrderBox] Invoker is nullptr, returning false";
         return false;
+    }
 
     if (map.contains("owner"))
         owner = ClientInstance->getPlayer(map.value("owner").toString());
@@ -75,6 +90,13 @@ bool ClientSkillContext::tryParse(const QVariantMap &map)
     if (map.contains("preferredtargetseat"))
         preferredTargetSeat = map.value("preferredtargetseat").toInt();
 
+    if (map.contains("trigger_count"))
+        trigger_count = map.value("trigger_count").toInt();
+
+    if (map.contains("multiplier"))
+        multiplier = map.value("multiplier").toInt();
+
+    qDebug() << "[ChooseTriggerOrderBox] Parse succeeded for skill:" << skill->objectName();
     return true;
 }
 
@@ -115,6 +137,7 @@ QString ClientSkillContext::toString() const
 TriggerOptionButton::TriggerOptionButton(QGraphicsObject *parent, const QVariantMap &skillDetail, int width)
     : QGraphicsObject(parent)
     , times(1)
+    , mull(0)
     , width(width)
 {
     detail.tryParse(skillDetail);
@@ -125,6 +148,7 @@ TriggerOptionButton::TriggerOptionButton(QGraphicsObject *parent, const ClientSk
     : QGraphicsObject(parent)
     , detail(skillDetail)
     , times(1)
+    , mull(0)
     , width(width)
 {
     construct();
@@ -176,7 +200,7 @@ void TriggerOptionButton::paint(QPainter *painter, const QStyleOptionGraphicsIte
     QRect textArea(optionButtonHeight, 0, width - optionButtonHeight, optionButtonHeight);
     painter->setFont(optionButtonFont);
     painter->setPen(Qt::white);
-    painter->drawText(textArea, Qt::AlignCenter, displayedTextOf(detail, times));
+    painter->drawText(textArea, Qt::AlignCenter, displayedTextOf(detail, times, mull));
 }
 
 QRectF TriggerOptionButton::boundingRect() const
@@ -212,7 +236,7 @@ void TriggerOptionButton::hoverLeaveEvent(QGraphicsSceneHoverEvent *)
     emit hovered(false);
 }
 
-QString TriggerOptionButton::displayedTextOf(const ClientSkillContext &detail, int times)
+QString TriggerOptionButton::displayedTextOf(const ClientSkillContext &detail, int times, int mull)
 {
     QString skillName = detail.skill->objectName();
     QString text = Sanguosha->translate(skillName);
@@ -223,8 +247,9 @@ QString TriggerOptionButton::displayedTextOf(const ClientSkillContext &detail, i
     if (detail.owner != detail.invoker)
         text = TriggerOptionButton::tr("%1 (of %2's)").arg(text).arg(Sanguosha->translate(detail.owner->getGeneralName()));
 
-    if (times > 1)
-        text += QString(" * %1").arg(times);
+    int remaining = detail.multiplier - detail.trigger_count;
+    if (remaining > 1)
+        text += QString(" * %1").arg(remaining);
 
     return text;
 }
@@ -269,7 +294,7 @@ void ChooseTriggerOrderBox::storeMinimumWidth()
         ClientSkillContext skillDetail;
         skillDetail.tryParse(option.toMap());
 
-        const int w = fontMetrics.width(TriggerOptionButton::displayedTextOf(skillDetail, 2));
+        const int w = fontMetrics.width(TriggerOptionButton::displayedTextOf(skillDetail, 1, 2));
         if (w > width)
             width = w;
     }
@@ -323,6 +348,10 @@ void ChooseTriggerOrderBox::chooseOption(const QVariantList &options, bool optio
                 connect(otherButton, &TriggerOptionButton::hovered, button, &TriggerOptionButton::needDisabled);
         }
         optionButtons << button;
+    }
+
+    foreach (TriggerOptionButton *button, optionButtons) {
+        button->mull = button->times;
     }
 
     prepareGeometryChange();
@@ -382,19 +411,25 @@ void ChooseTriggerOrderBox::clear()
 void ChooseTriggerOrderBox::reply()
 {
     QString choice;
-    if (sender() != nullptr)
+    if (sender() != nullptr) {
         choice = sender()->objectName();
+    }
 
     if (choice.isEmpty()) {
-        if (optional)
+        if (optional) {
             choice = "cancel";
-        else {
-            QVariantMap m = options.first().toMap();
-            ClientSkillContext detail;
-            detail.tryParse(m);
-            choice = detail.toString();
+        } else {
+            if (!options.isEmpty()) {
+                QVariantMap m = options.first().toMap();
+                ClientSkillContext detail;
+                detail.tryParse(m);
+                choice = detail.toString();
+            } else {
+                choice = "cancel";
+            }
         }
     }
+
     ClientInstance->replyToServer(QSanProtocol::S_COMMAND_TRIGGER_ORDER, choice);
     clear();
 }

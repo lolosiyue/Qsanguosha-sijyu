@@ -1658,7 +1658,8 @@ void Client::askForChoice(const QVariant &ask_str)
 void Client::askForTriggerOrder(const QVariant &ask_str)
 {
     QVariantList options = ask_str.toList();
-    if (options.size() < 2) return;
+    if (options.size() < 2)
+        return;
 
     QVariantList skillOptions = options[0].toList();
     bool optional = options[1].toBool();
