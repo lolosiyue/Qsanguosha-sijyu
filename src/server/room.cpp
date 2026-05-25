@@ -1857,32 +1857,37 @@ QString Room::askForTriggerOrder(ServerPlayer*player, const QString&reason, QLis
             foreach (const SkillContext &ctx, contexts) {
                 skillOptions << ctx.toVariant();
             }
-            args << skillOptions;
+            args << QVariant(skillOptions);
             args << optional;
-            if (doRequest(player, S_COMMAND_TRIGGER_ORDER, args, !optional)) {
+            if (doRequest(player, S_COMMAND_TRIGGER_ORDER, args, true)) {
                 QVariant clientReply = player->getClientReply();
-                if (clientReply.canConvert<QString>())
+                if (clientReply.canConvert<QString>() && !clientReply.toString().isEmpty())
                     answer = clientReply.toString();
             }
         }
     }
 
-    if (optional && answer == "cancel")
+    if (optional && (answer.isEmpty() || answer == "cancel"))
         return "cancel";
 
-    QStringList replyParts = answer.split(":");
-    QString skillName = replyParts.value(0);
-    
-    bool found = false;
-    foreach (const SkillContext &ctx, contexts) {
-        if (ctx.skill_name == skillName) {
-            found = true;
-            break;
-        }
-    }
-
-    if (!found && !contexts.isEmpty()) {
+    QString skillName;
+    if (answer.isEmpty() && !contexts.isEmpty()) {
         skillName = contexts.at(qrand() % contexts.size()).skill_name;
+    } else {
+        QStringList replyParts = answer.split(":");
+        skillName = replyParts.value(0);
+        
+        bool found = false;
+        foreach (const SkillContext &ctx, contexts) {
+            if (ctx.skill_name == skillName) {
+                found = true;
+                break;
+            }
+        }
+
+        if (!found && !contexts.isEmpty()) {
+            skillName = contexts.at(qrand() % contexts.size()).skill_name;
+        }
     }
 
     QVariant decisionData = "triggerOrder:" + reason + ":" + skillName;

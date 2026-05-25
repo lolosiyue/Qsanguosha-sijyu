@@ -698,7 +698,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 	if (v2_skills.isEmpty())
 		return false;
 
-	QMap<QString, int> triggerCounts;
+QMap<QString, int> triggerCounts;
 	QSet<QString> triggeredSkills;
 
 	bool broken = false;
@@ -748,6 +748,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 								ctx.invoker = target;
 								ctx.instanceID = instanceId;
 								ctx.trigger_count = currentTriggerCount + i;
+								ctx.multiplier = multiplier;
 								ctx.original_data = &data;
 								ctx.current_event = triggerEvent;
 								skillContexts << ctx;
