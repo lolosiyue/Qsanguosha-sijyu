@@ -46,6 +46,7 @@ class EffectAnimation;
 class GiftItem;
 class SpineGlItem;
 class PlayerCardBox;
+class ChooseGeneralBox;
 
 #ifndef Q_OS_WINRT
 #include <QQmlEngine>
@@ -311,6 +312,7 @@ private:
     QGraphicsItem *control_panel;
     QMap<PlayerCardContainer *, const ClientPlayer *> item2player;
     QDialog *m_choiceDialog; // Dialog for choosing generals, suits, card/equip, or kingdoms
+    ChooseGeneralBox *m_chooseGeneralBox;
     PlayerCardBox *m_playerCardBox;
 
     QGraphicsRectItem *pausing_item;

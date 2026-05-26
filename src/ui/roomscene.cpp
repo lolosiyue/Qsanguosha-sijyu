@@ -40,6 +40,7 @@
 #include "SpineGlItem.h"
 #include "graphicspixmaphoveritem.h"
 #include "choosegeneraldialog.h"
+#include "choosegeneralbox.h"
 #include "cardoverview.h"
 #include "distanceviewdialog.h"
 #include "maxcardsviewdialog.h"
@@ -128,6 +129,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	setParent(main_window);
 
 	m_choiceDialog = nullptr;
+	m_chooseGeneralBox = nullptr;
     m_playerCardBox = nullptr;
 	RoomSceneInstance = this;
 	_m_last_front_item = nullptr;
@@ -2109,12 +2111,20 @@ void RoomScene::chooseGeneral(const QStringList&generals)
 	if(!main_window->isActiveWindow())
 		Sanguosha->playSystemAudioEffect("prelude");
 
-	if(m_choiceDialog!=nullptr)
-		delete m_choiceDialog;
-	if(generals.isEmpty())
-		m_choiceDialog = new FreeChooseDialog("",main_window);
-	else
-		m_choiceDialog = new ChooseGeneralDialog(generals,main_window);
+	if (ServerInfo.EnableHegemony && ServerInfo.Enable2ndGeneral && !generals.isEmpty()) {
+		if (m_chooseGeneralBox == nullptr) {
+			m_chooseGeneralBox = new ChooseGeneralBox();
+			addItem(m_chooseGeneralBox);
+		}
+		m_chooseGeneralBox->chooseGeneral(generals);
+	} else {
+		if(m_choiceDialog!=nullptr)
+			delete m_choiceDialog;
+		if(generals.isEmpty())
+			m_choiceDialog = new FreeChooseDialog("",main_window);
+		else
+			m_choiceDialog = new ChooseGeneralDialog(generals,main_window);
+	}
 }
 
 void RoomScene::chooseSuit(const QStringList&suits)

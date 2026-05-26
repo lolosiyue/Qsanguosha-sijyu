@@ -167,5 +167,9 @@
 "handCardNumber-red-default": "image/system/red/%1.png",
 "handCardSuit-default": "image/system/cardsuit/%1.png",
 "handCardYingbian-default": "image/system/yingbian/%1.png",
-"judgeCardIcon-default": "image/icon/%1.png"
+"judgeCardIcon-default": "image/icon/%1.png",
+
+// choose general box
+"chooseGeneralBoxSplitLine": "image/system/choose-general-box/split-line.png",
+"chooseGeneralBoxDestSeat": "image/system/choose-general-box/dest-seat.png"
 }
