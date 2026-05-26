@@ -420,23 +420,15 @@ private:
     void selectNextTarget(bool multiple);
     void unselectAllTargets(const QGraphicsItem *except = nullptr);
     void updateTargetsEnablity(const Card *card = nullptr);
-    QString currentOnsoleTarget() const;
+QString currentOnsoleTarget() const;
     void enterOnsoleContext(const QString &target_name);
-    void exitOnsoleContext();
 
-    void callViewAsSkill();
-    void cancelViewAsSkill();
+    Photo *m_perspectiveProxyPhoto;
+    bool m_isPerspectiveSwitched;
+    bool m_perspectiveInputLocked;
+    QString m_perspectiveTargetName;
+    QList<Photo *> m_originalPhotosOrder;
 
-    void freeze();
-    void addRestartButton(QDialog *dialog);
-    QGraphicsPixmapItem *createDashboardButtons();
-    void createReplayControlBar();
-    void createReplayTimeline();
-    void updateReplayTimeline(int secs);
-    void onReplayTimelineTimeChanged(int secs);
-    void onReplayTimelineNodeClicked(int nodeIndex);
-
-    void fillGenerals1v1(const QStringList &names);
     void fillGenerals3v3(const QStringList &names);
 
     void showPindianBox(const QString &from_name, int from_id, const QString &to_name, int to_id, const QString &reason);
@@ -570,6 +562,13 @@ void onGameStart();
     void hideContainer();
     void switchControlContext(const QString &target_name);
     void switchReplayPerspective(const QString &player_name);
+
+    void onPerspectiveChanged(const QString &targetName, const QList<int> &handCardIds, const QVariantMap &piles);
+    void enterPerspectiveView(const QString &targetName, bool lockInput);
+    void exitPerspectiveView();
+    void applyPerspectiveInputLock(bool locked);
+    bool isPerspectiveSwitched() const { return m_isPerspectiveSwitched; }
+    bool isPerspectiveInputLocked() const { return m_perspectiveInputLocked; }
 
     void startAssign();
 

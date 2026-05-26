@@ -181,13 +181,13 @@ void Room::clearControllerPileVisible(ServerPlayer *target, ServerPlayer *contro
 }
 
 Room::Room(QObject*parent, const QString&mode)
-	: QThread(parent), mode(mode), player_count(Sanguosha->getPlayerCount(mode)), current(nullptr),
-	pile1(Sanguosha->getRandomCards(true)), m_drawPile(&pile1), m_discardPile(&pile2),
-	game_state(0), game_paused(false), m_lua(Sanguosha->getLuaState()),
-	thread(nullptr),//game_started(false), game_finished(false),
-	thread_3v3(nullptr), thread_xmode(nullptr), thread_1v1(nullptr), _m_semRaceRequest(0), _m_semRoomMutex(1),
-	_m_raceStarted(false), scenario(Sanguosha->getScenario(mode)), m_surrenderRequestReceived(false), _virtual(false), _m_roomState(false),
-	m_lastSnapshotTurn(0)
+    : QThread(parent), mode(mode), player_count(Sanguosha->getPlayerCount(mode)), current(nullptr),
+    pile1(Sanguosha->getRandomCards(true)), m_drawPile(&pile1), m_discardPile(&pile2),
+    game_state(0), game_paused(false), m_lua(Sanguosha->getLuaState()),
+    thread(nullptr),//game_started(false), game_finished(false),
+    thread_3v3(nullptr), thread_xmode(nullptr), thread_1v1(nullptr), _m_semRaceRequest(0), _m_semRoomMutex(1),
+    _m_raceStarted(false), scenario(Sanguosha->getScenario(mode)), m_surrenderRequestReceived(false), _virtual(false), _m_roomState(false),
+    m_perspectiveSyncSerial(0), m_lastSnapshotTurn(0)
 {
 	static int s_global_room_id = 0;
 	_m_Id = s_global_room_id++;
@@ -244,9 +244,10 @@ void Room::initCallbacks()
 	m_callbacks[S_COMMAND_PAUSE] = &Room::pauseCommand;
 
 	//Client request
-	m_callbacks[S_COMMAND_NETWORK_DELAY_TEST] = &Room::networkDelayTestCommand;
-	m_callbacks[S_COMMAND_ANYTIME_SKILL] = &Room::handleAnytimeSkillRequest;
-	m_callbacks[S_COMMAND_SYNC_PRESELECT] = &Room::syncPreselectCommand;
+m_callbacks[S_COMMAND_NETWORK_DELAY_TEST] = &Room::networkDelayTestCommand;
+    m_callbacks[S_COMMAND_ANYTIME_SKILL] = &Room::handleAnytimeSkillRequest;
+    m_callbacks[S_COMMAND_SYNC_PRESELECT] = &Room::syncPreselectCommand;
+    m_callbacks[S_COMMAND_PERSPECTIVE_REQUEST] = &Room::perspectiveRequestCommand;
 }
 
 ServerPlayer*Room::getCurrent() const
@@ -428,6 +429,30 @@ bool Room::isRest(ServerPlayer *player) const
 		return false;
 
 	return player->property("RestPlayer").toBool();
+}
+
+bool Room::isDeadPlayerRevivable(ServerPlayer *player) const
+{
+	if (!player || player->isAlive())
+		return false;
+
+	if (player->property("RestPlayer").toBool())
+		return true;
+
+	QString mode = getMode();
+	if (mode == "02_1v1") {
+		QStringList list = player->getTag("1v1Arrange").toStringList();
+		QString rule = Config.value("1v1/Rule", "2013").toString();
+		if (list.length() > ((rule == "2013") ? 3 : 0))
+			return true;
+	} else if (mode == "06_XMode") {
+		if (!player->getTag("XModeGenerals").toStringList().isEmpty())
+			return true;
+	} else if (mode == "04_boss" && player->isLord()) {
+		return true;
+	}
+
+	return false;
 }
 
 QList<ServerPlayer *> Room::getRestPlayers() const
@@ -652,10 +677,13 @@ void Room::revivePlayer(ServerPlayer*player, bool sendlog, bool throw_mark, bool
 		broadcastProperty(m_alivePlayers[i], "seat");
 	}
 
-	doBroadcastNotify(S_COMMAND_REVIVE_PLAYER, player->objectName());
-	updateStateItem();
+doBroadcastNotify(S_COMMAND_REVIVE_PLAYER, player->objectName());
+    updateStateItem();
 
-	if (sendlog){
+    if (m_perspectiveViewers.contains(player))
+        clearPerspectiveViewer(player);
+
+    if (sendlog){
 		LogMessage log;
 		log.type = "#Revive";
 		log.from = player;
@@ -708,9 +736,11 @@ void Room::killPlayer(ServerPlayer*victim, DamageStruct*reason, HpLostStruct*hpl
 		broadcastProperty(m_alivePlayers[i], "seat");
 	}
 
-	m_alivePlayers.removeOne(victim);
+m_alivePlayers.removeOne(victim);
 
-	DeathStruct death;
+clearAllPerspectiveViewersOf(victim);
+
+DeathStruct death;
 	death.who = victim;
 	death.damage = reason;
 	death.hplost = hplost;
@@ -6522,6 +6552,12 @@ bool Room::notifyMoveCards(bool isLostPhase, QList<CardsMoveStruct>&moves, bool 
 		arg << moveId;
 		for (int i = 0; i < moves.length(); i++){
 			moves[i].open = visible || moves[i].isRelevant(player);
+			// Perspective viewer can see all card moves involving the perspective target
+			if (!moves[i].open) {
+				ServerPlayer *perspectiveTarget = getPerspectiveTarget(player);
+				if (perspectiveTarget != nullptr && (moves[i].from == perspectiveTarget || moves[i].to == perspectiveTarget))
+					moves[i].open = true;
+			}
 			arg << moves[i].toVariant();
 		}
 		doNotify(player, isLostPhase ? S_COMMAND_LOSE_CARD : S_COMMAND_GET_CARD, arg);
@@ -9567,22 +9603,129 @@ void Room::onTeammatePreselect(ServerPlayer *player, const QString &general, boo
 
 void Room::syncPreselectCommand(ServerPlayer *player, const QVariant &arg)
 {
-	if (!player || !shouldSyncTeammateGenerals())
-		return;
+    if (!player || !shouldSyncTeammateGenerals())
+        return;
 
-	JsonArray args = arg.toList();
-	if (args.size() < 3)
-		return;
+    JsonArray args = arg.toList();
+    if (args.size() < 3)
+        return;
 
-	QString general = args[0].toString();
-	bool confirmed = args[1].toBool();
-	bool isDeputy = args[2].toBool();
+    QString general = args[0].toString();
+    bool confirmed = args[1].toBool();
+    bool isDeputy = args[2].toBool();
 
-	bool isHidden = false;
-	const General *g = Sanguosha->getGeneral(general);
-	if (g && g->hasHideSkill())
-		isHidden = true;
+    bool isHidden = false;
+    const General *g = Sanguosha->getGeneral(general);
+    if (g && g->hasHideSkill())
+        isHidden = true;
 
-	onTeammatePreselect(player, general, confirmed, isHidden, isDeputy);
+    onTeammatePreselect(player, general, confirmed, isHidden, isDeputy);
+}
+
+void Room::perspectiveRequestCommand(ServerPlayer *player, const QVariant &arg)
+{
+    if (player == nullptr || !player->isDead())
+        return;
+
+    if (isDeadPlayerRevivable(player))
+        return;
+
+    QString targetName = arg.toString();
+
+    if (targetName.isEmpty()) {
+        clearPerspectiveViewer(player);
+        return;
+    }
+
+    ServerPlayer *target = findPlayerByObjectName(targetName);
+    if (target == nullptr || !target->isAlive())
+        return;
+
+    if (m_perspectiveViewers.contains(player))
+        clearPerspectiveViewer(player);
+
+    m_perspectiveViewers[player] = PerspectiveEntry(target);
+    sendPerspectiveSync(player, target);
+}
+
+void Room::sendPerspectiveSync(ServerPlayer *viewer, ServerPlayer *target)
+{
+    if (viewer == nullptr || target == nullptr)
+        return;
+
+    m_perspectiveSyncSerial++;
+
+    JsonArray arg;
+    arg << m_perspectiveSyncSerial;
+    arg << target->objectName();
+    arg << JsonUtils::toJsonArray(target->handCards());
+
+    JsonObject pilesObj;
+    foreach (const QString &pileName, target->getPileNames())
+        pilesObj[pileName] = JsonUtils::toJsonArray(target->getPile(pileName));
+    arg << QVariant(pilesObj);
+
+    JsonArray modifiedCards;
+    auto appendModified = [&](int cardId) {
+        Card *card = getCard(cardId);
+        if (card != nullptr && card->isModified()) {
+            JsonArray cardInfo;
+            cardInfo << cardId << card->getSuit() << card->getNumber()
+                     << card->getClassName() << card->getSkillName()
+                     << card->objectName() << JsonUtils::toJsonArray(card->getFlags());
+            modifiedCards << QVariant(cardInfo);
+        }
+    };
+    foreach (int cardId, target->handCards())
+        appendModified(cardId);
+    foreach (const QString &pileName, target->getPileNames()) {
+        foreach (int cardId, target->getPile(pileName))
+            appendModified(cardId);
+    }
+    arg << QVariant(modifiedCards);
+
+    doNotify(viewer, S_COMMAND_PERSPECTIVE_SYNC, arg);
+}
+
+void Room::clearPerspectiveViewer(ServerPlayer *viewer)
+{
+    if (viewer == nullptr)
+        return;
+
+    m_perspectiveViewers.remove(viewer);
+
+    m_perspectiveSyncSerial++;
+    JsonArray arg;
+    arg << m_perspectiveSyncSerial;
+    arg << QString();
+    arg << JsonUtils::toJsonArray(QList<int>());
+    arg << QVariant(JsonObject());
+    arg << QVariant(JsonArray());
+    doNotify(viewer, S_COMMAND_PERSPECTIVE_SYNC, arg);
+}
+
+void Room::clearAllPerspectiveViewersOf(ServerPlayer *target)
+{
+    if (target == nullptr)
+        return;
+
+    QList<ServerPlayer*> viewers = getPerspectiveViewersOf(target);
+    foreach (ServerPlayer *viewer, viewers)
+        clearPerspectiveViewer(viewer);
+}
+
+QList<ServerPlayer*> Room::getPerspectiveViewersOf(ServerPlayer *target) const
+{
+    QList<ServerPlayer*> result;
+    for (auto it = m_perspectiveViewers.constBegin(); it != m_perspectiveViewers.constEnd(); ++it) {
+        if (it.value().target == target)
+            result << it.key();
+    }
+    return result;
+}
+
+ServerPlayer* Room::getPerspectiveTarget(ServerPlayer *viewer) const
+{
+    return m_perspectiveViewers.value(viewer).target;
 }
 

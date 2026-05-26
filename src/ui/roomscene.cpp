@@ -122,9 +122,10 @@ void RoomScene::resetPiles()
 
 
 RoomScene::RoomScene(QMainWindow*main_window)
-	: main_window(main_window),m_tableBgPixmap(1,1),m_tableBgPixmapOrig(1,1),game_started(false),
-	  _m_cachedPhotoWidth(0), _m_cachedPhotoHeight(0),
-	  m_presentedDialogSkillButton(nullptr), m_presentedDialog(nullptr)
+    : main_window(main_window),m_tableBgPixmap(1,1),m_tableBgPixmapOrig(1,1),game_started(false),
+      _m_cachedPhotoWidth(0), _m_cachedPhotoHeight(0),
+      m_presentedDialogSkillButton(nullptr), m_presentedDialog(nullptr),
+      m_perspectiveProxyPhoto(nullptr), m_isPerspectiveSwitched(false), m_perspectiveInputLocked(false)
 {
 	setParent(main_window);
 
@@ -248,11 +249,12 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(ClientInstance,SIGNAL(skill_acquired(const ClientPlayer*,QString)),this,SLOT(acquireSkill(const ClientPlayer*,QString)));
 	connect(ClientInstance,SIGNAL(animated(int,QStringList)),this,SLOT(doAnimation(int,QStringList)));
 	connect(ClientInstance,SIGNAL(role_state_changed(QString)),this,SLOT(updateRoles(QString)));
-	connect(ClientInstance,SIGNAL(switch_control_context(QString)),this,SLOT(switchControlContext(QString)));
-	connect(ClientInstance,SIGNAL(event_received(const QVariant)),this,SLOT(handleGameEvent(const QVariant)));
-	connect(ClientInstance,&Client::qml_interact,this,&RoomScene::onQmlInteract);
+connect(ClientInstance,SIGNAL(switch_control_context(QString)),this,SLOT(switchControlContext(QString)));
+    connect(ClientInstance,SIGNAL(event_received(const QVariant)),this,SLOT(handleGameEvent(const QVariant)));
+    connect(ClientInstance,&Client::qml_interact,this,&RoomScene::onQmlInteract);
+    connect(ClientInstance,&Client::perspective_changed,this,&RoomScene::onPerspectiveChanged);
 
-	connect(ClientInstance,SIGNAL(game_started()),this,SLOT(onGameStart()));
+    connect(ClientInstance,SIGNAL(game_started()),this,SLOT(onGameStart()));
 	connect(ClientInstance,SIGNAL(game_over()),this,SLOT(onGameOver()));
 	connect(ClientInstance,SIGNAL(standoff()),this,SLOT(onStandoff()));
 
@@ -1800,6 +1802,7 @@ void RoomScene::keyReleaseEvent(QKeyEvent*event)
 {
 	if(!Config.EnableHotKey) return;
 	if(chat_edit->hasFocus()) return;
+	if(m_perspectiveInputLocked) return;
 
 	bool control_is_down = event->modifiers()&Qt::ControlModifier;
 	bool alt_is_down = event->modifiers()&Qt::AltModifier;
@@ -3253,10 +3256,132 @@ void RoomScene::selectNextTarget(bool multiple)
 				if(!targets.at(j)->isSelected()){
 					targets.at(j)->setSelected(true);
 					return;
-				}
-			}
-		}
-	}
+            }
+        }
+    }
+}
+
+void RoomScene::onPerspectiveChanged(const QString &targetName, const QList<int> &handCardIds, const QVariantMap &piles)
+{
+    Q_UNUSED(handCardIds);
+    Q_UNUSED(piles);
+
+    if (m_isPerspectiveSwitched && targetName == m_perspectiveTargetName && !targetName.isEmpty()) {
+        dashboard->syncCardAreaFromPlayer();
+        return;
+    }
+
+    if (m_isPerspectiveSwitched)
+        exitPerspectiveView();
+
+    if (!targetName.isEmpty())
+        enterPerspectiveView(targetName, true);
+}
+
+void RoomScene::enterPerspectiveView(const QString &targetName, bool lockInput)
+{
+    ClientPlayer *target = ClientInstance->getPlayer(targetName);
+    Photo *hostPhoto = name2photo.value(targetName, nullptr);
+    if (target == nullptr || hostPhoto == nullptr)
+        return;
+
+    m_originalPhotosOrder = photos;
+    m_perspectiveTargetName = targetName;
+    m_isPerspectiveSwitched = true;
+    m_perspectiveProxyPhoto = hostPhoto;
+
+    name2photo.remove(targetName);
+    hostPhoto->setPlayer(Self);
+    hostPhoto->syncCardAreaFromPlayer();
+    if (Self->isAlive())
+        hostPhoto->revivePlayer();
+    else
+        hostPhoto->killPlayer();
+    name2photo[Self->objectName()] = hostPhoto;
+
+    dashboard->setPlayer(target);
+    dashboard->syncCardAreaFromPlayer();
+
+    int pivotIndex = m_originalPhotosOrder.indexOf(hostPhoto);
+    if (pivotIndex >= 0) {
+        QList<Photo *> rotated;
+        for (int i = pivotIndex + 1; i < photos.size(); i++)
+            rotated.append(photos[i]);
+        rotated.append(hostPhoto);
+        for (int i = 0; i < pivotIndex; i++)
+            rotated.append(photos[i]);
+        if (rotated.size() == photos.size())
+            photos = rotated;
+    }
+
+    item2player.clear();
+    item2player.insert(dashboard, dashboard->getPlayer());
+    foreach (Photo *photo, photos) {
+        const ClientPlayer *p = photo->getPlayer();
+        if (p != nullptr)
+            item2player.insert(photo, p);
+    }
+
+    updateTable();
+    applyPerspectiveInputLock(lockInput);
+
+    dashboard->revivePlayer();
+}
+
+void RoomScene::exitPerspectiveView()
+{
+    if (!m_isPerspectiveSwitched || m_perspectiveTargetName.isEmpty())
+        return;
+
+    ClientPlayer *target = ClientInstance->getPlayer(m_perspectiveTargetName);
+
+    name2photo.remove(Self->objectName());
+    if (target != nullptr && m_perspectiveProxyPhoto != nullptr) {
+        m_perspectiveProxyPhoto->setPlayer(target);
+        m_perspectiveProxyPhoto->syncCardAreaFromPlayer();
+        if (target->isAlive())
+            m_perspectiveProxyPhoto->revivePlayer();
+        else
+            m_perspectiveProxyPhoto->killPlayer();
+        name2photo[target->objectName()] = m_perspectiveProxyPhoto;
+    }
+
+    dashboard->setPlayer(Self);
+    dashboard->syncCardAreaFromPlayer();
+
+    photos = m_originalPhotosOrder;
+
+    m_perspectiveProxyPhoto = nullptr;
+    m_perspectiveTargetName.clear();
+    m_isPerspectiveSwitched = false;
+    m_originalPhotosOrder.clear();
+
+    item2player.clear();
+    item2player.insert(dashboard, dashboard->getPlayer());
+    foreach (Photo *photo, photos) {
+        const ClientPlayer *p = photo->getPlayer();
+        if (p != nullptr)
+            item2player.insert(photo, p);
+    }
+
+    updateTable();
+    applyPerspectiveInputLock(false);
+
+    dashboard->killPlayer();
+}
+
+void RoomScene::applyPerspectiveInputLock(bool locked)
+{
+    m_perspectiveInputLocked = locked;
+    if (locked) {
+        dashboard->disableAllCards();
+        foreach (QSanSkillButton *btn, m_skillButtons)
+            btn->setEnabled(false);
+        if (ok_button) ok_button->setEnabled(false);
+        if (cancel_button) cancel_button->setEnabled(false);
+        if (discard_button) discard_button->setEnabled(false);
+    }
+}
 
 	foreach (QGraphicsItem*target,targets){
 		if(!target->isSelected()){
@@ -4611,6 +4736,9 @@ void RoomScene::updateHandcards(const QString&who)
 
 void RoomScene::killPlayer(const QString&who)
 {
+	if (m_isPerspectiveSwitched && who == m_perspectiveTargetName)
+		exitPerspectiveView();
+
 	const General*general = nullptr;
 	if(who==Self->objectName()){
 		dashboard->stopHuaShen();
@@ -4643,6 +4771,9 @@ void RoomScene::killPlayer(const QString&who)
 
 void RoomScene::revivePlayer(const QString&who)
 {
+	if (m_isPerspectiveSwitched && who == Self->objectName())
+		exitPerspectiveView();
+
 	if(who==Self->objectName()){
 		dashboard->revivePlayer();
 		item2player.insert(dashboard,Self);

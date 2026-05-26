@@ -373,3 +373,19 @@ void Photo::mouseReleaseEvent(QGraphicsSceneMouseEvent *event)
     PlayerCardContainer::mouseReleaseEvent(event);
 }
 
+void Photo::mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event)
+{
+    if (Self != nullptr && m_player != nullptr && !Self->isAlive()) {
+        if (m_player->isAlive()) {
+            ClientInstance->requestPerspectiveSwitch(m_player->objectName());
+            return;
+        }
+        if (m_player == Self && RoomSceneInstance->isPerspectiveSwitched()) {
+            ClientInstance->requestPerspectiveSwitch(QString());
+            return;
+        }
+    }
+
+    PlayerCardContainer::mouseDoubleClickEvent(event);
+}
+

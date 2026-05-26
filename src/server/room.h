@@ -39,6 +39,13 @@ public:
     friend class RoomThreadXMode;
     friend class RoomThread1v1;
 
+    struct PerspectiveEntry
+    {
+        PerspectiveEntry() : target(nullptr) {}
+        PerspectiveEntry(ServerPlayer *t) : target(t) {}
+        ServerPlayer *target;
+    };
+
     typedef void (Room::*Callback)(ServerPlayer*, const QVariant&);
     typedef bool (Room::*ResponseVerifyFunction)(ServerPlayer*, const QVariant&, void*);
 
@@ -88,6 +95,7 @@ public:
     void directRestPlayer(ServerPlayer*player, const QString&reason = QString(), bool discard_cards = false);
     void unrestPlayer(ServerPlayer*player, bool restore_full_hp = true, bool restore_original_skills = false);
     bool isRest(ServerPlayer*player) const;
+    bool isDeadPlayerRevivable(ServerPlayer*player) const;
     QList<ServerPlayer*> getRestPlayers() const;
     QStringList aliveRoles(ServerPlayer*except = nullptr) const;
     void gameOver(const QString&winner);
@@ -506,6 +514,12 @@ public:
     void broadcastInvoke(const QSanProtocol::AbstractPacket*packet, ServerPlayer*except = nullptr);
     void broadcastInvoke(const char*method, const QString&arg = ".", ServerPlayer*except = nullptr);
     void networkDelayTestCommand(ServerPlayer*player, const QVariant&);
+    void perspectiveRequestCommand(ServerPlayer*player, const QVariant&arg);
+    void sendPerspectiveSync(ServerPlayer*viewer, ServerPlayer*target);
+    void clearPerspectiveViewer(ServerPlayer*viewer);
+    void clearAllPerspectiveViewersOf(ServerPlayer*target);
+    QList<ServerPlayer*> getPerspectiveViewersOf(ServerPlayer*target) const;
+    ServerPlayer*getPerspectiveTarget(ServerPlayer*viewer) const;
     void moveCardsToEndOfDrawpile(ServerPlayer*player, QList<int> card_ids, const QString&skill_name, bool visible = false, bool guanxing = false);
     void moveCardsInToDrawpile(ServerPlayer*player, const Card*card, const QString&skill_name, int n = 0, bool visible = false);
     void moveCardsInToDrawpile(ServerPlayer*player, int card_id, const QString&skill_name, int n = 0, bool visible = false);
@@ -740,6 +754,9 @@ private:
 
     QMap<int, Player::Place> place_map;
     QMap<int, ServerPlayer*> owner_map;
+
+    QMap<ServerPlayer*, PerspectiveEntry> m_perspectiveViewers;
+    int m_perspectiveSyncSerial;
 
     QVariantMap tag;
     const Scenario*scenario;

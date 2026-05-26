@@ -175,7 +175,11 @@ public:
     void handleTeammateGeneralPool(const QVariant &arg);
     void handleTeammatePreselect(const QVariant &arg);
 
-    void fillAG(const QVariant &cards_str);
+    void requestPerspectiveSwitch(const QString &targetName);
+    QString perspectiveTargetName() const { return m_perspectiveTargetName; }
+    bool isPerspectiveActive() const { return !m_perspectiveTargetName.isEmpty(); }
+
+    void fillAG(const QVariant &card_str);
     void takeAG(const QVariant &take_str);
     void clearAG(const QVariant &);
 
@@ -319,6 +323,10 @@ private:
     QList<int> available_cards;
     QSet<QString> m_anytimeSkillPending;
 
+    QString m_perspectiveTargetName;
+    int m_lastPerspectiveSyncSerial;
+    QMap<QString, bool> m_savedPileOpenState;
+
     QMap<int, const Player*> owner_map;
     QMap<int, Player::Place> place_map;
 
@@ -437,6 +445,8 @@ signals:
 
     void teammate_general_pool(const QString &playerName, const QStringList &generalPool, bool isDeputy);
     void teammate_preselect(const QString &playerName, const QString &general, bool confirmed, bool isHidden, bool isDeputy);
+
+    void perspective_changed(const QString &targetName, const QList<int> &handCardIds, const QVariantMap &piles);
 };
 
 extern Client *ClientInstance;

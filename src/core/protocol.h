@@ -189,7 +189,9 @@ namespace QSanProtocol {
         S_COMMAND_TEAMMATE_PRESELECT,
         S_COMMAND_SYNC_PRESELECT,
         S_COMMAND_SWITCH_CONTEXT = 128,
-        S_COMMAND_SYNC_PILE = 129
+        S_COMMAND_SYNC_PILE = 129,
+        S_COMMAND_PERSPECTIVE_REQUEST = 130,
+        S_COMMAND_PERSPECTIVE_SYNC = 131
     };
 
     enum GuanxingStepType

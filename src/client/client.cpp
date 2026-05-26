@@ -47,9 +47,10 @@ static ClientPlayer *getControlRootPlayer(ClientPlayer *player)
 }
 
 Client::Client(QObject *parent, const QString &filename)
-	: QObject(parent), m_isDiscardActionRefusable(true), m_bossLevel(0),
-	status(NotActive), alive_count(1), swap_pile(0), add_round(0), _m_roomState(true),
-	m_client_lua(nullptr), m_original_self(nullptr), m_takeoverManager(nullptr)
+    : QObject(parent), m_isDiscardActionRefusable(true), m_bossLevel(0),
+    status(NotActive), alive_count(1), swap_pile(0), add_round(0), _m_roomState(true),
+    m_client_lua(nullptr), m_original_self(nullptr), m_takeoverManager(nullptr),
+    m_lastPerspectiveSyncSerial(0)
 {
 	ClientInstance = this;
 	m_isGameOver = false;
@@ -99,11 +100,12 @@ Client::Client(QObject *parent, const QString &filename)
 	m_callbacks[S_COMMAND_ENABLE_SURRENDER] = &Client::enableSurrender;
 	m_callbacks[S_COMMAND_EXCHANGE_KNOWN_CARDS] = &Client::exchangeKnownCards;
 	m_callbacks[S_COMMAND_SET_KNOWN_CARDS] = &Client::setKnownCards;
-	m_callbacks[S_COMMAND_SWITCH_CONTEXT] = &Client::processContextSwitch;
-	m_callbacks[S_COMMAND_VIEW_GENERALS] = &Client::viewGenerals;
-	m_callbacks[S_COMMAND_PLAY_AUDIO] = &Client::playAudio;
+m_callbacks[S_COMMAND_SWITCH_CONTEXT] = &Client::processContextSwitch;
+    m_callbacks[S_COMMAND_VIEW_GENERALS] = &Client::viewGenerals;
+    m_callbacks[S_COMMAND_PLAY_AUDIO] = &Client::playAudio;
+    m_callbacks[S_COMMAND_PERSPECTIVE_SYNC] = &Client::perspectiveSync;
 
-	m_callbacks[S_COMMAND_UPDATE_BOSS_LEVEL] = &Client::updateBossLevel;
+    m_callbacks[S_COMMAND_UPDATE_BOSS_LEVEL] = &Client::updateBossLevel;
 	m_callbacks[S_COMMAND_UPDATE_STATE_ITEM] = &Client::updateStateItem;
 	m_callbacks[S_COMMAND_AVAILABLE_CARDS] = &Client::setAvailableCards;
 
@@ -261,13 +263,114 @@ void Client::setSelf(ClientPlayer *newSelf)
 
 void Client::processContextSwitch(const QVariant &target_name)
 {
-	ClientPlayer *target = getPlayer(target_name.toString());
-	if (target == nullptr || target->isDead()) {
-		setSelf(m_original_self);
-		return;
-	}
+    ClientPlayer *target = getPlayer(target_name.toString());
+    if (target == nullptr || target->isDead()) {
+        setSelf(m_original_self);
+        return;
+    }
 
-	setSelf(target);
+    setSelf(target);
+}
+
+void Client::requestPerspectiveSwitch(const QString &targetName)
+{
+    notifyServer(S_COMMAND_PERSPECTIVE_REQUEST, targetName);
+}
+
+void Client::perspectiveSync(const QVariant &arg)
+{
+    JsonArray args = arg.value<JsonArray>();
+    if (args.size() < 5)
+        return;
+
+    int syncSerial = args[0].toInt();
+    if (syncSerial <= m_lastPerspectiveSyncSerial)
+        return;
+    m_lastPerspectiveSyncSerial = syncSerial;
+
+    QString targetName = args[1].toString();
+
+    if (!m_perspectiveTargetName.isEmpty()) {
+        ClientPlayer *oldTarget = getPlayer(m_perspectiveTargetName);
+        if (oldTarget != nullptr) {
+            oldTarget->setCards(QList<int>());
+            foreach (const QString &pileName, oldTarget->getPileNames()) {
+                if (m_savedPileOpenState.value(pileName, false))
+                    continue;
+                int count = oldTarget->getPile(pileName).size();
+                QList<int> unknownIds;
+                for (int i = 0; i < count; ++i)
+                    unknownIds << Card::S_UNKNOWN_CARD_ID;
+                oldTarget->setPile(pileName, unknownIds);
+            }
+        }
+        m_savedPileOpenState.clear();
+    }
+
+    if (targetName.isEmpty()) {
+        m_perspectiveTargetName.clear();
+        emit perspective_changed(QString(), QList<int>(), QVariantMap());
+        return;
+    }
+
+    m_perspectiveTargetName = targetName;
+    ClientPlayer *target = getPlayer(targetName);
+    if (target == nullptr)
+        return;
+
+    JsonArray modifiedCards = args[4].value<JsonArray>();
+    foreach (const QVariant &mc, modifiedCards) {
+        JsonArray cardInfo = mc.value<JsonArray>();
+        if (cardInfo.size() >= 7) {
+            int cardId = cardInfo[0].toInt();
+            Card::Suit suit = static_cast<Card::Suit>(cardInfo[1].toInt());
+            int number = cardInfo[2].toInt();
+            QString cardName = cardInfo[3].toString();
+            QString skillName = cardInfo[4].toString();
+            QString objectName = cardInfo[5].toString();
+            QStringList flags;
+            JsonUtils::tryParse(cardInfo[6], flags);
+
+            Card *cloned = Sanguosha->cloneCard(cardName, suit, number, flags);
+            if (cloned == nullptr)
+                continue;
+            cloned->setId(cardId);
+            cloned->setSkillName(skillName);
+            cloned->setObjectName(objectName);
+            WrappedCard *wrapped = Sanguosha->getWrappedCard(cardId);
+            if (wrapped != nullptr)
+                wrapped->copyEverythingFrom(cloned);
+        }
+    }
+
+    QList<int> handCardIds;
+    JsonUtils::tryParse(args[2], handCardIds);
+    target->setCards(handCardIds);
+
+    m_savedPileOpenState.clear();
+    foreach (const QString &pileName, target->getPileNames()) {
+        QList<int> ids = target->getPile(pileName);
+        bool isOpen = !ids.isEmpty() && !ids.contains(Card::S_UNKNOWN_CARD_ID);
+        m_savedPileOpenState[pileName] = isOpen;
+    }
+
+    QVariantMap pilesMap;
+    QStringList syncedPileNames;
+    JsonObject pilesObj = args[3].value<JsonObject>();
+    for (auto it = pilesObj.constBegin(); it != pilesObj.constEnd(); ++it) {
+        QList<int> pileIds;
+        JsonUtils::tryParse(it.value(), pileIds);
+        target->setPile(it.key(), pileIds);
+        syncedPileNames << it.key();
+        pilesMap[it.key()] = QVariant::fromValue(pileIds);
+    }
+
+    foreach (const QString &pileName, target->getPileNames()) {
+        if (!syncedPileNames.contains(pileName))
+            target->setPile(pileName, QList<int>());
+    }
+
+    emit perspective_changed(targetName, handCardIds, pilesMap);
 }
 
 void Client::updateCard(const QVariant &val)

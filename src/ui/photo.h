@@ -64,6 +64,7 @@ signals:
 
 protected:
     virtual void mouseReleaseEvent(QGraphicsSceneMouseEvent *event);
+    virtual void mouseDoubleClickEvent(QGraphicsSceneMouseEvent *event);
     inline virtual QGraphicsItem *_getEquipParent()
     {
         return _m_groupMain;
