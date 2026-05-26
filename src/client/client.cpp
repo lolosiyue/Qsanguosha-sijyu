@@ -169,6 +169,8 @@ Client::Client(QObject *parent, const QString &filename)
 	m_callbacks[S_COMMAND_ANYTIME_SKILL_DONE] = &Client::handleAnytimeSkillDone;
 	m_callbacks[S_COMMAND_SET_SHOWN_HANDCARD] = &Client::setShownHandCards;
 	m_callbacks[S_COMMAND_SET_BROKEN_EQUIP] = &Client::setBrokenEquips;
+	m_callbacks[S_COMMAND_TEAMMATE_GENERAL_POOL] = &Client::handleTeammateGeneralPool;
+	m_callbacks[S_COMMAND_TEAMMATE_PRESELECT] = &Client::handleTeammatePreselect;
 	m_interactions[S_COMMAND_QML_INTERACT] = &Client::askForQml;
 
 	m_noNullificationThisTime = false;
@@ -2626,4 +2628,34 @@ void Client::saveTakeoverReplay(const QString &filepath)
     if (m_takeoverManager) {
         m_takeoverManager->saveNewReplay(filepath);
     }
+}
+
+void Client::handleTeammateGeneralPool(const QVariant &arg)
+{
+    JsonArray args = arg.toList();
+    if (args.size() < 3)
+        return;
+
+    QString playerName = args[0].toString();
+    QStringList generalPool;
+    foreach (const QVariant &v, args[1].toList())
+        generalPool << v.toString();
+    bool isDeputy = args[2].toBool();
+
+    emit teammate_general_pool(playerName, generalPool, isDeputy);
+}
+
+void Client::handleTeammatePreselect(const QVariant &arg)
+{
+    JsonArray args = arg.toList();
+    if (args.size() < 5)
+        return;
+
+    QString playerName = args[0].toString();
+    QString general = args[1].toString();
+    bool confirmed = args[2].toBool();
+    bool isHidden = args[3].toBool();
+    bool isDeputy = args[4].toBool();
+
+    emit teammate_preselect(playerName, general, confirmed, isHidden, isDeputy);
 }

@@ -43,6 +43,7 @@ public:
     bool EnableBasara;
     bool EnableHegemony;
     bool EnableMeleeMode;
+    bool EnableTeammateGeneralSync;
     int MaxHpScheme;
     int Scheme0Subtraction;
     bool PreventAwakenBelow3;

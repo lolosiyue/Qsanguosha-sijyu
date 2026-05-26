@@ -101,6 +101,7 @@ private:
     QCheckBox *basara_checkbox;
     QCheckBox *hegemony_checkbox;
     QCheckBox *melee_mode_checkbox;
+    QCheckBox *teammate_general_sync_checkbox;
     QLabel *hegemony_maxchoice_label;
     QSpinBox *hegemony_maxchoice_spinbox;
     QLabel *hegemony_maxshown_label;

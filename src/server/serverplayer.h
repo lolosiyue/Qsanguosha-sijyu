@@ -270,6 +270,11 @@ public:
     void removePendingAnytimeSkill(const QString &skill_name);
     void clearPendingAnytimeSkills();
 
+    QString getPreselectedGeneral() const;
+    void setPreselectedGeneral(const QString &general);
+    bool isGeneralConfirmed() const;
+    void setGeneralConfirmed(bool confirmed);
+
 protected:
     //Synchronization helpers
     QSemaphore **semas;
@@ -295,6 +300,8 @@ private:
     QSet<const char *> propertys;
     bool m_tooltipDirty;
     QStringList m_pendingAnytimeSkills;
+    QString m_preselectedGeneral;
+    bool m_generalConfirmed;
 
 private slots:
     void getMessage(const char *message);

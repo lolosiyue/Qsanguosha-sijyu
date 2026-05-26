@@ -24,7 +24,8 @@ const int ServerPlayer::S_NUM_SEMAPHORES = 6;
 ServerPlayer::ServerPlayer(Room *room)
 	: Player(room), m_isClientResponseReady(false), m_isWaitingReply(false),
 	socket(nullptr), room(room), ai(nullptr), trust_ai(new TrustAI(this)),
-	recorder(nullptr), _m_phases_index(NotActive), next(nullptr), m_tooltipDirty(false)
+	recorder(nullptr), _m_phases_index(NotActive), next(nullptr), m_tooltipDirty(false),
+	m_preselectedGeneral(""), m_generalConfirmed(false)
 {
 	semas = new QSemaphore *[S_NUM_SEMAPHORES];
 	for (int i = 0; i < S_NUM_SEMAPHORES; i++)
@@ -2659,5 +2660,25 @@ void ServerPlayer::removeBrokenEquips(const QList<int> &card_ids, bool sendLog, 
 	b.moveFromEquip = moveFromEquip;
 	QVariant bv = QVariant::fromValue(b);
 	room->getThread()->trigger(BrokenEquipChanged, room, this, bv);
+}
+
+QString ServerPlayer::getPreselectedGeneral() const
+{
+	return m_preselectedGeneral;
+}
+
+void ServerPlayer::setPreselectedGeneral(const QString &general)
+{
+	m_preselectedGeneral = general;
+}
+
+bool ServerPlayer::isGeneralConfirmed() const
+{
+	return m_generalConfirmed;
+}
+
+void ServerPlayer::setGeneralConfirmed(bool confirmed)
+{
+	m_generalConfirmed = confirmed;
 }
 

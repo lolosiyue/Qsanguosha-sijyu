@@ -172,6 +172,9 @@ public:
     void askForQml(const QVariant &arg);
     void replyQml(const QVariant &result);
 
+    void handleTeammateGeneralPool(const QVariant &arg);
+    void handleTeammatePreselect(const QVariant &arg);
+
     void fillAG(const QVariant &cards_str);
     void takeAG(const QVariant &take_str);
     void clearAG(const QVariant &);
@@ -431,6 +434,9 @@ signals:
     void skill_updated(const QString &skill_name);
     void anytime_skill_done(const QString &skill_name);
     void qml_interact(const QString &qmlPath, const QVariantMap &params);
+
+    void teammate_general_pool(const QString &playerName, const QStringList &generalPool, bool isDeputy);
+    void teammate_preselect(const QString &playerName, const QString &general, bool confirmed, bool isHidden, bool isDeputy);
 };
 
 extern Client *ClientInstance;

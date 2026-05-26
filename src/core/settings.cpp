@@ -113,6 +113,7 @@ void Settings::init()
     EnableBasara = value("EnableBasara", false).toBool();
     EnableHegemony = value("EnableHegemony", false).toBool();
     EnableMeleeMode = value("EnableMeleeMode", false).toBool();
+    EnableTeammateGeneralSync = value("EnableTeammateGeneralSync", true).toBool();
     MaxHpScheme = value("MaxHpScheme", 0).toInt();
     Scheme0Subtraction = value("Scheme0Subtraction", 3).toInt();
     PreventAwakenBelow3 = value("PreventAwakenBelow3", false).toBool();

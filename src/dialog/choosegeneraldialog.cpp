@@ -13,7 +13,7 @@
 using namespace QSanProtocol;
 
 OptionButton::OptionButton(QString icon_path, const QString &caption, QWidget *parent)
-    : QToolButton(parent)
+    : QToolButton(parent), m_preselected(false), m_generalName(QString())
 {
     QPixmap pixmap(icon_path);
     QIcon icon(pixmap);
@@ -31,13 +31,28 @@ OptionButton::OptionButton(QString icon_path, const QString &caption, QWidget *p
     }
 }
 
+void OptionButton::setPreselected(bool preselected)
+{
+    m_preselected = preselected;
+    update();
+}
+
 void OptionButton::mouseDoubleClickEvent(QMouseEvent *)
 {
     emit double_clicked();
 }
 
+void OptionButton::mousePressEvent(QMouseEvent *event)
+{
+    if (event->button() == Qt::LeftButton && !m_generalName.isEmpty()) {
+        emit clicked_once(m_generalName);
+    }
+    QToolButton::mousePressEvent(event);
+}
+
 ChooseGeneralDialog::ChooseGeneralDialog(const QStringList &general_names, QWidget *parent, bool view_only, const QString &title)
-    : QDialog(parent)
+    : QDialog(parent), m_teammatePoolArea(nullptr), m_teammatePoolContainer(nullptr), 
+      m_teammatePoolLayout(nullptr), m_selfPreselectedGeneral(QString()), m_isDeputySelection(false)
 {
     m_freeChooseDialog = nullptr;
     if (title.isEmpty())
@@ -83,12 +98,14 @@ ChooseGeneralDialog::ChooseGeneralDialog(const QStringList &general_names, QWidg
             button->setIconSize(icon_size);
         }
         button->setToolTip(buildOracleTooltip(general->getOracleText(), general->getSkillDescription(true)));
+        button->setObjectName(general->objectName());
         buttons << button;
 
         if (!view_only) {
             mapper->setMapping(button, general->objectName());
             connect(button, SIGNAL(double_clicked()), mapper, SLOT(map()));
             connect(button, SIGNAL(double_clicked()), this, SLOT(accept()));
+            connect(button, SIGNAL(clicked_once(QString)), this, SLOT(onOptionButtonClickedOnce(QString)));
         }
     }
 
@@ -157,6 +174,11 @@ ChooseGeneralDialog::ChooseGeneralDialog(const QStringList &general_names, QWidg
         connect(this, SIGNAL(rejected()), mapper, SLOT(map()));
 
         connect(mapper, SIGNAL(mapped(QString)), ClientInstance, SLOT(onPlayerChooseGeneral(QString)));
+        
+        connect(ClientInstance, SIGNAL(teammate_general_pool(QString,QStringList,bool)),
+                this, SLOT(onTeammateGeneralPoolGot(QString,QStringList,bool)));
+        connect(ClientInstance, SIGNAL(teammate_preselect(QString,QString,bool,bool,bool)),
+                this, SLOT(onTeammatePreselectGot(QString,QString,bool,bool,bool)));
     }
 
     QVBoxLayout *dialog_layout = new QVBoxLayout;
@@ -176,6 +198,12 @@ ChooseGeneralDialog::ChooseGeneralDialog(const QStringList &general_names, QWidg
 			.arg(Sanguosha->translate(default_name))
 			.arg(role_label->text()));
         dialog_layout->addWidget(role_label);
+    }
+
+    // Teammate general pool area
+    if (!view_only) {
+        m_teammatePoolArea = createTeammatePoolArea();
+        dialog_layout->addWidget(m_teammatePoolArea);
     }
 
     // progress bar & free choose button
@@ -424,4 +452,210 @@ void TextButtonItem::hoverEnterEvent(QGraphicsSceneHoverEvent *)
 void TextButtonItem::hoverLeaveEvent(QGraphicsSceneHoverEvent *)
 {
     emit hover_leave();
+}
+
+TeammateGeneralButton::TeammateGeneralButton(const QString &generalName, QWidget *parent)
+    : QToolButton(parent), m_state(Normal), m_generalName(generalName)
+{
+    const General *general = Sanguosha->getGeneral(generalName);
+    QString displayName = general ? Sanguosha->translate(generalName) : generalName;
+    
+    if (general) {
+        setIcon(QIcon(G_ROOM_SKIN.getGeneralPixmap(generalName, QSanRoomSkin::S_GENERAL_ICON_SIZE_SMALL)));
+        setIconSize(G_COMMON_LAYOUT.m_chooseGeneralBoxDenseIconSize);
+    }
+    
+    setText(displayName);
+    setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
+    setEnabled(false);
+    setFixedSize(80, 100);
+}
+
+void TeammateGeneralButton::setState(State state)
+{
+    m_state = state;
+    update();
+}
+
+void TeammateGeneralButton::paintEvent(QPaintEvent *event)
+{
+    QToolButton::paintEvent(event);
+    
+    if (m_state == Normal)
+        return;
+    
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing);
+    
+    QRect rect = this->rect().adjusted(2, 2, -2, -2);
+    
+    switch (m_state) {
+    case Preselected:
+        painter.setPen(QPen(QColor(100, 149, 237), 3, Qt::DashLine));
+        painter.drawRect(rect);
+        break;
+        
+    case Confirmed:
+        painter.setPen(QPen(QColor(255, 215, 0), 4));
+        painter.drawRect(rect);
+        {
+            QPixmap lockIcon("image/system/lock.png");
+            if (!lockIcon.isNull()) {
+                painter.drawPixmap(rect.topRight() - QPoint(lockIcon.width() + 2, -2), lockIcon);
+            }
+        }
+        break;
+        
+    case Disabled:
+        painter.fillRect(rect, QColor(128, 128, 128, 128));
+        break;
+        
+    default:
+        break;
+    }
+}
+
+QWidget* ChooseGeneralDialog::createTeammatePoolArea()
+{
+    QScrollArea *scrollArea = new QScrollArea(this);
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scrollArea->setMinimumHeight(150);
+    scrollArea->setFrameShape(QFrame::StyledPanel);
+    
+    m_teammatePoolContainer = new QWidget(scrollArea);
+    m_teammatePoolLayout = new QVBoxLayout(m_teammatePoolContainer);
+    m_teammatePoolLayout->setSpacing(10);
+    
+    QLabel *placeholderLabel = new QLabel(tr("Waiting for teammate general pool..."));
+    placeholderLabel->setAlignment(Qt::AlignCenter);
+    placeholderLabel->setObjectName("placeholder");
+    m_teammatePoolLayout->addWidget(placeholderLabel);
+    m_teammatePoolLayout->addStretch();
+    
+    m_teammatePoolContainer->setLayout(m_teammatePoolLayout);
+    scrollArea->setWidget(m_teammatePoolContainer);
+    
+    return scrollArea;
+}
+
+QWidget* ChooseGeneralDialog::createTeammateGroupBox(const QString &playerName, const QStringList &generals, bool isDeputy)
+{
+    QGroupBox *groupBox = new QGroupBox(m_teammatePoolContainer);
+    QString title = QString("%1 - %2").arg(playerName).arg(isDeputy ? tr("Deputy") : tr("Main"));
+    groupBox->setTitle(title);
+    
+    QGridLayout *gridLayout = new QGridLayout(groupBox);
+    gridLayout->setSpacing(4);
+    gridLayout->setOriginCorner(Qt::TopLeftCorner);
+    
+    const int columns = 6;
+    int row = 0, col = 0;
+    
+    QString widgetKey = playerName + (isDeputy ? "_deputy" : "_main");
+    
+    foreach (const QString &generalName, generals) {
+        TeammateGeneralButton *button = new TeammateGeneralButton(generalName, groupBox);
+        gridLayout->addWidget(button, row, col);
+        
+        m_teammateButtons[widgetKey][generalName] = button;
+        
+        col++;
+        if (col >= columns) {
+            col = 0;
+            row++;
+        }
+    }
+    
+    gridLayout->setRowStretch(row + 1, 1);
+    groupBox->setLayout(gridLayout);
+    
+    return groupBox;
+}
+
+void ChooseGeneralDialog::updateTeammateButtonState(const QString &playerName, const QString &general, 
+                                                     TeammateGeneralButton::State state, bool isDeputy)
+{
+    QString widgetKey = playerName + (isDeputy ? "_deputy" : "_main");
+    
+    if (!m_teammateButtons.contains(widgetKey))
+        return;
+    
+    if (m_teammateButtons[widgetKey].contains(general)) {
+        m_teammateButtons[widgetKey][general]->setState(state);
+    }
+}
+
+void ChooseGeneralDialog::freezeTeammateGeneral(const QString &general)
+{
+    foreach (const QString &widgetKey, m_teammateButtons.keys()) {
+        if (m_teammateButtons[widgetKey].contains(general)) {
+            m_teammateButtons[widgetKey][general]->setState(TeammateGeneralButton::Disabled);
+        }
+    }
+}
+
+void ChooseGeneralDialog::onTeammateGeneralPoolGot(const QString &playerName, const QStringList &generals, bool isDeputy)
+{
+    if (!m_teammatePoolLayout)
+        return;
+    
+    QLabel *placeholder = m_teammatePoolContainer->findChild<QLabel*>("placeholder");
+    if (placeholder) {
+        delete placeholder;
+    }
+    
+    QString widgetKey = playerName + (isDeputy ? "_deputy" : "_main");
+    
+    if (!m_teammatePoolWidgets.contains(widgetKey)) {
+        QWidget *groupBox = createTeammateGroupBox(playerName, generals, isDeputy);
+        m_teammatePoolLayout->insertWidget(m_teammatePoolLayout->count() - 1, groupBox);
+        m_teammatePoolWidgets[widgetKey] = groupBox;
+    }
+}
+
+void ChooseGeneralDialog::onTeammatePreselectGot(const QString &playerName, const QString &general, 
+                                                   bool confirmed, bool isHidden, bool isDeputy)
+{
+    QString widgetKey = playerName + (isDeputy ? "_deputy" : "_main");
+    
+    if (!m_teammateButtons.contains(widgetKey))
+        return;
+    
+    foreach (TeammateGeneralButton *button, m_teammateButtons[widgetKey]) {
+        if (button->getState() != TeammateGeneralButton::Disabled) {
+            button->setState(TeammateGeneralButton::Normal);
+        }
+    }
+    
+    if (m_teammateButtons[widgetKey].contains(general)) {
+        TeammateGeneralButton::State state = confirmed ? TeammateGeneralButton::Confirmed 
+                                                        : TeammateGeneralButton::Preselected;
+        m_teammateButtons[widgetKey][general]->setState(state);
+        
+        if (confirmed) {
+            freezeTeammateGeneral(general);
+        }
+    }
+}
+
+void ChooseGeneralDialog::onSelfPreselectChanged(const QString &general)
+{
+    m_selfPreselectedGeneral = general;
+    
+    JsonArray args;
+    args << general;
+    args << false;
+    args << m_isDeputySelection;
+    
+    ClientInstance->notifyServer(S_COMMAND_SYNC_PRESELECT, args);
+}
+
+void ChooseGeneralDialog::onOptionButtonClickedOnce(const QString &general)
+{
+    foreach (OptionButton *button, findChildren<OptionButton*>()) {
+        button->setPreselected(button->objectName() == general);
+    }
+    
+    onSelfPreselectChanged(general);
 }

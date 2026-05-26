@@ -246,6 +246,7 @@ void Room::initCallbacks()
 	//Client request
 	m_callbacks[S_COMMAND_NETWORK_DELAY_TEST] = &Room::networkDelayTestCommand;
 	m_callbacks[S_COMMAND_ANYTIME_SKILL] = &Room::handleAnytimeSkillRequest;
+	m_callbacks[S_COMMAND_SYNC_PRESELECT] = &Room::syncPreselectCommand;
 }
 
 ServerPlayer*Room::getCurrent() const
@@ -4098,6 +4099,9 @@ void Room::chooseGenerals(QList<ServerPlayer*> players)
 		foreach(const QString &gen, selected)
 			player->addToSelected(gen);
 		_setupChooseGeneralRequestArgs(player);
+
+		if (shouldSyncTeammateGenerals())
+			broadcastTeammateGeneralPools(player, false);
 	}
 
 	doBroadcastRequest(players, S_COMMAND_CHOOSE_GENERAL);
@@ -4118,6 +4122,11 @@ void Room::chooseGenerals(QList<ServerPlayer*> players)
 		if (!playerChose)
 			triggerGeneralNotChosen(player, player->getSelected(), chosen, "for_general");
 
+		if (shouldSyncTeammateGenerals()) {
+			bool isHidden = player->hasHideSkill() && player->property("yinni_general").toString() == chosen;
+			onTeammatePreselect(player, chosen, true, isHidden, false);
+		}
+
 		if (_setPlayerGeneral(player, chosen, true)){
 			if (player->hasHideSkill()){
 				setPlayerProperty(player, "yinni_general", player->getGeneralName());
@@ -4129,12 +4138,34 @@ void Room::chooseGenerals(QList<ServerPlayer*> players)
 
 	if (Config.Enable2ndGeneral){
 		assignGeneralsForPlayers(players);
-		foreach(ServerPlayer*player, players)
+		foreach(ServerPlayer*player, players){
 			_setupChooseGeneralRequestArgs(player);
+
+			if (shouldSyncTeammateGenerals())
+				broadcastTeammateGeneralPools(player, true);
+		}
 
 		doBroadcastRequest(players, S_COMMAND_CHOOSE_GENERAL);
 		foreach(ServerPlayer*player, players){
-			if ((player->m_isClientResponseReady&&_setPlayerGeneral(player, player->getClientReply().toString(), false))
+			QString clientChoice;
+			bool playerChose = false;
+			if (player->m_isClientResponseReady){
+				clientChoice = player->getClientReply().toString();
+				if (player->getSelected().contains(clientChoice) || Config.FreeChoose)
+					playerChose = true;
+			}
+			QString chosen;
+			if (playerChose)
+				chosen = clientChoice;
+			else
+				chosen = _chooseDefaultGeneral(player);
+
+			if (shouldSyncTeammateGenerals()) {
+				bool isHidden = player->hasHideSkill(2) && player->property("yinni_general2").toString() == chosen;
+				onTeammatePreselect(player, chosen, true, isHidden, true);
+			}
+
+			if ((playerChose &&_setPlayerGeneral(player, chosen, false))
 				||_setPlayerGeneral(player, _chooseDefaultGeneral(player), false)){
 				if(player->hasHideSkill(2)){
 					setPlayerProperty(player, "yinni_general2", player->getGeneral2Name());
@@ -9429,5 +9460,129 @@ void Room::setReplayPath(const QString &path)
 QString Room::getReplayPath() const
 {
 	return m_replayPath;
+}
+
+bool Room::shouldSyncTeammateGenerals() const
+{
+	if (!Config.EnableTeammateGeneralSync)
+		return false;
+
+	if (mode == "06_3v3" || mode == "06_XMode" || mode == "04_2v2")
+		return true;
+
+	if (Config.EnableHegemony) {
+		foreach (ServerPlayer *p, m_players) {
+			if (p->getRole() == "lord" || p->getRole() == "loyalist" || p->getRole() == "renegade")
+				return true;
+		}
+	}
+
+	return false;
+}
+
+QList<ServerPlayer*> Room::getTeammates(ServerPlayer *player) const
+{
+	if (!player)
+		return QList<ServerPlayer*>();
+
+	QList<ServerPlayer*> teammates;
+
+	if (mode == "06_3v3" || mode == "06_XMode") {
+		QString role = player->getRole();
+		foreach (ServerPlayer *p, m_players) {
+			if (p != player && p->getRole() == role)
+				teammates << p;
+		}
+	} else if (mode == "04_2v2") {
+		int seat = player->getSeat();
+		foreach (ServerPlayer *p, m_players) {
+			if (p != player) {
+				int pSeat = p->getSeat();
+				if ((seat % 2 == 0 && pSeat % 2 == 0) || (seat % 2 == 1 && pSeat % 2 == 1))
+					teammates << p;
+			}
+		}
+	} else if (Config.EnableHegemony) {
+		QString kingdom = player->getGeneral() ? player->getGeneral()->getKingdom() : player->getKingdom();
+		foreach (ServerPlayer *p, m_players) {
+			if (p != player) {
+				QString pKingdom = p->getGeneral() ? p->getGeneral()->getKingdom() : p->getKingdom();
+				if (pKingdom == kingdom)
+					teammates << p;
+			}
+		}
+	}
+
+	return teammates;
+}
+
+void Room::broadcastTeammateGeneralPools(ServerPlayer *player, bool isDeputy)
+{
+	if (!player || !shouldSyncTeammateGenerals())
+		return;
+
+	QList<ServerPlayer*> teammates = getTeammates(player);
+	if (teammates.isEmpty())
+		return;
+
+	QStringList generalPool = player->getSelected();
+	if (generalPool.isEmpty())
+		return;
+
+	JsonArray args;
+	args << player->objectName();
+	args << JsonUtils::toJsonArray(generalPool);
+	args << isDeputy;
+
+	foreach (ServerPlayer *teammate, teammates) {
+		if (teammate->isOnline())
+			doNotify(teammate, S_COMMAND_TEAMMATE_GENERAL_POOL, args);
+	}
+}
+
+void Room::onTeammatePreselect(ServerPlayer *player, const QString &general, bool confirmed, bool isHidden, bool isDeputy)
+{
+	if (!player || !shouldSyncTeammateGenerals())
+		return;
+
+	QList<ServerPlayer*> teammates = getTeammates(player);
+	if (teammates.isEmpty())
+		return;
+
+	player->setPreselectedGeneral(general);
+	player->setGeneralConfirmed(confirmed);
+
+	JsonArray args;
+	args << player->objectName();
+	args << general;
+	args << confirmed;
+	args << isHidden;
+	args << isDeputy;
+
+	foreach (ServerPlayer *teammate, teammates) {
+		if (teammate->isOnline())
+			doNotify(teammate, S_COMMAND_TEAMMATE_PRESELECT, args);
+	}
+}
+
+void Room::syncPreselectCommand(ServerPlayer *player, const QVariant &arg)
+{
+	if (!player || !shouldSyncTeammateGenerals())
+		return;
+
+	JsonArray args = arg.toList();
+	if (args.size() < 3)
+		return;
+
+	QString general = args[0].toString();
+	bool confirmed = args[1].toBool();
+	bool isDeputy = args[2].toBool();
+
+	bool isHidden = false;
+	const General *g = Sanguosha->getGeneral(general);
+	if (g && g->hasHideSkill())
+		isHidden = true;
+
+	onTeammatePreselect(player, general, confirmed, isHidden, isDeputy);
 }
 

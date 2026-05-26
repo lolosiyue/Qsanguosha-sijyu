@@ -378,6 +378,9 @@ QWidget *ServerDialog::createAdvancedTab()
 	melee_mode_checkbox = new QCheckBox(tr("Enable Melee Mode (Peach as Slash/Jink in late game)"));
 	melee_mode_checkbox->setChecked(Config.EnableMeleeMode);
 
+	teammate_general_sync_checkbox = new QCheckBox(tr("Enable teammate general sync (3v3/XMode/2v2/Hegemony)"));
+	teammate_general_sync_checkbox->setChecked(Config.EnableTeammateGeneralSync);
+
 	hegemony_maxchoice_label = new QLabel(tr("Upperlimit for hegemony"));
 	hegemony_maxchoice_spinbox = new QSpinBox;
 	hegemony_maxchoice_spinbox->setRange(5, 21);
@@ -423,6 +426,7 @@ QWidget *ServerDialog::createAdvancedTab()
 	layout->addWidget(prevent_awaken_below3_checkbox);
 	layout->addLayout(HLay(basara_checkbox, hegemony_checkbox));
 	layout->addWidget(melee_mode_checkbox);
+	layout->addWidget(teammate_general_sync_checkbox);
 	layout->addLayout(HLay(hegemony_maxchoice_label, hegemony_maxchoice_spinbox));
 	layout->addLayout(HLay(hegemony_maxshown_label, hegemony_maxshown_spinbox));
 	layout->addWidget(same_checkbox);
@@ -1382,6 +1386,7 @@ int ServerDialog::config()
 	Config.EnableBasara = basara_checkbox->isChecked() && basara_checkbox->isEnabled();
 	Config.EnableHegemony = hegemony_checkbox->isChecked() && hegemony_checkbox->isEnabled();
 	Config.EnableMeleeMode = melee_mode_checkbox->isChecked();
+	Config.EnableTeammateGeneralSync = teammate_general_sync_checkbox->isChecked();
 	Config.MaxHpScheme = max_hp_scheme_ComboBox->currentIndex();
 	if (Config.MaxHpScheme == 0) {
 		Config.Scheme0Subtraction = scheme0_subtraction_spinbox->value();

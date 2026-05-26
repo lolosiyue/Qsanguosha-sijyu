@@ -502,6 +502,7 @@ public:
     void pauseCommand(ServerPlayer*player, const QVariant&arg);
     void processResponse(ServerPlayer*player, const QSanProtocol::Packet*arg);
     void addRobotCommand(ServerPlayer*player, const QVariant&arg);
+    void syncPreselectCommand(ServerPlayer*player, const QVariant&arg);
     void broadcastInvoke(const QSanProtocol::AbstractPacket*packet, ServerPlayer*except = nullptr);
     void broadcastInvoke(const char*method, const QString&arg = ".", ServerPlayer*except = nullptr);
     void networkDelayTestCommand(ServerPlayer*player, const QVariant&);
@@ -792,6 +793,10 @@ private:
         ServerPlayer*m_to;
     };
     void _setupChooseGeneralRequestArgs(ServerPlayer*player);
+    bool shouldSyncTeammateGenerals() const;
+    QList<ServerPlayer*> getTeammates(ServerPlayer*player) const;
+    void onTeammatePreselect(ServerPlayer*player, const QString &general, bool confirmed, bool isHidden = false, bool isDeputy = false);
+    void broadcastTeammateGeneralPools(ServerPlayer*player, bool isDeputy = false);
 
     struct SummonRequest {
         ServerPlayer *before;
