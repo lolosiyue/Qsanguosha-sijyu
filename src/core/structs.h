@@ -585,6 +585,19 @@ struct BrokenEquipChangedStruct {
     bool moveFromEquip;
 };
 
+struct ChoiceData {
+    ChoiceData();
+    QVariant toVariant() const;
+    bool tryParse(const QVariant &arg);
+    ServerPlayer *player;
+    QString skill_name;
+    QString choices;
+    QString except_choices;
+    QString tip;
+    QString forced_answer;
+    bool canceled;
+};
+
 enum TriggerEvent {
     NonTrigger,
 
@@ -742,6 +755,7 @@ enum TriggerEvent {
     EventSkillInvalidated,
     EventSkillValidityRestored,
 
+    EventAskForChoice,
     EventSkillWillInvoke,
     EventSkillPay,
     EventSkillTargetConfirming,
@@ -749,6 +763,9 @@ enum TriggerEvent {
     EventSkillEffect,
     EventSkillEffectTarget,
     EventSkillEffectFinished,
+
+    EventShimingSuccess,
+    EventShimingFail,
 
     ShownCardChanged,
     BrokenEquipChanged,
@@ -777,4 +794,5 @@ Q_DECLARE_METATYPE(MaxHpStruct)
 Q_DECLARE_METATYPE(DrawStruct)
 Q_DECLARE_METATYPE(ShownCardChangedStruct)
 Q_DECLARE_METATYPE(BrokenEquipChangedStruct)
+Q_DECLARE_METATYPE(ChoiceData)
 #endif
