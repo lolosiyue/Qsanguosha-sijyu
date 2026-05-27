@@ -36,6 +36,7 @@ public:
 	void setBaseAmount(int amount);
 	void setLimitScope(Skill::LimitScope scope);
 	void setMaxUsageLimit(int limit);
+	void setShimingSkill(bool shiming);
 
 	virtual int getPriority() const;
 	virtual Frequency getFrequency(const Player *target) const;
@@ -65,6 +66,8 @@ public:
 	virtual bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const;
 	void onTurnBroken(const char *function_name, TriggerEvent triggerEvent, Room *room,
 	                 ServerPlayer *player, SkillContext &ctx) const;
+	void onShimingSuccess(Room *room, ServerPlayer *player) const;
+	void onShimingFail(Room *room, ServerPlayer *player) const;
 
 	LuaFunction on_record;
 	LuaFunction can_trigger;
@@ -80,6 +83,8 @@ public:
 	LuaFunction on_effectContext;
 	LuaFunction on_effectFinished;
 	LuaFunction dynamic_frequency;
+	LuaFunction on_shiming_success;
+	LuaFunction on_shiming_fail;
 
 	int priority;
 };
@@ -1183,6 +1188,54 @@ bool LuaTriggerV2Skill::trigger(TriggerEvent triggerEvent, Room *room, ServerPla
 bool LuaTriggerV2Skill::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data, ServerPlayer *owner) const
 {
 	return TriggerV2Skill::trigger(triggerEvent, room, player, data, owner);
+}
+
+void LuaTriggerV2Skill::onShimingSuccess(Room *room, ServerPlayer *player) const
+{
+	if (on_shiming_success == 0)
+		return;
+
+	lua_State *L = room->getLuaState();
+
+	lua_rawgeti(L, LUA_REGISTRYINDEX, on_shiming_success);
+
+	LuaTriggerV2Skill *self = const_cast<LuaTriggerV2Skill *>(this);
+	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerV2Skill, 0);
+
+	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
+
+	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
+
+	int error = lua_pcall(L, 3, 0, 0);
+	if (error) {
+		const char *error_msg = lua_tostring(L, -1);
+		lua_pop(L, 1);
+		room->output(error_msg);
+	}
+}
+
+void LuaTriggerV2Skill::onShimingFail(Room *room, ServerPlayer *player) const
+{
+	if (on_shiming_fail == 0)
+		return;
+
+	lua_State *L = room->getLuaState();
+
+	lua_rawgeti(L, LUA_REGISTRYINDEX, on_shiming_fail);
+
+	LuaTriggerV2Skill *self = const_cast<LuaTriggerV2Skill *>(this);
+	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerV2Skill, 0);
+
+	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
+
+	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
+
+	int error = lua_pcall(L, 3, 0, 0);
+	if (error) {
+		const char *error_msg = lua_tostring(L, -1);
+		lua_pop(L, 1);
+		room->output(error_msg);
+	}
 }
 
 bool LuaScenarioRule::triggerable(const ServerPlayer *target) const

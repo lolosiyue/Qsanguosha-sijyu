@@ -163,6 +163,10 @@ public:
     void sendCompulsoryTriggerLog(ServerPlayer*player, const Skill*skill, int type = -1);
     void sendShimingLog(ServerPlayer*player, const QString&skill_name, bool finish_or_failed = true, int index = -1);
     void sendShimingLog(ServerPlayer*player, const Skill*skill, bool finish_or_failed = true, int index = -1);
+
+    void setShimingStatus(ServerPlayer*player, const QString&skillName, int status);
+    int getShimingStatus(ServerPlayer*player, const QString&skillName) const;
+
     void showCard(ServerPlayer*player, QList<int> card_ids, ServerPlayer*only_viewer , bool self_can_see = true);
     void showCard(ServerPlayer*player, int card_id, ServerPlayer*only_viewer , bool self_can_see = true);
     void showCard(ServerPlayer*player, int card_id, QList<ServerPlayer*> players = QList<ServerPlayer*>());

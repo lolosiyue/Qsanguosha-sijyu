@@ -8510,6 +8510,57 @@ void Room::sendShimingLog(ServerPlayer*player, const Skill*skill, bool finish_or
 	if (skill) sendShimingLog(player, skill->objectName(), finish_or_failed, index);
 }
 
+void Room::setShimingStatus(ServerPlayer*player, const QString&skillName, int status)
+{
+	QString successMark = skillName + "__success";
+	QString failMark = skillName + "__fail";
+
+	if (status == 1) {
+		if (player->getMark(successMark) > 0) return;
+		removePlayerMark(player, failMark, player->getMark(failMark));
+		addPlayerMark(player, successMark);
+
+		LogMessage log;
+		log.type = "#FinishShiMing";
+		log.from = player;
+		log.arg = skillName;
+		sendLog(log);
+		broadcastSkillInvoke(skillName, 2, player);
+		notifySkillInvoked(player, skillName);
+
+		QVariant data = skillName;
+		thread->trigger(EventShimingSuccess, this, player, data);
+	} else if (status == 2) {
+		if (player->getMark(failMark) > 0) return;
+		removePlayerMark(player, successMark, player->getMark(successMark));
+		addPlayerMark(player, failMark);
+
+		LogMessage log;
+		log.type = "#ShiMingFailed";
+		log.from = player;
+		log.arg = skillName;
+		sendLog(log);
+		broadcastSkillInvoke(skillName, 3, player);
+		notifySkillInvoked(player, skillName);
+
+		QVariant data = skillName;
+		thread->trigger(EventShimingFail, this, player, data);
+	} else {
+		removePlayerMark(player, successMark, player->getMark(successMark));
+		removePlayerMark(player, failMark, player->getMark(failMark));
+	}
+}
+
+int Room::getShimingStatus(ServerPlayer*player, const QString&skillName) const
+{
+	QString successMark = skillName + "__success";
+	QString failMark = skillName + "__fail";
+
+	if (player->getMark(successMark) > 0) return 1;
+	if (player->getMark(failMark) > 0) return 2;
+	return 0;
+}
+
 void Room::showCard(ServerPlayer*player, QList<int> card_ids, ServerPlayer*only_viewer, bool self_can_see)
 {
 	/*foreach(int card_id, card_ids){
