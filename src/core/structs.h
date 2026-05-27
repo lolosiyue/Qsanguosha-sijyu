@@ -743,6 +743,7 @@ enum TriggerEvent {
     EventSkillValidityRestored,
 
     EventSkillWillInvoke,
+    EventSkillAskForChoice,
     EventSkillPay,
     EventSkillTargetConfirming,
     EventSkillInvoking,
