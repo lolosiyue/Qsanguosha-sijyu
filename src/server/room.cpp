@@ -1788,33 +1788,57 @@ bool Room::askForSkillInvoke(ServerPlayer*player, const QString&skill_name, cons
 }
 
 QString Room::askForChoice(ServerPlayer*player, const QString&skill_name, const QString&choices, const QVariant&data,
-						const QString&except_choices, const QString&tip)
+							const QString&except_choices, const QString&tip)
 {
 	tryPause();
+
+	ChoiceData choiceData;
+	choiceData.player = player;
+	choiceData.skill_name = skill_name;
+	choiceData.choices = choices;
+	choiceData.except_choices = except_choices;
+	choiceData.tip = tip;
+	choiceData.forced_answer = QString();
+	choiceData.canceled = false;
+
+	thread->trigger(EventAskForChoice, this, player, QVariant::fromValue(choiceData));
+
+	if (choiceData.canceled) {
+		return QString();
+	}
+
+	if (!choiceData.forced_answer.isEmpty()) {
+		return choiceData.forced_answer;
+	}
+
+	QString effectiveChoices = choiceData.choices;
+	QString effectiveExceptChoices = choiceData.except_choices;
+	QString effectiveTip = choiceData.tip;
+
 	notifyMoveFocus(player, S_COMMAND_MULTIPLE_CHOICE);
 
-	QString answer = choices;
-	if (choices.contains("+")){
+	QString answer = effectiveChoices;
+	if (effectiveChoices.contains("+")){
 		AI*ai = player->getAI();
 		if (ai){
 			QElapsedTimer timer;
 			timer.start();
-			answer = ai->askForChoice(skill_name, choices, data);
+			answer = ai->askForChoice(skill_name, effectiveChoices, data);
 			if (Config.AIDelay>timer.elapsed())
 				thread->delay(Config.AIDelay-timer.elapsed());
 		} else {
 			answer = "cancel";
-			if (doRequest(player, S_COMMAND_MULTIPLE_CHOICE, JsonArray() << skill_name << choices << except_choices << tip, true)){
+			if (doRequest(player, S_COMMAND_MULTIPLE_CHOICE, JsonArray() << skill_name << effectiveChoices << effectiveExceptChoices << effectiveTip, true)){
 				QVariant clientReply = player->getClientReply();
 				if (clientReply.canConvert(QVariant::String))
 					answer = clientReply.toString();
 			}else{
 				ai = player->getAI();
-				if(ai) answer = ai->askForChoice(skill_name, choices, data);
+				if(ai) answer = ai->askForChoice(skill_name, effectiveChoices, data);
 			}
 		}
-		if (!choices.contains(answer)){
-			QStringList _choices = choices.split("+");
+		if (!effectiveChoices.contains(answer)){
+			QStringList _choices = effectiveChoices.split("+");
 			answer = _choices.at(qrand() % _choices.length());
 		}
 	}

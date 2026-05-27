@@ -126,3 +126,39 @@ BrokenEquipChangedStruct::BrokenEquipChangedStruct()
     : player(nullptr), broken(false), moveFromEquip(false)
 {
 }
+
+ChoiceData::ChoiceData()
+    : player(nullptr), canceled(false)
+{
+}
+
+QVariant ChoiceData::toVariant() const
+{
+    JsonArray arg;
+    arg << (player ? player->objectName() : QString());
+    arg << skill_name;
+    arg << choices;
+    arg << except_choices;
+    arg << tip;
+    arg << forced_answer;
+    arg << canceled;
+    return arg;
+}
+
+bool ChoiceData::tryParse(const QVariant &arg)
+{
+    JsonArray args = arg.value<JsonArray>();
+    if (args.size() < 7) return false;
+
+    QString playerName = args[0].toString();
+    if (!playerName.isEmpty()) {
+        player = Sanguosha->getPlayer(playerName);
+    }
+    skill_name = args[1].toString();
+    choices = args[2].toString();
+    except_choices = args[3].toString();
+    tip = args[4].toString();
+    forced_answer = args[5].toString();
+    canceled = args[6].toBool();
+    return true;
+}
