@@ -103,6 +103,7 @@ public:
     }
 
     virtual int getPriority() const;
+    virtual Frequency getFrequency(const Player *target) const;
     virtual Skill::LimitScope getLimitScope() const override;
     virtual int getMaxUsageLimit(const SkillContext &ctx) const override;
 
@@ -144,6 +145,7 @@ public:
     LuaFunction on_invoking;
     LuaFunction on_effectContext;
     LuaFunction on_effectFinished;
+    LuaFunction dynamic_frequency;
 
     int priority;
 

@@ -87,6 +87,7 @@ function sgs.CreateTriggerV2Skill(spec)
 	if type(spec.base_amount)=="number" then skill:setBaseAmount(spec.base_amount) end
 	if type(spec.limit_scope)=="number" then skill:setLimitScope(spec.limit_scope) end
 	if type(spec.max_usage_limit)=="number" then skill:setMaxUsageLimit(spec.max_usage_limit) end
+	if spec.dynamic_frequency then skill.dynamic_frequency = spec.dynamic_frequency end
 	return skill
 end
 
