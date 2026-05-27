@@ -1150,6 +1150,8 @@ QVariant SkillContext::toVariant() const
         map["preferredtarget"] = preferredTarget->objectName();
         map["preferredtargetseat"] = preferredTargetSeat;
     }
+    map["trigger_count"] = trigger_count;
+    map["multiplier"] = multiplier;
     return map;
 }
 

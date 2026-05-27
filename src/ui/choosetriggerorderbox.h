@@ -19,6 +19,8 @@ struct ClientSkillContext
     ClientPlayer *invoker;
     ClientPlayer *preferredTarget;
     int preferredTargetSeat;
+    int trigger_count;
+    int multiplier;
 
     ClientSkillContext();
 
@@ -54,7 +56,7 @@ protected:
     void hoverEnterEvent(QGraphicsSceneHoverEvent *event) override;
     void hoverLeaveEvent(QGraphicsSceneHoverEvent *event) override;
 
-    static QString displayedTextOf(const ClientSkillContext &detail, int times);
+    static QString displayedTextOf(const ClientSkillContext &detail, int times, int mull);
 
 private:
     TriggerOptionButton(QGraphicsObject *parent, const QVariantMap &skillDetail, int width);
@@ -66,6 +68,7 @@ private:
 
     ClientSkillContext detail;
     int times;
+    int mull;
 
     int width;
 };

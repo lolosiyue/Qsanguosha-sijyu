@@ -1009,9 +1009,19 @@ void LuaTriggerV2Skill::record(TriggerEvent triggerEvent, Room *room, ServerPlay
 
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
+	if (ctx.original_data) {
+		SWIG_NewPointerObj(L, ctx.original_data, SWIGTYPE_p_QVariant, 0);
+	} else {
+		lua_pushnil(L);
+	}
 
-	lua_pcall(L, 5, 0, 0);
+	if (ctx.owner) {
+		SWIG_NewPointerObj(L, ctx.owner, SWIGTYPE_p_ServerPlayer, 0);
+	} else {
+		lua_pushnil(L);
+	}
+
+	lua_pcall(L, 6, 0, 0);
 }
 
 TriggerList LuaTriggerV2Skill::triggerable(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
