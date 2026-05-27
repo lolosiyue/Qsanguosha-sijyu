@@ -3154,6 +3154,10 @@ void RoomScene::useSelectedCard()
 		ClientInstance->onPlayerReplyGongxin();
 		break;
 	}
+	case Client::AskForTriggerOrder: {
+		m_chooseTriggerOrderBox->reply();
+		break;
+	}
 	}
 
 	if(dashboard->currentSkill())
@@ -3707,6 +3711,12 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 		discard_button->setEnabled(false);
 		break;
 	}
+	case Client::AskForTriggerOrder: {
+		ok_button->setEnabled(false);
+		cancel_button->setEnabled(false);
+		discard_button->setEnabled(false);
+		break;
+	}
 	}
 	if(newStatus!=oldStatus&&newStatus!=Client::Playing&&newStatus!=Client::NotActive)
 		QApplication::alert(QApplication::focusWidget());
@@ -3933,6 +3943,10 @@ void RoomScene::doCancelButton()
 	case Client::AskForAG: {
 		prompt_box->disappear();
 		ClientInstance->onPlayerChooseAG(-1);
+		break;
+	}
+	case Client::AskForTriggerOrder: {
+		m_chooseTriggerOrderBox->reply();
 		break;
 	}
 	default:
