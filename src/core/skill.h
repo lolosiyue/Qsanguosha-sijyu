@@ -30,6 +30,9 @@ struct SkillContext {
     int trigger_count;
     int multiplier;
 
+    QString choice;
+    QVariant extra_data;
+
     SkillContext() : invoker(nullptr), owner(nullptr), use_card(nullptr),
                      original_data(nullptr), instanceID(0), preferredTarget(nullptr), preferredTargetSeat(-1),
                      is_forced(false), is_canceled(false),

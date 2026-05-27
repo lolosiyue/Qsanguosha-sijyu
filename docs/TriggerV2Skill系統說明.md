@@ -1062,3 +1062,644 @@ skill = sgs.CreateTriggerV2Skill{
 1. **避免無限循環**：`can_trigger` 必須在適當條件下返回 `false`，否則會無限循環
 2. **性能考量**：每次循環都會重新調用所有 v2 技能的 `triggerable()`
 3. **實例獨立**：不同 instanceId 的技能實例，`trigger_count` 獨立計算
+
+---
+
+## SkillContext 擴展：choice 與 extra_data
+
+### 概述
+
+`SkillContext` 新增 `choice` 和 `extra_data` 欄位，支援跨階段傳遞選擇結果和額外資料。
+
+### 新增欄位
+
+```cpp
+struct SkillContext {
+    // ... 其他欄位 ...
+    QString choice;        // askForChoice 結果
+    QVariant extra_data;   // 任意額外資料
+};
+```
+
+### 新增事件
+
+```
+EventSkillWillInvoke
+EventSkillAskForChoice  // 新增：詢問選擇前觸發，其他技能可修改選項
+EventSkillPay
+EventSkillTargetConfirming
+...
+```
+
+### 使用方式
+
+#### on_cost：詢問選擇
+
+```lua
+on_cost = function(skill, event, room, player, ctx)
+    local choices = {"option1", "option2", "beishui"}
+    local choice = room:askForChoice(player, "skill", table.concat(choices, "+"))
+    ctx.choice = choice  -- 存入 ctx
+    return true
+end
+```
+
+#### on_pay：根據選擇支付代價
+
+```lua
+on_pay = function(skill, event, room, player, ctx)
+    if ctx.choice == "beishui" then
+        local damage = sgs.DamageStruct()
+        damage.from = player
+        damage.to = player
+        damage.damage = 1
+        room:damage(damage)
+        
+        if not player:isAlive() then
+            return false  -- 玩家死亡，不執行 effect
+        end
+    end
+    return true
+end
+```
+
+#### on_effect：根據選擇執行效果
+
+```lua
+on_effect = function(skill, event, room, player, ctx)
+    if ctx.choice == "option1" then
+        -- 效果 1
+    elseif ctx.choice == "option2" then
+        -- 效果 2
+    elseif ctx.choice == "beishui" then
+        -- 背水效果
+    end
+    return false
+end
+```
+
+#### 其他技能讀取 choice
+
+```lua
+-- 監聽 EventSkillPay
+on_trigger = function(skill, event, room, player, data)
+    local ctx = data:toSkillContext()
+    if ctx.choice == "beishui" then
+        -- 做出反應
+    end
+    return false
+end
+```
+
+---
+
+## TriggerV2Skill 規範要求
+
+### 1. 基本結構規範
+
+#### 必填欄位
+
+| 欄位 | 類型 | 說明 |
+|------|------|------|
+| `name` | `string` | 技能名稱（必須唯一） |
+| `events` | `table` | 觸發事件列表 |
+
+#### 可選欄位
+
+| 欄位 | 類型 | 預設值 | 說明 |
+|------|------|--------|------|
+| `frequency` | `enum` | `Skill_NotFrequent` | 技能頻率 |
+| `base_amount` | `int` | `1` | 技能基礎數值 |
+| `limit_scope` | `enum` | `Limit_None` | 使用次數限制範圍 |
+| `max_usage_limit` | `int` | `1` | 最大使用次數 |
+| `priority` | `int` | `2` | 觸發優先級 |
+| `global` | `bool` | `false` | 是否全局技能 |
+| `waked_skills` | `string` | `""` | 覺醒後獲得的技能 |
+
+### 2. 回調函數規範
+
+#### can_trigger
+
+**職責**：檢查技能是否可觸發
+
+**返回值**：
+- `false` — 不可觸發
+- `"skillName"` — 可觸發
+- `"skillName*multiplier"` — 觸發多次
+- `player, "skillName"` — 指定玩家觸發
+
+**規範**：
+```lua
+can_trigger = function(skill, event, room, player, data)
+    -- 1. 檢查玩家是否擁有技能
+    if not player:hasSkill(skill:objectName()) then return false end
+    
+    -- 2. 檢查事件條件
+    if event == sgs.Damaged then
+        local damage = data:toDamage()
+        if not damage or damage.damage < 1 then return false end
+        return skill:objectName() .. "*" .. damage.damage
+    end
+    
+    return false
+end
+```
+
+#### on_cost
+
+**職責**：詢問是否發動 + 選擇目標
+
+**返回值**：
+- `true` — 繼續執行
+- `false` — 取消發動
+
+**規範**：
+```lua
+on_cost = function(skill, event, room, player, ctx)
+    -- 1. 詢問選擇（若有選項）
+    local choices = {"option1", "option2"}
+    local choice = room:askForChoice(player, skill:objectName(), table.concat(choices, "+"))
+    ctx.choice = choice
+    
+    -- 2. 選擇目標（若需目標）
+    local target = room:askForPlayerChosen(player, room:getOtherPlayers(player), skill:objectName())
+    if not target then return false end
+    ctx.targets:append(target)
+    
+    return true
+end
+```
+
+#### on_pay
+
+**職責**：支付代價
+
+**返回值**：
+- `true` — 支付成功，繼續執行
+- `false` — 支付失敗，取消發動
+
+**規範**：
+```lua
+on_pay = function(skill, event, room, player, ctx)
+    -- 1. 根據 choice 決定代價
+    if ctx.choice == "beishui" then
+        local damage = sgs.DamageStruct()
+        damage.from = player
+        damage.to = player
+        damage.damage = 1
+        room:damage(damage)
+        
+        -- 2. 檢查玩家是否存活
+        if not player:isAlive() then
+            return false  -- 玩家死亡，不執行 effect
+        end
+    end
+    
+    return true
+end
+```
+
+#### on_effect
+
+**職責**：執行一次性效果
+
+**返回值**：
+- `true` — 中斷事件（break）
+- `false` — 繼續事件
+
+**規範**：
+```lua
+on_effect = function(skill, event, room, player, ctx)
+    -- 1. 發送技能發動日誌
+    room:sendCompulsoryTriggerLog(player, skill:objectName())
+    room:broadcastSkillInvoke(skill:objectName())
+    
+    -- 2. 取得有效數值
+    local amount = skill:getEffectiveAmount(ctx)
+    
+    -- 3. 執行效果
+    if ctx.choice == "option1" then
+        player:drawCards(amount)
+    elseif ctx.choice == "option2" then
+        -- 其他效果
+    end
+    
+    return false
+end
+```
+
+#### on_effect_target
+
+**職責**：對單一目標執行效果
+
+**返回值**：
+- `true` — 中斷事件
+- `false` — 繼續事件
+
+**規範**：
+```lua
+on_effect_target = function(skill, event, room, player, ctx, target)
+    -- 1. 檢查目標有效性
+    if not target:isAlive() then return false end
+    
+    -- 2. 取得有效數值
+    local amount = skill:getEffectiveAmount(ctx)
+    
+    -- 3. 對目標執行效果
+    for i = 1, amount do
+        getYing(target, skill:objectName())
+    end
+    
+    return false
+end
+```
+
+### 3. 數值系統規範
+
+#### getEffectiveAmount 使用
+
+```lua
+on_effect = function(skill, event, room, player, ctx)
+    local amount = skill:getEffectiveAmount(ctx)
+    
+    -- 使用 amount 執行效果
+    for i = 1, amount do
+        -- 效果邏輯
+    end
+    
+    return false
+end
+```
+
+#### modified_amount 設定
+
+```lua
+-- 在 on_cost 或其他階段設定
+ctx.modified_amount = 3  -- 覆蓋基礎數值
+```
+
+### 4. 目標處理規範
+
+#### 自動遍歷目標
+
+```lua
+on_effect = function(skill, event, room, player, ctx)
+    -- 不設定 ctx.manual_effect
+    -- 框架自動遍歷 ctx.targets，調用 on_effect_target
+    return false
+end,
+
+on_effect_target = function(skill, event, room, player, ctx, target)
+    -- 對每個目標執行
+    room:doDamage(player, target, 1)
+    return false
+end
+```
+
+#### 手動遍歷目標
+
+```lua
+on_effect = function(skill, event, room, player, ctx)
+    ctx.manual_effect = true  -- 標記手動處理
+    
+    -- 自訂遍歷邏輯
+    local targets = sgs.SPlayerList()
+    targets:append(player)
+    for _, t in sgs.qlist(ctx.targets) do
+        targets:append(t)
+    end
+    room:sortByActionOrder(targets)
+    
+    for _, p in sgs.qlist(targets) do
+        skill:skillEffect(event, room, player, ctx, p)
+    end
+    
+    return false
+end
+```
+
+### 5. 常見模式範例
+
+#### 模式 A：單目標技能
+
+```lua
+s4_cangzhuo = sgs.CreateTriggerV2Skill{
+    name = "s4_cangzhuo",
+    events = {sgs.CardsMoveOneTime},
+    frequency = sgs.Skill_Frequent,
+    base_amount = 1,
+    
+    can_trigger = function(skill, event, room, player, data)
+        if not player:hasSkill("s4_cangzhuo") then return false end
+        -- 條件檢查...
+        return "s4_cangzhuo"
+    end,
+    
+    on_cost = function(skill, event, room, player, ctx)
+        local target = room:askForPlayerChosen(player, room:getOtherPlayers(player), 
+            "s4_cangzhuo", "s4_cangzhuo-invoke", true, true)
+        if target then
+            ctx.targets:append(target)
+            return true
+        end
+        return false
+    end,
+    
+    on_effect = function(skill, event, room, player, ctx)
+        room:broadcastSkillInvoke("s4_cangzhuo")
+        ctx.manual_effect = true
+        
+        -- 包含自己一起結算
+        local targets = sgs.SPlayerList()
+        targets:append(player)
+        for _, t in sgs.qlist(ctx.targets) do
+            targets:append(t)
+        end
+        room:sortByActionOrder(targets)
+        
+        for _, p in sgs.qlist(targets) do
+            skill:skillEffect(event, room, player, ctx, p)
+        end
+        return false
+    end,
+
+    on_effect_target = function(skill, event, room, player, ctx, target)
+        local amount = skill:getEffectiveAmount(ctx)
+        for i = 1, amount do
+            getYing(target, skill:objectName())
+        end
+        return false
+    end,
+}
+```
+
+#### 模式 B：多目標技能
+
+```lua
+s4_lizhan = sgs.CreateTriggerV2Skill{
+    name = "s4_lizhan",
+    events = {sgs.Damaged},
+    frequency = sgs.Skill_Frequent,
+    base_amount = 0,
+    
+    can_trigger = function(skill, event, room, player, data)
+        if not player:isAlive() then return false end
+        if not player:hasSkill("s4_lizhan") then return false end
+        local damage = data:toDamage()
+        if not damage or damage.damage < 1 then return false end
+        return "s4_lizhan*" .. damage.damage
+    end,
+    
+    on_cost = function(skill, event, room, player, ctx)
+        local targets = sgs.SPlayerList()
+        for _, p in sgs.qlist(room:getAlivePlayers()) do
+            if p:isWounded() then
+                targets:append(p)
+            end
+        end
+        if targets:isEmpty() then return false end
+        
+        local chosen_players = room:askForPlayersChosen(player, targets, "s4_lizhan", 
+            0, targets:length(), "@s4_lizhan-choose", true, true)
+        if not chosen_players or chosen_players:isEmpty() then return false end
+        
+        for _, p in sgs.qlist(chosen_players) do
+            ctx.targets:append(p)
+        end
+        ctx.modified_amount = ctx.targets:length()
+        return true
+    end,
+    
+    on_effect = function(skill, event, room, player, ctx)
+        local amount = skill:getEffectiveAmount(ctx)
+        player:drawCards(amount, "s4_lizhan")
+        return false
+    end,
+    
+    on_effect_target = function(skill, event, room, player, ctx, target)
+        if player:isKongcheng() or player:objectName() == target:objectName() then 
+            return false 
+        end
+        if not player:isAlive() or not target:isAlive() then return false end
+    
+        local card = room:askForCard(player, ".!", "@s4_lizhan-give::"..target:objectName(), 
+            ToData(target), sgs.Card_MethodNone)
+        if card then
+            room:giveCard(player, target, card, skill:objectName())
+        end
+        return false
+    end,
+}
+```
+
+#### 模式 C：選擇分支技能
+
+```lua
+s4_zhiji = sgs.CreateTriggerV2Skill{
+    name = "s4_zhiji",
+    events = {sgs.EventPhaseProceeding},
+    frequency = sgs.Skill_Compulsory,
+    waked_skills = "guanxing+kanpo",
+    base_amount = 1,
+    
+    can_trigger = function(skill, event, room, player, data)
+        if not player:hasSkill("s4_zhiji") then return false end
+        if player:getPhase() ~= sgs.Player_Start then return false end
+        return "s4_zhiji"
+    end,
+    
+    on_cost = function(skill, event, room, player, ctx)
+        local choices = {"s4_zhiji_guanxing", "s4_zhiji_kanpo", "beishui"}
+        local choice = room:askForChoice(player, "s4_zhiji", table.concat(choices, "+"), ctx.original_data)
+        ctx.choice = choice
+        return true
+    end,
+    
+    on_pay = function(skill, event, room, player, ctx)
+        if ctx.choice == "beishui" then
+            local amount = skill:getEffectiveAmount(ctx)
+            local damage = sgs.DamageStruct()
+            damage.from = player
+            damage.to = player
+            damage.damage = amount
+            room:damage(damage)
+            if not player:isAlive() then
+                return false
+            end
+        end
+        return true
+    end,
+    
+    on_effect = function(skill, event, room, player, ctx)
+        room:sendCompulsoryTriggerLog(player, "s4_zhiji")
+        room:broadcastSkillInvoke("s4_zhiji")
+        
+        if ctx.choice == "s4_zhiji_guanxing" then
+            room:acquireNextTurnSkills(player, "s4_zhiji", "guanxing")
+        elseif ctx.choice == "s4_zhiji_kanpo" then
+            room:acquireNextTurnSkills(player, "s4_zhiji", "kanpo")
+        elseif ctx.choice == "beishui" then
+            room:acquireNextTurnSkills(player, "s4_zhiji", "guanxing")
+            room:acquireNextTurnSkills(player, "s4_zhiji", "kanpo")
+        end
+        
+        return false
+    end,
+}
+```
+
+#### 模式 D：多事件技能
+
+```lua
+s4_banjiang = sgs.CreateTriggerV2Skill{
+    name = "s4_banjiang",
+    events = {sgs.Damaged, sgs.DrawNCards, sgs.ChangeSlash},
+    frequency = sgs.Skill_Compulsory,
+    base_amount = 1,
+    
+    can_trigger = function(skill, event, room, player, data)
+        if not player:hasSkill("s4_banjiang") then return false end
+        
+        if event == sgs.Damaged then
+            local damage = data:toDamage()
+            if damage and damage.damage > 0 then
+                return "s4_banjiang*" .. damage.damage
+            end
+        elseif event == sgs.DrawNCards then
+            local draw = data:toDraw()
+            if draw.reason == "draw_phase" then
+                if player:getMark("s4_banjiang_draw-SelfdrawClear") > 0 then
+                    return "s4_banjiang"
+                end
+            end
+        elseif event == sgs.ChangeSlash then
+            if player:getPhase() == sgs.Player_Play and 
+               player:getMark("s4_banjiang_slash-SelfPlayClear") > 0 then
+                return "s4_banjiang"
+            end
+        end
+        
+        return false
+    end,
+    
+    on_effect = function(skill, event, room, player, ctx)
+        if event == sgs.Damaged then
+            local amount = skill:getEffectiveAmount(ctx)
+            
+            room:sendCompulsoryTriggerLog(player, "s4_banjiang")
+            room:broadcastSkillInvoke("s4_banjiang")
+            
+            room:addPlayerMark(player, "s4_banjiang_draw-SelfdrawClear", amount)
+            room:addPlayerMark(player, "s4_banjiang_slash-SelfPlayClear", amount)
+            room:addPlayerMark(player, "&s4_banjiang+sys_-SelfClear", amount)
+            
+        elseif event == sgs.DrawNCards then
+            local draw = ctx.original_data:toDraw()
+            if draw.reason == "draw_phase" then
+                local bonus = player:getMark("s4_banjiang_draw-SelfdrawClear")
+                if bonus > 0 then
+                    room:sendCompulsoryTriggerLog(player, "s4_banjiang")
+                    draw.num = draw.num + bonus
+                    ctx.original_data:setValue(draw)
+                end
+            end
+            
+        elseif event == sgs.ChangeSlash then
+            local use = ctx.original_data:toCardUse()
+            if use.card and use.card:isKindOf("Slash") and 
+               use.from:objectName() == player:objectName() then
+                room:sendCompulsoryTriggerLog(player, "s4_banjiang")
+                local ice_slash = sgs.Sanguosha:cloneCard("ice_slash", 
+                    use.card:getSuit(), use.card:getNumber())
+                ice_slash:addSubcards(use.card:getSubcards())
+                ice_slash:setSkillName("s4_banjiang")
+                use:changeCard(ice_slash)
+                ctx.original_data:setValue(use)
+            end
+        end
+        
+        return false
+    end,
+}
+```
+
+### 6. 常見錯誤與修正
+
+#### 錯誤 1：忘記檢查技能擁有
+
+```lua
+-- ❌ 錯誤
+can_trigger = function(skill, event, room, player, data)
+    return "skill_name"
+end
+
+-- ✅ 正確
+can_trigger = function(skill, event, room, player, data)
+    if not player:hasSkill(skill:objectName()) then return false end
+    return "skill_name"
+end
+```
+
+#### 錯誤 2：忘記返回 false
+
+```lua
+-- ❌ 錯誤
+can_trigger = function(skill, event, room, player, data)
+    if condition then
+        return "skill_name"
+    end
+    -- 缺少 return false
+end
+
+-- ✅ 正確
+can_trigger = function(skill, event, room, player, data)
+    if condition then
+        return "skill_name"
+    end
+    return false
+end
+```
+
+#### 錯誤 3：on_pay 未檢查玩家存活
+
+```lua
+-- ❌ 錯誤
+on_pay = function(skill, event, room, player, ctx)
+    room:damage(damage)
+    return true  -- 玩家可能已死亡
+end
+
+-- ✅ 正確
+on_pay = function(skill, event, room, player, ctx)
+    room:damage(damage)
+    if not player:isAlive() then
+        return false  -- 玩家死亡，不執行 effect
+    end
+    return true
+end
+```
+
+#### 錯誤 4：忘記 setValue 寫回
+
+```lua
+-- ❌ 錯誤
+on_effect = function(skill, event, room, player, ctx)
+    local draw = ctx.original_data:toDraw()
+    draw.num = draw.num + 1
+    -- 忘記寫回
+end
+
+-- ✅ 正確
+on_effect = function(skill, event, room, player, ctx)
+    local draw = ctx.original_data:toDraw()
+    draw.num = draw.num + 1
+    ctx.original_data:setValue(draw)
+end
+```
+
+### 7. 效能優化建議
+
+1. **can_trigger 盡早返回**：先檢查最便宜的条件
+2. **避免重複計算**：將計算結果存入 `ctx.extra_data`
+3. **善用 multiplier**：讓系統自動觸發多次，而非手動循環
+4. **減少 on_effect_target 檢查**：在 on_cost 已篩選目標

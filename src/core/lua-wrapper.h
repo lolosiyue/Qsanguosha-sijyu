@@ -101,8 +101,13 @@ public:
     {
         m_maxUsageLimit = limit;
     }
+    inline void setShimingSkill(bool shiming)
+    {
+        shiming_skill = shiming;
+    }
 
     virtual int getPriority() const;
+    virtual Frequency getFrequency(const Player *target) const;
     virtual Skill::LimitScope getLimitScope() const override;
     virtual int getMaxUsageLimit(const SkillContext &ctx) const override;
 
@@ -126,10 +131,13 @@ public:
     virtual bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
                          QVariant &data, ServerPlayer *owner) const override;
     virtual bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
-                         QVariant &data) const override;
+                          QVariant &data) const override;
     void onTurnBroken(const char *function_name, TriggerEvent triggerEvent, Room *room,
                      ServerPlayer *player, SkillContext &ctx) const;
     virtual bool checkCustomUsage(const SkillContext &ctx) const override;
+
+    void onShimingSuccess(Room *room, ServerPlayer *player) const;
+    void onShimingFail(Room *room, ServerPlayer *player) const;
 
     LuaFunction on_record;
     LuaFunction can_trigger;
@@ -144,6 +152,9 @@ public:
     LuaFunction on_invoking;
     LuaFunction on_effectContext;
     LuaFunction on_effectFinished;
+    LuaFunction dynamic_frequency;
+    LuaFunction on_shiming_success;
+    LuaFunction on_shiming_fail;
 
     int priority;
 

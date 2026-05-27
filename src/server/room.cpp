@@ -1788,33 +1788,57 @@ bool Room::askForSkillInvoke(ServerPlayer*player, const QString&skill_name, cons
 }
 
 QString Room::askForChoice(ServerPlayer*player, const QString&skill_name, const QString&choices, const QVariant&data,
-						const QString&except_choices, const QString&tip)
+							const QString&except_choices, const QString&tip)
 {
 	tryPause();
+
+	ChoiceData choiceData;
+	choiceData.player = player;
+	choiceData.skill_name = skill_name;
+	choiceData.choices = choices;
+	choiceData.except_choices = except_choices;
+	choiceData.tip = tip;
+	choiceData.forced_answer = QString();
+	choiceData.canceled = false;
+
+	thread->trigger(EventAskForChoice, this, player, QVariant::fromValue(choiceData));
+
+	if (choiceData.canceled) {
+		return QString();
+	}
+
+	if (!choiceData.forced_answer.isEmpty()) {
+		return choiceData.forced_answer;
+	}
+
+	QString effectiveChoices = choiceData.choices;
+	QString effectiveExceptChoices = choiceData.except_choices;
+	QString effectiveTip = choiceData.tip;
+
 	notifyMoveFocus(player, S_COMMAND_MULTIPLE_CHOICE);
 
-	QString answer = choices;
-	if (choices.contains("+")){
+	QString answer = effectiveChoices;
+	if (effectiveChoices.contains("+")){
 		AI*ai = player->getAI();
 		if (ai){
 			QElapsedTimer timer;
 			timer.start();
-			answer = ai->askForChoice(skill_name, choices, data);
+			answer = ai->askForChoice(skill_name, effectiveChoices, data);
 			if (Config.AIDelay>timer.elapsed())
 				thread->delay(Config.AIDelay-timer.elapsed());
 		} else {
 			answer = "cancel";
-			if (doRequest(player, S_COMMAND_MULTIPLE_CHOICE, JsonArray() << skill_name << choices << except_choices << tip, true)){
+			if (doRequest(player, S_COMMAND_MULTIPLE_CHOICE, JsonArray() << skill_name << effectiveChoices << effectiveExceptChoices << effectiveTip, true)){
 				QVariant clientReply = player->getClientReply();
 				if (clientReply.canConvert(QVariant::String))
 					answer = clientReply.toString();
 			}else{
 				ai = player->getAI();
-				if(ai) answer = ai->askForChoice(skill_name, choices, data);
+				if(ai) answer = ai->askForChoice(skill_name, effectiveChoices, data);
 			}
 		}
-		if (!choices.contains(answer)){
-			QStringList _choices = choices.split("+");
+		if (!effectiveChoices.contains(answer)){
+			QStringList _choices = effectiveChoices.split("+");
 			answer = _choices.at(qrand() % _choices.length());
 		}
 	}
@@ -2792,7 +2816,7 @@ void Room::setPlayerMark(ServerPlayer*player, const QString&mark, int value, QLi
 
 	if (mark.endsWith("Clear")&&value != 0&&!current) return;
 
-	bool trigger = game_state>0&&!(mark.endsWith("Clear")||mark.endsWith("_lun")||mark.endsWith("-Keep")||mark=="@HuJia"||mark.contains("Global_")
+	bool trigger = game_state>0&&!(mark.endsWith("Clear")||mark.endsWith("_lun")||mark.endsWith("-Keep")||mark=="@HuJia"||mark.contains("Global_")||mark.contains("sys_")
 			||mark.contains("ExtraBf")||mark.contains("damage_point_")||(mark.startsWith("&")&&mark.endsWith("_num")));
 
 	MarkStruct mark_struct;
@@ -8484,6 +8508,57 @@ void Room::sendShimingLog(ServerPlayer*player, const QString&skill_name, bool fi
 void Room::sendShimingLog(ServerPlayer*player, const Skill*skill, bool finish_or_failed, int index)
 {
 	if (skill) sendShimingLog(player, skill->objectName(), finish_or_failed, index);
+}
+
+void Room::setShimingStatus(ServerPlayer*player, const QString&skillName, int status)
+{
+	QString successMark = skillName + "__success";
+	QString failMark = skillName + "__fail";
+
+	if (status == 1) {
+		if (player->getMark(successMark) > 0) return;
+		removePlayerMark(player, failMark, player->getMark(failMark));
+		addPlayerMark(player, successMark);
+
+		LogMessage log;
+		log.type = "#FinishShiMing";
+		log.from = player;
+		log.arg = skillName;
+		sendLog(log);
+		broadcastSkillInvoke(skillName, 2, player);
+		notifySkillInvoked(player, skillName);
+
+		QVariant data = skillName;
+		thread->trigger(EventShimingSuccess, this, player, data);
+	} else if (status == 2) {
+		if (player->getMark(failMark) > 0) return;
+		removePlayerMark(player, successMark, player->getMark(successMark));
+		addPlayerMark(player, failMark);
+
+		LogMessage log;
+		log.type = "#ShiMingFailed";
+		log.from = player;
+		log.arg = skillName;
+		sendLog(log);
+		broadcastSkillInvoke(skillName, 3, player);
+		notifySkillInvoked(player, skillName);
+
+		QVariant data = skillName;
+		thread->trigger(EventShimingFail, this, player, data);
+	} else {
+		removePlayerMark(player, successMark, player->getMark(successMark));
+		removePlayerMark(player, failMark, player->getMark(failMark));
+	}
+}
+
+int Room::getShimingStatus(ServerPlayer*player, const QString&skillName) const
+{
+	QString successMark = skillName + "__success";
+	QString failMark = skillName + "__fail";
+
+	if (player->getMark(successMark) > 0) return 1;
+	if (player->getMark(failMark) > 0) return 2;
+	return 0;
 }
 
 void Room::showCard(ServerPlayer*player, QList<int> card_ids, ServerPlayer*only_viewer, bool self_can_see)
