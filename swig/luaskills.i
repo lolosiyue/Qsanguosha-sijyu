@@ -38,6 +38,7 @@ public:
 	void setMaxUsageLimit(int limit);
 
 	virtual int getPriority() const;
+	virtual Frequency getFrequency(const Player *target) const;
 	virtual Skill::LimitScope getLimitScope() const;
 	virtual int getMaxUsageLimit(const SkillContext &ctx) const;
 
@@ -78,6 +79,7 @@ public:
 	LuaFunction on_invoking;
 	LuaFunction on_effectContext;
 	LuaFunction on_effectFinished;
+	LuaFunction dynamic_frequency;
 
 	int priority;
 };
@@ -1252,6 +1254,27 @@ Skill::Frequency LuaTriggerSkill::getFrequency(const Player *target) const
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, dynamic_frequency);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTriggerSkill, 0);
+	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
+
+	if (lua_pcall(L, 2, 1, 0)!=0) {
+		Error(L);
+		return Skill::getFrequency(target);
+	}
+
+	int result = lua_tointeger(L, -1);
+	lua_pop(L, 1);
+	return (Skill::Frequency)result;
+}
+
+Skill::Frequency LuaTriggerV2Skill::getFrequency(const Player *target) const
+{
+	if (dynamic_frequency == 0)
+		return Skill::getFrequency(target);
+
+	lua_State*L = Sanguosha->getLuaState();
+
+	lua_rawgeti(L, LUA_REGISTRYINDEX, dynamic_frequency);
+	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTriggerV2Skill, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
 
 	if (lua_pcall(L, 2, 1, 0)!=0) {
