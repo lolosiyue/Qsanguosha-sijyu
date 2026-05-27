@@ -1150,6 +1150,10 @@ QVariant SkillContext::toVariant() const
         map["preferredtarget"] = preferredTarget->objectName();
         map["preferredtargetseat"] = preferredTargetSeat;
     }
+    if (!choice.isEmpty())
+        map["choice"] = choice;
+    if (extra_data.isValid())
+        map["extra_data"] = extra_data;
     return map;
 }
 

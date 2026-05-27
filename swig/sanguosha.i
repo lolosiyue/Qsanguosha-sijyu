@@ -1475,6 +1475,9 @@ struct SkillContext {
 	int amount;
 	int modified_amount;
 	int trigger_count;
+
+	QString choice;
+	QVariant extra_data;
 };
 
 class Skill: public QObject {
