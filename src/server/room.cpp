@@ -2816,7 +2816,7 @@ void Room::setPlayerMark(ServerPlayer*player, const QString&mark, int value, QLi
 
 	if (mark.endsWith("Clear")&&value != 0&&!current) return;
 
-	bool trigger = game_state>0&&!(mark.endsWith("Clear")||mark.endsWith("_lun")||mark.endsWith("-Keep")||mark=="@HuJia"||mark.contains("Global_")
+	bool trigger = game_state>0&&!(mark.endsWith("Clear")||mark.endsWith("_lun")||mark.endsWith("-Keep")||mark=="@HuJia"||mark.contains("Global_")||mark.contains("sys_")
 			||mark.contains("ExtraBf")||mark.contains("damage_point_")||(mark.startsWith("&")&&mark.endsWith("_num")));
 
 	MarkStruct mark_struct;
