@@ -764,6 +764,9 @@ enum TriggerEvent {
     EventSkillEffectTarget,
     EventSkillEffectFinished,
 
+    EventShimingSuccess,
+    EventShimingFail,
+
     ShownCardChanged,
     BrokenEquipChanged,
 

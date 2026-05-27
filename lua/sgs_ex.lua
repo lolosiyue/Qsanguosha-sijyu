@@ -88,6 +88,9 @@ function sgs.CreateTriggerV2Skill(spec)
 	if type(spec.limit_scope)=="number" then skill:setLimitScope(spec.limit_scope) end
 	if type(spec.max_usage_limit)=="number" then skill:setMaxUsageLimit(spec.max_usage_limit) end
 	if spec.dynamic_frequency then skill.dynamic_frequency = spec.dynamic_frequency end
+	if type(spec.shiming_skill)=="boolean" then skill:setShimingSkill(spec.shiming_skill) end
+	if spec.on_shiming_success then skill.on_shiming_success = spec.on_shiming_success end
+	if spec.on_shiming_fail then skill.on_shiming_fail = spec.on_shiming_fail end
 	return skill
 end
 
