@@ -59,23 +59,17 @@ bool ClientSkillContext::tryParse(const QVariantMap &map)
 
     if (map.contains("skill")) {
         QString skillName = map.value("skill").toString();
-        qDebug() << "[ChooseTriggerOrderBox] Received skill name:" << skillName;
         skill = Sanguosha->getSkill(skillName);
-        qDebug() << "[ChooseTriggerOrderBox] getSkill() returned:" << (skill ? skill->objectName() : "nullptr");
     }
     if (skill == nullptr) {
-        qDebug() << "[ChooseTriggerOrderBox] Skill is nullptr, returning false";
         return false;
     }
 
     if (map.contains("invoker")) {
         QString invokerName = map.value("invoker").toString();
-        qDebug() << "[ChooseTriggerOrderBox] Received invoker name:" << invokerName;
         invoker = ClientInstance->getPlayer(invokerName);
-        qDebug() << "[ChooseTriggerOrderBox] getPlayer(invoker) returned:" << (invoker ? invoker->objectName() : "nullptr");
     }
     if (invoker == nullptr) {
-        qDebug() << "[ChooseTriggerOrderBox] Invoker is nullptr, returning false";
         return false;
     }
 
@@ -96,7 +90,6 @@ bool ClientSkillContext::tryParse(const QVariantMap &map)
     if (map.contains("multiplier"))
         multiplier = map.value("multiplier").toInt();
 
-    qDebug() << "[ChooseTriggerOrderBox] Parse succeeded for skill:" << skill->objectName();
     return true;
 }
 

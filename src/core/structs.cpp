@@ -1,5 +1,6 @@
 #include "structs.h"
 #include "engine.h"
+#include "room.h"
 #include "json.h"
 
 bool CardsMoveStruct::tryParse(const QVariant &arg)
@@ -152,7 +153,10 @@ bool ChoiceData::tryParse(const QVariant &arg)
 
     QString playerName = args[0].toString();
     if (!playerName.isEmpty()) {
-        player = Sanguosha->getPlayer(playerName);
+        Room *room = Sanguosha->currentRoom();
+        if (room) {
+            player = room->findPlayerByObjectName(playerName);
+        }
     }
     skill_name = args[1].toString();
     choices = args[2].toString();
