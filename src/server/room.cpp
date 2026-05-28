@@ -1895,29 +1895,53 @@ QString Room::askForTriggerOrder(ServerPlayer*player, const QString&reason, QLis
     if (optional && (answer.isEmpty() || answer == "cancel"))
         return "cancel";
 
-    QString skillName;
+    // 格式二支援：返回值格式為 "skillName:ownerObjectName" 或 "skillName"
+    QString result;
     if (answer.isEmpty() && !contexts.isEmpty()) {
-        skillName = contexts.at(qrand() % contexts.size()).skill_name;
+        const SkillContext &ctx = contexts.at(qrand() % contexts.size());
+        if (ctx.owner && ctx.owner != player) {
+            result = ctx.skill_name + ":" + ctx.owner->objectName();
+        } else {
+            result = ctx.skill_name;
+        }
     } else {
+        // 客戶端返回格式："skillName:ownerName:invokerName..."，取前兩段
         QStringList replyParts = answer.split(":");
-        skillName = replyParts.value(0);
+        QString skillName = replyParts.value(0);
+        QString ownerObjectName = replyParts.value(1);
         
         bool found = false;
         foreach (const SkillContext &ctx, contexts) {
             if (ctx.skill_name == skillName) {
-                found = true;
-                break;
+                if (ownerObjectName.isEmpty()) {
+                    found = true;
+                    if (ctx.owner && ctx.owner != player) {
+                        result = skillName + ":" + ctx.owner->objectName();
+                    } else {
+                        result = skillName;
+                    }
+                    break;
+                } else if (ctx.owner && ctx.owner->objectName() == ownerObjectName) {
+                    found = true;
+                    result = skillName + ":" + ownerObjectName;
+                    break;
+                }
             }
         }
 
         if (!found && !contexts.isEmpty()) {
-            skillName = contexts.at(qrand() % contexts.size()).skill_name;
+            const SkillContext &ctx = contexts.at(qrand() % contexts.size());
+            if (ctx.owner && ctx.owner != player) {
+                result = ctx.skill_name + ":" + ctx.owner->objectName();
+            } else {
+                result = ctx.skill_name;
+            }
         }
     }
 
-    QVariant decisionData = "triggerOrder:" + reason + ":" + skillName;
+    QVariant decisionData = "triggerOrder:" + reason + ":" + result;
     thread->trigger(ChoiceMade, this, player, decisionData);
-    return skillName;
+    return result;
 }
 
 void Room::obtainCard(ServerPlayer*target, const Card*card, const CardMoveReason&reason, bool visible)

@@ -2,12 +2,10 @@
 #include "room.h"
 #include "engine.h"
 #include "gamerule.h"
-//#include "scenario.h"
-//#include "ai.h"
-//#include "json.h"
 #include "settings.h"
 #include "standard.h"
 #include "exppattern.h"
+#include <QDebug>
 
 #ifdef QSAN_UI_LIBRARY_AVAILABLE
 #pragma message WARN("UI elements detected in server side!!!")
@@ -716,8 +714,9 @@ QMap<QString, int> triggerCounts;
 			record_ctx.current_event = triggerEvent;
 			v2->record(triggerEvent, room, target, record_ctx);
 			
-			TriggerList list = v2->triggerable(triggerEvent, room, target, data);
-			QMap<ServerPlayer *, QStringList>::iterator it;
+		TriggerList list = v2->triggerable(triggerEvent, room, target, data);
+		
+		QMap<ServerPlayer *, QStringList>::iterator it;
 			for (it = list.begin(); it != list.end(); ++it) {
 				ServerPlayer *p = it.key();
 				QStringList &skills = it.value();
@@ -779,17 +778,26 @@ QMap<QString, int> triggerCounts;
 			}
 		}
 
-		ServerPlayer *p = target;
+		// 格式二支援：askForTriggerOrder 由 target（事件觸發者）做選擇
+		// 返回值格式："skillName" 或 "skillName:ownerObjectName"
 		QString reason = "GameRule:TriggerOrder";
-		QString name = room->askForTriggerOrder(p, reason, skillContexts, !has_compulsory, data);
+		QString name = room->askForTriggerOrder(target, reason, skillContexts, !has_compulsory, data);
 
-		if (name == "cancel" || name.isEmpty())
+		if (name == "cancel" || name.isEmpty()) {
 			break;
+		}
 
+		// 解析返回值：提取 skillName 和 ownerObjectName
+		QString ownerObjectName;
 		QString skillName = name;
 		int split = -1;
-		if ((split = name.indexOf('*')) != -1)
-			skillName = name.left(split);
+		if ((split = name.indexOf(':')) != -1) {
+			skillName = name.left(split);           // 格式二：skillName:ownerObjectName
+			ownerObjectName = name.mid(split + 1);
+		}
+
+		if ((split = skillName.indexOf('*')) != -1)
+			skillName = skillName.left(split);
 
 		int instanceId = 0;
 		if ((split = skillName.indexOf('#')) != -1) {
@@ -807,24 +815,39 @@ QMap<QString, int> triggerCounts;
 		triggerCounts[key] = triggerCounts.value(key, 0) + 1;
 		triggeredSkills.insert(key);
 
+		// 格式二支援：查找 selected_ctx 時用 ownerObjectName 匹配
 		SkillContext *selected_ctx = nullptr;
 		for (int i = 0; i < skillContexts.size(); ++i) {
 			if (skillContexts[i].skill_name == skillName &&
-				skillContexts[i].instanceID == instanceId &&
-				skillContexts[i].owner == p) {
-				selected_ctx = &skillContexts[i];
-				break;
+				skillContexts[i].instanceID == instanceId) {
+				// 格式一：ownerObjectName 空時，匹配 owner == target
+				// 格式二：ownerObjectName 非空時，匹配 owner->objectName() == ownerObjectName
+				if (ownerObjectName.isEmpty()) {
+					if (skillContexts[i].owner == target) {
+						selected_ctx = &skillContexts[i];
+						break;
+					}
+				} else {
+					if (skillContexts[i].owner && skillContexts[i].owner->objectName() == ownerObjectName) {
+						selected_ctx = &skillContexts[i];
+						break;
+					}
+				}
 			}
 		}
-		if (!selected_ctx) continue;
+		if (!selected_ctx) {
+			continue;
+		}
 
-		bool do_cost = v2->cost(triggerEvent, room, target, *selected_ctx);
+		// 格式二支援：cost 使用 selected_ctx->owner（技能擁有者）作為 player
+		ServerPlayer *skill_owner = selected_ctx->owner;
+		bool do_cost = v2->cost(triggerEvent, room, skill_owner, *selected_ctx);
 		if (!do_cost)
 			continue;
 
 		selected_ctx->current_event = EventSkillWillInvoke;
 		QVariant ctx_data = QVariant::fromValue(*selected_ctx);
-		trigger(EventSkillWillInvoke, room, p, ctx_data);
+		trigger(EventSkillWillInvoke, room, skill_owner, ctx_data);
 		*selected_ctx = ctx_data.value<SkillContext>();
 		if (selected_ctx->is_canceled)
 			continue;
@@ -832,10 +855,10 @@ QMap<QString, int> triggerCounts;
 		if (!selected_ctx->bypass_cost) {
 			selected_ctx->current_event = EventSkillPay;
 			ctx_data = QVariant::fromValue(*selected_ctx);
-			trigger(EventSkillPay, room, p, ctx_data);
+			trigger(EventSkillPay, room, skill_owner, ctx_data);
 			*selected_ctx = ctx_data.value<SkillContext>();
 
-			bool do_pay = v2->pay(triggerEvent, room, target, *selected_ctx);
+			bool do_pay = v2->pay(triggerEvent, room, skill_owner, *selected_ctx);
 			if (!do_pay)
 				continue;
 		}
@@ -843,25 +866,25 @@ QMap<QString, int> triggerCounts;
 		selected_ctx->current_event = EventSkillTargetConfirming;
 		selected_ctx->updated_targets = selected_ctx->targets;
 		ctx_data = QVariant::fromValue(*selected_ctx);
-		trigger(EventSkillTargetConfirming, room, p, ctx_data);
+		trigger(EventSkillTargetConfirming, room, skill_owner, ctx_data);
 		*selected_ctx = ctx_data.value<SkillContext>();
 
 		selected_ctx->current_event = EventSkillInvoking;
 		ctx_data = QVariant::fromValue(*selected_ctx);
-		trigger(EventSkillInvoking, room, p, ctx_data);
+		trigger(EventSkillInvoking, room, skill_owner, ctx_data);
 		*selected_ctx = ctx_data.value<SkillContext>();
 
 		selected_ctx->current_event = EventSkillEffect;
 		ctx_data = QVariant::fromValue(*selected_ctx);
-		bool skip_effect = trigger(EventSkillEffect, room, p, ctx_data);
+		bool skip_effect = trigger(EventSkillEffect, room, skill_owner, ctx_data);
 		*selected_ctx = ctx_data.value<SkillContext>();
 
 		if (!skip_effect) {
-			broken = v2->effect(triggerEvent, room, target, *selected_ctx);
+			broken = v2->effect(triggerEvent, room, skill_owner, *selected_ctx);
 
 			if (!broken && !selected_ctx->manual_effect && !selected_ctx->targets.isEmpty()) {
 				foreach (ServerPlayer *t, selected_ctx->targets) {
-					bool target_broken = v2->skillEffect(triggerEvent, room, target, *selected_ctx, t);
+					bool target_broken = v2->skillEffect(triggerEvent, room, skill_owner, *selected_ctx, t);
 					if (target_broken)
 						broken = true;
 				}
@@ -870,7 +893,7 @@ QMap<QString, int> triggerCounts;
 
 		selected_ctx->current_event = EventSkillEffectFinished;
 		ctx_data = QVariant::fromValue(*selected_ctx);
-		trigger(EventSkillEffectFinished, room, p, ctx_data);
+		trigger(EventSkillEffectFinished, room, skill_owner, ctx_data);
 	}
 
 	return broken;

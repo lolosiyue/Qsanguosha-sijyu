@@ -36,7 +36,7 @@ typedef QMap<ServerPlayer*, QStringList> TriggerList;
 
 ### SkillContext 結構
 
-**位置**: `src/core/skill.h` (line 9-27)
+**位置**: `src/core/skill.h` (line 9-40)
 
 ```cpp
 struct SkillContext {
@@ -46,15 +46,25 @@ struct SkillContext {
     QList<ServerPlayer *> targets;           // 技能目標
     QList<ServerPlayer *> updated_targets;   // 目標替換（targetConfirming 用）
     const Card *use_card;         // 關聯卡牌（可為 nullptr）
-    QVariant original_data;       // 原始觸發數據載體
+    QVariant *original_data;      // 原始觸發數據載體（指針，可訪問原始事件數據）
     int instanceID;               // 實例 ID（區分同名技能）
+
+    ServerPlayer *preferredTarget;    // 優先目標
+    int preferredTargetSeat;          // 優先目標座位號
 
     bool is_forced;               // 是否強制發動
     bool is_canceled;             // 是否被取消（willInvoke 用）
     bool bypass_cost;             // 是否免除代價（willInvoke 用）
+    bool manual_effect;           // 是否手動調用 skillEffect（框架不自動遍歷）
     TriggerEvent current_event;   // 當前觸發時機
+
+    int amount;                   // 技能基礎數值
+    int modified_amount;          // 修改後數值
+    int trigger_count;            // 已觸發次數
 };
 ```
+
+**重要**：`original_data` 是指向原始事件數據的指針，在 `on_cost`、`on_effect` 等回調中可通過它訪問原始事件數據。
 
 ### Instance ID 機制
 
@@ -148,16 +158,28 @@ triggerV2Skills(event, room, target, data)
 
 用於手動調用目標效果，觸發 `EventSkillEffectTarget`：
 
+**簽名**：
+```cpp
+bool skillEffect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, 
+                 SkillContext &ctx, ServerPlayer *target) const;
+```
+
+**Lua 調用**：
 ```lua
-on_effect = function(skill, event, room, player, data)
-    local ctx = data:toSkillContext()
+skill:skillEffect(event, room, player, ctx, target)
+```
+
+**完整範例**：
+```lua
+on_effect = function(skill, event, room, player, ctx)
+    -- ctx 是 SkillContext 引用
     
     -- 一次性效果
     player:drawCards(1)
     
     -- 手動調用目標效果
-    for _, target in ipairs(ctx.targets) do
-        skill:skillEffect(target, data)  -- 觸發 EventSkillEffectTarget + effectTarget
+    for _, target in sgs.qlist(ctx.targets) do
+        skill:skillEffect(event, room, player, ctx, target)  -- 觸發 EventSkillEffectTarget + effectTarget
     end
     ctx.manual_effect = true  -- 標記已手動處理，框架不自動遍歷
     
@@ -231,14 +253,18 @@ sgs.CreateTriggerV2Skill {
     limit_scope = sgs.Limit_Round,
     max_usage_limit = 2,
     can_trigger = function(skill, event, room, player, data)
-        -- 返回格式: "skillName" 或 "player+skillName1+skillName2"
+        -- data 是原始事件數據（QVariant*），可用 data:toDamage() 等方法轉換
+        -- 返回格式: "skillName" 或 "player, skillName"
         return "baGua"
     end,
-    on_cost = function(skill, event, room, player, data)
+    on_cost = function(skill, event, room, player, ctx)
+        -- ctx 是 SkillContext 引用，直接修改即可
         -- 返回 true 表示執行效果
         return true
     end,
-    on_effect = function(skill, event, room, player, data)
+    on_effect = function(skill, event, room, player, ctx)
+        -- ctx 是 SkillContext 引用
+        -- 可通過 ctx.original_data 訪問原始事件數據
         -- 返回 true 表示中斷事件
         return false
     end,
@@ -251,36 +277,347 @@ sgs.CreateTriggerV2Skill {
     frequency = sgs.Skill_Compulsory,
     events = {sgs.EventSkillWillInvoke},  -- 註冊監聽 EventSkillWillInvoke
     can_trigger = function(skill, event, room, player, data)
+        -- 時機鉤子事件的 data 是 SkillContext
         local ctx = data:toSkillContext()
         if ctx.skill_name == "baGua" then
             return "fengyin"  -- 響應 baGua 的 willInvoke 時機
         end
         return false
     end,
-    on_effect = function(skill, event, room, player, data)
-        local ctx = data:toSkillContext()
+    on_effect = function(skill, event, room, player, ctx)
+        -- 時機鉤子事件的 ctx 也是 SkillContext
         ctx.is_canceled = true  -- 封印 baGua 技能
-        -- 注意：需要將修改後的 ctx 寫回 data
+        -- 注意：ctx 是引用傳遞，直接修改即可，不需要 setValue
         return false
     end
 }
 ```
 
-### Lua triggerable 返回值格式
+### Lua 回調函數參數詳解
+
+### 參數傳遞規則
+
+**重要**：不同回調函數的第 5 個參數類型不同！
+
+| 回調函數 | 第 5 個參數 | 類型 | 說明 |
+|----------|------------|------|------|
+| `can_trigger` | `data` | `QVariant*` | 原始事件數據，可用 `data:toDamage()` 等方法轉換 |
+| `on_record` | `ctx` | `SkillContext*` | 技能上下文，引用傳遞 |
+| `on_cost` | `ctx` | `SkillContext*` | 技能上下文，引用傳遞 |
+| `on_pay` | `ctx` | `SkillContext*` | 技能上下文，引用傳遞 |
+| `on_effect` | `ctx` | `SkillContext*` | 技能上下文，引用傳遞 |
+| `on_effect_target` | `ctx` | `SkillContext*` | 技能上下文，引用傳遞 |
+| `on_turn_broken` | `ctx` | `SkillContext*` | 技能上下文，引用傳遞 |
+| `check_custom_usage` | `ctx` | `SkillContext*` | 技能上下文，引用傳遞 |
+
+### SkillContext 引用傳遞
+
+`ctx` 是 `SkillContext` 的引用（指針），**直接修改即可，不需要 `data:setValue(ctx)`**：
+
+```lua
+on_cost = function(skill, event, room, player, ctx)
+    local target = room:askForPlayerChosen(player, room:getOtherPlayers(player), 
+        "skill", "skill-invoke", true, true)
+    if target then
+        ctx.targets:append(target)  -- 直接修改，自動生效
+        return true
+    end
+    return false
+end
+```
+
+### ctx.targets 索引注意事項
+
+**重要**：`ctx.targets` 是 `QList<ServerPlayer*>`，SWIG 綁定為 `SPlayerList`。
+
+| 方法 | 索引方式 | 說明 |
+|------|----------|------|
+| `ctx.targets:first()` | 推薦 | 返回第一個元素 |
+| `ctx.targets:last()` | 推薦 | 返回最後一個元素 |
+| `ctx.targets:at(0)` | 0-based | 返回第一個元素 |
+| `ctx.targets[1]` | ❌ 不推薦 | Lua 1-based 索引會調用 `QList::at(1)`，返回第二個元素或 nil |
+
+**錯誤範例**：
+```lua
+-- ❌ 錯誤：ctx.targets[1] 在 Lua 中會調用 QList::at(1)，返回 nil（若只有一個元素）
+local target = ctx.targets[1]
+
+-- ✅ 正確：使用 first() 或 at(0)
+local target = ctx.targets:first()
+-- 或
+local target = ctx.targets:at(0)
+```
+
+### ctx.extra_data 設置注意事項
+
+`ctx.extra_data` 是 `QVariant` 類型。直接賦值整數可能不會正確工作。
+
+**錯誤範例**：
+```lua
+-- ❌ 錯誤：直接賦值 int 可能不會正確轉換為 QVariant
+ctx.extra_data = card_id
+```
+
+**正確範例**：
+```lua
+-- ✅ 正確：使用 setValue() 方法
+ctx.extra_data:setValue(card_id)
+```
+
+### 訪問原始事件數據
+
+在 `on_cost`、`on_effect` 等回調中，可通過 `ctx.original_data` 訪問原始事件數據：
+
+```lua
+on_effect = function(skill, event, room, player, ctx)
+    -- ctx.original_data 是 QVariant*，指向原始事件數據
+    local move = ctx.original_data:toMoveOneTime()
+    -- 或其他類型轉換
+    local damage = ctx.original_data:toDamage()
+    return false
+end
+```
+
+### 時機鉤子事件
+
+對於 `EventSkillWillInvoke` 等時機鉤子事件：
+- `can_trigger` 的 `data` 是 `SkillContext`（已包裝為 QVariant）
+- 需用 `data:toSkillContext()` 轉換
+
+```lua
+can_trigger = function(skill, event, room, player, data)
+    if event == sgs.EventSkillWillInvoke then
+        local ctx = data:toSkillContext()  -- 時機鉤子事件需要轉換
+        if ctx.skill_name == "targetSkill" then
+            return "mySkill"
+        end
+    elseif event == sgs.DamageCaused then
+        local damage = data:toDamage()  -- 基礎事件直接轉換
+        -- ...
+    end
+    return false
+end
+```
+
+### 常見錯誤
+
+```lua
+-- 錯誤：on_cost 的第 5 個參數是 ctx，不是 data
+on_cost = function(skill, event, room, player, data)
+    local ctx = data:toSkillContext()  -- 錯誤！data 是 SkillContext，不是 QVariant
+    return true
+end
+
+-- 正確
+on_cost = function(skill, event, room, player, ctx)
+    -- ctx 已經是 SkillContext，直接使用
+    return true
+end
+
+-- 錯誤：不需要 setValue
+on_effect = function(skill, event, room, player, ctx)
+    ctx.manual_effect = true
+    data:setValue(ctx)  -- 錯誤！ctx 是引用，不需要 setValue
+    return false
+end
+
+-- 正確
+on_effect = function(skill, event, room, player, ctx)
+    ctx.manual_effect = true  -- 直接修改即可
+    return false
+end
+```
+
+## Lua triggerable 返回值格式
+
+本系統支援三種返回格式（格式三本項目不支援）：
+
+### 格式一：單一技能擁有者觸發
 
 ```lua
 -- 單一技能
 return "baGua"
 
--- 多技能（同一玩家）
-return "baGua+weni"
+-- 多技能（同一玩家，用 + 分隔多次觸發）
+return "baGua+baGua"  -- 觸發 2 次
 
--- 指定玩家
-return player, "baGua"
+-- 指定玩家（返回兩個值）
+return "baGua", ownerPlayer
 
 -- 攜帶 instanceId
 return "baGua#" .. skill:getInstanceId()
+
+-- 攜帶 multiplier（觸發多次）
+return "baGua*3"
 ```
+
+### 格式二：多個技能擁有者可觸發
+
+適用於「技能觸發者 ≠ 技能擁有者」的情況，如國戰的輸糧、骁果、襲射等。
+
+#### 返回格式
+
+```lua
+-- 返回兩個字符串，用 | 分隔
+-- 返回值 1：技能名列表（如 "shuliang|shuliang"）
+-- 返回值 2：玩家 objectName 列表（如 "player1|player2")
+
+return table.concat(trigger_list_skill, "|"), table.concat(trigger_list_who, "|")
+```
+
+#### ctx.owner vs ctx.invoker
+
+| 欄位 | 格式一 | 格式二 |
+|------|--------|--------|
+| `ctx.owner` | `target`（事件觸發者） | 技能擁有者（返回值 2 中的玩家） |
+| `ctx.invoker` | `target`（事件觸發者） | `target`（事件觸發者） |
+| `on_cost(player)` | 技能擁有者 | **技能擁有者** |
+| `on_cost(ctx.invoker)` | 技能擁有者 | **事件觸發者** |
+
+#### 完整範例：襲射（s4_xishe）
+
+```lua
+s4_xishe = sgs.CreateTriggerV2Skill{
+    name = "s4_xishe",
+    events = {sgs.EventPhaseProceeding},
+    
+    can_trigger = function(skill, event, room, player, data)
+        if event == sgs.EventPhaseProceeding then
+            if player:getPhase() ~= sgs.Player_Start then return false end
+            
+            -- 格式二：收集所有可觸發的技能擁有者
+            local trigger_list_skill, trigger_list_who = {}, {}
+            for _, owner in sgs.qlist(room:findPlayersBySkillName("s4_xishe")) do
+                if owner:objectName() ~= player:objectName() 
+                   and owner:isAlive()
+                   and player:getEquips():length() > 0 
+                   and owner:canDiscard(player, "e") then
+                    local ctx = sgs.SkillContext()
+                    ctx.invoker = owner
+                    ctx.owner = owner
+                    ctx.instanceID = skill:getInstanceId()
+                    if skill:isUsable(ctx) then
+                        table.insert(trigger_list_skill, "s4_xishe")
+                        table.insert(trigger_list_who, owner:objectName())
+                    end
+                end
+            end
+            if #trigger_list_skill > 0 then
+                return table.concat(trigger_list_skill, "|"), 
+                       table.concat(trigger_list_who, "|")
+            end
+        end
+        return false
+    end,
+    
+    on_cost = function(skill, event, room, player, ctx)
+        -- 格式二：player 是技能擁有者（襲射擁有者）
+        -- ctx.invoker 是事件觸發者（開始階段的角色）
+        local target = room:getCurrent()  -- 獲取當前回合玩家
+        if room:askForSkillInvoke(player, "s4_xishe", ToData(target)) then
+            ctx.targets:append(target)
+            return true
+        end
+        return false
+    end,
+    
+    on_effect_target = function(skill, event, room, player, ctx, target)
+        -- player 是技能擁有者，對 target 使用殺
+        local slash = sgs.Sanguosha:cloneCard("slash", sgs.Card_NoSuit, 0)
+        slash:setSkillName("s4_xishe")
+        slash:deleteLater()
+        if player:canSlash(target, slash, false) then
+            local use = sgs.CardUseStruct()
+            use.card = slash
+            use.from = player
+            use.to:append(target)
+            room:useCard(use)
+        end
+    end
+}
+```
+
+#### 常見錯誤
+
+```lua
+-- ❌ 錯誤：循環內直接 return，只返回第一個擁有者
+for _, owner in sgs.qlist(room:findPlayersBySkillName("s4_xishe")) do
+    if condition then
+        return "s4_xishe", owner  -- 只觸發第一個！
+    end
+end
+
+-- ✅ 正確：收集所有擁有者後用格式二返回
+local trigger_list_skill, trigger_list_who = {}, {}
+for _, owner in sgs.qlist(room:findPlayersBySkillName("s4_xishe")) do
+    if condition then
+        table.insert(trigger_list_skill, "s4_xishe")
+        table.insert(trigger_list_who, owner:objectName())
+    end
+end
+if #trigger_list_skill > 0 then
+    return table.concat(trigger_list_skill, "|"), 
+           table.concat(trigger_list_who, "|")
+end
+return false
+```
+
+#### 返回值處理流程
+
+| 步驟 | Lua 返回值 | SWIG 解析 | roomthread 處理 |
+|------|------------|-----------|-----------------|
+| 1 | `"skill1|skill2", "owner1|owner2"` | `TriggerList {[owner1]: ["skill1"], [owner2]: ["skill2"]}` | 遍歷 `TriggerList` 構建 `skillContexts` |
+| 2 | - | - | `ctx.owner = owner1`, `ctx.invoker = target` |
+| 3 | - | - | `askForTriggerOrder` 返回 `"skillName:ownerObjectName"` |
+| 4 | - | - | 解析 `ownerObjectName`，找到對應 `selected_ctx` |
+| 5 | - | - | `cost(skill_owner)` 使用 `ctx.owner` 作為 `player` |
+
+#### askForTriggerOrder 返回格式
+
+| 格式 | 返回值 | 解析結果 |
+|------|--------|----------|
+| 格式一 | `"skillName"` | `skillName`, `ownerObjectName = ""` |
+| 格式二 | `"skillName:ownerObjectName"` | `skillName`, `ownerObjectName` |
+
+#### 格式一 vs 格式二 TriggerList 對比
+
+| 格式 | 返回值 1 | 返回值 2 | TriggerList 結果 |
+|------|----------|----------|------------------|
+| 格式一（單技能） | `"skillName"` | `nil` | `{[target]: ["skillName"]}` |
+| 格式一（指定玩家） | `"skillName"` | `ServerPlayer*` | `{[ask_who]: ["skillName"]}` |
+| 格式二（多擁有者） | `"skill1\|skill2"` | `"owner1\|owner2"` | `{[owner1]: ["skill1"], [owner2]: ["skill2"]}` |
+
+#### 重要說明
+
+1. **格式二不支援 `+` 分隔多次觸發**：每個 `|` 分隔項只觸發一次
+2. **格式二時 `ctx.owner` ≠ `ctx.invoker`**：技能擁有者和事件觸發者不同
+3. **格式二需要 `roomthread.cpp` 正確解析 `ownerObjectName`**：2026-05-29 修復後支援
+
+### 格式三：技能擁有者對目標發動（不支援）
+
+本項目不支援此格式：
+```lua
+-- 格式："skill_name->target1+target2"
+return self:objectName().."->"..table.concat(targets, "+")
+``
+
+### 返回值處理流程
+
+| 格式 | 返回值 1 | 返回值 2 | TriggerList 結果 |
+|------|----------|----------|------------------|
+| 格式一（單技能） | `"skillName"` | `nil` 或 `ServerPlayer*` | `{[player]: ["skillName"]}` |
+| 格式一（多觸發） | `"skillName*3"` | `nil` | `{[player]: ["skillName"]}`（加入 3 個 SkillContext） |
+| 格式二（多擁有者） | `"skill1\|skill2"` | `"player1\|player2"` | `{[p1]: ["skill1"], [p2]: ["skill2"]}` |
+
+### 重要說明
+
+1. **格式二時 `ctx.owner` vs `ctx.invoker`**：
+   - `ctx.owner` = 技能擁有者（返回值 2 中的玩家）
+   - `ctx.invoker` = 事件觸發者（原 `player` 參數）
+
+2. **格式二不支援 `+` 分隔多次觸發**：每個 `|` 分隔項只觸發一次
+
+3. **格式二與格式一互斥**：若第二返回值為字符串，則按格式二解析；若為 `ServerPlayer*` 或 `nil`，則按格式一解析
 
 ## Instance ID 相關 API
 
@@ -420,7 +757,7 @@ local baGua = sgs.CreateTriggerV2Skill {
     can_trigger = function(skill, event, room, player, data)
         if not player:hasSkill(skill:objectName()) then return false end
         if event == sgs.DamageCaused then
-            local damage = data:toDamage()
+            local damage = data:toDamage()  -- data 是原始事件數據
             if damage and damage.card and damage.card:isKindOf("Slash") then
                 return "baGua"
             end
@@ -428,11 +765,12 @@ local baGua = sgs.CreateTriggerV2Skill {
         return false
     end,
 
-    on_cost = function(skill, event, room, player, data)
-        return room:askForCard(player, ".|black", "@baGua", data)
+    on_cost = function(skill, event, room, player, ctx)
+        -- ctx 是 SkillContext 引用
+        return room:askForCard(player, ".|black", "@baGua", ctx.original_data)
     end,
 
-    on_effect = function(skill, event, room, player, data)
+    on_effect = function(skill, event, room, player, ctx)
         -- 八卦置換效果
         return false
     end
@@ -469,8 +807,8 @@ s4_cangzhuo = sgs.CreateTriggerV2Skill{
     name = "s4_cangzhuo",
     base_amount = 1,  -- 可選，預設 1
     -- ...
-    on_effect = function(skill, event, room, player, data)
-        local ctx = data:toSkillContext()
+    on_effect = function(skill, event, room, player, ctx)
+        -- ctx 是 SkillContext 引用
         local amount = skill:getEffectiveAmount(ctx)
         
         for _, p in sgs.qlist(ctx.targets) do
@@ -492,14 +830,15 @@ modifier = sgs.CreateTriggerV2Skill{
     name = "modifier",
     events = {sgs.EventSkillWillInvoke},
     can_trigger = function(skill, event, room, player, data)
+        -- 時機鉤子事件的 data 是 SkillContext
         local ctx = data:toSkillContext()
         if ctx.skill_name == "s4_cangzhuo" then
             return "modifier"
         end
         return false
     end,
-    on_effect = function(skill, event, room, player, data)
-        local ctx = data:toSkillContext()
+    on_effect = function(skill, event, room, player, ctx)
+        -- ctx 是 SkillContext 引用，直接修改
         ctx.modified_amount = (ctx.amount or 1) * 2  -- 雙倍效果
         return false
     end
@@ -676,16 +1015,18 @@ local baGua = sgs.CreateTriggerV2Skill {
         return "baGua"
     end,
 
-    on_cost = function(skill, event, room, player, data)
-        return room:askForCard(player, ".|black", "@baGua", data)
+    on_cost = function(skill, event, room, player, ctx)
+        -- ctx 是 SkillContext 引用
+        return room:askForCard(player, ".|black", "@baGua", ctx.original_data)
     end,
 
-    on_effect = function(skill, event, room, player, data)
-        local ctx = sgs.SkillContext()
-        ctx.invoker = player
-        ctx.owner = player
-        ctx.instanceID = skill:getInstanceId()
-        skill:addUsage(ctx)
+    on_effect = function(skill, event, room, player, ctx)
+        -- ctx 是 SkillContext 引用，直接修改
+        local usageCtx = sgs.SkillContext()
+        usageCtx.invoker = player
+        usageCtx.owner = player
+        usageCtx.instanceID = skill:getInstanceId()
+        skill:addUsage(usageCtx)
         return false
     end
 }
@@ -941,6 +1282,17 @@ room->removeSkillInvalidity(target, "qingcheng", source->objectName(), "reason")
 | 2026-05-19 | 支援 multiplier：`can_trigger` 返回 `"skillName*3"` 觸發 3 次 |
 | 2026-05-19 | `SkillContext` 新增 `trigger_count` 欄位，記錄已觸發次數 |
 | 2026-05-19 | 移除 `mergeSkillNames()` 依賴，直接解析 multiplier |
+| 2026-05-21 | **重要修正**：文檔更新，明確 Lua 回調函數參數類型差異 |
+| 2026-05-21 | `can_trigger` 第 5 參數為 `QVariant* data`（原始事件數據） |
+| 2026-05-21 | `on_cost`、`on_effect` 等第 5 參數為 `SkillContext* ctx`（引用傳遞） |
+| 2026-05-21 | `ctx` 是引用傳遞，直接修改即可，不需要 `data:setValue(ctx)` |
+| 2026-05-21 | 新增 `ctx.original_data` 訪問原始事件數據的說明 |
+| 2026-05-21 | 新增「Lua 回調函數參數詳解」章節，說明常見錯誤 |
+| 2026-05-29 | **格式二完整支援**：修復 `roomthread.cpp` 和 `room.cpp` 讓格式二真正可用 |
+| 2026-05-29 | `roomthread.cpp`：解析 `askForTriggerOrder` 返回的 `ownerObjectName`，正確查找 `selected_ctx` |
+| 2026-05-29 | `room.cpp`：`askForTriggerOrder` 返回 `"skillName:ownerObjectName"` 格式 |
+| 2026-05-29 | `cost`/`pay`/`effect` 使用 `selected_ctx->owner` 作為 `player` 參數 |
+| 2026-05-29 | 更新文檔：補充格式二完整範例（襲射）、常見錯誤、返回值處理流程 |
 
 ---
 
@@ -1018,6 +1370,7 @@ skill = sgs.CreateTriggerV2Skill{
     name = "xxx",
     events = {sgs.Damaged},
     can_trigger = function(skill, event, room, player, data)
+        -- data 是原始事件數據
         local damage = data:toDamage()
         if damage and damage.damage > 0 then
             -- 返回 "xxx*3" 表示觸發 3 次
@@ -1025,7 +1378,8 @@ skill = sgs.CreateTriggerV2Skill{
         end
         return false
     end,
-    on_effect = function(skill, event, room, player, data)
+    on_effect = function(skill, event, room, player, ctx)
+        -- ctx 是 SkillContext 引用
         player:drawCards(1)
         return false
     end
@@ -1039,6 +1393,7 @@ skill = sgs.CreateTriggerV2Skill{
     name = "yyy",
     events = {sgs.Damaged},
     can_trigger = function(skill, event, room, player, data)
+        -- data 是原始事件數據
         local damage = data:toDamage()
         if not damage or damage.damage <= 0 then return false end
         
@@ -1050,7 +1405,8 @@ skill = sgs.CreateTriggerV2Skill{
         
         return skill:objectName()
     end,
-    on_effect = function(skill, event, room, player, data)
+    on_effect = function(skill, event, room, player, ctx)
+        -- ctx 是 SkillContext 引用
         player:drawCards(1)
         return false
     end

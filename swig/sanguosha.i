@@ -1517,6 +1517,7 @@ bool isHideSkill() const;
 	virtual bool checkCustomUsage(const SkillContext& ctx) const;
 	virtual ServerPlayer* getUsageHolder(const SkillContext& ctx) const;
 	QString getUsageTagKey(const SkillContext& ctx) const;
+	int getInstanceId() const;
 };
 
 %extend Skill {
