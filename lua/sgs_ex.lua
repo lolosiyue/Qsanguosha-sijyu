@@ -63,6 +63,9 @@ function sgs.CreateTriggerV2Skill(spec)
 	assert(type(spec.name)=="string")
 	if spec.frequency then assert(type(spec.frequency)=="number") end
 	if spec.limit_mark then assert(type(spec.limit_mark)=="string") end
+	if spec.waked_skills then assert(type(spec.waked_skills)=="string") end
+	if spec.change_skill then assert(type(spec.change_skill)=="boolean") end
+	if spec.hide_skill then assert(type(spec.hide_skill)=="boolean") end
 	local frequency = spec.frequency or sgs.Skill_NotFrequent
 	local limit_mark = spec.limit_mark or ""
 	local skill = sgs.LuaTriggerV2Skill(spec.name, frequency, limit_mark)
@@ -91,6 +94,9 @@ function sgs.CreateTriggerV2Skill(spec)
 	if type(spec.shiming_skill)=="boolean" then skill:setShimingSkill(spec.shiming_skill) end
 	if spec.on_shiming_success then skill.on_shiming_success = spec.on_shiming_success end
 	if spec.on_shiming_fail then skill.on_shiming_fail = spec.on_shiming_fail end
+	if type(spec.waked_skills)=="string" then skill:setWakedSkills(spec.waked_skills) end
+	if type(spec.change_skill)=="boolean" then skill:setChangeSkill(spec.change_skill) end
+	if type(spec.hide_skill)=="boolean" then skill:setHideSkill(spec.hide_skill) end
 	return skill
 end
 
