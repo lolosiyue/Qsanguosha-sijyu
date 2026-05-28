@@ -1065,7 +1065,34 @@ TriggerList LuaTriggerV2Skill::triggerable(TriggerEvent triggerEvent, Room *room
 		return result;
 	}
 
-	// 檢查第二個返回值（L[-1]）是否是 ask_who (ServerPlayer*)
+	// 直接嘗試轉換為字符串（對齊參考項目做法）
+	QString trigger_str = QString::fromUtf8(lua_tostring(L, -2));
+	QString obj_name_str = QString::fromUtf8(lua_tostring(L, -1));
+
+	// 格式二：obj_name_str 非空表示多個技能擁有者
+	if (!obj_name_str.isEmpty()) {
+		lua_pop(L, 2);
+
+		if (!trigger_str.isEmpty()) {
+			QStringList skill_list = trigger_str.split("|");
+			QStringList obj_name_list = obj_name_str.split("|");
+
+			for (int i = 0; i < skill_list.size() && i < obj_name_list.size(); ++i) {
+				// 使用 findPlayerByObjectName 搜索玩家（objectName），而非 findPlayer（general_name）
+				ServerPlayer *who = room->findPlayerByObjectName(obj_name_list.at(i), true);
+				if (who && !skill_list.at(i).isEmpty()) {
+					QStringList names = skill_list.at(i).split("+");
+					foreach (const QString &name, names) {
+						if (!name.trimmed().isEmpty())
+							result[who] << name.trimmed();
+					}
+				}
+			}
+		}
+		return result;
+	}
+
+	// 格式一：單一技能擁有者
 	ServerPlayer *ask_who = NULL;
 	if (lua_isuserdata(L, -1)) {
 		SWIG_ConvertPtr(L, -1, (void**)&ask_who, SWIGTYPE_p_ServerPlayer, 0);
