@@ -298,7 +298,13 @@ void ChooseTriggerOrderBox::storeMinimumWidth()
         if (w > width)
             width = w;
     }
-    m_minimumWidth = width + optionButtonHeight + 20;
+
+    QFont titleFont = Config.SmallFont;
+    titleFont.setBold(true);
+    QFontMetrics titleFontMetrics(titleFont);
+    int titleWidth = titleFontMetrics.width(title) + 40;
+
+    m_minimumWidth = qMax(width + optionButtonHeight + 20, titleWidth);
 }
 
 QRectF ChooseTriggerOrderBox::boundingRect() const
