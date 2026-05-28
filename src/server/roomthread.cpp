@@ -768,6 +768,15 @@ QMap<QString, int> triggerCounts;
 				has_compulsory = true;
 				break;
 			}
+			if (ctx.owner) {
+				foreach (const QString &mark, ctx.owner->getMarkNames()) {
+					if (mark.contains(ctx.skill_name) && mark.contains("_force")) {
+						has_compulsory = true;
+						break;
+					}
+				}
+				if (has_compulsory) break;
+			}
 		}
 
 		ServerPlayer *p = target;

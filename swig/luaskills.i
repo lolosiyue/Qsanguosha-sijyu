@@ -1300,54 +1300,27 @@ bool LuaScenarioRule::trigger(TriggerEvent event, Room *room, ServerPlayer *play
 }
 
 //#include <QMessageBox>
+#include <QThread>
+#include <QCoreApplication>
 
 static void Error(lua_State *L)
 {
-	const QString &error_string = lua_tostring(L, -1);
+	const QString error_string = lua_tostring(L, -1);
 	lua_pop(L, 1);
-	QMessageBox::warning(nullptr, "Lua script error!", error_string);
+	qWarning("Lua script error: %s", error_string.toUtf8().constData());
+	if (QThread::currentThread() == qApp->thread()) {
+		QMessageBox::warning(nullptr, "Lua script error!", error_string);
+	}
 }
 
 Skill::Frequency LuaTriggerSkill::getFrequency(const Player *target) const
 {
-	if (dynamic_frequency == 0)
-		return Skill::getFrequency(target);
-
-	lua_State*L = Sanguosha->getLuaState();
-
-	lua_rawgeti(L, LUA_REGISTRYINDEX, dynamic_frequency);
-	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTriggerSkill, 0);
-	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
-
-	if (lua_pcall(L, 2, 1, 0)!=0) {
-		Error(L);
-		return Skill::getFrequency(target);
-	}
-
-	int result = lua_tointeger(L, -1);
-	lua_pop(L, 1);
-	return (Skill::Frequency)result;
+	return Skill::getFrequency(target);
 }
 
 Skill::Frequency LuaTriggerV2Skill::getFrequency(const Player *target) const
 {
-	if (dynamic_frequency == 0)
-		return Skill::getFrequency(target);
-
-	lua_State*L = Sanguosha->getLuaState();
-
-	lua_rawgeti(L, LUA_REGISTRYINDEX, dynamic_frequency);
-	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTriggerV2Skill, 0);
-	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
-
-	if (lua_pcall(L, 2, 1, 0)!=0) {
-		Error(L);
-		return Skill::getFrequency(target);
-	}
-
-	int result = lua_tointeger(L, -1);
-	lua_pop(L, 1);
-	return (Skill::Frequency)result;
+	return Skill::getFrequency(target);
 }
 
 bool LuaProhibitSkill::isProhibited(const Player *from, const Player *to, const Card *card, const QList<const Player *> &others) const
