@@ -289,8 +289,14 @@ void General::lastWord() const
 	if (skin>0&&Sanguosha->playAudioEffect(QString("image/heroskin/audio/%1_%2/death/%1.ogg").arg(actualGn).arg(skin)))
 		return;
 
-    if (Sanguosha->playAudioEffect(QString("audio/death/%1.ogg").arg(objectName())))
-        return;
+	QString aliasedName = Sanguosha->getResourceAlias("generals", objectName());
+	if (aliasedName != objectName()) {
+		if (Sanguosha->playAudioEffect(QString("audio/death/%1.ogg").arg(aliasedName)))
+			return;
+	}
+
+	if (Sanguosha->playAudioEffect(QString("audio/death/%1.ogg").arg(objectName())))
+		return;
 
     QStringList origins = objectName().split("_");
     if (origins.length()>1&&Sanguosha->getGeneral(origins.last())) {
