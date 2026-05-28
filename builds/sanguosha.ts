@@ -5130,4 +5130,30 @@ P = 你自己, R = 你所在的房间</translation>
         <translation>牌堆底</translation>
     </message>
 </context>
+<context>
+    <name>ChooseTriggerOrderBox</name>
+    <message>
+        <location filename="../src/ui/choosetriggerorderbox.cpp" line="312"/>
+        <source>Please Select Trigger Order</source>
+        <translation>请选择触发顺序</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/choosetriggerorderbox.cpp" line="269"/>
+        <source>cancel</source>
+        <translation>取消</translation>
+    </message>
+</context>
+<context>
+    <name>TriggerOptionButton</name>
+    <message>
+        <location filename="../src/ui/choosetriggerorderbox.cpp" line="235"/>
+        <source>%1 (use upon %2)</source>
+        <translation>%1（对 %2 使用）</translation>
+    </message>
+    <message>
+        <location filename="../src/ui/choosetriggerorderbox.cpp" line="238"/>
+        <source>%1 (of %2's)</source>
+        <translation>%1（%2 的）</translation>
+    </message>
+</context>
 </TS>
