@@ -828,6 +828,13 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 				groupKey = key.arg(S_SKIN_KEY_DEFAULT_SECOND);
 				fileNameToResolve = _readImageConfig(groupKey, clipRegion, clipping, scaleRegion, scaled);
 				fileName = fileNameToResolve.arg(arg);
+			} else {
+				// Fallback to default2 (e.g., qun.png for kingdom icons) when file doesn't exist
+				groupKey = key.arg(S_SKIN_KEY_DEFAULT_SECOND);
+				fileNameToResolve = _readImageConfig(groupKey, clipRegion, clipping, scaleRegion, scaled);
+				if (!fileNameToResolve.isEmpty() && QFile::exists(fileNameToResolve)) {
+					fileName = fileNameToResolve;
+				}
 			}
 		}
 	}
