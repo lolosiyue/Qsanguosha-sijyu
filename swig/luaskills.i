@@ -37,6 +37,9 @@ public:
 	void setLimitScope(Skill::LimitScope scope);
 	void setMaxUsageLimit(int limit);
 	void setShimingSkill(bool shiming);
+	void setWakedSkills(const char *waked_skills);
+	void setChangeSkill(bool change);
+	void setHideSkill(bool hide);
 
 	virtual int getPriority() const;
 	virtual Frequency getFrequency(const Player *target) const;

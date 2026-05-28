@@ -1801,7 +1801,8 @@ QString Room::askForChoice(ServerPlayer*player, const QString&skill_name, const 
 	choiceData.forced_answer = QString();
 	choiceData.canceled = false;
 
-	thread->trigger(EventAskForChoice, this, player, QVariant::fromValue(choiceData));
+	QVariant choiceDataVar = QVariant::fromValue(choiceData);
+	thread->trigger(EventAskForChoice, this, player, choiceDataVar);
 
 	if (choiceData.canceled) {
 		return QString();
@@ -1857,7 +1858,7 @@ QString Room::askForTriggerOrder(ServerPlayer*player, const QString&reason, QLis
         return optional ? "cancel" : QString();
 
     QString answer;
-    if (contexts.length() == 1 && optional) {
+    if (contexts.length() == 1) {
         answer = contexts.first().skill_name;
     } else {
         AI*ai = player->getAI();
