@@ -105,6 +105,18 @@ public:
     {
         shiming_skill = shiming;
     }
+    inline void setWakedSkills(const QString &waked_skills)
+    {
+        this->waked_skills = waked_skills;
+    }
+    inline void setChangeSkill(bool change)
+    {
+        change_skill = change;
+    }
+    inline void setHideSkill(bool hide)
+    {
+        hide_skill = hide;
+    }
 
     virtual int getPriority() const;
     virtual Frequency getFrequency(const Player *target) const;
