@@ -741,6 +741,17 @@ void GeneralOverview::on_tableWidget_itemSelectionChanged()
 	QString oggtxt = "audio/death/"+general_name+".ogg";
 	QString last_word = Sanguosha->translate("~" + general_name);
 	QString actualGn = Sanguosha->getResourceAlias("heroskin", general_name);
+
+	QString aliasedGeneral = Sanguosha->getResourceAlias("generals", general_name);
+	if (aliasedGeneral != general_name) {
+		QString alias_ogg = "audio/death/" + aliasedGeneral + ".ogg";
+		QString alias_word = Sanguosha->translate("~" + aliasedGeneral);
+		if (QFile::exists(alias_ogg) || !alias_word.startsWith("~")) {
+			oggtxt = alias_ogg;
+			last_word = alias_word;
+		}
+	}
+
 	if (skin_index > 0) {
 		QString hero_skin = Sanguosha->translate(QString("~%1-%2_%3").arg(general_name).arg(general_name).arg(skin_index));
 		if (!hero_skin.startsWith("~")){
