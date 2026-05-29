@@ -65,6 +65,11 @@ public:
     }
     bool isEquipped() const;
 
+    inline bool hasVirtualCardVisual() const
+    {
+        return m_hasVirtualCardVisual;
+    }
+
     void setFrozen(bool is_frozen);
 
     inline void showFootnote()

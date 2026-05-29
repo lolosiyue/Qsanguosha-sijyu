@@ -142,6 +142,11 @@ bool TablePile::_addCardItems(QList<CardItem *> &card_items, const CardsMoveStru
 			card_item->setOpacity(0.0);
 			card_item->setPos(rightMostPos);
 			rightMostPos += QPointF(G_COMMON_LAYOUT.m_cardNormalWidth, 0);
+		}
+		else if (card_item->hasVirtualCardVisual()) {
+			card_item->setOpacity(0.0);
+			QPointF fadeInPos = QPointF(m_cardsDisplayRegion.right() + G_COMMON_LAYOUT.m_cardNormalWidth, m_cardsDisplayRegion.center().y());
+			card_item->setPos(fadeInPos);
 		}/*else if(moveInfo.from_place == Player::PlaceDelayedTrick// && moveInfo.from->getPhase()==Player::Judge
 			&& moveInfo.reason.m_reason == CardMoveReason::S_MASK_BASIC_REASON){
 			PixmapAnimation::GetPixmapAnimation(card_item, "question");
