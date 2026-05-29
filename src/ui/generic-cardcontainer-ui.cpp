@@ -1653,12 +1653,12 @@ void PlayerCardContainer::startHuaShen(QString generalName, QString skillName)
         _m_extraSkillBg->show();
         _m_extraSkillText->show();
         {
-            SafeLuaMutex &lua_mutex = Sanguosha->getLuaMutex();
-            if (lua_mutex.tryLock(50)) {
-                const Skill *s = Sanguosha->getSkill(skillName);
-                _m_extraSkillBg->setToolTip(buildOracleTooltip(s ? s->getOracleText(m_player) : QString(), s->getDescription(m_player)));
-                lua_mutex.unlock();
-            }
+			SafeLuaMutex &lua_mutex = Sanguosha->getLuaMutex();
+				if (lua_mutex.tryLock(50)) {
+					const Skill *s = Sanguosha->getSkill(skillName);
+					_m_extraSkillBg->setToolTip(s ? s->getDescription(m_player) : QString());
+					lua_mutex.unlock();
+				}
         }
     }
     _adjustComponentZValues();
