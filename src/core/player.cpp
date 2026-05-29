@@ -1763,7 +1763,12 @@ QString Player::getSkillDescription() const
 			}
 			if (!skillValid) desc = "<font color=\"#bab8ba\">" + desc + "</font>";
 		}
-        description += QString("<b>%1</b>：%2<br/><br/>").arg(Sanguosha->translate(skill->objectName())).arg(desc);
+		QString oracle = skill->getOracleText(this);
+		if (!oracle.isEmpty()) {
+			description += QString("<b>%1</b>：%2<br/><font color=\"#bab8ba\">%3</font><br/><br/>").arg(Sanguosha->translate(skill->objectName())).arg(desc).arg(oracle);
+		} else {
+			description += QString("<b>%1</b>：%2<br/><br/>").arg(Sanguosha->translate(skill->objectName())).arg(desc);
+		}
 		desc = skill->getWakedSkills();
 		if(desc.isEmpty()) continue;
 		relateds << desc.split(",");
@@ -1773,8 +1778,14 @@ QString Player::getSkillDescription() const
 		relateds.removeAll(sn);
 		if(hasSkill(sn, true)) continue;
 		const Skill *sk = Sanguosha->getSkill(sn);
-		if (sk&&sk->isVisible())
-			description += QString("<font color=\"#01A5AF\"><b>%1</b>：%2</font><br/><br/>").arg(Sanguosha->translate(sn)).arg(sk->getDescription(this));
+		if (sk&&sk->isVisible()) {
+			QString oracle = sk->getOracleText(this);
+			if (!oracle.isEmpty()) {
+				description += QString("<font color=\"#01A5AF\"><b>%1</b>：%2</font><br/><font color=\"#bab8ba\">%3</font><br/><br/>").arg(Sanguosha->translate(sn)).arg(sk->getDescription(this)).arg(oracle);
+			} else {
+				description += QString("<font color=\"#01A5AF\"><b>%1</b>：%2</font><br/><br/>").arg(Sanguosha->translate(sn)).arg(sk->getDescription(this));
+			}
+		}
 	}
     if (description.isEmpty()) description = tr("No skills");
 	else description.replace("\n", "<br/>");

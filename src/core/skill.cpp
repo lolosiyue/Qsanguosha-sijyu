@@ -7,6 +7,7 @@
 #include "clientstruct.h"
 #include "exppattern.h"
 #include <src/util/ThreadSafeHelper.h>
+#include <QDebug>
 
 int Skill::m_globalInstanceCount = 0;
 
@@ -217,7 +218,10 @@ QString Skill::getNotice(int index) const
 QString Skill::getOracleText(const Player *target) const
 {
     Q_UNUSED(target);
-    return Sanguosha->translate("^" + objectName());
+    QString oracle = Sanguosha->translate("^" + objectName());
+    if (oracle.startsWith("^"))
+        oracle.clear();
+    return oracle;
 }
 
 bool Skill::isVisible() const
@@ -1037,11 +1041,17 @@ int Skill::getMaxUsageLimit(const SkillContext &) const
 
 bool Skill::isUsable(const SkillContext &ctx) const
 {
-    if (!ctx.invoker) return false;
+    if (!ctx.invoker) {
+        return false;
+    }
 
     LimitScope scope = getLimitScope();
-    if (scope == Limit_None) return true;
-    if (scope == Limit_Custom) return checkCustomUsage(ctx);
+    if (scope == Limit_None) {
+        return true;
+    }
+    if (scope == Limit_Custom) {
+        return checkCustomUsage(ctx);
+    }
 
     ServerPlayer *holder = getUsageHolder(ctx);
     int max_limit = getMaxUsageLimit(ctx);
@@ -1061,6 +1071,7 @@ void Skill::addUsage(const SkillContext &ctx) const
     ServerPlayer *holder = getUsageHolder(ctx);
     QString tag_key = getUsageTagKey(ctx);
     int current_usage = holder->getTag(tag_key).toInt();
+
     holder->setTag(tag_key, current_usage + 1);
 }
 
