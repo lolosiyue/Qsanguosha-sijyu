@@ -1083,8 +1083,14 @@ TriggerList LuaTriggerV2Skill::triggerable(TriggerEvent triggerEvent, Room *room
 				if (who && !skill_list.at(i).isEmpty()) {
 					QStringList names = skill_list.at(i).split("+");
 					foreach (const QString &name, names) {
-						if (!name.trimmed().isEmpty())
-							result[who] << name.trimmed();
+						QString skillName = name.trimmed();
+						if (!skillName.isEmpty()) {
+							// 自動添加 instanceId（避免重複添加）
+							if (!skillName.contains('#')) {
+								skillName = QString("%1#%2").arg(skillName).arg(getInstanceId());
+							}
+							result[who] << skillName;
+						}
 					}
 				}
 			}
@@ -1106,7 +1112,14 @@ TriggerList LuaTriggerV2Skill::triggerable(TriggerEvent triggerEvent, Room *room
 		if (!names.isEmpty()) {
 			QStringList nameList = names.split("+");
 			foreach (const QString &name, nameList) {
-				result[ask_who ? ask_who : player] << name.trimmed();
+				QString skillName = name.trimmed();
+				if (!skillName.isEmpty()) {
+					// 自動添加 instanceId（避免重複添加）
+					if (!skillName.contains('#')) {
+						skillName = QString("%1#%2").arg(skillName).arg(getInstanceId());
+					}
+					result[ask_who ? ask_who : player] << skillName;
+				}
 			}
 		}
 	} else {

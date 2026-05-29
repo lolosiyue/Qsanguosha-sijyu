@@ -5,7 +5,6 @@
 #include "roomthread.h"
 #include "clientplayer.h"
 #include "clientstruct.h"
-//#include "util.h"
 #include "exppattern.h"
 #include <src/util/ThreadSafeHelper.h>
 
@@ -1044,9 +1043,11 @@ bool Skill::isUsable(const SkillContext &ctx) const
     if (scope == Limit_None) return true;
     if (scope == Limit_Custom) return checkCustomUsage(ctx);
 
+    ServerPlayer *holder = getUsageHolder(ctx);
     int max_limit = getMaxUsageLimit(ctx);
     QString tag_key = getUsageTagKey(ctx);
-    int current_usage = ctx.invoker->getTag(tag_key).toInt();
+    int current_usage = holder->getTag(tag_key).toInt();
+    
     return current_usage < max_limit;
 }
 

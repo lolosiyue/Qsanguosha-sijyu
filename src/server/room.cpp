@@ -1859,7 +1859,11 @@ QString Room::askForTriggerOrder(ServerPlayer*player, const QString&reason, QLis
 
     QString answer;
     if (contexts.length() == 1) {
-        answer = contexts.first().skill_name;
+        const SkillContext &ctx = contexts.first();
+        answer = ctx.skill_name;
+        if (ctx.instanceID > 0) {
+            answer += "#" + QString::number(ctx.instanceID);
+        }
     } else {
         AI*ai = player->getAI();
         if (ai) {
@@ -1899,10 +1903,14 @@ QString Room::askForTriggerOrder(ServerPlayer*player, const QString&reason, QLis
     QString result;
     if (answer.isEmpty() && !contexts.isEmpty()) {
         const SkillContext &ctx = contexts.at(qrand() % contexts.size());
+        QString skillFullName = ctx.skill_name;
+        if (ctx.instanceID > 0) {
+            skillFullName += "#" + QString::number(ctx.instanceID);
+        }
         if (ctx.owner && ctx.owner != player) {
-            result = ctx.skill_name + ":" + ctx.owner->objectName();
+            result = skillFullName + ":" + ctx.owner->objectName();
         } else {
-            result = ctx.skill_name;
+            result = skillFullName;
         }
     } else {
         // 客戶端返回格式："skillName:ownerName:invokerName..."，取前兩段
@@ -1915,15 +1923,23 @@ QString Room::askForTriggerOrder(ServerPlayer*player, const QString&reason, QLis
             if (ctx.skill_name == skillName) {
                 if (ownerObjectName.isEmpty()) {
                     found = true;
+                    QString skillFullName = ctx.skill_name;
+                    if (ctx.instanceID > 0) {
+                        skillFullName += "#" + QString::number(ctx.instanceID);
+                    }
                     if (ctx.owner && ctx.owner != player) {
-                        result = skillName + ":" + ctx.owner->objectName();
+                        result = skillFullName + ":" + ctx.owner->objectName();
                     } else {
-                        result = skillName;
+                        result = skillFullName;
                     }
                     break;
                 } else if (ctx.owner && ctx.owner->objectName() == ownerObjectName) {
                     found = true;
-                    result = skillName + ":" + ownerObjectName;
+                    QString skillFullName = ctx.skill_name;
+                    if (ctx.instanceID > 0) {
+                        skillFullName += "#" + QString::number(ctx.instanceID);
+                    }
+                    result = skillFullName + ":" + ownerObjectName;
                     break;
                 }
             }
@@ -1931,10 +1947,14 @@ QString Room::askForTriggerOrder(ServerPlayer*player, const QString&reason, QLis
 
         if (!found && !contexts.isEmpty()) {
             const SkillContext &ctx = contexts.at(qrand() % contexts.size());
+            QString skillFullName = ctx.skill_name;
+            if (ctx.instanceID > 0) {
+                skillFullName += "#" + QString::number(ctx.instanceID);
+            }
             if (ctx.owner && ctx.owner != player) {
-                result = ctx.skill_name + ":" + ctx.owner->objectName();
+                result = skillFullName + ":" + ctx.owner->objectName();
             } else {
-                result = ctx.skill_name;
+                result = skillFullName;
             }
         }
     }
