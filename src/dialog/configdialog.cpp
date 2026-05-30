@@ -49,6 +49,7 @@ ConfigDialog::ConfigDialog(QWidget *parent)
     ui->bubbleChatBoxKeepSpinBox->setValue(Config.BubbleChatBoxKeepTime);
     ui->backgroundChangeCheckBox->setChecked(Config.EnableAutoBackgroundChange);
     ui->backgroundCardDescription->setChecked(Config.EnableCardDescription);
+    ui->enableOracleConceptsCheckBox->setChecked(Config.value("EnableOracleConcepts", true).toBool());
 
     connect(ui->checkBoxRecorderAutoSave, SIGNAL(toggled(bool)), ui->checkBoxRecorderNetworkOnly, SLOT(setEnabled(bool)));
     ui->checkBoxRecorderAutoSave->setChecked(Config.value("recorder/autosave", true).toBool());
@@ -174,6 +175,8 @@ void ConfigDialog::saveConfig()
 
     Config.EnableCardDescription = ui->backgroundCardDescription->isChecked();
     Config.setValue("EnableCardDescription", Config.EnableCardDescription);
+
+    Config.setValue("EnableOracleConcepts", ui->enableOracleConceptsCheckBox->isChecked());
 
     enabled = ui->checkBoxRecorderAutoSave->isChecked();
     Config.setValue("recorder/autosave", enabled);

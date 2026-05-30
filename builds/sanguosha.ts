@@ -1124,6 +1124,10 @@
         <translation>卡牌描述显示英文名</translation>
     </message>
     <message>
+        <source>Enable oracle concepts display</source>
+        <translation>启用相关概念显示</translation>
+    </message>
+    <message>
         <location filename="../src/dialog/configdialog.ui" line="638"/>
         <source>Enable Melee Mode (Peach as Slash/Jink in late game)</source>
         <translation>启用鏖战模式（残局桃当杀/闪）</translation>
