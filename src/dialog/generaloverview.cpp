@@ -3,6 +3,7 @@
 #include "engine.h"
 #include "settings.h"
 #include "skin-bank.h"
+#include "oracle_helper.h"
 #include "clientstruct.h"
 #include "client.h"
 //#include "clientplayer.h"
@@ -840,7 +841,9 @@ void GeneralOverview::on_tableWidget_itemSelectionChanged()
 		ui->companionLineEdit->setText(companions_text);
 
 	button_layout->addStretch();
-	ui->skillTextEdit->append(general->getSkillDescription(true));
+	QString skillDesc = general->getSkillDescription(true);
+	QString oracleText = general->getOracleText();
+	ui->skillTextEdit->append(buildOracleTooltip(oracleText, skillDesc));
 	if (!m_previewMode && ServerInfo.DuringGame && ServerInfo.EnableCheat) {
         ui->changeGeneralButton->show();
         ui->changeGeneral2Button->show();
