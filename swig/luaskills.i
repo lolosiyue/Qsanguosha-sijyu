@@ -36,6 +36,7 @@ public:
 	void setBaseAmount(int amount);
 	void setLimitScope(Skill::LimitScope scope);
 	void setMaxUsageLimit(int limit);
+	void setPhaseNameStr(const char *phase_name);
 	void setShimingSkill(bool shiming);
 	void setWakedSkills(const char *waked_skills);
 	void setChangeSkill(bool change);

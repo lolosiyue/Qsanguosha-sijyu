@@ -68,7 +68,6 @@ public:
         Limit_Turn,
         Limit_Phase,
         Limit_Game,
-        Limit_Target,
         Limit_Custom
     };
 
@@ -110,12 +109,16 @@ public:
     virtual ServerPlayer *getUsageHolder(const SkillContext &ctx) const;
     QString getUsageTagKey(const SkillContext &ctx) const;
 
+    void setPhaseName(const QString &name) { m_phaseName = name; }
+    QString getPhaseName() const { return m_phaseName; }
+
     virtual bool isEquipSkill() const;
 
 protected:
     Frequency frequency;
     QString limit_mark;
     QString club_name;
+    QString m_phaseName;
     bool attached_lord_skill;
     bool change_skill;
     bool limited_skill;

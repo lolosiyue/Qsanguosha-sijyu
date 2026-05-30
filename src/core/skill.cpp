@@ -1056,7 +1056,7 @@ bool Skill::isUsable(const SkillContext &ctx) const
     ServerPlayer *holder = getUsageHolder(ctx);
     int max_limit = getMaxUsageLimit(ctx);
     QString tag_key = getUsageTagKey(ctx);
-    int current_usage = holder->getTag(tag_key).toInt();
+    int current_usage = holder->getMark(tag_key);
     
     return current_usage < max_limit;
 }
@@ -1070,12 +1070,13 @@ void Skill::addUsage(const SkillContext &ctx) const
 
     ServerPlayer *holder = getUsageHolder(ctx);
     QString tag_key = getUsageTagKey(ctx);
-    int current_usage = holder->getTag(tag_key).toInt();
+    int current_usage = holder->getMark(tag_key);
 
-    holder->setTag(tag_key, current_usage + 1);
+    Room *room = holder->getRoom();
+    room->setPlayerMark(holder, tag_key, current_usage + 1);
 }
 
-void Skill::resetUsage(ServerPlayer *owner, ServerPlayer *target) const
+void Skill::resetUsage(ServerPlayer *owner, ServerPlayer *) const
 {
     if (!owner) return;
 
@@ -1086,17 +1087,9 @@ void Skill::resetUsage(ServerPlayer *owner, ServerPlayer *target) const
     LimitScope scope = getLimitScope();
     if (scope == Limit_None || scope == Limit_Custom) return;
 
-    if (scope == Limit_Target) {
-        if (!target) return;
-        QString key = QString("Usage_%1_%2_%3-Clear")
-                          .arg(objectName())
-                          .arg(m_instanceId)
-                          .arg(target->objectName());
-        owner->removeTag(key);
-    } else {
-        QString key = getUsageTagKey(ctx);
-        owner->removeTag(key);
-    }
+    QString key = getUsageTagKey(ctx);
+    Room *room = owner->getRoom();
+    room->setPlayerMark(owner, key, 0);
 }
 
 bool Skill::checkCustomUsage(const SkillContext &) const
@@ -1120,15 +1113,11 @@ QString Skill::getUsageTagKey(const SkillContext &ctx) const
         case Limit_Round:
             return QString("Usage_%1_%2_lun").arg(objectName()).arg(instance_id);
         case Limit_Phase:
+            if (!m_phaseName.isEmpty())
+                return QString("Usage_%1_%2-%3Clear").arg(objectName()).arg(instance_id).arg(m_phaseName);
             return QString("Usage_%1_%2-PhaseClear").arg(objectName()).arg(instance_id);
         case Limit_Game:
             return QString("Usage_%1_%2_game").arg(objectName()).arg(instance_id);
-        case Limit_Target:
-            if (ctx.targets.isEmpty()) return QString();
-            return QString("Usage_%1_%2_%3-Clear")
-                .arg(objectName())
-                .arg(instance_id)
-                .arg(ctx.targets.first()->objectName());
         default:
             return QString();
     }
