@@ -1,5 +1,6 @@
 #include "oracle_helper.h"
 #include "engine.h"
+#include "settings.h"
 
 static QRegExp *g_conceptRx = nullptr;
 
@@ -41,10 +42,6 @@ static QStringList extractConcepts(const QString &html) {
 QString buildOracleTooltip(const QString &oracleText, const QString &skillDescription) {
     if (oracleText.isEmpty() && skillDescription.isEmpty()) return QString();
 
-    QStringList allConcepts;
-    allConcepts.append(extractConcepts(oracleText));
-    allConcepts.append(extractConcepts(skillDescription));
-
     QString result;
     if (!oracleText.isEmpty()) {
         result = oracleText;
@@ -54,10 +51,16 @@ QString buildOracleTooltip(const QString &oracleText, const QString &skillDescri
         result.append(skillDescription);
     }
 
-    if (!allConcepts.isEmpty()) {
-        result.append("<br/><hr/>相关概念：<br/>");
-        foreach (QString concept, allConcepts)
-            result.append(QString("· %1<br/>").arg(concept));
+    if (Config.value("EnableOracleConcepts", true).toBool()) {
+        QStringList allConcepts;
+        allConcepts.append(extractConcepts(oracleText));
+        allConcepts.append(extractConcepts(skillDescription));
+
+        if (!allConcepts.isEmpty()) {
+            result.append("<br/><hr/>相关概念：<br/>");
+            foreach (QString concept, allConcepts)
+                result.append(QString("· %1<br/>").arg(concept));
+        }
     }
 
     return result;

@@ -647,6 +647,16 @@
          </property>
         </widget>
        </item>
+       <item>
+        <widget class="QCheckBox" name="enableOracleConceptsCheckBox">
+         <property name="text">
+          <string>Enable oracle concepts display</string>
+         </property>
+         <property name="checked">
+          <bool>true</bool>
+         </property>
+        </widget>
+       </item>
       </layout>
      </widget>
     <widget class="QGroupBox" name="groupBoxRecorder">

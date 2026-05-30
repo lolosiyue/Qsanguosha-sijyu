@@ -17,9 +17,17 @@ CommonTranslationTable = {
 	["lordskill"] = "主公技，",
 	["oppphskill"] = "出牌阶段限一次，",
 	["changeskill"] = "转换技，",
+	["#changeskill"] = "带有「转换技」标签的技能所拥有的属性，分为阳、阴两种。所有技能最初的转换技状态均为阳。",
 	["hideskill"] = "隐匿技，",
+	["#hideskill"] = "在游戏开始时，改为对外亮出「隐匿牌」作为武将牌。\
+		「隐匿」状态下的武将没有体力值（血量显示为一个面具），性别为男。\
+		在「隐匿」状态下扣减体力时，防止之并亮出真正的武将牌，称为「登场」。\
+		回合开始时，若你处于「隐匿」状态，你「登场」。",
 	["turnskill"] = "每个回合限一次，",
 	["shimingskill"] = "使命技，",
+	["#shimingskill"] = "使命技是一种特殊的技能。\
+		1.拥有成功、失败的条件及其相应效果。\
+		2.在成功和失败后，此技能失效。",
 	["lunskill"] = "每轮限一次，",
 	["weiskill"] = "魏势力技，",
 	["shuskill"] = "蜀势力技，",
@@ -37,9 +45,12 @@ CommonTranslationTable = {
 	["playphasethreeskill"] = "出牌阶段限三次，",
 	["playphasefourskill"] = "出牌阶段限四次，",
 	["eternityskill"] = "持恒技，",
+	["#eternityskill"] = "拥有「持恒技」标签的技能不会因为其他技能的效果而失效。",
 	["gamestartskill"] = "游戏开始时，",
 	["highspiritedskill"] = "昂扬技，",
+	["#highspiritedskill"] = "昂扬技是一种特殊的限定技。技能发动后，本局游戏无法再次发动。当满足激昂条件后，昂掦技可再次发动。",
 	["rhythmskill"] = "韵律技，",
+	["#rhythmskill"] = "韵律技是一种特殊的转换技，分为「平」和「仄」两种状态。游戏开始时，韵律技处于「平」状态；满足「转韵」条件后，韵律技会转换到另一种状态，且重置技能发动次数。",
 
 	["Pairs"] = "双将",
 	["XMode"] = "血战到底",
@@ -351,8 +362,6 @@ CommonTranslationTable = {
 	["CAPITAL(18)"] = "十八",
 	["CAPITAL(19)"] = "十九",
 	["CAPITAL(20)"] = "二十",
-
-	
 
 	["fail"] = "失效",
 	["used"] = "已使用",
