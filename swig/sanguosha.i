@@ -1483,7 +1483,7 @@ struct SkillContext {
 class Skill: public QObject {
 public:
 	enum Frequency { Frequent, NotFrequent, Compulsory, Limited, Wake, NotCompulsory, }; //Change
-	enum LimitScope { Limit_None, Limit_Round, Limit_Turn, Limit_Phase, Limit_Game, Limit_Target, Limit_Custom };
+	enum LimitScope { Limit_None, Limit_Round, Limit_Turn, Limit_Phase, Limit_Game, Limit_Custom };
 
 	explicit Skill(const char*name, Frequency frequent = NotFrequent);
 	bool isLordSkill() const;

@@ -250,7 +250,7 @@ sgs.CreateTriggerV2Skill {
     name = "baGua",
     frequency = sgs.Skill_Compulsory,
     events = {sgs.DamageCaused, sgs.DamageInflicted},
-    limit_scope = sgs.Limit_Round,
+    limit_scope = sgs.Skill_Limit_Round,
     max_usage_limit = 2,
     can_trigger = function(skill, event, room, player, data)
         -- data 是原始事件數據（QVariant*），可用 data:toDamage() 等方法轉換
@@ -893,12 +893,11 @@ struct SkillContext {
 ```cpp
 enum LimitScope {
     Limit_None,    // 無限制
-    Limit_Round,    // 每輪限 X 次
-    Limit_Turn,     // 每回合限 X 次
-    Limit_Phase,    // 每階段限 X 次
-    Limit_Game,     // 每場遊戲限 X 次
-    Limit_Target,   // 對每個目標限 X 次
-    Limit_Custom    // 自定義 Lua 邏輯限制
+    Limit_Round,   // 每輪限 X 次（Lua: sgs.Skill_Limit_Round）
+    Limit_Turn,    // 每回合限 X 次（Lua: sgs.Skill_Limit_Turn）
+    Limit_Phase,   // 每階段限 X 次（Lua: sgs.Skill_Limit_Phase）
+    Limit_Game,    // 每場遊戲限 X 次（Lua: sgs.Skill_Limit_Game）
+    Limit_Custom   // 自定義 Lua 邏輯限制（Lua: sgs.Skill_Limit_Custom）
 };
 ```
 
@@ -906,11 +905,12 @@ enum LimitScope {
 
 | Scope | Tag Key | 自動清除時機 |
 |-------|---------|-------------|
-| `Limit_Turn` | `Usage_技能名_instanceID-Clear` | 回合結束 |
-| `Limit_Round` | `Usage_技能名_instanceID_lun` | 輪次結束 |
-| `Limit_Phase` | `Usage_技能名_instanceID-PhaseClear` | 階段結束 |
-| `Limit_Game` | `Usage_技能名_instanceID_game` | 整場不清除 |
-| `Limit_Target` | `Usage_技能名_instanceID_目標ObjectName-Clear` | 回合結束 |
+| `Skill_Limit_Turn` | `Usage_技能名_instanceID-Clear` | 回合結束 |
+| `Skill_Limit_Round` | `Usage_技能名_instanceID_lun` | 輪次結束 |
+| `Skill_Limit_Phase` | `Usage_技能名_instanceID-{Phase}Clear` | 指定階段結束 |
+| `Skill_Limit_Game` | `Usage_技能名_instanceID_game` | 整場不清除 |
+
+**phase_name 可選值**：`"Start"`、`"Judge"`、`"Draw"`、`"Play"`、`"Discard"`、`"Finish"`（首字母大寫）
 
 ### 核心方法
 
@@ -999,7 +999,7 @@ local baGua = sgs.CreateTriggerV2Skill {
     name = "baGua",
     frequency = sgs.Skill_Compulsory,
     events = {sgs.DamageCaused},
-    limit_scope = sgs.Limit_Round,
+    limit_scope = sgs.Skill_Limit_Round,
     max_usage_limit = 2,
     check_custom_usage = function(skill, ctx)
         -- 自定義邏輯（可選）

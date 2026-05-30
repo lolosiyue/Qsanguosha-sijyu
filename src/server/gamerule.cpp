@@ -433,11 +433,22 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 				}
 			}
         }
-        QString phase = QString("%1Clear").arg(change.from);
-        foreach (ServerPlayer *p,room->getAlivePlayers()) {
-            foreach (QString mark,p->getMarkNames()) {
-                if(mark.endsWith("-"+phase)||(player==p&&mark.endsWith("-Self"+phase)))
-                    room->setPlayerMark(p,mark,0);
+        static const QMap<Player::Phase, QString> phaseClearMap = {
+            {Player::RoundStart, "RoundStartClear"},
+            {Player::Start, "StartClear"},
+            {Player::Judge, "JudgeClear"},
+            {Player::Draw, "DrawClear"},
+            {Player::Play, "PlayClear"},
+            {Player::Discard, "DiscardClear"},
+            {Player::Finish, "FinishClear"}
+        };
+        QString phaseClear = phaseClearMap.value(change.from);
+        if (!phaseClear.isEmpty()) {
+            foreach (ServerPlayer *p,room->getAlivePlayers()) {
+                foreach (QString mark,p->getMarkNames()) {
+                    if(mark.endsWith("-"+phaseClear)||(player==p&&mark.endsWith("-Self"+phaseClear)))
+                        room->setPlayerMark(p,mark,0);
+                }
             }
         }
         break;

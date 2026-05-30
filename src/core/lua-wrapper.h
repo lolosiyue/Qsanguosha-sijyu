@@ -101,6 +101,10 @@ public:
     {
         m_maxUsageLimit = limit;
     }
+    inline void setPhaseNameStr(const QString &phase_name)
+    {
+        Skill::setPhaseName(phase_name);
+    }
     inline void setShimingSkill(bool shiming)
     {
         shiming_skill = shiming;
