@@ -5,7 +5,8 @@ static QRegExp *g_conceptRx = nullptr;
 
 static QRegExp &getConceptRx() {
     if (!g_conceptRx) {
-        g_conceptRx = new QRegExp("<a\\s+href=\"([^\"]+)\"[^>]*>([^<]*)</a>");
+        g_conceptRx = new QRegExp("<a\\s+href=\"([^\"]+)\"[^>]*>(.*)</a>");
+        g_conceptRx->setMinimal(true);
     }
     return *g_conceptRx;
 }
