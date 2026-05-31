@@ -335,6 +335,7 @@ private:
     QList<const Player *> selected_targets;
 
 	QList<int> RenPile;
+    QList<int> getRenPile() const { return RenPile; }
 
 	ChooseTriggerOrderBox *m_chooseTriggerOrderBox;
 
@@ -370,8 +371,6 @@ private:
     bool gift_selection_mode;
     QString current_gift_type;
     QList<Photo *> gift_highlighted_photos;
-    //QMap<QString, QGraphicsProxyWidget *> _m_privatePiles;
-    QGraphicsProxyWidget *ren_widget;
 
     // for 3v3 & 1v1 mode
     QSanSelectableItem *selector_box;

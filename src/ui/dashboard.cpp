@@ -957,7 +957,10 @@ void Dashboard::_createExtraButtons()
     m_btnNoNullification->setStyle(QSanButton::S_STYLE_TOGGLE);
     m_btnShefu = new QSanButton("handcard", "shefu", this);
     m_btnRenPile = new QSanButton("handcard", "ren_pile", this);
-    // @todo: auto hide.
+    m_renPileTextItem = new QGraphicsTextItem(this);
+    m_renPileTextItem->setDefaultTextColor(Qt::white);
+    m_renPileTextItem->setZValue(101);
+    m_renPileTextItem->hide();
     qreal pos = _dlayout->m_leftWidth, height=-m_btnReverseSelection->boundingRect().height();
     m_btnReverseSelection->setPos(pos, height);
     pos += m_btnReverseSelection->boundingRect().right();
@@ -1692,8 +1695,33 @@ void Dashboard::changeShefuState()
 
 void Dashboard::setRenPileState()
 {
-    QPointF posf = QCursor::pos();
-    _m_renpile_menu->popup(QPoint(posf.x(), posf.y()));
+    QList<int> renIds = RoomSceneInstance->getRenPile();
+    if (!renIds.isEmpty())
+        RoomSceneInstance->showPile(renIds, "ren_pile");
+}
+
+void Dashboard::updateRenPileButton(const QList<int> &cardIds)
+{
+    if (cardIds.isEmpty()) {
+        m_btnRenPile->hide();
+        m_renPileTextItem->hide();
+        return;
+    }
+
+    QString text = QString("仁(%1)").arg(cardIds.count());
+    m_renPileTextItem->setPlainText(text);
+    QFont font = m_renPileTextItem->font();
+    font.setBold(true);
+    font.setPointSize(10);
+    m_renPileTextItem->setFont(font);
+    QRectF btnRect = m_btnRenPile->boundingRect();
+    QRectF textRect = m_renPileTextItem->boundingRect();
+    qreal textX = m_btnRenPile->pos().x() + (btnRect.width() - textRect.width()) / 2;
+    qreal textY = m_btnRenPile->pos().y() + (btnRect.height() - textRect.height()) / 2;
+    m_renPileTextItem->setPos(textX, textY);
+
+    m_btnRenPile->show();
+    m_renPileTextItem->show();
 }
 
 void Dashboard::disableAllCards()
