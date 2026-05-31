@@ -132,7 +132,6 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	RoomSceneInstance = this;
 	_m_last_front_item = nullptr;
 	_m_last_front_ZValue = 0;
-	ren_widget = nullptr;
 
 	_m_roomSkin =&(QSanSkinFactory::getInstance().getCurrentSkinScheme().getRoomSkin());
 	_m_roomLayout =&(G_ROOM_SKIN.getRoomLayout());
@@ -2569,42 +2568,14 @@ bool RoomScene::_processCardsMove(CardsMoveStruct&move,bool isLost)
 				}
 			}
 			if(ids.length()>0){
-				QStringList Rens;
-				foreach(int id,RenPile){
-					const Card*c = Sanguosha->getEngineCard(id);
-					if(c) Rens << c->getLogName();
-				}
-				ren_widget->setVisible(Rens.length()>0);
-				QPushButton*button = (QPushButton*)ren_widget->widget();
-				button->setText(QString("仁（%1）").arg(Rens.length()));
-				button->setToolTip(Rens.join("<br/>"));
+				dashboard->updateRenPileButton(RenPile);
 				log_box->appendLog("$removeRenPile","",QStringList(),ListI2S(ids).join("+"),QString::number(ids.length()),"ren_pile");
 			}
 		}
 	}else{
 		if(move.to_place==Player::PlaceTable&&move.to_pile_name=="ren_pile"){
-			if(ren_widget==nullptr){
-				QPushButton*button = new QPushButton;
-				button->setObjectName("ren_widget");
-				button->setProperty("private_pile","true");
-				ren_widget = new QGraphicsProxyWidget(dashboard);
-				ren_widget->setObjectName("ren_widget");
-				ren_widget->setWidget(button);
-				ren_widget->resize(70,30);
-				ren_widget->setParent(this);
-				ren_widget->setZValue(10);
-				ren_widget->setPos(QPointF(width()*0.15,-height()*0.1));
-			}
-			QStringList Rens;
 			RenPile << move.card_ids;
-			foreach(int id,RenPile){
-				const Card*c = Sanguosha->getEngineCard(id);
-				if(c) Rens << c->getLogName();
-			}
-			ren_widget->setVisible(true);
-			QPushButton*button = (QPushButton*)ren_widget->widget();
-			button->setText(QString("仁（%1）").arg(Rens.length()));
-			button->setToolTip(Rens.join("<br/>"));
+			dashboard->updateRenPileButton(RenPile);
 			log_box->appendLog("$addRenPile",move.reason.m_playerId,QStringList(),ListI2S(move.card_ids).join("+"),QString::number(move.card_ids.length()),"ren_pile");
 		}
 	}

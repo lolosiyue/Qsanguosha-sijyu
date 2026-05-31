@@ -179,6 +179,7 @@ public slots:
     void cancelNullification();
     void setShefuState();
     void setRenPileState();
+    void updateRenPileButton(const QList<int> &cardIds);
     void skillButtonActivated();
     void skillButtonDeactivated();
     void selectAll();
@@ -260,6 +261,7 @@ protected:
     QSanButton *m_btnNoNullification;
     QSanButton *m_btnShefu;
     QSanButton *m_btnRenPile;
+    QGraphicsTextItem *m_renPileTextItem;
     QGraphicsPixmapItem *_m_leftFrame, *_m_middleFrame, *_m_rightFrame;
     // we can not draw bg directly _m_rightFrame because then it will always be
     // under avatar (since it's avatar's parent).
@@ -319,7 +321,6 @@ protected:
 
     QMenu *_m_sort_menu;
     QMenu *_m_shefu_menu;
-    QMenu *_m_renpile_menu;
     QList<QGraphicsObject *> m_dialogOptionItems;
     QMap<QString, QGraphicsObject *> m_dialogOptionItemMap;
     QString m_dialogOptionSkillName;
