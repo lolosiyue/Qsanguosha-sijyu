@@ -2,6 +2,7 @@
 #define _SKILL_H
 
 class QDialog;
+class Room;
 
 #include "structs.h"
 #include "scenario.h"
@@ -347,6 +348,9 @@ public:
     static QString parseSkillName(const QString &fullName, QString *source = NULL,
                                    QString *target = NULL, int *multiplier = NULL,
                                    int *instanceId = NULL);
+
+    virtual void onShimingSuccess(Room *room, ServerPlayer *player) const {}
+    virtual void onShimingFail(Room *room, ServerPlayer *player) const {}
 
 protected:
     int m_baseAmount;

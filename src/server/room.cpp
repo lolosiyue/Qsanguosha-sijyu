@@ -8575,6 +8575,14 @@ void Room::setShimingStatus(ServerPlayer*player, const QString&skillName, int st
 
 		QVariant data = skillName;
 		thread->trigger(EventShimingSuccess, this, player, data);
+
+		const Skill *skill = Sanguosha->getSkill(skillName);
+		if (skill) {
+			const TriggerV2Skill *v2Skill = qobject_cast<const TriggerV2Skill *>(skill);
+			if (v2Skill) {
+				v2Skill->onShimingSuccess(this, player);
+			}
+		}
 	} else if (status == 2) {
 		if (player->getMark(failMark) > 0) return;
 		removePlayerMark(player, successMark, player->getMark(successMark));
@@ -8590,6 +8598,14 @@ void Room::setShimingStatus(ServerPlayer*player, const QString&skillName, int st
 
 		QVariant data = skillName;
 		thread->trigger(EventShimingFail, this, player, data);
+
+		const Skill *skill = Sanguosha->getSkill(skillName);
+		if (skill) {
+			const TriggerV2Skill *v2Skill = qobject_cast<const TriggerV2Skill *>(skill);
+			if (v2Skill) {
+				v2Skill->onShimingFail(this, player);
+			}
+		}
 	} else {
 		removePlayerMark(player, successMark, player->getMark(successMark));
 		removePlayerMark(player, failMark, player->getMark(failMark));
