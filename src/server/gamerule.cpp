@@ -1102,10 +1102,31 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 			}
 			room->getThread()->trigger(CardOnEffect,room,effect.to,data);
 		}
+
+		bool skipThisTarget = false;
+		if (effect.card->isKindOf("SkillCard")) {
+			SkillCard *skillCard = qobject_cast<SkillCard*>(effect.card->getRealCard());
+			QString skillName = effect.card->getSkillName().isEmpty() 
+								? effect.card->objectName() : effect.card->getSkillName();
+			QString tagKey = "SkillCardContext_" + skillName + "_" 
+							 + QString::number(skillCard ? skillCard->getSkillInstanceId() : 0);
+
+			SkillContext ctx = room->getTag(tagKey).value<SkillContext>();
+			ctx.current_event = EventSkillEffectTarget;
+
+			QVariant ctxData = QVariant::fromValue(ctx);
+			skipThisTarget = room->getThread()->trigger(EventSkillEffectTarget, room, effect.to, ctxData);
+
+			ctx = ctxData.value<SkillContext>();
+			room->setTag(tagKey, QVariant::fromValue(ctx));
+		}
+
 		for (int i=0;i<=effect.extra_effect;i++){
-			if(effect.to->isAlive())
-				effect.card->onEffect(effect);
-			else
+			if(effect.to->isAlive()) {
+				if (!skipThisTarget) {
+					effect.card->onEffect(effect);
+				}
+			} else
 				break;
 		}
         break;

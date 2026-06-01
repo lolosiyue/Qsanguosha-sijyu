@@ -765,6 +765,7 @@ struct CardUseStruct {
 	QStringList no_respond_list; //不能被响应
 	QStringList no_offset_list; //不能被抵消
     int extra_use;
+    bool bypass_cost;
 };
 
 struct CardsMoveStruct {
@@ -1265,6 +1266,11 @@ public:
 	SkillCard();
 	void setUserString(const char*user_string);
 	QString getUserString() const;
+
+	void setSkillInstanceId(int id);
+	int getSkillInstanceId() const;
+	void setSkillOwner(ServerPlayer *owner);
+	ServerPlayer *getSkillOwner() const;
 
 	virtual QString getSubtype() const;
 	virtual QString getType() const;

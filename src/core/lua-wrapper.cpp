@@ -192,6 +192,9 @@ LuaSkillCard *LuaSkillCard::clone() const
     new_card->mute = mute;
     new_card->handling_method = handling_method;
 
+    new_card->m_skillInstanceId = m_skillInstanceId;
+    new_card->m_skillOwner = m_skillOwner;
+
     new_card->filter = filter;
     new_card->feasible = feasible;
     new_card->about_to_use = about_to_use;

@@ -425,6 +425,9 @@ function sgs.CreateSkillCard(spec)
 	card.on_effect = spec.on_effect
 	card.on_validate = spec.on_validate
 	card.on_validate_in_response = spec.on_validate_in_response
+	if type(spec.skill_instance_id) == "number" then
+		card:setSkillInstanceId(spec.skill_instance_id)
+	end
 	return card
 end
 

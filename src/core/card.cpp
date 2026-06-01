@@ -692,7 +692,7 @@ void Card::onUse(Room*room, CardUseStruct &card_use) const
 		reason.m_extraData = QVariant::fromValue(card_use.card);
 		if (card_use.card->getTypeId()!=TypeSkill) {
 			room->moveCardsAtomic(CardsMoveStruct(card_use.card->getSubcards(), nullptr, Player::PlaceTable, reason), true);
-		} else if (card_use.card->willThrow()){
+		} else if (card_use.card->willThrow() && !card_use.bypass_cost){
 			reason.m_reason = CardMoveReason::S_REASON_THROW;
 			room->moveCardsAtomic(CardsMoveStruct(card_use.card->getSubcards(), nullptr, Player::DiscardPile, reason), true);
 		}
@@ -964,7 +964,7 @@ bool Card::setProperty(const char* name, const QVariant& value) {
 
 // --------- Skill card ------------------
 
-SkillCard::SkillCard() : Card(NoSuit, 0)
+SkillCard::SkillCard() : Card(NoSuit, 0), m_skillInstanceId(0), m_skillOwner(nullptr)
 {
 	handling_method = MethodDiscard;
 }

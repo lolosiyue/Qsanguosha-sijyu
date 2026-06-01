@@ -144,6 +144,7 @@ struct CardUseStruct {
     QStringList no_respond_list;
     QStringList no_offset_list;
     int extra_use;
+    bool bypass_cost;
 };
 
 class CardMoveReason {
