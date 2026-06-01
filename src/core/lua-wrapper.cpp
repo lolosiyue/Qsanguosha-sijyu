@@ -43,6 +43,26 @@ QDialog *LuaTriggerSkill::getDialog() const
     return nullptr;
 }
 
+QDialog *LuaTriggerV2Skill::getDialog() const
+{
+    if (guhuo_type != "") {
+        return GuhuoDialog::getInstance(objectName(), guhuo_type.contains("l"), guhuo_type.contains("r"),
+            !guhuo_type.startsWith("!"), guhuo_type.contains("s"), guhuo_type.contains("d"), guhuo_type.contains("u"));
+    } else if (juguan_type != "") {
+        return JuguanDialog::getInstance(objectName(), juguan_type);
+    } else if (tiansuan_type != "") {
+        return TiansuanDialog::getInstance(objectName(), tiansuan_type);
+    }
+    return nullptr;
+}
+
+int LuaTriggerV2Skill::getPriority(TriggerEvent triggerEvent) const
+{
+    if (priority_table.keys().contains(triggerEvent))
+        return priority_table[triggerEvent];
+    return priority;
+}
+
 LuaProhibitSkill::LuaProhibitSkill(const QString &name, Frequency frequency)
     : ProhibitSkill(name), is_prohibited(0)
 {
