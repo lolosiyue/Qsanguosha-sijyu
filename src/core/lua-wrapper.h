@@ -121,8 +121,27 @@ public:
     {
         hide_skill = hide;
     }
+    inline void setGuhuoDialog(const QString &type)
+    {
+        this->guhuo_type = type;
+    }
+    inline void setJuguanDialog(const QString &type)
+    {
+        this->juguan_type = type;
+    }
+    inline void setTiansuanDialog(const QString &type)
+    {
+        this->tiansuan_type = type;
+    }
+    inline void insertPriorityTable(TriggerEvent triggerEvent, int priority)
+    {
+        priority_table[triggerEvent] = priority;
+    }
+
+    QDialog *getDialog() const;
 
     virtual int getPriority() const;
+    virtual int getPriority(TriggerEvent triggerEvent) const;
     virtual Frequency getFrequency(const Player *target) const;
     virtual Skill::LimitScope getLimitScope() const override;
     virtual int getMaxUsageLimit(const SkillContext &ctx) const override;
@@ -176,6 +195,9 @@ public:
 
 protected:
     QString guhuo_type;
+    QString juguan_type;
+    QString tiansuan_type;
+    QMap<TriggerEvent, int> priority_table;
     Skill::LimitScope m_limitScope;
     int m_maxUsageLimit;
 };

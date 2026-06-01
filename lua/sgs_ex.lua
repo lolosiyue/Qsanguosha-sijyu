@@ -69,6 +69,9 @@ function sgs.CreateTriggerV2Skill(spec)
 	local frequency = spec.frequency or sgs.Skill_NotFrequent
 	local limit_mark = spec.limit_mark or ""
 	local skill = sgs.LuaTriggerV2Skill(spec.name, frequency, limit_mark)
+	if type(spec.guhuo_type)=="string" and spec.guhuo_type~="" then skill:setGuhuoDialog(spec.guhuo_type) end
+	if type(spec.juguan_type)=="string" and spec.juguan_type~="" then skill:setJuguanDialog(spec.juguan_type) end
+	if type(spec.tiansuan_type)=="string" and spec.tiansuan_type~="" then skill:setTiansuanDialog(spec.tiansuan_type) end
 	if type(spec.events)=="number" then
 		skill:addEvent(spec.events)
 	elseif type(spec.events)=="table" then
@@ -86,7 +89,17 @@ function sgs.CreateTriggerV2Skill(spec)
 	if spec.can_trigger then skill.can_trigger = spec.can_trigger end
 	if spec.check_custom_usage then skill.check_custom_usage = spec.check_custom_usage end
 	if spec.view_as_skill then skill:setViewAsSkill(spec.view_as_skill) end
-	if type(spec.priority)=="number" then skill.priority = spec.priority end
+	if type(spec.priority)=="number" then skill.priority = spec.priority
+	elseif type(spec.priority)=="table" then
+		if type(spec.events)=="table" then
+			for i = 1,#spec.events do
+				if i>#spec.priority then break end
+				skill:insertPriorityTable(spec.events[i],spec.priority[i])
+			end
+		elseif type(spec.events)=="number" then
+			skill:insertPriorityTable(spec.events,spec.priority[1])
+		end
+	end
 	if type(spec.base_amount)=="number" then skill:setBaseAmount(spec.base_amount) end
 	if type(spec.limit_scope)=="number" then skill:setLimitScope(spec.limit_scope) end
 	if type(spec.max_usage_limit)=="number" then skill:setMaxUsageLimit(spec.max_usage_limit) end
