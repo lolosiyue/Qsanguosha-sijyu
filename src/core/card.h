@@ -256,8 +256,15 @@ public:
     virtual CardType getTypeId() const;
     virtual QString toString(bool hidden = false) const;
 
+    void setSkillInstanceId(int id) { m_skillInstanceId = id; }
+    int getSkillInstanceId() const { return m_skillInstanceId; }
+    void setSkillOwner(ServerPlayer *owner) { m_skillOwner = owner; }
+    ServerPlayer *getSkillOwner() const { return m_skillOwner; }
+
 protected:
     QString user_string;
+    int m_skillInstanceId;
+    ServerPlayer *m_skillOwner;
 };
 
 class DummyCard : public SkillCard

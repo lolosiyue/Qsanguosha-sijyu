@@ -5015,6 +5015,59 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		use.m_addHistory = false;
 	const Card*card = use.card->validate(use);
 	if(card==nullptr) return false;
+
+	bool isSkillCard = card->isKindOf("SkillCard");
+	SkillContext skillCardCtx;
+	QVariant skillCardCtxData;
+	bool skipOnUse = false;
+	QString tagKey;
+
+	if (isSkillCard) {
+		SkillCard *skillCard = qobject_cast<SkillCard*>(card->getRealCard());
+
+		skillCardCtx.skill_name = card->getSkillName().isEmpty() 
+								  ? card->objectName() : card->getSkillName();
+		skillCardCtx.invoker = use.from;
+		skillCardCtx.owner = skillCard ? skillCard->getSkillOwner() : nullptr;
+		if (!skillCardCtx.owner) skillCardCtx.owner = use.from;
+		skillCardCtx.targets = use.to;
+		skillCardCtx.instanceID = skillCard ? skillCard->getSkillInstanceId() : 0;
+		skillCardCtx.use_card = card;
+
+		tagKey = "SkillCardContext_" + skillCardCtx.skill_name + "_" 
+				 + QString::number(skillCardCtx.instanceID);
+
+		setTag(tagKey, QVariant::fromValue(skillCardCtx));
+
+		skillCardCtx.current_event = EventSkillWillInvoke;
+		skillCardCtxData = QVariant::fromValue(skillCardCtx);
+		thread->trigger(EventSkillWillInvoke, this, use.from, skillCardCtxData);
+		skillCardCtx = skillCardCtxData.value<SkillContext>();
+		if (skillCardCtx.is_canceled) {
+			removeTag(tagKey);
+			return false;
+		}
+
+		if (!skillCardCtx.bypass_cost) {
+			skillCardCtx.current_event = EventSkillPay;
+			skillCardCtxData = QVariant::fromValue(skillCardCtx);
+			thread->trigger(EventSkillPay, this, use.from, skillCardCtxData);
+			skillCardCtx = skillCardCtxData.value<SkillContext>();
+		}
+		use.bypass_cost = skillCardCtx.bypass_cost;
+
+		skillCardCtx.updated_targets = skillCardCtx.targets;
+		skillCardCtx.current_event = EventSkillTargetConfirming;
+		skillCardCtxData = QVariant::fromValue(skillCardCtx);
+		thread->trigger(EventSkillTargetConfirming, this, use.from, skillCardCtxData);
+		skillCardCtx = skillCardCtxData.value<SkillContext>();
+		if (!skillCardCtx.updated_targets.isEmpty()) {
+			use.to = skillCardCtx.updated_targets;
+		}
+
+		setTag(tagKey, QVariant::fromValue(skillCardCtx));
+	}
+
 	QList<int> ids;
 	if (use.card->isVirtualCard()) ids = use.card->getSubcards();
 	else ids << use.card->getId();
@@ -5032,6 +5085,25 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		add_history = true;
 		addPlayerHistory(use.from, key);
 	}
+
+	if (isSkillCard) {
+		skillCardCtx = getTag(tagKey).value<SkillContext>();
+		skillCardCtx.current_event = EventSkillInvoking;
+		skillCardCtxData = QVariant::fromValue(skillCardCtx);
+		thread->trigger(EventSkillInvoking, this, use.from, skillCardCtxData);
+		skillCardCtx = skillCardCtxData.value<SkillContext>();
+		setTag(tagKey, QVariant::fromValue(skillCardCtx));
+	}
+
+	if (isSkillCard) {
+		skillCardCtx = getTag(tagKey).value<SkillContext>();
+		skillCardCtx.current_event = EventSkillEffect;
+		skillCardCtxData = QVariant::fromValue(skillCardCtx);
+		skipOnUse = thread->trigger(EventSkillEffect, this, use.from, skillCardCtxData);
+		skillCardCtx = skillCardCtxData.value<SkillContext>();
+		setTag(tagKey, QVariant::fromValue(skillCardCtx));
+	}
+
 	try {
 		if (use.card->getRealCard() == card){
 			if (!use.card->isVirtualCard()){
@@ -5041,7 +5113,9 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 			} else if (use.card->getTypeId() != Card::TypeSkill) {
 				showVirtualCard(use.from, use.card);
 			}
-			use.card->onUse(this, use);
+			if (!skipOnUse) {
+				use.card->onUse(this, use);
+			}
 		} else {
 			use.card = card;
 			return useCard(use, add_history);
@@ -5067,8 +5141,26 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 				setCardFlag(id, "-using");
 			}
 		}
+
+		if (isSkillCard) {
+			skillCardCtx = getTag(tagKey).value<SkillContext>();
+			skillCardCtx.current_event = EventSkillEffectFinished;
+			skillCardCtxData = QVariant::fromValue(skillCardCtx);
+			thread->trigger(EventSkillEffectFinished, this, use.from, skillCardCtxData);
+			removeTag(tagKey);
+		}
+
 		throw triggerEvent;
 	}
+
+	if (isSkillCard) {
+		skillCardCtx = getTag(tagKey).value<SkillContext>();
+		skillCardCtx.current_event = EventSkillEffectFinished;
+		skillCardCtxData = QVariant::fromValue(skillCardCtx);
+		thread->trigger(EventSkillEffectFinished, this, use.from, skillCardCtxData);
+		removeTag(tagKey);
+	}
+
 	if(add_history&&!use.m_addHistory)
 		addPlayerHistory(use.from, key, -1);
 	return true;
