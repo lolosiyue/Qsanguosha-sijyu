@@ -36,8 +36,8 @@ struct SkillContext {
 
     SkillContext() : invoker(nullptr), owner(nullptr), use_card(nullptr),
                      original_data(nullptr), instanceID(0), preferredTarget(nullptr), preferredTargetSeat(-1),
-                     is_forced(false), is_canceled(false),
-                     bypass_cost(false), manual_effect(false), current_event(NonTrigger),
+                      is_forced(false), is_canceled(false),
+                      bypass_cost(false), manual_effect(false), current_event(NonTrigger),
                      amount(1), modified_amount(0), trigger_count(0), multiplier(1) {}
 
     QVariant toVariant() const;

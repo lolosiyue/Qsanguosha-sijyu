@@ -1104,12 +1104,25 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 		}
 
 		bool skipThisTarget = false;
-		if (effect.card->isKindOf("SkillCard")) {
-			SkillCard *skillCard = qobject_cast<SkillCard*>(effect.card->getRealCard());
+		bool isSkillCard = effect.card->isKindOf("SkillCard");
+		bool isViewAsCard = !isSkillCard && effect.card->isVirtualCard() 
+							&& !effect.card->getSkillName().isEmpty();
+
+		if (isSkillCard || isViewAsCard) {
+			SkillCard *skillCard = isSkillCard ? qobject_cast<SkillCard*>(effect.card->getRealCard()) : nullptr;
 			QString skillName = effect.card->getSkillName().isEmpty() 
 								? effect.card->objectName() : effect.card->getSkillName();
-			QString tagKey = "SkillCardContext_" + skillName + "_" 
-							 + QString::number(skillCard ? skillCard->getSkillInstanceId() : 0);
+			QString prefix = isViewAsCard ? "ViewAsContext_" : "SkillCardContext_";
+
+			int instanceId = 0;
+			if (isSkillCard) {
+				instanceId = skillCard ? skillCard->getSkillInstanceId() : 0;
+			} else {
+				const ViewAsSkill *vsSkill = Sanguosha->getViewAsSkill(skillName);
+				instanceId = vsSkill ? vsSkill->getInstanceId() : 0;
+			}
+
+			QString tagKey = prefix + skillName + "_" + QString::number(instanceId);
 
 			SkillContext ctx = room->getTag(tagKey).value<SkillContext>();
 			ctx.current_event = EventSkillEffectTarget;

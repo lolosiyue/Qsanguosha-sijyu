@@ -5017,13 +5017,14 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 	if(card==nullptr) return false;
 
 	bool isSkillCard = card->isKindOf("SkillCard");
+	bool isViewAsCard = !isSkillCard && card->isVirtualCard() && !card->getSkillName().isEmpty();
 	SkillContext skillCardCtx;
 	QVariant skillCardCtxData;
 	bool skipOnUse = false;
 	QString tagKey;
 
-	if (isSkillCard) {
-		SkillCard *skillCard = qobject_cast<SkillCard*>(card->getRealCard());
+	if (isSkillCard || isViewAsCard) {
+		SkillCard *skillCard = isSkillCard ? qobject_cast<SkillCard*>(card->getRealCard()) : nullptr;
 
 		skillCardCtx.skill_name = card->getSkillName().isEmpty() 
 								  ? card->objectName() : card->getSkillName();
@@ -5034,7 +5035,13 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		skillCardCtx.instanceID = skillCard ? skillCard->getSkillInstanceId() : 0;
 		skillCardCtx.use_card = card;
 
-		tagKey = "SkillCardContext_" + skillCardCtx.skill_name + "_" 
+		if (isViewAsCard) {
+			const ViewAsSkill *vsSkill = Sanguosha->getViewAsSkill(skillCardCtx.skill_name);
+			skillCardCtx.instanceID = vsSkill ? vsSkill->getInstanceId() : 0;
+		}
+
+		QString prefix = isViewAsCard ? "ViewAsContext_" : "SkillCardContext_";
+		tagKey = prefix + skillCardCtx.skill_name + "_" 
 				 + QString::number(skillCardCtx.instanceID);
 
 		setTag(tagKey, QVariant::fromValue(skillCardCtx));
@@ -5086,7 +5093,7 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		addPlayerHistory(use.from, key);
 	}
 
-	if (isSkillCard) {
+	if (isSkillCard || isViewAsCard) {
 		skillCardCtx = getTag(tagKey).value<SkillContext>();
 		skillCardCtx.current_event = EventSkillInvoking;
 		skillCardCtxData = QVariant::fromValue(skillCardCtx);
@@ -5095,7 +5102,7 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		setTag(tagKey, QVariant::fromValue(skillCardCtx));
 	}
 
-	if (isSkillCard) {
+	if (isSkillCard || isViewAsCard) {
 		skillCardCtx = getTag(tagKey).value<SkillContext>();
 		skillCardCtx.current_event = EventSkillEffect;
 		skillCardCtxData = QVariant::fromValue(skillCardCtx);
@@ -5142,7 +5149,7 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 			}
 		}
 
-		if (isSkillCard) {
+		if (isSkillCard || isViewAsCard) {
 			skillCardCtx = getTag(tagKey).value<SkillContext>();
 			skillCardCtx.current_event = EventSkillEffectFinished;
 			skillCardCtxData = QVariant::fromValue(skillCardCtx);
@@ -5153,7 +5160,7 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		throw triggerEvent;
 	}
 
-	if (isSkillCard) {
+	if (isSkillCard || isViewAsCard) {
 		skillCardCtx = getTag(tagKey).value<SkillContext>();
 		skillCardCtx.current_event = EventSkillEffectFinished;
 		skillCardCtxData = QVariant::fromValue(skillCardCtx);
