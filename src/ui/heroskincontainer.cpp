@@ -64,11 +64,16 @@ HeroSkinContainer::HeroSkinContainer(const QString &generalName,
 bool HeroSkinContainer::hasSkin(const QString &generalName)
 {
     if (!m_generalToHasSkin.contains(generalName)) {
-        QStringList files = HeroSkinContainer::getHeroSkinFiles(generalName);
-        foreach (const QString &file, files) {
-            if (SKIN_FILE_NAME_PATTERN.exactMatch(file)) {
-                m_generalToHasSkin[generalName] = true;
-                break;
+        QDir dir(QString("hero-skin/%1").arg(generalName));
+        if (dir.exists()) {
+            QStringList subdirs = dir.entryList(QDir::AllDirs | QDir::NoDotAndDotDot, QDir::Name);
+            foreach (const QString &subdir, subdirs) {
+                bool ok;
+                subdir.toInt(&ok);
+                if (ok) {
+                    m_generalToHasSkin[generalName] = true;
+                    break;
+                }
             }
         }
     }
@@ -112,17 +117,19 @@ bool caseInsensitiveLessThan(const QString &s1, const QString &s2)
 
 QStringList HeroSkinContainer::getHeroSkinFiles(const QString &generalName)
 {
-    if (!m_generalToSkinFiles.contains(generalName)) {
-        QDir dir(HEROSKIN_PIXMAP_PATH);
-        dir.setNameFilters(QStringList(QString("%1_*.png").arg(generalName)));
-        QStringList heroSkinFiles = dir.entryList(QDir::Files | QDir::NoDotAndDotDot);
-        if (!heroSkinFiles.isEmpty()) {
-            std::sort(heroSkinFiles.begin(), heroSkinFiles.end(), caseInsensitiveLessThan);
-            m_generalToSkinFiles[generalName] = heroSkinFiles;
+    QDir dir(QString("hero-skin/%1").arg(generalName));
+    QStringList result;
+    if (dir.exists()) {
+        QStringList subdirs = dir.entryList(QDir::AllDirs | QDir::NoDotAndDotDot, QDir::Name);
+        foreach (const QString &subdir, subdirs) {
+            bool ok;
+            subdir.toInt(&ok);
+            if (ok) {
+                result << subdir;
+            }
         }
     }
-
-    return m_generalToSkinFiles[generalName];
+    return result;
 }
 
 void HeroSkinContainer::initSkins()
@@ -136,13 +143,11 @@ void HeroSkinContainer::initSkins()
     int skinIndexUsed = Config.value(QString("HeroSkin/%1").arg(m_generalName), 0).toInt();
     createSkinItem(skinIndexUsed, dummyRectItem, true);
 
-    QStringList files = getHeroSkinFiles(m_generalName);
-    foreach (const QString &file, files) {
-        if (SKIN_FILE_NAME_PATTERN.exactMatch(file)) {
-            int skinIndex = SKIN_FILE_NAME_PATTERN.capturedTexts().at(1).toInt();
-            if (skinIndexUsed != skinIndex) {
-                createSkinItem(skinIndex, dummyRectItem);
-            }
+    QStringList skinDirs = getHeroSkinFiles(m_generalName);
+    foreach (const QString &skinDir, skinDirs) {
+        int skinIndex = skinDir.toInt();
+        if (skinIndex > 0 && skinIndexUsed != skinIndex) {
+            createSkinItem(skinIndex, dummyRectItem);
         }
     }
 
@@ -159,6 +164,10 @@ void HeroSkinContainer::createSkinItem(int skinIndex, QGraphicsItem *parent, boo
     G_ROOM_SKIN.getHeroSkinContainerGeneralIconPathAndClipRegion(m_generalName,
         skinIndex, generalIconPath, clipRegion);
     if (QFile::exists(generalIconPath)) {
+        if (skinIndex > 0) {
+            const General *general = Sanguosha->getGeneral(m_generalName);
+            if (general) general->tryLoadingSkinTranslation(skinIndex);
+        }
         SkinItem *skinItem = new SkinItem(generalIconPath, clipRegion,
             skinIndex, used, parent);
         connect(skinItem, SIGNAL(clicked(int)),
@@ -242,6 +251,11 @@ void HeroSkinContainer::skinSelected(int skinIndex)
     (0 == skinIndex) ? Config.remove(m_generalName)
         : Config.setValue(m_generalName, skinIndex);
     Config.endGroup();
+
+    if (skinIndex > 0) {
+        const General *general = Sanguosha->getGeneral(m_generalName);
+        if (general) general->tryLoadingSkinTranslation(skinIndex);
+    }
 
     close();
 

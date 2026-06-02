@@ -98,6 +98,7 @@ public:
     QString getClubName() const;
     QString getClubMark() const;
     QString getWakedSkills() const;
+    QStringList getSources(const QString &general, const int skinId) const;
     QStringList getSources() const;
     bool setProperty(const char* name, const QVariant& value);
 
@@ -130,6 +131,7 @@ protected:
 private:
     bool lord_skill;
     QStringList sources;
+    mutable QHash<const QString, QStringList> skinSourceHash;
     int m_instanceId;
     static int m_globalInstanceCount;
 };

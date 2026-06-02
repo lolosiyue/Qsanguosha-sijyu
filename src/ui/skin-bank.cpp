@@ -392,9 +392,8 @@ QPixmap QSanRoomSkin::getGeneralPixmapForPhoto(const QString &generalName, Gener
 	if (isDualGeneral && !pixmap.isNull()) {
 		QString gn = name;
 		QString fulldualPath = QString("image/fullskin/generals/fulldual/%1.jpg").arg(gn);
-		QString actualGn = Sanguosha->getResourceAlias("heroskin", gn);
 		int skin_index = Config.value("HeroSkin/" + gn, 0).toInt();
-		QString fulldualSkinPath = QString("image/heroskin/fullskin/generals/fulldual/%1_%2.jpg").arg(actualGn).arg(skin_index);
+		QString fulldualSkinPath = QString("hero-skin/%1/%2/card.jpg").arg(gn).arg(skin_index);
 		
 		if (skin_index > 0 && QFile::exists(fulldualSkinPath)) {
 			pixmap.load(fulldualSkinPath);
@@ -485,16 +484,18 @@ QString QSanRoomSkin::getPlayerAudioEffectPath(const QString &eventName, bool is
 QString QSanRoomSkin::getPlayerAudioEffectPathWithGeneral(const QString &eventName, const QString &category, int index,
                                                           const QString &generalName, int skinIndex) const
 {
-	QString actualGn = Sanguosha->getResourceAlias("heroskin", generalName);
 	QString cardAudioGn = Sanguosha->getResourceAlias("card_audio", generalName);
-	if (cardAudioGn == generalName) cardAudioGn = actualGn;
+	if (cardAudioGn == generalName) cardAudioGn = generalName;
 
 	if (skinIndex > 0) {
-		QString heroskinSkillPath = QString("image/heroskin/audio/%1_%2/skill").arg(actualGn).arg(skinIndex);
-		if (QFile::exists(heroskinSkillPath)) {
-			QStringList filters;
-			filters << "*.ogg" << "*.wav";
-			QDir dir(heroskinSkillPath);
+		const General *general = Sanguosha->getGeneral(generalName);
+		if (general) general->tryLoadingSkinTranslation(skinIndex);
+
+		QString heroskinSkillPath = QString("hero-skin/%1/%2").arg(generalName).arg(skinIndex);
+		QStringList filters;
+		filters << "*.ogg" << "*.wav";
+		QDir dir(heroskinSkillPath);
+		if (dir.exists()) {
 			QStringList files = dir.entryList(filters, QDir::Files | QDir::Readable, QDir::Name);
 			QStringList matchedFiles;
 			foreach (QString file, files) {
@@ -521,40 +522,6 @@ QString QSanRoomSkin::getPlayerAudioEffectPathWithGeneral(const QString &eventNa
 					}
 				}
 				return heroskinSkillPath + "/" + targetFile;
-			}
-		}
-
-		QString heroskinCardPath = QString("image/heroskin/audio/%1_%2/card").arg(cardAudioGn).arg(skinIndex);
-		if (QFile::exists(heroskinCardPath)) {
-			QStringList filters;
-			filters << "*.ogg" << "*.wav";
-			QDir dir(heroskinCardPath);
-			QStringList files = dir.entryList(filters, QDir::Files | QDir::Readable, QDir::Name);
-			QStringList matchedFiles;
-			foreach (QString file, files) {
-				if (file.startsWith(eventName))
-					matchedFiles << file;
-			}
-			if (!matchedFiles.isEmpty()) {
-				QString targetFile;
-				if (index < 1) {
-					targetFile = matchedFiles.at(qrand() % matchedFiles.length());
-				} else {
-					QString indexedFile = QString("%1%2.ogg").arg(eventName).arg(index);
-					if (matchedFiles.contains(indexedFile)) {
-						targetFile = indexedFile;
-					} else {
-						QString indexedFileWav = QString("%1%2.wav").arg(eventName).arg(index);
-						if (matchedFiles.contains(indexedFileWav)) {
-							targetFile = indexedFileWav;
-						} else if (index > matchedFiles.length()) {
-							targetFile = matchedFiles.last();
-						} else {
-							targetFile = matchedFiles.at(index - 1);
-						}
-					}
-				}
-				return heroskinCardPath + "/" + targetFile;
 			}
 		}
 	}
@@ -859,12 +826,18 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 	if (fileName.contains("/generals")) {
 		QString gn = fileName.split("/").last().split(".").first();
 		if(Sanguosha->getGeneral(gn)){
-			QString actualGn = Sanguosha->getResourceAlias("heroskin", gn);
 			int skin_index = Config.value("HeroSkin/"+gn, 0).toInt();
 			
 			if (skin_index > 0) {
-				fileName.replace("image/", "image/heroskin/");
-				fileName.replace(gn, QString(actualGn+"_%1").arg(skin_index));
+				QString heroskinFile = QString("hero-skin/%1/%2/full.png").arg(gn).arg(skin_index);
+				if (QFile::exists(heroskinFile)) {
+					fileName = heroskinFile;
+				} else {
+					QString heroskinCard = QString("hero-skin/%1/%2/card.jpg").arg(gn).arg(skin_index);
+					if (QFile::exists(heroskinCard)) {
+						fileName = heroskinCard;
+					}
+				}
 			}else if(!QFile::exists(fileName)){
 				fileName.replace(gn, gn.split("_").last());
 			}
@@ -873,7 +846,7 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 
 	// Resource Alias fallback: if file still not found, try alias mapping
 	// Skip when on a heroskin path — skins are general-specific, alias is for base images only
-	if (!QFile::exists(fileName) && !arg.isEmpty() && !fileName.contains("/heroskin/")) {
+	if (!QFile::exists(fileName) && !arg.isEmpty() && !fileName.contains("hero-skin/") && !fileName.contains("/heroskin/")) {
 		QString aliasArg = Sanguosha->getResourceAlias("generals", arg);
 		if (aliasArg != arg) {
 			QString aliasKey = key.arg(aliasArg);
@@ -893,12 +866,18 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 			if (fileName.contains("/generals")) {
 				QString gn = fileName.split("/").last().split(".").first();
 				if(Sanguosha->getGeneral(gn)){
-					QString actualGn = Sanguosha->getResourceAlias("heroskin", gn);
 					int skin_index = Config.value("HeroSkin/"+gn, 0).toInt();
 					
 					if (skin_index > 0) {
-						fileName.replace("image/", "image/heroskin/");
-						fileName.replace(gn, QString(actualGn+"_%1").arg(skin_index));
+						QString heroskinFile = QString("hero-skin/%1/%2/full.png").arg(gn).arg(skin_index);
+						if (QFile::exists(heroskinFile)) {
+							fileName = heroskinFile;
+						} else {
+							QString heroskinCard = QString("hero-skin/%1/%2/card.jpg").arg(gn).arg(skin_index);
+							if (QFile::exists(heroskinCard)) {
+								fileName = heroskinCard;
+							}
+						}
 					}
 				}
 			}
