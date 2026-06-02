@@ -1,5 +1,6 @@
 #include "general.h"
 #include "engine.h"
+#include "util.h"
 //#include "skill.h"
 //#include "package.h"
 //#include "client.h"
@@ -306,9 +307,24 @@ QString General::getOracleText() const
 void General::lastWord() const
 {
     int skin = Config.value("HeroSkin/"+objectName(), 0).toInt();
-    QString actualGn = Sanguosha->getResourceAlias("heroskin", objectName());
-	if (skin>0&&Sanguosha->playAudioEffect(QString("image/heroskin/audio/%1_%2/death/%1.ogg").arg(actualGn).arg(skin)))
-		return;
+
+    if (skin > 0) {
+        QString fileName = QString("hero-skin/%1/%2/death.ogg")
+                .arg(objectName()).arg(skin);
+        if (QFile::exists(fileName)) {
+            Sanguosha->playAudioEffect(fileName);
+            return;
+        }
+        QStringList origin_generals = objectName().split("_");
+        if (origin_generals.length() > 1) {
+            fileName = QString("hero-skin/%1/%2/death.ogg")
+                    .arg(origin_generals.last()).arg(skin);
+            if (QFile::exists(fileName)) {
+                Sanguosha->playAudioEffect(fileName);
+                return;
+            }
+        }
+    }
 
 	QString aliasedName = Sanguosha->getResourceAlias("generals", objectName());
 	if (aliasedName != objectName()) {
@@ -322,9 +338,14 @@ void General::lastWord() const
     QStringList origins = objectName().split("_");
     if (origins.length()>1&&Sanguosha->getGeneral(origins.last())) {
 		skin = Config.value("HeroSkin/"+origins.last(), 0).toInt();
-		QString actualOrigin = Sanguosha->getResourceAlias("heroskin", origins.last());
-		if (skin>0&&Sanguosha->playAudioEffect(QString("image/heroskin/audio/%1_%2/death/%1.ogg").arg(actualOrigin).arg(skin)))
-			return;
+		if (skin > 0) {
+            QString fileName = QString("hero-skin/%1/%2/death.ogg")
+                    .arg(origins.last()).arg(skin);
+            if (QFile::exists(fileName)) {
+                Sanguosha->playAudioEffect(fileName);
+                return;
+            }
+        }
 		Sanguosha->playAudioEffect(QString("audio/death/%1.ogg").arg(origins.last()));
     }
 }
@@ -396,5 +417,23 @@ QString General::getCompanions() const
             names << Sanguosha->translate(gnr->objectName());
     }
     return names.join(" ");
+}
+
+void General::tryLoadingSkinTranslation(const int skinId) const
+{
+    if (translated_skins.contains(skinId))
+        return;
+
+    const QString file = QString("hero-skin/%1/%2/%3.lua")
+            .arg(objectName()).arg(skinId)
+            .arg(Config.value("Language", "zh_CN").toString());
+
+    if (QFile::exists(file)) {
+        Sanguosha->setProperty("CurrentSkinGeneral", objectName());
+        Sanguosha->setProperty("CurrentSkinId", skinId);
+        DoLuaScript(Sanguosha->getLuaState(), file.toLocal8Bit().constData());
+    }
+
+    translated_skins << skinId;
 }
 

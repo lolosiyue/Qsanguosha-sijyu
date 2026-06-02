@@ -188,11 +188,12 @@ void GraphicsPixmapHoverItem::startChangeHeroSkinAnimation(const QString &genera
     QString basePath = "image/fullskin/generals/full/";
     m_targetImagePath = basePath + actualGeneralName + ".jpg";
 
-    QString actualGn = Sanguosha->getResourceAlias("heroskin", generalName);
     int skin_index = Config.value(QString("HeroSkin/%1").arg(generalName), 0).toInt();
     if (skin_index > 0) {
-        m_targetImagePath = "image/heroskin/fullskin/generals/full/"
-                          + actualGn + "_" + QString::number(skin_index) + ".jpg";
+        m_targetImagePath = "hero-skin/" + generalName + "/" + QString::number(skin_index) + "/full.png";
+        if (!QFile::exists(m_targetImagePath)) {
+            m_targetImagePath = "hero-skin/" + generalName + "/" + QString::number(skin_index) + "/card.jpg";
+        }
     }
 
     if (m_isAnimated && m_movie) {
@@ -272,16 +273,9 @@ void GraphicsPixmapHoverItem::setGeneralImage(const QString &imagePath, const QS
     if (!imagePath.toLower().endsWith(".gif")) {
         gifPath.replace(QRegExp("\\.(jpg|png)$", Qt::CaseInsensitive), ".gif");
 
-        if (gifPath.contains("/heroskin/")) {
-            if (gifPath.contains("/full/") && !gifPath.contains("/full/gif/")) {
-                QString gifPathInSubdir = gifPath;
-                gifPathInSubdir.replace("/full/", "/full/gif/");
-                if (QFile::exists(gifPathInSubdir)) {
-                    gifPath = gifPathInSubdir;
-                    hasGif = true;
-                } else if (QFile::exists(gifPath)) {
-                    hasGif = true;
-                }
+        if (gifPath.contains("hero-skin/")) {
+            if (QFile::exists(gifPath)) {
+                hasGif = true;
             }
         }
         else if (gifPath.contains("/full/") && !gifPath.contains("/full/gif/")) {

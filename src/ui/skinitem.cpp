@@ -2,8 +2,8 @@
 
 #include <QPainter>
 
-const char *HEROSKIN_USED_ICON = "image/system/heroskin-used.png";
-const char *HEROSKIN_SELECT_FRAME_ICON = "image/system/frame/heroskin-select.png";
+const char *HEROSKIN_USED_ICON = "image/system/heroskin/used.png";
+const char *HEROSKIN_SELECT_FRAME_ICON = "image/system/heroskin/select.png";
 
 SkinItem::SkinItem(const QString &skinName, const QRect &clipRect,
     int skinIndex, bool used, QGraphicsItem *parent/* = 0*/)

@@ -482,19 +482,9 @@ void GeneralOverview::addLines(const Skill *skill)
     if (Sanguosha->getGeneral(general_name)) {
         skin_index = Config.value("HeroSkin/"+general_name, 0).toInt();
         if (skin_index > 0) {
-            QString heroskin = QString("image/heroskin/audio/%1_%2/skill").arg(general_name).arg(skin_index);
-            if (QFile::exists(heroskin)) {
-                QStringList oggs, files;
-                oggs << "*.ogg";
-                QDir dir(heroskin);
-                foreach (QString file, dir.entryList(oggs, QDir::Files|QDir::Readable, QDir::Name)) {
-					if (file.startsWith(skill->objectName()) && file.endsWith(".ogg"))
-                        files << file;
-                }
-                if (files.length()>0){
-					has_files = true;
-                    sources = files;
-				}
+            sources = skill->getSources(general_name, skin_index);
+            if (!sources.isEmpty()) {
+                has_files = true;
             }
         }
     }
@@ -539,7 +529,7 @@ void GeneralOverview::addLines(const Skill *skill)
                 if (sources.length()>1) button_text.append(QString(" (%1)").arg(i+1));
 
                 QCommandLinkButton *button = new QCommandLinkButton(button_text);
-                button->setObjectName(QString("image/heroskin/audio/%1_%2/skill/%3.ogg").arg(general_name).arg(skin_index).arg(source));
+                button->setObjectName(sources[i]);
                 button_layout->addWidget(button);
 
                 QString skill_line = Sanguosha->translate("$" + filename);
@@ -576,23 +566,22 @@ void GeneralOverview::addLines(const Skill *skill)
 
 void GeneralOverview::addCardAudioLines(const QString &generalName, int skinIndex)
 {
-    QString actualGn = Sanguosha->getResourceAlias("heroskin", generalName);
     QString cardAudioGn = Sanguosha->getResourceAlias("card_audio", generalName);
-    if (cardAudioGn == generalName) cardAudioGn = actualGn;
+    if (cardAudioGn == generalName) cardAudioGn = generalName;
 
     QStringList foundCardAudios;
 
     if (skinIndex > 0) {
-        QString heroskinCardPath = QString("image/heroskin/audio/%1_%2/card").arg(actualGn).arg(skinIndex);
-        if (QFile::exists(heroskinCardPath)) {
+        QString heroskinCardPath = QString("hero-skin/%1/%2").arg(generalName).arg(skinIndex);
+        QDir dir(heroskinCardPath);
+        if (dir.exists()) {
             QStringList filters;
             filters << "*.ogg" << "*.wav";
-            QDir dir(heroskinCardPath);
             QStringList files = dir.entryList(filters, QDir::Files | QDir::Readable, QDir::Name);
             foreach (QString file, files) {
                 QString baseName = file;
                 baseName.chop(4);
-                if (!foundCardAudios.contains(baseName))
+                if (!baseName.startsWith("death") && !foundCardAudios.contains(baseName))
                     foundCardAudios << baseName;
             }
         }
@@ -617,7 +606,7 @@ void GeneralOverview::addCardAudioLines(const QString &generalName, int skinInde
 
         QString audioPath;
         if (skinIndex > 0) {
-            QString heroskinCardPath = QString("image/heroskin/audio/%1_%2/card").arg(actualGn).arg(skinIndex);
+            QString heroskinCardPath = QString("hero-skin/%1/%2").arg(generalName).arg(skinIndex);
             if (QFile::exists(heroskinCardPath + "/" + cardName + ".ogg"))
                 audioPath = heroskinCardPath + "/" + cardName + ".ogg";
             else if (QFile::exists(heroskinCardPath + "/" + cardName + ".wav"))
@@ -741,7 +730,6 @@ void GeneralOverview::on_tableWidget_itemSelectionChanged()
 
 	QString oggtxt = "audio/death/"+general_name+".ogg";
 	QString last_word = Sanguosha->translate("~" + general_name);
-	QString actualGn = Sanguosha->getResourceAlias("heroskin", general_name);
 
 	QString aliasedGeneral = Sanguosha->getResourceAlias("generals", general_name);
 	if (aliasedGeneral != general_name) {
@@ -756,7 +744,7 @@ void GeneralOverview::on_tableWidget_itemSelectionChanged()
 	if (skin_index > 0) {
 		QString hero_skin = Sanguosha->translate(QString("~%1-%2_%3").arg(general_name).arg(general_name).arg(skin_index));
 		if (!hero_skin.startsWith("~")){
-			oggtxt = QString("image/heroskin/audio/%1_%2/death/%3.ogg").arg(actualGn).arg(skin_index).arg(actualGn);
+			oggtxt = QString("hero-skin/%1/%2/death.ogg").arg(general_name).arg(skin_index);
 			last_word = hero_skin;
 		}
 	}
@@ -765,11 +753,10 @@ void GeneralOverview::on_tableWidget_itemSelectionChanged()
 		oggtxt = "audio/death/"+new_general_name+".ogg";
 		last_word = Sanguosha->translate("~" + new_general_name);
 		skin_index = Config.value("HeroSkin/"+new_general_name, 0).toInt();
-		QString actualNewGn = Sanguosha->getResourceAlias("heroskin", new_general_name);
 		if (skin_index > 0) {
 			QString hero_skin = Sanguosha->translate(QString("~%1-%2_%3").arg(new_general_name).arg(new_general_name).arg(skin_index));
 			if (!hero_skin.startsWith("~")){
-				oggtxt = QString("image/heroskin/audio/%1_%2/death/%3.ogg").arg(actualNewGn).arg(skin_index).arg(actualNewGn);
+				oggtxt = QString("hero-skin/%1/%2/death.ogg").arg(new_general_name).arg(skin_index);
 				last_word = hero_skin;
 			}
 		}
@@ -889,6 +876,8 @@ void GeneralOverview::askChangeSkin()
     Config.beginGroup("HeroSkin");
     Config.setValue(general_name, n);
     Config.endGroup();
+    const General *general = Sanguosha->getGeneral(general_name);
+    if (general) general->tryLoadingSkinTranslation(n);
     QPixmap pixmap = G_ROOM_SKIN.getCardMainPixmap(general_name);
     if (pixmap.width() <= 1 && pixmap.height() <= 1) {
         Config.beginGroup("HeroSkin");

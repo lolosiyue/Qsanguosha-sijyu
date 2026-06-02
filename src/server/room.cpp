@@ -6691,15 +6691,15 @@ void Room::doSuperLightbox(const QString&heroName, const QString&skillName, bool
 	if (Config.AIDelay<1) return;
 	int n = Config.value("HeroSkin/"+heroName).toInt();
 	if (n>0){
-		QString skin = QString("image/animate/%1_%2.png").arg(heroName).arg(n);
+		QString skin = QString("hero-skin/%1/%2/full.png").arg(heroName).arg(n);
 		if (QFile::exists(skin)){
-			doAnimate(S_ANIMATE_LIGHTBOX,"skill=Animate:"+skin,skillName);
+			doAnimate(S_ANIMATE_LIGHTBOX,"skill="+skin,skillName);
 			if(delay) thread->delay(4500);
 			return;
 		}else{
-			skin = QString("image/heroskin/fullskin/generals/full/%1_%2.jpg").arg(heroName).arg(n);
+			skin = QString("image/animate/%1_%2.png").arg(heroName).arg(n);
 			if (QFile::exists(skin)){
-				doAnimate(S_ANIMATE_LIGHTBOX,"skill="+skin,skillName);
+				doAnimate(S_ANIMATE_LIGHTBOX,"skill=Animate:"+skin,skillName);
 				if(delay) thread->delay(4500);
 				return;
 			}
