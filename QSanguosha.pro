@@ -86,6 +86,7 @@ SOURCES += \
 	src/scenario/scenerule.cpp \
 	src/scenario/zombie-scenario.cpp \
 	src/server/ai.cpp \
+	src/server/basicai.cpp \
 	src/server/gamerule.cpp \
 	src/server/generalselector.cpp \
 	src/server/room.cpp \
