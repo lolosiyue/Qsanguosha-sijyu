@@ -921,6 +921,16 @@ function sgs.LoadTranslationTable(t)
 	end
 end
 
+function sgs.LoadSkinTransltionTable(t)
+	local generalName = sgs.Sanguosha:property("CurrentSkinGeneral"):toString()
+	local skinId = sgs.Sanguosha:property("CurrentSkinId"):toInt()
+	local prefix = "-" .. tostring(generalName) .. "_" .. tostring(skinId)
+	for k, v in pairs(t) do
+		local new_key = k .. prefix
+		sgs.AddTranslationEntry(new_key, v)
+	end
+end
+
 function sgs.CreateCardActionButton(spec)
 	assert(type(spec.name) == "string", "CardActionButton name must be a string")
 	local button = sgs.LuaCardActionButton(spec.name)
