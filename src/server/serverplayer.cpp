@@ -3,7 +3,7 @@
 #include "engine.h"
 //#include "standard.h"
 #include "maneuvering.h"
-//#include "ai.h"
+#include "basicai.h"
 #include "settings.h"
 #include "recorder.h"
 #include "banpair.h"
@@ -23,7 +23,7 @@ const int ServerPlayer::S_NUM_SEMAPHORES = 6;
 
 ServerPlayer::ServerPlayer(Room *room)
 	: Player(room), m_isClientResponseReady(false), m_isWaitingReply(false),
-	socket(nullptr), room(room), ai(nullptr), trust_ai(new TrustAI(this)),
+	socket(nullptr), room(room), ai(nullptr), trust_ai(new BasicAI(this)),
 	recorder(nullptr), _m_phases_index(NotActive), next(nullptr), m_tooltipDirty(false)
 {
 	semas = new QSemaphore *[S_NUM_SEMAPHORES];
