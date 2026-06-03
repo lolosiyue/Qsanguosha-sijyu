@@ -81,6 +81,8 @@ public:
     bool isCompanionWith(const QString &name) const;
     QString getCompanions() const;
 
+    void tryLoadingSkinTranslation(int skinId) const;
+
 public slots:
     void lastWord() const;
 
@@ -98,6 +100,7 @@ private:
     QString sub_package;
     QString image;
     QStringList companions;
+    mutable QSet<int> translated_skins;
 };
 
 #endif
