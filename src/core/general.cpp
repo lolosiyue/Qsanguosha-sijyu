@@ -307,15 +307,16 @@ QString General::getOracleText() const
 void General::lastWord() const
 {
     int skin = Config.value("HeroSkin/"+objectName(), 0).toInt();
+    QString actualGn = Sanguosha->getResourceAlias("heroskin", objectName());
 
     if (skin > 0) {
         QString fileName = QString("hero-skin/%1/%2/death.ogg")
-                .arg(objectName()).arg(skin);
+                .arg(actualGn).arg(skin);
         if (QFile::exists(fileName)) {
             Sanguosha->playAudioEffect(fileName);
             return;
         }
-        QStringList origin_generals = objectName().split("_");
+        QStringList origin_generals = actualGn.split("_");
         if (origin_generals.length() > 1) {
             fileName = QString("hero-skin/%1/%2/death.ogg")
                     .arg(origin_generals.last()).arg(skin);
@@ -338,9 +339,10 @@ void General::lastWord() const
     QStringList origins = objectName().split("_");
     if (origins.length()>1&&Sanguosha->getGeneral(origins.last())) {
 		skin = Config.value("HeroSkin/"+origins.last(), 0).toInt();
+		QString actualOrigin = Sanguosha->getResourceAlias("heroskin", origins.last());
 		if (skin > 0) {
             QString fileName = QString("hero-skin/%1/%2/death.ogg")
-                    .arg(origins.last()).arg(skin);
+                    .arg(actualOrigin).arg(skin);
             if (QFile::exists(fileName)) {
                 Sanguosha->playAudioEffect(fileName);
                 return;

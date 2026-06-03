@@ -1368,7 +1368,7 @@ QList<EasyTextItem> Engine::getChattingEasyTextItems(const QString &general_name
                 int skin_index = Config.value("HeroSkin/" + trimmed_name, 0).toInt();
                 if (skin_index > 0) general->tryLoadingSkinTranslation(skin_index);
 
-                QStringList audio_sources = skill->getSources(trimmed_name, skin_index);
+                QStringList audio_sources = skill->getSources(actualGn, skin_index);
                 QStringList actual_files;
 
                 if (!audio_sources.isEmpty()) {
@@ -1380,7 +1380,7 @@ QList<EasyTextItem> Engine::getChattingEasyTextItems(const QString &general_name
                     if (aliasSkill != skill_obj_name) {
                         const Skill *aliasSk = getSkill(aliasSkill);
                         if (aliasSk) {
-                            actual_files = aliasSk->getSources(trimmed_name, skin_index);
+                            actual_files = aliasSk->getSources(actualGn, skin_index);
                         }
                     }
                 }
@@ -1392,7 +1392,7 @@ QList<EasyTextItem> Engine::getChattingEasyTextItems(const QString &general_name
 
                         if (skin_index > 0) {
                             QString basename = QFileInfo(audio_file).baseName();
-                            line_key = QString("$%1-%2_%3").arg(basename).arg(trimmed_name).arg(skin_index);
+                            line_key = QString("$%1-%2_%3").arg(basename).arg(actualGn).arg(skin_index);
                         } else {
                             line_key = QString("$%1%2").arg(skill_obj_name).arg(i + 1);
                         }
@@ -1437,23 +1437,23 @@ QList<EasyTextItem> Engine::getChattingEasyTextItems(const QString &general_name
             QString death_line;
 
             if (skin_index > 0) {
-                QString hero_skin = translate(QString("~%1-%2_%3").arg(trimmed_name).arg(trimmed_name).arg(skin_index));
+                QString hero_skin = translate(QString("~%1-%2_%3").arg(actualGn).arg(actualGn).arg(skin_index));
                 if (!hero_skin.startsWith("~")) {
                     death_audio = QString("hero-skin/%1/%2/death.ogg")
-                        .arg(trimmed_name).arg(skin_index);
+                        .arg(actualGn).arg(skin_index);
                     death_line = hero_skin;
                 }
             }
 
             if (death_line.isEmpty()) {
-                death_line = translate("~" + trimmed_name);
+                death_line = translate("~" + actualGn);
                 if (!death_line.startsWith("~") && death_line != " ") {
-                    death_audio = QString("audio/death/%1.wav").arg(trimmed_name);
+                    death_audio = QString("audio/death/%1.wav").arg(actualGn);
                 }
             }
 
-            if (death_line.startsWith("~") && trimmed_name.contains("_")) {
-                QString new_name = trimmed_name.split("_").last();
+            if (death_line.startsWith("~") && actualGn.contains("_")) {
+                QString new_name = actualGn.split("_").last();
                 death_line = translate("~" + new_name);
 
                 if (!death_line.startsWith("~") && death_line != " ") {
