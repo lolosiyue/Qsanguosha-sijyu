@@ -4797,12 +4797,19 @@ void RoomScene::detachSkill(const ClientPlayer *player, const QString &skill_nam
 void RoomScene::updateSkill(const QString&skill_name)
 {
 	const Player *activePlayer = getCurrentOperationPlayer(dashboard);
+	QString baseName = skill_name;
+	int instanceId = 0;
+	int split = skill_name.indexOf('#');
+	if (split != -1) {
+		baseName = skill_name.left(split);
+		instanceId = skill_name.mid(split + 1).toInt();
+	}
 	foreach(QSanSkillButton*button,m_skillButtons){
-		if(button->getSkill()->objectName()==skill_name)
+		if(button->getSkill()->objectName()==baseName)
 		{
 			LuaLocker locker;
 			const Skill *s = button->getSkill();
-			button->setToolTip(buildOracleTooltip(s->getOracleText(activePlayer), s->getDescription(activePlayer)));
+			button->setToolTip(buildOracleTooltip(s->getOracleText(activePlayer), s->getDescription(activePlayer, instanceId)));
 		}
 	}/*
 	bool effectMark = false;

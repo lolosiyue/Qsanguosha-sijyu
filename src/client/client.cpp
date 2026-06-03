@@ -2480,7 +2480,10 @@ void Client::setSkillDescriptionSwap(const QVariant &reveal)
 	JsonArray args = reveal.value<JsonArray>();
 	if (args.length()<4) return;
 	ClientPlayer *player = getPlayer(args[0].toString());
-	if(player) player->setSkillDescriptionSwap(args[1].toString(),args[2].toString(),args[3].toString());
+	if(player){
+		int instanceId = args.length() >= 5 ? args[4].toInt() : 0;
+		player->setSkillDescriptionSwap(args[1].toString(),args[2].toString(),args[3].toString(), instanceId);
+	}
 }
 
 void Client::addEquipArea(const QVariant &reveal)

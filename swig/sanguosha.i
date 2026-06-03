@@ -359,8 +359,8 @@ public:
 
 	QList<const Player*> getSiblings(bool include_self = false) const;
 	QList<const Player*> getAliveSiblings(bool include_self = false) const;
-	void setSkillDescriptionSwap(const char*skill_name, const char*key, const char*value);
-	QHash<QString, QString> getSkillDescriptionSwap(const char*skill_name) const;
+	void setSkillDescriptionSwap(const char*skill_name, const char*key, const char*value, int instanceId = 0);
+	QHash<QString, QString> getSkillDescriptionSwap(const char*skill_name, int instanceId = 0) const;
 
 static bool isNostalGeneral(const Player*p, const char*general_name);
     bool hasLordSkillKingdom(const char*kingdom, const Player*player = nullptr) const;
@@ -541,7 +541,7 @@ public:
 	void skillInvoked(const char*skill_name, int type = -1, ServerPlayer*owner = nullptr);
 	void skillInvoked(const Skill*skill, int type = -1, ServerPlayer*owner = nullptr);
 	QList<ServerPlayer*> getRandomTargets(const Card*card, QList<ServerPlayer*> players = QList<ServerPlayer*>());
-	void setSkillDescriptionSwap(const char*skill_name, const char*key, const char*value);
+	void setSkillDescriptionSwap(const char*skill_name, const char*key, const char*value, int instanceId = 0);
 	void setAvatarIcon(const char*avatar_name, bool small = false);
 bool damageRevises(QVariant&data, int n);
 
@@ -1906,8 +1906,8 @@ public:
 	bool moveField(ServerPlayer*player, const char*reason, bool optional = false, const char*flags = "ej", QList<ServerPlayer*> froms = QList<ServerPlayer*>(),
 					QList<ServerPlayer*> tos = QList<ServerPlayer*>());
 	void swapEquips(ServerPlayer*first, ServerPlayer*second, const char*skill_name = "");
-	void changeTranslation(ServerPlayer*player, const char*skill_name, const char*new_translation, int num = 0);
-	void changeTranslation(ServerPlayer*player, const char*skill_name, int num = 1);
+	void changeTranslation(ServerPlayer*player, const char*skill_name, const char*new_translation, int num = 0, int instanceId = 0);
+	void changeTranslation(ServerPlayer*player, const char*skill_name, int num = 1, int instanceId = 0);
 	int getChangeSkillState(ServerPlayer*player, const char*skill_name);
 	void setChangeSkillState(ServerPlayer*player, const char*skill_name, int n);
 	bool CardInPlace(const Card*card, Player::Place place);

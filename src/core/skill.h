@@ -81,7 +81,7 @@ public:
     bool isShiMingSkill() const;
     virtual bool canPreshow() const;
     virtual bool shouldBeVisible(const Player *Self) const;
-    QString getDescription(const Player *target = nullptr) const;
+    QString getDescription(const Player *target = nullptr, int instanceId = 0) const;
     QString getOracleText(const Player *target = nullptr) const;
     QString getNotice(int index) const;
     bool isVisible() const;

@@ -536,8 +536,8 @@ public:
     bool moveField(ServerPlayer*player, const QString&reason, bool optional = false, const QString&flags = "ej",
                    QList<ServerPlayer*> froms = QList<ServerPlayer*>(), QList<ServerPlayer*> tos = QList<ServerPlayer*>());
     void swapEquips(ServerPlayer*first, ServerPlayer*second, const QString&skill_name = QString());
-    void changeTranslation(ServerPlayer*player, const QString&skill_name, const QString&new_translation, int num = 0);
-    void changeTranslation(ServerPlayer*player, const QString&skill_name, int num = 1);
+    void changeTranslation(ServerPlayer*player, const QString&skill_name, const QString&new_translation, int num = 0, int instanceId = 0);
+    void changeTranslation(ServerPlayer*player, const QString&skill_name, int num = 1, int instanceId = 0);
     int getChangeSkillState(ServerPlayer*player, const QString&skill_name);
     void setChangeSkillState(ServerPlayer*player, const QString&skill_name, int n);
     bool CardInPlace(const Card*card, Player::Place place);

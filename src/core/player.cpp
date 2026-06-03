@@ -2450,9 +2450,13 @@ void Player::sortHandCards(QList<int>hands)
 		handcards << Sanguosha->getCard(id);
 }
 
-void Player::setSkillDescriptionSwap(const QString &skill_name, const QString &key, const QString &value)
+void Player::setSkillDescriptionSwap(const QString &skill_name, const QString &key, const QString &value, int instanceId)
 {
-    QHash<QString, QString> swap = description_s2k2v[skill_name];
+    QString storageKey = skill_name;
+    if (instanceId > 0)
+        storageKey = QString("%1#%2").arg(skill_name).arg(instanceId);
+
+    QHash<QString, QString> swap = description_s2k2v[storageKey];
 	QString _value;
 	if(value.contains("+")){
 		foreach (QString v, value.split("+"))
@@ -2460,12 +2464,16 @@ void Player::setSkillDescriptionSwap(const QString &skill_name, const QString &k
 	}else
 		_value = Sanguosha->translate(value);
 	swap[key] = _value;
-	description_s2k2v[skill_name] = swap;
+	description_s2k2v[storageKey] = swap;
 }
 
-QHash<QString, QString> Player::getSkillDescriptionSwap(const QString &skill_name) const
+QHash<QString, QString> Player::getSkillDescriptionSwap(const QString &skill_name, int instanceId) const
 {
-    return description_s2k2v[skill_name];
+    QString storageKey = skill_name;
+    if (instanceId > 0)
+        storageKey = QString("%1#%2").arg(skill_name).arg(instanceId);
+
+    return description_s2k2v[storageKey];
 }
 
 const QMap<QString, QHash<QString, QString> > &Player::getAllSkillDescriptionSwaps() const
