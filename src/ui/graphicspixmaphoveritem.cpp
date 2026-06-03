@@ -188,11 +188,12 @@ void GraphicsPixmapHoverItem::startChangeHeroSkinAnimation(const QString &genera
     QString basePath = "image/fullskin/generals/full/";
     m_targetImagePath = basePath + actualGeneralName + ".jpg";
 
+    QString actualGn = Sanguosha->getResourceAlias("heroskin", generalName);
     int skin_index = Config.value(QString("HeroSkin/%1").arg(generalName), 0).toInt();
     if (skin_index > 0) {
-        m_targetImagePath = "hero-skin/" + generalName + "/" + QString::number(skin_index) + "/full.png";
+        m_targetImagePath = "hero-skin/" + actualGn + "/" + QString::number(skin_index) + "/full.png";
         if (!QFile::exists(m_targetImagePath)) {
-            m_targetImagePath = "hero-skin/" + generalName + "/" + QString::number(skin_index) + "/card.jpg";
+            m_targetImagePath = "hero-skin/" + actualGn + "/" + QString::number(skin_index) + "/card.jpg";
         }
     }
 
