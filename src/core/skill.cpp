@@ -74,7 +74,7 @@ bool Skill::isEquipSkill() const
     return false;
 }
 
-QString Skill::getDescription(const Player *target) const
+QString Skill::getDescription(const Player *target, int instanceId) const
 {
 	QString des_src;
 	if(ServerInfo.DuringGame && isNormalGameMode(ServerInfo.GameMode))
@@ -83,10 +83,11 @@ QString Skill::getDescription(const Player *target) const
 		des_src = Sanguosha->translate(":"+objectName());
 
 	if (target){
-		QString data = target->property(("changeTranslation"+objectName()).toStdString().c_str()).toString();
+		QString propKey = instanceId > 0 ? QString("changeTranslation%1#%2").arg(objectName()).arg(instanceId) : QString("changeTranslation"+objectName());
+		QString data = target->property(propKey.toStdString().c_str()).toString();
 		if(data.length()==1) des_src = Sanguosha->translate(":"+objectName()+data);
 		else if(data.length()>1) des_src = QByteArray::fromBase64(data.toLatin1());
-		QHash<QString, QString> swap = target->getSkillDescriptionSwap(objectName());
+		QHash<QString, QString> swap = target->getSkillDescriptionSwap(objectName(), instanceId);
 		foreach (QString key, swap.keys())
 			des_src.replace(key, swap[key]);
 	}

@@ -374,8 +374,8 @@ public:
 
     QList<const Player *> getSiblings(bool include_self = false) const;
     QList<const Player *> getAliveSiblings(bool include_self = false) const;
-    void setSkillDescriptionSwap(const QString &skill_name, const QString &key, const QString &value);
-    QHash<QString, QString> getSkillDescriptionSwap(const QString &skill_name) const;
+    void setSkillDescriptionSwap(const QString &skill_name, const QString &key, const QString &value, int instanceId = 0);
+    QHash<QString, QString> getSkillDescriptionSwap(const QString &skill_name, int instanceId = 0) const;
     const QMap<QString, QHash<QString, QString> > &getAllSkillDescriptionSwaps() const;
 
     void setCardDescriptionSwap(const QString &card_name, const QString &key, const QString &value);

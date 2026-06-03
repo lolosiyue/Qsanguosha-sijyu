@@ -9175,30 +9175,32 @@ void Room::swapEquips(ServerPlayer*first, ServerPlayer*second, const QString&ski
 	moveCardsAtomic(exchangeMove, false);
 }
 
-void Room::changeTranslation(ServerPlayer*player, const QString&skill_name, const QString&new_translation, int num)
+void Room::changeTranslation(ServerPlayer*player, const QString&skill_name, const QString&new_translation, int num, int instanceId)
 {
 	//Sanguosha->addTranslationEntry(":"+skill_name,new_translation);
 	JsonArray args1;
 	args1 << QSanProtocol::S_GAME_EVENT_UPDATE_SKILL << player->objectName() << skill_name;
+	QString propKey = instanceId > 0 ? QString("changeTranslation%1#%2").arg(skill_name).arg(instanceId) : QString("changeTranslation"+skill_name);
 	if (num>0){
 		args1 << num;
-		setPlayerProperty(player,("changeTranslation"+skill_name).toStdString().c_str(),num);
+		setPlayerProperty(player,propKey.toStdString().c_str(),num);
 	}else{
 		args1 << new_translation.toUtf8().toBase64();
-		setPlayerProperty(player,("changeTranslation"+skill_name).toStdString().c_str(),args1.last());
+		setPlayerProperty(player,propKey.toStdString().c_str(),args1.last());
 	}
 	doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args1);
 	//更新技能图标上的技能描述
-	if (player->hasSkill(skill_name, true))
-		doNotify(player, S_COMMAND_UPDATE_SKILL, skill_name);  //自带更新武将图上的技能描述的功能，但有时会失灵，不知道为何
+	QString notifyName = instanceId > 0 ? QString("%1#%2").arg(skill_name).arg(instanceId) : skill_name;
+	if (player->hasSkill(notifyName, true))
+		doNotify(player, S_COMMAND_UPDATE_SKILL, notifyName);  //自带更新武将图上的技能描述的功能，但有时会失灵，不知道为何
 }
 
-void Room::changeTranslation(ServerPlayer*player, const QString&skill_name, int num)
+void Room::changeTranslation(ServerPlayer*player, const QString&skill_name, int num, int instanceId)
 {
 	QString new_translation = ":"+skill_name;
 	if(num==0) new_translation = Sanguosha->translate(new_translation, true);
 	else new_translation = Sanguosha->translate(new_translation+QString::number(num));
-	changeTranslation(player, skill_name, new_translation, num);
+	changeTranslation(player, skill_name, new_translation, num, instanceId);
 }
 
 int Room::getChangeSkillState(ServerPlayer*player, const QString&skill_name)
