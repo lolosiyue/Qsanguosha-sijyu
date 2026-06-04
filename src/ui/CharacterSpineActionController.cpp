@@ -292,15 +292,14 @@ void CharacterSpineActionController::autoDiscoverActions(SpineGlItem *probe, Ski
 //  Dynamic skin registration (path-based)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Determines the skin root path based on the resolved general name.
-/// Heroskin names contain "_[digit]" suffix (e.g. "heg_zhonghui_2") → heroskin path
-/// Native generals have no such suffix (e.g. "guanyu") → image/fullskin path
-static QString buildDynamicSkinRoot(const QString &resolvedGeneral)
+/// Determines the skin root path based on the resolved general name and skin index.
+/// When skinIndex > 0: hero-skin/[generalName]/[skinIndex]/dynamicSkin/
+/// When skinIndex == 0: fullskin/dynamicSkin/[generalName]/dynamicSkin/
+static QString buildDynamicSkinRoot(const QString &resolvedGeneral, int skinIndex)
 {
-    // Check if resolvedGeneral ends with "_[digit]" (heroskin)
-    QRegularExpression heroskinPattern(R"(_\d+$)");
-    if (heroskinPattern.match(resolvedGeneral).hasMatch())
-        return QString("heroskin/dynamicSkin/%1/dynamicSkin").arg(resolvedGeneral);
+    if (skinIndex > 0) {
+        return QString("hero-skin/%1/%2/dynamicSkin").arg(resolvedGeneral).arg(skinIndex);
+    }
     return QString("fullskin/dynamicSkin/%1/dynamicSkin").arg(resolvedGeneral);
 }
 
@@ -347,8 +346,7 @@ void CharacterSpineActionController::registerDynamicSkin(const QString &playerId
                                                           int skinIndex,
                                                           bool isPrimary)
 {
-    Q_UNUSED(skinIndex);
-    QString rootPath = buildDynamicSkinRoot(resolvedGeneral);
+    QString rootPath = buildDynamicSkinRoot(resolvedGeneral, skinIndex);
     QString fullBasePath = rootPath; // relative, combined with asset prefix later
 
     qDebug("[SpineAction] registerDynamicSkin player='%s' general='%s' root='%s'",
