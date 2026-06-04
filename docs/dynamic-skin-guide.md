@@ -5,7 +5,7 @@
 | 方式 | 適用場景 |
 |------|---------|
 | **A. `room:doLightbox("spine=…")`** | 技能特效、全螢幕演出，Lua 腳本主動呼叫 |
-| **B. 路徑自動發現** | 角色日常出场、攻击、技能的座位彈出動畫 |
+| **B. 路徑自動發現** | 角色日常出場、攻擊、技能的座位彈出動畫 |
 
 兩種方式互相獨立，可同時使用。
 
@@ -54,44 +54,65 @@ room:doLightbox("spine=assets/dynamic/diaochan/test/skin_diaochan_ZhanChang:Gong
 
 ### 功能說明
 
-系統根據路徑 convention 自動發現並載入 Spine 骨架，在以下時機自動彈出角色動畫：
+系統根據路徑慣例自動發現並載入 Spine 骨架，在以下時機自動彈出角色動畫：
 
-| 觸發時機 | 動作類型 |
-|---------|---------|
-| 遊戲開始 / 角色登場 | `entrance`（開場） |
-| 玩家使用攻擊（出現指示線） | `attack`（攻擊） |
-| 玩家使用非攻擊技能 | `special`（技能） |
+| 觸發時機 | 動作類型 | 預設動畫名稱 |
+|---------|---------|-------------|
+| 遊戲開始 / 角色登場 | `entrance`（開場） | `ChuChang` |
+| 玩家使用攻擊（出現指示線） | `attack`（攻擊） | `GongJi` |
+| 玩家使用非攻擊技能 | `special`（技能） | `TeShu` |
 
 彈出動畫從角色頭像位置飛出至場景中央，播完後自動飛回並淡出。
 
-### 兩種目錄結構
+### 目錄結構
 
-#### Heroskin（武將皮膚）
+#### Heroskin（皮膚索引 > 0）
 
 ```
-heroskin/dynamicSkin/[resolvedGeneral]/dynamicSkin/
-  ├── config.json          （可選，用於客製化）
-  ├── skeleton.skel
-  ├── skeleton.atlas
-  └── skeleton.png
+hero-skin/[generalName]/[skinIndex]/dynamicSkin/
+├── config.json          # 動畫配置（選填）
+├── skeleton.skel        # Spine 骨架
+├── skeleton.atlas       # Spine 圖集
+└── skeleton.png         # Spine 圖片
 ```
 
-- `resolvedGeneral` = `addResourceAlias("heroskin", ...)` 解析後的名稱
-- **自動偵測**：若名稱結尾為 `_[數字]`（如 `heg_zhonghui_2`），自動使用 heroskin 路徑
-- `skinIndex > 0` 時自動使用此路徑格式
+**適用條件：**
+- `skinIndex > 0`（皮膚索引大於 0）
+- 路徑與其他皮膚資源結構一致
 
-#### 原生武將（無 heroskin）
+#### 原生武將（皮膚索引 == 0）
 
 ```
 image/fullskin/dynamicSkin/[generalName]/dynamicSkin/
-  ├── config.json          （可選，用於客製化）
-  ├── skeleton.skel
-  ├── skeleton.atlas
-  └── skeleton.png
+├── config.json          # 動畫配置（選填）
+├── skeleton.skel        # Spine 骨架
+├── skeleton.atlas       # Spine 圖集
+└── skeleton.png         # Spine 圖片
 ```
 
+**適用條件：**
+- `skinIndex == 0`（預設皮膚）
 - `generalName` 為武將原名（如 `guanyu`、`zhonghui`）
-- `skinIndex == 0` 且無 alias 時自動使用此路徑格式
+
+### 路徑判斷邏輯
+
+```cpp
+// src/ui/CharacterSpineActionController.cpp:295-303
+static QString buildDynamicSkinRoot(const QString &resolvedGeneral, int skinIndex)
+{
+    if (skinIndex > 0) {
+        return QString("hero-skin/%1/%2/dynamicSkin").arg(resolvedGeneral).arg(skinIndex);
+    }
+    return QString("fullskin/dynamicSkin/%1/dynamicSkin").arg(resolvedGeneral);
+}
+```
+
+**判斷依據：**
+
+| skinIndex | 路徑格式 | 範例 |
+|-----------|---------|------|
+| `> 0` | `hero-skin/[generalName]/[skinIndex]/dynamicSkin/` | `hero-skin/guanyu/1/dynamicSkin/` |
+| `== 0` | `image/fullskin/dynamicSkin/[generalName]/dynamicSkin/` | `image/fullskin/dynamicSkin/guanyu/dynamicSkin/` |
 
 ### 設定檔 `config.json`
 
@@ -157,23 +178,16 @@ image/fullskin/dynamicSkin/[generalName]/dynamicSkin/
 
 **最終備援：** 若上述名稱都不存在，系統會將骨架中持續時間最長的動畫自動套用至所有動作類型。
 
-### heroskin 別名設定
+### 皮膚索引設定
 
-在 Lua 設定檔中使用 `addResourceAlias`：
+皮膚索引從配置中讀取：
 
-```lua
--- 設定武將 heroskin（別名帶 index 後綴）
-sgs.Sanguosha:addResourceAlias("heroskin", "s4_zhonghui", "heg_zhonghui_2")
-
--- 多個 skinIndex
-sgs.Sanguosha:addResourceAlias("heroskin", "guanxingzhangbao", "guanxingzhangbao_1")
-sgs.Sanguosha:addResourceAlias("heroskin", "guanxingzhangbao", "guanxingzhangbao_2")
+```cpp
+// src/ui/roomscene.cpp:6538
+int skinIndex = Config.value(QString("HeroSkin/%1").arg(generalName), 0).toInt();
 ```
 
-對應路徑：
-```
-heroskin/dynamicSkin/heg_zhonghui_2/dynamicSkin/skeleton.skel
-```
+在遊戲中選擇皮膚時，配置會自動更新為對應的 `skinIndex` 值。
 
 ---
 
@@ -182,9 +196,24 @@ heroskin/dynamicSkin/heg_zhonghui_2/dynamicSkin/skeleton.skel
 | 項目 | `room:doLightbox` | 路徑自動發現 |
 |------|-------------------|--------------|
 | 呼叫方式 | Lua 腳本手動呼叫 | 路徑存在即自動 |
-| 適用內容 | 技能特效、全場景演出 | 角色座位出场 / 攻擊 / 技能彈出 |
+| 適用內容 | 技能特效、全場景演出 | 角色座位出場 / 攻擊 / 技能彈出 |
 | 動畫位置 | 填滿整個場景 | 從頭像飛出至場景中央，再飛回 |
 | 多角色同時 | 每次呼叫獨立播放 | 每個座位各自獨立管理 |
 | 版本偵測 | `@版本` 後綴 | 自動偵測 |
 | 動畫指定 | `:動畫名` 後綴 | 自動偵測或 `config.json` |
-| 資源路徑 | 相對執行目錄 | `heroskin/dynamicSkin/` 或 `image/fullskin/dynamicSkin/` |
+| 資源路徑 | 相對執行目錄 | `hero-skin/[general]/[skinIndex]/dynamicSkin/` 或 `image/fullskin/dynamicSkin/` |
+
+---
+
+## 相關文檔
+
+- **完整皮膚系統說明**：請參考 `hero-skin-guide.md`
+- **程式碼參考**：`src/ui/CharacterSpineActionController.cpp:295-303`
+
+---
+
+## 更新日誌
+
+- 2026-06-05：修改程式碼，讓 dynamicSkin 使用與皮膚資源一致的路徑結構
+- 2026-06-05：增加詳細的路徑判斷邏輯說明，與 hero-skin-guide.md 保持一致
+- 2026-06-05：初版建立
