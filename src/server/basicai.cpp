@@ -1,5 +1,6 @@
 #include "basicai.h"
 #include "standard.h"
+#include "room.h"
 
 BasicAI::BasicAI(ServerPlayer *player)
     : TrustAI(player)

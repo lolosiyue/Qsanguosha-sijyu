@@ -265,6 +265,7 @@ HEADERS += \
 	src/scenario/scenerule.h \
 	src/scenario/zombie-scenario.h \
 	src/server/ai.h \
+	src/server/basicai.h \
 	src/server/gamerule.h \
 	src/server/generalselector.h \
 	src/server/room.h \

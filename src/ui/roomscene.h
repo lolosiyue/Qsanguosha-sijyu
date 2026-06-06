@@ -206,6 +206,8 @@ public:
     {
         guhuo_log = log;
     }
+    
+    QList<int> getRenPile() const { return RenPile; }
 
     bool m_skillButtonSank;
     ShefuAskState m_ShefuAskState;
@@ -335,7 +337,6 @@ private:
     QList<const Player *> selected_targets;
 
 	QList<int> RenPile;
-    QList<int> getRenPile() const { return RenPile; }
 
 	ChooseTriggerOrderBox *m_chooseTriggerOrderBox;
 

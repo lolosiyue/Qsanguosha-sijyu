@@ -408,8 +408,7 @@ void CharacterSpineActionController::registerDynamicSkin(const QString &playerId
 bool CharacterSpineActionController::hasDynamicSkin(const QString &resolvedGeneral,
                                                     int skinIndex) const
 {
-    Q_UNUSED(skinIndex);
-    QString rootPath = buildDynamicSkinRoot(resolvedGeneral);
+    QString rootPath = buildDynamicSkinRoot(resolvedGeneral, skinIndex);
     QString fullPath = _assetPrefix + rootPath;
     return QDir(fullPath).exists();
 }
