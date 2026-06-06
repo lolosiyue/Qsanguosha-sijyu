@@ -1529,11 +1529,10 @@ void ServerPlayer::addToRenPile(QList<int> card_ids, const QString &skill_name)
 	foreach (int id, card_ids) {
 		if(ren.length()>=6){
 			move1.card_ids << ren.takeFirst().toInt();
-			card_ids.removeAll(move1.card_ids.last());
 		}
 		ren << id;
 	}
-	//room->setTag("ren_pile",ren);
+	room->setTag("ren_pile",ren);
 	CardsMoveStruct move2;
 	move2.card_ids = card_ids;
 	move2.to_place = PlaceTable;
