@@ -3109,10 +3109,11 @@ void RoomScene::useSelectedCard()
 	}
 	case Client::AskForYiji: {
 		const Card*card = dashboard->pendingCard();
-		if(card){
+		if(card && !selected_targets.isEmpty()){
+			const Player* target = selected_targets.first();
 			dashboard->stopPending();
 			prompt_box->disappear();
-			ClientInstance->onPlayerReplyYiji(card,selected_targets.first());
+			ClientInstance->onPlayerReplyYiji(card, target);
 		}
 		break;
 	}
