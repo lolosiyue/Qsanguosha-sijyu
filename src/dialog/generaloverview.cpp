@@ -6,6 +6,7 @@
 #include "oracle_helper.h"
 #include "clientstruct.h"
 #include "client.h"
+#include "heroskincontainer.h"
 //#include "clientplayer.h"
 //#include "package.h"
 
@@ -444,18 +445,7 @@ GeneralOverview::~GeneralOverview()
 
 bool GeneralOverview::hasSkin(const QString &general_name)
 {
-    int skin_index = Config.value("HeroSkin/"+general_name, 0).toInt();
-    if (skin_index<1) {
-        Config.beginGroup("HeroSkin");
-        Config.setValue(general_name, 1);
-        Config.endGroup();
-        QPixmap pixmap = G_ROOM_SKIN.getCardMainPixmap(general_name);
-        Config.beginGroup("HeroSkin");
-        Config.remove(general_name);
-        Config.endGroup();
-        return pixmap.width()>1 || pixmap.height()>1;
-    }
-    return true;
+    return HeroSkinContainer::hasSkin(general_name);
 }
 
 QString GeneralOverview::getIllustratorInfo(const QString &general_name)
@@ -875,23 +865,17 @@ void GeneralOverview::askChangeSkin()
     int row = ui->tableWidget->currentRow();
     QString general_name = ui->tableWidget->item(row, 0)->data(Qt::UserRole).toString();
 
-    int n = Config.value("HeroSkin/"+general_name, 0).toInt();
-    n++;
+    int currentSkinIndex = Config.value("HeroSkin/"+general_name, 0).toInt();
+    int nextSkinIndex = HeroSkinContainer::getNextSkinIndex(general_name, currentSkinIndex);
+
     Config.beginGroup("HeroSkin");
-    Config.setValue(general_name, n);
+    Config.setValue(general_name, nextSkinIndex);
     Config.endGroup();
+
     const General *general = Sanguosha->getGeneral(general_name);
-    if (general) general->tryLoadingSkinTranslation(n);
+    if (general) general->tryLoadingSkinTranslation(nextSkinIndex);
+
     QPixmap pixmap = G_ROOM_SKIN.getCardMainPixmap(general_name);
-    if (pixmap.width() <= 1 && pixmap.height() <= 1) {
-        Config.beginGroup("HeroSkin");
-        Config.remove(general_name);
-        Config.endGroup();
-        if (n > 1)
-            pixmap = G_ROOM_SKIN.getCardMainPixmap(general_name);
-        else
-            return;
-    }
     ui->generalPhoto->setPixmap(pixmap);
     ui->illustratorLineEdit->setText(getIllustratorInfo(general_name));
 

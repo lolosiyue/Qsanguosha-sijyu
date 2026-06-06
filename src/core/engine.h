@@ -212,6 +212,8 @@ public:
     // Resource Alias System
     void addResourceAlias(const QString &category, const QString &original, const QString &alias);
     QString getResourceAlias(const QString &category, const QString &original) const;
+    void addResourceAliasList(const QString &category, const QString &original, const QString &alias);
+    QStringList getResourceAliasList(const QString &category, const QString &original) const;
 
     inline QMultiMap<QString, QString> spConvertPairs() const
     {
@@ -240,6 +242,7 @@ private:
     mutable QMap<QString, ExpPattern *> exp_patterns;
     QHash<QString, QList<int> > audio_type;
     QHash<QString, QHash<QString, QString> > m_resourceAliases;
+    QHash<QString, QHash<QString, QStringList> > m_resourceAliasLists;
     QStringList m_skipGeneralModes;
     QStringList m_showRoleModes;
     QMap<QString, QStringList> m_modeGroups;

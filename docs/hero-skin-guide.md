@@ -354,18 +354,39 @@ static QString buildDynamicSkinRoot(const QString &resolvedGeneral, int skinInde
 
 允許多個武將名稱共用同一套皮膚資源。
 
-### 設定方式
+### API 說明
 
-在 Lua 腳本中使用：
+#### `addResourceAlias` — 一對一映射（主要別名）
+
+用於設定皮膚資源的**主要路徑**，影響圖片、音效載入。
 
 ```lua
--- 設定武將皮膚別名
--- 語法：addResourceAlias(資源類型, 顯示名稱, 實際路徑名稱)
+-- 語法：addResourceAlias(資源類型, 武將名稱, 實際路徑名稱)
 sgs.Sanguosha:addResourceAlias("heroskin", "s4_zhonghui", "heg_zhonghui_2")
+```
 
--- 多個 skinIndex
-sgs.Sanguosha:addResourceAlias("heroskin", "guanxingzhangbao", "guanxingzhangbao_1")
-sgs.Sanguosha:addResourceAlias("heroskin", "guanxingzhangbao", "guanxingzhangbao_2")
+**注意**：重複呼叫同一武將會覆蓋前一個設定。
+
+#### `addResourceAliasList` — 多對多映射（皮膚索引收集）
+
+用於收集武將**所有可用的皮膚索引**，支援一個武將對應多個皮膚目錄。
+
+```lua
+-- 語法：addResourceAliasList(資源類型, 武將名稱, 實際路徑名稱)
+-- 可以多次呼叫，累積所有別名
+sgs.Sanguosha:addResourceAliasList("heroskin", "s4_caoren", "bgm_caoren")
+sgs.Sanguosha:addResourceAliasList("heroskin", "s4_caoren", "caoren")
+```
+
+### 完整設定範例
+
+```lua
+-- 設定主要皮膚路徑（用於載入圖片、音效）
+sgs.Sanguosha:addResourceAlias("heroskin", "s4_caoren", "bgm_caoren")
+
+-- 設定皮膚索引來源（用於收集所有可用的皮膚編號）
+sgs.Sanguosha:addResourceAliasList("heroskin", "s4_caoren", "bgm_caoren")
+sgs.Sanguosha:addResourceAliasList("heroskin", "s4_caoren", "caoren")
 ```
 
 ### 路徑解析
@@ -373,6 +394,35 @@ sgs.Sanguosha:addResourceAlias("heroskin", "guanxingzhangbao", "guanxingzhangbao
 | 別名設定 | 實際路徑 |
 |---------|---------|
 | `addResourceAlias("heroskin", "s4_zhonghui", "heg_zhonghui_2")` | `hero-skin/heg_zhonghui_2/1/` |
+
+### 皮膚索引計算邏輯
+
+當使用 `addResourceAliasList` 時，系統會：
+
+1. 收集所有別名目錄（如 `bgm_caoren`、`caoren`）
+2. 掃描各目錄下的數字子資料夾（如 `1/`、`2/`、`3/`）
+3. 合併所有索引，去重排序
+4. 用於皮膚切換按鈕的循環切換
+
+**範例**：
+
+```lua
+sgs.Sanguosha:addResourceAliasList("heroskin", "s4_caoren", "bgm_caoren")
+sgs.Sanguosha:addResourceAliasList("heroskin", "s4_caoren", "caoren")
+```
+
+假設目錄結構：
+```
+hero-skin/
+├── bgm_caoren/
+│   ├── 1/
+│   └── 3/
+└── caoren/
+    ├── 2/
+    └── 4/
+```
+
+則 `s4_caoren` 的可用皮膚索引為：`[1, 2, 3, 4]`
 
 ### 動態皮膚特殊規則
 
@@ -546,6 +596,8 @@ sgs.LoadSkinTransltionTable(t)
 
 ## 更新日誌
 
+- 2026-06-07：新增 `addResourceAliasList` API，支援一對多皮膚目錄映射
+- 2026-06-07：新增皮膚索引計算邏輯說明
 - 2026-06-05：修改程式碼，讓 dynamicSkin 使用與皮膚資源一致的路徑結構
 - 2026-06-05：修正 dynamicSkin 路徑說明，增加詳細的判斷邏輯
 - 2026-06-05：初版建立，完整說明 hero-skin 系統結構

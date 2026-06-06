@@ -2474,6 +2474,23 @@ QString Engine::getResourceAlias(const QString &category, const QString &origina
     return original;
 }
 
+void Engine::addResourceAliasList(const QString &category, const QString &original, const QString &alias)
+{
+    if (!m_resourceAliasLists[category][original].contains(alias)) {
+        m_resourceAliasLists[category][original] << alias;
+    }
+}
+
+QStringList Engine::getResourceAliasList(const QString &category, const QString &original) const
+{
+    if (m_resourceAliasLists.contains(category)) {
+        const QHash<QString, QStringList> &categoryMap = m_resourceAliasLists[category];
+        if (categoryMap.contains(original))
+            return categoryMap[original];
+    }
+    return QStringList();
+}
+
 TransferSkill *Engine::getTransfer()
 {
     if (!m_transfer) {

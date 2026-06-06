@@ -2,74 +2,77 @@
 #define HEROSKINCONTAINER_H
 
 #include <QGraphicsObject>
+#include <QDir>
+#include <QHash>
+#include <QStringList>
+#include <algorithm>
+#include "engine.h"
 
-class SanShadowTextFont;
-class SkinItem;
-class QScrollBar;
-
-class HeroSkinContainer : public QGraphicsObject
+class HeroSkinContainer
 {
-    Q_OBJECT
-
 public:
-    HeroSkinContainer(const QString &generalName,
-        const QString &kingdom, QGraphicsItem *parent = 0);
-
-    ~HeroSkinContainer() {
-        if (this == m_currentTopMostContainer) {
-            m_currentTopMostContainer = NULL;
-        }
+    static bool hasSkin(const QString &generalName)
+    {
+        return !getAvailableSkinIndices(generalName).isEmpty();
     }
 
-    const QString &getGeneralName() const { return m_generalName; }
+    static QList<int> getAvailableSkinIndices(const QString &generalName)
+    {
+        static QHash<QString, QList<int>> cache;
 
-    void bringToTopMost();
+        if (!cache.contains(generalName)) {
+            QList<int> indices;
+            QStringList skinDirs;
+            
+            if (Sanguosha) {
+                skinDirs = Sanguosha->getResourceAliasList("heroskin", generalName);
+                QString primaryAlias = Sanguosha->getResourceAlias("heroskin", generalName);
+                if (primaryAlias != generalName && !skinDirs.contains(primaryAlias)) {
+                    skinDirs.prepend(primaryAlias);
+                }
+            }
+            if (skinDirs.isEmpty()) {
+                skinDirs << generalName;
+            }
 
-    virtual QRectF boundingRect() const;
-    virtual void paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *);
+            foreach (const QString &skinDir, skinDirs) {
+                QDir dir(QString("hero-skin/%1").arg(skinDir));
+                if (dir.exists()) {
+                    QStringList subdirs = dir.entryList(QDir::AllDirs | QDir::NoDotAndDotDot, QDir::Name);
+                    foreach (const QString &subdir, subdirs) {
+                        bool ok;
+                        int index = subdir.toInt(&ok);
+                        if (ok && index > 0 && !indices.contains(index)) {
+                            indices << index;
+                        }
+                    }
+                }
+            }
+            std::sort(indices.begin(), indices.end());
+            cache[generalName] = indices;
+        }
+        
+        return cache[generalName];
+    }
 
-    static bool hasSkin(const QString &generalName);
-    static int getNextSkinIndex(const QString &generalName, int skinIndex);
+    static int getNextSkinIndex(const QString &generalName, int currentIndex)
+    {
+        QList<int> indices = getAvailableSkinIndices(generalName);
+        
+        if (indices.isEmpty())
+            return 0;
 
-protected:
-    virtual void mousePressEvent(QGraphicsSceneMouseEvent *);
-    virtual void wheelEvent(QGraphicsSceneWheelEvent *event);
+        if (currentIndex == 0)
+            return indices.first();
 
-private:
-    void initSkins();
-    void createSkinItem(int skinIndex, QGraphicsItem *parent, bool used = false);
-    void fillSkins();
-    void swapWithSkinItemUsed(int skinIndex);
+        for (int i = 0; i < indices.size(); ++i) {
+            if (indices[i] > currentIndex) {
+                return indices[i];
+            }
+        }
 
-    static QStringList getHeroSkinFiles(const QString &generalName);
-    static const SanShadowTextFont &getAvatarNameFont();
-
-private:
-    const QString m_generalName;
-    const QPixmap m_backgroundPixmap;
-
-    QList<SkinItem *> m_skins;
-    QMap<int, SkinItem *> m_skinIndexToItem;
-
-    //本类对ZValue的处理，是为了保证窗口在被选中或移动过程中，
-    //始终保持在最上层，不被其他QGraphicsItem对象遮掩
-    qreal m_originalZValue;
-
-    QScrollBar *m_vScrollBar;
-    int m_oldScrollValue;
-
-    static HeroSkinContainer *m_currentTopMostContainer;
-
-    static QMap<QString, QStringList> m_generalToSkinFiles;
-    static QMap<QString, bool> m_generalToHasSkin;
-
-private slots:
-    void close();
-    void skinSelected(int skinIndex);
-    void scrollBarValueChanged(int newValue);
-
-signals:
-    void skin_changed(const QString &generalName);
+        return 0;
+    }
 };
 
 #endif // HEROSKINCONTAINER_H

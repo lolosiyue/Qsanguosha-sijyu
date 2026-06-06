@@ -13,6 +13,7 @@
 #include "generaloverview.h"
 #include "window.h"
 #include "button.h"
+#include "heroskincontainer.h"
 #include <QElapsedTimer>
 #include <QMutexLocker>
 
@@ -1700,19 +1701,8 @@ void PlayerCardContainer::onAvatarHoverEnter()
 	}
 
 	if (general!=""&&avatarItem->isSkinChangingFinished()) {
-		if(Config.value("HeroSkin/"+general, 0).toInt()>0)
+		if (HeroSkinContainer::hasSkin(general))
 			heroSKinBtn->show();
-		else{
-			Config.beginGroup("HeroSkin");
-			Config.setValue(general, 1);
-			Config.endGroup();
-			QPixmap pixmap = G_ROOM_SKIN.getCardMainPixmap(general);
-			Config.beginGroup("HeroSkin");
-			Config.remove(general);
-			Config.endGroup();
-			if(pixmap.width()>1 || pixmap.height()>1)
-				heroSKinBtn->show();
-		}
     }
 }
 
