@@ -740,7 +740,4 @@ android {
 	DEFINES += ANDROID_LOGGING
 }
 
-# Note: The following lines were corrupted in the original file
-# If heroskincontainer files exist, uncomment and fix the paths:
-# SOURCES += src/ui/heroskincontainer.cpp
-# HEADERS += src/ui/heroskincontainer.h
+# heroskincontainer is not fully compatible - hasSkin() implemented inline in heroskincontainer.h
