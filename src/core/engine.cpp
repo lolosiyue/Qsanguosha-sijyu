@@ -728,7 +728,12 @@ void Engine::addPackage(Package*package)
 
 	QList<const Skill*> sks = package->getSkills();
 	sks << package->findChildren<const Skill*>();
+	qDebug() << "Engine::addPackage -" << package->objectName() << "skills count:" << sks.size();
     foreach (const Skill*skill, sks) {
+		if (!skill) {
+			qWarning() << "Engine::addPackage - found nullptr skill in package:" << package->objectName();
+			continue;
+		}
 		if(skill->getWakedSkills().isEmpty()) continue;
         foreach (QString sk_name, skill->getWakedSkills().split(",")) {
             if (sk_name.startsWith("#"))
@@ -829,6 +834,7 @@ void Engine::setPackage(Package*package)
     }
 
     foreach (const Skill* skill, package->getSkills() + package->findChildren<const Skill*>()) {
+        if (!skill) continue;
         if (skills.contains(skill->objectName())) continue;
 
         // [修復點] 使用 const_cast 將 const Skill* 轉為 Skill*
@@ -1366,26 +1372,12 @@ QList<EasyTextItem> Engine::getChattingEasyTextItems(const QString &general_name
                 QString skill_obj_name = skill->objectName();
 
                 int skin_index = Config.value("HeroSkin/" + trimmed_name, 0).toInt();
+                if (skin_index > 0) general->tryLoadingSkinTranslation(skin_index);
 
-                QStringList audio_sources = skill->getSources();
+                QStringList audio_sources = skill->getSources(actualGn, skin_index);
                 QStringList actual_files;
 
-                if (skin_index > 0) {
-                    QString heroskin_path = QString("image/heroskin/audio/%1_%2/skill")
-                        .arg(actualGn).arg(skin_index);
-                    if (QFile::exists(heroskin_path)) {
-                        QDir dir(heroskin_path);
-                        QStringList filters;
-                        filters << "*.wav";
-                        foreach (QString file, dir.entryList(filters, QDir::Files | QDir::Readable, QDir::Name)) {
-                            if (file.startsWith(skill_obj_name) && file.endsWith(".wav")) {
-                                actual_files << heroskin_path + "/" + file;
-                            }
-                        }
-                    }
-                }
-
-                if (actual_files.isEmpty() && !audio_sources.isEmpty()) {
+                if (!audio_sources.isEmpty()) {
                     actual_files = audio_sources;
                 }
 
@@ -1394,7 +1386,7 @@ QList<EasyTextItem> Engine::getChattingEasyTextItems(const QString &general_name
                     if (aliasSkill != skill_obj_name) {
                         const Skill *aliasSk = getSkill(aliasSkill);
                         if (aliasSk) {
-                            actual_files = aliasSk->getSources();
+                            actual_files = aliasSk->getSources(actualGn, skin_index);
                         }
                     }
                 }
@@ -1453,8 +1445,8 @@ QList<EasyTextItem> Engine::getChattingEasyTextItems(const QString &general_name
             if (skin_index > 0) {
                 QString hero_skin = translate(QString("~%1-%2_%3").arg(actualGn).arg(actualGn).arg(skin_index));
                 if (!hero_skin.startsWith("~")) {
-                    death_audio = QString("image/heroskin/audio/%1_%2/death/%3.wav")
-                        .arg(actualGn).arg(skin_index).arg(actualGn);
+                    death_audio = QString("hero-skin/%1/%2/death.ogg")
+                        .arg(actualGn).arg(skin_index);
                     death_line = hero_skin;
                 }
             }
@@ -1475,8 +1467,8 @@ QList<EasyTextItem> Engine::getChattingEasyTextItems(const QString &general_name
                     if (new_skin_index > 0) {
                         QString hero_skin = translate(QString("~%1-%2_%3").arg(new_name).arg(new_name).arg(new_skin_index));
                         if (!hero_skin.startsWith("~")) {
-                            death_audio = QString("image/heroskin/audio/%1_%2/death/%3.wav")
-                                .arg(new_name).arg(new_skin_index).arg(new_name);
+                            death_audio = QString("hero-skin/%1/%2/death.ogg")
+                                .arg(new_name).arg(new_skin_index);
                             death_line = hero_skin;
                         }
                     } else {
@@ -2112,13 +2104,21 @@ int Engine::revisesAudioType(const QString &general_name, const QString &filenam
 
 void Engine::playSkillAudioEffect(const QString &skill_name, int index, bool superpose) const
 {
-    const Skill*skill = skills.value(skill_name, nullptr);
+    QString baseName = skill_name;
+    int split = skill_name.indexOf('#');
+    if (split != -1)
+        baseName = skill_name.left(split);
+    const Skill*skill = skills.value(baseName, nullptr);
     if (skill) skill->playAudioEffect(index, superpose);
 }
 
 const Skill*Engine::getSkill(const QString &skill_name) const
 {
-    return skills.value(skill_name, nullptr);
+    QString baseName = skill_name;
+    int split = skill_name.indexOf('#');
+    if (split != -1)
+        baseName = skill_name.left(split);
+    return skills.value(baseName, nullptr);
 }
 
 const Skill*Engine::getSkill(const EquipCard*equip) const
@@ -2486,6 +2486,23 @@ QString Engine::getResourceAlias(const QString &category, const QString &origina
             return categoryMap[original];
     }
     return original;
+}
+
+void Engine::addResourceAliasList(const QString &category, const QString &original, const QString &alias)
+{
+    if (!m_resourceAliasLists[category][original].contains(alias)) {
+        m_resourceAliasLists[category][original] << alias;
+    }
+}
+
+QStringList Engine::getResourceAliasList(const QString &category, const QString &original) const
+{
+    if (m_resourceAliasLists.contains(category)) {
+        const QHash<QString, QStringList> &categoryMap = m_resourceAliasLists[category];
+        if (categoryMap.contains(original))
+            return categoryMap[original];
+    }
+    return QStringList();
 }
 
 TransferSkill *Engine::getTransfer()
