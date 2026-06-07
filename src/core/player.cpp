@@ -1687,7 +1687,16 @@ QSet<const TriggerSkill *> Player::getTriggerSkills() const
     QSet<const TriggerSkill *> skillList;
     foreach(QString skill_name, skills + acquired_skills){
         if(hasEquipSkill(skill_name)) continue;
-		const TriggerSkill *skill = Sanguosha->getTriggerSkill(skill_name);
+
+        QString name = skill_name;
+        int instanceId = 0;
+        int split = name.indexOf('#');
+        if (split > 0) {
+            instanceId = name.mid(split + 1).toInt();
+            name = name.left(split);
+        }
+
+        const TriggerSkill *skill = Sanguosha->getTriggerSkill(name, instanceId);
         if (skill) skillList << skill;
     }
     return skillList;
@@ -2678,12 +2687,36 @@ bool Player::inHeadSkills(const QString &skill_name) const
             return inHeadSkills(main_skill->objectName());
     }
     
+    QString baseName = skill_name;
+    int split = skill_name.indexOf('#');
+    if (split != -1)
+        baseName = skill_name.left(split);
+    
     if (general2 != nullptr) {
-        return head_skills.contains(skill_name) 
-            || head_acquired_skills.contains(skill_name);
+        if (head_skills.contains(skill_name) || head_skills.contains(baseName))
+            return true;
+        if (head_acquired_skills.contains(skill_name))
+            return true;
+        foreach (const QString &s, head_acquired_skills) {
+            int sSplit = s.indexOf('#');
+            QString sBase = (sSplit != -1) ? s.left(sSplit) : s;
+            if (sBase == baseName)
+                return true;
+        }
+        return false;
     }
     
-    return skills.contains(skill_name) || acquired_skills.contains(skill_name);
+    if (skills.contains(skill_name) || skills.contains(baseName))
+        return true;
+    if (acquired_skills.contains(skill_name))
+        return true;
+    foreach (const QString &s, acquired_skills) {
+        int sSplit = s.indexOf('#');
+        QString sBase = (sSplit != -1) ? s.left(sSplit) : s;
+        if (sBase == baseName)
+            return true;
+    }
+    return false;
 }
 
 bool Player::inDeputySkills(const QString &skill_name) const
@@ -2699,8 +2732,22 @@ bool Player::inDeputySkills(const QString &skill_name) const
             return inDeputySkills(main_skill->objectName());
     }
     
-    return deputy_skills.contains(skill_name) 
-        || deputy_acquired_skills.contains(skill_name);
+    QString baseName = skill_name;
+    int split = skill_name.indexOf('#');
+    if (split != -1)
+        baseName = skill_name.left(split);
+    
+    if (deputy_skills.contains(skill_name) || deputy_skills.contains(baseName))
+        return true;
+    if (deputy_acquired_skills.contains(skill_name))
+        return true;
+    foreach (const QString &s, deputy_acquired_skills) {
+        int sSplit = s.indexOf('#');
+        QString sBase = (sSplit != -1) ? s.left(sSplit) : s;
+        if (sBase == baseName)
+            return true;
+    }
+    return false;
 }
 
 void Player::setSkillPreshowed(const QString &skill, bool preshowed)
