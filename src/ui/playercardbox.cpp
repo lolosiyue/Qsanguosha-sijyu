@@ -48,10 +48,7 @@ void PlayerCardBox::chooseCard(const QString &reason, const ClientPlayer *player
     this->flags = flags;
     this->canCancel = canCancel;
     bool handcard = false;
-    bool weapon = false;
-    bool armor = false;
-    bool defensiveHorse = false;
-    bool offensiveHorse = false;
+    bool equip = false;
     bool judging = false;
 
     if (flags.contains(handcardFlag) && !player->isKongcheng()) {
@@ -59,23 +56,9 @@ void PlayerCardBox::chooseCard(const QString &reason, const ClientPlayer *player
         handcard = true;
     }
 
-    if (flags.contains(equipmentFlag)) {
-        if (player->getWeapon()) {
-            updateNumbers(1);
-            weapon = true;
-        }
-        if (player->getArmor()) {
-            updateNumbers(1);
-            armor = true;
-        }
-        if (player->getDefensiveHorse()) {
-            updateNumbers(1);
-            defensiveHorse = true;
-        }
-        if (player->getOffensiveHorse()) {
-            updateNumbers(1);
-            offensiveHorse = true;
-        }
+    if (flags.contains(equipmentFlag) && player->hasEquip()) {
+        updateNumbers(player->getEquips().length());
+        equip = true;
     }
 
     if (flags.contains(judgingFlag) && !player->getJudgingArea().isEmpty()) {
@@ -125,31 +108,8 @@ void PlayerCardBox::chooseCard(const QString &reason, const ClientPlayer *player
         ++ index;
     }
 
-    if (weapon) {
-        QList<const Card *> weaponCards;
-        weaponCards << player->getWeapon();
-        arrangeCards(weaponCards, QPoint(startX, nameRects.at(index).y()));
-        ++ index;
-    }
-
-    if (armor) {
-        QList<const Card *> armorCards;
-        armorCards << player->getArmor();
-        arrangeCards(armorCards, QPoint(startX, nameRects.at(index).y()));
-        ++ index;
-    }
-
-    if (defensiveHorse) {
-        QList<const Card *> defensiveHorseCards;
-        defensiveHorseCards << player->getDefensiveHorse();
-        arrangeCards(defensiveHorseCards, QPoint(startX, nameRects.at(index).y()));
-        ++ index;
-    }
-
-    if (offensiveHorse) {
-        QList<const Card *> offensiveHorseCards;
-        offensiveHorseCards << player->getOffensiveHorse();
-        arrangeCards(offensiveHorseCards, QPoint(startX, nameRects.at(index).y()));
+    if (equip) {
+        arrangeCards(player->getEquips(), QPoint(startX, nameRects.at(index).y()));
         ++ index;
     }
 
@@ -321,31 +281,11 @@ void PlayerCardBox::paintLayout(QPainter *painter)
                                                              tr("Handcard area"));
         ++ index;
     }
-    if (flags.contains(equipmentFlag)) {
-        if (player->getWeapon()) {
-            G_COMMON_LAYOUT.playerCardBoxPlaceNameText.paintText(painter, nameRects.at(index),
-                                                                 Qt::AlignCenter,
-                                                                 tr("Weapon area"));
-            ++ index;
-        }
-        if (player->getArmor()) {
-            G_COMMON_LAYOUT.playerCardBoxPlaceNameText.paintText(painter, nameRects.at(index),
-                                                                 Qt::AlignCenter,
-                                                                 tr("Armor area"));
-            ++ index;
-        }
-        if (player->getDefensiveHorse()) {
-            G_COMMON_LAYOUT.playerCardBoxPlaceNameText.paintText(painter, nameRects.at(index),
-                                                                 Qt::AlignCenter,
-                                                                 tr("Defensive horse"));
-            ++ index;
-        }
-        if (player->getOffensiveHorse()) {
-            G_COMMON_LAYOUT.playerCardBoxPlaceNameText.paintText(painter, nameRects.at(index),
-                                                                 Qt::AlignCenter,
-                                                                 tr("Offensive horse"));
-            ++ index;
-        }
+    if (flags.contains(equipmentFlag) && player->hasEquip()) {
+        G_COMMON_LAYOUT.playerCardBoxPlaceNameText.paintText(painter, nameRects.at(index),
+                                                             Qt::AlignCenter,
+                                                             tr("Equipment area"));
+        ++ index;
     }
     if (flags.contains(judgingFlag) && !player->getJudgingArea().isEmpty()) {
         G_COMMON_LAYOUT.playerCardBoxPlaceNameText.paintText(painter, nameRects.at(index),
