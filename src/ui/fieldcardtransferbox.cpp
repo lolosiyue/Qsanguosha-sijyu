@@ -111,19 +111,23 @@ void FieldCardTransferBox::doFieldCardTransferChoose(const ClientPlayer *playerA
 
     if (equipArea) {
         foreach (const Card *e, playerA->getEquips()) {
-            createCardItem(e, canSetEquip(playerB, e));
+            bool can_transfer = canSetEquip(playerB, e) && Self->canMove(playerA, e->getEffectiveId());
+            createCardItem(e, can_transfer);
         }
         foreach (const Card *e, playerB->getEquips()) {
-            createCardItem(e, canSetEquip(playerA, e));
+            bool can_transfer = canSetEquip(playerA, e) && Self->canMove(playerB, e->getEffectiveId());
+            createCardItem(e, can_transfer);
         }
     }
 
     if (judgingArea) {
         foreach (const Card *j, playerA->getJudgingArea()) {
-            createCardItem(j, !Sanguosha->isProhibited(NULL, playerB, j));
+            bool can_transfer = !Sanguosha->isProhibited(NULL, playerB, j) && Self->canMove(playerA, j->getEffectiveId());
+            createCardItem(j, can_transfer);
         }
         foreach (const Card *j, playerB->getJudgingArea()) {
-            createCardItem(j, !Sanguosha->isProhibited(NULL, playerA, j));
+            bool can_transfer = !Sanguosha->isProhibited(NULL, playerA, j) && Self->canMove(playerB, j->getEffectiveId());
+            createCardItem(j, can_transfer);
         }
     }
 
