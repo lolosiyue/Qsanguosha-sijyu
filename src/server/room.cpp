@@ -2303,10 +2303,10 @@ int Room::askForCardChosen(ServerPlayer*player, ServerPlayer*who, const QString&
 	if (card_id==-1&&!can_cancel){
 		foreach(const Card*c, who->getCards(flags)){
 			if (disabled_ids.contains(c->getId())) continue;
-			if (method!=Card::MethodDiscard||player->canDiscard(who,c->getId())){
-				card_id = c->getId();
-				break;
-			}
+			if (method == Card::MethodDiscard && !player->canDiscard(who, c->getId())) continue;
+			if (method == Card::MethodGet && !player->canGetCard(who, c->getId())) continue;
+			card_id = c->getId();
+			break;
 		}
 	}
 	//Q_ASSERT(card_id != Card::S_UNKNOWN_CARD_ID);
@@ -2341,11 +2341,15 @@ QList<int> Room::askForCardsChosen(ServerPlayer*chooser, ServerPlayer*choosee, c
 			}
 			
 			Card::HandlingMethod method = Sanguosha->getCardHandlingMethod(handle[2]);
-			if (method == Card::MethodGet && handle[0].contains("e")) {
+			if (method == Card::MethodGet) {
 				foreach (const Card *card, choosee->getCards(handle[0])) {
 					if (ids.contains(card->getEffectiveId())) continue;
 					if (result.contains(card->getEffectiveId())) continue;
-					if (card->getTypeId() == Card::TypeEquip) {
+					if (!chooser->canGetCard(choosee, card->getEffectiveId())) {
+						ids.append(card->getEffectiveId());
+						continue;
+					}
+					if (handle[0].contains("e") && card->getTypeId() == Card::TypeEquip) {
 						const EquipCard *equip = qobject_cast<const EquipCard *>(card->getRealCard());
 						if (equip) {
 						 QList<int> occupy_slots = equip->getOccupyLocations();
