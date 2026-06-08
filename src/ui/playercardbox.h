@@ -47,6 +47,7 @@ private:
     Card::HandlingMethod method;
     QList<int> disabledIds;
     QList<int> handcards;
+    QList<int> equipSlots;
 
     QGraphicsProxyWidget *progressBarItem;
     QSanCommandProgressBar *progressBar;

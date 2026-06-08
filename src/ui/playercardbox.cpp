@@ -7,6 +7,8 @@
 #include "clientstruct.h"
 #include "timed-progressbar.h"
 #include "qsanbutton.h"
+#include "util.h"
+#include "standard.h"
 
 #include <QGraphicsProxyWidget>
 
@@ -42,6 +44,7 @@ void PlayerCardBox::chooseCard(const QString &reason, const ClientPlayer *player
     intervalsBetweenAreas = -1;
     intervalsBetweenRows = 0;
     maxCardsInOneRow = 0;
+    equipSlots.clear();
 
     this->player = player;
     this->title = tr("%1: please choose %2's card").arg(Sanguosha->translate(reason)).arg(ClientInstance->getPlayerName(player->objectName()));
@@ -56,8 +59,22 @@ void PlayerCardBox::chooseCard(const QString &reason, const ClientPlayer *player
         handcard = true;
     }
 
-    if (flags.contains(equipmentFlag) && player->hasEquip()) {
-        updateNumbers(player->getEquips().length());
+    if (flags.contains(equipmentFlag)) {
+        for (int slot = 0; slot < S_EQUIP_AREA_LENGTH; ++slot) {
+            if (!player->hasEquipArea(slot)) continue;
+            QList<const Card *> slotCards;
+            foreach (const Card *e, player->getEquips()) {
+                const EquipCard *equipCard = qobject_cast<const EquipCard *>(e->getRealCard());
+                if (equipCard && equipCard->getOccupyLocations().contains(slot)) {
+                    slotCards << e;
+                    break;
+                }
+            }
+            if (!slotCards.isEmpty()) {
+                updateNumbers(slotCards.length());
+                equipSlots << slot;
+            }
+        }
         equip = true;
     }
 
@@ -109,8 +126,20 @@ void PlayerCardBox::chooseCard(const QString &reason, const ClientPlayer *player
     }
 
     if (equip) {
-        arrangeCards(player->getEquips(), QPoint(startX, nameRects.at(index).y()));
-        ++ index;
+        foreach (int slot, equipSlots) {
+            QList<const Card *> slotCards;
+            foreach (const Card *e, player->getEquips()) {
+                const EquipCard *equipCard = qobject_cast<const EquipCard *>(e->getRealCard());
+                if (equipCard && equipCard->getOccupyLocations().contains(slot)) {
+                    slotCards << e;
+                    break;
+                }
+            }
+            if (!slotCards.isEmpty()) {
+                arrangeCards(slotCards, QPoint(startX, nameRects.at(index).y()));
+                ++ index;
+            }
+        }
     }
 
     if (judging)
@@ -281,11 +310,24 @@ void PlayerCardBox::paintLayout(QPainter *painter)
                                                              tr("Handcard area"));
         ++ index;
     }
-    if (flags.contains(equipmentFlag) && player->hasEquip()) {
-        G_COMMON_LAYOUT.playerCardBoxPlaceNameText.paintText(painter, nameRects.at(index),
-                                                             Qt::AlignCenter,
-                                                             tr("Equipment area"));
-        ++ index;
+    if (flags.contains(equipmentFlag)) {
+        foreach (int slot, equipSlots) {
+            QString areaName;
+            switch (slot) {
+                case 0: areaName = tr("Weapon area"); break;
+                case 1: areaName = tr("Armor area"); break;
+                case 2: areaName = tr("Defensive horse"); break;
+                case 3: areaName = tr("Offensive horse"); break;
+                case 4: areaName = tr("Treasure area"); break;
+                default: areaName = QString(); break;
+            }
+            if (!areaName.isEmpty()) {
+                G_COMMON_LAYOUT.playerCardBoxPlaceNameText.paintText(painter, nameRects.at(index),
+                                                                     Qt::AlignCenter,
+                                                                     areaName);
+                ++ index;
+            }
+        }
     }
     if (flags.contains(judgingFlag) && !player->getJudgingArea().isEmpty()) {
         G_COMMON_LAYOUT.playerCardBoxPlaceNameText.paintText(painter, nameRects.at(index),
