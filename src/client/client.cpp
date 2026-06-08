@@ -81,6 +81,7 @@ Client::Client(QObject *parent, const QString &filename)
 	m_callbacks[S_COMMAND_SHOW_VIRTUAL_CARD] = &Client::showVirtualCard;
 	m_callbacks[S_COMMAND_UPDATE_CARD] = &Client::updateCard;
 	m_callbacks[S_COMMAND_SET_MARK] = &Client::setMark;
+	m_callbacks[S_COMMAND_SET_INT_MARK] = &Client::setIntMark;
 	m_callbacks[S_COMMAND_LOG_SKILL] = &Client::log;
 	m_callbacks[S_COMMAND_ATTACH_SKILL] = &Client::attachSkill;
 	m_callbacks[S_COMMAND_MOVE_FOCUS] = &Client::moveFocus;
@@ -1785,6 +1786,21 @@ void Client::setMark(const QVariant &mark_var)
 			emit skill_detached(Self, skill_name);
 		}
 	}
+}
+
+void Client::setIntMark(const QVariant &mark_var)
+{
+	JsonArray mark_str = mark_var.value<JsonArray>();
+	if (mark_str.size() != 3) return;
+	if (!JsonUtils::isString(mark_str[0]) || !JsonUtils::isString(mark_str[1])) return;
+
+	QString who = mark_str[0].toString();
+	QString mark = mark_str[1].toString();
+	QList<int> value;
+	JsonUtils::tryParse(mark_str[2], value);
+
+	ClientPlayer *player = getPlayer(who);
+	player->setIntMark(mark, value);
 }
 
 void Client::onPlayerChooseSuit()

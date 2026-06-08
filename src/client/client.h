@@ -136,6 +136,7 @@ public:
     void revivePlayer(const QVariant &player_arg);
     void warn(const QVariant &reason_json);
     void setMark(const QVariant &mark_str);
+    void setIntMark(const QVariant &mark_str);
     void showCard(const QVariant &show_str);
     void showVirtualCard(const QVariant &arg);
     void log(const QVariant &log_str);

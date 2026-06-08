@@ -243,6 +243,12 @@ public:
     int getHujia() const;
     QStringList getMarkNames() const;
 
+    void addIntMark(const QString &mark, int value);
+    bool removeIntMark(const QString &mark, int value);
+    virtual void setIntMark(const QString &mark, QList<int> value);
+    QList<int> getIntMark(const QString &mark) const;
+    QStringList getIntMarkNames() const;
+
     bool hasClub(const QString &club_name) const;
     bool hasClub() const;
     QString getClubName() const;
@@ -416,6 +422,7 @@ public:
 
 protected:
     QMap<QString, int> marks;
+    QMap<QString, QList<int> > int_marks;
     QMap<QString, QList<int> > piles;
     QMap<QString, QStringList> general_piles;
     QMap<QString, QStringList> general_pile_open;

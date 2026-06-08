@@ -717,6 +717,62 @@ void PlayerCardContainer::updateMark(const QString &mark_name, int mark_num)
     }
 }
 
+void PlayerCardContainer::updateIntMark(const QString &mark_name)
+{
+    if (!m_player) return;
+
+    QList<int> int_mark = m_player->getIntMark(mark_name);
+    if (int_mark.isEmpty()) {
+        if (_m_privatePiles.contains(mark_name)) {
+            _m_privatePiles[mark_name]->widget()->deleteLater();
+            _m_privatePiles[mark_name]->setWidget(nullptr);
+            delete _m_privatePiles[mark_name];
+            _m_privatePiles.remove(mark_name);
+        }
+    } else {
+        QPushButton *button;
+        if (_m_privatePiles.contains(mark_name)) {
+            button = (QPushButton *)_m_privatePiles[mark_name]->widget();
+            if (button->menu()) button->menu()->deleteLater();
+        } else {
+            button = new QPushButton;
+            button->setObjectName(mark_name);
+            button->setProperty("private_pile", "true");
+            button->setStyleSheet("background-color:black");
+            _m_privatePiles[mark_name] = new QGraphicsProxyWidget(_getPileParent());
+            _m_privatePiles[mark_name]->setObjectName(mark_name);
+            _m_privatePiles[mark_name]->setWidget(button);
+        }
+
+        QString text = Sanguosha->translate(mark_name);
+        text.append(QString("(%1)").arg(int_mark.length()));
+        button->setText(text);
+
+        disconnect(button, &QPushButton::pressed, this, &PlayerCardContainer::showIntMark);
+        disconnect(button, &QPushButton::released, this, &PlayerCardContainer::hidePile);
+        connect(button, &QPushButton::pressed, this, &PlayerCardContainer::showIntMark);
+        connect(button, &QPushButton::released, this, &PlayerCardContainer::hidePile);
+    }
+
+    QList<QGraphicsProxyWidget *> widgets = _m_privatePiles.values();
+    for (int i = 0; i < widgets.length(); i++) {
+        widgets[i]->setPos(_m_layout->m_privatePileStartPos + i * _m_layout->m_privatePileStep);
+    }
+}
+
+void PlayerCardContainer::showIntMark()
+{
+    QPushButton *button = qobject_cast<QPushButton *>(sender());
+    if (button) {
+        if (!m_player) return;
+        QList<int> card_ids = m_player->getIntMark("@" + button->objectName());
+        card_ids += m_player->getIntMark("@" + button->objectName() + "-phase");
+        card_ids += m_player->getIntMark("@" + button->objectName() + "-turn");
+        if (card_ids.isEmpty() || card_ids.contains(-1)) return;
+        RoomSceneInstance->showPile(card_ids, button->objectName());
+    }
+}
+
 void PlayerCardContainer::updateDrankState()
 {
     if (m_player->getMark("drank") > 0)

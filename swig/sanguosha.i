@@ -249,6 +249,12 @@ public:
 	int getHujia() const;
 	QStringList getMarkNames() const;
 
+	void addIntMark(const QString &mark, int value);
+	bool removeIntMark(const QString &mark, int value);
+	virtual void setIntMark(const QString &mark, QList<int> value);
+	QList<int> getIntMark(const QString &mark) const;
+	QStringList getIntMarkNames() const;
+
 	bool hasClub(const char *club_name) const;
 	bool hasClub() const;
 	QString getClubName() const;
@@ -1185,6 +1191,12 @@ public:
 	int getMark(const char*mark) const;
 	QStringList getMarkNames() const;
 
+	void addIntMark(const QString &mark, int value) const;
+	bool removeIntMark(const QString &mark, int value) const;
+	void setIntMark(const QString &mark, QList<int> value) const;
+	QList<int> getIntMark(const QString &mark) const;
+	QStringList getIntMarkNames() const;
+
 	void setFlags(const char*flag) const;
 	bool hasFlag(const char*flag) const;
 	void clearFlags() const;
@@ -1653,6 +1665,9 @@ public:
 	void setPlayerMark(ServerPlayer*player, const char*mark, int value, QList<ServerPlayer*> only_viewers = QList<ServerPlayer*>());
 	void addPlayerMark(ServerPlayer*player, const char*mark, int add_num = 1, QList<ServerPlayer*> only_viewers = QList<ServerPlayer*>());
 	void removePlayerMark(ServerPlayer*player, const char*mark, int remove_num = 1);
+	void setPlayerIntMark(ServerPlayer*player, const QString&mark, const QList<int>&value);
+	void addPlayerIntMark(ServerPlayer*player, const QString&mark, int value);
+	void clearPlayerIntMark(ServerPlayer*player, const QString&mark);
 	void setPlayerCardLimitation(ServerPlayer*player, const char*limit_list, const char*pattern, bool single_turn, const char*reason = "");
 	void removePlayerCardLimitation(ServerPlayer*player, const char*limit_list, const char*pattern, const char*reason = "");
 	void removePlayerCardLimitationByReason(ServerPlayer*player, const char*reason);

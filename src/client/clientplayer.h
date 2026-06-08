@@ -42,6 +42,7 @@ public:
     bool isLastHandCard(const Card *card, bool contain = false) const override;
     int getMaxCards() const override;
     void setMark(const QString &mark, int value);
+    void setIntMark(const QString &mark, QList<int> value);
 
 private:
     bool useExactHandInfo() const;

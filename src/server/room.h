@@ -106,6 +106,9 @@ public:
     void setPlayerMark(ServerPlayer*player, const QString&mark, int value, QList<ServerPlayer*> only_viewers = QList<ServerPlayer*>());
     void addPlayerMark(ServerPlayer*player, const QString&mark, int add_num = 1, QList<ServerPlayer*> only_viewers = QList<ServerPlayer*>());
     void removePlayerMark(ServerPlayer*player, const QString&mark, int remove_num = 1);
+    void setPlayerIntMark(ServerPlayer*player, const QString&mark, const QList<int>&value);
+    void addPlayerIntMark(ServerPlayer*player, const QString&mark, int value);
+    void clearPlayerIntMark(ServerPlayer*player, const QString&mark);
     void setPlayerCardLimitation(ServerPlayer*player, const QString&limit_list,
         const QString&pattern, bool single_turn, const QString&reason = QString());
     void removePlayerCardLimitation(ServerPlayer*player, const QString&limit_list,

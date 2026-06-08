@@ -3077,6 +3077,31 @@ void Room::setPlayerMark(ServerPlayer*player, const QString&mark, int value, QLi
 	if (trigger) thread->trigger(MarkChanged, this, player, data);
 }
 
+void Room::setPlayerIntMark(ServerPlayer*player, const QString&mark, const QList<int>&value)
+{
+    player->setIntMark(mark, value);
+
+    JsonArray arg;
+    arg << player->objectName();
+    arg << mark;
+    arg << JsonUtils::toJsonArray(value);
+    doBroadcastNotify(S_COMMAND_SET_INT_MARK, arg);
+}
+
+void Room::addPlayerIntMark(ServerPlayer*player, const QString&mark, int value)
+{
+    QList<int> values = player->getIntMark(mark);
+    if (!values.contains(value)) {
+        values.append(value);
+        setPlayerIntMark(player, mark, values);
+    }
+}
+
+void Room::clearPlayerIntMark(ServerPlayer*player, const QString&mark)
+{
+    setPlayerIntMark(player, mark, QList<int>());
+}
+
 void Room::clearClub(const QString &club_name){
     foreach(ServerPlayer *p, getAlivePlayers()){
         if (p->hasClub(club_name)){

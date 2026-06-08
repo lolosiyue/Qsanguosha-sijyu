@@ -130,7 +130,10 @@ public slots:
     void updatePile(const QString &pile_name);
     void updateGeneralPile(const QString &pile_name);
     void showPile();
+    void hidePile();
     void updateMark(const QString &mark_name, int mark_num);
+    void updateIntMark(const QString &mark_name);
+    void showIntMark();
     void updateRole(const QString &role);
     void updateMarks();
     void updateVotes(bool need_select = true, bool display_1 = false);

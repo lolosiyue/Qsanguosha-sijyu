@@ -332,11 +332,15 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 					room->getThread()->trigger(RoundEnd,room,p,rsdata);
 				//room->getThread()->trigger(RoundEnd,room,room->getCurrent(),rsdata);
 				foreach (ServerPlayer *p,room->getAlivePlayers()) {
-					foreach (QString mark,p->getMarkNames()) {
-						if(mark.endsWith("_lun"))
-							room->setPlayerMark(p,mark,0);
-					}
-					foreach (const Card *c,p->getHandcards() + p->getEquips()) {
+				foreach (QString mark,p->getMarkNames()) {
+					if(mark.endsWith("_lun"))
+						room->setPlayerMark(p,mark,0);
+				}
+				foreach (QString mark,p->getIntMarkNames()) {
+					if(mark.endsWith("_lun"))
+						room->clearPlayerIntMark(p,mark);
+				}
+				foreach (const Card *c,p->getHandcards() + p->getEquips()) {
 						foreach (QString flag,c->getFlags()) {
 							if(flag.endsWith("_lun"))
 								room->setCardTip(c->getId(),"-" + flag);
@@ -388,6 +392,11 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 						||(player==p&&(mark.endsWith("-SelfClear")||mark.endsWith("-SelfPlayClear"))))
                         room->setPlayerMark(p,mark,0);
                 }
+                foreach (QString mark,p->getIntMarkNames()) {
+                    if(mark.endsWith("-Clear")||mark.endsWith("-PlayClear")
+						||(player==p&&(mark.endsWith("-SelfClear")||mark.endsWith("-SelfPlayClear"))))
+                        room->clearPlayerIntMark(p,mark);
+                }
 				if(p->property("Suijiyingbian").toString()!="")
 					room->setPlayerProperty(p,"Suijiyingbian","");
                 foreach (const Card *c,p->getHandcards() + p->getEquips()) {
@@ -425,12 +434,16 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
             if(change.to==Player::Play)
 				room->setPlayerMark(player,"damage_point_play_phase",0);
 			else{
-				foreach (ServerPlayer *p,room->getAlivePlayers()) {
-					foreach (QString mark,p->getMarkNames()) {
-						if(mark.endsWith("-PlayClear")||(player==p&&mark.endsWith("-SelfPlayClear")))
-							room->setPlayerMark(p,mark,0);
-					}
+			foreach (ServerPlayer *p,room->getAlivePlayers()) {
+				foreach (QString mark,p->getMarkNames()) {
+					if(mark.endsWith("-PlayClear")||(player==p&&mark.endsWith("-SelfPlayClear")))
+						room->setPlayerMark(p,mark,0);
 				}
+				foreach (QString mark,p->getIntMarkNames()) {
+					if(mark.endsWith("-PlayClear")||(player==p&&mark.endsWith("-SelfPlayClear")))
+						room->clearPlayerIntMark(p,mark);
+				}
+			}
 			}
         }
         static const QMap<Player::Phase, QString> phaseClearMap = {
@@ -448,6 +461,10 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
                 foreach (QString mark,p->getMarkNames()) {
                     if(mark.endsWith("-"+phaseClear)||(player==p&&mark.endsWith("-Self"+phaseClear)))
                         room->setPlayerMark(p,mark,0);
+                }
+                foreach (QString mark,p->getIntMarkNames()) {
+                    if(mark.endsWith("-"+phaseClear)||(player==p&&mark.endsWith("-Self"+phaseClear)))
+                        room->clearPlayerIntMark(p,mark);
                 }
             }
         }

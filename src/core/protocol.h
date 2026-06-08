@@ -98,6 +98,7 @@ namespace QSanProtocol {
         S_COMMAND_CHOOSE_ORDER,
         S_COMMAND_ASK_PEACH,
         S_COMMAND_SET_MARK,
+        S_COMMAND_SET_INT_MARK,
         S_COMMAND_SET_FLAG,
         S_COMMAND_CARD_MARK,
         S_COMMAND_CARD_FLAG,

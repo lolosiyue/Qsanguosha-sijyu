@@ -1483,6 +1483,41 @@ QStringList Player::getMarkNames() const
     return marks.keys();
 }
 
+void Player::addIntMark(const QString &mark, int value)
+{
+    QList<int> int_mark = int_marks.value(mark, QList<int>());
+    int_mark.append(value);
+    setIntMark(mark, int_mark);
+}
+
+bool Player::removeIntMark(const QString &mark, int value)
+{
+    QList<int> int_mark = int_marks.value(mark, QList<int>());
+    if (int_mark.removeOne(value)) {
+        setIntMark(mark, int_mark);
+        return true;
+    }
+    return false;
+}
+
+void Player::setIntMark(const QString &mark, QList<int> value)
+{
+    if (value.isEmpty())
+        int_marks.remove(mark);
+    else
+        int_marks[mark] = value;
+}
+
+QList<int> Player::getIntMark(const QString &mark) const
+{
+    return int_marks.value(mark, QList<int>());
+}
+
+QStringList Player::getIntMarkNames() const
+{
+    return int_marks.keys();
+}
+
 bool Player::hasClub(const QString &club_name) const
 {
     return getMark("@amclub_" + club_name) > 0;

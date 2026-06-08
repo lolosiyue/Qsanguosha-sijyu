@@ -367,3 +367,11 @@ void ClientPlayer::setMark(const QString &mark, int value)
 		emit Mark_changed(mark, value);
 }
 
+void ClientPlayer::setIntMark(const QString &mark, QList<int> value)
+{
+	if (value.isEmpty())
+		int_marks.remove(mark);
+	else
+		int_marks[mark] = value;
+}
+
