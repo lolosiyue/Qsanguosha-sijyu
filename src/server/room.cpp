@@ -2341,7 +2341,16 @@ QList<int> Room::askForCardsChosen(ServerPlayer*chooser, ServerPlayer*choosee, c
 			}
 			
 			Card::HandlingMethod method = Sanguosha->getCardHandlingMethod(handle[2]);
-			if (method == Card::MethodGet) {
+			if (method == Card::MethodDiscard) {
+				foreach (const Card *card, choosee->getCards(handle[0])) {
+					if (ids.contains(card->getEffectiveId())) continue;
+					if (result.contains(card->getEffectiveId())) continue;
+					if (!chooser->canDiscard(choosee, card->getEffectiveId())) {
+						ids.append(card->getEffectiveId());
+					}
+				}
+			}
+			else if (method == Card::MethodGet) {
 				foreach (const Card *card, choosee->getCards(handle[0])) {
 					if (ids.contains(card->getEffectiveId())) continue;
 					if (result.contains(card->getEffectiveId())) continue;
