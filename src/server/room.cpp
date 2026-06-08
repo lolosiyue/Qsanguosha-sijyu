@@ -2339,8 +2339,48 @@ QList<int> Room::askForCardsChosen(ServerPlayer*chooser, ServerPlayer*choosee, c
 				foreach(const QString&id, handle[3].split("+"))
 					ids.append(id.toInt());
 			}
+			
+			Card::HandlingMethod method = Sanguosha->getCardHandlingMethod(handle[2]);
+			if (method == Card::MethodGet && handle[0].contains("e")) {
+				foreach (const Card *card, choosee->getCards(handle[0])) {
+					if (ids.contains(card->getEffectiveId())) continue;
+					if (result.contains(card->getEffectiveId())) continue;
+					if (card->getTypeId() == Card::TypeEquip) {
+						const EquipCard *equip = qobject_cast<const EquipCard *>(card->getRealCard());
+						if (equip) {
+						 QList<int> occupy_slots = equip->getOccupyLocations();
+						 bool can_equip = true;
+						 foreach (int slot, occupy_slots) {
+							 if (!chooser->hasEquipArea(slot)) {
+								 can_equip = false;
+								 break;
+							 }
+						 }
+						 if (can_equip) {
+							 QList<const Card *> existing_equips = chooser->getEquips();
+							 foreach (const Card *existing, existing_equips) {
+								 const EquipCard *existing_equip = qobject_cast<const EquipCard *>(existing->getRealCard());
+								 if (!existing_equip) continue;
+								 QList<int> existing_slots = existing_equip->getOccupyLocations();
+								 foreach (int existing_slot, existing_slots) {
+									 if (occupy_slots.contains(existing_slot)) {
+										 can_equip = false;
+										 break;
+									 }
+								 }
+								 if (!can_equip) break;
+							 }
+						 }
+						 if (!can_equip) {
+							 ids.append(card->getEffectiveId());
+						 }
+						}
+					}
+				}
+			}
+			
 			int id = askForCardChosen(chooser, choosee, handle[0], reason, handle[1] == "true",
-				Sanguosha->getCardHandlingMethod(handle[2]), ids + result);
+				method, ids + result);
 			if (id != Card::S_UNKNOWN_CARD_ID)
 				result << id;
 		}
@@ -2697,6 +2737,39 @@ QList<int> Room::GlobalCardChosen(ServerPlayer*player, QList<ServerPlayer*> targ
 
         foreach (const Card*card, p->getCards(flags)) {
             int card_id = card->getEffectiveId();
+            
+            if (method == Card::MethodGet && card->getTypeId() == Card::TypeEquip) {
+                const EquipCard *equip = qobject_cast<const EquipCard *>(card->getRealCard());
+                if (equip) {
+                    QList<int> occupy_slots = equip->getOccupyLocations();
+                    bool can_equip = true;
+                    foreach (int slot, occupy_slots) {
+                        if (!player->hasEquipArea(slot)) {
+                            can_equip = false;
+                            break;
+                        }
+                    }
+                    if (can_equip) {
+                        QList<const Card *> existing_equips = player->getEquips();
+                        foreach (const Card *existing, existing_equips) {
+                            const EquipCard *existing_equip = qobject_cast<const EquipCard *>(existing->getRealCard());
+                            if (!existing_equip) continue;
+                            QList<int> existing_slots = existing_equip->getOccupyLocations();
+                            foreach (int existing_slot, existing_slots) {
+                                if (occupy_slots.contains(existing_slot)) {
+                                    can_equip = false;
+                                    break;
+                                }
+                            }
+                            if (!can_equip) break;
+                        }
+                    }
+                    if (!can_equip) {
+                        disabled_ids_copy.append(card_id);
+                    }
+                }
+            }
+            
             if (method == Card::MethodDiscard) {
                 if (!player->canDiscard(p, card_id))
                     disabled_ids_copy.append(card_id);

@@ -206,7 +206,6 @@ void PlayerCardBox::globalchooseCard(const ClientPlayer *player, const QString &
     }
 
     if (flags.contains(equipmentFlag) && player->hasEquip()) {
-        updateNumbers(player->getEquips().length());
         equip = true;
     }
 
@@ -239,7 +238,13 @@ void PlayerCardBox::globalchooseCard(const ClientPlayer *player, const QString &
     }
 
     if (equip) {
-        arrangeCards(player->getEquips(), QPoint(startX, nameRects.at(index).y()), true);
+        QList<const Card *> equips;
+        foreach (const Card *e, player->getEquips()) {
+            if (!disabledIds.contains(e->getEffectiveId()))
+                equips << e;
+        }
+        updateNumbers(equips.length());
+        arrangeCards(equips, QPoint(startX, nameRects.at(index).y()), true);
 
         ++index;
     }
