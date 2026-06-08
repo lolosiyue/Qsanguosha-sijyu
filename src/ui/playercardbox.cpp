@@ -418,6 +418,8 @@ void PlayerCardBox::arrangeCards(const QList<const Card *> &cards, const QPoint 
         }
         if (!is_globalchoose)
             connect(item, &CardItem::clicked, this, &PlayerCardBox::reply);
+        else
+            connect(item, &CardItem::clicked, this, &PlayerCardBox::global_click);
         items << item;
         areaItems << item;
     }

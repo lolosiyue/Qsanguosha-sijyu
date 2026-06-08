@@ -3685,6 +3685,8 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
             if (!card_boxes.contains(p)) {
                 card_boxes[p] = new PlayerCardBox();
                 addItem(card_boxes[p]);
+                connect(card_boxes[p], SIGNAL(global_choose(const ClientPlayer*, int)), 
+                        this, SLOT(updateGlobalCardBox(const ClientPlayer*, int)));
             }
             card_boxes[p]->globalchooseCard(p, skill_name, ClientInstance->skill_name,
                 ClientInstance->handcard_visible, ClientInstance->disabled_ids, ClientInstance->targets_cards.value(name));
@@ -3978,10 +3980,7 @@ void RoomScene::doCancelButton()
         enableTargets(nullptr);
         foreach (const ClientPlayer*p, card_boxes.keys())
             card_boxes[p]->clear();
-        if (ok_button->isEnabled())
-            ok_button->click();
-        else
-            ClientInstance->onPlayerChooseCards(QList<int>());
+        ClientInstance->onPlayerChooseCards(selected_ids);
         prompt_box->disappear();
         dashboard->highlightEquip(ClientInstance->skill_name, false);
         break;
