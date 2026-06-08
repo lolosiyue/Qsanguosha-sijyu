@@ -27,6 +27,7 @@ public:
 	virtual QList<int> askForDiscard(const char *reason, int discard_num, int min_num, bool optional, bool include_equip, const char *pattern = ".") = 0;
 	virtual const Card *askForNullification(const Card *trick, ServerPlayer *from, ServerPlayer *to, bool positive) = 0;
 	virtual int askForCardChosen(ServerPlayer *who, const char *flags, const char *reason, Card::HandlingMethod method) = 0;
+	virtual QList<int> askForCardsChosen(const QList<ServerPlayer *> &targets, const QString &flags, const QString &reason, int min, int max, const QList<int> &disabled_ids) = 0;
 	virtual const Card *askForCard(const char *pattern, const char *prompt, const QVariant &data, const Card::HandlingMethod method) = 0;
 	virtual QString askForUseCard(const char *pattern, const char *prompt, const Card::HandlingMethod method) = 0;
 	virtual int askForAG(const QList<int> &card_ids, bool refusable, const char *reason) = 0;
@@ -53,6 +54,7 @@ public:
 	virtual QList<int> askForDiscard(const char *reason, int discard_num, int min_num, bool optional, bool include_equip, const char *pattern = ".");
 	virtual const Card *askForNullification(const Card *trick, ServerPlayer *from, ServerPlayer *to, bool positive);
 	virtual int askForCardChosen(ServerPlayer *who, const char *flags, const char *reason, Card::HandlingMethod method);
+	virtual QList<int> askForCardsChosen(const QList<ServerPlayer *> &targets, const QString &flags, const QString &reason, int min, int max, const QList<int> &disabled_ids);
 	virtual const Card *askForCard(const char *pattern, const char *prompt, const QVariant &data, const Card::HandlingMethod method);
 	virtual QString askForUseCard(const char *pattern, const char *prompt, const Card::HandlingMethod method);
 	virtual int askForAG(const QList<int> &card_ids, bool refusable, const char *reason);
@@ -78,6 +80,7 @@ public:
 	virtual QList<int> askForDiscard(const char *reason, int discard_num, int min_num, bool optional, bool include_equip, const char *pattern = ".");
 	virtual QString askForChoice(const char *skill_name, const char *choices, const QVariant &data);
 	virtual int askForCardChosen(ServerPlayer *who, const char *flags, const char *reason, Card::HandlingMethod method);
+	virtual QList<int> askForCardsChosen(const QList<ServerPlayer *> &targets, const QString &flags, const QString &reason, int min, int max, const QList<int> &disabled_ids);
 	virtual ServerPlayer *askForPlayerChosen(const QList<ServerPlayer *> &targets, const char *reason);
 	virtual QList<ServerPlayer *> askForPlayersChosen(const QList<ServerPlayer *> &targets, const char *reason, int max_num, int min_num);
 	virtual const Card *askForCard(const char *pattern, const char *prompt, const QVariant &data, const Card::HandlingMethod method);
@@ -297,6 +300,40 @@ int LuaAI::askForCardChosen(ServerPlayer *who, const QString &flags, const QStri
 	}
 	room->output(QString("The result of function %1 should be an integer!").arg(__FUNCTION__));
 	return TrustAI::askForCardChosen(who, flags, reason, method);
+}
+
+QList<int> LuaAI::askForCardsChosen(const QList<ServerPlayer *> &targets, const QString &flags, const QString &reason, int min, int max, const QList<int> &disabled_ids)
+{
+	LuaLocker locker;
+	lua_State*L = room->getLuaState();
+
+	pushCallback(L, __FUNCTION__);
+	SWIG_NewPointerObj(L, &targets, SWIGTYPE_p_QListT_ServerPlayer_p_t, 0);
+	lua_pushstring(L, flags.toLatin1());
+	lua_pushstring(L, reason.toLatin1());
+	lua_pushinteger(L, min);
+	lua_pushinteger(L, max);
+	lua_createtable(L, disabled_ids.length(), 0);
+
+	for (int i = 0; i < disabled_ids.length(); ++i) {
+		int elem = disabled_ids.at(i);
+		lua_pushnumber(L, elem);
+		lua_rawseti(L, -2, i + 1);
+	}
+
+	int error = lua_pcall(L, 7, 1, 0);
+	if (error != 0) {
+		const char *error_msg = lua_tostring(L, -1);
+		lua_pop(L, 1);
+		room->output(error_msg);
+		return TrustAI::askForCardsChosen(targets, flags, reason, min, max, disabled_ids);
+	}
+
+	QList<int> result;
+	if (getTable(L, result))
+		return result;
+	else
+		return TrustAI::askForCardsChosen(targets, flags, reason, min, max, disabled_ids);
 }
 
 ServerPlayer *LuaAI::askForPlayerChosen(const QList<ServerPlayer *> &targets, const QString &reason)

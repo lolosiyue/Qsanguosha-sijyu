@@ -2315,6 +2315,55 @@ int Room::askForCardChosen(ServerPlayer*player, ServerPlayer*who, const QString&
 	return card_id;
 }
 
+QList<int> Room::askForCardsChosen(ServerPlayer*chooser, ServerPlayer*choosee, const QStringList&handle_list, const QString&reason)
+{
+	QList<int> result;
+	result.clear();
+	setPlayerFlag(choosee, "continuous_card_chosen");
+
+	QList<int> handcard_ids = choosee->handCards();
+	qShuffle(handcard_ids);
+	tag["askforCardsChosen"] = IntList2VariantList(handcard_ids);
+
+	if (chooser && chooser->isAlive() && choosee && choosee->isAlive() && !choosee->isAllNude()) {
+		foreach (const QString&src, handle_list) {
+			if (src.isEmpty()) continue;
+			QStringList handle = src.split("^");
+			if (handle[0].isEmpty()) continue;
+			if (choosee->getCards(handle[0]).isEmpty()) continue;
+			if (handle.length() == 1) handle.append("false");
+			if (handle.length() == 2) handle.append("none");
+			QList<int> ids;
+			ids.clear();
+			if (handle.length() > 3) {
+				foreach(const QString&id, handle[3].split("+"))
+					ids.append(id.toInt());
+			}
+			int id = askForCardChosen(chooser, choosee, handle[0], reason, handle[1] == "true",
+				Sanguosha->getCardHandlingMethod(handle[2]), ids + result);
+			if (id != Card::S_UNKNOWN_CARD_ID)
+				result << id;
+		}
+	}
+	setPlayerFlag(choosee, "-continuous_card_chosen");
+	tag.remove("askforCardsChosen");
+
+	QVariant decisionData = QVariant::fromValue(QString("cardChosen:%1:%2:%3:%4").arg(reason).arg(IntList2StringList(result).join("+"))
+		.arg(chooser->objectName()).arg(choosee->objectName()));
+	thread->trigger(ChoiceMade, this, chooser, decisionData);
+
+	return result;
+}
+
+QList<const Card*>Room::askForCardsChosen(ServerPlayer*chooser, ServerPlayer*choosee, const QString&handle_string, const QString&reason)
+{
+	QList<int> value = askForCardsChosen(chooser, choosee, handle_string.split("|"), reason);
+	QList<const Card*>result;
+	foreach (int id, value)
+		result.append(getCard(id));
+	return result;
+}
+
 const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QString&prompt,
 	const QVariant&data, const QString&skill_name)
 {
