@@ -111,9 +111,10 @@ src/ui/chatwidget.cpp \
 	src/ui/qsanbutton.cpp \
 	src/ui/rolecombobox.cpp \
 	src/ui/roomscene.cpp \
-	src/ui/graphicsbox.cpp \
-	src/ui/choosetriggerorderbox.cpp \
-	src/ui/sprite.cpp \
+    src/ui/graphicsbox.cpp \
+    src/ui/choosetriggerorderbox.cpp \
+    src/ui/fieldcardtransferbox.cpp \
+    src/ui/sprite.cpp \
 	src/ui/startscene.cpp \
 	src/ui/window.cpp \
 	src/util/detector.cpp \
@@ -349,6 +350,7 @@ src/ui/dashboard.h \
 src/ui/generic-cardcontainer-ui.h \
     src/ui/graphicsbox.h \
     src/ui/playercardbox.h \
+    src/ui/fieldcardtransferbox.h \
     src/ui/qsan-selectable-item.h \
 	src/ui/skin-bank.h \
 	src/ui/table-pile.h \

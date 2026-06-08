@@ -1709,6 +1709,7 @@ public:
 	void returnToTopDrawPile(QList<int> cards);
 	void returnToEndDrawPile(QList<int> cards);
 	int doGongxin(ServerPlayer*shenlvmeng, ServerPlayer*target, QList<int> enabled_ids = QList<int>(), const char*skill_name = "gongxin");
+	QList<int> askForTransferFieldCards(ServerPlayer *player, const QList<ServerPlayer *> targets, const char *reason, bool equipArea, bool judgingArea);
 	int drawCard(bool isTop = true);
 	void fillAG(const QList<int>&card_ids, ServerPlayer*who = nullptr, const QList<int>&disabled_ids = QList<int>());
 	void takeAG(ServerPlayer*player, int card_id, bool move_cards = true, QList<ServerPlayer*> to_notify = QList<ServerPlayer*>());

@@ -46,6 +46,7 @@ class EffectAnimation;
 class GiftItem;
 class SpineGlItem;
 class PlayerCardBox;
+class FieldCardTransferBox;
 
 #ifndef Q_OS_WINRT
 #include <QQmlEngine>
@@ -346,6 +347,8 @@ private:
 	GuanxingBox *m_guanxingBox;
 
 	QList<CardItem *> gongxin_items;
+
+    FieldCardTransferBox *m_fieldcardtransferBox;
 
     ClientLogBox *log_box;
     GifChatBox *chat_box;

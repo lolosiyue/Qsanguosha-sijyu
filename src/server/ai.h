@@ -54,6 +54,7 @@ public:
     virtual ServerPlayer *askForYiji(const QList<int> &cards, const QString &reason, int &card_id) = 0;
     virtual void askForGuanxing(const QList<int> &cards, QList<int> &up, QList<int> &bottom, int guanxing_type) = 0;
     virtual QString askForGeneral(const QStringList &generals, const QString &default_choice = QString(), const QString &reason = QString()) = 0;
+    virtual int askForTransferFieldCards(const QList<ServerPlayer *> targets, const QString &reason, bool equipArea, bool judgingArea) = 0;
     virtual void filterEvent(TriggerEvent triggerEvent, ServerPlayer *player, const QVariant &data);
 
 protected:
@@ -91,6 +92,8 @@ public:
     virtual void askForGuanxing(const QList<int> &cards, QList<int> &up, QList<int> &bottom, int guanxing_type);
     virtual QString askForGeneral(const QStringList &generals, const QString &default_choice = QString(), const QString &reason = QString());
 
+    virtual int askForTransferFieldCards(const QList<ServerPlayer *> targets, const QString &reason, bool equipArea, bool judgingArea);
+
     virtual bool useCard(const Card *card);
 
 private:
@@ -124,6 +127,8 @@ public:
     virtual ServerPlayer *askForYiji(const QList<int> &cards, const QString &reason, int &card_id);
     virtual void askForGuanxing(const QList<int> &cards, QList<int> &up, QList<int> &bottom, int guanxing_type);
     virtual QString askForGeneral(const QStringList &generals, const QString &default_choice = QString(), const QString &reason = QString());
+
+    virtual int askForTransferFieldCards(const QList<ServerPlayer *> targets, const QString &reason, bool equipArea, bool judgingArea);
 
     virtual void filterEvent(TriggerEvent triggerEvent, ServerPlayer *player, const QVariant &data);
 

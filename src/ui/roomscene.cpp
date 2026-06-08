@@ -15,6 +15,7 @@
 #include "window.h"
 #include "button.h"
 #include "playercardbox.h"
+#include "fieldcardtransferbox.h"
 #include "cardcontainer.h"
 #include "recorder.h"
 #include "replay-timeline.h"
@@ -275,6 +276,12 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(ClientInstance, &Client::mirror_guanxing_move, m_guanxingBox, &GuanxingBox::mirrorGuanxingMove);
 	connect(ClientInstance, &Client::mirror_guanxing_finish, m_guanxingBox, &GuanxingBox::clear);
 	m_guanxingBox->moveBy(-120, 0);
+
+	m_fieldcardtransferBox = new FieldCardTransferBox;
+	m_fieldcardtransferBox->hide();
+	addItem(m_fieldcardtransferBox);
+	m_fieldcardtransferBox->setZValue(20000.0);
+	connect(ClientInstance, &Client::fieldcardtransfer, m_fieldcardtransferBox, &FieldCardTransferBox::doFieldCardTransferChoose);
 
 	m_chooseTriggerOrderBox = new ChooseTriggerOrderBox();
 	m_chooseTriggerOrderBox->hide();
@@ -1430,6 +1437,7 @@ void RoomScene::updateTable()
 	m_tablePile->adjustCards();
 	card_container->setPos(m_tableCenterPos);
 	m_guanxingBox->setPos(m_tableCenterPos - QPointF(m_guanxingBox->boundingRect().width() / 2, m_guanxingBox->boundingRect().height() / 2));
+	m_fieldcardtransferBox->setPos(m_tableCenterPos - QPointF(m_fieldcardtransferBox->boundingRect().width() / 2, m_fieldcardtransferBox->boundingRect().height() / 2));
 
 	m_timerLabel->setPos(QPointF(width()*0.77,-1));
 
@@ -3133,6 +3141,10 @@ void RoomScene::useSelectedCard()
 		m_chooseTriggerOrderBox->reply();
 		break;
 	}
+	case Client::AskForTransferFieldCard: {
+		m_fieldcardtransferBox->reply();
+		break;
+	}
 	}
 
 	if(dashboard->currentSkill())
@@ -3284,7 +3296,8 @@ void RoomScene::doTimeout()
 		break;
 	}
 	case Client::AskForGuanxing:
-	case Client::AskForGongxin: {
+	case Client::AskForGongxin:
+	case Client::AskForTransferFieldCard: {
 		ok_button->click();
 		break;
 	}
@@ -3478,6 +3491,8 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 			m_guanxingBox->clear();
 			if(!card_container->retained())
 				card_container->clear();
+		} else if(oldStatus==Client::AskForTransferFieldCard){
+			m_fieldcardtransferBox->clear();
 		}
 		prompt_box->disappear();
 		ClientInstance->getPromptDoc()->clear();
@@ -3728,6 +3743,12 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 	case Client::AskForGongxin: {
 		ok_button->setEnabled(true);
 		cancel_button->setEnabled(false);
+		discard_button->setEnabled(false);
+		break;
+	}
+	case Client::AskForTransferFieldCard: {
+		ok_button->setEnabled(true);
+		cancel_button->setEnabled(true);
 		discard_button->setEnabled(false);
 		break;
 	}

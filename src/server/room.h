@@ -494,6 +494,7 @@ public:
         bool is_preview = false, bool visible = false, bool optional = true, int max_num = -1,
         QList<ServerPlayer*> players = QList<ServerPlayer*>(), CardMoveReason reason = CardMoveReason(),
         const QString&prompt = "", bool notify_skill = false, bool get = true);
+    QList<int> askForTransferFieldCards(ServerPlayer *player, const QList<ServerPlayer *> targets, const QString &reason, bool equipArea, bool judgingArea);
     const Card*askForPindian(ServerPlayer*player, ServerPlayer*from, const QString&reason);
     QList<const Card*> askForPindianRace(ServerPlayer*from, ServerPlayer*to, const QString&reason);
     ServerPlayer*askForPlayerChosen(ServerPlayer*player, const QList<ServerPlayer*>&targets, const QString&reason,

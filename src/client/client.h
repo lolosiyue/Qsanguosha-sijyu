@@ -38,6 +38,7 @@ public:
         AskForGeneralTaken = 0x0D,
         AskForArrangement = 0x0E,
         AskForTriggerOrder = 0x0F,
+        AskForTransferFieldCard = 0x1A,
 
         AskForQml = 0x10,
 
@@ -202,6 +203,7 @@ public:
     void askForGongxin(const QVariant &);
     void askForTriggerOrder(const QVariant &);
     void globalCardChosen(const QVariant &);
+    void askForTransferFieldCard(const QVariant &);
     void askForAssign(const QVariant &); // Assign roles at the beginning of game
     void askForSurrender(const QVariant &);
     void askForLuckCard(const QVariant &);
@@ -292,6 +294,8 @@ public slots:
     void addRobot(int num);
 
     void onPlayerReplyGongxin(int card_id = -1);
+
+    void onPlayerReplyFieldCardTransfer(const QList<int> &cards);
 
     void triggerAnytimeSkill(const QString &skill_name);
     bool isAnytimeSkillPending(const QString &skill_name) const;
@@ -441,6 +445,7 @@ signals:
     void skill_updated(const QString &skill_name);
     void anytime_skill_done(const QString &skill_name);
     void qml_interact(const QString &qmlPath, const QVariantMap &params);
+    void fieldcardtransfer(const ClientPlayer *playerA, const ClientPlayer *playerB, const QString &reason, bool equipArea, bool judgingArea);
 };
 
 extern Client *ClientInstance;

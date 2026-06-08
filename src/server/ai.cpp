@@ -439,12 +439,21 @@ void TrustAI::askForGuanxing(const QList<int> &cards, QList<int> &up, QList<int>
 
 QString TrustAI::askForGeneral(const QStringList &generals, const QString &default_choice, const QString &reason)
 {
-    Q_UNUSED(reason);
-    if (!default_choice.isEmpty() && generals.contains(default_choice))
-        return default_choice;
-    if (!generals.isEmpty())
-        return generals.at(qrand() % generals.length());
-    return "caocao";
+	Q_UNUSED(reason);
+	if (!default_choice.isEmpty() && generals.contains(default_choice))
+		return default_choice;
+	if (!generals.isEmpty())
+		return generals.at(qrand() % generals.length());
+	return "caocao";
+}
+
+int TrustAI::askForTransferFieldCards(const QList<ServerPlayer *> targets, const QString &reason, bool equipArea, bool judgingArea)
+{
+	Q_UNUSED(targets);
+	Q_UNUSED(reason);
+	Q_UNUSED(equipArea);
+	Q_UNUSED(judgingArea);
+	return -1;
 }
 
 LuaAI::LuaAI(ServerPlayer *player)
@@ -620,5 +629,14 @@ QString LuaAI::askForGeneral(const QStringList &generals, const QString &default
         return TrustAI::askForGeneral(generals, default_choice, reason);
 
     return result;
+}
+
+int LuaAI::askForTransferFieldCards(const QList<ServerPlayer *> targets, const QString &reason, bool equipArea, bool judgingArea)
+{
+    Q_UNUSED(targets);
+    Q_UNUSED(reason);
+    Q_UNUSED(equipArea);
+    Q_UNUSED(judgingArea);
+    return TrustAI::askForTransferFieldCards(targets, reason, equipArea, judgingArea);
 }
 

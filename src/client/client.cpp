@@ -146,7 +146,9 @@ Client::Client(QObject *parent, const QString &filename)
 	m_interactions[S_COMMAND_CHOOSE_CARD] = &Client::askForCardChosen;
 	m_interactions[S_COMMAND_CHOOSE_ORDER] = &Client::askForOrder;
 	m_interactions[S_COMMAND_CHOOSE_ROLE_3V3] = &Client::askForRole3v3;
-m_interactions[S_COMMAND_SURRENDER] = &Client::askForSurrender;
+    m_interactions[S_COMMAND_SURRENDER] = &Client::askForSurrender;
+    m_interactions[S_COMMAND_GLOBAL_CHOOSECARD] = &Client::globalCardChosen;
+    m_interactions[S_COMMAND_SKILL_TRANSFERFIELDCARDS] = &Client::askForTransferFieldCard;
     m_interactions[S_COMMAND_LUCK_CARD] = &Client::askForLuckCard;
     m_interactions[S_COMMAND_GLOBAL_CHOOSECARD] = &Client::globalCardChosen;
 
@@ -2107,6 +2109,32 @@ void Client::onPlayerReplyGongxin(int card_id)
 	if (card_id > -1)
 		reply = card_id;
 	replyToServer(S_COMMAND_SKILL_GONGXIN, reply);
+	setStatus(NotActive);
+}
+
+void Client::askForTransferFieldCard(const QVariant &arg)
+{
+	JsonArray args = arg.value<JsonArray>();
+	if (args.isEmpty())
+		return;
+
+	ClientPlayer *playerA = getPlayer(args[0].toString());
+	ClientPlayer *playerB = getPlayer(args[1].toString());
+	QString reason = args[2].toString();
+	bool equipArea = args[3].toBool();
+	bool judgingArea = args[4].toBool();
+
+	emit fieldcardtransfer(playerA, playerB, reason, equipArea, judgingArea);
+	setStatus(AskForTransferFieldCard);
+}
+
+void Client::onPlayerReplyFieldCardTransfer(const QList<int> &cards)
+{
+	JsonArray decks;
+	decks << JsonUtils::toJsonArray(cards);
+
+	replyToServer(S_COMMAND_SKILL_TRANSFERFIELDCARDS, decks);
+
 	setStatus(NotActive);
 }
 

@@ -8105,6 +8105,57 @@ int Room::doGongxin(ServerPlayer*shenlvmeng, ServerPlayer*target, QList<int> ena
 	return card_id; // Do remember to remove the tag later!
 }
 
+QList<int> Room::askForTransferFieldCards(ServerPlayer *player, const QList<ServerPlayer *> targets, const QString &reason, bool equipArea, bool judgingArea)
+{
+	Q_ASSERT(targets.length() == 2);
+	QList<int> returns;
+	if (!player->isAlive())
+		return returns;
+
+	tryPause();
+	notifyMoveFocus(player, S_COMMAND_SKILL_TRANSFERFIELDCARDS);
+
+	AI *ai = player->getAI();
+	if (ai) {
+		int id = ai->askForTransferFieldCards(targets, reason, equipArea, judgingArea);
+		if (id != -1)
+			returns << id;
+		thread->delay();
+	} else {
+		JsonArray args;
+		foreach (ServerPlayer *p, targets) {
+			args << p->objectName();
+		}
+		args << reason;
+		args << equipArea;
+		args << judgingArea;
+		bool success = doRequest(player, S_COMMAND_SKILL_TRANSFERFIELDCARDS, args, true);
+		if (success) {
+			JsonArray clientReply = player->getClientReply().value<JsonArray>();
+			if (clientReply.size() == 1) {
+				JsonUtils::tryParse(clientReply[0], returns);
+			}
+		}
+	}
+
+	QVariant decisionData = QVariant::fromValue(reason + ":fieldcardtransfer:" + player->objectName());
+	thread->trigger(ChoiceMade, this, player, decisionData);
+
+	if (returns.length() == 1) {
+		int id = returns.first();
+		ServerPlayer *from = getCardOwner(id);
+		if (from && targets.contains(from)) {
+			foreach (ServerPlayer *to, targets) {
+				if (from != to) {
+					moveCardTo(Sanguosha->getCard(id), from, to, getCardPlace(id),
+						CardMoveReason(CardMoveReason::S_REASON_TRANSFER, player->objectName(), reason, QString()));
+				}
+			}
+		}
+	}
+	return returns;
+}
+
 const Card*Room::askForPindian(ServerPlayer*player, ServerPlayer*from, const QString&reason)
 {
 	if (!from->isAlive() || !player->isAlive())
