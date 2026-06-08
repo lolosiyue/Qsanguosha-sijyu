@@ -945,6 +945,8 @@ Card::HandlingMethod Engine::getCardHandlingMethod(const QString &method_name) c
         return Card::MethodEffect;
     else if (method_name == "move")
         return Card::MethodMove;
+    else if (method_name == "get")
+        return Card::MethodGet;
     else {
         Q_ASSERT(false);
         return Card::MethodNone;
@@ -2223,6 +2225,7 @@ const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card,
         method_map.insert(Card::MethodIgnore, "ignore");
         method_map.insert(Card::MethodEffect, "effect");
         method_map.insert(Card::MethodMove, "move");
+        method_map.insert(Card::MethodGet, "get");
     }
     QString method_name = method_map.value(method, "");
 	if(method_name=="") return nullptr;

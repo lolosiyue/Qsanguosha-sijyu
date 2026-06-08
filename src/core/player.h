@@ -236,6 +236,8 @@ public:
     bool canDiscard(const QString &flags, const Player *to = nullptr) const;
     bool canDiscard(int card_id, const Player *to = nullptr) const;
 
+    bool canGetCard(const Player *to, int card_id) const;
+
     void addMark(const QString &mark, int add_num = 1);
     void removeMark(const QString &mark, int remove_num = 1);
     virtual void setMark(const QString &mark, int value);

@@ -1366,7 +1366,13 @@ bool Player::canDiscard(const Player *to, const QString &flags) const
 bool Player::canDiscard(const Player *to, int card_id) const
 {
 	if (this==to) return !isCardLimited(Sanguosha->getCard(card_id),Card::MethodDiscard);
-	return Sanguosha->isCardLimited(this,Sanguosha->getCard(card_id),Card::MethodDiscard)==nullptr;
+	return Sanguosha->isProhibited(this,Sanguosha->getCard(card_id),Card::MethodDiscard)==nullptr;
+}
+
+bool Player::canGetCard(const Player *to, int card_id) const
+{
+	if (this == to) return !isCardLimited(Sanguosha->getCard(card_id), Card::MethodGet);
+	return Sanguosha->isCardLimited(this, Sanguosha->getCard(card_id), Card::MethodGet) == nullptr;
 }
 
 bool Player::canDiscard(const QString &flags, const Player *to) const
