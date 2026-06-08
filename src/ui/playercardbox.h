@@ -22,7 +22,13 @@ public:
                Card::HandlingMethod method = Card::MethodNone,
                const QList<int> &disabledIds = QList<int>(),
                bool canCancel = false);
+    void globalchooseCard(const ClientPlayer *player, const QString &reason, const QString &flags,
+        bool handcardVisible, const QList<int> &disabledIds, const QList<int> &handcards);
     void clear();
+    void setfalse();
+    void reset();
+    void global_click();
+    QList<CardItem *> items;
 
 protected:
     QRectF boundingRect() const;
@@ -32,7 +38,7 @@ private:
     void paintArea(const QString &name, QPainter *painter);
     int getRowCount(const int &cardNumber) const;
     void updateNumbers(const int &cardNumber);
-    void arrangeCards(const QList<const Card *> &cards, const QPoint &topLeft);
+    void arrangeCards(const QList<const Card *> &cards, const QPoint &topLeft, bool is_globalchoose = false);
 
     const ClientPlayer *player;
     QString flags;
@@ -40,7 +46,7 @@ private:
     bool canCancel;
     Card::HandlingMethod method;
     QList<int> disabledIds;
-    QList<CardItem *> items;
+    QList<int> handcards;
 
     QGraphicsProxyWidget *progressBarItem;
     QSanCommandProgressBar *progressBar;
@@ -67,6 +73,9 @@ private:
 public slots:
     void reply();
     void cancel();
+
+signals:
+    void global_choose(const ClientPlayer *player, int id);
 };
 
 #endif

@@ -473,6 +473,9 @@ public:
         bool distance_limit = true, bool disable_extra = false, bool addHistory = false, ServerPlayer*who = nullptr, const Card*whocard = nullptr,
         QString flag = "");
     int askForAG(ServerPlayer*player, const QList<int>&card_ids, bool refusable, const QString&reason, const QString&prompt = "");
+    QList<int> GlobalCardChosen(ServerPlayer*player, QList<ServerPlayer*> targets, const QString&flags, const QString&skillName, const QString&prompt,
+        int min = 0, int max = 0, int type = 0, bool handcard_visible = false, Card::HandlingMethod method = Card::MethodNone,
+        const QList<int>&disabled_ids = QList<int>(), bool notify_skill = false);
     const Card*askForCardShow(ServerPlayer*player, ServerPlayer*requestor, const QString&reason);
     ServerPlayer*askForYiji(ServerPlayer*guojia, QList<int>&cards, const QString&skill_name = "",
         bool is_preview = false, bool visible = false, bool optional = true, int max_num = -1,

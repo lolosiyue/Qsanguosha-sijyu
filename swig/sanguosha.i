@@ -1865,8 +1865,11 @@ public:
 		bool distance_limit = true, bool disable_extra = false, bool addHistory = false, ServerPlayer*who = nullptr, const Card*whocard = nullptr, const char*flag = nullptr);
 	CardUseStruct askForUseSlashToStruct(ServerPlayer*slasher, QList<ServerPlayer*> victims, const char*prompt,
 		bool distance_limit = true, bool disable_extra = false, bool addHistory = false, ServerPlayer*who = nullptr, const Card*whocard = nullptr, const char*flag = nullptr);
-	int askForAG(ServerPlayer*player, const QList<int>&card_ids, bool refusable, const char*reason, const char*prompt = nullptr);
-	const Card*askForCardShow(ServerPlayer*player, ServerPlayer*requestor, const char*reason);
+    int askForAG(ServerPlayer*player, const QList<int>&card_ids, bool refusable, const char*reason, const char*prompt = nullptr);
+    QList<int> GlobalCardChosen(ServerPlayer*player, QList<ServerPlayer*> targets, const char*flags, const char*skillName, const char*prompt,
+        int min = 0, int max = 0, int type = 0, bool handcard_visible = false, Card::HandlingMethod method = Card::MethodNone,
+        const QList<int>&disabled_ids = QList<int>(), bool notify_skill = false);
+    const Card*askForCardShow(ServerPlayer*player, ServerPlayer*requestor, const char*reason);
 	ServerPlayer*askForYiji(ServerPlayer*guojia, QList<int>&cards, const char*skill_name = nullptr,
 					bool is_preview = false, bool visible = false, bool optional = true, int max_num = -1,
 					QList<ServerPlayer*> players = QList<ServerPlayer*>(), CardMoveReason reason = CardMoveReason(),

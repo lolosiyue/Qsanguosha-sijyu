@@ -183,6 +183,86 @@ void PlayerCardBox::chooseCard(const QString &reason, const ClientPlayer *player
     }
 }
 
+void PlayerCardBox::globalchooseCard(const ClientPlayer *player, const QString &reason, const QString &flags,
+                                     bool handcardVisible, const QList<int> &disabledIds, const QList<int> &handcards)
+{
+    nameRects.clear();
+    rowCount = 0;
+    intervalsBetweenAreas = -1;
+    intervalsBetweenRows = 0;
+    maxCardsInOneRow = 0;
+
+    this->player = player;
+    this->handcards = handcards;
+    this->title = Sanguosha->translate(reason) + ":" + ClientInstance->text;
+    this->flags = flags;
+    bool handcard = false;
+    bool equip = false;
+    bool judging = false;
+
+    if (flags.contains(handcardFlag) && !player->isKongcheng()) {
+        updateNumbers(player->getHandcardNum());
+        handcard = true;
+    }
+
+    if (flags.contains(equipmentFlag) && player->hasEquip()) {
+        updateNumbers(player->getEquips().length());
+        equip = true;
+    }
+
+    if (flags.contains(judgingFlag) && !player->getJudgingArea().isEmpty()) {
+        updateNumbers(player->getJudgingArea().length());
+        judging = true;
+    }
+
+    int max = maxCardsInOneRow;
+    int maxNumber = maxCardNumberInOneRow;
+    maxCardsInOneRow = qMin(max, maxNumber);
+    if (maxCardsInOneRow < 2) maxCardsInOneRow = 2;
+
+    prepareGeometryChange();
+    moveToCenter();
+
+    this->handcardVisible = handcardVisible;
+    this->disabledIds = disabledIds;
+
+    const int startX = verticalBlankWidth + placeNameAreaWidth + intervalBetweenNameAndCard;
+    int index = 0;
+
+    if (handcard) {
+        QList<const Card *> cards;
+        for (int i = 0; i < handcards.length(); ++i)
+            cards << Sanguosha->getCard(handcards.at(i));
+        arrangeCards(cards, QPoint(startX, nameRects.at(index).y()), true);
+
+        ++index;
+    }
+
+    if (equip) {
+        arrangeCards(player->getEquips(), QPoint(startX, nameRects.at(index).y()), true);
+
+        ++index;
+    }
+
+    if (judging)
+        arrangeCards(player->getJudgingArea(), QPoint(startX, nameRects.at(index).y()), true);
+    hide();
+}
+
+void PlayerCardBox::setfalse()
+{
+    foreach (CardItem *item, items) {
+        item->setEnabled(false);
+    }
+}
+
+void PlayerCardBox::reset()
+{
+    foreach (CardItem *item, items) {
+        item->setEnabled(true);
+    }
+}
+
 QRectF PlayerCardBox::boundingRect() const
 {
     if (player == NULL)
@@ -320,7 +400,7 @@ void PlayerCardBox::updateNumbers(const int &cardNumber)
     nameRects << QRect(verticalBlankWidth, y, placeNameAreaWidth, height);
 }
 
-void PlayerCardBox::arrangeCards(const QList<const Card *> &cards, const QPoint &topLeft)
+void PlayerCardBox::arrangeCards(const QList<const Card *> &cards, const QPoint &topLeft, bool is_globalchoose)
 {
     QList<CardItem *> areaItems;
     foreach (const Card *card, cards) {
@@ -336,7 +416,8 @@ void PlayerCardBox::arrangeCards(const QList<const Card *> &cards, const QPoint 
         } else {
             item->setEnabled(method != Card::MethodDiscard || Self->canDiscard(player, "h"));
         }
-        connect(item, &CardItem::clicked, this, &PlayerCardBox::reply);
+        if (!is_globalchoose)
+            connect(item, &CardItem::clicked, this, &PlayerCardBox::reply);
         items << item;
         areaItems << item;
     }
@@ -382,4 +463,20 @@ void PlayerCardBox::cancel()
 {
     clear();
     ClientInstance->onPlayerChooseCard(-1);
+}
+
+void PlayerCardBox::global_click()
+{
+    CardItem *item = qobject_cast<CardItem *>(sender());
+    if (!item) return;
+
+    item->setSelected(!item->isSelected());
+
+    int index = items.indexOf(item);
+    int id;
+    if (handcards.length() > 0 && index < handcards.length())
+        id = handcards.at(index);
+    else
+        id = item->getId();
+    emit global_choose(player, id);
 }

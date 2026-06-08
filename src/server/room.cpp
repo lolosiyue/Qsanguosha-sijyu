@@ -2580,34 +2580,174 @@ CardUseStruct Room::askForUseSlashToStruct(ServerPlayer*slasher, ServerPlayer*vi
 
 int Room::askForAG(ServerPlayer*player, const QList<int>&card_ids, bool refusable, const QString&reason, const QString&prompt)
 {
-	tryPause();
-	notifyMoveFocus(player, S_COMMAND_AMAZING_GRACE);
-	//Q_ASSERT(card_ids.length() > 0);
+    tryPause();
+    notifyMoveFocus(player, S_COMMAND_AMAZING_GRACE);
+    //Q_ASSERT(card_ids.length() > 0);
 
-	int card_id = -1;
-	if(refusable||card_ids.length()>1){
-		AI*ai = player->getAI();
-		if (ai){
-			QElapsedTimer timer;
-			timer.start();
-			card_id = ai->askForAG(card_ids, refusable, reason);
-			if (Config.AIDelay>timer.elapsed())
-				thread->delay(Config.AIDelay-timer.elapsed());
-		} else {
-			if (doRequest(player, S_COMMAND_AMAZING_GRACE, JsonArray() << refusable << reason << prompt, true)){
-				const QVariant&clientReply = player->getClientReply();
-				if (JsonUtils::isNumber(clientReply))
-					card_id = clientReply.toInt();
-			}else{
-				ai = player->getAI();
-				if(ai) card_id = ai->askForAG(card_ids, refusable, reason);
-			}
-		}
-	}
-	if (!card_ids.contains(card_id)) card_id = (refusable||card_ids.isEmpty()) ? -1 : card_ids.first();
-	QVariant decisionData = QString("AGChosen:%1:%2").arg(reason).arg(card_id);
-	thread->trigger(ChoiceMade, this, player, decisionData);
-	return card_id;
+    int card_id = -1;
+    if(refusable||card_ids.length()>1){
+        AI*ai = player->getAI();
+        if (ai){
+            QElapsedTimer timer;
+            timer.start();
+            card_id = ai->askForAG(card_ids, refusable, reason);
+            if (Config.AIDelay>timer.elapsed())
+                thread->delay(Config.AIDelay-timer.elapsed());
+        } else {
+            if (doRequest(player, S_COMMAND_AMAZING_GRACE, JsonArray() << refusable << reason << prompt, true)){
+                const QVariant&clientReply = player->getClientReply();
+                if (JsonUtils::isNumber(clientReply))
+                    card_id = clientReply.toInt();
+            }else{
+                ai = player->getAI();
+                if(ai) card_id = ai->askForAG(card_ids, refusable, reason);
+            }
+        }
+    }
+    if (!card_ids.contains(card_id)) card_id = (refusable||card_ids.isEmpty()) ? -1 : card_ids.first();
+    QVariant decisionData = QString("AGChosen:%1:%2").arg(reason).arg(card_id);
+    thread->trigger(ChoiceMade, this, player, decisionData);
+    return card_id;
+}
+
+QList<int> Room::GlobalCardChosen(ServerPlayer*player, QList<ServerPlayer*> targets, const QString&flags, const QString&skillName, const QString&prompt,
+    int min, int max, int type, bool handcard_visible, Card::HandlingMethod method, const QList<int>&disabled_ids, bool notify_skill)
+{
+    if (targets.isEmpty() || (type == 1 && min > 0 && targets.length() < min) || (min > max && max > 0))
+        return QList<int>();
+
+    tryPause();
+    notifyMoveFocus(player, S_COMMAND_GLOBAL_CHOOSECARD);
+
+    JsonArray req;
+    JsonArray req_targets;
+    foreach (ServerPlayer*target, targets)
+        req_targets << target->objectName();
+    req << QVariant(req_targets);
+    req << flags;
+    req << skillName;
+    req << prompt;
+    req << min;
+    req << max;
+    req << type;
+    req << handcard_visible;
+
+    QList<int> disabled_ids_copy = disabled_ids;
+    QList<int> available;
+    QList<int> type0;
+    foreach (ServerPlayer*p, targets) {
+        QList<int> card_ids;
+
+        if ((handcard_visible && !p->isKongcheng())) {
+            QList<int> handcards = p->handCards();
+            JsonArray arg;
+            arg << p->objectName();
+            arg << JsonUtils::toJsonArray(handcards);
+            doNotify(player, S_COMMAND_SET_KNOWN_CARDS, arg);
+        }
+
+        foreach (const Card*card, p->getCards(flags)) {
+            int card_id = card->getEffectiveId();
+            if (method == Card::MethodDiscard) {
+                if (!player->canDiscard(p, card_id))
+                    disabled_ids_copy.append(card_id);
+            }
+            if (method == Card::MethodGet) {
+                if (!player->canGetCard(p, card_id))
+                    disabled_ids_copy.append(card_id);
+            }
+            if (!disabled_ids_copy.contains(card_id)) {
+                available << card_id;
+                card_ids << card_id;
+            }
+        }
+        qShuffle(card_ids);
+        if (type0.length() < min && min > 0) type0 << card_ids.first();
+        card_ids.clear();
+        if (flags.contains("h")) {
+            card_ids = p->handCards();
+            qShuffle(card_ids);
+        }
+        req << JsonUtils::toJsonArray(card_ids);
+    }
+    req << JsonUtils::toJsonArray(disabled_ids_copy);
+
+    if (available.isEmpty()) return QList<int>();
+    if (available.length() <= min && type != 1) return available;
+    if (type == 1 && type0.length() < min) return QList<int>();
+
+    QList<int> result;
+
+    AI*ai = player->getAI();
+    if (ai) {
+        result = ai->askForCardsChosen(targets, flags, skillName, min, max, disabled_ids_copy);
+        if (!result.isEmpty() && notify_skill)
+            thread->delay();
+    } else {
+        const Skill*mainskill = Sanguosha->getMainSkill(skillName);
+        if (mainskill && !getTag(mainskill->objectName() + player->objectName()).toStringList().isEmpty())
+            req << getTag(mainskill->objectName() + player->objectName()).toStringList().last();
+
+        bool success = doRequest(player, S_COMMAND_GLOBAL_CHOOSECARD, req, true);
+        if (success) {
+            JsonArray clientReply = player->getClientReply().value<JsonArray>();
+            JsonUtils::tryParse(clientReply, result);
+        }
+    }
+    bool check = true;
+    foreach (int id, result)
+        if (disabled_ids_copy.contains(id))
+            check = false;
+    if (result.length() < min || (result.length() > max && max > 0)) check = false;
+    if (!check) {
+        if (type == 1)
+            result = type0;
+        else {
+            result.clear();
+            for (int i = 1; i <= min; i++) {
+                while (result.length() < i) {
+                    int id = available.at(qrand() % available.length());
+                    if (!result.contains(id))
+                        result << id;
+                }
+            }
+        }
+        check = true;
+    }
+    if (result.isEmpty()) return QList<int>();
+
+    QList<ServerPlayer*> players;
+    foreach (int id, result) {
+        ServerPlayer*p = getCardOwner(id);
+        if (!players.contains(p))
+            players << p;
+    }
+    if (check && notify_skill) {
+        notifySkillInvoked(player, skillName);
+        QVariant decisionData = QVariant::fromValue("skillInvoke:" + skillName + ":yes");
+        thread->trigger(ChoiceMade, this, player, decisionData);
+        foreach (ServerPlayer*p, players)
+            doAnimate(S_ANIMATE_INDICATE, player->objectName(), p->objectName());
+        LogMessage log;
+        log.type = "#ChoosePlayerWithSkill";
+        log.from = player;
+        log.to = players;
+        log.arg = skillName;
+        sendLog(log);
+    }
+
+    foreach (ServerPlayer*p, players) {
+        QVariant data = QString("%1:%2:%3").arg("playerChosen").arg(skillName).arg(p->objectName());
+        thread->trigger(ChoiceMade, this, player, data);
+
+        QList<int> ids;
+        foreach (int id, result)
+            if (getCardOwner(id) == p) ids << id;
+        QVariant decisionData = QVariant::fromValue(QString("cardChosen:%1:%2:%3:%4").arg(skillName).arg(IntList2StringList(ids).join("+"))
+            .arg(player->objectName()).arg(p->objectName()));
+        thread->trigger(ChoiceMade, this, player, decisionData);
+    }
+    return result;
 }
 
 const Card*Room::askForCardShow(ServerPlayer*player, ServerPlayer*requestor, const QString&reason)

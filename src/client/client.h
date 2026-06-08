@@ -41,11 +41,13 @@ public:
 
         AskForQml = 0x10,
 
+        GlobalCardChosen = 0x000011,
         RespondingUse = 0x11,
         RespondingForDiscard = 0x21,
         RespondingNonTrigger = 0x31,
 
         ClientStatusBasicMask = 0x0F
+        StatusHasOwnProgressBar = 0x010000
     };
 
     explicit Client(QObject *parent, const QString &filename = "");
@@ -198,6 +200,7 @@ public:
     void mirrorGuanxingStep(const QVariant &arg);
     void askForGongxin(const QVariant &);
     void askForTriggerOrder(const QVariant &);
+    void globalCardChosen(const QVariant &);
     void askForAssign(const QVariant &); // Assign roles at the beginning of game
     void askForSurrender(const QVariant &);
     void askForLuckCard(const QVariant &);
@@ -267,6 +270,11 @@ public:
     int choose_max_num;
     int choose_min_num;
     int m_bossLevel;
+    int type;
+    bool handcard_visible;
+    QList<int> disabled_ids;
+    QHash<QString, QList<int>> targets_cards;
+    QString text;
 
     void setSelf(ClientPlayer *newSelf);
 
@@ -276,6 +284,7 @@ public slots:
     void onPlayerChooseGeneral(const QString &_name);
     void onPlayerMakeChoice();
     void onPlayerChooseCard(int card_id = -2);
+    void onPlayerChooseCards(const QList<int> &ids = QList<int>());
     void onPlayerChooseAG(int card_id);
     void onPlayerChoosePlayer(const QList<const Player *> &players);
     void trust();

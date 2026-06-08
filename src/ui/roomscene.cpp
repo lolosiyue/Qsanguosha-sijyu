@@ -1546,23 +1546,26 @@ void RoomScene::arrangeSeats(const QList<const ClientPlayer*>&seats)
 	group->start(QAbstractAnimation::DeleteWhenStopped);
 
 	// set item to player mapping
-	if(item2player.isEmpty()){
-		item2player.insert(dashboard,Self);
-		connect(dashboard,SIGNAL(selected_changed()),this,SLOT(updateSelectedTargets()));
-		foreach (Photo*photo,photos){
-			item2player.insert(photo,photo->getPlayer());
-			connect(photo,SIGNAL(selected_changed()),this,SLOT(updateSelectedTargets()));
-			connect(photo,SIGNAL(enable_changed()),this,SLOT(onEnabledChange()));
-		}
-	}else{
-		foreach (Photo*photo,photos){
-			if(!item2player.contains(photo)){
-				item2player.insert(photo,photo->getPlayer());
-				connect(photo,SIGNAL(selected_changed()),this,SLOT(updateSelectedTargets()));
-				connect(photo,SIGNAL(enable_changed()),this,SLOT(onEnabledChange()));
-			}
-		}
-	}
+    if(item2player.isEmpty()){
+        item2player.insert(dashboard,Self);
+        connect(dashboard,SIGNAL(selected_changed()),this,SLOT(updateSelectedTargets()));
+        connect(dashboard, SIGNAL(global_selected_changed(const ClientPlayer*, int)), this, SLOT(updateGlobalCardBox(const ClientPlayer*, int)));
+        foreach (Photo*photo,photos){
+            item2player.insert(photo,photo->getPlayer());
+            connect(photo,SIGNAL(selected_changed()),this,SLOT(updateSelectedTargets()));
+            connect(photo, SIGNAL(global_selected_changed(const ClientPlayer*, int)), this, SLOT(updateGlobalCardBox(const ClientPlayer*, int)));
+            connect(photo,SIGNAL(enable_changed()),this,SLOT(onEnabledChange()));
+        }
+    }else{
+        foreach (Photo*photo,photos){
+            if(!item2player.contains(photo)){
+                item2player.insert(photo,photo->getPlayer());
+                connect(photo,SIGNAL(selected_changed()),this,SLOT(updateSelectedTargets()));
+                connect(photo, SIGNAL(global_selected_changed(const ClientPlayer*, int)), this, SLOT(updateGlobalCardBox(const ClientPlayer*, int)));
+                connect(photo,SIGNAL(enable_changed()),this,SLOT(onEnabledChange()));
+            }
+        }
+    }
 
 	bool all_robot = true;
 	foreach (const ClientPlayer*p,ClientInstance->getPlayers()){
@@ -3652,19 +3655,69 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 		card_container->startChoose();
 		break;
 	}
-	case Client::AskForYiji: {
-		ok_button->setEnabled(false);
-		cancel_button->setEnabled(ClientInstance->m_isDiscardActionRefusable);
-		discard_button->setEnabled(false);
+    case Client::AskForYiji: {
+        ok_button->setEnabled(false);
+        cancel_button->setEnabled(ClientInstance->m_isDiscardActionRefusable);
+        discard_button->setEnabled(false);
 
-		QStringList yiji_info = Sanguosha->currentRoomState()->getCurrentCardUsePattern().split("=");
-		yiji_skill->setPlayerNames(yiji_info.last().split("+"),yiji_info.first().toInt(),yiji_info.at(1));
-		dashboard->startPending(yiji_skill);
+        QStringList yiji_info = Sanguosha->currentRoomState()->getCurrentCardUsePattern().split("=");
+        yiji_skill->setPlayerNames(yiji_info.last().split("+"),yiji_info.first().toInt(),yiji_info.at(1));
+        dashboard->startPending(yiji_skill);
 
-		showPromptBox();
-		break;
-	}
-	case Client::AskForGuanxing: {
+        showPromptBox();
+        break;
+    }
+    case Client::GlobalCardChosen: {
+        QString skill_name = ClientInstance->getSkillNameToInvoke();
+        dashboard->highlightEquip(skill_name, true);
+        showPromptBox();
+
+        ok_button->setEnabled(false);
+        cancel_button->setEnabled(ClientInstance->m_isDiscardActionRefusable);
+        discard_button->setEnabled(false);
+
+        QStringList targets = ClientInstance->players_to_choose;
+        global_targets.clear();
+        selected_ids.clear();
+        selected_targets_ids.clear();
+        foreach (const QString&name, targets) {
+            const ClientPlayer*p = ClientInstance->getPlayer(name);
+            if (!card_boxes.contains(p)) {
+                card_boxes[p] = new PlayerCardBox();
+                addItem(card_boxes[p]);
+            }
+            card_boxes[p]->globalchooseCard(p, skill_name, ClientInstance->skill_name,
+                ClientInstance->handcard_visible, ClientInstance->disabled_ids, ClientInstance->targets_cards.value(name));
+            if (!card_boxes[p]->items.isEmpty()) global_targets << p;
+        }
+
+        foreach (PlayerCardContainer*item, item2player.keys()) {
+            const ClientPlayer*target = item2player.value(item, nullptr);
+            if (global_targets.contains(target)) {
+                item->setMaxVotes(1);
+                item->setFlag(QGraphicsItem::ItemIsSelectable, true);
+            }
+            if (!global_targets.contains(target)) {
+                QGraphicsItem*animationTarget = item->getMouseClickReceiver();
+                animations->sendBack(animationTarget);
+                QGraphicsItem*animationTarget2 = item->getMouseClickReceiver2();
+                if (animationTarget2)
+                    animations->sendBack(animationTarget2);
+            }
+        }
+        if (global_targets.length() == 1) {
+            const ClientPlayer*target = global_targets.first();
+            Photo*photo = name2photo.value(target->objectName(), nullptr);
+            if (photo)
+                photo->setSelected(true);
+            else
+                dashboard->setSelected(true);
+            updateGlobalCardBox(target);
+        }
+
+        break;
+    }
+    case Client::AskForGuanxing: {
 		ok_button->setEnabled(true);
 		cancel_button->setEnabled(false);
 		discard_button->setEnabled(false);
@@ -3906,23 +3959,35 @@ void RoomScene::doCancelButton()
 		ClientInstance->onPlayerReplyYiji(nullptr,nullptr);
 		break;
 	}
-	case Client::AskForPlayerChoose: {
-		prompt_box->disappear();
-		dashboard->stopPending();
-		ClientInstance->onPlayerChoosePlayer(QList<const Player*>());
-		break;
-	}
-	case Client::AskForAG: {
-		prompt_box->disappear();
-		ClientInstance->onPlayerChooseAG(-1);
-		break;
-	}
-	case Client::AskForTriggerOrder: {
-		m_chooseTriggerOrderBox->reply();
-		break;
-	}
-	default:
-		break;
+    case Client::AskForPlayerChoose: {
+        prompt_box->disappear();
+        dashboard->stopPending();
+        ClientInstance->onPlayerChoosePlayer(QList<const Player*>());
+        break;
+    }
+    case Client::AskForAG: {
+        prompt_box->disappear();
+        ClientInstance->onPlayerChooseAG(-1);
+        break;
+    }
+    case Client::AskForTriggerOrder: {
+        m_chooseTriggerOrderBox->reply();
+        break;
+    }
+    case Client::GlobalCardChosen: {
+        enableTargets(nullptr);
+        foreach (const ClientPlayer*p, card_boxes.keys())
+            card_boxes[p]->clear();
+        if (ok_button->isEnabled())
+            ok_button->click();
+        else
+            ClientInstance->onPlayerChooseCards(QList<int>());
+        prompt_box->disappear();
+        dashboard->highlightEquip(ClientInstance->skill_name, false);
+        break;
+    }
+    default:
+        break;
 	}
 	if(onsole_target!=""){
 		onsole_target = "";
@@ -3932,15 +3997,87 @@ void RoomScene::doCancelButton()
 
 void RoomScene::doDiscardButton()
 {
-	dashboard->stopPending();
-	dashboard->unselectAll();
-	if(card_container->retained()) card_container->clear();
-	if(ClientInstance->getStatus()==Client::Playing)
-		ClientInstance->onPlayerResponseCard(nullptr);
-	if(onsole_target!=""){
-		onsole_target = "";
-		exitOnsoleContext();
-	}
+    dashboard->stopPending();
+    dashboard->unselectAll();
+    if(card_container->retained()) card_container->clear();
+    if(ClientInstance->getStatus()==Client::Playing)
+        ClientInstance->onPlayerResponseCard(nullptr);
+    if(onsole_target!=""){
+        onsole_target = "";
+        exitOnsoleContext();
+    }
+}
+
+void RoomScene::updateGlobalCardBox(const ClientPlayer*player, int id)
+{
+    prompt_box->disappear();
+    ok_button->setEnabled(false);
+    foreach (const ClientPlayer*p, card_boxes.keys())
+        card_boxes[p]->reset();
+
+    if (id == -1) {
+        foreach (const ClientPlayer*p, card_boxes.keys())
+            card_boxes[p]->hide();
+
+        card_boxes[player]->show();
+        GraphicsBox::moveToCenter(card_boxes[player]);
+        bringToFront(card_boxes[player]);
+    } else {
+        if (!selected_ids.contains(id)) {
+            selected_ids.append(id);
+            selected_targets_ids.insert(id, player);
+        } else {
+            selected_ids.removeAll(id);
+            selected_targets_ids.remove(id);
+        }
+    }
+
+    foreach (PlayerCardContainer*item, item2player.keys()) {
+        const ClientPlayer*target = item2player.value(item, nullptr);
+        if (target != player) item->setSelected(false);
+    }
+
+    int type = ClientInstance->type;
+    QList<const ClientPlayer*> targets;
+    foreach (const int&key, selected_targets_ids.keys())
+        foreach (const ClientPlayer*p, selected_targets_ids.values(key))
+            if (!targets.contains(p)) targets << p;
+
+    if (type == 0)
+        foreach (const ClientPlayer*p, card_boxes.keys())
+            if (targets.contains(p)) card_boxes[p]->setfalse();
+
+    if (selected_ids.length() >= ClientInstance->choose_max_num && ClientInstance->choose_max_num > 0) {
+        foreach (const ClientPlayer*p, card_boxes.keys())
+            card_boxes[p]->setfalse();
+
+        foreach (PlayerCardContainer*item, item2player.keys()) {
+            const ClientPlayer*target = item2player.value(item, nullptr);
+            if (!targets.contains(target) && (item->flags() & QGraphicsItem::ItemIsSelectable)) {
+                item->setFlag(QGraphicsItem::ItemIsSelectable, false);
+                QGraphicsItem*animationTarget = item->getMouseClickReceiver();
+                animations->sendBack(animationTarget);
+                QGraphicsItem*animationTarget2 = item->getMouseClickReceiver2();
+                if (animationTarget2)
+                    animations->sendBack(animationTarget2);
+            }
+        }
+    } else {
+        foreach (PlayerCardContainer*item, item2player.keys()) {
+            const ClientPlayer*target = item2player.value(item, nullptr);
+            if (global_targets.contains(target)) {
+                item->setFlag(QGraphicsItem::ItemIsSelectable, true);
+                QGraphicsItem*animationTarget = item->getMouseClickReceiver();
+                animations->effectOut(animationTarget);
+                QGraphicsItem*animationTarget2 = item->getMouseClickReceiver2();
+                if (animationTarget2)
+                    animations->effectOut(animationTarget2);
+            }
+        }
+    }
+    if (selected_ids.length() > 0 && (selected_ids.length() <= ClientInstance->choose_max_num || ClientInstance->choose_max_num == 0)
+            && (selected_ids.length() >= ClientInstance->choose_min_num || ClientInstance->choose_min_num == 0))
+        ok_button->setEnabled(true);
 }
 
 void RoomScene::hideAvatars()

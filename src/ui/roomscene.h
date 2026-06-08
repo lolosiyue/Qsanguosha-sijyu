@@ -260,6 +260,8 @@ public slots:
     void doCancelButton();
     void doDiscardButton();
 
+    void updateGlobalCardBox(const ClientPlayer*player, int id = -1);
+
     void doGongxin(const QList<int> &card_ids, bool enable_heart, QList<int> enabled_ids);
     void showPile(const QList<int> &card_ids, const QString &pile_name);
     void hidePile();
@@ -312,6 +314,7 @@ private:
     CardItem *pindian_from_card, *pindian_to_card;
     QGraphicsItem *control_panel;
     QMap<PlayerCardContainer *, const ClientPlayer *> item2player;
+    QHash<const ClientPlayer *, PlayerCardBox *> card_boxes;
     QDialog *m_choiceDialog; // Dialog for choosing generals, suits, card/equip, or kingdoms
     PlayerCardBox *m_playerCardBox;
 
@@ -588,8 +591,11 @@ void onGameStart();
 
     void onCardActionButtonClicked(const QString &buttonId, int cardId);
 
+    QList<const ClientPlayer*> global_targets;
+    QList<int> selected_ids;
+    QMap<int, const ClientPlayer*> selected_targets_ids;
 
-signals:
+ signals:
     void restart();
     void return_to_start();
     void game_over_dialog_rejected();
