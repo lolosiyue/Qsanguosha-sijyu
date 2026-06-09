@@ -1777,6 +1777,8 @@ public:
 	void doSuperLightbox(const char*heroName, const char*skillName);
 	void doSuperLightbox(ServerPlayer*player, const char*skillName);
 
+	bool doCareeristRule();
+
 	bool notifyMoveCards(bool isLostPhase, QList<CardsMoveStruct>&cards_moves, bool forceVisible, QList<ServerPlayer*> players = QList<ServerPlayer*>());
 	bool notifyUpdateCard(ServerPlayer*player, int cardId, const Card*newCard);
 	bool broadcastUpdateCard(const QList<ServerPlayer*>&players, int cardId, const Card*newCard);

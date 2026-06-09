@@ -7029,6 +7029,66 @@ void Room::showGeneral(ServerPlayer *player, const QString &position)
 	doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
 }
 
+bool Room::doCareeristRule()
+{
+    bool no_game_over = false;
+    QList<ServerPlayer *> players = m_alivePlayers;
+
+    foreach (ServerPlayer *p, players) {
+        if (p->hasShownGeneral() || p->getSeemingKingdom() == "careerist")
+            continue;
+
+        const General *general1 = p->getGeneral();
+        if (general1 && general1->getKingdom() == "careerist") {
+            no_game_over = true;
+
+            LogMessage log;
+            log.type = "#GameRule_CareeristShow";
+            log.from = p;
+            sendLog(log);
+
+            setTag("GlobalCareeristShow", true);
+            p->showGeneral(true, false);
+            setTag("GlobalCareeristShow", false);
+
+            QString careerist_role = "careerist_" + general1->objectName();
+            setPlayerProperty(p, "role", careerist_role);
+
+            if (players.length() > 2) {
+                foreach (ServerPlayer *p2, players) {
+                    if (p2->getRole().startsWith("careerist") || p2->isLord())
+                        continue;
+
+                    QStringList choices;
+                    choices << "no";
+                    const General *g2 = p2->getGeneral();
+                    if (g2 && g2->getKingdom() != "careerist")
+                        choices << "yes";
+
+                    QString choice = askForChoice(p2, "GameRule:CareeristAdd",
+                        choices.join("+"), QVariant(),
+                        "@careerist-add:" + p->objectName());
+
+                    if (choice == "yes") {
+                        LogMessage log2;
+                        log2.type = "#GameRule_CareeristAdd";
+                        log2.from = p2;
+                        log2.to << p;
+                        sendLog(log2);
+
+                        setPlayerProperty(p2, "role", careerist_role);
+                        break;
+                    } else {
+                        p2->drawCards(4, "careerist_rule");
+                        recover(p2, RecoverStruct(p2));
+                    }
+                }
+            }
+        }
+    }
+    return no_game_over;
+}
+
 void Room::preparePlayers()
 {
     foreach(ServerPlayer*player, m_players){

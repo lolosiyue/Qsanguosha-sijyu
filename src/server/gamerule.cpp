@@ -1830,25 +1830,60 @@ QString GameRule::getWinner(ServerPlayer *victim,Room *room) const
             winner = "loyalist";
     } else if(Config.EnableHegemony) {
         QString init_kingdom;
-        foreach (ServerPlayer *p,room->getAlivePlayers()) {
-            if(!p->property("basara_generals").toString().isEmpty())
+        bool has_diff_kingdoms = false;
+        QMap<QString, int> kingdoms;
+
+        foreach (ServerPlayer *p, room->getAlivePlayers()) {
+            if (!p->property("basara_generals").toString().isEmpty())
                 return winner;
-            if(init_kingdom.isEmpty())
-                init_kingdom = p->getKingdom();
-            else if(init_kingdom != p->getKingdom())
+
+            QString kingdom;
+            if (p->hasShownOneGeneral()) {
+                kingdom = p->getSeemingKingdom();
+                if (p->getRole() == "careerist") {
+                    kingdoms["careerist"] = 1;
+                    continue;
+                }
+            } else {
+                const General *g = p->getGeneral();
+                if (g && g->getKingdom() == "careerist") {
+                    has_diff_kingdoms = true;
+                    break;
+                }
+                kingdom = p->getKingdom();
+            }
+
+            if (!kingdom.isEmpty() && kingdom != "careerist" && kingdom != "god")
+                kingdoms[kingdom]++;
+
+            if (kingdom != "careerist" && kingdom != "god" && kingdoms[kingdom] > room->getPlayers().length() / 2) {
+                has_diff_kingdoms = true;
+                break;
+            }
+        }
+
+        if (has_diff_kingdoms)
+            return winner;
+
+        if (room->doCareeristRule())
+            return winner;
+
+        QString init_kingdom_check;
+        foreach (ServerPlayer *p, room->getAlivePlayers()) {
+            if (init_kingdom_check.isEmpty())
+                init_kingdom_check = p->getKingdom();
+            else if (init_kingdom_check != p->getKingdom())
                 return winner;
         }
 
 		QStringList winners;
 		foreach (ServerPlayer *p,room->getPlayers()) {
 			if(p->isAlive()) winners << p->objectName();
-			else if(p->getKingdom()==init_kingdom) {
+			else if(p->getKingdom()==init_kingdom_check) {
 				QStringList generals = p->property("basara_generals").toString().split("+");
 				if(generals.size()==1&&!Config.Enable2ndGeneral) continue;
 				if(generals.size() >= 2) continue;
 
-				//if someone showed his kingdom before death,
-				//he should be considered victorious as well if his kingdom survives
 				winners << p->objectName();
 			}
 		}
@@ -1858,7 +1893,6 @@ QString GameRule::getWinner(ServerPlayer *victim,Room *room) const
 				if(generals.isEmpty()) continue;
                 if(player->getGeneralName()=="anjiang") {
                     room->changePlayerGeneral(player,generals.takeFirst());
-                    //room->setPlayerProperty(player,"kingdom",player->getGeneral()->getKingdom());
                     room->setPlayerProperty(player,"role",BasaraMode::getMappedRole(player->getKingdom()));
                 }
                 if(Config.Enable2ndGeneral&&player->getGeneral2Name()=="anjiang")

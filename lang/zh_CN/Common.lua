@@ -404,6 +404,11 @@ CommonTranslationTable = {
 	["skill_transform_from"] = "%1技能转化",
 	["equip_slot_occupied"] = "此装备位被 %1 占据",
 
+	["#GameRule_CareeristShow"] = "%from 的野心家身份强制亮出",
+	["@careerist-add"] = "你可以选择加入 %src 的野心家阵营，或摸四张牌回复一点体力",
+	["GameRule:CareeristAdd"] = "野心家阵营邀请",
+	["#GameRule_CareeristAdd"] = "%from 加入了 %to 的野心家阵营",
+
 
 }
 return CommonTranslationTable
