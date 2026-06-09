@@ -2849,11 +2849,68 @@ void Player::setGeneral2Showed(bool showed)
 
 bool Player::canShowGeneral(const QString &position) const
 {
-    if (position == "h")
-        return !hasShownGeneral();
-    else if (position == "d")
-        return getGeneral2() && !hasShownGeneral2();
+    if (position == "h") {
+        if (hasShownGeneral()) return false;
+        foreach (const QString &dis_str, disable_show) {
+            QStringList dis_list = dis_str.split(',');
+            if (dis_list.at(0).contains('h'))
+                return false;
+        }
+        return true;
+    } else if (position == "d") {
+        if (!getGeneral2() || hasShownGeneral2()) return false;
+        foreach (const QString &dis_str, disable_show) {
+            QStringList dis_list = dis_str.split(',');
+            if (dis_list.at(0).contains('d'))
+                return false;
+        }
+        return true;
+    }
     return false;
+}
+
+void Player::setDisableShow(const QString &flags, const QString &reason)
+{
+    if (flags.contains('h')) {
+        if (disableShow(true).contains(reason))
+            return;
+    }
+    if (flags.contains('d')) {
+        if (disableShow(false).contains(reason))
+            return;
+    }
+
+    QString dis_str = flags + ',' + reason;
+    disable_show << dis_str;
+}
+
+void Player::removeDisableShow(const QString &reason)
+{
+    QStringList remove_list;
+    foreach (const QString &dis_str, disable_show) {
+        QString dis_reason = dis_str.split(',').at(1);
+        if (dis_reason == reason)
+            remove_list << dis_str;
+    }
+
+    if (remove_list.isEmpty()) return;
+
+    foreach (const QString &to_remove, remove_list)
+        disable_show.removeOne(to_remove);
+}
+
+QStringList Player::disableShow(bool head) const
+{
+    QChar head_flag = head ? 'h' : 'd';
+
+    QStringList r;
+    foreach (const QString &dis_str, disable_show) {
+        QStringList dis_list = dis_str.split(',');
+        if (dis_list.at(0).contains(head_flag))
+            r << dis_list.at(1);
+    }
+
+    return r;
 }
 
 bool Player::inHeadSkills(const QString &skill_name) const

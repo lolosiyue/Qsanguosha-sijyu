@@ -348,7 +348,10 @@ void Dashboard::_adjustComponentZValues(bool killed)
     _layUnder(_m_leftFrame);
     _layUnder(_m_middleFrame);
     _layBetween(button_widget, _m_middleFrame, _m_roleComboBox);
-    //_layBetween(_m_rightFrameBg, _m_faceTurnedIcon, _m_equipRegions[4]);
+    _layUnder(rightHiddenMark);
+    _layUnder(leftHiddenMark);
+    _layUnder(_m_shadow_layer2);
+    _layUnder(_m_shadow_layer1);
 }
 
 int Dashboard::width()
@@ -394,6 +397,38 @@ void Dashboard::_createRight()
     if (player && player->getGeneral2()) {
         m_secondarySkillDock = new QSanInvokeSkillDock(_m_rightFrame);
     }
+
+    // 初始化暗將標記 (國戰模式)
+    leftHiddenMark = new QGraphicsPixmapItem(_m_rightFrame);
+    rightHiddenMark = new QGraphicsPixmapItem(_m_rightFrame);
+    leftHiddenMark->hide();
+    rightHiddenMark->hide();
+
+    // 設置暗將標記位置與圖案
+    _paintPixmap(leftHiddenMark, G_DASHBOARD_LAYOUT.m_hiddenMarkRegion1, _getPixmap(QSanRoomSkin::S_SKIN_KEY_HIDDEN_MARK), _m_rightFrame);
+    _paintPixmap(rightHiddenMark, G_DASHBOARD_LAYOUT.m_hiddenMarkRegion2, _getPixmap(QSanRoomSkin::S_SKIN_KEY_HIDDEN_MARK), _m_rightFrame);
+
+    // 初始化主將/副將圖標 (國戰模式)
+    headIcon = new QGraphicsPixmapItem(_m_rightFrame);
+    deputyIcon = new QGraphicsPixmapItem(_m_rightFrame);
+    headIcon->hide();
+    deputyIcon->hide();
+
+    // 初始化陰影層 (國戰模式)
+    _m_shadow_layer1 = new QGraphicsRectItem(_m_rightFrame);
+    _m_shadow_layer2 = new QGraphicsRectItem(_m_rightFrame);
+    _m_shadow_layer1->setRect(G_DASHBOARD_LAYOUT.m_avatarArea);
+    _m_shadow_layer2->setRect(G_DASHBOARD_LAYOUT.m_smallAvatarArea);
+    _m_shadow_layer1->setBrush(Qt::black);
+    _m_shadow_layer2->setBrush(Qt::black);
+    _m_shadow_layer1->setOpacity(0.5);
+    _m_shadow_layer2->setOpacity(0.5);
+    _m_shadow_layer1->hide();
+    _m_shadow_layer2->hide();
+
+    // 連接預亮將信號
+    connect(ClientInstance, &Client::head_preshowed, this, &Dashboard::updateLeftHiddenMark);
+    connect(ClientInstance, &Client::deputy_preshowed, this, &Dashboard::updateRightHiddenMark);
 }
 
 void Dashboard::_updateSkillDockGeometry()
@@ -2059,6 +2094,22 @@ const ViewAsSkill *Dashboard::currentSkill() const
 const Card *Dashboard::pendingCard() const
 {
     return pending_card;
+}
+
+void Dashboard::updateLeftHiddenMark()
+{
+    if (m_player && RoomSceneInstance->game_started && !m_player->hasShownGeneral1())
+        leftHiddenMark->setVisible(m_player->isHidden(true));
+    else
+        leftHiddenMark->setVisible(false);
+}
+
+void Dashboard::updateRightHiddenMark()
+{
+    if (m_player && RoomSceneInstance->game_started && !m_player->hasShownGeneral2())
+        rightHiddenMark->setVisible(m_player->isHidden(false));
+    else
+        rightHiddenMark->setVisible(false);
 }
 
 void Dashboard::clearFilterUIElements()

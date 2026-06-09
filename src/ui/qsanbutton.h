@@ -15,7 +15,7 @@ public:
     QSanButton(const QString &groupName, const QString &buttonName, QGraphicsItem *parent);
     enum ButtonState
     {
-        S_STATE_UP, S_STATE_HOVER, S_STATE_DOWN,
+        S_STATE_UP, S_STATE_HOVER, S_STATE_DOWN, S_STATE_CANPRESHOW,
         S_STATE_DISABLED, S_NUM_BUTTON_STATES
     };
     enum ButtonStyle

@@ -60,6 +60,9 @@ const char *QSanRoomSkin::S_SKIN_KEY_GENERAL_CIRCLE_IMAGE = "generalCircleImage-
 const char *QSanRoomSkin::S_SKIN_KEY_GENERAL_CIRCLE_MASK = "generalCircleMask-%1";
 const char *QSanRoomSkin::S_SKIN_KEY_CHOOSE_GENERAL_BOX_DEST_SEAT = "chooseGeneralBoxDestSeat";
 
+// hidden mark for hegemony
+const char *QSanRoomSkin::S_SKIN_KEY_HIDDEN_MARK = "hiddenMark";
+
 // Animations
 const char *QSanRoomSkin::S_SKIN_KEY_ANIMATIONS = "preloads";
 
@@ -1387,6 +1390,9 @@ bool QSanRoomSkin::_loadLayoutConfig(const QVariant &layout)
 	tryParse(config["disperseWidth"], _m_dashboardLayout.m_disperseWidth);
 	tryParse(config["trustEffectColor"], _m_dashboardLayout.m_trustEffectColor);
 
+	tryParse(config["hiddenMarkRegion"], _m_dashboardLayout.m_hiddenMarkRegion1);
+	tryParse(config["hiddenMarkRegion2"], _m_dashboardLayout.m_hiddenMarkRegion2);
+
 	tryParse(config["skillDockLeftMargin"], _m_dashboardLayout.m_skillDockLeftMargin);
 	tryParse(config["skillDockRightMargin"], _m_dashboardLayout.m_skillDockRightMargin);
 	tryParse(config["skillDockBottomMargin"], _m_dashboardLayout.m_skillDockBottomMargin);
@@ -1518,6 +1524,9 @@ case QSanInvokeSkillButton::S_SKILL_COMPULSORY: key = "compulsoryFontColor"; bre
 		tryParse(dashboardDoubleConfig["rightWidth"], _m_dashboardLayoutDouble.m_rightWidth);
 		tryParse(dashboardDoubleConfig["floatingAreaHeight"], _m_dashboardLayoutDouble.m_floatingAreaHeight);
 		tryParse(dashboardDoubleConfig["focusFrameArea"], _m_dashboardLayoutDouble.m_focusFrameArea);
+
+		tryParse(dashboardDoubleConfig["hiddenMarkRegion"], _m_dashboardLayoutDouble.m_hiddenMarkRegion1);
+		tryParse(dashboardDoubleConfig["hiddenMarkRegion2"], _m_dashboardLayoutDouble.m_hiddenMarkRegion2);
 
 	} else {
 		_m_dashboardLayoutDouble = _m_dashboardLayout;

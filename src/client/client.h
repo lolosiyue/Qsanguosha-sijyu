@@ -208,6 +208,7 @@ public:
     void askForSurrender(const QVariant &);
     void askForLuckCard(const QVariant &);
     void handleGameEvent(const QVariant &);
+    void handlePreshow(const QVariant &);
     //3v3 & 1v1
     void askForOrder(const QVariant &);
     void askForRole3v3(const QVariant &);
@@ -280,6 +281,9 @@ public:
     QString text;
 
     void setSelf(ClientPlayer *newSelf);
+
+    // 國戰預亮技能
+    void preshow(const QString &skill_name, const bool isPreshowed, bool head);
 
 public slots:
     void signup();
@@ -445,6 +449,9 @@ signals:
     void skill_updated(const QString &skill_name);
     void anytime_skill_done(const QString &skill_name);
     void qml_interact(const QString &qmlPath, const QVariantMap &params);
+    void head_preshowed();
+    void deputy_preshowed();
+
     void fieldcardtransfer(const ClientPlayer *playerA, const ClientPlayer *playerB, const QString &reason, bool equipArea, bool judgingArea);
 };
 

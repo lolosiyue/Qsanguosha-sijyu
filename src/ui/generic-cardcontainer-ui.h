@@ -214,6 +214,8 @@ protected:
     QGraphicsTextItem *_m_markItem;
     QGraphicsPixmapItem *_m_selectedFrame;
     QGraphicsPixmapItem *_m_dynamicBgItem;   ///< Dynamic skin background image (behind avatar)
+    QGraphicsPixmapItem *leftDisableShowLock;
+    QGraphicsPixmapItem *rightDisableShowLock;
     QMap<QString, QGraphicsProxyWidget *> _m_privatePiles;
 
     // The frame that is maintained by roomscene. Items in this area has positions

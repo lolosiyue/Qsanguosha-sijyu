@@ -120,6 +120,7 @@ Client::Client(QObject *parent, const QString &filename)
 	m_callbacks[S_COMMAND_OPERATION_TIMEOUT] = &Client::setTimeout;
 	m_callbacks[S_COMMAND_WEAPON_RANGE] = &Client::updateWeaponRange;
 	m_callbacks[S_COMMAND_MIRROR_GUANXING_STEP] = &Client::mirrorGuanxingStep;
+	m_callbacks[S_COMMAND_PRESHOW] = &Client::handlePreshow;
 
 	// interactive methods
 	m_interactions[S_COMMAND_CHOOSE_GENERAL] = &Client::askForGeneral;
@@ -343,6 +344,38 @@ void Client::handleGameEvent(const QVariant &arg)
 		save(path+"/debug.txt");
 	}
 	emit event_received(arg);
+}
+
+void Client::preshow(const QString &skill_name, const bool isPreshowed, bool head)
+{
+	JsonArray arg;
+	arg << skill_name;
+	arg << isPreshowed;
+	arg << head;
+	requestServer(S_COMMAND_PRESHOW, arg);
+	Self->setSkillPreshowed(skill_name, isPreshowed);
+	if (head)
+		emit head_preshowed();
+	else
+		emit deputy_preshowed();
+}
+
+void Client::handlePreshow(const QVariant &arg)
+{
+	JsonArray args = arg.value<JsonArray>();
+	if (args.size() < 2) return;
+	ClientPlayer *player = getPlayer(args[0].toString());
+	if (!player) return;
+	QMap<QString, bool> preshowMap = args[1].value<QMap<QString, bool>>();
+	QMapIterator<QString, bool> it(preshowMap);
+	while (it.hasNext()) {
+		it.next();
+		player->setSkillPreshowed(it.key(), it.value());
+	}
+	if (player == Self) {
+		emit head_preshowed();
+		emit deputy_preshowed();
+	}
 }
 
 void Client::requestServer(CommandType command, const QVariant &arg)

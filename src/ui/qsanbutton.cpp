@@ -221,12 +221,23 @@ void QSanSkillButton::_setSkillType(SkillType type)
 void QSanSkillButton::onMouseClick()
 {
     if (_m_skill == nullptr) return;
-    if ((_m_style == S_STYLE_TOGGLE && isDown() && _m_emitActivateSignal) || _m_style == S_STYLE_PUSH) {
-        emit skill_activated();
-        emit skill_activated(_m_skill);
-    } else if (!isDown() && _m_emitDeactivateSignal) {
-        emit skill_deactivated();
-        emit skill_deactivated(_m_skill);
+
+    bool head = objectName() == "left";
+    if (!Self->hasPreshowedSkill(_m_skill, head) && _m_state == QSanButton::S_STATE_CANPRESHOW) {
+        setState(S_STATE_DISABLED);
+        ClientInstance->preshow(_m_skill->objectName(), true, head);
+    } else if (Self->hasPreshowedSkill(_m_skill, head) && _m_state == QSanButton::S_STATE_DISABLED
+        && _m_skill->canPreshow() && !Self->hasShownSkill(_m_skill)) {
+        setState(QSanButton::S_STATE_CANPRESHOW);
+        ClientInstance->preshow(_m_skill->objectName(), false, head);
+    } else {
+        if ((_m_style == S_STYLE_TOGGLE && isDown() && _m_emitActivateSignal) || _m_style == S_STYLE_PUSH) {
+            emit skill_activated();
+            emit skill_activated(_m_skill);
+        } else if (!isDown() && _m_emitDeactivateSignal) {
+            emit skill_deactivated();
+            emit skill_deactivated(_m_skill);
+        }
     }
 }
 

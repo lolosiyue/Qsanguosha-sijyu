@@ -237,6 +237,7 @@ void Room::initCallbacks()
 
 	// Client notifications
 	m_callbacks[S_COMMAND_TOGGLE_READY] = &Room::toggleReadyCommand;
+	m_callbacks[S_COMMAND_PRESHOW] = &Room::processRequestPreshow;
 	m_callbacks[S_COMMAND_ADD_ROBOT] = &Room::addRobotCommand;
 
 	m_callbacks[S_COMMAND_SPEAK] = &Room::speakCommand;
@@ -4064,6 +4065,19 @@ void Room::processRequestSurrender(ServerPlayer*player, const QVariant&)
 	m_surrenderRequestReceived = true;
 	player->releaseLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
 	return;
+}
+
+void Room::processRequestPreshow(ServerPlayer *player, const QVariant &arg)
+{
+	if (player == NULL) return;
+	JsonArray args = arg.value<JsonArray>();
+	if (args.size() != 3 || !JsonUtils::isString(args[0]) || !JsonUtils::isBool(args[1]) || !JsonUtils::isBool(args[2]))
+		return;
+	player->acquireLock(ServerPlayer::SEMA_MUTEX);
+	const QString skill_name = args[0].toString();
+	const bool isPreshowed = args[1].toBool();
+	player->setSkillPreshowed(skill_name, isPreshowed);
+	player->releaseLock(ServerPlayer::SEMA_MUTEX);
 }
 
 void Room::processClientPacket(const QString&request)

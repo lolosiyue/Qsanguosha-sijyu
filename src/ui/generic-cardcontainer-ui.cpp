@@ -1263,6 +1263,10 @@ void PlayerCardContainer::refresh(bool killed)
         if (_m_saveMeIcon) _m_saveMeIcon->setVisible(m_player->isAlive()&&m_player->hasFlag("Global_Dying"));
         if (_m_deathIcon && !(ServerInfo.GameMode == "04_1v3" && m_player->getGeneralName() != "shenlvbu2" && m_player->getGeneralName() != "shenlvbu3"))
             _m_deathIcon->setVisible(m_player->isDead());
+        if (leftDisableShowLock)
+            leftDisableShowLock->setVisible(!m_player->hasShownGeneral1() && !m_player->disableShow(true).isEmpty());
+        if (rightDisableShowLock)
+            rightDisableShowLock->setVisible(m_player->getGeneral2() && !m_player->hasShownGeneral2() && !m_player->disableShow(false).isEmpty());
 	}else{
         _m_chainIcon->setVisible(false);
         _m_faceTurnedIcon->setVisible(false);
@@ -1822,6 +1826,8 @@ PlayerCardContainer::PlayerCardContainer()
     m_player = nullptr;
     _m_selectedFrame = nullptr;
     _m_dynamicBgItem = nullptr;
+    leftDisableShowLock = nullptr;
+    rightDisableShowLock = nullptr;
 
     for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
         _m_equipCards[i] = nullptr;

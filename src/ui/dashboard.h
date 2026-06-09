@@ -189,6 +189,9 @@ public slots:
     void filterCardChosen(int card_id);
     void hideFilterContainer();
 
+    void updateLeftHiddenMark();
+    void updateRightHiddenMark();
+
 protected:
     void _createExtraButtons();
     virtual void _adjustComponentZValues(bool killed = false);
@@ -286,6 +289,15 @@ protected:
 
     //for animated effects
     EffectAnimation *animations;
+
+    // for avatar shadow layer
+    QGraphicsRectItem *_m_shadow_layer1, *_m_shadow_layer2;
+
+    // for hidden mark (国战暗将标记)
+    QGraphicsPixmapItem *leftHiddenMark, *rightHiddenMark;
+
+    // for head/deputy icon (国战主将/副将图标)
+    QGraphicsPixmapItem *headIcon, *deputyIcon;
 
     // for parts creation
     void _createLeft();

@@ -253,6 +253,8 @@ public:
         QSanShadowTextFont getSkillTextFont(QSanButton::ButtonState state,
             QSanInvokeSkillButton::SkillType type,
             QSanInvokeSkillButton::SkillButtonWidth width) const;
+
+        QRect m_hiddenMarkRegion1, m_hiddenMarkRegion2;
     };
 
     struct CommonLayout
@@ -409,6 +411,7 @@ public:
     static const char *S_SKIN_KEY_GENERAL_CIRCLE_IMAGE;
     static const char *S_SKIN_KEY_GENERAL_CIRCLE_MASK;
     static const char *S_SKIN_KEY_CHOOSE_GENERAL_BOX_DEST_SEAT;
+    static const char *S_SKIN_KEY_HIDDEN_MARK;
 
     // Animations
     static const char *S_SKIN_KEY_ANIMATIONS;

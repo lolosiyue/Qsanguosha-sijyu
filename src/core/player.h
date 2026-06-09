@@ -435,6 +435,9 @@ public:
     void setGeneralShowed(bool showed);
     void setGeneral2Showed(bool showed);
     bool canShowGeneral(const QString &position) const;
+    void setDisableShow(const QString &flags, const QString &reason);
+    void removeDisableShow(const QString &reason);
+    QStringList disableShow(bool head) const;
     bool inHeadSkills(const QString &skill_name) const;
     bool inDeputySkills(const QString &skill_name) const;
     void setSkillPreshowed(const QString &skill, bool preshowed = true);
@@ -458,6 +461,7 @@ protected:
     QMap<QString, bool> head_skills;
     QMap<QString, bool> deputy_skills;
     QSet<QString> head_acquired_skills, deputy_acquired_skills;
+    QStringList disable_show;
     bool general_showed;
     bool general2_showed;
     bool general1_showed_flag;

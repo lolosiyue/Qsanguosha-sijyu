@@ -802,6 +802,7 @@ private:
     //process client requests
     void processRequestCheat(ServerPlayer*player, const QVariant&arg);
     void processRequestSurrender(ServerPlayer*player, const QVariant&arg);
+    void processRequestPreshow(ServerPlayer*player, const QVariant&arg);
 
     bool makeSurrender(ServerPlayer*player);
     bool makeCheat(ServerPlayer*player);
