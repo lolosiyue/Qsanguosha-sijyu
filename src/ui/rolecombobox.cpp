@@ -14,13 +14,17 @@ QString RoleComboBoxItem::getRole() const
     return m_role;
 }
 
-void RoleComboBoxItem::setRole(const QString &role)
+void RoleComboBoxItem::setRole(const QString &role, bool isBigKingdom)
 {
     m_role = role;
+    QString file = "image/system/roles/%1.png";
+    if (isBigKingdom)
+        file = "image/system/roles/big/%1.png";
+    
     if (m_number != 0 && role != "unknown")
-        load(QString("image/system/roles/%1-%2.png").arg(m_role).arg(m_number), m_size, false);
+        load(QString(file).arg(m_role).arg(m_number), m_size, false);
     else
-        load(QString("image/system/roles/%1.png").arg(m_role), m_size, false);
+        load(QString(file).arg(m_role), m_size, false);
 }
 
 void RoleComboBoxItem::mousePressEvent(QGraphicsSceneMouseEvent *)
@@ -101,14 +105,14 @@ void RoleComboBox::collapse()
     connect(m_currentRole, SIGNAL(clicked()), this, SLOT(expand()));
     RoleComboBoxItem *clicked_item = qobject_cast<RoleComboBoxItem *>(sender());
     foreach(RoleComboBoxItem *item, items) item->hide();
-    m_currentRole->setRole(clicked_item->getRole());
+    m_currentRole->setRole(clicked_item->getRole(), false);
 }
 
 void RoleComboBox::expand()
 {
     foreach(RoleComboBoxItem *item, items)
         item->show();
-    m_currentRole->setRole("unknown");
+    m_currentRole->setRole("unknown", false);
     connect(m_currentRole, SIGNAL(clicked()), this, SLOT(collapse()));
 }
 
@@ -118,13 +122,15 @@ void RoleComboBox::toggle()
     if (!isEnabled()) return;
     QString displayed = m_currentRole->getRole();
     if (displayed == "unknown")
-        m_currentRole->setRole(_m_fixedRole);
+        m_currentRole->setRole(_m_fixedRole, _m_isBigKingdom);
     else
-        m_currentRole->setRole("unknown");
+        m_currentRole->setRole("unknown", false);
 }
 
-void RoleComboBox::fix(const QString &role)
+void RoleComboBox::fix(const QString &role, bool isBigKingdom)
 {
+    _m_isBigKingdom = isBigKingdom;
+    
     if (role == "unknown" && !_m_fixedRole.isEmpty()) {
         disconnect(m_currentRole, SIGNAL(clicked()), this, SLOT(toggle()));
         connect(m_currentRole, SIGNAL(clicked()), this, SLOT(expand()));
@@ -133,7 +139,7 @@ void RoleComboBox::fix(const QString &role)
             createRoleItems();
         }
         
-        m_currentRole->setRole("unknown");
+        m_currentRole->setRole("unknown", false);
         _m_fixedRole.clear();
         return;
     }
@@ -142,7 +148,7 @@ void RoleComboBox::fix(const QString &role)
         disconnect(m_currentRole, SIGNAL(clicked()), this, SLOT(expand()));
         connect(m_currentRole, SIGNAL(clicked()), this, SLOT(toggle()));
     }
-    m_currentRole->setRole(role);
+    m_currentRole->setRole(role, isBigKingdom);
     _m_fixedRole = role;
     foreach(RoleComboBoxItem *item, items)
         delete item;

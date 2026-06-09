@@ -12,6 +12,7 @@ class ClientSocket;
 
 #include "player.h"
 #include "protocol.h"
+#include "namespace.h"
 
 class ServerPlayer : public Player
 {
@@ -99,7 +100,9 @@ public:
     }
 
     virtual int aliveCount(bool includeRemoved = false) const;
-    //virtual int getHandcardNum() const;
+    int getPlayerNumWithSameKingdom(const QString &reason, const QString &_to_calculate = QString(),
+        MaxCardsType::MaxCardsCount type = MaxCardsType::Max) const;
+    virtual QStringList getBigKingdoms(const QString &reason, MaxCardsType::MaxCardsCount type = MaxCardsType::Min) const;
     virtual void removeCard(int id, Place place);
     virtual void addCard(int id, Place place);
     //virtual bool isLastHandCard(const Card *card, bool contain = false) const;

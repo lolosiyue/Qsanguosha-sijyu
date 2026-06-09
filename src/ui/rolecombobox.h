@@ -14,7 +14,7 @@ class RoleComboBoxItem : public QSanSelectableItem
 public:
     RoleComboBoxItem(const QString &role, int number, QSize size);
     QString getRole() const;
-    void setRole(const QString &role);
+    void setRole(const QString &role, bool isBigKingdom = false);
 
 protected:
     virtual void mousePressEvent(QGraphicsSceneMouseEvent *event);
@@ -41,11 +41,12 @@ public:
     void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
 
 public slots:
-    void fix(const QString &role);
+    void fix(const QString &role, bool isBigKingdom = false);
 
 protected:
     qreal _m_posX, _m_posY;
     QString _m_fixedRole;
+    bool _m_isBigKingdom;
 
 private:
     QList<RoleComboBoxItem *> items;

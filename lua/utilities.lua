@@ -66,6 +66,25 @@ function sgs.reverse(list)
 	return list
 end
 
+function sgs.isBigKingdom(player, skill_name)
+	if not player:hasShownOneGeneral() then
+		return false
+	end
+	local big_kingdoms = player:getBigKingdoms(skill_name, sgs.Max)
+	local invoke = #big_kingdoms > 0
+	if invoke then
+		if #big_kingdoms == 1 and big_kingdoms[1].startsWith("sgs") then
+			invoke = table.contains(big_kingdoms, player:objectName())
+		elseif player:getRole() == "careerist" then
+			invoke = false
+		else
+			invoke = table.contains(big_kingdoms, player:getKingdom())
+		end
+	end
+	return invoke
+end
+
+
 -- copied from "Well House Consultants"
 -- used to split string into a table,similar with php' explode function
 function string:split(delimiter)

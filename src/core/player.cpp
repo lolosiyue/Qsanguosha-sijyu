@@ -2678,6 +2678,44 @@ bool Player::hasShownGeneral2() const
     return general2_showed;
 }
 
+QString Player::getSeemingKingdom() const
+{
+    if (!hasShownOneGeneral()) return QString();
+    if (getRole() == "careerist") return "careerist";
+    return getKingdom();
+}
+
+int Player::getPlayerNumWithKingdom(bool include_dead) const
+{
+    int num = 0;
+    QList<const Player *> siblings = getSiblings();
+    siblings << this;
+    foreach (const Player *p, siblings) {
+        if (!p->isAlive() && !include_dead) continue;
+        if (isFriendWith(p))
+            num++;
+    }
+    return num;
+}
+
+bool Player::isBigKingdomPlayer() const
+{
+    if (hasShownOneGeneral() && hasTreasure("JadeSeal")) return true;
+    int num = getPlayerNumWithKingdom();
+    if (num < 2) return false;
+    QList<const Player *> siblings = getAliveSiblings();
+
+    foreach (const Player *p, siblings) {
+        if (p->hasShownOneGeneral() && p->hasTreasure("JadeSeal")) return isFriendWith(p);
+    }
+
+    foreach (const Player *p, siblings) {
+        if (p->hasShownOneGeneral() && p->getPlayerNumWithKingdom() > num) return false;
+    }
+
+    return true;
+}
+
 void Player::setGeneralShowed(bool showed)
 {
     general_showed = showed;

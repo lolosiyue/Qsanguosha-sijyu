@@ -610,8 +610,11 @@ void Dashboard::killPlayer()
 {
     trusting_item->hide();
     trusting_text->hide();
-	_m_roleComboBox->fix(m_player->getRole());
-	_m_roleComboBox->setEnabled(m_player->property("RestPlayer").toBool());
+    
+    QString role = ServerInfo.EnableHegemony ? m_player->getSeemingKingdom() : m_player->getRole();
+    bool isBigKingdom = ServerInfo.EnableHegemony && m_player->isBigKingdomPlayer();
+    _m_roleComboBox->fix(role, isBigKingdom);
+    _m_roleComboBox->setEnabled(m_player->property("RestPlayer").toBool());
     _updateDeathIcon();
     _m_saveMeIcon->hide();
     if (_m_votesItem) _m_votesItem->hide();
@@ -623,7 +626,7 @@ void Dashboard::killPlayer()
         setGraphicsEffect(effect);
     }
     refresh(true);
-	_m_deathIcon->show();
+    _m_deathIcon->show();
     if (ServerInfo.GameMode == "04_1v3" && !m_player->isLord()) {
         _m_votesGot = 6;
         updateVotes(false);

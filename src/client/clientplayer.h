@@ -2,8 +2,8 @@
 #define _CLIENT_PLAYER_H
 
 #include "player.h"
-//#include "clientstruct.h"
 #include "json.h"
+#include "namespace.h"
 
 class Client;
 class QTextDocument;
@@ -43,6 +43,7 @@ public:
     int getMaxCards() const override;
     void setMark(const QString &mark, int value);
     void setIntMark(const QString &mark, QList<int> value);
+    virtual QStringList getBigKingdoms(const QString &reason, MaxCardsType::MaxCardsCount type = MaxCardsType::Min) const;
 
 private:
     bool useExactHandInfo() const;

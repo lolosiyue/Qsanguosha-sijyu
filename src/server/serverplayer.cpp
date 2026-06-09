@@ -377,6 +377,101 @@ int ServerPlayer::aliveCount(bool includeRemoved) const
     return count;
 }
 
+int ServerPlayer::getPlayerNumWithSameKingdom(const QString &reason, const QString &_to_calculate, MaxCardsType::MaxCardsCount type) const
+{
+    QString to_calculate = _to_calculate;
+
+    if (to_calculate.isEmpty()) {
+        if (getRole() == "careerist")
+            to_calculate = "careerist";
+        else
+            to_calculate = getKingdom();
+    }
+
+    ServerPlayer *this_player = room->findPlayer(objectName());
+    QList<ServerPlayer *> players = room->getAlivePlayers();
+
+    int num = 0;
+    foreach (ServerPlayer *p, players) {
+        if (!p->hasShownOneGeneral())
+            continue;
+        if (p->getRole() == "careerist") {
+            if (to_calculate == "careerist")
+                num = 1;
+            continue;
+        }
+        if (p->getKingdom() == to_calculate)
+            ++num;
+    }
+
+    if (reason != "AI") {
+        QVariant data = QVariant::fromValue(PlayerNumStruct(num, to_calculate, type, reason));
+        room->getThread()->trigger(ConfirmPlayerNum, room, this_player, data);
+        PlayerNumStruct playerNumStruct = data.value<PlayerNumStruct>();
+        num = playerNumStruct.m_num;
+    }
+
+    return qMax(num, 0);
+}
+
+QStringList ServerPlayer::getBigKingdoms(const QString &reason, MaxCardsType::MaxCardsCount type) const
+{
+    QMap<QString, int> kingdom_map;
+    kingdom_map.insert("wei", 0);
+    kingdom_map.insert("shu", 0);
+    kingdom_map.insert("wu", 0);
+    kingdom_map.insert("qun", 0);
+
+    QList<ServerPlayer *> players = room->getAlivePlayers();
+    foreach (ServerPlayer *p, players) {
+        if (!p->hasShownOneGeneral())
+            continue;
+        if (p->getRole() == "careerist") {
+            kingdom_map["careerist"] = 1;
+            continue;
+        }
+        ++kingdom_map[p->getKingdom()];
+    }
+
+    QStringList big_kingdoms;
+    foreach (const QString &key, kingdom_map.keys()) {
+        if (kingdom_map[key] == 0)
+            continue;
+        if (big_kingdoms.isEmpty()) {
+            if (kingdom_map[key] > 1)
+                big_kingdoms << key;
+            continue;
+        }
+        if (kingdom_map[key] == kingdom_map[big_kingdoms.first()]) {
+            big_kingdoms << key;
+        } else if (kingdom_map[key] > kingdom_map[big_kingdoms.first()]) {
+            big_kingdoms.clear();
+            big_kingdoms << key;
+        }
+    }
+
+    ServerPlayer *jade_seal_owner = nullptr;
+    foreach (ServerPlayer *p, players) {
+        if (p->hasTreasure("JadeSeal") && p->hasShownOneGeneral()) {
+            jade_seal_owner = p;
+            break;
+        }
+    }
+
+    if (jade_seal_owner != nullptr) {
+        if (jade_seal_owner->getRole() == "careerist") {
+            big_kingdoms.clear();
+            big_kingdoms << jade_seal_owner->objectName();
+        } else {
+            QString kingdom = jade_seal_owner->getKingdom();
+            big_kingdoms.clear();
+            big_kingdoms << kingdom;
+        }
+    }
+
+    return big_kingdoms;
+}
+
 /*int ServerPlayer::getHandcardNum() const
 {
 	return handcards.size();

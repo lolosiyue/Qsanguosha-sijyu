@@ -190,4 +190,12 @@ public:
 	SkillContext toSkillContext() const{
 		return $self->value<SkillContext>();
 	}
+
+	void setValue(PlayerNumStruct *pns) {
+		$self->setValue(QVariant::fromValue(*pns));
+	}
+
+	PlayerNumStruct toPlayerNum() const{
+		return $self->value<PlayerNumStruct>();
+	}
 };

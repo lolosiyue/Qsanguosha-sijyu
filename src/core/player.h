@@ -3,6 +3,7 @@
 
 #include "general.h"
 #include "card.h"
+#include "namespace.h"
 #include <QMutex>
 //#include "wrapped-card.h"
 
@@ -406,6 +407,12 @@ public:
     bool hasShownOneGeneral() const;
     bool hasShownGeneral() const;
     bool hasShownGeneral2() const;
+    
+    QString getSeemingKingdom() const;
+    int getPlayerNumWithKingdom(bool include_dead = false) const;
+    bool isBigKingdomPlayer() const;
+    virtual QStringList getBigKingdoms(const QString &reason, MaxCardsType::MaxCardsCount type = MaxCardsType::Min) const = 0;
+    
     void setGeneralShowed(bool showed);
     void setGeneral2Showed(bool showed);
     bool canShowGeneral(const QString &position) const;

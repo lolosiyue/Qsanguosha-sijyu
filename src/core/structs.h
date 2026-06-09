@@ -4,6 +4,7 @@
 class Card;
 
 #include "serverplayer.h"
+#include "namespace.h"
 
 struct GameModeStruct {
     GameModeStruct();
@@ -598,6 +599,45 @@ struct ChoiceData {
     bool canceled;
 };
 
+struct PlayerNumStruct {
+    inline PlayerNumStruct()
+    {
+        m_num = 0;
+        m_toCalculate = QString();
+        m_type = MaxCardsType::Max;
+        m_reason = QString();
+    }
+
+    inline PlayerNumStruct(int num, const QString &toCalculate)
+    {
+        m_num = num;
+        m_toCalculate = toCalculate;
+        m_type = MaxCardsType::Max;
+        m_reason = QString();
+    }
+
+    inline PlayerNumStruct(int num, const QString &toCalculate, MaxCardsType::MaxCardsCount type)
+    {
+        m_num = num;
+        m_toCalculate = toCalculate;
+        m_type = type;
+        m_reason = QString();
+    }
+
+    inline PlayerNumStruct(int num, const QString &toCalculate, MaxCardsType::MaxCardsCount type, const QString &reason)
+    {
+        m_num = num;
+        m_toCalculate = toCalculate;
+        m_type = type;
+        m_reason = reason;
+    }
+
+    MaxCardsType::MaxCardsCount m_type;
+    int m_num;
+    QString m_toCalculate;
+    QString m_reason;
+};
+
 enum TriggerEvent {
     NonTrigger,
 
@@ -767,6 +807,8 @@ enum TriggerEvent {
     EventShimingSuccess,
     EventShimingFail,
 
+    ConfirmPlayerNum,
+
     ShownCardChanged,
     BrokenEquipChanged,
 
@@ -795,4 +837,5 @@ Q_DECLARE_METATYPE(DrawStruct)
 Q_DECLARE_METATYPE(ShownCardChangedStruct)
 Q_DECLARE_METATYPE(BrokenEquipChangedStruct)
 Q_DECLARE_METATYPE(ChoiceData)
+Q_DECLARE_METATYPE(PlayerNumStruct)
 #endif

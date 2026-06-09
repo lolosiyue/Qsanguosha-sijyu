@@ -369,9 +369,68 @@ void ClientPlayer::setMark(const QString &mark, int value)
 
 void ClientPlayer::setIntMark(const QString &mark, QList<int> value)
 {
-	if (value.isEmpty())
-		int_marks.remove(mark);
-	else
-		int_marks[mark] = value;
+    if (value.isEmpty())
+        int_marks.remove(mark);
+    else
+        int_marks[mark] = value;
+}
+
+QStringList ClientPlayer::getBigKingdoms(const QString &, MaxCardsType::MaxCardsCount) const
+{
+    QMap<QString, int> kingdom_map;
+    kingdom_map.insert("wei", 0);
+    kingdom_map.insert("shu", 0);
+    kingdom_map.insert("wu", 0);
+    kingdom_map.insert("qun", 0);
+
+    QList<const Player *> players = getAliveSiblings();
+    players.prepend(this);
+    foreach (const Player *p, players) {
+        if (!p->hasShownOneGeneral())
+            continue;
+        if (p->getRole() == "careerist") {
+            kingdom_map["careerist"] = 1;
+            continue;
+        }
+        ++kingdom_map[p->getKingdom()];
+    }
+
+    QStringList big_kingdoms;
+    foreach (const QString &key, kingdom_map.keys()) {
+        if (kingdom_map[key] == 0)
+            continue;
+        if (big_kingdoms.isEmpty()) {
+            if (kingdom_map[key] > 1)
+                big_kingdoms << key;
+            continue;
+        }
+        if (kingdom_map[key] == kingdom_map[big_kingdoms.first()]) {
+            big_kingdoms << key;
+        } else if (kingdom_map[key] > kingdom_map[big_kingdoms.first()]) {
+            big_kingdoms.clear();
+            big_kingdoms << key;
+        }
+    }
+
+    const Player *jade_seal_owner = nullptr;
+    foreach (const Player *p, players) {
+        if (p->hasTreasure("JadeSeal") && p->hasShownOneGeneral()) {
+            jade_seal_owner = p;
+            break;
+        }
+    }
+
+    if (jade_seal_owner != nullptr) {
+        if (jade_seal_owner->getRole() == "careerist") {
+            big_kingdoms.clear();
+            big_kingdoms << jade_seal_owner->objectName();
+        } else {
+            QString kingdom = jade_seal_owner->getKingdom();
+            big_kingdoms.clear();
+            big_kingdoms << kingdom;
+        }
+    }
+
+    return big_kingdoms;
 }
 

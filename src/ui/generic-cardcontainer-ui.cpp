@@ -1388,7 +1388,7 @@ void PlayerCardContainer::setPlayer(ClientPlayer *player)
         connect(player, SIGNAL(pile_changed(QString)), this, SLOT(updatePile(QString)));
         connect(player, SIGNAL(general_pile_changed(QString)), this, SLOT(updateGeneralPile(QString)));
         connect(player, SIGNAL(Mark_changed(QString, int)), this, SLOT(updateMark(QString, int)));
-        connect(player, SIGNAL(role_changed(QString)), _m_roleComboBox, SLOT(fix(QString)));
+        connect(player, SIGNAL(role_changed(QString)), this, SLOT(updateRole(QString)));
         connect(player, SIGNAL(hp_changed()), this, SLOT(updateHp()));
 
         QTextDocument *textDoc = m_player->getMarkDoc();
@@ -1401,10 +1401,14 @@ void PlayerCardContainer::setPlayer(ClientPlayer *player)
                 updateMark(markName, player->getMark(markName));
         }
 
-        if (_m_roleComboBox != nullptr)
-            _m_roleComboBox->fix(player->getRole());
+        if (_m_roleComboBox != nullptr) {
+            QString role = ServerInfo.EnableHegemony ? player->getSeemingKingdom() : player->getRole();
+            bool isBigKingdom = ServerInfo.EnableHegemony && player->isBigKingdomPlayer();
+            if (role.isEmpty()) role = "unknown";
+            _m_roleComboBox->fix(role, isBigKingdom);
+        }
     } else if (_m_roleComboBox != nullptr) {
-        _m_roleComboBox->fix("unknown");
+        _m_roleComboBox->fix("unknown", false);
     }
 
     if (m_handcardWindow != nullptr && player != nullptr) {
@@ -1936,9 +1940,14 @@ void PlayerCardContainer::_adjustComponentZValues(bool killed)
     _layUnder(_m_dynamicBgItem);
 }
 
-void PlayerCardContainer::updateRole(const QString &role)
+void PlayerCardContainer::updateRole(const QString &)
 {
-    _m_roleComboBox->fix(role);
+    if (!m_player || !_m_roleComboBox) return;
+    
+    QString role = ServerInfo.EnableHegemony ? m_player->getSeemingKingdom() : m_player->getRole();
+    bool isBigKingdom = ServerInfo.EnableHegemony && m_player->isBigKingdomPlayer();
+    if (role.isEmpty()) role = "unknown";
+    _m_roleComboBox->fix(role, isBigKingdom);
 }
 
 void PlayerCardContainer::_updateProgressBar()
@@ -2091,8 +2100,10 @@ void PlayerCardContainer::_updateDeathIcon()
 
 void PlayerCardContainer::killPlayer()
 {
-    _m_roleComboBox->fix(m_player->getRole());
-	_m_roleComboBox->setEnabled(m_player->property("RestPlayer").toBool());
+    QString role = ServerInfo.EnableHegemony ? m_player->getSeemingKingdom() : m_player->getRole();
+    bool isBigKingdom = ServerInfo.EnableHegemony && m_player->isBigKingdomPlayer();
+    _m_roleComboBox->fix(role, isBigKingdom);
+    _m_roleComboBox->setEnabled(m_player->property("RestPlayer").toBool());
     _updateDeathIcon();
     //_m_saveMeIcon->hide();
     if (_m_votesItem) _m_votesItem->hide();

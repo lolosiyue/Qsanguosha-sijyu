@@ -393,6 +393,11 @@ static bool isNostalGeneral(const Player*p, const char*general_name);
     bool isRemoved() const;
     void setRemoved(bool removed);
 
+    QString getSeemingKingdom() const;
+    int getPlayerNumWithKingdom(bool include_dead = false) const;
+    bool isBigKingdomPlayer() const;
+    virtual QStringList getBigKingdoms(const QString &reason, MaxCardsType::MaxCardsCount type = MaxCardsType::Min) const = 0;
+
     void drawCard(const Card*card);
 	int getRandomHandCardId() const;
 	const Card*getRandomHandCard() const;
@@ -559,6 +564,10 @@ bool damageRevises(QVariant&data, int n);
 
     ServerPlayer *getLastAlive(int n = 1) const;
 
+    int getPlayerNumWithSameKingdom(const QString &reason, const QString &_to_calculate = QString(),
+        MaxCardsType::MaxCardsCount type = MaxCardsType::Max) const;
+    virtual QStringList getBigKingdoms(const QString &reason, MaxCardsType::MaxCardsCount type = MaxCardsType::Min) const;
+
     QString getClientReplyString();
 	const QVariant&getClientReply() const;
 };
@@ -585,6 +594,7 @@ public:
 	virtual void addCard(int id, Place place);
 	virtual void addKnownHandCard(const Card*card);
 	virtual bool isLastHandCard(const Card*card, bool contain = false) const;
+	virtual QStringList getBigKingdoms(const QString &reason, MaxCardsType::MaxCardsCount type = MaxCardsType::Min) const;
 };
 
 extern ClientPlayer*Self;
@@ -929,6 +939,18 @@ struct BrokenEquipChangedStruct {
 	QList<int> ids;
 	bool broken;
 	bool moveFromEquip;
+};
+
+struct PlayerNumStruct {
+	PlayerNumStruct();
+	PlayerNumStruct(int num, const QString &toCalculate);
+	PlayerNumStruct(int num, const QString &toCalculate, MaxCardsType::MaxCardsCount type);
+	PlayerNumStruct(int num, const QString &toCalculate, MaxCardsType::MaxCardsCount type, const QString &reason);
+
+	MaxCardsType::MaxCardsCount m_type;
+	int m_num;
+	QString m_toCalculate;
+	QString m_reason;
 };
 
 enum TriggerEvent {
