@@ -176,9 +176,12 @@ public:
     void summonFriends(const QString &type);
     bool inSiegeRelation(const ServerPlayer *skill_owner, const ServerPlayer *victim) const;
     bool inFormationRalation(ServerPlayer *teammate) const;
-    void askForGeneralShow();
+    bool showSkill(const QString &skill_name, const QString &skill_position = QString());
+    bool askForGeneralShow(const QString &reason, bool head = true, bool deputy = true, bool all = true, bool refusable = true, bool change = false);
     void showHiddenSkill(const QString &skill_name);
-    void showGeneral(bool head_general = true, bool trigger_event = true, bool sendLog = true);
+    void showGeneral(bool head_general = true, bool trigger_event = true, bool sendLog = true, bool ignore_rule = true);
+    void hideGeneral(bool head_general = true);
+    void sendSkillsToOthers(bool head_skill = true);
     void notifyPreshow();
 
     void addToShownHandCards(const QList<int> &card_ids);
@@ -272,6 +275,11 @@ public:
     void addPendingAnytimeSkill(const QString &skill_name);
     void removePendingAnytimeSkill(const QString &skill_name);
     void clearPendingAnytimeSkills();
+
+    void removeGeneral(bool head_general = true);
+    void setActualGeneral1Name(const QString &name);
+    void setActualGeneral2Name(const QString &name);
+    void disconnectSkillsFromOthers(bool head_skill = true);
 
 protected:
     //Synchronization helpers

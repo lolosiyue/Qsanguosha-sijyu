@@ -800,7 +800,7 @@ public:
     CompanionEffect()
         : TriggerSkill("companion_effect")
     {
-        events << GameStart;
+        events << GameStart << GeneralShown;
         frequency = Compulsory;
     }
 
@@ -814,45 +814,51 @@ public:
         return 0;
     }
 
-    bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
+    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
     {
-        if (player->getGeneralName() == "anjiang" || player->getGeneral2Name() == "anjiang")
+        if (triggerEvent == GameStart) {
+            if (player->getGeneralName() == "anjiang" || player->getGeneral2Name() == "anjiang")
+                return false;
+        }
+
+        if (player->getMark("CompanionEffect") > 0)
             return false;
 
-        const General *general1 = player->getGeneral();
-        const General *general2 = player->getGeneral2();
+        const General *general1 = player->getActualGeneral1();
+        const General *general2 = player->getActualGeneral2();
         if (!general1 || !general2)
             return false;
 
-        if (general1->isCompanionWith(general2->objectName())) {
-            player->setMark("CompanionEffect", 1);
+        if (!general1->isCompanionWith(general2->objectName()))
+            return false;
 
-            if (Config.value("HegemonyCompanionReward", "Instant").toString() == "Postponed") {
-                player->gainMark("@CompanionEffect");
-                if (!player->hasSkill("companion_attach"))
-                    room->attachSkillToPlayer(player, "companion_attach");
-            } else {
-                QStringList choices;
-                if (player->isWounded())
-                    choices << "recover";
-                choices << "draw" << "cancel";
+        player->setMark("CompanionEffect", 1);
 
-                LogMessage log;
-                log.type = "#CompanionEffect";
-                log.from = player;
-                room->sendLog(log);
+        if (Config.value("HegemonyCompanionReward", "Instant").toString() == "Postponed") {
+            player->gainMark("@CompanionEffect");
+            if (!player->hasSkill("companion_attach"))
+                room->attachSkillToPlayer(player, "companion_attach");
+        } else {
+            QStringList choices;
+            if (player->isWounded())
+                choices << "recover";
+            choices << "draw" << "cancel";
 
-                QString choice = room->askForChoice(player, "CompanionEffect", choices.join("+"));
-                if (choice == "recover") {
-                    RecoverStruct recover;
-                    recover.who = player;
-                    recover.recover = 1;
-                    room->recover(player, recover);
-                } else if (choice == "draw")
-                    player->drawCards(2, "companion_effect");
-            }
-            room->setEmotion(player, "companion");
+            LogMessage log;
+            log.type = "#CompanionEffect";
+            log.from = player;
+            room->sendLog(log);
+
+            QString choice = room->askForChoice(player, "CompanionEffect", choices.join("+"));
+            if (choice == "recover") {
+                RecoverStruct recover;
+                recover.who = player;
+                recover.recover = 1;
+                room->recover(player, recover);
+            } else if (choice == "draw")
+                player->drawCards(2, "companion_effect");
         }
+        room->setEmotion(player, "companion");
         return false;
     }
 };

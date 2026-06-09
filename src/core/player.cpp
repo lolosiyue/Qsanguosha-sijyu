@@ -11,9 +11,10 @@
 
 Player::Player(QObject *parent)
     : QObject(parent), owner(false), general(nullptr), general2(nullptr),
+    actual_general1(nullptr), actual_general2(nullptr),
     m_gender(General::Sexless), hp(-1), max_hp(-1), role("unknown"), state("online"),
     seat(0), player_seat(0), alive(true), removed(false), phase(NotActive),
-    general_showed(false), general2_showed(false),
+    general_showed(false), general2_showed(false), general1_showed_flag(false), general2_showed_flag(false),
     face_up(true), chained(false),
     hasjudgearea(true),
     role_shown(false)
@@ -411,6 +412,76 @@ QString Player::getGeneral2Name() const
 const General *Player::getGeneral2() const
 {
     return general2;
+}
+
+const General *Player::getActualGeneral1() const
+{
+    return actual_general1;
+}
+
+const General *Player::getActualGeneral2() const
+{
+    return actual_general2;
+}
+
+QString Player::getActualGeneral1Name() const
+{
+    if (actual_general1)
+        return actual_general1->objectName();
+    return QString();
+}
+
+QString Player::getActualGeneral2Name() const
+{
+    if (actual_general2)
+        return actual_general2->objectName();
+    return QString();
+}
+
+void Player::setActualGeneral1(const General *general)
+{
+    actual_general1 = general;
+}
+
+void Player::setActualGeneral2(const General *general)
+{
+    actual_general2 = general;
+}
+
+void Player::setActualGeneral1Name(const QString &name)
+{
+    const General *general = Sanguosha->getGeneral(name);
+    Q_ASSERT(!(name.isNull() || name.isEmpty() || general == nullptr));
+    setActualGeneral1(general);
+}
+
+void Player::setActualGeneral2Name(const QString &name)
+{
+    const General *general = Sanguosha->getGeneral(name);
+    Q_ASSERT(!(name.isNull() || name.isEmpty() || general == nullptr));
+    setActualGeneral2(general);
+}
+
+bool Player::hasShownGeneral1() const
+{
+    return general1_showed_flag;
+}
+
+bool Player::hasShownGeneral2() const
+{
+    return general2_showed_flag;
+}
+
+void Player::setGeneral1Showe(bool showed)
+{
+    general1_showed_flag = showed;
+    emit head_state_changed();
+}
+
+void Player::setGeneral2Showe(bool showed)
+{
+    general2_showed_flag = showed;
+    emit deputy_state_changed();
 }
 
 QString Player::getState() const
@@ -1748,6 +1819,56 @@ QList<const Skill *> Player::getSkillList(bool include_equip, bool visible_only)
 		const Skill *skill = Sanguosha->getSkill(skill_name);
 		if(skill==nullptr||(visible_only&&!skill->isVisible())) continue;
         skillList << skill;
+    }
+    return skillList;
+}
+
+QList<const Skill *> Player::getHeadSkillList(bool visible_only, bool include_acquired, bool include_equip) const
+{
+    QList<const Skill *> skillList;
+    QList<QString> skill_names;
+    if (include_acquired)
+        skill_names = head_skills.keys() + head_acquired_skills.toList();
+    else
+        skill_names = head_skills.keys();
+    foreach (const QString &skill_name, skill_names) {
+        const Skill *skill = Sanguosha->getSkill(skill_name);
+        if (skill != nullptr) {
+            if ((include_equip || !hasEquipSkill(skill->objectName())) && (!visible_only || skill->isVisible()))
+                skillList << skill;
+            if (skill->isVisible() && !visible_only) {
+                QList<const Skill *> related_skill = Sanguosha->getRelatedSkills(skill->objectName());
+                foreach (const Skill *s, related_skill) {
+                    if (!skillList.contains(s) && !s->isVisible())
+                        skillList << s;
+                }
+            }
+        }
+    }
+    return skillList;
+}
+
+QList<const Skill *> Player::getDeputySkillList(bool visible_only, bool include_acquired, bool include_equip) const
+{
+    QList<const Skill *> skillList;
+    QList<QString> skill_names;
+    if (include_acquired)
+        skill_names = deputy_skills.keys() + deputy_acquired_skills.toList();
+    else
+        skill_names = deputy_skills.keys();
+    foreach (const QString &skill_name, skill_names) {
+        const Skill *skill = Sanguosha->getSkill(skill_name);
+        if (skill != nullptr) {
+            if ((include_equip || !hasEquipSkill(skill->objectName())) && (!visible_only || skill->isVisible()))
+                skillList << skill;
+            if (skill->isVisible() && !visible_only) {
+                QList<const Skill *> related_skill = Sanguosha->getRelatedSkills(skill->objectName());
+                foreach (const Skill *s, related_skill) {
+                    if (!skillList.contains(s) && !s->isVisible())
+                        skillList << s;
+                }
+            }
+        }
     }
     return skillList;
 }

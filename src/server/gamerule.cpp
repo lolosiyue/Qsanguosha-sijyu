@@ -2135,12 +2135,85 @@ void BasaraMode::generalShowed(ServerPlayer *player,QString general_name) const
     names.removeOne(general_name);
     room->safeSetPlayerProperty(player,"basara_generals",names.join("+"));
     room->notifyProperty(player,player,"basara_generals");
+    
+    bool first_time_show = !player->hasShownOneGeneral();
+    
     if(player->getGeneralName()=="anjiang") {
         room->changeHero(player,general_name,false,false,false,false);
-        if(Config.EnableHegemony)
-            room->setPlayerProperty(player,"role",getMappedRole(player->getKingdom()));
-    } else
+        
+        if(Config.EnableHegemony && first_time_show) {
+            QString kingdom = player->getGeneral()->getKingdom();
+            room->setPlayerProperty(player, "kingdom", kingdom);
+            
+            QString role = getMappedRole(kingdom);
+            
+            if (!room->getTag("GlobalQuanjiaShow").toBool()) {
+                int i = 1;
+                bool has_lord = player->isAlive() && player->getGeneral()->isLord();
+                if (!has_lord) {
+                    foreach (ServerPlayer *p, room->getOtherPlayers(player, true)) {
+                        if (p->getSeemingKingdom() == kingdom) {
+                            if (p->getGeneral()->isLord()) {
+                                has_lord = true;
+                                break;
+                            }
+                            if (p->hasShownOneGeneral() && p->getRole() != "careerist")
+                                ++i;
+                        }
+                    }
+                }
+
+                if ((!has_lord && i > (room->getPlayers().length() / 2)) || (has_lord && room->getLord(true) && room->getLord(true)->isDead()))
+                    role = "careerist";
+            }
+            
+            room->setPlayerProperty(player,"role", role);
+            
+            if (player->isLord()) {
+                foreach (ServerPlayer *p, room->getPlayers()) {
+                    if (p->getKingdom() == kingdom && p->getRole() == "careerist") {
+                        room->setPlayerProperty(p, "role", getMappedRole(kingdom));
+                        room->broadcastProperty(p, "kingdom");
+                    }
+                }
+            }
+        }
+    } else {
         room->changeHero(player,general_name,false,false,true,false);
+        
+        if(Config.EnableHegemony && first_time_show) {
+            QString kingdom = player->getKingdom();
+            if (kingdom.isEmpty() || kingdom == "god") {
+                kingdom = player->getGeneral2()->getKingdom();
+            }
+            room->setPlayerProperty(player, "kingdom", kingdom);
+            
+            QString role = getMappedRole(kingdom);
+            
+            if (!room->getTag("GlobalQuanjiaShow").toBool()) {
+                int i = 1;
+                bool has_lord = player->isAlive() && player->getGeneral()->isLord();
+                if (!has_lord) {
+                    foreach (ServerPlayer *p, room->getOtherPlayers(player, true)) {
+                        if (p->getSeemingKingdom() == kingdom) {
+                            if (p->getGeneral()->isLord()) {
+                                has_lord = true;
+                                break;
+                            }
+                            if (p->hasShownOneGeneral() && p->getRole() != "careerist")
+                                ++i;
+                        }
+                    }
+                }
+
+                if ((!has_lord && i > (room->getPlayers().length() / 2)) || (has_lord && room->getLord(true) && room->getLord(true)->isDead()))
+                    role = "careerist";
+            }
+            
+            room->setPlayerProperty(player, "role", role);
+        }
+    }
+    
     LogMessage log;
     log.type = "#BasaraReveal";
     log.from = player;
@@ -2150,6 +2223,9 @@ void BasaraMode::generalShowed(ServerPlayer *player,QString general_name) const
         log.arg2 = player->getGeneral2Name();
     }
     room->sendLog(log);
+    
+    QVariant _head = (player->getGeneralName() == general_name);
+    room->getThread()->trigger(GeneralShown, room, player, _head);
 }
 
 bool BasaraMode::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player,QVariant &data) const

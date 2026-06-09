@@ -207,9 +207,12 @@ public:
     QString findConvertFrom(const QString &general_name) const;
     bool isGeneralHidden(const QString &general_name) const;
 
-    QString removeNumberInQString(const QString &str) const;
+	QString removeNumberInQString(const QString &str) const;
 
-    // Resource Alias System
+	QString getMainGenerals(const QString &name) const;
+	QStringList getConvertGenerals(const QString &name) const;
+
+	// Resource Alias System
     void addResourceAlias(const QString &category, const QString &original, const QString &alias);
     QString getResourceAlias(const QString &category, const QString &original) const;
     void addResourceAliasList(const QString &category, const QString &original, const QString &alias);

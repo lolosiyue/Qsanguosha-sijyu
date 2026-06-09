@@ -37,6 +37,11 @@ public:
     void setStartHujia(int hujia);
     int getStartHujia() const;
 
+    int getMaxHpHead() const;
+    int getMaxHpDeputy() const;
+    void setHeadMaxHpAdjustedValue(int adjusted_value = -1);
+    void setDeputyMaxHpAdjustedValue(int adjusted_value = -1);
+
     enum Gender
     {
         Sexless, Male, Female, Neuter
@@ -97,6 +102,8 @@ private:
     bool never_shown;
     int start_hp;
     int start_hujia;
+    int head_max_hp_adjusted_value;
+    int deputy_max_hp_adjusted_value;
     QString sub_package;
     QString image;
     QStringList companions;

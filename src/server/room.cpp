@@ -9914,3 +9914,475 @@ QString Room::getReplayPath() const
 	return m_replayPath;
 }
 
+void Room::handleUsedGeneral(const QString &general)
+{
+	bool remove = general.startsWith("-") ? true : false;
+	QString general_name = general;
+	if (remove) general_name = general_name.remove("-");
+	QString main_general = Sanguosha->getMainGenerals(general_name);
+	if (remove)
+		used_general.removeAll(main_general);
+	else
+		used_general.append(main_general);
+	foreach (QString sub, Sanguosha->getConvertGenerals(main_general)) {
+		if (remove)
+			used_general.removeAll(sub);
+		else
+			used_general.append(sub);
+	}
+}
+
+void Room::transformDeputyGeneral(ServerPlayer *player, const QString &_name, bool show)
+{
+	if (!player->getGeneral2()) return;
+
+	if (!player->hasShownGeneral2())
+		player->showGeneral(false, false, false);
+
+	QStringList names;
+	names << player->getActualGeneral1Name() << player->getActualGeneral2Name();
+
+	QString general_name = _name;
+	if (_name.isEmpty()) {
+		QStringList available, to_select;
+		foreach (QString name, Sanguosha->getLimitedGeneralNames()) {
+			if (player->getKingdom() == "careerist" && Sanguosha->getGeneral(name)->getKingdom() == "careerist") continue;
+			if ((player->getKingdom() == "careerist" || Sanguosha->getGeneral(name)->getKingdoms().contains(player->getKingdom()))
+					&& !name.startsWith("lord_") && !used_general.contains(name))
+				available << name;
+		}
+		if (available.isEmpty()) return;
+
+		QVariant qnum;
+		int num = 3;
+		qnum = num;
+
+		thread->trigger(GeneralTransforming, this, player, qnum);
+		num = qnum.toInt();
+		if (num < 1) return;
+
+		qShuffle(available);
+		for (int i = 1; i <= num; i++) {
+			if (available.isEmpty()) break;
+			to_select << available.takeFirst();
+		}
+
+		general_name = askForGeneral(player, to_select.join("+"), QString(), true, "transform");
+
+	}
+
+	handleUsedGeneral(general_name);
+
+	player->removeGeneral(false);
+
+	QStringList duanchangList = player->property("Duanchang").toString().split(",");
+	if (duanchangList.contains("deputy"))
+		duanchangList.removeOne("deputy");
+	setPlayerProperty(player, "Duanchang", duanchangList.join(","));
+
+	QVariant void_data;
+	QList<const TriggerSkill *> game_start;
+
+	foreach (const Skill *skill, Sanguosha->getGeneral(general_name)->getVisibleSkillList(true, false, player->getKingdom())) {
+		if (skill->inherits("TriggerSkill")) {
+			const TriggerSkill *tr = qobject_cast<const TriggerSkill *>(skill);
+			if (tr != NULL) {
+				if (tr->getTriggerEvents().contains(GameStart) && !tr->triggerable(GameStart, this, player, void_data).isEmpty())
+					game_start << tr;
+			}
+		}
+		player->addSkill(skill->objectName(), false);
+	}
+
+	changePlayerGeneral2(player, "anjiang");
+	player->setActualGeneral2Name(general_name);
+	notifyProperty(player, player, "actual_general2");
+	notifyProperty(player, player, "general2", general_name);
+
+	names[1] = general_name;
+	setPlayerProperty(player, "general2_showed", false);
+
+	setTag(player->objectName(), names);
+
+	foreach (const Skill *skill, Sanguosha->getGeneral(general_name)->getSkillList(true, false, player->getKingdom())) {
+		if (skill->getFrequency() == Skill::Limited && !skill->getLimitMark().isEmpty()) {
+			player->setMark(skill->getLimitMark(), 1);
+			JsonArray arg;
+			arg << player->objectName();
+			arg << skill->getLimitMark();
+			arg << 1;
+			doNotify(player, S_COMMAND_SET_MARK, arg);
+		}
+	}
+
+	foreach (const TriggerSkill *skill, game_start) {
+		if (skill->cost(GameStart, this, player, void_data, player))
+			skill->effect(GameStart, this, player, void_data, player);
+	}
+
+	if (show)
+		player->showGeneral(false, false, true);
+	else {
+		JsonArray args;
+		args << (int)QSanProtocol::S_GAME_EVENT_UPDATE_SKILL;
+		doNotify(player, QSanProtocol::S_COMMAND_LOG_EVENT, args);
+		setPlayerMark(player, "HaventShowGeneral2", 1);
+	}
+
+	thread->trigger(GeneralTransformed, this, player, void_data);
+
+}
+
+void Room::exchangeHeadAndDeputyGeneral(ServerPlayer *player)
+{
+	if (!player->getGeneral2()) return;
+
+	QStringList names;
+	names << player->getActualGeneral2Name() << player->getActualGeneral1Name();
+
+	bool general1_showed = player->hasShownGeneral1(), general2_showed = player->hasShownGeneral2();
+
+	const General *general1 = player->getActualGeneral1(), *general2 = player->getActualGeneral2();
+
+	QString general1_name = player->getActualGeneral2Name(), general2_name = player->getActualGeneral1Name();
+
+	QStringList headskills, deputyskills, appendlist1, appendlist2;
+
+	foreach (const Skill *skill, general1->getSkillList()) {
+		if (skill->isAttachedLordSkill()) continue;
+
+		bool on_head = general1->getSkillList(true, true).contains(skill);
+		bool on_deputy = general1->getSkillList(true, false).contains(skill);
+
+		if (on_head && on_deputy)
+			deputyskills << skill->objectName();
+
+		if (skill->isVisible()) {
+			if (on_head && !on_deputy)
+				detachSkillFromPlayer(player, skill->objectName(), !general1_showed, false, true);
+
+			if (!on_head && on_deputy)
+				appendlist2 << skill->objectName();
+		}
+	}
+
+	foreach (const Skill *skill, general2->getSkillList()) {
+
+		if (skill->isAttachedLordSkill()) continue;
+
+		bool on_head = general2->getSkillList(true, true).contains(skill);
+		bool on_deputy = general2->getSkillList(true, false).contains(skill);
+
+		if (on_head && on_deputy)
+			headskills << skill->objectName();
+
+		if (skill->isVisible()) {
+			if (!on_head && on_deputy)
+				detachSkillFromPlayer(player, skill->objectName(), !general2_showed, false, false);
+
+			if (on_head && !on_deputy)
+				appendlist1 << skill->objectName();
+
+		}
+
+	}
+
+	QStringList _headskills, _deputyskills;
+
+	const QList<const Skill *> skills1 = player->getHeadSkillList(), skills2 = player->getDeputySkillList();
+
+	foreach (const Skill *skill, skills1) {
+		if (deputyskills.contains(skill->objectName())) {
+			player->loseSkill(skill->objectName());
+			_deputyskills << skill->objectName();
+			if (skill->isVisible()) {
+				JsonArray args;
+				args << (int)QSanProtocol::S_GAME_EVENT_DETACH_SKILL;
+				args << player->objectName();
+				args << skill->objectName();
+				args << true;
+				doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+			}
+		}
+	}
+
+	foreach (const Skill *skill, skills2) {
+		if (headskills.contains(skill->objectName())) {
+			player->loseSkill(skill->objectName(), false);
+			_headskills << skill->objectName();
+			if (skill->isVisible()) {
+				JsonArray args;
+				args << (int)QSanProtocol::S_GAME_EVENT_DETACH_SKILL;
+				args << player->objectName();
+				args << skill->objectName();
+				args << false;
+				doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+			}
+		}
+	}
+
+	setPlayerProperty(player, "Duanchang", QVariant());
+
+	setPlayerProperty(player, "actual_general1", general1_name);
+	setPlayerProperty(player, "general1_showed", general2_showed);
+
+	JsonArray arg1;
+	arg1 << (int)S_GAME_EVENT_CHANGE_HERO;
+	arg1 << player->objectName();
+	arg1 << (general2_showed ? general1_name:"anjiang");
+	arg1 << false;
+	arg1 << false;
+	doBroadcastNotify(S_COMMAND_LOG_EVENT, arg1);
+	changePlayerGeneral(player, general2_showed ? general1_name:"anjiang");
+
+	notifyProperty(player, player, "actual_general1");
+	notifyProperty(player, player, "general", general1_name);
+
+	setPlayerProperty(player, "actual_general2", general2_name);
+	setPlayerProperty(player, "general2_showed", general1_showed);
+
+	JsonArray arg2;
+	arg2 << (int)S_GAME_EVENT_CHANGE_HERO;
+	arg2 << player->objectName();
+	arg2 << (general1_showed ? general2_name:"anjiang");
+	arg2 << true;
+	arg2 << false;
+	doBroadcastNotify(S_COMMAND_LOG_EVENT, arg2);
+	changePlayerGeneral2(player, general1_showed ? general2_name:"anjiang");
+
+	notifyProperty(player, player, "actual_general2");
+	notifyProperty(player, player, "general2", general2_name);
+
+	QVariant void_data;
+	QList<const TriggerSkill *> game_start;
+
+	foreach (QString skill_name, _headskills)
+		player->addSkill(skill_name);
+
+	foreach (QString skill_name, appendlist1) {
+		const Skill *skill = Sanguosha->getSkill(skill_name);
+		if (skill->inherits("TriggerSkill")) {
+			const TriggerSkill *tr = qobject_cast<const TriggerSkill *>(skill);
+			if (tr != NULL) {
+				if (tr->getTriggerEvents().contains(GameStart) && !tr->triggerable(GameStart, this, player, void_data).isEmpty())
+					game_start << tr;
+			}
+		}
+		player->addSkill(skill_name);
+
+		if (skill->getFrequency() == Skill::Limited && !skill->getLimitMark().isEmpty()) {
+			player->setMark(skill->getLimitMark(), 1);
+			JsonArray arg;
+			arg << player->objectName();
+			arg << skill->getLimitMark();
+			arg << 1;
+			doNotify(player, S_COMMAND_SET_MARK, arg);
+		}
+	}
+
+	foreach (QString skill_name, _deputyskills)
+		player->addSkill(skill_name, false);
+
+	foreach (QString skill_name, appendlist2) {
+		const Skill *skill = Sanguosha->getSkill(skill_name);
+		if (skill->inherits("TriggerSkill")) {
+			const TriggerSkill *tr = qobject_cast<const TriggerSkill *>(skill);
+			if (tr != NULL) {
+				if (tr->getTriggerEvents().contains(GameStart) && !tr->triggerable(GameStart, this, player, void_data).isEmpty())
+					game_start << tr;
+			}
+		}
+		player->addSkill(skill_name, false);
+
+		if (skill->getFrequency() == Skill::Limited && !skill->getLimitMark().isEmpty()) {
+			player->setMark(skill->getLimitMark(), 1);
+			JsonArray arg;
+			arg << player->objectName();
+			arg << skill->getLimitMark();
+			arg << 1;
+			doNotify(player, S_COMMAND_SET_MARK, arg);
+		}
+	}
+
+	setTag(player->objectName(), names);
+
+	foreach (const TriggerSkill *skill, game_start) {
+		if (skill->cost(GameStart, this, player, void_data, player))
+			skill->effect(GameStart, this, player, void_data, player);
+	}
+
+	JsonArray args;
+	args << (int)QSanProtocol::S_GAME_EVENT_UPDATE_SKILL;
+	doNotify(player, QSanProtocol::S_COMMAND_LOG_EVENT, args);
+
+	filterCards(player, player->getCards("he"), true);
+}
+
+void Room::doDragonPhoenix(ServerPlayer *player, const QString &general1_name, const QString &general2_name, bool full_state, const QString &kingdom, bool sendLog, const QString &show_flags, bool resetHp)
+{
+	QStringList names;
+	names << player->getActualGeneral1Name() << player->getActualGeneral2Name();
+	QStringList names_orig = names;
+	names_orig.removeAll("sujiang");
+	names_orig.removeAll("sujiangf");
+	if (player->isAlive())
+		return;
+	player->throwAllHandCardsAndEquips();
+	if (player->getGeneral())
+		player->removeGeneral(true);
+	if (player->getGeneral2())
+		player->removeGeneral(false);
+	setPlayerMark(player, "drank", 0);
+	player->throwAllMarks();
+
+	QVariant void_data;
+	QList<const TriggerSkill *> game_start;
+
+	QStringList duanchang = player->property("Duanchang").toString().split(",");
+	int max_hp = 0;
+	if (!general1_name.isEmpty()) {
+		handleUsedGeneral(general1_name);
+		if (duanchang.contains("head"))
+			duanchang.removeAll("head");
+
+		JsonArray arg;
+		arg << (int)S_GAME_EVENT_CHANGE_HERO;
+		arg << player->objectName();
+		arg << general1_name;
+		arg << false;
+		arg << false;
+		doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, arg);
+
+		foreach (const Skill *skill, Sanguosha->getGeneral(general1_name)->getVisibleSkillList()) {
+			if (skill->inherits("TriggerSkill")) {
+				const TriggerSkill *tr = qobject_cast<const TriggerSkill *>(skill);
+				if (tr != NULL) {
+					if (tr->getTriggerEvents().contains(GameStart) && !tr->triggerable(GameStart, this, player, void_data).isEmpty())
+						game_start << tr;
+				}
+			}
+			player->addSkill(skill->objectName());
+		}
+
+		changePlayerGeneral(player, "anjiang");
+		player->setActualGeneral1Name(general1_name);
+		notifyProperty(player, player, "actual_general1");
+		notifyProperty(player, player, "general", general1_name);
+
+		max_hp += Sanguosha->getGeneral(general1_name)->getMaxHpHead();
+		names[0] = general1_name;
+		setPlayerProperty(player, "general1_showed", false);
+	}
+	if (!general2_name.isEmpty()) {
+		handleUsedGeneral(general2_name);
+		if (duanchang.contains("deputy"))
+			duanchang.removeAll("deputy");
+
+		JsonArray arg;
+		arg << (int)S_GAME_EVENT_CHANGE_HERO;
+		arg << player->objectName();
+		arg << general2_name;
+		arg << true;
+		arg << false;
+		doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, arg);
+
+		foreach (const Skill *skill, Sanguosha->getGeneral(general2_name)->getVisibleSkillList()) {
+			if (skill->inherits("TriggerSkill")) {
+				const TriggerSkill *tr = qobject_cast<const TriggerSkill *>(skill);
+				if (tr != NULL) {
+					if (tr->getTriggerEvents().contains(GameStart) && !tr->triggerable(GameStart, this, player, void_data).isEmpty())
+						game_start << tr;
+				}
+			}
+			player->addSkill(skill->objectName(), false);
+		}
+
+		changePlayerGeneral2(player, "anjiang");
+		player->setActualGeneral2Name(general2_name);
+		notifyProperty(player, player, "actual_general2");
+		notifyProperty(player, player, "general2", general2_name);
+
+		max_hp += Sanguosha->getGeneral(general2_name)->getMaxHpDeputy();
+		names[1] = general2_name;
+		setPlayerProperty(player, "general2_showed", false);
+	}
+
+	setPlayerProperty(player, "Duanchang", duanchang.join(","));
+
+	revivePlayer(player);
+
+	player->setHp(1);
+	if (resetHp) {
+		if (general1_name.isEmpty() || general2_name.isEmpty())
+			max_hp *= 2;
+		setPlayerMark(player, "HalfMaxHpLeft", max_hp % 2);
+		player->setMaxHp(max_hp / 2);
+		broadcastProperty(player, "maxhp");
+		player->setHp(player->getMaxHp());
+	}
+	broadcastProperty(player, "hp");
+	setPlayerFlag(player, "Global_DFDebut");
+
+	setTag(player->objectName(), names);
+
+	QString kingdomToSet = kingdom.isEmpty() ? Sanguosha->getGeneral(general1_name)->getKingdom() : kingdom;
+	player->setKingdom(kingdomToSet);
+	if (show_flags.isEmpty())
+		notifyProperty(player, player, "kingdom");
+	else
+		broadcastProperty(player, "kingdom");
+
+	foreach (const Skill *skill, player->getSkillList(false, true)) {
+		if (skill->getFrequency() == Skill::Limited && !skill->getLimitMark().isEmpty()) {
+			player->setMark(skill->getLimitMark(), 1);
+			JsonArray arg;
+			arg << player->objectName();
+			arg << skill->getLimitMark();
+			arg << 1;
+			doNotify(player, S_COMMAND_SET_MARK, arg);
+		}
+	}
+
+	foreach (const TriggerSkill *skill, game_start) {
+		if (skill->cost(GameStart, this, player, void_data, player))
+			skill->effect(GameStart, this, player, void_data, player);
+	}
+
+	if (full_state) {
+		player->setChained(false);
+		broadcastProperty(player, "chained");
+
+		player->setFaceUp(true);
+		broadcastProperty(player, "faceup");
+		if (Sanguosha->getGeneral(general1_name)->isCompanionWith(general2_name))
+			setPlayerMark(player, "CompanionEffect", 1);
+	}
+
+	if (sendLog) {
+		LogMessage l;
+		l.type = "#DragonPhoenixRevive" + QString::number(names_orig.length());
+		l.from = player;
+		l.to << player;
+		if (names_orig.length() > 0)
+			l.arg = names_orig.first();
+		if (names_orig.length() > 1)
+			l.arg2 = names_orig.last();
+
+		this->sendLog(l);
+	}
+
+	resetAI(player);
+
+	player->setSkillsPreshowed();
+
+	if (show_flags.contains("h"))
+		player->showGeneral(true, false, false);
+	if (show_flags.contains("d"))
+		player->showGeneral(false, false, false);
+
+	if (tag["BattleRoyalMode"].toBool())
+		setPlayerMark(player, "GlobalBattleRoyalMode", 1);
+}
+
+
+

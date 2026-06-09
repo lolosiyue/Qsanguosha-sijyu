@@ -330,10 +330,15 @@ public:
     void clearSkillInvalidityBySource(ServerPlayer *source);
     void adjustSeats();
     void swapPile();
-    inline QList<int> getDiscardPile()
-    {
-        return*m_discardPile;
-    }
+	inline QStringList getUsedGenerals() const
+	{
+		return used_general;
+	}
+
+	inline QList<int> getDiscardPile()
+	{
+		return*m_discardPile;
+	}
     inline QList<int>&getDrawPile()
     {
         return*m_drawPile;
@@ -344,8 +349,15 @@ public:
     ServerPlayer*findPlayerBySkillName(const QString&skill_name, bool include_lose = false) const;
     ServerPlayer*findPlayerByObjectName(const QString&objectName, bool include_dead = false) const;
     void installEquip(ServerPlayer*player, const QString&equip_name);
-    void resetAI(ServerPlayer*player);
-    void changeHero(ServerPlayer*player, const QString&new_general, bool full_state, bool invoke_start = true,
+	void resetAI(ServerPlayer*player);
+
+	void transformDeputyGeneral(ServerPlayer*player, const QString&general_name = QString(), bool show = true);
+	void exchangeHeadAndDeputyGeneral(ServerPlayer*player);
+	void doDragonPhoenix(ServerPlayer*target, const QString&general1_name, const QString&general2_name, bool full_state = true,
+		const QString&kingdom = QString(), bool sendLog = true, const QString&show_flags = QString(), bool resetHp = false);
+	void handleUsedGeneral(const QString&general);
+
+	void changeHero(ServerPlayer*player, const QString&new_general, bool full_state, bool invoke_start = true,
         bool isSecondaryHero = false, bool sendLog = true, int start_hp = 0);
     void swapSeat(ServerPlayer*a, ServerPlayer*b);
     lua_State*getLuaState() const;
@@ -709,8 +721,9 @@ private:
     ServerPlayer*getRequestTarget(ServerPlayer*player) const;
     void notifyArrangeSeats(ServerPlayer *player);
     void clearDualControlRequest(ServerPlayer*player, bool restore_context = true);
-    QString mode;
-    QList<ServerPlayer*> m_players, m_alivePlayers;
+	QString mode;
+	QStringList used_general;
+	QList<ServerPlayer*> m_players, m_alivePlayers;
     int player_count;
     ServerPlayer*current;
     QList<int> pile1, pile2, table_cards;

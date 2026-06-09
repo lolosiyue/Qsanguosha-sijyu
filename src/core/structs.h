@@ -812,6 +812,12 @@ enum TriggerEvent {
     ShownCardChanged,
     BrokenEquipChanged,
 
+    GeneralShown,
+    GeneralHidden,
+    GeneralRemoved,
+    GeneralTransforming,
+    GeneralTransformed,
+
     NumOfEvents
 };
 

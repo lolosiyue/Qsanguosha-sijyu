@@ -10,7 +10,8 @@
 General::General(Package *package, const QString &name, const QString &kingdom,
     int max_hp, bool male, bool hidden, bool never_shown, int start_hp, int start_hujia)
     : QObject(package), kingdom(kingdom), max_hp(max_hp), gender(male ? Male : Female),
-    hidden(hidden), never_shown(never_shown), start_hp(start_hp), start_hujia(start_hujia)
+    hidden(hidden), never_shown(never_shown), start_hp(start_hp), start_hujia(start_hujia),
+    head_max_hp_adjusted_value(-1), deputy_max_hp_adjusted_value(-1)
 {
 	QString copy = name;
 	lord = copy.contains("$");
@@ -26,6 +27,30 @@ General::General(Package *package, const QString &name, const QString &kingdom,
 int General::getMaxHp() const
 {
     return max_hp;
+}
+
+int General::getMaxHpHead() const
+{
+    if (head_max_hp_adjusted_value >= 0)
+        return max_hp * 2 + head_max_hp_adjusted_value;
+    return max_hp * 2;
+}
+
+int General::getMaxHpDeputy() const
+{
+    if (deputy_max_hp_adjusted_value >= 0)
+        return max_hp * 2 + deputy_max_hp_adjusted_value;
+    return max_hp * 2;
+}
+
+void General::setHeadMaxHpAdjustedValue(int adjusted_value)
+{
+    head_max_hp_adjusted_value = adjusted_value;
+}
+
+void General::setDeputyMaxHpAdjustedValue(int adjusted_value)
+{
+    deputy_max_hp_adjusted_value = adjusted_value;
 }
 
 QString General::getKingdom() const

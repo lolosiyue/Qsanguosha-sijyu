@@ -1093,11 +1093,38 @@ CardUseStruct::CardUseReason Engine::getCurrentCardUseReason()
 
 QString Engine::findConvertFrom(const QString &general_name) const
 {
-    foreach (QString general, sp_convert_pairs.keys()) {
-        if (sp_convert_pairs.values(general).contains(general_name))
-            return general;
-    }
-    return "";
+	foreach (QString general, sp_convert_pairs.keys()) {
+		if (sp_convert_pairs.values(general).contains(general_name))
+			return general;
+	}
+	return "";
+}
+
+QString Engine::getMainGenerals(const QString &name) const
+{
+	if (!getGeneral(name)) return QString();
+	foreach (const QString &key, sp_convert_pairs.keys()) {
+		foreach (const QString &name1, sp_convert_pairs.values(key))
+			if (name == name1 && getGeneral(key)) return key;
+	}
+	return name;
+}
+
+QStringList Engine::getConvertGenerals(const QString &name) const
+{
+	if (!getGeneral(name)) return QStringList();
+	QStringList generals;
+	foreach(const QString &name1, sp_convert_pairs.values(name)) {
+		if (!getGeneral(name1)) continue;
+		if (getBanPackages().contains(getGeneral(name1)->getPackage())) continue;
+		generals << name1;
+	}
+
+	QStringList banned_generals = Config.value("Banlist/Generals", "").toStringList();
+	foreach (const QString &banned, banned_generals)
+		generals.removeOne(banned);
+
+	return generals;
 }
 
 bool Engine::isGeneralHidden(const QString &general_name) const

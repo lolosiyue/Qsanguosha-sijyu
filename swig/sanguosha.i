@@ -37,6 +37,10 @@ public:
 
 	// property getters/setters
 	int getMaxHp() const;
+	int getMaxHpHead() const;
+	int getMaxHpDeputy() const;
+	void setHeadMaxHpAdjustedValue(int adjusted_value = -1);
+	void setDeputyMaxHpAdjustedValue(int adjusted_value = -1);
 	QString getKingdom() const;
 	QString getKingdoms() const;
 	bool isMale() const;
@@ -127,6 +131,19 @@ public:
 	void setGeneral2Name(const char*general_name);
 	QString getGeneral2Name() const;
 	const General*getGeneral2() const;
+
+	const General*getActualGeneral1() const;
+	const General*getActualGeneral2() const;
+	QString getActualGeneral1Name() const;
+	QString getActualGeneral2Name() const;
+	void setActualGeneral1(const General*general);
+	void setActualGeneral2(const General*general);
+	void setActualGeneral1Name(const char*name);
+	void setActualGeneral2Name(const char*name);
+	bool hasShownGeneral1() const;
+	bool hasShownGeneral2() const;
+	void setGeneral1Showe(bool showed);
+	void setGeneral2Showe(bool showed);
 
 	void setState(const char*state);
 	QString getState() const;
@@ -286,6 +303,8 @@ public:
 	QSet<const TriggerSkill*> getTriggerSkills() const;
 	QSet<const Skill*> getSkills(bool include_equip = false, bool visible_only = true) const;
 	QList<const Skill*> getSkillList(bool include_equip = false, bool visible_only = true) const;
+	QList<const Skill*> getHeadSkillList(bool visible_only = true, bool include_acquired = false, bool include_equip = false) const;
+	QList<const Skill*> getDeputySkillList(bool visible_only = true, bool include_acquired = false, bool include_equip = false) const;
 	QSet<const Skill*> getVisibleSkills(bool include_equip = false) const;
 	QList<const Skill*> getVisibleSkillList(bool include_equip = false) const;
 	QStringList getAcquiredSkills() const;
@@ -559,8 +578,12 @@ bool damageRevises(QVariant&data, int n);
     void summonFriends(const QString &type);
     bool inSiegeRelation(const ServerPlayer *skill_owner, const ServerPlayer *victim) const;
     bool inFormationRalation(ServerPlayer *teammate) const;
-    void askForGeneralShow();
+    bool showSkill(const QString &skill_name, const QString &skill_position = QString());
+    bool askForGeneralShow(const QString &reason, bool head = true, bool deputy = true, bool all = true, bool refusable = true, bool change = false);
     void showHiddenSkill(const QString &skill_name);
+    void showGeneral(bool head_general = true, bool trigger_event = true, bool sendLog = true, bool ignore_rule = true);
+    void hideGeneral(bool head_general = true);
+    void sendSkillsToOthers(bool head_skill = true);
 
     ServerPlayer *getLastAlive(int n = 1) const;
 
@@ -570,6 +593,9 @@ bool damageRevises(QVariant&data, int n);
 
     QString getClientReplyString();
 	const QVariant&getClientReply() const;
+
+	void removeGeneral(bool head_general = true);
+	void disconnectSkillsFromOthers(bool head_skill = true);
 };
 
 %extend ServerPlayer {
@@ -1475,6 +1501,8 @@ public:
 	CardUseStruct::CardUseReason getCurrentCardUseReason();
 
 	QString findConvertFrom(const char*general_name) const;
+	QString getMainGenerals(const char*name) const;
+	QStringList getConvertGenerals(const char*name) const;
 	bool isGeneralHidden(const char*general_name) const;
 	
 	QString removeNumberInQString(const char*str) const;
@@ -1804,6 +1832,13 @@ public:
 	QList<ServerPlayer*> findPlayersBySkillName(const char*skill_name) const;
 	void installEquip(ServerPlayer*player, const char*equip_name);
 	void resetAI(ServerPlayer*player);
+
+	void transformDeputyGeneral(ServerPlayer*player, const char*general_name = NULL, bool show = true);
+	void exchangeHeadAndDeputyGeneral(ServerPlayer*player);
+	void doDragonPhoenix(ServerPlayer*target, const char*general1_name, const char*general2_name, bool full_state = true, const char*kingdom = NULL, bool sendLog = true, const char*show_flags = NULL, bool resetHp = false);
+	void handleUsedGeneral(const char*general);
+	QStringList getUsedGenerals() const;
+
 	void changeHero(ServerPlayer*player, const char*new_general, bool full_state, bool invokeStart = true, bool isSecondaryHero = false, bool sendLog = true, int start_hp = 0);
 	void swapSeat(ServerPlayer*a, ServerPlayer*b);
 	lua_State*getLuaState() const;

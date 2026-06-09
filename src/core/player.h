@@ -37,6 +37,10 @@ class Player : public QObject
     Q_PROPERTY(bool role_shown READ hasShownRole WRITE setShownRole)
     Q_PROPERTY(General::Gender gender READ getGender WRITE setGender)
     Q_PROPERTY(bool general_showed READ hasShownGeneral WRITE setGeneralShowed)
+    Q_PROPERTY(bool general2_showed READ hasShownGeneral2 WRITE setGeneral2Showd)
+    Q_PROPERTY(QString actual_general1 READ getActualGeneral1Name WRITE setActualGeneral1Name)
+    Q_PROPERTY(QString actual_general2 READ getActualGeneral2Name WRITE setActualGeneral2Name)
+    Q_PROPERTY(bool general1_showed READ hasShownGeneral1 WRITE setGeneral1Showed)
     Q_PROPERTY(bool general2_showed READ hasShownGeneral2 WRITE setGeneral2Showed)
     //Q_PROPERTY(QList<int> equip_area READ getEquipAreas WRITE setEquipAreas)
     Q_PROPERTY(bool weapon_area READ hasWeaponArea WRITE setWeaponArea)
@@ -106,6 +110,19 @@ public:
     void setGeneral2Name(const QString &general_name);
     QString getGeneral2Name() const;
     const General *getGeneral2() const;
+
+    const General *getActualGeneral1() const;
+    const General *getActualGeneral2() const;
+    QString getActualGeneral1Name() const;
+    QString getActualGeneral2Name() const;
+    void setActualGeneral1(const General *general);
+    void setActualGeneral2(const General *general);
+    void setActualGeneral1Name(const QString &name);
+    void setActualGeneral2Name(const QString &name);
+    bool hasShownGeneral1() const;
+    bool hasShownGeneral2() const;
+    void setGeneral1Showe(bool showed);
+    void setGeneral2Showe(bool showed);
 
     void setState(const QString &state);
     QString getState() const;
@@ -284,9 +301,11 @@ public:
     int getSlashCount() const;
 
     bool hasEquipSkill(const QString &skill_name) const;
-    QSet<const TriggerSkill *> getTriggerSkills() const;
+    QSet<const Skill *> getTriggerSkills() const;
     QSet<const Skill *> getSkills(bool include_equip = false, bool visible_only = true) const;
     QList<const Skill *> getSkillList(bool include_equip = false, bool visible_only = true) const;
+    QList<const Skill *> getHeadSkillList(bool visible_only = true, bool include_acquired = false, bool include_equip = false) const;
+    QList<const Skill *> getDeputySkillList(bool visible_only = true, bool include_acquired = false, bool include_equip = false) const;
     QSet<const Skill *> getVisibleSkills(bool include_equip = false) const;
     QList<const Skill *> getVisibleSkillList(bool include_equip = false) const;
     QStringList getAcquiredSkills() const;
@@ -441,6 +460,8 @@ protected:
     QSet<QString> head_acquired_skills, deputy_acquired_skills;
     bool general_showed;
     bool general2_showed;
+    bool general1_showed_flag;
+    bool general2_showed_flag;
     mutable QMutex m_skillCacheMutex;
     mutable QMap<QString, bool> m_skillValidityCache;
     QHash<QString, int> history;
@@ -455,6 +476,7 @@ private:
     QString screen_name;
     bool owner;
     const General *general, *general2;
+    const General *actual_general1, *actual_general2;
     General::Gender m_gender;
     int hp, max_hp;
     QString kingdom, role, state;
@@ -495,6 +517,8 @@ signals:
     void owner_changed(bool owner);
     void showncards_changed();
     void brokenEquips_changed();
+    void head_state_changed();
+    void deputy_state_changed();
 };
 
 #endif
