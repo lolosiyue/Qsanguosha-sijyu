@@ -124,7 +124,9 @@ void RoomScene::resetPiles()
 RoomScene::RoomScene(QMainWindow*main_window)
 	: main_window(main_window),m_tableBgPixmap(1,1),m_tableBgPixmapOrig(1,1),game_started(false),
 	  _m_cachedPhotoWidth(0), _m_cachedPhotoHeight(0),
-	  m_presentedDialogSkillButton(nullptr), m_presentedDialog(nullptr)
+	  m_presentedDialogSkillButton(nullptr), m_presentedDialog(nullptr),
+	  m_prevPageBtn(nullptr), m_nextPageBtn(nullptr), m_pageLabel(nullptr),
+	  m_separatorLine(nullptr), m_currentPage(0), m_totalPages(0)
 {
 	setParent(main_window);
 
@@ -3722,14 +3724,25 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
                     animations->sendBack(animationTarget2);
             }
         }
-        if (global_targets.length() == 1) {
+        
+        initPaginationButtons();
+        separateSelectedUnselectedPlayers();
+        
+        m_totalPages = (m_unselectedPlayers.size() + RIGHT_PAGE_COLS - 1) / RIGHT_PAGE_COLS;
+        if (m_totalPages < 1) m_totalPages = 1;
+        m_currentPage = 0;
+        
+        arrangeLeftFixedBoxes();
+        arrangeRightPageBoxes();
+        drawSeparatorLine();
+
+        if (global_targets.length() == 1 && m_unselectedPlayers.size() == 1) {
             const ClientPlayer*target = global_targets.first();
             Photo*photo = name2photo.value(target->objectName(), nullptr);
             if (photo)
                 photo->setSelected(true);
             else
                 dashboard->setSelected(true);
-            updateGlobalCardBox(target);
         }
 
         break;
@@ -4004,6 +4017,7 @@ void RoomScene::doCancelButton()
         ClientInstance->onPlayerChooseCards(selected_ids);
         prompt_box->disappear();
         dashboard->highlightEquip(ClientInstance->skill_name, false);
+        clearPaginationUI();
         break;
     }
     default:
@@ -4035,14 +4049,7 @@ void RoomScene::updateGlobalCardBox(const ClientPlayer*player, int id)
     foreach (const ClientPlayer*p, card_boxes.keys())
         card_boxes[p]->reset();
 
-    if (id == -1) {
-        foreach (const ClientPlayer*p, card_boxes.keys())
-            card_boxes[p]->hide();
-
-        card_boxes[player]->show();
-        GraphicsBox::moveToCenter(card_boxes[player]);
-        bringToFront(card_boxes[player]);
-    } else {
+    if (id != -1) {
         if (!selected_ids.contains(id)) {
             selected_ids.append(id);
             selected_targets_ids.insert(id, player);
@@ -4056,6 +4063,16 @@ void RoomScene::updateGlobalCardBox(const ClientPlayer*player, int id)
         const ClientPlayer*target = item2player.value(item, nullptr);
         if (target != player) item->setSelected(false);
     }
+
+    separateSelectedUnselectedPlayers();
+    
+    m_totalPages = (m_unselectedPlayers.size() + RIGHT_PAGE_COLS - 1) / RIGHT_PAGE_COLS;
+    if (m_totalPages < 1) m_totalPages = 1;
+    if (m_currentPage >= m_totalPages)
+        m_currentPage = qMax(0, m_totalPages - 1);
+    
+    arrangeLeftFixedBoxes();
+    arrangeRightPageBoxes();
 
     int type = ClientInstance->type;
     QList<const ClientPlayer*> targets;
@@ -4098,6 +4115,194 @@ void RoomScene::updateGlobalCardBox(const ClientPlayer*player, int id)
     if (selected_ids.length() > 0 && (selected_ids.length() <= ClientInstance->choose_max_num || ClientInstance->choose_max_num == 0)
             && (selected_ids.length() >= ClientInstance->choose_min_num || ClientInstance->choose_min_num == 0))
         ok_button->setEnabled(true);
+}
+
+void RoomScene::initPaginationButtons()
+{
+    if (!m_prevPageBtn) {
+        m_prevPageBtn = new QSanButton(this);
+        m_prevPageBtn->setRect(QRect(0, 0, 80, 30));
+        connect(m_prevPageBtn, &QSanButton::clicked, this, &RoomScene::onPrevPageClicked);
+    }
+    if (!m_nextPageBtn) {
+        m_nextPageBtn = new QSanButton(this);
+        m_nextPageBtn->setRect(QRect(0, 0, 80, 30));
+        connect(m_nextPageBtn, &QSanButton::clicked, this, &RoomScene::onNextPageClicked);
+    }
+    if (!m_pageLabel) {
+        m_pageLabel = new QGraphicsTextItem(this);
+        m_pageLabel->setDefaultTextColor(Qt::white);
+        QFont font = m_pageLabel->font();
+        font.setPointSize(12);
+        m_pageLabel->setFont(font);
+    }
+    
+    addItem(m_prevPageBtn);
+    addItem(m_nextPageBtn);
+    addItem(m_pageLabel);
+}
+
+void RoomScene::separateSelectedUnselectedPlayers()
+{
+    m_selectedPlayers.clear();
+    m_unselectedPlayers.clear();
+    
+    QList<const ClientPlayer*> targetsWithSelection;
+    foreach (const int &key, selected_targets_ids.keys()) {
+        foreach (const ClientPlayer *p, selected_targets_ids.values(key)) {
+            if (!targetsWithSelection.contains(p))
+                targetsWithSelection << p;
+        }
+    }
+    
+    foreach (const ClientPlayer *p, global_targets) {
+        if (targetsWithSelection.contains(p))
+            m_selectedPlayers << p;
+        else
+            m_unselectedPlayers << p;
+    }
+}
+
+void RoomScene::arrangeLeftFixedBoxes()
+{
+    int count = m_selectedPlayers.size();
+    bool useCompact = count >= COMPACT_THRESHOLD;
+    
+    qreal startX = m_tableCenterPos.x() - (LEFT_FIXED_WIDTH + RIGHT_PAGE_COLS * 400 + 100) / 2;
+    qreal startY = m_tableCenterPos.y() - 150;
+    
+    int index = 0;
+    foreach (const ClientPlayer *p, m_selectedPlayers) {
+        int row = index / LEFT_FIXED_COLS;
+        int col = index % LEFT_FIXED_COLS;
+        
+        if (!card_boxes.contains(p)) {
+            card_boxes[p] = new PlayerCardBox();
+            addItem(card_boxes[p]);
+            connect(card_boxes[p], SIGNAL(global_choose(const ClientPlayer*, int)), 
+                    this, SLOT(updateGlobalCardBox(const ClientPlayer*, int)));
+        }
+        
+        card_boxes[p]->setCompactMode(useCompact);
+        
+        qreal boxWidth = useCompact ? 150 : 140;
+        qreal boxHeight = useCompact ? 40 : 150;
+        qreal x = startX + col * (boxWidth + 10);
+        qreal y = startY + row * (boxHeight + 10);
+        
+        card_boxes[p]->setPos(x, y);
+        card_boxes[p]->show();
+        index++;
+    }
+}
+
+void RoomScene::arrangeRightPageBoxes()
+{
+    if (m_totalPages == 0) {
+        m_totalPages = 1;
+    }
+    
+    int startIdx = m_currentPage * RIGHT_PAGE_COLS;
+    int endIdx = qMin(startIdx + RIGHT_PAGE_COLS, m_unselectedPlayers.size());
+    
+    foreach (const ClientPlayer *p, m_unselectedPlayers) {
+        if (card_boxes.contains(p)) {
+            card_boxes[p]->hide();
+        }
+    }
+    
+    qreal leftWidth = LEFT_FIXED_WIDTH;
+    qreal rightStartX = m_tableCenterPos.x() + leftWidth / 2 + 50;
+    qreal startY = m_tableCenterPos.y() - 150;
+    
+    for (int i = startIdx; i < endIdx; i++) {
+        const ClientPlayer *p = m_unselectedPlayers[i];
+        int col = i - startIdx;
+        
+        if (!card_boxes.contains(p)) {
+            card_boxes[p] = new PlayerCardBox();
+            addItem(card_boxes[p]);
+            connect(card_boxes[p], SIGNAL(global_choose(const ClientPlayer*, int)), 
+                    this, SLOT(updateGlobalCardBox(const ClientPlayer*, int)));
+        }
+        
+        card_boxes[p]->setCompactMode(false);
+        qreal x = rightStartX + col * 400 + 10;
+        card_boxes[p]->setPos(x, startY);
+        card_boxes[p]->show();
+    }
+    
+    qreal rightBottomY = startY + 350;
+    qreal btnCenterX = rightStartX + (RIGHT_PAGE_COLS * 400) / 2;
+    
+    m_prevPageBtn->setPos(btnCenterX - 90, rightBottomY);
+    m_nextPageBtn->setPos(btnCenterX + 10, rightBottomY);
+    m_pageLabel->setPos(btnCenterX - 20, rightBottomY + 5);
+    
+    updatePaginationState();
+}
+
+void RoomScene::updatePaginationState()
+{
+    m_pageLabel->setPlainText(QString("%1/%2").arg(m_currentPage + 1).arg(m_totalPages));
+    
+    m_prevPageBtn->setEnabled(m_currentPage > 0);
+    m_nextPageBtn->setEnabled(m_currentPage < m_totalPages - 1);
+}
+
+void RoomScene::drawSeparatorLine()
+{
+    if (!m_separatorLine) {
+        m_separatorLine = new QGraphicsLineItem(this);
+        QPen pen(QColor(100, 100, 100), 2);
+        m_separatorLine->setPen(pen);
+    }
+    
+    qreal sepX = m_tableCenterPos.x() + LEFT_FIXED_WIDTH / 2 + 25;
+    qreal topY = m_tableCenterPos.y() - 200;
+    qreal bottomY = m_tableCenterPos.y() + 200;
+    m_separatorLine->setLine(sepX, topY, sepX, bottomY);
+    
+    addItem(m_separatorLine);
+}
+
+void RoomScene::clearPaginationUI()
+{
+    if (m_prevPageBtn) {
+        removeItem(m_prevPageBtn);
+        m_prevPageBtn->hide();
+    }
+    if (m_nextPageBtn) {
+        removeItem(m_nextPageBtn);
+        m_nextPageBtn->hide();
+    }
+    if (m_pageLabel) {
+        removeItem(m_pageLabel);
+    }
+    if (m_separatorLine) {
+        removeItem(m_separatorLine);
+    }
+    
+    m_selectedPlayers.clear();
+    m_unselectedPlayers.clear();
+    m_currentPage = 0;
+    m_totalPages = 0;
+}
+
+void RoomScene::onPrevPageClicked()
+{
+    if (m_currentPage > 0) {
+        m_currentPage--;
+        arrangeRightPageBoxes();
+    }
+}
+
+void RoomScene::onNextPageClicked()
+{
+    if (m_currentPage < m_totalPages - 1) {
+        m_currentPage++;
+        arrangeRightPageBoxes();
+    }
 }
 
 void RoomScene::hideAvatars()

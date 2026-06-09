@@ -510,6 +510,8 @@ private:
 #endif
 
 private slots:
+    void onPrevPageClicked();
+    void onNextPageClicked();
     void fillCards(const QList<int> &card_ids, const QList<int> &disabled_ids = QList<int>());
     void acquireSkill(const ClientPlayer *player, const QString &skill_name);
     void updateSelectedTargets();
@@ -597,6 +599,31 @@ void onGameStart();
     QList<const ClientPlayer*> global_targets;
     QList<int> selected_ids;
     QMap<int, const ClientPlayer*> selected_targets_ids;
+    
+    // Pagination for GlobalCardChosen
+    QSanButton *m_prevPageBtn;
+    QSanButton *m_nextPageBtn;
+    QGraphicsTextItem *m_pageLabel;
+    QGraphicsLineItem *m_separatorLine;
+    
+    int m_currentPage;
+    int m_totalPages;
+    
+    QList<const ClientPlayer*> m_selectedPlayers;
+    QList<const ClientPlayer*> m_unselectedPlayers;
+    
+    static const int LEFT_FIXED_COLS = 2;
+    static const int RIGHT_PAGE_COLS = 3;
+    static const int COMPACT_THRESHOLD = 5;
+    static const int LEFT_FIXED_WIDTH = 320;
+    
+    void initPaginationButtons();
+    void separateSelectedUnselectedPlayers();
+    void updatePaginationState();
+    void arrangeLeftFixedBoxes();
+    void arrangeRightPageBoxes();
+    void drawSeparatorLine();
+    void clearPaginationUI();
 
  signals:
     void restart();

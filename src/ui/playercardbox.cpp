@@ -29,7 +29,7 @@ const int PlayerCardBox::intervalBetweenCards = 3;
 
 PlayerCardBox::PlayerCardBox()
     : player(NULL), progressBar(NULL), cancelButton(NULL), canCancel(false),
-      rowCount(0), intervalsBetweenAreas(-1), intervalsBetweenRows(0), maxCardsInOneRow(0)
+      m_compactMode(false), rowCount(0), intervalsBetweenAreas(-1), intervalsBetweenRows(0), maxCardsInOneRow(0)
 {
     setZValue(1000);
 }
@@ -257,45 +257,13 @@ void PlayerCardBox::reset()
     }
 }
 
-QRectF PlayerCardBox::boundingRect() const
-{
-    if (player == NULL)
-        return QRectF();
-
-    if (rowCount == 0)
-        return QRectF();
-
-    const int cardWidth = G_COMMON_LAYOUT.m_cardNormalWidth;
-    const int cardHeight = G_COMMON_LAYOUT.m_cardNormalHeight;
-
-    int width = verticalBlankWidth * 2 + placeNameAreaWidth + intervalBetweenNameAndCard;
-
-    if (maxCardsInOneRow > maxCardNumberInOneRow / 2) {
-        width += cardWidth * maxCardNumberInOneRow / 2
-                + intervalBetweenCards * (maxCardNumberInOneRow / 2 - 1);
-    } else {
-        width += cardWidth * maxCardsInOneRow
-                + intervalBetweenCards * (maxCardsInOneRow - 1);
-    }
-
-    QFont font;
-    QFontMetrics fm(font);
-    int titleWidth = fm.boundingRect(title).width() + 40;
-    width = qMax(width, titleWidth);
-
-    int areaInterval = intervalBetweenAreas;
-    int height = topBlankWidth + bottomBlankWidth + cardHeight * rowCount
-            + intervalsBetweenAreas * qMax(areaInterval, 0)
-            + intervalsBetweenRows * intervalBetweenRows;
-
-    if (ServerInfo.OperationTimeout != 0)
-        height += 12;
-
-    return QRectF(0, 0, width, height);
-}
-
 void PlayerCardBox::paintLayout(QPainter *painter)
 {
+    if (m_compactMode) {
+        paintCompactLayout(painter);
+        return;
+    }
+
     if (nameRects.isEmpty())
         return;
 
@@ -359,6 +327,42 @@ void PlayerCardBox::clear()
     items.clear();
 
     disappear();
+}
+
+void PlayerCardBox::paintCompactLayout(QPainter *painter)
+{
+    painter->save();
+    
+    QString playerName = ClientInstance->getPlayerName(player->objectName());
+    QString kingdom = player->getKingdom();
+    QString header = QString("%1 (%2)").arg(playerName).arg(Sanguosha->translate(kingdom));
+    
+    QFont font = painter->font();
+    font.setBold(true);
+    painter->setFont(font);
+    painter->setPen(Qt::white);
+    painter->drawText(10, 15, header);
+    
+    font.setBold(false);
+    painter->setFont(font);
+    
+    QString cardsText = tr("Selected: ");
+    bool first = true;
+    foreach (CardItem *item, items) {
+        if (item && item->isSelected()) {
+            const Card *card = item->getCard();
+            if (card) {
+                if (!first) cardsText += ", ";
+                cardsText += Sanguosha->translate(card->objectName());
+                first = false;
+            }
+        }
+    }
+    if (first) cardsText += tr("None");
+    
+    painter->drawText(10, 32, cardsText);
+    
+    painter->restore();
 }
 
 int PlayerCardBox::getRowCount(const int &cardNumber) const
@@ -468,4 +472,51 @@ void PlayerCardBox::global_click()
     else
         id = item->getId();
     emit global_choose(player, id);
+}
+
+void PlayerCardBox::setCompactMode(bool compact)
+{
+    m_compactMode = compact;
+    prepareGeometryChange();
+}
+
+QRectF PlayerCardBox::boundingRect() const
+{
+    if (player == NULL)
+        return QRectF();
+
+    if (m_compactMode) {
+        return QRectF(0, 0, 150, 40);
+    }
+
+    if (rowCount == 0)
+        return QRectF();
+
+    const int cardWidth = G_COMMON_LAYOUT.m_cardNormalWidth;
+    const int cardHeight = G_COMMON_LAYOUT.m_cardNormalHeight;
+
+    int width = verticalBlankWidth * 2 + placeNameAreaWidth + intervalBetweenNameAndCard;
+
+    if (maxCardsInOneRow > maxCardNumberInOneRow / 2) {
+        width += cardWidth * maxCardNumberInOneRow / 2
+                + intervalBetweenCards * (maxCardNumberInOneRow / 2 - 1);
+    } else {
+        width += cardWidth * maxCardsInOneRow
+                + intervalBetweenCards * (maxCardsInOneRow - 1);
+    }
+
+    QFont font;
+    QFontMetrics fm(font);
+    int titleWidth = fm.boundingRect(title).width() + 40;
+    width = qMax(width, titleWidth);
+
+    int areaInterval = intervalBetweenAreas;
+    int height = topBlankWidth + bottomBlankWidth + cardHeight * rowCount
+            + intervalsBetweenAreas * qMax(areaInterval, 0)
+            + intervalsBetweenRows * intervalBetweenRows;
+
+    if (ServerInfo.OperationTimeout != 0)
+        height += 12;
+
+    return QRectF(0, 0, width, height);
 }

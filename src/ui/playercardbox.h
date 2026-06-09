@@ -28,6 +28,8 @@ public:
     void setfalse();
     void reset();
     void global_click();
+    void setCompactMode(bool compact);
+    bool isCompactMode() const { return m_compactMode; }
     QList<CardItem *> items;
 
 protected:
@@ -36,6 +38,7 @@ protected:
 
 private:
     void paintArea(const QString &name, QPainter *painter);
+    void paintCompactLayout(QPainter *painter);
     int getRowCount(const int &cardNumber) const;
     void updateNumbers(const int &cardNumber);
     void arrangeCards(const QList<const Card *> &cards, const QPoint &topLeft, bool is_globalchoose = false);
@@ -44,6 +47,7 @@ private:
     QString flags;
     bool handcardVisible;
     bool canCancel;
+    bool m_compactMode;
     Card::HandlingMethod method;
     QList<int> disabledIds;
     QList<int> handcards;
