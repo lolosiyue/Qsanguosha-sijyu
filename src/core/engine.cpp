@@ -315,6 +315,12 @@ Engine::Engine(bool isManualMode)
         }
     }
 
+    // Register default mark-card mappings
+    registerMarkCard("@companion", "CompanionCard");
+    registerMarkCard("@halfmaxhp", "HalfMaxHpCard");
+    registerMarkCard("@firstshow", "FirstShowCard");
+    registerMarkCard("@careerist", "CareermanCard");
+
 #ifdef ANDROID
 	foreach (Skill*skill, findChildren<Skill*>()) {
 		if(skill->isVisible()) skill->initMediaSource();
@@ -2519,6 +2525,26 @@ QStringList Engine::getResourceAliasList(const QString &category, const QString 
             return categoryMap[original];
     }
     return QStringList();
+}
+
+void Engine::registerMarkCard(const QString &markName, const QString &cardName)
+{
+    m_markCardMap[markName] = cardName;
+}
+
+QString Engine::getMarkCardName(const QString &markName) const
+{
+    return m_markCardMap.value(markName, QString());
+}
+
+bool Engine::isMarkCard(const QString &markName) const
+{
+    return m_markCardMap.contains(markName);
+}
+
+QMap<QString, QString> Engine::getMarkCardMap() const
+{
+    return m_markCardMap;
 }
 
 TransferSkill *Engine::getTransfer()

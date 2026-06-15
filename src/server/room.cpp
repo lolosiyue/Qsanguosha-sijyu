@@ -10369,7 +10369,7 @@ void Room::doDragonPhoenix(ServerPlayer *player, const QString &general1_name, c
 		player->setFaceUp(true);
 		broadcastProperty(player, "faceup");
 		if (Sanguosha->getGeneral(general1_name)->isCompanionWith(general2_name))
-			setPlayerMark(player, "CompanionEffect", 1);
+			player->gainMark("@companion");
 	}
 
 	if (sendLog) {

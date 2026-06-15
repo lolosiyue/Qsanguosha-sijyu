@@ -179,6 +179,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	//connect(dashboard,SIGNAL(remove_equip_skill(QString)),this,SLOT(detachSkill(QString)));
 
 	connect(Self,SIGNAL(pile_changed(QString)),dashboard,SLOT(updatePile(QString)));
+	connect(Self,SIGNAL(update_markcard()),dashboard,SLOT(updateMarkCard()));
 
 	// add role ComboBox
 	connect(Self,SIGNAL(role_changed(QString)),dashboard,SLOT(updateRole(QString)));

@@ -1427,6 +1427,10 @@ public:
 	QColor getKingdomColor(const char*kingdom) const;
 	QString getSetupString() const;
 
+	void registerMarkCard(const char*markName, const char*cardName);
+	QString getMarkCardName(const char*markName) const;
+	bool isMarkCard(const char*markName) const;
+
 	const CardPattern*getPattern(const char*name) const;
 	bool matchPattern(const char*pattern, const Player*player, const Card*card) const;
 	bool matchExpPattern(const char*pattern, const Player*player, const Card*card) const;

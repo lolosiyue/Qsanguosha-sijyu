@@ -191,6 +191,7 @@ public slots:
 
     void updateLeftHiddenMark();
     void updateRightHiddenMark();
+    void updateMarkCard();
 
 protected:
     void _createExtraButtons();
@@ -273,6 +274,7 @@ protected:
 
     CardItem *selected;
     QList<CardItem *> m_handCards;
+    QList<CardItem *> m_markCards;
 
     QGraphicsPathItem *trusting_item;
     QGraphicsSimpleTextItem *trusting_text;

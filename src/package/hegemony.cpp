@@ -13,6 +13,9 @@
 
 class CompanionVS;
 class CompanionEffect;
+class HalfMaxHp;
+class FirstShow;
+class Careerman;
 
 TriggerSkill *CompanionEffectSkill = nullptr;
 
@@ -773,24 +776,30 @@ class CompanionVS : public ZeroCardViewAsSkill
 {
 public:
     CompanionVS()
-        : ZeroCardViewAsSkill("companion_attach")
+        : ZeroCardViewAsSkill("companion")
     {
-        attached_lord_skill = true;
+        frequency = Limited;
+        limit_mark = "@companion";
     }
 
     bool isEnabledAtPlay(const Player *player) const override
     {
-        return player->getMark("@CompanionEffect") > 0;
+        return player->getMark("@companion") > 0;
     }
 
-    bool isEnabledAtResponse(const Player *, const QString &pattern) const override
+    bool isEnabledAtResponse(const Player *player, const QString &pattern) const override
     {
-        return pattern.contains("peach");
+        return pattern.contains("peach") && !player->hasFlag("Global_PreventPeach") && player->getMark("@companion") > 0;
     }
 
     const Card *viewAs() const override
     {
         return new CompanionCard;
+    }
+
+    int getEffectIndex(const ServerPlayer *, const Card *card) const override
+    {
+        return card->isKindOf("Peach") ? 0 : -1;
     }
 };
 
@@ -814,14 +823,14 @@ public:
         return 0;
     }
 
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const override
+    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &) const override
     {
         if (triggerEvent == GameStart) {
             if (player->getGeneralName() == "anjiang" || player->getGeneral2Name() == "anjiang")
                 return false;
         }
 
-        if (player->getMark("CompanionEffect") > 0)
+        if (player->getMark("@companion") > 0)
             return false;
 
         const General *general1 = player->getActualGeneral1();
@@ -832,32 +841,12 @@ public:
         if (!general1->isCompanionWith(general2->objectName()))
             return false;
 
-        player->setMark("CompanionEffect", 1);
+        LogMessage log;
+        log.type = "#CompanionEffect";
+        log.from = player;
+        room->sendLog(log);
 
-        if (Config.value("HegemonyCompanionReward", "Instant").toString() == "Postponed") {
-            player->gainMark("@CompanionEffect");
-            if (!player->hasSkill("companion_attach"))
-                room->attachSkillToPlayer(player, "companion_attach");
-        } else {
-            QStringList choices;
-            if (player->isWounded())
-                choices << "recover";
-            choices << "draw" << "cancel";
-
-            LogMessage log;
-            log.type = "#CompanionEffect";
-            log.from = player;
-            room->sendLog(log);
-
-            QString choice = room->askForChoice(player, "CompanionEffect", choices.join("+"));
-            if (choice == "recover") {
-                RecoverStruct recover;
-                recover.who = player;
-                recover.recover = 1;
-                room->recover(player, recover);
-            } else if (choice == "draw")
-                player->drawCards(2, "companion_effect");
-        }
+        player->gainMark("@companion");
         room->setEmotion(player, "companion");
         return false;
     }
@@ -873,6 +862,83 @@ public:
     bool isSkillValid(const Player *player, const Skill *skill) const
     {
         return player->getMark("Qingcheng" + skill->objectName())<1;
+    }
+};
+
+class HalfMaxHp : public ZeroCardViewAsSkill
+{
+public:
+    HalfMaxHp() : ZeroCardViewAsSkill("halfmaxhp")
+    {
+        frequency = Limited;
+        limit_mark = "@halfmaxhp";
+    }
+
+    bool isEnabledAtPlay(const Player *player) const override
+    {
+        return player->getMark("@halfmaxhp") > 0;
+    }
+
+    const Card *viewAs() const override
+    {
+        return new HalfMaxHpCard;
+    }
+};
+
+class FirstShow : public ZeroCardViewAsSkill
+{
+public:
+    FirstShow() : ZeroCardViewAsSkill("firstshow")
+    {
+        frequency = Limited;
+        limit_mark = "@firstshow";
+    }
+
+    bool isEnabledAtPlay(const Player *player) const override
+    {
+        if (player->getMark("@firstshow") > 0) {
+            if (player->getHandcardNum() < 4) return true;
+            foreach (const Player *p, player->getAliveSiblings()) {
+                if (!p->hasShownAllGenerals())
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    const Card *viewAs() const override
+    {
+        return new FirstShowCard;
+    }
+};
+
+class Careerman : public ZeroCardViewAsSkill
+{
+public:
+    Careerman() : ZeroCardViewAsSkill("careerman")
+    {
+        frequency = Limited;
+        limit_mark = "@careerist";
+    }
+
+    bool isEnabledAtPlay(const Player *player) const override
+    {
+        return player->getMark("@careerist") > 0;
+    }
+
+    bool isEnabledAtResponse(const Player *player, const QString &pattern) const override
+    {
+        return pattern.contains("peach") && !player->hasFlag("Global_PreventPeach") && player->getMark("@careerist") > 0;
+    }
+
+    const Card *viewAs() const override
+    {
+        return new CareermanCard;
+    }
+
+    int getEffectIndex(const ServerPlayer *, const Card *card) const override
+    {
+        return card->isKindOf("Peach") ? 0 : -1;
     }
 };
 
@@ -960,52 +1026,178 @@ HegemonyPackage::HegemonyPackage()
     addMetaObject<XiongyiCard>();
     addMetaObject<QingchengCard>();
     addMetaObject<CompanionCard>();
+    addMetaObject<HalfMaxHpCard>();
+    addMetaObject<FirstShowCard>();
+    addMetaObject<CareermanCard>();
 
-    skills << new CompanionVS;
+    skills << new CompanionVS << new HalfMaxHp << new FirstShow << new Careerman;
     CompanionEffectSkill = new CompanionEffect;
 }
 ADD_PACKAGE(Hegemony)
 
 CompanionCard::CompanionCard()
 {
-    will_throw = false;
-    handling_method = Card::MethodNone;
-    m_skillName = "companion_attach";
     target_fixed = true;
+    m_skillName = "companion";
 }
 
-void CompanionCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const
+void CompanionCard::use(Room *room, ServerPlayer *player, QList<ServerPlayer *> &) const
 {
-    source->loseMark("@CompanionEffect", 1);
-    room->detachSkillFromPlayer(source, "companion_attach", true);
+    room->removePlayerMark(player, "@companion");
 
-    QString choice;
-    if (Sanguosha->getCurrentCardUseReason() == CardUseStruct::CARD_USE_REASON_PLAY) {
-        QStringList choices;
-        if (source->isWounded())
-            choices << "recover";
-        choices << "draw";
+    Peach *peach = new Peach(Card::NoSuit, 0);
+    peach->setSkillName("_companion");
 
-        choice = room->askForChoice(source, "CompanionEffect", choices.join("+"));
-        if (choice == "recover") {
-            RecoverStruct recover;
-            recover.who = source;
-            recover.recover = 1;
-            room->recover(source, recover);
-        } else if (choice == "draw")
-            source->drawCards(2, "companion_attach");
+    ServerPlayer *dying = room->getCurrentDyingPlayer();
+    if (dying && dying->hasFlag("Global_Dying") && !player->isLocked(peach) && !player->isProhibited(dying, peach)) {
+        room->useCard(CardUseStruct(peach, player, dying));
+        return;
+    }
 
-    } else {
-        foreach (ServerPlayer *p, room->getAlivePlayers()) {
-            if (p->hasFlag("Global_Dying")) {
-                RecoverStruct recover;
-                recover.who = source;
-                recover.recover = 1;
-                room->recover(p, recover);
+    if (peach->isAvailable(player) && room->askForChoice(player, "companion", "peach+draw", QVariant(), "@companion-choose") == "peach")
+        room->useCard(CardUseStruct(peach, player, player));
+    else
+        player->drawCards(2, "companion");
+}
+
+HalfMaxHpCard::HalfMaxHpCard()
+{
+    target_fixed = true;
+    m_skillName = "halfmaxhp";
+}
+
+void HalfMaxHpCard::use(Room *, ServerPlayer *player, QList<ServerPlayer *> &) const
+{
+    player->drawCards(1, "halfmaxhp");
+}
+
+FirstShowCard::FirstShowCard()
+{
+    m_skillName = "firstshow";
+}
+
+bool FirstShowCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
+{
+    return targets.isEmpty() && !to_select->hasShownAllGenerals() && to_select != Self;
+}
+
+bool FirstShowCard::targetsFeasible(const QList<const Player *> &targets, const Player *Self) const
+{
+    foreach (const Player *p, Self->getAliveSiblings()) {
+        if (!p->hasShownAllGenerals())
+            return targets.length() == 1;
+    }
+    return targets.length() == 0;
+}
+
+void FirstShowCard::use(Room *room, ServerPlayer *player, QList<ServerPlayer *> &targets) const
+{
+    room->removePlayerMark(player, "@firstshow");
+    player->fillHandCards(4, "firstshow");
+
+    if (targets.isEmpty()) return;
+
+    ServerPlayer *to = targets.first();
+
+    QStringList choices;
+    if (!to->hasShownGeneral1())
+        choices << "head_general";
+    if (to->getGeneral2() && !to->hasShownGeneral2())
+        choices << "deputy_general";
+
+    if (choices.isEmpty()) return;
+    to->setFlags("XianquTarget");
+    QString choice = room->askForChoice(player, "firstshow_see", choices.join("+"), QVariant::fromValue(to),
+        "@firstshow-choose::"+to->objectName(), "head_general+deputy_general");
+    to->setFlags("-XianquTarget");
+
+    LogMessage log;
+    log.type = "#KnownBothView";
+    log.from = player;
+    log.to << to;
+    log.arg = choice;
+    foreach (ServerPlayer *p, room->getOtherPlayers(player, true)) {
+        room->doNotify(p, QSanProtocol::S_COMMAND_LOG_SKILL, log.toVariant());
+    }
+
+    QStringList list = room->getTag(to->objectName()).toStringList();
+    list.removeAt(choice == "head_general" ? 1 : 0);
+    foreach (const QString &name, list) {
+        LogMessage log2;
+        log2.type = "$KnownBothViewGeneral";
+        log2.from = player;
+        log2.to << to;
+        log2.arg = name;
+        log2.arg2 = choice;
+        room->doNotify(player, QSanProtocol::S_COMMAND_LOG_SKILL, log2.toVariant());
+    }
+    JsonArray arg;
+    arg << "firstshow";
+    arg << JsonUtils::toJsonArray(list);
+    room->doNotify(player, QSanProtocol::S_COMMAND_VIEW_GENERALS, arg);
+}
+
+CareermanCard::CareermanCard()
+{
+    target_fixed = true;
+    m_skillName = "careerman";
+}
+
+void CareermanCard::use(Room *room, ServerPlayer *player, QList<ServerPlayer *> &) const
+{
+    room->removePlayerMark(player, "@careerist");
+
+    Peach *peach = new Peach(Card::NoSuit, 0);
+    peach->setSkillName("_careerman");
+
+    ServerPlayer *dying = room->getCurrentDyingPlayer();
+    if (dying && dying->hasFlag("Global_Dying") && !player->isLocked(peach) && !player->isProhibited(dying, peach)) {
+        room->useCard(CardUseStruct(peach, player, dying));
+        return;
+    }
+
+    QStringList choices, all_choices;
+    all_choices << "draw1card" << "draw2cards" << "peach" << "firstshow";
+    choices << "draw1card" << "draw2cards";
+    if (peach->isAvailable(player))
+        choices << "peach";
+    if (player->getHandcardNum() < 4)
+        choices << "firstshow";
+    else {
+        QList<ServerPlayer *> allplayers = room->getAlivePlayers();
+        foreach (ServerPlayer *p, allplayers) {
+            if (!p->hasShownAllGenerals()) {
+                choices << "firstshow";
                 break;
             }
         }
     }
 
-    room->setEmotion(source, "companion");
+    QString choice = room->askForChoice(player, "careerman", choices.join("+"), QVariant(), "@careerman-choose", all_choices.join("+"));
+
+    if (choice == "draw1card") {
+        player->drawCards(1, "careerman");
+    } else if (choice == "draw2cards") {
+        player->drawCards(2, "careerman");
+    } else if (choice == "peach") {
+        room->useCard(CardUseStruct(peach, player, player));
+    } else if (choice == "firstshow") {
+        QList<ServerPlayer *> targets, tos;
+
+        QList<ServerPlayer *> allplayers = room->getAlivePlayers();
+        foreach (ServerPlayer *p, allplayers) {
+            if (!p->hasShownAllGenerals()) {
+                targets << p;
+            }
+        }
+
+        if (!targets.isEmpty()) {
+            ServerPlayer *victim = room->askForPlayerChosen(player, targets, "careerman", "@careerman-target");
+            room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, player->objectName(), victim->objectName());
+            tos << victim;
+        }
+
+        FirstShowCard firstshow_card;
+        firstshow_card.use(room, player, tos);
+    }
 }

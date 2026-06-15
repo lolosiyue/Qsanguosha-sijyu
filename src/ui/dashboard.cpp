@@ -2112,6 +2112,54 @@ void Dashboard::updateRightHiddenMark()
         rightHiddenMark->setVisible(false);
 }
 
+void Dashboard::updateMarkCard()
+{
+    QMap<QString, QString> markCardMap = Sanguosha->getMarkCardMap();
+
+    foreach (const QString &markName, markCardMap.keys()) {
+        QString cardName = markCardMap[markName];
+
+        if (Self->getMark(markName) > 0) {
+            bool has_same = false;
+            foreach (CardItem *c, m_handCards) {
+                if (c->getCard()->isKindOf(cardName.toStdString().c_str())) {
+                    has_same = true;
+                    break;
+                }
+            }
+            if (has_same) continue;
+
+            SkillCard *card = Sanguosha->cloneSkillCard(cardName);
+            if (!card) continue;
+            card->setObjectName(card->getClassName());
+
+            CardItem *card_item = new CardItem(card);
+            card_item->setPos(mapFromScene(card_item->scenePos()));
+            card_item->setParentItem(this);
+
+            _addHandCard(card_item, false);
+            m_markCards.append(card_item);
+
+            adjustCards();
+            update();
+        } else {
+            foreach (CardItem *card_item, m_handCards) {
+                if (card_item->getCard()->isKindOf(cardName.toStdString().c_str())) {
+                    if (card_item == selected) selected = nullptr;
+                    m_markCards.removeOne(card_item);
+                    m_handCards.removeOne(card_item);
+                    card_item->disconnect(this);
+                    delete card_item;
+                    break;
+                }
+            }
+
+            adjustCards();
+            update();
+        }
+    }
+}
+
 void Dashboard::clearFilterUIElements()
 {
     qDeleteAll(_m_filterUIElements);

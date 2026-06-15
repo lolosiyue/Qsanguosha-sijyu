@@ -332,8 +332,6 @@ void ClientPlayer::setMark(const QString &mark, int value)
 	if (mark == "drank")
 		emit drank_changed();
 	else if (mark.startsWith("@")) {
-		// @todo: consider move all the codes below to PlayerCardContainerUI.cpp
-		// set mark doc
 		static QStringList marklist;
 		if (marklist.isEmpty())
 			marklist << "@huashen" << "@yongsi_test" << "@jushou_test"
@@ -363,6 +361,9 @@ void ClientPlayer::setMark(const QString &mark, int value)
 		mark_doc->setHtml(text);
 		if (mark == "@duanchang")
 			emit duanchang_invoked();
+
+		if (Sanguosha->isMarkCard(mark))
+			emit update_markcard();
 	} else if (mark.startsWith("&"))
 		emit Mark_changed(mark, value);
 }

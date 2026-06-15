@@ -804,7 +804,9 @@ void Client::onPlayerResponseCard(const Card *card, const QList<const Player *> 
 
 		replyToServer(S_COMMAND_RESPONSE_CARD, JsonArray() << card->toString() << QVariant::fromValue(targetNames));
 
-		if (card->isVirtualCard() && !card->parent())
+		if (card->isVirtualCard() && !card->parent()
+			&& !card->isKindOf("CompanionCard") && !card->isKindOf("HalfMaxHpCard")
+			&& !card->isKindOf("FirstShowCard") && !card->isKindOf("CareermanCard"))
 			delete card;
 	} else
 		replyToServer(S_COMMAND_RESPONSE_CARD);
@@ -1856,7 +1858,9 @@ void Client::onPlayerDiscardCards(const Card *cards)
 		JsonArray arr;
 		foreach(int card_id, cards->getSubcards())
 			arr << card_id;
-		if (cards->isVirtualCard() && !cards->parent())
+		if (cards->isVirtualCard() && !cards->parent()
+			&& !cards->isKindOf("CompanionCard") && !cards->isKindOf("HalfMaxHpCard")
+			&& !cards->isKindOf("FirstShowCard") && !cards->isKindOf("CareermanCard"))
 			delete cards;
 		replyToServer(S_COMMAND_DISCARD_CARD, arr);
 	} else {

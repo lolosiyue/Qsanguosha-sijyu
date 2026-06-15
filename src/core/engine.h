@@ -218,6 +218,12 @@ public:
     void addResourceAliasList(const QString &category, const QString &original, const QString &alias);
     QStringList getResourceAliasList(const QString &category, const QString &original) const;
 
+    // Mark Card System
+    void registerMarkCard(const QString &markName, const QString &cardName);
+    QString getMarkCardName(const QString &markName) const;
+    bool isMarkCard(const QString &markName) const;
+    QMap<QString, QString> getMarkCardMap() const;
+
     inline QMultiMap<QString, QString> spConvertPairs() const
     {
         return sp_convert_pairs;
@@ -246,6 +252,7 @@ private:
     QHash<QString, QList<int> > audio_type;
     QHash<QString, QHash<QString, QString> > m_resourceAliases;
     QHash<QString, QHash<QString, QStringList> > m_resourceAliasLists;
+    QMap<QString, QString> m_markCardMap;
     QStringList m_skipGeneralModes;
     QStringList m_showRoleModes;
     QMap<QString, QStringList> m_modeGroups;

@@ -59,6 +59,7 @@ signals:
     void action_taken();
     void duanchang_invoked();
     void Mark_changed(const QString &name, int mark_num);
+    void update_markcard();
 };
 
 extern ClientPlayer *Self;
