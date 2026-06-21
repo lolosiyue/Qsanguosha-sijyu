@@ -512,7 +512,7 @@ bool Player::hasSkill(const QString &skill_name, bool include_lose) const
         foreach (const QString &acquired, acquired_skills) {
             QString aBase = acquired;
             int aSplit = acquired.indexOf('#');
-            if (aSplit != -1)
+            if (aSplit > 0)
                 aBase = acquired.left(aSplit);
             if (aBase == baseName) {
                 hasAcquired = true;
@@ -649,7 +649,7 @@ bool Player::isSkillInvalid(const Skill *skill) const
         int recordInstanceId = 0;
 
         int split = invalidRecord.indexOf('#');
-        if (split != -1) {
+        if (split > 0) {
             recordInstanceId = invalidRecord.mid(split + 1).toInt();
             recordSkillName = invalidRecord.left(split);
         }
@@ -2699,7 +2699,7 @@ bool Player::inHeadSkills(const QString &skill_name) const
             return true;
         foreach (const QString &s, head_acquired_skills) {
             int sSplit = s.indexOf('#');
-            QString sBase = (sSplit != -1) ? s.left(sSplit) : s;
+            QString sBase = (sSplit > 0) ? s.left(sSplit) : s;
             if (sBase == baseName)
                 return true;
         }
@@ -2712,7 +2712,7 @@ bool Player::inHeadSkills(const QString &skill_name) const
         return true;
     foreach (const QString &s, acquired_skills) {
         int sSplit = s.indexOf('#');
-        QString sBase = (sSplit != -1) ? s.left(sSplit) : s;
+        QString sBase = (sSplit > 0) ? s.left(sSplit) : s;
         if (sBase == baseName)
             return true;
     }
@@ -2743,7 +2743,7 @@ bool Player::inDeputySkills(const QString &skill_name) const
         return true;
     foreach (const QString &s, deputy_acquired_skills) {
         int sSplit = s.indexOf('#');
-        QString sBase = (sSplit != -1) ? s.left(sSplit) : s;
+        QString sBase = (sSplit > 0) ? s.left(sSplit) : s;
         if (sBase == baseName)
             return true;
     }

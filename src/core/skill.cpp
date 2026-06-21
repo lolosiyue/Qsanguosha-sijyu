@@ -312,6 +312,11 @@ QStringList Skill::getSources() const
     return sources;
 }
 
+QStringList Skill::getSources(const QString &, int) const
+{
+    return sources;
+}
+
 QDialog *Skill::getDialog() const
 {
     return nullptr;
@@ -692,7 +697,7 @@ QString TriggerV2Skill::parseSkillName(const QString &fullName, QString *source,
         name = name.left(split);
     }
 
-    if ((split = name.indexOf('#')) != -1) {
+    if ((split = name.indexOf('#')) > 0) {
         if (instanceId) *instanceId = name.mid(split + 1).toInt();
         name = name.left(split);
     }
