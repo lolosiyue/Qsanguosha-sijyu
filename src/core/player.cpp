@@ -474,7 +474,7 @@ bool Player::hasSkill(const QString &skill_name, bool include_lose) const
     QString baseName = skill_name;
     int instanceId = 0;
     int split = skill_name.indexOf('#');
-    if (split != -1) {
+    if (split > 0) {
         baseName = skill_name.left(split);
         instanceId = skill_name.mid(split + 1).toInt();
     }
@@ -2689,7 +2689,7 @@ bool Player::inHeadSkills(const QString &skill_name) const
     
     QString baseName = skill_name;
     int split = skill_name.indexOf('#');
-    if (split != -1)
+    if (split > 0)
         baseName = skill_name.left(split);
     
     if (general2 != nullptr) {
@@ -2734,7 +2734,7 @@ bool Player::inDeputySkills(const QString &skill_name) const
     
     QString baseName = skill_name;
     int split = skill_name.indexOf('#');
-    if (split != -1)
+    if (split > 0)
         baseName = skill_name.left(split);
     
     if (deputy_skills.contains(skill_name) || deputy_skills.contains(baseName))
