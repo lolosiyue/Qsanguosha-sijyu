@@ -4799,8 +4799,8 @@ void RoomScene::updateSkill(const QString&skill_name)
 	const Player *activePlayer = getCurrentOperationPlayer(dashboard);
     QString baseName = skill_name;
     int instanceId = 0;
-    int split = skill_name.indexOf('#');
-    if (split > 0) {
+    int split = skill_name.indexOf('#', skill_name.startsWith('#') ? 1 : 0);
+    if (split != -1) {
         baseName = skill_name.left(split);
         instanceId = skill_name.mid(split + 1).toInt();
     }

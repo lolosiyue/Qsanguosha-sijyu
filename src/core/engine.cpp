@@ -2105,8 +2105,8 @@ int Engine::revisesAudioType(const QString &general_name, const QString &filenam
 void Engine::playSkillAudioEffect(const QString &skill_name, int index, bool superpose) const
 {
     QString baseName = skill_name;
-    int split = skill_name.indexOf('#');
-    if (split > 0)
+    int split = skill_name.indexOf('#', skill_name.startsWith('#') ? 1 : 0);
+    if (split != -1)
         baseName = skill_name.left(split);
     const Skill*skill = skills.value(baseName, nullptr);
     if (skill) skill->playAudioEffect(index, superpose);
@@ -2115,8 +2115,8 @@ void Engine::playSkillAudioEffect(const QString &skill_name, int index, bool sup
 const Skill*Engine::getSkill(const QString &skill_name) const
 {
     QString baseName = skill_name;
-    int split = skill_name.indexOf('#');
-    if (split > 0)
+    int split = skill_name.indexOf('#', skill_name.startsWith('#') ? 1 : 0);
+    if (split != -1)
         baseName = skill_name.left(split);
     return skills.value(baseName, nullptr);
 }

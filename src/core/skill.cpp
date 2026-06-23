@@ -697,7 +697,7 @@ QString TriggerV2Skill::parseSkillName(const QString &fullName, QString *source,
         name = name.left(split);
     }
 
-    if ((split = name.indexOf('#')) > 0) {
+    if ((split = name.indexOf('#', name.startsWith('#') ? 1 : 0)) != -1) {
         if (instanceId) *instanceId = name.mid(split + 1).toInt();
         name = name.left(split);
     }

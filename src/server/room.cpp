@@ -7016,8 +7016,8 @@ void Room::acquireSkill(ServerPlayer*player, const QString&skill_name, bool open
         foreach (const QString &acquired, player->getAcquiredSkills()) {
             QString base;
             int instId = 0;
-            int split = acquired.indexOf('#');
-            if (split > 0) {
+            int split = acquired.indexOf('#', acquired.startsWith('#') ? 1 : 0);
+            if (split != -1) {
                 base = acquired.left(split);
                 instId = acquired.mid(split + 1).toInt();
             } else {
@@ -7150,8 +7150,8 @@ void Room::clearSkillInvalidityBySource(ServerPlayer *source)
                     if (parts.size() >= 1) {
                         QString skillName = parts.at(0);
                         int instanceId = 0;
-                        int split = skillName.indexOf('#');
-                        if (split > 0) {
+                        int split = skillName.indexOf('#', skillName.startsWith('#') ? 1 : 0);
+                        if (split != -1) {
                             instanceId = skillName.mid(split + 1).toInt();
                             skillName = skillName.left(split);
                         }
