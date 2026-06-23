@@ -473,8 +473,8 @@ bool Player::hasSkill(const QString &skill_name, bool include_lose) const
 
     QString baseName = skill_name;
     int instanceId = 0;
-    int split = skill_name.indexOf('#');
-    if (split > 0) {
+    int split = skill_name.indexOf('#', skill_name.startsWith('#') ? 1 : 0);
+    if (split != -1) {
         baseName = skill_name.left(split);
         instanceId = skill_name.mid(split + 1).toInt();
     }
@@ -511,8 +511,8 @@ bool Player::hasSkill(const QString &skill_name, bool include_lose) const
     } else {
         foreach (const QString &acquired, acquired_skills) {
             QString aBase = acquired;
-            int aSplit = acquired.indexOf('#');
-            if (aSplit > 0)
+            int aSplit = acquired.indexOf('#', acquired.startsWith('#') ? 1 : 0);
+            if (aSplit != -1)
                 aBase = acquired.left(aSplit);
             if (aBase == baseName) {
                 hasAcquired = true;
@@ -648,8 +648,8 @@ bool Player::isSkillInvalid(const Skill *skill) const
         QString recordSkillName = invalidRecord;
         int recordInstanceId = 0;
 
-        int split = invalidRecord.indexOf('#');
-        if (split > 0) {
+        int split = invalidRecord.indexOf('#', invalidRecord.startsWith('#') ? 1 : 0);
+        if (split != -1) {
             recordInstanceId = invalidRecord.mid(split + 1).toInt();
             recordSkillName = invalidRecord.left(split);
         }
@@ -709,7 +709,7 @@ void Player::acquireSkill(const QString &skill_name, bool head, int instanceId)
 
 void Player::detachSkill(const QString &skill_name)
 {
-    int split = skill_name.indexOf('#');
+    int split = skill_name.indexOf('#', skill_name.startsWith('#') ? 1 : 0);
     if (split == -1) {
         QString prefix = skill_name + "#";
         for (int i = 0; i < acquired_skills.size(); ++i) {
@@ -727,7 +727,7 @@ void Player::detachSkill(const QString &skill_name, bool head)
 {
     QSet<QString> &targetSet = head ? head_acquired_skills : deputy_acquired_skills;
     
-    int split = skill_name.indexOf('#');
+    int split = skill_name.indexOf('#', skill_name.startsWith('#') ? 1 : 0);
     if (split == -1) {
         QString prefix = skill_name + "#";
         QStringList toRemove;
@@ -1690,8 +1690,8 @@ QSet<const TriggerSkill *> Player::getTriggerSkills() const
 
         QString name = skill_name;
         int instanceId = 0;
-        int split = name.indexOf('#');
-        if (split > 0) {
+        int split = name.indexOf('#', name.startsWith('#') ? 1 : 0);
+        if (split != -1) {
             instanceId = name.mid(split + 1).toInt();
             name = name.left(split);
         }
@@ -2688,8 +2688,8 @@ bool Player::inHeadSkills(const QString &skill_name) const
     }
     
     QString baseName = skill_name;
-    int split = skill_name.indexOf('#');
-    if (split > 0)
+    int split = skill_name.indexOf('#', skill_name.startsWith('#') ? 1 : 0);
+    if (split != -1)
         baseName = skill_name.left(split);
     
     if (general2 != nullptr) {
@@ -2698,8 +2698,8 @@ bool Player::inHeadSkills(const QString &skill_name) const
         if (head_acquired_skills.contains(skill_name))
             return true;
         foreach (const QString &s, head_acquired_skills) {
-            int sSplit = s.indexOf('#');
-            QString sBase = (sSplit > 0) ? s.left(sSplit) : s;
+            int sSplit = s.indexOf('#', s.startsWith('#') ? 1 : 0);
+            QString sBase = (sSplit != -1) ? s.left(sSplit) : s;
             if (sBase == baseName)
                 return true;
         }
@@ -2711,8 +2711,8 @@ bool Player::inHeadSkills(const QString &skill_name) const
     if (acquired_skills.contains(skill_name))
         return true;
     foreach (const QString &s, acquired_skills) {
-        int sSplit = s.indexOf('#');
-        QString sBase = (sSplit > 0) ? s.left(sSplit) : s;
+        int sSplit = s.indexOf('#', s.startsWith('#') ? 1 : 0);
+        QString sBase = (sSplit != -1) ? s.left(sSplit) : s;
         if (sBase == baseName)
             return true;
     }
@@ -2733,8 +2733,8 @@ bool Player::inDeputySkills(const QString &skill_name) const
     }
     
     QString baseName = skill_name;
-    int split = skill_name.indexOf('#');
-    if (split > 0)
+    int split = skill_name.indexOf('#', skill_name.startsWith('#') ? 1 : 0);
+    if (split != -1)
         baseName = skill_name.left(split);
     
     if (deputy_skills.contains(skill_name) || deputy_skills.contains(baseName))
@@ -2742,8 +2742,8 @@ bool Player::inDeputySkills(const QString &skill_name) const
     if (deputy_acquired_skills.contains(skill_name))
         return true;
     foreach (const QString &s, deputy_acquired_skills) {
-        int sSplit = s.indexOf('#');
-        QString sBase = (sSplit > 0) ? s.left(sSplit) : s;
+        int sSplit = s.indexOf('#', s.startsWith('#') ? 1 : 0);
+        QString sBase = (sSplit != -1) ? s.left(sSplit) : s;
         if (sBase == baseName)
             return true;
     }

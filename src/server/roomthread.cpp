@@ -725,8 +725,8 @@ QMap<QString, int> triggerCounts;
 						QString skillName = skill;
 						int instanceId = 0;
 						int multiplier = 1;
-						int split = skill.indexOf('#');
-						if (split > 0) {
+						int split = skill.indexOf('#', skill.startsWith('#') ? 1 : 0);
+						if (split != -1) {
 							instanceId = skill.mid(split + 1).toInt();
 							skillName = skill.left(split);
 						}
@@ -800,7 +800,7 @@ QMap<QString, int> triggerCounts;
 			skillName = skillName.left(split);
 
 		int instanceId = 0;
-		if ((split = skillName.indexOf('#')) > 0) {
+		if ((split = skillName.indexOf('#', skillName.startsWith('#') ? 1 : 0)) != -1) {
 			instanceId = skillName.mid(split + 1).toInt();
 			skillName = skillName.left(split);
 		}
