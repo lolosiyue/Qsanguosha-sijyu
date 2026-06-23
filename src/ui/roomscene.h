@@ -23,6 +23,8 @@ class GuanxingXBox;
 class QSanButton;
 class QGroupBox;
 class BubbleChatBox;
+class ChooseOptionsBox;
+class ChooseSuitBox;
 class ChooseTriggerOrderBox;
 struct RoomLayout;
 class Photo;
@@ -338,6 +340,8 @@ private:
 
 	QList<int> RenPile;
 
+	ChooseOptionsBox *m_chooseOptionsBox;
+	ChooseSuitBox *m_chooseSuitBox;
 	ChooseTriggerOrderBox *m_chooseTriggerOrderBox;
 
 	GuanxingBox *m_guanxingBox;

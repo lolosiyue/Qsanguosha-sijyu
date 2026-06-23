@@ -1131,8 +1131,12 @@ void Client::askForSkillInvoke(const QVariant &arg)
 
 void Client::onPlayerMakeChoice()
 {
-	QString option = sender()->objectName();
-	replyToServer(S_COMMAND_MULTIPLE_CHOICE, option);
+	onPlayerMakeChoice(sender()->objectName());
+}
+
+void Client::onPlayerMakeChoice(const QString &choice)
+{
+	replyToServer(S_COMMAND_MULTIPLE_CHOICE, choice);
 	setStatus(NotActive);
 }
 
@@ -1743,7 +1747,12 @@ void Client::setMark(const QVariant &mark_var)
 
 void Client::onPlayerChooseSuit()
 {
-	replyToServer(S_COMMAND_CHOOSE_SUIT, sender()->objectName());
+	onPlayerChooseSuit(sender()->objectName());
+}
+
+void Client::onPlayerChooseSuit(const QString &suit)
+{
+	replyToServer(S_COMMAND_CHOOSE_SUIT, suit);
 	setStatus(NotActive);
 }
 

@@ -275,6 +275,7 @@ public slots:
     void processContextSwitch(const QVariant &target_name);
     void onPlayerChooseGeneral(const QString &_name);
     void onPlayerMakeChoice();
+    void onPlayerMakeChoice(const QString &choice);
     void onPlayerChooseCard(int card_id = -2);
     void onPlayerChooseAG(int card_id);
     void onPlayerChoosePlayer(const QList<const Player *> &players);
@@ -338,6 +339,7 @@ private slots:
     bool processServerRequest(const QSanProtocol::Packet &packet);
     void notifyRoleChange(const QString &new_role);
     void onPlayerChooseSuit();
+    void onPlayerChooseSuit(const QString &suit);
     void onPlayerChooseKingdom();
     void alertFocus();
     void onPlayerChooseOrder();

@@ -5160,4 +5160,20 @@ P = 你自己, R = 你所在的房间</translation>
         <translation>%1（%2 的）</translation>
     </message>
 </context>
+<context>
+    <name>ChooseOptionsBox</name>
+    <message>
+        <location filename="../src/ui/chooseoptionsbox.cpp" line="57"/>
+        <source>Please choose:</source>
+        <translation>请选择：</translation>
+    </message>
+</context>
+<context>
+    <name>ChooseSuitBox</name>
+    <message>
+        <location filename="../src/ui/choosesuitbox.cpp" line="87"/>
+        <source>Please choose a suit</source>
+        <translation>请选择一种花色</translation>
+    </message>
+</context>
 </TS>

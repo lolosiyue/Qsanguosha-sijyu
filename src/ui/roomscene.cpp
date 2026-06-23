@@ -1,4 +1,6 @@
 #include "roomscene.h"
+#include "chooseoptionsbox.h"
+#include "choosesuitbox.h"
 #include "choosetriggerorderbox.h"
 #include "photo.h"
 #include "dashboard.h"
@@ -275,6 +277,16 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(ClientInstance, &Client::mirror_guanxing_move, m_guanxingBox, &GuanxingBox::mirrorGuanxingMove);
 	connect(ClientInstance, &Client::mirror_guanxing_finish, m_guanxingBox, &GuanxingBox::clear);
 	m_guanxingBox->moveBy(-120, 0);
+
+	m_chooseOptionsBox = new ChooseOptionsBox();
+	m_chooseOptionsBox->hide();
+	addItem(m_chooseOptionsBox);
+	m_chooseOptionsBox->setZValue(30000.0);
+
+	m_chooseSuitBox = new ChooseSuitBox();
+	m_chooseSuitBox->hide();
+	addItem(m_chooseSuitBox);
+	m_chooseSuitBox->setZValue(30000.0);
 
 	m_chooseTriggerOrderBox = new ChooseTriggerOrderBox();
 	m_chooseTriggerOrderBox->hide();
@@ -2118,29 +2130,8 @@ void RoomScene::chooseGeneral(const QStringList&generals)
 
 void RoomScene::chooseSuit(const QStringList&suits)
 {
-	QDialog*dialog = new QDialog;
-	QVBoxLayout*layout = new QVBoxLayout;
-
-	foreach (QString suit,suits){
-		QCommandLinkButton*button = new QCommandLinkButton;
-		button->setIcon(QIcon(QString("image/system/cardsuit/%1.png").arg(suit)));
-		button->setText(Sanguosha->translate(suit));
-		button->setObjectName(suit);
-
-		layout->addWidget(button);
-
-		connect(button,SIGNAL(clicked()),ClientInstance,SLOT(onPlayerChooseSuit()));
-		connect(button,SIGNAL(clicked()),dialog,SLOT(accept()));
-	}
-
-	connect(dialog,SIGNAL(rejected()),ClientInstance,SLOT(onPlayerChooseSuit()));
-
-	dialog->setObjectName(".");
-	dialog->setWindowTitle(tr("Please choose a suit"));
-	dialog->setLayout(layout);
-	if(m_choiceDialog!=nullptr)
-		delete m_choiceDialog;
-	m_choiceDialog = dialog;
+	m_chooseSuitBox->clear();
+	m_chooseSuitBox->chooseSuit(suits);
 }
 
 void RoomScene::chooseKingdom(const QStringList&kingdoms)
@@ -2255,16 +2246,14 @@ QGroupBox*RoomScene::createOptionBox(const QString&skillName,const QStringList&o
 
 void RoomScene::chooseOption(const QString&skillName,const QStringList&options,const QString&except_options,const QString&tip)
 {
-	QDialog*dialog = new QDialog;
-	QVBoxLayout*layout = new QVBoxLayout;
-	dialog->setWindowTitle(Sanguosha->translate(skillName));
+	if(skillName=="BossModeExpStore"){
+		QDialog*dialog = new QDialog;
+		QVBoxLayout*layout = new QVBoxLayout;
+		dialog->setWindowTitle(Sanguosha->translate(skillName));
 
-	if(skillName.startsWith("BossModeExpStore")){
 		ClientPlayer*clientplayer = ClientInstance->getPlayer(Self->property("bossmodeexp").toString());
 		layout->addWidget(new QLabel(QString("%1 %2").arg(clientplayer->getLogName()).arg(clientplayer->getMark("@bossExp"))));
-	}
 
-	if(skillName=="BossModeExpStore"){
 		QGroupBox*box = nullptr;
 		QGridLayout*gridlayout = nullptr;
 		int index = 0,row = 0,column = 0;
@@ -2282,7 +2271,7 @@ void RoomScene::chooseOption(const QString&skillName,const QStringList&options,c
 				if(!options.contains(option))
 					button->setEnabled(false);
 				buttons << button;
-			} else if(optionlist.length()==3){ // skill names
+			} else if(optionlist.length()==3){
 				if(!box){
 					box = new QGroupBox(dialog);
 					box->setTitle(Sanguosha->translate("skill"));
@@ -2331,53 +2320,35 @@ void RoomScene::chooseOption(const QString&skillName,const QStringList&options,c
 		if(cancel_button)
 			layout->addWidget(cancel_button);
 		dialog->setLayout(layout);
-	} else {
-		QHBoxLayout*hlayout = new QHBoxLayout;
-		QString new_tip = tip;
+		dialog->setObjectName("cancel");
+		connect(dialog,SIGNAL(rejected()),ClientInstance,SLOT(onPlayerMakeChoice()));
 
-		if(skillName.contains("guhuo")&&!guhuo_log.isEmpty()&&tip.isEmpty()){
-			new_tip = guhuo_log;
-			guhuo_log = "";
-		}
-
-		if(!new_tip.isEmpty()){
-			QString tip_text = QString("%1:%2").arg(skillName).arg(new_tip);
-			QString tip_translated = Sanguosha->translate(tip_text);
-			if(tip_text==tip_translated)
-				tip_translated = Sanguosha->translate(new_tip);
-			QLabel*tip_lab = new QLabel(tip_translated,dialog);
-			tip_lab->setObjectName("tip_text");
-			tip_lab->setMaximumWidth(240);
-			tip_lab->setWordWrap(true);
-			hlayout->addWidget(tip_lab);
-		}
-
-		int x = 0;
-		for (int i = 1;i < options.length();i++){
-			x = options.length()/i;
-			if(x<10) break;
-		}
-		QStringList options1;
-		for (int i = 0;i < options.length();i++){
-			options1 << options.at(i);
-			if(options1.length()>x||i==options.length()-1){
-				hlayout->addWidget(createOptionBox(skillName,options1,dialog));
-				options1.clear();
-			}
-		}
-		if(!except_options.isEmpty())
-			hlayout->addWidget(createOptionBox(skillName,except_options.split("+"),dialog,false));
-
-		dialog->setLayout(hlayout);
+		Sanguosha->playSystemAudioEffect("pop-up");
+		if(m_choiceDialog!=nullptr)
+			delete m_choiceDialog;
+		m_choiceDialog = dialog;
+		return;
 	}
 
-	dialog->setObjectName("cancel");
-	connect(dialog,SIGNAL(rejected()),ClientInstance,SLOT(onPlayerMakeChoice()));
+	QString effectiveTip = tip;
+	if(skillName.contains("guhuo")&&!guhuo_log.isEmpty()&&tip.isEmpty()){
+		effectiveTip = guhuo_log;
+		guhuo_log = "";
+	}
+
+	if(!effectiveTip.isEmpty())
+		m_chooseOptionsBox->setTip(effectiveTip);
 
 	Sanguosha->playSystemAudioEffect("pop-up");
-	if(m_choiceDialog!=nullptr)
-		delete m_choiceDialog;
-	m_choiceDialog = dialog;
+
+	m_chooseOptionsBox->setSkillName(skillName);
+	m_chooseOptionsBox->clear();
+
+	QStringList disabledList;
+	if(!except_options.isEmpty())
+		disabledList = except_options.split("+");
+
+	m_chooseOptionsBox->chooseOption(options, disabledList);
 }
 
 void RoomScene::chooseCard(const ClientPlayer*player,const QString&flags,const QString&reason,
