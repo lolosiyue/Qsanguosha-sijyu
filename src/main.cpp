@@ -1,13 +1,22 @@
 #include <cstring>
 #include <QTimer>
+#include <QDir>
+#include <QFile>
 
 #include "mainwindow.h"
 #include "settings.h"
 #include "banpair.h"
 #include "server.h"
+#include "ai.h"
 //#include "serverplayer.h"
 #include "engine.h"
 #include <QSurfaceFormat>
+
+extern "C" {
+struct swig_type_info;
+extern swig_type_info SWIGTYPE_p_Room;
+extern void SWIG_NewPointerObj(struct lua_State *L, void *ptr, swig_type_info *type, int own);
+}
 
 #ifdef ANDROID
 #include "android_assets.h"
@@ -53,7 +62,9 @@ int main(int argc, char *argv[])
         new QCoreApplication(argc, argv);
         Sanguosha = new Engine(true);
         return 0;
-    } else
+    } else if (argc > 1 && strcmp(argv[1], "--lua-test") == 0)
+        new QCoreApplication(argc, argv);
+    else
        new QApplication(argc, argv);
 
     QCoreApplication::addLibraryPath(QCoreApplication::applicationDirPath() + "/plugins");
@@ -86,6 +97,117 @@ int main(int argc, char *argv[])
     Config.init();
     qApp->setFont(Config.AppFont);
     BanPair::loadBanPairs();
+
+    if (qApp->arguments().contains("--lua-test")) {
+        int idx = qApp->arguments().indexOf("--lua-test");
+        QString scriptPath;
+        if (idx + 1 < qApp->arguments().size())
+            scriptPath = qApp->arguments().at(idx + 1);
+
+        if (scriptPath.isEmpty()) {
+            printf("Usage: QSanguosha.exe --lua-test <script.lua>\n");
+            return 1;
+        }
+
+        bool verbose = qApp->arguments().contains("--lua-test-verbose");
+        Server::isHeadlessMode = true;
+        printf(">>> Lua Test Mode: %s <<<\n", qPrintable(scriptPath));
+
+        lua_State *L = Sanguosha->getLuaState();
+        if (!L) {
+            printf("ERROR: Failed to get Lua state\n");
+            return 1;
+        }
+
+        if (!DoLuaScript(L, "lua/test/runner.lua")) {
+            printf("ERROR: Failed to load lua/test/runner.lua\n");
+            return 1;
+        }
+        if (!DoLuaScript(L, scriptPath)) {
+            printf("ERROR: Failed to load test script: %s\n", qPrintable(scriptPath));
+            return 1;
+        }
+
+        if (lua_gettop(L) < 1 || (!lua_istable(L, -1) && !lua_isfunction(L, -1) && !lua_isuserdata(L, -1))) {
+            printf("ERROR: Test script must return a runner table\n");
+            return 1;
+        }
+
+        QString tmpPath = QDir::tempPath() + "/sgs_lua_test_scene.txt";
+        QFile tmpFile(tmpPath);
+        if (!tmpFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            printf("ERROR: Cannot write temp scenario file\n");
+            return 1;
+        }
+        tmpFile.write("general:sujiang|role:lord|hp:4|starter\n");
+        tmpFile.write("general:sujiang|role:rebel|hp:4\n");
+        tmpFile.write("extraOptions:singleTurn:lord\n");
+        tmpFile.close();
+        Sanguosha->loadTestScenario(tmpPath);
+
+        Config.GameMode = GameModeStruct("test_scenario");
+        Config.setValue("GameMode", "test_scenario");
+
+        Server *server = new Server(qApp);
+        Room *room = server->createNewRoom();
+        if (!room) {
+            printf("ERROR: Failed to create room\n");
+            return 1;
+        }
+
+        int playerCount = Sanguosha->getTestScenarioPlayerCount();
+        for (int i = 0; i < playerCount; i++) {
+            ServerPlayer *player = room->addAIPlayer();
+            player->setAI(new TrustAI(player));
+            if (i == 0) player->setOwner(true);
+            room->signup(player, QString("Test_%1").arg(i), "", true);
+        }
+
+        SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
+        lua_setglobal(L, "ROOM");
+
+        QPointer<Room> roomPtr(room);
+        QObject::connect(room, &Room::game_over, qApp, [L, verbose, roomPtr](const QString &winner) {
+            if (verbose)
+                Server::writeHeadlessLog(QString("Game over. Winner: %1").arg(winner));
+
+            lua_getglobal(L, "RUNNER_DO_ASSERTIONS");
+            if (lua_isfunction(L, -1)) {
+                if (lua_pcall(L, 0, 0, 0) != 0) {
+                    const char *err = lua_tostring(L, -1);
+                    printf("ERROR in assertions: %s\n", err ? err : "unknown");
+                    lua_pop(L, 1);
+                }
+            } else {
+                lua_pop(L, 1);
+            }
+
+            if (roomPtr) {
+                roomPtr->clearTestOverrides();
+            }
+
+            QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+        });
+
+        int topBefore = lua_gettop(L);
+        lua_getfield(L, -1, "execute");
+        if (lua_isfunction(L, -1)) {
+            if (lua_pcall(L, 0, 0, 0) != 0) {
+                const char *err = lua_tostring(L, -1);
+                printf("ERROR: %s\n", err ? err : "unknown");
+                lua_pop(L, 1);
+                Server::writeHeadlessLog(QString("Test execution failed: %1").arg(err ? err : "unknown"));
+                return 1;
+            }
+        } else {
+            lua_pop(L, 1);
+            printf("ERROR: Runner has no execute() method\n");
+            return 1;
+        }
+        lua_settop(L, topBefore);
+
+        return qApp->exec();
+    }
 
     if (qApp->arguments().contains("-server")) {
         Server *server = new Server(qApp);

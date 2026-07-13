@@ -584,6 +584,10 @@ public:
     void processPendingSummons();
     bool hasPendingSummons() const;
 
+    void registerTestOverride(ServerPlayer *player, const QString &queryType, const QString &key, const QVariant &answer);
+    void clearTestOverrides();
+    QVariant findTestOverride(ServerPlayer *player, const QString &queryType, const QString &key) const;
+
 protected:
     virtual void run();
     int _m_Id;
@@ -757,6 +761,8 @@ private:
 
     QWaitCondition m_waitCond;
     mutable QMutex m_mutex;
+    QMap<QString, QVariant> m_testOverrides;
+    mutable QMutex m_testOverrideMutex;
 
     volatile bool playerPropertySet;
     //QMutex mutexPlayerProperty;

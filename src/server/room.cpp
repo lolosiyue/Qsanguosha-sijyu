@@ -1746,6 +1746,10 @@ bool Room::askForSkillInvoke(ServerPlayer*player, const QString&skill_name, cons
 
 	bool invoked = false;
 	ServerPlayer*tp = data.value<ServerPlayer*>();
+	QVariant over = findTestOverride(player, "skill_invoke", skillName);
+	if (over.isValid() && over.canConvert<bool>()) {
+		invoked = over.toBool();
+	} else {
 	AI*ai = player->getAI();
 	if (ai){
 		QElapsedTimer timer;
@@ -1770,6 +1774,7 @@ bool Room::askForSkillInvoke(ServerPlayer*player, const QString&skill_name, cons
 			ai = player->getAI();
 			if(ai) invoked = ai->askForSkillInvoke(skillName, data);
 		}
+	}
 	}
 
 	if (invoked&&notify){
@@ -1820,6 +1825,10 @@ QString Room::askForChoice(ServerPlayer*player, const QString&skill_name, const 
 
 	QString answer = effectiveChoices;
 	if (effectiveChoices.contains("+")){
+		QVariant over = findTestOverride(player, "choice", skill_name);
+		if (over.isValid() && over.canConvert<QString>()) {
+			answer = over.toString();
+		} else {
 		AI*ai = player->getAI();
 		if (ai){
 			QElapsedTimer timer;
@@ -1837,6 +1846,8 @@ QString Room::askForChoice(ServerPlayer*player, const QString&skill_name, const 
 				ai = player->getAI();
 				if(ai) answer = ai->askForChoice(skill_name, effectiveChoices, data);
 			}
+		}
+		}
 		}
 		if (!effectiveChoices.contains(answer)){
 			QStringList _choices = effectiveChoices.split("+");
@@ -2276,6 +2287,10 @@ int Room::askForCardChosen(ServerPlayer*player, ServerPlayer*who, const QString&
 	}
 	int card_id = -1;
 
+	QVariant over = findTestOverride(player, "card_chosen", reason);
+	if (over.isValid() && over.canConvert<int>()) {
+		card_id = over.toInt();
+	} else {
 	AI*ai = player->getAI();
 	if (ai){
 		QElapsedTimer timer;
@@ -2299,6 +2314,7 @@ int Room::askForCardChosen(ServerPlayer*player, ServerPlayer*who, const QString&
 				card_id = ai->askForCardChosen(who, flags, reason, method);
 			}
 		}
+	}
 	}
 	if (card_id==-1&&!can_cancel){
 		foreach(const Card*c, who->getCards(flags)){
@@ -2358,6 +2374,15 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
 			tag.remove("provided");
 		} else {
 			tag.remove("AiResult");
+			QVariant over = findTestOverride(player, "card", skill_name.isEmpty() ? _pattern : skill_name);
+			if (over.isValid()) {
+				if (over.canConvert<int>()) {
+					int cardId = over.toInt();
+					resp.m_card = Sanguosha->getCard(cardId);
+				} else if (over.canConvert<QString>()) {
+					resp.m_card = Card::Parse(over.toString());
+				}
+			} else {
 			AI*ai = player->getAI();
 			if (ai){
 				QElapsedTimer timer;
@@ -2378,6 +2403,7 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
 					ai = player->getAI();
 					if (ai) resp.m_card = ai->askForCard(_pattern, prompt, data, method);
 				}
+			}
 			}
 		}
 		if(resp.m_card){
@@ -7326,6 +7352,12 @@ void Room::activate(ServerPlayer*player, CardUseStruct&card_use)
 
 	card_use.from = player;
 
+	QVariant over = findTestOverride(player, "activate", "phase");
+	if (over.isValid() && over.canConvert<QString>() && over.toString() == "pass") {
+		card_use.card = nullptr;
+		return;
+	}
+
 	AI*ai = player->getAI();
 	if (ai){
 		QElapsedTimer timer;
@@ -7995,6 +8027,16 @@ ServerPlayer*Room::askForPlayerChosen(ServerPlayer*player, const QList<ServerPla
 	if(skillName.contains("$"))
 		log.arg = skillName.split("$").first();
 	if(targets.length()>1||optional){
+		QVariant over = findTestOverride(player, "player_chosen", log.arg);
+		if (over.isValid()) {
+			QString objName = over.toString();
+			foreach (ServerPlayer *t, targets) {
+				if (t->objectName() == objName) {
+					choice = t;
+					break;
+				}
+			}
+		} else {
 		AI*ai = player->getAI();
 		if (ai){
 			QElapsedTimer timer;
@@ -8016,6 +8058,8 @@ ServerPlayer*Room::askForPlayerChosen(ServerPlayer*player, const QList<ServerPla
 				ai = player->getAI();
 				if(ai) choice = ai->askForPlayerChosen(targets, log.arg);
 			}
+		}
+		}
 		}
 		if (!choice&&!optional)
 			choice = targets.at(qrand() % targets.length());
@@ -9565,5 +9609,27 @@ void Room::setReplayPath(const QString &path)
 QString Room::getReplayPath() const
 {
 	return m_replayPath;
+}
+
+void Room::registerTestOverride(ServerPlayer *player, const QString &queryType, const QString &key, const QVariant &answer)
+{
+	QMutexLocker locker(&m_testOverrideMutex);
+	QString overrideKey = QString("%1:%2:%3").arg(player->objectName(), queryType, key);
+	m_testOverrides[overrideKey] = answer;
+}
+
+void Room::clearTestOverrides()
+{
+	QMutexLocker locker(&m_testOverrideMutex);
+	m_testOverrides.clear();
+}
+
+QVariant Room::findTestOverride(ServerPlayer *player, const QString &queryType, const QString &key) const
+{
+	QMutexLocker locker(&m_testOverrideMutex);
+	QString overrideKey = QString("%1:%2:%3").arg(player->objectName(), queryType, key);
+	if (m_testOverrides.contains(overrideKey))
+		return m_testOverrides[overrideKey];
+	return QVariant();
 }
 
