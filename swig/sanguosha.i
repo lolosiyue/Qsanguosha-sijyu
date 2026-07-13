@@ -1971,6 +1971,12 @@ public:
 		$self->output(msg);
 		qWarning("%s", msg);
 	}
+	void registerTestOverride(ServerPlayer *player, const char *queryType, const char *key, const QVariant &answer) {
+		$self->registerTestOverride(player, QString::fromUtf8(queryType), QString::fromUtf8(key), answer);
+	}
+	void clearTestOverrides() {
+		$self->clearTestOverrides();
+	}
 	void throwEvent(const TriggerEvent event) {
 		Q_UNUSED($self);
 		throw event;
