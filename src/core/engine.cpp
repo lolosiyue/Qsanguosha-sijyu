@@ -18,6 +18,7 @@
 #include "wrapped-card.h"
 #include "room.h"
 #include "miniscenarios.h"
+#include "skill-instance-utils.h"
 
 #include "guandu-scenario.h"
 #include "couple-scenario.h"
@@ -508,19 +509,12 @@ void Engine::addSkills(QList<const Skill*> all_skills)
         if (skill) {
             Skill *mutableSkill = const_cast<Skill*>(skill);
             const QString &name = skill->objectName();
-            int instanceId = skill->getInstanceId();
 
             if (skills.contains(name)) {
-                QMessageBox::warning(nullptr, "", tr("Duplicated skill : %1 (instanceId=%2)")
-                    .arg(name).arg(instanceId));
+                QMessageBox::warning(nullptr, "", tr("Duplicated skill : %1").arg(name));
             }
 
             skills.insert(name, mutableSkill);
-
-            const TriggerSkill *ts = qobject_cast<const TriggerSkill*>(skill);
-            if (ts) {
-                m_triggerSkillsByInstance.insert(qMakePair(name, instanceId), ts);
-            }
         } else {
             QMessageBox::warning(nullptr, "", tr("The engine tries to add an invalid skill"));
         }
@@ -728,7 +722,12 @@ void Engine::addPackage(Package*package)
 
 	QList<const Skill*> sks = package->getSkills();
 	sks << package->findChildren<const Skill*>();
+	qDebug() << "Engine::addPackage -" << package->objectName() << "skills count:" << sks.size();
     foreach (const Skill*skill, sks) {
+		if (!skill) {
+			qWarning() << "Engine::addPackage - found nullptr skill in package:" << package->objectName();
+			continue;
+		}
 		if(skill->getWakedSkills().isEmpty()) continue;
         foreach (QString sk_name, skill->getWakedSkills().split(",")) {
             if (sk_name.startsWith("#"))
@@ -829,6 +828,7 @@ void Engine::setPackage(Package*package)
     }
 
     foreach (const Skill* skill, package->getSkills() + package->findChildren<const Skill*>()) {
+        if (!skill) continue;
         if (skills.contains(skill->objectName())) continue;
 
         // [修復點] 使用 const_cast 將 const Skill* 轉為 Skill*
@@ -1154,6 +1154,9 @@ Card*Engine::cloneCard(const Card*card) const
     if (result){
 		result->setId(card->getEffectiveId());
 		result->setSkillName(card->getSkillName(false));
+		result->setSkillInstanceID(card->getSkillInstanceID());
+		result->setSourceSkill(card->getSourceSkillName(), card->getSourceSkillInstanceId());
+		result->setActivationSkill(card->getActivationSkillName(), card->getActivationSkillInstanceId());
 	}
     return result;
 }
@@ -1366,26 +1369,12 @@ QList<EasyTextItem> Engine::getChattingEasyTextItems(const QString &general_name
                 QString skill_obj_name = skill->objectName();
 
                 int skin_index = Config.value("HeroSkin/" + trimmed_name, 0).toInt();
+                if (skin_index > 0) general->tryLoadingSkinTranslation(skin_index);
 
-                QStringList audio_sources = skill->getSources();
+                QStringList audio_sources = skill->getSources(actualGn, skin_index);
                 QStringList actual_files;
 
-                if (skin_index > 0) {
-                    QString heroskin_path = QString("image/heroskin/audio/%1_%2/skill")
-                        .arg(actualGn).arg(skin_index);
-                    if (QFile::exists(heroskin_path)) {
-                        QDir dir(heroskin_path);
-                        QStringList filters;
-                        filters << "*.wav";
-                        foreach (QString file, dir.entryList(filters, QDir::Files | QDir::Readable, QDir::Name)) {
-                            if (file.startsWith(skill_obj_name) && file.endsWith(".wav")) {
-                                actual_files << heroskin_path + "/" + file;
-                            }
-                        }
-                    }
-                }
-
-                if (actual_files.isEmpty() && !audio_sources.isEmpty()) {
+                if (!audio_sources.isEmpty()) {
                     actual_files = audio_sources;
                 }
 
@@ -1394,7 +1383,7 @@ QList<EasyTextItem> Engine::getChattingEasyTextItems(const QString &general_name
                     if (aliasSkill != skill_obj_name) {
                         const Skill *aliasSk = getSkill(aliasSkill);
                         if (aliasSk) {
-                            actual_files = aliasSk->getSources();
+                            actual_files = aliasSk->getSources(actualGn, skin_index);
                         }
                     }
                 }
@@ -1453,8 +1442,8 @@ QList<EasyTextItem> Engine::getChattingEasyTextItems(const QString &general_name
             if (skin_index > 0) {
                 QString hero_skin = translate(QString("~%1-%2_%3").arg(actualGn).arg(actualGn).arg(skin_index));
                 if (!hero_skin.startsWith("~")) {
-                    death_audio = QString("image/heroskin/audio/%1_%2/death/%3.wav")
-                        .arg(actualGn).arg(skin_index).arg(actualGn);
+                    death_audio = QString("hero-skin/%1/%2/death.ogg")
+                        .arg(actualGn).arg(skin_index);
                     death_line = hero_skin;
                 }
             }
@@ -1475,8 +1464,8 @@ QList<EasyTextItem> Engine::getChattingEasyTextItems(const QString &general_name
                     if (new_skin_index > 0) {
                         QString hero_skin = translate(QString("~%1-%2_%3").arg(new_name).arg(new_name).arg(new_skin_index));
                         if (!hero_skin.startsWith("~")) {
-                            death_audio = QString("image/heroskin/audio/%1_%2/death/%3.wav")
-                                .arg(new_name).arg(new_skin_index).arg(new_name);
+                            death_audio = QString("hero-skin/%1/%2/death.ogg")
+                                .arg(new_name).arg(new_skin_index);
                             death_line = hero_skin;
                         }
                     } else {
@@ -2112,13 +2101,15 @@ int Engine::revisesAudioType(const QString &general_name, const QString &filenam
 
 void Engine::playSkillAudioEffect(const QString &skill_name, int index, bool superpose) const
 {
-    const Skill*skill = skills.value(skill_name, nullptr);
+    QString baseName = SkillInstanceUtils::baseName(skill_name);
+    const Skill*skill = skills.value(baseName, nullptr);
     if (skill) skill->playAudioEffect(index, superpose);
 }
 
 const Skill*Engine::getSkill(const QString &skill_name) const
 {
-    return skills.value(skill_name, nullptr);
+    QString baseName = SkillInstanceUtils::baseName(skill_name);
+    return skills.value(baseName, nullptr);
 }
 
 const Skill*Engine::getSkill(const EquipCard*equip) const
@@ -2146,15 +2137,9 @@ const TriggerSkill*Engine::getTriggerSkill(const QString &skill_name) const
     return nullptr;
 }
 
-const TriggerSkill*Engine::getTriggerSkill(const QString &skill_name, int instanceId) const
+const TriggerSkill *Engine::getTriggerSkill(const QString &skill_name, int instanceId) const
 {
-    if (instanceId <= 0)
-        return getTriggerSkill(skill_name);
-    auto key = qMakePair(skill_name, instanceId);
-    auto it = m_triggerSkillsByInstance.find(key);
-    if (it != m_triggerSkillsByInstance.end())
-        return it.value();
-    return nullptr;
+    return getTriggerSkill(skill_name);
 }
 
 const ViewAsSkill*Engine::getViewAsSkill(const QString &skill_name) const
@@ -2284,6 +2269,31 @@ end_check:
     return ret;
 }
 
+int Engine::sumSkillContribution(const Player *holder, const Skill *skill, int native) const
+{
+    if (!holder || !skill) return 0;
+    QString name = skill->objectName();
+    QList<int> ids = holder->getValidSkillInstanceIds(name);
+    if (ids.isEmpty()) return 0; // holder 無該技能實例 → 貢獻 0
+
+    // -1（如 Residue 的「無限」）統一視為 1000
+    if (native == -1) native = 1000;
+
+    int total = 0;
+    foreach (int id, ids) {
+        int amt;
+        if (holder->hasSkillAmountOverride(name, id))
+            amt = holder->getSkillAmountOverride(name, id);          // 單實例覆寫
+        else if (holder->hasSkillAmountOverride(name, 0))
+            amt = holder->getSkillAmountOverride(name, 0);           // 全體覆寫
+        else
+            amt = native;                                            // 技能原生回傳值
+        if (amt == -1) amt = 1000;
+        total += amt;
+    }
+    return total;
+}
+
 int Engine::correctDistance(const Player*from, const Player*to, bool fixed) const
 {
     bool locked = lua_mutex.tryLock();
@@ -2300,8 +2310,14 @@ int Engine::correctDistance(const Player*from, const Player*to, bool fixed) cons
             if (f > correct) correct = f;
 		}
 	}else{
-		foreach (const DistanceSkill*skill, getDistanceSkills())
-			correct += skill->getCorrect(from, to);
+		foreach (const DistanceSkill*skill, getDistanceSkills()) {
+            int native = skill->getCorrect(from, to);
+            if (skill->property("InstanceStackable").toBool()) {
+                foreach (const Player *p, from->getAliveSiblings(true))
+                    correct += sumSkillContribution(p, skill, native);
+            } else
+                correct += native;
+        }
 	}
     if (locked) lua_mutex.unlock();
 	return correct;
@@ -2324,8 +2340,14 @@ int Engine::correctMaxCards(const Player*target, bool fixed) const
         }
     } else {
         ex++;
-        foreach(const MaxCardsSkill*skill, getMaxCardsSkills())
-            ex += skill->getExtra(target);
+        foreach(const MaxCardsSkill*skill, getMaxCardsSkills()) {
+            int native = skill->getExtra(target);
+            if (skill->property("InstanceStackable").toBool()) {
+                foreach (const Player *p, target->getAliveSiblings(true))
+                    ex += sumSkillContribution(p, skill, native);
+            } else
+                ex += native;
+        }
     }
     if (locked) lua_mutex.unlock();
 	return ex;
@@ -2355,10 +2377,12 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
 			if (subcardNames.contains(skill->objectName())) continue;
             if (matchExpPattern(skill->getPattern(),from, card)) {
                 int n = skill->getResidueNum(from, card, to);
-                if (n == -1) {
-                    n = 1000;  // -1 視為 1000（無限）
-                }
-                x += n;
+                if (n == -1) n = 1000;
+                if (skill->property("InstanceStackable").toBool()) {
+                    foreach (const Player *p, from->getAliveSiblings(true))
+                        x += sumSkillContribution(p, skill, n);
+                } else
+                    x += n;
                 if (x > 500) break;
             }
         }
@@ -2366,7 +2390,12 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
         foreach (const TargetModSkill*skill, getTargetModSkills()) {
 			if (subcardNames.contains(skill->objectName())) continue;
             if (matchExpPattern(skill->getPattern(),from, card)) {
-                x += skill->getDistanceLimit(from, card, to);
+                int n = skill->getDistanceLimit(from, card, to);
+                if (skill->property("InstanceStackable").toBool()) {
+                    foreach (const Player *p, from->getAliveSiblings(true))
+                        x += sumSkillContribution(p, skill, n);
+                } else
+                    x += n;
                 if (x > 500) break;
             }
         }
@@ -2374,7 +2403,12 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
         foreach (const TargetModSkill*skill, getTargetModSkills()) {
 			if (subcardNames.contains(skill->objectName())) continue;
             if (matchExpPattern(skill->getPattern(),from, card)){
-                x += skill->getExtraTargetNum(from, card);
+                int n = skill->getExtraTargetNum(from, card);
+                if (skill->property("InstanceStackable").toBool()) {
+                    foreach (const Player *p, from->getAliveSiblings(true))
+                        x += sumSkillContribution(p, skill, n);
+                } else
+                    x += n;
                 if (x > 500) break;
 			}
         }
@@ -2404,10 +2438,29 @@ bool Engine::hasResidueUnlimited(const Player *from, const Card *card, const Pla
     foreach (const TargetModSkill*skill, getTargetModSkills()) {
         if (subcardNames.contains(skill->objectName())) continue;
         if (matchExpPattern(skill->getPattern(), from, card)) {
-            int n = skill->getResidueNum(from, card, to);
-            if (n == -1) {
-                if (locked) lua_mutex.unlock();
-                return true;
+            int native = skill->getResidueNum(from, card, to);
+            if (!skill->property("InstanceStackable").toBool()) {
+                if (native == -1) {
+                    if (locked) lua_mutex.unlock();
+                    return true;
+                }
+            } else {
+                foreach (const Player *p, from->getAliveSiblings(true)) {
+                    QList<int> ids = p->getValidSkillInstanceIds(skill->objectName());
+                    foreach (int id, ids) {
+                        int amt;
+                        if (p->hasSkillAmountOverride(skill->objectName(), id))
+                            amt = p->getSkillAmountOverride(skill->objectName(), id);
+                        else if (p->hasSkillAmountOverride(skill->objectName(), 0))
+                            amt = p->getSkillAmountOverride(skill->objectName(), 0);
+                        else
+                            amt = native;
+                        if (amt == -1) {
+                            if (locked) lua_mutex.unlock();
+                            return true;
+                        }
+                    }
+                }
             }
         }
     }
@@ -2455,8 +2508,14 @@ int Engine::correctAttackRange(const Player*target, bool include_weapon, bool fi
 		}
 	} else {
 		extra++;
-		foreach (const AttackRangeSkill*skill, getAttackRangeSkills())
-            extra += skill->getExtra(target, include_weapon);
+		foreach (const AttackRangeSkill*skill, getAttackRangeSkills()) {
+            int native = skill->getExtra(target, include_weapon);
+            if (skill->property("InstanceStackable").toBool()) {
+                foreach (const Player *p, target->getAliveSiblings(true))
+                    extra += sumSkillContribution(p, skill, native);
+            } else
+                extra += native;
+        }
     }
     if (locked) lua_mutex.unlock();
 	return extra;
@@ -2486,6 +2545,23 @@ QString Engine::getResourceAlias(const QString &category, const QString &origina
             return categoryMap[original];
     }
     return original;
+}
+
+void Engine::addResourceAliasList(const QString &category, const QString &original, const QString &alias)
+{
+    if (!m_resourceAliasLists[category][original].contains(alias)) {
+        m_resourceAliasLists[category][original] << alias;
+    }
+}
+
+QStringList Engine::getResourceAliasList(const QString &category, const QString &original) const
+{
+    if (m_resourceAliasLists.contains(category)) {
+        const QHash<QString, QStringList> &categoryMap = m_resourceAliasLists[category];
+        if (categoryMap.contains(original))
+            return categoryMap[original];
+    }
+    return QStringList();
 }
 
 TransferSkill *Engine::getTransfer()

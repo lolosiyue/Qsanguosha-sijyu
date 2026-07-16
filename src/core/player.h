@@ -3,6 +3,7 @@
 
 #include "general.h"
 #include "card.h"
+#include "skill-instance-types.h"
 #include <QMutex>
 //#include "wrapped-card.h"
 
@@ -151,9 +152,7 @@ public:
 
     bool isLord() const;
 
-    void acquireSkill(const QString &skill_name);
-    void acquireSkill(const QString &skill_name, int instanceId);
-    void acquireSkill(const QString &skill_name, bool head, int instanceId);
+    int acquireSkill(const QString &skill_name, bool head = true, int instanceId = -1);
     void detachSkill(const QString &skill_name);
     void detachSkill(const QString &skill_name, bool head);
     void detachAllSkills();
@@ -164,12 +163,32 @@ public:
     bool hasSkill(const QString &skill_name, bool include_lose = false) const;
     bool hasSkill(const Skill *skill, bool include_lose = false) const;
     bool hasSkills(const QString &skill_name, bool include_lose = false) const;
+    bool ownsSkill(const QString &skill_name) const;
     bool hasInnateSkill(const QString &skill_name) const;
     bool hasInnateSkill(const Skill *skill) const;
     bool hasLordSkill(const QString &skill_name, bool include_lose = false) const;
     bool hasLordSkill(const Skill *skill, bool include_lose = false) const;
-    bool isSkillInvalid(const Skill *skill) const;
+    bool isSkillInvalid(const Skill *skill, int instanceId = 0) const;
     bool isSkillInvalid(const QString &skill_name, int instanceId = 0) const;
+
+    // === 技能多實例權威容器 (SSOT) ===
+    int createSkillInstance(const QString &skillName, SkillInstanceSource source, bool visible = true);
+    int createSkillInstance(const QString &skillName, SkillInstanceSource source, const QString &parentSkillName, int parentInstanceID, bool visible = true);
+    int createSkillInstance(const QString &skillName, SkillInstanceSource source, const SkillInstanceRef &parentRef, bool visible = true);
+    bool removeSkillInstance(const QString &skillName, int instanceID);
+    bool hasSkillInstance(const QString &skillName, int instanceID) const;
+    const SkillInstance *findSkillInstance(const QString &skillName, int instanceID) const;
+    QList<SkillInstanceKey> getChildSkillInstanceKeys(const SkillInstanceKey &parent) const;
+    QList<SkillInstance> getSkillInstances() const;
+    void clearSkillInstances();
+    void upsertSkillInstance(const SkillInstance &instance);
+    QList<int> getSkillInstanceIdsForName(const QString &skillName) const;
+    void setSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state);
+    QVariantMap getSkillInstanceState(const QString &skillName, int instanceID) const;
+    void removeSkillInstanceState(const QString &skillName, int instanceID);
+    void setSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &value);
+    QVariant getSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &defaultValue = QVariant()) const;
+    void removeSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key);
     virtual QString getGameMode() const = 0;
     bool isClientPlayer() const;
 
@@ -281,7 +300,24 @@ public:
     QSet<const Skill *> getVisibleSkills(bool include_equip = false) const;
     QList<const Skill *> getVisibleSkillList(bool include_equip = false) const;
     QStringList getAcquiredSkills() const;
+    QStringList getSkillNames() const;
+    bool hasAcquiredSkill(const QString &skill_name) const;
+    int getSkillInstanceId(const QString &skill_name) const;
+    QList<int> getSkillInstanceIds(const QString &skill_name) const;
+    // 有效（未被 SkillInvalidityRecords 封禁）的同名技能實例 ID 清單；所有真實實例 ID 均為正整數。
+    QList<int> getValidSkillInstanceIds(const QString &skill_name) const;
     QString getSkillDescription() const;
+
+    // === 技能後置數值覆寫 (Skill Amount Override) ===
+    // 遊戲中可後置改動單一技能實例每實例貢獻的數值（modified_amount）。
+    // instanceId = 0：全體覆寫（套用至所有同名實例，含 innate）
+    // instanceId = N：僅套用至 #N 實例
+    // 結算優先序：單實例覆寫 > 全體覆寫 > 技能原生回傳值
+    bool hasSkillAmountOverride(const QString &skill_name, int instanceId = 0) const;
+    int getSkillAmountOverride(const QString &skill_name, int instanceId = 0) const;
+    void setSkillAmountOverride(const QString &skill_name, int amount, int instanceId = 0);
+    void removeSkillAmountOverride(const QString &skill_name, int instanceId = 0);
+    void clearSkillAmountOverrides();
 
     virtual bool isProhibited(const Player *to, const Card *card, const QList<const Player *> &others = QList<const Player *>()) const;
     virtual bool isPindianProhibited(const Player *to) const;
@@ -374,8 +410,8 @@ public:
 
     QList<const Player *> getSiblings(bool include_self = false) const;
     QList<const Player *> getAliveSiblings(bool include_self = false) const;
-    void setSkillDescriptionSwap(const QString &skill_name, const QString &key, const QString &value);
-    QHash<QString, QString> getSkillDescriptionSwap(const QString &skill_name) const;
+    void setSkillDescriptionSwap(const QString &skill_name, const QString &key, const QString &value, int instanceId = 0);
+    QHash<QString, QString> getSkillDescriptionSwap(const QString &skill_name, int instanceId = 0) const;
     const QMap<QString, QHash<QString, QString> > &getAllSkillDescriptionSwaps() const;
 
     void setCardDescriptionSwap(const QString &card_name, const QString &key, const QString &value);
@@ -427,10 +463,19 @@ protected:
     bool general2_showed;
     mutable QMutex m_skillCacheMutex;
     mutable QMap<QString, bool> m_skillValidityCache;
+
+    // 技能多實例權威容器（唯一真實來源）
+    // m_skillInstances[skillName][instanceID] = SkillInstance
+    QMap<QString, QMap<int, SkillInstance>> m_skillInstances;
+    // 每個技能名的 next-ID 計數器（單調遞增，永不重用）
+    QMap<QString, int> m_nextSkillInstanceIds;
     QHash<QString, int> history;
     QSet<QString> flags;
     QMap<QString, QHash<QString, QString> > description_s2k2v;
     QMap<QString, QHash<QString, QString> > card_description_swaps;
+    // key: "skillName" (全體覆寫) 或 "skillName#N" (單實例覆寫)
+    // value: 該實例每實例貢獻的 modified_amount
+    QMap<QString, int> m_skillAmountOverride;
     QVariantMap tag;
     QList<int> shown_handcards;
     QList<int> broken_equips;

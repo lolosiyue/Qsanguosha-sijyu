@@ -309,6 +309,49 @@ private:
     QString tiansuan_type;
 };
 
+class LuaActiveSkillV2 : public ActiveSkillV2
+{
+public:
+    LuaActiveSkillV2(const QString &name, Frequency frequency, const QString &limit_mark);
+
+    bool canActivate(const ActiveSkillRequest &request) const;
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const;
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const;
+    const Card *createCard(const ActiveSkillRequest &request) const;
+    bool willThrowSelectedCards() const;
+    bool cost(Room *room, SkillContext &context, const ActiveSkillRequest &request) const;
+    bool pay(Room *room, SkillContext &context, const ActiveSkillRequest &request) const;
+    bool canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected,
+                         const Player *candidate) const;
+    bool targetsFeasible(const ActiveSkillRequest &request, const QList<const Player *> &selected) const;
+    EffectFlow effect(SkillContext &context) const;
+    EffectFlow effectOnTarget(SkillContext &context, ServerPlayer *target) const;
+    EffectFlow effectOnTargetGroup(SkillContext &context, const QList<ServerPlayer *> &targets) const;
+    TargetMode targetMode() const;
+    TargetEffectMode targetEffectMode() const;
+
+    void setTargetMode(TargetMode mode) { m_targetMode = mode; }
+    void setTargetEffectMode(TargetEffectMode mode) { m_targetEffectMode = mode; }
+    void setWillThrowSelectedCards(bool willThrow) { m_willThrowSelectedCards = willThrow; }
+
+    LuaFunction can_activate;
+    LuaFunction can_select_card;
+    LuaFunction card_selection_feasible;
+    LuaFunction create_card;
+    LuaFunction on_cost;
+    LuaFunction on_pay;
+    LuaFunction can_select_target;
+    LuaFunction targets_feasible;
+    LuaFunction on_effect;
+    LuaFunction on_effect_target;
+    LuaFunction on_effect_target_group;
+
+private:
+    TargetMode m_targetMode;
+    TargetEffectMode m_targetEffectMode;
+    bool m_willThrowSelectedCards;
+};
+
 class LuaFilterSkill : public FilterSkill
 {
     Q_OBJECT

@@ -33,6 +33,7 @@ public:
 
     int getTurnCount() const;
     QString getCurrentPlayer() const;
+    QList<QVariantMap> getCardProvenance() const { return m_cardProvenance; }
 
 private:
     bool processSetup(const QVariant &body);
@@ -44,6 +45,7 @@ private:
     bool processChangeHp(const QVariant &body);
     bool processGameOver(const QVariant &body);
     bool processLogSkill(const QVariant &body);
+    bool processCardProvenance(const QVariant &body);
 
     void updateCardMapping(int cardId, const QString &owner, const QString &pile);
 
@@ -51,6 +53,7 @@ private:
     QMap<int, QString> m_cardOwnerMap;
     QMap<int, QString> m_cardPileMap;
     QMap<QString, PlayerSnapshot*> m_playerMap;
+    QList<QVariantMap> m_cardProvenance;
 };
 
 #endif
