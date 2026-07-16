@@ -211,9 +211,6 @@ public:
     {
         guhuo_log = log;
     }
-    
-    QList<int> getRenPile() const { return RenPile; }
-
     bool m_skillButtonSank;
     ShefuAskState m_ShefuAskState;
 

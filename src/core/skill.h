@@ -99,7 +99,6 @@ public:
     QString getWakedSkills() const;
     QStringList getSources(const QString &general, const int skinId) const;
     QStringList getSources() const;
-    QStringList getSources(const QString &generalName, int skinIndex) const;
     bool setProperty(const char* name, const QVariant& value);
 
     virtual LimitScope getLimitScope() const;
