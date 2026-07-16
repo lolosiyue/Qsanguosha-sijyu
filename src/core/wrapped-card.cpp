@@ -41,6 +41,7 @@ void WrappedCard::takeOver(Card *card)
 		setNumber(card->getNumber());
 		setObjectName(card->objectName());
 		m_skillName = card->getSkillName(false);
+		m_skillInstanceID = card->getSkillInstanceID();
 	}
 }
 
@@ -71,6 +72,7 @@ void WrappedCard::copyEverythingFrom(Card *card)
 		Card::setSuit(card->getSuit());
 		Card::setNumber(card->getNumber());
 		m_skillName = card->getSkillName(false);
+		m_skillInstanceID = card->getSkillInstanceID();
 		setObjectName(card->objectName());
 		flags = card->getFlags();
 	}

@@ -12,6 +12,7 @@
 #include "cardcontainer.h"
 #include "button.h"
 #include "magatamas-item.h"
+#include "skill-instance-utils.h"
 
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsTextItem>
@@ -162,7 +163,7 @@ private:
 using namespace QSanProtocol;
 
 Dashboard::Dashboard(QGraphicsPixmapItem *widget)
-    : button_widget(widget), selected(nullptr), view_as_skill(nullptr), filter(nullptr), m_secondarySkillDock(nullptr)
+    : button_widget(widget), selected(nullptr), view_as_skill(nullptr), m_viewAsSkillInstanceID(0), filter(nullptr), m_secondarySkillDock(nullptr)
 {
     Q_ASSERT(button_widget);
     _dlayout = &G_DASHBOARD_LAYOUT;
@@ -992,6 +993,8 @@ void Dashboard::_createExtraButtons()
 void Dashboard::skillButtonActivated()
 {
     QSanSkillButton *button = qobject_cast<QSanSkillButton *>(sender());
+    QString baseName;
+    int instanceID = button ? SkillInstanceUtils::parseName(button->objectName(), baseName) : 0;
     foreach (QSanSkillButton *btn, _m_skillDock->getAllSkillButtons()) {
         if (button == btn) continue;
 
@@ -1005,10 +1008,12 @@ void Dashboard::skillButtonActivated()
         if (_m_equipSkillBtns[i])
             _m_equipSkillBtns[i]->setEnabled(false);
     }
+    m_viewAsSkillInstanceID = instanceID;
 }
 
 void Dashboard::skillButtonDeactivated()
 {
+	m_viewAsSkillInstanceID = 0;
     foreach (QSanSkillButton *btn, _m_skillDock->getAllSkillButtons()) {
         if (btn->getViewAsSkill() && btn->isDown())
             btn->setState(QSanButton::S_STATE_UP);
@@ -1965,6 +1970,8 @@ void Dashboard::updatePending()
     }
 
     const Card *new_pending_card = view_as_skill->viewAs(cards);
+    if (new_pending_card)
+        const_cast<Card *>(new_pending_card)->setSkillInstanceID(m_viewAsSkillInstanceID);
     if (pending_card != new_pending_card) {
         if (pending_card && !pending_card->parent() && pending_card->isVirtualCard())
             delete pending_card;/*

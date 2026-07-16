@@ -198,6 +198,11 @@ public:
         return m_tableCenterPos;
     }
 
+    inline QList<int> getRenPile() const
+    {
+        return RenPile;
+    }
+
     inline bool isCancelButtonEnabled() const
     {
         return cancel_button != nullptr && cancel_button->isEnabled();
@@ -531,6 +536,8 @@ private slots:
     void updateRolesBox();
     void updateRoles(const QString &roles);
     void addSkillButton(const Skill *skill);
+    void addSkillButton(const QString &skillInstanceName);
+    void refreshSkillInstanceButtonLabels(const QString &baseName);
 
     void resetPiles();
     void removeLightBox();

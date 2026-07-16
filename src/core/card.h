@@ -96,6 +96,8 @@ public:
     int nameLength() const;
     QString getSkillName(bool removePrefix = true) const;
     virtual void setSkillName(const QString &skill_name);
+    int getSkillInstanceID() const;
+    virtual void setSkillInstanceID(int instanceID);
     virtual void addCharTag(QString tag);
     QString getDescription(const Player *owner = nullptr) const;
     virtual bool isGift() const;
@@ -232,6 +234,7 @@ protected:
     int m_number;
     int m_id;
     QString m_skillName;
+    int m_skillInstanceID;
     QString show_skill;
     bool is_gift;
     bool is_transferable;
@@ -282,5 +285,7 @@ public:
 
     const Card *validate(CardUseStruct &card_use) const override;
 };
+
+Q_DECLARE_METATYPE(const Card*)
 
 #endif

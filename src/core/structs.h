@@ -3,6 +3,7 @@
 
 class Card;
 
+#include "skill-instance-types.h"
 #include "serverplayer.h"
 
 struct GameModeStruct {
@@ -144,6 +145,8 @@ struct CardUseStruct {
     QStringList no_respond_list;
     QStringList no_offset_list;
     int extra_use;
+    int skillInstanceID;
+    bool m_skillInstanceResolved;
 };
 
 class CardMoveReason {
@@ -784,7 +787,6 @@ Q_DECLARE_METATYPE(DeathStruct)
 Q_DECLARE_METATYPE(RecoverStruct)
 Q_DECLARE_METATYPE(PhaseChangeStruct)
 Q_DECLARE_METATYPE(CardResponseStruct)
-Q_DECLARE_METATYPE(const Card*)
 Q_DECLARE_METATYPE(ServerPlayer*)
 Q_DECLARE_METATYPE(JudgeStruct*)
 Q_DECLARE_METATYPE(PindianStruct*)

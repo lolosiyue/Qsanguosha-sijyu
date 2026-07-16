@@ -2224,15 +2224,16 @@ QList<ServerPlayer *> ServerPlayer::getRandomTargets(const Card *card, QList<Ser
 	return targets;
 }
 
-void ServerPlayer::setSkillDescriptionSwap(const QString &skill_name, const QString &key, const QString &value)
+void ServerPlayer::setSkillDescriptionSwap(const QString &skill_name, const QString &key, const QString &value, int instanceId)
 {
 	JsonArray arg;
 	arg << objectName();
 	arg << skill_name;
 	arg << key;
 	arg << value;
+	arg << instanceId;
 	room->doBroadcastNotify(S_COMMAND_SKILL_DESCRIPTION_SWAP, arg);
-	Player::setSkillDescriptionSwap(skill_name, key, value);
+	Player::setSkillDescriptionSwap(skill_name, key, value, instanceId);
 }
 
 void ServerPlayer::setCardDescriptionSwap(const QString &card_name, const QString &key, const QString &value)
