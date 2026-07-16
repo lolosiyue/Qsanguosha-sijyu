@@ -342,11 +342,6 @@ QStringList Skill::getSources() const
     return sources;
 }
 
-QStringList Skill::getSources(const QString &, int) const
-{
-    return sources;
-}
-
 QDialog *Skill::getDialog() const
 {
     return nullptr;

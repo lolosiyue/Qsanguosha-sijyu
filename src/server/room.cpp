@@ -1916,7 +1916,6 @@ QString Room::askForChoice(ServerPlayer*player, const QString&skill_name, const 
 			}
 		}
 		}
-		}
 		if (!effectiveChoices.contains(answer)){
 			QStringList _choices = effectiveChoices.split("+");
 			answer = _choices.at(qrand() % _choices.length());
@@ -8175,7 +8174,6 @@ ServerPlayer*Room::askForPlayerChosen(ServerPlayer*player, const QList<ServerPla
 				ai = player->getAI();
 				if(ai) choice = ai->askForPlayerChosen(targets, log.arg);
 			}
-		}
 		}
 		}
 		if (!choice&&!optional)
