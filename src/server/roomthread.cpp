@@ -5,6 +5,7 @@
 #include "settings.h"
 #include "standard.h"
 #include "exppattern.h"
+#include "skill-instance-utils.h"
 #include <QDebug>
 
 #ifdef QSAN_UI_LIBRARY_AVAILABLE
@@ -166,17 +167,17 @@ PhaseChangeStruct::PhaseChangeStruct()
 }
 
 CardUseStruct::CardUseStruct()
-	: card(nullptr), from(nullptr), m_isOwnerUse(true), m_addHistory(true), m_isHandcard(false), whocard(nullptr), who(nullptr), extra_use(0)
+	: card(nullptr), from(nullptr), m_isOwnerUse(true), m_addHistory(true), m_isHandcard(false), whocard(nullptr), who(nullptr), extra_use(0), skillInstanceID(0), m_skillInstanceResolved(false)
 {
 }
 
 CardUseStruct::CardUseStruct(const Card*card, ServerPlayer*from, QList<ServerPlayer*> to, bool isOwnerUse, const Card*whocard, ServerPlayer*who)
-	: card(card), from(from), to(to), m_isOwnerUse(isOwnerUse), m_addHistory(true), m_isHandcard(false), whocard(whocard), who(who), extra_use(0)
+	: card(card), from(from), to(to), m_isOwnerUse(isOwnerUse), m_addHistory(true), m_isHandcard(false), whocard(whocard), who(who), extra_use(0), skillInstanceID(card ? card->getSkillInstanceID() : 0), m_skillInstanceResolved(false)
 {
 }
 
 CardUseStruct::CardUseStruct(const Card*card, ServerPlayer*from, ServerPlayer*target, bool isOwnerUse, const Card*whocard, ServerPlayer*who)
-	: card(card), from(from), m_isOwnerUse(isOwnerUse), m_addHistory(true), m_isHandcard(false), whocard(whocard), who(who), extra_use(0)
+	: card(card), from(from), m_isOwnerUse(isOwnerUse), m_addHistory(true), m_isHandcard(false), whocard(whocard), who(who), extra_use(0), skillInstanceID(card ? card->getSkillInstanceID() : 0), m_skillInstanceResolved(false)
 {
 	if (target) this->to << target;
 }
@@ -235,6 +236,9 @@ bool CardUseStruct::tryParse(const QVariant &usage, Room*room)
 		foreach(const QVariant &target, use[1].value<JsonArray>())
 			to << room->findChild<ServerPlayer*>(target.toString());
 		card = Card::Parse(use[0].toString());
+		skillInstanceID = use.length() > 2 ? qMax(0, use[2].toInt()) : 0;
+		if (card)
+			const_cast<Card *>(card)->setSkillInstanceID(skillInstanceID);
 		return true;
 	}
 	return false;
@@ -264,8 +268,11 @@ void CardUseStruct::changeCard(Card*newcard)
 	tag.unite(card->tag);
 	newcard->tag = tag;
 	newcard->setFlags(newcard->getFlags()+card->getFlags());
+	if (skillInstanceID > 0 || newcard->getSkillInstanceID() <= 0)
+		newcard->setSkillInstanceID(skillInstanceID);
 	newcard->change_cards << card;
 	card = newcard;
+	skillInstanceID = newcard->getSkillInstanceID();
 }
 
 void CardResponseStruct::changeCard(Card*newcard)
@@ -274,6 +281,8 @@ void CardResponseStruct::changeCard(Card*newcard)
 	tag.unite(m_card->tag);
 	newcard->tag = tag;
 	newcard->setFlags(newcard->getFlags()+m_card->getFlags());
+	if (newcard->getSkillInstanceID() <= 0)
+		newcard->setSkillInstanceID(m_card->getSkillInstanceID());
 	newcard->change_cards << m_card;
 	m_card = newcard;
 }
@@ -686,6 +695,12 @@ static QStringList mergeSkillNames(const QStringList &names)
 	return result;
 }
 
+static QString skillInstanceRuntimeKey(const ServerPlayer *owner, const QString &skillName, int instanceId)
+{
+	return QString("%1|%2#%3").arg(owner ? owner->objectName() : QString(), skillName)
+		.arg(instanceId);
+}
+
 bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, QVariant &data)
 {
 	QList<const TriggerSkill *> v2_skills;
@@ -696,8 +711,27 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 	if (v2_skills.isEmpty())
 		return false;
 
-QMap<QString, int> triggerCounts;
+	QMap<QString, int> triggerCounts;
+	QMap<QString, int> maxMultipliers;
 	QSet<QString> triggeredSkills;
+
+	// record 每個事件只執行一次，並逐現存玩家實例提供完整 context。
+	foreach (const TriggerSkill *ts, v2_skills) {
+		TriggerV2Skill *v2 = const_cast<TriggerV2Skill *>(qobject_cast<const TriggerV2Skill *>(ts));
+		if (!v2) continue;
+		foreach (ServerPlayer *owner, room->getAllPlayers(true)) {
+			foreach (int instanceId, owner->getSkillInstanceIds(v2->objectName())) {
+				SkillContext recordCtx;
+				recordCtx.skill_name = v2->objectName();
+				recordCtx.owner = owner;
+				recordCtx.invoker = target;
+				recordCtx.instanceID = instanceId;
+				recordCtx.original_data = &data;
+				recordCtx.current_event = triggerEvent;
+				v2->record(triggerEvent, room, target, recordCtx);
+			}
+		}
+	}
 
 	bool broken = false;
 
@@ -708,46 +742,48 @@ QMap<QString, int> triggerCounts;
 		foreach (const TriggerSkill *ts, v2_skills) {
 			TriggerV2Skill *v2 = const_cast<TriggerV2Skill *>(qobject_cast<const TriggerV2Skill *>(ts));
 			if (!v2) continue;
-			
-			SkillContext record_ctx;
-			record_ctx.original_data = &data;
-			record_ctx.current_event = triggerEvent;
-			v2->record(triggerEvent, room, target, record_ctx);
-			
 		TriggerList list = v2->triggerable(triggerEvent, room, target, data);
 		
 		QMap<ServerPlayer *, QStringList>::iterator it;
 			for (it = list.begin(); it != list.end(); ++it) {
 				ServerPlayer *p = it.key();
+				if (!p) continue;
 				QStringList &skills = it.value();
 				if (!skills.isEmpty()) {
 					foreach (const QString &skill, skills) {
 						QString skillName = skill;
-						int instanceId = 0;
 						int multiplier = 1;
-						int split = skill.indexOf('#', skill.startsWith('#') ? 1 : 0);
-						if (split != -1) {
-							instanceId = skill.mid(split + 1).toInt();
-							skillName = skill.left(split);
-						}
-						split = skillName.indexOf('*');
+						int split = skillName.indexOf('*');
 						if (split != -1) {
 							multiplier = skillName.mid(split + 1).toInt();
 							skillName = skillName.left(split);
 						}
-						if (!p->isSkillInvalid(skillName, instanceId)) {
-							QString key = QString("%1#%2").arg(skillName).arg(instanceId);
+						QString baseName;
+						int instanceId = SkillInstanceUtils::parseName(skillName, baseName);
+						skillName = baseName;
+						QList<int> instanceIds;
+						if (instanceId > 0) {
+							if (p->hasSkillInstance(skillName, instanceId)
+								&& !p->isSkillInvalid(skillName, instanceId))
+								instanceIds << instanceId;
+						} else {
+							instanceIds = p->getValidSkillInstanceIds(skillName);
+						}
+
+						foreach (int resolvedId, instanceIds) {
+							QString key = skillInstanceRuntimeKey(p, skillName, resolvedId);
 							int currentTriggerCount = triggerCounts.value(key, 0);
-							if (currentTriggerCount >= multiplier)
+							int effectiveMultiplier = qMax(multiplier, maxMultipliers.value(key, 0));
+							if (currentTriggerCount >= effectiveMultiplier)
 								continue;
-							for (int i = 0; i < multiplier - currentTriggerCount; ++i) {
+							for (int i = 0; i < effectiveMultiplier - currentTriggerCount; ++i) {
 								SkillContext ctx;
 								ctx.skill_name = skillName;
 								ctx.owner = p;
 								ctx.invoker = target;
-								ctx.instanceID = instanceId;
+								ctx.instanceID = resolvedId;
 								ctx.trigger_count = currentTriggerCount + i;
-								ctx.multiplier = multiplier;
+								ctx.multiplier = effectiveMultiplier;
 								ctx.original_data = &data;
 								ctx.current_event = triggerEvent;
 								skillContexts << ctx;
@@ -763,7 +799,7 @@ QMap<QString, int> triggerCounts;
 
 		foreach (const SkillContext &ctx, skillContexts) {
 			const TriggerSkill *ts = Sanguosha->getTriggerSkill(ctx.skill_name, ctx.instanceID);
-			if (ts && ts->getFrequency(target) == Skill::Compulsory) {
+			if (ts && ts->getFrequency(ctx.owner) == Skill::Compulsory) {
 				has_compulsory = true;
 				break;
 			}
@@ -799,21 +835,15 @@ QMap<QString, int> triggerCounts;
 		if ((split = skillName.indexOf('*')) != -1)
 			skillName = skillName.left(split);
 
-		int instanceId = 0;
-		if ((split = skillName.indexOf('#', skillName.startsWith('#') ? 1 : 0)) != -1) {
-			instanceId = skillName.mid(split + 1).toInt();
-			skillName = skillName.left(split);
-		}
+		QString baseName;
+		int instanceId = SkillInstanceUtils::parseName(skillName, baseName);
+		skillName = baseName;
 
 		const TriggerSkill *result_skill = Sanguosha->getTriggerSkill(skillName, instanceId);
 		if (!result_skill) continue;
 
 		TriggerV2Skill *v2 = const_cast<TriggerV2Skill *>(qobject_cast<const TriggerV2Skill *>(result_skill));
 		if (!v2) continue;
-
-		QString key = QString("%1#%2").arg(skillName).arg(instanceId);
-		triggerCounts[key] = triggerCounts.value(key, 0) + 1;
-		triggeredSkills.insert(key);
 
 		// 格式二支援：查找 selected_ctx 時用 ownerObjectName 匹配
 		SkillContext *selected_ctx = nullptr;
@@ -839,8 +869,16 @@ QMap<QString, int> triggerCounts;
 			continue;
 		}
 
-		// 格式二支援：cost 使用 selected_ctx->owner（技能擁有者）作為 player
 		ServerPlayer *skill_owner = selected_ctx->owner;
+		if (!skill_owner || !skill_owner->hasSkillInstance(skillName, instanceId)
+			|| skill_owner->isSkillInvalid(skillName, instanceId))
+			continue;
+
+		QString key = skillInstanceRuntimeKey(skill_owner, skillName, instanceId);
+		triggerCounts[key] = triggerCounts.value(key, 0) + 1;
+		triggeredSkills.insert(key);
+
+		// 格式二支援：cost 使用 selected_ctx->owner（技能擁有者）作為 player
 		bool do_cost = v2->cost(triggerEvent, room, skill_owner, *selected_ctx);
 		if (!do_cost)
 			continue;
@@ -849,6 +887,7 @@ QMap<QString, int> triggerCounts;
 		QVariant ctx_data = QVariant::fromValue(*selected_ctx);
 		trigger(EventSkillWillInvoke, room, skill_owner, ctx_data);
 		*selected_ctx = ctx_data.value<SkillContext>();
+		maxMultipliers[key] = qMax(maxMultipliers.value(key, 0), selected_ctx->multiplier);
 		if (selected_ctx->is_canceled)
 			continue;
 

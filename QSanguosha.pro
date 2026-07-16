@@ -124,6 +124,7 @@ src/ui/chatwidget.cpp \
 	src/util/replay-takeover.cpp \
 	src/ui/replay-timeline.cpp \
 	src/core/record-analysis.cpp \
+	src/core/skill-instance-utils.cpp \
 	src/package/hegemony.cpp \
 	src/scenario/fancheng-scenario.cpp \
 	src/scenario/challengedeveloper-scenario.cpp \
@@ -304,6 +305,8 @@ src/ui/dashboard.h \
 	src/ui/replay-timeline.h \
 	src/util/socket.h \
 	src/core/record-analysis.h \
+	src/core/skill-instance-types.h \
+	src/core/skill-instance-utils.h \
 	src/package/hegemony.h \
 	src/scenario/fancheng-scenario.h \
 	src/scenario/challengedeveloper-scenario.h \
@@ -738,7 +741,4 @@ android {
 	DEFINES += ANDROID_LOGGING
 }
 
-# Note: The following lines were corrupted in the original file
-# If heroskincontainer files exist, uncomment and fix the paths:
-# SOURCES += src/ui/heroskincontainer.cpp
-# HEADERS += src/ui/heroskincontainer.h
+# heroskincontainer is not fully compatible - hasSkin() implemented inline in heroskincontainer.h

@@ -93,12 +93,12 @@ public:
     void playAudioEffect(int index = -1, bool superpose = true) const;
     virtual Frequency getFrequency(const Player *target = nullptr) const;
     QString getLimitMark() const;
-    int getInstanceId() const { return m_instanceId; }
-    static int getGlobalInstanceCount() { return m_globalInstanceCount; }
+
     QString getClubName() const;
     QString getClubMark() const;
     QString getWakedSkills() const;
     QStringList getSources() const;
+    QStringList getSources(const QString &generalName, int skinIndex) const;
     bool setProperty(const char* name, const QVariant& value);
 
     virtual LimitScope getLimitScope() const;
@@ -130,14 +130,7 @@ protected:
 private:
     bool lord_skill;
     QStringList sources;
-    int m_instanceId;
-    static int m_globalInstanceCount;
 };
-
-inline int Skill_getInstanceId(const Skill *skill)
-{
-    return skill ? skill->getInstanceId() : 0;
-}
 
 class ViewAsSkill : public Skill
 {

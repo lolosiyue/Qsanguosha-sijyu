@@ -186,7 +186,8 @@ namespace QSanProtocol {
         S_COMMAND_SET_BROKEN_EQUIP,
         S_COMMAND_MIRROR_GUANXING_STEP,
         S_COMMAND_SWITCH_CONTEXT = 128,
-        S_COMMAND_SYNC_PILE = 129
+        S_COMMAND_SYNC_PILE = 129,
+        S_COMMAND_SKILL_INSTANCE = 130
     };
 
     enum GuanxingStepType

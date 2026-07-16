@@ -170,7 +170,7 @@ public:
 	const General*getGeneral() const;
 
 	bool isLord() const;
-	void acquireSkill(const char*skill_name);
+	int acquireSkill(const char*skill_name, bool head = true, int instanceId = -1);
 	void detachSkill(const char*skill_name);
 	void detachAllSkills();
 	virtual void addSkill(const char*skill_name);
@@ -283,6 +283,10 @@ public:
 	QSet<const Skill*> getVisibleSkills(bool include_equip = false) const;
 	QList<const Skill*> getVisibleSkillList(bool include_equip = false) const;
 	QStringList getAcquiredSkills() const;
+	QStringList getSkillNames() const;
+	bool hasAcquiredSkill(const char*skill_name) const;
+	int getSkillInstanceId(const char*skill_name) const;
+	QList<int> getSkillInstanceIds(const char*skill_name) const;
 	QString getSkillDescription() const;
 
 	virtual bool isProhibited(const Player*to, const Card*card, const QList<const Player*>&others = QList<const Player*>()) const;
@@ -765,6 +769,7 @@ struct CardUseStruct {
 	QStringList no_respond_list; //不能被响应
 	QStringList no_offset_list; //不能被抵消
     int extra_use;
+	int skillInstanceID;
 };
 
 struct CardsMoveStruct {
@@ -1135,6 +1140,8 @@ public:
 	QString getSkillName(bool removePrefix = true) const;
 	QStringList getSkillNames(bool removePrefix = true) const;
 	void setSkillName(const char*skill_name);
+	int getSkillInstanceID() const;
+	void setSkillInstanceID(int instanceID);
 	void addCharTag(const char*tag);
 	QString getDescription() const;
 	bool isGift() const;
@@ -1475,9 +1482,48 @@ struct SkillContext {
 	int amount;
 	int modified_amount;
 	int trigger_count;
+	int multiplier;
 
 	QString choice;
 	QVariant extra_data;
+};
+
+enum SkillInstanceSource {
+	SourceInnate,
+	SourceAcquired,
+	SourceHelper
+};
+
+struct SkillInstanceKey {
+	SkillInstanceKey();
+	SkillInstanceKey(const char*name, int id);
+	QString skillName;
+	int instanceID;
+	bool isValid() const;
+	QString toString() const;
+};
+
+struct SkillInstance {
+	SkillInstance();
+	QString skillName;
+	int instanceID;
+	SkillInstanceSource source;
+	SkillInstanceKey parent;
+	bool visible;
+	QVariantMap state;
+	int bindHead;
+};
+
+struct SkillChangeStruct {
+	SkillChangeStruct();
+	SkillChangeStruct(const char*name, int id);
+	QString skillName;
+	int instanceID;
+	SkillInstanceSource source;
+	QString parentSkillName;
+	int parentInstanceID;
+	bool visible;
+	QString toString() const;
 };
 
 class Skill: public QObject {
@@ -1517,7 +1563,6 @@ bool isHideSkill() const;
 	virtual bool checkCustomUsage(const SkillContext& ctx) const;
 	virtual ServerPlayer* getUsageHolder(const SkillContext& ctx) const;
 	QString getUsageTagKey(const SkillContext& ctx) const;
-	int getInstanceId() const;
 };
 
 %extend Skill {
@@ -1644,7 +1689,8 @@ public:
 	void slashEffect(const SlashEffectStruct&effect);
 	void slashResult(const SlashEffectStruct&effect, const Card*jink);
 	void attachSkillToPlayer(ServerPlayer*player, const char*skill_name);
-	void detachSkillFromPlayer(ServerPlayer*player, const char*skill_name, bool is_equip = false, bool acquire_only = false, bool event_and_log = true);
+	int detachSkillFromPlayer(ServerPlayer*player, const char*skill_name, bool is_equip = false, bool acquire_only = false, bool event_and_log = true);
+	int discardSkillInstance(ServerPlayer*chooser, ServerPlayer*owner, const char*skill_name, bool event_and_log = true);
 	void handleAcquireDetachSkills(ServerPlayer*player, const char*skill_names, bool acquire_only = false, bool getmark = true, bool event_and_log = true);
 	void acquireOneTurnSkills(ServerPlayer*player, const char*skill_name, const char*skill_names);
 	void acquireNextTurnSkills(ServerPlayer*player, const char*skill_name, const char*skill_names);
@@ -1751,8 +1797,8 @@ public:
 	void filterCards(ServerPlayer*player, QList<const Card*> cards, bool refilter);
 	//const Card*filterCard(ServerPlayer*owner, const Card*card, Player::Place place, bool refilter);
 
-	void acquireSkill(ServerPlayer*player, const Skill*skill, bool open = true, bool getmark = true, bool event_and_log = true);
-	void acquireSkill(ServerPlayer*player, const char*skill_name, bool open = true, bool getmark = true, bool event_and_log = true);
+	int acquireSkill(ServerPlayer*player, const Skill*skill, bool open = true, bool getmark = true, bool event_and_log = true);
+	int acquireSkill(ServerPlayer*player, const char*skill_name, bool open = true, bool getmark = true, bool event_and_log = true);
 	void adjustSeats();
 	void swapPile();
 	QList<int> getDiscardPile();
