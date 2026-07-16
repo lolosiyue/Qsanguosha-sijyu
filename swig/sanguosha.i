@@ -1458,6 +1458,38 @@ public:
 
 extern Engine*Sanguosha;
 
+struct ActiveSkillRequest {
+	CardUseStruct::CardUseReason getReason() const;
+	QString getPattern() const;
+	const Player *getInitiator() const;
+	QString getActivationSkillName() const;
+	int getActivationInstanceID() const;
+	QList<int> getSelectedCardIds() const;
+	QStringList getSelectedTargetNames() const;
+	QString getUserString() const;
+};
+
+struct ActiveSkillAIRequest {
+	CardUseStruct::CardUseReason getReason() const;
+	QString getPattern() const;
+	ServerPlayer *getInitiator() const;
+	QString getActivationOwner() const;
+	QString getActivationSkillName() const;
+	int getActivationInstanceID() const;
+	QString getSourceOwner() const;
+	QString getSourceSkillName() const;
+	int getSourceInstanceID() const;
+	bool isActivationQuotaAvailable() const;
+	bool isSourceQuotaAvailable() const;
+};
+
+struct ActiveSkillAIResult {
+	bool accepted;
+	QList<int> selectedCardIds;
+	QStringList selectedTargetNames;
+	QString userString;
+};
+
 struct SkillContext {
 	SkillContext();
 	QString skill_name;

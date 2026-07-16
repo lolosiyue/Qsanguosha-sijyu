@@ -77,6 +77,8 @@ public:
     QStringList getPreSelectionSkills() const;
     void addPreSelectionSkill(const QString &skill_name);
 
+    void tryLoadingSkinTranslation(int skin_index) const;
+
     void addCompanion(const QString &name);
     bool isCompanionWith(const QString &name) const;
     QString getCompanions() const;

@@ -5434,7 +5434,7 @@ public:
 
 	bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
 	{
-		if (triggerEvent == EventLoseSkill && data.toString() == objectName()) {
+		if (triggerEvent == EventLoseSkill && data.value<SkillChangeStruct>().skillName == objectName()) {
 			player->setMark(luoyan + "_help", 0);
 			room->sendCompulsoryTriggerLog(player, objectName(), true, true);
 			QString skills = "-timobileanxiang|-liuli";
@@ -5442,7 +5442,7 @@ public:
 				skills = "-oltimobileanxiang|-liuli";
 
 			room->handleAcquireDetachSkills(player, skills, true);
-		} else if (triggerEvent == EventAcquireSkill && data.toString() == objectName()) {
+		} else if (triggerEvent == EventAcquireSkill && data.value<SkillChangeStruct>().skillName == objectName()) {
 			if (!player->getPile("xingwu").isEmpty()) {
 				player->setMark(luoyan + "_help", 1);
 				room->sendCompulsoryTriggerLog(player, objectName(), true, true);
@@ -13066,7 +13066,7 @@ public:
 				target->gainMark("&que_yc+-+"+st+"_char+#"+player->objectName());
 				player->setMark("que_ycNum",0);
 			}
-		}else if(event==EventLoseSkill&&data.toString()==objectName()){
+		}else if(event==EventLoseSkill&&data.value<SkillChangeStruct>().skillName==objectName()){
 			foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
 				foreach (QString m, p->getMarkNames()) {
 					if(m.startsWith("&que_yc+-+")&&m.endsWith(player->objectName()))

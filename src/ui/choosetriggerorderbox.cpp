@@ -31,12 +31,15 @@ ClientSkillContext::ClientSkillContext()
     , preferredTargetSeat(-1)
     , trigger_count(0)
     , multiplier(1)
+    , instanceID(0)
 {
 }
 
 bool ClientSkillContext::operator==(const ClientSkillContext &arg2) const
 {
-    return skill == arg2.skill && owner == arg2.owner && invoker == arg2.invoker && preferredTarget == arg2.preferredTarget && preferredTargetSeat == arg2.preferredTargetSeat;
+    return skill == arg2.skill && owner == arg2.owner && invoker == arg2.invoker
+        && preferredTarget == arg2.preferredTarget && preferredTargetSeat == arg2.preferredTargetSeat
+        && instanceID == arg2.instanceID;
 }
 
 bool ClientSkillContext::operator==(const QVariantMap &arg2) const
@@ -90,6 +93,9 @@ bool ClientSkillContext::tryParse(const QVariantMap &map)
     if (map.contains("multiplier"))
         multiplier = map.value("multiplier").toInt();
 
+    if (map.contains("instanceID"))
+        instanceID = map.value("instanceID").toInt();
+
     return true;
 }
 
@@ -117,7 +123,10 @@ bool ClientSkillContext::tryParse(const QString &str)
 QString ClientSkillContext::toString() const
 {
     QStringList l;
-    l << skill->objectName();
+    QString skillName = skill->objectName();
+    if (instanceID > 0)
+        skillName += "#" + QString::number(instanceID);
+    l << skillName;
     l << owner->objectName();
     l << invoker->objectName();
     if (preferredTarget != nullptr) {
@@ -233,6 +242,8 @@ QString TriggerOptionButton::displayedTextOf(const ClientSkillContext &detail, i
 {
     QString skillName = detail.skill->objectName();
     QString text = Sanguosha->translate(skillName);
+    if (detail.instanceID > 0)
+        text += " #" + QString::number(detail.instanceID);
     if (detail.preferredTarget != nullptr) {
         QString targetName = detail.preferredTarget->getGeneralName();
         text = TriggerOptionButton::tr("%1 (use upon %2)").arg(text).arg(Sanguosha->translate(targetName));

@@ -56,6 +56,8 @@ bool ReplayGameState::applyCommand(const QString &cmd)
         return processGameOver(body);
     case S_COMMAND_LOG_SKILL:
         return processLogSkill(body);
+    case S_COMMAND_CARD_PROVENANCE:
+        return processCardProvenance(body);
     default:
         break;
     }
@@ -146,6 +148,7 @@ void ReplayGameState::clear()
     m_cardOwnerMap.clear();
     m_cardPileMap.clear();
     m_playerMap.clear();
+    m_cardProvenance.clear();
 }
 
 int ReplayGameState::getTurnCount() const
@@ -413,4 +416,39 @@ void ReplayGameState::updateCardMapping(int cardId, const QString &owner, const 
 {
     m_cardOwnerMap[cardId] = owner;
     m_cardPileMap[cardId] = pile;
+}
+
+bool ReplayGameState::processCardProvenance(const QVariant &body)
+{
+    JsonArray args = body.value<JsonArray>();
+    if (!JsonUtils::isNumber(args.value(0)))
+        return false;
+    const int version = args[0].toInt();
+    const bool v1 = version == 1 && args.size() == 8;
+    const bool v2 = version == 2 && args.size() == 10;
+    if ((!v1 && !v2) || !JsonUtils::isString(args[1]) || !JsonUtils::isString(args[2])
+        || !JsonUtils::isString(args[3]))
+        return false;
+    const int sourceSkillIndex = v2 ? 5 : 4;
+    const int sourceIdIndex = v2 ? 6 : 5;
+    const int activationSkillIndex = v2 ? 8 : 6;
+    const int activationIdIndex = v2 ? 9 : 7;
+    if ((v2 && (!JsonUtils::isString(args[4]) || !JsonUtils::isString(args[7])))
+        || !JsonUtils::isString(args[sourceSkillIndex]) || !JsonUtils::isNumber(args[sourceIdIndex])
+        || !JsonUtils::isString(args[activationSkillIndex]) || !JsonUtils::isNumber(args[activationIdIndex]))
+        return false;
+
+    QVariantMap record;
+    record["version"] = version;
+    record["kind"] = args[1];
+    record["initiator"] = args[2];
+    record["card"] = args[3];
+    record["sourceOwner"] = v2 ? args[4].toString() : args[2].toString();
+    record["sourceSkill"] = args[sourceSkillIndex];
+    record["sourceID"] = args[sourceIdIndex];
+    record["activationOwner"] = v2 ? args[7].toString() : args[2].toString();
+    record["activationSkill"] = args[activationSkillIndex];
+    record["activationID"] = args[activationIdIndex];
+    m_cardProvenance << record;
+    return true;
 }

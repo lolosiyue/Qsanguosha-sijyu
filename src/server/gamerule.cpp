@@ -668,7 +668,8 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 		}
 		room->setTag("UseHistory"+card_use.card->toString(),data);
 		for (int i=0;i<=card_use.extra_use;i++){
-			card_use.card->use(room,card_use.from,card_use.to);
+			if (!card_use.skipSkillEffect)
+				card_use.card->use(room,card_use.from,card_use.to);
 			foreach(ServerPlayer *p,card_use.to){
 				if(p->isAlive()) continue;
 				card_use.to.removeOne(p);
@@ -1109,7 +1110,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 							&& !effect.card->getSkillName().isEmpty();
 
 		if (isSkillCard || isViewAsCard) {
-			SkillCard *skillCard = isSkillCard ? qobject_cast<SkillCard*>(effect.card->getRealCard()) : nullptr;
+			const SkillCard *skillCard = isSkillCard ? qobject_cast<const SkillCard*>(effect.card->getRealCard()) : nullptr;
 			QString skillName = effect.card->getSkillName().isEmpty() 
 								? effect.card->objectName() : effect.card->getSkillName();
 			QString prefix = isViewAsCard ? "ViewAsContext_" : "SkillCardContext_";
@@ -1124,14 +1125,19 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 
 			QString tagKey = prefix + skillName + "_" + QString::number(instanceId);
 
-			SkillContext ctx = room->getTag(tagKey).value<SkillContext>();
+			SkillContext ctx = effect.skillExecutionID > 0
+				? room->getSkillExecutionContext(effect.skillExecutionID)
+				: room->getTag(tagKey).value<SkillContext>();
 			ctx.current_event = EventSkillEffectTarget;
 
 			QVariant ctxData = QVariant::fromValue(ctx);
 			skipThisTarget = room->getThread()->trigger(EventSkillEffectTarget, room, effect.to, ctxData);
 
 			ctx = ctxData.value<SkillContext>();
-			room->setTag(tagKey, QVariant::fromValue(ctx));
+			if (effect.skillExecutionID > 0)
+				room->setSkillExecutionContext(effect.skillExecutionID, ctx);
+			else
+				room->setTag(tagKey, QVariant::fromValue(ctx));
 		}
 
 		for (int i=0;i<=effect.extra_effect;i++){
