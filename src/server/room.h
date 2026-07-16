@@ -94,7 +94,8 @@ public:
     void slashEffect(const SlashEffectStruct&effect);
     void slashResult(const SlashEffectStruct&effect, const Card*jink);
     void attachSkillToPlayer(ServerPlayer*player, const QString&skill_name);
-    void detachSkillFromPlayer(ServerPlayer*player, const QString&skill_name, bool is_equip = false, bool acquire_only = false, bool event_and_log = true);
+    int detachSkillFromPlayer(ServerPlayer*player, const QString&skill_name, bool is_equip = false, bool acquire_only = false, bool event_and_log = true);
+    int discardSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skill_name, bool event_and_log = true);
     void handleAcquireDetachSkills(ServerPlayer*player, const QStringList&skill_names, bool acquire_only = false, bool getmark = true, bool event_and_log = true);
     void handleAcquireDetachSkills(ServerPlayer*player, const QString&skill_names, bool acquire_only = false, bool getmark = true, bool event_and_log = true);
     void acquireOneTurnSkills(ServerPlayer*player,const QString&skill_name, const QStringList&skill_names);
@@ -319,8 +320,8 @@ public:
     void changePlayerGeneral2(ServerPlayer*player, const QString&new_general);
     void filterCards(ServerPlayer*player, QList<const Card*> cards, bool refilter);
 
-    void acquireSkill(ServerPlayer*player, const Skill*skill, bool open = true, bool getmark = true, bool event_and_log = true);
-    void acquireSkill(ServerPlayer*player, const QString&skill_name, bool open = true, bool getmark = true, bool event_and_log = true);
+    int acquireSkill(ServerPlayer*player, const Skill*skill, bool open = true, bool getmark = true, bool event_and_log = true);
+    int acquireSkill(ServerPlayer*player, const QString&skill_name, bool open = true, bool getmark = true, bool event_and_log = true);
     void addSkillInvalidity(ServerPlayer *target, const QString &skillName, const QString &sourceName, const QString &reason, int instanceId = 0);
     void removeSkillInvalidity(ServerPlayer *target, const QString &skillName, const QString &sourceName, const QString &reason, int instanceId = 0);
     void clearSkillInvalidityBySource(ServerPlayer *source);
@@ -536,8 +537,8 @@ public:
     bool moveField(ServerPlayer*player, const QString&reason, bool optional = false, const QString&flags = "ej",
                    QList<ServerPlayer*> froms = QList<ServerPlayer*>(), QList<ServerPlayer*> tos = QList<ServerPlayer*>());
     void swapEquips(ServerPlayer*first, ServerPlayer*second, const QString&skill_name = QString());
-    void changeTranslation(ServerPlayer*player, const QString&skill_name, const QString&new_translation, int num = 0);
-    void changeTranslation(ServerPlayer*player, const QString&skill_name, int num = 1);
+    void changeTranslation(ServerPlayer*player, const QString&skill_name, const QString&new_translation, int num = 0, int instanceId = 0);
+    void changeTranslation(ServerPlayer*player, const QString&skill_name, int num = 1, int instanceId = 0);
     int getChangeSkillState(ServerPlayer*player, const QString&skill_name);
     void setChangeSkillState(ServerPlayer*player, const QString&skill_name, int n);
     bool CardInPlace(const Card*card, Player::Place place);
@@ -593,6 +594,14 @@ protected:
     int _m_Id;
 
 private:
+    void notifySkillInstanceSnapshot(ServerPlayer *receiver);
+    void notifySkillInstanceUpsert(ServerPlayer *owner, const SkillInstance &instance);
+    void notifySkillInstanceRemove(ServerPlayer *owner, const SkillInstance &instance);
+    bool resolveCardSkillInstance(CardUseStruct &use);
+    int chooseSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skillName,
+                            bool visibleOnly, bool acquiredOnly);
+    bool removeSkillInstanceFromPlayer(ServerPlayer *owner, const QString &skillName, int instanceId,
+                                       bool isEquip, bool eventAndLog);
 
     void _setAreaMark(ServerPlayer*player, int i, bool flag);
 

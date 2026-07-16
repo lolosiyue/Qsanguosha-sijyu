@@ -1647,7 +1647,7 @@ void GameRule::doBossModeDifficultySettings(ServerPlayer *lord) const
 
                 QStringList acquired = p->getTag("BossModeAcquiredSkills").toStringList();
                 foreach (QString a,acquired) {
-                    if(!p->getAcquiredSkills().contains(a))
+                    if(!p->hasAcquiredSkill(a))
                         acquired.removeOne(a);
                 }
                 int len = qMin(4,acquired.length() + 1);

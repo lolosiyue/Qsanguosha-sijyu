@@ -190,4 +190,12 @@ public:
 	SkillContext toSkillContext() const{
 		return $self->value<SkillContext>();
 	}
+
+	void setValue(SkillChangeStruct *scs) {
+		$self->setValue(QVariant::fromValue(*scs));
+	}
+
+	SkillChangeStruct toSkillChange() const{
+		return $self->value<SkillChangeStruct>();
+	}
 };

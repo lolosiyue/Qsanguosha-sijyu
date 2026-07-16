@@ -21,6 +21,7 @@ struct ClientSkillContext
     int preferredTargetSeat;
     int trigger_count;
     int multiplier;
+    int instanceID;
 
     ClientSkillContext();
 

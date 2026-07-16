@@ -116,9 +116,18 @@ if not sgs.Sanguosha:getSkill("#bossMaxCards") then
 			return -1
 		end
 	}
-	skillList:append(BossModeMaxCards)
+	if BossModeMaxCards then
+		skillList:append(BossModeMaxCards)
+	end
 end
-sgs.Sanguosha:addSkills(skillList)
+-- Filter out nil skills before adding
+local filteredList = sgs.SkillList()
+for _, skill in sgs.qlist(skillList) do
+	if skill then
+		filteredList:append(skill)
+	end
+end
+sgs.Sanguosha:addSkills(filteredList)
 
 if not sgs.Sanguosha:property("DoneLoading"):toBool() then
 	sgs.Sanguosha:setProperty("DoneLoading", sgs.QVariant(true))

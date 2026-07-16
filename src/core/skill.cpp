@@ -6,15 +6,13 @@
 #include "clientplayer.h"
 #include "clientstruct.h"
 #include "exppattern.h"
+#include "skill-instance-utils.h"
 #include <src/util/ThreadSafeHelper.h>
 #include <QDebug>
 
-int Skill::m_globalInstanceCount = 0;
-
 Skill::Skill(const QString &name, Frequency frequency)
     : frequency(frequency), attached_lord_skill(name.endsWith("&")), change_skill(false),
-	hide_skill(false), shiming_skill(false), lord_skill(name.endsWith("$")),
-	m_instanceId(++m_globalInstanceCount)
+	hide_skill(false), shiming_skill(false), lord_skill(name.endsWith("$"))
 {
     limited_skill = frequency == Limited;
     QString copy = name;
@@ -74,7 +72,7 @@ bool Skill::isEquipSkill() const
     return false;
 }
 
-QString Skill::getDescription(const Player *target) const
+QString Skill::getDescription(const Player *target, int instanceId) const
 {
 	QString des_src;
 	if(ServerInfo.DuringGame && isNormalGameMode(ServerInfo.GameMode))
@@ -83,10 +81,11 @@ QString Skill::getDescription(const Player *target) const
 		des_src = Sanguosha->translate(":"+objectName());
 
 	if (target){
-		QString data = target->property(("changeTranslation"+objectName()).toStdString().c_str()).toString();
+		QString propKey = instanceId > 0 ? QString("changeTranslation%1#%2").arg(objectName()).arg(instanceId) : QString("changeTranslation"+objectName());
+		QString data = target->property(propKey.toStdString().c_str()).toString();
 		if(data.length()==1) des_src = Sanguosha->translate(":"+objectName()+data);
 		else if(data.length()>1) des_src = QByteArray::fromBase64(data.toLatin1());
-		QHash<QString, QString> swap = target->getSkillDescriptionSwap(objectName());
+		QHash<QString, QString> swap = target->getSkillDescriptionSwap(objectName(), instanceId);
 		foreach (QString key, swap.keys())
 			des_src.replace(key, swap[key]);
 	}
@@ -339,6 +338,11 @@ QStringList Skill::getSources(const QString &general, const int skinId) const
 }
 
 QStringList Skill::getSources() const
+{
+    return sources;
+}
+
+QStringList Skill::getSources(const QString &, int) const
 {
     return sources;
 }
@@ -723,10 +727,10 @@ QString TriggerV2Skill::parseSkillName(const QString &fullName, QString *source,
         name = name.left(split);
     }
 
-    if ((split = name.indexOf('#')) != -1) {
-        if (instanceId) *instanceId = name.mid(split + 1).toInt();
-        name = name.left(split);
-    }
+    QString baseName;
+    int parsedInstanceId = SkillInstanceUtils::parseName(name, baseName);
+    if (instanceId) *instanceId = parsedInstanceId;
+    name = baseName;
 
     if (name.contains("'")) {
         QStringList parts = name.split("'");
@@ -1114,7 +1118,6 @@ void Skill::resetUsage(ServerPlayer *owner, ServerPlayer *) const
 
     SkillContext ctx;
     ctx.invoker = owner;
-    ctx.instanceID = m_instanceId;
 
     LimitScope scope = getLimitScope();
     if (scope == Limit_None || scope == Limit_Custom) return;
@@ -1137,7 +1140,7 @@ ServerPlayer *Skill::getUsageHolder(const SkillContext &ctx) const
 QString Skill::getUsageTagKey(const SkillContext &ctx) const
 {
     LimitScope scope = getLimitScope();
-    int instance_id = ctx.instanceID > 0 ? ctx.instanceID : m_instanceId;
+    int instance_id = ctx.instanceID > 0 ? ctx.instanceID : 0;
 
     switch (scope) {
         case Limit_Turn:
@@ -1189,6 +1192,8 @@ QVariant SkillContext::toVariant() const
         map["extra_data"] = extra_data;
     map["trigger_count"] = trigger_count;
     map["multiplier"] = multiplier;
+    if (instanceID > 0)
+        map["instanceID"] = instanceID;
     return map;
 }
 

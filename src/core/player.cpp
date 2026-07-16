@@ -1,6 +1,7 @@
 #include "player.h"
 #include "engine.h"
 #include "room.h"
+#include "skill-instance-utils.h"
 //#include "client.h"
 #include "standard.h"
 #include "settings.h"
@@ -471,107 +472,61 @@ bool Player::hasSkill(const QString &skill_name, bool include_lose) const
 {
     if(skill_name.isEmpty()) return false;
 
-    QString baseName = skill_name;
-    int instanceId = 0;
-    int split = skill_name.indexOf('#');
-    if (split != -1) {
-        baseName = skill_name.left(split);
-        instanceId = skill_name.mid(split + 1).toInt();
-    }
+    QString baseName;
+    int queryInstanceId = SkillInstanceUtils::parseName(skill_name, baseName);
 
-    if(skills.contains(baseName)){
-        if(include_lose) return true;
-        const Skill *skill = Sanguosha->getSkill(baseName);
-        if(skill) {
-            bool valid = true;
-            if (skill->isAttachedLordSkill()||skill->property("IgnoreInvalidity").toBool()||!skill->isVisible()) {
-                valid = true;
-            } else {
-                bool locked = Sanguosha->getLuaMutex().tryLock();
-                if (!locked) {
-                    if (inherits("ClientPlayer")) {
-                        QMutexLocker locker(&m_skillCacheMutex);
-                        return m_skillValidityCache.value(baseName, true);
-                    }
-                    Sanguosha->getLuaMutex().lock();
-                    locked = true;
-                }
-                valid = Sanguosha->correctSkillValidity(this, skill);
-                if (locked) Sanguosha->getLuaMutex().unlock();
-            }
-            QMutexLocker locker(&m_skillCacheMutex);
-            m_skillValidityCache[baseName] = valid;
-            return valid;
-        }
-    }
-
-    bool hasAcquired = false;
-    if (instanceId > 0) {
-        hasAcquired = acquired_skills.contains(skill_name);
+    // 先從 SSOT m_skillInstances 查詢持有
+    bool ownsViaInstances = false;
+    if (queryInstanceId > 0) {
+        ownsViaInstances = hasSkillInstance(baseName, queryInstanceId);
     } else {
-        foreach (const QString &acquired, acquired_skills) {
-            QString aBase = acquired;
-            int aSplit = acquired.indexOf('#');
-            if (aSplit != -1)
-                aBase = acquired.left(aSplit);
-            if (aBase == baseName) {
-                hasAcquired = true;
+        ownsViaInstances = m_skillInstances.contains(baseName) && !m_skillInstances[baseName].isEmpty();
+    }
+
+    if (!ownsViaInstances) return false;
+    if (include_lose) return true;
+
+    const Skill *skill = Sanguosha->getSkill(baseName);
+    if (!skill) return false;
+
+    bool valid = false;
+    if (skill->isAttachedLordSkill() || skill->property("IgnoreInvalidity").toBool() || !skill->isVisible()) {
+        valid = true;
+    } else if (inherits("ClientPlayer")) {
+        QMutexLocker locker(&m_skillCacheMutex);
+        return m_skillValidityCache.value(baseName, true);
+    } else if (queryInstanceId > 0) {
+        valid = !isSkillInvalid(skill, queryInstanceId);
+    } else {
+        foreach (int instanceId, getSkillInstanceIds(baseName)) {
+            if (!isSkillInvalid(skill, instanceId)) {
+                valid = true;
                 break;
             }
         }
     }
+    QMutexLocker locker(&m_skillCacheMutex);
+    m_skillValidityCache[baseName] = valid;
+    return valid;
+}
 
-    if (hasAcquired || property("pingjian_triggerskill").toString() == baseName) {
-        if (include_lose) return true;
-        const Skill *skill = Sanguosha->getSkill(baseName);
-        if (skill) {
-            bool valid = true;
-            if (skill->isAttachedLordSkill()||skill->property("IgnoreInvalidity").toBool()||!skill->isVisible()) {
-                valid = true;
-            } else {
-                bool locked = Sanguosha->getLuaMutex().tryLock();
-                if (!locked) {
-                    if (inherits("ClientPlayer")) {
-                        QMutexLocker locker(&m_skillCacheMutex);
-                        return m_skillValidityCache.value(baseName, true);
-                    }
-                    Sanguosha->getLuaMutex().lock();
-                    locked = true;
-                }
-                valid = Sanguosha->correctSkillValidity(this, skill);
-                if (locked) Sanguosha->getLuaMutex().unlock();
-            }
-            QMutexLocker locker(&m_skillCacheMutex);
-            m_skillValidityCache[baseName] = valid;
-            return valid;
-        }
-    }
+bool Player::ownsSkill(const QString &skill_name) const
+{
+    if (skill_name.isEmpty()) return false;
 
-    return false;
+    QString baseName;
+    int queryInstanceId = SkillInstanceUtils::parseName(skill_name, baseName);
+
+    if (queryInstanceId > 0)
+        return hasSkillInstance(baseName, queryInstanceId);
+    return m_skillInstances.contains(baseName) && !m_skillInstances[baseName].isEmpty();
 }
 
 bool Player::hasSkill(const Skill *skill, bool include_lose) const
 {
     if (!skill) return false;
     if (skill->isLordSkill() && !hasLordSkill(skill->objectName())) return false;
-
-    if (isClientPlayer()) {
-        if (!m_skillValidityCache.value(skill->objectName(), true))
-            return false;
-
-        if (include_lose)
-            return skills.contains(skill->objectName()) || acquired_skills.contains(skill->objectName());
-        else
-            return skills.contains(skill->objectName());
-    }
-
-    if (!include_lose && !skills.contains(skill->objectName())) return false;
-    if (include_lose && !skills.contains(skill->objectName()) && !acquired_skills.contains(skill->objectName())) return false;
-
-    if (Sanguosha->correctSkillValidity(this, skill))
-        return true;
-
-    return false;
+    return hasSkill(skill->objectName(), include_lose);
 }
 
 bool Player::hasSkills(const QString &skill_name, bool include_lose) const
@@ -589,10 +544,19 @@ bool Player::hasSkills(const QString &skill_name, bool include_lose) const
 
 bool Player::hasInnateSkill(const QString &skill_name) const
 {
-    if (general && general->hasSkill(skill_name))
-        return true;
-
-    return general2 && general2->hasSkill(skill_name);
+    QString baseName;
+    int instanceId = SkillInstanceUtils::parseName(skill_name, baseName);
+    auto outerIt = m_skillInstances.constFind(baseName);
+    if (outerIt == m_skillInstances.constEnd()) return false;
+    if (instanceId > 0) {
+        auto innerIt = outerIt->constFind(instanceId);
+        return innerIt != outerIt->constEnd() && innerIt.value().source == SourceInnate;
+    }
+    for (auto innerIt = outerIt->constBegin(); innerIt != outerIt->constEnd(); ++innerIt) {
+        if (innerIt.value().source == SourceInnate)
+            return true;
+    }
+    return false;
 }
 
 bool Player::hasInnateSkill(const Skill *skill) const
@@ -614,7 +578,7 @@ bool Player::hasLordSkill(const QString &skill_name, bool include_lose) const
 					return true;
 			}
 		}
-		return acquired_skills.contains(skill_name)&&hasSkill(skill_name,include_lose);
+		return ownsSkill(skill_name)&&hasSkill(skill_name,include_lose);
 	}
 }
 
@@ -623,21 +587,19 @@ bool Player::hasLordSkill(const Skill *skill, bool include_lose) const
     return skill&&hasLordSkill(skill->objectName(), include_lose);
 }
 
-bool Player::isSkillInvalid(const Skill *skill) const
+bool Player::isSkillInvalid(const Skill *skill, int instanceId) const
 {
     if (!skill) return false;
 
     if (skill->property("IgnoreInvalidity").toBool())
         return false;
 
+    if (!Sanguosha->correctSkillValidity(this, skill))
+        return true;
+
     QStringList records = this->tag["SkillInvalidityRecords"].toStringList();
-    if (records.isEmpty()) {
-        bool valid = Sanguosha->correctSkillValidity(this, skill);
-        return !valid;
-    }
 
     QString skillObjName = skill->objectName();
-    int skillInstanceId = skill->getInstanceId();
     bool isEquip = skill->isEquipSkill();
 
     foreach (const QString &record, records) {
@@ -645,25 +607,16 @@ bool Player::isSkillInvalid(const Skill *skill) const
         if (parts.size() < 3) continue;
 
         QString invalidRecord = parts.at(0);
-        QString recordSkillName = invalidRecord;
-        int recordInstanceId = 0;
-
-        int split = invalidRecord.indexOf('#');
-        if (split != -1) {
-            recordInstanceId = invalidRecord.mid(split + 1).toInt();
-            recordSkillName = invalidRecord.left(split);
-        }
+        QString recordSkillName;
+        int recordInstanceId = SkillInstanceUtils::parseName(invalidRecord, recordSkillName);
 
         if (recordSkillName == "all" && !isEquip) {
-            bool valid = Sanguosha->correctSkillValidity(this, skill);
-            return !valid;
+            return true;
         }
 
         if (recordSkillName == skillObjName) {
-            if (recordInstanceId == 0 || recordInstanceId == skillInstanceId) {
-                bool valid = Sanguosha->correctSkillValidity(this, skill);
-                return !valid;
-            }
+            if (recordInstanceId == 0 || instanceId == recordInstanceId)
+                return true;
         }
     }
 
@@ -674,51 +627,58 @@ bool Player::isSkillInvalid(const QString &skill_name, int instanceId) const
 {
     const Skill *skill = Sanguosha->getSkill(skill_name);
     if (!skill) return false;
+    return isSkillInvalid(skill, instanceId);
+}
 
-    if (instanceId > 0) {
-        skill = Sanguosha->getTriggerSkill(skill_name, instanceId);
-        if (!skill) return false;
+int Player::acquireSkill(const QString &skill_name, bool head, int instanceId)
+{
+    int lastId = m_nextSkillInstanceIds.value(skill_name, 0);
+    if (instanceId <= lastId || hasSkillInstance(skill_name, instanceId)) {
+        instanceId = createSkillInstance(skill_name, SourceAcquired, true);
+    } else {
+        m_nextSkillInstanceIds[skill_name] = instanceId;
+        m_skillInstances[skill_name][instanceId] = SkillInstance();
     }
 
-    return isSkillInvalid(skill);
-}
+    SkillInstance &inst = m_skillInstances[skill_name][instanceId];
+    inst.skillName = skill_name;
+    inst.instanceID = instanceId;
+    inst.source = SourceAcquired;
+    inst.parent = SkillInstanceKey();
+    inst.visible = true;
+    inst.state = QVariantMap();
+    inst.bindHead = head ? 1 : 2;
 
-void Player::acquireSkill(const QString &skill_name)
-{
-    acquireSkill(skill_name, 0);
-}
+    if (instanceId > m_nextSkillInstanceIds.value(skill_name, 0))
+        m_nextSkillInstanceIds[skill_name] = instanceId;
 
-void Player::acquireSkill(const QString &skill_name, int instanceId)
-{
-    QString name = skill_name;
-    if (instanceId > 0)
-        name = QString("%1#%2").arg(skill_name).arg(instanceId);
-    if(acquired_skills.contains(name)) return;
-    acquired_skills << name;
-}
+    QString formatted = SkillInstanceUtils::formatName(skill_name, instanceId);
+    if (!acquired_skills.contains(formatted))
+        acquired_skills << formatted;
 
-void Player::acquireSkill(const QString &skill_name, bool head, int instanceId)
-{
-    QString name = skill_name;
-    if (instanceId > 0)
-        name = QString("%1#%2").arg(skill_name).arg(instanceId);
-    
     QSet<QString> &targetSet = head ? head_acquired_skills : deputy_acquired_skills;
-    targetSet.insert(name);
+    targetSet.insert(formatted);
+
+    return instanceId;
 }
 
 void Player::detachSkill(const QString &skill_name)
 {
-    int split = skill_name.indexOf('#');
-    if (split == -1) {
+    QString base;
+    int instId = SkillInstanceUtils::parseName(skill_name, base);
+    if (instId == 0) {
+        // 移除該名稱全部實例（SSOT + 舊容器一致）
+        m_skillInstances.remove(skill_name);
         QString prefix = skill_name + "#";
-        for (int i = 0; i < acquired_skills.size(); ++i) {
-            if (acquired_skills[i] == skill_name || acquired_skills[i].startsWith(prefix)) {
-                acquired_skills.removeAt(i);
-                return;
-            }
+        QStringList toRemove;
+        foreach (const QString &s, acquired_skills) {
+            if (s == skill_name || s.startsWith(prefix))
+                toRemove << s;
         }
+        foreach (const QString &s, toRemove)
+            acquired_skills.removeOne(s);
     } else {
+        removeSkillInstance(base, instId);
         acquired_skills.removeOne(skill_name);
     }
 }
@@ -726,9 +686,12 @@ void Player::detachSkill(const QString &skill_name)
 void Player::detachSkill(const QString &skill_name, bool head)
 {
     QSet<QString> &targetSet = head ? head_acquired_skills : deputy_acquired_skills;
-    
-    int split = skill_name.indexOf('#');
-    if (split == -1) {
+
+    QString base;
+    int instId = SkillInstanceUtils::parseName(skill_name, base);
+    if (instId == 0) {
+        // 移除該名稱全部實例（SSOT + 舊容器一致）
+        m_skillInstances.remove(skill_name);
         QString prefix = skill_name + "#";
         QStringList toRemove;
         foreach (const QString &s, targetSet) {
@@ -737,20 +700,37 @@ void Player::detachSkill(const QString &skill_name, bool head)
         }
         foreach (const QString &s, toRemove)
             targetSet.remove(s);
+        // 也從 acquired_skills 清同名全部
+        QStringList toRemove2;
+        foreach (const QString &s, acquired_skills) {
+            if (s == skill_name || s.startsWith(prefix))
+                toRemove2 << s;
+        }
+        foreach (const QString &s, toRemove2)
+            acquired_skills.removeOne(s);
     } else {
+        removeSkillInstance(base, instId);
         targetSet.remove(skill_name);
     }
 }
 
 void Player::detachAllSkills()
 {
+    m_skillInstances.clear();
+    // 不清除 m_nextSkillInstanceIds：ID 永不重用
     acquired_skills.clear();
+    head_acquired_skills.clear();
+    deputy_acquired_skills.clear();
 }
 
 void Player::addSkill(const QString &skill_name)
 {
-    if(skills.contains(skill_name)) return;
-    skills << skill_name;
+    if (!skills.contains(skill_name))
+        skills << skill_name;
+    // 每次加入都建立新的原生實例（主將／副將同名技能各自獨立）
+    int parentId = createSkillInstance(skill_name, SourceInnate, true);
+    foreach (const Skill *related, Sanguosha->getRelatedSkills(skill_name))
+        createSkillInstance(related->objectName(), SourceHelper, skill_name, parentId, related->isVisible());
 }
 
 void Player::addSkill(const QString &skill_name, bool head_skill)
@@ -766,11 +746,36 @@ void Player::addSkill(const QString &skill_name, bool head_skill)
     } else {
         deputy_skills[skill_name] = !skill->canPreshow() || general2_showed;
     }
+
+    // 每次加入都建立新的原生實例（主將／副將同名技能各自獨立）
+    int newId = createSkillInstance(skill_name, SourceInnate, true);
+    m_skillInstances[skill_name][newId].bindHead = head_skill ? 1 : 2;
+    foreach (const Skill *related, Sanguosha->getRelatedSkills(skill_name)) {
+        int helperId = createSkillInstance(related->objectName(), SourceHelper,
+                                           skill_name, newId, related->isVisible());
+        m_skillInstances[related->objectName()][helperId].bindHead = head_skill ? 1 : 2;
+    }
 }
 
 void Player::loseSkill(const QString &skill_name)
 {
     skills.removeOne(skill_name);
+    // 移除一個原生實例（source=SourceInnate, ID 最小者）
+    auto outerIt = m_skillInstances.find(skill_name);
+    if (outerIt == m_skillInstances.end()) return;
+    int targetId = -1;
+    for (auto it = outerIt->constBegin(); it != outerIt->constEnd(); ++it) {
+        if (it.value().source == SourceInnate) {
+            if (targetId == -1 || it.key() < targetId)
+                targetId = it.key();
+        }
+    }
+    if (targetId > 0) {
+        QList<SkillInstanceKey> children = getChildSkillInstanceKeys(SkillInstanceKey(skill_name, targetId));
+        removeSkillInstance(skill_name, targetId);
+        foreach (const SkillInstanceKey &child, children)
+            removeSkillInstance(child.skillName, child.instanceID);
+    }
 }
 
 void Player::loseSkill(const QString &skill_name, bool head)
@@ -779,6 +784,23 @@ void Player::loseSkill(const QString &skill_name, bool head)
         head_skills.remove(skill_name);
     else
         deputy_skills.remove(skill_name);
+    // 依 bindHead 移除對應主將／副將的原生實例
+    auto outerIt = m_skillInstances.find(skill_name);
+    if (outerIt == m_skillInstances.end()) return;
+    int targetBind = head ? 1 : 2;
+    int targetId = -1;
+    for (auto it = outerIt->constBegin(); it != outerIt->constEnd(); ++it) {
+        if (it.value().source == SourceInnate && it.value().bindHead == targetBind) {
+            if (targetId == -1 || it.key() < targetId)
+                targetId = it.key();
+        }
+    }
+    if (targetId > 0) {
+        QList<SkillInstanceKey> children = getChildSkillInstanceKeys(SkillInstanceKey(skill_name, targetId));
+        removeSkillInstance(skill_name, targetId);
+        foreach (const SkillInstanceKey &child, children)
+            removeSkillInstance(child.skillName, child.instanceID);
+    }
 }
 
 QString Player::getPhaseString() const
@@ -1039,7 +1061,8 @@ bool Player::viewAsEquip(const QString &equip_name) const
     }
 
     bool ret = false;
-    foreach(QString skill_name, skills + acquired_skills){
+	for (auto outerIt = m_skillInstances.constBegin(); outerIt != m_skillInstances.constEnd(); ++outerIt) {
+		const QString &skill_name = outerIt.key();
 		const ViewAsEquipSkill *vaes = Sanguosha->getViewAsEquipSkill(skill_name);
 		if(vaes==nullptr) continue;
 		view = vaes->viewAsEquip(this);
@@ -1147,7 +1170,8 @@ bool Player::hasArmorEffect(const QString &armor_name, const Player *sourcePlaye
 				return true;
 		}
 		QStringList view_as_equips = property("View_As_Equips_List").toString().split("+");
-		foreach(QString skill_name,skills+acquired_skills){
+		for (auto outerIt = m_skillInstances.constBegin(); outerIt != m_skillInstances.constEnd(); ++outerIt) {
+			const QString &skill_name = outerIt.key();
 			const ViewAsEquipSkill *vaes = Sanguosha->getViewAsEquipSkill(skill_name);
 			if(vaes==nullptr) continue;
 			QString cns = vaes->viewAsEquip(this);
@@ -1679,16 +1703,17 @@ bool Player::hasEquipSkill(const QString &skill_name) const
 			equipsName.append(ec->objectName());
 		}
 	}
-    return equipsName.contains(skill_name)&&(acquired_skills.contains(skill_name)||viewAsEquip(skill_name));
+    return equipsName.contains(skill_name) && (ownsSkill(skill_name) || viewAsEquip(skill_name));
 }
 
 QSet<const TriggerSkill *> Player::getTriggerSkills() const
 {
     QSet<const TriggerSkill *> skillList;
-    foreach(QString skill_name, skills + acquired_skills){
-        if(hasEquipSkill(skill_name)) continue;
-		const TriggerSkill *skill = Sanguosha->getTriggerSkill(skill_name);
-        if (skill) skillList << skill;
+    for (auto outerIt = m_skillInstances.constBegin(); outerIt != m_skillInstances.constEnd(); ++outerIt) {
+        const QString &baseName = outerIt.key();
+        if (hasEquipSkill(baseName)) continue;
+        const TriggerSkill *trigger = Sanguosha->getTriggerSkill(baseName);
+        if (trigger) skillList << trigger;
     }
     return skillList;
 }
@@ -1702,11 +1727,16 @@ QSet<const Skill *> Player::getSkills(bool include_equip, bool visible_only) con
 QList<const Skill *> Player::getSkillList(bool include_equip, bool visible_only) const
 {
     QList<const Skill *> skillList;
-    foreach(QString skill_name, skills + acquired_skills){
-        if(!include_equip&&hasEquipSkill(skill_name)) continue;
-		const Skill *skill = Sanguosha->getSkill(skill_name);
-		if(skill==nullptr||(visible_only&&!skill->isVisible())) continue;
+    QSet<QString> added;
+    // 從 SSOT m_skillInstances 派生（已解析 baseName）
+    for (auto outerIt = m_skillInstances.constBegin(); outerIt != m_skillInstances.constEnd(); ++outerIt) {
+        const QString &baseName = outerIt.key();
+        if (!include_equip && hasEquipSkill(baseName)) continue;
+        if (added.contains(baseName)) continue;
+        const Skill *skill = Sanguosha->getSkill(baseName);
+        if (skill == nullptr || (visible_only && !skill->isVisible())) continue;
         skillList << skill;
+        added.insert(baseName);
     }
     return skillList;
 }
@@ -1724,7 +1754,324 @@ QList<const Skill *> Player::getVisibleSkillList(bool include_equip) const
 
 QStringList Player::getAcquiredSkills() const
 {
-    return acquired_skills;
+    QStringList result;
+    for (auto outerIt = m_skillInstances.constBegin(); outerIt != m_skillInstances.constEnd(); ++outerIt) {
+        for (auto innerIt = outerIt->constBegin(); innerIt != outerIt->constEnd(); ++innerIt) {
+            if (innerIt.value().source == SourceAcquired)
+                result << SkillInstanceUtils::formatName(outerIt.key(), innerIt.key());
+        }
+    }
+    return result;
+}
+
+QStringList Player::getSkillNames() const
+{
+    QStringList names;
+    for (auto outerIt = m_skillInstances.constBegin(); outerIt != m_skillInstances.constEnd(); ++outerIt) {
+        for (auto innerIt = outerIt->constBegin(); innerIt != outerIt->constEnd(); ++innerIt) {
+            names << SkillInstanceUtils::formatName(outerIt.key(), innerIt.key());
+        }
+    }
+    return names;
+}
+
+bool Player::hasAcquiredSkill(const QString &skill_name) const
+{
+    QString baseName;
+    int instanceId = SkillInstanceUtils::parseName(skill_name, baseName);
+    auto outerIt = m_skillInstances.constFind(baseName);
+    if (outerIt == m_skillInstances.end()) return false;
+    if (instanceId > 0) {
+        auto innerIt = outerIt->constFind(instanceId);
+        return innerIt != outerIt->constEnd() && innerIt.value().source == SourceAcquired;
+    }
+    for (auto innerIt = outerIt->constBegin(); innerIt != outerIt->constEnd(); ++innerIt) {
+        if (innerIt.value().source == SourceAcquired)
+            return true;
+    }
+    return false;
+}
+
+int Player::getSkillInstanceId(const QString &skill_name) const
+{
+    QString baseName;
+    int instanceId = SkillInstanceUtils::parseName(skill_name, baseName);
+    auto outerIt = m_skillInstances.constFind(baseName);
+    if (outerIt == m_skillInstances.end()) return 0;
+    if (instanceId > 0)
+        return outerIt->contains(instanceId) ? instanceId : 0;
+    if (outerIt->isEmpty()) return 0;
+    return outerIt->firstKey();
+}
+
+QList<int> Player::getSkillInstanceIds(const QString &skill_name) const
+{
+    QList<int> result;
+    QString baseName;
+    int instanceId = SkillInstanceUtils::parseName(skill_name, baseName);
+    auto outerIt = m_skillInstances.constFind(baseName);
+    if (outerIt != m_skillInstances.end()) {
+        if (instanceId > 0) {
+            if (outerIt->contains(instanceId))
+                result << instanceId;
+            return result;
+        }
+        for (auto it = outerIt->constBegin(); it != outerIt->constEnd(); ++it)
+            result << it.key();
+    }
+    return result;
+}
+
+QList<int> Player::getValidSkillInstanceIds(const QString &skill_name) const
+{
+    QList<int> result;
+    QString baseName = SkillInstanceUtils::baseName(skill_name);
+    QList<int> ids = getSkillInstanceIds(skill_name);
+    const Skill *skill = Sanguosha->getSkill(baseName);
+    if (!skill) {
+        return ids;
+    }
+    foreach (int id, ids) {
+        if (isSkillInvalid(skill, id)) continue;
+        result << id;
+    }
+    return result;
+}
+
+bool Player::hasSkillAmountOverride(const QString &skill_name, int instanceId) const
+{
+    if (instanceId <= 0)
+        return m_skillAmountOverride.contains(skill_name);
+    return m_skillAmountOverride.contains(QString("%1#%2").arg(skill_name).arg(instanceId));
+}
+
+int Player::getSkillAmountOverride(const QString &skill_name, int instanceId) const
+{
+    if (instanceId <= 0)
+        return m_skillAmountOverride.value(skill_name);
+    return m_skillAmountOverride.value(QString("%1#%2").arg(skill_name).arg(instanceId));
+}
+
+void Player::setSkillAmountOverride(const QString &skill_name, int amount, int instanceId)
+{
+    QString key = (instanceId <= 0) ? skill_name : QString("%1#%2").arg(skill_name).arg(instanceId);
+    m_skillAmountOverride.insert(key, amount);
+}
+
+void Player::removeSkillAmountOverride(const QString &skill_name, int instanceId)
+{
+    if (instanceId <= 0) {
+        m_skillAmountOverride.remove(skill_name);
+        // 同時移除所有單實例覆寫（全體覆寫被移除時，單實例也失去上層依據？依設計保留）
+        // 依方案 A：instanceID=0 為「全體覆寫」層，移除全體不影響已設的 #N 單實例覆寫
+    } else {
+        m_skillAmountOverride.remove(QString("%1#%2").arg(skill_name).arg(instanceId));
+    }
+}
+
+void Player::clearSkillAmountOverrides()
+{
+    m_skillAmountOverride.clear();
+}
+
+// ========================================
+// 技能多實例權威容器 (SSOT) API
+// ========================================
+int Player::createSkillInstance(const QString &skillName, SkillInstanceSource source, bool visible)
+{
+    return createSkillInstance(skillName, source, QString(), 0, visible);
+}
+
+int Player::createSkillInstance(const QString &skillName, SkillInstanceSource source, const QString &parentSkillName, int parentInstanceID, bool visible)
+{
+    int nextId = m_nextSkillInstanceIds.value(skillName, 0) + 1;
+    m_nextSkillInstanceIds[skillName] = nextId;
+
+    SkillInstance inst;
+    inst.skillName = skillName;
+    inst.instanceID = nextId;
+    inst.source = source;
+    inst.parent = SkillInstanceKey(parentSkillName, parentInstanceID);
+    inst.visible = visible;
+    inst.state = QVariantMap();
+
+    m_skillInstances[skillName][nextId] = inst;
+    return nextId;
+}
+
+bool Player::removeSkillInstance(const QString &skillName, int instanceID)
+{
+    if (instanceID <= 0) return false;
+    auto outerIt = m_skillInstances.find(skillName);
+    if (outerIt == m_skillInstances.end()) return false;
+    auto innerIt = outerIt->find(instanceID);
+    if (innerIt == outerIt->end()) return false;
+
+    SkillInstance removed = innerIt.value();
+    QString formatted = SkillInstanceUtils::formatName(skillName, instanceID);
+    outerIt->erase(innerIt);
+    bool noInstancesRemain = outerIt->isEmpty();
+    if (noInstancesRemain)
+        m_skillInstances.erase(outerIt);
+
+    acquired_skills.removeOne(formatted);
+    head_acquired_skills.remove(formatted);
+    deputy_acquired_skills.remove(formatted);
+    if (removed.source == SourceInnate) {
+        if (removed.bindHead == 1)
+            head_skills.remove(skillName);
+        else if (removed.bindHead == 2)
+            deputy_skills.remove(skillName);
+        bool innateRemains = false;
+        auto remaining = m_skillInstances.constFind(skillName);
+        if (remaining != m_skillInstances.constEnd()) {
+            for (auto it = remaining->constBegin(); it != remaining->constEnd(); ++it) {
+                if (it.value().source == SourceInnate) {
+                    innateRemains = true;
+                    break;
+                }
+            }
+        }
+        if (!innateRemains)
+            skills.removeOne(skillName);
+    }
+    return true;
+}
+
+bool Player::hasSkillInstance(const QString &skillName, int instanceID) const
+{
+    if (instanceID <= 0) return false;
+    auto outerIt = m_skillInstances.find(skillName);
+    if (outerIt == m_skillInstances.end()) return false;
+    return outerIt->contains(instanceID);
+}
+
+const SkillInstance *Player::findSkillInstance(const QString &skillName, int instanceID) const
+{
+    auto outerIt = m_skillInstances.find(skillName);
+    if (outerIt == m_skillInstances.end()) return nullptr;
+    auto innerIt = outerIt->find(instanceID);
+    if (innerIt == outerIt->end()) return nullptr;
+    return &innerIt.value();
+}
+
+QList<SkillInstanceKey> Player::getChildSkillInstanceKeys(const SkillInstanceKey &parent) const
+{
+    QList<SkillInstanceKey> result;
+    for (auto outerIt = m_skillInstances.constBegin(); outerIt != m_skillInstances.constEnd(); ++outerIt) {
+        for (auto innerIt = outerIt->constBegin(); innerIt != outerIt->constEnd(); ++innerIt) {
+            const SkillInstance &instance = innerIt.value();
+            if (instance.source == SourceHelper && instance.parent == parent)
+                result << instance.key();
+        }
+    }
+    return result;
+}
+
+QList<SkillInstance> Player::getSkillInstances() const
+{
+    QList<SkillInstance> result;
+    for (auto outerIt = m_skillInstances.constBegin(); outerIt != m_skillInstances.constEnd(); ++outerIt) {
+        for (auto innerIt = outerIt->constBegin(); innerIt != outerIt->constEnd(); ++innerIt)
+            result << innerIt.value();
+    }
+    return result;
+}
+
+void Player::clearSkillInstances()
+{
+    m_skillInstances.clear();
+    m_nextSkillInstanceIds.clear();
+    skills.clear();
+    acquired_skills.clear();
+    head_skills.clear();
+    deputy_skills.clear();
+    head_acquired_skills.clear();
+    deputy_acquired_skills.clear();
+}
+
+void Player::upsertSkillInstance(const SkillInstance &instance)
+{
+    if (instance.skillName.isEmpty() || instance.instanceID <= 0) return;
+    m_skillInstances[instance.skillName][instance.instanceID] = instance;
+    m_nextSkillInstanceIds[instance.skillName] = qMax(m_nextSkillInstanceIds.value(instance.skillName, 0),
+                                                      instance.instanceID);
+
+    QString formatted = SkillInstanceUtils::formatName(instance.skillName, instance.instanceID);
+    if (instance.source == SourceInnate) {
+        if (!skills.contains(instance.skillName))
+            skills << instance.skillName;
+        if (instance.bindHead == 1)
+            head_skills[instance.skillName] = instance.visible;
+        else if (instance.bindHead == 2)
+            deputy_skills[instance.skillName] = instance.visible;
+    } else if (instance.source == SourceAcquired) {
+        if (!acquired_skills.contains(formatted))
+            acquired_skills << formatted;
+        if (instance.bindHead == 1)
+            head_acquired_skills.insert(formatted);
+        else if (instance.bindHead == 2)
+            deputy_acquired_skills.insert(formatted);
+    }
+}
+
+QList<int> Player::getSkillInstanceIdsForName(const QString &skillName) const
+{
+    return getSkillInstanceIds(skillName);
+}
+
+void Player::setSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state)
+{
+    auto outerIt = m_skillInstances.find(skillName);
+    if (outerIt == m_skillInstances.end()) return;
+    auto innerIt = outerIt->find(instanceID);
+    if (innerIt == outerIt->end()) return;
+    innerIt.value().state = state;
+}
+
+QVariantMap Player::getSkillInstanceState(const QString &skillName, int instanceID) const
+{
+    auto outerIt = m_skillInstances.find(skillName);
+    if (outerIt == m_skillInstances.end()) return QVariantMap();
+    auto innerIt = outerIt->find(instanceID);
+    if (innerIt == outerIt->end()) return QVariantMap();
+    return innerIt.value().state;
+}
+
+void Player::removeSkillInstanceState(const QString &skillName, int instanceID)
+{
+    auto outerIt = m_skillInstances.find(skillName);
+    if (outerIt == m_skillInstances.end()) return;
+    auto innerIt = outerIt->find(instanceID);
+    if (innerIt == outerIt->end()) return;
+    innerIt.value().state.clear();
+}
+
+void Player::setSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &value)
+{
+    auto outerIt = m_skillInstances.find(skillName);
+    if (outerIt == m_skillInstances.end()) return;
+    auto innerIt = outerIt->find(instanceID);
+    if (innerIt == outerIt->end()) return;
+    innerIt.value().state[key] = value;
+}
+
+QVariant Player::getSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &defaultValue) const
+{
+    auto outerIt = m_skillInstances.find(skillName);
+    if (outerIt == m_skillInstances.end()) return defaultValue;
+    auto innerIt = outerIt->find(instanceID);
+    if (innerIt == outerIt->end()) return defaultValue;
+    return innerIt.value().state.value(key, defaultValue);
+}
+
+void Player::removeSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key)
+{
+    auto outerIt = m_skillInstances.find(skillName);
+    if (outerIt == m_skillInstances.end()) return;
+    auto innerIt = outerIt->find(instanceID);
+    if (innerIt == outerIt->end()) return;
+    innerIt.value().state.remove(key);
 }
 
 QString Player::getSkillDescription() const
@@ -1750,8 +2097,7 @@ QString Player::getSkillDescription() const
         QString desc = skill->getDescription(this);
 		{
 			// Use cached skill validity to avoid calling into Lua from UI thread
-			bool skillOwned = skills.contains(skill->objectName()) || acquired_skills.contains(skill->objectName())
-				|| property("pingjian_triggerskill").toString() == skill->objectName();
+			bool skillOwned = ownsSkill(skill->objectName());
 			bool skillValid = true;
 			if (skillOwned) {
 				if (!skill->isAttachedLordSkill() && !skill->property("IgnoreInvalidity").toBool() && skill->isVisible()) {
@@ -1966,6 +2312,8 @@ void Player::copyFrom(Player *p)
     piles = QMap<QString, QList<int> >(p->piles);
     general_piles = QMap<QString, QStringList>(p->general_piles);
     general_pile_open = QMap<QString, QStringList>(p->general_pile_open);
+    m_skillInstances = p->m_skillInstances;
+    m_nextSkillInstanceIds = p->m_nextSkillInstanceIds;
     acquired_skills = QStringList(p->acquired_skills);
     flags = QSet<QString>(p->flags);
     history = QHash<QString, int>(p->history);
@@ -2450,9 +2798,13 @@ void Player::sortHandCards(QList<int>hands)
 		handcards << Sanguosha->getCard(id);
 }
 
-void Player::setSkillDescriptionSwap(const QString &skill_name, const QString &key, const QString &value)
+void Player::setSkillDescriptionSwap(const QString &skill_name, const QString &key, const QString &value, int instanceId)
 {
-    QHash<QString, QString> swap = description_s2k2v[skill_name];
+    QString storageKey = skill_name;
+    if (instanceId > 0)
+        storageKey = QString("%1#%2").arg(skill_name).arg(instanceId);
+
+    QHash<QString, QString> swap = description_s2k2v[storageKey];
 	QString _value;
 	if(value.contains("+")){
 		foreach (QString v, value.split("+"))
@@ -2460,12 +2812,16 @@ void Player::setSkillDescriptionSwap(const QString &skill_name, const QString &k
 	}else
 		_value = Sanguosha->translate(value);
 	swap[key] = _value;
-	description_s2k2v[skill_name] = swap;
+	description_s2k2v[storageKey] = swap;
 }
 
-QHash<QString, QString> Player::getSkillDescriptionSwap(const QString &skill_name) const
+QHash<QString, QString> Player::getSkillDescriptionSwap(const QString &skill_name, int instanceId) const
 {
-    return description_s2k2v[skill_name];
+    QString storageKey = skill_name;
+    if (instanceId > 0)
+        storageKey = QString("%1#%2").arg(skill_name).arg(instanceId);
+
+    return description_s2k2v[storageKey];
 }
 
 const QMap<QString, QHash<QString, QString> > &Player::getAllSkillDescriptionSwaps() const
@@ -2670,12 +3026,15 @@ bool Player::inHeadSkills(const QString &skill_name) const
             return inHeadSkills(main_skill->objectName());
     }
     
-    if (general2 != nullptr) {
-        return head_skills.contains(skill_name) 
-            || head_acquired_skills.contains(skill_name);
+    QString baseName = SkillInstanceUtils::baseName(skill_name);
+
+    auto outerIt = m_skillInstances.find(baseName);
+    if (outerIt == m_skillInstances.end()) return false;
+    for (auto it = outerIt->constBegin(); it != outerIt->constEnd(); ++it) {
+        if (it.value().bindHead == 1)
+            return true;
     }
-    
-    return skills.contains(skill_name) || acquired_skills.contains(skill_name);
+    return false;
 }
 
 bool Player::inDeputySkills(const QString &skill_name) const
@@ -2691,8 +3050,14 @@ bool Player::inDeputySkills(const QString &skill_name) const
             return inDeputySkills(main_skill->objectName());
     }
     
-    return deputy_skills.contains(skill_name) 
-        || deputy_acquired_skills.contains(skill_name);
+    QString baseName = SkillInstanceUtils::baseName(skill_name);
+    auto outerIt = m_skillInstances.find(baseName);
+    if (outerIt == m_skillInstances.end()) return false;
+    for (auto it = outerIt->constBegin(); it != outerIt->constEnd(); ++it) {
+        if (it.value().bindHead == 2)
+            return true;
+    }
+    return false;
 }
 
 void Player::setSkillPreshowed(const QString &skill, bool preshowed)
@@ -2734,9 +3099,9 @@ bool Player::hasPreshowedSkill(const Skill *skill) const
 
 bool Player::hasShownSkill(const QString &skill_name) const
 {
-    if (general_showed && head_skills.contains(skill_name))
+    if (general_showed && inHeadSkills(skill_name))
         return true;
-    if (general2_showed && deputy_skills.contains(skill_name))
+    if (general2_showed && inDeputySkills(skill_name))
         return true;
     return false;
 }

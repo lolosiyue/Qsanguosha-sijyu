@@ -217,6 +217,7 @@ public:
     void revealGeneral(const QVariant &);
 
     void attachSkill(const QVariant &skill);
+    void syncSkillInstances(const QVariant &payload);
     void updateSkill(const QVariant &args);
 
     inline RoomState *getRoomState()
@@ -404,6 +405,7 @@ signals:
 
     void skill_attached(const ClientPlayer *player, const QString &skill_name);
     void skill_detached(const ClientPlayer *player, const QString &skill_name);
+    void skill_instances_reset();
     void do_filter();
 
     void nullification_asked(bool asked);

@@ -226,13 +226,16 @@ private:
     void godLottery(QStringList &) const;
 	void godLottery(QSet<QString> &) const;
     QList<const Skill *> getSafeSkills() const;
+    // 對 InstanceStackable=true 的技能，依 holder 身上的同名有效實例數疊加貢獻。
+    // native = 技能原生 getXxx() 一次回傳值。
+    // 逐有效實例求 modified_amount（單實例覆寫 > 全體覆寫 > native）後求和。
+    int sumSkillContribution(const Player *holder, const Skill *skill, int native) const;
     mutable QReadWriteLock m_rwLock;
     QHash<QString, QString> translations, engine_translations;
     QHash<QString, const General *> generals, available_generals;
     QHash<QString, const QMetaObject *> metaobjects;
     //QHash<QString, QString> className2objectName;
     QHash<QString, QPointer<Skill>> skills;
-    QMap<QPair<QString, int>, const TriggerSkill*> m_triggerSkillsByInstance;
     QHash<QThread *, QObject *> m_rooms;
     mutable QMutex m_mutex;
     QMap<QString, GameModeStruct> modes;

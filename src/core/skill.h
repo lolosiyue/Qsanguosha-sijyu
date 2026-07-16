@@ -81,7 +81,7 @@ public:
     bool isShiMingSkill() const;
     virtual bool canPreshow() const;
     virtual bool shouldBeVisible(const Player *Self) const;
-    QString getDescription(const Player *target = nullptr) const;
+    QString getDescription(const Player *target = nullptr, int instanceId = 0) const;
     QString getOracleText(const Player *target = nullptr) const;
     QString getNotice(int index) const;
     bool isVisible() const;
@@ -93,13 +93,13 @@ public:
     void playAudioEffect(int index = -1, bool superpose = true) const;
     virtual Frequency getFrequency(const Player *target = nullptr) const;
     QString getLimitMark() const;
-    int getInstanceId() const { return m_instanceId; }
-    static int getGlobalInstanceCount() { return m_globalInstanceCount; }
+
     QString getClubName() const;
     QString getClubMark() const;
     QString getWakedSkills() const;
     QStringList getSources(const QString &general, const int skinId) const;
     QStringList getSources() const;
+    QStringList getSources(const QString &generalName, int skinIndex) const;
     bool setProperty(const char* name, const QVariant& value);
 
     virtual LimitScope getLimitScope() const;
@@ -135,11 +135,6 @@ private:
     int m_instanceId;
     static int m_globalInstanceCount;
 };
-
-inline int Skill_getInstanceId(const Skill *skill)
-{
-    return skill ? skill->getInstanceId() : 0;
-}
 
 class ViewAsSkill : public Skill
 {

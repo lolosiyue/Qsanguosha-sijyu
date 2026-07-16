@@ -991,3 +991,14 @@ end
 function sgs.GetCardActionButtonCallback(key)
 	return sgs._card_action_callbacks[key]
 end
+
+-- Safe append function to prevent nil skill errors
+local originalSkillListAppend = sgs.SkillList.append
+sgs.SkillList.append = function(self, skill)
+	if skill then
+		originalSkillListAppend(self, skill)
+	else
+		print("Warning: Attempted to append nil skill to SkillList")
+		print(debug.traceback())
+	end
+end
