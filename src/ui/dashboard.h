@@ -10,6 +10,8 @@
 #include "protocol.h"
 //#include "timed-progressbar.h"
 #include "generic-cardcontainer-ui.h"
+
+Q_DECLARE_METATYPE(QList<int>)
 //#include "pixmapanimation.h"
 //#include "sprite.h"
 //#include "util.h"
@@ -302,6 +304,7 @@ protected:
     QList<CardItem *> pendings;
     const Card *pending_card;
     const ViewAsSkill *view_as_skill;
+    int m_viewAsSkillInstanceID;
     const FilterSkill *filter;
     QMap<QString, QList<int> > _m_pile_expanded;
 

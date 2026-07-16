@@ -6,15 +6,13 @@
 #include "clientplayer.h"
 #include "clientstruct.h"
 #include "exppattern.h"
+#include "skill-instance-utils.h"
 #include <src/util/ThreadSafeHelper.h>
 #include <QDebug>
 
-int Skill::m_globalInstanceCount = 0;
-
 Skill::Skill(const QString &name, Frequency frequency)
     : frequency(frequency), attached_lord_skill(name.endsWith("&")), change_skill(false),
-	hide_skill(false), shiming_skill(false), lord_skill(name.endsWith("$")),
-	m_instanceId(++m_globalInstanceCount)
+	hide_skill(false), shiming_skill(false), lord_skill(name.endsWith("$"))
 {
     limited_skill = frequency == Limited;
     QString copy = name;
@@ -74,7 +72,7 @@ bool Skill::isEquipSkill() const
     return false;
 }
 
-QString Skill::getDescription(const Player *target) const
+QString Skill::getDescription(const Player *target, int instanceId) const
 {
 	QString des_src;
 	if(ServerInfo.DuringGame && isNormalGameMode(ServerInfo.GameMode))
@@ -83,10 +81,11 @@ QString Skill::getDescription(const Player *target) const
 		des_src = Sanguosha->translate(":"+objectName());
 
 	if (target){
-		QString data = target->property(("changeTranslation"+objectName()).toStdString().c_str()).toString();
+		QString propKey = instanceId > 0 ? QString("changeTranslation%1#%2").arg(objectName()).arg(instanceId) : QString("changeTranslation"+objectName());
+		QString data = target->property(propKey.toStdString().c_str()).toString();
 		if(data.length()==1) des_src = Sanguosha->translate(":"+objectName()+data);
 		else if(data.length()>1) des_src = QByteArray::fromBase64(data.toLatin1());
-		QHash<QString, QString> swap = target->getSkillDescriptionSwap(objectName());
+		QHash<QString, QString> swap = target->getSkillDescriptionSwap(objectName(), instanceId);
 		foreach (QString key, swap.keys())
 			des_src.replace(key, swap[key]);
 	}
@@ -306,6 +305,38 @@ QString Skill::getWakedSkills() const
     return waked_skills;
 }
 
+QStringList Skill::getSources(const QString &general, const int skinId) const
+{
+    if (skinId == 0)
+        return sources;
+
+    const QString key = QString("%1_%2")
+            .arg(QString::number(skinId))
+            .arg(general);
+
+    if (skinSourceHash.contains(key))
+        return skinSourceHash[key];
+
+    for (int i = 1;; ++i) {
+        QString effectFile = QString("hero-skin/%1/%2/%3%4.ogg")
+                .arg(general).arg(QString::number(skinId))
+                .arg(objectName()).arg(QString::number(i));
+        if (QFile::exists(effectFile))
+            skinSourceHash[key] << effectFile;
+        else
+            break;
+    }
+
+    if (skinSourceHash[key].isEmpty()) {
+        QString effectFile = QString("hero-skin/%1/%2/%3.ogg")
+                .arg(general).arg(QString::number(skinId)).arg(objectName());
+        if (QFile::exists(effectFile))
+            skinSourceHash[key] << effectFile;
+    }
+
+    return skinSourceHash[key].isEmpty() ? sources : skinSourceHash[key];
+}
+
 QStringList Skill::getSources() const
 {
     return sources;
@@ -364,6 +395,89 @@ const ViewAsSkill *ViewAsSkill::parseViewAsSkill(const Skill *skill)
 		if (skill->inherits("TriggerSkill"))
 			return qobject_cast<const TriggerSkill *>(skill)->getViewAsSkill();
 	}
+    return nullptr;
+}
+
+ActiveSkillV2::ActiveSkillV2(const QString &name)
+    : ViewAsSkill(name)
+{
+}
+
+bool ActiveSkillV2::canActivate(const ActiveSkillRequest &) const
+{
+    return false;
+}
+
+bool ActiveSkillV2::canSelectCard(const ActiveSkillRequest &, const Card *) const
+{
+    return false;
+}
+
+bool ActiveSkillV2::cardSelectionFeasible(const ActiveSkillRequest &) const
+{
+    return false;
+}
+
+const Card *ActiveSkillV2::createCard(const ActiveSkillRequest &request) const
+{
+	ActiveSkillCard *card = new ActiveSkillCard;
+	card->setActiveSkill(this);
+	card->setSkillName(objectName());
+	card->addSubcards(request.selectedCardIds);
+	card->setUserString(request.userString);
+	return card;
+}
+
+bool ActiveSkillV2::willThrowSelectedCards() const
+{
+    return true;
+}
+
+bool ActiveSkillV2::cost(Room *, SkillContext &, const ActiveSkillRequest &) const
+{
+    return true;
+}
+
+bool ActiveSkillV2::pay(Room *room, SkillContext &context, const ActiveSkillRequest &request) const
+{
+    if (!qobject_cast<const ActiveSkillCard *>(context.use_card)
+        || !willThrowSelectedCards() || request.selectedCardIds.isEmpty())
+        return true;
+    ServerPlayer *initiator = const_cast<ServerPlayer *>(dynamic_cast<const ServerPlayer *>(request.initiator));
+    if (!room || !initiator) return false;
+
+    foreach (int id, request.selectedCardIds) {
+        const Player::Place place = room->getCardPlace(id);
+        if (room->getCardOwner(id) != initiator
+            || (place != Player::PlaceHand && place != Player::PlaceEquip))
+            return false;
+    }
+
+    CardMoveReason reason(CardMoveReason::S_REASON_THROW, initiator->objectName(), objectName(), QString());
+    room->throwCard(request.selectedCardIds, reason, initiator);
+    return true;
+}
+
+QString ActiveSkillV2::historyKey(const ActiveSkillRequest &) const
+{
+    return objectName();
+}
+
+ActiveSkillV2::TargetMode ActiveSkillV2::targetMode() const { return SelectTargets; }
+bool ActiveSkillV2::canSelectTarget(const ActiveSkillRequest &, const QList<const Player *> &, const Player *) const { return false; }
+bool ActiveSkillV2::targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &) const { return false; }
+ActiveSkillV2::TargetEffectMode ActiveSkillV2::targetEffectMode() const { return EachTarget; }
+ActiveSkillV2::EffectFlow ActiveSkillV2::effect(SkillContext &) const { return ContinueEffects; }
+ActiveSkillV2::EffectFlow ActiveSkillV2::effectOnTarget(SkillContext &, ServerPlayer *) const { return ContinueEffects; }
+ActiveSkillV2::EffectFlow ActiveSkillV2::effectOnTargetGroup(SkillContext &, const QList<ServerPlayer *> &) const { return ContinueEffects; }
+
+bool ActiveSkillV2::viewFilter(const QList<const Card *> &, const Card *) const
+{
+    return false;
+}
+
+const Card *ActiveSkillV2::viewAs(const QList<const Card *> &) const
+{
     return nullptr;
 }
 
@@ -691,10 +805,10 @@ QString TriggerV2Skill::parseSkillName(const QString &fullName, QString *source,
         name = name.left(split);
     }
 
-    if ((split = name.indexOf('#')) != -1) {
-        if (instanceId) *instanceId = name.mid(split + 1).toInt();
-        name = name.left(split);
-    }
+    QString baseName;
+    int parsedInstanceId = SkillInstanceUtils::parseName(name, baseName);
+    if (instanceId) *instanceId = parsedInstanceId;
+    name = baseName;
 
     if (name.contains("'")) {
         QStringList parts = name.split("'");
@@ -1082,7 +1196,6 @@ void Skill::resetUsage(ServerPlayer *owner, ServerPlayer *) const
 
     SkillContext ctx;
     ctx.invoker = owner;
-    ctx.instanceID = m_instanceId;
 
     LimitScope scope = getLimitScope();
     if (scope == Limit_None || scope == Limit_Custom) return;
@@ -1105,7 +1218,7 @@ ServerPlayer *Skill::getUsageHolder(const SkillContext &ctx) const
 QString Skill::getUsageTagKey(const SkillContext &ctx) const
 {
     LimitScope scope = getLimitScope();
-    int instance_id = ctx.instanceID > 0 ? ctx.instanceID : m_instanceId;
+    int instance_id = ctx.instanceID > 0 ? ctx.instanceID : 0;
 
     switch (scope) {
         case Limit_Turn:
@@ -1145,6 +1258,8 @@ QVariant SkillContext::toVariant() const
         map["skill"] = skill_name;
     if (owner != nullptr)
         map["owner"] = owner->objectName();
+    if (initiator != nullptr)
+        map["initiator"] = initiator->objectName();
     if (invoker != nullptr)
         map["invoker"] = invoker->objectName();
     if (preferredTarget != nullptr) {
@@ -1157,6 +1272,14 @@ QVariant SkillContext::toVariant() const
         map["extra_data"] = extra_data;
     map["trigger_count"] = trigger_count;
     map["multiplier"] = multiplier;
+    if (instanceID > 0)
+        map["instanceID"] = instanceID;
+    if (executionID > 0)
+        map["executionID"] = executionID;
+    if (sourceRef.isValid())
+        map["source"] = sourceRef.ownerObjectName + "/" + sourceRef.key.skillName + "#" + QString::number(sourceRef.key.instanceID);
+    if (activationRef.isValid())
+        map["activation"] = activationRef.ownerObjectName + "/" + activationRef.key.skillName + "#" + QString::number(activationRef.key.instanceID);
     return map;
 }
 
