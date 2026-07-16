@@ -10,6 +10,7 @@
 #include "clientplayer.h"
 #include "clientstruct.h"
 #include "wrapped-card.h"
+#include "skill-instance-utils.h"
 #include <QSet>
 #include <QJsonDocument>
 
@@ -83,6 +84,7 @@ Client::Client(QObject *parent, const QString &filename)
 	m_callbacks[S_COMMAND_SET_MARK] = &Client::setMark;
 	m_callbacks[S_COMMAND_LOG_SKILL] = &Client::log;
 	m_callbacks[S_COMMAND_ATTACH_SKILL] = &Client::attachSkill;
+	m_callbacks[S_COMMAND_SKILL_INSTANCE] = &Client::syncSkillInstances;
 	m_callbacks[S_COMMAND_MOVE_FOCUS] = &Client::moveFocus;
 	m_callbacks[S_COMMAND_SET_EMOTION] = &Client::setEmotion;
 	m_callbacks[S_COMMAND_CHANGE_TABLE_BG] = &Client::changeTableBg;
@@ -765,7 +767,8 @@ void Client::onPlayerResponseCard(const Card *card, const QList<const Player *> 
 		foreach (const Player *target, targets)
 			targetNames << target->objectName();
 
-		replyToServer(S_COMMAND_RESPONSE_CARD, JsonArray() << card->toString() << QVariant::fromValue(targetNames));
+		replyToServer(S_COMMAND_RESPONSE_CARD, JsonArray() << card->toString()
+			<< QVariant::fromValue(targetNames) << card->getSkillInstanceID());
 
 		if (card->isVirtualCard() && !card->parent())
 			delete card;
@@ -1975,6 +1978,68 @@ void Client::attachSkill(const QVariant &skill)
 
 	player->acquireSkill(skill_name);
 	emit skill_attached(player, skill_name);
+}
+
+static bool parseSkillInstanceEntry(const QVariant &value, QString &ownerName, SkillInstance &instance)
+{
+	JsonArray entry = value.value<JsonArray>();
+	if (entry.size() != 8) return false;
+	ownerName = entry[0].toString();
+	instance.skillName = entry[1].toString();
+	instance.instanceID = entry[2].toInt();
+	int source = entry[3].toInt();
+	if (ownerName.isEmpty() || instance.skillName.isEmpty() || instance.instanceID <= 0
+		|| source < static_cast<int>(SourceInnate) || source > static_cast<int>(SourceHelper))
+		return false;
+	instance.source = static_cast<SkillInstanceSource>(source);
+	instance.parent = SkillInstanceKey(entry[4].toString(), entry[5].toInt());
+	instance.visible = entry[6].toBool();
+	instance.bindHead = entry[7].toInt();
+	instance.state.clear();
+	return true;
+}
+
+void Client::syncSkillInstances(const QVariant &payload)
+{
+	JsonArray args = payload.value<JsonArray>();
+	if (args.isEmpty()) return;
+	QString action = args[0].toString();
+
+	if (action == "snapshot" && args.size() == 2) {
+		if (Self) Self->clearSkillInstances();
+		foreach (const ClientPlayer *player, m_players)
+			const_cast<ClientPlayer *>(player)->clearSkillInstances();
+
+		JsonArray entries = args[1].value<JsonArray>();
+		foreach (const QVariant &value, entries) {
+			QString ownerName;
+			SkillInstance instance;
+			if (!parseSkillInstanceEntry(value, ownerName, instance)) continue;
+			ClientPlayer *owner = getPlayer(ownerName);
+			if (owner) owner->upsertSkillInstance(instance);
+		}
+		emit skill_instances_reset();
+		return;
+	}
+
+	if (action == "upsert" && args.size() == 2) {
+		QString ownerName;
+		SkillInstance instance;
+		if (!parseSkillInstanceEntry(args[1], ownerName, instance)) return;
+		ClientPlayer *owner = getPlayer(ownerName);
+		if (!owner) return;
+		owner->upsertSkillInstance(instance);
+		emit skill_acquired(owner, SkillInstanceUtils::formatName(instance.skillName, instance.instanceID));
+		return;
+	}
+
+	if (action == "remove" && args.size() == 4) {
+		ClientPlayer *owner = getPlayer(args[1].toString());
+		QString skillName = args[2].toString();
+		int instanceId = args[3].toInt();
+		if (!owner || !owner->removeSkillInstance(skillName, instanceId)) return;
+		emit skill_detached(owner, SkillInstanceUtils::formatName(skillName, instanceId));
+	}
 }
 
 void Client::askForAssign(const QVariant &)

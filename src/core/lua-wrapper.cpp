@@ -185,6 +185,7 @@ LuaSkillCard *LuaSkillCard::clone() const
 
     new_card->setObjectName(objectName());
     new_card->setSkillName(m_skillName);
+    new_card->setSkillInstanceID(getSkillInstanceID());
 
     new_card->target_fixed = target_fixed;
     new_card->will_throw = will_throw;

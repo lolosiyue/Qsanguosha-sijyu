@@ -25,7 +25,7 @@ static unsigned int cardId = 0;
 Card::Card(Suit suit, int number, bool target_fixed, bool damage_card, bool is_gift, bool single_target)
 	:target_fixed(target_fixed), mute(false), will_throw(true), has_preact(false), can_recast(false),
 	m_suit(suit), m_number(number), m_id(--cardId), is_gift(is_gift), is_transferable(false), damage_card(damage_card),
-	single_target(single_target),handling_method(MethodUse)
+	single_target(single_target),handling_method(MethodUse), m_skillInstanceID(0)
 {
 }
 
@@ -356,6 +356,16 @@ void Card::setSkillName(const QString &name)
     this->m_skillName = name;
 }
 
+int Card::getSkillInstanceID() const
+{
+    return m_skillInstanceID;
+}
+
+void Card::setSkillInstanceID(int instanceID)
+{
+    m_skillInstanceID = qMax(0, instanceID);
+}
+
 QString Card::showSkill() const
 {
     return show_skill;
@@ -629,6 +639,8 @@ Card*Card::Clone(const Card*card)
 	if (card_obj) {
 		card_obj->setObjectName(card->objectName());
 		card_obj->setId(card->getId());
+		card_obj->setSkillName(card->getSkillName(false));
+		card_obj->setSkillInstanceID(card->getSkillInstanceID());
 	}
 	return card_obj;
 }

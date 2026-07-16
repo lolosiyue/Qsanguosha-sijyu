@@ -1032,7 +1032,10 @@ void LuaTriggerV2Skill::record(TriggerEvent triggerEvent, Room *room, ServerPlay
 		lua_pushnil(L);
 	}
 
-	lua_pcall(L, 6, 0, 0);
+	// 保留舊 data／owner 參數，末尾追加完整逐實例 context。
+	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
+
+	lua_pcall(L, 7, 0, 0);
 }
 
 TriggerList LuaTriggerV2Skill::triggerable(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
@@ -1086,10 +1089,7 @@ TriggerList LuaTriggerV2Skill::triggerable(TriggerEvent triggerEvent, Room *room
 					foreach (const QString &name, names) {
 						QString skillName = name.trimmed();
 						if (!skillName.isEmpty()) {
-							// 自動添加 instanceId（避免重複添加）
-							if (!skillName.contains('#')) {
-								skillName = QString("%1#%2").arg(skillName).arg(getInstanceId());
-							}
+							// RoomThread 統一展開 base name 並驗證精確 instanceID。
 							result[who] << skillName;
 						}
 					}
@@ -1115,11 +1115,8 @@ TriggerList LuaTriggerV2Skill::triggerable(TriggerEvent triggerEvent, Room *room
 			foreach (const QString &name, nameList) {
 				QString skillName = name.trimmed();
 				if (!skillName.isEmpty()) {
-					// 自動添加 instanceId（避免重複添加）
-					if (!skillName.contains('#')) {
-						skillName = QString("%1#%2").arg(skillName).arg(getInstanceId());
-					}
-					result[ask_who ? ask_who : player] << skillName;
+					ServerPlayer *who = ask_who ? ask_who : player;
+					result[who] << skillName;
 				}
 			}
 		}

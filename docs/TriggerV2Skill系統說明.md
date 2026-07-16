@@ -61,6 +61,7 @@ struct SkillContext {
     int amount;                   // 技能基礎數值
     int modified_amount;          // 修改後數值
     int trigger_count;            // 已觸發次數
+    int multiplier;               // 觸發倍率（天花板，可被 EventSkillWillInvoke 動態調高）
 };
 ```
 
@@ -211,7 +212,7 @@ ctx = ctx_data.value<SkillContext>();  // 取回修改後的 ctx
 
 | 枚舉值 | 觸發時機 | 典型應用 | data 類型 |
 |--------|----------|----------|-----------|
-| `EventSkillWillInvoke` | 代價支付前 | 封印技能 (`is_canceled=true`)、免費施放 (`bypass_cost=true`) | `SkillContext` |
+| `EventSkillWillInvoke` | 代價支付前 | 封印技能 (`is_canceled=true`)、免費施放 (`bypass_cost=true`)、**強制多次觸發 (`multiplier`)** | `SkillContext` |
 | `EventSkillPay` | 代價支付時 | 修改代價數值、代價類型 | `SkillContext` |
 | `EventSkillTargetConfirming` | 目標確認 | 目標轉移（修改 `updated_targets`） | `SkillContext` |
 | `EventSkillInvoking` | 正式宣告 | 觸發「技能發動後」的聯動技能 | `SkillContext` |
@@ -1293,6 +1294,7 @@ room->removeSkillInvalidity(target, "qingcheng", source->objectName(), "reason")
 | 2026-05-29 | `room.cpp`：`askForTriggerOrder` 返回 `"skillName:ownerObjectName"` 格式 |
 | 2026-05-29 | `cost`/`pay`/`effect` 使用 `selected_ctx->owner` 作為 `player` 參數 |
 | 2026-05-29 | 更新文檔：補充格式二完整範例（襲射）、常見錯誤、返回值處理流程 |
+| 2026-06-23 | **跨角色強制多次觸發**：EventSkillWillInvoke 支援修改 `ctx.multiplier`，透過 `maxMultipliers` 天花板機制讓攔截者強制目標技能多觸發 |
 
 ---
 
@@ -1360,6 +1362,48 @@ can_trigger = function(skill, event, room, player, data)
     return false
 end
 ```
+
+### 跨角色強制多次觸發（maxMultipliers 機制）
+
+`EventSkillWillInvoke` 攔截器可以直接修改目標技能的 `ctx.multiplier`，透過 `maxMultipliers` 天花板機制讓技能在本次事件中多觸發數次。
+
+**運作原理**：
+
+```
+triggerV2Skills while 迴圈：
+    → 解析 multiplier（來自 skillName*N 語法）
+    → effectiveMultiplier = max(multiplier, maxMultipliers[key])
+    → 若 trigger_count < effectiveMultiplier，建立 SkillContext
+    → 選中技能 → EventSkillWillInvoke
+    → 攔截者修改 ctx.multiplier（如 ctx.multiplier = 5）
+    → maxMultipliers[key] = max(maxMultipliers[key], ctx.multiplier)
+    → 下一輪迴圈自動讀取更高的天花板
+    → 事件結束後 maxMultipliers 自動清除
+```
+
+**Lua 攔截範例**：
+
+```lua
+-- 技能 A：強制技能 B 多觸發 2 次
+force_extra_skill = sgs.CreateTriggerSkill{
+    name = "force_extra",
+    events = {sgs.EventSkillWillInvoke},
+    on_trigger = function(self, event, player, data)
+        local ctx = data:toSkillContext()
+        if ctx.skill_name == "skill_b" then
+            -- 直接修改既有 multiplier，系統自動取天花板
+            ctx.multiplier = ctx.multiplier + 2
+            data:setValue(ctx:toVariant())
+        end
+    end
+}
+```
+
+**關鍵語義**：
+- 攔截者修改的是 `ctx.multiplier`（現有欄位），無需新增欄位
+- 引擎使用 `qMax(原始multiplier, maxMultipliers[key])` 取天花板，支援多次疊加
+- 生命週期為單次事件（while 迴圈內的 `maxMultipliers` 區域變數），事件結束自動清除
+- 同一技能被多個攔截者修改時，取所有設定的最大值
 
 ### Lua 使用範例
 
@@ -2059,3 +2103,25 @@ end
 2. **避免重複計算**：將計算結果存入 `ctx.extra_data`
 3. **善用 multiplier**：讓系統自動觸發多次，而非手動循環
 4. **減少 on_effect_target 檢查**：在 on_cost 已篩選目標
+# 2026-07-16 技能實例模型更新
+
+本節優先於下方舊版說明。`Skill` 仍是 Engine 共用的全域定義，不再持有玩家 instanceID，也不 clone `Skill QObject`。
+
+| 欄位 | 權威來源 |
+|---|---|
+| `skill_name` | 基礎技能名，例如 `baGua` |
+| `instanceID` | `Player::SkillInstance`，只在同一 `(owner, skillName)` 範圍內唯一 |
+| owner | `SkillContext::owner` |
+| invoker | `SkillContext::invoker` |
+| runtime key | `ownerObjectName + skillName + instanceID` |
+
+`TriggerV2Skill::triggerable()` 可只回傳 base name；RoomThread 會依 owner 的有效實例展開。若回傳 `skill#N`，則只執行該有效實例。`record()` 也按有效實例各執行一次，Lua `on_record` 的第七個參數為對應 `SkillContext`。
+
+```lua
+on_record = function(skill, event, room, player, data, owner, ctx)
+    local id = ctx.instanceID
+    -- state/usage 必須使用 owner + skill name + id
+end
+```
+
+舊文件中的 `Skill::m_instanceId`、`m_globalInstanceCount` 與全域 `skill#N` 定義已廢止。

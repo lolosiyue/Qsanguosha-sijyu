@@ -23,6 +23,7 @@
 #include "generaloverview.h"
 #include "pixmapanimation.h"
 #include "audio.h"
+#include "skill-instance-utils.h"
 #include "record-analysis.h"
 #include "mountain.h"
 #include "wind.h"
@@ -263,6 +264,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(ClientInstance,SIGNAL(start_in_xs()),this,SLOT(startInXs()));
 
 	connect(ClientInstance,&Client::skill_updated,this,&RoomScene::updateSkill);
+	connect(ClientInstance, &Client::skill_instances_reset, this, [this]() { updateSkillButtons(); });
 	connect(ClientInstance,&Client::card_description_updated,this,&RoomScene::updateCardDescription);
 
 	m_guanxingBox = new GuanxingBox;
@@ -2805,14 +2807,22 @@ bool RoomScene::isPrimarySkill(const Skill *skill) const
 
 void RoomScene::addSkillButton(const Skill*skill)
 {
+	if (!skill) return;
+	addSkillButton(skill->objectName());
+}
+
+void RoomScene::addSkillButton(const QString &skillInstanceName)
+{
+	QString baseName = SkillInstanceUtils::baseName(skillInstanceName);
+	const Skill *skill = Sanguosha->getSkill(baseName);
 	if(!skill || skill->isHideSkill()) return;
 	foreach(QSanSkillButton*button,m_skillButtons) {
-		if(button->getSkill()==skill) {
+		if(button->objectName() == skillInstanceName) {
 			const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
 			if (activePlayer != nullptr) {
 				foreach (const Card *equip, activePlayer->getEquips()) {
-					if (equip != nullptr && equip->objectName() == skill->objectName()) {
-						dashboard->addSkillButton(skill->objectName());
+					if (equip != nullptr && equip->objectName() == baseName) {
+						dashboard->addSkillButton(baseName);
 						break;
 					}
 				}
@@ -2822,8 +2832,16 @@ void RoomScene::addSkillButton(const Skill*skill)
 	}
 	
 	bool isPrimary = isPrimarySkill(skill);
-	qDebug() << "RoomScene::addSkillButton - skill:" << skill->objectName() << "isPrimary:" << isPrimary;
-	QSanSkillButton*btn = dashboard->addSkillButton(skill->objectName(), isPrimary);
+	QString parsedName;
+	int instanceId = SkillInstanceUtils::parseName(skillInstanceName, parsedName);
+	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
+	if (activePlayer && instanceId > 0) {
+		const SkillInstance *instance = activePlayer->findSkillInstance(baseName, instanceId);
+		if (instance && instance->bindHead == 2)
+			isPrimary = false;
+	}
+	qDebug() << "RoomScene::addSkillButton - skill:" << skillInstanceName << "isPrimary:" << isPrimary;
+	QSanSkillButton*btn = dashboard->addSkillButton(skillInstanceName, isPrimary);
 	qDebug() << "RoomScene::addSkillButton - btn created:" << (btn != nullptr);
 	if(!btn||m_skillButtons.contains(btn)) return;
 	connect(btn, SIGNAL(destroyed(QObject*)), this, SLOT(onSkillButtonDestroyed(QObject*)));
@@ -2843,7 +2861,28 @@ void RoomScene::addSkillButton(const Skill*skill)
 			connect(ClientInstance, SIGNAL(anytime_skill_done(QString)), this, SLOT(onAnytimeSkillDone(QString)), Qt::UniqueConnection);
 		}
 	}
+	btn->setToolTip(buildOracleTooltip(skill->getOracleText(activePlayer),
+									 skill->getDescription(activePlayer, instanceId)));
 	m_skillButtons << btn;
+	refreshSkillInstanceButtonLabels(baseName);
+}
+
+void RoomScene::refreshSkillInstanceButtonLabels(const QString &baseName)
+{
+	QList<QSanSkillButton *> matching;
+	foreach (QSanSkillButton *button, m_skillButtons) {
+		if (button && SkillInstanceUtils::baseName(button->objectName()) == baseName)
+			matching << button;
+	}
+	bool showId = matching.length() > 1;
+	foreach (QSanSkillButton *button, matching) {
+		QString name;
+		int instanceId = SkillInstanceUtils::parseName(button->objectName(), name);
+		QString display = Sanguosha->translate(baseName);
+		if (showId && instanceId > 0)
+			display += " #" + QString::number(instanceId);
+		button->setDisplayName(display);
+	}
 }
 
 bool RoomScene::shouldUseDashboardDialogPresenter(QDialog *dialog) const
@@ -2985,31 +3024,33 @@ void RoomScene::acquireSkill(const ClientPlayer*,const QString&skill_name)
 {
 	/*log_box->appendLog("#AcquireSkill",player->objectName(),QStringList(),"",skill_name);*/
 
-	addSkillButton(Sanguosha->getSkill(skill_name));
+	addSkillButton(skill_name);
 }
 
 void RoomScene::updateSkillButtons(bool isPrepare)
 {
 	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
-	QList<const Skill*> skill_list;
-	QList<const Skill*> desired_skills;
 	QStringList desired_skill_names;
 	QStringList equip_view_as_skills;
 	if(activePlayer != nullptr && isPrepare){
+		QList<const Skill *> skillList;
 		if(activePlayer->getGeneral())
-			skill_list << activePlayer->getGeneral()->getVisibleSkillList();
+			skillList << activePlayer->getGeneral()->getVisibleSkillList();
 		if(activePlayer->getGeneral2())
-			skill_list << activePlayer->getGeneral2()->getVisibleSkillList();
-	} else if(activePlayer != nullptr)
-		skill_list = activePlayer->getVisibleSkillList();
-	foreach (const Skill*skill,skill_list){
-		if (skill == nullptr || skill->isHideSkill())
-			continue;
-		if(skill->isLordSkill() && !activePlayer->hasLordSkill(skill,true))
-			continue;
-		if (!desired_skill_names.contains(skill->objectName())) {
-			desired_skills << skill;
-			desired_skill_names << skill->objectName();
+			skillList << activePlayer->getGeneral2()->getVisibleSkillList();
+		foreach (const Skill *skill, skillList) {
+			if (skill && !skill->isHideSkill() && !desired_skill_names.contains(skill->objectName()))
+				desired_skill_names << skill->objectName();
+		}
+	} else if(activePlayer != nullptr) {
+		foreach (const QString &instanceName, activePlayer->getSkillNames()) {
+			QString baseName;
+			int instanceId = SkillInstanceUtils::parseName(instanceName, baseName);
+			const Skill *skill = Sanguosha->getSkill(baseName);
+			const SkillInstance *instance = activePlayer->findSkillInstance(baseName, instanceId);
+			if (!skill || !instance || !instance->visible || skill->isHideSkill()) continue;
+			if (skill->isLordSkill() && !activePlayer->hasLordSkill(skill, true)) continue;
+			desired_skill_names << instanceName;
 		}
 	}
 	if (activePlayer != nullptr) {
@@ -3023,7 +3064,6 @@ void RoomScene::updateSkillButtons(bool isPrepare)
 				continue;
 			equip_view_as_skills << skill->objectName();
 			if (!desired_skill_names.contains(skill->objectName())) {
-				desired_skills << skill;
 				desired_skill_names << skill->objectName();
 			}
 		}
@@ -3034,13 +3074,18 @@ void RoomScene::updateSkillButtons(bool isPrepare)
 		if (button == nullptr) continue;
 		QString skillName = button->objectName();
 		if (skillName.isEmpty()) continue;
-		bool keepButton = activePlayer != nullptr && (activePlayer->hasSkill(skillName, true)
-			|| equip_view_as_skills.contains(skillName));
+		bool keepButton = activePlayer != nullptr && desired_skill_names.contains(skillName);
 		if (keepButton && !equip_view_as_skills.contains(skillName)) {
 			const Skill *buttonSkill = button->getSkill();
 			bool isDockButton = dashboard->isPrimarySkillButton(button) || dashboard->isSecondarySkillButton(button);
+			bool shouldBePrimary = isPrimarySkill(buttonSkill);
+			QString baseName;
+			int instanceId = SkillInstanceUtils::parseName(skillName, baseName);
+			const SkillInstance *instance = activePlayer->findSkillInstance(baseName, instanceId);
+			if (instance && instance->bindHead == 2)
+				shouldBePrimary = false;
 			if (buttonSkill == nullptr || buttonSkill->isHideSkill()
-				|| (isDockButton && dashboard->isPrimarySkillButton(button) != isPrimarySkill(buttonSkill)))
+				|| (isDockButton && dashboard->isPrimarySkillButton(button) != shouldBePrimary))
 				keepButton = false;
 		}
 		if (keepButton)
@@ -3049,8 +3094,8 @@ void RoomScene::updateSkillButtons(bool isPrepare)
 			detachSkill(skillName);
 	}
 
-	foreach (const Skill *skill, desired_skills)
-		addSkillButton(skill);
+	foreach (const QString &instanceName, desired_skill_names)
+		addSkillButton(instanceName);
 }
 
 void RoomScene::useSelectedCard()
@@ -4769,11 +4814,13 @@ void RoomScene::detachSkill(const QString&skill_name)
 	// for all the skills has a ViewAsSkill Effect { Client::setMark(const Json::Value&) }
 	// this is a DIRTY HACK!!! for we should prevent the ViewAsSkill button been removed temporily by duanchang
 	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
-	if(activePlayer != nullptr && activePlayer->getMark("ViewAsSkill_"+skill_name+"Effect")>0) return;
+	QString baseName = SkillInstanceUtils::baseName(skill_name);
+	if(activePlayer != nullptr && activePlayer->getMark("ViewAsSkill_"+baseName+"Effect")>0) return;
 	QSanSkillButton*btn = dashboard->removeSkillButton(skill_name);
 	if(!btn) return;//be care LordSkill and SPConvertSkill
 	m_skillButtons.removeAll(btn);
 	btn->deleteLater();
+	refreshSkillInstanceButtonLabels(baseName);
 }
 
 void RoomScene::onSkillButtonDestroyed(QObject *button)
@@ -4797,19 +4844,16 @@ void RoomScene::detachSkill(const ClientPlayer *player, const QString &skill_nam
 void RoomScene::updateSkill(const QString&skill_name)
 {
 	const Player *activePlayer = getCurrentOperationPlayer(dashboard);
-    QString baseName = skill_name;
-    int instanceId = 0;
-    int split = skill_name.indexOf('#', skill_name.startsWith('#') ? 1 : 0);
-    if (split != -1) {
-        baseName = skill_name.left(split);
-        instanceId = skill_name.mid(split + 1).toInt();
-    }
+    QString baseName;
+    int instanceId = SkillInstanceUtils::parseName(skill_name, baseName);
     foreach(QSanSkillButton*button,m_skillButtons){
-		if(button->getSkill()->objectName()==baseName)
+		QString buttonBase;
+		int buttonInstanceId = SkillInstanceUtils::parseName(button->objectName(), buttonBase);
+		if(buttonBase == baseName && (instanceId == 0 || instanceId == buttonInstanceId))
 		{
 			LuaLocker locker;
 			const Skill *s = button->getSkill();
-			button->setToolTip(buildOracleTooltip(s->getOracleText(activePlayer), s->getDescription(activePlayer, instanceId)));
+			button->setToolTip(buildOracleTooltip(s->getOracleText(activePlayer), s->getDescription(activePlayer, buttonInstanceId)));
 		}
 	}/*
 	bool effectMark = false;

@@ -18,6 +18,7 @@
 #include "roomthread.h"
 #include "clientstruct.h"
 #include "game-snapshot.h"
+#include "skill-instance-utils.h"
 #include <ctime>
 #include <functional>
 #include <QSet>
@@ -994,7 +995,10 @@ void Room::slashResult(const SlashEffectStruct&effect, const Card*jink)
 
 void Room::attachSkillToPlayer(ServerPlayer*player, const QString&skill_name)
 {
-	player->acquireSkill(skill_name);
+	int instanceId = player->acquireSkill(skill_name);
+	const SkillInstance *instance = player->findSkillInstance(skill_name, instanceId);
+	if (instance)
+		notifySkillInstanceUpsert(player, *instance);
 
     const Skill *skill = Sanguosha->getSkill(skill_name);
     if (skill && skill->isVisible()) {
@@ -1002,137 +1006,201 @@ void Room::attachSkillToPlayer(ServerPlayer*player, const QString&skill_name)
             player->addClub(skill->getClubName());
     }
 
-	JsonArray args;
-	args << player->objectName() << skill_name;
-	doNotify(player, S_COMMAND_ATTACH_SKILL, args);
 	thread->addTriggerSkill(Sanguosha->getTriggerSkill(skill_name));
 }
 
-void Room::detachSkillFromPlayer(ServerPlayer*player, const QString&skill_name, bool is_equip, bool acquire_only, bool event_and_log)
+static bool canReceiveSkillInstance(const ServerPlayer *receiver, const ServerPlayer *owner,
+                                    const SkillInstance &instance)
 {
-	if (player->hasSkill(skill_name, true)){
-		if (player->getAcquiredSkills().contains(skill_name)) player->detachSkill(skill_name);
-		else if (!acquire_only) player->loseSkill(skill_name);
-		else return;
+    if (receiver == owner) return true;
+    const Skill *skill = Sanguosha->getSkill(instance.skillName);
+    return instance.source != SourceHelper && instance.visible && skill && skill->isVisible();
+}
 
-		const Skill*skill = Sanguosha->getSkill(skill_name);
-		if(skill){
-			if (skill->isVisible()){
-                if (skill->getFrequency() == Skill::Club && !skill->getClubName().isEmpty())
-                    clearClub(skill->getClubName());
+static JsonArray skillInstanceJson(const ServerPlayer *owner, const SkillInstance &instance)
+{
+    JsonArray entry;
+    entry << owner->objectName() << instance.skillName << instance.instanceID
+          << static_cast<int>(instance.source) << instance.parent.skillName
+          << instance.parent.instanceID << instance.visible << instance.bindHead;
+    return entry;
+}
 
-				JsonArray args;
-				args << QSanProtocol::S_GAME_EVENT_DETACH_SKILL << player->objectName() << skill_name;
-				doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
-				if (!is_equip&&event_and_log){
-					LogMessage log;
-					log.type = "#LoseSkill";
-					log.from = player;
-					log.arg = skill_name;
-					sendLog(log);
-					QVariant data = skill_name;
-					thread->trigger(EventLoseSkill, this, player, data);
-				}
-				foreach(const Skill*rs, Sanguosha->getRelatedSkills(skill_name))
-					if (rs->isVisible()) detachSkillFromPlayer(player, rs->objectName());
-			}
-			if (skill->inherits("ViewAsEquipSkill")){
-				const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(skill_name);
-				QString view = vaes->viewAsEquip(player);
-				if(view!=""){
-					foreach(QString equip_name, view.split(",")){
-						if (skill_name!=equip_name&&Sanguosha->getViewAsSkill(equip_name))
-							detachSkillFromPlayer(player,equip_name,true);
-					}
-				}
-			}
-		}
-		player->calculateUITooltips();
-	}
+void Room::notifySkillInstanceSnapshot(ServerPlayer *receiver)
+{
+    if (!receiver) return;
+    JsonArray entries;
+    foreach (ServerPlayer *owner, getAllPlayers(true)) {
+        foreach (const SkillInstance &instance, owner->getSkillInstances()) {
+            if (canReceiveSkillInstance(receiver, owner, instance))
+                entries << QVariant::fromValue(skillInstanceJson(owner, instance));
+        }
+    }
+    JsonArray payload;
+    payload << "snapshot" << QVariant::fromValue(entries);
+    doNotify(receiver, S_COMMAND_SKILL_INSTANCE, payload);
+}
+
+void Room::notifySkillInstanceUpsert(ServerPlayer *owner, const SkillInstance &instance)
+{
+    foreach (ServerPlayer *receiver, m_players) {
+        if (!canReceiveSkillInstance(receiver, owner, instance)) continue;
+        JsonArray payload;
+        payload << "upsert" << QVariant::fromValue(skillInstanceJson(owner, instance));
+        doNotify(receiver, S_COMMAND_SKILL_INSTANCE, payload);
+    }
+}
+
+void Room::notifySkillInstanceRemove(ServerPlayer *owner, const SkillInstance &instance)
+{
+    foreach (ServerPlayer *receiver, m_players) {
+        if (!canReceiveSkillInstance(receiver, owner, instance)) continue;
+        JsonArray payload;
+        payload << "remove" << owner->objectName() << instance.skillName << instance.instanceID;
+        doNotify(receiver, S_COMMAND_SKILL_INSTANCE, payload);
+    }
+}
+
+int Room::chooseSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skillName,
+                              bool visibleOnly, bool acquiredOnly)
+{
+    if (!chooser || !owner) return 0;
+
+    QStringList choices;
+    QList<int> candidateIds;
+    foreach (int instanceId, owner->getSkillInstanceIds(skillName)) {
+        const SkillInstance *instance = owner->findSkillInstance(skillName, instanceId);
+        if (!instance || instance->source == SourceHelper) continue;
+        if (acquiredOnly && instance->source != SourceAcquired) continue;
+        const Skill *skill = Sanguosha->getSkill(skillName);
+        if (visibleOnly && (!instance->visible || !skill || !skill->isVisible())) continue;
+        candidateIds << instanceId;
+        choices << SkillInstanceUtils::formatName(skillName, instanceId);
+    }
+
+    if (candidateIds.isEmpty()) return 0;
+    if (candidateIds.length() == 1) return candidateIds.first();
+
+    QString answer = askForChoice(chooser, "remove_skill_instance", choices.join("+"));
+    QString selectedName;
+    int selectedId = SkillInstanceUtils::parseName(answer, selectedName);
+    return candidateIds.contains(selectedId) ? selectedId : candidateIds.first();
+}
+
+bool Room::removeSkillInstanceFromPlayer(ServerPlayer *owner, const QString &skillName, int instanceId,
+                                         bool isEquip, bool eventAndLog)
+{
+    if (!owner || instanceId <= 0) return false;
+    const SkillInstance *instance = owner->findSkillInstance(skillName, instanceId);
+    if (!instance) return false;
+
+    // QMap 元素會在刪除時失效，先複製事件 metadata 與 child keys。
+    SkillInstance removed = *instance;
+    QList<SkillInstanceKey> children = owner->getChildSkillInstanceKeys(removed.key());
+    if (!owner->removeSkillInstance(skillName, instanceId)) return false;
+    notifySkillInstanceRemove(owner, removed);
+
+    const Skill *skill = Sanguosha->getSkill(skillName);
+    if (skill && skill->isVisible()) {
+        if (!isEquip && eventAndLog) {
+            LogMessage log;
+            log.type = "#LoseSkill";
+            log.from = owner;
+            log.arg = skillName;
+            sendLog(log);
+        }
+    }
+
+    if (eventAndLog) {
+        SkillChangeStruct change(skillName, instanceId);
+        change.source = removed.source;
+        change.parentSkillName = removed.parent.skillName;
+        change.parentInstanceID = removed.parent.instanceID;
+        change.visible = removed.visible;
+        QVariant data = change.toVariant();
+        thread->trigger(EventLoseSkill, this, owner, data);
+    }
+
+    foreach (const SkillInstanceKey &child, children)
+        removeSkillInstanceFromPlayer(owner, child.skillName, child.instanceID, true, eventAndLog);
+
+    if (skill && !owner->ownsSkill(skillName)) {
+        if (skill->getFrequency() == Skill::Club && !skill->getClubName().isEmpty())
+            clearClub(skill->getClubName());
+        if (skill->inherits("ViewAsEquipSkill")) {
+            const ViewAsEquipSkill *viewAsEquip = Sanguosha->getViewAsEquipSkill(skillName);
+            QString view = viewAsEquip->viewAsEquip(owner);
+            foreach (const QString &equipName, view.split(",", QString::SkipEmptyParts)) {
+                if (skillName != equipName && Sanguosha->getViewAsSkill(equipName))
+                    detachSkillFromPlayer(owner, equipName, true);
+            }
+        }
+    }
+
+    owner->calculateUITooltips();
+    return true;
+}
+
+int Room::detachSkillFromPlayer(ServerPlayer *player, const QString &skill_name, bool is_equip,
+                                bool acquire_only, bool event_and_log)
+{
+    if (!player) return 0;
+    QString baseName;
+    int requestedId = SkillInstanceUtils::parseName(skill_name, baseName);
+    int instanceId = requestedId;
+    if (instanceId > 0) {
+        const SkillInstance *instance = player->findSkillInstance(baseName, instanceId);
+        if (!instance || instance->source == SourceHelper
+            || (acquire_only && instance->source != SourceAcquired))
+            return 0;
+    } else {
+        instanceId = chooseSkillInstance(player, player, baseName, false, acquire_only);
+    }
+    if (instanceId <= 0) return 0;
+    return removeSkillInstanceFromPlayer(player, baseName, instanceId, is_equip, event_and_log)
+        ? instanceId : 0;
+}
+
+int Room::discardSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skill_name,
+                               bool event_and_log)
+{
+    if (!chooser || !owner) return 0;
+    QString baseName;
+    int requestedId = SkillInstanceUtils::parseName(skill_name, baseName);
+    int instanceId = 0;
+
+    if (requestedId > 0) {
+        const SkillInstance *instance = owner->findSkillInstance(baseName, requestedId);
+        const Skill *skill = Sanguosha->getSkill(baseName);
+        if (instance && instance->source != SourceHelper && instance->visible
+            && skill && skill->isVisible())
+            instanceId = requestedId;
+    } else {
+        instanceId = chooseSkillInstance(chooser, owner, baseName, true, false);
+        if (instanceId == 0) {
+            // 不向 chooser 洩漏隱藏候選；由引擎直接取最小的非 helper ID。
+            foreach (int id, owner->getSkillInstanceIds(baseName)) {
+                const SkillInstance *instance = owner->findSkillInstance(baseName, id);
+                if (instance && instance->source != SourceHelper) {
+                    instanceId = id;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (instanceId <= 0) return 0;
+    return removeSkillInstanceFromPlayer(owner, baseName, instanceId, false, event_and_log)
+        ? instanceId : 0;
 }
 
 void Room::handleAcquireDetachSkills(ServerPlayer*player, const QStringList&skill_names, bool acquire_only, bool getmark, bool event_and_log)
 {
-	QStringList triggerList;
-	QList<TriggerEvent> events;
-	foreach(QString skill_name, skill_names){
-		if (skill_name.startsWith("-")){
-			skill_name = skill_name.mid(1);
-			if (player->hasSkill(skill_name, true)){
-				if (player->getAcquiredSkills().contains(skill_name)) player->detachSkill(skill_name);
-				else if(!acquire_only) player->loseSkill(skill_name);
-				else continue;
-				const Skill*skill = Sanguosha->getSkill(skill_name);
-				if(skill){
-					if (skill->isVisible()){
-						JsonArray args;
-						args << QSanProtocol::S_GAME_EVENT_DETACH_SKILL << player->objectName() << skill_name;
-						doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
-						if (event_and_log){
-							LogMessage log;
-							log.type = "#LoseSkill";
-							log.from = player;
-							log.arg = skill_name;
-							sendLog(log);
-							triggerList << skill_name;
-							events << EventLoseSkill;
-						}
-						foreach(const Skill*rs, Sanguosha->getRelatedSkills(skill_name))
-							if (rs->isVisible()) detachSkillFromPlayer(player, rs->objectName());
-					}
-					if (skill->inherits("ViewAsEquipSkill")){
-						const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(skill->objectName());
-						QString view = vaes->viewAsEquip(player);
-						if(view!=""){
-							foreach(QString equip_name, view.split(",")){
-								if (Sanguosha->getViewAsSkill(equip_name))
-									detachSkillFromPlayer(player,equip_name,true);
-							}
-						}
-					}
-				}
-			}
-		} else {
-			if (player->hasSkill(skill_name, true)) continue;
-			player->acquireSkill(skill_name);
-			const Skill*skill = Sanguosha->getSkill(skill_name);
-			if(skill){
-				if (skill->inherits("TriggerSkill"))
-					thread->addTriggerSkill(qobject_cast<const TriggerSkill*>(skill));
-				else if (skill->inherits("ViewAsEquipSkill")){
-					const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(skill_name);
-					QString view = vaes->viewAsEquip(player);
-					if(view!=""){
-						foreach(QString equip_name, view.split(",")){
-							if (Sanguosha->getViewAsSkill(equip_name))
-								attachSkillToPlayer(player,equip_name);
-						}
-					}
-				}
-				if (getmark&&!skill->getLimitMark().isEmpty())
-					setPlayerMark(player, skill->getLimitMark(), 1);
-				if (skill->isVisible()){
-					JsonArray args;
-					args << QSanProtocol::S_GAME_EVENT_ACQUIRE_SKILL << player->objectName() << skill_name;
-					doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
-					if (event_and_log){
-						LogMessage log;
-						log.type = "#AcquireSkill";
-						log.from = player;
-						log.arg = skill_name;
-						sendLog(log);
-						triggerList << skill_name;
-						events << EventAcquireSkill;
-					}
-					foreach(const Skill*rs, Sanguosha->getRelatedSkills(skill_name))
-						acquireSkill(player, rs);
-				}
-			}
-		}
-	}
-	for (int i = 0; i < events.length(); i++){
-		QVariant data = triggerList.at(i);
-		thread->trigger(events.at(i), this, player, data);
+	foreach (QString skillName, skill_names) {
+		if (skillName.startsWith("-"))
+			detachSkillFromPlayer(player, skillName.mid(1), false, acquire_only, event_and_log);
+		else
+			acquireSkill(player, skillName, true, getmark, event_and_log);
 	}
 }
 
@@ -1864,6 +1932,8 @@ QString Room::askForTriggerOrder(ServerPlayer*player, const QString&reason, QLis
         if (ctx.instanceID > 0) {
             answer += "#" + QString::number(ctx.instanceID);
         }
+        if (ctx.owner && ctx.owner != player)
+            answer += ":" + ctx.owner->objectName();
     } else {
         AI*ai = player->getAI();
         if (ai) {
@@ -1913,14 +1983,22 @@ QString Room::askForTriggerOrder(ServerPlayer*player, const QString&reason, QLis
             result = skillFullName;
         }
     } else {
-        // 客戶端返回格式："skillName:ownerName:invokerName..."，取前兩段
+        // 客戶端返回格式："skillName[#instanceId]:ownerName:invokerName..."，取前兩段
         QStringList replyParts = answer.split(":");
-        QString skillName = replyParts.value(0);
+        QString replySkillName = replyParts.value(0);
         QString ownerObjectName = replyParts.value(1);
-        
+
+        // 解析客戶端回覆中的 #instanceID（考慮 # 開頭隱藏技能）
+        QString replyBaseName;
+        int replyInstanceId = SkillInstanceUtils::parseName(replySkillName, replyBaseName);
+        replySkillName = replyBaseName;
+
         bool found = false;
         foreach (const SkillContext &ctx, contexts) {
-            if (ctx.skill_name == skillName) {
+            if (ctx.skill_name == replySkillName) {
+                // 若客戶端回覆帶 instanceID，精確匹配；否則用第一個匹配
+                if (replyInstanceId > 0 && ctx.instanceID != replyInstanceId)
+                    continue;
                 if (ownerObjectName.isEmpty()) {
                     found = true;
                     QString skillFullName = ctx.skill_name;
@@ -2373,6 +2451,8 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
 					if (arg.size()>0){
 						tag["AiResult"] = player->getClientReply();
 						resp.m_card = Card::Parse(arg[0].toString());
+						if (resp.m_card && arg.size() > 2)
+							const_cast<Card *>(resp.m_card)->setSkillInstanceID(qMax(0, arg[2].toInt()));
 					}
 				}else{
 					ai = player->getAI();
@@ -2389,8 +2469,15 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
 			return nullptr;
 		}
 		if(method == Card::MethodUse || method == Card::MethodResponse){
+			CardUseStruct responseUse(resp.m_card, player);
+			if (!resolveCardSkillInstance(responseUse)) {
+				resp.m_card = nullptr;
+				continue;
+			}
 			resp.m_card = resp.m_card->validateInResponse(player);
 			if(resp.m_card==nullptr) continue;
+			if (responseUse.skillInstanceID > 0 || resp.m_card->getSkillInstanceID() <= 0)
+				const_cast<Card *>(resp.m_card)->setSkillInstanceID(responseUse.skillInstanceID);
 		}
 		if(player->isCardLimited(resp.m_card, method)){
 			resp.m_card = nullptr;
@@ -5000,6 +5087,40 @@ CardUseStruct Room::getUseStruct(const Card*card)
 	return tag["UseHistory"+card->toString()].value<CardUseStruct>();
 }
 
+bool Room::resolveCardSkillInstance(CardUseStruct &use)
+{
+	if (use.m_skillInstanceResolved)
+		return true;
+	if (!use.card || !use.from)
+		return false;
+
+	QString skillName = use.card->getSkillName();
+	int requestedId = use.skillInstanceID > 0 ? use.skillInstanceID : use.card->getSkillInstanceID();
+	if (skillName.isEmpty()) {
+		if (requestedId > 0)
+			return false;
+		use.m_skillInstanceResolved = true;
+		return true;
+	}
+
+	QList<int> validIds = use.from->getValidSkillInstanceIds(skillName);
+	if (requestedId > 0) {
+		if (!validIds.contains(requestedId))
+			return false;
+	} else if (!validIds.isEmpty()) {
+		requestedId = validIds.first();
+	} else {
+		// 裝備 ViewAs 與非 ViewAs 產生的內部卡沒有玩家技能實例，維持 legacy ID 0。
+		if (!use.from->hasEquipSkill(skillName) && Sanguosha->getViewAsSkill(skillName))
+			return false;
+	}
+
+	use.skillInstanceID = requestedId;
+	const_cast<Card *>(use.card)->setSkillInstanceID(requestedId);
+	use.m_skillInstanceResolved = true;
+	return true;
+}
+
 bool Room::useCard(const CardUseStruct&use, bool add_history)
 {
 	CardUseStruct new_use = use;
@@ -5008,6 +5129,8 @@ bool Room::useCard(const CardUseStruct&use, bool add_history)
 
 bool Room::useCard(CardUseStruct&use, bool add_history)
 {
+	if (!resolveCardSkillInstance(use))
+		return false;
 	if ((!use.card->canRecast()||use.from->isCardLimited(use.card,Card::MethodRecast))&&use.from->isCardLimited(use.card,use.card->getHandlingMethod()))
 		return false;
 	use.m_addHistory = add_history;
@@ -5044,6 +5167,8 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 			use.card->onUse(this, use);
 		} else {
 			use.card = card;
+			if (use.skillInstanceID > 0 || card->getSkillInstanceID() <= 0)
+				const_cast<Card *>(card)->setSkillInstanceID(use.skillInstanceID);
 			return useCard(use, add_history);
 		}
 	} catch (TriggerEvent triggerEvent){
@@ -5524,6 +5649,7 @@ void Room::marshal(ServerPlayer*player)
 
 	foreach(ServerPlayer*p, m_players)
 		p->marshal(player);
+	notifySkillInstanceSnapshot(player);
 
 	foreach(ServerPlayer*p, m_players){
 		QMap<QString, QHash<QString, QString> > swaps = p->getAllSkillDescriptionSwaps();
@@ -5632,6 +5758,8 @@ void Room::startGame()
 	}
 
 	preparePlayers();
+	foreach (ServerPlayer *receiver, m_players)
+		notifySkillInstanceSnapshot(receiver);
 
 	doBroadcastNotify(S_COMMAND_GAME_START, JsonUtils::toJsonArray(*m_drawPile));
 
@@ -6799,8 +6927,13 @@ void Room::preparePlayers()
         const General*gen = player->getGeneral();
         if(!gen) continue;
         player->setGender(gen->getGender());
+		QSet<QString> relatedNames;
+		foreach (const Skill *parent, gen->getSkillList()) {
+			foreach (const Skill *related, Sanguosha->getRelatedSkills(parent->objectName()))
+				relatedNames.insert(related->objectName());
+		}
         foreach(const Skill*skill, gen->getSkillList()){
-            if(player->hasSkill(skill->objectName(),true)) continue;
+			if (relatedNames.contains(skill->objectName())) continue;
             player->addSkill(skill->objectName(), true);
             if (skill->inherits("ViewAsEquipSkill")){
                 const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(skill->objectName());
@@ -6815,8 +6948,13 @@ void Room::preparePlayers()
         }
         gen = player->getGeneral2();
         if (gen){
+			relatedNames.clear();
+			foreach (const Skill *parent, gen->getSkillList()) {
+				foreach (const Skill *related, Sanguosha->getRelatedSkills(parent->objectName()))
+					relatedNames.insert(related->objectName());
+			}
             foreach(const Skill*skill, gen->getSkillList()){
-                if(player->hasSkill(skill->objectName(),true)) continue;
+				if (relatedNames.contains(skill->objectName())) continue;
                 player->addSkill(skill->objectName(), false);
                 if (skill->inherits("ViewAsEquipSkill")){
                     const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(skill->objectName());
@@ -6841,7 +6979,13 @@ void Room::changePlayerGeneral(ServerPlayer*player, const QString&new_general)
     const General*gen = player->getGeneral();
     QStringList sks;
     if (gen){
+        QSet<QString> relatedNames;
+        foreach (const Skill *parent, gen->getSkillList()) {
+            foreach (const Skill *related, Sanguosha->getRelatedSkills(parent->objectName()))
+                relatedNames.insert(related->objectName());
+        }
         foreach(const Skill*skill, gen->getSkillList()){
+            if (relatedNames.contains(skill->objectName())) continue;
             sks << skill->objectName();
             player->loseSkill(sks.last(), true);
             if (skill->isChangeSkill()){
@@ -6871,11 +7015,18 @@ void Room::changePlayerGeneral(ServerPlayer*player, const QString&new_general)
     gen = player->getGeneral();
     player->setGender(gen->getGender());
     setPlayerProperty(player,"kingdom",gen->getKingdom());
+    QSet<QString> relatedNames;
+    foreach (const Skill *parent, gen->getSkillList()) {
+        foreach (const Skill *related, Sanguosha->getRelatedSkills(parent->objectName()))
+            relatedNames.insert(related->objectName());
+    }
     foreach(const Skill*skill, gen->getSkillList()){
-        if (player->hasSkill(skill->objectName(),true)) continue;
+        if (relatedNames.contains(skill->objectName())) continue;
         player->addSkill(skill->objectName(), true);
     }
     filterCards(player, player->getCards("he"), false);
+    foreach (ServerPlayer *receiver, m_players)
+        notifySkillInstanceSnapshot(receiver);
 }
 
 void Room::changePlayerGeneral2(ServerPlayer*player, const QString&new_general)
@@ -6883,7 +7034,13 @@ void Room::changePlayerGeneral2(ServerPlayer*player, const QString&new_general)
     const General*gen = player->getGeneral2();
     QStringList sks;
     if (gen){
+        QSet<QString> relatedNames;
+        foreach (const Skill *parent, gen->getSkillList()) {
+            foreach (const Skill *related, Sanguosha->getRelatedSkills(parent->objectName()))
+                relatedNames.insert(related->objectName());
+        }
         foreach(const Skill*skill, gen->getSkillList()){
+            if (relatedNames.contains(skill->objectName())) continue;
             sks << skill->objectName();
             player->loseSkill(sks.last(), false);
             if (skill->isChangeSkill()){
@@ -6912,12 +7069,19 @@ void Room::changePlayerGeneral2(ServerPlayer*player, const QString&new_general)
     setPlayerProperty(player, "general2", new_general);
     gen = player->getGeneral2();
     if (gen){
+        QSet<QString> relatedNames;
+        foreach (const Skill *parent, gen->getSkillList()) {
+            foreach (const Skill *related, Sanguosha->getRelatedSkills(parent->objectName()))
+                relatedNames.insert(related->objectName());
+        }
         foreach(const Skill*skill, gen->getSkillList()){
-            if (player->hasSkill(skill->objectName(),true)) continue;
+            if (relatedNames.contains(skill->objectName())) continue;
             player->addSkill(skill->objectName(), false);
         }
     }
     filterCards(player, player->getCards("he"), false);
+    foreach (ServerPlayer *receiver, m_players)
+        notifySkillInstanceSnapshot(receiver);
 }
 
 void Room::filterCards(ServerPlayer*player, QList<const Card*> cards, bool refilter)
@@ -6948,126 +7112,86 @@ void Room::filterCards(ServerPlayer*player, QList<const Card*> cards, bool refil
 	}
 }
 
-void Room::acquireSkill(ServerPlayer*player, const Skill*skill, bool open, bool getmark, bool event_and_log)
+int Room::acquireSkill(ServerPlayer*player, const Skill*skill, bool open, bool getmark, bool event_and_log)
 {
-	//Q_ASSERT(skill != nullptr);
-	if (!skill) return;
+	if (!skill) return 0;
 
-	int instanceId = 0;
-	const TriggerV2Skill *v2 = qobject_cast<const TriggerV2Skill *>(skill);
-	if (v2) instanceId = v2->getInstanceId();
-
-	if (instanceId > 0) {
-		if (player->hasSkill(QString("%1#%2").arg(skill->objectName()).arg(instanceId), true)) return;
-	} else {
-		if (player->hasSkill(skill->objectName(), true)) return;
-	}
-
-	player->acquireSkill(skill->objectName(), instanceId);
-	/*if (Sanguosha->getSkill(skill_name)==nullptr)
-		Sanguosha->addSkills(QList<const Skill*>() << skill);*/
-	if (skill->inherits("TriggerSkill"))
-		thread->addTriggerSkill(qobject_cast<const TriggerSkill*>(skill));
-	else if (skill->inherits("ViewAsEquipSkill")){
-		const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(skill->objectName());
-		QString view = vaes->viewAsEquip(player);
-		if(view!=""){
-			foreach(QString equip_name, view.split(",")){
-				if (Sanguosha->getViewAsSkill(equip_name))
-					attachSkillToPlayer(player,equip_name);
-			}
-		}
-	}
-	if (skill->isVisible()){
-		if (getmark&&!skill->getLimitMark().isEmpty())
-			setPlayerMark(player, skill->getLimitMark(), 1);
-        if (skill->getFrequency() == Skill::Club && !skill->getClubName().isEmpty())
-            player->addClub(skill->getClubName());
-		if (open){
-			JsonArray args;
-			args << QSanProtocol::S_GAME_EVENT_ACQUIRE_SKILL << player->objectName() << skill->objectName();
-			doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
-			if (event_and_log){
-				LogMessage log;
-				log.from = player;
-				log.type = "#AcquireSkill";
-				log.arg = skill->objectName();
-				sendLog(log);
-			}
-		}
-		foreach(const Skill*rs, Sanguosha->getRelatedSkills(skill->objectName()))
-			acquireSkill(player, rs);
-		if (event_and_log){
-			QVariant data = skill->objectName();
-			thread->trigger(EventAcquireSkill, this, player, data);
-		}
-	}
-	player->calculateUITooltips();
+	// 名稱 overload 是唯一獲得路徑，避免 ViewAsEquipSkill 被處理兩次。
+	return acquireSkill(player, skill->objectName(), open, getmark, event_and_log);
 }
 
-void Room::acquireSkill(ServerPlayer*player, const QString&skill_name, bool open, bool getmark, bool event_and_log)
+int Room::acquireSkill(ServerPlayer*player, const QString&skill_name, bool open, bool getmark, bool event_and_log)
 {
     const Skill *skill = Sanguosha->getSkill(skill_name);
-    if (!skill) return;
+    if (!skill) return 0;
 
-    const TriggerV2Skill *v2 = qobject_cast<const TriggerV2Skill *>(skill);
-    if (v2) {
-        int maxInstance = 0;
-        foreach (const QString &acquired, player->getAcquiredSkills()) {
-            QString base;
-            int instId = 0;
-            int split = acquired.indexOf('#', acquired.startsWith('#') ? 1 : 0);
-            if (split != -1) {
-                base = acquired.left(split);
-                instId = acquired.mid(split + 1).toInt();
-            } else {
-                base = acquired;
-            }
-            if (base == skill_name)
-                maxInstance = qMax(maxInstance, instId);
-        }
+    // 每次呼叫都建立新的後天技能實例，並把精確 ID 回傳給呼叫者。
+    int instanceId = player->acquireSkill(skill_name);
+    const SkillInstance *created = player->findSkillInstance(skill_name, instanceId);
+    if (created)
+        notifySkillInstanceUpsert(player, *created);
 
-        if (player->hasSkill(skill_name, true))
-            ++maxInstance;
-
-        int newInstanceId = maxInstance + 1;
-        QString newKey = QString("%1#%2").arg(skill_name).arg(newInstanceId);
-        if (player->hasSkill(newKey, true)) return;
-
-        player->acquireSkill(skill_name, newInstanceId);
-
-        if (skill->inherits("TriggerSkill"))
-            thread->addTriggerSkill(qobject_cast<const TriggerSkill*>(skill));
-
-        if (skill->isVisible()){
-            if (getmark&&!skill->getLimitMark().isEmpty())
-                setPlayerMark(player, skill->getLimitMark(), 1);
-            if (skill->getFrequency() == Skill::Club && !skill->getClubName().isEmpty())
-                player->addClub(skill->getClubName());
-            if (open){
-                JsonArray args;
-                args << QSanProtocol::S_GAME_EVENT_ACQUIRE_SKILL << player->objectName() << skill->objectName();
-                doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
-                if (event_and_log){
-                    LogMessage log;
-                    log.from = player;
-                    log.type = "#AcquireSkill";
-                    log.arg = skill->objectName();
-                    sendLog(log);
-                }
-            }
-            foreach(const Skill*rs, Sanguosha->getRelatedSkills(skill->objectName()))
-                acquireSkill(player, rs);
-            if (event_and_log){
-                QVariant data = skill->objectName();
-                thread->trigger(EventAcquireSkill, this, player, data);
+    if (skill->inherits("TriggerSkill"))
+        thread->addTriggerSkill(qobject_cast<const TriggerSkill*>(skill));
+    else if (skill->inherits("ViewAsEquipSkill")){
+        const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(skill->objectName());
+        QString view = vaes->viewAsEquip(player);
+        if(view!=""){
+            foreach(QString equip_name, view.split(",")){
+                if (Sanguosha->getViewAsSkill(equip_name))
+                    attachSkillToPlayer(player,equip_name);
             }
         }
-        player->calculateUITooltips();
-        return;
     }
 
-    acquireSkill(player, skill, open, getmark, event_and_log);
+    if (skill->isVisible()){
+        if (getmark&&!skill->getLimitMark().isEmpty())
+            setPlayerMark(player, skill->getLimitMark(), 1);
+        if (skill->getFrequency() == Skill::Club && !skill->getClubName().isEmpty())
+            player->addClub(skill->getClubName());
+        if (open){
+            if (event_and_log){
+                LogMessage log;
+                log.from = player;
+                log.type = "#AcquireSkill";
+                log.arg = skill->objectName();
+                sendLog(log);
+            }
+        }
+    }
+
+    if (event_and_log) {
+        SkillChangeStruct change(skill->objectName(), instanceId);
+        change.source = SourceAcquired;
+        change.visible = skill->isVisible();
+        QVariant data = change.toVariant();
+        thread->trigger(EventAcquireSkill, this, player, data);
+    }
+
+    // 每個父實例建立自己的 helper；helper 使用自己的 ID 序列並保存顯式父鍵。
+    foreach (const Skill *related, Sanguosha->getRelatedSkills(skill->objectName())) {
+        int helperId = player->createSkillInstance(related->objectName(), SourceHelper,
+                                                   skill->objectName(), instanceId,
+                                                   related->isVisible());
+        const SkillInstance *helper = player->findSkillInstance(related->objectName(), helperId);
+        if (helper)
+            notifySkillInstanceUpsert(player, *helper);
+        if (related->inherits("TriggerSkill"))
+            thread->addTriggerSkill(qobject_cast<const TriggerSkill *>(related));
+
+        if (event_and_log) {
+            SkillChangeStruct helperChange(related->objectName(), helperId);
+            helperChange.source = SourceHelper;
+            helperChange.parentSkillName = skill->objectName();
+            helperChange.parentInstanceID = instanceId;
+            helperChange.visible = related->isVisible();
+            QVariant helperData = helperChange.toVariant();
+            thread->trigger(EventAcquireSkill, this, player, helperData);
+        }
+    }
+
+    player->calculateUITooltips();
+    return instanceId;
 }
 
 void Room::addSkillInvalidity(ServerPlayer *target, const QString &skillName, const QString &sourceName, const QString &reason, int instanceId)
@@ -7148,16 +7272,9 @@ void Room::clearSkillInvalidityBySource(ServerPlayer *source)
                 if (!recordsToKeep.contains(removed)) {
                     QStringList parts = removed.split("|");
                     if (parts.size() >= 1) {
-                        QString skillName = parts.at(0);
-                        int instanceId = 0;
-                        int split = skillName.indexOf('#', skillName.startsWith('#') ? 1 : 0);
-                        if (split != -1) {
-                            instanceId = skillName.mid(split + 1).toInt();
-                            skillName = skillName.left(split);
-                        }
-                        QString notifyName = skillName;
-                        if (instanceId > 0)
-                            notifyName = QString("%1#%2").arg(skillName).arg(instanceId);
+                        QString skillName;
+                        int instanceId = SkillInstanceUtils::parseName(parts.at(0), skillName);
+                        QString notifyName = SkillInstanceUtils::formatName(skillName, instanceId);
                         doNotify(p, S_COMMAND_UPDATE_SKILL, notifyName);
 
                         QVariant data = notifyName;
