@@ -398,3 +398,7 @@ QString General::getCompanions() const
     return names.join(" ");
 }
 
+void General::tryLoadingSkinTranslation(int) const
+{
+}
+

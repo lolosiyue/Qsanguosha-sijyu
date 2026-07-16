@@ -2,6 +2,19 @@
 #include "engine.h"
 #include "room.h"
 #include "json.h"
+#include <QMetaType>
+
+// 註冊技能多實例相關 metatype——確保 QVariant::toString() 回傳基礎技能名
+static struct SkillInstanceMetaRegistrar {
+    SkillInstanceMetaRegistrar() {
+        qRegisterMetaType<SkillInstanceKey>("SkillInstanceKey");
+        qRegisterMetaType<SkillInstance>("SkillInstance");
+        qRegisterMetaType<SkillChangeStruct>("SkillChangeStruct");
+        QMetaType::registerConverter<SkillChangeStruct, QString>([](const SkillChangeStruct &scs) {
+            return scs.skillName;
+        });
+    }
+} _sir;
 
 bool CardsMoveStruct::tryParse(const QVariant &arg)
 {
@@ -144,6 +157,31 @@ QVariant ChoiceData::toVariant() const
     arg << forced_answer;
     arg << canceled;
     return arg;
+}
+
+// SkillInstanceKey
+QString SkillInstanceKey::toString() const
+{
+    if (instanceID <= 0)
+        return skillName;
+    return QString("%1#%2").arg(skillName).arg(instanceID);
+}
+
+// SkillChangeStruct
+QVariant SkillChangeStruct::toVariant() const
+{
+    return QVariant::fromValue(*this);
+}
+
+bool SkillChangeStruct::tryParse(const QVariant &arg)
+{
+    if (!arg.isValid() || arg.isNull())
+        return false;
+    if (arg.canConvert<SkillChangeStruct>()) {
+        *this = arg.value<SkillChangeStruct>();
+        return true;
+    }
+    return false;
 }
 
 bool ChoiceData::tryParse(const QVariant &arg)

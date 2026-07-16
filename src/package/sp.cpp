@@ -544,7 +544,7 @@ public:
                     player->removeTag("XiaodeSkill");
                 }
             }
-        } else if (triggerEvent == EventLoseSkill && data.toString() == "xiaode") {
+        } else if (triggerEvent == EventLoseSkill && data.value<SkillChangeStruct>().skillName == "xiaode") {
             QString skill_name = player->getTag("XiaodeSkill").toString();
             if (!skill_name.isEmpty()) {
                 room->detachSkillFromPlayer(player, skill_name, false, true);

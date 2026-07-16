@@ -107,6 +107,7 @@ public:
         return arg1;
     }
     virtual void setSkill(const Skill *skill);
+    void setDisplayName(const QString &name);
     inline virtual const Skill *getSkill() const
     {
         return _m_skill;
@@ -134,6 +135,7 @@ protected:
     bool _m_canDisable;
     const Skill *_m_skill;
     const ViewAsSkill *_m_viewAsSkill;
+    QString _m_displayName;
 
 protected slots:
     void onMouseClick();

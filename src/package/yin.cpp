@@ -1312,7 +1312,8 @@ public:
 
     bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
     {
-        if (event == GameStart || event == Debut || event == Revived || (event == EventAcquireSkill && data.toString() == objectName())) {
+        if (event == GameStart || event == Debut || event == Revived
+            || (event == EventAcquireSkill && data.value<SkillChangeStruct>().skillName == objectName())) {
             if (player->isChained()) return false;
             room->sendCompulsoryTriggerLog(player, objectName(), true, true);
             room->setPlayerChained(player);

@@ -9,13 +9,18 @@ class Room;
 
 struct SkillContext {
     QString skill_name;
+    SkillInstanceRef sourceRef;
+    SkillInstanceRef activationRef;
+    ServerPlayer *initiator;
     ServerPlayer *invoker;
     ServerPlayer *owner;
     QList<ServerPlayer *> targets;
     QList<ServerPlayer *> updated_targets;
     const Card *use_card;
+    const Card *updated_card;
     QVariant *original_data;
     int instanceID;
+    qint64 executionID;
 
     ServerPlayer *preferredTarget;
     int preferredTargetSeat;
@@ -33,9 +38,10 @@ struct SkillContext {
 
     QString choice;
     QVariant extra_data;
+    QMap<QString, QVariantMap> interceptor_data;
 
-    SkillContext() : invoker(nullptr), owner(nullptr), use_card(nullptr),
-                     original_data(nullptr), instanceID(0), preferredTarget(nullptr), preferredTargetSeat(-1),
+    SkillContext() : initiator(nullptr), invoker(nullptr), owner(nullptr), use_card(nullptr), updated_card(nullptr),
+                     original_data(nullptr), instanceID(0), executionID(0), preferredTarget(nullptr), preferredTargetSeat(-1),
                       is_forced(false), is_canceled(false),
                       bypass_cost(false), manual_effect(false), current_event(NonTrigger),
                      amount(1), modified_amount(0), trigger_count(0), multiplier(1) {}
@@ -43,6 +49,27 @@ struct SkillContext {
     QVariant toVariant() const;
 };
 Q_DECLARE_METATYPE(SkillContext)
+
+struct ActiveSkillRequest {
+    CardUseStruct::CardUseReason reason;
+    QString pattern;
+    const Player *initiator;
+    SkillInstanceRef activationRef;
+    QList<int> selectedCardIds;
+    QStringList selectedTargetNames;
+    QString userString;
+
+    ActiveSkillRequest() : reason(CardUseStruct::CARD_USE_REASON_UNKNOWN), initiator(nullptr) {}
+
+    CardUseStruct::CardUseReason getReason() const { return reason; }
+    QString getPattern() const { return pattern; }
+    const Player *getInitiator() const { return initiator; }
+    QString getActivationSkillName() const { return activationRef.key.skillName; }
+    int getActivationInstanceID() const { return activationRef.key.instanceID; }
+    QList<int> getSelectedCardIds() const { return selectedCardIds; }
+    QStringList getSelectedTargetNames() const { return selectedTargetNames; }
+    QString getUserString() const { return userString; }
+};
 
 class Skill : public QObject
 {
@@ -81,7 +108,7 @@ public:
     bool isShiMingSkill() const;
     virtual bool canPreshow() const;
     virtual bool shouldBeVisible(const Player *Self) const;
-    QString getDescription(const Player *target = nullptr) const;
+    QString getDescription(const Player *target = nullptr, int instanceId = 0) const;
     QString getOracleText(const Player *target = nullptr) const;
     QString getNotice(int index) const;
     bool isVisible() const;
@@ -98,6 +125,7 @@ public:
     QString getClubName() const;
     QString getClubMark() const;
     QString getWakedSkills() const;
+    QStringList getSources(const QString &general, int skinId) const;
     QStringList getSources() const;
     bool setProperty(const char* name, const QVariant& value);
 
@@ -130,6 +158,7 @@ protected:
 private:
     bool lord_skill;
     QStringList sources;
+    mutable QHash<QString, QStringList> skinSourceHash;
     int m_instanceId;
     static int m_globalInstanceCount;
 };
@@ -168,6 +197,37 @@ protected:
     QString response_pattern;
     bool response_or_use;
     QString expand_pile;
+};
+
+class ActiveSkillV2 : public ViewAsSkill
+{
+public:
+    enum TargetMode { NoTarget, SelectTargets };
+    enum TargetEffectMode { EachTarget, WholeTargetGroup };
+    enum EffectFlow { ContinueEffects, FinishSkill };
+    explicit ActiveSkillV2(const QString &name);
+
+    virtual bool canActivate(const ActiveSkillRequest &request) const;
+    virtual bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const;
+    virtual bool cardSelectionFeasible(const ActiveSkillRequest &request) const;
+    virtual const Card *createCard(const ActiveSkillRequest &request) const;
+    virtual bool willThrowSelectedCards() const;
+    virtual bool cost(Room *room, SkillContext &context, const ActiveSkillRequest &request) const;
+    virtual bool pay(Room *room, SkillContext &context, const ActiveSkillRequest &request) const;
+    virtual QString historyKey(const ActiveSkillRequest &request) const;
+    virtual TargetMode targetMode() const;
+    virtual bool canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected,
+                                 const Player *candidate) const;
+    virtual bool targetsFeasible(const ActiveSkillRequest &request, const QList<const Player *> &selected) const;
+    virtual TargetEffectMode targetEffectMode() const;
+    virtual EffectFlow effect(SkillContext &context) const;
+    virtual EffectFlow effectOnTarget(SkillContext &context, ServerPlayer *target) const;
+    virtual EffectFlow effectOnTargetGroup(SkillContext &context, const QList<ServerPlayer *> &targets) const;
+
+    // V2 skills are activated through ActiveSkillRequest, never the legacy
+    // ViewAs callbacks.  These adapters keep accidental legacy callers safe.
+    bool viewFilter(const QList<const Card *> &selected, const Card *to_select) const override;
+    const Card *viewAs(const QList<const Card *> &cards) const override;
 };
 
 class ZeroCardViewAsSkill : public ViewAsSkill

@@ -10,6 +10,42 @@ typedef int LuaFunction;
 #include "card.h"
 #include "structs.h"
 
+struct ActiveSkillAIRequest {
+    CardUseStruct::CardUseReason reason;
+    QString pattern;
+    ServerPlayer *initiator;
+    SkillInstanceRef activationRef;
+    SkillInstanceRef sourceRef;
+    bool activationQuotaAvailable;
+    bool sourceQuotaAvailable;
+
+    ActiveSkillAIRequest() : reason(CardUseStruct::CARD_USE_REASON_UNKNOWN), initiator(nullptr),
+                             activationQuotaAvailable(false), sourceQuotaAvailable(false) {}
+
+    CardUseStruct::CardUseReason getReason() const { return reason; }
+    QString getPattern() const { return pattern; }
+    ServerPlayer *getInitiator() const { return initiator; }
+    QString getActivationOwner() const { return activationRef.ownerObjectName; }
+    QString getActivationSkillName() const { return activationRef.key.skillName; }
+    int getActivationInstanceID() const { return activationRef.key.instanceID; }
+    QString getSourceOwner() const { return sourceRef.ownerObjectName; }
+    QString getSourceSkillName() const { return sourceRef.key.skillName; }
+    int getSourceInstanceID() const { return sourceRef.key.instanceID; }
+    bool isActivationQuotaAvailable() const { return activationQuotaAvailable; }
+    bool isSourceQuotaAvailable() const { return sourceQuotaAvailable; }
+};
+
+// The callback is already bound to the ActiveSkillAIRequest supplied by Room.
+// It returns choices only; Room restores the authoritative activation identity.
+struct ActiveSkillAIResult {
+    bool accepted;
+    QList<int> selectedCardIds;
+    QStringList selectedTargetNames;
+    QString userString;
+
+    ActiveSkillAIResult() : accepted(false) {}
+};
+
 class AI : public QObject
 {
     Q_OBJECT
@@ -44,6 +80,7 @@ public:
     virtual int askForCardChosen(ServerPlayer *who, const QString &flags, const QString &reason, Card::HandlingMethod method) = 0;
     virtual const Card *askForCard(const QString &pattern, const QString &prompt, const QVariant &data, const Card::HandlingMethod method) = 0;
     virtual QString askForUseCard(const QString &pattern, const QString &prompt, const Card::HandlingMethod method) = 0;
+    virtual ActiveSkillAIResult askForActiveSkill(const ActiveSkillAIRequest &) { return ActiveSkillAIResult(); }
     virtual int askForAG(const QList<int> &card_ids, bool refusable, const QString &reason) = 0;
     virtual const Card *askForCardShow(ServerPlayer *requestor, const QString &reason) = 0;
     virtual const Card *askForPindian(ServerPlayer *requestor, const QString &reason) = 0;
@@ -106,6 +143,7 @@ public:
     virtual bool askForSkillInvoke(const QString &skill_name, const QVariant &data);
     virtual void activate(CardUseStruct &card_use);
     virtual QString askForUseCard(const QString &pattern, const QString &prompt, const Card::HandlingMethod method);
+    virtual ActiveSkillAIResult askForActiveSkill(const ActiveSkillAIRequest &request);
     virtual QList<int> askForDiscard(const QString &reason, int discard_num, int min_num, bool optional, bool include_equip, const QString &pattern = ".");
     virtual const Card *askForNullification(const Card *trick, ServerPlayer *from, ServerPlayer *to, bool positive);
     virtual QString askForChoice(const QString &skill_name, const QString &choices, const QVariant &data);

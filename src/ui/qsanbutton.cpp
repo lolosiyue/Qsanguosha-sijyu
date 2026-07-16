@@ -3,6 +3,7 @@
 //#include "skin-bank.h"
 #include "engine.h"
 #include "roomscene.h"
+#include "skill-instance-utils.h"
 #include <QMutexLocker>
 
 QSanButton::QSanButton(QGraphicsItem *parent) : QGraphicsObject(parent)
@@ -342,6 +343,13 @@ void QSanSkillButton::setSkill(const Skill *skill)
     _repaint();
 }
 
+void QSanSkillButton::setDisplayName(const QString &name)
+{
+    if (_m_displayName == name) return;
+    _m_displayName = name;
+    _repaint();
+}
+
 void QSanInvokeSkillButton::_repaint()
 {
     for (int i = 0; i < (int)S_NUM_BUTTON_STATES; i++) {
@@ -349,7 +357,8 @@ void QSanInvokeSkillButton::_repaint()
         Q_ASSERT(!_m_bgPixmap[i].isNull());
         const IQSanComponentSkin::QSanShadowTextFont &font = G_DASHBOARD_LAYOUT.getSkillTextFont((ButtonState)i, _m_skillType, _m_enumWidth);
         QPainter painter(&_m_bgPixmap[i]);
-        QString skillName = Sanguosha->translate(_m_skill->objectName());
+        QString skillName = _m_displayName.isEmpty()
+            ? Sanguosha->translate(_m_skill->objectName()) : _m_displayName;
         if (_m_enumWidth != S_WIDTH_WIDE) skillName = skillName.left(4);
         font.paintText(&painter,
             (ButtonState)i == S_STATE_DOWN ? G_DASHBOARD_LAYOUT.m_skillTextAreaDown[_m_enumWidth] :
@@ -421,10 +430,21 @@ QSanSkillButton *QSanInvokeSkillDock::addSkillButtonByName(const QString &skillN
     //Q_ASSERT(getSkillButtonByName(skillName) == nullptr);
     QSanInvokeSkillButton *button = new QSanInvokeSkillButton(this);
     button->setObjectName(skillName);
-    button->setSkill(Sanguosha->getSkill(skillName));
+    QString baseName = SkillInstanceUtils::baseName(skillName);
+    button->setSkill(Sanguosha->getSkill(baseName));
     connect(button, SIGNAL(skill_activated(const Skill *)), this, SIGNAL(skill_activated(const Skill *)));
     connect(button, SIGNAL(skill_deactivated(const Skill *)), this, SIGNAL(skill_deactivated(const Skill *)));
-    _m_buttons.append(button);
+    int instanceId = SkillInstanceUtils::parseName(skillName, baseName);
+    int insertAt = _m_buttons.length();
+    for (int i = 0; i < _m_buttons.length(); ++i) {
+        QString otherBase;
+        int otherId = SkillInstanceUtils::parseName(_m_buttons.at(i)->objectName(), otherBase);
+        if (otherBase == baseName && otherId > instanceId) {
+            insertAt = i;
+            break;
+        }
+    }
+    _m_buttons.insert(insertAt, button);
     update();
     return button;
 }

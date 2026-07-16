@@ -6,6 +6,7 @@ class Player;
 class ServerPlayer;
 class ClientPlayer;
 class CardItem;
+class ActiveSkillV2;
 
 struct CardEffectStruct;
 struct CardUseStruct;
@@ -96,6 +97,16 @@ public:
     int nameLength() const;
     QString getSkillName(bool removePrefix = true) const;
     virtual void setSkillName(const QString &skill_name);
+    void setSkillInstanceId(int id) { m_skillInstanceId = id; }
+    int getSkillInstanceId() const { return m_skillInstanceId; }
+    void setSkillInstanceID(int id) { setSkillInstanceId(id); }
+    int getSkillInstanceID() const { return getSkillInstanceId(); }
+    void setSourceSkill(const QString &name, int instanceId) { m_sourceSkillName = name; m_sourceSkillInstanceId = instanceId; }
+    QString getSourceSkillName() const { return m_sourceSkillName.isEmpty() ? getSkillName(false) : m_sourceSkillName; }
+    int getSourceSkillInstanceId() const { return m_sourceSkillInstanceId > 0 ? m_sourceSkillInstanceId : m_skillInstanceId; }
+    void setActivationSkill(const QString &name, int instanceId) { m_activationSkillName = name; m_activationSkillInstanceId = instanceId; }
+    QString getActivationSkillName() const { return m_activationSkillName.isEmpty() ? getSkillName(false) : m_activationSkillName; }
+    int getActivationSkillInstanceId() const { return m_activationSkillInstanceId > 0 ? m_activationSkillInstanceId : m_skillInstanceId; }
     virtual void addCharTag(QString tag);
     QString getDescription(const Player *owner = nullptr) const;
     virtual bool isGift() const;
@@ -232,6 +243,11 @@ protected:
     int m_number;
     int m_id;
     QString m_skillName;
+    int m_skillInstanceId;
+    QString m_sourceSkillName;
+    int m_sourceSkillInstanceId;
+    QString m_activationSkillName;
+    int m_activationSkillInstanceId;
     QString show_skill;
     bool is_gift;
     bool is_transferable;
@@ -256,15 +272,36 @@ public:
     virtual CardType getTypeId() const;
     virtual QString toString(bool hidden = false) const;
 
-    void setSkillInstanceId(int id) { m_skillInstanceId = id; }
-    int getSkillInstanceId() const { return m_skillInstanceId; }
     void setSkillOwner(ServerPlayer *owner) { m_skillOwner = owner; }
     ServerPlayer *getSkillOwner() const { return m_skillOwner; }
 
 protected:
     QString user_string;
-    int m_skillInstanceId;
     ServerPlayer *m_skillOwner;
+};
+
+// Server-created proxy for ActiveSkillV2 custom actions.  It has no
+// client-authoritative state: Room recreates it from the immutable request.
+class ActiveSkillCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE ActiveSkillCard();
+
+    void setActiveSkill(const ActiveSkillV2 *skill) { m_activeSkill = skill; }
+    const ActiveSkillV2 *getActiveSkill() const { return m_activeSkill; }
+
+    bool targetFixed() const override;
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select,
+                      const Player *Self) const override;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const override;
+    void onUse(Room *room, CardUseStruct &card_use) const override;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const override;
+    void onEffect(CardEffectStruct &effect) const override;
+
+private:
+    const ActiveSkillV2 *m_activeSkill;
 };
 
 class DummyCard : public SkillCard

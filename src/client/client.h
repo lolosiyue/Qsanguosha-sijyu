@@ -136,6 +136,7 @@ public:
     void setMark(const QVariant &mark_str);
     void showCard(const QVariant &show_str);
     void showVirtualCard(const QVariant &arg);
+    void cardProvenance(const QVariant &arg);
     void log(const QVariant &log_str);
     void speak(const QVariant &speak_data);
     void addHistory(const QVariant &history);
@@ -217,6 +218,7 @@ public:
     void revealGeneral(const QVariant &);
 
     void attachSkill(const QVariant &skill);
+    void syncSkillInstances(const QVariant &payload);
     void updateSkill(const QVariant &args);
 
     inline RoomState *getRoomState()
@@ -309,6 +311,8 @@ private:
     Recorder *recorder;
     Replayer *replayer;
     ReplayTakeoverManager *m_takeoverManager;
+    bool m_replaySawCardProvenance;
+    bool m_replayWarnedLegacyProvenance;
     QTextDocument *lines_doc, *prompt_doc;
     int pile_num;
     QString skill_to_invoke;
@@ -404,6 +408,7 @@ signals:
 
     void skill_attached(const ClientPlayer *player, const QString &skill_name);
     void skill_detached(const ClientPlayer *player, const QString &skill_name);
+    void skill_instances_reset();
     void do_filter();
 
     void nullification_asked(bool asked);

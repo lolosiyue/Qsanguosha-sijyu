@@ -2,6 +2,70 @@
 
 #include "ai.h"
 
+ActiveSkillAIResult LuaAI::askForActiveSkill(const ActiveSkillAIRequest &request)
+{
+	ActiveSkillAIResult result;
+	if (callback == 0)
+		return result;
+
+	LuaLocker locker;
+	lua_State *L = room->getLuaState();
+	pushCallback(L, __FUNCTION__);
+	SWIG_NewPointerObj(L, &request, SWIGTYPE_p_ActiveSkillAIRequest, 0);
+	if (lua_pcall(L, 2, 1, 0) != 0) {
+		const char *error_msg = lua_tostring(L, -1);
+		lua_pop(L, 1);
+		room->output(error_msg);
+		return result;
+	}
+	if (lua_isnil(L, -1) || lua_isboolean(L, -1)) {
+		lua_pop(L, 1);
+		return result;
+	}
+	if (!lua_istable(L, -1)) {
+		lua_pop(L, 1);
+		return result;
+	}
+
+	lua_getfield(L, -1, "cards");
+	if (!lua_isnil(L, -1)) {
+		if (!lua_istable(L, -1)) { lua_pop(L, 2); return result; }
+		const size_t count = lua_rawlen(L, -1);
+		for (size_t i = 1; i <= count; ++i) {
+			lua_rawgeti(L, -1, i);
+			if (lua_type(L, -1) != LUA_TNUMBER) { lua_pop(L, 3); return result; }
+			const lua_Number value = lua_tonumber(L, -1);
+			const int id = int(value);
+			lua_pop(L, 1);
+			if (value != id) { lua_pop(L, 2); return result; }
+			result.selectedCardIds << id;
+		}
+	}
+	lua_pop(L, 1);
+
+	lua_getfield(L, -1, "targets");
+	if (!lua_isnil(L, -1)) {
+		if (!lua_istable(L, -1)) { lua_pop(L, 2); return result; }
+		const size_t count = lua_rawlen(L, -1);
+		for (size_t i = 1; i <= count; ++i) {
+			lua_rawgeti(L, -1, i);
+			if (lua_type(L, -1) != LUA_TSTRING) { lua_pop(L, 3); return result; }
+			result.selectedTargetNames << QString::fromUtf8(lua_tostring(L, -1));
+			lua_pop(L, 1);
+		}
+	}
+	lua_pop(L, 1);
+
+	lua_getfield(L, -1, "user_string");
+	if (!lua_isnil(L, -1)) {
+		if (lua_type(L, -1) != LUA_TSTRING) { lua_pop(L, 2); return result; }
+		result.userString = QString::fromUtf8(lua_tostring(L, -1));
+	}
+	lua_pop(L, 1);
+	result.accepted = true;
+	return result;
+}
+
 %}
 
 class AI: public QObject {
@@ -55,6 +119,7 @@ public:
 	virtual int askForCardChosen(ServerPlayer *who, const char *flags, const char *reason, Card::HandlingMethod method);
 	virtual const Card *askForCard(const char *pattern, const char *prompt, const QVariant &data, const Card::HandlingMethod method);
 	virtual QString askForUseCard(const char *pattern, const char *prompt, const Card::HandlingMethod method);
+	virtual ActiveSkillAIResult askForActiveSkill(const ActiveSkillAIRequest &request);
 	virtual int askForAG(const QList<int> &card_ids, bool refusable, const char *reason);
 	virtual const Card *askForCardShow(ServerPlayer *requestor, const char *reason);
 	virtual const Card *askForPindian(ServerPlayer *requestor, const char *reason);
@@ -71,6 +136,7 @@ public:
 class LuaAI: public TrustAI {
 public:
 	LuaAI(ServerPlayer *player);
+	virtual ActiveSkillAIResult askForActiveSkill(const ActiveSkillAIRequest &request);
 
 	virtual const Card *askForCardShow(ServerPlayer *requestor, const char *reason);
 	virtual bool askForSkillInvoke(const char *skill_name, const QVariant &data);

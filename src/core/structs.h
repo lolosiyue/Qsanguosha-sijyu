@@ -89,6 +89,7 @@ struct CardEffectStruct {
     bool no_respond;
     bool no_offset;
     int extra_effect;
+    int skillExecutionID;
 };
 
 struct SlashEffectStruct {
@@ -145,6 +146,11 @@ struct CardUseStruct {
     QStringList no_offset_list;
     int extra_use;
     bool bypass_cost;
+    bool skipSkillEffect;
+    bool hasSkillActivationRequest;
+    SkillInstanceRef sourceRef;
+    SkillInstanceRef activationRef;
+    int skillExecutionID;
 };
 
 class CardMoveReason {
@@ -517,6 +523,7 @@ struct CardResponseStruct {
         m_toCard = nullptr;
         m_isHandcard = false;
         nullified = false;
+        skillExecutionID = 0;
     }
 
     inline CardResponseStruct(const Card*card, bool isUse)
@@ -528,6 +535,7 @@ struct CardResponseStruct {
         m_toCard = nullptr;
         m_isHandcard = false;
         nullified = false;
+        skillExecutionID = 0;
     }
 
     inline CardResponseStruct(const Card*card, ServerPlayer*who = nullptr, bool isUse = false)
@@ -539,6 +547,7 @@ struct CardResponseStruct {
         m_toCard = nullptr;
         m_isHandcard = false;
         nullified = false;
+        skillExecutionID = 0;
     }
 
     void changeCard(Card*newcard);
@@ -549,6 +558,9 @@ struct CardResponseStruct {
     bool m_isHandcard;
     bool m_isRetrial;
     const Card*m_toCard;
+    SkillInstanceRef sourceRef;
+    SkillInstanceRef activationRef;
+    int skillExecutionID;
     bool nullified;//响应无效
 };
 
