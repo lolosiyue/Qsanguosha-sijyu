@@ -1,4 +1,5 @@
 #include "card.h"
+#include "skill.h"
 #include "settings.h"
 #include "engine.h"
 //#include "client.h"
@@ -25,7 +26,8 @@ static unsigned int cardId = 0;
 Card::Card(Suit suit, int number, bool target_fixed, bool damage_card, bool is_gift, bool single_target)
 	:target_fixed(target_fixed), mute(false), will_throw(true), has_preact(false), can_recast(false),
 	m_suit(suit), m_number(number), m_id(--cardId), is_gift(is_gift), is_transferable(false), damage_card(damage_card),
-	single_target(single_target),handling_method(MethodUse), m_skillInstanceID(0)
+	single_target(single_target),handling_method(MethodUse), m_skillInstanceId(0),
+	m_sourceSkillInstanceId(0), m_activationSkillInstanceId(0)
 {
 }
 
@@ -354,16 +356,6 @@ QString Card::getSkillName(bool removePrefix) const
 void Card::setSkillName(const QString &name)
 {
     this->m_skillName = name;
-}
-
-int Card::getSkillInstanceID() const
-{
-    return m_skillInstanceID;
-}
-
-void Card::setSkillInstanceID(int instanceID)
-{
-    m_skillInstanceID = qMax(0, instanceID);
 }
 
 QString Card::showSkill() const
@@ -704,7 +696,7 @@ void Card::onUse(Room*room, CardUseStruct &card_use) const
 		reason.m_extraData = QVariant::fromValue(card_use.card);
 		if (card_use.card->getTypeId()!=TypeSkill) {
 			room->moveCardsAtomic(CardsMoveStruct(card_use.card->getSubcards(), nullptr, Player::PlaceTable, reason), true);
-		} else if (card_use.card->willThrow()){
+		} else if (card_use.card->willThrow() && !card_use.bypass_cost){
 			reason.m_reason = CardMoveReason::S_REASON_THROW;
 			room->moveCardsAtomic(CardsMoveStruct(card_use.card->getSubcards(), nullptr, Player::DiscardPile, reason), true);
 		}
@@ -732,6 +724,7 @@ void Card::use(Room*room, ServerPlayer*source, QList<ServerPlayer*> &targets) co
 	CardUseStruct cardUse = room->getTag("UseHistory"+toString()).value<CardUseStruct>();
 	foreach (ServerPlayer*target, targets) {
 		CardEffectStruct effect;
+		effect.skillExecutionID = cardUse.skillExecutionID;
 		effect.nullified = cardUse.nullified_list.contains("_ALL_TARGETS")
 			||cardUse.nullified_list.contains(target->objectName());
 		if (effect.nullified){
@@ -976,9 +969,72 @@ bool Card::setProperty(const char* name, const QVariant& value) {
 
 // --------- Skill card ------------------
 
-SkillCard::SkillCard() : Card(NoSuit, 0)
+SkillCard::SkillCard() : Card(NoSuit, 0), m_skillOwner(nullptr)
 {
 	handling_method = MethodDiscard;
+}
+
+ActiveSkillCard::ActiveSkillCard()
+    : SkillCard(), m_activeSkill(nullptr)
+{
+    will_throw = false;
+}
+
+bool ActiveSkillCard::targetFixed() const
+{
+    return m_activeSkill && m_activeSkill->targetMode() == ActiveSkillV2::NoTarget;
+}
+
+bool ActiveSkillCard::targetFilter(const QList<const Player *> &, const Player *, const Player *) const
+{
+    // Target validation is performed by Room::resolveActiveSkillRequest().
+    return false;
+}
+
+bool ActiveSkillCard::targetsFeasible(const QList<const Player *> &, const Player *) const
+{
+    // The generic Card parser must not reinterpret V2 target rules.
+    return true;
+}
+
+void ActiveSkillCard::onUse(Room *room, CardUseStruct &card_use) const
+{
+    if (m_activeSkill && card_use.skillExecutionID > 0) {
+        SkillContext context = room->getSkillExecutionContext(card_use.skillExecutionID);
+        if (m_activeSkill->effect(context) == ActiveSkillV2::FinishSkill)
+            card_use.to.clear();
+        room->setSkillExecutionContext(card_use.skillExecutionID, context);
+    }
+    SkillCard::onUse(room, card_use);
+}
+
+void ActiveSkillCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
+{
+    SkillCard::use(room, source, targets);
+    if (!m_activeSkill || m_activeSkill->targetEffectMode() != ActiveSkillV2::WholeTargetGroup)
+        return;
+
+    SkillContext context = room->getSkillExecutionContext(room->getTag("UseHistory" + toString())
+        .value<CardUseStruct>().skillExecutionID);
+    QList<ServerPlayer *> effectiveTargets;
+    foreach (ServerPlayer *target, targets) {
+        if (target && target->isAlive()) effectiveTargets << target;
+    }
+    if (!effectiveTargets.isEmpty())
+        m_activeSkill->effectOnTargetGroup(context, effectiveTargets);
+    room->setSkillExecutionContext(context.executionID, context);
+}
+
+void ActiveSkillCard::onEffect(CardEffectStruct &effect) const
+{
+    if (!m_activeSkill || effect.skillExecutionID <= 0 || !effect.to) return;
+    Room *room = effect.to->getRoom();
+    if (!room) return;
+    SkillContext context = room->getSkillExecutionContext(effect.skillExecutionID);
+    if (m_activeSkill->targetEffectMode() == ActiveSkillV2::EachTarget
+        && m_activeSkill->effectOnTarget(context, effect.to) == ActiveSkillV2::FinishSkill)
+        context.is_canceled = true;
+    room->setSkillExecutionContext(effect.skillExecutionID, context);
 }
 
 void SkillCard::setUserString(const QString &user_string)

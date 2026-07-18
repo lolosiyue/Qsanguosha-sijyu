@@ -2,6 +2,10 @@
 #include "lua.hpp"
 #include "card.h"
 
+#include <QCoreApplication>
+#include <QDebug>
+#include <QMessageBox>
+
 extern "C" {
     int luaopen_sgs(lua_State *);
 }
@@ -71,7 +75,12 @@ bool DoLuaScript(lua_State *L, const char *script)
     if (luaL_dofile(L, script)!=0) {
         QString error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
-        QMessageBox::critical(nullptr, QObject::tr("Lua script error"), error_msg);
+        // A modal dialog makes headless test failures invisible and leaves the
+        // process waiting forever.  Preserve GUI feedback outside headless mode.
+        if (qApp && qApp->arguments().contains("--headless"))
+            qCritical().noquote() << "Lua script error:" << script << error_msg;
+        else
+            QMessageBox::critical(nullptr, QObject::tr("Lua script error"), error_msg);
         return false;
     }
     return true;

@@ -6,7 +6,9 @@
 
 目標是讓同一名玩家可同時持有多個同名技能實例，每個實例具有獨立 instanceID、來源、父子關係與私有狀態，同時維持共享的全域 `Skill` 定義。
 
-本計劃以 `L:\finaldebug\QSanguosha-v2` 的現況為準；`H:\Program file\Game\sgs\Qsgs\github\QSanguosha-v2` 只作舊版唯讀參考。
+本文件最初依 `L:\finaldebug\QSanguosha-v2` 的除錯分支整理；後續功能規劃以 `H:\Program file\Game\sgs\Qsgs\github\QSanguosha-v2` 的 `main` 分支為最新程式基線。本地 `view_as_skillV2` 分支只保留作先行實驗參考。
+
+SkillCard／ViewAsSkill 的後續雙層現代化計劃見 [ActiveSkillV2 與 SkillCard／ViewAsSkill 現代化重構計劃](active-skill-v2-refactor-plan.md)。
 
 ## 2. 已鎖定的核心模型
 

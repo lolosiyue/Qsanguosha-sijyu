@@ -43,6 +43,26 @@ QDialog *LuaTriggerSkill::getDialog() const
     return nullptr;
 }
 
+QDialog *LuaTriggerV2Skill::getDialog() const
+{
+    if (guhuo_type != "") {
+        return GuhuoDialog::getInstance(objectName(), guhuo_type.contains("l"), guhuo_type.contains("r"),
+            !guhuo_type.startsWith("!"), guhuo_type.contains("s"), guhuo_type.contains("d"), guhuo_type.contains("u"));
+    } else if (juguan_type != "") {
+        return JuguanDialog::getInstance(objectName(), juguan_type);
+    } else if (tiansuan_type != "") {
+        return TiansuanDialog::getInstance(objectName(), tiansuan_type);
+    }
+    return nullptr;
+}
+
+int LuaTriggerV2Skill::getPriority(TriggerEvent triggerEvent) const
+{
+    if (priority_table.keys().contains(triggerEvent))
+        return priority_table[triggerEvent];
+    return priority;
+}
+
 LuaProhibitSkill::LuaProhibitSkill(const QString &name, Frequency frequency)
     : ProhibitSkill(name), is_prohibited(0)
 {
@@ -65,6 +85,16 @@ LuaViewAsSkill::LuaViewAsSkill(const QString &name, const QString &response_patt
     this->expand_pile = expand_pile;
     this->frequency = frequency;
     this->limit_mark = QString(limit_mark);
+}
+
+LuaActiveSkillV2::LuaActiveSkillV2(const QString &name, Frequency frequency, const QString &limit_mark)
+    : ActiveSkillV2(name), can_activate(0), can_select_card(0), card_selection_feasible(0), create_card(0),
+      on_cost(0), on_pay(0), can_select_target(0), targets_feasible(0), on_effect(0),
+      on_effect_target(0), on_effect_target_group(0), m_targetMode(SelectTargets),
+      m_targetEffectMode(EachTarget), m_willThrowSelectedCards(true)
+{
+    this->frequency = frequency;
+    this->limit_mark = limit_mark;
 }
 
 QDialog *LuaViewAsSkill::getDialog() const
@@ -192,6 +222,9 @@ LuaSkillCard *LuaSkillCard::clone() const
     new_card->can_recast = can_recast;
     new_card->mute = mute;
     new_card->handling_method = handling_method;
+
+    new_card->m_skillInstanceId = m_skillInstanceId;
+    new_card->m_skillOwner = m_skillOwner;
 
     new_card->filter = filter;
     new_card->feasible = feasible;

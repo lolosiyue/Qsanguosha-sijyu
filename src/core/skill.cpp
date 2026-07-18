@@ -398,6 +398,89 @@ const ViewAsSkill *ViewAsSkill::parseViewAsSkill(const Skill *skill)
     return nullptr;
 }
 
+ActiveSkillV2::ActiveSkillV2(const QString &name)
+    : ViewAsSkill(name)
+{
+}
+
+bool ActiveSkillV2::canActivate(const ActiveSkillRequest &) const
+{
+    return false;
+}
+
+bool ActiveSkillV2::canSelectCard(const ActiveSkillRequest &, const Card *) const
+{
+    return false;
+}
+
+bool ActiveSkillV2::cardSelectionFeasible(const ActiveSkillRequest &) const
+{
+    return false;
+}
+
+const Card *ActiveSkillV2::createCard(const ActiveSkillRequest &request) const
+{
+	ActiveSkillCard *card = new ActiveSkillCard;
+	card->setActiveSkill(this);
+	card->setSkillName(objectName());
+	card->addSubcards(request.selectedCardIds);
+	card->setUserString(request.userString);
+	return card;
+}
+
+bool ActiveSkillV2::willThrowSelectedCards() const
+{
+    return true;
+}
+
+bool ActiveSkillV2::cost(Room *, SkillContext &, const ActiveSkillRequest &) const
+{
+    return true;
+}
+
+bool ActiveSkillV2::pay(Room *room, SkillContext &context, const ActiveSkillRequest &request) const
+{
+    if (!qobject_cast<const ActiveSkillCard *>(context.use_card)
+        || !willThrowSelectedCards() || request.selectedCardIds.isEmpty())
+        return true;
+    ServerPlayer *initiator = const_cast<ServerPlayer *>(dynamic_cast<const ServerPlayer *>(request.initiator));
+    if (!room || !initiator) return false;
+
+    foreach (int id, request.selectedCardIds) {
+        const Player::Place place = room->getCardPlace(id);
+        if (room->getCardOwner(id) != initiator
+            || (place != Player::PlaceHand && place != Player::PlaceEquip))
+            return false;
+    }
+
+    CardMoveReason reason(CardMoveReason::S_REASON_THROW, initiator->objectName(), objectName(), QString());
+    room->throwCard(request.selectedCardIds, reason, initiator);
+    return true;
+}
+
+QString ActiveSkillV2::historyKey(const ActiveSkillRequest &) const
+{
+    return objectName();
+}
+
+ActiveSkillV2::TargetMode ActiveSkillV2::targetMode() const { return SelectTargets; }
+bool ActiveSkillV2::canSelectTarget(const ActiveSkillRequest &, const QList<const Player *> &, const Player *) const { return false; }
+bool ActiveSkillV2::targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &) const { return false; }
+ActiveSkillV2::TargetEffectMode ActiveSkillV2::targetEffectMode() const { return EachTarget; }
+ActiveSkillV2::EffectFlow ActiveSkillV2::effect(SkillContext &) const { return ContinueEffects; }
+ActiveSkillV2::EffectFlow ActiveSkillV2::effectOnTarget(SkillContext &, ServerPlayer *) const { return ContinueEffects; }
+ActiveSkillV2::EffectFlow ActiveSkillV2::effectOnTargetGroup(SkillContext &, const QList<ServerPlayer *> &) const { return ContinueEffects; }
+
+bool ActiveSkillV2::viewFilter(const QList<const Card *> &, const Card *) const
+{
+    return false;
+}
+
+const Card *ActiveSkillV2::viewAs(const QList<const Card *> &) const
+{
+    return nullptr;
+}
+
 ZeroCardViewAsSkill::ZeroCardViewAsSkill(const QString &name)
     : ViewAsSkill(name)
 {
@@ -1175,6 +1258,8 @@ QVariant SkillContext::toVariant() const
         map["skill"] = skill_name;
     if (owner != nullptr)
         map["owner"] = owner->objectName();
+    if (initiator != nullptr)
+        map["initiator"] = initiator->objectName();
     if (invoker != nullptr)
         map["invoker"] = invoker->objectName();
     if (preferredTarget != nullptr) {
@@ -1189,6 +1274,12 @@ QVariant SkillContext::toVariant() const
     map["multiplier"] = multiplier;
     if (instanceID > 0)
         map["instanceID"] = instanceID;
+    if (executionID > 0)
+        map["executionID"] = executionID;
+    if (sourceRef.isValid())
+        map["source"] = sourceRef.ownerObjectName + "/" + sourceRef.key.skillName + "#" + QString::number(sourceRef.key.instanceID);
+    if (activationRef.isValid())
+        map["activation"] = activationRef.ownerObjectName + "/" + activationRef.key.skillName + "#" + QString::number(activationRef.key.instanceID);
     return map;
 }
 

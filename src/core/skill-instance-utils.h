@@ -2,6 +2,7 @@
 #define SKILL_INSTANCE_UTILS_H
 
 #include <QString>
+#include "json.h"
 
 // 集中實作 instance 名稱格式化與解析
 // 命名慣例：
@@ -15,6 +16,17 @@
 //   否則第一個 # 即為實例分隔符。
 
 namespace SkillInstanceUtils {
+
+    struct SkillActivationRequest {
+        bool supplied;
+        QString skillName;
+        int instanceID;
+        SkillActivationRequest() : supplied(false), instanceID(0) {}
+    };
+
+    // Decode the optional [activation name, activation ID] reply suffix only.
+    bool decodeActivationRequest(const JsonArray &usage, const QString &cardSkillName,
+                                 SkillActivationRequest &request);
 
     // 格式化完整實例名稱
     // instanceID=0 時不回綴 #N

@@ -769,7 +769,7 @@ struct CardUseStruct {
 	QStringList no_respond_list; //不能被响应
 	QStringList no_offset_list; //不能被抵消
     int extra_use;
-	int skillInstanceID;
+    bool bypass_cost;
 };
 
 struct CardsMoveStruct {
@@ -1273,6 +1273,11 @@ public:
 	void setUserString(const char*user_string);
 	QString getUserString() const;
 
+	void setSkillInstanceId(int id);
+	int getSkillInstanceId() const;
+	void setSkillOwner(ServerPlayer *owner);
+	ServerPlayer *getSkillOwner() const;
+
 	virtual QString getSubtype() const;
 	virtual QString getType() const;
 	virtual CardType getTypeId() const;
@@ -1458,6 +1463,38 @@ public:
 };
 
 extern Engine*Sanguosha;
+
+struct ActiveSkillRequest {
+	CardUseStruct::CardUseReason getReason() const;
+	QString getPattern() const;
+	const Player *getInitiator() const;
+	QString getActivationSkillName() const;
+	int getActivationInstanceID() const;
+	QList<int> getSelectedCardIds() const;
+	QStringList getSelectedTargetNames() const;
+	QString getUserString() const;
+};
+
+struct ActiveSkillAIRequest {
+	CardUseStruct::CardUseReason getReason() const;
+	QString getPattern() const;
+	ServerPlayer *getInitiator() const;
+	QString getActivationOwner() const;
+	QString getActivationSkillName() const;
+	int getActivationInstanceID() const;
+	QString getSourceOwner() const;
+	QString getSourceSkillName() const;
+	int getSourceInstanceID() const;
+	bool isActivationQuotaAvailable() const;
+	bool isSourceQuotaAvailable() const;
+};
+
+struct ActiveSkillAIResult {
+	bool accepted;
+	QList<int> selectedCardIds;
+	QStringList selectedTargetNames;
+	QString userString;
+};
 
 struct SkillContext {
 	SkillContext();

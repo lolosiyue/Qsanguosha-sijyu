@@ -3435,7 +3435,7 @@ NosRendeCard::NosRendeCard()
 
 bool NosRendeCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
 {
-	if(Self->getAcquiredSkills().contains("nosrende")){
+	if(Self->hasAcquiredSkill("nosrende")){
 		QString ww = Self->property("manweiwoFrom").toString();
 		if(!ww.isEmpty()&&to_select->objectName()!=ww) return false;
 	}
@@ -3762,7 +3762,7 @@ QingnangCard::QingnangCard()
 
 bool QingnangCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
 {
-	if(Self->getAcquiredSkills().contains("qingnang")){
+	if(Self->hasAcquiredSkill("qingnang")){
 		QString ww = Self->property("manweiwoFrom").toString();
 		if(!ww.isEmpty()&&to_select->objectName()!=ww) return false;
 	}
@@ -3771,7 +3771,7 @@ bool QingnangCard::targetFilter(const QList<const Player *> &targets, const Play
 
 bool QingnangCard::targetsFeasible(const QList<const Player *> &targets, const Player *Self) const
 {
-	if(Self->getAcquiredSkills().contains("qingnang")){
+	if(Self->hasAcquiredSkill("qingnang")){
 		QString ww = Self->property("manweiwoFrom").toString();
 		if(!ww.isEmpty()&&(targets.isEmpty()||targets.first()->objectName()!=ww)) return false;
 	}
@@ -4583,6 +4583,40 @@ public:
     }
 };
 
+class ActiveSkillV2Test : public ActiveSkillV2
+{
+public:
+    ActiveSkillV2Test() : ActiveSkillV2("active_skill_v2_test") {}
+
+    bool canActivate(const ActiveSkillRequest &request) const
+    {
+        return request.reason == CardUseStruct::CARD_USE_REASON_PLAY && request.initiator;
+    }
+
+    bool cardSelectionFeasible(const ActiveSkillRequest &) const { return true; }
+
+    const Card *createCard(const ActiveSkillRequest &) const
+    {
+        Card *card = Sanguosha->cloneCard("slash");
+        if (card) card->setSkillName(objectName());
+        return card;
+    }
+
+    TargetMode targetMode() const { return SelectTargets; }
+
+    bool canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected,
+                         const Player *candidate) const
+    {
+        return request.initiator && candidate && candidate != request.initiator
+            && candidate->isAlive() && selected.isEmpty();
+    }
+
+    bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &selected) const
+    {
+        return selected.length() == 1;
+    }
+};
+
 TestPackage::TestPackage()
     : Package("~test")
 {
@@ -4613,6 +4647,9 @@ TestPackage::TestPackage()
     super_caoren->addSkill(new SuperJushou);
     super_caoren->addSkill(new MarkAssignSkill("@jushou_test", 5));
     related_skills.insertMulti("super_jushou", "#@jushou_test-5");
+
+    General *active_skill_v2_tester = new General(this, "active_skill_v2_tester", "god", 4, true, true);
+    active_skill_v2_tester->addSkill(new ActiveSkillV2Test);
 
     General *nobenghuai_dongzhuo = new General(this, "nobenghuai_dongzhuo$", "qun", 4, true, true);
     nobenghuai_dongzhuo->addSkill("jiuchi");

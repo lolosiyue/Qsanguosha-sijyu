@@ -136,6 +136,7 @@ public:
     void setMark(const QVariant &mark_str);
     void showCard(const QVariant &show_str);
     void showVirtualCard(const QVariant &arg);
+    void cardProvenance(const QVariant &arg);
     void log(const QVariant &log_str);
     void speak(const QVariant &speak_data);
     void addHistory(const QVariant &history);
@@ -310,6 +311,8 @@ private:
     Recorder *recorder;
     Replayer *replayer;
     ReplayTakeoverManager *m_takeoverManager;
+    bool m_replaySawCardProvenance;
+    bool m_replayWarnedLegacyProvenance;
     QTextDocument *lines_doc, *prompt_doc;
     int pile_num;
     QString skill_to_invoke;

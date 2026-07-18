@@ -54,7 +54,7 @@ QString DamageStruct::getReason() const
 
 CardEffectStruct::CardEffectStruct()
 	: card(nullptr), offset_card(nullptr), offset_num(1), from(nullptr), to(nullptr), multiple(false),
-	nullified(false), no_respond(false), no_offset(false), extra_effect(0)
+	nullified(false), no_respond(false), no_offset(false), extra_effect(0), skillExecutionID(0)
 {
 }
 
@@ -167,17 +167,17 @@ PhaseChangeStruct::PhaseChangeStruct()
 }
 
 CardUseStruct::CardUseStruct()
-	: card(nullptr), from(nullptr), m_isOwnerUse(true), m_addHistory(true), m_isHandcard(false), whocard(nullptr), who(nullptr), extra_use(0), skillInstanceID(0), m_skillInstanceResolved(false)
+	: card(nullptr), from(nullptr), m_isOwnerUse(true), m_addHistory(true), m_isHandcard(false), whocard(nullptr), who(nullptr), extra_use(0), bypass_cost(false), skipSkillEffect(false), hasSkillActivationRequest(false), skillExecutionID(0)
 {
 }
 
 CardUseStruct::CardUseStruct(const Card*card, ServerPlayer*from, QList<ServerPlayer*> to, bool isOwnerUse, const Card*whocard, ServerPlayer*who)
-	: card(card), from(from), to(to), m_isOwnerUse(isOwnerUse), m_addHistory(true), m_isHandcard(false), whocard(whocard), who(who), extra_use(0), skillInstanceID(card ? card->getSkillInstanceID() : 0), m_skillInstanceResolved(false)
+	: card(card), from(from), to(to), m_isOwnerUse(isOwnerUse), m_addHistory(true), m_isHandcard(false), whocard(whocard), who(who), extra_use(0), bypass_cost(false), skipSkillEffect(false), hasSkillActivationRequest(false), skillExecutionID(0)
 {
 }
 
 CardUseStruct::CardUseStruct(const Card*card, ServerPlayer*from, ServerPlayer*target, bool isOwnerUse, const Card*whocard, ServerPlayer*who)
-	: card(card), from(from), m_isOwnerUse(isOwnerUse), m_addHistory(true), m_isHandcard(false), whocard(whocard), who(who), extra_use(0), skillInstanceID(card ? card->getSkillInstanceID() : 0), m_skillInstanceResolved(false)
+	: card(card), from(from), m_isOwnerUse(isOwnerUse), m_addHistory(true), m_isHandcard(false), whocard(whocard), who(who), extra_use(0), bypass_cost(false), skipSkillEffect(false), hasSkillActivationRequest(false), skillExecutionID(0)
 {
 	if (target) this->to << target;
 }
@@ -232,13 +232,17 @@ bool CardUseStruct::isValid(const QString &pattern) const
 bool CardUseStruct::tryParse(const QVariant &usage, Room*room)
 {
 	JsonArray use = usage.value<JsonArray>();
+	hasSkillActivationRequest = false;
 	if (use.length()>1&&use[1].canConvert<JsonArray>()){
 		foreach(const QVariant &target, use[1].value<JsonArray>())
 			to << room->findChild<ServerPlayer*>(target.toString());
 		card = Card::Parse(use[0].toString());
-		skillInstanceID = use.length() > 2 ? qMax(0, use[2].toInt()) : 0;
-		if (card)
-			const_cast<Card *>(card)->setSkillInstanceID(skillInstanceID);
+		if (!card) return false;
+		SkillInstanceUtils::SkillActivationRequest request;
+		if (!SkillInstanceUtils::decodeActivationRequest(use, card->getSkillName(false), request)) return false;
+		hasSkillActivationRequest = request.supplied;
+		if (request.instanceID > 0)
+			const_cast<Card *>(card)->setActivationSkill(request.skillName, request.instanceID);
 		return true;
 	}
 	return false;
@@ -268,11 +272,12 @@ void CardUseStruct::changeCard(Card*newcard)
 	tag.unite(card->tag);
 	newcard->tag = tag;
 	newcard->setFlags(newcard->getFlags()+card->getFlags());
-	if (skillInstanceID > 0 || newcard->getSkillInstanceID() <= 0)
-		newcard->setSkillInstanceID(skillInstanceID);
+	if (activationRef.isValid())
+		newcard->setActivationSkill(activationRef.key.skillName, activationRef.key.instanceID);
+	if (sourceRef.isValid())
+		newcard->setSourceSkill(sourceRef.key.skillName, sourceRef.key.instanceID);
 	newcard->change_cards << card;
 	card = newcard;
-	skillInstanceID = newcard->getSkillInstanceID();
 }
 
 void CardResponseStruct::changeCard(Card*newcard)
@@ -281,8 +286,10 @@ void CardResponseStruct::changeCard(Card*newcard)
 	tag.unite(m_card->tag);
 	newcard->tag = tag;
 	newcard->setFlags(newcard->getFlags()+m_card->getFlags());
-	if (newcard->getSkillInstanceID() <= 0)
-		newcard->setSkillInstanceID(m_card->getSkillInstanceID());
+	if (activationRef.isValid())
+		newcard->setActivationSkill(activationRef.key.skillName, activationRef.key.instanceID);
+	if (sourceRef.isValid())
+		newcard->setSourceSkill(sourceRef.key.skillName, sourceRef.key.instanceID);
 	newcard->change_cards << m_card;
 	m_card = newcard;
 }
