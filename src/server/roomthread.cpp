@@ -167,17 +167,17 @@ PhaseChangeStruct::PhaseChangeStruct()
 }
 
 CardUseStruct::CardUseStruct()
-	: card(nullptr), from(nullptr), m_isOwnerUse(true), m_addHistory(true), m_isHandcard(false), whocard(nullptr), who(nullptr), extra_use(0), bypass_cost(false), skipSkillEffect(false), hasSkillActivationRequest(false), skillExecutionID(0)
+	: card(nullptr), from(nullptr), m_isOwnerUse(true), m_addHistory(true), m_isHandcard(false), m_validateTargets(false), whocard(nullptr), who(nullptr), extra_use(0), bypass_cost(false), skipSkillEffect(false), hasSkillActivationRequest(false), skillExecutionID(0)
 {
 }
 
 CardUseStruct::CardUseStruct(const Card*card, ServerPlayer*from, QList<ServerPlayer*> to, bool isOwnerUse, const Card*whocard, ServerPlayer*who)
-	: card(card), from(from), to(to), m_isOwnerUse(isOwnerUse), m_addHistory(true), m_isHandcard(false), whocard(whocard), who(who), extra_use(0), bypass_cost(false), skipSkillEffect(false), hasSkillActivationRequest(false), skillExecutionID(0)
+	: card(card), from(from), to(to), m_isOwnerUse(isOwnerUse), m_addHistory(true), m_isHandcard(false), m_validateTargets(false), whocard(whocard), who(who), extra_use(0), bypass_cost(false), skipSkillEffect(false), hasSkillActivationRequest(false), skillExecutionID(0)
 {
 }
 
 CardUseStruct::CardUseStruct(const Card*card, ServerPlayer*from, ServerPlayer*target, bool isOwnerUse, const Card*whocard, ServerPlayer*who)
-	: card(card), from(from), m_isOwnerUse(isOwnerUse), m_addHistory(true), m_isHandcard(false), whocard(whocard), who(who), extra_use(0), bypass_cost(false), skipSkillEffect(false), hasSkillActivationRequest(false), skillExecutionID(0)
+	: card(card), from(from), m_isOwnerUse(isOwnerUse), m_addHistory(true), m_isHandcard(false), m_validateTargets(false), whocard(whocard), who(who), extra_use(0), bypass_cost(false), skipSkillEffect(false), hasSkillActivationRequest(false), skillExecutionID(0)
 {
 	if (target) this->to << target;
 }
@@ -232,10 +232,17 @@ bool CardUseStruct::isValid(const QString &pattern) const
 bool CardUseStruct::tryParse(const QVariant &usage, Room*room)
 {
 	JsonArray use = usage.value<JsonArray>();
+	card = nullptr;
+	to.clear();
+	m_validateTargets = true;
 	hasSkillActivationRequest = false;
-	if (use.length()>1&&use[1].canConvert<JsonArray>()){
-		foreach(const QVariant &target, use[1].value<JsonArray>())
-			to << room->findChild<ServerPlayer*>(target.toString());
+	if (use.length()>1&&JsonUtils::isString(use[0])&&use[1].canConvert<JsonArray>()){
+		foreach(const QVariant &target, use[1].value<JsonArray>()) {
+			if (!JsonUtils::isString(target)) return false;
+			ServerPlayer *player = room->findChild<ServerPlayer*>(target.toString());
+			if (!player) return false;
+			to << player;
+		}
 		card = Card::Parse(use[0].toString());
 		if (!card) return false;
 		SkillInstanceUtils::SkillActivationRequest request;
@@ -250,6 +257,8 @@ bool CardUseStruct::tryParse(const QVariant &usage, Room*room)
 
 void CardUseStruct::parse(const QString &str, Room*room)
 {
+	to.clear();
+	m_validateTargets = true;
 	card = Card::Parse(str);
 	if (str.contains("->sgs")){
 		foreach(QString target_name, str.split("->").last().split("+"))

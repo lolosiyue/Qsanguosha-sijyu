@@ -541,6 +541,7 @@ public:
     QString toString(bool hidden = false) const;
 
     // these functions are defined at swig/luaskills.i
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self, int &maxVotes) const;
     bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const;
     void onUse(Room *room, CardUseStruct &card_use) const;

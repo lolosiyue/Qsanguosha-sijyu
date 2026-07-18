@@ -446,6 +446,8 @@ public:
 	void setHandlingMethod(Card::HandlingMethod handling_method);
 	void setMute(bool mute);
 	LuaSkillCard *clone() const;
+	virtual bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+	virtual bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self, int &maxVotes) const;
 
 	LuaFunction filter;
 	LuaFunction feasible;
@@ -2109,11 +2111,21 @@ bool LuaViewAsSkill::isEnabledAtNullification(const ServerPlayer *player) const
 
 // ---------------------
 
+bool LuaSkillCard::targetFilter(const QList<const Player *> &targets, const Player *to_select,
+	const Player *self) const
+{
+	int maxVotes = 0;
+	return targetFilter(targets, to_select, self, maxVotes);
+}
+
 bool LuaSkillCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *self,
 	int &maxVotes) const
 {
-	if (filter == 0)
-		return SkillCard::targetFilter(targets, to_select, self, maxVotes);
+	if (filter == 0) {
+		const bool canSelect = SkillCard::targetFilter(targets, to_select, self);
+		maxVotes = canSelect ? 1 : 0;
+		return canSelect;
+	}
 
 	lua_State*L = Sanguosha->getLuaState();
 
@@ -2316,8 +2328,11 @@ bool LuaBasicCard::targetFilter(const QList<const Player *> &targets, const Play
 bool LuaBasicCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *self,
 	int &maxVotes) const
 {
-	if (filter == 0)
-		return BasicCard::targetFilter(targets, to_select, self, maxVotes);
+	if (filter == 0) {
+		const bool canSelect = BasicCard::targetFilter(targets, to_select, self);
+		maxVotes = canSelect ? 1 : 0;
+		return canSelect;
+	}
 
 	lua_State*L = Sanguosha->getLuaState();
 
@@ -2542,8 +2557,11 @@ bool LuaTrickCard::targetFilter(const QList<const Player *> &targets, const Play
 bool LuaTrickCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *self,
 	int &maxVotes) const
 {
-	if (filter == 0)
-		return TrickCard::targetFilter(targets, to_select, self, maxVotes);
+	if (filter == 0) {
+		const bool canSelect = TrickCard::targetFilter(targets, to_select, self);
+		maxVotes = canSelect ? 1 : 0;
+		return canSelect;
+	}
 
 	lua_State*L = Sanguosha->getLuaState();
 

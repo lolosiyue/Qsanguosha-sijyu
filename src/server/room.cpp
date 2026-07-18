@@ -5346,6 +5346,31 @@ bool Room::resolveCardSkillInstance(CardUseStruct &use)
 	return true;
 }
 
+bool Room::areCardTargetsLegal(const CardUseStruct &use) const
+{
+	if (!use.card || !use.from) return false;
+	if (use.activationRef.isValid()) {
+		const ActiveSkillV2 *activeSkill = dynamic_cast<const ActiveSkillV2 *>(
+			Sanguosha->getViewAsSkill(use.activationRef.key.skillName));
+		// resolveActiveSkillRequest() has already checked V2's independent target
+		// contract; its proxy card intentionally rejects generic targetFilter().
+		if (activeSkill) return true;
+	}
+
+	QList<const Player *> selected;
+	if (use.card->targetFixed())
+		return use.to.isEmpty() && use.card->targetsFeasible(selected, use.from);
+
+	foreach (ServerPlayer *target, use.to) {
+		if (!target) return false;
+		int maxVotes = 0;
+		if (!use.card->targetFilter(selected, target, use.from, maxVotes) || maxVotes < 1)
+			return false;
+		selected << target;
+	}
+	return use.card->targetsFeasible(selected, use.from);
+}
+
 const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ActiveSkillV2 *skill,
                                              const ActiveSkillRequest &request) const
 {
@@ -5578,6 +5603,9 @@ bool Room::useCard(const CardUseStruct&use, bool add_history)
 bool Room::useCard(CardUseStruct&use, bool add_history)
 {
 	if (!resolveCardSkillInstance(use)) return false;
+	// Revalidate only client/AI-selected targets. Server-created uses may carry
+	// authoritative targets for target-fixed cards, such as Peach in dying rescue.
+	if (use.m_validateTargets && !areCardTargetsLegal(use)) return false;
 	if ((!use.card->canRecast()||use.from->isCardLimited(use.card,Card::MethodRecast))&&use.from->isCardLimited(use.card,use.card->getHandlingMethod()))
 		return false;
 	use.m_addHistory = add_history;
@@ -8114,6 +8142,8 @@ void Room::activate(ServerPlayer*player, CardUseStruct&card_use)
 	/*if (!card_use.isValid("")) return;
 	QVariant data = QVariant::fromValue(card_use);
 	thread->trigger(ChoiceMade, this, player, data);*/
+	if (card_use.card)
+		card_use.m_validateTargets = true;
 }
 
 void Room::askForLuckCard(QList<CardsMoveStruct>&cards_moves)
