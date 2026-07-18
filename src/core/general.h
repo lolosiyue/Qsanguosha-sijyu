@@ -83,8 +83,6 @@ public:
     bool isCompanionWith(const QString &name) const;
     QString getCompanions() const;
 
-    void tryLoadingSkinTranslation(int skinId) const;
-
 public slots:
     void lastWord() const;
 

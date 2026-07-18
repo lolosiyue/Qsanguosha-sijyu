@@ -2,21 +2,18 @@
 #include <QTimer>
 #include <QDir>
 #include <QFile>
+#include <QPointer>
 
 #include "mainwindow.h"
 #include "settings.h"
 #include "banpair.h"
 #include "server.h"
 #include "ai.h"
-//#include "serverplayer.h"
+#include "serverplayer.h"
+#include "room.h"
 #include "engine.h"
+#include "lua.hpp"
 #include <QSurfaceFormat>
-
-extern "C" {
-struct swig_type_info;
-extern swig_type_info SWIGTYPE_p_Room;
-extern void SWIG_NewPointerObj(struct lua_State *L, void *ptr, swig_type_info *type, int own);
-}
 
 #ifdef ANDROID
 #include "android_assets.h"
@@ -123,7 +120,7 @@ int main(int argc, char *argv[])
             printf("ERROR: Failed to load lua/test/runner.lua\n");
             return 1;
         }
-        if (!DoLuaScript(L, scriptPath)) {
+        if (!DoLuaScript(L, scriptPath.toLocal8Bit().constData())) {
             printf("ERROR: Failed to load test script: %s\n", qPrintable(scriptPath));
             return 1;
         }
@@ -163,8 +160,7 @@ int main(int argc, char *argv[])
             room->signup(player, QString("Test_%1").arg(i), "", true);
         }
 
-        SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
-        lua_setglobal(L, "ROOM");
+        room->initializeLuaTestEnvironment();
 
         QPointer<Room> roomPtr(room);
         QObject::connect(room, &Room::game_over, qApp, [L, verbose, roomPtr](const QString &winner) {

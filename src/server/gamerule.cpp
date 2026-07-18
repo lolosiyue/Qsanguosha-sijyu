@@ -1119,8 +1119,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 			if (isSkillCard) {
 				instanceId = skillCard ? skillCard->getSkillInstanceId() : 0;
 			} else {
-				const ViewAsSkill *vsSkill = Sanguosha->getViewAsSkill(skillName);
-				instanceId = vsSkill ? vsSkill->getInstanceId() : 0;
+				instanceId = 0;
 			}
 
 			QString tagKey = prefix + skillName + "_" + QString::number(instanceId);
