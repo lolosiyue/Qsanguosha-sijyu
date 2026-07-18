@@ -97,6 +97,78 @@ LuaActiveSkillV2::LuaActiveSkillV2(const QString &name, Frequency frequency, con
     this->limit_mark = limit_mark;
 }
 
+bool LuaActiveSkillV2::canActivate(const ActiveSkillRequest &request) const
+{
+    return ActiveSkillV2::canActivate(request);
+}
+
+bool LuaActiveSkillV2::canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const
+{
+    return ActiveSkillV2::canSelectCard(request, candidate);
+}
+
+bool LuaActiveSkillV2::cardSelectionFeasible(const ActiveSkillRequest &request) const
+{
+    return ActiveSkillV2::cardSelectionFeasible(request);
+}
+
+const Card *LuaActiveSkillV2::createCard(const ActiveSkillRequest &request) const
+{
+    return ActiveSkillV2::createCard(request);
+}
+
+bool LuaActiveSkillV2::willThrowSelectedCards() const
+{
+    return m_willThrowSelectedCards;
+}
+
+bool LuaActiveSkillV2::cost(Room *room, SkillContext &context, const ActiveSkillRequest &request) const
+{
+    return ActiveSkillV2::cost(room, context, request);
+}
+
+bool LuaActiveSkillV2::pay(Room *room, SkillContext &context, const ActiveSkillRequest &request) const
+{
+    return ActiveSkillV2::pay(room, context, request);
+}
+
+bool LuaActiveSkillV2::canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected,
+                                        const Player *candidate) const
+{
+    return ActiveSkillV2::canSelectTarget(request, selected, candidate);
+}
+
+bool LuaActiveSkillV2::targetsFeasible(const ActiveSkillRequest &request, const QList<const Player *> &selected) const
+{
+    return ActiveSkillV2::targetsFeasible(request, selected);
+}
+
+ActiveSkillV2::EffectFlow LuaActiveSkillV2::effect(SkillContext &context) const
+{
+    return ActiveSkillV2::effect(context);
+}
+
+ActiveSkillV2::EffectFlow LuaActiveSkillV2::effectOnTarget(SkillContext &context, ServerPlayer *target) const
+{
+    return ActiveSkillV2::effectOnTarget(context, target);
+}
+
+ActiveSkillV2::EffectFlow LuaActiveSkillV2::effectOnTargetGroup(SkillContext &context,
+                                                                  const QList<ServerPlayer *> &targets) const
+{
+    return ActiveSkillV2::effectOnTargetGroup(context, targets);
+}
+
+ActiveSkillV2::TargetMode LuaActiveSkillV2::targetMode() const
+{
+    return m_targetMode;
+}
+
+ActiveSkillV2::TargetEffectMode LuaActiveSkillV2::targetEffectMode() const
+{
+    return m_targetEffectMode;
+}
+
 QDialog *LuaViewAsSkill::getDialog() const
 {
     if (guhuo_type != "") {

@@ -592,6 +592,7 @@ public:
     void registerTestOverride(ServerPlayer *player, const QString &queryType, const QString &key, const QVariant &answer);
     void clearTestOverrides();
     QVariant findTestOverride(ServerPlayer *player, const QString &queryType, const QString &key) const;
+    void initializeLuaTestEnvironment();
     SkillExecutionRegistry::Guard beginSkillExecution(const QVariant &backingData = QVariant());
     SkillExecutionRegistry::Guard beginSkillExecution(SkillContext &context, const QVariant &backingData);
     SkillExecutionRegistry::Entry *findSkillExecution(qint64 executionID) const;

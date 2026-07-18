@@ -10349,6 +10349,12 @@ void Room::clearTestOverrides()
 	m_testOverrides.clear();
 }
 
+void Room::initializeLuaTestEnvironment()
+{
+	// Lua 測試執行器以 ROOM 存取目前房間。
+	doScript("ROOM = R");
+}
+
 QVariant Room::findTestOverride(ServerPlayer *player, const QString &queryType, const QString &key) const
 {
 	QMutexLocker locker(&m_testOverrideMutex);
