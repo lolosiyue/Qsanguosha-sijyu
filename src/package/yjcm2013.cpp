@@ -239,7 +239,7 @@ public:
         if (use.card->isKindOf("Slash")) {
             foreach (ServerPlayer *p, room->getAllPlayers()) {
                 if (p->isDead() || !p->hasSkill(objectName()) || !p->canDiscard(p, "he")) continue;
-				if (p->getAcquiredSkills().contains(objectName())){
+				if (p->hasAcquiredSkill(objectName())){
 					QString ww = p->property("manweiwoFrom").toString();
 					if(!ww.isEmpty()&&use.from->objectName()!=ww) continue;
 				}
@@ -579,12 +579,12 @@ public:
     bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
     {
         if ((triggerEvent == GameStart && TriggerSkill::triggerable(player))
-            || (triggerEvent == EventAcquireSkill && data.toString() == "xiansi")) {
+            || (triggerEvent == EventAcquireSkill && data.value<SkillChangeStruct>().skillName == "xiansi")) {
             foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
                 if (!p->hasSkill("xiansi_slash", true))
                     room->attachSkillToPlayer(p, "xiansi_slash");
             }
-        } else if (triggerEvent == EventLoseSkill && data.toString() == "xiansi") {
+        } else if (triggerEvent == EventLoseSkill && data.value<SkillChangeStruct>().skillName == "xiansi") {
             foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
                 if (p->hasSkill("xiansi_slash", true))
                     room->detachSkillFromPlayer(p, "xiansi_slash", true);

@@ -50,7 +50,8 @@ static ClientPlayer *getControlRootPlayer(ClientPlayer *player)
 Client::Client(QObject *parent, const QString &filename)
 	: QObject(parent), m_isDiscardActionRefusable(true), m_bossLevel(0),
 	status(NotActive), alive_count(1), swap_pile(0), add_round(0), _m_roomState(true),
-	m_client_lua(nullptr), m_original_self(nullptr), m_takeoverManager(nullptr)
+	m_client_lua(nullptr), m_original_self(nullptr), m_takeoverManager(nullptr),
+	m_replaySawCardProvenance(false), m_replayWarnedLegacyProvenance(false)
 {
 	ClientInstance = this;
 	m_isGameOver = false;
@@ -80,6 +81,7 @@ Client::Client(QObject *parent, const QString &filename)
 	m_callbacks[S_COMMAND_REVIVE_PLAYER] = &Client::revivePlayer;
 	m_callbacks[S_COMMAND_SHOW_CARD] = &Client::showCard;
 	m_callbacks[S_COMMAND_SHOW_VIRTUAL_CARD] = &Client::showVirtualCard;
+	m_callbacks[S_COMMAND_CARD_PROVENANCE] = &Client::cardProvenance;
 	m_callbacks[S_COMMAND_UPDATE_CARD] = &Client::updateCard;
 	m_callbacks[S_COMMAND_SET_MARK] = &Client::setMark;
 	m_callbacks[S_COMMAND_LOG_SKILL] = &Client::log;
@@ -767,8 +769,10 @@ void Client::onPlayerResponseCard(const Card *card, const QList<const Player *> 
 		foreach (const Player *target, targets)
 			targetNames << target->objectName();
 
+		int activationId = card->getActivationSkillInstanceId();
+		QString activationName = activationId > 0 ? card->getActivationSkillName() : QString();
 		replyToServer(S_COMMAND_RESPONSE_CARD, JsonArray() << card->toString()
-			<< QVariant::fromValue(targetNames) << card->getSkillInstanceID());
+			<< QVariant::fromValue(targetNames) << activationName << activationId);
 
 		if (card->isVirtualCard() && !card->parent())
 			delete card;
@@ -1952,8 +1956,34 @@ void Client::showVirtualCard(const QVariant &arg)
 	QString suit = args[2].toString();
 	int number = args[3].toInt();
 	QString skill_name = args[4].toString();
+	if (replayer && !skill_name.isEmpty() && !m_replaySawCardProvenance && !m_replayWarnedLegacyProvenance) {
+		qWarning("replay has no CardProvenance V1; source/activation instance unavailable");
+		m_replayWarnedLegacyProvenance = true;
+	}
 
 	emit virtual_card_shown(player_name, card_name, suit, number, skill_name);
+}
+
+void Client::cardProvenance(const QVariant &arg)
+{
+	JsonArray args = arg.value<JsonArray>();
+	if (!JsonUtils::isNumber(args.value(0)))
+		return;
+	const int version = args[0].toInt();
+	const bool v1 = version == 1 && args.size() == 8;
+	const bool v2 = version == 2 && args.size() == 10;
+	if ((!v1 && !v2) || !JsonUtils::isString(args[1]) || !JsonUtils::isString(args[2])
+		|| !JsonUtils::isString(args[3]))
+		return;
+	const int sourceSkillIndex = v2 ? 5 : 4;
+	const int sourceIdIndex = v2 ? 6 : 5;
+	const int activationSkillIndex = v2 ? 8 : 6;
+	const int activationIdIndex = v2 ? 9 : 7;
+	if ((v2 && (!JsonUtils::isString(args[4]) || !JsonUtils::isString(args[7])))
+		|| !JsonUtils::isString(args[sourceSkillIndex]) || !JsonUtils::isNumber(args[sourceIdIndex])
+		|| !JsonUtils::isString(args[activationSkillIndex]) || !JsonUtils::isNumber(args[activationIdIndex]))
+		return;
+	m_replaySawCardProvenance = true;
 }
 
 void Client::attachSkill(const QVariant &skill)
@@ -1983,18 +2013,26 @@ void Client::attachSkill(const QVariant &skill)
 static bool parseSkillInstanceEntry(const QVariant &value, QString &ownerName, SkillInstance &instance)
 {
 	JsonArray entry = value.value<JsonArray>();
-	if (entry.size() != 8) return false;
+	if (entry.size() != 8 && entry.size() != 9) return false;
 	ownerName = entry[0].toString();
 	instance.skillName = entry[1].toString();
 	instance.instanceID = entry[2].toInt();
 	int source = entry[3].toInt();
 	if (ownerName.isEmpty() || instance.skillName.isEmpty() || instance.instanceID <= 0
-		|| source < static_cast<int>(SourceInnate) || source > static_cast<int>(SourceHelper))
+		|| source < static_cast<int>(SourceInnate) || source > static_cast<int>(SourceAttached))
 		return false;
 	instance.source = static_cast<SkillInstanceSource>(source);
-	instance.parent = SkillInstanceKey(entry[4].toString(), entry[5].toInt());
-	instance.visible = entry[6].toBool();
-	instance.bindHead = entry[7].toInt();
+	if (entry.size() == 8) {
+		instance.parent = SkillInstanceKey(entry[4].toString(), entry[5].toInt());
+		instance.parentRef = SkillInstanceRef(ownerName, instance.parent);
+		instance.visible = entry[6].toBool();
+		instance.bindHead = entry[7].toInt();
+	} else {
+		instance.parentRef = SkillInstanceRef(entry[4].toString(), SkillInstanceKey(entry[5].toString(), entry[6].toInt()));
+		instance.parent = instance.parentRef.key;
+		instance.visible = entry[7].toBool();
+		instance.bindHead = entry[8].toInt();
+	}
 	instance.state.clear();
 	return true;
 }

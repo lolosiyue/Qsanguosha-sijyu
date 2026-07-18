@@ -10,6 +10,8 @@
 #include "protocol.h"
 //#include "timed-progressbar.h"
 #include "generic-cardcontainer-ui.h"
+
+Q_DECLARE_METATYPE(QList<int>)
 //#include "pixmapanimation.h"
 //#include "sprite.h"
 //#include "util.h"

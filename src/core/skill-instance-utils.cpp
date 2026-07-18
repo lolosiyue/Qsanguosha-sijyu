@@ -2,6 +2,23 @@
 
 namespace SkillInstanceUtils {
 
+    bool decodeActivationRequest(const JsonArray &usage, const QString &cardSkillName,
+                                 SkillActivationRequest &request)
+    {
+        request = SkillActivationRequest();
+        if (usage.size() == 2) return true;
+        if (usage.size() == 3 && JsonUtils::isNumber(usage[2])) {
+            request.supplied = true;
+            request.skillName = cardSkillName;
+            request.instanceID = usage[2].toInt();
+        } else if (usage.size() == 4 && JsonUtils::isString(usage[2]) && JsonUtils::isNumber(usage[3])) {
+            request.skillName = usage[2].toString();
+            request.instanceID = usage[3].toInt();
+            request.supplied = !request.skillName.isEmpty() || request.instanceID != 0;
+        } else return false;
+        return request.instanceID >= 0 && (request.instanceID == 0 || !request.skillName.isEmpty());
+    }
+
     QString formatName(const QString &skillName, int instanceID)
     {
         if (instanceID <= 0)

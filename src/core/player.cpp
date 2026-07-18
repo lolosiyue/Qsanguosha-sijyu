@@ -1899,6 +1899,14 @@ int Player::createSkillInstance(const QString &skillName, SkillInstanceSource so
     return nextId;
 }
 
+int Player::createSkillInstance(const QString &skillName, SkillInstanceSource source, const SkillInstanceRef &parentRef, bool visible)
+{
+    int instanceId = createSkillInstance(skillName, source, parentRef.key.skillName,
+                                         parentRef.key.instanceID, visible);
+    m_skillInstances[skillName][instanceId].parentRef = parentRef;
+    return instanceId;
+}
+
 bool Player::removeSkillInstance(const QString &skillName, int instanceID)
 {
     if (instanceID <= 0) return false;

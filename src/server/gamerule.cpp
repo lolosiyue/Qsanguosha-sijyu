@@ -668,7 +668,8 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 		}
 		room->setTag("UseHistory"+card_use.card->toString(),data);
 		for (int i=0;i<=card_use.extra_use;i++){
-			card_use.card->use(room,card_use.from,card_use.to);
+			if (!card_use.skipSkillEffect)
+				card_use.card->use(room,card_use.from,card_use.to);
 			foreach(ServerPlayer *p,card_use.to){
 				if(p->isAlive()) continue;
 				card_use.to.removeOne(p);
@@ -1102,10 +1103,49 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 			}
 			room->getThread()->trigger(CardOnEffect,room,effect.to,data);
 		}
-		for (int i=0;i<=effect.extra_effect;i++){
-			if(effect.to->isAlive())
-				effect.card->onEffect(effect);
+
+		bool skipThisTarget = false;
+		bool isSkillCard = effect.card->isKindOf("SkillCard");
+		bool isViewAsCard = !isSkillCard && effect.card->isVirtualCard()
+							&& !effect.card->getSkillName().isEmpty();
+
+		if (isSkillCard || isViewAsCard) {
+			const SkillCard *skillCard = isSkillCard ? qobject_cast<const SkillCard*>(effect.card->getRealCard()) : nullptr;
+			QString skillName = effect.card->getSkillName().isEmpty()
+								? effect.card->objectName() : effect.card->getSkillName();
+			QString prefix = isViewAsCard ? "ViewAsContext_" : "SkillCardContext_";
+
+			int instanceId = 0;
+			if (isSkillCard) {
+				instanceId = skillCard ? skillCard->getSkillInstanceId() : 0;
+			} else {
+				const ViewAsSkill *vsSkill = Sanguosha->getViewAsSkill(skillName);
+				instanceId = vsSkill ? vsSkill->getInstanceId() : 0;
+			}
+
+			QString tagKey = prefix + skillName + "_" + QString::number(instanceId);
+
+			SkillContext ctx = effect.skillExecutionID > 0
+				? room->getSkillExecutionContext(effect.skillExecutionID)
+				: room->getTag(tagKey).value<SkillContext>();
+			ctx.current_event = EventSkillEffectTarget;
+
+			QVariant ctxData = QVariant::fromValue(ctx);
+			skipThisTarget = room->getThread()->trigger(EventSkillEffectTarget, room, effect.to, ctxData);
+
+			ctx = ctxData.value<SkillContext>();
+			if (effect.skillExecutionID > 0)
+				room->setSkillExecutionContext(effect.skillExecutionID, ctx);
 			else
+				room->setTag(tagKey, QVariant::fromValue(ctx));
+		}
+
+		for (int i=0;i<=effect.extra_effect;i++){
+			if(effect.to->isAlive()) {
+				if (!skipThisTarget) {
+					effect.card->onEffect(effect);
+				}
+			} else
 				break;
 		}
         break;

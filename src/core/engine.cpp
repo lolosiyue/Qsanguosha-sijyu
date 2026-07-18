@@ -1155,6 +1155,8 @@ Card*Engine::cloneCard(const Card*card) const
 		result->setId(card->getEffectiveId());
 		result->setSkillName(card->getSkillName(false));
 		result->setSkillInstanceID(card->getSkillInstanceID());
+		result->setSourceSkill(card->getSourceSkillName(), card->getSourceSkillInstanceId());
+		result->setActivationSkill(card->getActivationSkillName(), card->getActivationSkillInstanceId());
 	}
     return result;
 }

@@ -209,6 +209,14 @@ int main(int argc, char *argv[])
         return qApp->exec();
     }
 
+    bool hasTestScenarioArgument = qApp->arguments().contains("--test-scenario");
+    foreach (const QString &arg, qApp->arguments()) {
+        if (arg.startsWith("--test-scenario=")) {
+            hasTestScenarioArgument = true;
+            break;
+        }
+    }
+
     if (qApp->arguments().contains("-server")) {
         Server *server = new Server(qApp);
         printf("Server is starting on port %u\n", Config.ServerPort);
@@ -221,7 +229,7 @@ int main(int argc, char *argv[])
         }
 
         return qApp->exec();
-    } else if (qApp->arguments().contains("--headless")) {
+    } else if (qApp->arguments().contains("--headless") && !hasTestScenarioArgument) {
         Server *server = new Server(qApp);
         qDebug() << ">>> Headless Mode: Starting stress test with 10000 games <<<";
         QTimer::singleShot(0, server, &Server::startHeadlessGame);

@@ -10,7 +10,8 @@
 enum SkillInstanceSource {
     SourceInnate,      // 原生技能（武將天生）
     SourceAcquired,    // 後天獲得（Room::acquireSkill）
-    SourceHelper       // related helper 技能（隨父實例級聯移除）
+    SourceHelper,      // related helper 技能（隨父實例級聯移除）
+    SourceAttached
 };
 
 struct SkillInstanceKey {
@@ -33,11 +34,30 @@ struct SkillInstanceKey {
     QString toString() const;
 };
 
+// A key is local to a player. Attached skills must preserve their owner's identity.
+struct SkillInstanceRef {
+    QString ownerObjectName;
+    SkillInstanceKey key;
+
+    SkillInstanceRef() {}
+    SkillInstanceRef(const QString &owner, const SkillInstanceKey &instance)
+        : ownerObjectName(owner), key(instance) {}
+
+    bool isValid() const { return !ownerObjectName.isEmpty() && key.isValid() && key.instanceID > 0; }
+    bool operator==(const SkillInstanceRef &other) const { return ownerObjectName == other.ownerObjectName && key == other.key; }
+    bool operator!=(const SkillInstanceRef &other) const { return !(*this == other); }
+    bool operator<(const SkillInstanceRef &other) const {
+        if (ownerObjectName != other.ownerObjectName) return ownerObjectName < other.ownerObjectName;
+        return key < other.key;
+    }
+};
+
 struct SkillInstance {
     QString skillName;
     int instanceID;
     SkillInstanceSource source;
     SkillInstanceKey parent;
+    SkillInstanceRef parentRef;
     bool visible;
     QVariantMap state;
     int bindHead; // 0=未綁定, 1=主將, 2=副將
@@ -67,6 +87,7 @@ struct SkillChangeStruct {
 
 Q_DECLARE_METATYPE(SkillInstanceSource)
 Q_DECLARE_METATYPE(SkillInstanceKey)
+Q_DECLARE_METATYPE(SkillInstanceRef)
 Q_DECLARE_METATYPE(SkillInstance)
 Q_DECLARE_METATYPE(SkillChangeStruct)
 #endif // SKILL_INSTANCE_TYPES_H

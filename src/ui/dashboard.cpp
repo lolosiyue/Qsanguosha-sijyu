@@ -1947,11 +1947,27 @@ void Dashboard::updatePending()
     foreach(CardItem *item, pendings)
         cards.append(item->getCard());
 
-    if (!view_as_skill->inherits("OneCardViewAsSkill"))
+    const ActiveSkillV2 *activeSkill = dynamic_cast<const ActiveSkillV2 *>(view_as_skill);
+    ActiveSkillRequest activeRequest;
+    if (activeSkill) {
+        activeRequest.reason = Sanguosha->getCurrentCardUseReason();
+        activeRequest.pattern = Sanguosha->getCurrentCardUsePattern();
+        activeRequest.initiator = m_player;
+        activeRequest.activationRef = SkillInstanceRef(m_player->objectName(),
+            SkillInstanceKey(activeSkill->objectName(), m_viewAsSkillInstanceID));
+        foreach (const Card *card, cards)
+            activeRequest.selectedCardIds << card->getEffectiveId();
+    }
+
+    if (!activeSkill && !view_as_skill->inherits("OneCardViewAsSkill"))
         pended = cards;
     foreach (CardItem *item, m_handCards) {
-        if (!item->isSelected() || pendings.isEmpty())
-            item->setEnabled(view_as_skill->viewFilter(pended,item->getCard()));
+        if (!item->isSelected() || pendings.isEmpty()) {
+            const bool enabled = activeSkill
+                ? activeSkill->canSelectCard(activeRequest, item->getCard())
+                : view_as_skill->viewFilter(pended, item->getCard());
+            item->setEnabled(enabled);
+        }
         if (!item->isEnabled())
             animations->effectOut(item);
     }
@@ -1969,9 +1985,20 @@ void Dashboard::updatePending()
         }
     }
 
-    const Card *new_pending_card = view_as_skill->viewAs(cards);
-    if (new_pending_card)
+    const Card *new_pending_card = activeSkill
+        ? (activeSkill->canActivate(activeRequest) && activeSkill->cardSelectionFeasible(activeRequest)
+            ? activeSkill->createCard(activeRequest) : nullptr)
+        : view_as_skill->viewAs(cards);
+    if (new_pending_card) {
         const_cast<Card *>(new_pending_card)->setSkillInstanceID(m_viewAsSkillInstanceID);
+        if (activeSkill)
+            const_cast<Card *>(new_pending_card)->setActivationSkill(activeSkill->objectName(), m_viewAsSkillInstanceID);
+		const SkillInstance *instance = m_player->findSkillInstance(activeSkill ? activeSkill->objectName() : view_as_skill->objectName(),
+			m_viewAsSkillInstanceID);
+		if (instance && instance->parentRef.isValid())
+            const_cast<Card *>(new_pending_card)->setSourceSkill(instance->parentRef.key.skillName,
+                instance->parentRef.key.instanceID);
+    }
     if (pending_card != new_pending_card) {
         if (pending_card && !pending_card->parent() && pending_card->isVirtualCard())
             delete pending_card;/*

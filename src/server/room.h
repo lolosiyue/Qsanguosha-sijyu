@@ -2,6 +2,8 @@
 #define _ROOM_H
 
 #include "skill.h"
+#include "skill-instance-attachment-registry.h"
+#include "skill-execution-registry.h"
 
 class ProhibitSkill;
 class ProhibitPindianSkill;
@@ -94,6 +96,8 @@ public:
     void slashEffect(const SlashEffectStruct&effect);
     void slashResult(const SlashEffectStruct&effect, const Card*jink);
     void attachSkillToPlayer(ServerPlayer*player, const QString&skill_name);
+    SkillInstanceRef attachSkillToPlayer(ServerPlayer *player, const QString &skillName, const SkillInstanceRef &parentRef);
+    bool detachAttachedSkill(const SkillInstanceRef &ref);
     int detachSkillFromPlayer(ServerPlayer*player, const QString&skill_name, bool is_equip = false, bool acquire_only = false, bool event_and_log = true);
     int discardSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skill_name, bool event_and_log = true);
     void handleAcquireDetachSkills(ServerPlayer*player, const QStringList&skill_names, bool acquire_only = false, bool getmark = true, bool event_and_log = true);
@@ -588,6 +592,11 @@ public:
     void registerTestOverride(ServerPlayer *player, const QString &queryType, const QString &key, const QVariant &answer);
     void clearTestOverrides();
     QVariant findTestOverride(ServerPlayer *player, const QString &queryType, const QString &key) const;
+    SkillExecutionRegistry::Guard beginSkillExecution(const QVariant &backingData = QVariant());
+    SkillExecutionRegistry::Guard beginSkillExecution(SkillContext &context, const QVariant &backingData);
+    SkillExecutionRegistry::Entry *findSkillExecution(qint64 executionID) const;
+    SkillContext getSkillExecutionContext(qint64 executionID) const;
+    void setSkillExecutionContext(qint64 executionID, const SkillContext &context);
 
 protected:
     virtual void run();
@@ -597,7 +606,19 @@ private:
     void notifySkillInstanceSnapshot(ServerPlayer *receiver);
     void notifySkillInstanceUpsert(ServerPlayer *owner, const SkillInstance &instance);
     void notifySkillInstanceRemove(ServerPlayer *owner, const SkillInstance &instance);
+    void notifyCardProvenance(const QString &kind, ServerPlayer *initiator, const Card *card,
+                              const SkillInstanceRef &sourceRef, const SkillInstanceRef &activationRef);
     bool resolveCardSkillInstance(CardUseStruct &use);
+    const Card *resolveActiveSkillRequest(ServerPlayer *player, const ActiveSkillV2 *skill,
+                                          const ActiveSkillRequest &request) const;
+    bool askForActiveSkill(ServerPlayer *player, CardUseStruct::CardUseReason reason,
+                           const QString &pattern, CardUseStruct &cardUse) const;
+    bool reserveActiveSkillUsage(const ActiveSkillV2 *skill, const SkillContext &context);
+    void releaseActiveSkillUsage(const ActiveSkillV2 *skill, const SkillContext &context);
+    void commitActiveSkillUsage(const ActiveSkillV2 *skill, const SkillContext &context);
+    void recordSkillExecutionAudit(const SkillContext &context, SkillExecutionResult result) const;
+    SkillExecutionRegistry m_skillExecutions;
+    QSet<QString> m_activeSkillUsageReservations;
     int chooseSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skillName,
                             bool visibleOnly, bool acquiredOnly);
     bool removeSkillInstanceFromPlayer(ServerPlayer *owner, const QString &skillName, int instanceId,
@@ -756,6 +777,7 @@ private:
 
     QMap<int, Player::Place> place_map;
     QMap<int, ServerPlayer*> owner_map;
+    SkillInstanceAttachmentRegistry m_attachedSkillRegistry;
 
     QVariantMap tag;
     const Scenario*scenario;

@@ -3608,7 +3608,7 @@ public:
 
 	bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &data) const
 	{
-		if (event == EventLoseSkill && data.toString() == "linglong"){
+		if (event == EventLoseSkill && data.value<SkillChangeStruct>().skillName == "linglong"){
 			player->removeMark("linglong_qicai");
 			room->detachSkillFromPlayer(player, "qicai", false, true);
 		} else if (event == InvokeSkill && player->hasSkill("linglong")){

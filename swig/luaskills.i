@@ -41,8 +41,13 @@ public:
 	void setWakedSkills(const char *waked_skills);
 	void setChangeSkill(bool change);
 	void setHideSkill(bool hide);
+	void setGuhuoDialog(const char *type);
+	void setJuguanDialog(const char *type);
+	void setTiansuanDialog(const char *type);
+	void insertPriorityTable(TriggerEvent triggerEvent, int priority);
 
 	virtual int getPriority() const;
+	virtual int getPriority(TriggerEvent triggerEvent) const;
 	virtual Frequency getFrequency(const Player *target) const;
 	virtual Skill::LimitScope getLimitScope() const;
 	virtual int getMaxUsageLimit(const SkillContext &ctx) const;

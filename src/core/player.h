@@ -174,6 +174,7 @@ public:
     // === 技能多實例權威容器 (SSOT) ===
     int createSkillInstance(const QString &skillName, SkillInstanceSource source, bool visible = true);
     int createSkillInstance(const QString &skillName, SkillInstanceSource source, const QString &parentSkillName, int parentInstanceID, bool visible = true);
+    int createSkillInstance(const QString &skillName, SkillInstanceSource source, const SkillInstanceRef &parentRef, bool visible = true);
     bool removeSkillInstance(const QString &skillName, int instanceID);
     bool hasSkillInstance(const QString &skillName, int instanceID) const;
     const SkillInstance *findSkillInstance(const QString &skillName, int instanceID) const;
