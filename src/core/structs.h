@@ -140,6 +140,7 @@ struct CardUseStruct {
     bool m_isOwnerUse;
     bool m_addHistory;
     bool m_isHandcard;
+    bool m_validateTargets;
     QStringList nullified_list;
     const Card*whocard;
     ServerPlayer*who;

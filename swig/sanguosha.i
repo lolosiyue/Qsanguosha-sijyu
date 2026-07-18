@@ -17,6 +17,25 @@
 %include "qvariant.i"
 %include "list.i"
 
+%init %{
+	// Lua compares full userdata by wrapper identity. All SWIG classes share this
+	// pointer-based __eq so two wrappers for the same C++ object compare equal.
+	lua_pushcfunction(L, SWIG_Lua_equal);
+	const int pointerEquals = lua_gettop(L);
+	for (int i = 0; swig_types[i]; ++i) {
+		if (!swig_types[i]->clientdata) continue;
+		swig_lua_class *clss = (swig_lua_class *)swig_types[i]->clientdata;
+		SWIG_Lua_get_class_metatable(L, clss->name);
+		if (lua_istable(L, -1)) {
+			lua_pushstring(L, "__eq");
+			lua_pushvalue(L, pointerEquals);
+			lua_rawset(L, -3);
+		}
+		lua_pop(L, 1);
+	}
+	lua_pop(L, 1);
+%}
+
 // ----------------------------------------
 
 class QObject {

@@ -610,6 +610,7 @@ private:
     void notifyCardProvenance(const QString &kind, ServerPlayer *initiator, const Card *card,
                               const SkillInstanceRef &sourceRef, const SkillInstanceRef &activationRef);
     bool resolveCardSkillInstance(CardUseStruct &use);
+    bool areCardTargetsLegal(const CardUseStruct &use) const;
     const Card *resolveActiveSkillRequest(ServerPlayer *player, const ActiveSkillV2 *skill,
                                           const ActiveSkillRequest &request) const;
     bool askForActiveSkill(ServerPlayer *player, CardUseStruct::CardUseReason reason,
