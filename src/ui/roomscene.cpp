@@ -3059,7 +3059,7 @@ void RoomScene::updateSkillButtons(bool isPrepare)
 			int instanceId = SkillInstanceUtils::parseName(instanceName, baseName);
 			const Skill *skill = Sanguosha->getSkill(baseName);
 			const SkillInstance *instance = activePlayer->findSkillInstance(baseName, instanceId);
-			if (!skill || !instance || !instance->visible || skill->isHideSkill()) continue;
+			if (!skill || !instance || !instance->visible || !skill->isVisible() || skill->isHideSkill()) continue;
 			if (skill->isLordSkill() && !activePlayer->hasLordSkill(skill, true)) continue;
 			desired_skill_names << instanceName;
 		}
