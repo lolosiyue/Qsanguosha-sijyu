@@ -578,7 +578,7 @@ bool Player::hasLordSkill(const QString &skill_name, bool include_lose) const
 					return true;
 			}
 		}
-		return ownsSkill(skill_name)&&hasSkill(skill_name,include_lose);
+		return hasAcquiredSkill(skill_name)&&hasSkill(skill_name,include_lose);
 	}
 }
 
