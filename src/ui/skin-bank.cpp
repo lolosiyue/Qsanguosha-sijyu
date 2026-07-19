@@ -1140,6 +1140,7 @@ void QSanRoomSkin::_loadPhotoLayoutConfig(const JsonObject &playerConfig, PhotoL
 
 	tryParse(playerConfig["delayedTrickFirstRegion"], layout.m_delayedTrickFirstRegion);
 	tryParse(playerConfig["delayedTrickStep"], layout.m_delayedTrickStep);
+	layout.m_markTextArea.tryParse(playerConfig["markTextArea"]);
 
 	tryParse(playerConfig["roleComboBoxPos"], layout.m_roleComboBoxPos);
 	tryParse(playerConfig["changePrimaryHeroSkinBtnPos"], layout.m_changePrimaryHeroSkinBtnPos);

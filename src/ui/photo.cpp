@@ -296,7 +296,7 @@ void Photo::setFrame(FrameType type)
                 _m_focusFrame->hide();
         }
     } else {
-        _paintPixmap(_m_focusFrame, G_PHOTO_LAYOUT.m_focusFrameArea,
+        _paintPixmap(_m_focusFrame, _m_layout->m_focusFrameArea,
             _getPixmap(QSanRoomSkin::S_SKIN_KEY_FOCUS_FRAME, QString::number(type)),
             _m_groupMain);
         _layBetween(_m_focusFrame, _m_avatarArea, _m_mainFrame);

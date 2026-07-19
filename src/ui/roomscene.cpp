@@ -1476,10 +1476,12 @@ void RoomScene::updateTable()
 		Qt::Alignment align = aligns[i];
 		if(pkMode) align = kofAligns[i];
 
-		QRect floatingArea(0,0,G_ROOM_LAYOUT.m_photoHDistance,G_PHOTO_LAYOUT.m_normalHeight);
+		QSanRoomSkin::PhotoSizeType photoSize = G_ROOM_SKIN.getPhotoSizeType(_m_cachedPhotoWidth, _m_cachedPhotoHeight);
+		const QSanRoomSkin::PhotoLayout &photoLayout = G_ROOM_SKIN.getPhotoLayout(photoSize);
+		QRect floatingArea(0, 0, G_ROOM_LAYOUT.m_photoHDistance, photoLayout.m_normalHeight);
 		// if the photo is on the right edge of table
 		if(i==0||i==3||i==5||i==8) floatingArea.moveRight(0);
-		else floatingArea.moveLeft(G_PHOTO_LAYOUT.m_normalWidth);
+		else floatingArea.moveLeft(photoLayout.m_normalWidth);
 
 		foreach(Photo*photo,photosInRegion[i])
 			photo->setFloatingArea(floatingArea);

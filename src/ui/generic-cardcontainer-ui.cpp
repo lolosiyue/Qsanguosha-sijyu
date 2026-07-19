@@ -894,7 +894,7 @@ void PlayerCardContainer::updateMarks()
     QRect parentRect = _getMarkParent()->boundingRect().toRect();
     QSize markSize = _m_markItem->boundingRect().size().toSize();
     QRect newRect = _m_layout->m_markTextArea.getTranslatedRect(parentRect, markSize);
-    if (_m_layout == &G_PHOTO_LAYOUT)
+    if (inherits("Photo"))
         _m_markItem->setPos(newRect.topLeft());
     else
         _m_markItem->setPos(newRect.left(), newRect.top() + newRect.height() / 2);
@@ -1440,7 +1440,11 @@ void PlayerCardContainer::addDelayedTricks(QList<CardItem *> &tricks)
 
 QPixmap PlayerCardContainer::_getEquipPixmap(const Card *equip, const QString &arg)
 {
-    QPixmap equipIcon(_m_layout->m_equipAreas[0].size());
+    // Horse slots are narrower than weapon/armor slots in the small photo layout.
+    QSize equipSize = _m_layout->m_equipAreas[0].size();
+    if (equip && equip->isKindOf("Horse"))
+        equipSize = _m_layout->m_equipAreas[2].size();
+    QPixmap equipIcon(equipSize);
     equipIcon.fill(Qt::transparent);
     QPainter painter(&equipIcon);
 	if(equip){
