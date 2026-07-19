@@ -2841,7 +2841,16 @@ void RoomScene::addSkillButton(const QString &skillInstanceName)
 			isPrimary = false;
 	}
 	qDebug() << "RoomScene::addSkillButton - skill:" << skillInstanceName << "isPrimary:" << isPrimary;
-	QSanSkillButton*btn = dashboard->addSkillButton(skillInstanceName, isPrimary);
+	QString dashboardSkillName = skillInstanceName;
+	if (activePlayer) {
+		foreach (const Card *equip, activePlayer->getEquips()) {
+			if (equip != nullptr && equip->objectName() == baseName) {
+				dashboardSkillName = baseName;
+				break;
+			}
+		}
+	}
+	QSanSkillButton*btn = dashboard->addSkillButton(dashboardSkillName, isPrimary);
 	qDebug() << "RoomScene::addSkillButton - btn created:" << (btn != nullptr);
 	if(!btn||m_skillButtons.contains(btn)) return;
 	connect(btn, SIGNAL(destroyed(QObject*)), this, SLOT(onSkillButtonDestroyed(QObject*)));
