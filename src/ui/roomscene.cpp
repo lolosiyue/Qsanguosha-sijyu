@@ -3020,10 +3020,12 @@ bool RoomScene::applyPresentedDialogOption(const QString &optionName)
 	return false;
 }
 
-void RoomScene::acquireSkill(const ClientPlayer*,const QString&skill_name)
+void RoomScene::acquireSkill(const ClientPlayer *player, const QString &skill_name)
 {
-	/*log_box->appendLog("#AcquireSkill",player->objectName(),QStringList(),"",skill_name);*/
-
+	const ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
+	if (player == nullptr || activePlayer == nullptr || player != activePlayer)
+		return;
+	/*log_box->appendLog("#AcquireSkill", player->objectName(), QStringList(), "", skill_name);*/
 	addSkillButton(skill_name);
 }
 

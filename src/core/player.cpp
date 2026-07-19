@@ -3030,7 +3030,8 @@ bool Player::inHeadSkills(const QString &skill_name) const
     
     if (!skill->isVisible()) {
         const Skill *main_skill = Sanguosha->getMainSkill(skill_name);
-        if (main_skill != nullptr)
+        // 未登錄關聯的隱藏技會由 getMainSkill 原樣返回；不可對自身遞迴。
+        if (main_skill != nullptr && main_skill != skill)
             return inHeadSkills(main_skill->objectName());
     }
     
@@ -3054,7 +3055,8 @@ bool Player::inDeputySkills(const QString &skill_name) const
     
     if (!skill->isVisible()) {
         const Skill *main_skill = Sanguosha->getMainSkill(skill_name);
-        if (main_skill != nullptr)
+        // 同上：只有解析到另一個主技能時才轉交判斷。
+        if (main_skill != nullptr && main_skill != skill)
             return inDeputySkills(main_skill->objectName());
     }
     
