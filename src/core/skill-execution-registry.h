@@ -20,6 +20,7 @@ public:
         Entry(qint64 id, const QVariant &data) : executionID(id), backingData(data), finished(false), result(SkillExecutionNoResult) {}
         qint64 executionID;
         QVariant backingData;
+        QVariant immutableContextData;
         QVariant contextData;
         bool finished;
         SkillExecutionResult result;

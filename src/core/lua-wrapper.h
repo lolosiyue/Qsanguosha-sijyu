@@ -97,6 +97,10 @@ public:
     {
         m_limitScope = scope;
     }
+    inline void setUsageIdentity(Skill::UsageIdentity identity)
+    {
+        m_usageIdentity = identity;
+    }
     inline void setMaxUsageLimit(int limit)
     {
         m_maxUsageLimit = limit;
@@ -144,6 +148,7 @@ public:
     virtual int getPriority(TriggerEvent triggerEvent) const;
     virtual Frequency getFrequency(const Player *target) const;
     virtual Skill::LimitScope getLimitScope() const override;
+    virtual Skill::UsageIdentity getUsageIdentity(const SkillContext &ctx) const override;
     virtual int getMaxUsageLimit(const SkillContext &ctx) const override;
 
     virtual TriggerList triggerable(TriggerEvent triggerEvent, Room *room,
@@ -201,6 +206,7 @@ protected:
     QString tiansuan_type;
     QMap<TriggerEvent, int> priority_table;
     Skill::LimitScope m_limitScope;
+    Skill::UsageIdentity m_usageIdentity;
     int m_maxUsageLimit;
 };
 
@@ -335,6 +341,14 @@ public:
     void setTargetMode(TargetMode mode) { m_targetMode = mode; }
     void setTargetEffectMode(TargetEffectMode mode) { m_targetEffectMode = mode; }
     void setWillThrowSelectedCards(bool willThrow) { m_willThrowSelectedCards = willThrow; }
+    void setLimitScope(Skill::LimitScope scope) { m_limitScope = scope; }
+    void setUsageIdentity(Skill::UsageIdentity identity) { m_usageIdentity = identity; }
+    void setMaxUsageLimit(int limit) { m_maxUsageLimit = limit; }
+    void setPhaseNameStr(const QString &phase_name) { Skill::setPhaseName(phase_name); }
+
+    Skill::LimitScope getLimitScope() const override { return m_limitScope; }
+    Skill::UsageIdentity getUsageIdentity(const SkillContext &ctx) const override;
+    int getMaxUsageLimit(const SkillContext &ctx) const override { Q_UNUSED(ctx); return m_maxUsageLimit; }
 
     LuaFunction can_activate;
     LuaFunction can_select_card;
@@ -352,6 +366,9 @@ private:
     TargetMode m_targetMode;
     TargetEffectMode m_targetEffectMode;
     bool m_willThrowSelectedCards;
+    Skill::LimitScope m_limitScope;
+    Skill::UsageIdentity m_usageIdentity;
+    int m_maxUsageLimit;
 };
 
 class LuaFilterSkill : public FilterSkill

@@ -1547,7 +1547,8 @@ struct SkillContext {
 enum SkillInstanceSource {
 	SourceInnate,
 	SourceAcquired,
-	SourceHelper
+	SourceHelper,
+	SourceAttached
 };
 
 struct SkillInstanceKey {
@@ -1557,6 +1558,14 @@ struct SkillInstanceKey {
 	int instanceID;
 	bool isValid() const;
 	QString toString() const;
+};
+
+struct SkillInstanceRef {
+	SkillInstanceRef();
+	SkillInstanceRef(const char *owner, const SkillInstanceKey &instance);
+	QString ownerObjectName;
+	SkillInstanceKey key;
+	bool isValid() const;
 };
 
 struct SkillInstance {
@@ -1586,6 +1595,7 @@ class Skill: public QObject {
 public:
 	enum Frequency { Frequent, NotFrequent, Compulsory, Limited, Wake, NotCompulsory, }; //Change
 	enum LimitScope { Limit_None, Limit_Round, Limit_Turn, Limit_Phase, Limit_Game, Limit_Custom };
+	enum UsageIdentity { Usage_ActivationInstance, Usage_SourceInstance };
 
 	explicit Skill(const char*name, Frequency frequent = NotFrequent);
 	bool isLordSkill() const;
@@ -1612,6 +1622,8 @@ bool isHideSkill() const;
 	bool setProperty(const char*name, const QVariant&value);
 
 	virtual LimitScope getLimitScope() const;
+	virtual UsageIdentity getUsageIdentity(const SkillContext& ctx) const;
+	virtual SkillInstanceRef getUsageRef(const SkillContext& ctx) const;
 	virtual int getMaxUsageLimit(const SkillContext& ctx) const;
 	virtual bool isUsable(const SkillContext& ctx) const;
 	virtual void addUsage(const SkillContext& ctx) const;

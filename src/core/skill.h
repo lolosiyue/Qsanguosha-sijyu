@@ -76,6 +76,7 @@ class Skill : public QObject
     Q_OBJECT
     Q_ENUMS(Frequency)
     Q_ENUMS(LimitScope)
+    Q_ENUMS(UsageIdentity)
 
 public:
     enum Frequency
@@ -97,6 +98,12 @@ public:
         Limit_Phase,
         Limit_Game,
         Limit_Custom
+    };
+
+    enum UsageIdentity
+    {
+        Usage_ActivationInstance,
+        Usage_SourceInstance
     };
 
     explicit Skill(const QString &name, Frequency frequent = NotFrequent);
@@ -129,6 +136,8 @@ public:
     bool setProperty(const char* name, const QVariant& value);
 
     virtual LimitScope getLimitScope() const;
+    virtual UsageIdentity getUsageIdentity(const SkillContext &ctx) const;
+    virtual SkillInstanceRef getUsageRef(const SkillContext &ctx) const;
     virtual int getMaxUsageLimit(const SkillContext &ctx) const;
     virtual bool isUsable(const SkillContext &ctx) const;
     virtual void addUsage(const SkillContext &ctx) const;

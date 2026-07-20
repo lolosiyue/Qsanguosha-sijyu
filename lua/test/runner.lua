@@ -95,6 +95,13 @@ function sgs.TestRunner:printResults()
     print("==================================================")
 end
 
+function sgs.TestRunner:allPassed()
+    for _, r in ipairs(self._results) do
+        if not r.passed then return false end
+    end
+    return true
+end
+
 function sgs.TestRunner:execute()
     print("")
     print("==================================================")
@@ -106,7 +113,11 @@ function sgs.TestRunner:execute()
     end
 
     RUNNER_DO_ASSERTIONS = function()
+        if self._assertFn then
+            self._assertFn(self)
+        end
         self:printResults()
+        return self:allPassed()
     end
 
     if self._runFn then

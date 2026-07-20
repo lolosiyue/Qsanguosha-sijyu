@@ -91,72 +91,21 @@ LuaActiveSkillV2::LuaActiveSkillV2(const QString &name, Frequency frequency, con
     : ActiveSkillV2(name), can_activate(0), can_select_card(0), card_selection_feasible(0), create_card(0),
       on_cost(0), on_pay(0), can_select_target(0), targets_feasible(0), on_effect(0),
       on_effect_target(0), on_effect_target_group(0), m_targetMode(SelectTargets),
-      m_targetEffectMode(EachTarget), m_willThrowSelectedCards(true)
+      m_targetEffectMode(EachTarget), m_willThrowSelectedCards(true), m_limitScope(Limit_None),
+      m_usageIdentity(Usage_ActivationInstance), m_maxUsageLimit(1)
 {
     this->frequency = frequency;
     this->limit_mark = limit_mark;
 }
 
-bool LuaActiveSkillV2::canActivate(const ActiveSkillRequest &request) const
+Skill::UsageIdentity LuaActiveSkillV2::getUsageIdentity(const SkillContext &) const
 {
-    return ActiveSkillV2::canActivate(request);
-}
-
-bool LuaActiveSkillV2::canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const
-{
-    return ActiveSkillV2::canSelectCard(request, candidate);
-}
-
-bool LuaActiveSkillV2::cardSelectionFeasible(const ActiveSkillRequest &request) const
-{
-    return ActiveSkillV2::cardSelectionFeasible(request);
-}
-
-const Card *LuaActiveSkillV2::createCard(const ActiveSkillRequest &request) const
-{
-    return ActiveSkillV2::createCard(request);
+    return m_usageIdentity;
 }
 
 bool LuaActiveSkillV2::willThrowSelectedCards() const
 {
     return m_willThrowSelectedCards;
-}
-
-bool LuaActiveSkillV2::cost(Room *room, SkillContext &context, const ActiveSkillRequest &request) const
-{
-    return ActiveSkillV2::cost(room, context, request);
-}
-
-bool LuaActiveSkillV2::pay(Room *room, SkillContext &context, const ActiveSkillRequest &request) const
-{
-    return ActiveSkillV2::pay(room, context, request);
-}
-
-bool LuaActiveSkillV2::canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected,
-                                        const Player *candidate) const
-{
-    return ActiveSkillV2::canSelectTarget(request, selected, candidate);
-}
-
-bool LuaActiveSkillV2::targetsFeasible(const ActiveSkillRequest &request, const QList<const Player *> &selected) const
-{
-    return ActiveSkillV2::targetsFeasible(request, selected);
-}
-
-ActiveSkillV2::EffectFlow LuaActiveSkillV2::effect(SkillContext &context) const
-{
-    return ActiveSkillV2::effect(context);
-}
-
-ActiveSkillV2::EffectFlow LuaActiveSkillV2::effectOnTarget(SkillContext &context, ServerPlayer *target) const
-{
-    return ActiveSkillV2::effectOnTarget(context, target);
-}
-
-ActiveSkillV2::EffectFlow LuaActiveSkillV2::effectOnTargetGroup(SkillContext &context,
-                                                                  const QList<ServerPlayer *> &targets) const
-{
-    return ActiveSkillV2::effectOnTargetGroup(context, targets);
 }
 
 ActiveSkillV2::TargetMode LuaActiveSkillV2::targetMode() const

@@ -5,6 +5,20 @@
 #include "roomthread.h"
 #include "wrapped-card.h"
 
+static void restoreSkillExecutionIdentity(Room *room, qint64 executionID,
+                                          SkillContext &context, ServerPlayer *acceptedInvoker)
+{
+	SkillExecutionRegistry::Entry *entry = room ? room->findSkillExecution(executionID) : nullptr;
+	if (!entry) return;
+	const SkillContext identity = entry->immutableContextData.value<SkillContext>();
+	context.skill_name = identity.skill_name;
+	context.sourceRef = identity.sourceRef;
+	context.activationRef = identity.activationRef;
+	context.initiator = identity.initiator;
+	context.instanceID = identity.instanceID;
+	context.invoker = acceptedInvoker;
+}
+
 GameRule::GameRule(QObject *)
     : TriggerSkill("game_rule")
 {
@@ -1127,15 +1141,17 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 			SkillContext ctx = effect.skillExecutionID > 0
 				? room->getSkillExecutionContext(effect.skillExecutionID)
 				: room->getTag(tagKey).value<SkillContext>();
+			ServerPlayer *acceptedInvoker = ctx.invoker;
 			ctx.current_event = EventSkillEffectTarget;
 
 			QVariant ctxData = QVariant::fromValue(ctx);
 			skipThisTarget = room->getThread()->trigger(EventSkillEffectTarget, room, effect.to, ctxData);
 
 			ctx = ctxData.value<SkillContext>();
-			if (effect.skillExecutionID > 0)
+			if (effect.skillExecutionID > 0) {
+				restoreSkillExecutionIdentity(room, effect.skillExecutionID, ctx, acceptedInvoker);
 				room->setSkillExecutionContext(effect.skillExecutionID, ctx);
-			else
+			} else
 				room->setTag(tagKey, QVariant::fromValue(ctx));
 		}
 

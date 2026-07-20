@@ -14,4 +14,6 @@ SOURCES += \
     skill-instance-utils-test.cpp \
     ../../src/core/skill-instance-utils.cpp
 
-HEADERS += ../../src/core/skill-instance-utils.h
+HEADERS += \
+    ../../src/core/skill-instance-utils.h \
+    ../../src/core/skill-execution-registry.h

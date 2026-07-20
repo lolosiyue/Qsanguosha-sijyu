@@ -162,27 +162,35 @@ int main(int argc, char *argv[])
 
         room->initializeLuaTestEnvironment();
 
+        bool luaTestPassed = true;
         QPointer<Room> roomPtr(room);
-        QObject::connect(room, &Room::game_over, qApp, [L, verbose, roomPtr](const QString &winner) {
+        QObject::connect(room, &Room::game_over, qApp, [L, verbose, roomPtr, &luaTestPassed](const QString &winner) {
             if (verbose)
                 Server::writeHeadlessLog(QString("Game over. Winner: %1").arg(winner));
 
             lua_getglobal(L, "RUNNER_DO_ASSERTIONS");
             if (lua_isfunction(L, -1)) {
-                if (lua_pcall(L, 0, 0, 0) != 0) {
+                if (lua_pcall(L, 0, 1, 0) != 0) {
                     const char *err = lua_tostring(L, -1);
                     printf("ERROR in assertions: %s\n", err ? err : "unknown");
+                    lua_pop(L, 1);
+                    luaTestPassed = false;
+                } else {
+                    luaTestPassed = lua_toboolean(L, -1);
                     lua_pop(L, 1);
                 }
             } else {
                 lua_pop(L, 1);
+                printf("ERROR: Test runner has no assertions callback\n");
+                luaTestPassed = false;
             }
 
             if (roomPtr) {
                 roomPtr->clearTestOverrides();
             }
 
-            QTimer::singleShot(0, qApp, &QCoreApplication::quit);
+            const int exitCode = luaTestPassed ? 0 : 1;
+            QTimer::singleShot(0, qApp, [exitCode]() { qApp->exit(exitCode); });
         });
 
         int topBefore = lua_gettop(L);

@@ -2,6 +2,74 @@
 
 namespace SkillInstanceUtils {
 
+    SkillInstanceRef resolveUsageRef(UsageRefKind kind,
+                                     const SkillInstanceRef &activationRef,
+                                     const SkillInstanceRef &sourceRef,
+                                     const QString &legacyOwnerObjectName,
+                                     const QString &legacySkillName,
+                                     int legacyInstanceID)
+    {
+        switch (kind) {
+        case UsageRef_ActivationInstance:
+            if (activationRef.isValid()) return activationRef;
+            if (!legacyOwnerObjectName.isEmpty() && !legacySkillName.isEmpty()
+                && legacyInstanceID > 0)
+                return SkillInstanceRef(legacyOwnerObjectName,
+                                        SkillInstanceKey(legacySkillName, legacyInstanceID));
+            break;
+        case UsageRef_SourceInstance:
+            if (sourceRef.isValid()) return sourceRef;
+            break;
+        default:
+            break;
+        }
+        return SkillInstanceRef();
+    }
+
+    QString formatUsageMarkKey(const QString &skillName, int instanceID,
+                               const QString &scopeSuffix)
+    {
+        if (skillName.isEmpty() || instanceID < 0 || scopeSuffix.isEmpty())
+            return QString();
+        return QString("Usage_%1_%2%3").arg(skillName).arg(instanceID).arg(scopeSuffix);
+    }
+
+    QString formatUsageReservationKey(const QString &holderObjectName,
+                                      const QString &usageMarkKey)
+    {
+        if (holderObjectName.isEmpty() || usageMarkKey.isEmpty())
+            return QString();
+        return holderObjectName + ":" + usageMarkKey;
+    }
+
+    bool UsageReservationLedger::reserve(const QString &key, int committedUsage, int maxUsage)
+    {
+        if (key.isEmpty() || committedUsage < 0 || maxUsage <= 0)
+            return false;
+        const int reservedUsage = m_counts.value(key, 0);
+        if (committedUsage + reservedUsage >= maxUsage)
+            return false;
+        m_counts.insert(key, reservedUsage + 1);
+        return true;
+    }
+
+    bool UsageReservationLedger::release(const QString &key)
+    {
+        const int reservedUsage = m_counts.value(key, 0);
+        if (reservedUsage <= 0)
+            return false;
+        if (reservedUsage == 1)
+            m_counts.remove(key);
+        else
+            m_counts.insert(key, reservedUsage - 1);
+        return true;
+    }
+
+    int UsageReservationLedger::count(const QString &key) const
+    {
+        return m_counts.value(key, 0);
+    }
+
     bool decodeActivationRequest(const JsonArray &usage, const QString &cardSkillName,
                                  SkillActivationRequest &request)
     {

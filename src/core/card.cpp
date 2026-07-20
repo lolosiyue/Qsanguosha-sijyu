@@ -23,6 +23,20 @@ const Card::Suit Card::AllSuits[4] = {
 
 static unsigned int cardId = 0;
 
+static void restoreSkillExecutionIdentity(Room *room, qint64 executionID,
+                                          SkillContext &context, ServerPlayer *acceptedInvoker)
+{
+    SkillExecutionRegistry::Entry *entry = room ? room->findSkillExecution(executionID) : nullptr;
+    if (!entry) return;
+    const SkillContext identity = entry->immutableContextData.value<SkillContext>();
+    context.skill_name = identity.skill_name;
+    context.sourceRef = identity.sourceRef;
+    context.activationRef = identity.activationRef;
+    context.initiator = identity.initiator;
+    context.instanceID = identity.instanceID;
+    context.invoker = acceptedInvoker;
+}
+
 Card::Card(Suit suit, int number, bool target_fixed, bool damage_card, bool is_gift, bool single_target)
 	:target_fixed(target_fixed), mute(false), will_throw(true), has_preact(false), can_recast(false),
 	m_suit(suit), m_number(number), m_id(--cardId), is_gift(is_gift), is_transferable(false), damage_card(damage_card),
@@ -1001,8 +1015,10 @@ void ActiveSkillCard::onUse(Room *room, CardUseStruct &card_use) const
 {
     if (m_activeSkill && card_use.skillExecutionID > 0) {
         SkillContext context = room->getSkillExecutionContext(card_use.skillExecutionID);
+        ServerPlayer *acceptedInvoker = context.invoker;
         if (m_activeSkill->effect(context) == ActiveSkillV2::FinishSkill)
             card_use.to.clear();
+        restoreSkillExecutionIdentity(room, card_use.skillExecutionID, context, acceptedInvoker);
         room->setSkillExecutionContext(card_use.skillExecutionID, context);
     }
     SkillCard::onUse(room, card_use);
@@ -1016,12 +1032,14 @@ void ActiveSkillCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *
 
     SkillContext context = room->getSkillExecutionContext(room->getTag("UseHistory" + toString())
         .value<CardUseStruct>().skillExecutionID);
+    ServerPlayer *acceptedInvoker = context.invoker;
     QList<ServerPlayer *> effectiveTargets;
     foreach (ServerPlayer *target, targets) {
         if (target && target->isAlive()) effectiveTargets << target;
     }
     if (!effectiveTargets.isEmpty())
         m_activeSkill->effectOnTargetGroup(context, effectiveTargets);
+    restoreSkillExecutionIdentity(room, context.executionID, context, acceptedInvoker);
     room->setSkillExecutionContext(context.executionID, context);
 }
 
@@ -1031,9 +1049,11 @@ void ActiveSkillCard::onEffect(CardEffectStruct &effect) const
     Room *room = effect.to->getRoom();
     if (!room) return;
     SkillContext context = room->getSkillExecutionContext(effect.skillExecutionID);
+    ServerPlayer *acceptedInvoker = context.invoker;
     if (m_activeSkill->targetEffectMode() == ActiveSkillV2::EachTarget
         && m_activeSkill->effectOnTarget(context, effect.to) == ActiveSkillV2::FinishSkill)
         context.is_canceled = true;
+    restoreSkillExecutionIdentity(room, effect.skillExecutionID, context, acceptedInvoker);
     room->setSkillExecutionContext(effect.skillExecutionID, context);
 }
 

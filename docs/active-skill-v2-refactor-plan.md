@@ -859,6 +859,121 @@ V2 custom proxy：
 
 驗收：Release x64；console tests；文件化 `~test` 場景全部通過；沒有正式技能 diff。
 
+### Ticket 13：UsageIdentity 與技能實例配額身份
+
+依賴：Ticket 1–3 的 `SkillInstanceRef`／不可變 provenance，以及 Ticket 7 的
+ActiveSkillV2 reservation／commit／release 配額生命週期。本票是 ViewAsSkill 次數橋接的
+必要前置，不在同一票接管舊 `usedTimes()`。
+
+#### 13.1 問題與契約
+
+`LimitScope` 只回答「何時重設」，不能回答「哪個技能實例共用次數」。新增正交維度
+`UsageIdentity`：
+
+```cpp
+enum UsageIdentity {
+    Usage_ActivationInstance,
+    Usage_SourceInstance
+};
+```
+
+| identity | 權威引用 | 語意 | 預設 |
+|---|---|---|---|
+| `Usage_ActivationInstance` | `ctx.activationRef` | 每個實際點擊入口各自計數 | 是；保持現有行為 |
+| `Usage_SourceInstance` | `ctx.sourceRef` | 同一 root source 派生的 attached 入口共用配額 | 否；技能明確選用 |
+
+直接技能通常兩者相同。attached skill 選擇 source identity 後，不同玩家持有的 attach
+入口只要指向同一 root instance，就必須在 root owner 上讀寫同一個 mark。
+`initiator`、可變的 `invoker` 與共享 `Skill` QObject 均不得決定配額身份。
+
+#### 13.2 C++ API 與解析規則
+
+預計模組：
+
+- `src/core/skill.h/.cpp`
+- `src/server/room.h/.cpp`
+- `src/core/skill-instance-types.h`（只在既有 `SkillInstanceRef` helper 不足時修改）
+- `src/core/skill-instance-utils.h/.cpp`（純 usage reference 解析與 console test 共用）
+
+交付 API：
+
+```cpp
+virtual UsageIdentity getUsageIdentity(const SkillContext &ctx) const;
+virtual SkillInstanceRef getUsageRef(const SkillContext &ctx) const;
+virtual ServerPlayer *getUsageHolder(const SkillContext &ctx) const;
+QString getUsageTagKey(const SkillContext &ctx) const;
+```
+
+| 規則 | 要求 |
+|---|---|
+| 預設 | `getUsageIdentity()` 回傳 `Usage_ActivationInstance`，不改既有技能語意 |
+| activation fallback | 新流程使用有效 `activationRef`；只為缺 provenance 的 legacy context，才可由 `ctx.owner/ctx.invoker + objectName() + ctx.instanceID` 組出相容引用 |
+| source fail-closed | 技能選用 `Usage_SourceInstance` 而 `sourceRef` 無效、root owner 不存在或 instance 不存在時，拒絕使用並輸出診斷；不得靜默退回 activation |
+| holder | 由已解析 usage ref 的 `ownerObjectName` 找 `ServerPlayer`，不可直接固定為 `ctx.owner` 或 `ctx.invoker` |
+| mark key | 使用已解析 ref 的 `skillName + instanceID + LimitScope suffix`；不可使用目前共享 Skill 的 `objectName()` 代替 source skill name |
+| reservation key | holder object name + 完整 usage mark key；reserve／release／commit 三者必須呼叫同一解析入口 |
+| 不可變性 | execution 開始後 `sourceRef`／`activationRef` 不變；WillInvoke 委託 invoker 不搬移配額 |
+
+禁止恢復或依賴共享 `Skill::m_instanceId`。`resetUsage(ctx)` 亦必須解析同一 usage ref，確保
+source identity 清除的是 root 配額。
+
+#### 13.3 Lua 與 SWIG
+
+預計模組：
+
+- `src/core/lua-wrapper.h/.cpp`
+- `lua/sgs_ex.lua`
+- `swig/luaskills.i`
+- `swig/sanguosha.i`
+- 工具重產的 `swig/sanguosha_wrap.cxx`
+- `lua/test/runner.lua`、`src/main.cpp`（Lua smoke 必須執行 `:assert()` 並以非零狀態回報失敗）
+
+交付：
+
+- 匯出 `sgs.Skill_Usage_ActivationInstance` 與 `sgs.Skill_Usage_SourceInstance`。
+- `sgs.CreateTriggerV2Skill` 與 `sgs.CreateActiveSkillV2` 均接受 `usage_identity`，預設 activation；非數字或未知 enum fail-closed，載入時報明確錯誤。若 Active factory 與 Ticket 10 狀態不一致，本票先恢復 factory 再驗收 identity，不得只改文件。
+- Lua wrapper 保存 identity 並覆寫 `getUsageIdentity(ctx)`；C++ 技能可直接覆寫同一 virtual。
+- `limit_scope` 與 `usage_identity` 分別驗證，不以其中一個推導另一個。
+
+| 技能入口 | 本票責任 |
+|---|---|
+| C++ `Skill`／`ActiveSkillV2` | 提供預設 activation identity 與可覆寫 getter |
+| Lua `TriggerV2Skill` | factory 設值、SWIG setter/getter；generic scope 與 Custom 邊界均驗證 |
+| Lua `ActiveSkillV2` | factory 設值、SWIG setter/getter；接入既有 ActiveSkillV2 quota lifecycle |
+| legacy Lua/C++ `ViewAsSkill` | 只可讀取基礎 API；自動扣次數留給後續 bridge 票 |
+
+`Limit_Custom` 不受通用 `UsageIdentity` 控制：C++ 覆寫的
+`isUsable/addUsage/resetUsage`，以及 Lua `check_custom_usage/on_add_usage`，仍自行管理 key、holder、
+reservation 與重入語意。可以保留 `usage_identity` 欄位供 callback 查詢，但核心不得自動讀寫
+generic usage mark。
+
+#### 13.4 測試與驗收矩陣
+
+| 場景 | 期望 |
+|---|---|
+| direct activation #1／#2，activation identity | 兩個 instance 各自計數 |
+| 兩個 attached 入口，activation identity | 各入口獨立計數 |
+| 兩個 attached 入口指向同一 root，source identity | 共用 root owner/root skill/root instance 配額 |
+| 同名同 ID、不同 root owner | 不碰撞 |
+| WillInvoke 將 invoker A 改為 B | 配額仍綁原 activation/source ref |
+| source identity 缺少或偽造 sourceRef | fail-closed，不扣 activation 配額 |
+| `max_usage_limit > 1` 與巢狀 execution | committed mark + reservation count 精確達限 |
+| pay 失敗／取消；`bypass_cost` 成功 | 前者 release，後者 commit，均使用相同 resolved key |
+| `resetUsage(ctx)` | 只清除所選 identity 的精確 instance |
+| `Limit_Custom` | 不建立 generic reservation，不自動 add/reset |
+
+驗收：Release x64；`tests/skill-instance-utils` 增加純解析測試；`~test` 或等價 fixture
+驗證 attached source shared quota；Lua smoke 證明兩個 enum 常數與 factory 欄位可用；SWIG wrapper
+時間戳晚於所有修改過的 `.i`。
+
+#### 13.5 明確不處理
+
+- 不在本票自動攔截 legacy `ViewAsSkill`／`SkillCard` 的 `usedTimes()` 或 `hasUsed()`。
+- 不批量遷移正式 C++／Lua 技能。
+- 不改 card history key、重播協議或客戶端提交的 trust boundary。
+- 不以技能名稱後綴、第一個同名 instance 或目前 invoker 猜 root source。
+- 不替 `Limit_Custom` 定義通用 reservation 行為。
+
 ## 18. 每票通用驗收
 
 - 只修改 ticket 列出的模組；額外修改需先更新計劃。
@@ -878,6 +993,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-release.ps1
 
 ## 19. 計劃狀態
 
+- Ticket 13：核心與 fixture 完成、待工具鏈整合驗證（2026-07-20）。已加入 activation/source `UsageIdentity`、legacy activation fallback、source fail-closed、root-source 配額解析與 Lua factory 設值；generic scope 以 committed mark + counted reservation 支援巢狀重入，pay failure／Pay cancel／`StageChange`／`TurnBroken` 會釋放未提交 reservation，bypass 仍 commit。Play 與 pure response 的控制事件會補發 `EffectFinished(NoResult)` 最多一次並重新拋出原事件；effect／target hooks 後會還原 immutable provenance。legacy instance-0 reset 已恢復，`Limit_Custom` 不建立 generic reservation 且不自動 add/reset。`tests/skill-instance-utils` 與 `~test` 已補 shared-root、owner isolation、nested、failure/cancel、bypass、reset、Custom 與 finished-once fixture；Lua factory/enum smoke 位於 `lua/test/examples/test_active_skill_v2_usage_identity.lua`。`swig/sanguosha_wrap.cxx` 已由 SWIG 4.4.1 重產；尚缺 Release x64／console／Lua smoke／Room lifecycle 實跑（工作機沒有 qmake、C++ 編譯器與 Lua CLI）。
 - Ticket 10：完成（2026-07-17）。已加入 `LuaActiveSkillV2`、`sgs.CreateActiveSkillV2`、read-only `ActiveSkillRequest` getters 與所有 query/cost/pay/target/effect callbacks；Lua callback error 均 fail-closed，effect 的 nil 結果為 `ContinueEffects`。`swig/sanguosha_wrap.cxx` 已由 `tools/swig/swig.exe` 重新產生。驗證：Release x64 0 errors。
 - Ticket 11：進行中。已加入 provenance V2（cross-owner source/activation refs）、V1 replay fallback、選用 request-aware AI callback、server-only execution audit 與 replay parser fixture；Play bridge 的 cost/pay/cancel/invalid early exits 現均會 Finished/audit 收束。V2 AI callback 已回傳綁定當前 activation 的 `{ cards, targets, user_string }` 結果，Room 以 server-created proxy 將 choices 送入既有 resolver；尚缺 AI/lifecycle 合成技能端到端場景。
 - Ticket 12：進行中。已加入 replay console fixture、驗證矩陣與 `~test` V2 C++/Lua 合成技能；尚缺自動化完整 Room lifecycle matrix。
@@ -888,5 +1004,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-release.ps1
 - Ticket 3：完成（2026-07-17）。已加入 Room-owned monotonic execution registry、move-only RAII guard、owned QVariant backing、finished-once result、CardEffect execution ID 與擴充 SkillContext identity/mutation/interceptor slots。驗證：Release x64 0 errors；`skill-instance-utils-test` 覆蓋 nested registry、cleanup 與 finished-once。
 - Ticket 4：進行中。已完成 Play bridge 的 execution context、standard/custom whole-effect skip 分流、target registry lookup、WillInvoke mutation commit 與 validate replacement single lifecycle；尚缺 deterministic integration fixture。
 - Ticket 5、6、8、9：已完成基礎實作（2026-07-17），仍待 Ticket 12 整合矩陣驗證。
-  Ticket 7：進行中。現有 ActiveSkillV2 可建立普通卡並具 cost/pay hooks，但尚無計畫指定的通用 `ActiveSkillCard` proxy、selected-card 原子支付與 quota reservation/commit/release；因此依賴 proxy 的 AI 與完整 lifecycle 驗收尚未成立。
+  Ticket 7：進行中。通用 `ActiveSkillCard` proxy、selected-card 原子支付與 quota reservation/commit/release 已存在；尚缺 Release x64 與完整 Room lifecycle 自動化驗收。
 - 正式技能遷移：不在本計劃實作範圍。
