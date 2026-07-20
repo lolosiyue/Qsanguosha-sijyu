@@ -453,6 +453,11 @@ effectOnTargetGroup(ctx, effectiveTargets)
 - 部分目標被移除後不重跑 feasible；技能自行處理不足數量。
 - V2 作者 API 不提供 `manual_effect`／自行派發 target effect 的模式；需要提早完成時使用 `FinishSkill`。
 
+數值契約與 `TriggerV2Skill` 相同：`getBaseAmount()` 預設為 1，execution 建立前會把它寫入
+`ctx.amount`；作者以 `getEffectiveAmount(ctx)` 取得有效值，優先序為正數
+`modified_amount`、正數 `amount`、最後回退 `base_amount`。Lua factory 以選用的
+`base_amount` 設定基礎值。攔截器可以修改 `ctx.modified_amount`，不得修改 execution identity。
+
 ### 11.6 cost／pay
 
 - 名稱保持 `cost()`／`pay()`，兩者均返回 bool。
@@ -989,6 +994,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-release.ps1
 
 ## 19. 計劃狀態
 
+- ActiveSkillV2 amount 擴充：C++／Lua 已加入 `base_amount`、`getBaseAmount()` 與 `getEffectiveAmount(ctx)`；Play、pure response 與候選配額 context 均在生命週期開始時以 base amount 初始化。配額例外維持由 `Limit_Custom` 統一負責，不另增語意重複的 `isUsageExempt`。
 - Ticket 13：核心與 fixture 完成、待工具鏈整合驗證（2026-07-20）。配額策略已收斂為單一 `getUsageRef(ctx)`：預設 activation、覆寫可選 immutable source，移除 `UsageIdentity` enum／setter／Lua 常數；保留 legacy activation fallback、source fail-closed、root-source 配額解析與 Lua `get_usage_ref` callback。generic scope 以 committed mark + counted reservation 支援巢狀重入，pay failure／Pay cancel／`StageChange`／`TurnBroken` 會釋放未提交 reservation，bypass 仍 commit。Play 與 pure response 的控制事件會補發 `EffectFinished(NoResult)` 最多一次並重新拋出原事件；effect／target hooks 後會還原 immutable provenance。legacy instance-0 reset 已恢復，`Limit_Custom` 不建立 generic reservation 且不自動 add/reset。`tests/skill-instance-utils` 與 `~test` 已補 shared-root、owner isolation、nested、failure/cancel、bypass、reset、Custom 與 finished-once fixture；Lua callback smoke 位於 `lua/test/examples/test_active_skill_v2_usage_ref.lua`。`swig/sanguosha_wrap.cxx` 已由 SWIG 4.4.1 重產；尚缺 Release x64／console／Lua smoke／Room lifecycle 實跑（工作機沒有 qmake、C++ 編譯器與 Lua CLI）。
 - Ticket 10：完成（2026-07-17）。已加入 `LuaActiveSkillV2`、`sgs.CreateActiveSkillV2`、read-only `ActiveSkillRequest` getters 與所有 query/cost/pay/target/effect callbacks；Lua callback error 均 fail-closed，effect 的 nil 結果為 `ContinueEffects`。`swig/sanguosha_wrap.cxx` 已由 `tools/swig/swig.exe` 重新產生。驗證：Release x64 0 errors。
 - Ticket 11：進行中。已加入 provenance V2（cross-owner source/activation refs）、V1 replay fallback、選用 request-aware AI callback、server-only execution audit 與 replay parser fixture；Play bridge 的 cost/pay/cancel/invalid early exits 現均會 Finished/audit 收束。V2 AI callback 已回傳綁定當前 activation 的 `{ cards, targets, user_string }` 結果，Room 以 server-created proxy 將 choices 送入既有 resolver；尚缺 AI/lifecycle 合成技能端到端場景。

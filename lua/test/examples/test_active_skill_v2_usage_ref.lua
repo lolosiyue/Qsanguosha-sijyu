@@ -7,6 +7,7 @@ local triggerRef = sgs.SkillInstanceRef("trigger_owner", sgs.SkillInstanceKey("t
 
 local active = sgs.CreateActiveSkillV2 {
 	name = "active_skill_v2_usage_ref_smoke",
+	base_amount = 4,
 	limit_scope = sgs.Skill_Limit_Turn,
 	get_usage_ref = function(skill, ctx)
 		return sourceRef
@@ -38,6 +39,16 @@ local invalid = sgs.CreateActiveSkillV2 {
 local runner = sgs.test.create("ActiveSkillV2 usage reference Lua smoke")
 
 runner:assert(function(t)
+	local amountContext = sgs.SkillContext()
+	amountContext.amount = 0
+	t:addResult(active:getBaseAmount() == 4,
+		"ActiveSkillV2 factory preserves base_amount")
+	t:addResult(active:getEffectiveAmount(amountContext) == 4,
+		"ActiveSkillV2 effective amount falls back to base_amount")
+	amountContext.amount = 3
+	amountContext.modified_amount = 5
+	t:addResult(active:getEffectiveAmount(amountContext) == 5,
+		"ActiveSkillV2 modified_amount overrides amount and base_amount")
 	t:addResult(active:getLimitScope() == sgs.Skill_Limit_Turn,
 		"ActiveSkillV2 factory preserves limit_scope")
 	local activeRef = active:getUsageRef(context)

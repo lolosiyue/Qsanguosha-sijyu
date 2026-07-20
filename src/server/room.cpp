@@ -2643,11 +2643,13 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
         responseCtx.instanceID = resp.activationRef.isValid() ? resp.activationRef.key.instanceID
             : (skillCard ? skillCard->getSkillInstanceId() : 0);
         responseCtx.use_card = resp.m_card;
+		responseActiveSkill = dynamic_cast<const ActiveSkillV2 *>(
+			Sanguosha->getViewAsSkill(responseCtx.activationRef.key.skillName));
+		if (responseActiveSkill)
+			responseCtx.amount = responseActiveSkill->getBaseAmount();
         responseIdentity = responseCtx;
         responseExecution = beginSkillExecution(responseCtx, QVariant::fromValue(resp));
 		resp.skillExecutionID = responseExecution.executionID();
-		responseActiveSkill = dynamic_cast<const ActiveSkillV2 *>(
-			Sanguosha->getViewAsSkill(responseCtx.activationRef.key.skillName));
 		if (responseActiveSkill && !responseCtx.bypass_cost) {
 			ActiveSkillRequest request;
 			request.reason = _m_roomState.getCurrentCardUseReason();
@@ -5532,6 +5534,7 @@ bool Room::askForActiveSkill(ServerPlayer *player, CardUseStruct::CardUseReason 
 		context.sourceRef = resolveSkillInstanceRootRef(request.activationRef);
 		if (!context.sourceRef.isValid()) continue;
 		context.instanceID = instance.instanceID;
+		context.amount = skill->getBaseAmount();
 		const bool quotaAvailable = skill->isUsable(context);
 		if (!quotaAvailable) continue;
 
@@ -5806,6 +5809,10 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		skillCardCtx.sourceRef = use.sourceRef;
 		skillCardCtx.activationRef = use.activationRef;
 		skillCardCtx.initiator = use.from;
+		activeSkill = dynamic_cast<const ActiveSkillV2 *>(
+			Sanguosha->getViewAsSkill(skillCardCtx.activationRef.key.skillName));
+		if (activeSkill)
+			skillCardCtx.amount = activeSkill->getBaseAmount();
 		skillCardIdentity = skillCardCtx;
 		skillExecution = beginSkillExecution(skillCardCtx, QVariant::fromValue(use));
 		use.skillExecutionID = skillExecution.executionID();
@@ -5815,8 +5822,6 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 				 + QString::number(skillCardCtx.instanceID);
 
 		saveSkillContext(skillCardCtx);
-		activeSkill = dynamic_cast<const ActiveSkillV2 *>(
-			Sanguosha->getViewAsSkill(skillCardCtx.activationRef.key.skillName));
 		if (activeSkill && !skillCardCtx.bypass_cost) {
 			ActiveSkillRequest request;
 			request.reason = _m_roomState.getCurrentCardUseReason();

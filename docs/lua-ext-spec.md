@@ -206,6 +206,24 @@ skill_name = sgs.CreateTriggerV2Skill {
 `get_usage_ref` 必須是無副作用的純查詢；不得自行修改 mark、player、Room 或 `ctx`。舊
 `usage_identity` 已移除，factory 會回報遷移提示。
 
+### 5.2.1 ActiveSkillV2（主動技 V2）
+
+```lua
+skill_name = sgs.CreateActiveSkillV2 {
+    name = "skill_name",
+    base_amount = 2,                    -- 選用；預設 1
+    effect = function(self, ctx)
+        local amount = self:getEffectiveAmount(ctx)
+        -- 使用 amount 執行效果
+        return nil -- nil 等同 ContinueEffects
+    end,
+}
+```
+
+框架在 Play、純回應及配額檢查 context 建立時把 `base_amount` 寫入 `ctx.amount`。
+`getEffectiveAmount(ctx)` 依序採用正數 `ctx.modified_amount`、正數 `ctx.amount`，最後回退
+`base_amount`；其他技能可在 `EventSkillWillInvoke` 修改 `ctx.modified_amount`。
+
 ### 5.3 ViewAsSkill（轉化技）
 
 ```lua

@@ -12,7 +12,7 @@
 | replay provenance V1 compatibility | 同上 | 通過；owner 採 initiator best-effort fallback |
 | malformed provenance | 同上 | 通過；拒絕 payload |
 | Play／pure response 的 V2 early-exit 與控制事件收束 | `Room::useCard()`、`Room::askForCard()` | 已整合；pay/cancel 釋放未提交 reservation；`StageChange`／`TurnBroken` 發 `Finished(NoResult)` 最多一次並重新拋出原控制事件 |
-| Lua `get_usage_ref` smoke 與 Room 初始化 | `lua/test/examples/test_active_skill_v2_usage_ref.lua` | 待執行；`QSanguosha.exe --lua-test lua/test/examples/test_active_skill_v2_usage_ref.lua`，assertion 失敗必須回傳非零 |
+| Lua `base_amount`／`get_usage_ref` smoke 與 Room 初始化 | `lua/test/examples/test_active_skill_v2_usage_ref.lua` | 待執行；驗證 Active amount 優先序與 usage ref；assertion 失敗必須回傳非零 |
 | 全專案 C++／SWIG 整合 | `tools/build-release.ps1` Release x64 | Ticket 13 修改後待執行（本機沒有 qmake／C++ 編譯器） |
 
 ## `~test` 手動整合場景
@@ -24,7 +24,7 @@
 `active_skill_v2_custom_usage_test` 驗證 `Limit_Custom` 只由作者邏輯讀寫，不會自動呼叫 generic
 `addUsage()`。它們只供下列手動場景使用，不得改動正常武將包。
 `lua/test/examples/test_active_skill_v2_usage_ref.lua` 是等價 Lua fixture：它以
-`sgs.CreateActiveSkillV2` 與 `sgs.CreateTriggerV2Skill` 驗證 `get_usage_ref` callback、
+`sgs.CreateActiveSkillV2` 與 `sgs.CreateTriggerV2Skill` 驗證 Active `base_amount`／有效值優先序、`get_usage_ref` callback、
 舊欄位遷移提示及錯誤回傳 fail-closed，且不會將測試武將包載入一般對局。
 執行入口為：
 `QSanguosha.exe --lua-test lua/test/examples/test_active_skill_v2_usage_ref.lua`。
