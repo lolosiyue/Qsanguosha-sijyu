@@ -26,19 +26,14 @@ namespace SkillInstanceUtils {
         SkillActivationRequest() : supplied(false), instanceID(0) {}
     };
 
-    // Pure usage-reference selection shared by Skill quota code and console tests.
-    // Source identity deliberately has no legacy fallback.
-    enum UsageRefKind {
-        UsageRef_ActivationInstance,
-        UsageRef_SourceInstance
-    };
-
-    SkillInstanceRef resolveUsageRef(UsageRefKind kind,
-                                     const SkillInstanceRef &activationRef,
-                                     const SkillInstanceRef &sourceRef,
-                                     const QString &legacyOwnerObjectName = QString(),
-                                     const QString &legacySkillName = QString(),
-                                     int legacyInstanceID = 0);
+    // Default quota reference selection. Only activation usage supports the
+    // legacy owner/name/ID fallback; source-sharing skills override
+    // Skill::getUsageRef() and return their immutable sourceRef directly.
+    SkillInstanceRef resolveActivationUsageRef(
+        const SkillInstanceRef &activationRef,
+        const QString &legacyOwnerObjectName = QString(),
+        const QString &legacySkillName = QString(),
+        int legacyInstanceID = 0);
 
     QString formatUsageMarkKey(const QString &skillName, int instanceID,
                                const QString &scopeSuffix);

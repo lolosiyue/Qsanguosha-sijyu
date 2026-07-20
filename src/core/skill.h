@@ -44,8 +44,10 @@ struct SkillContext {
                      original_data(nullptr), instanceID(0), executionID(0), preferredTarget(nullptr), preferredTargetSeat(-1),
                       is_forced(false), is_canceled(false),
                       bypass_cost(false), manual_effect(false), current_event(NonTrigger),
-                     amount(1), modified_amount(0), trigger_count(0), multiplier(1) {}
+                      amount(1), modified_amount(0), trigger_count(0), multiplier(1) {}
 
+    SkillInstanceRef getSourceRef() const { return sourceRef; }
+    SkillInstanceRef getActivationRef() const { return activationRef; }
     QVariant toVariant() const;
 };
 Q_DECLARE_METATYPE(SkillContext)
@@ -76,7 +78,6 @@ class Skill : public QObject
     Q_OBJECT
     Q_ENUMS(Frequency)
     Q_ENUMS(LimitScope)
-    Q_ENUMS(UsageIdentity)
 
 public:
     enum Frequency
@@ -98,12 +99,6 @@ public:
         Limit_Phase,
         Limit_Game,
         Limit_Custom
-    };
-
-    enum UsageIdentity
-    {
-        Usage_ActivationInstance,
-        Usage_SourceInstance
     };
 
     explicit Skill(const QString &name, Frequency frequent = NotFrequent);
@@ -136,7 +131,6 @@ public:
     bool setProperty(const char* name, const QVariant& value);
 
     virtual LimitScope getLimitScope() const;
-    virtual UsageIdentity getUsageIdentity(const SkillContext &ctx) const;
     virtual SkillInstanceRef getUsageRef(const SkillContext &ctx) const;
     virtual int getMaxUsageLimit(const SkillContext &ctx) const;
     virtual bool isUsable(const SkillContext &ctx) const;
@@ -144,8 +138,6 @@ public:
     virtual void resetUsage(const SkillContext &ctx) const;
     virtual void resetUsage(ServerPlayer *owner, ServerPlayer *target = nullptr) const;
     virtual bool checkCustomUsage(const SkillContext &ctx) const;
-    virtual ServerPlayer *getUsageHolder(const SkillContext &ctx) const;
-    QString getUsageTagKey(const SkillContext &ctx) const;
 
     void setPhaseName(const QString &name) { m_phaseName = name; }
     QString getPhaseName() const { return m_phaseName; }
@@ -165,6 +157,10 @@ protected:
     QString waked_skills;
 
 private:
+    friend class Room;
+    ServerPlayer *getUsageHolder(const SkillContext &ctx) const;
+    QString getUsageTagKey(const SkillContext &ctx) const;
+
     bool lord_skill;
     QStringList sources;
     mutable QHash<QString, QStringList> skinSourceHash;

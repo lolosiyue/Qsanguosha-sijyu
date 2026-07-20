@@ -172,6 +172,11 @@ optional displayGeneralName resolver
 
 測試至少包含兩個同名 root provider、同一 receiver 同時獲得兩個 activation instance、移除其中一個 root 只移除其 child。
 
+使用次數預設綁定實際 activation entry。若同一 root 派生的多個 attached 入口必須共用配額，
+C++ 技能覆寫 `getUsageRef(ctx)` 並回傳 `ctx.sourceRef`；Lua 技能提供純查詢
+`get_usage_ref = function(skill, ctx) return ctx:getSourceRef() end`。回傳無效引用時核心
+fail-closed，不得自行退回 activation 或依 invoker 猜測 root。
+
 ## 11. 委託 invoker 遷移
 
 技能若允許 A 強制 B 使用：
@@ -190,6 +195,7 @@ optional displayGeneralName resolver
 - request 只讀；不要嘗試修改 selected cards/targets。
 - userString 必須驗證允許值，不直接把任意字串傳入 cloneCard。
 - nil effect result 等同 ContinueEffects。
+- 不需設定使用次數來源時省略 `get_usage_ref`；預設按 activation instance 計數。
 - 不以 Lua 全域變數或 Room Tag 保存 execution-local 狀態；使用 `ctx.extra_data`。
 
 ## 13. History、日誌與 AI

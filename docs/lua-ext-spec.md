@@ -174,6 +174,9 @@ skill_name = sgs.CreateTriggerV2Skill {
     limit_scope = 1,                    -- 限制範圍
     max_usage_limit = 1,                -- 最大使用次數
     phase_name = "Play",                -- 限制標記清理階段（首字母大寫）
+    get_usage_ref = function(self, ctx) -- 選用；預設按 activation instance 計數
+        return ctx:getSourceRef()        -- attached 入口共用 root 配額時才覆寫
+    end,
     -- V2 特有回調
     on_record = function(self, event, player, data) end,           -- 記錄階段
     on_cost = function(self, event, player, data, ask_who) ... end,      -- 消耗階段
@@ -191,6 +194,17 @@ skill_name = sgs.CreateTriggerV2Skill {
 ```
 
 參考 `docs/TriggerV2Skill系統說明.md` 獲取完整 V2 流程說明。
+
+配額引用規則：
+
+| 設定 | 行為 |
+|------|------|
+| 不提供 `get_usage_ref` | 使用 `ctx:getActivationRef()`；每個實際技能入口獨立計數 |
+| callback 回傳 `ctx:getSourceRef()` | 同一 root 派生的 attached 入口共用次數 |
+| callback error、nil 或非 `SkillInstanceRef` | fail-closed，技能不可用 |
+
+`get_usage_ref` 必須是無副作用的純查詢；不得自行修改 mark、player、Room 或 `ctx`。舊
+`usage_identity` 已移除，factory 會回報遷移提示。
 
 ### 5.3 ViewAsSkill（轉化技）
 

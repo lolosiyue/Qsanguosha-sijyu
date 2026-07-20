@@ -5,20 +5,16 @@ local function validLimitScope(scope)
 		and scope >= sgs.Skill_Limit_None and scope <= sgs.Skill_Limit_Custom
 end
 
-local function validUsageIdentity(identity)
-	return type(identity) == "number"
-		and (identity == sgs.Skill_Usage_ActivationInstance
-			or identity == sgs.Skill_Usage_SourceInstance)
-end
-
-local function configureUsageIdentity(skill, spec)
+local function configureUsage(skill, spec)
 	if spec.limit_scope ~= nil then
 		assert(validLimitScope(spec.limit_scope), "limit_scope must be a valid sgs.Skill_Limit_* value")
 		skill:setLimitScope(spec.limit_scope)
 	end
-	if spec.usage_identity ~= nil then
-		assert(validUsageIdentity(spec.usage_identity), "usage_identity must be a valid sgs.Skill_Usage_* value")
-		skill:setUsageIdentity(spec.usage_identity)
+	assert(spec.usage_identity == nil,
+		"usage_identity was removed; use get_usage_ref(skill, context) instead")
+	if spec.get_usage_ref ~= nil then
+		assert(type(spec.get_usage_ref) == "function", "get_usage_ref must be a function")
+		skill.get_usage_ref = spec.get_usage_ref
 	end
 end
 
@@ -124,7 +120,7 @@ function sgs.CreateTriggerV2Skill(spec)
 		end
 	end
 	if type(spec.base_amount)=="number" then skill:setBaseAmount(spec.base_amount) end
-	configureUsageIdentity(skill, spec)
+	configureUsage(skill, spec)
 	if type(spec.max_usage_limit)=="number" then skill:setMaxUsageLimit(spec.max_usage_limit) end
 	if type(spec.phase_name)=="string" then skill:setPhaseNameStr(spec.phase_name) end
 	if spec.dynamic_frequency then skill.dynamic_frequency = spec.dynamic_frequency end
@@ -147,7 +143,7 @@ function sgs.CreateActiveSkillV2(spec)
 
 	local skill = sgs.LuaActiveSkillV2(spec.name,
 		spec.frequency or sgs.Skill_NotFrequent, spec.limit_mark or "")
-	configureUsageIdentity(skill, spec)
+	configureUsage(skill, spec)
 	if type(spec.max_usage_limit) == "number" then skill:setMaxUsageLimit(spec.max_usage_limit) end
 	if type(spec.phase_name) == "string" then skill:setPhaseNameStr(spec.phase_name) end
 	if type(spec.target_mode) == "number" then skill:setTargetMode(spec.target_mode) end

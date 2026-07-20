@@ -97,10 +97,6 @@ public:
     {
         m_limitScope = scope;
     }
-    inline void setUsageIdentity(Skill::UsageIdentity identity)
-    {
-        m_usageIdentity = identity;
-    }
     inline void setMaxUsageLimit(int limit)
     {
         m_maxUsageLimit = limit;
@@ -148,7 +144,7 @@ public:
     virtual int getPriority(TriggerEvent triggerEvent) const;
     virtual Frequency getFrequency(const Player *target) const;
     virtual Skill::LimitScope getLimitScope() const override;
-    virtual Skill::UsageIdentity getUsageIdentity(const SkillContext &ctx) const override;
+    virtual SkillInstanceRef getUsageRef(const SkillContext &ctx) const override;
     virtual int getMaxUsageLimit(const SkillContext &ctx) const override;
 
     virtual TriggerList triggerable(TriggerEvent triggerEvent, Room *room,
@@ -189,6 +185,7 @@ public:
     LuaFunction on_turn_broken;
     LuaFunction check_custom_usage;
     LuaFunction on_add_usage;
+    LuaFunction get_usage_ref;
     LuaFunction on_willInvoke;
     LuaFunction on_targetConfirming;
     LuaFunction on_invoking;
@@ -206,7 +203,6 @@ protected:
     QString tiansuan_type;
     QMap<TriggerEvent, int> priority_table;
     Skill::LimitScope m_limitScope;
-    Skill::UsageIdentity m_usageIdentity;
     int m_maxUsageLimit;
 };
 
@@ -342,12 +338,11 @@ public:
     void setTargetEffectMode(TargetEffectMode mode) { m_targetEffectMode = mode; }
     void setWillThrowSelectedCards(bool willThrow) { m_willThrowSelectedCards = willThrow; }
     void setLimitScope(Skill::LimitScope scope) { m_limitScope = scope; }
-    void setUsageIdentity(Skill::UsageIdentity identity) { m_usageIdentity = identity; }
     void setMaxUsageLimit(int limit) { m_maxUsageLimit = limit; }
     void setPhaseNameStr(const QString &phase_name) { Skill::setPhaseName(phase_name); }
 
     Skill::LimitScope getLimitScope() const override { return m_limitScope; }
-    Skill::UsageIdentity getUsageIdentity(const SkillContext &ctx) const override;
+    SkillInstanceRef getUsageRef(const SkillContext &ctx) const override;
     int getMaxUsageLimit(const SkillContext &ctx) const override { Q_UNUSED(ctx); return m_maxUsageLimit; }
 
     LuaFunction can_activate;
@@ -361,13 +356,13 @@ public:
     LuaFunction on_effect;
     LuaFunction on_effect_target;
     LuaFunction on_effect_target_group;
+    LuaFunction get_usage_ref;
 
 private:
     TargetMode m_targetMode;
     TargetEffectMode m_targetEffectMode;
     bool m_willThrowSelectedCards;
     Skill::LimitScope m_limitScope;
-    Skill::UsageIdentity m_usageIdentity;
     int m_maxUsageLimit;
 };
 

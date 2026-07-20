@@ -4589,7 +4589,7 @@ public:
     ActiveSkillV2Test() : ActiveSkillV2("active_skill_v2_test") {}
 
     LimitScope getLimitScope() const override { return Limit_Turn; }
-    UsageIdentity getUsageIdentity(const SkillContext &) const override { return Usage_SourceInstance; }
+    SkillInstanceRef getUsageRef(const SkillContext &context) const override { return context.sourceRef; }
     int getMaxUsageLimit(const SkillContext &) const override { return 2; }
 
     bool canActivate(const ActiveSkillRequest &request) const override

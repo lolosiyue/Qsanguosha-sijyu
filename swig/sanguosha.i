@@ -1515,6 +1515,8 @@ struct ActiveSkillAIResult {
 	QString userString;
 };
 
+struct SkillInstanceRef;
+
 struct SkillContext {
 	SkillContext();
 	QString skill_name;
@@ -1542,6 +1544,8 @@ struct SkillContext {
 
 	QString choice;
 	QVariant extra_data;
+	SkillInstanceRef getSourceRef() const;
+	SkillInstanceRef getActivationRef() const;
 };
 
 enum SkillInstanceSource {
@@ -1595,7 +1599,6 @@ class Skill: public QObject {
 public:
 	enum Frequency { Frequent, NotFrequent, Compulsory, Limited, Wake, NotCompulsory, }; //Change
 	enum LimitScope { Limit_None, Limit_Round, Limit_Turn, Limit_Phase, Limit_Game, Limit_Custom };
-	enum UsageIdentity { Usage_ActivationInstance, Usage_SourceInstance };
 
 	explicit Skill(const char*name, Frequency frequent = NotFrequent);
 	bool isLordSkill() const;
@@ -1622,7 +1625,6 @@ bool isHideSkill() const;
 	bool setProperty(const char*name, const QVariant&value);
 
 	virtual LimitScope getLimitScope() const;
-	virtual UsageIdentity getUsageIdentity(const SkillContext& ctx) const;
 	virtual SkillInstanceRef getUsageRef(const SkillContext& ctx) const;
 	virtual int getMaxUsageLimit(const SkillContext& ctx) const;
 	virtual bool isUsable(const SkillContext& ctx) const;
@@ -1630,8 +1632,6 @@ bool isHideSkill() const;
 	virtual void resetUsage(const SkillContext& ctx) const;
 	virtual void resetUsage(ServerPlayer* owner, ServerPlayer* target = nullptr) const;
 	virtual bool checkCustomUsage(const SkillContext& ctx) const;
-	virtual ServerPlayer* getUsageHolder(const SkillContext& ctx) const;
-	QString getUsageTagKey(const SkillContext& ctx) const;
 };
 
 %extend Skill {

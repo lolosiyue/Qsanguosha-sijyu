@@ -1148,33 +1148,18 @@ Skill::LimitScope Skill::getLimitScope() const
     return Limit_None;
 }
 
-Skill::UsageIdentity Skill::getUsageIdentity(const SkillContext &) const
-{
-    return Usage_ActivationInstance;
-}
-
 SkillInstanceRef Skill::getUsageRef(const SkillContext &ctx) const
 {
-    SkillInstanceUtils::UsageRefKind kind;
     QString legacyOwnerObjectName;
-    switch (getUsageIdentity(ctx)) {
-    case Usage_ActivationInstance:
-        // Legacy contexts predate immutable provenance.  They may only use
-        // their local owner/invoker and explicit instance ID as a fallback.
-        kind = SkillInstanceUtils::UsageRef_ActivationInstance;
-        if (ctx.instanceID > 0) {
-            ServerPlayer *legacyOwner = ctx.owner ? ctx.owner : ctx.invoker;
-            if (legacyOwner) legacyOwnerObjectName = legacyOwner->objectName();
-        }
-        break;
-    case Usage_SourceInstance:
-        kind = SkillInstanceUtils::UsageRef_SourceInstance;
-        break;
-    default:
-        return SkillInstanceRef();
+    // Legacy contexts predate immutable provenance. They may only use their
+    // local owner/invoker and explicit instance ID as an activation fallback.
+    if (ctx.instanceID > 0) {
+        ServerPlayer *legacyOwner = ctx.owner ? ctx.owner : ctx.invoker;
+        if (legacyOwner) legacyOwnerObjectName = legacyOwner->objectName();
     }
-    return SkillInstanceUtils::resolveUsageRef(kind, ctx.activationRef, ctx.sourceRef,
-                                                legacyOwnerObjectName, objectName(), ctx.instanceID);
+    return SkillInstanceUtils::resolveActivationUsageRef(ctx.activationRef,
+                                                          legacyOwnerObjectName,
+                                                          objectName(), ctx.instanceID);
 }
 
 int Skill::getMaxUsageLimit(const SkillContext &) const
@@ -1277,8 +1262,7 @@ ServerPlayer *Skill::getUsageHolder(const SkillContext &ctx) const
 {
     const SkillInstanceRef ref = getUsageRef(ctx);
     if (!ref.isValid()) {
-        qWarning() << "Skill usage reference is unavailable:" << objectName()
-                   << "identity" << getUsageIdentity(ctx);
+        qWarning() << "Skill usage reference is unavailable:" << objectName();
         return nullptr;
     }
 
