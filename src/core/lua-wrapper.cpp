@@ -90,17 +90,12 @@ LuaViewAsSkill::LuaViewAsSkill(const QString &name, const QString &response_patt
 LuaActiveSkillV2::LuaActiveSkillV2(const QString &name, Frequency frequency, const QString &limit_mark)
     : ActiveSkillV2(name), can_activate(0), can_select_card(0), card_selection_feasible(0), create_card(0),
       on_cost(0), on_pay(0), can_select_target(0), targets_feasible(0), on_effect(0),
-      on_effect_target(0), on_effect_target_group(0), m_targetMode(SelectTargets),
+      on_effect_target(0), on_effect_target_group(0), get_usage_ref(0), m_targetMode(SelectTargets),
       m_targetEffectMode(EachTarget), m_willThrowSelectedCards(true), m_limitScope(Limit_None),
-      m_usageIdentity(Usage_ActivationInstance), m_maxUsageLimit(1)
+      m_maxUsageLimit(1)
 {
     this->frequency = frequency;
     this->limit_mark = limit_mark;
-}
-
-Skill::UsageIdentity LuaActiveSkillV2::getUsageIdentity(const SkillContext &) const
-{
-    return m_usageIdentity;
 }
 
 bool LuaActiveSkillV2::willThrowSelectedCards() const

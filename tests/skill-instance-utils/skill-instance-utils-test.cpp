@@ -84,29 +84,19 @@ int main(int argc, char *argv[])
     const SkillInstanceRef activationB("owner_b", SkillInstanceKey("skill", 1));
     const SkillInstanceRef sourceA("root_a", SkillInstanceKey("root_skill", 7));
     const SkillInstanceRef sourceB("root_b", SkillInstanceKey("root_skill", 7));
-    ok = expectRef("activation reference", SkillInstanceUtils::resolveUsageRef(
-                       SkillInstanceUtils::UsageRef_ActivationInstance, activationA, sourceA), activationA) && ok;
-    ok = expectRef("source reference", SkillInstanceUtils::resolveUsageRef(
-                       SkillInstanceUtils::UsageRef_SourceInstance, activationA, sourceA), sourceA) && ok;
-    ok = expectRef("source reference shared across activation owners", SkillInstanceUtils::resolveUsageRef(
-                       SkillInstanceUtils::UsageRef_SourceInstance, activationB, sourceA), sourceA) && ok;
-    ok = expectRef("source owner isolation", SkillInstanceUtils::resolveUsageRef(
-                       SkillInstanceUtils::UsageRef_SourceInstance, activationB, sourceB), sourceB) && ok;
-    ok = expectRef("legacy activation fallback", SkillInstanceUtils::resolveUsageRef(
-                       SkillInstanceUtils::UsageRef_ActivationInstance, SkillInstanceRef(), SkillInstanceRef(),
-                       "legacy_owner", "legacy_skill", 9),
+    ok = expectRef("activation reference", SkillInstanceUtils::resolveActivationUsageRef(
+                       activationA), activationA) && ok;
+    ok = expectRef("legacy activation fallback", SkillInstanceUtils::resolveActivationUsageRef(
+                       SkillInstanceRef(), "legacy_owner", "legacy_skill", 9),
                        SkillInstanceRef("legacy_owner", SkillInstanceKey("legacy_skill", 9))) && ok;
-    ok = expectEqual("source missing fails closed", SkillInstanceUtils::resolveUsageRef(
-                       SkillInstanceUtils::UsageRef_SourceInstance, activationA, SkillInstanceRef()).isValid(), false) && ok;
-    ok = expectEqual("unknown identity fails closed", SkillInstanceUtils::resolveUsageRef(
-                       static_cast<SkillInstanceUtils::UsageRefKind>(99), activationB, sourceA).isValid(), false) && ok;
+    ok = expectEqual("missing activation without legacy fallback fails closed",
+                     SkillInstanceUtils::resolveActivationUsageRef(SkillInstanceRef()).isValid(), false) && ok;
 
     const QString sourceMarkA = SkillInstanceUtils::formatUsageMarkKey(
         sourceA.key.skillName, sourceA.key.instanceID, "-Clear");
     const QString sourceKeyA = SkillInstanceUtils::formatUsageReservationKey(
         sourceA.ownerObjectName, sourceMarkA);
-    const SkillInstanceRef sourceFromOtherActivation = SkillInstanceUtils::resolveUsageRef(
-        SkillInstanceUtils::UsageRef_SourceInstance, activationB, sourceA);
+    const SkillInstanceRef sourceFromOtherActivation = sourceA;
     const QString sourceKeyAFromOtherActivation = SkillInstanceUtils::formatUsageReservationKey(
         sourceFromOtherActivation.ownerObjectName, SkillInstanceUtils::formatUsageMarkKey(
             sourceFromOtherActivation.key.skillName, sourceFromOtherActivation.key.instanceID, "-Clear"));
@@ -119,11 +109,11 @@ int main(int argc, char *argv[])
     const QString activationKeyB = SkillInstanceUtils::formatUsageReservationKey(
         activationB.ownerObjectName, SkillInstanceUtils::formatUsageMarkKey(
             activationB.key.skillName, activationB.key.instanceID, "-Clear"));
-    ok = expectEqual("attached source identity shares one quota key",
+    ok = expectEqual("attached source reference shares one quota key",
                      sourceKeyAFromOtherActivation, sourceKeyA) && ok;
     ok = expectEqual("same source name/id with another root owner is isolated",
                      sourceKeyA == sourceKeyB, false) && ok;
-    ok = expectEqual("activation identity remains owner-local",
+    ok = expectEqual("activation references remain owner-local",
                      activationKeyA == activationKeyB, false) && ok;
     ok = expectEqual("legacy reset mark keeps instance zero",
                      SkillInstanceUtils::formatUsageMarkKey("legacy_skill", 0, "_game"),

@@ -2,27 +2,17 @@
 
 namespace SkillInstanceUtils {
 
-    SkillInstanceRef resolveUsageRef(UsageRefKind kind,
-                                     const SkillInstanceRef &activationRef,
-                                     const SkillInstanceRef &sourceRef,
-                                     const QString &legacyOwnerObjectName,
-                                     const QString &legacySkillName,
-                                     int legacyInstanceID)
+    SkillInstanceRef resolveActivationUsageRef(
+        const SkillInstanceRef &activationRef,
+        const QString &legacyOwnerObjectName,
+        const QString &legacySkillName,
+        int legacyInstanceID)
     {
-        switch (kind) {
-        case UsageRef_ActivationInstance:
-            if (activationRef.isValid()) return activationRef;
-            if (!legacyOwnerObjectName.isEmpty() && !legacySkillName.isEmpty()
-                && legacyInstanceID > 0)
-                return SkillInstanceRef(legacyOwnerObjectName,
-                                        SkillInstanceKey(legacySkillName, legacyInstanceID));
-            break;
-        case UsageRef_SourceInstance:
-            if (sourceRef.isValid()) return sourceRef;
-            break;
-        default:
-            break;
-        }
+        if (activationRef.isValid()) return activationRef;
+        if (!legacyOwnerObjectName.isEmpty() && !legacySkillName.isEmpty()
+            && legacyInstanceID > 0)
+            return SkillInstanceRef(legacyOwnerObjectName,
+                                    SkillInstanceKey(legacySkillName, legacyInstanceID));
         return SkillInstanceRef();
     }
 

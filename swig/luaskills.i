@@ -35,7 +35,6 @@ public:
 	void setGlobal(bool global);
 	void setBaseAmount(int amount);
 	void setLimitScope(Skill::LimitScope scope);
-	void setUsageIdentity(Skill::UsageIdentity identity);
 	void setMaxUsageLimit(int limit);
 	void setPhaseNameStr(const char *phase_name);
 	void setShimingSkill(bool shiming);
@@ -51,7 +50,7 @@ public:
 	virtual int getPriority(TriggerEvent triggerEvent) const;
 	virtual Frequency getFrequency(const Player *target) const;
 	virtual Skill::LimitScope getLimitScope() const;
-	virtual Skill::UsageIdentity getUsageIdentity(const SkillContext &ctx) const;
+	virtual SkillInstanceRef getUsageRef(const SkillContext &ctx) const;
 	virtual int getMaxUsageLimit(const SkillContext &ctx) const;
 
 	virtual TriggerList triggerable(TriggerEvent triggerEvent, Room *room,
@@ -90,6 +89,7 @@ public:
 	LuaFunction on_turn_broken;
 	LuaFunction check_custom_usage;
 	LuaFunction on_add_usage;
+	LuaFunction get_usage_ref;
 	LuaFunction on_willInvoke;
 	LuaFunction on_targetConfirming;
 	LuaFunction on_invoking;
@@ -397,12 +397,11 @@ public:
 	void setTargetEffectMode(TargetEffectMode mode);
 	void setWillThrowSelectedCards(bool willThrow);
 	void setLimitScope(Skill::LimitScope scope);
-	void setUsageIdentity(Skill::UsageIdentity identity);
 	void setMaxUsageLimit(int limit);
 	void setPhaseNameStr(const char *phase_name);
 
 	virtual Skill::LimitScope getLimitScope() const;
-	virtual Skill::UsageIdentity getUsageIdentity(const SkillContext &ctx) const;
+	virtual SkillInstanceRef getUsageRef(const SkillContext &ctx) const;
 	virtual int getMaxUsageLimit(const SkillContext &ctx) const;
 
 	LuaFunction can_activate;
@@ -416,6 +415,7 @@ public:
 	LuaFunction on_effect;
 	LuaFunction on_effect_target;
 	LuaFunction on_effect_target_group;
+	LuaFunction get_usage_ref;
 };
 
 class LuaViewAsSkill: public ViewAsSkill {
@@ -832,10 +832,34 @@ bool LuaTriggerSkill::trigger(TriggerEvent event, Room *room, ServerPlayer *play
 	return result;
 }
 
+static SkillInstanceRef luaSkillUsageRef(lua_State *L, int callback, void *self,
+	                                    swig_type_info *selfType,
+	                                    const SkillContext &ctx, const char *owner)
+{
+	lua_rawgeti(L, LUA_REGISTRYINDEX, callback);
+	SWIG_NewPointerObj(L, self, selfType, 0);
+	SWIG_NewPointerObj(L, const_cast<SkillContext *>(&ctx), SWIGTYPE_p_SkillContext, 0);
+	if (lua_pcall(L, 2, 1, 0) != 0) {
+		qWarning("%s::get_usage_ref error: %s", owner, lua_tostring(L, -1));
+		lua_pop(L, 1);
+		return SkillInstanceRef();
+	}
+
+	void *ref = nullptr;
+	const int converted = SWIG_ConvertPtr(L, -1, &ref, SWIGTYPE_p_SkillInstanceRef, 0);
+	SkillInstanceRef result;
+	if (SWIG_IsOK(converted) && ref)
+		result = *static_cast<SkillInstanceRef *>(ref);
+	else
+		qWarning("%s::get_usage_ref must return SkillInstanceRef", owner);
+	lua_pop(L, 1);
+	return result;
+}
+
 LuaTriggerV2Skill::LuaTriggerV2Skill(const char *name, Frequency frequency, const char *limit_mark)
 	: TriggerV2Skill(name), on_record(0), can_trigger(0), on_cost(0), on_pay(0), on_effect(0), on_effect_target(0), on_turn_broken(0), check_custom_usage(0), on_add_usage(0),
-	  on_willInvoke(0), on_targetConfirming(0), on_invoking(0), on_effectContext(0), on_effectFinished(0),
-	  m_limitScope(Limit_None), m_usageIdentity(Usage_ActivationInstance), m_maxUsageLimit(1)
+	  get_usage_ref(0), on_willInvoke(0), on_targetConfirming(0), on_invoking(0), on_effectContext(0), on_effectFinished(0),
+	  m_limitScope(Limit_None), m_maxUsageLimit(1)
 {
 	this->frequency = frequency;
 	this->limit_mark = limit_mark;
@@ -852,9 +876,12 @@ Skill::LimitScope LuaTriggerV2Skill::getLimitScope() const
 	return m_limitScope;
 }
 
-Skill::UsageIdentity LuaTriggerV2Skill::getUsageIdentity(const SkillContext &) const
+SkillInstanceRef LuaTriggerV2Skill::getUsageRef(const SkillContext &ctx) const
 {
-	return m_usageIdentity;
+	if (!get_usage_ref) return TriggerV2Skill::getUsageRef(ctx);
+	return luaSkillUsageRef(Sanguosha->getLuaState(), get_usage_ref,
+		const_cast<LuaTriggerV2Skill *>(this), SWIGTYPE_p_LuaTriggerV2Skill,
+		ctx, "LuaTriggerV2Skill");
 }
 
 int LuaTriggerV2Skill::getMaxUsageLimit(const SkillContext &) const
@@ -3616,6 +3643,14 @@ static bool luaActivePCall(lua_State *L, int nargs, int nresults, const char *ca
 	qWarning("LuaActiveSkillV2::%s error: %s", callback, lua_tostring(L, -1));
 	lua_pop(L, 1);
 	return false;
+}
+
+SkillInstanceRef LuaActiveSkillV2::getUsageRef(const SkillContext &ctx) const
+{
+	if (!get_usage_ref) return ActiveSkillV2::getUsageRef(ctx);
+	return luaSkillUsageRef(Sanguosha->getLuaState(), get_usage_ref,
+		const_cast<LuaActiveSkillV2 *>(this), SWIGTYPE_p_LuaActiveSkillV2,
+		ctx, "LuaActiveSkillV2");
 }
 
 bool LuaActiveSkillV2::canActivate(const ActiveSkillRequest &request) const
