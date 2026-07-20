@@ -168,8 +168,9 @@ public:
     virtual bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
                           QVariant &data) const override;
     void onTurnBroken(const char *function_name, TriggerEvent triggerEvent, Room *room,
-                     ServerPlayer *player, SkillContext &ctx) const;
+                      ServerPlayer *player, SkillContext &ctx) const;
     virtual bool checkCustomUsage(const SkillContext &ctx) const override;
+    virtual void addUsage(const SkillContext &ctx) const override;
 
     void onShimingSuccess(Room *room, ServerPlayer *player) const override;
     void onShimingFail(Room *room, ServerPlayer *player) const override;
@@ -182,6 +183,7 @@ public:
     LuaFunction on_effect_target;
     LuaFunction on_turn_broken;
     LuaFunction check_custom_usage;
+    LuaFunction on_add_usage;
     LuaFunction on_willInvoke;
     LuaFunction on_targetConfirming;
     LuaFunction on_invoking;

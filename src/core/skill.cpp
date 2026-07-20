@@ -1168,6 +1168,9 @@ bool Skill::isUsable(const SkillContext &ctx) const
     }
 
     ServerPlayer *holder = getUsageHolder(ctx);
+    if (!holder) {
+        return false;
+    }
     int max_limit = getMaxUsageLimit(ctx);
     QString tag_key = getUsageTagKey(ctx);
     int current_usage = holder->getMark(tag_key);
@@ -1183,6 +1186,7 @@ void Skill::addUsage(const SkillContext &ctx) const
     if (scope == Limit_None || scope == Limit_Custom) return;
 
     ServerPlayer *holder = getUsageHolder(ctx);
+    if (!holder) return;
     QString tag_key = getUsageTagKey(ctx);
     int current_usage = holder->getMark(tag_key);
 
@@ -1190,19 +1194,27 @@ void Skill::addUsage(const SkillContext &ctx) const
     room->setPlayerMark(holder, tag_key, current_usage + 1);
 }
 
+void Skill::resetUsage(const SkillContext &ctx) const
+{
+    LimitScope scope = getLimitScope();
+    if (scope == Limit_None || scope == Limit_Custom) return;
+
+    ServerPlayer *holder = getUsageHolder(ctx);
+    if (!holder) return;
+    QString key = getUsageTagKey(ctx);
+    if (key.isEmpty()) return;
+    Room *room = holder->getRoom();
+    if (room) room->setPlayerMark(holder, key, 0);
+}
+
 void Skill::resetUsage(ServerPlayer *owner, ServerPlayer *) const
 {
     if (!owner) return;
 
     SkillContext ctx;
+    ctx.owner = owner;
     ctx.invoker = owner;
-
-    LimitScope scope = getLimitScope();
-    if (scope == Limit_None || scope == Limit_Custom) return;
-
-    QString key = getUsageTagKey(ctx);
-    Room *room = owner->getRoom();
-    room->setPlayerMark(owner, key, 0);
+    resetUsage(ctx);
 }
 
 bool Skill::checkCustomUsage(const SkillContext &) const

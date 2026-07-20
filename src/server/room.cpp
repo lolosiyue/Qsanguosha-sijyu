@@ -2650,11 +2650,11 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
 			}
 			resp.changeCard(const_cast<Card *>(responseCtx.updated_card));
 		}
+		if (activeSkill && !reserveActiveSkillUsage(activeSkill, responseCtx)) {
+			finishResponseExecution(SkillExecutionPayFailed);
+			return nullptr;
+		}
 		if (!responseCtx.bypass_cost) {
-			if (activeSkill && !reserveActiveSkillUsage(activeSkill, responseCtx)) {
-				finishResponseExecution(SkillExecutionPayFailed);
-				return nullptr;
-			}
 			responseCtx.current_event = EventSkillPay;
 			responseCtxData = QVariant::fromValue(responseCtx);
 			thread->trigger(EventSkillPay, this, player, responseCtxData);
@@ -2672,8 +2672,9 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
 				finishResponseExecution(SkillExecutionPayFailed);
 				return nullptr;
 			}
-			commitActiveSkillUsage(activeSkill, responseCtx);
 		}
+		if (activeSkill)
+			commitActiveSkillUsage(activeSkill, responseCtx);
 		responseCtx.current_event = EventSkillInvoking;
 		responseCtxData = QVariant::fromValue(responseCtx);
 		thread->trigger(EventSkillInvoking, this, player, responseCtxData);
@@ -5498,21 +5499,30 @@ bool Room::askForActiveSkill(ServerPlayer *player, CardUseStruct::CardUseReason 
 
 bool Room::reserveActiveSkillUsage(const ActiveSkillV2 *skill, const SkillContext &context)
 {
-	if (!skill || skill->getLimitScope() == Skill::Limit_None) return true;
+	if (!skill || skill->getLimitScope() == Skill::Limit_None
+		|| skill->getLimitScope() == Skill::Limit_Custom) return true;
 	ServerPlayer *holder = skill->getUsageHolder(context);
 	if (!holder || !skill->isUsable(context)) return false;
 	const QString key = holder->objectName() + ":" + skill->getUsageTagKey(context);
-	if (m_activeSkillUsageReservations.contains(key)) return false;
-	m_activeSkillUsageReservations.insert(key);
+	const int reserved = m_activeSkillUsageReservations.value(key, 0);
+	if (holder->getMark(skill->getUsageTagKey(context)) + reserved >= skill->getMaxUsageLimit(context))
+		return false;
+	m_activeSkillUsageReservations.insert(key, reserved + 1);
 	return true;
 }
 
 void Room::releaseActiveSkillUsage(const ActiveSkillV2 *skill, const SkillContext &context)
 {
-	if (!skill || skill->getLimitScope() == Skill::Limit_None) return;
+	if (!skill || skill->getLimitScope() == Skill::Limit_None
+		|| skill->getLimitScope() == Skill::Limit_Custom) return;
 	ServerPlayer *holder = skill->getUsageHolder(context);
-	if (holder)
-		m_activeSkillUsageReservations.remove(holder->objectName() + ":" + skill->getUsageTagKey(context));
+	if (!holder) return;
+	const QString key = holder->objectName() + ":" + skill->getUsageTagKey(context);
+	const int reserved = m_activeSkillUsageReservations.value(key, 0);
+	if (reserved <= 1)
+		m_activeSkillUsageReservations.remove(key);
+	else
+		m_activeSkillUsageReservations.insert(key, reserved - 1);
 }
 
 void Room::commitActiveSkillUsage(const ActiveSkillV2 *skill, const SkillContext &context)
@@ -5712,11 +5722,11 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 			card = skillCardCtx.updated_card;
 		}
 
+		if (activeSkill && !reserveActiveSkillUsage(activeSkill, skillCardCtx)) {
+			finishSkillExecution(SkillExecutionPayFailed);
+			return false;
+		}
 		if (!skillCardCtx.bypass_cost) {
-			if (activeSkill && !reserveActiveSkillUsage(activeSkill, skillCardCtx)) {
-				finishSkillExecution(SkillExecutionPayFailed);
-				return false;
-			}
 			skillCardCtx.current_event = EventSkillPay;
 			skillCardCtxData = QVariant::fromValue(skillCardCtx);
 			thread->trigger(EventSkillPay, this, use.from, skillCardCtxData);
@@ -5735,8 +5745,9 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 				finishSkillExecution(SkillExecutionPayFailed);
 				return false;
 			}
-			commitActiveSkillUsage(activeSkill, skillCardCtx);
 		}
+		if (activeSkill)
+			commitActiveSkillUsage(activeSkill, skillCardCtx);
 		use.bypass_cost = skillCardCtx.bypass_cost;
 
 		skillCardCtx.updated_targets = skillCardCtx.targets;

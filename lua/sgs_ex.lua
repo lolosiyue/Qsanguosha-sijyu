@@ -88,6 +88,7 @@ function sgs.CreateTriggerV2Skill(spec)
 	if spec.on_turn_broken then skill.on_turn_broken = spec.on_turn_broken end
 	if spec.can_trigger then skill.can_trigger = spec.can_trigger end
 	if spec.check_custom_usage then skill.check_custom_usage = spec.check_custom_usage end
+	if spec.on_add_usage then skill.on_add_usage = spec.on_add_usage end
 	if spec.view_as_skill then skill:setViewAsSkill(spec.view_as_skill) end
 	if type(spec.priority)=="number" then skill.priority = spec.priority
 	elseif type(spec.priority)=="table" then
