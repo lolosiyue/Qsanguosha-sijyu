@@ -399,7 +399,7 @@ const ViewAsSkill *ViewAsSkill::parseViewAsSkill(const Skill *skill)
 }
 
 ActiveSkillV2::ActiveSkillV2(const QString &name)
-    : ViewAsSkill(name)
+    : ViewAsSkill(name), m_baseAmount(1)
 {
 }
 
@@ -470,6 +470,18 @@ ActiveSkillV2::TargetEffectMode ActiveSkillV2::targetEffectMode() const { return
 ActiveSkillV2::EffectFlow ActiveSkillV2::effect(SkillContext &) const { return ContinueEffects; }
 ActiveSkillV2::EffectFlow ActiveSkillV2::effectOnTarget(SkillContext &, ServerPlayer *) const { return ContinueEffects; }
 ActiveSkillV2::EffectFlow ActiveSkillV2::effectOnTargetGroup(SkillContext &, const QList<ServerPlayer *> &) const { return ContinueEffects; }
+
+int ActiveSkillV2::getBaseAmount() const
+{
+    return m_baseAmount;
+}
+
+int ActiveSkillV2::getEffectiveAmount(const SkillContext &context) const
+{
+    if (context.modified_amount > 0)
+        return context.modified_amount;
+    return context.amount > 0 ? context.amount : m_baseAmount;
+}
 
 bool ActiveSkillV2::viewFilter(const QList<const Card *> &, const Card *) const
 {

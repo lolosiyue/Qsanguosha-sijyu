@@ -388,6 +388,8 @@ public:
 	enum TargetEffectMode { EachTarget, WholeTargetGroup };
 	enum EffectFlow { ContinueEffects, FinishSkill };
 	ActiveSkillV2(const QString &name);
+	virtual int getBaseAmount() const;
+	int getEffectiveAmount(const SkillContext &context) const;
 };
 
 class LuaActiveSkillV2: public ActiveSkillV2 {
@@ -396,6 +398,7 @@ public:
 	void setTargetMode(TargetMode mode);
 	void setTargetEffectMode(TargetEffectMode mode);
 	void setWillThrowSelectedCards(bool willThrow);
+	void setBaseAmount(int amount);
 	void setLimitScope(Skill::LimitScope scope);
 	void setMaxUsageLimit(int limit);
 	void setPhaseNameStr(const char *phase_name);

@@ -137,12 +137,14 @@ function sgs.CreateActiveSkillV2(spec)
 	assert(type(spec.name) == "string")
 	if spec.frequency then assert(type(spec.frequency) == "number") end
 	if spec.limit_mark then assert(type(spec.limit_mark) == "string") end
+	if spec.base_amount ~= nil then assert(type(spec.base_amount) == "number") end
 	if spec.max_usage_limit then assert(type(spec.max_usage_limit) == "number") end
 	if spec.phase_name then assert(type(spec.phase_name) == "string") end
 	if spec.will_throw_selected_cards then assert(type(spec.will_throw_selected_cards) == "boolean") end
 
 	local skill = sgs.LuaActiveSkillV2(spec.name,
 		spec.frequency or sgs.Skill_NotFrequent, spec.limit_mark or "")
+	if type(spec.base_amount) == "number" then skill:setBaseAmount(spec.base_amount) end
 	configureUsage(skill, spec)
 	if type(spec.max_usage_limit) == "number" then skill:setMaxUsageLimit(spec.max_usage_limit) end
 	if type(spec.phase_name) == "string" then skill:setPhaseNameStr(spec.phase_name) end

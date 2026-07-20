@@ -224,10 +224,16 @@ public:
     virtual EffectFlow effectOnTarget(SkillContext &context, ServerPlayer *target) const;
     virtual EffectFlow effectOnTargetGroup(SkillContext &context, const QList<ServerPlayer *> &targets) const;
 
+    virtual int getBaseAmount() const;
+    int getEffectiveAmount(const SkillContext &context) const;
+
     // V2 skills are activated through ActiveSkillRequest, never the legacy
     // ViewAs callbacks.  These adapters keep accidental legacy callers safe.
     bool viewFilter(const QList<const Card *> &selected, const Card *to_select) const override;
     const Card *viewAs(const QList<const Card *> &cards) const override;
+
+protected:
+    int m_baseAmount;
 };
 
 class ZeroCardViewAsSkill : public ViewAsSkill
