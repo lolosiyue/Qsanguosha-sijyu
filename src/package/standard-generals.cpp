@@ -4588,32 +4588,92 @@ class ActiveSkillV2Test : public ActiveSkillV2
 public:
     ActiveSkillV2Test() : ActiveSkillV2("active_skill_v2_test") {}
 
-    bool canActivate(const ActiveSkillRequest &request) const
+    LimitScope getLimitScope() const override { return Limit_Turn; }
+    UsageIdentity getUsageIdentity(const SkillContext &) const override { return Usage_SourceInstance; }
+    int getMaxUsageLimit(const SkillContext &) const override { return 2; }
+
+    bool canActivate(const ActiveSkillRequest &request) const override
     {
         return request.reason == CardUseStruct::CARD_USE_REASON_PLAY && request.initiator;
     }
 
-    bool cardSelectionFeasible(const ActiveSkillRequest &) const { return true; }
+    bool cardSelectionFeasible(const ActiveSkillRequest &) const override { return true; }
 
-    const Card *createCard(const ActiveSkillRequest &) const
+    const Card *createCard(const ActiveSkillRequest &) const override
     {
         Card *card = Sanguosha->cloneCard("slash");
         if (card) card->setSkillName(objectName());
         return card;
     }
 
-    TargetMode targetMode() const { return SelectTargets; }
+    TargetMode targetMode() const override { return SelectTargets; }
 
     bool canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected,
-                         const Player *candidate) const
+                         const Player *candidate) const override
     {
         return request.initiator && candidate && candidate != request.initiator
             && candidate->isAlive() && selected.isEmpty();
     }
 
-    bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &selected) const
+    bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &selected) const override
     {
         return selected.length() == 1;
+    }
+};
+
+class ActiveSkillV2QuotaRoot : public GameStartSkill
+{
+public:
+    ActiveSkillV2QuotaRoot() : GameStartSkill("active_skill_v2_quota_root") {}
+
+    void onGameStart(ServerPlayer *player) const override
+    {
+        if (!player) return;
+        const QList<int> rootIds = player->getSkillInstanceIds(objectName());
+        if (rootIds.isEmpty()) return;
+
+        Room *room = player->getRoom();
+        const SkillInstanceRef rootRef(player->objectName(),
+                                       SkillInstanceKey(objectName(), rootIds.first()));
+        foreach (ServerPlayer *receiver, room->getOtherPlayers(player))
+            room->attachSkillToPlayer(receiver, "active_skill_v2_test", rootRef);
+    }
+};
+
+class ActiveSkillV2CustomUsageTest : public ActiveSkillV2
+{
+public:
+    ActiveSkillV2CustomUsageTest() : ActiveSkillV2("active_skill_v2_custom_usage_test") {}
+
+    LimitScope getLimitScope() const override { return Limit_Custom; }
+    bool canActivate(const ActiveSkillRequest &request) const override
+    {
+        return request.reason == CardUseStruct::CARD_USE_REASON_PLAY && request.initiator;
+    }
+    bool cardSelectionFeasible(const ActiveSkillRequest &) const override { return true; }
+    TargetMode targetMode() const override { return NoTarget; }
+    bool isUsable(const SkillContext &context) const override
+    {
+        return context.invoker && context.invoker->getMark("active_skill_v2_custom_committed") == 0;
+    }
+    void addUsage(const SkillContext &context) const override
+    {
+        if (context.invoker)
+            context.invoker->getRoom()->addPlayerMark(context.invoker,
+                                                       "active_skill_v2_unexpected_generic_add");
+    }
+    void resetUsage(const SkillContext &context) const override
+    {
+        if (context.invoker)
+            context.invoker->getRoom()->setPlayerMark(context.invoker,
+                                                       "active_skill_v2_custom_committed", 0);
+    }
+    EffectFlow effect(SkillContext &context) const override
+    {
+        if (context.invoker)
+            context.invoker->getRoom()->addPlayerMark(context.invoker,
+                                                       "active_skill_v2_custom_committed");
+        return ContinueEffects;
     }
 };
 
@@ -4650,6 +4710,8 @@ TestPackage::TestPackage()
 
     General *active_skill_v2_tester = new General(this, "active_skill_v2_tester", "god", 4, true, true);
     active_skill_v2_tester->addSkill(new ActiveSkillV2Test);
+    active_skill_v2_tester->addSkill(new ActiveSkillV2QuotaRoot);
+    active_skill_v2_tester->addSkill(new ActiveSkillV2CustomUsageTest);
 
     General *nobenghuai_dongzhuo = new General(this, "nobenghuai_dongzhuo$", "qun", 4, true, true);
     nobenghuai_dongzhuo->addSkill("jiuchi");

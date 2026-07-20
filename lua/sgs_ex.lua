@@ -1,5 +1,27 @@
 -- this script file defines all functions written by Lua
 
+local function validLimitScope(scope)
+	return type(scope) == "number"
+		and scope >= sgs.Skill_Limit_None and scope <= sgs.Skill_Limit_Custom
+end
+
+local function validUsageIdentity(identity)
+	return type(identity) == "number"
+		and (identity == sgs.Skill_Usage_ActivationInstance
+			or identity == sgs.Skill_Usage_SourceInstance)
+end
+
+local function configureUsageIdentity(skill, spec)
+	if spec.limit_scope ~= nil then
+		assert(validLimitScope(spec.limit_scope), "limit_scope must be a valid sgs.Skill_Limit_* value")
+		skill:setLimitScope(spec.limit_scope)
+	end
+	if spec.usage_identity ~= nil then
+		assert(validUsageIdentity(spec.usage_identity), "usage_identity must be a valid sgs.Skill_Usage_* value")
+		skill:setUsageIdentity(spec.usage_identity)
+	end
+end
+
 -- trigger skills
 function sgs.CreateTriggerSkill(spec)
 	assert(type(spec.name)=="string")
@@ -102,7 +124,7 @@ function sgs.CreateTriggerV2Skill(spec)
 		end
 	end
 	if type(spec.base_amount)=="number" then skill:setBaseAmount(spec.base_amount) end
-	if type(spec.limit_scope)=="number" then skill:setLimitScope(spec.limit_scope) end
+	configureUsageIdentity(skill, spec)
 	if type(spec.max_usage_limit)=="number" then skill:setMaxUsageLimit(spec.max_usage_limit) end
 	if type(spec.phase_name)=="string" then skill:setPhaseNameStr(spec.phase_name) end
 	if spec.dynamic_frequency then skill.dynamic_frequency = spec.dynamic_frequency end
@@ -112,6 +134,39 @@ function sgs.CreateTriggerV2Skill(spec)
 	if type(spec.waked_skills)=="string" then skill:setWakedSkills(spec.waked_skills) end
 	if type(spec.change_skill)=="boolean" then skill:setChangeSkill(spec.change_skill) end
 	if type(spec.hide_skill)=="boolean" then skill:setHideSkill(spec.hide_skill) end
+	return skill
+end
+
+function sgs.CreateActiveSkillV2(spec)
+	assert(type(spec.name) == "string")
+	if spec.frequency then assert(type(spec.frequency) == "number") end
+	if spec.limit_mark then assert(type(spec.limit_mark) == "string") end
+	if spec.max_usage_limit then assert(type(spec.max_usage_limit) == "number") end
+	if spec.phase_name then assert(type(spec.phase_name) == "string") end
+	if spec.will_throw_selected_cards then assert(type(spec.will_throw_selected_cards) == "boolean") end
+
+	local skill = sgs.LuaActiveSkillV2(spec.name,
+		spec.frequency or sgs.Skill_NotFrequent, spec.limit_mark or "")
+	configureUsageIdentity(skill, spec)
+	if type(spec.max_usage_limit) == "number" then skill:setMaxUsageLimit(spec.max_usage_limit) end
+	if type(spec.phase_name) == "string" then skill:setPhaseNameStr(spec.phase_name) end
+	if type(spec.target_mode) == "number" then skill:setTargetMode(spec.target_mode) end
+	if type(spec.target_effect_mode) == "number" then skill:setTargetEffectMode(spec.target_effect_mode) end
+	if type(spec.will_throw_selected_cards) == "boolean" then
+		skill:setWillThrowSelectedCards(spec.will_throw_selected_cards)
+	end
+
+	if spec.can_activate then skill.can_activate = spec.can_activate end
+	if spec.can_select_card then skill.can_select_card = spec.can_select_card end
+	if spec.card_selection_feasible then skill.card_selection_feasible = spec.card_selection_feasible end
+	if spec.create_card then skill.create_card = spec.create_card end
+	if spec.cost then skill.on_cost = spec.cost end
+	if spec.pay then skill.on_pay = spec.pay end
+	if spec.can_select_target then skill.can_select_target = spec.can_select_target end
+	if spec.targets_feasible then skill.targets_feasible = spec.targets_feasible end
+	if spec.effect then skill.on_effect = spec.effect end
+	if spec.effect_on_target then skill.on_effect_target = spec.effect_on_target end
+	if spec.effect_on_target_group then skill.on_effect_target_group = spec.effect_on_target_group end
 	return skill
 end
 

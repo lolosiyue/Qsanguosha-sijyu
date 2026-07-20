@@ -2,6 +2,7 @@
 #define _ROOM_H
 
 #include "skill.h"
+#include "skill-instance-utils.h"
 #include "skill-instance-attachment-registry.h"
 #include "skill-execution-registry.h"
 
@@ -609,6 +610,7 @@ private:
     void notifySkillInstanceRemove(ServerPlayer *owner, const SkillInstance &instance);
     void notifyCardProvenance(const QString &kind, ServerPlayer *initiator, const Card *card,
                               const SkillInstanceRef &sourceRef, const SkillInstanceRef &activationRef);
+    SkillInstanceRef resolveSkillInstanceRootRef(const SkillInstanceRef &ref) const;
     bool resolveCardSkillInstance(CardUseStruct &use);
     bool areCardTargetsLegal(const CardUseStruct &use) const;
     const Card *resolveActiveSkillRequest(ServerPlayer *player, const ActiveSkillV2 *skill,
@@ -620,7 +622,7 @@ private:
     void commitActiveSkillUsage(const ActiveSkillV2 *skill, const SkillContext &context);
     void recordSkillExecutionAudit(const SkillContext &context, SkillExecutionResult result) const;
     SkillExecutionRegistry m_skillExecutions;
-    QHash<QString, int> m_activeSkillUsageReservations;
+    SkillInstanceUtils::UsageReservationLedger m_activeSkillUsageReservations;
     int chooseSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skillName,
                             bool visibleOnly, bool acquiredOnly);
     bool removeSkillInstanceFromPlayer(ServerPlayer *owner, const QString &skillName, int instanceId,

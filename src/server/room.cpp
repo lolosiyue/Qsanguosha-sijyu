@@ -34,6 +34,12 @@ namespace {
 
 static const char *kControllerNameTag = "Controller_Name";
 
+static bool hasGenericActiveSkillUsage(const ActiveSkillV2 *skill)
+{
+	return skill && skill->getLimitScope() != Skill::Limit_None
+		&& skill->getLimitScope() != Skill::Limit_Custom;
+}
+
 static QString getControllerMarkName(const QString &controllerName)
 {
 	return controllerName.isEmpty() ? QString() : "&controllby+#" + controllerName + "+sys_";
@@ -2582,20 +2588,47 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
 	const bool isSkillCardResponse = resp.m_card->isKindOf("SkillCard");
 	const bool isViewAsResponse = !isSkillCardResponse && resp.m_card->isVirtualCard()
 		&& !resp.m_card->getSkillName().isEmpty();
-	SkillContext responseCtx;
-	QVariant responseCtxData;
-	SkillExecutionRegistry::Guard responseExecution;
-	auto finishResponseExecution = [&](SkillExecutionResult result = SkillExecutionCompleted) {
-		if (responseExecution.executionID() == 0) return;
-		responseCtx = getSkillExecutionContext(responseExecution.executionID());
+    SkillContext responseCtx;
+    SkillContext responseIdentity;
+    ServerPlayer *responseInvoker = nullptr;
+    const ActiveSkillV2 *responseActiveSkill = nullptr;
+    bool responseUsageReserved = false;
+    bool responseUsageCommitted = false;
+    bool responseFinishStarted = false;
+    QVariant responseCtxData;
+    SkillExecutionRegistry::Guard responseExecution;
+    auto restoreSkillContextIdentity = [](SkillContext &context, const SkillContext &identity) {
+        context.skill_name = identity.skill_name;
+        context.sourceRef = identity.sourceRef;
+        context.activationRef = identity.activationRef;
+        context.initiator = identity.initiator;
+        context.instanceID = identity.instanceID;
+    };
+    auto finishResponseExecution = [&](SkillExecutionResult result = SkillExecutionCompleted) {
+        if (responseExecution.executionID() == 0 || responseFinishStarted) return;
+        responseFinishStarted = true;
+        responseCtx = getSkillExecutionContext(responseExecution.executionID());
 		responseCtx.current_event = EventSkillEffectFinished;
 		responseCtxData = QVariant::fromValue(responseCtx);
-		thread->trigger(EventSkillEffectFinished, this, player, responseCtxData);
-		responseCtx = responseCtxData.value<SkillContext>();
-		setSkillExecutionContext(responseExecution.executionID(), responseCtx);
+        try {
+            thread->trigger(EventSkillEffectFinished, this, player, responseCtxData);
+        } catch (TriggerEvent) {
+            responseCtx = responseCtxData.value<SkillContext>();
+            restoreSkillContextIdentity(responseCtx, responseIdentity);
+            if (responseInvoker) responseCtx.invoker = responseInvoker;
+            setSkillExecutionContext(responseExecution.executionID(), responseCtx);
+            recordSkillExecutionAudit(responseCtx, result);
+            responseExecution.finish(result);
+            throw;
+        }
+        responseCtx = responseCtxData.value<SkillContext>();
+        restoreSkillContextIdentity(responseCtx, responseIdentity);
+        if (responseInvoker) responseCtx.invoker = responseInvoker;
+        setSkillExecutionContext(responseExecution.executionID(), responseCtx);
 		recordSkillExecutionAudit(responseCtx, result);
 		responseExecution.finish(result);
 	};
+	try {
 	if (isPureResponse && (isSkillCardResponse || isViewAsResponse)) {
 		const SkillCard *skillCard = isSkillCardResponse
 			? qobject_cast<const SkillCard *>(resp.m_card->getRealCard()) : nullptr;
@@ -2607,35 +2640,42 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
 		responseCtx.invoker = player;
 		responseCtx.owner = skillCard ? skillCard->getSkillOwner() : player;
 		if (!responseCtx.owner) responseCtx.owner = player;
-		responseCtx.instanceID = resp.activationRef.isValid() ? resp.activationRef.key.instanceID
-			: (skillCard ? skillCard->getSkillInstanceId() : 0);
-		responseCtx.use_card = resp.m_card;
-		responseExecution = beginSkillExecution(responseCtx, QVariant::fromValue(resp));
+        responseCtx.instanceID = resp.activationRef.isValid() ? resp.activationRef.key.instanceID
+            : (skillCard ? skillCard->getSkillInstanceId() : 0);
+        responseCtx.use_card = resp.m_card;
+        responseIdentity = responseCtx;
+        responseExecution = beginSkillExecution(responseCtx, QVariant::fromValue(resp));
 		resp.skillExecutionID = responseExecution.executionID();
-		const ActiveSkillV2 *activeSkill = dynamic_cast<const ActiveSkillV2 *>(
+		responseActiveSkill = dynamic_cast<const ActiveSkillV2 *>(
 			Sanguosha->getViewAsSkill(responseCtx.activationRef.key.skillName));
-		if (activeSkill && !responseCtx.bypass_cost) {
+		if (responseActiveSkill && !responseCtx.bypass_cost) {
 			ActiveSkillRequest request;
 			request.reason = _m_roomState.getCurrentCardUseReason();
 			request.pattern = _m_roomState.getCurrentCardUsePattern();
 			request.initiator = responseCtx.initiator;
-			request.activationRef = responseCtx.activationRef;
-			request.selectedCardIds = resp.m_card->getSubcards();
-			if (!activeSkill->cost(this, responseCtx, request)) {
-				finishResponseExecution(SkillExecutionPayFailed);
-				return nullptr;
+            request.activationRef = responseCtx.activationRef;
+            request.selectedCardIds = resp.m_card->getSubcards();
+			const bool paidCost = responseActiveSkill->cost(this, responseCtx, request);
+            restoreSkillContextIdentity(responseCtx, responseIdentity);
+            responseCtx.invoker = responseIdentity.invoker;
+            if (!paidCost) {
+                finishResponseExecution(SkillExecutionPayFailed);
+                return nullptr;
 			}
 		}
 
 		responseCtx.current_event = EventSkillWillInvoke;
-		responseCtxData = QVariant::fromValue(responseCtx);
-		thread->trigger(EventSkillWillInvoke, this, player, responseCtxData);
-		responseCtx = responseCtxData.value<SkillContext>();
-		if (responseCtx.is_canceled) {
+        responseCtxData = QVariant::fromValue(responseCtx);
+        thread->trigger(EventSkillWillInvoke, this, player, responseCtxData);
+        responseCtx = responseCtxData.value<SkillContext>();
+        restoreSkillContextIdentity(responseCtx, responseIdentity);
+        if (responseCtx.is_canceled) {
 			finishResponseExecution(SkillExecutionInvalidTargetUpdate);
-			return nullptr;
-		}
-		if (responseCtx.invoker && responseCtx.invoker != player) {
+            return nullptr;
+        }
+        responseInvoker = responseCtx.invoker ? responseCtx.invoker : responseIdentity.invoker;
+        responseCtx.invoker = responseInvoker;
+        if (responseCtx.invoker && responseCtx.invoker != player) {
 			if (!responseCtx.invoker->isAlive()
 				|| responseCtx.invoker->isCardLimited(resp.m_card, Card::MethodResponse)) {
 				finishResponseExecution(SkillExecutionInvalidTargetUpdate);
@@ -2650,40 +2690,62 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
 			}
 			resp.changeCard(const_cast<Card *>(responseCtx.updated_card));
 		}
-		if (activeSkill && !reserveActiveSkillUsage(activeSkill, responseCtx)) {
+		if (responseActiveSkill && !reserveActiveSkillUsage(responseActiveSkill, responseCtx)) {
 			finishResponseExecution(SkillExecutionPayFailed);
 			return nullptr;
 		}
+		responseUsageReserved = hasGenericActiveSkillUsage(responseActiveSkill);
 		if (!responseCtx.bypass_cost) {
 			responseCtx.current_event = EventSkillPay;
-			responseCtxData = QVariant::fromValue(responseCtx);
-			thread->trigger(EventSkillPay, this, player, responseCtxData);
-			responseCtx = responseCtxData.value<SkillContext>();
-		}
-		if (activeSkill && !responseCtx.bypass_cost) {
-			ActiveSkillRequest request;
-			request.reason = _m_roomState.getCurrentCardUseReason();
-			request.pattern = _m_roomState.getCurrentCardUsePattern();
-			request.initiator = responseCtx.initiator;
-			request.activationRef = responseCtx.activationRef;
-			request.selectedCardIds = resp.m_card->getSubcards();
-			if (!activeSkill->pay(this, responseCtx, request)) {
-				releaseActiveSkillUsage(activeSkill, responseCtx);
+            responseCtxData = QVariant::fromValue(responseCtx);
+            thread->trigger(EventSkillPay, this, player, responseCtxData);
+            responseCtx = responseCtxData.value<SkillContext>();
+            restoreSkillContextIdentity(responseCtx, responseIdentity);
+            responseCtx.invoker = responseInvoker;
+			if (responseCtx.is_canceled) {
+				if (responseUsageReserved)
+					releaseActiveSkillUsage(responseActiveSkill, responseCtx);
+				responseUsageReserved = false;
 				finishResponseExecution(SkillExecutionPayFailed);
 				return nullptr;
 			}
 		}
-		if (activeSkill)
-			commitActiveSkillUsage(activeSkill, responseCtx);
+		if (responseActiveSkill && !responseCtx.bypass_cost) {
+			ActiveSkillRequest request;
+			request.reason = _m_roomState.getCurrentCardUseReason();
+			request.pattern = _m_roomState.getCurrentCardUsePattern();
+			request.initiator = responseCtx.initiator;
+            request.activationRef = responseCtx.activationRef;
+            request.selectedCardIds = resp.m_card->getSubcards();
+			const bool paid = responseActiveSkill->pay(this, responseCtx, request);
+            restoreSkillContextIdentity(responseCtx, responseIdentity);
+            responseCtx.invoker = responseInvoker;
+			if (!paid || responseCtx.is_canceled) {
+				if (responseUsageReserved)
+					releaseActiveSkillUsage(responseActiveSkill, responseCtx);
+				responseUsageReserved = false;
+				finishResponseExecution(SkillExecutionPayFailed);
+				return nullptr;
+			}
+		}
+		if (responseActiveSkill) {
+			commitActiveSkillUsage(responseActiveSkill, responseCtx);
+			responseUsageCommitted = responseUsageReserved;
+			responseUsageReserved = false;
+		}
 		responseCtx.current_event = EventSkillInvoking;
-		responseCtxData = QVariant::fromValue(responseCtx);
-		thread->trigger(EventSkillInvoking, this, player, responseCtxData);
-		responseCtx = responseCtxData.value<SkillContext>();
+        responseCtxData = QVariant::fromValue(responseCtx);
+        thread->trigger(EventSkillInvoking, this, player, responseCtxData);
+        responseCtx = responseCtxData.value<SkillContext>();
+        restoreSkillContextIdentity(responseCtx, responseIdentity);
+        responseCtx.invoker = responseInvoker;
 		responseCtx.current_event = EventSkillEffect;
 		responseCtxData = QVariant::fromValue(responseCtx);
-		const bool skipResponse = thread->trigger(EventSkillEffect, this, player, responseCtxData);
-		responseCtx = responseCtxData.value<SkillContext>();
-		setSkillExecutionContext(responseExecution.executionID(), responseCtx);
+        const bool skipResponse = thread->trigger(EventSkillEffect, this, player, responseCtxData);
+        responseCtx = responseCtxData.value<SkillContext>();
+        restoreSkillContextIdentity(responseCtx, responseIdentity);
+        responseCtx.invoker = responseInvoker;
+        setSkillExecutionContext(responseExecution.executionID(), responseCtx);
 		resp.nullified = responseCtx.is_canceled || skipResponse;
 	}
 	notifyCardProvenance(method == Card::MethodResponse ? "response" : "response_use", player,
@@ -2751,6 +2813,19 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
 		if (resp.nullified) resp.m_card = nullptr;
 	}
 	finishResponseExecution(resp.nullified ? SkillExecutionEffectSkipped : SkillExecutionCompleted);
+	} catch (TriggerEvent controlEvent) {
+		if (responseUsageReserved && !responseUsageCommitted)
+			releaseActiveSkillUsage(responseActiveSkill, responseCtx);
+		responseUsageReserved = false;
+		if (controlEvent == StageChange || controlEvent == TurnBroken) {
+			try {
+				finishResponseExecution(SkillExecutionNoResult);
+			} catch (TriggerEvent) {
+				// The original control event remains authoritative.
+			}
+		}
+		throw controlEvent;
+	}
 	return resp.m_card;
 }
 
@@ -5301,6 +5376,22 @@ CardUseStruct Room::getUseStruct(const Card*card)
 	return tag["UseHistory"+card->toString()].value<CardUseStruct>();
 }
 
+SkillInstanceRef Room::resolveSkillInstanceRootRef(const SkillInstanceRef &ref) const
+{
+	SkillInstanceRef current = ref;
+	QList<SkillInstanceRef> visited;
+	while (current.isValid() && !visited.contains(current)) {
+		visited << current;
+		ServerPlayer *owner = findPlayerByObjectName(current.ownerObjectName, true);
+		if (!owner) return SkillInstanceRef();
+		const SkillInstance *instance = owner->findSkillInstance(current.key.skillName, current.key.instanceID);
+		if (!instance) return SkillInstanceRef();
+		if (!instance->parentRef.isValid()) return current;
+		current = instance->parentRef;
+	}
+	return SkillInstanceRef();
+}
+
 bool Room::resolveCardSkillInstance(CardUseStruct &use)
 {
 		// 裝備 ViewAs 與非 ViewAs 產生的內部卡沒有玩家技能實例，維持 legacy ID 0。
@@ -5318,10 +5409,8 @@ bool Room::resolveCardSkillInstance(CardUseStruct &use)
 	if (!use.from->hasSkillInstance(activationName, activationId)) return false;
 
 	use.activationRef = SkillInstanceRef(use.from->objectName(), SkillInstanceKey(activationName, activationId));
-	use.sourceRef = use.activationRef;
-	const SkillInstance *activation = use.from->findSkillInstance(activationName, activationId);
-	if (activation && activation->parentRef.isValid())
-		use.sourceRef = activation->parentRef;
+	use.sourceRef = resolveSkillInstanceRootRef(use.activationRef);
+	if (!use.sourceRef.isValid()) return false;
 
 	Card *mutableCard = const_cast<Card *>(use.card);
 	mutableCard->setActivationSkill(use.activationRef.key.skillName, use.activationRef.key.instanceID);
@@ -5413,8 +5502,9 @@ const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ActiveSk
 	Card *mutableCard = const_cast<Card *>(card);
 	mutableCard->setActivationSkill(checked.activationRef.key.skillName,
 		checked.activationRef.key.instanceID);
-	mutableCard->setSourceSkill(checked.activationRef.key.skillName,
-		checked.activationRef.key.instanceID);
+	const SkillInstanceRef sourceRef = resolveSkillInstanceRootRef(checked.activationRef);
+	if (!sourceRef.isValid()) return nullptr;
+	mutableCard->setSourceSkill(sourceRef.key.skillName, sourceRef.key.instanceID);
 	return card;
 }
 
@@ -5439,7 +5529,8 @@ bool Room::askForActiveSkill(ServerPlayer *player, CardUseStruct::CardUseReason 
 		context.invoker = player;
 		context.owner = player;
 		context.activationRef = request.activationRef;
-		context.sourceRef = instance.parentRef.isValid() ? instance.parentRef : request.activationRef;
+		context.sourceRef = resolveSkillInstanceRootRef(request.activationRef);
+		if (!context.sourceRef.isValid()) continue;
 		context.instanceID = instance.instanceID;
 		const bool quotaAvailable = skill->isUsable(context);
 		if (!quotaAvailable) continue;
@@ -5499,16 +5590,16 @@ bool Room::askForActiveSkill(ServerPlayer *player, CardUseStruct::CardUseReason 
 
 bool Room::reserveActiveSkillUsage(const ActiveSkillV2 *skill, const SkillContext &context)
 {
-	if (!skill || skill->getLimitScope() == Skill::Limit_None
-		|| skill->getLimitScope() == Skill::Limit_Custom) return true;
+	if (!skill || skill->getLimitScope() == Skill::Limit_None) return true;
+	if (skill->getLimitScope() == Skill::Limit_Custom)
+		return skill->isUsable(context);
 	ServerPlayer *holder = skill->getUsageHolder(context);
 	if (!holder || !skill->isUsable(context)) return false;
-	const QString key = holder->objectName() + ":" + skill->getUsageTagKey(context);
-	const int reserved = m_activeSkillUsageReservations.value(key, 0);
-	if (holder->getMark(skill->getUsageTagKey(context)) + reserved >= skill->getMaxUsageLimit(context))
-		return false;
-	m_activeSkillUsageReservations.insert(key, reserved + 1);
-	return true;
+	const QString usageTagKey = skill->getUsageTagKey(context);
+	const QString reservationKey = SkillInstanceUtils::formatUsageReservationKey(
+		holder->objectName(), usageTagKey);
+	return m_activeSkillUsageReservations.reserve(reservationKey,
+		holder->getMark(usageTagKey), skill->getMaxUsageLimit(context));
 }
 
 void Room::releaseActiveSkillUsage(const ActiveSkillV2 *skill, const SkillContext &context)
@@ -5517,18 +5608,21 @@ void Room::releaseActiveSkillUsage(const ActiveSkillV2 *skill, const SkillContex
 		|| skill->getLimitScope() == Skill::Limit_Custom) return;
 	ServerPlayer *holder = skill->getUsageHolder(context);
 	if (!holder) return;
-	const QString key = holder->objectName() + ":" + skill->getUsageTagKey(context);
-	const int reserved = m_activeSkillUsageReservations.value(key, 0);
-	if (reserved <= 1)
-		m_activeSkillUsageReservations.remove(key);
-	else
-		m_activeSkillUsageReservations.insert(key, reserved - 1);
+	const QString reservationKey = SkillInstanceUtils::formatUsageReservationKey(
+		holder->objectName(), skill->getUsageTagKey(context));
+	m_activeSkillUsageReservations.release(reservationKey);
 }
 
 void Room::commitActiveSkillUsage(const ActiveSkillV2 *skill, const SkillContext &context)
 {
-	releaseActiveSkillUsage(skill, context);
-	if (skill) skill->addUsage(context);
+	if (!skill || skill->getLimitScope() == Skill::Limit_None
+		|| skill->getLimitScope() == Skill::Limit_Custom) return;
+	ServerPlayer *holder = skill->getUsageHolder(context);
+	if (!holder) return;
+	const QString reservationKey = SkillInstanceUtils::formatUsageReservationKey(
+		holder->objectName(), skill->getUsageTagKey(context));
+	if (m_activeSkillUsageReservations.release(reservationKey))
+		skill->addUsage(context);
 }
 
 SkillExecutionRegistry::Guard Room::beginSkillExecution(const QVariant &backingData)
@@ -5542,7 +5636,10 @@ SkillExecutionRegistry::Guard Room::beginSkillExecution(SkillContext &context, c
 	SkillExecutionRegistry::Entry *entry = guard.get();
 	context.executionID = guard.executionID();
 	context.original_data = entry ? &entry->backingData : nullptr;
-	if (entry) entry->contextData = QVariant::fromValue(context);
+	if (entry) {
+		entry->immutableContextData = QVariant::fromValue(context);
+		entry->contextData = QVariant::fromValue(context);
+	}
 	return guard;
 }
 
@@ -5628,14 +5725,31 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 	bool isSkillCard = card->isKindOf("SkillCard");
 	bool isViewAsCard = !isSkillCard && card->isVirtualCard() && !card->getSkillName().isEmpty();
 	SkillContext skillCardCtx;
+	SkillContext skillCardIdentity;
+	ServerPlayer *skillCardInvoker = nullptr;
 	QVariant skillCardCtxData;
 	SkillExecutionRegistry::Guard skillExecution;
 	bool skipOnUse = false;
+	bool skillUsageReserved = false;
+	bool skillUsageCommitted = false;
+	bool skillExecutionFinishStarted = false;
+	bool cardProcessingStarted = false;
+	bool cardProcessingCompleted = false;
+	const ActiveSkillV2 *activeSkill = nullptr;
 	QString tagKey;
+	QList<int> ids;
+	QString key;
 	auto loadSkillContext = [&]() {
 		return skillExecution.executionID() > 0
 			? getSkillExecutionContext(skillExecution.executionID())
 			: getTag(tagKey).value<SkillContext>();
+	};
+	auto restoreSkillCardIdentity = [&](SkillContext &context) {
+		context.skill_name = skillCardIdentity.skill_name;
+		context.sourceRef = skillCardIdentity.sourceRef;
+		context.activationRef = skillCardIdentity.activationRef;
+		context.initiator = skillCardIdentity.initiator;
+		context.instanceID = skillCardIdentity.instanceID;
 	};
 	auto saveSkillContext = [&](const SkillContext &context) {
 		if (skillExecution.executionID() > 0)
@@ -5644,12 +5758,29 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 			setTag(tagKey, QVariant::fromValue(context));
 	};
 	auto finishSkillExecution = [&](SkillExecutionResult result) {
-		if (!(isSkillCard || isViewAsCard)) return;
+		if (!(isSkillCard || isViewAsCard) || skillExecutionFinishStarted) return;
+		skillExecutionFinishStarted = true;
 		skillCardCtx = loadSkillContext();
 		skillCardCtx.current_event = EventSkillEffectFinished;
 		skillCardCtxData = QVariant::fromValue(skillCardCtx);
-		thread->trigger(EventSkillEffectFinished, this, use.from, skillCardCtxData);
+		try {
+			thread->trigger(EventSkillEffectFinished, this, use.from, skillCardCtxData);
+		} catch (TriggerEvent) {
+			skillCardCtx = skillCardCtxData.value<SkillContext>();
+			restoreSkillCardIdentity(skillCardCtx);
+			if (skillCardInvoker) skillCardCtx.invoker = skillCardInvoker;
+			saveSkillContext(skillCardCtx);
+			if (skillExecution.executionID() > 0) {
+				recordSkillExecutionAudit(skillCardCtx, result);
+				skillExecution.finish(result);
+			} else {
+				removeTag(tagKey);
+			}
+			throw;
+		}
 		skillCardCtx = skillCardCtxData.value<SkillContext>();
+		restoreSkillCardIdentity(skillCardCtx);
+		if (skillCardInvoker) skillCardCtx.invoker = skillCardInvoker;
 		saveSkillContext(skillCardCtx);
 		if (skillExecution.executionID() > 0) {
 			recordSkillExecutionAudit(skillCardCtx, result);
@@ -5659,6 +5790,7 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		}
 	};
 
+	try {
 	if (isSkillCard || isViewAsCard) {
 		const SkillCard *skillCard = isSkillCard ? qobject_cast<const SkillCard*>(card->getRealCard()) : nullptr;
 
@@ -5674,6 +5806,7 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		skillCardCtx.sourceRef = use.sourceRef;
 		skillCardCtx.activationRef = use.activationRef;
 		skillCardCtx.initiator = use.from;
+		skillCardIdentity = skillCardCtx;
 		skillExecution = beginSkillExecution(skillCardCtx, QVariant::fromValue(use));
 		use.skillExecutionID = skillExecution.executionID();
 
@@ -5682,7 +5815,7 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 				 + QString::number(skillCardCtx.instanceID);
 
 		saveSkillContext(skillCardCtx);
-		const ActiveSkillV2 *activeSkill = dynamic_cast<const ActiveSkillV2 *>(
+		activeSkill = dynamic_cast<const ActiveSkillV2 *>(
 			Sanguosha->getViewAsSkill(skillCardCtx.activationRef.key.skillName));
 		if (activeSkill && !skillCardCtx.bypass_cost) {
 			ActiveSkillRequest request;
@@ -5692,7 +5825,10 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 			request.activationRef = skillCardCtx.activationRef;
 			request.selectedCardIds = use.card->getSubcards();
 			foreach (ServerPlayer *target, use.to) request.selectedTargetNames << target->objectName();
-			if (!activeSkill->cost(this, skillCardCtx, request)) {
+			const bool paidCost = activeSkill->cost(this, skillCardCtx, request);
+			restoreSkillCardIdentity(skillCardCtx);
+			skillCardCtx.invoker = skillCardIdentity.invoker;
+			if (!paidCost) {
 				finishSkillExecution(SkillExecutionPayFailed);
 				return false;
 			}
@@ -5702,10 +5838,13 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		skillCardCtxData = QVariant::fromValue(skillCardCtx);
 		thread->trigger(EventSkillWillInvoke, this, use.from, skillCardCtxData);
 		skillCardCtx = skillCardCtxData.value<SkillContext>();
+		restoreSkillCardIdentity(skillCardCtx);
 		if (skillCardCtx.is_canceled) {
 			finishSkillExecution(SkillExecutionInvalidTargetUpdate);
 			return false;
 		}
+		skillCardInvoker = skillCardCtx.invoker ? skillCardCtx.invoker : skillCardIdentity.invoker;
+		skillCardCtx.invoker = skillCardInvoker;
 		if (skillCardCtx.invoker && skillCardCtx.invoker != use.from) {
 			if (!skillCardCtx.invoker->isAlive() || skillCardCtx.invoker->isCardLimited(card, card->getHandlingMethod())) {
 				finishSkillExecution(SkillExecutionInvalidTargetUpdate);
@@ -5726,11 +5865,21 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 			finishSkillExecution(SkillExecutionPayFailed);
 			return false;
 		}
+		skillUsageReserved = hasGenericActiveSkillUsage(activeSkill);
 		if (!skillCardCtx.bypass_cost) {
 			skillCardCtx.current_event = EventSkillPay;
 			skillCardCtxData = QVariant::fromValue(skillCardCtx);
 			thread->trigger(EventSkillPay, this, use.from, skillCardCtxData);
 			skillCardCtx = skillCardCtxData.value<SkillContext>();
+			restoreSkillCardIdentity(skillCardCtx);
+			skillCardCtx.invoker = skillCardInvoker;
+			if (skillCardCtx.is_canceled) {
+				if (skillUsageReserved)
+					releaseActiveSkillUsage(activeSkill, skillCardCtx);
+				skillUsageReserved = false;
+				finishSkillExecution(SkillExecutionPayFailed);
+				return false;
+			}
 		}
 		if (activeSkill && !skillCardCtx.bypass_cost) {
 			ActiveSkillRequest request;
@@ -5740,14 +5889,22 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 			request.activationRef = skillCardCtx.activationRef;
 			request.selectedCardIds = use.card->getSubcards();
 			foreach (ServerPlayer *target, use.to) request.selectedTargetNames << target->objectName();
-			if (!activeSkill->pay(this, skillCardCtx, request)) {
-				releaseActiveSkillUsage(activeSkill, skillCardCtx);
+			const bool paid = activeSkill->pay(this, skillCardCtx, request);
+			restoreSkillCardIdentity(skillCardCtx);
+			skillCardCtx.invoker = skillCardInvoker;
+			if (!paid || skillCardCtx.is_canceled) {
+				if (skillUsageReserved)
+					releaseActiveSkillUsage(activeSkill, skillCardCtx);
+				skillUsageReserved = false;
 				finishSkillExecution(SkillExecutionPayFailed);
 				return false;
 			}
 		}
-		if (activeSkill)
+		if (activeSkill) {
 			commitActiveSkillUsage(activeSkill, skillCardCtx);
+			skillUsageCommitted = skillUsageReserved;
+			skillUsageReserved = false;
+		}
 		use.bypass_cost = skillCardCtx.bypass_cost;
 
 		skillCardCtx.updated_targets = skillCardCtx.targets;
@@ -5755,6 +5912,8 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		skillCardCtxData = QVariant::fromValue(skillCardCtx);
 		thread->trigger(EventSkillTargetConfirming, this, use.from, skillCardCtxData);
 		skillCardCtx = skillCardCtxData.value<SkillContext>();
+		restoreSkillCardIdentity(skillCardCtx);
+		skillCardCtx.invoker = skillCardInvoker;
 		if (!skillCardCtx.updated_targets.isEmpty()) {
 			use.to = skillCardCtx.updated_targets;
 		}
@@ -5762,14 +5921,13 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		saveSkillContext(skillCardCtx);
 	}
 
-	QList<int> ids;
 	if (use.card->isVirtualCard()) ids = use.card->getSubcards();
 	else ids << use.card->getId();
 	foreach(int id, ids){
 		use.m_isHandcard = use.from->handCards().contains(id);
 		if (!use.m_isHandcard) break;
 	}
-	QString key = use.card->getClassName();
+	key = use.card->getClassName();
 	tag.remove("UseHistory"+use.card->toString());
 	if (use.card->inherits("LuaSkillCard")) key = "#"+use.card->objectName();
 	const ActiveSkillV2 *historySkill = dynamic_cast<const ActiveSkillV2 *>(
@@ -5798,6 +5956,8 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		skillCardCtxData = QVariant::fromValue(skillCardCtx);
 		thread->trigger(EventSkillInvoking, this, use.from, skillCardCtxData);
 		skillCardCtx = skillCardCtxData.value<SkillContext>();
+		restoreSkillCardIdentity(skillCardCtx);
+		skillCardCtx.invoker = skillCardInvoker;
 		saveSkillContext(skillCardCtx);
 	}
 
@@ -5816,10 +5976,11 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 			}
 		}
 		skillCardCtx = skillCardCtxData.value<SkillContext>();
+		restoreSkillCardIdentity(skillCardCtx);
+		skillCardCtx.invoker = skillCardInvoker;
 		saveSkillContext(skillCardCtx);
 	}
 
-	try {
 		if (use.card->getRealCard() == card){
 			if (!use.card->isVirtualCard()){
 				WrappedCard*wrapped = Sanguosha->getWrappedCard(ids.first());
@@ -5829,41 +5990,64 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 				showVirtualCard(use.from, use.card);
 			}
 			if (!skipOnUse) {
+				cardProcessingStarted = true;
 				use.card->onUse(this, use);
 			}
 		} else {
 			use.card = card;
-			if (!skipOnUse)
+			if (!skipOnUse) {
+				cardProcessingStarted = true;
 				use.card->onUse(this, use);
-		}
-	} catch (TriggerEvent triggerEvent){
-		if (triggerEvent == StageChange || triggerEvent == TurnBroken){
-			CardMoveReason reason(CardMoveReason::S_REASON_UNKNOWN, use.from->objectName(), use.card->getSkillName(), "");
-			if (use.to.size() == 1) reason.m_targetId = use.to.first()->objectName();
-			foreach(int id, ids){
-				if (getCardPlace(id) != Player::PlaceTable)
-					ids.removeOne(id);
-			}
-			moveCardsAtomic(CardsMoveStruct(ids, use.from, nullptr, Player::PlaceTable, Player::DiscardPile, reason), true);
-			QVariant data = QVariant::fromValue(use);
-			use.from->setFlags("Global_ProcessBroken");
-			thread->trigger(CardFinished, this, use.from, data);
-			use.from->setFlags("-Global_ProcessBroken");
-			foreach(ServerPlayer*p, m_alivePlayers)
-				p->removeQinggangTag(use.card);
-			foreach(int id, pile1){
-				if (getCardPlace(id) == Player::PlaceJudge)
-					moveCardTo(Sanguosha->getCard(id), nullptr, Player::DiscardPile, true);
-				setCardFlag(id, "-using");
 			}
 		}
-
-		finishSkillExecution(skipOnUse ? SkillExecutionEffectSkipped : SkillExecutionCompleted);
-
-		throw triggerEvent;
-	}
+	cardProcessingCompleted = cardProcessingStarted;
 
 	finishSkillExecution(skipOnUse ? SkillExecutionEffectSkipped : SkillExecutionCompleted);
+	} catch (TriggerEvent triggerEvent){
+		if (skillUsageReserved && !skillUsageCommitted)
+			releaseActiveSkillUsage(activeSkill, skillCardCtx);
+		skillUsageReserved = false;
+		if (triggerEvent == StageChange || triggerEvent == TurnBroken){
+			if (cardProcessingStarted && !cardProcessingCompleted) {
+				bool processBrokenFlagSet = false;
+				try {
+					CardMoveReason reason(CardMoveReason::S_REASON_UNKNOWN, use.from->objectName(), use.card->getSkillName(), "");
+					if (use.to.size() == 1) reason.m_targetId = use.to.first()->objectName();
+					foreach(int id, ids){
+						if (getCardPlace(id) != Player::PlaceTable)
+							ids.removeOne(id);
+					}
+					moveCardsAtomic(CardsMoveStruct(ids, use.from, nullptr, Player::PlaceTable, Player::DiscardPile, reason), true);
+					QVariant data = QVariant::fromValue(use);
+					use.from->setFlags("Global_ProcessBroken");
+					processBrokenFlagSet = true;
+					try {
+						thread->trigger(CardFinished, this, use.from, data);
+					} catch (TriggerEvent) {
+						// Cleanup must not replace the original control event.
+					}
+					use.from->setFlags("-Global_ProcessBroken");
+					processBrokenFlagSet = false;
+					foreach(ServerPlayer*p, m_alivePlayers)
+						p->removeQinggangTag(use.card);
+					foreach(int id, pile1){
+						if (getCardPlace(id) == Player::PlaceJudge)
+							moveCardTo(Sanguosha->getCard(id), nullptr, Player::DiscardPile, true);
+						setCardFlag(id, "-using");
+					}
+				} catch (TriggerEvent) {
+					if (processBrokenFlagSet)
+						use.from->setFlags("-Global_ProcessBroken");
+				}
+			}
+			try {
+				finishSkillExecution(SkillExecutionNoResult);
+			} catch (TriggerEvent) {
+				// The original StageChange/TurnBroken remains authoritative.
+			}
+		}
+		throw triggerEvent;
+	}
 
 	if(add_history&&!use.m_addHistory)
 		addPlayerHistory(use.from, key, -1);

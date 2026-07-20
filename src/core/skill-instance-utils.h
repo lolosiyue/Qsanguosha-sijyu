@@ -1,8 +1,10 @@
 #ifndef SKILL_INSTANCE_UTILS_H
 #define SKILL_INSTANCE_UTILS_H
 
+#include <QHash>
 #include <QString>
 #include "json.h"
+#include "skill-instance-types.h"
 
 // 集中實作 instance 名稱格式化與解析
 // 命名慣例：
@@ -22,6 +24,37 @@ namespace SkillInstanceUtils {
         QString skillName;
         int instanceID;
         SkillActivationRequest() : supplied(false), instanceID(0) {}
+    };
+
+    // Pure usage-reference selection shared by Skill quota code and console tests.
+    // Source identity deliberately has no legacy fallback.
+    enum UsageRefKind {
+        UsageRef_ActivationInstance,
+        UsageRef_SourceInstance
+    };
+
+    SkillInstanceRef resolveUsageRef(UsageRefKind kind,
+                                     const SkillInstanceRef &activationRef,
+                                     const SkillInstanceRef &sourceRef,
+                                     const QString &legacyOwnerObjectName = QString(),
+                                     const QString &legacySkillName = QString(),
+                                     int legacyInstanceID = 0);
+
+    QString formatUsageMarkKey(const QString &skillName, int instanceID,
+                               const QString &scopeSuffix);
+    QString formatUsageReservationKey(const QString &holderObjectName,
+                                      const QString &usageMarkKey);
+
+    // Counts in-flight executions separately from committed player marks.
+    class UsageReservationLedger
+    {
+    public:
+        bool reserve(const QString &key, int committedUsage, int maxUsage);
+        bool release(const QString &key);
+        int count(const QString &key) const;
+
+    private:
+        QHash<QString, int> m_counts;
     };
 
     // Decode the optional [activation name, activation ID] reply suffix only.

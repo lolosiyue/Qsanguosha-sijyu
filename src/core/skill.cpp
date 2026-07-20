@@ -1148,6 +1148,35 @@ Skill::LimitScope Skill::getLimitScope() const
     return Limit_None;
 }
 
+Skill::UsageIdentity Skill::getUsageIdentity(const SkillContext &) const
+{
+    return Usage_ActivationInstance;
+}
+
+SkillInstanceRef Skill::getUsageRef(const SkillContext &ctx) const
+{
+    SkillInstanceUtils::UsageRefKind kind;
+    QString legacyOwnerObjectName;
+    switch (getUsageIdentity(ctx)) {
+    case Usage_ActivationInstance:
+        // Legacy contexts predate immutable provenance.  They may only use
+        // their local owner/invoker and explicit instance ID as a fallback.
+        kind = SkillInstanceUtils::UsageRef_ActivationInstance;
+        if (ctx.instanceID > 0) {
+            ServerPlayer *legacyOwner = ctx.owner ? ctx.owner : ctx.invoker;
+            if (legacyOwner) legacyOwnerObjectName = legacyOwner->objectName();
+        }
+        break;
+    case Usage_SourceInstance:
+        kind = SkillInstanceUtils::UsageRef_SourceInstance;
+        break;
+    default:
+        return SkillInstanceRef();
+    }
+    return SkillInstanceUtils::resolveUsageRef(kind, ctx.activationRef, ctx.sourceRef,
+                                                legacyOwnerObjectName, objectName(), ctx.instanceID);
+}
+
 int Skill::getMaxUsageLimit(const SkillContext &) const
 {
     return 1;
@@ -1173,6 +1202,7 @@ bool Skill::isUsable(const SkillContext &ctx) const
     }
     int max_limit = getMaxUsageLimit(ctx);
     QString tag_key = getUsageTagKey(ctx);
+    if (tag_key.isEmpty() || max_limit <= 0) return false;
     int current_usage = holder->getMark(tag_key);
     
     return current_usage < max_limit;
@@ -1188,10 +1218,11 @@ void Skill::addUsage(const SkillContext &ctx) const
     ServerPlayer *holder = getUsageHolder(ctx);
     if (!holder) return;
     QString tag_key = getUsageTagKey(ctx);
+    if (tag_key.isEmpty()) return;
     int current_usage = holder->getMark(tag_key);
 
     Room *room = holder->getRoom();
-    room->setPlayerMark(holder, tag_key, current_usage + 1);
+    if (room) room->setPlayerMark(holder, tag_key, current_usage + 1);
 }
 
 void Skill::resetUsage(const SkillContext &ctx) const
@@ -1211,10 +1242,30 @@ void Skill::resetUsage(ServerPlayer *owner, ServerPlayer *) const
 {
     if (!owner) return;
 
+    const LimitScope scope = getLimitScope();
+    if (scope == Limit_None) return;
+
     SkillContext ctx;
     ctx.owner = owner;
     ctx.invoker = owner;
-    resetUsage(ctx);
+    if (scope == Limit_Custom) {
+        resetUsage(ctx);
+        return;
+    }
+
+    QString suffix;
+    switch (scope) {
+    case Limit_Turn: suffix = "-Clear"; break;
+    case Limit_Round: suffix = "_lun"; break;
+    case Limit_Phase:
+        suffix = m_phaseName.isEmpty() ? "-PhaseClear" : "-" + m_phaseName + "Clear";
+        break;
+    case Limit_Game: suffix = "_game"; break;
+    default: return;
+    }
+    const QString key = SkillInstanceUtils::formatUsageMarkKey(objectName(), 0, suffix);
+    Room *room = owner->getRoom();
+    if (room && !key.isEmpty()) room->setPlayerMark(owner, key, 0);
 }
 
 bool Skill::checkCustomUsage(const SkillContext &) const
@@ -1224,28 +1275,56 @@ bool Skill::checkCustomUsage(const SkillContext &) const
 
 ServerPlayer *Skill::getUsageHolder(const SkillContext &ctx) const
 {
-    return ctx.owner ? ctx.owner : ctx.invoker;
+    const SkillInstanceRef ref = getUsageRef(ctx);
+    if (!ref.isValid()) {
+        qWarning() << "Skill usage reference is unavailable:" << objectName()
+                   << "identity" << getUsageIdentity(ctx);
+        return nullptr;
+    }
+
+    Room *room = nullptr;
+    const ServerPlayer *candidates[] = { ctx.owner, ctx.invoker, ctx.initiator };
+    for (int i = 0; i < 3; ++i) {
+        const ServerPlayer *candidate = candidates[i];
+        if (candidate && candidate->getRoom()) {
+            room = candidate->getRoom();
+            break;
+        }
+    }
+    if (!room) {
+        qWarning() << "Skill usage holder has no room:" << ref.ownerObjectName;
+        return nullptr;
+    }
+
+    ServerPlayer *holder = room->findPlayerByObjectName(ref.ownerObjectName, true);
+    if (!holder || !holder->hasSkillInstance(ref.key.skillName, ref.key.instanceID)) {
+        qWarning() << "Skill usage reference is invalid:" << ref.ownerObjectName
+                   << ref.key.skillName << ref.key.instanceID;
+        return nullptr;
+    }
+    return holder;
 }
 
 QString Skill::getUsageTagKey(const SkillContext &ctx) const
 {
     LimitScope scope = getLimitScope();
-    int instance_id = ctx.instanceID > 0 ? ctx.instanceID : 0;
+    const SkillInstanceRef ref = getUsageRef(ctx);
+    if (!ref.isValid()) return QString();
 
+    const QString &skill_name = ref.key.skillName;
+    const int instance_id = ref.key.instanceID;
+
+    QString suffix;
     switch (scope) {
-        case Limit_Turn:
-            return QString("Usage_%1_%2-Clear").arg(objectName()).arg(instance_id);
-        case Limit_Round:
-            return QString("Usage_%1_%2_lun").arg(objectName()).arg(instance_id);
-        case Limit_Phase:
-            if (!m_phaseName.isEmpty())
-                return QString("Usage_%1_%2-%3Clear").arg(objectName()).arg(instance_id).arg(m_phaseName);
-            return QString("Usage_%1_%2-PhaseClear").arg(objectName()).arg(instance_id);
-        case Limit_Game:
-            return QString("Usage_%1_%2_game").arg(objectName()).arg(instance_id);
-        default:
-            return QString();
+    case Limit_Turn: suffix = "-Clear"; break;
+    case Limit_Round: suffix = "_lun"; break;
+    case Limit_Phase:
+        suffix = m_phaseName.isEmpty() ? "-PhaseClear" : "-" + m_phaseName + "Clear";
+        break;
+    case Limit_Game: suffix = "_game"; break;
+    default: return QString();
     }
+    return SkillInstanceUtils::formatUsageMarkKey(skill_name, instance_id, suffix);
 }
 
 AnytimeSkill::AnytimeSkill(const QString &name)
