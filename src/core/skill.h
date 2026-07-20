@@ -132,6 +132,7 @@ public:
     virtual int getMaxUsageLimit(const SkillContext &ctx) const;
     virtual bool isUsable(const SkillContext &ctx) const;
     virtual void addUsage(const SkillContext &ctx) const;
+    virtual void resetUsage(const SkillContext &ctx) const;
     virtual void resetUsage(ServerPlayer *owner, ServerPlayer *target = nullptr) const;
     virtual bool checkCustomUsage(const SkillContext &ctx) const;
     virtual ServerPlayer *getUsageHolder(const SkillContext &ctx) const;

@@ -70,6 +70,7 @@ public:
 	virtual void effect(SkillContext &ctx) const;
 	virtual void effectFinished(SkillContext &ctx) const;
 	virtual bool checkCustomUsage(const SkillContext &ctx) const;
+	virtual void addUsage(const SkillContext &ctx) const;
 	virtual bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
 	                     QVariant &data, ServerPlayer *owner) const;
 	virtual bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const;
@@ -86,6 +87,7 @@ public:
 	LuaFunction on_effect_target;
 	LuaFunction on_turn_broken;
 	LuaFunction check_custom_usage;
+	LuaFunction on_add_usage;
 	LuaFunction on_willInvoke;
 	LuaFunction on_targetConfirming;
 	LuaFunction on_invoking;
@@ -793,7 +795,7 @@ bool LuaTriggerSkill::trigger(TriggerEvent event, Room *room, ServerPlayer *play
 }
 
 LuaTriggerV2Skill::LuaTriggerV2Skill(const char *name, Frequency frequency, const char *limit_mark)
-	: TriggerV2Skill(name), on_record(0), can_trigger(0), on_cost(0), on_pay(0), on_effect(0), on_effect_target(0), on_turn_broken(0), check_custom_usage(0),
+	: TriggerV2Skill(name), on_record(0), can_trigger(0), on_cost(0), on_pay(0), on_effect(0), on_effect_target(0), on_turn_broken(0), check_custom_usage(0), on_add_usage(0),
 	  on_willInvoke(0), on_targetConfirming(0), on_invoking(0), on_effectContext(0), on_effectFinished(0),
 	  m_limitScope(Limit_None), m_maxUsageLimit(1)
 {
@@ -1230,12 +1232,30 @@ bool LuaTriggerV2Skill::checkCustomUsage(const SkillContext &ctx) const
 
 	if (lua_pcall(L, 2, 1, 0) != 0) {
 		lua_pop(L, 1);
-		return TriggerV2Skill::checkCustomUsage(ctx);
+		return false;
 	}
 
 	bool result = lua_toboolean(L, -1);
 	lua_pop(L, 1);
 	return result;
+}
+
+void LuaTriggerV2Skill::addUsage(const SkillContext &ctx) const
+{
+	if (getLimitScope() != Limit_Custom || !on_add_usage) {
+		TriggerV2Skill::addUsage(ctx);
+		return;
+	}
+
+	lua_State *L = Sanguosha->getLuaState();
+	lua_rawgeti(L, LUA_REGISTRYINDEX, on_add_usage);
+
+	LuaTriggerV2Skill *self = const_cast<LuaTriggerV2Skill *>(this);
+	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerV2Skill, 0);
+	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
+
+	if (lua_pcall(L, 2, 0, 0) != 0)
+		lua_pop(L, 1);
 }
 
 bool LuaTriggerV2Skill::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const

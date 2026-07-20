@@ -620,7 +620,7 @@ private:
     void commitActiveSkillUsage(const ActiveSkillV2 *skill, const SkillContext &context);
     void recordSkillExecutionAudit(const SkillContext &context, SkillExecutionResult result) const;
     SkillExecutionRegistry m_skillExecutions;
-    QSet<QString> m_activeSkillUsageReservations;
+    QHash<QString, int> m_activeSkillUsageReservations;
     int chooseSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skillName,
                             bool visibleOnly, bool acquiredOnly);
     bool removeSkillInstanceFromPlayer(ServerPlayer *owner, const QString &skillName, int instanceId,

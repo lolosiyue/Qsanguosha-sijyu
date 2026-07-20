@@ -923,10 +923,18 @@ enum LimitScope {
 | `getMaxUsageLimit(ctx)` | 返回最大使用次數，預設 1 |
 | `isUsable(ctx)` | 核心校驗：是否還有剩餘次數 |
 | `addUsage(ctx)` | 增加使用次數（在技能發動成功後調用） |
-| `resetUsage(owner, target)` | 清除使用紀錄（供外部效果调用） |
+| `resetUsage(ctx)` | 按 `ctx.owner/invoker + instanceID` 精確清除使用紀錄 |
+| `resetUsage(owner, target)` | 舊版相容入口；清除該 owner 的預設（instanceID=0）紀錄 |
 | `checkCustomUsage(ctx)` | 自定義 Lua 校驗，`Limit_Custom` 時調用 |
 | `getUsageHolder(ctx)` | 返回次數歸屬者，預設 `owner` |
 | `getUsageTagKey(ctx)` | 取得 Tag 鍵值 |
+
+### `Limit_Custom` 規則
+
+- C++ 技能可覆寫 `isUsable(ctx)`、`addUsage(ctx)` 或 `resetUsage(ctx)`，自行定義完整配額規則。
+- Lua TriggerV2Skill 使用 `check_custom_usage(skill, ctx)` 決定能否發動；成功結算後由 `on_add_usage(skill, ctx)` 更新自訂狀態。
+- `check_custom_usage` 發生 Lua 錯誤時會拒絕發動；`on_add_usage` 的錯誤只會中止該 callback，不能回滾已結算的技能。
+- Custom 不使用引擎的 Mark key 或通用 reservation；若技能有重入需求，Lua/C++ 自訂規則必須自行處理 reservation。
 
 ### 使用流程
 
