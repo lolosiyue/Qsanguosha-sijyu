@@ -264,14 +264,50 @@ end
 ### 4.11 拼點決策
 
 ```lua
-sgs.ai_skill_pindian.skill_name = function(self, from, to)
-    local cards = sgs.QList2Table(self.player:getHandcards())
-    self:sortByKeepValue(cards)
-    return cards[1]:getId()  -- 回傳拼點牌 ID
+sgs.ai_skill_pindian.skill_name = function(minusecard, self, requestor, maxcard, mincard)
+    -- callback 必須回傳 Card 物件；數字 ID 不會通過 SWIG Card* 轉換。
+    if self:isEnemy(requestor) then return maxcard end
+    return mincard or minusecard
 end
 ```
 
-### 4.12 卡牌需要判斷
+AI 自己發起拼點時，`SmartAI:askForPindian` 會優先讀取
+`self.<reason>_card`；主動技能決策應在提交使用時保存 Card 物件。
+
+### 4.12 ViewAsSkillV2 主動技決策
+
+`sgs.ai_active_skill` 以 activation skill 名稱索引；找不到時會回退 source skill 名稱。
+回傳 `nil` 表示不使用，回傳表表示提交選牌與目標：
+
+```lua
+sgs.ai_active_skill.skill_name = function(self, request)
+    if request:getReason() ~= sgs.CardUseStruct_CARD_USE_REASON_PLAY then return end
+
+    local card = self:getMaxCard()
+    local target = self.enemies[1]
+    if not card or not target then return end
+
+    self.skill_name_card = card  -- 若後續以 skill_name 為 reason 發起拼點
+    return {
+        cards = {},                              -- 此例為 n = 0
+        targets = { target:objectName() },
+        user_string = ""                        -- 選用
+    }
+end
+```
+
+| `request` getter | 用途 |
+|------------------|------|
+| `getReason()` / `getPattern()` | 使用或回應情境 |
+| `getInitiator()` | 發起技能的 `ServerPlayer` |
+| `getActivationSkillName()` / `getActivationInstanceID()` | 玩家實際點擊的技能入口 |
+| `getSourceSkillName()` / `getSourceInstanceID()` | root source 技能實例 |
+| `isActivationQuotaAvailable()` / `isSourceQuotaAvailable()` | 入口與來源配額狀態 |
+
+回傳表的 `cards` 必須是整數 ID 陣列，`targets` 必須是玩家 objectName 陣列；
+伺服器仍會以 `ViewAsSkillV2` 的選牌、選目標及配額規則重新驗證。
+
+### 4.13 卡牌需要判斷
 
 ```lua
 sgs.ai_cardneed.skill_name = function(to, card, self)
@@ -279,7 +315,7 @@ sgs.ai_cardneed.skill_name = function(to, card, self)
 end
 ```
 
-### 4.13 需要受傷判斷
+### 4.14 需要受傷判斷
 
 ```lua
 sgs.ai_need_damaged.skill_name = function(self, attacker, player)
@@ -289,7 +325,7 @@ sgs.ai_need_damaged.skill_name = function(self, attacker, player)
 end
 ```
 
-### 4.14 蠱惑相關
+### 4.15 蠱惑相關
 
 ```lua
 sgs.ai_guhuo_card.skill_name = function(self, toname, class_name)
@@ -307,7 +343,7 @@ sgs.ai_guhuo_card.skill_name = function(self, toname, class_name)
 end
 ```
 
-### 4.15 使用修正
+### 4.16 使用修正
 
 ```lua
 -- 使用前修正（影響出牌決策）
@@ -319,7 +355,7 @@ sgs.ai_use_revises.skill_name = function(self, card, use)
 end
 ```
 
-### 4.16 動態價值
+### 4.17 動態價值
 
 ```lua
 sgs.dynamic_value.damage_card.MySkillCard = true
