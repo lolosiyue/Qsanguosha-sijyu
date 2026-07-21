@@ -20,7 +20,11 @@
 %init %{
 	// Lua compares full userdata by wrapper identity. All SWIG classes share this
 	// pointer-based __eq so two wrappers for the same C++ object compare equal.
+#if SWIG_VERSION >= 0x040400
 	lua_pushcfunction(L, SWIG_Lua_equal);
+#else
+	lua_pushcfunction(L, SWIG_Lua_class_equal);
+#endif
 	const int pointerEquals = lua_gettop(L);
 	for (int i = 0; swig_types[i]; ++i) {
 		if (!swig_types[i]->clientdata) continue;
