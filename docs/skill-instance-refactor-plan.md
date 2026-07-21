@@ -8,7 +8,7 @@
 
 本文件最初依 `L:\finaldebug\QSanguosha-v2` 的除錯分支整理；後續功能規劃以 `H:\Program file\Game\sgs\Qsgs\github\QSanguosha-v2` 的 `main` 分支為最新程式基線。本地 `view_as_skillV2` 分支只保留作先行實驗參考。
 
-SkillCard／ViewAsSkill 的後續雙層現代化計劃見 [ActiveSkillV2 與 SkillCard／ViewAsSkill 現代化重構計劃](active-skill-v2-refactor-plan.md)。
+SkillCard／ViewAsSkill 的後續雙層現代化計劃見 [ViewAsSkillV2 與 SkillCard／ViewAsSkill 現代化重構計劃](active-skill-v2-refactor-plan.md)。
 
 ## 2. 已鎖定的核心模型
 

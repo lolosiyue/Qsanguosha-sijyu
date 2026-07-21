@@ -98,6 +98,37 @@ static ClientPlayer *getCurrentOperationPlayer(Dashboard *dashboard)
 	return const_cast<ClientPlayer *>(getCurrentOperationPlayer(static_cast<const Dashboard *>(dashboard)));
 }
 
+static bool isSkillButtonAvailable(const QSanSkillButton *button, const ClientPlayer *activePlayer,
+    CardUseStruct::CardUseReason reason, const QString &pattern)
+{
+    if (!button || !activePlayer) return false;
+    const ViewAsSkill *viewAsSkill = button->getViewAsSkill();
+    if (!viewAsSkill) return false;
+
+    const ViewAsSkillV2 *activeSkill = dynamic_cast<const ViewAsSkillV2 *>(viewAsSkill);
+    if (!activeSkill)
+        return viewAsSkill->isAvailable(activePlayer, reason, pattern);
+
+    QString baseName;
+    const int instanceID = SkillInstanceUtils::parseName(button->objectName(), baseName);
+    Q_UNUSED(baseName);
+    if (instanceID > 0) {
+        if (!activePlayer->hasSkillInstance(activeSkill->objectName(), instanceID)
+            || activePlayer->isSkillInvalid(activeSkill->objectName(), instanceID))
+            return false;
+    } else if (!activePlayer->hasSkill(activeSkill->objectName())) {
+        return false;
+    }
+
+    ActiveSkillRequest request;
+    request.reason = reason;
+    request.pattern = pattern;
+    request.initiator = activePlayer;
+    request.activationRef = SkillInstanceRef(activePlayer->objectName(),
+        SkillInstanceKey(activeSkill->objectName(), instanceID));
+    return activeSkill->canActivate(request);
+}
+
 template <typename DialogType>
 static void collectDialogPresenterOptions(DialogType *dialog, QStringList &optionNames,
 	QStringList &enabledOptions, QMap<QString, QString> &tooltips)
@@ -3468,7 +3499,7 @@ void RoomScene::switchControlContext(const QString &target_name)
 	foreach (QSanSkillButton *button, m_skillButtons) {
 		const ViewAsSkill *vsSkill = button->getViewAsSkill();
 		if (vsSkill != nullptr) {
-			button->setEnabled(activePlayer != nullptr && vsSkill->isAvailable(activePlayer, reason, pattern));
+			button->setEnabled(isSkillButtonAvailable(button, activePlayer, reason, pattern));
 		} else {
 			button->setEnabled(activePlayer != nullptr
 				&& button->getSkill()->getFrequency(activePlayer) == Skill::Wake
@@ -3510,7 +3541,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 						reason = CardUseStruct::CARD_USE_REASON_RESPONSE;
 				}
 			}
-			button->setEnabled(activePlayer != nullptr && vsSkill->isAvailable(activePlayer,reason,pattern));
+			button->setEnabled(isSkillButtonAvailable(button, activePlayer, reason, pattern));
 		} else
 			button->setEnabled(activePlayer != nullptr
 				&& button->getSkill()->getFrequency(activePlayer)==Skill::Wake

@@ -1947,7 +1947,7 @@ void Dashboard::updatePending()
     foreach(CardItem *item, pendings)
         cards.append(item->getCard());
 
-    const ActiveSkillV2 *activeSkill = dynamic_cast<const ActiveSkillV2 *>(view_as_skill);
+    const ViewAsSkillV2 *activeSkill = dynamic_cast<const ViewAsSkillV2 *>(view_as_skill);
     ActiveSkillRequest activeRequest;
     if (activeSkill) {
         activeRequest.reason = Sanguosha->getCurrentCardUseReason();
@@ -1975,7 +1975,9 @@ void Dashboard::updatePending()
     for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
         if (_m_equipCards[i]) {
             if(!_m_equipCards[i]->isMarked())
-				_m_equipCards[i]->setMarkable(view_as_skill->viewFilter(pended,_m_equipCards[i]->getCard()));
+				_m_equipCards[i]->setMarkable(activeSkill
+					? activeSkill->canSelectCard(activeRequest, _m_equipCards[i]->getCard())
+					: view_as_skill->viewFilter(pended, _m_equipCards[i]->getCard()));
 
 			QSanSkillButton *equipSkillButton = _getEquipSkillButton(_m_equipCards[i]);
 			if(_m_equipCards[i]->isMarkable()||(equipSkillButton&&equipSkillButton->isEnabled()))

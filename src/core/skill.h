@@ -199,13 +199,13 @@ protected:
     QString expand_pile;
 };
 
-class ActiveSkillV2 : public ViewAsSkill
+class ViewAsSkillV2 : public ViewAsSkill
 {
 public:
     enum TargetMode { NoTarget, SelectTargets };
     enum TargetEffectMode { EachTarget, WholeTargetGroup };
     enum EffectFlow { ContinueEffects, FinishSkill };
-    explicit ActiveSkillV2(const QString &name);
+    explicit ViewAsSkillV2(const QString &name, int n = 0);
 
     virtual bool canActivate(const ActiveSkillRequest &request) const;
     virtual bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const;
@@ -223,6 +223,11 @@ public:
     virtual EffectFlow effect(SkillContext &context) const;
     virtual EffectFlow effectOnTarget(SkillContext &context, ServerPlayer *target) const;
     virtual EffectFlow effectOnTargetGroup(SkillContext &context, const QList<ServerPlayer *> &targets) const;
+    EffectFlow skillEffect(SkillContext &context, ServerPlayer *target) const;
+
+    int getN() const { return m_n; }
+    void setN(int n);
+    void setResponseOrUse(bool enabled) { response_or_use = enabled; }
 
     virtual int getBaseAmount() const;
     int getEffectiveAmount(const SkillContext &context) const;
@@ -233,6 +238,7 @@ public:
     const Card *viewAs(const QList<const Card *> &cards) const override;
 
 protected:
+    int m_n;
     int m_baseAmount;
 };
 

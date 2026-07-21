@@ -382,19 +382,23 @@ public:
 	QString getExpandPile() const;
 };
 
-class ActiveSkillV2: public ViewAsSkill {
+class ViewAsSkillV2: public ViewAsSkill {
 public:
 	enum TargetMode { NoTarget, SelectTargets };
 	enum TargetEffectMode { EachTarget, WholeTargetGroup };
 	enum EffectFlow { ContinueEffects, FinishSkill };
-	ActiveSkillV2(const QString &name);
+	ViewAsSkillV2(const QString &name, int n = 0);
+	int getN() const;
+	void setN(int n);
+	void setResponseOrUse(bool enabled);
 	virtual int getBaseAmount() const;
 	int getEffectiveAmount(const SkillContext &context) const;
+	EffectFlow skillEffect(SkillContext &context, ServerPlayer *target) const;
 };
 
-class LuaActiveSkillV2: public ActiveSkillV2 {
+class LuaViewAsSkillV2: public ViewAsSkillV2 {
 public:
-	LuaActiveSkillV2(const char *name, Frequency frequency, const char *limit_mark);
+	LuaViewAsSkillV2(const char *name, Frequency frequency, const char *limit_mark);
 	void setTargetMode(TargetMode mode);
 	void setTargetEffectMode(TargetEffectMode mode);
 	void setWillThrowSelectedCards(bool willThrow);
@@ -3643,25 +3647,25 @@ void LuaTreasure::onUninstall(ServerPlayer *player) const
 static bool luaActivePCall(lua_State *L, int nargs, int nresults, const char *callback)
 {
 	if (lua_pcall(L, nargs, nresults, 0) == 0) return true;
-	qWarning("LuaActiveSkillV2::%s error: %s", callback, lua_tostring(L, -1));
+	qWarning("LuaViewAsSkillV2::%s error: %s", callback, lua_tostring(L, -1));
 	lua_pop(L, 1);
 	return false;
 }
 
-SkillInstanceRef LuaActiveSkillV2::getUsageRef(const SkillContext &ctx) const
+SkillInstanceRef LuaViewAsSkillV2::getUsageRef(const SkillContext &ctx) const
 {
-	if (!get_usage_ref) return ActiveSkillV2::getUsageRef(ctx);
+	if (!get_usage_ref) return ViewAsSkillV2::getUsageRef(ctx);
 	return luaSkillUsageRef(Sanguosha->getLuaState(), get_usage_ref,
-		const_cast<LuaActiveSkillV2 *>(this), SWIGTYPE_p_LuaActiveSkillV2,
-		ctx, "LuaActiveSkillV2");
+		const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2,
+		ctx, "LuaViewAsSkillV2");
 }
 
-bool LuaActiveSkillV2::canActivate(const ActiveSkillRequest &request) const
+bool LuaViewAsSkillV2::canActivate(const ActiveSkillRequest &request) const
 {
-	if (!can_activate) return ActiveSkillV2::canActivate(request);
+	if (!can_activate) return ViewAsSkillV2::canActivate(request);
 	lua_State *L = Sanguosha->getLuaState();
 	lua_rawgeti(L, LUA_REGISTRYINDEX, can_activate);
-	SWIG_NewPointerObj(L, const_cast<LuaActiveSkillV2 *>(this), SWIGTYPE_p_LuaActiveSkillV2, 0);
+	SWIG_NewPointerObj(L, const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2, 0);
 	SWIG_NewPointerObj(L, const_cast<ActiveSkillRequest *>(&request), SWIGTYPE_p_ActiveSkillRequest, 0);
 	if (!luaActivePCall(L, 2, 1, "can_activate")) return false;
 	const bool result = lua_toboolean(L, -1);
@@ -3669,12 +3673,12 @@ bool LuaActiveSkillV2::canActivate(const ActiveSkillRequest &request) const
 	return result;
 }
 
-bool LuaActiveSkillV2::canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const
+bool LuaViewAsSkillV2::canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const
 {
-	if (!can_select_card) return ActiveSkillV2::canSelectCard(request, candidate);
+	if (!can_select_card) return ViewAsSkillV2::canSelectCard(request, candidate);
 	lua_State *L = Sanguosha->getLuaState();
 	lua_rawgeti(L, LUA_REGISTRYINDEX, can_select_card);
-	SWIG_NewPointerObj(L, const_cast<LuaActiveSkillV2 *>(this), SWIGTYPE_p_LuaActiveSkillV2, 0);
+	SWIG_NewPointerObj(L, const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2, 0);
 	SWIG_NewPointerObj(L, const_cast<ActiveSkillRequest *>(&request), SWIGTYPE_p_ActiveSkillRequest, 0);
 	SWIG_NewPointerObj(L, const_cast<Card *>(candidate), SWIGTYPE_p_Card, 0);
 	if (!luaActivePCall(L, 3, 1, "can_select_card")) return false;
@@ -3683,12 +3687,12 @@ bool LuaActiveSkillV2::canSelectCard(const ActiveSkillRequest &request, const Ca
 	return result;
 }
 
-bool LuaActiveSkillV2::cardSelectionFeasible(const ActiveSkillRequest &request) const
+bool LuaViewAsSkillV2::cardSelectionFeasible(const ActiveSkillRequest &request) const
 {
-	if (!card_selection_feasible) return ActiveSkillV2::cardSelectionFeasible(request);
+	if (!card_selection_feasible) return ViewAsSkillV2::cardSelectionFeasible(request);
 	lua_State *L = Sanguosha->getLuaState();
 	lua_rawgeti(L, LUA_REGISTRYINDEX, card_selection_feasible);
-	SWIG_NewPointerObj(L, const_cast<LuaActiveSkillV2 *>(this), SWIGTYPE_p_LuaActiveSkillV2, 0);
+	SWIG_NewPointerObj(L, const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2, 0);
 	SWIG_NewPointerObj(L, const_cast<ActiveSkillRequest *>(&request), SWIGTYPE_p_ActiveSkillRequest, 0);
 	if (!luaActivePCall(L, 2, 1, "card_selection_feasible")) return false;
 	const bool result = lua_toboolean(L, -1);
@@ -3696,12 +3700,12 @@ bool LuaActiveSkillV2::cardSelectionFeasible(const ActiveSkillRequest &request) 
 	return result;
 }
 
-const Card *LuaActiveSkillV2::createCard(const ActiveSkillRequest &request) const
+const Card *LuaViewAsSkillV2::createCard(const ActiveSkillRequest &request) const
 {
-	if (!create_card) return ActiveSkillV2::createCard(request);
+	if (!create_card) return ViewAsSkillV2::createCard(request);
 	lua_State *L = Sanguosha->getLuaState();
 	lua_rawgeti(L, LUA_REGISTRYINDEX, create_card);
-	SWIG_NewPointerObj(L, const_cast<LuaActiveSkillV2 *>(this), SWIGTYPE_p_LuaActiveSkillV2, 0);
+	SWIG_NewPointerObj(L, const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2, 0);
 	SWIG_NewPointerObj(L, const_cast<ActiveSkillRequest *>(&request), SWIGTYPE_p_ActiveSkillRequest, 0);
 	if (!luaActivePCall(L, 2, 1, "create_card")) return nullptr;
 	void *card = nullptr;
@@ -3710,12 +3714,12 @@ const Card *LuaActiveSkillV2::createCard(const ActiveSkillRequest &request) cons
 	return SWIG_IsOK(converted) ? static_cast<const Card *>(card) : nullptr;
 }
 
-bool LuaActiveSkillV2::cost(Room *room, SkillContext &context, const ActiveSkillRequest &request) const
+bool LuaViewAsSkillV2::cost(Room *room, SkillContext &context, const ActiveSkillRequest &request) const
 {
-	if (!on_cost) return ActiveSkillV2::cost(room, context, request);
+	if (!on_cost) return ViewAsSkillV2::cost(room, context, request);
 	lua_State *L = Sanguosha->getLuaState();
 	lua_rawgeti(L, LUA_REGISTRYINDEX, on_cost);
-	SWIG_NewPointerObj(L, const_cast<LuaActiveSkillV2 *>(this), SWIGTYPE_p_LuaActiveSkillV2, 0);
+	SWIG_NewPointerObj(L, const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 	SWIG_NewPointerObj(L, &context, SWIGTYPE_p_SkillContext, 0);
 	SWIG_NewPointerObj(L, const_cast<ActiveSkillRequest *>(&request), SWIGTYPE_p_ActiveSkillRequest, 0);
@@ -3725,12 +3729,12 @@ bool LuaActiveSkillV2::cost(Room *room, SkillContext &context, const ActiveSkill
 	return result;
 }
 
-bool LuaActiveSkillV2::pay(Room *room, SkillContext &context, const ActiveSkillRequest &request) const
+bool LuaViewAsSkillV2::pay(Room *room, SkillContext &context, const ActiveSkillRequest &request) const
 {
-	if (!on_pay) return ActiveSkillV2::pay(room, context, request);
+	if (!on_pay) return ViewAsSkillV2::pay(room, context, request);
 	lua_State *L = Sanguosha->getLuaState();
 	lua_rawgeti(L, LUA_REGISTRYINDEX, on_pay);
-	SWIG_NewPointerObj(L, const_cast<LuaActiveSkillV2 *>(this), SWIGTYPE_p_LuaActiveSkillV2, 0);
+	SWIG_NewPointerObj(L, const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 	SWIG_NewPointerObj(L, &context, SWIGTYPE_p_SkillContext, 0);
 	SWIG_NewPointerObj(L, const_cast<ActiveSkillRequest *>(&request), SWIGTYPE_p_ActiveSkillRequest, 0);
@@ -3749,13 +3753,13 @@ static void pushActiveTargets(lua_State *L, const QList<const Player *> &selecte
 	}
 }
 
-bool LuaActiveSkillV2::canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected,
+bool LuaViewAsSkillV2::canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected,
 		const Player *candidate) const
 {
-	if (!can_select_target) return ActiveSkillV2::canSelectTarget(request, selected, candidate);
+	if (!can_select_target) return ViewAsSkillV2::canSelectTarget(request, selected, candidate);
 	lua_State *L = Sanguosha->getLuaState();
 	lua_rawgeti(L, LUA_REGISTRYINDEX, can_select_target);
-	SWIG_NewPointerObj(L, const_cast<LuaActiveSkillV2 *>(this), SWIGTYPE_p_LuaActiveSkillV2, 0);
+	SWIG_NewPointerObj(L, const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2, 0);
 	SWIG_NewPointerObj(L, const_cast<ActiveSkillRequest *>(&request), SWIGTYPE_p_ActiveSkillRequest, 0);
 	pushActiveTargets(L, selected);
 	SWIG_NewPointerObj(L, const_cast<Player *>(candidate), SWIGTYPE_p_Player, 0);
@@ -3765,12 +3769,12 @@ bool LuaActiveSkillV2::canSelectTarget(const ActiveSkillRequest &request, const 
 	return result;
 }
 
-bool LuaActiveSkillV2::targetsFeasible(const ActiveSkillRequest &request, const QList<const Player *> &selected) const
+bool LuaViewAsSkillV2::targetsFeasible(const ActiveSkillRequest &request, const QList<const Player *> &selected) const
 {
-	if (!targets_feasible) return ActiveSkillV2::targetsFeasible(request, selected);
+	if (!targets_feasible) return ViewAsSkillV2::targetsFeasible(request, selected);
 	lua_State *L = Sanguosha->getLuaState();
 	lua_rawgeti(L, LUA_REGISTRYINDEX, targets_feasible);
-	SWIG_NewPointerObj(L, const_cast<LuaActiveSkillV2 *>(this), SWIGTYPE_p_LuaActiveSkillV2, 0);
+	SWIG_NewPointerObj(L, const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2, 0);
 	SWIG_NewPointerObj(L, const_cast<ActiveSkillRequest *>(&request), SWIGTYPE_p_ActiveSkillRequest, 0);
 	pushActiveTargets(L, selected);
 	if (!luaActivePCall(L, 3, 1, "targets_feasible")) return false;
@@ -3779,13 +3783,13 @@ bool LuaActiveSkillV2::targetsFeasible(const ActiveSkillRequest &request, const 
 	return result;
 }
 
-static ActiveSkillV2::EffectFlow luaActiveEffectResult(lua_State *L, int callback,
-	const LuaActiveSkillV2 *self, SkillContext &context, ServerPlayer *target,
+static ViewAsSkillV2::EffectFlow luaActiveEffectResult(lua_State *L, int callback,
+	const LuaViewAsSkillV2 *self, SkillContext &context, ServerPlayer *target,
 	const QList<ServerPlayer *> *targets, const char *name)
 {
-	if (!callback) return ActiveSkillV2::ContinueEffects;
+	if (!callback) return ViewAsSkillV2::ContinueEffects;
 	lua_rawgeti(L, LUA_REGISTRYINDEX, callback);
-	SWIG_NewPointerObj(L, const_cast<LuaActiveSkillV2 *>(self), SWIGTYPE_p_LuaActiveSkillV2, 0);
+	SWIG_NewPointerObj(L, const_cast<LuaViewAsSkillV2 *>(self), SWIGTYPE_p_LuaViewAsSkillV2, 0);
 	SWIG_NewPointerObj(L, &context, SWIGTYPE_p_SkillContext, 0);
 	int nargs = 2;
 	if (target) {
@@ -3799,32 +3803,32 @@ static ActiveSkillV2::EffectFlow luaActiveEffectResult(lua_State *L, int callbac
 		}
 		++nargs;
 	}
-	if (!luaActivePCall(L, nargs, 1, name)) return ActiveSkillV2::FinishSkill;
-	const ActiveSkillV2::EffectFlow result = lua_isnil(L, -1)
-		? ActiveSkillV2::ContinueEffects
-		: static_cast<ActiveSkillV2::EffectFlow>(lua_tointeger(L, -1));
+	if (!luaActivePCall(L, nargs, 1, name)) return ViewAsSkillV2::FinishSkill;
+	const ViewAsSkillV2::EffectFlow result = lua_isnil(L, -1)
+		? ViewAsSkillV2::ContinueEffects
+		: static_cast<ViewAsSkillV2::EffectFlow>(lua_tointeger(L, -1));
 	lua_pop(L, 1);
-	return result == ActiveSkillV2::FinishSkill ? result : ActiveSkillV2::ContinueEffects;
+	return result == ViewAsSkillV2::FinishSkill ? result : ViewAsSkillV2::ContinueEffects;
 }
 
-ActiveSkillV2::EffectFlow LuaActiveSkillV2::effect(SkillContext &context) const
+ViewAsSkillV2::EffectFlow LuaViewAsSkillV2::effect(SkillContext &context) const
 {
-	if (!on_effect) return ActiveSkillV2::effect(context);
-	return luaActiveEffectResult(Sanguosha->getLuaState(), on_effect, this, context, nullptr, nullptr, "effect");
+	if (!on_effect) return ViewAsSkillV2::effect(context);
+	return luaActiveEffectResult(Sanguosha->getLuaState(), on_effect, this, context, nullptr, nullptr, "on_effect");
 }
 
-ActiveSkillV2::EffectFlow LuaActiveSkillV2::effectOnTarget(SkillContext &context, ServerPlayer *target) const
+ViewAsSkillV2::EffectFlow LuaViewAsSkillV2::effectOnTarget(SkillContext &context, ServerPlayer *target) const
 {
-	if (!on_effect_target) return ActiveSkillV2::effectOnTarget(context, target);
-	return luaActiveEffectResult(Sanguosha->getLuaState(), on_effect_target, this, context, target, nullptr, "effect_on_target");
+	if (!on_effect_target) return ViewAsSkillV2::effectOnTarget(context, target);
+	return luaActiveEffectResult(Sanguosha->getLuaState(), on_effect_target, this, context, target, nullptr, "on_effect_target");
 }
 
-ActiveSkillV2::EffectFlow LuaActiveSkillV2::effectOnTargetGroup(SkillContext &context,
+ViewAsSkillV2::EffectFlow LuaViewAsSkillV2::effectOnTargetGroup(SkillContext &context,
 	const QList<ServerPlayer *> &targets) const
 {
-	if (!on_effect_target_group) return ActiveSkillV2::effectOnTargetGroup(context, targets);
+	if (!on_effect_target_group) return ViewAsSkillV2::effectOnTargetGroup(context, targets);
 	return luaActiveEffectResult(Sanguosha->getLuaState(), on_effect_target_group, this, context, nullptr, &targets,
-		"effect_on_target_group");
+		"on_effect_target_group");
 }
 
 %}

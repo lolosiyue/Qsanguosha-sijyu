@@ -1,10 +1,10 @@
-# ActiveSkillV2 舊技能遷移規範
+# ViewAsSkillV2 舊技能遷移規範
 
 ## 1. 用途
 
-本文件定義如何人工審議舊 `ViewAsSkill/SkillCard` 並改寫為 `ActiveSkillV2`。核心重構不立即遷移任何正式技能；本文件只建立一致的分類、映射及驗收規範。
+本文件定義如何人工審議舊 `ViewAsSkill/SkillCard` 並改寫為 `ViewAsSkillV2`。核心重構不立即遷移任何正式技能；本文件只建立一致的分類、映射及驗收規範。
 
-權威生命週期、身份與相容邊界見 [ActiveSkillV2 重構計劃](active-skill-v2-refactor-plan.md)。
+權威生命週期、身份與相容邊界見 [ViewAsSkillV2 重構計劃](active-skill-v2-refactor-plan.md)。
 
 ## 2. 遷移原則
 
@@ -190,8 +190,11 @@ fail-closed，不得自行退回 activation 或依 invoker 猜測 root。
 
 ## 12. Lua 遷移
 
-- 使用 `sgs.CreateActiveSkillV2`，不再同時建立 per-skill LuaSkillCard，除非技能仍暫留 legacy。
-- callback 名稱與 C++ 對齊。
+- 使用 `sgs.CreateViewAsSkillV2`，不再同時建立 per-skill LuaSkillCard，除非技能仍暫留 legacy。
+- 固定選牌張數直接設定 `n`；省略選牌 callback 時，框架預設要求恰好 `n` 張。
+- Lua 效果 callback 使用 `on_effect`、`on_effect_target`、`on_effect_target_group`；不保留舊的 `effect*` 名稱。
+- 需要自行逐目標派發時，在 `on_effect` 設定 `ctx.manual_effect = true`，並呼叫
+  `skill:skillEffect(ctx, target)`。
 - request 只讀；不要嘗試修改 selected cards/targets。
 - userString 必須驗證允許值，不直接把任意字串傳入 cloneCard。
 - nil effect result 等同 ContinueEffects。
@@ -223,7 +226,7 @@ AI use_func / ai_skill_use_func
 ```markdown
 ### <技能家族> 遷移
 
-依賴：ActiveSkillV2 Ticket 1–12。
+依賴：ViewAsSkillV2 Ticket 1–12。
 
 舊行為：
 - 使用路徑：

@@ -313,10 +313,10 @@ private:
     QString tiansuan_type;
 };
 
-class LuaActiveSkillV2 : public ActiveSkillV2
+class LuaViewAsSkillV2 : public ViewAsSkillV2
 {
 public:
-    LuaActiveSkillV2(const QString &name, Frequency frequency, const QString &limit_mark);
+    LuaViewAsSkillV2(const QString &name, Frequency frequency, const QString &limit_mark);
 
     bool canActivate(const ActiveSkillRequest &request) const;
     bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const;

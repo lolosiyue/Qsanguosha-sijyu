@@ -133,17 +133,29 @@ function sgs.CreateTriggerV2Skill(spec)
 	return skill
 end
 
-function sgs.CreateActiveSkillV2(spec)
+function sgs.CreateViewAsSkillV2(spec)
 	assert(type(spec.name) == "string")
+	assert(spec.effect == nil,
+		"CreateViewAsSkillV2: 'effect' was removed; use 'on_effect'")
+	assert(spec.effect_on_target == nil,
+		"CreateViewAsSkillV2: 'effect_on_target' was removed; use 'on_effect_target'")
+	assert(spec.effect_on_target_group == nil,
+		"CreateViewAsSkillV2: 'effect_on_target_group' was removed; use 'on_effect_target_group'")
+	if spec.n ~= nil then
+		assert(type(spec.n) == "number" and spec.n >= 0 and spec.n == math.floor(spec.n))
+	end
 	if spec.frequency then assert(type(spec.frequency) == "number") end
 	if spec.limit_mark then assert(type(spec.limit_mark) == "string") end
 	if spec.base_amount ~= nil then assert(type(spec.base_amount) == "number") end
 	if spec.max_usage_limit then assert(type(spec.max_usage_limit) == "number") end
 	if spec.phase_name then assert(type(spec.phase_name) == "string") end
 	if spec.will_throw_selected_cards then assert(type(spec.will_throw_selected_cards) == "boolean") end
+	if spec.response_or_use ~= nil then assert(type(spec.response_or_use) == "boolean") end
 
-	local skill = sgs.LuaActiveSkillV2(spec.name,
+	local skill = sgs.LuaViewAsSkillV2(spec.name,
 		spec.frequency or sgs.Skill_NotFrequent, spec.limit_mark or "")
+	skill:setN(spec.n or 0)
+	skill:setResponseOrUse(spec.response_or_use or false)
 	if type(spec.base_amount) == "number" then skill:setBaseAmount(spec.base_amount) end
 	configureUsage(skill, spec)
 	if type(spec.max_usage_limit) == "number" then skill:setMaxUsageLimit(spec.max_usage_limit) end
@@ -162,9 +174,9 @@ function sgs.CreateActiveSkillV2(spec)
 	if spec.pay then skill.on_pay = spec.pay end
 	if spec.can_select_target then skill.can_select_target = spec.can_select_target end
 	if spec.targets_feasible then skill.targets_feasible = spec.targets_feasible end
-	if spec.effect then skill.on_effect = spec.effect end
-	if spec.effect_on_target then skill.on_effect_target = spec.effect_on_target end
-	if spec.effect_on_target_group then skill.on_effect_target_group = spec.effect_on_target_group end
+	if spec.on_effect then skill.on_effect = spec.on_effect end
+	if spec.on_effect_target then skill.on_effect_target = spec.on_effect_target end
+	if spec.on_effect_target_group then skill.on_effect_target_group = spec.on_effect_target_group end
 	return skill
 end
 

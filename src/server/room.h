@@ -613,13 +613,13 @@ private:
     SkillInstanceRef resolveSkillInstanceRootRef(const SkillInstanceRef &ref) const;
     bool resolveCardSkillInstance(CardUseStruct &use);
     bool areCardTargetsLegal(const CardUseStruct &use) const;
-    const Card *resolveActiveSkillRequest(ServerPlayer *player, const ActiveSkillV2 *skill,
+    const Card *resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSkillV2 *skill,
                                           const ActiveSkillRequest &request) const;
     bool askForActiveSkill(ServerPlayer *player, CardUseStruct::CardUseReason reason,
                            const QString &pattern, CardUseStruct &cardUse) const;
-    bool reserveActiveSkillUsage(const ActiveSkillV2 *skill, const SkillContext &context);
-    void releaseActiveSkillUsage(const ActiveSkillV2 *skill, const SkillContext &context);
-    void commitActiveSkillUsage(const ActiveSkillV2 *skill, const SkillContext &context);
+    bool reserveActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
+    void releaseActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
+    void commitActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
     void recordSkillExecutionAudit(const SkillContext &context, SkillExecutionResult result) const;
     SkillExecutionRegistry m_skillExecutions;
     SkillInstanceUtils::UsageReservationLedger m_activeSkillUsageReservations;

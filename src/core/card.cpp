@@ -994,29 +994,76 @@ ActiveSkillCard::ActiveSkillCard()
     will_throw = false;
 }
 
+static const ViewAsSkillV2 *resolveActiveSkillCardSkill(const ActiveSkillCard *card)
+{
+    if (!card) return nullptr;
+    if (card->getActiveSkill()) return card->getActiveSkill();
+    if (!Sanguosha) return nullptr;
+
+    return dynamic_cast<const ViewAsSkillV2 *>(
+        Sanguosha->getViewAsSkill(card->getActivationSkillName()));
+}
+
+static ActiveSkillRequest buildActiveSkillCardRequest(const ActiveSkillCard *card,
+    const Player *initiator, const QList<const Player *> &selectedTargets)
+{
+    ActiveSkillRequest request;
+    request.reason = Sanguosha ? Sanguosha->getCurrentCardUseReason()
+                               : CardUseStruct::CARD_USE_REASON_UNKNOWN;
+    request.pattern = Sanguosha ? Sanguosha->getCurrentCardUsePattern() : QString();
+    request.initiator = initiator;
+    if (card) {
+        if (initiator) {
+            request.activationRef = SkillInstanceRef(initiator->objectName(),
+                SkillInstanceKey(card->getActivationSkillName(),
+                    card->getActivationSkillInstanceId()));
+        }
+        request.selectedCardIds = card->getSubcards();
+        foreach (const Player *target, selectedTargets) {
+            if (target) request.selectedTargetNames << target->objectName();
+        }
+        request.userString = card->getUserString();
+    }
+    return request;
+}
+
 bool ActiveSkillCard::targetFixed() const
 {
-    return m_activeSkill && m_activeSkill->targetMode() == ActiveSkillV2::NoTarget;
+    const ViewAsSkillV2 *activeSkill = resolveActiveSkillCardSkill(this);
+    return activeSkill && activeSkill->targetMode() == ViewAsSkillV2::NoTarget;
 }
 
-bool ActiveSkillCard::targetFilter(const QList<const Player *> &, const Player *, const Player *) const
+bool ActiveSkillCard::targetFilter(const QList<const Player *> &targets, const Player *to_select,
+                                   const Player *Self) const
 {
-    // Target validation is performed by Room::resolveActiveSkillRequest().
-    return false;
+    const ViewAsSkillV2 *activeSkill = resolveActiveSkillCardSkill(this);
+    if (!activeSkill || activeSkill->targetMode() != ViewAsSkillV2::SelectTargets
+        || !to_select || !Self)
+        return false;
+
+    const ActiveSkillRequest request = buildActiveSkillCardRequest(this, Self, targets);
+    return activeSkill->canSelectTarget(request, targets, to_select);
 }
 
-bool ActiveSkillCard::targetsFeasible(const QList<const Player *> &, const Player *) const
+bool ActiveSkillCard::targetsFeasible(const QList<const Player *> &targets, const Player *Self) const
 {
-    // The generic Card parser must not reinterpret V2 target rules.
-    return true;
+    const ViewAsSkillV2 *activeSkill = resolveActiveSkillCardSkill(this);
+    if (!activeSkill) return true;
+    if (activeSkill->targetMode() == ViewAsSkillV2::NoTarget)
+        return targets.isEmpty();
+    if (!Self) return false;
+
+    const ActiveSkillRequest request = buildActiveSkillCardRequest(this, Self, targets);
+    return activeSkill->targetsFeasible(request, targets);
 }
 
 void ActiveSkillCard::onUse(Room *room, CardUseStruct &card_use) const
 {
-    if (m_activeSkill && card_use.skillExecutionID > 0) {
+    const ViewAsSkillV2 *activeSkill = resolveActiveSkillCardSkill(this);
+    if (activeSkill && card_use.skillExecutionID > 0) {
         SkillContext context = room->getSkillExecutionContext(card_use.skillExecutionID);
         ServerPlayer *acceptedInvoker = context.invoker;
-        if (m_activeSkill->effect(context) == ActiveSkillV2::FinishSkill)
+        if (activeSkill->effect(context) == ViewAsSkillV2::FinishSkill || context.manual_effect)
             card_use.to.clear();
         restoreSkillExecutionIdentity(room, card_use.skillExecutionID, context, acceptedInvoker);
         room->setSkillExecutionContext(card_use.skillExecutionID, context);
@@ -1027,7 +1074,8 @@ void ActiveSkillCard::onUse(Room *room, CardUseStruct &card_use) const
 void ActiveSkillCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
 {
     SkillCard::use(room, source, targets);
-    if (!m_activeSkill || m_activeSkill->targetEffectMode() != ActiveSkillV2::WholeTargetGroup)
+    const ViewAsSkillV2 *activeSkill = resolveActiveSkillCardSkill(this);
+    if (!activeSkill || activeSkill->targetEffectMode() != ViewAsSkillV2::WholeTargetGroup)
         return;
 
     SkillContext context = room->getSkillExecutionContext(room->getTag("UseHistory" + toString())
@@ -1038,20 +1086,21 @@ void ActiveSkillCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *
         if (target && target->isAlive()) effectiveTargets << target;
     }
     if (!effectiveTargets.isEmpty())
-        m_activeSkill->effectOnTargetGroup(context, effectiveTargets);
+        activeSkill->effectOnTargetGroup(context, effectiveTargets);
     restoreSkillExecutionIdentity(room, context.executionID, context, acceptedInvoker);
     room->setSkillExecutionContext(context.executionID, context);
 }
 
 void ActiveSkillCard::onEffect(CardEffectStruct &effect) const
 {
-    if (!m_activeSkill || effect.skillExecutionID <= 0 || !effect.to) return;
+    const ViewAsSkillV2 *activeSkill = resolveActiveSkillCardSkill(this);
+    if (!activeSkill || effect.skillExecutionID <= 0 || !effect.to) return;
     Room *room = effect.to->getRoom();
     if (!room) return;
     SkillContext context = room->getSkillExecutionContext(effect.skillExecutionID);
     ServerPlayer *acceptedInvoker = context.invoker;
-    if (m_activeSkill->targetEffectMode() == ActiveSkillV2::EachTarget
-        && m_activeSkill->effectOnTarget(context, effect.to) == ActiveSkillV2::FinishSkill)
+    if (activeSkill->targetEffectMode() == ViewAsSkillV2::EachTarget
+        && activeSkill->effectOnTarget(context, effect.to) == ViewAsSkillV2::FinishSkill)
         context.is_canceled = true;
     restoreSkillExecutionIdentity(room, effect.skillExecutionID, context, acceptedInvoker);
     room->setSkillExecutionContext(effect.skillExecutionID, context);
