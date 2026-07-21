@@ -206,13 +206,15 @@ skill_name = sgs.CreateTriggerV2Skill {
 `get_usage_ref` 必須是無副作用的純查詢；不得自行修改 mark、player、Room 或 `ctx`。舊
 `usage_identity` 已移除，factory 會回報遷移提示。
 
-### 5.2.1 ActiveSkillV2（主動技 V2）
+### 5.2.1 ViewAsSkillV2（主動技 V2）
 
 ```lua
-skill_name = sgs.CreateActiveSkillV2 {
+skill_name = sgs.CreateViewAsSkillV2 {
     name = "skill_name",
+    n = 0,                              -- 選用；預設 0，提交時須恰好選 n 張
+    response_or_use = false,            -- 選用；沿用 ViewAsSkill 的 response-or-use 語意
     base_amount = 2,                    -- 選用；預設 1
-    effect = function(self, ctx)
+    on_effect = function(self, ctx)
         local amount = self:getEffectiveAmount(ctx)
         -- 使用 amount 執行效果
         return nil -- nil 等同 ContinueEffects
@@ -220,9 +222,58 @@ skill_name = sgs.CreateActiveSkillV2 {
 }
 ```
 
+`n` 是 `ViewAsSkillV2` 的原生固定選牌張數。省略 `can_select_card` 與
+`card_selection_feasible` 時，框架允許選至 `n` 張，並只在恰好選滿 `n` 張時允許提交：
+
+```lua
+multi_card_skill = sgs.CreateViewAsSkillV2 {
+    name = "multi_card_skill",
+    n = 3,
+
+    can_activate = function(skill, request)
+        return request:getReason() == sgs.CardUseStruct_S_CARD_USE_REASON_PLAY
+            and request:getInitiator():getCardCount(true) >= 3
+    end,
+
+    -- 省略 create_card 時，由框架建立並綁定通用 ActiveSkillCard。
+}
+```
+
+若允許選擇 1 至 3 張，則 `can_select_card` 使用 `< 3`，
+`card_selection_feasible` 使用 `length() >= 1 and length() <= 3`。不要在
+`can_activate` 要求「目前已選滿 n 張」；技能按鈕首次檢查時 request 尚未包含選牌。
+
+Lua 效果 callback 統一使用 `on_effect`、`on_effect_target`、
+`on_effect_target_group`；舊的 `effect`、`effect_on_target`、
+`effect_on_target_group` 不再接受。需要由 `on_effect` 自行控制逐目標處理時，可使用：
+
+```lua
+on_effect = function(skill, ctx)
+    ctx.manual_effect = true
+    for _, target in sgs.qlist(ctx.targets) do
+        local flow = skill:skillEffect(ctx, target)
+        if flow == sgs.ViewAsSkillV2_FinishSkill then
+            return flow
+        end
+    end
+end,
+
+on_effect_target = function(skill, ctx, target)
+    target:drawCards(1, skill:objectName())
+end,
+```
+
+`skill:skillEffect(ctx, target)` 會先觸發 `EventSkillEffectTarget`，未被跳過時再執行
+`on_effect_target`。設定 `ctx.manual_effect = true` 後，框架不再自動遍歷目標；
+`on_effect_target_group` 只用於 `target_effect_mode = WholeTargetGroup` 的自動群組效果。
+
 框架在 Play、純回應及配額檢查 context 建立時把 `base_amount` 寫入 `ctx.amount`。
 `getEffectiveAmount(ctx)` 依序採用正數 `ctx.modified_amount`、正數 `ctx.amount`，最後回退
 `base_amount`；其他技能可在 `EventSkillWillInvoke` 修改 `ctx.modified_amount`。
+
+通用 `ActiveSkillCard` 的 UI 目標選擇會委派給 `can_select_target`／`targets_feasible`；
+legacy `ViewAsSkill`／`SkillCard` 仍沿用 `viewFilter`／`viewAs`／Card target API。若
+`create_card` 返回 Slash 等普通卡，客戶端目標預覽仍使用該普通卡本身的目標規則。
 
 ### 5.3 ViewAsSkill（轉化技）
 

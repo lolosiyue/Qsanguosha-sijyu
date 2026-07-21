@@ -34,7 +34,7 @@ namespace {
 
 static const char *kControllerNameTag = "Controller_Name";
 
-static bool hasGenericActiveSkillUsage(const ActiveSkillV2 *skill)
+static bool hasGenericActiveSkillUsage(const ViewAsSkillV2 *skill)
 {
 	return skill && skill->getLimitScope() != Skill::Limit_None
 		&& skill->getLimitScope() != Skill::Limit_Custom;
@@ -2591,7 +2591,7 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
     SkillContext responseCtx;
     SkillContext responseIdentity;
     ServerPlayer *responseInvoker = nullptr;
-    const ActiveSkillV2 *responseActiveSkill = nullptr;
+    const ViewAsSkillV2 *responseActiveSkill = nullptr;
     bool responseUsageReserved = false;
     bool responseUsageCommitted = false;
     bool responseFinishStarted = false;
@@ -2643,7 +2643,7 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
         responseCtx.instanceID = resp.activationRef.isValid() ? resp.activationRef.key.instanceID
             : (skillCard ? skillCard->getSkillInstanceId() : 0);
         responseCtx.use_card = resp.m_card;
-		responseActiveSkill = dynamic_cast<const ActiveSkillV2 *>(
+		responseActiveSkill = dynamic_cast<const ViewAsSkillV2 *>(
 			Sanguosha->getViewAsSkill(responseCtx.activationRef.key.skillName));
 		if (responseActiveSkill)
 			responseCtx.amount = responseActiveSkill->getBaseAmount();
@@ -5418,7 +5418,7 @@ bool Room::resolveCardSkillInstance(CardUseStruct &use)
 	mutableCard->setActivationSkill(use.activationRef.key.skillName, use.activationRef.key.instanceID);
 	mutableCard->setSourceSkill(use.sourceRef.key.skillName, use.sourceRef.key.instanceID);
 
-	const ActiveSkillV2 *activeSkill = dynamic_cast<const ActiveSkillV2 *>(
+	const ViewAsSkillV2 *activeSkill = dynamic_cast<const ViewAsSkillV2 *>(
 		Sanguosha->getViewAsSkill(activationName));
 	if (activeSkill) {
 		ActiveSkillRequest request;
@@ -5442,7 +5442,7 @@ bool Room::areCardTargetsLegal(const CardUseStruct &use) const
 {
 	if (!use.card || !use.from) return false;
 	if (use.activationRef.isValid()) {
-		const ActiveSkillV2 *activeSkill = dynamic_cast<const ActiveSkillV2 *>(
+		const ViewAsSkillV2 *activeSkill = dynamic_cast<const ViewAsSkillV2 *>(
 			Sanguosha->getViewAsSkill(use.activationRef.key.skillName));
 		// resolveActiveSkillRequest() has already checked V2's independent target
 		// contract; its proxy card intentionally rejects generic targetFilter().
@@ -5463,7 +5463,7 @@ bool Room::areCardTargetsLegal(const CardUseStruct &use) const
 	return use.card->targetsFeasible(selected, use.from);
 }
 
-const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ActiveSkillV2 *skill,
+const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSkillV2 *skill,
                                              const ActiveSkillRequest &request) const
 {
 	if (!player || !skill || request.initiator != player || !request.activationRef.isValid())
@@ -5475,10 +5475,10 @@ const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ActiveSk
 		return nullptr;
 	if (!skill->canActivate(request) || !skill->cardSelectionFeasible(request))
 		return nullptr;
-	if (skill->targetMode() == ActiveSkillV2::NoTarget && !request.selectedTargetNames.isEmpty())
+	if (skill->targetMode() == ViewAsSkillV2::NoTarget && !request.selectedTargetNames.isEmpty())
 		return nullptr;
 	QList<const Player *> selectedTargets;
-	if (skill->targetMode() == ActiveSkillV2::SelectTargets) {
+	if (skill->targetMode() == ViewAsSkillV2::SelectTargets) {
 		foreach (const QString &name, request.selectedTargetNames) {
 			ServerPlayer *candidate = findPlayerByObjectName(name);
 			if (!candidate || !skill->canSelectTarget(request, selectedTargets, candidate))
@@ -5494,7 +5494,8 @@ const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ActiveSk
 	ActiveSkillRequest checked = request;
 	checked.selectedCardIds.clear();
 	foreach (int id, request.selectedCardIds) {
-		if (!selectable.contains(id)) return nullptr;
+		// Removing on acceptance also rejects a forged request that repeats one card ID.
+		if (!selectable.remove(id)) return nullptr;
 		const Card *candidate = Sanguosha->getCard(id);
 		if (!candidate || !skill->canSelectCard(checked, candidate)) return nullptr;
 		checked.selectedCardIds << id;
@@ -5516,7 +5517,7 @@ bool Room::askForActiveSkill(ServerPlayer *player, CardUseStruct::CardUseReason 
 	if (!player || !player->getAI()) return false;
 	QList<SkillInstance> instances = player->getSkillInstances();
 	foreach (const SkillInstance &instance, instances) {
-		const ActiveSkillV2 *skill = dynamic_cast<const ActiveSkillV2 *>(Sanguosha->getViewAsSkill(instance.skillName));
+		const ViewAsSkillV2 *skill = dynamic_cast<const ViewAsSkillV2 *>(Sanguosha->getViewAsSkill(instance.skillName));
 		if (!skill || !player->hasSkillInstance(instance.skillName, instance.instanceID)) continue;
 
 		ActiveSkillRequest request;
@@ -5591,7 +5592,7 @@ bool Room::askForActiveSkill(ServerPlayer *player, CardUseStruct::CardUseReason 
 	return false;
 }
 
-bool Room::reserveActiveSkillUsage(const ActiveSkillV2 *skill, const SkillContext &context)
+bool Room::reserveActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context)
 {
 	if (!skill || skill->getLimitScope() == Skill::Limit_None) return true;
 	if (skill->getLimitScope() == Skill::Limit_Custom)
@@ -5605,7 +5606,7 @@ bool Room::reserveActiveSkillUsage(const ActiveSkillV2 *skill, const SkillContex
 		holder->getMark(usageTagKey), skill->getMaxUsageLimit(context));
 }
 
-void Room::releaseActiveSkillUsage(const ActiveSkillV2 *skill, const SkillContext &context)
+void Room::releaseActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context)
 {
 	if (!skill || skill->getLimitScope() == Skill::Limit_None
 		|| skill->getLimitScope() == Skill::Limit_Custom) return;
@@ -5616,7 +5617,7 @@ void Room::releaseActiveSkillUsage(const ActiveSkillV2 *skill, const SkillContex
 	m_activeSkillUsageReservations.release(reservationKey);
 }
 
-void Room::commitActiveSkillUsage(const ActiveSkillV2 *skill, const SkillContext &context)
+void Room::commitActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context)
 {
 	if (!skill || skill->getLimitScope() == Skill::Limit_None
 		|| skill->getLimitScope() == Skill::Limit_Custom) return;
@@ -5738,7 +5739,7 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 	bool skillExecutionFinishStarted = false;
 	bool cardProcessingStarted = false;
 	bool cardProcessingCompleted = false;
-	const ActiveSkillV2 *activeSkill = nullptr;
+	const ViewAsSkillV2 *activeSkill = nullptr;
 	QString tagKey;
 	QList<int> ids;
 	QString key;
@@ -5809,7 +5810,7 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		skillCardCtx.sourceRef = use.sourceRef;
 		skillCardCtx.activationRef = use.activationRef;
 		skillCardCtx.initiator = use.from;
-		activeSkill = dynamic_cast<const ActiveSkillV2 *>(
+		activeSkill = dynamic_cast<const ViewAsSkillV2 *>(
 			Sanguosha->getViewAsSkill(skillCardCtx.activationRef.key.skillName));
 		if (activeSkill)
 			skillCardCtx.amount = activeSkill->getBaseAmount();
@@ -5935,7 +5936,7 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 	key = use.card->getClassName();
 	tag.remove("UseHistory"+use.card->toString());
 	if (use.card->inherits("LuaSkillCard")) key = "#"+use.card->objectName();
-	const ActiveSkillV2 *historySkill = dynamic_cast<const ActiveSkillV2 *>(
+	const ViewAsSkillV2 *historySkill = dynamic_cast<const ViewAsSkillV2 *>(
 		Sanguosha->getViewAsSkill(use.activationRef.key.skillName));
 	if (historySkill) {
 		ActiveSkillRequest request;

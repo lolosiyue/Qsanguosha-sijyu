@@ -1,8 +1,8 @@
-# ActiveSkillV2 與 SkillCard／ViewAsSkill 現代化重構計劃
+# ViewAsSkillV2 與 SkillCard／ViewAsSkill 現代化重構計劃
 
 ## 1. 文件定位
 
-本文件是 `ActiveSkillV2`、舊 `SkillCard/ViewAsSkill` 過渡橋接及相關多實例整合的權威設計契約與分批實作票據。
+本文件是 `ViewAsSkillV2`、舊 `SkillCard/ViewAsSkill` 過渡橋接及相關多實例整合的權威設計契約與分批實作票據。
 
 程式基線以 `H:\Program file\Game\sgs\Qsgs\github\QSanguosha-v2` 的 `main` 分支為準。`L:\finaldebug\QSanguosha-v2` 是較早的 `view_as_skillV2` 先行實驗分支，只可用來理解舊構想，不得反向覆蓋 main 的較新多實例實作。
 
@@ -11,8 +11,8 @@
 - [玩家技能多實例重構計劃](skill-instance-refactor-plan.md)
 - [TriggerV2Skill 系統說明](TriggerV2Skill系統說明.md)
 - [SkillCard V2 Bridge 舊構想](SkillCard-V2Bridge計劃.md)
-- [ActiveSkillV2 舊技能遷移規範](active-skill-v2-migration-guide.md)
-- [ActiveSkillV2 驗證矩陣](active-skill-v2-test-matrix.md)
+- [ViewAsSkillV2 舊技能遷移規範](active-skill-v2-migration-guide.md)
+- [ViewAsSkillV2 驗證矩陣](active-skill-v2-test-matrix.md)
 
 舊 Bridge 文件只作需求來源，不是實作規格。本文件的鎖定規則優先。
 
@@ -20,7 +20,7 @@
 
 ### 2.1 目標
 
-- 建立雙層漸進改造：底層橋接舊技能，上層提供新的 `ActiveSkillV2` 作者 API。
+- 建立雙層漸進改造：底層橋接舊技能，上層提供新的 `ViewAsSkillV2` 作者 API。
 - 舊 `SkillCard/ViewAsSkill` 不必立即改寫，也不設定移除期限。
 - 所有由技能產生卡牌的路徑均可進入既有七個 `EventSkill*` 攔截時機：出牌、response-use、純 response、nullification。
 - 精確區分技能根來源、玩家實際點擊的 activation、最初發動者及攔截後的最終使用者。
@@ -43,7 +43,7 @@
 
 ### 3.1 定義物件與持有實例
 
-- Engine 中每個技能名稱仍只有一個共享 `Skill/ViewAsSkill/ActiveSkillV2` 定義物件。
+- Engine 中每個技能名稱仍只有一個共享 `Skill/ViewAsSkill/ViewAsSkillV2` 定義物件。
 - `instanceID` 屬於玩家持有關係 `SkillInstance`，不屬於共享 QObject。
 - 新 API 不 clone 技能定義物件。
 
@@ -224,13 +224,13 @@ checkpoint 之後才寫入的欄位不追溯生效。
 2. 檢查 Card/使用者基本限制
 3. 舊卡先執行 validate()/validateInResponse()；返回 null 即結束，沒有 execution
 4. 建立 ActiveSkillExecution 與 SkillContext
-5. ActiveSkillV2::cost()；false 即取消，沒有 EffectFinished
+5. ViewAsSkillV2::cost()；false 即取消，沒有 EffectFinished
 6. EventSkillWillInvoke
 7. 若 cancel：取消，沒有 pay/history/effect/EffectFinished
 8. 提交 updated_invoker、updated_card
-9. ActiveSkillV2 reserve activation/source quota；舊技能略過
+9. ViewAsSkillV2 reserve activation/source quota；舊技能略過
 10. EventSkillPay
-11. 若非 bypass_cost，執行 ActiveSkillV2::pay()
+11. 若非 bypass_cost，執行 ViewAsSkillV2::pay()
 12. pay false：release reservation，不回滾，結果 PayFailed，發出 EffectFinished
 13. pay/bypass 成功後 commit quota；EventSkillTargetConfirming 並提交 targets
 14. EventSkillInvoking
@@ -367,11 +367,11 @@ InvalidTargetUpdate
 - 舊重播缺 ID 時以 legacy ID 0 決定性解析第一個有效實例並警告。
 - 可盡力播放，但不承諾還原精確多實例。
 
-## 11. ActiveSkillV2 作者 API
+## 11. ViewAsSkillV2 作者 API
 
 ### 11.1 類型定位
 
-- `ActiveSkillV2` 底層繼承 `ViewAsSkill`，復用 Dashboard、回應等待與協議入口。
+- `ViewAsSkillV2` 底層繼承 `ViewAsSkill`，復用 Dashboard、回應等待與協議入口。
 - V2 作者不再組合「ViewAsSkill + 每技能 SkillCard 類別」。
 - `createCard()` 可返回普通卡或通用 proxy。
 - 普通卡自行擁有 target rules；只有 custom action proxy 使用 V2 target hooks。
@@ -441,9 +441,8 @@ EffectFlow::FinishSkill
 作者 hooks：
 
 ```text
-effect(ctx)                 // 一次性的全域／前置效果
-effectOnTarget(ctx, target)
-effectOnTargetGroup(ctx, effectiveTargets)
+C++: effect(ctx) / effectOnTarget(ctx, target) / effectOnTargetGroup(ctx, effectiveTargets)
+Lua: on_effect / on_effect_target / on_effect_target_group
 ```
 
 - `effect(ctx)` 返回 `FinishSkill` 是成功完成，不是取消，結果為 `Completed`。
@@ -451,7 +450,8 @@ effectOnTargetGroup(ctx, effectiveTargets)
 - `WholeTargetGroup` 先逐位置觸發 EffectTarget，再以剩餘列表呼叫 group 一次。
 - effectiveTargets 為空時不呼叫 group。
 - 部分目標被移除後不重跑 feasible；技能自行處理不足數量。
-- V2 作者 API 不提供 `manual_effect`／自行派發 target effect 的模式；需要提早完成時使用 `FinishSkill`。
+- `on_effect` 可設定 `ctx.manual_effect = true`，再以 `skill:skillEffect(ctx, target)` 手動派發
+  `EventSkillEffectTarget` 與 `on_effect_target`；框架偵測此旗標後不再自動遍歷目標。
 
 數值契約與 `TriggerV2Skill` 相同：`getBaseAmount()` 預設為 1，execution 建立前會把它寫入
 `ctx.amount`；作者以 `getEffectiveAmount(ctx)` 取得有效值，優先序為正數
@@ -477,7 +477,7 @@ V2 proxy selected-card 預設支付：
 
 - C++ 實際類別只有一個通用 `ActiveSkillCard`。
 - 對外 objectName/history key 預設按 activation skill 產生 `#<activationSkillName>Card`。
-- `ActiveSkillV2::historyKey()` 可覆寫為舊 SkillCard key，供未來人工遷移對齊舊觸發器／AI。
+- `ViewAsSkillV2::historyKey()` 可覆寫為舊 SkillCard key，供未來人工遷移對齊舊觸發器／AI。
 - V2 使用配額不依賴 card history key。
 
 ## 12. 目標與效果規則
@@ -566,8 +566,10 @@ V2 custom proxy：
 
 ## 15. Lua 規則
 
-- C++ API 先完成並固定，下一張 ticket 才加入 `LuaActiveSkillV2` 與 `sgs.CreateActiveSkillV2`。
-- Lua 名稱對齊 C++：`can_activate`、`can_select_card`、`card_selection_feasible`、`create_card`、`can_select_target`、`targets_feasible`、`cost`、`pay`、`effect`、`effect_on_target`、`effect_on_target_group`。
+- C++ API 先完成並固定，下一張 ticket 才加入 `LuaViewAsSkillV2` 與 `sgs.CreateViewAsSkillV2`。
+- Lua callback：`can_activate`、`can_select_card`、`card_selection_feasible`、`create_card`、
+  `can_select_target`、`targets_feasible`、`cost`、`pay`、`on_effect`、`on_effect_target`、
+  `on_effect_target_group`。舊的三個 `effect*` callback 不保留。
 - request 只暴露 getter；context 依既有 SWIG 規則暴露允許欄位。
 - 所有 callback 以 `lua_pcall` 保護並輸出錯誤。
 - 查詢／createCard 出錯安全返回 false/null。
@@ -582,8 +584,8 @@ V2 custom proxy：
 | 舊 SkillCard 自訂 monolithic onUse | 防崩潰 | 否 | 否 | `LegacyOnUseLimited` |
 | 舊 validate 有副作用 | 防崩潰 | 依 replacement | 否 | `LegacyValidateLimited` |
 | 舊 ViewAs 產生普通卡 | 是 | 依普通卡 CardEffect | 不使普通卡免費 | 保留普通卡規則 |
-| ActiveSkillV2 產生普通卡 | 是 | 依普通卡 CardEffect | 不使普通卡免費 | server recreate |
-| ActiveSkillV2 proxy | 原生 | 是 | 是 | 完整 V2 契約 |
+| ViewAsSkillV2 產生普通卡 | 是 | 依普通卡 CardEffect | 不使普通卡免費 | server recreate |
+| ViewAsSkillV2 proxy | 原生 | 是 | 是 | 完整 V2 契約 |
 | Pure response | 是 | 不適用 | 依卡類型 | nullified response |
 | Nullification | 是 | 有目標才有 | 依卡類型 | skip 不取消錦囊 |
 
@@ -610,7 +612,7 @@ V2 custom proxy：
 - old snapshot parent owner fallback。
 - parent 存在、無循環、冪等及 deterministic removal 測試。
 
-不處理：ActiveSkillV2、CardUse lifecycle、UI 素材。
+不處理：ViewAsSkillV2、CardUse lifecycle、UI 素材。
 
 驗收：Release x64；純 helper console tests；黃天式兩個 root 對同一 receiver 產生兩個不混淆的 activation instance。
 
@@ -657,7 +659,7 @@ V2 custom proxy：
 - `SkillExecutionResult` 與 Finished-once guard。
 - nested/reentrant lookup 測試。
 
-不處理：真正呼叫七個事件、ActiveSkillV2 作者 API。
+不處理：真正呼叫七個事件、ViewAsSkillV2 作者 API。
 
 驗收：巢狀 execution 互不覆蓋；結束後 registry 無殘留；original_data 在整段執行有效。
 
@@ -680,7 +682,7 @@ V2 custom proxy：
 - base onUse whole-effect skip。
 - custom onUse whole-skip 的 `LegacyOnUseLimited` 安全路徑。
 
-不處理：response、ActiveSkillV2 proxy、正式技能修正。
+不處理：response、ViewAsSkillV2 proxy、正式技能修正。
 
 驗收：標準舊 SkillCard 攔截仍有 CardUsed/CardFinished；monolithic onUse 攔截整段不執行但歷史計入且不閃退。
 
@@ -705,7 +707,7 @@ V2 custom proxy：
 
 驗收：四路徑矩陣；validate null 無 execution；巢狀 useCard 產生新 execution。
 
-### Ticket 6：ActiveSkillRequest 與 ActiveSkillV2 C++ 查詢 API
+### Ticket 6：ActiveSkillRequest 與 ViewAsSkillV2 C++ 查詢 API
 
 依賴：Ticket 3、Ticket 5。
 
@@ -798,7 +800,7 @@ V2 custom proxy：
 
 驗收：兩個同名 direct/attached instance 顯示與提交不混淆；缺圖不崩潰。
 
-### Ticket 10：LuaActiveSkillV2 與 SWIG
+### Ticket 10：LuaViewAsSkillV2 與 SWIG
 
 依賴：Ticket 8、Ticket 9。
 
@@ -812,7 +814,7 @@ V2 custom proxy：
 
 交付：
 
-- `LuaActiveSkillV2` 與 `sgs.CreateActiveSkillV2`。
+- `LuaViewAsSkillV2` 與 `sgs.CreateViewAsSkillV2`。
 - C++ hooks 對應 callback、nil/default/error semantics。
 - request getter-only；context mutation 按 checkpoint 生效。
 - C++ API 已固定後才生成 wrapper。
@@ -867,7 +869,7 @@ V2 custom proxy：
 ### Ticket 13：getUsageRef 與技能實例配額引用
 
 依賴：Ticket 1–3 的 `SkillInstanceRef`／不可變 provenance，以及 Ticket 7 的
-ActiveSkillV2 reservation／commit／release 配額生命週期。本票是 ViewAsSkill 次數橋接的
+ViewAsSkillV2 reservation／commit／release 配額生命週期。本票是 ViewAsSkill 次數橋接的
 必要前置，不在同一票接管舊 `usedTimes()`。
 
 #### 13.1 問題與契約
@@ -933,15 +935,15 @@ source identity 清除的是 root 配額。
 交付：
 
 - `SkillContext` 以 getter-only 方式暴露 `getActivationRef()`／`getSourceRef()`。
-- `sgs.CreateTriggerV2Skill` 與 `sgs.CreateActiveSkillV2` 均接受選用的純查詢 callback `get_usage_ref(skill, ctx)`；未提供時由 C++ 基底使用 activation ref。
+- `sgs.CreateTriggerV2Skill` 與 `sgs.CreateViewAsSkillV2` 均接受選用的純查詢 callback `get_usage_ref(skill, ctx)`；未提供時由 C++ 基底使用 activation ref。
 - callback 必須回傳 `SkillInstanceRef`；Lua error、nil 或錯誤型別均 fail-closed。舊 `usage_identity` 載入時報遷移提示，不得靜默忽略。
 - C++ 技能直接覆寫 `getUsageRef(ctx)`；不再暴露 `UsageIdentity` enum、setter 或 Lua 常數。
 
 | 技能入口 | 本票責任 |
 |---|---|
-| C++ `Skill`／`ActiveSkillV2` | 提供預設 activation ref 與可覆寫的 `getUsageRef()` |
+| C++ `Skill`／`ViewAsSkillV2` | 提供預設 activation ref 與可覆寫的 `getUsageRef()` |
 | Lua `TriggerV2Skill` | factory callback、SWIG ref getter；generic scope 與 Custom 邊界均驗證 |
-| Lua `ActiveSkillV2` | factory callback、SWIG ref getter；接入既有 ActiveSkillV2 quota lifecycle |
+| Lua `ViewAsSkillV2` | factory callback、SWIG ref getter；接入既有 ViewAsSkillV2 quota lifecycle |
 | legacy Lua/C++ `ViewAsSkill` | 只可讀取基礎 API；自動扣次數留給後續 bridge 票 |
 
 `Limit_Custom` 不受通用 `getUsageRef()` 配額流程控制：C++ 覆寫的
@@ -994,9 +996,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-release.ps1
 
 ## 19. 計劃狀態
 
-- ActiveSkillV2 amount 擴充：C++／Lua 已加入 `base_amount`、`getBaseAmount()` 與 `getEffectiveAmount(ctx)`；Play、pure response 與候選配額 context 均在生命週期開始時以 base amount 初始化。配額例外維持由 `Limit_Custom` 統一負責，不另增語意重複的 `isUsageExempt`。
+- 2026-07-21 client UI bridge 補齊：通用 `ActiveSkillCard` 的 target preview 會建立只讀 `ActiveSkillRequest`，並委派 `canSelectTarget()`／`targetsFeasible()`；技能按鈕以精確 activation instance 呼叫 `canActivate()`，Dashboard 裝備區亦改用 `canSelectCard()`。所有 legacy `ViewAsSkill`／普通 Card 分支及網路協議保持不變；新增 `active_skill_v2_proxy_ui_test` 手動 fixture，尚待完整工具鏈實跑。
+- ViewAsSkillV2 amount 擴充：C++／Lua 已加入 `base_amount`、`getBaseAmount()` 與 `getEffectiveAmount(ctx)`；Play、pure response 與候選配額 context 均在生命週期開始時以 base amount 初始化。配額例外維持由 `Limit_Custom` 統一負責，不另增語意重複的 `isUsageExempt`。
 - Ticket 13：核心與 fixture 完成、待工具鏈整合驗證（2026-07-20）。配額策略已收斂為單一 `getUsageRef(ctx)`：預設 activation、覆寫可選 immutable source，移除 `UsageIdentity` enum／setter／Lua 常數；保留 legacy activation fallback、source fail-closed、root-source 配額解析與 Lua `get_usage_ref` callback。generic scope 以 committed mark + counted reservation 支援巢狀重入，pay failure／Pay cancel／`StageChange`／`TurnBroken` 會釋放未提交 reservation，bypass 仍 commit。Play 與 pure response 的控制事件會補發 `EffectFinished(NoResult)` 最多一次並重新拋出原事件；effect／target hooks 後會還原 immutable provenance。legacy instance-0 reset 已恢復，`Limit_Custom` 不建立 generic reservation 且不自動 add/reset。`tests/skill-instance-utils` 與 `~test` 已補 shared-root、owner isolation、nested、failure/cancel、bypass、reset、Custom 與 finished-once fixture；Lua callback smoke 位於 `lua/test/examples/test_active_skill_v2_usage_ref.lua`。`swig/sanguosha_wrap.cxx` 已由 SWIG 4.4.1 重產；尚缺 Release x64／console／Lua smoke／Room lifecycle 實跑（工作機沒有 qmake、C++ 編譯器與 Lua CLI）。
-- Ticket 10：完成（2026-07-17）。已加入 `LuaActiveSkillV2`、`sgs.CreateActiveSkillV2`、read-only `ActiveSkillRequest` getters 與所有 query/cost/pay/target/effect callbacks；Lua callback error 均 fail-closed，effect 的 nil 結果為 `ContinueEffects`。`swig/sanguosha_wrap.cxx` 已由 `tools/swig/swig.exe` 重新產生。驗證：Release x64 0 errors。
+- Ticket 10：完成（2026-07-17）。已加入 `LuaViewAsSkillV2`、`sgs.CreateViewAsSkillV2`、read-only `ActiveSkillRequest` getters 與所有 query/cost/pay/target/effect callbacks；Lua callback error 均 fail-closed，effect 的 nil 結果為 `ContinueEffects`。`swig/sanguosha_wrap.cxx` 已由 `tools/swig/swig.exe` 重新產生。驗證：Release x64 0 errors。
 - Ticket 11：進行中。已加入 provenance V2（cross-owner source/activation refs）、V1 replay fallback、選用 request-aware AI callback、server-only execution audit 與 replay parser fixture；Play bridge 的 cost/pay/cancel/invalid early exits 現均會 Finished/audit 收束。V2 AI callback 已回傳綁定當前 activation 的 `{ cards, targets, user_string }` 結果，Room 以 server-created proxy 將 choices 送入既有 resolver；尚缺 AI/lifecycle 合成技能端到端場景。
 - Ticket 12：進行中。已加入 replay console fixture、驗證矩陣與 `~test` V2 C++/Lua 合成技能；尚缺自動化完整 Room lifecycle matrix。
 

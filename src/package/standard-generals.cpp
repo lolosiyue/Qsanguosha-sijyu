@@ -4583,10 +4583,10 @@ public:
     }
 };
 
-class ActiveSkillV2Test : public ActiveSkillV2
+class ViewAsSkillV2Test : public ViewAsSkillV2
 {
 public:
-    ActiveSkillV2Test() : ActiveSkillV2("active_skill_v2_test") {}
+    ViewAsSkillV2Test() : ViewAsSkillV2("active_skill_v2_test") {}
 
     LimitScope getLimitScope() const override { return Limit_Turn; }
     SkillInstanceRef getUsageRef(const SkillContext &context) const override { return context.sourceRef; }
@@ -4621,10 +4621,53 @@ public:
     }
 };
 
-class ActiveSkillV2QuotaRoot : public GameStartSkill
+class ViewAsSkillV2ProxyUiTest : public ViewAsSkillV2
 {
 public:
-    ActiveSkillV2QuotaRoot() : GameStartSkill("active_skill_v2_quota_root") {}
+    ViewAsSkillV2ProxyUiTest() : ViewAsSkillV2("active_skill_v2_proxy_ui_test", 2) {}
+
+    bool canActivate(const ActiveSkillRequest &request) const override
+    {
+        return request.reason == CardUseStruct::CARD_USE_REASON_PLAY && request.initiator;
+    }
+
+    TargetMode targetMode() const override { return SelectTargets; }
+
+    bool canSelectTarget(const ActiveSkillRequest &request, const QList<const Player *> &selected,
+                         const Player *candidate) const override
+    {
+        return request.initiator && candidate && candidate != request.initiator
+            && candidate->isAlive() && selected.isEmpty();
+    }
+
+    bool targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &selected) const override
+    {
+        return selected.length() == 1;
+    }
+
+    TargetEffectMode targetEffectMode() const override { return EachTarget; }
+
+    EffectFlow effect(SkillContext &context) const override
+    {
+        context.manual_effect = true;
+        foreach (ServerPlayer *target, context.targets) {
+            if (skillEffect(context, target) == FinishSkill)
+                return FinishSkill;
+        }
+        return ContinueEffects;
+    }
+
+    EffectFlow effectOnTarget(SkillContext &, ServerPlayer *target) const override
+    {
+        if (target) target->drawCards(1, objectName());
+        return ContinueEffects;
+    }
+};
+
+class ViewAsSkillV2QuotaRoot : public GameStartSkill
+{
+public:
+    ViewAsSkillV2QuotaRoot() : GameStartSkill("active_skill_v2_quota_root") {}
 
     void onGameStart(ServerPlayer *player) const override
     {
@@ -4640,10 +4683,10 @@ public:
     }
 };
 
-class ActiveSkillV2CustomUsageTest : public ActiveSkillV2
+class ViewAsSkillV2CustomUsageTest : public ViewAsSkillV2
 {
 public:
-    ActiveSkillV2CustomUsageTest() : ActiveSkillV2("active_skill_v2_custom_usage_test") {}
+    ViewAsSkillV2CustomUsageTest() : ViewAsSkillV2("active_skill_v2_custom_usage_test") {}
 
     LimitScope getLimitScope() const override { return Limit_Custom; }
     bool canActivate(const ActiveSkillRequest &request) const override
@@ -4709,9 +4752,10 @@ TestPackage::TestPackage()
     related_skills.insertMulti("super_jushou", "#@jushou_test-5");
 
     General *active_skill_v2_tester = new General(this, "active_skill_v2_tester", "god", 4, true, true);
-    active_skill_v2_tester->addSkill(new ActiveSkillV2Test);
-    active_skill_v2_tester->addSkill(new ActiveSkillV2QuotaRoot);
-    active_skill_v2_tester->addSkill(new ActiveSkillV2CustomUsageTest);
+    active_skill_v2_tester->addSkill(new ViewAsSkillV2Test);
+    active_skill_v2_tester->addSkill(new ViewAsSkillV2ProxyUiTest);
+    active_skill_v2_tester->addSkill(new ViewAsSkillV2QuotaRoot);
+    active_skill_v2_tester->addSkill(new ViewAsSkillV2CustomUsageTest);
 
     General *nobenghuai_dongzhuo = new General(this, "nobenghuai_dongzhuo$", "qun", 4, true, true);
     nobenghuai_dongzhuo->addSkill("jiuchi");

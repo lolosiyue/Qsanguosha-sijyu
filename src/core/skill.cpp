@@ -398,27 +398,27 @@ const ViewAsSkill *ViewAsSkill::parseViewAsSkill(const Skill *skill)
     return nullptr;
 }
 
-ActiveSkillV2::ActiveSkillV2(const QString &name)
-    : ViewAsSkill(name), m_baseAmount(1)
+ViewAsSkillV2::ViewAsSkillV2(const QString &name, int n)
+    : ViewAsSkill(name), m_n(qMax(0, n)), m_baseAmount(1)
 {
 }
 
-bool ActiveSkillV2::canActivate(const ActiveSkillRequest &) const
-{
-    return false;
-}
-
-bool ActiveSkillV2::canSelectCard(const ActiveSkillRequest &, const Card *) const
+bool ViewAsSkillV2::canActivate(const ActiveSkillRequest &) const
 {
     return false;
 }
 
-bool ActiveSkillV2::cardSelectionFeasible(const ActiveSkillRequest &) const
+bool ViewAsSkillV2::canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const
 {
-    return false;
+    return candidate && request.selectedCardIds.length() < m_n;
 }
 
-const Card *ActiveSkillV2::createCard(const ActiveSkillRequest &request) const
+bool ViewAsSkillV2::cardSelectionFeasible(const ActiveSkillRequest &request) const
+{
+    return request.selectedCardIds.length() == m_n;
+}
+
+const Card *ViewAsSkillV2::createCard(const ActiveSkillRequest &request) const
 {
 	ActiveSkillCard *card = new ActiveSkillCard;
 	card->setActiveSkill(this);
@@ -428,17 +428,17 @@ const Card *ActiveSkillV2::createCard(const ActiveSkillRequest &request) const
 	return card;
 }
 
-bool ActiveSkillV2::willThrowSelectedCards() const
+bool ViewAsSkillV2::willThrowSelectedCards() const
 {
     return true;
 }
 
-bool ActiveSkillV2::cost(Room *, SkillContext &, const ActiveSkillRequest &) const
+bool ViewAsSkillV2::cost(Room *, SkillContext &, const ActiveSkillRequest &) const
 {
     return true;
 }
 
-bool ActiveSkillV2::pay(Room *room, SkillContext &context, const ActiveSkillRequest &request) const
+bool ViewAsSkillV2::pay(Room *room, SkillContext &context, const ActiveSkillRequest &request) const
 {
     if (!qobject_cast<const ActiveSkillCard *>(context.use_card)
         || !willThrowSelectedCards() || request.selectedCardIds.isEmpty())
@@ -458,37 +458,75 @@ bool ActiveSkillV2::pay(Room *room, SkillContext &context, const ActiveSkillRequ
     return true;
 }
 
-QString ActiveSkillV2::historyKey(const ActiveSkillRequest &) const
+QString ViewAsSkillV2::historyKey(const ActiveSkillRequest &) const
 {
     return objectName();
 }
 
-ActiveSkillV2::TargetMode ActiveSkillV2::targetMode() const { return SelectTargets; }
-bool ActiveSkillV2::canSelectTarget(const ActiveSkillRequest &, const QList<const Player *> &, const Player *) const { return false; }
-bool ActiveSkillV2::targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &) const { return false; }
-ActiveSkillV2::TargetEffectMode ActiveSkillV2::targetEffectMode() const { return EachTarget; }
-ActiveSkillV2::EffectFlow ActiveSkillV2::effect(SkillContext &) const { return ContinueEffects; }
-ActiveSkillV2::EffectFlow ActiveSkillV2::effectOnTarget(SkillContext &, ServerPlayer *) const { return ContinueEffects; }
-ActiveSkillV2::EffectFlow ActiveSkillV2::effectOnTargetGroup(SkillContext &, const QList<ServerPlayer *> &) const { return ContinueEffects; }
+ViewAsSkillV2::TargetMode ViewAsSkillV2::targetMode() const { return SelectTargets; }
+bool ViewAsSkillV2::canSelectTarget(const ActiveSkillRequest &, const QList<const Player *> &, const Player *) const { return false; }
+bool ViewAsSkillV2::targetsFeasible(const ActiveSkillRequest &, const QList<const Player *> &) const { return false; }
+ViewAsSkillV2::TargetEffectMode ViewAsSkillV2::targetEffectMode() const { return EachTarget; }
+ViewAsSkillV2::EffectFlow ViewAsSkillV2::effect(SkillContext &) const { return ContinueEffects; }
+ViewAsSkillV2::EffectFlow ViewAsSkillV2::effectOnTarget(SkillContext &, ServerPlayer *) const { return ContinueEffects; }
+ViewAsSkillV2::EffectFlow ViewAsSkillV2::effectOnTargetGroup(SkillContext &, const QList<ServerPlayer *> &) const { return ContinueEffects; }
 
-int ActiveSkillV2::getBaseAmount() const
+ViewAsSkillV2::EffectFlow ViewAsSkillV2::skillEffect(SkillContext &context, ServerPlayer *target) const
+{
+    if (!target || !target->isAlive()) return ContinueEffects;
+    Room *room = target->getRoom();
+    if (!room) return ContinueEffects;
+
+    const SkillContext identity = context;
+    // Target cancellation is scoped to this dispatch; manual traversal remains
+    // owned by the author callback and cannot be disabled by an interceptor.
+    context.is_canceled = false;
+    context.current_event = EventSkillEffectTarget;
+    QVariant contextData = QVariant::fromValue(context);
+    const bool skipped = room->getThread()->trigger(EventSkillEffectTarget, room, target, contextData);
+    context = contextData.value<SkillContext>();
+
+    // EffectTarget interceptors may update effect state, but never execution identity.
+    context.skill_name = identity.skill_name;
+    context.sourceRef = identity.sourceRef;
+    context.activationRef = identity.activationRef;
+    context.initiator = identity.initiator;
+    context.invoker = identity.invoker;
+    context.owner = identity.owner;
+    context.use_card = identity.use_card;
+    context.original_data = identity.original_data;
+    context.instanceID = identity.instanceID;
+    context.executionID = identity.executionID;
+    context.manual_effect = identity.manual_effect;
+    context.amount = identity.amount;
+    context.current_event = EventSkillEffectTarget;
+
+    return skipped ? ContinueEffects : effectOnTarget(context, target);
+}
+
+void ViewAsSkillV2::setN(int n)
+{
+    m_n = qMax(0, n);
+}
+
+int ViewAsSkillV2::getBaseAmount() const
 {
     return m_baseAmount;
 }
 
-int ActiveSkillV2::getEffectiveAmount(const SkillContext &context) const
+int ViewAsSkillV2::getEffectiveAmount(const SkillContext &context) const
 {
     if (context.modified_amount > 0)
         return context.modified_amount;
     return context.amount > 0 ? context.amount : m_baseAmount;
 }
 
-bool ActiveSkillV2::viewFilter(const QList<const Card *> &, const Card *) const
+bool ViewAsSkillV2::viewFilter(const QList<const Card *> &, const Card *) const
 {
     return false;
 }
 
-const Card *ActiveSkillV2::viewAs(const QList<const Card *> &) const
+const Card *ViewAsSkillV2::viewAs(const QList<const Card *> &) const
 {
     return nullptr;
 }

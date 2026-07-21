@@ -6,7 +6,7 @@ class Player;
 class ServerPlayer;
 class ClientPlayer;
 class CardItem;
-class ActiveSkillV2;
+class ViewAsSkillV2;
 
 struct CardEffectStruct;
 struct CardUseStruct;
@@ -280,7 +280,7 @@ protected:
     ServerPlayer *m_skillOwner;
 };
 
-// Server-created proxy for ActiveSkillV2 custom actions.  It has no
+// Server-created proxy for ViewAsSkillV2 custom actions.  It has no
 // client-authoritative state: Room recreates it from the immutable request.
 class ActiveSkillCard : public SkillCard
 {
@@ -289,8 +289,8 @@ class ActiveSkillCard : public SkillCard
 public:
     Q_INVOKABLE ActiveSkillCard();
 
-    void setActiveSkill(const ActiveSkillV2 *skill) { m_activeSkill = skill; }
-    const ActiveSkillV2 *getActiveSkill() const { return m_activeSkill; }
+    void setActiveSkill(const ViewAsSkillV2 *skill) { m_activeSkill = skill; }
+    const ViewAsSkillV2 *getActiveSkill() const { return m_activeSkill; }
 
     bool targetFixed() const override;
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select,
@@ -301,7 +301,7 @@ public:
     void onEffect(CardEffectStruct &effect) const override;
 
 private:
-    const ActiveSkillV2 *m_activeSkill;
+    const ViewAsSkillV2 *m_activeSkill;
 };
 
 class DummyCard : public SkillCard

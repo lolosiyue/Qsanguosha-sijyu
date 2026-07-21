@@ -1,4 +1,4 @@
-# ActiveSkillV2 驗證矩陣
+# ViewAsSkillV2 驗證矩陣
 
 本矩陣記錄核心重構的實際驗證證據。它不授權遷移任何正式技能；正式技能仍須依
 [遷移規範](active-skill-v2-migration-guide.md) 逐項人工審議。
@@ -12,19 +12,23 @@
 | replay provenance V1 compatibility | 同上 | 通過；owner 採 initiator best-effort fallback |
 | malformed provenance | 同上 | 通過；拒絕 payload |
 | Play／pure response 的 V2 early-exit 與控制事件收束 | `Room::useCard()`、`Room::askForCard()` | 已整合；pay/cancel 釋放未提交 reservation；`StageChange`／`TurnBroken` 發 `Finished(NoResult)` 最多一次並重新拋出原控制事件 |
-| Lua `base_amount`／`get_usage_ref` smoke 與 Room 初始化 | `lua/test/examples/test_active_skill_v2_usage_ref.lua` | 待執行；驗證 Active amount 優先序與 usage ref；assertion 失敗必須回傳非零 |
+| Lua `n`／`response_or_use`／`base_amount`／`get_usage_ref` smoke 與 Room 初始化 | `lua/test/examples/test_active_skill_v2_usage_ref.lua` | 待執行；驗證 ViewAs factory 欄位、amount 優先序與 usage ref；assertion 失敗必須回傳非零 |
 | 全專案 C++／SWIG 整合 | `tools/build-release.ps1` Release x64 | Ticket 13 修改後待執行（本機沒有 qmake／C++ 編譯器） |
 
 ## `~test` 手動整合場景
 
 既有 `TestPackage` 位於 `src/package/standard-generals.cpp`，package 名稱為 `~test`。
-`active_skill_v2_tester` 持有三個 fixture：`active_skill_v2_test` 是每回合上限 2、以
+`active_skill_v2_tester` 持有四個 fixture：`active_skill_v2_test` 是每回合上限 2、以
 覆寫 `getUsageRef()` 回傳 source ref、由 server 建立普通 Slash 的 C++ 合成技能；
+`active_skill_v2_proxy_ui_test` 使用通用 `ActiveSkillCard` 與原生 `n = 2`，要求選擇恰好兩張牌及
+一名其他角色，再由 `effect()` 設定 `manual_effect` 並呼叫 `skillEffect()`；用來驗證 V2 多牌、
+人類 UI 目標橋接與手動 `EventSkillEffectTarget` 流程；
 `active_skill_v2_quota_root` 在開局把前者 attached 給其他玩家，讓多個入口共用同一 root quota；
 `active_skill_v2_custom_usage_test` 驗證 `Limit_Custom` 只由作者邏輯讀寫，不會自動呼叫 generic
 `addUsage()`。它們只供下列手動場景使用，不得改動正常武將包。
 `lua/test/examples/test_active_skill_v2_usage_ref.lua` 是等價 Lua fixture：它以
-`sgs.CreateActiveSkillV2` 與 `sgs.CreateTriggerV2Skill` 驗證 Active `base_amount`／有效值優先序、`get_usage_ref` callback、
+`sgs.CreateViewAsSkillV2` 與 `sgs.CreateTriggerV2Skill` 驗證 `n`、`response_or_use`、
+`base_amount`／有效值優先序、`get_usage_ref` callback、
 舊欄位遷移提示及錯誤回傳 fail-closed，且不會將測試武將包載入一般對局。
 執行入口為：
 `QSanguosha.exe --lua-test lua/test/examples/test_active_skill_v2_usage_ref.lua`。
@@ -32,6 +36,7 @@
 | 場景 | 入口 | 期望結果 |
 |---|---|---|
 | Play | V2 proxy use | sourceRef、activationRef 與 execution audit 一致；Finished 一次 |
+| proxy UI／多牌／manual effect | `active_skill_v2_proxy_ui_test` | 原生 `n = 2` 使未選滿時不能確認；選滿後可選一名其他角色；`skillEffect()` 經 `EventSkillEffectTarget` 後令目標摸一張牌；legacy 技能 UI 不受影響 |
 | response-use | V2 轉換牌 | legacy packet fallback 與 server re-create 均不信任 client source |
 | pure response | V2 response | cost/pay failure 結束為 PayFailed，並發 Finished |
 | nullification | V2 virtual card | effect skip 不取消原錦囊流程 |
@@ -48,9 +53,9 @@
 ## 目前限制與後續票據
 
 - Ticket 13 已完成核心與測試 fixture，但尚未執行工具鏈：`getUsageRef(ctx)` 已將配額所屬實例集中為單一策略入口；source sharing、nested reservation、pay/cancel release、bypass commit、reset、Custom 邊界及控制事件收束均已有代碼／案例。在 Release x64 與 Room lifecycle 實測前，不得宣稱整合測試通過。
-- 通用 `ActiveSkillCard` 與 request-aware V2 AI selection／target 結果已存在；目前缺口是把上述 lifecycle 場景納入可重複執行的 Room 端到端測試。
+- 通用 `ActiveSkillCard` 已在 client target preview 委派 V2 `canSelectTarget()`／`targetsFeasible()`；request-aware V2 AI selection／target 結果亦已存在。目前缺口是實跑 `active_skill_v2_proxy_ui_test`，並把上述 lifecycle 場景納入可重複執行的 Room 端到端測試。
 - Lua smoke 仍需在實際 Room 對局中執行；目前未自動化其 lifecycle 場景。
 - 上述 smoke 僅驗證 Lua factory／enum 與 Room 初始化；不代表 Lua V2 技能已被 AI 啟動或完成 lifecycle。
 - `DoLuaScript()` 在 `--headless` 下會以 `qCritical` 報告 Lua 載入錯誤而非開啟 modal dialog，讓本機自動化可取得失敗原因；GUI 模式維持既有對話框。
-- `LuaActiveSkillV2`、選用 AI callback、provenance V2 與 execution audit 曾完成編譯整合；Ticket 13 的 wrapper、quota ledger、immutable provenance 與中斷收束修改仍待重新編譯，再以合成技能自動化端到端驗證。
+- `LuaViewAsSkillV2`、選用 AI callback、provenance V2 與 execution audit 曾完成編譯整合；Ticket 13 的 wrapper、quota ledger、immutable provenance 與中斷收束修改仍待重新編譯，再以合成技能自動化端到端驗證。
 - 不得以本矩陣代替 validate/onUse 的人工分類；請使用 migration guide 第 6、7、14 節的模板。
