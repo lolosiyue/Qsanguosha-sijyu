@@ -267,8 +267,8 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(ClientInstance,SIGNAL(player_killed(QString)),this,SLOT(killPlayer(QString)));
 	connect(ClientInstance,SIGNAL(player_revived(QString)),this,SLOT(revivePlayer(QString)));
 	connect(ClientInstance,SIGNAL(card_shown(QString,QList<int>)),this,SLOT(showCard(QString,QList<int>)));
-	connect(ClientInstance,SIGNAL(virtual_card_shown(QString,QString,QString,int,QString)),
-		this,SLOT(showVirtualCard(QString,QString,QString,int,QString)));
+	connect(ClientInstance,SIGNAL(virtual_card_shown(QString,QString,QString,int,QString,QList<int>,QString)),
+		this,SLOT(showVirtualCard(QString,QString,QString,int,QString,QList<int>,QString)));
 	connect(ClientInstance,SIGNAL(gongxin(QList<int>,bool,QList<int>)),this,SLOT(doGongxin(QList<int>,bool,QList<int>)));
 	connect(ClientInstance,SIGNAL(focus_moved(QStringList,QSanProtocol::Countdown,int)),this,SLOT(moveFocus(QStringList,QSanProtocol::Countdown,int)));
 	connect(ClientInstance,SIGNAL(emotion_set(QString,QString)),this,SLOT(setEmotion(QString,QString)));
@@ -4787,7 +4787,8 @@ void RoomScene::showCard(const QString&player_name,QList<int> card_ids)
 }
 
 void RoomScene::showVirtualCard(const QString &player_name, const QString &card_name,
-	const QString &suit, int number, const QString &skill_name)
+	const QString &suit, int number, const QString &skill_name, const QList<int> &subcard_ids,
+	const QString &target_name)
 {
 	Card *card = Sanguosha->cloneCard(card_name);
 	if (card == nullptr)
@@ -4806,9 +4807,20 @@ void RoomScene::showVirtualCard(const QString &player_name, const QString &card_
 	card->setSuit(suit_map.value(suit, Card::NoSuit));
 	card->setNumber(number);
 	card->setSkillName(skill_name);
+	card->addSubcards(subcard_ids);
+	m_tablePile->suppressConvertedSubcards(subcard_ids);
 
 	CardItem *card_item = new CardItem(card);
+	card_item->setConvertedCardVisual(!subcard_ids.isEmpty());
 	card_item->setParentItem(m_tablePile);
+	if (!subcard_ids.isEmpty()) {
+		const QString title = skill_name.isEmpty()
+			? QString::fromUtf8("【被轉化的卡牌】")
+			: QString::fromUtf8("【%1】轉化的卡牌").arg(Sanguosha->translate(skill_name));
+		connect(card_item, &CardItem::clicked, this, [this, subcard_ids, title]() {
+			showPile(subcard_ids, title);
+		});
+	}
 	card->deleteLater();
 
 	bringToFront(m_tablePile);
@@ -4816,6 +4828,7 @@ void RoomScene::showVirtualCard(const QString &player_name, const QString &card_
 	move.from_place = Player::PlaceUnknown;
 	move.to_place = Player::PlaceTable;
 	move.reason = CardMoveReason(CardMoveReason::S_REASON_USE, player_name, QString(), skill_name, QString());
+	move.reason.m_targetId = target_name;
 	card_item->setFootnote(_translateMovement(move));
 	QList<CardItem*> card_items;
 	card_items << card_item;

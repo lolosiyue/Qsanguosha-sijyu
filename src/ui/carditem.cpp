@@ -20,6 +20,7 @@ void CardItem::_initialize()
     m_virtualCardSuit = Card::NoSuit;
     m_virtualCardNumber = 0;
     m_virtualCardBlack = true;
+    m_hasConvertedCardVisual = false;
     auto_back = true;
     frozen = false;
     resetTransform();
@@ -96,6 +97,12 @@ void CardItem::refreshTooltip()
 void CardItem::setEnabled(bool enabled)
 {
     QSanSelectableItem::setEnabled(enabled);
+}
+
+void CardItem::setConvertedCardVisual(bool converted)
+{
+    m_hasConvertedCardVisual = converted;
+    update();
 }
 
 CardItem::~CardItem()
@@ -370,6 +377,24 @@ void CardItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidge
         static QBrush painter_brush(QColor(255, 215, 0, 64));
         painter->setBrush(painter_brush);
         painter->drawRect(G_COMMON_LAYOUT.m_cardMainArea);
+    }
+
+    if (m_hasConvertedCardVisual) {
+        // Temporary programmatic badge; replace this block when dedicated artwork is available.
+        const QRect mainArea = G_COMMON_LAYOUT.m_cardMainArea;
+        const int badgeSize = qMax(20, qMin(mainArea.width(), mainArea.height()) / 5);
+        const QRect badgeRect(mainArea.right() - badgeSize - 4, mainArea.top() + 4, badgeSize, badgeSize);
+        painter->save();
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(QColor(200, 30, 30));
+        painter->drawEllipse(badgeRect);
+        QFont badgeFont = painter->font();
+        badgeFont.setBold(true);
+        badgeFont.setPixelSize(qMax(12, badgeSize * 2 / 3));
+        painter->setFont(badgeFont);
+        painter->setPen(Qt::white);
+        painter->drawText(badgeRect, Qt::AlignCenter, QString::fromUtf8("轉"));
+        painter->restore();
     }
 }
 

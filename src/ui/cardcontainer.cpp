@@ -5,6 +5,13 @@
 #include "graphics-box.h"
 #include "roomscene.h"
 
+static int pileContainerTitleWidth(const QString &pileName)
+{
+	const QString title = pileName.isEmpty() ? QObject::tr("Pile") : Sanguosha->translate(pileName);
+	const IQSanComponentSkin::QSanSimpleTextFont &font = G_COMMON_LAYOUT.graphicsBoxTitleFont;
+	return title.length() * (font.m_fontSize.width() + font.m_spacing) - font.m_spacing + 80;
+}
+
 CardContainer::CardContainer()
     : _m_background("image/system/card-container.png")
 {
@@ -719,24 +726,22 @@ void PileContainer::fillCards(const QList<int> &card_ids)
     int card_width = G_COMMON_LAYOUT.m_cardNormalWidth;
     int card_height = G_COMMON_LAYOUT.m_cardNormalHeight;
     bool one_row = true;
-    int width = (card_width + cardInterval) * m_itemCount - cardInterval + 50;
-    if (width * 1.5 > m_sceneWidth) {
-        width = (card_width + cardInterval) * ((m_itemCount + 1) / 2) - cardInterval + 50;
+    int content_width = (card_width + cardInterval) * m_itemCount - cardInterval;
+    if ((content_width + 50) * 1.5 > m_sceneWidth) {
         one_row = false;
     }
     int first_row = one_row ? m_itemCount : (m_itemCount + 1) / 2;
+	const int container_width = boundingRect().width();
 
     for (int i = 0; i < m_itemCount; i++) {
         QPointF pos;
+		const int row_count = i < first_row ? first_row : m_itemCount - first_row;
+		const int row_width = (card_width + cardInterval) * row_count - cardInterval;
+		const int row_index = i < first_row ? i : i - first_row;
+		pos.setX((container_width - row_width) / 2 + (card_width + cardInterval) * row_index);
         if (i < first_row) {
-            pos.setX(25 + (card_width + cardInterval) * i);
             pos.setY(45);
         } else {
-            if (m_itemCount % 2 == 1)
-                pos.setX(25 + card_width / 2 + cardInterval / 2
-                + (card_width + cardInterval) * (i - first_row));
-            else
-                pos.setX(25 + (card_width + cardInterval) * (i - first_row));
             pos.setY(45 + card_height + cardInterval);
         }
         CardItem *item = m_items[i];
@@ -779,6 +784,7 @@ QRectF PileContainer::boundingRect() const
         width = (card_width + cardInterval) * ((m_itemCount + 1) / 2) - cardInterval + 50;
         one_row = false;
     }
+	width = qMax(width, pileContainerTitleWidth(m_pileName));
     int height = (one_row ? 1 : 2) * card_height + 90 + (one_row ? 0 : cardInterval);
 
     return QRectF(0, 0, width, height);
@@ -792,24 +798,22 @@ void PileContainer::paint(QPainter *painter, const QStyleOptionGraphicsItem *, Q
     const int card_width = G_COMMON_LAYOUT.m_cardNormalWidth;
     const int card_height = G_COMMON_LAYOUT.m_cardNormalHeight;
     bool one_row = true;
-    int width = (card_width + cardInterval) * m_itemCount - cardInterval + 50;
-    if (width * 1.5 > RoomSceneInstance->sceneRect().width()) {
-        width = (card_width + cardInterval) * ((m_itemCount + 1) / 2) - cardInterval + 50;
+    int content_width = (card_width + cardInterval) * m_itemCount - cardInterval;
+    if ((content_width + 50) * 1.5 > RoomSceneInstance->sceneRect().width()) {
         one_row = false;
     }
     int first_row = one_row ? m_itemCount : (m_itemCount + 1) / 2;
+	const int container_width = boundingRect().width();
 
     for (int i = 0; i < m_itemCount; ++i) {
         int x, y = 0;
+		const int row_count = i < first_row ? first_row : m_itemCount - first_row;
+		const int row_width = (card_width + cardInterval) * row_count - cardInterval;
+		const int row_index = i < first_row ? i : i - first_row;
+		x = (container_width - row_width) / 2 + (card_width + cardInterval) * row_index;
         if (i < first_row) {
-            x = 25 + (card_width + cardInterval) * i;
             y = 45;
         } else {
-            if (m_itemCount % 2 == 1)
-                x = 25 + card_width / 2 + cardInterval / 2
-                + (card_width + cardInterval) * (i - first_row);
-            else
-                x = 25 + (card_width + cardInterval) * (i - first_row);
             y = 45 + card_height + cardInterval;
         }
         QPixmap pixmap = G_ROOM_SKIN.getPixmap(QSanRoomSkin::S_SKIN_KEY_CHOOSE_GENERAL_BOX_DEST_SEAT);
