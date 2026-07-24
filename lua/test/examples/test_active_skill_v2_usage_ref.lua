@@ -14,6 +14,9 @@ local active = sgs.CreateViewAsSkillV2 {
 	get_usage_ref = function(skill, ctx)
 		return sourceRef
 	end,
+	get_amount_ref = function(skill, ctx)
+		return sourceRef
+	end,
 	max_usage_limit = 2,
 }
 
@@ -43,7 +46,7 @@ local invalid = sgs.CreateViewAsSkillV2 {
 	end,
 }
 
-local runner = sgs.test.create("ViewAsSkillV2 usage reference Lua smoke")
+local runner = sgs.test.create("ViewAsSkillV2 usage reference Lua smoke"):factoryOnly()
 
 runner:assert(function(t)
 	local amountContext = sgs.SkillContext()
@@ -54,8 +57,8 @@ runner:assert(function(t)
 		"ViewAsSkillV2 factory preserves n")
 	t:addResult(active:isResponseOrUse(),
 		"ViewAsSkillV2 factory preserves response_or_use")
-	t:addResult(active:getEffectiveAmount(amountContext) == 4,
-		"ViewAsSkillV2 effective amount falls back to base_amount")
+	t:addResult(active:getEffectiveAmount(amountContext) == 0,
+		"ViewAsSkillV2 effective amount preserves explicit zero")
 	amountContext.amount = 3
 	amountContext.modified_amount = 5
 	t:addResult(active:getEffectiveAmount(amountContext) == 5,
@@ -67,6 +70,11 @@ runner:assert(function(t)
 			and activeRef.key.skillName == sourceRef.key.skillName
 			and activeRef.key.instanceID == sourceRef.key.instanceID,
 		"ViewAsSkillV2 get_usage_ref selects the source quota")
+	local amountRef = active:getAmountRef(context)
+	t:addResult(amountRef.ownerObjectName == sourceRef.ownerObjectName
+			and amountRef.key.skillName == sourceRef.key.skillName
+			and amountRef.key.instanceID == sourceRef.key.instanceID,
+		"ViewAsSkillV2 get_amount_ref is independent from its activation ref")
 	t:addResult(active:getMaxUsageLimit(context) == 2,
 		"ViewAsSkillV2 factory preserves max_usage_limit")
 	t:addResult(trigger:getLimitScope() == sgs.Skill_Limit_Phase,

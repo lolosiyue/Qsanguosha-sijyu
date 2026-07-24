@@ -158,6 +158,10 @@ function sgs.CreateViewAsSkillV2(spec)
 	skill:setResponseOrUse(spec.response_or_use or false)
 	if type(spec.base_amount) == "number" then skill:setBaseAmount(spec.base_amount) end
 	configureUsage(skill, spec)
+	if spec.get_amount_ref ~= nil then
+		assert(type(spec.get_amount_ref) == "function", "get_amount_ref must be a function")
+		skill.get_amount_ref = spec.get_amount_ref
+	end
 	if type(spec.max_usage_limit) == "number" then skill:setMaxUsageLimit(spec.max_usage_limit) end
 	if type(spec.phase_name) == "string" then skill:setPhaseNameStr(spec.phase_name) end
 	if type(spec.target_mode) == "number" then skill:setTargetMode(spec.target_mode) end
@@ -286,6 +290,25 @@ function sgs.CreateDistanceSkill(spec)
 	return skill
 end
 
+local function configureCorrectSkillV2(skill, spec)
+	skill:setBaseAmount(spec.base_amount or 1)
+	skill:setHolderSelector(spec.holder_selector or sgs.CorrectSkill_Primary)
+	if type(spec.correct_func) == "function" then
+		skill.correct_func = spec.correct_func
+	end
+	return skill
+end
+
+function sgs.CreateDistanceSkillV2(spec)
+	assert(type(spec.name) == "string")
+	local skill = sgs.LuaDistanceSkillV2(spec.name, spec.frequency or sgs.Skill_Compulsory)
+	configureCorrectSkillV2(skill, spec)
+	if type(spec.fixed_func) == "function" then
+		skill.fixed_func = spec.fixed_func
+	end
+	return skill
+end
+
 function sgs.CreateMaxCardsSkill(spec)
 	assert(type(spec.name)=="string")
 	local skill = sgs.LuaMaxCardsSkill(spec.name,spec.frequency or sgs.Skill_Compulsory)
@@ -297,6 +320,16 @@ function sgs.CreateMaxCardsSkill(spec)
 			return spec.fixed_func(...) or -1
 		end
 		--skill.fixed_func = spec.fixed_func
+	end
+	return skill
+end
+
+function sgs.CreateMaxCardsSkillV2(spec)
+	assert(type(spec.name) == "string")
+	local skill = sgs.LuaMaxCardsSkillV2(spec.name, spec.frequency or sgs.Skill_Compulsory)
+	configureCorrectSkillV2(skill, spec)
+	if type(spec.fixed_func) == "function" then
+		skill.fixed_func = spec.fixed_func
 	end
 	return skill
 end
@@ -315,6 +348,14 @@ function sgs.CreateTargetModSkill(spec)
 		skill.extra_target_func = spec.extra_target_func
 	--end
 	return skill
+end
+
+function sgs.CreateTargetModSkillV2(spec)
+	assert(type(spec.name) == "string")
+	if spec.pattern then assert(type(spec.pattern) == "string") end
+	local skill = sgs.LuaTargetModSkillV2(spec.name, spec.pattern or "Slash",
+		spec.frequency or sgs.Skill_Compulsory)
+	return configureCorrectSkillV2(skill, spec)
 end
 
 function sgs.CreateInvaliditySkill(spec)
@@ -337,6 +378,16 @@ function sgs.CreateAttackRangeSkill(spec)
 			return spec.fixed_func(...) or -1
 		end
 		--skill.fixed_func = spec.fixed_func
+	end
+	return skill
+end
+
+function sgs.CreateAttackRangeSkillV2(spec)
+	assert(type(spec.name) == "string")
+	local skill = sgs.LuaAttackRangeSkillV2(spec.name, spec.frequency or sgs.Skill_Compulsory)
+	configureCorrectSkillV2(skill, spec)
+	if type(spec.fixed_func) == "function" then
+		skill.fixed_func = spec.fixed_func
 	end
 	return skill
 end

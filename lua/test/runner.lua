@@ -15,6 +15,7 @@ function sgs.TestRunner:new(name)
         _setupFn = nil,
         _runFn = nil,
         _assertFn = nil,
+		_factoryOnly = false,
         _results = {},
     }
     setmetatable(t, { __index = sgs.TestRunner })
@@ -34,6 +35,11 @@ end
 function sgs.TestRunner:assert(fn)
     self._assertFn = fn
     return self
+end
+
+function sgs.TestRunner:factoryOnly()
+	self._factoryOnly = true
+	return self
 end
 
 function sgs.TestRunner:getPlayers()
@@ -123,6 +129,11 @@ function sgs.TestRunner:execute()
     if self._runFn then
         self._runFn(self)
     end
+
+	if self._factoryOnly then
+		ROOM:gameOver("lua_factory_smoke")
+		return
+	end
 
     ROOM:start()
 end

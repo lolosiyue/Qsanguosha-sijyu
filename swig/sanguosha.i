@@ -959,6 +959,7 @@ enum TriggerEvent {
 	GameReady,
 	GameStart,
 	TurnStart,
+	TurnStarted,
 	EventPhaseStart,
 	EventPhaseProceeding,
 	EventPhaseEnd,
@@ -983,6 +984,8 @@ enum TriggerEvent {
 
 	EventLoseSkill,
 	EventAcquireSkill,
+	EventSkillAmountChanging,
+	EventSkillAmountChanged,
 
 	StartJudge,
 	AskForRetrial,
@@ -1101,7 +1104,25 @@ enum TriggerEvent {
 
 	TurnBroken, // For the skill 'DanShou'. Do not use it to trigger events
 
+	GeneralChoosing,
+	GeneralChosen,
+
 	EventForDiy, // For lua or diy to trigger special event
+
+	EventSkillInvalidated,
+	EventSkillValidityRestored,
+
+	EventAskForChoice,
+	EventSkillWillInvoke,
+	EventSkillPay,
+	EventSkillTargetConfirming,
+	EventSkillInvoking,
+	EventSkillEffect,
+	EventSkillEffectTarget,
+	EventSkillEffectFinished,
+
+	EventShimingSuccess,
+	EventShimingFail,
 
 	ShownCardChanged,
 	BrokenEquipChanged,
@@ -1459,6 +1480,7 @@ public:
 	int correctDistance(const Player*from, const Player*to, bool fixed = false) const;
 	int correctMaxCards(const Player*target, bool fixed = false) const;
 	int correctCardTarget(const TargetModSkill::ModType type, const Player*from, const Card*card, const Player*to = nullptr) const;
+	bool hasResidueUnlimited(const Player*from, const Card*card, const Player*to = nullptr) const;
 	bool correctSkillValidity(const Player*player, const Skill*skill) const;
 	int correctAttackRange(const Player*target, bool include_weapon = true, bool fixed = false) const;
 
@@ -1538,6 +1560,7 @@ struct SkillContext {
 
 	int amount;
 	int modified_amount;
+	bool modified_amount_set;
 	int trigger_count;
 	int multiplier;
 
@@ -1545,6 +1568,9 @@ struct SkillContext {
 	QVariant extra_data;
 	SkillInstanceRef getSourceRef() const;
 	SkillInstanceRef getActivationRef() const;
+	void setModifiedAmount(int value);
+	void clearModifiedAmount();
+	bool hasModifiedAmount() const;
 };
 
 enum SkillInstanceSource {
@@ -1578,8 +1604,49 @@ struct SkillInstance {
 	SkillInstanceSource source;
 	SkillInstanceKey parent;
 	bool visible;
-	QVariantMap state;
+	bool hasAmountOverride;
+	int amountOverride;
+	QVariantMap correctState;
 	int bindHead;
+};
+
+struct SkillAmountChangeStruct {
+	SkillAmountChangeStruct();
+	ServerPlayer *source;
+	SkillInstanceRef skillRef;
+	int oldAmount;
+	int newAmount;
+	QString reason;
+	bool canceled;
+	bool resetToBase;
+};
+
+enum CorrectSkillHolderSelector {
+	CorrectSkill_Primary,
+	CorrectSkill_Secondary,
+	CorrectSkill_Participants,
+	CorrectSkill_AllHolders,
+	CorrectSkill_System
+};
+
+struct CorrectSkillContext {
+	CorrectSkillContext();
+	SkillInstanceRef getInstanceRef() const;
+	const Player *getHolder() const;
+	const Player *getPrimary() const;
+	const Player *getSecondary() const;
+	const Card *getCard() const;
+	int getModType() const;
+	bool includesWeapon() const;
+	int getCurrentAmount() const;
+	QVariant getStateValue(const QString &key, const QVariant &defaultValue = QVariant()) const;
+};
+
+struct CorrectSkillResult {
+	CorrectSkillResult(bool isApplicable = false, int amount = 0, bool isUnlimited = false);
+	bool applies;
+	int value;
+	bool unlimited;
 };
 
 struct SkillChangeStruct {
@@ -1867,6 +1934,19 @@ public:
 
 	int acquireSkill(ServerPlayer*player, const Skill*skill, bool open = true, bool getmark = true, bool event_and_log = true);
 	int acquireSkill(ServerPlayer*player, const char*skill_name, bool open = true, bool getmark = true, bool event_and_log = true);
+	int getSkillInstanceAmount(const SkillInstanceRef &ref) const;
+	bool setSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int amount, const char *reason = "");
+	bool addSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int delta, const char *reason = "");
+	bool resetSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, const char *reason = "");
+	bool setSkillInstanceCorrectState(ServerPlayer *source, const SkillInstanceRef &ref,
+	                                  const char *key, const QVariant &value);
+	bool removeSkillInstanceCorrectState(ServerPlayer *source, const SkillInstanceRef &ref,
+	                                     const char *key);
+	bool clearSkillInstanceCorrectState(ServerPlayer *source, const SkillInstanceRef &ref);
+	void addSkillInvalidity(ServerPlayer *target, const char *skillName,
+	                       const char *sourceName, const char *reason, int instanceId = 0);
+	void removeSkillInvalidity(ServerPlayer *target, const char *skillName,
+	                          const char *sourceName, const char *reason, int instanceId = 0);
 	void adjustSeats();
 	void swapPile();
 	QList<int> getDiscardPile();

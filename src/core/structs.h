@@ -28,6 +28,21 @@ struct GameModeStruct {
     void setShuffleSeats(bool shuffle) { shuffle_seats = shuffle; }
 };
 
+struct SkillAmountChangeStruct {
+    SkillAmountChangeStruct();
+
+    ServerPlayer *source;
+    SkillInstanceRef skillRef;
+    int oldAmount;
+    int newAmount;
+    QString reason;
+    bool canceled;
+    bool resetToBase;
+
+    QVariant toVariant() const;
+};
+Q_DECLARE_METATYPE(SkillAmountChangeStruct)
+
 
 struct DamageStruct {
     enum Nature
@@ -643,6 +658,8 @@ enum TriggerEvent {
 
     EventLoseSkill,
     EventAcquireSkill,
+    EventSkillAmountChanging,
+    EventSkillAmountChanged,
 
     StartJudge,
     AskForRetrial,

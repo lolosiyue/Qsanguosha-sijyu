@@ -21,6 +21,7 @@
 #include "skill-instance-utils.h"
 #include <ctime>
 #include <functional>
+#include <limits>
 #include <QSet>
 #include <QDir>
 
@@ -1093,6 +1094,14 @@ static JsonArray skillInstanceJson(const ServerPlayer *owner, const SkillInstanc
           << static_cast<int>(instance.source) << parentRef.ownerObjectName
           << parentRef.key.skillName << parentRef.key.instanceID
           << instance.visible << instance.bindHead;
+    QVariantMap metadata;
+    if (instance.hasAmountOverride) {
+        metadata.insert("has_amount", true);
+        metadata.insert("amount", instance.amountOverride);
+    }
+    if (!instance.correctState.isEmpty())
+        metadata.insert("correct_state", instance.correctState);
+    if (!metadata.isEmpty()) entry << metadata;
     return entry;
 }
 
@@ -2659,8 +2668,12 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
         responseCtx.use_card = resp.m_card;
 		responseActiveSkill = dynamic_cast<const ViewAsSkillV2 *>(
 			Sanguosha->getViewAsSkill(responseCtx.activationRef.key.skillName));
-		if (responseActiveSkill)
-			responseCtx.amount = responseActiveSkill->getBaseAmount();
+		if (responseActiveSkill) {
+			bool amountOk = false;
+			responseCtx.amount = getSkillInstanceAmount(
+				responseActiveSkill->getAmountRef(responseCtx), &amountOk);
+			if (!amountOk) responseCtx.amount = responseActiveSkill->getBaseAmount();
+		}
         responseIdentity = responseCtx;
         responseExecution = beginSkillExecution(responseCtx, QVariant::fromValue(resp));
 		resp.skillExecutionID = responseExecution.executionID();
@@ -5555,7 +5568,9 @@ bool Room::askForActiveSkill(ServerPlayer *player, CardUseStruct::CardUseReason 
 		context.sourceRef = resolveSkillInstanceRootRef(request.activationRef);
 		if (!context.sourceRef.isValid()) continue;
 		context.instanceID = instance.instanceID;
-		context.amount = skill->getBaseAmount();
+		bool amountOk = false;
+		context.amount = getSkillInstanceAmount(skill->getAmountRef(context), &amountOk);
+		if (!amountOk) context.amount = skill->getBaseAmount();
 		const bool quotaAvailable = skill->isUsable(context);
 		if (!quotaAvailable) continue;
 
@@ -5832,8 +5847,12 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		skillCardCtx.initiator = use.from;
 		activeSkill = dynamic_cast<const ViewAsSkillV2 *>(
 			Sanguosha->getViewAsSkill(skillCardCtx.activationRef.key.skillName));
-		if (activeSkill)
-			skillCardCtx.amount = activeSkill->getBaseAmount();
+		if (activeSkill) {
+			bool amountOk = false;
+			skillCardCtx.amount = getSkillInstanceAmount(
+				activeSkill->getAmountRef(skillCardCtx), &amountOk);
+			if (!amountOk) skillCardCtx.amount = activeSkill->getBaseAmount();
+		}
 		skillCardIdentity = skillCardCtx;
 		skillExecution = beginSkillExecution(skillCardCtx, QVariant::fromValue(use));
 		use.skillExecutionID = skillExecution.executionID();
@@ -6391,6 +6410,234 @@ bool Room::hasWelfare(const ServerPlayer*player) const
 		return player->isLord() && gameMode.isValid() && gameMode.lord_welfare;
 	}
 	return player->isLord()&&player_count > 4;
+}
+
+void Room::notifySkillInstanceAmount(ServerPlayer *owner, const SkillInstance &instance)
+{
+    if (!owner) return;
+    foreach (ServerPlayer *receiver, m_players) {
+        if (!canReceiveSkillInstance(receiver, owner, instance)) continue;
+        JsonArray payload;
+        payload << "amount" << owner->objectName() << instance.skillName << instance.instanceID
+                << instance.hasAmountOverride << instance.amountOverride;
+        doNotify(receiver, S_COMMAND_SKILL_INSTANCE, payload);
+    }
+}
+
+void Room::notifySkillInstanceCorrectState(ServerPlayer *owner, const SkillInstance &instance,
+                                           const QString &operation, const QString &key,
+                                           const QVariant &value)
+{
+    if (!owner) return;
+    foreach (ServerPlayer *receiver, m_players) {
+        if (!canReceiveSkillInstance(receiver, owner, instance)) continue;
+        JsonArray payload;
+        payload << "correct_state" << owner->objectName() << instance.skillName
+                << instance.instanceID << operation << key << value;
+        doNotify(receiver, S_COMMAND_SKILL_INSTANCE, payload);
+    }
+}
+
+static QString skillAmountGuardKey(const SkillInstanceRef &ref)
+{
+    return ref.ownerObjectName + QChar('\x1f') + ref.key.skillName
+        + QChar('#') + QString::number(ref.key.instanceID);
+}
+
+class SkillAmountRecursionGuard
+{
+public:
+    SkillAmountRecursionGuard(QSet<QString> &activeKeys, const QString &key)
+        : m_activeKeys(activeKeys), m_key(key) {}
+    ~SkillAmountRecursionGuard() { m_activeKeys.remove(m_key); }
+
+private:
+    QSet<QString> &m_activeKeys;
+    QString m_key;
+};
+
+static bool isCorrectSkillV2Definition(const Skill *skill)
+{
+    return dynamic_cast<const DistanceSkillV2 *>(skill)
+        || dynamic_cast<const MaxCardsSkillV2 *>(skill)
+        || dynamic_cast<const TargetModSkillV2 *>(skill)
+        || dynamic_cast<const AttackRangeSkillV2 *>(skill);
+}
+
+int Room::getSkillInstanceAmount(const SkillInstanceRef &ref, bool *ok) const
+{
+    if (ok) *ok = false;
+    if (!ref.isValid()) return 0;
+    ServerPlayer *owner = findPlayerByObjectName(ref.ownerObjectName, true);
+    if (!owner) return 0;
+    const SkillInstance *instance = owner->findSkillInstance(ref.key.skillName, ref.key.instanceID);
+    const Skill *skill = Sanguosha->getSkill(ref.key.skillName);
+    const AmountSkillV2 *amountSkill = dynamic_cast<const AmountSkillV2 *>(skill);
+    if (!instance || !amountSkill) return 0;
+    if (ok) *ok = true;
+    return instance->hasAmountOverride ? instance->amountOverride : amountSkill->getBaseAmount();
+}
+
+bool Room::setSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int amount,
+                                  const QString &reason)
+{
+    bool valid = false;
+    const int oldAmount = getSkillInstanceAmount(ref, &valid);
+    if (!valid) return false;
+    ServerPlayer *owner = findPlayerByObjectName(ref.ownerObjectName, true);
+    const SkillInstance *before = owner ? owner->findSkillInstance(ref.key.skillName, ref.key.instanceID) : nullptr;
+    if (!before) return false;
+    if (before->hasAmountOverride && oldAmount == amount) return true;
+
+    const QString guardKey = skillAmountGuardKey(ref);
+    if (m_changingSkillAmounts.contains(guardKey)) {
+        qWarning() << "Recursive skill amount change rejected:" << guardKey;
+        return false;
+    }
+    m_changingSkillAmounts.insert(guardKey);
+    SkillAmountRecursionGuard recursionGuard(m_changingSkillAmounts, guardKey);
+
+    SkillAmountChangeStruct change;
+    change.source = source;
+    change.skillRef = ref;
+    change.oldAmount = oldAmount;
+    change.newAmount = amount;
+    change.reason = reason;
+    QVariant data = QVariant::fromValue(change);
+    const bool intercepted = thread->trigger(EventSkillAmountChanging, this, owner, data);
+    SkillAmountChangeStruct updated = data.value<SkillAmountChangeStruct>();
+    updated.source = source;
+    updated.skillRef = ref;
+    updated.oldAmount = oldAmount;
+    updated.reason = reason;
+    updated.resetToBase = false;
+
+    bool changed = false;
+    if (!intercepted && !updated.canceled) {
+        changed = owner->setSkillInstanceAmountOverride(ref.key.skillName,
+                                                        ref.key.instanceID,
+                                                        updated.newAmount);
+        const SkillInstance *instance = owner->findSkillInstance(ref.key.skillName, ref.key.instanceID);
+        if (changed && instance) notifySkillInstanceAmount(owner, *instance);
+        if (changed) {
+            QVariant changedData = QVariant::fromValue(updated);
+            thread->trigger(EventSkillAmountChanged, this, owner, changedData);
+        }
+    }
+    return changed;
+}
+
+bool Room::addSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int delta,
+                                  const QString &reason)
+{
+    bool valid = false;
+    const int current = getSkillInstanceAmount(ref, &valid);
+    if (!valid) return false;
+    const qint64 next = static_cast<qint64>(current) + static_cast<qint64>(delta);
+    if (next < std::numeric_limits<int>::min() || next > std::numeric_limits<int>::max()) {
+        qWarning() << "Skill amount overflow rejected:" << ref.key.skillName << ref.key.instanceID;
+        return false;
+    }
+    return setSkillInstanceAmount(source, ref, static_cast<int>(next), reason);
+}
+
+bool Room::resetSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref,
+                                    const QString &reason)
+{
+    bool valid = false;
+    const int oldAmount = getSkillInstanceAmount(ref, &valid);
+    if (!valid) return false;
+    ServerPlayer *owner = findPlayerByObjectName(ref.ownerObjectName, true);
+    const SkillInstance *before = owner ? owner->findSkillInstance(ref.key.skillName, ref.key.instanceID) : nullptr;
+    const Skill *skill = Sanguosha->getSkill(ref.key.skillName);
+    const AmountSkillV2 *amountSkill = dynamic_cast<const AmountSkillV2 *>(skill);
+    if (!before || !amountSkill) return false;
+    if (!before->hasAmountOverride) return true;
+
+    const QString guardKey = skillAmountGuardKey(ref);
+    if (m_changingSkillAmounts.contains(guardKey)) {
+        qWarning() << "Recursive skill amount reset rejected:" << guardKey;
+        return false;
+    }
+    m_changingSkillAmounts.insert(guardKey);
+    SkillAmountRecursionGuard recursionGuard(m_changingSkillAmounts, guardKey);
+
+    SkillAmountChangeStruct change;
+    change.source = source;
+    change.skillRef = ref;
+    change.oldAmount = oldAmount;
+    change.newAmount = amountSkill->getBaseAmount();
+    change.reason = reason;
+    change.resetToBase = true;
+    QVariant data = QVariant::fromValue(change);
+    const bool intercepted = thread->trigger(EventSkillAmountChanging, this, owner, data);
+    SkillAmountChangeStruct updated = data.value<SkillAmountChangeStruct>();
+    updated.source = source;
+    updated.skillRef = ref;
+    updated.oldAmount = oldAmount;
+    updated.reason = reason;
+    updated.resetToBase = true;
+
+    bool changed = false;
+    if (!intercepted && !updated.canceled) {
+        if (updated.newAmount == amountSkill->getBaseAmount())
+            changed = owner->resetSkillInstanceAmountOverride(ref.key.skillName, ref.key.instanceID);
+        else
+            changed = owner->setSkillInstanceAmountOverride(ref.key.skillName,
+                                                            ref.key.instanceID,
+                                                            updated.newAmount);
+        const SkillInstance *instance = owner->findSkillInstance(ref.key.skillName, ref.key.instanceID);
+        if (changed && instance) notifySkillInstanceAmount(owner, *instance);
+        if (changed) {
+            QVariant changedData = QVariant::fromValue(updated);
+            thread->trigger(EventSkillAmountChanged, this, owner, changedData);
+        }
+    }
+    return changed;
+}
+
+bool Room::setSkillInstanceCorrectState(ServerPlayer *source, const SkillInstanceRef &ref,
+                                        const QString &key, const QVariant &value)
+{
+    Q_UNUSED(source);
+    if (!ref.isValid() || key.isEmpty()) return false;
+    ServerPlayer *owner = findPlayerByObjectName(ref.ownerObjectName, true);
+    const Skill *skill = Sanguosha->getSkill(ref.key.skillName);
+    if (!owner || !isCorrectSkillV2Definition(skill)
+        || !owner->setSkillInstanceCorrectStateValue(ref.key.skillName, ref.key.instanceID, key, value))
+        return false;
+    const SkillInstance *instance = owner->findSkillInstance(ref.key.skillName, ref.key.instanceID);
+    if (instance) notifySkillInstanceCorrectState(owner, *instance, "set", key, value);
+    return instance != nullptr;
+}
+
+bool Room::removeSkillInstanceCorrectState(ServerPlayer *source, const SkillInstanceRef &ref,
+                                           const QString &key)
+{
+    Q_UNUSED(source);
+    if (!ref.isValid() || key.isEmpty()) return false;
+    ServerPlayer *owner = findPlayerByObjectName(ref.ownerObjectName, true);
+    const Skill *skill = Sanguosha->getSkill(ref.key.skillName);
+    if (!owner || !isCorrectSkillV2Definition(skill)
+        || !owner->removeSkillInstanceCorrectStateValue(ref.key.skillName, ref.key.instanceID, key))
+        return false;
+    const SkillInstance *instance = owner->findSkillInstance(ref.key.skillName, ref.key.instanceID);
+    if (instance) notifySkillInstanceCorrectState(owner, *instance, "remove", key);
+    return instance != nullptr;
+}
+
+bool Room::clearSkillInstanceCorrectState(ServerPlayer *source, const SkillInstanceRef &ref)
+{
+    Q_UNUSED(source);
+    if (!ref.isValid()) return false;
+    ServerPlayer *owner = findPlayerByObjectName(ref.ownerObjectName, true);
+    const Skill *skill = Sanguosha->getSkill(ref.key.skillName);
+    if (!owner || !isCorrectSkillV2Definition(skill)
+        || !owner->clearSkillInstanceCorrectState(ref.key.skillName, ref.key.instanceID))
+        return false;
+    const SkillInstance *instance = owner->findSkillInstance(ref.key.skillName, ref.key.instanceID);
+    if (instance) notifySkillInstanceCorrectState(owner, *instance, "clear");
+    return instance != nullptr;
 }
 
 bool Room::hasPendingSummons() const

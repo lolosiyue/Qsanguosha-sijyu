@@ -134,9 +134,7 @@ ownsSkill(name)      → 明確的持有查詢
 - 舊 `TriggerSkill` 即使持有多個實例仍只執行一次。
 - 只有 `TriggerV2Skill` 逐實例建立 `SkillContext` 並獨立執行。
 - 需要實例狀態的舊 TriggerSkill 逐步遷移至 V2。
-- Distance／MaxCards／TargetMod／AttackRange 等數值被動預設不疊加。
-- 只有 `InstanceStackable=true` 才逐有效實例求和。
-- 現有反向的 `NoInstanceMultiply` 應由新正向屬性取代。
+- Legacy Distance／MaxCards／TargetMod／AttackRange 每個技能定義只計算一次；四個 CorrectSkillV2 類才依 selector 逐有效實例計算，詳見 `engine-correct-skills.md`。
 
 ### 3.7 TriggerV2Skill
 
@@ -277,7 +275,6 @@ struct SkillChangeStruct {
 
 - 實作全體／精確 instance invalidity。
 - 持有與有效查詢分離。
-- 新增 `InstanceStackable`。
 - 改寫數值修正聚合。
 
 驗收：封禁 #1 不影響 #2；未標記舊技能不疊加；標記技能正確求和。
@@ -332,7 +329,6 @@ struct SkillChangeStruct {
 - 列出全部 `acquireSkill()` 呼叫點，由使用者人工判斷是否加入 `hasSkill()` 防重。
 - 列出全部 EventAcquireSkill／EventLoseSkill 的 `data:toString()` 監聽者，審核逐實例重複事件語意。
 - 更新 `docs/TriggerV2Skill系統說明.md` 中已過時的 Skill 物件 instanceID 說明。
-- 更新 `docs/engine-correct-skills.md` 的 `InstanceStackable` 規則。
 - 重新產生 SWIG wrapper。
 - 執行完整 Release x64 編譯與遊戲測試。
 
@@ -352,7 +348,6 @@ struct SkillChangeStruct {
 | 10 | `can_trigger` 回傳精確 ID | 只建立指定 context |
 | 11 | 舊 TriggerSkill 多實例 | 仍只執行一次 |
 | 12 | 未標記數值被動多實例 | 只套用一次 |
-| 13 | `InstanceStackable=true` | 按有效實例求和 |
 | 14 | UI 由 1 實例變 2 實例 | 所有按鈕刷新並顯示 ID |
 | 15 | UI 由 2 實例變 1 實例 | 剩餘按鈕隱藏 ID |
 | 16 | 舊 AI 傳 skillInstanceID=0 | 解析最小有效實例並寫回 |

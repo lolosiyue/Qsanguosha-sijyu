@@ -344,6 +344,7 @@ public:
 
     Skill::LimitScope getLimitScope() const override { return m_limitScope; }
     SkillInstanceRef getUsageRef(const SkillContext &ctx) const override;
+    SkillInstanceRef getAmountRef(const SkillContext &ctx) const override;
     int getMaxUsageLimit(const SkillContext &ctx) const override { Q_UNUSED(ctx); return m_maxUsageLimit; }
 
     LuaFunction can_activate;
@@ -358,6 +359,7 @@ public:
     LuaFunction on_effect_target;
     LuaFunction on_effect_target_group;
     LuaFunction get_usage_ref;
+    LuaFunction get_amount_ref;
 
 private:
     TargetMode m_targetMode;
@@ -395,6 +397,18 @@ public:
     LuaFunction fixed_func;
 };
 
+class LuaDistanceSkillV2 : public DistanceSkillV2
+{
+public:
+    LuaDistanceSkillV2(const QString &name, Frequency frequency);
+
+    CorrectSkillResult getCorrection(const CorrectSkillContext &context) const override;
+    CorrectSkillResult getFixedValue(const CorrectSkillContext &context) const override;
+
+    LuaFunction correct_func;
+    LuaFunction fixed_func;
+};
+
 class LuaMaxCardsSkill : public MaxCardsSkill
 {
     Q_OBJECT
@@ -406,6 +420,18 @@ public:
     int getFixed(const Player *target) const;
 
     LuaFunction extra_func;
+    LuaFunction fixed_func;
+};
+
+class LuaMaxCardsSkillV2 : public MaxCardsSkillV2
+{
+public:
+    LuaMaxCardsSkillV2(const QString &name, Frequency frequency);
+
+    CorrectSkillResult getCorrection(const CorrectSkillContext &context) const override;
+    CorrectSkillResult getFixedValue(const CorrectSkillContext &context) const override;
+
+    LuaFunction correct_func;
     LuaFunction fixed_func;
 };
 
@@ -423,6 +449,16 @@ public:
     LuaFunction residue_func;
     LuaFunction distance_limit_func;
     LuaFunction extra_target_func;
+};
+
+class LuaTargetModSkillV2 : public TargetModSkillV2
+{
+public:
+    LuaTargetModSkillV2(const QString &name, const QString &pattern, Frequency frequency);
+
+    CorrectSkillResult getCorrection(const CorrectSkillContext &context) const override;
+
+    LuaFunction correct_func;
 };
 
 class LuaInvaliditySkill : public InvaliditySkill
@@ -448,6 +484,18 @@ public:
     int getFixed(const Player *target, bool include_weapon) const;
 
     LuaFunction extra_func;
+    LuaFunction fixed_func;
+};
+
+class LuaAttackRangeSkillV2 : public AttackRangeSkillV2
+{
+public:
+    LuaAttackRangeSkillV2(const QString &name, Frequency frequency);
+
+    CorrectSkillResult getCorrection(const CorrectSkillContext &context) const override;
+    CorrectSkillResult getFixedValue(const CorrectSkillContext &context) const override;
+
+    LuaFunction correct_func;
     LuaFunction fixed_func;
 };
 

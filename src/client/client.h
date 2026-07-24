@@ -409,6 +409,10 @@ signals:
     void skill_attached(const ClientPlayer *player, const QString &skill_name);
     void skill_detached(const ClientPlayer *player, const QString &skill_name);
     void skill_instances_reset();
+    void skill_instance_amount_changed(const ClientPlayer *player, const QString &skill_name,
+                                       int instance_id);
+    void skill_instance_correct_state_changed(const ClientPlayer *player, const QString &skill_name,
+                                              int instance_id, const QString &key);
     void do_filter();
 
     void nullification_asked(bool asked);

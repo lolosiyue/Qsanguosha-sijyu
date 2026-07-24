@@ -296,6 +296,18 @@ RoomScene::RoomScene(QMainWindow*main_window)
 
 	connect(ClientInstance,&Client::skill_updated,this,&RoomScene::updateSkill);
 	connect(ClientInstance, &Client::skill_instances_reset, this, [this]() { updateSkillButtons(); });
+	connect(ClientInstance, &Client::skill_instance_amount_changed, this,
+		[this](const ClientPlayer *, const QString &, int) {
+			updateSkillButtons();
+			enableTargets(dashboard->getSelected());
+			updateSelectedTargets();
+		});
+	connect(ClientInstance, &Client::skill_instance_correct_state_changed, this,
+		[this](const ClientPlayer *, const QString &, int, const QString &) {
+			updateSkillButtons();
+			enableTargets(dashboard->getSelected());
+			updateSelectedTargets();
+		});
 	connect(ClientInstance,&Client::card_description_updated,this,&RoomScene::updateCardDescription);
 
 	m_guanxingBox = new GuanxingBox;
@@ -2420,7 +2432,7 @@ void RoomScene::chooseCard(const ClientPlayer*player,const QString&flags,const Q
 {
     if (m_playerCardBox) {
         m_playerCardBox->clear();
-        delete m_playerCardBox;
+        m_playerCardBox->deleteLater();
         m_playerCardBox = nullptr;
     }
     if (m_choiceDialog) {
@@ -3555,7 +3567,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 		if(oldStatus==Client::ExecDialog){
 			if(m_playerCardBox){
 				m_playerCardBox->clear();
-				delete m_playerCardBox;
+				m_playerCardBox->deleteLater();
 				m_playerCardBox = nullptr;
 			}
 			if(m_choiceDialog!=nullptr&&m_choiceDialog->isVisible())
@@ -3977,7 +3989,7 @@ void RoomScene::doCancelButton()
 	}
 	case Client::ExecDialog: {
 		if (m_playerCardBox) {
-			m_playerCardBox->clear();
+			m_playerCardBox->cancel();
 		} else if (m_choiceDialog) {
 			m_choiceDialog->reject();
 		}

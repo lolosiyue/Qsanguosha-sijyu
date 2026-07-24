@@ -647,6 +647,9 @@ int Player::acquireSkill(const QString &skill_name, bool head, int instanceId)
     inst.parent = SkillInstanceKey();
     inst.visible = true;
     inst.state = QVariantMap();
+    inst.hasAmountOverride = false;
+    inst.amountOverride = 0;
+    inst.correctState.clear();
     inst.bindHead = head ? 1 : 2;
 
     if (instanceId > m_nextSkillInstanceIds.value(skill_name, 0))
@@ -1838,42 +1841,6 @@ QList<int> Player::getValidSkillInstanceIds(const QString &skill_name) const
     return result;
 }
 
-bool Player::hasSkillAmountOverride(const QString &skill_name, int instanceId) const
-{
-    if (instanceId <= 0)
-        return m_skillAmountOverride.contains(skill_name);
-    return m_skillAmountOverride.contains(QString("%1#%2").arg(skill_name).arg(instanceId));
-}
-
-int Player::getSkillAmountOverride(const QString &skill_name, int instanceId) const
-{
-    if (instanceId <= 0)
-        return m_skillAmountOverride.value(skill_name);
-    return m_skillAmountOverride.value(QString("%1#%2").arg(skill_name).arg(instanceId));
-}
-
-void Player::setSkillAmountOverride(const QString &skill_name, int amount, int instanceId)
-{
-    QString key = (instanceId <= 0) ? skill_name : QString("%1#%2").arg(skill_name).arg(instanceId);
-    m_skillAmountOverride.insert(key, amount);
-}
-
-void Player::removeSkillAmountOverride(const QString &skill_name, int instanceId)
-{
-    if (instanceId <= 0) {
-        m_skillAmountOverride.remove(skill_name);
-        // 同時移除所有單實例覆寫（全體覆寫被移除時，單實例也失去上層依據？依設計保留）
-        // 依方案 A：instanceID=0 為「全體覆寫」層，移除全體不影響已設的 #N 單實例覆寫
-    } else {
-        m_skillAmountOverride.remove(QString("%1#%2").arg(skill_name).arg(instanceId));
-    }
-}
-
-void Player::clearSkillAmountOverrides()
-{
-    m_skillAmountOverride.clear();
-}
-
 // ========================================
 // 技能多實例權威容器 (SSOT) API
 // ========================================
@@ -2080,6 +2047,87 @@ void Player::removeSkillInstanceStateValue(const QString &skillName, int instanc
     auto innerIt = outerIt->find(instanceID);
     if (innerIt == outerIt->end()) return;
     innerIt.value().state.remove(key);
+}
+
+bool Player::hasSkillInstanceAmountOverride(const QString &skillName, int instanceID) const
+{
+    const SkillInstance *instance = findSkillInstance(skillName, instanceID);
+    return instance && instance->hasAmountOverride;
+}
+
+int Player::getSkillInstanceAmountOverride(const QString &skillName, int instanceID) const
+{
+    const SkillInstance *instance = findSkillInstance(skillName, instanceID);
+    return instance ? instance->amountOverride : 0;
+}
+
+bool Player::setSkillInstanceAmountOverride(const QString &skillName, int instanceID, int amount)
+{
+    auto outerIt = m_skillInstances.find(skillName);
+    if (outerIt == m_skillInstances.end()) return false;
+    auto innerIt = outerIt->find(instanceID);
+    if (innerIt == outerIt->end()) return false;
+    innerIt.value().hasAmountOverride = true;
+    innerIt.value().amountOverride = amount;
+    return true;
+}
+
+bool Player::resetSkillInstanceAmountOverride(const QString &skillName, int instanceID)
+{
+    auto outerIt = m_skillInstances.find(skillName);
+    if (outerIt == m_skillInstances.end()) return false;
+    auto innerIt = outerIt->find(instanceID);
+    if (innerIt == outerIt->end()) return false;
+    innerIt.value().hasAmountOverride = false;
+    innerIt.value().amountOverride = 0;
+    return true;
+}
+
+QVariantMap Player::getSkillInstanceCorrectState(const QString &skillName, int instanceID) const
+{
+    const SkillInstance *instance = findSkillInstance(skillName, instanceID);
+    return instance ? instance->correctState : QVariantMap();
+}
+
+QVariant Player::getSkillInstanceCorrectStateValue(const QString &skillName, int instanceID,
+                                                    const QString &key,
+                                                    const QVariant &defaultValue) const
+{
+    const SkillInstance *instance = findSkillInstance(skillName, instanceID);
+    return instance ? instance->correctState.value(key, defaultValue) : defaultValue;
+}
+
+bool Player::setSkillInstanceCorrectStateValue(const QString &skillName, int instanceID,
+                                                const QString &key, const QVariant &value)
+{
+    if (key.isEmpty()) return false;
+    auto outerIt = m_skillInstances.find(skillName);
+    if (outerIt == m_skillInstances.end()) return false;
+    auto innerIt = outerIt->find(instanceID);
+    if (innerIt == outerIt->end()) return false;
+    innerIt.value().correctState.insert(key, value);
+    return true;
+}
+
+bool Player::removeSkillInstanceCorrectStateValue(const QString &skillName, int instanceID,
+                                                   const QString &key)
+{
+    auto outerIt = m_skillInstances.find(skillName);
+    if (outerIt == m_skillInstances.end()) return false;
+    auto innerIt = outerIt->find(instanceID);
+    if (innerIt == outerIt->end() || !innerIt.value().correctState.contains(key)) return false;
+    innerIt.value().correctState.remove(key);
+    return true;
+}
+
+bool Player::clearSkillInstanceCorrectState(const QString &skillName, int instanceID)
+{
+    auto outerIt = m_skillInstances.find(skillName);
+    if (outerIt == m_skillInstances.end()) return false;
+    auto innerIt = outerIt->find(instanceID);
+    if (innerIt == outerIt->end()) return false;
+    innerIt.value().correctState.clear();
+    return true;
 }
 
 QString Player::getSkillDescription() const
