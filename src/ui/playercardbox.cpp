@@ -6,7 +6,7 @@
 #include "client.h"
 #include "clientstruct.h"
 #include "timed-progressbar.h"
-#include "qsanbutton.h"
+#include "button.h"
 
 #include <QGraphicsProxyWidget>
 
@@ -26,10 +26,15 @@ const int PlayerCardBox::intervalBetweenRows = 5;
 const int PlayerCardBox::intervalBetweenCards = 3;
 
 PlayerCardBox::PlayerCardBox()
-    : player(NULL), progressBar(NULL), cancelButton(NULL), canCancel(false),
+    : player(NULL), canCancel(false), progressBar(NULL),
+      cancelButton(new Button(tr("cancel"), 0.6)),
       rowCount(0), intervalsBetweenAreas(-1), intervalsBetweenRows(0), maxCardsInOneRow(0)
 {
     setZValue(1000);
+    cancelButton->setParentItem(this);
+    cancelButton->setObjectName("cancel");
+    cancelButton->hide();
+    connect(cancelButton, &Button::clicked, this, &PlayerCardBox::cancel);
 }
 
 void PlayerCardBox::chooseCard(const QString &reason, const ClientPlayer *player,
@@ -119,7 +124,8 @@ void PlayerCardBox::chooseCard(const QString &reason, const ClientPlayer *player
                     cards << NULL;
                 }
             }
-            arrangeCards(cards, QPoint(startX, nameRects.at(index).y()));
+            // Keep hidden cards face-down while preserving the id returned for this position.
+            arrangeCards(cards, QPoint(startX, nameRects.at(index).y()), handIds);
         }
 
         ++ index;
@@ -157,14 +163,12 @@ void PlayerCardBox::chooseCard(const QString &reason, const ClientPlayer *player
         arrangeCards(player->getJudgingArea(), QPoint(startX, nameRects.at(index).y()));
 
     if (canCancel) {
-        if (!cancelButton) {
-            cancelButton = new QSanButton("platter", "cancel", this);
-            cancelButton->setRect(QRect(0, 0, 80, 30));
-        }
         cancelButton->setEnabled(true);
-        cancelButton->setPos(boundingRect().width() - 90, boundingRect().height() - 40);
+        const qreal timeoutHeight = ServerInfo.OperationTimeout != 0 ? 12 : 0;
+        cancelButton->setPos((boundingRect().width() - cancelButton->boundingRect().width()) / 2,
+                             boundingRect().height() - bottomBlankWidth - timeoutHeight
+                             - cancelButton->boundingRect().height());
         cancelButton->show();
-        connect(cancelButton, &QSanButton::clicked, this, &PlayerCardBox::cancel);
     }
 
     if (ServerInfo.OperationTimeout != 0) {
@@ -216,6 +220,9 @@ QRectF PlayerCardBox::boundingRect() const
 
     if (ServerInfo.OperationTimeout != 0)
         height += 12;
+
+    if (canCancel)
+        height += cancelButton->boundingRect().height() + intervalBetweenAreas;
 
     return QRectF(0, 0, width, height);
 }
@@ -280,7 +287,6 @@ void PlayerCardBox::clear()
     }
 
     if (cancelButton != NULL) {
-        cancelButton->disconnect();
         cancelButton->hide();
     }
 
@@ -320,25 +326,31 @@ void PlayerCardBox::updateNumbers(const int &cardNumber)
     nameRects << QRect(verticalBlankWidth, y, placeNameAreaWidth, height);
 }
 
-void PlayerCardBox::arrangeCards(const QList<const Card *> &cards, const QPoint &topLeft)
+void PlayerCardBox::arrangeCards(const QList<const Card *> &cards, const QPoint &topLeft,
+                                 const QList<int> &selectionIds)
 {
     QList<CardItem *> areaItems;
+    int cardIndex = 0;
     foreach (const Card *card, cards) {
         CardItem *item = new CardItem(card);
+        const int selectionId = card ? card->getEffectiveId()
+                                     : selectionIds.value(cardIndex, Card::S_UNKNOWN_CARD_ID);
+        item->setProperty("playerCardBoxSelectionId", selectionId);
         item->setAutoBack(false);
         item->resetTransform();
         item->setParentItem(this);
         item->setFlag(ItemIsMovable, false);
-        if (card) {
-            item->setEnabled(!disabledIds.contains(card->getEffectiveId())
+        if (selectionId >= 0) {
+            item->setEnabled(!disabledIds.contains(selectionId)
                             && (method != Card::MethodDiscard
-                    || Self->canDiscard(player, card->getEffectiveId())));
+                    || Self->canDiscard(player, selectionId)));
         } else {
             item->setEnabled(method != Card::MethodDiscard || Self->canDiscard(player, "h"));
         }
         connect(item, &CardItem::clicked, this, &PlayerCardBox::reply);
         items << item;
         areaItems << item;
+        ++ cardIndex;
     }
 
     int n = items.size();
@@ -372,7 +384,7 @@ void PlayerCardBox::reply()
     int id = -2;
 
     if (item)
-        id = item->getId();
+        id = item->property("playerCardBoxSelectionId").toInt();
 
     clear();
     ClientInstance->onPlayerChooseCard(id);

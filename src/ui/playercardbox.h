@@ -6,9 +6,9 @@
 #include "player.h"
 
 class ClientPlayer;
+class Button;
 class QGraphicsProxyWidget;
 class QSanCommandProgressBar;
-class QSanButton;
 
 class PlayerCardBox : public GraphicsBox
 {
@@ -32,7 +32,8 @@ private:
     void paintArea(const QString &name, QPainter *painter);
     int getRowCount(const int &cardNumber) const;
     void updateNumbers(const int &cardNumber);
-    void arrangeCards(const QList<const Card *> &cards, const QPoint &topLeft);
+    void arrangeCards(const QList<const Card *> &cards, const QPoint &topLeft,
+                      const QList<int> &selectionIds = QList<int>());
 
     const ClientPlayer *player;
     QString flags;
@@ -44,7 +45,7 @@ private:
 
     QGraphicsProxyWidget *progressBarItem;
     QSanCommandProgressBar *progressBar;
-    QSanButton *cancelButton;
+    Button *cancelButton;
 
     QList<QRect> nameRects;
 
