@@ -381,7 +381,8 @@ signals:
     void player_revived(const QString &who);
     void card_shown(const QString &player_name, QList<int> card_ids);
     void virtual_card_shown(const QString &player_name, const QString &card_name,
-        const QString &suit, int number, const QString &skill_name);
+        const QString &suit, int number, const QString &skill_name, const QList<int> &subcard_ids,
+        const QString &target_name);
     void log_received(const QStringList &log_str);
     void guanxing(const QList<int> &card_ids, int single_side);
     void mirror_guanxing_start(const QString &who, bool up_only, const QList<int> &cards);

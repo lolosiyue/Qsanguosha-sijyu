@@ -542,7 +542,8 @@ private slots:
 
     void showCard(const QString &player_name, QList<int> card_ids);
     void showVirtualCard(const QString &player_name, const QString &card_name,
-        const QString &suit, int number, const QString &skill_name);
+        const QString &suit, int number, const QString &skill_name, const QList<int> &subcard_ids,
+        const QString &target_name);
     void viewDistance();
     void viewMaxCards();
 

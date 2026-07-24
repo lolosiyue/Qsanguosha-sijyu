@@ -6200,7 +6200,9 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 				if (wrapped->isModified()) broadcastUpdateCard(m_players, ids.first(), wrapped);
 				//else broadcastResetCard(m_players, ids.first());
 			} else if (use.card->getTypeId() != Card::TypeSkill) {
-				showVirtualCard(use.from, use.card);
+				ServerPlayer *displayTarget = use.to.size() == 1 && use.to.first() != use.from
+					? use.to.first() : nullptr;
+				showVirtualCard(use.from, use.card, displayTarget);
 			}
 			if (!skipOnUse) {
 				cardProcessingStarted = true;
@@ -10139,7 +10141,7 @@ void Room::showCard(ServerPlayer*player, QList<int> card_ids, QList<ServerPlayer
 		thread->trigger(ChoiceMade, this, p, data);
 }
 
-void Room::showVirtualCard(ServerPlayer *player, const Card *card)
+void Room::showVirtualCard(ServerPlayer *player, const Card *card, ServerPlayer *target)
 {
 	if (player == nullptr || card == nullptr)
 		return;
@@ -10153,6 +10155,8 @@ void Room::showVirtualCard(ServerPlayer *player, const Card *card)
 	args << Card::Suit2String(card->getSuit());
 	args << card->getNumber();
 	args << card->getSkillName();
+	args << ListI2S(card->getSubcards()).join("+");
+	args << (target ? target->objectName() : QString());
 
 	doBroadcastNotify(S_COMMAND_SHOW_VIRTUAL_CARD, args);
 }

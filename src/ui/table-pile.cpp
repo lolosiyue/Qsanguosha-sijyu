@@ -58,6 +58,7 @@ void TablePile::_markClearance(CardItem *item)
 
 void TablePile::clear(bool delayRequest)
 {
+	m_suppressedConvertedCardIds.clear();
 	if (m_visibleCards.isEmpty()) return;
 	_m_mutex_pileCards.lock();
 	// check again since we just gain the lock.
@@ -71,6 +72,14 @@ void TablePile::clear(bool delayRequest)
 	}
 
 	_m_mutex_pileCards.unlock();
+}
+
+void TablePile::suppressConvertedSubcards(const QList<int> &cardIds)
+{
+	foreach (int cardId, cardIds) {
+		if (!m_suppressedConvertedCardIds.contains(cardId))
+			m_suppressedConvertedCardIds << cardId;
+	}
 }
 
 void TablePile::_fadeOutCardsLocked(const QList<CardItem *> &cards)
@@ -111,6 +120,15 @@ void TablePile::showJudgeResult(int cardId, bool takeEffect)
 
 bool TablePile::_addCardItems(QList<CardItem *> &card_items, const CardsMoveStruct &moveInfo)
 {
+	// The converted virtual card replaces its physical subcards in the table presentation only.
+	for (int i = card_items.length() - 1; i >= 0; --i) {
+		CardItem *cardItem = card_items.at(i);
+		if (!m_suppressedConvertedCardIds.removeOne(cardItem->getId()))
+			continue;
+		card_items.removeAt(i);
+		cardItem->hide();
+		cardItem->deleteLater();
+	}
 	if (card_items.isEmpty())
 		return false;/*
 	else if (moveInfo.from_place == Player::PlaceDelayedTrick

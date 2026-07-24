@@ -70,6 +70,8 @@ public:
         return m_hasVirtualCardVisual;
     }
 
+    void setConvertedCardVisual(bool converted);
+
     void setFrozen(bool is_frozen);
 
     inline void showFootnote()
@@ -128,6 +130,7 @@ private:
     Card::Suit m_virtualCardSuit;
     int m_virtualCardNumber;
     bool m_virtualCardBlack;
+    bool m_hasConvertedCardVisual;
     QString _m_avatarName;
     QPointF home_pos;
     QPointF _m_lastMousePressScenePos;

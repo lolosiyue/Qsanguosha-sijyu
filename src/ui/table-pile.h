@@ -39,6 +39,7 @@ public:
     void adjustCards();
     virtual QRectF boundingRect() const;
     void showJudgeResult(int cardId, bool takeEffect);
+    void suppressConvertedSubcards(const QList<int> &cardIds);
 
 public slots:
     void clear(bool delayRequest = true);
@@ -57,6 +58,7 @@ protected:
     QRect m_cardsDisplayRegion;
     int m_timer;
     int m_currentTime;
+    QList<int> m_suppressedConvertedCardIds;
 };
 
 #endif

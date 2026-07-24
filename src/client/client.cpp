@@ -1948,7 +1948,8 @@ void Client::showCard(const QVariant &show_str)
 void Client::showVirtualCard(const QVariant &arg)
 {
 	JsonArray args = arg.value<JsonArray>();
-	if (args.size() != 5)
+	// Five- and six-field payloads are retained for compatibility with older replay files.
+	if (args.size() < 5 || args.size() > 7)
 		return;
 
 	QString player_name = args[0].toString();
@@ -1956,12 +1957,16 @@ void Client::showVirtualCard(const QVariant &arg)
 	QString suit = args[2].toString();
 	int number = args[3].toInt();
 	QString skill_name = args[4].toString();
+	QList<int> subcard_ids;
+	if (args.size() >= 6 && !args[5].toString().isEmpty())
+		subcard_ids = ListS2I(args[5].toString().split("+"));
+	const QString target_name = args.size() == 7 ? args[6].toString() : QString();
 	if (replayer && !skill_name.isEmpty() && !m_replaySawCardProvenance && !m_replayWarnedLegacyProvenance) {
 		qWarning("replay has no CardProvenance V1; source/activation instance unavailable");
 		m_replayWarnedLegacyProvenance = true;
 	}
 
-	emit virtual_card_shown(player_name, card_name, suit, number, skill_name);
+	emit virtual_card_shown(player_name, card_name, suit, number, skill_name, subcard_ids, target_name);
 }
 
 void Client::cardProvenance(const QVariant &arg)
