@@ -304,7 +304,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
         room->saveSnapshot("turn");
 
         if(room->getTag("Global_ExtraTurn" + player->objectName()).toBool())
-            room->setPlayerMark(player,"@extra_turn",1);
+			room->addPlayerMark(player,"@extra_turn");
 		else if(player==room->getAlivePlayers().first()) {
 			QVariant rsdata = room->getTag("TurnLengthCount").toInt()+1;
 			if(player->getMark("TurnLengthCount")<rsdata.toInt()){
@@ -336,6 +336,8 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
             player->play();
         } else
             player->turnOver();
+
+		room->processScheduledExtraTurns();
 
         if(room->getTag("Global_ExtraTurn"+player->objectName()).toBool())
             room->removePlayerMark(player,"@extra_turn");

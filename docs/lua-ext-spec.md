@@ -1383,13 +1383,17 @@ new_card:addSubcard(existing_card:getId())
 
 ---
 
-## 18. require 與外部模組
+## 18. 引擎工具與外部模組
 
 ```lua
-require "ExtraTurnUtils"          -- 載入外部工具
 require "lua.config"              -- 載入配置
 -- 注意：require 使用不帶副檔名的模組名稱
+
+-- 額外回合由 Room 的 C++ 排程系統統一處理
+room:scheduleExtraTurn(target, self:objectName())
 ```
+
+額外回合完整介面及多實例用法見 [額外回合排程系統](extra-turn-scheduling.md)。
 
 ---
 

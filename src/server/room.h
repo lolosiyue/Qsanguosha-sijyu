@@ -15,6 +15,7 @@ class GameSnapshot;
 struct lua_State;
 struct LogMessage;
 class ServerPlayer;
+class GameRule;
 class RoomThread;
 class RoomThread3v3;
 class RoomThreadXMode;
@@ -41,6 +42,8 @@ public:
     friend class RoomThread3v3;
     friend class RoomThreadXMode;
     friend class RoomThread1v1;
+    friend class ServerPlayer;
+    friend class GameRule;
 
     typedef void (Room::*Callback)(ServerPlayer*, const QVariant&);
     typedef bool (Room::*ResponseVerifyFunction)(ServerPlayer*, const QVariant&, void*);
@@ -63,6 +66,13 @@ public:
     RoomThread*getThread() const;
     ServerPlayer*getCurrent() const;
     void setCurrent(ServerPlayer*current);
+    int scheduleExtraTurn(ServerPlayer *player, const QString &reason = QString(),
+                          QList<Player::Phase> phases = QList<Player::Phase>(), int times = 1);
+    int scheduleExtraTurn(ServerPlayer *player, const SkillInstanceRef &sourceRef,
+                          QList<Player::Phase> phases = QList<Player::Phase>(), int times = 1);
+    bool isCurrentExtraTurn() const;
+    QString getCurrentExtraTurnReason() const;
+    SkillInstanceRef getCurrentExtraTurnSourceRef() const;
     ServerPlayer*getActualController(ServerPlayer*player) const;
     void setPlayerController(ServerPlayer *target, ServerPlayer *controller = nullptr);
     void syncControllerPileVisible(ServerPlayer *target, ServerPlayer *controller);
@@ -617,6 +627,30 @@ protected:
     int _m_Id;
 
 private:
+    struct ExtraTurnRequest {
+        ServerPlayer *player;
+        QList<Player::Phase> phases;
+        QString reason;
+        SkillInstanceRef sourceRef;
+
+        ExtraTurnRequest()
+            : player(nullptr) {}
+    };
+
+    struct ExtraTurnContext {
+        ServerPlayer *player;
+        QString reason;
+        SkillInstanceRef sourceRef;
+
+        ExtraTurnContext()
+            : player(nullptr) {}
+    };
+
+    void executeExtraTurn(ServerPlayer *player, QList<Player::Phase> phases,
+                          const QString &reason, const SkillInstanceRef &sourceRef);
+    void processScheduledExtraTurns();
+    void restoreExtraTurnRequests(const QList<ExtraTurnRequest> &requests);
+
     void notifySkillInstanceSnapshot(ServerPlayer *receiver);
     void notifySkillInstanceUpsert(ServerPlayer *owner, const SkillInstance &instance);
     void notifySkillInstanceRemove(ServerPlayer *owner, const SkillInstance &instance);
@@ -640,6 +674,9 @@ private:
     SkillExecutionRegistry m_skillExecutions;
     QSet<QString> m_changingSkillAmounts;
     SkillInstanceUtils::UsageReservationLedger m_activeSkillUsageReservations;
+    QList<ExtraTurnRequest> m_scheduledExtraTurns;
+    QList<ExtraTurnContext> m_extraTurnContexts;
+    bool m_processingScheduledExtraTurns;
     int chooseSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skillName,
                             bool visibleOnly, bool acquiredOnly);
     bool removeSkillInstanceFromPlayer(ServerPlayer *owner, const QString &skillName, int instanceId,
