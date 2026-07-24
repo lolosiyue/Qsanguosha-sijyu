@@ -2086,6 +2086,17 @@ QString Player::getSkillDescription() const
 {
     QString description;
     QStringList relateds;
+	QList<const Skill *> visibleSkills = getVisibleSkillList();
+	bool useInnateSkillsAfterDeath = isDead() && visibleSkills.isEmpty();
+	if (useInnateSkillsAfterDeath) {
+		// Death clears runtime skill instances; retain the former UI behaviour by
+		// describing the character's innate skills without restoring ownership.
+		foreach (const QString &skillName, skills) {
+			const Skill *skill = Sanguosha->getSkill(skillName);
+			if (skill && skill->isVisible())
+				visibleSkills << skill;
+		}
+	}
 	const General *general = getGeneral();
 	if (general&&general->objectName()!="anjiang")
 		relateds << general->getRelatedSkillNames();
@@ -2099,13 +2110,14 @@ QString Player::getSkillDescription() const
 			if (general) basara_list.append(general->getVisibleSkillList());
         }
     }
-    foreach(const Skill *skill, getVisibleSkillList()){
+    foreach(const Skill *skill, visibleSkills){
         if (skill->isAttachedLordSkill() || basara_list.contains(skill))
             continue;
         QString desc = skill->getDescription(this);
 		{
 			// Use cached skill validity to avoid calling into Lua from UI thread
-			bool skillOwned = ownsSkill(skill->objectName());
+			bool skillOwned = ownsSkill(skill->objectName())
+				|| (useInnateSkillsAfterDeath && skills.contains(skill->objectName()));
 			bool skillValid = true;
 			if (skillOwned) {
 				if (!skill->isAttachedLordSkill() && !skill->property("IgnoreInvalidity").toBool() && skill->isVisible()) {
