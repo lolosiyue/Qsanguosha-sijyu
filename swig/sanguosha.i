@@ -1801,6 +1801,13 @@ public:
 	RoomThread*getThread() const;
 	ServerPlayer*getCurrent() const;
 	void setCurrent(ServerPlayer*current);
+	int scheduleExtraTurn(ServerPlayer *player, const char *reason = "",
+	                      QList<Player::Phase> phases = QList<Player::Phase>(), int times = 1);
+	int scheduleExtraTurn(ServerPlayer *player, const SkillInstanceRef &sourceRef,
+	                      QList<Player::Phase> phases = QList<Player::Phase>(), int times = 1);
+	bool isCurrentExtraTurn() const;
+	QString getCurrentExtraTurnReason() const;
+	SkillInstanceRef getCurrentExtraTurnSourceRef() const;
 	int alivePlayerCount() const;
 	QList<ServerPlayer*> getOtherPlayers(ServerPlayer*except, bool include_dead = false) const;
 	QList<ServerPlayer*> getPlayers() const;

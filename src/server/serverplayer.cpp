@@ -827,6 +827,7 @@ bool ServerPlayer::changePhase(Phase from, Phase to)
 	if(phase_change.to == NotActive){
 		room->broadcastProperty(this, "phase");
 		room->getThread()->trigger(EventPhaseStart, room, this);
+		room->processScheduledExtraTurns();
 		return false;
 	}
 	//if (!phases.isEmpty()) phases.removeFirst();
@@ -1694,31 +1695,7 @@ void ServerPlayer::removeGeneralFromPile(const QString &pile_name, const QString
 
 void ServerPlayer::gainAnExtraTurn(QList<Phase> phases)
 {
-	ServerPlayer *current = room->getCurrent();
-	try {
-		room->setCurrent(this);
-		if(phases.isEmpty()) phases << RoundStart << Start << Judge << Draw << Play << Discard << Finish;
-		QVariantList Qphases;
-		foreach (Phase p, phases)
-			Qphases << (int)p;
-		setTag("extraTurnPhases", QVariant(Qphases));
-		room->setTag("Global_ExtraTurn" + objectName(), true);
-		room->getThread()->trigger(TurnStart, room, this);
-		room->removeTag("Global_ExtraTurn" + objectName());
-		room->setCurrent(current);
-	}catch (TriggerEvent triggerEvent) {
-		if (triggerEvent == TurnBroken) {
-			if (getPhase() != NotActive) {
-				QString gameRule = "game_rule";
-				if (room->getMode() == "04_1v3") gameRule = "hulaopass_mode";
-				const GameRule *game_rule = qobject_cast<const GameRule *>(Sanguosha->getSkill(gameRule));
-				if (game_rule) game_rule->trigger(EventPhaseEnd, room, this);
-				changePhase(getPhase(), NotActive);
-			}
-			room->setCurrent(current);
-		}
-		throw triggerEvent;
-	}
+	room->executeExtraTurn(this, phases, QString(), SkillInstanceRef());
 }
 
 void ServerPlayer::copyFrom(ServerPlayer *sp)
