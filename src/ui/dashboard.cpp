@@ -1993,8 +1993,8 @@ void Dashboard::updatePending()
         : view_as_skill->viewAs(cards);
     if (new_pending_card) {
         const_cast<Card *>(new_pending_card)->setSkillInstanceID(m_viewAsSkillInstanceID);
-        if (activeSkill)
-            const_cast<Card *>(new_pending_card)->setActivationSkill(activeSkill->objectName(), m_viewAsSkillInstanceID);
+		// The generated SkillCard name may differ from the clicked ViewAsSkill.
+		const_cast<Card *>(new_pending_card)->setActivationSkill(view_as_skill->objectName(), m_viewAsSkillInstanceID);
 		const SkillInstance *instance = m_player->findSkillInstance(activeSkill ? activeSkill->objectName() : view_as_skill->objectName(),
 			m_viewAsSkillInstanceID);
 		if (instance && instance->parentRef.isValid())
