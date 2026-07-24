@@ -323,6 +323,7 @@ private:
     QString guhuo_log, onsole_target, onsole_owner;
 
     QList<QGraphicsPixmapItem *> role_items;
+    QString m_roleState;
     CardContainer *card_container;
     PileContainer *pileContainer;
 
