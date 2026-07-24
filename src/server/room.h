@@ -327,6 +327,18 @@ public:
 
     int acquireSkill(ServerPlayer*player, const Skill*skill, bool open = true, bool getmark = true, bool event_and_log = true);
     int acquireSkill(ServerPlayer*player, const QString&skill_name, bool open = true, bool getmark = true, bool event_and_log = true);
+    int getSkillInstanceAmount(const SkillInstanceRef &ref, bool *ok = nullptr) const;
+    bool setSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int amount,
+                                const QString &reason = QString());
+    bool addSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int delta,
+                                const QString &reason = QString());
+    bool resetSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref,
+                                  const QString &reason = QString());
+    bool setSkillInstanceCorrectState(ServerPlayer *source, const SkillInstanceRef &ref,
+                                      const QString &key, const QVariant &value);
+    bool removeSkillInstanceCorrectState(ServerPlayer *source, const SkillInstanceRef &ref,
+                                         const QString &key);
+    bool clearSkillInstanceCorrectState(ServerPlayer *source, const SkillInstanceRef &ref);
     void addSkillInvalidity(ServerPlayer *target, const QString &skillName, const QString &sourceName, const QString &reason, int instanceId = 0);
     void removeSkillInvalidity(ServerPlayer *target, const QString &skillName, const QString &sourceName, const QString &reason, int instanceId = 0);
     void clearSkillInvalidityBySource(ServerPlayer *source);
@@ -608,6 +620,10 @@ private:
     void notifySkillInstanceSnapshot(ServerPlayer *receiver);
     void notifySkillInstanceUpsert(ServerPlayer *owner, const SkillInstance &instance);
     void notifySkillInstanceRemove(ServerPlayer *owner, const SkillInstance &instance);
+    void notifySkillInstanceAmount(ServerPlayer *owner, const SkillInstance &instance);
+    void notifySkillInstanceCorrectState(ServerPlayer *owner, const SkillInstance &instance,
+                                         const QString &operation, const QString &key = QString(),
+                                         const QVariant &value = QVariant());
     void notifyCardProvenance(const QString &kind, ServerPlayer *initiator, const Card *card,
                               const SkillInstanceRef &sourceRef, const SkillInstanceRef &activationRef);
     SkillInstanceRef resolveSkillInstanceRootRef(const SkillInstanceRef &ref) const;
@@ -622,6 +638,7 @@ private:
     void commitActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
     void recordSkillExecutionAudit(const SkillContext &context, SkillExecutionResult result) const;
     SkillExecutionRegistry m_skillExecutions;
+    QSet<QString> m_changingSkillAmounts;
     SkillInstanceUtils::UsageReservationLedger m_activeSkillUsageReservations;
     int chooseSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skillName,
                             bool visibleOnly, bool acquiredOnly);

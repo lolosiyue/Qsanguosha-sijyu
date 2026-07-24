@@ -189,6 +189,19 @@ public:
     void setSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &value);
     QVariant getSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &defaultValue = QVariant()) const;
     void removeSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key);
+    bool hasSkillInstanceAmountOverride(const QString &skillName, int instanceID) const;
+    int getSkillInstanceAmountOverride(const QString &skillName, int instanceID) const;
+    bool setSkillInstanceAmountOverride(const QString &skillName, int instanceID, int amount);
+    bool resetSkillInstanceAmountOverride(const QString &skillName, int instanceID);
+    QVariantMap getSkillInstanceCorrectState(const QString &skillName, int instanceID) const;
+    QVariant getSkillInstanceCorrectStateValue(const QString &skillName, int instanceID,
+                                               const QString &key,
+                                               const QVariant &defaultValue = QVariant()) const;
+    bool setSkillInstanceCorrectStateValue(const QString &skillName, int instanceID,
+                                           const QString &key, const QVariant &value);
+    bool removeSkillInstanceCorrectStateValue(const QString &skillName, int instanceID,
+                                              const QString &key);
+    bool clearSkillInstanceCorrectState(const QString &skillName, int instanceID);
     virtual QString getGameMode() const = 0;
     bool isClientPlayer() const;
 
@@ -313,12 +326,6 @@ public:
     // instanceId = 0：全體覆寫（套用至所有同名實例，含 innate）
     // instanceId = N：僅套用至 #N 實例
     // 結算優先序：單實例覆寫 > 全體覆寫 > 技能原生回傳值
-    bool hasSkillAmountOverride(const QString &skill_name, int instanceId = 0) const;
-    int getSkillAmountOverride(const QString &skill_name, int instanceId = 0) const;
-    void setSkillAmountOverride(const QString &skill_name, int amount, int instanceId = 0);
-    void removeSkillAmountOverride(const QString &skill_name, int instanceId = 0);
-    void clearSkillAmountOverrides();
-
     virtual bool isProhibited(const Player *to, const Card *card, const QList<const Player *> &others = QList<const Player *>()) const;
     virtual bool isPindianProhibited(const Player *to) const;
     bool canSlashWithoutCrossbow(const Card *slash = nullptr) const;
@@ -475,7 +482,6 @@ protected:
     QMap<QString, QHash<QString, QString> > card_description_swaps;
     // key: "skillName" (全體覆寫) 或 "skillName#N" (單實例覆寫)
     // value: 該實例每實例貢獻的 modified_amount
-    QMap<QString, int> m_skillAmountOverride;
     QVariantMap tag;
     QList<int> shown_handcards;
     QList<int> broken_equips;

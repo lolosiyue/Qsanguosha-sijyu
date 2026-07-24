@@ -538,6 +538,7 @@ const Scenario*Engine::getScenario(const QString &name) const
 
 void Engine::addSkills(QList<const Skill*> all_skills)
 {
+    QWriteLocker locker(&m_rwLock);
     foreach (const Skill* skill, all_skills) {
         if (skill) {
             Skill *mutableSkill = const_cast<Skill*>(skill);
@@ -545,9 +546,31 @@ void Engine::addSkills(QList<const Skill*> all_skills)
 
             if (skills.contains(name)) {
                 QMessageBox::warning(nullptr, "", tr("Duplicated skill : %1").arg(name));
+                const QPointer<Skill> previous = skills.value(name);
+                m_prohibitSkills.removeAll(previous);
+                m_distanceSkills.removeAll(previous);
+                m_maxCardsSkills.removeAll(previous);
+                m_targetModSkills.removeAll(previous);
+                m_invaliditySkills.removeAll(previous);
+                m_globalTriggerSkills.removeAll(previous);
+                m_attackRangeSkills.removeAll(previous);
+                m_viewAsEquipSkills.removeAll(previous);
+                m_cardLimitSkills.removeAll(previous);
+                m_prohibitPindianSkills.removeAll(previous);
             }
 
             skills.insert(name, mutableSkill);
+            if (dynamic_cast<const ProhibitSkill *>(skill)) m_prohibitSkills << mutableSkill;
+            if (dynamic_cast<const DistanceSkill *>(skill)) m_distanceSkills << mutableSkill;
+            if (dynamic_cast<const MaxCardsSkill *>(skill)) m_maxCardsSkills << mutableSkill;
+            if (dynamic_cast<const TargetModSkill *>(skill)) m_targetModSkills << mutableSkill;
+            if (dynamic_cast<const InvaliditySkill *>(skill)) m_invaliditySkills << mutableSkill;
+            const TriggerSkill *trigger = dynamic_cast<const TriggerSkill *>(skill);
+            if (trigger && trigger->isGlobal()) m_globalTriggerSkills << mutableSkill;
+            if (dynamic_cast<const AttackRangeSkill *>(skill)) m_attackRangeSkills << mutableSkill;
+            if (dynamic_cast<const ViewAsEquipSkill *>(skill)) m_viewAsEquipSkills << mutableSkill;
+            if (dynamic_cast<const CardLimitSkill *>(skill)) m_cardLimitSkills << mutableSkill;
+            if (dynamic_cast<const ProhibitPindianSkill *>(skill)) m_prohibitPindianSkills << mutableSkill;
         } else {
             QMessageBox::warning(nullptr, "", tr("The engine tries to add an invalid skill"));
         }
@@ -555,148 +578,109 @@ void Engine::addSkills(QList<const Skill*> all_skills)
 }
 QList<const ProhibitSkill*> Engine::getProhibitSkills() const
 {
-    static QList<const ProhibitSkill*> prohibitSkills;
-    if (prohibitSkills.isEmpty()) {
-        foreach (const Skill* skill, getSafeSkills()) {
-            if (skill->inherits("ProhibitSkill"))
-                prohibitSkills << qobject_cast<const ProhibitSkill*>(skill);
-        }
-    }
-    return prohibitSkills;
+    QReadLocker locker(&m_rwLock);
+    QList<const ProhibitSkill *> result;
+    foreach (const QPointer<Skill> &skill, m_prohibitSkills)
+        if (skill) result << dynamic_cast<const ProhibitSkill *>(skill.data());
+    result.removeAll(nullptr);
+    return result;
 }
 
 // 7. 修復 getDistanceSkills
 QList<const DistanceSkill*> Engine::getDistanceSkills() const
 {
-    static QList<const DistanceSkill*> distanceSkills;
-    if (distanceSkills.isEmpty()) {
-        foreach (const Skill* skill, getSafeSkills()) {
-            if (skill->inherits("DistanceSkill"))
-                distanceSkills << qobject_cast<const DistanceSkill*>(skill);
-        }
-    }
-    return distanceSkills;
+    QReadLocker locker(&m_rwLock);
+    QList<const DistanceSkill *> result;
+    foreach (const QPointer<Skill> &skill, m_distanceSkills)
+        if (skill) result << dynamic_cast<const DistanceSkill *>(skill.data());
+    result.removeAll(nullptr);
+    return result;
 }
 
 // 8. 修復 getMaxCardsSkills
 QList<const MaxCardsSkill*> Engine::getMaxCardsSkills() const
 {
-    static QList<const MaxCardsSkill*> maxcardsSkills;
-    if (maxcardsSkills.isEmpty()) {
-        foreach (const Skill* skill, getSafeSkills()) {
-            if (skill->inherits("MaxCardsSkill"))
-                maxcardsSkills << qobject_cast<const MaxCardsSkill*>(skill);
-        }
-    }
-    return maxcardsSkills;
+    QReadLocker locker(&m_rwLock);
+    QList<const MaxCardsSkill *> result;
+    foreach (const QPointer<Skill> &skill, m_maxCardsSkills)
+        if (skill) result << dynamic_cast<const MaxCardsSkill *>(skill.data());
+    result.removeAll(nullptr);
+    return result;
 }
 
 // 9. 修復 getTargetModSkills
 QList<const TargetModSkill*> Engine::getTargetModSkills() const
 {
-    static QList<const TargetModSkill*> targetmodSkills;
-    if (targetmodSkills.isEmpty()) {
-        foreach (const Skill* skill, getSafeSkills()) {
-            if (skill->inherits("TargetModSkill"))
-                targetmodSkills << qobject_cast<const TargetModSkill*>(skill);
-        }
-    }
-    return targetmodSkills;
+    QReadLocker locker(&m_rwLock);
+    QList<const TargetModSkill *> result;
+    foreach (const QPointer<Skill> &skill, m_targetModSkills)
+        if (skill) result << dynamic_cast<const TargetModSkill *>(skill.data());
+    result.removeAll(nullptr);
+    return result;
 }
 
 QList<const InvaliditySkill*> Engine::getInvaliditySkills() const
 {
-    // 建議：去掉 static 緩存。
-    // 如果技能系統支持動態加載/卸載，static 緩存會導致存儲了過期的指針，再次引發崩潰。
-    // 除非你確定技能加載後永遠不會變。
-    static QList<const InvaliditySkill*> invaliditySkills;
-
-    if (invaliditySkills.isEmpty()) {
-        // 假設 skills 是 QHash<QString, QPointer<Skill>>，我們遍歷它的值
-        foreach (const QPointer<Skill> &skillPtr, skills.values()) {
-            
-            // [修復 1] 必須檢查指針是否有效
-            if (skillPtr.isNull()) 
-                continue;
-
-            // [修復 2] 獲取裸指針
-            const Skill* skill = skillPtr.data();
-
-            // 這樣調用 inherits 才是安全的
-            if (skill->inherits("InvaliditySkill")) {
-                invaliditySkills << qobject_cast<const InvaliditySkill*>(skill);
-            }
-        }
-    }
-    return invaliditySkills;
+    QReadLocker locker(&m_rwLock);
+    QList<const InvaliditySkill *> result;
+    foreach (const QPointer<Skill> &skill, m_invaliditySkills)
+        if (skill) result << dynamic_cast<const InvaliditySkill *>(skill.data());
+    result.removeAll(nullptr);
+    return result;
 }
 
 QList<const TriggerSkill*> Engine::getGlobalTriggerSkills() const
 {
-    static QList<const TriggerSkill*> globalTriggerSkills;
-    // 注意：static 緩存有風險，如果動態加載技能，建議去掉 if(isEmpty)
-    if (globalTriggerSkills.isEmpty()) {
-        // [核心修改] 使用 getSafeSkills() 替代直接遍歷 skills
-        foreach (const Skill* skill, getSafeSkills()) {
-            // 安全轉型：getSafeSkills 保證了 skill 不為 nullptr
-            const TriggerSkill* ts = qobject_cast<const TriggerSkill*>(skill);
-            if (ts && ts->isGlobal())
-                globalTriggerSkills << ts;
-        }
-    }
-    return globalTriggerSkills;
+    QReadLocker locker(&m_rwLock);
+    QList<const TriggerSkill *> result;
+    foreach (const QPointer<Skill> &skill, m_globalTriggerSkills)
+        if (skill) result << dynamic_cast<const TriggerSkill *>(skill.data());
+    result.removeAll(nullptr);
+    return result;
 }
 
 // 2. 修復 getAttackRangeSkills
 QList<const AttackRangeSkill*> Engine::getAttackRangeSkills() const
 {
-    static QList<const AttackRangeSkill*> attackRangeSkills;
-    if (attackRangeSkills.isEmpty()) {
-        foreach (const Skill* skill, getSafeSkills()) {
-            if (skill->inherits("AttackRangeSkill"))
-                attackRangeSkills << qobject_cast<const AttackRangeSkill*>(skill);
-        }
-    }
-    return attackRangeSkills;
+    QReadLocker locker(&m_rwLock);
+    QList<const AttackRangeSkill *> result;
+    foreach (const QPointer<Skill> &skill, m_attackRangeSkills)
+        if (skill) result << dynamic_cast<const AttackRangeSkill *>(skill.data());
+    result.removeAll(nullptr);
+    return result;
 }
 
 // 3. 修復 getViewAsEquipSkills
 QList<const ViewAsEquipSkill*> Engine::getViewAsEquipSkills() const
 {
-    static QList<const ViewAsEquipSkill*> viewAsEquipSkills;
-    if (viewAsEquipSkills.isEmpty()) {
-        foreach (const Skill* skill, getSafeSkills()) {
-            if (skill->inherits("ViewAsEquipSkill"))
-                viewAsEquipSkills << qobject_cast<const ViewAsEquipSkill*>(skill);
-        }
-    }
-    return viewAsEquipSkills;
+    QReadLocker locker(&m_rwLock);
+    QList<const ViewAsEquipSkill *> result;
+    foreach (const QPointer<Skill> &skill, m_viewAsEquipSkills)
+        if (skill) result << dynamic_cast<const ViewAsEquipSkill *>(skill.data());
+    result.removeAll(nullptr);
+    return result;
 }
 
 // 4. 修復 getCardLimitSkills
 QList<const CardLimitSkill*> Engine::getCardLimitSkills() const
 {
-    static QList<const CardLimitSkill*> cardLimitSkills;
-    if (cardLimitSkills.isEmpty()) {
-        foreach (const Skill* skill, getSafeSkills()) {
-            if (skill->inherits("CardLimitSkill"))
-                cardLimitSkills << qobject_cast<const CardLimitSkill*>(skill);
-        }
-    }
-    return cardLimitSkills;
+    QReadLocker locker(&m_rwLock);
+    QList<const CardLimitSkill *> result;
+    foreach (const QPointer<Skill> &skill, m_cardLimitSkills)
+        if (skill) result << dynamic_cast<const CardLimitSkill *>(skill.data());
+    result.removeAll(nullptr);
+    return result;
 }
 
 // 5. 修復 getProhibitPindianSkills
 QList<const ProhibitPindianSkill*> Engine::getProhibitPindianSkills() const
 {
-    static QList<const ProhibitPindianSkill*> prohibitPindiankills;
-    if (prohibitPindiankills.isEmpty()) {
-        foreach (const Skill* skill, getSafeSkills()) {
-            if (skill->inherits("ProhibitPindianSkill"))
-                prohibitPindiankills << qobject_cast<const ProhibitPindianSkill*>(skill);
-        }
-    }
-    return prohibitPindiankills;
+    QReadLocker locker(&m_rwLock);
+    QList<const ProhibitPindianSkill *> result;
+    foreach (const QPointer<Skill> &skill, m_prohibitPindianSkills)
+        if (skill) result << dynamic_cast<const ProhibitPindianSkill *>(skill.data());
+    result.removeAll(nullptr);
+    return result;
 }
 
 void Engine::addPackage(Package*package)
@@ -860,14 +844,14 @@ void Engine::setPackage(Package*package)
         }*/
     }
 
+    QList<const Skill *> newSkills;
     foreach (const Skill* skill, package->getSkills() + package->findChildren<const Skill*>()) {
         if (!skill) continue;
         if (skills.contains(skill->objectName())) continue;
 
         // [修復點] 使用 const_cast 將 const Skill* 轉為 Skill*
         // 這是 QPointer 正常工作所必須的
-        Skill *mutableSkill = const_cast<Skill*>(skill);
-        skills.insert(skill->objectName(), mutableSkill);
+        newSkills << skill;
 
         if (skill->getWakedSkills().isEmpty()) continue;
         foreach (QString sk_name, skill->getWakedSkills().split(",")) {
@@ -875,6 +859,8 @@ void Engine::setPackage(Package*package)
                 related_skills.insertMulti(skill->objectName(), sk_name);
         }
     }
+
+    addSkills(newSkills);
 
     foreach (General*general, package->findChildren<General*>()) {
         if (generals.contains(general->objectName())) continue;
@@ -2070,6 +2056,7 @@ bool Engine::sameNameWith(const QString &name1, const QString &name2) const
 
 QList<const Skill *> Engine::getSafeSkills() const
 {
+    QReadLocker locker(&m_rwLock);
     QList<const Skill *> list;
     // 遍歷 Hash 中的所有 QPointer
     foreach (const QPointer<Skill> &ptr, skills.values()) {
@@ -2362,29 +2349,96 @@ end_check:
     return ret;
 }
 
-int Engine::sumSkillContribution(const Player *holder, const Skill *skill, int native) const
+namespace {
+
+QList<const Player *> correctSkillHolders(const Player *primary, const Player *secondary,
+                                          CorrectSkillHolderSelector selector)
 {
-    if (!holder || !skill) return 0;
-    QString name = skill->objectName();
-    QList<int> ids = holder->getValidSkillInstanceIds(name);
-    if (ids.isEmpty()) return 0; // holder 無該技能實例 → 貢獻 0
+    QList<const Player *> result;
+    if (selector == CorrectSkill_System) return result;
 
-    // -1（如 Residue 的「無限」）統一視為 1000
-    if (native == -1) native = 1000;
+    if (selector == CorrectSkill_Primary) {
+        if (primary && primary->isAlive()) result << primary;
+    } else if (selector == CorrectSkill_Secondary) {
+        if (secondary && secondary->isAlive()) result << secondary;
+    } else if (selector == CorrectSkill_Participants) {
+        if (primary && primary->isAlive()) result << primary;
+        if (secondary && secondary->isAlive() && secondary != primary) result << secondary;
+    } else if (selector == CorrectSkill_AllHolders) {
+        const Player *anchor = primary ? primary : secondary;
+        if (anchor) result = anchor->getAliveSiblings(true);
+    }
+    return result;
+}
 
+template <typename T>
+QList<CorrectSkillResult> evaluateCorrectSkill(const T *skill,
+                                               CorrectSkillHolderSelector selector,
+                                               const Player *primary,
+                                               const Player *secondary,
+                                               const Card *card,
+                                               int modType,
+                                               bool includeWeapon,
+                                               bool fixed)
+{
+    QList<CorrectSkillResult> results;
+    if (!skill) return results;
+
+    if (selector == CorrectSkill_System) {
+        CorrectSkillContext context;
+        context.primary = primary;
+        context.secondary = secondary;
+        context.card = card;
+        context.modType = modType;
+        context.includeWeapon = includeWeapon;
+        context.currentAmount = skill->getBaseAmount();
+        results << (fixed ? skill->getFixedValue(context) : skill->getCorrection(context));
+        return results;
+    }
+
+    foreach (const Player *holder, correctSkillHolders(primary, secondary, selector)) {
+        const QList<int> instanceIds = holder->getValidSkillInstanceIds(skill->objectName());
+        foreach (int instanceId, instanceIds) {
+            const SkillInstance *instance = holder->findSkillInstance(skill->objectName(), instanceId);
+            if (!instance) continue;
+
+            CorrectSkillContext context;
+            context.instanceRef = SkillInstanceRef(
+                holder->objectName(), SkillInstanceKey(skill->objectName(), instanceId));
+            context.holder = holder;
+            context.primary = primary;
+            context.secondary = secondary;
+            context.card = card;
+            context.modType = modType;
+            context.includeWeapon = includeWeapon;
+            context.currentAmount = instance->hasAmountOverride
+                ? instance->amountOverride : skill->getBaseAmount();
+            results << (fixed ? skill->getFixedValue(context) : skill->getCorrection(context));
+        }
+    }
+    return results;
+}
+
+int sumApplicableResults(const QList<CorrectSkillResult> &results, bool residue)
+{
     int total = 0;
-    foreach (int id, ids) {
-        int amt;
-        if (holder->hasSkillAmountOverride(name, id))
-            amt = holder->getSkillAmountOverride(name, id);          // 單實例覆寫
-        else if (holder->hasSkillAmountOverride(name, 0))
-            amt = holder->getSkillAmountOverride(name, 0);           // 全體覆寫
-        else
-            amt = native;                                            // 技能原生回傳值
-        if (amt == -1) amt = 1000;
-        total += amt;
+    foreach (const CorrectSkillResult &result, results) {
+        if (!result.applies) continue;
+        if (residue && (result.unlimited || result.value == -1))
+            return 1000;
+        total += result.value;
     }
     return total;
+}
+
+int maximumApplicableResult(const QList<CorrectSkillResult> &results, int current)
+{
+    foreach (const CorrectSkillResult &result, results) {
+        if (result.applies && result.value > current) current = result.value;
+    }
+    return current;
+}
+
 }
 
 int Engine::correctDistance(const Player*from, const Player*to, bool fixed) const
@@ -2397,21 +2451,23 @@ int Engine::correctDistance(const Player*from, const Player*to, bool fixed) cons
     }
 
     int correct = 0;
-	if (fixed){
-		foreach (const DistanceSkill*skill, getDistanceSkills()) {
-            int f = skill->getFixed(from, to);
-            if (f > correct) correct = f;
-		}
-	}else{
-		foreach (const DistanceSkill*skill, getDistanceSkills()) {
-            int native = skill->getCorrect(from, to);
-            if (skill->property("InstanceStackable").toBool()) {
-                foreach (const Player *p, from->getAliveSiblings(true))
-                    correct += sumSkillContribution(p, skill, native);
-            } else
-                correct += native;
+    foreach (const DistanceSkill *skill, getDistanceSkills()) {
+        const DistanceSkillV2 *v2 = dynamic_cast<const DistanceSkillV2 *>(skill);
+        if (!v2) {
+            if (fixed) {
+                const int value = skill->getFixed(from, to);
+                if (value > correct) correct = value;
+            } else {
+                correct += skill->getCorrect(from, to);
+            }
+            continue;
         }
-	}
+
+        const QList<CorrectSkillResult> results = evaluateCorrectSkill(
+            v2, v2->getHolderSelector(), from, to, nullptr, -1, true, fixed);
+        correct = fixed ? maximumApplicableResult(results, correct)
+                        : correct + sumApplicableResults(results, false);
+    }
     if (locked) lua_mutex.unlock();
 	return correct;
 }
@@ -2425,22 +2481,23 @@ int Engine::correctMaxCards(const Player*target, bool fixed) const
         locked = true;
     }
 
-    int ex = -1;
-    if (fixed) {
-        foreach (const MaxCardsSkill*skill, getMaxCardsSkills()) {
-			int f = skill->getFixed(target);
-            if (f > ex) ex = f;
+    int ex = fixed ? -1 : 0;
+    foreach (const MaxCardsSkill *skill, getMaxCardsSkills()) {
+        const MaxCardsSkillV2 *v2 = dynamic_cast<const MaxCardsSkillV2 *>(skill);
+        if (!v2) {
+            if (fixed) {
+                const int value = skill->getFixed(target);
+                if (value > ex) ex = value;
+            } else {
+                ex += skill->getExtra(target);
+            }
+            continue;
         }
-    } else {
-        ex++;
-        foreach(const MaxCardsSkill*skill, getMaxCardsSkills()) {
-            int native = skill->getExtra(target);
-            if (skill->property("InstanceStackable").toBool()) {
-                foreach (const Player *p, target->getAliveSiblings(true))
-                    ex += sumSkillContribution(p, skill, native);
-            } else
-                ex += native;
-        }
+
+        const QList<CorrectSkillResult> results = evaluateCorrectSkill(
+            v2, v2->getHolderSelector(), target, nullptr, nullptr, -1, true, fixed);
+        ex = fixed ? maximumApplicableResult(results, ex)
+                   : ex + sumApplicableResults(results, false);
     }
     if (locked) lua_mutex.unlock();
 	return ex;
@@ -2469,13 +2526,15 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
         foreach (const TargetModSkill*skill, getTargetModSkills()) {
 			if (subcardNames.contains(skill->objectName())) continue;
             if (matchExpPattern(skill->getPattern(),from, card)) {
-                int n = skill->getResidueNum(from, card, to);
-                if (n == -1) n = 1000;
-                if (skill->property("InstanceStackable").toBool()) {
-                    foreach (const Player *p, from->getAliveSiblings(true))
-                        x += sumSkillContribution(p, skill, n);
-                } else
-                    x += n;
+                const TargetModSkillV2 *v2 = dynamic_cast<const TargetModSkillV2 *>(skill);
+                if (v2) {
+                    const QList<CorrectSkillResult> results = evaluateCorrectSkill(
+                        v2, v2->getHolderSelector(), from, to, card, type, true, false);
+                    x += sumApplicableResults(results, true);
+                } else {
+                    int value = skill->getResidueNum(from, card, to);
+                    x += value == -1 ? 1000 : value;
+                }
                 if (x > 500) break;
             }
         }
@@ -2483,12 +2542,14 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
         foreach (const TargetModSkill*skill, getTargetModSkills()) {
 			if (subcardNames.contains(skill->objectName())) continue;
             if (matchExpPattern(skill->getPattern(),from, card)) {
-                int n = skill->getDistanceLimit(from, card, to);
-                if (skill->property("InstanceStackable").toBool()) {
-                    foreach (const Player *p, from->getAliveSiblings(true))
-                        x += sumSkillContribution(p, skill, n);
-                } else
-                    x += n;
+                const TargetModSkillV2 *v2 = dynamic_cast<const TargetModSkillV2 *>(skill);
+                if (v2) {
+                    const QList<CorrectSkillResult> results = evaluateCorrectSkill(
+                        v2, v2->getHolderSelector(), from, to, card, type, true, false);
+                    x += sumApplicableResults(results, false);
+                } else {
+                    x += skill->getDistanceLimit(from, card, to);
+                }
                 if (x > 500) break;
             }
         }
@@ -2496,12 +2557,14 @@ int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*f
         foreach (const TargetModSkill*skill, getTargetModSkills()) {
 			if (subcardNames.contains(skill->objectName())) continue;
             if (matchExpPattern(skill->getPattern(),from, card)){
-                int n = skill->getExtraTargetNum(from, card);
-                if (skill->property("InstanceStackable").toBool()) {
-                    foreach (const Player *p, from->getAliveSiblings(true))
-                        x += sumSkillContribution(p, skill, n);
-                } else
-                    x += n;
+                const TargetModSkillV2 *v2 = dynamic_cast<const TargetModSkillV2 *>(skill);
+                if (v2) {
+                    const QList<CorrectSkillResult> results = evaluateCorrectSkill(
+                        v2, v2->getHolderSelector(), from, to, card, type, true, false);
+                    x += sumApplicableResults(results, false);
+                } else {
+                    x += skill->getExtraTargetNum(from, card);
+                }
                 if (x > 500) break;
 			}
         }
@@ -2531,28 +2594,21 @@ bool Engine::hasResidueUnlimited(const Player *from, const Card *card, const Pla
     foreach (const TargetModSkill*skill, getTargetModSkills()) {
         if (subcardNames.contains(skill->objectName())) continue;
         if (matchExpPattern(skill->getPattern(), from, card)) {
-            int native = skill->getResidueNum(from, card, to);
-            if (!skill->property("InstanceStackable").toBool()) {
-                if (native == -1) {
+            const TargetModSkillV2 *v2 = dynamic_cast<const TargetModSkillV2 *>(skill);
+            if (!v2) {
+                if (skill->getResidueNum(from, card, to) == -1) {
                     if (locked) lua_mutex.unlock();
                     return true;
                 }
-            } else {
-                foreach (const Player *p, from->getAliveSiblings(true)) {
-                    QList<int> ids = p->getValidSkillInstanceIds(skill->objectName());
-                    foreach (int id, ids) {
-                        int amt;
-                        if (p->hasSkillAmountOverride(skill->objectName(), id))
-                            amt = p->getSkillAmountOverride(skill->objectName(), id);
-                        else if (p->hasSkillAmountOverride(skill->objectName(), 0))
-                            amt = p->getSkillAmountOverride(skill->objectName(), 0);
-                        else
-                            amt = native;
-                        if (amt == -1) {
-                            if (locked) lua_mutex.unlock();
-                            return true;
-                        }
-                    }
+                continue;
+            }
+            const QList<CorrectSkillResult> results = evaluateCorrectSkill(
+                v2, v2->getHolderSelector(), from, to, card,
+                TargetModSkill::Residue, true, false);
+            foreach (const CorrectSkillResult &result, results) {
+                if (result.applies && (result.unlimited || result.value == -1)) {
+                    if (locked) lua_mutex.unlock();
+                    return true;
                 }
             }
         }
@@ -2593,22 +2649,24 @@ int Engine::correctAttackRange(const Player*target, bool include_weapon, bool fi
         locked = true;
     }
 
-    int extra = -1;
-    if (fixed) {
-		foreach (const AttackRangeSkill*skill, getAttackRangeSkills()) {
-            int f = skill->getFixed(target, include_weapon);
-            if (f > extra) extra = f;
-		}
-	} else {
-		extra++;
-		foreach (const AttackRangeSkill*skill, getAttackRangeSkills()) {
-            int native = skill->getExtra(target, include_weapon);
-            if (skill->property("InstanceStackable").toBool()) {
-                foreach (const Player *p, target->getAliveSiblings(true))
-                    extra += sumSkillContribution(p, skill, native);
-            } else
-                extra += native;
+    int extra = fixed ? -1 : 0;
+    foreach (const AttackRangeSkill *skill, getAttackRangeSkills()) {
+        const AttackRangeSkillV2 *v2 = dynamic_cast<const AttackRangeSkillV2 *>(skill);
+        if (!v2) {
+            if (fixed) {
+                const int value = skill->getFixed(target, include_weapon);
+                if (value > extra) extra = value;
+            } else {
+                extra += skill->getExtra(target, include_weapon);
+            }
+            continue;
         }
+
+        const QList<CorrectSkillResult> results = evaluateCorrectSkill(
+            v2, v2->getHolderSelector(), target, nullptr, nullptr, -1,
+            include_weapon, fixed);
+        extra = fixed ? maximumApplicableResult(results, extra)
+                      : extra + sumApplicableResults(results, false);
     }
     if (locked) lua_mutex.unlock();
 	return extra;

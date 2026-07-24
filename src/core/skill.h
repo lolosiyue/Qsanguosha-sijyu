@@ -33,6 +33,7 @@ struct SkillContext {
 
     int amount;
     int modified_amount;
+    bool modified_amount_set;
     int trigger_count;
     int multiplier;
 
@@ -44,10 +45,14 @@ struct SkillContext {
                      original_data(nullptr), instanceID(0), executionID(0), preferredTarget(nullptr), preferredTargetSeat(-1),
                       is_forced(false), is_canceled(false),
                       bypass_cost(false), manual_effect(false), current_event(NonTrigger),
-                      amount(1), modified_amount(0), trigger_count(0), multiplier(1) {}
+                      amount(1), modified_amount(0), modified_amount_set(false),
+                      trigger_count(0), multiplier(1) {}
 
     SkillInstanceRef getSourceRef() const { return sourceRef; }
     SkillInstanceRef getActivationRef() const { return activationRef; }
+    void setModifiedAmount(int value) { modified_amount = value; modified_amount_set = true; }
+    void clearModifiedAmount() { modified_amount = 0; modified_amount_set = false; }
+    bool hasModifiedAmount() const { return modified_amount_set || modified_amount != 0; }
     QVariant toVariant() const;
 };
 Q_DECLARE_METATYPE(SkillContext)
@@ -71,6 +76,59 @@ struct ActiveSkillRequest {
     QList<int> getSelectedCardIds() const { return selectedCardIds; }
     QStringList getSelectedTargetNames() const { return selectedTargetNames; }
     QString getUserString() const { return userString; }
+};
+
+class AmountSkillV2
+{
+public:
+    virtual ~AmountSkillV2() {}
+    virtual int getBaseAmount() const = 0;
+};
+
+enum CorrectSkillHolderSelector {
+    CorrectSkill_Primary,
+    CorrectSkill_Secondary,
+    CorrectSkill_Participants,
+    CorrectSkill_AllHolders,
+    CorrectSkill_System
+};
+
+struct CorrectSkillContext {
+    SkillInstanceRef instanceRef;
+    const Player *holder;
+    const Player *primary;
+    const Player *secondary;
+    const Card *card;
+    int modType;
+    bool includeWeapon;
+    int currentAmount;
+
+    CorrectSkillContext()
+        : holder(nullptr), primary(nullptr), secondary(nullptr), card(nullptr),
+          modType(-1), includeWeapon(true), currentAmount(0) {}
+
+    SkillInstanceRef getInstanceRef() const { return instanceRef; }
+    const Player *getHolder() const { return holder; }
+    const Player *getPrimary() const { return primary; }
+    const Player *getSecondary() const { return secondary; }
+    const Card *getCard() const { return card; }
+    int getModType() const { return modType; }
+    bool includesWeapon() const { return includeWeapon; }
+    int getCurrentAmount() const { return currentAmount; }
+    QVariant getStateValue(const QString &key, const QVariant &defaultValue = QVariant()) const;
+};
+Q_DECLARE_METATYPE(CorrectSkillContext)
+
+struct CorrectSkillResult {
+    bool applies;
+    int value;
+    bool unlimited;
+
+    CorrectSkillResult(bool isApplicable = false, int amount = 0, bool isUnlimited = false)
+        : applies(isApplicable), value(amount), unlimited(isUnlimited) {}
+    static CorrectSkillResult noEffect() { return CorrectSkillResult(); }
+    static CorrectSkillResult useAmount(int amount) { return CorrectSkillResult(true, amount, false); }
+    static CorrectSkillResult unlimitedResidue() { return CorrectSkillResult(true, -1, true); }
 };
 
 class Skill : public QObject
@@ -199,7 +257,7 @@ protected:
     QString expand_pile;
 };
 
-class ViewAsSkillV2 : public ViewAsSkill
+class ViewAsSkillV2 : public ViewAsSkill, public AmountSkillV2
 {
 public:
     enum TargetMode { NoTarget, SelectTargets };
@@ -231,6 +289,7 @@ public:
 
     virtual int getBaseAmount() const;
     int getEffectiveAmount(const SkillContext &context) const;
+    virtual SkillInstanceRef getAmountRef(const SkillContext &context) const;
 
     // V2 skills are activated through ActiveSkillRequest, never the legacy
     // ViewAs callbacks.  These adapters keep accidental legacy callers safe.
@@ -383,7 +442,7 @@ public:
     virtual void onGameStart(ServerPlayer *player) const = 0;
 };
 
-class TriggerV2Skill : public TriggerSkill
+class TriggerV2Skill : public TriggerSkill, public AmountSkillV2
 {
     Q_OBJECT
 
@@ -488,6 +547,23 @@ public:
     virtual int getFixed(const Player *from, const Player *to) const;
 };
 
+class DistanceSkillV2 : public DistanceSkill, public AmountSkillV2
+{
+public:
+    explicit DistanceSkillV2(const QString &name);
+
+    virtual CorrectSkillResult getCorrection(const CorrectSkillContext &context) const;
+    virtual CorrectSkillResult getFixedValue(const CorrectSkillContext &context) const;
+    int getBaseAmount() const override { return m_baseAmount; }
+    void setBaseAmount(int amount) { m_baseAmount = amount; }
+    CorrectSkillHolderSelector getHolderSelector() const { return m_holderSelector; }
+    void setHolderSelector(CorrectSkillHolderSelector selector) { m_holderSelector = selector; }
+
+protected:
+    int m_baseAmount;
+    CorrectSkillHolderSelector m_holderSelector;
+};
+
 class MaxCardsSkill : public Skill
 {
     Q_OBJECT
@@ -497,6 +573,23 @@ public:
 
     virtual int getExtra(const Player *target) const;
     virtual int getFixed(const Player *target) const;
+};
+
+class MaxCardsSkillV2 : public MaxCardsSkill, public AmountSkillV2
+{
+public:
+    explicit MaxCardsSkillV2(const QString &name);
+
+    virtual CorrectSkillResult getCorrection(const CorrectSkillContext &context) const;
+    virtual CorrectSkillResult getFixedValue(const CorrectSkillContext &context) const;
+    int getBaseAmount() const override { return m_baseAmount; }
+    void setBaseAmount(int amount) { m_baseAmount = amount; }
+    CorrectSkillHolderSelector getHolderSelector() const { return m_holderSelector; }
+    void setHolderSelector(CorrectSkillHolderSelector selector) { m_holderSelector = selector; }
+
+protected:
+    int m_baseAmount;
+    CorrectSkillHolderSelector m_holderSelector;
 };
 
 class TargetModSkill : public Skill
@@ -521,6 +614,23 @@ public:
 
 protected:
     QString pattern;
+};
+
+class TargetModSkillV2 : public TargetModSkill, public AmountSkillV2
+{
+public:
+    explicit TargetModSkillV2(const QString &name, const QString &pattern = "Slash");
+
+    virtual CorrectSkillResult getCorrection(const CorrectSkillContext &context) const;
+    virtual CorrectSkillResult getFixedValue(const CorrectSkillContext &context) const;
+    int getBaseAmount() const override { return m_baseAmount; }
+    void setBaseAmount(int amount) { m_baseAmount = amount; }
+    CorrectSkillHolderSelector getHolderSelector() const { return m_holderSelector; }
+    void setHolderSelector(CorrectSkillHolderSelector selector) { m_holderSelector = selector; }
+
+protected:
+    int m_baseAmount;
+    CorrectSkillHolderSelector m_holderSelector;
 };
 
 class SlashNoDistanceLimitSkill : public TargetModSkill
@@ -556,6 +666,23 @@ public:
     virtual int getExtra(const Player *target, bool include_weapon) const;
     virtual int getFixed(const Player *target, bool include_weapon) const;
     //virtual bool inRange(const Player *from, const Player *to) const;
+};
+
+class AttackRangeSkillV2 : public AttackRangeSkill, public AmountSkillV2
+{
+public:
+    explicit AttackRangeSkillV2(const QString &name);
+
+    virtual CorrectSkillResult getCorrection(const CorrectSkillContext &context) const;
+    virtual CorrectSkillResult getFixedValue(const CorrectSkillContext &context) const;
+    int getBaseAmount() const override { return m_baseAmount; }
+    void setBaseAmount(int amount) { m_baseAmount = amount; }
+    CorrectSkillHolderSelector getHolderSelector() const { return m_holderSelector; }
+    void setHolderSelector(CorrectSkillHolderSelector selector) { m_holderSelector = selector; }
+
+protected:
+    int m_baseAmount;
+    CorrectSkillHolderSelector m_holderSelector;
 };
 
 class ViewAsEquipSkill : public Skill

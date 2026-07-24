@@ -59,12 +59,20 @@ struct SkillInstance {
     SkillInstanceKey parent;
     SkillInstanceRef parentRef;
     bool visible;
-    QVariantMap state;
+    bool hasAmountOverride;
+    int amountOverride;
+    QVariantMap correctState;
     int bindHead; // 0=未綁定, 1=主將, 2=副將
 
-    SkillInstance() : instanceID(0), source(SourceInnate), visible(true), bindHead(0) {}
+    SkillInstance()
+        : instanceID(0), source(SourceInnate), visible(true),
+          hasAmountOverride(false), amountOverride(0), bindHead(0) {}
 
     SkillInstanceKey key() const { return SkillInstanceKey(skillName, instanceID); }
+
+private:
+    friend class Player;
+    QVariantMap state;
 };
 
 struct SkillChangeStruct {

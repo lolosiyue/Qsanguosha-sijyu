@@ -2013,7 +2013,7 @@ void Client::attachSkill(const QVariant &skill)
 static bool parseSkillInstanceEntry(const QVariant &value, QString &ownerName, SkillInstance &instance)
 {
 	JsonArray entry = value.value<JsonArray>();
-	if (entry.size() != 8 && entry.size() != 9) return false;
+	if (entry.size() < 8 || entry.size() > 10) return false;
 	ownerName = entry[0].toString();
 	instance.skillName = entry[1].toString();
 	instance.instanceID = entry[2].toInt();
@@ -2033,7 +2033,16 @@ static bool parseSkillInstanceEntry(const QVariant &value, QString &ownerName, S
 		instance.visible = entry[7].toBool();
 		instance.bindHead = entry[8].toInt();
 	}
-	instance.state.clear();
+	instance.hasAmountOverride = false;
+	instance.amountOverride = 0;
+	instance.correctState.clear();
+	if (entry.size() == 10) {
+		const QVariantMap metadata = entry[9].toMap();
+		instance.hasAmountOverride = metadata.value("has_amount", false).toBool();
+		if (instance.hasAmountOverride)
+			instance.amountOverride = metadata.value("amount").toInt();
+		instance.correctState = metadata.value("correct_state").toMap();
+	}
 	return true;
 }
 
@@ -2077,6 +2086,37 @@ void Client::syncSkillInstances(const QVariant &payload)
 		int instanceId = args[3].toInt();
 		if (!owner || !owner->removeSkillInstance(skillName, instanceId)) return;
 		emit skill_detached(owner, SkillInstanceUtils::formatName(skillName, instanceId));
+		return;
+	}
+
+	if (action == "amount" && args.size() == 6) {
+		ClientPlayer *owner = getPlayer(args[1].toString());
+		const QString skillName = args[2].toString();
+		const int instanceId = args[3].toInt();
+		if (!owner || !owner->hasSkillInstance(skillName, instanceId)) return;
+		const bool hasOverride = args[4].toBool();
+		const bool applied = hasOverride
+			? owner->setSkillInstanceAmountOverride(skillName, instanceId, args[5].toInt())
+			: owner->resetSkillInstanceAmountOverride(skillName, instanceId);
+		if (applied) emit skill_instance_amount_changed(owner, skillName, instanceId);
+		return;
+	}
+
+	if (action == "correct_state" && args.size() == 7) {
+		ClientPlayer *owner = getPlayer(args[1].toString());
+		const QString skillName = args[2].toString();
+		const int instanceId = args[3].toInt();
+		const QString operation = args[4].toString();
+		const QString key = args[5].toString();
+		if (!owner || !owner->hasSkillInstance(skillName, instanceId)) return;
+		bool applied = false;
+		if (operation == "set")
+			applied = owner->setSkillInstanceCorrectStateValue(skillName, instanceId, key, args[6]);
+		else if (operation == "remove")
+			applied = owner->removeSkillInstanceCorrectStateValue(skillName, instanceId, key);
+		else if (operation == "clear")
+			applied = owner->clearSkillInstanceCorrectState(skillName, instanceId);
+		if (applied) emit skill_instance_correct_state_changed(owner, skillName, instanceId, key);
 	}
 }
 

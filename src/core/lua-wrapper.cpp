@@ -90,7 +90,8 @@ LuaViewAsSkill::LuaViewAsSkill(const QString &name, const QString &response_patt
 LuaViewAsSkillV2::LuaViewAsSkillV2(const QString &name, Frequency frequency, const QString &limit_mark)
     : ViewAsSkillV2(name), can_activate(0), can_select_card(0), card_selection_feasible(0), create_card(0),
       on_cost(0), on_pay(0), can_select_target(0), targets_feasible(0), on_effect(0),
-      on_effect_target(0), on_effect_target_group(0), get_usage_ref(0), m_targetMode(SelectTargets),
+      on_effect_target(0), on_effect_target_group(0), get_usage_ref(0), get_amount_ref(0),
+      m_targetMode(SelectTargets),
       m_targetEffectMode(EachTarget), m_willThrowSelectedCards(true), m_limitScope(Limit_None),
       m_maxUsageLimit(1)
 {
@@ -138,8 +139,20 @@ LuaDistanceSkill::LuaDistanceSkill(const QString &name, Frequency frequency)
     this->frequency = frequency;
 }
 
+LuaDistanceSkillV2::LuaDistanceSkillV2(const QString &name, Frequency frequency)
+    : DistanceSkillV2(name), correct_func(0), fixed_func(0)
+{
+    this->frequency = frequency;
+}
+
 LuaMaxCardsSkill::LuaMaxCardsSkill(const QString &name, Frequency frequency)
     : MaxCardsSkill(name), extra_func(0), fixed_func(0)
+{
+    this->frequency = frequency;
+}
+
+LuaMaxCardsSkillV2::LuaMaxCardsSkillV2(const QString &name, Frequency frequency)
+    : MaxCardsSkillV2(name), correct_func(0), fixed_func(0)
 {
     this->frequency = frequency;
 }
@@ -151,6 +164,12 @@ LuaTargetModSkill::LuaTargetModSkill(const QString &name, const QString &pattern
     this->frequency = frequency;
 }
 
+LuaTargetModSkillV2::LuaTargetModSkillV2(const QString &name, const QString &pattern, Frequency frequency)
+    : TargetModSkillV2(name, pattern), correct_func(0)
+{
+    this->frequency = frequency;
+}
+
 LuaInvaliditySkill::LuaInvaliditySkill(const QString &name, Frequency frequency)
     : InvaliditySkill(name), skill_valid(0)
 {
@@ -159,6 +178,12 @@ LuaInvaliditySkill::LuaInvaliditySkill(const QString &name, Frequency frequency)
 
 LuaAttackRangeSkill::LuaAttackRangeSkill(const QString &name, Frequency frequency)
     : AttackRangeSkill(name), extra_func(0), fixed_func(0)
+{
+    this->frequency = frequency;
+}
+
+LuaAttackRangeSkillV2::LuaAttackRangeSkillV2(const QString &name, Frequency frequency)
+    : AttackRangeSkillV2(name), correct_func(0), fixed_func(0)
 {
     this->frequency = frequency;
 }

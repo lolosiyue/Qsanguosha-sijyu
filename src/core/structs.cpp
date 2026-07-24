@@ -10,11 +10,22 @@ static struct SkillInstanceMetaRegistrar {
         qRegisterMetaType<SkillInstanceKey>("SkillInstanceKey");
         qRegisterMetaType<SkillInstance>("SkillInstance");
         qRegisterMetaType<SkillChangeStruct>("SkillChangeStruct");
+        qRegisterMetaType<SkillAmountChangeStruct>("SkillAmountChangeStruct");
         QMetaType::registerConverter<SkillChangeStruct, QString>([](const SkillChangeStruct &scs) {
             return scs.skillName;
         });
     }
 } _sir;
+
+SkillAmountChangeStruct::SkillAmountChangeStruct()
+    : source(nullptr), oldAmount(0), newAmount(0), canceled(false), resetToBase(false)
+{
+}
+
+QVariant SkillAmountChangeStruct::toVariant() const
+{
+    return QVariant::fromValue(*this);
+}
 
 bool CardsMoveStruct::tryParse(const QVariant &arg)
 {

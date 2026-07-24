@@ -742,6 +742,12 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 				recordCtx.owner = owner;
 				recordCtx.invoker = target;
 				recordCtx.instanceID = instanceId;
+				recordCtx.activationRef = SkillInstanceRef(
+					owner->objectName(), SkillInstanceKey(v2->objectName(), instanceId));
+				recordCtx.sourceRef = recordCtx.activationRef;
+				bool amountOk = false;
+				recordCtx.amount = room->getSkillInstanceAmount(recordCtx.activationRef, &amountOk);
+				if (!amountOk) recordCtx.amount = v2->getBaseAmount();
 				recordCtx.original_data = &data;
 				recordCtx.current_event = triggerEvent;
 				v2->record(triggerEvent, room, target, recordCtx);
@@ -798,6 +804,12 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 								ctx.owner = p;
 								ctx.invoker = target;
 								ctx.instanceID = resolvedId;
+								ctx.activationRef = SkillInstanceRef(
+									p->objectName(), SkillInstanceKey(skillName, resolvedId));
+								ctx.sourceRef = ctx.activationRef;
+								bool amountOk = false;
+								ctx.amount = room->getSkillInstanceAmount(ctx.activationRef, &amountOk);
+								if (!amountOk) ctx.amount = v2->getBaseAmount();
 								ctx.trigger_count = currentTriggerCount + i;
 								ctx.multiplier = effectiveMultiplier;
 								ctx.original_data = &data;
@@ -1031,6 +1043,7 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
         case CardsMoveOneTime:
         case EventAcquireSkill:
         case EventLoseSkill:
+        case EventSkillAmountChanged:
         case MarkChanged:
         case KingdomChanged:
         case Death:

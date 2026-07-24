@@ -516,9 +516,14 @@ int ViewAsSkillV2::getBaseAmount() const
 
 int ViewAsSkillV2::getEffectiveAmount(const SkillContext &context) const
 {
-    if (context.modified_amount > 0)
+    if (context.hasModifiedAmount())
         return context.modified_amount;
-    return context.amount > 0 ? context.amount : m_baseAmount;
+    return context.amount;
+}
+
+SkillInstanceRef ViewAsSkillV2::getAmountRef(const SkillContext &context) const
+{
+    return context.activationRef;
 }
 
 bool ViewAsSkillV2::viewFilter(const QList<const Card *> &, const Card *) const
@@ -780,6 +785,7 @@ bool TriggerV2Skill::skillEffect(TriggerEvent triggerEvent, Room *room, ServerPl
     ctx.updated_targets = updated.updated_targets;
     ctx.is_forced = updated.is_forced;
     ctx.modified_amount = updated.modified_amount;
+    ctx.modified_amount_set = updated.modified_amount_set;
     
     if (skip)
         return false;
@@ -794,6 +800,7 @@ bool TriggerV2Skill::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer
     ctx.original_data = &data;
     ctx.owner = owner;
     ctx.invoker = player;
+    ctx.amount = m_baseAmount;
     
     bool do_cost = cost(triggerEvent, room, player, ctx);
     if (!do_cost) return false;
@@ -834,9 +841,9 @@ int TriggerV2Skill::getBaseAmount() const
 
 int TriggerV2Skill::getEffectiveAmount(const SkillContext &ctx) const
 {
-    if (ctx.modified_amount > 0)
+    if (ctx.hasModifiedAmount())
         return ctx.modified_amount;
-    return ctx.amount > 0 ? ctx.amount : m_baseAmount;
+    return ctx.amount;
 }
 
 QString TriggerV2Skill::parseSkillName(const QString &fullName, QString *source,
@@ -968,6 +975,21 @@ int DistanceSkill::getFixed(const Player *, const Player *) const
     return 0;
 }
 
+DistanceSkillV2::DistanceSkillV2(const QString &name)
+    : DistanceSkill(name), m_baseAmount(1), m_holderSelector(CorrectSkill_Primary)
+{
+}
+
+CorrectSkillResult DistanceSkillV2::getCorrection(const CorrectSkillContext &context) const
+{
+    return CorrectSkillResult::useAmount(context.currentAmount);
+}
+
+CorrectSkillResult DistanceSkillV2::getFixedValue(const CorrectSkillContext &) const
+{
+    return CorrectSkillResult::noEffect();
+}
+
 MaxCardsSkill::MaxCardsSkill(const QString &name)
     : Skill(name, Skill::Compulsory)
 {
@@ -981,6 +1003,21 @@ int MaxCardsSkill::getExtra(const Player *) const
 int MaxCardsSkill::getFixed(const Player *) const
 {
     return -1;
+}
+
+MaxCardsSkillV2::MaxCardsSkillV2(const QString &name)
+    : MaxCardsSkill(name), m_baseAmount(1), m_holderSelector(CorrectSkill_Primary)
+{
+}
+
+CorrectSkillResult MaxCardsSkillV2::getCorrection(const CorrectSkillContext &context) const
+{
+    return CorrectSkillResult::useAmount(context.currentAmount);
+}
+
+CorrectSkillResult MaxCardsSkillV2::getFixedValue(const CorrectSkillContext &) const
+{
+    return CorrectSkillResult::noEffect();
 }
 
 TargetModSkill::TargetModSkill(const QString &name)
@@ -1007,6 +1044,22 @@ int TargetModSkill::getDistanceLimit(const Player *, const Card *, const Player 
 int TargetModSkill::getExtraTargetNum(const Player *, const Card *) const
 {
     return 0;
+}
+
+TargetModSkillV2::TargetModSkillV2(const QString &name, const QString &matchPattern)
+    : TargetModSkill(name), m_baseAmount(1), m_holderSelector(CorrectSkill_Primary)
+{
+    pattern = matchPattern;
+}
+
+CorrectSkillResult TargetModSkillV2::getCorrection(const CorrectSkillContext &context) const
+{
+    return CorrectSkillResult::useAmount(context.currentAmount);
+}
+
+CorrectSkillResult TargetModSkillV2::getFixedValue(const CorrectSkillContext &) const
+{
+    return CorrectSkillResult::noEffect();
 }
 
 SlashNoDistanceLimitSkill::SlashNoDistanceLimitSkill(const QString &skill_name)
@@ -1038,6 +1091,21 @@ int AttackRangeSkill::getExtra(const Player *, bool) const
 int AttackRangeSkill::getFixed(const Player *, bool) const
 {
     return -1;
+}
+
+AttackRangeSkillV2::AttackRangeSkillV2(const QString &name)
+    : AttackRangeSkill(name), m_baseAmount(1), m_holderSelector(CorrectSkill_Primary)
+{
+}
+
+CorrectSkillResult AttackRangeSkillV2::getCorrection(const CorrectSkillContext &context) const
+{
+    return CorrectSkillResult::useAmount(context.currentAmount);
+}
+
+CorrectSkillResult AttackRangeSkillV2::getFixedValue(const CorrectSkillContext &) const
+{
+    return CorrectSkillResult::noEffect();
 }
 
 ViewAsEquipSkill::ViewAsEquipSkill(const QString &name) : Skill(name, Skill::Compulsory)
@@ -1406,6 +1474,15 @@ QVariant SkillContext::toVariant() const
     if (activationRef.isValid())
         map["activation"] = activationRef.ownerObjectName + "/" + activationRef.key.skillName + "#" + QString::number(activationRef.key.instanceID);
     return map;
+}
+
+QVariant CorrectSkillContext::getStateValue(const QString &key, const QVariant &defaultValue) const
+{
+    if (!holder || !instanceRef.isValid()) return defaultValue;
+    const SkillInstance *instance = holder->findSkillInstance(instanceRef.key.skillName,
+                                                               instanceRef.key.instanceID);
+    if (!instance) return defaultValue;
+    return instance->correctState.value(key, defaultValue);
 }
 
 BattleArraySkill::BattleArraySkill(const QString &name, const QString &type)

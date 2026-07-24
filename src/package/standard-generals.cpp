@@ -4720,6 +4720,99 @@ public:
     }
 };
 
+class CorrectV2DistanceTest : public DistanceSkillV2
+{
+public:
+    CorrectV2DistanceTest(const QString &name, CorrectSkillHolderSelector selector,
+                          bool fixedValue = false)
+        : DistanceSkillV2(name), m_fixedValue(fixedValue)
+    {
+        setBaseAmount(-1);
+        setHolderSelector(selector);
+    }
+
+    CorrectSkillResult getCorrection(const CorrectSkillContext &context) const override
+    {
+        if (!context.getStateValue("enabled", true).toBool())
+            return CorrectSkillResult::noEffect();
+        if (getHolderSelector() == CorrectSkill_System
+            && (!context.primary
+                || context.primary->getMark("correct_v2_system_enabled") <= 0))
+            return CorrectSkillResult::noEffect();
+        return CorrectSkillResult::useAmount(context.currentAmount);
+    }
+
+    CorrectSkillResult getFixedValue(const CorrectSkillContext &context) const override
+    {
+        return m_fixedValue ? CorrectSkillResult::useAmount(context.currentAmount)
+                            : CorrectSkillResult::noEffect();
+    }
+
+private:
+    bool m_fixedValue;
+};
+
+class CorrectV2MaxCardsTest : public MaxCardsSkillV2
+{
+public:
+    CorrectV2MaxCardsTest() : MaxCardsSkillV2("#correct_v2_maxcards_test")
+    {
+        setBaseAmount(1);
+    }
+};
+
+class CorrectV2TargetModTest : public TargetModSkillV2
+{
+public:
+    CorrectV2TargetModTest() : TargetModSkillV2("#correct_v2_targetmod_test", "Slash")
+    {
+        setBaseAmount(1);
+    }
+};
+
+class CorrectV2AttackRangeTest : public AttackRangeSkillV2
+{
+public:
+    CorrectV2AttackRangeTest() : AttackRangeSkillV2("#correct_v2_attackrange_test")
+    {
+        setBaseAmount(1);
+    }
+};
+
+class CorrectV2AmountEventTest : public TriggerSkill
+{
+public:
+    CorrectV2AmountEventTest() : TriggerSkill("#correct_v2_amount_event_test")
+    {
+        events << EventSkillAmountChanging << EventSkillAmountChanged;
+        global = true;
+    }
+
+    bool triggerable(const ServerPlayer *) const override { return true; }
+
+    bool trigger(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const override
+    {
+        SkillAmountChangeStruct change = data.value<SkillAmountChangeStruct>();
+        if (event == EventSkillAmountChanging) {
+            if (change.reason == "correct_v2_modify")
+                change.newAmount += 2;
+            else if (change.reason == "correct_v2_cancel")
+                change.canceled = true;
+            else if (change.reason == "correct_v2_recurse" && change.source) {
+                const bool nested = room->setSkillInstanceAmount(
+                    change.source, change.skillRef, change.newAmount + 1,
+                    "correct_v2_nested");
+                room->setPlayerMark(change.source, "correct_v2_recursion_rejected",
+                                    nested ? 0 : 1);
+            }
+            data = QVariant::fromValue(change);
+        } else if (event == EventSkillAmountChanged && change.source) {
+            room->addPlayerMark(change.source, "correct_v2_changed_count");
+        }
+        return false;
+    }
+};
+
 TestPackage::TestPackage()
     : Package("~test")
 {
@@ -4756,6 +4849,25 @@ TestPackage::TestPackage()
     active_skill_v2_tester->addSkill(new ViewAsSkillV2ProxyUiTest);
     active_skill_v2_tester->addSkill(new ViewAsSkillV2QuotaRoot);
     active_skill_v2_tester->addSkill(new ViewAsSkillV2CustomUsageTest);
+    active_skill_v2_tester->addSkill(new CorrectV2DistanceTest(
+        "#correct_v2_distance_primary_test", CorrectSkill_Primary));
+    active_skill_v2_tester->addSkill(new CorrectV2DistanceTest(
+        "#correct_v2_distance_secondary_test", CorrectSkill_Secondary));
+    active_skill_v2_tester->addSkill(new CorrectV2DistanceTest(
+        "#correct_v2_distance_participants_test", CorrectSkill_Participants));
+    active_skill_v2_tester->addSkill(new CorrectV2DistanceTest(
+        "#correct_v2_distance_allholders_test", CorrectSkill_AllHolders));
+    active_skill_v2_tester->addSkill(new CorrectV2DistanceTest(
+        "#correct_v2_distance_fixed_test", CorrectSkill_Primary, true));
+    active_skill_v2_tester->addSkill(new CorrectV2MaxCardsTest);
+    active_skill_v2_tester->addSkill(new CorrectV2TargetModTest);
+    active_skill_v2_tester->addSkill(new CorrectV2AttackRangeTest);
+
+    // System selector has no holder instance, so register it directly and keep it
+    // dormant unless the explicit test mark is enabled on the primary player.
+    skills << new CorrectV2DistanceTest(
+        "#correct_v2_distance_system_test", CorrectSkill_System);
+    skills << new CorrectV2AmountEventTest;
 
     General *nobenghuai_dongzhuo = new General(this, "nobenghuai_dongzhuo$", "qun", 4, true, true);
     nobenghuai_dongzhuo->addSkill("jiuchi");

@@ -176,6 +176,24 @@ public:
 	LuaFunction fixed_func;
 };
 
+class DistanceSkillV2: public DistanceSkill {
+public:
+	DistanceSkillV2(const QString &name);
+	int getBaseAmount() const;
+	CorrectSkillHolderSelector getHolderSelector() const;
+	void setBaseAmount(int amount);
+	void setHolderSelector(CorrectSkillHolderSelector selector);
+};
+
+class LuaDistanceSkillV2: public DistanceSkillV2 {
+public:
+	LuaDistanceSkillV2(const char *name, Frequency frequency);
+	virtual CorrectSkillResult getCorrection(const CorrectSkillContext &context) const;
+	virtual CorrectSkillResult getFixedValue(const CorrectSkillContext &context) const;
+	LuaFunction correct_func;
+	LuaFunction fixed_func;
+};
+
 class MaxCardsSkill: public Skill {
 public:
 	MaxCardsSkill(const QString &name);
@@ -192,6 +210,24 @@ public:
 	virtual int getFixed(const Player *target) const;
 
 	LuaFunction extra_func;
+	LuaFunction fixed_func;
+};
+
+class MaxCardsSkillV2: public MaxCardsSkill {
+public:
+	MaxCardsSkillV2(const QString &name);
+	int getBaseAmount() const;
+	CorrectSkillHolderSelector getHolderSelector() const;
+	void setBaseAmount(int amount);
+	void setHolderSelector(CorrectSkillHolderSelector selector);
+};
+
+class LuaMaxCardsSkillV2: public MaxCardsSkillV2 {
+public:
+	LuaMaxCardsSkillV2(const char *name, Frequency frequency);
+	virtual CorrectSkillResult getCorrection(const CorrectSkillContext &context) const;
+	virtual CorrectSkillResult getFixedValue(const CorrectSkillContext &context) const;
+	LuaFunction correct_func;
 	LuaFunction fixed_func;
 };
 
@@ -227,6 +263,22 @@ public:
 	LuaFunction extra_target_func;
 };
 
+class TargetModSkillV2: public TargetModSkill {
+public:
+	TargetModSkillV2(const QString &name, const QString &pattern = "Slash");
+	int getBaseAmount() const;
+	CorrectSkillHolderSelector getHolderSelector() const;
+	void setBaseAmount(int amount);
+	void setHolderSelector(CorrectSkillHolderSelector selector);
+};
+
+class LuaTargetModSkillV2: public TargetModSkillV2 {
+public:
+	LuaTargetModSkillV2(const char *name, const char *pattern, Frequency frequency);
+	virtual CorrectSkillResult getCorrection(const CorrectSkillContext &context) const;
+	LuaFunction correct_func;
+};
+
 class InvaliditySkill: public Skill {
 public:
 	InvaliditySkill(const QString &name);
@@ -259,6 +311,24 @@ public:
 	virtual int getFixed(const Player *target, bool include_weapon) const;
 
 	LuaFunction extra_func;
+	LuaFunction fixed_func;
+};
+
+class AttackRangeSkillV2: public AttackRangeSkill {
+public:
+	AttackRangeSkillV2(const QString &name);
+	int getBaseAmount() const;
+	CorrectSkillHolderSelector getHolderSelector() const;
+	void setBaseAmount(int amount);
+	void setHolderSelector(CorrectSkillHolderSelector selector);
+};
+
+class LuaAttackRangeSkillV2: public AttackRangeSkillV2 {
+public:
+	LuaAttackRangeSkillV2(const char *name, Frequency frequency);
+	virtual CorrectSkillResult getCorrection(const CorrectSkillContext &context) const;
+	virtual CorrectSkillResult getFixedValue(const CorrectSkillContext &context) const;
+	LuaFunction correct_func;
 	LuaFunction fixed_func;
 };
 
@@ -393,6 +463,7 @@ public:
 	void setResponseOrUse(bool enabled);
 	virtual int getBaseAmount() const;
 	int getEffectiveAmount(const SkillContext &context) const;
+	virtual SkillInstanceRef getAmountRef(const SkillContext &context) const;
 	EffectFlow skillEffect(SkillContext &context, ServerPlayer *target) const;
 };
 
@@ -409,6 +480,7 @@ public:
 
 	virtual Skill::LimitScope getLimitScope() const;
 	virtual SkillInstanceRef getUsageRef(const SkillContext &ctx) const;
+	virtual SkillInstanceRef getAmountRef(const SkillContext &ctx) const;
 	virtual int getMaxUsageLimit(const SkillContext &ctx) const;
 
 	LuaFunction can_activate;
@@ -423,6 +495,7 @@ public:
 	LuaFunction on_effect_target;
 	LuaFunction on_effect_target_group;
 	LuaFunction get_usage_ref;
+	LuaFunction get_amount_ref;
 };
 
 class LuaViewAsSkill: public ViewAsSkill {
@@ -1518,6 +1591,66 @@ bool LuaProhibitPindianSkill::isPindianProhibited(const Player *from, const Play
 	lua_pop(L, 1);
 	return result;
 }
+
+static CorrectSkillResult luaCorrectSkillResult(lua_State *L, int currentAmount,
+	const char *callbackName)
+{
+	if (lua_isnil(L, -1) || (lua_isboolean(L, -1) && !lua_toboolean(L, -1))) {
+		lua_pop(L, 1);
+		return CorrectSkillResult::noEffect();
+	}
+	if (lua_isboolean(L, -1)) {
+		lua_pop(L, 1);
+		return CorrectSkillResult::useAmount(currentAmount);
+	}
+	if (lua_isnumber(L, -1)) {
+		const int value = static_cast<int>(lua_tointeger(L, -1));
+		lua_pop(L, 1);
+		return CorrectSkillResult::useAmount(value);
+	}
+	qWarning("%s returned an unsupported value; contribution ignored", callbackName);
+	lua_pop(L, 1);
+	return CorrectSkillResult::noEffect();
+}
+
+static void luaCorrectSkillError(lua_State *L, const char *callbackName)
+{
+	const char *message = lua_tostring(L, -1);
+	qWarning("%s error: %s", callbackName, message ? message : "unknown Lua error");
+	lua_pop(L, 1);
+}
+
+#define LUA_CORRECT_V2_METHOD(CLASS, METHOD, FIELD, LABEL) \
+CorrectSkillResult CLASS::METHOD(const CorrectSkillContext &context) const \
+{ \
+	if (FIELD == 0) return CorrectSkillResult::noEffect(); \
+	lua_State *L = Sanguosha->getLuaState(); \
+	lua_rawgeti(L, LUA_REGISTRYINDEX, FIELD); \
+	SWIG_NewPointerObj(L, const_cast<CLASS *>(this), SWIGTYPE_p_##CLASS, 0); \
+	SWIG_NewPointerObj(L, const_cast<CorrectSkillContext *>(&context), SWIGTYPE_p_CorrectSkillContext, 0); \
+	if (lua_pcall(L, 2, 1, 0) != 0) { \
+		luaCorrectSkillError(L, LABEL); \
+		return CorrectSkillResult::noEffect(); \
+	} \
+	return luaCorrectSkillResult(L, context.currentAmount, LABEL); \
+}
+
+LUA_CORRECT_V2_METHOD(LuaDistanceSkillV2, getCorrection, correct_func,
+	"LuaDistanceSkillV2::correct_func")
+LUA_CORRECT_V2_METHOD(LuaDistanceSkillV2, getFixedValue, fixed_func,
+	"LuaDistanceSkillV2::fixed_func")
+LUA_CORRECT_V2_METHOD(LuaMaxCardsSkillV2, getCorrection, correct_func,
+	"LuaMaxCardsSkillV2::correct_func")
+LUA_CORRECT_V2_METHOD(LuaMaxCardsSkillV2, getFixedValue, fixed_func,
+	"LuaMaxCardsSkillV2::fixed_func")
+LUA_CORRECT_V2_METHOD(LuaTargetModSkillV2, getCorrection, correct_func,
+	"LuaTargetModSkillV2::correct_func")
+LUA_CORRECT_V2_METHOD(LuaAttackRangeSkillV2, getCorrection, correct_func,
+	"LuaAttackRangeSkillV2::correct_func")
+LUA_CORRECT_V2_METHOD(LuaAttackRangeSkillV2, getFixedValue, fixed_func,
+	"LuaAttackRangeSkillV2::fixed_func")
+
+#undef LUA_CORRECT_V2_METHOD
 
 int LuaDistanceSkill::getCorrect(const Player *from, const Player *to) const
 {
@@ -3658,6 +3791,14 @@ SkillInstanceRef LuaViewAsSkillV2::getUsageRef(const SkillContext &ctx) const
 	return luaSkillUsageRef(Sanguosha->getLuaState(), get_usage_ref,
 		const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2,
 		ctx, "LuaViewAsSkillV2");
+}
+
+SkillInstanceRef LuaViewAsSkillV2::getAmountRef(const SkillContext &ctx) const
+{
+	if (!get_amount_ref) return ViewAsSkillV2::getAmountRef(ctx);
+	return luaSkillUsageRef(Sanguosha->getLuaState(), get_amount_ref,
+		const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2,
+		ctx, "LuaViewAsSkillV2 amount");
 }
 
 bool LuaViewAsSkillV2::canActivate(const ActiveSkillRequest &request) const
