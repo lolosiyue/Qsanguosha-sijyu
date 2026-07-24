@@ -11897,9 +11897,26 @@ void JuguanDialog::prepareOptions()
 			}
 			continue;
 		}
+		if(name=="all_damage_cards"){
+			foreach(int id, Sanguosha->getRandomCards()){
+				const Card *engine_card = Sanguosha->getEngineCard(id);
+				if (engine_card == nullptr
+					|| (!engine_card->isKindOf("BasicCard") && !engine_card->isNDTrick())
+					|| !engine_card->isDamageCard()
+					|| map.contains(engine_card->objectName()))
+					continue;
+
+				Card *card = Sanguosha->cloneCard(engine_card->objectName());
+				if (card)
+					button_layout->addWidget(createButton(card));
+			}
+			continue;
+		}
 		Card *card = Sanguosha->cloneCard(name);
-		if (card)
+		if (card && !map.contains(card->objectName()))
 			button_layout->addWidget(createButton(card));
+		else
+			delete card;
 	}
 }
 
