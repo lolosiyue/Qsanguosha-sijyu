@@ -292,6 +292,40 @@ Engine::Engine(bool isManualMode)
 
     initializeRoleMap();
 
+    // Built-in modes must exist before Lua extensions register groups or
+    // attempt to add custom modes with duplicate identifiers.
+    modes.insert("02p", GameModeStruct("02p", tr("2 players"), 2));
+    modes.insert("02_1v1", GameModeStruct("02_1v1", tr("2 players (KOF style)"), 2, "ZN"));
+    modes.insert("03p", GameModeStruct("03p", tr("3 players"), 3));
+    modes.insert("03_1v2", GameModeStruct("03_1v2", tr("3 players (Dou Di Zhu)"), 3, "ZFF"));
+    modes.insert("04p", GameModeStruct("04p", tr("4 players"), 4));
+    modes.insert("04_1v3", GameModeStruct("04_1v3", tr("4 players (Hulao Pass)"), 4, "ZFFF"));
+    modes.insert("04_boss", GameModeStruct("04_boss", tr("4 players(Boss)"), 4, "ZFFF"));
+    modes.insert("04_2v2", GameModeStruct("04_2v2", tr("4 players (Happy)"), 4, "CFFC"));
+    modes.insert("05p", GameModeStruct("05p", tr("5 players"), 5));
+    modes.insert("05_ol", GameModeStruct("05_ol", QString("5 人局 [诸侯伐董]"), 5, "ZCCFF"));
+    modes.insert("06_ol", GameModeStruct("06_ol", QString("6 人局 [神武在世]"), 6, "ZCCFFF"));
+    modes.insert("06p", GameModeStruct("06p", tr("6 players"), 6));
+    modes.insert("06pd", GameModeStruct("06pd", tr("6 players (2 renegades)"), 6));
+    modes.insert("06_3v3", GameModeStruct("06_3v3", tr("6 players (3v3)"), 6));
+    modes.insert("06_XMode", GameModeStruct("06_XMode", tr("6 players (XMode)"), 6));
+    modes.insert("07p", GameModeStruct("07p", tr("7 players"), 7));
+    modes.insert("08p", GameModeStruct("08p", tr("8 players"), 8));
+    modes.insert("08pd", GameModeStruct("08pd", tr("8 players (2 renegades)"), 8));
+    modes.insert("08pz", GameModeStruct("08pz", tr("8 players (0 renegade)"), 8));
+    modes.insert("08_defense", GameModeStruct("08_defense", tr("8 players (JianGe Defense)"), 8, "CCCCFFFF"));
+    modes.insert("09p", GameModeStruct("09p", tr("9 players"), 9));
+    modes.insert("10pd", GameModeStruct("10pd", tr("10 players"), 10));
+    modes.insert("10p", GameModeStruct("10p", tr("10 players (1 renegade)"), 10));
+    modes.insert("10pz", GameModeStruct("10pz", tr("10 players (0 renegade)"), 10));
+    modes.insert("20p", GameModeStruct("20p", tr("20 players (1 renegade)"), 20));
+
+    addModeGroup(QStringLiteral("身份模式"), QStringList()
+                 << "02p" << "03p" << "04p" << "05p"
+                 << "06p" << "06pd" << "07p"
+                 << "08p" << "08pd" << "08pz"
+                 << "09p" << "10p" << "10pd" << "10pz" << "20p");
+
     connect(qApp, SIGNAL(aboutToQuit()), this, SLOT(deleteLater()));
 
     if (!DoLuaScript(lua, "lua/sanguosha.lua")) exit(1);
@@ -398,34 +432,6 @@ Engine::Engine(bool isManualMode)
 	Config.setValue("AutoSkillTypeColorReplacement", true);
 	Config.setValue("AutoSuitReplacement", true);
 
-    // available game modes
-    modes["02p"] = tr("2 players");
-    //modes["02pbb"] = tr("2 players (using blance beam)");
-    modes["02_1v1"] = tr("2 players (KOF style)");
-    modes["03p"] = tr("3 players");
-    modes["03_1v2"] = tr("3 players (Dou Di Zhu)");
-    modes["04p"] = tr("4 players");
-    modes["04_1v3"] = tr("4 players (Hulao Pass)");
-    modes["04_boss"] = tr("4 players(Boss)");
-    modes["04_2v2"] = tr("4 players (Happy)");
-    modes["05p"] = tr("5 players");
-	modes["05_ol"] = QString("5 人局 [诸侯伐董]");
-	modes["06_ol"] = QString("6 人局 [神武在世]");
-    modes["06p"] = tr("6 players");
-    modes["06pd"] = tr("6 players (2 renegades)");
-    modes["06_3v3"] = tr("6 players (3v3)");
-    modes["06_XMode"] = tr("6 players (XMode)");
-    modes["07p"] = tr("7 players");
-    modes["08p"] = tr("8 players");
-    modes["08pd"] = tr("8 players (2 renegades)");
-    modes["08pz"] = tr("8 players (0 renegade)");
-    modes["08_defense"] = tr("8 players (JianGe Defense)");
-    modes["09p"] = tr("9 players");
-    modes["10pd"] = tr("10 players");
-    modes["10p"] = tr("10 players (1 renegade)");
-    modes["10pz"] = tr("10 players (0 renegade)");
-    modes["20p"] = tr("20 players (1 renegade)");
-
 	ZhinangCards << "ExNihilo" << "Dismantlement" << "Nullification" << "Qizhengxiangsheng"
 			<< "Mantianguohai" << "Tiaojiyanmei" << "Binglinchengxia";//添加初始智囊牌名
 	available_generals = generals;
@@ -452,21 +458,48 @@ void Engine::addTranslationEntry(const QString &key, const QString &value)
 	translations.insert(key, value);
 }
 
-void Engine::addModes(const QString &key, const QString &value, const QString &roles)
+bool Engine::addModes(const QString &key, const QString &value, const QString &roles)
 {
     GameModeStruct mode(key, translate(value));
     if (!roles.isEmpty()) {
         mode.roles = roles;
         mode.player_count = roles.length();
     }
-    modes[key] = mode;
-	if (!roles.isEmpty())
-		mode_roles[key] = roles;
+    return addGameMode(mode);
 }
 
-void Engine::addGameMode(const GameModeStruct &mode)
+bool Engine::addGameMode(const GameModeStruct &mode)
 {
-    modes[mode.mode_id] = mode;
+    if (!mode.isValid()) {
+        qWarning("Cannot register a game mode with an empty identifier.");
+        return false;
+    }
+    if (modes.contains(mode.mode_id)) {
+        qWarning("Game mode '%s' is already registered; the new definition was ignored.",
+                 qPrintable(mode.mode_id));
+        return false;
+    }
+    foreach (QChar abbreviation, mode.roles) {
+        if (!m_roleByAbbreviation.contains(QString(abbreviation))) {
+            qWarning("Game mode '%s' uses unregistered role abbreviation '%s'; the whole mode was rejected.",
+                     qPrintable(mode.mode_id), qPrintable(QString(abbreviation)));
+            return false;
+        }
+    }
+
+    GameModeStruct registered = mode;
+    registered.is_scenario = false;
+    registered.is_mini_scene = false;
+    if (registered.display_name.isEmpty())
+        registered.display_name = translate(registered.mode_id);
+    if (registered.player_count < 0 && !registered.roles.isEmpty())
+        registered.player_count = registered.roles.length();
+
+    modes.insert(registered.mode_id, registered);
+    if (!registered.roles.isEmpty())
+        mode_roles.insert(registered.mode_id, registered.roles);
+    m_customModeIds.insert(registered.mode_id);
+    return true;
 }
 
 Engine::~Engine()
@@ -1547,10 +1580,23 @@ QMap<QString, GameModeStruct> Engine::getAvailableModes() const
 
 GameModeStruct Engine::getGameMode(const QString &mode_id) const
 {
-    if (modes.contains(mode_id)) {
+    if (modes.contains(mode_id))
         return modes.value(mode_id);
+
+    const Scenario *scenario = getScenario(mode_id);
+    if (scenario) {
+        GameModeStruct mode(mode_id, translate(mode_id), scenario->getPlayerCount(), scenario->getRoles());
+        mode.is_mini_scene = m_miniScenes.contains(mode_id);
+        mode.is_scenario = !mode.is_mini_scene;
+        return mode;
     }
-    return GameModeStruct(mode_id);
+
+    return GameModeStruct();
+}
+
+bool Engine::isCustomGameMode(const QString &mode_id) const
+{
+    return m_customModeIds.contains(mode_id);
 }
 
 QString Engine::getModeName(const QString &mode) const
@@ -1580,8 +1626,8 @@ int Engine::getPlayerCount(const QString &mode) const
     } else {
         // scenario mode
         const Scenario*scenario = getScenario(mode);
-        Q_ASSERT(scenario);
-        return scenario->getPlayerCount();
+        if (scenario)
+            return scenario->getPlayerCount();
     }
     return -1;
 }
@@ -1711,6 +1757,10 @@ bool Engine::hasSkipGeneralSelection(const QString &mode) const
 
 void Engine::addSkipGeneralMode(const QString &mode)
 {
+    if (!modes.contains(mode)) {
+        qWarning("Cannot enable skipChooseGeneral for unknown mode '%s'.", qPrintable(mode));
+        return;
+    }
     if (!m_skipGeneralModes.contains(mode)) {
         m_skipGeneralModes.append(mode);
     }
@@ -1728,6 +1778,10 @@ bool Engine::hasShowRoleMode(const QString &mode) const
 
 void Engine::addShowRoleMode(const QString &mode)
 {
+    if (!modes.contains(mode)) {
+        qWarning("Cannot enable showRole for unknown mode '%s'.", qPrintable(mode));
+        return;
+    }
     if (!m_showRoleModes.contains(mode)) {
         m_showRoleModes.append(mode);
     }
@@ -1738,25 +1792,54 @@ void Engine::removeShowRoleMode(const QString &mode)
     m_showRoleModes.removeAll(mode);
 }
 
-void Engine::setGameModeShuffleRoles(const QString &mode_id, bool shuffle_roles)
+void Engine::setGameModeShuffleSeats(const QString &mode_id, bool shuffle_seats)
 {
-    if (modes.contains(mode_id)) {
-        modes[mode_id].setShuffleRoles(shuffle_roles);
+    if (!modes.contains(mode_id)) {
+        qWarning("Cannot set shuffleSeats for unknown mode '%s'.", qPrintable(mode_id));
+        return;
     }
+    modes[mode_id].setShuffleSeats(shuffle_seats);
 }
 
 void Engine::setGameModeLordWelfare(const QString &mode_id, bool lord_welfare)
 {
-    if (modes.contains(mode_id)) {
-        modes[mode_id].lord_welfare = lord_welfare;
+    if (!modes.contains(mode_id)) {
+        qWarning("Cannot set lordWelfare for unknown mode '%s'.", qPrintable(mode_id));
+        return;
     }
+    modes[mode_id].lord_welfare = lord_welfare;
 }
 
 void Engine::addModeGroup(const QString& groupName, const QStringList& modeIds)
 {
-    for (int i = 0; i < modeIds.size(); ++i) {
-        m_modeGroups.insert(groupName, modeIds);
+    if (groupName.isEmpty()) {
+        qWarning("Cannot register a game mode group with an empty name.");
+        return;
     }
+
+    QStringList &groupModes = m_modeGroups[groupName];
+    foreach (const QString &modeId, modeIds) {
+        if (!modes.contains(modeId)) {
+            qWarning("Game mode group '%s' ignored unknown mode '%s'.",
+                     qPrintable(groupName), qPrintable(modeId));
+            continue;
+        }
+
+        const QString existingGroup = m_modeGroupByMode.value(modeId);
+        if (!existingGroup.isEmpty() && existingGroup != groupName) {
+            qWarning("Game mode '%s' already belongs to group '%s'; group '%s' ignored it.",
+                     qPrintable(modeId), qPrintable(existingGroup), qPrintable(groupName));
+            continue;
+        }
+        if (groupModes.contains(modeId))
+            continue;
+
+        groupModes.append(modeId);
+        m_modeGroupByMode.insert(modeId, groupName);
+    }
+
+    if (groupModes.isEmpty())
+        m_modeGroups.remove(groupName);
 }
 
 QStringList Engine::getGroupModes(const QString& groupName) const
@@ -1766,14 +1849,7 @@ QStringList Engine::getGroupModes(const QString& groupName) const
 
 QString Engine::getModeGroup(const QString& modeId) const
 {
-    QMapIterator<QString, QStringList> it(m_modeGroups);
-    while (it.hasNext()) {
-        it.next();
-        if (it.value().contains(modeId)) {
-            return it.key();
-        }
-    }
-    return QString();
+    return m_modeGroupByMode.value(modeId);
 }
 
 void Engine::initializeRoleMap()
@@ -1784,9 +1860,32 @@ void Engine::initializeRoleMap()
     addRoleMapping("renegade", "N");
 }
 
-void Engine::addRoleMapping(const QString& roleName, const QString& abbreviation)
+bool Engine::addRoleMapping(const QString& roleName, const QString& abbreviation)
 {
+    if (roleName.isEmpty() || abbreviation.length() != 1
+        || abbreviation.at(0) < QLatin1Char('A') || abbreviation.at(0) > QLatin1Char('Z')) {
+        qWarning("Role mapping '%s' was rejected: abbreviation '%s' must be one uppercase ASCII letter.",
+                 qPrintable(roleName), qPrintable(abbreviation));
+        return false;
+    }
+
+    if (roleMap.contains(roleName)) {
+        if (roleMap.value(roleName) == abbreviation)
+            return true;
+        qWarning("Role '%s' is already mapped to '%s'; the new mapping was rejected.",
+                 qPrintable(roleName), qPrintable(roleMap.value(roleName)));
+        return false;
+    }
+    if (m_roleByAbbreviation.contains(abbreviation)) {
+        qWarning("Role abbreviation '%s' is already used by '%s'; role '%s' was rejected.",
+                 qPrintable(abbreviation), qPrintable(m_roleByAbbreviation.value(abbreviation)),
+                 qPrintable(roleName));
+        return false;
+    }
+
     roleMap.insert(roleName, abbreviation);
+    m_roleByAbbreviation.insert(abbreviation, roleName);
+    return true;
 }
 
 QStringList Engine::getAllRegisteredRoles() const
@@ -1801,13 +1900,7 @@ QString Engine::getRoleAbbreviation(const QString& roleName) const
 
 QString Engine::getRoleByAbbreviation(const QString& targetValue, const QString& defaultKey) const
 {
-    QMap<QString, QString>::const_iterator it;
-    for (it = roleMap.begin(); it != roleMap.end(); ++it) {
-        if (it.value() == targetValue) {
-            return it.key();
-        }
-    }
-    return defaultKey;
+    return m_roleByAbbreviation.value(targetValue, defaultKey);
 }
 
 int Engine::getCardCount() const

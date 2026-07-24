@@ -6367,15 +6367,19 @@ void RoomScene::doPindianAnimation()
 	}
 }
 
-static void AddRoleIcon(QMap<QChar,QPixmap>&map,char c,const QString&role)
+static void AddRoleIcon(QMap<QChar,QPixmap>&map,QChar abbreviation,const QString&role)
 {
 	QPixmap pixmap(QString("image/system/roles/small-%1.png").arg(role));
+	if (pixmap.isNull()) {
+		qWarning("Role icon for '%s' is missing; abbreviation '%s' will be skipped.",
+			qPrintable(role), qPrintable(QString(abbreviation)));
+		return;
+	}
 
-	QChar qc(c);
-	map[qc.toUpper()] = pixmap;
+	map[abbreviation.toUpper()] = pixmap;
 
 	QSanUiUtils::makeGray(pixmap);
-	map[qc.toLower()] = pixmap;
+	map[abbreviation.toLower()] = pixmap;
 }
 
 void RoomScene::updateRoles(const QString&roles)
@@ -6388,10 +6392,11 @@ void RoomScene::updateRoles(const QString&roles)
 
 	static QMap<QChar,QPixmap> map;
 	if(map.isEmpty()){
-		AddRoleIcon(map,'Z',"lord");
-		AddRoleIcon(map,'C',"loyalist");
-		AddRoleIcon(map,'F',"rebel");
-		AddRoleIcon(map,'N',"renegade");
+		foreach (const QString &role, Sanguosha->getAllRegisteredRoles()) {
+			QString abbreviation = Sanguosha->getRoleAbbreviation(role);
+			if (!abbreviation.isEmpty())
+				AddRoleIcon(map, abbreviation.at(0), role);
+		}
 	}
 
 	foreach (QChar c,roles){

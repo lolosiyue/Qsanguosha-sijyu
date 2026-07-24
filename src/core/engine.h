@@ -57,10 +57,10 @@ public:
     QString translate(const QString &to_translate, bool initial = false) const;
     lua_State *getLuaState() const;
     SafeLuaMutex &getLuaMutex() const;
-    void addModes(const QString &key, const QString &value, const QString &roles = "");
-    void addGameMode(const GameModeStruct &mode);
+    bool addModes(const QString &key, const QString &value, const QString &roles = "");
+    bool addGameMode(const GameModeStruct &mode);
 
-    void setGameModeShuffleRoles(const QString &mode_id, bool shuffle_roles);
+    void setGameModeShuffleSeats(const QString &mode_id, bool shuffle_seats);
     void setGameModeLordWelfare(const QString &mode_id, bool lord_welfare);
 
     void addModeGroup(const QString& groupName, const QStringList& modeIds);
@@ -97,6 +97,7 @@ public:
 
     QMap<QString, GameModeStruct> getAvailableModes() const;
     GameModeStruct getGameMode(const QString &mode_id) const;
+    bool isCustomGameMode(const QString &mode_id) const;
     QString getModeName(const QString &mode) const;
     int getPlayerCount(const QString &mode) const;
     QString getRoles(const QString &mode) const;
@@ -111,9 +112,8 @@ public:
     void addShowRoleMode(const QString &mode);
     void removeShowRoleMode(const QString &mode);
 
-    QMap<QString, QString> roleMap;
     void initializeRoleMap();
-    void addRoleMapping(const QString& roleName, const QString& abbreviation);
+    bool addRoleMapping(const QString& roleName, const QString& abbreviation);
     QString getRoleAbbreviation(const QString& roleName) const;
     QString getRoleByAbbreviation(const QString &targetValue, const QString &defaultKey = "") const;
     QStringList getAllRegisteredRoles() const;
@@ -240,6 +240,7 @@ private:
     mutable QMutex m_mutex;
     QMap<QString, GameModeStruct> modes;
     QMap<QString, QString> mode_roles;
+    QSet<QString> m_customModeIds;
     QMultiMap<QString, QString> related_skills;
     mutable QMap<QString, const CardPattern *> patterns;
     mutable QMap<QString, ExpPattern *> exp_patterns;
@@ -249,6 +250,9 @@ private:
     QStringList m_skipGeneralModes;
     QStringList m_showRoleModes;
     QMap<QString, QStringList> m_modeGroups;
+    QMap<QString, QString> m_modeGroupByMode;
+    QMap<QString, QString> roleMap;
+    QMap<QString, QString> m_roleByAbbreviation;
 
     QList<Card *> cards;
     QStringList ban_package;

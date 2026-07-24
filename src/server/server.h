@@ -170,6 +170,7 @@ private slots:
     void select3v3Generals();
     void edit1v1Banlist();
     void updateButtonEnablility(QAbstractButton *button);
+    void updateModeGroupSelection(int index);
 
     void doCustomAssign();
     void doBossModeCustomAssign();

@@ -142,7 +142,7 @@ int main(int argc, char *argv[])
         tmpFile.close();
         Sanguosha->loadTestScenario(tmpPath);
 
-        Config.GameMode = GameModeStruct("test_scenario");
+        Config.GameMode = Sanguosha->getGameMode("test_scenario");
         Config.setValue("GameMode", "test_scenario");
 
         Server *server = new Server(qApp);
@@ -262,7 +262,7 @@ int main(int argc, char *argv[])
             return 1;
         }
 
-        Config.GameMode = GameModeStruct("test_scenario");
+        Config.GameMode = Sanguosha->getGameMode("test_scenario");
         Config.setValue("GameMode", "test_scenario");
 
         Server *server = new Server(qApp);
