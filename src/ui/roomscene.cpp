@@ -1279,7 +1279,7 @@ void RoomScene::adjustItems()
 	m_tableh -= _m_roomLayout->m_photoDashboardPadding;
 
 	updateTable();
-	updateRolesBox();
+	updateRoles(m_roleState);
 	setChatBoxVisible(chat_box_widget->isVisible());
 
 	foreach(Photo *photo, photos) {
@@ -6384,6 +6384,7 @@ static void AddRoleIcon(QMap<QChar,QPixmap>&map,QChar abbreviation,const QString
 
 void RoomScene::updateRoles(const QString&roles)
 {
+	m_roleState = roles;
 	foreach(QGraphicsItem*item,role_items)
 		removeItem(item);
 
@@ -6399,10 +6400,52 @@ void RoomScene::updateRoles(const QString&roles)
 		}
 	}
 
-	foreach (QChar c,roles){
-		if(map.contains(c)){
-			QGraphicsPixmapItem*item = addPixmap(map.value(c));
+	const qreal availableWidth = qMax<qreal>(0, m_rolesBox->boundingRect().width() - 12);
+	int iconCount = 0;
+	foreach (QChar c, roles) {
+		if (map.contains(c))
+			++iconCount;
+	}
+
+	if (iconCount * 21 > availableWidth) {
+		QString roleOrder;
+		foreach (QChar c, Sanguosha->getRoles(ServerInfo.GameMode)) {
+			QChar abbreviation = c.toUpper();
+			if (map.contains(abbreviation) && !roleOrder.contains(abbreviation))
+				roleOrder.append(abbreviation);
+		}
+		foreach (QChar c, roles) {
+			QChar abbreviation = c.toUpper();
+			if (map.contains(abbreviation) && !roleOrder.contains(abbreviation))
+				roleOrder.append(abbreviation);
+		}
+
+		foreach (QChar abbreviation, roleOrder) {
+			int aliveCount = 0;
+			foreach (QChar c, roles) {
+				if (c == abbreviation)
+					++aliveCount;
+			}
+
+			// 空間不足時，每種身份只保留一個圖示；沒有存活者則顯示灰色圖示。
+			QGraphicsPixmapItem *item = addPixmap(map.value(aliveCount > 0 ? abbreviation : abbreviation.toLower()));
+			qreal itemWidth = item->boundingRect().width();
+			if (aliveCount > 1) {
+				QGraphicsSimpleTextItem *count = new QGraphicsSimpleTextItem(QString("x%1").arg(aliveCount), item);
+				count->setBrush(Qt::white);
+				count->setPos(itemWidth - 1, 0);
+				itemWidth += count->boundingRect().width() - 1;
+			}
+			item->setData(0, itemWidth);
+			item->setData(1, true);
 			role_items << item;
+		}
+	} else {
+		foreach (QChar c,roles){
+			if(map.contains(c)){
+				QGraphicsPixmapItem*item = addPixmap(map.value(c));
+				role_items << item;
+			}
 		}
 	}
 	updateRolesBox();
@@ -6410,12 +6453,25 @@ void RoomScene::updateRoles(const QString&roles)
 
 void RoomScene::updateRolesBox()
 {
+	if (!role_items.isEmpty() && role_items.first()->data(1).toBool()) {
+		qreal totalWidth = 0;
+		foreach (QGraphicsPixmapItem *item, role_items)
+			totalWidth += item->data(0).toReal();
+
+		qreal x = (m_rolesBox->boundingRect().width() - totalWidth) / 2;
+		foreach (QGraphicsPixmapItem *item, role_items) {
+			item->setParentItem(m_rolesBox);
+			item->setPos(x, 6);
+			x += item->data(0).toReal();
+		}
+	} else {
 	double centerX = m_rolesBox->boundingRect().width()/2;
 	int n = role_items.length();
 	for (int i = 0;i < n;i++){
 		QGraphicsPixmapItem*item = role_items[i];
 		item->setParentItem(m_rolesBox);
 		item->setPos(21*(i-n/2)+centerX,6);
+	}
 	}
 	m_pileCardNumInfoTextBox->setTextWidth(m_rolesBox->boundingRect().width());
 	m_pileCardNumInfoTextBox->setPos(0,35);
