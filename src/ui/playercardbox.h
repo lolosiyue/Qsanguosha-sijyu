@@ -32,8 +32,7 @@ private:
     void paintArea(const QString &name, QPainter *painter);
     int getRowCount(const int &cardNumber) const;
     void updateNumbers(const int &cardNumber);
-    void arrangeCards(const QList<const Card *> &cards, const QPoint &topLeft,
-                      const QList<int> &selectionIds = QList<int>());
+    void arrangeCards(const QList<const Card *> &cards, const QPoint &topLeft);
 
     const ClientPlayer *player;
     QString flags;
