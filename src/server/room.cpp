@@ -686,6 +686,8 @@ static bool CompareByRole(ServerPlayer*player1, ServerPlayer*player2)
 
 	if (role1 != role2)
 		return role1 < role2;
+	if (role1 == Player::UnknownRole && player1->getRole() != player2->getRole())
+		return player1->getRole() < player2->getRole();
 	return player1->isAlive() && !player2->isAlive();
 }
 
@@ -695,7 +697,13 @@ void Room::updateStateItem()
 	QList<ServerPlayer*> players = m_players;
 	std::sort(players.begin(), players.end(), CompareByRole);
 	foreach(ServerPlayer*p, players){
-		QChar c = "ZCFN"[p->getRoleEnum()];
+		QString abbreviation = Sanguosha->getRoleAbbreviation(p->getRole());
+		if (abbreviation.isEmpty()) {
+			qWarning("Cannot update role state: role '%s' has no registered abbreviation.",
+				qPrintable(p->getRole()));
+			continue;
+		}
+		QChar c = abbreviation.at(0);
 		if (p->isDead()&&!p->property("RestPlayer").toBool()) c = c.toLower();
 		roles.append(c);
 	}
@@ -931,7 +939,7 @@ void Room::gameOver(const QString&winner)
 					if (current + 1 > stage) Config.setValue("MiniSceneStage", current + 1);
 					id = QString(MiniScene::S_KEY_MINISCENE).arg(current + 1);
 					Config.setValue("GameMode", id);
-					Config.GameMode = GameModeStruct(id);
+					Config.GameMode = Sanguosha->getGameMode(id);
 				}
 				break;
 			}
@@ -941,8 +949,14 @@ void Room::gameOver(const QString&winner)
 
 	QString name = getTag("NextGameMode").toString();
 	if (!name.isEmpty()){
-		Config.GameMode = GameModeStruct(name);
-		Config.setValue("GameMode", name);
+		GameModeStruct nextMode = Sanguosha->getGameMode(name);
+		if (nextMode.isValid()) {
+			Config.GameMode = nextMode;
+			Config.setValue("GameMode", name);
+		} else {
+			qWarning("Next game mode '%s' is unavailable; keeping mode '%s'.",
+				qPrintable(name), qPrintable(Config.GameMode.mode_id));
+		}
 		removeTag("NextGameMode");
 	}
 	data = getTag("NextGameSecondGeneral");
@@ -3917,7 +3931,8 @@ void Room::prepareForStart()
 	} else if (mode == "06_3v3" || mode == "06_XMode" || mode == "02_1v1"){
 		return;
 	} else {
-		if (Config.RandomSeat||mode=="08_defense")
+		GameModeStruct gameMode = Sanguosha->getGameMode(mode);
+		if (mode == "08_defense" || (Config.RandomSeat && gameMode.shuffle_seats))
 			qShuffle(m_players);
 		if (mode!="04_2v2"&&!Config.EnableHegemony&&Config.value("FreeAssign").toBool()){
 			ServerPlayer*owner = getOwner();
@@ -3960,7 +3975,7 @@ void Room::prepareForStart()
 							for (int i = 0; i < all_players.count(); i++)
 								all_players[i]->setRole(roles[i]);
 							for (int i = 0; i < m_players.count(); i++){
-								if (mode.contains("_")||m_players[i]->getRole() == "lord")
+								if (Sanguosha->hasShowRoleMode(mode) || m_players[i]->getRole() == "lord")
 									broadcastProperty(m_players[i], "role");
 								else
 									notifyProperty(m_players[i], m_players[i], "role");
@@ -4919,6 +4934,9 @@ void Room::run()
 		for (int i = 0; i < 8; i++)
 			setPlayerProperty(m_players[i], "jiange_defense_type", type_list[i]);
 		chooseGeneralsOfJianGeDefenseMode();
+	} else if (Sanguosha->hasSkipGeneralSelection(mode)) {
+		foreach (ServerPlayer *player, m_players)
+			setPlayerProperty(player, "general", "anjiang");
 	} else
 		chooseGenerals();
 	startGame();
@@ -4960,6 +4978,8 @@ void Room::run()
 void Room::assignRoles()
 {
 	QStringList roles = Sanguosha->getRoleList(mode);
+	const bool showAllRoles = Sanguosha->hasShowRoleMode(mode)
+		|| (!Sanguosha->isCustomGameMode(mode) && mode.contains("_"));
 	if (mode == "04_2v2"){/*
 		roles.clear();
 		if (qrand()%2<1) roles << "loyalist" << "rebel" << "rebel" << "loyalist";
@@ -4973,7 +4993,7 @@ void Room::assignRoles()
 	for (int i = 0; i < m_players.count(); i++){
 		if (i >= roles.count()) break;
 		m_players[i]->setRole(roles[i]);
-		if (mode.contains("_") || (roles[i] == "lord"&&!ServerInfo.EnableHegemony))
+		if (showAllRoles || (roles[i] == "lord"&&!ServerInfo.EnableHegemony))
 			//|| mode == "06_ol"|| mode == "05_ol" || mode == "04_1v3" || mode == "04_boss" || mode == "08_defense" || mode == "03_1v2" || mode == "04_2v2")
 			broadcastProperty(m_players[i], "role", roles[i]);
 		else
@@ -6366,6 +6386,10 @@ bool Room::hasWelfare(const ServerPlayer*player) const
 		return player->isLord();
 	if (Config.EnableHegemony || mode == "06_XMode" || mode == "06_ol" || mode == "05_ol")
 		return false;
+	if (Sanguosha->isCustomGameMode(mode)) {
+		GameModeStruct gameMode = Sanguosha->getGameMode(mode);
+		return player->isLord() && gameMode.isValid() && gameMode.lord_welfare;
+	}
 	return player->isLord()&&player_count > 4;
 }
 

@@ -86,7 +86,14 @@ void Settings::init()
     }
 
     CountDownSeconds = value("CountDownSeconds", 3).toInt();
-    GameMode = value("GameMode", "02p").toString();
+    const QString savedModeId = value("GameMode", "02p").toString();
+    GameMode = Sanguosha->getGameMode(savedModeId);
+    if (!GameMode.isValid()) {
+        qWarning("Saved game mode '%s' is unavailable; falling back to '02p'.",
+                 qPrintable(savedModeId));
+        GameMode = Sanguosha->getGameMode("02p");
+        setValue("GameMode", GameMode.mode_id);
+    }
 
     BanPackages = value("BanPackages").toStringList();
     if (BanPackages.isEmpty()) {

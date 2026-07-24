@@ -63,7 +63,7 @@ public:
     };
     enum Role
     {
-        Lord, Loyalist, Rebel, Renegade
+        UnknownRole = -1, Lord, Loyalist, Rebel, Renegade
     };
 
     explicit Player(QObject *parent);

@@ -32,7 +32,7 @@ static QLayout *HLay(QWidget *left, QWidget *right)
 }
 
 ServerDialog::ServerDialog(QWidget *parent)
-	: QDialog(parent), accept_type(0)
+	: QDialog(parent), boss_mode_button(nullptr), accept_type(0)
 {
 	setWindowTitle(tr("Start server"));
 
@@ -590,10 +590,24 @@ void ServerDialog::updateButtonEnablility(QAbstractButton *button)
 		second_general_checkbox->setEnabled(true);
 		mini_scene_button->setEnabled(false);
 	}
-	if (button->objectName() == "04_boss")
-		boss_mode_button->setEnabled(true);
-	else
-		boss_mode_button->setEnabled(false);
+	if (boss_mode_button)
+		boss_mode_button->setEnabled(button->objectName() == "04_boss");
+}
+
+void ServerDialog::updateModeGroupSelection(int index)
+{
+	QComboBox *combo = qobject_cast<QComboBox *>(sender());
+	if (!combo || index < 0)
+		return;
+
+	QRadioButton *button = qobject_cast<QRadioButton *>(
+		combo->property("modeGroupButton").value<QObject *>());
+	if (!button)
+		return;
+
+	button->setObjectName(combo->itemData(index).toString());
+	button->setChecked(true);
+	updateButtonEnablility(button);
 }
 
 void BanlistDialog::switchTo(int item)
@@ -934,9 +948,55 @@ QGroupBox *ServerDialog::createGameModeBox()
 	//QStringList modenames;
 	//QRadioButton *button0;
 	QMap<QString, GameModeStruct> modes = Sanguosha->getAvailableModes();
+	QSet<QString> groupedModes;
+	QSet<QString> groupNameSet;
+	QMapIterator<QString, GameModeStruct> groupIt(modes);
+	while (groupIt.hasNext()) {
+		groupIt.next();
+		QString groupName = Sanguosha->getModeGroup(groupIt.key());
+		if (!groupName.isEmpty())
+			groupNameSet.insert(groupName);
+	}
+
+	QStringList groupNames = groupNameSet.values();
+	groupNames.sort();
+	foreach (const QString &groupName, groupNames) {
+		QStringList modeIds = Sanguosha->getGroupModes(groupName);
+		if (modeIds.isEmpty())
+			continue;
+
+		QRadioButton *button = new QRadioButton(groupName);
+		QComboBox *combo = new QComboBox;
+		int selectedIndex = 0;
+		foreach (const QString &modeId, modeIds) {
+			if (!modes.contains(modeId))
+				continue;
+			combo->addItem(modes.value(modeId).display_name, modeId);
+			groupedModes.insert(modeId);
+			if (modeId == Config.GameMode.mode_id)
+				selectedIndex = combo->count() - 1;
+		}
+		if (combo->count() == 0) {
+			delete button;
+			delete combo;
+			continue;
+		}
+
+		combo->setCurrentIndex(selectedIndex);
+		button->setObjectName(combo->itemData(selectedIndex).toString());
+		combo->setProperty("modeGroupButton", QVariant::fromValue((QObject *)button));
+		connect(combo, SIGNAL(currentIndexChanged(int)), this, SLOT(updateModeGroupSelection(int)));
+		mode_group->addButton(button);
+		item_list << HLay(button, combo);
+		if (modeIds.contains(Config.GameMode.mode_id))
+			button->setChecked(true);
+	}
+
 	QMapIterator<QString, GameModeStruct> itor(modes);
 	while (itor.hasNext()) {
 		itor.next();
+		if (groupedModes.contains(itor.key()))
+			continue;
 
 		QRadioButton *button = new QRadioButton(itor.value().display_name);
 		button->setObjectName(itor.key());
@@ -1408,14 +1468,14 @@ int ServerDialog::config()
 	if (mode_group->checkedButton()) {
 		QString objname = mode_group->checkedButton()->objectName();
 		if (objname == "scenario")
-			Config.GameMode = GameModeStruct(scenario_ComboBox->itemData(scenario_ComboBox->currentIndex()).toString());
+			Config.GameMode = Sanguosha->getGameMode(scenario_ComboBox->itemData(scenario_ComboBox->currentIndex()).toString());
 		else if (objname == "mini") {
 			if (mini_scene_ComboBox->isEnabled())
-				Config.GameMode = GameModeStruct(mini_scene_ComboBox->itemData(mini_scene_ComboBox->currentIndex()).toString());
+				Config.GameMode = Sanguosha->getGameMode(mini_scene_ComboBox->itemData(mini_scene_ComboBox->currentIndex()).toString());
 			else
-				Config.GameMode = GameModeStruct("custom_scenario");
+				Config.GameMode = Sanguosha->getGameMode("custom_scenario");
 		} else
-			Config.GameMode = GameModeStruct(objname);
+			Config.GameMode = Sanguosha->getGameMode(objname);
 	}
 
 	Config.setValue("ServerName", Config.ServerName);

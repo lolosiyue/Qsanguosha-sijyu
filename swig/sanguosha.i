@@ -109,7 +109,7 @@ class Player: public QObject {
 public:
 	enum Phase { RoundStart, Start, Judge, Draw, Play, Discard, Finish, NotActive, PhaseNone };
 	enum Place { PlaceHand, PlaceEquip, PlaceDelayedTrick, PlaceJudge, PlaceSpecial, DiscardPile, DrawPile, PlaceTable, PlaceUnknown, PlaceWuGu };
-	enum Role { Lord, Loyalist, Rebel, Renegade };
+	enum Role { UnknownRole = -1, Lord, Loyalist, Rebel, Renegade };
 
 	explicit Player(QObject*parent);
 
@@ -1353,9 +1353,8 @@ class Engine: public QObject {
 public:
 	void addTranslationEntry(const char*key, const char*value);
 	QString translate(const char*to_translate, bool initial = false) const;
-	void addModes(const char*key, const char*value, const char*roles = "");
-	void addGameMode(const GameModeStruct &mode);
-	void setGameModeShuffleRoles(const char *mode_id, bool shuffle_roles);
+	bool addModes(const char*key, const char*value, const char*roles = "");
+	void setGameModeShuffleSeats(const char *mode_id, bool shuffle_seats);
 	void setGameModeLordWelfare(const char *mode_id, bool lord_welfare);
 
 	void addModeGroup(const char *groupName, QStringList modeIds);
@@ -1369,8 +1368,6 @@ public:
 	void addShowRoleMode(const char *mode);
 	void removeShowRoleMode(const char *mode);
 
-	QMap<QString, GameModeStruct> getAvailableModes() const;
-	GameModeStruct getGameMode(const char *mode_id) const;
 	QString getModeName(const char*mode) const;
 	int getPlayerCount(const char*mode) const;
 	QString getRoles(const char*mode) const;
@@ -1378,9 +1375,7 @@ public:
 	QStringList getRoleList(const char*mode) const;
 	int getRoleIndex() const;
 
-	QMap<QString, QString> roleMap;
-	void initializeRoleMap();
-	void addRoleMapping(const char* roleName, const char* abbreviation);
+	bool addRoleMapping(const char* roleName, const char* abbreviation);
 	QString getRoleAbbreviation(const char* roleName) const;
 	QString getRoleByAbbreviation(const char* targetValue, const char* defaultKey = "") const;
 	QStringList getAllRegisteredRoles() const;

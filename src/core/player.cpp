@@ -449,7 +449,7 @@ Player::Role Player::getRoleEnum() const
         role_map.insert("rebel", Rebel);
         role_map.insert("renegade", Renegade);
     }
-    return role_map.value(role);
+    return role_map.value(role, UnknownRole);
 }
 
 const General *Player::getAvatarGeneral() const

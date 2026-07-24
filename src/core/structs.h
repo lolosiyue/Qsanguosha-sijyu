@@ -15,10 +15,9 @@ struct GameModeStruct {
     QString display_name;
     int player_count;
     QString roles;
-    QString rule_mode;
     bool is_scenario;
     bool is_mini_scene;
-    bool shuffle_roles;
+    bool shuffle_seats;
     bool lord_welfare;
 
     bool isValid() const;
@@ -26,7 +25,7 @@ struct GameModeStruct {
     bool operator!=(const GameModeStruct &other) const;
     QString toString() const;
     
-    void setShuffleRoles(bool shuffle) { shuffle_roles = shuffle; }
+    void setShuffleSeats(bool shuffle) { shuffle_seats = shuffle; }
 };
 
 
