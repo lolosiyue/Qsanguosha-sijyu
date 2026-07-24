@@ -27,14 +27,10 @@ const int PlayerCardBox::intervalBetweenCards = 3;
 
 PlayerCardBox::PlayerCardBox()
     : player(NULL), canCancel(false), progressBar(NULL),
-      cancelButton(new Button(tr("cancel"), 0.6)),
+      cancelButton(NULL),
       rowCount(0), intervalsBetweenAreas(-1), intervalsBetweenRows(0), maxCardsInOneRow(0)
 {
     setZValue(1000);
-    cancelButton->setParentItem(this);
-    cancelButton->setObjectName("cancel");
-    cancelButton->hide();
-    connect(cancelButton, &Button::clicked, this, &PlayerCardBox::cancel);
 }
 
 void PlayerCardBox::chooseCard(const QString &reason, const ClientPlayer *player,
@@ -52,6 +48,13 @@ void PlayerCardBox::chooseCard(const QString &reason, const ClientPlayer *player
     this->title = tr("%1: please choose %2's card").arg(Sanguosha->translate(reason)).arg(ClientInstance->getPlayerName(player->objectName()));
     this->flags = flags;
     this->canCancel = canCancel;
+    if (canCancel && !cancelButton) {
+        cancelButton = new Button(tr("cancel"), 0.6);
+        cancelButton->setParentItem(this);
+        cancelButton->setObjectName("cancel");
+        cancelButton->hide();
+        connect(cancelButton, &Button::clicked, this, &PlayerCardBox::cancel);
+    }
     bool handcard = false;
     bool weapon = false;
     bool armor = false;
@@ -124,8 +127,7 @@ void PlayerCardBox::chooseCard(const QString &reason, const ClientPlayer *player
                     cards << NULL;
                 }
             }
-            // Keep hidden cards face-down while preserving the id returned for this position.
-            arrangeCards(cards, QPoint(startX, nameRects.at(index).y()), handIds);
+            arrangeCards(cards, QPoint(startX, nameRects.at(index).y()));
         }
 
         ++ index;
@@ -326,31 +328,25 @@ void PlayerCardBox::updateNumbers(const int &cardNumber)
     nameRects << QRect(verticalBlankWidth, y, placeNameAreaWidth, height);
 }
 
-void PlayerCardBox::arrangeCards(const QList<const Card *> &cards, const QPoint &topLeft,
-                                 const QList<int> &selectionIds)
+void PlayerCardBox::arrangeCards(const QList<const Card *> &cards, const QPoint &topLeft)
 {
     QList<CardItem *> areaItems;
-    int cardIndex = 0;
     foreach (const Card *card, cards) {
         CardItem *item = new CardItem(card);
-        const int selectionId = card ? card->getEffectiveId()
-                                     : selectionIds.value(cardIndex, Card::S_UNKNOWN_CARD_ID);
-        item->setProperty("playerCardBoxSelectionId", selectionId);
         item->setAutoBack(false);
         item->resetTransform();
         item->setParentItem(this);
         item->setFlag(ItemIsMovable, false);
-        if (selectionId >= 0) {
-            item->setEnabled(!disabledIds.contains(selectionId)
+        if (card) {
+            item->setEnabled(!disabledIds.contains(card->getEffectiveId())
                             && (method != Card::MethodDiscard
-                    || Self->canDiscard(player, selectionId)));
+                    || Self->canDiscard(player, card->getEffectiveId())));
         } else {
             item->setEnabled(method != Card::MethodDiscard || Self->canDiscard(player, "h"));
         }
         connect(item, &CardItem::clicked, this, &PlayerCardBox::reply);
         items << item;
         areaItems << item;
-        ++ cardIndex;
     }
 
     int n = items.size();
@@ -384,7 +380,7 @@ void PlayerCardBox::reply()
     int id = -2;
 
     if (item)
-        id = item->property("playerCardBoxSelectionId").toInt();
+        id = item->getId();
 
     clear();
     ClientInstance->onPlayerChooseCard(id);
