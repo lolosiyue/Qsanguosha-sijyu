@@ -2,6 +2,7 @@
 #include "client.h"
 #include "engine.h"
 #include "clientstruct.h"
+#include <QFile>
 
 ClientPlayer *Self = nullptr;
 
@@ -349,7 +350,10 @@ void ClientPlayer::setMark(const QString &mark, int value)
 		QString text;
 		foreach (QString key, keys) {
 			if (key.startsWith("@")&&marks[key]>0) {
-				text.append(QString("<img src='image/mark/%1.png' />").arg(key));
+				QString filename = QString("image/mark/%1.png").arg(key);
+				if (!QFile::exists(filename))
+					filename = QString("image/mark/@default.png");
+				text.append(QString("<img src='%1' />").arg(filename));
 				if (marks[key]>1) text.append(QString("%1").arg(marks[key]));
 				if (this != Self) text.append("<br>");
 				if (key == "@substitute") {

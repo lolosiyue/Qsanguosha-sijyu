@@ -9,6 +9,7 @@
 #include "skill-instance-utils.h"
 #include <src/util/ThreadSafeHelper.h>
 #include <QDebug>
+#include <QFile>
 
 Skill::Skill(const QString &name, Frequency frequency)
     : frequency(frequency), attached_lord_skill(name.endsWith("&")), change_skill(false),
@@ -172,8 +173,12 @@ QString Skill::getDescription(const Player *target, int instanceId) const
 	else if (des_src.startsWith("[NoAutoRep]")) return des_src.mid(11);
 
 	QString mark = getLimitMark();
-	if (mark!="")
-		des_src.prepend("<img src=\"image/mark/"+mark+".png\">");
+	if (mark!="") {
+		QString filename = QString("image/mark/%1.png").arg(mark);
+		if (!QFile::exists(filename))
+			filename = QString("image/mark/@default.png");
+		des_src.prepend("<img src=\""+filename+"\">");
+	}
 	if (Config.value("AutoSkillTypeColorReplacement").toBool()) {
 		QMap<QString, QColor> colorMap = Sanguosha->getSkillTypeColorMap();
 		foreach (QString skill_type, colorMap.keys()) {
