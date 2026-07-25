@@ -138,6 +138,15 @@ void RoleComboBox::fix(const QString &role)
         return;
     }
     
+    // 初始暗置身份必須維持 expand()，不能當成固定身份處理。
+    if (role == "unknown" && _m_fixedRole.isEmpty()) {
+        if (items.isEmpty()) {
+            createRoleItems();
+        }
+        m_currentRole->setRole("unknown");
+        return;
+    }
+    
     if (_m_fixedRole.isEmpty()) {
         disconnect(m_currentRole, SIGNAL(clicked()), this, SLOT(expand()));
         connect(m_currentRole, SIGNAL(clicked()), this, SLOT(toggle()));
