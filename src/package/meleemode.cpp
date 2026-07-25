@@ -193,7 +193,7 @@ public:
 MeleeSlashJink::MeleeSlashJink(Card::Suit suit, int number)
     : Slash(suit, number)
 {
-    setObjectName("melee_slash_jink");
+    setObjectName("__melee_slash_jink");
     target_fixed = false;
 }
 
