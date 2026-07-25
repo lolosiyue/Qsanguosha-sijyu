@@ -6,6 +6,7 @@
 //#include "client.h"
 #include "clientstruct.h"
 #include "settings.h"
+#include <QFile>
 
 General::General(Package *package, const QString &name, const QString &kingdom,
     int max_hp, bool male, bool hidden, bool never_shown, int start_hp, int start_hujia)
@@ -264,8 +265,12 @@ QString General::getSkillDescription(bool include_name) const
 				name.append("<img src='image/system/magatamas/5.png' height=12/>");
 			for (int i = 0; i < max_hp - start_hp; i++)
 				name.append("<img src='image/system/magatamas/0.png' height=12/>");
-			for (int i = 0; i < getStartHujia(); i++)
-				name.append("<img src='image/mark/@HuJia.png' height=17/>");
+			for (int i = 0; i < getStartHujia(); i++) {
+				QString filename = QString("image/mark/@HuJia.png");
+				if (!QFile::exists(filename))
+					filename = QString("image/mark/@default.png");
+				name.append(QString("<img src='%1' height=17/>").arg(filename));
+			}
 	
 			name.append("<br/><br/>");
 	
