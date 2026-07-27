@@ -14,6 +14,7 @@ class GameSnapshot;
 
 struct lua_State;
 struct LogMessage;
+struct ActiveSkillAIRequest;
 class ServerPlayer;
 class GameRule;
 class RoomThread;
@@ -337,6 +338,8 @@ public:
 
     int acquireSkill(ServerPlayer*player, const Skill*skill, bool open = true, bool getmark = true, bool event_and_log = true);
     int acquireSkill(ServerPlayer*player, const QString&skill_name, bool open = true, bool getmark = true, bool event_and_log = true);
+    int getActiveSkillAIInstanceId(ServerPlayer *player, const QString &skillName) const;
+    ActiveSkillAIRequest getActiveSkillAIRequest(ServerPlayer *player, const QString &skillName) const;
     int getSkillInstanceAmount(const SkillInstanceRef &ref, bool *ok = nullptr) const;
     bool setSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int amount,
                                 const QString &reason = QString());
@@ -665,8 +668,13 @@ private:
     bool areCardTargetsLegal(const CardUseStruct &use) const;
     const Card *resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSkillV2 *skill,
                                           const ActiveSkillRequest &request) const;
+    bool buildActiveSkillAIRequest(ServerPlayer *player, const SkillInstance &instance,
+                                   CardUseStruct::CardUseReason reason, const QString &pattern,
+                                   const QString &prompt, Card::HandlingMethod method,
+                                   ActiveSkillAIRequest &request) const;
     bool askForActiveSkill(ServerPlayer *player, CardUseStruct::CardUseReason reason,
-                           const QString &pattern, CardUseStruct &cardUse) const;
+                           const QString &pattern, const QString &prompt, Card::HandlingMethod method,
+                           CardUseStruct &cardUse) const;
     bool reserveActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
     void releaseActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
     void commitActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);

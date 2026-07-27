@@ -276,36 +276,87 @@ AI 自己發起拼點時，`SmartAI:askForPindian` 會優先讀取
 
 ### 4.12 ViewAsSkillV2 主動技決策
 
-`sgs.ai_active_skill` 以 activation skill 名稱索引；找不到時會回退 source skill 名稱。
-回傳 `nil` 表示不使用，回傳表表示提交選牌與目標：
+ViewAsSkillV2 不另設平行 callback 表；出牌階段沿用 `ai_fill_skill`／
+`ai_skill_use_func`，特定詢問沿用 `ai_skill_use[pattern]`。新簽名只增加選用的
+`request` 參數，Lua 5.2 會忽略多餘參數，因此舊 AI 不需修改。
+
+Play phase 空閒時機：
 
 ```lua
-sgs.ai_active_skill.skill_name = function(self, request)
-    if request:getReason() ~= sgs.CardUseStruct_CARD_USE_REASON_PLAY then return end
+sgs.ai_fill_skill.skill_name = function(self, inclusive, request)
+    local card = sgs.ActiveSkillCard()
+    card:setSkillName("skill_name")
+    -- card:addSubcard(id)       -- n > 0 時加入選牌
+    -- card:setUserString(value) -- 技能需要 opaque choice 時使用
+    return card
+end
+
+sgs.ai_skill_use_func.skill_name = function(card, use, self, request)
+    local target = self.enemies[1]
+    if not target then return end
+    use.card = card
+    use.to:append(target)
+end
+
+sgs.ai_use_value.skill_name = 6
+sgs.ai_use_priority.skill_name = 3
+sgs.ai_card_intention.skill_name = 80
+```
+
+特定 `askForUseCard`／`@@skill` 詢問：
+
+```lua
+sgs.ai_skill_use["@@skill_name"] = function(self, prompt, method, pattern, request)
+    -- 沒有 request 時是舊版一般詢問路徑。
+    if not request then return "." end
 
     local card = self:getMaxCard()
     local target = self.enemies[1]
     if not card or not target then return end
 
-    self.skill_name_card = card  -- 若後續以 skill_name 為 reason 發起拼點
     return {
-        cards = {},                              -- 此例為 n = 0
+        cards = { card:getEffectiveId() },
         targets = { target:objectName() },
-        user_string = ""                        -- 選用
+        user_string = ""
     }
 end
 ```
 
 | `request` getter | 用途 |
 |------------------|------|
+| `isValid()` | 是否為可用的 V2 activation request |
 | `getReason()` / `getPattern()` | 使用或回應情境 |
+| `getPrompt()` / `getHandlingMethod()` | `askForUseCard` 的提示與處理方法 |
 | `getInitiator()` | 發起技能的 `ServerPlayer` |
-| `getActivationSkillName()` / `getActivationInstanceID()` | 玩家實際點擊的技能入口 |
+| `getActivationSkillName()` / `getActivationInstanceID()` | 玩家實際使用的技能入口 |
 | `getSourceSkillName()` / `getSourceInstanceID()` | root source 技能實例 |
 | `isActivationQuotaAvailable()` / `isSourceQuotaAvailable()` | 入口與來源配額狀態 |
 
-回傳表的 `cards` 必須是整數 ID 陣列，`targets` 必須是玩家 objectName 陣列；
-伺服器仍會以 `ViewAsSkillV2` 的選牌、選目標及配額規則重新驗證。
+| 入口 | 舊版回傳 | V2 升級回傳 |
+|---|---|---|
+| `ai_fill_skill` | Card 或 Card 陣列 | 相同；第三參數可讀取 request |
+| `ai_skill_use_func` | 修改 `use` | 相同；第四參數可讀取 request |
+| `ai_skill_use[pattern]` | 卡牌使用字串或 `"."` | `{cards, targets, user_string}`；第五參數可讀取 request |
+
+`ai_skill_use` 的舊字串仍只解析一次；若字串中的技能名符合當前 activation 或 source，
+Room 會補上權威 instance 身分再驗證。結構化表的 `cards` 必須是整數 ID 陣列，
+`targets` 必須是玩家 objectName 陣列；欄位型別錯誤會 fail-closed。
+
+`ActiveSkillCard` 的 `ai_skill_use_func`、`ai_use_value`、`ai_use_priority` 與
+`ai_card_intention` 均以 `card:getSkillName()` 索引。`ai_card_intention` 可使用固定數值或
+既有的函數簽名；attached activation 未設定專屬項目時會先回退 source skill，最後才回退
+共用的 `ActiveSkillCard` 類別項目。
+
+| 時機 | AI 入口 | 回傳／提交格式 |
+|---|---|---|
+| Play phase 空閒 `activate` | `ai_fill_skill` → `ai_skill_use_func` | `ActiveSkillCard`／普通轉化 Card + `CardUseStruct` |
+| 特定 `askForUseCard`／回應詢問 | `ai_skill_use[pattern]` | 舊字串或 `{cards, targets, user_string}` |
+
+`ActiveSkillCard` 只承載 AI 選出的 subcards、targets 與 user string；Room 仍會按 skill name
+解析 activation instance，重跑 `resolveActiveSkillRequest()` 並建立權威最終 Card。同名多實例
+時，`fillSkillCards()` 會先取得第一個通過 `canActivate`／配額檢查的 request，把 activation
+與 source instance 寫入虛擬牌，並將同一 request 傳給後續 `ai_skill_use_func`；沒有可用
+instance 時不加入候選牌。attached 入口沒有專屬 fill／use_func 時會回退 source skill callback。
 
 ### 4.13 卡牌需要判斷
 

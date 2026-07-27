@@ -18,7 +18,14 @@ ActiveSkillAIResult LuaAI::askForActiveSkill(const ActiveSkillAIRequest &request
 		room->output(error_msg);
 		return result;
 	}
-	if (lua_isnil(L, -1) || lua_isboolean(L, -1)) {
+	if (lua_isnil(L, -1) || (lua_isboolean(L, -1) && !lua_toboolean(L, -1))) {
+		lua_pop(L, 1);
+		return result;
+	}
+	result.callbackHandled = true;
+	if (lua_type(L, -1) == LUA_TSTRING) {
+		result.legacyHandled = true;
+		result.legacyAnswer = QString::fromUtf8(lua_tostring(L, -1));
 		lua_pop(L, 1);
 		return result;
 	}
@@ -63,6 +70,7 @@ ActiveSkillAIResult LuaAI::askForActiveSkill(const ActiveSkillAIRequest &request
 	}
 	lua_pop(L, 1);
 	result.accepted = true;
+	lua_pop(L, 1);
 	return result;
 }
 

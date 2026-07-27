@@ -550,9 +550,10 @@ V2 custom proxy：
 
 - 舊 AI 不改，仍以 base skill name 呼叫一次。
 - 舊 AI 沒有 activation ID 時，決定性選第一個有效 legacy instance。
-- V2 可提供選用 callback，取得 request、activationRef、sourceRef 與 quota，能選精確 instance。
-- V2 callback 每次只處理 Room 當前提供的一個 activation；回傳不重複帶 activation ref。
-  callback 回傳 `nil`／`false` 表示放棄，或回傳嚴格 Lua table：
+- V2 不新增平行 Lua callback 表；既有 `ai_fill_skill`／`ai_skill_use_func`／
+  `ai_skill_use[pattern]` 會收到選用 request，取得 activationRef、sourceRef 與 quota。
+- `ai_skill_use[pattern]` 每次只處理 Room 當前提供的一個 activation；新式 callback 可回傳
+  `nil`／`false` 表示放棄，或回傳嚴格 Lua table：
 
   ```lua
   { cards = { 12, 34 }, targets = { "target_a", "target_b" }, user_string = "choice" }
@@ -562,7 +563,13 @@ V2 custom proxy：
   或不存在的 target 均 fail-closed。server 將結果補入當前 immutable request，
   並重跑 `resolveActiveSkillRequest()`；`user_string` 是由技能 callback 驗證的
   opaque 額外選擇值，不可作通用 `cloneCard` 輸入。
-- source-sensitive attached AI 列入未來人工遷移規範，不在核心票批量改寫。
+- source-sensitive attached AI 會先查 activation skill，再回退 source skill 的 fill／use_func。
+- 出牌階段空閒時機維持 `AI::activate()`：`ai_fill_skill` 產生 `ActiveSkillCard`／普通轉化牌，
+  `ai_skill_use_func` 填寫目標，兩者與普通卡牌一起按 value／priority 排序。舊簽名忽略新增的
+  request 參數，無需遷移。
+- `askForActiveSkill()` 只保留作 C++↔Lua 內部結構化傳輸；Lua 端實際分派既有
+  `ai_skill_use[pattern]`。已接受的舊字串或新 `{cards, targets, user_string}` table 由同一次
+  callback 結果處理，不再轉呼另一個 Lua registry。
 
 ## 15. Lua 規則
 

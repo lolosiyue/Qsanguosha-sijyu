@@ -13,17 +13,23 @@ typedef int LuaFunction;
 struct ActiveSkillAIRequest {
     CardUseStruct::CardUseReason reason;
     QString pattern;
+    QString prompt;
+    Card::HandlingMethod handlingMethod;
     ServerPlayer *initiator;
     SkillInstanceRef activationRef;
     SkillInstanceRef sourceRef;
     bool activationQuotaAvailable;
     bool sourceQuotaAvailable;
 
-    ActiveSkillAIRequest() : reason(CardUseStruct::CARD_USE_REASON_UNKNOWN), initiator(nullptr),
+    ActiveSkillAIRequest() : reason(CardUseStruct::CARD_USE_REASON_UNKNOWN),
+                             handlingMethod(Card::MethodUse), initiator(nullptr),
                              activationQuotaAvailable(false), sourceQuotaAvailable(false) {}
 
+    bool isValid() const { return initiator && activationRef.isValid() && sourceRef.isValid(); }
     CardUseStruct::CardUseReason getReason() const { return reason; }
     QString getPattern() const { return pattern; }
+    QString getPrompt() const { return prompt; }
+    Card::HandlingMethod getHandlingMethod() const { return handlingMethod; }
     ServerPlayer *getInitiator() const { return initiator; }
     QString getActivationOwner() const { return activationRef.ownerObjectName; }
     QString getActivationSkillName() const { return activationRef.key.skillName; }
@@ -35,15 +41,19 @@ struct ActiveSkillAIRequest {
     bool isSourceQuotaAvailable() const { return sourceQuotaAvailable; }
 };
 
-// The callback is already bound to the ActiveSkillAIRequest supplied by Room.
-// It returns choices only; Room restores the authoritative activation identity.
+// The Lua bridge is already bound to the ActiveSkillAIRequest supplied by Room.
+// A structured result carries choices only; a legacy string remains available
+// for the existing ai_skill_use parser. Room restores authoritative identity.
 struct ActiveSkillAIResult {
     bool accepted;
+    bool callbackHandled;
+    bool legacyHandled;
+    QString legacyAnswer;
     QList<int> selectedCardIds;
     QStringList selectedTargetNames;
     QString userString;
 
-    ActiveSkillAIResult() : accepted(false) {}
+    ActiveSkillAIResult() : accepted(false), callbackHandled(false), legacyHandled(false) {}
 };
 
 class AI : public QObject
