@@ -56,6 +56,10 @@
 - 通用 `ActiveSkillCard` 已在 client target preview 委派 V2 `canSelectTarget()`／`targetsFeasible()`；request-aware V2 AI selection／target 結果亦已存在。目前缺口是實跑 `active_skill_v2_proxy_ui_test`，並把上述 lifecycle 場景納入可重複執行的 Room 端到端測試。
 - Lua smoke 仍需在實際 Room 對局中執行；目前未自動化其 lifecycle 場景。
 - 上述 smoke 僅驗證 Lua factory／enum 與 Room 初始化；不代表 Lua V2 技能已被 AI 啟動或完成 lifecycle。
+- Lua AI 已升級既有三個入口：Play phase 空閒 `activate` 使用 request-aware
+  `ai_fill_skill`／`ai_skill_use_func` 與 `ActiveSkillCard`；特定 `askForUseCard`／回應詢問使用
+  可回傳舊字串或結構化 table 的 `ai_skill_use[pattern]`。尚待實際 Room 驗證舊／新回傳、
+  多 instance 及 attached source fallback。
 - `DoLuaScript()` 在 `--headless` 下會以 `qCritical` 報告 Lua 載入錯誤而非開啟 modal dialog，讓本機自動化可取得失敗原因；GUI 模式維持既有對話框。
 - `LuaViewAsSkillV2`、選用 AI callback、provenance V2 與 execution audit 曾完成編譯整合；Ticket 13 的 wrapper、quota ledger、immutable provenance 與中斷收束修改仍待重新編譯，再以合成技能自動化端到端驗證。
 - 不得以本矩陣代替 validate/onUse 的人工分類；請使用 migration guide 第 6、7、14 節的模板。

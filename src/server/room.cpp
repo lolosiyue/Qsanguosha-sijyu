@@ -3069,7 +3069,8 @@ CardUseStruct Room::askForUseCardStruct(ServerPlayer*player, const QString&patte
 			if (ai){
 				QElapsedTimer timer;
 				timer.start();
-				if (!askForActiveSkill(player, _m_roomState.getCurrentCardUseReason(), pattern, card_use)) {
+				if (!askForActiveSkill(player, _m_roomState.getCurrentCardUseReason(), pattern,
+					prompt, method, card_use)) {
 					QString answer = ai->askForUseCard(pattern, prompt, method);
 					if (answer != ".") card_use.parse(answer, this);
 				}
@@ -5679,11 +5680,14 @@ const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSk
 	if (skill->targetMode() == ViewAsSkillV2::NoTarget && !request.selectedTargetNames.isEmpty())
 		return nullptr;
 	QList<const Player *> selectedTargets;
+	QSet<QString> selectedTargetNames;
 	if (skill->targetMode() == ViewAsSkillV2::SelectTargets) {
 		foreach (const QString &name, request.selectedTargetNames) {
+			if (selectedTargetNames.contains(name)) return nullptr;
 			ServerPlayer *candidate = findPlayerByObjectName(name);
 			if (!candidate || !skill->canSelectTarget(request, selectedTargets, candidate))
 				return nullptr;
+			selectedTargetNames.insert(name);
 			selectedTargets << candidate;
 		}
 		if (!skill->targetsFeasible(request, selectedTargets)) return nullptr;
@@ -5712,45 +5716,95 @@ const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSk
 	return card;
 }
 
+bool Room::buildActiveSkillAIRequest(ServerPlayer *player, const SkillInstance &instance,
+                                     CardUseStruct::CardUseReason reason, const QString &pattern,
+                                     const QString &prompt, Card::HandlingMethod method,
+                                     ActiveSkillAIRequest &aiRequest) const
+{
+	if (!player || !player->hasSkillInstance(instance.skillName, instance.instanceID)) return false;
+	const ViewAsSkillV2 *skill = dynamic_cast<const ViewAsSkillV2 *>(
+		Sanguosha->getViewAsSkill(instance.skillName));
+	if (!skill) return false;
+
+	ActiveSkillRequest request;
+	request.reason = reason;
+	request.pattern = pattern;
+	request.initiator = player;
+	request.activationRef = SkillInstanceRef(player->objectName(), instance.key());
+	if (!skill->canActivate(request)) return false;
+
+	SkillContext context;
+	context.initiator = player;
+	context.invoker = player;
+	context.owner = player;
+	context.activationRef = request.activationRef;
+	context.sourceRef = resolveSkillInstanceRootRef(request.activationRef);
+	if (!context.sourceRef.isValid()) return false;
+	context.instanceID = instance.instanceID;
+	bool amountOk = false;
+	context.amount = getSkillInstanceAmount(skill->getAmountRef(context), &amountOk);
+	if (!amountOk) context.amount = skill->getBaseAmount();
+	const bool quotaAvailable = skill->isUsable(context);
+	if (!quotaAvailable) return false;
+
+	aiRequest = ActiveSkillAIRequest();
+	aiRequest.reason = reason;
+	aiRequest.pattern = pattern;
+	aiRequest.prompt = prompt;
+	aiRequest.handlingMethod = method;
+	aiRequest.initiator = player;
+	aiRequest.activationRef = request.activationRef;
+	aiRequest.sourceRef = context.sourceRef;
+	aiRequest.activationQuotaAvailable = quotaAvailable;
+	aiRequest.sourceQuotaAvailable = quotaAvailable;
+	return true;
+}
+
 bool Room::askForActiveSkill(ServerPlayer *player, CardUseStruct::CardUseReason reason,
-                             const QString &pattern, CardUseStruct &cardUse) const
+                             const QString &pattern, const QString &prompt,
+                             Card::HandlingMethod method, CardUseStruct &cardUse) const
 {
 	if (!player || !player->getAI()) return false;
 	QList<SkillInstance> instances = player->getSkillInstances();
 	foreach (const SkillInstance &instance, instances) {
-		const ViewAsSkillV2 *skill = dynamic_cast<const ViewAsSkillV2 *>(Sanguosha->getViewAsSkill(instance.skillName));
-		if (!skill || !player->hasSkillInstance(instance.skillName, instance.instanceID)) continue;
-
-		ActiveSkillRequest request;
-		request.reason = reason;
-		request.pattern = pattern;
-		request.initiator = player;
-		request.activationRef = SkillInstanceRef(player->objectName(), instance.key());
-		if (!skill->canActivate(request)) continue;
-
-		SkillContext context;
-		context.initiator = player;
-		context.invoker = player;
-		context.owner = player;
-		context.activationRef = request.activationRef;
-		context.sourceRef = resolveSkillInstanceRootRef(request.activationRef);
-		if (!context.sourceRef.isValid()) continue;
-		context.instanceID = instance.instanceID;
-		bool amountOk = false;
-		context.amount = getSkillInstanceAmount(skill->getAmountRef(context), &amountOk);
-		if (!amountOk) context.amount = skill->getBaseAmount();
-		const bool quotaAvailable = skill->isUsable(context);
-		if (!quotaAvailable) continue;
+		const ViewAsSkillV2 *skill = dynamic_cast<const ViewAsSkillV2 *>(
+			Sanguosha->getViewAsSkill(instance.skillName));
+		if (!skill) continue;
 
 		ActiveSkillAIRequest aiRequest;
-		aiRequest.reason = reason;
-		aiRequest.pattern = pattern;
-		aiRequest.initiator = player;
-		aiRequest.activationRef = request.activationRef;
-		aiRequest.sourceRef = context.sourceRef;
-		aiRequest.activationQuotaAvailable = quotaAvailable;
-		aiRequest.sourceQuotaAvailable = quotaAvailable;
+		if (!buildActiveSkillAIRequest(player, instance, reason, pattern, prompt, method, aiRequest))
+			continue;
 		ActiveSkillAIResult result = player->getAI()->askForActiveSkill(aiRequest);
+		if (result.legacyHandled) {
+			CardUseStruct legacy = cardUse;
+			legacy.from = player;
+			legacy.card = nullptr;
+			legacy.to.clear();
+			if (!result.legacyAnswer.isEmpty() && result.legacyAnswer != ".") {
+				legacy.parse(result.legacyAnswer, const_cast<Room *>(this));
+				if (legacy.card) {
+					const QString legacySkillName = legacy.card->getSkillName();
+					if (legacySkillName == aiRequest.getActivationSkillName()
+						|| legacySkillName == aiRequest.getSourceSkillName()) {
+						legacy.hasSkillActivationRequest = true;
+						legacy.activationRef = aiRequest.activationRef;
+						legacy.sourceRef = aiRequest.sourceRef;
+						Card *mutableCard = const_cast<Card *>(legacy.card);
+						mutableCard->setActivationSkill(aiRequest.getActivationSkillName(),
+							aiRequest.getActivationInstanceID());
+						mutableCard->setSourceSkill(aiRequest.getSourceSkillName(),
+							aiRequest.getSourceInstanceID());
+					}
+				}
+			}
+			cardUse = legacy;
+			return true;
+		}
+		if (result.callbackHandled && !result.accepted) {
+			cardUse.card = nullptr;
+			cardUse.to.clear();
+			return true;
+		}
 		if (!result.accepted) continue;
 
 		QSet<int> selected;
@@ -5764,11 +5818,13 @@ bool Room::askForActiveSkill(ServerPlayer *player, CardUseStruct::CardUseReason 
 		}
 		if (!valid) continue;
 
-		CardUseStruct candidate;
+		CardUseStruct candidate = cardUse;
+		candidate.card = nullptr;
+		candidate.to.clear();
 		candidate.from = player;
 		candidate.hasSkillActivationRequest = true;
-		candidate.activationRef = request.activationRef;
-		candidate.sourceRef = context.sourceRef;
+		candidate.activationRef = aiRequest.activationRef;
+		candidate.sourceRef = aiRequest.sourceRef;
 		foreach (const QString &targetName, result.selectedTargetNames) {
 			ServerPlayer *target = findPlayerByObjectName(targetName);
 			if (!target) {
@@ -5784,8 +5840,9 @@ bool Room::askForActiveSkill(ServerPlayer *player, CardUseStruct::CardUseReason 
 		ActiveSkillCard *proxy = new ActiveSkillCard;
 		proxy->setActiveSkill(skill);
 		proxy->setSkillName(skill->objectName());
-		proxy->setActivationSkill(request.activationRef.key.skillName,
-			request.activationRef.key.instanceID);
+		proxy->setActivationSkill(aiRequest.getActivationSkillName(),
+			aiRequest.getActivationInstanceID());
+		proxy->setSourceSkill(aiRequest.getSourceSkillName(), aiRequest.getSourceInstanceID());
 		proxy->addSubcards(result.selectedCardIds);
 		proxy->setUserString(result.userString);
 		candidate.card = proxy;
@@ -5793,6 +5850,36 @@ bool Room::askForActiveSkill(ServerPlayer *player, CardUseStruct::CardUseReason 
 		return true;
 	}
 	return false;
+}
+
+int Room::getActiveSkillAIInstanceId(ServerPlayer *player, const QString &skillName) const
+{
+	if (!player) return -1;
+	const ViewAsSkillV2 *skill = dynamic_cast<const ViewAsSkillV2 *>(Sanguosha->getViewAsSkill(skillName));
+	if (!skill) return 0; // Not a V2 skill: keep the legacy ai_fill_skill path unchanged.
+
+	foreach (const SkillInstance &instance, player->getSkillInstances()) {
+		if (instance.skillName != skillName) continue;
+		ActiveSkillAIRequest request;
+		if (buildActiveSkillAIRequest(player, instance, CardUseStruct::CARD_USE_REASON_PLAY,
+			QString(), QString(), Card::MethodUse, request))
+			return instance.instanceID;
+	}
+	return -1;
+}
+
+ActiveSkillAIRequest Room::getActiveSkillAIRequest(ServerPlayer *player,
+                                                    const QString &skillName) const
+{
+	ActiveSkillAIRequest request;
+	if (!player) return request;
+	foreach (const SkillInstance &instance, player->getSkillInstances()) {
+		if (instance.skillName != skillName) continue;
+		if (buildActiveSkillAIRequest(player, instance, CardUseStruct::CARD_USE_REASON_PLAY,
+			QString(), QString(), Card::MethodUse, request))
+			return request;
+	}
+	return ActiveSkillAIRequest();
 }
 
 bool Room::reserveActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context)
@@ -8755,8 +8842,7 @@ void Room::activate(ServerPlayer*player, CardUseStruct&card_use)
 	if (ai){
 		QElapsedTimer timer;
 		timer.start();
-		if (!askForActiveSkill(player, CardUseStruct::CARD_USE_REASON_PLAY, QString(), card_use))
-			ai->activate(card_use);
+		ai->activate(card_use);
 		if (Config.AIDelay>timer.elapsed())
 			thread->delay(Config.AIDelay-timer.elapsed());/*
 		else if(Config.OperationTimeout*1000-timer.elapsed()<0)

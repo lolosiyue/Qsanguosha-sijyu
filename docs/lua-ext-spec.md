@@ -243,6 +243,11 @@ multi_card_skill = sgs.CreateViewAsSkillV2 {
 `card_selection_feasible` 使用 `length() >= 1 and length() <= 3`。不要在
 `can_activate` 要求「目前已選滿 n 張」；技能按鈕首次檢查時 request 尚未包含選牌。
 
+Lua AI 統一升級既有入口：出牌階段空閒發動使用 request-aware `ai_fill_skill`／
+`ai_skill_use_func`；特定 `askForUseCard`／回應詢問使用可回傳舊字串或結構化結果的
+`ai_skill_use[pattern]`。舊 callback 簽名與回傳格式維持相容。完整範例見
+[Lua AI 撰寫規範 §4.12](lua-ai-spec.md#412-viewasskillv2-主動技決策)。
+
 Lua 效果 callback 統一使用 `on_effect`、`on_effect_target`、
 `on_effect_target_group`；舊的 `effect`、`effect_on_target`、
 `effect_on_target_group` 不再接受。需要由 `on_effect` 自行控制逐目標處理時，可使用：

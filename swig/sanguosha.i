@@ -5,6 +5,7 @@
 //#include "structs.h"
 #include "engine.h"
 #include "wrapped-card.h"
+#include "ai.h"
 #include "room.h"
 #include "roomthread.h"
 
@@ -1186,6 +1187,12 @@ public:
 	void setSkillName(const char*skill_name);
 	int getSkillInstanceID() const;
 	void setSkillInstanceID(int instanceID);
+	void setSourceSkill(const char *name, int instanceID);
+	QString getSourceSkillName() const;
+	int getSourceSkillInstanceId() const;
+	void setActivationSkill(const char *name, int instanceID);
+	QString getActivationSkillName() const;
+	int getActivationSkillInstanceId() const;
 	void addCharTag(const char*tag);
 	QString getDescription() const;
 	bool isGift() const;
@@ -1329,6 +1336,11 @@ public:
 
 protected:
 	QString user_string;
+};
+
+class ActiveSkillCard: public SkillCard {
+public:
+	ActiveSkillCard();
 };
 
 class DummyCard: public SkillCard {
@@ -1516,8 +1528,11 @@ struct ActiveSkillRequest {
 };
 
 struct ActiveSkillAIRequest {
+	bool isValid() const;
 	CardUseStruct::CardUseReason getReason() const;
 	QString getPattern() const;
+	QString getPrompt() const;
+	Card::HandlingMethod getHandlingMethod() const;
 	ServerPlayer *getInitiator() const;
 	QString getActivationOwner() const;
 	QString getActivationSkillName() const;
@@ -1531,6 +1546,9 @@ struct ActiveSkillAIRequest {
 
 struct ActiveSkillAIResult {
 	bool accepted;
+	bool callbackHandled;
+	bool legacyHandled;
+	QString legacyAnswer;
 	QList<int> selectedCardIds;
 	QStringList selectedTargetNames;
 	QString userString;
@@ -1941,6 +1959,8 @@ public:
 
 	int acquireSkill(ServerPlayer*player, const Skill*skill, bool open = true, bool getmark = true, bool event_and_log = true);
 	int acquireSkill(ServerPlayer*player, const char*skill_name, bool open = true, bool getmark = true, bool event_and_log = true);
+	int getActiveSkillAIInstanceId(ServerPlayer *player, const char *skillName) const;
+	ActiveSkillAIRequest getActiveSkillAIRequest(ServerPlayer *player, const char *skillName) const;
 	int getSkillInstanceAmount(const SkillInstanceRef &ref) const;
 	bool setSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int amount, const char *reason = "");
 	bool addSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int delta, const char *reason = "");
