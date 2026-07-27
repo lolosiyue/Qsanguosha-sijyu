@@ -30285,8 +30285,8 @@ void QiexieWeapon::onInstall(ServerPlayer *player) const
 
     foreach (const QString &skill_name, skills) {
         if (!skill_names_str.isEmpty()) {
-            skill_names_str += "|";
-            skill_descs_str += "|";
+            skill_names_str += "+|+";
+            skill_descs_str += "+<br/>+";
         }
         skill_names_str += skill_name;
         skill_descs_str += ":" + skill_name;
