@@ -2688,6 +2688,7 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
 		QVariant askedData = asked;
 		thread->trigger(CardAsked, this, player, askedData);
 		_pattern = askedData.toStringList().first();
+		_m_roomState.setCurrentCardUsePattern(_pattern);
 	}
 	CardResponseStruct resp(nullptr, m_who, method == Card::MethodUse);
 	for (int i = 0; i < 9; i++){
@@ -5871,12 +5872,22 @@ int Room::getActiveSkillAIInstanceId(ServerPlayer *player, const QString &skillN
 ActiveSkillAIRequest Room::getActiveSkillAIRequest(ServerPlayer *player,
                                                     const QString &skillName) const
 {
+	return getActiveSkillAIRequest(player, skillName, CardUseStruct::CARD_USE_REASON_PLAY,
+		QString(), QString(), Card::MethodUse);
+}
+
+ActiveSkillAIRequest Room::getActiveSkillAIRequest(ServerPlayer *player,
+                                                    const QString &skillName,
+                                                    CardUseStruct::CardUseReason reason,
+                                                    const QString &pattern,
+                                                    const QString &prompt,
+                                                    Card::HandlingMethod method) const
+{
 	ActiveSkillAIRequest request;
 	if (!player) return request;
 	foreach (const SkillInstance &instance, player->getSkillInstances()) {
 		if (instance.skillName != skillName) continue;
-		if (buildActiveSkillAIRequest(player, instance, CardUseStruct::CARD_USE_REASON_PLAY,
-			QString(), QString(), Card::MethodUse, request))
+		if (buildActiveSkillAIRequest(player, instance, reason, pattern, prompt, method, request))
 			return request;
 	}
 	return ActiveSkillAIRequest();

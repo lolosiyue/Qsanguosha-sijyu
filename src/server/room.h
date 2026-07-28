@@ -340,6 +340,10 @@ public:
     int acquireSkill(ServerPlayer*player, const QString&skill_name, bool open = true, bool getmark = true, bool event_and_log = true);
     int getActiveSkillAIInstanceId(ServerPlayer *player, const QString &skillName) const;
     ActiveSkillAIRequest getActiveSkillAIRequest(ServerPlayer *player, const QString &skillName) const;
+    ActiveSkillAIRequest getActiveSkillAIRequest(ServerPlayer *player, const QString &skillName,
+                                                 CardUseStruct::CardUseReason reason,
+                                                 const QString &pattern, const QString &prompt,
+                                                 Card::HandlingMethod method) const;
     int getSkillInstanceAmount(const SkillInstanceRef &ref, bool *ok = nullptr) const;
     bool setSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int amount,
                                 const QString &reason = QString());

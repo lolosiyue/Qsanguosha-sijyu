@@ -338,6 +338,27 @@ end
 | `ai_skill_use_func` | 修改 `use` | 相同；第四參數可讀取 request |
 | `ai_skill_use[pattern]` | 卡牌使用字串或 `"."` | `{cards, targets, user_string}`；第五參數可讀取 request |
 
+回應轉化的 `ai_cardsview`／`ai_cardsview_valuable` 同樣沿用原 registry 與回傳格式，
+新式 callback 可讀取第 4 個選用 `request`：
+
+```lua
+sgs.ai_cardsview.skill_name = function(self, class_name, player, request)
+    if class_name ~= "Jink" then return end
+    if request and request:getReason() ~= sgs.CardUseStruct_CARD_USE_REASON_RESPONSE then
+        return
+    end
+    return "jink:skill_name[no_suit:0]=."
+end
+```
+
+舊三參數 callback 無需修改。V2 會先按當前 response／response-use 情境建立 request，
+再依序查 activation skill callback、source skill callback；回傳牌會補上 request 的
+activation/source instance 身分。legacy ViewAsSkill 仍使用 `isEnabledAtResponse()`，不建立 request。
+舊字串本身不承載 instance ID；`SmartAI:askForCard()` 會在第二回傳值附上該候選牌的
+request，LuaAI bridge 複製 request 並補回精確身分後才交給 Room 權威驗證。舊 AI 只回傳
+單一字串時，第二值自然為 nil；bridge 會依 activation skill 名稱及同一 reason／pattern
+重建 request，因此保持相容。
+
 `ai_skill_use` 的舊字串仍只解析一次；若字串中的技能名符合當前 activation 或 source，
 Room 會補上權威 instance 身分再驗證。結構化表的 `cards` 必須是整數 ID 陣列，
 `targets` 必須是玩家 objectName 陣列；欄位型別錯誤會 fail-closed。
@@ -351,6 +372,7 @@ Room 會補上權威 instance 身分再驗證。結構化表的 `cards` 必須�
 |---|---|---|
 | Play phase 空閒 `activate` | `ai_fill_skill` → `ai_skill_use_func` | `ActiveSkillCard`／普通轉化 Card + `CardUseStruct` |
 | 特定 `askForUseCard`／回應詢問 | `ai_skill_use[pattern]` | 舊字串或 `{cards, targets, user_string}` |
+| 回應牌列舉／估值 | `ai_cardsview_valuable` → `ai_cardsview` | 舊卡牌字串／字串陣列；第 4 參數可讀取 request |
 
 `ActiveSkillCard` 只承載 AI 選出的 subcards、targets 與 user string；Room 仍會按 skill name
 解析 activation instance，重跑 `resolveActiveSkillRequest()` 並建立權威最終 Card。同名多實例

@@ -1961,6 +1961,9 @@ public:
 	int acquireSkill(ServerPlayer*player, const char*skill_name, bool open = true, bool getmark = true, bool event_and_log = true);
 	int getActiveSkillAIInstanceId(ServerPlayer *player, const char *skillName) const;
 	ActiveSkillAIRequest getActiveSkillAIRequest(ServerPlayer *player, const char *skillName) const;
+	ActiveSkillAIRequest getActiveSkillAIRequest(ServerPlayer *player, const char *skillName,
+		CardUseStruct::CardUseReason reason, const char *pattern, const char *prompt,
+		Card::HandlingMethod method) const;
 	int getSkillInstanceAmount(const SkillInstanceRef &ref) const;
 	bool setSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int amount, const char *reason = "");
 	bool addSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int delta, const char *reason = "");

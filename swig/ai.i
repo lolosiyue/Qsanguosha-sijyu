@@ -335,15 +335,44 @@ const Card *LuaAI::askForCard(const QString &pattern, const QString &prompt, con
 	SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);
 	lua_pushinteger(L, (int)method);
 
-	int error = lua_pcall(L, 5, 1, 0);
-	const QString &result = lua_tostring(L, -1);
-	lua_pop(L, 1);
-	if (error!=0||result.isEmpty()) {
+	int error = lua_pcall(L, 5, 2, 0);
+	if (error != 0) {
+		const QString result = lua_tostring(L, -1);
+		lua_pop(L, 1);
 		room->output(result);
 		return TrustAI::askForCard(pattern, prompt, data, method);
 	}
+	ActiveSkillAIRequest callbackRequest;
+	void *requestPtr = nullptr;
+	const int requestResult = SWIG_ConvertPtr(L, -1, &requestPtr,
+		SWIGTYPE_p_ActiveSkillAIRequest, 0);
+	if (SWIG_IsOK(requestResult) && requestPtr)
+		callbackRequest = *static_cast<ActiveSkillAIRequest *>(requestPtr);
+	const QString result = lua_tostring(L, -2);
+	lua_pop(L, 2);
+	if (result.isEmpty())
+		return TrustAI::askForCard(pattern, prompt, data, method);
+
 	room->setTag("AiResult",result);
-	return Card::Parse(result);
+	const Card *card = Card::Parse(result);
+	if (!card || (method != Card::MethodUse && method != Card::MethodResponse))
+		return card;
+
+	const CardUseStruct::CardUseReason reason = method == Card::MethodResponse
+		? CardUseStruct::CARD_USE_REASON_RESPONSE
+		: CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
+	ActiveSkillAIRequest request = callbackRequest;
+	if (!request.isValid() || request.getInitiator() != self)
+		request = room->getActiveSkillAIRequest(self, card->getActivationSkillName(),
+			reason, pattern, prompt, method);
+	if (request.isValid()) {
+		Card *mutableCard = const_cast<Card *>(card);
+		mutableCard->setActivationSkill(request.getActivationSkillName(),
+			request.getActivationInstanceID());
+		mutableCard->setSourceSkill(request.getSourceSkillName(),
+			request.getSourceInstanceID());
+	}
+	return card;
 }
 
 int LuaAI::askForCardChosen(ServerPlayer *who, const QString &flags, const QString &reason, Card::HandlingMethod method)
