@@ -245,7 +245,8 @@ multi_card_skill = sgs.CreateViewAsSkillV2 {
 
 Lua AI 統一升級既有入口：出牌階段空閒發動使用 request-aware `ai_fill_skill`／
 `ai_skill_use_func`；特定 `askForUseCard`／回應詢問使用可回傳舊字串或結構化結果的
-`ai_skill_use[pattern]`。舊 callback 簽名與回傳格式維持相容。完整範例見
+`ai_skill_use[pattern]`；回應牌列舉沿用 `ai_cardsview`／`ai_cardsview_valuable`，並以第 4 個
+選用參數接收 request。舊 callback 簽名與回傳格式維持相容。完整範例見
 [Lua AI 撰寫規範 §4.12](lua-ai-spec.md#412-viewasskillv2-主動技決策)。
 
 Lua 效果 callback 統一使用 `on_effect`、`on_effect_target`、
