@@ -6,6 +6,7 @@
 //#include "carditem.h"
 //#include "protocol.h"
 #include "generic-cardcontainer-ui.h"
+#include <QMap>
 
 class CardItem;
 struct CardsMoveStruct;
@@ -39,7 +40,8 @@ public:
     void adjustCards();
     virtual QRectF boundingRect() const;
     void showJudgeResult(int cardId, bool takeEffect);
-    void suppressConvertedSubcards(const QList<int> &cardIds);
+    void setConvertedSubcardName(const QList<int> &cardIds, const QString &cardObjectName,
+        const QString &name);
 
 public slots:
     void clear(bool delayRequest = true);
@@ -58,7 +60,7 @@ protected:
     QRect m_cardsDisplayRegion;
     int m_timer;
     int m_currentTime;
-    QList<int> m_suppressedConvertedCardIds;
+    QMap<int, QPair<QString, QString> > m_convertedCards;
 };
 
 #endif

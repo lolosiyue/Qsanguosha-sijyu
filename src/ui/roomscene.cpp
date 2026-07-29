@@ -4815,6 +4815,11 @@ void RoomScene::showVirtualCard(const QString &player_name, const QString &card_
 	const QString &suit, int number, const QString &skill_name, const QList<int> &subcard_ids,
 	const QString &target_name)
 {
+	if (!subcard_ids.isEmpty()) {
+		m_tablePile->setConvertedSubcardName(subcard_ids, card_name, Sanguosha->translate(card_name));
+		return;
+	}
+
 	Card *card = Sanguosha->cloneCard(card_name);
 	if (card == nullptr)
 		return;
@@ -4832,20 +4837,9 @@ void RoomScene::showVirtualCard(const QString &player_name, const QString &card_
 	card->setSuit(suit_map.value(suit, Card::NoSuit));
 	card->setNumber(number);
 	card->setSkillName(skill_name);
-	card->addSubcards(subcard_ids);
-	m_tablePile->suppressConvertedSubcards(subcard_ids);
 
 	CardItem *card_item = new CardItem(card);
-	card_item->setConvertedCardVisual(!subcard_ids.isEmpty());
 	card_item->setParentItem(m_tablePile);
-	if (!subcard_ids.isEmpty()) {
-		const QString title = skill_name.isEmpty()
-			? QString::fromUtf8("【被轉化的卡牌】")
-			: QString::fromUtf8("【%1】轉化的卡牌").arg(Sanguosha->translate(skill_name));
-		connect(card_item, &CardItem::clicked, this, [this, subcard_ids, title]() {
-			showPile(subcard_ids, title);
-		});
-	}
 	card->deleteLater();
 
 	bringToFront(m_tablePile);

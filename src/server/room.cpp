@@ -3001,6 +3001,9 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
 			log.type += "_Resp";
 		}
 		sendLog(log);
+		// Pure responses bypass Room::useCard(), so publish converted-card visuals here.
+		if (resp.m_card->isVirtualCard() && resp.m_card->getTypeId() != Card::TypeSkill)
+			showVirtualCard(player, resp.m_card);
 		moveCardsAtomic(CardsMoveStruct(ids, nullptr, Player::PlaceTable, reason), true);
 		thread->trigger(CardResponded, this, player, askedData);
 		if (!isProvision){

@@ -70,7 +70,7 @@ public:
         return m_hasVirtualCardVisual;
     }
 
-    void setConvertedCardVisual(bool converted);
+    void setConvertedCardName(const QString &cardObjectName, const QString &name);
 
     void setFrozen(bool is_frozen);
 
@@ -130,7 +130,8 @@ private:
     Card::Suit m_virtualCardSuit;
     int m_virtualCardNumber;
     bool m_virtualCardBlack;
-    bool m_hasConvertedCardVisual;
+    QString m_convertedCardObjectName;
+    QString m_convertedCardName;
     QString _m_avatarName;
     QPointF home_pos;
     QPointF _m_lastMousePressScenePos;

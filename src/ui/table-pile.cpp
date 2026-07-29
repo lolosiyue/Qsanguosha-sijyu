@@ -58,7 +58,7 @@ void TablePile::_markClearance(CardItem *item)
 
 void TablePile::clear(bool delayRequest)
 {
-	m_suppressedConvertedCardIds.clear();
+	m_convertedCards.clear();
 	if (m_visibleCards.isEmpty()) return;
 	_m_mutex_pileCards.lock();
 	// check again since we just gain the lock.
@@ -74,11 +74,11 @@ void TablePile::clear(bool delayRequest)
 	_m_mutex_pileCards.unlock();
 }
 
-void TablePile::suppressConvertedSubcards(const QList<int> &cardIds)
+void TablePile::setConvertedSubcardName(const QList<int> &cardIds, const QString &cardObjectName,
+	const QString &name)
 {
 	foreach (int cardId, cardIds) {
-		if (!m_suppressedConvertedCardIds.contains(cardId))
-			m_suppressedConvertedCardIds << cardId;
+		m_convertedCards.insert(cardId, qMakePair(cardObjectName, name));
 	}
 }
 
@@ -120,14 +120,13 @@ void TablePile::showJudgeResult(int cardId, bool takeEffect)
 
 bool TablePile::_addCardItems(QList<CardItem *> &card_items, const CardsMoveStruct &moveInfo)
 {
-	// The converted virtual card replaces its physical subcards in the table presentation only.
-	for (int i = card_items.length() - 1; i >= 0; --i) {
-		CardItem *cardItem = card_items.at(i);
-		if (!m_suppressedConvertedCardIds.removeOne(cardItem->getId()))
-			continue;
-		card_items.removeAt(i);
-		cardItem->hide();
-		cardItem->deleteLater();
+	// Apply the conversion name to each physical source card as it enters the table.
+	foreach (CardItem *card_item, card_items) {
+		const int cardId = card_item->getId();
+		if (m_convertedCards.contains(cardId)) {
+			const QPair<QString, QString> convertedCard = m_convertedCards.take(cardId);
+			card_item->setConvertedCardName(convertedCard.first, convertedCard.second);
+		}
 	}
 	if (card_items.isEmpty())
 		return false;/*
