@@ -77,7 +77,7 @@ function sgs.CreateTriggerSkill(spec)
 	return skill
 end
 
-function sgs.CreateTriggerV2Skill(spec)
+function sgs.CreateTriggerSkillV2(spec)
 	assert(type(spec.name)=="string")
 	if spec.frequency then assert(type(spec.frequency)=="number") end
 	if spec.limit_mark then assert(type(spec.limit_mark)=="string") end
@@ -86,7 +86,7 @@ function sgs.CreateTriggerV2Skill(spec)
 	if spec.hide_skill then assert(type(spec.hide_skill)=="boolean") end
 	local frequency = spec.frequency or sgs.Skill_NotFrequent
 	local limit_mark = spec.limit_mark or ""
-	local skill = sgs.LuaTriggerV2Skill(spec.name, frequency, limit_mark)
+	local skill = sgs.LuaTriggerSkillV2(spec.name, frequency, limit_mark)
 	if type(spec.guhuo_type)=="string" and spec.guhuo_type~="" then skill:setGuhuoDialog(spec.guhuo_type) end
 	if type(spec.juguan_type)=="string" and spec.juguan_type~="" then skill:setJuguanDialog(spec.juguan_type) end
 	if type(spec.tiansuan_type)=="string" and spec.tiansuan_type~="" then skill:setTiansuanDialog(spec.tiansuan_type) end

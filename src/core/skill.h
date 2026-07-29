@@ -447,12 +447,12 @@ public:
     virtual void onGameStart(ServerPlayer *player) const = 0;
 };
 
-class TriggerV2Skill : public TriggerSkill, public AmountSkillV2
+class TriggerSkillV2 : public TriggerSkill, public AmountSkillV2
 {
     Q_OBJECT
 
 public:
-    TriggerV2Skill(const QString &name);
+    TriggerSkillV2(const QString &name);
 
     virtual TriggerList triggerable(TriggerEvent triggerEvent, Room *room,
                                      ServerPlayer *player, QVariant &data) const;

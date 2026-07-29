@@ -70,13 +70,13 @@ protected:
     QString tiansuan_type;
 };
 
-class LuaTriggerV2Skill : public TriggerV2Skill
+class LuaTriggerSkillV2 : public TriggerSkillV2
 {
     Q_OBJECT
 
 public:
-    LuaTriggerV2Skill(const QString &name, Frequency frequency, const QString &limit_mark);
-    LuaTriggerV2Skill(const char *name, Frequency frequency, const char *limit_mark);
+    LuaTriggerSkillV2(const QString &name, Frequency frequency, const QString &limit_mark);
+    LuaTriggerSkillV2(const char *name, Frequency frequency, const char *limit_mark);
     inline void addEvent(TriggerEvent triggerEvent)
     {
         events << triggerEvent;

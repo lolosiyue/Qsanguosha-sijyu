@@ -9,7 +9,7 @@
 依賴文件：
 
 - [玩家技能多實例重構計劃](skill-instance-refactor-plan.md)
-- [TriggerV2Skill 系統說明](TriggerV2Skill系統說明.md)
+- [TriggerSkillV2 系統說明](TriggerSkillV2系統說明.md)
 - [SkillCard V2 Bridge 舊構想](SkillCard-V2Bridge計劃.md)
 - [ViewAsSkillV2 舊技能遷移規範](active-skill-v2-migration-guide.md)
 - [ViewAsSkillV2 驗證矩陣](active-skill-v2-test-matrix.md)
@@ -453,7 +453,7 @@ Lua: on_effect / on_effect_target / on_effect_target_group
 - `on_effect` 可設定 `ctx.manual_effect = true`，再以 `skill:skillEffect(ctx, target)` 手動派發
   `EventSkillEffectTarget` 與 `on_effect_target`；框架偵測此旗標後不再自動遍歷目標。
 
-數值契約與 `TriggerV2Skill` 相同：`getBaseAmount()` 預設為 1，execution 建立前會把它寫入
+數值契約與 `TriggerSkillV2` 相同：`getBaseAmount()` 預設為 1，execution 建立前會把它寫入
 `ctx.amount`；作者以 `getEffectiveAmount(ctx)` 取得有效值，優先序為正數
 `modified_amount`、正數 `amount`、最後回退 `base_amount`。Lua factory 以選用的
 `base_amount` 設定基礎值。攔截器可以修改 `ctx.modified_amount`，不得修改 execution identity。
@@ -943,14 +943,14 @@ source identity 清除的是 root 配額。
 交付：
 
 - `SkillContext` 以 getter-only 方式暴露 `getActivationRef()`／`getSourceRef()`。
-- `sgs.CreateTriggerV2Skill` 與 `sgs.CreateViewAsSkillV2` 均接受選用的純查詢 callback `get_usage_ref(skill, ctx)`；未提供時由 C++ 基底使用 activation ref。
+- `sgs.CreateTriggerSkillV2` 與 `sgs.CreateViewAsSkillV2` 均接受選用的純查詢 callback `get_usage_ref(skill, ctx)`；未提供時由 C++ 基底使用 activation ref。
 - callback 必須回傳 `SkillInstanceRef`；Lua error、nil 或錯誤型別均 fail-closed。舊 `usage_identity` 載入時報遷移提示，不得靜默忽略。
 - C++ 技能直接覆寫 `getUsageRef(ctx)`；不再暴露 `UsageIdentity` enum、setter 或 Lua 常數。
 
 | 技能入口 | 本票責任 |
 |---|---|
 | C++ `Skill`／`ViewAsSkillV2` | 提供預設 activation ref 與可覆寫的 `getUsageRef()` |
-| Lua `TriggerV2Skill` | factory callback、SWIG ref getter；generic scope 與 Custom 邊界均驗證 |
+| Lua `TriggerSkillV2` | factory callback、SWIG ref getter；generic scope 與 Custom 邊界均驗證 |
 | Lua `ViewAsSkillV2` | factory callback、SWIG ref getter；接入既有 ViewAsSkillV2 quota lifecycle |
 | legacy Lua/C++ `ViewAsSkill` | 只可讀取基礎 API；自動扣次數留給後續 bridge 票 |
 

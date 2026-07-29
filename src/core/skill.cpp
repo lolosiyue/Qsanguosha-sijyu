@@ -805,41 +805,41 @@ bool GameStartSkill::trigger(TriggerEvent, Room *, ServerPlayer *player, QVarian
     return false;
 }
 
-TriggerV2Skill::TriggerV2Skill(const QString &name)
+TriggerSkillV2::TriggerSkillV2(const QString &name)
     : TriggerSkill(name), m_baseAmount(1)
 {
 }
 
-TriggerList TriggerV2Skill::triggerable(TriggerEvent, Room*, ServerPlayer*, QVariant&) const
+TriggerList TriggerSkillV2::triggerable(TriggerEvent, Room*, ServerPlayer*, QVariant&) const
 {
     return TriggerList();
 }
 
-void TriggerV2Skill::record(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const
+void TriggerSkillV2::record(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const
 {
 }
 
-bool TriggerV2Skill::cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const
-{
-    return true;
-}
-
-bool TriggerV2Skill::pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const
+bool TriggerSkillV2::cost(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const
 {
     return true;
 }
 
-bool TriggerV2Skill::effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const
+bool TriggerSkillV2::pay(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const
+{
+    return true;
+}
+
+bool TriggerSkillV2::effect(TriggerEvent, Room *, ServerPlayer *, SkillContext &) const
 {
     return false;
 }
 
-bool TriggerV2Skill::effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &, ServerPlayer *) const
+bool TriggerSkillV2::effectTarget(TriggerEvent, Room *, ServerPlayer *, SkillContext &, ServerPlayer *) const
 {
     return false;
 }
 
-bool TriggerV2Skill::skillEffect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+bool TriggerSkillV2::skillEffect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
                                   SkillContext &ctx, ServerPlayer *target) const
 {
     ctx.current_event = EventSkillEffectTarget;
@@ -861,7 +861,7 @@ bool TriggerV2Skill::skillEffect(TriggerEvent triggerEvent, Room *room, ServerPl
     return effectTarget(triggerEvent, room, player, ctx, target);
 }
 
-bool TriggerV2Skill::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
+bool TriggerSkillV2::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player,
                              QVariant &data, ServerPlayer *owner) const
 {
     SkillContext ctx;
@@ -877,44 +877,44 @@ bool TriggerV2Skill::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer
     return effect(triggerEvent, room, player, ctx);
 }
 
-void TriggerV2Skill::willInvoke(SkillContext &ctx) const
+void TriggerSkillV2::willInvoke(SkillContext &ctx) const
 {
     Q_UNUSED(ctx);
 }
 
-void TriggerV2Skill::targetConfirming(SkillContext &ctx) const
+void TriggerSkillV2::targetConfirming(SkillContext &ctx) const
 {
     Q_UNUSED(ctx);
 }
 
-void TriggerV2Skill::invoking(SkillContext &ctx) const
+void TriggerSkillV2::invoking(SkillContext &ctx) const
 {
     Q_UNUSED(ctx);
 }
 
-void TriggerV2Skill::effect(SkillContext &ctx) const
+void TriggerSkillV2::effect(SkillContext &ctx) const
 {
     Q_UNUSED(ctx);
 }
 
-void TriggerV2Skill::effectFinished(SkillContext &ctx) const
+void TriggerSkillV2::effectFinished(SkillContext &ctx) const
 {
     Q_UNUSED(ctx);
 }
 
-int TriggerV2Skill::getBaseAmount() const
+int TriggerSkillV2::getBaseAmount() const
 {
     return m_baseAmount;
 }
 
-int TriggerV2Skill::getEffectiveAmount(const SkillContext &ctx) const
+int TriggerSkillV2::getEffectiveAmount(const SkillContext &ctx) const
 {
     if (ctx.hasModifiedAmount())
         return ctx.modified_amount;
     return ctx.amount;
 }
 
-QString TriggerV2Skill::parseSkillName(const QString &fullName, QString *source,
+QString TriggerSkillV2::parseSkillName(const QString &fullName, QString *source,
                                        QString *target, int *multiplier, int *instanceId)
 {
     if (multiplier) *multiplier = 1;

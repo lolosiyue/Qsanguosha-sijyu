@@ -27,9 +27,9 @@ public:
 
 class SkillContext;
 
-class LuaTriggerV2Skill: public TriggerV2Skill {
+class LuaTriggerSkillV2: public TriggerSkillV2 {
 public:
-	LuaTriggerV2Skill(const char *name, Frequency frequency, const char *limit_mark);
+	LuaTriggerSkillV2(const char *name, Frequency frequency, const char *limit_mark);
 	void addEvent(TriggerEvent event);
 	void setViewAsSkill(ViewAsSkill *view_as_skill);
 	void setGlobal(bool global);
@@ -941,8 +941,8 @@ static SkillInstanceRef luaSkillUsageRef(lua_State *L, int callback, void *self,
 	return result;
 }
 
-LuaTriggerV2Skill::LuaTriggerV2Skill(const char *name, Frequency frequency, const char *limit_mark)
-	: TriggerV2Skill(name), on_record(0), can_trigger(0), on_cost(0), on_pay(0), on_effect(0), on_effect_target(0), on_turn_broken(0), check_custom_usage(0), on_add_usage(0),
+LuaTriggerSkillV2::LuaTriggerSkillV2(const char *name, Frequency frequency, const char *limit_mark)
+	: TriggerSkillV2(name), on_record(0), can_trigger(0), on_cost(0), on_pay(0), on_effect(0), on_effect_target(0), on_turn_broken(0), check_custom_usage(0), on_add_usage(0),
 	  get_usage_ref(0), on_willInvoke(0), on_targetConfirming(0), on_invoking(0), on_effectContext(0), on_effectFinished(0),
 	  m_limitScope(Limit_None), m_maxUsageLimit(1)
 {
@@ -951,33 +951,33 @@ LuaTriggerV2Skill::LuaTriggerV2Skill(const char *name, Frequency frequency, cons
 	this->priority = 2;
 }
 
-int LuaTriggerV2Skill::getPriority() const
+int LuaTriggerSkillV2::getPriority() const
 {
 	return priority;
 }
 
-Skill::LimitScope LuaTriggerV2Skill::getLimitScope() const
+Skill::LimitScope LuaTriggerSkillV2::getLimitScope() const
 {
 	return m_limitScope;
 }
 
-SkillInstanceRef LuaTriggerV2Skill::getUsageRef(const SkillContext &ctx) const
+SkillInstanceRef LuaTriggerSkillV2::getUsageRef(const SkillContext &ctx) const
 {
-	if (!get_usage_ref) return TriggerV2Skill::getUsageRef(ctx);
+	if (!get_usage_ref) return TriggerSkillV2::getUsageRef(ctx);
 	return luaSkillUsageRef(Sanguosha->getLuaState(), get_usage_ref,
-		const_cast<LuaTriggerV2Skill *>(this), SWIGTYPE_p_LuaTriggerV2Skill,
-		ctx, "LuaTriggerV2Skill");
+		const_cast<LuaTriggerSkillV2 *>(this), SWIGTYPE_p_LuaTriggerSkillV2,
+		ctx, "LuaTriggerSkillV2");
 }
 
-int LuaTriggerV2Skill::getMaxUsageLimit(const SkillContext &) const
+int LuaTriggerSkillV2::getMaxUsageLimit(const SkillContext &) const
 {
 	return m_maxUsageLimit;
 }
 
-bool LuaTriggerV2Skill::cost(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const
+bool LuaTriggerSkillV2::cost(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const
 {
 	if (on_cost == 0)
-		return TriggerV2Skill::cost(triggerEvent, room, player, ctx);
+		return TriggerSkillV2::cost(triggerEvent, room, player, ctx);
 	try {
 		lua_State *L = room->getLuaState();
 
@@ -985,8 +985,8 @@ bool LuaTriggerV2Skill::cost(TriggerEvent triggerEvent, Room *room, ServerPlayer
 
 		lua_rawgeti(L, LUA_REGISTRYINDEX, on_cost);
 
-		LuaTriggerV2Skill *self = const_cast<LuaTriggerV2Skill *>(this);
-		SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerV2Skill, 0);
+		LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
+		SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
 
 		lua_pushinteger(L, e);
 
@@ -1015,10 +1015,10 @@ bool LuaTriggerV2Skill::cost(TriggerEvent triggerEvent, Room *room, ServerPlayer
 	}
 }
 
-bool LuaTriggerV2Skill::pay(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const
+bool LuaTriggerSkillV2::pay(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const
 {
 	if (on_pay == 0)
-		return TriggerV2Skill::pay(triggerEvent, room, player, ctx);
+		return TriggerSkillV2::pay(triggerEvent, room, player, ctx);
 	try {
 		lua_State *L = room->getLuaState();
 
@@ -1026,8 +1026,8 @@ bool LuaTriggerV2Skill::pay(TriggerEvent triggerEvent, Room *room, ServerPlayer 
 
 		lua_rawgeti(L, LUA_REGISTRYINDEX, on_pay);
 
-		LuaTriggerV2Skill *self = const_cast<LuaTriggerV2Skill *>(this);
-		SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerV2Skill, 0);
+		LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
+		SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
 
 		lua_pushinteger(L, e);
 
@@ -1056,10 +1056,10 @@ bool LuaTriggerV2Skill::pay(TriggerEvent triggerEvent, Room *room, ServerPlayer 
 	}
 }
 
-bool LuaTriggerV2Skill::effect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const
+bool LuaTriggerSkillV2::effect(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const
 {
 	if (on_effect == 0)
-		return TriggerV2Skill::effect(triggerEvent, room, player, ctx);
+		return TriggerSkillV2::effect(triggerEvent, room, player, ctx);
 
 	try {
 		lua_State *L = room->getLuaState();
@@ -1068,8 +1068,8 @@ bool LuaTriggerV2Skill::effect(TriggerEvent triggerEvent, Room *room, ServerPlay
 
 		lua_rawgeti(L, LUA_REGISTRYINDEX, on_effect);
 
-		LuaTriggerV2Skill *self = const_cast<LuaTriggerV2Skill *>(this);
-		SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerV2Skill, 0);
+		LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
+		SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
 
 		lua_pushinteger(L, e);
 
@@ -1098,10 +1098,10 @@ bool LuaTriggerV2Skill::effect(TriggerEvent triggerEvent, Room *room, ServerPlay
 	}
 }
 
-bool LuaTriggerV2Skill::effectTarget(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const
+bool LuaTriggerSkillV2::effectTarget(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx, ServerPlayer *target) const
 {
 	if (on_effect_target == 0)
-		return TriggerV2Skill::effectTarget(triggerEvent, room, player, ctx, target);
+		return TriggerSkillV2::effectTarget(triggerEvent, room, player, ctx, target);
 
 	try {
 		lua_State *L = room->getLuaState();
@@ -1110,8 +1110,8 @@ bool LuaTriggerV2Skill::effectTarget(TriggerEvent triggerEvent, Room *room, Serv
 
 		lua_rawgeti(L, LUA_REGISTRYINDEX, on_effect_target);
 
-		LuaTriggerV2Skill *self = const_cast<LuaTriggerV2Skill *>(this);
-		SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerV2Skill, 0);
+		LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
+		SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
 
 		lua_pushinteger(L, e);
 
@@ -1142,7 +1142,7 @@ bool LuaTriggerV2Skill::effectTarget(TriggerEvent triggerEvent, Room *room, Serv
 	}
 }
 
-void LuaTriggerV2Skill::onTurnBroken(const char *function_name, TriggerEvent triggerEvent, Room *room,
+void LuaTriggerSkillV2::onTurnBroken(const char *function_name, TriggerEvent triggerEvent, Room *room,
                                     ServerPlayer *player, SkillContext &ctx) const
 {
 	if (on_turn_broken == 0) return;
@@ -1151,8 +1151,8 @@ void LuaTriggerV2Skill::onTurnBroken(const char *function_name, TriggerEvent tri
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, on_turn_broken);
 
-	LuaTriggerV2Skill *self = const_cast<LuaTriggerV2Skill *>(this);
-	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerV2Skill, 0);
+	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
+	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
 
 	lua_pushstring(L, function_name);
 
@@ -1167,7 +1167,7 @@ void LuaTriggerV2Skill::onTurnBroken(const char *function_name, TriggerEvent tri
 	lua_pcall(L, 6, 0, 0);
 }
 
-void LuaTriggerV2Skill::record(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const
+void LuaTriggerSkillV2::record(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const
 {
 	if (on_record == 0) return;
 
@@ -1175,8 +1175,8 @@ void LuaTriggerV2Skill::record(TriggerEvent triggerEvent, Room *room, ServerPlay
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, on_record);
 
-	LuaTriggerV2Skill *self = const_cast<LuaTriggerV2Skill *>(this);
-	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerV2Skill, 0);
+	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
+	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
 
 	lua_pushinteger(L, static_cast<int>(triggerEvent));
 
@@ -1202,7 +1202,7 @@ void LuaTriggerV2Skill::record(TriggerEvent triggerEvent, Room *room, ServerPlay
 	lua_pcall(L, 7, 0, 0);
 }
 
-TriggerList LuaTriggerV2Skill::triggerable(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+TriggerList LuaTriggerSkillV2::triggerable(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
 {
 	TriggerList result;
 	if (!can_trigger || !player) return result;
@@ -1211,8 +1211,8 @@ TriggerList LuaTriggerV2Skill::triggerable(TriggerEvent triggerEvent, Room *room
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, can_trigger);
 
-	LuaTriggerV2Skill *self = const_cast<LuaTriggerV2Skill *>(this);
-	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerV2Skill, 0);
+	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
+	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
 
 	lua_pushinteger(L, triggerEvent);
 
@@ -1291,7 +1291,7 @@ TriggerList LuaTriggerV2Skill::triggerable(TriggerEvent triggerEvent, Room *room
 	return result;
 }
 
-void LuaTriggerV2Skill::willInvoke(SkillContext &ctx) const
+void LuaTriggerSkillV2::willInvoke(SkillContext &ctx) const
 {
 	if (!on_willInvoke) return;
 
@@ -1299,15 +1299,15 @@ void LuaTriggerV2Skill::willInvoke(SkillContext &ctx) const
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, on_willInvoke);
 
-	LuaTriggerV2Skill *self = const_cast<LuaTriggerV2Skill *>(this);
-	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerV2Skill, 0);
+	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
+	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
 
 	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
 	lua_pcall(L, 2, 0, 0);
 }
 
-void LuaTriggerV2Skill::targetConfirming(SkillContext &ctx) const
+void LuaTriggerSkillV2::targetConfirming(SkillContext &ctx) const
 {
 	if (!on_targetConfirming) return;
 
@@ -1315,15 +1315,15 @@ void LuaTriggerV2Skill::targetConfirming(SkillContext &ctx) const
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, on_targetConfirming);
 
-	LuaTriggerV2Skill *self = const_cast<LuaTriggerV2Skill *>(this);
-	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerV2Skill, 0);
+	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
+	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
 
 	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
 	lua_pcall(L, 2, 0, 0);
 }
 
-void LuaTriggerV2Skill::invoking(SkillContext &ctx) const
+void LuaTriggerSkillV2::invoking(SkillContext &ctx) const
 {
 	if (!on_invoking) return;
 
@@ -1331,15 +1331,15 @@ void LuaTriggerV2Skill::invoking(SkillContext &ctx) const
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, on_invoking);
 
-	LuaTriggerV2Skill *self = const_cast<LuaTriggerV2Skill *>(this);
-	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerV2Skill, 0);
+	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
+	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
 
 	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
 	lua_pcall(L, 2, 0, 0);
 }
 
-void LuaTriggerV2Skill::effect(SkillContext &ctx) const
+void LuaTriggerSkillV2::effect(SkillContext &ctx) const
 {
 	if (!on_effectContext) return;
 
@@ -1347,15 +1347,15 @@ void LuaTriggerV2Skill::effect(SkillContext &ctx) const
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, on_effectContext);
 
-	LuaTriggerV2Skill *self = const_cast<LuaTriggerV2Skill *>(this);
-	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerV2Skill, 0);
+	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
+	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
 
 	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
 	lua_pcall(L, 2, 0, 0);
 }
 
-void LuaTriggerV2Skill::effectFinished(SkillContext &ctx) const
+void LuaTriggerSkillV2::effectFinished(SkillContext &ctx) const
 {
 	if (!on_effectFinished) return;
 
@@ -1363,25 +1363,25 @@ void LuaTriggerV2Skill::effectFinished(SkillContext &ctx) const
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, on_effectFinished);
 
-	LuaTriggerV2Skill *self = const_cast<LuaTriggerV2Skill *>(this);
-	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerV2Skill, 0);
+	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
+	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
 
 	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
 	lua_pcall(L, 2, 0, 0);
 }
 
-bool LuaTriggerV2Skill::checkCustomUsage(const SkillContext &ctx) const
+bool LuaTriggerSkillV2::checkCustomUsage(const SkillContext &ctx) const
 {
 	if (!check_custom_usage)
-		return TriggerV2Skill::checkCustomUsage(ctx);
+		return TriggerSkillV2::checkCustomUsage(ctx);
 
 	lua_State *L = Sanguosha->getLuaState();
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, check_custom_usage);
 
-	LuaTriggerV2Skill *self = const_cast<LuaTriggerV2Skill *>(this);
-	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerV2Skill, 0);
+	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
+	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
 
 	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
@@ -1395,35 +1395,35 @@ bool LuaTriggerV2Skill::checkCustomUsage(const SkillContext &ctx) const
 	return result;
 }
 
-void LuaTriggerV2Skill::addUsage(const SkillContext &ctx) const
+void LuaTriggerSkillV2::addUsage(const SkillContext &ctx) const
 {
 	if (getLimitScope() != Limit_Custom || !on_add_usage) {
-		TriggerV2Skill::addUsage(ctx);
+		TriggerSkillV2::addUsage(ctx);
 		return;
 	}
 
 	lua_State *L = Sanguosha->getLuaState();
 	lua_rawgeti(L, LUA_REGISTRYINDEX, on_add_usage);
 
-	LuaTriggerV2Skill *self = const_cast<LuaTriggerV2Skill *>(this);
-	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerV2Skill, 0);
+	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
+	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
 	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
 	if (lua_pcall(L, 2, 0, 0) != 0)
 		lua_pop(L, 1);
 }
 
-bool LuaTriggerV2Skill::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+bool LuaTriggerSkillV2::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
 {
-	return TriggerV2Skill::trigger(triggerEvent, room, player, data, NULL);
+	return TriggerSkillV2::trigger(triggerEvent, room, player, data, NULL);
 }
 
-bool LuaTriggerV2Skill::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data, ServerPlayer *owner) const
+bool LuaTriggerSkillV2::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data, ServerPlayer *owner) const
 {
-	return TriggerV2Skill::trigger(triggerEvent, room, player, data, owner);
+	return TriggerSkillV2::trigger(triggerEvent, room, player, data, owner);
 }
 
-void LuaTriggerV2Skill::onShimingSuccess(Room *room, ServerPlayer *player) const
+void LuaTriggerSkillV2::onShimingSuccess(Room *room, ServerPlayer *player) const
 {
 	if (on_shiming_success == 0)
 		return;
@@ -1432,8 +1432,8 @@ void LuaTriggerV2Skill::onShimingSuccess(Room *room, ServerPlayer *player) const
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, on_shiming_success);
 
-	LuaTriggerV2Skill *self = const_cast<LuaTriggerV2Skill *>(this);
-	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerV2Skill, 0);
+	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
+	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
 
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 
@@ -1447,7 +1447,7 @@ void LuaTriggerV2Skill::onShimingSuccess(Room *room, ServerPlayer *player) const
 	}
 }
 
-void LuaTriggerV2Skill::onShimingFail(Room *room, ServerPlayer *player) const
+void LuaTriggerSkillV2::onShimingFail(Room *room, ServerPlayer *player) const
 {
 	if (on_shiming_fail == 0)
 		return;
@@ -1456,8 +1456,8 @@ void LuaTriggerV2Skill::onShimingFail(Room *room, ServerPlayer *player) const
 
 	lua_rawgeti(L, LUA_REGISTRYINDEX, on_shiming_fail);
 
-	LuaTriggerV2Skill *self = const_cast<LuaTriggerV2Skill *>(this);
-	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerV2Skill, 0);
+	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
+	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
 
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 
@@ -1541,7 +1541,7 @@ Skill::Frequency LuaTriggerSkill::getFrequency(const Player *target) const
 	return Skill::getFrequency(target);
 }
 
-Skill::Frequency LuaTriggerV2Skill::getFrequency(const Player *target) const
+Skill::Frequency LuaTriggerSkillV2::getFrequency(const Player *target) const
 {
 	return Skill::getFrequency(target);
 }

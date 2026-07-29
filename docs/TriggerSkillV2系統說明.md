@@ -1,8 +1,8 @@
-# TriggerV2Skill 系統說明
+# TriggerSkillV2 系統說明
 
 ## 概述
 
-TriggerV2Skill 是重構後的觸發技能系統，設計目標：
+TriggerSkillV2 是重構後的觸發技能系統，設計目標：
 1. 向後相容現有 TriggerSkill
 2. 支持同名技能的多實例（透過 instanceId 區分）
 3. 標準化觸發流程：record → triggerable → cost → effect
@@ -13,8 +13,8 @@ TriggerV2Skill 是重構後的觸發技能系統，設計目標：
 ```
 Skill (QObject)
 └── TriggerSkill
-    └── TriggerV2Skill
-        └── LuaTriggerV2Skill (Lua 绑定)
+    └── TriggerSkillV2
+        └── LuaTriggerSkillV2 (Lua 绑定)
 ```
 
 ## 核心資料結構
@@ -83,7 +83,7 @@ struct SkillContext {
 "baGua#2"         // instanceId = 2
 ```
 
-## TriggerV2Skill 類定義
+## TriggerSkillV2 類定義
 
 ### 位置
 - Header: `src/core/skill.h` (line 293-320)
@@ -222,7 +222,7 @@ ctx = ctx_data.value<SkillContext>();  // 取回修改後的 ctx
 
 ## Lua 綁定
 
-### LuaTriggerV2Skill
+### LuaTriggerSkillV2
 
 **位置**: `src/core/lua-wrapper.h` (line 73-127)
 
@@ -247,7 +247,7 @@ ctx = ctx_data.value<SkillContext>();  // 取回修改後的 ctx
 **位置**: `lua/sgs_ex.lua` (line 62-85)
 
 ```lua
-sgs.CreateTriggerV2Skill {
+sgs.CreateTriggerSkillV2 {
     name = "baGua",
     frequency = sgs.Skill_Compulsory,
     events = {sgs.DamageCaused, sgs.DamageInflicted},
@@ -273,7 +273,7 @@ sgs.CreateTriggerV2Skill {
 }
 
 -- 監聽技能發動時機的技能
-sgs.CreateTriggerV2Skill {
+sgs.CreateTriggerSkillV2 {
     name = "fengyin",
     frequency = sgs.Skill_Compulsory,
     events = {sgs.EventSkillWillInvoke},  -- 註冊監聽 EventSkillWillInvoke
@@ -478,7 +478,7 @@ return table.concat(trigger_list_skill, "|"), table.concat(trigger_list_who, "|"
 #### 完整範例：襲射（s4_xishe）
 
 ```lua
-s4_xishe = sgs.CreateTriggerV2Skill{
+s4_xishe = sgs.CreateTriggerSkillV2{
     name = "s4_xishe",
     events = {sgs.EventPhaseProceeding},
     
@@ -653,7 +653,7 @@ void detachSkill(const QString &skill_name);
 
 | 呼叫方式 | 行為 |
 |---------|------|
-| `acquireSkill(player, "baGua")` | TriggerV2Skill 自動分配新 instanceId |
+| `acquireSkill(player, "baGua")` | TriggerSkillV2 自動分配新 instanceId |
 | `acquireSkill(player, "baGua#3")` | 精確獲得 instanceId=3（如已存在則忽略）|
 | `acquireSkill(player, skillPtr)` | 使用技能自身的 instanceId |
 
@@ -704,7 +704,7 @@ skill_table[event] → [skillA_ptr, skillB_ptr]  (同名技能的不同實例)
 
 ## 與舊系統差異
 
-| 項目 | 舊 TriggerSkill | TriggerV2Skill |
+| 項目 | 舊 TriggerSkill | TriggerSkillV2 |
 |------|---------------|----------------|
 | 觸發返回 | `bool triggerable()` | `TriggerList triggerable()` |
 | 多目標 | 需自行遍歷 | 直接返回 `QMap<Player*, QStringList>` |
@@ -715,13 +715,13 @@ skill_table[event] → [skillA_ptr, skillB_ptr]  (同名技能的不同實例)
 
 ## 使用範例
 
-### C++ 繼承 TriggerV2Skill
+### C++ 繼承 TriggerSkillV2
 
 ```cpp
-class BaGuaSkill : public TriggerV2Skill {
+class BaGuaSkill : public TriggerSkillV2 {
     Q_OBJECT
 public:
-    BaGuaSkill() : TriggerV2Skill("baGua") {
+    BaGuaSkill() : TriggerSkillV2("baGua") {
         events << DamageCaused << DamageInflicted;
     }
 
@@ -750,7 +750,7 @@ public:
 ### Lua 技能定義
 
 ```lua
-local baGua = sgs.CreateTriggerV2Skill {
+local baGua = sgs.CreateTriggerSkillV2 {
     name = "baGua",
     frequency = sgs.Skill_Compulsory,
     events = {sgs.DamageCaused, sgs.DamageInflicted},
@@ -794,7 +794,7 @@ struct SkillContext {
 };
 ```
 
-### TriggerV2Skill 新增方法
+### TriggerSkillV2 新增方法
 
 | 方法 | 說明 |
 |------|------|
@@ -804,7 +804,7 @@ struct SkillContext {
 ### Lua 技能定義
 
 ```lua
-s4_cangzhuo = sgs.CreateTriggerV2Skill{
+s4_cangzhuo = sgs.CreateTriggerSkillV2{
     name = "s4_cangzhuo",
     base_amount = 1,  -- 可選，預設 1
     -- ...
@@ -827,7 +827,7 @@ s4_cangzhuo = sgs.CreateTriggerV2Skill{
 其他技能可在 `EventSkillWillInvoke` 時機修改 `ctx.modified_amount`：
 
 ```lua
-modifier = sgs.CreateTriggerV2Skill{
+modifier = sgs.CreateTriggerSkillV2{
     name = "modifier",
     events = {sgs.EventSkillWillInvoke},
     can_trigger = function(skill, event, room, player, data)
@@ -932,7 +932,7 @@ enum LimitScope {
 ### `Limit_Custom` 規則
 
 - C++ 技能可覆寫 `isUsable(ctx)`、`addUsage(ctx)` 或 `resetUsage(ctx)`，自行定義完整配額規則。
-- Lua TriggerV2Skill 使用 `check_custom_usage(skill, ctx)` 決定能否發動；成功結算後由 `on_add_usage(skill, ctx)` 更新自訂狀態。
+- Lua TriggerSkillV2 使用 `check_custom_usage(skill, ctx)` 決定能否發動；成功結算後由 `on_add_usage(skill, ctx)` 更新自訂狀態。
 - `check_custom_usage` 發生 Lua 錯誤時會拒絕發動；`on_add_usage` 的錯誤只會中止該 callback，不能回滾已結算的技能。
 - Custom 不使用引擎的 Mark key 或通用 reservation；若技能有重入需求，Lua/C++ 自訂規則必須自行處理 reservation。
 
@@ -953,10 +953,10 @@ enum LimitScope {
 ### C++ 範例
 
 ```cpp
-class BaGuaSkill : public TriggerV2Skill {
+class BaGuaSkill : public TriggerSkillV2 {
     Q_OBJECT
 public:
-    BaGuaSkill() : TriggerV2Skill("baGua") {
+    BaGuaSkill() : TriggerSkillV2("baGua") {
         events << DamageCaused << DamageInflicted;
     }
 
@@ -1004,7 +1004,7 @@ public:
 ### Lua 範例
 
 ```lua
-local baGua = sgs.CreateTriggerV2Skill {
+local baGua = sgs.CreateTriggerSkillV2 {
     name = "baGua",
     frequency = sgs.Skill_Compulsory,
     events = {sgs.DamageCaused},
@@ -1045,7 +1045,7 @@ local baGua = sgs.CreateTriggerV2Skill {
 
 ### 概述
 
-技能無效化系統用於臨時禁用 TriggerV2Skill，支援：
+技能無效化系統用於臨時禁用 TriggerSkillV2，支援：
 - 指定技能失效（可區分 instanceId）
 - 全域失效（`"all"` 失效所有武將技能，裝備技除外）
 - 來源追蹤（死亡/離場時自動清理）
@@ -1175,7 +1175,7 @@ case BuryVictim: {
 
 ```lua
 -- 傾城技能：失效所有敵方武將技能，來源死亡時自動恢復
-local Qingcheng = sgs.CreateTriggerV2Skill {
+local Qingcheng = sgs.CreateTriggerSkillV2 {
     name = "qingcheng",
     events = {sgs.EventPhaseChanging, sgs.EventSkillInvalidated, sgs.EventSkillValidityRestored},
 
@@ -1259,7 +1259,7 @@ room->removeSkillInvalidity(target, "qingcheng", source->objectName(), "reason")
 | 2026-05-08 | Engine 新增 `getTriggerSkill(name, instanceId)` |
 | 2026-05-08 | Player 新增 `acquireSkill(name, instanceId)` |
 | 2026-05-08 | Room::acquireSkill 支援重名技能自動分配 instanceId |
-| 2026-05-08 | TriggerV2Skill::parseSkillName 新增 instanceId 解析 |
+| 2026-05-08 | TriggerSkillV2::parseSkillName 新增 instanceId 解析 |
 | 2026-05-08 | triggerV2Skills 使用 instanceId 精確查找 |
 | 2026-05-08 | 新增 Skill 使用次數限制系統（SkillLimitScope） |
 | 2026-05-08 | 新增技能無效化系統（SkillInvalidity） |
@@ -1267,12 +1267,12 @@ room->removeSkillInvalidity(target, "qingcheng", source->objectName(), "reason")
 | 2026-05-09 | 新增五個時機鉤子：willInvoke、targetConfirming、invoking、effect、effectFinished |
 | 2026-05-09 | SkillContext 新增 `updated_targets` 和 `current_event` 欄位 |
 | 2026-05-09 | 新增 TriggerEvent：EventSkillWillInvoke、EventSkillTargetConfirming、EventSkillInvoking、EventSkillEffect、EventSkillEffectFinished |
-| 2026-05-09 | LuaTriggerV2Skill 新增五個時機回調 |
+| 2026-05-09 | LuaTriggerSkillV2 新增五個時機回調 |
 | 2026-05-09 | 改為通過 `trigger()` 觸發時機事件，技能需註冊監聽對應 TriggerEvent |
 | 2026-05-18 | 新增技能數值系統（amount、modified_amount） |
-| 2026-05-18 | TriggerV2Skill 新增 `getBaseAmount()`、`getEffectiveAmount()` |
-| 2026-05-18 | LuaTriggerV2Skill 新增 `setBaseAmount()` |
-| 2026-05-18 | `CreateTriggerV2Skill` 支援 `base_amount` 參數 |
+| 2026-05-18 | TriggerSkillV2 新增 `getBaseAmount()`、`getEffectiveAmount()` |
+| 2026-05-18 | LuaTriggerSkillV2 新增 `setBaseAmount()` |
+| 2026-05-18 | `CreateTriggerSkillV2` 支援 `base_amount` 參數 |
 | 2026-05-18 | `EventSkillEffect` 移至 `effect()` 前，返回 `true` 可跳過原效果 |
 | 2026-05-18 | 分離 `cost()` 和 `pay()`，新增 `EventSkillPay` 時機 |
 | 2026-05-18 | `cost()` 負責詢問是否發動 + 選目標，`pay()` 負責支付代價 |
@@ -1418,7 +1418,7 @@ force_extra_skill = sgs.CreateTriggerSkill{
 #### 方式一：使用 multiplier（系統自動觸發多次）
 
 ```lua
-skill = sgs.CreateTriggerV2Skill{
+skill = sgs.CreateTriggerSkillV2{
     name = "xxx",
     events = {sgs.Damaged},
     can_trigger = function(skill, event, room, player, data)
@@ -1441,7 +1441,7 @@ skill = sgs.CreateTriggerV2Skill{
 #### 方式二：使用 trigger_count（手動控制）
 
 ```lua
-skill = sgs.CreateTriggerV2Skill{
+skill = sgs.CreateTriggerSkillV2{
     name = "yyy",
     events = {sgs.Damaged},
     can_trigger = function(skill, event, room, player, data)
@@ -1561,7 +1561,7 @@ end
 
 ---
 
-## TriggerV2Skill 規範要求
+## TriggerSkillV2 規範要求
 
 ### 1. 基本結構規範
 
@@ -1791,7 +1791,7 @@ end
 #### 模式 A：單目標技能
 
 ```lua
-s4_cangzhuo = sgs.CreateTriggerV2Skill{
+s4_cangzhuo = sgs.CreateTriggerSkillV2{
     name = "s4_cangzhuo",
     events = {sgs.CardsMoveOneTime},
     frequency = sgs.Skill_Frequent,
@@ -1844,7 +1844,7 @@ s4_cangzhuo = sgs.CreateTriggerV2Skill{
 #### 模式 B：多目標技能
 
 ```lua
-s4_lizhan = sgs.CreateTriggerV2Skill{
+s4_lizhan = sgs.CreateTriggerSkillV2{
     name = "s4_lizhan",
     events = {sgs.Damaged},
     frequency = sgs.Skill_Frequent,
@@ -1903,7 +1903,7 @@ s4_lizhan = sgs.CreateTriggerV2Skill{
 #### 模式 C：選擇分支技能
 
 ```lua
-s4_zhiji = sgs.CreateTriggerV2Skill{
+s4_zhiji = sgs.CreateTriggerSkillV2{
     name = "s4_zhiji",
     events = {sgs.EventPhaseProceeding},
     frequency = sgs.Skill_Compulsory,
@@ -1959,7 +1959,7 @@ s4_zhiji = sgs.CreateTriggerV2Skill{
 #### 模式 D：多事件技能
 
 ```lua
-s4_banjiang = sgs.CreateTriggerV2Skill{
+s4_banjiang = sgs.CreateTriggerSkillV2{
     name = "s4_banjiang",
     events = {sgs.Damaged, sgs.DrawNCards, sgs.ChangeSlash},
     frequency = sgs.Skill_Compulsory,
@@ -2123,7 +2123,7 @@ end
 | invoker | `SkillContext::invoker` |
 | runtime key | `ownerObjectName + skillName + instanceID` |
 
-`TriggerV2Skill::triggerable()` 可只回傳 base name；RoomThread 會依 owner 的有效實例展開。若回傳 `skill#N`，則只執行該有效實例。`record()` 也按有效實例各執行一次，Lua `on_record` 的第七個參數為對應 `SkillContext`。
+`TriggerSkillV2::triggerable()` 可只回傳 base name；RoomThread 會依 owner 的有效實例展開。若回傳 `skill#N`，則只執行該有效實例。`record()` 也按有效實例各執行一次，Lua `on_record` 的第七個參數為對應 `SkillContext`。
 
 ```lua
 on_record = function(skill, event, room, player, data, owner, ctx)
