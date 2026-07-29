@@ -85,6 +85,10 @@
 | 一次處理完整 targets | `effectOnTargetGroup` |
 | SkillCard class history | `historyKey()` override |
 
+`CreateViewAsSkillV2` 不接受舊 `response_pattern`。一般回應與 `@@skill` 指名回應都由
+`can_activate(skill, request)` 檢查 `request:getReason()`／`request:getPattern()`；client 在指名回應時會先解析
+實際 activation instance，再呼叫同一 callback，不經 legacy `isAvailable()`。
+
 ## 6. validate 人工分類
 
 `validate()/validateInResponse()` 必須逐行分成以下類別：

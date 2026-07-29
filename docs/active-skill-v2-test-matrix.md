@@ -65,4 +65,7 @@
   驗證舊／新回傳、pure response／response-use、多 instance 及 attached source fallback。
 - `DoLuaScript()` 在 `--headless` 下會以 `qCritical` 報告 Lua 載入錯誤而非開啟 modal dialog，讓本機自動化可取得失敗原因；GUI 模式維持既有對話框。
 - `LuaViewAsSkillV2`、選用 AI callback、provenance V2 與 execution audit 曾完成編譯整合；Ticket 13 的 wrapper、quota ledger、immutable provenance 與中斷收束修改仍待重新編譯，再以合成技能自動化端到端驗證。
+- `@@skill` 指名回應的 client 自動啟動已改為按 activation instance 呼叫 `canActivate()`；Lua factory 對舊
+  `response_pattern` 會以遷移提示 fail-fast。factory smoke 已涵蓋提示文字，實際人類 UI 指名回應仍待
+  Room lifecycle／GUI fixture 實跑。
 - 不得以本矩陣代替 validate/onUse 的人工分類；請使用 migration guide 第 6、7、14 節的模板。

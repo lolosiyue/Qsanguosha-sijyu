@@ -112,11 +112,16 @@ static bool isSkillButtonAvailable(const QSanSkillButton *button, const ClientPl
     QString baseName;
     const int instanceID = SkillInstanceUtils::parseName(button->objectName(), baseName);
     Q_UNUSED(baseName);
+    const bool continuesViewAsEffect = activePlayer->getMark(
+        "ViewAsSkill_" + activeSkill->objectName() + "Effect") > 0;
     if (instanceID > 0) {
-        if (!activePlayer->hasSkillInstance(activeSkill->objectName(), instanceID)
-            || activePlayer->isSkillInvalid(activeSkill->objectName(), instanceID))
+        const bool hasActivationInstance = activePlayer->hasSkillInstance(
+            activeSkill->objectName(), instanceID);
+        if ((!hasActivationInstance && !continuesViewAsEffect)
+            || (hasActivationInstance
+                && activePlayer->isSkillInvalid(activeSkill->objectName(), instanceID)))
             return false;
-    } else if (!activePlayer->hasSkill(activeSkill->objectName())) {
+    } else if (!activePlayer->hasSkill(activeSkill->objectName()) && !continuesViewAsEffect) {
         return false;
     }
 
@@ -3614,25 +3619,45 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 					ClientInstance->onPlayerResponseCard(nullptr);
 					return;
 				}
-				activePlayer->addMark("ViewAsSkill_"+skill_name+"Effect");
-				bool available = skill->isAvailable(activePlayer,reason,pattern);
-				activePlayer->removeMark("ViewAsSkill_"+skill_name+"Effect");
+				const ViewAsSkillV2 *activeSkill = dynamic_cast<const ViewAsSkillV2 *>(skill);
+				QSanSkillButton *responseButton = nullptr;
+				bool available = false;
+				if (activeSkill) {
+					// A named response has no legacy response_pattern in V2. Resolve the
+					// exact activation instance and let canActivate() inspect reason/pattern.
+					foreach (QSanSkillButton *button, m_skillButtons) {
+						if (button->getViewAsSkill() == skill
+							&& isSkillButtonAvailable(button, activePlayer, reason, pattern)) {
+							responseButton = button;
+							available = true;
+							break;
+						}
+					}
+				} else {
+					activePlayer->addMark("ViewAsSkill_"+skill_name+"Effect");
+					available = skill->isAvailable(activePlayer,reason,pattern);
+					activePlayer->removeMark("ViewAsSkill_"+skill_name+"Effect");
+					if (available) {
+						foreach (QSanSkillButton *button, m_skillButtons) {
+							if (button->getViewAsSkill() == skill) {
+								responseButton = button;
+								break;
+							}
+						}
+					}
+				}
 				if(!available){
 					ClientInstance->onPlayerResponseCard(nullptr);
 					return;
 				}
 				bool useDialogPresenter = false;
-				foreach (QSanSkillButton*button,m_skillButtons){
-					if(button->getViewAsSkill()!=skill) continue;
-					if(skill->isAvailable(activePlayer,reason,pattern)){
-						QDialog*dialog = button->getSkill()->getDialog();
-						if(dialog){
-							wireSkillDialog(button, dialog);
-							useDialogPresenter = shouldUseDashboardDialogPresenter(dialog);
-						}
-						button->click();
+				if(responseButton){
+					QDialog*dialog = responseButton->getSkill()->getDialog();
+					if(dialog){
+						wireSkillDialog(responseButton, dialog);
+						useDialogPresenter = shouldUseDashboardDialogPresenter(dialog);
 					}
-					break;
+					responseButton->click();
 				}
 				if(!useDialogPresenter){
 					dashboard->startPending(skill);

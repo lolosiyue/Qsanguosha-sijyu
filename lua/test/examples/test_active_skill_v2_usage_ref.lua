@@ -55,6 +55,11 @@ local oldEffectOk, oldEffectError = pcall(sgs.CreateViewAsSkillV2, {
 	effect = function() end,
 })
 
+local responsePatternOk, responsePatternError = pcall(sgs.CreateViewAsSkillV2, {
+	name = "active_skill_v2_response_pattern_smoke",
+	response_pattern = "@@active_skill_v2_response_pattern_smoke",
+})
+
 local invalidExpandOk, invalidExpandError = pcall(sgs.CreateViewAsSkillV2, {
 	name = "active_skill_v2_invalid_expand_pile_smoke",
 	expand_pile = {},
@@ -121,6 +126,9 @@ runner:assert(function(t)
 	t:addResult(not oldEffectOk and type(oldEffectError) == "string"
 			and oldEffectError:find("on_effect", 1, true) ~= nil,
 		"removed effect callback fails with a migration hint")
+	t:addResult(not responsePatternOk and type(responsePatternError) == "string"
+			and responsePatternError:find("can_activate", 1, true) ~= nil,
+		"removed response_pattern fails with a can_activate migration hint")
 	t:addResult(not invalidExpandOk and type(invalidExpandError) == "string",
 		"non-string expand_pile fails closed")
 	t:addResult(not invalid:getUsageRef(context):isValid(),
