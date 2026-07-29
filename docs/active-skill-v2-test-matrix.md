@@ -12,7 +12,7 @@
 | replay provenance V1 compatibility | 同上 | 通過；owner 採 initiator best-effort fallback |
 | malformed provenance | 同上 | 通過；拒絕 payload |
 | Play／pure response 的 V2 early-exit 與控制事件收束 | `Room::useCard()`、`Room::askForCard()` | 已整合；pay/cancel 釋放未提交 reservation；`StageChange`／`TurnBroken` 發 `Finished(NoResult)` 最多一次並重新拋出原控制事件 |
-| Lua `n`／`response_or_use`／`base_amount`／`get_usage_ref` smoke 與 Room 初始化 | `lua/test/examples/test_active_skill_v2_usage_ref.lua` | 待執行；驗證 ViewAs factory 欄位、amount 優先序與 usage ref；assertion 失敗必須回傳非零 |
+| Lua `n`／`response_or_use`／`expand_pile`／`base_amount`／`get_usage_ref` smoke 與 Room 初始化 | `lua/test/examples/test_active_skill_v2_usage_ref.lua` | 待執行；驗證 ViewAs factory 欄位（含裸名稱、`#`、`%`、`/` 前綴字串）、amount 優先序與 usage ref；assertion 失敗必須回傳非零 |
 | 全專案 C++／SWIG 整合 | `tools/build-release.ps1` Release x64 | Ticket 13 修改後待執行（本機沒有 qmake／C++ 編譯器） |
 
 ## `~test` 手動整合場景
@@ -37,6 +37,7 @@
 |---|---|---|
 | Play | V2 proxy use | sourceRef、activationRef 與 execution audit 一致；Finished 一次 |
 | proxy UI／多牌／manual effect | `active_skill_v2_proxy_ui_test` | 原生 `n = 2` 使未選滿時不能確認；選滿後可選一名其他角色；`skillEffect()` 經 `EventSkillEffectTarget` 後令目標摸一張牌；legacy 技能 UI 不受影響 |
+| expand pile／default pay | V2 proxy 設定裸名稱、`#reason`、`%pile`、`/CardClass/label` | UI 與 server 解析相同 ID；偽造未展開牌被拒絕；合法展開牌可通過預設支付並按實際來源棄置；任一牌於 pay 前失效則整批不移動 |
 | response-use | V2 轉換牌 | legacy packet fallback 與 server re-create 均不信任 client source |
 | pure response | V2 response | cost/pay failure 結束為 PayFailed，並發 Finished |
 | nullification | V2 virtual card | effect skip 不取消原錦囊流程 |

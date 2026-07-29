@@ -151,11 +151,13 @@ function sgs.CreateViewAsSkillV2(spec)
 	if spec.phase_name then assert(type(spec.phase_name) == "string") end
 	if spec.will_throw_selected_cards then assert(type(spec.will_throw_selected_cards) == "boolean") end
 	if spec.response_or_use ~= nil then assert(type(spec.response_or_use) == "boolean") end
+	if spec.expand_pile ~= nil then assert(type(spec.expand_pile) == "string") end
 
 	local skill = sgs.LuaViewAsSkillV2(spec.name,
 		spec.frequency or sgs.Skill_NotFrequent, spec.limit_mark or "")
 	skill:setN(spec.n or 0)
 	skill:setResponseOrUse(spec.response_or_use or false)
+	skill:setExpandPile(spec.expand_pile or "")
 	if type(spec.base_amount) == "number" then skill:setBaseAmount(spec.base_amount) end
 	configureUsage(skill, spec)
 	if spec.get_amount_ref ~= nil then

@@ -250,6 +250,11 @@ public:
     {
         return expand_pile;
     }
+    inline void setExpandPile(const QString &pile_names)
+    {
+        expand_pile = pile_names;
+    }
+    QList<int> getExpandPileCardIds(const Player *player) const;
 
 protected:
     QString response_pattern;

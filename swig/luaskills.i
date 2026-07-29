@@ -450,6 +450,8 @@ public:
 
 	bool isResponseOrUse() const;
 	QString getExpandPile() const;
+	void setExpandPile(const char *pile_names);
+	QList<int> getExpandPileCardIds(const Player *player) const;
 };
 
 class ViewAsSkillV2: public ViewAsSkill {

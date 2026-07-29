@@ -192,6 +192,12 @@ fail-closed，不得自行退回 activation 或依 invoker 猜測 root。
 
 - 使用 `sgs.CreateViewAsSkillV2`，不再同時建立 per-skill LuaSkillCard，除非技能仍暫留 legacy。
 - 固定選牌張數直接設定 `n`；省略選牌 callback 時，框架預設要求恰好 `n` 張。
+- 需要特殊牌堆時設定 `expand_pile`；裸名稱、`#reason`、`%pile`、`/CardClass/label` 分別表示
+  自己的牌堆、`notifyMoveToPile` 偽牌堆、其他存活角色同名牌堆、其他存活角色指定類別裝備。
+  伺服器會按相同規則重建合法選牌集合，通用 proxy 的預設 `pay` 亦允許並棄置這些牌。
+- 自訂 `can_select_card` 需要辨識展開來源時，使用
+  `skill:getExpandPileCardIds(request:getInitiator())`，避免直接以 server 端不存在的 `#reason` 實體牌堆判斷。
+- 展開牌不是棄置代價時，設定 `will_throw_selected_cards = false` 並自行實作 `pay`。
 - Lua 效果 callback 使用 `on_effect`、`on_effect_target`、`on_effect_target_group`；不保留舊的 `effect*` 名稱。
 - 需要自行逐目標派發時，在 `on_effect` 設定 `ctx.manual_effect = true`，並呼叫
   `skill:skillEffect(ctx, target)`。

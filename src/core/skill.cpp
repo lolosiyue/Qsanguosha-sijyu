@@ -8,6 +8,7 @@
 #include "exppattern.h"
 #include "skill-instance-utils.h"
 #include <src/util/ThreadSafeHelper.h>
+#include <algorithm>
 #include <QDebug>
 #include <QFile>
 
@@ -403,6 +404,49 @@ const ViewAsSkill *ViewAsSkill::parseViewAsSkill(const Skill *skill)
     return nullptr;
 }
 
+QList<int> ViewAsSkill::getExpandPileCardIds(const Player *player) const
+{
+    QList<int> result;
+    if (!player || expand_pile.isEmpty()) return result;
+
+    foreach (QString pileName, expand_pile.split(",")) {
+        if (pileName.isEmpty()) continue;
+
+        if (pileName.startsWith("/")) {
+            pileName = pileName.mid(1);
+            const QString equipClass = pileName.section("/", 0, 0);
+            if (equipClass.isEmpty()) continue;
+            const QByteArray className = equipClass.toLatin1();
+            foreach (const Player *sibling, player->getAliveSiblings()) {
+                foreach (const Card *card, sibling->getEquips()) {
+                    if (card->isKindOf(className.constData()))
+                        result << card->getEffectiveId();
+                }
+            }
+        } else if (pileName.startsWith("%")) {
+            pileName = pileName.mid(1);
+            if (pileName.isEmpty()) continue;
+            foreach (const Player *sibling, player->getAliveSiblings())
+                result << sibling->getPile(pileName);
+        } else {
+            result << player->getPile(pileName);
+            if (pileName.startsWith("#")) {
+                const QVariantList notifiedIds = player->getTag(
+                    pileName.mid(1) + "ForAI").toList();
+                foreach (const QVariant &id, notifiedIds) {
+                    bool ok = false;
+                    const int cardId = id.toInt(&ok);
+                    if (ok) result << cardId;
+                }
+            }
+        }
+    }
+
+    result.removeAll(Card::S_UNKNOWN_CARD_ID);
+    result.removeDuplicates();
+    return result;
+}
+
 ViewAsSkillV2::ViewAsSkillV2(const QString &name, int n)
     : ViewAsSkill(name), m_n(qMax(0, n)), m_baseAmount(1)
 {
@@ -451,15 +495,34 @@ bool ViewAsSkillV2::pay(Room *room, SkillContext &context, const ActiveSkillRequ
     ServerPlayer *initiator = const_cast<ServerPlayer *>(dynamic_cast<const ServerPlayer *>(request.initiator));
     if (!room || !initiator) return false;
 
+    QList<int> payableIds;
+    foreach (const Card *owned, initiator->getCards("he"))
+        payableIds << owned->getEffectiveId();
+    if (isResponseOrUse()) payableIds << initiator->getHandPile();
+    payableIds << getExpandPileCardIds(initiator);
     foreach (int id, request.selectedCardIds) {
-        const Player::Place place = room->getCardPlace(id);
-        if (room->getCardOwner(id) != initiator
-            || (place != Player::PlaceHand && place != Player::PlaceEquip))
-            return false;
+        if (!payableIds.removeOne(id)) return false;
     }
 
     CardMoveReason reason(CardMoveReason::S_REASON_THROW, initiator->objectName(), objectName(), QString());
-    room->throwCard(request.selectedCardIds, reason, initiator);
+    const bool allOwnedByInitiator = std::all_of(request.selectedCardIds.constBegin(),
+        request.selectedCardIds.constEnd(), [room, initiator](int id) {
+            return room->getCardOwner(id) == initiator;
+        });
+
+    LogMessage log;
+    log.type = allOwnedByInitiator ? "$DiscardCard" : "$EnterDiscardPile";
+    if (allOwnedByInitiator) log.from = initiator;
+    foreach (int id, request.selectedCardIds)
+        log.card_str += (log.card_str.isEmpty() ? "" : "+") + QString::number(id);
+    room->sendLog(log);
+
+    QList<CardsMoveStruct> moves;
+    foreach (int id, request.selectedCardIds) {
+        moves << CardsMoveStruct(id, room->getCardOwner(id), nullptr,
+            room->getCardPlace(id), Player::DiscardPile, reason);
+    }
+    room->moveCardsAtomic(moves, true);
     return true;
 }
 

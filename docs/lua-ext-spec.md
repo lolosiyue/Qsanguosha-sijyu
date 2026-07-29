@@ -213,6 +213,7 @@ skill_name = sgs.CreateViewAsSkillV2 {
     name = "skill_name",
     n = 0,                              -- 選用；預設 0，提交時須恰好選 n 張
     response_or_use = false,            -- 選用；沿用 ViewAsSkill 的 response-or-use 語意
+    expand_pile = "pile,#temporary",    -- 選用；以逗號分隔多個展開來源
     base_amount = 2,                    -- 選用；預設 1
     on_effect = function(self, ctx)
         local amount = self:getEffectiveAmount(ctx)
@@ -221,6 +222,26 @@ skill_name = sgs.CreateViewAsSkillV2 {
     end,
 }
 ```
+
+`expand_pile` 沿用 legacy `ViewAsSkill` 的 UI 與伺服器權威語意：
+
+| 格式 | 展開來源 |
+|---|---|
+| `pile` | 發動者自己的同名特殊牌堆 |
+| `#reason` | `Room::notifyMoveToPile(..., reason, ..., true)` 建立的暫時偽牌堆 |
+| `%pile` | 其他存活角色的同名特殊牌堆 |
+| `/CardClass/label` | 其他存活角色中符合 `CardClass` 的裝備；`label` 只作 UI 標題 |
+
+多個來源以逗號分隔，例如 `"stars,#temporary,%rice,/Horse/other_horses"`。V2 伺服器會以同一前綴規則
+重建合法 ID 集合，再逐張重跑 `can_select_card`；不能藉客戶端提交未展開的牌。自訂
+`can_select_card` 若要判斷候選牌是否來自展開來源，可使用
+`skill:getExpandPileCardIds(request:getInitiator()):contains(card:getEffectiveId())`，此查詢在 client／server
+皆使用相同語意。設定 `response_or_use = true` 時，既有 `wooden_ox`／`&` 手牌牌堆亦納入權威驗證。
+
+通用 `ActiveSkillCard` 在 `will_throw_selected_cards = true`（預設）時，會再次確認全部副牌仍位於
+發動者的 `he`、response-or-use 手牌牌堆或上述展開來源，然後按實際來源一次原子移入棄牌堆；任一張
+失效即整次支付失敗且不移動任何牌。若牌應交換、置頂、交給他人或不消耗，必須設定
+`will_throw_selected_cards = false` 並自行實作 `pay`。
 
 `n` 是 `ViewAsSkillV2` 的原生固定選牌張數。省略 `can_select_card` 與
 `card_selection_feasible` 時，框架允許選至 `n` 張，並只在恰好選滿 `n` 張時允許提交：

@@ -9,6 +9,7 @@ local active = sgs.CreateViewAsSkillV2 {
 	name = "active_skill_v2_usage_ref_smoke",
 	n = 2,
 	response_or_use = true,
+	expand_pile = "stars,#temporary,%rice,/Horse/other_horses",
 	base_amount = 4,
 	limit_scope = sgs.Skill_Limit_Turn,
 	get_usage_ref = function(skill, ctx)
@@ -39,6 +40,11 @@ local oldEffectOk, oldEffectError = pcall(sgs.CreateViewAsSkillV2, {
 	effect = function() end,
 })
 
+local invalidExpandOk, invalidExpandError = pcall(sgs.CreateViewAsSkillV2, {
+	name = "active_skill_v2_invalid_expand_pile_smoke",
+	expand_pile = {},
+})
+
 local invalid = sgs.CreateViewAsSkillV2 {
 	name = "active_skill_v2_invalid_usage_ref_smoke",
 	get_usage_ref = function(skill, ctx)
@@ -57,6 +63,8 @@ runner:assert(function(t)
 		"ViewAsSkillV2 factory preserves n")
 	t:addResult(active:isResponseOrUse(),
 		"ViewAsSkillV2 factory preserves response_or_use")
+	t:addResult(active:getExpandPile() == "stars,#temporary,%rice,/Horse/other_horses",
+		"ViewAsSkillV2 factory preserves expand_pile and its prefixes")
 	t:addResult(active:getEffectiveAmount(amountContext) == 0,
 		"ViewAsSkillV2 effective amount preserves explicit zero")
 	amountContext.amount = 3
@@ -92,6 +100,8 @@ runner:assert(function(t)
 	t:addResult(not oldEffectOk and type(oldEffectError) == "string"
 			and oldEffectError:find("on_effect", 1, true) ~= nil,
 		"removed effect callback fails with a migration hint")
+	t:addResult(not invalidExpandOk and type(invalidExpandError) == "string",
+		"non-string expand_pile fails closed")
 	t:addResult(not invalid:getUsageRef(context):isValid(),
 		"invalid get_usage_ref result fails closed")
 end)
