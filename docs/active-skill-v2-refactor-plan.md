@@ -468,7 +468,8 @@ Lua: on_effect / on_effect_target / on_effect_target_group
 V2 proxy selected-card 預設支付：
 
 - `willThrowSelectedCards()` 預設 true。
-- 預設 `pay()` 先驗證 A 所選全部 card ID 仍在合法區域，再一次原子棄置。
+- 預設 `pay()` 先驗證 A 所選全部 card ID 仍在 `he`、response-or-use 手牌牌堆，或
+  `expand_pile` 宣告的裸名稱／`#`／`%`／`/` 來源，再按實際來源一次原子棄置。
 - 任一張失效時不移動任何牌，返回 false。
 - proxy 本身 `will_throw=false`，避免 Card::onUse 再丟一次。
 - `willThrowSelectedCards=false` 時由自訂 pay 決定交給其他人、置頂、展示或不消耗。

@@ -5697,6 +5697,12 @@ const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSk
 	QSet<int> selectable;
 	foreach (const Card *owned, player->getCards("he"))
 		selectable.insert(owned->getEffectiveId());
+	if (skill->isResponseOrUse()) {
+		foreach (int id, player->getHandPile())
+			selectable.insert(id);
+	}
+	foreach (int id, skill->getExpandPileCardIds(player))
+		selectable.insert(id);
 	ActiveSkillRequest checked = request;
 	checked.selectedCardIds.clear();
 	foreach (int id, request.selectedCardIds) {
