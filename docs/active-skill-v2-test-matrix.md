@@ -42,6 +42,7 @@
 | pure response | V2 response | cost/pay failure 結束為 PayFailed，並發 Finished |
 | nullification | V2 virtual card | effect skip 不取消原錦囊流程 |
 | multi-instance | 同名兩個 activation | 精確 ID 可選；legacy AI 僅選最小有效 ID |
+| detached ViewAs continuation | 選牌／選目標期間失去 V2 activation instance，但 `ViewAsSkill_<name>Effect` 仍大於 0 | server 允許已開始的 ViewAs 流程送出並完成 generic quota reserve／commit；mark 不存在時仍拒絕；實例已移除時以 activation ref 作為 best-effort source snapshot |
 | attached | 不同 root owner | V2 provenance 回放保留兩個 owner |
 | attached shared quota | 兩名 receiver 使用同一 quota root 的 attached 入口 | 兩次合計達上限；第三次拒絕；另一 root owner 不受影響 |
 | nested reservation | 第一個 execution 尚未 commit 時重入相同 root | committed mark + reservation count 達限，不能超發 |

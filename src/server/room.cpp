@@ -42,6 +42,11 @@ static bool hasGenericActiveSkillUsage(const ViewAsSkillV2 *skill)
 		&& skill->getLimitScope() != Skill::Limit_Custom;
 }
 
+static bool hasViewAsSkillEffect(const Player *player, const QString &skillName)
+{
+	return player && player->getMark("ViewAsSkill_" + skillName + "Effect") > 0;
+}
+
 static QString getControllerMarkName(const QString &controllerName)
 {
 	return controllerName.isEmpty() ? QString() : "&controllby+#" + controllerName + "+sys_";
@@ -5599,7 +5604,7 @@ SkillInstanceRef Room::resolveSkillInstanceRootRef(const SkillInstanceRef &ref) 
 
 bool Room::resolveCardSkillInstance(CardUseStruct &use)
 {
-		// 裝備 ViewAs 與非 ViewAs 產生的內部卡沒有玩家技能實例，維持 legacy ID 0。
+	// 裝備 ViewAs 與非 ViewAs 產生的內部卡沒有玩家技能實例，維持 legacy ID 0。
 	if (!use.card || !use.from) return false;
 	QString activationName = use.card->getActivationSkillName();
 	int activationId = use.card->getActivationSkillInstanceId();
@@ -5611,18 +5616,25 @@ bool Room::resolveCardSkillInstance(CardUseStruct &use)
 		activationId = ids.first();
 	}
 	if (activationName.isEmpty() || activationId < 0) return false;
-	if (!use.from->hasSkillInstance(activationName, activationId)) return false;
+	const ViewAsSkillV2 *activeSkill = dynamic_cast<const ViewAsSkillV2 *>(
+		Sanguosha->getViewAsSkill(activationName));
+	const bool hasActivationInstance = use.from->hasSkillInstance(activationName, activationId);
+	const bool continuesViewAsEffect = activeSkill && hasViewAsSkillEffect(use.from, activationName);
+	if (!hasActivationInstance && !continuesViewAsEffect) return false;
 
 	use.activationRef = SkillInstanceRef(use.from->objectName(), SkillInstanceKey(activationName, activationId));
 	use.sourceRef = resolveSkillInstanceRootRef(use.activationRef);
-	if (!use.sourceRef.isValid()) return false;
+	if (!use.sourceRef.isValid()) {
+		if (!continuesViewAsEffect) return false;
+		// The detached instance no longer has a live parent chain.  Preserve the
+		// submitted activation identity as the best available execution snapshot.
+		use.sourceRef = use.activationRef;
+	}
 
 	Card *mutableCard = const_cast<Card *>(use.card);
 	mutableCard->setActivationSkill(use.activationRef.key.skillName, use.activationRef.key.instanceID);
 	mutableCard->setSourceSkill(use.sourceRef.key.skillName, use.sourceRef.key.instanceID);
 
-	const ViewAsSkillV2 *activeSkill = dynamic_cast<const ViewAsSkillV2 *>(
-		Sanguosha->getViewAsSkill(activationName));
 	if (activeSkill) {
 		ActiveSkillRequest request;
 		request.reason = _m_roomState.getCurrentCardUseReason();
@@ -5671,10 +5683,12 @@ const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSk
 {
 	if (!player || !skill || request.initiator != player || !request.activationRef.isValid())
 		return nullptr;
+	const bool hasActivationInstance = player->hasSkillInstance(
+		request.activationRef.key.skillName, request.activationRef.key.instanceID);
+	const bool continuesViewAsEffect = hasViewAsSkillEffect(player, skill->objectName());
 	if (request.activationRef.ownerObjectName != player->objectName()
 		|| request.activationRef.key.skillName != skill->objectName()
-		|| !player->hasSkillInstance(request.activationRef.key.skillName,
-			request.activationRef.key.instanceID))
+		|| (!hasActivationInstance && !continuesViewAsEffect))
 		return nullptr;
 	if (!skill->canActivate(request) || !skill->cardSelectionFeasible(request))
 		return nullptr;
@@ -5717,7 +5731,9 @@ const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSk
 	Card *mutableCard = const_cast<Card *>(card);
 	mutableCard->setActivationSkill(checked.activationRef.key.skillName,
 		checked.activationRef.key.instanceID);
-	const SkillInstanceRef sourceRef = resolveSkillInstanceRootRef(checked.activationRef);
+	SkillInstanceRef sourceRef = resolveSkillInstanceRootRef(checked.activationRef);
+	if (!sourceRef.isValid() && continuesViewAsEffect)
+		sourceRef = checked.activationRef;
 	if (!sourceRef.isValid()) return nullptr;
 	mutableCard->setSourceSkill(sourceRef.key.skillName, sourceRef.key.instanceID);
 	return card;
