@@ -114,6 +114,19 @@ ViewAsSkillV2::TargetEffectMode LuaViewAsSkillV2::targetEffectMode() const
     return m_targetEffectMode;
 }
 
+QDialog *LuaViewAsSkillV2::getDialog() const
+{
+    if (guhuo_type != "") {
+        return GuhuoDialog::getInstance(objectName(), guhuo_type.contains("l"), guhuo_type.contains("r"),
+            !guhuo_type.startsWith("!"), guhuo_type.contains("s"), guhuo_type.contains("d"), guhuo_type.contains("u"));
+    } else if (juguan_type != "") {
+        return JuguanDialog::getInstance(objectName(), juguan_type);
+    } else if (tiansuan_type != "") {
+        return TiansuanDialog::getInstance(objectName(), tiansuan_type);
+    }
+    return nullptr;
+}
+
 QDialog *LuaViewAsSkill::getDialog() const
 {
     if (guhuo_type != "") {

@@ -21,6 +21,21 @@ local active = sgs.CreateViewAsSkillV2 {
 	max_usage_limit = 2,
 }
 
+local guhuoDialogSkill = sgs.CreateViewAsSkillV2 {
+	name = "active_skill_v2_guhuo_dialog_smoke",
+	guhuo_type = "lr",
+}
+
+local juguanDialogSkill = sgs.CreateViewAsSkillV2 {
+	name = "active_skill_v2_juguan_dialog_smoke",
+	juguan_type = "slash,duel",
+}
+
+local tiansuanDialogSkill = sgs.CreateViewAsSkillV2 {
+	name = "active_skill_v2_tiansuan_dialog_smoke",
+	tiansuan_type = "hp,hand",
+}
+
 local trigger = sgs.CreateTriggerV2Skill {
 	name = "trigger_v2_usage_ref_smoke",
 	limit_scope = sgs.Skill_Limit_Phase,
@@ -85,6 +100,12 @@ runner:assert(function(t)
 		"ViewAsSkillV2 get_amount_ref is independent from its activation ref")
 	t:addResult(active:getMaxUsageLimit(context) == 2,
 		"ViewAsSkillV2 factory preserves max_usage_limit")
+	t:addResult(guhuoDialogSkill:getDialog() ~= nil,
+		"ViewAsSkillV2 factory creates GuhuoDialog")
+	t:addResult(juguanDialogSkill:getDialog() ~= nil,
+		"ViewAsSkillV2 factory creates JuguanDialog")
+	t:addResult(tiansuanDialogSkill:getDialog() ~= nil,
+		"ViewAsSkillV2 factory creates TiansuanDialog")
 	t:addResult(trigger:getLimitScope() == sgs.Skill_Limit_Phase,
 		"TriggerV2Skill factory preserves limit_scope")
 	local actualTriggerRef = trigger:getUsageRef(context)

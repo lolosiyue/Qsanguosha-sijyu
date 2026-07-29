@@ -155,6 +155,9 @@ function sgs.CreateViewAsSkillV2(spec)
 
 	local skill = sgs.LuaViewAsSkillV2(spec.name,
 		spec.frequency or sgs.Skill_NotFrequent, spec.limit_mark or "")
+	if type(spec.guhuo_type)=="string" and spec.guhuo_type~="" then skill:setGuhuoDialog(spec.guhuo_type) end
+	if type(spec.juguan_type)=="string" and spec.juguan_type~="" then skill:setJuguanDialog(spec.juguan_type) end
+	if type(spec.tiansuan_type)=="string" and spec.tiansuan_type~="" then skill:setTiansuanDialog(spec.tiansuan_type) end
 	skill:setN(spec.n or 0)
 	skill:setResponseOrUse(spec.response_or_use or false)
 	skill:setExpandPile(spec.expand_pile or "")

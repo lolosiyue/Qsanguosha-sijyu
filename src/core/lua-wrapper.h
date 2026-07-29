@@ -333,6 +333,7 @@ public:
     EffectFlow effectOnTargetGroup(SkillContext &context, const QList<ServerPlayer *> &targets) const;
     TargetMode targetMode() const;
     TargetEffectMode targetEffectMode() const;
+    QDialog *getDialog() const override;
 
     void setTargetMode(TargetMode mode) { m_targetMode = mode; }
     void setTargetEffectMode(TargetEffectMode mode) { m_targetEffectMode = mode; }
@@ -341,6 +342,9 @@ public:
     void setLimitScope(Skill::LimitScope scope) { m_limitScope = scope; }
     void setMaxUsageLimit(int limit) { m_maxUsageLimit = limit; }
     void setPhaseNameStr(const QString &phase_name) { Skill::setPhaseName(phase_name); }
+    void setGuhuoDialog(const QString &type) { guhuo_type = type; }
+    void setJuguanDialog(const QString &type) { juguan_type = type; }
+    void setTiansuanDialog(const QString &type) { tiansuan_type = type; }
 
     Skill::LimitScope getLimitScope() const override { return m_limitScope; }
     SkillInstanceRef getUsageRef(const SkillContext &ctx) const override;
@@ -367,6 +371,9 @@ private:
     bool m_willThrowSelectedCards;
     Skill::LimitScope m_limitScope;
     int m_maxUsageLimit;
+    QString guhuo_type;
+    QString juguan_type;
+    QString tiansuan_type;
 };
 
 class LuaFilterSkill : public FilterSkill
