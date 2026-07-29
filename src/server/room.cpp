@@ -6021,7 +6021,18 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 	if ((!use.card->canRecast()||use.from->isCardLimited(use.card,Card::MethodRecast))&&use.from->isCardLimited(use.card,use.card->getHandlingMethod()))
 		return false;
 	use.m_addHistory = add_history;
-	if (Sanguosha->hasResidueUnlimited(use.from, use.card, use.to.isEmpty() ? nullptr : use.to.first()))
+	bool residue_unlimited = false;
+	if (use.to.isEmpty()) {
+		residue_unlimited = Sanguosha->hasResidueUnlimited(use.from, use.card, nullptr);
+	} else {
+		foreach (ServerPlayer *target, use.to) {
+			if (Sanguosha->hasResidueUnlimited(use.from, use.card, target)) {
+				residue_unlimited = true;
+				break;
+			}
+		}
+	}
+	if (residue_unlimited)
 		use.m_addHistory = false;
 	const Card*card = use.card->validate(use);
 	if(card==nullptr) return false;
