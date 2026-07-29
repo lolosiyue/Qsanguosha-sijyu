@@ -5,6 +5,8 @@
 #include "qsanbutton.h"
 #include "skin-bank.h"
 
+#include <QPainterPath>
+
 void CardItem::_initialize()
 {
     setFlag(QGraphicsItem::ItemIsMovable);
@@ -20,7 +22,8 @@ void CardItem::_initialize()
     m_virtualCardSuit = Card::NoSuit;
     m_virtualCardNumber = 0;
     m_virtualCardBlack = true;
-    m_hasConvertedCardVisual = false;
+    m_convertedCardObjectName.clear();
+    m_convertedCardName.clear();
     auto_back = true;
     frozen = false;
     resetTransform();
@@ -51,6 +54,8 @@ QRectF CardItem::boundingRect() const
 void CardItem::setCard(const Card *card)
 {
     if (!card) return;
+    m_convertedCardObjectName.clear();
+    m_convertedCardName.clear();
     m_hasVirtualCardVisual = false;
     if (card->isVirtualCard()) {
         m_cardId = Card::S_UNKNOWN_CARD_ID;
@@ -99,9 +104,10 @@ void CardItem::setEnabled(bool enabled)
     QSanSelectableItem::setEnabled(enabled);
 }
 
-void CardItem::setConvertedCardVisual(bool converted)
+void CardItem::setConvertedCardName(const QString &cardObjectName, const QString &name)
 {
-    m_hasConvertedCardVisual = converted;
+    m_convertedCardObjectName = cardObjectName;
+    m_convertedCardName = name;
     update();
 }
 
@@ -379,21 +385,71 @@ void CardItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidge
         painter->drawRect(G_COMMON_LAYOUT.m_cardMainArea);
     }
 
-    if (m_hasConvertedCardVisual) {
-        // Temporary programmatic badge; replace this block when dedicated artwork is available.
+    if (!m_convertedCardName.isEmpty()) {
+        // Reuse the Guhuo option language: artwork on the left fades into a clear title panel.
         const QRect mainArea = G_COMMON_LAYOUT.m_cardMainArea;
-        const int badgeSize = qMax(20, qMin(mainArea.width(), mainArea.height()) / 5);
-        const QRect badgeRect(mainArea.right() - badgeSize - 4, mainArea.top() + 4, badgeSize, badgeSize);
+        const int bandHeight = qMax(24, mainArea.height() / 6);
+        const int sideMargin = qMax(3, mainArea.width() / 28);
+        const QRectF band(mainArea.left() + sideMargin,
+            mainArea.center().y() - bandHeight / 2.0,
+            mainArea.width() - sideMargin * 2, bandHeight);
+        const qreal radius = qMax(4, bandHeight / 5);
+        QPainterPath bandPath;
+        bandPath.addRoundedRect(band, radius, radius);
+
         painter->save();
+        painter->setClipPath(bandPath);
         painter->setPen(Qt::NoPen);
-        painter->setBrush(QColor(200, 30, 30));
-        painter->drawEllipse(badgeRect);
-        QFont badgeFont = painter->font();
-        badgeFont.setBold(true);
-        badgeFont.setPixelSize(qMax(12, badgeSize * 2 / 3));
-        painter->setFont(badgeFont);
-        painter->setPen(Qt::white);
-        painter->drawText(badgeRect, Qt::AlignCenter, QString::fromUtf8("轉"));
+
+        QLinearGradient panelGradient(0, band.top(), 0, band.bottom());
+        panelGradient.setColorAt(0.0, QColor(47, 54, 63, 232));
+        panelGradient.setColorAt(1.0, QColor(22, 26, 31, 238));
+        painter->fillPath(bandPath, panelGradient);
+
+        QPixmap artwork = G_ROOM_SKIN.getCardMainPixmap(m_convertedCardObjectName, true);
+        if (!artwork.isNull()) {
+            const QRectF artworkRect(band.left(), band.top(), band.width() * 0.64, band.height());
+            QRect sourceRect = artwork.rect();
+            const qreal targetRatio = artworkRect.width() / qMax<qreal>(1.0, artworkRect.height());
+            int cropHeight = qMax(1, qRound(sourceRect.width() / targetRatio));
+            if (cropHeight < sourceRect.height())
+                sourceRect.setTop(sourceRect.top() + (sourceRect.height() - cropHeight) / 2);
+            sourceRect.setHeight(qMin(cropHeight, sourceRect.height()));
+            painter->drawPixmap(artworkRect, artwork, sourceRect);
+        }
+
+        QLinearGradient artworkFade(band.left(), 0, band.right(), 0);
+        artworkFade.setColorAt(0.0, QColor(22, 26, 31, 20));
+        artworkFade.setColorAt(0.32, QColor(22, 26, 31, 38));
+        artworkFade.setColorAt(0.58, QColor(22, 26, 31, 224));
+        artworkFade.setColorAt(1.0, QColor(22, 26, 31, 242));
+        painter->fillPath(bandPath, artworkFade);
+        painter->setClipping(false);
+
+        painter->setPen(QPen(QColor(210, 191, 151, 172), 1.0));
+        painter->setBrush(Qt::NoBrush);
+        painter->drawPath(bandPath);
+
+        QLinearGradient accentGradient(band.left(), 0, band.right(), 0);
+        accentGradient.setColorAt(0.0, QColor(228, 185, 82, 40));
+        accentGradient.setColorAt(0.45, QColor(228, 185, 82, 190));
+        accentGradient.setColorAt(1.0, QColor(228, 185, 82, 220));
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(accentGradient);
+        painter->drawRoundedRect(QRectF(band.left() + 4, band.bottom() - 3,
+            band.width() - 8, 2), 1, 1);
+
+        const QRectF textRect(band.left() + band.width() * 0.43, band.top() + 1,
+            band.width() * 0.54, band.height() - 4);
+        QFont bandFont = painter->font();
+        bandFont.setBold(true);
+        bandFont.setPixelSize(qMax(13, bandHeight * 3 / 5));
+        while (bandFont.pixelSize() > 10
+            && QFontMetrics(bandFont).horizontalAdvance(m_convertedCardName) > textRect.width() - 6)
+            bandFont.setPixelSize(bandFont.pixelSize() - 1);
+        painter->setFont(bandFont);
+        painter->setPen(QColor(244, 240, 229));
+        painter->drawText(textRect, Qt::AlignCenter, m_convertedCardName);
         painter->restore();
     }
 }
