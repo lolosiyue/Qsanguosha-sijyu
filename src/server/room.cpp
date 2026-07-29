@@ -9260,6 +9260,111 @@ Card*Room::askForExchange(ServerPlayer*player, const QString&reason, int exchang
 	return card;
 }
 
+YishiStruct Room::askForYishi(ServerPlayer *initiator, const QList<ServerPlayer *> &participants, const QString &reason)
+{
+	QList<ServerPlayer *> valid_participants;
+	foreach (ServerPlayer *participant, participants) {
+		if (participant && participant->isAlive() && !participant->isKongcheng()
+			&& !valid_participants.contains(participant))
+			valid_participants << participant;
+	}
+
+	YishiStruct yishi(initiator, valid_participants, reason);
+	if (!initiator || !initiator->isAlive() || valid_participants.length() < 2)
+		return yishi;
+
+	yishi.started = true;
+	LogMessage log;
+	log.type = "$askYishi";
+	log.from = initiator;
+	log.to = valid_participants;
+	log.arg = reason;
+	sendLog(log);
+	foreach (ServerPlayer *participant, valid_participants)
+		doAnimate(1, initiator->objectName(), participant->objectName());
+
+	auto trigger_yishi_event = [this, &yishi](TriggerEvent event) {
+		QList<ServerPlayer *> targets = yishi.participants;
+		if (yishi.initiator && !targets.contains(yishi.initiator))
+			targets << yishi.initiator;
+		sortByActionOrder(targets);
+		QVariant data = QVariant::fromValue(&yishi);
+		foreach (ServerPlayer *target, targets) {
+			if (target && target->isAlive())
+				thread->trigger(event, this, target, data);
+		}
+	};
+
+	trigger_yishi_event(YishiStart);
+	foreach (ServerPlayer *participant, valid_participants) {
+		const int count = qBound(1, yishi.getCardCount(participant), participant->getHandcardNum());
+		if (count != yishi.getCardCount(participant))
+			yishi.setCardCount(participant, count);
+
+		QList<int> selected = yishi.getCards(participant);
+		QSet<int> unique_ids;
+		bool preset_is_valid = selected.length() == count;
+		foreach (int id, selected) {
+			if (id < 0 || unique_ids.contains(id) || getCardOwner(id) != participant
+				|| getCardPlace(id) != Player::PlaceHand) {
+				preset_is_valid = false;
+				break;
+			}
+			unique_ids.insert(id);
+		}
+
+		if (!preset_is_valid) {
+			Card *chosen = askForExchange(participant, reason + "_yishi", count, count, false,
+				QString("askyishicard:%1").arg(count));
+			selected = chosen ? chosen->getSubcards() : QList<int>();
+		}
+		yishi.setCards(participant, selected);
+	}
+
+	foreach (ServerPlayer *participant, valid_participants) {
+		QStringList opinions;
+		foreach (int id, yishi.getCards(participant)) {
+			const Card *card = Sanguosha->getCard(id);
+			const QString color = card ? card->getColorString() : QString();
+			opinions << (color == "red" || color == "black" ? color : "no_opinion");
+		}
+		yishi.setOpinions(participant, opinions);
+	}
+
+	trigger_yishi_event(YishiBeforeReveal);
+	thread->delay(800);
+	foreach (ServerPlayer *participant, valid_participants) {
+		const QList<int> ids = yishi.getCards(participant);
+		if (!ids.isEmpty())
+			showCard(participant, ids);
+	}
+
+	trigger_yishi_event(YishiResultDetermining);
+	const int red = yishi.opinionCount("red");
+	const int black = yishi.opinionCount("black");
+	if (yishi.forced_result == "red" || yishi.forced_result == "black"
+		|| yishi.forced_result == "no_result") {
+		yishi.result = yishi.forced_result;
+	} else if (red > black) {
+		yishi.result = "red";
+	} else if (black > red) {
+		yishi.result = "black";
+	} else {
+		yishi.result = "no_result";
+	}
+
+	thread->delay(1200);
+	log.type = "$yishiresult";
+	log.from = initiator;
+	log.to.clear();
+	log.arg = yishi.result;
+	sendLog(log);
+	doLightbox("$keyishi" + yishi.result);
+	trigger_yishi_event(YishiResultConfirmed);
+	trigger_yishi_event(YishiFinished);
+	return yishi;
+}
+
 void Room::setCardMapping(int card_id, ServerPlayer*owner, Player::Place place)
 {
 	owner_map.insert(card_id, owner);

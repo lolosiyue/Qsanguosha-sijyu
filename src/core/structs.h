@@ -614,6 +614,39 @@ struct BrokenEquipChangedStruct {
     bool moveFromEquip;
 };
 
+struct YishiStruct {
+    YishiStruct();
+    YishiStruct(ServerPlayer *initiator, const QList<ServerPlayer *> &participants, const QString &reason);
+
+    ServerPlayer *initiator;
+    QList<ServerPlayer *> participants;
+    QString reason;
+    QList<int> card_counts;
+    QList<int> card_ids;
+    QStringList opinions;
+    QString result;
+    QString forced_result;
+    bool started;
+
+    bool containsParticipant(ServerPlayer *player) const;
+    int getCardCount(ServerPlayer *player) const;
+    void setCardCount(ServerPlayer *player, int count);
+    QList<int> getCards(ServerPlayer *player) const;
+    void setCards(ServerPlayer *player, const QList<int> &ids);
+    QStringList getOpinions(ServerPlayer *player) const;
+    QString getOpinionString(ServerPlayer *player) const;
+    void setOpinions(ServerPlayer *player, const QStringList &values);
+    void setOpinion(ServerPlayer *player, const QString &opinion);
+    bool hasOpinion(ServerPlayer *player, const QString &opinion) const;
+    bool sharesOpinion(ServerPlayer *first, ServerPlayer *second) const;
+    bool allOpinionsSame() const;
+    int opinionCount(const QString &opinion) const;
+
+private:
+    int participantIndex(ServerPlayer *player) const;
+    int cardOffset(int participant_index) const;
+};
+
 struct ChoiceData {
     ChoiceData();
     QVariant toVariant() const;
@@ -781,9 +814,15 @@ enum TriggerEvent {
     GeneralChoosing, // Before asking for general selection
     GeneralChosen,   // After general selection is completed
 
-    EventForDiy, // For lua or diy to trigger special event
+	EventForDiy, // For lua or diy to trigger special event
 
-    EventSkillInvalidated,
+	YishiStart,
+	YishiBeforeReveal,
+	YishiResultDetermining,
+	YishiResultConfirmed,
+	YishiFinished,
+
+	EventSkillInvalidated,
     EventSkillValidityRestored,
 
     EventAskForChoice,
@@ -824,5 +863,6 @@ Q_DECLARE_METATYPE(MaxHpStruct)
 Q_DECLARE_METATYPE(DrawStruct)
 Q_DECLARE_METATYPE(ShownCardChangedStruct)
 Q_DECLARE_METATYPE(BrokenEquipChangedStruct)
+Q_DECLARE_METATYPE(YishiStruct*)
 Q_DECLARE_METATYPE(ChoiceData)
 #endif

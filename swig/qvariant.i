@@ -198,4 +198,8 @@ public:
 	SkillChangeStruct toSkillChange() const{
 		return $self->value<SkillChangeStruct>();
 	}
+
+	YishiStruct *toYishi() const{
+		return $self->value<YishiStruct *>();
+	}
 };

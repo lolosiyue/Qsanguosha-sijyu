@@ -954,6 +954,33 @@ struct BrokenEquipChangedStruct {
 	bool moveFromEquip;
 };
 
+struct YishiStruct {
+	YishiStruct();
+	YishiStruct(ServerPlayer *initiator, const QList<ServerPlayer *> &participants, const char *reason);
+	ServerPlayer *initiator;
+	QList<ServerPlayer *> participants;
+	QString reason;
+	QList<int> card_counts;
+	QList<int> card_ids;
+	QStringList opinions;
+	QString result;
+	QString forced_result;
+	bool started;
+	bool containsParticipant(ServerPlayer *player) const;
+	int getCardCount(ServerPlayer *player) const;
+	void setCardCount(ServerPlayer *player, int count);
+	QList<int> getCards(ServerPlayer *player) const;
+	void setCards(ServerPlayer *player, const QList<int> &ids);
+	QStringList getOpinions(ServerPlayer *player) const;
+	QString getOpinionString(ServerPlayer *player) const;
+	void setOpinions(ServerPlayer *player, const QStringList &values);
+	void setOpinion(ServerPlayer *player, const char *opinion);
+	bool hasOpinion(ServerPlayer *player, const char *opinion) const;
+	bool sharesOpinion(ServerPlayer *first, ServerPlayer *second) const;
+	bool allOpinionsSame() const;
+	int opinionCount(const char *opinion) const;
+};
+
 enum TriggerEvent {
 	NonTrigger,
 
@@ -1109,6 +1136,12 @@ enum TriggerEvent {
 	GeneralChosen,
 
 	EventForDiy, // For lua or diy to trigger special event
+
+	YishiStart,
+	YishiBeforeReveal,
+	YishiResultDetermining,
+	YishiResultConfirmed,
+	YishiFinished,
 
 	EventSkillInvalidated,
 	EventSkillValidityRestored,
@@ -2068,6 +2101,7 @@ public:
 					bool optional = false, bool include_equip = false, const char*prompt = nullptr, const char*pattern = ".", const char*skill_name = nullptr);
 	Card*askForExchange(ServerPlayer*player, const char*reason, int exchange_num, int min_num,
 							bool include_equip = false, const char*prompt = nullptr, bool optional = false, const char*pattern = ".");
+	YishiStruct askForYishi(ServerPlayer *initiator, const QList<ServerPlayer *> &participants, const char *reason);
 	bool askForNullification(const Card*trick, ServerPlayer*from, ServerPlayer*to, bool positive);
 	bool useNullified(const Card*use_card);
 	const Card*isCanceled(const CardEffectStruct&effect);

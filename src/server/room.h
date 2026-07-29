@@ -479,6 +479,7 @@ public:
         const QString&skill_name = "");
     Card*askForExchange(ServerPlayer*player, const QString&reason, int exchange_num, int min_num,
         bool include_equip = false, const QString&prompt = "", bool optional = false, const QString&pattern = ".");
+    YishiStruct askForYishi(ServerPlayer *initiator, const QList<ServerPlayer *> &participants, const QString &reason);
     const Card*askForNullification(const Card*trick, ServerPlayer*from, ServerPlayer*to, bool positive);
     bool useNullified(const Card*use_card);
     const Card*isCanceled(const CardEffectStruct&effect);
