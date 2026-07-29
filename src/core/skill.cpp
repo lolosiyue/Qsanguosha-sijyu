@@ -1467,7 +1467,13 @@ ServerPlayer *Skill::getUsageHolder(const SkillContext &ctx) const
     }
 
     ServerPlayer *holder = room->findPlayerByObjectName(ref.ownerObjectName, true);
-    if (!holder || !holder->hasSkillInstance(ref.key.skillName, ref.key.instanceID)) {
+    const bool hasInstance = holder
+        && holder->hasSkillInstance(ref.key.skillName, ref.key.instanceID);
+    const bool continuesViewAsEffect = holder
+        && dynamic_cast<const ViewAsSkillV2 *>(this)
+        && ref.key.skillName == objectName()
+        && holder->getMark("ViewAsSkill_" + objectName() + "Effect") > 0;
+    if (!hasInstance && !continuesViewAsEffect) {
         qWarning() << "Skill usage reference is invalid:" << ref.ownerObjectName
                    << ref.key.skillName << ref.key.instanceID;
         return nullptr;
