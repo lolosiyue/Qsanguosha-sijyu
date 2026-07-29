@@ -135,6 +135,8 @@ end
 
 function sgs.CreateViewAsSkillV2(spec)
 	assert(type(spec.name) == "string")
+	assert(spec.response_pattern == nil,
+		"CreateViewAsSkillV2: 'response_pattern' was removed; inspect request:getReason()/getPattern() in 'can_activate'")
 	assert(spec.effect == nil,
 		"CreateViewAsSkillV2: 'effect' was removed; use 'on_effect'")
 	assert(spec.effect_on_target == nil,
