@@ -10147,7 +10147,7 @@ void Room::setShimingStatus(ServerPlayer*player, const QString&skillName, int st
 
 		const Skill *skill = Sanguosha->getSkill(skillName);
 		if (skill) {
-			const TriggerV2Skill *v2Skill = qobject_cast<const TriggerV2Skill *>(skill);
+			const TriggerSkillV2 *v2Skill = qobject_cast<const TriggerSkillV2 *>(skill);
 			if (v2Skill) {
 				v2Skill->onShimingSuccess(this, player);
 			}
@@ -10170,7 +10170,7 @@ void Room::setShimingStatus(ServerPlayer*player, const QString&skillName, int st
 
 		const Skill *skill = Sanguosha->getSkill(skillName);
 		if (skill) {
-			const TriggerV2Skill *v2Skill = qobject_cast<const TriggerV2Skill *>(skill);
+			const TriggerSkillV2 *v2Skill = qobject_cast<const TriggerSkillV2 *>(skill);
 			if (v2Skill) {
 				v2Skill->onShimingFail(this, player);
 			}

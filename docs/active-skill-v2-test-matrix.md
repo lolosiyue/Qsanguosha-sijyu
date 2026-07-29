@@ -27,7 +27,7 @@
 `active_skill_v2_custom_usage_test` 驗證 `Limit_Custom` 只由作者邏輯讀寫，不會自動呼叫 generic
 `addUsage()`。它們只供下列手動場景使用，不得改動正常武將包。
 `lua/test/examples/test_active_skill_v2_usage_ref.lua` 是等價 Lua fixture：它以
-`sgs.CreateViewAsSkillV2` 與 `sgs.CreateTriggerV2Skill` 驗證 `n`、`response_or_use`、
+`sgs.CreateViewAsSkillV2` 與 `sgs.CreateTriggerSkillV2` 驗證 `n`、`response_or_use`、
 `guhuo_type`／`juguan_type`／`tiansuan_type`、`base_amount`／有效值優先序、`get_usage_ref` callback、
 舊欄位遷移提示及錯誤回傳 fail-closed，且不會將測試武將包載入一般對局。
 執行入口為：

@@ -132,11 +132,11 @@ ownsSkill(name)      → 明確的持有查詢
 ### 3.6 TriggerSkill 與數值被動
 
 - 舊 `TriggerSkill` 即使持有多個實例仍只執行一次。
-- 只有 `TriggerV2Skill` 逐實例建立 `SkillContext` 並獨立執行。
+- 只有 `TriggerSkillV2` 逐實例建立 `SkillContext` 並獨立執行。
 - 需要實例狀態的舊 TriggerSkill 逐步遷移至 V2。
 - Legacy Distance／MaxCards／TargetMod／AttackRange 每個技能定義只計算一次；四個 CorrectSkillV2 類才依 selector 逐有效實例計算，詳見 `engine-correct-skills.md`。
 
-### 3.7 TriggerV2Skill
+### 3.7 TriggerSkillV2
 
 ```text
 can_trigger return "skill"   → 展開持有者全部有效實例
@@ -279,7 +279,7 @@ struct SkillChangeStruct {
 
 驗收：封禁 #1 不影響 #2；未標記舊技能不疊加；標記技能正確求和。
 
-### Ticket 6：TriggerV2Skill 實例化流程
+### Ticket 6：TriggerSkillV2 實例化流程
 
 依賴：Ticket 2、Ticket 5。
 
@@ -328,7 +328,7 @@ struct SkillChangeStruct {
 
 - 列出全部 `acquireSkill()` 呼叫點，由使用者人工判斷是否加入 `hasSkill()` 防重。
 - 列出全部 EventAcquireSkill／EventLoseSkill 的 `data:toString()` 監聽者，審核逐實例重複事件語意。
-- 更新 `docs/TriggerV2Skill系統說明.md` 中已過時的 Skill 物件 instanceID 說明。
+- 更新 `docs/TriggerSkillV2系統說明.md` 中已過時的 Skill 物件 instanceID 說明。
 - 重新產生 SWIG wrapper。
 - 執行完整 Release x64 編譯與遊戲測試。
 

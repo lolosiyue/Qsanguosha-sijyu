@@ -721,7 +721,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 {
 	QList<const TriggerSkill *> v2_skills;
 	foreach (TriggerSkill *ts, skill_table[triggerEvent]) {
-		if (ts->inherits("TriggerV2Skill"))
+		if (ts->inherits("TriggerSkillV2"))
 			v2_skills << ts;
 	}
 	if (v2_skills.isEmpty())
@@ -733,7 +733,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 
 	// record 每個事件只執行一次，並逐現存玩家實例提供完整 context。
 	foreach (const TriggerSkill *ts, v2_skills) {
-		TriggerV2Skill *v2 = const_cast<TriggerV2Skill *>(qobject_cast<const TriggerV2Skill *>(ts));
+		TriggerSkillV2 *v2 = const_cast<TriggerSkillV2 *>(qobject_cast<const TriggerSkillV2 *>(ts));
 		if (!v2) continue;
 		foreach (ServerPlayer *owner, room->getAllPlayers(true)) {
 			foreach (int instanceId, owner->getSkillInstanceIds(v2->objectName())) {
@@ -762,7 +762,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		bool has_compulsory = false;
 
 		foreach (const TriggerSkill *ts, v2_skills) {
-			TriggerV2Skill *v2 = const_cast<TriggerV2Skill *>(qobject_cast<const TriggerV2Skill *>(ts));
+			TriggerSkillV2 *v2 = const_cast<TriggerSkillV2 *>(qobject_cast<const TriggerSkillV2 *>(ts));
 			if (!v2) continue;
 		TriggerList list = v2->triggerable(triggerEvent, room, target, data);
 		
@@ -870,7 +870,7 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 		const TriggerSkill *result_skill = Sanguosha->getTriggerSkill(skillName, instanceId);
 		if (!result_skill) continue;
 
-		TriggerV2Skill *v2 = const_cast<TriggerV2Skill *>(qobject_cast<const TriggerV2Skill *>(result_skill));
+		TriggerSkillV2 *v2 = const_cast<TriggerSkillV2 *>(qobject_cast<const TriggerSkillV2 *>(result_skill));
 		if (!v2) continue;
 
 		// 格式二支援：查找 selected_ctx 時用 ownerObjectName 匹配
@@ -1071,7 +1071,7 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 		QList<TriggerSkill*>triggered;
 		for (int i = 0; i < skill_table[triggerEvent].length(); i++) {
 			TriggerSkill*ts = skill_table[triggerEvent][i];
-			if (ts->inherits("TriggerV2Skill")) continue;
+			if (ts->inherits("TriggerSkillV2")) continue;
 			if (triggered.contains(ts)) continue;
 			triggered << ts;
 			if(triggerEvent==EnterDying||triggerEvent==Dying||triggerEvent==AskForPeaches){

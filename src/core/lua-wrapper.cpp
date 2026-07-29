@@ -43,7 +43,7 @@ QDialog *LuaTriggerSkill::getDialog() const
     return nullptr;
 }
 
-QDialog *LuaTriggerV2Skill::getDialog() const
+QDialog *LuaTriggerSkillV2::getDialog() const
 {
     if (guhuo_type != "") {
         return GuhuoDialog::getInstance(objectName(), guhuo_type.contains("l"), guhuo_type.contains("r"),
@@ -56,7 +56,7 @@ QDialog *LuaTriggerV2Skill::getDialog() const
     return nullptr;
 }
 
-int LuaTriggerV2Skill::getPriority(TriggerEvent triggerEvent) const
+int LuaTriggerSkillV2::getPriority(TriggerEvent triggerEvent) const
 {
     if (priority_table.keys().contains(triggerEvent))
         return priority_table[triggerEvent];

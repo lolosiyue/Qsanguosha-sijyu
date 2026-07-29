@@ -567,7 +567,7 @@ local huangtianCard = sgs.CreateSkillCard{
 ### 2. V2Skill 攔截 SkillCard 使用
 
 ```lua
-interceptor = sgs.CreateTriggerV2Skill{
+interceptor = sgs.CreateTriggerSkillV2{
     name = "interceptor",
     events = {sgs.EventSkillWillInvoke},
     can_trigger = function(skill, event, room, player, data)
@@ -587,7 +587,7 @@ interceptor = sgs.CreateTriggerV2Skill{
 ### 3. V2Skill 修改 SkillCard 目標
 
 ```lua
-redirector = sgs.CreateTriggerV2Skill{
+redirector = sgs.CreateTriggerSkillV2{
     name = "redirector",
     events = {sgs.EventSkillTargetConfirming},
     can_trigger = function(skill, event, room, player, data)
@@ -612,7 +612,7 @@ redirector = sgs.CreateTriggerV2Skill{
 ### 4. V2Skill 跳過 SkillCard 代價
 
 ```lua
-freeSkill = sgs.CreateTriggerV2Skill{
+freeSkill = sgs.CreateTriggerSkillV2{
     name = "free_skill",
     events = {sgs.EventSkillPay},
     can_trigger = function(skill, event, room, player, data)
@@ -632,7 +632,7 @@ freeSkill = sgs.CreateTriggerV2Skill{
 ### 5. V2Skill 完全跳過 SkillCard 效果
 
 ```lua
-skipEffect = sgs.CreateTriggerV2Skill{
+skipEffect = sgs.CreateTriggerSkillV2{
     name = "skip_effect",
     events = {sgs.EventSkillEffect},
     can_trigger = function(skill, event, room, player, data)
@@ -651,7 +651,7 @@ skipEffect = sgs.CreateTriggerV2Skill{
 ### 6. V2Skill 跳過 SkillCard 對特定目標的效果
 
 ```lua
-skipTarget = sgs.CreateTriggerV2Skill{
+skipTarget = sgs.CreateTriggerSkillV2{
     name = "skip_target",
     events = {sgs.EventSkillEffectTarget},
     can_trigger = function(skill, event, room, player, data)
@@ -1211,7 +1211,7 @@ struct SkillContext {
 
 ```lua
 -- 攔截武聖轉換的殺
-interceptWusheng = sgs.CreateTriggerV2Skill{
+interceptWusheng = sgs.CreateTriggerSkillV2{
     name = "intercept_wusheng",
     events = {sgs.EventSkillWillInvoke},
     can_trigger = function(skill, event, room, player, data)
@@ -1232,7 +1232,7 @@ interceptWusheng = sgs.CreateTriggerV2Skill{
 
 ```lua
 -- 讓其他玩家的紅牌當殺視為自己使用
-ownerChange = sgs.CreateTriggerV2Skill{
+ownerChange = sgs.CreateTriggerSkillV2{
     name = "owner_change",
     events = {sgs.EventSkillWillInvoke},
     can_trigger = function(skill, event, room, player, data)
@@ -1253,7 +1253,7 @@ ownerChange = sgs.CreateTriggerV2Skill{
 
 ```lua
 -- 修改武聖殺的目標
-redirectWusheng = sgs.CreateTriggerV2Skill{
+redirectWusheng = sgs.CreateTriggerSkillV2{
     name = "redirect_wusheng",
     events = {sgs.EventSkillTargetConfirming},
     can_trigger = function(skill, event, room, player, data)
@@ -1279,7 +1279,7 @@ redirectWusheng = sgs.CreateTriggerV2Skill{
 
 ```lua
 -- 免費武聖（不棄牌）
-freeWusheng = sgs.CreateTriggerV2Skill{
+freeWusheng = sgs.CreateTriggerSkillV2{
     name = "free_wusheng",
     events = {sgs.EventSkillPay},
     can_trigger = function(skill, event, room, player, data)
@@ -1300,7 +1300,7 @@ freeWusheng = sgs.CreateTriggerV2Skill{
 ### 5. 完全跳過轉換技虛擬牌的效果
 
 ```lua
-skipEffect = sgs.CreateTriggerV2Skill{
+skipEffect = sgs.CreateTriggerSkillV2{
     name = "skip_effect",
     events = {sgs.EventSkillEffect},
     can_trigger = function(skill, event, room, player, data)
@@ -1319,7 +1319,7 @@ skipEffect = sgs.CreateTriggerV2Skill{
 ### 6. 跳過轉換技虛擬牌對特定目標的效果
 
 ```lua
-skipTarget = sgs.CreateTriggerV2Skill{
+skipTarget = sgs.CreateTriggerSkillV2{
     name = "skip_target",
     events = {sgs.EventSkillEffectTarget},
     can_trigger = function(skill, event, room, player, data)
@@ -1340,7 +1340,7 @@ skipTarget = sgs.CreateTriggerV2Skill{
 
 ```lua
 -- 同時攔截 SkillCard 和 ViewAs 虛擬牌
-interceptAll = sgs.CreateTriggerV2Skill{
+interceptAll = sgs.CreateTriggerSkillV2{
     name = "intercept_all",
     events = {sgs.EventSkillWillInvoke},
     can_trigger = function(skill, event, room, player, data)

@@ -155,10 +155,10 @@ end
 | `sgs.Skill_Limited` | 限定技（須搭配 `limit_mark`） |
 | `sgs.Skill_Wake` | 覺醒技（須搭配 `waked_skills`） |
 
-### 5.2 TriggerV2Skill（V2 技能系統）
+### 5.2 TriggerSkillV2（V2 技能系統）
 
 ```lua
-skill_name = sgs.CreateTriggerV2Skill {
+skill_name = sgs.CreateTriggerSkillV2 {
     name = "skill_name",
     frequency = sgs.Skill_NotFrequent,
     events = { sgs.Damaged },
@@ -193,7 +193,7 @@ skill_name = sgs.CreateTriggerV2Skill {
 }
 ```
 
-參考 `docs/TriggerV2Skill系統說明.md` 獲取完整 V2 流程說明。
+參考 `docs/TriggerSkillV2系統說明.md` 獲取完整 V2 流程說明。
 
 配額引用規則：
 
@@ -1254,7 +1254,7 @@ local reason = sgs.CardMoveReason(
 | 建構子 | 用途 | 檔案位置 |
 |--------|------|----------|
 | `sgs.CreateTriggerSkill` | 事件觸發技 | `lua/sgs_ex.lua:4` |
-| `sgs.CreateTriggerV2Skill` | V2 觸發技 | `lua/sgs_ex.lua:62` |
+| `sgs.CreateTriggerSkillV2` | V2 觸發技 | `lua/sgs_ex.lua:80` |
 | `sgs.CreateViewAsSkill` | 轉化技（n 張牌） | `lua/sgs_ex.lua:788` |
 | `sgs.CreateOneCardViewAsSkill` | 單牌轉化 | `lua/sgs_ex.lua:816` |
 | `sgs.CreateZeroCardViewAsSkill` | 零牌轉化 | `lua/sgs_ex.lua:837` |

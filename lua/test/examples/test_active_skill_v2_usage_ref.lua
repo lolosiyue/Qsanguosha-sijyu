@@ -36,7 +36,7 @@ local tiansuanDialogSkill = sgs.CreateViewAsSkillV2 {
 	tiansuan_type = "hp,hand",
 }
 
-local trigger = sgs.CreateTriggerV2Skill {
+local trigger = sgs.CreateTriggerSkillV2 {
 	name = "trigger_v2_usage_ref_smoke",
 	limit_scope = sgs.Skill_Limit_Phase,
 	get_usage_ref = function(skill, ctx)
@@ -75,6 +75,8 @@ local invalid = sgs.CreateViewAsSkillV2 {
 local runner = sgs.test.create("ViewAsSkillV2 usage reference Lua smoke"):factoryOnly()
 
 runner:assert(function(t)
+	t:addResult(sgs.CreateTriggerV2Skill == sgs.CreateTriggerSkillV2,
+		"legacy CreateTriggerV2Skill remains an alias")
 	local amountContext = sgs.SkillContext()
 	amountContext.amount = 0
 	t:addResult(active:getBaseAmount() == 4,
@@ -112,14 +114,14 @@ runner:assert(function(t)
 	t:addResult(tiansuanDialogSkill:getDialog() ~= nil,
 		"ViewAsSkillV2 factory creates TiansuanDialog")
 	t:addResult(trigger:getLimitScope() == sgs.Skill_Limit_Phase,
-		"TriggerV2Skill factory preserves limit_scope")
+		"TriggerSkillV2 factory preserves limit_scope")
 	local actualTriggerRef = trigger:getUsageRef(context)
 	t:addResult(actualTriggerRef.ownerObjectName == triggerRef.ownerObjectName
 			and actualTriggerRef.key.skillName == triggerRef.key.skillName
 			and actualTriggerRef.key.instanceID == triggerRef.key.instanceID,
-		"TriggerV2Skill get_usage_ref selects its quota reference")
+		"TriggerSkillV2 get_usage_ref selects its quota reference")
 	t:addResult(trigger:getMaxUsageLimit(context) == 3,
-		"TriggerV2Skill factory preserves max_usage_limit")
+		"TriggerSkillV2 factory preserves max_usage_limit")
 	t:addResult(not legacyOk and type(legacyError) == "string"
 			and legacyError:find("get_usage_ref", 1, true) ~= nil,
 		"removed usage_identity fails with a migration hint")

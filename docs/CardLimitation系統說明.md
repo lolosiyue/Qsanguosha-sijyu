@@ -365,5 +365,5 @@ room:removePlayerEquipsNullified(target, "Armor", "skill")
 
 ## 相關文件
 
-- [TriggerV2Skill 系統說明](TriggerV2Skill系統說明.md)
-- [技能數值系統](TriggerV2Skill系統說明.md#技能數值系統)
+- [TriggerSkillV2 系統說明](TriggerSkillV2系統說明.md)
+- [技能數值系統](TriggerSkillV2系統說明.md#技能數值系統)

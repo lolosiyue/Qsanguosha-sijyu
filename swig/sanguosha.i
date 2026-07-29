@@ -1743,9 +1743,9 @@ public:
 	bool isGlobal() const;
 };
 
-class TriggerV2Skill: public TriggerSkill {
+class TriggerSkillV2: public TriggerSkill {
 public:
-	TriggerV2Skill(const char*name);
+	TriggerSkillV2(const char*name);
 
 	virtual TriggerList triggerable(TriggerEvent triggerEvent, Room*room,
 	                                 ServerPlayer*player, QVariant&data) const;
