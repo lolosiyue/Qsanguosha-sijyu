@@ -443,8 +443,12 @@ QList<int> ViewAsSkill::getExpandPileCardIds(const Player *player) const
     }
 
     result.removeAll(Card::S_UNKNOWN_CARD_ID);
-    result.removeDuplicates();
-    return result;
+    QList<int> uniqueResult;
+    foreach (int id, result) {
+        if (!uniqueResult.contains(id))
+            uniqueResult << id;
+    }
+    return uniqueResult;
 }
 
 ViewAsSkillV2::ViewAsSkillV2(const QString &name, int n)

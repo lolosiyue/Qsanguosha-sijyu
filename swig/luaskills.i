@@ -466,6 +466,8 @@ public:
 	virtual int getBaseAmount() const;
 	int getEffectiveAmount(const SkillContext &context) const;
 	virtual SkillInstanceRef getAmountRef(const SkillContext &context) const;
+	virtual bool viewFilter(const QList<const Card *> &selected, const Card *to_select) const;
+	virtual const Card *viewAs(const QList<const Card *> &cards) const;
 	EffectFlow skillEffect(SkillContext &context, ServerPlayer *target) const;
 };
 
