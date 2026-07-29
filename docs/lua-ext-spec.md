@@ -214,6 +214,9 @@ skill_name = sgs.CreateViewAsSkillV2 {
     n = 0,                              -- 選用；預設 0，提交時須恰好選 n 張
     response_or_use = false,            -- 選用；沿用 ViewAsSkill 的 response-or-use 語意
     expand_pile = "pile,#temporary",    -- 選用；以逗號分隔多個展開來源
+    guhuo_type = "lrd",                 -- 選用；GuhuoDialog 類型
+    juguan_type = "slash,duel",         -- 選用；JuguanDialog 卡牌名稱
+    tiansuan_type = "hp,hand",          -- 選用；TiansuanDialog 選項
     base_amount = 2,                    -- 選用；預設 1
     on_effect = function(self, ctx)
         local amount = self:getEffectiveAmount(ctx)
@@ -222,6 +225,10 @@ skill_name = sgs.CreateViewAsSkillV2 {
     end,
 }
 ```
+
+`guhuo_type`、`juguan_type`、`tiansuan_type` 與 legacy `CreateViewAsSkill` 使用相同格式及優先順序；
+同一技能只應設定其中一種。直接建立 `CreateViewAsSkillV2` 時，客戶端會透過該技能的
+`getDialog()` 進入既有 Guhuo modal、Juguan Dashboard presenter 或 Tiansuan dialog 流程。
 
 `expand_pile` 沿用 legacy `ViewAsSkill` 的 UI 與伺服器權威語意：
 

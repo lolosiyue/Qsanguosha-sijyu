@@ -479,6 +479,9 @@ public:
 	void setLimitScope(Skill::LimitScope scope);
 	void setMaxUsageLimit(int limit);
 	void setPhaseNameStr(const char *phase_name);
+	void setGuhuoDialog(const char *type);
+	void setJuguanDialog(const char *type);
+	void setTiansuanDialog(const char *type);
 
 	virtual Skill::LimitScope getLimitScope() const;
 	virtual SkillInstanceRef getUsageRef(const SkillContext &ctx) const;
