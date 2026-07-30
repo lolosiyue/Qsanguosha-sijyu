@@ -1099,12 +1099,12 @@ FirePackage::FirePackage()
     wolong->addSkill(new BazhenTrigger);
     wolong->addSkill(new Huoji);
     wolong->addSkill(new Kanpo);
-    related_skills.insertMulti("bazhen", "#bazhen");
+    related_skills.insert("bazhen", "#bazhen");
 
     General *taishici = new General(this, "taishici", "wu"); // WU 012
     taishici->addSkill(new Tianyi);
     taishici->addSkill(new TianyiTargetMod);
-    related_skills.insertMulti("tianyi", "#tianyi-target");
+    related_skills.insert("tianyi", "#tianyi-target");
 
     General *yuanshao = new General(this, "yuanshao$", "qun"); // QUN 004
     yuanshao->addSkill(new Luanji);

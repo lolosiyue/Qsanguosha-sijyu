@@ -709,7 +709,7 @@ MobileMouZhiPackage::MobileMouZhiPackage()
 	mobilemou_sunquan->addSkill(new MobileMouTongye);
 	mobilemou_sunquan->addSkill(new MobileMouTongyeEquip);
 	mobilemou_sunquan->addSkill(new MobileMouJiuyuan);
-	related_skills.insertMulti("mobilemoutongye", "#mobilemoutongye");
+	related_skills.insert("mobilemoutongye", "#mobilemoutongye");
 
 	addMetaObject<MobileMouZhihengCard>();
 
@@ -1539,7 +1539,7 @@ MobileMouShiPackage::MobileMouShiPackage()
 	mobilemou_machao->addSkill(new MobileMouTieqi);
 	mobilemou_machao->addSkill(new MobileMouTieqiClear);
 	mobilemou_machao->addSkill("mashu");
-	related_skills.insertMulti("mobilemoutieqi", "#mobilemoutieqi");
+	related_skills.insert("mobilemoutieqi", "#mobilemoutieqi");
 
 	addMetaObject<MobileMouDuanliangCard>();
 	addMetaObject<MobileMouShipoCard>();
@@ -2396,9 +2396,9 @@ MobileMouYuPackage::MobileMouYuPackage()
 	mobilemou_huangzhong->addSkill(new MobileMouLiegongEffect);
 	mobilemou_huangzhong->addSkill(new MobileMouLiegongLimit);
 	mobilemou_huangzhong->addSkill("#tenyearliegongmod");
-	related_skills.insertMulti("mobilemouliegong", "#mobilemouliegong");
-	related_skills.insertMulti("mobilemouliegong", "#mobilemouliegong-limit");
-	related_skills.insertMulti("mobilemouliegong", "#tenyearliegongmod");
+	related_skills.insert("mobilemouliegong", "#mobilemouliegong");
+	related_skills.insert("mobilemouliegong", "#mobilemouliegong-limit");
+	related_skills.insert("mobilemouliegong", "#tenyearliegongmod");
 
 	General *mobilemou_lvmeng = new General(this, "mobilemou_lvmeng", "wu", 4);
 	mobilemou_lvmeng->addSkill(new MobileMouKeji);
@@ -2406,8 +2406,8 @@ MobileMouYuPackage::MobileMouYuPackage()
 	mobilemou_lvmeng->addSkill(new MobileMouKejiLimit);
 	mobilemou_lvmeng->addSkill(new MobileMouDujiang);
 	mobilemou_lvmeng->addRelateSkill("mobilemouduojing");
-	related_skills.insertMulti("mobilemoukeji", "#mobilemoukeji-max");
-	related_skills.insertMulti("mobilemoukeji", "#mobilemoukeji-limit");
+	related_skills.insert("mobilemoukeji", "#mobilemoukeji-max");
+	related_skills.insert("mobilemoukeji", "#mobilemoukeji-limit");
 
 	General *mobilemou_yujin = new General(this, "mobilemou_yujin", "wei", 4);
 	mobilemou_yujin->addSkill(new MobileMouXiayuan);
@@ -3050,8 +3050,8 @@ MobileMouNengPackage::MobileMouNengPackage()
 	mobilemou_huaxiong->addSkill(new MobileMouYangwei);
 	mobilemou_huaxiong->addSkill(new MobileMouYangweiEffect);
 	mobilemou_huaxiong->addSkill(new MobileMouYangweiTargetMod);
-	related_skills.insertMulti("mobilemouyangwei", "#mobilemouyangwei");
-	related_skills.insertMulti("mobilemouyangwei", "#mobilemouyangwei-target");
+	related_skills.insert("mobilemouyangwei", "#mobilemouyangwei");
+	related_skills.insert("mobilemouyangwei", "#mobilemouyangwei-target");
 
 	addMetaObject<MobileMouYangweiCard>();
 

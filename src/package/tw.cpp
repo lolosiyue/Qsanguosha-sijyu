@@ -103,7 +103,7 @@ public:
                 if (!TriggerSkill::triggerable(zumao) || use.from == zumao || !use.from->inMyAttackRange(zumao))
                     return false;
 
-                if (!use.from->getTag("tijin").canConvert(QVariant::Map))
+                if (!use.from->getTag("tijin").canConvert<QVariantMap>())
                     use.from->setTag("tijin", QVariantMap());
 
                 QVariantMap tijin_map = use.from->getTag("tijin").toMap();
@@ -166,7 +166,7 @@ public:
                 if (!TriggerSkill::triggerable(caoang) || use.to.first() == caoang)
                     return false;
 
-                if (!caoang->getTag("xiaolian").canConvert(QVariant::Map))
+                if (!caoang->getTag("xiaolian").canConvert<QVariantMap>())
                     caoang->setTag("xiaolian", QVariantMap());
 
                 QVariantMap xiaolian_map = caoang->getTag("xiaolian").toMap();
@@ -191,7 +191,7 @@ public:
         } else {
             DamageStruct damage = data.value<DamageStruct>();
             if (damage.card != nullptr) {
-                if (!player->getTag("xiaolian").canConvert(QVariant::Map))
+                if (!player->getTag("xiaolian").canConvert<QVariantMap>())
                     return false;
 
                 QVariantMap xiaolian_map = player->getTag("xiaolian").toMap();
@@ -346,6 +346,6 @@ TaiwanYJCMPackage::TaiwanYJCMPackage()
     General *caoang = new General(this, "twyj_caoang", "wei"); // TAI 003
     caoang->addSkill(new XiaolianDist);
     caoang->addSkill(new Xiaolian);
-    related_skills.insertMulti("xiaolian", "#xiaolian-dist");
+    related_skills.insert("xiaolian", "#xiaolian-dist");
 }
 ADD_PACKAGE(TaiwanYJCM)

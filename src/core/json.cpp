@@ -120,7 +120,7 @@ bool JsonUtils::tryParse(const QVariant &arg, bool &result)
 
 bool JsonUtils::tryParse(const QVariant &var, QStringList &list)
 {
-    if (var.canConvert<JsonArray>()){
+    if (JsonUtils::isArray(var)){
 		foreach (const QVariant &var, var.value<JsonArray>())
 			list << var.toString();
 		return true;
@@ -130,7 +130,7 @@ bool JsonUtils::tryParse(const QVariant &var, QStringList &list)
 
 bool JsonUtils::tryParse(const QVariant &var, QList<int> &list)
 {
-    if (var.canConvert<JsonArray>()){
+    if (JsonUtils::isArray(var)){
 		foreach (const QVariant &var, var.value<JsonArray>())
 			list << var.toInt();
 		return true;

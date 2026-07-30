@@ -7,7 +7,7 @@
 #include <QPainter>
 #include <QStyleOptionGraphicsItem>
 #include <QFile>
-#include <QRegExp>
+#include <QRegularExpression>
 #include <QFileInfo>
 
 const char *CHANGE_SKIN_EMOTION_NAME = "skin_changing";
@@ -272,7 +272,7 @@ void GraphicsPixmapHoverItem::setGeneralImage(const QString &imagePath, const QS
     bool hasGif = false;
 
     if (!imagePath.toLower().endsWith(".gif")) {
-        gifPath.replace(QRegExp("\\.(jpg|png)$", Qt::CaseInsensitive), ".gif");
+        gifPath.replace(QRegularExpression("\\.(jpg|png)$", QRegularExpression::CaseInsensitiveOption), ".gif");
 
         if (gifPath.contains("hero-skin/")) {
             if (QFile::exists(gifPath)) {

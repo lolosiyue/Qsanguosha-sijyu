@@ -5,6 +5,7 @@
 #include <spine/AnimationState.h>
 #include <spine/Skeleton.h>
 #include <cmath>
+#include <cfloat>
 
 namespace spine {
 

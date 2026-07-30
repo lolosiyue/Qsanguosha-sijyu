@@ -1046,7 +1046,7 @@ AssassinsPackage::AssassinsPackage() : Package("assassins")
     fuwan->addSkill(new Fengyin);
     fuwan->addSkill(new ChizhongKeep);
     fuwan->addSkill(new Chizhong);
-    related_skills.insertMulti("chizhong", "#chizhong");
+    related_skills.insert("chizhong", "#chizhong");
 
     General *mushun = new General(this, "as_mushun", "qun");
     mushun->addSkill(new Moukui);

@@ -1824,7 +1824,7 @@ HulaoPassPackage::HulaoPassPackage()
     shenlvbu1->addSkill(new Jingjia);
     shenlvbu1->addSkill(new BossAozhan);
     shenlvbu1->addSkill(new BossAozhanMod);
-    related_skills.insertMulti("bossaozhan", "#bossaozhan-mod");
+    related_skills.insert("bossaozhan", "#bossaozhan-mod");
 
     General *shenlvbu2 = new General(this, "shenlvbu2", "god", 4, true, true); // SP 008 (2-2)
     shenlvbu2->addSkill("mashu");
@@ -1833,7 +1833,7 @@ HulaoPassPackage::HulaoPassPackage()
     shenlvbu2->addSkill(new ShenweiKeep);
     shenlvbu2->addSkill(new Shenwei);
     shenlvbu2->addSkill(new Shenji);
-    related_skills.insertMulti("shenwei", "#shenwei-draw");
+    related_skills.insert("shenwei", "#shenwei-draw");
 
     General *shenlvbu3 = new General(this, "shenlvbu3", "god", 4, true, true);
     shenlvbu3->addSkill("wushuang");

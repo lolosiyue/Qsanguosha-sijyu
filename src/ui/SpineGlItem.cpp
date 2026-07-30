@@ -128,6 +128,11 @@ bool SpineGlItem::loadSpine(const QString &basePath, const QString &animationNam
 
 bool SpineGlItem::loadSpineFiles(const QString &atlasPath, const QString &skelPath,
                                   const QString &animationName) {
+    if (!QOpenGLContext::currentContext()) {
+        qWarning("[SpineGlItem] OpenGL viewport unavailable; skipping Spine animation");
+        return false;
+    }
+
     // Clean up previous
     _animState.reset();
     _animStateData.reset();
@@ -507,7 +512,10 @@ void SpineGlItem::updateSkeleton(float deltaSeconds) {
 void SpineGlItem::initGL() {
     if (_glInitialized) return;
 
-    QOpenGLFunctions *gl = QOpenGLContext::currentContext()->functions();
+    QOpenGLContext *context = QOpenGLContext::currentContext();
+    if (!context) return;
+
+    QOpenGLFunctions *gl = context->functions();
     if (!gl) return;
 
     // Create shader program
@@ -564,12 +572,18 @@ void SpineGlItem::cleanupGL() {
 }
 
 void SpineGlItem::renderSpine(QPainter *painter) {
-    QOpenGLFunctions *gl = QOpenGLContext::currentContext()->functions();
+    QOpenGLContext *context = QOpenGLContext::currentContext();
+    if (!context) {
+        qWarning("[SpineGlItem] renderSpine: no GL context!");
+        return;
+    }
+
+    QOpenGLFunctions *gl = context->functions();
     if (!gl) { qWarning("[SpineGlItem] renderSpine: no GL context!"); return; }
 
     // Ensure we're drawing to the currently active surface's default FBO
     // (critical for QOpenGLWidget-backed painting).
-    QOpenGLContext *ctx = QOpenGLContext::currentContext();
+    QOpenGLContext *ctx = context;
     if (ctx) {
         GLuint fbo = static_cast<GLuint>(ctx->defaultFramebufferObject());
         gl->glBindFramebuffer(GL_FRAMEBUFFER, fbo);
@@ -783,7 +797,7 @@ void SpineGlItem::renderSpine(QPainter *painter) {
     }
 
     if (doLog) qWarning("[SpineGlItem] renderSpine: %d vertices, %d indices, %d batches",
-                        _vertexCount, _indexCount, batches.size());
+                        _vertexCount, _indexCount, (int)batches.size());
 
     // ─── OpenGL rendering ───────────────────────────────────────────────
 
@@ -1090,7 +1104,7 @@ void SpineGlItem::buildAnimationCache() {
         _cachedAnimations.append(info);
         _animDurationMap.insert(info.name, info.duration);
     }
-    qWarning("[SpineGlItem] animation cache built: %d entries", _cachedAnimations.size());
+    qWarning("[SpineGlItem] animation cache built: %d entries", (int)_cachedAnimations.size());
 }
 
 bool SpineGlItem::hasAnimation(const QString &name) const {

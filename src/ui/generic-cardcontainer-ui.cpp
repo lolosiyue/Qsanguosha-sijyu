@@ -1008,7 +1008,7 @@ void PlayerCardContainer::_updateEquips()
         }
     };
 
-    QStringList property_equips = m_player->property("View_As_Equips_List").toString().split("+", QString::SkipEmptyParts);
+    QStringList property_equips = m_player->property("View_As_Equips_List").toString().split("+", Qt::SkipEmptyParts);
     foreach (QString eq_name, property_equips) {
         Card *ec = Sanguosha->cloneCard(eq_name);
         if (ec) try_add_simulated_equip(ec, QString());
@@ -1424,7 +1424,7 @@ void PlayerCardContainer::addDelayedTricks(QList<CardItem *> &tricks)
         QGraphicsPixmapItem *item = new QGraphicsPixmapItem(_getDelayedTrickParent());
         QRect start = _m_layout->m_delayedTrickFirstRegion;
         QPoint step = _m_layout->m_delayedTrickStep;
-        start.translate(step * _m_judgeCards.size());
+        start.translate(step * int(_m_judgeCards.size()));
         const Card *tc = trick->getCard();
         _paintPixmap(item, start, G_ROOM_SKIN.getCardJudgeIconPixmap(tc->objectName()));
         trick->setHomeOpacity(0);

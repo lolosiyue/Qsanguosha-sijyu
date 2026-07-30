@@ -3769,7 +3769,7 @@ mobilePackage::mobilePackage()
 	mobile_sunru->addSkill(new Yingjian);
 	mobile_sunru->addSkill(new SlashNoDistanceLimitSkill("yingjian"));
 	mobile_sunru->addSkill("shixin");
-	related_skills.insertMulti("yingjian", "#yingjian-slash-ndl");
+	related_skills.insert("yingjian", "#yingjian-slash-ndl");
 
 	General *liuzan = new General(this, "liuzan", "wu");
 	liuzan->addSkill(new Fenyin);
@@ -3785,7 +3785,7 @@ mobilePackage::mobilePackage()
 	pangdegong->addSkill(new Pingcai);
 	pangdegong->addSkill(new Yinshiy);
 	pangdegong->addSkill(new YinshiyPro);
-	related_skills.insertMulti("yinshiy", "#yinshiy-pro");
+	related_skills.insert("yinshiy", "#yinshiy-pro");
 	addMetaObject<PingcaiCard>();
 
 	General *simashi = new General(this, "simashi", "wei", 4);
@@ -4974,28 +4974,28 @@ mobileStarPackage::mobileStarPackage()
 	General *xing_zhanghe = new General(this, "xing_zhanghe", "qun", 4);
 	xing_zhanghe->addSkill(new XingZhilve);
 	xing_zhanghe->addSkill(new SlashNoDistanceLimitSkill("xingzhilve"));
-	related_skills.insertMulti("xingzhilve", "#xingzhilve-slash-ndl");
+	related_skills.insert("xingzhilve", "#xingzhilve-slash-ndl");
 	addMetaObject<XingZhilveCard>();
 	addMetaObject<XingZhilveSlashCard>();
 
 	General *xing_xuhuang = new General(this, "xing_xuhuang", "qun", 4);
 	xing_xuhuang->addSkill(new XingZhiyan);
 	xing_xuhuang->addSkill(new XingZhiyanPro);
-	related_skills.insertMulti("xingzhiyan", "#xingzhiyan-pro");
+	related_skills.insert("xingzhiyan", "#xingzhiyan-pro");
 	addMetaObject<XingZhiyanCard>();
 
 	General *xing_ganning = new General(this, "xing_ganning", "qun", 4);
 	xing_ganning->addSkill(new XingJinfan);
 	xing_ganning->addSkill(new XingJinfanLose("xingjinfan"));
 	xing_ganning->addSkill(new XingSheque);
-	related_skills.insertMulti("xingjinfan", "#xingjinfan-lose");
+	related_skills.insert("xingjinfan", "#xingjinfan-lose");
 	addMetaObject<XingJinfanCard>();
 
 	General *secondxing_ganning = new General(this, "secondxing_ganning", "qun", 4);
 	secondxing_ganning->addSkill(new SecondXingJinfan);
 	secondxing_ganning->addSkill(new XingJinfanLose("secondxingjinfan"));
 	secondxing_ganning->addSkill("xingsheque");
-	related_skills.insertMulti("secondxingjinfan", "#secondxingjinfan-lose");
+	related_skills.insert("secondxingjinfan", "#secondxingjinfan-lose");
 
 	General *xing_weiyan = new General(this, "xing_weiyan", "qun", 4);
 	xing_weiyan->addSkill(new Guli);
@@ -5609,7 +5609,7 @@ void MobileShanxiCard::onEffect(CardEffectStruct &effect) const
 		effect.to->addToPile("mobileshanxi", &dummy, false);
 
 		// for record
-		if (!effect.to->getTag("mobileshanxi").isValid() || !effect.to->getTag("mobileshanxi").canConvert(QVariant::Map))
+		if (!effect.to->getTag("mobileshanxi").isValid() || !effect.to->getTag("mobileshanxi").canConvert<QVariantMap>())
 			effect.to->setTag("mobileshanxi", QVariantMap());
 
 		QVariantMap vm = effect.to->getTag("mobileshanxi").toMap();
@@ -17849,7 +17849,7 @@ mobileSpPackage::mobileSpPackage()
 	guanyinping->addSkill(new Huxiao);
 	guanyinping->addSkill(new HuxiaoCount);
 	guanyinping->addSkill(new Wuji);
-	related_skills.insertMulti("huxiao", "#huxiao-count");
+	related_skills.insert("huxiao", "#huxiao-count");
 	addMetaObject<XuejiCard>();
 
 	General *new_guanyinping = new General(this, "new_guanyinping", "shu", 3, false);
@@ -17857,7 +17857,7 @@ mobileSpPackage::mobileSpPackage()
 	new_guanyinping->addSkill(new NewHuxiao);
 	new_guanyinping->addSkill(new NewHuxiaoTargetMod);
 	new_guanyinping->addSkill(new NewWuji);
-	related_skills.insertMulti("newhuxiao", "#newhuxiao-target");
+	related_skills.insert("newhuxiao", "#newhuxiao-target");
 	addMetaObject<NewxuehenCard>();
 
 	General *second_new_sp_jiaxu = new General(this, "second_new_sp_jiaxu", "wei", 3);
@@ -17877,14 +17877,14 @@ mobileSpPackage::mobileSpPackage()
 	mobile_heqi->addSkill(new MobileQizhouLose);
 	mobile_heqi->addSkill(new MobileShanxi);
 	mobile_heqi->addSkill(new MobileShanxiGet);
-	related_skills.insertMulti("mobileqizhou", "#mobileqizhou-lose");
-	related_skills.insertMulti("mobileshanxi", "#mobileshanxi-get");
+	related_skills.insert("mobileqizhou", "#mobileqizhou-lose");
+	related_skills.insert("mobileshanxi", "#mobileshanxi-get");
 	addMetaObject<MobileShanxiCard>();
 
 	General *tadun = new General(this, "tadun", "qun", 4);
 	tadun->addSkill(new Luanzhan);
 	tadun->addSkill(new LuanzhanTargetMod);
-	related_skills.insertMulti("luanzhan", "#luanzhan-target");
+	related_skills.insert("luanzhan", "#luanzhan-target");
 	addMetaObject<LuanzhanCard>();
 
 
@@ -17892,14 +17892,14 @@ mobileSpPackage::mobileSpPackage()
 	xingcai->addSkill(new Shenxian);
 	xingcai->addSkill(new Qiangwu);
 	xingcai->addSkill(new QiangwuTargetMod);
-	related_skills.insertMulti("qiangwu", "#qiangwu-target");
+	related_skills.insert("qiangwu", "#qiangwu-target");
 	addMetaObject<QiangwuCard>();
 
 	General *new_mayunlu = new General(this, "new_mayunlu*xh_nvshi", "shu", 4, false);
 	new_mayunlu->addSkill(new NewFengpo);
 	new_mayunlu->addSkill(new NewFengpoEffect);
 	new_mayunlu->addSkill("mashu");
-	related_skills.insertMulti("newfengpo", "#newfengpo-effect");
+	related_skills.insert("newfengpo", "#newfengpo-effect");
 
 	General *mazhong = new General(this, "mazhong", "shu", 4);
 	mazhong->addSkill(new Fuman);
@@ -17934,7 +17934,7 @@ mobileSpPackage::mobileSpPackage()
 	duji->addSkill(new Andong);
 	duji->addSkill(new Yingshi);
 	duji->addSkill(new YingshiDeath);
-	related_skills.insertMulti("yingshi", "#yingshi-death");
+	related_skills.insert("yingshi", "#yingshi-death");
 	addMetaObject<YingshiCard>();
 
 	General *lvdai = new General(this, "lvdai", "wu", 4);
@@ -17949,7 +17949,7 @@ mobileSpPackage::mobileSpPackage()
 	shixie->addSkill(new Biluan);
 	shixie->addSkill(new BiluanDist);
 	shixie->addSkill(new Lixia);
-	related_skills.insertMulti("biluan", "#biluan-dist");
+	related_skills.insert("biluan", "#biluan-dist");
 
 	General *taoqian = new General(this, "taoqian", "qun", 3);
 	taoqian->addSkill(new Zhaohuo);
@@ -17965,7 +17965,7 @@ mobileSpPackage::mobileSpPackage()
 	liuyan->addSkill(new Tushe);
 	liuyan->addSkill(new Limu);
 	liuyan->addSkill(new LimuTargetMod);
-	related_skills.insertMulti("limu", "#limu-target");
+	related_skills.insert("limu", "#limu-target");
 	addMetaObject<LimuCard>();
 
 	General *sp_zhangji = new General(this, "sp_zhangji*xh_tianzhu", "qun", 4);
@@ -18001,20 +18001,20 @@ mobileSpPackage::mobileSpPackage()
 	mobile_zhanggong->addSkill(new MobileSpQianxin);
 	mobile_zhanggong->addSkill(new MobileSpQianxinMove);
 	mobile_zhanggong->addSkill(new MobileZhenxing);
-	related_skills.insertMulti("mobilespqianxin", "#mobilespqianxin-move");
+	related_skills.insert("mobilespqianxin", "#mobilespqianxin-move");
 	addMetaObject<MobileSpQianxinCard>();
 
 	General *jiakui = new General(this, "jiakui", "wei", 3);
 	jiakui->addSkill(new Zhongzuo);
 	jiakui->addSkill(new Wanlan);
 	jiakui->addSkill(new WanlanDamage);
-	related_skills.insertMulti("wanlan", "#wanlan-damage");
+	related_skills.insert("wanlan", "#wanlan-damage");
 
 	General *new_jiakui = new General(this, "new_jiakui", "wei", 4);
 	new_jiakui->addSkill(new Tongqu);
 	new_jiakui->addSkill(new TongquTrigger);
 	new_jiakui->addSkill(new NewWanlan);
-	related_skills.insertMulti("tongqu", "#tongqu-trigger");
+	related_skills.insert("tongqu", "#tongqu-trigger");
 	addMetaObject<TongquCard>();
 
 	General *xugong = new General(this, "xugong", "wu", 3);
@@ -18034,7 +18034,7 @@ mobileSpPackage::mobileSpPackage()
 	General *zhouqun = new General(this, "zhouqun", "shu", 3);
 	zhouqun->addSkill(new Tiansuan);
 	zhouqun->addSkill(new TiansuanEffect);
-	related_skills.insertMulti("tiansuan", "#tiansuan");
+	related_skills.insert("tiansuan", "#tiansuan");
 	addMetaObject<TiansuanCard>();
 
 	General *sp_zhangyi = new General(this, "sp_zhangyi", "shu", 4);
@@ -18043,7 +18043,7 @@ mobileSpPackage::mobileSpPackage()
 	General *second_sp_zhangyi = new General(this, "second_sp_zhangyi", "shu", 4);
 	second_sp_zhangyi->addSkill(new SecondZhiyi);
 	second_sp_zhangyi->addSkill(new SecondZhiyiRecord);
-	related_skills.insertMulti("secondzhiyi", "#secondzhiyi-record");
+	related_skills.insert("secondzhiyi", "#secondzhiyi-record");
 
 	General *dengzhi = new General(this, "dengzhi", "shu", 3);
 	dengzhi->addSkill(new Jimeng);
@@ -18057,7 +18057,7 @@ mobileSpPackage::mobileSpPackage()
 	gongsunkang->addSkill(new Juliao);
 	gongsunkang->addSkill(new Taomie);
 	gongsunkang->addSkill(new TaomieMark);
-	related_skills.insertMulti("taomie", "#taomie-mark");
+	related_skills.insert("taomie", "#taomie-mark");
 
 	General *hucheer = new General(this, "hucheer", "qun", 4);
 	hucheer->addSkill(new Daoji);
@@ -18073,7 +18073,7 @@ mobileSpPackage::mobileSpPackage()
 	maojie->addSkill(new Bingqing);
 	maojie->addSkill(new Yingfeng);
 	maojie->addSkill(new YingfengTarget);
-	related_skills.insertMulti("yingfeng", "#yingfeng");
+	related_skills.insert("yingfeng", "#yingfeng");
 
 	General *lingju = new General(this, "lingju*xh_nvshi", "qun", 3, false);
 	lingju->addSkill("jieyuan");
@@ -18083,7 +18083,7 @@ mobileSpPackage::mobileSpPackage()
 	yanpu->addSkill(new Huantu);
 	yanpu->addSkill(new Bihuo);
 	yanpu->addSkill(new BihuoDistance);
-	related_skills.insertMulti("bihuo", "#bihuo");
+	related_skills.insert("bihuo", "#bihuo");
 
 	General *mayuanyi = new General(this, "mayuanyi", "qun", 4);
 	mayuanyi->addSkill(new Jibing);
@@ -18105,8 +18105,8 @@ mobileSpPackage::mobileSpPackage()
 	new_lifeng->addSkill(new NewTunchuPut);
 	new_lifeng->addSkill(new NewTunchuLimit);
 	new_lifeng->addSkill(new NewShuliang);
-	related_skills.insertMulti("newtunchu", "#newtunchu-put");
-	related_skills.insertMulti("newtunchu", "#newtunchu-limit");
+	related_skills.insert("newtunchu", "#newtunchu-put");
+	related_skills.insert("newtunchu", "#newtunchu-limit");
 	addMetaObject<NewShuliangCard>();
 
 	General *zhaotongzhaoguang = new General(this, "zhaotongzhaoguang", "shu", 4);
@@ -18119,8 +18119,8 @@ mobileSpPackage::mobileSpPackage()
 	wangyuanji->addSkill(new QianchongTargetMod);
 	wangyuanji->addSkill(new QianchongLose);
 	wangyuanji->addSkill(new Shangjian);
-	related_skills.insertMulti("qianchong", "#qianchong-target");
-	related_skills.insertMulti("qianchong", "#qianchong-lose");
+	related_skills.insert("qianchong", "#qianchong-target");
+	related_skills.insert("qianchong", "#qianchong-lose");
 
 	General *yanghuiyu = new General(this, "yanghuiyu", "wei", 3, false);
 	yanghuiyu->addSkill(new Hongyi);
@@ -18136,7 +18136,7 @@ mobileSpPackage::mobileSpPackage()
 	liuye->addSkill(new Polu("polu"));
 	liuye->addSkill(new Choulve);
 	liuye->addSkill(new ChoulveRecord);
-	related_skills.insertMulti("choulve", "#choulve-record");
+	related_skills.insert("choulve", "#choulve-record");
 
 	General *second_liuye = new General(this, "second_liuye", "wei", 3);
 	second_liuye->addSkill(new Polu("secondpolu"));
@@ -18183,7 +18183,7 @@ mobileSpPackage::mobileSpPackage()
 	mobile_hansui->addSkill(new MobileNiluan);
 	mobile_hansui->addSkill(new MobileNiluanLog);
 	mobile_hansui->addSkill(new MobileXiaoxi);
-	related_skills.insertMulti("mobileniluan", "#mobileniluan");
+	related_skills.insert("mobileniluan", "#mobileniluan");
 
 	General *nanshengmi = new General(this, "nanshengmi", "qun", 3);
 	nanshengmi->addSkill(new Chijiec);

@@ -48,12 +48,12 @@ void ServerPlayer::setTag(const QString &key, const QVariant &value)
 	if (!room) return;
 
 	bool safe = false;
-	switch (value.type()) {
-		case QVariant::Int:
-		case QVariant::Bool:
-		case QVariant::String:
-		case QVariant::StringList:
-		case QVariant::Invalid:
+        switch (value.userType()) {
+		case QMetaType::Int:
+		case QMetaType::Bool:
+		case QMetaType::QString:
+		case QMetaType::QStringList:
+		case QMetaType::UnknownType:
 			safe = true;
 			break;
 		default:
@@ -62,7 +62,7 @@ void ServerPlayer::setTag(const QString &key, const QVariant &value)
 
 	if (safe) {
 		QString valueStr;
-		if (value.type() == QVariant::StringList) {
+		if (value.userType() == QMetaType::QStringList) {
 			valueStr = "SLIST:" + value.toStringList().join("|");
 		} else if (!value.isValid()) {
 			valueStr = QString();
@@ -128,7 +128,7 @@ void ServerPlayer::calculateUITooltips()
         if (vaes) {
             QString cns = vaes->viewAsEquip(this);
             if (!cns.isEmpty()) {
-                foreach (const QString &eq, cns.split(",", QString::SkipEmptyParts)) {
+                foreach (const QString &eq, cns.split(",", Qt::SkipEmptyParts)) {
                     vae_list << QString("%1^%2").arg(eq).arg(vaes->objectName());
                 }
             }

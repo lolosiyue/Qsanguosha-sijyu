@@ -1292,11 +1292,11 @@ void HuashenDialog::popup()
     QVariant pile_value = Self->property(key.constData());
 
     QStringList general_names;
-    if (pile_value.type() == QVariant::String) {
+    if (pile_value.userType() == QMetaType::QString) {
         QString pile_str = pile_value.toString();
         if (!pile_str.isEmpty())
-            general_names = pile_str.split("+", QString::SkipEmptyParts);
-    } else if (pile_value.type() == QVariant::List) {
+            general_names = pile_str.split("+", Qt::SkipEmptyParts);
+    } else if (pile_value.userType() == QMetaType::QVariantList) {
         foreach (const QVariant &v, pile_value.toList()) {
             QString name = v.toString();
             if (!name.isEmpty())
@@ -1307,7 +1307,7 @@ void HuashenDialog::popup()
     } else {
         QString pile_str = pile_value.toString();
         if (!pile_str.isEmpty())
-            general_names = pile_str.split("+", QString::SkipEmptyParts);
+            general_names = pile_str.split("+", Qt::SkipEmptyParts);
     }
 
     QList<const General *> generals;
@@ -2335,7 +2335,7 @@ MountainPackage::MountainPackage()
     dengai->addSkill(new Tuntian);
     dengai->addSkill(new TuntianDistance);
     dengai->addSkill(new Zaoxian);
-    related_skills.insertMulti("tuntian", "#tuntian-dist");
+    related_skills.insert("tuntian", "#tuntian-dist");
 
     General *jiangwei = new General(this, "jiangwei", "shu"); // SHU 012
     jiangwei->addSkill(new Tiaoxin);
@@ -2360,8 +2360,8 @@ MountainPackage::MountainPackage()
     zuoci->addSkill(new HuashenSelect);
     zuoci->addSkill(new HuashenClear);
     zuoci->addSkill(new Xinsheng);
-    related_skills.insertMulti("huashen", "#huashen-select");
-    related_skills.insertMulti("huashen", "#huashen-clear");
+    related_skills.insert("huashen", "#huashen-select");
+    related_skills.insert("huashen", "#huashen-clear");
 
     General *caiwenji = new General(this, "caiwenji", "qun", 3, false); // QUN 012
     caiwenji->addSkill(new Beige);
@@ -2371,21 +2371,21 @@ MountainPackage::MountainPackage()
     shenzhaoyun->addSkill(new JuejingKeep);
     shenzhaoyun->addSkill(new Juejing);
     shenzhaoyun->addSkill(new Longhun);
-    related_skills.insertMulti("juejing", "#juejing-draw");
+    related_skills.insert("juejing", "#juejing-draw");
 
     General *new_shenzhaoyun = new General(this, "new_shenzhaoyun", "god", 2);
     new_shenzhaoyun->addSkill(new NewJuejing);
     new_shenzhaoyun->addSkill(new NewJuejingDraw);
     new_shenzhaoyun->addSkill(new NewLonghun);
-    related_skills.insertMulti("newjuejing", "#newjuejing-draw");
+    related_skills.insert("newjuejing", "#newjuejing-draw");
 
     General *shensimayi = new General(this, "shensimayi", "god", 4); // LE 008
     shensimayi->addSkill(new Renjie);
     shensimayi->addSkill(new Baiyin);
-    related_skills.insertMulti("jilve", "#jilve-clear");
+    related_skills.insert("jilve", "#jilve-clear");
     shensimayi->addSkill(new Lianpo);
     shensimayi->addSkill(new LianpoCount);
-    related_skills.insertMulti("lianpo", "#lianpo-count");
+    related_skills.insert("lianpo", "#lianpo-count");
     addMetaObject<JilveCard>();
 
     addMetaObject<QiaobianCard>();

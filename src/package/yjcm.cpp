@@ -2228,7 +2228,7 @@ YJCMPackage::YJCMPackage()
     caozhi->addSkill(new Luoying);
     caozhi->addSkill(new Jiushi);
     caozhi->addSkill(new JiushiFlip);
-    related_skills.insertMulti("jiushi", "#jiushi-flip");
+    related_skills.insert("jiushi", "#jiushi-flip");
 
     General *ol_caozhi = new General(this, "ol_caozhi", "wei", 3);
     ol_caozhi->addSkill(new OLLuoying);
@@ -2239,8 +2239,8 @@ YJCMPackage::YJCMPackage()
     chengong->addSkill(new ZhichiProtect);
     chengong->addSkill(new ZhichiClear);
     chengong->addSkill(new Mingce);
-    related_skills.insertMulti("zhichi", "#zhichi-protect");
-    related_skills.insertMulti("zhichi", "#zhichi-clear");
+    related_skills.insert("zhichi", "#zhichi-protect");
+    related_skills.insert("zhichi", "#zhichi-clear");
 
     General *nos_fazheng = new General(this, "nos_fazheng", "shu", 3);
     nos_fazheng->addSkill(new NosEnyuan);
@@ -2258,12 +2258,12 @@ YJCMPackage::YJCMPackage()
     gaoshun->addSkill(new Xianzhen);
     gaoshun->addSkill(new Jinjiu);
     gaoshun->addSkill(new XianzhenTargetMod);
-    related_skills.insertMulti("xianzhen", "#xianzhen_target");
+    related_skills.insert("xianzhen", "#xianzhen_target");
 
     General *nos_lingtong = new General(this, "nos_lingtong", "wu");
     nos_lingtong->addSkill(new NosXuanfeng);
     nos_lingtong->addSkill(new SlashNoDistanceLimitSkill("nosxuanfeng"));
-    related_skills.insertMulti("nosxuanfeng", "#nosxuanfeng-slash-ndl");
+    related_skills.insert("nosxuanfeng", "#nosxuanfeng-slash-ndl");
     General *lingtong = new General(this, "lingtong", "wu"); // YJ 005
     lingtong->addSkill(new Xuanfeng);
 
@@ -2334,7 +2334,7 @@ YJCMPackage::YJCMPackage()
     zhonghui->addSkill(new QuanjiKeep);
     zhonghui->addSkill(new Zili);
     zhonghui->addRelateSkill("paiyi");
-    related_skills.insertMulti("quanji", "#quanji");
+    related_skills.insert("quanji", "#quanji");
 
     addMetaObject<MingceCard>();
     addMetaObject<GanluCard>();

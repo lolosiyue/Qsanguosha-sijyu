@@ -18,7 +18,8 @@
     QSanguosha-Rara
     *********************************************************************/
 
-import QtQuick 2.12
+import QtQuick
+import QtQml
 
 Item {
     function resolveFullskinImageSource(heroSpec) {
@@ -107,7 +108,7 @@ Item {
             property:"x"
             to:sceneWidth/2-500
             duration:800
-            easing.type:Easing.OutQuad
+            easing.type:"OutQuad"
 			easing.overshoot:3
         }
         PropertyAnimation{
@@ -133,7 +134,7 @@ Item {
                 to:1
                 duration:800
 				easing.overshoot:3
-				easing.type:Easing.OutQuad
+				easing.type:"OutQuad"
             }
             PropertyAnimation {
                 target:text
@@ -150,8 +151,11 @@ Item {
         }
         PauseAnimation { duration:2500 }
     }
-    Component.onCompleted:{
-        step1.start()
+    Timer {
+        interval: 0
+        running: true
+        repeat: false
+        onTriggered: step1.start()
     }
 }
 

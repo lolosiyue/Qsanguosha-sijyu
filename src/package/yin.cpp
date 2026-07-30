@@ -1470,7 +1470,7 @@ YinPackage::YinPackage()
     General *yanyan = new General(this, "yanyan", "shu", 4);
     yanyan->addSkill(new Juzhan);
     yanyan->addSkill(new JuzhanPro);
-    related_skills.insertMulti("juzhan", "#juzhanpro");
+    related_skills.insert("juzhan", "#juzhanpro");
 
     General *wangping = new General(this, "wangping", "shu", 4);
     wangping->addSkill(new Feijun);
@@ -1481,21 +1481,21 @@ YinPackage::YinPackage()
     luji->addSkill(new HuaijuDeath);
     luji->addSkill(new Weili);
     luji->addSkill(new Zhenglun);
-    related_skills.insertMulti("huaiju", "#huaijudeath");
+    related_skills.insert("huaiju", "#huaijudeath");
 
     General *sunliang = new General(this, "sunliang$", "wu", 3);
     sunliang->addSkill(new Kuizhu("kuizhu"));
     sunliang->addSkill(new Chezheng("chezheng"));
     sunliang->addSkill(new ChezhengPro);
     sunliang->addSkill(new Lijun("lijun"));
-    related_skills.insertMulti("chezheng", "#chezhengpro");
+    related_skills.insert("chezheng", "#chezhengpro");
 
     General *ol_sunliang = new General(this, "ol_sunliang$", "wu", 3);
     ol_sunliang->addSkill(new Kuizhu("olkuizhu"));
     ol_sunliang->addSkill(new Chezheng("olchezheng"));
     ol_sunliang->addSkill(new Lijun("ollijun"));
     ol_sunliang->addSkill(new OLLijunTargetMod);
-    related_skills.insertMulti("ollijun", "#ollijun-target");
+    related_skills.insert("ollijun", "#ollijun-target");
 
     General *wangji = new General(this, "wangji", "wei", 3);
     wangji->addSkill(new Qizhi);
@@ -1505,7 +1505,7 @@ YinPackage::YinPackage()
     kuailiangkuaiyue->addSkill(new Jianxiang);
     kuailiangkuaiyue->addSkill(new Shenshi);
     kuailiangkuaiyue->addSkill(new ShenshiEffect);
-    related_skills.insertMulti("shenshi", "#shenshi-effect");
+    related_skills.insert("shenshi", "#shenshi-effect");
 
     General *yin_xuyou = new General(this, "yin_xuyou", "qun", 3);
     yin_xuyou->addSkill(new Chenglve);
@@ -1513,7 +1513,7 @@ YinPackage::YinPackage()
     yin_xuyou->addSkill(new YinShicai);
     yin_xuyou->addSkill(new Cunmu);
     //yin_xuyou->addSkill(new Skill("cunmu", Skill::Compulsory)); //耦合进了Room::drawCards
-    related_skills.insertMulti("chenglve", "#chenglve-target");
+    related_skills.insert("chenglve", "#chenglve-target");
 
     General *luzhi = new General(this, "luzhi", "qun", 3);
     luzhi->addSkill(new Mingren);
@@ -1528,8 +1528,8 @@ YinPackage::YinPackage()
     shenliubei->addSkill(new LongnuTarget);
     shenliubei->addSkill(new Jieying);
     shenliubei->addSkill(new JieyingKeep);
-    related_skills.insertMulti("longnu", "#longnu-target");
-    related_skills.insertMulti("jieying", "#jieying-keep");
+    related_skills.insert("longnu", "#longnu-target");
+    related_skills.insert("jieying", "#jieying-keep");
 
     General *shenluxun = new General(this, "shenluxun", "god");
     shenluxun->addSkill(new Junlve);

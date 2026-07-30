@@ -89,6 +89,8 @@ bool EmbeddedQmlLoader::loadQmlOverlay(QWidget *parentWindow,
     QQmlContext *context = m_qmlWidget->rootContext();
     FileHandler *fileHandler = new FileHandler(m_qmlWidget);
     context->setContextProperty("fileHandler", fileHandler);
+    // Qt 6 resolves context properties while setSource() creates the component.
+    context->setContextProperty("qmlLoader", this);
     
     // 设置自定义上下文变量
     for (auto it = contextVars.begin(); it != contextVars.end(); ++it) {
@@ -193,8 +195,6 @@ void EmbeddedQmlLoader::connectQmlSignals()
     connect(rootItem, SIGNAL(animationCompleted()), this, SLOT(onAnimationCompleted()));
     connect(rootItem, SIGNAL(finished(QVariant)), this, SLOT(receiveQmlResult(QVariant)));
 
-    // 暴露控制对象到QML
-    m_qmlWidget->rootContext()->setContextProperty("qmlLoader", this);
 }
 
 void EmbeddedQmlLoader::onAnimationCompleted()

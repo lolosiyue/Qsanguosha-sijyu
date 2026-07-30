@@ -1860,7 +1860,7 @@ void Server::writeHeadlessLog(const QString &msg)
         logFile = new QFile(filename);
         if (logFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append)) {
             logStream = new QTextStream(logFile);
-            logStream->setCodec("UTF-8");
+            logStream->setEncoding(QStringConverter::Utf8);
         }
     }
 

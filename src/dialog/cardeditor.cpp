@@ -791,8 +791,7 @@ QMainWindow(parent)
 	QGraphicsView *view = new QGraphicsView;
 
 	view->setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing |
-		QPainter::SmoothPixmapTransform |
-		QPainter::HighQualityAntialiasing
+		QPainter::SmoothPixmapTransform
 		);
 
 	card_scene = new CardScene;
@@ -814,11 +813,11 @@ QMainWindow(parent)
 
 	QMenu *file_menu = new QMenu(tr("File"));
 	QAction *import = new QAction(tr("Import ..."), file_menu);
-	import->setShortcut(Qt::CTRL + Qt::Key_O);
+	import->setShortcut(Qt::CTRL | Qt::Key_O);
 	QAction *save = new QAction(tr("Save ..."), file_menu);
-	save->setShortcut(Qt::CTRL + Qt::Key_S);
+	save->setShortcut(Qt::CTRL | Qt::Key_S);
 	QAction *exit = new QAction(tr("Exit"), file_menu);
-	exit->setShortcut(Qt::CTRL + Qt::Key_Q);
+	exit->setShortcut(Qt::CTRL | Qt::Key_Q);
 
 	file_menu->addAction(import);
 	file_menu->addAction(save);
@@ -833,51 +832,51 @@ QMainWindow(parent)
 
 	QMenu *tool_menu = new QMenu(tr("Tool"));
 	QAction *add_skill = new QAction(tr("Add skill"), tool_menu);
-	add_skill->setShortcut(Qt::ALT + Qt::Key_S);
+	add_skill->setShortcut(Qt::ALT | Qt::Key_S);
 	connect(add_skill, SIGNAL(triggered()), this, SLOT(addSkill()));
 	tool_menu->addAction(add_skill);
 
 	QAction *remove_skill = new QAction(tr("Remove skill"), tool_menu);
-	remove_skill->setShortcut(Qt::ALT + Qt::Key_D);
+	remove_skill->setShortcut(Qt::ALT | Qt::Key_D);
 	connect(remove_skill, SIGNAL(triggered()), card_scene->getSkillBox(), SLOT(removeSkill()));
 	tool_menu->addAction(remove_skill);
 
 	QAction *edit_skill = new QAction(tr("Edit skill title ..."), tool_menu);
-	edit_skill->setShortcut(Qt::ALT + Qt::Key_E);
+	edit_skill->setShortcut(Qt::ALT | Qt::Key_E);
 	connect(edit_skill, SIGNAL(triggered()), this, SLOT(editSkill()));
 	tool_menu->addAction(edit_skill);
 
 	tool_menu->addSeparator();
 
 	QAction *making_big = new QAction(tr("Make big avatar"), tool_menu);
-	making_big->setShortcut(Qt::ALT + Qt::Key_B);
+	making_big->setShortcut(Qt::ALT | Qt::Key_B);
 	connect(making_big, SIGNAL(triggered()), card_scene, SLOT(makeBigAvatar()));
 	tool_menu->addAction(making_big);
 
 	QAction *making_small = new QAction(tr("Make small avatar"), tool_menu);
-	making_small->setShortcut(Qt::ALT + Qt::Key_M);
+	making_small->setShortcut(Qt::ALT | Qt::Key_M);
 	connect(making_small, SIGNAL(triggered()), card_scene, SLOT(makeSmallAvatar()));
 	tool_menu->addAction(making_small);
 
 	QAction *making_tiny = new QAction(tr("Make tiny avatar"), tool_menu);
-	making_tiny->setShortcut(Qt::ALT + Qt::Key_T);
+	making_tiny->setShortcut(Qt::ALT | Qt::Key_T);
 	connect(making_tiny, SIGNAL(triggered()), card_scene, SLOT(makeTinyAvatar()));
 	tool_menu->addAction(making_tiny);
 
 	QAction *hiding_rect = new QAction(tr("Hide avatar rect"), tool_menu);
-	hiding_rect->setShortcut(Qt::ALT + Qt::Key_H);
+	hiding_rect->setShortcut(Qt::ALT | Qt::Key_H);
 	connect(hiding_rect, SIGNAL(triggered()), card_scene, SLOT(hideAvatarRects()));
 	tool_menu->addAction(hiding_rect);
 
 	tool_menu->addSeparator();
 
 	QAction *reset_photo = new QAction(tr("Reset photo"), tool_menu);
-	reset_photo->setShortcut(Qt::ALT + Qt::Key_R);
+	reset_photo->setShortcut(Qt::ALT | Qt::Key_R);
 	connect(reset_photo, SIGNAL(triggered()), card_scene, SLOT(resetPhoto()));
 	tool_menu->addAction(reset_photo);
 
 	QAction *copy_photo = new QAction(tr("Copy photo to clipboard"), tool_menu);
-	copy_photo->setShortcut(Qt::CTRL + Qt::Key_C);
+	copy_photo->setShortcut(Qt::CTRL | Qt::Key_C);
 	connect(copy_photo, SIGNAL(triggered()), this, SLOT(copyPhoto()));
 	tool_menu->addAction(copy_photo);
 

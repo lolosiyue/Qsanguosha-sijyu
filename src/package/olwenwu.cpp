@@ -1014,7 +1014,7 @@ LiPackage::LiPackage()
 	jin_simayi->addSkill(new JinXiongzhi);
 	jin_simayi->addSkill(new JinQuanbian("jinquanbian"));
 	jin_simayi->addSkill(new JinQuanbianLimit("jinquanbian"));
-	related_skills.insertMulti("jinquanbian", "#jinquanbian-limit");
+	related_skills.insert("jinquanbian", "#jinquanbian-limit");
 
 	General *second_jin_simayi = new General(this, "second_jin_simayi", "jin", 3);
 	second_jin_simayi->addSkill("jinbuchen");
@@ -1022,7 +1022,7 @@ LiPackage::LiPackage()
 	second_jin_simayi->addSkill("jinxiongzhi");
 	second_jin_simayi->addSkill(new JinQuanbian("secondjinquanbian"));
 	second_jin_simayi->addSkill(new JinQuanbianLimit("secondjinquanbian"));
-	related_skills.insertMulti("secondjinquanbian", "#secondjinquanbian-limit");
+	related_skills.insert("secondjinquanbian", "#secondjinquanbian-limit");
 
 	General *jin_zhangchunhua = new General(this, "jin_zhangchunhua", "jin", 3, false);
 	jin_zhangchunhua->addSkill(new JinHuishi);
@@ -1037,7 +1037,7 @@ LiPackage::LiPackage()
 	jin_simazhou->addSkill(new JinCaiwang("jincaiwang"));
 	jin_simazhou->addSkill(new JinNaxiang);
 	jin_simazhou->addSkill(new JinNaxiangClear);
-	related_skills.insertMulti("jinnaxiang", "#jinnaxiang-clear");
+	related_skills.insert("jinnaxiang", "#jinnaxiang-clear");
 
 	General *second_jin_simazhou = new General(this, "second_jin_simazhou", "jin", 4);
 	second_jin_simazhou->addSkill(new JinCaiwang("secondjincaiwang"));
@@ -1054,7 +1054,7 @@ LiPackage::LiPackage()
 	ol_huaxin->addSkill(new Caozhao);
 	ol_huaxin->addSkill(new OLXibing);
 	ol_huaxin->addSkill(new OLXibingPro);
-	related_skills.insertMulti("olxibing", "#olxibing-pro");
+	related_skills.insert("olxibing", "#olxibing-pro");
 
 	addMetaObject<JinYingshiCard>();
 	addMetaObject<JinXiongzhiCard>();
@@ -2026,7 +2026,7 @@ BeiPackage::BeiPackage()
 	jin_simashi->addSkill(new JinYimieRecover);
 	jin_simashi->addSkill(new JinTairan);
 	jin_simashi->addSkill(new JinRuilve);
-	related_skills.insertMulti("jinyimie", "#jinyimie-recover");
+	related_skills.insert("jinyimie", "#jinyimie-recover");
 
 	General *jin_yanghuiyu = new General(this, "jin_yanghuiyu", "jin", 3, false);
 	jin_yanghuiyu->addSkill(new JinHuirong);
@@ -2037,8 +2037,8 @@ BeiPackage::BeiPackage()
 	jin_shibao->addSkill(new JinZhuosheng);
 	jin_shibao->addSkill(new JinZhuoshengTargetMod);
 	jin_shibao->addSkill(new JinZhuoshengRecord);
-	related_skills.insertMulti("jinzhuosheng", "#jinzhuosheng-target");
-	related_skills.insertMulti("jinzhuosheng", "#jinzhuosheng-record");
+	related_skills.insert("jinzhuosheng", "#jinzhuosheng-target");
+	related_skills.insert("jinzhuosheng", "#jinzhuosheng-record");
 
 	General *ol_ercheng = new General(this, "ol_ercheng", "wei", 6);
 	ol_ercheng->addSkill(new Tousui);
@@ -2826,7 +2826,7 @@ GuoPackage::GuoPackage()
 	jin_simazhao->addSkill(new JinZhaoran);
 	jin_simazhao->addSkill(new JinZhaoranEffect);
 	jin_simazhao->addSkill(new Skill("jinchengwu$", Skill::Compulsory));
-	related_skills.insertMulti("jinzhaoran", "#jinzhaoran-effect");
+	related_skills.insert("jinzhaoran", "#jinzhaoran-effect");
 
 	General *jin_wangyuanji = new General(this, "jin_wangyuanji", "jin", 3, false);
 	jin_wangyuanji->addSkill(new JinShiren);
@@ -2847,8 +2847,8 @@ GuoPackage::GuoPackage()
 	jin_xuangongzhu->addSkill(new JinQimeiEffect);
 	jin_xuangongzhu->addSkill(new JinZhuiji);
 	jin_xuangongzhu->addSkill(new JinZhuijiEffect);
-	related_skills.insertMulti("jinqimei", "#jinqimei-effect");
-	related_skills.insertMulti("jinzhuiji", "#jinzhuiji-effect");
+	related_skills.insert("jinqimei", "#jinqimei-effect");
+	related_skills.insert("jinzhuiji", "#jinzhuiji-effect");
 
 	addMetaObject<JinChoufaCard>();
 	addMetaObject<JinYanxiCard>();
@@ -3485,19 +3485,19 @@ JiePackage::JiePackage()
 	jin_zhongyan->addSkill(new JinBolan);
 	jin_zhongyan->addSkill(new JinYifa);
 	jin_zhongyan->addSkill(new JinYifaMax);
-	related_skills.insertMulti("jinyifa", "#jinyifa");
+	related_skills.insert("jinyifa", "#jinyifa");
 
 	General *jin_xinchang = new General(this, "jin_xinchang", "jin", 3);
 	jin_xinchang->addSkill(new JinCanmou);
 	jin_xinchang->addSkill(new JinCongjian);
 	jin_xinchang->addSkill(new JinCongjianEffect);
-	related_skills.insertMulti("jincongjian", "#jincongjian-effect");
+	related_skills.insert("jincongjian", "#jincongjian-effect");
 
 	General *jin_jiachong = new General(this, "jin_jiachong", "jin", 3);
 	jin_jiachong->addSkill(new JinXiongshu);
 	jin_jiachong->addSkill(new JinXiongshuEffect);
 	jin_jiachong->addSkill(new JinJianhui);
-	related_skills.insertMulti("jinxiongshu", "#jinxiongshu");
+	related_skills.insert("jinxiongshu", "#jinxiongshu");
 
 	General *jin_wangxiang = new General(this, "jin_wangxiang", "jin", 3);
 	jin_wangxiang->addSkill(new JinBingxin);
@@ -3894,7 +3894,7 @@ YuePackage::YuePackage()
 	jin_yangzhi->addSkill(new JinWanyi);
 	jin_yangzhi->addSkill(new JinWanyiLimit);
 	jin_yangzhi->addSkill(new JinMaihuo);
-	related_skills.insertMulti("jinwanyi", "#jinwanyi-limit");
+	related_skills.insert("jinwanyi", "#jinwanyi-limit");
 
 	addMetaObject<JinXuanbeiCard>();
 	addMetaObject<JinXianwanCard>();

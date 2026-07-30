@@ -111,7 +111,7 @@ bool IQSanComponentSkin::QSanSimpleTextFont::tryParse(const QVariant &args)
 
 bool IQSanComponentSkin::QSanShadowTextFont::tryParse(const QVariant &arg)
 {
-	if (!arg.isValid() || !arg.canConvert<JsonArray>()) return false;
+	if (!arg.isValid() || !JsonUtils::isArray(arg)) return false;
 	JsonArray args = arg.value<JsonArray>();
 	if (args.size() < 4) return false;
 	if (!QSanSimpleTextFont::tryParse(arg)) return false;
@@ -131,7 +131,7 @@ bool IQSanComponentSkin::QSanShadowTextFont::tryParse(const QVariant &arg)
 bool IQSanComponentSkin::isImageKeyDefined(const QString &key) const
 {
 	const QVariant &val = _m_imageConfig[key];
-	return val.canConvert<JsonArray>() || JsonUtils::isString(val);
+	return JsonUtils::isArray(val) || JsonUtils::isString(val);
 }
 
 void IQSanComponentSkin::QSanSimpleTextFont::paintText(QPainter *painter, QRect pos, Qt::Alignment align,
@@ -306,7 +306,7 @@ QPixmap QSanRoomSkin::getCardFramePixmap(const QString &frameType) const
 QPixmap QSanRoomSkin::getProgressBarPixmap(int percentile) const
 {
 	QVariant allMaps_var = _m_imageConfig[S_SKIN_KEY_PROGRESS_BAR_IMAGE];
-	if (allMaps_var.canConvert<JsonArray>()){
+	if (JsonUtils::isArray(allMaps_var)){
 		JsonArray allMaps = allMaps_var.value<JsonArray>();
 		for (int i = 0; i < allMaps.size(); i++) {
 			if (isNumber(allMaps[i].value<JsonArray>()[0])
@@ -650,7 +650,7 @@ bool IQSanComponentSkin::AnchoredRect::tryParse(const QVariant &var)
 	// [offsetX, offestY, sizeX, sizeY]
 	// [childAnchor, parentAnchor, [offsetX, offsetY]]
 	// [childAnchor, parentAnchor, [offsetX, offsetY], [sizeX, sizeY]]
-	if (!var.canConvert<JsonArray>()) return false;
+	if (!JsonUtils::isArray(var)) return false;
 	m_useFixedSize = false;
 	m_anchorChild = m_anchorParent = Qt::AlignLeft | Qt::AlignTop;
 	JsonArray value = var.value<JsonArray>();
@@ -744,8 +744,8 @@ QStringList IQSanComponentSkin::getAudioFileNames(const QString &key) const
 {
 	QStringList audios;
 	const QVariant &result = _m_audioConfig[key];
-	if (result.canConvert<JsonArray>()) tryParse(result, audios);
-	else if (JsonUtils::isString(result)) return QStringList(result.toString());
+	if (JsonUtils::isString(result)) return QStringList(result.toString());
+	if (JsonUtils::isArray(result)) tryParse(result, audios);
 	return audios;
 }
 
@@ -788,7 +788,7 @@ QString IQSanComponentSkin::_readImageConfig(const QString &key, QRect &rect,
 	QString result;
 	if (JsonUtils::isString(val)) {
 		result = val.toString();
-	} else if (val.canConvert<JsonArray>()) {
+	} else if (JsonUtils::isArray(val)) {
 		JsonArray arr = val.value<JsonArray>();
 		if (arr.size() >= 2 && JsonUtils::isString(arr[0]) && tryParse(arr[1], rect)) {
 			clipping = true;
@@ -1024,11 +1024,11 @@ QAbstractAnimation *QSanRoomSkin::createHuaShenAnimation(QPixmap &huashenAvatar,
 	animation->setLoopCount(2000);
 	int duration;
 	JsonArray huashenConfig = _m_animationConfig["huashen"].value<JsonArray>();
-	if (tryParse(huashenConfig[0], duration) && huashenConfig[1].canConvert<JsonArray>()) {
+	if (tryParse(huashenConfig[0], duration) && JsonUtils::isArray(huashenConfig[1])) {
 		animation->setDuration(duration);
 		JsonArray keyValues = huashenConfig[1].value<JsonArray>();
 		for (int i = 0; i < keyValues.size(); i++) {
-			if(keyValues[i].canConvert<JsonArray>()&&keyValues[i].value<JsonArray>().length()==2){
+			if(JsonUtils::isArray(keyValues[i])&&keyValues[i].value<JsonArray>().length()==2){
 				double step, val;
 				JsonArray keyArr = keyValues[i].value<JsonArray>();
 				if (tryParse(keyArr[0], step) && tryParse(keyArr[1], val))
@@ -1665,8 +1665,7 @@ void IQSanComponentSkin::drawHorizontalText(QPainter &painter, const QRect &rect
 	painter.save();
 
 	QFont actualFont = font;
-	QFontDatabase fontDb;
-	QStringList availableFonts = fontDb.families();
+	QStringList availableFonts = QFontDatabase::families();
 
 	if (!availableFonts.contains(font.family())) {
 		QStringList fallbackFonts;
@@ -1692,8 +1691,6 @@ void IQSanComponentSkin::drawHorizontalText(QPainter &painter, const QRect &rect
 
 	QFontMetrics fm(actualFont);
 	int textWidth = fm.horizontalAdvance(text);
-	int fontSize = actualFont.pointSize();
-
 	if (textWidth > rect.width()) {
 		int newSize = actualFont.pointSize() * rect.width() / textWidth;
 		if (newSize < 8) newSize = 8;
@@ -1720,8 +1717,7 @@ void IQSanComponentSkin::drawVerticalText(QPainter &painter, const QRect &rect,
 	painter.save();
 
 	QFont actualFont = font;
-	QFontDatabase fontDb;
-	QStringList availableFonts = fontDb.families();
+	QStringList availableFonts = QFontDatabase::families();
 
 	if (!availableFonts.contains(font.family())) {
 		QStringList fallbackFonts;

@@ -30,7 +30,8 @@ public:
         setSceneRect(Config.Rect);
         setRenderHints(QPainter::TextAntialiasing | QPainter::Antialiasing);
         QOpenGLWidget *glWidget = new QOpenGLWidget(this);
-        setViewport(glWidget); 
+        glWidget->setUpdateBehavior(QOpenGLWidget::PartialUpdate);
+        setViewport(glWidget);
         setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
     }
 

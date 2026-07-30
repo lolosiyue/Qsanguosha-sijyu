@@ -77,7 +77,8 @@ bool DoLuaScript(lua_State *L, const char *script)
 		lua_pop(L, 1);
         // A modal dialog makes headless test failures invisible and leaves the
         // process waiting forever.  Preserve GUI feedback outside headless mode.
-        if (qApp && qApp->arguments().contains("--headless"))
+        if (qApp && (qApp->arguments().contains("--headless")
+            || qApp->arguments().contains("--lua-test")))
             qCritical().noquote() << "Lua script error:" << script << error_msg;
         else
             QMessageBox::critical(nullptr, QObject::tr("Lua script error"), error_msg);

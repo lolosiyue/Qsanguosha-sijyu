@@ -1294,13 +1294,13 @@ ThicketPackage::ThicketPackage()
     General *xuhuang = new General(this, "xuhuang", "wei"); // WEI 010
     xuhuang->addSkill(new Duanliang);
     xuhuang->addSkill(new DuanliangTargetMod);
-    related_skills.insertMulti("duanliang", "#duanliang-target");
+    related_skills.insert("duanliang", "#duanliang-target");
 
     General *tenyear_xuhuang = new General(this, "tenyear_xuhuang", "wei", 4);
     tenyear_xuhuang->addSkill(new TenyearDuanliang);
     tenyear_xuhuang->addSkill(new TenyearDuanliangTargetMod);
     tenyear_xuhuang->addSkill(new TenyearJiezi);
-    related_skills.insertMulti("tenyearduanliang", "#tenyearduanliang-target");
+    related_skills.insert("tenyearduanliang", "#tenyearduanliang-target");
 
     General *caopi = new General(this, "caopi$", "wei", 3); // WEI 014
     caopi->addSkill(new Xingshang);
@@ -1323,7 +1323,7 @@ ThicketPackage::ThicketPackage()
     lusu->addSkill(new HaoshiViewAsSkill);
     lusu->addSkill(new HaoshiGive);
     lusu->addSkill(new Dimeng);
-    related_skills.insertMulti("haoshi", "#haoshi-give");
+    related_skills.insert("haoshi", "#haoshi-give");
 
     General *dongzhuo = new General(this, "dongzhuo$", "qun", 8); // QUN 006
     dongzhuo->addSkill(new Jiuchi);
@@ -1336,7 +1336,7 @@ ThicketPackage::ThicketPackage()
     jiaxu->addSkill(new WanshaLimit);
     jiaxu->addSkill(new Luanwu);
     jiaxu->addSkill(new Weimu);
-    related_skills.insertMulti("wansha", "#wansha-limit");
+    related_skills.insert("wansha", "#wansha-limit");
 
     General *shencaocao = new General(this, "shencaocao", "god", 3); // LE 005
     shencaocao->addSkill(new Guixin);
@@ -1352,7 +1352,7 @@ ThicketPackage::ThicketPackage()
     shenlvbu->addSkill(new Wumou);
     shenlvbu->addSkill(new Wuqian);
     shenlvbu->addSkill(new Shenfen);
-    related_skills.insertMulti("kuangbao", "#&wrath-2");
+    related_skills.insert("kuangbao", "#&wrath-2");
     addMetaObject<ShenfenCard>();
     addMetaObject<WuqianCard>();
 

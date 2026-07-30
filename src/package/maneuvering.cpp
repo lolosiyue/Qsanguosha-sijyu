@@ -298,7 +298,7 @@ SilverLion::SilverLion(Suit suit, int number)
 void SilverLion::onUninstall(ServerPlayer *player) const
 {
     EquipCard::onUninstall(player);
-	if (player->isAlive()&&player->hasArmorEffect(objectName(),false)&&player->isWounded()){
+	if (player->isAlive()&&player->hasArmorEffect(objectName(), nullptr, false)&&player->isWounded()){
 		Room *room = player->getRoom();
 		room->setEmotion(player, "armor/silver_lion");
 		room->notifySkillInvoked(player, objectName());

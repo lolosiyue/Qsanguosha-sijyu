@@ -4718,7 +4718,7 @@ MobileStStandardPackage::MobileStStandardPackage()
     mobile_zhangfei->addSkill("tenyearpaoxiao");
     mobile_zhangfei->addSkill(new MobileLiyong);
     mobile_zhangfei->addSkill(new MobileLiyongClear);
-    related_skills.insertMulti("mobileliyong", "#mobileliyong-clear");
+    related_skills.insert("mobileliyong", "#mobileliyong-clear");
 
     General *mobile_xiahoudun = new General(this, "mobile_xiahoudun", "wei", 4);
     mobile_xiahoudun->addSkill("ganglie");
@@ -4728,7 +4728,7 @@ MobileStStandardPackage::MobileStStandardPackage()
     mobile2_yuanshu->addSkill(new OlYongsi);
     mobile2_yuanshu->addSkill(new OlJixi);
     mobile2_yuanshu->addSkill(new OlJixiRecord);
-    related_skills.insertMulti("oljixi", "#oljixi");
+    related_skills.insert("oljixi", "#oljixi");
 
     addMetaObject<MobileQingjianCard>();
     addMetaObject<MobileQiangxiCard>();
@@ -4838,7 +4838,7 @@ MobileStMountainPackage::MobileStMountainPackage()
     mobile_liushan->addSkill(new MobileFangquan);
     mobile_liushan->addSkill(new MobileFangquanMax);
     mobile_liushan->addSkill("ruoyu");
-    related_skills.insertMulti("mobilefangquan", "#mobilefangquan-max");
+    related_skills.insert("mobilefangquan", "#mobilefangquan-max");
 
     General *mobile_jiangwei = new General(this, "mobile_jiangwei", "shu", 4);
     mobile_jiangwei->addSkill(new MobileTiaoxin);
@@ -4849,7 +4849,7 @@ MobileStMountainPackage::MobileStMountainPackage()
     mobile_dengai->addSkill(new MobileTuntian);
     mobile_dengai->addSkill(new MobileTuntianDistance);
     mobile_dengai->addSkill("zaoxian");
-    related_skills.insertMulti("mobiletuntian", "#mobiletuntian-dist");
+    related_skills.insert("mobiletuntian", "#mobiletuntian-dist");
 
     General *mobile_sunce = new General(this, "mobile_sunce$", "wu", 4);
     mobile_sunce->addSkill("jiang");
@@ -4895,10 +4895,10 @@ MobileStYJ2011Package::MobileStYJ2011Package()
     mobile_gaoshun->addSkill(new MobileJinjiu);
     mobile_gaoshun->addSkill(new MobileJinjiuLimit);
     mobile_gaoshun->addSkill(new MobileJinjiuEffect);
-    related_skills.insertMulti("mobilexianzhen", "#mobilexianzhen-clear");
-    related_skills.insertMulti("mobilexianzhen", "#mobilexianzhen-target");
-    related_skills.insertMulti("mobilejinjiu", "#mobilejinjiu-limit");
-    related_skills.insertMulti("mobilejinjiu", "#mobilejinjiu");
+    related_skills.insert("mobilexianzhen", "#mobilexianzhen-clear");
+    related_skills.insert("mobilexianzhen", "#mobilexianzhen-target");
+    related_skills.insert("mobilejinjiu", "#mobilejinjiu-limit");
+    related_skills.insert("mobilejinjiu", "#mobilejinjiu");
 
 }
 ADD_PACKAGE(MobileStYJ2011)
@@ -4915,7 +4915,7 @@ MobileStYJ2012Package::MobileStYJ2012Package()
     mobile_zhonghui->addSkill(new MobileQuanjiKeep);
     mobile_zhonghui->addSkill("zili");
     mobile_zhonghui->addRelateSkill("paiyi");
-    related_skills.insertMulti("mobilequanji", "#mobilequanji");
+    related_skills.insert("mobilequanji", "#mobilequanji");
 
     General *mobile_bulianshi = new General(this, "mobile_bulianshi", "wu", 3, false);
     mobile_bulianshi->addSkill(new MobileAnxu);
@@ -4929,7 +4929,7 @@ MobileStYJ2012Package::MobileStYJ2012Package()
     mobile_handang->addSkill(new MobileGongqi);
     mobile_handang->addSkill(new MobileGongqiAttack);
     mobile_handang->addSkill("jiefan");
-    related_skills.insertMulti("mobilegongqi", "#mobilegongqi-attack");
+    related_skills.insert("mobilegongqi", "#mobilegongqi-attack");
 
     General *mobile_gongsunzan = new General(this, "mobile_gongsunzan", "qun", 4);
     mobile_gongsunzan->addSkill(new MobileYicong);
@@ -4939,7 +4939,7 @@ MobileStYJ2012Package::MobileStYJ2012Package()
     mobile_liubiao->addSkill("olzishou");
     mobile_liubiao->addSkill(new MobileZongshi);
     mobile_liubiao->addSkill(new MobileZongshiKeep);
-    related_skills.insertMulti("mobilezongshi", "#mobilezongshi-keep");
+    related_skills.insert("mobilezongshi", "#mobilezongshi-keep");
 
 
 }
@@ -4952,7 +4952,7 @@ MobileStYJ2013Package::MobileStYJ2013Package()
     mobile_jianyong->addSkill(new MobileQiaoshui);
     mobile_jianyong->addSkill(new MobileQiaoshuiTargetMod);
     mobile_jianyong->addSkill(new MobileZongshih);
-    related_skills.insertMulti("mobileqiaoshui", "#mobileqiaoshui-target");
+    related_skills.insert("mobileqiaoshui", "#mobileqiaoshui-target");
 
     General *mobile_manchong = new General(this, "mobile_manchong", "wei", 3);
     mobile_manchong->addSkill(new MobileJunxing);
@@ -4961,7 +4961,7 @@ MobileStYJ2013Package::MobileStYJ2013Package()
     General *mobile_guohuai = new General(this, "mobile_guohuai", "wei", 4);
     mobile_guohuai->addSkill(new MobileJingce);
     mobile_guohuai->addSkill(new MobileJingceRecord);
-    related_skills.insertMulti("mobilejingce", "#mobilejingce-record");
+    related_skills.insert("mobilejingce", "#mobilejingce-record");
 
     General *mobile_zhuran = new General(this, "mobile_zhuran", "wu", 4);
     mobile_zhuran->addSkill(new MobileDanshou);
@@ -4983,7 +4983,7 @@ MobileStYJ2013Package::MobileStYJ2013Package()
     mobile_fuhuanghou->addSkill(new MobileZhuikong);
     mobile_fuhuanghou->addSkill(new MobileZhuikongProhibit);
     mobile_fuhuanghou->addSkill(new MobileQiuyuan);
-    related_skills.insertMulti("mobilezhuikong", "#mobilezhuikong");
+    related_skills.insert("mobilezhuikong", "#mobilezhuikong");
 
 
 
@@ -5003,8 +5003,8 @@ MobileStYJ2014Package::MobileStYJ2014Package()
     mobile_zhoucang->addSkill(new MobileZhongyong);
     mobile_zhoucang->addSkill(new MobileZhongyongEffect);
     mobile_zhoucang->addSkill(new MobileZhongyongRemove);
-    related_skills.insertMulti("mobilezhongyong", "#mobilezhongyong-effect");
-    related_skills.insertMulti("mobilezhongyong", "#mobilezhongyong-remove");
+    related_skills.insert("mobilezhongyong", "#mobilezhongyong-effect");
+    related_skills.insert("mobilezhongyong", "#mobilezhongyong-remove");
 
     General *mobile_caozhen = new General(this, "mobile_caozhen", "wei", 4);
     mobile_caozhen->addSkill(new MobileSidi);
@@ -5030,7 +5030,7 @@ MobileStYJ2014Package::MobileStYJ2014Package()
     mobile_jushou->addSkill(new MobileJianying);
     mobile_jushou->addSkill(new MobileJianyingTargetMod);
     mobile_jushou->addSkill("shibei");
-    related_skills.insertMulti("mobilejianying", "#mobilejianying-target");
+    related_skills.insert("mobilejianying", "#mobilejianying-target");
 
 
 }

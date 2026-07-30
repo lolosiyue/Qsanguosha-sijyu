@@ -3266,20 +3266,20 @@ OLQifuPackage::OLQifuPackage()
 	ol_baosanniang->addSkill(new OLXushen);
 	ol_baosanniang->addRelateSkill("olzhennan");
 	skills << new OLZhennan << new OLZhennanWuxiao;
-	related_skills.insertMulti("olzhennan", "#olzhennan-wuxiao");
+	related_skills.insert("olzhennan", "#olzhennan-wuxiao");
 	addMetaObject<OLZhennanCard>();
 
 	General*caoying = new General(this, "caoying*qifu", "wei", 4, false);
 	caoying->addSkill(new Lingren);
 	caoying->addSkill(new LingrenEffect);
 	caoying->addSkill(new Fujian);
-	related_skills.insertMulti("lingren", "#lingreneffect");
+	related_skills.insert("lingren", "#lingreneffect");
 
 	General*ol_caochun = new General(this, "ol_caochun*qifu", "wei", 4);
 	ol_caochun->addSkill("olshanjia");
 	ol_caochun->addSkill("#shanjia-record");
-	related_skills.insertMulti("olshanjia", "#shanjia-record");
-	related_skills.insertMulti("olshanjia", "#olshanjia-slash-ndl");
+	related_skills.insert("olshanjia", "#shanjia-record");
+	related_skills.insert("olshanjia", "#olshanjia-slash-ndl");
 
 	General*ol2_caochun = new General(this, "ol2_caochun*qifu", "wei", 4);
 	ol2_caochun->addSkill(new OL2Shanjia);
@@ -3289,7 +3289,7 @@ OLQifuPackage::OLQifuPackage()
 	xurong->addSkill(new Shajue);
 	xurong->addSkill(new Xionghuo);
 	xurong->addSkill(new XionghuoPro);
-	related_skills.insertMulti("xionghuo", "#xionghuopro");
+	related_skills.insert("xionghuo", "#xionghuopro");
 	addMetaObject<XionghuoCard>();
 
 	General*zhangqiying = new General(this, "zhangqiying*qifu", "qun", 3, false);
@@ -3331,7 +3331,7 @@ OLQifuPackage::OLQifuPackage()
 	fengfangnv->addRelateSkill("_qiongshu");
 	fengfangnv->addRelateSkill("_xishu");
 	fengfangnv->addRelateSkill("_jinshu");
-	related_skills.insertMulti("zhuangshu", "#zhuangshu");
+	related_skills.insert("zhuangshu", "#zhuangshu");
 
 	General*ol_jiangwan = new General(this, "ol_jiangwan*qifu", "shu", 3);
 	ol_jiangwan->addSkill(new Ziruo);
@@ -6269,7 +6269,7 @@ OLSpPackage::OLSpPackage()
 	ol_new_spmachao->addSkill(new OLNewZhuiji);
 	ol_new_spmachao->addSkill(new OLNewZhuijiBf);
 	ol_new_spmachao->addSkill(new NewShichou("olnewshichou"));
-	related_skills.insertMulti("olnewzhuiji", "#olnewzhuijibf");
+	related_skills.insert("olnewzhuiji", "#olnewzhuijibf");
 
 	General*sp_guanyu = new General(this, "sp_guanyu", "wei", 4); // SP 007
 	sp_guanyu->addSkill("wusheng");
@@ -6293,8 +6293,8 @@ OLSpPackage::OLSpPackage()
 	jsp_huangyy->addSkill(new Linglong);
 	jsp_huangyy->addSkill(new LinglongMax);
 	jsp_huangyy->addSkill(new LinglongTrigger);
-	related_skills.insertMulti("linglong", "#linglong-horse");
-	related_skills.insertMulti("linglong", "#linglong");
+	related_skills.insert("linglong", "#linglong-horse");
+	related_skills.insert("linglong", "#linglong");
 	addMetaObject<JiqiaoCard>();
 
 	General*new_sppangde = new General(this, "new_sppangde", "wei", 4);
@@ -6315,14 +6315,14 @@ OLSpPackage::OLSpPackage()
 	new_sp_jiaxu->addSkill(new ZhenlvePro);
 	new_sp_jiaxu->addSkill(new Jianshu);
 	new_sp_jiaxu->addSkill(new Yongdi);
-	related_skills.insertMulti("zhenlve", "#zhenlve-pro");
+	related_skills.insert("zhenlve", "#zhenlve-pro");
 	addMetaObject<JianshuCard>();
 
 	General*sp_caoren = new General(this, "sp_caoren", "wei", 4);
 	sp_caoren->addSkill(new Lizhan);
 	sp_caoren->addSkill(new Weikui);
 	sp_caoren->addSkill(new WeikuiBf);
-	related_skills.insertMulti("weikui", "#weikuibf");
+	related_skills.insert("weikui", "#weikuibf");
 	addMetaObject<LizhanCard>();
 	addMetaObject<WeikuiCard>();
 
@@ -6349,7 +6349,7 @@ OLSpPackage::OLSpPackage()
 	sp_zhangliao->addSkill(new Ziqu);
 	sp_zhangliao->addSkill(new Diaoling);
 	sp_zhangliao->addSkill(new DiaolingRecord);
-	related_skills.insertMulti("diaoling", "#diaoling-record");
+	related_skills.insert("diaoling", "#diaoling-record");
 	addMetaObject<MubingCard>();
 	addMetaObject<ZiquCard>();
 
@@ -28962,7 +28962,7 @@ public:
 			}
 		}else if(event==CardsMoveOneTime){
 			CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
-			if(move.to_place==Player::DiscardPile&&move.reason.m_skillName=="dismantlement"&&&move.reason.m_playerId==player->objectName()){
+			if(move.to_place==Player::DiscardPile&&move.reason.m_skillName=="dismantlement"&&move.reason.m_playerId==player->objectName()){
 				player->setMark("qianfuId",move.card_ids.last());
 			}
 		}else if(event==ChoiceMade){
@@ -29140,7 +29140,7 @@ OLCcxhPackage::OLCcxhPackage()
 	caosong->addSkill(new Lilu);
 	caosong->addSkill(new Yizhengc);
 	caosong->addSkill(new YizhengcEffect);
-	related_skills.insertMulti("yizhengc", "#yizhengc");
+	related_skills.insert("yizhengc", "#yizhengc");
 	addMetaObject<LiluCard>();
 
 	General*liuqi = new General(this, "liuqi*xh_tianji", "qun", 3);
@@ -29154,7 +29154,7 @@ OLCcxhPackage::OLCcxhPackage()
 	General*qinghegongzhu = new General(this, "qinghegongzhu*xh_tianji", "wei", 3, false);
 	qinghegongzhu->addSkill(new Zengou);
 	qinghegongzhu->addSkill(new Zhangji);
-	related_skills.insertMulti("zhangji", "#zhongzuo-record");
+	related_skills.insert("zhangji", "#zhongzuo-record");
 	qinghegongzhu->addSkill("#zhongzuo-record");
 
 	General*liuhong = new General(this, "liuhong*xh_tianji", "qun", 4);
@@ -29175,7 +29175,7 @@ OLCcxhPackage::OLCcxhPackage()
 	yangxiu->addSkill(new Jilei);
 	yangxiu->addSkill(new JileiClear);
 	yangxiu->addSkill(new Danlao);
-	related_skills.insertMulti("jilei", "#jilei-clear");
+	related_skills.insert("jilei", "#jilei-clear");
 
 	General*chengyu = new General(this, "chengyu*xh_sibi", "wei", 3);
 	chengyu->addSkill(new Shefu);
@@ -29221,17 +29221,17 @@ OLCcxhPackage::OLCcxhPackage()
 	kanze->addSkill(new Kuanshi("kuanshi"));
 	kanze->addSkill(new KuanshiMark("kuanshi"));
 	kanze->addSkill(new KuanshiEffect);
-	related_skills.insertMulti("kuanshi", "#kuanshi-mark");
-	related_skills.insertMulti("kuanshi", "#kuanshi-effect");
+	related_skills.insert("kuanshi", "#kuanshi-mark");
+	related_skills.insert("kuanshi", "#kuanshi-effect");
 	skills << new Kuanshi("tenyearkuanshi") << new KuanshiMark("tenyearkuanshi");
-	related_skills.insertMulti("tenyearkuanshi", "#tenyearkuanshi-mark");
+	related_skills.insert("tenyearkuanshi", "#tenyearkuanshi-mark");
 
 	General*xizhicai = new General(this, "xizhicai*xh_sibi", "wei", 3);
 	xizhicai->addSkill("tiandu");
 	xizhicai->addSkill(new Xianfu);
 	xizhicai->addSkill(new Chouce);
-	related_skills.insertMulti("xianfu", "#xianfu-target");
-	related_skills.insertMulti("chouce", "#chouce-judge");
+	related_skills.insert("xianfu", "#xianfu-target");
+	related_skills.insert("chouce", "#chouce-judge");
 
 	General*sunqian = new General(this, "sunqian*xh_sibi", "shu", 3);
 	sunqian->addSkill(new Qianya);
@@ -29253,7 +29253,7 @@ OLCcxhPackage::OLCcxhPackage()
 	shenpei->addSkill(new Gangzhi);
 	shenpei->addSkill(new Beizhan);
 	shenpei->addSkill(new BeizhanPro);
-	related_skills.insertMulti("beizhan", "#beizhan-prohibit");
+	related_skills.insert("beizhan", "#beizhan-prohibit");
 
 	General*xunchen = new General(this, "xunchen*xh_sibi", "qun", 3);
 	xunchen->addSkill(new Fenglve);
@@ -29281,9 +29281,9 @@ OLCcxhPackage::OLCcxhPackage()
 	duxi->addSkill(new Bixiong);
 	duxi->addSkill(new BixiongClear);
 	duxi->addSkill(new BixiongProhibit);
-	related_skills.insertMulti("quxi", "#quxi");
-	related_skills.insertMulti("bixiong", "#bixiong-clear");
-	related_skills.insertMulti("bixiong", "#bixiong-prohibit");
+	related_skills.insert("quxi", "#quxi");
+	related_skills.insert("bixiong", "#bixiong-clear");
+	related_skills.insert("bixiong", "#bixiong-prohibit");
 	addMetaObject<QuxiCard>();
 
 	General*ol_wangyun = new General(this, "ol_wangyun*xh_sibi", "qun", 4);
@@ -29291,7 +29291,7 @@ OLCcxhPackage::OLCcxhPackage()
 	ol_wangyun->addSkill(new OLMoucheng);
 	ol_wangyun->addSkill(new OLMouchengUse);
 	ol_wangyun->addRelateSkill("tenyearjingong");
-	related_skills.insertMulti("olmoucheng", "#olmoucheng-use");
+	related_skills.insert("olmoucheng", "#olmoucheng-use");
 	addMetaObject<OLLianjiCard>();
 
 	General*second_ol_wangyun = new General(this, "second_ol_wangyun", "qun", 4);
@@ -29299,15 +29299,15 @@ OLCcxhPackage::OLCcxhPackage()
 	second_ol_wangyun->addSkill(new SecondOLMoucheng);
 	second_ol_wangyun->addSkill(new SecondOLMouchengDamage);
 	second_ol_wangyun->addRelateSkill("tenyearjingong");
-	related_skills.insertMulti("secondolmoucheng", "#secondolmoucheng-damage");
+	related_skills.insert("secondolmoucheng", "#secondolmoucheng-damage");
 
 	General*ol_yangyi = new General(this, "ol_yangyi*xh_sibi", "shu", 3);
 	ol_yangyi->addSkill(new Juanxia("juanxia"));
 	ol_yangyi->addSkill(new JuanxiaSlash("juanxia"));
 	ol_yangyi->addSkill(new Dingcuo);
-	related_skills.insertMulti("juanxia", "#juanxia-slash");
+	related_skills.insert("juanxia", "#juanxia-slash");
 	skills << new Juanxia("tenyearjuanxia") << new JuanxiaSlash("tenyearjuanxia");
-	related_skills.insertMulti("tenyearjuanxia", "#tenyearjuanxia-slash");
+	related_skills.insert("tenyearjuanxia", "#tenyearjuanxia-slash");
 
 	General*xinpi = new General(this, "xinpi*xh_sibi", "wei", 3);
 	xinpi->addSkill(new Chijie);
@@ -29317,7 +29317,7 @@ OLCcxhPackage::OLCcxhPackage()
 	General*ol_chendeng = new General(this, "ol_chendeng*xh_sibi", "qun", 4);
 	ol_chendeng->addSkill(new OLFengji);
 	ol_chendeng->addSkill(new OLFengjiDraw);
-	related_skills.insertMulti("olfengji", "#olfengji-draw");
+	related_skills.insert("olfengji", "#olfengji-draw");
 
 	General*jin_yanghu = new General(this, "jin_yanghu*xh_sibi", "jin", 4);
 	jin_yanghu->addSkill(new JinHuaiyuan);
@@ -29326,9 +29326,9 @@ OLCcxhPackage::OLCcxhPackage()
 	jin_yanghu->addSkill(new JinHuaiyuanAttack);
 	jin_yanghu->addSkill(new JinChongxin);
 	jin_yanghu->addSkill(new JinDezhang);
-	related_skills.insertMulti("jinhuaiyuan", "#jinhuaiyuan");
-	related_skills.insertMulti("jinhuaiyuan", "#jinhuaiyuan-keep");
-	related_skills.insertMulti("jinhuaiyuan", "#jinhuaiyuan-attack");
+	related_skills.insert("jinhuaiyuan", "#jinhuaiyuan");
+	related_skills.insert("jinhuaiyuan", "#jinhuaiyuan-keep");
+	related_skills.insert("jinhuaiyuan", "#jinhuaiyuan-attack");
 	addMetaObject<JinChongxinCard>();
 	skills << new JinWeishu;
 
@@ -29336,7 +29336,7 @@ OLCcxhPackage::OLCcxhPackage()
 	dongzhao->addSkill(new Xianlve);
 	dongzhao->addSkill(new XianlveEffect);
 	dongzhao->addSkill(new Zaowang);
-	related_skills.insertMulti("xianlve", "#xianlve-effect");
+	related_skills.insert("xianlve", "#xianlve-effect");
 	addMetaObject<ZaowangCard>();
 
 
@@ -29359,7 +29359,7 @@ OLCcxhPackage::OLCcxhPackage()
 	yanbaihu->addSkill(new Zhidao);
 	yanbaihu->addSkill(new ZhidaoPro);
 	yanbaihu->addSkill(new SpJili);
-	related_skills.insertMulti("zhidao", "#zhidao-pro");
+	related_skills.insert("zhidao", "#zhidao-pro");
 
 
 	General*ol_fanchou = new General(this, "ol_fanchou*xh_tianzhu", "qun", 4);
@@ -29368,8 +29368,8 @@ OLCcxhPackage::OLCcxhPackage()
 	General*ol_tadun = new General(this, "ol_tadun*xh_tianzhu", "qun", 4);
 	ol_tadun->addSkill(new OLLuanzhan);
 	ol_tadun->addSkill(new OLLuanzhanTargetMod);
-	related_skills.insertMulti("olluanzhan", "#olluanzhan-target");
-	related_skills.insertMulti("olluanzhan", "#luanzhan-mark");
+	related_skills.insert("olluanzhan", "#olluanzhan-target");
+	related_skills.insert("olluanzhan", "#luanzhan-mark");
 	addMetaObject<OLLuanzhanCard>();
 	ol_tadun->addSkill("#luanzhan-mark");
 
@@ -29381,7 +29381,7 @@ OLCcxhPackage::OLCcxhPackage()
 	General*huangzu = new General(this, "huangzu*xh_tianzhu", "qun", 4);
 	huangzu->addSkill(new Wangong);
 	huangzu->addSkill(new WangongRecord);
-	related_skills.insertMulti("wangong", "#wangong-record");
+	related_skills.insert("wangong", "#wangong-record");
 
 	General*gaogan = new General(this, "gaogan*xh_tianzhu", "qun", 4);
 	gaogan->addSkill(new Juguan);
@@ -29419,11 +29419,11 @@ OLCcxhPackage::OLCcxhPackage()
 	dongbai->addSkill(new Lianzhu("lianzhu"));
 	dongbai->addSkill(new Xiahui("xiahui"));
 	dongbai->addSkill(new XiahuiClear("xiahui"));
-	related_skills.insertMulti("xiahui", "#xiahui-clear");
+	related_skills.insert("xiahui", "#xiahui-clear");
 	addMetaObject<LianzhuCard>();
 	addMetaObject<TenyearLianzhuCard>();
 	skills << new Lianzhu("tenyearlianzhu") << new Xiahui("tenyearxiahui") << new XiahuiClear("tenyearxiahui");
-	related_skills.insertMulti("tenyearxiahui", "#tenyearxiahui-clear");
+	related_skills.insert("tenyearxiahui", "#tenyearxiahui-clear");
 
 	General*ol_zhaoxiang = new General(this, "ol_zhaoxiang*xh_nvshi", "shu", 4, false);
 	ol_zhaoxiang->addSkill("olfanghun");
@@ -29436,7 +29436,7 @@ OLCcxhPackage::OLCcxhPackage()
 	second_huaman->addSkill(new SecondZhanyuan);
 	second_huaman->addSkill("#secondzhanyuan");
 	second_huaman->addRelateSkill("secondxili");
-	related_skills.insertMulti("secondzhanyuan", "#secondzhanyuan");
+	related_skills.insert("secondzhanyuan", "#secondzhanyuan");
 	addMetaObject<SecondMansiCard>();
 	skills << new SecondXili;
 
@@ -29465,7 +29465,7 @@ OLCcxhPackage::OLCcxhPackage()
 	beimihu->addSkill(new Baijia);
 	beimihu->addSkill(new BaijiaRecord);
 	beimihu->addRelateSkill("spcanshi");
-	related_skills.insertMulti("baijia", "#baijia");
+	related_skills.insert("baijia", "#baijia");
 	addMetaObject<SpCanshiCard>();
 	skills << new SpCanshi;
 
@@ -29497,8 +29497,8 @@ OLCcxhPackage::OLCcxhPackage()
 	zhangling->addSkill(new HuqiDistance);
 	zhangling->addSkill(new Shoufu);
 	zhangling->addSkill(new ShoufuLimit);
-	related_skills.insertMulti("huqi", "#huqi-distance");
-	related_skills.insertMulti("shoufu", "#shoufu-limit");
+	related_skills.insert("huqi", "#huqi-distance");
+	related_skills.insert("shoufu", "#shoufu-limit");
 	addMetaObject<ShoufuCard>();
 	addMetaObject<ShoufuPutCard>();
 
@@ -29507,8 +29507,8 @@ OLCcxhPackage::OLCcxhPackage()
 	huangchengyan->addSkill(new Yashi);
 	huangchengyan->addSkill(new YashiClear);
 	huangchengyan->addSkill(new YashiInvalidity);
-	related_skills.insertMulti("yashi", "#yashi");
-	related_skills.insertMulti("yashi", "#yashi-invalidity");
+	related_skills.insert("yashi", "#yashi");
+	related_skills.insert("yashi", "#yashi-invalidity");
 	addMetaObject<GuanxuCard>();
 	addMetaObject<GuanxuChooseCard>();
 	addMetaObject<GuanxuDiscardCard>();
@@ -29533,7 +29533,7 @@ OLCcxhPackage::OLCcxhPackage()
 	ol_dingfeng->addSkill(new OLDuanbing);
 	ol_dingfeng->addSkill(new OLFenxun);
 	ol_dingfeng->addSkill(new OLFenxunBf);
-	related_skills.insertMulti("olfenxun", "#olfenxunbf");
+	related_skills.insert("olfenxun", "#olfenxunbf");
 	addMetaObject<OLFenxunCard>();
 
 	General*zumao = new General(this, "zumao*xh_huben", "wu"); // SP 030
@@ -29564,7 +29564,7 @@ OLCcxhPackage::OLCcxhPackage()
 	huangquan->addSkill(new Dianhu);
 	huangquan->addSkill(new DianhuTarget);
 	huangquan->addSkill(new Jianji);
-	related_skills.insertMulti("dianhu*xh_huben", "#dianhu-target");
+	related_skills.insert("dianhu*xh_huben", "#dianhu-target");
 	addMetaObject<JianjiCard>();
 
 	General*quyi = new General(this, "quyi*xh_huben", "qun", 4);
@@ -29579,8 +29579,8 @@ OLCcxhPackage::OLCcxhPackage()
 	tangzi->addSkill(new Xingzhao("xingzhao"));
 	tangzi->addSkill(new XingzhaoXunxun("xingzhao"));
 	tangzi->addRelateSkill("xunxun");
-	related_skills.insertMulti("xingzhao", "#xingzhao-xunxun");
-	related_skills.insertMulti("tenyearxingzhao", "#tenyearxingzhao-xunxun");
+	related_skills.insert("xingzhao", "#xingzhao-xunxun");
+	related_skills.insert("tenyearxingzhao", "#tenyearxingzhao-xunxun");
 	skills << new Xingzhao("tenyearxingzhao") << new XingzhaoXunxun("tenyearxingzhao");
 
 	General*sufei = new General(this, "sufei*xh_huben", "wu", 4);
@@ -29609,20 +29609,20 @@ OLCcxhPackage::OLCcxhPackage()
 	General*ol_zhuling = new General(this, "ol_zhuling*xh_huben", "wei", 4);
 	ol_zhuling->addSkill(new JixianZL);
 	ol_zhuling->addSkill(new JixianZLEffect);
-	related_skills.insertMulti("jixianzl", "#jixianzl");
+	related_skills.insert("jixianzl", "#jixianzl");
 
 	General*tianyu = new General(this, "tianyu*xh_huben", "wei", 4);
 	tianyu->addSkill(new Saodi);
 	tianyu->addSkill(new Zhuitao);
 	tianyu->addSkill(new ZhuitaoDistance);
-	related_skills.insertMulti("zhuitao", "#zhuitao");
+	related_skills.insert("zhuitao", "#zhuitao");
 
 	General*zhaoyanw = new General(this, "zhaoyanw*xh_huben", "wei", 4);
 	zhaoyanw->addSkill(new Tongxie);
 	zhaoyanw->addSkill(new TongxieEffect);
 	zhaoyanw->addSkill(new TongxieTargetMod);
-	related_skills.insertMulti("tongxie", "#tongxie");
-	related_skills.insertMulti("tongxie", "#tongxie-target");
+	related_skills.insert("tongxie", "#tongxie");
+	related_skills.insert("tongxie", "#tongxie-target");
 
 	General*dengzhong = new General(this, "dengzhong*xh_huben", "wei", 4);
 	dengzhong->addSkill(new KanpoDZ);
@@ -29649,14 +29649,14 @@ OLCcxhPackage::OLCcxhPackage()
 	mizhu->addSkill(new Ziyuan);
 	mizhu->addSkill(new Jugu);
 	mizhu->addSkill(new JuguMax);
-	related_skills.insertMulti("jugu", "#jugu-max");
+	related_skills.insert("jugu", "#jugu-max");
 	addMetaObject<ZiyuanCard>();
 
 	General*weizi = new General(this, "weizi*leisi", "qun", 3);
 	weizi->addSkill(new Yuanzi);
 	weizi->addSkill(new YuanziDraw);
 	weizi->addSkill(new Liejie);
-	related_skills.insertMulti("yuanzi", "#yuanzi");
+	related_skills.insert("yuanzi", "#yuanzi");
 
 	General*zhangshiping = new General(this, "zhangshiping*leisi", "shu", 3);
 	zhangshiping->addSkill(new Hongji);
@@ -30579,7 +30579,7 @@ GodPackage::GodPackage()
 	shencaopi->addRelateSkill("tenyearzhiheng");
 	shencaopi->addRelateSkill("olluanji");
 	shencaopi->addRelateSkill("olfangquan");
-	related_skills.insertMulti("chuyuan", "#chuyuan-keep");
+	related_skills.insert("chuyuan", "#chuyuan-keep");
 
 	General*shenzhenji = new General(this, "shenzhenji", "god", 3, false);
 	shenzhenji->addSkill(new Shenfu);

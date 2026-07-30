@@ -280,7 +280,7 @@ Shuibojian::Shuibojian(Suit suit, int number)
 
 void Shuibojian::onUninstall(ServerPlayer*player) const
 {
-    if (player->isAlive() && player->hasWeapon(objectName(), false)){
+    if (player->isAlive() && player->hasWeapon(objectName(), nullptr, false)){
 		Room*room = player->getRoom();
 		if (player->isWounded()) {
 			LogMessage log;
@@ -1424,6 +1424,6 @@ ExclusiveCardsPackage::ExclusiveCardsPackage()
 
     skills << new ExclusiveEquipSkill;
 
-    related_skills.insertMulti("_liecuidao", "#_liecuidao-target");
+    related_skills.insert("_liecuidao", "#_liecuidao-target");
 }
 ADD_PACKAGE(ExclusiveCards)

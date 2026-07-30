@@ -2085,7 +2085,7 @@ LeiPackage::LeiPackage()
     General *chendao = new General(this, "chendao", "shu", 4);
     chendao->addSkill(new Wanglie);
     chendao->addSkill(new WanglieMod);
-    related_skills.insertMulti("wanglie", "#wangliemod");
+    related_skills.insert("wanglie", "#wangliemod");
 
     General *zhugezhan = new General(this, "zhugezhan", "shu", 3);
     zhugezhan->addSkill(new Zuilun);
@@ -2102,14 +2102,14 @@ LeiPackage::LeiPackage()
     lei_lukang->addSkill(new Jueyan);
     lei_lukang->addSkill(new JueyanTargetMod);
     lei_lukang->addSkill(new Poshi);
-    related_skills.insertMulti("qianjie", "#qianjie-chain");
-    related_skills.insertMulti("qianjie", "#qianjiepindianpro");
-    related_skills.insertMulti("jueyan", "#jueyantargetmod");
+    related_skills.insert("qianjie", "#qianjie-chain");
+    related_skills.insert("qianjie", "#qianjiepindianpro");
+    related_skills.insert("jueyan", "#jueyantargetmod");
 
     General *haozhao = new General(this, "haozhao", "wei", 4);
     haozhao->addSkill(new Zhengu);
     haozhao->addSkill(new ZhenguEffect);
-    related_skills.insertMulti("zhengu", "#zhengueffect");
+    related_skills.insert("zhengu", "#zhengueffect");
 
     General *guanqiujian = new General(this, "guanqiujian", "wei", 4);
     guanqiujian->addSkill(new Zhengrong);
@@ -2127,15 +2127,15 @@ LeiPackage::LeiPackage()
     lei_yuanshu->addSkill(new Leiyongsi);
     lei_yuanshu->addSkill(new LeiyongsiMaxCards);
     lei_yuanshu->addSkill(new Leiweidi);
-    related_skills.insertMulti("leiyongsi", "#leiyongsimaxmards");
+    related_skills.insert("leiyongsi", "#leiyongsimaxmards");
 
     General *zhangxiu = new General(this, "zhangxiu", "qun", 4);
     zhangxiu->addSkill(new Congjian);
     zhangxiu->addSkill(new Xiongluan);
     zhangxiu->addSkill(new XiongluanTargetMod);
     zhangxiu->addSkill(new XiongluanLimit);
-    related_skills.insertMulti("xiongluan", "#xiongluan-target");
-    related_skills.insertMulti("xiongluan", "#xiongluan-limit");
+    related_skills.insert("xiongluan", "#xiongluan-target");
+    related_skills.insert("xiongluan", "#xiongluan-limit");
 
     General *shenzhangliao = new General(this, "shenzhangliao", "god");
     shenzhangliao->addSkill(new Duorui);
@@ -2143,17 +2143,17 @@ LeiPackage::LeiPackage()
     shenzhangliao->addSkill(new DuoruiInvalidity);
     shenzhangliao->addSkill(new Zhiti);
     shenzhangliao->addSkill(new ZhitiEffect);
-    related_skills.insertMulti("duorui", "#duorui-clear");
-    related_skills.insertMulti("duorui", "#duorui-inv");
-    related_skills.insertMulti("zhiti", "#zhiti-effect");
+    related_skills.insert("duorui", "#duorui-clear");
+    related_skills.insert("duorui", "#duorui-inv");
+    related_skills.insert("zhiti", "#zhiti-effect");
 
     General *ol_shenzhangliao = new General(this, "ol_shenzhangliao", "god");
     ol_shenzhangliao->addSkill(new OLDuorui);
     ol_shenzhangliao->addSkill(new OLDuoruiClear);
     ol_shenzhangliao->addSkill(new OLZhiti);
     ol_shenzhangliao->addSkill(new OLZhitiEffect);
-    related_skills.insertMulti("olduorui", "#olduorui-clear");
-    related_skills.insertMulti("olzhiti", "#olzhiti-effect");
+    related_skills.insert("olduorui", "#olduorui-clear");
+    related_skills.insert("olzhiti", "#olzhiti-effect");
 
     General *shenganning = new General(this, "shenganning", "god", 6, true, false, false, 3);
     shenganning->addSkill(new Poxi);
@@ -2161,9 +2161,9 @@ LeiPackage::LeiPackage()
     shenganning->addSkill(new jieyinggEffect);
     shenganning->addSkill(new JieyinggKeep);
     shenganning->addSkill(new JieyinggTargetMod);
-    related_skills.insertMulti("jieyingg", "#jieyingg-effect");
-    related_skills.insertMulti("jieyingg", "#jieyingg-keep");
-    related_skills.insertMulti("jieyingg", "#jieyingg-target");
+    related_skills.insert("jieyingg", "#jieyingg-effect");
+    related_skills.insert("jieyingg", "#jieyingg-keep");
+    related_skills.insert("jieyingg", "#jieyingg-target");
     addMetaObject<PoxiCard>();
     addMetaObject<PoxiDisCard>();
 
