@@ -35,11 +35,7 @@ An open-source clone of the popular board game _Sanguosha_, built with C++ and t
 ### Build Steps
 
 ```powershell
-# Using the release build script
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-release.ps1
-
-# Or build the .pro file directly with qmake
-# (requires Qt bin directory in PATH)
+# Build the .pro file with qmake (requires Qt bin directory in PATH)
 qmake QSanguosha.pro
 nmake release
 ```
