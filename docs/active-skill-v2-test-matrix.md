@@ -13,7 +13,7 @@
 | malformed provenance | 同上 | 通過；拒絕 payload |
 | Play／pure response 的 V2 early-exit 與控制事件收束 | `Room::useCard()`、`Room::askForCard()` | 已整合；pay/cancel 釋放未提交 reservation；`StageChange`／`TurnBroken` 發 `Finished(NoResult)` 最多一次並重新拋出原控制事件 |
 | Lua `n`／`response_or_use`／`expand_pile`／dialog／`base_amount`／`get_usage_ref` smoke 與 Room 初始化 | `lua/test/examples/test_active_skill_v2_usage_ref.lua` | 待執行；驗證 ViewAs factory 欄位（含裸名稱、`#`、`%`、`/` 前綴字串與三種 dialog）、amount 優先序與 usage ref；assertion 失敗必須回傳非零 |
-| 全專案 C++／SWIG 整合 | `tools/build-release.ps1` Release x64 | Ticket 13 修改後待執行（本機沒有 qmake／C++ 編譯器） |
+| 全專案 C++／SWIG 整合 | `tools/build-release.ps1` Release x64 | 2026-07-30 已以 CMake／MSVC 2019 建置通過；SWIG wrapper 時效檢查通過 |
 
 ## `~test` 手動整合場景
 
@@ -54,7 +54,7 @@
 
 ## 目前限制與後續票據
 
-- Ticket 13 已完成核心與測試 fixture，但尚未執行工具鏈：`getUsageRef(ctx)` 已將配額所屬實例集中為單一策略入口；source sharing、nested reservation、pay/cancel release、bypass commit、reset、Custom 邊界及控制事件收束均已有代碼／案例。在 Release x64 與 Room lifecycle 實測前，不得宣稱整合測試通過。
+- Ticket 13 已完成核心與測試 fixture；`getUsageRef(ctx)` 已將配額所屬實例集中為單一策略入口，source sharing、nested reservation、pay/cancel release、bypass commit、reset、Custom 邊界及控制事件收束均已有代碼／案例。2026-07-30 的 Release x64 CMake 建置已通過；Room lifecycle、console 與 Lua smoke 仍待實跑，因此不得宣稱端到端整合測試通過。
 - 通用 `ActiveSkillCard` 已在 client target preview 委派 V2 `canSelectTarget()`／`targetsFeasible()`；request-aware V2 AI selection／target 結果亦已存在。目前缺口是實跑 `active_skill_v2_proxy_ui_test`，並把上述 lifecycle 場景納入可重複執行的 Room 端到端測試。
 - Lua smoke 仍需在實際 Room 對局中執行；目前未自動化其 lifecycle 場景。
 - 上述 smoke 僅驗證 Lua factory／enum 與 Room 初始化；不代表 Lua V2 技能已被 AI 啟動或完成 lifecycle。

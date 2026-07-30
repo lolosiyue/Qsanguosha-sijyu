@@ -377,7 +377,7 @@ struct SkillChangeStruct {
 ## 8. 編譯驗收
 
 ```powershell
-& 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\MSBuild\Current\Bin\MSBuild.exe' 'L:\finaldebug\QSanguosha-v2\QSanguosha.sln' /t:Build /p:Configuration=Release /p:Platform=x64 /m /verbosity:minimal
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-release.ps1
 ```
 
 預期輸出：

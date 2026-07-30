@@ -1,7 +1,7 @@
 # 跨平台現代化與功能移植計劃 (Cross-Platform Modernization Plan)
 
 - Status: Approved Plan
-- Implementation: Qt 6 qmake compatibility slice completed; full roadmap remains pending
+- Implementation: M1 In Progress
 - Last Updated: 2026-07-30
 - **規範性**：本文件是跨平台現代化與另一分支通用功能移植的唯一權威執行計劃；與既有 roadmap 或審計結論衝突時，以本文件為準。
 
@@ -21,8 +21,6 @@
 | 不移植 | 武將／卡牌／擴充包內容、Trainer、LLM 伴侶、武將立繪編輯器、舊 MinGW 工作樹部署、未實作的遊戲記錄草案 |
 
 ## 2. 交付平台與技術基線
-
-> 2026-07-30 實作註記：目前已先以本機可用且成對的 Qt 6.5.3 `mingw_64` 與 MinGW 11.2 完成 Qt 6-only qmake 移植。程式碼不再保留 Qt 5 條件編譯或回歸入口。下表仍是完整現代化路線的未來固定基線，不代表 CMake、MSVC Qt kit 或 Lua 5.4 已完成。詳細結果見 [Qt 6 移植紀錄](qt6-port.md)。
 
 | 平台 | 交付範圍 | 音訊後端 |
 |---|---|---|
@@ -60,7 +58,7 @@
 | `crashreporter` | Windows 純 Win32／DbgHelp 診斷工具 |
 | CTest targets | 單元、整合、Lua、自動對戰及性能測試 |
 
-CMake 必須啟用 AUTOMOC、AUTOUIC、AUTORCC，管理資源、翻譯、安裝規則與平台條件來源。後續 CMake 骨架直接以現行 Qt 6 行為為對照，不再建立或維護 Qt 5 建置；完成 Lua 5.4／MSVC Qt kit 遷移後再移除 qmake、舊 `.sln`／`.vcxproj` 及舊 Makefile 入口。
+CMake 必須啟用 AUTOMOC、AUTOUIC、AUTORCC，管理資源、翻譯、安裝規則與平台條件來源。2026-07-30 已先完成 Windows x64 過渡建置：CMake 3.28+、Qt 6.5.3、MSVC 2019、單一 `QSanguosha` target，並移除 qmake、舊 `.sln`／`.vcxproj` 及舊 Makefile 入口。此過渡建置已通過 Debug／Release，保留既有 FMOD、Breakpad、SWIG、翻譯與輸出路徑；尚未完成 `qsanguosha_engine` 邊界，也不取代最終 Qt 6.11.1／MSVC 2022／Lua 5.4.8 基線。
 
 ### 3.1 引擎與 GUI 解耦
 
@@ -218,12 +216,12 @@ Android 固定橫向顯示，處理安全區、Android 返回鍵、虛擬鍵盤�
 
 ## 10. 里程碑與合併門檻
 
-所有里程碑目前均為 **Not Started**。下列順序是依賴順序，不表示任何項目已完成。
+M1 已進入實作，但只完成 Windows CMake 過渡建置；其餘里程碑仍為 **Not Started**。
 
 | 里程碑 | 狀態 | 主要交付 | 合併門檻 |
 |---|---|---|---|
 | M0 | Not Started | 建立可重現的現況基線、測試清單與資產盤點 | 現有 Windows 行為、協定與重播樣本可重現；無功能性改動 |
-| M1 | Not Started | 建立 CMake 骨架與 `qsanguosha_engine` 邊界 | Windows GUI 與既有建置結果可對照；不移除舊建置入口 |
+| M1 | In Progress | Windows CMake 過渡建置已完成；`qsanguosha_engine` 邊界待建立 | Windows GUI 與既有建置結果可對照；引擎／GUI 依賴邊界完成 |
 | M2 | Not Started | Qt 6.11.1、MSVC 2022 與 Lua 5.4.8 遷移 | Windows GUI、server、Lua/SWIG 及 CTest 全數通過 |
 | M3 | Not Started | `SkillDialogInfo`、選包白名單、確定性 RNG | 相同種子、輸入與包集合產生相同結果；白名單不可由客戶端繞過 |
 | M4 | Not Started | 協定與重播版本化、相容性拒絕路徑 | 新舊版本差異可診斷；不支援版本被明確拒絕而非靜默誤讀 |

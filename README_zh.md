@@ -4,6 +4,25 @@
 
 本项目是一個基於 C++ 和 Qt 框架的開源三國殺克隆版。定位類似於 **Minecraft 的整合包 (Modpack)**，重心在於海量 AI 擴展的大雜燴亂鬥。
 
+## 🛠️ 建置環境
+
+- **語言標準**：C++17
+- **Qt**：6.5.3 (`msvc2019_64`)
+- **編譯器**：MSVC 2019 x64
+- **建置系統**：CMake 3.28+
+
+```powershell
+$env:QTDIR = 'C:\Qt\6.5.3\msvc2019_64'
+C:\Qt\Tools\CMake_64\bin\cmake.exe --preset vs2019-x64
+C:\Qt\Tools\CMake_64\bin\cmake.exe --build --preset release
+```
+
+或使用統一腳本：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-cmake.ps1 -Configuration Release
+```
+
 ## 🚀 核心特性
 
 ### 🖥️ 技術演進
@@ -23,28 +42,7 @@
 - **加權目標選擇**: 根據動態威脅分數（Threat Score）選擇最佳目標。
 - **情境感知策略**: 包含合縱判斷及根據主公選將動態調整身份策略。
 
-## 🛠️ 編譯方式
-
-### 環境需求
-
-- **Qt**: 6.5.3 (msvc2022_64)
-- **編譯器**: MSVC 2022 (Visual Studio 2022)
-- **Qt/MSBuild 工具組**: 3.5.0.0
-
-### 編譯步驟
-
-```powershell
-# 直接使用 qmake 編譯 .pro 檔 (需先將 Qt bin 目錄加入 PATH)
-qmake QSanguosha.pro
-nmake release
-```
-
-### 輸出位置
-
-- 執行檔：`release\QSanguosha.exe`
-- lib 檔：`release\QSanguosha.lib`
-
 ## 📜 致謝與聲明
 
 - **版權尊重**: 若您是原作者且不希望作品被包含，請告知，將立即刪除。
-- **穩定性提示**: 作為"大雜燴"版本，閃退頻率可能較高，建議高配置硬體游玩。
+- **穩定性提示**: 作為“大雜燴”版本，閃退頻率可能較高，建議高配置硬體游玩。
