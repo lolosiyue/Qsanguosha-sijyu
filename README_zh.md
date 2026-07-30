@@ -34,11 +34,7 @@
 ### 編譯步驟
 
 ```powershell
-# 使用編譯腳本
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-release.ps1
-
-# 或直接使用 qmake 編譯 .pro 檔
-# (需先將 Qt bin 目錄加入 PATH)
+# 直接使用 qmake 編譯 .pro 檔 (需先將 Qt bin 目錄加入 PATH)
 qmake QSanguosha.pro
 nmake release
 ```
