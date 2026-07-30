@@ -172,6 +172,7 @@ void Settings::init()
     BackgroundImage = value("BackgroundImage", "image/system/backdrop/new-version.jpg").toString();
 
     BubbleChatBoxKeepTime = value("BubbleChatboxKeepTime", 2000).toInt();
+    UIScale = qBound(1.0, value("UIScale", 1.0).toDouble(), 2.0);
 
 
     //hulao_ban = GetConfigFromLuaState(lua, "hulao_ban").toStringList();

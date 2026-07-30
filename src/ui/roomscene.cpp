@@ -479,6 +479,8 @@ RoomScene::RoomScene(QMainWindow*main_window)
 
 	m_tableBg = new QGraphicsPixmapItem;
 	m_tableBg->setZValue(-1);
+	m_tableBg->setTransformationMode(Qt::SmoothTransformation);
+	m_pixmapDeviceScale = 1.0;
 
 	addItem(m_tableBg);
 
@@ -489,8 +491,10 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	skill_dock_layout->setContentsMargins(margins);
 	skill_dock_layout->addStretch();
 
-	m_rolesBoxBackground.load("image/system/state.png");
+	m_rolesBoxBackgroundOrig = G_ROOM_SKIN.getPixmapFromFileName("image/system/state.png", true);
+	m_rolesBoxBackground = m_rolesBoxBackgroundOrig;
 	m_rolesBox = new QGraphicsPixmapItem;
+	m_rolesBox->setTransformationMode(Qt::SmoothTransformation);
 	addItem(m_rolesBox);
 	QString roles = Sanguosha->getRoles(ServerInfo.GameMode);
 	m_pileCardNumInfoTextBox = addText("");
@@ -1230,17 +1234,36 @@ void RoomScene::adjustItems()
 	// update the sizes since we have reloaded the skin.
 	_getSceneSizes(minSize,maxSize);
 
-	if(displayRegion.left()!=0||displayRegion.top()!=0
-		|| displayRegion.bottom() < minSize.height()
-		|| displayRegion.right() < minSize.width()){
-		displayRegion.setLeft(0);displayRegion.setTop(0);
-		double sy = minSize.height()/displayRegion.height();
-		double sx = minSize.width()/displayRegion.width();
-		double scale = qMax(sx,sy);
-		displayRegion.setBottom(scale*displayRegion.height());
-		displayRegion.setRight(scale*displayRegion.width());
-		setSceneRect(displayRegion);
+	// Clamp the logical scene between the skin's design bounds. A smaller
+	// logical scene is enlarged by FitView; UIScale interpolates from native
+	// 1:1 rendering to that full fit without changing layout coordinates.
+	double sceneScale = 1.0;
+	if (displayRegion.width() > 0.0 && displayRegion.height() > 0.0) {
+		const double width = displayRegion.width();
+		const double height = displayRegion.height();
+		const double minimumScale = qMax(minSize.width() / width, minSize.height() / height);
+		double scale = qMax(minimumScale, 1.0);
+		if (maxSize.isValid()) {
+			const double maximumScale = qMin(maxSize.width() / width, maxSize.height() / height);
+			scale = qMax(minimumScale, qMin(1.0, maximumScale));
+		}
+
+		if (scale < 1.0 && Config.UIScale < 2.0) {
+			const double fullMagnification = 1.0 / scale;
+			const double magnification = 1.0
+				+ (Config.UIScale - 1.0) * (fullMagnification - 1.0);
+			scale = 1.0 / magnification;
+		}
+
+		sceneScale = scale;
+		if (!qFuzzyCompare(scale, 1.0)
+			|| !qFuzzyIsNull(displayRegion.left()) || !qFuzzyIsNull(displayRegion.top())) {
+			displayRegion = QRectF(0.0, 0.0, width * scale, height * scale);
+			setSceneRect(displayRegion);
+		}
 	}
+	m_pixmapDeviceScale = qBound(1.0,
+		main_window->devicePixelRatioF() / sceneScale, 4.0);
 
 	_calculateDynamicPhotoSize();
 
@@ -1260,7 +1283,9 @@ void RoomScene::adjustItems()
 	_m_infoPlane.moveRight(displayRegion.right());
 	_m_infoPlane.setTop(displayRegion.top()+_m_roomLayout->m_roleBoxHeight);
 	_m_infoPlane.setBottom(displayRegion.bottom()-dashboard->getAvatarAreaSceneBoundingRect().height()-_m_roomLayout->m_chatTextBoxHeight);
-	m_rolesBoxBackground = m_rolesBoxBackground.scaled(_m_infoPlane.width(),_m_roomLayout->m_roleBoxHeight);
+	m_rolesBoxBackground = scaledPixmapForDevice(m_rolesBoxBackgroundOrig,
+		QSize(qRound(_m_infoPlane.width()), _m_roomLayout->m_roleBoxHeight),
+		m_pixmapDeviceScale);
 	m_rolesBox->setPixmap(m_rolesBoxBackground);
 	m_rolesBox->setPos(_m_infoPlane.left(),displayRegion.top());
 
@@ -1288,7 +1313,8 @@ void RoomScene::adjustItems()
 	if(m_tableBgPixmapOrig.width()==1||m_tableBgPixmapOrig.height()==1)
 		m_tableBgPixmapOrig = G_ROOM_SKIN.getPixmap(QSanRoomSkin::S_SKIN_KEY_TABLE_BG);
 
-	m_tableBgPixmap = m_tableBgPixmapOrig.scaled(m_tablew,m_tableh,Qt::IgnoreAspectRatio,Qt::SmoothTransformation);
+	m_tableBgPixmap = scaledPixmapForDevice(m_tableBgPixmapOrig,
+		QSize(m_tablew, m_tableh), m_pixmapDeviceScale);
 
 	m_tableBg->setPos(0,0);
 	m_tableBg->setPixmap(m_tableBgPixmap);
@@ -5258,7 +5284,9 @@ void RoomScene::onGameStart()
 				// we treat this condition as error and do not use it
 			} else {
 				m_tableBgPixmapOrig = pixmap;
-				m_tableBgPixmap = pixmap.scaled(m_tablew,m_tableh+_m_roomLayout->m_photoDashboardPadding,Qt::IgnoreAspectRatio,Qt::SmoothTransformation);
+				m_tableBgPixmap = scaledPixmapForDevice(pixmap,
+					QSize(m_tablew, m_tableh + _m_roomLayout->m_photoDashboardPadding),
+					m_pixmapDeviceScale);
 				m_tableBg->setPixmap(m_tableBgPixmap);
 			}
 		}
@@ -5357,7 +5385,9 @@ void RoomScene::changeTableBg(const QString&tableBg)
 		// we treat this condition as error and do not use it
 	} else {
 		m_tableBgPixmapOrig = pixmap;
-		m_tableBgPixmap = pixmap.scaled(m_tablew,m_tableh+_m_roomLayout->m_photoDashboardPadding,Qt::IgnoreAspectRatio,Qt::SmoothTransformation);
+		m_tableBgPixmap = scaledPixmapForDevice(pixmap,
+			QSize(m_tablew, m_tableh + _m_roomLayout->m_photoDashboardPadding),
+			m_pixmapDeviceScale);
 		m_tableBg->setPixmap(m_tableBgPixmap);
 	}
 }
@@ -5771,7 +5801,9 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
         QPixmap pixmap = G_ROOM_SKIN.getPixmap("image/system/backdrop/" + bg);
         if (pixmap.width() > 1 && pixmap.height() > 1) {
             m_tableBgPixmapOrig = pixmap;
-            m_tableBgPixmap = pixmap.scaled(m_tablew, m_tableh + _m_roomLayout->m_photoDashboardPadding, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+			m_tableBgPixmap = scaledPixmapForDevice(pixmap,
+				QSize(m_tablew, m_tableh + _m_roomLayout->m_photoDashboardPadding),
+				m_pixmapDeviceScale);
             m_tableBg->setPixmap(m_tableBgPixmap);
         }
         removeItem(lightbox);

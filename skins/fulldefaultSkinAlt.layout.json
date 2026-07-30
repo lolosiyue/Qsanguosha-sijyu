@@ -61,7 +61,9 @@
     "discardPilePadding": 50,
     "minimumSceneSize": [1130, 650], // if smaller than this size, switch to compact skin
     //make sure that default skin's minimum scene size is smaller than maximum scene size in compact skin to avoid deadloop!!!
-    "minimumSceneSize-10player": [1050, 800]
+    "minimumSceneSize-10player": [1050, 800],
+    "maximumSceneSize": [1280, 720],
+    "maximumSceneSize-10player": [1200, 900]
 },
 "photo":
 {

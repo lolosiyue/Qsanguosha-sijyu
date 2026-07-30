@@ -61,7 +61,9 @@
     "discardPilePadding": 50,
     "minimumSceneSize": [1130, 650], // if smaller than this size, switch to compact skin
     //make sure that default skin's minimum scene size is smaller than maximum scene size in compact skin to avoid deadloop!!!
-    "minimumSceneSize-10player": [1050, 800]
+    "minimumSceneSize-10player": [1050, 800],
+    "maximumSceneSize": [1280, 720],
+    "maximumSceneSize-10player": [1200, 900]
 },
 "photo":
 {
@@ -349,7 +351,7 @@
     "delayedTrickFirstRegion": [86, 12, 16, 16],
     "delayedTrickStep": [0, 16],
     "markTextArea": [0, 0, 0, 0],
-    "roleComboBoxPos": [65, 1],
+    "roleComboBoxPos": [70, 1],
     "changePrimaryHeroSkinBtnPos": [15, 24],
     "changeSecondaryHeroSkinBtnPos": [60, 24],
     "borderWidth": 9,

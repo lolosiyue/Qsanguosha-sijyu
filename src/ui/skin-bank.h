@@ -9,6 +9,17 @@
 
 #include "json.h"
 
+#include <QPixmap>
+
+// Scale a pixmap to a logical size while rendering enough physical pixels for
+// the target device/view scale. Results are shared through QPixmapCache.
+QPixmap scaledPixmapForDevice(const QPixmap &source, const QSize &logicalSize,
+    qreal deviceScale = 0.0, Qt::AspectRatioMode aspectMode = Qt::IgnoreAspectRatio);
+
+// UI text is rasterized into an oversized DPR-tagged buffer before it is given
+// to a QGraphicsPixmapItem. Config key UITextSupersample can override auto mode.
+int getUITextSupersample();
+
 class IQSanComponentSkin
 { // interface class
 public:
@@ -27,6 +38,7 @@ public:
         // this function's prototype is confusing. It will CLEAR ALL contents on the
         // QGraphicsPixmapItem passed in and then start drawing.
         void paintText(QGraphicsPixmapItem *item, QRect pos, Qt::Alignment align, const QString &text) const;
+        QPixmap paintTextToQPixmap(QSize size, Qt::Alignment align, const QString &text) const;
 
     protected:
         static QHash<QString, int *> _m_fontBank;
@@ -44,6 +56,7 @@ public:
         // this function's prototype is confusing. It will CLEAR ALL contents on the
         // QGraphicsPixmapItem passed in and then start drawing.
         void paintText(QGraphicsPixmapItem *item, QRect pos, Qt::Alignment align, const QString &text) const;
+        QPixmap paintTextToQPixmap(QSize size, Qt::Alignment align, const QString &text) const;
     };
 
     class AnchoredRect

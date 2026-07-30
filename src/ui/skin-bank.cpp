@@ -7,7 +7,61 @@
 #include "settings.h"
 #include "general.h"
 
+#include <QGuiApplication>
+#include <QPixmapCache>
+#include <QScreen>
+
 using namespace JsonUtils;
+
+QPixmap scaledPixmapForDevice(const QPixmap &source, const QSize &logicalSize,
+    qreal deviceScale, Qt::AspectRatioMode aspectMode)
+{
+    if (source.isNull() || logicalSize.isEmpty())
+        return QPixmap();
+
+    if (deviceScale <= 0.0) {
+        QScreen *screen = QGuiApplication::primaryScreen();
+        deviceScale = screen ? screen->devicePixelRatio() : 1.0;
+    }
+    deviceScale = qBound(1.0, deviceScale, 4.0);
+
+    const int scaleKey = qRound(deviceScale * 100.0);
+    const QString cacheKey = QString("qsan-scaled:%1:%2x%3:%4:%5")
+        .arg(qulonglong(source.cacheKey()))
+        .arg(logicalSize.width())
+        .arg(logicalSize.height())
+        .arg(scaleKey)
+        .arg(int(aspectMode));
+    QPixmap result;
+    if (QPixmapCache::find(cacheKey, &result))
+        return result;
+
+    const QSize physicalSize(qMax(1, qRound(logicalSize.width() * deviceScale)),
+        qMax(1, qRound(logicalSize.height() * deviceScale)));
+    result = source.scaled(physicalSize, aspectMode, Qt::SmoothTransformation);
+    result.setDevicePixelRatio(deviceScale);
+    QPixmapCache::insert(cacheKey, result);
+    return result;
+}
+
+int getUITextSupersample()
+{
+    static int factor = -1;
+    if (factor >= 0)
+        return factor;
+
+    const int configured = Config.value("UITextSupersample", 0).toInt();
+    if (configured > 0) {
+        factor = qBound(1, configured, 3);
+        return factor;
+    }
+
+    int physicalWidth = 1920;
+    if (QScreen *screen = QGuiApplication::primaryScreen())
+        physicalWidth = qRound(screen->geometry().width() * screen->devicePixelRatio());
+    factor = qBound(1, qRound(physicalWidth / 1280.0), 3);
+    return factor;
+}
 
 const char *IQSanComponentSkin::S_SKIN_KEY_DEFAULT = "default";
 const char *IQSanComponentSkin::S_SKIN_KEY_DEFAULT_SECOND = "default2";
@@ -189,13 +243,26 @@ void IQSanComponentSkin::QSanSimpleTextFont::paintText(QPainter *painter, QRect 
 }
 
 
+QPixmap IQSanComponentSkin::QSanSimpleTextFont::paintTextToQPixmap(QSize size,
+	Qt::Alignment align, const QString &text) const
+{
+	const int scale = getUITextSupersample();
+	QSanSimpleTextFont scaledFont(*this);
+	scaledFont.m_fontSize *= scale;
+	scaledFont.m_spacing *= scale;
+
+	QPixmap pixmap(size * scale);
+	pixmap.fill(Qt::transparent);
+	QPainter painter(&pixmap);
+	scaledFont.paintText(&painter, QRect(QPoint(0, 0), size * scale), align, text);
+	pixmap.setDevicePixelRatio(scale);
+	return pixmap;
+}
+
 void IQSanComponentSkin::QSanSimpleTextFont::paintText(QGraphicsPixmapItem *item, QRect pos,
 	Qt::Alignment align, const QString &text) const
 {
-	QPixmap pixmap(pos.size());
-	pixmap.fill(Qt::transparent);
-	QPainter painter(&pixmap);
-	paintText(&painter, QRect(0, 0, pos.width(), pos.height()), align, text);
+	QPixmap pixmap = paintTextToQPixmap(pos.size(), align, text);
 	item->setPixmap(pixmap);
 	item->setPos(pos.x(), pos.y());
 }
@@ -221,23 +288,41 @@ void IQSanComponentSkin::QSanShadowTextFont::paintText(QPainter *painter, QRect 
 	painter->drawImage(pos.topLeft(), image); //pos, image);
 }
 
+QPixmap IQSanComponentSkin::QSanShadowTextFont::paintTextToQPixmap(QSize size,
+	Qt::Alignment align, const QString &text) const
+{
+	const int scale = getUITextSupersample();
+	QSanShadowTextFont scaledFont(*this);
+	scaledFont.m_fontSize *= scale;
+	scaledFont.m_spacing *= scale;
+	scaledFont.m_shadowRadius *= scale;
+
+	const int width = size.width() * scale;
+	const int height = size.height() * scale;
+	QImage image(width, height, QImage::Format_ARGB32);
+	image.fill(Qt::transparent);
+	QPainter imagePainter(&image);
+	// @todo: currently, we have not considered _m_shadowOffset yet
+	scaledFont.QSanSimpleTextFont::paintText(&imagePainter,
+		QRect(scaledFont.m_shadowRadius, scaledFont.m_shadowRadius,
+			width - scaledFont.m_shadowRadius * 2, height - scaledFont.m_shadowRadius * 2),
+		align, text);
+	QImage shadow = QSanUiUtils::produceShadow(image, m_shadowColor,
+		scaledFont.m_shadowRadius, m_shadowDecadeFactor);
+	// now, overlay foreground on shadow
+	QPixmap pixmap = QPixmap::fromImage(shadow);
+	QPainter shadowPainter(&pixmap);
+	shadowPainter.drawImage(0, 0, image);
+	pixmap.setDevicePixelRatio(scale);
+	return pixmap;
+}
+
 void IQSanComponentSkin::QSanShadowTextFont::paintText(QGraphicsPixmapItem *pixmapItem,
 	QRect pos,
 	Qt::Alignment align,
 	const QString &text) const
 {
-	QImage image(pos.width(), pos.height(), QImage::Format_ARGB32);
-	image.fill(Qt::transparent);
-	QPainter imagePainter(&image);
-	// @todo: currently, we have not considered _m_shadowOffset yet
-	QSanSimpleTextFont::paintText(&imagePainter, QRect(m_shadowRadius, m_shadowRadius,
-		pos.width() - m_shadowRadius * 2, pos.height() - m_shadowRadius * 2),
-		align, text);
-	QImage shadow = QSanUiUtils::produceShadow(image, m_shadowColor, m_shadowRadius, m_shadowDecadeFactor);
-	// now, overlay foreground on shadow
-	QPixmap pixmap = QPixmap::fromImage(shadow);
-	QPainter shadowPainter(&pixmap);
-	shadowPainter.drawImage(0, 0, image);
+	QPixmap pixmap = paintTextToQPixmap(pos.size(), align, text);
 	pixmapItem->setPixmap(pixmap);
 	pixmapItem->setPos(pos.x(), pos.y());
 }
@@ -924,19 +1009,26 @@ QPixmap IQSanComponentSkin::getPixmap(const QString &key, const QString &arg, bo
 
 	QPixmap pixmap = getPixmapFromFileName(fileName, cache);
 	if (clipping) {
-		QRect clipRegion2 = clipRegion;
-		if (clipRegion2.right() > pixmap.width())
-			clipRegion2.setRight(pixmap.width());
-		if (clipRegion2.bottom() > pixmap.height())
-			clipRegion2.setBottom(pixmap.height());
+		// Layout coordinates are device-independent; @2x source pixels are not.
+		const qreal dpr = pixmap.devicePixelRatio();
+		QRect physicalClip(qRound(clipRegion.x() * dpr), qRound(clipRegion.y() * dpr),
+			qRound(clipRegion.width() * dpr), qRound(clipRegion.height() * dpr));
+		QRect boundedClip = physicalClip.intersected(pixmap.rect());
 
-		QPixmap clipped = QPixmap(clipRegion.size());
+		QPixmap clipped(physicalClip.size());
 		clipped.fill(Qt::transparent);
-		QPainter painter(&clipped);
-		painter.drawPixmap(0, 0, pixmap.copy(clipRegion2));
+		{
+			QPainter painter(&clipped);
+			QPixmap subPixmap = pixmap.copy(boundedClip);
+			subPixmap.setDevicePixelRatio(1.0);
+			painter.drawPixmap(0, 0, subPixmap);
+		}
 
 		if (scaled)
-			clipped = clipped.scaled(scaleRegion, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+			clipped = clipped.scaled(QSize(qRound(scaleRegion.width() * dpr),
+				qRound(scaleRegion.height() * dpr)), Qt::IgnoreAspectRatio,
+				Qt::SmoothTransformation);
+		clipped.setDevicePixelRatio(dpr);
 		pixmap = clipped;
 	}
 	return pixmap;
@@ -954,7 +1046,13 @@ QPixmap IQSanComponentSkin::getPixmapFromFileName(const QString &fileName, bool 
     else {
         QPixmap pixmap;
         bool success = true;
-        if (!QFile::exists(fileName)) {
+        QString highDpiFileName;
+        const int suffixPos = fileName.lastIndexOf('.');
+        if (suffixPos > 0 && !fileName.left(suffixPos).endsWith("@2x"))
+            highDpiFileName = fileName.left(suffixPos) + "@2x" + fileName.mid(suffixPos);
+        const bool hasHighDpiFile = !highDpiFileName.isEmpty() && QFile::exists(highDpiFileName);
+
+        if (!QFile::exists(fileName) && !hasHighDpiFile) {
             QString name = extractCardNameFromPath(fileName);
             if (!name.isEmpty()) {
                 bool isCardPath = fileName.contains("image/card/") && !fileName.contains("image/generals/card");
@@ -995,11 +1093,16 @@ QPixmap IQSanComponentSkin::getPixmapFromFileName(const QString &fileName, bool 
         }
         if (cache) {
             if (!QPixmapCache::find(fileName, &pixmap)) {
-                success = pixmap.load(fileName);
+                success = pixmap.load(hasHighDpiFile ? highDpiFileName : fileName);
+                if (success && hasHighDpiFile)
+                    pixmap.setDevicePixelRatio(2.0);
                 if (success) QPixmapCache::insert(fileName, pixmap);
             }
-        } else
-            success = pixmap.load(fileName);
+        } else {
+            success = pixmap.load(hasHighDpiFile ? highDpiFileName : fileName);
+            if (success && hasHighDpiFile)
+                pixmap.setDevicePixelRatio(2.0);
+        }
         if (success) return pixmap;
         else return QPixmap(1, 1); // make Qt happy
     }

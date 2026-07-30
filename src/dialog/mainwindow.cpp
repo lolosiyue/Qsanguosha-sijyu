@@ -28,20 +28,39 @@ public:
     FitView(QGraphicsScene *scene) : QGraphicsView(scene)
     {
         setSceneRect(Config.Rect);
-        setRenderHints(QPainter::TextAntialiasing | QPainter::Antialiasing);
+        setRenderHints(QPainter::TextAntialiasing | QPainter::Antialiasing
+            | QPainter::SmoothPixmapTransform);
+        setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+        setAlignment(Qt::AlignCenter);
         QOpenGLWidget *glWidget = new QOpenGLWidget(this);
         glWidget->setUpdateBehavior(QOpenGLWidget::PartialUpdate);
         setViewport(glWidget);
         setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
     }
 
-    virtual void resizeEvent(QResizeEvent *event)
+    void refit()
+    {
+        fitCurrentScene(viewport()->size());
+    }
+
+protected:
+    void resizeEvent(QResizeEvent *event) override
     {
         QGraphicsView::resizeEvent(event);
+        fitCurrentScene(viewport()->size());
+    }
+
+private:
+    void fitCurrentScene(const QSize &viewportSize)
+    {
+        if (!scene() || viewportSize.isEmpty())
+            return;
+
         MainWindow *main_window = qobject_cast<MainWindow *>(parentWidget());
         if (scene()->inherits("RoomScene")) {
             RoomScene *room_scene = qobject_cast<RoomScene *>(scene());
-            QRectF newSceneRect(0, 0, event->size().width(), event->size().height());
+            QRectF newSceneRect(QPointF(0, 0), QSizeF(viewportSize));
             room_scene->setSceneRect(newSceneRect);
             room_scene->adjustItems();
             setSceneRect(room_scene->sceneRect());
@@ -53,12 +72,14 @@ public:
             return;
         } else if (scene()->inherits("StartScene")) {
             StartScene *start_scene = qobject_cast<StartScene *>(scene());
-            QRectF newSceneRect(-event->size().width() / 2, -event->size().height() / 2,
-                event->size().width(), event->size().height());
+            QRectF newSceneRect(-viewportSize.width() / 2.0, -viewportSize.height() / 2.0,
+                viewportSize.width(), viewportSize.height());
             start_scene->setSceneRect(newSceneRect);
             setSceneRect(start_scene->sceneRect());
             if (newSceneRect != start_scene->sceneRect())
                 fitInView(start_scene->sceneRect(), Qt::KeepAspectRatio);
+            else
+                resetTransform();
         }
         if (main_window)
             main_window->setBackgroundBrush(true);
@@ -151,9 +172,14 @@ void MainWindow::gotoScene(QGraphicsScene *scene)
 		this->scene->deleteLater();
 	this->scene = scene;
 	view->setScene(scene);
-	QResizeEvent e(QSize(view->size().width(), view->size().height()), view->size());
-	view->resizeEvent(&e);
+	view->refit();
 	changeBackground();
+}
+
+void MainWindow::refitScene()
+{
+	if (view)
+		view->refit();
 }
 
 void MainWindow::on_actionExit_triggered()
@@ -508,10 +534,17 @@ void MainWindow::setBackgroundBrush(bool centerAsOrigin)
 {
 	if (scene) {
 		QTransform transform;
+		const QSize targetSize = view ? view->viewport()->size() : size();
 		if (centerAsOrigin)
-			transform.translate(-(qreal)width()/2, -(qreal)height()/2);
-		QPixmap pixmap(Config.BackgroundImage);
-		transform.scale((qreal)width()/qreal(pixmap.width()), (qreal)height()/qreal(pixmap.height()));
+			transform.translate(-targetSize.width() / 2.0, -targetSize.height() / 2.0);
+		QPixmap source;
+		const QString sourceKey = "qsan-background:" + Config.BackgroundImage;
+		if (!QPixmapCache::find(sourceKey, &source)) {
+			source.load(Config.BackgroundImage);
+			if (!source.isNull())
+				QPixmapCache::insert(sourceKey, source);
+		}
+		QPixmap pixmap = scaledPixmapForDevice(source, targetSize, devicePixelRatioF());
 		QBrush brush(pixmap);
 		brush.setTransform(transform);
 		scene->setBackgroundBrush(brush);

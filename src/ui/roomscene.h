@@ -356,6 +356,7 @@ private:
     QGraphicsTextItem *prompt_box_widget;
     ChatWidget *chat_widget;
     EmotionPanel *m_emotionPanel;
+    QPixmap m_rolesBoxBackgroundOrig;
     QPixmap m_rolesBoxBackground;
     QGraphicsPixmapItem *m_rolesBox;
     QGraphicsTextItem *m_pileCardNumInfoTextBox;
@@ -363,6 +364,7 @@ private:
     QGraphicsPixmapItem *m_tableBg;
     QPixmap m_tableBgPixmap;
     QPixmap m_tableBgPixmapOrig;
+    qreal m_pixmapDeviceScale;
     int m_tablew;
     int m_tableh;
 
