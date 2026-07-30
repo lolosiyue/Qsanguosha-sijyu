@@ -31,6 +31,30 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS
     Widgets
 )
 
+find_program(QSAN_SWIG_EXECUTABLE
+    NAMES swig swig.exe
+    HINTS "${CMAKE_CURRENT_SOURCE_DIR}/tools/swig"
+    REQUIRED
+)
+
+file(GLOB qsan_swig_interfaces CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/swig/*.i"
+)
+set(qsan_generated_dir "${CMAKE_CURRENT_BINARY_DIR}/generated")
+set(qsan_swig_wrapper "${qsan_generated_dir}/sanguosha_wrap.cxx")
+add_custom_command(
+    OUTPUT "${qsan_swig_wrapper}"
+    COMMAND ${CMAKE_COMMAND} -E make_directory "${qsan_generated_dir}"
+    COMMAND "${QSAN_SWIG_EXECUTABLE}" -c++ -lua
+        -o "${qsan_swig_wrapper}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/swig/sanguosha.i"
+    DEPENDS ${qsan_swig_interfaces}
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    COMMENT "Generating C++/Lua bindings with SWIG"
+    VERBATIM
+)
+set_source_files_properties("${qsan_swig_wrapper}" PROPERTIES GENERATED TRUE)
+
 include(cmake/QSanguoshaSources.cmake)
 
 qt_add_executable(QSanguosha WIN32
@@ -38,6 +62,7 @@ qt_add_executable(QSanguosha WIN32
     ${QSAN_LUA_SOURCES}
     ${QSAN_MOC_HEADERS}
     ${QSAN_FORMS}
+    "${qsan_swig_wrapper}"
     resource/icon.rc
 )
 
@@ -120,25 +145,6 @@ set_target_properties(QSanguosha PROPERTIES
     VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
-set(swig_wrapper "${CMAKE_CURRENT_SOURCE_DIR}/swig/sanguosha_wrap.cxx")
-add_custom_target(check-swig-wrapper
-    COMMAND ${CMAKE_COMMAND}
-        -DQSAN_SWIG_DIR=${CMAKE_CURRENT_SOURCE_DIR}/swig
-        -DQSAN_SWIG_WRAPPER=${swig_wrapper}
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/CheckSwigWrapper.cmake
-    VERBATIM
-)
-add_dependencies(QSanguosha check-swig-wrapper)
-
-set(swig_executable "${CMAKE_CURRENT_SOURCE_DIR}/tools/swig/swig.exe")
-add_custom_target(swig-regenerate
-    COMMAND "${swig_executable}" -c++ -lua -o "${swig_wrapper}"
-        "${CMAKE_CURRENT_SOURCE_DIR}/swig/sanguosha.i"
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    COMMENT "Regenerating swig/sanguosha_wrap.cxx"
-    VERBATIM
-)
-
 set(translation_source "${CMAKE_CURRENT_SOURCE_DIR}/builds/sanguosha.ts")
 set_source_files_properties("${translation_source}" PROPERTIES
     OUTPUT_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -173,3 +179,4 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
     ${QSAN_MOC_HEADERS}
     ${QSAN_FORMS}
 )
+source_group("Generated" FILES "${qsan_swig_wrapper}")

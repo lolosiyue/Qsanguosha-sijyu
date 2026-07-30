@@ -78,9 +78,9 @@ CMake 必須啟用 AUTOMOC、AUTOUIC、AUTORCC，管理資源、翻譯、安裝�
 
 - 升級至 Lua 5.4.8，為 `bit32`、`unpack`、`loadstring` 等實際使用介面提供 Lua 5.2 相容層。
 - 內建 Lua、AI 與 extensions 必須全部通過；第三方擴充採最佳努力相容。
-- CMake 預設編譯已追蹤的 `swig/sanguosha_wrap.cxx`。
-- 提供使用倉庫 SWIG 4.3.1 的再生目標及 stale/hash 驗證；不得手動修改 wrapper。
-- 發布驗證時 wrapper 時戳必須晚於所有修改過的 `swig/*.i`。
+- CMake 在建置目錄的 `generated/sanguosha_wrap.cxx` 自動執行 SWIG。
+- wrapper 不存在或任一 `swig/*.i` 較新時會自動重新生成；來源樹的 wrapper 不參與建置，也不在工作區之間同步。
+- 自動生成檔留在 CMake build tree，正常建置不會改動來源樹。
 
 ## 4. 三後端音訊架構
 
