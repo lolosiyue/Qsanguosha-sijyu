@@ -6,6 +6,8 @@
 #include "skill-instance-attachment-registry.h"
 #include "skill-execution-registry.h"
 
+#include <functional>
+
 class ProhibitSkill;
 class ProhibitPindianSkill;
 class Scenario;
@@ -721,9 +723,13 @@ private:
         }
         inline bool operator < (const _MoveSourceClassifier&other) const
         {
-            return m_from < other.m_from || m_from_place < other.m_from_place
-				//|| m_from_player_name < other.m_from_player_name
-                || m_from_pile_name < other.m_from_pile_name;
+            // 逐欄位字典序比較，避免 QMap 比較器同時判定 a < b 與 b < a。
+            const std::less<Player *> playerLess;
+            if (m_from != other.m_from)
+                return playerLess(m_from, other.m_from);
+            if (m_from_place != other.m_from_place)
+                return m_from_place < other.m_from_place;
+            return m_from_pile_name < other.m_from_pile_name;
         }
         Player*m_from;
         Player::Place m_from_place;
@@ -748,8 +754,15 @@ private:
         }
         inline bool operator < (const _MoveMergeClassifier&other) const
         {
-            return m_from < other.m_from || m_to < other.m_to || m_to_place < other.m_to_place
-				|| m_to_pile_name < other.m_to_pile_name;// || m_reason < other.m_reason;
+            // 比較欄位與 operator== 保持一致，保留既有移動合併語義。
+            const std::less<Player *> playerLess;
+            if (m_from != other.m_from)
+                return playerLess(m_from, other.m_from);
+            if (m_to != other.m_to)
+                return playerLess(m_to, other.m_to);
+            if (m_to_place != other.m_to_place)
+                return m_to_place < other.m_to_place;
+            return m_to_pile_name < other.m_to_pile_name;
         }
         Player*m_from,*m_to;
         Player::Place m_to_place;
@@ -782,11 +795,21 @@ private:
         }
         inline bool operator < (const _MoveSeparateClassifier&other) const
         {
-            return m_from < other.m_from || m_to < other.m_to || m_from_place < other.m_from_place
-				|| m_to_place < other.m_to_place || m_from_pile_name < other.m_from_pile_name
-				|| m_to_pile_name < other.m_to_pile_name;// || m_open < other.m_open;
-				//|| m_is_last_handcard < other.m_is_last_handcard
-				//|| m_reason < other.m_reason;
+            // reason 屬於相等判斷的一部分，排序亦必須納入以免不同原因被合併。
+            const std::less<Player *> playerLess;
+            if (m_from != other.m_from)
+                return playerLess(m_from, other.m_from);
+            if (m_to != other.m_to)
+                return playerLess(m_to, other.m_to);
+            if (m_from_place != other.m_from_place)
+                return m_from_place < other.m_from_place;
+            if (m_to_place != other.m_to_place)
+                return m_to_place < other.m_to_place;
+            if (m_from_pile_name != other.m_from_pile_name)
+                return m_from_pile_name < other.m_from_pile_name;
+            if (m_to_pile_name != other.m_to_pile_name)
+                return m_to_pile_name < other.m_to_pile_name;
+            return m_reason < other.m_reason;
         }
         Player*m_from,*m_to;
         Player::Place m_from_place, m_to_place;

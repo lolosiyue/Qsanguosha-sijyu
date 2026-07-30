@@ -440,7 +440,10 @@ win32-msvc*{
 	DEFINES += _CRT_SECURE_NO_WARNINGS
 	QMAKE_CFLAGS -= $$QMAKE_CFLAGS_MP
 	QMAKE_CXXFLAGS -= $$QMAKE_CXXFLAGS_MP
-	QMAKE_CXXFLAGS += /utf-8 /bigobj
+	# 限制為 8 路，避免大型 package 在無上限 /MP 下觸發 D8040。
+	QMAKE_CFLAGS += /MP8
+	QMAKE_CXXFLAGS += /MP8 /utf-8 /bigobj
+	QMAKE_VS_GLOBALS += CL_MPCount=8
 	LIBS += legacy_stdio_definitions.lib
 
 	# ASan for memory debugging

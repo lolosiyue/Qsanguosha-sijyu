@@ -6,6 +6,8 @@ class Card;
 #include "skill-instance-types.h"
 #include "serverplayer.h"
 
+#include <functional>
+
 struct GameModeStruct {
     GameModeStruct();
     GameModeStruct(const QString &mode_id, const QString &display_name = QString(),
@@ -223,11 +225,16 @@ public:
 
     inline bool operator < (const CardMoveReason&other) const
     {
-        return m_reason < other.m_reason
-            || m_playerId < other.m_playerId
-			|| m_targetId < other.m_targetId
-            || m_skillName < other.m_skillName
-            || m_eventName < other.m_eventName;
+        // 逐欄位字典序比較，維持有序容器要求的嚴格弱序。
+        if (m_reason != other.m_reason)
+            return m_reason < other.m_reason;
+        if (m_playerId != other.m_playerId)
+            return m_playerId < other.m_playerId;
+        if (m_targetId != other.m_targetId)
+            return m_targetId < other.m_targetId;
+        if (m_skillName != other.m_skillName)
+            return m_skillName < other.m_skillName;
+        return m_eventName < other.m_eventName;
     }
 
     static const int S_REASON_UNKNOWN = 0x00;
@@ -391,9 +398,17 @@ struct CardsMoveStruct {
 
     inline bool operator < (const CardsMoveStruct&other) const
     {
-        return from < other.from || from_place < other.from_place
-			|| to < other.to || reason < other.reason
-			|| from_pile_name < other.from_pile_name;
+        // 指標使用 std::less 取得可供有序容器使用的完整順序。
+        const std::less<Player *> playerLess;
+        if (from != other.from)
+            return playerLess(from, other.from);
+        if (from_place != other.from_place)
+            return from_place < other.from_place;
+        if (to != other.to)
+            return playerLess(to, other.to);
+        if (!(reason == other.reason))
+            return reason < other.reason;
+        return from_pile_name < other.from_pile_name;
     }
 
     QList<int> card_ids;
