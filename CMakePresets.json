@@ -1,0 +1,44 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "vs2019-x64",
+      "displayName": "Visual Studio 2019 x64",
+      "generator": "Visual Studio 16 2019",
+      "architecture": "x64",
+      "binaryDir": "${sourceDir}/builds/cmake-vs2019",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "$env{QTDIR}"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "vs2019-x64",
+      "configuration": "Debug"
+    },
+    {
+      "name": "release",
+      "configurePreset": "vs2019-x64",
+      "configuration": "Release"
+    },
+    {
+      "name": "deploy-debug",
+      "configurePreset": "vs2019-x64",
+      "configuration": "Debug",
+      "targets": ["deploy"]
+    },
+    {
+      "name": "deploy-release",
+      "configurePreset": "vs2019-x64",
+      "configuration": "Release",
+      "targets": ["deploy"]
+    }
+  ]
+}
