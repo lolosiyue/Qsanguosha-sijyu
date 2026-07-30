@@ -278,7 +278,8 @@ void CardUseStruct::clientReply()
 void CardUseStruct::changeCard(Card*newcard)
 {
 	QVariantMap tag = newcard->tag;
-	tag.unite(card->tag);
+	for (auto it = card->tag.cbegin(); it != card->tag.cend(); ++it)
+		tag.insert(it.key(), it.value());
 	newcard->tag = tag;
 	newcard->setFlags(newcard->getFlags()+card->getFlags());
 	if (activationRef.isValid())
@@ -292,7 +293,8 @@ void CardUseStruct::changeCard(Card*newcard)
 void CardResponseStruct::changeCard(Card*newcard)
 {
 	QVariantMap tag = newcard->tag;
-	tag.unite(m_card->tag);
+	for (auto it = m_card->tag.cbegin(); it != m_card->tag.cend(); ++it)
+		tag.insert(it.key(), it.value());
 	newcard->tag = tag;
 	newcard->setFlags(newcard->getFlags()+m_card->getFlags());
 	if (activationRef.isValid())

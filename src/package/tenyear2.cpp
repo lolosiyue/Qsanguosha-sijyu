@@ -29959,7 +29959,7 @@ TenyearHcPackage::TenyearHcPackage()
 	wangrong->addSkill(new MinsiTargetMod);
 	wangrong->addSkill(new Jijing);
 	wangrong->addSkill(new Zhuide);
-	related_skills.insertMulti("minsi","#minsi-target");
+	related_skills.insert("minsi","#minsi-target");
 	addMetaObject<MinsiCard>();
 	addMetaObject<JijingCard>();
 
@@ -29984,14 +29984,14 @@ TenyearHcPackage::TenyearHcPackage()
 	zhangmiao->addSkill(new MouniDying("mouni"));
 	zhangmiao->addSkill(new Zongfan);
 	zhangmiao->addRelateSkill("zhangu");
-	related_skills.insertMulti("mouni","#mouni-dying");
+	related_skills.insert("mouni","#mouni-dying");
 
 	General*second_zhangmiao = new General(this,"second_zhangmiao","qun",4);
 	second_zhangmiao->addSkill(new Mouni("secondmouni"));
 	second_zhangmiao->addSkill(new MouniDying("secondmouni"));
 	second_zhangmiao->addSkill("zongfan");
 	second_zhangmiao->addRelateSkill("zhangu");
-	related_skills.insertMulti("secondmouni","#secondmouni-dying");
+	related_skills.insert("secondmouni","#secondmouni-dying");
 	skills << new Zhangu;
 
 	General*qiuliju = new General(this,"qiuliju","qun",6);
@@ -30020,15 +30020,15 @@ TenyearHcPackage::TenyearHcPackage()
 	tenyear_hucheer->addSkill(new Fuzhong);
 	tenyear_hucheer->addSkill(new FuzhongMax);
 	tenyear_hucheer->addSkill(new FuzhongDistance);
-	related_skills.insertMulti("tenyeardaoji","#tenyeardaoji-limit");
-	related_skills.insertMulti("fuzhong","#fuzhong-max");
-	related_skills.insertMulti("fuzhong","#tenyeardaoji-distance");
+	related_skills.insert("tenyeardaoji","#tenyeardaoji-limit");
+	related_skills.insert("fuzhong","#fuzhong-max");
+	related_skills.insert("fuzhong","#tenyeardaoji-distance");
 
 	General*tenyear_zoushi = new General(this,"tenyear_zoushi","qun",3,false);
 	tenyear_zoushi->addSkill(new TenyearHuoshui);
 	tenyear_zoushi->addSkill(new TenyearHuoshuiClear);
 	tenyear_zoushi->addSkill(new TenyearQingcheng);
-	related_skills.insertMulti("tenyearhuoshui","#tenyearhuoshui-clear");
+	related_skills.insert("tenyearhuoshui","#tenyearhuoshui-clear");
 	addMetaObject<TenyearHuoshuiCard>();
 	addMetaObject<TenyearQingchengCard>();
 }
@@ -30046,8 +30046,8 @@ TenyearHcPackage::TenyearHcPackage()
 	tenyear_zhuling->addSkill(new TenyearZhanyi);
 	tenyear_zhuling->addSkill(new TenyearZhanyiEffect);
 	tenyear_zhuling->addSkill(new TenyearZhanyiTarget);
-	related_skills.insertMulti("tenyearzhanyi","#tenyearzhanyi");
-	related_skills.insertMulti("tenyearzhanyi","#tenyearzhanyi-mod");
+	related_skills.insert("tenyearzhanyi","#tenyearzhanyi");
+	related_skills.insert("tenyearzhanyi","#tenyearzhanyi-mod");
 
 	General*yanrou = new General(this,"yanrou*xh_huben","wei",4);
 	yanrou->addSkill(new Choutao);
@@ -30081,9 +30081,9 @@ TenyearHcPackage::TenyearHcPackage()
 	guosi->addSkill(new TanbeiPro);
 	guosi->addSkill(new Sidao);
 	guosi->addSkill(new SidaoTargetMod);
-	related_skills.insertMulti("tanbei","#tanbei-target");
-	related_skills.insertMulti("tanbei","#tanbei-pro");
-	related_skills.insertMulti("sidao","#sidao-target");
+	related_skills.insert("tanbei","#tanbei-target");
+	related_skills.insert("tanbei","#tanbei-pro");
+	related_skills.insert("sidao","#sidao-target");
 	addMetaObject<TanbeiCard>();
 	addMetaObject<SidaoCard>();
 
@@ -30101,12 +30101,12 @@ TenyearHcPackage::TenyearHcPackage()
 	General*duanwei = new General(this,"duanwei","qun",4);
 	duanwei->addSkill(new Langmie);
 	duanwei->addSkill("#dingpinbf");
-	related_skills.insertMulti("langmie","#dingpinbf");
+	related_skills.insert("langmie","#dingpinbf");
 
 	General*second_duanwei = new General(this,"second_duanwei","qun",4);
 	second_duanwei->addSkill(new SecondLangmie);
 	second_duanwei->addSkill("#dingpinbf");
-	related_skills.insertMulti("secondlangmie","#dingpinbf");
+	related_skills.insert("secondlangmie","#dingpinbf");
 
 	General*zhangheng = new General(this,"zhangheng","qun",8);
 	zhangheng->addSkill(new Liangjue);
@@ -30196,7 +30196,7 @@ TenyearHcPackage::TenyearHcPackage()
 	General*mifangfushiren = new General(this,"mifangfushiren","shu",4);
 	mifangfushiren->addSkill(new FengshiMF);
 	mifangfushiren->addSkill(new FengshiMFDamage);
-	related_skills.insertMulti("fengshimf","#fengshimf");
+	related_skills.insert("fengshimf","#fengshimf");
 
 	General*licaiwei = new General(this,"licaiwei","qun",3,false);
 	licaiwei->addSkill(new Yijiao);
@@ -30246,7 +30246,7 @@ TenyearHcPackage::TenyearHcPackage()
 	General*bianxi = new General(this,"bianxi","wei",4);
 	bianxi->addSkill(new Dunxi);
 	bianxi->addSkill(new DunxiEffect);
-	related_skills.insertMulti("dunxi","#dunxi");
+	related_skills.insert("dunxi","#dunxi");
 
 	General*huban = new General(this,"huban","wei",4);
 	huban->addSkill(new Chongyi);
@@ -30263,7 +30263,7 @@ TenyearHcPackage::TenyearHcPackage()
 	sp_tongyuan->addSkill(new Chaofeng("chaofeng"));
 	sp_tongyuan->addSkill(new Chuanshu("chuanshu"));
 	sp_tongyuan->addSkill(new ChuanshuDeath("chuanshu"));
-	related_skills.insertMulti("chuanshu","#chuanshu");
+	related_skills.insert("chuanshu","#chuanshu");
 	skills << new JingongSkill("jingong")<< new JingongSkill("tenyearjingong")
 	<< new Chuanyun;
 
@@ -30271,7 +30271,7 @@ TenyearHcPackage::TenyearHcPackage()
 	second_sp_tongyuan->addSkill(new Chaofeng("secondchaofeng"));
 	second_sp_tongyuan->addSkill(new Chuanshu("secondchuanshu"));
 	second_sp_tongyuan->addSkill(new ChuanshuDeath("secondchuanshu"));
-	related_skills.insertMulti("secondchuanshu","#secondchuanshu");
+	related_skills.insert("secondchuanshu","#secondchuanshu");
 
 	General*zhangning = new General(this,"zhangning","qun",3,false);
 	zhangning->addSkill(new Tianze);
@@ -30281,7 +30281,7 @@ TenyearHcPackage::TenyearHcPackage()
 	tenyear_pangdegong->addSkill(new Heqia);
 	tenyear_pangdegong->addSkill(new HeqiaTargetMod);
 	tenyear_pangdegong->addSkill(new Yinyi);
-	related_skills.insertMulti("heqia","#heqia");
+	related_skills.insert("heqia","#heqia");
 	addMetaObject<HeqiaCard>();
 	addMetaObject<HeqiaUseCard>();
 }
@@ -30289,7 +30289,7 @@ TenyearHcPackage::TenyearHcPackage()
 	General*tenyear_panfeng = new General(this,"tenyear_panfeng","qun",4);
 	tenyear_panfeng->addSkill(new TenyearKuangfu);
 	tenyear_panfeng->addSkill(new SlashNoDistanceLimitSkill("tenyearkuangfu"));
-	related_skills.insertMulti("tenyearkuangfu","#tenyearkuangfu-slash-ndl");
+	related_skills.insert("tenyearkuangfu","#tenyearkuangfu-slash-ndl");
 	addMetaObject<TenyearKuangfuCard>();
 
 	General*xingdaorong = new General(this,"xingdaorong","qun",6,true,false,false,4);
@@ -30299,7 +30299,7 @@ TenyearHcPackage::TenyearHcPackage()
 	caoxing->addSkill(new Liushi);
 	caoxing->addSkill(new Zhanwan);
 	caoxing->addSkill(new ZhanwanMove);
-	related_skills.insertMulti("zhanwan","#zhanwan-move");
+	related_skills.insert("zhanwan","#zhanwan-move");
 	addMetaObject<LiushiCard>();
 
 	General*chunyuqiong = new General(this,"chunyuqiong","qun",4);
@@ -30307,7 +30307,7 @@ TenyearHcPackage::TenyearHcPackage()
 	chunyuqiong->addSkill(new CangchuKeep);
 	chunyuqiong->addSkill(new Liangying);
 	chunyuqiong->addSkill(new Shishou);
-	related_skills.insertMulti("cangchu","#cangchu-keep");
+	related_skills.insert("cangchu","#cangchu-keep");
 
 	General*xiahoujie = new General(this,"xiahoujie","wei",5);
 	xiahoujie->addSkill(new Liedan);
@@ -30328,7 +30328,7 @@ TenyearHcPackage::TenyearHcPackage()
 	second_tenyear_sunluyu->addSkill(new TenyearMeibu("secondtenyearmeibu"));
 	second_tenyear_sunluyu->addSkill(new SecondTenyearMeibuGet);
 	second_tenyear_sunluyu->addSkill(new SecondTenyearMumu);
-	related_skills.insertMulti("secondtenyearmeibu","#secondtenyearmeibu-get");
+	related_skills.insert("secondtenyearmeibu","#secondtenyearmeibu-get");
 	skills << new TenyearZhixi;
 
 	General*tenyear_dongbai = new General(this,"tenyear_dongbai","qun",3,false);
@@ -30336,20 +30336,20 @@ TenyearHcPackage::TenyearHcPackage()
 	tenyear_dongbai->addSkill("tenyearxiahui");
 	tenyear_dongbai->addSkill("#tenyearxiahui-clear");
 	tenyear_dongbai->addSkill(new TenyearXiahuiMove);
-	related_skills.insertMulti("tenyearxiahui","#tenyearxiahui-move");
+	related_skills.insert("tenyearxiahui","#tenyearxiahui-move");
 
 	General*heyan = new General(this,"heyan","wei",3);
 	heyan->addSkill(new Yachai);
 	heyan->addSkill(new YachaiLimit);
 	heyan->addSkill(new Qingtan);
-	related_skills.insertMulti("yachai","#yachai-limit");
+	related_skills.insert("yachai","#yachai-limit");
 	addMetaObject<QingtanCard>();
 
 	General*wangtao = new General(this,"wangtao","shu",3,false);
 	wangtao->addSkill(new Huguan);
 	wangtao->addSkill(new HuguanIgnore);
 	wangtao->addSkill(new Yaopei);
-	related_skills.insertMulti("huguan","#huguan");
+	related_skills.insert("huguan","#huguan");
 
 	General*wangyue = new General(this,"wangyue","shu",3,false);
 	wangyue->addSkill("huguan");
@@ -30359,7 +30359,7 @@ TenyearHcPackage::TenyearHcPackage()
 	zhaoyan->addSkill(new Jinhui);
 	zhaoyan->addSkill(new JinhuiTarget);
 	zhaoyan->addSkill(new Qingman);
-	related_skills.insertMulti("jinhui","#jinhui-target");
+	related_skills.insert("jinhui","#jinhui-target");
 	addMetaObject<JinhuiCard>();
 	addMetaObject<JinhuiUseCard>();
 
@@ -30383,7 +30383,7 @@ TenyearHcPackage::TenyearHcPackage()
 	zhangxuan->addSkill(new Tongli);
 	zhangxuan->addSkill(new Shezang);
 	zhangxuan->addSkill("#jingce-record");
-	related_skills.insertMulti("tongli","#jingce-record");
+	related_skills.insert("tongli","#jingce-record");
 
 	General*tenyear_sunru = new General(this,"tenyear_sunru","wu",3,false);
 	tenyear_sunru->addSkill(new TenyearXiecui);
@@ -30401,13 +30401,13 @@ TenyearHcPackage::TenyearHcPackage()
 	zhanghu->addSkill(new Cuijian);
 	zhanghu->addSkill(new Tongyuan);
 	zhanghu->addSkill(new TongyuanEffect);
-	related_skills.insertMulti("tongyuan","#tongyuan");
+	related_skills.insert("tongyuan","#tongyuan");
 
 	General*second_zhanghu = new General(this,"second_zhanghu","wei",4);
 	second_zhanghu->addSkill(new SecondCuijian);
 	second_zhanghu->addSkill(new SecondTongyuan);
 	second_zhanghu->addSkill(new SecondTongyuanEffect);
-	related_skills.insertMulti("secondtongyuan","#secondtongyuan");
+	related_skills.insert("secondtongyuan","#secondtongyuan");
 	addMetaObject<CuijianCard>();
 	addMetaObject<SecondCuijianCard>();
 
@@ -30462,7 +30462,7 @@ TenyearHcPackage::TenyearHcPackage()
 	tenyear_kanze->addSkill("tenyearkuanshi");
 	tenyear_kanze->addSkill("#tenyearkuanshi-mark");
 	tenyear_kanze->addSkill(new TenyearKuanshiEffect);
-	related_skills.insertMulti("tenyearkuanshi","#tenyearkuanshi-effect");
+	related_skills.insert("tenyearkuanshi","#tenyearkuanshi-effect");
 
 	General*tenyear_chendeng = new General(this,"tenyear_chendeng","qun",3);
 	tenyear_chendeng->addSkill(new Wangzu);
@@ -30473,7 +30473,7 @@ TenyearHcPackage::TenyearHcPackage()
 	General*tenyear_gaolan = new General(this,"tenyear_gaolan","qun",4);
 	tenyear_gaolan->addSkill(new TenyearXizhen);
 	tenyear_gaolan->addSkill(new TenyearXizhenEffect);
-	related_skills.insertMulti("tenyearxizhen","#tenyearxizhen");
+	related_skills.insert("tenyearxizhen","#tenyearxizhen");
 
 	General*caimaozhangyun = new General(this,"caimaozhangyun","wei",4);
 	caimaozhangyun->addSkill(new Lianzhou);
@@ -30520,7 +30520,7 @@ TenyearHcPackage::TenyearHcPackage()
 	mamidi->addSkill(new Bingjie);
 	mamidi->addSkill(new BingjieEffect);
 	mamidi->addSkill(new Zhengding);
-	related_skills.insertMulti("bingjie","#bingjie");
+	related_skills.insert("bingjie","#bingjie");
 
 	General*zhangxun = new General(this,"zhangxun","qun",4);
 	zhangxun->addSkill(new Suizheng);
@@ -30550,7 +30550,7 @@ TenyearHcPackage::TenyearHcPackage()
 	tenyear_huangchengyan->addSkill(new TenyearZecai);
 	tenyear_huangchengyan->addSkill(new TenyearZecaiLose);
 	tenyear_huangchengyan->addSkill(new TenyearYinshi);
-	related_skills.insertMulti("tenyearzecai","#tenyearzecai");
+	related_skills.insert("tenyearzecai","#tenyearzecai");
 	addMetaObject<TenyearJiezhenCard>();
 
 	General*huzhao = new General(this,"huzhao","qun",3);
@@ -30575,8 +30575,8 @@ TenyearHcPackage::TenyearHcPackage()
 	jiping->addSkill(new ZhishiChoose);
 	jiping->addSkill(new Lieyi);
 	jiping->addSkill(new LieyiTarget);
-	related_skills.insertMulti("zhishi","#zhishi");
-	related_skills.insertMulti("lieyi","#lieyi");
+	related_skills.insert("zhishi","#zhishi");
+	related_skills.insert("lieyi","#lieyi");
 	addMetaObject<XunliPutCard>();
 	addMetaObject<XunliCard>();
 	addMetaObject<ZhishiCard>();
@@ -30593,7 +30593,7 @@ TenyearHcPackage::TenyearHcPackage()
 	luyusheng->addSkill(new Zhente);
 	luyusheng->addSkill(new Zhiwei);
 	luyusheng->addSkill(new ZhiweiEffect);
-	related_skills.insertMulti("zhiwei","#zhiwei");
+	related_skills.insert("zhiwei","#zhiwei");
 
 	General*huaxin = new General(this,"huaxin","wei",3);
 	huaxin->addSkill(new Wanggui);
@@ -30603,7 +30603,7 @@ TenyearHcPackage::TenyearHcPackage()
 	tenyear_xunchen->addSkill(new TenyearFenglve);
 	tenyear_xunchen->addSkill(new Anyong);
 	tenyear_xunchen->addSkill(new AnyongRecord);
-	related_skills.insertMulti("anyong","#anyong");
+	related_skills.insert("anyong","#anyong");
 	addMetaObject<TenyearFenglveCard>();
 	addMetaObject<TenyearFenglveGiveCard>();
 
@@ -30617,27 +30617,27 @@ TenyearHcPackage::TenyearHcPackage()
 	fengxi->addSkill(new Yusui);
 	fengxi->addSkill(new Boyan);
 	fengxi->addSkill(new BoyanLimit);
-	related_skills.insertMulti("boyan","#boyan-limit");
+	related_skills.insert("boyan","#boyan-limit");
 	addMetaObject<BoyanCard>();
 
 	General*miheng = new General(this,"miheng","qun",3);
 	miheng->addSkill(new Kuangcai);
 	miheng->addSkill(new KuangcaiTarget);
 	miheng->addSkill(new Shejian);
-	related_skills.insertMulti("kuangcai","#kuangcai");
+	related_skills.insert("kuangcai","#kuangcai");
 
 	General*tenyear_yanghu = new General(this,"tenyear_yanghu","wei",3);
 	tenyear_yanghu->addSkill(new TenyearDeshao);
 	tenyear_yanghu->addSkill(new TenyearMingfa);
 	tenyear_yanghu->addSkill(new TenyearMingfaEffect);
-	related_skills.insertMulti("tenyearmingfa","#tenyearmingfa");
+	related_skills.insert("tenyearmingfa","#tenyearmingfa");
 }
 {//匡鼎炎汉
 	General*liuba = new General(this,"liuba","shu",3);
 	liuba->addSkill(new Zhubi);
 	liuba->addSkill(new Liuzhuan);
 	liuba->addSkill(new Liuzhuanbf);
-	related_skills.insertMulti("liuzhuan","#liuzhuan");
+	related_skills.insert("liuzhuan","#liuzhuan");
 
 	General*tenyear_yangyi = new General(this,"tenyear_yangyi","shu",3);
 	tenyear_yangyi->addSkill("tenyearjuanxia");
@@ -30750,13 +30750,13 @@ TenyearHcPackage::TenyearHcPackage()
 	General*huangfusong = new General(this,"huangfusong","qun",4);
 	huangfusong->addSkill(new Fenyue);
 	huangfusong->addSkill(new FenyueRevived);
-	related_skills.insertMulti("fenyue","#fenyue-revived");
+	related_skills.insert("fenyue","#fenyue-revived");
 	addMetaObject<FenyueCard>();
 
 	General*wangshuang = new General(this,"wangshuang*xh_tianzhu","wei",8);
 	wangshuang->addSkill(new Zhuilie);
 	wangshuang->addSkill(new ZhuilieSlash);
-	related_skills.insertMulti("zhuilie","#zhuilie-slash");
+	related_skills.insert("zhuilie","#zhuilie-slash");
 
 	General*tenyear_liuzan = new General(this,"tenyear_liuzan","wu",4);
 	tenyear_liuzan->addSkill(new TenyearFenyin);
@@ -30767,7 +30767,7 @@ TenyearHcPackage::TenyearHcPackage()
 	tenyear_huangzu->addSkill(new TenyearJinggong);
 	tenyear_huangzu->addSkill(new TenyearJinggongTargetMod);
 	tenyear_huangzu->addSkill(new TenyearXiaojun);
-	related_skills.insertMulti("tenyearjinggong","#tenyearjinggong");
+	related_skills.insert("tenyearjinggong","#tenyearjinggong");
 
 	General*th_lincao = new General(this,"th_lincao","wu",5,true,false,false,4);
 	th_lincao->addSkill(new Dufeng);
@@ -30796,7 +30796,7 @@ TenyearHcPackage::TenyearHcPackage()
 	gexuan->addSkill(new Lianhua);
 	gexuan->addSkill(new LianhuaEffect);
 	gexuan->addSkill(new Zhafu);
-	related_skills.insertMulti("lianhua","#lianhua-effect");
+	related_skills.insert("lianhua","#lianhua-effect");
 	addMetaObject<ZhafuCard>();
 
 	General*guanlu = new General(this,"guanlu","wei",3);
@@ -30820,7 +30820,7 @@ TenyearHcPackage::TenyearHcPackage()
 	wufan->addSkill(new Tianyun);
 	wufan->addSkill(new TianyunInitial);
 	wufan->addSkill(new Yuyan);
-	related_skills.insertMulti("tianyun","#tianyun");
+	related_skills.insert("tianyun","#tianyun");
 
 	General*dukui = new General(this,"dukui","wei",3);
 	dukui->addSkill(new Fanyin);
@@ -30886,7 +30886,7 @@ TenyearHcPackage::TenyearHcPackage()
 	tenyear_zhugeguo->addSkill(new TenyearYuhua);
 	tenyear_zhugeguo->addSkill(new TenyearQirang);
 	tenyear_zhugeguo->addSkill(new TenyearQirangEffect);
-	related_skills.insertMulti("tenyearqirang","#tenyearqirang");
+	related_skills.insert("tenyearqirang","#tenyearqirang");
 
 	General*huaman = new General(this,"huaman","shu",3,false);
 	huaman->addSkill(new SpManyi);
@@ -30895,14 +30895,14 @@ TenyearHcPackage::TenyearHcPackage()
 	huaman->addSkill(new Zhanyuan);
 	huaman->addSkill(new ZhanyuanRecord("zhanyuan"));
 	huaman->addRelateSkill("xili");
-	related_skills.insertMulti("zhanyuan","#zhanyuan");
+	related_skills.insert("zhanyuan","#zhanyuan");
 	skills << new Xili << new ZhanyuanRecord("secondzhanyuan");
 
 	General*tenyear_xinxianying = new General(this,"tenyear_xinxianying","wei",3,false);
 	tenyear_xinxianying->addSkill(new TenyearZhongjian);
 	tenyear_xinxianying->addSkill(new TenyearCaishi);
 	tenyear_xinxianying->addSkill(new TenyearCaishiPro);
-	related_skills.insertMulti("tenyearcaishi","#tenyearcaishi-pro");
+	related_skills.insert("tenyearcaishi","#tenyearcaishi-pro");
 	addMetaObject<TenyearZhongjianCard>();
 
 	General*xuelingyun = new General(this,"xuelingyun","wei",3,false);
@@ -30952,8 +30952,8 @@ TenyearHcPackage::TenyearHcPackage()
 	tenyear_shixie->addSkill(new TenyearbiluanTrigger);
 	tenyear_shixie->addSkill(new TenyearLixia);
 	tenyear_shixie->addSkill(new TenyearLixiaTrigger);
-	related_skills.insertMulti("tenyearbiluan","#tenyearbiluan-trigger");
-	related_skills.insertMulti("tenyearlixia","#tenyearlixia-trigger");
+	related_skills.insert("tenyearbiluan","#tenyearbiluan-trigger");
+	related_skills.insert("tenyearlixia","#tenyearlixia-trigger");
 
 	General*tenyear_sunhao = new General(this,"tenyear_sunhao$","wu",5);
 	tenyear_sunhao->addSkill(new TenyearCanshi);
@@ -30965,7 +30965,7 @@ TenyearHcPackage::TenyearHcPackage()
 	liubian->addSkill(new SpDushi);
 	liubian->addSkill(new SpDushiPro);
 	liubian->addSkill(new Skill("yuwei$",Skill::Compulsory));
-	related_skills.insertMulti("spdushi","#spdushi-pro");
+	related_skills.insert("spdushi","#spdushi-pro");
 
 	General*caomao = new General(this,"caomao$","wei",4);
 	caomao->setStartHp(3);
@@ -30974,14 +30974,14 @@ TenyearHcPackage::TenyearHcPackage()
 	caomao->addSkill(new Juetao);
 	caomao->addSkill(new JuetaoPro);
 	caomao->addSkill(new Zhushi);
-	related_skills.insertMulti("juetao","#juetao");
+	related_skills.insert("juetao","#juetao");
 	addMetaObject<QianlongCard>();
 
 	General*tenyear_liuyu = new General(this,"tenyear_liuyu","qun",3);
 	tenyear_liuyu->addSkill(new TenyearSuifu);
 	tenyear_liuyu->addSkill(new TenyearSuifuRecord);
 	tenyear_liuyu->addSkill(new TenyearPijing);
-	related_skills.insertMulti("tenyearsuifu","#tenyearsuifu");
+	related_skills.insert("tenyearsuifu","#tenyearsuifu");
 	skills << new TenyearZimu;
 
 	General*dingshangwan = new General(this,"dingshangwan","wei",3,false);
@@ -31024,20 +31024,20 @@ TenyearHcPackage::TenyearHcPackage()
 	guozhao->addSkill(new Pianchong);
 	guozhao->addSkill(new PianchongEffect);
 	guozhao->addSkill(new Zunwei);
-	related_skills.insertMulti("pianchong","#pianchong-effect");
+	related_skills.insert("pianchong","#pianchong-effect");
 	addMetaObject<ZunweiCard>();
 
 	General*fanyufeng = new General(this,"fanyufeng","qun",3,false);
 	fanyufeng->addSkill(new Bazhan("bazhan"));
 	fanyufeng->addSkill(new Jiaoying("jiaoying"));
 	fanyufeng->addSkill(new JiaoyingMove("jiaoying"));
-	related_skills.insertMulti("jiaoying","#jiaoying-move");
+	related_skills.insert("jiaoying","#jiaoying-move");
 
 	General*second_fanyufeng = new General(this,"second_fanyufeng","qun",3,false);
 	second_fanyufeng->addSkill(new Bazhan("secondbazhan"));
 	second_fanyufeng->addSkill(new Jiaoying("secondjiaoying"));
 	second_fanyufeng->addSkill(new JiaoyingMove("secondjiaoying"));
-	related_skills.insertMulti("secondjiaoying","#secondjiaoying-move");
+	related_skills.insert("secondjiaoying","#secondjiaoying-move");
 	addMetaObject<BazhanCard>();
 	addMetaObject<SecondBazhanCard>();
 
@@ -31045,7 +31045,7 @@ TenyearHcPackage::TenyearHcPackage()
 	ruanyu->addSkill(new Xingzuo);
 	ruanyu->addSkill(new XingzuoFinish);
 	ruanyu->addSkill(new Miaoxian);
-	related_skills.insertMulti("xingzuo","#xingzuo-finish");
+	related_skills.insert("xingzuo","#xingzuo-finish");
 	addMetaObject<XingzuoCard>();
 	addMetaObject<MiaoxianCard>();
 
@@ -31053,7 +31053,7 @@ TenyearHcPackage::TenyearHcPackage()
 	yangwan->addSkill(new Youyan);
 	yangwan->addSkill(new Zhuihuan);
 	yangwan->addSkill(new ZhuihuanEffect);
-	related_skills.insertMulti("zhuihuan","#zhuihuan");
+	related_skills.insert("zhuihuan","#zhuihuan");
 
 }
 {//锦瑟良缘
@@ -31062,14 +31062,14 @@ TenyearHcPackage::TenyearHcPackage()
 	caojinyu->addSkill(new Shanshen);
 	caojinyu->addSkill(new Xianjing);
 	caojinyu->addSkill("#kuimang-record");
-	related_skills.insertMulti("shanshen","#kuimang-record");
+	related_skills.insert("shanshen","#kuimang-record");
 	addMetaObject<YuqiCard>();
 
 	General*sunyi = new General(this,"sunyi","wu",5);
 	sunyi->addSkill(new Jiqiaosy);
 	sunyi->addSkill(new JiqiaosyEnter);
 	sunyi->addSkill(new Xiongyisy);
-	related_skills.insertMulti("jiqiaosy","#jiqiaosy");
+	related_skills.insert("jiqiaosy","#jiqiaosy");
 	addMetaObject<JiqiaosyCard>();
 
 	General*fengyu = new General(this,"fengyu","qun",3,false);
@@ -31077,15 +31077,15 @@ TenyearHcPackage::TenyearHcPackage()
 	fengyu->addSkill(new TiqiRecord);
 	fengyu->addSkill(new Baoshu);
 	fengyu->addSkill(new BaoshuDraw);
-	related_skills.insertMulti("tiqi","#tiqi");
-	related_skills.insertMulti("baoshu","#baoshu");
+	related_skills.insert("tiqi","#tiqi");
+	related_skills.insert("baoshu","#baoshu");
 	addMetaObject<BaoshuCard>();
 
 	General*laiyinger = new General(this,"laiyinger","qun",3,false);
 	laiyinger->addSkill(new Xiaowu);
 	laiyinger->addSkill(new Huaping);
 	laiyinger->addSkill(new HuapingInvoke);
-	related_skills.insertMulti("huaping","#huaping");
+	related_skills.insert("huaping","#huaping");
 	addMetaObject<XiaowuCard>();
 	addMetaObject<ShawuCard>();
 	skills << new Shawu;
@@ -31130,19 +31130,19 @@ TenyearHcPackage::TenyearHcPackage()
 	tenyear_yangxiu->addSkill(new TenyearDanlao);
 	tenyear_yangxiu->addSkill(new TenyearJilei);
 	tenyear_yangxiu->addSkill(new TenyearJileiClear);
-	related_skills.insertMulti("tenyearjilei","#tenyearjilei-clear");
+	related_skills.insert("tenyearjilei","#tenyearjilei-clear");
 
 	General*luotong = new General(this,"luotong","wu",3);
 	luotong->addSkill(new Jinjian);
 	luotong->addSkill(new JinjianEffect);
 	luotong->addSkill(new Renzheng);
-	related_skills.insertMulti("jinjian","#jinjian");
+	related_skills.insert("jinjian","#jinjian");
 
 	General*wangchang = new General(this,"wangchang","wei",3);
 	wangchang->addSkill(new Kaiji);
 	wangchang->addSkill(new Pingxi);
 	wangchang->addSkill(new PingxiDiscard);
-	related_skills.insertMulti("pingxi","#pingxi_discard");
+	related_skills.insert("pingxi","#pingxi_discard");
 	addMetaObject<KaijiCard>();
 
 	General*chengbing = new General(this,"chengbing","wu",3);

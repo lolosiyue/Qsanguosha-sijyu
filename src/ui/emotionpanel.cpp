@@ -46,7 +46,7 @@ void EmotionItem::mousePressEvent(QMouseEvent *event)
     QLabel::mousePressEvent(event);
 }
 
-void EmotionItem::enterEvent(QEvent *event)
+void EmotionItem::enterEvent(QEnterEvent *event)
 {
     if (m_movie && m_movie->isValid()) {
         m_movie->setScaledSize(QSize(36, 36));

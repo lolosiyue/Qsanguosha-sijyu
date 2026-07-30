@@ -554,8 +554,8 @@ HMomentumPackage::HMomentumPackage()
     zangba->addSkill(new Hengjiang);
     zangba->addSkill(new HengjiangDraw);
     zangba->addSkill(new HengjiangMaxCards);
-    related_skills.insertMulti("hengjiang", "#hengjiang-draw");
-    related_skills.insertMulti("hengjiang", "#hengjiang-maxcard");
+    related_skills.insert("hengjiang", "#hengjiang-draw");
+    related_skills.insert("hengjiang", "#hengjiang-maxcard");
 
     General*heg_madai = new General(this, "heg_madai", "shu", 4, true); // SHU 019
     heg_madai->addSkill("mashu");
@@ -565,7 +565,7 @@ HMomentumPackage::HMomentumPackage()
     mifuren->addSkill(new Guixiu);
     mifuren->addSkill(new GuixiuDetach);
     mifuren->addSkill(new Cunsi);
-    related_skills.insertMulti("guixiu", "#guixiu-clear");
+    related_skills.insert("guixiu", "#guixiu-clear");
 
     General*heg_sunce = new General(this, "heg_sunce$", "wu", 4); // WU 010 G
     heg_sunce->addSkill("jiang");

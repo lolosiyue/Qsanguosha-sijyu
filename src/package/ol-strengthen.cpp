@@ -5874,7 +5874,7 @@ OLStStandardPackage::OLStStandardPackage()
 	ol_caocao->addSkill("tenyearjianxiong");
 	ol_caocao->addSkill(new OLHujia);
 	ol_caocao->addSkill(new OLHujiaDraw);
-	related_skills.insertMulti("olhujia", "#olhujia");
+	related_skills.insert("olhujia", "#olhujia");
 
 	General *ol_xiahd = new General(this, "ol_xiahoudun", "wei");
 	ol_xiahd->addSkill("ganglie");
@@ -5889,7 +5889,7 @@ OLStStandardPackage::OLStStandardPackage()
 	ol_zhangfei->addSkill(new OLPaoxiao);
 	ol_zhangfei->addSkill(new OLPaoxiaoMod);
 	ol_zhangfei->addSkill(new OLTishen);
-	related_skills.insertMulti("olpaoxiao", "#olpaoxiaomod");
+	related_skills.insert("olpaoxiao", "#olpaoxiaomod");
 
 	General *ol_zhaoyun = new General(this, "ol_zhaoyun", "shu", 4);
 	ol_zhaoyun->addSkill(new OLLongdan);
@@ -5899,7 +5899,7 @@ OLStStandardPackage::OLStStandardPackage()
 	oljie_huangyueying->addSkill(new OLJizhi);
 	oljie_huangyueying->addSkill(new OLQicai);
 	oljie_huangyueying->addSkill(new OLQicaiLimit);
-	related_skills.insertMulti("olqicai", "#olqicai-limit");
+	related_skills.insert("olqicai", "#olqicai-limit");
 
 	General *ol_sunquan = new General(this, "ol_sunquan$", "wu", 4);
 	ol_sunquan->addSkill("tenyearzhiheng");
@@ -5910,13 +5910,13 @@ OLStStandardPackage::OLStStandardPackage()
 	ol_lvmeng->addSkill("qinxue");
 	ol_lvmeng->addSkill(new OLBotu);
 	ol_lvmeng->addSkill(new OLBotuMark);
-	related_skills.insertMulti("olbotu", "#olbotu-mark");
+	related_skills.insert("olbotu", "#olbotu-mark");
 
 	General *ol_gongsunzan = new General(this, "ol_gongsunzan", "qun", 4);
 	ol_gongsunzan->addSkill(new OLQiaomeng);
 	ol_gongsunzan->addSkill(new OLYicong);
 	ol_gongsunzan->addSkill(new OLYicongEffect);
-	related_skills.insertMulti("olyicong", "#olyicong-effect");
+	related_skills.insert("olyicong", "#olyicong-effect");
 
 
 	addMetaObject<OLJijiangCard>();
@@ -5955,7 +5955,7 @@ OLStWindPackage::OLStWindPackage()
 	ol_xiaoqiao->addSkill(new OLHongyan);
 	ol_xiaoqiao->addSkill(new OLHongyanKeep);
 	ol_xiaoqiao->addSkill(new OLPiaoling);
-	related_skills.insertMulti("olhongyan", "#olhongyan-keep");
+	related_skills.insert("olhongyan", "#olhongyan-keep");
 
 	General *ol_zhangjiao = new General(this, "ol_zhangjiao$", "qun", 3);
 	ol_zhangjiao->addSkill(new OLLeiji);
@@ -5982,7 +5982,7 @@ OLStThicketPackage::OLStThicketPackage()
 	ol_zhurong->addSkill("lieren");
 	ol_zhurong->addSkill(new OLChangbiao);
 	ol_zhurong->addSkill(new SlashNoDistanceLimitSkill("olchangbiao"));
-	related_skills.insertMulti("olchangbiao", "#olchangbiao-slash-ndl");
+	related_skills.insert("olchangbiao", "#olchangbiao-slash-ndl");
 
 	General *ol_menghuo = new General(this, "ol_menghuo", "shu", 4);
 	ol_menghuo->addSkill("huoshou");
@@ -6007,7 +6007,7 @@ OLStThicketPackage::OLStThicketPackage()
 	ol_dongzhuo->addSkill("roulin");
 	ol_dongzhuo->addSkill("benghuai");
 	ol_dongzhuo->addSkill(new OLBaonue);
-	related_skills.insertMulti("oljiuchi", "#oljiuchi-target");
+	related_skills.insert("oljiuchi", "#oljiuchi-target");
 
 
 
@@ -6035,7 +6035,7 @@ OLStFirePackage::OLStFirePackage()
 	ol_pangtong->addSkill(new OLLianhuan);
 	ol_pangtong->addSkill(new OLLianhuanMod);
 	ol_pangtong->addSkill(new OLNiepan);
-	related_skills.insertMulti("ollianhuan", "#ollianhuanmod");
+	related_skills.insert("ollianhuan", "#ollianhuanmod");
 
 	General *ol_xunyu = new General(this, "ol_xunyu", "wei", 3);
 	ol_xunyu->addSkill("quhu");
@@ -6062,13 +6062,13 @@ OLStFirePackage::OLStFirePackage()
 	ol_yuanshao->addSkill(new OLLuanji);
 	ol_yuanshao->addSkill(new OLXueyi("olxueyi"));
 	ol_yuanshao->addSkill(new OLXueyiKeep("olxueyi"));
-	related_skills.insertMulti("olxueyi", "#olxueyi-keep");
+	related_skills.insert("olxueyi", "#olxueyi-keep");
 
 	General *second_ol_yuanshao = new General(this, "second_ol_yuanshao$", "qun", 4);
 	second_ol_yuanshao->addSkill("olluanji");
 	second_ol_yuanshao->addSkill(new OLXueyi("secondolxueyi"));
 	second_ol_yuanshao->addSkill(new OLXueyiKeep("secondolxueyi"));
-	related_skills.insertMulti("secondolxueyi", "#secondolxueyi-keep");
+	related_skills.insert("secondolxueyi", "#secondolxueyi-keep");
 
 
 
@@ -6087,8 +6087,8 @@ OLStMountainPackage::OLStMountainPackage()
 	ol_zhanghe->addSkill(new OLQiaobian);
 	ol_zhanghe->addSkill(new OLQiaobianGameStart);
 	ol_zhanghe->addSkill(new OLQiaobianMark);
-	related_skills.insertMulti("olqiaobian", "#olqiaobian");
-	related_skills.insertMulti("olqiaobian", "#olqiaobian-mark");
+	related_skills.insert("olqiaobian", "#olqiaobian");
+	related_skills.insert("olqiaobian", "#olqiaobian-mark");
 
 	General *ol_caiwenji = new General(this, "ol_jie_caiwenji", "qun", 3, false);
 	ol_caiwenji->addSkill(new OLBeige);
@@ -6099,8 +6099,8 @@ OLStMountainPackage::OLStMountainPackage()
 	ol_zuoci->addSkill(new OLHuashenSelect);
 	ol_zuoci->addSkill(new OLHuashenClear);
 	ol_zuoci->addSkill("xinsheng");
-	related_skills.insertMulti("olhuashen", "#olhuashen-select");
-	related_skills.insertMulti("olhuashen", "#olhuashen-clear");
+	related_skills.insert("olhuashen", "#olhuashen-select");
+	related_skills.insert("olhuashen", "#olhuashen-clear");
 
 	General *ol_liushan = new General(this, "ol_liushan$", "shu", 3);
 	ol_liushan->addSkill("xiangle");
@@ -6120,8 +6120,8 @@ OLStMountainPackage::OLStMountainPackage()
 	ol_dengai->addSkill(new OLZaoxian);
 	ol_dengai->addSkill(new OLZaoxianExtraTurn);
 	ol_dengai->addRelateSkill("jixi");
-	related_skills.insertMulti("oltuntian", "#oltuntian-dist");
-	related_skills.insertMulti("olzaoxian", "#olzaoxian-extra-turn");
+	related_skills.insert("oltuntian", "#oltuntian-dist");
+	related_skills.insert("olzaoxian", "#olzaoxian-extra-turn");
 
 	General *oljie_erzhang = new General(this, "oljie_erzhang", "wu", 3);
 	oljie_erzhang->addSkill(new OLZhijian);

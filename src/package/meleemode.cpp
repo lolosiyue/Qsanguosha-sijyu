@@ -19,14 +19,14 @@ class MeleeMode : public TriggerSkill
 	{
 		return target&&target->isAlive();
 	}
-    bool MeleeMode::checkMeleeCondition(Room *room) const
+    bool checkMeleeCondition(Room *room) const
     {
         if (!Config.EnableMeleeMode)
             return false;
 
         return room->getTag("MeleeModeActive").toBool();
     }
-    bool MeleeMode::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
     {
         if (!Config.EnableMeleeMode)
             return false;
@@ -139,7 +139,7 @@ public:
         attached_lord_skill = true;
 	}
 
-    const Card *MeleePeach::viewAs(const Card *originalCard) const
+    const Card *viewAs(const Card *originalCard) const
     {
         CardUseStruct::CardUseReason reason = Sanguosha->getCurrentCardUseReason();
         QString pattern = Sanguosha->getCurrentCardUsePattern();
@@ -157,12 +157,12 @@ public:
         return nullptr;
     }
 
-    bool MeleePeach::isEnabledAtPlay(const Player *player) const
+    bool isEnabledAtPlay(const Player *player) const
     {
         return Slash::IsAvailable(player);
     }
 
-    bool MeleePeach::isEnabledAtResponse(const Player *, const QString &pattern) const
+    bool isEnabledAtResponse(const Player *, const QString &pattern) const
     {
         return pattern.contains("slash", Qt::CaseInsensitive) || pattern.contains("jink", Qt::CaseInsensitive);
     }
@@ -176,12 +176,12 @@ public:
         attached_lord_skill = true;
     }
     
-    bool MeleePeachFilter::viewFilter(const Card *to_select) const
+    bool viewFilter(const Card *to_select) const
     {
         return to_select->isKindOf("Peach") && Sanguosha->getCardPlace(to_select->getId()) == Player::PlaceHand;
     }
 
-    const Card *MeleePeachFilter::viewAs(const Card *originalCard) const
+    const Card *viewAs(const Card *originalCard) const
     {
         MeleeSlashJink *card = new MeleeSlashJink(originalCard->getSuit(), originalCard->getNumber());
         card->setSkillName("_" + objectName());

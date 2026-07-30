@@ -1902,7 +1902,7 @@ BGMPackage::BGMPackage()
     bgm_pangtong->addSkill(new Manjuan);
     bgm_pangtong->addSkill(new Zuixiang);
     bgm_pangtong->addSkill(new ZuixiangClear);
-    related_skills.insertMulti("zuixiang", "#zuixiang-limit");
+    related_skills.insert("zuixiang", "#zuixiang-limit");
 
     General *bgm_zhangfei = new General(this, "bgm_zhangfei", "shu"); // *SP 005
     bgm_zhangfei->addSkill(new Jie);
@@ -1912,7 +1912,7 @@ BGMPackage::BGMPackage()
     bgm_lvmeng->addSkill(new Tanhu);
     bgm_lvmeng->addSkill(new MouduanStart);
     bgm_lvmeng->addSkill(new Mouduan);
-    related_skills.insertMulti("mouduan", "#mouduan-start");
+    related_skills.insert("mouduan", "#mouduan-start");
 
     General *bgm_liubei = new General(this, "bgm_liubei$", "shu"); // *SP 007
     bgm_liubei->addSkill(new Zhaolie);
@@ -1926,15 +1926,15 @@ BGMPackage::BGMPackage()
     bgm_ganning->addSkill(new Yinling);
     bgm_ganning->addSkill(new Junwei);
     bgm_ganning->addSkill(new JunweiGot);
-    related_skills.insertMulti("junwei", "#junwei-got");
+    related_skills.insert("junwei", "#junwei-got");
 
     General *bgm_xiahoudun = new General(this, "bgm_xiahoudun", "wei"); // *SP 010
     bgm_xiahoudun->addSkill(new Fenyong);
     bgm_xiahoudun->addSkill(new FenyongDetach);
     bgm_xiahoudun->addSkill(new Xuehen);
     bgm_xiahoudun->addSkill(new SlashNoDistanceLimitSkill("xuehen"));
-    related_skills.insertMulti("fenyong", "#fenyong-clear");
-    related_skills.insertMulti("xuehen", "#xuehen-slash-ndl");
+    related_skills.insert("fenyong", "#fenyong-clear");
+    related_skills.insert("xuehen", "#xuehen-slash-ndl");
 
     addMetaObject<DaheCard>();
     addMetaObject<TanhuCard>();
@@ -2927,17 +2927,17 @@ BGMDIYPackage::BGMDIYPackage()
     diy_liuxie->addSkill(new Hantong);
     diy_liuxie->addSkill(new HantongAcquire);
     diy_liuxie->addSkill(new HantongDetach);
-    related_skills.insertMulti("hantong", "#hantong-acquire");
-    related_skills.insertMulti("hantong", "#hantong-detach");
+    related_skills.insert("hantong", "#hantong-acquire");
+    related_skills.insert("hantong", "#hantong-detach");
 
     General *diy_gongsunzan = new General(this, "diy_gongsunzan", "qun"); // DIY 004
     diy_gongsunzan->addSkill(new DIYYicong);
     diy_gongsunzan->addSkill(new DIYYicongDistance);
     diy_gongsunzan->addSkill(new Tuqi);
     diy_gongsunzan->addSkill(new TuqiDistance);
-    related_skills.insertMulti("diyyicong", "#diyyicong-clear");
-    related_skills.insertMulti("diyyicong", "#diyyicong-dist");
-    related_skills.insertMulti("tuqi", "#tuqi-dist");
+    related_skills.insert("diyyicong", "#diyyicong-clear");
+    related_skills.insert("diyyicong", "#diyyicong-dist");
+    related_skills.insert("tuqi", "#tuqi-dist");
 
     General *diy_zhugeke = new General(this, "diy_zhugeke", "wu", 3, true);
     diy_zhugeke->addSkill("aocai");

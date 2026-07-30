@@ -1905,7 +1905,7 @@ void RoomScene::keyReleaseEvent(QKeyEvent*event)
 				!excluded_piles.contains(tag)) {
 
 				// 解析武將清單 (神殺屬性標準：以 '+' 分隔的字串)
-				QStringList generals = Self->property(prop_name).toString().split("+", QString::SkipEmptyParts);
+				QStringList generals = Self->property(prop_name).toString().split("+", Qt::SkipEmptyParts);
 				if (generals.isEmpty()) continue;
 
 				// 驗證是否所有名稱都是合法武將
@@ -5701,6 +5701,12 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
                 glViewport->makeCurrent();
                 qWarning("[RoomScene] GL viewport context made current for texture loading");
             }
+        }
+
+        if (!glViewport) {
+            qWarning("[RoomScene] OpenGL viewport unavailable; skipping Spine animation");
+            delete lightbox;
+            return;
         }
 
         SpineGlItem *spineItem = new SpineGlItem();

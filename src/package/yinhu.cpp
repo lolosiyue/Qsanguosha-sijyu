@@ -4847,8 +4847,8 @@ YinhuPackage::YinhuPackage()
 	yh_zhangwenyuan->addSkill(new YHShecuo);
 	yh_zhangwenyuan->addSkill("#fulinbf");
 	yh_zhangwenyuan->addSkill(new YHShecuoliLimit);
-	related_skills.insertMulti("yhshecuo", "#yhshecuo-limit");
-	related_skills.insertMulti("yhshecuo", "#fulinbf");
+	related_skills.insert("yhshecuo", "#yhshecuo-limit");
+	related_skills.insert("yhshecuo", "#fulinbf");
 
 	General *yh_sunquan = new General(this, "yh_sunquan", "wei", 4);
 	yh_sunquan->setStartHp(3);
@@ -4856,15 +4856,15 @@ YinhuPackage::YinhuPackage()
 	yh_sunquan->addSkill(new YHNabi);
 	yh_sunquan->addSkill(new YHNabiTransfer);
 	yh_sunquan->addSkill(new YHHuanglong);
-	related_skills.insertMulti("yhnabi", "#yhnabi");
+	related_skills.insert("yhnabi", "#yhnabi");
 
 	General *yh_liuguanzhang = new General(this, "yh_liuguanzhang", "shu", 4);
 	yh_liuguanzhang->addSkill(new YHYijie);
 	yh_liuguanzhang->addSkill(new YHXinghan);
 	yh_liuguanzhang->addSkill(new YHXinghanDraw);
 	yh_liuguanzhang->addSkill(new YHXinghanTarget);
-	related_skills.insertMulti("yhxinghan", "#yhxinghan-draw");
-	related_skills.insertMulti("yhxinghan", "#yhxinghan-target");
+	related_skills.insert("yhxinghan", "#yhxinghan-draw");
+	related_skills.insert("yhxinghan", "#yhxinghan-target");
 
 	General *yh_chenshou = new General(this, "yh_chenshou", "shu", 3);
 	yh_chenshou->addSkill(new YHZhushi);
@@ -4872,7 +4872,7 @@ YinhuPackage::YinhuPackage()
 	yh_chenshou->addSkill(new YHQubi);
 	//yh_chenshou->addSkill(new Skill("yhqubi", Skill::Compulsory)); //耦合进了Room::drawCards
 	yh_chenshou->addSkill(new YHShijin);
-	related_skills.insertMulti("yhzhushi", "#yhzhushi");
+	related_skills.insert("yhzhushi", "#yhzhushi");
 
 	General *yh_zhugeliang = new General(this, "yh_zhugeliang", "wu", 3);
 	yh_zhugeliang->addSkill(new YHBianzhan);
@@ -4887,7 +4887,7 @@ YinhuPackage::YinhuPackage()
 	yh_caocao->addSkill(new YHSancai);
 	yh_caocao->addSkill(new YHSancaiAttackRange);
 	yh_caocao->addSkill(new YHJuyi);
-	related_skills.insertMulti("yhsancai", "#yhsancai");
+	related_skills.insert("yhsancai", "#yhsancai");
 
 	General *yh_xunyu = new General(this, "yh_xunyu", "qun", 3);
 	yh_xunyu->addSkill(new YHHanjie);
@@ -4901,18 +4901,18 @@ YinhuPackage::YinhuPackage()
 	yh_zhanghua->addSkill(new YHZhanghua("yhbuque"));
 	yh_zhanghua->addSkill(new YHChenzhen);
 	yh_zhanghua->addSkill(new YHZhanghua("yhchenzhen"));
-	related_skills.insertMulti("yhdujian", "#yhdujian");
-	related_skills.insertMulti("yhbuque", "#yhbuque");
-	related_skills.insertMulti("yhbuque", "#yhbuque-move");
-	related_skills.insertMulti("yhchenzhen", "#yhchenzhen-move");
+	related_skills.insert("yhdujian", "#yhdujian");
+	related_skills.insert("yhbuque", "#yhbuque");
+	related_skills.insert("yhbuque", "#yhbuque-move");
+	related_skills.insert("yhchenzhen", "#yhchenzhen-move");
 
 	General *yh_liushan = new General(this, "yh_liushan", "jin", 3);
 	yh_liushan->addSkill(new YHSigong);
 	yh_liushan->addSkill(new YHSigongEffect);
 	yh_liushan->addSkill(new YHXijian);
 	yh_liushan->addSkill(new YHXijianEffect);
-	related_skills.insertMulti("yhsigong", "#yhsigong");
-	related_skills.insertMulti("yhxijian", "#yhxijian");
+	related_skills.insert("yhsigong", "#yhsigong");
+	related_skills.insert("yhxijian", "#yhxijian");
 
 	General *yh_shenxuchu = new General(this, "yh_shenxuchu", "god", 4);
 	yh_shenxuchu->addSkill(new YHBoben);
@@ -4920,9 +4920,9 @@ YinhuPackage::YinhuPackage()
 	yh_shenxuchu->addSkill(new YHHankai);
 	yh_shenxuchu->addSkill(new YHHankaiEffect);
 	yh_shenxuchu->addSkill(new YHHankaiLimit);
-	related_skills.insertMulti("yhboben", "#yhboben");
-	related_skills.insertMulti("yhhankai", "#yhhankai");
-	related_skills.insertMulti("yhhankai", "#yhhankai-limit");
+	related_skills.insert("yhboben", "#yhboben");
+	related_skills.insert("yhhankai", "#yhhankai");
+	related_skills.insert("yhhankai", "#yhhankai-limit");
 
 	General *yh_shenmachao = new General(this, "yh_shenmachao", "god", 4);
 	yh_shenmachao->addSkill(new YHFeisha);
@@ -4931,8 +4931,8 @@ YinhuPackage::YinhuPackage()
 	yh_shenmachao->addSkill(new YHJuantuClear);
 	yh_shenmachao->addSkill(new YHQuanwang);
 	yh_shenmachao->addRelateSkill("yhchouxi");
-	related_skills.insertMulti("yhjuantu", "#yhjuantu");
-	related_skills.insertMulti("yhjuantu", "#yhjuantu-clear");
+	related_skills.insert("yhjuantu", "#yhjuantu");
+	related_skills.insert("yhjuantu", "#yhjuantu-clear");
 
 	General *yh_nvzhuangsimayi = new General(this, "yh_nvzhuangsimayi", "wei", 4, false);
 	yh_nvzhuangsimayi->setStartHp(3);
@@ -4941,30 +4941,30 @@ YinhuPackage::YinhuPackage()
 	yh_nvzhuangsimayi->addSkill(new YHPodi);
 	yh_nvzhuangsimayi->addSkill(new YHPodiInvalidity);
 	yh_nvzhuangsimayi->addSkill(new YHPodiTargetMod);
-	related_skills.insertMulti("yhpodi", "#yhpodi-inv");
-	related_skills.insertMulti("yhpodi", "#yhpodi-target");
+	related_skills.insert("yhpodi", "#yhpodi-inv");
+	related_skills.insert("yhpodi", "#yhpodi-target");
 
 	General *yh_dingfuren = new General(this, "yh_dingfuren", "wei", 3, false);
 	yh_dingfuren->addSkill(new YHDuwei);
 	yh_dingfuren->addSkill(new YHDuweiTargetMod);
 	yh_dingfuren->addSkill("#choulve-record");
 	yh_dingfuren->addSkill(new YHSiku);
-	related_skills.insertMulti("yhduwei", "#yhduwei");
-	related_skills.insertMulti("yhduwei", "#choulve-record");
+	related_skills.insert("yhduwei", "#yhduwei");
+	related_skills.insert("yhduwei", "#choulve-record");
 
 	General *yh_cuifuren = new General(this, "yh_cuifuren", "shu", 3, false);
 	yh_cuifuren->addSkill(new YHQingsi);
 	yh_cuifuren->addSkill(new YHChuzhu);
 	yh_cuifuren->addSkill(new YHChuzhuMark);
-	related_skills.insertMulti("yhchuzhu", "#yhchuzhu");
+	related_skills.insert("yhchuzhu", "#yhchuzhu");
 
 	General *yh_liumu = new General(this, "yh_liumu", "shu", 3, false);
 	yh_liumu->addSkill(new YHHuairen);
 	yh_liumu->addSkill(new YHHuairenEffect);
 	yh_liumu->addSkill(new YHHuairenLimit);
 	yh_liumu->addSkill(new YHYuren);
-	related_skills.insertMulti("yhhuairen", "#yhhuairen");
-	related_skills.insertMulti("yhhuairen", "#yhhuairen-limit");
+	related_skills.insert("yhhuairen", "#yhhuairen");
+	related_skills.insert("yhhuairen", "#yhhuairen-limit");
 
 	General *yh_zhupeilan = new General(this, "yh_zhupeilan", "wu", 3, false);
 	yh_zhupeilan->addSkill(new YHRangwei);
@@ -4980,26 +4980,26 @@ YinhuPackage::YinhuPackage()
 	yh_liufuren->addSkill(new YHKunmo);
 	yh_liufuren->addSkill(new YHTanyou);
 	yh_liufuren->addSkill(new YHTanyouBuff);
-	related_skills.insertMulti("yhtanyou", "#yhtanyou");
+	related_skills.insert("yhtanyou", "#yhtanyou");
 
 	General *yh_zhenji = new General(this, "yh_zhenji", "qun", 3, false);
 	yh_zhenji->addSkill(new YHBozhi);
 	yh_zhenji->addSkill(new YHBozhiRecord);
 	yh_zhenji->addSkill(new YHJixiang);
-	related_skills.insertMulti("yhbozhi", "#yhbozhi");
+	related_skills.insert("yhbozhi", "#yhbozhi");
 
 	General *yh_jiananfeng = new General(this, "yh_jiananfeng", "jin", 3, false);
 	yh_jiananfeng->addSkill(new YHGuidu);
 	yh_jiananfeng->addSkill(new YHDaobi);
 	yh_jiananfeng->addSkill(new YHShanhai);
 	yh_jiananfeng->addSkill(new YHShanhaiTargetMod);
-	related_skills.insertMulti("yhshanhai", "#yhshanhai");
+	related_skills.insert("yhshanhai", "#yhshanhai");
 
 	General *yh_weihuacun = new General(this, "yh_weihuacun", "jin", 3, false);
 	yh_weihuacun->addSkill(new YHYanglian);
 	yh_weihuacun->addSkill(new YHYanglianRemove);
 	yh_weihuacun->addSkill(new YHXiandao);
-	related_skills.insertMulti("yhyanglian", "#yhyanglian");
+	related_skills.insert("yhyanglian", "#yhyanglian");
 
 	General *yh_shenerqiao = new General(this, "yh_shenerqiao", "god", 3, false);
 	yh_shenerqiao->addSkill(new YHQizu);
@@ -5010,8 +5010,8 @@ YinhuPackage::YinhuPackage()
 	yh_shencaiwenji->addSkill(new YHQupaiEffect);
 	yh_shencaiwenji->addSkill(new YHQupaiLimit);
 	yh_shencaiwenji->addSkill(new YHYange);
-	related_skills.insertMulti("yhqupai", "#yhqupai");
-	related_skills.insertMulti("yhqupai", "#yhqupai-limit");
+	related_skills.insert("yhqupai", "#yhqupai");
+	related_skills.insert("yhqupai", "#yhqupai-limit");
 
 	addMetaObject<YHShecuoCard>();
 	addMetaObject<YHYijieCard>();
@@ -5029,6 +5029,6 @@ YinhuPackage::YinhuPackage()
 	addMetaObject<YHKunmoCard>();
 
 	skills << new YHBuquePut << new YHXijianGive << new YHChouxi << new YHChouxiDamage;
-	related_skills.insertMulti("yhchouxi", "#yhchouxi");
+	related_skills.insert("yhchouxi", "#yhchouxi");
 }
 ADD_PACKAGE(Yinhu)

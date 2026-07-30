@@ -1665,13 +1665,13 @@ YJCM2012Package::YJCM2012Package()
     General *caozhang = new General(this, "caozhang", "wei"); // YJ 102
     caozhang->addSkill(new Jiangchi);
     caozhang->addSkill(new JiangchiTargetMod);
-    related_skills.insertMulti("jiangchi", "#jiangchi-target");
+    related_skills.insert("jiangchi", "#jiangchi-target");
 
     General *chengpu = new General(this, "chengpu", "wu"); // YJ 103
     chengpu->addSkill(new Lihuo);
     chengpu->addSkill(new LihuoTargetMod);
     chengpu->addSkill(new Chunlao);
-    related_skills.insertMulti("lihuo", "#lihuo-target");
+    related_skills.insert("lihuo", "#lihuo-target");
 
     General *nos_guanxingzhangbao = new General(this, "nos_guanxingzhangbao", "shu");
     nos_guanxingzhangbao->addSkill(new NosFuhun);
@@ -1686,7 +1686,7 @@ YJCM2012Package::YJCM2012Package()
     nos_handang->addSkill(new NosGongqi);
     nos_handang->addSkill(new NosGongqiTargetMod);
     nos_handang->addSkill(new NosJiefan);
-    related_skills.insertMulti("nosgongqi", "#nosgongqi-target");
+    related_skills.insert("nosgongqi", "#nosgongqi-target");
     addMetaObject<NosJiefanCard>();
     General *handang = new General(this, "handang", "wu"); // YJ 105
     handang->addSkill(new Gongqi);
@@ -1707,7 +1707,7 @@ YJCM2012Package::YJCM2012Package()
     new_liubiao->addSkill(new NewZishou);
     new_liubiao->addSkill(new NewZishouProhibit);
     new_liubiao->addSkill("zongshi");
-    related_skills.insertMulti("newzishou", "#newzishou");
+    related_skills.insert("newzishou", "#newzishou");
 
     General *ol_liubiao = new General(this, "ol_liubiao", "qun", 3);
     ol_liubiao->addSkill(new OLZishou);
@@ -1721,13 +1721,13 @@ YJCM2012Package::YJCM2012Package()
     madai->addSkill("mashu");
     madai->addSkill(new Qianxi);
     madai->addSkill(new QianxiClear);
-    related_skills.insertMulti("qianxi", "#qianxi-clear");
+    related_skills.insert("qianxi", "#qianxi-clear");
 
     General *ol_madai = new General(this, "ol_madai", "shu");
     ol_madai->addSkill("mashu");
     ol_madai->addSkill(new OlQianxi);
     ol_madai->addSkill(new OlQianxiClear);
-    related_skills.insertMulti("olqianxi", "#olqianxi-clear");
+    related_skills.insert("olqianxi", "#olqianxi-clear");
 
     General *nos_wangyi = new General(this, "nos_wangyi", "wei", 3, false);
     nos_wangyi->addSkill(new NosZhenlie);

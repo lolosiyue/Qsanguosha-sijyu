@@ -232,7 +232,7 @@ public:
     }
 
 protected:
-    void enterEvent(QEvent *event)
+    void enterEvent(QEnterEvent *event) override
     {
         QAbstractButton::enterEvent(event);
         update();
@@ -2702,7 +2702,7 @@ WindPackage::WindPackage()
     General *xiahouyuan = new General(this, "xiahouyuan", "wei"); // WEI 008
     xiahouyuan->addSkill(new Shensu);
     xiahouyuan->addSkill(new SlashNoDistanceLimitSkill("shensu"));
-    related_skills.insertMulti("shensu", "#shensu-slash-ndl");
+    related_skills.insert("shensu", "#shensu-slash-ndl");
 
     General *noscaoren = new General(this, "nos_caoren", "wei");
     noscaoren->addSkill(new NosJushou);
@@ -2717,26 +2717,26 @@ WindPackage::WindPackage()
     General *weiyan = new General(this, "weiyan", "shu"); // SHU 009
     weiyan->addSkill(new Kuanggu);
     weiyan->addSkill(new KuangguRecord);
-    related_skills.insertMulti("kuanggu", "#kuanggu-record");
+    related_skills.insert("kuanggu", "#kuanggu-record");
 
     General *xiaoqiao = new General(this, "xiaoqiao", "wu", 3, false); // WU 011
     xiaoqiao->addSkill(new Tianxiang);
     xiaoqiao->addSkill(new TianxiangDraw);
     xiaoqiao->addSkill(new Hongyan);
-    related_skills.insertMulti("tianxiang", "#tianxiang");
+    related_skills.insert("tianxiang", "#tianxiang");
 
     General *nos_zhoutai = new General(this, "nos_zhoutai", "wu");
     nos_zhoutai->addSkill(new NosBuqu);
     nos_zhoutai->addSkill(new NosBuquRemove);
     nos_zhoutai->addSkill(new NosBuquClear);
-    related_skills.insertMulti("nosbuqu", "#nosbuqu-remove");
-    related_skills.insertMulti("nosbuqu", "#nosbuqu-clear");
+    related_skills.insert("nosbuqu", "#nosbuqu-remove");
+    related_skills.insert("nosbuqu", "#nosbuqu-clear");
 
     General *zhoutai = new General(this, "zhoutai", "wu"); // WU 013
     zhoutai->addSkill(new Buqu);
     zhoutai->addSkill(new BuquMaxCards);
     zhoutai->addSkill(new Fenji);
-    related_skills.insertMulti("buqu", "#buqu");
+    related_skills.insert("buqu", "#buqu");
 
     General *nos_zhangjiao = new General(this, "nos_zhangjiao$", "qun", 3);
     nos_zhangjiao->addSkill(new NosLeiji);
@@ -2766,15 +2766,15 @@ WindPackage::WindPackage()
     shenguanyu->addSkill(new Wushen);
     shenguanyu->addSkill(new WushenTargetMod);
     shenguanyu->addSkill(new Wuhun);
-    related_skills.insertMulti("wushen", "#wushen-target");
+    related_skills.insert("wushen", "#wushen-target");
 
     General *ol_shenguanyu = new General(this, "ol_shenguanyu", "god", 5);
     ol_shenguanyu->addSkill(new OLWushen);
     ol_shenguanyu->addSkill(new OLWushenTargetMod);
     ol_shenguanyu->addSkill(new OLWushenSlash);
     ol_shenguanyu->addSkill("wuhun");
-    related_skills.insertMulti("olwushen", "#olwushen-target");
-    related_skills.insertMulti("olwushen", "#olwushen-slash");
+    related_skills.insert("olwushen", "#olwushen-target");
+    related_skills.insert("olwushen", "#olwushen-slash");
 
     General *shenlvmeng = new General(this, "shenlvmeng", "god", 3); // LE 002
     shenlvmeng->addSkill(new Shelie);
@@ -2788,6 +2788,6 @@ WindPackage::WindPackage()
     addMetaObject<GuhuoCard>();
 
     skills << new HuangtianViewAsSkill << new Chanyuan << new ChanyuanInvalidity;
-    related_skills.insertMulti("chanyuan", "#chanyuan-inv");
+    related_skills.insert("chanyuan", "#chanyuan-inv");
 }
 ADD_PACKAGE(Wind)

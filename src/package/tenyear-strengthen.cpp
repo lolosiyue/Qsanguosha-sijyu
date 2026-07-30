@@ -7428,7 +7428,7 @@ TenyearStStandardPackage::TenyearStStandardPackage()
 	tenyear_guanyu->addSkill(new TenyearWusheng);
 	tenyear_guanyu->addSkill(new TenyearWushengMod);
 	tenyear_guanyu->addSkill(new TenyearYijue);
-	related_skills.insertMulti("tenyearwusheng", "#tenyearwushengmod");
+	related_skills.insert("tenyearwusheng", "#tenyearwushengmod");
 
 	General *tenyear_zhangfei = new General(this, "tenyear_zhangfei", "shu", 4);
 	tenyear_zhangfei->addSkill(new TenyearPaoxiao);
@@ -7457,7 +7457,7 @@ TenyearStStandardPackage::TenyearStStandardPackage()
 	General *tenyear_xuchu = new General(this, "tenyear_xuchu", "wei", 4);
 	tenyear_xuchu->addSkill(new TenyearLuoyi);
 	tenyear_xuchu->addSkill(new TenyearLuoyiBuff);
-	related_skills.insertMulti("tenyearluoyi", "#tenyearluoyibuff");
+	related_skills.insert("tenyearluoyi", "#tenyearluoyibuff");
 
 	General *tenyear_guojia = new General(this, "tenyear_guojia", "wei", 3);
 	tenyear_guojia->addSkill("tiandu");
@@ -7528,7 +7528,7 @@ TenyearStStandardPackage::TenyearStStandardPackage()
 	tenyear_guohuanghou->addSkill(new TenyearJiaozhao);
 	tenyear_guohuanghou->addSkill(new TenyearJiaozhaoPro);
 	tenyear_guohuanghou->addSkill(new TenyearDanxin);
-	related_skills.insertMulti("tenyearjiaozhao", "#tenyearjiaozhao");
+	related_skills.insert("tenyearjiaozhao", "#tenyearjiaozhao");
 
 	addMetaObject<TenyearZongxuanCard>();
 	addMetaObject<TenyearYjYanyuCard>();
@@ -7553,7 +7553,7 @@ TenyearStWindPackage::TenyearStWindPackage()
 	General *tenyear_huangzhong = new General(this, "tenyear_huangzhong", "shu", 4);
 	tenyear_huangzhong->addSkill(new TenyearLiegong);
 	tenyear_huangzhong->addSkill(new TenyearLiegongMod);
-	related_skills.insertMulti("tenyearliegong", "#tenyearliegongmod");
+	related_skills.insert("tenyearliegong", "#tenyearliegongmod");
 
 	General *tenyear_weiyan = new General(this, "tenyear_weiyan", "shu", 4);
 	tenyear_weiyan->addSkill(new TenyearKuanggu);
@@ -7562,7 +7562,7 @@ TenyearStWindPackage::TenyearStWindPackage()
 	General *tenyear_xiahouyuan = new General(this, "tenyear_xiahouyuan", "wei", 4);
 	tenyear_xiahouyuan->addSkill(new TenyearShensu);
 	tenyear_xiahouyuan->addSkill(new SlashNoDistanceLimitSkill("tenyearshensu"));
-	related_skills.insertMulti("tenyearshensu", "#tenyearshensu-slash-ndl");
+	related_skills.insert("tenyearshensu", "#tenyearshensu-slash-ndl");
 
 	General *tenyear_caoren = new General(this, "tenyear_caoren", "wei", 4);
 	tenyear_caoren->addSkill(new TenyearJushou);
@@ -7594,7 +7594,7 @@ TenyearStYJ2011Package::TenyearStYJ2011Package()
 	tenyear_zhangchunhua->addSkill(new Tenyearjueqing);
 	tenyear_zhangchunhua->addSkill(new TenyearjueqingComplete);
 	tenyear_zhangchunhua->addSkill("nosshangshi");
-	related_skills.insertMulti("tenyearjueqing", "#tenyearjueqing");
+	related_skills.insert("tenyearjueqing", "#tenyearjueqing");
 
 	General *tenyear_yujin = new General(this, "tenyear_yujin", "wei", 4);
 	tenyear_yujin->addSkill(new TenyearZhenjun);
@@ -7622,8 +7622,8 @@ TenyearStYJ2011Package::TenyearStYJ2011Package()
 	tenyear_gaoshun->addSkill(new TenyearXianzhenSlash("tenyearxianzhen"));
 	tenyear_gaoshun->addSkill(new TenyearXianzhenTargetMod("tenyearxianzhen"));
 	tenyear_gaoshun->addSkill("jinjiu");
-	related_skills.insertMulti("tenyearxianzhen", "#tenyearxianzhen-slash");
-	related_skills.insertMulti("tenyearxianzhen", "#tenyearxianzhen-target");
+	related_skills.insert("tenyearxianzhen", "#tenyearxianzhen-slash");
+	related_skills.insert("tenyearxianzhen", "#tenyearxianzhen-target");
 
 	General *second_tenyear_gaoshun = new General(this, "second_tenyear_gaoshun", "qun", 4);
 	second_tenyear_gaoshun->addSkill(new TenyearXianzhen("secondtenyearxianzhen"));
@@ -7631,9 +7631,9 @@ TenyearStYJ2011Package::TenyearStYJ2011Package()
 	second_tenyear_gaoshun->addSkill(new TenyearXianzhenTargetMod("secondtenyearxianzhen"));
 	second_tenyear_gaoshun->addSkill(new SecondTenyearJinjiu);
 	second_tenyear_gaoshun->addSkill(new SecondTenyearJinjiuLimit);
-	related_skills.insertMulti("secondtenyearxianzhen", "#secondtenyearxianzhen-slash");
-	related_skills.insertMulti("secondtenyearxianzhen", "#secondtenyearxianzhen-target");
-	related_skills.insertMulti("secondtenyearjinjiu", "#secondtenyearjinjiu-limit");
+	related_skills.insert("secondtenyearxianzhen", "#secondtenyearxianzhen-slash");
+	related_skills.insert("secondtenyearxianzhen", "#secondtenyearxianzhen-target");
+	related_skills.insert("secondtenyearjinjiu", "#secondtenyearjinjiu-limit");
 }
 ADD_PACKAGE(TenyearStYJ2011)
 
@@ -7649,8 +7649,8 @@ TenyearStYJ2012Package::TenyearStYJ2012Package()
 	tenyear_madai->addSkill(new TenyearQianxiDraw);
 	tenyear_madai->addSkill(new TenyearQianxiLimit);
 	tenyear_madai->addSkill("mashu");
-	related_skills.insertMulti("tenyearqianxi", "#tenyearqianxi-draw");
-	related_skills.insertMulti("tenyearqianxi", "#tenyearqianxi-limit");
+	related_skills.insert("tenyearqianxi", "#tenyearqianxi-draw");
+	related_skills.insert("tenyearqianxi", "#tenyearqianxi-limit");
 
 	General *tenyear_wangyi = new General(this, "tenyear_wangyi", "wei", 4, false);
 	tenyear_wangyi->addSkill("zhenlie");
@@ -7663,8 +7663,8 @@ TenyearStYJ2012Package::TenyearStYJ2012Package()
 	second_tenyear_caozhang->addSkill(new SecondTenyearJiangchi);
 	second_tenyear_caozhang->addSkill(new SecondTenyearJiangchiClear);
 	second_tenyear_caozhang->addSkill(new SecondTenyearJiangchiMod);
-	related_skills.insertMulti("secondtenyearjiangchi", "#secondtenyearlihuo-clear");
-	related_skills.insertMulti("secondtenyearjiangchi", "#secondtenyearjiangchi-target");
+	related_skills.insert("secondtenyearjiangchi", "#secondtenyearlihuo-clear");
+	related_skills.insert("secondtenyearjiangchi", "#secondtenyearjiangchi-target");
 
 	General *tenyear_xunyou = new General(this, "tenyear_xunyou", "wei", 3);
 	tenyear_xunyou->addSkill("qice");
@@ -7682,19 +7682,19 @@ TenyearStYJ2012Package::TenyearStYJ2012Package()
 	second_tenyear_chengpu->addSkill(new SecondTenyearLihuo);
 	second_tenyear_chengpu->addSkill(new SecondTenyearLihuoTargetMod);
 	second_tenyear_chengpu->addSkill(new SecondTenyearChunlao);
-	related_skills.insertMulti("secondtenyearlihuo", "#secondtenyearlihuo-target");
+	related_skills.insert("secondtenyearlihuo", "#secondtenyearlihuo-target");
 
 	General *tenyear_handang = new General(this, "tenyear_handang", "wu", 4);
 	tenyear_handang->addSkill(new TenyearGongqi);
 	tenyear_handang->addSkill(new TenyearGongqiTargetMod);
 	tenyear_handang->addSkill(new TenyearJiefan);
-	related_skills.insertMulti("tenyeargongqi", "#tenyeargongqi-target");
+	related_skills.insert("tenyeargongqi", "#tenyeargongqi-target");
 
 	General *tenyear_liubiao = new General(this, "tenyear_liubiao", "qun", 3);
 	tenyear_liubiao->addSkill(new TenyearZishou);
 	tenyear_liubiao->addSkill(new TenyearZongshi);
 	tenyear_liubiao->addSkill(new TenyearZongshiProtect);
-	related_skills.insertMulti("tenyearzongshi", "#tenyearzongshi-protect");
+	related_skills.insert("tenyearzongshi", "#tenyearzongshi-protect");
 
 
 
@@ -7718,7 +7718,7 @@ TenyearStYJ2013Package::TenyearStYJ2013Package()
 	tenyear_jianyong->addSkill(new TenyearQiaoshui);
 	tenyear_jianyong->addSkill(new TenyearQiaoshuiTargetMod);
 	tenyear_jianyong->addSkill("zongshih");
-	related_skills.insertMulti("tenyearqiaoshui", "#tenyearqiaoshui-target");
+	related_skills.insert("tenyearqiaoshui", "#tenyearqiaoshui-target");
 
 	General *tenyear_guohuai = new General(this, "tenyear_guohuai", "wei", 4);
 	tenyear_guohuai->addSkill(new TenyearJingce);
@@ -7726,7 +7726,7 @@ TenyearStYJ2013Package::TenyearStYJ2013Package()
 	General *second_tenyear_guohuai = new General(this, "second_tenyear_guohuai", "wei", 4);
 	second_tenyear_guohuai->addSkill(new SecondTenyearJingce);
 	second_tenyear_guohuai->addSkill("#tenyearjingce-record");
-	related_skills.insertMulti("secondtenyearjingce", "#tenyearjingce-record");
+	related_skills.insert("secondtenyearjingce", "#tenyearjingce-record");
 
 	General *tenyear_zhuran = new General(this, "tenyear_zhuran", "wu", 4);
 	tenyear_zhuran->addSkill(new TenyearDanshou);
@@ -7735,7 +7735,7 @@ TenyearStYJ2013Package::TenyearStYJ2013Package()
 	tenyear_panzhangmazhong->addSkill(new TenyearDuodao);
 	tenyear_panzhangmazhong->addSkill(new TenyearAnjian);
 	tenyear_panzhangmazhong->addSkill(new TenyearAnjianEffect);
-	related_skills.insertMulti("tenyearanjian", "#tenyearanjian-effect");
+	related_skills.insert("tenyearanjian", "#tenyearanjian-effect");
 
 	General *tenyear_yufan = new General(this, "tenyear_yufan", "wu", 3);
 	tenyear_yufan->addSkill(new TenyearZongxuan);
@@ -7745,7 +7745,7 @@ TenyearStYJ2013Package::TenyearStYJ2013Package()
 	tenyear_fuhuanghou->addSkill(new TenyearZhuikong);
 	tenyear_fuhuanghou->addSkill(new TenyearZhuikongProhibit);
 	tenyear_fuhuanghou->addSkill(new TenyearQiuyuan);
-	related_skills.insertMulti("tenyearzhuikong", "#tenyearzhuikong");
+	related_skills.insert("tenyearzhuikong", "#tenyearzhuikong");
 
 	General *tenyear_liru = new General(this, "tenyear_liru", "qun", 3);
 	tenyear_liru->addSkill("juece");
@@ -7772,13 +7772,13 @@ TenyearStYJ2014Package::TenyearStYJ2014Package()
 	General *tenyear_caozhen = new General(this, "tenyear_caozhen", "wei", 4);
 	tenyear_caozhen->addSkill(new TenyearSidi);
 	tenyear_caozhen->addSkill(new TenyearSidiLimit);
-	related_skills.insertMulti("tenyearsidi", "#tenyearsidi-limit");
+	related_skills.insert("tenyearsidi", "#tenyearsidi-limit");
 
 	General *tenyear_hanhaoshihuan = new General(this, "tenyear_hanhaoshihuan", "wei", 4);
 	tenyear_hanhaoshihuan->addSkill(new TenyearShenduan);
 	tenyear_hanhaoshihuan->addSkill(new TenyearShenduanTargetMod);
 	tenyear_hanhaoshihuan->addSkill(new TenyearYonglve);
-	related_skills.insertMulti("tenyearshenduan", "#tenyearshenduan-target");
+	related_skills.insert("tenyearshenduan", "#tenyearshenduan-target");
 
 	General *tenyear_sunluban = new General(this, "tenyear_sunluban", "wu", 3, false);
 	tenyear_sunluban->addSkill(new TenyearZenhui);
@@ -7822,13 +7822,13 @@ TenyearStYJ2015Package::TenyearStYJ2015Package()
 	second_tenyear_zhangyi->addSkill("tenyearwurong");
 	second_tenyear_zhangyi->addSkill(new SecondTenyearShizhi);
 	second_tenyear_zhangyi->addSkill(new SecondTenyearShizhiTrigger);
-	related_skills.insertMulti("secondtenyearshizhi", "#secondtenyearshizhi");
+	related_skills.insert("secondtenyearshizhi", "#secondtenyearshizhi");
 
 	General *tenyear_caoxiu = new General(this, "tenyear_caoxiu", "wei", 4);
 	tenyear_caoxiu->addSkill(new TenyearQingxi);
 	tenyear_caoxiu->addSkill(new TenyearQingxiDamage);
 	tenyear_caoxiu->addSkill("qianju");
-	related_skills.insertMulti("tenyearqingxi", "#tenyearqingxi-damage");
+	related_skills.insert("tenyearqingxi", "#tenyearqingxi-damage");
 
 	General *tenyear_quancong = new General(this, "tenyear_quancong", "wu", 4);
 	tenyear_quancong->addSkill(new TenyearYaoming);
@@ -7846,8 +7846,8 @@ TenyearStYJ2015Package::TenyearStYJ2015Package()
 	tenyear_guotupangji->addSkill(new TenyearJigongMax);
 	tenyear_guotupangji->addSkill(new TenyearJigongRecover);
 	tenyear_guotupangji->addSkill("shifei");
-	related_skills.insertMulti("tenyearjigong", "#tenyearjigong");
-	related_skills.insertMulti("tenyearjigong", "#tenyearjigong-recover");
+	related_skills.insert("tenyearjigong", "#tenyearjigong");
+	related_skills.insert("tenyearjigong", "#tenyearjigong-recover");
 
 
 

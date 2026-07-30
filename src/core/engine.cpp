@@ -274,7 +274,7 @@ Engine::Engine(bool isManualMode)
     /*foreach (QString cv_pair, GetConfigFromLuaState(lua, "convert_pairs").toStringList()) {
         QStringList pairs = cv_pair.split("->");
         foreach (QString to, pairs[1].split("|"))
-            sp_convert_pairs.insertMulti(pairs[0], to);
+            sp_convert_pairs.insert(pairs[0], to);
     }*/
 
     extra_hidden_generals = GetConfigFromLuaState(lua, "extra_hidden_generals").toStringList();
@@ -394,7 +394,7 @@ Engine::Engine(bool isManualMode)
             QFile file(QString("manual/Chapter%1.lua").arg(upper));
             if (file.open(QFile::WriteOnly | QFile::Truncate)) {
                 QTextStream stream(&file);
-                stream.setCodec(QTextCodec::codecForName("UTF-8"));
+                stream.setEncoding(QStringConverter::Utf8);
 
                 ManualSkillList list;
                 while (iter != allSkills.end()) {
@@ -410,7 +410,7 @@ Engine::Engine(bool isManualMode)
                 else info = translate("Manual_Index") + list.join(" ");
 
                 stream << translate("Manual_Head").arg(upper).arg(info).arg(getVersion())
-						<< endl;
+						<< Qt::endl;
 
                 for (QList<ManualSkill*>::iterator it = list.begin(); it < list.end(); ++it) {
                     ManualSkill*skill =*it;
@@ -420,7 +420,7 @@ Engine::Engine(bool isManualMode)
                         generals << QString("%1-%2").arg(translate(general->getPackage())).arg(general->getBriefName());
                     }
                     stream << translate("Manual_Skill").arg(translate(skill->skill->objectName())).arg(generals.join(" ")).arg(skill->skill->getDescription())
-                           << endl << endl;
+                           << Qt::endl << Qt::endl;
                 }
 
                 list.clear();
@@ -690,7 +690,9 @@ void Engine::addPackage(Package*package)
 
     package->setParent(this);
     //sp_convert_pairs.unite(package->getConvertPairs());
-    patterns.unite(package->getPatterns());
+    const auto &packagePatterns = package->getPatterns();
+    for (auto it = packagePatterns.cbegin(); it != packagePatterns.cend(); ++it)
+        patterns.insert(it.key(), it.value());
     related_skills.unite(package->getRelatedSkills());
 
     foreach (Card*card, package->findChildren<Card*>()) {
@@ -748,7 +750,7 @@ void Engine::addPackage(Package*package)
 		if(skill->getWakedSkills().isEmpty()) continue;
         foreach (QString sk_name, skill->getWakedSkills().split(",")) {
             if (sk_name.startsWith("#"))
-				related_skills.insertMulti(skill->objectName(), sk_name);
+				related_skills.insert(skill->objectName(), sk_name);
         }
     }
 	addSkills(sks);
@@ -856,7 +858,7 @@ void Engine::setPackage(Package*package)
         if (skill->getWakedSkills().isEmpty()) continue;
         foreach (QString sk_name, skill->getWakedSkills().split(",")) {
             if (sk_name.startsWith("#"))
-                related_skills.insertMulti(skill->objectName(), sk_name);
+                related_skills.insert(skill->objectName(), sk_name);
         }
     }
 

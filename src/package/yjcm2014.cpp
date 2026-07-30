@@ -1712,7 +1712,7 @@ YJCM2014Package::YJCM2014Package()
     General *caozhen = new General(this, "caozhen", "wei"); // YJ 302
     caozhen->addSkill(new Sidi);
     caozhen->addSkill(new SidiTargetMod);
-    related_skills.insertMulti("sidi", "#sidi-target");
+    related_skills.insert("sidi", "#sidi-target");
 
     General *new_caozhen = new General(this, "new_caozhen", "wei");
     new_caozhen->addSkill(new NewSidi);
@@ -1721,7 +1721,7 @@ YJCM2014Package::YJCM2014Package()
     chenqun->addSkill(new Dingpin);
     chenqun->addSkill(new Faen);
     chenqun->addSkill(new DingpinBf);
-    related_skills.insertMulti("dingpin", "#dingpinbf");
+    related_skills.insert("dingpin", "#dingpinbf");
 
     General *new_chenqun = new General(this, "new_chenqun", "wei", 3);
     new_chenqun->addSkill(new NewDingpin);
@@ -1736,14 +1736,14 @@ YJCM2014Package::YJCM2014Package()
     hanhaoshihuan->addSkill(new ShenduanTargetMod);
     hanhaoshihuan->addSkill(new Yonglve);
     hanhaoshihuan->addSkill(new YonglveSlash);
-    related_skills.insertMulti("shenduan", "#shenduan-target");
-    related_skills.insertMulti("yonglve", "#yonglve");
+    related_skills.insert("shenduan", "#shenduan-target");
+    related_skills.insert("yonglve", "#yonglve");
 
     General *jvshou = new General(this, "jvshou", "qun", 3); // YJ 306
     jvshou->addSkill(new Jianying);
     jvshou->addSkill(new Shibei);
     jvshou->addSkill(new ShibeiRecord);
-    related_skills.insertMulti("shibei", "#shibei-record");
+    related_skills.insert("shibei", "#shibei-record");
 
     General *sunluban = new General(this, "sunluban", "wu", 3, false); // YJ 307
     sunluban->addSkill(new Zenhui);
@@ -1753,8 +1753,8 @@ YJCM2014Package::YJCM2014Package()
     wuyi->addSkill(new Benxi);
     wuyi->addSkill(new BenxiTargetMod);
     wuyi->addSkill(new BenxiDistance);
-    related_skills.insertMulti("benxi", "#benxi-target");
-    related_skills.insertMulti("benxi", "#benxi-dist");
+    related_skills.insert("benxi", "#benxi-target");
+    related_skills.insert("benxi", "#benxi-dist");
 
     General *ol_wuyi = new General(this, "ol_wuyi", "shu");
     ol_wuyi->addSkill(new OLBenxi);

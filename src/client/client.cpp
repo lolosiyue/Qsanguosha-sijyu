@@ -505,7 +505,7 @@ void Client::updateProperty(const QVariant &arg)
 			QString rawVal = args[2].toString();
 			if (rawVal.startsWith("SLIST:")) {
 				QString listStr = rawVal.mid(6);
-				player->setTag(tagKey, QVariant(listStr.split("|", QString::SkipEmptyParts)));
+				player->setTag(tagKey, QVariant(listStr.split("|", Qt::SkipEmptyParts)));
 			} else if (rawVal.isEmpty()) {
 				player->removeTag(tagKey);
 			} else {

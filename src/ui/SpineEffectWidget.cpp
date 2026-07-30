@@ -517,12 +517,12 @@ void SpineEffectWidget::renderSkeleton() {
         static int emptyLogCount = 0;
         if (++emptyLogCount <= 10)
             qWarning("[SpineEW] renderSkeleton: NO vertices generated! (batches=%d drawOrder=%d)",
-                     batches.size(), (int)drawOrder.size());
+                     (int)batches.size(), (int)drawOrder.size());
         return;
     }
 
     qWarning("[SpineEW] renderSkeleton: %d vertices, %d indices, %d batches (log#%d)",
-             _vertices.size(), _indices.size(), batches.size(), renderLogCount);
+             (int)_vertices.size(), (int)_indices.size(), (int)batches.size(), renderLogCount);
 
     // Only log render success for first 3 frames
     bool doRenderLog = (renderLogCount <= 3);

@@ -2168,7 +2168,7 @@ SPPackage::SPPackage()
     General *gongsunzan = new General(this, "gongsunzan", "qun"); // SP 003
     gongsunzan->addSkill(new Yicong);
     gongsunzan->addSkill(new YicongEffect);
-    related_skills.insertMulti("yicong", "#yicong-effect");
+    related_skills.insert("yicong", "#yicong-effect");
 
     General *ol_sp_gongsunzan = new General(this, "ol_sp_gongsunzan", "qun", 4, true);
     ol_sp_gongsunzan->addSkill("olyicong");
@@ -2212,16 +2212,16 @@ SPPackage::SPPackage()
     xiahoushi->addSkill(new Yanyu);
     xiahoushi->addSkill(new Xiaode);
     xiahoushi->addSkill(new XiaodeEx);
-    related_skills.insertMulti("xiaode", "#xiaode");
+    related_skills.insert("xiaode", "#xiaode");
 
     General *zhuling = new General(this, "zhuling", "wei");
     zhuling->addSkill(new Zhanyi);
     zhuling->addSkill(new ZhanyiDiscard2);
     zhuling->addSkill(new ZhanyiNoDistanceLimit);
     zhuling->addSkill(new ZhanyiRemove);
-    related_skills.insertMulti("zhanyi", "#zhanyi-basic");
-    related_skills.insertMulti("zhanyi", "#zhanyi-equip");
-    related_skills.insertMulti("zhanyi", "#zhanyi-trick");
+    related_skills.insert("zhanyi", "#zhanyi-basic");
+    related_skills.insert("zhanyi", "#zhanyi-equip");
+    related_skills.insert("zhanyi", "#zhanyi-trick");
     addMetaObject<ZhanyiCard>();
     addMetaObject<ZhanyiViewAsBasicCard>();
 
@@ -2246,16 +2246,16 @@ SPPackage::SPPackage()
     zhaoxiang->addSkill(new Fanghun);
     zhaoxiang->addSkill(new FanghunDraw("fanghun"));
     zhaoxiang->addSkill(new Fuhan);
-    related_skills.insertMulti("fanghun", "#fanghun");
+    related_skills.insert("fanghun", "#fanghun");
 
-    related_skills.insertMulti("olfanghun", "#olfanghun");
+    related_skills.insert("olfanghun", "#olfanghun");
 	skills << new OLFanghun << new FanghunDraw("olfanghun") << new OLFuhan
 	<< new MobileFanghun << new FanghunDraw("mobilefanghun");
-    related_skills.insertMulti("mobilefanghun", "#mobilefanghun");
+    related_skills.insert("mobilefanghun", "#mobilefanghun");
     addMetaObject<MobileFanghunCard>();
 
     skills << new TenyearFanghun << new FanghunDraw("tenyearfanghun");
-    related_skills.insertMulti("tenyearfanghun", "#tenyearfanghun");
+    related_skills.insert("tenyearfanghun", "#tenyearfanghun");
     addMetaObject<TenyearFanghunCard>();
 
     General *baosanniang = new General(this, "baosanniang", "shu", 3, false);
@@ -2274,15 +2274,15 @@ SPPackage::SPPackage()
     sunru->addSkill(new Qingyi);
     sunru->addSkill(new SlashNoDistanceLimitSkill("qingyi"));
     sunru->addSkill(new Shixin);
-    related_skills.insertMulti("qingyi", "#qingyi-slash-ndl");
+    related_skills.insert("qingyi", "#qingyi-slash-ndl");
 
     General *lifeng = new General(this, "lifeng", "shu", 3);
     lifeng->addSkill(new Tunchu);
     lifeng->addSkill(new TunchuEffect);
     lifeng->addSkill(new TunchuLimit);
     lifeng->addSkill(new Shuliang);
-    related_skills.insertMulti("tunchu", "#tunchu-effect");
-    related_skills.insertMulti("tunchu", "#tunchu-limit");
+    related_skills.insert("tunchu", "#tunchu-effect");
+    related_skills.insert("tunchu", "#tunchu-limit");
     addMetaObject<ShuliangCard>();
 
 }
@@ -2314,7 +2314,7 @@ MiscellaneousPackage::MiscellaneousPackage()
     hanba->addSkill(new Fentian);
     hanba->addSkill(new Zhiri);
     hanba->addSkill(new FentianRange);
-    related_skills.insertMulti("fentian", "#fentian");
+    related_skills.insert("fentian", "#fentian");
     hanba->addRelateSkill("xintan");
 
     skills << new Xintan;

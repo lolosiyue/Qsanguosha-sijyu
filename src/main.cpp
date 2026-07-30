@@ -14,6 +14,8 @@
 #include "engine.h"
 #include "lua.hpp"
 #include <QSurfaceFormat>
+#include <QQuickWindow>
+#include <QSGRendererInterface>
 
 #ifdef ANDROID
 #include "android_assets.h"
@@ -39,6 +41,9 @@ int main(int argc, char *argv[])
 {
 #endif
 
+    // The fixed-pixel game assets are authored for native screen pixels.
+    qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");
+
     QSurfaceFormat format;
     format.setDepthBufferSize(24);
     format.setStencilBufferSize(8);
@@ -46,9 +51,10 @@ int main(int argc, char *argv[])
     format.setSwapBehavior(QSurfaceFormat::DoubleBuffer);
     QSurfaceFormat::setDefaultFormat(format);
 
-#if QT_VERSION >= QT_VERSION_CHECK(5, 6, 0)
-    QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
-#endif
+    // QOpenGLWidget and QQuickWidget must use the same graphics API when
+    // they are composed in the same top-level window.
+    QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
+    QQuickWindow::setGraphicsApi(QSGRendererInterface::OpenGL);
 
 #ifdef ANDROID
 	AndroidAssets::copyAssetsToWritableLocation();

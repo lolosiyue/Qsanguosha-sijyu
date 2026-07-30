@@ -1,39 +1,32 @@
 # -------------------------------------------------
 # Project created by QtCreator 2010-06-13T04:26:52
-# Updated for Qt 5.14 compatibility
+# Updated for Qt 6
 # -------------------------------------------------
 TARGET = QSanguosha
 
-# Qt 5.14 compatible modules
-QT += widgets quickwidgets qml quick #multimedia multimediawidgets sql network core gui 
-
-# Add required Qt 5.14 modules (保留用于技能特效)
-#QT += qmlmodels
-
-# Android-specific modules
-android {
-	QT += androidextras
-}
+# Core5Compat remains temporary until QRegExp/QTextCodec are removed.
+QT += widgets quickwidgets qml quick core5compat openglwidgets
 
 TEMPLATE = app
 CONFIG(release,debug|release) {
 	CONFIG += audio
 }
 CONFIG += lua
+CONFIG += c++17
 CONFIG -= flat
 
 # Platform-specific libraries
 win32 {
-	LIBS += -lwinhttp
+	LIBS += -lwinhttp -ldwmapi
 }
 
 CONFIG += precompile_header
 PRECOMPILED_HEADER = src/pch.h
 DEFINES += USING_PCH
 
-# Qt 5.14 compatibility defines
+# Reject APIs removed before the Qt 6 baseline.
 DEFINES += QT_DEPRECATED_WARNINGS
-DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x050400
+DEFINES += QT_DISABLE_DEPRECATED_BEFORE=0x060000
 
 SOURCES += \
 	src/main.cpp \
@@ -133,9 +126,8 @@ src/ui/chatwidget.cpp \
 	src/core/wrapped-card.cpp \
 	src/ui/bubblechatbox.cpp \
 	src/ui/emotionpanel.cpp \
-src/ui/gifchatbox.cpp \
+    src/ui/gifchatbox.cpp \
     src/ui/generic-cardcontainer-ui.cpp \
-    src/ui/graphicsbox.cpp \
     src/ui/playercardbox.cpp \
     src/ui/qsan-selectable-item.cpp \
 	src/ui/skin-bank.cpp \
@@ -349,8 +341,7 @@ src/ui/dashboard.h \
 	src/core/wrapped-card.h \
 	src/ui/bubblechatbox.h \
 	src/ui/emotionpanel.h \
-src/ui/generic-cardcontainer-ui.h \
-    src/ui/graphicsbox.h \
+    src/ui/generic-cardcontainer-ui.h \
     src/ui/playercardbox.h \
     src/ui/qsan-selectable-item.h \
 	src/ui/skin-bank.h \
@@ -447,7 +438,9 @@ macx{
 LIBS += -L.
 win32-msvc*{
 	DEFINES += _CRT_SECURE_NO_WARNINGS
-	QMAKE_CXXFLAGS += /utf-8
+	QMAKE_CFLAGS -= $$QMAKE_CFLAGS_MP
+	QMAKE_CXXFLAGS -= $$QMAKE_CXXFLAGS_MP
+	QMAKE_CXXFLAGS += /utf-8 /bigobj
 	LIBS += legacy_stdio_definitions.lib
 
 	# ASan for memory debugging
@@ -704,7 +697,7 @@ android:DEFINES += "\"getlocaledecpoint()='.'\""
 	INCLUDEPATH += src/lua
 }
 
-!build_pass{
+!build_pass:!contains(CONFIG, qsan_skip_generators) {
 	system("lrelease $$_PRO_FILE_PWD_/builds/sanguosha.ts -qm $$_PRO_FILE_PWD_/sanguosha.qm")
 
 	SWIG_bin = "swig"

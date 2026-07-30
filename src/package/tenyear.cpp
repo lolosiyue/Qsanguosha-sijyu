@@ -4242,14 +4242,14 @@ TenyearXdPackage::TenyearXdPackage()
 	shenjiangwei->addSkill(new Jiufa);
 	shenjiangwei->addSkill(new Pingxiang);
 	shenjiangwei->addSkill(new PingxiangMaxCards);
-	related_skills.insertMulti("pingxiang", "#pingxiang");
+	related_skills.insert("pingxiang", "#pingxiang");
 	addMetaObject<PingxiangCard>();
 
 	General *shenmachao = new General(this, "shenmachao*xd_shenwu", "god");
 	shenmachao->addSkill(new Shouli);
 	shenmachao->addSkill(new ShouliBuff);
 	shenmachao->addSkill(new Hengwu);
-	related_skills.insertMulti("shouli", "#shouli");
+	related_skills.insert("shouli", "#shouli");
 	addMetaObject<ShouliCard>();
 
 	General *shenzhangfei = new General(this, "shenzhangfei*xd_shenwu", "god");
@@ -4309,8 +4309,8 @@ TenyearXdPackage::TenyearXdPackage()
 	heqi->addSkill(new Shanxi);
 	heqi->addRelateSkill("duanbing");
 	heqi->addRelateSkill("fenwei");
-	related_skills.insertMulti("qizhou", "#qizhou-lose");
-	related_skills.insertMulti("olqizhou", "#olqizhou-lose");
+	related_skills.insert("qizhou", "#qizhou-lose");
+	related_skills.insert("olqizhou", "#olqizhou-lose");
 	skills << new Qizhou("olqizhou") << new QizhouLose("olqizhou");
 	addMetaObject<ShanxiCard>();
 
@@ -4345,8 +4345,8 @@ TenyearXdPackage::TenyearXdPackage()
 	zhouyi->addSkill(new Mengqing);
 	zhouyi->addRelateSkill("yuyun");
 	zhouyi->addSkill("#jingce-record");
-	related_skills.insertMulti("zhukou", "#jingce-record");
-	related_skills.insertMulti("yuyun", "#yuyun");
+	related_skills.insert("zhukou", "#jingce-record");
+	related_skills.insert("yuyun", "#yuyun");
 	addMetaObject<ZhukouCard>();
 	skills << new Yuyun << new YuyunTargetMod;
 

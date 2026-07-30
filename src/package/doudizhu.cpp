@@ -3112,7 +3112,7 @@ public:
 DoudizhuPackage::DoudizhuPackage()
     : Package("Doudizhu")
 {
-    related_skills.insertMulti("bahu", "#bahu-target");
+    related_skills.insert("bahu", "#bahu-target");
 
     skills << new Feiyang << new Bahu << new BahuTargetMod;
 

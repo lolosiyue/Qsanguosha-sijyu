@@ -178,7 +178,7 @@ QFont TriggerOptionButton::defaultFont()
 
 void TriggerOptionButton::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)
 {
-    painter->setRenderHint(QPainter::HighQualityAntialiasing);
+    painter->setRenderHint(QPainter::Antialiasing);
     painter->save();
     painter->setBrush(Qt::black);
     painter->setPen(Sanguosha->getKingdomColor(Self->getGeneral()->getKingdom()));
@@ -298,7 +298,7 @@ void ChooseTriggerOrderBox::storeMinimumWidth()
         ClientSkillContext skillDetail;
         skillDetail.tryParse(option.toMap());
 
-        const int w = fontMetrics.width(TriggerOptionButton::displayedTextOf(skillDetail, 1, 2));
+        const int w = fontMetrics.horizontalAdvance(TriggerOptionButton::displayedTextOf(skillDetail, 1, 2));
         if (w > width)
             width = w;
     }
@@ -306,7 +306,7 @@ void ChooseTriggerOrderBox::storeMinimumWidth()
     QFont titleFont = Config.SmallFont;
     titleFont.setBold(true);
     QFontMetrics titleFontMetrics(titleFont);
-    int titleWidth = titleFontMetrics.width(title) + 40;
+    int titleWidth = titleFontMetrics.horizontalAdvance(title) + 40;
 
     m_minimumWidth = qMax(width + optionButtonHeight + 20, titleWidth);
 }

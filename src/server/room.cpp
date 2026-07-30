@@ -1134,7 +1134,7 @@ void Room::gameOver(const QString&winner)
 		removeTag("NextGameMode");
 	}
 	data = getTag("NextGameSecondGeneral");
-	if (data.canConvert(QVariant::Bool)){
+	if (data.canConvert<bool>()){
 		Config.Enable2ndGeneral = data.toBool();
 		Config.setValue("Enable2ndGeneral", data);
 		removeTag("NextGameSecondGeneral");
@@ -1387,7 +1387,7 @@ bool Room::removeSkillInstanceFromPlayer(ServerPlayer *owner, const QString &ski
         if (skill->inherits("ViewAsEquipSkill")) {
             const ViewAsEquipSkill *viewAsEquip = Sanguosha->getViewAsEquipSkill(skillName);
             QString view = viewAsEquip->viewAsEquip(owner);
-            foreach (const QString &equipName, view.split(",", QString::SkipEmptyParts)) {
+            foreach (const QString &equipName, view.split(",", Qt::SkipEmptyParts)) {
                 if (skillName != equipName && Sanguosha->getViewAsSkill(equipName))
                     detachSkillFromPlayer(owner, equipName, true);
             }
@@ -2085,7 +2085,7 @@ bool Room::askForSkillInvoke(ServerPlayer*player, const QString&skill_name, cons
 	} else {
 		JsonArray skillCommand;
 		skillCommand << skillName;
-		if (data.type() == QVariant::String)
+		if (data.userType() == QMetaType::QString)
 			skillCommand << data.toString();
 		else {
 			if (tp) skillCommand << "playerdata:"+tp->objectName();
@@ -2093,7 +2093,7 @@ bool Room::askForSkillInvoke(ServerPlayer*player, const QString&skill_name, cons
 		}
 		if (doRequest(player, S_COMMAND_INVOKE_SKILL, skillCommand, true)){
 			skill_data = player->getClientReply();
-			if (skill_data.canConvert(QVariant::Bool))
+			if (skill_data.canConvert<bool>())
 				invoked = skill_data.toBool();
 		}else{
 			ai = player->getAI();
@@ -2165,7 +2165,7 @@ QString Room::askForChoice(ServerPlayer*player, const QString&skill_name, const 
 			answer = "cancel";
 			if (doRequest(player, S_COMMAND_MULTIPLE_CHOICE, JsonArray() << skill_name << effectiveChoices << effectiveExceptChoices << effectiveTip, true)){
 				QVariant clientReply = player->getClientReply();
-				if (clientReply.canConvert(QVariant::String))
+				if (clientReply.canConvert<QString>())
 					answer = clientReply.toString();
 			}else{
 				ai = player->getAI();
@@ -4319,7 +4319,7 @@ void Room::processRequestCheat(ServerPlayer*player, const QVariant&arg)
 {
 	player->m_cheatArgs = QVariant();
 	if (!Config.EnableCheat) return;
-	if (!arg.canConvert<JsonArray>() || !arg.value<JsonArray>().value(0).canConvert(QVariant::Int))
+	if (!arg.canConvert<JsonArray>() || !arg.value<JsonArray>().value(0).canConvert<int>())
 		return;
 	//@todo: synchronize this
 	player->m_cheatArgs = arg;
@@ -4354,7 +4354,7 @@ bool Room::makeSurrender(ServerPlayer*initiator)
 	// collect polls
 	foreach(ServerPlayer*player, playersAlive){
 		bool result = false;
-		if (!player->m_isClientResponseReady || !player->getClientReply().canConvert(QVariant::Bool))
+		if (!player->m_isClientResponseReady || !player->getClientReply().canConvert<bool>())
 			result = !player->isOnline();
 		else
 			result = player->getClientReply().toBool();

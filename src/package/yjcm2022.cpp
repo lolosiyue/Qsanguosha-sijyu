@@ -953,7 +953,7 @@ YJCM2022Package::YJCM2022Package()
     General *liwan = new General(this, "liwan", "wei", 3, false);
     liwan->addSkill(new Liandui);
     liwan->addSkill(new Biejun);
-    related_skills.insertMulti("liandui", "#chongwang");
+    related_skills.insert("liandui", "#chongwang");
 
     General *zhugeshang = new General(this, "zhugeshang", "shu", 3);
     zhugeshang->addSkill(new Sangu);

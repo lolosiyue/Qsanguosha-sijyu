@@ -1777,14 +1777,14 @@ YJCM2013Package::YJCM2013Package()
     nos_fuhuanghou->addSkill(new NosZhuikong);
     nos_fuhuanghou->addSkill(new NosZhuikongClear);
     nos_fuhuanghou->addSkill(new NosQiuyuan);
-    related_skills.insertMulti("noszhuikong", "#noszhuikong-clear");
+    related_skills.insert("noszhuikong", "#noszhuikong-clear");
     General *fuhuanghou = new General(this, "fuhuanghou", "qun", 3, false); // YJ 202
     fuhuanghou->addSkill(new Zhuikong);
     fuhuanghou->addSkill(new ZhuikongClear);
     fuhuanghou->addSkill(new ZhuikongProhibit);
     fuhuanghou->addSkill(new Qiuyuan);
-    related_skills.insertMulti("zhuikong", "#zhuikong");
-    related_skills.insertMulti("zhuikong", "#zhuikong-clear");
+    related_skills.insert("zhuikong", "#zhuikong");
+    related_skills.insert("zhuikong", "#zhuikong-clear");
 
     General *guohuai = new General(this, "guohuai", "wei"); // YJ 203
     guohuai->addSkill(new Jingce);
@@ -1792,7 +1792,7 @@ YJCM2013Package::YJCM2013Package()
     General *ol_guohuai = new General(this, "ol_guohuai", "wei", 3);
     ol_guohuai->addSkill(new OLJingce);
     ol_guohuai->addSkill(new OLJingceKeep);
-    related_skills.insertMulti("oljingce", "#oljingce-keep");
+    related_skills.insert("oljingce", "#oljingce-keep");
 
     General *guanping = new General(this, "guanping", "shu", 4); // YJ 204
     guanping->addSkill(new Longyin);
@@ -1801,7 +1801,7 @@ YJCM2013Package::YJCM2013Package()
     jianyong->addSkill(new Qiaoshui);
     jianyong->addSkill(new QiaoshuiTargetMod);
     jianyong->addSkill(new Zongshih);
-    related_skills.insertMulti("qiaoshui", "#qiaoshui-target");
+    related_skills.insert("qiaoshui", "#qiaoshui-target");
 
     General *nos_liru = new General(this, "nos_liru", "qun", 3);
     nos_liru->addSkill(new NosJuece);
@@ -1809,8 +1809,8 @@ YJCM2013Package::YJCM2013Package()
     nos_liru->addSkill(new NosMiejiForExNihiloAndCollateral);
     nos_liru->addSkill(new NosMiejiEffect);
     nos_liru->addSkill(new NosFencheng);
-    related_skills.insertMulti("nosmieji", "#nosmieji");
-    related_skills.insertMulti("nosmieji", "#nosmieji-effect");
+    related_skills.insert("nosmieji", "#nosmieji");
+    related_skills.insert("nosmieji", "#nosmieji-effect");
     addMetaObject<NosFenchengCard>();
     General *liru = new General(this, "liru", "qun", 3); // YJ 206
     liru->addSkill(new Juece);
@@ -1820,7 +1820,7 @@ YJCM2013Package::YJCM2013Package()
     General *liufeng = new General(this, "liufeng", "shu"); // YJ 207
     liufeng->addSkill(new Xiansi);
     liufeng->addSkill(new XiansiAttach);
-    related_skills.insertMulti("xiansi", "#xiansi-attach");
+    related_skills.insert("xiansi", "#xiansi-attach");
 
     General *manchong = new General(this, "manchong", "wei", 3); // YJ 208
     manchong->addSkill(new Junxing);

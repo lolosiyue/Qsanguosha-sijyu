@@ -1613,7 +1613,7 @@ public:
     {
         if (event == TargetConfirmed) {
             CardUseStruct use = data.value<CardUseStruct>();
-            if (!use.to.contains(player) || !use.card->isKindOf("Slash") || (use.card->isVirtualCard() && use.card->subcardString() == 0))
+            if (!use.to.contains(player) || !use.card->isKindOf("Slash") || (use.card->isVirtualCard() && use.card->subcardString().isEmpty()))
                 return false;
             if (!player->askForSkillInvoke(this, data)) return false;
             room->broadcastSkillInvoke(this);
@@ -3128,13 +3128,13 @@ ChallengeDeveloperScenario::ChallengeDeveloperScenario()
     dev_db->addRelateSkill("dev_110");
     dev_db->addRelateSkill("dev_119");
     dev_db->addRelateSkill("dev_120");
-    related_skills.insertMulti("dev_saiche", "#dev_saiche");
+    related_skills.insert("dev_saiche", "#dev_saiche");
 
     General *dev_amira = new General(this, "dev_amira", "qun", 3, false, true, true);
     dev_amira->addSkill(new DevJiayao);
     dev_amira->addSkill(new DevJiayaoEffect);
     dev_amira->addSkill(new DevShangyin);
-    related_skills.insertMulti("dev_jiayao", "#dev_jiayao");
+    related_skills.insert("dev_jiayao", "#dev_jiayao");
 
     General *dev_mye = new General(this, "dev_mye", "qun", 3, true, true, true);
     dev_mye->addSkill(new DevXiancheng);
@@ -3165,8 +3165,8 @@ ChallengeDeveloperScenario::ChallengeDeveloperScenario()
     dev_fsu->addSkill(new DevGepi);
     dev_fsu->addSkill(new DevGepiClear);
     dev_fsu->addSkill(new DevGepiInv);
-    related_skills.insertMulti("dev_gepi", "#dev_gepi-clear");
-    related_skills.insertMulti("dev_gepi", "#dev_gepi-inv");
+    related_skills.insert("dev_gepi", "#dev_gepi-clear");
+    related_skills.insert("dev_gepi", "#dev_gepi-inv");
 
     General *dev_hmqgg = new General(this, "dev_hmqgg", "god", 4, true, true, true);
     dev_hmqgg->addSkill(new DevChaidao);
@@ -3174,7 +3174,7 @@ ChallengeDeveloperScenario::ChallengeDeveloperScenario()
     General *dev_tak = new General(this, "dev_tak", "god", 4, true, true, true);
     dev_tak->addSkill(new DevSaodong);
     dev_tak->addSkill(new DevSaodongUse);
-    related_skills.insertMulti("dev_saodong", "#dev_saodong-use");
+    related_skills.insert("dev_saodong", "#dev_saodong-use");
 
     General *dev_lzx = new General(this, "dev_lzx", "god", 3, false, true, true);
     dev_lzx->addSkill(new DevZhiyu);
@@ -3188,7 +3188,7 @@ ChallengeDeveloperScenario::ChallengeDeveloperScenario()
     dev_36li->addSkill(new DevMeigong);
     dev_36li->addSkill(new DevQiliao);
     dev_36li->addSkill(new DevQiliaoEffect);
-    related_skills.insertMulti("dev_qiliao", "#dev_qiliao-effect");
+    related_skills.insert("dev_qiliao", "#dev_qiliao-effect");
 
     General *dev_tan = new General(this, "dev_tan", "god", 3, true, true, true);
     dev_tan->addSkill(new DevXuexi);
@@ -3197,15 +3197,15 @@ ChallengeDeveloperScenario::ChallengeDeveloperScenario()
     General *dev_zhangzheng = new General(this, "dev_zhangzheng", "god", 4, true, true, true);
     dev_zhangzheng->addSkill(new DevGeili);
     dev_zhangzheng->addSkill(new DevGeiliPhase);
-    related_skills.insertMulti("dev_geili", "#dev_geili");
+    related_skills.insert("dev_geili", "#dev_geili");
 
     General *dev_jiaqi = new General(this, "dev_jiaqi", "god", 3, true, true, true);
     dev_jiaqi->addSkill(new DevJiangyou);
     dev_jiaqi->addSkill(new DevJiangyouXiumian);
     dev_jiaqi->addSkill(new DevJiangyouDeath);
     dev_jiaqi->addSkill(new DevHeti);
-    related_skills.insertMulti("dev_jiangyou", "#dev_jiangyou-xiumian");
-    related_skills.insertMulti("dev_jiangyou", "#dev_jiangyou-death");
+    related_skills.insert("dev_jiangyou", "#dev_jiangyou-xiumian");
+    related_skills.insert("dev_jiangyou", "#dev_jiangyou-death");
 
     General *dev_zy = new General(this, "dev_zy", "god", 3, true, true, true);
     dev_zy->addSkill(new DevJuanlao);

@@ -18,7 +18,30 @@
 //#include <QtGui>
 #include <QtWidgets>
 
-// Qt 5.14 compatibility: Include algorithm for std::sort and std::stable_sort
+// Qt 6 no longer exposes these compatibility APIs through umbrella headers.
+#include <QRandomGenerator>
+#include <QRegExp>
+#include <QTextCodec>
+#include <cstdlib>
+
+// Preserve the existing qrand/qsrand call sites and their explicit seeding.
+inline QRandomGenerator &qsanRng()
+{
+    static QRandomGenerator generator(*QRandomGenerator::system());
+    return generator;
+}
+
+inline int qrand()
+{
+    return int(qsanRng().bounded(uint(RAND_MAX) + 1u));
+}
+
+inline void qsrand(uint seed)
+{
+    qsanRng().seed(seed);
+}
+
+// Include algorithm for std::sort and std::stable_sort.
 #include <algorithm>
 #include <memory>
 #include <utility>

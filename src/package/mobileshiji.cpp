@@ -1260,7 +1260,7 @@ MobileZhiPackage::MobileZhiPackage()
     mobilezhi_sunshao->addSkill(new MobileZhiFubi("mobilezhifubi"));
     mobilezhi_sunshao->addSkill(new MobileZhiFubiKeep);
     mobilezhi_sunshao->addSkill(new MobileZhiZuici);
-    related_skills.insertMulti("mobilezhifubi", "#mobilezhifubi");
+    related_skills.insert("mobilezhifubi", "#mobilezhifubi");
 
     General*second_mobilezhi_sunshao = new General(this, "second_mobilezhi_sunshao", "wu", 3);
     second_mobilezhi_sunshao->addSkill(new MobileZhiFubi("secondmobilezhifubi"));
@@ -1271,7 +1271,7 @@ MobileZhiPackage::MobileZhiPackage()
     third_mobilezhi_sunshao->addSkill(new MobileZhiFubi("thirdmobilezhifubi"));
     third_mobilezhi_sunshao->addSkill(new MobileZhiFubiStart("thirdmobilezhifubi"));
     third_mobilezhi_sunshao->addSkill("secondmobilezhizuici");
-    related_skills.insertMulti("thirdmobilezhifubi", "#thirdmobilezhifubi");
+    related_skills.insert("thirdmobilezhifubi", "#thirdmobilezhifubi");
 
     General*mobilezhi_xunchen = new General(this, "mobilezhi_xunchen", "qun", 3);
     mobilezhi_xunchen->addSkill(new MobileZhiDuoji);
@@ -1285,7 +1285,7 @@ MobileZhiPackage::MobileZhiPackage()
     mobilezhi_bianfuren->addSkill(new MobileZhiWanwei);
     mobilezhi_bianfuren->addSkill(new MobileZhiYuejian);
     mobilezhi_bianfuren->addSkill(new MobileZhiYuejianMax);
-    related_skills.insertMulti("mobilezhiyuejian", "#mobilezhiyuejian-max");
+    related_skills.insert("mobilezhiyuejian", "#mobilezhiyuejian-max");
 
     General*mobilezhi_feiyi = new General(this, "mobilezhi_feiyi", "shu", 3);
     mobilezhi_feiyi->addSkill(new MobileZhiJianyu);
@@ -1294,7 +1294,7 @@ MobileZhiPackage::MobileZhiPackage()
     General*mobilezhi_luotong = new General(this, "mobilezhi_luotong", "wu", 4);
     mobilezhi_luotong->addSkill(new MobileZhiQinzheng);
     mobilezhi_luotong->addSkill(new MobileZhiQinzhengClear);
-    related_skills.insertMulti("mobilezhiqinzheng", "#mobilezhiqinzheng-clear");
+    related_skills.insert("mobilezhiqinzheng", "#mobilezhiqinzheng-clear");
 
     General*mobilezhi_duyu = new General(this, "mobilezhi_duyu", "qun", 4);
     mobilezhi_duyu->addSkill(new MobileZhiWuku);
@@ -2891,13 +2891,13 @@ MobileXinPackage::MobileXinPackage()
     General*mobilexin_wangfuzhaolei = new General(this, "mobilexin_wangfuzhaolei", "shu", 4);
     mobilexin_wangfuzhaolei->addSkill(new MobileXinXunyi);
     mobilexin_wangfuzhaolei->addSkill(new MobileXinXunyiEffect);
-    related_skills.insertMulti("mobilexinxunyi", "#mobilexinxunyi");
+    related_skills.insert("mobilexinxunyi", "#mobilexinxunyi");
 
     General*mobilexin_zhouchu = new General(this, "mobilexin_zhouchu", "wu", 4);
     mobilexin_zhouchu->addSkill(new MobileXinXianghai);
     mobilexin_zhouchu->addSkill(new MobileXinXianghaiMax);
     mobilexin_zhouchu->addSkill(new MobileXinChuhai);
-    related_skills.insertMulti("mobilexinxianghai", "#mobilexinxianghai");
+    related_skills.insert("mobilexinxianghai", "#mobilexinxianghai");
 
     General*mobilexin_kongrong = new General(this, "mobilexin_kongrong", "qun", 3);
     mobilexin_kongrong->addSkill(new MobileXinMingshi);
@@ -2908,8 +2908,8 @@ MobileXinPackage::MobileXinPackage()
     mobilexin_yanghu->addSkill(new MobileXinMingfaPindian);
     mobilexin_yanghu->addSkill(new MobileXinMingfaPro);
     mobilexin_yanghu->addSkill(new MobileXinRongbei);
-    related_skills.insertMulti("mobilexinmingfa", "#mobilexinmingfa-pindian");
-    related_skills.insertMulti("mobilexinmingfa", "#mobilexinmingfa-pro");
+    related_skills.insert("mobilexinmingfa", "#mobilexinmingfa-pindian");
+    related_skills.insert("mobilexinmingfa", "#mobilexinmingfa-pro");
 
     addMetaObject<MobileXinYinjuCard>();
     addMetaObject<MobileXinCunsiCard>();
@@ -3660,7 +3660,7 @@ MobileRenPackage::MobileRenPackage()
     mobileren_caizhenji->addSkill(new MobileRenSheyi);
     mobileren_caizhenji->addSkill(new MobileRenTianyin);
     mobileren_caizhenji->addSkill("#tenyearjingce-record");
-    related_skills.insertMulti("mobilerentianyin", "#tenyearjingce-record");
+    related_skills.insert("mobilerentianyin", "#tenyearjingce-record");
 
     General*mobileren_xujing = new General(this, "mobileren_xujing", "shu", 3);
     mobileren_xujing->addSkill(new MobileRenBoming);
@@ -4124,19 +4124,19 @@ MobileYongPackage::MobileYongPackage()
     mobileyong_huaman->addSkill(new MobileYongFangzong);
     mobileyong_huaman->addSkill(new MobileYongFangzongDraw);
     mobileyong_huaman->addSkill(new MobileYongXizhan);
-    related_skills.insertMulti("mobileyongxiangzhen", "#mobileyongxiangzhen");
-    related_skills.insertMulti("mobileyongfangzong", "#mobileyongfangzong");
+    related_skills.insert("mobileyongxiangzhen", "#mobileyongxiangzhen");
+    related_skills.insert("mobileyongfangzong", "#mobileyongfangzong");
 
     General*mobileyong_sunyi = new General(this, "mobileyong_sunyi", "wu", 4);
     mobileyong_sunyi->addSkill(new MobileYongZaoli);
     mobileyong_sunyi->addSkill(new MobileYongZaoliBf);
-    related_skills.insertMulti("mobileyongzaoli", "#mobileyongzaolibf");
+    related_skills.insert("mobileyongzaoli", "#mobileyongzaolibf");
 
     General*mobileyong_gaolan = new General(this, "mobileyong_gaolan", "qun", 4);
     mobileyong_gaolan->addSkill(new MobileYongJungong);
     mobileyong_gaolan->addSkill(new MobileYongJungongtMod);
     mobileyong_gaolan->addSkill(new MobileYongDengli);
-    related_skills.insertMulti("mobileyongjungong", "#mobileyongjungong-target");
+    related_skills.insert("mobileyongjungong", "#mobileyongjungong-target");
 
     addMetaObject<MobileYongJungongCard>();
 }
@@ -4913,7 +4913,7 @@ MobileYanPackage::MobileYanPackage()
     mobileyan_cuiyan->addSkill(new MobileYanYajun);
     mobileyan_cuiyan->addSkill(new MobileYanZundi);
     mobileyan_cuiyan->addSkill("#fulinbf");
-    related_skills.insertMulti("mobileyanyajun", "#fulinbf");
+    related_skills.insert("mobileyanyajun", "#fulinbf");
 
     General*mobileyan_zhangchangpu = new General(this, "mobileyan_zhangchangpu", "wei", 3, false);
     mobileyan_zhangchangpu->addSkill(new MobileYanDifei);

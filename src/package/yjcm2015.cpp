@@ -2090,7 +2090,7 @@ YJCM2015Package::YJCM2015Package()
     caorui->addSkill(new Huituo);
     caorui->addSkill(new Mingjian);
     caorui->addSkill(new MingjianGive);
-    related_skills.insertMulti("mingjian", "#mingjian-give");
+    related_skills.insert("mingjian", "#mingjian-give");
     caorui->addSkill(new Xingshuai);
 
     General *new_caorui = new General(this, "new_caorui$", "wei", 3);
@@ -2099,8 +2099,8 @@ YJCM2015Package::YJCM2015Package()
     new_caorui->addSkill(new NewMingjianTargetMod);
     new_caorui->addSkill(new NewMingjianKeep);
     new_caorui->addSkill("xingshuai");
-    related_skills.insertMulti("newmingjian", "#newmingjian-target");
-    related_skills.insertMulti("newmingjian", "#newmingjian-keep");
+    related_skills.insert("newmingjian", "#newmingjian-target");
+    related_skills.insert("newmingjian", "#newmingjian-keep");
 
     General *caoxiu = new General(this, "caoxiu", "wei");
     caoxiu->addSkill(new Taoxi);
@@ -2115,7 +2115,7 @@ YJCM2015Package::YJCM2015Package()
     General *guofeng = new General(this, "guotufengji", "qun", 3);
     guofeng->addSkill(new Jigong);
     guofeng->addSkill(new JigongMax);
-    related_skills.insertMulti("jigong", "#jigong");
+    related_skills.insert("jigong", "#jigong");
     guofeng->addSkill(new Shifei);
 
     General *liuchen = new General(this, "liuchen$", "shu");
@@ -2150,13 +2150,13 @@ YJCM2015Package::YJCM2015Package()
     zhangyi->addSkill(new Wurong);
     zhangyi->addSkill(new Shizhi);
     zhangyi->addSkill(new ShizhiFilter);
-    related_skills.insertMulti("shizhi", "#shizhi");
+    related_skills.insert("shizhi", "#shizhi");
 
     General *zhongyao = new General(this, "zhongyao", "wei", 3);
     zhongyao->addSkill(new Huomo);
     zhongyao->addSkill(new Zuoding);
     zhongyao->addSkill(new ZuodingRecord);
-    related_skills.insertMulti("zuoding", "#zuoding");
+    related_skills.insert("zuoding", "#zuoding");
 
     General *zhuzhi = new General(this, "zhuzhi", "wu");
     zhuzhi->addSkill(new Anguo);

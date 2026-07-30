@@ -42,11 +42,11 @@ public:
 
     inline bool isArray() const
     {
-        return value.canConvert<JsonArray>();
+        return value.userType() == QMetaType::QVariantList;
     }
     inline bool isObject() const
     {
-        return value.canConvert<JsonObject>();
+        return value.userType() == QMetaType::QVariantMap;
     }
     inline bool isValid() const
     {
@@ -80,8 +80,10 @@ namespace JsonUtils {
 
     inline bool isNumber(const QVariant &var)
     {
-        //three number types defined by JsonCPP
-        return var.userType() == QMetaType::Double || var.userType() == QMetaType::Int || var.userType() == QMetaType::UInt;
+        // Qt 6 preserves integral JSON values as 64-bit QVariant types.
+        return var.userType() == QMetaType::Double || var.userType() == QMetaType::Int
+            || var.userType() == QMetaType::UInt || var.userType() == QMetaType::LongLong
+            || var.userType() == QMetaType::ULongLong;
     }
 
     inline bool isString(const QVariant &var)
@@ -92,6 +94,13 @@ namespace JsonUtils {
     inline bool isBool(const QVariant &var)
     {
         return var.userType() == QMetaType::Bool;
+    }
+
+    // Qt 6 permits converting QString to QVariantList, so conversion checks
+    // cannot distinguish a JSON array from a scalar string.
+    inline bool isArray(const QVariant &var)
+    {
+        return var.userType() == QMetaType::QVariantList;
     }
 
     bool isStringArray(const QVariant &var, unsigned from, unsigned to);

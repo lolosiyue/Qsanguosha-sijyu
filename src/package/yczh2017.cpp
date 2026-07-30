@@ -1951,23 +1951,23 @@ YCZH2017Package::YCZH2017Package()
 	wuxian->addSkill(new Fumian);
 	wuxian->addSkill(new FumianTargetMod);
 	wuxian->addSkill(new Daiyan);
-	related_skills.insertMulti("fumian", "#fumian-target");
+	related_skills.insert("fumian", "#fumian-target");
 
 	General *xinxianying = new General(this, "xinxianying", "wei", 3, false);
 	xinxianying->addSkill(new Zhongjian);
 	xinxianying->addSkill(new Caishi);
 	xinxianying->addSkill(new CaishiMax);
 	xinxianying->addSkill(new CaishiPro);
-	related_skills.insertMulti("caishi", "#caishimax");
-	related_skills.insertMulti("caishi", "#caishipro");
+	related_skills.insert("caishi", "#caishimax");
+	related_skills.insert("caishi", "#caishipro");
 
 	General *ol_xinxianying = new General(this, "ol_xinxianying", "wei", 3, false);
 	ol_xinxianying->addSkill(new OLZhongjian);
 	ol_xinxianying->addSkill(new OLCaishi);
 	ol_xinxianying->addSkill(new OLCaishiMax);
 	ol_xinxianying->addSkill(new OLCaishiPro);
-	related_skills.insertMulti("olcaishi", "#olcaishimax");
-	related_skills.insertMulti("olcaishi", "#olcaishipro");
+	related_skills.insert("olcaishi", "#olcaishimax");
+	related_skills.insert("olcaishi", "#olcaishipro");
 
 	General *jikang = new General(this, "jikang", "wei", 3);
 	jikang->addSkill(new Qingxian);
@@ -1977,7 +1977,7 @@ YCZH2017Package::YCZH2017Package()
 	jikang->addRelateSkill("liexian");
 	jikang->addRelateSkill("rouxian");
 	jikang->addRelateSkill("hexian");
-	related_skills.insertMulti("juexiang", "#juexiangpro");
+	related_skills.insert("juexiang", "#juexiangpro");
 
 	General *mobile_jikang = new General(this, "mobile_jikang", "wei", 3);
 	mobile_jikang->addSkill(new MobileQingxian);
@@ -1992,7 +1992,7 @@ YCZH2017Package::YCZH2017Package()
 	xuezong->addSkill(new Funan);
 	xuezong->addSkill(new FunanRemove);
 	xuezong->addSkill(new Jiexun);
-	related_skills.insertMulti("funan", "#funanremove");
+	related_skills.insert("funan", "#funanremove");
 
 	General *caojie = new General(this, "caojie", "qun", 3, false);
 	caojie->addSkill(new Shouxi);
@@ -2002,7 +2002,7 @@ YCZH2017Package::YCZH2017Package()
 	caiyong->addSkill(new Bizhuan);
 	caiyong->addSkill(new BizhuanKeep);
 	caiyong->addSkill(new Tongbo);
-	related_skills.insertMulti("bizhuan", "#bizhuankeep");
+	related_skills.insert("bizhuan", "#bizhuankeep");
 
 	addMetaObject<FumianCard>();
 	addMetaObject<ZhongjianCard>();

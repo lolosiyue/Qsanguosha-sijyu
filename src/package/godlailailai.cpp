@@ -2109,13 +2109,13 @@ GodlailailaiPackage::GodlailailaiPackage()
     General *zhuyin = new General(this, "zhuyin", "qun", 4, true, true);
     zhuyin->addSkill(new Xiongshou);
     zhuyin->addSkill(new XiongshouBf);
-    related_skills.insertMulti("xiongshou", "#xiongshoubf");
+    related_skills.insert("xiongshou", "#xiongshoubf");
 
     General *hundun = new General(this, "hundun", "qun", 25, false, true);
     hundun->addSkill("xiongshou");
     hundun->addSkill(new Wuzang);
     hundun->addSkill(new WuzangZ);
-    related_skills.insertMulti("wuzang", "#wuzang");
+    related_skills.insert("wuzang", "#wuzang");
     hundun->addSkill(new Xiangde);
     hundun->addRelateSkill("yinzei");
 
@@ -2125,14 +2125,14 @@ GodlailailaiPackage::GodlailailaiPackage()
     qiongqi->addSkill(new Zhue);
     qiongqi->addSkill(new Futai);
     qiongqi->addSkill(new FutaiLimit);
-    related_skills.insertMulti("futai", "#futai-limit");
+    related_skills.insert("futai", "#futai-limit");
     qiongqi->addRelateSkill("yandu");
 
     General *taowu = new General(this, "taowu", "qun", 20, true, true);
     taowu->addSkill("xiongshou");
     taowu->addSkill(new Mingwan);
     taowu->addSkill(new MingwanZ);
-    related_skills.insertMulti("mingwan", "#mingwan");
+    related_skills.insert("mingwan", "#mingwan");
     taowu->addSkill(new Nitai);
     taowu->addRelateSkill("luanchang");
 
@@ -2148,7 +2148,7 @@ GodlailailaiPackage::GodlailailaiPackage()
     yingzhao->addSkill(new Fengdong);
     yingzhao->addSkill(new BossXunyou);
     yingzhao->addRelateSkill("sipu");
-    related_skills.insertMulti("sipu", "#sipubf");
+    related_skills.insert("sipu", "#sipubf");
 
     General *xiangliu = new General(this, "xiangliu", "qun", 25, false, true);
     xiangliu->addSkill("yaoshou");
@@ -2157,8 +2157,8 @@ GodlailailaiPackage::GodlailailaiPackage()
     xiangliu->addSkill(new Jiushou);
     xiangliu->addSkill(new JiushouBf);
     xiangliu->addRelateSkill("echou");
-    related_skills.insertMulti("duqu", "#duqubf");
-    related_skills.insertMulti("jiushou", "#jiushoubf");
+    related_skills.insert("duqu", "#duqubf");
+    related_skills.insert("jiushou", "#jiushoubf");
 
     General *zhuyan = new General(this, "zhuyan", "qun", 30, true, true);
 	zhuyan->setStartHp(25);
@@ -2167,7 +2167,7 @@ GodlailailaiPackage::GodlailailaiPackage()
     zhuyan->addSkill(new Juyuan);
     zhuyan->addSkill(new JuyuanBf);
     zhuyan->addRelateSkill("boss_xushi");
-    related_skills.insertMulti("juyuan", "#juyuanbf");
+    related_skills.insert("juyuan", "#juyuanbf");
 
     General *bifang = new General(this, "bifang", "qun", 25, false, true);
     bifang->addSkill("yaoshou");
@@ -2175,7 +2175,7 @@ GodlailailaiPackage::GodlailailaiPackage()
     bifang->addSkill(new ZhaohuoBf);
     bifang->addSkill(new Honglian);
     bifang->addRelateSkill("boss_yanyu");
-    related_skills.insertMulti("boss_zhaohuo", "#boss_zhaohuobf");
+    related_skills.insert("boss_zhaohuo", "#boss_zhaohuobf");
 
     General *zhangji = new General(this, "godlai_zhangji", "qun", 4, true, true);
     zhangji->addSkill(new Mojun);
@@ -2261,10 +2261,10 @@ GodlailailaiPackage::GodlailailaiPackage()
 		<< new GodHorseSkill << new GodQinSkill << new GodHatSkill << new GodHatBuff << new GodSwordSkill
 		<< new GodPaoSkill << new GodDoubleSwordSkill << new GodDeerSkill << new GodBowSkill << new GodAxeSkill
 		<< new GodAxeSkillBf << new GodEdictSkill << new GodHeaddressSkill << new GodHeaddressBf << new GodHalberdSkillBf;
-    related_skills.insertMulti("god_hat", "#god_hat");
-    related_skills.insertMulti("god_axe", "#god_axebf");
-    related_skills.insertMulti("god_headdress", "#god_headdressbf");
-    related_skills.insertMulti("god_halberd", "#god_halberdbf");
+    related_skills.insert("god_hat", "#god_hat");
+    related_skills.insert("god_axe", "#god_axebf");
+    related_skills.insert("god_headdress", "#god_headdressbf");
+    related_skills.insert("god_halberd", "#god_halberdbf");
 }
 
 ADD_PACKAGE(Godlailailai);

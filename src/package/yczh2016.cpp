@@ -1352,7 +1352,7 @@ YCZH2016Package::YCZH2016Package()
     guohuanghou->addSkill(new Jiaozhao);
     guohuanghou->addSkill(new JiaozhaoPro);
     guohuanghou->addSkill(new Danxin);
-    related_skills.insertMulti("jiaozhao", "#jiaozhaopro");
+    related_skills.insert("jiaozhao", "#jiaozhaopro");
 
     General *sunziliufang = new General(this, "sunziliufang", "wei", 3);
     sunziliufang->addSkill(new Guizao);
@@ -1362,7 +1362,7 @@ YCZH2016Package::YCZH2016Package()
     liyan->addSkill(new Duliang);
     liyan->addSkill(new Fulin);
     liyan->addSkill(new FulinBF);
-    related_skills.insertMulti("fulin", "#fulinbf");
+    related_skills.insert("fulin", "#fulinbf");
 
     General *huanghao = new General(this, "huanghao", "shu", 3);
     huanghao->addSkill(new Qinqing);
@@ -1379,7 +1379,7 @@ YCZH2016Package::YCZH2016Package()
     liuyu->addSkill(new Zhige);
     liuyu->addSkill(new Zongzuo);
     liuyu->addSkill(new ZongzuoDeath);
-    related_skills.insertMulti("zongzuo", "#zongzuodeath");
+    related_skills.insert("zongzuo", "#zongzuodeath");
 
     General *zhangrang = new General(this, "zhangrang", "qun", 3);
     zhangrang->addSkill(new Taoluan);
