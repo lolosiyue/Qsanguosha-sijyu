@@ -23,7 +23,32 @@
 - **加權目標選擇**: 根據動態威脅分數（Threat Score）選擇最佳目標。
 - **情境感知策略**: 包含合縱判斷及根據主公選將動態調整身份策略。
 
+## 🛠️ 編譯方式
+
+### 環境需求
+
+- **Qt**: 6.5.3 (msvc2022_64)
+- **編譯器**: MSVC 2022 (Visual Studio 2022)
+- **Qt/MSBuild 工具組**: 3.5.0.0
+
+### 編譯步驟
+
+```powershell
+# 使用編譯腳本
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-release.ps1
+
+# 或直接使用 qmake 編譯 .pro 檔
+# (需先將 Qt bin 目錄加入 PATH)
+qmake QSanguosha.pro
+nmake release
+```
+
+### 輸出位置
+
+- 執行檔：`release\QSanguosha.exe`
+- lib 檔：`release\QSanguosha.lib`
+
 ## 📜 致謝與聲明
 
 - **版權尊重**: 若您是原作者且不希望作品被包含，請告知，將立即刪除。
-- **穩定性提示**: 作為“大雜燴”版本，閃退頻率可能較高，建議高配置硬體游玩。
+- **穩定性提示**: 作為"大雜燴"版本，閃退頻率可能較高，建議高配置硬體游玩。
