@@ -93,6 +93,7 @@ public:
 
     QString BackgroundImage;
     int BubbleChatBoxKeepTime;
+    qreal UIScale;
 
     // consts
     static const int S_SURRENDER_REQUEST_MIN_INTERVAL;

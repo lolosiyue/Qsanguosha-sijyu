@@ -41,8 +41,10 @@ int main(int argc, char *argv[])
 {
 #endif
 
-    // The fixed-pixel game assets are authored for native screen pixels.
-    qputenv("QT_ENABLE_HIGHDPI_SCALING", "0");
+    // Qt 6 is High-DPI aware by default. Preserve fractional per-screen scale
+    // factors so moving the window between monitors does not snap the UI size.
+    QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
+        Qt::HighDpiScaleFactorRoundingPolicy::PassThrough);
 
     QSurfaceFormat format;
     format.setDepthBufferSize(24);

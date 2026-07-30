@@ -34,6 +34,13 @@ ConfigDialog::ConfigDialog(QWidget *parent)
     ui->noCardMoveAnimCheckBox->setChecked(Config.value("NoCardMoveAnim", false).toBool());
     ui->enableAnimatedGeneralsCheckBox->setChecked(Config.value("EnableAnimatedGenerals", true).toBool());
 
+    ui->uiScaleSlider->setValue(qRound(Config.UIScale * 20.0));
+    const auto updateUiScaleLabel = [this](int value) {
+        ui->uiScaleValueLabel->setText(QString::number(value / 20.0, 'f', 2) + "x");
+    };
+    updateUiScaleLabel(ui->uiScaleSlider->value());
+    connect(ui->uiScaleSlider, &QSlider::valueChanged, this, updateUiScaleLabel);
+
     ui->bgmVolumeSlider->setValue(Config.BGMVolume*100);
     ui->effectVolumeSlider->setValue(Config.EffectVolume*100);
     ui->frontVolumeSlider->setValue(Config.FrontBGMVolume*100);
@@ -151,6 +158,8 @@ void ConfigDialog::saveConfig()
     Config.setValue("NoEquipAnim", ui->noEquipAnimCheckBox->isChecked());
     Config.setValue("NoCardMoveAnim", ui->noCardMoveAnimCheckBox->isChecked());
     Config.setValue("EnableAnimatedGenerals", ui->enableAnimatedGeneralsCheckBox->isChecked());
+    Config.UIScale = ui->uiScaleSlider->value() / 20.0;
+    Config.setValue("UIScale", Config.UIScale);
 
     Config.NeverNullifyMyTrick = ui->neverNullifyMyTrickCheckBox->isChecked();
     Config.setValue("NeverNullifyMyTrick", Config.NeverNullifyMyTrick);
@@ -187,8 +196,10 @@ void ConfigDialog::saveConfig()
 
     if (RoomSceneInstance){
 		MainWindow *mw = static_cast<MainWindow*>(Sanguosha->parent());
-		if (qobject_cast<RoomScene*>(mw->getScene()) == RoomSceneInstance)
+		if (qobject_cast<RoomScene*>(mw->getScene()) == RoomSceneInstance) {
 			RoomSceneInstance->updateVolumeConfig();
+			mw->refitScene();
+		}
 	}
 }
 
