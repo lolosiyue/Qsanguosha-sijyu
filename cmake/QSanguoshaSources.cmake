@@ -173,7 +173,6 @@ set(QSAN_SOURCES
     src/util/replay-game-state.cpp
     src/util/replay-index.cpp
     src/util/replay-takeover.cpp
-    swig/sanguosha_wrap.cxx
 )
 
 set(QSAN_LUA_SOURCES

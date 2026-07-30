@@ -13,7 +13,7 @@
 | malformed provenance | 同上 | 通過；拒絕 payload |
 | Play／pure response 的 V2 early-exit 與控制事件收束 | `Room::useCard()`、`Room::askForCard()` | 已整合；pay/cancel 釋放未提交 reservation；`StageChange`／`TurnBroken` 發 `Finished(NoResult)` 最多一次並重新拋出原控制事件 |
 | Lua `n`／`response_or_use`／`expand_pile`／dialog／`base_amount`／`get_usage_ref` smoke 與 Room 初始化 | `lua/test/examples/test_active_skill_v2_usage_ref.lua` | 待執行；驗證 ViewAs factory 欄位（含裸名稱、`#`、`%`、`/` 前綴字串與三種 dialog）、amount 優先序與 usage ref；assertion 失敗必須回傳非零 |
-| 全專案 C++／SWIG 整合 | `tools/build-release.ps1` Release x64 | 2026-07-30 已以 CMake／MSVC 2019 建置通過；SWIG wrapper 時效檢查通過 |
+| 全專案 C++／SWIG 整合 | `tools/build-release.ps1` Release x64 | 2026-07-30 已以 CMake／MSVC 2019 建置通過；build tree 的 SWIG wrapper 已自動生成並編譯通過 |
 
 ## `~test` 手動整合場景
 
