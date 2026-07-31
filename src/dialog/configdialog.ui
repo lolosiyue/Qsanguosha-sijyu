@@ -593,6 +593,70 @@
       </property>
      </widget>
     </widget>
+    <widget class="QGroupBox" name="visualModeGroupBox">
+     <property name="geometry">
+      <rect>
+       <x>10</x>
+       <y>310</y>
+       <width>441</width>
+       <height>71</height>
+      </rect>
+     </property>
+     <property name="title">
+      <string>Visual mode</string>
+     </property>
+     <widget class="QWidget" name="visualModeLayoutWidget">
+      <property name="geometry">
+       <rect>
+        <x>10</x>
+        <y>20</y>
+        <width>421</width>
+        <height>31</height>
+       </rect>
+      </property>
+      <layout class="QHBoxLayout" name="visualModeLayout">
+       <item>
+        <widget class="QLabel" name="visualModeLabel">
+         <property name="text">
+          <string>Color blindness / screen reader</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="visualModeSpacer">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>40</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item>
+        <widget class="QComboBox" name="visualModeCombo">
+         <item>
+          <property name="text">
+           <string>Normal</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>Grayscale</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
+           <string>High contrast</string>
+          </property>
+         </item>
+        </widget>
+       </item>
+      </layout>
+     </widget>
+    </widget>
    </widget>
    <widget class="QWidget" name="gameTab">
     <attribute name="title">

@@ -2,7 +2,6 @@
 #include "startscene.h"
 #include "roomscene.h"
 #include "server.h"
-//#include "client.h"
 #include "generaloverview.h"
 #include "cardoverview.h"
 #include "ui_mainwindow.h"
@@ -13,19 +12,27 @@
 #include "banipdialog.h"
 #include "recorder.h"
 #include "lua.hpp"
-//#include "clientplayer.h"
 #include "engine.h"
 #include "connectiondialog.h"
 #include "configdialog.h"
 #include "clientstruct.h"
 #include "settings.h"
 #include "button.h"
+#include "homecontroller.h"
 #include <QOpenGLWidget>
+#include <QStackedWidget>
+#include <QQuickWidget>
+#include <QQmlContext>
+#include <QQmlEngine>
+#include <QQmlError>
+#include <QFile>
+#include <QDebug>
 
 class FitView : public QGraphicsView
 {
 public:
-    FitView(QGraphicsScene *scene) : QGraphicsView(scene)
+    FitView(QGraphicsScene *scene, MainWindow *mainWindow)
+        : QGraphicsView(scene), m_mainWindow(mainWindow)
     {
         setSceneRect(Config.Rect);
         setRenderHints(QPainter::TextAntialiasing | QPainter::Antialiasing
@@ -57,7 +64,6 @@ private:
         if (!scene() || viewportSize.isEmpty())
             return;
 
-        MainWindow *main_window = qobject_cast<MainWindow *>(parentWidget());
         if (scene()->inherits("RoomScene")) {
             RoomScene *room_scene = qobject_cast<RoomScene *>(scene());
             QRectF newSceneRect(QPointF(0, 0), QSizeF(viewportSize));
@@ -68,7 +74,8 @@ private:
                 fitInView(room_scene->sceneRect(), Qt::KeepAspectRatio);
             else
                 resetTransform();
-            main_window->setBackgroundBrush(false);
+            if (m_mainWindow)
+                m_mainWindow->setBackgroundBrush(false);
             return;
         } else if (scene()->inherits("StartScene")) {
             StartScene *start_scene = qobject_cast<StartScene *>(scene());
@@ -81,9 +88,11 @@ private:
             else
                 resetTransform();
         }
-        if (main_window)
-            main_window->setBackgroundBrush(true);
+        if (m_mainWindow)
+            m_mainWindow->setBackgroundBrush(true);
     }
+
+    MainWindow *m_mainWindow;
 };
 
 MainWindow::MainWindow(QWidget *parent)
@@ -106,32 +115,178 @@ MainWindow::MainWindow(QWidget *parent)
 	connect(ui->actionAbout_Qt, SIGNAL(triggered()), qApp, SLOT(aboutQt()));
 	connect(ui->actionAcknowledgement_2, SIGNAL(triggered()), this, SLOT(on_actionAcknowledgement_triggered()));
 
-	StartScene *start_scene = new StartScene;
+	pageStack = new QStackedWidget(this);
 
-	start_scene->addButton(ui->actionStart_Game);
-	start_scene->addButton(ui->actionStart_Server);
-	start_scene->addButton(ui->actionReplay);
-	start_scene->addButton(ui->actionConfigure);
-	start_scene->addButton(ui->actionGeneral_Overview);
-	start_scene->addButton(ui->actionCard_Overview);
-	start_scene->addButton(ui->actionScenario_Overview);
-	start_scene->addButton(ui->actionAbout);
+	homeController = new HomeController(this);
+	homeView = new QQuickWidget(pageStack);
+	gameView = new FitView(nullptr, this);
 
-	view = new FitView(scene);
+	homeView->setResizeMode(QQuickWidget::SizeRootObjectToView);
+	homeView->setClearColor(Qt::transparent);
 
-	setCentralWidget(view);
+	pageStack->addWidget(homeView);
+	pageStack->addWidget(gameView);
+
+	setCentralWidget(pageStack);
 	restoreFromConfig();
 
-	//BackLoader::preload();
-	gotoScene(start_scene);
+	setupHomePage();
+	showHomePage();
 
 	addAction(ui->actionShow_Hide_Menu);
 	addAction(ui->actionFullscreen);
 
 	connect(ui->actionRestart_Game, SIGNAL(triggered()), this, SLOT(startConnection()));
-	connect(ui->actionReturn_to_Main_Menu, SIGNAL(triggered()), this, SLOT(gotoStartScene()));
+	connect(ui->actionReturn_to_Main_Menu, &QAction::triggered, this, [this]() {
+		showHomePage();
+	});
 
 	systray = nullptr;
+}
+
+void MainWindow::setupHomePage()
+{
+	const QUrl homeUrl(QStringLiteral("qrc:/QSanguosha/Home/HomeScene.qml"));
+
+	qInfo().noquote() << "Home QRC exists:"
+		<< QFile::exists(QStringLiteral(":/QSanguosha/Home/HomeScene.qml"));
+
+	homeView->setResizeMode(QQuickWidget::SizeRootObjectToView);
+	homeView->setClearColor(QColor("#DCEEFF"));
+
+	connect(homeView, &QQuickWidget::statusChanged, this,
+		[this](QQuickWidget::Status status) {
+			qInfo().noquote()
+				<< "Home QML status:" << status;
+
+			if (status != QQuickWidget::Error)
+				return;
+
+			const auto errors = homeView->errors();
+			for (const QQmlError &error : errors)
+				qCritical().noquote() << error.toString();
+		});
+
+	homeView->rootContext()->setContextProperty(
+		QStringLiteral("homeController"), homeController);
+	homeView->rootContext()->setContextProperty(
+		QStringLiteral("Config"), &Config);
+
+	const QString qmlImportPath = QStringLiteral(QT_QML_IMPORT_PATH);
+	qInfo().noquote() << "QML import path:" << qmlImportPath;
+	homeView->engine()->addImportPath(qmlImportPath);
+
+	homeView->setSource(homeUrl);
+
+	connect(homeController, &HomeController::quickJoinRequested,
+		ui->actionStart_Game, &QAction::trigger);
+	connect(homeController, &HomeController::joinGameRequested,
+		ui->actionStart_Game, &QAction::trigger);
+	connect(homeController, &HomeController::startServerRequested,
+		ui->actionStart_Server, &QAction::trigger);
+	connect(homeController, &HomeController::generalsRequested,
+		ui->actionGeneral_Overview, &QAction::trigger);
+	connect(homeController, &HomeController::cardsRequested,
+		ui->actionCard_Overview, &QAction::trigger);
+	connect(homeController, &HomeController::replaysRequested,
+		ui->actionReplay, &QAction::trigger);
+	connect(homeController, &HomeController::settingsRequested,
+		ui->actionConfigure, &QAction::trigger);
+	connect(homeController, &HomeController::aboutRequested,
+		ui->actionAbout, &QAction::trigger);
+
+	connect(config_dialog, &ConfigDialog::accepted,
+		this, &MainWindow::reloadHomePage);
+}
+
+void MainWindow::reloadHomePage()
+{
+	if (pageStack->currentWidget() != homeView)
+		return;
+
+	homeView->setSource(QUrl());
+	homeView->setSource(QUrl(QStringLiteral("qrc:/QSanguosha/Home/HomeScene.qml")));
+	homeView->setFocus();
+}
+
+void MainWindow::showHomePage()
+{
+	ServerInfo.DuringGame = false;
+	delete systray;
+	systray = nullptr;
+
+	if (server) {
+		server->deleteLater();
+		server = nullptr;
+	}
+	if (Self) {
+		Self->deleteLater();
+		Self = nullptr;
+	}
+
+	ui->actionStart_Game->setEnabled(true);
+	ui->actionStart_Server->setEnabled(true);
+	ui->actionReplay->setEnabled(true);
+	ui->actionRestart_Game->setEnabled(false);
+	ui->actionReturn_to_Main_Menu->setEnabled(false);
+
+	ui->menuCheat->setEnabled(false);
+	ui->actionDeath_note->disconnect();
+	ui->actionDamage_maker->disconnect();
+	ui->actionRevive_wand->disconnect();
+	ui->actionSend_lowlevel_command->disconnect();
+	ui->actionExecute_script_at_server_side->disconnect();
+	ui->actionState_editor->disconnect();
+
+	addAction(ui->actionShow_Hide_Menu);
+	addAction(ui->actionFullscreen);
+
+	ui->actionView_Discarded->setEnabled(false);
+	ui->actionView_distance->setEnabled(false);
+	ui->actionView_Maxcards->setEnabled(false);
+	ui->actionServerInformation->setEnabled(false);
+	ui->actionSurrender->setEnabled(false);
+	ui->actionNever_nullify_my_trick->setEnabled(false);
+	ui->actionSaveRecord->setEnabled(false);
+	ui->actionPause_Resume->setEnabled(false);
+	ui->actionHide_Show_chat_box->setEnabled(false);
+
+	if (scene) {
+		scene->deleteLater();
+		scene = nullptr;
+	}
+	gameView->setScene(nullptr);
+
+	menuBar()->hide();
+	homeController->refreshCharacterImage();
+	pageStack->setCurrentWidget(homeView);
+	homeView->setFocus();
+
+	if (ClientInstance) {
+		ClientInstance->disconnectFromHost();
+		delete ClientInstance;
+		ClientInstance = nullptr;
+	}
+	if (Config.FrontBGMVolume > 0 && QFile::exists("audio/system/BGM/front-bgm.ogg")) {
+#ifdef AUDIO_SUPPORT
+		Audio::playBGM("audio/system/BGM/front-bgm.ogg");
+		Audio::setBGMVolume(Config.FrontBGMVolume);
+#endif
+	}
+}
+
+void MainWindow::showGamePage(QGraphicsScene *newScene)
+{
+	if (scene && scene != newScene)
+		scene->deleteLater();
+
+	scene = newScene;
+
+	menuBar()->show();
+	gameView->setScene(scene);
+	gameView->refit();
+
+	pageStack->setCurrentWidget(gameView);
 }
 
 void MainWindow::restoreFromConfig()
@@ -161,25 +316,21 @@ void MainWindow::closeEvent(QCloseEvent *)
 MainWindow::~MainWindow()
 {
 	delete ui;
-	view->deleteLater();
+	gameView->deleteLater();
 	if (scene) scene->deleteLater();
 	QSanSkinFactory::destroyInstance();
 }
 
-void MainWindow::gotoScene(QGraphicsScene *scene)
+void MainWindow::gotoScene(QGraphicsScene *newScene)
 {
-	if (this->scene)
-		this->scene->deleteLater();
-	this->scene = scene;
-	view->setScene(scene);
-	view->refit();
-	changeBackground();
+	fprintf(stderr, "gotoScene is deprecated, use showGamePage\n");
+	showGamePage(newScene);
 }
 
 void MainWindow::refitScene()
 {
-	if (view)
-		view->refit();
+	if (gameView)
+		gameView->refit();
 }
 
 void MainWindow::on_actionExit_triggered()
@@ -217,12 +368,8 @@ void MainWindow::on_actionStart_Server_triggered()
 		ui->actionStart_Game->disconnect();
 		connect(ui->actionStart_Game, SIGNAL(triggered()), this, SLOT(startGameInAnotherInstance()));
 
-		StartScene *start_scene = qobject_cast<StartScene *>(scene);
-		if (start_scene) {
-			start_scene->switchToServer(server);
-			if (Config.value("EnableMinimizeDialog").toBool())
-				on_actionMinimize_to_system_tray_triggered();
-		}
+		if (Config.value("EnableMinimizeDialog").toBool())
+			on_actionMinimize_to_system_tray_triggered();
 	} else {
 		Config.HostAddress = "127.0.0.1";
 		startConnection();
@@ -312,7 +459,6 @@ void BackLoader::preload()
 
 void MainWindow::enterRoom()
 {
-	// add current ip to history
 	if (!Config.HistoryIPs.contains(Config.HostAddress)) {
 		Config.HistoryIPs << Config.HostAddress;
 		Config.HistoryIPs.sort();
@@ -366,79 +512,16 @@ void MainWindow::enterRoom()
 	}
 
 	connect(room_scene, SIGNAL(restart()), this, SLOT(startConnection()));
-	connect(room_scene, SIGNAL(return_to_start()), this, SLOT(gotoStartScene()));
+	connect(room_scene, SIGNAL(return_to_start()), this, SLOT(showHomePage()));
 	connect(room_scene, SIGNAL(game_over_dialog_rejected()), this, SLOT(enableDialogButtons()));
 
-	gotoScene(room_scene);
+	showGamePage(room_scene);
 }
 
 void MainWindow::gotoStartScene()
 {
-	ServerInfo.DuringGame = false;
-	delete systray;
-	systray = nullptr;
-
-	if (server) {
-		server->deleteLater();
-		server = nullptr;
-	}
-	if (Self) {
-		Self->deleteLater();
-		Self = nullptr;
-	}
-
-	StartScene *start_scene = new StartScene;
-
-	ui->actionStart_Game->setEnabled(true);
-	ui->actionStart_Server->setEnabled(true);
-	ui->actionReplay->setEnabled(true);
-	ui->actionRestart_Game->setEnabled(false);
-	ui->actionReturn_to_Main_Menu->setEnabled(false);
-	
-	start_scene->addButton(ui->actionStart_Game);
-	start_scene->addButton(ui->actionStart_Server);
-	start_scene->addButton(ui->actionReplay);
-	start_scene->addButton(ui->actionConfigure);
-	start_scene->addButton(ui->actionGeneral_Overview);
-	start_scene->addButton(ui->actionCard_Overview);
-	start_scene->addButton(ui->actionScenario_Overview);
-	start_scene->addButton(ui->actionAbout);
-
-	setCentralWidget(view);
-
-	ui->menuCheat->setEnabled(false);
-	ui->actionDeath_note->disconnect();
-	ui->actionDamage_maker->disconnect();
-	ui->actionRevive_wand->disconnect();
-	ui->actionSend_lowlevel_command->disconnect();
-	ui->actionExecute_script_at_server_side->disconnect();
-	ui->actionState_editor->disconnect();
-	gotoScene(start_scene);
-
-	addAction(ui->actionShow_Hide_Menu);
-	addAction(ui->actionFullscreen);
-
-	ui->actionView_Discarded->setEnabled(false);
-	ui->actionView_distance->setEnabled(false);
-	ui->actionView_Maxcards->setEnabled(false);
-	ui->actionServerInformation->setEnabled(false);
-	ui->actionSurrender->setEnabled(false);
-	ui->actionNever_nullify_my_trick->setEnabled(false);
-	ui->actionSaveRecord->setEnabled(false);
-	ui->actionPause_Resume->setEnabled(false);
-	ui->actionHide_Show_chat_box->setEnabled(false);
-
-	if (ClientInstance) {
-		ClientInstance->disconnectFromHost();
-		delete ClientInstance;
-		ClientInstance = nullptr;
-	}
-	if (Config.FrontBGMVolume>0&&QFile::exists("audio/system/BGM/front-bgm.ogg")){
-#ifdef AUDIO_SUPPORT
-		Audio::playBGM("audio/system/BGM/front-bgm.ogg");
-		Audio::setBGMVolume(Config.FrontBGMVolume);
-#endif
-	}
+	fprintf(stderr, "gotoStartScene is deprecated, use showHomePage\n");
+	showHomePage();
 }
 
 void MainWindow::enableDialogButtons()
@@ -484,15 +567,18 @@ void MainWindow::on_actionNever_nullify_my_trick_toggled(bool checked)
 
 void MainWindow::on_actionAbout_triggered()
 {
-	// Cao Cao's pixmap
+	if (!scene) {
+		QMessageBox::about(this, tr("About QSanguosha"),
+			tr("QSanguosha %1").arg(Sanguosha->getVersion()));
+		return;
+	}
+
 	QString content = "<center><img src='image/system/shencc.png'></center>";
 
-	// Cao Cao' poem
 	QString poem = tr("Disciples dressed in blue, my heart worries for you. You are the cause, of this song without pause <br/>"
 		"\"A Short Song\" by Cao Cao");
 	content.append(QString("<p align='right'><i>%1</i></p>").arg(poem));
 
-	// Cao Cao's signature
 	content.append(QString("<p align='right'><i>%1</i></p>").arg(tr("\"A Short Song\" by Cao Cao")));
 	content.append(tr("QSanguosha to gamerule")+"<br/>");
 
@@ -534,7 +620,7 @@ void MainWindow::setBackgroundBrush(bool centerAsOrigin)
 {
 	if (scene) {
 		QTransform transform;
-		const QSize targetSize = view ? view->viewport()->size() : size();
+		const QSize targetSize = gameView ? gameView->viewport()->size() : size();
 		if (centerAsOrigin)
 			transform.translate(-targetSize.width() / 2.0, -targetSize.height() / 2.0);
 		QPixmap source;
@@ -554,11 +640,6 @@ void MainWindow::setBackgroundBrush(bool centerAsOrigin)
 void MainWindow::changeBackground()
 {
 	setBackgroundBrush(scene && !scene->inherits("RoomScene"));
-
-	if (scene && scene->inherits("StartScene")) {
-		StartScene *start_scene = qobject_cast<StartScene *>(scene);
-		start_scene->setServerLogBackground();
-	}
 }
 
 void MainWindow::on_actionFullscreen_triggered()
@@ -602,6 +683,9 @@ void MainWindow::on_actionMinimize_to_system_tray_triggered()
 
 void MainWindow::on_actionRole_assign_table_triggered()
 {
+	if (!scene)
+		return;
+
 	QString content;
 
 	QStringList headers;
@@ -704,6 +788,9 @@ void MainWindow::on_actionBroadcast_triggered()
 
 void MainWindow::on_actionAcknowledgement_triggered()
 {
+	if (!scene)
+		return;
+
 	Window *window = new Window("", QSize(1000, 677), "image/system/acknowledgement.png");
 	scene->addItem(window);
 
@@ -742,13 +829,11 @@ void MainWindow::on_actionReplay_file_convert_triggered()
 		if (suffix == ".txt") {
 			tosave.append(".png");
 
-			// txt to png
 			Recorder::TXT2PNG(file.readAll()).save(tosave);
 			success = true;
 		} else if (suffix == ".png") {
 			tosave.append(".txt");
 
-			// png to txt
 			QByteArray data = Recorder::PNG2TXT(filename);
 
 			QFile tosave_file(tosave);
@@ -894,6 +979,9 @@ void MainWindow::on_actionView_ban_list_triggered()
 
 void MainWindow::on_actionAbout_fmod_triggered()
 {
+	if (!scene)
+		return;
+
 	QString content = tr("FMOD is a proprietary audio library made by Firelight Technologies");
 	content.append("<p align='center'> <img src='image/logo/fmod.png' /> </p> <br/>");
 
@@ -917,6 +1005,9 @@ void MainWindow::on_actionAbout_fmod_triggered()
 
 void MainWindow::on_actionAbout_Lua_triggered()
 {
+	if (!scene)
+		return;
+
 	QString content = tr("Lua is a powerful, fast, lightweight, embeddable scripting language.");
 	content.append("<p align='center'> <img src='image/logo/lua.png' /> </p> <br/>");
 
@@ -939,6 +1030,9 @@ void MainWindow::on_actionAbout_Lua_triggered()
 
 void MainWindow::on_actionAbout_GPLv3_triggered()
 {
+	if (!scene)
+		return;
+
 	QString content = tr("The GNU General Public License is the most widely used free software license, which guarantees end users the freedoms to use, study, share, and modify the software.");
 	content.append("<p align='center'> <img src='image/logo/gplv3.png' /> </p> <br/>");
 
@@ -960,4 +1054,3 @@ QGraphicsScene* MainWindow::getScene()
 {
 	return scene;
 }
-

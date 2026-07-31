@@ -74,6 +74,15 @@ int main(int argc, char *argv[])
 
     QCoreApplication::addLibraryPath(QCoreApplication::applicationDirPath() + "/plugins");
 
+    const QString qtBinDir = QStringLiteral(QT_BIN_DIR);
+    QString path = qEnvironmentVariable("PATH");
+    if (!path.contains(qtBinDir, Qt::CaseInsensitive)) {
+        if (!path.isEmpty())
+            path.prepend(QLatin1Char(';'));
+        path.prepend(qtBinDir);
+        qputenv("PATH", path.toUtf8());
+    }
+
 #ifdef Q_OS_MAC
 #ifdef QT_NO_DEBUG
     QDir::setCurrent(qApp->applicationDirPath());

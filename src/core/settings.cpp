@@ -174,6 +174,10 @@ void Settings::init()
     BubbleChatBoxKeepTime = value("BubbleChatboxKeepTime", 2000).toInt();
     UIScale = qBound(1.0, value("UIScale", 1.0).toDouble(), 2.0);
 
+    VisualMode = value("VisualMode", "normal").toString();
+    if (VisualMode != "normal" && VisualMode != "grayscale" && VisualMode != "highcontrast")
+        VisualMode = "normal";
+
 
     //hulao_ban = GetConfigFromLuaState(lua, "hulao_ban").toStringList();
     //xmode_ban = GetConfigFromLuaState(lua, "xmode_ban").toStringList();

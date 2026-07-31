@@ -23,13 +23,17 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS
     Core5Compat
     Gui
     LinguistTools
+    Multimedia
     Network
     OpenGLWidgets
     Qml
     Quick
+    QuickControls2
     QuickWidgets
     Widgets
 )
+
+get_filename_component(QT_PREFIX "${Qt6_DIR}/../../.." ABSOLUTE)
 
 find_program(QSAN_SWIG_EXECUTABLE
     NAMES swig swig.exe
@@ -67,6 +71,11 @@ qt_add_executable(QSanguosha WIN32
 )
 
 target_sources(QSanguosha PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/home/home_qml.qrc"
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/home/home_assets.qrc"
+)
+
+target_sources(QSanguosha PRIVATE
     "$<$<CONFIG:Release>:${CMAKE_CURRENT_SOURCE_DIR}/src/core/audio.cpp>"
     "$<$<CONFIG:Release>:${QSAN_BREAKPAD_SOURCES}>"
 )
@@ -84,6 +93,7 @@ target_include_directories(QSanguosha PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
     ${CMAKE_CURRENT_SOURCE_DIR}/src/server
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/home
     ${CMAKE_CURRENT_SOURCE_DIR}/src/util
     "$<$<CONFIG:Release>:${CMAKE_CURRENT_SOURCE_DIR}/include/fmod>"
     "$<$<CONFIG:Release>:${CMAKE_CURRENT_SOURCE_DIR}/src/breakpad>"
@@ -96,13 +106,15 @@ target_compile_definitions(QSanguosha PRIVATE
     _CRT_SECURE_NO_WARNINGS
     QT_DEPRECATED_WARNINGS
     QT_DISABLE_DEPRECATED_BEFORE=0x060000
+    QT_QML_IMPORT_PATH="${QT_PREFIX}/qml"
+    QT_BIN_DIR="${QT_PREFIX}/bin"
     "$<$<CONFIG:Release>:AUDIO_SUPPORT>"
     "$<$<CONFIG:Release>:USE_BREAKPAD>"
 )
 
 target_compile_options(QSanguosha PRIVATE
     "$<$<COMPILE_LANGUAGE:C>:/utf-8>"
-    "$<$<COMPILE_LANGUAGE:CXX>:/utf-8;/bigobj>"
+    "$<$<COMPILE_LANGUAGE:CXX>:/utf-8;/bigobj;/MP8>"
 )
 
 target_precompile_headers(QSanguosha PRIVATE
@@ -120,10 +132,12 @@ target_link_libraries(QSanguosha PRIVATE
     Qt6::Core
     Qt6::Core5Compat
     Qt6::Gui
+    Qt6::Multimedia
     Qt6::Network
     Qt6::OpenGLWidgets
     Qt6::Qml
     Qt6::Quick
+    Qt6::QuickControls2
     Qt6::QuickWidgets
     Qt6::Widgets
     dwmapi
@@ -133,6 +147,8 @@ target_link_libraries(QSanguosha PRIVATE
     "$<$<NOT:$<CONFIG:Debug>>:${qsan_library_dir}/freetype.lib>"
     "$<$<CONFIG:Release>:${qsan_library_dir}/fmodex.lib>"
 )
+
+target_compile_definitions(QSanguosha PRIVATE HAS_QT_MULTIMEDIA)
 
 target_link_options(QSanguosha PRIVATE "$<$<CONFIG:Release>:/DEBUG>")
 
@@ -154,6 +170,19 @@ qt_add_lrelease(QSanguosha
     QM_FILES_OUTPUT_VARIABLE qsan_qm_files
 )
 
+qt_add_lupdate(QSanguosha
+    TS_FILES "${translation_source}"
+    SOURCES
+        ${QSAN_SOURCES}
+        ${QSAN_FORMS}
+        qml/home/HomeScene.qml
+        qml/home/HomeMainButton.qml
+        qml/home/MainActionPanel.qml
+        qml/home/HomeBottomBar.qml
+        qml/home/HomeNavButton.qml
+        qml/home/HomeSideBar.qml
+)
+
 set(QSAN_FMOD_RUNTIME "" CACHE FILEPATH "Path to fmodex64.dll for Release deployment")
 find_program(QSAN_WINDEPLOYQT
     NAMES windeployqt
@@ -166,7 +195,7 @@ add_custom_target(deploy
         -DQSAN_CONFIG=$<CONFIG>
         -DQSAN_EXECUTABLE=$<TARGET_FILE:QSanguosha>
         -DQSAN_WINDEPLOYQT=${QSAN_WINDEPLOYQT}
-        -DQSAN_QML_DIR=${CMAKE_CURRENT_SOURCE_DIR}/ui-script
+        -DQSAN_QML_DIR=${CMAKE_CURRENT_SOURCE_DIR}
         -DQSAN_FMOD_RUNTIME=${QSAN_FMOD_RUNTIME}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Deploy.cmake
     DEPENDS QSanguosha

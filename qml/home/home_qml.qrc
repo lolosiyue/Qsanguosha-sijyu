@@ -1,0 +1,14 @@
+<RCC>
+  <qresource prefix="/QSanguosha/Home">
+    <file alias="HomeScene.qml">HomeScene.qml</file>
+    <file alias="HomeBackground.qml">HomeBackground.qml</file>
+    <file alias="HomeBackgroundVideo.qml">HomeBackgroundVideo.qml</file>
+    <file alias="VideoOverlay.qml">VideoOverlay.qml</file>
+    <file alias="HomeMainButton.qml">HomeMainButton.qml</file>
+    <file alias="MainActionPanel.qml">MainActionPanel.qml</file>
+    <file alias="HomeBottomBar.qml">HomeBottomBar.qml</file>
+    <file alias="HomeNavButton.qml">HomeNavButton.qml</file>
+    <file alias="HomeSideBar.qml">HomeSideBar.qml</file>
+    <file alias="CharacterLayer.qml">CharacterLayer.qml</file>
+  </qresource>
+</RCC>
