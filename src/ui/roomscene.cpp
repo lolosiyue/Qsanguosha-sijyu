@@ -83,8 +83,7 @@ static ClientPlayer *getControlRootPlayer(const ClientPlayer *player)
 
 using namespace QSanProtocol;
 
-//RoomScene*RoomSceneInstance = nullptr;
-RoomScene*RoomSceneInstance;
+RoomScene*RoomSceneInstance = nullptr;
 
 static const ClientPlayer *getCurrentOperationPlayer(const Dashboard *dashboard)
 {
@@ -669,8 +668,8 @@ void RoomScene::exitOnsoleContext()
 
 RoomScene::~RoomScene()
 {
-	/*if(RoomSceneInstance==this)
-		RoomSceneInstance = nullptr;*/
+	if(RoomSceneInstance==this)
+		RoomSceneInstance = nullptr;
 
 	_activeSpineItems.clear();
 

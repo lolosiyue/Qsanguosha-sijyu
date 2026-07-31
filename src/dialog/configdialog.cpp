@@ -41,6 +41,14 @@ ConfigDialog::ConfigDialog(QWidget *parent)
     updateUiScaleLabel(ui->uiScaleSlider->value());
     connect(ui->uiScaleSlider, &QSlider::valueChanged, this, updateUiScaleLabel);
 
+    const QString visualMode = Config.VisualMode;
+    if (visualMode == "grayscale")
+        ui->visualModeCombo->setCurrentIndex(1);
+    else if (visualMode == "highcontrast")
+        ui->visualModeCombo->setCurrentIndex(2);
+    else
+        ui->visualModeCombo->setCurrentIndex(0);
+
     ui->bgmVolumeSlider->setValue(Config.BGMVolume*100);
     ui->effectVolumeSlider->setValue(Config.EffectVolume*100);
     ui->frontVolumeSlider->setValue(Config.FrontBGMVolume*100);
@@ -160,6 +168,19 @@ void ConfigDialog::saveConfig()
     Config.setValue("EnableAnimatedGenerals", ui->enableAnimatedGeneralsCheckBox->isChecked());
     Config.UIScale = ui->uiScaleSlider->value() / 20.0;
     Config.setValue("UIScale", Config.UIScale);
+
+    switch (ui->visualModeCombo->currentIndex()) {
+    case 1:
+        Config.VisualMode = "grayscale";
+        break;
+    case 2:
+        Config.VisualMode = "highcontrast";
+        break;
+    default:
+        Config.VisualMode = "normal";
+        break;
+    }
+    Config.setValue("VisualMode", Config.VisualMode);
 
     Config.NeverNullifyMyTrick = ui->neverNullifyMyTrickCheckBox->isChecked();
     Config.setValue("NeverNullifyMyTrick", Config.NeverNullifyMyTrick);

@@ -12,6 +12,9 @@ class Settings : public QSettings
 public:
     explicit Settings();
     void init();
+    Q_INVOKABLE QVariant getValue(const QString &key, const QVariant &defaultValue = QVariant()) const {
+        return value(key, defaultValue);
+    }
 #ifdef ANDROID
     void reinitializeConfigFile();
 #endif
@@ -94,6 +97,7 @@ public:
     QString BackgroundImage;
     int BubbleChatBoxKeepTime;
     qreal UIScale;
+    QString VisualMode;
 
     // consts
     static const int S_SURRENDER_REQUEST_MIN_INTERVAL;

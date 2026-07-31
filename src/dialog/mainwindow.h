@@ -14,6 +14,9 @@ class Server;
 class QTextEdit;
 class ConnectionDialog;
 class ConfigDialog;
+class QStackedWidget;
+class QQuickWidget;
+class HomeController;
 
 class BroadcastBox : public QDialog
 {
@@ -41,7 +44,7 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    MainWindow(QWidget *parent = 0);
+    explicit MainWindow(QWidget *parent = 0);
     ~MainWindow();
     void setBackgroundBrush(bool center_as_origin);
     QGraphicsScene* getScene();
@@ -51,15 +54,29 @@ protected:
     virtual void closeEvent(QCloseEvent *);
 
 private:
-    FitView *view;
-    QGraphicsScene *scene;
-    Ui::MainWindow *ui;
-    ConnectionDialog *connection_dialog;
-    ConfigDialog *config_dialog;
-    QSystemTrayIcon *systray;
-    Server *server;
+    enum class MainPage {
+        Home,
+        Game
+    };
 
+private slots:
+    void setupHomePage();
+    void showHomePage();
+    void reloadHomePage();
+    void showGamePage(QGraphicsScene *scene);
     void restoreFromConfig();
+
+private:
+    QStackedWidget *pageStack = nullptr;
+    QQuickWidget *homeView = nullptr;
+    FitView *gameView = nullptr;
+    QGraphicsScene *scene = nullptr;
+    Ui::MainWindow *ui = nullptr;
+    ConnectionDialog *connection_dialog = nullptr;
+    ConfigDialog *config_dialog = nullptr;
+    QSystemTrayIcon *systray = nullptr;
+    Server *server = nullptr;
+    HomeController *homeController = nullptr;
 
 public slots:
     void startConnection();

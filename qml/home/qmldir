@@ -1,0 +1,9 @@
+module QSanguosha.Home
+HomeScene 1.0 HomeScene.qml
+HomeBackground 1.0 HomeBackground.qml
+HomeMainButton 1.0 HomeMainButton.qml
+HomeNavButton 1.0 HomeNavButton.qml
+HomeBottomBar 1.0 HomeBottomBar.qml
+HomeSideBar 1.0 HomeSideBar.qml
+CharacterLayer 1.0 CharacterLayer.qml
+MainActionPanel 1.0 MainActionPanel.qml
