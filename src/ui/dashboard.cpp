@@ -16,6 +16,7 @@
 
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsTextItem>
+#include <QPropertyAnimation>
 
 namespace {
 
@@ -696,6 +697,7 @@ void Dashboard::_addHandCard(CardItem *card_item, bool prepend, const QString &f
     connect(card_item, SIGNAL(leave_hover()), this, SLOT(onCardItemLeaveHover()));
     connect(card_item, SIGNAL(mark_changed()), this, SLOT(onMarkChanged()));
     connect(card_item, SIGNAL(actionButtonClicked(QString,int)), this, SIGNAL(cardActionButtonClicked(QString,int)));
+    connect(card_item, &QObject::destroyed, this, &Dashboard::_onHoverCardDestroyed);
 
     if (!footnote.isEmpty())
         card_item->setFootnote(footnote);
@@ -2050,18 +2052,67 @@ void Dashboard::onCardItemThrown()
 
 void Dashboard::onCardItemHover()
 {
-    QGraphicsItem *card_item = qobject_cast<QGraphicsItem *>(sender());
+    CardItem *card_item = qobject_cast<CardItem *>(sender());
     if (!card_item) return;
 
-    animations->emphasize(card_item);
+    if (!m_hoverOriginalZ.contains(card_item))
+        m_hoverOriginalZ.insert(card_item, card_item->zValue());
+    card_item->setZValue(m_hoverOriginalZ.value(card_item) + 500.0);
+    card_item->setTransformOriginPoint(G_COMMON_LAYOUT.m_cardMainArea.center());
+    _startHoverScaleAnimation(card_item, 1.08, QEasingCurve::OutCubic);
 }
 
 void Dashboard::onCardItemLeaveHover()
 {
-    QGraphicsItem *card_item = qobject_cast<QGraphicsItem *>(sender());
+    CardItem *card_item = qobject_cast<CardItem *>(sender());
     if (!card_item) return;
 
-    animations->effectOut(card_item);
+    if (m_hoverOriginalZ.contains(card_item))
+        card_item->setZValue(m_hoverOriginalZ.take(card_item));
+    _startHoverScaleAnimation(card_item, 1.0, QEasingCurve::InCubic);
+}
+
+void Dashboard::_startHoverScaleAnimation(CardItem *card, qreal endScale, QEasingCurve::Type curve)
+{
+    if (!card) return;
+
+    if (m_hoverScaleAnimations.contains(card)) {
+        QPropertyAnimation *old = m_hoverScaleAnimations.take(card);
+        old->stop();
+        old->deleteLater();
+    }
+
+    QPropertyAnimation *anim = new QPropertyAnimation(card, "scale", this);
+    anim->setEasingCurve(curve);
+    anim->setDuration(120);
+    anim->setStartValue(card->scale());
+    anim->setEndValue(endScale);
+    // When the animation is deleted (naturally after finished, or via stop +
+    // deleteLater), drop its hash entry so we never touch a dangling animation
+    // on the next hover.
+    connect(anim, &QObject::destroyed, this, [this](QObject *obj) {
+        QPropertyAnimation *dead = static_cast<QPropertyAnimation *>(obj);
+        for (auto it = m_hoverScaleAnimations.begin(); it != m_hoverScaleAnimations.end(); ++it) {
+            if (it.value() == dead) {
+                m_hoverScaleAnimations.erase(it);
+                break;
+            }
+        }
+    });
+    connect(anim, &QPropertyAnimation::finished, anim, &QObject::deleteLater);
+    anim->start();
+    m_hoverScaleAnimations.insert(card, anim);
+}
+
+void Dashboard::_onHoverCardDestroyed(QObject *obj)
+{
+    CardItem *card = static_cast<CardItem *>(obj);
+    m_hoverOriginalZ.remove(card);
+    if (m_hoverScaleAnimations.contains(card)) {
+        QPropertyAnimation *anim = m_hoverScaleAnimations.take(card);
+        anim->stop();
+        anim->deleteLater();
+    }
 }
 
 void Dashboard::onMarkChanged()
