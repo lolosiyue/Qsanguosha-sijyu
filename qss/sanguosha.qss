@@ -20,8 +20,8 @@ QToolTip{
 QTextEdit{
     border: 10px;
     border-image: url(image/system/border.png) 10 10 10 10;
-    background-color: palette(base);
-    color: palette(text);
+    background-color: rgba(43, 45, 31, 120);
+
 }
 
 QLabel#guhuo_text {
