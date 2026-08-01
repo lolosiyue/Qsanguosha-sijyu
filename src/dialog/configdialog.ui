@@ -9,767 +9,639 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>490</width>
-    <height>584</height>
+    <width>520</width>
+    <height>620</height>
    </rect>
-  </property>
-  <property name="sizePolicy">
-   <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-    <horstretch>0</horstretch>
-    <verstretch>0</verstretch>
-   </sizepolicy>
-  </property>
-  <property name="minimumSize">
-   <size>
-    <width>400</width>
-    <height>500</height>
-   </size>
-  </property>
-  <property name="baseSize">
-   <size>
-    <width>500</width>
-    <height>584</height>
-   </size>
   </property>
   <property name="windowTitle">
    <string>Config dialog</string>
   </property>
-  <widget class="QTabWidget" name="tabWidget">
-   <property name="geometry">
-    <rect>
-     <x>10</x>
-     <y>20</y>
-     <width>471</width>
-     <height>525</height>
-    </rect>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="sizeConstraint">
+    <enum>QLayout::SetMinimumSize</enum>
    </property>
-   <property name="minimumSize">
-    <size>
-     <width>0</width>
-     <height>480</height>
-    </size>
-   </property>
-   <property name="currentIndex">
-    <number>0</number>
-   </property>
-   <widget class="QWidget" name="envTab">
-    <attribute name="title">
-     <string>Environment</string>
-    </attribute>
-     <widget class="QGroupBox" name="audioGroupBox">
-      <property name="geometry">
-       <rect>
-        <x>10</x>
-        <y>194</y>
-        <width>441</width>
-        <height>221</height>
-       </rect>
-      </property>
-     <property name="title">
-      <string>Audio</string>
+   <item>
+    <widget class="QTabWidget" name="tabWidget">
+     <property name="currentIndex">
+      <number>0</number>
      </property>
-     <widget class="QWidget" name="layoutWidget1">
-      <property name="geometry">
-       <rect>
-        <x>10</x>
-        <y>20</y>
-        <width>421</width>
-        <height>71</height>
-       </rect>
-      </property>
-      <layout class="QVBoxLayout" name="verticalLayout_5">
+     <widget class="QWidget" name="envTab">
+      <attribute name="title">
+       <string>显示</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="envLayout">
        <item>
-        <widget class="QLabel" name="setupBgMusicLabel">
-         <property name="text">
-          <string>Setup background music</string>
+        <widget class="QGroupBox" name="bgGroupBox">
+         <property name="title">
+          <string>界面</string>
          </property>
-         <property name="buddy">
-          <cstring>bgMusicPathLineEdit</cstring>
-         </property>
+         <layout class="QVBoxLayout" name="bgLayout">
+          <item>
+           <layout class="QHBoxLayout" name="themeLayout">
+            <item>
+             <widget class="QLabel" name="themeLabel">
+              <property name="text">
+               <string>主题</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QRadioButton" name="themeSystemRadio">
+              <property name="text">
+               <string>跟随系统</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QRadioButton" name="themeLightRadio">
+              <property name="text">
+               <string>亮色</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QRadioButton" name="themeDarkRadio">
+              <property name="text">
+               <string>暗色</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="themeSpacer">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="uiScaleLayout">
+            <item>
+             <widget class="QLabel" name="uiScaleLabel">
+              <property name="text">
+               <string>界面缩放</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSlider" name="uiScaleSlider">
+              <property name="minimumSize">
+               <size>
+                <width>200</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="minimum">
+               <number>20</number>
+              </property>
+              <property name="maximum">
+               <number>40</number>
+              </property>
+              <property name="singleStep">
+               <number>1</number>
+              </property>
+              <property name="pageStep">
+               <number>2</number>
+              </property>
+              <property name="value">
+               <number>20</number>
+              </property>
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="tickPosition">
+               <enum>QSlider::TicksBelow</enum>
+              </property>
+              <property name="tickInterval">
+               <number>5</number>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QLabel" name="uiScaleValueLabel">
+              <property name="minimumSize">
+               <size>
+                <width>48</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>1.00x</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="uiScaleSpacer">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="skinOptionsLayout">
+            <item>
+             <widget class="QCheckBox" name="fullSkinCheckBox">
+              <property name="text">
+               <string>Use full skin</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="noIndicatorCheckBox">
+              <property name="text">
+               <string>No indicator</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="noEquipAnimCheckBox">
+              <property name="text">
+               <string>No equip anim</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="skinOptionsSpacer">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="animOptionsLayout">
+            <item>
+             <widget class="QCheckBox" name="enableAnimatedGeneralsCheckBox">
+              <property name="text">
+               <string>Enable animated generals (GIF)</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="noCardMoveAnimCheckBox">
+              <property name="text">
+               <string>No card move anim</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="animOptionsSpacer">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+         </layout>
         </widget>
        </item>
        <item>
-        <widget class="QLineEdit" name="bgMusicPathLineEdit">
-         <property name="readOnly">
-          <bool>true</bool>
+        <widget class="QGroupBox" name="bgImageGroupBox">
+         <property name="title">
+          <string>背景</string>
          </property>
+         <layout class="QVBoxLayout" name="bgImageLayout">
+          <item>
+           <widget class="QLabel" name="backgrounSetupLabel">
+            <property name="text">
+             <string>Setup background</string>
+            </property>
+            <property name="buddy">
+             <cstring>bgPathLineEdit</cstring>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="bgPathLineEdit">
+            <property name="readOnly">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="bgButtonsLayout">
+            <item>
+             <spacer name="bgButtonsSpacer">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QPushButton" name="browseBgButton">
+              <property name="text">
+               <string>Browse ...</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="resetBgButton">
+              <property name="text">
+               <string>Reset</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="backgroundChangeCheckBox">
+            <property name="text">
+             <string>Enable auto background change according to Lord</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
         </widget>
        </item>
        <item>
-        <layout class="QHBoxLayout" name="horizontalLayout_2">
-         <item>
-          <spacer name="horizontalSpacer_2">
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-           <property name="sizeHint" stdset="0">
-            <size>
-             <width>40</width>
-             <height>20</height>
-            </size>
-           </property>
-          </spacer>
-         </item>
-         <item>
-          <widget class="QPushButton" name="browseBgMusicButton">
-           <property name="text">
-            <string>Browse ...</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="resetBgMusicButton">
-           <property name="text">
-            <string>Reset</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </item>
-      </layout>
-     </widget>
-     <widget class="QWidget" name="layoutWidget2">
-      <property name="geometry">
-       <rect>
-        <x>10</x>
-        <y>100</y>
-        <width>421</width>
-        <height>18</height>
-       </rect>
-      </property>
-      <layout class="QHBoxLayout" name="horizontalLayout_3">
-       <item>
-        <widget class="QCheckBox" name="enableEffectCheckBox">
-         <property name="text">
-          <string>Enable effects</string>
+        <widget class="QGroupBox" name="visualModeGroupBox">
+         <property name="title">
+          <string>Visual mode</string>
          </property>
-         <property name="checked">
-          <bool>true</bool>
-         </property>
+         <layout class="QHBoxLayout" name="visualModeLayout">
+          <item>
+           <widget class="QLabel" name="visualModeLabel">
+            <property name="text">
+             <string>Color blindness / screen reader</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="visualModeSpacer">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item>
+           <widget class="QComboBox" name="visualModeCombo">
+            <item>
+             <property name="text">
+              <string>Normal</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>Grayscale</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>High contrast</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+         </layout>
         </widget>
        </item>
        <item>
-        <widget class="QCheckBox" name="enableLastWordCheckBox">
-         <property name="text">
-          <string>Enable last word</string>
+        <widget class="QGroupBox" name="fontSetupGroupBox">
+         <property name="title">
+          <string>Font setup</string>
          </property>
+         <layout class="QGridLayout" name="fontGrid">
+          <item row="0" column="0">
+           <widget class="QLabel" name="appFontLabel">
+            <property name="text">
+             <string>Application font</string>
+            </property>
+            <property name="buddy">
+             <cstring>appFontLineEdit</cstring>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QLineEdit" name="appFontLineEdit">
+            <property name="readOnly">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="2" colspan="2">
+           <widget class="QPushButton" name="changeAppFontButton">
+            <property name="text">
+             <string>Set application font</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0">
+           <widget class="QLabel" name="textEditFontLabel">
+            <property name="text">
+             <string>Text edit font</string>
+            </property>
+            <property name="buddy">
+             <cstring>textEditFontLineEdit</cstring>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="1">
+           <widget class="QLineEdit" name="textEditFontLineEdit">
+            <property name="readOnly">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="2">
+           <widget class="QPushButton" name="setTextEditFontButton">
+            <property name="text">
+             <string>Font ...</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="3">
+           <widget class="QPushButton" name="setTextEditColorButton">
+            <property name="text">
+             <string>Color ...</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
         </widget>
        </item>
-      </layout>
-     </widget>
-     <widget class="QWidget" name="layoutWidget3">
-      <property name="geometry">
-       <rect>
-        <x>10</x>
-        <y>130</y>
-        <width>411</width>
-        <height>24</height>
-       </rect>
-      </property>
-      <layout class="QHBoxLayout" name="horizontalLayout_5">
        <item>
-        <widget class="QLabel" name="bgmVolumeLabel">
-         <property name="text">
-          <string>BGM    Volume</string>
-         </property>
-         <property name="buddy">
-          <cstring>bgmVolumeSlider</cstring>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QSlider" name="bgmVolumeSlider">
-         <property name="maximum">
-          <number>100</number>
-         </property>
-         <property name="value">
-          <number>100</number>
-         </property>
+        <spacer name="envSpacer">
          <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </widget>
-     <widget class="QWidget" name="layoutWidget3_2">
-      <property name="geometry">
-       <rect>
-        <x>10</x>
-        <y>160</y>
-        <width>411</width>
-        <height>24</height>
-       </rect>
-      </property>
-      <layout class="QHBoxLayout" name="horizontalLayout_6">
-       <item>
-        <widget class="QLabel" name="effectVolumeLabel">
-         <property name="text">
-          <string>Effect Volume</string>
-         </property>
-         <property name="buddy">
-          <cstring>bgmVolumeSlider</cstring>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QSlider" name="effectVolumeSlider">
-         <property name="maximum">
-          <number>100</number>
-         </property>
-         <property name="value">
-          <number>100</number>
-         </property>
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </widget>
-     <widget class="QWidget" name="layoutWidget3_3">
-      <property name="geometry">
-       <rect>
-        <x>10</x>
-        <y>190</y>
-        <width>411</width>
-        <height>24</height>
-       </rect>
-      </property>
-      <layout class="QHBoxLayout" name="horizontalLayout_8">
-       <item>
-        <widget class="QLabel" name="effectVolumeLabel_2">
-         <property name="text">
-          <string>Front  Volume</string>
-         </property>
-         <property name="buddy">
-          <cstring>bgmVolumeSlider</cstring>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <widget class="QSlider" name="frontVolumeSlider">
-         <property name="maximum">
-          <number>100</number>
-         </property>
-         <property name="value">
-          <number>100</number>
-         </property>
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </widget>
-    </widget>
-     <widget class="QGroupBox" name="bgGroupBox">
-      <property name="geometry">
-       <rect>
-        <x>10</x>
-        <y>10</y>
-        <width>441</width>
-        <height>175</height>
-       </rect>
-      </property>
-     <property name="title">
-      <string>Background</string>
-     </property>
-     <widget class="QWidget" name="layoutWidget4">
-      <property name="geometry">
-       <rect>
-        <x>10</x>
-        <y>20</y>
-        <width>421</width>
-        <height>73</height>
-       </rect>
-      </property>
-      <layout class="QVBoxLayout" name="verticalLayout_2">
-       <item>
-        <layout class="QVBoxLayout" name="verticalLayout">
-         <item>
-          <widget class="QLabel" name="backgrounSetupLabel">
-           <property name="text">
-            <string>Setup background</string>
-           </property>
-           <property name="buddy">
-            <cstring>bgPathLineEdit</cstring>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLineEdit" name="bgPathLineEdit">
-           <property name="readOnly">
-            <bool>true</bool>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </item>
-       <item>
-        <layout class="QHBoxLayout" name="horizontalLayout">
-         <item>
-          <spacer name="horizontalSpacer">
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-           <property name="sizeHint" stdset="0">
-            <size>
-             <width>40</width>
-             <height>20</height>
-            </size>
-           </property>
-          </spacer>
-         </item>
-         <item>
-          <widget class="QPushButton" name="browseBgButton">
-           <property name="text">
-            <string>Browse ...</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="resetBgButton">
-           <property name="text">
-            <string>Reset</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </item>
-      </layout>
-     </widget>
-     <widget class="QCheckBox" name="noIndicatorCheckBox">
-      <property name="geometry">
-       <rect>
-        <x>140</x>
-        <y>100</y>
-        <width>121</width>
-        <height>16</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>No indicator</string>
-      </property>
-     </widget>
-     <widget class="QCheckBox" name="noEquipAnimCheckBox">
-      <property name="geometry">
-       <rect>
-        <x>270</x>
-        <y>100</y>
-        <width>151</width>
-        <height>16</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>No equip anim</string>
-      </property>
-     </widget>
-     <widget class="QCheckBox" name="fullSkinCheckBox">
-      <property name="geometry">
-       <rect>
-        <x>10</x>
-        <y>100</y>
-        <width>121</width>
-        <height>16</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Use full skin</string>
-      </property>
-     </widget>
-      <widget class="QCheckBox" name="enableAnimatedGeneralsCheckBox">
-       <property name="geometry">
-        <rect>
-         <x>10</x>
-         <y>120</y>
-         <width>220</width>
-         <height>16</height>
-        </rect>
-       </property>
-       <property name="text">
-        <string>Enable animated generals (GIF)</string>
-       </property>
-      </widget>
-      <widget class="QCheckBox" name="noCardMoveAnimCheckBox">
-       <property name="geometry">
-        <rect>
-         <x>240</x>
-         <y>120</y>
-         <width>181</width>
-         <height>16</height>
-        </rect>
-       </property>
-       <property name="text">
-        <string>No card move anim</string>
-       </property>
-      </widget>
-      <widget class="QLabel" name="uiScaleLabel">
-       <property name="geometry">
-        <rect>
-         <x>10</x>
-         <y>145</y>
-         <width>100</width>
-         <height>24</height>
-        </rect>
-       </property>
-       <property name="text">
-        <string>Interface scale</string>
-       </property>
-       <property name="buddy">
-        <cstring>uiScaleSlider</cstring>
-       </property>
-      </widget>
-      <widget class="QSlider" name="uiScaleSlider">
-       <property name="geometry">
-        <rect>
-         <x>115</x>
-         <y>145</y>
-         <width>255</width>
-         <height>24</height>
-        </rect>
-       </property>
-       <property name="minimum">
-        <number>20</number>
-       </property>
-       <property name="maximum">
-        <number>40</number>
-       </property>
-       <property name="singleStep">
-        <number>1</number>
-       </property>
-       <property name="pageStep">
-        <number>1</number>
-       </property>
-       <property name="value">
-        <number>20</number>
-       </property>
-       <property name="orientation">
-        <enum>Qt::Horizontal</enum>
-       </property>
-       <property name="tickPosition">
-        <enum>QSlider::TicksBelow</enum>
-       </property>
-       <property name="tickInterval">
-        <number>2</number>
-       </property>
-      </widget>
-      <widget class="QLabel" name="uiScaleValueLabel">
-       <property name="geometry">
-        <rect>
-         <x>375</x>
-         <y>145</y>
-         <width>55</width>
-         <height>24</height>
-        </rect>
-       </property>
-       <property name="text">
-        <string>1.00x</string>
-       </property>
-       <property name="alignment">
-        <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-       </property>
-      </widget>
-    </widget>
-     <widget class="QGroupBox" name="fontSetupGroupBox">
-      <property name="geometry">
-       <rect>
-        <x>10</x>
-        <y>424</y>
-        <width>441</width>
-        <height>91</height>
-       </rect>
-      </property>
-     <property name="minimumSize">
-      <size>
-       <width>50</width>
-       <height>30</height>
-      </size>
-     </property>
-     <property name="title">
-      <string>Font setup</string>
-     </property>
-     <widget class="QPushButton" name="changeAppFontButton">
-      <property name="geometry">
-       <rect>
-        <x>270</x>
-        <y>20</y>
-        <width>161</width>
-        <height>23</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Set application font</string>
-      </property>
-     </widget>
-     <widget class="QLabel" name="appFontLabel">
-      <property name="geometry">
-       <rect>
-        <x>10</x>
-        <y>24</y>
-        <width>96</width>
-        <height>16</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Application font</string>
-      </property>
-      <property name="buddy">
-       <cstring>appFontLineEdit</cstring>
-      </property>
-     </widget>
-     <widget class="QLineEdit" name="appFontLineEdit">
-      <property name="enabled">
-       <bool>true</bool>
-      </property>
-      <property name="geometry">
-       <rect>
-        <x>120</x>
-        <y>23</y>
-        <width>131</width>
-        <height>20</height>
-       </rect>
-      </property>
-      <property name="readOnly">
-       <bool>true</bool>
-      </property>
-     </widget>
-     <widget class="QLineEdit" name="textEditFontLineEdit">
-      <property name="enabled">
-       <bool>true</bool>
-      </property>
-      <property name="geometry">
-       <rect>
-        <x>120</x>
-        <y>50</y>
-        <width>131</width>
-        <height>20</height>
-       </rect>
-      </property>
-      <property name="readOnly">
-       <bool>true</bool>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="setTextEditFontButton">
-      <property name="geometry">
-       <rect>
-        <x>270</x>
-        <y>50</y>
-        <width>71</width>
-        <height>23</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Font ...</string>
-      </property>
-     </widget>
-     <widget class="QLabel" name="textEditFontLabel">
-      <property name="geometry">
-       <rect>
-        <x>10</x>
-        <y>52</y>
-        <width>91</width>
-        <height>16</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Text edit font</string>
-      </property>
-      <property name="buddy">
-       <cstring>textEditFontLineEdit</cstring>
-      </property>
-     </widget>
-     <widget class="QPushButton" name="setTextEditColorButton">
-      <property name="geometry">
-       <rect>
-        <x>350</x>
-        <y>50</y>
-        <width>75</width>
-        <height>23</height>
-       </rect>
-      </property>
-      <property name="text">
-       <string>Color ...</string>
-      </property>
-     </widget>
-    </widget>
-    <widget class="QGroupBox" name="visualModeGroupBox">
-     <property name="geometry">
-      <rect>
-       <x>10</x>
-       <y>310</y>
-       <width>441</width>
-       <height>71</height>
-      </rect>
-     </property>
-     <property name="title">
-      <string>Visual mode</string>
-     </property>
-     <widget class="QWidget" name="visualModeLayoutWidget">
-      <property name="geometry">
-       <rect>
-        <x>10</x>
-        <y>20</y>
-        <width>421</width>
-        <height>31</height>
-       </rect>
-      </property>
-      <layout class="QHBoxLayout" name="visualModeLayout">
-       <item>
-        <widget class="QLabel" name="visualModeLabel">
-         <property name="text">
-          <string>Color blindness / screen reader</string>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <spacer name="visualModeSpacer">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
+          <enum>Qt::Vertical</enum>
          </property>
          <property name="sizeHint" stdset="0">
           <size>
-           <width>40</width>
+           <width>20</width>
            <height>20</height>
           </size>
          </property>
         </spacer>
        </item>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="audioTab">
+      <attribute name="title">
+       <string>Audio</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="audioTabLayout">
        <item>
-        <widget class="QComboBox" name="visualModeCombo">
-         <item>
-          <property name="text">
-           <string>Normal</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>Grayscale</string>
-          </property>
-         </item>
-         <item>
-          <property name="text">
-           <string>High contrast</string>
-          </property>
-         </item>
+        <widget class="QGroupBox" name="audioGroupBox">
+         <property name="title">
+          <string>Audio</string>
+         </property>
+         <layout class="QVBoxLayout" name="audioLayout">
+          <item>
+           <widget class="QLabel" name="setupBgMusicLabel">
+            <property name="text">
+             <string>Setup background music</string>
+            </property>
+            <property name="buddy">
+             <cstring>bgMusicPathLineEdit</cstring>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="bgMusicPathLineEdit">
+            <property name="readOnly">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="audioButtonsLayout">
+            <item>
+             <spacer name="audioButtonsSpacer">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item>
+             <widget class="QPushButton" name="browseBgMusicButton">
+              <property name="text">
+               <string>Browse ...</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QPushButton" name="resetBgMusicButton">
+              <property name="text">
+               <string>Reset</string>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="audioEffectLayout">
+            <item>
+             <widget class="QCheckBox" name="enableEffectCheckBox">
+              <property name="text">
+               <string>Enable effects</string>
+              </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QCheckBox" name="enableLastWordCheckBox">
+              <property name="text">
+               <string>Enable last word</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="audioEffectSpacer">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QGridLayout" name="audioVolumeGrid">
+            <item row="0" column="0">
+             <widget class="QLabel" name="bgmVolumeLabel">
+              <property name="text">
+               <string>BGM    Volume</string>
+              </property>
+              <property name="buddy">
+               <cstring>bgmVolumeSlider</cstring>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <widget class="QSlider" name="bgmVolumeSlider">
+              <property name="maximum">
+               <number>100</number>
+              </property>
+              <property name="value">
+               <number>100</number>
+              </property>
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="0">
+             <widget class="QLabel" name="effectVolumeLabel">
+              <property name="text">
+               <string>Effect Volume</string>
+              </property>
+              <property name="buddy">
+               <cstring>bgmVolumeSlider</cstring>
+              </property>
+             </widget>
+            </item>
+            <item row="1" column="1">
+             <widget class="QSlider" name="effectVolumeSlider">
+              <property name="maximum">
+               <number>100</number>
+              </property>
+              <property name="value">
+               <number>100</number>
+              </property>
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="0">
+             <widget class="QLabel" name="effectVolumeLabel_2">
+              <property name="text">
+               <string>Front  Volume</string>
+              </property>
+              <property name="buddy">
+               <cstring>bgmVolumeSlider</cstring>
+              </property>
+             </widget>
+            </item>
+            <item row="2" column="1">
+             <widget class="QSlider" name="frontVolumeSlider">
+              <property name="maximum">
+               <number>100</number>
+              </property>
+              <property name="value">
+               <number>100</number>
+              </property>
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
         </widget>
+       </item>
+       <item>
+        <spacer name="audioTabSpacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
        </item>
       </layout>
      </widget>
-    </widget>
-   </widget>
-   <widget class="QWidget" name="gameTab">
-    <attribute name="title">
-     <string>Game</string>
-    </attribute>
-    <widget class="QWidget" name="horizontalLayoutWidget">
-     <property name="geometry">
-      <rect>
-       <x>10</x>
-       <y>170</y>
-       <width>441</width>
-       <height>22</height>
-      </rect>
-     </property>
-     <layout class="QHBoxLayout" name="horizontalLayout_4">
-      <item>
-       <widget class="QLabel" name="bubbleChatBoxKeepLabel">
-        <property name="text">
-         <string>Bubble Chat Box Keep Time</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QSpinBox" name="bubbleChatBoxKeepSpinBox">
-        <property name="maximum">
-         <number>5000</number>
-        </property>
-        <property name="value">
-         <number>2000</number>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-    <widget class="QWidget" name="layoutWidget">
-     <property name="geometry">
-      <rect>
-       <x>11</x>
-       <y>11</y>
-       <width>441</width>
-       <height>150</height>
-      </rect>
-     </property>
-     <layout class="QVBoxLayout" name="verticalLayout_3">
-      <item>
-       <widget class="QCheckBox" name="neverNullifyMyTrickCheckBox">
-        <property name="text">
-         <string>Never nullify my single target trick</string>
-        </property>
-        <property name="checked">
-         <bool>false</bool>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QCheckBox" name="autoTargetCheckBox">
-        <property name="enabled">
-         <bool>true</bool>
-        </property>
-        <property name="text">
-         <string>Enable auto target</string>
-        </property>
-        <property name="checked">
-         <bool>false</bool>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QCheckBox" name="intellectualSelectionCheckBox">
-        <property name="enabled">
-         <bool>true</bool>
-        </property>
-        <property name="text">
-         <string>Enable intellectual selection</string>
-        </property>
-        <property name="checked">
-         <bool>false</bool>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QCheckBox" name="doubleClickCheckBox">
-        <property name="enabled">
-         <bool>true</bool>
-        </property>
-        <property name="text">
-         <string>Enable double-click</string>
-        </property>
-        <property name="checked">
-         <bool>false</bool>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QCheckBox" name="superDragCheckBox">
-        <property name="enabled">
-         <bool>true</bool>
-        </property>
-        <property name="text">
-         <string>Enable super-drag</string>
-        </property>
-        <property name="checked">
-         <bool>false</bool>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QCheckBox" name="backgroundChangeCheckBox">
-        <property name="text">
-         <string>Enable auto background change according to Lord</string>
-        </property>
-       </widget>
-      </item>
+     <widget class="QWidget" name="gameTab">
+      <attribute name="title">
+       <string>Game</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="gameLayout">
+       <item>
+        <widget class="QCheckBox" name="neverNullifyMyTrickCheckBox">
+         <property name="text">
+          <string>Never nullify my single target trick</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="autoTargetCheckBox">
+         <property name="text">
+          <string>Enable auto target</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="intellectualSelectionCheckBox">
+         <property name="text">
+          <string>Enable intellectual selection</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="doubleClickCheckBox">
+         <property name="text">
+          <string>Enable double-click</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QCheckBox" name="superDragCheckBox">
+         <property name="text">
+          <string>Enable super-drag</string>
+         </property>
+        </widget>
+       </item>
        <item>
         <widget class="QCheckBox" name="backgroundCardDescription">
          <property name="text">
@@ -787,71 +659,104 @@
          </property>
         </widget>
        </item>
+       <item>
+        <layout class="QHBoxLayout" name="bubbleLayout">
+         <item>
+          <widget class="QLabel" name="bubbleChatBoxKeepLabel">
+           <property name="text">
+            <string>Bubble Chat Box Keep Time</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSpinBox" name="bubbleChatBoxKeepSpinBox">
+           <property name="maximum">
+            <number>5000</number>
+           </property>
+           <property name="value">
+            <number>2000</number>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="bubbleSpacer">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item>
+        <widget class="QGroupBox" name="groupBoxRecorder">
+         <property name="title">
+          <string>录像</string>
+         </property>
+         <layout class="QHBoxLayout" name="recorderLayout">
+          <item>
+           <widget class="QCheckBox" name="checkBoxRecorderAutoSave">
+            <property name="toolTip">
+             <string>录像将会自动保存到recorder目录下</string>
+            </property>
+            <property name="text">
+             <string>自动保存</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="checkBoxRecorderNetworkOnly">
+            <property name="text">
+             <string>仅保存联机录像</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QCheckBox" name="checkBoxRecorderEventSave">
+            <property name="toolTip">
+             <string>用于记录闪退的录像，会在相同文件夹下生成debug.txt；因为是即时记录，会占用部分性能，可能导致游戏卡顿或缓慢。</string>
+            </property>
+            <property name="text">
+             <string>即时保存</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <spacer name="gameSpacer">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
       </layout>
      </widget>
-    <widget class="QGroupBox" name="groupBoxRecorder">
-     <property name="geometry">
-      <rect>
-       <x>10</x>
-       <y>200</y>
-       <width>440</width>
-       <height>60</height>
-      </rect>
-     </property>
-     <property name="title">
-      <string>录像</string>
-     </property>
-     <layout class="QHBoxLayout" name="horizontalLayout_7">
-      <item>
-       <widget class="QCheckBox" name="checkBoxRecorderAutoSave">
-        <property name="toolTip">
-         <string>录像将会自动保存到recorder目录下</string>
-        </property>
-        <property name="text">
-         <string>自动保存</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QCheckBox" name="checkBoxRecorderNetworkOnly">
-        <property name="text">
-         <string>仅保存联机录像</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QCheckBox" name="checkBoxRecorderEventSave">
-        <property name="toolTip">
-         <string>用于记录闪退的录像，会在相同文件夹下生成debug.txt；因为是即时记录，会占用部分性能，可能导致游戏卡顿或缓慢。</string>
-        </property>
-        <property name="text">
-         <string>即时保存</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
     </widget>
-    <zorder>layoutWidget</zorder>
-    <zorder>horizontalLayoutWidget</zorder>
-    <zorder>groupBoxRecorder</zorder>
-   </widget>
-  </widget>
-  <widget class="QDialogButtonBox" name="buttonBox">
-   <property name="geometry">
-    <rect>
-     <x>140</x>
-     <y>544</y>
-     <width>341</width>
-     <height>32</height>
-    </rect>
-   </property>
-   <property name="orientation">
-    <enum>Qt::Horizontal</enum>
-   </property>
-   <property name="standardButtons">
-    <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
-   </property>
-  </widget>
+   </item>
+   <item>
+    <widget class="QDialogButtonBox" name="buttonBox">
+     <property name="orientation">
+      <enum>Qt::Horizontal</enum>
+     </property>
+     <property name="standardButtons">
+      <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
+     </property>
+    </widget>
+   </item>
+  </layout>
  </widget>
  <resources/>
  <connections>

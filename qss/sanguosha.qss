@@ -6,21 +6,22 @@ QProgressBar{
     padding: 0px;
     text-align : center ;
 }
+
 QProgressBar::chunk{
     background: #B22222;
 }
 
 QToolTip{
-    border: 1px solid black;
-    background: rgb(255,255,255);
-    color: rgb(102,102,102);
+    border: 1px solid palette(mid);
+    background: palette(window);
+    color: palette(window-text);
 }
 
 QTextEdit{
     border: 10px;
     border-image: url(image/system/border.png) 10 10 10 10;
-    background-color: rgba(43, 45, 31, 120);
-
+    background-color: palette(base);
+    color: palette(text);
 }
 
 QLabel#guhuo_text {
@@ -31,43 +32,44 @@ QLabel#guhuo_text {
 QTextEdit[description = true]{
     border: 10px;
     border-image: none;
-    background-color: rgba(255,255,255,255);
+    background-color: palette(base);
+    color: palette(text);
 }
 
 QTextEdit QScrollBar:vertical  {
-     margin: 22px 0 22px 0;
+    margin: 22px 0 22px 0;
 }
 
 QScrollBar:add-page
 {
-     background-color: rgba(0,0,0,255);
+    background-color: palette(window);
 }
 
 QScrollBar:sub-page
 {
-     background-color: rgba(0,0,0,255);
+    background-color: palette(window);
 }
 
- QScrollBar::add-line:vertical  {
+QScrollBar::add-line:vertical  {
 
-     background-color: rgba(43,45,31,255);
-     height: 15px;
-     subcontrol-position: bottom;
-     subcontrol-origin: margin;
- }
+    background-color: palette(button);
+    height: 15px;
+    subcontrol-position: bottom;
+    subcontrol-origin: margin;
+}
 
- QScrollBar::sub-line:vertical  {
+QScrollBar::sub-line:vertical  {
 
-     background-color: rgba(43,45,31,255);
-     height: 15px;
-     subcontrol-position: top;
-     subcontrol-origin: margin;
- }
+    background-color: palette(button);
+    height: 15px;
+    subcontrol-position: top;
+    subcontrol-origin: margin;
+}
 
-QScrollBar::handle:vertical    {    
-    border : 2px solid gray;
+QScrollBar::handle:vertical    {
+    border : 2px solid palette(mid);
     border-radius: 6px;
-    background-color: solid gray;
+    background-color: palette(mid);
     min-height : 12px;
 }
 
@@ -81,17 +83,17 @@ QScrollBar::down-arrow:vertical
     border-image: url(image/system/button/scroll-down-arrow.png);
 }
 
- QLineEdit#chat_edit{
+QLineEdit#chat_edit{
     background-color: rgba(20,20,20,255);
     color: white;
     border: 10px transparent;
     height: 20px;
     border-image: url(image/system/border.png)10 10 10 10 ;
- }
+}
 
 QStatusBar::item {
-     border: 0px solid grey;
- }
+    border: 0px solid grey;
+}
  
 QStatusBar{
     background-image: url(image/system/skill-dock.png);

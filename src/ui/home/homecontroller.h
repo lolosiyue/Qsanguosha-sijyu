@@ -15,6 +15,7 @@ class HomeController final : public QObject
     Q_PROPERTY(QUrl characterImage READ characterImage NOTIFY characterImageChanged)
     Q_PROPERTY(QUrl logoImage READ logoImage CONSTANT)
     Q_PROPERTY(bool hasVideoSupport READ hasVideoSupport CONSTANT)
+    Q_PROPERTY(bool isDarkTheme READ isDarkTheme NOTIFY themeChanged)
 
 public:
     explicit HomeController(QObject *parent = nullptr);
@@ -25,6 +26,10 @@ public:
     QUrl characterImage() const;
     QUrl logoImage() const;
     bool hasVideoSupport() const;
+
+    // 有效明暗：ColorScheme 0=跟隨系統 / 1=亮色 / 2=暗色
+    bool isDarkTheme() const;
+    Q_INVOKABLE void toggleTheme();
 
     Q_INVOKABLE void quickJoin();
     Q_INVOKABLE void joinGame();
@@ -55,6 +60,7 @@ signals:
 
     void updateAvailableChanged();
     void characterImageChanged();
+    void themeChanged();
 
 private:
     bool m_updateAvailable = false;

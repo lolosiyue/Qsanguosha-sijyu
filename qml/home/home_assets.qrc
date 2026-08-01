@@ -7,6 +7,8 @@
     <file alias="icons/settings.svg">icons/settings.svg</file>
     <file alias="icons/about.svg">icons/about.svg</file>
     <file alias="icons/update.svg">icons/update.svg</file>
+    <file alias="icons/sun.svg">icons/sun.svg</file>
+    <file alias="icons/moon.svg">icons/moon.svg</file>
     <file alias="icons/home.svg">icons/home.svg</file>
     <file alias="icons/generals.svg">icons/generals.svg</file>
     <file alias="icons/cards.svg">icons/cards.svg</file>

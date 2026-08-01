@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import "."
 
 AbstractButton {
     id: control
@@ -51,7 +52,7 @@ AbstractButton {
 
             border.width: control.activeFocus ? (control.highContrast ? 7 : 5) : 0
             border.color: control.activeFocus
-                          ? (control.highContrast ? "#FFFFFFFF" : "#55FFFFFF")
+                          ? (control.highContrast ? HomeTheme.focusBorderHigh : HomeTheme.focusBorder)
                           : "transparent"
 
             visible: control.activeFocus
@@ -68,7 +69,7 @@ AbstractButton {
             anchors.topMargin: 8
 
             radius: height / 2
-            color: "#450A315F"
+            color: HomeTheme.btnShadow
         }
 
         Rectangle {
@@ -77,15 +78,15 @@ AbstractButton {
             radius: height / 2
 
             color: control.primary
-                   ? (control.down ? "#3167CC" : "#4C83ED")
-                   : (control.down ? "#E5EEFA" : "#F6FAFF")
+                   ? (control.down ? HomeTheme.btnPrimaryDown : HomeTheme.btnPrimary)
+                   : (control.down ? HomeTheme.btnSecondaryDown : HomeTheme.btnSecondary)
 
             border.width: control.activeFocus ? 4
                          : control.hovered ? 3
                                            : 2
             border.color: control.activeFocus
-                          ? "#FFFFFFFF"
-                          : control.primary ? "#D9ECFF" : "#D5E4F5"
+                          ? HomeTheme.focusBorderHigh
+                          : control.primary ? HomeTheme.btnPrimaryBorder : HomeTheme.btnSecondaryBorder
         }
     }
 
@@ -101,10 +102,10 @@ AbstractButton {
             height: width
             radius: width / 2
 
-            color: control.primary ? "#35FFFFFF" : "#EEF4FF"
+            color: control.primary ? HomeTheme.btnPrimaryIconBg : HomeTheme.btnSecondaryIconBg
 
             border.width: 2
-            border.color: control.primary ? "#B8D9FF" : "#D1E1F7"
+            border.color: control.primary ? HomeTheme.btnPrimaryIconBdr : HomeTheme.btnSecondaryIconBdr
 
             Image {
                 anchors.centerIn: parent
@@ -131,7 +132,7 @@ AbstractButton {
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
 
-            color: control.primary ? "white" : "#234A83"
+            color: control.primary ? HomeTheme.btnPrimaryText : HomeTheme.btnSecondaryText
             font.pixelSize: control.highContrast
                             ? Math.max(28, control.height * 0.37)
                             : Math.max(22, control.height * 0.29)

@@ -6,12 +6,12 @@ QTextEdit QScrollBar:vertical {
 }
 
 QTextEdit QScrollBar::handle:vertical {
-    background-color: rgb(95, 86, 63, 200);
+    background-color: rgba(95, 86, 63, 200);
     min-height: 20px;
 }
 
 QTextEdit QScrollBar::handle:vertical:hover {
-    background-color: rgb(95, 86, 63, 255);
+    background-color: rgba(95, 86, 63, 255);
     min-height: 20px;
 }
 

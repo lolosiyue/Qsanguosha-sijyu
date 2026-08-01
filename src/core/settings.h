@@ -99,6 +99,9 @@ public:
     qreal UIScale;
     QString VisualMode;
 
+    // 主题:0=跟随系统,1=亮色,2=暗色。值即 Qt::ColorScheme 枚举值。
+    int ColorScheme;
+
     // consts
     static const int S_SURRENDER_REQUEST_MIN_INTERVAL;
     static const int S_PROGRESS_BAR_UPDATE_INTERVAL;
@@ -113,5 +116,18 @@ private:
 };
 
 extern Settings Config;
+
+// 切换/初始化应用主题:
+//   Qt 6 的 QStyle::standardPalette() 会跟随系统 colorScheme 返回明暗色,
+//   系统为暗色时必然拿到暗色 palette;且 styleHints->setColorScheme() 是
+//   Qt 6.8+ API,Qt 6.5.3 不可用。因此亮/暗两套 palette 都在代码里手动
+//   构建,完全脱离系统状态,再重设 Fusion style 触发全局 repolish。
+// scheme: 0=跟随系统,1=亮色,2=暗色 (同 Qt::ColorScheme 枚举值)
+void applyColorScheme(int scheme);
+
+// 视觉模式: normal / grayscale / highcontrast。
+// 在 applyColorScheme 的明暗基底上再做灰阶或高对比 palette 变换;
+// normal 则回到纯主题 palette。
+void applyVisualMode(const QString &mode);
 
 #endif

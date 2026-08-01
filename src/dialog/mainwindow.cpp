@@ -111,6 +111,8 @@ MainWindow::MainWindow(QWidget *parent)
 	config_dialog = new ConfigDialog(this);
 	connect(ui->actionConfigure, SIGNAL(triggered()), config_dialog, SLOT(show()));
 	connect(config_dialog, SIGNAL(bg_changed()), this, SLOT(changeBackground()));
+	// 預覽視覺模式/背景時,重新載入主頁 QML 讓 MultiEffect 即時套用
+	connect(config_dialog, &ConfigDialog::previewChanged, this, &MainWindow::reloadHomePage);
 
 	connect(ui->actionAbout_Qt, SIGNAL(triggered()), qApp, SLOT(aboutQt()));
 	connect(ui->actionAcknowledgement_2, SIGNAL(triggered()), this, SLOT(on_actionAcknowledgement_triggered()));
@@ -367,6 +369,10 @@ void MainWindow::on_actionStart_Server_triggered()
 
 		ui->actionStart_Game->disconnect();
 		connect(ui->actionStart_Game, SIGNAL(triggered()), this, SLOT(startGameInAnotherInstance()));
+
+		StartScene *start_scene = new StartScene;
+		start_scene->switchToServer(server);
+		showGamePage(start_scene);
 
 		if (Config.value("EnableMinimizeDialog").toBool())
 			on_actionMinimize_to_system_tray_triggered();
