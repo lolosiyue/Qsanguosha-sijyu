@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls
+import "."
 
 Rectangle {
     id: root
@@ -21,18 +22,18 @@ Rectangle {
 
     implicitHeight: 116
 
-    color: "#E6101428"
+    color: HomeTheme.panelTop
     radius: 22
 
     gradient: Gradient {
         GradientStop {
             position: 0.0
-            color: "#F0101428"
+            color: HomeTheme.panelTop
         }
 
         GradientStop {
             position: 1.0
-            color: "#D0080D22"
+            color: HomeTheme.panelBottom
         }
     }
 
@@ -45,7 +46,7 @@ Rectangle {
         anchors.rightMargin: 22
 
         height: 1
-        color: "#45A9CFFF"
+        color: HomeTheme.panelBorder
     }
 
     RowLayout {

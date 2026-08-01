@@ -1,6 +1,8 @@
 <RCC>
   <qresource prefix="/QSanguosha/Home">
     <file alias="HomeScene.qml">HomeScene.qml</file>
+    <file alias="HomeTheme.qml">HomeTheme.qml</file>
+    <file alias="qmldir">qmldir</file>
     <file alias="HomeBackground.qml">HomeBackground.qml</file>
     <file alias="HomeBackgroundVideo.qml">HomeBackgroundVideo.qml</file>
     <file alias="VideoOverlay.qml">VideoOverlay.qml</file>

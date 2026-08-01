@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import "."
 
 AbstractButton {
     id: control
@@ -47,7 +48,7 @@ AbstractButton {
             color: "transparent"
 
             border.width: 3
-            border.color: control.activeFocus ? "#FFFFFFFF" : "transparent"
+            border.color: control.activeFocus ? HomeTheme.focusBorderHigh : "transparent"
 
             visible: control.activeFocus
 
@@ -73,18 +74,18 @@ AbstractButton {
                      || control.activeFocus
 
             color: control.down
-                   ? "#324D82D9"
+                   ? HomeTheme.navBgDown
                    : control.active
-                     ? "#283F75CC"
-                     : "#162E5EA8"
+                     ? HomeTheme.navBgActive
+                     : HomeTheme.navBgHover
 
             border.width: control.activeFocus ? 2 : 1
 
             border.color: control.activeFocus
-                          ? "#B8DBFFFF"
+                          ? HomeTheme.navBorderFocus
                           : control.active
-                            ? "#659CDFFF"
-                            : "#357DAFEA"
+                            ? HomeTheme.navBorderActive
+                            : HomeTheme.navBorderHover
         }
 
         // 選中時底部藍色發光線
@@ -96,7 +97,7 @@ AbstractButton {
             height: 3
             radius: 2
 
-            color: "#70B7FF"
+            color: HomeTheme.navLine
             visible: width > 0
 
             Behavior on width {
@@ -138,13 +139,13 @@ AbstractButton {
             radius: width / 2
 
             color: control.active
-                   ? "#263F9FFF"
+                   ? HomeTheme.navGlowActive
                    : control.hovered
-                     ? "#183C7ED8"
+                     ? HomeTheme.navGlowHover
                      : "transparent"
 
             border.width: control.active ? 2 : 0
-            border.color: "#709EDFFF"
+            border.color: HomeTheme.navLine
 
             opacity: control.down ? 0.65 : 1.0
 
@@ -165,7 +166,7 @@ AbstractButton {
             radius: width / 2
 
             visible: control.active || control.hovered
-            color: "#124D91F2"
+            color: HomeTheme.navGlowInner
         }
 
         Image {
@@ -233,12 +234,12 @@ AbstractButton {
             text: control.text
 
             color: control.activeFocus
-                   ? "#FFFFFF"
+                   ? HomeTheme.navTextFocus
                    : control.active
-                     ? "#FFFFFF"
+                     ? HomeTheme.navTextActive
                      : control.hovered
-                       ? "#DCEEFF"
-                       : control.highContrast ? "#E6ECF8" : "#9FB0CE"
+                       ? HomeTheme.navTextHover
+                       : HomeTheme.navTextIdle
 
             font.pixelSize: control.highContrast
                             ? (control.active ? 19 : 18)
