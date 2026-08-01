@@ -64,7 +64,8 @@ Item {
     readonly property color navBorderHover:  isDark ? "#357DAFEA" : "#2E4A86"
     readonly property color navLine:         isDark ? "#70B7FF" : "#2C5288"
     readonly property color navTextIdle:   isDark ? "#9FB0CE" : "#46536B"
-    readonly property color navTextHover:  isDark ? "#DCEEFF" : "#1F4378"
+    // hover 時文字疊在深藍色柔光板上，兩主題統一用亮白才能與背景區隔
+    readonly property color navTextHover:  "#FFFFFF"
     readonly property color navTextActive: isDark ? "#FFFFFF" : "#FFFFFF"
     readonly property color navTextFocus:  isDark ? "#FFFFFF" : "#0F2A4E"
 }

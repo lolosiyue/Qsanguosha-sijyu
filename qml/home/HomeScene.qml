@@ -37,6 +37,19 @@ Item {
             anchors.fill: parent
         }
 
+        // 角色：佔滿上下，放大且底緣下沉，下半身疊入底部導覽列，略偏中間
+        CharacterLayer {
+            id: characterLayer
+
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.horizontalCenterOffset: -parent.width * 0.15
+
+            width: Math.min(parent.width * 0.5, 1300)
+        }
+
+        // 底部導覽列：唯一受置中內容區（safe area）限制的元素
         Item {
             id: safeArea
 
@@ -45,59 +58,6 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
 
             width: Math.min(parent.width, 1760)
-
-            Image {
-                id: logo
-
-                anchors.left: parent.left
-                anchors.top: parent.top
-                anchors.leftMargin: 40
-                anchors.topMargin: 28
-
-                width: Math.min(parent.width * 0.13, 230)
-                height: width * 0.58
-
-                source: homeController.logoImage
-                fillMode: Image.PreserveAspectFit
-                mipmap: true
-            }
-
-            CharacterLayer {
-                id: characterLayer
-
-                anchors.left: parent.left
-                anchors.top: parent.top
-                anchors.bottom: bottomBar.top
-
-                width: parent.width * 0.54
-            }
-
-            MainActionPanel {
-                id: actionPanel
-
-                anchors.right: parent.right
-                anchors.rightMargin: 170
-                anchors.verticalCenter: parent.verticalCenter
-                anchors.verticalCenterOffset: -25
-
-                width: Math.min(520, parent.width * 0.32)
-
-                onQuickJoinClicked: homeController.quickJoin()
-                onJoinGameClicked: homeController.joinGame()
-                onStartServerClicked: homeController.startServer()
-            }
-
-            HomeSideBar {
-                id: sideBar
-
-                anchors.right: parent.right
-                anchors.rightMargin: 24
-                anchors.verticalCenter: parent.verticalCenter
-
-                onSettingsClicked: homeController.openSettings()
-                onAboutClicked: homeController.openAbout()
-                onUpdateClicked: homeController.checkUpdates()
-            }
 
             HomeBottomBar {
                 id: bottomBar
@@ -109,7 +69,7 @@ Item {
                 anchors.rightMargin: parent.width * 0.12
                 anchors.bottomMargin: 12
 
-                height: 116
+                height: 136
 
                 onHomeClicked: {}
                 onGeneralsClicked: homeController.openGenerals()
@@ -117,6 +77,60 @@ Item {
                 onReplaysClicked: homeController.openReplays()
                 onSettingsClicked: homeController.openSettings()
             }
+        }
+
+        // 左上角玩家資訊：頭像＋名稱（與快速加入對話框一致）
+        HomePlayerInfo {
+            id: playerInfo
+
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.leftMargin: 32
+            anchors.topMargin: 24
+        }
+
+        // LOGO：移至右側三個主按鈕上方
+        Image {
+            id: logo
+
+            anchors.right: actionPanel.right
+            anchors.bottom: actionPanel.top
+            anchors.rightMargin: 4
+            anchors.bottomMargin: 20
+
+            width: Math.min(parent.width * 0.12, 220)
+            height: width * 0.58
+
+            source: homeController.logoImage
+            fillMode: Image.PreserveAspectFit
+            mipmap: true
+        }
+
+        MainActionPanel {
+            id: actionPanel
+
+            anchors.right: sideBar.left
+            anchors.rightMargin: 28
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: -25
+
+            width: Math.min(520, parent.width * 0.3)
+
+            onQuickJoinClicked: homeController.quickJoin()
+            onJoinGameClicked: homeController.joinGame()
+            onStartServerClicked: homeController.startServer()
+        }
+
+        HomeSideBar {
+            id: sideBar
+
+            anchors.right: parent.right
+            anchors.rightMargin: 16
+            anchors.verticalCenter: parent.verticalCenter
+
+            onSettingsClicked: homeController.openSettings()
+            onAboutClicked: homeController.openAbout()
+            onUpdateClicked: homeController.checkUpdates()
         }
     }
 

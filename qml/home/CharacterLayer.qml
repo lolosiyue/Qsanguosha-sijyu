@@ -3,14 +3,18 @@ import QtQuick
 Item {
     id: root
 
+    // 底緣向下延伸 0.5 倍視窗高：放大角色並讓下半身疊入底部導覽列被遮蓋
+    property real baseBottomMargin: -parent.height * 0.5
+
     Image {
         id: character
 
         anchors.left: parent.left
         anchors.bottom: parent.bottom
+        anchors.bottomMargin: root.baseBottomMargin
 
-        width: parent.width * 1.05
-        height: parent.height * 1.05
+        width: parent.width * 1.1
+        height: parent.height * 1.42
 
         source: homeController.characterImage
         fillMode: Image.PreserveAspectFit
@@ -37,13 +41,13 @@ Item {
             loops: Animation.Infinite
 
             NumberAnimation {
-                to: 4
+                to: root.baseBottomMargin + 4
                 duration: 2400
                 easing.type: Easing.InOutSine
             }
 
             NumberAnimation {
-                to: -4
+                to: root.baseBottomMargin - 4
                 duration: 2400
                 easing.type: Easing.InOutSine
             }
