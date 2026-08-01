@@ -16,6 +16,8 @@ class HomeController final : public QObject
     Q_PROPERTY(QUrl logoImage READ logoImage CONSTANT)
     Q_PROPERTY(bool hasVideoSupport READ hasVideoSupport CONSTANT)
     Q_PROPERTY(bool isDarkTheme READ isDarkTheme NOTIFY themeChanged)
+    Q_PROPERTY(QString playerName READ playerName NOTIFY playerInfoChanged)
+    Q_PROPERTY(QUrl playerAvatar READ playerAvatar NOTIFY playerInfoChanged)
 
 public:
     explicit HomeController(QObject *parent = nullptr);
@@ -26,6 +28,10 @@ public:
     QUrl characterImage() const;
     QUrl logoImage() const;
     bool hasVideoSupport() const;
+
+    // 玩家資訊：名稱＋頭像（與快速加入對話框同一資料源）
+    QString playerName() const;
+    QUrl playerAvatar() const;
 
     // 有效明暗：ColorScheme 0=跟隨系統 / 1=亮色 / 2=暗色
     bool isDarkTheme() const;
@@ -46,6 +52,9 @@ public:
 
     Q_INVOKABLE void refreshCharacterImage();
 
+    // 重新發送玩家資訊變更信號（回到首頁時由 MainWindow 呼叫）
+    Q_INVOKABLE void refreshPlayerInfo();
+
 signals:
     void quickJoinRequested();
     void joinGameRequested();
@@ -61,6 +70,7 @@ signals:
     void updateAvailableChanged();
     void characterImageChanged();
     void themeChanged();
+    void playerInfoChanged();
 
 private:
     bool m_updateAvailable = false;

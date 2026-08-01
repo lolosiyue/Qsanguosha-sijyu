@@ -59,6 +59,32 @@ QUrl HomeController::logoImage() const
             QStringLiteral("image/logo/logo.png")));
 }
 
+QString HomeController::playerName() const
+{
+    return Config.UserName;
+}
+
+QUrl HomeController::playerAvatar() const
+{
+    const QString &avatar = Config.UserAvatar;
+    if (avatar.isEmpty())
+        return QUrl();
+
+    // 與快速加入對話框相同的頭像圖源
+    const QString absPath = QDir::current().absoluteFilePath(
+        QStringLiteral("image/fullskin/generals/full/%1.jpg").arg(avatar));
+
+    if (QFile::exists(absPath))
+        return QUrl::fromLocalFile(absPath);
+
+    return QUrl();
+}
+
+void HomeController::refreshPlayerInfo()
+{
+    emit playerInfoChanged();
+}
+
 bool HomeController::hasVideoSupport() const
 {
 #ifdef HAS_QT_MULTIMEDIA
@@ -133,8 +159,14 @@ void HomeController::checkUpdates()
 
 QUrl HomeController::randomBackdrop() const
 {
+    // 僅挑選靜態圖片，排除影片，避免影片播放失敗回退時又隨機抽到同一個 mp4。
+    const QStringList imageFilters =
+        QStringList() << QStringLiteral("*.jpg") << QStringLiteral("*.jpeg")
+                      << QStringLiteral("*.png") << QStringLiteral("*.bmp")
+                      << QStringLiteral("*.gif") << QStringLiteral("*.webp");
+
     QDir dir(QStringLiteral("image/system/backdrop"));
-    const QStringList files = dir.entryList(QDir::Files);
+    const QStringList files = dir.entryList(imageFilters, QDir::Files);
     if (files.isEmpty())
         return QUrl();
 

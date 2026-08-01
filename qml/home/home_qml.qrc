@@ -12,5 +12,6 @@
     <file alias="HomeNavButton.qml">HomeNavButton.qml</file>
     <file alias="HomeSideBar.qml">HomeSideBar.qml</file>
     <file alias="CharacterLayer.qml">CharacterLayer.qml</file>
+    <file alias="HomePlayerInfo.qml">HomePlayerInfo.qml</file>
   </qresource>
 </RCC>

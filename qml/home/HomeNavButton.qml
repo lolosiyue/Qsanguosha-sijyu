@@ -14,7 +14,7 @@ AbstractButton {
     property bool highContrast: Config.getValue("VisualMode", "normal") === "highcontrast"
 
     implicitWidth: 132
-    implicitHeight: 104
+    implicitHeight: 124
 
     hoverEnabled: true
     focusPolicy: Qt.StrongFocus
@@ -65,9 +65,9 @@ AbstractButton {
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 4
 
-            width: Math.min(parent.width - 10, 124)
-            height: 76
-            radius: 18
+            width: Math.min(parent.width - 8, 150)
+            height: 92
+            radius: 22
 
             visible: control.active
                      || control.hovered
@@ -93,7 +93,7 @@ AbstractButton {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
 
-            width: control.active ? 62 : 0
+            width: control.active ? 74 : 0
             height: 3
             radius: 2
 
@@ -126,7 +126,7 @@ AbstractButton {
             }
         }
 
-        // 角色後方光圈
+        // 角色後方光圈（與圖示同尺寸，同步放大）
         Rectangle {
             id: outerGlow
 
@@ -134,7 +134,7 @@ AbstractButton {
             anchors.top: parent.top
             anchors.topMargin: 1
 
-            width: control.active ? 66 : 58
+            width: control.active ? 104 : 96
             height: width
             radius: width / 2
 
@@ -176,7 +176,7 @@ AbstractButton {
             anchors.top: parent.top
             anchors.topMargin: control.active ? -5 : 1
 
-            width: control.active ? 68 : 60
+            width: control.active ? 136 : 128
             height: width
 
             source: {
@@ -242,8 +242,8 @@ AbstractButton {
                        : HomeTheme.navTextIdle
 
             font.pixelSize: control.highContrast
-                            ? (control.active ? 19 : 18)
-                            : (control.active ? 15 : 14)
+                            ? (control.active ? 21 : 20)
+                            : (control.active ? 17 : 16)
             font.weight: control.highContrast
                          ? Font.Bold
                          : (control.active ? Font.DemiBold : Font.Medium)

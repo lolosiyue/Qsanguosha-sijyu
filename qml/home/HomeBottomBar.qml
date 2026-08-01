@@ -20,7 +20,7 @@ Rectangle {
     signal replaysClicked()
     signal settingsClicked()
 
-    implicitHeight: 116
+    implicitHeight: 136
 
     color: HomeTheme.panelTop
     radius: 22
