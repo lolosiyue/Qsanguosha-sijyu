@@ -1164,7 +1164,7 @@ void RoomScene::_getSceneSizes(QSize&minSize,QSize&maxSize)
 	}
 }
 
-void RoomScene::_calculateDynamicPhotoSize()
+void RoomScene::_calculateDynamicPhotoSize(qreal devicePixelRatio)
 {
 	int numPlayers = photos.size() + 1;
 	if (numPlayers < 1) numPlayers = 1;
@@ -1172,14 +1172,17 @@ void RoomScene::_calculateDynamicPhotoSize()
 	int sceneWidth = static_cast<int>(sceneRect().width());
 	int sceneHeight = static_cast<int>(sceneRect().height());
 
-	int availableWidth = sceneWidth - static_cast<int>(_m_roomLayout->m_infoPlaneWidthPercentage * sceneWidth);
-	int availableHeight = sceneHeight - G_DASHBOARD_LAYOUT.m_normalHeight - G_DASHBOARD_LAYOUT.m_floatingAreaHeight;
+	// HDPI：場景座標是邏輯像素，但照片尺寸判斷必須反映實體視窗空間。
+	// 否則 1920x1080 @150%（邏輯 1280x720）會被當成小視窗，照片永遠停在
+	// SMALL（5~8 人局 NORMAL 需 458 邏輯高，150% 只給 ~443）。乘上 DPR 後
+	// 判斷基準與顯示縮放無關，恢復與 Qt5.14 一致的結果。
+	const qreal dpr = qMax<qreal>(1.0, devicePixelRatio);
+	int availableWidth = qRound((sceneWidth - static_cast<int>(_m_roomLayout->m_infoPlaneWidthPercentage * sceneWidth)) * dpr);
+	int availableHeight = qRound((sceneHeight - G_DASHBOARD_LAYOUT.m_normalHeight - G_DASHBOARD_LAYOUT.m_floatingAreaHeight) * dpr);
 
-	static const int PHOTO_SIZE_SMALL = 94;
 	static const int PHOTO_SIZE_NORMAL = 157;
 	static const int PHOTO_SIZE_BIG = 235;
 
-	static const int PHOTO_HEIGHT_SMALL = 108;
 	static const int PHOTO_HEIGHT_NORMAL = 181;
 	static const int PHOTO_HEIGHT_BIG = 271;
 
@@ -1189,9 +1192,6 @@ void RoomScene::_calculateDynamicPhotoSize()
 	int requiredWidthNormal = maxPhotosHorizontal * PHOTO_SIZE_NORMAL + (maxPhotosHorizontal + 1) * G_ROOM_LAYOUT.m_photoHDistance;
 	int requiredHeightNormal = maxPhotosVertical * PHOTO_HEIGHT_NORMAL + (maxPhotosVertical + 1) * G_ROOM_LAYOUT.m_photoVDistance;
 
-	int requiredWidthSmall = maxPhotosHorizontal * PHOTO_SIZE_SMALL + (maxPhotosHorizontal + 1) * G_ROOM_LAYOUT.m_photoHDistance;
-	int requiredHeightSmall = maxPhotosVertical * PHOTO_HEIGHT_SMALL + (maxPhotosVertical + 1) * G_ROOM_LAYOUT.m_photoVDistance;
-
 	int requiredWidthBig = maxPhotosHorizontal * PHOTO_SIZE_BIG + (maxPhotosHorizontal + 1) * G_ROOM_LAYOUT.m_photoHDistance;
 	int requiredHeightBig = maxPhotosVertical * PHOTO_HEIGHT_BIG + (maxPhotosVertical + 1) * G_ROOM_LAYOUT.m_photoVDistance;
 
@@ -1200,22 +1200,20 @@ void RoomScene::_calculateDynamicPhotoSize()
 
 	bool canFitBig = (availableWidth >= requiredWidthBig && availableHeight >= requiredHeightBig);
 	bool canFitNormal = (availableWidth >= requiredWidthNormal && availableHeight >= requiredHeightNormal);
-	bool canFitSmall = (availableWidth >= requiredWidthSmall && availableHeight >= requiredHeightSmall);
 
 	if (canFitBig) {
-		int extraSpaceBig = (availableWidth - requiredWidthBig) + (availableHeight - requiredHeightBig);
-		int extraSpaceNormal = (availableWidth - requiredWidthNormal) + (availableHeight - requiredHeightNormal);
-
-		if (extraSpaceBig < extraSpaceNormal * 0.3) {
+		// 視窗空間寬裕（放完 NORMAL 後仍剩至少一個 BIG 寬）→ 升級 BIG。
+		// 取代舊的 extraSpaceBig < extraSpaceNormal * 0.3（實務上幾乎不可達，
+		// 造成 BIG 成為死路徑、照片固定同尺寸）。
+		int spareNormal = (availableWidth - requiredWidthNormal) + (availableHeight - requiredHeightNormal);
+		if (spareNormal >= PHOTO_SIZE_BIG) {
 			targetWidth = PHOTO_SIZE_BIG;
 			targetHeight = PHOTO_HEIGHT_BIG;
 		}
-	} else if (!canFitNormal && canFitSmall) {
-		targetWidth = PHOTO_SIZE_SMALL;
-		targetHeight = PHOTO_HEIGHT_SMALL;
-	} else if (!canFitSmall) {
-		targetWidth = PHOTO_SIZE_SMALL;
-		targetHeight = PHOTO_HEIGHT_SMALL;
+	} else if (!canFitNormal) {
+		// 空間不足以放 NORMAL → 縮至 SMALL
+		targetWidth = 94;
+		targetHeight = 108;
 	}
 
 	_m_cachedPhotoWidth = targetWidth;
@@ -1264,7 +1262,7 @@ void RoomScene::adjustItems()
 	m_pixmapDeviceScale = qBound(1.0,
 		main_window->devicePixelRatioF() / sceneScale, 4.0);
 
-	_calculateDynamicPhotoSize();
+	_calculateDynamicPhotoSize(main_window ? main_window->devicePixelRatioF() : 1.0);
 
 	int padding = _m_roomLayout->m_scenePadding;
 	displayRegion.moveLeft(displayRegion.x()+padding);
@@ -5505,7 +5503,10 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 		}
 	}
 
-	QRect rect = main_window->rect();
+	// 空心輪廓（預設黑色 1px pen）不是要顯示的內容，把 rect 外推到
+	// sceneRect 之外，讓輪廓被 QGraphicsView 裁切，避免 HDPI 下露出黑框。
+	QRectF rect = sceneRect();
+	rect.adjust(-50, -50, 50, 50);
 	QGraphicsRectItem*lightbox = addRect(rect);
 
     if(!word.startsWith("skill=")&&!word.startsWith("ghost=")&&!word.startsWith("background=")&&!word.startsWith("spine=")&&!word.startsWith("lani=")){
@@ -5630,6 +5631,10 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 
         if(!success)
 			embeddedLoader->deleteLater();
+
+        // QML 疊層自帶全視窗特效，此 rect 無用途；比照 spine=/background= 清理
+        removeItem(lightbox);
+        delete lightbox;
     }
     else if(word.startsWith("ghost=")){
         const QString hero = word.mid(6);
@@ -5696,6 +5701,10 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 
         if(!success)
             embeddedLoader->deleteLater();
+
+        // QML 疊層自帶全視窗特效，此 rect 無用途；比照 spine=/background= 清理
+        removeItem(lightbox);
+        delete lightbox;
     }
     else if(word.startsWith("spine=")){
         // Spine 动态全屏特效——render as QGraphicsItem (SpineGlItem)
