@@ -261,6 +261,7 @@ void MainWindow::showHomePage()
 
 	menuBar()->hide();
 	homeController->refreshCharacterImage();
+	homeController->refreshPlayerInfo();
 	pageStack->setCurrentWidget(homeView);
 	homeView->setFocus();
 
@@ -308,11 +309,14 @@ void MainWindow::restoreFromConfig()
 	ui->actionNever_nullify_my_trick->setEnabled(false);
 }
 
-void MainWindow::closeEvent(QCloseEvent *)
+void MainWindow::closeEvent(QCloseEvent *event)
 {
 	Config.setValue("WindowSize", size());
 	Config.setValue("WindowPosition", pos());
 	Config.setValue("WindowState", (int)windowState());
+
+	QMainWindow::closeEvent(event);
+	qApp->quit();
 }
 
 MainWindow::~MainWindow()
