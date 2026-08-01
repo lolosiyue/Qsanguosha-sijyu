@@ -11,6 +11,9 @@
 //#include "timed-progressbar.h"
 #include "generic-cardcontainer-ui.h"
 
+#include <QHash>
+#include <QEasingCurve>
+
 //#include "pixmapanimation.h"
 //#include "sprite.h"
 //#include "util.h"
@@ -21,6 +24,7 @@ class CardContainer;
 class Button;
 class EffectAnimation;
 class QGraphicsObject;
+class QPropertyAnimation;
 class ViewAsSkill;
 class FilterSkill;
 class PixmapAnimation;
@@ -333,6 +337,14 @@ protected:
     void destroyFilterContainer(bool resetCategory = true);
 
     int m_middleFrameAndRightFrameHeightDiff;
+
+    // Hover emphasis uses native scale + z-value instead of QGraphicsEffect,
+    // because Qt 6.5.3 clips QGraphicsEffect output to the item bounds and the
+    // old emphasis did not raise the z-value, so the enlarged card was hidden
+    // behind neighboring cards and squeezed downward.
+    QHash<CardItem *, qreal> m_hoverOriginalZ;
+    QHash<CardItem *, QPropertyAnimation *> m_hoverScaleAnimations;
+    void _startHoverScaleAnimation(CardItem *card, qreal endScale, QEasingCurve::Type curve);
 protected slots:
     virtual void _onEquipSelectChanged();
 
@@ -345,6 +357,7 @@ private slots:
     void onCardItemHover();
     void onCardItemLeaveHover();
     void onMarkChanged();
+    void _onHoverCardDestroyed(QObject *obj);
     void _onDialogOptionClicked(const QString &optionName);
 
 signals:
