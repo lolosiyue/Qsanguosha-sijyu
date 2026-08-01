@@ -5,8 +5,6 @@ import QtQuick.Effects
 Item {
     id: root
 
-    width: 1920
-    height: 1080
     focus: true
 
     Keys.onPressed: function(event) {
@@ -37,100 +35,113 @@ Item {
             anchors.fill: parent
         }
 
-        // 角色：佔滿上下，放大且底緣下沉，下半身疊入底部導覽列，略偏中間
-        CharacterLayer {
-            id: characterLayer
-
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.horizontalCenterOffset: -parent.width * 0.15
-
-            width: Math.min(parent.width * 0.5, 1300)
-        }
-
-        // 底部導覽列：唯一受置中內容區（safe area）限制的元素
+        // 固定 1920x1080 設計畫布：依視窗尺寸等比縮放並置中，
+        // 使 150% 縮放（邏輯 1280x720）下所有元件等比例縮小而不擁擠
         Item {
-            id: safeArea
+            id: uiCanvas
 
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.centerIn: parent
 
-            width: Math.min(parent.width, 1760)
+            width: 1920
+            height: 1080
 
-            HomeBottomBar {
-                id: bottomBar
+            scale: Math.min(contentHost.width / 1920, contentHost.height / 1080)
+
+            // 角色：佔滿上下，放大且底緣下沉，下半身疊入底部導覽列，略偏中間
+            CharacterLayer {
+                id: characterLayer
+
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.horizontalCenterOffset: -parent.width * 0.15
+
+                width: Math.min(parent.width * 0.5, 1300)
+            }
+
+            // 底部導覽列：唯一受置中內容區（safe area）限制的元素
+            Item {
+                id: safeArea
+
+                anchors.top: parent.top
+                anchors.bottom: parent.bottom
+                anchors.horizontalCenter: parent.horizontalCenter
+
+                width: Math.min(parent.width, 1760)
+
+                HomeBottomBar {
+                    id: bottomBar
+
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    anchors.leftMargin: parent.width * 0.12
+                    anchors.rightMargin: parent.width * 0.12
+                    anchors.bottomMargin: 12
+
+                    height: 136
+
+                    onHomeClicked: {}
+                    onGeneralsClicked: homeController.openGenerals()
+                    onCardsClicked: homeController.openCards()
+                    onReplaysClicked: homeController.openReplays()
+                    onSettingsClicked: homeController.openSettings()
+                }
+            }
+
+            // 左上角玩家資訊：頭像＋名稱（與快速加入對話框一致）
+            HomePlayerInfo {
+                id: playerInfo
 
                 anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                anchors.leftMargin: parent.width * 0.12
-                anchors.rightMargin: parent.width * 0.12
-                anchors.bottomMargin: 12
-
-                height: 136
-
-                onHomeClicked: {}
-                onGeneralsClicked: homeController.openGenerals()
-                onCardsClicked: homeController.openCards()
-                onReplaysClicked: homeController.openReplays()
-                onSettingsClicked: homeController.openSettings()
+                anchors.top: parent.top
+                anchors.leftMargin: 32
+                anchors.topMargin: 24
             }
-        }
 
-        // 左上角玩家資訊：頭像＋名稱（與快速加入對話框一致）
-        HomePlayerInfo {
-            id: playerInfo
+            // LOGO：移至右側三個主按鈕上方
+            Image {
+                id: logo
 
-            anchors.left: parent.left
-            anchors.top: parent.top
-            anchors.leftMargin: 32
-            anchors.topMargin: 24
-        }
+                anchors.right: actionPanel.right
+                anchors.bottom: actionPanel.top
+                anchors.rightMargin: 4
+                anchors.bottomMargin: 20
 
-        // LOGO：移至右側三個主按鈕上方
-        Image {
-            id: logo
+                width: Math.min(parent.width * 0.12, 220)
+                height: width * 0.58
 
-            anchors.right: actionPanel.right
-            anchors.bottom: actionPanel.top
-            anchors.rightMargin: 4
-            anchors.bottomMargin: 20
+                source: homeController.logoImage
+                fillMode: Image.PreserveAspectFit
+                mipmap: true
+            }
 
-            width: Math.min(parent.width * 0.12, 220)
-            height: width * 0.58
+            MainActionPanel {
+                id: actionPanel
 
-            source: homeController.logoImage
-            fillMode: Image.PreserveAspectFit
-            mipmap: true
-        }
+                anchors.right: sideBar.left
+                anchors.rightMargin: 28
+                anchors.verticalCenter: parent.verticalCenter
+                anchors.verticalCenterOffset: -25
 
-        MainActionPanel {
-            id: actionPanel
+                width: Math.min(520, parent.width * 0.3)
 
-            anchors.right: sideBar.left
-            anchors.rightMargin: 28
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.verticalCenterOffset: -25
+                onQuickJoinClicked: homeController.quickJoin()
+                onJoinGameClicked: homeController.joinGame()
+                onStartServerClicked: homeController.startServer()
+            }
 
-            width: Math.min(520, parent.width * 0.3)
+            HomeSideBar {
+                id: sideBar
 
-            onQuickJoinClicked: homeController.quickJoin()
-            onJoinGameClicked: homeController.joinGame()
-            onStartServerClicked: homeController.startServer()
-        }
+                anchors.right: parent.right
+                anchors.rightMargin: 16
+                anchors.verticalCenter: parent.verticalCenter
 
-        HomeSideBar {
-            id: sideBar
-
-            anchors.right: parent.right
-            anchors.rightMargin: 16
-            anchors.verticalCenter: parent.verticalCenter
-
-            onSettingsClicked: homeController.openSettings()
-            onAboutClicked: homeController.openAbout()
-            onUpdateClicked: homeController.checkUpdates()
+                onSettingsClicked: homeController.openSettings()
+                onAboutClicked: homeController.openAbout()
+                onUpdateClicked: homeController.checkUpdates()
+            }
         }
     }
 
