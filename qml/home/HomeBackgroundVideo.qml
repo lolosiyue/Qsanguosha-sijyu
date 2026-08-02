@@ -34,6 +34,7 @@ Item {
         }
 
         Video {
+            id: bgVideo
             anchors.fill: parent
             source: isVideo ? backdropSource : ""
             fillMode: VideoOutput.PreserveAspectCrop
@@ -45,6 +46,10 @@ Item {
             onErrorOccurred: {
                 backdropSource = homeController.randomBackdrop();
             }
+
+            // Qt 6 的 Video 不會自動播放，source 就緒後需呼叫 play() 才會有畫面
+            Component.onCompleted: bgVideo.play()
+            onSourceChanged: bgVideo.play()
         }
     }
 
