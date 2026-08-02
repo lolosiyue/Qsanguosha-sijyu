@@ -14,9 +14,8 @@
 #include "engine.h"
 #include "engine-bootstrap.h"
 #include "lua.hpp"
-#ifdef AUDIO_SUPPORT
+#include "lua-wrapper.h"
 #include "audio.h"
-#endif
 #include <QSurfaceFormat>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
@@ -25,7 +24,8 @@
 #include "android_assets.h"
 #endif
 
-#if defined(WIN32) && defined(VS2013)
+#if defined(WIN32) && defined(USE_BREAKPAD)
+#include <direct.h>
 #include "breakpad/client/windows/handler/exception_handler.h"
 
 using namespace google_breakpad;
@@ -38,8 +38,20 @@ static bool callback(const wchar_t *dump_path, const wchar_t *id, void *, EXCEPT
     return succeeded;
 }
 
+// dump 目錄固定在 exe 旁的 dmp\，避免受啟動時工作目錄影響
+static std::wstring dumpDirectory(){
+    wchar_t buf[MAX_PATH];
+    DWORD len = GetModuleFileNameW(NULL, buf, MAX_PATH);
+    std::wstring dir(buf, len);
+    size_t pos = dir.find_last_of(L"\\/");
+    if (pos != std::wstring::npos)
+        dir.resize(pos);
+    return dir + L"\\dmp";
+}
+
 int main(int argc, char *argv[]) {
-    ExceptionHandler eh(L"./dmp", nullptr, callback, nullptr, ExceptionHandler::HANDLER_ALL);
+    _wmkdir(dumpDirectory().c_str());
+    ExceptionHandler eh(dumpDirectory(), nullptr, callback, nullptr, ExceptionHandler::HANDLER_ALL);
 #else
 int main(int argc, char *argv[])
 {
@@ -81,6 +93,12 @@ int main(int argc, char *argv[])
     qputenv("QT_MEDIA_BACKEND", "ffmpeg");
 #endif
 
+    // 自動化測試: 提早解析 --headless-log, 讓初始化階段的錯誤也能寫入標記檔
+    // (GUI 子系統 stdout 不可見, headless 錯誤必須走標記檔)
+    const int earlyLogIdx = qApp->arguments().indexOf("--headless-log");
+    if (earlyLogIdx >= 0 && earlyLogIdx + 1 < qApp->arguments().size())
+        Server::setHeadlessLogFile(qApp->arguments().at(earlyLogIdx + 1));
+
     QCoreApplication::addLibraryPath(QCoreApplication::applicationDirPath() + "/plugins");
 
     // 若 exe 旁放了 Qt6 DLL，Qt 會把 prefix 重定位到 exe 目錄，導致 multimedia 後端
@@ -120,8 +138,10 @@ int main(int argc, char *argv[])
     qApp->installTranslator(&qt_translator);
     qApp->installTranslator(&translator);
 
-    if (!EngineBootstrap::initialize())
+    if (!EngineBootstrap::initialize()) {
+        Server::writeHeadlessLog("ERROR: EngineBootstrap::initialize failed");
         return 1;
+    }
 #ifdef AUDIO_SUPPORT
     QObject::connect(Sanguosha, &Engine::audioEffectRequested,
                      [](const QString &filename, bool superpose) { Audio::play(filename, superpose); });
@@ -209,8 +229,8 @@ int main(int argc, char *argv[])
             lua_getglobal(L, "RUNNER_DO_ASSERTIONS");
             if (lua_isfunction(L, -1)) {
                 if (lua_pcall(L, 0, 1, 0) != 0) {
-                    const char *err = lua_tostring(L, -1);
-                    printf("ERROR in assertions: %s\n", err ? err : "unknown");
+                    const QString err = luaErrorWithTraceback(L);
+                    printf("ERROR in assertions: %s\n", qUtf8Printable(err));
                     lua_pop(L, 1);
                     luaTestPassed = false;
                 } else {
@@ -235,10 +255,10 @@ int main(int argc, char *argv[])
         lua_getfield(L, -1, "execute");
         if (lua_isfunction(L, -1)) {
             if (lua_pcall(L, 0, 0, 0) != 0) {
-                const char *err = lua_tostring(L, -1);
-                printf("ERROR: %s\n", err ? err : "unknown");
+                const QString err = luaErrorWithTraceback(L);
+                printf("ERROR: %s\n", qUtf8Printable(err));
                 lua_pop(L, 1);
-                Server::writeHeadlessLog(QString("Test execution failed: %1").arg(err ? err : "unknown"));
+                Server::writeHeadlessLog(QString("Test execution failed: %1").arg(err));
                 return 1;
             }
         } else {
@@ -280,7 +300,7 @@ int main(int argc, char *argv[])
             const QString modeId = args.at(modeIdx + 1);
             Config.GameMode = Sanguosha->getGameMode(modeId);
             if (!Config.GameMode.isValid()) {
-                qCritical("Unknown game mode '%s'", qPrintable(modeId));
+                Server::writeHeadlessLog(QString("ERROR: Unknown game mode '%1'").arg(modeId));
                 return 1;
             }
         }

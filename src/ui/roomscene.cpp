@@ -6947,8 +6947,9 @@ void RoomScene::onCardActionButtonClicked(const QString &buttonId, int cardId)
 			lua_pushinteger(L, cardId);
 			lua_pushinteger(L, mode);
 			if (lua_pcall(L, 3, 0, 0) != 0) {
-				QString error = lua_tostring(L, -1);
+				const QString error = luaErrorWithTraceback(L);
 				lua_pop(L, 1);
+				qWarning("CardActionButton callback error: %s", qUtf8Printable(error));
 			}
 		}
 	} else if (!callbackKey.isEmpty()) {
@@ -6964,8 +6965,9 @@ void RoomScene::onCardActionButtonClicked(const QString &buttonId, int cardId)
 				lua_pushinteger(L, cardId);
 				lua_pushinteger(L, mode);
 				if (lua_pcall(L, 3, 0, 0) != 0) {
-					QString error = lua_tostring(L, -1);
+					const QString error = luaErrorWithTraceback(L);
 					lua_pop(L, 1);
+					qWarning("GetCardActionButtonCallback error: %s", qUtf8Printable(error));
 				}
 			} else {
 				lua_pop(L, 1);

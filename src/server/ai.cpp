@@ -4,6 +4,7 @@
 //#include "standard.h"
 #include "maneuvering.h"
 #include "lua.hpp"
+#include "lua-wrapper.h"
 //#include "scenario.h"
 #include "aux-skills.h"
 #include "settings.h"
@@ -461,7 +462,11 @@ QString LuaAI::askForUseCard(const QString &pattern, const QString &prompt, cons
     lua_pushinteger(L, method);
 
     int error = lua_pcall(L, 4, 1, 0);
-    const QString &result = lua_tostring(L, -1);
+    QString result;
+    if (error != 0)
+        result = luaErrorWithTraceback(L);
+    else
+        result = QString::fromUtf8(lua_tostring(L, -1));
     lua_pop(L, 1);
 
     if (error!=0) {
@@ -485,7 +490,7 @@ QList<int> LuaAI::askForDiscard(const QString &reason, int discard_num, int min_
     lua_pushstring(L, pattern.toLatin1());
 
     if (lua_pcall(L, 7, 1, 0)!=0) {
-		const QString &error_msg = lua_tostring(L, -1);
+		const QString error_msg = luaErrorWithTraceback(L);
 		lua_pop(L, 1);
 		room->output(error_msg);
         return TrustAI::askForDiscard(reason, discard_num, min_num, optional, include_equip, pattern);
@@ -523,7 +528,7 @@ int LuaAI::askForAG(const QList<int> &card_ids, bool refusable, const QString &r
     lua_pushstring(L, reason.toLatin1());
 
     if (lua_pcall(L, 4, 1, 0)!=0) {
-		const QString &error_msg = lua_tostring(L, -1);
+		const QString error_msg = luaErrorWithTraceback(L);
 		lua_pop(L, 1);
 		room->output(error_msg);
         return TrustAI::askForAG(card_ids, refusable, reason);
@@ -563,7 +568,7 @@ void LuaAI::askForGuanxing(const QList<int> &cards, QList<int> &up, QList<int> &
     lua_pushinteger(L, guanxing_type);
 
     if (lua_pcall(L, 3, 2, 0)!=0) {
-		const QString &error_msg = lua_tostring(L, -1);
+		const QString error_msg = luaErrorWithTraceback(L);
 		lua_pop(L, 1);
 		room->output(error_msg);
         return TrustAI::askForGuanxing(cards, up, bottom, guanxing_type);
@@ -602,7 +607,7 @@ QString LuaAI::askForGeneral(const QStringList &generals, const QString &default
     lua_pushstring(L, reason.toLatin1().data());
 
     if (lua_pcall(L, 4, 1, 0) != 0) {
-        const QString &error_msg = lua_tostring(L, -1);
+        const QString error_msg = luaErrorWithTraceback(L);
         lua_pop(L, 1);
         room->output(error_msg);
         return TrustAI::askForGeneral(generals, default_choice, reason);
