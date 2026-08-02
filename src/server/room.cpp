@@ -4698,22 +4698,30 @@ void Room::chooseGenerals(QList<ServerPlayer*> players)
 	QString general = "sujiang";
 	ServerPlayer*the_lord = getLord();
 	if (players.contains(the_lord)){
+		// 自動化測試: headless 指定主公武將 (--test-general), 跳過隨機選將
+		const QString forcedName = Server::forcedHeadlessGeneral;
+		const bool forced = Server::isHeadlessMode && !forcedName.isEmpty()
+			&& Sanguosha->getGeneral(forcedName) != nullptr;
 		QStringList lord_list;
-		if (Config.EnableSame || mode == "03_1v2"){
-			lord_list = Sanguosha->getRandomGenerals(Config.value("MaxChoice", 5).toInt());
-			if(mode == "03_1v2"){
-				QStringList all_generals = Sanguosha->getLimitedGeneralNames();
-				qShuffle(all_generals);
-				foreach(QString general_name, all_generals){
-					if(general_name.contains("ddz_")&&!lord_list.contains(general_name)){
-						lord_list.prepend(general_name);
-						break;
+		if (forced){
+			general = forcedName;
+		}else{
+			if (Config.EnableSame || mode == "03_1v2"){
+				lord_list = Sanguosha->getRandomGenerals(Config.value("MaxChoice", 5).toInt());
+				if(mode == "03_1v2"){
+					QStringList all_generals = Sanguosha->getLimitedGeneralNames();
+					qShuffle(all_generals);
+					foreach(QString general_name, all_generals){
+						if(general_name.contains("ddz_")&&!lord_list.contains(general_name)){
+							lord_list.prepend(general_name);
+							break;
+						}
 					}
 				}
-			}
-		}else
-			lord_list = Sanguosha->getRandomLords();
-		general = askForGeneral(the_lord, lord_list, QString(), "for_lord");
+			}else
+				lord_list = Sanguosha->getRandomLords();
+			general = askForGeneral(the_lord, lord_list, QString(), "for_lord");
+		}
 		the_lord->setGeneralName(general);
 		notifyProperty(the_lord, the_lord, "general");
 		if (!Config.EnableBasara){
@@ -4737,7 +4745,15 @@ void Room::chooseGenerals(QList<ServerPlayer*> players)
 		}else if(Config.Enable2ndGeneral){
 			if(general=="yinni_hide") general = the_lord->property("yinni_general").toString();
 			lord_list = Sanguosha->getRandomGenerals(Config.value("MaxChoice", 5).toInt(),QSet<QString>()<<general);
-			general = askForGeneral(the_lord, lord_list);
+			// 自動化測試: headless 指定主公副將 (--test-general2), 否則隨機
+			const QString forced2Name = Server::forcedHeadlessGeneral2;
+			if (Server::isHeadlessMode && !forced2Name.isEmpty()
+				&& Sanguosha->getGeneral(forced2Name) != nullptr
+				&& forced2Name != general){
+				general = forced2Name;
+			}else{
+				general = askForGeneral(the_lord, lord_list);
+			}
 			the_lord->setGeneral2Name(general);
 			notifyProperty(the_lord, the_lord, "general2");
 			if (!Config.EnableBasara){

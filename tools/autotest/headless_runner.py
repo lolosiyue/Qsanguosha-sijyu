@@ -10,16 +10,50 @@
 """
 import argparse
 import os
+import re
 import sys
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from runner_common import (common_args, describe_exit, find_exe, hex_exit,
-                           is_crash_code, kill_pid, log_dir_for,
-                           parse_headless_log, resolve_workdir, spawn, stamp,
-                           tail_lines, wait_exit, write_csv)
+from runner_common import (HEADLESS_HEADER, common_args, describe_exit,
+                           find_exe, hex_exit, is_crash_code, kill_pid,
+                           log_dir_for, parse_headless_log, resolve_workdir,
+                           spawn, stamp, tail_lines, wait_exit, write_csv)
 
 EXE_NAME = "QSanguosha.exe"
 PER_GAME_TIMEOUT = 600  # 每局預估上限 (秒, 20p 大規模對局較慢)
+
+
+CUR_GAME_RE = re.compile(r">>> Starting headless game (\d+) <<<")
+
+
+def current_game(headless_log):
+    """解析最後一次 header 之後的 'Starting headless game N' (目前進行到第幾局)。"""
+    m = None
+    if os.path.isfile(headless_log):
+        with open(headless_log, encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+        start = 0
+        for i, line in enumerate(lines):
+            if HEADLESS_HEADER.search(line):
+                start = i
+        for line in lines[start:]:
+            m = CUR_GAME_RE.search(line)
+    return int(m.group(1)) if m else 0
+
+
+def report_progress(label, games, prev, finished, failed):
+    """印出進度變化: 局完成。回傳更新後的 prev dict。"""
+    now = time.strftime("%H:%M:%S")
+    total = sum(finished.values())
+    if total != prev["total"] or failed != prev["failed"]:
+        top = sorted(finished.items(), key=lambda kv: -kv[1])[:3]
+        dist = ", ".join("%s x%d" % (w, c) for w, c in top) if top else "-"
+        print("  [%s] [%s] 局 %d/%d 完成 | 勝方: %s%s" % (
+            label, now, total, games, dist,
+            " | 失敗 %d 局" % failed if failed else ""))
+        return {"total": total, "failed": failed}
+    return prev
 
 
 def run_mode(args, exe, workdir, mode, games, tag=""):
@@ -27,15 +61,43 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
     suffix = "-%s" % tag if tag else ""
     log_path = os.path.join(log_dir_for(args), "headless", "%s%s.log" % (mode, suffix))
     headless_log = os.path.join(log_dir_for(args), "headless", "%s%s-headless.log" % (mode, suffix))
+    label = mode + ("" if not tag else "#%s" % tag)
     cmd = [exe, "--headless", "--game-mode", mode, "--games", str(games),
            "--headless-log", headless_log]
+    # 自動化測試: 指定主公武將 (--test-general/--test-general2), 反覆測同一武將找 bug
+    if getattr(args, "general", ""):
+        cmd += ["--test-general", args.general]
+    if getattr(args, "general2", ""):
+        cmd += ["--test-general2", args.general2]
+    # 清除舊 log, 避免跨執行殘留污染進度/標記解析
+    for p in (log_path, headless_log):
+        if os.path.isfile(p):
+            os.remove(p)
     proc = spawn(cmd, workdir, log_path)
     timeout = games * PER_GAME_TIMEOUT + 120
-    code = wait_exit(proc, timeout)
-    timed_out = code is None
-    if timed_out:
-        kill_pid(proc.pid)
-        code = proc.wait()
+    deadline = time.time() + timeout
+    timed_out = False
+    code = None
+    # 輪詢標記檔, 每局開始/完成即在 CMD 印進度
+    prev = {"total": 0, "failed": 0}
+    prev_current = 0
+    while True:
+        code = proc.poll()
+        if code is not None:
+            break
+        if time.time() > deadline:
+            timed_out = True
+            kill_pid(proc.pid)
+            code = proc.wait()
+            break
+        finished, failed, done = parse_headless_log(headless_log)
+        cur = current_game(headless_log)
+        if cur != prev_current:
+            if cur > 0 and sum(finished.values()) == prev["total"]:
+                print("  [%s] [%s] 第 %d/%d 局進行中..." % (label, time.strftime("%H:%M:%S"), cur, games))
+            prev_current = cur
+        prev = report_progress(label, games, prev, finished, failed)
+        time.sleep(2)
     close_proc(proc)
     finished, failed, done = parse_headless_log(headless_log)
     n_finished = sum(finished.values())
@@ -68,6 +130,10 @@ def main():
                         help="每個模式要跑的局數 (預設 5)")
     parser.add_argument("--parallel", type=int, default=2,
                         help="同時執行的 process 數 (預設 2)")
+    parser.add_argument("--general", default="",
+                        help="指定主公武將, 反覆測試同武將找 bug (空 = 隨機)")
+    parser.add_argument("--general2", default="",
+                        help="雙將模式指定主公副將 (空 = 隨機)")
     args = parser.parse_args()
 
     modes = [m.strip() for m in args.modes.split(",") if m.strip()]

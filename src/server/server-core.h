@@ -25,6 +25,9 @@ public:
     static bool isHeadlessMode;
     // 自動化測試: headless 壓力測試總局數 (--games N 覆寫, 預設 10000)
     static int headlessGameLimit;
+    // 自動化測試: headless 指定主公武將 (--test-general/--test-general2, 空 = 隨機)
+    static QString forcedHeadlessGeneral;
+    static QString forcedHeadlessGeneral2;
 
     void broadcast(const QString &msg);
     bool listen();
