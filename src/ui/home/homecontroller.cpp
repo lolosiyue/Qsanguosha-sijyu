@@ -159,14 +159,8 @@ void HomeController::checkUpdates()
 
 QUrl HomeController::randomBackdrop() const
 {
-    // 僅挑選靜態圖片，排除影片，避免影片播放失敗回退時又隨機抽到同一個 mp4。
-    const QStringList imageFilters =
-        QStringList() << QStringLiteral("*.jpg") << QStringLiteral("*.jpeg")
-                      << QStringLiteral("*.png") << QStringLiteral("*.bmp")
-                      << QStringLiteral("*.gif") << QStringLiteral("*.webp");
-
     QDir dir(QStringLiteral("image/system/backdrop"));
-    const QStringList files = dir.entryList(imageFilters, QDir::Files);
+    const QStringList files = dir.entryList(QDir::Files);
     if (files.isEmpty())
         return QUrl();
 

@@ -19,5 +19,9 @@ Item {
         opacity: HomeTheme.backdropOpacity
 
         onErrorOccurred: root.errorOccurred()
+
+        // Qt 6 的 Video 不會自動播放，source 就緒後需呼叫 play() 才會有畫面
+        Component.onCompleted: video.play()
+        onSourceChanged: video.play()
     }
 }
