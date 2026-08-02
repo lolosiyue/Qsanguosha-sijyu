@@ -390,6 +390,18 @@ int main(int argc, char *argv[])
             Config.AutoAddRobots = true;
             continue;
         }
+        if (arg == "--test-general2" || arg.startsWith("--test-general2=")) {
+            // 自動化測試: 雙將模式副將 (--test-general2=<name> 或 --test-general2 <name>)
+            QString general = arg.mid(arg.indexOf('=') + 1);
+            if (general == arg) {
+                const int idx = qApp->arguments().indexOf(arg);
+                if (idx >= 0 && idx + 1 < qApp->arguments().size())
+                    general = qApp->arguments().at(idx + 1);
+            }
+            if (!general.isEmpty() && !general.startsWith("-"))
+                Config.AutoPickGeneral2 = general;
+            continue;
+        }
         if (arg.startsWith("--test-general")) {
             // 自動化測試: 自動選將 (--test-general=<name> 或 --test-general <name>)
             QString general = arg.mid(arg.indexOf('=') + 1);
@@ -421,7 +433,8 @@ int main(int argc, char *argv[])
         if (diag.open(QIODevice::Append | QIODevice::Text)) {
             QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
                 << " main: args=" << qApp->arguments().join(" ")
-                << " AutoPickGeneral='" << Config.AutoPickGeneral << "'\n";
+                << " AutoPickGeneral='" << Config.AutoPickGeneral
+                << "' AutoPickGeneral2='" << Config.AutoPickGeneral2 << "'\n";
         }
     }
 

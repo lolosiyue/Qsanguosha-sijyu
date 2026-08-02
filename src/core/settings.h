@@ -72,6 +72,8 @@ public:
     QString UserAvatar;
     // 自動化測試: --test-general 指定自動選將 (空字串 = 不啟用)
     QString AutoPickGeneral;
+    // 自動化測試: --test-general2 指定雙將模式副將 (空字串 = 副將清單隨機)
+    QString AutoPickGeneral2;
     // 自動化測試: --auto-robots owner 連線後自動填滿 AI 並開局
     bool AutoAddRobots;
     QStringList HistoryIPs;
