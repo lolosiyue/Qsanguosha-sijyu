@@ -37,6 +37,62 @@ def resolve_workdir(exe_root):
 
 # ── 日誌標記解析 ────────────────────────────────────────────
 
+# Windows 常見 exit code 翻譯 (閃退摘要用)
+EXIT_NAMES = {
+    0xC0000005: "STATUS_ACCESS_VIOLATION (存取違規)",
+    0xC0000409: "STATUS_STACK_BUFFER_OVERRUN (fail-fast / GS cookie)",
+    0xC00000FD: "STATUS_STACK_OVERFLOW (堆疊溢位)",
+    0xC0000094: "STATUS_INTEGER_DIVIDE_BY_ZERO",
+    0xC0000374: "STATUS_HEAP_CORRUPTION",
+    0xC000001D: "STATUS_ILLEGAL_INSTRUCTION",
+    0xC000000D: "STATUS_INVALID_CRUNTIME_PARAMETER",
+    0x80000003: "STATUS_BREAKPOINT",
+    0xC0000135: "STATUS_DLL_NOT_FOUND",
+    0xC0000139: "STATUS_ENTRYPOINT_NOT_FOUND",
+}
+
+def hex_exit(code):
+    """exit code 轉 16 進位表示 (Python 回傳帶符號)。"""
+    if code is None:
+        return "n/a"
+    return "0x%08X" % (code & 0xFFFFFFFF)
+
+def describe_exit(code):
+    """exit code 翻譯: 0x 值 + Windows 狀態名。"""
+    if code is None:
+        return "n/a"
+    h = code & 0xFFFFFFFF
+    if h == 0:
+        return "0 (正常結束)"
+    if h >= 0x80000000:
+        return EXIT_NAMES.get(h, hex_exit(h))
+    return "%s (應用程式退出碼, 非崩潰)" % hex_exit(h)
+
+def is_crash_code(code):
+    """判斷是否為 Windows 崩潰碼 (NTSTATUS 高位 0xC0000000+ 或 0x80000003 斷點)。
+    exit=1 等小值是應用程式自行 return, 不是閃退。"""
+    if code is None:
+        return False
+    h = code & 0xFFFFFFFF
+    return h == 0x80000003 or h >= 0xC0000000
+
+def tail_lines(path, n=20):
+    """讀檔尾最後 n 行 (檔案可能數百 KB, 只讀尾部 64KB)。"""
+    if not os.path.isfile(path):
+        return []
+    with open(path, "rb") as f:
+        f.seek(0, 2)
+        size = f.tell()
+        if size == 0:
+            return []
+        chunk = min(size, 65536)
+        f.seek(size - chunk)
+        data = f.read().decode("utf-8", errors="replace")
+    lines = data.splitlines()
+    if size > chunk and lines:
+        lines = lines[1:]  # 第一行可能被截斷
+    return lines[-n:]
+
 MARK_GAME_START = "[AUTOTEST] game start"
 MARK_GAME_OVER = re.compile(r"\[AUTOTEST\] game over ?(.*)$")
 
@@ -74,8 +130,15 @@ def parse_headless_log(path):
 
 # ── 子行程管理 ──────────────────────────────────────────────
 
-def spawn(cmd, cwd, log_path):
-    """spawn 子行程, stdout/stderr 合流寫入 log_path, 回傳 Popen。"""
+def spawn(cmd, cwd, log_path, console=False):
+    """spawn 子行程, stdout/stderr 合流寫入 log_path, 回傳 Popen。
+    console=True 時輸出直接繼承終端 (不寫 log), 供 --console 模式用。"""
+    if console:
+        proc = subprocess.Popen(
+            cmd, cwd=cwd, stdout=None, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL
+        )
+        proc._logfile = None  # type: ignore[attr-defined]
+        return proc
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     logf = open(log_path, "w", encoding="utf-8", errors="replace")
     proc = subprocess.Popen(

@@ -19,7 +19,12 @@ python tools\autotest\headless_runner.py `
     --games 5 --parallel 2
 ```
 
-輸出: `autotest-logs\headless\<mode>.log` + `summary-headless-<時間>.csv`
+`--parallel` = 同時執行的 **process 總數**：模式數 ≥ parallel 時每個模式
+一個 process；模式數不足時同一模式開多份 (round-robin)，每份獨立 log
+(`<mode>-N.log` / `<mode>-N-headless.log`)。例: `--modes 20p --parallel 10`
+= 10 個 20p process 同時跑。注意多 process 同時打 20p 對 CPU/RAM 負載高。
+
+輸出: `autotest-logs\headless\<mode>[-N].log` + `summary-headless-<時間>.csv`
 
 ## network_runner.py — 真實網路測試 (串行)
 
@@ -35,9 +40,23 @@ python tools\autotest\network_runner.py `
 # 1v1 KOF 用佔位選將:
 python tools\autotest\network_runner.py `
     --modes 02_1v1 --runs 2 --general x0
+
+# 雙將模式: 指定主將 + 副將 (未指定副將 = server 清單隨機):
+python tools\autotest\network_runner.py `
+    --modes 20p --runs 1 --general s4_huangzhong --general2 zhenji
 ```
 
 輸出: `autotest-logs\network\<mode>\server.log` / `runN.log` + `summary-network-<時間>.csv`
+
+## 一鍵 batch (選擇寫在 bat 頂部)
+
+| 檔案 | 用途 | 頂部變數 |
+|---|---|---|
+| `run_headless.bat` | headless 壓力測試 | `MODES/GAMES/PARALLEL/LOG_DIR/LABEL` |
+| `run_network.bat` | 真實網路測試 | `MODES/RUNS/GENERAL/GENERAL2/LOG_DIR/LABEL` |
+
+例: 20p 一局、主將 s4_huangzhong、副將隨機 → 改 `run_network.bat` 頂部
+`MODES=20p RUNS=1 GENERAL=s4_huangzhong GENERAL2=` 後直接執行。
 
 ## C++ 支援參數
 
