@@ -2,7 +2,7 @@
 
 - Status: Approved Plan
 - Implementation: M1 In Progress
-- Last Updated: 2026-07-30
+- Last Updated: 2026-08-02
 - **規範性**：本文件是跨平台現代化與另一分支通用功能移植的唯一權威執行計劃；與既有 roadmap 或審計結論衝突時，以本文件為準。
 
 ## 1. 來源、目的與範圍
@@ -53,7 +53,7 @@
 |---|---|
 | `qsanguosha_engine` | 共用規則、資料及伺服器核心；只依賴必要的 Qt Core／Network，不得依賴 Widgets、Quick、Multimedia 或顯示伺服器 |
 | `QSanguosha` | Windows GUI 客戶端及本地遊戲入口 |
-| `qsanguosha-server` | Windows／Linux 無頭伺服器，使用 `QCoreApplication` |
+| `qsanguosha_server` | Windows／Linux 無頭伺服器，使用 `QCoreApplication` |
 | Android app target | Qt GUI／Quick／Widgets／Multimedia 客戶端；不提供公開專用伺服器，但單機可建立內嵌房間 |
 | `crashreporter` | Windows 純 Win32／DbgHelp 診斷工具 |
 | CTest targets | 單元、整合、Lua、自動對戰及性能測試 |
@@ -62,10 +62,12 @@ CMake 必須啟用 AUTOMOC、AUTOUIC、AUTORCC，管理資源、翻譯、安裝�
 
 ### 3.1 引擎與 GUI 解耦
 
-- 將 `Skill::getDialog()` 形式的 GUI 物件依賴改為純資料 `SkillDialogInfo { type, parameter }`。
+- 本階段的規範性細節、批次及驗收以 [`engine-gui-decoupling-implementation-plan.md`](engine-gui-decoupling-implementation-plan.md) 為準。
+- 將 `Skill::getDialog()` 形式的 GUI 物件依賴改為純資料 `SkillDialogInfo { type, objectName, parameters }`。
 - UI 透過 `SkillDialogRegistry` 根據描述建立實際對話框；Lua 技能同樣只傳遞描述資料。
 - 將伺服器資料結構與 QWidget 對話框拆分。
 - core/server 中的 QMessageBox 改為結構化日誌及可傳回錯誤，不得由無頭程序建立 GUI。
+- M1 的完成標準固定為：`qsanguosha_engine` 可獨立編譯，Qt module 只連結 Core／Network；Windows 必要網路 system library 不受此 Qt allowlist 限制。
 
 ### 3.2 確定性隨機數
 
@@ -105,6 +107,8 @@ Audio
 Android 固定只為 `button-down`、`button-hover`、`choose-item`、`pop-up` 等觸控回饋提供 WAV 衍生資產，以 `QSoundEffect` 預載。約 15,357 個原有 OGG 語音與 BGM 不整批轉 WAV；語音使用可重用播放器池，BGM 使用獨立播放器。App 進入背景時暫停音訊，返回前景後按原狀態恢復。Android 不打包任何 FMOD `.so`、Java 元件或標頭。
 
 CMake 提供 `QSAN_AUDIO_BACKEND=FMOD|QT|NULL` 並按平台設定固定預設。`Audio::getVersion()` 回傳實際後端名稱及版本，不再假設一定是 FMOD。
+
+M1 引擎解耦先以 `Engine::audioEffectRequested` signal 建立不含 FMOD 的純 Core port；本節的完整 `IAudioBackend` 三後端仍在 M6 實作，兩者不是互斥方案。
 
 Windows 先驗證現有 FMOD Ex 4.44 與 MSVC 2022 x64 的連結、啟動及壓力測試。若失敗，預定退路是由外部 `FMOD_SDK_ROOT` 提供 FMOD Core 2.03；不得修改 `include/` 或 `lib/`。發布前必須確認 [FMOD 授權與 attribution](https://www.fmod.com/legal)。
 
@@ -200,6 +204,8 @@ Android 固定橫向顯示，處理安全區、Android 返回鍵、虛擬鍵盤�
 
 ### 9.1 日誌與崩潰報告
 
+M1 先完成 GUI／CMD 共用的 `Server::logMessage()` 與純文字 console 格式；以下 JSON Lines、輪替及保留策略屬後續診斷里程碑。
+
 - 伺服器使用 JSON Lines 結構化日誌，包含 build/session/game ID。
 - 日誌每日及 20 MiB 輪替，保留 14 日；密碼及權杖永不寫入。
 - Windows 使用 DbgHelp 產生 minidump，涵蓋未處理例外、terminate、abort 及手動「產生卡死報告」。
@@ -221,7 +227,7 @@ M1 已進入實作，但只完成 Windows CMake 過渡建置；其餘里程碑�
 | 里程碑 | 狀態 | 主要交付 | 合併門檻 |
 |---|---|---|---|
 | M0 | Not Started | 建立可重現的現況基線、測試清單與資產盤點 | 現有 Windows 行為、協定與重播樣本可重現；無功能性改動 |
-| M1 | In Progress | Windows CMake 過渡建置已完成；`qsanguosha_engine` 邊界待建立 | Windows GUI 與既有建置結果可對照；引擎／GUI 依賴邊界完成 |
+| M1 | Ready for Implementation | Windows CMake 過渡建置已完成；引擎／GUI 解耦設計與四批次計畫已鎖定 | Windows GUI 與既有建置結果可對照；STATIC engine 僅連結 Qt Core／Network；GUI／CMD server 驗收完成 |
 | M2 | Not Started | Qt 6.11.1、MSVC 2022 與 Lua 5.4.8 遷移 | Windows GUI、server、Lua/SWIG 及 CTest 全數通過 |
 | M3 | Not Started | `SkillDialogInfo`、選包白名單、確定性 RNG | 相同種子、輸入與包集合產生相同結果；白名單不可由客戶端繞過 |
 | M4 | Not Started | 協定與重播版本化、相容性拒絕路徑 | 新舊版本差異可診斷；不支援版本被明確拒絕而非靜默誤讀 |
@@ -257,7 +263,7 @@ M1 已進入實作，但只完成 Windows CMake 過渡建置；其餘里程碑�
 - 不承諾舊客戶端與新協定永久互通；以明確版本協商、拒絕訊息及受控遷移為準。
 - 不全面重寫引擎、技能或 LuaAI，不在現代化過程中順便更改卡牌平衡。
 - 不修改 `include/`、`lib/` 內第三方庫；依賴升級須以外部套件、可重現建置或獨立導入流程處理。
-- 本文件只定義計劃；截至 2026-07-25，M0–M9D 均未開始，沒有任何里程碑完成聲明。
+- 本文件只定義總計畫；截至 2026-08-02，M1 已完成設計收斂但尚未完成程式實作，其餘里程碑狀態以上表為準。
 
 ## 13. 決策紀錄與官方參考
 
@@ -271,6 +277,10 @@ M1 已進入實作，但只完成 Windows CMake 過渡建置；其餘里程碑�
 | 2026-07-25 | 音訊採 Windows FMOD、Android Qt Multimedia、無頭 Null 三後端 | Approved |
 | 2026-07-25 | 「全面移除 FMOD」方案由上述雙實際後端加 Null 後端方案取代 | Superseded |
 | 2026-07-25 | 約 1.09 GiB 音訊與約 1.27 GiB 圖片不得直接置入 Android base module | Approved |
+| 2026-08-02 | M1 以 `qsanguosha_engine` 可獨立編譯且 Qt module 只有 Core／Network 為完成標準 | Approved |
+| 2026-08-02 | server 設定保留 `config.ini`／QSettings，不導入 YAML | Approved |
+| 2026-08-02 | GUI `PC Console Start` 保留內嵌 server；另建可獨立部署的 `qsanguosha_server.exe` | Approved |
+| 2026-08-02 | M1 採四個可建置批次，完整細節由引擎／GUI 解耦實作計畫規範 | Approved |
 
 「全面移除 FMOD」不再是現行方向。FMOD 保留於 Windows 桌面；Android 不連結或載入 FMOD，改用 Qt Multimedia；Ubuntu 無頭伺服器使用 Null 後端。三者共用同一音訊介面，但各自封裝平台依賴。
 
