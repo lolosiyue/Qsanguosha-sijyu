@@ -3,6 +3,9 @@
 #include <QDir>
 #include <QFile>
 #include <QPointer>
+#include <QApplication>
+#include <QCoreApplication>
+#include <QStringList>
 
 #include "mainwindow.h"
 #include "settings.h"
@@ -77,17 +80,34 @@ int main(int argc, char *argv[])
 #ifdef ANDROID
 	AndroidAssets::copyAssetsToWritableLocation();
 #endif
-    if (argc > 1 && strcmp(argv[1], "-server") == 0)
-        new QCoreApplication(argc, argv);
-    else if (argc > 1 && strcmp(argv[1], "-manual") == 0) {
+    // headless 模式 (-server / --headless / --lua-test) 只用 QCoreApplication,
+    // 不載入 QPA 平台插件與 QtWidgets/QML:記憶體↓、無桌面環境可跑、啟動加快。
+    QStringList appArgs;
+    for (int i = 1; i < argc; ++i)
+        appArgs << QString::fromLocal8Bit(argv[i]);
+
+    bool hasTestScenarioArg = appArgs.contains("--test-scenario");
+    foreach (const QString &arg, appArgs) {
+        if (arg.startsWith("--test-scenario=")) {
+            hasTestScenarioArg = true;
+            break;
+        }
+    }
+
+    const bool headlessApp = appArgs.contains("-server")
+        || appArgs.contains("--lua-test")
+        || appArgs.contains("--headless")
+        || (hasTestScenarioArg && appArgs.contains("-h"));
+
+    if (argc > 1 && strcmp(argv[1], "-manual") == 0) {
         new QCoreApplication(argc, argv);
         if (!EngineBootstrap::initialize(true))
             return 1;
         return 0;
-    } else if (argc > 1 && strcmp(argv[1], "--lua-test") == 0)
+    } else if (headlessApp)
         new QCoreApplication(argc, argv);
     else
-       new QApplication(argc, argv);
+        new QApplication(argc, argv);
 
 #ifdef Q_OS_WIN
     qputenv("QT_MEDIA_BACKEND", "ffmpeg");
@@ -147,10 +167,14 @@ int main(int argc, char *argv[])
                      [](const QString &filename, bool superpose) { Audio::play(filename, superpose); });
 #endif
     Config.init();
-    UiConfig.init();
+    // UiConfig 載入 QFontDatabase/QFont,必須在有 QGuiApplication 的環境才安全;
+    // headless(QCoreApplication)直接跳過,字型與 palette 只有 GUI 需要。
+    if (qobject_cast<QApplication *>(qApp))
+        UiConfig.init();
     applyColorScheme(Config.ColorScheme);
     applyVisualMode(Config.VisualMode);
-    qApp->setFont(UiConfig.AppFont);
+    if (qobject_cast<QApplication *>(qApp))
+        qApp->setFont(UiConfig.AppFont);
     BanPair::loadBanPairs();
 
     if (qApp->arguments().contains("--lua-test")) {
@@ -314,6 +338,32 @@ int main(int argc, char *argv[])
         const int logIdx = args.indexOf("--headless-log");
         if (logIdx >= 0 && logIdx + 1 < args.size())
             Server::setHeadlessLogFile(args.at(logIdx + 1));
+        // 自動化測試: headless 指定主公武將 (本分支提前 return, 需自行解析)
+        //   --test-general <主將>  /  --test-general2 <副將> (雙將模式)
+        foreach (const QString &arg, args) {
+            QString name, value;
+            if (arg.startsWith("--test-general2=")) {
+                name = "--test-general2";
+                value = arg.mid(16);
+            } else if (arg.startsWith("--test-general=")) {
+                name = "--test-general";
+                value = arg.mid(15);
+            } else if (arg == "--test-general" || arg == "--test-general2") {
+                name = arg;
+                const int idx = args.indexOf(arg);
+                if (idx >= 0 && idx + 1 < args.size())
+                    value = args.at(idx + 1);
+            }
+            if (name.isEmpty() || value.isEmpty() || value.startsWith("-"))
+                continue;
+            if (name == "--test-general2")
+                Server::forcedHeadlessGeneral2 = value;
+            else
+                Server::forcedHeadlessGeneral = value;
+        }
+        // 自動化測試 diag: 記錄指定武將, 供 runner 驗證指定生效
+        Server::writeHeadlessLog(QString("[AUTOTEST] forced general: main='%1' deputy='%2'")
+            .arg(Server::forcedHeadlessGeneral, Server::forcedHeadlessGeneral2));
         Server *server = new Server(qApp);
         qDebug() << ">>> Headless Mode: Starting stress test with"
                  << Server::headlessGameLimit << "games, mode" << Config.GameMode.mode_id << "<<<";

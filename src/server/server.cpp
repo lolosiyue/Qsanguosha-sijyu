@@ -1941,6 +1941,8 @@ void Server::listServerReply()
 
 bool Server::isHeadlessMode = false;
 int Server::headlessGameLimit = 10000;
+QString Server::forcedHeadlessGeneral;
+QString Server::forcedHeadlessGeneral2;
 static QString s_headlessLogFile;
 
 void Server::setHeadlessLogFile(const QString &path)
