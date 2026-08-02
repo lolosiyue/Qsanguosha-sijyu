@@ -13,6 +13,7 @@
 #include "generalselector.h"
 #include "miniscenarios.h"
 #include "lua.hpp"
+#include "lua-wrapper.h"
 #include "exppattern.h"
 #include "wrapped-card.h"
 #include "roomthread.h"
@@ -11175,6 +11176,10 @@ int Room::getBossModeExpMult(int level) const
 	if (lua_pcall(m_lua, 1, 1, 0) == 0){
 		res = lua_tointeger(m_lua, -1);
 		lua_pop(m_lua, 1);
+	} else {
+		const QString error_msg = luaErrorWithTraceback(m_lua);
+		lua_pop(m_lua, 1);
+		const_cast<Room *>(this)->output("bossModeExpMult error: " + error_msg);
 	}
 	return res;
 }

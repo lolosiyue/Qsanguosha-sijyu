@@ -223,6 +223,19 @@ LuaAttackRangeSkillV2::LuaAttackRangeSkillV2(const QString &name, Frequency freq
     this->frequency = frequency;
 }
 
+QString luaErrorWithTraceback(lua_State *L, const char *fallback)
+{
+    const char *msg = lua_tostring(L, -1);
+    if (!msg)
+        msg = fallback ? fallback : "(unknown Lua error)";
+    // level=1: 略過本函數, 從呼叫端開始顯示 Lua call stack (含檔名:行號)
+    luaL_traceback(L, L, msg, 1);
+    const char *tb = lua_tostring(L, -1);
+    QString result = tb ? QString::fromUtf8(tb) : QString::fromUtf8(msg);
+    lua_pop(L, 1); // 彈掉 traceback, 原錯誤訊息留在堆疊頂供呼叫端 lua_pop
+    return result;
+}
+
 LuaViewAsEquipSkill::LuaViewAsEquipSkill(const QString &name, Frequency frequency)
     : ViewAsEquipSkill(name), view_as_equip(0)
 {
@@ -266,7 +279,8 @@ void LuaBattleArraySkill::summonFriends(ServerPlayer *player) const
     lua_pushlightuserdata(L, player);
     int result = lua_pcall(L, 1, 0, 0);
     if (result != 0) {
-        qWarning("LuaBattleArraySkill::summonFriends error: %s", lua_tostring(L, -1));
+        qWarning("LuaBattleArraySkill::summonFriends error: %s",
+                 qUtf8Printable(luaErrorWithTraceback(L)));
         lua_pop(L, 1);
     }
 }
