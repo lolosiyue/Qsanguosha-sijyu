@@ -3,6 +3,7 @@
 //#include "serverplayer.h"
 //#include "util.h"
 #include "room.h"
+#include <QRegularExpression>
 
 static GeneralSelector *Selector;
 
@@ -228,14 +229,15 @@ void GeneralSelector::loadSecondGeneralTable()
 {
     QFile file("etc/double-generals.txt");
     if (file.open(QIODevice::ReadOnly)) {
-		static QRegExp rx("(\\w+)\\s+(\\w+)\\s+(\\d+)");
+		static const QRegularExpression rx("^(\\w+)\\s+(\\w+)\\s+(\\d+)$");
         QTextStream stream(&file);
         while (!stream.atEnd()) {
             QString line = stream.readLine();
-            if (!rx.exactMatch(line))
-                continue;
+			const QRegularExpressionMatch match = rx.match(line);
+			if (!match.hasMatch())
+				continue;
 
-            QStringList texts = rx.capturedTexts();
+			QStringList texts = match.capturedTexts();
             QString first = texts.at(1);
             QString second = texts.at(2);
             int value = texts.at(3).toInt();
@@ -270,14 +272,15 @@ void GeneralSelector::load1v1Table()
 {
     QFile file("etc/1v1-priority.txt");
     if (file.open(QIODevice::ReadOnly)) {
-		static QRegExp rx("(\\w+)\\s+(\\d+)\\s*(\\*)?");
+		static const QRegularExpression rx("^(\\w+)\\s+(\\d+)\\s*(\\*)?$");
         QTextStream stream(&file);
         while (!stream.atEnd()) {
             QString line = stream.readLine();
-            if (!rx.exactMatch(line))
-                continue;
+			const QRegularExpressionMatch match = rx.match(line);
+			if (!match.hasMatch())
+				continue;
 
-            QStringList texts = rx.capturedTexts();
+			QStringList texts = match.capturedTexts();
             QString name = texts.at(1);
             int priority = texts.at(2).toInt();
 

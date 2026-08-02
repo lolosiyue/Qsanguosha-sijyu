@@ -8,6 +8,10 @@
 class Client;
 class QTextDocument;
 
+#if defined(QSAN_ENGINE_BUILD)
+using ClientPlayer = Player;
+extern Player *Self;
+#else
 class ClientPlayer : public Player
 {
     Q_OBJECT
@@ -60,6 +64,7 @@ signals:
 };
 
 extern ClientPlayer *Self;
+#endif
 
 #endif
 

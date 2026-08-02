@@ -15,7 +15,9 @@
 //#include "mountain.h"
 //#include "ai.h"
 #include "exppattern.h"
+#if !defined(QSAN_ENGINE_BUILD)
 #include "clientstruct.h"
+#endif
 
 class OLHujia : public Hujia
 {
@@ -2515,12 +2517,16 @@ public:
 
 	QDialog *getDialog() const
 	{
+#if !defined(QSAN_ENGINE_BUILD)
 		static HuashenDialog *dialog;
 
 		if (dialog == nullptr)
 			dialog = new HuashenDialog;
 
 		return dialog;
+#else
+		return nullptr;
+#endif
 	}
 };
 

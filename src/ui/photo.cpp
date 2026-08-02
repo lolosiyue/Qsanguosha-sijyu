@@ -26,7 +26,8 @@ using namespace QSanProtocol;
 // make layers (drawing order) configurable
 
 Photo::Photo() : PlayerCardContainer(), m_giftHighlighted(false), m_giftHighlightFrame(nullptr),
-    _m_cachedWidth(G_PHOTO_LAYOUT.m_normalWidth), _m_cachedHeight(G_PHOTO_LAYOUT.m_normalHeight)
+    _m_cachedWidth(G_PHOTO_LAYOUT.m_normalWidth), _m_cachedHeight(G_PHOTO_LAYOUT.m_normalHeight),
+    _m_scale(1.0)
 {
     _m_mainFrame = nullptr;
     m_player = nullptr;
@@ -69,16 +70,17 @@ void Photo::refresh(bool killed)
 {
     PlayerCardContainer::refresh(killed);
     if(!m_player) return;
+	const QSanRoomSkin::PhotoLayout *photoLayout = static_cast<const QSanRoomSkin::PhotoLayout *>(_m_layout);
 	if(m_player->getState()=="online"){
 		if(_m_onlineStatusItem)
 			_m_onlineStatusItem->hide();
 	}else{
-		QRect rect = G_PHOTO_LAYOUT.m_onlineStatusArea;
+		QRect rect = photoLayout->m_onlineStatusArea;
         QImage image(rect.size(), QImage::Format_ARGB32);
         image.fill(Qt::transparent);
         QPainter painter(&image);
-        painter.fillRect(QRect(0, 0, rect.width(), rect.height()), G_PHOTO_LAYOUT.m_onlineStatusBgColor);
-        G_PHOTO_LAYOUT.m_onlineStatusFont.paintText(&painter, QRect(QPoint(0, 0), rect.size()), Qt::AlignCenter, Sanguosha->translate(m_player->getState()));
+        painter.fillRect(QRect(0, 0, rect.width(), rect.height()), photoLayout->m_onlineStatusBgColor);
+        photoLayout->m_onlineStatusFont.paintText(&painter, QRect(QPoint(0, 0), rect.size()), Qt::AlignCenter, Sanguosha->translate(m_player->getState()));
         QPixmap pixmap = QPixmap::fromImage(image);
         _paintPixmap(_m_onlineStatusItem, rect, pixmap, _m_groupMain);
         _layBetween(_m_onlineStatusItem, _m_mainFrame, _m_chainIcon);
@@ -88,19 +90,19 @@ void Photo::refresh(bool killed)
 
 QRectF Photo::boundingRect() const
 {
-	const QSanRoomSkin::PhotoLayout *photoLayout = static_cast<const QSanRoomSkin::PhotoLayout*>(_m_layout);
-	if (photoLayout)
-		return QRect(0, 0, photoLayout->m_normalWidth, photoLayout->m_normalHeight);
-	return QRect(0, 0, _m_cachedWidth, _m_cachedHeight);
+	const QSanRoomSkin::PhotoLayout *photoLayout = static_cast<const QSanRoomSkin::PhotoLayout *>(_m_layout);
+	return QRect(0, 0, photoLayout->m_normalWidth, photoLayout->m_normalHeight);
 }
 
-void Photo::updatePhotoSize(int width, int height)
+void Photo::updatePhotoSize(int width, int height, qreal scale)
 {
-	if (_m_cachedWidth == width && _m_cachedHeight == height)
+	if (_m_cachedWidth == width && _m_cachedHeight == height
+		&& qFuzzyCompare(_m_scale, scale))
 		return;
 
 	_m_cachedWidth = width;
 	_m_cachedHeight = height;
+	_m_scale = scale;
 
 	QSanRoomSkin::PhotoSizeType sizeType = G_ROOM_SKIN.getPhotoSizeType(width, height);
 	const QSanRoomSkin::PhotoLayout &layout = G_ROOM_SKIN.getPhotoLayout(sizeType);
@@ -109,29 +111,33 @@ void Photo::updatePhotoSize(int width, int height)
 
 void Photo::setPhotoLayout(const QSanRoomSkin::PhotoLayout *layout)
 {
-	if (_m_layout == layout)
+	if (_m_layout == layout) {
+		_applyLayoutTransform(layout);
 		return;
+	}
 
+	prepareGeometryChange();
 	_m_layout = layout;
-
-	resetTransform();
-	setTransform(QTransform::fromTranslate(-layout->m_normalWidth / 2, -layout->m_normalHeight / 2), true);
 
 	if (_m_duanchangMask) {
 		_m_duanchangMask->setRect(QRect(0, 0, layout->m_normalWidth, layout->m_normalHeight));
 	}
 
-	prepareGeometryChange();
 	repaintAll();
+}
+
+void Photo::_applyLayoutTransform(const QSanRoomSkin::PhotoLayout *layout)
+{
+	setTransform(QTransform(_m_scale, 0.0, 0.0, _m_scale,
+		-layout->m_normalWidth * _m_scale / 2.0,
+		-layout->m_normalHeight * _m_scale / 2.0));
 }
 
 void Photo::repaintAll(bool all)
 {
-	const QSanRoomSkin::PhotoLayout *photoLayout = static_cast<const QSanRoomSkin::PhotoLayout*>(_m_layout);
-	if (!photoLayout) photoLayout = &G_PHOTO_LAYOUT;
+	const QSanRoomSkin::PhotoLayout *photoLayout = static_cast<const QSanRoomSkin::PhotoLayout *>(_m_layout);
 
-	resetTransform();
-	setTransform(QTransform::fromTranslate(-photoLayout->m_normalWidth / 2, -photoLayout->m_normalHeight / 2), true);
+	_applyLayoutTransform(photoLayout);
 	_paintPixmap(_m_mainFrame, photoLayout->m_mainFrameArea, QSanRoomSkin::S_SKIN_KEY_MAINFRAME);
 	setFrame(_m_frameType);
 	hideSkillName();
@@ -173,7 +179,9 @@ void Photo::setEmotion(const QString &emotion, bool permanent)
     if (QFile::exists(path)) {
         QPixmap pixmap = PixmapAnimation::GetFrameFromCache(path);
         emotion_item->setPixmap(pixmap);
-        emotion_item->setPos((G_PHOTO_LAYOUT.m_normalWidth - pixmap.width()) / 2, (G_PHOTO_LAYOUT.m_normalHeight - pixmap.height()) / 2);
+        const QSanRoomSkin::PhotoLayout *photoLayout = static_cast<const QSanRoomSkin::PhotoLayout *>(_m_layout);
+        emotion_item->setPos((photoLayout->m_normalWidth - pixmap.width()) / 2,
+            (photoLayout->m_normalHeight - pixmap.height()) / 2);
         _layBetween(emotion_item, _m_chainIcon, _m_roleComboBox);
 
         QPropertyAnimation *appear = new QPropertyAnimation(emotion_item, "opacity");
@@ -207,7 +215,9 @@ void Photo::tremble()
 
 void Photo::showSkillName(const QString &skill_name)
 {
-    G_PHOTO_LAYOUT.m_skillNameFont.paintText(_m_skillNameItem,G_PHOTO_LAYOUT.m_skillNameArea,Qt::AlignLeft,Sanguosha->translate(skill_name));
+    const QSanRoomSkin::PhotoLayout *photoLayout = static_cast<const QSanRoomSkin::PhotoLayout *>(_m_layout);
+    photoLayout->m_skillNameFont.paintText(_m_skillNameItem, photoLayout->m_skillNameArea,
+        Qt::AlignLeft, Sanguosha->translate(skill_name));
     _m_skillNameItem->show();
     QTimer::singleShot(1111, this, SLOT(hideSkillName()));
 }
@@ -253,8 +263,10 @@ QList<CardItem *> Photo::removeCardItems(const QList<int> &card_ids, Player::Pla
 
     // if it is just one card from equip or judge area, we'd like to keep them
     // to start from the equip/trick icon.
-    if (place == Player::PlaceHand || place == Player::PlaceSpecial || result.size() > 1)
-        _disperseCards(result, G_PHOTO_LAYOUT.m_cardMoveRegion, Qt::AlignCenter, false, false);
+    if (place == Player::PlaceHand || place == Player::PlaceSpecial || result.size() > 1) {
+        const QSanRoomSkin::PhotoLayout *photoLayout = static_cast<const QSanRoomSkin::PhotoLayout *>(_m_layout);
+        _disperseCards(result, photoLayout->m_cardMoveRegion, Qt::AlignCenter, false, false);
+    }
 
     update();
     return result;
@@ -262,7 +274,8 @@ QList<CardItem *> Photo::removeCardItems(const QList<int> &card_ids, Player::Pla
 
 bool Photo::_addCardItems(QList<CardItem *> &card_items, const CardsMoveStruct &moveInfo)
 {
-    _disperseCards(card_items, G_PHOTO_LAYOUT.m_cardMoveRegion, Qt::AlignCenter, true, false);
+    const QSanRoomSkin::PhotoLayout *photoLayout = static_cast<const QSanRoomSkin::PhotoLayout *>(_m_layout);
+    _disperseCards(card_items, photoLayout->m_cardMoveRegion, Qt::AlignCenter, true, false);
 
     foreach(CardItem *card_item, card_items)
         card_item->setHomeOpacity(0);
@@ -333,23 +346,24 @@ void Photo::setGiftHighlight(bool highlight)
     if (highlight) {
         if (!m_giftHighlightFrame) {
             m_giftHighlightFrame = new QGraphicsPixmapItem(_m_groupMain);
-
-            QPixmap highlightPixmap(G_PHOTO_LAYOUT.m_normalWidth, G_PHOTO_LAYOUT.m_normalHeight);
-            highlightPixmap.fill(Qt::transparent);
-
-            QPainter painter(&highlightPixmap);
-            painter.setRenderHint(QPainter::Antialiasing);
-
-            QPen pen(QColor(255, 215, 0, 200));
-            pen.setWidth(3);
-            painter.setPen(pen);
-            painter.setBrush(QBrush(QColor(255, 215, 0, 30)));
-            painter.drawRoundedRect(2, 2, G_PHOTO_LAYOUT.m_normalWidth - 4,
-                                  G_PHOTO_LAYOUT.m_normalHeight - 4, 8, 8);
-
-            m_giftHighlightFrame->setPixmap(highlightPixmap);
             m_giftHighlightFrame->setZValue(_m_groupMain->zValue() + 0.1);
         }
+
+        const QSanRoomSkin::PhotoLayout *photoLayout = static_cast<const QSanRoomSkin::PhotoLayout *>(_m_layout);
+        QPixmap highlightPixmap(photoLayout->m_normalWidth, photoLayout->m_normalHeight);
+        highlightPixmap.fill(Qt::transparent);
+
+        QPainter painter(&highlightPixmap);
+        painter.setRenderHint(QPainter::Antialiasing);
+
+        QPen pen(QColor(255, 215, 0, 200));
+        pen.setWidth(3);
+        painter.setPen(pen);
+        painter.setBrush(QBrush(QColor(255, 215, 0, 30)));
+        painter.drawRoundedRect(2, 2, photoLayout->m_normalWidth - 4,
+                              photoLayout->m_normalHeight - 4, 8, 8);
+
+        m_giftHighlightFrame->setPixmap(highlightPixmap);
         m_giftHighlightFrame->show();
     } else {
         if (m_giftHighlightFrame) {

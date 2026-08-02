@@ -1,0 +1,76 @@
+#ifndef QSAN_SERVER_CORE_H
+#define QSAN_SERVER_CORE_H
+
+#include <QtCore>
+#include <QtNetwork>
+
+class Room;
+class ServerSocket;
+class ClientSocket;
+class QtUpnpPortMapping;
+class ServerPlayer;
+class BanIpDialog;
+
+class Server : public QObject
+{
+    Q_OBJECT
+
+public:
+    explicit Server(QObject *parent);
+
+    friend class BanIpDialog;
+
+    static void writeHeadlessLog(const QString &msg);
+    static void setHeadlessLogFile(const QString &path);
+    static bool isHeadlessMode;
+    // 自動化測試: headless 壓力測試總局數 (--games N 覆寫, 預設 10000)
+    static int headlessGameLimit;
+
+    void broadcast(const QString &msg);
+    bool listen();
+    QStringList startupMessages() const;
+    void daemonize();
+    Room *createNewRoom();
+    void signupPlayer(ServerPlayer *player);
+    void checkUpnpAndListServer();
+    void startHeadlessGame();
+    void startTestGame(const QString &scenarioFile, bool headless);
+
+private:
+    ServerSocket *server;
+    Room *current;
+    QSet<Room *> rooms;
+    QHash<QString, ServerPlayer *> players;
+    QSet<QString> addresses;
+    QMultiHash<QString, QString> name2objname;
+    bool created_successfully;
+    int playerCount;
+
+    QtUpnpPortMapping *upnpPortMapping;
+    QNetworkAccessManager networkAccessManager;
+    QNetworkReply *networkReply;
+    bool serverListFirstReg;
+    int tryTimes;
+
+private slots:
+    void processNewConnection(ClientSocket *socket);
+    void processRequest(const char *request);
+    void cleanup();
+    void gameOver();
+
+    void upnpFinished();
+    void upnpTimeout();
+    void listServerReply();
+    void addToListServer();
+    void sendListServerRequest();
+
+signals:
+    void logMessage(const QString &message);
+    void server_message(const QString &);
+    void newPlayer(ServerPlayer *player);
+    // 自動化測試: 房間對局開始/結束標記
+    void roomGameStarted();
+    void roomGameOver(const QString &winner);
+};
+
+#endif

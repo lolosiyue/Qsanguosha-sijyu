@@ -39,6 +39,18 @@
       "configurePreset": "vs2019-x64",
       "configuration": "Release",
       "targets": ["deploy"]
+    },
+    {
+      "name": "deploy-server-debug",
+      "configurePreset": "vs2019-x64",
+      "configuration": "Debug",
+      "targets": ["deploy-server"]
+    },
+    {
+      "name": "deploy-server-release",
+      "configurePreset": "vs2019-x64",
+      "configuration": "Release",
+      "targets": ["deploy-server"]
     }
   ]
 }

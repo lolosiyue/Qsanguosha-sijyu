@@ -117,6 +117,7 @@ private:
     QString this_skill_name;
 };
 
+#if !defined(QSAN_ENGINE_BUILD)
 class TaoluanDialog : public GuhuoDialog
 {
     Q_OBJECT
@@ -128,6 +129,13 @@ protected:
     explicit TaoluanDialog(const QString &object);
     bool isButtonEnabled(const QString &button_name) const;
 };
+#else
+class TaoluanDialog
+{
+public:
+    static QDialog *getInstance(const QString &) { return nullptr; }
+};
+#endif
 
 class TenyearTaoluanCard : public TaoluanCard
 {

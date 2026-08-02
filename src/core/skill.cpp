@@ -3,8 +3,10 @@
 #include "engine.h"
 #include "room.h"
 #include "roomthread.h"
+#if !defined(QSAN_ENGINE_BUILD)
 #include "clientplayer.h"
-#include "clientstruct.h"
+#endif
+#include "server-info.h"
 #include "exppattern.h"
 #include "skill-instance-utils.h"
 #include <src/util/ThreadSafeHelper.h>
@@ -181,11 +183,11 @@ QString Skill::getDescription(const Player *target, int instanceId) const
 		des_src.prepend("<img src=\""+filename+"\">");
 	}
 	if (Config.value("AutoSkillTypeColorReplacement").toBool()) {
-		QMap<QString, QColor> colorMap = Sanguosha->getSkillTypeColorMap();
+		QMap<QString, QString> colorMap = Sanguosha->getSkillTypeColorMap();
 		foreach (QString skill_type, colorMap.keys()) {
 			mark = Sanguosha->translate(skill_type);
 			if(des_src.contains(mark))
-				des_src.replace(mark, QString("<font color=%1><b>%2</b></font>").arg(colorMap[skill_type].name()).arg(mark));
+			des_src.replace(mark, QString("<font color=%1><b>%2</b></font>").arg(colorMap[skill_type]).arg(mark));
 		}
 		static QStringList skillNames;
 		if(skillNames.isEmpty()){
@@ -346,6 +348,11 @@ QStringList Skill::getSources(const QString &general, const int skinId) const
 QStringList Skill::getSources() const
 {
     return sources;
+}
+
+SkillDialogInfo Skill::getDialogInfo() const
+{
+    return SkillDialogInfo();
 }
 
 QDialog *Skill::getDialog() const
@@ -639,6 +646,7 @@ bool OneCardViewAsSkill::viewFilter(const Card *to_select) const
 {
     if(filter_pattern.isEmpty()||to_select->hasFlag("using")) return false;
 	QString pat = filter_pattern;
+#if !defined(QSAN_ENGINE_BUILD)
 	if (pat.endsWith("!")) {
 		if (Self->isJilei(to_select)) return false;
 		pat.chop(1);
@@ -651,7 +659,10 @@ bool OneCardViewAsSkill::viewFilter(const Card *to_select) const
 		}
 		pat.replace("hand", handlist.join(","));
 	}
-	return Sanguosha->matchExpPattern(pat,Self,to_select);
+	return Sanguosha->matchExpPattern(pat, Self, to_select);
+#else
+	return Sanguosha->matchExpPattern(pat, nullptr, to_select);
+#endif
 }
 
 const Card *OneCardViewAsSkill::viewAs(const QList<const Card *> &cards) const

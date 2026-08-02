@@ -12,7 +12,11 @@
 #include "serverplayer.h"
 #include "room.h"
 #include "engine.h"
+#include "engine-bootstrap.h"
 #include "lua.hpp"
+#ifdef AUDIO_SUPPORT
+#include "audio.h"
+#endif
 #include <QSurfaceFormat>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
@@ -65,12 +69,17 @@ int main(int argc, char *argv[])
         new QCoreApplication(argc, argv);
     else if (argc > 1 && strcmp(argv[1], "-manual") == 0) {
         new QCoreApplication(argc, argv);
-        Sanguosha = new Engine(true);
+        if (!EngineBootstrap::initialize(true))
+            return 1;
         return 0;
     } else if (argc > 1 && strcmp(argv[1], "--lua-test") == 0)
         new QCoreApplication(argc, argv);
     else
        new QApplication(argc, argv);
+
+#ifdef Q_OS_WIN
+    qputenv("QT_MEDIA_BACKEND", "ffmpeg");
+#endif
 
     QCoreApplication::addLibraryPath(QCoreApplication::applicationDirPath() + "/plugins");
 
@@ -111,11 +120,17 @@ int main(int argc, char *argv[])
     qApp->installTranslator(&qt_translator);
     qApp->installTranslator(&translator);
 
-    Sanguosha = new Engine;
+    if (!EngineBootstrap::initialize())
+        return 1;
+#ifdef AUDIO_SUPPORT
+    QObject::connect(Sanguosha, &Engine::audioEffectRequested,
+                     [](const QString &filename, bool superpose) { Audio::play(filename, superpose); });
+#endif
     Config.init();
+    UiConfig.init();
     applyColorScheme(Config.ColorScheme);
     applyVisualMode(Config.VisualMode);
-    qApp->setFont(Config.AppFont);
+    qApp->setFont(UiConfig.AppFont);
     BanPair::loadBanPairs();
 
     if (qApp->arguments().contains("--lua-test")) {
@@ -257,8 +272,31 @@ int main(int argc, char *argv[])
 
         return qApp->exec();
     } else if (qApp->arguments().contains("--headless") && !hasTestScenarioArgument) {
+        // 自動化測試: 以指定模式與局數執行 headless 壓力測試
+        // 用法: QSanguosha.exe --headless [--game-mode 10p] [--games 100]
+        const QStringList args = qApp->arguments();
+        const int modeIdx = args.indexOf("--game-mode");
+        if (modeIdx >= 0 && modeIdx + 1 < args.size()) {
+            const QString modeId = args.at(modeIdx + 1);
+            Config.GameMode = Sanguosha->getGameMode(modeId);
+            if (!Config.GameMode.isValid()) {
+                qCritical("Unknown game mode '%s'", qPrintable(modeId));
+                return 1;
+            }
+        }
+        const int gamesIdx = args.indexOf("--games");
+        if (gamesIdx >= 0 && gamesIdx + 1 < args.size()) {
+            bool ok = false;
+            const int limit = args.at(gamesIdx + 1).toInt(&ok);
+            if (ok && limit > 0)
+                Server::headlessGameLimit = limit;
+        }
+        const int logIdx = args.indexOf("--headless-log");
+        if (logIdx >= 0 && logIdx + 1 < args.size())
+            Server::setHeadlessLogFile(args.at(logIdx + 1));
         Server *server = new Server(qApp);
-        qDebug() << ">>> Headless Mode: Starting stress test with 10000 games <<<";
+        qDebug() << ">>> Headless Mode: Starting stress test with"
+                 << Server::headlessGameLimit << "games, mode" << Config.GameMode.mode_id << "<<<";
         QTimer::singleShot(0, server, &Server::startHeadlessGame);
         return qApp->exec();
     }
@@ -345,6 +383,27 @@ int main(int argc, char *argv[])
 	}
 #endif
 
+    // 自動化測試參數先解析 (獨立迴圈, 不依賴參數順序)
+    foreach (QString arg, qApp->arguments()) {
+        if (arg == "--auto-robots") {
+            // 自動化測試: owner 進入房間後自動填滿 AI 並開局
+            Config.AutoAddRobots = true;
+            continue;
+        }
+        if (arg.startsWith("--test-general")) {
+            // 自動化測試: 自動選將 (--test-general=<name> 或 --test-general <name>)
+            QString general = arg.mid(arg.indexOf('=') + 1);
+            if (general == arg) {
+                const int idx = qApp->arguments().indexOf(arg);
+                if (idx >= 0 && idx + 1 < qApp->arguments().size())
+                    general = qApp->arguments().at(idx + 1);
+            }
+            if (!general.isEmpty() && !general.startsWith("-"))
+                Config.AutoPickGeneral = general;
+            continue;
+        }
+    }
+
     foreach (QString arg, qApp->arguments()) {
         if (arg.startsWith("-connect:")) {
             arg.remove("-connect:");
@@ -353,6 +412,16 @@ int main(int argc, char *argv[])
 
             main_window->startConnection();
             break;
+        }
+    }
+
+    // 自動化測試診斷
+    if (Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty()) {
+        QFile diag("client_autotest_diag.log");
+        if (diag.open(QIODevice::Append | QIODevice::Text)) {
+            QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
+                << " main: args=" << qApp->arguments().join(" ")
+                << " AutoPickGeneral='" << Config.AutoPickGeneral << "'\n";
         }
     }
 

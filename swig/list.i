@@ -39,3 +39,4 @@ public:
 %template(PhaseList) QList<Player::Phase>;
 %template(GeneralList) QList<const General *>;
 %template(EquipCardList) QList<const EquipCard *>;
+%template(SkillInstanceKeyList) QList<SkillInstanceKey>;

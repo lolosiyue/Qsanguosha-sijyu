@@ -5,6 +5,8 @@ class Skill;
 class Card;
 class Player;
 
+#include "server-info.h"
+
 class CardPattern
 {
 public:

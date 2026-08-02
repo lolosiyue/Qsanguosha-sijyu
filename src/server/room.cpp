@@ -16,7 +16,7 @@
 #include "exppattern.h"
 #include "wrapped-card.h"
 #include "roomthread.h"
-#include "clientstruct.h"
+#include "server-info.h"
 #include "game-snapshot.h"
 #include "skill-instance-utils.h"
 #include <ctime>
@@ -213,7 +213,11 @@ Room::Room(QObject*parent, const QString&mode)
 	if (_m_Id<1){
 		LuaLocker locker;
 		if (!DoLuaScript(m_lua, "lua/ai/smart-ai.lua")){
+#if defined(QSAN_ENGINE_BUILD)
+			qWarning() << "LuaAI script failed to load";
+#else
 			QMessageBox::warning(nullptr, "", "LuaAI加载失败，程序无法进行AI操作");
+#endif
 			m_lua = nullptr;
 		}
 	}
@@ -4446,6 +4450,10 @@ void Room::addRobotCommand(ServerPlayer*player, const QVariant&arg)
 
 	int r = 0, add_num = arg.toInt();
 	if (add_num == -1) add_num = player_count - m_players.length();
+	if (Server::isHeadlessMode)
+		Server::writeHeadlessLog(QString("[AUTOTEST] addRobot request=%1 fill=%2 players=%3/%4 owner=%5")
+			.arg(arg.toInt()).arg(add_num).arg(m_players.length()).arg(player_count)
+			.arg(player ? (player->isOwner() ? "yes" : "no") : "null"));
 	foreach(ServerPlayer*p, m_players){
 		if (p->getState() == "robot") r++;
 	}
@@ -5619,8 +5627,21 @@ bool Room::resolveCardSkillInstance(CardUseStruct &use)
 		activationId = ids.first();
 	}
 	if (activationName.isEmpty() || activationId < 0) return false;
-	const ViewAsSkillV2 *activeSkill = dynamic_cast<const ViewAsSkillV2 *>(
-		Sanguosha->getViewAsSkill(activationName));
+	const ViewAsSkill *activationSkill = Sanguosha->getViewAsSkill(activationName);
+	if (!use.card->isVirtualCard() && activationSkill == nullptr) {
+		// A physical response cannot originate from an unregistered helper such
+		// as the client-only ResponseSkill.  Discard stale optional provenance
+		// instead of treating an otherwise valid human response as cancellation.
+		Card *mutableCard = const_cast<Card *>(use.card);
+		mutableCard->setSkillInstanceID(0);
+		mutableCard->setSourceSkill(QString(), 0);
+		mutableCard->setActivationSkill(QString(), 0);
+		use.hasSkillActivationRequest = false;
+		use.sourceRef = SkillInstanceRef();
+		use.activationRef = SkillInstanceRef();
+		return true;
+	}
+	const ViewAsSkillV2 *activeSkill = dynamic_cast<const ViewAsSkillV2 *>(activationSkill);
 	const bool hasActivationInstance = use.from->hasSkillInstance(activationName, activationId);
 	const bool continuesViewAsEffect = activeSkill && hasViewAsSkillEffect(use.from, activationName);
 	if (!hasActivationInstance && !continuesViewAsEffect) return false;

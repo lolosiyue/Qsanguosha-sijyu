@@ -288,7 +288,6 @@ protected:
 
 private:
     void _getSceneSizes(QSize &minSize, QSize &maxSize);
-    void _calculateDynamicPhotoSize();
     bool _shouldIgnoreDisplayMove(CardsMoveStruct &movement);
     bool _processCardsMove(CardsMoveStruct &move, bool isLost);
     bool _m_isInDragAndUseMode;
@@ -367,6 +366,9 @@ private:
     qreal m_pixmapDeviceScale;
     int m_tablew;
     int m_tableh;
+    int m_photoWidth;
+    int m_photoHeight;
+    qreal m_photoScale;
 
     QMenu *m_add_robot_menu;
 
@@ -487,8 +489,6 @@ private:
     int _m_currentStage;
 
     QRectF _m_infoPlane;
-    int _m_cachedPhotoWidth;
-    int _m_cachedPhotoHeight;
 
     bool _m_bgEnabled;
     QString _m_bgMusicPath;

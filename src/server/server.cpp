@@ -1,17 +1,28 @@
+#if defined(QSAN_SERVER_CORE_ONLY)
+#include "server-core.h"
+#else
 #include "server.h"
+#endif
 #include "settings.h"
 #include "room.h"
 #include "engine.h"
 #include "nativesocket.h"
 #include "banpair.h"
+#include "server-info.h"
 //#include "scenario.h"
+#if !defined(QSAN_SERVER_CORE_ONLY)
 #include "choosegeneraldialog.h"
 #include "customassigndialog.h"
+#endif
 #include "miniscenarios.h"
+#if !defined(QSAN_SERVER_CORE_ONLY)
 #include "skin-bank.h"
+#endif
 //#include "json.h"
 #include "gamerule.h"
+#if !defined(QSAN_SERVER_CORE_ONLY)
 #include "clientstruct.h"
+#endif
 #include "qtupnpportmapping.h"
 #include "defines.h"
 
@@ -23,6 +34,7 @@
 
 using namespace QSanProtocol;
 
+#if !defined(QSAN_SERVER_CORE_ONLY)
 static QLayout *HLay(QWidget *left, QWidget *right)
 {
 	QHBoxLayout *layout = new QHBoxLayout;
@@ -1552,9 +1564,14 @@ int ServerDialog::config()
 	return accept_type;
 }
 
+#endif
+
+#if !defined(QSAN_SERVER_DIALOGS_ONLY)
+
 Server::Server(QObject *parent)
 	: QObject(parent)//, created_successfully(true)
 {
+	connect(this, SIGNAL(server_message(QString)), this, SIGNAL(logMessage(QString)));
 	server = new NativeServerSocket;
 	server->setParent(this);
 	playerCount = 0;
@@ -1587,6 +1604,71 @@ bool Server::listen()
 	return created_successfully && server->listen();
 }
 
+QStringList Server::startupMessages() const
+{
+    QStringList addresses;
+    foreach (const QHostAddress &address, QNetworkInterface::allAddresses()) {
+        const QString item = address.toString();
+        const quint32 ipv4 = address.toIPv4Address();
+        if (!ipv4)
+            continue;
+
+        addresses << item;
+    }
+
+    addresses.sort();
+    QStringList items;
+    foreach (const QString &item, addresses) {
+        bool lanAddress = item.startsWith("192.168.") || item.startsWith("10.");
+        if (!lanAddress && item.startsWith("172.")) {
+            const QStringList octets = item.split('.');
+            bool ok = false;
+            const int secondOctet = octets.value(1).toInt(&ok);
+            lanAddress = ok && secondOctet >= 16 && secondOctet < 32;
+        }
+
+        if (lanAddress)
+            items << tr("Your LAN address: %1, this address is available only for hosts that in the same LAN").arg(item);
+        else if (item == "127.0.0.1")
+            items << tr("Your loopback address %1, this address is available only for your host").arg(item);
+        else if (item.startsWith("5.") || item.startsWith("25."))
+            items << tr("Your Hamachi address: %1, the address is available for users that joined the same Hamachi network").arg(item);
+        else if (!item.startsWith("169.254."))
+            items << tr("Your other address: %1, if this is a public IP, that will be available for all cases").arg(item);
+    }
+
+    items << tr("Binding port number is %1").arg(Config.ServerPort);
+    items << tr("Game mode is %1").arg(Sanguosha->getModeName(Config.GameMode.mode_id));
+    items << tr("Player count is %1").arg(Sanguosha->getPlayerCount(Config.GameMode.mode_id));
+    items << (Config.OperationNoLimit ? tr("There is no time limit")
+        : tr("Operation timeout is %1 seconds").arg(Config.OperationTimeout));
+    items << (Config.EnableCheat ? tr("Cheat is enabled") : tr("Cheat is disabled"));
+    if (Config.EnableCheat)
+        items << (Config.FreeChoose ? tr("Free choose is enabled") : tr("Free choose is disabled"));
+
+    if (Config.Enable2ndGeneral) {
+        QString scheme;
+        switch (Config.MaxHpScheme) {
+        case 0: scheme = tr("Sum - %1").arg(Config.Scheme0Subtraction); break;
+        case 1: scheme = tr("Minimum"); break;
+        case 2: scheme = tr("Maximum"); break;
+        case 3: scheme = tr("Average"); break;
+        }
+        items << tr("Secondary general is enabled, max hp scheme is %1").arg(scheme);
+    } else {
+        items << tr("Seconardary general is disabled");
+    }
+
+    items << (Config.EnableSame ? tr("Same Mode is enabled") : tr("Same Mode is disabled"));
+    items << (Config.EnableBasara ? tr("Basara Mode is enabled") : tr("Basara Mode is disabled"));
+    items << (Config.EnableHegemony ? tr("Hegemony Mode is enabled") : tr("Hegemony Mode is disabled"));
+    if (Config.EnableAI)
+        items << tr("This server is AI enabled, AI delay is %1 milliseconds").arg(Config.AIDelay);
+    else
+        items << tr("This server is AI disabled");
+    return items;
+}
+
 void Server::daemonize()
 {
 	server->daemonize();
@@ -1603,6 +1685,8 @@ Room *Server::createNewRoom()
 
 	connect(current, SIGNAL(room_message(QString)), this, SIGNAL(server_message(QString)));
 	connect(current, SIGNAL(game_over(QString)), this, SLOT(gameOver()));
+	connect(current, SIGNAL(game_start()), this, SIGNAL(roomGameStarted()));
+	connect(current, SIGNAL(game_over(QString)), this, SIGNAL(roomGameOver(QString)));
 
 	return current;
 }
@@ -1712,8 +1796,12 @@ void Server::gameOver()
 	foreach(ServerPlayer *player, room->findChildren<ServerPlayer *>()) {
 		name2objname.remove(player->screenName(), player->objectName());
 		players.remove(player->objectName());
-	}
+    }
 }
+
+#endif
+
+#if !defined(QSAN_SERVER_CORE_ONLY)
 
 void ServerDialog::selectAllGenerals()
 {
@@ -1760,8 +1848,12 @@ void ServerDialog::selectReverseCards()
 	foreach (QCheckBox *c, m_cardPackages) {
 		if (c->isEnabled())
 			c->setChecked(!c->isChecked());
-	}
+    }
 }
+
+#endif
+
+#if !defined(QSAN_SERVER_DIALOGS_ONLY)
 
 void Server::checkUpnpAndListServer()
 {
@@ -1848,6 +1940,13 @@ void Server::listServerReply()
 }
 
 bool Server::isHeadlessMode = false;
+int Server::headlessGameLimit = 10000;
+static QString s_headlessLogFile;
+
+void Server::setHeadlessLogFile(const QString &path)
+{
+    s_headlessLogFile = path;
+}
 
 void Server::writeHeadlessLog(const QString &msg)
 {
@@ -1855,8 +1954,10 @@ void Server::writeHeadlessLog(const QString &msg)
     static QTextStream *logStream = nullptr;
 
     if (logStream == nullptr) {
-        QString filename = QString("headless_log_%1.txt")
-            .arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
+        QString filename = s_headlessLogFile;
+        if (filename.isEmpty())
+            filename = QString("headless_log_%1.txt")
+                .arg(QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss"));
         logFile = new QFile(filename);
         if (logFile->open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append)) {
             logStream = new QTextStream(logFile);
@@ -1878,15 +1979,19 @@ void Server::startHeadlessGame()
     isHeadlessMode = true;
 
     static int gameCount = 0;
+    const QString mode = Config.GameMode.mode_id;
+    const int playerCount = Sanguosha->getPlayerCount(mode);
+    const int gameLimit = headlessGameLimit;
 
     if (gameCount == 0) {
-        Server::writeHeadlessLog(">>> Headless stress test started - 10000 games <<<");
+        Server::writeHeadlessLog(QString(">>> Headless stress test started - %1 games, mode %2, %3 players <<<")
+            .arg(gameLimit).arg(mode).arg(playerCount));
     }
 
     gameCount++;
     Server::writeHeadlessLog(QString(">>> Starting headless game %1 <<<").arg(gameCount));
 
-    Room *room = new Room(this, "08p");
+    Room *room = new Room(this, mode);
     if (!room->getLuaState()) {
         delete room;
         Server::writeHeadlessLog(QString("Game %1 FAILED - Lua state is null").arg(gameCount));
@@ -1895,23 +2000,23 @@ void Server::startHeadlessGame()
 
     QPointer<Room> roomPtr(room);
     int currentGameCount = gameCount;
-    connect(room, &Room::game_over, this, [this, roomPtr, currentGameCount](const QString &winner) {
+    connect(room, &Room::game_over, this, [this, roomPtr, currentGameCount, gameLimit](const QString &winner) {
         Server::writeHeadlessLog(QString(">>> Game %1 finished. Winner: %2 <<<").arg(currentGameCount).arg(winner));
 
-        QTimer::singleShot(500, this, [this, roomPtr, currentGameCount]() {
+        QTimer::singleShot(500, this, [this, roomPtr, currentGameCount, gameLimit]() {
             if (roomPtr) {
                 roomPtr->deleteLater();
             }
-            if (currentGameCount < 10000) {
+            if (currentGameCount < gameLimit) {
                 startHeadlessGame();
             } else {
-                Server::writeHeadlessLog(">>> All 10000 games completed. Exiting. <<<");
+                Server::writeHeadlessLog(">>> All games completed. Exiting. <<<");
                 qApp->quit();
             }
         });
     });
 
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < playerCount; i++) {
         ServerPlayer *player = room->addAIPlayer();
         player->setAI(new TrustAI(player));
         if (i == 0)
@@ -1991,3 +2096,5 @@ void Server::startTestGame(const QString &scenarioFile, bool headless)
 
     room->start();
 }
+
+#endif

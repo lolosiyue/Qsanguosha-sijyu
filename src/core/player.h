@@ -532,4 +532,6 @@ signals:
     void brokenEquips_changed();
 };
 
+void setEngineSelf(Player *player);
+
 #endif

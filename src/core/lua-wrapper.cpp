@@ -1,9 +1,11 @@
 #include "lua-wrapper.h"
 #include "engine.h"
 #include "util.h"
+#ifndef QSAN_ENGINE_BUILD
 #include "wind.h"
 #include "mobile.h"
 #include "ol.h"
+#endif
 
 extern "C" {
 #include "lua.hpp"
@@ -30,30 +32,30 @@ int LuaTriggerSkill::getPriority(TriggerEvent triggerEvent) const
     return priority;//TriggerSkill::getPriority(triggerEvent);
 }
 
-QDialog *LuaTriggerSkill::getDialog() const
+SkillDialogInfo LuaTriggerSkill::getDialogInfo() const
 {
     if (guhuo_type != "") {
-        return GuhuoDialog::getInstance(objectName(), guhuo_type.contains("l"), guhuo_type.contains("r"),
+        return SkillDialogInfo::guhuo(objectName(), guhuo_type.contains("l"), guhuo_type.contains("r"),
             !guhuo_type.startsWith("!"), guhuo_type.contains("s"), guhuo_type.contains("d"), guhuo_type.contains("u"));
     } else if (juguan_type != "") {
-        return JuguanDialog::getInstance(objectName(), juguan_type);
+        return SkillDialogInfo::juguan(objectName(), juguan_type);
     } else if (tiansuan_type != "") {
-        return TiansuanDialog::getInstance(objectName(), tiansuan_type);
+        return SkillDialogInfo::tiansuan(objectName(), tiansuan_type);
     }
-    return nullptr;
+    return SkillDialogInfo();
 }
 
-QDialog *LuaTriggerSkillV2::getDialog() const
+SkillDialogInfo LuaTriggerSkillV2::getDialogInfo() const
 {
     if (guhuo_type != "") {
-        return GuhuoDialog::getInstance(objectName(), guhuo_type.contains("l"), guhuo_type.contains("r"),
+        return SkillDialogInfo::guhuo(objectName(), guhuo_type.contains("l"), guhuo_type.contains("r"),
             !guhuo_type.startsWith("!"), guhuo_type.contains("s"), guhuo_type.contains("d"), guhuo_type.contains("u"));
     } else if (juguan_type != "") {
-        return JuguanDialog::getInstance(objectName(), juguan_type);
+        return SkillDialogInfo::juguan(objectName(), juguan_type);
     } else if (tiansuan_type != "") {
-        return TiansuanDialog::getInstance(objectName(), tiansuan_type);
+        return SkillDialogInfo::tiansuan(objectName(), tiansuan_type);
     }
-    return nullptr;
+    return SkillDialogInfo();
 }
 
 int LuaTriggerSkillV2::getPriority(TriggerEvent triggerEvent) const
@@ -114,29 +116,49 @@ ViewAsSkillV2::TargetEffectMode LuaViewAsSkillV2::targetEffectMode() const
     return m_targetEffectMode;
 }
 
-QDialog *LuaViewAsSkillV2::getDialog() const
+SkillDialogInfo LuaViewAsSkillV2::getDialogInfo() const
 {
     if (guhuo_type != "") {
-        return GuhuoDialog::getInstance(objectName(), guhuo_type.contains("l"), guhuo_type.contains("r"),
+        return SkillDialogInfo::guhuo(objectName(), guhuo_type.contains("l"), guhuo_type.contains("r"),
             !guhuo_type.startsWith("!"), guhuo_type.contains("s"), guhuo_type.contains("d"), guhuo_type.contains("u"));
     } else if (juguan_type != "") {
-        return JuguanDialog::getInstance(objectName(), juguan_type);
+        return SkillDialogInfo::juguan(objectName(), juguan_type);
     } else if (tiansuan_type != "") {
-        return TiansuanDialog::getInstance(objectName(), tiansuan_type);
+        return SkillDialogInfo::tiansuan(objectName(), tiansuan_type);
     }
+    return SkillDialogInfo();
+}
+
+SkillDialogInfo LuaViewAsSkill::getDialogInfo() const
+{
+    if (guhuo_type != "") {
+        return SkillDialogInfo::guhuo(objectName(), guhuo_type.contains("l"), guhuo_type.contains("r"),
+			!guhuo_type.startsWith("!"), guhuo_type.contains("s"), guhuo_type.contains("d"), guhuo_type.contains("u"));
+    } else if (juguan_type != "") {
+        return SkillDialogInfo::juguan(objectName(), juguan_type);
+    } else if (tiansuan_type != "") {
+        return SkillDialogInfo::tiansuan(objectName(), tiansuan_type);
+    }
+    return SkillDialogInfo();
+}
+
+QDialog *LuaTriggerSkill::getDialog() const
+{
+    return nullptr;
+}
+
+QDialog *LuaTriggerSkillV2::getDialog() const
+{
+    return nullptr;
+}
+
+QDialog *LuaViewAsSkillV2::getDialog() const
+{
     return nullptr;
 }
 
 QDialog *LuaViewAsSkill::getDialog() const
 {
-    if (guhuo_type != "") {
-        return GuhuoDialog::getInstance(objectName(), guhuo_type.contains("l"), guhuo_type.contains("r"),
-			!guhuo_type.startsWith("!"), guhuo_type.contains("s"), guhuo_type.contains("d"), guhuo_type.contains("u"));
-    } else if (juguan_type != "") {
-        return JuguanDialog::getInstance(objectName(), juguan_type);
-    } else if (tiansuan_type != "") {
-        return TiansuanDialog::getInstance(objectName(), tiansuan_type);
-    }
     return nullptr;
 }
 
@@ -293,23 +315,22 @@ LuaSkillCard *LuaSkillCard::clone() const
 
 LuaSkillCard *LuaSkillCard::Parse(const QString &str)
 {
-    static QRegExp rx("#(\\w+):(.*):(.*)");
-    static QRegExp e_rx("#(\\w*)\\[(\\w+):(.+)\\]:(.*):(.*)");
+    static QRegularExpression rx("#(\\w+):(.*):(.*)");
+    static QRegularExpression e_rx("#(\\w*)\\[(\\w+):(.+)\\]:(.*):(.*)");
 
     QString name, suit, number, subcard_str, user_string;
 
-    if (rx.exactMatch(str)) {
-        QStringList texts = rx.capturedTexts();
-        name = texts.at(1);
-        subcard_str = texts.at(2);
-        user_string = texts.at(3);
-    } else if (e_rx.exactMatch(str)) {
-        QStringList texts = e_rx.capturedTexts();
-        name = texts.at(1);
-        suit = texts.at(2);
-        number = texts.at(3);
-        subcard_str = texts.at(4);
-        user_string = texts.at(5);
+    QRegularExpressionMatch match = rx.match(str);
+    if (match.hasMatch()) {
+        name = match.captured(1);
+        subcard_str = match.captured(2);
+        user_string = match.captured(3);
+    } else if ((match = e_rx.match(str)).hasMatch()) {
+        name = match.captured(1);
+        suit = match.captured(2);
+        number = match.captured(3);
+        subcard_str = match.captured(4);
+        user_string = match.captured(5);
     } else
         return nullptr;
 

@@ -1524,7 +1524,9 @@ bool LuaScenarioRule::trigger(TriggerEvent event, Room *room, ServerPlayer *play
 	return result;
 }
 
-//#include <QMessageBox>
+#if !defined(QSAN_ENGINE_BUILD)
+#include <QMessageBox>
+#endif
 #include <QThread>
 #include <QCoreApplication>
 
@@ -1533,9 +1535,11 @@ static void Error(lua_State *L)
 	const QString error_string = lua_tostring(L, -1);
 	lua_pop(L, 1);
 	qWarning("Lua script error: %s", error_string.toUtf8().constData());
+#if !defined(QSAN_ENGINE_BUILD)
 	if (QThread::currentThread() == qApp->thread()) {
 		QMessageBox::warning(nullptr, "Lua script error!", error_string);
 	}
+#endif
 }
 
 Skill::Frequency LuaTriggerSkill::getFrequency(const Player *target) const

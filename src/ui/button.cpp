@@ -6,7 +6,7 @@
 static QRectF ButtonRect(0, 0, 189, 46);
 
 Button::Button(const QString &label, qreal scale)
-    : label(label), size(ButtonRect.size() * scale), mute(true), font(Config.SmallFont)
+    : label(label), size(ButtonRect.size() * scale), mute(true), font(UiConfig.SmallFont)
 {
     title = QPixmap(size.toSize());
     outimg = QImage(size.toSize(), QImage::Format_ARGB32);
@@ -14,7 +14,7 @@ Button::Button(const QString &label, qreal scale)
 }
 
 Button::Button(const QString &label, const QSizeF &size)
-    : label(label), size(size), mute(true), font(Config.SmallFont)
+    : label(label), size(size), mute(true), font(UiConfig.SmallFont)
 {
     title = QPixmap(size.toSize());
     outimg = QImage(size.toSize(), QImage::Format_ARGB32);
@@ -31,7 +31,7 @@ void Button::init()
     title.fill(QColor(0, 0, 0, 0));
     QPainter pt(&title);
     pt.setFont(font);
-    pt.setPen(Config.TextEditColor);
+    pt.setPen(UiConfig.TextEditColor);
     pt.setRenderHint(QPainter::TextAntialiasing);
     pt.drawText(boundingRect(), Qt::AlignCenter, label);
 
@@ -106,7 +106,7 @@ void Button::setFont(const QFont &font)
     title.fill(QColor(0, 0, 0, 0));
     QPainter pt(&title);
     pt.setFont(font);
-    pt.setPen(Config.TextEditColor);
+    pt.setPen(UiConfig.TextEditColor);
     pt.setRenderHint(QPainter::TextAntialiasing);
     pt.drawText(boundingRect(), Qt::AlignCenter, label);
 

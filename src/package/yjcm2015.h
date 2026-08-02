@@ -88,6 +88,7 @@ public:
     void onEffect(CardEffectStruct &effect) const;
 };
 
+#if !defined(QSAN_ENGINE_BUILD)
 class HuomoDialog : public GuhuoDialog
 {
     Q_OBJECT
@@ -99,6 +100,13 @@ protected:
     explicit HuomoDialog();
     virtual bool isButtonEnabled(const QString &button_name) const;
 };
+#else
+class HuomoDialog
+{
+public:
+    static QDialog *getInstance() { return nullptr; }
+};
+#endif
 
 class HuomoCard : public SkillCard
 {

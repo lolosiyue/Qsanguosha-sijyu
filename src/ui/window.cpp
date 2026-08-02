@@ -78,7 +78,7 @@ void Window::addContent(const QString &content)
 Button *Window::addCloseButton(const QString &label)
 {
     Button *ok_button = new Button(label, 0.6);
-    QFont font = Config.TinyFont;
+    QFont font = UiConfig.TinyFont;
     font.setBold(true);
     ok_button->setFont(font);
     ok_button->setParentItem(this);
@@ -157,7 +157,7 @@ void Window::setTitle(const QString &title)
     QString style;
     style.append("font-size:18pt; ");
     style.append("color:#77c379; ");
-    style.append(QString("font-family: %1").arg(Config.SmallFont.family()));
+    style.append(QString("font-family: %1").arg(UiConfig.SmallFont.family()));
 
     titleItem->setHtml(QString("<h style=\"%1\">%2</h>").arg(style).arg(title));
     titleItem->setPos(size.width() / 2 - titleItem->boundingRect().width() / 2, 0);

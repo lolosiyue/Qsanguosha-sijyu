@@ -8541,6 +8541,7 @@ public:
 	}
 };
 
+#if !defined(QSAN_ENGINE_BUILD)
 static QHash<QString,TiansuanDialog*>TiansuanDialogs;
 
 TiansuanDialog *TiansuanDialog::getInstance(const QString &name, const QString &choices)
@@ -8659,6 +8660,8 @@ QAbstractButton *TiansuanDialog::createChoiceButton(const QString &choice)
 	group->addButton(button);
 	return button;
 }
+
+#endif
 
 TiansuanCard::TiansuanCard()
 {

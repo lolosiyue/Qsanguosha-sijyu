@@ -4,14 +4,20 @@
 class Room;
 class Player;
 class ServerPlayer;
+#if !defined(QSAN_ENGINE_BUILD)
 class ClientPlayer;
+#endif
 class CardItem;
 class ViewAsSkillV2;
 
 struct CardEffectStruct;
 struct CardUseStruct;
 
+#ifdef QSAN_ENGINE_BUILD
+#include "engine-pch.h"
+#else
 #include "src/pch.h"
+#endif
 
 class Card : public QObject
 {

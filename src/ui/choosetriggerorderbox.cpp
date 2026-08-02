@@ -164,15 +164,15 @@ void TriggerOptionButton::construct()
     setAcceptHoverEvents(true);
     setOpacity(initialOpacity);
     if (optionButtonFont.pixelSize() <= 0) {
-        optionButtonFont = Config.SmallFont;
-        optionButtonFont.setPixelSize(Config.TinyFont.pixelSize());
+        optionButtonFont = UiConfig.SmallFont;
+        optionButtonFont.setPixelSize(UiConfig.TinyFont.pixelSize());
     }
 }
 
 QFont TriggerOptionButton::defaultFont()
 {
-    QFont font = Config.SmallFont;
-    font.setPixelSize(Config.TinyFont.pixelSize());
+    QFont font = UiConfig.SmallFont;
+    font.setPixelSize(UiConfig.TinyFont.pixelSize());
     return font;
 }
 
@@ -181,7 +181,7 @@ void TriggerOptionButton::paint(QPainter *painter, const QStyleOptionGraphicsIte
     painter->setRenderHint(QPainter::Antialiasing);
     painter->save();
     painter->setBrush(Qt::black);
-    painter->setPen(Sanguosha->getKingdomColor(Self->getGeneral()->getKingdom()));
+    painter->setPen(QColor(Sanguosha->getKingdomColor(Self->getGeneral()->getKingdom())));
     QRectF rect = boundingRect();
     painter->drawRoundedRect(rect, 5, 5);
     painter->restore();
@@ -303,7 +303,7 @@ void ChooseTriggerOrderBox::storeMinimumWidth()
             width = w;
     }
 
-    QFont titleFont = Config.SmallFont;
+    QFont titleFont = UiConfig.SmallFont;
     titleFont.setBold(true);
     QFontMetrics titleFontMetrics(titleFont);
     int titleWidth = titleFontMetrics.horizontalAdvance(title) + 40;

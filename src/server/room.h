@@ -27,10 +27,11 @@ class RoomThread1v1;
 //#include "serverplayer.h"
 //#include "roomthread.h"
 #include "protocol.h"
+#include "engine-runtime-context.h"
 #include "room-state.h"
 #include "json.h"
 
-class Room : public QThread
+class Room : public QThread, public EngineRuntimeContext
 {
     Q_OBJECT
         Q_ENUMS(GuanxingType)
@@ -47,6 +48,7 @@ public:
     friend class RoomThread1v1;
     friend class ServerPlayer;
     friend class GameRule;
+    friend struct RoomTestAccess;
 
     typedef void (Room::*Callback)(ServerPlayer*, const QVariant&);
     typedef bool (Room::*ResponseVerifyFunction)(ServerPlayer*, const QVariant&, void*);
@@ -599,6 +601,12 @@ public:
     {
         return&_m_roomState;
     }
+
+    QObject *runtimeObject() override { return this; }
+    RoomState *roomState() override { return getRoomState(); }
+    const Player *cardOwner(int card_id) const override { return getCardOwner(card_id); }
+    Player::Place cardPlace(int card_id) const override { return getCardPlace(card_id); }
+    Card *card(int card_id) const override { return getCard(card_id); }
     inline Card*getCard(int cardId) const
     {
 		return _m_roomState.getCard(cardId);

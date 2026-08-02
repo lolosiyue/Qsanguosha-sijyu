@@ -2,7 +2,7 @@
 #define _SERVER_PLAYER_H
 
 class AI;
-class Recorder;
+class RecordBuffer;
 
 class CardMoveReason;
 struct PhaseStruct;
@@ -283,7 +283,7 @@ private:
     AI *ai;
     AI *trust_ai;
     QList<ServerPlayer *> victims;
-    Recorder *recorder;
+    RecordBuffer *recordBuffer;
     QList<Phase> phases;
     int _m_phases_index;
     QList<PhaseStruct> _m_phases_state;

@@ -1,6 +1,6 @@
 ﻿#include "nativesocket.h"
 #include "settings.h"
-#include "src/pch.h"
+#include <QtNetwork>
 
 NativeServerSocket::NativeServerSocket()
 {

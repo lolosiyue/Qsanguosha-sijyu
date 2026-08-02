@@ -835,6 +835,7 @@ public:
 	}
 };
 
+#if !defined(QSAN_ENGINE_BUILD)
 CaozhaoDialog *CaozhaoDialog::getInstance(const QString &object)
 {
 	static CaozhaoDialog *instance;
@@ -854,6 +855,7 @@ bool CaozhaoDialog::isButtonEnabled(const QString &button_name) const
 	QStringList names = Self->property("CaozhaoNames").toString().split("+");
 	return !names.contains(button_name) && button_name != "normal_slash";
 }
+#endif
 
 CaozhaoCard::CaozhaoCard()
 {

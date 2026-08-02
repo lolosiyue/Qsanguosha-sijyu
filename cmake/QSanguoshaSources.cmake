@@ -4,24 +4,10 @@ set(QSAN_SOURCES
     src/client/client.cpp
     src/client/clientplayer.cpp
     src/client/clientstruct.cpp
-    src/core/banpair.cpp
-    src/core/card.cpp
-    src/core/engine.cpp
-    src/core/filehandler.cpp
-    src/core/general.cpp
-    src/core/json.cpp
-    src/core/lua-wrapper.cpp
+    src/core/json-gui.cpp
     src/core/oracle_helper.cpp
-    src/core/player.cpp
-    src/core/protocol.cpp
     src/core/record-analysis.cpp
-    src/core/room-state.cpp
-    src/core/settings.cpp
-    src/core/skill.cpp
-    src/core/skill-instance-utils.cpp
-    src/core/structs.cpp
-    src/core/util.cpp
-    src/core/wrapped-card.cpp
+    src/core/settings-gui.cpp
     src/dialog/banipdialog.cpp
     src/dialog/cardeditor.cpp
     src/dialog/cardoverview.cpp
@@ -37,6 +23,7 @@ set(QSAN_SOURCES
     src/dialog/maxcardsviewdialog.cpp
     src/dialog/roleassigndialog.cpp
     src/dialog/scenario-overview.cpp
+    src/dialog/serverdialog.cpp
     src/package/assassins.cpp
     src/package/bgm.cpp
     src/package/boss.cpp
@@ -101,18 +88,6 @@ set(QSAN_SOURCES
     src/scenario/scenario.cpp
     src/scenario/scenerule.cpp
     src/scenario/zombie-scenario.cpp
-    src/server/ai.cpp
-    src/server/basicai.cpp
-    src/server/gamerule.cpp
-    src/server/generalselector.cpp
-    src/server/qtupnpportmapping.cpp
-    src/server/room.cpp
-    src/server/roomthread.cpp
-    src/server/roomthread1v1.cpp
-    src/server/roomthread3v3.cpp
-    src/server/roomthreadxmode.cpp
-    src/server/server.cpp
-    src/server/serverplayer.cpp
     src/spine/Animation.cpp
     src/spine/AnimationState.cpp
     src/spine/AnimationStateData.cpp
@@ -157,6 +132,7 @@ set(QSAN_SOURCES
     src/ui/rolecombobox.cpp
     src/ui/roomscene.cpp
     src/ui/skin-bank.cpp
+    src/ui/skill-dialog-registry.cpp
     src/ui/SpineAnimationManager.cpp
     src/ui/SpineEffectWidget.cpp
     src/ui/SpineGlItem.cpp
@@ -169,7 +145,6 @@ set(QSAN_SOURCES
     src/ui/window.cpp
     src/util/detector.cpp
     src/util/game-snapshot.cpp
-    src/util/nativesocket.cpp
     src/util/recorder.cpp
     src/util/replay-game-state.cpp
     src/util/replay-index.cpp
@@ -217,16 +192,7 @@ set(QSAN_MOC_HEADERS
     src/client/client.h
     src/client/clientplayer.h
     src/client/clientstruct.h
-    src/core/card.h
-    src/core/engine.h
-    src/core/filehandler.h
-    src/core/general.h
-    src/core/lua-wrapper.h
-    src/core/player.h
     src/core/record-analysis.h
-    src/core/settings.h
-    src/core/skill.h
-    src/core/wrapped-card.h
     src/dialog/banipdialog.h
     src/dialog/cardeditor.h
     src/dialog/cardoverview.h
@@ -303,18 +269,7 @@ set(QSAN_MOC_HEADERS
     src/scenario/miniscenarios.h
     src/scenario/scenario.h
     src/scenario/zombie-scenario.h
-    src/server/ai.h
-    src/server/basicai.h
-    src/server/gamerule.h
-    src/server/generalselector.h
-    src/server/qtupnpportmapping.h
-    src/server/room.h
-    src/server/roomthread.h
-    src/server/roomthread1v1.h
-    src/server/roomthread3v3.h
-    src/server/roomthreadxmode.h
     src/server/server.h
-    src/server/serverplayer.h
     src/ui/bubblechatbox.h
     src/ui/button.h
     src/ui/cardcontainer.h
@@ -355,7 +310,6 @@ set(QSAN_MOC_HEADERS
     src/ui/window.h
     src/util/detector.h
     src/util/game-snapshot.h
-    src/util/nativesocket.h
     src/util/recorder.h
     src/util/replay-game-state.h
     src/util/replay-index.h

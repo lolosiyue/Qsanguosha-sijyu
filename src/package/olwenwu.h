@@ -50,6 +50,7 @@ public:
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const;
 };
 
+#if !defined(QSAN_ENGINE_BUILD)
 class CaozhaoDialog : public GuhuoDialog
 {
     Q_OBJECT
@@ -61,6 +62,13 @@ protected:
     explicit CaozhaoDialog(const QString &object);
     bool isButtonEnabled(const QString &button_name) const;
 };
+#else
+class CaozhaoDialog
+{
+public:
+    static QDialog *getInstance(const QString &) { return nullptr; }
+};
+#endif
 
 class CaozhaoCard : public SkillCard
 {

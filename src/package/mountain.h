@@ -1,7 +1,9 @@
 #ifndef _MOUNTAIN_H
 #define _MOUNTAIN_H
 
-#include "generaloverview.h"
+#if !defined(QSAN_ENGINE_BUILD)
+#include "package-dialogs.h"
+#endif
 #include "skill.h"
 
 class QiaobianCard : public SkillCard
@@ -71,19 +73,6 @@ public:
     void onEffect(CardEffectStruct &effect) const;
 };
 
-class HuashenDialog : public GeneralOverview
-{
-    Q_OBJECT
-
-public:
-    explicit HuashenDialog(const QString &propertyName = "Huashens");
-
-public slots:
-    void popup();
-
-private:
-    QString m_propertyName; 
-};
 class MountainPackage : public Package
 {
     Q_OBJECT

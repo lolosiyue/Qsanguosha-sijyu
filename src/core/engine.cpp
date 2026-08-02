@@ -1,6 +1,9 @@
 #include "engine.h"
-#include "client.h"
 #include "aux-skills.h"
+#ifdef AUDIO_SUPPORT
+#include "audio.h"
+#endif
+#include "server-info.h"
 //#include "ai.h"
 #include "settings.h"
 //#include "scenario.h"
@@ -13,7 +16,6 @@
 //#include "protocol.h"
 #include "lua-wrapper.h"
 //#include "room-state.h"
-#include "clientstruct.h"
 #include "exppattern.h"
 #include "wrapped-card.h"
 #include "room.h"
@@ -154,10 +156,9 @@ struct ManualSkill
                 baseName.remove(0, prefix.length());
         }
 
-        QTextCodec*codec = QTextCodec::codecForName("GBK");
-        translatedBytes = codec->fromUnicode(Sanguosha->translate(skill->objectName()));
+		translatedBytes = Sanguosha->translate(skill->objectName()).toUtf8();
 
-        printf("%s:%d", skill->objectName().toLocal8Bit().constData(), translatedBytes.length());
+		printf("%s:%d", skill->objectName().toLocal8Bit().constData(), int(translatedBytes.length()));
     }
     const Skill*skill;
     QString baseName;
@@ -506,9 +507,6 @@ Engine::~Engine()
 {
     delete m_customScene;
     delete m_testScene;
-#ifdef AUDIO_SUPPORT
-    Audio::quit();
-#endif
     lua_close(lua);
 }
 
@@ -545,7 +543,7 @@ void Engine::addSkills(QList<const Skill*> all_skills)
             const QString &name = skill->objectName();
 
             if (skills.contains(name)) {
-                QMessageBox::warning(nullptr, "", tr("Duplicated skill : %1").arg(name));
+                qWarning() << tr("Duplicated skill : %1").arg(name);
                 const QPointer<Skill> previous = skills.value(name);
                 m_prohibitSkills.removeAll(previous);
                 m_distanceSkills.removeAll(previous);
@@ -572,7 +570,7 @@ void Engine::addSkills(QList<const Skill*> all_skills)
             if (dynamic_cast<const CardLimitSkill *>(skill)) m_cardLimitSkills << mutableSkill;
             if (dynamic_cast<const ProhibitPindianSkill *>(skill)) m_prohibitPindianSkills << mutableSkill;
         } else {
-            QMessageBox::warning(nullptr, "", tr("The engine tries to add an invalid skill"));
+            qWarning() << tr("The engine tries to add an invalid skill");
         }
     }
 }
@@ -1037,7 +1035,7 @@ int Engine::getGeneralCount(bool include_banned, const QString &kingdom) const
     return total;
 }
 
-void Engine::registerRoom(QObject*room)
+void Engine::registerRoom(EngineRuntimeContext *room)
 {
     m_mutex.lock();
     m_rooms[QThread::currentThread()] = room;
@@ -1053,51 +1051,43 @@ void Engine::unregisterRoom()
 
 QObject*Engine::currentRoomObject()
 {
-    QObject*room;
-    m_mutex.lock();
-    room = m_rooms[QThread::currentThread()];
-    //Q_ASSERT(room);
-    m_mutex.unlock();
-    return room;
+	QObject *room = nullptr;
+	m_mutex.lock();
+	EngineRuntimeContext *context = m_rooms.value(QThread::currentThread(), nullptr);
+	if (context)
+		room = context->runtimeObject();
+	//Q_ASSERT(room);
+	m_mutex.unlock();
+	return room;
+}
+
+EngineRuntimeContext *Engine::currentRoomContext()
+{
+    QMutexLocker locker(&m_mutex);
+    return m_rooms.value(QThread::currentThread(), nullptr);
 }
 
 Room*Engine::currentRoom()
 {
-    QObject*roomObject = currentRoomObject();/*
-    Room*room = qobject_cast<Room*>(roomObject);
-    Q_ASSERT(room);
-    return room;*/
-	return qobject_cast<Room*>(roomObject);
+	return qobject_cast<Room *>(currentRoomObject());
 }
 
 RoomState*Engine::currentRoomState()
 {
-    QObject*roomObject = currentRoomObject();
-    Room*room = qobject_cast<Room*>(roomObject);
-    if (room) return room->getRoomState();
-	Client*client = qobject_cast<Client*>(roomObject);
-	//Q_ASSERT(client);
-	return client->getRoomState();
+	EngineRuntimeContext *context = currentRoomContext();
+	return context ? context->roomState() : nullptr;
 }
 
 const Player*Engine::getCardOwner(int card_id)
 {
-    QObject*roomObject = currentRoomObject();
-    if (!roomObject) return nullptr;
-    Room*room = qobject_cast<Room*>(roomObject);
-    if (room) return room->getCardOwner(card_id);
-	Client*client = qobject_cast<Client*>(roomObject);
-	return client->getCardOwner(card_id);
+	EngineRuntimeContext *context = currentRoomContext();
+	return context ? context->cardOwner(card_id) : nullptr;
 }
 
 Player::Place Engine::getCardPlace(int card_id)
 {
-    QObject*roomObject = currentRoomObject();
-    if (!roomObject) return Player::PlaceUnknown;
-    Room*room = qobject_cast<Room*>(roomObject);
-    if (room) return room->getCardPlace(card_id);
-	Client*client = qobject_cast<Client*>(roomObject);
-	return client->getCardPlace(card_id);
+	EngineRuntimeContext *context = currentRoomContext();
+	return context ? context->cardPlace(card_id) : Player::PlaceUnknown;
 }
 
 QString Engine::getCurrentCardUsePattern()
@@ -1152,16 +1142,8 @@ Card*Engine::getCard(int cardId, bool)
     Q_ASSERT(card || !need_Q_ASSERT);
     if (!need_Q_ASSERT && !card) return nullptr;
     return card;*/
-    QObject*room = currentRoomObject();
-	if(!room) return nullptr;
-    Card*card = nullptr;
-	Room*serverRoom = qobject_cast<Room*>(room);
-	if(serverRoom) card = serverRoom->getCard(cardId);
-	if(card==nullptr){
-		Client*clientRoom = qobject_cast<Client*>(room);
-		if(clientRoom) card = clientRoom->getCard(cardId);
-	}
-	return card;//currentRoomState()->getCard(cardId);
+	EngineRuntimeContext *context = currentRoomContext();
+	return context ? context->card(cardId) : nullptr;
 }
 
 const Card*Engine::getEngineCard(int cardId) const
@@ -1291,19 +1273,19 @@ QStringList Engine::getKingdoms() const
     return kingdoms;
 }
 
-QColor Engine::getKingdomColor(const QString &kingdom) const
+QString Engine::getKingdomColor(const QString &kingdom) const
 {
-    static QMap<QString, QColor> color_map;
+    static QMap<QString, QString> color_map;
     if (color_map.isEmpty()) {
         LuaLocker locker;
         QVariantMap map = GetValueFromLuaState(lua, "config", "kingdom_colors").toMap();
         QMapIterator<QString, QVariant> itor(map);
         while (itor.hasNext()) {
             itor.next();
-            QColor color(itor.value().toString());
-            if (!color.isValid()) {
+            QString color = itor.value().toString();
+            if (color.isEmpty()) {
                 qWarning("Invalid color for kingdom %s", qPrintable(itor.key()));
-                color = QColor(128, 128, 128);
+                color = QStringLiteral("#808080");
             }
             color_map[itor.key()] = color;
         }
@@ -1312,19 +1294,19 @@ QColor Engine::getKingdomColor(const QString &kingdom) const
     return color_map.value(kingdom);
 }
 
-QMap<QString, QColor> Engine::getSkillTypeColorMap() const
+QMap<QString, QString> Engine::getSkillTypeColorMap() const
 {
-    static QMap<QString, QColor> color_map;
+    static QMap<QString, QString> color_map;
     if (color_map.isEmpty()) {
         LuaLocker locker;
         QVariantMap map = GetValueFromLuaState(lua, "config", "skill_type_colors").toMap();
         QMapIterator<QString, QVariant> itor(map);
         while (itor.hasNext()) {
             itor.next();
-            QColor color(itor.value().toString());
-            if (!color.isValid()) {
+            QString color = itor.value().toString();
+            if (color.isEmpty()) {
                 qWarning("Invalid color for skill type %s", qPrintable(itor.key()));
-                color = QColor(128, 128, 128);
+                color = QStringLiteral("#808080");
             }
             color_map[itor.key()] = color;
         }
@@ -1608,9 +1590,10 @@ int Engine::getPlayerCount(const QString &mode) const
     if (modes.contains(mode) || isNormalGameMode(mode)) { // hidden pz settings?
 		if (mode_roles.contains(mode))
 			return mode_roles.value(mode).length();
-		static QRegExp rx("(\\d+)");
-        if (rx.indexIn(mode) != -1)
-            return rx.capturedTexts().first().toInt();
+		static QRegularExpression rx("(\\d+)");
+		const QRegularExpressionMatch match = rx.match(mode);
+		if (match.hasMatch())
+			return match.captured(1).toInt();
     } else {
         // scenario mode
         const Scenario*scenario = getScenario(mode);
@@ -2162,9 +2145,7 @@ bool Engine::playSystemAudioEffect(const QString &name, bool superpose) const
 bool Engine::playAudioEffect(const QString &filename, bool superpose) const
 {
     if(filename.isEmpty()||!Config.EnableEffects||!QFile::exists(filename)) return false;
-#ifdef AUDIO_SUPPORT
-	Audio::play(filename, superpose);
-#endif
+	emit const_cast<Engine *>(this)->audioEffectRequested(filename, superpose);
 	return true;
 }
 

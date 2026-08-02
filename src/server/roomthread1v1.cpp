@@ -7,6 +7,7 @@
 //#include "package.h"
 //#include "util.h"
 #include "roomthread.h"
+#include <QRegularExpression>
 
 using namespace QSanProtocol;
 
@@ -142,10 +143,11 @@ void RoomThread1v1::takeGeneral(ServerPlayer *player, const QString &name)
 	QString group = player->isLord() ? "warm" : "cool";
 	room->doBroadcastNotify(room->getOtherPlayers(player, true), S_COMMAND_TAKE_GENERAL, JsonUtils::toJsonArray(QStringList() << group << name << rule));
 
-	static QRegExp unknown_rx("x(\\d)");
+	static const QRegularExpression unknown_rx("^x(\\d)$");
+	const QRegularExpressionMatch unknown_match = unknown_rx.match(name);
 	QString general_name = name;
-	if (unknown_rx.exactMatch(name)) {
-		int index = unknown_rx.capturedTexts().at(1).toInt();
+	if (unknown_match.hasMatch()) {
+		int index = unknown_match.captured(1).toInt();
 		general_name = unknown_list.at(index);
 
 		JsonArray arg;
@@ -155,7 +157,7 @@ void RoomThread1v1::takeGeneral(ServerPlayer *player, const QString &name)
 
 	room->doNotify(player, S_COMMAND_TAKE_GENERAL, JsonUtils::toJsonArray(QStringList() << group << general_name << rule));
 
-	QString namearg = unknown_rx.exactMatch(name) ? "anjiang" : name;
+	QString namearg = unknown_match.hasMatch() ? "anjiang" : name;
 	foreach (ServerPlayer *p, room->getPlayers()) {
 		LogMessage log;
 		log.type = "#VsTakeGeneral";

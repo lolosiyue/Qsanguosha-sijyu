@@ -3,13 +3,16 @@
 //#include "card.h"
 #include "engine.h"
 #include <QMutexLocker>
+#if !defined(QSAN_ENGINE_BUILD)
 #include <QApplication>
 #include <QStyleFactory>
 #include <QStyleHints>
 #include <QGuiApplication>
+#endif
 
 Settings Config;
 
+#if !defined(QSAN_ENGINE_BUILD)
 // 构建明暗主题的基础 palette(不依赖 standardPalette,详见 applyColorScheme 注释)。
 // 0=跟随系统(读 getter 判断当前系统是亮还是暗),1=强制亮色,2=强制暗色。
 static QPalette buildColorSchemePalette(int scheme)
@@ -149,6 +152,7 @@ void applyVisualMode(const QString &mode)
     }
     applyPalette(pal);
 }
+#endif
 
 static const qreal ViewWidth = 1280 * 0.8;
 static const qreal ViewHeight = 800 * 0.8;
@@ -163,13 +167,12 @@ const int Settings::S_JUDGE_LONG_DELAY = 800;
 
 Settings::Settings()
 #ifdef Q_OS_WIN32
-    : QSettings("config.ini", QSettings::IniFormat),
+    : QSettings("config.ini", QSettings::IniFormat)
 #elif defined(ANDROID)
-    : QSettings(getAndroidConfigPath(), QSettings::IniFormat),
+    : QSettings(getAndroidConfigPath(), QSettings::IniFormat)
 #else
-    : QSettings("QSanguosha.org", "QSanguosha"),
+    : QSettings("QSanguosha.org", "QSanguosha")
 #endif
-    Rect(-ViewWidth / 2, -ViewHeight / 2, ViewWidth, ViewHeight)
 {
 }
 
@@ -207,6 +210,7 @@ void Settings::init()
 #endif
     lua_State *lua = Sanguosha->getLuaState();
     LuaLocker lua_locker;
+#if !defined(QSAN_ENGINE_BUILD)
     if (!qApp->arguments().contains("-server")) {
         QString font_path = value("DefaultFontPath", "font/simli.ttf").toString();
         int font_id = QFontDatabase::addApplicationFont(font_path);
@@ -228,6 +232,7 @@ void Settings::init()
         UIFont = value("UIFont", QApplication::font("QTextEdit")).value<QFont>();
         TextEditColor = QColor(value("TextEditColor", "white").toString());
     }
+#endif
 
     CountDownSeconds = value("CountDownSeconds", 3).toInt();
     const QString savedModeId = value("GameMode", "02p").toString();
@@ -290,6 +295,8 @@ void Settings::init()
 
     HostAddress = value("HostAddress", "127.0.0.1").toString();
     UserAvatar = value("UserAvatar", "shencaocao").toString();
+    AutoPickGeneral = value("AutoPickGeneral", "").toString();
+    AutoAddRobots = value("AutoAddRobots", false).toBool();
     HistoryIPs = value("HistoryIPs").toStringList();
     DetectorPort = value("DetectorPort", 9526u).toUInt();
     MaxCards = value("MaxCards", 15).toInt();

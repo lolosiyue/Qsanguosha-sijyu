@@ -11,7 +11,9 @@
 #include "wrapped-card.h"
 #include "room.h"
 #include "roomthread.h"
+#if !defined(QSAN_ENGINE_BUILD)
 #include "clientstruct.h"
+#endif
 
 TunanCard::TunanCard()
 {
@@ -1457,6 +1459,7 @@ public:
 	}
 };
 
+#if !defined(QSAN_ENGINE_BUILD)
 YoulongDialog*YoulongDialog::getInstance(const QString &object)
 {
 	static YoulongDialog*instance;
@@ -1479,6 +1482,7 @@ bool YoulongDialog::isButtonEnabled(const QString &button_name) const
 	return Self->getMark(objectName() + "_" + button_name) <= 0 && button_name != "normal_slash"
 			&& !Self->isCardLimited(card, Card::MethodUse) && card->isAvailable(Self);
 }
+#endif
 
 YoulongCard::YoulongCard()
 {
@@ -10920,6 +10924,7 @@ void ShefuCard::use(Room*room, ServerPlayer*source, QList<ServerPlayer*> &) cons
 	room->sendLog(log, source);
 }
 
+#if !defined(QSAN_ENGINE_BUILD)
 ShefuDialog*ShefuDialog::getInstance(const QString &object)
 {
 	static ShefuDialog*instance;
@@ -10937,6 +10942,7 @@ bool ShefuDialog::isButtonEnabled(const QString &button_name) const
 {
 	return Self->getMark("Shefu_" + button_name)<1;
 }
+#endif
 
 class ShefuViewAsSkill : public OneCardViewAsSkill
 {
@@ -11856,6 +11862,7 @@ public:
 	}
 };
 
+#if !defined(QSAN_ENGINE_BUILD)
 static QHash<QString,JuguanDialog*>JuguanDialogs;
 
 JuguanDialog*JuguanDialog::getInstance(const QString &object, const QString &card_names)
@@ -12026,6 +12033,7 @@ QAbstractButton*JuguanDialog::createButton(Card *card)
 	group->addButton(button);
 	return button;
 }
+#endif
 
 JuguanCard::JuguanCard()
 {

@@ -1261,17 +1261,22 @@ public:
 
     QDialog *getDialog() const
     {
+#if !defined(QSAN_ENGINE_BUILD)
         static HuashenDialog *dialog;
 
         if (dialog == nullptr)
             dialog = new HuashenDialog(objectName());
 
         return dialog;
+#else
+        return nullptr;
+#endif
     }
 };
 
 
 // 1. 建構子實作：接收參數並賦值給 m_propertyName
+#if !defined(QSAN_ENGINE_BUILD)
 HuashenDialog::HuashenDialog(const QString &propertyName)
     : GeneralOverview(), m_propertyName(propertyName)
 {
@@ -1321,6 +1326,7 @@ void HuashenDialog::popup()
     setWindowTitle(Sanguosha->translate(skill_name));
     show();
 }
+#endif
 
 class HuashenSelect : public PhaseChangeSkill
 {

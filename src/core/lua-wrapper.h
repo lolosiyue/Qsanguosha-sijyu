@@ -47,7 +47,8 @@ public:
         this->waked_skills = waked_skills;
     }
 
-    QDialog *getDialog() const;
+    SkillDialogInfo getDialogInfo() const override;
+    QDialog *getDialog() const override;
 
     Frequency getFrequency(const Player *target) const;
     int getPriority(TriggerEvent triggerEvent) const;
@@ -138,7 +139,8 @@ public:
         priority_table[triggerEvent] = priority;
     }
 
-    QDialog *getDialog() const;
+    SkillDialogInfo getDialogInfo() const override;
+    QDialog *getDialog() const override;
 
     virtual int getPriority() const;
     virtual int getPriority(TriggerEvent triggerEvent) const;
@@ -306,7 +308,8 @@ public:
     bool isEnabledAtPlay(const Player *player) const;
     bool isEnabledAtResponse(const Player *player, const QString &pattern) const;
     bool isEnabledAtNullification(const ServerPlayer *player) const;
-    QDialog *getDialog() const;
+    SkillDialogInfo getDialogInfo() const override;
+    QDialog *getDialog() const override;
 private:
     QString guhuo_type;
     QString juguan_type;
@@ -333,6 +336,7 @@ public:
     EffectFlow effectOnTargetGroup(SkillContext &context, const QList<ServerPlayer *> &targets) const;
     TargetMode targetMode() const;
     TargetEffectMode targetEffectMode() const;
+    SkillDialogInfo getDialogInfo() const override;
     QDialog *getDialog() const override;
 
     void setTargetMode(TargetMode mode) { m_targetMode = mode; }

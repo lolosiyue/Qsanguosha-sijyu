@@ -2,6 +2,11 @@
 #define _SETTINGS_H
 
 #include <QSettings>
+#ifndef QSAN_ENGINE_BUILD
+#include <QColor>
+#include <QFont>
+#include <QRectF>
+#endif
 //#include "protocol.h"
 #include "structs.h"
 
@@ -18,15 +23,6 @@ public:
 #ifdef ANDROID
     void reinitializeConfigFile();
 #endif
-
-    const QRectF Rect;
-    QFont BigFont;
-    QFont SmallFont;
-    QFont TinyFont;
-
-    QFont AppFont;
-    QFont UIFont;
-    QColor TextEditColor;
 
     // server side
     QString ServerName;
@@ -74,6 +70,10 @@ public:
     QString HostAddress;
     QString UserName;
     QString UserAvatar;
+    // 自動化測試: --test-general 指定自動選將 (空字串 = 不啟用)
+    QString AutoPickGeneral;
+    // 自動化測試: --auto-robots owner 連線後自動填滿 AI 並開局
+    bool AutoAddRobots;
     QStringList HistoryIPs;
     ushort DetectorPort;
     int MaxCards;
@@ -116,6 +116,25 @@ private:
 };
 
 extern Settings Config;
+
+#ifndef QSAN_ENGINE_BUILD
+class UiSettings
+{
+public:
+    UiSettings();
+    void init();
+
+    const QRectF Rect;
+    QFont BigFont;
+    QFont SmallFont;
+    QFont TinyFont;
+    QFont AppFont;
+    QFont UIFont;
+    QColor TextEditColor;
+};
+
+extern UiSettings UiConfig;
+#endif
 
 // 切换/初始化应用主题:
 //   Qt 6 的 QStyle::standardPalette() 会跟随系统 colorScheme 返回明暗色,

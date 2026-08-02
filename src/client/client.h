@@ -2,6 +2,7 @@
 #define _CLIENT_H
 
 #include "standard.h"
+#include "engine-runtime-context.h"
 //#include "skill.h"
 #include "room-state.h"
 //#include "protocol.h"
@@ -12,7 +13,7 @@ class QTextDocument;
 class ClientSocket;
 class ReplayTakeoverManager;
 
-class Client : public QObject
+class Client : public QObject, public EngineRuntimeContext
 {
     Q_OBJECT
     Q_PROPERTY(Client::Status status READ getStatus WRITE setStatus)
@@ -225,6 +226,12 @@ public:
     {
         return &_m_roomState;
     }
+
+    QObject *runtimeObject() override { return this; }
+    RoomState *roomState() override { return getRoomState(); }
+    const Player *cardOwner(int card_id) const override { return getCardOwner(card_id); }
+    Player::Place cardPlace(int card_id) const override { return getCardPlace(card_id); }
+    Card *card(int card_id) const override { return getCard(card_id); }
     inline Card *getCard(int cardId) const
     {
         return _m_roomState.getCard(cardId);
@@ -344,8 +351,11 @@ private slots:
     void onPlayerChooseSuit();
     void onPlayerChooseKingdom();
     void alertFocus();
-    void onPlayerChooseOrder();
     void onPlayerChooseRole3v3();
+
+public slots:
+    // 自動化測試: roomscene 直接呼叫自動選先手 (原為 private)
+    void onPlayerChooseOrder();
 
 signals:
     void version_checked(const QString &version_number, const QString &mod_name, int card_num);

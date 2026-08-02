@@ -204,6 +204,27 @@ Dashboard::Dashboard(QGraphicsPixmapItem *widget)
     _m_shefu_menu = new QMenu(RoomSceneInstance->mainWindow());
 }
 
+Dashboard::~Dashboard()
+{
+    // 子物件 (CardItem/動畫) 會在 ~QObject 銷毀階段觸發 destroyed 連線，
+    // 但屆時 m_hoverOriginalZ / m_hoverScaleAnimations 等成員已先被析構，
+    // Qt6 的 assertObjectType 會因此斷言失敗。故在此先斷開所有相關連線，
+    // 並停止/釋放 hover 動畫，避免析構期間存取已銷毀的成員。
+    for (auto it = m_hoverDestroyConnections.constBegin(); it != m_hoverDestroyConnections.constEnd(); ++it)
+        QObject::disconnect(it.value());
+    for (auto it = m_animDestroyConnections.constBegin(); it != m_animDestroyConnections.constEnd(); ++it)
+        QObject::disconnect(it.value());
+    m_hoverDestroyConnections.clear();
+    m_animDestroyConnections.clear();
+
+    for (QPropertyAnimation *anim : m_hoverScaleAnimations) {
+        anim->stop();
+        anim->deleteLater();
+    }
+    m_hoverScaleAnimations.clear();
+    m_hoverOriginalZ.clear();
+}
+
 void Dashboard::bindPlayer(ClientPlayer *player)
 {
     if (player == nullptr || player == m_currentPlayer)
@@ -332,7 +353,7 @@ void Dashboard::_createMiddle()
     trusting_item->setOpacity(0.36);
     trusting_item->setZValue(19);
 
-    trusting_text->setFont(Config.BigFont);
+    trusting_text->setFont(UiConfig.BigFont);
     trusting_text->setBrush(Qt::white);
     trusting_text->setZValue(20);
 
@@ -526,8 +547,8 @@ void Dashboard::_updateFrames()
 
     QRect rect2 = QRect(0, 0, this->width(), layout->m_normalHeight);
     trusting_item->setPos(0, 0);
-    trusting_text->setPos((rect2.width() - Config.BigFont.pixelSize() * 4.5) / 2,
-                          (rect2.height() - Config.BigFont.pixelSize()) / 2);
+    trusting_text->setPos((rect2.width() - UiConfig.BigFont.pixelSize() * 4.5) / 2,
+                          (rect2.height() - UiConfig.BigFont.pixelSize()) / 2);
 
     Q_ASSERT(button_widget);
     button_widget->setX(rect.width() - getButtonWidgetWidth());
@@ -697,7 +718,8 @@ void Dashboard::_addHandCard(CardItem *card_item, bool prepend, const QString &f
     connect(card_item, SIGNAL(leave_hover()), this, SLOT(onCardItemLeaveHover()));
     connect(card_item, SIGNAL(mark_changed()), this, SLOT(onMarkChanged()));
     connect(card_item, SIGNAL(actionButtonClicked(QString,int)), this, SIGNAL(cardActionButtonClicked(QString,int)));
-    connect(card_item, &QObject::destroyed, this, &Dashboard::_onHoverCardDestroyed);
+    m_hoverDestroyConnections.insert(card_item,
+        connect(card_item, &QObject::destroyed, this, &Dashboard::_onHoverCardDestroyed));
 
     if (!footnote.isEmpty())
         card_item->setFootnote(footnote);
@@ -1775,6 +1797,9 @@ void Dashboard::enableAllCards()
 void Dashboard::startPending(const ViewAsSkill *skill)
 {
     m_mutexEnableCards.lock();
+    if (skill == nullptr || m_player == nullptr
+        || !m_player->hasSkillInstance(skill->objectName(), m_viewAsSkillInstanceID))
+        m_viewAsSkillInstanceID = 0;
     view_as_skill = skill;
     pendings.clear();
     unselectAll();
@@ -1822,6 +1847,7 @@ void Dashboard::stopPending()
         }
     }
     view_as_skill = nullptr;
+    m_viewAsSkillInstanceID = 0;
     pending_card = nullptr;
     foreach (const QString &pile, m_player->getPileNames()) {
         if (pile == "wooden_ox" || pile.startsWith("&"))
@@ -1994,14 +2020,26 @@ void Dashboard::updatePending()
             ? activeSkill->createCard(activeRequest) : nullptr)
         : view_as_skill->viewAs(cards);
     if (new_pending_card) {
-        const_cast<Card *>(new_pending_card)->setSkillInstanceID(m_viewAsSkillInstanceID);
-		// The generated SkillCard name may differ from the clicked ViewAsSkill.
-		const_cast<Card *>(new_pending_card)->setActivationSkill(view_as_skill->objectName(), m_viewAsSkillInstanceID);
-		const SkillInstance *instance = m_player->findSkillInstance(activeSkill ? activeSkill->objectName() : view_as_skill->objectName(),
+		const QString activationSkillName = activeSkill ? activeSkill->objectName() : view_as_skill->objectName();
+		const SkillInstance *instance = m_player->findSkillInstance(activationSkillName,
 			m_viewAsSkillInstanceID);
-		if (instance && instance->parentRef.isValid())
-            const_cast<Card *>(new_pending_card)->setSourceSkill(instance->parentRef.key.skillName,
-                instance->parentRef.key.instanceID);
+		Card *mutablePendingCard = const_cast<Card *>(new_pending_card);
+			if (instance) {
+				mutablePendingCard->setSkillInstanceID(instance->instanceID);
+				// The generated SkillCard name may differ from the clicked ViewAsSkill.
+				mutablePendingCard->setActivationSkill(activationSkillName, instance->instanceID);
+				if (instance->parentRef.isValid())
+					mutablePendingCard->setSourceSkill(instance->parentRef.key.skillName,
+						instance->parentRef.key.instanceID);
+				else
+					mutablePendingCard->setSourceSkill(QString(), 0);
+			} else {
+			// ResponseSkill returns the original physical card.  Never let a stale
+			// activation from a previous pending skill leak into a shared helper card.
+			mutablePendingCard->setSkillInstanceID(0);
+			mutablePendingCard->setSourceSkill(QString(), 0);
+			mutablePendingCard->setActivationSkill(QString(), 0);
+		}
     }
     if (pending_card != new_pending_card) {
         if (pending_card && !pending_card->parent() && pending_card->isVirtualCard())
@@ -2090,15 +2128,17 @@ void Dashboard::_startHoverScaleAnimation(CardItem *card, qreal endScale, QEasin
     // When the animation is deleted (naturally after finished, or via stop +
     // deleteLater), drop its hash entry so we never touch a dangling animation
     // on the next hover.
-    connect(anim, &QObject::destroyed, this, [this](QObject *obj) {
-        QPropertyAnimation *dead = static_cast<QPropertyAnimation *>(obj);
-        for (auto it = m_hoverScaleAnimations.begin(); it != m_hoverScaleAnimations.end(); ++it) {
-            if (it.value() == dead) {
-                m_hoverScaleAnimations.erase(it);
-                break;
+    m_animDestroyConnections.insert(anim,
+        connect(anim, &QObject::destroyed, this, [this](QObject *obj) {
+            QPropertyAnimation *dead = static_cast<QPropertyAnimation *>(obj);
+            m_animDestroyConnections.remove(dead);
+            for (auto it = m_hoverScaleAnimations.begin(); it != m_hoverScaleAnimations.end(); ++it) {
+                if (it.value() == dead) {
+                    m_hoverScaleAnimations.erase(it);
+                    break;
+                }
             }
-        }
-    });
+        }));
     connect(anim, &QPropertyAnimation::finished, anim, &QObject::deleteLater);
     anim->start();
     m_hoverScaleAnimations.insert(card, anim);
@@ -2107,6 +2147,7 @@ void Dashboard::_startHoverScaleAnimation(CardItem *card, qreal endScale, QEasin
 void Dashboard::_onHoverCardDestroyed(QObject *obj)
 {
     CardItem *card = static_cast<CardItem *>(obj);
+    m_hoverDestroyConnections.remove(card);
     m_hoverOriginalZ.remove(card);
     if (m_hoverScaleAnimations.contains(card)) {
         QPropertyAnimation *anim = m_hoverScaleAnimations.take(card);

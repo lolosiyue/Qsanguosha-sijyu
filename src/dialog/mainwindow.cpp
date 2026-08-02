@@ -16,12 +16,21 @@
 #include "connectiondialog.h"
 #include "configdialog.h"
 #include "clientstruct.h"
+#include "client.h"
+#include "clientplayer.h"
 #include "settings.h"
 #include "button.h"
 #include "homecontroller.h"
+#ifdef AUDIO_SUPPORT
+#include "audio.h"
+#endif
 #include <QOpenGLWidget>
 #include <QStackedWidget>
 #include <QQuickWidget>
+#include <QTimer>
+#include <QDateTime>
+#include <QFile>
+#include <QTextStream>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlError>
@@ -34,7 +43,7 @@ public:
     FitView(QGraphicsScene *scene, MainWindow *mainWindow)
         : QGraphicsView(scene), m_mainWindow(mainWindow)
     {
-        setSceneRect(Config.Rect);
+        setSceneRect(UiConfig.Rect);
         setRenderHints(QPainter::TextAntialiasing | QPainter::Antialiasing
             | QPainter::SmoothPixmapTransform);
         setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -224,6 +233,7 @@ void MainWindow::showHomePage()
 	if (Self) {
 		Self->deleteLater();
 		Self = nullptr;
+		setEngineSelf(nullptr);
 	}
 
 	ui->actionStart_Game->setEnabled(true);
@@ -301,8 +311,8 @@ void MainWindow::restoreFromConfig()
 		setWindowState(window_state);
 
 	QFont font;
-	if (Config.UIFont != font)
-		QApplication::setFont(Config.UIFont, "QTextEdit");
+	if (UiConfig.UIFont != font)
+		QApplication::setFont(UiConfig.UIFont, "QTextEdit");
 
 	ui->actionEnable_Hotkey->setChecked(Config.EnableHotKey);
 	ui->actionNever_nullify_my_trick->setChecked(Config.NeverNullifyMyTrick);
@@ -388,6 +398,25 @@ void MainWindow::on_actionStart_Server_triggered()
 
 void MainWindow::checkVersion(const QString &server_version, const QString &server_mod, int card_num)
 {
+	// 自動化測試: 略過 MOD/卡牌數/版本檢查, 直接 signup (server/client 為不同 target, 載入套件數可能不同)
+	const bool autotest = Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty();
+	if (autotest) {
+		QFile diag("client_autotest_diag.log");
+		if (diag.open(QIODevice::Append | QIODevice::Text)) {
+			QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
+				<< " checkVersion(autotest): server_mod='" << server_mod
+				<< "' card_num=" << card_num
+				<< " local_card=" << Sanguosha->getCardCount()
+				<< " server_ver='" << server_version << "'\n";
+		}
+		Client *client = qobject_cast<Client *>(sender());
+		if (client) {
+			client->signup();
+			connect(client, SIGNAL(server_connected()), SLOT(enterRoom()));
+		}
+		return;
+	}
+
 	if (Sanguosha->getMODName() != server_mod) {
 		QMessageBox::warning(this, tr("Warning"), tr("Client MOD name is not same as the server!"));
 		return;
@@ -526,6 +555,39 @@ void MainWindow::enterRoom()
 	connect(room_scene, SIGNAL(game_over_dialog_rejected()), this, SLOT(enableDialogButtons()));
 
 	showGamePage(room_scene);
+
+	// 自動化測試: --auto-robots 由 owner 自動填滿 AI (填滿後伺服器端自動開局)
+	if (Config.AutoAddRobots) {
+		QFile diag("client_autotest_diag.log");
+		if (diag.open(QIODevice::Append | QIODevice::Text)) {
+			QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
+				<< " enterRoom: AutoAddRobots on, players=" << ClientInstance->getPlayers().length() << "\n";
+		}
+		QTimer *autoRobotTimer = new QTimer(room_scene);
+		autoRobotTimer->setInterval(300);
+		QObject::connect(autoRobotTimer, &QTimer::timeout, room_scene, [autoRobotTimer]() {
+			bool anyOwner = false;
+			foreach (const ClientPlayer *p, ClientInstance->getPlayers()) {
+				if (p->isOwner()) {
+					anyOwner = true;
+					break;
+				}
+			}
+			QFile diag("client_autotest_diag.log");
+			if (diag.open(QIODevice::Append | QIODevice::Text)) {
+				QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
+					<< " tick: players=" << ClientInstance->getPlayers().length()
+					<< " anyOwner=" << anyOwner << "\n";
+			}
+			if (anyOwner) {
+				ClientInstance->addRobot(-1);
+				autoRobotTimer->stop();
+				autoRobotTimer->deleteLater();
+			}
+		});
+		QTimer::singleShot(15000, autoRobotTimer, &QTimer::stop);
+		autoRobotTimer->start();
+	}
 }
 
 void MainWindow::gotoStartScene()

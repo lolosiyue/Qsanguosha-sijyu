@@ -3,7 +3,7 @@
 
 //#include "card.h"
 #include "skill.h"
-#include "audio.h"
+#include "engine-runtime-context.h"
 #include "util.h"
 #include "json.h"
 #include <QPointer>
@@ -89,8 +89,8 @@ public:
     QString getMODName() const;
     QStringList getExtensions() const;
     QStringList getKingdoms() const;
-    QColor getKingdomColor(const QString &kingdom) const;
-    QMap<QString, QColor> getSkillTypeColorMap() const;
+    QString getKingdomColor(const QString &kingdom) const;
+    QMap<QString, QString> getSkillTypeColorMap() const;
     QStringList getChattingEasyTexts() const;
     QList<EasyTextItem> getChattingEasyTextItems(const QString &general_name) const;
     QString getSetupString() const;
@@ -192,9 +192,10 @@ public:
     bool correctSkillValidity(const Player *player, const Skill *skill) const;
     int correctAttackRange(const Player *target, bool include_weapon = true, bool fixed = false) const;
 
-    void registerRoom(QObject *room);
+    void registerRoom(EngineRuntimeContext *room);
     void unregisterRoom();
     QObject *currentRoomObject();
+    EngineRuntimeContext *currentRoomContext();
     Room *currentRoom();
     RoomState *currentRoomState();
 
@@ -242,7 +243,7 @@ private:
     QList<QPointer<Skill>> m_viewAsEquipSkills;
     QList<QPointer<Skill>> m_cardLimitSkills;
     QList<QPointer<Skill>> m_prohibitPindianSkills;
-    QHash<QThread *, QObject *> m_rooms;
+    QHash<QThread *, EngineRuntimeContext *> m_rooms;
     mutable QMutex m_mutex;
     QMap<QString, GameModeStruct> modes;
     QMap<QString, QString> mode_roles;
@@ -288,6 +289,9 @@ public slots:
 private:
 	QFile logFile;
 #endif // LOGNETWORK
+
+signals:
+    void audioEffectRequested(const QString &filename, bool superpose);
 
 };
 

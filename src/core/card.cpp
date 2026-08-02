@@ -7,10 +7,13 @@
 //#include "structs.h"
 #include "lua-wrapper.h"
 //#include "standard.h"
+#if !defined(QSAN_ENGINE_BUILD)
 #include "clientplayer.h"
+#endif
 #include "wrapped-card.h"
 #include "roomthread.h"
 #include <src/util/ThreadSafeHelper.h>
+#include <QRegularExpression>
 
 const int Card::S_UNKNOWN_CARD_ID = -1;
 
@@ -205,7 +208,11 @@ bool Card::hasSuit() const
 
 bool Card::isEquipped() const
 {
+#if defined(QSAN_ENGINE_BUILD)
+	return false;
+#else
 	return Self && Self->hasEquip(this);
+#endif
 }
 
 bool Card::match(const QString &pattern) const
@@ -463,11 +470,11 @@ QString Card::getDescription(const Player *owner) const
 		desc = desc.mid(11);
 	else {
 		if (Config.value("AutoSkillTypeColorReplacement").toBool()) {
-			QMap<QString, QColor> color_map = Sanguosha->getSkillTypeColorMap();
+			QMap<QString, QString> color_map = Sanguosha->getSkillTypeColorMap();
 			foreach (QString skill_type, color_map.keys()) {
 				schar = Sanguosha->translate(skill_type);
 				if(desc.contains(schar))
-					desc.replace(schar, QString("<font color=%1><b>%2</b></font>").arg(color_map[skill_type].name()).arg(schar));
+				desc.replace(schar, QString("<font color=%1><b>%2</b></font>").arg(color_map[skill_type]).arg(schar));
 			}
 		}
 		if (Config.value("AutoSuitReplacement").toBool()) {
@@ -554,22 +561,24 @@ const Card*Card::Parse(const QString &str)
 	QString copy = str;
 	if (str.contains("->")) copy = copy.split("->").first();
 	if (str.startsWith("@")) {// skill card
-		static QRegExp pattern("@(\\w+)=([^:]+)(:.+)?");
-		static QRegExp ex_pattern("@(\\w*)\\[(\\w+):(.+)\\]=([^:]+)(:.+)?");
+		static const QRegularExpression pattern("^@(\\w+)=([^:]+)(:.+)?$");
+		static const QRegularExpression ex_pattern("^@(\\w*)\\[(\\w+):(.+)\\]=([^:]+)(:.+)?$");
 		QString card_name, card_suit, card_number;
 		QString subcard_str, user_string;
-		if (pattern.exactMatch(copy)) {
-			QStringList texts = pattern.capturedTexts();
-			card_name = texts.at(1);
-			subcard_str = texts.at(2);
-			user_string = texts.at(3);
-		} else if (ex_pattern.exactMatch(copy)) {
-			QStringList texts = ex_pattern.capturedTexts();
-			card_name = texts.at(1);
-			card_suit = texts.at(2);
-			card_number = texts.at(3);
-			subcard_str = texts.at(4);
-			user_string = texts.at(5);
+		QRegularExpressionMatch match = pattern.match(copy);
+		if (match.hasMatch()) {
+			card_name = match.captured(1);
+			subcard_str = match.captured(2);
+			user_string = match.captured(3);
+		} else {
+			match = ex_pattern.match(copy);
+			if (!match.hasMatch())
+				return nullptr;
+			card_name = match.captured(1);
+			card_suit = match.captured(2);
+			card_number = match.captured(3);
+			subcard_str = match.captured(4);
+			user_string = match.captured(5);
 		}
 		SkillCard*card = Sanguosha->cloneSkillCard(card_name);
 		if (card){
@@ -601,14 +610,15 @@ const Card*Card::Parse(const QString &str)
 		new_card->deleteLater();
 		return new_card;
 	} else if (str.contains("=")) {
-		static QRegExp pattern("(\\w+):(\\w*)\\[(\\w+):(.+)\\]=(.+)");
-		if (pattern.exactMatch(copy)){
-			QStringList subcard_ids, texts = pattern.capturedTexts();
-			QString card_name = texts.at(1);
-			QString m_skillName = texts.at(2);
-			QString suit_string = texts.at(3);
-			QString number_string = texts.at(4);
-			if (texts.at(5) != ".") subcard_ids = texts.at(5).split("+");
+		static const QRegularExpression pattern("^(\\w+):(\\w*)\\[(\\w+):(.+)\\]=(.+)$");
+		QRegularExpressionMatch match = pattern.match(copy);
+		if (match.hasMatch()){
+			QStringList subcard_ids;
+			QString card_name = match.captured(1);
+			QString m_skillName = match.captured(2);
+			QString suit_string = match.captured(3);
+			QString number_string = match.captured(4);
+			if (match.captured(5) != ".") subcard_ids = match.captured(5).split("+");
 			int number = 0;
 			if (number_string == "A") number = 1;
 			else if (number_string == "J") number = 11;

@@ -182,6 +182,7 @@ Client::Client(QObject *parent, const QString &filename)
 	recorder_eventsave = Config.value("recorder/eventsave").toBool();
 
 	Self = new ClientPlayer(this);
+	setEngineSelf(Self);
 	Self->setScreenName(Config.UserName);
 	Self->setProperty("avatar", Config.UserAvatar);
 	m_original_self = Self;
@@ -222,6 +223,8 @@ Client::Client(QObject *parent, const QString &filename)
 
 Client::~Client()
 {
+	setEngineSelf(nullptr);
+	Self = nullptr;
 	foreach (const ClientPlayer *p, m_players)
 		delete p;
 	if (m_client_lua) {
@@ -252,6 +255,7 @@ void Client::setSelf(ClientPlayer *newSelf)
 	}
 
 	Self = newSelf;
+	setEngineSelf(Self);
 	if (m_noNullificationTrickName == ".")
 		m_noNullificationThisTime = false;
 	else
@@ -1476,7 +1480,7 @@ void Client::updatePileNum()
 	if (ServerInfo.GameMode == "04_boss")
 		pile_str.prepend(tr("Level: <b>%1</b>,").arg(m_bossLevel + 1));
 
-	lines_doc->setHtml(QString("<font color='%1'><p align = \"center\">%2</p></font>").arg(Config.TextEditColor.name()).arg(pile_str));
+	lines_doc->setHtml(QString("<font color='%1'><p align = \"center\">%2</p></font>").arg(UiConfig.TextEditColor.name()).arg(pile_str));
 }
 
 void Client::askForDiscard(const QVariant &reqvar)
@@ -2391,7 +2395,7 @@ void Client::speak(const QVariant &speak)
 	if (from) {
 		emit player_speak(args[0].toString(), QString("<p style=\"margin:3px 2px;\">%1</p>").arg(text));
 		QString title = QString("<b>(%1)%2</b>").arg(from->screenName()).arg(Sanguosha->translate(from->getGeneralName()));
-		text = tr("<font color='%1'>[%2] said: %3 </font>").arg(Config.TextEditColor.name()).arg(title).arg(text);
+		text = tr("<font color='%1'>[%2] said: %3 </font>").arg(UiConfig.TextEditColor.name()).arg(title).arg(text);
 	}else
 		text = tr("<font color='red'>System: %1</font>").arg(text);
 
