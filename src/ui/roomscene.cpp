@@ -2178,13 +2178,31 @@ void RoomScene::chooseGeneral(const QStringList&generals)
 	// server 在 FreeChoose(EnableCheat) 下接受任意回覆 (room.cpp askForGeneral/chooseGenerals),
 	// 因此不檢查武將是否在提供清單中; 否則 5/120 隨機清單 96% 不含指定武將 -> 永遠卡選將
 	if (!Config.AutoPickGeneral.isEmpty()) {
+		QString pick = Config.AutoPickGeneral;
+		m_autoPickGeneralAskCount++;
+		// 雙將模式: 第 1 次詢問選主將(指定), 第 2 次詢問選副將(--test-general2 指定, 否則清單隨機)
+		if (ServerInfo.Enable2ndGeneral && m_autoPickGeneralAskCount == 2) {
+			if (!Config.AutoPickGeneral2.isEmpty()) {
+				pick = Config.AutoPickGeneral2;
+			} else {
+				QStringList candidates;
+				foreach (const QString &g, generals) {
+					if (g.contains("(lord)") || g == Config.AutoPickGeneral)
+						continue;
+					candidates << g;
+				}
+				if (!candidates.isEmpty())
+					pick = candidates.at(qrand() % candidates.size());
+			}
+		}
 		QFile diag("client_autotest_diag.log");
 		if (diag.open(QIODevice::Append | QIODevice::Text)) {
 			QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
-				<< " chooseGeneral: auto-pick='" << Config.AutoPickGeneral
-				<< "' list=" << generals.join(",") << "\n";
+				<< " chooseGeneral: ask#=" << m_autoPickGeneralAskCount
+				<< " pick='" << pick << "'"
+				<< " list=" << generals.join(",") << "\n";
 		}
-		ClientInstance->onPlayerChooseGeneral(Config.AutoPickGeneral);
+		ClientInstance->onPlayerChooseGeneral(pick);
 		return;
 	}
 
@@ -5233,6 +5251,9 @@ void RoomScene::onGameStart()
 				trust();
 		});
 	}
+
+	// 自動化測試: 每局重置選將詢問計數 (雙將模式主/副將各問一次)
+	m_autoPickGeneralAskCount = 0;
 
 	game_started = true;
 
