@@ -57,6 +57,11 @@ def report_progress(label, games, prev, finished, failed):
 
 
 def run_mode(args, exe, workdir, mode, games, tag=""):
+    # 自動化測試: --spawn-delay 讓多份 process 依索引分批啟動,
+    # 避開「同時啟動大量 exe」被安全軟體行為攔截 (PROD 實測 10 個同時只有 2 個存活)
+    delay = getattr(args, "spawn_delay", 0)
+    if delay > 0 and tag:
+        time.sleep(delay * (int(tag) - 1))
     # 同一模式多份平行時, 各自獨立 log 檔 (tag 為 process 編號)
     suffix = "-%s" % tag if tag else ""
     log_path = os.path.join(log_dir_for(args), "headless", "%s%s.log" % (mode, suffix))
@@ -134,6 +139,8 @@ def main():
                         help="指定主公武將, 反覆測試同武將找 bug (空 = 隨機)")
     parser.add_argument("--general2", default="",
                         help="雙將模式指定主公副將 (空 = 隨機)")
+    parser.add_argument("--spawn-delay", type=int, default=0,
+                        help="多份 process 的啟動間隔秒數 (0 = 同時啟動)")
     args = parser.parse_args()
 
     modes = [m.strip() for m in args.modes.split(",") if m.strip()]
