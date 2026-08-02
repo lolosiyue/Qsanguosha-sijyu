@@ -13,17 +13,20 @@ import os
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from runner_common import (common_args, find_exe, kill_pid, log_dir_for,
+from runner_common import (common_args, describe_exit, find_exe, hex_exit,
+                           is_crash_code, kill_pid, log_dir_for,
                            parse_headless_log, resolve_workdir, spawn, stamp,
-                           wait_exit, write_csv)
+                           tail_lines, wait_exit, write_csv)
 
 EXE_NAME = "QSanguosha.exe"
 PER_GAME_TIMEOUT = 600  # 每局預估上限 (秒, 20p 大規模對局較慢)
 
 
-def run_mode(args, exe, workdir, mode, games):
-    log_path = os.path.join(log_dir_for(args), "headless", "%s.log" % mode)
-    headless_log = os.path.join(log_dir_for(args), "headless", "%s-headless.log" % mode)
+def run_mode(args, exe, workdir, mode, games, tag=""):
+    # 同一模式多份平行時, 各自獨立 log 檔 (tag 為 process 編號)
+    suffix = "-%s" % tag if tag else ""
+    log_path = os.path.join(log_dir_for(args), "headless", "%s%s.log" % (mode, suffix))
+    headless_log = os.path.join(log_dir_for(args), "headless", "%s%s-headless.log" % (mode, suffix))
     cmd = [exe, "--headless", "--game-mode", mode, "--games", str(games),
            "--headless-log", headless_log]
     proc = spawn(cmd, workdir, log_path)
@@ -37,8 +40,14 @@ def run_mode(args, exe, workdir, mode, games):
     finished, failed, done = parse_headless_log(headless_log)
     n_finished = sum(finished.values())
     ok = (not timed_out) and done and (n_finished == games) and (failed == 0) and (code == 0)
+    # 閃退摘要: 非逾時且 exit code 是 Windows 崩潰碼 (0xC0000005 等) 才算閃退;
+    # exit=1 等小值是應用程式自行退出 (如啟動失敗), 不算崩潰
+    crashed = (not timed_out) and is_crash_code(code)
+    context = tail_lines(headless_log, 20) if crashed else []
     return {
-        "mode": mode, "exit": code, "timeout": timed_out,
+        "mode": mode + ("" if not tag else "#%s" % tag),
+        "exit": code, "exit_name": describe_exit(code), "exit_hex": hex_exit(code),
+        "timeout": timed_out, "crashed": crashed, "crash_context": context,
         "finished": n_finished, "expected": games, "failed_games": failed,
         "done_marker": done, "ok": ok, "winners": dict(finished), "log": log_path,
     }
@@ -50,6 +59,9 @@ def close_proc(proc):
 
 
 def main():
+    # log 行含中文, console 編碼 (cp950) 印不出時以 ? 取代, 避免 runner 自己炸掉
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")
     parser = argparse.ArgumentParser(description="QSanguosha headless 壓力測試 runner")
     common_args(parser)
     parser.add_argument("--games", type=int, default=5,
@@ -68,12 +80,23 @@ def main():
     log_root = log_dir_for(args)
     print("執行檔: %s" % exe)
     print("cwd   : %s" % workdir)
-    print("模式  : %s, 每模式 %d 局, 平行 %d" % (", ".join(modes), args.games, args.parallel))
+
+    # 任務展開:
+    #   - 模式數 >= parallel: 每個模式 1 份任務 (全部都要跑), 同時最多 parallel 個
+    #   - 模式數 <  parallel: 同一模式 round-robin 補到 parallel 份任務, 全部同時執行
+    parallel = max(1, args.parallel)
+    if len(modes) >= parallel:
+        tasks = [(m, "") for m in modes]
+    else:
+        tasks = [(modes[i % len(modes)], str(i + 1)) for i in range(parallel)]
+    workers = min(parallel, len(tasks))
+    print("模式  : %s, 每 process %d 局, 並行上限 %d (共 %d 個 process)"
+          % (", ".join(modes), args.games, parallel, len(tasks)))
 
     results = []
-    with ThreadPoolExecutor(max_workers=args.parallel) as pool:
-        futures = {pool.submit(run_mode, args, exe, workdir, m, args.games): m
-                   for m in modes}
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = {pool.submit(run_mode, args, exe, workdir, m, args.games, tag): m
+                   for (m, tag) in tasks}
         for f in as_completed(futures):
             mode = futures[f]
             try:
@@ -95,12 +118,18 @@ def main():
                     top = sorted(r["winners"].items(), key=lambda kv: -kv[1])[:3]
                     print("        勝方分布: %s" % ", ".join(
                         "%s x%d" % (w, c) for w, c in top))
+                # 閃退摘要: exit 翻譯 + 崩潰前 20 行 log
+                if r.get("crashed"):
+                    print("        閃退: %s (%s)" % (r.get("exit_name"), r.get("exit_hex")))
+                    for line in r.get("crash_context", []):
+                        print("          %s" % line)
 
     csv_path = os.path.join(log_root, "summary-headless-%s.csv" % stamp())
-    header = ["mode", "ok", "exit", "timeout", "finished", "expected",
-              "failed_games", "done_marker", "log"]
+    header = ["mode", "ok", "exit", "exit_name", "timeout", "crashed",
+              "finished", "expected", "failed_games", "done_marker", "log"]
     write_csv(csv_path, header, [
-        [r.get("mode"), r.get("ok"), r.get("exit"), r.get("timeout"),
+        [r.get("mode"), r.get("ok"), r.get("exit"), r.get("exit_name"),
+         r.get("timeout"), r.get("crashed"),
          r.get("finished"), r.get("expected"), r.get("failed_games"),
          r.get("done_marker"), r.get("log", "").replace("\\", "/")]
         for r in results

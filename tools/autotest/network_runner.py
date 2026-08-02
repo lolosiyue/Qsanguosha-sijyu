@@ -20,8 +20,9 @@ import sys
 import time
 
 from runner_common import (MARK_GAME_OVER, MARK_GAME_START, common_args,
-                           find_exe, kill_pid, log_dir_for, resolve_workdir,
-                           spawn, stamp, wait_exit, write_csv)
+                           describe_exit, find_exe, is_crash_code, kill_pid,
+                           log_dir_for, resolve_workdir, spawn, stamp,
+                           tail_lines, wait_exit, write_csv)
 
 SERVER_EXE = "qsanguosha_server.exe"
 CLIENT_EXE = "QSanguosha.exe"
@@ -86,7 +87,8 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
     results = []
     print("=== 模式 %s: 啟動 server ===" % mode)
     proc = spawn([server_exe, "--game-mode", mode, "--autotest-log", marker_file],
-                 workdir, os.path.join(mode_dir, "server.log"))
+                 workdir, os.path.join(mode_dir, "server.log"),
+                 console=getattr(args, "console", False))
     try:
         if not wait_port(SERVER_PORT, SERVER_STARTUP_TIMEOUT):
             code = wait_exit(proc, 5)
@@ -98,19 +100,26 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
         for run_id in range(1, runs + 1):
             client_log = os.path.join(mode_dir, "run%d.log" % run_id)
             print("  局 %d/%d: 啟動 client" % (run_id, runs))
-            client = spawn([client_exe, "-connect:127.0.0.1",
-                            "--test-general", general, "--auto-robots"],
-                           workdir, client_log)
+            client_cmd = [client_exe, "-connect:127.0.0.1",
+                          "--test-general", general]
+            if getattr(args, "general2", ""):
+                client_cmd += ["--test-general2", args.general2]
+            client_cmd += ["--auto-robots"]
+            client = spawn(client_cmd, workdir, client_log)
 
             start_line, marker_offset = wait_for_marker(
                 marker_file, lambda l: MARK_GAME_START in l,
                 CLIENT_JOIN_TIMEOUT, marker_offset)
+            ccode = None
             if start_line is None:
                 ccode = wait_exit(client, 5)
-                kill_pid(client.pid)
+                if ccode is None:
+                    kill_pid(client.pid)
                 close_proc(client)
+                note = "no game start (client exit=%s %s)" % (
+                    ccode, describe_exit(ccode) if ccode is not None else "")
                 results.append({"run": run_id, "ok": False,
-                                "note": "no game start (client exit=%s)" % ccode})
+                                "note": note, "exit_name": describe_exit(ccode)})
                 print("  [FAIL] 局 %d: 未偵測到開局 (client exit=%s)" % (run_id, ccode))
                 time.sleep(1)
                 continue
@@ -118,17 +127,33 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
             over_line, marker_offset = wait_for_marker(
                 marker_file, lambda l: MARK_GAME_OVER.search(l),
                 GAME_TIMEOUT, marker_offset)
-            close_proc(client)
-            if over_line is None:
+            # 先確認 client 是否已自行閃退, 再殺 (taskkill 會把 exit code 變成 1)
+            ccode = wait_exit(client, 3)
+            if ccode is None:
                 kill_pid(client.pid)
-                results.append({"run": run_id, "ok": False, "note": "game timeout"})
+            close_proc(client)
+            crashed = is_crash_code(ccode)
+            ctx = tail_lines(marker_file, 20) if crashed else []
+            if over_line is None:
+                results.append({"run": run_id, "ok": False, "note": "game timeout",
+                                "exit_name": describe_exit(ccode)})
                 print("  [FAIL] 局 %d: 對局逾時 (%ds), 已殺 client" % (run_id, GAME_TIMEOUT))
             else:
                 m = MARK_GAME_OVER.search(over_line)
                 winner = m.group(1) or "none"
-                kill_pid(client.pid)
-                results.append({"run": run_id, "ok": True, "note": "winner=%s" % winner})
-                print("  [PASS] 局 %d: 結束, winner=%s" % (run_id, winner))
+                if crashed:
+                    results.append({"run": run_id, "ok": False,
+                                    "note": "winner=%s; client 閃退 %s" % (winner, describe_exit(ccode)),
+                                    "exit_name": describe_exit(ccode)})
+                    print("  [FAIL] 局 %d: 結束 winner=%s, 但 client 閃退 %s"
+                          % (run_id, winner, describe_exit(ccode)))
+                else:
+                    results.append({"run": run_id, "ok": True, "note": "winner=%s" % winner,
+                                    "exit_name": ""})
+                    print("  [PASS] 局 %d: 結束, winner=%s" % (run_id, winner))
+            if crashed:
+                for line in ctx:
+                    print("          %s" % line)
             time.sleep(1)
     finally:
         kill_pid(proc.pid)
@@ -142,11 +167,18 @@ def close_proc(proc):
 
 
 def main():
+    # log 行含中文, console 編碼 (cp950) 印不出時以 ? 取代, 避免 runner 自己炸掉
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")
     parser = argparse.ArgumentParser(description="QSanguosha 真實網路測試 runner")
     common_args(parser)
     parser.add_argument("--runs", type=int, default=2, help="每個模式要跑的局數 (預設 2)")
     parser.add_argument("--general", default="zhenji",
-                        help="client 自動選將 (02_1v1 請用 x0; 預設 zhenji)")
+                        help="client 自動選將主將 (02_1v1 請用 x0; 預設 zhenji)")
+    parser.add_argument("--general2", default="",
+                        help="雙將模式副將 (空 = server 清單隨機)")
+    parser.add_argument("--console", action="store_true",
+                        help="server stdout 同步顯示在終端 (不寫 server.log, 標記檔照常)")
     args = parser.parse_args()
 
     modes = [m.strip() for m in args.modes.split(",") if m.strip()]
@@ -169,9 +201,11 @@ def main():
             all_results.append(r)
 
     csv_path = os.path.join(log_dir_for(args), "summary-network-%s.csv" % stamp())
-    header = ["mode", "run", "ok", "note"]
+    header = ["mode", "run", "ok", "note", "exit_name"]
     write_csv(csv_path, header, [
-        [r.get("mode"), r.get("run"), r.get("ok"), r.get("note")] for r in all_results
+        [r.get("mode"), r.get("run"), r.get("ok"), r.get("note"),
+         r.get("exit_name", "")]
+        for r in all_results
     ])
     ok = sum(1 for r in all_results if r.get("ok"))
     print("結果: %s" % csv_path)
