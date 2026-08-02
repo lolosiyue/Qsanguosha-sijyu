@@ -2,7 +2,9 @@
 #include "engine.h"
 //#include "standard-generals.h"
 //#include "clientplayer.h"
+#if !defined(QSAN_ENGINE_BUILD)
 #include "client.h"
+#endif
 //#include "carditem.h"
 //#include "general.h"
 #include "wrapped-card.h"

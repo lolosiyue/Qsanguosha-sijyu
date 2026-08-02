@@ -333,6 +333,7 @@ public:
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
+#if !defined(QSAN_ENGINE_BUILD)
 class ShefuDialog : public GuhuoDialog
 {
     Q_OBJECT
@@ -344,6 +345,13 @@ protected:
     explicit ShefuDialog(const QString &object);
     bool isButtonEnabled(const QString &button_name) const;
 };
+#else
+class ShefuDialog
+{
+public:
+    static QDialog *getInstance(const QString &) { return nullptr; }
+};
+#endif
 
 class BifaCard : public SkillCard
 {
@@ -377,39 +385,15 @@ public:
 
 
 
-class JuguanDialog : public QDialog
+#if !defined(QSAN_ENGINE_BUILD)
+#include "package-dialogs.h"
+#else
+class JuguanDialog
 {
-    Q_OBJECT
-
 public:
-    static JuguanDialog *getInstance(const QString &object, const QString &card_names);
-    void prepareOptions();
-    QStringList getOptionNames() const;
-    const Card *getOptionCard(const QString &option_name) const;
-    bool applyOption(const QString &option_name);
-    void clearChoice() const;
-    bool shouldPopup() const;
-    bool hasEnabledOptions() const;
-    bool isButtonEnabled(const QString &button_name) const;
-
-public slots:
-    void popup();
-    void selectCard(QAbstractButton *button);
-
-private:
-    explicit JuguanDialog(const QString &object, const QString &card_names);
-
-    void clearButtons();
-    QAbstractButton *createButton(Card *card);
-    QHash<QString, const Card *> map;
-    QStringList option_names;
-    QButtonGroup *group;
-    QVBoxLayout *button_layout;
-    QString cards;
-
-signals:
-    void onButtonClick();
+    static QDialog *getInstance(const QString &, const QString &) { return nullptr; }
 };
+#endif
 
 class JuguanCard : public SkillCard
 {
@@ -721,6 +705,7 @@ public:
     const Card *validateInResponse(ServerPlayer *source) const;
 };
 
+#if !defined(QSAN_ENGINE_BUILD)
 class YoulongDialog : public GuhuoDialog
 {
     Q_OBJECT
@@ -732,6 +717,13 @@ protected:
     explicit YoulongDialog(const QString &object);
     bool isButtonEnabled(const QString &button_name) const;
 };
+#else
+class YoulongDialog
+{
+public:
+    static QDialog *getInstance(const QString &) { return nullptr; }
+};
+#endif
 
 class JinzhiCard : public SkillCard
 {

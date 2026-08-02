@@ -5,7 +5,7 @@
 //#include "client.h"
 #include "standard.h"
 #include "settings.h"
-#include "clientstruct.h"
+#include "server-info.h"
 #include "exppattern.h"
 #include "wrapped-card.h"
 #include <src/util/ThreadSafeHelper.h>

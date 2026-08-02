@@ -4,7 +4,10 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QRegularExpression>
+#if !defined(QSAN_ENGINE_BUILD)
 #include <QMessageBox>
+#endif
 
 extern "C" {
     int luaopen_sgs(lua_State *);
@@ -81,7 +84,11 @@ bool DoLuaScript(lua_State *L, const char *script)
             || qApp->arguments().contains("--lua-test")))
             qCritical().noquote() << "Lua script error:" << script << error_msg;
         else
+#if defined(QSAN_ENGINE_BUILD)
+            qCritical().noquote() << "Lua script error:" << script << error_msg;
+#else
             QMessageBox::critical(nullptr, QObject::tr("Lua script error"), error_msg);
+#endif
         return false;
     }
     return true;
@@ -127,8 +134,8 @@ QList<int> ListV2I(const QVariantList &variantlist)
 
 bool isNormalGameMode(const QString &mode)
 {
-    static QRegExp moderx("(0[2-9]|10)p[dz]*");
-    return moderx.exactMatch(mode);
+    static const QRegularExpression modeRegex("^(0[2-9]|10)p[dz]*$");
+    return modeRegex.match(mode).hasMatch();
 }
 
 bool isHegemonyGameMode(const QString &mode)

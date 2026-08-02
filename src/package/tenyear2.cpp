@@ -2020,6 +2020,7 @@ public:
 	}
 };
 
+#if !defined(QSAN_ENGINE_BUILD)
 PingjianDialog*PingjianDialog::getInstance()
 {
 	static PingjianDialog*instance;
@@ -2116,6 +2117,8 @@ QAbstractButton*PingjianDialog::createSkillButton(const QString&skill_name)
 	group->addButton(button);
 	return button;
 }
+
+#endif
 
 PingjianCard::PingjianCard()
 {

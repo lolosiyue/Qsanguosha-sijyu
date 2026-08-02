@@ -1,23 +1,10 @@
 #include "aux-skills.h"
-#include "clientplayer.h"
 #include "engine.h"
-#include "roomscene.h"
 #include "room.h"
-
-static const Player *GetCurrentRequestPlayer()
-{
-    if (RoomSceneInstance != nullptr) {
-        const ClientPlayer *dashboard_player = RoomSceneInstance->getDashboardPlayer();
-        if (dashboard_player != nullptr)
-            return dashboard_player;
-    }
-
-    return Self;
-}
 
 DiscardSkill::DiscardSkill()
     : ViewAsSkill("discard"), card(new DummyCard),
-    num(0), include_equip(false), is_discard(true)
+    num(0), include_equip(false), is_discard(true), request_player(nullptr)
 {
     card->setParent(this);
 }
@@ -47,9 +34,14 @@ void DiscardSkill::setPattern(const QString &pattern)
     this->pattern = pattern;
 }
 
+void DiscardSkill::setPlayer(const Player *player)
+{
+    request_player = player;
+}
+
 bool DiscardSkill::viewFilter(const QList<const Card *> &selected, const Card *card) const
 {
-    const Player *player = GetCurrentRequestPlayer();
+    const Player *player = request_player;
     if (player == nullptr)
         return false;
 
@@ -81,7 +73,7 @@ const Card *DiscardSkill::viewAs(const QList<const Card *> &cards) const
 // -------------------------------------------
 
 ResponseSkill::ResponseSkill()
-    : OneCardViewAsSkill("response-skill")
+    : OneCardViewAsSkill("response-skill"), request_player(nullptr)
 {
     request = Card::MethodResponse;
 }
@@ -96,6 +88,11 @@ void ResponseSkill::setRequest(const Card::HandlingMethod request)
     this->request = request;
 }
 
+void ResponseSkill::setPlayer(const Player *player)
+{
+    request_player = player;
+}
+
 bool ResponseSkill::matchPattern(const Player *player, const Card *card) const
 {
     if (player->isCardLimited(card, request))
@@ -106,7 +103,7 @@ bool ResponseSkill::matchPattern(const Player *player, const Card *card) const
 
 bool ResponseSkill::viewFilter(const Card *card) const
 {
-    const Player *player = GetCurrentRequestPlayer();
+    const Player *player = request_player;
     return player != nullptr && matchPattern(player, card);
 }
 

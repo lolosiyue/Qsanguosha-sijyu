@@ -1,16 +1,25 @@
 ﻿#ifndef _SERVER_H
 #define _SERVER_H
 
+#if defined(QSAN_SERVER_CORE_ONLY)
+#include "server-core.h"
+#endif
+
 class Room;
 class QRadioButton;
 class ServerSocket;
 class ClientSocket;
 class QtUpnpPortMapping;
 
-#include "src/pch.h"
+#include <QtCore>
+#include <QtNetwork>
+#if !defined(QSAN_SERVER_CORE_ONLY)
+#include <QtWidgets>
+#endif
 
 class Package;
 
+#if !defined(QSAN_SERVER_CORE_ONLY)
 class Select3v3GeneralDialog : public QDialog
 {
     Q_OBJECT
@@ -209,7 +218,9 @@ private:
     QLabel *turn_limit_label;
     QSpinBox *turn_limit_spinBox;
 };
+#endif
 
+#if !defined(QSAN_SERVER_CORE_ONLY)
 class ServerPlayer;
 
 class Server : public QObject
@@ -222,10 +233,14 @@ public:
     friend class BanIpDialog;
 
     static void writeHeadlessLog(const QString &msg);
+    static void setHeadlessLogFile(const QString &path);
     static bool isHeadlessMode;
+    // 自動化測試: headless 壓力測試總局數 (--games N 覆寫, 預設 10000)
+    static int headlessGameLimit;
 
     void broadcast(const QString &msg);
     bool listen();
+    QStringList startupMessages() const;
     void daemonize();
     Room *createNewRoom();
     void signupPlayer(ServerPlayer *player);
@@ -262,8 +277,13 @@ private slots:
     void sendListServerRequest();
 
 signals:
+    void logMessage(const QString &message);
     void server_message(const QString &);
     void newPlayer(ServerPlayer *player);
+    // 自動化測試: 房間對局開始/結束標記
+    void roomGameStarted();
+    void roomGameOver(const QString &winner);
 };
+#endif
 
 #endif

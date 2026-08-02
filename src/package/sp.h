@@ -65,6 +65,7 @@ protected:
     virtual int getKingdoms(ServerPlayer *yuanshu) const;
 };
 
+#if !defined(QSAN_ENGINE_BUILD)
 class WeidiDialog : public QDialog
 {
     Q_OBJECT
@@ -86,6 +87,13 @@ private:
 signals:
     void onButtonClick();
 };
+#else
+class WeidiDialog
+{
+public:
+    static QDialog *getInstance() { return nullptr; }
+};
+#endif
 
 
 

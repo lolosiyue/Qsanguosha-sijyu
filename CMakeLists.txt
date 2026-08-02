@@ -61,12 +61,224 @@ set_source_files_properties("${qsan_swig_wrapper}" PROPERTIES GENERATED TRUE)
 
 include(cmake/QSanguoshaSources.cmake)
 
+set(QSAN_ENGINE_PACKAGE_SOURCES ${QSAN_SOURCES})
+list(FILTER QSAN_ENGINE_PACKAGE_SOURCES INCLUDE REGEX "^src/(package|scenario)/.*\\.cpp$")
+list(REMOVE_ITEM QSAN_SOURCES ${QSAN_ENGINE_PACKAGE_SOURCES})
+set(QSAN_ENGINE_PACKAGE_MOC_HEADERS ${QSAN_MOC_HEADERS})
+list(FILTER QSAN_ENGINE_PACKAGE_MOC_HEADERS INCLUDE REGEX "^src/(package|scenario)/.*\\.h$")
+list(REMOVE_ITEM QSAN_MOC_HEADERS ${QSAN_ENGINE_PACKAGE_MOC_HEADERS})
+
+set_source_files_properties(src/server/server.cpp PROPERTIES
+    COMPILE_DEFINITIONS QSAN_SERVER_CORE_ONLY
+    SKIP_AUTOMOC ON
+)
+
+add_library(qsanguosha_engine STATIC
+    src/core/banpair.cpp
+    src/core/banpair.h
+    src/core/card.cpp
+    src/core/card.h
+    src/core/engine.cpp
+    src/core/engine.h
+    src/core/engine-bootstrap.cpp
+    src/core/engine-bootstrap.h
+    src/core/general.cpp
+    src/core/general.h
+    src/core/lua-wrapper.cpp
+    src/core/lua-wrapper.h
+    src/core/filehandler.cpp
+    src/core/filehandler.h
+    src/core/json.cpp
+    src/core/player.cpp
+    src/core/player-self.cpp
+    src/core/player.h
+    src/core/protocol.cpp
+    src/core/record-buffer.cpp
+    src/core/record-buffer.h
+    src/core/room-state.cpp
+    src/core/room-state.h
+    src/core/server-info.cpp
+    src/core/settings.cpp
+    src/core/skill.cpp
+    src/core/skill-instance-utils.cpp
+    src/core/skill-instance-utils.h
+    src/core/skill.h
+    src/core/structs.cpp
+    src/core/structs.h
+    src/core/util.cpp
+    src/core/util.h
+    src/core/wrapped-card.cpp
+    src/core/wrapped-card.h
+    src/server/server.cpp
+    src/server/ai.cpp
+    src/server/basicai.cpp
+    src/server/gamerule.cpp
+    src/server/generalselector.cpp
+    src/server/qtupnpportmapping.cpp
+    src/server/room.cpp
+    src/server/roomthread.cpp
+    src/server/roomthread1v1.cpp
+    src/server/roomthread3v3.cpp
+    src/server/roomthreadxmode.cpp
+    src/server/serverplayer.cpp
+    src/util/nativesocket.cpp
+    src/util/nativesocket.h
+    src/util/socket.h
+    src/util/game-snapshot.cpp
+    src/util/game-snapshot.h
+    src/client/aux-skills.cpp
+    src/client/aux-skills.h
+    ${QSAN_ENGINE_PACKAGE_SOURCES}
+    ${QSAN_LUA_SOURCES}
+    "${qsan_swig_wrapper}"
+)
+
+set_source_files_properties(src/server/server-core.h PROPERTIES SKIP_AUTOMOC ON)
+set_source_files_properties(${QSAN_LUA_SOURCES} PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+list(REMOVE_ITEM QSAN_SOURCES src/util/game-snapshot.cpp)
+list(REMOVE_ITEM QSAN_SOURCES src/client/aux-skills.cpp)
+list(REMOVE_ITEM QSAN_MOC_HEADERS src/util/game-snapshot.h src/util/socket.h src/client/aux-skills.h)
+
+target_include_directories(qsanguosha_engine PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/client
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/package
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+)
+
+target_compile_definitions(qsanguosha_engine PRIVATE
+    QSAN_ENGINE_BUILD
+    QSAN_SERVER_CORE_ONLY
+    WIN64
+    _CRT_SECURE_NO_WARNINGS
+)
+
+target_compile_options(qsanguosha_engine PRIVATE /utf-8 /bigobj /MP8)
+
+target_precompile_headers(qsanguosha_engine PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core/engine-pch.h
+)
+
+target_link_libraries(qsanguosha_engine PUBLIC
+    Qt6::Core
+    Qt6::Network
+)
+
+if(WIN32)
+    target_link_libraries(qsanguosha_engine PRIVATE Ws2_32 IPHLPAPI)
+endif()
+
+get_target_property(qsan_engine_links qsanguosha_engine LINK_LIBRARIES)
+set(_qsan_engine_qt_allowlist Qt6::Core Qt6::Network)
+foreach(qsan_engine_link IN LISTS qsan_engine_links)
+    if(qsan_engine_link MATCHES "^Qt6::" AND NOT qsan_engine_link IN_LIST _qsan_engine_qt_allowlist)
+        message(FATAL_ERROR "qsanguosha_engine links forbidden Qt target: ${qsan_engine_link}")
+    endif()
+endforeach()
+
+add_executable(qsanguosha_engine_smoke
+    tests/engine-smoke-test.cpp
+    src/server/server-core.h
+)
+target_include_directories(qsanguosha_engine_smoke PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/freetype
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/client
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/package
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+)
+target_link_libraries(qsanguosha_engine_smoke PRIVATE qsanguosha_engine Qt6::Core5Compat Qt6::Qml Qt6::Widgets)
+
+add_executable(qsanguosha_engine_self_bridge_axe_test
+    tests/engine-self-bridge-axe-test.cpp
+)
+target_link_libraries(qsanguosha_engine_self_bridge_axe_test PRIVATE
+    qsanguosha_engine
+)
+
+add_executable(qsanguosha_card_parse_regex_test tests/card-parse-regex-test.cpp)
+target_link_libraries(qsanguosha_card_parse_regex_test PRIVATE Qt6::Core)
+
+include(CTest)
+if(BUILD_TESTING)
+    add_test(NAME qsanguosha_engine_smoke COMMAND qsanguosha_engine_smoke)
+    set_tests_properties(qsanguosha_engine_smoke PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    add_test(
+        NAME qsanguosha_engine_self_bridge_axe
+        COMMAND qsanguosha_engine_self_bridge_axe_test
+    )
+    set_tests_properties(qsanguosha_engine_self_bridge_axe PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    add_test(NAME qsanguosha_card_parse_regex_test COMMAND qsanguosha_card_parse_regex_test)
+
+    add_executable(qsanguosha_photo_layout_fit tests/photo-layout-fit-test.cpp)
+    target_include_directories(qsanguosha_photo_layout_fit PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ui
+    )
+    add_test(NAME qsanguosha_photo_layout_fit COMMAND qsanguosha_photo_layout_fit)
+endif()
+
+add_executable(qsanguosha_server
+    src/server-main.cpp
+    src/server/server-core.h
+)
+set_source_files_properties(src/server/server-core.h PROPERTIES SKIP_AUTOMOC OFF)
+target_include_directories(qsanguosha_server PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/package
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+)
+target_compile_definitions(qsanguosha_server PRIVATE
+    QSAN_ENGINE_BUILD
+    QSAN_SERVER_CORE_ONLY
+    WIN64
+    _CRT_SECURE_NO_WARNINGS
+)
+target_link_libraries(qsanguosha_server PRIVATE
+    "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>"
+    Qt6::Core
+    Qt6::Network
+)
+if(WIN32)
+    target_link_libraries(qsanguosha_server PRIVATE Ws2_32 IPHLPAPI)
+endif()
+set_target_properties(qsanguosha_server PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/debug"
+    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/release"
+)
+
+add_custom_target(deploy-server
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${CMAKE_CURRENT_SOURCE_DIR}/lua"
+        "$<TARGET_FILE_DIR:qsanguosha_server>/lua"
+    DEPENDS qsanguosha_server
+    VERBATIM
+)
+
 qt_add_executable(QSanguosha WIN32
     ${QSAN_SOURCES}
-    ${QSAN_LUA_SOURCES}
     ${QSAN_MOC_HEADERS}
     ${QSAN_FORMS}
-    "${qsan_swig_wrapper}"
+    src/ui/package-dialogs.cpp
+    src/ui/package-dialogs.h
     resource/icon.rc
 )
 
@@ -129,6 +341,7 @@ foreach(required_library freetype.lib freetype_D.lib fmodex.lib)
 endforeach()
 
 target_link_libraries(QSanguosha PRIVATE
+    "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>"
     Qt6::Core
     Qt6::Core5Compat
     Qt6::Gui

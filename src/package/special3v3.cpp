@@ -10,7 +10,9 @@
 #include "wrapped-card.h"
 #include "room.h"
 #include "roomthread.h"
+#if !defined(QSAN_ENGINE_BUILD)
 #include "clientstruct.h"
+#endif
 
 HongyuanCard::HongyuanCard()
 {

@@ -295,29 +295,16 @@ public:
     void onEffect(CardEffectStruct &effect) const;
 };
 
-class TiansuanDialog : public QDialog
+#if !defined(QSAN_ENGINE_BUILD)
+#include "package-dialogs.h"
+#else
+class TiansuanDialog
 {
-    Q_OBJECT
-
 public:
-    static TiansuanDialog *getInstance(const QString &name, const QString &choices = "");
-
-public slots:
-    void popup();
-    void selectChoice(QAbstractButton *button);
-
-private:
-    explicit TiansuanDialog(const QString &name, const QString &choices = "");
-
-    QAbstractButton *createChoiceButton(const QString &choice);
-    bool MarkJudge(const QString &choice);
-    QButtonGroup *group;
-    QVBoxLayout *button_layout;
-    QString tiansuan_choices;
-
-signals:
-    void onButtonClick();
+    static QDialog *getInstance(const QString &, const QString &) { return nullptr; }
+    static QDialog *getInstance(const QString &) { return nullptr; }
 };
+#endif
 
 class TiansuanCard : public SkillCard
 {

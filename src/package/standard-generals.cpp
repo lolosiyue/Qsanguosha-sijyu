@@ -14,7 +14,9 @@
 //#include "maneuvering.h"
 //#include "json.h"
 #include "clientplayer.h"
+#if !defined(QSAN_ENGINE_BUILD)
 #include "clientstruct.h"
+#endif
 //#include "util.h"
 #include "wrapped-card.h"
 #include "roomthread.h"

@@ -16,7 +16,7 @@ GraphicsBox::GraphicsBox(const QString &title)
 {
     stylize(this);
     if (graphicsBoxTitleFont.pixelSize() <= 0) {
-        graphicsBoxTitleFont = Config.SmallFont;
+        graphicsBoxTitleFont = UiConfig.SmallFont;
         graphicsBoxTitleFont.setBold(true);
     }
 }

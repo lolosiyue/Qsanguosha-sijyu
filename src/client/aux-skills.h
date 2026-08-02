@@ -15,6 +15,7 @@ public:
     void setIncludeEquip(bool include_equip);
     void setIsDiscard(bool is_discard);
     void setPattern(const QString &pattern);
+    void setPlayer(const Player *player);
 
     bool viewFilter(const QList<const Card *> &selected, const Card *to_select) const;
     const Card *viewAs(const QList<const Card *> &cards) const;
@@ -26,6 +27,7 @@ private:
     bool include_equip;
     bool is_discard;
     QString pattern;
+    const Player *request_player;
 };
 
 class CardPattern;
@@ -40,6 +42,7 @@ public:
 
     void setPattern(const QString &pattern);
     void setRequest(const Card::HandlingMethod request);
+    void setPlayer(const Player *player);
     bool viewFilter(const Card *to_select) const;
     const Card *viewAs(const Card *originalCard) const;
 
@@ -51,6 +54,7 @@ public:
 protected:
     const CardPattern *pattern;
     Card::HandlingMethod request;
+    const Player *request_player;
 };
 
 class ShowOrPindianSkill : public ResponseSkill

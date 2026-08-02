@@ -35,6 +35,7 @@ private:
 
     QSanSelectableItem *logo;
     QTextEdit *server_log;
+    Server *m_server;
     QList<Button *> buttons;
     int m_currentIndex;
 };

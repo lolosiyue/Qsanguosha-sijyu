@@ -24,7 +24,7 @@ void ClientLogBox::appendLog(const QString &type, const QString &from_general, c
     if (Self->hasFlag("marshalling")) return;
 
     if (type == "$AppendSeparator") {
-        append(QString(tr("<font color='%1'>------------------------------</font>")).arg(Config.TextEditColor.name()));
+        append(QString(tr("<font color='%1'>------------------------------</font>")).arg(UiConfig.TextEditColor.name()));
         return;
     }
 
@@ -60,7 +60,7 @@ void ClientLogBox::appendLog(const QString &type, const QString &from_general, c
             arg = bold(Sanguosha->translate(arg), Qt::yellow);
             log.replace("%arg", arg);
         }
-        log = QString("<font color='%2'>%1</font>").arg(log).arg(Config.TextEditColor.name());
+        log = QString("<font color='%2'>%1</font>").arg(log).arg(UiConfig.TextEditColor.name());
         append(log);
         return;*/
     }else if (type.startsWith("#UseCard") && from_general!="") {
@@ -141,7 +141,7 @@ void ClientLogBox::appendLog(const QString &type, const QString &from_general, c
     if (log.contains("%arg"))
         log.replace("%arg", bold(Sanguosha->translate(arg), Qt::yellow));
 
-    log = append(QString("<font color='%2'>%1</font>").arg(log).arg(Config.TextEditColor.name()));
+    log = append(QString("<font color='%2'>%1</font>").arg(log).arg(UiConfig.TextEditColor.name()));
     if (type.contains("#Guhuo"))
         RoomSceneInstance->setGuhuoLog(log);
 }
@@ -158,7 +158,7 @@ void ClientLogBox::appendLog(const QStringList &log_str)
 		log_str[3], log_str[4], log_str[5], log_str[6], log_str[7], log_str[8]);
 	else{
 		QString err_string = tr("Log string is not well formatted: %1").arg(log_str.join(","));
-        append(QString("<font color='%1'>%2</font>").arg(Config.TextEditColor.name()).arg(err_string));
+        append(QString("<font color='%1'>%2</font>").arg(UiConfig.TextEditColor.name()).arg(err_string));
 	}
 }
 

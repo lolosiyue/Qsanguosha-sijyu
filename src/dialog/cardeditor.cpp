@@ -481,7 +481,7 @@ void AvatarRectItem::toCenter(QGraphicsScene *scene)
 
 void AvatarRectItem::setKingdom(const QString &kingdom)
 {
-	QColor color = Sanguosha->getKingdomColor(kingdom);
+	QColor color(Sanguosha->getKingdomColor(kingdom));
 	name_box->setBrush(color);
 }
 

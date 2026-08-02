@@ -1,9 +1,10 @@
 #ifndef _RECORDER_H
 #define _RECORDER_H
 
-#include <QElapsedTimer>
 #include <QSemaphore>
 #include <QMutex>
+
+#include "record-buffer.h"
 
 class ReplayIndex;
 class GameSnapshot;
@@ -26,8 +27,7 @@ public slots:
     void record(const char *line);
 
 private:
-    QElapsedTimer watch;
-    QByteArray data;
+    RecordBuffer buffer;
 };
 
 class Replayer : public QThread

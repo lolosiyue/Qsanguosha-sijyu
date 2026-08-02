@@ -25,8 +25,8 @@ OptionButton::OptionButton(QString icon_path, const QString &caption, QWidget *p
         setText(caption);
         setToolButtonStyle(Qt::ToolButtonTextUnderIcon);
 
-        QFont font = Config.SmallFont;
-        font.setPixelSize(Config.SmallFont.pixelSize() - 8);
+        QFont font = UiConfig.SmallFont;
+        font.setPixelSize(UiConfig.SmallFont.pixelSize() - 8);
         setFont(font);
     }
 }

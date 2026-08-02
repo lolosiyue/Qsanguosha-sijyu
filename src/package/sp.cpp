@@ -257,6 +257,7 @@ public:
     }
 };
 
+#if !defined(QSAN_ENGINE_BUILD)
 WeidiDialog *WeidiDialog::getInstance()
 {
     static WeidiDialog *instance;
@@ -331,6 +332,7 @@ QAbstractButton *WeidiDialog::createSkillButton(const QString &skill_name)
     group->addButton(button);
     return button;
 }
+#endif
 
 class Weidi : public GameStartSkill
 {

@@ -712,6 +712,7 @@ public:
     void onUse(Room *room, CardUseStruct &card_use) const;
 };
 
+#if !defined(QSAN_ENGINE_BUILD)
 class PingjianDialog : public QDialog
 {
     Q_OBJECT
@@ -733,6 +734,13 @@ private:
 signals:
     void onButtonClick();
 };
+#else
+class PingjianDialog
+{
+public:
+    static QDialog *getInstance() { return nullptr; }
+};
+#endif
 
 class PingjianCard : public SkillCard
 {

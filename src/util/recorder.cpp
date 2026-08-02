@@ -12,7 +12,6 @@ using namespace QSanProtocol;
 Recorder::Recorder(QObject *parent)
     : QObject(parent)
 {
-    watch.start();
 }
 
 void Recorder::record(const char *line)
@@ -22,32 +21,23 @@ void Recorder::record(const char *line)
 
 void Recorder::recordLine(const QString &line)
 {
-    int elapsed = watch.elapsed();
-    if (line.endsWith("\n"))
-        data.append(QString("%1 %2").arg(elapsed).arg(line).toUtf8());
-    else
-        data.append(QString("%1 %2\n").arg(elapsed).arg(line).toUtf8());
+    buffer.recordLine(line);
 }
 
 bool Recorder::save(const QString &filename) const
 {
     qDebug(filename.toUtf8().data());
     if (filename.endsWith(".txt")) {
-        QFile file(filename);
-        if (file.open(QIODevice::WriteOnly | QIODevice::Text))
-            return file.write(data) != -1;
-        else
-            return false;
+        return buffer.saveText(filename);
     } else if (filename.endsWith(".png")) {
-        return TXT2PNG(data).save(filename);
+        return TXT2PNG(buffer.rawData()).save(filename);
     } else
         return false;
 }
 
 QList<QByteArray> Recorder::getRecords() const
 {
-    QList<QByteArray> records = data.split('\n');
-    return records;
+    return buffer.getRecords();
 }
 
 QImage Recorder::TXT2PNG(QByteArray txtData)

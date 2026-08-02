@@ -1,9 +1,10 @@
 #ifndef _SKILL_H
 #define _SKILL_H
 
-class QDialog;
 class Room;
+class QDialog;
 
+#include "skill-dialog-info.h"
 #include "structs.h"
 #include "scenario.h"
 
@@ -174,6 +175,7 @@ public:
     bool isVisible() const;
 
     virtual int getEffectIndex(const ServerPlayer *player, const Card *card) const;
+    virtual SkillDialogInfo getDialogInfo() const;
     virtual QDialog *getDialog() const;
 
     void initMediaSource();

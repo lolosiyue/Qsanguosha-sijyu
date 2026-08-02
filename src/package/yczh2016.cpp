@@ -962,6 +962,7 @@ public:
     }
 };
 
+#if !defined(QSAN_ENGINE_BUILD)
 TaoluanDialog *TaoluanDialog::getInstance(const QString &object)
 {
     static TaoluanDialog *instance;
@@ -982,6 +983,7 @@ bool TaoluanDialog::isButtonEnabled(const QString &button_name) const
     return Self->getMark(objectName() + "_" + button_name) <= 0 && button_name != "normal_slash"
             && !Self->isCardLimited(card, Card::MethodUse) && card->isAvailable(Self);
 }
+#endif
 
 TaoluanCard::TaoluanCard(QString this_skill_name) : this_skill_name(this_skill_name)
 {

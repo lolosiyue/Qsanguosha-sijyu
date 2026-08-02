@@ -45,7 +45,7 @@ public:
 
     void setFrame(FrameType type);
     virtual QRectF boundingRect() const;
-    void updatePhotoSize(int width, int height);
+    void updatePhotoSize(int width, int height, qreal scale = 1.0);
     void setPhotoLayout(const QSanRoomSkin::PhotoLayout *layout);
     QGraphicsItem *getMouseClickReceiver();
 
@@ -118,12 +118,16 @@ protected:
     FrameType _m_frameType;
     int _m_cachedWidth;
     int _m_cachedHeight;
+    qreal _m_scale;
     QGraphicsPixmapItem *_m_mainFrame;
     Sprite *emotion_item;
     QGraphicsPixmapItem *_m_skillNameItem;
     QGraphicsPixmapItem *_m_focusFrame;
     QGraphicsPixmapItem *_m_onlineStatusItem;
     QGraphicsRectItem *_m_duanchangMask;
+
+private:
+    void _applyLayoutTransform(const QSanRoomSkin::PhotoLayout *layout);
 };
 
 #endif

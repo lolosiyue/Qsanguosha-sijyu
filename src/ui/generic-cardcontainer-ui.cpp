@@ -2217,7 +2217,7 @@ void PlayerCardContainer::showHandcardViewer()
 
     m_totalText = new QGraphicsTextItem(handcardWindow);
     m_totalText->setDefaultTextColor(Qt::white);
-    m_totalText->setFont(Config.SmallFont);
+    m_totalText->setFont(UiConfig.SmallFont);
     m_totalText->setPos(25, 20);
 
     m_handcardContainer = new QGraphicsRectItem(0, 0, 770, 400, handcardWindow);
@@ -2345,7 +2345,7 @@ void PlayerCardContainer::updateHandcardViewer()
         if (!m_emptyText) {
             m_emptyText = new QGraphicsTextItem(m_handcardWindow);
             m_emptyText->setDefaultTextColor(Qt::white);
-            QFont font = Config.BigFont;
+            QFont font = UiConfig.BigFont;
             font.setPointSize(14);
             m_emptyText->setFont(font);
             m_emptyText->setPos(250, 160);

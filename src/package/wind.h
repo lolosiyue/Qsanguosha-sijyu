@@ -53,46 +53,16 @@ public:
     const Card *validateInResponse(ServerPlayer *user) const;
 };
 
-class GuhuoDialog : public QDialog
+#if !defined(QSAN_ENGINE_BUILD)
+#include "package-dialogs.h"
+#else
+class GuhuoDialog
 {
-    Q_OBJECT
-
 public:
-    static GuhuoDialog *getInstance(const QString &object, bool left = true, bool right = true,
-        bool play_only = true, bool slash_combined = false, bool delayed_tricks = false, bool update = false);
-    void prepareOptions();
-    QStringList getOptionNames() const;
-    const Card *getOptionCard(const QString &option_name) const;
-    bool applyOption(const QString &option_name);
-    void clearChoice() const;
-    bool shouldPopup() const;
-    bool hasEnabledOptions() const;
-    bool isButtonEnabled(const QString &button_name) const;
-
-public slots:
-    void popup();
-    void selectCard(QAbstractButton *button);
-
-protected:
-    explicit GuhuoDialog(const QString &object, bool left = true, bool right = true,
-        bool play_only = true, bool slash_combined = false, bool delayed_tricks = false);
-    QAbstractButton *createButton(Card *card);
-
-    QHash<QString, const Card *> map;
-    QStringList option_names;
-
-private:
-    QGroupBox *createLeft();
-    QGroupBox *createRight();
-    QButtonGroup *group;
-
-	bool play_only; // whether the dialog will pop only during the Play phase
-    bool slash_combined; // create one 'Slash' button instead of 'Slash', 'Fire Slash', 'Thunder Slash'
-    bool delayed_tricks; // whether buttons of Delayed Tricks will be created
-
-signals:
-    void onButtonClick();
+    static QDialog *getInstance(const QString &, bool = true, bool = true, bool = true,
+        bool = false, bool = false, bool = false) { return nullptr; }
 };
+#endif
 
 class Jushou : public PhaseChangeSkill
 {

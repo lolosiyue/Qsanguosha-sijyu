@@ -7,17 +7,18 @@
 //#include "ai.h"
 //#include "general.h"
 #include "clientplayer.h"
+#if !defined(QSAN_ENGINE_BUILD)
 #include "clientstruct.h"
-#include "wrapped-card.h"
-#include "room.h"
-#include "roomthread.h"
-#include "maneuvering.h"
 #include "skin-bank.h"
-
 #include <QPainter>
 #include <QPainterPath>
 #include <QPixmapCache>
 #include <QScrollArea>
+#endif
+#include "wrapped-card.h"
+#include "room.h"
+#include "roomthread.h"
+#include "maneuvering.h"
 
 #ifdef Q_OS_WIN
 #include <qt_windows.h>
@@ -27,6 +28,7 @@
 
 //#include "json.h"
 
+#if !defined(QSAN_ENGINE_BUILD)
 namespace {
 
 static const int GuhuoDialogMaxHeight = 700;
@@ -360,6 +362,7 @@ private:
 };
 
 }
+#endif
 
 class Guidao : public RetrialSkill
 {
@@ -991,6 +994,7 @@ public:
     }
 };
 
+#if !defined(QSAN_ENGINE_BUILD)
 static QHash<QString,GuhuoDialog *> GuhuoDialogs;
 
 GuhuoDialog *GuhuoDialog::getInstance(const QString &object, bool left, bool right, bool play_only, bool slash_combined, bool delayed_tricks, bool update)
@@ -1379,6 +1383,7 @@ QAbstractButton *GuhuoDialog::createButton(Card *card)
 	group->addButton(button);
 	return button;
 }
+#endif
 
 GuhuoCard::GuhuoCard()
 {

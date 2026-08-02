@@ -5,6 +5,9 @@
 #include "mainwindow.h"
 #include "engine.h"
 #include "clientstruct.h"
+#ifdef AUDIO_SUPPORT
+#include "audio.h"
+#endif
 
 ConfigDialog::ConfigDialog(QWidget *parent)
     : QDialog(parent), ui(new Ui::ConfigDialog)
@@ -35,15 +38,15 @@ ConfigDialog::ConfigDialog(QWidget *parent)
     connect(this, SIGNAL(accepted()), this, SLOT(saveConfig()));
     connect(this, SIGNAL(rejected()), this, SLOT(restoreVisualSettings()));
 
-    QFont font = Config.AppFont;
+    QFont font = UiConfig.AppFont;
     showFont(ui->appFontLineEdit, font);
 
-    font = Config.UIFont;
+    font = UiConfig.UIFont;
     showFont(ui->textEditFontLineEdit, font);
 
     QPalette palette;
-    palette.setColor(QPalette::Text, Config.TextEditColor);
-    QColor color = Config.TextEditColor;
+    palette.setColor(QPalette::Text, UiConfig.TextEditColor);
+    QColor color = UiConfig.TextEditColor;
     int aver = (color.red() + color.green() + color.blue()) / 3;
     palette.setColor(QPalette::Base, aver >= 208 ? Qt::black : Qt::white);
     ui->textEditFontLineEdit->setPalette(palette);
@@ -383,9 +386,9 @@ void ConfigDialog::on_resetBgMusicButton_clicked()
 void ConfigDialog::on_changeAppFontButton_clicked()
 {
     bool ok;
-    QFont font = QFontDialog::getFont(&ok, Config.AppFont, this);
+    QFont font = QFontDialog::getFont(&ok, UiConfig.AppFont, this);
     if (ok) {
-        Config.AppFont = font;
+        UiConfig.AppFont = font;
         showFont(ui->appFontLineEdit, font);
 
         Config.setValue("AppFont", font);
@@ -396,9 +399,9 @@ void ConfigDialog::on_changeAppFontButton_clicked()
 void ConfigDialog::on_setTextEditFontButton_clicked()
 {
     bool ok;
-    QFont font = QFontDialog::getFont(&ok, Config.UIFont, this);
+    QFont font = QFontDialog::getFont(&ok, UiConfig.UIFont, this);
     if (ok) {
-        Config.UIFont = font;
+        UiConfig.UIFont = font;
         showFont(ui->textEditFontLineEdit, font);
 
         Config.setValue("UIFont", font);
@@ -408,9 +411,9 @@ void ConfigDialog::on_setTextEditFontButton_clicked()
 
 void ConfigDialog::on_setTextEditColorButton_clicked()
 {
-    QColor color = QColorDialog::getColor(Config.TextEditColor, this);
+    QColor color = QColorDialog::getColor(UiConfig.TextEditColor, this);
     if (color.isValid()) {
-        Config.TextEditColor = color;
+        UiConfig.TextEditColor = color;
         Config.setValue("TextEditColor", color);
         QPalette palette;
         palette.setColor(QPalette::Text, color);

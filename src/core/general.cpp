@@ -4,7 +4,7 @@
 //#include "skill.h"
 //#include "package.h"
 //#include "client.h"
-#include "clientstruct.h"
+#include "server-info.h"
 #include "settings.h"
 #include <QFile>
 
@@ -118,8 +118,13 @@ void General::addSkill(Skill *skill)
 		skill->setParent(this);
 		if(skill->getWakedSkills().isEmpty()) return;
 		related_skills << skill->getWakedSkills().split(",");
-    }else
+    } else {
+#if defined(QSAN_ENGINE_BUILD)
+        qWarning() << tr("Invalid skill added to general %1").arg(objectName());
+#else
         QMessageBox::warning(nullptr, "", tr("Invalid skill added to general %1").arg(objectName()));
+#endif
+    }
 }
 
 void General::addSkill(const QString &skill_name)
@@ -249,7 +254,7 @@ QString General::getSkillDescription(bool include_name) const
 		QString name = general_strs.value(objectName(),"");
 		if(name.isEmpty()){
 			QStringList kins = kingdom.split("+");
-			QString str = Sanguosha->getKingdomColor(kins.first()).name();
+			QString str = Sanguosha->getKingdomColor(kins.first());
 			foreach (QString kin, kins)
 				name.append(QString("<img src='image/kingdom/icon/%1.png'/>").arg(kin));
 			name.append(QString("     <font color=%1><b>%2</b></font>     ").arg(str).arg(Sanguosha->translate(objectName())));

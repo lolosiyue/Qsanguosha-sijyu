@@ -3804,6 +3804,7 @@ public:
     }
 };
 
+#if !defined(QSAN_ENGINE_BUILD)
 MobileJianyingDialog *MobileJianyingDialog::getInstance(const QString &object)
 {
     static MobileJianyingDialog *instance;
@@ -3822,8 +3823,9 @@ bool MobileJianyingDialog::isButtonEnabled(const QString &button_name) const
 {
     const Card *c = map[button_name];
     c->setFlags(objectName());
-    return button_name != "normal_slash" && !Self->isCardLimited(c, Card::MethodUse) && c->isAvailable(Self);
+	return button_name != "normal_slash" && !Self->isCardLimited(c, Card::MethodUse) && c->isAvailable(Self);
 }
+#endif
 
 MobileJianyingCard::MobileJianyingCard()
 {

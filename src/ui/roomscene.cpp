@@ -1,6 +1,8 @@
 #include "roomscene.h"
+#include "skill-dialog-registry.h"
 #include "choosetriggerorderbox.h"
 #include "photo.h"
+#include "photo-layout-fit.h"
 #include "dashboard.h"
 #include "table-pile.h"
 #include "carditem.h"
@@ -51,6 +53,28 @@
 #include <QMutexLocker>
 #include <QSet>
 #include <QMenu>
+#include <QDateTime>
+#include <QFile>
+#include <QTextStream>
+
+static QDialog *dialogForSkill(const Skill *skill, QWidget *parent = nullptr)
+{
+    if (skill == nullptr)
+        return nullptr;
+
+    const SkillDialogInfo info = skill->getDialogInfo();
+    if (info.isValid()) {
+        if (QDialog *dialog = SkillDialogRegistry::create(info, parent))
+            return dialog;
+    }
+    return skill->getDialog();
+}
+
+// 自動化測試模式: --auto-robots 或 --test-general 啟動時, 選將/選先手等互動自動回應
+static bool isAutoTestClient()
+{
+    return Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty();
+}
 
 static ClientPlayer *getControlRootPlayer(const ClientPlayer *player)
 {
@@ -158,7 +182,6 @@ void RoomScene::resetPiles()
 
 RoomScene::RoomScene(QMainWindow*main_window)
 	: main_window(main_window),m_tableBgPixmap(1,1),m_tableBgPixmapOrig(1,1),game_started(false),
-	  _m_cachedPhotoWidth(0), _m_cachedPhotoHeight(0),
 	  m_presentedDialogSkillButton(nullptr), m_presentedDialog(nullptr)
 {
 	setParent(main_window);
@@ -172,6 +195,9 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	_m_roomSkin =&(QSanSkinFactory::getInstance().getCurrentSkinScheme().getRoomSkin());
 	_m_roomLayout =&(G_ROOM_SKIN.getRoomLayout());
 	_m_photoLayout =&(G_ROOM_SKIN.getPhotoLayout());
+	m_photoWidth = _m_photoLayout->m_normalWidth;
+	m_photoHeight = _m_photoLayout->m_normalHeight;
+	m_photoScale = 1.0;
 	_m_commonLayout =&(G_ROOM_SKIN.getCommonLayout());
 
 	m_skillButtonSank = false;
@@ -389,7 +415,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	chat_box_widget->setObjectName("chat_box_widget");
 	chat_box_widget->setZValue(7);
 	chat_box->setReadOnly(true);
-	chat_box->setStyleSheet(QString("QTextEdit { color: %1;}").arg(Config.TextEditColor.name()));
+	chat_box->setStyleSheet(QString("QTextEdit { color: %1;}").arg(UiConfig.TextEditColor.name()));
 	connect(ClientInstance,SIGNAL(line_spoken(QString)),chat_box,SLOT(append(QString)));
 	connect(ClientInstance,SIGNAL(player_speak(const QString&,const QString&)),
 		this,SLOT(showBubbleChatBox(const QString&,const QString&)));
@@ -427,7 +453,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	// log box
 	log_box = new ClientLogBox;
 	log_box->setObjectName("log_box");
-	log_box->setTextColor(Config.TextEditColor);
+	log_box->setTextColor(UiConfig.TextEditColor);
 
 	log_box_widget = addWidget(log_box);
 	log_box_widget->setZValue(8);
@@ -467,7 +493,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	prompt_doc->setTextWidth(630);//(prompt_box->boundingRect().width());
 	prompt_box_widget->setDocument(prompt_doc);
 
-	QFont qf = Config.SmallFont;
+	QFont qf = UiConfig.SmallFont;
 	qf.setPixelSize(21);
 	qf.setStyleStrategy(QFont::PreferAntialias);
 	qf.setFamily("KaiTi");
@@ -499,7 +525,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	m_pileCardNumInfoTextBox = addText("");
 	m_pileCardNumInfoTextBox->setParentItem(m_rolesBox);
 	m_pileCardNumInfoTextBox->setDocument(ClientInstance->getLinesDoc());
-	m_pileCardNumInfoTextBox->setDefaultTextColor(Config.TextEditColor);
+	m_pileCardNumInfoTextBox->setDefaultTextColor(UiConfig.TextEditColor);
 	updateRoles(roles);
 
 	control_panel = addRect(0,0,500,150,Qt::NoPen);
@@ -566,7 +592,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	pausing_item->setOpacity(0.36);
 	pausing_item->setZValue(33);
 
-	QFont font = Config.BigFont;
+	QFont font = UiConfig.BigFont;
 	font.setPixelSize(100);
 	pausing_text->setFont(font);
 	pausing_text->setBrush(Qt::white);
@@ -1053,7 +1079,7 @@ ReplayerControlBar::ReplayerControlBar(Dashboard*dashboard)
 	time_label->setAttribute(Qt::WA_NoSystemBackground);
 	time_label->setText("-----------------------------------------------------");
 	QPalette palette;
-	palette.setColor(QPalette::WindowText,Config.TextEditColor);
+	palette.setColor(QPalette::WindowText,UiConfig.TextEditColor);
 	time_label->setPalette(palette);
 
 	QGraphicsProxyWidget*widget = new QGraphicsProxyWidget(this);
@@ -1164,62 +1190,6 @@ void RoomScene::_getSceneSizes(QSize&minSize,QSize&maxSize)
 	}
 }
 
-void RoomScene::_calculateDynamicPhotoSize(qreal devicePixelRatio)
-{
-	int numPlayers = photos.size() + 1;
-	if (numPlayers < 1) numPlayers = 1;
-
-	int sceneWidth = static_cast<int>(sceneRect().width());
-	int sceneHeight = static_cast<int>(sceneRect().height());
-
-	// HDPI：場景座標是邏輯像素，但照片尺寸判斷必須反映實體視窗空間。
-	// 否則 1920x1080 @150%（邏輯 1280x720）會被當成小視窗，照片永遠停在
-	// SMALL（5~8 人局 NORMAL 需 458 邏輯高，150% 只給 ~443）。乘上 DPR 後
-	// 判斷基準與顯示縮放無關，恢復與 Qt5.14 一致的結果。
-	const qreal dpr = qMax<qreal>(1.0, devicePixelRatio);
-	int availableWidth = qRound((sceneWidth - static_cast<int>(_m_roomLayout->m_infoPlaneWidthPercentage * sceneWidth)) * dpr);
-	int availableHeight = qRound((sceneHeight - G_DASHBOARD_LAYOUT.m_normalHeight - G_DASHBOARD_LAYOUT.m_floatingAreaHeight) * dpr);
-
-	static const int PHOTO_SIZE_NORMAL = 157;
-	static const int PHOTO_SIZE_BIG = 235;
-
-	static const int PHOTO_HEIGHT_NORMAL = 181;
-	static const int PHOTO_HEIGHT_BIG = 271;
-
-	int maxPhotosVertical = qMax(1, (numPlayers - 1) / 4 + 1);
-	int maxPhotosHorizontal = qMax(1, (numPlayers + 1) / 2);
-
-	int requiredWidthNormal = maxPhotosHorizontal * PHOTO_SIZE_NORMAL + (maxPhotosHorizontal + 1) * G_ROOM_LAYOUT.m_photoHDistance;
-	int requiredHeightNormal = maxPhotosVertical * PHOTO_HEIGHT_NORMAL + (maxPhotosVertical + 1) * G_ROOM_LAYOUT.m_photoVDistance;
-
-	int requiredWidthBig = maxPhotosHorizontal * PHOTO_SIZE_BIG + (maxPhotosHorizontal + 1) * G_ROOM_LAYOUT.m_photoHDistance;
-	int requiredHeightBig = maxPhotosVertical * PHOTO_HEIGHT_BIG + (maxPhotosVertical + 1) * G_ROOM_LAYOUT.m_photoVDistance;
-
-	int targetWidth = PHOTO_SIZE_NORMAL;
-	int targetHeight = PHOTO_HEIGHT_NORMAL;
-
-	bool canFitBig = (availableWidth >= requiredWidthBig && availableHeight >= requiredHeightBig);
-	bool canFitNormal = (availableWidth >= requiredWidthNormal && availableHeight >= requiredHeightNormal);
-
-	if (canFitBig) {
-		// 視窗空間寬裕（放完 NORMAL 後仍剩至少一個 BIG 寬）→ 升級 BIG。
-		// 取代舊的 extraSpaceBig < extraSpaceNormal * 0.3（實務上幾乎不可達，
-		// 造成 BIG 成為死路徑、照片固定同尺寸）。
-		int spareNormal = (availableWidth - requiredWidthNormal) + (availableHeight - requiredHeightNormal);
-		if (spareNormal >= PHOTO_SIZE_BIG) {
-			targetWidth = PHOTO_SIZE_BIG;
-			targetHeight = PHOTO_HEIGHT_BIG;
-		}
-	} else if (!canFitNormal) {
-		// 空間不足以放 NORMAL → 縮至 SMALL
-		targetWidth = 94;
-		targetHeight = 108;
-	}
-
-	_m_cachedPhotoWidth = targetWidth;
-	_m_cachedPhotoHeight = targetHeight;
-}
-
 void RoomScene::adjustItems()
 {
 	QRectF displayRegion = sceneRect();
@@ -1261,8 +1231,6 @@ void RoomScene::adjustItems()
 	}
 	m_pixmapDeviceScale = qBound(1.0,
 		main_window->devicePixelRatioF() / sceneScale, 4.0);
-
-	_calculateDynamicPhotoSize(main_window ? main_window->devicePixelRatioF() : 1.0);
 
 	int padding = _m_roomLayout->m_scenePadding;
 	displayRegion.moveLeft(displayRegion.x()+padding);
@@ -1322,10 +1290,6 @@ void RoomScene::adjustItems()
 	updateRoles(m_roleState);
 	setChatBoxVisible(chat_box_widget->isVisible());
 
-	foreach(Photo *photo, photos) {
-		photo->updatePhotoSize(_m_cachedPhotoWidth, _m_cachedPhotoHeight);
-	}
-
 	foreach (SpineGlItem *spineItem, _activeSpineItems) {
 		QRectF sr = sceneRect();
 		spineItem->setRenderRect(sr);
@@ -1346,17 +1310,18 @@ void RoomScene::_dispersePhotos(QList<Photo*>&photos,QRectF fillRegion,
 {
 	int numPhotos = photos.size();
 	if(numPhotos==0) return;
-	double photoWidth = _m_cachedPhotoWidth > 0 ? _m_cachedPhotoWidth : _m_photoLayout->m_normalWidth;
-	double photoHeight = _m_cachedPhotoHeight > 0 ? _m_cachedPhotoHeight : _m_photoLayout->m_normalHeight;
+	double photoWidth = m_photoWidth * m_photoScale;
+	double photoHeight = m_photoHeight * m_photoScale;
 	Qt::Alignment hAlign = align&Qt::AlignHorizontal_Mask;
 	Qt::Alignment vAlign = align&Qt::AlignVertical_Mask;
 
 	double startX = 0, startY = 0, stepX = 0, stepY = 0;
 
 	if(orientation==Qt::Horizontal){
-		stepX = qMax(photoWidth+G_ROOM_LAYOUT.m_photoHDistance, fillRegion.width()/numPhotos);
+		stepX = qMax(photoWidth + G_ROOM_LAYOUT.m_photoHDistance * m_photoScale,
+			fillRegion.width() / numPhotos);
 	} else {
-		double minStepY = G_ROOM_LAYOUT.m_photoVDistance + photoHeight;
+		double minStepY = G_ROOM_LAYOUT.m_photoVDistance * m_photoScale + photoHeight;
 		double availableHeight = fillRegion.height();
 		if (numPhotos > 1) {
 			double maxStepY = availableHeight / numPhotos;
@@ -1385,13 +1350,82 @@ void RoomScene::_dispersePhotos(QList<Photo*>&photos,QRectF fillRegion,
 
 void RoomScene::updateTable()
 {
+	static const int s_regularSeatIndex[][20] = {
+		{ 1 },
+		{ 5, 6 },
+		{ 5, 1, 6 },
+		{ 3, 1, 1, 4 },
+		{ 3, 1, 1, 1, 4 },
+		{ 5, 5, 1, 1, 6, 6 },
+		{ 5, 5, 1, 1, 1, 6, 6 },
+		{ 3, 3, 7, 7, 7, 7, 4, 4 },
+		{ 3, 3, 7, 7, 7, 7, 7, 4, 4 },
+		{ 3, 3, 7, 7, 7, 7, 7, 7, 7, 4, 4 },
+		{ 3, 3, 3, 7, 7, 7, 7, 7, 7, 4, 4, 4 },
+		{ 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4 },
+		{ 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4 },
+		{ 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4 },
+		{ 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4 },
+		{ 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4 },
+		{ 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4 },
+		{ 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4 },
+		{ 3, 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4, 4 }
+	};
+	static const int s_hulaoSeatIndex[][3] = {
+		{ 1, 1, 1 },
+		{ 3, 3, 1 },
+		{ 3, 1, 4 },
+		{ 1, 4, 4 }
+	};
+	static const int s_kof3v3SeatIndex[][5] = {
+		{ 3, 1, 1, 1, 4 },
+		{ 1, 1, 1, 4, 4 },
+		{ 3, 3, 1, 1, 1 }
+	};
+
 	int pad = _m_roomLayout->m_scenePadding+_m_roomLayout->m_photoRoomPadding;
 	int tablew = log_box_widget->x()-pad*2;
 	int tableh = sceneRect().height()-pad*2-dashboard->boundingRect().height();
 	if((ServerInfo.GameMode=="04_1v3"||ServerInfo.GameMode=="06_3v3")&&game_started)
 		tableh -= _m_roomLayout->m_photoVDistance;
-	int photow = _m_cachedPhotoWidth > 0 ? _m_cachedPhotoWidth : _m_photoLayout->m_normalWidth;
-	int photoh = _m_cachedPhotoHeight > 0 ? _m_cachedPhotoHeight : _m_photoLayout->m_normalHeight;
+
+	bool pkMode = false;
+	const int *seatToRegion = s_regularSeatIndex[photos.length()-1];
+	if((ServerInfo.GameMode=="04_1v3"||ServerInfo.GameMode=="04_boss")&&game_started){
+		seatToRegion = s_hulaoSeatIndex[Self->getSeat()-1];
+		pkMode = true;
+	} else if(ServerInfo.GameMode=="06_3v3"&&game_started){
+		seatToRegion = s_kof3v3SeatIndex[(Self->getSeat()-1) % 3];
+		pkMode = true;
+	}
+
+	PhotoLayoutFit::RegionCounts regionCounts {};
+	for (int i = 0; i < photos.length(); ++i)
+		++regionCounts[seatToRegion[i]];
+
+	const QSanRoomSkin::PhotoLayout &smallLayout = G_ROOM_SKIN.getPhotoLayout(QSanRoomSkin::PhotoSizeSmall);
+	const QSanRoomSkin::PhotoLayout &normalLayout = G_ROOM_SKIN.getPhotoLayout(QSanRoomSkin::PhotoSizeNormal);
+	const QSanRoomSkin::PhotoLayout &bigLayout = G_ROOM_SKIN.getPhotoLayout(QSanRoomSkin::PhotoSizeBig);
+	const PhotoLayoutFit::Result photoFit = PhotoLayoutFit::choose(
+		tablew, tableh, regionCounts,
+		_m_roomLayout->m_photoHDistance, _m_roomLayout->m_photoVDistance,
+		{ static_cast<double>(smallLayout.m_normalWidth), static_cast<double>(smallLayout.m_normalHeight) },
+		{ static_cast<double>(normalLayout.m_normalWidth), static_cast<double>(normalLayout.m_normalHeight) },
+		{ static_cast<double>(bigLayout.m_normalWidth), static_cast<double>(bigLayout.m_normalHeight) });
+
+	const QSanRoomSkin::PhotoLayout *photoLayout = &smallLayout;
+	if (photoFit.tier == PhotoLayoutFit::LayoutTier::Big)
+		photoLayout = &bigLayout;
+	else if (photoFit.tier == PhotoLayoutFit::LayoutTier::Normal)
+		photoLayout = &normalLayout;
+	m_photoWidth = photoLayout->m_normalWidth;
+	m_photoHeight = photoLayout->m_normalHeight;
+	m_photoScale = photoFit.scale;
+	foreach(Photo *photo, photos)
+		photo->updatePhotoSize(m_photoWidth, m_photoHeight, m_photoScale);
+
+	double photow = m_photoWidth * m_photoScale;
+	double photoh = m_photoHeight * m_photoScale;
 
 	// Layout:
 	//    col1           col2
@@ -1404,41 +1438,8 @@ void RoomScene::updateTable()
 	// ------------------------
 	// region 5 = 0+3,region 6 = 2+4,region 7 = 0+1+2
 
-	static int regularSeatIndex[][20] = {
-        { 1 },
-        { 5, 6 },
-        { 5, 1, 6 },
-        { 3, 1, 1, 4 },
-        { 3, 1, 1, 1, 4 },
-        { 5, 5, 1, 1, 6, 6 },
-        { 5, 5, 1, 1, 1, 6, 6 },
-        { 3, 3, 7, 7, 7, 7, 4, 4 },
-        { 3, 3, 7, 7, 7, 7, 7, 4, 4 },
-        { 3, 3, 7, 7, 7, 7, 7, 7, 7, 4, 4 },        // 11 players
-        { 3, 3, 3, 7, 7, 7, 7, 7, 7, 4, 4, 4 },     // 12 players
-        { 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4 },  // 13 players
-        { 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4 }, // 14 players
-        { 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4 }, // 15 players
-        { 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4 }, // 16 players
-        { 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4 }, // 17 players
-        { 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4 }, // 18 players
-        { 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4 }, // 19 players
-        {3, 3, 3, 3, 3, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 4, 4, 4, 4, 4}//20 players
-    };
-	static int hulaoSeatIndex[][3] = {
-		{ 1,1,1 },// if self is shenlvbu
-		{ 3,3,1 },
-		{ 3,1,4 },
-		{ 1,4,4 }
-	};
-	static int kof3v3SeatIndex[][5] = {
-		{ 3,1,1,1,4 },// lord
-		{ 1,1,1,4,4 },// rebel (left),same with loyalist (left)
-		{ 3,3,1,1,1 } // loyalist (right),same with rebel (right)
-	};
-
-	double hGap = _m_roomLayout->m_photoHDistance;
-	double vGap = _m_roomLayout->m_photoVDistance;
+	double hGap = _m_roomLayout->m_photoHDistance * m_photoScale;
+	double vGap = _m_roomLayout->m_photoVDistance * m_photoScale;
 	double col1 = photow+hGap;
 	double col2 = tablew-col1;
 	double row1 = photoh+vGap;
@@ -1525,15 +1526,6 @@ void RoomScene::updateTable()
 	pausing_item->setRect(sceneRect());
 	pausing_item->setPos(0,0);
 
-	bool pkMode = false;
-	int*seatToRegion = regularSeatIndex[photos.length()-1];
-	if((ServerInfo.GameMode=="04_1v3"||ServerInfo.GameMode=="04_boss")&&game_started){
-		seatToRegion = hulaoSeatIndex[Self->getSeat()-1];
-		pkMode = true;
-	} else if(ServerInfo.GameMode=="06_3v3"&&game_started){
-		seatToRegion = kof3v3SeatIndex[(Self->getSeat()-1) % 3];
-		pkMode = true;
-	}
 	QList<Photo*> photosInRegion[C_NUM_REGIONS];
 	for (int i = 0;i < photos.length();i++){
 		int regionIndex = seatToRegion[i];
@@ -1547,12 +1539,10 @@ void RoomScene::updateTable()
 		Qt::Alignment align = aligns[i];
 		if(pkMode) align = kofAligns[i];
 
-		QSanRoomSkin::PhotoSizeType photoSize = G_ROOM_SKIN.getPhotoSizeType(_m_cachedPhotoWidth, _m_cachedPhotoHeight);
-		const QSanRoomSkin::PhotoLayout &photoLayout = G_ROOM_SKIN.getPhotoLayout(photoSize);
-		QRect floatingArea(0, 0, G_ROOM_LAYOUT.m_photoHDistance, photoLayout.m_normalHeight);
+		QRect floatingArea(0, 0, G_ROOM_LAYOUT.m_photoHDistance, photoLayout->m_normalHeight);
 		// if the photo is on the right edge of table
 		if(i==0||i==3||i==5||i==8) floatingArea.moveRight(0);
-		else floatingArea.moveLeft(photoLayout.m_normalWidth);
+		else floatingArea.moveLeft(photoLayout->m_normalWidth);
 
 		foreach(Photo*photo,photosInRegion[i])
 			photo->setFloatingArea(floatingArea);
@@ -1599,6 +1589,7 @@ void RoomScene::removePlayer(const QString&player_name)
 		name2photo.remove(player_name);
 		Sanguosha->playSystemAudioEffect("remove-player",false);
 	}
+
 }
 
 void RoomScene::arrangeSeats(const QList<const ClientPlayer*>&seats)
@@ -2183,6 +2174,20 @@ void RoomScene::chooseGeneral(const QStringList&generals)
 	if(!main_window->isActiveWindow())
 		Sanguosha->playSystemAudioEffect("prelude");
 
+	// 自動化測試: --test-general 指定自動選將, 略過選將對話框
+	// server 在 FreeChoose(EnableCheat) 下接受任意回覆 (room.cpp askForGeneral/chooseGenerals),
+	// 因此不檢查武將是否在提供清單中; 否則 5/120 隨機清單 96% 不含指定武將 -> 永遠卡選將
+	if (!Config.AutoPickGeneral.isEmpty()) {
+		QFile diag("client_autotest_diag.log");
+		if (diag.open(QIODevice::Append | QIODevice::Text)) {
+			QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
+				<< " chooseGeneral: auto-pick='" << Config.AutoPickGeneral
+				<< "' list=" << generals.join(",") << "\n";
+		}
+		ClientInstance->onPlayerChooseGeneral(Config.AutoPickGeneral);
+		return;
+	}
+
 	if(m_choiceDialog!=nullptr)
 		delete m_choiceDialog;
 	if(generals.isEmpty())
@@ -2475,6 +2480,12 @@ void RoomScene::chooseCard(const ClientPlayer*player,const QString&flags,const Q
 
 void RoomScene::chooseOrder(QSanProtocol::Game3v3ChooseOrderCommand reason)
 {
+	// 自動化測試: 自動選擇先手 (warm/cool 隨機, 由 Client 端處理)
+	if (isAutoTestClient()) {
+		ClientInstance->onPlayerChooseOrder();
+		return;
+	}
+
 	QDialog*dialog = new QDialog;
 	if(reason==S_REASON_CHOOSE_ORDER_SELECT)
 		dialog->setWindowTitle(tr("The order who first choose general"));
@@ -2935,7 +2946,7 @@ void RoomScene::addSkillButton(const QString &skillInstanceName)
 			connect(btn,SIGNAL(skill_deactivated()),this,SLOT(onSkillDeactivated()));
 		}
 
-		QDialog*dialog = skill->getDialog();
+		QDialog*dialog = dialogForSkill(skill, main_window);
 		if(dialog){
 			wireSkillDialog(btn, dialog);
 		} else if (skill->inherits("AnytimeSkill")) {
@@ -3086,7 +3097,7 @@ void RoomScene::activateSkill(const ViewAsSkill *skill)
 			}
 		}
 		useSelectedCard();
-	} else if (skill->inherits("OneCardViewAsSkill") && Config.EnableIntellectualSelection && !skill->getDialog())
+	} else if (skill->inherits("OneCardViewAsSkill") && Config.EnableIntellectualSelection && !dialogForSkill(skill))
 		dashboard->selectOnlyCard(ClientInstance->getStatus() == Client::Playing);
 }
 
@@ -3452,6 +3463,7 @@ void RoomScene::switchControlContext(const QString &target_name)
 	ClientPlayer *target = ClientInstance->getPlayer(target_name);
 	if (target == nullptr)
 		target = Self;
+	setEngineSelf(target);
 
 	ClientPlayer *previous = const_cast<ClientPlayer *>(dashboard->getPlayer());
 	ClientPlayer *previousController = getControlRootPlayer(previous);
@@ -3569,7 +3581,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 			CardUseStruct::CardUseReason reason = CardUseStruct::CARD_USE_REASON_UNKNOWN;
 			if(newStatus==Client::Playing){
 				reason = CardUseStruct::CARD_USE_REASON_PLAY;
-				QDialog*dialog = button->getSkill()->getDialog();
+				QDialog*dialog = dialogForSkill(button->getSkill(), main_window);
 				if(dialog)
 					wireSkillDialog(button, dialog);
 			} else if((newStatus&Client::ClientStatusBasicMask)==Client::Responding){
@@ -3675,7 +3687,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 				}
 				bool useDialogPresenter = false;
 				if(responseButton){
-					QDialog*dialog = responseButton->getSkill()->getDialog();
+					QDialog*dialog = dialogForSkill(responseButton->getSkill(), main_window);
 					if(dialog){
 						wireSkillDialog(responseButton, dialog);
 						useDialogPresenter = shouldUseDashboardDialogPresenter(dialog);
@@ -3699,6 +3711,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 				response_skill->setRequest(Card::MethodUse);
 			else
 				response_skill->setRequest(Card::MethodResponse);
+			response_skill->setPlayer(getCurrentOperationPlayer(dashboard));
 			dashboard->startPending(response_skill);
 			if(Config.EnableIntellectualSelection)
 				dashboard->selectOnlyCard();
@@ -3713,6 +3726,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 		discard_button->setEnabled(false);
 
 		showorpindian_skill->setPattern(Sanguosha->currentRoomState()->getCurrentCardUsePattern());
+		showorpindian_skill->setPlayer(getCurrentOperationPlayer(dashboard));
 		dashboard->startPending(showorpindian_skill);
 		break;
 	}
@@ -3737,6 +3751,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 		discard_skill->setIncludeEquip(ClientInstance->m_canDiscardEquip);
 		discard_skill->setIsDiscard(newStatus!=Client::Exchanging);
 		discard_skill->setPattern(ClientInstance->m_cardDiscardPattern);
+		discard_skill->setPlayer(getCurrentOperationPlayer(dashboard));
 		dashboard->startPending(discard_skill);
 		break;
 	}
@@ -3886,7 +3901,7 @@ void RoomScene::onPresentedDialogSkillActivated()
 	if (button == nullptr || button->getSkill() == nullptr)
 		return;
 
-	QDialog *dialog = button->getSkill()->getDialog();
+	QDialog *dialog = dialogForSkill(button->getSkill(), main_window);
 	if (dialog == nullptr) {
 		activateSkill(button->getViewAsSkill());
 		return;
@@ -4162,7 +4177,7 @@ void RoomScene::changeMaxHp(const QString&who,int delta)
 
 void RoomScene::onStandoff()
 {
-	log_box->append(QString(tr("<font color='%1'>---------- Game Finish ----------</font>").arg(Config.TextEditColor.name())));
+	log_box->append(QString(tr("<font color='%1'>---------- Game Finish ----------</font>").arg(UiConfig.TextEditColor.name())));
 
 	freeze();
 	Sanguosha->playSystemAudioEffect("standoff");
@@ -4186,7 +4201,7 @@ void RoomScene::onStandoff()
 
 void RoomScene::onGameOver()
 {
-	log_box->append(QString(tr("<font color='%1'>---------- Game Finish ----------</font>").arg(Config.TextEditColor.name())));
+	log_box->append(QString(tr("<font color='%1'>---------- Game Finish ----------</font>").arg(UiConfig.TextEditColor.name())));
 
 	freeze();
 
@@ -5047,7 +5062,7 @@ void RoomScene::speak()
 				title = QString("<b>%1</b>").arg(title);
 			}
 			QString line = tr("<font color='%1'>[%2] said: %3 </font>")
-				.arg(Config.TextEditColor.name()).arg(title).arg(text);
+				.arg(UiConfig.TextEditColor.name()).arg(title).arg(text);
 			chat_box->append(QString("<p style=\"margin:3px 2px;\">%1</p>").arg(line));
 		}
 	}
@@ -5207,9 +5222,17 @@ void RoomScene::onGameStart()
 		control_panel->hide();
 
 	if(Self&&!Self->hasFlag("marshalling"))
-		log_box->append(QString(tr("<font color='%1'>---------- Game Start ----------</font>").arg(Config.TextEditColor.name())));
+		log_box->append(QString(tr("<font color='%1'>---------- Game Start ----------</font>").arg(UiConfig.TextEditColor.name())));
 
 	trust_button->setEnabled(true);
+
+	// 自動化測試: 開局即托管, 避免真人操作阻塞對局
+	if (isAutoTestClient() && Self && Self->getState() != "trust") {
+		QTimer::singleShot(500, this, [this]() {
+			if (Self && Self->getState() != "trust")
+				trust();
+		});
+	}
 
 	game_started = true;
 
@@ -5820,7 +5843,7 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
     }
 #endif
 	else {
-		QFont font = Config.BigFont;
+		QFont font = UiConfig.BigFont;
 		if(pixelSize > 0) font.setPixelSize(pixelSize);
 		QGraphicsTextItem*line = addText(word,font);
 		line->setDefaultTextColor(Qt::white);

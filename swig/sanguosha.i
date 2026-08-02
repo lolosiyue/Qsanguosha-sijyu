@@ -54,6 +54,13 @@ public:
 	void deleteLater();
 };
 
+struct SkillDialogInfo {
+    QString type;
+    QString objectName;
+    QVariantMap parameters;
+    bool isValid() const;
+};
+
 class General: public QObject {
 public:
 	explicit General(Package*package, const char*name, const char*kingdom,
@@ -309,8 +316,12 @@ public:
 	QStringList getAcquiredSkills() const;
 	QStringList getSkillNames() const;
 	bool hasAcquiredSkill(const char*skill_name) const;
+	bool isSkillInvalid(const Skill *skill, int instanceId = 0) const;
+	bool isSkillInvalid(const char *skill_name, int instanceId = 0) const;
 	int getSkillInstanceId(const char*skill_name) const;
 	QList<int> getSkillInstanceIds(const char*skill_name) const;
+	QVariant getSkillInstanceCorrectStateValue(const char *skillName, int instanceID, const char *key, const QVariant &defaultValue = QVariant()) const;
+	QList<SkillInstanceKey> getChildSkillInstanceKeys(const SkillInstanceKey &parent) const;
 	QString getSkillDescription() const;
 
 	virtual bool isProhibited(const Player*to, const Card*card, const QList<const Player*>&others = QList<const Player*>()) const;
@@ -595,21 +606,6 @@ bool damageRevises(QVariant&data, int n);
 		$self->clearOnePrivatePile(pile_name);
 	}
 };
-
-class ClientPlayer: public Player {
-public:
-	explicit ClientPlayer(Client*client);
-	virtual int aliveCount() const;
-	virtual int getHandcardNum() const;
-	virtual QList<const Card*> getKnownCards() const;
-	virtual QList<const Card*> getHandcards() const;
-	virtual void removeCard(int id, Place place);
-	virtual void addCard(int id, Place place);
-	virtual void addKnownHandCard(const Card*card);
-	virtual bool isLastHandCard(const Card*card, bool contain = false) const;
-};
-
-extern ClientPlayer*Self;
 
 class CardMoveReason {
 public:
@@ -1460,7 +1456,7 @@ public:
 	QString getVersionName() const;
 	QStringList getExtensions() const;
 	QStringList getKingdoms() const;
-	QColor getKingdomColor(const char*kingdom) const;
+	QString getKingdomColor(const char*kingdom) const;
 	QString getSetupString() const;
 
 	const CardPattern*getPattern(const char*name) const;
@@ -1731,7 +1727,7 @@ bool isHideSkill() const;
 	bool isVisible() const;
 
 	virtual int getEffectIndex(const ServerPlayer*player, const Card*card) const;
-	virtual QDialog*getDialog() const;
+	virtual SkillDialogInfo getDialogInfo() const;
 
 	void initMediaSource();
 	void playAudioEffect(int index = -1, bool superpose = true) const;

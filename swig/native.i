@@ -2,7 +2,9 @@
 
 #include "settings.h"
 
-//#include <QMessageBox>
+#if !defined(QSAN_ENGINE_BUILD)
+#include <QMessageBox>
+#endif
 
 %}
 
@@ -145,7 +147,11 @@ static int Alert(lua_State *lua)
 {
 	const char *msg = luaL_checkstring(lua, 1);
 
+#if defined(QSAN_ENGINE_BUILD)
+	qWarning("Lua warning: %s", msg);
+#else
 	QMessageBox::warning(nullptr, "Lua warning", msg);
+#endif
 
 	return 0;
 }

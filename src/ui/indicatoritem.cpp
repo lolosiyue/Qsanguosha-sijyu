@@ -4,10 +4,10 @@
 IndicatorItem::IndicatorItem(const QPointF &start, const QPointF &real_finish, Player *player)
     : start(start), finish(start), real_finish(real_finish)
 {
-	color = Sanguosha->getKingdomColor("red");
+	color = QColor(Sanguosha->getKingdomColor("red"));
     width = 7;
     if(player){
-		color = Sanguosha->getKingdomColor(player->getKingdom());
+		color = QColor(Sanguosha->getKingdomColor(player->getKingdom()));
 		if(player->isLord()) width = 8;
 	}
 }

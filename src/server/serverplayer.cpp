@@ -5,7 +5,7 @@
 #include "maneuvering.h"
 #include "basicai.h"
 #include "settings.h"
-#include "recorder.h"
+#include "record-buffer.h"
 #include "banpair.h"
 //#include "lua-wrapper.h"
 #include "json.h"
@@ -24,7 +24,7 @@ const int ServerPlayer::S_NUM_SEMAPHORES = 6;
 ServerPlayer::ServerPlayer(Room *room)
 	: Player(room), m_isClientResponseReady(false), m_isWaitingReply(false),
 	socket(nullptr), room(room), ai(nullptr), trust_ai(new BasicAI(this)),
-	recorder(nullptr), _m_phases_index(NotActive), next(nullptr), m_tooltipDirty(false)
+	recordBuffer(nullptr), _m_phases_index(NotActive), next(nullptr), m_tooltipDirty(false)
 {
 	semas = new QSemaphore *[S_NUM_SEMAPHORES];
 	for (int i = 0; i < S_NUM_SEMAPHORES; i++)
@@ -38,6 +38,7 @@ ServerPlayer::~ServerPlayer()
 		delete semas[i];
 	delete[] semas;
 	delete trust_ai;
+	delete recordBuffer;
 }
 
 void ServerPlayer::setTag(const QString &key, const QVariant &value)
@@ -422,8 +423,8 @@ void ServerPlayer::unicast(const QString &message)
 {
 	emit message_ready(message);
 
-	if (recorder)
-		recorder->recordLine(message);
+	if (recordBuffer)
+		recordBuffer->recordLine(message);
 }
 
 void ServerPlayer::startNetworkDelayTest()
@@ -440,13 +441,14 @@ qint64 ServerPlayer::endNetworkDelayTest()
 
 void ServerPlayer::startRecord()
 {
-	recorder = new Recorder(this);
+	delete recordBuffer;
+	recordBuffer = new RecordBuffer;
 }
 
 void ServerPlayer::saveRecord(const QString &filename)
 {
-	if (recorder)
-		recorder->save(filename);
+	if (recordBuffer)
+		recordBuffer->saveText(filename);
 }
 
 void ServerPlayer::addToSelected(const QString &general)

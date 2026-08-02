@@ -1247,6 +1247,7 @@ public:
     }
 };
 
+#if !defined(QSAN_ENGINE_BUILD)
 HuomoDialog::HuomoDialog() : GuhuoDialog("huomo", true, false)
 {
 }
@@ -1273,6 +1274,7 @@ bool HuomoDialog::isButtonEnabled(const QString &button_name) const
 
     return GuhuoDialog::isButtonEnabled(button_name);
 }
+#endif
 
 HuomoCard::HuomoCard()
 {
