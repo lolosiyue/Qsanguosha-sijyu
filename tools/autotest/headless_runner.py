@@ -64,8 +64,10 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
         time.sleep(delay * (int(tag) - 1))
     # 同一模式多份平行時, 各自獨立 log 檔 (tag 為 process 編號)
     suffix = "-%s" % tag if tag else ""
-    log_path = os.path.join(log_dir_for(args), "headless", "%s%s.log" % (mode, suffix))
-    headless_log = os.path.join(log_dir_for(args), "headless", "%s%s-headless.log" % (mode, suffix))
+    # 每次執行一個時間戳資料夾 (headless/<時間戳>/), 不再重名覆蓋
+    run_dir = getattr(args, "run_dir", log_dir_for(args))
+    log_path = os.path.join(run_dir, "%s%s.log" % (mode, suffix))
+    headless_log = os.path.join(run_dir, "%s%s-headless.log" % (mode, suffix))
     label = mode + ("" if not tag else "#%s" % tag)
     cmd = [exe, "--headless", "--game-mode", mode, "--games", str(games),
            "--headless-log", headless_log]
@@ -74,10 +76,6 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
         cmd += ["--test-general", args.general]
     if getattr(args, "general2", ""):
         cmd += ["--test-general2", args.general2]
-    # 清除舊 log, 避免跨執行殘留污染進度/標記解析
-    for p in (log_path, headless_log):
-        if os.path.isfile(p):
-            os.remove(p)
     proc = spawn(cmd, workdir, log_path)
     timeout = games * PER_GAME_TIMEOUT + 120
     deadline = time.time() + timeout
@@ -151,8 +149,12 @@ def main():
     exe = find_exe(args.exe_root, EXE_NAME)
     workdir = resolve_workdir(args.exe_root)
     log_root = log_dir_for(args)
+    # 每次執行一個時間戳資料夾 (headless/<時間戳>/), 不再重名覆蓋
+    args.run_dir = os.path.join(log_root, "headless", stamp())
+    os.makedirs(args.run_dir, exist_ok=True)
     print("執行檔: %s" % exe)
     print("cwd   : %s" % workdir)
+    print("log   : %s" % args.run_dir)
 
     # 任務展開:
     #   - 模式數 >= parallel: 每個模式 1 份任務 (全部都要跑), 同時最多 parallel 個
