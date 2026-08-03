@@ -338,11 +338,15 @@ void PlayerCardBox::arrangeCards(const QList<const Card *> &cards, const QPoint 
         item->setParentItem(this);
         item->setFlag(ItemIsMovable, false);
         if (card) {
-            item->setEnabled(!disabledIds.contains(card->getEffectiveId())
-                            && (method != Card::MethodDiscard
-                    || Self->canDiscard(player, card->getEffectiveId())));
+            bool enabled = !disabledIds.contains(card->getEffectiveId());
+            if (method == Card::MethodDiscard && !Self->canDiscard(player, card->getEffectiveId())) enabled = false;
+            else if (method == Card::MethodGet && !Self->canGet(player, card->getEffectiveId())) enabled = false;
+            item->setEnabled(enabled);
         } else {
-            item->setEnabled(method != Card::MethodDiscard || Self->canDiscard(player, "h"));
+            bool enabled = true;
+            if (method == Card::MethodDiscard && !Self->canDiscard(player, "h")) enabled = false;
+            else if (method == Card::MethodGet && !Self->canGet(player, "h")) enabled = false;
+            item->setEnabled(enabled);
         }
         connect(item, &CardItem::clicked, this, &PlayerCardBox::reply);
         items << item;

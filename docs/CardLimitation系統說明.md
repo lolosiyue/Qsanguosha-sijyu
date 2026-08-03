@@ -23,7 +23,8 @@ CardLimitation 系統用於限制玩家對特定牌的操作，包括使用、�
 | `MethodIgnore` | 忽略 | `ignore` |
 | `MethodEffect` | 效果 | `effect` |
 | `MethodPlay` | 打出 | `play` |
-| `MethodMove` | 移動 | `move` |
+| `MethodMove` | 移動場上牌 | `move` |
+| `MethodGet` | 獲得牌 | `get` |
 
 ### 限制模式（Pattern）
 
@@ -54,6 +55,10 @@ bool canDiscard(const Player *to, int card_id) const;
 // 檢查是否可移動
 bool canMove(const Player *to, const QString &flags) const;
 bool canMove(const Player *to, int card_id) const;
+
+// 檢查是否可獲得（同時檢查 get 與 move 限制）
+bool canGet(const Player *to, const QString &flags) const;
+bool canGet(const Player *to, int card_id) const;
 
 // 檢查牌是否受限
 bool isCardLimited(const Card *card, Card::HandlingMethod method, bool isHandcard = false) const;
@@ -120,14 +125,32 @@ room->setPlayerCardLimitation(player, "use", "TrickCard", "skill_name", true);
 #### 設置移動限制
 
 ```cpp
-// 限制牌不能被移動（不能被獲得、不能被轉移）
+// 限制牌不能被移動（場上區域之間轉移）
 room->setPlayerCardLimitation(player, "move", QString::number(card_id), "skill_name", false);
+
+// 限制牌不能被獲得（仍可被移動到其他場上區域）
+room->setPlayerCardLimitation(player, "get", QString::number(card_id), "skill_name", false);
 
 // 檢查是否可移動
 if (player->canMove(target, card_id)) {
     room->obtainCard(target, card_id);
 }
+
+// 檢查是否可獲得
+if (player->canGet(target, card_id)) {
+    room->obtainCard(target, card_id);
+}
 ```
+
+#### 獲得限制
+
+`canGet()` 同時檢查 `get` 與 `move` 限制：
+
+| 限制 | 獲得 | 場上移動 |
+|------|------|---------|
+| `get` | 禁止 | 允許 |
+| `move` | 禁止（最高級別鎖定） | 禁止 |
+| `discard` | 允許 | 允許 |
 
 #### 移除限制
 
@@ -253,7 +276,7 @@ player->setCardLimitation("discard", "Slash", "", true);
 1. **single_turn 參數**：設為 `true` 時，限制會在回合結束時自動清除
 2. **Pattern 格式**：使用 `$0`（永久）或 `$1`（單回合）後綴，系統會自動處理
 3. **客戶端同步**：使用 Room 方法而非直接調用 Player 方法，以確保客戶端同步
-4. **移動限制**：`MethodMove` 會影響 `obtainCard`、`moveCardsAtomic`、`moveField` 等方法
+4. **移動限制**：`MethodMove` 會影響 `obtainCard`、`moveCardsAtomic`、`moveField` 等方法；`canGet()` 同時檢查 `get` 與 `move`，因此設定 `move` 仍會阻止獲得
 
 ---
 

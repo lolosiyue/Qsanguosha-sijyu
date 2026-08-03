@@ -380,6 +380,9 @@ public:
 	bool canMove(const Player*to, const char*flags) const;
 	bool canMove(const Player*to, int card_id) const;
 
+	bool canGet(const Player*to, const char*flags) const;
+	bool canGet(const Player*to, int card_id) const;
+
 	void setCardLimitation(const char*limit_list, const char*pattern, const char*reason = "", bool single_turn = false);
 	void removeCardLimitation(const char*limit_list, const char*pattern, const char*reason = "");
 	void removeCardLimitationByReason(const char*reason);
@@ -400,6 +403,10 @@ public:
 	QList<const Player*> getAliveSiblings(bool include_self = false) const;
 	void setSkillDescriptionSwap(const char*skill_name, const char*key, const char*value, int instanceId = 0);
 	QHash<QString, QString> getSkillDescriptionSwap(const char*skill_name, int instanceId = 0) const;
+
+	void setSkillInstanceStateValue(const char*skill_name, int instanceID, const char*key, const QVariant &value);
+	QVariant getSkillInstanceStateValue(const char*skill_name, int instanceID, const char*key, const QVariant &defaultValue = QVariant()) const;
+	void removeSkillInstanceStateValue(const char*skill_name, int instanceID, const char*key);
 
 static bool isNostalGeneral(const Player*p, const char*general_name);
     bool hasLordSkillKingdom(const char*kingdom, const Player*player = nullptr) const;
@@ -1170,7 +1177,8 @@ public:
 	enum HandlingMethod {
 		MethodNone, MethodUse, MethodResponse,
 		MethodDiscard, MethodRecast, MethodPindian,
-		MethodIgnore, MethodEffect, MethodPlay
+		MethodIgnore, MethodEffect, MethodPlay,
+		MethodMove, MethodGet
 		};
 	enum Color { Red, Black, Colorless };
 	static const Suit AllSuits[4];
