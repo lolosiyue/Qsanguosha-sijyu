@@ -2654,7 +2654,10 @@ int Room::askForCardChosen(ServerPlayer*player, ServerPlayer*who, const QString&
 	if (card_id==-1&&!can_cancel){
 		foreach(const Card*c, who->getCards(flags)){
 			if (disabled_ids.contains(c->getId())) continue;
-			if (method!=Card::MethodDiscard||player->canDiscard(who,c->getId())){
+			bool can_take = true;
+			if (method==Card::MethodDiscard && !player->canDiscard(who,c->getId())) can_take = false;
+			else if (method==Card::MethodGet && !player->canGet(who,c->getId())) can_take = false;
+			if (can_take){
 				card_id = c->getId();
 				break;
 			}
@@ -7685,8 +7688,24 @@ void Room::moveCardsAtomic(QList<CardsMoveStruct> cards_moves, bool visible, boo
 		CardsMoveStruct filtered_move = move;
 		filtered_move.card_ids.clear();
 		foreach(int id, move.card_ids){
-			if (move.from && !move.from->canMove(move.from, id))
+			if (!move.from){
+				filtered_move.card_ids << id;
 				continue;
+			}
+			bool allowed = true;
+			switch (move.to_place){
+			case Player::PlaceHand:
+				allowed = move.from->canGet(move.from, id);
+				break;
+			case Player::PlaceEquip:
+			case Player::PlaceDelayedTrick:
+			case Player::PlaceJudge:
+				allowed = move.from->canMove(move.from, id);
+				break;
+			default:
+				break;
+			}
+			if (!allowed) continue;
 			filtered_move.card_ids << id;
 		}
 		if (!filtered_move.card_ids.isEmpty())

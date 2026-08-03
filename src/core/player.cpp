@@ -1444,6 +1444,45 @@ bool Player::canMove(int card_id, const Player *to) const
     return canMove(to, card_id);
 }
 
+bool Player::canGet(const Player *to, const QString &flags) const
+{
+    if (!to || isDead() || to->isDead()) return false;
+    if (flags.contains("h")){
+        foreach(const Card *h, to->getHandcards())
+            if (canGet(to, h->getId())) return true;
+    }
+    if (flags.contains("e")){
+        foreach(const Card *e, to->getEquips())
+            if (canGet(to, e->getId())) return true;
+    }
+    if (flags.contains("j")){
+        foreach(const Card *j, to->getJudgingArea())
+            if (canGet(to, j->getId())) return true;
+    }
+    return false;
+}
+
+bool Player::canGet(const Player *to, int card_id) const
+{
+    const Card *card = Sanguosha->getCard(card_id);
+    if (this == to)
+        return !isCardLimited(card, Card::MethodGet) && !isCardLimited(card, Card::MethodMove);
+    return Sanguosha->isCardLimited(this, card, Card::MethodGet) == nullptr
+        && Sanguosha->isCardLimited(this, card, Card::MethodMove) == nullptr;
+}
+
+bool Player::canGet(const QString &flags, const Player *to) const
+{
+    if (to == nullptr) to = this;
+    return canGet(to, flags);
+}
+
+bool Player::canGet(int card_id, const Player *to) const
+{
+    if (to == nullptr) to = this;
+    return canGet(to, card_id);
+}
+
 void Player::addDelayedTrick(const Card *trick)
 {
     judging_area << trick;

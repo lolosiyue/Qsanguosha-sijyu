@@ -405,6 +405,11 @@ public:
     bool canMove(const Player *to, int card_id) const;
     bool canMove(const QString &flags, const Player *to = nullptr) const;
     bool canMove(int card_id, const Player *to = nullptr) const;
+
+    bool canGet(const Player *to, const QString &flags) const;
+    bool canGet(const Player *to, int card_id) const;
+    bool canGet(const QString &flags, const Player *to = nullptr) const;
+    bool canGet(int card_id, const Player *to = nullptr) const;
     QString getLogName() const;
     void sortHandCards(const QString &hands);
     void sortHandCards(QList<int>hands);
