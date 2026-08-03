@@ -1970,8 +1970,24 @@ void Server::writeHeadlessLog(const QString &msg)
     if (logStream) {
         *logStream << QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss.zzz")
                     << " " << msg << "\n";
-        logStream->flush();
-        logFile->flush();
+        // 自動化測試: 緩衝寫入, 每 100 行或每 1 秒 flush 一次, 降低儲存裝置寫入次數
+        // (逐行 flush 對 HDD/SSD 的寫入放大; 閃退最多丟失最後 ~1 秒的普通 log,
+        //  正常結束時 static QFile 析構會 flush, 啟動失敗 exit=1 同)
+        // 標記行 (>>> / [AUTOTEST] / ERROR) 立即 flush: headless 完成後退出階段會
+        // 0xC0000409 崩潰, 若 done 標記留在緩衝, runner 會誤判遊戲未完成
+        static int pending = 0;
+        static QElapsedTimer flushTimer;
+        static bool timerStarted = false;
+        ++pending;
+        const bool markerLine = msg.startsWith(">>>") || msg.startsWith("[AUTOTEST]")
+            || msg.startsWith("ERROR");
+        if (markerLine || pending >= 100 || (timerStarted && flushTimer.elapsed() >= 1000)) {
+            logStream->flush();
+            logFile->flush();
+            pending = 0;
+            flushTimer.restart();
+            timerStarted = true;
+        }
     }
     qDebug().noquote() << msg;
 }

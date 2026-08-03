@@ -74,12 +74,10 @@ def wait_for_marker(log_path, predicate, timeout, start_offset=0):
 
 
 def run_mode(args, exe_root, workdir, mode, runs, general):
-    log_root = log_dir_for(args)
-    mode_dir = os.path.join(log_root, "network", mode)
-    os.makedirs(mode_dir, exist_ok=True)
-    marker_file = os.path.join(mode_dir, "autotest.log")
-    if os.path.isfile(marker_file):
-        os.remove(marker_file)
+    # 每次執行一個時間戳資料夾 (network/<時間戳>/<mode>/), 不再重名覆蓋
+    run_dir = os.path.join(log_dir_for(args), "network", stamp(), mode)
+    os.makedirs(run_dir, exist_ok=True)
+    marker_file = os.path.join(run_dir, "autotest.log")
 
     server_exe = find_exe(exe_root, SERVER_EXE)
     client_exe = find_exe(exe_root, CLIENT_EXE)
@@ -87,7 +85,7 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
     results = []
     print("=== 模式 %s: 啟動 server ===" % mode)
     proc = spawn([server_exe, "--game-mode", mode, "--autotest-log", marker_file],
-                 workdir, os.path.join(mode_dir, "server.log"),
+                 workdir, os.path.join(run_dir, "server.log"),
                  console=getattr(args, "console", False))
     try:
         if not wait_port(SERVER_PORT, SERVER_STARTUP_TIMEOUT):
@@ -98,7 +96,7 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
 
         marker_offset = 0
         for run_id in range(1, runs + 1):
-            client_log = os.path.join(mode_dir, "run%d.log" % run_id)
+            client_log = os.path.join(run_dir, "run%d.log" % run_id)
             print("  局 %d/%d: 啟動 client" % (run_id, runs))
             client_cmd = [client_exe, "-connect:127.0.0.1",
                           "--test-general", general]
