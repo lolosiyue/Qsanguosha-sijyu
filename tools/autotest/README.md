@@ -24,7 +24,7 @@ python tools\autotest\headless_runner.py `
 (`<mode>-N.log` / `<mode>-N-headless.log`)。例: `--modes 20p --parallel 10`
 = 10 個 20p process 同時跑。注意多 process 同時打 20p 對 CPU/RAM 負載高。
 
-輸出: `autotest-logs\headless\<mode>[-N].log` + `summary-headless-<時間>.csv`
+輸出: `tools\autotest\autotest-logs\headless\<mode>[-N].log` + `summary-headless-<時間>.csv`
 
 ## network_runner.py — 真實網路測試 (串行)
 
@@ -46,7 +46,22 @@ python tools\autotest\network_runner.py `
     --modes 20p --runs 1 --general s4_huangzhong --general2 zhenji
 ```
 
-輸出: `autotest-logs\network\<mode>\server.log` / `runN.log` + `summary-network-<時間>.csv`
+輸出: `tools\autotest\autotest-logs\network\<mode>\server.log` / `runN.log` + `summary-network-<時間>.csv`
+
+## crash_report.py — 集中閃退資訊 (可持續執行)
+
+掃描 exe-root 的 `dmp/` + `record/` 與 `tools\autotest\autotest-logs\` 全部
+批次 log, 以時間戳自動匹配「閃退局 ↔ dmp ↔ log ↔ record」, 並以純 Python
+解析 minidump (例外碼 / 位址 / 崩潰模組 RVA, 不需 cdb/windbg):
+
+```powershell
+python tools\autotest\crash_report.py `
+    --exe-root \\DESKTOP-VON1J9F\game\sgs\QSanguoshaFinal
+```
+
+輸出: `tools\autotest\autotest-logs\crash-report\<時間戳>\inventory.csv`
+(每顆 dmp 一列) + `batches.csv` (各批次局數摘要)。每次執行新增時間戳
+目錄, 不刪改任何既有檔案。
 
 ## 一鍵 batch (選擇寫在 bat 頂部)
 

@@ -17,11 +17,13 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from runner_common import (HEADLESS_HEADER, common_args, describe_exit,
                            find_exe, hex_exit, is_crash_code, kill_pid,
-                           log_dir_for, parse_headless_log, resolve_workdir,
-                           spawn, stamp, tail_lines, wait_exit, write_csv)
+                           log_dir_for, log_has_smart_ai_failure,
+                           parse_headless_log, qt_console_env,
+                           resolve_workdir, spawn, stamp, tail_lines,
+                           wait_exit, write_csv)
 
 EXE_NAME = "QSanguosha.exe"
-PER_GAME_TIMEOUT = 600  # 每局預估上限 (秒, 20p 大規模對局較慢)
+PER_GAME_TIMEOUT = 900  # 每局預估上限 (秒; 05p 慢局曾達 11 分鐘, 600 太緊)
 
 
 CUR_GAME_RE = re.compile(r">>> Starting headless game (\d+) <<<")
@@ -76,7 +78,7 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
         cmd += ["--test-general", args.general]
     if getattr(args, "general2", ""):
         cmd += ["--test-general2", args.general2]
-    proc = spawn(cmd, workdir, log_path)
+    proc = spawn(cmd, workdir, log_path, env=qt_console_env())
     timeout = games * PER_GAME_TIMEOUT + 120
     deadline = time.time() + timeout
     timed_out = False
@@ -84,6 +86,7 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
     # 輪詢標記檔, 每局開始/完成即在 CMD 印進度
     prev = {"total": 0, "failed": 0}
     prev_current = 0
+    smart_ai_failed = False
     while True:
         code = proc.poll()
         if code is not None:
@@ -92,6 +95,14 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
             timed_out = True
             kill_pid(proc.pid)
             code = proc.wait()
+            break
+        # 自動化測試: smart-ai 載入失敗 — 同 VM 的後續局都會壞, 提前結束省時間
+        if log_has_smart_ai_failure(headless_log):
+            print("  [%s] [%s] smart-ai 載入失敗, 提前結束 (後續局無法正常進行)"
+                  % (label, time.strftime("%H:%M:%S")))
+            kill_pid(proc.pid)
+            code = proc.wait()
+            smart_ai_failed = True
             break
         finished, failed, done = parse_headless_log(headless_log)
         cur = current_game(headless_log)
@@ -113,6 +124,7 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
         "mode": mode + ("" if not tag else "#%s" % tag),
         "exit": code, "exit_name": describe_exit(code), "exit_hex": hex_exit(code),
         "timeout": timed_out, "crashed": crashed, "crash_context": context,
+        "smart_ai_failed": smart_ai_failed,
         "finished": n_finished, "expected": games, "failed_games": failed,
         "done_marker": done, "ok": ok, "winners": dict(finished), "log": log_path,
     }
@@ -198,6 +210,8 @@ def main():
                     print("        閃退: %s (%s)" % (r.get("exit_name"), r.get("exit_hex")))
                     for line in r.get("crash_context", []):
                         print("          %s" % line)
+                if r.get("smart_ai_failed"):
+                    print("        smart-ai 載入失敗 (檔案/環境問題), 後續局未跑")
 
     csv_path = os.path.join(log_root, "summary-headless-%s.csv" % stamp())
     header = ["mode", "ok", "exit", "exit_name", "timeout", "crashed",
