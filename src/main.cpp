@@ -2,6 +2,7 @@
 #include <QTimer>
 #include <QDir>
 #include <QFile>
+#include <QLoggingCategory>
 #include <QPointer>
 #include <QApplication>
 #include <QCoreApplication>
@@ -108,6 +109,11 @@ int main(int argc, char *argv[])
         new QCoreApplication(argc, argv);
     else
         new QApplication(argc, argv);
+
+    // 美術 PNG 內嵌的 iCCP chunk 帶有錯誤的 sRGB profile，libpng 1.6+ 會對每張
+    // 圖發出 "known incorrect sRGB profile" warning（qt.gui.imageio category）。
+    // 純屬無害的色彩描述檔警告，在此統一靜音，避免 console 被刷滿。
+    QLoggingCategory::setFilterRules(QStringLiteral("qt.gui.imageio.warning=false"));
 
 #ifdef Q_OS_WIN
     qputenv("QT_MEDIA_BACKEND", "ffmpeg");
