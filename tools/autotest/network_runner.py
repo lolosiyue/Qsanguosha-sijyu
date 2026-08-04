@@ -15,13 +15,15 @@
 """
 import argparse
 import os
+import shutil
 import socket
 import sys
 import time
 
 from runner_common import (MARK_GAME_OVER, MARK_GAME_START, common_args,
                            describe_exit, find_exe, is_crash_code, kill_pid,
-                           log_dir_for, resolve_workdir, spawn, stamp,
+                           log_dir_for, log_has_smart_ai_failure,
+                           qt_console_env, resolve_workdir, spawn, stamp,
                            tail_lines, wait_exit, write_csv)
 
 SERVER_EXE = "qsanguosha_server.exe"
@@ -61,16 +63,57 @@ def read_markers(log_path, offset):
     return new_offset, data.decode("utf-8", errors="replace").splitlines()
 
 
-def wait_for_marker(log_path, predicate, timeout, start_offset=0):
+def wait_for_marker(log_path, predicate, timeout, start_offset=0, server_proc=None):
     offset = start_offset
     deadline = time.time() + timeout
     while time.time() < deadline:
+        # 自動化測試: 等待期間監控 server 存活 — 閃退時提前回傳 SERVER_DIED
+        if server_proc is not None and server_proc.poll() is not None:
+            return "SERVER_DIED", offset
         offset, lines = read_markers(log_path, offset)
         for line in lines:
             if predicate(line):
                 return line, offset
         time.sleep(0.3)
     return None, offset
+
+
+def _backup_runtime_files(workdir, run_dir, run_id):
+    """局開始前複製會被覆寫的執行期記錄檔 (閃退局證據來源)。
+    對應: record/debug.txt, lua/ai/cstring, lua/ai/cstringEvent。"""
+    targets = [
+        (os.path.join(workdir, "record", "debug.txt"),
+         os.path.join(run_dir, "debug-before-run%d.txt" % run_id)),
+        (os.path.join(workdir, "lua", "ai", "cstring"),
+         os.path.join(run_dir, "ai-cstring-before-run%d.txt" % run_id)),
+        (os.path.join(workdir, "lua", "ai", "cstringEvent"),
+         os.path.join(run_dir, "ai-cstringEvent-before-run%d.txt" % run_id)),
+    ]
+    for src, dst in targets:
+        try:
+            if os.path.isfile(src) and os.path.getsize(src) > 0:
+                shutil.copy2(src, dst)
+        except OSError as e:
+            print("  [WARN] 複製 %s 失敗: %s" % (os.path.basename(src), e))
+
+
+def restart_server(args, exe_root, workdir, mode, proc, marker_file, server_log, server_exe, reason):
+    """重啟常駐 server, 回傳新 proc。reason 用於 log 說明。"""
+    exit_code = proc.poll()
+    print("  %s (server exit=%s %s)" % (
+        reason, exit_code, describe_exit(exit_code) if exit_code is not None else ""))
+    kill_pid(proc.pid)
+    close_proc(proc)
+    if os.path.isfile(marker_file):
+        os.remove(marker_file)  # 標記檔是 Append, 新 server 需從乾淨檔開始
+    proc = spawn([server_exe, "--game-mode", mode, "--autotest-log", marker_file],
+                 workdir, server_log,
+                 console=getattr(args, "console", False))
+    if not wait_port(SERVER_PORT, SERVER_STARTUP_TIMEOUT):
+        print("  [FAIL] %s: 重啟 server 未就緒" % mode)
+        return None
+    print("  server 已重啟 (port %d)" % SERVER_PORT)
+    return proc
 
 
 def run_mode(args, exe_root, workdir, mode, runs, general):
@@ -83,9 +126,10 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
     client_exe = find_exe(exe_root, CLIENT_EXE)
 
     results = []
+    server_log = os.path.join(run_dir, "server.log")
     print("=== 模式 %s: 啟動 server ===" % mode)
     proc = spawn([server_exe, "--game-mode", mode, "--autotest-log", marker_file],
-                 workdir, os.path.join(run_dir, "server.log"),
+                 workdir, server_log,
                  console=getattr(args, "console", False))
     try:
         if not wait_port(SERVER_PORT, SERVER_STARTUP_TIMEOUT):
@@ -97,18 +141,40 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
         marker_offset = 0
         for run_id in range(1, runs + 1):
             client_log = os.path.join(run_dir, "run%d.log" % run_id)
+            # 自動化測試: 閃退局沒有完整 record; 唯一即時記錄是
+            # <workdir>/record/debug.txt 與 lua/ai/cstring{,Event},
+            # 下局開始即被覆寫。在 spawn 新 client 前各複製一份,
+            # 保存上一局的遊戲/AI 內容。
+            _backup_runtime_files(workdir, run_dir, run_id)
             print("  局 %d/%d: 啟動 client" % (run_id, runs))
             client_cmd = [client_exe, "-connect:127.0.0.1",
                           "--test-general", general]
             if getattr(args, "general2", ""):
                 client_cmd += ["--test-general2", args.general2]
             client_cmd += ["--auto-robots"]
-            client = spawn(client_cmd, workdir, client_log)
+            # GUI client 的 qDebug/qWarning 導向 runN.log (QT_LOGGING_TO_CONSOLE)
+            client = spawn(client_cmd, workdir, client_log, env=qt_console_env())
 
             start_line, marker_offset = wait_for_marker(
                 marker_file, lambda l: MARK_GAME_START in l,
-                CLIENT_JOIN_TIMEOUT, marker_offset)
+                CLIENT_JOIN_TIMEOUT, marker_offset, server_proc=proc)
             ccode = None
+            if start_line == "SERVER_DIED":
+                # 自動化測試: server 閃退 — 重啟後重試本局
+                kill_pid(client.pid)
+                close_proc(client)
+                ctx = tail_lines(marker_file, 20)
+                for line in ctx:
+                    print("          %s" % line)
+                proc = restart_server(args, exe_root, workdir, mode, proc,
+                                      marker_file, server_log, server_exe,
+                                      "server 閃退, 重啟後重試本局")
+                if proc is None:
+                    break
+                marker_offset = 0
+                run_id -= 1  # 本局重試
+                time.sleep(1)
+                continue
             if start_line is None:
                 ccode = wait_exit(client, 5)
                 if ccode is None:
@@ -124,7 +190,25 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
 
             over_line, marker_offset = wait_for_marker(
                 marker_file, lambda l: MARK_GAME_OVER.search(l),
-                GAME_TIMEOUT, marker_offset)
+                GAME_TIMEOUT, marker_offset, server_proc=proc)
+            if over_line == "SERVER_DIED":
+                # 自動化測試: server 閃退 — 該局記失敗, 重啟後繼續下一局
+                kill_pid(client.pid)
+                close_proc(client)
+                ctx = tail_lines(marker_file, 20)
+                for line in ctx:
+                    print("          %s" % line)
+                results.append({"run": run_id, "ok": False,
+                                "note": "server crashed mid-game", "exit_name": "server"})
+                print("  [FAIL] 局 %d: server 局中閃退" % run_id)
+                proc = restart_server(args, exe_root, workdir, mode, proc,
+                                      marker_file, server_log, server_exe,
+                                      "server 閃退, 重啟後繼續")
+                if proc is None:
+                    break
+                marker_offset = 0
+                time.sleep(1)
+                continue
             # 先確認 client 是否已自行閃退, 再殺 (taskkill 會把 exit code 變成 1)
             ccode = wait_exit(client, 3)
             if ccode is None:
@@ -152,6 +236,18 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
             if crashed:
                 for line in ctx:
                     print("          %s" % line)
+
+            # 自動化測試: smart-ai 載入失敗偵測 — 常駐 server 的 Lua VM 已半壞,
+            # 局間 delay 10 秒 + 重啟 server (新 server 的第一個 Room 會重載 smart-ai)
+            if log_has_smart_ai_failure(marker_file) or log_has_smart_ai_failure(server_log):
+                print("  smart-ai 載入失敗, delay 10s 後重啟 server 再開下局")
+                time.sleep(10)
+                proc = restart_server(args, exe_root, workdir, mode, proc,
+                                      marker_file, server_log, server_exe,
+                                      "smart-ai 載入失敗")
+                if proc is None:
+                    break
+                marker_offset = 0
             time.sleep(1)
     finally:
         kill_pid(proc.pid)

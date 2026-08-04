@@ -93,6 +93,30 @@ def tail_lines(path, n=20):
         lines = lines[1:]  # 第一行可能被截斷
     return lines[-n:]
 
+# smart-ai / Lua AI 載入失敗的 log 標記 (runner 偵測用)
+SMART_AI_FAIL_MARKERS = (
+    "LuaAI script failed to load",
+    "LuaAI 载失败",
+    "Lua state is null",
+    "AI script load failed",
+    "Scenario AI load failed",
+)
+
+def log_has_smart_ai_failure(path):
+    """log 檔是否含 smart-ai 載入失敗標記。
+    失敗發生在啟動階段 (標記檔頭部), 讀尾部 256KB 已足夠涵蓋。"""
+    if not os.path.isfile(path):
+        return False
+    with open(path, "rb") as f:
+        f.seek(0, 2)
+        size = f.tell()
+        if size == 0:
+            return False
+        chunk = min(size, 262144)
+        f.seek(size - chunk)
+        data = f.read().decode("utf-8", errors="replace")
+    return any(m in data for m in SMART_AI_FAIL_MARKERS)
+
 MARK_GAME_START = "[AUTOTEST] game start"
 MARK_GAME_OVER = re.compile(r"\[AUTOTEST\] game over ?(.*)$")
 
@@ -130,22 +154,35 @@ def parse_headless_log(path):
 
 # ── 子行程管理 ──────────────────────────────────────────────
 
-def spawn(cmd, cwd, log_path, console=False):
+def spawn(cmd, cwd, log_path, console=False, env=None):
     """spawn 子行程, stdout/stderr 合流寫入 log_path, 回傳 Popen。
-    console=True 時輸出直接繼承終端 (不寫 log), 供 --console 模式用。"""
+    console=True 時輸出直接繼承終端 (不寫 log), 供 --console 模式用。
+    env 提供時作為子行程環境 (如 QT_LOGGING_TO_CONSOLE 讓 GUI client 的
+    qDebug/qWarning 進 log, 否則 Windows GUI 子系統訊息走 OutputDebugString)。"""
     if console:
         proc = subprocess.Popen(
-            cmd, cwd=cwd, stdout=None, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL
+            cmd, cwd=cwd, stdout=None, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+            env=env,
         )
         proc._logfile = None  # type: ignore[attr-defined]
         return proc
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     logf = open(log_path, "w", encoding="utf-8", errors="replace")
     proc = subprocess.Popen(
-        cmd, cwd=cwd, stdout=logf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL
+        cmd, cwd=cwd, stdout=logf, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
+        env=env,
     )
     proc._logfile = logf  # type: ignore[attr-defined]
     return proc
+
+def qt_console_env():
+    """GUI 子系統 exe 的 Qt 訊息 (qDebug/qWarning) 導向 stderr 的環境。
+    QT_LOGGING_TO_CONSOLE 已棄用; 改用 QT_ASSUME_STDERR_HAS_CONSOLE +
+    QT_FORCE_STDERR_LOGGING (Qt 6 建議組合)。"""
+    env = dict(os.environ)
+    env["QT_ASSUME_STDERR_HAS_CONSOLE"] = "1"
+    env["QT_FORCE_STDERR_LOGGING"] = "1"
+    return env
 
 def close_proc(proc):
     logf = getattr(proc, "_logfile", None)
@@ -195,7 +232,7 @@ def common_args(parser):
     parser.add_argument("--exe-root", default=os.getcwd(),
                         help="倉庫根目錄 (預設: 目前目錄), 內含 release/")
     parser.add_argument("--log-dir", default=None,
-                        help="log 輸出目錄 (預設: <exe-root>/autotest-logs)")
+                        help="log 輸出目錄 (預設: <exe-root>/tools/autotest/autotest-logs)")
     parser.add_argument("--modes", default="10p,20p,02_1v1,05p",
                         help="遊戲模式, 逗號分隔 (預設: 10p,20p,02_1v1,05p)")
     parser.add_argument("--label", default="",
@@ -203,7 +240,10 @@ def common_args(parser):
     return parser
 
 def log_dir_for(args):
-    return args.log_dir or os.path.join(args.exe_root, "autotest-logs")
+    """log 目錄: 集中於 tools/autotest/autotest-logs (不再散在 exe 根)。"""
+    if args.log_dir:
+        return args.log_dir
+    return os.path.join(args.exe_root, "tools", "autotest", "autotest-logs")
 
 def stamp():
     return time.strftime("%Y%m%d-%H%M%S")
