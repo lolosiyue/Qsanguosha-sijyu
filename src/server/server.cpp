@@ -2016,11 +2016,19 @@ void Server::startHeadlessGame()
         return;
     }
 
+    // 自動化測試: headless 加速 — 跳過 AI 節奏延遲與開局倒數 (to_test 檢查見
+    // roomthread.cpp delay() 與 room.cpp run() 的 using_countdown), 並清除
+    // AIDelay (1v1/3v3 選將的 msleep(Config.AIDelay) 也會受影響)。
+    room->setProperty("to_test", "headless");
+    Config.AIDelay = Config.OriginAIDelay = 0;
+
     QPointer<Room> roomPtr(room);
     int currentGameCount = gameCount;
     connect(room, &Room::game_over, this, [this, roomPtr, currentGameCount, gameLimit](const QString &winner) {
         Server::writeHeadlessLog(QString(">>> Game %1 finished. Winner: %2 <<<").arg(currentGameCount).arg(winner));
 
+        // 局間等待保留 500ms: 實測 0ms 會讓 game N+1 開局 ~9 秒時 fail-fast
+        // 閃退 (0xC0000409, 無 minidump) — old room 資源釋放與新局啟動需緩衝
         QTimer::singleShot(500, this, [this, roomPtr, currentGameCount, gameLimit]() {
             if (roomPtr) {
                 roomPtr->deleteLater();
@@ -2083,10 +2091,17 @@ void Server::startTestGame(const QString &scenarioFile, bool headless)
         return;
     }
 
+    if (headless) {
+        // 自動化測試: headless 加速, 同 startHeadlessGame
+        room->setProperty("to_test", "headless");
+        Config.AIDelay = Config.OriginAIDelay = 0;
+    }
+
     QPointer<Room> roomPtr(room);
     connect(room, &Room::game_over, this, [this, roomPtr, headless](const QString &winner) {
         qDebug() << "Test game finished. Winner:" << winner;
 
+        // 局間等待保留 500ms, 同 startHeadlessGame (0ms 會引致次局 fail-fast 閃退)
         QTimer::singleShot(500, this, [this, roomPtr, headless]() {
             if (roomPtr) {
                 roomPtr->deleteLater();
