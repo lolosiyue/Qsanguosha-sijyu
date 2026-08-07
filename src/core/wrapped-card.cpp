@@ -41,7 +41,7 @@ void WrappedCard::takeOver(Card *card)
 		setNumber(card->getNumber());
 		setObjectName(card->objectName());
 		m_skillName = card->getSkillName(false);
-		m_skillInstanceId = card->getSkillInstanceID();
+		m_skillInstanceId = card->getSkillInstanceId();
 		setSourceSkill(card->getSourceSkillName(), card->getSourceSkillInstanceId());
 		setActivationSkill(card->getActivationSkillName(), card->getActivationSkillInstanceId());
 	}
@@ -74,7 +74,7 @@ void WrappedCard::copyEverythingFrom(Card *card)
 		Card::setSuit(card->getSuit());
 		Card::setNumber(card->getNumber());
 		m_skillName = card->getSkillName(false);
-		m_skillInstanceId = card->getSkillInstanceID();
+		m_skillInstanceId = card->getSkillInstanceId();
 		setSourceSkill(card->getSourceSkillName(), card->getSourceSkillInstanceId());
 		setActivationSkill(card->getActivationSkillName(), card->getActivationSkillInstanceId());
 		setObjectName(card->objectName());

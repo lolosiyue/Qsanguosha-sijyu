@@ -2029,11 +2029,6 @@ void Player::upsertSkillInstance(const SkillInstance &instance)
     }
 }
 
-QList<int> Player::getSkillInstanceIdsForName(const QString &skillName) const
-{
-    return getSkillInstanceIds(skillName);
-}
-
 void Player::setSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state)
 {
     auto outerIt = m_skillInstances.find(skillName);

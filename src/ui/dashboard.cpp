@@ -2025,7 +2025,7 @@ void Dashboard::updatePending()
 			m_viewAsSkillInstanceID);
 		Card *mutablePendingCard = const_cast<Card *>(new_pending_card);
 			if (instance) {
-				mutablePendingCard->setSkillInstanceID(instance->instanceID);
+				mutablePendingCard->setSkillInstanceId(instance->instanceID);
 				// The generated SkillCard name may differ from the clicked ViewAsSkill.
 				mutablePendingCard->setActivationSkill(activationSkillName, instance->instanceID);
 				if (instance->parentRef.isValid())
@@ -2036,7 +2036,7 @@ void Dashboard::updatePending()
 			} else {
 			// ResponseSkill returns the original physical card.  Never let a stale
 			// activation from a previous pending skill leak into a shared helper card.
-			mutablePendingCard->setSkillInstanceID(0);
+			mutablePendingCard->setSkillInstanceId(0);
 			mutablePendingCard->setSourceSkill(QString(), 0);
 			mutablePendingCard->setActivationSkill(QString(), 0);
 		}

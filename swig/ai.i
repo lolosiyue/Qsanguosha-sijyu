@@ -368,7 +368,7 @@ const Card *LuaAI::askForCard(const QString &pattern, const QString &prompt, con
 	if (request.isValid()) {
 		Card *mutableCard = const_cast<Card *>(card);
 		mutableCard->setActivationSkill(request.getActivationSkillName(),
-			request.getActivationInstanceID());
+			request.getActivationInstanceId());
 		mutableCard->setSourceSkill(request.getSourceSkillName(),
 			request.getSourceInstanceID());
 	}

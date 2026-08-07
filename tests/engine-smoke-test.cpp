@@ -112,7 +112,7 @@ static int physicalResponseIgnoresStaleHelperActivation()
     CardUseStruct registeredUse(&physicalCard, player);
     registeredUse.hasSkillActivationRequest = true;
     const bool registeredAccepted = RoomTestAccess::resolveCardSkillInstance(room, registeredUse);
-    physicalCard.setSkillInstanceID(0);
+    physicalCard.setSkillInstanceId(0);
     physicalCard.setSourceSkill(QString(), 0);
     physicalCard.setActivationSkill(QString(), 0);
     if (!registeredAccepted || !registeredUse.activationRef.isValid()

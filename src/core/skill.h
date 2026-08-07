@@ -73,7 +73,7 @@ struct ActiveSkillRequest {
     QString getPattern() const { return pattern; }
     const Player *getInitiator() const { return initiator; }
     QString getActivationSkillName() const { return activationRef.key.skillName; }
-    int getActivationInstanceID() const { return activationRef.key.instanceID; }
+    int getActivationInstanceId() const { return activationRef.key.instanceID; }
     QList<int> getSelectedCardIds() const { return selectedCardIds; }
     QStringList getSelectedTargetNames() const { return selectedTargetNames; }
     QString getUserString() const { return userString; }

@@ -5642,7 +5642,7 @@ bool Room::resolveCardSkillInstance(CardUseStruct &use)
 	if (!use.hasSkillActivationRequest && activationId == 0) return true;
 	if (activationId == 0) {
 		if (activationName.isEmpty()) return true;
-		QList<int> ids = use.from->getSkillInstanceIdsForName(activationName);
+		QList<int> ids = use.from->getSkillInstanceIds(activationName);
 		if (ids.isEmpty()) return false;
 		activationId = ids.first();
 	}
@@ -5653,7 +5653,7 @@ bool Room::resolveCardSkillInstance(CardUseStruct &use)
 		// as the client-only ResponseSkill.  Discard stale optional provenance
 		// instead of treating an otherwise valid human response as cancellation.
 		Card *mutableCard = const_cast<Card *>(use.card);
-		mutableCard->setSkillInstanceID(0);
+		mutableCard->setSkillInstanceId(0);
 		mutableCard->setSourceSkill(QString(), 0);
 		mutableCard->setActivationSkill(QString(), 0);
 		use.hasSkillActivationRequest = false;
@@ -5858,7 +5858,7 @@ bool Room::askForActiveSkill(ServerPlayer *player, CardUseStruct::CardUseReason 
 						legacy.sourceRef = aiRequest.sourceRef;
 						Card *mutableCard = const_cast<Card *>(legacy.card);
 						mutableCard->setActivationSkill(aiRequest.getActivationSkillName(),
-							aiRequest.getActivationInstanceID());
+							aiRequest.getActivationInstanceId());
 						mutableCard->setSourceSkill(aiRequest.getSourceSkillName(),
 							aiRequest.getSourceInstanceID());
 					}
@@ -5908,7 +5908,7 @@ bool Room::askForActiveSkill(ServerPlayer *player, CardUseStruct::CardUseReason 
 		proxy->setActiveSkill(skill);
 		proxy->setSkillName(skill->objectName());
 		proxy->setActivationSkill(aiRequest.getActivationSkillName(),
-			aiRequest.getActivationInstanceID());
+			aiRequest.getActivationInstanceId());
 		proxy->setSourceSkill(aiRequest.getSourceSkillName(), aiRequest.getSourceInstanceID());
 		proxy->addSubcards(result.selectedCardIds);
 		proxy->setUserString(result.userString);
