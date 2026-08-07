@@ -33,7 +33,7 @@ struct ActiveSkillAIRequest {
     ServerPlayer *getInitiator() const { return initiator; }
     QString getActivationOwner() const { return activationRef.ownerObjectName; }
     QString getActivationSkillName() const { return activationRef.key.skillName; }
-    int getActivationInstanceID() const { return activationRef.key.instanceID; }
+    int getActivationInstanceId() const { return activationRef.key.instanceID; }
     QString getSourceOwner() const { return sourceRef.ownerObjectName; }
     QString getSourceSkillName() const { return sourceRef.key.skillName; }
     int getSourceInstanceID() const { return sourceRef.key.instanceID; }

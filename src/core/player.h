@@ -182,7 +182,6 @@ public:
     QList<SkillInstance> getSkillInstances() const;
     void clearSkillInstances();
     void upsertSkillInstance(const SkillInstance &instance);
-    QList<int> getSkillInstanceIdsForName(const QString &skillName) const;
     void setSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state);
     QVariantMap getSkillInstanceState(const QString &skillName, int instanceID) const;
     void removeSkillInstanceState(const QString &skillName, int instanceID);

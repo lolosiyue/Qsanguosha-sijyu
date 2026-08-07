@@ -209,6 +209,7 @@ public:
 	bool hasSkill(const char*skill_name, bool include_lose = false) const;
 	bool hasSkill(const Skill*skill, bool include_lose = false) const;
 	bool hasSkills(const char*skill_name, bool include_lose = false) const;
+	bool hasSkillInstance(const char*skill_name, int instanceID) const;
 	bool hasLordSkill(const char*skill_name, bool include_lose = false) const;
 	bool hasLordSkill(const Skill*skill, bool include_lose = false) const;
 	bool hasInnateSkill(const char*skill_name) const;
@@ -1222,8 +1223,8 @@ public:
 	QString getSkillName(bool removePrefix = true) const;
 	QStringList getSkillNames(bool removePrefix = true) const;
 	void setSkillName(const char*skill_name);
-	int getSkillInstanceID() const;
-	void setSkillInstanceID(int instanceID);
+	int getSkillInstanceId() const;
+	void setSkillInstanceId(int id);
 	void setSourceSkill(const char *name, int instanceID);
 	QString getSourceSkillName() const;
 	int getSourceSkillInstanceId() const;
@@ -1558,7 +1559,7 @@ struct ActiveSkillRequest {
 	QString getPattern() const;
 	const Player *getInitiator() const;
 	QString getActivationSkillName() const;
-	int getActivationInstanceID() const;
+	int getActivationInstanceId() const;
 	QList<int> getSelectedCardIds() const;
 	QStringList getSelectedTargetNames() const;
 	QString getUserString() const;
@@ -1573,7 +1574,7 @@ struct ActiveSkillAIRequest {
 	ServerPlayer *getInitiator() const;
 	QString getActivationOwner() const;
 	QString getActivationSkillName() const;
-	int getActivationInstanceID() const;
+	int getActivationInstanceId() const;
 	QString getSourceOwner() const;
 	QString getSourceSkillName() const;
 	int getSourceInstanceID() const;

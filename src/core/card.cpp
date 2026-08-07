@@ -656,7 +656,7 @@ Card*Card::Clone(const Card*card)
 		card_obj->setObjectName(card->objectName());
 		card_obj->setId(card->getId());
 		card_obj->setSkillName(card->getSkillName(false));
-		card_obj->setSkillInstanceID(card->getSkillInstanceID());
+		card_obj->setSkillInstanceId(card->getSkillInstanceId());
 	}
 	return card_obj;
 }

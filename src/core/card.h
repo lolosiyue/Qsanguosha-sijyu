@@ -105,8 +105,6 @@ public:
     virtual void setSkillName(const QString &skill_name);
     void setSkillInstanceId(int id) { m_skillInstanceId = id; }
     int getSkillInstanceId() const { return m_skillInstanceId; }
-    void setSkillInstanceID(int id) { setSkillInstanceId(id); }
-    int getSkillInstanceID() const { return getSkillInstanceId(); }
     void setSourceSkill(const QString &name, int instanceId) { m_sourceSkillName = name; m_sourceSkillInstanceId = instanceId; }
     QString getSourceSkillName() const { return m_sourceSkillName.isEmpty() ? getSkillName(false) : m_sourceSkillName; }
     int getSourceSkillInstanceId() const { return m_sourceSkillInstanceId > 0 ? m_sourceSkillInstanceId : m_skillInstanceId; }
