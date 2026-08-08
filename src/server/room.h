@@ -676,6 +676,10 @@ private:
     void notifySkillInstanceCorrectState(ServerPlayer *owner, const SkillInstance &instance,
                                          const QString &operation, const QString &key = QString(),
                                          const QVariant &value = QVariant());
+    // Owner-only：完整 SkillInstanceState 僅同步給持有者 client（不廣播給其他人）。
+    void notifySkillInstanceState(ServerPlayer *owner, const SkillInstance &instance,
+                                  const QString &operation, const QString &key = QString(),
+                                  const QVariant &value = QVariant());
     void notifyCardProvenance(const QString &kind, ServerPlayer *initiator, const Card *card,
                               const SkillInstanceRef &sourceRef, const SkillInstanceRef &activationRef);
     SkillInstanceRef resolveSkillInstanceRootRef(const SkillInstanceRef &ref) const;

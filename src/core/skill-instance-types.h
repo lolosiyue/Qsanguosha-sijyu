@@ -72,6 +72,7 @@ struct SkillInstance {
 
 private:
     friend class Player;
+    // 私有邏輯 state：server 權威；僅 owner-only 同步到持有者 client（見 Room::notifySkillInstanceState）
     QVariantMap state;
 };
 

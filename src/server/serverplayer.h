@@ -29,6 +29,11 @@ public:
     void unicast(const QString &message);
     //void drawCard(const Card *card);
     Room *getRoom() const;
+    // Owner-only 同步 SkillInstanceState（覆寫 Player，既有 Lua player:set* 自動走 notify）
+    void setSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state) override;
+    void removeSkillInstanceState(const QString &skillName, int instanceID) override;
+    void setSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &value) override;
+    void removeSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key) override;
     void setOnsoleOwner(ServerPlayer *owner);
     ServerPlayer *getOnsoleOwner() const;
     void broadcastSkillInvoke(const Card *card) const;

@@ -154,7 +154,32 @@ static bool isSkillButtonAvailable(const QSanSkillButton *button, const ClientPl
     request.initiator = activePlayer;
     request.activationRef = SkillInstanceRef(activePlayer->objectName(),
         SkillInstanceKey(activeSkill->objectName(), instanceID));
-    return activeSkill->canActivate(request);
+    if (!activeSkill->canActivate(request))
+        return false;
+    // ClientPlayer 不能走 Skill::isUsable（需 ServerPlayer/Room）；改讀已同步的 Usage mark。
+    const Skill::LimitScope limitScope = activeSkill->getLimitScope();
+    if (limitScope != Skill::Limit_None && limitScope != Skill::Limit_Custom) {
+        QString suffix;
+        switch (limitScope) {
+        case Skill::Limit_Turn: suffix = "-Clear"; break;
+        case Skill::Limit_Round: suffix = "_lun"; break;
+        case Skill::Limit_Phase:
+            suffix = activeSkill->getPhaseName().isEmpty()
+                ? "-PhaseClear" : "-" + activeSkill->getPhaseName() + "Clear";
+            break;
+        case Skill::Limit_Game: suffix = "_game"; break;
+        default: break;
+        }
+        if (!suffix.isEmpty() && instanceID > 0) {
+            SkillContext limitCtx;
+            const int maxUsage = activeSkill->getMaxUsageLimit(limitCtx);
+            const QString usageKey = SkillInstanceUtils::formatUsageMarkKey(
+                activeSkill->objectName(), instanceID, suffix);
+            if (maxUsage > 0 && activePlayer->getMark(usageKey) >= maxUsage)
+                return false;
+        }
+    }
+    return true;
 }
 
 template <typename DialogType>
@@ -333,6 +358,12 @@ RoomScene::RoomScene(QMainWindow*main_window)
 			updateSelectedTargets();
 		});
 	connect(ClientInstance, &Client::skill_instance_correct_state_changed, this,
+		[this](const ClientPlayer *, const QString &, int, const QString &) {
+			updateSkillButtons();
+			enableTargets(dashboard->getSelected());
+			updateSelectedTargets();
+		});
+	connect(ClientInstance, &Client::skill_instance_state_changed, this,
 		[this](const ClientPlayer *, const QString &, int, const QString &) {
 			updateSkillButtons();
 			enableTargets(dashboard->getSelected());

@@ -1263,7 +1263,8 @@ static bool canReceiveSkillInstance(const ServerPlayer *receiver, const ServerPl
     return instance.source != SourceHelper && instance.visible && skill && skill->isVisible();
 }
 
-static JsonArray skillInstanceJson(const ServerPlayer *owner, const SkillInstance &instance)
+static JsonArray skillInstanceJson(const ServerPlayer *owner, const SkillInstance &instance,
+                                   bool includePrivateState)
 {
     JsonArray entry;
     const SkillInstanceRef parentRef = instance.parentRef.isValid()
@@ -1279,6 +1280,12 @@ static JsonArray skillInstanceJson(const ServerPlayer *owner, const SkillInstanc
     }
     if (!instance.correctState.isEmpty())
         metadata.insert("correct_state", instance.correctState);
+    // State 僅給持有者：他人 snapshot/upsert 不得帶私有 state
+    if (includePrivateState && owner) {
+        const QVariantMap state = owner->getSkillInstanceState(instance.skillName, instance.instanceID);
+        if (!state.isEmpty())
+            metadata.insert("state", state);
+    }
     if (!metadata.isEmpty()) entry << metadata;
     return entry;
 }
@@ -1290,7 +1297,7 @@ void Room::notifySkillInstanceSnapshot(ServerPlayer *receiver)
     foreach (ServerPlayer *owner, getAllPlayers(true)) {
         foreach (const SkillInstance &instance, owner->getSkillInstances()) {
             if (canReceiveSkillInstance(receiver, owner, instance))
-                entries << QVariant::fromValue(skillInstanceJson(owner, instance));
+                entries << QVariant::fromValue(skillInstanceJson(owner, instance, receiver == owner));
         }
     }
     JsonArray payload;
@@ -1303,7 +1310,7 @@ void Room::notifySkillInstanceUpsert(ServerPlayer *owner, const SkillInstance &i
     foreach (ServerPlayer *receiver, m_players) {
         if (!canReceiveSkillInstance(receiver, owner, instance)) continue;
         JsonArray payload;
-        payload << "upsert" << QVariant::fromValue(skillInstanceJson(owner, instance));
+        payload << "upsert" << QVariant::fromValue(skillInstanceJson(owner, instance, receiver == owner));
         doNotify(receiver, S_COMMAND_SKILL_INSTANCE, payload);
     }
 }
@@ -5686,13 +5693,21 @@ bool Room::resolveCardSkillInstance(CardUseStruct &use)
 		request.initiator = use.from;
 		request.activationRef = use.activationRef;
 		request.selectedCardIds = use.card->getSubcards();
-		foreach (ServerPlayer *target, use.to)
-			request.selectedTargetNames << target->objectName();
+		// NoTarget：V2 本身不選角色；use.to 是視為牌（桃/酒等）的目標，不可塞進
+		// selectedTargetNames，否則 resolveActiveSkillRequest 會因非空目標直接失敗
+		// （瀕死 askForSinglePeach → useCard(card, from, dying) 必帶 to）。
+		if (activeSkill->targetMode() != ViewAsSkillV2::NoTarget) {
+			foreach (ServerPlayer *target, use.to)
+				request.selectedTargetNames << target->objectName();
+		}
 		if (use.card->isKindOf("SkillCard"))
 			request.userString = qobject_cast<const SkillCard *>(use.card->getRealCard())->getUserString();
 		const Card *serverCard = resolveActiveSkillRequest(use.from, activeSkill, request);
 		if (!serverCard) return false;
 		use.changeCard(const_cast<Card *>(serverCard));
+		// V2 權威重建：勿把 client/AI 代理留在 change_cards，否則 Card::onUse
+		// 會對代理與最終牌各打一條 #UseCard（例如「发动勇毅」+「发动勇毅，使用酒」）。
+		const_cast<Card *>(use.card)->change_cards.clear();
 	}
 	return true;
 }
@@ -5736,6 +5751,18 @@ const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSk
 		return nullptr;
 	if (!skill->canActivate(request) || !skill->cardSelectionFeasible(request))
 		return nullptr;
+	{
+		// 額度（limit_scope）必須在 create 前攔截；不可只靠後續 reserve
+		// （cost 在 reserve 之前，否則會先 askForChoice 再失敗）。
+		SkillContext usageCtx;
+		usageCtx.invoker = player;
+		usageCtx.owner = player;
+		usageCtx.initiator = player;
+		usageCtx.activationRef = request.activationRef;
+		usageCtx.instanceID = request.activationRef.key.instanceID;
+		if (!skill->isUsable(usageCtx))
+			return nullptr;
+	}
 	if (skill->targetMode() == ViewAsSkillV2::NoTarget && !request.selectedTargetNames.isEmpty())
 		return nullptr;
 	QList<const Player *> selectedTargets;
@@ -6781,6 +6808,18 @@ void Room::notifySkillInstanceCorrectState(ServerPlayer *owner, const SkillInsta
                 << instance.instanceID << operation << key << value;
         doNotify(receiver, S_COMMAND_SKILL_INSTANCE, payload);
     }
+}
+
+void Room::notifySkillInstanceState(ServerPlayer *owner, const SkillInstance &instance,
+                                    const QString &operation, const QString &key,
+                                    const QVariant &value)
+{
+    if (!owner) return;
+    // 僅同步給持有者本人（含重連後的 Self），不廣播給其他座位
+    JsonArray payload;
+    payload << "state" << owner->objectName() << instance.skillName
+            << instance.instanceID << operation << key << value;
+    doNotify(owner, S_COMMAND_SKILL_INSTANCE, payload);
 }
 
 static QString skillAmountGuardKey(const SkillInstanceRef &ref)
