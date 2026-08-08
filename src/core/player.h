@@ -182,12 +182,13 @@ public:
     QList<SkillInstance> getSkillInstances() const;
     void clearSkillInstances();
     void upsertSkillInstance(const SkillInstance &instance);
-    void setSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state);
+    // State 寫入可覆寫：ServerPlayer 會 owner-only 同步到 client。
+    virtual void setSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state);
     QVariantMap getSkillInstanceState(const QString &skillName, int instanceID) const;
-    void removeSkillInstanceState(const QString &skillName, int instanceID);
-    void setSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &value);
+    virtual void removeSkillInstanceState(const QString &skillName, int instanceID);
+    virtual void setSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &value);
     QVariant getSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &defaultValue = QVariant()) const;
-    void removeSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key);
+    virtual void removeSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key);
     bool hasSkillInstanceAmountOverride(const QString &skillName, int instanceID) const;
     int getSkillInstanceAmountOverride(const QString &skillName, int instanceID) const;
     bool setSkillInstanceAmountOverride(const QString &skillName, int instanceID, int amount);

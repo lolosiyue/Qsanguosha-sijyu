@@ -2019,7 +2019,8 @@ void Client::attachSkill(const QVariant &skill)
 	emit skill_attached(player, skill_name);
 }
 
-static bool parseSkillInstanceEntry(const QVariant &value, QString &ownerName, SkillInstance &instance)
+static bool parseSkillInstanceEntry(const QVariant &value, QString &ownerName, SkillInstance &instance,
+	QVariantMap *outPrivateState = nullptr)
 {
 	JsonArray entry = value.value<JsonArray>();
 	if (entry.size() < 8 || entry.size() > 10) return false;
@@ -2045,12 +2046,16 @@ static bool parseSkillInstanceEntry(const QVariant &value, QString &ownerName, S
 	instance.hasAmountOverride = false;
 	instance.amountOverride = 0;
 	instance.correctState.clear();
+	if (outPrivateState) outPrivateState->clear();
 	if (entry.size() == 10) {
 		const QVariantMap metadata = entry[9].toMap();
 		instance.hasAmountOverride = metadata.value("has_amount", false).toBool();
 		if (instance.hasAmountOverride)
 			instance.amountOverride = metadata.value("amount").toInt();
 		instance.correctState = metadata.value("correct_state").toMap();
+		// state 為 private；snapshot/upsert 僅 owner 封包會帶，套用走 setSkillInstanceState
+		if (outPrivateState)
+			*outPrivateState = metadata.value("state").toMap();
 	}
 	return true;
 }
@@ -2070,9 +2075,13 @@ void Client::syncSkillInstances(const QVariant &payload)
 		foreach (const QVariant &value, entries) {
 			QString ownerName;
 			SkillInstance instance;
-			if (!parseSkillInstanceEntry(value, ownerName, instance)) continue;
+			QVariantMap privateState;
+			if (!parseSkillInstanceEntry(value, ownerName, instance, &privateState)) continue;
 			ClientPlayer *owner = getPlayer(ownerName);
-			if (owner) owner->upsertSkillInstance(instance);
+			if (!owner) continue;
+			owner->upsertSkillInstance(instance);
+			if (!privateState.isEmpty())
+				owner->setSkillInstanceState(instance.skillName, instance.instanceID, privateState);
 		}
 		emit skill_instances_reset();
 		return;
@@ -2081,10 +2090,13 @@ void Client::syncSkillInstances(const QVariant &payload)
 	if (action == "upsert" && args.size() == 2) {
 		QString ownerName;
 		SkillInstance instance;
-		if (!parseSkillInstanceEntry(args[1], ownerName, instance)) return;
+		QVariantMap privateState;
+		if (!parseSkillInstanceEntry(args[1], ownerName, instance, &privateState)) return;
 		ClientPlayer *owner = getPlayer(ownerName);
 		if (!owner) return;
 		owner->upsertSkillInstance(instance);
+		if (!privateState.isEmpty())
+			owner->setSkillInstanceState(instance.skillName, instance.instanceID, privateState);
 		emit skill_acquired(owner, SkillInstanceUtils::formatName(instance.skillName, instance.instanceID));
 		return;
 	}
@@ -2126,6 +2138,34 @@ void Client::syncSkillInstances(const QVariant &payload)
 		else if (operation == "clear")
 			applied = owner->clearSkillInstanceCorrectState(skillName, instanceId);
 		if (applied) emit skill_instance_correct_state_changed(owner, skillName, instanceId, key);
+		return;
+	}
+
+	// Owner-only private state：set/remove/clear/replace
+	if (action == "state" && args.size() == 7) {
+		ClientPlayer *owner = getPlayer(args[1].toString());
+		const QString skillName = args[2].toString();
+		const int instanceId = args[3].toInt();
+		const QString operation = args[4].toString();
+		const QString key = args[5].toString();
+		if (!owner || !owner->hasSkillInstance(skillName, instanceId)) return;
+		bool applied = false;
+		if (operation == "set") {
+			if (key.isEmpty()) return;
+			owner->setSkillInstanceStateValue(skillName, instanceId, key, args[6]);
+			applied = true;
+		} else if (operation == "remove") {
+			if (key.isEmpty()) return;
+			owner->removeSkillInstanceStateValue(skillName, instanceId, key);
+			applied = true;
+		} else if (operation == "clear") {
+			owner->removeSkillInstanceState(skillName, instanceId);
+			applied = true;
+		} else if (operation == "replace") {
+			owner->setSkillInstanceState(skillName, instanceId, args[6].toMap());
+			applied = true;
+		}
+		if (applied) emit skill_instance_state_changed(owner, skillName, instanceId, key);
 	}
 }
 

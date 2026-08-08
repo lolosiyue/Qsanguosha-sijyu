@@ -451,6 +451,11 @@ void PlayerCardContainer::updatePhase()
 		}else{
 			if (_m_progressBar) _m_progressBar->hide();
 			if (_m_phaseIcon) _m_phaseIcon->hide();
+			// 回合結束後部分 & display mark 的 private-pile 按鈕會丟；mark 值仍在，重套一次
+			foreach (const QString &markName, m_player->getMarkNames()) {
+				if (markName.startsWith("&") && m_player->getMark(markName) > 0)
+					updateMark(markName, m_player->getMark(markName));
+			}
 		}
 	}else
         _clearPixmap(_m_phaseIcon);

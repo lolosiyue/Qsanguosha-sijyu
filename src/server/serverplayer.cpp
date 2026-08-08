@@ -178,6 +178,43 @@ Room *ServerPlayer::getRoom() const
 	return room;
 }
 
+void ServerPlayer::setSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state)
+{
+	if (!findSkillInstance(skillName, instanceID)) return;
+	Player::setSkillInstanceState(skillName, instanceID, state);
+	const SkillInstance *instance = findSkillInstance(skillName, instanceID);
+	if (room && instance)
+		room->notifySkillInstanceState(this, *instance, "replace", QString(), state);
+}
+
+void ServerPlayer::removeSkillInstanceState(const QString &skillName, int instanceID)
+{
+	if (!findSkillInstance(skillName, instanceID)) return;
+	Player::removeSkillInstanceState(skillName, instanceID);
+	const SkillInstance *instance = findSkillInstance(skillName, instanceID);
+	if (room && instance)
+		room->notifySkillInstanceState(this, *instance, "clear");
+}
+
+void ServerPlayer::setSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &value)
+{
+	if (!findSkillInstance(skillName, instanceID) || key.isEmpty()) return;
+	Player::setSkillInstanceStateValue(skillName, instanceID, key, value);
+	const SkillInstance *instance = findSkillInstance(skillName, instanceID);
+	if (room && instance)
+		room->notifySkillInstanceState(this, *instance, "set", key, value);
+}
+
+void ServerPlayer::removeSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key)
+{
+	if (!findSkillInstance(skillName, instanceID) || key.isEmpty()) return;
+	if (!getSkillInstanceState(skillName, instanceID).contains(key)) return;
+	Player::removeSkillInstanceStateValue(skillName, instanceID, key);
+	const SkillInstance *instance = findSkillInstance(skillName, instanceID);
+	if (room && instance)
+		room->notifySkillInstanceState(this, *instance, "remove", key);
+}
+
 void ServerPlayer::setOnsoleOwner(ServerPlayer *owner)
 {
 	if(owner){

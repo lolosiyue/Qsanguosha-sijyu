@@ -205,8 +205,9 @@ struct SkillChangeStruct {
 - 初始化與重連由伺服器發送完整、依接收者權限裁切的 SkillInstance metadata snapshot。
 - 遊戲中使用 acquire／detach 增量通知。
 - 客戶端不得自行分配 instanceID。
-- 同步公開 metadata，不同步完整 `QVariantMap state`。
-- 需要顯示的狀態使用 mark、property 或專用通知。
+- 同步公開 metadata（含 `correct_state`／amount）。
+- **`QVariantMap state`：owner-only 同步**——僅發送給持有者本人（snapshot／upsert metadata.`state`，以及增量 `state` set/remove/clear/replace）；其他座位不得收到他人私有 state。寫入走 `ServerPlayer` 對 `setSkillInstanceState*` 的覆寫自動 `notifySkillInstanceState`。
+- 需要給**所有人**看的狀態仍用 mark、property 或專用通知（例如頭像 `&` display mark）。
 
 ## 4. Ticket 拆分與依賴順序
 

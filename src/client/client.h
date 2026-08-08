@@ -424,6 +424,8 @@ signals:
                                        int instance_id);
     void skill_instance_correct_state_changed(const ClientPlayer *player, const QString &skill_name,
                                               int instance_id, const QString &key);
+    void skill_instance_state_changed(const ClientPlayer *player, const QString &skill_name,
+                                      int instance_id, const QString &key);
     void do_filter();
 
     void nullification_asked(bool asked);
