@@ -5,6 +5,7 @@ AI_RULES.md
 CLAUDE.md
 structure.md
 lua/ai/
+extensions/
 builds/cmake-vs2019/
 CMakeUserPresets.json
 __pycache__/

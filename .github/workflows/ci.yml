@@ -104,6 +104,11 @@ jobs:
             Stop-Transcript
           }
 
+      - name: Fetch Lua AI & extensions
+        shell: pwsh
+        run: |
+          & .\tools\ci\fetch-extensions.ps1
+
       - name: Configure, build, and deploy RelWithDebInfo
         shell: pwsh
         run: |
@@ -228,6 +233,11 @@ jobs:
           name: ctest-relwithdebinfo-v142-${{ github.sha }}-${{ github.run_attempt }}
           path: .
 
+      - name: Fetch Lua AI & extensions
+        shell: pwsh
+        run: |
+          & .\tools\ci\fetch-extensions.ps1
+
       - name: Run deterministic C++ tests
         shell: pwsh
         run: |
@@ -297,6 +307,11 @@ jobs:
           name: runtime-relwithdebinfo-v142-${{ github.sha }}-${{ github.run_attempt }}
           path: .
 
+      - name: Fetch Lua AI & extensions
+        shell: pwsh
+        run: |
+          & .\tools\ci\fetch-extensions.ps1
+
       - name: Run representative headless games
         shell: pwsh
         run: |
@@ -359,6 +374,11 @@ jobs:
         with:
           name: runtime-relwithdebinfo-v142-${{ github.sha }}-${{ github.run_attempt }}
           path: .
+
+      - name: Fetch Lua AI & extensions
+        shell: pwsh
+        run: |
+          & .\tools\ci\fetch-extensions.ps1
 
       - name: Run real TCP smoke game
         shell: pwsh
