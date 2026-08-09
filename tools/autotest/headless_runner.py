@@ -14,6 +14,7 @@ import re
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Final
 
 from runner_common import (HEADLESS_HEADER, common_args, describe_exit,
                            find_exe, hex_exit, is_crash_code, kill_pid,
@@ -23,7 +24,9 @@ from runner_common import (HEADLESS_HEADER, common_args, describe_exit,
                            wait_exit, write_csv)
 
 EXE_NAME = "QSanguosha.exe"
-PER_GAME_TIMEOUT = 900  # 每局預估上限 (秒; 05p 慢局曾達 11 分鐘, 600 太緊)
+PER_GAME_TIMEOUT: Final[int] = int(
+    os.environ.get("QSAN_HEADLESS_PER_GAME_TIMEOUT", "3600")
+)  # 可由環境變數覆寫的每局有界上限 (秒)
 
 
 CUR_GAME_RE = re.compile(r">>> Starting headless game (\d+) <<<")

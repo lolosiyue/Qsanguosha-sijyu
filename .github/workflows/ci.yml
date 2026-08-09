@@ -1,0 +1,399 @@
+name: Windows layered CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: 8
+  QSAN_HEADLESS_PER_GAME_TIMEOUT: '3600'
+  QSAN_NETWORK_GAME_TIMEOUT: '3600'
+
+jobs:
+  build:
+    name: Build (RelWithDebInfo, VS2022/v142)
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Prepare diagnostics
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
+          @(
+            "runner=$env:RUNNER_OS"
+            "image=$env:ImageOS"
+            "image_version=$env:ImageVersion"
+          ) | Set-Content -Path ci-logs\runner.txt
+
+      - name: Install Qt 6.5.3
+        uses: jurplel/install-qt-action/action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: '6.5.3'
+          host: windows
+          target: desktop
+          arch: win64_msvc2019_64
+          modules: 'qt5compat qtmultimedia'
+          cache: true
+          cache-key-prefix: qt-windows-2022-x64-6.5.3-win64_msvc2019_64-qt5compat-qtmultimedia-aqt3.3.0-v1
+          aqtversion: '==3.3.0'
+
+      - name: Verify and record dependencies
+        shell: pwsh
+        run: |
+          Start-Transcript -Path ci-logs\dependencies.log
+          try {
+            if (-not $env:QT_ROOT_DIR) {
+              throw 'install-qt-action did not export QT_ROOT_DIR'
+            }
+            "QTDIR=$env:QT_ROOT_DIR" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+            $cmakeOutput = cmake --version | Out-String
+            $cmakeOutput
+            $cmakeMatch = [regex]::Match($cmakeOutput, 'cmake version ([0-9]+\.[0-9]+\.[0-9]+)')
+            if (-not $cmakeMatch.Success -or [version]$cmakeMatch.Groups[1].Value -lt [version]'3.28.0') {
+              throw "CMake 3.28 or newer is required: $cmakeOutput"
+            }
+
+            python -m pip install --disable-pip-version-check --require-hashes -r tools\ci\requirements.txt
+            if ($LASTEXITCODE -ne 0) {
+              throw "SWIG installation failed with exit code $LASTEXITCODE"
+            }
+            $swigOutput = swig -version | Out-String
+            $swigOutput
+            if ($swigOutput -notmatch 'SWIG Version 4\.3\.1') {
+              throw "Expected SWIG 4.3.1: $swigOutput"
+            }
+
+            $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+            $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+            if (-not $vsPath) {
+              throw 'Visual Studio with the x64 C++ toolchain was not found'
+            }
+            $v142 = Get-ChildItem -Path "$vsPath\VC\Tools\MSVC" -Directory | Where-Object Name -Like '14.2*'
+            if (-not $v142) {
+              throw "The v142 compiler toolset was not found below $vsPath"
+            }
+            $v142.FullName
+
+            $qtComponents = @('Qt6', 'Qt6Core5Compat', 'Qt6Multimedia')
+            foreach ($component in $qtComponents) {
+              $config = Join-Path $env:QT_ROOT_DIR "lib\cmake\$component\${component}Config.cmake"
+              if (-not (Test-Path -LiteralPath $config)) {
+                throw "Missing Qt component config: $config"
+              }
+              $config
+            }
+          }
+          finally {
+            Stop-Transcript
+          }
+
+      - name: Configure, build, and deploy RelWithDebInfo
+        shell: pwsh
+        run: |
+          Start-Transcript -Path ci-logs\build.log
+          try {
+            cmake --preset vs2022-v142-x64
+            if ($LASTEXITCODE -ne 0) {
+              throw "CMake configure failed with exit code $LASTEXITCODE"
+            }
+            cmake --build --preset relwithdebinfo-vs2022-v142
+            if ($LASTEXITCODE -ne 0) {
+              throw "RelWithDebInfo build failed with exit code $LASTEXITCODE"
+            }
+            cmake --build --preset deploy-relwithdebinfo-vs2022-v142
+            if ($LASTEXITCODE -ne 0) {
+              throw "GUI deployment failed with exit code $LASTEXITCODE"
+            }
+            cmake --build --preset deploy-server-relwithdebinfo-vs2022-v142
+            if ($LASTEXITCODE -ne 0) {
+              throw "Server deployment failed with exit code $LASTEXITCODE"
+            }
+
+            $cache = 'builds\cmake-vs2022-v142\CMakeCache.txt'
+            Select-String -Path $cache -Pattern '^CMAKE_GENERATOR:INTERNAL=', '^CMAKE_GENERATOR_TOOLSET:INTERNAL=', '^Qt6_DIR:' |
+              Set-Content -Path ci-logs\cmake-cache-proof.txt
+            $compilerFiles = Get-ChildItem builds\cmake-vs2022-v142\CMakeFiles -Filter CMakeCXXCompiler.cmake -Recurse
+            Select-String -Path $compilerFiles.FullName -Pattern 'CMAKE_CXX_COMPILER_ID', 'CMAKE_CXX_COMPILER_VERSION' |
+              Set-Content -Path ci-logs\compiler-proof.txt
+          }
+          finally {
+            Stop-Transcript
+          }
+
+      - name: Stage build handoff artifacts
+        shell: pwsh
+        run: |
+          $required = @(
+            'relwithdebinfo\QSanguosha.exe',
+            'relwithdebinfo\QSanguosha.pdb',
+            'relwithdebinfo\qsanguosha_server.exe',
+            'builds\cmake-vs2022-v142\CTestTestfile.cmake'
+          )
+          foreach ($path in $required) {
+            if (-not (Test-Path -LiteralPath $path)) {
+              throw "Missing required build output: $path"
+            }
+          }
+
+          $runtimeStage = 'ci-handoff\runtime\release'
+          New-Item -ItemType Directory -Path $runtimeStage -Force | Out-Null
+          Get-ChildItem -Path relwithdebinfo -File |
+            Where-Object Extension -In '.exe', '.dll' |
+            Copy-Item -Destination $runtimeStage
+          Copy-Item -LiteralPath relwithdebinfo\QSanguosha.pdb -Destination $runtimeStage
+          Get-ChildItem -Path relwithdebinfo -Directory | ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination $runtimeStage -Recurse
+          }
+
+          $ctestStage = 'ci-handoff\ctest\builds\cmake-vs2022-v142'
+          New-Item -ItemType Directory -Path "$ctestStage\RelWithDebInfo" -Force | Out-Null
+          Copy-Item -LiteralPath builds\cmake-vs2022-v142\CTestTestfile.cmake -Destination $ctestStage
+          Copy-Item -Path builds\cmake-vs2022-v142\RelWithDebInfo\*.exe -Destination "$ctestStage\RelWithDebInfo"
+          if (-not (Get-ChildItem -Path "$ctestStage\RelWithDebInfo" -Filter *.exe)) {
+            throw 'No CTest executables were staged'
+          }
+
+      - name: Upload RelWithDebInfo runtime
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: runtime-relwithdebinfo-v142-${{ github.sha }}-${{ github.run_attempt }}
+          path: ci-handoff/runtime
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload CTest bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ctest-relwithdebinfo-v142-${{ github.sha }}-${{ github.run_attempt }}
+          path: ci-handoff/ctest
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: diagnostics-build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-logs/**
+          if-no-files-found: warn
+          retention-days: 7
+
+  ctest:
+    name: Quick CTest
+    needs: build
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Prepare diagnostics
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
+          "runner=$env:RUNNER_OS`nimage=$env:ImageOS`nimage_version=$env:ImageVersion" |
+            Set-Content -Path ci-logs\runner.txt
+
+      - name: Download RelWithDebInfo runtime
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: runtime-relwithdebinfo-v142-${{ github.sha }}-${{ github.run_attempt }}
+          path: .
+
+      - name: Download CTest bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ctest-relwithdebinfo-v142-${{ github.sha }}-${{ github.run_attempt }}
+          path: .
+
+      - name: Run deterministic C++ tests
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
+          $runtime = (Resolve-Path release).Path
+          $env:PATH = "$runtime;$env:PATH"
+          $runtime | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $junitPath = Join-Path $env:GITHUB_WORKSPACE 'ci-logs\ctest.xml'
+          Start-Transcript -Path ci-logs\ctest.log
+          try {
+            ctest --test-dir builds\cmake-vs2022-v142 -C RelWithDebInfo --output-on-failure --output-junit $junitPath
+            if ($LASTEXITCODE -ne 0) {
+              throw "CTest failed with exit code $LASTEXITCODE"
+            }
+          }
+          finally {
+            Stop-Transcript
+          }
+
+      - name: Consolidate crash evidence
+        if: failure()
+        shell: pwsh
+        run: python tools\autotest\crash_report.py --exe-root . --log-dir artifacts\autotest --pdb release\QSanguosha.pdb
+
+      - name: Upload CTest diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: diagnostics-ctest-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ci-logs/**
+            artifacts/autotest/**
+            dmp/**
+            record/**
+            release/**/*.dmp
+            release/dmp/**
+            release/record/**
+          if-no-files-found: warn
+          retention-days: 7
+
+  headless:
+    name: Headless smoke (${{ matrix.mode }})
+    needs: build
+    runs-on: windows-2022
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [08p, 10p]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Prepare diagnostics
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
+          "runner=$env:RUNNER_OS`nimage=$env:ImageOS`nimage_version=$env:ImageVersion" |
+            Set-Content -Path ci-logs\runner.txt
+
+      - name: Download RelWithDebInfo runtime
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: runtime-relwithdebinfo-v142-${{ github.sha }}-${{ github.run_attempt }}
+          path: .
+
+      - name: Run representative headless games
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
+          $runtime = (Resolve-Path release).Path
+          $env:PATH = "$runtime;$env:PATH"
+          Start-Transcript -Path ci-logs\headless-${{ matrix.mode }}.log
+          try {
+            python tools\autotest\headless_runner.py --exe-root . --log-dir artifacts\autotest\${{ matrix.mode }} --modes ${{ matrix.mode }} --games 1 --parallel 1
+            if ($LASTEXITCODE -ne 0) {
+              throw "Headless runner failed with exit code $LASTEXITCODE"
+            }
+          }
+          finally {
+            Stop-Transcript
+          }
+
+      - name: Consolidate crash evidence
+        if: failure()
+        shell: pwsh
+        run: python tools\autotest\crash_report.py --exe-root . --log-dir artifacts\autotest\${{ matrix.mode }} --pdb release\QSanguosha.pdb
+
+      - name: Upload headless diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: diagnostics-headless-${{ matrix.mode }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ci-logs/**
+            artifacts/autotest/**
+            dmp/**
+            record/**
+            release/**/*.dmp
+            release/dmp/**
+            release/record/**
+          if-no-files-found: warn
+          retention-days: 7
+
+  network:
+    name: Network smoke
+    needs: build
+    runs-on: windows-2022
+    timeout-minutes: 75
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Prepare diagnostics
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
+          "runner=$env:RUNNER_OS`nimage=$env:ImageOS`nimage_version=$env:ImageVersion" |
+            Set-Content -Path ci-logs\runner.txt
+
+      - name: Download RelWithDebInfo runtime
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: runtime-relwithdebinfo-v142-${{ github.sha }}-${{ github.run_attempt }}
+          path: .
+
+      - name: Run real TCP smoke game
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
+          $runtime = (Resolve-Path release).Path
+          $env:PATH = "$runtime;$env:PATH"
+          Start-Transcript -Path ci-logs\network.log
+          try {
+            python tools\autotest\network_runner.py --exe-root . --log-dir artifacts\autotest --modes 08p --runs 1 --general zhenji
+            if ($LASTEXITCODE -ne 0) {
+              throw "Network runner failed with exit code $LASTEXITCODE"
+            }
+          }
+          finally {
+            Stop-Transcript
+          }
+
+      - name: Consolidate crash evidence
+        if: failure()
+        shell: pwsh
+        run: python tools\autotest\crash_report.py --exe-root . --log-dir artifacts\autotest --pdb release\QSanguosha.pdb
+
+      - name: Upload network diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: diagnostics-network-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ci-logs/**
+            artifacts/autotest/**
+            dmp/**
+            record/**
+            release/**/*.dmp
+            release/dmp/**
+            release/record/**
+          if-no-files-found: warn
+          retention-days: 7

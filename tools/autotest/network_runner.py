@@ -19,6 +19,7 @@ import shutil
 import socket
 import sys
 import time
+from typing import Final
 
 from runner_common import (MARK_GAME_OVER, MARK_GAME_START, common_args,
                            describe_exit, find_exe, is_crash_code, kill_pid,
@@ -30,7 +31,9 @@ SERVER_EXE = "qsanguosha_server.exe"
 CLIENT_EXE = "QSanguosha.exe"
 SERVER_PORT = 9527  # 與 config.ini ServerPort 一致
 SERVER_STARTUP_TIMEOUT = 60   # 等 server 就緒 (秒)
-GAME_TIMEOUT = 600            # 單局上限 (秒)
+GAME_TIMEOUT: Final[int] = int(
+    os.environ.get("QSAN_NETWORK_GAME_TIMEOUT", "3600")
+)  # 可由環境變數覆寫的單局有界上限 (秒)
 CLIENT_JOIN_TIMEOUT = 120     # 等 client 連上並開局 (秒)
 
 
