@@ -1253,44 +1253,49 @@ local reason = sgs.CardMoveReason(
 
 | 建構子 | 用途 | 檔案位置 |
 |--------|------|----------|
-| `sgs.CreateTriggerSkill` | 事件觸發技 | `lua/sgs_ex.lua:4` |
+| `sgs.CreateTriggerSkill` | 事件觸發技 | `lua/sgs_ex.lua:22` |
 | `sgs.CreateTriggerSkillV2` | V2 觸發技 | `lua/sgs_ex.lua:80` |
-| `sgs.CreateViewAsSkill` | 轉化技（n 張牌） | `lua/sgs_ex.lua:788` |
-| `sgs.CreateOneCardViewAsSkill` | 單牌轉化 | `lua/sgs_ex.lua:816` |
-| `sgs.CreateZeroCardViewAsSkill` | 零牌轉化 | `lua/sgs_ex.lua:837` |
-| `sgs.CreateSkillCard` | 技能卡牌 | `lua/sgs_ex.lua:389` |
-| `sgs.CreateBasicCard` | 基本牌 | `lua/sgs_ex.lua:431` |
-| `sgs.CreateTrickCard` | 錦囊牌 | `lua/sgs_ex.lua:727` |
-| `sgs.CreateEquipCard` | 裝備牌（通用） | `lua/sgs_ex.lua:849` |
-| `sgs.CreateWeapon` | 武器 | `lua/sgs_ex.lua:893` |
-| `sgs.CreateArmor` | 防具 | `lua/sgs_ex.lua:898` |
-| `sgs.CreateOffensiveHorse` | 進攻馬 | `lua/sgs_ex.lua:903` |
-| `sgs.CreateDefensiveHorse` | 防禦馬 | `lua/sgs_ex.lua:908` |
-| `sgs.CreateTreasure` | 寶物 | `lua/sgs_ex.lua:913` |
-| `sgs.CreateDistanceSkill` | 距離修正 | `lua/sgs_ex.lua:195` |
-| `sgs.CreateMaxCardsSkill` | 手牌上限修正 | `lua/sgs_ex.lua:210` |
-| `sgs.CreateTargetModSkill` | 目標修正 | `lua/sgs_ex.lua:225` |
-| `sgs.CreateProhibitSkill` | 禁止指定目標 | `lua/sgs_ex.lua:165` |
-| `sgs.CreateProhibitPindianSkill` | 禁止拼點 | `lua/sgs_ex.lua:174` |
-| `sgs.CreateFilterSkill` | 卡牌過濾/轉化 | `lua/sgs_ex.lua:183` |
-| `sgs.CreateInvaliditySkill` | 技能無效化 | `lua/sgs_ex.lua:241` |
-| `sgs.CreateAttackRangeSkill` | 攻擊範圍修正 | `lua/sgs_ex.lua:250` |
-| `sgs.CreateCardLimitSkill` | 卡牌使用限制 | `lua/sgs_ex.lua:274` |
-| `sgs.CreateViewAsEquipSkill` | 裝備轉化 | `lua/sgs_ex.lua:265` |
-| `sgs.CreateMasochismSkill` | 受傷觸發（簡化） | `lua/sgs_ex.lua:289` |
-| `sgs.CreatePhaseChangeSkill` | 階段變更（簡化） | `lua/sgs_ex.lua:300` |
-| `sgs.CreateDrawCardsSkill` | 摸牌階段（簡化） | `lua/sgs_ex.lua:309` |
-| `sgs.CreateGameStartSkill` | 遊戲開始（簡化） | `lua/sgs_ex.lua:324` |
-| `sgs.CreateRetrialSkill` | 判定修改（簡化） | `lua/sgs_ex.lua:334` |
-| `sgs.CreatePreSelectionMetaSkill` | 選將階段技能 | `lua/sgs_ex.lua:348` |
-| `sgs.CreateAnytimeSkill` | 任意時機技能 | `lua/sgs_ex.lua:361` |
-| `sgs.CreateBattleArraySkill` | 陣法技 | `lua/sgs_ex.lua:374` |
-| `sgs.CreateScenario` | 場景模式 | `lua/sgs_ex.lua:136` |
-| `sgs.CreateScenarioRule` | 場景規則 | `lua/sgs_ex.lua:104` |
-| `sgs.CreateCardActionButton` | 卡牌動作按鈕 | `lua/sgs_ex.lua:934` |
-| `sgs.SetCardActionButtons` | 設定卡牌按鈕 | `lua/sgs_ex.lua:966` |
-| `sgs.LoadTranslationTable` | 翻譯表載入 | `lua/sgs_ex.lua:918` |
-| `sgs.LoadSkinTransltionTable` | 皮膚翻譯載入 | `lua/sgs_ex.lua:924` |
+| `sgs.CreateViewAsSkill` | 轉化技（n 張牌） | `lua/sgs_ex.lua:928` |
+| `sgs.CreateViewAsSkillV2` | V2 轉化技 | `lua/sgs_ex.lua:136` |
+| `sgs.CreateOneCardViewAsSkill` | 單牌轉化 | `lua/sgs_ex.lua:956` |
+| `sgs.CreateZeroCardViewAsSkill` | 零牌轉化 | `lua/sgs_ex.lua:977` |
+| `sgs.CreateSkillCard` | 技能卡牌 | `lua/sgs_ex.lua:526` |
+| `sgs.CreateBasicCard` | 基本牌 | `lua/sgs_ex.lua:571` |
+| `sgs.CreateTrickCard` | 錦囊牌 | `lua/sgs_ex.lua:867` |
+| `sgs.CreateEquipCard` | 裝備牌（通用） | `lua/sgs_ex.lua:989` |
+| `sgs.CreateWeapon` | 武器 | `lua/sgs_ex.lua:1033` |
+| `sgs.CreateArmor` | 防具 | `lua/sgs_ex.lua:1038` |
+| `sgs.CreateOffensiveHorse` | 進攻馬 | `lua/sgs_ex.lua:1043` |
+| `sgs.CreateDefensiveHorse` | 防禦馬 | `lua/sgs_ex.lua:1048` |
+| `sgs.CreateTreasure` | 寶物 | `lua/sgs_ex.lua:1053` |
+| `sgs.CreateDistanceSkill` | 距離修正 | `lua/sgs_ex.lua:285` |
+| `sgs.CreateDistanceSkillV2` | 距離修正（V2） | `lua/sgs_ex.lua:309` |
+| `sgs.CreateMaxCardsSkill` | 手牌上限修正 | `lua/sgs_ex.lua:319` |
+| `sgs.CreateMaxCardsSkillV2` | 手牌上限修正（V2） | `lua/sgs_ex.lua:334` |
+| `sgs.CreateTargetModSkill` | 目標修正 | `lua/sgs_ex.lua:344` |
+| `sgs.CreateTargetModSkillV2` | 目標修正（V2） | `lua/sgs_ex.lua:360` |
+| `sgs.CreateProhibitSkill` | 禁止指定目標 | `lua/sgs_ex.lua:255` |
+| `sgs.CreateProhibitPindianSkill` | 禁止拼點 | `lua/sgs_ex.lua:264` |
+| `sgs.CreateFilterSkill` | 卡牌過濾/轉化 | `lua/sgs_ex.lua:273` |
+| `sgs.CreateInvaliditySkill` | 技能無效化 | `lua/sgs_ex.lua:368` |
+| `sgs.CreateAttackRangeSkill` | 攻擊範圍修正 | `lua/sgs_ex.lua:377` |
+| `sgs.CreateAttackRangeSkillV2` | 攻擊範圍修正（V2） | `lua/sgs_ex.lua:392` |
+| `sgs.CreateCardLimitSkill` | 卡牌使用限制 | `lua/sgs_ex.lua:411` |
+| `sgs.CreateViewAsEquipSkill` | 裝備轉化 | `lua/sgs_ex.lua:402` |
+| `sgs.CreateMasochismSkill` | 受傷觸發（簡化） | `lua/sgs_ex.lua:426` |
+| `sgs.CreatePhaseChangeSkill` | 階段變更（簡化） | `lua/sgs_ex.lua:437` |
+| `sgs.CreateDrawCardsSkill` | 摸牌階段（簡化） | `lua/sgs_ex.lua:446` |
+| `sgs.CreateGameStartSkill` | 遊戲開始（簡化） | `lua/sgs_ex.lua:461` |
+| `sgs.CreateRetrialSkill` | 判定修改（簡化） | `lua/sgs_ex.lua:471` |
+| `sgs.CreatePreSelectionMetaSkill` | 選將階段技能 | `lua/sgs_ex.lua:485` |
+| `sgs.CreateAnytimeSkill` | 任意時機技能 | `lua/sgs_ex.lua:498` |
+| `sgs.CreateBattleArraySkill` | 陣法技 | `lua/sgs_ex.lua:511` |
+| `sgs.CreateScenario` | 場景模式 | `lua/sgs_ex.lua:226` |
+| `sgs.CreateScenarioRule` | 場景規則 | `lua/sgs_ex.lua:194` |
+| `sgs.CreateCardActionButton` | 卡牌動作按鈕 | `lua/sgs_ex.lua:1074` |
+| `sgs.SetCardActionButtons` | 設定卡牌按鈕 | `lua/sgs_ex.lua:1106` |
+| `sgs.LoadTranslationTable` | 翻譯表載入 | `lua/sgs_ex.lua:1058` |
+| `sgs.LoadSkinTransltionTable` | 皮膚翻譯載入 | `lua/sgs_ex.lua:1064` |
 
 ---
 

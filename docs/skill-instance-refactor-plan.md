@@ -329,7 +329,7 @@ struct SkillChangeStruct {
 
 - 列出全部 `acquireSkill()` 呼叫點，由使用者人工判斷是否加入 `hasSkill()` 防重。
 - 列出全部 EventAcquireSkill／EventLoseSkill 的 `data:toString()` 監聽者，審核逐實例重複事件語意。
-- 更新 `docs/TriggerSkillV2系統說明.md` 中已過時的 Skill 物件 instanceID 說明。
+- 更新 `docs/TriggerSkillV2系統說明.md` 中已過時的 Skill 物件 instanceID 說明。（✅ 2026-08-09 已同步；同時校對 `docs/新型技能重製文檔.md` 並存檔 `docs/multi-skill-instance-design.md`）
 - 重新產生 SWIG wrapper。
 - 執行完整 Release x64 編譯與遊戲測試。
 

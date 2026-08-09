@@ -8,33 +8,29 @@
 
 ```
 image/
-├── fullskin/
-│   └── generals/
-│       └── full/
-│           ├── 关羽.jpg              (静态图)
-│           └── gif/                 (GIF动图目录)
-│               ├── 关羽.gif
-│               └── 张飞.gif
-│
-└── heroskin/
-    └── fullskin/
-        └── generals/
-            └── full/
-                ├── 关羽_1.jpg         (heroskin静态图)
-                ├── 关羽_2.jpg
-                └── gif/               (heroskin GIF动图目录)
-                    ├── 关羽_1.gif
-                    ├── 关羽_2.gif
-                    └── 张飞_1.gif
+└── fullskin/
+    └── generals/
+        └── full/
+            ├── 关羽.jpg              (预设皮肤静态图, skinIndex = 0)
+            └── gif/                 (预设皮肤 GIF 动图目录, 优先查找)
+                ├── 关羽.gif
+                └── 张飞.gif
+
+hero-skin/                             (heroskin 皮肤目录, skinIndex > 0)
+└── 关羽/
+    └── 1/                             (皮肤编号)
+        ├── full.png                  (皮肤静态图, 不存在时回退 card.jpg)
+        ├── full.gif                  (皮肤 GIF 动图, 与静态图同目录)
+        └── card.jpg                  (皮肤卡片图)
 ```
 
-### GIF 文件命名规则
+### GIF 文件查找规则
 
-| 场景 | 文件命名 | 放置路径 |
-|------|---------|---------|
-| 无 heroskin | `关羽.gif` | `image/fullskin/generals/full/gif/关羽.gif` |
-| heroskin #1 | `关羽_1.gif` | `image/heroskin/fullskin/generals/full/gif/关羽_1.gif` |
-| heroskin #2 | `关羽_2.gif` | `image/heroskin/fullskin/generals/full/gif/关羽_2.gif` |
+| 场景 | 静态图路径 | GIF 路径 |
+|------|-----------|---------|
+| 预设皮肤 (skinIndex = 0) | `image/fullskin/generals/full/关羽.jpg` | `image/fullskin/generals/full/gif/关羽.gif`（子目录优先）；子目录不存在则回退同目录 `关羽.gif` |
+| heroskin #1 | `hero-skin/关羽/1/full.png` | `hero-skin/关羽/1/full.gif`（仅同目录，无 `/gif/` 子目录） |
+| heroskin #2 | `hero-skin/关羽/2/full.png` | `hero-skin/关羽/2/full.gif` |
 
 ---
 
@@ -42,35 +38,35 @@ image/
 
 ### 1. 基础使用（自动查找）
 
-将 GIF 文件按照上述目录结构放置后，系统会自动查找并播放：
+将 GIF 文件按照上述目录结构放置后，系统会自动查找并播放（查找顺序与实码一致，`src/ui/graphicspixmaphoveritem.cpp:267-313`）：
 
-1. **优先查找 `/gif/` 子目录**
-   - `image/fullskin/generals/full/关羽.jpg` → `image/fullskin/generals/full/gif/关羽.gif`
-   - `image/heroskin/.../关羽_1.jpg` → `image/heroskin/.../gif/关羽_1.gif`
+1. **静态图路径推导**：将静态图路径后缀 `.jpg`/`.png` 替换为 `.gif`
+   - 预设皮肤：`image/fullskin/generals/full/关羽.jpg` → 优先 `/full/gif/` 子目录，再回退同目录
+   - heroskin：`hero-skin/关羽/1/full.png` → `hero-skin/关羽/1/full.gif`（仅同目录）
 
-2. **回退到同目录**
-   - 如果 `/gif/` 子目录不存在，则查找同目录下同名 `.gif` 文件
+2. **资源别名（最后检查）**：命中 `animatedgeneral` 别名且文件存在时，覆盖目录搜索结果
 
 ### 2. 资源别名（可选）
 
-对于需要特殊处理或跨目录复用的 GIF，可以使用资源别名系统注册：
+对于需要特殊处理或跨目录复用的 GIF，可以注册 `animatedgeneral` 资源别名（在 Lua 初始化代码中注册）：
 
-```cpp
-// 在初始化代码中注册
-Sanguosha->addResourceAlias("animatedgeneral", "关羽", "关羽_动画版.gif");
+```lua
+-- 同目录下的别名文件
+sgs.Sanguosha:addResourceAlias("animatedgeneral", "关羽", "关羽_动画版.gif")
 
-// 支持完整路径
-Sanguosha->addResourceAlias("animatedgeneral", "关羽", "image/special/关羽_animated.gif");
-
-// heroskin 专用别名
-Sanguosha->addResourceAlias("animatedgeneral", "关羽_1", "关羽_1_heroskin.gif");
+-- 支持完整路径
+sgs.Sanguosha:addResourceAlias("animatedgeneral", "关羽", "image/special/关羽_animated.gif")
 ```
 
-别名查找优先级：
+注意：
+
+- 查找 key 是静态图文件名去掉尾缀 `_N` 的部分（如 `关羽_1` → `关羽`），heroskin 皮肤不能按编号注册单独别名。
+- 别名在目录搜索**之后**才检查；别名文件存在时覆盖目录搜索结果（即别名优先权最高）。
+
+别名查找流程（与实码检查顺序一致）：
 ```
-1. 检查 animatedgeneral 资源别名
-2. 查找 /full/gif/ 子目录
-3. 查找同目录 .gif 文件
+1. 目录搜索：/full/gif/ 子目录（预设皮肤）→ 同目录 .gif
+2. 检查 animatedgeneral 资源别名：命中则覆盖（最高优先权）
 ```
 
 ---
@@ -137,7 +133,7 @@ bool isAnimated() const;
 
 1. **性能考虑**：GIF 会占用更多内存，建议在低配置机器上关闭此功能
 
-2. **目录创建**：使用此功能前需在对应目录创建 `gif/` 子文件夹
+2. **目录创建**：预设皮肤需在 `image/fullskin/generals/full/` 下创建 `gif/` 子文件夹；heroskin 皮肤直接将 `full.gif` 放在皮肤目录即可，无需 `gif/` 子目录
 
 3. **文件格式**：仅支持 `.gif` 格式，不支持其他动画格式
 

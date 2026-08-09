@@ -1,5 +1,7 @@
 # TriggerSkillV2 系統說明
 
+> **2026-08-09 校對**：本文件已同步現行實作（skill-instance-refactor-plan.md:332 的待更新標記已清除）。多實例模型以 [`skill-instance-refactor-plan.md`](skill-instance-refactor-plan.md) §2 為權威；SkillContext 現行欄位見 §核心資料結構。
+
 ## 概述
 
 TriggerSkillV2 是重構後的觸發技能系統，設計目標：
@@ -36,57 +38,75 @@ typedef QMap<ServerPlayer*, QStringList> TriggerList;
 
 ### SkillContext 結構
 
-**位置**: `src/core/skill.h` (line 9-40)
+**位置**: `src/core/skill.h`（2026-08-09 對照現行實作，struct 位於 skill.h:11-58）
 
 ```cpp
 struct SkillContext {
     QString skill_name;            // 發動的技能名稱
-    ServerPlayer *invoker;        // 實際發動者（動作執行人）
-    ServerPlayer *owner;          // 技能擁有者（技能來源）
-    QList<ServerPlayer *> targets;           // 技能目標
-    QList<ServerPlayer *> updated_targets;   // 目標替換（targetConfirming 用）
-    const Card *use_card;         // 關聯卡牌（可為 nullptr）
-    QVariant *original_data;      // 原始觸發數據載體（指針，可訪問原始事件數據）
-    int instanceID;               // 實例 ID（區分同名技能）
+    SkillInstanceRef sourceRef;    // 技能來源實例引用（owner + skillName + instanceID）
+    SkillInstanceRef activationRef;// 啟用實例引用（主動技能/卡牌啟用時）
+    ServerPlayer *initiator;       // 發起者（Player* 語意，見下方說明）
+    ServerPlayer *invoker;         // 實際發動者（動作執行人）
+    ServerPlayer *owner;           // 技能擁有者（技能來源）
+    QList<ServerPlayer *> targets; // 技能目標
+    QList<ServerPlayer *> updated_targets; // 目標替換（targetConfirming 用）
+    const Card *use_card;          // 關聯卡牌（可為 nullptr）
+    const Card *updated_card;      // 卡牌替換
+    QVariant *original_data;       // 原始觸發數據載體（指針，可訪問原始事件數據）
+    int instanceID;                // 實例 ID（該玩家同名技能內唯一）
+    qint64 executionID;            // 本次結算執行 ID
 
-    ServerPlayer *preferredTarget;    // 優先目標
-    int preferredTargetSeat;          // 優先目標座位號
+    ServerPlayer *preferredTarget; // 優先目標
+    int preferredTargetSeat;       // 優先目標座位號
 
-    bool is_forced;               // 是否強制發動
-    bool is_canceled;             // 是否被取消（willInvoke 用）
-    bool bypass_cost;             // 是否免除代價（willInvoke 用）
-    bool manual_effect;           // 是否手動調用 skillEffect（框架不自動遍歷）
-    TriggerEvent current_event;   // 當前觸發時機
+    bool is_forced;                // 是否強制發動
+    bool is_canceled;              // 是否被取消（willInvoke 用）
+    bool bypass_cost;              // 是否免除代價（willInvoke 用）
+    bool manual_effect;            // 是否手動調用 skillEffect（框架不自動遍歷）
+    TriggerEvent current_event;    // 當前觸發時機
 
-    int amount;                   // 技能基礎數值
-    int modified_amount;          // 修改後數值
-    int trigger_count;            // 已觸發次數
-    int multiplier;               // 觸發倍率（天花板，可被 EventSkillWillInvoke 動態調高）
+    int amount;                    // 技能基礎數值（由 Room 依實例 current amount 填入）
+    int modified_amount;           // 修改後數值（willInvoke 攔截器改）
+    bool modified_amount_set;      // 是否顯式設定過 modified_amount（0 也算設定）
+    int trigger_count;             // 已觸發次數
+    int multiplier;                // 觸發倍率（天花板，可被 EventSkillWillInvoke 動態調高）
+
+    QString choice;                // askForChoice 結果
+    QVariant extra_data;           // 任意額外資料
+    QMap<QString, QVariantMap> interceptor_data; // 攔截器間共享資料
 };
 ```
 
 **重要**：`original_data` 是指向原始事件數據的指針，在 `on_cost`、`on_effect` 等回調中可通過它訪問原始事件數據。
 
-### Instance ID 機制
+### Instance ID 機制（現行模型）
 
-每個 Skill 實例具有唯一的 `m_instanceId`，用於區分同名技能的不同實例。
+**已停用**：`Skill::m_instanceId`／`m_globalInstanceCount`（舊 Skill 物件級 ID）自 2026-07-16 重構後已廢止，現僅為 skill.h:227-228 的未使用宣告（死碼）；`Skill::getInstanceId()` 已刪除。
 
-| 欄位 | 說明 |
+現行模型（權威：`docs/skill-instance-refactor-plan.md` §2）：
+
+| 項目 | 說明 |
 |------|------|
-| `m_instanceId` | 實例唯一 ID（從 1 遞增） |
-| `m_globalInstanceCount` | 全局計數器 |
+| `Skill` 物件 | Engine 全域共享定義，**不持有** instanceID，不 clone |
+| 權威容器 | `Player::m_skillInstances` = `QMap<QString, QMap<int, SkillInstance>>`（player.h:481，Single Source of Truth） |
+| ID 分配 | `Player::m_nextSkillInstanceIds` 每技能名單調遞增，**永不重用** |
+| ID 範圍 | 同一 `(player, skillName)` 內唯一；`0` = wildcard／未指定 |
+| `#N` 字串 | 僅為相容派生格式（`acquired_skills` 等舊容器同步用），非權威資料 |
 
 ```cpp
-// 技能獲取時的儲存格式
+// 兼容字串格式（SkillInstanceUtils::formatName / parseName 集中處理）
 "baGua"           // instanceId = 0（無指定）
 "baGua#1"         // instanceId = 1
 "baGua#2"         // instanceId = 2
+// 隱藏技能以 # 開頭：#hiddenSkill#2 → baseName = "#hiddenSkill"、instanceId = 2
 ```
+
+所有 `#` 解析一律使用集中 helper（`SkillInstanceUtils::parseName`／`formatName`，src/core/skill-instance-utils.cpp），禁止散落 `indexOf('#')`。
 
 ## TriggerSkillV2 類定義
 
 ### 位置
-- Header: `src/core/skill.h` (line 293-320)
+- Header: `src/core/skill.h` (line 452)
 - Implementation: `src/core/skill.cpp` (line 562-648)
 
 ### 虛方法
@@ -208,7 +228,7 @@ ctx = ctx_data.value<SkillContext>();  // 取回修改後的 ctx
 
 ## TriggerEvent 時機枚舉
 
-**位置**: `src/core/structs.h` (line 727-731)
+**位置**: `src/core/structs.h` (line 844-850；EventSkillWillInvoke/EventSkillPay/EventSkillTargetConfirming/EventSkillInvoking/EventSkillEffect/EventSkillEffectTarget/EventSkillEffectFinished)
 
 | 枚舉值 | 觸發時機 | 典型應用 | data 類型 |
 |--------|----------|----------|-----------|
@@ -224,7 +244,7 @@ ctx = ctx_data.value<SkillContext>();  // 取回修改後的 ctx
 
 ### LuaTriggerSkillV2
 
-**位置**: `src/core/lua-wrapper.h` (line 73-127)
+**位置**: `src/core/lua-wrapper.h` (line 78)
 
 ### 回调函数
 
@@ -244,7 +264,7 @@ ctx = ctx_data.value<SkillContext>();  // 取回修改後的 ctx
 
 ### Lua 工廠函數
 
-**位置**: `lua/sgs_ex.lua` (line 62-85)
+**位置**: `lua/sgs_ex.lua` (line 80)
 
 ```lua
 sgs.CreateTriggerSkillV2 {
@@ -445,8 +465,10 @@ return "baGua+baGua"  -- 觸發 2 次
 -- 指定玩家（返回兩個值）
 return "baGua", ownerPlayer
 
--- 攜帶 instanceId
-return "baGua#" .. skill:getInstanceId()
+-- 攜帶 instanceId（精確指定實例；N 須為該玩家有效實例 ID，
+-- 可用 player:getSkillInstanceIds(skill:objectName()) 查得；
+-- Skill 物件無 getInstanceId()，框架也會依 base name 自動展開有效實例）
+return "baGua#" .. instance_id
 
 -- 攜帶 multiplier（觸發多次）
 return "baGua*3"
@@ -496,7 +518,9 @@ s4_xishe = sgs.CreateTriggerSkillV2{
                     local ctx = sgs.SkillContext()
                     ctx.invoker = owner
                     ctx.owner = owner
-                    ctx.instanceID = skill:getInstanceId()
+                    -- 實例 ID 從玩家持有清單取得（Skill 無 getInstanceId）
+                    local ids = owner:getSkillInstanceIds("s4_xishe")
+                    ctx.instanceID = ids:length() > 0 and ids:at(0) or 0
                     if skill:isUsable(ctx) then
                         table.insert(trigger_list_skill, "s4_xishe")
                         table.insert(trigger_list_who, owner:objectName())
@@ -600,7 +624,8 @@ return false
 ```lua
 -- 格式："skill_name->target1+target2"
 return self:objectName().."->"..table.concat(targets, "+")
-``
+```
+```
 
 ### 返回值處理流程
 
@@ -620,46 +645,53 @@ return self:objectName().."->"..table.concat(targets, "+")
 
 3. **格式二與格式一互斥**：若第二返回值為字符串，則按格式二解析；若為 `ServerPlayer*` 或 `nil`，則按格式一解析
 
-## Instance ID 相關 API
+## Instance ID 相關 API（現行）
 
-### Skill 類新增
+### Skill 類（已無實例 ID API）
 
 ```cpp
-// src/core/skill.h
-class Skill {
-    int getInstanceId() const { return m_instanceId; }
-    static int getGlobalInstanceCount() { return m_globalInstanceCount; }
-};
+// src/core/skill.h — Skill 為共享定義，不持有 instanceID
+// getInstanceId() / getGlobalInstanceCount() 已刪除（m_instanceId 為死碼）
 ```
 
-### Engine 類新增
+### Engine 類
 
 ```cpp
 // src/core/engine.h
-const TriggerSkill* getTriggerSkill(const QString &skill_name, int instanceId) const;
-QMap<QPair<QString, int>, const TriggerSkill*> m_triggerSkillsByInstance;
+const TriggerSkill *getTriggerSkill(const QString &skill_name) const;
+const TriggerSkill *getTriggerSkill(const QString &skill_name, int instanceId) const;
+// 註：instanceId 參數僅為相容保留，實作直接回傳 getTriggerSkill(skill_name)
+// （engine.cpp:2205-2207）；無 m_triggerSkillsByInstance 容器
 ```
 
-### Player 類新增
+### Player 類（玩家層實例 API）
 
 ```cpp
 // src/core/player.h
-void acquireSkill(const QString &skill_name, int instanceId);
+int acquireSkill(const QString &skill_name, bool head = true, int instanceId = -1); // -1 = 自動分配
 bool hasSkill(const QString &skill_name, bool include_lose = false) const;
-void detachSkill(const QString &skill_name);
+bool hasSkill(const Skill *skill, bool include_lose = false) const;
+void detachSkill(const QString &skill_name);          // 支援 "name#id" 精確移除
+int createSkillInstance(const QString &skillName, SkillInstanceSource source, bool visible = true);
+bool removeSkillInstance(const QString &skillName, int instanceID);
+bool hasSkillInstance(const QString &skillName, int instanceID) const;
+const SkillInstance *findSkillInstance(const QString &skillName, int instanceID) const;
+QList<int> getSkillInstanceIds(const QString &skill_name) const;          // 含 innate 全部
+QList<int> getValidSkillInstanceIds(const QString &skill_name) const;     // 過濾 isSkillInvalid
 ```
 
 ### Room::acquireSkill 行為
 
 | 呼叫方式 | 行為 |
 |---------|------|
-| `acquireSkill(player, "baGua")` | TriggerSkillV2 自動分配新 instanceId |
-| `acquireSkill(player, "baGua#3")` | 精確獲得 instanceId=3（如已存在則忽略）|
-| `acquireSkill(player, skillPtr)` | 使用技能自身的 instanceId |
+| `acquireSkill(player, "baGua")` | `Player::acquireSkill` 自動分配新 instanceId（max+1） |
+| `acquireSkill(player, "baGua#3")` | **無效**：`Sanguosha->getSkill("baGua#3")` 查找失敗直接回 0（room.cpp:8655-8658） |
+| `acquireSkill(player, skillPtr)` | 委派到 `acquireSkill(player, skill->objectName(), ...)`，同樣自動分配 |
+| `Player::acquireSkill("baGua", head, 3)` | **精確指定 instanceId=3**（僅 Player 層第 3 參數支援；已存在同名同 ID 則自動重分配） |
 
 ## parseSkillName 格式解析
 
-**位置**: `src/core/skill.cpp` (line 589-617)
+**位置**: `TriggerSkillV2::parseSkillName`（src/core/skill.cpp:932）；`#` 段實際解析委託 `SkillInstanceUtils::parseName`（src/core/skill-instance-utils.cpp:87，處理隱藏技能 `#` 開頭）
 
 ```
 格式: source'name*multiplier#instanceId
@@ -683,16 +715,13 @@ skill_table[event] → [skillA_ptr, skillB_ptr]  (同名技能的不同實例)
 
 ### 合併階段（Merge Phase）
 
-```cpp
-// mergeSkillNames() 將同名技能合併
-["baGua", "baGua", "baGua"] → "baGua*3"
-```
+> 2026-05-19 起已移除 `mergeSkillNames()` 依賴；現行於 while 迴圈直接解析 `multiplier`（`skillName*N`），並以 `"skillName#instanceId"` 為 key 獨立計算 trigger_count。
 
 ### 選擇階段（Selection Phase）
 
 - 玩家通過 `askForTriggerOrder` 選擇
 - 名稱格式：`skillName*multiplier#instanceId`
-- 精確通過 `getTriggerSkill(skillName, instanceId)` 查找
+- 實例定位透過玩家層 `Player::findSkillInstance(skillName, instanceID)`（非 Engine 技能查找）；`Engine::getTriggerSkill(name, instanceId)` 的 instanceId 參數僅為相容保留（見上節）
 
 ## 向後相容
 
@@ -789,8 +818,9 @@ local baGua = sgs.CreateTriggerSkillV2 {
 ```cpp
 struct SkillContext {
     // ... 其他欄位 ...
-    int amount;           // 技能基礎數值（預設 1）
-    int modified_amount;  // 修改後數值（0 表示未被修改）
+    int amount;                   // 技能基礎數值（預設 1，由 Room 依實例 current amount 填入）
+    int modified_amount;          // 修改後數值
+    bool modified_amount_set;     // 是否顯式設定（含 0）；用 setModifiedAmount()/clearModifiedAmount() 操作
 };
 ```
 
@@ -799,7 +829,7 @@ struct SkillContext {
 | 方法 | 說明 |
 |------|------|
 | `getBaseAmount()` | 返回技能基礎數值，預設 1 |
-| `getEffectiveAmount(ctx)` | 返回有效數值（優先 `modified_amount`，其次 `amount`，最後 `baseAmount`） |
+| `getEffectiveAmount(ctx)` | 返回有效數值（`ctx.hasModifiedAmount()` 時用 `modified_amount`，否則用已填入的 `ctx.amount`；實作見 skill.cpp:925） |
 
 ### Lua 技能定義
 
@@ -861,18 +891,23 @@ getEffectiveAmount(ctx) 返回值：
 
 ### SkillContext 結構
 
-**位置**: `src/core/skill.h` (line 9-27)
+**位置**: `src/core/skill.h` (line 11-58；與 §核心資料結構 同一結構，此處僅列次數相關欄位)
 
 ```cpp
 struct SkillContext {
     QString skill_name;            // 發動的技能名稱
+    SkillInstanceRef sourceRef;    // 來源實例引用（次數鍵由 ref 解析，見下方歸屬說明）
+    SkillInstanceRef activationRef;// 啟用實例引用
+    ServerPlayer *initiator;       // 發起者
     ServerPlayer *invoker;         // 實際發動者（動作執行人）
     ServerPlayer *owner;           // 技能擁有者（技能來源）
     QList<ServerPlayer *> targets; // 技能目標
     QList<ServerPlayer *> updated_targets; // 目標替換（targetConfirming 用）
     const Card *use_card;          // 關聯卡牌（可為 nullptr）
-    QVariant original_data;        // 原始觸發數據載體
+    const Card *updated_card;      // 卡牌替換
+    QVariant *original_data;       // 原始觸發數據載體（指針）
     int instanceID;                // 實例 ID（區分同名技能）
+    qint64 executionID;            // 本次結算執行 ID
 
     bool is_forced;                // 是否強制發動
     bool is_canceled;              // 是否被無效化（willInvoke 用）
@@ -882,10 +917,13 @@ struct SkillContext {
 
     int amount;                    // 技能基礎數值
     int modified_amount;           // 修改後數值
+    bool modified_amount_set;      // 是否顯式設定過
+    int trigger_count;             // 已觸發次數
+    int multiplier;                // 觸發倍率
 };
 ```
 
-**使用次數歸屬**: 記錄在 `owner`（技能擁有者）身上，非 `invoker`（發動者）。適用於放權等跨角色發動情境。
+**使用次數歸屬**: 以 `SkillInstanceRef`（`sourceRef`／`activationRef`，含 owner objectName + skillName + instanceID）為唯一鍵；`getUsageHolder()`（skill.cpp:1462）依 ref 的 owner 解析實際持有者，無法解析時依 `owner` → `invoker` → `initiator` 順序找 Room 並記 `qWarning`。適用於放權等跨角色發動情境。
 
 ### SkillLimitScope 枚舉
 
@@ -904,12 +942,14 @@ enum LimitScope {
 
 ### Mark 命名格式
 
+實作：`SkillInstanceUtils::formatUsageMarkKey`（skill-instance-utils.cpp:19）＝ `Usage_技能名_實例ID{後綴}`；後綴由 `Skill::getUsageTagKey`（skill.cpp:1499）依 scope 決定。
+
 | Scope | Tag Key | 自動清除時機 |
 |-------|---------|-------------|
-| `Skill_Limit_Turn` | `Usage_技能名_instanceID-Clear` | 回合結束 |
-| `Skill_Limit_Round` | `Usage_技能名_instanceID_lun` | 輪次結束 |
-| `Skill_Limit_Phase` | `Usage_技能名_instanceID-{Phase}Clear` | 指定階段結束 |
-| `Skill_Limit_Game` | `Usage_技能名_instanceID_game` | 整場不清除 |
+| `Skill_Limit_Turn` | `Usage_技能名_實例ID-Clear` | 回合結束 |
+| `Skill_Limit_Round` | `Usage_技能名_實例ID_lun` | 輪次結束 |
+| `Skill_Limit_Phase` | `Usage_技能名_實例ID-{Phase}Clear`（Phase 來自 `setPhaseName`，未設時為 `-PhaseClear`） | 指定階段結束 |
+| `Skill_Limit_Game` | `Usage_技能名_實例ID_game` | 整場不清除 |
 
 **phase_name 可選值**：`"Start"`、`"Judge"`、`"Draw"`、`"Play"`、`"Discard"`、`"Finish"`（首字母大寫）
 
@@ -974,7 +1014,8 @@ public:
         if (player->hasSkill("baGua")) {
             SkillContext ctx;
             ctx.invoker = player;
-            ctx.instanceID = getInstanceId();
+            // 回傳 base name 即由框架展開有效實例；
+            // 需精確指定時用 player->findSkillInstance / getSkillInstanceIds 取 ID
             if (isUsable(ctx)) {
                 result[player] << "baGua";
             }
@@ -993,8 +1034,7 @@ public:
         SkillContext ctx;
         ctx.invoker = player;
         ctx.owner = player;
-        ctx.instanceID = getInstanceId();
-        addUsage(ctx);  // 結算成功後增加次數
+        addUsage(ctx);  // 結算成功後增加次數（usage ref 由框架自 ctx 解析）
         // ... 效果邏輯
         return false;
     }
@@ -1019,7 +1059,8 @@ local baGua = sgs.CreateTriggerSkillV2 {
         if not player:hasSkill(skill:objectName()) then return false end
         local ctx = sgs.SkillContext()
         ctx.invoker = player
-        ctx.instanceID = skill:getInstanceId()
+        local ids = player:getSkillInstanceIds(skill:objectName())
+        ctx.instanceID = ids:length() > 0 and ids:at(0) or 0
         if not skill:isUsable(ctx) then return false end
         return "baGua"
     end,
@@ -1034,7 +1075,7 @@ local baGua = sgs.CreateTriggerSkillV2 {
         local usageCtx = sgs.SkillContext()
         usageCtx.invoker = player
         usageCtx.owner = player
-        usageCtx.instanceID = skill:getInstanceId()
+        usageCtx.instanceID = ctx.instanceID
         skill:addUsage(usageCtx)
         return false
     end
@@ -1084,7 +1125,7 @@ local baGua = sgs.CreateTriggerSkillV2 {
 
 #### Player 類
 
-**位置**: `src/core/player.h` (line 162-163)
+**位置**: `src/core/player.h` (line 171-172)
 
 ```cpp
 bool isSkillInvalid(const Skill *skill) const;
@@ -1093,7 +1134,7 @@ bool isSkillInvalid(const QString &skill_name, int instanceId = 0) const;
 
 #### Room 類
 
-**位置**: `src/server/room.h` (line 310-312)
+**位置**: `src/server/room.h` (line 363；addSkillInvalidity / removeSkillInvalidity / clearSkillInvalidityBySource)
 
 ```cpp
 void addSkillInvalidity(ServerPlayer *target, const QString &skillName,
@@ -1107,7 +1148,7 @@ void clearSkillInvalidityBySource(ServerPlayer *source);
 
 ### isEquipSkill 虛方法
 
-**位置**: `src/core/skill.h` (line 104)
+**位置**: `src/core/skill.h` (line 205)
 
 用於判斷是否為裝備技（裝備技不受 `"all"` 失效影響）：
 
@@ -1120,27 +1161,27 @@ void clearSkillInvalidityBySource(ServerPlayer *source);
 
 ### 觸發過濾
 
-**位置**: `src/server/roomthread.cpp` (line 707-715)
+**位置**: `src/server/roomthread.cpp` (line 791；`triggerV2Skills()` 內 `isSkillInvalid()` 過濾；`#` 解析走集中 helper)
 
-在 `triggerV2Skills()` 中，`triggerable()` 返回的技能會經過 `isSkillInvalid()` 檢查：
+在 `triggerV2Skills()` 中，`triggerable()` 返回的技能會經過 `isSkillInvalid()` 檢查（實作節錄）：
 
 ```cpp
-foreach (const QString &skill, skills) {
-    QString skillName = skill;
-    int instanceId = 0;
-    int split = skill.indexOf('#');
-    if (split != -1) {
-        instanceId = skill.mid(split + 1).toInt();
-        skillName = skill.left(split);
-    }
-    if (!p->isSkillInvalid(skillName, instanceId) && !trigger_who[p].contains(skill))
-        trigger_who[p] << skill;
+QString baseName;
+int instanceId = SkillInstanceUtils::parseName(skillName, baseName);
+skillName = baseName;
+QList<int> instanceIds;
+if (instanceId > 0) {
+    if (p->hasSkillInstance(skillName, instanceId)
+        && !p->isSkillInvalid(skillName, instanceId))
+        instanceIds << instanceId;
+} else {
+    instanceIds = p->getValidSkillInstanceIds(skillName);
 }
 ```
 
 ### 自動清理
 
-**位置**: `src/server/gamerule.cpp` (line 1164)
+**位置**: `src/server/gamerule.cpp` (line 1242；BuryVictim 內 `clearSkillInvalidityBySource(player)`)
 
 當武將死亡時（`BuryVictim`），自動清理該武將造成的所有失效狀態：
 
@@ -1154,7 +1195,7 @@ case BuryVictim: {
 
 ### TriggerEvent 觸發
 
-**位置**: `src/core/structs.h` (line 722-723)
+**位置**: `src/core/structs.h` (line 840-841；EventSkillInvalidated / EventSkillValidityRestored)
 
 新增兩個 TriggerEvent 用於監聽技能失效狀態變更：
 
@@ -1303,6 +1344,8 @@ room->removeSkillInvalidity(target, "qingcheng", source->objectName(), "reason")
 | 2026-05-29 | `cost`/`pay`/`effect` 使用 `selected_ctx->owner` 作為 `player` 參數 |
 | 2026-05-29 | 更新文檔：補充格式二完整範例（襲射）、常見錯誤、返回值處理流程 |
 | 2026-06-23 | **跨角色強制多次觸發**：EventSkillWillInvoke 支援修改 `ctx.multiplier`，透過 `maxMultipliers` 天花板機制讓攔截者強制目標技能多觸發 |
+| 2026-07-16 | **實例模型重構**：Skill 不再持有 instanceID；`Player::m_skillInstances`（QMap）成為 SSOT；`Skill::m_instanceId`／`m_globalInstanceCount` 廢止 |
+| 2026-08-09 | **文檔同步現行實作**：SkillContext 欄位表補 sourceRef／activationRef／initiator／executionID／updated_card／modified_amount_set／interceptor_data；API 段移除已刪除的 `Skill::getInstanceId()`／Engine `m_triggerSkillsByInstance`；`Room::acquireSkill("name#N")` 標註為無效（room.cpp:8655 直接回 0，精確指定走 `Player::acquireSkill` 第 3 參數）；Lua 範例改用 `player:getSkillInstanceIds()`；`on_record` 確認 5 參數；行號全數校對 |
 
 ---
 
@@ -2123,13 +2166,15 @@ end
 | invoker | `SkillContext::invoker` |
 | runtime key | `ownerObjectName + skillName + instanceID` |
 
-`TriggerSkillV2::triggerable()` 可只回傳 base name；RoomThread 會依 owner 的有效實例展開。若回傳 `skill#N`，則只執行該有效實例。`record()` 也按有效實例各執行一次，Lua `on_record` 的第七個參數為對應 `SkillContext`。
+`TriggerSkillV2::triggerable()` 可只回傳 base name；RoomThread 會依 owner 的有效實例展開。若回傳 `skill#N`，則只執行該有效實例。`record()` 也按有效實例各執行一次。
+
+> **2026-08-05 修正**：Lua `on_record` 為 **5 參數**（`skill, event, room, player, ctx`），第 5 參為 `SkillContext` 引用；早期 7 參數草案（多塞 `data/owner`）已回退（swig/luaskills.i `lua_pcall(L, 5)`，2026-08-05 與 H 權威版對齊）。下方為現行簽名：
 
 ```lua
-on_record = function(skill, event, room, player, data, owner, ctx)
+on_record = function(skill, event, room, player, ctx)
     local id = ctx.instanceID
-    -- state/usage 必須使用 owner + skill name + id
+    -- state/usage 必須使用 ctx.sourceRef（owner + skill name + id）定位
 end
 ```
 
-舊文件中的 `Skill::m_instanceId`、`m_globalInstanceCount` 與全域 `skill#N` 定義已廢止。
+舊文件中的 `Skill::m_instanceId`、`m_globalInstanceCount` 與全域 `skill#N` 定義已廢止（2026-08-09 已同步修正本文主體各節，此節保留為歷史對照）。

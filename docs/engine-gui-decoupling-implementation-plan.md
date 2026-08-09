@@ -1,22 +1,28 @@
 # 引擎與 GUI 解耦實作計畫 (Engine/GUI Decoupling Implementation Plan)
 
-- Status: Ready for Implementation
+- Status: **Implemented**（契約已全部落地，2026-08-09 確認；僅 `Skill::getDialog()` 舊路徑殘留，見 §1 註記）
 - Parent Plan: `docs/cross-platform-modernization-plan.md`
 - Milestone: M1
-- Last Updated: 2026-08-02
+- Last Updated: 2026-08-09
 - Scope: Windows x64、Qt 6.5.3、MSVC 2019 過渡基線
+
+> **實作狀態（2026-08-09 對照）**：以下 §1 完成標準 1-7 與 §3 契約（SkillDialogInfo／EngineRuntimeContext／audioEffectRequested／EngineBootstrap／SkillDialogRegistry／server-main／deploy-server／allowlist gate）均已落地並通過 build。殘留項：`Skill::getDialog()`（skill.h:179）與 `class QDialog` 前向宣告（skill.h:5）仍在 engine，§3.1 的「遷移完成後搜尋結果必須為零」尚未達成；此為唯一未完成條目。
 
 ## 1. 完成標準
 
 本階段只有在下列條件全部成立時才算完成：
 
-1. `qsanguosha_engine` 可作為 `STATIC` library 獨立編譯。
-2. engine 的 Qt module allowlist 只有 `Qt6::Core`、`Qt6::Network`。
-3. engine 不包含或傳遞 QtGui、QtWidgets、QtQml、QtQuick、QtMultimedia、Core5Compat、FMOD、FreeType 或 Spine 依賴。
-4. Windows 網路所需的 `Ws2_32`、`IPHLPAPI` 等 system library 可用 `if(WIN32)` 連結。
-5. `QSanguosha` GUI 與獨立 `qsanguosha_server` 都連結同一份 engine，不重複編譯 engine `.cpp`。
-6. 現有 GUI 開服、PC Console Start、控制其他角色、Lua skill dialog、音效與 client replay 行為無回歸。
-7. 專用 server 可在 CMD 顯示啟動資訊及 runtime log，且可用 `Ctrl+C` 正常結束。
+| # | 完成標準 | 狀態（2026-08-09） |
+|---|---|---|
+| 1 | `qsanguosha_engine` 可作為 `STATIC` library 獨立編譯。 | ✅ CMakeLists.txt:76 |
+| 2 | engine 的 Qt module allowlist 只有 `Qt6::Core`、`Qt6::Network`。 | ✅ CMakeLists.txt:166-169 + 175-179 gate |
+| 3 | engine 不包含或傳遞 QtGui、QtWidgets、QtQml、QtQuick、QtMultimedia、Core5Compat、FMOD、FreeType 或 Spine 依賴。 | ✅ link allowlist gate 強制（`getDialog()` 殘留見下方註記） |
+| 4 | Windows 網路所需的 `Ws2_32`、`IPHLPAPI` 等 system library 可用 `if(WIN32)` 連結。 | ✅ CMakeLists.txt:171-173 |
+| 5 | `QSanguosha` GUI 與獨立 `qsanguosha_server` 都連結同一份 engine，不重複編譯 engine `.cpp`。 | ✅ `WHOLE_ARCHIVE:qsanguosha_engine`（CMakeLists.txt:256/344） |
+| 6 | 現有 GUI 開服、PC Console Start、控制其他角色、Lua skill dialog、音效與 client replay 行為無回歸。 | ✅ 人工驗收通過 |
+| 7 | 專用 server 可在 CMD 顯示啟動資訊及 runtime log，且可用 `Ctrl+C` 正常結束。 | ✅ `qsanguosha_server.exe`（server-main.cpp） |
+
+> **唯一殘留**：`Skill::getDialog()`（skill.h:179）與 `class QDialog` 前向宣告（skill.h:5）仍在 engine 標頭；§3.1 的「遷移完成後 engine 中 `QDialog`／`getDialog()` 搜尋結果為零」尚未達成。其餘 §3 契約（SkillDialogInfo／EngineRuntimeContext／audioEffectRequested／EngineBootstrap／SkillDialogRegistry／server log API）均已落地。
 
 本階段不升級 Qt、MSVC、Lua 或網路協定，不修改卡牌平衡，也不修改 `include/`、`lib/` 內第三方內容。
 
@@ -69,6 +75,8 @@ struct SkillDialogInfo
 | `caozhao` | `objectName` |
 
 現況基線為 59 個 active `getDialog()` override、21 個 package/scenario 檔及 11 種 dialog。遷移完成後，engine source 中 `QDialog`、`getDialog()` 與 package dialog class 定義的搜尋結果必須為零。
+
+> **2026-08-09 狀態**：11 種 dialog 已全部改走 `SkillDialogInfo`＋`SkillDialogRegistry`（skill-dialog-registry.cpp/h 於 GUI），59 個 override 已遷移；唯一未清零者為 `Skill::getDialog()` 本身（skill.h:179）與 `class QDialog` 前向宣告（skill.h:5）——引擎中的舊路徑殘留，需日後移除。
 
 ### 3.2 Lua 與 SWIG 相容
 

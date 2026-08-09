@@ -1,5 +1,9 @@
 # SkillCard V2 時機橋接計劃
 
+> **存檔文件（舊構想，非實作規格）**：僅作需求來源與歷史參考，**不得作為實作依據**。現行契約見 [ViewAsSkillV2 現代化重構計劃](active-skill-v2-refactor-plan.md) §1（「舊 Bridge 文件只作需求來源，不是實作規格。本文件的鎖定規則優先」）。
+> **與現行契約直接衝突**：本文件以 Room Tag 傳遞 SkillContext（`"SkillCardContext_" + skillName + "_" + instanceId`、`"ViewAsContext_"…` Tag Key）的設計已被否決——現行 `ActiveSkillExecution` 以 Room 內 registry + `executionID` 定位（active-skill-v2-refactor-plan.md §5.2：「不得用 Room Tag 或卡牌指標作 execution 唯一鍵」；§6.2：「不得使用 Room Tag 保存 Active execution context」）。
+> 需求面（SkillCard／ViewAs 虛擬牌均須進入七個 `EventSkill*` 攔截時機）已由 [active-skill-v2-refactor-plan.md](active-skill-v2-refactor-plan.md) 承接。
+
 ## 目標
 
 讓 SkillCard（含 LuaSkillCard）在 `Room::useCard()` 中觸發 V2Skill 的時機事件，使其他 V2Skill 能攔截/修改 SkillCard 的使用。不影響現有 SkillCard 代碼。
@@ -1435,3 +1439,4 @@ ViewAsSkill 的 `instanceId` 在創建時由全局計數器分配，不同技能
 **創建日期**：2026-06-01
 **更新日期**：2026-06-01
 **更新內容**：新增 ViewAs V2 Bridge 章節
+**文檔狀態**：存檔（2026-08-09 標記為舊構想；Room Tag 傳遞設計與現行契約衝突，見文首橫幅）

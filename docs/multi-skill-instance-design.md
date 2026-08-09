@@ -1,5 +1,11 @@
 # 多技能實例系統設計文檔
 
+> **存檔文件（設計未被採納）**：本文件的 `QList<SkillSource>`＋分段 ID（主將 1-1000／副將 1001-2000）方案於 2026-07-16 重構時**未採納**；現行模型以 [`skill-instance-refactor-plan.md`](skill-instance-refactor-plan.md) §2 為權威：
+> - 儲存：`Player::m_skillInstances`（`QMap<QString, QMap<int, SkillInstance>>`）為 SSOT，`#N` 字串僅為兼容派生格式。
+> - ID 分配：`m_nextSkillInstanceIds` 每技能名單調遞增、永不重用；**無**分段 ID 範圍。
+> - 精確查詢：`Player::hasSkillInstance(name, id)`／`findSkillInstance`（`hasSkill` 只有 2 參數，本文件第 2 節的 `hasSkill(name, false, instanceId)` 三參數 API 不存在）。
+> - 綁定：來源位以 `Player::acquireSkill(name, head, id)` 的 `head` 參數（`bindHead`）區分主副將，非 ID 範圍。
+
 ## 目標
 
 1. **技能疊加**：主將馬超 + 副將龐德 → 距離 -2
