@@ -7,7 +7,4 @@ structure.md
 lua/ai/
 builds/cmake-vs2019/
 CMakeUserPresets.json
-qml/home/assets/
-qml/home/nav/
-qml/home/icons/
 __pycache__/
