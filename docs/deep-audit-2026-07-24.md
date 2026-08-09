@@ -1,6 +1,11 @@
 # 深度審計報告：Qt6/CMake 遷移補充發現
 
-> 本文件保留作歷史分析，審計事實仍然有效。現行且具規範性的實作決策請參閱 [跨平台現代化與功能移植計劃](cross-platform-modernization-plan.md)。如有衝突，以新計劃為準；尤其是 Qt 6、CMake、Android 與音訊後端策略。
+> **存檔文件（歷史分析）**：2026-07-24 審計事實快照；所列發現多數已解決或改以 compat shim 繞過，「審計事實仍然有效」僅指當時掃描結果，**不代表現況**：
+> - **QTextCodec → QStringConverter（§3.1）：已解決**。engine.cpp 兩處已改用 `QStringConverter`（另見 server.cpp:1967、scenario-overview.cpp:45）；`src/pch.h:24` 僅餘無害 include。
+> - **qrand/qsrand（§9 #2）：compat shim 繞過，未遷移**。`src/pch.h:34-42` 以 `inline qrand()/qsrand()`（包 `QRandomGenerator`）保留全部呼叫點（449+ 仍存在）。
+> - **QRegExp（§9 #3）：保留**。Qt 6.5 仍提供（棄用）QRegExp；`pch.h:23` 顯式 include 維持可編譯，18 處呼叫點未遷移。
+> - **CMake（§9 #1）：已完成**。qmake 專案已由 CMake 3.28+ 取代（`CMakePresets.json`）。
+> - 現行且具規範性的實作決策請參閱 [跨平台現代化與功能移植計劃](cross-platform-modernization-plan.md)。如有衝突，以新計劃為準；尤其是 Qt 6、CMake、Android 與音訊後端策略。
 
 > 版本：2026-07-24 ｜ 狀態：審計報告（不含代碼變更）
 > 範圍：全倉四維度深度掃描（核心引擎、UI/圖形、網路/Lua、內容系統）

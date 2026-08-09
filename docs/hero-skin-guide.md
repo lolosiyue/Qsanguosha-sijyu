@@ -112,7 +112,7 @@ hero-skin/
 - **搜尋路徑**：
   1. `hero-skin/[generalName]/[skinIndex]/death.ogg`
   2. `audio/death/[generalName].ogg`（預設）
-- **相關程式碼**：`src/core/general.cpp:307-353`
+- **相關程式碼**：`src/core/general.cpp:317-360`
 
 ### 技能語音（[skillName].ogg）
 
@@ -133,7 +133,7 @@ hero-skin/
   QString effectFile = QString("hero-skin/%1/%2/%3.ogg")
       .arg(general).arg(skinId).arg(skillName);
   ```
-- **相關程式碼**：`src/core/skill.cpp:322-336`
+- **相關程式碼**：`src/core/skill.cpp:328-343`
 
 ### 卡牌語音（card/[cardName].ogg）
 
@@ -147,9 +147,8 @@ hero-skin/
   ```
 - **搜尋優先級**：
   1. `hero-skin/[generalName]/[skinIndex]/card/[cardName].ogg`
-  2. `hero-skin/[generalName]/[skinIndex]/[cardName].ogg`
-  3. `audio/card/[generalName]/[cardName].ogg`（預設）
-- **相關程式碼**：`src/ui/skin-bank.cpp:496-562`
+  2. `audio/card/[generalName]/[cardName].ogg`（預設）
+- **相關程式碼**：`src/ui/skin-bank.cpp:615-647`
 
 ---
 
@@ -213,7 +212,7 @@ sgs.LoadTranslationTable(t)
 
 僅當該皮膚被選用時生效。
 
-**實現機制**（`lua/sgs_ex.lua:924-932`）：
+**實現機制**（`lua/sgs_ex.lua:1064-1072`）：
 
 ```lua
 function sgs.LoadSkinTransltionTable(t)
@@ -426,14 +425,8 @@ hero-skin/
 
 ### 動態皮膚特殊規則
 
-若武將名稱結尾為 `_[數字]`（如 `heg_zhonghui_2`），自動使用 heroskin 路徑：
-
-```cpp
-// src/ui/CharacterSpineActionController.cpp:296-303
-QRegularExpression heroskinPattern(R"(_\d+$)");
-if (heroskinPattern.match(resolvedGeneral).hasMatch())
-    return QString("heroskin/dynamicSkin/%1/dynamicSkin").arg(resolvedGeneral);
-```
+動態皮膚路徑統一由 `buildDynamicSkinRoot` 依 `skinIndex` 決定（見上方「路徑判斷邏輯」），
+不再依武將名稱結尾的 `_[數字]` 判斷；舊路徑 `heroskin/dynamicSkin/[general]_[skinIndex]/dynamicSkin/` 已廢除。
 
 ---
 
@@ -483,8 +476,8 @@ hero-skin/
         ├── card.jpg
         └── ...
 
-# Spine 動態皮膚使用特殊路徑（注意：不在 hero-skin/guanyu/1/ 下）
-heroskin/dynamicSkin/guanyu_1/dynamicSkin/
+# Spine 動態皮膚（skinIndex > 0 時位於皮膚目錄下的 dynamicSkin/）
+hero-skin/guanyu/1/dynamicSkin/
 ├── skeleton.skel
 ├── skeleton.atlas
 ├── skeleton.png
@@ -532,13 +525,13 @@ sgs.LoadSkinTransltionTable(t)
 |------|---------|
 | 皮膚容器 UI | `src/ui/heroskincontainer.cpp` |
 | 皮膚項 UI | `src/ui/skinitem.cpp` |
-| GIF 動畫載入 | `src/ui/graphicspixmaphoveritem.cpp:268-331` |
-| 技能語音搜尋 | `src/core/skill.cpp:322-336` |
-| 卡牌語音搜尋 | `src/ui/skin-bank.cpp:485-562` |
-| 死亡語音搜尋 | `src/core/general.cpp:307-353` |
+| GIF 動畫載入 | `src/ui/graphicspixmaphoveritem.cpp:267-379` |
+| 技能語音搜尋 | `src/core/skill.cpp:328-343` |
+| 卡牌語音搜尋 | `src/ui/skin-bank.cpp:615-647` |
+| 死亡語音搜尋 | `src/core/general.cpp:317-360` |
 | Spine 動態皮膚 | `src/ui/CharacterSpineActionController.cpp` |
-| 皮膚翻譯載入 | `src/core/general.cpp:424-440` |
-| 翻譯函數定義 | `lua/sgs_ex.lua:918-932` |
+| 皮膚翻譯載入 | `src/core/general.cpp:434-449` |
+| 翻譯函數定義 | `lua/sgs_ex.lua:1058-1072` |
 
 ---
 
@@ -596,6 +589,7 @@ sgs.LoadSkinTransltionTable(t)
 
 ## 更新日誌
 
+- 2026-08-09：移除已廢除的 `heroskin/dynamicSkin/` 舊路徑說明（完整範例／特殊規則改為 `buildDynamicSkinRoot` 現行路徑）；修正各程式碼行號參照
 - 2026-06-07：新增 `addResourceAliasList` API，支援一對多皮膚目錄映射
 - 2026-06-07：新增皮膚索引計算邏輯說明
 - 2026-06-05：修改程式碼，讓 dynamicSkin 使用與皮膚資源一致的路徑結構

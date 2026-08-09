@@ -328,7 +328,7 @@ end
 | `getReason()` / `getPattern()` | 使用或回應情境 |
 | `getPrompt()` / `getHandlingMethod()` | `askForUseCard` 的提示與處理方法 |
 | `getInitiator()` | 發起技能的 `ServerPlayer` |
-| `getActivationSkillName()` / `getActivationInstanceID()` | 玩家實際使用的技能入口 |
+| `getActivationSkillName()` / `getActivationInstanceId()` | 玩家實際使用的技能入口 |
 | `getSourceSkillName()` / `getSourceInstanceID()` | root source 技能實例 |
 | `isActivationQuotaAvailable()` / `isSourceQuotaAvailable()` | 入口與來源配額狀態 |
 

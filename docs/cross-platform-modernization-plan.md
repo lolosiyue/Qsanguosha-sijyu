@@ -1,8 +1,8 @@
 # 跨平台現代化與功能移植計劃 (Cross-Platform Modernization Plan)
 
 - Status: Approved Plan
-- Implementation: M1 In Progress
-- Last Updated: 2026-08-02
+- Implementation: M1 Complete（2026-08-09 確認）
+- Last Updated: 2026-08-09
 - **規範性**：本文件是跨平台現代化與另一分支通用功能移植的唯一權威執行計劃；與既有 roadmap 或審計結論衝突時，以本文件為準。
 
 ## 1. 來源、目的與範圍
@@ -58,7 +58,7 @@
 | `crashreporter` | Windows 純 Win32／DbgHelp 診斷工具 |
 | CTest targets | 單元、整合、Lua、自動對戰及性能測試 |
 
-CMake 必須啟用 AUTOMOC、AUTOUIC、AUTORCC，管理資源、翻譯、安裝規則與平台條件來源。2026-07-30 已先完成 Windows x64 過渡建置：CMake 3.28+、Qt 6.5.3、MSVC 2019、單一 `QSanguosha` target，並移除 qmake、舊 `.sln`／`.vcxproj` 及舊 Makefile 入口。此過渡建置已通過 Debug／Release，保留既有 FMOD、Breakpad、SWIG、翻譯與輸出路徑；尚未完成 `qsanguosha_engine` 邊界，也不取代最終 Qt 6.11.1／MSVC 2022／Lua 5.4.8 基線。
+CMake 必須啟用 AUTOMOC、AUTOUIC、AUTORCC，管理資源、翻譯、安裝規則與平台條件來源。2026-07-30 已先完成 Windows x64 過渡建置：CMake 3.28+、Qt 6.5.3、MSVC 2019、單一 `QSanguosha` target，並移除 qmake、舊 `.sln`／`.vcxproj` 及舊 Makefile 入口。此過渡建置已通過 Debug／Release，保留既有 FMOD、Breakpad、SWIG、翻譯與輸出路徑；尚未完成 `qsanguosha_engine` 邊界，也不取代最終 Qt 6.11.1／MSVC 2022／Lua 5.4.8 基線。（該邊界已於 2026-08-09 完成，見 §10 M1 狀態。）
 
 ### 3.1 引擎與 GUI 解耦
 
@@ -222,12 +222,12 @@ M1 先完成 GUI／CMD 共用的 `Server::logMessage()` 與純文字 console 格
 
 ## 10. 里程碑與合併門檻
 
-M1 已進入實作，但只完成 Windows CMake 過渡建置；其餘里程碑仍為 **Not Started**。
+M1 已完成（2026-08-09 對照 CMakeLists.txt 確認）：`qsanguosha_engine` STATIC、Qt module allowlist gate（非 Core/Network 立即 FATAL_ERROR）、`engine-smoke-test`、`deploy-server`、WHOLE_ARCHIVE 連結與 `qsanguosha_server.exe` 獨立入口均已落地。其餘里程碑仍為 **Not Started**。
 
 | 里程碑 | 狀態 | 主要交付 | 合併門檻 |
 |---|---|---|---|
 | M0 | Not Started | 建立可重現的現況基線、測試清單與資產盤點 | 現有 Windows 行為、協定與重播樣本可重現；無功能性改動 |
-| M1 | Ready for Implementation | Windows CMake 過渡建置已完成；引擎／GUI 解耦設計與四批次計畫已鎖定 | Windows GUI 與既有建置結果可對照；STATIC engine 僅連結 Qt Core／Network；GUI／CMD server 驗收完成 |
+| M1 | **Complete**（2026-08-09） | Windows CMake 過渡建置、STATIC engine（僅 Qt Core／Network）、引擎／GUI 解耦契約（SkillDialogInfo／EngineRuntimeContext／audioEffectRequested／EngineBootstrap）、allowlist gate、`deploy-server`、engine smoke test | Windows GUI 與既有建置結果可對照；STATIC engine 僅連結 Qt Core／Network；GUI／CMD server 驗收完成 |
 | M2 | Not Started | Qt 6.11.1、MSVC 2022 與 Lua 5.4.8 遷移 | Windows GUI、server、Lua/SWIG 及 CTest 全數通過 |
 | M3 | Not Started | `SkillDialogInfo`、選包白名單、確定性 RNG | 相同種子、輸入與包集合產生相同結果；白名單不可由客戶端繞過 |
 | M4 | Not Started | 協定與重播版本化、相容性拒絕路徑 | 新舊版本差異可診斷；不支援版本被明確拒絕而非靜默誤讀 |
@@ -263,7 +263,7 @@ M1 已進入實作，但只完成 Windows CMake 過渡建置；其餘里程碑�
 - 不承諾舊客戶端與新協定永久互通；以明確版本協商、拒絕訊息及受控遷移為準。
 - 不全面重寫引擎、技能或 LuaAI，不在現代化過程中順便更改卡牌平衡。
 - 不修改 `include/`、`lib/` 內第三方庫；依賴升級須以外部套件、可重現建置或獨立導入流程處理。
-- 本文件只定義總計畫；截至 2026-08-02，M1 已完成設計收斂但尚未完成程式實作，其餘里程碑狀態以上表為準。
+- 本文件只定義總計畫；截至 2026-08-09，M1 已完成程式實作（STATIC engine、allowlist gate、deploy-server、smoke test），其餘里程碑狀態以上表為準。
 
 ## 13. 決策紀錄與官方參考
 
@@ -277,7 +277,7 @@ M1 已進入實作，但只完成 Windows CMake 過渡建置；其餘里程碑�
 | 2026-07-25 | 音訊採 Windows FMOD、Android Qt Multimedia、無頭 Null 三後端 | Approved |
 | 2026-07-25 | 「全面移除 FMOD」方案由上述雙實際後端加 Null 後端方案取代 | Superseded |
 | 2026-07-25 | 約 1.09 GiB 音訊與約 1.27 GiB 圖片不得直接置入 Android base module | Approved |
-| 2026-08-02 | M1 以 `qsanguosha_engine` 可獨立編譯且 Qt module 只有 Core／Network 為完成標準 | Approved |
+| 2026-08-02 | M1 以 `qsanguosha_engine` 可獨立編譯且 Qt module 只有 Core／Network 為完成標準 | Complete（2026-08-09 落地） |
 | 2026-08-02 | server 設定保留 `config.ini`／QSettings，不導入 YAML | Approved |
 | 2026-08-02 | GUI `PC Console Start` 保留內嵌 server；另建可獨立部署的 `qsanguosha_server.exe` | Approved |
 | 2026-08-02 | M1 採四個可建置批次，完整細節由引擎／GUI 解耦實作計畫規範 | Approved |
