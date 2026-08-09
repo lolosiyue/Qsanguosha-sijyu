@@ -5,6 +5,7 @@
 #endif
 #include "settings.h"
 #include "room.h"
+#include "roomthread.h"
 #include "engine.h"
 #include "nativesocket.h"
 #include "banpair.h"
@@ -2028,9 +2029,44 @@ void Server::startHeadlessGame()
         Server::writeHeadlessLog(QString(">>> Game %1 finished. Winner: %2 <<<").arg(currentGameCount).arg(winner));
 
         // 局間等待保留 500ms: 實測 0ms 會讓 game N+1 開局 ~9 秒時 fail-fast
-        // 閃退 (0xC0000409, 無 minidump) — old room 資源釋放與新局啟動需緩衝
+        // 閃退 (0xC0000409, 無 minidump) — old room 資源釋放與新局啟動需緩衝。
+        // 家族 C 防護: 絕不在局間 blocking wait — RoomThread 收尾可能需要
+        // main thread 處理 queued/blocking 事件 (room.cpp BlockingQueuedConnection),
+        // blocking 會互等死鎖。改非阻塞輪詢: main thread 每 100ms 檢查
+        // RoomThread 是否已結束, 結束後才 deleteLater 並啟動下一局;
+        // 逾時 10s 強制推進 (writeHeadlessLog ERROR 標記)。
         QTimer::singleShot(500, this, [this, roomPtr, currentGameCount, gameLimit]() {
             if (roomPtr) {
+                RoomThread *rt = roomPtr->getThread();
+                if (rt && rt->isRunning()) {
+                    QTimer *pollTimer = new QTimer(this);
+                    int *elapsedMs = new int(0);
+                    connect(pollTimer, &QTimer::timeout, this,
+                        [this, roomPtr, rt, pollTimer, elapsedMs, currentGameCount, gameLimit]() {
+                            *elapsedMs += 100;
+                            const bool finished = !rt->isRunning();
+                            if (finished || *elapsedMs >= 10000) {
+                                if (!finished) {
+                                    Server::writeHeadlessLog("ERROR: RoomThread wait timeout (game "
+                                        + QString::number(currentGameCount) + ")");
+                                }
+                                pollTimer->stop();
+                                pollTimer->deleteLater();
+                                delete elapsedMs;
+                                if (roomPtr) {
+                                    roomPtr->deleteLater();
+                                }
+                                if (currentGameCount < gameLimit) {
+                                    startHeadlessGame();
+                                } else {
+                                    Server::writeHeadlessLog(">>> All games completed. Exiting. <<<");
+                                    qApp->quit();
+                                }
+                            }
+                        });
+                    pollTimer->start(100);
+                    return;
+                }
                 roomPtr->deleteLater();
             }
             if (currentGameCount < gameLimit) {
@@ -2102,8 +2138,33 @@ void Server::startTestGame(const QString &scenarioFile, bool headless)
         qDebug() << "Test game finished. Winner:" << winner;
 
         // 局間等待保留 500ms, 同 startHeadlessGame (0ms 會引致次局 fail-fast 閃退)
+        // 家族 C 防護, 同 startHeadlessGame: 非阻塞輪詢等 RoomThread 結束再刪 room
         QTimer::singleShot(500, this, [this, roomPtr, headless]() {
             if (roomPtr) {
+                RoomThread *rt = roomPtr->getThread();
+                if (rt && rt->isRunning()) {
+                    QTimer *pollTimer = new QTimer(this);
+                    int *elapsedMs = new int(0);
+                    connect(pollTimer, &QTimer::timeout, this,
+                        [this, roomPtr, rt, pollTimer, elapsedMs, headless]() {
+                            *elapsedMs += 100;
+                            const bool finished = !rt->isRunning();
+                            if (finished || *elapsedMs >= 10000) {
+                                pollTimer->stop();
+                                pollTimer->deleteLater();
+                                delete elapsedMs;
+                                if (roomPtr) {
+                                    roomPtr->deleteLater();
+                                }
+                                if (headless) {
+                                    qDebug() << "Test completed. Exiting.";
+                                    qApp->quit();
+                                }
+                            }
+                        });
+                    pollTimer->start(100);
+                    return;
+                }
                 roomPtr->deleteLater();
             }
             if (headless) {
