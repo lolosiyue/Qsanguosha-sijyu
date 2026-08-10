@@ -52,6 +52,8 @@ public:
 
 protected:
     virtual void closeEvent(QCloseEvent *);
+    void resizeEvent(QResizeEvent *event) override;
+    void moveEvent(QMoveEvent *event) override;
 
 private:
     enum class MainPage {

@@ -151,4 +151,9 @@ void applyColorScheme(int scheme);
 // normal 则回到纯主题 palette。
 void applyVisualMode(const QString &mode);
 
+// 把当前 Config 状态格式化为 UTF-8 配置摘要,供 CrashHandler::setGameConfig
+// (Settings::init() 末尾调用,使崩溃上报始终带最新配置)。
+QByteArray buildGameConfigSummary();
+void stashGameConfigForCrash();
+
 #endif
