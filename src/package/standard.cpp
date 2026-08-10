@@ -801,7 +801,12 @@ public:
 
     int getExtra(const Player *target) const
     {
-        return target->getMark("ExtraBfMaxCards")+target->getMark("ExtraBfMaxCards-Clear");
+        int extra = target->getMark("ExtraBfMaxCards")+target->getMark("ExtraBfMaxCards-Clear");
+        foreach (const QString &mark, target->getMarkNames()) {
+            if (mark.startsWith("ExtraBfMaxCards_"))
+                extra += target->getMark(mark);
+        }
+        return extra;
     }
 };
 

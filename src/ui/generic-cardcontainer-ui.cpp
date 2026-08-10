@@ -812,9 +812,9 @@ void PlayerCardContainer::updateHandcardNum()
             }
         }
 
-        tooltipInfo << tr("手牌上限: %1").arg(maxCards);
+        tooltipInfo << Sanguosha->translate("UI_MC_HandMax").arg(maxCards);
         if (!hasFixedMaxCards) {
-            tooltipInfo << tr("基礎體力: %1").arg(qMax(limitBase, 0));
+            tooltipInfo << Sanguosha->translate("UI_MC_BaseHp").arg(qMax(limitBase, 0));
         }
         foreach (const MaxCardsSkill *mc_skill, Sanguosha->getMaxCardsSkills()) {
             if (mc_skill && mc_skill->objectName() == "gamerulemaxcards") {
@@ -826,22 +826,30 @@ void PlayerCardContainer::updateHandcardNum()
                         }
                         int val = m_player->getMark(mark_name);
                         if (val != 0) {
-                            QStringList parts = data.split("_");
-                            QString real_reason = parts.at(0);
-                            QString source_objname = parts.length() > 1 ? parts.at(1) : "";
-                            
-                            QString sign = val > 0 ? "+" : "";
-                            QString translatedReason = Sanguosha->translate(real_reason);
-                            
-                            QString source = tr("全局規則/系統");
-                            if (!source_objname.isEmpty()) {
-                                ClientPlayer *src_player = ClientInstance->getPlayer(source_objname);
-                                if (src_player) {
-                                    source = src_player->screenName();
+                            // reason 可能含 "_"，來源(玩家 objectName) 只在末段能解析為玩家時才拆分
+                            QString real_reason = data;
+                            QString source_objname;
+                            int last_sep = data.lastIndexOf('_');
+                            if (last_sep > 0) {
+                                QString candidate = data.mid(last_sep + 1);
+                                if (ClientInstance->getPlayer(candidate) != nullptr) {
+                                    source_objname = candidate;
+                                    real_reason = data.left(last_sep);
                                 }
                             }
 
-                            tooltipInfo << QString("%1: %2%3 (來源: %4)")
+                            QString sign = val > 0 ? "+" : "";
+                            QString translatedReason = Sanguosha->translate(real_reason);
+                            
+                            QString source = Sanguosha->translate("UI_MC_GlobalSource");
+                            if (!source_objname.isEmpty()) {
+                                ClientPlayer *src_player = ClientInstance->getPlayer(source_objname);
+                                if (src_player) {
+                                    source = src_player->getLogName();
+                                }
+                            }
+
+                            tooltipInfo << Sanguosha->translate("UI_MC_SkillEntry")
                                            .arg(translatedReason).arg(sign).arg(val).arg(source);
                         }
                     }
@@ -850,7 +858,7 @@ void PlayerCardContainer::updateHandcardNum()
                 int base_extra = m_player->getMark("ExtraBfMaxCards") + m_player->getMark("ExtraBfMaxCards-Clear");
                 if (base_extra != 0) {
                     QString sign = base_extra > 0 ? "+" : "";
-                    tooltipInfo << QString("其他額外效果: %1%2").arg(sign).arg(base_extra);
+                    tooltipInfo << Sanguosha->translate("UI_MC_OtherExtra").arg(sign).arg(base_extra);
                 }
                 break;
             }
@@ -863,21 +871,21 @@ void PlayerCardContainer::updateHandcardNum()
             QString skillName = Sanguosha->translate(parts[0]);
             QString valueStr  = parts.size() > 1 ? parts[1] : "";
             QString srcName   = parts.size() > 2 ? parts[2] : QString();
-            QString sourceDisplay = tr("自身/系統");
+            QString sourceDisplay = Sanguosha->translate("UI_MC_SelfSource");
 
             if (!srcName.isEmpty()) {
                 ClientPlayer *src_player = ClientInstance->getPlayer(srcName);
-                sourceDisplay = src_player ? src_player->screenName() : srcName;
+                sourceDisplay = src_player ? src_player->getLogName() : srcName;
             }
 
             if (valueStr.startsWith("F")) {
                 int fixed = valueStr.mid(1).toInt();
-                tooltipInfo << QString("%1: 固定為 %2 (來源: %3)")
+                tooltipInfo << Sanguosha->translate("UI_MC_FixedEntry")
                                .arg(skillName).arg(fixed).arg(sourceDisplay);
             } else {
                 int extra = valueStr.toInt();
                 QString sign = extra > 0 ? "+" : "";
-                tooltipInfo << QString("%1: %2%3 (來源: %4)")
+                tooltipInfo << Sanguosha->translate("UI_MC_SkillEntry")
                                .arg(skillName).arg(sign).arg(extra).arg(sourceDisplay);
             }
         }
