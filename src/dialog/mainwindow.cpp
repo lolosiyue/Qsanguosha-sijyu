@@ -21,6 +21,7 @@
 #include "settings.h"
 #include "button.h"
 #include "homecontroller.h"
+#include "crashhandler.h"
 #ifdef AUDIO_SUPPORT
 #include "audio.h"
 #endif
@@ -110,6 +111,9 @@ MainWindow::MainWindow(QWidget *parent)
 	ui->setupUi(this);
 
 	setWindowTitle(tr("Sanguosha")+" 岁末 "+Sanguosha->getVersionNumber());
+
+	// 啟動即在大廳,登記給 crash handler(進入對局/回放時由 RoomScene 更新)
+	CrashHandler::setGamePhase(CrashHandler::PhaseLobby);
 
 	scene = nullptr;
 
@@ -321,12 +325,38 @@ void MainWindow::restoreFromConfig()
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+	// 主視窗被關 = 正常退出。此後退出清理階段(Engine 析構、Lua 關閉、
+	// __gc 終結器經 SWIG 回調 C++ 物件)出的崩潰不再上報 —— 玩家已主動退出。
+	CrashHandler::beginShutdown();
+
 	Config.setValue("WindowSize", size());
 	Config.setValue("WindowPosition", pos());
 	Config.setValue("WindowState", (int)windowState());
 
 	QMainWindow::closeEvent(event);
 	qApp->quit();
+}
+
+// 把當前主視窗幾何與所在螢幕登記給 crash handler,崩潰摘要裡用得到。
+static void reportWindowState(QWidget *w)
+{
+	QRect g = w->geometry();
+	QScreen *scr = QGuiApplication::screenAt(g.center());
+	QString name = scr ? scr->name() : QString();
+	CrashHandler::setWindowState(g.x(), g.y(), g.width(), g.height(),
+		(const wchar_t *)name.utf16());
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event)
+{
+	QMainWindow::resizeEvent(event);
+	reportWindowState(this);
+}
+
+void MainWindow::moveEvent(QMoveEvent *event)
+{
+	QMainWindow::moveEvent(event);
+	reportWindowState(this);
 }
 
 MainWindow::~MainWindow()
