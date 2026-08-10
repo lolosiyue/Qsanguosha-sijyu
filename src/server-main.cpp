@@ -5,6 +5,7 @@
 #include "core/engine.h"
 #include "core/settings.h"
 #include "server/server-core.h"
+#include "crashhandler.h"
 
 // 自動化測試支援:
 //   --game-mode <id>  覆寫 config.ini 的 GameMode (10p / 20p / 02_1v1 / 05p ...)
@@ -30,6 +31,8 @@ static void parseArguments()
 
 int main(int argc, char **argv)
 {
+    CrashHandler::install();
+
     QCoreApplication app(argc, argv);
     QString error;
     if (!EngineBootstrap::initialize(false, &error)) {
@@ -37,6 +40,8 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    // Engine 已就緒,把真實版本號補登記給 crash handler(install() 時拿不到)
+    CrashHandler::setVersion(Sanguosha->getVersionNumber().toUtf8().constData());
     Config.init();
     parseArguments();
     Server::isHeadlessMode = true;
@@ -65,6 +70,7 @@ int main(int argc, char **argv)
         out << message << Qt::endl;
 
     const int result = app.exec();
+    CrashHandler::beginShutdown(); // 正常關閉流程,退出清理階段的崩潰不再上報
     EngineBootstrap::shutdown();
     return result;
 }

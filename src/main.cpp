@@ -28,38 +28,18 @@
 #include "android_assets.h"
 #endif
 
-#if defined(WIN32) && defined(USE_BREAKPAD)
-#include <direct.h>
-#include "breakpad/client/windows/handler/exception_handler.h"
-
-using namespace google_breakpad;
-
-static bool callback(const wchar_t *dump_path, const wchar_t *id, void *, EXCEPTION_POINTERS *, MDRawAssertionInfo *, bool succeeded){
-    if (succeeded)
-        qWarning("Dump file created in %s, dump guid is %ws\n", dump_path, id);
-    else
-        qWarning("Dump failed\n");
-    return succeeded;
-}
-
-// dump 目錄固定在 exe 旁的 dmp\，避免受啟動時工作目錄影響
-static std::wstring dumpDirectory(){
-    wchar_t buf[MAX_PATH];
-    DWORD len = GetModuleFileNameW(NULL, buf, MAX_PATH);
-    std::wstring dir(buf, len);
-    size_t pos = dir.find_last_of(L"\\/");
-    if (pos != std::wstring::npos)
-        dir.resize(pos);
-    return dir + L"\\dmp";
-}
+#include "crashhandler.h"
 
 int main(int argc, char *argv[]) {
-    _wmkdir(dumpDirectory().c_str());
-    ExceptionHandler eh(dumpDirectory(), nullptr, callback, nullptr, ExceptionHandler::HANDLER_ALL);
-#else
-int main(int argc, char *argv[])
-{
-#endif
+    CrashHandler::install();
+
+    // 隱藏入口:-crashtest <type> 觸發一次崩潰用於驗證 crash handler
+    if (argc > 2 && strcmp(argv[1], "-crashtest") == 0) {
+        new QCoreApplication(argc, argv); // selfTest 需要 CWD
+        CrashHandler::selfTest(argv[2]);
+        return 0; // 正常情況不會執行到這裡
+    }
+
 
     // Qt 6 is High-DPI aware by default. Preserve fractional per-screen scale
     // factors so moving the window between monitors does not snap the UI size.
@@ -168,6 +148,8 @@ int main(int argc, char *argv[])
         Server::writeHeadlessLog("ERROR: EngineBootstrap::initialize failed");
         return 1;
     }
+    // Engine 已就緒,把真實版本號補登記給 crash handler(install() 時拿不到)
+    CrashHandler::setVersion(Sanguosha->getVersionNumber().toUtf8().constData());
 #ifdef AUDIO_SUPPORT
     QObject::connect(Sanguosha, &Engine::audioEffectRequested,
                      [](const QString &filename, bool superpose) { Audio::play(filename, superpose); });
@@ -298,7 +280,9 @@ int main(int argc, char *argv[])
         }
         lua_settop(L, topBefore);
 
-        return qApp->exec();
+        const int rc = qApp->exec();
+        CrashHandler::beginShutdown(); // 正常關閉流程,退出清理階段的崩潰不再上報
+        return rc;
     }
 
     bool hasTestScenarioArgument = qApp->arguments().contains("--test-scenario");
@@ -320,7 +304,9 @@ int main(int argc, char *argv[])
             printf("Starting failed!\n");
         }
 
-        return qApp->exec();
+        const int rc = qApp->exec();
+        CrashHandler::beginShutdown(); // 正常關閉流程,退出清理階段的崩潰不再上報
+        return rc;
     } else if (qApp->arguments().contains("--headless") && !hasTestScenarioArgument) {
         // 自動化測試: 以指定模式與局數執行 headless 壓力測試
         // 用法: QSanguosha.exe --headless [--game-mode 10p] [--games 100]
@@ -374,7 +360,9 @@ int main(int argc, char *argv[])
         qDebug() << ">>> Headless Mode: Starting stress test with"
                  << Server::headlessGameLimit << "games, mode" << Config.GameMode.mode_id << "<<<";
         QTimer::singleShot(0, server, &Server::startHeadlessGame);
-        return qApp->exec();
+        const int rc = qApp->exec();
+        CrashHandler::beginShutdown(); // 正常關閉流程,退出清理階段的崩潰不再上報
+        return rc;
     }
 
     auto getTestScenarioArg = []() -> QString {
@@ -437,7 +425,9 @@ int main(int argc, char *argv[])
         QTimer::singleShot(0, [server, testScenario, headless]() {
             server->startTestGame(testScenario, headless);
         });
-        return qApp->exec();
+        const int rc = qApp->exec();
+        CrashHandler::beginShutdown(); // 正常關閉流程,退出清理階段的崩潰不再上報
+        return rc;
     }
 
     QFile file("qss/sanguosha.qss");
@@ -514,5 +504,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    return qApp->exec();
+    const int rc = qApp->exec();
+    CrashHandler::beginShutdown(); // 正常關閉流程,退出清理階段的崩潰不再上報
+    return rc;
 }
