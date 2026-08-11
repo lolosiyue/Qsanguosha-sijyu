@@ -280,7 +280,7 @@ jobs:
 
   headless:
     name: Headless smoke (${{ matrix.mode }})
-    if: ${{ false }}
+    continue-on-error: true
     needs: build
     runs-on: windows-2022
     timeout-minutes: 75
