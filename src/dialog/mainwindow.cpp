@@ -412,7 +412,6 @@ void MainWindow::checkVersion(const QString &server_version, const QString &serv
 		Client *client = qobject_cast<Client *>(sender());
 		if (client) {
 			client->signup();
-			connect(client, SIGNAL(server_connected()), SLOT(enterRoom()));
 		}
 		return;
 	}
@@ -455,6 +454,8 @@ void MainWindow::startConnection()
 	Client *client = new Client(this);
 
 	connect(client, SIGNAL(version_checked(QString, QString, int)), SLOT(checkVersion(QString, QString, int)));
+	if (Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty())
+		connect(client, SIGNAL(server_connected()), SLOT(enterRoom()));
 	connect(client, SIGNAL(error_message(QString)), SLOT(networkError(QString)));
 }
 
