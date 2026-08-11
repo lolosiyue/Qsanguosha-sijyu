@@ -175,6 +175,11 @@ void RoleAssignDialog::moveDown()
 
 void RoomScene::startAssign()
 {
+    if (Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty()) {
+        // 自動化模式略過模態對話框，沿用拒絕時的預設身份回覆。
+        ClientInstance->replyToServer(S_COMMAND_CHOOSE_ROLE);
+        return;
+    }
     RoleAssignDialog *dialog = new RoleAssignDialog(main_window);
     dialog->exec();
 }

@@ -1,0 +1,2 @@
+swig==4.3.1 \
+    --hash=sha256:efec16327029f682f649a26da726bb0305be8800bd0f1fa3e81bf0769cf5b476
