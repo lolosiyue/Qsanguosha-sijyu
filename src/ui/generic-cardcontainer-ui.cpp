@@ -1075,6 +1075,8 @@ void PlayerCardContainer::_updateEquips()
     QStringList off_skills = m_player->getTag("UI_Off_Skills").toStringList();
     int def_dist = m_player->getTag("UI_Def_Dist").toInt();
     QStringList def_skills = m_player->getTag("UI_Def_Skills").toStringList();
+    // PHOTO 馬位窄：字級依 horsePointArea 縮放；Dashboard 高度較大時接近原 13
+    const int distFontPx = qBound(8, _m_layout->m_horsePointArea.height(), 14);
 
     for (int i = 0; i < S_EQUIP_AREA_LENGTH; i++) {
         bool is_def = (i == 2);
@@ -1133,9 +1135,9 @@ void PlayerCardContainer::_updateEquips()
                 painter.setRenderHint(QPainter::Antialiasing);
                 QString skill_val_str = (skill_dist > 0 ? "+" : "") + QString::number(skill_dist);
                 QRect pointArea = (is_def || is_off) ? _m_layout->m_horsePointArea : _m_layout->m_equipPointArea;
-                QRect overlayArea(0, 0, pointArea.left() - 3, pixmap.height());
+                QRect overlayArea(0, 0, qMax(0, pointArea.left() - 3), pixmap.height());
                 QFont boldFont;
-                boldFont.setPointSize(13);
+                boldFont.setPixelSize(distFontPx);
                 boldFont.setBold(true);
                 painter.setFont(boldFont);
                 QColor mainColor = (skill_dist > 0) ? QColor(255, 220, 0) : QColor(255, 80, 80);
@@ -1149,9 +1151,11 @@ void PlayerCardContainer::_updateEquips()
 
                 QStringList translated_skills;
                 foreach (QString sk, skills) translated_skills << Sanguosha->translate(sk);
-                
+
                 if (!tooltip.isEmpty()) tooltip += "<br/><hr/>";
-                tooltip += QString("<b>附加技能修正：</b>%1 (%2)").arg(translated_skills.join("、")).arg(skill_val_str);
+                tooltip += Sanguosha->translate("UI_DIST_SkillMod")
+                               .arg(translated_skills.join("、"))
+                               .arg(skill_val_str);
             }
 
             _m_equipLabel[i]->setPixmap(pixmap);
@@ -1171,7 +1175,7 @@ void PlayerCardContainer::_updateEquips()
                 QString val_str = (skill_dist > 0 ? "+" : "") + QString::number(skill_dist);
                 QRect textArea(0, 0, empty_pixmap.width(), empty_pixmap.height());
                 QFont boldFont;
-                boldFont.setPointSize(13);
+                boldFont.setPixelSize(distFontPx);
                 boldFont.setBold(true);
                 painter.setFont(boldFont);
                 QColor mainColor = (skill_dist > 0) ? QColor(255, 220, 0) : QColor(255, 80, 80);
@@ -1185,14 +1189,18 @@ void PlayerCardContainer::_updateEquips()
 
                 _m_equipLabel[i]->setPixmap(empty_pixmap);
                 _m_equipRegions[i]->setPos(_m_layout->m_equipAreas[i].topLeft());
-                
+
                 QStringList translated_skills;
                 foreach (QString sk, skills) translated_skills << Sanguosha->translate(sk);
-                
-                QString empty_tooltip = QString("<b>【%1】</b><br/>%2")
-                                            .arg(translated_skills.join("、"))
-                                            .arg(is_def ? tr("防禦距離 %1").arg(val_str) : tr("進攻距離 %1").arg(val_str));
-                
+
+                const QString distLine = is_def
+                    ? Sanguosha->translate("UI_DIST_Defend").arg(val_str)
+                    : Sanguosha->translate("UI_DIST_Offense").arg(val_str);
+                QString empty_tooltip = QString("<b>%1</b><br/>%2")
+                                            .arg(Sanguosha->translate("UI_DIST_SkillTitle")
+                                                     .arg(translated_skills.join("、")))
+                                            .arg(distLine);
+
                 _m_equipRegions[i]->setToolTip(empty_tooltip);
                 _m_equipRegions[i]->setOpacity(1.0);
                 _m_equipRegions[i]->show();
