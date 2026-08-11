@@ -45,6 +45,18 @@ struct EasyTextItem {
         : text(t), audioPath(audio), type(tp) {}
 };
 
+// UI tooltip 用：單一技能對某目標的數值貢獻（可含實際 holder）
+struct SkillUIContribution {
+    QString holderName; // 空 = System／無 holder → client 顯示「自身/系统」
+    int value;
+    bool isFixed;
+
+    SkillUIContribution()
+        : value(0), isFixed(false) {}
+    SkillUIContribution(const QString &holder, int v, bool fixed)
+        : holderName(holder), value(v), isFixed(fixed) {}
+};
+
 class Engine : public QObject
 {
     Q_OBJECT
@@ -187,6 +199,10 @@ public:
     const CardLimitSkill *isCardLimited(const Player *player, const Card *card, Card::HandlingMethod method, bool isHandcard = false) const;
     int correctDistance(const Player *from, const Player *to, bool fixed = false) const;
     int correctMaxCards(const Player *target, bool fixed = false) const;
+    // 單一距離技能貢獻（V1 getCorrect／V2 evaluateCorrectSkill）；供 calculateUITooltips
+    int contributionOfDistanceSkill(const DistanceSkill *skill, const Player *from, const Player *to, bool fixed = false) const;
+    // 單一手牌上限技能貢獻列表（依實際 holder 拆條；fixed 優先於 extra）
+    QList<SkillUIContribution> listMaxCardsSkillContributions(const MaxCardsSkill *skill, const Player *target) const;
     int correctCardTarget(const TargetModSkill::ModType type, const Player *from, const Card *card, const Player *to = nullptr) const;
     bool hasResidueUnlimited(const Player *from, const Card *card, const Player *to = nullptr) const;
     bool correctSkillValidity(const Player *player, const Skill *skill) const;
