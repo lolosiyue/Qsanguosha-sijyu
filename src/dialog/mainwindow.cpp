@@ -454,8 +454,21 @@ void MainWindow::startConnection()
 	Client *client = new Client(this);
 
 	connect(client, SIGNAL(version_checked(QString, QString, int)), SLOT(checkVersion(QString, QString, int)));
-	if (Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty())
+	if (Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty()) {
+		QFile diag("client_autotest_diag.log");
+		if (diag.open(QIODevice::Append | QIODevice::Text)) {
+			QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
+				<< " startConnection: server_connected hook installed\n";
+		}
+		connect(client, &Client::server_connected, this, []() {
+			QFile diag("client_autotest_diag.log");
+			if (diag.open(QIODevice::Append | QIODevice::Text)) {
+				QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
+					<< " server_connected: emitted\n";
+			}
+		});
 		connect(client, SIGNAL(server_connected()), SLOT(enterRoom()));
+	}
 	connect(client, SIGNAL(error_message(QString)), SLOT(networkError(QString)));
 }
 
@@ -499,6 +512,14 @@ void BackLoader::preload()
 
 void MainWindow::enterRoom()
 {
+	if (Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty()) {
+		QFile diag("client_autotest_diag.log");
+		if (diag.open(QIODevice::Append | QIODevice::Text)) {
+			QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
+				<< " enterRoom: begin\n";
+		}
+	}
+
 	if (!Config.HistoryIPs.contains(Config.HostAddress)) {
 		Config.HistoryIPs << Config.HostAddress;
 		Config.HistoryIPs.sort();
@@ -512,6 +533,13 @@ void MainWindow::enterRoom()
 	ui->actionReturn_to_Main_Menu->setEnabled(false);
 
 	RoomScene *room_scene = new RoomScene(this);
+	if (Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty()) {
+		QFile diag("client_autotest_diag.log");
+		if (diag.open(QIODevice::Append | QIODevice::Text)) {
+			QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
+				<< " enterRoom: RoomScene constructed\n";
+		}
+	}
 	ui->actionView_Discarded->setEnabled(true);
 	ui->actionView_distance->setEnabled(true);
 	ui->actionView_Maxcards->setEnabled(true);
