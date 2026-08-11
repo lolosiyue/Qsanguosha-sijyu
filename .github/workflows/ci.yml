@@ -412,6 +412,8 @@ jobs:
             artifacts/autotest/**
             dmp/**
             record/**
+            client_autotest_diag.log
+            release/client_autotest_diag.log
             release/**/*.dmp
             release/dmp/**
             release/record/**
