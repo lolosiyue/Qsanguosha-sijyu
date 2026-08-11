@@ -454,19 +454,25 @@ void MainWindow::startConnection()
 	Client *client = new Client(this);
 
 	connect(client, SIGNAL(version_checked(QString, QString, int)), SLOT(checkVersion(QString, QString, int)));
-	if (Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty()) {
+	if (Config.AutoAddRobots) {
 		QFile diag("client_autotest_diag.log");
 		if (diag.open(QIODevice::Append | QIODevice::Text)) {
 			QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
-				<< " startConnection: server_connected hook installed\n";
+				<< " startConnection: owner hook installed\n";
 		}
-		connect(client, &Client::server_connected, this, []() {
+		connect(Self, &Player::owner_changed, client, [client](bool owner) {
+			if (!owner)
+				return;
+
 			QFile diag("client_autotest_diag.log");
 			if (diag.open(QIODevice::Append | QIODevice::Text)) {
 				QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
-					<< " server_connected: emitted\n";
+					<< " owner ready: trust and fill robots\n";
 			}
+			client->trust();
+			client->addRobot(-1);
 		});
+	} else if (!Config.AutoPickGeneral.isEmpty()) {
 		connect(client, SIGNAL(server_connected()), SLOT(enterRoom()));
 	}
 	connect(client, SIGNAL(error_message(QString)), SLOT(networkError(QString)));
@@ -512,14 +518,6 @@ void BackLoader::preload()
 
 void MainWindow::enterRoom()
 {
-	if (Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty()) {
-		QFile diag("client_autotest_diag.log");
-		if (diag.open(QIODevice::Append | QIODevice::Text)) {
-			QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
-				<< " enterRoom: begin\n";
-		}
-	}
-
 	if (!Config.HistoryIPs.contains(Config.HostAddress)) {
 		Config.HistoryIPs << Config.HostAddress;
 		Config.HistoryIPs.sort();
@@ -533,13 +531,6 @@ void MainWindow::enterRoom()
 	ui->actionReturn_to_Main_Menu->setEnabled(false);
 
 	RoomScene *room_scene = new RoomScene(this);
-	if (Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty()) {
-		QFile diag("client_autotest_diag.log");
-		if (diag.open(QIODevice::Append | QIODevice::Text)) {
-			QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
-				<< " enterRoom: RoomScene constructed\n";
-		}
-	}
 	ui->actionView_Discarded->setEnabled(true);
 	ui->actionView_distance->setEnabled(true);
 	ui->actionView_Maxcards->setEnabled(true);
