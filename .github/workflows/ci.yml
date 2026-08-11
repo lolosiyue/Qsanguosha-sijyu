@@ -2,9 +2,19 @@ name: Windows layered CI
 
 on:
   pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - 'docs/**'
+      - 'memory/**'
+      - '*.md'
   push:
     branches:
       - main
+    paths-ignore:
+      - 'docs/**'
+      - 'memory/**'
+      - '*.md'
   workflow_dispatch:
 
 permissions:
@@ -280,6 +290,7 @@ jobs:
 
   headless:
     name: Headless smoke (${{ matrix.mode }})
+    if: github.event_name != 'push'
     continue-on-error: true
     needs: build
     runs-on: windows-2022
