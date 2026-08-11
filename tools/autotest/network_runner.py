@@ -19,6 +19,7 @@ import shutil
 import socket
 import sys
 import time
+from typing import Final
 
 from runner_common import (MARK_GAME_OVER, MARK_GAME_START, common_args,
                            describe_exit, find_exe, is_crash_code, kill_pid,
@@ -30,7 +31,9 @@ SERVER_EXE = "qsanguosha_server.exe"
 CLIENT_EXE = "QSanguosha.exe"
 SERVER_PORT = 9527  # 與 config.ini ServerPort 一致
 SERVER_STARTUP_TIMEOUT = 60   # 等 server 就緒 (秒)
-GAME_TIMEOUT = 600            # 單局上限 (秒)
+GAME_TIMEOUT: Final[int] = int(
+    os.environ.get("QSAN_NETWORK_GAME_TIMEOUT", "3600")
+)  # 可由環境變數覆寫的單局有界上限 (秒)
 CLIENT_JOIN_TIMEOUT = 120     # 等 client 連上並開局 (秒)
 
 
@@ -160,19 +163,21 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                 CLIENT_JOIN_TIMEOUT, marker_offset, server_proc=proc)
             ccode = None
             if start_line == "SERVER_DIED":
-                # 自動化測試: server 閃退 — 重啟後重試本局
+                # 自動化測試: server 開局前閃退必須記為失敗，再重啟供後續局使用。
                 kill_pid(client.pid)
                 close_proc(client)
                 ctx = tail_lines(marker_file, 20)
                 for line in ctx:
                     print("          %s" % line)
+                results.append({"run": run_id, "ok": False,
+                                "note": "server crashed before game start",
+                                "exit_name": "server"})
                 proc = restart_server(args, exe_root, workdir, mode, proc,
                                       marker_file, server_log, server_exe,
-                                      "server 閃退, 重啟後重試本局")
+                                      "server 開局前閃退, 重啟後繼續下一局")
                 if proc is None:
                     break
                 marker_offset = 0
-                run_id -= 1  # 本局重試
                 time.sleep(1)
                 continue
             if start_line is None:
@@ -279,6 +284,9 @@ def main():
     if not modes:
         print("錯誤: 沒有指定模式", file=sys.stderr)
         return 1
+    if args.runs < 1:
+        print("錯誤: --runs 必須大於 0", file=sys.stderr)
+        return 1
 
     exe_root = args.exe_root
     workdir = resolve_workdir(exe_root)
@@ -302,9 +310,11 @@ def main():
         for r in all_results
     ])
     ok = sum(1 for r in all_results if r.get("ok"))
+    expected = len(modes) * args.runs
     print("結果: %s" % csv_path)
-    print("總計: %d/%d 通過" % (ok, len(all_results)))
-    return 0 if ok == len(all_results) else 1
+    print("總計: %d/%d 通過" % (ok, expected))
+    # 缺少任何預期局數也必須失敗，避免空結果被 0 == 0 誤判為成功。
+    return 0 if len(all_results) == expected and ok == expected else 1
 
 
 if __name__ == "__main__":

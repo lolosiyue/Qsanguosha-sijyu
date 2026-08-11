@@ -5,9 +5,7 @@ AI_RULES.md
 CLAUDE.md
 structure.md
 lua/ai/
+extensions/
 builds/cmake-vs2019/
 CMakeUserPresets.json
-qml/home/assets/
-qml/home/nav/
-qml/home/icons/
 __pycache__/

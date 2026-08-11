@@ -166,8 +166,8 @@ void UiSettings::init()
         SmallFont.setFamily(font_family);
         TinyFont.setFamily(font_family);
     } else {
-        QMessageBox::warning(nullptr, QObject::tr("Warning"),
-            QObject::tr("Font file %1 could not be loaded!").arg(font_path));
+        // 自動化測試/無 font 目錄環境: 改非阻塞警告, 避免 QMessageBox 卡死 client
+        qWarning("Font file %s could not be loaded; falling back to system font", qPrintable(font_path));
     }
 
     BigFont.setPixelSize(GetConfigFromLuaState(lua, "big_font").toInt());
