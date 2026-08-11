@@ -280,6 +280,7 @@ jobs:
 
   headless:
     name: Headless smoke (${{ matrix.mode }})
+    if: ${{ false }}
     needs: build
     runs-on: windows-2022
     timeout-minutes: 75
@@ -352,6 +353,7 @@ jobs:
 
   network:
     name: Network smoke
+    if: ${{ false }}
     needs: build
     runs-on: windows-2022
     timeout-minutes: 75

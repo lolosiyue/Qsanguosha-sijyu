@@ -412,6 +412,7 @@ void MainWindow::checkVersion(const QString &server_version, const QString &serv
 		Client *client = qobject_cast<Client *>(sender());
 		if (client) {
 			client->signup();
+			connect(client, SIGNAL(server_connected()), SLOT(enterRoom()));
 		}
 		return;
 	}
@@ -454,27 +455,6 @@ void MainWindow::startConnection()
 	Client *client = new Client(this);
 
 	connect(client, SIGNAL(version_checked(QString, QString, int)), SLOT(checkVersion(QString, QString, int)));
-	if (Config.AutoAddRobots) {
-		QFile diag("client_autotest_diag.log");
-		if (diag.open(QIODevice::Append | QIODevice::Text)) {
-			QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
-				<< " startConnection: owner hook installed\n";
-		}
-		connect(Self, &Player::owner_changed, client, [client](bool owner) {
-			if (!owner)
-				return;
-
-			QFile diag("client_autotest_diag.log");
-			if (diag.open(QIODevice::Append | QIODevice::Text)) {
-				QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
-					<< " owner ready: trust and fill robots\n";
-			}
-			client->trust();
-			client->addRobot(-1);
-		});
-	} else if (!Config.AutoPickGeneral.isEmpty()) {
-		connect(client, SIGNAL(server_connected()), SLOT(enterRoom()));
-	}
 	connect(client, SIGNAL(error_message(QString)), SLOT(networkError(QString)));
 }
 
