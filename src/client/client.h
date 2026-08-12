@@ -131,6 +131,7 @@ public:
     void loseCards(const QVariant &);
     void getCards(const QVariant &);
     void updateProperty(const QVariant &);
+    void updatePlayerUIState(const QVariant &);
     void killPlayer(const QVariant &player_arg);
     void revivePlayer(const QVariant &player_arg);
     void warn(const QVariant &reason_json);

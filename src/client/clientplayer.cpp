@@ -99,11 +99,17 @@ void ClientPlayer::removeCard(int id, Place place)
 
 int ClientPlayer::getMaxCards() const
 {
-    QVariant handMaxVar = getTag("UI_Hand_Max");
-    if (handMaxVar.isValid()) {
-        return handMaxVar.toInt();
-    }
-    return qMax(getHp(), 0);
+    return m_uiState.handMax;
+}
+
+const PlayerUIState &ClientPlayer::uiState() const
+{
+    return m_uiState;
+}
+
+void ClientPlayer::setUIState(const PlayerUIState &state)
+{
+    m_uiState = state;
 }
 
 bool ClientPlayer::isLastHandCard(const Card *card, bool contain) const
