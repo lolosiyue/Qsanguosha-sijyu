@@ -3,12 +3,11 @@
 
 //#include "card.h"
 #include "skill.h"
+#include "skill-registry.h"
 #include "engine-runtime-context.h"
 #include "util.h"
 #include "json.h"
-#include <QPointer>
 #include <QMutex>
-#include <QReadWriteLock>
 #include <QThread>
 
 // Recursive mutex with yield/restore support.
@@ -199,7 +198,7 @@ public:
     const CardLimitSkill *isCardLimited(const Player *player, const Card *card, Card::HandlingMethod method, bool isHandcard = false) const;
     int correctDistance(const Player *from, const Player *to, bool fixed = false) const;
     int correctMaxCards(const Player *target, bool fixed = false) const;
-    // 單一距離技能貢獻（V1 getCorrect／V2 evaluateCorrectSkill）；供 calculateUITooltips
+    // 單一距離技能貢獻（V1 getCorrect／V2 evaluateCorrectSkill）；供 refreshUIState
     int contributionOfDistanceSkill(const DistanceSkill *skill, const Player *from, const Player *to, bool fixed = false) const;
     // 單一手牌上限技能貢獻列表（依實際 holder 拆條；fixed 優先於 extra）
     QList<SkillUIContribution> listMaxCardsSkillContributions(const MaxCardsSkill *skill, const Player *target) const;
@@ -243,22 +242,11 @@ private:
     void godLottery(QStringList &) const;
 	void godLottery(QSet<QString> &) const;
     QList<const Skill *> getSafeSkills() const;
-    mutable QReadWriteLock m_rwLock;
     QHash<QString, QString> translations, engine_translations;
     QHash<QString, const General *> generals, available_generals;
     QHash<QString, const QMetaObject *> metaobjects;
     //QHash<QString, QString> className2objectName;
-    QHash<QString, QPointer<Skill>> skills;
-    QList<QPointer<Skill>> m_prohibitSkills;
-    QList<QPointer<Skill>> m_distanceSkills;
-    QList<QPointer<Skill>> m_maxCardsSkills;
-    QList<QPointer<Skill>> m_targetModSkills;
-    QList<QPointer<Skill>> m_invaliditySkills;
-    QList<QPointer<Skill>> m_globalTriggerSkills;
-    QList<QPointer<Skill>> m_attackRangeSkills;
-    QList<QPointer<Skill>> m_viewAsEquipSkills;
-    QList<QPointer<Skill>> m_cardLimitSkills;
-    QList<QPointer<Skill>> m_prohibitPindianSkills;
+    SkillRegistry m_skillRegistry;
     QHash<QThread *, EngineRuntimeContext *> m_rooms;
     mutable QMutex m_mutex;
     QMap<QString, GameModeStruct> modes;

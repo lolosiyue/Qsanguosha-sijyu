@@ -9,7 +9,9 @@
 #include "room.h"
 #include "server-info.h"
 #include "serverplayer.h"
+#include "skill.h"
 #include "skill-instance-utils.h"
+#include "skill-registry.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -55,6 +57,55 @@ public:
     bool viewFilter(const Card *) const override { return true; }
     const Card *viewAs(const Card *originalCard) const override { return originalCard; }
 };
+
+class TestRegistryTriggerSkill : public TriggerSkill
+{
+public:
+    TestRegistryTriggerSkill()
+        : TriggerSkill(QStringLiteral("test-registry-trigger"))
+    {
+    }
+
+    bool trigger(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override { return false; }
+};
+
+static bool skillRegistryPreservesLegacyBehavior()
+{
+    SkillRegistry registry;
+    DistanceSkill distance(QStringLiteral("test-registry-shared"));
+    MaxCardsSkill maxCards(QStringLiteral("test-registry-shared"));
+    TestRegistryTriggerSkill trigger;
+
+    if (registry.add(&distance)
+        || registry.find(QStringLiteral("test-registry-shared#7")) != &distance
+        || !registry.distanceSkills().contains(&distance))
+        return false;
+
+    if (registry.add(&trigger)
+        || registry.triggerSkill(QStringLiteral("test-registry-trigger#3")) != &trigger)
+        return false;
+
+    if (!registry.add(&maxCards)
+        || registry.find(QStringLiteral("test-registry-shared")) != &maxCards
+        || registry.distanceSkills().contains(&distance)
+        || !registry.maxCardsSkills().contains(&maxCards))
+        return false;
+
+    return registry.names().size() == 2 && registry.allSkills().size() == 2;
+}
+
+static bool engineLegacySkillApisDelegateToRegistry()
+{
+    DistanceSkill distance(QStringLiteral("test-engine-registry-distance"));
+    MaxCardsSkill maxCards(QStringLiteral("test-engine-registry-max-cards"));
+    TestRegistryTriggerSkill trigger;
+    Sanguosha->addSkills(QList<const Skill *>() << &distance << &maxCards << &trigger);
+
+    return Sanguosha->getSkill(QStringLiteral("test-engine-registry-distance#2")) == &distance
+        && Sanguosha->getTriggerSkill(QStringLiteral("test-registry-trigger#3")) == &trigger
+        && Sanguosha->getDistanceSkills().contains(&distance)
+        && Sanguosha->getMaxCardsSkills().contains(&maxCards);
+}
 
 static bool discardSkillSelectsCardsForExplicitClientPlayerContext()
 {
@@ -160,6 +211,12 @@ int main(int argc, char **argv)
     const int physicalResponseResult = physicalResponseIgnoresStaleHelperActivation();
     if (physicalResponseResult != 0)
         return 70 + physicalResponseResult;
+
+    if (!skillRegistryPreservesLegacyBehavior())
+        return 80;
+
+    if (!engineLegacySkillApisDelegateToRegistry())
+        return 90;
 
     qInfo() << "qsanguosha_engine smoke passed";
     return 0;
