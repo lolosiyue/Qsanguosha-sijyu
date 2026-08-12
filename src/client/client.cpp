@@ -11,6 +11,7 @@
 #include "clientstruct.h"
 #include "wrapped-card.h"
 #include "skill-instance-utils.h"
+#include "protocol/state/player-ui-state.h"
 #include <QSet>
 #include <QJsonDocument>
 
@@ -82,6 +83,7 @@ Client::Client(QObject *parent, const QString &filename)
 	m_callbacks[S_COMMAND_SHOW_CARD] = &Client::showCard;
 	m_callbacks[S_COMMAND_SHOW_VIRTUAL_CARD] = &Client::showVirtualCard;
 	m_callbacks[S_COMMAND_CARD_PROVENANCE] = &Client::cardProvenance;
+	m_callbacks[S_COMMAND_UPDATE_PLAYER_UI_STATE] = &Client::updatePlayerUIState;
 	m_callbacks[S_COMMAND_UPDATE_CARD] = &Client::updateCard;
 	m_callbacks[S_COMMAND_SET_MARK] = &Client::setMark;
 	m_callbacks[S_COMMAND_LOG_SKILL] = &Client::log;
@@ -515,12 +517,6 @@ void Client::updateProperty(const QVariant &arg)
 			} else {
 				player->setTag(tagKey, QVariant(rawVal));
 			}
-			if (tagKey.startsWith("UI_")) {
-				emit player->state_changed();
-				if (tagKey == "UI_Hand_Max") {
-					emit update_handcards(args[0].toString());
-				}
-			}
 			return;
 		}
 		if (propName == "general_pile_changed") {
@@ -540,6 +536,25 @@ void Client::updateProperty(const QVariant &arg)
             emit player->state_changed();
         }
 	}
+}
+
+void Client::updatePlayerUIState(const QVariant &value)
+{
+	PlayerUIStateMessage message;
+	if (!message.tryParse(value)) {
+		qWarning() << "Invalid PlayerUIStateMessage";
+		return;
+	}
+
+	ClientPlayer *player = getPlayer(message.playerName);
+	if (!player || player->uiState() == message.state)
+		return;
+
+	const int previousHandMax = player->uiState().handMax;
+	player->setUIState(message.state);
+	emit player->state_changed();
+	if (previousHandMax != message.state.handMax)
+		emit update_handcards(message.playerName);
 }
 
 void Client::removePlayer(const QVariant &player_name)

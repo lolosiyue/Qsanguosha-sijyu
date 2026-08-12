@@ -93,6 +93,8 @@ add_library(qsanguosha_engine STATIC
     src/core/player-self.cpp
     src/core/player.h
     src/core/protocol.cpp
+    src/core/protocol/state/player-ui-state.cpp
+    src/core/protocol/state/player-ui-state.h
     src/core/record-buffer.cpp
     src/core/record-buffer.h
     src/core/room-state.cpp
@@ -227,6 +229,16 @@ if(BUILD_TESTING)
     )
 
     add_test(NAME qsanguosha_card_parse_regex_test COMMAND qsanguosha_card_parse_regex_test)
+
+    add_executable(qsanguosha_player_ui_state_test
+        tests/player-ui-state-test.cpp
+        src/core/protocol/state/player-ui-state.cpp
+    )
+    target_include_directories(qsanguosha_player_ui_state_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+    )
+    target_link_libraries(qsanguosha_player_ui_state_test PRIVATE Qt6::Core)
+    add_test(NAME qsanguosha_player_ui_state COMMAND qsanguosha_player_ui_state_test)
 
     add_executable(qsanguosha_photo_layout_fit tests/photo-layout-fit-test.cpp)
     target_include_directories(qsanguosha_photo_layout_fit PRIVATE

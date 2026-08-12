@@ -2182,7 +2182,7 @@ void RoomScene::contextMenuEvent(QGraphicsSceneContextMenuEvent*event)
 
 		pile = miscellaneous_menu->addMenu(tr("View Maxcards"));
 		foreach (const ClientPlayer*player,item2player.values()){
-			pile->addAction(G_ROOM_SKIN.getCardAvatarPixmap(player->getGeneralName()),QString("%1：%2").arg(player->getLogName()).arg(player->getMaxCards()));
+			pile->addAction(G_ROOM_SKIN.getCardAvatarPixmap(player->getGeneralName()),QString("%1：%2").arg(player->getLogName()).arg(player->uiState().handMax));
 		}
 		//QAction*maxcards = miscellaneous_menu->addAction(tr("View Maxcards"));
 		//connect(maxcards,SIGNAL(triggered()),this,SLOT(viewMaxCards()));

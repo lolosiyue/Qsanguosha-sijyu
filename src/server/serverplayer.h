@@ -12,6 +12,7 @@ class ClientSocket;
 
 #include "player.h"
 #include "protocol.h"
+#include "protocol/state/player-ui-state.h"
 
 class ServerPlayer : public Player
 {
@@ -267,7 +268,7 @@ public:
     void setCardDescriptionSwap(const QString &card_name, const QString &key, const QString &value);
     void setAvatarIcon(const QString &avatar_name, bool isSmall = false);
     bool damageRevises(QVariant &data, int n);
-    void markTooltipDirty();
+    PlayerUIState buildUIState() const;
     Q_INVOKABLE void calculateUITooltips();
 
     QStringList getPendingAnytimeSkills() const;
@@ -298,7 +299,7 @@ private:
     QString m_clientResponseString;
     QVariant _m_clientResponse;
     QSet<const char *> propertys;
-    bool m_tooltipDirty;
+    PlayerUIState m_uiState;
     QStringList m_pendingAnytimeSkills;
 
 private slots:
