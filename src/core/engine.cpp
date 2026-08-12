@@ -2425,6 +2425,75 @@ int maximumApplicableResult(const QList<CorrectSkillResult> &results, int curren
     return current;
 }
 
+struct CorrectSkillEvalItem {
+    QString holderName;
+    CorrectSkillResult result;
+};
+
+template <typename T>
+QList<CorrectSkillEvalItem> evaluateCorrectSkillDetailed(const T *skill,
+                                                         CorrectSkillHolderSelector selector,
+                                                         const Player *primary,
+                                                         const Player *secondary,
+                                                         const Card *card,
+                                                         int modType,
+                                                         bool includeWeapon,
+                                                         bool fixed)
+{
+    QList<CorrectSkillEvalItem> items;
+    if (!skill) return items;
+
+    if (selector == CorrectSkill_System) {
+        CorrectSkillContext context;
+        context.primary = primary;
+        context.secondary = secondary;
+        context.card = card;
+        context.modType = modType;
+        context.includeWeapon = includeWeapon;
+        context.currentAmount = skill->getBaseAmount();
+        CorrectSkillEvalItem item;
+        item.result = fixed ? skill->getFixedValue(context) : skill->getCorrection(context);
+        items << item;
+        return items;
+    }
+
+    foreach (const Player *holder, correctSkillHolders(primary, secondary, selector)) {
+        const QList<int> instanceIds = holder->getValidSkillInstanceIds(skill->objectName());
+        foreach (int instanceId, instanceIds) {
+            const SkillInstance *instance = holder->findSkillInstance(skill->objectName(), instanceId);
+            if (!instance) continue;
+
+            CorrectSkillContext context;
+            context.instanceRef = SkillInstanceRef(
+                holder->objectName(), SkillInstanceKey(skill->objectName(), instanceId));
+            context.holder = holder;
+            context.primary = primary;
+            context.secondary = secondary;
+            context.card = card;
+            context.modType = modType;
+            context.includeWeapon = includeWeapon;
+            context.currentAmount = instance->hasAmountOverride
+                ? instance->amountOverride : skill->getBaseAmount();
+
+            CorrectSkillEvalItem item;
+            item.holderName = holder->objectName();
+            item.result = fixed ? skill->getFixedValue(context) : skill->getCorrection(context);
+            items << item;
+        }
+    }
+    return items;
+}
+
+QString findLegacySkillHolderName(const Player *anchor, const QString &skillName)
+{
+    if (!anchor || skillName.isEmpty()) return QString();
+    if (anchor->hasSkill(skillName)) return anchor->objectName();
+    foreach (const Player *p, anchor->getAliveSiblings(false)) {
+        if (p && p->hasSkill(skillName)) return p->objectName();
+    }
+    return QString();
+}
+
 }
 
 int Engine::correctDistance(const Player*from, const Player*to, bool fixed) const
@@ -2487,6 +2556,92 @@ int Engine::correctMaxCards(const Player*target, bool fixed) const
     }
     if (locked) lua_mutex.unlock();
 	return ex;
+}
+
+int Engine::contributionOfDistanceSkill(const DistanceSkill *skill, const Player *from, const Player *to, bool fixed) const
+{
+    if (!skill) return 0;
+
+    bool locked = lua_mutex.tryLock();
+    if (!locked) {
+        if (from && from->inherits("ClientPlayer")) return 0;
+        lua_mutex.lock();
+        locked = true;
+    }
+
+    int correct = 0;
+    const DistanceSkillV2 *v2 = dynamic_cast<const DistanceSkillV2 *>(skill);
+    if (!v2) {
+        correct = fixed ? skill->getFixed(from, to) : skill->getCorrect(from, to);
+    } else {
+        const QList<CorrectSkillResult> results = evaluateCorrectSkill(
+            v2, v2->getHolderSelector(), from, to, nullptr, -1, true, fixed);
+        correct = fixed ? maximumApplicableResult(results, 0)
+                        : sumApplicableResults(results, false);
+    }
+
+    if (locked) lua_mutex.unlock();
+    return correct;
+}
+
+QList<SkillUIContribution> Engine::listMaxCardsSkillContributions(const MaxCardsSkill *skill, const Player *target) const
+{
+    QList<SkillUIContribution> out;
+    if (!skill || !target) return out;
+
+    bool locked = lua_mutex.tryLock();
+    if (!locked) {
+        if (target->inherits("ClientPlayer")) return out;
+        lua_mutex.lock();
+        locked = true;
+    }
+
+    const MaxCardsSkillV2 *v2 = dynamic_cast<const MaxCardsSkillV2 *>(skill);
+    if (!v2) {
+        const int fixed = skill->getFixed(target);
+        const int extra = skill->getExtra(target);
+        if (fixed >= 0 || extra != 0) {
+            const QString holder = findLegacySkillHolderName(target, skill->objectName());
+            // 與舊 UI 一致：同一技能 fixed 優先於 extra
+            if (fixed >= 0)
+                out << SkillUIContribution(holder, fixed, true);
+            else
+                out << SkillUIContribution(holder, extra, false);
+        }
+    } else {
+        QMap<QString, int> fixedByHolder;
+        QMap<QString, int> extraByHolder;
+        bool hasFixed = false;
+
+        foreach (const CorrectSkillEvalItem &item,
+                 evaluateCorrectSkillDetailed(v2, v2->getHolderSelector(),
+                                              target, nullptr, nullptr, -1, true, true)) {
+            if (!item.result.applies) continue;
+            hasFixed = true;
+            const QString key = item.holderName;
+            if (!fixedByHolder.contains(key) || item.result.value > fixedByHolder.value(key))
+                fixedByHolder[key] = item.result.value;
+        }
+
+        if (hasFixed) {
+            for (auto it = fixedByHolder.constBegin(); it != fixedByHolder.constEnd(); ++it)
+                out << SkillUIContribution(it.key(), it.value(), true);
+        } else {
+            foreach (const CorrectSkillEvalItem &item,
+                     evaluateCorrectSkillDetailed(v2, v2->getHolderSelector(),
+                                                  target, nullptr, nullptr, -1, true, false)) {
+                if (!item.result.applies) continue;
+                extraByHolder[item.holderName] += item.result.value;
+            }
+            for (auto it = extraByHolder.constBegin(); it != extraByHolder.constEnd(); ++it) {
+                if (it.value() != 0)
+                    out << SkillUIContribution(it.key(), it.value(), false);
+            }
+        }
+    }
+
+    if (locked) lua_mutex.unlock();
+    return out;
 }
 
 int Engine::correctCardTarget(const TargetModSkill::ModType type, const Player*from, const Card*card, const Player*to) const
