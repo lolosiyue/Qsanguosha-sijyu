@@ -37,6 +37,25 @@ namespace {
 
 static const char *kControllerNameTag = "Controller_Name";
 
+static int getConvertedPhysicalCardId(const Card *card)
+{
+	if (card == nullptr || card->isVirtualCard() || !card->isModified())
+		return -1;
+
+	const int cardId = card->getEffectiveId();
+	if (cardId < 0 || cardId >= Sanguosha->getCardCount())
+		return -1;
+
+	const Card *originalCard = Sanguosha->getEngineCard(cardId);
+	if (originalCard == nullptr)
+		return -1;
+	if (originalCard->objectName() == card->objectName()
+		&& !card->getSkillName(false).startsWith("_"))
+		return -1;
+
+	return cardId;
+}
+
 static bool hasGenericActiveSkillUsage(const ViewAsSkillV2 *skill)
 {
 	return skill && skill->getLimitScope() != Skill::Limit_None
@@ -3017,7 +3036,8 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
 		}
 		sendLog(log);
 		// Pure responses bypass Room::useCard(), so publish converted-card visuals here.
-		if (resp.m_card->isVirtualCard() && resp.m_card->getTypeId() != Card::TypeSkill)
+		if (resp.m_card->getTypeId() != Card::TypeSkill
+			&& (resp.m_card->isVirtualCard() || getConvertedPhysicalCardId(resp.m_card) >= 0))
 			showVirtualCard(player, resp.m_card);
 		moveCardsAtomic(CardsMoveStruct(ids, nullptr, Player::PlaceTable, reason), true);
 		thread->trigger(CardResponded, this, player, askedData);
@@ -6401,6 +6421,11 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 				WrappedCard*wrapped = Sanguosha->getWrappedCard(ids.first());
 				if (wrapped->isModified()) broadcastUpdateCard(m_players, ids.first(), wrapped);
 				//else broadcastResetCard(m_players, ids.first());
+				if (getConvertedPhysicalCardId(use.card) >= 0) {
+					ServerPlayer *displayTarget = use.to.size() == 1 && use.to.first() != use.from
+						? use.to.first() : nullptr;
+					showVirtualCard(use.from, use.card, displayTarget);
+				}
 			} else if (use.card->getTypeId() != Card::TypeSkill) {
 				ServerPlayer *displayTarget = use.to.size() == 1 && use.to.first() != use.from
 					? use.to.first() : nullptr;
@@ -10480,6 +10505,13 @@ void Room::showVirtualCard(ServerPlayer *player, const Card *card, ServerPlayer 
 	if (player == nullptr || card == nullptr)
 		return;
 
+	QList<int> displaySubcards = card->getSubcards();
+	if (displaySubcards.isEmpty()) {
+		const int physicalCardId = getConvertedPhysicalCardId(card);
+		if (physicalCardId >= 0)
+			displaySubcards << physicalCardId;
+	}
+
 	tryPause();
 	notifyMoveFocus(player);
 
@@ -10489,7 +10521,7 @@ void Room::showVirtualCard(ServerPlayer *player, const Card *card, ServerPlayer 
 	args << Card::Suit2String(card->getSuit());
 	args << card->getNumber();
 	args << card->getSkillName();
-	args << ListI2S(card->getSubcards()).join("+");
+	args << ListI2S(displaySubcards).join("+");
 	args << (target ? target->objectName() : QString());
 
 	doBroadcastNotify(S_COMMAND_SHOW_VIRTUAL_CARD, args);
