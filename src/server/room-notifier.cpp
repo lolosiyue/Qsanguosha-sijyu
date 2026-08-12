@@ -2,6 +2,7 @@
 
 #include "json.h"
 #include "protocol.h"
+#include "protocol/skill-instance-message.h"
 #include "protocol/state/player-ui-state.h"
 #include "room.h"
 #include "roomthread.h"
@@ -179,8 +180,8 @@ void RoomNotifier::notifySkillInstanceState(ServerPlayer *owner, const SkillInst
                                             const QVariant &value)
 {
     if (!owner) return;
-    JsonArray payload;
-    payload << "state" << owner->objectName() << instance.skillName
-            << instance.instanceID << operation << key << value;
-    doNotify(owner, S_COMMAND_SKILL_INSTANCE, payload);
+    const SkillInstanceMessage message = SkillInstanceMessage::makeState(
+        owner->objectName(), instance.skillName, instance.instanceID,
+        operation, key, value);
+    doNotify(owner, S_COMMAND_SKILL_INSTANCE, message.toVariant());
 }
