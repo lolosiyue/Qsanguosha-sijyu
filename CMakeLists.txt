@@ -126,6 +126,8 @@ add_library(qsanguosha_engine STATIC
     src/util/socket.h
     src/util/game-snapshot.cpp
     src/util/game-snapshot.h
+    src/util/crashhandler.cpp
+    src/util/crashhandler.h
     src/client/aux-skills.cpp
     src/client/aux-skills.h
     ${QSAN_ENGINE_PACKAGE_SOURCES}
@@ -155,6 +157,7 @@ target_compile_definitions(qsanguosha_engine PRIVATE
     QSAN_SERVER_CORE_ONLY
     WIN64
     _CRT_SECURE_NO_WARNINGS
+    "$<$<CONFIG:Release>:QSG_CRASH_HANDLER>"
 )
 
 target_compile_options(qsanguosha_engine PRIVATE /utf-8 /bigobj /MP8)
@@ -259,6 +262,12 @@ target_link_libraries(qsanguosha_server PRIVATE
 )
 if(WIN32)
     target_link_libraries(qsanguosha_server PRIVATE Ws2_32 IPHLPAPI)
+    # crash handler(crashhandler.cpp, Release 啟用)需要
+    target_link_libraries(qsanguosha_server PRIVATE
+        "$<$<CONFIG:Release>:dbghelp>"
+        "$<$<CONFIG:Release>:user32>"
+        "$<$<CONFIG:Release>:gdi32>"
+    )
 endif()
 set_target_properties(qsanguosha_server PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/debug"
@@ -290,7 +299,6 @@ target_sources(QSanguosha PRIVATE
 
 target_sources(QSanguosha PRIVATE
     "$<$<CONFIG:Release>:${CMAKE_CURRENT_SOURCE_DIR}/src/core/audio.cpp>"
-    "$<$<CONFIG:Release>:${QSAN_BREAKPAD_SOURCES}>"
 )
 
 target_include_directories(QSanguosha PRIVATE
@@ -309,8 +317,6 @@ target_include_directories(QSanguosha PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/home
     ${CMAKE_CURRENT_SOURCE_DIR}/src/util
     "$<$<CONFIG:Release>:${CMAKE_CURRENT_SOURCE_DIR}/include/fmod>"
-    "$<$<CONFIG:Release>:${CMAKE_CURRENT_SOURCE_DIR}/src/breakpad>"
-    "$<$<CONFIG:Release>:${CMAKE_CURRENT_SOURCE_DIR}/src/breakpad/client/windows>"
 )
 
 target_compile_definitions(QSanguosha PRIVATE
@@ -322,7 +328,6 @@ target_compile_definitions(QSanguosha PRIVATE
     QT_QML_IMPORT_PATH="${QT_PREFIX}/qml"
     QT_BIN_DIR="${QT_PREFIX}/bin"
     "$<$<CONFIG:Release>:AUDIO_SUPPORT>"
-    "$<$<CONFIG:Release>:USE_BREAKPAD>"
 )
 
 target_compile_options(QSanguosha PRIVATE
@@ -357,6 +362,9 @@ target_link_libraries(QSanguosha PRIVATE
     dwmapi
     legacy_stdio_definitions
     winhttp
+    "$<$<CONFIG:Release>:dbghelp>"
+    "$<$<CONFIG:Release>:user32>"
+    "$<$<CONFIG:Release>:gdi32>"
     "$<$<CONFIG:Debug>:${qsan_library_dir}/freetype_D.lib>"
     "$<$<NOT:$<CONFIG:Debug>>:${qsan_library_dir}/freetype.lib>"
     "$<$<CONFIG:Release>:${qsan_library_dir}/fmodex.lib>"

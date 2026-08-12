@@ -32,9 +32,9 @@ PER_GAME_TIMEOUT: Final[int] = int(
 CUR_GAME_RE = re.compile(r">>> Starting headless game (\d+) <<<")
 
 
-def current_game(headless_log):
-    """解析最後一次 header 之後的 'Starting headless game N' (目前進行到第幾局)。"""
-    m = None
+def started_games(headless_log):
+    """run 內所有已出現的 'Starting headless game N' 局號集合 (log 未寫入時為空)。"""
+    s = set()
     if os.path.isfile(headless_log):
         with open(headless_log, encoding="utf-8", errors="replace") as f:
             lines = f.readlines()
@@ -44,7 +44,9 @@ def current_game(headless_log):
                 start = i
         for line in lines[start:]:
             m = CUR_GAME_RE.search(line)
-    return int(m.group(1)) if m else 0
+            if m:
+                s.add(int(m.group(1)))
+    return s
 
 
 def report_progress(label, games, prev, finished, failed):
@@ -88,7 +90,7 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
     code = None
     # 輪詢標記檔, 每局開始/完成即在 CMD 印進度
     prev = {"total": 0, "failed": 0}
-    prev_current = 0
+    prev_started = set()
     smart_ai_failed = False
     while True:
         code = proc.poll()
@@ -108,11 +110,10 @@ def run_mode(args, exe, workdir, mode, games, tag=""):
             smart_ai_failed = True
             break
         finished, failed, done = parse_headless_log(headless_log)
-        cur = current_game(headless_log)
-        if cur != prev_current:
-            if cur > 0 and sum(finished.values()) == prev["total"]:
-                print("  [%s] [%s] 第 %d/%d 局進行中..." % (label, time.strftime("%H:%M:%S"), cur, games))
-            prev_current = cur
+        started = started_games(headless_log)
+        for g in sorted(started - prev_started):
+            print("  [%s] [%s] 第 %d/%d 局進行中..." % (label, time.strftime("%H:%M:%S"), g, games))
+        prev_started = started
         prev = report_progress(label, games, prev, finished, failed)
         time.sleep(2)
     close_proc(proc)

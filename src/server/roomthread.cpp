@@ -6,6 +6,7 @@
 #include "standard.h"
 #include "exppattern.h"
 #include "skill-instance-utils.h"
+#include "crashhandler.h"
 #include <QDebug>
 
 #ifdef QSAN_UI_LIBRARY_AVAILABLE
@@ -591,6 +592,9 @@ void RoomThread::run()
 {
 	qsrand(QTime(0, 0, 0).secsTo(QTime::currentTime()));
 	Sanguosha->registerRoom(room);
+
+	// 登記本執行緒的 Lua 狀態機:崩在此執行緒時,崩潰摘要順帶走出 Lua 呼叫棧
+	CrashHandler::setLuaState(room->getLuaState());
 
 	foreach(const TriggerSkill*triggerSkill, Sanguosha->getGlobalTriggerSkills())
 		addTriggerSkill(triggerSkill);

@@ -4,6 +4,7 @@
 
 #if !defined(QSAN_ENGINE_BUILD)
 #include <QMessageBox>
+#include <QApplication>
 #endif
 
 %}
@@ -15,6 +16,7 @@
 %native(SetConfig) int SetConfig(lua_State *lua);
 %native(GetProperty) int GetProperty(lua_State *lua);
 %native(Alert) int Alert(lua_State *lua);
+%native(IsHeadless) int IsHeadless(lua_State *lua);
 
 %{
 
@@ -154,6 +156,34 @@ static int Alert(lua_State *lua)
 #endif
 
 	return 0;
+}
+
+static int IsHeadless(lua_State *lua)
+{
+	// 非 GUI 情境判定：net runner/engine build 恆 true；
+	// GUI build 依執行期參數（--test-scenario 無論有無 -h 一律視為自動化）
+#if defined(QSAN_ENGINE_BUILD)
+	lua_pushboolean(lua, true);
+#else
+	bool headless = true;
+	QCoreApplication *app = QCoreApplication::instance();
+	if (app && qobject_cast<QApplication *>(app)) {
+		const QStringList args = app->arguments();
+		headless = args.contains("-server") || args.contains("--lua-test")
+			|| args.contains("--headless") || args.contains("-manual");
+		if (!headless) {
+			foreach (const QString &arg, args) {
+				if (arg.startsWith("--test-scenario")) {
+					headless = true;
+					break;
+				}
+			}
+		}
+	}
+	lua_pushboolean(lua, headless);
+#endif
+
+	return 1;
 }
 
 %}

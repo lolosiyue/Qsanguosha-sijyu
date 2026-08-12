@@ -326,12 +326,3 @@ set(QSAN_FORMS
     src/dialog/mainwindow.ui
     src/dialog/mainwindowserverlist.ui
 )
-
-set(QSAN_BREAKPAD_SOURCES
-    src/breakpad/client/windows/crash_generation/client_info.cc
-    src/breakpad/client/windows/crash_generation/crash_generation_client.cc
-    src/breakpad/client/windows/crash_generation/crash_generation_server.cc
-    src/breakpad/client/windows/crash_generation/minidump_generator.cc
-    src/breakpad/client/windows/handler/exception_handler.cc
-    src/breakpad/common/windows/guid_string.cc
-)

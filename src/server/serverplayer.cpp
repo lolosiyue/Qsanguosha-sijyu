@@ -82,45 +82,34 @@ void ServerPlayer::calculateUITooltips()
     int off_dist = 0, def_dist = 0;
     QStringList off_skills, def_skills;
 
-    // 1. 計算手牌上限
+    // 1. 計算手牌上限（V1/V2 皆走 Engine::listMaxCardsSkillContributions）
     foreach (const MaxCardsSkill *mc_skill, Sanguosha->getMaxCardsSkills()) {
         if (!mc_skill || mc_skill->objectName() == "gamerulemaxcards") continue;
 
-        ServerPlayer *source = nullptr;
-        foreach (ServerPlayer *p, room->getAlivePlayers()) {
-            if (p->hasSkill(mc_skill->objectName())) { 
-                source = p; 
-                break;
-            }
-        }
-
-        if (!source) continue;
-
-        int fixed = mc_skill->getFixed(this); 
-        int extra = mc_skill->getExtra(this); 
-
-        if (fixed >= 0 || extra != 0) {
-            QString sourceName = source->objectName();
-            if (fixed >= 0) {
-                mc_list << QString("%1^F%2^%3").arg(mc_skill->objectName()).arg(fixed).arg(sourceName);
-            } else if (extra != 0) {
-                mc_list << QString("%1^%2^%3").arg(mc_skill->objectName()).arg(extra).arg(sourceName);
+        foreach (const SkillUIContribution &c,
+                 Sanguosha->listMaxCardsSkillContributions(mc_skill, this)) {
+            if (c.isFixed) {
+                mc_list << QString("%1^F%2^%3")
+                               .arg(mc_skill->objectName()).arg(c.value).arg(c.holderName);
+            } else if (c.value != 0) {
+                mc_list << QString("%1^%2^%3")
+                               .arg(mc_skill->objectName()).arg(c.value).arg(c.holderName);
             }
         }
     }
-    mc_list.removeDuplicates(); 
+    mc_list.removeDuplicates();
 
-    // 2. 計算距離修正
+    // 2. 計算距離修正（V1/V2 皆走 Engine::contributionOfDistanceSkill）
     QList<ServerPlayer *> siblings = room->getOtherPlayers(this);
     if (!siblings.isEmpty()) {
-        foreach (const Skill *skill, this->getSkills(true, false)) { 
+        foreach (const Skill *skill, this->getSkills(true, false)) {
             const DistanceSkill *dist_skill = qobject_cast<const DistanceSkill *>(skill);
-            if (dist_skill) {
-                int off_val = dist_skill->getCorrect(this, siblings.first()); 
-                if (off_val < 0) { off_dist += off_val; off_skills << dist_skill->objectName(); }
-                int def_val = dist_skill->getCorrect(siblings.first(), this); 
-                if (def_val > 0) { def_dist += def_val; def_skills << dist_skill->objectName(); }
-            }
+            if (!dist_skill) continue;
+            // 恒定 ±N 以第一個其他存活角色為參照；條件型可能失真（已接受）
+            int off_val = Sanguosha->contributionOfDistanceSkill(dist_skill, this, siblings.first());
+            if (off_val < 0) { off_dist += off_val; off_skills << dist_skill->objectName(); }
+            int def_val = Sanguosha->contributionOfDistanceSkill(dist_skill, siblings.first(), this);
+            if (def_val > 0) { def_dist += def_val; def_skills << dist_skill->objectName(); }
         }
     }
     QStringList vae_list;

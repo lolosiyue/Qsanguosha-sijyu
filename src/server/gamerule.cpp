@@ -4,6 +4,7 @@
 #include "settings.h"
 #include "roomthread.h"
 #include "wrapped-card.h"
+#include "crashhandler.h"
 
 static void restoreSkillExecutionIdentity(Room *room, qint64 executionID,
                                           SkillContext &context, ServerPlayer *acceptedInvoker)
@@ -132,6 +133,8 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
     switch (triggerEvent) {
     case GameReady: {// Handle global events
 		if(player) break;
+		// 登記本局總人數,供崩潰摘要用(輪數稍後由 RoundStart 更新)
+		CrashHandler::setGameStats(room->getPlayers().length(), 0);
 		ServerPlayer *lord = room->getLord();
 		if(room->getMode()=="04_boss") {
 			int difficulty = Config.value("BossModeDifficulty").toInt();
@@ -310,6 +313,8 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 			if(player->getMark("TurnLengthCount")<rsdata.toInt()){
 				room->setTag("TurnLengthCount",rsdata);
 				room->doBroadcastNotify(QSanProtocol::S_COMMAND_ADD_ROUND,rsdata);
+				// 登記已進行輪數,供崩潰摘要用
+				CrashHandler::setGameStats(room->getPlayers().length(), rsdata.toInt());
 				foreach (ServerPlayer *p,room->getAllPlayers()){
 					p->setMark("TurnLengthCount",rsdata.toInt());
 					room->getThread()->trigger(RoundStart,room,p,rsdata);
