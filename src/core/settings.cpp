@@ -2,6 +2,7 @@
 //#include "photo.h"
 //#include "card.h"
 #include "engine.h"
+#include "crashhandler.h"
 #include <QMutexLocker>
 #if !defined(QSAN_ENGINE_BUILD)
 #include <QApplication>
@@ -409,5 +410,69 @@ void Settings::init()
 		exp_skill_map.insert(basara_ban.first(), basara_ban.last().toInt());
     }
     BossExpSkills = exp_skill_map;
+
+    // Qt 狀態正常,把配置摘要暫存給 crash handler(崩潰上下文只寫 Win32 API,
+    // 不碰 Engine/Config,故必須在這裡預先格式化好)
+    stashGameConfigForCrash();
+}
+
+// 把當前 Config 狀態格式化為 UTF-8 配置摘要,供 CrashHandler::setGameConfig。
+// 崩潰摘要據此說明"玩家開了哪些包、遊戲模式等"。僅用 Settings::init()
+// 已確定的欄位,避免引用不存在於本項目的欄位。
+QByteArray buildGameConfigSummary()
+{
+    auto onOff = [](bool b) { return b ? "開" : "關"; };
+
+    QStringList lines;
+    lines << QString("伺服器: 名稱='%1'  端口=%2  局時=%3 秒  無懈=%4 秒")
+        .arg(Config.ServerName)
+        .arg(Config.ServerPort)
+        .arg(Config.CountDownSeconds)
+        .arg(Config.NullificationCountDown);
+    lines << QString("雙將: %1  軍爭: %2  國戰: %3  同將: %4")
+        .arg(onOff(Config.Enable2ndGeneral),
+             onOff(Config.EnableBasara),
+             onOff(Config.EnableHegemony),
+             onOff(Config.EnableSame));
+    lines << QString("座次/操作: 隨機座次=%1  自由選將=%2  自由分配=%3  作弊=%4")
+        .arg(onOff(Config.RandomSeat),
+             onOff(Config.FreeChoose),
+             onOff(Config.FreeAssignSelf),
+             onOff(Config.EnableCheat));
+    lines << QString("規則: 禁 IP 多開=%1  禁聊=%2  防覺醒=%3  操作=%4")
+        .arg(onOff(Config.ForbidSIMC),
+             onOff(Config.DisableChat),
+             onOff(Config.PreventAwakenBelow3),
+             Config.OperationNoLimit ? "不限時" : QString("%1 秒").arg(Config.OperationTimeout));
+
+    // 本項目以 BanPackages 表達包池增減,不具 gitee 的 EnabledPackages 欄位
+    const QStringList &ban = Config.BanPackages;
+    QStringList pkgs;
+    foreach (const QString &name, ban) {
+        QString cn = Sanguosha->translate(name);
+        if (cn.isEmpty() || cn == name)
+            cn = name;
+        pkgs << cn;
+    }
+    lines << QString("禁止包(%1):").arg(pkgs.size());
+
+    QString cur = "  ";
+    foreach (const QString &p, pkgs) {
+        if (cur.length() > 2 && cur.length() + p.length() + 2 > 80) {
+            lines << cur;
+            cur = "  ";
+        }
+        if (cur.length() > 2) cur += ", ";
+        cur += p;
+    }
+    if (cur.length() > 2) lines << cur;
+
+    return lines.join("\r\n").toUtf8();
+}
+
+void stashGameConfigForCrash()
+{
+    QByteArray ba = buildGameConfigSummary();
+    CrashHandler::setGameConfig(ba.constData());
 }
 

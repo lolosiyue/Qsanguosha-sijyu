@@ -62,6 +62,12 @@ SWIG_arg++;
 %typemap(arginit) QString const &
 "QString $1_str;"
 
+// 重載方法分派走 typecheck typemap（不設則預期 QString userdata，Lua 字串永不匹配）
+%typemap(typecheck, precedence=SWIG_TYPECHECK_STRING) QString const &
+%{
+	$1 = lua_isstring(L, $input) ? 1 : 0;
+%}
+
 %typemap(in, checkfn = "lua_isstring") QString const &
 %{
 	$1_str = QString::fromUtf8(lua_tostring(L, $input));

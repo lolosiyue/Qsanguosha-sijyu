@@ -72,6 +72,9 @@ CommonTranslationTable = {
 		并进：你与其总计摸过至少8张牌。\
 		疏财：你与其弃置的牌中包含4种花色。\
 		戮力：你与其使用或打出的牌包含4种花色。",
+	["#ov_lizhan"] = "历战：一种技能的特殊效果。\
+		1.回合结束时，若拥有历战效果的技能在本回合发动过，则根据历战效果对技能进行升级或修改。\
+		2.历战效果可以叠加，且技能的升级或修改持续整局游戏。",
 	
 
 	["Pairs"] = "双将",
@@ -399,6 +402,17 @@ CommonTranslationTable = {
 	["#choice"] = "%from 选择了 %arg", --add
 	["#ChoiceWithTarget"] = "%from 对 %to 选择了 %arg", --add
 	["maxcard"] = "手牌上限", --add
+	["UI_MC_HandMax"] = "手牌上限: %1",
+	["UI_MC_BaseHp"] = "基础体力: %1",
+	["UI_MC_GlobalSource"] = "全局规则/系统",
+	["UI_MC_SkillEntry"] = "%1: %2%3 (来源: %4)",
+	["UI_MC_OtherExtra"] = "其他额外效果: %1%2",
+	["UI_MC_SelfSource"] = "自身/系统",
+	["UI_MC_FixedEntry"] = "%1: 固定为 %2 (来源: %3)",
+	["UI_DIST_SkillMod"] = "附加技能修正：%1 (%2)",
+	["UI_DIST_Offense"] = "进攻距离 %1",
+	["UI_DIST_Defend"] = "防御距离 %1",
+	["UI_DIST_SkillTitle"] = "【%1】",
 	["#IgnoreArmor"] = "%from 使用的 %card 无视防具",
 	["skill_transform"] = "技能转化",
 	["skill_transform_from"] = "%1技能转化",

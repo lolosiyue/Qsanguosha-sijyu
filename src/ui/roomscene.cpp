@@ -48,6 +48,7 @@
 #include "maxcardsviewdialog.h"
 #include "oracle_helper.h"
 #include "lua-wrapper.h"
+#include "crashhandler.h"
 #include "lua.hpp"
 #include <QOpenGLWidget>
 #include <QMutexLocker>
@@ -273,8 +274,11 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	m_currentPerspective = QString();
 	if(ClientInstance->getReplayer()){
 		dashboard->hideControlButtons();
+		CrashHandler::setGamePhase(CrashHandler::PhaseReplay);
 		createReplayControlBar();
 		createReplayTimeline();
+	} else {
+		CrashHandler::setGamePhase(CrashHandler::PhasePlaying);
 	}
 
 	response_skill = new ResponseSkill;
@@ -4802,6 +4806,9 @@ void RoomScene::killPlayer(const QString&who)
 {
 	const General*general = nullptr;
 	if(who==Self->objectName()){
+		// 玩家本人陣亡 → AI 接管快進(錄像回放不計)
+		if(!ClientInstance->getReplayer())
+			CrashHandler::setGamePhase(CrashHandler::PhaseDeadFastForward);
 		dashboard->stopHuaShen();
 		dashboard->killPlayer();
 		dashboard->update();
@@ -4833,6 +4840,9 @@ void RoomScene::killPlayer(const QString&who)
 void RoomScene::revivePlayer(const QString&who)
 {
 	if(who==Self->objectName()){
+		// 玩家本人復活,重新接管對局
+		if(!ClientInstance->getReplayer())
+			CrashHandler::setGamePhase(CrashHandler::PhasePlaying);
 		dashboard->revivePlayer();
 		item2player.insert(dashboard,Self);
 		updateSkillButtons();
