@@ -1105,7 +1105,7 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 
 				LuaLocker locker;
 				foreach(ServerPlayer*p, room->getAlivePlayers()){
-					p->calculateUITooltips();
+					p->refreshUIState();
 				}
 			}
 
@@ -1143,7 +1143,7 @@ if (room->getTag("DistanceCacheDirty").toBool()) {
 				room->setTag("HandMaxDirty", false);
 				LuaLocker locker;
 				foreach(ServerPlayer*p, room->getAlivePlayers()){
-					p->calculateUITooltips();
+					p->refreshUIState();
 				}
 			}
 

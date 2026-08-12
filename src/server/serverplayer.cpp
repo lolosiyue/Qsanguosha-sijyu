@@ -1,4 +1,5 @@
 #include "serverplayer.h"
+#include "player-ui-state-builder.h"
 //#include "skill.h"
 #include "engine.h"
 //#include "standard.h"
@@ -74,66 +75,11 @@ void ServerPlayer::setTag(const QString &key, const QVariant &value)
 	}
 }
 
-PlayerUIState ServerPlayer::buildUIState() const
-{
-    PlayerUIState state;
-    state.handMax = getMaxCards();
-    if (!room)
-        return state;
-
-    foreach (const MaxCardsSkill *mc_skill, Sanguosha->getMaxCardsSkills()) {
-        if (!mc_skill || mc_skill->objectName() == "gamerulemaxcards") continue;
-
-        foreach (const SkillUIContribution &c,
-                 Sanguosha->listMaxCardsSkillContributions(mc_skill, this)) {
-            if (c.isFixed) {
-                state.maxCardsSkills << QString("%1^F%2^%3")
-                                            .arg(mc_skill->objectName()).arg(c.value).arg(c.holderName);
-            } else if (c.value != 0) {
-                state.maxCardsSkills << QString("%1^%2^%3")
-                                            .arg(mc_skill->objectName()).arg(c.value).arg(c.holderName);
-            }
-        }
-    }
-    state.maxCardsSkills.removeDuplicates();
-
-    QList<ServerPlayer *> siblings = room->getOtherPlayers(const_cast<ServerPlayer *>(this));
-    if (!siblings.isEmpty()) {
-        foreach (const Skill *skill, getSkills(true, false)) {
-            const DistanceSkill *dist_skill = qobject_cast<const DistanceSkill *>(skill);
-            if (!dist_skill) continue;
-            int off_val = Sanguosha->contributionOfDistanceSkill(dist_skill, this, siblings.first());
-            if (off_val < 0) {
-                state.offensiveDistance += off_val;
-                state.offensiveSkills << dist_skill->objectName();
-            }
-            int def_val = Sanguosha->contributionOfDistanceSkill(dist_skill, siblings.first(), this);
-            if (def_val > 0) {
-                state.defensiveDistance += def_val;
-                state.defensiveSkills << dist_skill->objectName();
-            }
-        }
-    }
-
-    foreach (const Skill *skill, getSkills(true, false)) {
-        const ViewAsEquipSkill *vaes = qobject_cast<const ViewAsEquipSkill *>(skill);
-        if (vaes) {
-            QString cns = vaes->viewAsEquip(this);
-            if (!cns.isEmpty()) {
-                foreach (const QString &eq, cns.split(",", Qt::SkipEmptyParts))
-                    state.viewAsEquipSkills << QString("%1^%2").arg(eq).arg(vaes->objectName());
-            }
-        }
-    }
-
-    return state;
-}
-
-void ServerPlayer::calculateUITooltips()
+void ServerPlayer::refreshUIState()
 {
     if (!room || !getGeneral() || !isAlive()) return;
 
-    const PlayerUIState state = buildUIState();
+    const PlayerUIState state = PlayerUIStateBuilder::build(*this, *room);
     if (state == m_uiState)
         return;
 
@@ -1133,7 +1079,7 @@ void ServerPlayer::addSkill(const QString &skill_name)
     JsonArray args;
     args << (int)QSanProtocol::S_GAME_EVENT_ADD_SKILL << objectName() << skill_name;
     room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
-    calculateUITooltips();
+    refreshUIState();
 }
 
 void ServerPlayer::addSkill(const QString &skill_name, bool head_skill)
@@ -1147,7 +1093,7 @@ void ServerPlayer::addSkill(const QString &skill_name, bool head_skill)
     JsonArray args;
     args << (int)QSanProtocol::S_GAME_EVENT_ADD_SKILL << objectName() << skill_name << head_skill;
     room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
-    calculateUITooltips();
+    refreshUIState();
 }
 
 void ServerPlayer::loseSkill(const QString &skill_name)
@@ -1156,7 +1102,7 @@ void ServerPlayer::loseSkill(const QString &skill_name)
     JsonArray args;
     args << (int)QSanProtocol::S_GAME_EVENT_LOSE_SKILL << objectName() << skill_name;
     room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
-    calculateUITooltips();
+    refreshUIState();
 }
 
 void ServerPlayer::loseSkill(const QString &skill_name, bool head)
@@ -1165,7 +1111,7 @@ void ServerPlayer::loseSkill(const QString &skill_name, bool head)
     JsonArray args;
     args << (int)QSanProtocol::S_GAME_EVENT_LOSE_SKILL << objectName() << skill_name << head;
     room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
-    calculateUITooltips();
+    refreshUIState();
 }
 
 void ServerPlayer::setGender(General::Gender gender)
@@ -2504,7 +2450,7 @@ void ServerPlayer::showGeneral(bool head_general, bool trigger_event, bool sendL
         }
     }
 
-    calculateUITooltips();
+    refreshUIState();
 }
 
 void ServerPlayer::notifyPreshow()

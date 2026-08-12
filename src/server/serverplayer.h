@@ -268,8 +268,7 @@ public:
     void setCardDescriptionSwap(const QString &card_name, const QString &key, const QString &value);
     void setAvatarIcon(const QString &avatar_name, bool isSmall = false);
     bool damageRevises(QVariant &data, int n);
-    PlayerUIState buildUIState() const;
-    Q_INVOKABLE void calculateUITooltips();
+    Q_INVOKABLE void refreshUIState();
 
     QStringList getPendingAnytimeSkills() const;
     void addPendingAnytimeSkill(const QString &skill_name);

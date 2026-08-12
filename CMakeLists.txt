@@ -126,6 +126,8 @@ add_library(qsanguosha_engine STATIC
     src/server/roomthread1v1.cpp
     src/server/roomthread3v3.cpp
     src/server/roomthreadxmode.cpp
+    src/server/player-ui-state-builder.cpp
+    src/server/player-ui-state-builder.h
     src/server/serverplayer.cpp
     src/util/nativesocket.cpp
     src/util/nativesocket.h
