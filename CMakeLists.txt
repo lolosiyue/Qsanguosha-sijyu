@@ -93,8 +93,17 @@ add_library(qsanguosha_engine STATIC
     src/core/player-self.cpp
     src/core/player.h
     src/core/protocol.cpp
+    src/core/protocol/card-provenance-message.cpp
+    src/core/protocol/card-provenance-message.h
+    src/core/protocol/protocol-message-utils.h
+    src/core/protocol/skill-instance-message.cpp
+    src/core/protocol/skill-instance-message.h
     src/core/protocol/state/player-ui-state.cpp
     src/core/protocol/state/player-ui-state.h
+    src/core/protocol/switch-context-message.cpp
+    src/core/protocol/switch-context-message.h
+    src/core/protocol/sync-pile-message.cpp
+    src/core/protocol/sync-pile-message.h
     src/core/record-buffer.cpp
     src/core/record-buffer.h
     src/core/room-state.cpp
@@ -246,6 +255,35 @@ if(BUILD_TESTING)
     )
     target_link_libraries(qsanguosha_player_ui_state_test PRIVATE Qt6::Core)
     add_test(NAME qsanguosha_player_ui_state COMMAND qsanguosha_player_ui_state_test)
+
+    add_executable(qsanguosha_protocol_messages_test
+        tests/protocol-messages-test.cpp
+        src/core/protocol/card-provenance-message.cpp
+        src/core/protocol/skill-instance-message.cpp
+        src/core/protocol/switch-context-message.cpp
+        src/core/protocol/sync-pile-message.cpp
+    )
+    target_include_directories(qsanguosha_protocol_messages_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+    )
+    target_link_libraries(qsanguosha_protocol_messages_test PRIVATE Qt6::Core)
+    add_test(NAME qsanguosha_protocol_messages COMMAND qsanguosha_protocol_messages_test)
+
+    add_executable(qsanguosha_replay_game_state_protocol_test
+        tests/replay-game-state/replay-game-state-test.cpp
+        src/server/server-core.h
+        src/util/replay-game-state.cpp
+        src/util/replay-game-state.h
+    )
+    target_include_directories(qsanguosha_replay_game_state_protocol_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+    )
+    target_link_libraries(qsanguosha_replay_game_state_protocol_test PRIVATE
+        qsanguosha_engine Qt6::Core Qt6::Core5Compat
+    )
+    add_test(NAME qsanguosha_replay_game_state_protocol
+             COMMAND qsanguosha_replay_game_state_protocol_test)
 
     add_executable(qsanguosha_room_notifier_test
         tests/room-notifier-test.cpp

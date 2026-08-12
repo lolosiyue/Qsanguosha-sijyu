@@ -1,6 +1,7 @@
 #include "engine-bootstrap.h"
 #include "json.h"
 #include "protocol.h"
+#include "protocol/skill-instance-message.h"
 #include "protocol/state/player-ui-state.h"
 #include "room.h"
 #include "roomthread.h"
@@ -175,15 +176,15 @@ static bool ownerOnlySkillStateFollowsController(Room &room, PacketRecorder &rec
     const PacketRecord *record = recorder.first(controller, S_COMMAND_SKILL_INSTANCE);
     if (record == nullptr)
         return false;
-    const QVariantList payload = record->body.toList();
-    return payload.size() == 7
-        && payload[0].toString() == QStringLiteral("state")
-        && payload[1].toString() == owner->objectName()
-        && payload[2].toString() == instance.skillName
-        && payload[3].toInt() == instance.instanceID
-        && payload[4].toString() == QStringLiteral("set")
-        && payload[5].toString() == QStringLiteral("counter")
-        && payload[6].toInt() == 3;
+    SkillInstanceMessage message;
+    return message.tryParse(record->body)
+        && message.action == SkillInstanceMessage::State
+        && message.ownerName == owner->objectName()
+        && message.skillName == instance.skillName
+        && message.instanceId == instance.instanceID
+        && message.operation == QStringLiteral("set")
+        && message.key == QStringLiteral("counter")
+        && message.value.toInt() == 3;
 }
 
 static bool presentationPayloadsStayStable(Room &room, PacketRecorder &recorder,

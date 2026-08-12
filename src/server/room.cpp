@@ -1,6 +1,10 @@
 #include "room.h"
 #include "room-notifier.h"
+#include "protocol/card-provenance-message.h"
+#include "protocol/skill-instance-message.h"
 #include "protocol/state/player-ui-state.h"
+#include "protocol/switch-context-message.h"
+#include "protocol/sync-pile-message.h"
 #include "engine.h"
 #include "settings.h"
 #include "standard.h"
@@ -176,11 +180,11 @@ void Room::syncControllerPileVisible(ServerPlayer *target, ServerPlayer *control
 	foreach (QString pile_name, target->getPileNames()) {
 		QList<int> pile_cards = target->getPile(pile_name);
 		if (!pile_cards.isEmpty()) {
-			JsonArray arg;
-			arg << target->objectName();
-			arg << pile_name;
-			arg << JsonUtils::toJsonArray(pile_cards);
-			doNotify(controller, S_COMMAND_SYNC_PILE, arg);
+			SyncPileMessage message;
+			message.playerName = target->objectName();
+			message.pileName = pile_name;
+			message.cardIds = pile_cards;
+			doNotify(controller, S_COMMAND_SYNC_PILE, message.toVariant());
 		}
 	}
 }
@@ -1264,55 +1268,41 @@ static bool canReceiveSkillInstance(const ServerPlayer *receiver, const ServerPl
     return instance.source != SourceHelper && instance.visible && skill && skill->isVisible();
 }
 
-static JsonArray skillInstanceJson(const ServerPlayer *owner, const SkillInstance &instance,
-                                   bool includePrivateState)
+static SkillInstanceEntryMessage skillInstanceMessage(const ServerPlayer *owner,
+                                                       const SkillInstance &instance,
+                                                       bool includePrivateState)
 {
-    JsonArray entry;
-    const SkillInstanceRef parentRef = instance.parentRef.isValid()
-        ? instance.parentRef : SkillInstanceRef(owner->objectName(), instance.parent);
-    entry << owner->objectName() << instance.skillName << instance.instanceID
-          << static_cast<int>(instance.source) << parentRef.ownerObjectName
-          << parentRef.key.skillName << parentRef.key.instanceID
-          << instance.visible << instance.bindHead;
-    QVariantMap metadata;
-    if (instance.hasAmountOverride) {
-        metadata.insert("has_amount", true);
-        metadata.insert("amount", instance.amountOverride);
-    }
-    if (!instance.correctState.isEmpty())
-        metadata.insert("correct_state", instance.correctState);
+    SkillInstanceEntryMessage message;
+    message.ownerName = owner->objectName();
+    message.instance = instance;
     // State 僅給持有者：他人 snapshot/upsert 不得帶私有 state
-    if (includePrivateState && owner) {
-        const QVariantMap state = owner->getSkillInstanceState(instance.skillName, instance.instanceID);
-        if (!state.isEmpty())
-            metadata.insert("state", state);
-    }
-    if (!metadata.isEmpty()) entry << metadata;
-    return entry;
+    if (includePrivateState)
+        message.privateState = owner->getSkillInstanceState(instance.skillName,
+                                                            instance.instanceID);
+    return message;
 }
 
 void Room::notifySkillInstanceSnapshot(ServerPlayer *receiver)
 {
     if (!receiver) return;
-    JsonArray entries;
+    QList<SkillInstanceEntryMessage> entries;
     foreach (ServerPlayer *owner, getAllPlayers(true)) {
         foreach (const SkillInstance &instance, owner->getSkillInstances()) {
             if (canReceiveSkillInstance(receiver, owner, instance))
-                entries << QVariant::fromValue(skillInstanceJson(owner, instance, receiver == owner));
+                entries << skillInstanceMessage(owner, instance, receiver == owner);
         }
     }
-    JsonArray payload;
-    payload << "snapshot" << QVariant::fromValue(entries);
-    doNotify(receiver, S_COMMAND_SKILL_INSTANCE, payload);
+    const SkillInstanceMessage message = SkillInstanceMessage::makeSnapshot(entries);
+    doNotify(receiver, S_COMMAND_SKILL_INSTANCE, message.toVariant());
 }
 
 void Room::notifySkillInstanceUpsert(ServerPlayer *owner, const SkillInstance &instance)
 {
     foreach (ServerPlayer *receiver, m_players) {
         if (!canReceiveSkillInstance(receiver, owner, instance)) continue;
-        JsonArray payload;
-        payload << "upsert" << QVariant::fromValue(skillInstanceJson(owner, instance, receiver == owner));
-        doNotify(receiver, S_COMMAND_SKILL_INSTANCE, payload);
+        const SkillInstanceMessage message = SkillInstanceMessage::makeUpsert(
+            skillInstanceMessage(owner, instance, receiver == owner));
+        doNotify(receiver, S_COMMAND_SKILL_INSTANCE, message.toVariant());
     }
 }
 
@@ -1320,9 +1310,9 @@ void Room::notifySkillInstanceRemove(ServerPlayer *owner, const SkillInstance &i
 {
     foreach (ServerPlayer *receiver, m_players) {
         if (!canReceiveSkillInstance(receiver, owner, instance)) continue;
-        JsonArray payload;
-        payload << "remove" << owner->objectName() << instance.skillName << instance.instanceID;
-        doNotify(receiver, S_COMMAND_SKILL_INSTANCE, payload);
+        const SkillInstanceMessage message = SkillInstanceMessage::makeRemove(
+            owner->objectName(), instance.skillName, instance.instanceID);
+        doNotify(receiver, S_COMMAND_SKILL_INSTANCE, message.toVariant());
     }
 }
 
@@ -1667,7 +1657,9 @@ void Room::clearDualControlRequest(ServerPlayer *player, bool restore_context)
 	requestTarget->releaseLock(ServerPlayer::SEMA_MUTEX);
 
 	if (restore_context && requestTarget->isOnline()) {
-		doNotify(requestTarget, S_COMMAND_SWITCH_CONTEXT, requestTarget->objectName());
+		SwitchContextMessage message;
+		message.playerName = requestTarget->objectName();
+		doNotify(requestTarget, S_COMMAND_SWITCH_CONTEXT, message.toVariant());
 		notifyArrangeSeats(requestTarget);
 	}
 }
@@ -1715,7 +1707,9 @@ bool Room::doRequest(ServerPlayer*player, QSanProtocol::CommandType command, con
 	ServerPlayer *resultTarget = requestTarget;
 	if (redirectedToController) {
 		syncKnownHandcards(this, actual, player);
-		doNotify(actual, S_COMMAND_SWITCH_CONTEXT, player->objectName());
+		SwitchContextMessage message;
+		message.playerName = player->objectName();
+		doNotify(actual, S_COMMAND_SWITCH_CONTEXT, message.toVariant());
 		notifyArrangeSeats(actual);
 
 		player->acquireLock(ServerPlayer::SEMA_MUTEX);
@@ -6055,11 +6049,17 @@ void Room::notifyCardProvenance(const QString &kind, ServerPlayer *initiator, co
                                 const SkillInstanceRef &sourceRef, const SkillInstanceRef &activationRef)
 {
 	if (!initiator || !card) return;
-	JsonArray args;
-	args << 2 << kind << initiator->objectName() << card->toString()
-		 << sourceRef.ownerObjectName << sourceRef.key.skillName << sourceRef.key.instanceID
-		 << activationRef.ownerObjectName << activationRef.key.skillName << activationRef.key.instanceID;
-	doBroadcastNotify(S_COMMAND_CARD_PROVENANCE, args);
+	CardProvenanceMessage message;
+	message.kind = kind;
+	message.initiator = initiator->objectName();
+	message.card = card->toString();
+	message.sourceOwner = sourceRef.ownerObjectName;
+	message.sourceSkill = sourceRef.key.skillName;
+	message.sourceInstanceId = sourceRef.key.instanceID;
+	message.activationOwner = activationRef.ownerObjectName;
+	message.activationSkill = activationRef.key.skillName;
+	message.activationInstanceId = activationRef.key.instanceID;
+	doBroadcastNotify(S_COMMAND_CARD_PROVENANCE, message.toVariant());
 }
 
 bool Room::useCard(const CardUseStruct&use, bool add_history)
@@ -6757,10 +6757,10 @@ void Room::notifySkillInstanceAmount(ServerPlayer *owner, const SkillInstance &i
     if (!owner) return;
     foreach (ServerPlayer *receiver, m_players) {
         if (!canReceiveSkillInstance(receiver, owner, instance)) continue;
-        JsonArray payload;
-        payload << "amount" << owner->objectName() << instance.skillName << instance.instanceID
-                << instance.hasAmountOverride << instance.amountOverride;
-        doNotify(receiver, S_COMMAND_SKILL_INSTANCE, payload);
+        const SkillInstanceMessage message = SkillInstanceMessage::makeAmount(
+            owner->objectName(), instance.skillName, instance.instanceID,
+            instance.hasAmountOverride, instance.amountOverride);
+        doNotify(receiver, S_COMMAND_SKILL_INSTANCE, message.toVariant());
     }
 }
 
@@ -6771,10 +6771,10 @@ void Room::notifySkillInstanceCorrectState(ServerPlayer *owner, const SkillInsta
     if (!owner) return;
     foreach (ServerPlayer *receiver, m_players) {
         if (!canReceiveSkillInstance(receiver, owner, instance)) continue;
-        JsonArray payload;
-        payload << "correct_state" << owner->objectName() << instance.skillName
-                << instance.instanceID << operation << key << value;
-        doNotify(receiver, S_COMMAND_SKILL_INSTANCE, payload);
+        const SkillInstanceMessage message = SkillInstanceMessage::makeCorrectState(
+            owner->objectName(), instance.skillName, instance.instanceID,
+            operation, key, value);
+        doNotify(receiver, S_COMMAND_SKILL_INSTANCE, message.toVariant());
     }
 }
 
@@ -7177,7 +7177,9 @@ void Room::marshal(ServerPlayer*player)
 
 	notifyProperty(player, player, "flags", "-marshalling");
 
-	doNotify(player, S_COMMAND_SWITCH_CONTEXT, player->objectName());
+	SwitchContextMessage contextMessage;
+	contextMessage.playerName = player->objectName();
+	doNotify(player, S_COMMAND_SWITCH_CONTEXT, contextMessage.toVariant());
 
 	if (game_state>0){
 		doNotify(player, S_COMMAND_UPDATE_PILE, QVariant(m_drawPile->length()));
