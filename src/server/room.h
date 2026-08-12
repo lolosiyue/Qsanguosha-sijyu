@@ -7,6 +7,7 @@
 #include "skill-execution-registry.h"
 
 #include <functional>
+#include <memory>
 
 class ProhibitSkill;
 class ProhibitPindianSkill;
@@ -19,6 +20,7 @@ struct LogMessage;
 struct ActiveSkillAIRequest;
 struct PlayerUIState;
 class ServerPlayer;
+class RoomNotifier;
 class GameRule;
 class RoomThread;
 class RoomThread3v3;
@@ -707,6 +709,7 @@ private:
     QList<ExtraTurnRequest> m_scheduledExtraTurns;
     QList<ExtraTurnContext> m_extraTurnContexts;
     bool m_processingScheduledExtraTurns;
+    std::unique_ptr<RoomNotifier> m_notifier;
     int chooseSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skillName,
                             bool visibleOnly, bool acquiredOnly);
     bool removeSkillInstanceFromPlayer(ServerPlayer *owner, const QString &skillName, int instanceId,
