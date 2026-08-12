@@ -119,6 +119,8 @@ add_library(qsanguosha_engine STATIC
     src/server/gamerule.cpp
     src/server/generalselector.cpp
     src/server/qtupnpportmapping.cpp
+    src/server/room-notifier.cpp
+    src/server/room-notifier.h
     src/server/room.cpp
     src/server/roomthread.cpp
     src/server/roomthread1v1.cpp
@@ -242,6 +244,31 @@ if(BUILD_TESTING)
     )
     target_link_libraries(qsanguosha_player_ui_state_test PRIVATE Qt6::Core)
     add_test(NAME qsanguosha_player_ui_state COMMAND qsanguosha_player_ui_state_test)
+
+    add_executable(qsanguosha_room_notifier_test
+        tests/room-notifier-test.cpp
+        src/server/server-core.h
+    )
+    target_include_directories(qsanguosha_room_notifier_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/freetype
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/client
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/package
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+    )
+    target_link_libraries(qsanguosha_room_notifier_test PRIVATE
+        qsanguosha_engine Qt6::Core5Compat Qt6::Qml Qt6::Widgets
+        "$<$<CONFIG:Release>:dbghelp>"
+    )
+    add_test(NAME qsanguosha_room_notifier COMMAND qsanguosha_room_notifier_test)
+    set_tests_properties(qsanguosha_room_notifier PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
 
     add_executable(qsanguosha_photo_layout_fit tests/photo-layout-fit-test.cpp)
     target_include_directories(qsanguosha_photo_layout_fit PRIVATE
