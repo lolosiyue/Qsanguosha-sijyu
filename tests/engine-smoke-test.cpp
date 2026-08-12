@@ -4,6 +4,7 @@
 #include "card.h"
 #include "json.h"
 #include "player.h"
+#include "player-ui-state-builder.h"
 #include "protocol.h"
 #include "record-buffer.h"
 #include "room.h"
@@ -56,6 +57,60 @@ public:
 
     bool viewFilter(const Card *) const override { return true; }
     const Card *viewAs(const Card *originalCard) const override { return originalCard; }
+};
+
+class TestPlayerUIStateFixedSkill : public MaxCardsSkill
+{
+public:
+    TestPlayerUIStateFixedSkill()
+        : MaxCardsSkill(QStringLiteral("test-player-ui-state-fixed"))
+    {
+    }
+
+    int getFixed(const Player *) const override { return 9; }
+};
+
+class TestPlayerUIStateExtraSkill : public MaxCardsSkill
+{
+public:
+    TestPlayerUIStateExtraSkill()
+        : MaxCardsSkill(QStringLiteral("test-player-ui-state-extra"))
+    {
+    }
+
+    int getExtra(const Player *) const override { return 2; }
+};
+
+class TestPlayerUIStateDistanceSkill : public DistanceSkill
+{
+public:
+    TestPlayerUIStateDistanceSkill()
+        : DistanceSkill(QStringLiteral("test-player-ui-state-distance"))
+    {
+    }
+
+    int getCorrect(const Player *from, const Player *to) const override
+    {
+        if (from && from->objectName() == QStringLiteral("ui-state-owner"))
+            return -1;
+        if (to && to->objectName() == QStringLiteral("ui-state-owner"))
+            return 2;
+        return 0;
+    }
+};
+
+class TestPlayerUIStateEquipSkill : public ViewAsEquipSkill
+{
+public:
+    TestPlayerUIStateEquipSkill()
+        : ViewAsEquipSkill(QStringLiteral("test-player-ui-state-equip"))
+    {
+    }
+
+    QString viewAsEquip(const Player *) const override
+    {
+        return QStringLiteral("crossbow,silver_lion");
+    }
 };
 
 class TestRegistryTriggerSkill : public TriggerSkill
@@ -173,6 +228,46 @@ static int physicalResponseIgnoresStaleHelperActivation()
     return 0;
 }
 
+static bool playerUIStateBuilderAggregatesPresentationState()
+{
+    Room room(nullptr, QStringLiteral("02_1v1"));
+    ServerPlayer *owner = RoomTestAccess::addPlayer(room, QStringLiteral("ui-state-owner"));
+    ServerPlayer *sibling = RoomTestAccess::addPlayer(room, QStringLiteral("ui-state-sibling"));
+    owner->setAlive(true);
+    sibling->setAlive(true);
+
+    TestPlayerUIStateFixedSkill fixedSkill;
+    TestPlayerUIStateExtraSkill extraSkill;
+    TestPlayerUIStateDistanceSkill distanceSkill;
+    TestPlayerUIStateEquipSkill equipSkill;
+    Sanguosha->addSkills(QList<const Skill *>()
+                         << &fixedSkill << &extraSkill << &distanceSkill << &equipSkill);
+    owner->Player::addSkill(fixedSkill.objectName());
+    owner->Player::addSkill(extraSkill.objectName());
+    owner->Player::addSkill(distanceSkill.objectName());
+    owner->Player::addSkill(equipSkill.objectName());
+
+    const PlayerUIState state = PlayerUIStateBuilder::build(*owner, room);
+    const QString fixedEntry = QStringLiteral("test-player-ui-state-fixed^F9^ui-state-owner");
+    const QString extraEntry = QStringLiteral("test-player-ui-state-extra^2^ui-state-owner");
+    const QStringList equipEntries = QStringList()
+        << QStringLiteral("crossbow^test-player-ui-state-equip")
+        << QStringLiteral("silver_lion^test-player-ui-state-equip");
+
+    const bool valid = state.handMax == owner->getMaxCards()
+        && state.maxCardsSkills.contains(fixedEntry)
+        && state.maxCardsSkills.contains(extraEntry)
+        && state.offensiveDistance == -1
+        && state.defensiveDistance == 2
+        && state.offensiveSkills == QStringList(distanceSkill.objectName())
+        && state.defensiveSkills == QStringList(distanceSkill.objectName())
+        && state.viewAsEquipSkills == equipEntries;
+    if (!valid)
+        qCritical() << "PlayerUIStateBuilder returned unexpected presentation state"
+                    << state.toVariant();
+    return valid;
+}
+
 int main(int argc, char **argv)
 {
     QCoreApplication application(argc, argv);
@@ -212,11 +307,14 @@ int main(int argc, char **argv)
     if (physicalResponseResult != 0)
         return 70 + physicalResponseResult;
 
-    if (!skillRegistryPreservesLegacyBehavior())
+    if (!playerUIStateBuilderAggregatesPresentationState())
         return 80;
 
-    if (!engineLegacySkillApisDelegateToRegistry())
+    if (!skillRegistryPreservesLegacyBehavior())
         return 90;
+
+    if (!engineLegacySkillApisDelegateToRegistry())
+        return 100;
 
     qInfo() << "qsanguosha_engine smoke passed";
     return 0;

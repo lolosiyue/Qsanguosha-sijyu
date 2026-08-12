@@ -1407,7 +1407,7 @@ bool Room::removeSkillInstanceFromPlayer(ServerPlayer *owner, const QString &ski
         }
     }
 
-    owner->calculateUITooltips();
+    owner->refreshUIState();
     return true;
 }
 
@@ -3313,7 +3313,7 @@ void Room::setPlayerProperty(ServerPlayer*player, const char*property_name, cons
 		property_name == "kingdom" ||
 		property_name == "chained")
     {
-        player->calculateUITooltips();
+        player->refreshUIState();
     }
 
 	broadcastProperty(player, property_name);
@@ -3439,7 +3439,7 @@ void Room::setPlayerMark(ServerPlayer*player, const QString&mark, int value, QLi
 	}
 	player->setMark(mark_struct.name, mark_struct.count);
 
-	player->calculateUITooltips(); 
+	player->refreshUIState();
 
 	JsonArray arg;
 	arg << player->objectName() << mark_struct.name << mark_struct.count;
@@ -7239,7 +7239,7 @@ void Room::startGame()
 
 	preparePlayers();
 	foreach (ServerPlayer *player, m_players)
-		player->calculateUITooltips();
+		player->refreshUIState();
 	foreach (ServerPlayer *receiver, m_players)
 		notifySkillInstanceSnapshot(receiver);
 
@@ -7857,11 +7857,11 @@ void Room::moveCardsAtomic(QList<CardsMoveStruct> cards_moves, bool visible, boo
 	foreach (CardsMoveStruct move, cards_moves) {
 		if (move.to_place == Player::PlaceEquip && move.to) {
 			ServerPlayer *to_sp = (ServerPlayer *)move.to;
-			if (to_sp) to_sp->calculateUITooltips();
+			if (to_sp) to_sp->refreshUIState();
 		}
 		if (move.from_place == Player::PlaceEquip && move.from && move.from != move.to) {
 			ServerPlayer *from_sp = (ServerPlayer *)move.from;
-			if (from_sp) from_sp->calculateUITooltips();
+			if (from_sp) from_sp->refreshUIState();
 		}
 	}
 	moveOneTimes = _mergeMoves(cards_moves);
@@ -8689,7 +8689,7 @@ int Room::acquireSkill(ServerPlayer*player, const QString&skill_name, bool open,
         }
     }
 
-    player->calculateUITooltips();
+    player->refreshUIState();
     return instanceId;
 }
 
