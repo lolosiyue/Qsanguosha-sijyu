@@ -1,4 +1,5 @@
 #include "room.h"
+#include "protocol/state/player-ui-state.h"
 #include "engine.h"
 #include "settings.h"
 #include "standard.h"
@@ -7299,6 +7300,8 @@ void Room::startGame()
 	}
 
 	preparePlayers();
+	foreach (ServerPlayer *player, m_players)
+		player->calculateUITooltips();
 	foreach (ServerPlayer *receiver, m_players)
 		notifySkillInstanceSnapshot(receiver);
 
@@ -7368,6 +7371,25 @@ void Room::broadcastTagProperty(ServerPlayer *owner, const QString &tagKey, cons
 	JsonArray arg;
 	arg << owner->objectName() << QString("tag:") + tagKey << value;
 	doBroadcastNotify(S_COMMAND_SET_PROPERTY, arg);
+}
+
+void Room::notifyPlayerUIState(ServerPlayer *owner, const PlayerUIState &state)
+{
+	if (!owner) return;
+	PlayerUIStateMessage message;
+	message.playerName = owner->objectName();
+	message.state = state;
+	doBroadcastNotify(S_COMMAND_UPDATE_PLAYER_UI_STATE, message.toVariant());
+}
+
+void Room::notifyPlayerUIState(ServerPlayer *receiver, const ServerPlayer *owner,
+	const PlayerUIState &state)
+{
+	if (!receiver || !owner) return;
+	PlayerUIStateMessage message;
+	message.playerName = owner->objectName();
+	message.state = state;
+	doNotify(receiver, S_COMMAND_UPDATE_PLAYER_UI_STATE, message.toVariant());
 }
 
 QList<int> Room::drawCardsList(ServerPlayer*player, int n, const QString&reason, bool isTop, bool visible)

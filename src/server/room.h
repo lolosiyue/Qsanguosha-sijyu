@@ -17,6 +17,7 @@ class GameSnapshot;
 struct lua_State;
 struct LogMessage;
 struct ActiveSkillAIRequest;
+struct PlayerUIState;
 class ServerPlayer;
 class GameRule;
 class RoomThread;
@@ -312,6 +313,8 @@ public:
 
     bool broadcastProperty(ServerPlayer*owner, const char*property_name, const QString&value = "");
     void broadcastTagProperty(ServerPlayer *owner, const QString &tagKey, const QString &value);
+    void notifyPlayerUIState(ServerPlayer *owner, const PlayerUIState &state);
+    void notifyPlayerUIState(ServerPlayer *receiver, const ServerPlayer *owner, const PlayerUIState &state);
     void notifySkillInvoked(ServerPlayer*player, const QString&skill_name);
     void broadcastSkillInvoke(const QString&skillName, const ServerPlayer*player = nullptr);
     void broadcastSkillInvoke(const QString&skillName, const QString&category);

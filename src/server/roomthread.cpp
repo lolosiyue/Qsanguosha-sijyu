@@ -1106,9 +1106,6 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 				LuaLocker locker;
 				foreach(ServerPlayer*p, room->getAlivePlayers()){
 					p->calculateUITooltips();
-					int hand_max = p->getMaxCards();
-					if (p->getTag("UI_Hand_Max").toInt() == hand_max) continue;
-					p->setTag("UI_Hand_Max", hand_max);
 				}
 			}
 
@@ -1147,9 +1144,6 @@ if (room->getTag("DistanceCacheDirty").toBool()) {
 				LuaLocker locker;
 				foreach(ServerPlayer*p, room->getAlivePlayers()){
 					p->calculateUITooltips();
-					int hand_max = p->getMaxCards();
-					if (p->getTag("UI_Hand_Max").toInt() == hand_max) continue;
-					p->setTag("UI_Hand_Max", hand_max);
 				}
 			}
 

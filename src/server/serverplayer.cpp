@@ -24,7 +24,7 @@ const int ServerPlayer::S_NUM_SEMAPHORES = 6;
 ServerPlayer::ServerPlayer(Room *room)
 	: Player(room), m_isClientResponseReady(false), m_isWaitingReply(false),
 	socket(nullptr), room(room), ai(nullptr), trust_ai(new BasicAI(this)),
-	recordBuffer(nullptr), _m_phases_index(NotActive), next(nullptr), m_tooltipDirty(false)
+	recordBuffer(nullptr), _m_phases_index(NotActive), next(nullptr)
 {
 	semas = new QSemaphore *[S_NUM_SEMAPHORES];
 	for (int i = 0; i < S_NUM_SEMAPHORES; i++)
@@ -74,66 +74,71 @@ void ServerPlayer::setTag(const QString &key, const QVariant &value)
 	}
 }
 
-void ServerPlayer::calculateUITooltips()
+PlayerUIState ServerPlayer::buildUIState() const
 {
-    if (!room || !getGeneral() || !isAlive()) return;
+    PlayerUIState state;
+    state.handMax = getMaxCards();
+    if (!room)
+        return state;
 
-    QStringList mc_list;
-    int off_dist = 0, def_dist = 0;
-    QStringList off_skills, def_skills;
-
-    // 1. 計算手牌上限（V1/V2 皆走 Engine::listMaxCardsSkillContributions）
     foreach (const MaxCardsSkill *mc_skill, Sanguosha->getMaxCardsSkills()) {
         if (!mc_skill || mc_skill->objectName() == "gamerulemaxcards") continue;
 
         foreach (const SkillUIContribution &c,
                  Sanguosha->listMaxCardsSkillContributions(mc_skill, this)) {
             if (c.isFixed) {
-                mc_list << QString("%1^F%2^%3")
-                               .arg(mc_skill->objectName()).arg(c.value).arg(c.holderName);
+                state.maxCardsSkills << QString("%1^F%2^%3")
+                                            .arg(mc_skill->objectName()).arg(c.value).arg(c.holderName);
             } else if (c.value != 0) {
-                mc_list << QString("%1^%2^%3")
-                               .arg(mc_skill->objectName()).arg(c.value).arg(c.holderName);
+                state.maxCardsSkills << QString("%1^%2^%3")
+                                            .arg(mc_skill->objectName()).arg(c.value).arg(c.holderName);
             }
         }
     }
-    mc_list.removeDuplicates();
+    state.maxCardsSkills.removeDuplicates();
 
-    // 2. 計算距離修正（V1/V2 皆走 Engine::contributionOfDistanceSkill）
-    QList<ServerPlayer *> siblings = room->getOtherPlayers(this);
+    QList<ServerPlayer *> siblings = room->getOtherPlayers(const_cast<ServerPlayer *>(this));
     if (!siblings.isEmpty()) {
-        foreach (const Skill *skill, this->getSkills(true, false)) {
+        foreach (const Skill *skill, getSkills(true, false)) {
             const DistanceSkill *dist_skill = qobject_cast<const DistanceSkill *>(skill);
             if (!dist_skill) continue;
-            // 恒定 ±N 以第一個其他存活角色為參照；條件型可能失真（已接受）
             int off_val = Sanguosha->contributionOfDistanceSkill(dist_skill, this, siblings.first());
-            if (off_val < 0) { off_dist += off_val; off_skills << dist_skill->objectName(); }
+            if (off_val < 0) {
+                state.offensiveDistance += off_val;
+                state.offensiveSkills << dist_skill->objectName();
+            }
             int def_val = Sanguosha->contributionOfDistanceSkill(dist_skill, siblings.first(), this);
-            if (def_val > 0) { def_dist += def_val; def_skills << dist_skill->objectName(); }
+            if (def_val > 0) {
+                state.defensiveDistance += def_val;
+                state.defensiveSkills << dist_skill->objectName();
+            }
         }
     }
-    QStringList vae_list;
-    foreach (const Skill *skill, this->getSkills(true, false)) {
+
+    foreach (const Skill *skill, getSkills(true, false)) {
         const ViewAsEquipSkill *vaes = qobject_cast<const ViewAsEquipSkill *>(skill);
         if (vaes) {
             QString cns = vaes->viewAsEquip(this);
             if (!cns.isEmpty()) {
-                foreach (const QString &eq, cns.split(",", Qt::SkipEmptyParts)) {
-                    vae_list << QString("%1^%2").arg(eq).arg(vaes->objectName());
-                }
+                foreach (const QString &eq, cns.split(",", Qt::SkipEmptyParts))
+                    state.viewAsEquipSkills << QString("%1^%2").arg(eq).arg(vaes->objectName());
             }
         }
     }
-    setTag("UI_VAE_Skills", QVariant(vae_list));
 
-    int final_max_cards = this->getMaxCards();
+    return state;
+}
 
-    setTag("UI_MC_Skills", QVariant(mc_list));
-    setTag("UI_Off_Dist", off_dist);
-    setTag("UI_Off_Skills", QVariant(off_skills));
-    setTag("UI_Def_Dist", def_dist);
-    setTag("UI_Def_Skills", QVariant(def_skills));
-    setTag("UI_Hand_Max", final_max_cards);
+void ServerPlayer::calculateUITooltips()
+{
+    if (!room || !getGeneral() || !isAlive()) return;
+
+    const PlayerUIState state = buildUIState();
+    if (state == m_uiState)
+        return;
+
+    m_uiState = state;
+    room->notifyPlayerUIState(this, state);
 }
 
 QStringList ServerPlayer::getPendingAnytimeSkills() const
@@ -1396,6 +1401,8 @@ void ServerPlayer::marshal(ServerPlayer *player) const
 
 	foreach(const char *property_name, propertys)
 		room->notifyProperty(player, this, property_name);
+
+	room->notifyPlayerUIState(player, this, m_uiState);
 
 	QList<CardsMoveStruct> moves;
 
