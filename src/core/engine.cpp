@@ -20,7 +20,6 @@
 #include "wrapped-card.h"
 #include "room.h"
 #include "miniscenarios.h"
-#include "skill-instance-utils.h"
 
 #include "guandu-scenario.h"
 #include "couple-scenario.h"
@@ -536,39 +535,10 @@ const Scenario*Engine::getScenario(const QString &name) const
 
 void Engine::addSkills(QList<const Skill*> all_skills)
 {
-    QWriteLocker locker(&m_rwLock);
     foreach (const Skill* skill, all_skills) {
         if (skill) {
-            Skill *mutableSkill = const_cast<Skill*>(skill);
-            const QString &name = skill->objectName();
-
-            if (skills.contains(name)) {
-                qWarning() << tr("Duplicated skill : %1").arg(name);
-                const QPointer<Skill> previous = skills.value(name);
-                m_prohibitSkills.removeAll(previous);
-                m_distanceSkills.removeAll(previous);
-                m_maxCardsSkills.removeAll(previous);
-                m_targetModSkills.removeAll(previous);
-                m_invaliditySkills.removeAll(previous);
-                m_globalTriggerSkills.removeAll(previous);
-                m_attackRangeSkills.removeAll(previous);
-                m_viewAsEquipSkills.removeAll(previous);
-                m_cardLimitSkills.removeAll(previous);
-                m_prohibitPindianSkills.removeAll(previous);
-            }
-
-            skills.insert(name, mutableSkill);
-            if (dynamic_cast<const ProhibitSkill *>(skill)) m_prohibitSkills << mutableSkill;
-            if (dynamic_cast<const DistanceSkill *>(skill)) m_distanceSkills << mutableSkill;
-            if (dynamic_cast<const MaxCardsSkill *>(skill)) m_maxCardsSkills << mutableSkill;
-            if (dynamic_cast<const TargetModSkill *>(skill)) m_targetModSkills << mutableSkill;
-            if (dynamic_cast<const InvaliditySkill *>(skill)) m_invaliditySkills << mutableSkill;
-            const TriggerSkill *trigger = dynamic_cast<const TriggerSkill *>(skill);
-            if (trigger && trigger->isGlobal()) m_globalTriggerSkills << mutableSkill;
-            if (dynamic_cast<const AttackRangeSkill *>(skill)) m_attackRangeSkills << mutableSkill;
-            if (dynamic_cast<const ViewAsEquipSkill *>(skill)) m_viewAsEquipSkills << mutableSkill;
-            if (dynamic_cast<const CardLimitSkill *>(skill)) m_cardLimitSkills << mutableSkill;
-            if (dynamic_cast<const ProhibitPindianSkill *>(skill)) m_prohibitPindianSkills << mutableSkill;
+            if (m_skillRegistry.add(skill))
+                qWarning() << tr("Duplicated skill : %1").arg(skill->objectName());
         } else {
             qWarning() << tr("The engine tries to add an invalid skill");
         }
@@ -576,109 +546,59 @@ void Engine::addSkills(QList<const Skill*> all_skills)
 }
 QList<const ProhibitSkill*> Engine::getProhibitSkills() const
 {
-    QReadLocker locker(&m_rwLock);
-    QList<const ProhibitSkill *> result;
-    foreach (const QPointer<Skill> &skill, m_prohibitSkills)
-        if (skill) result << dynamic_cast<const ProhibitSkill *>(skill.data());
-    result.removeAll(nullptr);
-    return result;
+    return m_skillRegistry.prohibitSkills();
 }
 
 // 7. 修復 getDistanceSkills
 QList<const DistanceSkill*> Engine::getDistanceSkills() const
 {
-    QReadLocker locker(&m_rwLock);
-    QList<const DistanceSkill *> result;
-    foreach (const QPointer<Skill> &skill, m_distanceSkills)
-        if (skill) result << dynamic_cast<const DistanceSkill *>(skill.data());
-    result.removeAll(nullptr);
-    return result;
+    return m_skillRegistry.distanceSkills();
 }
 
 // 8. 修復 getMaxCardsSkills
 QList<const MaxCardsSkill*> Engine::getMaxCardsSkills() const
 {
-    QReadLocker locker(&m_rwLock);
-    QList<const MaxCardsSkill *> result;
-    foreach (const QPointer<Skill> &skill, m_maxCardsSkills)
-        if (skill) result << dynamic_cast<const MaxCardsSkill *>(skill.data());
-    result.removeAll(nullptr);
-    return result;
+    return m_skillRegistry.maxCardsSkills();
 }
 
 // 9. 修復 getTargetModSkills
 QList<const TargetModSkill*> Engine::getTargetModSkills() const
 {
-    QReadLocker locker(&m_rwLock);
-    QList<const TargetModSkill *> result;
-    foreach (const QPointer<Skill> &skill, m_targetModSkills)
-        if (skill) result << dynamic_cast<const TargetModSkill *>(skill.data());
-    result.removeAll(nullptr);
-    return result;
+    return m_skillRegistry.targetModSkills();
 }
 
 QList<const InvaliditySkill*> Engine::getInvaliditySkills() const
 {
-    QReadLocker locker(&m_rwLock);
-    QList<const InvaliditySkill *> result;
-    foreach (const QPointer<Skill> &skill, m_invaliditySkills)
-        if (skill) result << dynamic_cast<const InvaliditySkill *>(skill.data());
-    result.removeAll(nullptr);
-    return result;
+    return m_skillRegistry.invaliditySkills();
 }
 
 QList<const TriggerSkill*> Engine::getGlobalTriggerSkills() const
 {
-    QReadLocker locker(&m_rwLock);
-    QList<const TriggerSkill *> result;
-    foreach (const QPointer<Skill> &skill, m_globalTriggerSkills)
-        if (skill) result << dynamic_cast<const TriggerSkill *>(skill.data());
-    result.removeAll(nullptr);
-    return result;
+    return m_skillRegistry.globalTriggerSkills();
 }
 
 // 2. 修復 getAttackRangeSkills
 QList<const AttackRangeSkill*> Engine::getAttackRangeSkills() const
 {
-    QReadLocker locker(&m_rwLock);
-    QList<const AttackRangeSkill *> result;
-    foreach (const QPointer<Skill> &skill, m_attackRangeSkills)
-        if (skill) result << dynamic_cast<const AttackRangeSkill *>(skill.data());
-    result.removeAll(nullptr);
-    return result;
+    return m_skillRegistry.attackRangeSkills();
 }
 
 // 3. 修復 getViewAsEquipSkills
 QList<const ViewAsEquipSkill*> Engine::getViewAsEquipSkills() const
 {
-    QReadLocker locker(&m_rwLock);
-    QList<const ViewAsEquipSkill *> result;
-    foreach (const QPointer<Skill> &skill, m_viewAsEquipSkills)
-        if (skill) result << dynamic_cast<const ViewAsEquipSkill *>(skill.data());
-    result.removeAll(nullptr);
-    return result;
+    return m_skillRegistry.viewAsEquipSkills();
 }
 
 // 4. 修復 getCardLimitSkills
 QList<const CardLimitSkill*> Engine::getCardLimitSkills() const
 {
-    QReadLocker locker(&m_rwLock);
-    QList<const CardLimitSkill *> result;
-    foreach (const QPointer<Skill> &skill, m_cardLimitSkills)
-        if (skill) result << dynamic_cast<const CardLimitSkill *>(skill.data());
-    result.removeAll(nullptr);
-    return result;
+    return m_skillRegistry.cardLimitSkills();
 }
 
 // 5. 修復 getProhibitPindianSkills
 QList<const ProhibitPindianSkill*> Engine::getProhibitPindianSkills() const
 {
-    QReadLocker locker(&m_rwLock);
-    QList<const ProhibitPindianSkill *> result;
-    foreach (const QPointer<Skill> &skill, m_prohibitPindianSkills)
-        if (skill) result << dynamic_cast<const ProhibitPindianSkill *>(skill.data());
-    result.removeAll(nullptr);
-    return result;
+    return m_skillRegistry.prohibitPindianSkills();
 }
 
 void Engine::addPackage(Package*package)
@@ -847,7 +767,7 @@ void Engine::setPackage(Package*package)
     QList<const Skill *> newSkills;
     foreach (const Skill* skill, package->getSkills() + package->findChildren<const Skill*>()) {
         if (!skill) continue;
-        if (skills.contains(skill->objectName())) continue;
+        if (m_skillRegistry.contains(skill->objectName())) continue;
 
         // [修復點] 使用 const_cast 將 const Skill* 轉為 Skill*
         // 這是 QPointer 正常工作所必須的
@@ -2043,16 +1963,7 @@ bool Engine::sameNameWith(const QString &name1, const QString &name2) const
 
 QList<const Skill *> Engine::getSafeSkills() const
 {
-    QReadLocker locker(&m_rwLock);
-    QList<const Skill *> list;
-    // 遍歷 Hash 中的所有 QPointer
-    foreach (const QPointer<Skill> &ptr, skills.values()) {
-        // QPointer 自動魔法：如果對象被 delete 了，isNull() 會變 true
-        if (!ptr.isNull()) {
-            list << ptr.data();
-        }
-    }
-    return list;
+    return m_skillRegistry.allSkills();
 }
 
 QStringList Engine::getRandomGenerals(int count, const QSet<QString> &ban_set, const QString &kingdom) const
@@ -2166,15 +2077,13 @@ int Engine::revisesAudioType(const QString &general_name, const QString &filenam
 
 void Engine::playSkillAudioEffect(const QString &skill_name, int index, bool superpose) const
 {
-    QString baseName = SkillInstanceUtils::baseName(skill_name);
-    const Skill*skill = skills.value(baseName, nullptr);
+    const Skill *skill = getSkill(skill_name);
     if (skill) skill->playAudioEffect(index, superpose);
 }
 
 const Skill*Engine::getSkill(const QString &skill_name) const
 {
-    QString baseName = SkillInstanceUtils::baseName(skill_name);
-    return skills.value(baseName, nullptr);
+    return m_skillRegistry.find(skill_name);
 }
 
 const Skill*Engine::getSkill(const EquipCard*equip) const
@@ -2185,7 +2094,7 @@ const Skill*Engine::getSkill(const EquipCard*equip) const
 
 QStringList Engine::getSkillNames() const
 {
-    return skills.keys();
+    return m_skillRegistry.names();
 }
 
 Skill*Engine::getRealSkill(const QString &skill_name)
@@ -2197,9 +2106,7 @@ Skill*Engine::getRealSkill(const QString &skill_name)
 
 const TriggerSkill*Engine::getTriggerSkill(const QString &skill_name) const
 {
-    const Skill*skill = getSkill(skill_name);
-    if (skill) return qobject_cast<const TriggerSkill*>(skill);
-    return nullptr;
+    return m_skillRegistry.triggerSkill(skill_name);
 }
 
 const TriggerSkill *Engine::getTriggerSkill(const QString &skill_name, int instanceId) const

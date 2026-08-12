@@ -102,6 +102,8 @@ add_library(qsanguosha_engine STATIC
     src/core/server-info.cpp
     src/core/settings.cpp
     src/core/skill.cpp
+    src/core/skill-registry.cpp
+    src/core/skill-registry.h
     src/core/skill-instance-utils.cpp
     src/core/skill-instance-utils.h
     src/core/skill.h
@@ -201,7 +203,8 @@ target_include_directories(qsanguosha_engine_smoke PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/server
     ${CMAKE_CURRENT_SOURCE_DIR}/src/util
 )
-target_link_libraries(qsanguosha_engine_smoke PRIVATE qsanguosha_engine Qt6::Core5Compat Qt6::Qml Qt6::Widgets)
+target_link_libraries(qsanguosha_engine_smoke PRIVATE qsanguosha_engine Qt6::Core5Compat Qt6::Qml Qt6::Widgets
+    "$<$<CONFIG:Release>:dbghelp>")
 
 add_executable(qsanguosha_engine_self_bridge_axe_test
     tests/engine-self-bridge-axe-test.cpp
