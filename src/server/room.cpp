@@ -10901,6 +10901,7 @@ bool Room::moveField(ServerPlayer*player, const QString&reason, bool optional, c
 	}
 	doAnimate(S_ANIMATE_INDICATE, player->objectName(), from->objectName());
 	int id = askForCardChosen(player, from, flags, reason, false, Card::MethodNone, disabled_ids);
+	if (id < 0) return false;	// 無卡可選（from 的卡全在 disabled_ids，或 AI 回 -1）→ 直接失敗，避免 getCard(-1) nullptr deref
 	Player::Place place = getCardPlace(id);
 	const Card*c = Sanguosha->getCard(id);
 

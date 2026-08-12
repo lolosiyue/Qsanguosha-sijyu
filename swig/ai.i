@@ -315,7 +315,11 @@ void LuaAI::filterEvent(TriggerEvent event, ServerPlayer *player, const QVariant
 	pushCallback(L, __FUNCTION__);
 	lua_pushinteger(L, event);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
-	SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);
+	// data 以 heap 拷貝 + OWN 傳給 Lua：Lua 側（smart-ai filterEvent）會把
+	// data 存入全域 sgs.filterData，若傳棧上引用則 filterEvent 返回後懸垂
+	// （後續 sgs.filterData[event]:toCardEffect() 等讀取 → 0xC0000005）
+	QVariant *dataCopy = new QVariant(data);
+	SWIG_NewPointerObj(L, dataCopy, SWIGTYPE_p_QVariant, SWIG_POINTER_OWN);
 
 	if (lua_pcall(L, 4, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
@@ -529,7 +533,24 @@ const Card *LuaAI::askForSinglePeach(ServerPlayer *dying)
 		room->output(result);
 		return TrustAI::askForSinglePeach(dying);
 	}
-	return Card::Parse(result);
+	const Card *card = Card::Parse(result);
+	if (!card) return nullptr;
+	// 與 askForCard 一致：字串可能只有 skillName/#id，補齊 activation/source
+	// 供後續 useCard → resolveCardSkillInstance 走 V2 cost/pay。
+	const QString pattern = (self == dying) ? QStringLiteral("peach+analeptic")
+						   : QStringLiteral("peach");
+	ActiveSkillAIRequest request = room->getActiveSkillAIRequest(
+		self, card->getActivationSkillName(),
+		CardUseStruct::CARD_USE_REASON_RESPONSE_USE, pattern, QString(),
+		Card::MethodUse);
+	if (request.isValid()) {
+		Card *mutableCard = const_cast<Card *>(card);
+		mutableCard->setActivationSkill(request.getActivationSkillName(),
+			request.getActivationInstanceId());
+		mutableCard->setSourceSkill(request.getSourceSkillName(),
+			request.getSourceInstanceID());
+	}
+	return card;
 }
 
 const Card *LuaAI::askForPindian(ServerPlayer *requestor, const QString &reason)
