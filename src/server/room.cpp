@@ -1,4 +1,5 @@
 #include "room.h"
+#include "room-notifier.h"
 #include "protocol/state/player-ui-state.h"
 #include "engine.h"
 #include "settings.h"
@@ -161,27 +162,6 @@ static void clearControllerRelation(Room *room, ServerPlayer *player)
 	}
 }
 
-static QList<ServerPlayer *> collectBroadcastRecipients(const Room *room, const QList<ServerPlayer *> &players)
-{
-	QList<ServerPlayer *> recipients;
-	QSet<ServerPlayer *> delivered;
-	foreach (ServerPlayer *player, players) {
-		if (player == nullptr)
-			continue;
-		if (!delivered.contains(player)) {
-			delivered.insert(player);
-			recipients << player;
-		}
-
-		ServerPlayer *controller = room->getActualController(player);
-		if (controller != nullptr && controller != player && controller->isOnline() && !delivered.contains(controller)) {
-			delivered.insert(controller);
-			recipients << controller;
-		}
-	}
-	return recipients;
-}
-
 }
 
 void Room::syncControllerPileVisible(ServerPlayer *target, ServerPlayer *controller)
@@ -216,7 +196,8 @@ void Room::clearControllerPileVisible(ServerPlayer *target, ServerPlayer *contro
 }
 
 Room::Room(QObject*parent, const QString&mode)
-	: QThread(parent), m_processingScheduledExtraTurns(false), mode(mode), player_count(Sanguosha->getPlayerCount(mode)), current(nullptr),
+	: QThread(parent), m_processingScheduledExtraTurns(false), m_notifier(std::make_unique<RoomNotifier>(*this)),
+	mode(mode), player_count(Sanguosha->getPlayerCount(mode)), current(nullptr),
 	pile1(Sanguosha->getRandomCards(true)), m_drawPile(&pile1), m_discardPile(&pile2),
 	game_state(0), game_paused(false), m_lua(Sanguosha->getLuaState()),
 	thread(nullptr),//game_started(false), game_finished(false),
@@ -1913,87 +1894,48 @@ ServerPlayer*Room::getRaceResult(QList<ServerPlayer*> players, QSanProtocol::Com
 
 bool Room::doNotify(ServerPlayer*player, QSanProtocol::CommandType command, const QVariant&arg)
 {
-	Packet packet(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT, command);
-	packet.setMessageBody(arg);
-	player->invoke(&packet);
-	ServerPlayer *controller = getActualController(player);
-	if (controller != nullptr && controller != player && controller->isOnline())
-		controller->invoke(&packet);
-	return true;
+	return m_notifier->doNotify(player, static_cast<int>(command), arg);
 }
 
 bool Room::doBroadcastNotify(const QList<ServerPlayer*>&players, QSanProtocol::CommandType command, const QVariant&arg)
 {
-	Packet packet(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT, command);
-	packet.setMessageBody(arg);
-	foreach (ServerPlayer *recipient, collectBroadcastRecipients(this, players))
-		recipient->invoke(&packet);
-	return true;
+	return m_notifier->doBroadcastNotify(players, static_cast<int>(command), arg);
 }
 
 bool Room::doBroadcastNotify(QSanProtocol::CommandType command, const QVariant&arg)
 {
-	return doBroadcastNotify(m_players, command, arg);
+	return m_notifier->doBroadcastNotify(static_cast<int>(command), arg);
 }
 
 // the following functions for Lua
 bool Room::doNotify(ServerPlayer*player, int command, const char*arg)
 {
-	Packet packet(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT, (QSanProtocol::CommandType)command);
-	JsonDocument doc = JsonDocument::fromJson(arg);
-	if (doc.isValid()){
-		packet.setMessageBody(doc.toVariant());
-		player->invoke(&packet);
-		ServerPlayer *controller = getActualController(player);
-		if (controller != nullptr && controller != player && controller->isOnline())
-			controller->invoke(&packet);
-	} else
-		output(QString("Fail to parse the Json Value %1").arg(arg));
-	return true;
+	return m_notifier->doNotify(player, command, arg);
 }
 
 bool Room::doBroadcastNotify(const QList<ServerPlayer*>&players, int command, const char*arg)
 {
-	Packet packet(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT, (QSanProtocol::CommandType)command);
-	JsonDocument doc = JsonDocument::fromJson(arg);
-	if (!doc.isValid()) {
-		output(QString("Fail to parse the Json Value %1").arg(arg));
-		return true;
-	}
-	packet.setMessageBody(doc.toVariant());
-	foreach (ServerPlayer *recipient, collectBroadcastRecipients(this, players))
-		recipient->invoke(&packet);
-	return true;
+	return m_notifier->doBroadcastNotify(players, command, arg);
 }
 
 bool Room::doBroadcastNotify(int command, const char*arg)
 {
-	return doBroadcastNotify(m_players, command, arg);
+	return m_notifier->doBroadcastNotify(command, arg);
 }
 
 bool Room::doNotify(ServerPlayer*player, int command, const QVariant&arg)
 {
-	Packet packet(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT, (QSanProtocol::CommandType)command);
-	packet.setMessageBody(arg);
-	player->invoke(&packet);
-	ServerPlayer *controller = getActualController(player);
-	if (controller != nullptr && controller != player && controller->isOnline())
-		controller->invoke(&packet);
-	return true;
+	return m_notifier->doNotify(player, command, arg);
 }
 
 bool Room::doBroadcastNotify(const QList<ServerPlayer*>&players, int command, const QVariant&arg)
 {
-	Packet packet(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT, (QSanProtocol::CommandType)command);
-	packet.setMessageBody(arg);
-	foreach (ServerPlayer *recipient, collectBroadcastRecipients(this, players))
-		recipient->invoke(&packet);
-	return true;
+	return m_notifier->doBroadcastNotify(players, command, arg);
 }
 
 bool Room::doBroadcastNotify(int command, const QVariant&arg)
 {
-	return doBroadcastNotify(m_players, command, arg);
+	return m_notifier->doBroadcastNotify(command, arg);
 }
 
 // end for Lua
@@ -6840,12 +6782,8 @@ void Room::notifySkillInstanceState(ServerPlayer *owner, const SkillInstance &in
                                     const QString &operation, const QString &key,
                                     const QVariant &value)
 {
-    if (!owner) return;
-    // 僅同步給持有者本人（含重連後的 Self），不廣播給其他座位
-    JsonArray payload;
-    payload << "state" << owner->objectName() << instance.skillName
-            << instance.instanceID << operation << key << value;
-    doNotify(owner, S_COMMAND_SKILL_INSTANCE, payload);
+	// 僅同步給持有者本人（含重連後的 Self），不廣播給其他座位
+	m_notifier->notifySkillInstanceState(owner, instance, operation, key, value);
 }
 
 static QString skillAmountGuardKey(const SkillInstanceRef &ref)
@@ -7368,28 +7306,18 @@ bool Room::broadcastProperty(ServerPlayer*owner, const char*property_name, const
 
 void Room::broadcastTagProperty(ServerPlayer *owner, const QString &tagKey, const QString &value)
 {
-	JsonArray arg;
-	arg << owner->objectName() << QString("tag:") + tagKey << value;
-	doBroadcastNotify(S_COMMAND_SET_PROPERTY, arg);
+	m_notifier->broadcastTagProperty(owner, tagKey, value);
 }
 
 void Room::notifyPlayerUIState(ServerPlayer *owner, const PlayerUIState &state)
 {
-	if (!owner) return;
-	PlayerUIStateMessage message;
-	message.playerName = owner->objectName();
-	message.state = state;
-	doBroadcastNotify(S_COMMAND_UPDATE_PLAYER_UI_STATE, message.toVariant());
+	m_notifier->notifyPlayerUIState(owner, state);
 }
 
 void Room::notifyPlayerUIState(ServerPlayer *receiver, const ServerPlayer *owner,
 	const PlayerUIState &state)
 {
-	if (!receiver || !owner) return;
-	PlayerUIStateMessage message;
-	message.playerName = owner->objectName();
-	message.state = state;
-	doNotify(receiver, S_COMMAND_UPDATE_PLAYER_UI_STATE, message.toVariant());
+	m_notifier->notifyPlayerUIState(receiver, owner, state);
 }
 
 QList<int> Room::drawCardsList(ServerPlayer*player, int n, const QString&reason, bool isTop, bool visible)
@@ -8349,36 +8277,28 @@ void Room::notifySkillInvoked(ServerPlayer*player, const QString&skill_name)
 
 void Room::broadcastSkillInvoke(const QString&skill_name, const QString&category)
 {
-	JsonArray args;
-	args << QSanProtocol::S_GAME_EVENT_PLAY_EFFECT << skill_name << category << -1 << "";
-	doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+	m_notifier->broadcastSkillInvoke(skill_name, category);
 }
 
 void Room::broadcastSkillInvoke(const QString&skill_name, const ServerPlayer*player)
 {
-	JsonArray args;
-	args << QSanProtocol::S_GAME_EVENT_PLAY_EFFECT << skill_name << true << -1;
 	if (!player) player = findPlayerBySkillName(skill_name, true);
-	args << (player ? player->objectName() : "");
-	doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+	m_notifier->broadcastSkillInvoke(skill_name, true, -1,
+		player ? player->objectName() : QString());
 }
 
 void Room::broadcastSkillInvoke(const QString&skill_name, int type, const ServerPlayer*player)
 {
 	if (type==0) return;
-	JsonArray args;
-	args << QSanProtocol::S_GAME_EVENT_PLAY_EFFECT << skill_name << true << type;
 	if (!player) player = findPlayerBySkillName(skill_name, true);
-	args << (player ? player->objectName() : "");
-	doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+	m_notifier->broadcastSkillInvoke(skill_name, true, type,
+		player ? player->objectName() : QString());
 }
 
 void Room::broadcastSkillInvoke(const QString&skill_name, bool isMale, int type)
 {
 	if (type==0) return;
-	JsonArray args;
-	args << QSanProtocol::S_GAME_EVENT_PLAY_EFFECT << skill_name << isMale << type << "";
-	doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+	m_notifier->broadcastSkillInvoke(skill_name, isMale, type, QString());
 }
 
 void Room::broadcastSkillInvoke(const Skill*skill, int type, const ServerPlayer*player)
@@ -10324,16 +10244,7 @@ QList<ServerPlayer*> Room::getLieges(const QString&kingdom, ServerPlayer*lord) c
 
 void Room::sendLog(const LogMessage&log, QList<ServerPlayer*>players)
 {
-	if (log.type.isEmpty()) return;
-	if (Server::isHeadlessMode) {
-		QString msg = QString("[LOG] %1").arg(log.type);
-		if (!log.arg.isEmpty()) msg += QString(" | %1").arg(log.arg);
-		if (!log.arg2.isEmpty()) msg += QString(" | %1").arg(log.arg2);
-		if (log.from) msg += QString(" | from: %1").arg(log.from->objectName());
-		Server::writeHeadlessLog(msg);
-	}
-	if (players.isEmpty()) doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_SKILL, log.toVariant());
-	else doBroadcastNotify(players, QSanProtocol::S_COMMAND_LOG_SKILL, log.toVariant());
+	m_notifier->sendLog(log, players);
 }
 
 void Room::sendLog(const LogMessage&log, ServerPlayer*player)
@@ -10452,8 +10363,7 @@ void Room::showCard(ServerPlayer*player, QList<int> card_ids, ServerPlayer*only_
 
 	tryPause();
 	notifyMoveFocus(player);
-	JsonArray show_arg;
-	show_arg << player->objectName() << ListI2S(card_ids).join("+");
+	const QString cardIds = ListI2S(card_ids).join("+");
 
 	foreach(int card_id, card_ids){
 		WrappedCard*wrapped = Sanguosha->getWrappedCard(card_id);
@@ -10505,8 +10415,7 @@ void Room::showCard(ServerPlayer*player, QList<int> card_ids, QList<ServerPlayer
 
 	tryPause();
 	notifyMoveFocus(player);
-	JsonArray show_arg;
-	show_arg << player->objectName() << ListI2S(card_ids).join("+");
+	const QString cardIds = ListI2S(card_ids).join("+");
 
 	if (players.isEmpty()) {
 		foreach (int card_id, card_ids)
@@ -10514,10 +10423,10 @@ void Room::showCard(ServerPlayer*player, QList<int> card_ids, QList<ServerPlayer
 	}
 
 	if(players.isEmpty()) players = m_players;
-	doBroadcastNotify(players, S_COMMAND_SHOW_CARD, show_arg);
-	QVariant data = show_arg[1];
+	m_notifier->showCard(player->objectName(), cardIds, players);
+	QVariant data = cardIds;
 	thread->trigger(ShowCards, this, player, data);
-	data = QString("viewCards:%1:%2").arg(player->objectName()).arg(show_arg[1].toString());
+	data = QString("viewCards:%1:%2").arg(player->objectName()).arg(cardIds);
 	foreach(ServerPlayer*p, players)
 		thread->trigger(ChoiceMade, this, p, data);
 }
@@ -10536,17 +10445,9 @@ void Room::showVirtualCard(ServerPlayer *player, const Card *card, ServerPlayer 
 
 	tryPause();
 	notifyMoveFocus(player);
-
-	JsonArray args;
-	args << player->objectName();
-	args << card->objectName();
-	args << Card::Suit2String(card->getSuit());
-	args << card->getNumber();
-	args << card->getSkillName();
-	args << ListI2S(displaySubcards).join("+");
-	args << (target ? target->objectName() : QString());
-
-	doBroadcastNotify(S_COMMAND_SHOW_VIRTUAL_CARD, args);
+	m_notifier->showVirtualCard(player->objectName(), card->objectName(),
+		Card::Suit2String(card->getSuit()), card->getNumber(), card->getSkillName(),
+		ListI2S(displaySubcards).join("+"), target ? target->objectName() : QString());
 }
 
 void Room::showAllCards(ServerPlayer*player, ServerPlayer*to)
