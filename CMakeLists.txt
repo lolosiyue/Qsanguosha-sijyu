@@ -78,12 +78,18 @@ add_library(qsanguosha_engine STATIC
     src/core/banpair.h
     src/core/card.cpp
     src/core/card.h
+    src/core/ai-data-store.cpp
+    src/core/ai-data-store.h
     src/core/engine.cpp
     src/core/engine.h
     src/core/engine-bootstrap.cpp
     src/core/engine-bootstrap.h
     src/core/general.cpp
     src/core/general.h
+    src/core/game-rng.cpp
+    src/core/game-rng.h
+    src/core/lua-runtime.cpp
+    src/core/lua-runtime.h
     src/core/lua-wrapper.cpp
     src/core/lua-wrapper.h
     src/core/filehandler.cpp
@@ -124,12 +130,16 @@ add_library(qsanguosha_engine STATIC
     src/core/wrapped-card.h
     src/server/server.cpp
     src/server/ai.cpp
+    src/server/ai-runtime.cpp
+    src/server/ai-runtime.h
     src/server/basicai.cpp
     src/server/gamerule.cpp
     src/server/generalselector.cpp
     src/server/qtupnpportmapping.cpp
     src/server/room-notifier.cpp
     src/server/room-notifier.h
+    src/server/room-runtime.cpp
+    src/server/room-runtime.h
     src/server/room.cpp
     src/server/roomthread.cpp
     src/server/roomthread1v1.cpp
@@ -245,6 +255,50 @@ if(BUILD_TESTING)
     )
 
     add_test(NAME qsanguosha_card_parse_regex_test COMMAND qsanguosha_card_parse_regex_test)
+
+    add_executable(qsanguosha_lua_runtime_isolation_test
+        tests/lua-runtime-isolation-test.cpp
+        src/server/server-core.h
+    )
+    target_include_directories(qsanguosha_lua_runtime_isolation_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/freetype
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+    )
+    target_link_libraries(qsanguosha_lua_runtime_isolation_test PRIVATE
+        qsanguosha_engine Qt6::Core5Compat Qt6::Qml Qt6::Widgets
+    )
+    add_test(NAME qsanguosha_lua_runtime_isolation
+             COMMAND qsanguosha_lua_runtime_isolation_test)
+
+    add_executable(qsanguosha_room_runtime_isolation_test
+        tests/room-runtime-isolation-test.cpp
+        src/server/server-core.h
+    )
+    target_include_directories(qsanguosha_room_runtime_isolation_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/freetype
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/client
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/package
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+    )
+    target_link_libraries(qsanguosha_room_runtime_isolation_test PRIVATE
+        qsanguosha_engine Qt6::Core5Compat Qt6::Qml Qt6::Widgets
+        "$<$<CONFIG:Release>:dbghelp>"
+    )
+    add_test(NAME qsanguosha_room_runtime_isolation
+             COMMAND qsanguosha_room_runtime_isolation_test)
+    set_tests_properties(qsanguosha_room_runtime_isolation PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
 
     add_executable(qsanguosha_player_ui_state_test
         tests/player-ui-state-test.cpp

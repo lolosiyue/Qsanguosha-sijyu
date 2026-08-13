@@ -1,6 +1,8 @@
 #ifndef _UTIL_H
 #define _UTIL_H
 
+#include <cstddef>
+
 struct lua_State;
 class QVariant;
 class DummyCard;
@@ -15,7 +17,9 @@ void qShuffle(QList<T> &list)
 }
 
 // lua interpreter related
+typedef void *(*LuaAllocatorFunction)(void *, void *, size_t, size_t);
 lua_State *CreateLuaState();
+lua_State *CreateLuaState(LuaAllocatorFunction allocator, void *userData);
 bool DoLuaScript(lua_State *L, const char *script);
 
 QVariant GetValueFromLuaState(lua_State *L, const char *table_name, const char *key);

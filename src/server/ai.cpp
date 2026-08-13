@@ -162,6 +162,46 @@ QList<ServerPlayer *> AI::getFriends() const
     return friends;
 }
 
+AIResult AI::decide(const AIRequest &request)
+{
+    AIResult result;
+    result.decisionId = request.decisionId;
+    result.stateRevision = request.stateRevision;
+    if (request.hasSkillActionContext)
+        return result;
+    result.handled = true;
+    if (request.kind == AIRequest::Activate) {
+        CardUseStruct use;
+        use.from = self;
+        activate(use);
+        if (!use.card)
+            return result;
+        result.kind = AIResult::UseCard;
+        result.action.legacyCardString = use.card->toString();
+        foreach (ServerPlayer *target, use.to) {
+            if (target)
+                result.action.selectedTargetNames << target->objectName();
+        }
+        if (use.hasSkillActivationRequest
+            && use.activationRef.isValid() && use.sourceRef.isValid()) {
+            result.action.hasSkillActionContext = true;
+            result.action.skillActionContext.activationRef = use.activationRef;
+            result.action.skillActionContext.sourceRef = use.sourceRef;
+            result.action.skillActionContext.activationQuotaAvailable = true;
+            result.action.skillActionContext.sourceQuotaAvailable = true;
+        }
+        return result;
+    }
+
+    const QString answer = askForUseCard(request.pattern, request.prompt,
+                                         request.handlingMethod);
+    if (answer.isEmpty() || answer == QStringLiteral("."))
+        return result;
+    result.kind = AIResult::UseCard;
+    result.action.legacyCardString = answer;
+    return result;
+}
+
 void AI::filterEvent(TriggerEvent, ServerPlayer *, const QVariant &)
 {
     // dummy
@@ -452,8 +492,6 @@ QString LuaAI::askForUseCard(const QString &pattern, const QString &prompt, cons
 {
     if (callback == 0)
         return TrustAI::askForUseCard(pattern, prompt, method);
-
-    LuaLocker locker;
     lua_State*L = room->getLuaState();
 
     pushCallback(L, __FUNCTION__);
@@ -478,7 +516,6 @@ QString LuaAI::askForUseCard(const QString &pattern, const QString &prompt, cons
 
 QList<int> LuaAI::askForDiscard(const QString &reason, int discard_num, int min_num, bool optional, bool include_equip, const QString &pattern)
 {
-    LuaLocker locker;
     lua_State*L = room->getLuaState();
 
     pushCallback(L, __FUNCTION__);
@@ -519,7 +556,6 @@ bool LuaAI::getTable(lua_State*L, QList<int> &table)
 
 int LuaAI::askForAG(const QList<int> &card_ids, bool refusable, const QString &reason)
 {
-    LuaLocker locker;
     lua_State*L = room->getLuaState();
 
     pushCallback(L, __FUNCTION__);
@@ -544,7 +580,7 @@ void LuaAI::pushCallback(lua_State*L, const char *function_name)
 {
     Q_ASSERT(callback);
 
-    lua_rawgeti(L, LUA_REGISTRYINDEX, callback);
+    callback.push(L);
     lua_pushstring(L, function_name);
 }
 
@@ -560,7 +596,6 @@ void LuaAI::pushQIntList(lua_State*L, const QList<int> &list)
 
 void LuaAI::askForGuanxing(const QList<int> &cards, QList<int> &up, QList<int> &bottom, int guanxing_type)
 {
-    LuaLocker locker;
     lua_State*L = room->getLuaState();
 
     pushCallback(L, __FUNCTION__);
@@ -593,8 +628,6 @@ QString LuaAI::askForGeneral(const QStringList &generals, const QString &default
 {
     if (callback == 0)
         return TrustAI::askForGeneral(generals, default_choice, reason);
-
-    LuaLocker locker;
     lua_State *L = room->getLuaState();
 
     pushCallback(L, __FUNCTION__);

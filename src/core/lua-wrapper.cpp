@@ -1,4 +1,5 @@
 #include "lua-wrapper.h"
+#include "room-runtime.h"
 #include "engine.h"
 #include "util.h"
 #ifndef QSAN_ENGINE_BUILD
@@ -272,10 +273,10 @@ void LuaBattleArraySkill::summonFriends(ServerPlayer *player) const
         BattleArraySkill::summonFriends(player);
         return;
     }
-    LuaLocker locker;
-    lua_State *L = Sanguosha->getLuaState();
-    lua_pushinteger(L, on_summon);
-    lua_gettable(L, LUA_REGISTRYINDEX);
+    lua_State *L = on_summon.state();
+    if (!L)
+        return;
+    on_summon.push(L);
     lua_pushlightuserdata(L, player);
     int result = lua_pcall(L, 1, 0, 0);
     if (result != 0) {
@@ -292,7 +293,12 @@ LuaSkillCard::LuaSkillCard(const QString &name, const QString &skillName)
 {
 	if(name.isEmpty()) return;
 	setObjectName(name);
-	LuaSkillCards.insert(name, this);
+	EngineRuntimeContext *context = Sanguosha ? Sanguosha->currentRoomContext() : nullptr;
+	RoomRuntime *runtime = context ? context->roomRuntime() : nullptr;
+	if (runtime)
+		runtime->registerLuaSkillCard(name, this);
+	else
+		LuaSkillCards.insert(name, this);
 	if (skillName.isEmpty())
 		m_skillName = name.toLower().remove("card");
 	else
@@ -348,7 +354,9 @@ LuaSkillCard *LuaSkillCard::Parse(const QString &str)
     } else
         return nullptr;
 
-    const LuaSkillCard *c = LuaSkillCards.value(name, nullptr);
+    EngineRuntimeContext *context = Sanguosha ? Sanguosha->currentRoomContext() : nullptr;
+    RoomRuntime *runtime = context ? context->roomRuntime() : nullptr;
+    const LuaSkillCard *c = runtime ? runtime->luaSkillCard(name) : LuaSkillCards.value(name, nullptr);
     if (c == nullptr) return nullptr;
 
     LuaSkillCard *new_card = c->clone();

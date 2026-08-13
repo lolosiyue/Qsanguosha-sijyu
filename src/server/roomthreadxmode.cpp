@@ -18,8 +18,9 @@ RoomThreadXMode::RoomThreadXMode(Room *room)
 
 void RoomThreadXMode::run()
 {
-    // initialize the random seed for this thread
-    qsrand(QTime(0, 0, 0).secsTo(QTime::currentTime()));
+    LuaRuntime::Binding luaBinding(room->roomRuntime()->lua());
+    GameRng::Binding rngBinding(room->roomRuntime()->rng());
+    EngineRuntimeContextScope contextScope(*Sanguosha, room);
     QString scheme = Config.value("XMode/RoleChooseX", "Normal").toString();
     assignRoles(scheme);
     room->adjustSeats();
@@ -32,7 +33,7 @@ void RoomThreadXMode::run()
         }
     }
     QStringList xmode_gens;
-    { LuaLocker locker; xmode_gens = GetConfigFromLuaState(Sanguosha->getLuaState(), "xmode_generals").toStringList(); }
+    xmode_gens = GetConfigFromLuaState(room->getLuaState(), "xmode_generals").toStringList();
     foreach (QString gen_name, xmode_gens) {
         if (gen_name.startsWith("-")) { // means banned generals
             general_names.removeOne(gen_name.mid(1));

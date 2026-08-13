@@ -1,4 +1,5 @@
 #include "engine.h"
+#include "ai-data-store.h"
 #include "aux-skills.h"
 #ifdef AUDIO_SUPPORT
 #include "audio.h"
@@ -19,6 +20,7 @@
 #include "exppattern.h"
 #include "wrapped-card.h"
 #include "room.h"
+#include "room-runtime.h"
 #include "miniscenarios.h"
 
 #include "guandu-scenario.h"
@@ -31,19 +33,45 @@
 
 Engine*Sanguosha = nullptr;
 
+namespace {
+
+template<typename T>
+QList<const T *> mergedRuntimeSkills(RoomRuntime *runtime, const QList<const T *> &bootstrap,
+                                     const QSet<QString> &runtimeDefinitionNames,
+                                     const QList<const T *> &roomSkills)
+{
+    if (!runtime)
+        return bootstrap;
+    QList<const T *> result = roomSkills;
+    foreach (const T *skill, bootstrap) {
+        if (skill && !runtimeDefinitionNames.contains(skill->objectName())
+            && !runtime->skill(skill->objectName()))
+            result << skill;
+    }
+    return result;
+}
+
+}
+
 // --- SafeLuaMutex implementation ---
 void SafeLuaMutex::lock() {
+    LuaRuntime *runtime = LuaRuntime::current();
+    if (runtime && runtime->kind() == LuaRuntime::Game) return;
     if (m_owner == QThread::currentThread()) { m_count++; return; }
     m_mutex.lock();
     m_owner = QThread::currentThread();
     m_count = 1;
 }
 void SafeLuaMutex::unlock() {
+    LuaRuntime *runtime = LuaRuntime::current();
+    if (runtime && runtime->kind() == LuaRuntime::Game) return;
     if (m_owner == QThread::currentThread()) {
         if (--m_count == 0) { m_owner = nullptr; m_mutex.unlock(); }
     }
 }
 bool SafeLuaMutex::tryLock(int timeout) {
+    LuaRuntime *runtime = LuaRuntime::current();
+    if (runtime && runtime->kind() == LuaRuntime::Game) return true;
     if (m_owner == QThread::currentThread()) { m_count++; return true; }
     if (m_mutex.tryLock(timeout)) {
         m_owner = QThread::currentThread();
@@ -53,6 +81,8 @@ bool SafeLuaMutex::tryLock(int timeout) {
     return false;
 }
 int SafeLuaMutex::yield() {
+    LuaRuntime *runtime = LuaRuntime::current();
+    if (runtime && runtime->kind() == LuaRuntime::Game) return 0;
     if (m_owner != QThread::currentThread()) return 0;
     int saved_count = m_count;
     m_count = 0;
@@ -61,6 +91,8 @@ int SafeLuaMutex::yield() {
     return saved_count;
 }
 void SafeLuaMutex::restore(int count) {
+    LuaRuntime *runtime = LuaRuntime::current();
+    if (runtime && runtime->kind() == LuaRuntime::Game) return;
     if (count <= 0) return;
     m_mutex.lock();
     m_owner = QThread::currentThread();
@@ -134,6 +166,7 @@ void Engine::addPackage(const QString &name)
     PackageFactory factory = PackageAdder::packages().value(name, nullptr);
     if (factory) {
         Package *pack = factory(); // 真正執行 new 的地方
+        m_packageFactories.insert(pack->objectName(), factory);
         addPackage(pack);
     }
     else {
@@ -268,8 +301,15 @@ Engine::Engine(bool isManualMode)
 
     Sanguosha = this;
 
-    lua = CreateLuaState();
-    if (!DoLuaScript(lua, "lua/config.lua")) exit(1);
+    m_bootstrapLua = std::make_unique<LuaRuntime>(LuaRuntime::Bootstrap);
+    QString bootstrapError;
+    if (!m_bootstrapLua->initialize(&bootstrapError)) {
+        qCritical() << "Unable to initialize bootstrap Lua runtime:" << bootstrapError;
+        exit(1);
+    }
+    LuaRuntime::setCurrentForThread(m_bootstrapLua.get());
+    lua_State *bootstrapLua = m_bootstrapLua->state();
+    if (!DoLuaScript(bootstrapLua, "lua/config.lua")) exit(1);
 
     /*foreach (QString cv_pair, GetConfigFromLuaState(lua, "convert_pairs").toStringList()) {
         QStringList pairs = cv_pair.split("->");
@@ -277,12 +317,12 @@ Engine::Engine(bool isManualMode)
             sp_convert_pairs.insert(pairs[0], to);
     }*/
 
-    extra_hidden_generals = GetConfigFromLuaState(lua, "extra_hidden_generals").toStringList();
-    removed_hidden_generals = GetConfigFromLuaState(lua, "removed_hidden_generals").toStringList();
-    extra_default_lords = GetConfigFromLuaState(lua, "extra_default_lords").toStringList();
-    removed_default_lords = GetConfigFromLuaState(lua, "removed_default_lords").toStringList();
+    extra_hidden_generals = GetConfigFromLuaState(bootstrapLua, "extra_hidden_generals").toStringList();
+    removed_hidden_generals = GetConfigFromLuaState(bootstrapLua, "removed_hidden_generals").toStringList();
+    extra_default_lords = GetConfigFromLuaState(bootstrapLua, "extra_default_lords").toStringList();
+    removed_default_lords = GetConfigFromLuaState(bootstrapLua, "removed_default_lords").toStringList();
 
-    foreach (QString name, GetConfigFromLuaState(lua, "package_names").toStringList())
+    foreach (QString name, GetConfigFromLuaState(bootstrapLua, "package_names").toStringList())
         addPackage(name);
 
     _loadMiniScenarios();
@@ -328,7 +368,10 @@ Engine::Engine(bool isManualMode)
 
     connect(qApp, SIGNAL(aboutToQuit()), this, SLOT(deleteLater()));
 
-    if (!DoLuaScript(lua, "lua/sanguosha.lua")) exit(1);
+    m_loadingLuaDefinitions = true;
+    const bool loadedLuaDefinitions = DoLuaScript(bootstrapLua, "lua/sanguosha.lua");
+    m_loadingLuaDefinitions = false;
+    if (!loadedLuaDefinitions) exit(1);
 
     // Load resource aliases from JSON
     {
@@ -443,7 +486,7 @@ Engine::Engine(bool isManualMode)
 
 lua_State*Engine::getLuaState() const
 {
-    return lua;
+    return m_bootstrapLua ? m_bootstrapLua->rawState() : nullptr;
 }
 
 SafeLuaMutex &Engine::getLuaMutex() const
@@ -451,8 +494,33 @@ SafeLuaMutex &Engine::getLuaMutex() const
     return lua_mutex;
 }
 
+bool Engine::isGameLuaRuntime() const
+{
+    return currentRoomRuntime() != nullptr;
+}
+
+bool Engine::isLuaDefinitionsLoaded() const
+{
+    RoomRuntime *runtime = currentRoomRuntime();
+    return runtime ? runtime->definitionsLoaded() : property("DoneLoading").toBool();
+}
+
+void Engine::finishLuaDefinitions()
+{
+    RoomRuntime *runtime = currentRoomRuntime();
+    if (runtime)
+        runtime->finishDefinitionLoading();
+    else
+        setProperty("DoneLoading", true);
+}
+
 void Engine::addTranslationEntry(const QString &key, const QString &value)
 {
+    RoomRuntime *runtime = currentRoomRuntime();
+    if (runtime) {
+        runtime->addTranslationEntry(key, value);
+        return;
+    }
     if (!translations.contains(key))
 		engine_translations.insert(key, value);
 	translations.insert(key, value);
@@ -506,7 +574,8 @@ Engine::~Engine()
 {
     delete m_customScene;
     delete m_testScene;
-    lua_close(lua);
+    if (LuaRuntime::current() == m_bootstrapLua.get())
+        LuaRuntime::setCurrentForThread(nullptr);
 }
 
 QStringList Engine::getModScenarioNames() const
@@ -535,8 +604,15 @@ const Scenario*Engine::getScenario(const QString &name) const
 
 void Engine::addSkills(QList<const Skill*> all_skills)
 {
+    RoomRuntime *runtime = currentRoomRuntime();
+    if (runtime) {
+        runtime->addSkills(all_skills);
+        return;
+    }
     foreach (const Skill* skill, all_skills) {
         if (skill) {
+            if (m_loadingLuaDefinitions)
+                m_luaSkillNames.insert(skill->objectName());
             if (m_skillRegistry.add(skill))
                 qWarning() << tr("Duplicated skill : %1").arg(skill->objectName());
         } else {
@@ -546,63 +622,88 @@ void Engine::addSkills(QList<const Skill*> all_skills)
 }
 QList<const ProhibitSkill*> Engine::getProhibitSkills() const
 {
-    return m_skillRegistry.prohibitSkills();
+    RoomRuntime *runtime = currentRoomRuntime();
+    return mergedRuntimeSkills(runtime, m_skillRegistry.prohibitSkills(), m_luaSkillNames,
+                               runtime ? runtime->prohibitSkills() : QList<const ProhibitSkill *>());
 }
 
 // 7. 修復 getDistanceSkills
 QList<const DistanceSkill*> Engine::getDistanceSkills() const
 {
-    return m_skillRegistry.distanceSkills();
+    RoomRuntime *runtime = currentRoomRuntime();
+    return mergedRuntimeSkills(runtime, m_skillRegistry.distanceSkills(), m_luaSkillNames,
+                               runtime ? runtime->distanceSkills() : QList<const DistanceSkill *>());
 }
 
 // 8. 修復 getMaxCardsSkills
 QList<const MaxCardsSkill*> Engine::getMaxCardsSkills() const
 {
-    return m_skillRegistry.maxCardsSkills();
+    RoomRuntime *runtime = currentRoomRuntime();
+    return mergedRuntimeSkills(runtime, m_skillRegistry.maxCardsSkills(), m_luaSkillNames,
+                               runtime ? runtime->maxCardsSkills() : QList<const MaxCardsSkill *>());
 }
 
 // 9. 修復 getTargetModSkills
 QList<const TargetModSkill*> Engine::getTargetModSkills() const
 {
-    return m_skillRegistry.targetModSkills();
+    RoomRuntime *runtime = currentRoomRuntime();
+    return mergedRuntimeSkills(runtime, m_skillRegistry.targetModSkills(), m_luaSkillNames,
+                               runtime ? runtime->targetModSkills() : QList<const TargetModSkill *>());
 }
 
 QList<const InvaliditySkill*> Engine::getInvaliditySkills() const
 {
-    return m_skillRegistry.invaliditySkills();
+    RoomRuntime *runtime = currentRoomRuntime();
+    return mergedRuntimeSkills(runtime, m_skillRegistry.invaliditySkills(), m_luaSkillNames,
+                               runtime ? runtime->invaliditySkills() : QList<const InvaliditySkill *>());
 }
 
 QList<const TriggerSkill*> Engine::getGlobalTriggerSkills() const
 {
-    return m_skillRegistry.globalTriggerSkills();
+    RoomRuntime *runtime = currentRoomRuntime();
+    return mergedRuntimeSkills(runtime, m_skillRegistry.globalTriggerSkills(), m_luaSkillNames,
+                               runtime ? runtime->globalTriggerSkills() : QList<const TriggerSkill *>());
 }
 
 // 2. 修復 getAttackRangeSkills
 QList<const AttackRangeSkill*> Engine::getAttackRangeSkills() const
 {
-    return m_skillRegistry.attackRangeSkills();
+    RoomRuntime *runtime = currentRoomRuntime();
+    return mergedRuntimeSkills(runtime, m_skillRegistry.attackRangeSkills(), m_luaSkillNames,
+                               runtime ? runtime->attackRangeSkills() : QList<const AttackRangeSkill *>());
 }
 
 // 3. 修復 getViewAsEquipSkills
 QList<const ViewAsEquipSkill*> Engine::getViewAsEquipSkills() const
 {
-    return m_skillRegistry.viewAsEquipSkills();
+    RoomRuntime *runtime = currentRoomRuntime();
+    return mergedRuntimeSkills(runtime, m_skillRegistry.viewAsEquipSkills(), m_luaSkillNames,
+                               runtime ? runtime->viewAsEquipSkills() : QList<const ViewAsEquipSkill *>());
 }
 
 // 4. 修復 getCardLimitSkills
 QList<const CardLimitSkill*> Engine::getCardLimitSkills() const
 {
-    return m_skillRegistry.cardLimitSkills();
+    RoomRuntime *runtime = currentRoomRuntime();
+    return mergedRuntimeSkills(runtime, m_skillRegistry.cardLimitSkills(), m_luaSkillNames,
+                               runtime ? runtime->cardLimitSkills() : QList<const CardLimitSkill *>());
 }
 
 // 5. 修復 getProhibitPindianSkills
 QList<const ProhibitPindianSkill*> Engine::getProhibitPindianSkills() const
 {
-    return m_skillRegistry.prohibitPindianSkills();
+    RoomRuntime *runtime = currentRoomRuntime();
+    return mergedRuntimeSkills(runtime, m_skillRegistry.prohibitPindianSkills(), m_luaSkillNames,
+                               runtime ? runtime->prohibitPindianSkills() : QList<const ProhibitPindianSkill *>());
 }
 
 void Engine::addPackage(Package*package)
 {
+    RoomRuntime *runtime = currentRoomRuntime();
+    if (runtime) {
+        runtime->addPackage(package);
+        return;
+    }
     if (findChild<const Package*>(package->objectName()))
         return;
 
@@ -613,9 +714,13 @@ void Engine::addPackage(Package*package)
         patterns.insert(it.key(), it.value());
     related_skills.unite(package->getRelatedSkills());
 
-    foreach (Card*card, package->findChildren<Card*>()) {
+	foreach (Card*card, package->findChildren<Card*>()) {
         card->setId(cards.length());
         cards << card;
+		m_packageCardIds[package->objectName()] << card->getId();
+		if (m_loadingLuaDefinitions) {
+			m_luaCardIds.insert(card->getId());
+		}
 		if(name2cards.contains(card->objectName())) continue;
 		name2cards.insert(card->objectName(), card);
 		if(card->objectName()=="slash") name2cards.insert("normal_slash", card);
@@ -674,6 +779,8 @@ void Engine::addPackage(Package*package)
 	addSkills(sks);
 
     foreach (General*general, package->findChildren<General*>()) {
+		if (m_loadingLuaDefinitions)
+			m_luaGeneralNames.insert(general->objectName());
         foreach (QString skill_name, general->getExtraSkillSet()) {
             if (skill_name.startsWith("#")) continue;
 			foreach(QString name, related_skills.values(skill_name)){
@@ -683,8 +790,10 @@ void Engine::addPackage(Package*package)
 			if (skill && skill->inherits("PreSelectionMetaSkill"))
 				general->addPreSelectionSkill(skill_name);
         }
-        generals.insert(general->objectName(), general);
+		generals.insert(general->objectName(), general);
     }
+	if (m_loadingLuaDefinitions)
+		m_luaPackageNames.insert(package->objectName());
 
     foreach(const QMetaObject*meta, package->getMetaObjects()){
 		//name2cards.insert(meta->className(),(const Card*)meta->newInstance());
@@ -705,16 +814,44 @@ QStringList Engine::getBanPackages() const
 
 QList<const Package*> Engine::getPackages() const
 {
-    return findChildren<const Package*>();
+    RoomRuntime *runtime = currentRoomRuntime();
+    if (!runtime)
+        return findChildren<const Package*>();
+    QList<const Package *> result = runtime->packages();
+    foreach (const Package *package, findChildren<const Package *>())
+        if (!m_luaPackageNames.contains(package->objectName())
+            && !runtime->package(package->objectName())) result << package;
+    return result;
 }
 
 Package*Engine::getPackage(const QString &package_name)
 {
+	RoomRuntime *runtime = currentRoomRuntime();
+	if (runtime) {
+		const Package *package = runtime->package(package_name);
+		if (package) return const_cast<Package *>(package);
+		if (m_luaPackageNames.contains(package_name)) return nullptr;
+		Package *basePackage = findChild<Package *>(package_name);
+		if (basePackage && runtime->isLoadingDefinitions())
+			return runtime->packageOverlay(basePackage);
+		return basePackage;
+	}
 	return findChild<Package*>(package_name);
+}
+
+Package *Engine::clonePackageDefinition(const QString &objectName) const
+{
+    EnginePackageFactory factory = m_packageFactories.value(objectName, nullptr);
+    return factory ? factory() : nullptr;
 }
 
 void Engine::setPackage(Package*package)
 {
+    RoomRuntime *runtime = currentRoomRuntime();
+    if (runtime) {
+        runtime->setPackage(package);
+        return;
+    }
     //package->setParent(this);
     //patterns.unite(package->getPatterns());
     related_skills.unite(package->getRelatedSkills());
@@ -724,6 +861,10 @@ void Engine::setPackage(Package*package)
         if (card->getId()>=0||cards.contains(card)) continue;
 		card->setId(cards.length());
         cards << card;
+		m_packageCardIds[package->objectName()] << card->getId();
+		if (m_loadingLuaDefinitions) {
+			m_luaCardIds.insert(card->getId());
+		}
 		if(name2cards.contains(card->objectName())) continue;
 		name2cards.insert(card->objectName(), card);
 		if(name2cards.contains(card->getClassName())) continue;
@@ -791,8 +932,9 @@ void Engine::setPackage(Package*package)
 			}
         }
         generals.insert(general->objectName(), general);
+		if (m_loadingLuaDefinitions)
+			m_luaGeneralNames.insert(general->objectName());
     }
-
     foreach(const QMetaObject*meta, package->getMetaObjects()){
 		if(metaobjects.contains(meta->className())) continue;
 		//name2cards.insert(meta->className(),(const Card*)meta->newInstance());
@@ -816,10 +958,17 @@ void Engine::setZhinangCard(const QString &flag)
 QString Engine::translate(const QString &to_translate, bool initial) const
 {
     if(to_translate.isEmpty()) return "";
+	RoomRuntime *runtime = currentRoomRuntime();
+	if (runtime && runtime->hasTranslation(to_translate))
+		return runtime->translate(to_translate, initial);
 	if(to_translate.contains("\\")){
 		QString res;
-		foreach(QString str, to_translate.split("\\"))
-			res += (initial?engine_translations:translations).value(str, str);
+		foreach(QString str, to_translate.split("\\")) {
+			if (runtime && runtime->hasTranslation(str))
+				res += runtime->translate(str, initial);
+			else
+				res += (initial?engine_translations:translations).value(str, str);
+		}
 		return res;
 	}
 	return (initial?engine_translations:translations).value(to_translate, to_translate);
@@ -836,6 +985,11 @@ int Engine::getRoleIndex() const
 
 const CardPattern*Engine::getPattern(const QString &name, bool extra) const
 {
+    RoomRuntime *runtime = currentRoomRuntime();
+    if (runtime) {
+        const CardPattern *runtimePattern = runtime->pattern(name);
+        if (runtimePattern) return runtimePattern;
+    }
     const CardPattern*ptn = patterns.value(name, nullptr);
     if (ptn) return ptn;
 	else if(extra){
@@ -895,7 +1049,11 @@ Card::HandlingMethod Engine::getCardHandlingMethod(const QString &method_name) c
 QList<const Skill*> Engine::getRelatedSkills(const QString &skill_name) const
 {
     QList<const Skill*> relateds;
-    foreach(QString name, related_skills.values(skill_name)){
+	QStringList names = related_skills.values(skill_name);
+	RoomRuntime *runtime = currentRoomRuntime();
+	if (runtime) names << runtime->relatedSkillNames(skill_name);
+	names.removeDuplicates();
+	foreach(QString name, names){
 		const Skill*sk = getSkill(name);
 		if(sk) relateds << sk;
 	}
@@ -914,7 +1072,25 @@ const Skill*Engine::getMainSkill(const QString &skill_name) const
 
 const General*Engine::getGeneral(const QString &name) const
 {
+    RoomRuntime *runtime = currentRoomRuntime();
+    if (runtime) {
+        const General *runtimeGeneral = runtime->general(name);
+        if (runtimeGeneral) return runtimeGeneral;
+        if (m_luaGeneralNames.contains(name)) return nullptr;
+    }
     return generals.value(name, nullptr);
+}
+
+QList<const General *> Engine::getAllGenerals() const
+{
+    RoomRuntime *runtime = currentRoomRuntime();
+    if (!runtime)
+        return findChildren<const General *>();
+    QList<const General *> result = runtime->generals();
+    foreach (const General *general, findChildren<const General *>())
+        if (!m_luaGeneralNames.contains(general->objectName())
+            && !runtime->general(general->objectName())) result << general;
+    return result;
 }
 
 int Engine::getGeneralCount(bool include_banned, const QString &kingdom) const
@@ -933,7 +1109,7 @@ int Engine::getGeneralCount(bool include_banned, const QString &kingdom) const
 		banPackages << Config.value("Banlist/Hegemony").toStringList();
 	if(include_banned)
 		banPackages.clear();
-	foreach (const General*general, generals) {
+	foreach (const General*general, getAllGenerals()) {
         if (banPackages.contains(general->getPackage())||banPackages.contains(general->objectName())||isGeneralHidden(general->objectName()))
             continue;
         if (ServerInfo.Enable2ndGeneral&&BanPair::isBanned(general->objectName()))
@@ -962,6 +1138,34 @@ void Engine::registerRoom(EngineRuntimeContext *room)
     m_mutex.lock();
     m_rooms[QThread::currentThread()] = room;
     m_mutex.unlock();
+}
+
+EngineRuntimeContext *Engine::swapCurrentRoomContext(EngineRuntimeContext *context)
+{
+    QMutexLocker locker(&m_mutex);
+    QThread *thread = QThread::currentThread();
+    EngineRuntimeContext *previous = m_rooms.value(thread, nullptr);
+    if (context)
+        m_rooms.insert(thread, context);
+    else
+        m_rooms.remove(thread);
+    return previous;
+}
+
+RoomRuntime *Engine::currentRoomRuntime() const
+{
+    EngineRuntimeContext *context = const_cast<Engine *>(this)->currentRoomContext();
+    return context ? context->roomRuntime() : nullptr;
+}
+
+EngineRuntimeContextScope::EngineRuntimeContextScope(Engine &engine, EngineRuntimeContext *context)
+    : m_engine(engine), m_previous(engine.swapCurrentRoomContext(context))
+{
+}
+
+EngineRuntimeContextScope::~EngineRuntimeContextScope()
+{
+    m_engine.swapCurrentRoomContext(m_previous);
 }
 
 void Engine::unregisterRoom()
@@ -1070,6 +1274,12 @@ Card*Engine::getCard(int cardId, bool)
 
 const Card*Engine::getEngineCard(int cardId) const
 {
+	RoomRuntime *runtime = currentRoomRuntime();
+	if (runtime) {
+		const Card *runtimeCard = runtime->engineCard(cardId);
+		if (runtimeCard) return runtimeCard;
+		if (m_luaCardIds.contains(cardId)) return nullptr;
+	}
 	return cards.value(cardId,nullptr);
 }
 
@@ -1089,8 +1299,10 @@ Card*Engine::cloneCard(const Card*card) const
 Card*Engine::cloneCard(const QString &name, Card::Suit suit, int number, const QStringList &flags) const
 {
     Card*card = nullptr;
-	if(name2cards.contains(name)){
-		const Card*lcard = name2cards.value(name);
+	RoomRuntime *runtime = currentRoomRuntime();
+	const Card *runtimeTemplate = runtime ? runtime->cardTemplate(name) : nullptr;
+	if(runtimeTemplate || name2cards.contains(name)){
+		const Card*lcard = runtimeTemplate ? runtimeTemplate : name2cards.value(name);
 		if(lcard->inherits("LuaBasicCard"))
 			card = qobject_cast<const LuaBasicCard*>(lcard)->clone(suit,number);
 		else if(lcard->inherits("LuaTrickCard"))
@@ -1147,6 +1359,10 @@ Card*Engine::cloneCard(const QString &name, Card::Suit suit, int number, const Q
 
 SkillCard*Engine::cloneSkillCard(const QString &name) const
 {
+	RoomRuntime *runtime = currentRoomRuntime();
+	const Card *runtimeTemplate = runtime ? runtime->cardTemplate(name) : nullptr;
+	if (runtimeTemplate)
+		return qobject_cast<SkillCard *>(runtimeTemplate->metaObject()->newInstance());
 	if(metaobjects.contains(name))
 		return qobject_cast<SkillCard*>(metaobjects.value(name)->newInstance());
     if (name2cards.contains(name))
@@ -1181,7 +1397,7 @@ QString Engine::getMODName() const
 QStringList Engine::getExtensions() const
 {
     QStringList extensions;
-    foreach (const Package*package, findChildren<const Package*>()) {
+    foreach (const Package*package, getPackages()) {
         if (package->inherits("Scenario")) continue;
         extensions << package->objectName();
     }
@@ -1191,7 +1407,7 @@ QStringList Engine::getExtensions() const
 QStringList Engine::getKingdoms() const
 {
     LuaLocker locker;
-    static QStringList kingdoms = GetConfigFromLuaState(lua, "kingdoms").toStringList();
+    static QStringList kingdoms = GetConfigFromLuaState(getLuaState(), "kingdoms").toStringList();
     return kingdoms;
 }
 
@@ -1200,7 +1416,7 @@ QString Engine::getKingdomColor(const QString &kingdom) const
     static QMap<QString, QString> color_map;
     if (color_map.isEmpty()) {
         LuaLocker locker;
-        QVariantMap map = GetValueFromLuaState(lua, "config", "kingdom_colors").toMap();
+        QVariantMap map = GetValueFromLuaState(getLuaState(), "config", "kingdom_colors").toMap();
         QMapIterator<QString, QVariant> itor(map);
         while (itor.hasNext()) {
             itor.next();
@@ -1221,7 +1437,7 @@ QMap<QString, QString> Engine::getSkillTypeColorMap() const
     static QMap<QString, QString> color_map;
     if (color_map.isEmpty()) {
         LuaLocker locker;
-        QVariantMap map = GetValueFromLuaState(lua, "config", "skill_type_colors").toMap();
+        QVariantMap map = GetValueFromLuaState(getLuaState(), "config", "skill_type_colors").toMap();
         QMapIterator<QString, QVariant> itor(map);
         while (itor.hasNext()) {
             itor.next();
@@ -1240,7 +1456,7 @@ QMap<QString, QString> Engine::getSkillTypeColorMap() const
 QStringList Engine::getChattingEasyTexts() const
 {
     LuaLocker locker;
-    static QStringList easy_texts = GetConfigFromLuaState(lua, "easy_text").toStringList();
+    static QStringList easy_texts = GetConfigFromLuaState(getLuaState(), "easy_text").toStringList();
     return easy_texts;
 }
 
@@ -1798,18 +2014,22 @@ QString Engine::getRoleByAbbreviation(const QString& targetValue, const QString&
 
 int Engine::getCardCount() const
 {
-    return cards.length();
+    RoomRuntime *runtime = currentRoomRuntime();
+    return runtime ? runtime->cardCount(cards.length()) : cards.length();
 }
 
 QStringList Engine::getLords(bool contain_banned) const
 {
-    static QStringList lordList;
-	if(lordList.isEmpty()){
-		foreach (QString generalName, generals.keys()) {
-			if (!translations.contains(generalName)||isGeneralHidden(generalName)) continue;
-			if (extra_default_lords.contains(generalName)||(!removed_default_lords.contains(generalName)&&generals[generalName]->isLord()))
-				lordList << generalName;
-		}
+    QStringList lordList;
+	RoomRuntime *runtime = currentRoomRuntime();
+	foreach (const General *general, getAllGenerals()) {
+		const QString generalName = general->objectName();
+		if (!(runtime && runtime->hasTranslation(generalName))
+			&& !translations.contains(generalName)) continue;
+		if (isGeneralHidden(generalName)) continue;
+		if (extra_default_lords.contains(generalName)
+			|| (!removed_default_lords.contains(generalName) && general->isLord()))
+			lordList << generalName;
 	}
     QStringList lords;
 	// add intrinsic lord
@@ -1899,9 +2119,16 @@ QStringList Engine::getLimitedGeneralNames(const QString &kingdom, bool availabl
         if(kingdom.isEmpty()||itor.value()->getKingdoms().contains(kingdom))
             general_names << itor.key();
     }*/
-	foreach (const General*general, (available?available_generals:generals)) {
+	const QList<const General *> candidateGenerals = currentRoomRuntime()
+		? getAllGenerals()
+		: (available ? available_generals.values() : generals.values());
+	RoomRuntime *runtime = currentRoomRuntime();
+	foreach (const General*general, candidateGenerals) {
         if(ban.contains(general->objectName())||ban.contains(general->getPackage())) continue;
-        if(!translations.contains(general->objectName())||isGeneralHidden(general->objectName())) continue;
+		const QString generalName = general->objectName();
+		if (!(runtime && runtime->hasTranslation(generalName))
+			&& !translations.contains(generalName)) continue;
+		if (isGeneralHidden(generalName)) continue;
 		if(!Config.AddGodGeneral&&general->getKingdoms().contains("god")) continue;
         if(kingdom.isEmpty()||general->getKingdoms().contains(kingdom))
             general_names << general->objectName();
@@ -1930,6 +2157,7 @@ QStringList Engine::getCardNames(const QString &pattern) const
     for (int i = 0; i < getCardCount(); i++){
 		if(ids.contains(i)){
 			const Card*card = getEngineCard(i);
+			if (!card) continue;
 			if(Names.contains(card->objectName())) continue;
 			if(matchExpPattern(pattern,nullptr,card))
 				Names << card->objectName();
@@ -1942,7 +2170,8 @@ bool Engine::hasCard(const QString &name) const
 {
     if (name.isEmpty()) return false;
     foreach (int id, getRandomCards()) {
-        if (getEngineCard(id)->objectName() == name)
+        const Card *card = getEngineCard(id);
+        if (card && card->objectName() == name)
             return true;
     }
     return false;
@@ -1963,7 +2192,14 @@ bool Engine::sameNameWith(const QString &name1, const QString &name2) const
 
 QList<const Skill *> Engine::getSafeSkills() const
 {
-    return m_skillRegistry.allSkills();
+    RoomRuntime *runtime = currentRoomRuntime();
+    if (!runtime)
+        return m_skillRegistry.allSkills();
+    QList<const Skill *> result = runtime->allSkills();
+    foreach (const Skill *skill, m_skillRegistry.allSkills())
+        if (skill && !m_luaSkillNames.contains(skill->objectName())
+            && !runtime->skill(skill->objectName())) result << skill;
+    return result;
 }
 
 QStringList Engine::getRandomGenerals(int count, const QSet<QString> &ban_set, const QString &kingdom) const
@@ -2003,7 +2239,9 @@ QList<int> Engine::getRandomCards(bool derivative) const
         exclude_disaster = !Config.value("3v3/UsingExtension").toBool() || Config.value("3v3/ExcludeDisasters", true).toBool();
     }
     QList<int> list;
-    foreach (Card*card, cards) {
+	for (int cardId = 0; cardId < getCardCount(); ++cardId) {
+		const Card *card = getEngineCard(cardId);
+		if (!card) continue;
 		if(card->objectName().startsWith("_")){
 			if(!derivative||card->objectName().startsWith("__")) continue;
 		}else if (challengedeveloper && card->objectName() == "god_salvation") continue;
@@ -2047,7 +2285,9 @@ QList<int> Engine::getRandomCards(bool derivative) const
 
 QString Engine::getRandomGeneralName() const
 {
-    return generals.keys().at(qrand()%generals.size());
+    const QList<const General *> allGenerals = getAllGenerals();
+    return allGenerals.isEmpty() ? QString()
+        : allGenerals.at(qrand() % allGenerals.size())->objectName();
 }
 
 bool Engine::playSystemAudioEffect(const QString &name, bool superpose) const
@@ -2083,6 +2323,12 @@ void Engine::playSkillAudioEffect(const QString &skill_name, int index, bool sup
 
 const Skill*Engine::getSkill(const QString &skill_name) const
 {
+    RoomRuntime *runtime = currentRoomRuntime();
+    if (runtime) {
+        const Skill *runtimeSkill = runtime->skill(skill_name);
+        if (runtimeSkill) return runtimeSkill;
+        if (m_luaSkillNames.contains(SkillInstanceUtils::baseName(skill_name))) return nullptr;
+    }
     return m_skillRegistry.find(skill_name);
 }
 
@@ -2094,7 +2340,13 @@ const Skill*Engine::getSkill(const EquipCard*equip) const
 
 QStringList Engine::getSkillNames() const
 {
-    return m_skillRegistry.names();
+    RoomRuntime *runtime = currentRoomRuntime();
+    if (!runtime) return m_skillRegistry.names();
+    QStringList names = runtime->skillNames();
+    foreach (const QString &name, m_skillRegistry.names())
+        if (!m_luaSkillNames.contains(name) && !runtime->skill(name)) names << name;
+    names.removeDuplicates();
+    return names;
 }
 
 Skill*Engine::getRealSkill(const QString &skill_name)
@@ -2106,7 +2358,7 @@ Skill*Engine::getRealSkill(const QString &skill_name)
 
 const TriggerSkill*Engine::getTriggerSkill(const QString &skill_name) const
 {
-    return m_skillRegistry.triggerSkill(skill_name);
+    return qobject_cast<const TriggerSkill *>(getSkill(skill_name));
 }
 
 const TriggerSkill *Engine::getTriggerSkill(const QString &skill_name, int instanceId) const
@@ -2788,7 +3040,7 @@ void Engine::godLottery(QStringList &list) const
 
 	qsrand(QDateTime::currentMSecsSinceEpoch());
 	Config.beginGroup("godlottery");
-	foreach (const General*general, generals) {
+	foreach (const General *general, getAllGenerals()) {
 		if(general->getKingdom()=="god"&&general->objectName().contains("shen")){
 			if(qrand()%10000<=Config.value(general->objectName()).toInt()) {
                 //qDebug((general->objectName()+"被抽中").toUtf8().data());
@@ -2807,3 +3059,12 @@ void Engine::godLottery(QSet<QString> &generalSet) const
 	generalSet = QSet<QString>(list.begin(), list.end());
 }
 
+QString Engine::getAiData() const
+{
+    return AiDataStore::read();
+}
+
+bool Engine::setAiData(const QString &json) const
+{
+    return AiDataStore::write(json);
+}

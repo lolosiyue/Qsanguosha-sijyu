@@ -821,18 +821,6 @@ public:
 #include "lua-wrapper.h"
 #include "clientplayer.h"
 
-static QList<lua_State*>lua_list;
-static lua_State*luaState()
-{
-	if(lua_list.isEmpty()){
-		for (int i = 0; i < 99; i++)
-			lua_list << lua_newthread(Sanguosha->getLuaState());
-	}
-	lua_State*L = lua_list.takeFirst();
-	lua_list << L;
-	return L;
-}
-
 bool LuaTriggerSkill::triggerable(ServerPlayer *target, Room *room, TriggerEvent event, ServerPlayer *owner, QVariant data) const
 {
 	if (can_trigger == 0)
@@ -841,7 +829,7 @@ bool LuaTriggerSkill::triggerable(ServerPlayer *target, Room *room, TriggerEvent
 	lua_State*L = room->getLuaState();
 
 	// the callback function
-	lua_rawgeti(L, LUA_REGISTRYINDEX, can_trigger);
+	can_trigger.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTriggerSkill, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_ServerPlayer, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
@@ -869,7 +857,7 @@ bool LuaTriggerSkill::canWake(TriggerEvent event, ServerPlayer *player, QVariant
 	lua_State*L = room->getLuaState();
 
 	// the callback function
-	lua_rawgeti(L, LUA_REGISTRYINDEX, can_wake);
+	can_wake.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTriggerSkill, 0);
 	lua_pushinteger(L, event);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
@@ -896,7 +884,7 @@ bool LuaTriggerSkill::trigger(TriggerEvent event, Room *room, ServerPlayer *play
 	lua_State*L = room->getLuaState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_trigger);
+	on_trigger.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTriggerSkill, 0);
 	// the first argument: event
 	lua_pushinteger(L, event);
@@ -919,11 +907,11 @@ bool LuaTriggerSkill::trigger(TriggerEvent event, Room *room, ServerPlayer *play
 	return result;
 }
 
-static SkillInstanceRef luaSkillUsageRef(lua_State *L, int callback, void *self,
+static SkillInstanceRef luaSkillUsageRef(lua_State *L, const LuaFunction &callback, void *self,
 	                                    swig_type_info *selfType,
 	                                    const SkillContext &ctx, const char *owner)
 {
-	lua_rawgeti(L, LUA_REGISTRYINDEX, callback);
+	callback.push(L);
 	SWIG_NewPointerObj(L, self, selfType, 0);
 	SWIG_NewPointerObj(L, const_cast<SkillContext *>(&ctx), SWIGTYPE_p_SkillContext, 0);
 	if (lua_pcall(L, 2, 1, 0) != 0) {
@@ -966,7 +954,7 @@ Skill::LimitScope LuaTriggerSkillV2::getLimitScope() const
 SkillInstanceRef LuaTriggerSkillV2::getUsageRef(const SkillContext &ctx) const
 {
 	if (!get_usage_ref) return TriggerSkillV2::getUsageRef(ctx);
-	return luaSkillUsageRef(Sanguosha->getLuaState(), get_usage_ref,
+	return luaSkillUsageRef(LuaRuntime::currentState(), get_usage_ref,
 		const_cast<LuaTriggerSkillV2 *>(this), SWIGTYPE_p_LuaTriggerSkillV2,
 		ctx, "LuaTriggerSkillV2");
 }
@@ -985,7 +973,7 @@ bool LuaTriggerSkillV2::cost(TriggerEvent triggerEvent, Room *room, ServerPlayer
 
 		int e = static_cast<int>(triggerEvent);
 
-		lua_rawgeti(L, LUA_REGISTRYINDEX, on_cost);
+		on_cost.push(L);
 
 		LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
 		SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
@@ -1026,7 +1014,7 @@ bool LuaTriggerSkillV2::pay(TriggerEvent triggerEvent, Room *room, ServerPlayer 
 
 		int e = static_cast<int>(triggerEvent);
 
-		lua_rawgeti(L, LUA_REGISTRYINDEX, on_pay);
+		on_pay.push(L);
 
 		LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
 		SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
@@ -1068,7 +1056,7 @@ bool LuaTriggerSkillV2::effect(TriggerEvent triggerEvent, Room *room, ServerPlay
 
 		int e = static_cast<int>(triggerEvent);
 
-		lua_rawgeti(L, LUA_REGISTRYINDEX, on_effect);
+		on_effect.push(L);
 
 		LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
 		SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
@@ -1110,7 +1098,7 @@ bool LuaTriggerSkillV2::effectTarget(TriggerEvent triggerEvent, Room *room, Serv
 
 		int e = static_cast<int>(triggerEvent);
 
-		lua_rawgeti(L, LUA_REGISTRYINDEX, on_effect_target);
+		on_effect_target.push(L);
 
 		LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
 		SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
@@ -1151,7 +1139,7 @@ void LuaTriggerSkillV2::onTurnBroken(const char *function_name, TriggerEvent tri
 
 	lua_State *L = room->getLuaState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_turn_broken);
+	on_turn_broken.push(L);
 
 	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
@@ -1175,7 +1163,7 @@ void LuaTriggerSkillV2::record(TriggerEvent triggerEvent, Room *room, ServerPlay
 
 	lua_State *L = room->getLuaState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_record);
+	on_record.push(L);
 
 	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
@@ -1198,7 +1186,7 @@ TriggerList LuaTriggerSkillV2::triggerable(TriggerEvent triggerEvent, Room *room
 
 	lua_State *L = room->getLuaState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, can_trigger);
+	can_trigger.push(L);
 
 	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
@@ -1284,9 +1272,9 @@ void LuaTriggerSkillV2::willInvoke(SkillContext &ctx) const
 {
 	if (!on_willInvoke) return;
 
-	lua_State *L = Sanguosha->getLuaState();
+	lua_State *L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_willInvoke);
+	on_willInvoke.push(L);
 
 	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
@@ -1300,9 +1288,9 @@ void LuaTriggerSkillV2::targetConfirming(SkillContext &ctx) const
 {
 	if (!on_targetConfirming) return;
 
-	lua_State *L = Sanguosha->getLuaState();
+	lua_State *L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_targetConfirming);
+	on_targetConfirming.push(L);
 
 	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
@@ -1316,9 +1304,9 @@ void LuaTriggerSkillV2::invoking(SkillContext &ctx) const
 {
 	if (!on_invoking) return;
 
-	lua_State *L = Sanguosha->getLuaState();
+	lua_State *L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_invoking);
+	on_invoking.push(L);
 
 	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
@@ -1332,9 +1320,9 @@ void LuaTriggerSkillV2::effect(SkillContext &ctx) const
 {
 	if (!on_effectContext) return;
 
-	lua_State *L = Sanguosha->getLuaState();
+	lua_State *L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_effectContext);
+	on_effectContext.push(L);
 
 	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
@@ -1348,9 +1336,9 @@ void LuaTriggerSkillV2::effectFinished(SkillContext &ctx) const
 {
 	if (!on_effectFinished) return;
 
-	lua_State *L = Sanguosha->getLuaState();
+	lua_State *L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_effectFinished);
+	on_effectFinished.push(L);
 
 	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
@@ -1365,9 +1353,9 @@ bool LuaTriggerSkillV2::checkCustomUsage(const SkillContext &ctx) const
 	if (!check_custom_usage)
 		return TriggerSkillV2::checkCustomUsage(ctx);
 
-	lua_State *L = Sanguosha->getLuaState();
+	lua_State *L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, check_custom_usage);
+	check_custom_usage.push(L);
 
 	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
@@ -1391,8 +1379,8 @@ void LuaTriggerSkillV2::addUsage(const SkillContext &ctx) const
 		return;
 	}
 
-	lua_State *L = Sanguosha->getLuaState();
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_add_usage);
+	lua_State *L = LuaRuntime::currentState();
+	on_add_usage.push(L);
 
 	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
@@ -1419,7 +1407,7 @@ void LuaTriggerSkillV2::onShimingSuccess(Room *room, ServerPlayer *player) const
 
 	lua_State *L = room->getLuaState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_shiming_success);
+	on_shiming_success.push(L);
 
 	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
@@ -1443,7 +1431,7 @@ void LuaTriggerSkillV2::onShimingFail(Room *room, ServerPlayer *player) const
 
 	lua_State *L = room->getLuaState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_shiming_fail);
+	on_shiming_fail.push(L);
 
 	LuaTriggerSkillV2 *self = const_cast<LuaTriggerSkillV2 *>(this);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
@@ -1465,10 +1453,10 @@ bool LuaScenarioRule::triggerable(const ServerPlayer *target) const
 	if (can_trigger == 0)
 		return ScenarioRule::triggerable(target);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback function
-	lua_rawgeti(L, LUA_REGISTRYINDEX, can_trigger);
+	can_trigger.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaScenarioRule, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_ServerPlayer, 0);
 
@@ -1492,7 +1480,7 @@ bool LuaScenarioRule::trigger(TriggerEvent event, Room *room, ServerPlayer *play
 	lua_State*L = room->getLuaState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_trigger);
+	on_trigger.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaScenarioRule, 0);
 	lua_pushinteger(L, event);// the first argument: event
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);// the second argument: player
@@ -1544,9 +1532,9 @@ bool LuaProhibitSkill::isProhibited(const Player *from, const Player *to, const 
 	if (is_prohibited == 0)
 		return false;
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, is_prohibited);
+	is_prohibited.push(L);
 
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaProhibitSkill, 0);
 	SWIG_NewPointerObj(L, from, SWIGTYPE_p_Player, 0);
@@ -1573,9 +1561,9 @@ bool LuaProhibitPindianSkill::isPindianProhibited(const Player *from, const Play
 	if (is_pindianprohibited == 0)
 		return false;
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, is_pindianprohibited);
+	is_pindianprohibited.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaProhibitPindianSkill, 0);
 	SWIG_NewPointerObj(L, from, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, to, SWIGTYPE_p_Player, 0);
@@ -1622,8 +1610,8 @@ static void luaCorrectSkillError(lua_State *L, const char *callbackName)
 CorrectSkillResult CLASS::METHOD(const CorrectSkillContext &context) const \
 { \
 	if (FIELD == 0) return CorrectSkillResult::noEffect(); \
-	lua_State *L = Sanguosha->getLuaState(); \
-	lua_rawgeti(L, LUA_REGISTRYINDEX, FIELD); \
+	lua_State *L = LuaRuntime::currentState(); \
+	FIELD.push(L); \
 	SWIG_NewPointerObj(L, const_cast<CLASS *>(this), SWIGTYPE_p_##CLASS, 0); \
 	SWIG_NewPointerObj(L, const_cast<CorrectSkillContext *>(&context), SWIGTYPE_p_CorrectSkillContext, 0); \
 	if (lua_pcall(L, 2, 1, 0) != 0) { \
@@ -1655,9 +1643,9 @@ int LuaDistanceSkill::getCorrect(const Player *from, const Player *to) const
 	if (correct_func == 0)
 		return DistanceSkill::getCorrect(from,to);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, correct_func);
+	correct_func.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaDistanceSkill, 0);
 	SWIG_NewPointerObj(L, from, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, to, SWIGTYPE_p_Player, 0);
@@ -1677,9 +1665,9 @@ int LuaDistanceSkill::getFixed(const Player *from, const Player *to) const
 	if (fixed_func == 0)
 		return DistanceSkill::getFixed(from,to);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, fixed_func);
+	fixed_func.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaDistanceSkill, 0);
 	SWIG_NewPointerObj(L, from, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, to, SWIGTYPE_p_Player, 0);
@@ -1699,9 +1687,9 @@ int LuaMaxCardsSkill::getExtra(const Player *target) const
 	if (extra_func == 0)
 		return MaxCardsSkill::getExtra(target);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, extra_func);
+	extra_func.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaMaxCardsSkill, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
 
@@ -1720,9 +1708,9 @@ int LuaMaxCardsSkill::getFixed(const Player *target) const
 	if (fixed_func == 0)
 		return MaxCardsSkill::getFixed(target);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, fixed_func);
+	fixed_func.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaMaxCardsSkill, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
 
@@ -1743,9 +1731,9 @@ int LuaTargetModSkill::getResidueNum(const Player *from, const Card *card, const
 	if (!from || !card)
 		return TargetModSkill::getResidueNum(from,card,to);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, residue_func);
+	residue_func.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTargetModSkill, 0);
 	SWIG_NewPointerObj(L, from, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, card, SWIGTYPE_p_Card, 0);
@@ -1768,9 +1756,9 @@ int LuaTargetModSkill::getDistanceLimit(const Player *from, const Card *card, co
 	if (!from || !card)
 		return TargetModSkill::getDistanceLimit(from,card,to);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, distance_limit_func);
+	distance_limit_func.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTargetModSkill, 0);
 	SWIG_NewPointerObj(L, from, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, card, SWIGTYPE_p_Card, 0);
@@ -1793,9 +1781,9 @@ int LuaTargetModSkill::getExtraTargetNum(const Player *from, const Card *card) c
 	if (!from || !card)
 		return TargetModSkill::getExtraTargetNum(from,card);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, extra_target_func);
+	extra_target_func.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTargetModSkill, 0);
 	SWIG_NewPointerObj(L, from, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, card, SWIGTYPE_p_Card, 0);
@@ -1815,9 +1803,9 @@ int LuaAttackRangeSkill::getExtra(const Player *target, bool include_weapon) con
 	if (extra_func == 0)
 		return AttackRangeSkill::getExtra(target, include_weapon);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, extra_func);
+	extra_func.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaAttackRangeSkill, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
 	lua_pushboolean(L, include_weapon);
@@ -1837,9 +1825,9 @@ int LuaAttackRangeSkill::getFixed(const Player *target, bool include_weapon) con
 	if (fixed_func == 0)
 		return AttackRangeSkill::getFixed(target, include_weapon);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, fixed_func);
+	fixed_func.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaAttackRangeSkill, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
 	lua_pushboolean(L, include_weapon);
@@ -1859,9 +1847,9 @@ bool LuaInvaliditySkill::isSkillValid(const Player *player, const Skill *skill) 
 	if (skill_valid == 0)
 		return true;
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, skill_valid);
+	skill_valid.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaInvaliditySkill, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, skill, SWIGTYPE_p_Skill, 0);
@@ -1881,29 +1869,19 @@ bool LuaFilterSkill::viewFilter(const Card *to_select) const
 	if (view_filter == 0)
 		return false;
 
-	// 【核心修復：Try-Lock 避讓機制】
-	bool locked = Sanguosha->getLuaMutex().tryLock();
-	if (!locked) {
-		// 拿不到鎖 (代表 Server 正在算 AI)，UI 絕對不能死等！
-		// 直接回傳 false (牌在畫面上暫時反灰 1 毫秒)，避開死鎖與崩潰。
-		return false;
-	}
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_State*L = Sanguosha->getLuaState();
-
-	lua_rawgeti(L, LUA_REGISTRYINDEX, view_filter);
+	view_filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaFilterSkill, 0);
 	SWIG_NewPointerObj(L, to_select, SWIGTYPE_p_Card, 0);
 
 	if (lua_pcall(L, 2, 1, 0)!=0) {
 		Error(L);
-		Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 		return false;
 	}
 
 	bool result = lua_toboolean(L, -1);
 	lua_pop(L, 1);
-	Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 	return result;
 }
 
@@ -1912,29 +1890,20 @@ const Card *LuaFilterSkill::viewAs(const Card *originalCard) const
 	if (view_as == 0)
 		return nullptr;
 
-	// 【核心修復：Try-Lock 避讓機制】
-	bool locked = Sanguosha->getLuaMutex().tryLock();
-	if (!locked) {
-		// 拿不到鎖，當作沒有這張牌
-		return nullptr;
-	}
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_State*L = Sanguosha->getLuaState();
-
-	lua_rawgeti(L, LUA_REGISTRYINDEX, view_as);
+	view_as.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaFilterSkill, 0);
 	SWIG_NewPointerObj(L, originalCard, SWIGTYPE_p_Card, 0);
 
 	if (lua_pcall(L, 2, 1, 0)!=0) {
 		Error(L);
-		Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 		return nullptr;
 	}
 
 	void *card_ptr;
 	int result = SWIG_ConvertPtr(L, -1, &card_ptr, SWIGTYPE_p_Card, 0);
 	lua_pop(L, 1);
-	Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 	if (SWIG_IsOK(result))
 		return static_cast<const Card *>(card_ptr);
 	return nullptr;
@@ -1945,9 +1914,9 @@ QString LuaViewAsEquipSkill::viewAsEquip(const Player *target) const
 	if (view_as_equip == 0)
 		return QString();
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, view_as_equip);
+	view_as_equip.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaViewAsEquipSkill, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
 
@@ -1966,9 +1935,9 @@ QString LuaCardLimitSkill::limitList(const Player *target, const Card *card) con
 	if (limit_list == 0)
 		return QString();
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, limit_list);
+	limit_list.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaCardLimitSkill, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, card, SWIGTYPE_p_Card, 0);
@@ -1988,9 +1957,9 @@ QString LuaCardLimitSkill::limitPattern(const Player *target, const Card *card) 
 	if (limit_pattern == 0)
 		return QString();
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, limit_pattern);
+	limit_pattern.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaCardLimitSkill, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, card, SWIGTYPE_p_Card, 0);
@@ -2010,9 +1979,9 @@ QString LuaCardLimitSkill::limitReason(const Player *target, const Card *card) c
 	if (limit_reason == 0)
 		return QString();
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, limit_reason);
+	limit_reason.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaCardLimitSkill, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, card, SWIGTYPE_p_Card, 0);
@@ -2035,7 +2004,7 @@ QStringList LuaPreSelectionMetaSkill::onGeneralChoosing(Room *room, ServerPlayer
 
 	lua_State *L = room->getLuaState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_general_choosing);
+	on_general_choosing.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaPreSelectionMetaSkill, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
@@ -2076,7 +2045,7 @@ void LuaPreSelectionMetaSkill::onGeneralNotChosen(Room *room, ServerPlayer *play
 
 	lua_State *L = room->getLuaState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_general_not_chosen);
+	on_general_not_chosen.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaPreSelectionMetaSkill, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
@@ -2098,9 +2067,9 @@ bool LuaAnytimeSkill::canTrigger(ServerPlayer *player) const
 	if (can_trigger == 0)
 		return AnytimeSkill::canTrigger(player);
 
-	lua_State *L = Sanguosha->getLuaState();
+	lua_State *L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, can_trigger);
+	can_trigger.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaAnytimeSkill, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
@@ -2119,9 +2088,9 @@ bool LuaAnytimeSkill::onTrigger(Room *room, ServerPlayer *player) const
 	if (on_trigger == 0)
 		return AnytimeSkill::onTrigger(room, player);
 
-	lua_State *L = Sanguosha->getLuaState();
+	lua_State *L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_trigger);
+	on_trigger.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaAnytimeSkill, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
@@ -2143,17 +2112,9 @@ bool LuaViewAsSkill::viewFilter(const QList<const Card *> &selected, const Card 
 	if (view_filter == 0)
 		return false;
 
-	// 【核心修復：Try-Lock 避讓機制】
-	bool locked = Sanguosha->getLuaMutex().tryLock();
-	if (!locked) {
-		// 拿不到鎖 (代表 Server 正在算 AI)，UI 絕對不能死等！
-		// 直接回傳 false (牌在畫面上暫時反灰 1 毫秒)，避開死鎖與崩潰。
-		return false;
-	}
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_State*L = Sanguosha->getLuaState();
-
-	lua_rawgeti(L, LUA_REGISTRYINDEX, view_filter);
+	view_filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaViewAsSkill, 0);
 	lua_createtable(L, selected.length(), 0);
 	for (int i = 0; i < selected.length(); i++) {
@@ -2164,13 +2125,11 @@ bool LuaViewAsSkill::viewFilter(const QList<const Card *> &selected, const Card 
 
 	if (lua_pcall(L, 3, 1, 0)!=0) {
 		Error(L);
-		Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 		return false;
 	}
 
 	bool result = lua_toboolean(L, -1);
 	lua_pop(L, 1);
-	Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 	return result;
 }
 
@@ -2179,16 +2138,9 @@ const Card *LuaViewAsSkill::viewAs(const QList<const Card *> &cards) const
 	if (view_as == 0)
 		return nullptr;
 
-	// 【核心修復：Try-Lock 避讓機制】
-	bool locked = Sanguosha->getLuaMutex().tryLock();
-	if (!locked) {
-		// 拿不到鎖，當作沒有這張牌
-		return nullptr;
-	}
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_State*L = Sanguosha->getLuaState();
-
-	lua_rawgeti(L, LUA_REGISTRYINDEX, view_as);
+	view_as.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaViewAsSkill, 0);
 	lua_createtable(L, cards.length(), 0);
 	for (int i = 0; i < cards.length(); i++) {
@@ -2198,14 +2150,12 @@ const Card *LuaViewAsSkill::viewAs(const QList<const Card *> &cards) const
 
 	if (lua_pcall(L, 2, 1, 0)!=0) {
 		Error(L);
-		Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 		return nullptr;
 	}
 
 	void *card_ptr;
 	int result = SWIG_ConvertPtr(L, -1, &card_ptr, SWIGTYPE_p_Card, 0);
 	lua_pop(L, 1);
-	Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 	if (SWIG_IsOK(result))
 		return static_cast<const Card *>(card_ptr);
 	return nullptr;
@@ -2216,29 +2166,20 @@ bool LuaViewAsSkill::shouldBeVisible(const Player *player) const
 	if (should_be_visible == 0)
 		return ViewAsSkill::shouldBeVisible(player);
 
-	// 【核心修復：Try-Lock 避讓機制】
-	bool locked = Sanguosha->getLuaMutex().tryLock();
-	if (!locked) {
-		// 拿不到鎖，返回 false (暫時不顯示)
-		return false;
-	}
-
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, should_be_visible);
+	should_be_visible.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaViewAsSkill, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
 	if (lua_pcall(L, 2, 1, 0)!=0) {
 		Error(L);
-		Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 		return false;
 	}
 
 	bool result = lua_toboolean(L, -1);
 	lua_pop(L, 1);
-	Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 	return result;
 }
 
@@ -2247,29 +2188,20 @@ bool LuaViewAsSkill::isEnabledAtPlay(const Player *player) const
 	if (enabled_at_play == 0)
 		return ViewAsSkill::isEnabledAtPlay(player);
 
-	// 【核心修復：Try-Lock 避讓機制】
-	bool locked = Sanguosha->getLuaMutex().tryLock();
-	if (!locked) {
-		// 拿不到鎖，返回 false (暫時禁用)
-		return false;
-	}
-
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, enabled_at_play);
+	enabled_at_play.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaViewAsSkill, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
 	if (lua_pcall(L, 2, 1, 0)!=0) {
 		Error(L);
-		Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 		return false;
 	}
 
 	bool result = lua_toboolean(L, -1);
 	lua_pop(L, 1);
-	Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 	return result;
 }
 
@@ -2278,17 +2210,10 @@ bool LuaViewAsSkill::isEnabledAtResponse(const Player *player, const QString &pa
 	if (enabled_at_response == 0)
 		return ViewAsSkill::isEnabledAtResponse(player, pattern);
 
-	// 【核心修復：Try-Lock 避讓機制】
-	bool locked = Sanguosha->getLuaMutex().tryLock();
-	if (!locked) {
-		// 拿不到鎖，返回 false (暫時禁用)
-		return false;
-	}
-
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, enabled_at_response);
+	enabled_at_response.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaViewAsSkill, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
@@ -2296,13 +2221,11 @@ bool LuaViewAsSkill::isEnabledAtResponse(const Player *player, const QString &pa
 
 	if (lua_pcall(L, 3, 1, 0)!=0) {
 		Error(L);
-		Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 		return false;
 	}
 
 	bool result = lua_toboolean(L, -1);
 	lua_pop(L, 1);
-	Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 	return result;
 }
 
@@ -2311,29 +2234,20 @@ bool LuaViewAsSkill::isEnabledAtNullification(const ServerPlayer *player) const
 	if (enabled_at_nullification == 0)
 		return ViewAsSkill::isEnabledAtNullification(player);
 
-	// 【核心修復：Try-Lock 避讓機制】
-	bool locked = Sanguosha->getLuaMutex().tryLock();
-	if (!locked) {
-		// 拿不到鎖，返回 false (暫時禁用)
-		return false;
-	}
-
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, enabled_at_nullification);
+	enabled_at_nullification.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaViewAsSkill, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
 	if (lua_pcall(L, 2, 1, 0)!=0) {
 		Error(L);
-		Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 		return false;
 	}
 
 	bool result = lua_toboolean(L, -1);
 	lua_pop(L, 1);
-	Sanguosha->getLuaMutex().unlock(); // 執行完務必手動解鎖
 	return result;
 }
 
@@ -2355,10 +2269,10 @@ bool LuaSkillCard::targetFilter(const QList<const Player *> &targets, const Play
 		return canSelect;
 	}
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, filter);
+	filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaSkillCard, 0);
 	lua_createtable(L, targets.length(), 0);
 	for (int i = 0; i < targets.length(); ++i) {
@@ -2387,10 +2301,10 @@ bool LuaSkillCard::targetsFeasible(const QList<const Player *> &targets, const P
 	if (feasible == 0)
 		return SkillCard::targetsFeasible(targets, self);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, feasible);
+	feasible.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaSkillCard, 0);
 	lua_createtable(L, targets.length(), 0);
 	for (int i = 0; i < targets.length(); i++) {
@@ -2414,10 +2328,10 @@ void LuaSkillCard::onUse(Room *room, CardUseStruct &card_use) const
 	if (about_to_use == 0)
 		return SkillCard::onUse(room, card_use);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, about_to_use);
+	about_to_use.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaSkillCard, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 	SWIG_NewPointerObj(L, &card_use, SWIGTYPE_p_CardUseStruct, 0);
@@ -2434,10 +2348,10 @@ void LuaSkillCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 	if (on_use == 0)
 		return SkillCard::use(room, source, targets);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_use);
+	on_use.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaSkillCard, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 	SWIG_NewPointerObj(L, source, SWIGTYPE_p_ServerPlayer, 0);
@@ -2459,10 +2373,10 @@ void LuaSkillCard::onEffect(CardEffectStruct &effect) const
 	if (on_effect == 0)
 		return SkillCard::onEffect(effect);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_effect);
+	on_effect.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaSkillCard, 0);
 	SWIG_NewPointerObj(L, &effect, SWIGTYPE_p_CardEffectStruct, 0);
 
@@ -2478,10 +2392,10 @@ const Card *LuaSkillCard::validate(CardUseStruct &cardUse) const
 	if (on_validate == 0)
 		return SkillCard::validate(cardUse);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_validate);
+	on_validate.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaSkillCard, 0);
 	SWIG_NewPointerObj(L, &cardUse, SWIGTYPE_p_CardUseStruct, 0);
 
@@ -2503,10 +2417,10 @@ const Card *LuaSkillCard::validateInResponse(ServerPlayer *user) const
 	if (on_validate_in_response == 0)
 		return SkillCard::validateInResponse(user);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_validate_in_response);
+	on_validate_in_response.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaSkillCard, 0);
 	SWIG_NewPointerObj(L, user, SWIGTYPE_p_ServerPlayer, 0);
 
@@ -2530,10 +2444,10 @@ bool LuaBasicCard::targetFilter(const QList<const Player *> &targets, const Play
 	if (filter == 0)
 		return BasicCard::targetFilter(targets, to_select, self);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, filter);
+	filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	lua_createtable(L, targets.length(), 0);
 	for (int i = 0; i < targets.length(); i++) {
@@ -2562,10 +2476,10 @@ bool LuaBasicCard::targetFilter(const QList<const Player *> &targets, const Play
 		return canSelect;
 	}
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, filter);
+	filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	lua_createtable(L, targets.length(), 0);
 	for (int i = 0; i < targets.length(); ++i) {
@@ -2594,10 +2508,10 @@ bool LuaBasicCard::targetsFeasible(const QList<const Player *> &targets, const P
 	if (feasible == 0)
 		return BasicCard::targetsFeasible(targets, self);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, feasible);
+	feasible.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	lua_createtable(L, targets.length(), 0);
 	for (int i = 0; i < targets.length(); i++) {
@@ -2621,10 +2535,10 @@ void LuaBasicCard::onUse(Room *room, CardUseStruct &card_use) const
 	if (about_to_use == 0)
 		return BasicCard::onUse(room, card_use);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, about_to_use);
+	about_to_use.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 	SWIG_NewPointerObj(L, &card_use, SWIGTYPE_p_CardUseStruct, 0);
@@ -2641,10 +2555,10 @@ void LuaBasicCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 	if (on_use == 0)
 		return BasicCard::use(room, source, targets);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_use);
+	on_use.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 	SWIG_NewPointerObj(L, source, SWIGTYPE_p_ServerPlayer, 0);
@@ -2666,10 +2580,10 @@ void LuaBasicCard::onEffect(CardEffectStruct &effect) const
 	if (on_effect == 0)
 		return BasicCard::onEffect(effect);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_effect);
+	on_effect.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	SWIG_NewPointerObj(L, &effect, SWIGTYPE_p_CardEffectStruct, 0);
 
@@ -2685,10 +2599,10 @@ bool LuaBasicCard::isAvailable(const Player *player) const
 	if (available == 0)
 		return BasicCard::isAvailable(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, available);
+	available.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
@@ -2707,10 +2621,10 @@ const Card *LuaBasicCard::validate(CardUseStruct &cardUse) const
 	if (on_validate == 0)
 		return BasicCard::validate(cardUse);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_validate);
+	on_validate.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	SWIG_NewPointerObj(L, &cardUse, SWIGTYPE_p_CardUseStruct, 0);
 
@@ -2732,10 +2646,10 @@ const Card *LuaBasicCard::validateInResponse(ServerPlayer *user) const
 	if (on_validate_in_response == 0)
 		return BasicCard::validateInResponse(user);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_validate_in_response);
+	on_validate_in_response.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	SWIG_NewPointerObj(L, user, SWIGTYPE_p_ServerPlayer, 0);
 
@@ -2759,10 +2673,10 @@ bool LuaTrickCard::targetFilter(const QList<const Player *> &targets, const Play
 	if (filter == 0)
 		return TrickCard::targetFilter(targets, to_select, self);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, filter);
+	filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	lua_createtable(L, targets.length(), 0);
 	for (int i = 0; i < targets.length(); i++) {
@@ -2791,10 +2705,10 @@ bool LuaTrickCard::targetFilter(const QList<const Player *> &targets, const Play
 		return canSelect;
 	}
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, filter);
+	filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	lua_createtable(L, targets.length(), 0);
 	for (int i = 0; i < targets.length(); ++i) {
@@ -2823,10 +2737,10 @@ bool LuaTrickCard::targetsFeasible(const QList<const Player *> &targets, const P
 	if (feasible == 0)
 		return TrickCard::targetsFeasible(targets, self);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, feasible);
+	feasible.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	lua_createtable(L, targets.length(), 0);
 	for (int i = 0; i < targets.length(); i++) {
@@ -2850,10 +2764,10 @@ void LuaTrickCard::onNullified(ServerPlayer *target) const
 	if (on_nullified == 0)
 		return TrickCard::onNullified(target);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_nullified);
+	on_nullified.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_ServerPlayer, 0);
 
@@ -2869,10 +2783,10 @@ bool LuaTrickCard::isCancelable(const CardEffectStruct &effect) const
 	if (is_cancelable == 0)
 		return TrickCard::isCancelable(effect);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, is_cancelable);
+	is_cancelable.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, &effect, SWIGTYPE_p_CardEffectStruct, 0);
 
@@ -2890,10 +2804,10 @@ void LuaTrickCard::onUse(Room *room, CardUseStruct &card_use) const
 	if (about_to_use == 0)
 		return TrickCard::onUse(room, card_use);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, about_to_use);
+	about_to_use.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 	SWIG_NewPointerObj(L, &card_use, SWIGTYPE_p_CardUseStruct, 0);
@@ -2910,10 +2824,10 @@ void LuaTrickCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 	if (on_use == 0)
 		return TrickCard::use(room, source, targets);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_use);
+	on_use.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 	SWIG_NewPointerObj(L, source, SWIGTYPE_p_ServerPlayer, 0);
@@ -2936,10 +2850,10 @@ void LuaTrickCard::onEffect(CardEffectStruct &effect) const
 	if (on_effect == 0)
 		return TrickCard::onEffect(effect);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_effect);
+	on_effect.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, &effect, SWIGTYPE_p_CardEffectStruct, 0);
 
@@ -2955,10 +2869,10 @@ bool LuaTrickCard::isAvailable(const Player *player) const
 	if (available == 0)
 		return TrickCard::isAvailable(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, available);
+	available.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
@@ -2977,10 +2891,10 @@ const Card *LuaTrickCard::validate(CardUseStruct &cardUse) const
 	if (on_validate == 0)
 		return TrickCard::validate(cardUse);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_validate);
+	on_validate.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, &cardUse, SWIGTYPE_p_CardUseStruct, 0);
 
@@ -3002,10 +2916,10 @@ const Card *LuaTrickCard::validateInResponse(ServerPlayer *user) const
 	if (on_validate_in_response == 0)
 		return TrickCard::validateInResponse(user);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_validate_in_response);
+	on_validate_in_response.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, user, SWIGTYPE_p_ServerPlayer, 0);
 
@@ -3027,10 +2941,10 @@ bool LuaWeapon::targetFilter(const QList<const Player *> &targets, const Player 
 	if (filter == 0)
 		return Weapon::targetFilter(targets, to_select, self);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, filter);
+	filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaWeapon, 0);
 	lua_createtable(L, targets.length(), 0);
 	for (int i = 0; i < targets.length(); i++) {
@@ -3055,10 +2969,10 @@ bool LuaWeapon::targetsFeasible(const QList<const Player *> &targets, const Play
 	if (feasible == 0)
 		return Weapon::targetsFeasible(targets, self);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, feasible);
+	feasible.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaWeapon, 0);
 	lua_createtable(L, targets.length(), 0);
 	for (int i = 0; i < targets.length(); i++) {
@@ -3082,10 +2996,10 @@ bool LuaWeapon::isAvailable(const Player *player) const
 	if (available == 0)
 		return Weapon::isAvailable(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, available);
+	available.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaWeapon, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
@@ -3104,10 +3018,10 @@ void LuaWeapon::onInstall(ServerPlayer *player) const
 	if (on_install == 0)
 		return Weapon::onInstall(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_install);
+	on_install.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaWeapon, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
@@ -3123,10 +3037,10 @@ void LuaWeapon::onUninstall(ServerPlayer *player) const
 	if (on_uninstall == 0)
 		return Weapon::onUninstall(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_uninstall);
+	on_uninstall.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaWeapon, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
@@ -3142,10 +3056,10 @@ bool LuaArmor::targetFilter(const QList<const Player *> &targets, const Player *
 	if (filter == 0)
 		return Armor::targetFilter(targets, to_select, self);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, filter);
+	filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaArmor, 0);
 	lua_createtable(L, targets.length(), 0);
 	for (int i = 0; i < targets.length(); i++) {
@@ -3170,10 +3084,10 @@ bool LuaArmor::targetsFeasible(const QList<const Player *> &targets, const Playe
 	if (feasible == 0)
 		return Armor::targetsFeasible(targets, self);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, feasible);
+	feasible.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaArmor, 0);
 	lua_createtable(L, targets.length(), 0);
 	for (int i = 0; i < targets.length(); i++) {
@@ -3197,10 +3111,10 @@ bool LuaArmor::isAvailable(const Player *player) const
 	if (available == 0)
 		return Armor::isAvailable(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, available);
+	available.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaArmor, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
@@ -3219,10 +3133,10 @@ void LuaArmor::onInstall(ServerPlayer *player) const
 	if (on_install == 0)
 		return Armor::onInstall(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_install);
+	on_install.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaArmor, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
@@ -3238,10 +3152,10 @@ void LuaArmor::onUninstall(ServerPlayer *player) const
 	if (on_uninstall == 0)
 		return Armor::onUninstall(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_uninstall);
+	on_uninstall.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaArmor, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
@@ -3257,10 +3171,10 @@ bool LuaHorse::targetFilter(const QList<const Player *> &targets, const Player *
 	if (filter == 0)
 		return Horse::targetFilter(targets, to_select, self);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, filter);
+	filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaHorse, 0);
 	lua_createtable(L, targets.length(), 0);
 	for (int i = 0; i < targets.length(); i++) {
@@ -3285,10 +3199,10 @@ bool LuaHorse::targetsFeasible(const QList<const Player *> &targets, const Playe
 	if (feasible == 0)
 		return Horse::targetsFeasible(targets, self);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, feasible);
+	feasible.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaHorse, 0);
 	lua_createtable(L, targets.length(), 0);
 	for (int i = 0; i < targets.length(); i++) {
@@ -3312,10 +3226,10 @@ bool LuaHorse::isAvailable(const Player *player) const
 	if (available == 0)
 		return Horse::isAvailable(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, available);
+	available.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
@@ -3334,10 +3248,10 @@ void LuaHorse::onInstall(ServerPlayer *player) const
 	if (on_install == 0)
 		return Horse::onInstall(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_install);
+	on_install.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
@@ -3353,10 +3267,10 @@ void LuaHorse::onUninstall(ServerPlayer *player) const
 	if (on_uninstall == 0)
 		return Horse::onUninstall(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_uninstall);
+	on_uninstall.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
@@ -3372,9 +3286,9 @@ int LuaHorse::getCorrect(const Player *player) const
 	if (correct_func == 0)
 		return Horse::getCorrect(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, correct_func);
+	correct_func.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
@@ -3393,10 +3307,10 @@ bool LuaOffensiveHorse::targetFilter(const QList<const Player *> &targets, const
 	if (filter == 0)
 		return OffensiveHorse::targetFilter(targets, to_select, self);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, filter);
+	filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaOffensiveHorse, 0);
 	lua_createtable(L, targets.length(), 0);
 	for (int i = 0; i < targets.length(); i++) {
@@ -3421,10 +3335,10 @@ bool LuaOffensiveHorse::isAvailable(const Player *player) const
 	if (available == 0)
 		return OffensiveHorse::isAvailable(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, available);
+	available.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaOffensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
@@ -3443,10 +3357,10 @@ bool LuaOffensiveHorse::targetsFeasible(const QList<const Player *> &targets, co
 	if (feasible == 0)
 		return OffensiveHorse::targetsFeasible(targets, self);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, feasible);
+	feasible.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaOffensiveHorse, 0);
 	lua_createtable(L, targets.length(), 0);
 	for (int i = 0; i < targets.length(); i++) {
@@ -3470,10 +3384,10 @@ void LuaOffensiveHorse::onInstall(ServerPlayer *player) const
 	if (on_install == 0)
 		return OffensiveHorse::onInstall(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_install);
+	on_install.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaOffensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
@@ -3489,10 +3403,10 @@ void LuaOffensiveHorse::onUninstall(ServerPlayer *player) const
 	if (on_uninstall == 0)
 		return OffensiveHorse::onUninstall(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_uninstall);
+	on_uninstall.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaOffensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
@@ -3508,9 +3422,9 @@ int LuaOffensiveHorse::getCorrect(const Player *player) const
 	if (correct_func == 0)
 		return OffensiveHorse::getCorrect(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, correct_func);
+	correct_func.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaOffensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
@@ -3529,10 +3443,10 @@ bool LuaDefensiveHorse::targetFilter(const QList<const Player *> &targets, const
 	if (filter == 0)
 		return DefensiveHorse::targetFilter(targets, to_select, self);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, filter);
+	filter.push(L);
 
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaDefensiveHorse, 0);
 	lua_createtable(L, targets.length(), 0);
@@ -3558,10 +3472,10 @@ bool LuaDefensiveHorse::targetsFeasible(const QList<const Player *> &targets, co
 	if (feasible == 0)
 		return DefensiveHorse::targetsFeasible(targets, self);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, feasible);
+	feasible.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaDefensiveHorse, 0);
 	lua_createtable(L, targets.length(), 0);
 	for (int i = 0; i < targets.length(); i++) {
@@ -3585,10 +3499,10 @@ bool LuaDefensiveHorse::isAvailable(const Player *player) const
 	if (available == 0)
 		return DefensiveHorse::isAvailable(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, available);
+	available.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaDefensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
@@ -3607,10 +3521,10 @@ void LuaDefensiveHorse::onInstall(ServerPlayer *player) const
 	if (on_install == 0)
 		return DefensiveHorse::onInstall(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_install);
+	on_install.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaDefensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
@@ -3626,10 +3540,10 @@ void LuaDefensiveHorse::onUninstall(ServerPlayer *player) const
 	if (on_uninstall == 0)
 		return DefensiveHorse::onUninstall(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_uninstall);
+	on_uninstall.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaDefensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
@@ -3645,9 +3559,9 @@ int LuaDefensiveHorse::getCorrect(const Player *player) const
 	if (correct_func == 0)
 		return DefensiveHorse::getCorrect(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
-	lua_rawgeti(L, LUA_REGISTRYINDEX, correct_func);
+	correct_func.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaDefensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
@@ -3666,10 +3580,10 @@ bool LuaTreasure::targetFilter(const QList<const Player *> &targets, const Playe
 	if (filter == 0)
 		return Treasure::targetFilter(targets, to_select, self);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, filter);
+	filter.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTreasure, 0);
 	lua_createtable(L, targets.length(), 0);
 	for (int i = 0; i < targets.length(); i++) {
@@ -3694,10 +3608,10 @@ bool LuaTreasure::targetsFeasible(const QList<const Player *> &targets, const Pl
 	if (feasible == 0)
 		return Treasure::targetsFeasible(targets, self);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, feasible);
+	feasible.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTreasure, 0);
 	lua_createtable(L, targets.length(), 0);
 	for (int i = 0; i < targets.length(); i++) {
@@ -3721,10 +3635,10 @@ bool LuaTreasure::isAvailable(const Player *player) const
 	if (available == 0)
 		return Treasure::isAvailable(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, available);
+	available.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTreasure, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
@@ -3743,10 +3657,10 @@ void LuaTreasure::onInstall(ServerPlayer *player) const
 	if (on_install == 0)
 		return Treasure::onInstall(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_install);
+	on_install.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTreasure, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
@@ -3762,10 +3676,10 @@ void LuaTreasure::onUninstall(ServerPlayer *player) const
 	if (on_uninstall == 0)
 		return Treasure::onUninstall(player);
 
-	lua_State*L = Sanguosha->getLuaState();
+	lua_State*L = LuaRuntime::currentState();
 
 	// the callback
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_uninstall);
+	on_uninstall.push(L);
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTreasure, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
@@ -3786,7 +3700,7 @@ static bool luaActivePCall(lua_State *L, int nargs, int nresults, const char *ca
 SkillInstanceRef LuaViewAsSkillV2::getUsageRef(const SkillContext &ctx) const
 {
 	if (!get_usage_ref) return ViewAsSkillV2::getUsageRef(ctx);
-	return luaSkillUsageRef(Sanguosha->getLuaState(), get_usage_ref,
+	return luaSkillUsageRef(LuaRuntime::currentState(), get_usage_ref,
 		const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2,
 		ctx, "LuaViewAsSkillV2");
 }
@@ -3794,7 +3708,7 @@ SkillInstanceRef LuaViewAsSkillV2::getUsageRef(const SkillContext &ctx) const
 SkillInstanceRef LuaViewAsSkillV2::getAmountRef(const SkillContext &ctx) const
 {
 	if (!get_amount_ref) return ViewAsSkillV2::getAmountRef(ctx);
-	return luaSkillUsageRef(Sanguosha->getLuaState(), get_amount_ref,
+	return luaSkillUsageRef(LuaRuntime::currentState(), get_amount_ref,
 		const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2,
 		ctx, "LuaViewAsSkillV2 amount");
 }
@@ -3802,8 +3716,8 @@ SkillInstanceRef LuaViewAsSkillV2::getAmountRef(const SkillContext &ctx) const
 bool LuaViewAsSkillV2::canActivate(const ActiveSkillRequest &request) const
 {
 	if (!can_activate) return ViewAsSkillV2::canActivate(request);
-	lua_State *L = Sanguosha->getLuaState();
-	lua_rawgeti(L, LUA_REGISTRYINDEX, can_activate);
+	lua_State *L = LuaRuntime::currentState();
+	can_activate.push(L);
 	SWIG_NewPointerObj(L, const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2, 0);
 	SWIG_NewPointerObj(L, const_cast<ActiveSkillRequest *>(&request), SWIGTYPE_p_ActiveSkillRequest, 0);
 	if (!luaActivePCall(L, 2, 1, "can_activate")) return false;
@@ -3815,8 +3729,8 @@ bool LuaViewAsSkillV2::canActivate(const ActiveSkillRequest &request) const
 bool LuaViewAsSkillV2::canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const
 {
 	if (!can_select_card) return ViewAsSkillV2::canSelectCard(request, candidate);
-	lua_State *L = Sanguosha->getLuaState();
-	lua_rawgeti(L, LUA_REGISTRYINDEX, can_select_card);
+	lua_State *L = LuaRuntime::currentState();
+	can_select_card.push(L);
 	SWIG_NewPointerObj(L, const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2, 0);
 	SWIG_NewPointerObj(L, const_cast<ActiveSkillRequest *>(&request), SWIGTYPE_p_ActiveSkillRequest, 0);
 	SWIG_NewPointerObj(L, const_cast<Card *>(candidate), SWIGTYPE_p_Card, 0);
@@ -3829,8 +3743,8 @@ bool LuaViewAsSkillV2::canSelectCard(const ActiveSkillRequest &request, const Ca
 bool LuaViewAsSkillV2::cardSelectionFeasible(const ActiveSkillRequest &request) const
 {
 	if (!card_selection_feasible) return ViewAsSkillV2::cardSelectionFeasible(request);
-	lua_State *L = Sanguosha->getLuaState();
-	lua_rawgeti(L, LUA_REGISTRYINDEX, card_selection_feasible);
+	lua_State *L = LuaRuntime::currentState();
+	card_selection_feasible.push(L);
 	SWIG_NewPointerObj(L, const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2, 0);
 	SWIG_NewPointerObj(L, const_cast<ActiveSkillRequest *>(&request), SWIGTYPE_p_ActiveSkillRequest, 0);
 	if (!luaActivePCall(L, 2, 1, "card_selection_feasible")) return false;
@@ -3842,8 +3756,8 @@ bool LuaViewAsSkillV2::cardSelectionFeasible(const ActiveSkillRequest &request) 
 const Card *LuaViewAsSkillV2::createCard(const ActiveSkillRequest &request) const
 {
 	if (!create_card) return ViewAsSkillV2::createCard(request);
-	lua_State *L = Sanguosha->getLuaState();
-	lua_rawgeti(L, LUA_REGISTRYINDEX, create_card);
+	lua_State *L = LuaRuntime::currentState();
+	create_card.push(L);
 	SWIG_NewPointerObj(L, const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2, 0);
 	SWIG_NewPointerObj(L, const_cast<ActiveSkillRequest *>(&request), SWIGTYPE_p_ActiveSkillRequest, 0);
 	if (!luaActivePCall(L, 2, 1, "create_card")) return nullptr;
@@ -3856,8 +3770,8 @@ const Card *LuaViewAsSkillV2::createCard(const ActiveSkillRequest &request) cons
 bool LuaViewAsSkillV2::cost(Room *room, SkillContext &context, const ActiveSkillRequest &request) const
 {
 	if (!on_cost) return ViewAsSkillV2::cost(room, context, request);
-	lua_State *L = Sanguosha->getLuaState();
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_cost);
+	lua_State *L = LuaRuntime::currentState();
+	on_cost.push(L);
 	SWIG_NewPointerObj(L, const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 	SWIG_NewPointerObj(L, &context, SWIGTYPE_p_SkillContext, 0);
@@ -3871,8 +3785,8 @@ bool LuaViewAsSkillV2::cost(Room *room, SkillContext &context, const ActiveSkill
 bool LuaViewAsSkillV2::pay(Room *room, SkillContext &context, const ActiveSkillRequest &request) const
 {
 	if (!on_pay) return ViewAsSkillV2::pay(room, context, request);
-	lua_State *L = Sanguosha->getLuaState();
-	lua_rawgeti(L, LUA_REGISTRYINDEX, on_pay);
+	lua_State *L = LuaRuntime::currentState();
+	on_pay.push(L);
 	SWIG_NewPointerObj(L, const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 	SWIG_NewPointerObj(L, &context, SWIGTYPE_p_SkillContext, 0);
@@ -3896,8 +3810,8 @@ bool LuaViewAsSkillV2::canSelectTarget(const ActiveSkillRequest &request, const 
 		const Player *candidate) const
 {
 	if (!can_select_target) return ViewAsSkillV2::canSelectTarget(request, selected, candidate);
-	lua_State *L = Sanguosha->getLuaState();
-	lua_rawgeti(L, LUA_REGISTRYINDEX, can_select_target);
+	lua_State *L = LuaRuntime::currentState();
+	can_select_target.push(L);
 	SWIG_NewPointerObj(L, const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2, 0);
 	SWIG_NewPointerObj(L, const_cast<ActiveSkillRequest *>(&request), SWIGTYPE_p_ActiveSkillRequest, 0);
 	pushActiveTargets(L, selected);
@@ -3911,8 +3825,8 @@ bool LuaViewAsSkillV2::canSelectTarget(const ActiveSkillRequest &request, const 
 bool LuaViewAsSkillV2::targetsFeasible(const ActiveSkillRequest &request, const QList<const Player *> &selected) const
 {
 	if (!targets_feasible) return ViewAsSkillV2::targetsFeasible(request, selected);
-	lua_State *L = Sanguosha->getLuaState();
-	lua_rawgeti(L, LUA_REGISTRYINDEX, targets_feasible);
+	lua_State *L = LuaRuntime::currentState();
+	targets_feasible.push(L);
 	SWIG_NewPointerObj(L, const_cast<LuaViewAsSkillV2 *>(this), SWIGTYPE_p_LuaViewAsSkillV2, 0);
 	SWIG_NewPointerObj(L, const_cast<ActiveSkillRequest *>(&request), SWIGTYPE_p_ActiveSkillRequest, 0);
 	pushActiveTargets(L, selected);
@@ -3922,12 +3836,12 @@ bool LuaViewAsSkillV2::targetsFeasible(const ActiveSkillRequest &request, const 
 	return result;
 }
 
-static ViewAsSkillV2::EffectFlow luaActiveEffectResult(lua_State *L, int callback,
+static ViewAsSkillV2::EffectFlow luaActiveEffectResult(lua_State *L, const LuaFunction &callback,
 	const LuaViewAsSkillV2 *self, SkillContext &context, ServerPlayer *target,
 	const QList<ServerPlayer *> *targets, const char *name)
 {
 	if (!callback) return ViewAsSkillV2::ContinueEffects;
-	lua_rawgeti(L, LUA_REGISTRYINDEX, callback);
+	callback.push(L);
 	SWIG_NewPointerObj(L, const_cast<LuaViewAsSkillV2 *>(self), SWIGTYPE_p_LuaViewAsSkillV2, 0);
 	SWIG_NewPointerObj(L, &context, SWIGTYPE_p_SkillContext, 0);
 	int nargs = 2;
@@ -3953,20 +3867,20 @@ static ViewAsSkillV2::EffectFlow luaActiveEffectResult(lua_State *L, int callbac
 ViewAsSkillV2::EffectFlow LuaViewAsSkillV2::effect(SkillContext &context) const
 {
 	if (!on_effect) return ViewAsSkillV2::effect(context);
-	return luaActiveEffectResult(Sanguosha->getLuaState(), on_effect, this, context, nullptr, nullptr, "on_effect");
+	return luaActiveEffectResult(LuaRuntime::currentState(), on_effect, this, context, nullptr, nullptr, "on_effect");
 }
 
 ViewAsSkillV2::EffectFlow LuaViewAsSkillV2::effectOnTarget(SkillContext &context, ServerPlayer *target) const
 {
 	if (!on_effect_target) return ViewAsSkillV2::effectOnTarget(context, target);
-	return luaActiveEffectResult(Sanguosha->getLuaState(), on_effect_target, this, context, target, nullptr, "on_effect_target");
+	return luaActiveEffectResult(LuaRuntime::currentState(), on_effect_target, this, context, target, nullptr, "on_effect_target");
 }
 
 ViewAsSkillV2::EffectFlow LuaViewAsSkillV2::effectOnTargetGroup(SkillContext &context,
 	const QList<ServerPlayer *> &targets) const
 {
 	if (!on_effect_target_group) return ViewAsSkillV2::effectOnTargetGroup(context, targets);
-	return luaActiveEffectResult(Sanguosha->getLuaState(), on_effect_target_group, this, context, nullptr, &targets,
+	return luaActiveEffectResult(LuaRuntime::currentState(), on_effect_target_group, this, context, nullptr, &targets,
 		"on_effect_target_group");
 }
 

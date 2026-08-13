@@ -202,11 +202,11 @@ void Room::clearControllerPileVisible(ServerPlayer *target, ServerPlayer *contro
 Room::Room(QObject*parent, const QString&mode)
 	: QThread(parent), m_processingScheduledExtraTurns(false), m_notifier(std::make_unique<RoomNotifier>(*this)),
 	mode(mode), player_count(Sanguosha->getPlayerCount(mode)), current(nullptr),
-	pile1(Sanguosha->getRandomCards(true)), m_drawPile(&pile1), m_discardPile(&pile2),
-	game_state(0), game_paused(false), m_lua(Sanguosha->getLuaState()),
+	m_drawPile(&pile1), m_discardPile(&pile2), game_state(0), game_paused(false),
 	thread(nullptr),//game_started(false), game_finished(false),
 	thread_3v3(nullptr), thread_xmode(nullptr), thread_1v1(nullptr), _m_semRaceRequest(0), _m_semRoomMutex(1),
-	_m_raceStarted(false), scenario(Sanguosha->getScenario(mode)), m_surrenderRequestReceived(false), _virtual(false), _m_roomState(false),
+	_m_raceStarted(false), scenario(Sanguosha->getScenario(mode)), m_surrenderRequestReceived(false), _virtual(false),
+	m_runtime(std::make_unique<RoomRuntime>(this)),
 	m_lastSnapshotTurn(0)
 {
 	static int s_global_room_id = 0;
@@ -214,19 +214,19 @@ Room::Room(QObject*parent, const QString&mode)
 	_m_lastMovementId = 0;
 	m_playOrderReversed = false;
 
-	initCallbacks();
-
-	if (_m_Id<1){
-		LuaLocker locker;
-		if (!DoLuaScript(m_lua, "lua/ai/smart-ai.lua")){
-#if defined(QSAN_ENGINE_BUILD)
-			qWarning() << "LuaAI script failed to load";
-#else
-			QMessageBox::warning(nullptr, "", "LuaAI加载失败，程序无法进行AI操作");
-#endif
-			m_lua = nullptr;
-		}
+	QString runtimeError;
+	const bool runtimeReady = m_runtime->initialize(&runtimeError);
+	if (!runtimeReady) {
+		qCritical("Room Lua runtime initialization failed: %s", qUtf8Printable(runtimeError));
+		m_runtime->lua().shutdown();
+	} else {
+		LuaRuntime::Binding luaBinding(m_runtime->lua());
+		GameRng::Binding rngBinding(m_runtime->rng());
+		EngineRuntimeContextScope contextScope(*Sanguosha, this);
+		pile1 = Sanguosha->getRandomCards(true);
 	}
+
+	initCallbacks();
 
 	//connect(this,SIGNAL(signalSetProperty(ServerPlayer*,const char*,QVariant)),this, SLOT(slotSetProperty(ServerPlayer*,const char*,QVariant)),Qt::QueuedConnection);
 	connect(this, SIGNAL(signalSetProperty(ServerPlayer*, const char*, QVariant)), this, SLOT(slotSetProperty(ServerPlayer*, const char*, QVariant)), Qt::BlockingQueuedConnection);
@@ -234,13 +234,59 @@ Room::Room(QObject*parent, const QString&mode)
 
 Room::~Room()
 {
+	if (!stopGameThreads(10000))
+		qFatal("Room worker did not stop before runtime destruction");
+	delete thread_3v3.data();
+	delete thread_xmode.data();
+	delete thread_1v1.data();
+	thread_3v3 = nullptr;
+	thread_xmode = nullptr;
+	thread_1v1 = nullptr;
 	foreach(ServerPlayer*player, m_players)
 		delete player;
 	if (thread != nullptr)
 		delete thread;
 	foreach (GameSnapshot *snapshot, m_snapshots)
 		delete snapshot;
-	//lua_close(m_lua);
+}
+
+bool Room::stopGameThreads(int timeoutMs)
+{
+	QList<QThread *> workers;
+	workers << thread_3v3.data() << thread_xmode.data() << thread_1v1.data() << thread;
+	foreach (QThread *worker, workers) {
+		if (worker)
+			disconnect(worker, nullptr, this, nullptr);
+	}
+
+	game_state = -1;
+	{
+		QMutexLocker locker(&m_mutex);
+		game_paused = false;
+		m_waitCond.wakeAll();
+	}
+	foreach (ServerPlayer *player, m_players)
+		player->releaseLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
+	_m_semRaceRequest.release();
+	_m_semRoomMutex.release();
+
+	foreach (QThread *worker, workers) {
+		if (!worker || worker == QThread::currentThread())
+			continue;
+		worker->requestInterruption();
+		worker->quit();
+	}
+
+	QElapsedTimer timer;
+	timer.start();
+	foreach (QThread *worker, workers) {
+		if (!worker || worker == QThread::currentThread() || !worker->isRunning())
+			continue;
+		const int remaining = qMax(0, timeoutMs - int(timer.elapsed()));
+		if (remaining == 0 || !worker->wait(remaining))
+			return false;
+	}
+	return true;
 }
 
 void Room::initCallbacks()
@@ -1220,7 +1266,7 @@ SkillInstanceRef Room::attachSkillToPlayer(ServerPlayer *player, const QString &
     if (!parentOwner || !parentOwner->hasSkillInstance(parentRef.key.skillName, parentRef.key.instanceID))
         return SkillInstanceRef();
 
-    foreach (const SkillInstanceRef &child, m_attachedSkillRegistry.childrenOf(parentRef)) {
+    foreach (const SkillInstanceRef &child, m_runtime->attachedSkills().childrenOf(parentRef)) {
         if (child.ownerObjectName == player->objectName() && child.key.skillName == skillName)
             return child;
     }
@@ -1229,7 +1275,7 @@ SkillInstanceRef Room::attachSkillToPlayer(ServerPlayer *player, const QString &
     if (!skill) return SkillInstanceRef();
     int instanceId = player->createSkillInstance(skillName, SourceAttached, parentRef, skill->isVisible());
     SkillInstanceRef child(player->objectName(), SkillInstanceKey(skillName, instanceId));
-    if (!m_attachedSkillRegistry.attach(parentRef, child)) {
+    if (!m_runtime->attachedSkills().attach(parentRef, child)) {
         player->removeSkillInstance(skillName, instanceId);
         return SkillInstanceRef();
     }
@@ -1242,8 +1288,8 @@ SkillInstanceRef Room::attachSkillToPlayer(ServerPlayer *player, const QString &
 bool Room::detachAttachedSkill(const SkillInstanceRef &ref)
 {
     if (!ref.isValid()) return false;
-    bool removeRoot = m_attachedSkillRegistry.contains(ref);
-    QList<SkillInstanceRef> removed = m_attachedSkillRegistry.detach(ref);
+    bool removeRoot = m_runtime->attachedSkills().contains(ref);
+    QList<SkillInstanceRef> removed = m_runtime->attachedSkills().detach(ref);
     bool changed = false;
     foreach (const SkillInstanceRef &entry, removed) {
         if (entry == ref && !removeRoot) continue;
@@ -1837,7 +1883,6 @@ ServerPlayer*Room::doBroadcastRaceRequest(QList<ServerPlayer*> players, QSanProt
 ServerPlayer*Room::getRaceResult(QList<ServerPlayer*> players, QSanProtocol::CommandType, time_t timeOut,
 	ResponseVerifyFunction validateFunc, void*funcArg)
 {
-	LuaUnlocker unlocker; // Release lua_mutex while waiting for race reply
 	QElapsedTimer timer;
 	timer.start();
 	bool validResult = false;
@@ -1946,7 +1991,6 @@ void Room::broadcastInvoke(const QSanProtocol::AbstractPacket*packet, ServerPlay
 
 bool Room::getResult(ServerPlayer*player, time_t timeOut)
 {
-	LuaUnlocker unlocker; // Release lua_mutex while waiting for client reply
 	//Q_ASSERT(player->m_isWaitingReply);
 	bool validResult = false;
 	QString redirectedTargetName;
@@ -2460,8 +2504,8 @@ const Card*Room::_askForNullification(const Card*trick, ServerPlayer*from, Serve
 	CardUseStruct card_use = getTag("UseHistory"+trick->toString()).value<CardUseStruct>();
 	if (card_use.no_respond_list.contains("_ALL_TARGETS")||card_use.no_offset_list.contains("_ALL_TARGETS")) return nullptr;
 	
-	_m_roomState.setCurrentCardUsePattern("nullification");
-	_m_roomState.setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_RESPONSE_USE);
+	m_runtime->state().setCurrentCardUsePattern("nullification");
+	m_runtime->state().setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_RESPONSE_USE);
 	
 	CardEffectStruct trickEffect,TrickEffect = to->getTag("TrickEffectData").value<CardEffectStruct>();
 	if(TrickEffect.card==trick)
@@ -2646,11 +2690,11 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
 	if (!player->isAlive()) return nullptr;
 	tryPause();
 	notifyMoveFocus(player, S_COMMAND_RESPONSE_CARD);
-	_m_roomState.setCurrentCardUsePattern(pattern);
+	m_runtime->state().setCurrentCardUsePattern(pattern);
 	CardUseStruct::CardUseReason u_reason = CardUseStruct::CARD_USE_REASON_UNKNOWN;
 	if (method == Card::MethodResponse) u_reason = CardUseStruct::CARD_USE_REASON_RESPONSE;
 	else if (method == Card::MethodUse) u_reason = CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
-	_m_roomState.setCurrentCardUseReason(u_reason);
+	m_runtime->state().setCurrentCardUseReason(u_reason);
 	QString _pattern = pattern;
 	if ((method==Card::MethodUse||method==Card::MethodResponse)&&!isRetrial){
 		QStringList asked;
@@ -2664,7 +2708,7 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
 		QVariant askedData = asked;
 		thread->trigger(CardAsked, this, player, askedData);
 		_pattern = askedData.toStringList().first();
-		_m_roomState.setCurrentCardUsePattern(_pattern);
+		m_runtime->state().setCurrentCardUsePattern(_pattern);
 	}
 	CardResponseStruct resp(nullptr, m_who, method == Card::MethodUse);
 	for (int i = 0; i < 9; i++){
@@ -2824,8 +2868,8 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
 		resp.skillExecutionID = responseExecution.executionID();
 		if (responseActiveSkill && !responseCtx.bypass_cost) {
 			ActiveSkillRequest request;
-			request.reason = _m_roomState.getCurrentCardUseReason();
-			request.pattern = _m_roomState.getCurrentCardUsePattern();
+			request.reason = m_runtime->state().getCurrentCardUseReason();
+			request.pattern = m_runtime->state().getCurrentCardUsePattern();
 			request.initiator = responseCtx.initiator;
             request.activationRef = responseCtx.activationRef;
             request.selectedCardIds = resp.m_card->getSubcards();
@@ -2886,8 +2930,8 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
 		}
 		if (responseActiveSkill && !responseCtx.bypass_cost) {
 			ActiveSkillRequest request;
-			request.reason = _m_roomState.getCurrentCardUseReason();
-			request.pattern = _m_roomState.getCurrentCardUsePattern();
+			request.reason = m_runtime->state().getCurrentCardUseReason();
+			request.pattern = m_runtime->state().getCurrentCardUsePattern();
 			request.initiator = responseCtx.initiator;
             request.activationRef = responseCtx.activationRef;
             request.selectedCardIds = resp.m_card->getSubcards();
@@ -3020,12 +3064,12 @@ CardUseStruct Room::askForUseCardStruct(ServerPlayer*player, const QString&patte
 	if (!player->isAlive()) return CardUseStruct();
 	tryPause();
 	notifyMoveFocus(player, S_COMMAND_RESPONSE_CARD);
-	_m_roomState.setCurrentCardUsePattern(pattern);
+	m_runtime->state().setCurrentCardUsePattern(pattern);
 	if(method==Card::MethodPlay){
-		_m_roomState.setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_PLAY);
+		m_runtime->state().setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_PLAY);
 		method = Card::MethodUse;
 	}else
-		_m_roomState.setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_RESPONSE_USE);
+		m_runtime->state().setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_RESPONSE_USE);
 	
 	QStringList asked;
 	asked << pattern << prompt << "use";
@@ -3050,10 +3094,11 @@ CardUseStruct Room::askForUseCardStruct(ServerPlayer*player, const QString&patte
 			if (ai){
 				QElapsedTimer timer;
 				timer.start();
-				if (!askForActiveSkill(player, _m_roomState.getCurrentCardUseReason(), pattern,
+				if (!decideAiSkillAction(player, m_runtime->state().getCurrentCardUseReason(), pattern,
 					prompt, method, card_use)) {
-					QString answer = ai->askForUseCard(pattern, prompt, method);
-					if (answer != ".") card_use.parse(answer, this);
+					const AIRequest request = makeAIRequest(player, AIRequest::UseCard,
+						m_runtime->state().getCurrentCardUseReason(), pattern, prompt, method);
+					decideAiAction(player, request, card_use);
 				}
 				if (Config.AIDelay>timer.elapsed())
 					thread->delay(Config.AIDelay-timer.elapsed());
@@ -3065,8 +3110,12 @@ CardUseStruct Room::askForUseCardStruct(ServerPlayer*player, const QString&patte
 				}else{
 					ai = player->getAI();
 					if(ai){
-						QString answer = ai->askForUseCard(pattern, prompt, method);
-						if (answer != ".") card_use.parse(answer, this);
+						if (!decideAiSkillAction(player, m_runtime->state().getCurrentCardUseReason(),
+							pattern, prompt, method, card_use)) {
+							const AIRequest request = makeAIRequest(player, AIRequest::UseCard,
+								m_runtime->state().getCurrentCardUseReason(), pattern, prompt, method);
+							decideAiAction(player, request, card_use);
+						}
 					}
 				}
 			}
@@ -3187,8 +3236,8 @@ const Card*Room::askForSinglePeach(ServerPlayer*player, ServerPlayer*dying)
 {
 	tryPause();
 	notifyMoveFocus(player, S_COMMAND_ASK_PEACH);
-	_m_roomState.setCurrentCardUsePattern(player==dying?"peach+analeptic":"peach");
-	_m_roomState.setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_RESPONSE_USE);
+	m_runtime->state().setCurrentCardUsePattern(player==dying?"peach+analeptic":"peach");
+	m_runtime->state().setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_RESPONSE_USE);
 
 	const Card*card = nullptr;
 	SkillInstanceRef sourceRef;
@@ -3295,7 +3344,6 @@ void Room::setPlayerProperty(ServerPlayer*player, const char*property_name, cons
 	else {
 		// 跨執行緒：發送信號交由主執行緒處理
 		// 由於已改用Qt::BlockingQueuedConnection，emit 會在此阻塞直到 slot 執行完畢才返回
-		LuaUnlocker unlocker;
 		emit signalSetProperty(player, property_name, value);
 	}
 	if (property_name == "hp" ||
@@ -3405,7 +3453,6 @@ void Room::safeSetPlayerProperty(ServerPlayer*player, const char*property_name, 
 	if (QThread::currentThread() == player->thread())
 		player->setProperty(property_name, value);
 	else {
-		LuaUnlocker unlocker;
 		emit signalSetProperty(player, property_name, value);
 	}
 }
@@ -3677,7 +3724,6 @@ bool Room::canPause(ServerPlayer*player) const
 
 void Room::tryPause()
 {
-	LuaUnlocker unlocker; // Release lua_mutex while game is paused
 	//tag["callback"] = true;
 	if (canPause(getOwner())){
 		QMutexLocker locker(&m_mutex);
@@ -3951,7 +3997,12 @@ void Room::changeHero(ServerPlayer*player, const QString&new_general, bool full_
 
 lua_State*Room::getLuaState() const
 {
-	return m_lua;
+	return m_runtime ? m_runtime->lua().state() : nullptr;
+}
+
+bool Room::hasLuaRuntime() const
+{
+	return m_runtime && m_runtime->lua().rawState();
 }
 
 void Room::setFixedDistance(Player*from, const Player*to, int distance)
@@ -4930,8 +4981,11 @@ bool Room::changeBGM(const QString&bgm_name, bool reset, QList<ServerPlayer*> to
 
 void Room::run()
 {
+	LuaRuntime::Binding luaBinding(m_runtime->lua());
+	GameRng::Binding rngBinding(m_runtime->rng());
+	EngineRuntimeContextScope contextScope(*Sanguosha, this);
 	// initialize random seed for later use
-	qsrand(QTime(0, 0, 0).secsTo(QTime::currentTime()));
+	m_runtime->seedRandom(QTime(0, 0, 0).secsTo(QTime::currentTime()) + quint32(_m_Id));
 	AIHumanized = Config.value("AIHumanized", true).toBool();
 	Config.AIDelay = Config.OriginAIDelay;
 	// Scale AIDelay down for large player counts (>8) to reduce lag in 20-player games.
@@ -4992,7 +5046,7 @@ void Room::run()
 	} else if (mode == "04_1v3"){
 		ServerPlayer*lord = m_players.first();
 		QStringList lords;
-		{ LuaLocker locker; lords = GetConfigFromLuaState(m_lua, "extra_boss").toStringList(); }
+		lords = GetConfigFromLuaState(getLuaState(), "extra_boss").toStringList();
 		if(lords.isEmpty()){
 			setPlayerProperty(lord, "general", "shenlvbu1");
 		}else
@@ -5000,7 +5054,7 @@ void Room::run()
 
 		QStringList names;
 		QStringList hulao_gens;
-		{ LuaLocker locker; hulao_gens = GetConfigFromLuaState(m_lua, "hulao_generals").toStringList(); }
+		hulao_gens = GetConfigFromLuaState(getLuaState(), "hulao_generals").toStringList();
 		foreach(QString gen_name, hulao_gens){
 			if (gen_name.startsWith("-")){ // means banned generals
 				names.removeOne(gen_name.mid(1));
@@ -5033,7 +5087,7 @@ void Room::run()
 			boss_lv_1 << "yl_qinguang";
 		}
 		QStringList lords;
-		{ LuaLocker locker; lords = GetConfigFromLuaState(m_lua, "extra_boss").toStringList(); }
+		lords = GetConfigFromLuaState(getLuaState(), "extra_boss").toStringList();
 		if(lords.length()>0) boss_lv_1 = lords;
 		ServerPlayer*lord = m_players.first();
 
@@ -5051,7 +5105,7 @@ void Room::run()
 		jiang_list << "godlai_zhangji" << "godlai_fanchou" << "godlai_niufudongxie" << "godlai_dongyue" << "godlai_lijue" << "godlai_guosi";
 		bing_list << "godlai_longxiang" << "godlai_huben" << "godlai_fengyao" << "godlai_baolve" << "godlai_feixiong_right" << "godlai_feixiong_right";
 		QStringList lords;
-		{ LuaLocker locker; lords = GetConfigFromLuaState(m_lua, "extra_boss").toStringList(); }
+		lords = GetConfigFromLuaState(getLuaState(), "extra_boss").toStringList();
 		if(lords.length()>0) jiang_list = lords;
 		foreach(ServerPlayer*player, m_players){
 			if (player->isLord()){
@@ -5083,7 +5137,7 @@ void Room::run()
 		QStringList gui_list, list, god_list;
 		gui_list << "hundun" << "qiongqi" << "taowu" << "taotie" << "yingzhao" << "xiangliu" << "zhuyan" << "bifang";
 		QStringList lords;
-		{ LuaLocker locker; lords = GetConfigFromLuaState(m_lua, "extra_boss").toStringList(); }
+		lords = GetConfigFromLuaState(getLuaState(), "extra_boss").toStringList();
 		if(lords.length()>0) gui_list = lords;
 		foreach(ServerPlayer*player, m_players){
 			if (player->getRole() == "loyalist")
@@ -5645,8 +5699,8 @@ bool Room::resolveCardSkillInstance(CardUseStruct &use)
 
 	if (activeSkill) {
 		ActiveSkillRequest request;
-		request.reason = _m_roomState.getCurrentCardUseReason();
-		request.pattern = _m_roomState.getCurrentCardUsePattern();
+		request.reason = m_runtime->state().getCurrentCardUseReason();
+		request.pattern = m_runtime->state().getCurrentCardUsePattern();
 		request.initiator = use.from;
 		request.activationRef = use.activationRef;
 		request.selectedCardIds = use.card->getSubcards();
@@ -5767,10 +5821,26 @@ const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSk
 	return card;
 }
 
-bool Room::buildActiveSkillAIRequest(ServerPlayer *player, const SkillInstance &instance,
+AIRequest Room::makeAIRequest(ServerPlayer *player, AIRequest::DecisionKind kind,
+                              CardUseStruct::CardUseReason reason, const QString &pattern,
+                              const QString &prompt, Card::HandlingMethod method) const
+{
+	AIRequest request;
+	request.kind = kind;
+	request.decisionId = m_runtime->nextDecisionId();
+	request.stateRevision = m_runtime->stateRevision();
+	request.viewerObjectName = player ? player->objectName() : QString();
+	request.reason = reason;
+	request.pattern = pattern;
+	request.prompt = prompt;
+	request.handlingMethod = method;
+	return request;
+}
+
+bool Room::buildAiSkillActionRequest(ServerPlayer *player, const SkillInstance &instance,
                                      CardUseStruct::CardUseReason reason, const QString &pattern,
                                      const QString &prompt, Card::HandlingMethod method,
-                                     ActiveSkillAIRequest &aiRequest) const
+                                     AIRequest &aiRequest) const
 {
 	if (!player || !player->hasSkillInstance(instance.skillName, instance.instanceID)) return false;
 	const ViewAsSkillV2 *skill = dynamic_cast<const ViewAsSkillV2 *>(
@@ -5798,112 +5868,161 @@ bool Room::buildActiveSkillAIRequest(ServerPlayer *player, const SkillInstance &
 	const bool quotaAvailable = skill->isUsable(context);
 	if (!quotaAvailable) return false;
 
-	aiRequest = ActiveSkillAIRequest();
-	aiRequest.reason = reason;
-	aiRequest.pattern = pattern;
-	aiRequest.prompt = prompt;
-	aiRequest.handlingMethod = method;
-	aiRequest.initiator = player;
-	aiRequest.activationRef = request.activationRef;
-	aiRequest.sourceRef = context.sourceRef;
-	aiRequest.activationQuotaAvailable = quotaAvailable;
-	aiRequest.sourceQuotaAvailable = quotaAvailable;
+	aiRequest = makeAIRequest(player, AIRequest::UseCard, reason, pattern, prompt, method);
+	aiRequest.hasSkillActionContext = true;
+	aiRequest.skillActionContext.activationRef = request.activationRef;
+	aiRequest.skillActionContext.sourceRef = context.sourceRef;
+	aiRequest.skillActionContext.activationQuotaAvailable = quotaAvailable;
+	aiRequest.skillActionContext.sourceQuotaAvailable = quotaAvailable;
 	return true;
 }
 
-bool Room::askForActiveSkill(ServerPlayer *player, CardUseStruct::CardUseReason reason,
-                             const QString &pattern, const QString &prompt,
-                             Card::HandlingMethod method, CardUseStruct &cardUse) const
+bool Room::applyAIResult(ServerPlayer *player, const AIRequest &request,
+                         const AIResult &result, CardUseStruct &cardUse) const
 {
-	if (!player || !player->getAI()) return false;
-	QList<SkillInstance> instances = player->getSkillInstances();
-	foreach (const SkillInstance &instance, instances) {
-		const ViewAsSkillV2 *skill = dynamic_cast<const ViewAsSkillV2 *>(
-			Sanguosha->getViewAsSkill(instance.skillName));
-		if (!skill) continue;
+	if (!player || !result.handled || !result.errorCode.isEmpty()
+		|| result.decisionId != request.decisionId
+		|| result.stateRevision != request.stateRevision)
+		return false;
 
-		ActiveSkillAIRequest aiRequest;
-		if (!buildActiveSkillAIRequest(player, instance, reason, pattern, prompt, method, aiRequest))
-			continue;
-		ActiveSkillAIResult result = player->getAI()->askForActiveSkill(aiRequest);
-		if (result.legacyHandled) {
-			CardUseStruct legacy = cardUse;
-			legacy.from = player;
-			legacy.card = nullptr;
-			legacy.to.clear();
-			if (!result.legacyAnswer.isEmpty() && result.legacyAnswer != ".") {
-				legacy.parse(result.legacyAnswer, const_cast<Room *>(this));
-				if (legacy.card) {
-					const QString legacySkillName = legacy.card->getSkillName();
-					if (legacySkillName == aiRequest.getActivationSkillName()
-						|| legacySkillName == aiRequest.getSourceSkillName()) {
-						legacy.hasSkillActivationRequest = true;
-						legacy.activationRef = aiRequest.activationRef;
-						legacy.sourceRef = aiRequest.sourceRef;
-						Card *mutableCard = const_cast<Card *>(legacy.card);
-						mutableCard->setActivationSkill(aiRequest.getActivationSkillName(),
-							aiRequest.getActivationInstanceId());
-						mutableCard->setSourceSkill(aiRequest.getSourceSkillName(),
-							aiRequest.getSourceInstanceID());
-					}
-				}
-			}
-			cardUse = legacy;
-			return true;
-		}
-		if (result.callbackHandled && !result.accepted) {
-			cardUse.card = nullptr;
-			cardUse.to.clear();
-			return true;
-		}
-		if (!result.accepted) continue;
-
-		QSet<int> selected;
-		bool valid = true;
-		foreach (int id, result.selectedCardIds) {
-			if (selected.contains(id)) {
-				valid = false;
-				break;
-			}
-			selected.insert(id);
-		}
-		if (!valid) continue;
-
-		CardUseStruct candidate = cardUse;
-		candidate.card = nullptr;
-		candidate.to.clear();
-		candidate.from = player;
-		candidate.hasSkillActivationRequest = true;
-		candidate.activationRef = aiRequest.activationRef;
-		candidate.sourceRef = aiRequest.sourceRef;
-		foreach (const QString &targetName, result.selectedTargetNames) {
-			ServerPlayer *target = findPlayerByObjectName(targetName);
-			if (!target) {
-				valid = false;
-				break;
-			}
-			candidate.to << target;
-		}
-		if (!valid) continue;
-
-		// This proxy carries only AI choices. useCard() recreates the final card
-		// through resolveActiveSkillRequest(), the same server trust boundary as UI input.
-		ActiveSkillCard *proxy = new ActiveSkillCard;
-		proxy->setActiveSkill(skill);
-		proxy->setSkillName(skill->objectName());
-		proxy->setActivationSkill(aiRequest.getActivationSkillName(),
-			aiRequest.getActivationInstanceId());
-		proxy->setSourceSkill(aiRequest.getSourceSkillName(), aiRequest.getSourceInstanceID());
-		proxy->addSubcards(result.selectedCardIds);
-		proxy->setUserString(result.userString);
-		candidate.card = proxy;
+	CardUseStruct candidate = cardUse;
+	candidate.from = player;
+	candidate.card = nullptr;
+	candidate.to.clear();
+	if (result.kind == AIResult::Pass) {
 		cardUse = candidate;
 		return true;
+	}
+
+	QSet<QString> targetNames;
+	foreach (const QString &targetName, result.action.selectedTargetNames) {
+		if (targetNames.contains(targetName)) return false;
+		ServerPlayer *target = findPlayerByObjectName(targetName);
+		if (!target) return false;
+		targetNames.insert(targetName);
+		candidate.to << target;
+	}
+
+	if (!result.action.legacyCardString.isEmpty()) {
+		candidate.parse(result.action.legacyCardString, const_cast<Room *>(this));
+		if (!candidate.card) return false;
+		if (!result.action.selectedTargetNames.isEmpty()) {
+			candidate.to.clear();
+			foreach (const QString &targetName, result.action.selectedTargetNames)
+				candidate.to << findPlayerByObjectName(targetName);
+		}
+		if (request.hasSkillActionContext) {
+			const AiSkillActionContext &context = request.skillActionContext;
+			const QString skillName = candidate.card->getSkillName();
+			if (skillName != context.getActivationSkillName()
+				&& skillName != context.getSourceSkillName())
+				return false;
+			candidate.hasSkillActivationRequest = true;
+			candidate.activationRef = context.activationRef;
+			candidate.sourceRef = context.sourceRef;
+			Card *mutableCard = const_cast<Card *>(candidate.card);
+			mutableCard->setActivationSkill(context.getActivationSkillName(),
+				context.getActivationInstanceId());
+			mutableCard->setSourceSkill(context.getSourceSkillName(),
+				context.getSourceInstanceID());
+		}
+		cardUse = candidate;
+		return true;
+	}
+
+	if (!request.hasSkillActionContext || !result.action.hasSkillActionContext)
+		return false;
+	const AiSkillActionContext &context = request.skillActionContext;
+	if (result.action.skillActionContext.activationRef != context.activationRef
+		|| result.action.skillActionContext.sourceRef != context.sourceRef)
+		return false;
+	const ViewAsSkillV2 *skill = dynamic_cast<const ViewAsSkillV2 *>(
+		Sanguosha->getViewAsSkill(context.getActivationSkillName()));
+	if (!skill) return false;
+	QSet<int> selectedCards;
+	foreach (int cardId, result.action.selectedCardIds) {
+		if (selectedCards.contains(cardId)) return false;
+		selectedCards.insert(cardId);
+	}
+	candidate.hasSkillActivationRequest = true;
+	candidate.activationRef = context.activationRef;
+	candidate.sourceRef = context.sourceRef;
+	ActiveSkillCard *proxy = new ActiveSkillCard;
+	proxy->setActiveSkill(skill);
+	proxy->setSkillName(skill->objectName());
+	proxy->setActivationSkill(context.getActivationSkillName(), context.getActivationInstanceId());
+	proxy->setSourceSkill(context.getSourceSkillName(), context.getSourceInstanceID());
+	proxy->addSubcards(result.action.selectedCardIds);
+	proxy->setUserString(result.action.userString);
+	candidate.setOwnedCard(proxy);
+	cardUse = candidate;
+	return true;
+}
+
+bool Room::decideAiAction(ServerPlayer *player, const AIRequest &request,
+                          CardUseStruct &cardUse) const
+{
+	if (!player || !player->getAI()) return false;
+	const QString callbackName = request.kind == AIRequest::Activate
+		? QStringLiteral("activate") : QStringLiteral("askForUseCard");
+	const QString skillName = request.hasSkillActionContext
+		? request.skillActionContext.getActivationSkillName() : QString();
+	const AiRoute route = m_runtime->ai().routes().routeFor(request.kind,
+		callbackName, skillName);
+	if (route == AiRouteLegacyDirect) {
+		if (request.hasSkillActionContext)
+			return false;
+		CardUseStruct directUse = cardUse;
+		directUse.from = player;
+		directUse.card = nullptr;
+		directUse.to.clear();
+		if (request.kind == AIRequest::Activate) {
+			player->getAI()->activate(directUse);
+		} else {
+			const QString answer = player->getAI()->askForUseCard(
+				request.pattern, request.prompt, request.handlingMethod);
+			if (!answer.isEmpty() && answer != QStringLiteral("."))
+				directUse.parse(answer, const_cast<Room *>(this));
+		}
+		cardUse = directUse;
+		return true;
+	}
+
+	AIResult result;
+	if (route == AiRouteIsolated) {
+		result = m_runtime->ai().decideShadow(request);
+		if (!result.handled || !result.errorCode.isEmpty())
+			result = player->getAI()->decide(request);
+	} else {
+		result = player->getAI()->decide(request);
+		if (route == AiRouteShadow) {
+			const AIResult shadowResult = m_runtime->ai().decideShadow(request);
+			m_runtime->ai().recordShadowAudit(request, callbackName, skillName,
+				result, shadowResult);
+		}
+	}
+	return applyAIResult(player, request, result, cardUse);
+}
+
+bool Room::decideAiSkillAction(ServerPlayer *player, CardUseStruct::CardUseReason reason,
+                               const QString &pattern, const QString &prompt,
+                               Card::HandlingMethod method, CardUseStruct &cardUse) const
+{
+	if (!player || !player->getAI()) return false;
+	foreach (const SkillInstance &instance, player->getSkillInstances()) {
+		AIRequest request;
+		if (!buildAiSkillActionRequest(player, instance, reason, pattern, prompt, method, request))
+			continue;
+		CardUseStruct candidate = cardUse;
+		if (decideAiAction(player, request, candidate) && candidate.card) {
+			cardUse = candidate;
+			return true;
+		}
 	}
 	return false;
 }
 
-int Room::getActiveSkillAIInstanceId(ServerPlayer *player, const QString &skillName) const
+int Room::getAiSkillActionInstanceId(ServerPlayer *player, const QString &skillName) const
 {
 	if (!player) return -1;
 	const ViewAsSkillV2 *skill = dynamic_cast<const ViewAsSkillV2 *>(Sanguosha->getViewAsSkill(skillName));
@@ -5911,36 +6030,36 @@ int Room::getActiveSkillAIInstanceId(ServerPlayer *player, const QString &skillN
 
 	foreach (const SkillInstance &instance, player->getSkillInstances()) {
 		if (instance.skillName != skillName) continue;
-		ActiveSkillAIRequest request;
-		if (buildActiveSkillAIRequest(player, instance, CardUseStruct::CARD_USE_REASON_PLAY,
+		AIRequest request;
+		if (buildAiSkillActionRequest(player, instance, CardUseStruct::CARD_USE_REASON_PLAY,
 			QString(), QString(), Card::MethodUse, request))
 			return instance.instanceID;
 	}
 	return -1;
 }
 
-ActiveSkillAIRequest Room::getActiveSkillAIRequest(ServerPlayer *player,
-                                                    const QString &skillName) const
+AiLegacyRequestView Room::getAiSkillActionContext(ServerPlayer *player,
+                                                  const QString &skillName) const
 {
-	return getActiveSkillAIRequest(player, skillName, CardUseStruct::CARD_USE_REASON_PLAY,
+	return getAiSkillActionContext(player, skillName, CardUseStruct::CARD_USE_REASON_PLAY,
 		QString(), QString(), Card::MethodUse);
 }
 
-ActiveSkillAIRequest Room::getActiveSkillAIRequest(ServerPlayer *player,
-                                                    const QString &skillName,
-                                                    CardUseStruct::CardUseReason reason,
-                                                    const QString &pattern,
-                                                    const QString &prompt,
-                                                    Card::HandlingMethod method) const
+AiLegacyRequestView Room::getAiSkillActionContext(ServerPlayer *player,
+                                                  const QString &skillName,
+                                                  CardUseStruct::CardUseReason reason,
+                                                  const QString &pattern,
+                                                  const QString &prompt,
+                                                  Card::HandlingMethod method) const
 {
-	ActiveSkillAIRequest request;
-	if (!player) return request;
+	AIRequest request;
+	if (!player) return AiLegacyRequestView();
 	foreach (const SkillInstance &instance, player->getSkillInstances()) {
 		if (instance.skillName != skillName) continue;
-		if (buildActiveSkillAIRequest(player, instance, reason, pattern, prompt, method, request))
-			return request;
+		if (buildAiSkillActionRequest(player, instance, reason, pattern, prompt, method, request))
+			return AiLegacyRequestView(request, player);
 	}
-	return ActiveSkillAIRequest();
+	return AiLegacyRequestView();
 }
 
 bool Room::reserveActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context)
@@ -5982,12 +6101,12 @@ void Room::commitActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext
 
 SkillExecutionRegistry::Guard Room::beginSkillExecution(const QVariant &backingData)
 {
-	return m_skillExecutions.begin(backingData);
+	return m_runtime->skillExecutions().begin(backingData);
 }
 
 SkillExecutionRegistry::Guard Room::beginSkillExecution(SkillContext &context, const QVariant &backingData)
 {
-	SkillExecutionRegistry::Guard guard = m_skillExecutions.begin(backingData);
+	SkillExecutionRegistry::Guard guard = m_runtime->skillExecutions().begin(backingData);
 	SkillExecutionRegistry::Entry *entry = guard.get();
 	context.executionID = guard.executionID();
 	context.original_data = entry ? &entry->backingData : nullptr;
@@ -6000,7 +6119,7 @@ SkillExecutionRegistry::Guard Room::beginSkillExecution(SkillContext &context, c
 
 SkillExecutionRegistry::Entry *Room::findSkillExecution(qint64 executionID) const
 {
-	return m_skillExecutions.find(executionID);
+	return m_runtime->skillExecutions().find(executionID);
 }
 
 SkillContext Room::getSkillExecutionContext(qint64 executionID) const
@@ -6197,8 +6316,8 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		saveSkillContext(skillCardCtx);
 		if (activeSkill && !skillCardCtx.bypass_cost) {
 			ActiveSkillRequest request;
-			request.reason = _m_roomState.getCurrentCardUseReason();
-			request.pattern = _m_roomState.getCurrentCardUsePattern();
+			request.reason = m_runtime->state().getCurrentCardUseReason();
+			request.pattern = m_runtime->state().getCurrentCardUsePattern();
 			request.initiator = skillCardCtx.initiator;
 			request.activationRef = skillCardCtx.activationRef;
 			request.selectedCardIds = use.card->getSubcards();
@@ -6261,8 +6380,8 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		}
 		if (activeSkill && !skillCardCtx.bypass_cost) {
 			ActiveSkillRequest request;
-			request.reason = _m_roomState.getCurrentCardUseReason();
-			request.pattern = _m_roomState.getCurrentCardUsePattern();
+			request.reason = m_runtime->state().getCurrentCardUseReason();
+			request.pattern = m_runtime->state().getCurrentCardUsePattern();
 			request.initiator = skillCardCtx.initiator;
 			request.activationRef = skillCardCtx.activationRef;
 			request.selectedCardIds = use.card->getSubcards();
@@ -6312,8 +6431,8 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		Sanguosha->getViewAsSkill(use.activationRef.key.skillName));
 	if (historySkill) {
 		ActiveSkillRequest request;
-		request.reason = _m_roomState.getCurrentCardUseReason();
-		request.pattern = _m_roomState.getCurrentCardUsePattern();
+		request.reason = m_runtime->state().getCurrentCardUseReason();
+		request.pattern = m_runtime->state().getCurrentCardUsePattern();
 		request.initiator = use.from;
 		request.activationRef = use.activationRef;
 		request.selectedCardIds = use.card->getSubcards();
@@ -6321,7 +6440,7 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		key = historySkill->historyKey(request);
 	}
 	//use.m_isOwnerUse = (ids.isEmpty()&&use.m_isOwnerUse)||getCardOwner(ids.first())==use.from;
-	if(_m_roomState.getCurrentCardUseReason()==CardUseStruct::CARD_USE_REASON_PLAY)
+	if(m_runtime->state().getCurrentCardUseReason()==CardUseStruct::CARD_USE_REASON_PLAY)
 		addPlayerHistory(nullptr, "pushPile");
 	if (use.m_addHistory){
 		add_history = true;
@@ -6588,8 +6707,7 @@ void Room::changeKingdom(ServerPlayer*player, const QString&kingdom)
 	log.arg2 = data.toString();
 	static QMap<QString, QString> colorQString;
 	if (colorQString.isEmpty()){
-		LuaLocker locker;
-		QVariantMap map = GetValueFromLuaState(m_lua, "config", "kingdom_colors").toMap();
+		QVariantMap map = GetValueFromLuaState(getLuaState(), "config", "kingdom_colors").toMap();
 		QMapIterator<QString, QVariant> itor(map);
 		while (itor.hasNext()){
 			itor.next();
@@ -7196,6 +7314,9 @@ void Room::marshal(ServerPlayer*player)
 
 void Room::startGame()
 {
+	LuaRuntime::Binding luaBinding(m_runtime->lua());
+	GameRng::Binding rngBinding(m_runtime->rng());
+	EngineRuntimeContextScope contextScope(*Sanguosha, this);
 	m_alivePlayers = m_players;
 	m_chatHistory.clear();/*
 	if (mode == "08_defense"){
@@ -7271,7 +7392,7 @@ void Room::startGame()
 	}
 
 	if (mode != "02_1v1"&&mode != "06_3v3"&&mode != "06_XMode")
-		_m_roomState.reset();
+		m_runtime->state().reset();
 	connect(thread, SIGNAL(started()), this, SIGNAL(game_start()));
 
 	if (!_virtual) thread->start();
@@ -8939,8 +9060,8 @@ void Room::activate(ServerPlayer*player, CardUseStruct&card_use)
 	}
 
 	notifyMoveFocus(player, S_COMMAND_PLAY_CARD);
-	_m_roomState.setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_PLAY);
-	_m_roomState.setCurrentCardUsePattern("");
+	m_runtime->state().setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_PLAY);
+	m_runtime->state().setCurrentCardUsePattern("");
 
 	card_use.from = player;
 
@@ -8954,7 +9075,9 @@ void Room::activate(ServerPlayer*player, CardUseStruct&card_use)
 	if (ai){
 		QElapsedTimer timer;
 		timer.start();
-		ai->activate(card_use);
+		const AIRequest request = makeAIRequest(player, AIRequest::Activate,
+			CardUseStruct::CARD_USE_REASON_PLAY, QString(), QString(), Card::MethodUse);
+		decideAiAction(player, request, card_use);
 		if (Config.AIDelay>timer.elapsed())
 			thread->delay(Config.AIDelay-timer.elapsed());/*
 		else if(Config.OperationTimeout*1000-timer.elapsed()<0)
@@ -8976,7 +9099,11 @@ void Room::activate(ServerPlayer*player, CardUseStruct&card_use)
 			}
 		}else{
 			ai = player->getAI();
-			if(ai) ai->activate(card_use);
+			if(ai) {
+				const AIRequest request = makeAIRequest(player, AIRequest::Activate,
+					CardUseStruct::CARD_USE_REASON_PLAY, QString(), QString(), Card::MethodUse);
+				decideAiAction(player, request, card_use);
+			}
 		}
 	}
 	/*if (!card_use.isValid("")) return;
@@ -11201,16 +11328,15 @@ void Room::sortByActionOrder(QList<ServerPlayer*>&players)
 
 int Room::getBossModeExpMult(int level) const
 {
-	LuaLocker locker;
-	lua_getglobal(m_lua, "bossModeExpMult");
-	lua_pushinteger(m_lua, level);
+	lua_getglobal(getLuaState(), "bossModeExpMult");
+	lua_pushinteger(getLuaState(), level);
 	int res = 0;
-	if (lua_pcall(m_lua, 1, 1, 0) == 0){
-		res = lua_tointeger(m_lua, -1);
-		lua_pop(m_lua, 1);
+	if (lua_pcall(getLuaState(), 1, 1, 0) == 0){
+		res = lua_tointeger(getLuaState(), -1);
+		lua_pop(getLuaState(), 1);
 	} else {
-		const QString error_msg = luaErrorWithTraceback(m_lua);
-		lua_pop(m_lua, 1);
+		const QString error_msg = luaErrorWithTraceback(getLuaState());
+		lua_pop(getLuaState(), 1);
 		const_cast<Room *>(this)->output("bossModeExpMult error: " + error_msg);
 	}
 	return res;

@@ -10,20 +10,16 @@
 #include <utility>
 
 #ifdef QSAN_ENGINE_BUILD
-inline QRandomGenerator &qsanRng()
-{
-    static QRandomGenerator generator(*QRandomGenerator::system());
-    return generator;
-}
+#include "game-rng.h"
 
 inline int qrand()
 {
-    return int(qsanRng().bounded(uint(RAND_MAX) + 1u));
+    return qsanRandomBounded(RAND_MAX + 1);
 }
 
 inline void qsrand(uint seed)
 {
-    qsanRng().seed(seed);
+    qsanSeedRandom(seed);
 }
 #endif
 

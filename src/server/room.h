@@ -5,9 +5,11 @@
 #include "skill-instance-utils.h"
 #include "skill-instance-attachment-registry.h"
 #include "skill-execution-registry.h"
+#include "room-runtime.h"
 
 #include <functional>
 #include <memory>
+#include <QPointer>
 
 class ProhibitSkill;
 class ProhibitPindianSkill;
@@ -17,7 +19,9 @@ class GameSnapshot;
 
 struct lua_State;
 struct LogMessage;
-struct ActiveSkillAIRequest;
+struct AIRequest;
+struct AIResult;
+struct AiLegacyRequestView;
 struct PlayerUIState;
 class ServerPlayer;
 class RoomNotifier;
@@ -347,12 +351,12 @@ public:
 
     int acquireSkill(ServerPlayer*player, const Skill*skill, bool open = true, bool getmark = true, bool event_and_log = true);
     int acquireSkill(ServerPlayer*player, const QString&skill_name, bool open = true, bool getmark = true, bool event_and_log = true);
-    int getActiveSkillAIInstanceId(ServerPlayer *player, const QString &skillName) const;
-    ActiveSkillAIRequest getActiveSkillAIRequest(ServerPlayer *player, const QString &skillName) const;
-    ActiveSkillAIRequest getActiveSkillAIRequest(ServerPlayer *player, const QString &skillName,
-                                                 CardUseStruct::CardUseReason reason,
-                                                 const QString &pattern, const QString &prompt,
-                                                 Card::HandlingMethod method) const;
+    int getAiSkillActionInstanceId(ServerPlayer *player, const QString &skillName) const;
+    AiLegacyRequestView getAiSkillActionContext(ServerPlayer *player, const QString &skillName) const;
+    AiLegacyRequestView getAiSkillActionContext(ServerPlayer *player, const QString &skillName,
+                                                CardUseStruct::CardUseReason reason,
+                                                const QString &pattern, const QString &prompt,
+                                                Card::HandlingMethod method) const;
     int getSkillInstanceAmount(const SkillInstanceRef &ref, bool *ok = nullptr) const;
     bool setSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int amount,
                                 const QString &reason = QString());
@@ -389,6 +393,7 @@ public:
         bool isSecondaryHero = false, bool sendLog = true, int start_hp = 0);
     void swapSeat(ServerPlayer*a, ServerPlayer*b);
     lua_State*getLuaState() const;
+    bool hasLuaRuntime() const;
     void setFixedDistance(Player*from, const Player*to, int distance);
     void removeFixedDistance(Player*from, const Player*to, int distance);
     void insertAttackRangePair(Player*from, const Player*to);
@@ -602,10 +607,9 @@ public:
 
     QVariant askForQml(ServerPlayer *player, const QString &qmlPath, const QVariantMap &params, int timeout = 30000);
 
-    inline RoomState*getRoomState()
-    {
-        return&_m_roomState;
-    }
+    inline RoomState*getRoomState() { return &m_runtime->state(); }
+    RoomRuntime *roomRuntime() override { return m_runtime.get(); }
+    LuaRuntime *luaRuntime() const { return m_runtime ? &m_runtime->lua() : nullptr; }
 
     QObject *runtimeObject() override { return this; }
     RoomState *roomState() override { return getRoomState(); }
@@ -614,16 +618,16 @@ public:
     Card *card(int card_id) const override { return getCard(card_id); }
     inline Card*getCard(int cardId) const
     {
-		return _m_roomState.getCard(cardId);
+		return m_runtime->state().getCard(cardId);
     }
     inline void resetCard(int cardId) const
     {
-        _m_roomState.resetCard(cardId);
+        m_runtime->state().resetCard(cardId);
     }
     inline void setCurrentCardUse(const QString&newPattern, CardUseStruct::CardUseReason reason)
     {
-		_m_roomState.setCurrentCardUsePattern(newPattern);
-		_m_roomState.setCurrentCardUseReason(reason);
+		m_runtime->state().setCurrentCardUsePattern(newPattern);
+		m_runtime->state().setCurrentCardUseReason(reason);
     }
     void updateCardsChange(const CardsMoveStruct&move);
 
@@ -692,18 +696,24 @@ private:
     bool areCardTargetsLegal(const CardUseStruct &use) const;
     const Card *resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSkillV2 *skill,
                                           const ActiveSkillRequest &request) const;
-    bool buildActiveSkillAIRequest(ServerPlayer *player, const SkillInstance &instance,
+    AIRequest makeAIRequest(ServerPlayer *player, AIRequest::DecisionKind kind,
+                            CardUseStruct::CardUseReason reason, const QString &pattern,
+                            const QString &prompt, Card::HandlingMethod method) const;
+    bool buildAiSkillActionRequest(ServerPlayer *player, const SkillInstance &instance,
                                    CardUseStruct::CardUseReason reason, const QString &pattern,
                                    const QString &prompt, Card::HandlingMethod method,
-                                   ActiveSkillAIRequest &request) const;
-    bool askForActiveSkill(ServerPlayer *player, CardUseStruct::CardUseReason reason,
-                           const QString &pattern, const QString &prompt, Card::HandlingMethod method,
-                           CardUseStruct &cardUse) const;
+                                   AIRequest &request) const;
+    bool decideAiSkillAction(ServerPlayer *player, CardUseStruct::CardUseReason reason,
+                             const QString &pattern, const QString &prompt,
+                             Card::HandlingMethod method, CardUseStruct &cardUse) const;
+    bool decideAiAction(ServerPlayer *player, const AIRequest &request,
+                        CardUseStruct &cardUse) const;
+    bool applyAIResult(ServerPlayer *player, const AIRequest &request,
+                       const AIResult &result, CardUseStruct &cardUse) const;
     bool reserveActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
     void releaseActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
     void commitActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
     void recordSkillExecutionAudit(const SkillContext &context, SkillExecutionResult result) const;
-    SkillExecutionRegistry m_skillExecutions;
     QSet<QString> m_changingSkillAmounts;
     SkillInstanceUtils::UsageReservationLedger m_activeSkillUsageReservations;
     QList<ExtraTurnRequest> m_scheduledExtraTurns;
@@ -856,14 +866,13 @@ private:
     //bool game_started;
     //bool game_finished;
     bool game_paused;
-    lua_State*m_lua;
     QList<AI*> ais;
 	bool AIHumanized;
 
     RoomThread*thread;
-    RoomThread3v3*thread_3v3;
-    RoomThreadXMode*thread_xmode;
-    RoomThread1v1*thread_1v1;
+    QPointer<RoomThread3v3> thread_3v3;
+    QPointer<RoomThreadXMode> thread_xmode;
+    QPointer<RoomThread1v1> thread_1v1;
     QSemaphore _m_semRaceRequest; // When race starts, server waits on his semaphore for the first replier
     QSemaphore _m_semRoomMutex; // Provide per-room  (rather than per-player) level protection of any shared variables
 
@@ -889,7 +898,6 @@ private:
 
     QMap<int, Player::Place> place_map;
     QMap<int, ServerPlayer*> owner_map;
-    SkillInstanceAttachmentRegistry m_attachedSkillRegistry;
 
     QVariantMap tag;
     const Scenario*scenario;
@@ -897,7 +905,7 @@ private:
     bool m_surrenderRequestReceived;
     bool _virtual;
     bool m_playOrderReversed;
-    RoomState _m_roomState;
+    std::unique_ptr<RoomRuntime> m_runtime;
 
     JsonArray m_fillAGarg;
     QList<JsonArray> m_takeAGargs;
@@ -921,6 +929,7 @@ private:
     void triggerGeneralNotChosen(ServerPlayer *player, const QStringList &generals, const QString &chosen, const QString &reason);
     AI*cloneAI(ServerPlayer*player);
     void broadcast(const QString&message, ServerPlayer*except = nullptr);
+    bool stopGameThreads(int timeoutMs);
     void initCallbacks();
     QString askForOrder(ServerPlayer*player, const QString&default_choice);
     QString askForRole(ServerPlayer*player, const QStringList&roles, const QString&scheme);
