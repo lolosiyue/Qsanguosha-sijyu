@@ -3,7 +3,7 @@
 %{
 if (lua_isfunction(L, $input)) {
 	lua_pushvalue(L, $input);
-	$1 = luaL_ref(L, LUA_REGISTRYINDEX);
+	$1 = LuaFunction(L, luaL_ref(L, LUA_REGISTRYINDEX));
 } else {
 	$1 = 0;
 }
@@ -11,7 +11,7 @@ if (lua_isfunction(L, $input)) {
 
 %typemap(out) LuaFunction
 %{
-lua_rawgeti(L, LUA_REGISTRYINDEX, $1);
+$1.push(L);
 SWIG_arg ++;
 %}
 

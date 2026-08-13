@@ -7,6 +7,7 @@ class Card;
 #include "serverplayer.h"
 
 #include <functional>
+#include <QSharedPointer>
 
 struct GameModeStruct {
     GameModeStruct();
@@ -149,6 +150,7 @@ struct CardUseStruct {
     bool tryParse(const QVariant&usage, Room*room);
     void clientReply();
     void changeCard(Card*newcard);
+    void setOwnedCard(Card *ownedCard);
 
     const Card*card;
     ServerPlayer*from;
@@ -169,6 +171,9 @@ struct CardUseStruct {
     SkillInstanceRef sourceRef;
     SkillInstanceRef activationRef;
     int skillExecutionID;
+
+private:
+    QSharedPointer<Card> m_ownedCard;
 };
 
 class CardMoveReason {

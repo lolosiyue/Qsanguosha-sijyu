@@ -1678,7 +1678,7 @@ void Server::daemonize()
 Room *Server::createNewRoom()
 {
 	current = new Room(this, Config.GameMode.mode_id);
-	if (!current->getLuaState()) {
+	if (!current->hasLuaRuntime()) {
 		delete current;
 		return nullptr;
 	}
@@ -2011,7 +2011,7 @@ void Server::startHeadlessGame()
     Server::writeHeadlessLog(QString(">>> Starting headless game %1 <<<").arg(gameCount));
 
     Room *room = new Room(this, mode);
-    if (!room->getLuaState()) {
+    if (!room->hasLuaRuntime()) {
         delete room;
         Server::writeHeadlessLog(QString("Game %1 FAILED - Lua state is null").arg(gameCount));
         return;
@@ -2120,7 +2120,7 @@ void Server::startTestGame(const QString &scenarioFile, bool headless)
     }
 
     Room *room = new Room(this, "test_scenario");
-    if (!room->getLuaState()) {
+    if (!room->hasLuaRuntime()) {
         delete room;
         qDebug() << "Test game FAILED - Lua state is null";
         qApp->quit();

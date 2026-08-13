@@ -19,8 +19,9 @@ RoomThread1v1::RoomThread1v1(Room *room)
 
 void RoomThread1v1::run()
 {
-	// initialize the random seed for this thread
-	qsrand(QTime(0, 0, 0).secsTo(QTime::currentTime()));
+	LuaRuntime::Binding luaBinding(room->roomRuntime()->lua());
+	GameRng::Binding rngBinding(room->roomRuntime()->rng());
+	EngineRuntimeContextScope contextScope(*Sanguosha, room);
 	QString rule = Config.value("1v1/Rule", "2013").toString();
 	int total_num = rule != "Classical" ? 12 : 10;
 
@@ -131,7 +132,6 @@ void RoomThread1v1::askForTakeGeneral(ServerPlayer *player)
 			name = selector->select1v1(general_names);
 		}
 	} else {
-		LuaUnlocker unlocker; // Release lua_mutex during AI delay
 		msleep(Config.AIDelay);
 	}
 	takeGeneral(player, name);
