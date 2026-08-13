@@ -568,9 +568,58 @@ V2 custom proxy：
 - 出牌階段空閒時機維持 `AI::activate()`：`ai_fill_skill` 產生 `ActiveSkillCard`／普通轉化牌，
   `ai_skill_use_func` 填寫目標，兩者與普通卡牌一起按 value／priority 排序。舊簽名忽略新增的
   request 參數，無需遷移。
-- `askForActiveSkill()` 只保留作 C++↔Lua 內部結構化傳輸；Lua 端實際分派既有
-  `ai_skill_use[pattern]`。已接受的舊字串或新 `{cards, targets, user_string}` table 由同一次
-  callback 結果處理，不再轉呼另一個 Lua registry。
+- AI 不建立技能專用的 C++↔Lua 邊界；所有決策統一以 value-only `AIRequest` 輸入與
+  `AIResult` 輸出承載。`activate` 與 `askForUseCard` 共用同一個 request/result gate，
+  由 `ActionKind` 區分出牌、回應與取消，結果再轉成 `CardActionSpec` 交給 Room 權威驗證。
+- ActiveSkillV2 的 activation/source identity 與 quota 只作 `AIRequest.SkillActionContext`，
+  不另建專用 AI request/result 類型，也不把技能名稱或 instance ID 塞入舊字串。
+
+### 14.4 AI VM 與 Gameplay VM 分離
+
+- 每個 Room 擁有一個 `AiLuaRuntime`；Gameplay Lua VM 不直接暴露給 Isolated AI。第一階段
+  Isolated handler 只取得可序列化 `AIRequest` 欄位與受控 `AiData`，完整 `AIWorldView`
+  尚未接入；未遷移 legacy AI 仍留在 Gameplay VM。
+- AI callback 結束前只可產生 value（`CardActionSpec`、target ID、user string）；不得保存
+  `Card*`、`ServerPlayer*`、Lua userdata 或跨 callback 的執行指標。`AIResult` 必須回送同一
+  request 的 `stateRevision`；權威 gameplay revision ledger 尚未接入，純 request/query
+  不得自行推進 revision。
+- AI VM 只載入 `AiIsolatedScripts` allowlist 指定的 handler，採 decision-scoped `AiRng`。
+  AI VM 錯誤或 instruction budget 超限時，本次 decision 回到該玩家現有 legacy AI，
+  callback 返回後才重建 VM。
+
+### 14.5 遷移模式與第一階段 Shadow
+
+| 模式 | 正式用途 | 邊界 |
+|---|---|---|
+| `LegacyDirect` | 過渡期既有 AI | 保留原始 Lua 行為與 callback；不得作為新功能依賴 |
+| `LegacyAdapted` | 官方 AI 遷移路徑 | 將既有 `activate`／`askForUseCard` 回傳複製為 `AIResult`，再走相同 Room 驗證 gate |
+| `Isolated` | 新 AI | 僅使用 `AIRequest`／`AIResult`、標準 observation 與受控 runtime API |
+| `Isolated Shadow` | 第一階段驗證 | 以同一 request 與獨立 deterministic `AiRng` 計算，結果寫入 bounded audit，不改變正式 gameplay |
+
+遷移期間同一 Room 可按 decision/callback 混用 `LegacyAdapted` 與 `Isolated`，並共享由 C++
+管理的 `AiDataStore`。Official
+結果仍由 `RoomThread` 的同步決策點提交；Shadow 結果不得回寫 Room。
+
+`AiData` 檔案讀寫由 C++ `AiDataStore` 收斂到固定路徑，並施加 JSON/大小驗證、
+跨 process lock 與原子寫入；Isolated VM 不暴露 raw `io`、`os` 或 `sgs`，僅保留
+`ai_data.read()`／`ai_data.write(json)`。callback 路由可按 `activate`、
+`askForUseCard` 或 `askForUseCard:skill_name` 配置，Room 初始化後凍結。
+`AiIsolatedScripts` 只載入 `lua/ai/isolated/` 下經檔名驗證的腳本，且 loader 在 sandbox
+安裝後才執行腳本；bootstrap 與 allowlist 腳本的頂層程式碼同樣受獨立 initialization
+instruction budget 保護，超限即停用該 Room 的 Isolated VM、保留 legacy AI。handler 以
+`ai_register_handler()` 註冊。AIResult 入口限制字串長度、牌／目標數量；Shadow audit
+只保留固定數量的 capped value/hash 摘要，不能把 Lua allocator 內的大型 payload 搬到
+未受限 C++ heap。
+
+### 14.6 RoomThread 同步契約
+
+- `RoomThread` 同步執行 gameplay callback 與 `AiLuaRuntime` callback；AI 不建立第二條可
+  非同步提交 gameplay 的執行緒。
+- `activate`／`askForUseCard` 在同一 RoomThread gate 取得 immutable `AIRequest`、執行 AI
+  callback、驗證 `AIResult`，再呼叫既有 `Room::useCard`／response resolver；任何 revision、
+  target、quota 或 callback 錯誤均在 gate 內 fail-closed。
+- Shadow 可在同一同步點取得輸入並產生 audit value，但不得持有 Room lock 等待其他執行緒，
+  也不得在 callback 返回後提交卡牌或修改 Gameplay VM。
 
 ## 15. Lua 規則
 

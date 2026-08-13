@@ -5,6 +5,7 @@
 #include "skill.h"
 #include "skill-registry.h"
 #include "engine-runtime-context.h"
+#include "lua-runtime.h"
 #include "util.h"
 #include "json.h"
 #include <QMutex>
@@ -33,6 +34,10 @@ class CardPattern;
 class RoomState;
 class ExpPattern;
 class TransferSkill;
+class RoomRuntime;
+class EngineRuntimeContextScope;
+class Package;
+using EnginePackageFactory = Package *(*)();
 
 struct EasyTextItem {
     QString text;
@@ -66,8 +71,14 @@ public:
 
     void addTranslationEntry(const QString &key, const QString &value);
     QString translate(const QString &to_translate, bool initial = false) const;
+    QString getAiData() const;
+    bool setAiData(const QString &json) const;
     lua_State *getLuaState() const;
+    LuaRuntime *bootstrapLuaRuntime() const { return m_bootstrapLua.get(); }
     SafeLuaMutex &getLuaMutex() const;
+    bool isGameLuaRuntime() const;
+    bool isLuaDefinitionsLoaded() const;
+    void finishLuaDefinitions();
     bool addModes(const QString &key, const QString &value, const QString &roles = "");
     bool addGameMode(const GameModeStruct &mode);
 
@@ -181,10 +192,7 @@ public:
     QStringList getSlashNames() const;
     QStringList getCardNames(const QString &pattern = ".") const;
     bool hasCard(const QString &name) const;
-    inline QList<const General *> getAllGenerals() const
-    {
-        return findChildren<const General *>();
-    }
+    QList<const General *> getAllGenerals() const;
     bool sameNameWith(const QString &name1, const QString &name2) const;
 
     bool playSystemAudioEffect(const QString &name, bool superpose = true) const;
@@ -237,6 +245,12 @@ public:
     }
 
 private:
+    friend class EngineRuntimeContextScope;
+    friend class RoomRuntime;
+
+    EngineRuntimeContext *swapCurrentRoomContext(EngineRuntimeContext *context);
+    RoomRuntime *currentRoomRuntime() const;
+    Package *clonePackageDefinition(const QString &objectName) const;
     void _loadMiniScenarios();
     void _loadModScenarios();
     void godLottery(QStringList &) const;
@@ -271,8 +285,15 @@ private:
     Scenario *m_customScene;
     Scenario *m_testScene;
 
-    lua_State *lua;
+    std::unique_ptr<LuaRuntime> m_bootstrapLua;
     mutable SafeLuaMutex lua_mutex;
+    bool m_loadingLuaDefinitions = false;
+    QSet<QString> m_luaPackageNames;
+    QSet<QString> m_luaGeneralNames;
+    QSet<QString> m_luaSkillNames;
+    QSet<int> m_luaCardIds;
+    QHash<QString, QList<int>> m_packageCardIds;
+    QHash<QString, EnginePackageFactory> m_packageFactories;
 
     //QHash<QString,const Card *> luaBasicCards, luaTrickCards;
     //QHash<QString,const Card *> luaWeapons, luaArmors ,luaTreasures;
@@ -297,6 +318,20 @@ private:
 signals:
     void audioEffectRequested(const QString &filename, bool superpose);
 
+};
+
+class EngineRuntimeContextScope
+{
+public:
+    EngineRuntimeContextScope(Engine &engine, EngineRuntimeContext *context);
+    ~EngineRuntimeContextScope();
+
+    EngineRuntimeContextScope(const EngineRuntimeContextScope &) = delete;
+    EngineRuntimeContextScope &operator=(const EngineRuntimeContextScope &) = delete;
+
+private:
+    Engine &m_engine;
+    EngineRuntimeContext *m_previous;
 };
 
 static inline QVariant GetConfigFromLuaState(lua_State *L, const char *key)

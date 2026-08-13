@@ -19,26 +19,19 @@
 #include <QtWidgets>
 
 // Qt 6 no longer exposes these compatibility APIs through umbrella headers.
-#include <QRandomGenerator>
+#include "game-rng.h"
 #include <QRegExp>
 #include <QTextCodec>
 #include <cstdlib>
 
-// Preserve the existing qrand/qsrand call sites and their explicit seeding.
-inline QRandomGenerator &qsanRng()
-{
-    static QRandomGenerator generator(*QRandomGenerator::system());
-    return generator;
-}
-
 inline int qrand()
 {
-    return int(qsanRng().bounded(uint(RAND_MAX) + 1u));
+    return qsanRandomBounded(RAND_MAX + 1);
 }
 
 inline void qsrand(uint seed)
 {
-    qsanRng().seed(seed);
+    qsanSeedRandom(seed);
 }
 
 // Include algorithm for std::sort and std::stable_sort.

@@ -63,6 +63,17 @@
   可回傳舊字串或結構化 table 的 `ai_skill_use[pattern]`；`ai_cardsview`／
   `ai_cardsview_valuable` 以第 4 參數取得 response request，並保留舊字串回傳。尚待實際 Room
   驗證舊／新回傳、pure response／response-use、多 instance 及 attached source fallback。
+- 新 AI 邊界統一為 value-only `AIRequest`／`AIResult`；`activate` 與 `askForUseCard` 共用
+  request/result gate，ActiveSkillV2 identity／quota 僅作 `AIRequest.SkillActionContext`。
+  測試須驗證 result 回送同一 request 的 revision、ActionKind、CardActionSpec、牌／目標 ID
+  與 quota 失配時 fail-closed，且純 query 不推進 revision、Lua userdata／Gameplay pointer
+  不得帶出 callback。
+- AI VM 與 Gameplay VM 必須分離，兩者由同一 `RoomThread` 同步 gate 執行。矩陣新增
+  `LegacyAdapted` 舊結果 value-copy 路徑及第一階段 `Isolated Shadow`：Shadow 使用同一 request
+  與獨立 deterministic `AiRng`，只寫 bounded audit，不得改變正式 gameplay。
+- production allowlist script 的頂層無限迴圈須在 initialization instruction budget 內停用
+  Isolated VM 並讓 Room 繼續 legacy；超長字串、過多牌／目標須 fail-closed，audit 只保留
+  capped 摘要，不得隨 Lua payload 線性放大 C++ heap。
 - `DoLuaScript()` 在 `--headless` 下會以 `qCritical` 報告 Lua 載入錯誤而非開啟 modal dialog，讓本機自動化可取得失敗原因；GUI 模式維持既有對話框。
 - `LuaViewAsSkillV2`、選用 AI callback、provenance V2 與 execution audit 曾完成編譯整合；Ticket 13 的 wrapper、quota ledger、immutable provenance 與中斷收束修改仍待重新編譯，再以合成技能自動化端到端驗證。
 - `@@skill` 指名回應的 client 自動啟動已改為按 activation instance 呼叫 `canActivate()`；Lua factory 對舊

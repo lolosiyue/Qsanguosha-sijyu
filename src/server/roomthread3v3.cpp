@@ -63,8 +63,9 @@ QStringList RoomThread3v3::getGeneralsWithoutExtension() const
 
 void RoomThread3v3::run()
 {
-    // initialize the random seed for this thread
-    qsrand(QTime(0, 0, 0).secsTo(QTime::currentTime()));
+    LuaRuntime::Binding luaBinding(room->roomRuntime()->lua());
+    GameRng::Binding rngBinding(room->roomRuntime()->rng());
+    EngineRuntimeContextScope contextScope(*Sanguosha, room);
 
     QString scheme = Config.value("3v3/RoleChoose", "Normal").toString();
     assignRoles(scheme);
@@ -134,7 +135,6 @@ void RoomThread3v3::askForTakeGeneral(ServerPlayer *player)
             takeGeneral(player, name);
         }
     } else {
-        LuaUnlocker unlocker; // Release lua_mutex during AI delay
         msleep(Config.AIDelay);
         takeGeneral(player, name);
     }

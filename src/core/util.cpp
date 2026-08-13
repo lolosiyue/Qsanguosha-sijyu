@@ -68,6 +68,18 @@ QVariant GetValueFromLuaState(lua_State *L, const char *table_name, const char *
 lua_State *CreateLuaState()
 {
     lua_State *L = luaL_newstate();
+    if (!L)
+        return nullptr;
+    luaL_openlibs(L);
+    luaopen_sgs(L);
+    return L;
+}
+
+lua_State *CreateLuaState(LuaAllocatorFunction allocator, void *userData)
+{
+    lua_State *L = lua_newstate(allocator, userData);
+    if (!L)
+        return nullptr;
     luaL_openlibs(L);
     luaopen_sgs(L);
     return L;

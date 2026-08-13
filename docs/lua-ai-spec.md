@@ -12,7 +12,6 @@
 smart-ai.lua          # 核心基底：SmartAI 類別、全域表宣告、工具函數（第一個載入）
 PROTECTION_PATTERNS.lua  # 除錯/防崩潰模式範本
 {package}-ai.lua      # 套件級 AI 檔案，為各武將技能填入全域註冊表
-ai-debug-logger.lua   # AI 除錯日誌工具
 ```
 
 ### 1.2 套件級 AI 檔案慣例
@@ -667,29 +666,59 @@ end
 
 ---
 
-## 15. 除錯與穩定性
+## 15. AI 執行環境與錯誤處理
 
-### 15.1 AI 除錯日誌
+### 15.1 通用 AIRequest／AIResult
 
-```lua
--- 啟用日誌
-local AILogger = require "ai.ai-debug-logger"
-local logger = AILogger
-if logger then logger:init() end
+AI callback 不再以技能專用 request/result 互相轉接。`activate` 與 `askForUseCard`
+都接收唯讀 `AIRequest`，並回傳可序列化的 `AIResult`；結果至少包含 `decisionId`、
+`stateRevision`、標記式 `ActionKind` 與 `CardActionSpec`。ActiveSkillV2 的
+activation/source identity 與 quota 只放在 `AIRequest.SkillActionContext`。
 
--- 禁用日誌（生產環境）
-local logger = nil
-```
+`AIResult` 返回後立即複製為 value；不得把 Card 指標、Lua userdata 或 callback 暫存交給
+Gameplay。RoomThread 會驗證 result 是否回送同一 request 的 revision、牌 ID、目標 ID
+與 quota，失敗即 fail-closed。權威 gameplay revision ledger 尚未接入；純 request/query
+不得推進 revision。
 
-### 15.2 pcall 保護模式
+`activate` 的 legacy callback 仍可在 callback 期間填寫 `use.card`／`use.to`；bridge 只在
+同一 gate 內讀取其牌 ID 與目標 ID，複製成 `AIResult.CardActionSpec` 後才提交，禁止把
+`use_card` 指標保存到下一次 callback 或交給 Gameplay。`askForUseCard` 則直接回傳同一
+`CardActionSpec` 的結構化欄位。
 
-參考 `lua/ai/PROTECTION_PATTERNS.lua` 為高風險函數添加保護。
+### 15.2 AI VM 分離與遷移模式
 
-### 15.3 狀態傾印
+- 每個 Room 的 `AiLuaRuntime` 與 Gameplay Lua VM 分離；第一階段 Isolated handler 只取得
+  value-only request、decision-scoped `AiRng` 與 `AiData`，完整 `AIWorldView` 尚未接入。
+- `LegacyDirect` 僅供過渡；`LegacyAdapted` 將既有 `activate`／`askForUseCard` 結果複製成
+  `AIResult`，再走通用 Room 驗證 gate。
+- 新 AI 使用 `Isolated`；第一階段 `Isolated Shadow` 以同一 request 與獨立 deterministic
+  `AiRng` 計算，只把 official/shadow 差異寫入 bounded audit，不影響正式結果。遷移期間
+  同一 Room 可按 callback 混用 `LegacyAdapted` 與 `Isolated`，共享 C++ `AiDataStore`。
+- `AiData` 持久化由 C++ `AiDataStore` 管理固定路徑、JSON/大小驗證、process lock 與
+  原子寫入；Isolated VM 不取得 raw `io`、`os`、`coroutine` 或 `sgs`，只可呼叫
+  `ai_data.read()`／`ai_data.write(json)`。
+- `AiLegacyDirectCallbacks`、`AiLegacyAdaptedCallbacks`、`AiIsolatedCallbacks`、
+  `AiShadowCallbacks` 可用 `activate`、`askForUseCard` 或 `askForUseCard:skill_name`
+  設定 callback 級路由；Room 初始化後路由表凍結。
+- `AiIsolatedScripts` 只接受 `lua/ai/isolated/` 下的單一 `.lua` 檔名；腳本在 sandbox
+  安裝後由 C++ loader 載入，以 `ai_register_handler(kind, callback)` 註冊 decision handler；
+  bootstrap 與腳本頂層執行同樣受 initialization instruction budget 保護，超限時只停用
+  該 Room 的 Isolated VM，不阻塞 Room 建立。
+- `AIResult` boundary 限制單字串 64 KiB、選牌 2048 張、目標 64 名；Shadow audit 僅保留
+  capped value/hash 摘要與有限筆數，避免 payload 從 Lua allocator 放大到 C++ heap。
+- AI VM 錯誤、無 handler 或 instruction budget 超限時走該玩家現有 legacy AI fallback；
+  memory/instruction 錯誤在 callback 返回後才重建 VM。
 
-```lua
-dumpGameState(room, card)  -- 輸出完整遊戲狀態至 lua/ai/state_dump.log
-```
+### 15.3 RoomThread 邊界
+
+`RoomThread` 同步執行 AI callback 與 Gameplay callback。`activate`／`askForUseCard`
+在同一 gate 取得 request、執行 callback、驗證 result，再交給既有 `Room::useCard` 或
+response resolver；Shadow 結果只能產生 audit value，不得回寫 Room 或等待另一條執行緒。
+
+### 15.4 pcall 保護模式
+
+所有 Lua callback 仍須由 runtime 的受控 `pcall` 邊界包覆；錯誤、nil 或無效型別回傳
+均轉為 `AIResult` 失敗並由 C++ runtime 統一記錄，不在 Lua 腳本引入獨立除錯模組。
 
 ---
 
