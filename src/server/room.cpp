@@ -166,6 +166,25 @@ static void clearControllerRelation(Room *room, ServerPlayer *player)
 	}
 }
 
+static QString aiMarkVisibilityKey(const ServerPlayer *owner, const QString &mark)
+{
+    return owner->objectName() + QString(QChar(0x1f)) + mark;
+}
+
+static AICardView makeAICardView(const Card *card)
+{
+    AICardView view;
+    if (!card)
+        return view;
+    view.cardId = card->getId();
+    view.objectName = card->objectName();
+    view.className = card->getClassName();
+    view.suit = int(card->getSuit());
+    view.number = card->getNumber();
+    view.skillName = card->getSkillName(false);
+    return view;
+}
+
 }
 
 void Room::syncControllerPileVisible(ServerPlayer *target, ServerPlayer *controller)
@@ -325,7 +344,10 @@ ServerPlayer*Room::getCurrent() const
 
 void Room::setCurrent(ServerPlayer*current)
 {
+	if (this->current == current)
+		return;
 	this->current = current;
+	m_runtime->advanceStateRevision(RoomRuntime::TurnStateChanged);
 }
 
 int Room::scheduleExtraTurn(ServerPlayer *player, const QString &reason,
@@ -1099,6 +1121,8 @@ QList<int> Room::getNCards(int n, bool update_pile_number, bool isTop)
 	for (int i = 0; i < n; i++)
 		card_ids << drawCard(isTop);
 	//if(!isTop&&n>1) intReverse(card_ids);
+	if (!card_ids.isEmpty())
+		m_runtime->advanceStateRevision(RoomRuntime::CardsMoved);
 
 	if (update_pile_number)
 		doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_drawPile->length());
@@ -3333,6 +3357,7 @@ void Room::setPlayerProperty(ServerPlayer*player, const char*property_name, cons
 {
 	if (!player) return; // 防禦空檢查
 
+	const quint64 revisionBefore = m_runtime->stateRevision();
 	int old = player->getMaxHp();
 	bool same = player->property(property_name).toString() == value.toString();
 
@@ -3361,6 +3386,8 @@ void Room::setPlayerProperty(ServerPlayer*player, const char*property_name, cons
 	broadcastProperty(player, property_name);
 
 	if (same) return;
+	if (m_runtime->stateRevision() == revisionBefore)
+		m_runtime->advanceStateRevision(RoomRuntime::PlayerPropertyChanged);
 
 	QString propertyName = QString(property_name);
 	if (propertyName == "hp"){
@@ -3450,11 +3477,15 @@ void Room::slotSetProperty(ServerPlayer*player, const char*property_name, const 
 void Room::safeSetPlayerProperty(ServerPlayer*player, const char*property_name, const QVariant&value)
 {
 	if (!player) return;
+	const bool same = player->property(property_name).toString() == value.toString();
+	const quint64 revisionBefore = m_runtime->stateRevision();
 	if (QThread::currentThread() == player->thread())
 		player->setProperty(property_name, value);
 	else {
 		emit signalSetProperty(player, property_name, value);
 	}
+	if (!same && m_runtime->stateRevision() == revisionBefore)
+		m_runtime->advanceStateRevision(RoomRuntime::PlayerPropertyChanged);
 }
 
 void Room::setPlayerMark(ServerPlayer*player, const QString&mark, int value, QList<ServerPlayer*> only_viewers)
@@ -3477,6 +3508,17 @@ void Room::setPlayerMark(ServerPlayer*player, const QString&mark, int value, QLi
 			return;
 		mark_struct = data.value<MarkStruct>();
 		if (mark_struct.count == player->getMark(mark)) return;
+	}
+	const QString visibilityKey = aiMarkVisibilityKey(player, mark_struct.name);
+	if (mark_struct.count == 0) {
+		m_aiMarkViewers.remove(visibilityKey);
+	} else {
+		QSet<QString> viewerNames;
+		foreach (ServerPlayer *viewer, only_viewers) {
+			if (viewer)
+				viewerNames.insert(viewer->objectName());
+		}
+		m_aiMarkViewers.insert(visibilityKey, viewerNames);
 	}
 	player->setMark(mark_struct.name, mark_struct.count);
 
@@ -5821,6 +5863,89 @@ const Card *Room::resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSk
 	return card;
 }
 
+bool Room::isAIMarkVisibleTo(const ServerPlayer *owner, const QString &mark,
+                             const ServerPlayer *viewer) const
+{
+    if (!owner || owner == viewer)
+        return true;
+    const QString key = aiMarkVisibilityKey(owner, mark);
+    if (!m_aiMarkViewers.contains(key))
+        return false;
+    const QSet<QString> viewers = m_aiMarkViewers.value(key);
+    return viewers.isEmpty() || viewers.contains(viewer ? viewer->objectName() : QString());
+}
+
+AIWorldView Room::buildAIWorldView(ServerPlayer *viewer) const
+{
+    AIWorldView world;
+    world.revision = m_runtime->stateRevision();
+    world.currentPlayer = current ? current->objectName() : QString();
+    world.currentPhase = current ? int(current->getPhase()) : int(Player::NotActive);
+
+    const bool hegemony = ServerInfo.EnableHegemony;
+    foreach (ServerPlayer *player, getAllPlayers(true)) {
+        AIPlayerView playerView;
+        playerView.objectName = player->objectName();
+        playerView.seat = player->getSeat();
+        playerView.hp = player->getHp();
+        playerView.maxHp = player->getMaxHp();
+        playerView.handcardCount = player->getHandcardNum();
+        playerView.phase = int(player->getPhase());
+        playerView.alive = player->isAlive();
+        playerView.removed = player->isRemoved();
+        playerView.faceUp = player->faceUp();
+        playerView.chained = player->isChained();
+
+        const bool seesIdentity = player == viewer || !hegemony
+            || player->hasShownOneGeneral() || player->isDead();
+        if (seesIdentity)
+            playerView.kingdom = player->getKingdom();
+        if (player == viewer || player->hasShownRole() || player->isLord() || player->isDead())
+            playerView.role = player->getRole();
+        if (player == viewer || !hegemony || player->hasShownGeneral() || player->isDead())
+            playerView.generalName = player->getGeneralName();
+        if (player == viewer || !hegemony || player->hasShownGeneral2() || player->isDead())
+            playerView.general2Name = player->getGeneral2Name();
+
+        foreach (const Card *card, player->getEquips())
+            playerView.equips << makeAICardView(card);
+        foreach (const Card *card, player->getJudgingArea())
+            playerView.judgingArea << makeAICardView(card);
+        foreach (const QString &mark, player->getMarkNames()) {
+            if (isAIMarkVisibleTo(player, mark, viewer))
+                playerView.publicMarks.insert(mark, player->getMark(mark));
+        }
+
+        foreach (const SkillInstance &instance, player->getSkillInstances()) {
+            const Skill *skill = Sanguosha->getSkill(instance.skillName);
+            if (!instance.visible || !skill || !skill->isVisible())
+                continue;
+            const bool visibleToViewer = player == viewer || !hegemony
+                || instance.source == SourceAcquired || instance.source == SourceAttached
+                || player->hasShownSkill(instance.skillName);
+            if (!visibleToViewer)
+                continue;
+            AISkillView skillView;
+            skillView.skillName = instance.skillName;
+            skillView.instanceId = instance.instanceID;
+            skillView.source = int(instance.source);
+            skillView.invalid = player->isSkillInvalid(instance.skillName, instance.instanceID);
+            skillView.hasAmountOverride = instance.hasAmountOverride;
+            skillView.amount = instance.hasAmountOverride ? instance.amountOverride : 0;
+            playerView.skills << skillView;
+        }
+
+        if (player == viewer) {
+            world.self = playerView;
+            foreach (const Card *card, player->getHandcards())
+                world.handCards << makeAICardView(card);
+        } else {
+            world.players << playerView;
+        }
+    }
+    return world;
+}
+
 AIRequest Room::makeAIRequest(ServerPlayer *player, AIRequest::DecisionKind kind,
                               CardUseStruct::CardUseReason reason, const QString &pattern,
                               const QString &prompt, Card::HandlingMethod method) const
@@ -5834,6 +5959,7 @@ AIRequest Room::makeAIRequest(ServerPlayer *player, AIRequest::DecisionKind kind
 	request.pattern = pattern;
 	request.prompt = prompt;
 	request.handlingMethod = method;
+	request.worldView = buildAIWorldView(player);
 	return request;
 }
 
@@ -5884,6 +6010,7 @@ bool Room::applyAIResult(ServerPlayer *player, const AIRequest &request,
 		|| result.decisionId != request.decisionId
 		|| result.stateRevision != request.stateRevision)
 		return false;
+	if (request.stateRevision != m_runtime->stateRevision()) return false;
 
 	CardUseStruct candidate = cardUse;
 	candidate.from = player;
@@ -7376,7 +7503,7 @@ void Room::startGame()
 			server->signupPlayer(player);
 	}
 
-	current = m_alivePlayers.first();
+	setCurrent(m_alivePlayers.first());
 
 	// initialize the place_map and owner_map;
 	foreach(int card_id,*m_drawPile)
@@ -7987,6 +8114,7 @@ void Room::moveCardsAtomic(QList<CardsMoveStruct> cards_moves, bool visible, boo
 			if (from_sp) from_sp->refreshUIState();
 		}
 	}
+	m_runtime->advanceStateRevision(RoomRuntime::CardsMoved);
 	moveOneTimes = _mergeMoves(cards_moves);
 	foreach(CardsMoveOneTimeStruct moveOneTime, moveOneTimes){
 		QVariant data = QVariant::fromValue(moveOneTime);
@@ -8005,6 +8133,7 @@ void Room::moveCardsToEndOfDrawpile(ServerPlayer*player, QList<int> card_ids, co
 	QList<CardsMoveStruct> moves;
 	moves << CardsMoveStruct(card_ids, nullptr, Player::DrawPile, CardMoveReason(CardMoveReason::S_REASON_PUT_END, player->objectName(), skill_name, ""));
 	moves = _breakDownCardMoves(moves);
+	if (moves.isEmpty()) return;
 	QList<CardsMoveOneTimeStruct> moveOneTimes = _mergeMoves(moves);
 	for (int i = 0; i < moveOneTimes.length(); i++){
 		QVariant data = QVariant::fromValue(moveOneTimes[i]);
@@ -8052,11 +8181,17 @@ void Room::moveCardsToEndOfDrawpile(ServerPlayer*player, QList<int> card_ids, co
 		}
 		if (move.from_place == Player::DrawPile || move.to_place == Player::DrawPile){
 			doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_drawPile->length());
-			if(guanxing&&move.to_place == Player::DrawPile){
-				ServerPlayer*from = findChild<ServerPlayer*>(move.reason.m_playerId);
-				if (!from) from = (ServerPlayer*)move.from;
-				if (from&&from->isAlive()) askForGuanxing(from, getNCards(move.card_ids.length(), false, false), GuanxingDownOnly, false);
-			}
+		}
+	}
+	m_runtime->advanceStateRevision(RoomRuntime::CardsMoved);
+	if (guanxing) {
+		foreach (const CardsMoveStruct &move, moves) {
+			if (move.to_place != Player::DrawPile)
+				continue;
+			ServerPlayer *from = findChild<ServerPlayer *>(move.reason.m_playerId);
+			if (!from) from = (ServerPlayer *)move.from;
+			if (from && from->isAlive())
+				askForGuanxing(from, getNCards(move.card_ids.length(), false, false), GuanxingDownOnly, false);
 		}
 	}
 	moveOneTimes = _mergeMoves(moves);
@@ -8144,6 +8279,7 @@ void Room::moveCardsInToDrawpile(ServerPlayer*player, QList<int> card_ids, const
 	}
 	doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_drawPile->length());
 	//returnToTopDrawPile(ncards);
+	m_runtime->advanceStateRevision(RoomRuntime::CardsMoved);
 	moveOneTimes = _mergeMoves(moves);
 	foreach(CardsMoveOneTimeStruct moveOneTime, moveOneTimes){
 		QVariant data = QVariant::fromValue(moveOneTime);
@@ -8216,6 +8352,7 @@ void Room::shuffleIntoDrawPile(ServerPlayer*player, QList<int> card_ids, const Q
 		}
 	}
 	doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_drawPile->length());
+	m_runtime->advanceStateRevision(RoomRuntime::CardsMoved);
 	moveOneTimes = _mergeMoves(moves);
 	foreach(CardsMoveOneTimeStruct moveOneTime, moveOneTimes){
 		QVariant data = QVariant::fromValue(moveOneTime);
@@ -8230,13 +8367,17 @@ void Room::shuffleIntoDrawPile(ServerPlayer*player, QList<int> card_ids, const Q
 
 void Room::removeDerivativeCards()
 {
+	bool removed = false;
 	foreach(int id,*m_drawPile){
 		const Card*card = Sanguosha->getEngineCard(id);
 		if (card->objectName().startsWith("_") || card->property("DerivativeCard").toBool()){
 			setCardMapping(id, nullptr, Player::PlaceTable);
 			m_drawPile->removeAll(id);
+			removed = true;
 		}
 	}
+	if (removed)
+		m_runtime->advanceStateRevision(RoomRuntime::CardsMoved);
 	doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_drawPile->length());
 }
 

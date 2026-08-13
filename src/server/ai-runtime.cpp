@@ -91,6 +91,126 @@ bool readBoundedString(lua_State *state, int index, QString &value)
     return true;
 }
 
+void pushQString(lua_State *state, const QString &value)
+{
+    const QByteArray utf8 = value.toUtf8();
+    lua_pushlstring(state, utf8.constData(), size_t(utf8.size()));
+}
+
+void setStringField(lua_State *state, const char *name, const QString &value)
+{
+    pushQString(state, value);
+    lua_setfield(state, -2, name);
+}
+
+void pushAICardView(lua_State *state, const AICardView &card)
+{
+    lua_createtable(state, 0, 6);
+    lua_pushinteger(state, card.cardId);
+    lua_setfield(state, -2, "id");
+    setStringField(state, "name", card.objectName);
+    setStringField(state, "class_name", card.className);
+    lua_pushinteger(state, card.suit);
+    lua_setfield(state, -2, "suit");
+    lua_pushinteger(state, card.number);
+    lua_setfield(state, -2, "number");
+    setStringField(state, "skill_name", card.skillName);
+}
+
+void pushAICards(lua_State *state, const QList<AICardView> &cards)
+{
+    lua_createtable(state, int(cards.size()), 0);
+    for (int index = 0; index < cards.size(); ++index) {
+        pushAICardView(state, cards.at(index));
+        lua_rawseti(state, -2, index + 1);
+    }
+}
+
+void pushAISkillView(lua_State *state, const AISkillView &skill)
+{
+    lua_createtable(state, 0, 6);
+    setStringField(state, "name", skill.skillName);
+    lua_pushinteger(state, skill.instanceId);
+    lua_setfield(state, -2, "instance_id");
+    lua_pushinteger(state, skill.source);
+    lua_setfield(state, -2, "source");
+    lua_pushboolean(state, skill.invalid);
+    lua_setfield(state, -2, "invalid");
+    lua_pushboolean(state, skill.hasAmountOverride);
+    lua_setfield(state, -2, "has_amount_override");
+    lua_pushinteger(state, skill.amount);
+    lua_setfield(state, -2, "amount");
+}
+
+void pushAISkills(lua_State *state, const QList<AISkillView> &skills)
+{
+    lua_createtable(state, int(skills.size()), 0);
+    for (int index = 0; index < skills.size(); ++index) {
+        pushAISkillView(state, skills.at(index));
+        lua_rawseti(state, -2, index + 1);
+    }
+}
+
+void pushAIPlayerView(lua_State *state, const AIPlayerView &player)
+{
+    lua_createtable(state, 0, 20);
+    setStringField(state, "object_name", player.objectName);
+    lua_pushinteger(state, player.seat);
+    lua_setfield(state, -2, "seat");
+    lua_pushinteger(state, player.hp);
+    lua_setfield(state, -2, "hp");
+    lua_pushinteger(state, player.maxHp);
+    lua_setfield(state, -2, "max_hp");
+    lua_pushinteger(state, player.handcardCount);
+    lua_setfield(state, -2, "handcard_count");
+    lua_pushinteger(state, player.phase);
+    lua_setfield(state, -2, "phase");
+    lua_pushboolean(state, player.alive);
+    lua_setfield(state, -2, "alive");
+    lua_pushboolean(state, player.removed);
+    lua_setfield(state, -2, "removed");
+    lua_pushboolean(state, player.faceUp);
+    lua_setfield(state, -2, "face_up");
+    lua_pushboolean(state, player.chained);
+    lua_setfield(state, -2, "chained");
+    setStringField(state, "kingdom", player.kingdom);
+    setStringField(state, "role", player.role);
+    setStringField(state, "general", player.generalName);
+    setStringField(state, "general2", player.general2Name);
+    pushAICards(state, player.equips);
+    lua_setfield(state, -2, "equips");
+    pushAICards(state, player.judgingArea);
+    lua_setfield(state, -2, "judging_area");
+    lua_createtable(state, 0, int(player.publicMarks.size()));
+    for (auto mark = player.publicMarks.constBegin(); mark != player.publicMarks.constEnd(); ++mark) {
+        lua_pushinteger(state, mark.value());
+        const QByteArray key = mark.key().toUtf8();
+        lua_setfield(state, -2, key.constData());
+    }
+    lua_setfield(state, -2, "public_marks");
+    pushAISkills(state, player.skills);
+    lua_setfield(state, -2, "skills");
+}
+
+void pushAIWorldView(lua_State *state, const AIWorldView &world)
+{
+    lua_createtable(state, 0, 6);
+    setStringField(state, "revision", QString::number(world.revision));
+    pushAIPlayerView(state, world.self);
+    lua_setfield(state, -2, "self");
+    lua_createtable(state, int(world.players.size()), 0);
+    for (int index = 0; index < world.players.size(); ++index) {
+        pushAIPlayerView(state, world.players.at(index));
+        lua_rawseti(state, -2, index + 1);
+    }
+    lua_setfield(state, -2, "players");
+    pushAICards(state, world.handCards);
+    lua_setfield(state, -2, "hand_cards");
+    setStringField(state, "current_player", world.currentPlayer);
+    lua_pushinteger(state, world.currentPhase);
+    lua_setfield(state, -2, "current_phase");
+}
+
 }
 
 AiRouteRegistry::AiRouteRegistry()
@@ -495,7 +615,7 @@ bool AiLuaRuntime::loadScriptWithBudget(const QString &path, qint64 instructionB
 
 void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
 {
-    lua_createtable(state, 0, 9);
+    lua_createtable(state, 0, 10);
     lua_pushstring(state, request.kind == AIRequest::Activate ? "activate" : "use_card");
     lua_setfield(state, -2, "kind");
     lua_pushstring(state, request.getDecisionId().toUtf8().constData());
@@ -512,6 +632,8 @@ void AiLuaRuntime::pushRequest(lua_State *state, const AIRequest &request) const
     lua_setfield(state, -2, "prompt");
     lua_pushinteger(state, request.handlingMethod);
     lua_setfield(state, -2, "handling_method");
+    pushAIWorldView(state, request.worldView);
+    lua_setfield(state, -2, "world_view");
     if (request.hasSkillActionContext) {
         lua_createtable(state, 0, 8);
         lua_pushstring(state, request.getActivationOwner().toUtf8().constData());

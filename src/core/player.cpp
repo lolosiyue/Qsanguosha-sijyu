@@ -55,7 +55,9 @@ bool Player::hasShownRole() const
 
 void Player::setShownRole(bool shown)
 {
+    if (role_shown == shown) return;
     this->role_shown = shown;
+    emit gameplay_property_changed();
 }
 
 void Player::setHp(int hp)
@@ -109,7 +111,9 @@ General::Gender Player::getGender() const
 
 void Player::setGender(General::Gender gender)
 {
+    if (m_gender == gender) return;
     m_gender = gender;
+    emit gameplay_property_changed();
 }
 
 bool Player::isMale() const
@@ -134,7 +138,9 @@ int Player::getSeat() const
 
 void Player::setSeat(int seat)
 {
+    if (this->seat == seat) return;
     this->seat = seat;
+    emit gameplay_property_changed();
 }
 
 int Player::getPlayerSeat() const
@@ -144,7 +150,9 @@ int Player::getPlayerSeat() const
 
 void Player::setPlayerSeat(int player_seat)
 {
+    if (this->player_seat == player_seat) return;
     this->player_seat = player_seat;
+    emit gameplay_property_changed();
 }
 
 bool Player::isClientPlayer() const {
@@ -182,7 +190,9 @@ bool Player::isRest() const
 
 void Player::setAlive(bool alive)
 {
+    if (this->alive == alive) return;
     this->alive = alive;
+    emit gameplay_property_changed();
 }
 
 QString Player::getFlags() const
@@ -632,12 +642,14 @@ bool Player::isSkillInvalid(const QString &skill_name, int instanceId) const
 
 int Player::acquireSkill(const QString &skill_name, bool head, int instanceId)
 {
+    bool createdDirectly = false;
     int lastId = m_nextSkillInstanceIds.value(skill_name, 0);
     if (instanceId <= lastId || hasSkillInstance(skill_name, instanceId)) {
         instanceId = createSkillInstance(skill_name, SourceAcquired, true);
     } else {
         m_nextSkillInstanceIds[skill_name] = instanceId;
         m_skillInstances[skill_name][instanceId] = SkillInstance();
+        createdDirectly = true;
     }
 
     SkillInstance &inst = m_skillInstances[skill_name][instanceId];
@@ -662,6 +674,9 @@ int Player::acquireSkill(const QString &skill_name, bool head, int instanceId)
     QSet<QString> &targetSet = head ? head_acquired_skills : deputy_acquired_skills;
     targetSet.insert(formatted);
 
+    if (createdDirectly)
+        emit skill_set_changed();
+
     return instanceId;
 }
 
@@ -671,7 +686,7 @@ void Player::detachSkill(const QString &skill_name)
     int instId = SkillInstanceUtils::parseName(skill_name, base);
     if (instId == 0) {
         // 移除該名稱全部實例（SSOT + 舊容器一致）
-        m_skillInstances.remove(skill_name);
+        bool changed = m_skillInstances.remove(skill_name) > 0;
         QString prefix = skill_name + "#";
         QStringList toRemove;
         foreach (const QString &s, acquired_skills) {
@@ -679,10 +694,13 @@ void Player::detachSkill(const QString &skill_name)
                 toRemove << s;
         }
         foreach (const QString &s, toRemove)
-            acquired_skills.removeOne(s);
+            changed = acquired_skills.removeOne(s) || changed;
+        if (changed)
+            emit skill_set_changed();
     } else {
-        removeSkillInstance(base, instId);
-        acquired_skills.removeOne(skill_name);
+        const bool removedInstance = removeSkillInstance(base, instId);
+        if (acquired_skills.removeOne(skill_name) && !removedInstance)
+            emit skill_set_changed();
     }
 }
 
@@ -694,7 +712,7 @@ void Player::detachSkill(const QString &skill_name, bool head)
     int instId = SkillInstanceUtils::parseName(skill_name, base);
     if (instId == 0) {
         // 移除該名稱全部實例（SSOT + 舊容器一致）
-        m_skillInstances.remove(skill_name);
+        bool changed = m_skillInstances.remove(skill_name) > 0;
         QString prefix = skill_name + "#";
         QStringList toRemove;
         foreach (const QString &s, targetSet) {
@@ -702,7 +720,7 @@ void Player::detachSkill(const QString &skill_name, bool head)
                 toRemove << s;
         }
         foreach (const QString &s, toRemove)
-            targetSet.remove(s);
+            changed = targetSet.remove(s) || changed;
         // 也從 acquired_skills 清同名全部
         QStringList toRemove2;
         foreach (const QString &s, acquired_skills) {
@@ -710,20 +728,27 @@ void Player::detachSkill(const QString &skill_name, bool head)
                 toRemove2 << s;
         }
         foreach (const QString &s, toRemove2)
-            acquired_skills.removeOne(s);
+            changed = acquired_skills.removeOne(s) || changed;
+        if (changed)
+            emit skill_set_changed();
     } else {
-        removeSkillInstance(base, instId);
-        targetSet.remove(skill_name);
+        const bool removedInstance = removeSkillInstance(base, instId);
+        if (targetSet.remove(skill_name) && !removedInstance)
+            emit skill_set_changed();
     }
 }
 
 void Player::detachAllSkills()
 {
+    const bool changed = !m_skillInstances.isEmpty() || !acquired_skills.isEmpty()
+        || !head_acquired_skills.isEmpty() || !deputy_acquired_skills.isEmpty();
     m_skillInstances.clear();
     // 不清除 m_nextSkillInstanceIds：ID 永不重用
     acquired_skills.clear();
     head_acquired_skills.clear();
     deputy_acquired_skills.clear();
+    if (changed)
+        emit skill_set_changed();
 }
 
 void Player::addSkill(const QString &skill_name)
@@ -762,10 +787,14 @@ void Player::addSkill(const QString &skill_name, bool head_skill)
 
 void Player::loseSkill(const QString &skill_name)
 {
-    skills.removeOne(skill_name);
+    const bool removedLegacySkill = skills.removeOne(skill_name);
     // 移除一個原生實例（source=SourceInnate, ID 最小者）
     auto outerIt = m_skillInstances.find(skill_name);
-    if (outerIt == m_skillInstances.end()) return;
+    if (outerIt == m_skillInstances.end()) {
+        if (removedLegacySkill)
+            emit skill_set_changed();
+        return;
+    }
     int targetId = -1;
     for (auto it = outerIt->constBegin(); it != outerIt->constEnd(); ++it) {
         if (it.value().source == SourceInnate) {
@@ -778,18 +807,23 @@ void Player::loseSkill(const QString &skill_name)
         removeSkillInstance(skill_name, targetId);
         foreach (const SkillInstanceKey &child, children)
             removeSkillInstance(child.skillName, child.instanceID);
+    } else if (removedLegacySkill) {
+        emit skill_set_changed();
     }
 }
 
 void Player::loseSkill(const QString &skill_name, bool head)
 {
-    if (head)
-        head_skills.remove(skill_name);
-    else
-        deputy_skills.remove(skill_name);
+    const bool removedLegacySkill = head
+        ? head_skills.remove(skill_name) > 0
+        : deputy_skills.remove(skill_name) > 0;
     // 依 bindHead 移除對應主將／副將的原生實例
     auto outerIt = m_skillInstances.find(skill_name);
-    if (outerIt == m_skillInstances.end()) return;
+    if (outerIt == m_skillInstances.end()) {
+        if (removedLegacySkill)
+            emit skill_set_changed();
+        return;
+    }
     int targetBind = head ? 1 : 2;
     int targetId = -1;
     for (auto it = outerIt->constBegin(); it != outerIt->constEnd(); ++it) {
@@ -803,6 +837,8 @@ void Player::loseSkill(const QString &skill_name, bool head)
         removeSkillInstance(skill_name, targetId);
         foreach (const SkillInstanceKey &child, children)
             removeSkillInstance(child.skillName, child.instanceID);
+    } else if (removedLegacySkill) {
+        emit skill_set_changed();
     }
 }
 
@@ -1289,6 +1325,7 @@ Player::Phase Player::getPhase() const
 
 void Player::setPhase(Phase phase)
 {
+    if (this->phase == phase) return;
     this->phase = phase;
     emit phase_changed();
 }
@@ -1313,7 +1350,9 @@ bool Player::isRemoved() const
 
 void Player::setRemoved(bool removed)
 {
+    if (this->removed == removed) return;
     this->removed = removed;
+    emit gameplay_property_changed();
 }
 
 int Player::getMaxCards() const
@@ -1530,8 +1569,10 @@ void Player::removeMark(const QString &mark, int remove_num)
 
 void Player::setMark(const QString &mark, int value)
 {
+    if (getMark(mark) == value) return;
     if(value==0) marks.remove(mark);
 	else marks[mark] = value;
+    emit mark_changed();
 }
 
 int Player::getMark(const QString &mark) const
@@ -1902,6 +1943,7 @@ int Player::createSkillInstance(const QString &skillName, SkillInstanceSource so
     inst.state = QVariantMap();
 
     m_skillInstances[skillName][nextId] = inst;
+    emit skill_set_changed();
     return nextId;
 }
 
@@ -1949,6 +1991,7 @@ bool Player::removeSkillInstance(const QString &skillName, int instanceID)
         if (!innateRemains)
             skills.removeOne(skillName);
     }
+    emit skill_set_changed();
     return true;
 }
 
@@ -1994,6 +2037,9 @@ QList<SkillInstance> Player::getSkillInstances() const
 
 void Player::clearSkillInstances()
 {
+    const bool changed = !m_skillInstances.isEmpty() || !skills.isEmpty()
+        || !acquired_skills.isEmpty() || !head_skills.isEmpty() || !deputy_skills.isEmpty()
+        || !head_acquired_skills.isEmpty() || !deputy_acquired_skills.isEmpty();
     m_skillInstances.clear();
     m_nextSkillInstanceIds.clear();
     skills.clear();
@@ -2002,6 +2048,8 @@ void Player::clearSkillInstances()
     deputy_skills.clear();
     head_acquired_skills.clear();
     deputy_acquired_skills.clear();
+    if (changed)
+        emit skill_set_changed();
 }
 
 void Player::upsertSkillInstance(const SkillInstance &instance)
@@ -2027,6 +2075,7 @@ void Player::upsertSkillInstance(const SkillInstance &instance)
         else if (instance.bindHead == 2)
             deputy_acquired_skills.insert(formatted);
     }
+    emit skill_set_changed();
 }
 
 void Player::setSkillInstanceState(const QString &skillName, int instanceID, const QVariantMap &state)
@@ -2035,7 +2084,9 @@ void Player::setSkillInstanceState(const QString &skillName, int instanceID, con
     if (outerIt == m_skillInstances.end()) return;
     auto innerIt = outerIt->find(instanceID);
     if (innerIt == outerIt->end()) return;
+    if (innerIt.value().state == state) return;
     innerIt.value().state = state;
+    emit skill_state_changed();
 }
 
 QVariantMap Player::getSkillInstanceState(const QString &skillName, int instanceID) const
@@ -2053,7 +2104,9 @@ void Player::removeSkillInstanceState(const QString &skillName, int instanceID)
     if (outerIt == m_skillInstances.end()) return;
     auto innerIt = outerIt->find(instanceID);
     if (innerIt == outerIt->end()) return;
+    if (innerIt.value().state.isEmpty()) return;
     innerIt.value().state.clear();
+    emit skill_state_changed();
 }
 
 void Player::setSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &value)
@@ -2062,7 +2115,9 @@ void Player::setSkillInstanceStateValue(const QString &skillName, int instanceID
     if (outerIt == m_skillInstances.end()) return;
     auto innerIt = outerIt->find(instanceID);
     if (innerIt == outerIt->end()) return;
+    if (innerIt.value().state.contains(key) && innerIt.value().state.value(key) == value) return;
     innerIt.value().state[key] = value;
+    emit skill_state_changed();
 }
 
 QVariant Player::getSkillInstanceStateValue(const QString &skillName, int instanceID, const QString &key, const QVariant &defaultValue) const
@@ -2080,7 +2135,8 @@ void Player::removeSkillInstanceStateValue(const QString &skillName, int instanc
     if (outerIt == m_skillInstances.end()) return;
     auto innerIt = outerIt->find(instanceID);
     if (innerIt == outerIt->end()) return;
-    innerIt.value().state.remove(key);
+    if (innerIt.value().state.remove(key) > 0)
+        emit skill_state_changed();
 }
 
 bool Player::hasSkillInstanceAmountOverride(const QString &skillName, int instanceID) const
@@ -2101,8 +2157,11 @@ bool Player::setSkillInstanceAmountOverride(const QString &skillName, int instan
     if (outerIt == m_skillInstances.end()) return false;
     auto innerIt = outerIt->find(instanceID);
     if (innerIt == outerIt->end()) return false;
+    if (innerIt.value().hasAmountOverride && innerIt.value().amountOverride == amount)
+        return true;
     innerIt.value().hasAmountOverride = true;
     innerIt.value().amountOverride = amount;
+    emit skill_state_changed();
     return true;
 }
 
@@ -2112,8 +2171,11 @@ bool Player::resetSkillInstanceAmountOverride(const QString &skillName, int inst
     if (outerIt == m_skillInstances.end()) return false;
     auto innerIt = outerIt->find(instanceID);
     if (innerIt == outerIt->end()) return false;
+    if (!innerIt.value().hasAmountOverride)
+        return true;
     innerIt.value().hasAmountOverride = false;
     innerIt.value().amountOverride = 0;
+    emit skill_state_changed();
     return true;
 }
 
@@ -2139,7 +2201,10 @@ bool Player::setSkillInstanceCorrectStateValue(const QString &skillName, int ins
     if (outerIt == m_skillInstances.end()) return false;
     auto innerIt = outerIt->find(instanceID);
     if (innerIt == outerIt->end()) return false;
+    if (innerIt.value().correctState.contains(key) && innerIt.value().correctState.value(key) == value)
+        return true;
     innerIt.value().correctState.insert(key, value);
+    emit skill_state_changed();
     return true;
 }
 
@@ -2151,6 +2216,7 @@ bool Player::removeSkillInstanceCorrectStateValue(const QString &skillName, int 
     auto innerIt = outerIt->find(instanceID);
     if (innerIt == outerIt->end() || !innerIt.value().correctState.contains(key)) return false;
     innerIt.value().correctState.remove(key);
+    emit skill_state_changed();
     return true;
 }
 
@@ -2160,7 +2226,9 @@ bool Player::clearSkillInstanceCorrectState(const QString &skillName, int instan
     if (outerIt == m_skillInstances.end()) return false;
     auto innerIt = outerIt->find(instanceID);
     if (innerIt == outerIt->end()) return false;
+    if (innerIt.value().correctState.isEmpty()) return true;
     innerIt.value().correctState.clear();
+    emit skill_state_changed();
     return true;
 }
 
@@ -2268,6 +2336,8 @@ bool Player::canSlashWithoutCrossbow(const Card *slash) const
 
 void Player::setCardLimitation(const QString &limit_list, const QString &pattern, const QString &reason, bool single_turn)
 {
+    const auto previousLimitations = card_limitation;
+    const auto previousReasons = card_limitation_reasons;
     QString _pattern = pattern;
     if (!pattern.contains("$"))
         _pattern.append(single_turn ? "$1" : "$0");
@@ -2277,10 +2347,14 @@ void Player::setCardLimitation(const QString &limit_list, const QString &pattern
         if (!reason.isEmpty())
             card_limitation_reasons[method][_pattern] = reason;
     }
+    if (card_limitation != previousLimitations || card_limitation_reasons != previousReasons)
+        emit card_limitation_changed();
 }
 
 void Player::removeCardLimitation(const QString &limit_list, const QString &pattern, const QString &reason)
 {
+    const auto previousLimitations = card_limitation;
+    const auto previousReasons = card_limitation_reasons;
     QString _pattern = pattern;
     if (!pattern.contains("$"))
         _pattern.append("$0");
@@ -2296,11 +2370,15 @@ void Player::removeCardLimitation(const QString &limit_list, const QString &patt
         if (card_limitation_reasons[method].isEmpty())
             card_limitation_reasons.remove(method);
     }
+    if (card_limitation != previousLimitations || card_limitation_reasons != previousReasons)
+        emit card_limitation_changed();
 }
 
 void Player::removeCardLimitationByReason(const QString &reason)
 {
     if (reason.isEmpty()) return;
+    const auto previousLimitations = card_limitation;
+    const auto previousReasons = card_limitation_reasons;
     foreach(Card::HandlingMethod method, card_limitation_reasons.keys()) {
         QStringList patternsToRemove;
         foreach(QString pattern, card_limitation_reasons[method].keys()) {
@@ -2316,10 +2394,14 @@ void Player::removeCardLimitationByReason(const QString &reason)
         if (card_limitation_reasons[method].isEmpty())
             card_limitation_reasons.remove(method);
     }
+    if (card_limitation != previousLimitations || card_limitation_reasons != previousReasons)
+        emit card_limitation_changed();
 }
 
 void Player::clearCardLimitation(bool single_turn)
 {
+    const auto previousLimitations = card_limitation;
+    const auto previousReasons = card_limitation_reasons;
     foreach(Card::HandlingMethod method, card_limitation.keys()){
         foreach(QString pattern, card_limitation[method]){
             if (!single_turn || pattern.endsWith("$1")){
@@ -2332,6 +2414,8 @@ void Player::clearCardLimitation(bool single_turn)
             }
         }
     }
+    if (card_limitation != previousLimitations || card_limitation_reasons != previousReasons)
+        emit card_limitation_changed();
 }
 
 QStringList Player::getCardLimitationReasons(Card::HandlingMethod method) const
@@ -2551,6 +2635,7 @@ void Player::setTreasureArea(bool flag)
 
 void Player::setEquipArea(int i, bool flag)
 {
+    const int previousCount = equip_area.count(i);
     if (flag){
 		if (!equip_area.contains(i)) equip_area << i;
 	}else equip_area.removeOne(i);
@@ -2559,12 +2644,17 @@ void Player::setEquipArea(int i, bool flag)
     defensive_horse_area = equip_area.contains(2);
     offensive_horse_area = equip_area.contains(3);
     treasure_area = equip_area.contains(4);
+    if (equip_area.count(i) != previousCount)
+        emit gameplay_property_changed();
 }
 
 void Player::setEquipAreaCount(int i, int count)
 {
     if (i < 0 || i > 4)
         return;
+
+    const int previousCount = equip_area.count(i);
+    count = qMax(0, count);
 
     while (equip_area.removeOne(i)) {
     }
@@ -2577,6 +2667,8 @@ void Player::setEquipAreaCount(int i, int count)
     defensive_horse_area = equip_area.contains(2);
     offensive_horse_area = equip_area.contains(3);
     treasure_area = equip_area.contains(4);
+    if (count != previousCount)
+        emit gameplay_property_changed();
 }
 
 void Player::addEquipArea(int i)
@@ -2589,6 +2681,7 @@ void Player::addEquipArea(int i)
         case 3: offensive_horse_area = true; break;
         case 4: treasure_area = true; break;
     }
+    emit gameplay_property_changed();
 }
 
 int Player::getEquipArea(int i) const
@@ -2607,7 +2700,10 @@ bool Player::hasJudgeArea() const
 
 void Player::setJudgeArea(bool flag)
 {
+    if (hasjudgearea == flag)
+        return;
     this->hasjudgearea = flag;
+    emit gameplay_property_changed();
 }
 
 bool Player::canPindian(const Player *target, bool except_self) const
@@ -3097,12 +3193,18 @@ bool Player::hasShownGeneral2() const
 
 void Player::setGeneralShowed(bool showed)
 {
+    if (general_showed == showed)
+        return;
     general_showed = showed;
+    emit gameplay_property_changed();
 }
 
 void Player::setGeneral2Showed(bool showed)
 {
+    if (general2_showed == showed)
+        return;
     general2_showed = showed;
+    emit gameplay_property_changed();
 }
 
 bool Player::canShowGeneral(const QString &position) const

@@ -535,6 +535,11 @@ signals:
     void owner_changed(bool owner);
     void showncards_changed();
     void brokenEquips_changed();
+    void gameplay_property_changed();
+    void mark_changed();
+    void skill_set_changed();
+    void skill_state_changed();
+    void card_limitation_changed();
 };
 
 void setEngineSelf(Player *player);
