@@ -696,6 +696,9 @@ private:
     bool areCardTargetsLegal(const CardUseStruct &use) const;
     const Card *resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSkillV2 *skill,
                                           const ActiveSkillRequest &request) const;
+    AIWorldView buildAIWorldView(ServerPlayer *viewer) const;
+    bool isAIMarkVisibleTo(const ServerPlayer *owner, const QString &mark,
+                           const ServerPlayer *viewer) const;
     AIRequest makeAIRequest(ServerPlayer *player, AIRequest::DecisionKind kind,
                             CardUseStruct::CardUseReason reason, const QString &pattern,
                             const QString &prompt, Card::HandlingMethod method) const;
@@ -859,6 +862,7 @@ private:
     QList<ServerPlayer*> m_players, m_alivePlayers;
     int player_count;
     ServerPlayer*current;
+    QHash<QString, QSet<QString>> m_aiMarkViewers;
     QList<int> pile1, pile2, table_cards;
     QList<int>*m_drawPile,*m_discardPile;
     QStack<DamageStruct> m_damageStack;

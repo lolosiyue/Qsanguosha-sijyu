@@ -677,8 +677,15 @@ activation/source identity 與 quota 只放在 `AIRequest.SkillActionContext`。
 
 `AIResult` 返回後立即複製為 value；不得把 Card 指標、Lua userdata 或 callback 暫存交給
 Gameplay。RoomThread 會驗證 result 是否回送同一 request 的 revision、牌 ID、目標 ID
-與 quota，失敗即 fail-closed。權威 gameplay revision ledger 尚未接入；純 request/query
-不得推進 revision。
+與 quota，失敗即 fail-closed。Room 的權威 gameplay revision ledger 會在牌移動、HP／玩家
+屬性、死亡狀態、mark、技能集合／instance state、phase／current、card limitation 等會影響
+決策的 mutation 完成後推進；純 request/query、log、animation 與 notification 不推進。
+提交時若 Room 已不在 request 的 revision，結果視為 stale 並拒絕。
+
+`Player::flags` 暫不直接推進 revision：既有 `smart-ai.lua` 會在一次 decision 內把同一個
+namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy result 都會被誤判 stale。
+需要影響 isolated AI 的新 gameplay 狀態必須使用 typed property、mark、skill instance state
+或其他已分類的權威 API；不得新增依賴 generic AI scratch flag 的 isolated decision contract。
 
 `activate` 的 legacy callback 仍可在 callback 期間填寫 `use.card`／`use.to`；bridge 只在
 同一 gate 內讀取其牌 ID 與目標 ID，複製成 `AIResult.CardActionSpec` 後才提交，禁止把
@@ -687,8 +694,8 @@ Gameplay。RoomThread 會驗證 result 是否回送同一 request 的 revision�
 
 ### 15.2 AI VM 分離與遷移模式
 
-- 每個 Room 的 `AiLuaRuntime` 與 Gameplay Lua VM 分離；第一階段 Isolated handler 只取得
-  value-only request、decision-scoped `AiRng` 與 `AiData`，完整 `AIWorldView` 尚未接入。
+- 每個 Room 的 `AiLuaRuntime` 與 Gameplay Lua VM 分離；Isolated handler 只取得
+  value-only request、viewer-scoped `AIWorldView`、decision-scoped `AiRng` 與 `AiData`。
 - `LegacyDirect` 僅供過渡；`LegacyAdapted` 將既有 `activate`／`askForUseCard` 結果複製成
   `AIResult`，再走通用 Room 驗證 gate。
 - 新 AI 使用 `Isolated`；第一階段 `Isolated Shadow` 以同一 request 與獨立 deterministic
@@ -708,6 +715,23 @@ Gameplay。RoomThread 會驗證 result 是否回送同一 request 的 revision�
   capped value/hash 摘要與有限筆數，避免 payload 從 Lua allocator 放大到 C++ heap。
 - AI VM 錯誤、無 handler 或 instruction budget 超限時走該玩家現有 legacy AI fallback；
   memory/instruction 錯誤在 callback 返回後才重建 VM。
+
+#### 15.2.1 AIWorldView
+
+`request.world_view` 是 request 建立當下的 immutable value snapshot，不含 `Room *`、
+`ServerPlayer *`、`Card *`、`QVariant` userdata 或 Lua userdata。
+
+| 欄位 | 內容與可見性 |
+|---|---|
+| `revision` | 字串形式的 Room revision，必須等於 `request.state_revision` |
+| `self` | viewer 的 HP、phase、identity、marks、可見 skill instances 等值資料 |
+| `players` | 其他玩家的 public/viewer-visible 摘要；不含手牌 identity |
+| `hand_cards` | 僅 viewer 自己的手牌 card ID 與基本 value 欄位 |
+| `current_player`／`current_phase` | 當前回合權威狀態 |
+
+國戰未公開的武將、勢力與原生技能不進入其他 viewer 的 snapshot；透過
+`only_viewers` 設定的 mark 只會出現在授權 viewer 的 `public_marks`。Lua 端只以 primitive、
+array 與 string-key table 讀取 snapshot。
 
 ### 15.3 RoomThread 邊界
 
