@@ -31,6 +31,38 @@ ServerPlayer::ServerPlayer(Room *room)
 	for (int i = 0; i < S_NUM_SEMAPHORES; i++)
 		semas[i] = new QSemaphore(0);
 	onsole_owner = this;
+
+    const auto advanceProperty = [this]() {
+        if (this->room && this->room->roomRuntime())
+            this->room->roomRuntime()->advanceStateRevision(RoomRuntime::PlayerPropertyChanged);
+    };
+    connect(this, &Player::general_changed, this, advanceProperty);
+    connect(this, &Player::general2_changed, this, advanceProperty);
+    connect(this, &Player::role_changed, this, advanceProperty);
+    connect(this, &Player::state_changed, this, advanceProperty);
+    connect(this, &Player::hp_changed, this, advanceProperty);
+    connect(this, &Player::kingdom_changed, this, advanceProperty);
+    connect(this, &Player::gameplay_property_changed, this, advanceProperty);
+    connect(this, &Player::phase_changed, this, [this]() {
+        if (this->room && this->room->roomRuntime())
+            this->room->roomRuntime()->advanceStateRevision(RoomRuntime::TurnStateChanged);
+    });
+    connect(this, &Player::mark_changed, this, [this]() {
+        if (this->room && this->room->roomRuntime())
+            this->room->roomRuntime()->advanceStateRevision(RoomRuntime::PlayerMarkChanged);
+    });
+    connect(this, &Player::skill_set_changed, this, [this]() {
+        if (this->room && this->room->roomRuntime())
+            this->room->roomRuntime()->advanceStateRevision(RoomRuntime::SkillSetChanged);
+    });
+    connect(this, &Player::skill_state_changed, this, [this]() {
+        if (this->room && this->room->roomRuntime())
+            this->room->roomRuntime()->advanceStateRevision(RoomRuntime::SkillInstanceStateChanged);
+    });
+    connect(this, &Player::card_limitation_changed, this, [this]() {
+        if (this->room && this->room->roomRuntime())
+            this->room->roomRuntime()->advanceStateRevision(RoomRuntime::CardLimitationChanged);
+    });
 }
 
 ServerPlayer::~ServerPlayer()

@@ -23,6 +23,17 @@ class Room;
 class RoomRuntime : public EngineRuntimeContext
 {
 public:
+    enum StateMutation {
+        CardsMoved,
+        PlayerPropertyChanged,
+        PlayerLifecycleChanged,
+        PlayerMarkChanged,
+        SkillSetChanged,
+        TurnStateChanged,
+        CardLimitationChanged,
+        SkillInstanceStateChanged
+    };
+
     explicit RoomRuntime(Room *room);
     ~RoomRuntime() override;
 
@@ -41,6 +52,7 @@ public:
     SkillInstanceAttachmentRegistry &attachedSkills() { return m_attachedSkills; }
     quint64 nextDecisionId() { return ++m_nextDecisionId; }
     quint64 stateRevision() const { return m_stateRevision; }
+    void advanceStateRevision(StateMutation mutation);
     void seedRandom(quint32 seed);
 
     void addPackage(Package *package);

@@ -9,6 +9,66 @@ struct lua_State;
 #include "lua-runtime.h"
 #include "structs.h"
 
+struct AICardView {
+    int cardId;
+    QString objectName;
+    QString className;
+    int suit;
+    int number;
+    QString skillName;
+
+    AICardView() : cardId(-1), suit(int(Card::NoSuit)), number(0) {}
+};
+
+struct AISkillView {
+    QString skillName;
+    int instanceId;
+    int source;
+    bool invalid;
+    bool hasAmountOverride;
+    int amount;
+
+    AISkillView()
+        : instanceId(0), source(int(SourceInnate)), invalid(false),
+          hasAmountOverride(false), amount(0) {}
+};
+
+struct AIPlayerView {
+    QString objectName;
+    int seat;
+    int hp;
+    int maxHp;
+    int handcardCount;
+    int phase;
+    bool alive;
+    bool removed;
+    bool faceUp;
+    bool chained;
+    QString kingdom;
+    QString role;
+    QString generalName;
+    QString general2Name;
+    QList<AICardView> equips;
+    QList<AICardView> judgingArea;
+    QMap<QString, int> publicMarks;
+    QList<AISkillView> skills;
+
+    AIPlayerView()
+        : seat(0), hp(0), maxHp(0), handcardCount(0), phase(int(Player::NotActive)),
+          alive(false), removed(false), faceUp(true), chained(false) {}
+};
+
+struct AIWorldView {
+    quint64 revision;
+    AIPlayerView self;
+    QList<AIPlayerView> players;
+    QList<AICardView> handCards;
+    QString currentPlayer;
+    int currentPhase;
+
+    AIWorldView() : revision(0), currentPhase(int(Player::NotActive)) {}
+};
+
 struct AiSkillActionContext {
     SkillInstanceRef activationRef;
     SkillInstanceRef sourceRef;
@@ -40,6 +100,7 @@ struct AIRequest {
     QString pattern;
     QString prompt;
     Card::HandlingMethod handlingMethod;
+    AIWorldView worldView;
     bool hasSkillActionContext;
     AiSkillActionContext skillActionContext;
 

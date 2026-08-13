@@ -60,6 +60,12 @@ struct RoomTestAccess
     {
         return room.decideAiAction(player, request, use);
     }
+
+    static bool applyResult(Room &room, ServerPlayer *player, const AIRequest &request,
+                            const AIResult &result, CardUseStruct &use)
+    {
+        return room.applyAIResult(player, request, result, use);
+    }
 };
 
 class ScopedConfigValue
@@ -400,6 +406,99 @@ static bool productionIsolatedScriptAndShadowAudit(Room &room)
         && !audit.differs;
 }
 
+static bool aiWorldViewIsScopedAndRevisioned()
+{
+    std::unique_ptr<Room> room(new Room(nullptr, QStringLiteral("02_1v1")));
+    EngineRuntimeContextScope contextScope(*Sanguosha, room.get());
+    room->roomRuntime()->state().reset();
+    ServerPlayer *viewer = RoomTestAccess::addRobotPlayer(*room);
+    viewer->setObjectName(QStringLiteral("world-viewer"));
+    viewer->setSeat(1);
+    viewer->setMaxHp(4);
+    viewer->setHp(3);
+    viewer->setPhase(Player::Play);
+
+    ServerPlayer *other = RoomTestAccess::addRobotPlayer(*room);
+    other->setObjectName(QStringLiteral("world-other"));
+    other->setSeat(2);
+    other->setMaxHp(4);
+    other->setHp(4);
+    room->setCurrent(viewer);
+
+    if (Sanguosha->getCardCount() < 2)
+        return false;
+    viewer->addCard(0, Player::PlaceHand);
+    other->addCard(1, Player::PlaceHand);
+    room->setPlayerMark(other, QStringLiteral("public_mark"), 2);
+    room->setPlayerMark(other, QStringLiteral("private_mark"), 3,
+                        QList<ServerPlayer *>() << other);
+    other->setMark(QStringLiteral("server_internal_mark"), 4);
+
+    const quint64 revision = room->roomRuntime()->stateRevision();
+    const AIRequest request = RoomTestAccess::makeRequest(*room, viewer, AIRequest::UseCard);
+    if (room->roomRuntime()->stateRevision() != revision
+        || request.stateRevision != revision || request.worldView.revision != revision
+        || request.worldView.self.objectName != viewer->objectName()
+        || request.worldView.currentPlayer != viewer->objectName()
+        || request.worldView.currentPhase != int(Player::Play)
+        || request.worldView.handCards.size() != 1
+        || request.worldView.handCards.first().cardId != 0
+        || request.worldView.players.size() != 1)
+        return false;
+
+    const AIPlayerView &otherView = request.worldView.players.first();
+    if (otherView.objectName != other->objectName() || otherView.handcardCount != 1
+        || otherView.publicMarks.value(QStringLiteral("public_mark")) != 2
+        || otherView.publicMarks.contains(QStringLiteral("private_mark"))
+        || otherView.publicMarks.contains(QStringLiteral("server_internal_mark")))
+        return false;
+
+    AIResult result;
+    result.kind = AIResult::Pass;
+    result.handled = true;
+    result.decisionId = request.decisionId;
+    result.stateRevision = request.stateRevision;
+    CardUseStruct use;
+    if (!RoomTestAccess::applyResult(*room, viewer, request, result, use))
+        return false;
+
+    const quint64 noOpRevision = room->roomRuntime()->stateRevision();
+    room->setCurrent(viewer);
+    room->setPlayerMark(other, QStringLiteral("public_mark"), 2);
+    if (room->roomRuntime()->stateRevision() != noOpRevision)
+        return false;
+
+    viewer->setFlags(QStringLiteral("AI_TestScratch"));
+    viewer->setFlags(QStringLiteral("-AI_TestScratch"));
+    if (room->roomRuntime()->stateRevision() != noOpRevision)
+        return false;
+
+    viewer->setHp(viewer->getHp());
+    if (room->roomRuntime()->stateRevision() != revision)
+        return false;
+    viewer->setHp(viewer->getHp() - 1);
+    if (room->roomRuntime()->stateRevision() <= revision
+        || RoomTestAccess::applyResult(*room, viewer, request, result, use))
+        return false;
+
+    const quint64 limitationRevision = room->roomRuntime()->stateRevision();
+    viewer->setCardLimitation(QStringLiteral("use"), QStringLiteral("."),
+                              QStringLiteral("ai-world-view-test"), false);
+    if (room->roomRuntime()->stateRevision() <= limitationRevision)
+        return false;
+
+    const quint64 skillRevision = room->roomRuntime()->stateRevision();
+    viewer->createSkillInstance(QStringLiteral("ai_world_view_test_skill"), SourceAcquired, true);
+    if (room->roomRuntime()->stateRevision() <= skillRevision)
+        return false;
+
+    const AIRequest fresh = RoomTestAccess::makeRequest(*room, viewer, AIRequest::UseCard);
+    result.decisionId = fresh.decisionId;
+    result.stateRevision = fresh.stateRevision;
+    return fresh.worldView.revision == fresh.stateRevision
+        && RoomTestAccess::applyResult(*room, viewer, fresh, result, use);
+}
+
 static bool shadowAuditPayloadIsBounded(Room &room)
 {
     AIRequest request;
@@ -447,6 +546,11 @@ static bool loadAiShadowHandler(Room &room)
     return luaL_dostring(L,
         "ai_register_handler('use_card', function(request) "
         "if request.pattern == 'pass' then return { kind = 'pass' } end "
+        "if request.pattern == 'world' then local world = request.world_view; "
+        "if world and world.revision == request.state_revision "
+        "and world.self.object_name == request.viewer "
+        "and world.hand_cards[1].id == 7 and world.players[1].public_marks.ready == 2 "
+        "then return { kind = 'pass' } end; return { kind = 'use_card' } end "
         "if request.pattern == 'structured' then return { kind = 'use_card' } end "
         "if request.pattern == 'huge' then return { kind = 'use_card', cards = {math.huge} } end "
         "if request.pattern == 'too_many' then local cards = {}; "
@@ -466,6 +570,21 @@ static bool aiShadowParsesPassAndUseCard(Room &room)
     request.pattern = QStringLiteral("pass");
     const AIResult pass = room.roomRuntime()->ai().decideShadow(request);
     if (!pass.handled || pass.kind != AIResult::Pass || !pass.errorCode.isEmpty())
+        return false;
+
+    request.stateRevision = 42;
+    request.worldView.revision = 42;
+    request.worldView.self.objectName = request.viewerObjectName;
+    AICardView handCard;
+    handCard.cardId = 7;
+    request.worldView.handCards << handCard;
+    AIPlayerView otherPlayer;
+    otherPlayer.objectName = QStringLiteral("other");
+    otherPlayer.publicMarks.insert(QStringLiteral("ready"), 2);
+    request.worldView.players << otherPlayer;
+    request.pattern = QStringLiteral("world");
+    const AIResult world = room.roomRuntime()->ai().decideShadow(request);
+    if (!world.handled || world.kind != AIResult::Pass || !world.errorCode.isEmpty())
         return false;
 
     request.pattern = QStringLiteral("use");
@@ -562,6 +681,10 @@ int main(int argc, char *argv[])
     if (!aiRoutesSelectExactDefaultAndFreeze()) {
         qCritical() << "AI route registry did not preserve exact/default/frozen routing";
         return 12;
+    }
+    if (!aiWorldViewIsScopedAndRevisioned()) {
+        qCritical() << "AI world view scope or state revision gate failed";
+        return 17;
     }
     if (!productionIsolatedScriptAndShadowAudit(*first)
         || !shadowAuditPayloadIsBounded(*first) || !ownedAiProxyUsesValueLifetime()) {

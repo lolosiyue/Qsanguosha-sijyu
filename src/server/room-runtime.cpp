@@ -52,6 +52,14 @@ void RoomRuntime::seedRandom(quint32 seed)
     m_ai.seed(seed);
 }
 
+void RoomRuntime::advanceStateRevision(StateMutation mutation)
+{
+    Q_UNUSED(mutation);
+    ++m_stateRevision;
+    if (m_stateRevision == 0)
+        ++m_stateRevision;
+}
+
 void RoomRuntime::addPackage(Package *package)
 {
     if (!package || m_packages.contains(package->objectName()))
