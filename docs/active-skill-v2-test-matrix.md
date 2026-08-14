@@ -75,6 +75,10 @@
   `LegacyAdapted`，isolated dispatcher 可按 activation skill 或 pattern 漸進註冊；未註冊
   request 記為 `NotCovered`，不計入 mismatch。audit 另區分 `Match`／`Mismatch`／`Error`
   並維持固定大小累積計數。`activate` 預設仍為 `LegacyAdapted`，尚未開始自己的 Shadow 階段。
+- Value facade 是 runtime-wide mandatory 層，不屬於 `ask-for-use-card.lua` 或 configured
+  allowlist。矩陣須在不載入 askForUseCard dispatcher 時，分別證明 `activate` 與直接
+  `use_card` handler 都以 `(self, request)` 取得相同 `SmartAIView`／`PlayerView`／
+  `CardView`／`SkillView`，且 malformed viewer snapshot 會在 handler 前 fail-closed。
 - 第一個正式 `sgs.ai_skill_use` handler 已搬入：`standard-ai.lua` 的 `@@lianying` 確定
   單目標分支以 isolated `ai_skill_use[pattern] = function(self, prompt, request)` 註冊，必須
   透過 `SmartAIView`／`PlayerView` 與 C++ 注入的 `sgs.Player_Play` 得出和 Legacy 一致的

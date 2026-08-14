@@ -437,6 +437,74 @@ static bool isolatedInitializationIsBudgeted()
         && error.contains(QStringLiteral("instruction limit"));
 }
 
+static bool sharedFacadesAreAvailableToAllDecisions()
+{
+    ScopedConfigValue scripts(QStringLiteral("AiIsolatedScripts"), QStringList());
+    Room room(nullptr, QStringLiteral("02_1v1"));
+    if (!room.roomRuntime()->ai().lua().rawState())
+        return false;
+
+    {
+        LuaRuntime::Binding luaBinding(room.roomRuntime()->ai().lua());
+        lua_State *L = room.roomRuntime()->ai().lua().state();
+        if (luaL_dostring(L,
+            "if ai_skill_use ~= nil then error('askForUseCard dispatcher was loaded') end; "
+            "local function shared_facade_probe(self, request) "
+            "local player = self.player; local equips = player:getEquips(); "
+            "local skills = player:getSkills(); "
+            "if getmetatable(self) ~= SmartAIView or getmetatable(player) ~= PlayerView "
+            "or request ~= self.request or self.world ~= request.world_view "
+            "or player:getHp() ~= 2 or #equips ~= 1 "
+            "or getmetatable(equips[1]) ~= CardView or not equips[1]:isKindOf('Slash') "
+            "or #skills ~= 1 or getmetatable(skills[1]) ~= SkillView "
+            "or skills[1]:getStateValue('count') ~= 2 then return nil end; "
+            "local state = skills[1]:getState(); state.count = 99; "
+            "if skills[1]:getStateValue('count') ~= 2 then return nil end; "
+            "return { kind = 'pass' } end; "
+            "ai_register_handler('activate', shared_facade_probe); "
+            "ai_register_handler('use_card', shared_facade_probe)") != 0) {
+            lua_pop(L, 1);
+            return false;
+        }
+    }
+
+    AIRequest request;
+    request.viewerObjectName = QStringLiteral("shared-facade-owner");
+    request.worldView.self.objectName = request.viewerObjectName;
+    request.worldView.self.hp = 2;
+
+    AICardView equip;
+    equip.objectName = QStringLiteral("slash");
+    equip.className = QStringLiteral("Slash");
+    equip.kindOfNames << QStringLiteral("Slash") << QStringLiteral("BasicCard")
+                      << QStringLiteral("Card");
+    request.worldView.self.equips << equip;
+
+    AISkillView skill;
+    skill.skillName = QStringLiteral("shared-facade-skill");
+    skill.hasPrivateState = true;
+    skill.state.insert(QStringLiteral("count"), 2);
+    request.worldView.self.skills << skill;
+
+    request.kind = AIRequest::Activate;
+    const AIResult activate = room.roomRuntime()->ai().decideShadow(request);
+    request.kind = AIRequest::UseCard;
+    const AIResult useCard = room.roomRuntime()->ai().decideShadow(request);
+    if (!activate.handled || activate.kind != AIResult::Pass
+        || !activate.errorCode.isEmpty() || !useCard.handled
+        || useCard.kind != AIResult::Pass || !useCard.errorCode.isEmpty()) {
+        return false;
+    }
+
+    request.worldView.self.objectName = QStringLiteral("wrong-viewer");
+    request.kind = AIRequest::Activate;
+    const AIResult invalidActivate = room.roomRuntime()->ai().decideShadow(request);
+    request.kind = AIRequest::UseCard;
+    const AIResult invalidUseCard = room.roomRuntime()->ai().decideShadow(request);
+    return !invalidActivate.handled && invalidActivate.errorCode.isEmpty()
+        && !invalidUseCard.handled && invalidUseCard.errorCode.isEmpty();
+}
+
 static bool productionIsolatedScriptAndShadowAudit(Room &room)
 {
     AIRequest probe;
@@ -450,7 +518,10 @@ static bool productionIsolatedScriptAndShadowAudit(Room &room)
     probe.worldView.self.handcardCount = 5;
     probe.worldView.self.phase = int(Player::Play);
     probe.worldView.self.alive = true;
+    probe.worldView.self.dead = false;
     probe.worldView.self.removed = false;
+    probe.worldView.self.kongcheng = false;
+    probe.worldView.self.wounded = true;
     probe.worldView.self.faceUp = false;
     probe.worldView.self.chained = true;
     probe.worldView.self.kingdom = QStringLiteral("wu");
@@ -458,6 +529,53 @@ static bool productionIsolatedScriptAndShadowAudit(Room &room)
     probe.worldView.self.generalName = QStringLiteral("luxun");
     probe.worldView.self.general2Name = QStringLiteral("sujiang");
     probe.worldView.self.publicMarks.insert(QStringLiteral("facade-mark"), 7);
+
+    AICardView equip;
+    equip.cardId = 17;
+    equip.effectiveId = 3;
+    equip.objectName = QStringLiteral("slash");
+    equip.className = QStringLiteral("Slash");
+    equip.suit = int(Card::Spade);
+    equip.number = 9;
+    equip.skillName = QStringLiteral("_facade");
+    equip.black = true;
+    equip.kindOfNames << QStringLiteral("Slash") << QStringLiteral("BasicCard")
+                      << QStringLiteral("Card");
+    probe.worldView.self.equips << equip;
+
+    AICardView judgingCard;
+    judgingCard.cardId = 18;
+    judgingCard.effectiveId = 18;
+    judgingCard.objectName = QStringLiteral("indulgence");
+    judgingCard.className = QStringLiteral("Indulgence");
+    judgingCard.suit = int(Card::Heart);
+    judgingCard.number = 6;
+    judgingCard.red = true;
+    judgingCard.kindOfNames << QStringLiteral("Indulgence")
+                            << QStringLiteral("DelayedTrick")
+                            << QStringLiteral("TrickCard") << QStringLiteral("Card");
+    probe.worldView.self.judgingArea << judgingCard;
+
+    AISkillView visibleSkill;
+    visibleSkill.skillName = QStringLiteral("lianying");
+    visibleSkill.instanceId = 4;
+    visibleSkill.source = int(SourceAcquired);
+    visibleSkill.hasAmountOverride = true;
+    visibleSkill.amount = 2;
+    visibleSkill.hasPrivateState = true;
+    visibleSkill.state.insert(QStringLiteral("count"), 2);
+    visibleSkill.state.insert(QStringLiteral("nested"),
+                              QJsonObject({{QStringLiteral("answer"), 42}}));
+    visibleSkill.correctState.insert(QStringLiteral("bonus"), 1);
+    probe.worldView.self.skills << visibleSkill;
+
+    AISkillView invalidSkill;
+    invalidSkill.skillName = QStringLiteral("lianying");
+    invalidSkill.instanceId = 5;
+    invalidSkill.source = int(SourceAcquired);
+    invalidSkill.invalid = true;
+    invalidSkill.correctState.insert(QStringLiteral("public"), 3);
+    probe.worldView.self.skills << invalidSkill;
     probe.pattern = QStringLiteral("not-migrated");
     const AIResult loadedHandler = room.roomRuntime()->ai().decideShadow(probe);
     if (loadedHandler.handled || !loadedHandler.errorCode.isEmpty())
@@ -473,7 +591,9 @@ static bool productionIsolatedScriptAndShadowAudit(Room &room)
             "return { kind = 'use_card', card = '@facade=metatable' } end; "
             "local checks = {{'objectName', request.viewer}, {'getSeat', 3}, {'getHp', 2}, "
             "{'getMaxHp', 4}, {'getHandcardNum', 5}, {'getPhase', sgs.Player_Play}, "
-            "{'isAlive', true}, {'isRemoved', false}, {'faceUp', false}, {'isChained', true}, "
+            "{'isAlive', true}, {'isDead', false}, {'isRemoved', false}, "
+            "{'isKongcheng', false}, {'isWounded', true}, {'faceUp', false}, "
+            "{'isChained', true}, "
             "{'getKingdom', 'wu'}, {'getRole', 'rebel'}, {'getGeneralName', 'luxun'}, "
             "{'getGeneral2Name', 'sujiang'}}; "
             "for _, check in ipairs(checks) do local method = p[check[1]]; "
@@ -481,9 +601,51 @@ static bool productionIsolatedScriptAndShadowAudit(Room &room)
             "return { kind = 'use_card', card = '@facade=' .. check[1] } end end; "
             "if p:getMark('facade-mark') ~= 7 then "
             "return { kind = 'use_card', card = '@facade=getMark' } end; "
-            "for _, method_name in ipairs({'getGeneral', 'getEquips', 'getTag', 'distanceTo', "
+            "if not p:hasSkill('lianying') or not p:hasSkill('lianying#4') "
+            "or p:hasSkill('lianying#5') or p:hasSkill('missing') then "
+            "return { kind = 'use_card', card = '@facade=hasSkill' } end; "
+            "local equips = p:getEquips(); local card = equips[1]; "
+            "if #equips ~= 1 or getmetatable(card) ~= CardView then "
+            "return { kind = 'use_card', card = '@facade=getEquips' } end; "
+            "local card_checks = {{'getId', 17}, {'getEffectiveId', 3}, "
+            "{'objectName', 'slash'}, {'getClassName', 'Slash'}, "
+            "{'getSuit', sgs.Card_Spade}, {'getNumber', 9}, "
+            "{'getSkillName', '_facade'}, {'isRed', false}, {'isBlack', true}}; "
+            "for _, check in ipairs(card_checks) do local method = card[check[1]]; "
+            "if type(method) ~= 'function' or method(card) ~= check[2] then "
+            "return { kind = 'use_card', card = '@facade=' .. check[1] } end end; "
+            "if not card:isKindOf('Slash') or not card:isKindOf('BasicCard') "
+            "or not card:isKindOf('Card') or card:isKindOf('TrickCard') then "
+            "return { kind = 'use_card', card = '@facade=isKindOf' } end; "
+            "local judging = p:getJudgingArea(); "
+            "if #judging ~= 1 or getmetatable(judging[1]) ~= CardView "
+            "or not judging[1]:isKindOf('DelayedTrick') or not judging[1]:isRed() then "
+            "return { kind = 'use_card', card = '@facade=getJudgingArea' } end; "
+            "local skills = p:getSkills(); local skill = skills[1]; "
+            "if #skills ~= 2 or getmetatable(skill) ~= SkillView "
+            "or skill:objectName() ~= 'lianying' or skill:getInstanceId() ~= 4 "
+            "or skill:getSource() ~= 1 or skill:isInvalid() "
+            "or not skill:hasAmountOverride() or skill:getAmount() ~= 2 then "
+            "return { kind = 'use_card', card = '@facade=getSkills' } end; "
+            "local private_state = skill:getState(); "
+            "if private_state.count ~= 2 or private_state.nested.answer ~= 42 "
+            "or skill:getCorrectStateValue('bonus') ~= 1 then "
+            "return { kind = 'use_card', card = '@facade=getState' } end; "
+            "private_state.count = 99; private_state.nested.answer = 0; "
+            "if skill:getStateValue('count') ~= 2 "
+            "or skill:getStateValue('nested').answer ~= 42 "
+            "or skills[2]:getState() ~= nil "
+            "or skills[2]:getCorrectStateValue('public') ~= 3 then "
+            "return { kind = 'use_card', card = '@facade=state-copy' } end; "
+            "for _, method_name in ipairs({'getGeneral', 'getRoom', 'getTag', 'distanceTo', "
             "'canSlash', 'setFlags', 'addMark'}) do if p[method_name] ~= nil then "
             "return { kind = 'use_card', card = '@facade=' .. method_name } end end; "
+            "for _, method_name in ipairs({'getRealCard', 'setSkillName', 'deleteLater', 'getRoom'}) "
+            "do if card[method_name] ~= nil then "
+            "return { kind = 'use_card', card = '@facade=card-' .. method_name } end end; "
+            "for _, method_name in ipairs({'setStateValue', 'setCorrectStateValue', "
+            "'setAmount', 'getRoom'}) do if skill[method_name] ~= nil then "
+            "return { kind = 'use_card', card = '@facade=skill-' .. method_name } end end; "
             "if self.world_view ~= request.world_view or prompt ~= request.prompt then "
             "return { kind = 'use_card', card = '@facade=request' } end; "
             "return { kind = 'pass' } end; "
@@ -503,8 +665,12 @@ static bool productionIsolatedScriptAndShadowAudit(Room &room)
     probe.pattern = QStringLiteral("facade-probe");
     const AIResult facadeResult = room.roomRuntime()->ai().decideShadow(probe);
     if (!facadeResult.handled || facadeResult.kind != AIResult::Pass
-        || !facadeResult.errorCode.isEmpty())
+        || !facadeResult.errorCode.isEmpty()) {
+        qCritical() << "Value facade probe failed"
+                    << facadeResult.handled << facadeResult.kind
+                    << facadeResult.errorCode << facadeResult.action.legacyCardString;
         return false;
+    }
 
     AIRequest skillProbe = probe;
     skillProbe.pattern = QStringLiteral("shadow-use");
@@ -651,23 +817,85 @@ static bool aiWorldViewIsScopedAndRevisioned()
                         QList<ServerPlayer *>() << other);
     other->setMark(QStringLiteral("server_internal_mark"), 4);
 
+    if (!Sanguosha->getSkill(QStringLiteral("lianying")))
+        return false;
+    const int viewerSkillId = viewer->createSkillInstance(
+        QStringLiteral("lianying"), SourceAcquired, true);
+    const int otherSkillId = other->createSkillInstance(
+        QStringLiteral("lianying"), SourceAcquired, true);
+    if (viewerSkillId <= 0 || otherSkillId <= 0)
+        return false;
+
+    QVariantMap nestedState;
+    nestedState.insert(QStringLiteral("answer"), 42);
+    viewer->Player::setSkillInstanceStateValue(
+        QStringLiteral("lianying"), viewerSkillId, QStringLiteral("count"), 2);
+    viewer->Player::setSkillInstanceStateValue(
+        QStringLiteral("lianying"), viewerSkillId, QStringLiteral("nested"), nestedState);
+    viewer->Player::setSkillInstanceStateValue(
+        QStringLiteral("lianying"), viewerSkillId, QStringLiteral("unsafe"),
+        QVariant::fromValue(static_cast<QObject *>(viewer)));
+    if (!viewer->setSkillInstanceCorrectStateValue(
+            QStringLiteral("lianying"), viewerSkillId, QStringLiteral("bonus"), 1))
+        return false;
+    other->Player::setSkillInstanceStateValue(
+        QStringLiteral("lianying"), otherSkillId, QStringLiteral("secret"), 9);
+    if (!other->setSkillInstanceCorrectStateValue(
+            QStringLiteral("lianying"), otherSkillId, QStringLiteral("public"), 3))
+        return false;
+
     const quint64 revision = room->roomRuntime()->stateRevision();
     const AIRequest request = RoomTestAccess::makeRequest(*room, viewer, AIRequest::UseCard);
+    const Card *physicalHandCard = Sanguosha->getCard(0);
     if (room->roomRuntime()->stateRevision() != revision
         || request.stateRevision != revision || request.worldView.revision != revision
         || request.worldView.self.objectName != viewer->objectName()
+        || !request.worldView.self.alive || request.worldView.self.dead
+        || request.worldView.self.kongcheng || !request.worldView.self.wounded
         || request.worldView.currentPlayer != viewer->objectName()
         || request.worldView.currentPhase != int(Player::Play)
-        || request.worldView.handCards.size() != 1
-        || request.worldView.handCards.first().cardId != 0
+        || !physicalHandCard || request.worldView.handCards.size() != 1
         || request.worldView.players.size() != 1)
+        return false;
+
+    const AICardView &handCardView = request.worldView.handCards.first();
+    if (handCardView.cardId != physicalHandCard->getId()
+        || handCardView.effectiveId != physicalHandCard->getEffectiveId()
+        || handCardView.objectName != physicalHandCard->objectName()
+        || handCardView.className != physicalHandCard->getClassName()
+        || handCardView.suit != int(physicalHandCard->getSuit())
+        || handCardView.number != physicalHandCard->getNumber()
+        || handCardView.skillName != physicalHandCard->getSkillName(false)
+        || handCardView.red != physicalHandCard->isRed()
+        || handCardView.black != physicalHandCard->isBlack()
+        || !handCardView.kindOfNames.contains(physicalHandCard->getClassName())
+        || !handCardView.kindOfNames.contains(QStringLiteral("Card")))
+        return false;
+
+    if (request.worldView.self.skills.size() != 1)
+        return false;
+    const AISkillView &selfSkill = request.worldView.self.skills.first();
+    if (selfSkill.skillName != QStringLiteral("lianying")
+        || selfSkill.instanceId != viewerSkillId || !selfSkill.hasPrivateState
+        || selfSkill.state.value(QStringLiteral("count")).toInt() != 2
+        || selfSkill.state.value(QStringLiteral("nested")).toObject()
+               .value(QStringLiteral("answer")).toInt() != 42
+        || selfSkill.state.contains(QStringLiteral("unsafe"))
+        || selfSkill.correctState.value(QStringLiteral("bonus")).toInt() != 1)
         return false;
 
     const AIPlayerView &otherView = request.worldView.players.first();
     if (otherView.objectName != other->objectName() || otherView.handcardCount != 1
         || otherView.publicMarks.value(QStringLiteral("public_mark")) != 2
         || otherView.publicMarks.contains(QStringLiteral("private_mark"))
-        || otherView.publicMarks.contains(QStringLiteral("server_internal_mark")))
+        || otherView.publicMarks.contains(QStringLiteral("server_internal_mark"))
+        || otherView.skills.size() != 1)
+        return false;
+    const AISkillView &otherSkill = otherView.skills.first();
+    if (otherSkill.skillName != QStringLiteral("lianying")
+        || otherSkill.instanceId != otherSkillId || otherSkill.hasPrivateState
+        || !otherSkill.state.isEmpty()
+        || otherSkill.correctState.value(QStringLiteral("public")).toInt() != 3)
         return false;
 
     AIResult result;
@@ -704,6 +932,12 @@ static bool aiWorldViewIsScopedAndRevisioned()
     if (room->roomRuntime()->stateRevision() <= limitationRevision)
         return false;
 
+    const quint64 stateRevision = room->roomRuntime()->stateRevision();
+    viewer->Player::setSkillInstanceStateValue(
+        QStringLiteral("lianying"), viewerSkillId, QStringLiteral("count"), 3);
+    if (room->roomRuntime()->stateRevision() <= stateRevision)
+        return false;
+
     const quint64 skillRevision = room->roomRuntime()->stateRevision();
     viewer->createSkillInstance(QStringLiteral("ai_world_view_test_skill"), SourceAcquired, true);
     if (room->roomRuntime()->stateRevision() <= skillRevision)
@@ -713,6 +947,9 @@ static bool aiWorldViewIsScopedAndRevisioned()
     result.decisionId = fresh.decisionId;
     result.stateRevision = fresh.stateRevision;
     return fresh.worldView.revision == fresh.stateRevision
+        && fresh.worldView.self.skills.size() == 1
+        && fresh.worldView.self.skills.first().state
+               .value(QStringLiteral("count")).toInt() == 3
         && RoomTestAccess::applyResult(*room, viewer, fresh, result, use);
 }
 
@@ -764,7 +1001,7 @@ static bool loadAiShadowHandler(Room &room)
     LuaRuntime::Binding luaBinding(room.roomRuntime()->ai().lua());
     lua_State *L = room.roomRuntime()->ai().lua().state();
     return luaL_dostring(L,
-        "ai_register_handler('use_card', function(request) "
+        "ai_register_handler('use_card', function(self, request) "
         "if request.pattern == 'pass' then return { kind = 'pass' } end "
         "if request.pattern == 'world' then local world = request.world_view; "
         "if world and world.revision == request.state_revision "
@@ -787,6 +1024,7 @@ static bool aiShadowParsesPassAndUseCard(Room &room)
     AIRequest request;
     request.kind = AIRequest::UseCard;
     request.viewerObjectName = QStringLiteral("ai_player");
+    request.worldView.self.objectName = request.viewerObjectName;
     request.pattern = QStringLiteral("pass");
     const AIResult pass = room.roomRuntime()->ai().decideShadow(request);
     if (!pass.handled || pass.kind != AIResult::Pass || !pass.errorCode.isEmpty())
@@ -794,7 +1032,6 @@ static bool aiShadowParsesPassAndUseCard(Room &room)
 
     request.stateRevision = 42;
     request.worldView.revision = 42;
-    request.worldView.self.objectName = request.viewerObjectName;
     AICardView handCard;
     handCard.cardId = 7;
     request.worldView.handCards << handCard;
@@ -844,12 +1081,13 @@ static bool aiInstructionLimitRebuildsRuntime(Room &room)
         LuaRuntime::Binding luaBinding(room.roomRuntime()->ai().lua());
         lua_State *L = room.roomRuntime()->ai().lua().state();
         if (luaL_dostring(L,
-            "ai_register_handler('activate', function(request) while true do end end)") != 0)
+            "ai_register_handler('activate', function(self, request) while true do end end)") != 0)
             return false;
     }
     AIRequest request;
     request.kind = AIRequest::Activate;
     request.viewerObjectName = QStringLiteral("ai_player");
+    request.worldView.self.objectName = request.viewerObjectName;
     const AIResult result = room.roomRuntime()->ai().decideShadow(request);
     return result.errorCode == QStringLiteral("AI_INSTRUCTION_LIMIT")
         && room.roomRuntime()->ai().lua().rawState()
@@ -868,6 +1106,10 @@ int main(int argc, char *argv[])
     if (!isolatedInitializationIsBudgeted()) {
         qCritical() << "Isolated AI initialization did not fail within its instruction budget";
         return 16;
+    }
+    if (!sharedFacadesAreAvailableToAllDecisions()) {
+        qCritical() << "Shared AI facades were not available to every isolated decision";
+        return 22;
     }
     ScopedConfigValue isolatedScripts(QStringLiteral("AiIsolatedScripts"),
                                       QStringList({QStringLiteral("ask-for-use-card.lua"),
