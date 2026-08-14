@@ -12,9 +12,10 @@ GameRng::GameRng()
 {
 }
 
-void GameRng::seed(quint32 seed)
+void GameRng::seed(quint64 seed)
 {
-    m_generator = QRandomGenerator(seed);
+    const quint32 seedWords[] = { quint32(seed), quint32(seed >> 32) };
+    m_generator = QRandomGenerator(seedWords);
 }
 
 int GameRng::bounded(int upperExclusive)
@@ -50,10 +51,12 @@ int qsanRandomBounded(int upperExclusive)
     return upperExclusive > 0 ? fallbackRng.bounded(upperExclusive) : 0;
 }
 
-void qsanSeedRandom(quint32 seed)
+void qsanSeedRandom(quint64 seed)
 {
     if (currentGameRng)
         currentGameRng->seed(seed);
-    else
-        fallbackRng = QRandomGenerator(seed);
+    else {
+        const quint32 seedWords[] = { quint32(seed), quint32(seed >> 32) };
+        fallbackRng = QRandomGenerator(seedWords);
+    }
 }

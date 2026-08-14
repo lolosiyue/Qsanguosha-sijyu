@@ -3038,7 +3038,6 @@ void Engine::godLottery(QStringList &list) const
 		return;
 	qDebug("godLottery");
 
-	qsrand(QDateTime::currentMSecsSinceEpoch());
 	Config.beginGroup("godlottery");
 	foreach (const General *general, getAllGenerals()) {
 		if(general->getKingdom()=="god"&&general->objectName().contains("shen")){

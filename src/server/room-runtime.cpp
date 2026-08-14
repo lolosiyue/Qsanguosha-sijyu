@@ -46,9 +46,10 @@ bool RoomRuntime::initialize(QString *error)
     return true;
 }
 
-void RoomRuntime::seedRandom(quint32 seed)
+void RoomRuntime::seedRandom(quint64 seed)
 {
     m_rng.seed(seed);
+    m_lua.setSeed(seed);
     m_ai.seed(seed);
 }
 

@@ -30,7 +30,8 @@ thread_local LuaRuntime *currentRuntime = nullptr;
 }
 
 LuaRuntime::LuaRuntime(Kind kind)
-    : m_kind(kind), m_state(nullptr), m_generation(0), m_owner(nullptr)
+    : m_kind(kind), m_state(nullptr), m_generation(0), m_seed(0),
+      m_hasSeed(false), m_owner(nullptr)
 {
 }
 
@@ -59,9 +60,13 @@ bool LuaRuntime::initialize(QString *error)
     if (m_state)
         return true;
 
-    m_state = m_memory.hardLimit > 0
-        ? CreateLuaState(&LuaRuntime::memoryAllocator, &m_memory)
-        : CreateLuaState();
+    if (m_memory.hardLimit > 0) {
+        m_state = m_hasSeed
+            ? CreateLuaState(&LuaRuntime::memoryAllocator, &m_memory, m_seed)
+            : CreateLuaState(&LuaRuntime::memoryAllocator, &m_memory);
+    } else {
+        m_state = m_hasSeed ? CreateLuaState(m_seed) : CreateLuaState();
+    }
     if (!m_state) {
         if (error)
             *error = QStringLiteral("luaL_newstate failed");
@@ -75,6 +80,13 @@ bool LuaRuntime::initialize(QString *error)
         runtimeRegistry().insert(m_state, this);
     }
     return true;
+}
+
+void LuaRuntime::setSeed(quint64 seed)
+{
+    Q_ASSERT(!m_state);
+    m_seed = seed;
+    m_hasSeed = true;
 }
 
 void LuaRuntime::setMemoryLimits(size_t softLimit, size_t hardLimit)

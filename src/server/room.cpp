@@ -26,7 +26,6 @@
 #include "server-info.h"
 #include "game-snapshot.h"
 #include "skill-instance-utils.h"
-#include <ctime>
 #include <algorithm>
 #include <functional>
 #include <limits>
@@ -218,21 +217,23 @@ void Room::clearControllerPileVisible(ServerPlayer *target, ServerPlayer *contro
 	}
 }
 
-Room::Room(QObject*parent, const QString&mode)
+Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionConfig)
 	: QThread(parent), m_processingScheduledExtraTurns(false), m_notifier(std::make_unique<RoomNotifier>(*this)),
 	mode(mode), player_count(Sanguosha->getPlayerCount(mode)), current(nullptr),
 	m_drawPile(&pile1), m_discardPile(&pile2), game_state(0), game_paused(false),
 	thread(nullptr),//game_started(false), game_finished(false),
 	thread_3v3(nullptr), thread_xmode(nullptr), thread_1v1(nullptr), _m_semRaceRequest(0), _m_semRoomMutex(1),
 	_m_raceStarted(false), scenario(Sanguosha->getScenario(mode)), m_surrenderRequestReceived(false), _virtual(false),
-	m_runtime(std::make_unique<RoomRuntime>(this)),
-	m_lastSnapshotTurn(0)
+	m_lastSnapshotTurn(0), m_sessionConfig(sessionConfig),
+	m_runtime(std::make_unique<RoomRuntime>(this))
 {
 	static int s_global_room_id = 0;
 	_m_Id = s_global_room_id++;
 	_m_lastMovementId = 0;
 	m_playOrderReversed = false;
 
+	m_runtime->seedRandom(m_sessionConfig.seed);
+	GameRng::Binding rngBinding(m_runtime->rng());
 	QString runtimeError;
 	const bool runtimeReady = m_runtime->initialize(&runtimeError);
 	if (!runtimeReady) {
@@ -240,7 +241,6 @@ Room::Room(QObject*parent, const QString&mode)
 		m_runtime->lua().shutdown();
 	} else {
 		LuaRuntime::Binding luaBinding(m_runtime->lua());
-		GameRng::Binding rngBinding(m_runtime->rng());
 		EngineRuntimeContextScope contextScope(*Sanguosha, this);
 		pile1 = Sanguosha->getRandomCards(true);
 	}
@@ -4506,6 +4506,7 @@ void Room::processClientPacket(const QString&request)
 
 void Room::addRobotCommand(ServerPlayer*player, const QVariant&arg)
 {
+	GameRng::Binding rngBinding(m_runtime->rng());
 	if (player&&!player->isOwner())
 		return;
 
@@ -4519,26 +4520,14 @@ void Room::addRobotCommand(ServerPlayer*player, const QVariant&arg)
 		if (p->getState() == "robot") r++;
 	}
 
-	static bool seeded = false;
-	if (!seeded) {
-		qsrand(time(NULL));
-		seeded = true;
+	QStringList devs;
+	QStringList all_generals;
+	foreach(const General*general, Sanguosha->findChildren<const General*>()) {
+		all_generals << general->objectName();
+		if (general->objectName().contains("dev_"))
+			devs << general->objectName();
 	}
-
-	static QStringList devs;
-	static QStringList all_generals;
-	if (all_generals.isEmpty()) {
-		foreach(const General* general, Sanguosha->findChildren<const General*>()) {
-			all_generals << general->objectName();
-		}
-	}
-	if(devs.length()<add_num){
-		foreach(const General*general, Sanguosha->findChildren<const General*>()){
-			if(general->objectName().contains("dev_"))
-				devs << general->objectName();
-		}
-		qShuffle(devs);
-	}
+	qShuffle(devs);
 
 	for (int i = 0; i < add_num; i++){
 		if (isFull()) break;
@@ -5026,8 +5015,10 @@ void Room::run()
 	LuaRuntime::Binding luaBinding(m_runtime->lua());
 	GameRng::Binding rngBinding(m_runtime->rng());
 	EngineRuntimeContextScope contextScope(*Sanguosha, this);
-	// initialize random seed for later use
-	m_runtime->seedRandom(QTime(0, 0, 0).secsTo(QTime::currentTime()) + quint32(_m_Id));
+	LogMessage seedLog;
+	seedLog.type = "#GameSeed";
+	seedLog.arg = QString::number(m_sessionConfig.seed);
+	sendLog(seedLog);
 	AIHumanized = Config.value("AIHumanized", true).toBool();
 	Config.AIDelay = Config.OriginAIDelay;
 	// Scale AIDelay down for large player counts (>8) to reduce lag in 20-player games.
