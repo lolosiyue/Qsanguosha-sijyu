@@ -21,6 +21,7 @@ public:
     LuaRuntime &operator=(const LuaRuntime &) = delete;
 
     bool initialize(QString *error = nullptr);
+    void setSeed(quint64 seed);
     void setMemoryLimits(size_t softLimit, size_t hardLimit);
     bool addPackagePath(const QString &pattern, QString *error = nullptr);
     bool loadScript(const QString &path, QString *error = nullptr);
@@ -74,6 +75,8 @@ private:
     Kind m_kind;
     lua_State *m_state;
     quint64 m_generation;
+    quint64 m_seed;
+    bool m_hasSeed;
     QThread *m_owner;
     QRecursiveMutex m_executionMutex;
     MemoryState m_memory;

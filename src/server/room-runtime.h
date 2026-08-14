@@ -53,7 +53,7 @@ public:
     quint64 nextDecisionId() { return ++m_nextDecisionId; }
     quint64 stateRevision() const { return m_stateRevision; }
     void advanceStateRevision(StateMutation mutation);
-    void seedRandom(quint32 seed);
+    void seedRandom(quint64 seed);
 
     void addPackage(Package *package);
     void setPackage(Package *package);

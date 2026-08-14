@@ -284,8 +284,6 @@ public:
     void getRandomSkill(ServerPlayer *player, bool need_trans = false) const
     {
         Room *room = player->getRoom();
-        qsrand(QTime(0, 0, 0).secsTo(QTime::currentTime()));
-
         QStringList all_generals = Sanguosha->getLimitedGeneralNames();
         QList<ServerPlayer *> players = room->getAllPlayers();
         foreach (ServerPlayer *player, players) {
@@ -391,7 +389,6 @@ public:
                 removeLordSkill(player);
 
                 room->installEquip(player, "SilverLion");
-                qsrand(QTime(0, 0, 0).secsTo(QTime::currentTime()));
                 if ((qrand() % 2) == 1) {
                     room->acquireSkill(player, "silue");
                     room->acquireSkill(player, "kedi");

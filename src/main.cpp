@@ -32,6 +32,12 @@
 
 int main(int argc, char *argv[]) {
     CrashHandler::install();
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--seed") == 0) {
+            qputenv("QT_HASH_SEED", "0");
+            break;
+        }
+    }
 
     // 隱藏入口:-crashtest <type> 觸發一次崩潰用於驗證 crash handler
     if (argc > 2 && strcmp(argv[1], "-crashtest") == 0) {
@@ -105,6 +111,23 @@ int main(int argc, char *argv[]) {
     if (earlyLogIdx >= 0 && earlyLogIdx + 1 < qApp->arguments().size())
         Server::setHeadlessLogFile(qApp->arguments().at(earlyLogIdx + 1));
 
+    qsrand(QTime(0, 0, 0).secsTo(QTime::currentTime()));
+
+    const QStringList arguments = qApp->arguments();
+    const int seedIdx = arguments.indexOf("--seed");
+    if (seedIdx >= 0) {
+        const QString candidate = seedIdx + 1 < arguments.size() ? arguments.at(seedIdx + 1) : QString();
+        const QString seedText = candidate.startsWith("--") ? QString() : candidate;
+        QString seedError;
+        if (!Server::configureGameSeed(seedText, &seedError)) {
+            if (headlessApp)
+                Server::writeHeadlessLog("ERROR: " + seedError);
+            else
+                qCritical().noquote() << seedError;
+            return 1;
+        }
+    }
+
     QCoreApplication::addLibraryPath(QCoreApplication::applicationDirPath() + "/plugins");
 
     // 若 exe 旁放了 Qt6 DLL，Qt 會把 prefix 重定位到 exe 目錄，導致 multimedia 後端
@@ -133,9 +156,6 @@ int main(int argc, char *argv[]) {
     } else
         QDir::setCurrent(qApp->applicationFilePath().replace("games", "share"));
 #endif
-
-    // initialize random seed for later use
-    qsrand(QTime(0, 0, 0).secsTo(QTime::currentTime()));
 
     QTranslator qt_translator, translator;
     qt_translator.load("qt_zh_CN.qm");

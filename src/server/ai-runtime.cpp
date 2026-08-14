@@ -306,9 +306,11 @@ void AiLuaRuntime::shutdown()
     m_lua.shutdown();
 }
 
-void AiLuaRuntime::seed(quint32 seed)
+void AiLuaRuntime::seed(quint64 seed)
 {
-    m_rng.seed(seed ^ 0x9e3779b9u);
+    const quint64 aiSeed = seed ^ Q_UINT64_C(0x9e3779b97f4a7c15);
+    m_rng.seed(aiSeed);
+    m_lua.setSeed(aiSeed);
 }
 
 AIResult AiLuaRuntime::decideShadow(const AIRequest &request)

@@ -1,16 +1,74 @@
 #include "util.h"
 #include "lua.hpp"
 #include "card.h"
+#include "game-rng.h"
 
 #include <QCoreApplication>
 #include <QDebug>
 #include <QRegularExpression>
+#include <cmath>
 #if !defined(QSAN_ENGINE_BUILD)
 #include <QMessageBox>
 #endif
 
 extern "C" {
     int luaopen_sgs(lua_State *);
+}
+
+namespace {
+
+unsigned int luaHashSeed(quint64 seed)
+{
+    return unsigned(seed) ^ unsigned(seed >> 32);
+}
+
+int luaGameRandom(lua_State *L)
+{
+    const lua_Number random = lua_Number(qsanRandomBounded(0x7fffffff))
+        / lua_Number(0x7fffffff);
+    switch (lua_gettop(L)) {
+    case 0:
+        lua_pushnumber(L, random);
+        break;
+    case 1: {
+        const lua_Number upper = luaL_checknumber(L, 1);
+        luaL_argcheck(L, lua_Number(1) <= upper, 1, "interval is empty");
+        lua_pushnumber(L, std::floor(random * upper) + lua_Number(1));
+        break;
+    }
+    case 2: {
+        const lua_Number lower = luaL_checknumber(L, 1);
+        const lua_Number upper = luaL_checknumber(L, 2);
+        luaL_argcheck(L, lower <= upper, 2, "interval is empty");
+        lua_pushnumber(L, std::floor(random * (upper - lower + 1)) + lower);
+        break;
+    }
+    default:
+        return luaL_error(L, "wrong number of arguments");
+    }
+    return 1;
+}
+
+int luaGameRandomSeed(lua_State *L)
+{
+    luaL_checkunsigned(L, 1);
+    return 0;
+}
+
+void installGameRandom(lua_State *L)
+{
+    lua_getglobal(L, "math");
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        return;
+    }
+    lua_pushcfunction(L, &luaGameRandom);
+    lua_setfield(L, -2, "random");
+    lua_pushcfunction(L, &luaGameRandomSeed);
+    lua_setfield(L, -2, "randomseed");
+    lua_pop(L, 1);
+}
+
 }
 
 QVariant GetValueFromLuaState(lua_State *L, const char *table_name, const char *key)
@@ -75,12 +133,34 @@ lua_State *CreateLuaState()
     return L;
 }
 
+lua_State *CreateLuaState(quint64 seed)
+{
+    lua_State *L = luaL_newstate_seeded(luaHashSeed(seed));
+    if (!L)
+        return nullptr;
+    luaL_openlibs(L);
+    installGameRandom(L);
+    luaopen_sgs(L);
+    return L;
+}
+
 lua_State *CreateLuaState(LuaAllocatorFunction allocator, void *userData)
 {
     lua_State *L = lua_newstate(allocator, userData);
     if (!L)
         return nullptr;
     luaL_openlibs(L);
+    luaopen_sgs(L);
+    return L;
+}
+
+lua_State *CreateLuaState(LuaAllocatorFunction allocator, void *userData, quint64 seed)
+{
+    lua_State *L = lua_newstate_seeded(allocator, userData, luaHashSeed(seed));
+    if (!L)
+        return nullptr;
+    luaL_openlibs(L);
+    installGameRandom(L);
     luaopen_sgs(L);
     return L;
 }

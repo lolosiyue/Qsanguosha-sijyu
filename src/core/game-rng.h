@@ -8,7 +8,7 @@ class GameRng
 public:
     GameRng();
 
-    void seed(quint32 seed);
+    void seed(quint64 seed);
     int bounded(int upperExclusive);
 
     static GameRng *current();
@@ -32,6 +32,6 @@ private:
 };
 
 int qsanRandomBounded(int upperExclusive);
-void qsanSeedRandom(quint32 seed);
+void qsanSeedRandom(quint64 seed);
 
 #endif
