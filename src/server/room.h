@@ -6,6 +6,7 @@
 #include "skill-instance-attachment-registry.h"
 #include "skill-execution-registry.h"
 #include "room-runtime.h"
+#include "game-session-config.h"
 
 #include <functional>
 #include <memory>
@@ -60,7 +61,8 @@ public:
     typedef void (Room::*Callback)(ServerPlayer*, const QVariant&);
     typedef bool (Room::*ResponseVerifyFunction)(ServerPlayer*, const QVariant&, void*);
 
-    explicit Room(QObject*parent, const QString&mode);
+    explicit Room(QObject*parent, const QString&mode,
+                  const GameSessionConfig &sessionConfig = GameSessionConfig());
     ~Room();
     ServerPlayer*addSocket(ClientSocket*socket);
     ServerPlayer*addAIPlayer();
@@ -68,6 +70,7 @@ public:
     {
         return _m_Id;
     }
+    quint64 getGameSeed() const { return m_sessionConfig.seed; }
     bool isFull() const;
     bool isFinished() const;
     bool canPause(ServerPlayer*p) const;
@@ -909,6 +912,7 @@ private:
     bool m_surrenderRequestReceived;
     bool _virtual;
     bool m_playOrderReversed;
+    GameSessionConfig m_sessionConfig;
     std::unique_ptr<RoomRuntime> m_runtime;
 
     JsonArray m_fillAGarg;

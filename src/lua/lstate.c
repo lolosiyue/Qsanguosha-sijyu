@@ -263,7 +263,8 @@ void luaE_freethread (lua_State *L, lua_State *L1) {
 }
 
 
-LUA_API lua_State *lua_newstate (lua_Alloc f, void *ud) {
+static lua_State *newstate (lua_Alloc f, void *ud,
+                            unsigned int seed, int seeded) {
   int i;
   lua_State *L;
   global_State *g;
@@ -280,7 +281,7 @@ LUA_API lua_State *lua_newstate (lua_Alloc f, void *ud) {
   g->frealloc = f;
   g->ud = ud;
   g->mainthread = L;
-  g->seed = makeseed(L);
+  g->seed = seeded ? seed : makeseed(L);
   g->uvhead.u.l.prev = &g->uvhead;
   g->uvhead.u.l.next = &g->uvhead;
   g->gcrunning = 0;  /* no GC while building state */
@@ -311,6 +312,17 @@ LUA_API lua_State *lua_newstate (lua_Alloc f, void *ud) {
     L = NULL;
   }
   return L;
+}
+
+
+LUA_API lua_State *lua_newstate (lua_Alloc f, void *ud) {
+  return newstate(f, ud, 0, 0);
+}
+
+
+LUA_API lua_State *lua_newstate_seeded (lua_Alloc f, void *ud,
+                                        unsigned int seed) {
+  return newstate(f, ud, seed, 1);
 }
 
 

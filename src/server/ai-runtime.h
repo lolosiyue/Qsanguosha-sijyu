@@ -54,7 +54,7 @@ public:
 
     bool initialize(QString *error = nullptr);
     void shutdown();
-    void seed(quint32 seed);
+    void seed(quint64 seed);
 
     LuaRuntime &lua() { return m_lua; }
     const LuaRuntime &lua() const { return m_lua; }

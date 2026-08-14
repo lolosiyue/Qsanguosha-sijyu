@@ -941,6 +941,13 @@ LUALIB_API lua_State *luaL_newstate (void) {
 }
 
 
+LUALIB_API lua_State *luaL_newstate_seeded (unsigned int seed) {
+  lua_State *L = lua_newstate_seeded(l_alloc, NULL, seed);
+  if (L) lua_atpanic(L, &panic);
+  return L;
+}
+
+
 LUALIB_API void luaL_checkversion_ (lua_State *L, lua_Number ver) {
   const lua_Number *v = lua_version(L);
   if (v != lua_version(NULL))
