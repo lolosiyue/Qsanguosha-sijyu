@@ -702,8 +702,10 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
   `AiRng` 計算，只把 official/shadow 差異寫入 bounded audit，不影響正式結果。遷移期間
   同一 Room 可按 callback 混用 `LegacyAdapted` 與 `Isolated`，共享 C++ `AiDataStore`。
 - `AiData` 持久化由 C++ `AiDataStore` 管理固定路徑、JSON/大小驗證、process lock 與
-  原子寫入；Isolated VM 不取得 raw `io`、`os`、`coroutine` 或 `sgs`，只可呼叫
-  `ai_data.read()`／`ai_data.write(json)`。
+  原子寫入；Isolated VM 不取得 raw `io`、`os`、`coroutine` 或 native `sgs` binding，
+  只可呼叫 `ai_data.read()`／`ai_data.write(json)`。C++ 會重建只含 primitive enum 的安全
+  `sgs` table；`Player::Phase` 常數由 `Player::staticMetaObject` 的 `QMetaEnum` 反射注入，
+  不另維護手寫 key/value 清單。
 - `AiLegacyDirectCallbacks`、`AiLegacyAdaptedCallbacks`、`AiIsolatedCallbacks`、
   `AiShadowCallbacks` 可用 `activate`、`askForUseCard` 或 `askForUseCard:skill_name`
   設定 callback 級路由；Room 初始化後路由表凍結。
@@ -711,6 +713,23 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
   安裝後由 C++ loader 載入，以 `ai_register_handler(kind, callback)` 註冊 decision handler；
   bootstrap 與腳本頂層執行同樣受 initialization instruction budget 保護，超限時只停用
   該 Room 的 Isolated VM，不阻塞 Room 建立。
+- `askForUseCard` 預設進入 Shadow，`activate` 在自己的 Shadow 階段開始前維持
+  `LegacyAdapted`。預設 isolated script `ask-for-use-card.lua` 提供 pattern 與 skill handler
+  registry；pattern handler 使用 `ai_skill_use[pattern] = function(self, prompt, request)` 註冊。
+  `self` 是純值 snapshot facade `SmartAIView`，`self.player` 是 `PlayerView`。`PlayerView`
+  依 snapshot 現有的 string／number／boolean 欄位與 legacy 命名規則動態建立 scalar getter；
+  `getMark(name)` 是只讀 `public_marks` 的明確 semantic adapter。集合、Room 衍生行為、
+  native-returning 與 mutation 方法不會自動生成，查詢時回 `nil`。skill exact handler 優先於
+  pattern handler。
+  尚未註冊或 facade 無法建立的 request 回傳 unhandled，audit 分類為 `NotCovered`，不得
+  計入 `Mismatch`。
+- 第一個正式 handler 是 `standard-ai.lua` 的 `@@lianying`。目前只覆蓋官方可由
+  `AIWorldView` 完整重現的確定分支：自身 phase 不晚於 `Play` 且 `lianying` mark 為 1；
+  handler 透過 `self.player` 與 C++ 注入的 `sgs.Player_Play` 判斷，不含 phase magic number；
+  需要 move/effect userdata 或友方排序的其餘分支維持 `NotCovered`。
+- Shadow audit 以 `NotCovered`、`Match`、`Mismatch`、`Error` 四態分類並維持固定大小的
+  累積計數；pattern 與 result payload 只保留 capped value/hash。只有 `Match`／`Mismatch`
+  代表可用於穩定度比較的已覆蓋 decision。
 - `AIResult` boundary 限制單字串 64 KiB、選牌 2048 張、目標 64 名；Shadow audit 僅保留
   capped value/hash 摘要與有限筆數，避免 payload 從 Lua allocator 放大到 C++ heap。
 - AI VM 錯誤、無 handler 或 instruction budget 超限時走該玩家現有 legacy AI fallback；

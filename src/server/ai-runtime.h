@@ -17,13 +17,28 @@ enum AiRoute {
     AiRouteShadow
 };
 
+enum AiShadowComparison {
+    AiShadowNotCovered,
+    AiShadowMatch,
+    AiShadowMismatch,
+    AiShadowError
+};
+
 struct AiShadowAuditEntry {
     quint64 decisionId = 0;
     QString callbackName;
     QString skillName;
+    QString pattern;
     AIResult officialResult;
     AIResult shadowResult;
-    bool differs = false;
+    AiShadowComparison comparison = AiShadowNotCovered;
+};
+
+struct AiShadowAuditSummary {
+    quint64 notCovered = 0;
+    quint64 matches = 0;
+    quint64 mismatches = 0;
+    quint64 errors = 0;
 };
 
 class AiRouteRegistry
@@ -65,6 +80,7 @@ public:
                            const QString &skillName, const AIResult &officialResult,
                            const AIResult &shadowResult);
     const QList<AiShadowAuditEntry> &shadowAudits() const { return m_shadowAudits; }
+    const AiShadowAuditSummary &shadowAuditSummary() const { return m_shadowAuditSummary; }
 
 private:
     class ExecutionBinding
@@ -103,6 +119,7 @@ private:
     bool m_instructionLimitExceeded;
     int m_shadowAuditLimit;
     QList<AiShadowAuditEntry> m_shadowAudits;
+    AiShadowAuditSummary m_shadowAuditSummary;
 };
 
 #endif
