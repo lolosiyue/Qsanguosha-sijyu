@@ -6,6 +6,7 @@
 
 #include <QDebug>
 #include <QCryptographicHash>
+#include <QMetaEnum>
 #include <QRegularExpression>
 
 #include <cmath>
@@ -51,6 +52,21 @@ bool sameAiResult(const AIResult &first, const AIResult &second)
                     == second.action.skillActionContext.activationRef
                 && first.action.skillActionContext.sourceRef
                     == second.action.skillActionContext.sourceRef));
+}
+
+const char *shadowComparisonName(AiShadowComparison comparison)
+{
+    switch (comparison) {
+    case AiShadowNotCovered:
+        return "not_covered";
+    case AiShadowMatch:
+        return "match";
+    case AiShadowMismatch:
+        return "mismatch";
+    case AiShadowError:
+        return "error";
+    }
+    return "unknown";
 }
 
 QString auditString(const QString &value)
@@ -101,6 +117,28 @@ void setStringField(lua_State *state, const char *name, const QString &value)
 {
     pushQString(state, value);
     lua_setfield(state, -2, name);
+}
+
+void setIntegerField(lua_State *state, const char *name, int value)
+{
+    lua_pushinteger(state, value);
+    lua_setfield(state, -2, name);
+}
+
+bool pushMetaEnumTable(lua_State *state, const QMetaObject &metaObject,
+                       const char *enumeratorName, const char *fieldPrefix)
+{
+    const int enumeratorIndex = metaObject.indexOfEnumerator(enumeratorName);
+    if (enumeratorIndex < 0)
+        return false;
+
+    const QMetaEnum enumerator = metaObject.enumerator(enumeratorIndex);
+    lua_createtable(state, 0, enumerator.keyCount());
+    for (int index = 0; index < enumerator.keyCount(); ++index) {
+        const QByteArray fieldName = QByteArray(fieldPrefix) + enumerator.key(index);
+        setIntegerField(state, fieldName.constData(), enumerator.value(index));
+    }
+    return true;
 }
 
 void pushAICardView(lua_State *state, const AICardView &card)
@@ -216,7 +254,7 @@ void pushAIWorldView(lua_State *state, const AIWorldView &world)
 AiRouteRegistry::AiRouteRegistry()
     : m_frozen(false)
 {
-    m_decisionRoutes.insert(int(AIRequest::Activate), AiRouteShadow);
+    m_decisionRoutes.insert(int(AIRequest::Activate), AiRouteLegacyAdapted);
     m_decisionRoutes.insert(int(AIRequest::UseCard), AiRouteShadow);
 }
 
@@ -384,19 +422,36 @@ void AiLuaRuntime::recordShadowAudit(const AIRequest &request,
     AiShadowAuditEntry entry;
     entry.decisionId = request.decisionId;
     entry.callbackName = callbackName;
-    entry.skillName = skillName;
+    entry.skillName = auditString(skillName);
+    entry.pattern = auditString(request.pattern);
     entry.officialResult = auditResult(officialResult);
     entry.shadowResult = auditResult(shadowResult);
-    entry.differs = !sameAiResult(officialResult, shadowResult);
+    if (!officialResult.errorCode.isEmpty() || !shadowResult.errorCode.isEmpty()) {
+        entry.comparison = AiShadowError;
+        ++m_shadowAuditSummary.errors;
+    } else if (!shadowResult.handled) {
+        entry.comparison = AiShadowNotCovered;
+        ++m_shadowAuditSummary.notCovered;
+    } else if (sameAiResult(officialResult, shadowResult)) {
+        entry.comparison = AiShadowMatch;
+        ++m_shadowAuditSummary.matches;
+    } else {
+        entry.comparison = AiShadowMismatch;
+        ++m_shadowAuditSummary.mismatches;
+    }
     while (m_shadowAudits.size() >= m_shadowAuditLimit)
         m_shadowAudits.removeFirst();
     m_shadowAudits << entry;
-    if (entry.differs && Config.value(QStringLiteral("AiShadowAuditLog"), false).toBool()) {
+    if (Config.value(QStringLiteral("AiShadowAuditLog"), false).toBool()) {
         qDebug().noquote() << "AiShadowAudit"
-            << QStringLiteral("decision=%1 callback=%2 skill=%3 official=%4/%5 shadow=%6/%7")
-                .arg(entry.decisionId).arg(callbackName, skillName)
+            << QStringLiteral("decision=%1 callback=%2 skill=%3 pattern=%4 comparison=%5 "
+                              "official=%6/%7 shadow=%8/%9 totals=%10/%11/%12/%13")
+                .arg(entry.decisionId).arg(callbackName, entry.skillName, entry.pattern)
+                .arg(QString::fromLatin1(shadowComparisonName(entry.comparison)))
                 .arg(int(officialResult.kind)).arg(officialResult.errorCode)
-                .arg(int(shadowResult.kind)).arg(shadowResult.errorCode);
+                .arg(int(shadowResult.kind)).arg(shadowResult.errorCode)
+                .arg(m_shadowAuditSummary.notCovered).arg(m_shadowAuditSummary.matches)
+                .arg(m_shadowAuditSummary.mismatches).arg(m_shadowAuditSummary.errors);
     }
 }
 
@@ -540,6 +595,13 @@ bool AiLuaRuntime::installSandbox(QString *error)
         lua_pushnil(state);
         lua_setglobal(state, *name);
     }
+
+    if (!pushMetaEnumTable(state, Player::staticMetaObject, "Phase", "Player_")) {
+        if (error)
+            *error = QStringLiteral("Player::Phase meta enum is unavailable");
+        return false;
+    }
+    lua_setglobal(state, "sgs");
     return true;
 }
 
@@ -565,8 +627,10 @@ bool AiLuaRuntime::loadConfiguredScripts(QString *error)
 {
     static const QRegularExpression fileNamePattern(
         QStringLiteral("^[A-Za-z0-9_-]+\\.lua$"));
-    foreach (const QString &configuredName,
-             Config.value(QStringLiteral("AiIsolatedScripts")).toStringList()) {
+    const QStringList defaultScripts({QStringLiteral("ask-for-use-card.lua"),
+                                      QStringLiteral("standard-ai.lua")});
+    foreach (const QString &configuredName, Config.value(
+                 QStringLiteral("AiIsolatedScripts"), defaultScripts).toStringList()) {
         const QString fileName = configuredName.trimmed();
         if (!fileNamePattern.match(fileName).hasMatch()) {
             if (error)
