@@ -6,6 +6,7 @@
 
 #include <QDebug>
 #include <QCryptographicHash>
+#include <QJsonArray>
 #include <QMetaEnum>
 #include <QRegularExpression>
 
@@ -125,7 +126,7 @@ void setIntegerField(lua_State *state, const char *name, int value)
     lua_setfield(state, -2, name);
 }
 
-bool pushMetaEnumTable(lua_State *state, const QMetaObject &metaObject,
+bool setMetaEnumFields(lua_State *state, const QMetaObject &metaObject,
                        const char *enumeratorName, const char *fieldPrefix)
 {
     const int enumeratorIndex = metaObject.indexOfEnumerator(enumeratorName);
@@ -133,7 +134,6 @@ bool pushMetaEnumTable(lua_State *state, const QMetaObject &metaObject,
         return false;
 
     const QMetaEnum enumerator = metaObject.enumerator(enumeratorIndex);
-    lua_createtable(state, 0, enumerator.keyCount());
     for (int index = 0; index < enumerator.keyCount(); ++index) {
         const QByteArray fieldName = QByteArray(fieldPrefix) + enumerator.key(index);
         setIntegerField(state, fieldName.constData(), enumerator.value(index));
@@ -143,9 +143,11 @@ bool pushMetaEnumTable(lua_State *state, const QMetaObject &metaObject,
 
 void pushAICardView(lua_State *state, const AICardView &card)
 {
-    lua_createtable(state, 0, 6);
+    lua_createtable(state, 0, 10);
     lua_pushinteger(state, card.cardId);
     lua_setfield(state, -2, "id");
+    lua_pushinteger(state, card.effectiveId);
+    lua_setfield(state, -2, "effective_id");
     setStringField(state, "name", card.objectName);
     setStringField(state, "class_name", card.className);
     lua_pushinteger(state, card.suit);
@@ -153,6 +155,16 @@ void pushAICardView(lua_State *state, const AICardView &card)
     lua_pushinteger(state, card.number);
     lua_setfield(state, -2, "number");
     setStringField(state, "skill_name", card.skillName);
+    lua_pushboolean(state, card.red);
+    lua_setfield(state, -2, "red");
+    lua_pushboolean(state, card.black);
+    lua_setfield(state, -2, "black");
+    lua_createtable(state, int(card.kindOfNames.size()), 0);
+    for (int index = 0; index < card.kindOfNames.size(); ++index) {
+        pushQString(state, card.kindOfNames.at(index));
+        lua_rawseti(state, -2, index + 1);
+    }
+    lua_setfield(state, -2, "kind_of");
 }
 
 void pushAICards(lua_State *state, const QList<AICardView> &cards)
@@ -164,9 +176,53 @@ void pushAICards(lua_State *state, const QList<AICardView> &cards)
     }
 }
 
+void pushAIJsonValue(lua_State *state, const QJsonValue &value)
+{
+    switch (value.type()) {
+    case QJsonValue::Null:
+    case QJsonValue::Undefined:
+        lua_pushnil(state);
+        break;
+    case QJsonValue::Bool:
+        lua_pushboolean(state, value.toBool());
+        break;
+    case QJsonValue::Double: {
+        const double number = value.toDouble();
+        const lua_Integer integer = lua_Integer(number);
+        if (double(integer) == number)
+            lua_pushinteger(state, integer);
+        else
+            lua_pushnumber(state, lua_Number(number));
+        break;
+    }
+    case QJsonValue::String:
+        pushQString(state, value.toString());
+        break;
+    case QJsonValue::Array: {
+        const QJsonArray array = value.toArray();
+        lua_createtable(state, array.size(), 0);
+        for (int index = 0; index < array.size(); ++index) {
+            pushAIJsonValue(state, array.at(index));
+            lua_rawseti(state, -2, index + 1);
+        }
+        break;
+    }
+    case QJsonValue::Object: {
+        const QJsonObject object = value.toObject();
+        lua_createtable(state, 0, object.size());
+        for (auto item = object.constBegin(); item != object.constEnd(); ++item) {
+            pushAIJsonValue(state, item.value());
+            const QByteArray key = item.key().toUtf8();
+            lua_setfield(state, -2, key.constData());
+        }
+        break;
+    }
+    }
+}
+
 void pushAISkillView(lua_State *state, const AISkillView &skill)
 {
-    lua_createtable(state, 0, 6);
+    lua_createtable(state, 0, 8);
     setStringField(state, "name", skill.skillName);
     lua_pushinteger(state, skill.instanceId);
     lua_setfield(state, -2, "instance_id");
@@ -178,6 +234,12 @@ void pushAISkillView(lua_State *state, const AISkillView &skill)
     lua_setfield(state, -2, "has_amount_override");
     lua_pushinteger(state, skill.amount);
     lua_setfield(state, -2, "amount");
+    if (skill.hasPrivateState) {
+        pushAIJsonValue(state, skill.state);
+        lua_setfield(state, -2, "state");
+    }
+    pushAIJsonValue(state, skill.correctState);
+    lua_setfield(state, -2, "correct_state");
 }
 
 void pushAISkills(lua_State *state, const QList<AISkillView> &skills)
@@ -191,7 +253,7 @@ void pushAISkills(lua_State *state, const QList<AISkillView> &skills)
 
 void pushAIPlayerView(lua_State *state, const AIPlayerView &player)
 {
-    lua_createtable(state, 0, 20);
+    lua_createtable(state, 0, 23);
     setStringField(state, "object_name", player.objectName);
     lua_pushinteger(state, player.seat);
     lua_setfield(state, -2, "seat");
@@ -205,8 +267,14 @@ void pushAIPlayerView(lua_State *state, const AIPlayerView &player)
     lua_setfield(state, -2, "phase");
     lua_pushboolean(state, player.alive);
     lua_setfield(state, -2, "alive");
+    lua_pushboolean(state, player.dead);
+    lua_setfield(state, -2, "dead");
     lua_pushboolean(state, player.removed);
     lua_setfield(state, -2, "removed");
+    lua_pushboolean(state, player.kongcheng);
+    lua_setfield(state, -2, "kongcheng");
+    lua_pushboolean(state, player.wounded);
+    lua_setfield(state, -2, "wounded");
     lua_pushboolean(state, player.faceUp);
     lua_setfield(state, -2, "face_up");
     lua_pushboolean(state, player.chained);
@@ -330,6 +398,8 @@ bool AiLuaRuntime::initialize(QString *error)
         || !loadScriptWithBudget(QStringLiteral("lua/ai/isolated-bootstrap.lua"),
                                  m_initializationInstructionBudget, error)
         || !installSandbox(error)
+        || !loadScriptWithBudget(QStringLiteral("lua/ai/isolated-facades.lua"),
+                                 m_initializationInstructionBudget, error)
         || !loadConfiguredScripts(error)) {
         shutdown();
         return false;
@@ -596,9 +666,12 @@ bool AiLuaRuntime::installSandbox(QString *error)
         lua_setglobal(state, *name);
     }
 
-    if (!pushMetaEnumTable(state, Player::staticMetaObject, "Phase", "Player_")) {
+    lua_newtable(state);
+    if (!setMetaEnumFields(state, Player::staticMetaObject, "Phase", "Player_")
+        || !setMetaEnumFields(state, Card::staticMetaObject, "Suit", "Card_")) {
+        lua_pop(state, 1);
         if (error)
-            *error = QStringLiteral("Player::Phase meta enum is unavailable");
+            *error = QStringLiteral("AI-safe meta enum is unavailable");
         return false;
     }
     lua_setglobal(state, "sgs");

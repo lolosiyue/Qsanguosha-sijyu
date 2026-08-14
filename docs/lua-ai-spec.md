@@ -704,23 +704,30 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
 - `AiData` 持久化由 C++ `AiDataStore` 管理固定路徑、JSON/大小驗證、process lock 與
   原子寫入；Isolated VM 不取得 raw `io`、`os`、`coroutine` 或 native `sgs` binding，
   只可呼叫 `ai_data.read()`／`ai_data.write(json)`。C++ 會重建只含 primitive enum 的安全
-  `sgs` table；`Player::Phase` 常數由 `Player::staticMetaObject` 的 `QMetaEnum` 反射注入，
-  不另維護手寫 key/value 清單。
+  `sgs` table；`Player::Phase` 與 `Card::Suit` 常數由各自 `staticMetaObject` 的 `QMetaEnum`
+  反射注入，不另維護手寫 key/value 清單。
 - `AiLegacyDirectCallbacks`、`AiLegacyAdaptedCallbacks`、`AiIsolatedCallbacks`、
   `AiShadowCallbacks` 可用 `activate`、`askForUseCard` 或 `askForUseCard:skill_name`
   設定 callback 級路由；Room 初始化後路由表凍結。
-- `AiIsolatedScripts` 只接受 `lua/ai/isolated/` 下的單一 `.lua` 檔名；腳本在 sandbox
-  安裝後由 C++ loader 載入，以 `ai_register_handler(kind, callback)` 註冊 decision handler；
-  bootstrap 與腳本頂層執行同樣受 initialization instruction budget 保護，超限時只停用
-  該 Room 的 Isolated VM，不阻塞 Room 建立。
+- `isolated-bootstrap.lua` 只管理 generic handler registry 與 dispatch；C++ 在 sandbox 安裝後、
+  configured scripts 之前 mandatory 載入 `isolated-facades.lua`。後者是整個 Isolated Runtime
+  共用的 value facade 層，不屬於 `AiIsolatedScripts` allowlist，也不依賴任何 decision-specific
+  dispatcher。
+- generic decision handler 以 `ai_register_handler(kind, function(self, request) ... end)` 註冊。
+  `activate` 與 `use_card` 都由 bootstrap 先建立純值 `SmartAIView`；`self.player` 是
+  `PlayerView`。world view 缺失或 viewer／self 不匹配時不會呼叫 handler，直接回傳
+  unhandled。bootstrap、mandatory facade 與 configured scripts 都受 initialization
+  instruction budget 保護，超限時只停用該 Room 的 Isolated VM，不阻塞 Room 建立。
+- `AiIsolatedScripts` 只接受 `lua/ai/isolated/` 下的單一 `.lua` 檔名；腳本在 mandatory
+  runtime 層就緒後由 C++ loader 載入。
 - `askForUseCard` 預設進入 Shadow，`activate` 在自己的 Shadow 階段開始前維持
-  `LegacyAdapted`。預設 isolated script `ask-for-use-card.lua` 提供 pattern 與 skill handler
-  registry；pattern handler 使用 `ai_skill_use[pattern] = function(self, prompt, request)` 註冊。
-  `self` 是純值 snapshot facade `SmartAIView`，`self.player` 是 `PlayerView`。`PlayerView`
+  `LegacyAdapted`。`ask-for-use-card.lua` 只提供 use-card pattern／skill registry 與
+  decision-specific dispatch；pattern handler 使用
+  `ai_skill_use[pattern] = function(self, prompt, request)` 註冊。`PlayerView`
   依 snapshot 現有的 string／number／boolean 欄位與 legacy 命名規則動態建立 scalar getter；
-  `getMark(name)` 是只讀 `public_marks` 的明確 semantic adapter。集合、Room 衍生行為、
-  native-returning 與 mutation 方法不會自動生成，查詢時回 `nil`。skill exact handler 優先於
-  pattern handler。
+  集合由明確的 value facade adapter 提供。C++ 內部的 `AISkillView` 只是 DTO，Lua 端只取得
+  `SkillView`，不暴露其 native 位址。Room 衍生行為、native-returning 與 mutation 方法不會
+  自動生成，查詢時回 `nil`。skill exact handler 優先於 pattern handler。
   尚未註冊或 facade 無法建立的 request 回傳 unhandled，audit 分類為 `NotCovered`，不得
   計入 `Mismatch`。
 - 第一個正式 handler 是 `standard-ai.lua` 的 `@@lianying`。目前只覆蓋官方可由
@@ -744,13 +751,28 @@ namespace 當推演暫存使用，若視為權威 mutation，所有合法 legacy
 |---|---|
 | `revision` | 字串形式的 Room revision，必須等於 `request.state_revision` |
 | `self` | viewer 的 HP、phase、identity、marks、可見 skill instances 等值資料 |
-| `players` | 其他玩家的 public/viewer-visible 摘要；不含手牌 identity |
-| `hand_cards` | 僅 viewer 自己的手牌 card ID 與基本 value 欄位 |
+| `players` | 其他玩家的 public/viewer-visible 摘要與 skill `correctState`；不含手牌 identity 或私有 skill `state` |
+| `hand_cards` | 僅 viewer 自己的手牌 `CardView` 值欄位與 `isKindOf` 型別名稱集合 |
 | `current_player`／`current_phase` | 當前回合權威狀態 |
 
 國戰未公開的武將、勢力與原生技能不進入其他 viewer 的 snapshot；透過
 `only_viewers` 設定的 mark 只會出現在授權 viewer 的 `public_marks`。Lua 端只以 primitive、
 array 與 string-key table 讀取 snapshot。
+
+| Value facade | 純查詢 API |
+|---|---|
+| `PlayerView` | scalar getters、`getMark(name)`、`hasSkill(name)`、`getEquips()`、`getJudgingArea()`、`getSkills()` |
+| `CardView` | `getId()`、`getEffectiveId()`、`objectName()`、`getClassName()`、`getSuit()`、`getNumber()`、`getSkillName()`、`isKindOf(name)`、`isRed()`、`isBlack()` |
+| `SkillView` | metadata getters、`getState()`、`getStateValue(key, default)`、`getCorrectState()`、`getCorrectStateValue(key, default)` |
+
+`PlayerView:getSkills()` 一個可見 instance 對應一個 `SkillView`，保留同名多實例與
+`instance_id`；`hasSkill("name#instance")` 可精確查詢，invalid instance 不算持有。
+`SkillView.state` 是 owner-only：只出現在 `world.self.skills`；其他玩家即使技能可見也不會
+取得 private state。`correctState` 則跟隨 skill instance 的既有可見性進入 snapshot。
+兩者都會先轉成 JSON-safe 純值，僅接受 null、boolean、有限數字、字串、array 與
+string-key object；最大深度 8、最多 1024 個值、單字串最大 64 KiB，不能安全轉換的
+`QObject *`／userdata／其他 `QVariant` 型別會被移除。getter 每次回傳 table 副本，Lua
+修改副本不會回寫 snapshot；所有 setter 與 `getRoom()` 均為 `nil`。
 
 ### 15.3 RoomThread 邊界
 
