@@ -71,6 +71,14 @@
 - AI VM 與 Gameplay VM 必須分離，兩者由同一 `RoomThread` 同步 gate 執行。矩陣新增
   `LegacyAdapted` 舊結果 value-copy 路徑及第一階段 `Isolated Shadow`：Shadow 使用同一 request
   與獨立 deterministic `AiRng`，只寫 bounded audit，不得改變正式 gameplay。
+- `askForUseCard` 第一階段 Shadow 基礎已完成：global route 的 official 結果仍走
+  `LegacyAdapted`，isolated dispatcher 可按 activation skill 或 pattern 漸進註冊；未註冊
+  request 記為 `NotCovered`，不計入 mismatch。audit 另區分 `Match`／`Mismatch`／`Error`
+  並維持固定大小累積計數。`activate` 預設仍為 `LegacyAdapted`，尚未開始自己的 Shadow 階段。
+- 第一個正式 `sgs.ai_skill_use` handler 已搬入：`standard-ai.lua` 的 `@@lianying` 確定
+  單目標分支以 isolated `ai_skill_use[pattern] = function(self, prompt, request)` 註冊，必須
+  透過 `SmartAIView`／`PlayerView` 與 C++ 注入的 `sgs.Player_Play` 得出和 Legacy 一致的
+  回傳；需要額外 userdata／友方排序的分支維持 `NotCovered`。
 - production allowlist script 的頂層無限迴圈須在 initialization instruction budget 內停用
   Isolated VM 並讓 Room 繼續 legacy；超長字串、過多牌／目標須 fail-closed，audit 只保留
   capped 摘要，不得隨 Lua payload 線性放大 C++ heap。

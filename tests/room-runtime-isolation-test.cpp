@@ -1,6 +1,7 @@
 #include "engine-bootstrap.h"
 #include "engine.h"
 #include "ai-runtime.h"
+#include "game-rng.h"
 #include "general.h"
 #include "lua-runtime.h"
 #include "package.h"
@@ -15,6 +16,7 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QElapsedTimer>
+#include <QMetaEnum>
 #include <QPointer>
 #include <QSemaphore>
 #include <QThread>
@@ -48,6 +50,11 @@ struct RoomTestAccess
         room.thread_1v1 = thread;
     }
 
+    static QList<int> drawPile(const Room &room)
+    {
+        return room.pile1;
+    }
+
     static AIRequest makeRequest(Room &room, ServerPlayer *player,
                                  AIRequest::DecisionKind kind)
     {
@@ -65,6 +72,11 @@ struct RoomTestAccess
                             const AIResult &result, CardUseStruct &use)
     {
         return room.applyAIResult(player, request, result, use);
+    }
+
+    static AI *cloneAI(Room &room, ServerPlayer *player)
+    {
+        return room.cloneAI(player);
     }
 };
 
@@ -90,6 +102,34 @@ private:
     bool m_existed;
     QVariant m_previous;
 };
+
+static int gameLuaRandomAfterLocalSeed(Room &room, quint32 localSeed)
+{
+    GameRng::Binding rngBinding(room.roomRuntime()->rng());
+    LuaRuntime::Binding luaBinding(room.roomRuntime()->lua());
+    lua_State *L = room.roomRuntime()->lua().state();
+    const QByteArray script = QStringLiteral("math.randomseed(%1); return math.random(1, 1000000)")
+        .arg(localSeed).toLatin1();
+    if (!L || luaL_dostring(L, script.constData()) != 0)
+        return -1;
+    const int value = int(lua_tointeger(L, -1));
+    lua_pop(L, 1);
+    return value;
+}
+
+static QByteArray gameLuaHashOrder(Room &room)
+{
+    GameRng::Binding rngBinding(room.roomRuntime()->rng());
+    LuaRuntime::Binding luaBinding(room.roomRuntime()->lua());
+    lua_State *L = room.roomRuntime()->lua().state();
+    if (!L || luaL_dostring(L,
+            "local t={alpha=1,beta=2,gamma=3,delta=4,epsilon=5,zeta=6}; "
+            "local r={}; for k in pairs(t) do r[#r+1]=k end; return table.concat(r, ',')") != 0)
+        return QByteArray();
+    const QByteArray order(lua_tostring(L, -1));
+    lua_pop(L, 1);
+    return order;
+}
 
 class InterruptibleRoomThread1v1 : public RoomThread1v1
 {
@@ -312,7 +352,7 @@ static bool aiSandboxBlocksHostLibraries(Room &room)
     LuaRuntime::Binding luaBinding(room.roomRuntime()->ai().lua());
     lua_State *L = room.roomRuntime()->ai().lua().state();
     const char *blockedGlobals[] = {
-        "sgs", "io", "os", "package", "coroutine", "require", "dofile", "loadfile",
+        "io", "os", "package", "coroutine", "require", "dofile", "loadfile",
         "load", "loadstring", "collectgarbage", nullptr
     };
     for (const char **name = blockedGlobals; *name; ++name) {
@@ -322,6 +362,33 @@ static bool aiSandboxBlocksHostLibraries(Room &room)
         if (!blocked)
             return false;
     }
+    lua_getglobal(L, "sgs");
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        return false;
+    }
+    const int phaseIndex = Player::staticMetaObject.indexOfEnumerator("Phase");
+    if (phaseIndex < 0) {
+        lua_pop(L, 1);
+        return false;
+    }
+    const QMetaEnum phases = Player::staticMetaObject.enumerator(phaseIndex);
+    for (int index = 0; index < phases.keyCount(); ++index) {
+        const QByteArray fieldName = QByteArray("Player_") + phases.key(index);
+        lua_getfield(L, -1, fieldName.constData());
+        const bool matches = lua_type(L, -1) == LUA_TNUMBER
+            && lua_tointeger(L, -1) == phases.value(index);
+        lua_pop(L, 1);
+        if (!matches) {
+            lua_pop(L, 1);
+            return false;
+        }
+    }
+    lua_getfield(L, -1, "Sanguosha");
+    const bool nativeSgsBlocked = lua_isnil(L, -1);
+    lua_pop(L, 2);
+    if (!nativeSgsBlocked)
+        return false;
     lua_getglobal(L, "ai_data");
     if (!lua_istable(L, -1)) {
         lua_pop(L, 1);
@@ -339,7 +406,8 @@ static bool aiSandboxBlocksHostLibraries(Room &room)
 static bool aiRoutesSelectExactDefaultAndFreeze()
 {
     AiRouteRegistry routes;
-    if (routes.routeFor(AIRequest::Activate) != AiRouteShadow
+    if (routes.routeFor(AIRequest::Activate) != AiRouteLegacyAdapted
+        || routes.routeFor(AIRequest::UseCard) != AiRouteShadow
         || !routes.setCallbackRoute(QStringLiteral("ask_for_card"), QString(), AiRouteIsolated)
         || !routes.setCallbackRoute(QStringLiteral("ask_for_card"), QStringLiteral("special"), AiRouteShadow)
         || routes.routeFor(AIRequest::UseCard, QStringLiteral("ask_for_card"), QStringLiteral("special")) != AiRouteShadow
@@ -374,9 +442,80 @@ static bool productionIsolatedScriptAndShadowAudit(Room &room)
     AIRequest probe;
     probe.kind = AIRequest::UseCard;
     probe.viewerObjectName = QStringLiteral("production-probe");
+    probe.prompt = QStringLiteral("production-prompt");
+    probe.worldView.self.objectName = probe.viewerObjectName;
+    probe.worldView.self.seat = 3;
+    probe.worldView.self.hp = 2;
+    probe.worldView.self.maxHp = 4;
+    probe.worldView.self.handcardCount = 5;
+    probe.worldView.self.phase = int(Player::Play);
+    probe.worldView.self.alive = true;
+    probe.worldView.self.removed = false;
+    probe.worldView.self.faceUp = false;
+    probe.worldView.self.chained = true;
+    probe.worldView.self.kingdom = QStringLiteral("wu");
+    probe.worldView.self.role = QStringLiteral("rebel");
+    probe.worldView.self.generalName = QStringLiteral("luxun");
+    probe.worldView.self.general2Name = QStringLiteral("sujiang");
+    probe.worldView.self.publicMarks.insert(QStringLiteral("facade-mark"), 7);
+    probe.pattern = QStringLiteral("not-migrated");
     const AIResult loadedHandler = room.roomRuntime()->ai().decideShadow(probe);
-    if (!loadedHandler.handled || loadedHandler.kind != AIResult::Pass
-        || !loadedHandler.errorCode.isEmpty())
+    if (loadedHandler.handled || !loadedHandler.errorCode.isEmpty())
+        return false;
+
+    {
+        LuaRuntime::Binding luaBinding(room.roomRuntime()->ai().lua());
+        lua_State *L = room.roomRuntime()->ai().lua().state();
+        if (luaL_dostring(L,
+            "ai_skill_use['facade-probe'] = function(self, prompt, request) "
+            "local p = self.player; "
+            "if getmetatable(self) ~= SmartAIView or getmetatable(p) ~= PlayerView then "
+            "return { kind = 'use_card', card = '@facade=metatable' } end; "
+            "local checks = {{'objectName', request.viewer}, {'getSeat', 3}, {'getHp', 2}, "
+            "{'getMaxHp', 4}, {'getHandcardNum', 5}, {'getPhase', sgs.Player_Play}, "
+            "{'isAlive', true}, {'isRemoved', false}, {'faceUp', false}, {'isChained', true}, "
+            "{'getKingdom', 'wu'}, {'getRole', 'rebel'}, {'getGeneralName', 'luxun'}, "
+            "{'getGeneral2Name', 'sujiang'}}; "
+            "for _, check in ipairs(checks) do local method = p[check[1]]; "
+            "if type(method) ~= 'function' or method(p) ~= check[2] then "
+            "return { kind = 'use_card', card = '@facade=' .. check[1] } end end; "
+            "if p:getMark('facade-mark') ~= 7 then "
+            "return { kind = 'use_card', card = '@facade=getMark' } end; "
+            "for _, method_name in ipairs({'getGeneral', 'getEquips', 'getTag', 'distanceTo', "
+            "'canSlash', 'setFlags', 'addMark'}) do if p[method_name] ~= nil then "
+            "return { kind = 'use_card', card = '@facade=' .. method_name } end end; "
+            "if self.world_view ~= request.world_view or prompt ~= request.prompt then "
+            "return { kind = 'use_card', card = '@facade=request' } end; "
+            "return { kind = 'pass' } end; "
+            "ai_skill_use['shadow-match'] = function() "
+            "return { kind = 'pass' } end; "
+            "ai_skill_use['shadow-use'] = function() "
+            "return { kind = 'use_card', card = '@shadow=.' } end; "
+            "ai_skill_use['shadow-error'] = function() "
+            "error('shadow handler failure') end; "
+            "ai_register_use_card_skill_handler('shadow-skill', function() "
+            "return { kind = 'pass' } end)") != 0) {
+            lua_pop(L, 1);
+            return false;
+        }
+    }
+
+    probe.pattern = QStringLiteral("facade-probe");
+    const AIResult facadeResult = room.roomRuntime()->ai().decideShadow(probe);
+    if (!facadeResult.handled || facadeResult.kind != AIResult::Pass
+        || !facadeResult.errorCode.isEmpty())
+        return false;
+
+    AIRequest skillProbe = probe;
+    skillProbe.pattern = QStringLiteral("shadow-use");
+    skillProbe.hasSkillActionContext = true;
+    skillProbe.skillActionContext.activationRef = SkillInstanceRef(
+        QStringLiteral("shadow-robot"),
+        SkillInstanceKey(QStringLiteral("shadow-skill"), 1));
+    skillProbe.skillActionContext.sourceRef = skillProbe.skillActionContext.activationRef;
+    const AIResult skillResult = room.roomRuntime()->ai().decideShadow(skillProbe);
+    if (!skillResult.handled || skillResult.kind != AIResult::Pass
+        || !skillResult.errorCode.isEmpty())
         return false;
 
     ServerPlayer *player = RoomTestAccess::addRobotPlayer(room);
@@ -385,25 +524,103 @@ static bool productionIsolatedScriptAndShadowAudit(Room &room)
 
     const quint64 revision = room.roomRuntime()->stateRevision();
     const AIRequest first = RoomTestAccess::makeRequest(room, player, AIRequest::UseCard);
-    const AIRequest second = RoomTestAccess::makeRequest(room, player, AIRequest::UseCard);
-    if (first.stateRevision != revision || second.stateRevision != revision
+    AIRequest notCovered = RoomTestAccess::makeRequest(room, player, AIRequest::UseCard);
+    if (first.stateRevision != revision || notCovered.stateRevision != revision
         || room.roomRuntime()->stateRevision() != revision) {
         player->setAI(nullptr);
         return false;
     }
 
-    CardUseStruct use;
     const int auditCount = room.roomRuntime()->ai().shadowAudits().size();
-    const bool decided = RoomTestAccess::decide(room, player, second, use);
+    const AiShadowAuditSummary summary = room.roomRuntime()->ai().shadowAuditSummary();
+    notCovered.pattern = QStringLiteral("not-migrated");
+    CardUseStruct notCoveredUse;
+    const bool notCoveredDecided = RoomTestAccess::decide(
+        room, player, notCovered, notCoveredUse);
+
+    AIRequest matching = RoomTestAccess::makeRequest(room, player, AIRequest::UseCard);
+    matching.pattern = QStringLiteral("shadow-match");
+    CardUseStruct matchingUse;
+    const bool matchingDecided = RoomTestAccess::decide(room, player, matching, matchingUse);
+
+    AIRequest mismatching = RoomTestAccess::makeRequest(room, player, AIRequest::UseCard);
+    mismatching.pattern = QStringLiteral("shadow-use");
+    CardUseStruct mismatchingUse;
+    const bool mismatchingDecided = RoomTestAccess::decide(
+        room, player, mismatching, mismatchingUse);
+
+    AIRequest failing = RoomTestAccess::makeRequest(room, player, AIRequest::UseCard);
+    failing.pattern = QStringLiteral("shadow-error");
+    CardUseStruct failingUse;
+    const bool failingDecided = RoomTestAccess::decide(room, player, failing, failingUse);
     player->setAI(nullptr);
+
     const QList<AiShadowAuditEntry> &audits = room.roomRuntime()->ai().shadowAudits();
-    if (!decided || use.card || audits.size() != auditCount + 1)
+    const AiShadowAuditSummary &updated = room.roomRuntime()->ai().shadowAuditSummary();
+    if (!notCoveredDecided || !matchingDecided || !mismatchingDecided || !failingDecided
+        || notCoveredUse.card || matchingUse.card || mismatchingUse.card || failingUse.card
+        || audits.size() != auditCount + 4
+        || updated.notCovered != summary.notCovered + 1
+        || updated.matches != summary.matches + 1
+        || updated.mismatches != summary.mismatches + 1
+        || updated.errors != summary.errors + 1)
         return false;
-    const AiShadowAuditEntry &audit = audits.last();
-    return audit.decisionId == second.decisionId
-        && audit.callbackName == QStringLiteral("askForUseCard")
-        && audit.officialResult.handled && audit.shadowResult.handled
-        && !audit.differs;
+    const AiShadowAuditEntry &notCoveredAudit = audits.at(auditCount);
+    const AiShadowAuditEntry &matchingAudit = audits.at(auditCount + 1);
+    const AiShadowAuditEntry &mismatchingAudit = audits.at(auditCount + 2);
+    const AiShadowAuditEntry &errorAudit = audits.at(auditCount + 3);
+    return notCoveredAudit.decisionId == notCovered.decisionId
+        && notCoveredAudit.callbackName == QStringLiteral("askForUseCard")
+        && notCoveredAudit.pattern == QStringLiteral("not-migrated")
+        && notCoveredAudit.comparison == AiShadowNotCovered
+        && matchingAudit.comparison == AiShadowMatch
+        && mismatchingAudit.comparison == AiShadowMismatch
+        && errorAudit.comparison == AiShadowError;
+}
+
+static bool officialLianyingHandlerMatchesIsolated()
+{
+    Room room(nullptr, QStringLiteral("02_1v1"));
+    ServerPlayer *player = RoomTestAccess::addRobotPlayer(room);
+    player->setObjectName(QStringLiteral("lianying-owner"));
+    player->setRole(QStringLiteral("lord"));
+    player->setPhase(Player::Play);
+    player->setMark(QStringLiteral("lianying"), 1);
+    CardsMoveOneTimeStruct move = {};
+    player->setTag(QStringLiteral("LianyingMoveData"), QVariant::fromValue(move));
+
+    AIRequest request = RoomTestAccess::makeRequest(room, player, AIRequest::UseCard);
+    request.pattern = QStringLiteral("@@lianying");
+    AIResult official;
+    {
+        LuaRuntime::Binding luaBinding(room.roomRuntime()->lua());
+        EngineRuntimeContextScope contextScope(*Sanguosha, &room);
+        const bool aiWasEnabled = Config.EnableAI;
+        Config.EnableAI = true;
+        AI *officialAI = RoomTestAccess::cloneAI(room, player);
+        Config.EnableAI = aiWasEnabled;
+        LuaAI *officialLuaAI = qobject_cast<LuaAI *>(officialAI);
+        if (!officialLuaAI)
+            return false;
+        official = officialLuaAI->decide(request);
+    }
+    const AIResult shadow = room.roomRuntime()->ai().decideShadow(request);
+    if (!official.handled || official.kind != AIResult::UseCard
+        || official.action.legacyCardString
+            != QStringLiteral("@LianyingCard=.->lianying-owner")
+        || !shadow.handled || shadow.kind != AIResult::UseCard
+        || shadow.action.legacyCardString != official.action.legacyCardString)
+        return false;
+
+    room.roomRuntime()->ai().recordShadowAudit(
+        request, QStringLiteral("askForUseCard"), QString(), official, shadow);
+    const AiShadowComparison comparison = room.roomRuntime()->ai().shadowAudits().last().comparison;
+    if (comparison != AiShadowMatch)
+        return false;
+
+    request.worldView.self.publicMarks.insert(QStringLiteral("lianying"), 2);
+    const AIResult unsupported = room.roomRuntime()->ai().decideShadow(request);
+    return !unsupported.handled && unsupported.errorCode.isEmpty();
 }
 
 static bool aiWorldViewIsScopedAndRevisioned()
@@ -503,6 +720,7 @@ static bool shadowAuditPayloadIsBounded(Room &room)
 {
     AIRequest request;
     request.decisionId = 9001;
+    request.pattern = QString(200000, QLatin1Char('p'));
     AIResult official;
     official.handled = true;
     official.action.legacyCardString = QString(200000, QLatin1Char('x'));
@@ -515,7 +733,9 @@ static bool shadowAuditPayloadIsBounded(Room &room)
     room.roomRuntime()->ai().recordShadowAudit(request, QStringLiteral("askForUseCard"),
                                                QString(), official, shadow);
     const AiShadowAuditEntry &entry = room.roomRuntime()->ai().shadowAudits().last();
-    return entry.officialResult.action.legacyCardString.size() < 128
+    return entry.pattern.size() < 128
+        && entry.comparison == AiShadowNotCovered
+        && entry.officialResult.action.legacyCardString.size() < 128
         && entry.officialResult.action.userString.size() < 128
         && entry.officialResult.action.selectedCardIds.size() == 32
         && entry.officialResult.action.selectedTargetNames.size() == 32
@@ -650,15 +870,33 @@ int main(int argc, char *argv[])
         return 16;
     }
     ScopedConfigValue isolatedScripts(QStringLiteral("AiIsolatedScripts"),
-                                      QStringList({QStringLiteral("pass-ai.lua")}));
+                                      QStringList({QStringLiteral("ask-for-use-card.lua"),
+                                                   QStringLiteral("standard-ai.lua")}));
 
-    std::unique_ptr<Room> first(new Room(nullptr, QStringLiteral("02_1v1")));
-    std::unique_ptr<Room> second(new Room(nullptr, QStringLiteral("02_1v1")));
+    const GameSessionConfig sessionConfig(Q_UINT64_C(0x12345678abcdef01));
+    std::unique_ptr<Room> first(new Room(nullptr, QStringLiteral("02_1v1"), sessionConfig));
+    std::unique_ptr<Room> second(new Room(nullptr, QStringLiteral("02_1v1"), sessionConfig));
     if (Config.value(QStringLiteral("LuaPackages")).toString() != bootstrapLuaPackages
         || !first->roomRuntime()->definitionsLoaded()
         || !second->roomRuntime()->definitionsLoaded()) {
         qCritical() << "Room definition loading mutated bootstrap configuration";
         return 2;
+    }
+    if (first->getGameSeed() != sessionConfig.seed || second->getGameSeed() != sessionConfig.seed
+        || RoomTestAccess::drawPile(*first) != RoomTestAccess::drawPile(*second)) {
+        qCritical() << "The session seed did not control the initial room draw pile";
+        return 18;
+    }
+    const int firstLuaRandom = gameLuaRandomAfterLocalSeed(*first, 1);
+    const int secondLuaRandom = gameLuaRandomAfterLocalSeed(*second, 999);
+    if (firstLuaRandom < 0 || firstLuaRandom != secondLuaRandom) {
+        qCritical() << "The session seed did not control the game Lua random sequence";
+        return 19;
+    }
+    const QByteArray firstHashOrder = gameLuaHashOrder(*first);
+    if (firstHashOrder.isEmpty() || firstHashOrder != gameLuaHashOrder(*second)) {
+        qCritical() << "The session seed did not control the game Lua hash order";
+        return 20;
     }
     lua_State *bootstrapState = Sanguosha->getLuaState();
     lua_State *firstState = first->roomRuntime()->lua().rawState();
@@ -685,6 +923,10 @@ int main(int argc, char *argv[])
     if (!aiWorldViewIsScopedAndRevisioned()) {
         qCritical() << "AI world view scope or state revision gate failed";
         return 17;
+    }
+    if (!officialLianyingHandlerMatchesIsolated()) {
+        qCritical() << "Official lianying handler did not match isolated AI";
+        return 21;
     }
     if (!productionIsolatedScriptAndShadowAudit(*first)
         || !shadowAuditPayloadIsBounded(*first) || !ownedAiProxyUsesValueLifetime()) {
