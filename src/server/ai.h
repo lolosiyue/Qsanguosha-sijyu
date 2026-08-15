@@ -9,15 +9,23 @@ struct lua_State;
 #include "lua-runtime.h"
 #include "structs.h"
 
+#include <QJsonObject>
+
 struct AICardView {
     int cardId;
+    int effectiveId;
     QString objectName;
     QString className;
     int suit;
     int number;
     QString skillName;
+    bool red;
+    bool black;
+    QStringList kindOfNames;
 
-    AICardView() : cardId(-1), suit(int(Card::NoSuit)), number(0) {}
+    AICardView()
+        : cardId(-1), effectiveId(-1), suit(int(Card::NoSuit)), number(0),
+          red(false), black(false) {}
 };
 
 struct AISkillView {
@@ -27,10 +35,13 @@ struct AISkillView {
     bool invalid;
     bool hasAmountOverride;
     int amount;
+    bool hasPrivateState;
+    QJsonObject state;
+    QJsonObject correctState;
 
     AISkillView()
         : instanceId(0), source(int(SourceInnate)), invalid(false),
-          hasAmountOverride(false), amount(0) {}
+          hasAmountOverride(false), amount(0), hasPrivateState(false) {}
 };
 
 struct AIPlayerView {
@@ -41,7 +52,10 @@ struct AIPlayerView {
     int handcardCount;
     int phase;
     bool alive;
+    bool dead;
     bool removed;
+    bool kongcheng;
+    bool wounded;
     bool faceUp;
     bool chained;
     QString kingdom;
@@ -55,7 +69,8 @@ struct AIPlayerView {
 
     AIPlayerView()
         : seat(0), hp(0), maxHp(0), handcardCount(0), phase(int(Player::NotActive)),
-          alive(false), removed(false), faceUp(true), chained(false) {}
+          alive(false), dead(true), removed(false), kongcheng(true), wounded(false),
+          faceUp(true), chained(false) {}
 };
 
 struct AIWorldView {
