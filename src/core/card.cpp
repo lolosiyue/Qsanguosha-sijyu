@@ -97,6 +97,23 @@ int Card::getEffectiveId() const
 	return m_id;
 }
 
+QStringList Card::getKindOfNames() const
+{
+    QStringList names;
+    const QMetaObject *meta = metaObject();
+    while (meta) {
+        const QString name = QString::fromLatin1(meta->className());
+        if (name == QStringLiteral("QObject"))
+            break;
+        names << name;
+        if (name == QStringLiteral("Card"))
+            break;
+        meta = meta->superClass();
+    }
+    names.removeDuplicates();
+    return names;
+}
+
 int Card::getNumber() const
 {
 	/*foreach (QString flag, getFlags()) {

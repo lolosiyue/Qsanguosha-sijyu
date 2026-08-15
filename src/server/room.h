@@ -26,6 +26,7 @@ struct AiLegacyRequestView;
 struct PlayerUIState;
 class ServerPlayer;
 class RoomNotifier;
+class RequestCoordinator;
 class GameRule;
 class RoomThread;
 class RoomThread3v3;
@@ -56,6 +57,7 @@ public:
     friend class RoomThread1v1;
     friend class ServerPlayer;
     friend class GameRule;
+    friend class RequestCoordinator;
     friend struct RoomTestAccess;
 
     typedef void (Room::*Callback)(ServerPlayer*, const QVariant&);
@@ -557,7 +559,6 @@ public:
     void speakCommand(ServerPlayer*player, const QVariant&arg);
     void trustCommand(ServerPlayer*player, const QVariant&arg);
     void pauseCommand(ServerPlayer*player, const QVariant&arg);
-    void processResponse(ServerPlayer*player, const QSanProtocol::Packet*arg);
     void addRobotCommand(ServerPlayer*player, const QVariant&arg);
     void broadcastInvoke(const QSanProtocol::AbstractPacket*packet, ServerPlayer*except = nullptr);
     void broadcastInvoke(const char*method, const QString&arg = ".", ServerPlayer*except = nullptr);
@@ -726,6 +727,7 @@ private:
     QList<ExtraTurnContext> m_extraTurnContexts;
     bool m_processingScheduledExtraTurns;
     std::unique_ptr<RoomNotifier> m_notifier;
+    std::unique_ptr<RequestCoordinator> m_requests;
     int chooseSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skillName,
                             bool visibleOnly, bool acquiredOnly);
     bool removeSkillInstanceFromPlayer(ServerPlayer *owner, const QString &skillName, int instanceId,
@@ -859,8 +861,6 @@ private:
     QString _chooseDefaultGeneral(ServerPlayer*player) const;
     bool _setPlayerGeneral(ServerPlayer*player, const QString&generalName, bool isFirst);
     ServerPlayer*getRequestTarget(ServerPlayer*player) const;
-    void notifyArrangeSeats(ServerPlayer *player);
-    void clearDualControlRequest(ServerPlayer*player, bool restore_context = true);
     QString mode;
     QList<ServerPlayer*> m_players, m_alivePlayers;
     int player_count;
@@ -880,17 +880,6 @@ private:
     QPointer<RoomThread3v3> thread_3v3;
     QPointer<RoomThreadXMode> thread_xmode;
     QPointer<RoomThread1v1> thread_1v1;
-    QSemaphore _m_semRaceRequest; // When race starts, server waits on his semaphore for the first replier
-    QSemaphore _m_semRoomMutex; // Provide per-room  (rather than per-player) level protection of any shared variables
-
-    QHash<QSanProtocol::CommandType, Callback> m_callbacks; // Stores the callbacks for client request. Do not use this
-    // this map for anything else but S_CLIENT_REQUEST!!!!!
-    QHash<QSanProtocol::CommandType, QSanProtocol::CommandType> m_requestResponsePair;
-    // Stores the expected client response for each server request, any unmatched client response will be discarded.
-
-    QHash<QString, QString> m_dualControlReplyOwners;
-    QHash<QString, QString> m_dualControlRequestTargets;
-
     QVariantList m_chatHistory;
     QList<GameSnapshot*> m_snapshots;
     QString m_replayPath;
@@ -898,10 +887,6 @@ private:
 
     QElapsedTimer _m_timeSinceLastSurrenderRequest; // Timer used to ensure that surrender polls are not initiated too frequently
     bool _m_isFirstSurrenderRequest; // We allow the first surrender poll to go through regardless of the timer.
-
-    //helper variables for race request function
-    bool _m_raceStarted;
-    ServerPlayer*_m_raceWinner;
 
     QMap<int, Player::Place> place_map;
     QMap<int, ServerPlayer*> owner_map;
@@ -938,7 +923,6 @@ private:
     AI*cloneAI(ServerPlayer*player);
     void broadcast(const QString&message, ServerPlayer*except = nullptr);
     bool stopGameThreads(int timeoutMs);
-    void initCallbacks();
     QString askForOrder(ServerPlayer*player, const QString&default_choice);
     QString askForRole(ServerPlayer*player, const QStringList&roles, const QString&scheme);
 

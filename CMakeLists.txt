@@ -136,6 +136,8 @@ add_library(qsanguosha_engine STATIC
     src/server/gamerule.cpp
     src/server/generalselector.cpp
     src/server/qtupnpportmapping.cpp
+    src/server/request-coordinator.cpp
+    src/server/request-coordinator.h
     src/server/room-notifier.cpp
     src/server/room-notifier.h
     src/server/room-runtime.cpp
@@ -361,6 +363,31 @@ if(BUILD_TESTING)
     )
     add_test(NAME qsanguosha_room_notifier COMMAND qsanguosha_room_notifier_test)
     set_tests_properties(qsanguosha_room_notifier PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    add_executable(qsanguosha_request_coordinator_test
+        tests/request-coordinator-test.cpp
+        src/server/server-core.h
+    )
+    target_include_directories(qsanguosha_request_coordinator_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/freetype
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/client
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/package
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+    )
+    target_link_libraries(qsanguosha_request_coordinator_test PRIVATE
+        qsanguosha_engine Qt6::Core5Compat Qt6::Qml Qt6::Widgets
+        "$<$<CONFIG:Release>:dbghelp>"
+    )
+    add_test(NAME qsanguosha_request_coordinator COMMAND qsanguosha_request_coordinator_test)
+    set_tests_properties(qsanguosha_request_coordinator PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     )
 
