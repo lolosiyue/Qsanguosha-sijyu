@@ -37,7 +37,7 @@ struct RoomTestAccess
     {
         ServerPlayer *player = new ServerPlayer(&room);
         player->setObjectName(objectName);
-        room.m_players << player;
+        room.addPlayerToRoster(player);
         return player;
     }
 

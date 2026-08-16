@@ -20,7 +20,7 @@ struct RoomTestAccess
         player->setState(state);
         player->drainAllLocks();
         player->releaseLock(ServerPlayer::SEMA_MUTEX);
-        room.m_players << player;
+        room.addPlayerToRoster(player);
         return player;
     }
 

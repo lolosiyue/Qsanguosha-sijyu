@@ -20,7 +20,7 @@ struct RoomTestAccess
         TrustAI *ai = new TrustAI(player);
         ai->setParent(player);
         player->setAI(ai);
-        room.m_players << player;
+        room.addPlayerToRoster(player);
         return player;
     }
 

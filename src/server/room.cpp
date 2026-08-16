@@ -5,6 +5,7 @@
 #include "game-snapshot-service.h"
 #include "request-coordinator.h"
 #include "room-notifier.h"
+#include "room-roster.h"
 #include "protocol/card-provenance-message.h"
 #include "protocol/skill-instance-message.h"
 #include "protocol/state/player-ui-state.h"
@@ -178,6 +179,7 @@ Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionC
 	m_requests(std::make_unique<RequestCoordinator>(*this)),
 	m_cardMovement(std::make_unique<CardMovementService>(*this)),
 	m_snapshotService(std::make_unique<GameSnapshotService>(*this)),
+	m_roster(std::make_unique<RoomRoster>()),
 	mode(mode), player_count(Sanguosha->getPlayerCount(mode)), current(nullptr),
 	game_state(0), game_paused(false),
 	thread(nullptr),//game_started(false), game_finished(false),
@@ -189,7 +191,6 @@ Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionC
 	static int s_global_room_id = 0;
 	_m_Id = s_global_room_id++;
 	_m_lastMovementId = 0;
-	m_playOrderReversed = false;
 
 	m_runtime->seedRandom(m_sessionConfig.seed);
 	GameRng::Binding rngBinding(m_runtime->rng());
@@ -218,7 +219,7 @@ Room::~Room()
 	thread_3v3 = nullptr;
 	thread_xmode = nullptr;
 	thread_1v1 = nullptr;
-	foreach(ServerPlayer*player, m_players)
+	foreach(ServerPlayer*player, getPlayers())
 		delete player;
 	if (thread != nullptr)
 		delete thread;
@@ -239,7 +240,7 @@ bool Room::stopGameThreads(int timeoutMs)
 		game_paused = false;
 		m_waitCond.wakeAll();
 	}
-	foreach (ServerPlayer *player, m_players)
+	foreach (ServerPlayer *player, getPlayers())
 		player->releaseLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
 	m_requests->unblockWaits();
 
@@ -315,7 +316,7 @@ void Room::executeExtraTurn(ServerPlayer *player, QList<Player::Phase> phases,
 
 int Room::alivePlayerCount() const
 {
-	return m_alivePlayers.count();
+	return m_roster->aliveCount();
 }
 
 bool Room::notifyUpdateCard(ServerPlayer*player, int cardId, const Card*newCard)
@@ -349,34 +350,12 @@ bool Room::broadcastResetCard(const QList<ServerPlayer*>&players, int cardId)
 
 QList<ServerPlayer*> Room::getPlayers() const
 {
-	return m_players;
+	return m_roster->players();
 }
 
 QList<ServerPlayer*> Room::getAllPlayers(bool include_dead) const
 {
-	//QList<ServerPlayer*> count_players = m_players;
-	if (!current) return m_players;
-
-	int index = m_players.indexOf(current);
-	if (index < 0) return m_players;
-
-	QList<ServerPlayer*> all_players;
-
-	for (int i = index; i < m_players.length(); i++){
-		if (include_dead || m_players[i]->isAlive())
-			all_players << m_players[i];
-	}
-	for (int i = 0; i < index; i++){
-		if (include_dead || m_players[i]->isAlive())
-			all_players << m_players[i];
-	}/*
-
-	if (current->getPhase() == Player::NotActive){
-		all_players.removeOne(current);
-		all_players.append(current);
-	}*/
-
-	return all_players;
+	return m_roster->orderedFrom(current, include_dead);
 }
 
 void Room::restPlayer(ServerPlayer *player, const QString &reason, bool discard_cards)
@@ -415,13 +394,10 @@ void Room::directRestPlayer(ServerPlayer *player, const QString &reason, bool di
 
 	player->setAlive(false);
 
-	int n = m_alivePlayers.indexOf(player) + 1;
-	for (int i = n; i < m_alivePlayers.length(); i++) {
-		m_alivePlayers[i]->setSeat(m_alivePlayers[i]->getSeat() - 1);
-		broadcastProperty(m_alivePlayers[i], "seat");
-	}
-
-	m_alivePlayers.removeOne(player);
+	const QList<ServerPlayer *> affected = m_roster->alivePlayersAfter(player);
+	m_roster->removeAlive(player);
+	foreach (ServerPlayer *affectedPlayer, affected)
+		broadcastProperty(affectedPlayer, "seat");
 
 	setPlayerProperty(player, "RestPlayer", true);
 
@@ -495,91 +471,27 @@ QList<ServerPlayer *> Room::getRestPlayers() const
 }
 QList<ServerPlayer*> Room::getOtherPlayers(ServerPlayer*except, bool include_dead) const
 {
-	QList<ServerPlayer*> other_players = getAllPlayers(include_dead);	
-	if (except) other_players.removeOne(except);
-	return other_players;
+	return m_roster->otherPlayers(current, except, include_dead);
 }
 
 QList<ServerPlayer*> Room::getAlivePlayers() const
 {
-	return m_alivePlayers;
+	return m_roster->alivePlayers();
 }
 
 QList<ServerPlayer *> Room::getPathBetween(ServerPlayer *from, ServerPlayer *to, bool include_from, bool include_to) const
 {
-    if (!from || !to || from == to) return QList<ServerPlayer *>();
-    
-    // 计算两个方向的路径，返回较短的那个
-    QList<ServerPlayer *> clockwise = getClockwisePath(from, to, include_from, include_to);
-    QList<ServerPlayer *> counterclockwise = getCounterclockwisePath(from, to, include_from, include_to);
-    
-    return (clockwise.length() <= counterclockwise.length()) ? clockwise : counterclockwise;
+    return m_roster->pathBetween(from, to, include_from, include_to);
 }
 
 QList<ServerPlayer *> Room::getClockwisePath(ServerPlayer *from, ServerPlayer *to, bool include_from, bool include_to) const
 {
-    QList<ServerPlayer *> path;
-    if (!from || !to) return path;
-    
-    // 如果起点和终点相同，根据参数决定是否包含该点
-    if (from == to) {
-        if (include_from && include_to) {
-            path << from;
-        }
-        return path;
-    }
-    
-    // 如果包含起点，则添加起点
-    if (include_from) {
-        path << from;
-    }
-    
-    // 添加路径中的玩家
-    ServerPlayer *current = from->getNextAlive();
-    while (current && current != to) {
-        path << current;
-        current = current->getNextAlive();
-    }
-    
-    // 如果包含终点，添加终点
-    if (include_to && current == to) {
-        path << to;
-    }
-    
-    return path;
+    return m_roster->clockwisePath(from, to, include_from, include_to);
 }
 
 QList<ServerPlayer *> Room::getCounterclockwisePath(ServerPlayer *from, ServerPlayer *to, bool include_from, bool include_to) const
 {
-    QList<ServerPlayer *> path;
-    if (!from || !to) return path;
-    
-    // 如果起点和终点相同，根据参数决定是否包含该点
-    if (from == to) {
-        if (include_from && include_to) {
-            path << from;
-        }
-        return path;
-    }
-    
-    // 如果包含终点，添加终点
-    if (include_to) {
-        path << to;
-    }
-    
-    // 此时按路径方向从to开始顺序遍历到from的路径
-    ServerPlayer *current = to->getNextAlive();
-    while (current && current != from) {
-        path << current;
-        current = current->getNextAlive();
-    }
-    
-    // 如果包含起点，则添加起点
-    if (include_from && current == from) {
-        path << from;
-    }
-    
-    return path;
+    return m_roster->counterclockwisePath(from, to, include_from, include_to);
 }
 
 void Room::output(const QString&message)
@@ -660,7 +572,7 @@ ServerPlayer*Room::getCurrentDyingPlayer() const
 {
 	QStringList currentdying = getTag("CurrentDying").toStringList();
 	if (currentdying.isEmpty()) return nullptr;
-	foreach(ServerPlayer*p, m_alivePlayers){
+	foreach(ServerPlayer*p, getAlivePlayers()){
 		if (p->objectName() == currentdying.last())
 			return p;
 	}
@@ -696,15 +608,10 @@ void Room::revivePlayer(ServerPlayer*player, bool sendlog, bool throw_mark, bool
 	if(current==player)
 		setPlayerFlag(player,"CurrentPlayer");
 
-	m_alivePlayers.clear();
-	foreach(ServerPlayer*p, m_players){
-		if (p->isAlive()) m_alivePlayers << p;
-	}
-
-	for (int i = 0; i < m_alivePlayers.length(); i++){
-		m_alivePlayers[i]->setSeat(i + 1);
-		broadcastProperty(m_alivePlayers[i], "seat");
-	}
+	m_roster->rebuildAlive();
+	m_roster->reseatAlive();
+	foreach (ServerPlayer *alivePlayer, getAlivePlayers())
+		broadcastProperty(alivePlayer, "seat");
 
 	doBroadcastNotify(S_COMMAND_REVIVE_PLAYER, player->objectName());
 	updateStateItem();
@@ -742,7 +649,7 @@ static bool CompareByRole(ServerPlayer*player1, ServerPlayer*player2)
 void Room::updateStateItem()
 {
 	QString roles;
-	QList<ServerPlayer*> players = m_players;
+	QList<ServerPlayer*> players = getPlayers();
 	std::sort(players.begin(), players.end(), CompareByRole);
 	foreach(ServerPlayer*p, players){
 		QString abbreviation = Sanguosha->getRoleAbbreviation(p->getRole());
@@ -764,13 +671,10 @@ void Room::killPlayer(ServerPlayer*victim, DamageStruct*reason, HpLostStruct*hpl
 	clearControllerRelation(this, victim);
 	victim->setAlive(false);
 
-	int n = m_alivePlayers.indexOf(victim)+1;
-	for (int i = n; i < m_alivePlayers.length(); i++){
-		m_alivePlayers[i]->setSeat(m_alivePlayers[i]->getSeat() - 1);
-		broadcastProperty(m_alivePlayers[i], "seat");
-	}
-
-	m_alivePlayers.removeOne(victim);
+	const QList<ServerPlayer *> affected = m_roster->alivePlayersAfter(victim);
+	m_roster->removeAlive(victim);
+	foreach (ServerPlayer *affectedPlayer, affected)
+		broadcastProperty(affectedPlayer, "seat");
 
 	DeathStruct death;
 	death.who = victim;
@@ -836,14 +740,14 @@ void Room::killPlayer(ServerPlayer*victim, DamageStruct*reason, HpLostStruct*hpl
 
 	if (!victim->isAlive()&&Config.EnableAI){
 		bool expose_roles = true;
-		foreach(ServerPlayer*p, m_alivePlayers){
+		foreach(ServerPlayer*p, getAlivePlayers()){
 			if (!p->isOffline()) expose_roles = false;
 			if (victim->getState() != "robot")
 				notifyProperty(victim, p, "role");
 		}
 
 		if (expose_roles){
-			foreach(ServerPlayer*p, m_alivePlayers){
+			foreach(ServerPlayer*p, getAlivePlayers()){
 				if (Config.EnableHegemony){
 					QString role = p->getKingdom();
 					if (role == "god")
@@ -863,7 +767,7 @@ void Room::killPlayer(ServerPlayer*victim, DamageStruct*reason, HpLostStruct*hpl
 				Config.AIDelay = Config.AIDelayAD;
 				// Keep the same player-count scaling applied at game start.
 				if (Config.AIDelay > 0) {
-					int n = m_players.length();
+					int n = getPlayers().length();
 					if (n > 10)
 						Config.AIDelay = qMax(Config.AIDelay * 8 / n, 100);
 				}
@@ -919,7 +823,7 @@ QList<int> Room::getNCards(int n, bool update_pile_number, bool isTop)
 QStringList Room::aliveRoles(ServerPlayer*except) const
 {
 	QStringList roles;
-	foreach(ServerPlayer*p, m_players){
+	foreach(ServerPlayer*p, getPlayers()){
 		if (p != except&&(p->isAlive() || p->property("RestPlayer").toBool()))
 			roles << p->getRole();
 	}
@@ -934,7 +838,7 @@ void Room::gameOver(const QString&winner)
 
 	// 直接從全體玩家清單中尋找有效目標
 	// 優先順序：存活玩家 > RestPlayer > 任何玩家
-	foreach (ServerPlayer* p, m_players) {
+	foreach (ServerPlayer* p, getPlayers()) {
 		if (!p) continue;
 		// 生還玩家優先
 		if (p->isAlive()) {
@@ -945,7 +849,7 @@ void Room::gameOver(const QString&winner)
 
 	// 降級策略：若無生還玩家，嘗試 RestPlayer
 	if (!target) {
-		foreach (ServerPlayer* p, m_players) {
+		foreach (ServerPlayer* p, getPlayers()) {
 			if (!p) continue;
 			if (p->property("RestPlayer").toBool()) {
 				target = p;
@@ -956,7 +860,7 @@ void Room::gameOver(const QString&winner)
 
 	// 最終降級：使用任何可用的玩家
 	if (!target) {
-		target = m_players.first();
+		target = getPlayers().first();
 	}
 
 	thread->trigger(GameOver, this, target, data);
@@ -967,7 +871,7 @@ void Room::gameOver(const QString&winner)
 
 	if (mode.contains("_mini_")){
 		QStringList winners = winner.split("+");
-		foreach(ServerPlayer*sp, m_players){
+		foreach(ServerPlayer*sp, getPlayers()){
 			if (!sp) continue;
 			if (sp->getState() != "robot"&&(winners.contains(sp->getRole())
 				|| winners.contains(sp->objectName()))){
@@ -1007,7 +911,7 @@ void Room::gameOver(const QString&winner)
 	}
 
 	QStringList all_roles;
-	QList<ServerPlayer*> playersCopy = m_players;
+	QList<ServerPlayer*> playersCopy = getPlayers();
 	foreach(ServerPlayer*player, playersCopy){
 		if (!player) continue;
 		all_roles << player->getRole();
@@ -1154,7 +1058,7 @@ void Room::notifySkillInstanceSnapshot(ServerPlayer *receiver)
 
 void Room::notifySkillInstanceUpsert(ServerPlayer *owner, const SkillInstance &instance)
 {
-    foreach (ServerPlayer *receiver, m_players) {
+    foreach (ServerPlayer *receiver, getPlayers()) {
         if (!canReceiveSkillInstance(receiver, owner, instance)) continue;
         const SkillInstanceMessage message = SkillInstanceMessage::makeUpsert(
             skillInstanceMessage(owner, instance, receiver == owner));
@@ -1164,7 +1068,7 @@ void Room::notifySkillInstanceUpsert(ServerPlayer *owner, const SkillInstance &i
 
 void Room::notifySkillInstanceRemove(ServerPlayer *owner, const SkillInstance &instance)
 {
-    foreach (ServerPlayer *receiver, m_players) {
+    foreach (ServerPlayer *receiver, getPlayers()) {
         if (!canReceiveSkillInstance(receiver, owner, instance)) continue;
         const SkillInstanceMessage message = SkillInstanceMessage::makeRemove(
             owner->objectName(), instance.skillName, instance.instanceID);
@@ -2412,8 +2316,8 @@ const Card*Room::askForCard(ServerPlayer*player, const QString&pattern, const QS
 	else{
 		ids << resp.m_card->getId();
 		WrappedCard*wrapped = Sanguosha->getWrappedCard(ids.first());
-		if (wrapped->isModified()) broadcastUpdateCard(m_players, ids.first(), wrapped);
-		//else broadcastResetCard(m_players, ids.first());
+		if (wrapped->isModified()) broadcastUpdateCard(getPlayers(), ids.first(), wrapped);
+		//else broadcastResetCard(getPlayers(), ids.first());
 	}
 	QVariant askedData = QString("cardResponded:%1:%2:%3").arg(_pattern).arg(prompt).arg(resp.m_card->toString());
 	thread->trigger(ChoiceMade, this, player, askedData);
@@ -3120,11 +3024,26 @@ void Room::clearCardTip(int card_id)
 	}
 }
 
+void Room::addPlayerToRoster(ServerPlayer *player)
+{
+	m_roster->add(player);
+}
+
+void Room::removePlayerFromRoster(ServerPlayer *player)
+{
+	m_roster->remove(player);
+}
+
+void Room::replacePlayerOrder(const QList<ServerPlayer *> &players)
+{
+	m_roster->replacePlayers(players);
+}
+
 ServerPlayer*Room::addSocket(ClientSocket*socket)
 {
 	ServerPlayer*player = new ServerPlayer(this);
 	player->setSocket(socket);
-	m_players << player;
+	addPlayerToRoster(player);
 
 	connect(player, SIGNAL(disconnected()), this, SLOT(reportDisconnection()));
 	connect(player, SIGNAL(request_got(QString)), this, SLOT(processClientPacket(QString)));
@@ -3136,7 +3055,7 @@ ServerPlayer*Room::addAIPlayer()
 {
 	ServerPlayer*player = new ServerPlayer(this);
 	player->setState("robot");
-	m_players << player;
+	addPlayerToRoster(player);
 
 	connect(player, SIGNAL(disconnected()), this, SLOT(reportDisconnection()));
 	connect(player, SIGNAL(request_got(QString)), this, SLOT(processClientPacket(QString)));
@@ -3146,7 +3065,7 @@ ServerPlayer*Room::addAIPlayer()
 
 bool Room::isFull() const
 {
-	return m_players.length() >= player_count;
+	return getPlayers().length() >= player_count;
 }
 
 bool Room::isFinished() const
@@ -3159,7 +3078,7 @@ bool Room::canPause(ServerPlayer*player) const
 	if (!player) return false;
 
 	if (player->isOwner()&&isFull()){
-		foreach(ServerPlayer*p, m_alivePlayers){
+		foreach(ServerPlayer*p, getAlivePlayers()){
 			if (p==player||p->getState()=="robot") continue;
 			return false;
 		}
@@ -3192,7 +3111,7 @@ void Room::tryPause()
 
 int Room::getLack() const
 {
-	return player_count - m_players.length();
+	return player_count - getPlayers().length();
 }
 
 QString Room::getMode() const
@@ -3207,7 +3126,7 @@ const Scenario*Room::getScenario() const
 
 void Room::broadcast(const QString&message, ServerPlayer*except)
 {
-	foreach(ServerPlayer*player, m_players){
+	foreach(ServerPlayer*player, getPlayers()){
 		if (player != except)
 			player->unicast(message);
 	}
@@ -3230,47 +3149,22 @@ QList<int> &Room::getDrawPile()
 
 ServerPlayer*Room::findPlayer(const QString&general_name, bool include_dead) const
 {
-	if (general_name.contains("+")){
-		QStringList names = general_name.split("+");
-		foreach(ServerPlayer*player, include_dead ? m_players : m_alivePlayers){
-			if (names.contains(player->getGeneralName()))
-				return player;
-		}
-	}else{
-		foreach(ServerPlayer*player, include_dead ? m_players : m_alivePlayers){
-			if (player->getGeneralName() == general_name)
-				return player;
-		}
-	}
-	return nullptr;
+	return m_roster->findByGeneral(general_name, include_dead);
 }
 
 QList<ServerPlayer*>Room::findPlayersBySkillName(const QString&skill_name) const
 {
-	QList<ServerPlayer*> list;
-	foreach(ServerPlayer*player, getAllPlayers()){
-		if (player->hasSkill(skill_name))
-			list << player;
-	}
-	return list;
+	return m_roster->findBySkill(skill_name, current);
 }
 
 ServerPlayer*Room::findPlayerBySkillName(const QString&skill_name, bool include_lose) const
 {
-	foreach(ServerPlayer*player, getAllPlayers()){
-		if (player->hasSkill(skill_name, include_lose))
-			return player;
-	}
-	return nullptr;
+	return m_roster->findFirstBySkill(skill_name, current, include_lose);
 }
 
 ServerPlayer*Room::findPlayerByObjectName(const QString&objectName, bool include_dead) const
 {
-	foreach(ServerPlayer*p, getAllPlayers(include_dead)){
-		if (p->objectName() == objectName)
-			return p;
-	}
-	return nullptr;
+	return m_roster->findByObjectName(objectName, current, include_dead);
 }
 
 void Room::installEquip(ServerPlayer*player, const QString&equip_name)
@@ -3525,7 +3419,7 @@ void Room::prepareForStart()
 			Config.setValue("EnableCheat", false);
 
 			QList<ServerPlayer*> humans;
-			foreach(ServerPlayer*p, m_players){
+			foreach(ServerPlayer*p, getPlayers()){
 				if (p->getState() != "robot")
 					humans << p;
 			}
@@ -3537,7 +3431,7 @@ void Room::prepareForStart()
 				human->setRole("lord");
 				broadcastProperty(human, "role");
 
-				foreach(ServerPlayer*p, m_players){
+				foreach(ServerPlayer*p, getPlayers()){
 					if (p == human) continue;
 					p->setGeneralName("sujiang");
 					broadcastProperty(p, "general");
@@ -3549,8 +3443,9 @@ void Room::prepareForStart()
 		if (!already){
 			QStringList generals, roles;
 			scenario->assign(generals, roles);
-			for (int i = 0; i < m_players.length(); i++){
-				ServerPlayer*player = m_players[i];
+			const QList<ServerPlayer *> players = getPlayers();
+			for (int i = 0; i < players.length(); i++){
+				ServerPlayer*player = players[i];
 				if (generals.length() > i){
 					player->setGeneralName(generals[i]);
 					broadcastProperty(player, "general");
@@ -3567,8 +3462,11 @@ void Room::prepareForStart()
 		return;
 	} else {
 		GameModeStruct gameMode = Sanguosha->getGameMode(mode);
-		if (mode == "08_defense" || (Config.RandomSeat && gameMode.shuffle_seats))
-			qShuffle(m_players);
+		if (mode == "08_defense" || (Config.RandomSeat && gameMode.shuffle_seats)) {
+			QList<ServerPlayer *> players = getPlayers();
+			qShuffle(players);
+			replacePlayerOrder(players);
+		}
 		if (mode!="04_2v2"&&!Config.EnableHegemony&&Config.value("FreeAssign").toBool()){
 			ServerPlayer*owner = getOwner();
 			if (owner&&owner->isOnline()){
@@ -3582,7 +3480,7 @@ void Room::prepareForStart()
 							QString role = replyArray.value(1).value<JsonArray>().value(0).toString();
 							owner = findChild<ServerPlayer*>(name);
 							owner->setRole(role);
-							QList<ServerPlayer*> all_players = m_players;
+							QList<ServerPlayer*> all_players = getPlayers();
 							all_players.removeOne(owner);
 							QStringList roles = Sanguosha->getRoleList(mode);
 							roles.removeOne(role);
@@ -3595,26 +3493,28 @@ void Room::prepareForStart()
 									notifyProperty(all_players[i], all_players[i], "role");
 							}
 						}else{*/
-							QList<ServerPlayer*> all_players = m_players;
+							QList<ServerPlayer*> all_players = getPlayers();
+							QList<ServerPlayer*> players = all_players;
 							QStringList roles = Sanguosha->getRoleList(mode);
 							for (int i = 0; i < replyArray.value(0).value<JsonArray>().size(); i++){
 								QString name = replyArray.value(0).value<JsonArray>().value(i).toString();
 								QString role = replyArray.value(1).value<JsonArray>().value(i).toString();
 								owner = findChild<ServerPlayer*>(name);
-								m_players.swapItemsAt(i, m_players.indexOf(owner));
+								players.swapItemsAt(i, players.indexOf(owner));
 								all_players.removeOne(owner);
 								roles.removeOne(role);
 								owner->setRole(role);
 							}
+							replacePlayerOrder(players);
 							qShuffle(roles);
 							for (int i = 0; i < all_players.count(); i++)
 								all_players[i]->setRole(roles[i]);
-							for (int i = 0; i < m_players.count(); i++){
-								if (Sanguosha->hasShowRoleMode(mode) || m_players[i]->getRole() == "lord")
-									broadcastProperty(m_players[i], "role");
-								else
-									notifyProperty(m_players[i], m_players[i], "role");
-							}
+			for (int i = 0; i < players.count(); i++){
+				if (Sanguosha->hasShowRoleMode(mode) || players[i]->getRole() == "lord")
+					broadcastProperty(players[i], "role");
+				else
+					notifyProperty(players[i], players[i], "role");
+			}
 						//}
 						adjustSeats();
 						return;
@@ -3623,11 +3523,12 @@ void Room::prepareForStart()
 			}
 		}
 		if (mode == "04_1v3" || mode == "04_boss"){
-			ServerPlayer*lord = m_players[qrand()%4];
+			const QList<ServerPlayer *> players = getPlayers();
+			ServerPlayer*lord = players[qrand()%4];
 			for (int i = 0; i < 4; i++){
-				if (m_players[i] == lord) m_players[i]->setRole("lord");
-				else m_players[i]->setRole("rebel");
-				broadcastProperty(m_players[i], "role");
+				if (players[i] == lord) players[i]->setRole("lord");
+				else players[i]->setRole("rebel");
+				broadcastProperty(players[i], "role");
 			}
 			adjustSeats();
 			return;
@@ -3658,12 +3559,12 @@ void Room::reportDisconnection()
 	if (player->objectName().isEmpty()){
 		// first case
 		player->setParent(nullptr);
-		m_players.removeOne(player);
+		removePlayerFromRoster(player);
 	} else if (player->getRole().isEmpty()){
 		// second case
-		if (m_players.length() < player_count){
+		if (getPlayers().length() < player_count){
 			player->setParent(nullptr);
-			m_players.removeOne(player);
+			removePlayerFromRoster(player);
 
 			if (player->getState() != "robot"){
 				QString leaveStr = "<font color=#000000>已离开游戏</font>";//tr("<font color=#000000>Player <b>%1</b> left the game</font>").arg(player->screenName());
@@ -3679,7 +3580,7 @@ void Room::reportDisconnection()
 		setPlayerProperty(player, "state", "offline");
 
 		bool someone_is_online = false;
-		foreach(ServerPlayer*p, m_players){
+		foreach(ServerPlayer*p, getPlayers()){
 			if (p->isOffline()) continue;
 			someone_is_online = true;
 			break;
@@ -3695,7 +3596,7 @@ void Room::reportDisconnection()
 	if (player->isOwner()){
 		player->setOwner(false);
 		broadcastProperty(player, "owner");
-		foreach(ServerPlayer*p, m_players){
+		foreach(ServerPlayer*p, getPlayers()){
 			if (p->isOffline()) continue;
 			p->setOwner(true);
 			broadcastProperty(p, "owner");
@@ -3782,7 +3683,7 @@ bool Room::makeSurrender(ServerPlayer*initiator)
 
 	// broadcast polling request
 	QList<ServerPlayer*> playersAlive;
-	foreach(ServerPlayer*player, m_players){
+	foreach(ServerPlayer*player, getPlayers()){
 		QString playerRole = player->getRole();
 		if ((playerRole == "loyalist" || playerRole == "lord")&&player->isAlive()) loyalAlive++;
 		else if (playerRole == "rebel"&&player->isAlive()) rebelAlive++;
@@ -3882,12 +3783,12 @@ void Room::addRobotCommand(ServerPlayer*player, const QVariant&arg)
 		return;
 
 	int r = 0, add_num = arg.toInt();
-	if (add_num == -1) add_num = player_count - m_players.length();
+	if (add_num == -1) add_num = player_count - getPlayers().length();
 	if (Server::isHeadlessMode)
 		Server::writeHeadlessLog(QString("[AUTOTEST] addRobot request=%1 fill=%2 players=%3/%4 owner=%5")
-			.arg(arg.toInt()).arg(add_num).arg(m_players.length()).arg(player_count)
+			.arg(arg.toInt()).arg(add_num).arg(getPlayers().length()).arg(player_count)
 			.arg(player ? (player->isOwner() ? "yes" : "no") : "null"));
-	foreach(ServerPlayer*p, m_players){
+	foreach(ServerPlayer*p, getPlayers()){
 		if (p->getState() == "robot") r++;
 	}
 
@@ -3905,7 +3806,7 @@ void Room::addRobotCommand(ServerPlayer*player, const QVariant&arg)
 		ServerPlayer*robot = new ServerPlayer(this);
 		robot->setState("robot");
 
-		m_players << robot;
+		addPlayerToRoster(robot);
 
 		//QString robot_name = tr("Computer %1").arg(QChar('A' + r));
 		r++;
@@ -3930,7 +3831,7 @@ void Room::addRobotCommand(ServerPlayer*player, const QVariant&arg)
 
 ServerPlayer*Room::getOwner() const
 {
-	foreach(ServerPlayer*player, m_players)
+	foreach(ServerPlayer*player, getPlayers())
 		if (player->isOwner()) return player;
 	return nullptr;
 }
@@ -3967,7 +3868,7 @@ void Room::signup(ServerPlayer*player, const QString&screen_name, const QString&
 		player->startNetworkDelayTest();
 
 		// introduce all existing player to the new joined
-		foreach(ServerPlayer*p, m_players){
+		foreach(ServerPlayer*p, getPlayers()){
 			if (p != player) p->introduceTo(player);
 		}
 	}
@@ -3976,7 +3877,7 @@ void Room::signup(ServerPlayer*player, const QString&screen_name, const QString&
 void Room::assignGeneralsForPlayers(const QList<ServerPlayer*>&to_assign)
 {
 	QSet<QString> existed;
-	foreach(ServerPlayer*player, m_players){
+	foreach(ServerPlayer*player, getPlayers()){
 		QString gn = player->getGeneralName();
 		if(gn.isEmpty()) continue;
 		existed << gn;
@@ -4006,7 +3907,7 @@ void Room::assignGeneralsForPlayers(const QList<ServerPlayer*>&to_assign)
 
 	if (Config.EnableHegemony){
 		if (to_assign.first()->getGeneral()){
-			foreach(ServerPlayer*sp, m_players){
+			foreach(ServerPlayer*sp, getPlayers()){
 				QStringList old_list = sp->getSelected();
 				sp->clearSelected();
 
@@ -4049,7 +3950,7 @@ void Room::assignGeneralsForPlayers(const QList<ServerPlayer*>&to_assign)
 void Room::assignGeneralsForPlayersOfJianGeDefenseMode(const QList<ServerPlayer*>&to_assign)
 {
 	QMap<QString, QSet<QString> > existed;
-	foreach(ServerPlayer*player, m_players){
+	foreach(ServerPlayer*player, getPlayers()){
 		if (player->property("jiange_defense_type").toString() != "general")
 			continue;
 		if (player->getGeneral())
@@ -4113,7 +4014,7 @@ void Room::chooseGenerals(QList<ServerPlayer*> players)
 {
 	if (Config.Enable2ndGeneral)
 		Config.Enable2ndGeneral = mode!="02_1v1"&&mode!="06_3v3"&&mode!="06_XMode"&&mode!="04_1v3";
-	if (players.isEmpty()) players = m_players;
+	if (players.isEmpty()) players = getPlayers();
 	// for lord.
 	QString general = "sujiang";
 	ServerPlayer*the_lord = getLord();
@@ -4244,7 +4145,7 @@ void Room::chooseGenerals(QList<ServerPlayer*> players)
 	}
 
 	if (Config.EnableBasara){
-		foreach(ServerPlayer*player, m_players){
+		foreach(ServerPlayer*player, getPlayers()){
 			QStringList names;
 			if (player->getGeneral()){
 				names.append(player->getGeneralName());
@@ -4275,7 +4176,7 @@ void Room::chooseGenerals(QList<ServerPlayer*> players)
 		}
 	}
 	/*if (Config.value("EnableSUPERConvert", true).toBool()&&mode != "05_ol"){
-		foreach(ServerPlayer*p, m_players){
+		foreach(ServerPlayer*p, getPlayers()){
 			QStringList choicelist;
 			foreach(QString gen, Sanguosha->getLimitedGeneralNames()){
 				if (p->getGeneralName().endsWith(gen.split("_").last()))
@@ -4332,7 +4233,7 @@ void Room::chooseGenerals(QList<ServerPlayer*> players)
 
 void Room::chooseGeneralsOfJianGeDefenseMode()
 {
-	QList<ServerPlayer*> to_assign = m_players;
+	QList<ServerPlayer*> to_assign = getPlayers();
 
 	assignGeneralsForPlayersOfJianGeDefenseMode(to_assign);
 	foreach(ServerPlayer*player, to_assign)
@@ -4351,7 +4252,7 @@ void Room::chooseGeneralsOfJianGeDefenseMode()
 
 	if (Config.Enable2ndGeneral){
 		QList<ServerPlayer*> to_assign;
-		foreach(ServerPlayer*p, m_players){
+		foreach(ServerPlayer*p, getPlayers()){
 			if (p->property("jiange_defense_type").toString() == "general")
 				to_assign << p;
 		}
@@ -4371,7 +4272,7 @@ bool Room::changeBGM(const QString&bgm_name, bool reset, QList<ServerPlayer*> to
 {
 	QString bgm = QString("audio/system/BGM/%1.ogg").arg(bgm_name);
 	if (!QFile::exists(bgm)) return false;
-	if(to_assign.isEmpty()) to_assign = m_players;
+	if(to_assign.isEmpty()) to_assign = getPlayers();
 	JsonArray arg;
 	arg << QSanProtocol::S_GAME_EVENT_CHANGE_BGM;
 	arg << bgm;
@@ -4395,12 +4296,12 @@ void Room::run()
 	// Scale AIDelay down for large player counts (>8) to reduce lag in 20-player games.
 	// Formula: delay * 8 / playerCount, minimum 100 ms.
 	if (Config.AIDelay > 0) {
-		int n = m_players.length();
+		int n = getPlayers().length();
 		if (n > 8)
 			Config.AIDelay = qMax(Config.AIDelay * 8 / n, 100);
 	}
 
-	foreach(ServerPlayer*player, m_players){
+	foreach(ServerPlayer*player, getPlayers()){
 		//Ensure that the game starts with all player's mutex locked
 		player->drainAllLocks();
 		player->releaseLock(ServerPlayer::SEMA_MUTEX);
@@ -4448,7 +4349,7 @@ void Room::run()
 		connect(thread_1v1, SIGNAL(finished()), thread_1v1, SLOT(deleteLater()));
 		return;
 	} else if (mode == "04_1v3"){
-		ServerPlayer*lord = m_players.first();
+		ServerPlayer*lord = getPlayers().first();
 		QStringList lords;
 		lords = GetConfigFromLuaState(getLuaState(), "extra_boss").toStringList();
 		if(lords.isEmpty()){
@@ -4475,7 +4376,7 @@ void Room::run()
 				names << gen_name;
 		}
 		qShuffle(names);
-		foreach(ServerPlayer*player, m_players){
+		foreach(ServerPlayer*player, getPlayers()){
 			if (player == lord) continue;
 			lords.clear();
 			for (int i = 0; i < 3; i++){
@@ -4493,7 +4394,7 @@ void Room::run()
 		QStringList lords;
 		lords = GetConfigFromLuaState(getLuaState(), "extra_boss").toStringList();
 		if(lords.length()>0) boss_lv_1 = lords;
-		ServerPlayer*lord = m_players.first();
+		ServerPlayer*lord = getPlayers().first();
 
 		if (Config.value("OptionalBoss").toBool()){
 			setPlayerProperty(lord, "general", askForGeneral(lord, boss_lv_1));
@@ -4501,7 +4402,7 @@ void Room::run()
 			setPlayerProperty(lord, "general", boss_lv_1.at(qrand() % boss_lv_1.length()));
 		setPlayerMark(lord, "BossMode_Boss", 1);
 
-		QList<ServerPlayer*> players = m_players;
+		QList<ServerPlayer*> players = getPlayers();
 		players.removeOne(lord);
 		chooseGenerals(players);
 	} else if (mode == "05_ol"){
@@ -4511,12 +4412,12 @@ void Room::run()
 		QStringList lords;
 		lords = GetConfigFromLuaState(getLuaState(), "extra_boss").toStringList();
 		if(lords.length()>0) jiang_list = lords;
-		foreach(ServerPlayer*player, m_players){
+		foreach(ServerPlayer*player, getPlayers()){
 			if (player->isLord()){
 				QString jiang = askForGeneral(player, jiang_list);
 				setPlayerProperty(player, "general", jiang);
 				QString bing = bing_list[jiang_list.indexOf(jiang)];
-				foreach(ServerPlayer*p, m_players){
+				foreach(ServerPlayer*p, getPlayers()){
 					if (p->getRole() == "loyalist"){
 						setPlayerProperty(p, "general", bing);
 						if (bing == "godlai_feixiong_right")
@@ -4526,8 +4427,8 @@ void Room::run()
 			}
 		}
 		bing_list << jiang_list;
-		jiang_list = Sanguosha->getRandomGenerals(m_players.length()*4,QSet<QString>(bing_list.begin(),bing_list.end()));
-		foreach(ServerPlayer*player, m_players){
+		jiang_list = Sanguosha->getRandomGenerals(getPlayers().length()*4,QSet<QString>(bing_list.begin(),bing_list.end()));
+		foreach(ServerPlayer*player, getPlayers()){
 			if (player->getRole() == "rebel"){
 				lords.clear();
 				for (int i = 0; i < 5; i++){
@@ -4543,7 +4444,7 @@ void Room::run()
 		QStringList lords;
 		lords = GetConfigFromLuaState(getLuaState(), "extra_boss").toStringList();
 		if(lords.length()>0) gui_list = lords;
-		foreach(ServerPlayer*player, m_players){
+		foreach(ServerPlayer*player, getPlayers()){
 			if (player->getRole() == "loyalist")
 				setPlayerProperty(player, "general", "zhuyin");
 			else if (player->isLord())
@@ -4557,8 +4458,8 @@ void Room::run()
 			god_list << list.takeFirst();
 		}
 		gui_list << god_list;
-		list = Sanguosha->getRandomGenerals(m_players.length()*4,QSet<QString>(gui_list.begin(),gui_list.end()));
-		foreach(ServerPlayer*player, m_players){
+		list = Sanguosha->getRandomGenerals(getPlayers().length()*4,QSet<QString>(gui_list.begin(),gui_list.end()));
+		foreach(ServerPlayer*player, getPlayers()){
 			if (player->getRole() == "rebel"){
 				lords.clear();
 				for (int i = 0; i < 5; ++i)
@@ -4572,11 +4473,12 @@ void Room::run()
 		QStringList type_list;
 		type_list << "machine" << "general" << "soul" << "general"
 			<< "general" << "soul" << "general" << "machine";
+		const QList<ServerPlayer *> players = getPlayers();
 		for (int i = 0; i < 8; i++)
-			setPlayerProperty(m_players[i], "jiange_defense_type", type_list[i]);
+			setPlayerProperty(players[i], "jiange_defense_type", type_list[i]);
 		chooseGeneralsOfJianGeDefenseMode();
 	} else if (Sanguosha->hasSkipGeneralSelection(mode)) {
-		foreach (ServerPlayer *player, m_players)
+		foreach (ServerPlayer *player, getPlayers())
 			setPlayerProperty(player, "general", "anjiang");
 	} else
 		chooseGenerals();
@@ -4625,73 +4527,48 @@ void Room::assignRoles()
 		roles.clear();
 		if (qrand()%2<1) roles << "loyalist" << "rebel" << "rebel" << "loyalist";
 		else roles << "rebel" << "loyalist" << "loyalist" << "rebel";*/
-		qShuffle(m_players);
+		QList<ServerPlayer *> players = getPlayers();
+		qShuffle(players);
+		replacePlayerOrder(players);
 	} else if (mode == "02_1v1"){
 		roles.prepend(roles.takeLast());
 	}else if (mode != "08_defense"&&mode != "05_ol"&&mode != "06_ol")
 		qShuffle(roles);
 
-	for (int i = 0; i < m_players.count(); i++){
+	const QList<ServerPlayer *> players = getPlayers();
+	for (int i = 0; i < players.count(); i++){
 		if (i >= roles.count()) break;
-		m_players[i]->setRole(roles[i]);
+		players[i]->setRole(roles[i]);
 		if (showAllRoles || (roles[i] == "lord"&&!ServerInfo.EnableHegemony))
 			//|| mode == "06_ol"|| mode == "05_ol" || mode == "04_1v3" || mode == "04_boss" || mode == "08_defense" || mode == "03_1v2" || mode == "04_2v2")
-			broadcastProperty(m_players[i], "role", roles[i]);
+			broadcastProperty(players[i], "role", roles[i]);
 		else
-			notifyProperty(m_players[i], m_players[i], "role");
+			notifyProperty(players[i], players[i], "role");
 	}
 }
 
 void Room::swapSeat(ServerPlayer*a, ServerPlayer*b)
 {
-	int seat1 = m_players.indexOf(a);
-	int seat2 = m_players.indexOf(b);
-	m_players.swapItemsAt(seat1, seat2);
+	m_roster->swapSeats(a, b);
+	const QList<ServerPlayer *> players = getPlayers();
 	QStringList player_circle;
-	foreach(ServerPlayer*player, m_players)
+	foreach(ServerPlayer*player, players)
 		player_circle << player->objectName();
 	doBroadcastNotify(S_COMMAND_ARRANGE_SEATS, JsonUtils::toJsonArray(player_circle));
 
-	m_alivePlayers.clear();
-	for (int i = 0; i < m_players.length(); i++){
-		ServerPlayer*player = m_players[i];
-		if (player->isAlive()){
-			m_alivePlayers << player;
-			player->setSeat(m_alivePlayers.length());
-		} else
-			player->setSeat(0);
-
+	foreach (ServerPlayer *player, players) {
 		broadcastProperty(player, "seat");
-
-		player->setPlayerSeat(i+1);
 		broadcastProperty(player, "player_seat");
-
-		int nextIndex = m_playOrderReversed ? (i - 1 + m_players.length()) % m_players.length() : (i + 1) % m_players.length();
-		player->setNext(m_players[nextIndex]);
 	}
 }
 
 void Room::adjustSeats()
 {
-	int n = 0;
-	foreach(ServerPlayer*p, m_players){
-		if (p->getRoleEnum() == Player::Lord)
-			break;
-		n++;
-	}
-	if(mode == "02_1v1") n = 0;
-	QList<ServerPlayer*> players;
-	for (int j = n; j < m_players.length(); j++)
-		players << m_players.at(j);
-	for (int j = 0; j < n; j++)
-		players << m_players.at(j);
-
-	m_players = players;
+	m_roster->adjustSeats(mode == "02_1v1");
+	const QList<ServerPlayer *> players = getPlayers();
 
 	QStringList player_circle;
 	for (int i = 0; i < players.length(); i++){
-		players[i]->setSeat(i + 1);
-		players[i]->setPlayerSeat(i + 1);
 		broadcastProperty(players[i], "player_seat");
 		player_circle << players[i]->objectName();
 	}
@@ -4806,7 +4683,7 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 			QString target_name = sentence.mid(command.length() + 1).trimmed();
 
 			ServerPlayer *target = NULL;
-			foreach (ServerPlayer *p, m_players){
+			foreach (ServerPlayer *p, getPlayers()){
 				if (p->objectName() == target_name ||
 					p->getGeneralName() == target_name ||
 					p->screenName() == target_name){
@@ -4840,12 +4717,12 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 		if(Config.EnableCheat){
 			if (sentence == ".BroadcastRoles"){
 				_NO_BROADCAST_SPEAKING
-				foreach(ServerPlayer*p, m_alivePlayers)
+				foreach(ServerPlayer*p, getAlivePlayers())
 					broadcastProperty(p, "role", p->getRole());
 			} else if (sentence.startsWith(".BroadcastRoles=")){
 				_NO_BROADCAST_SPEAKING
 				QString name = sentence.mid(12);
-				foreach(ServerPlayer*p, m_alivePlayers){
+				foreach(ServerPlayer*p, getAlivePlayers()){
 					if (p->objectName() == name || p->getGeneralName() == name){
 						broadcastProperty(p, "role", p->getRole());
 						break;
@@ -4858,7 +4735,7 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 				body << player->objectName() << QString("----------").toUtf8().toBase64();
 				doNotify(player, S_COMMAND_SPEAK, body);
 	
-				foreach(ServerPlayer*p, m_alivePlayers){
+				foreach(ServerPlayer*p, getAlivePlayers()){
 					if (!p->isKongcheng()){
 						QStringList handcards;
 						foreach(int id, p->handCards())
@@ -4873,7 +4750,7 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 			} else if (sentence.startsWith(".ShowHandCards=")){
 				_NO_BROADCAST_SPEAKING
 				QString name = sentence.mid(15);
-				foreach(ServerPlayer*p, m_alivePlayers){
+				foreach(ServerPlayer*p, getAlivePlayers()){
 					if (p->objectName() == name || p->getGeneralName() == name){
 						if (!p->isKongcheng()){
 							QStringList handcards;
@@ -4893,7 +4770,7 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 				if (arg.length() == 2){
 					QString name = arg.first();
 					QString pile_name = arg.last();
-					foreach(ServerPlayer*p, m_alivePlayers){
+					foreach(ServerPlayer*p, getAlivePlayers()){
 						if (p->objectName() == name || p->getGeneralName() == name){
 							if (!p->getPile(pile_name).isEmpty()){
 								QStringList pile_cards;
@@ -4910,7 +4787,7 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 				}
 			} else if (sentence == ".ShowHuashen"){
 				_NO_BROADCAST_SPEAKING
-				foreach(ServerPlayer*zuoci, m_alivePlayers){
+				foreach(ServerPlayer*zuoci, getAlivePlayers()){
 					if(zuoci->property("Huashens").toString().isEmpty()) continue;
 					QStringList huashen_name;
 					foreach(QString name, zuoci->property("Huashens").toString().split("+"))
@@ -5632,8 +5509,8 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 		if (use.card->getRealCard() == card){
 			if (!use.card->isVirtualCard()){
 				WrappedCard*wrapped = Sanguosha->getWrappedCard(ids.first());
-				if (wrapped->isModified()) broadcastUpdateCard(m_players, ids.first(), wrapped);
-				//else broadcastResetCard(m_players, ids.first());
+				if (wrapped->isModified()) broadcastUpdateCard(getPlayers(), ids.first(), wrapped);
+				//else broadcastResetCard(getPlayers(), ids.first());
 				if (getConvertedPhysicalCardId(use.card) >= 0) {
 					ServerPlayer *displayTarget = use.to.size() == 1 && use.to.first() != use.from
 						? use.to.first() : nullptr;
@@ -5683,7 +5560,7 @@ bool Room::useCard(CardUseStruct&use, bool add_history)
 					}
 					use.from->setFlags("-Global_ProcessBroken");
 					processBrokenFlagSet = false;
-					foreach(ServerPlayer*p, m_alivePlayers)
+					foreach(ServerPlayer*p, getAlivePlayers())
 						p->removeQinggangTag(use.card);
 					foreach(int id, m_cardMovement->primaryPile()){
 						if (getCardPlace(id) == Player::PlaceJudge)
@@ -5875,7 +5752,7 @@ ServerPlayer*Room::getSaver(ServerPlayer*player) const
 {
 	QStringList list = player->getTag("MyDyingSaver").toStringList();
 	if (list.isEmpty()) return nullptr;
-	foreach(ServerPlayer*p, m_alivePlayers){
+	foreach(ServerPlayer*p, getAlivePlayers()){
 		if (p->objectName() == list.last())
 			return p;
 	}
@@ -6024,7 +5901,7 @@ bool Room::hasWelfare(const ServerPlayer*player) const
 void Room::notifySkillInstanceAmount(ServerPlayer *owner, const SkillInstance &instance)
 {
     if (!owner) return;
-    foreach (ServerPlayer *receiver, m_players) {
+    foreach (ServerPlayer *receiver, getPlayers()) {
         if (!canReceiveSkillInstance(receiver, owner, instance)) continue;
         const SkillInstanceMessage message = SkillInstanceMessage::makeAmount(
             owner->objectName(), instance.skillName, instance.instanceID,
@@ -6038,7 +5915,7 @@ void Room::notifySkillInstanceCorrectState(ServerPlayer *owner, const SkillInsta
                                            const QVariant &value)
 {
     if (!owner) return;
-    foreach (ServerPlayer *receiver, m_players) {
+    foreach (ServerPlayer *receiver, getPlayers()) {
         if (!canReceiveSkillInstance(receiver, owner, instance)) continue;
         const SkillInstanceMessage message = SkillInstanceMessage::makeCorrectState(
             owner->objectName(), instance.skillName, instance.instanceID,
@@ -6295,7 +6172,7 @@ ServerPlayer* Room::insertPlayerMidGame(ServerPlayer *before, ServerPlayer *afte
 
     ServerPlayer *new_player = new ServerPlayer(this);
 
-    new_player->setObjectName(QString("sgs%1").arg(m_players.length() + 1));
+    new_player->setObjectName(QString("sgs%1").arg(getPlayers().length() + 1));
     new_player->setGeneralName(general_name);
     new_player->setProperty("avatar_general", general_name);
 
@@ -6308,12 +6185,8 @@ ServerPlayer* Room::insertPlayerMidGame(ServerPlayer *before, ServerPlayer *afte
     before->setNext(new_player);
     new_player->setNext(after);
 
-    int idx = m_players.indexOf(before);
-    m_players.insert(idx + 1, new_player);
-
-    idx = m_alivePlayers.indexOf(before);
-    if (idx >= 0 || before->isAlive())
-        m_alivePlayers.insert(idx + 1, new_player);
+    const int aliveIndex = getAlivePlayers().indexOf(before);
+    m_roster->insertAfter(before, new_player, aliveIndex >= 0 || before->isAlive());
 
     JsonArray info;
     info << new_player->objectName()
@@ -6321,14 +6194,15 @@ ServerPlayer* Room::insertPlayerMidGame(ServerPlayer *before, ServerPlayer *afte
          << general_name;
     doBroadcastNotify(S_COMMAND_ADD_PLAYER_DYNAMIC, info);
 
-    for (int i = 0; i < m_players.length(); ++i) {
-        m_players[i]->setSeat(i + 1);
-        broadcastProperty(m_players[i], "seat");
+    const QList<ServerPlayer *> players = getPlayers();
+    for (int i = 0; i < players.length(); ++i) {
+        players[i]->setSeat(i + 1);
+        broadcastProperty(players[i], "seat");
     }
 
     QStringList player_circle;
-    for (int i = 0; i < m_players.length(); i++)
-        player_circle << m_players[i]->objectName();
+    for (int i = 0; i < players.length(); i++)
+        player_circle << players[i]->objectName();
     doBroadcastNotify(S_COMMAND_ARRANGE_SEATS, JsonUtils::toJsonArray(player_circle));
 
     foreach (const Skill *skill, new_player->getVisibleSkillList()) {
@@ -6366,7 +6240,7 @@ void Room::marshal(ServerPlayer*player)
 	notifyProperty(player, player, "flags", "marshalling");
 
 	QStringList player_circle;
-	foreach(ServerPlayer*p, m_players){
+	foreach(ServerPlayer*p, getPlayers()){
 		if (p != player) p->introduceTo(player);
 		player_circle << p->objectName();
 	}
@@ -6383,7 +6257,7 @@ void Room::marshal(ServerPlayer*player)
 
 	doNotify(player, S_COMMAND_START_IN_X_SECONDS, QVariant(0));
 
-	foreach(ServerPlayer*p, m_players){
+	foreach(ServerPlayer*p, getPlayers()){
 		notifyProperty(player, p, "general");
 
 		if (p->getGeneral2())
@@ -6396,11 +6270,11 @@ void Room::marshal(ServerPlayer*player)
 	if (game_state>0)
 		doNotify(player, S_COMMAND_GAME_START, JsonUtils::toJsonArray(Sanguosha->getRandomCards()));
 
-	foreach(ServerPlayer*p, m_players)
+	foreach(ServerPlayer*p, getPlayers())
 		p->marshal(player);
 	notifySkillInstanceSnapshot(player);
 
-	foreach(ServerPlayer*p, m_players){
+	foreach(ServerPlayer*p, getPlayers()){
 		QMap<QString, QHash<QString, QString> > swaps = p->getAllSkillDescriptionSwaps();
 		foreach(QString skill_name, swaps.keys()){
 			QHash<QString, QString> swap = swaps[skill_name];
@@ -6415,7 +6289,7 @@ void Room::marshal(ServerPlayer*player)
 		}
 	}
 
-	foreach(ServerPlayer*p, m_players){
+	foreach(ServerPlayer*p, getPlayers()){
 		QMap<QString, QHash<QString, QString> > swaps = p->getAllCardDescriptionSwaps();
 		foreach(QString card_name, swaps.keys()){
 			QHash<QString, QString> swap = swaps[card_name];
@@ -6469,21 +6343,22 @@ void Room::startGame()
 	LuaRuntime::Binding luaBinding(m_runtime->lua());
 	GameRng::Binding rngBinding(m_runtime->rng());
 	EngineRuntimeContextScope contextScope(*Sanguosha, this);
-	m_alivePlayers = m_players;
+	m_roster->resetAliveToPlayers();
+	const QList<ServerPlayer *> players = getPlayers();
 	m_chatHistory.clear();/*
 	if (mode == "08_defense"){
 		QList<int> next_list;
 		next_list << 0 << 7 << 1 << 6 << 2 << 5 << 3 << 4;
 		for (int i = 0; i < player_count - 1; i++)
-			m_players[next_list[i]]->setNext(m_players[next_list[i+1]]);
-		m_players[4]->setNext(m_players.first());
+			getPlayers()[next_list[i]]->setNext(getPlayers()[next_list[i+1]]);
+		getPlayers()[4]->setNext(getPlayers().first());
 	} else {*/
 		for (int i = 0; i < player_count - 1; i++)
-			m_players[i]->setNext(m_players[i+1]);
-		m_players.last()->setNext(m_players.first());
+			players[i]->setNext(players[i+1]);
+		players.last()->setNext(players.first());
 	//}
 
-	foreach(ServerPlayer*player, m_players){
+	foreach(ServerPlayer*player, players){
 		if (player->getGeneral()){
 			int max_hp = player->getGeneralMaxHp();
 
@@ -6513,9 +6388,9 @@ void Room::startGame()
 	}
 
 	preparePlayers();
-	foreach (ServerPlayer *player, m_players)
+	foreach (ServerPlayer *player, players)
 		player->refreshUIState();
-	foreach (ServerPlayer *receiver, m_players)
+	foreach (ServerPlayer *receiver, players)
 		notifySkillInstanceSnapshot(receiver);
 
 	doBroadcastNotify(S_COMMAND_GAME_START, JsonUtils::toJsonArray(m_cardMovement->drawPile()));
@@ -6523,12 +6398,12 @@ void Room::startGame()
 	game_state = 1;
 
 	Server*server = qobject_cast<Server*>(parent());
-	foreach(ServerPlayer*player, m_players){
+	foreach(ServerPlayer*player, players){
 		if (player->getState() == "online")
 			server->signupPlayer(player);
 	}
 
-	setCurrent(m_alivePlayers.first());
+	setCurrent(getAlivePlayers().first());
 
 	foreach(int card_id, m_cardMovement->drawPile())
 		setCardMapping(card_id, nullptr, Player::DrawPile);
@@ -6752,19 +6627,19 @@ void Room::updateCardsChange(const CardsMoveStruct&move)
 	if(move.to_place==Player::DiscardPile){
 		foreach(int cardId, move.card_ids){
 			if (Sanguosha->getWrappedCard(cardId)->isModified())
-				broadcastResetCard(m_players, cardId);
+				broadcastResetCard(getPlayers(), cardId);
 		}
 	}else if (move.to_place == Player::PlaceDelayedTrick){
 		foreach(int cardId, move.card_ids){
 			WrappedCard*wrapped = Sanguosha->getWrappedCard(cardId);
-			if (wrapped->isModified()) broadcastUpdateCard(m_players, cardId, wrapped);/*
+			if (wrapped->isModified()) broadcastUpdateCard(getPlayers(), cardId, wrapped);/*
 			const Card*engine_card = Sanguosha->getEngineCard(cardId);
 			if (wrapped->getSuit() != engine_card->getSuit() || wrapped->getNumber() != engine_card->getNumber()){
 				Card*trick = Sanguosha->cloneCard(wrapped);
 				trick->setNumber(engine_card->getNumber());
 				trick->setSuit(engine_card->getSuit());
 				wrapped->takeOver(trick);
-				broadcastUpdateCard(m_players, cardId, wrapped);
+				broadcastUpdateCard(getPlayers(), cardId, wrapped);
 			}*/
 		}
 	}else if(move.to){
@@ -6794,7 +6669,7 @@ bool Room::notifyMoveCards(bool isLostPhase, QList<CardsMoveStruct>&moves, bool 
 	if (isLostPhase) moveId = _m_lastMovementId++;
 	else moveId = --_m_lastMovementId;
 	//Q_ASSERT(_m_lastMovementId >= 0);
-	if (players.isEmpty()) players = m_players;
+	if (players.isEmpty()) players = getPlayers();
 	foreach(ServerPlayer*player, players){
 		if (player->isOffline()) continue;
 		JsonArray arg;
@@ -6975,7 +6850,7 @@ void Room::doAnimate(QSanProtocol::AnimateType type, const QString&arg1, const Q
 
 	JsonArray arg;
 	arg << (int)type << arg1 << arg2;
-	if (players.isEmpty()) players = m_players;
+	if (players.isEmpty()) players = getPlayers();
 	doBroadcastNotify(players, S_COMMAND_ANIMATE, arg);
 }
 
@@ -7028,7 +6903,7 @@ void Room::showGeneral(ServerPlayer *player, const QString &position)
 
 void Room::preparePlayers()
 {
-    foreach(ServerPlayer*player, m_players){
+    foreach(ServerPlayer*player, getPlayers()){
         const General*gen = player->getGeneral();
         if(!gen) continue;
         player->setGender(gen->getGender());
@@ -7130,7 +7005,7 @@ void Room::changePlayerGeneral(ServerPlayer*player, const QString&new_general)
         player->addSkill(skill->objectName(), true);
     }
     filterCards(player, player->getCards("he"), false);
-    foreach (ServerPlayer *receiver, m_players)
+    foreach (ServerPlayer *receiver, getPlayers())
         notifySkillInstanceSnapshot(receiver);
 }
 
@@ -7185,7 +7060,7 @@ void Room::changePlayerGeneral2(ServerPlayer*player, const QString&new_general)
         }
     }
     filterCards(player, player->getCards("he"), false);
-    foreach (ServerPlayer *receiver, m_players)
+    foreach (ServerPlayer *receiver, getPlayers())
         notifySkillInstanceSnapshot(receiver);
 }
 
@@ -7202,7 +7077,7 @@ void Room::filterCards(ServerPlayer*player, QList<const Card*> cards, bool refil
 		if(getCardPlace(cardId) == Player::PlaceSpecial) continue;
 		WrappedCard*wrapped = Sanguosha->getWrappedCard(cardId);
 		if(refilter&&wrapped->isModified())
-			broadcastResetCard(m_players, cardId);
+			broadcastResetCard(getPlayers(), cardId);
 		const Card*card = nullptr;
 		foreach(const FilterSkill*skill, filterSkills){
 			if (skill->viewFilter(cards[i])&&player->hasSkill(skill->objectName())){
@@ -7213,7 +7088,7 @@ void Room::filterCards(ServerPlayer*player, QList<const Card*> cards, bool refil
 		if (card==nullptr) continue;
 		wrapped->takeOver((Card*)card);
 		if (getCardPlace(cardId) == Player::PlaceHand) notifyUpdateCard(player, cardId, card);
-		else broadcastUpdateCard(m_players, cardId, card);
+		else broadcastUpdateCard(getPlayers(), cardId, card);
 	}
 }
 
@@ -7437,7 +7312,7 @@ void Room::changeTableBg(const QString&tableBg)
 
 void Room::changeBackground(const QString name, QList<ServerPlayer *> players)
 {
-	if (players.isEmpty()) players = m_players;
+	if (players.isEmpty()) players = getPlayers();
 	doAnimate(S_ANIMATE_LIGHTBOX, "background=" + name, "", players);
 }
 
@@ -7490,23 +7365,18 @@ bool Room::doAura(ServerPlayer* player, QString aura){
 
 void Room::reversePlayOrder()
 {
-	m_playOrderReversed = !m_playOrderReversed;
-	int count = m_players.length();
+	m_roster->reversePlayOrder();
+	int count = getPlayers().length();
 	if (count < 2) return;
 
-	for (int i = 0; i < count; i++) {
-		int nextIndex = m_playOrderReversed ? (i - 1 + count) % count : (i + 1) % count;
-		m_players[i]->setNext(m_players[nextIndex]);
-	}
-
 	LogMessage log;
-	log.type = m_playOrderReversed ? "#ReversePlayOrder" : "#RestorePlayOrder";
+	log.type = m_roster->isPlayOrderReversed() ? "#ReversePlayOrder" : "#RestorePlayOrder";
 	sendLog(log);
 }
 
 bool Room::isPlayOrderReversed() const
 {
-	return m_playOrderReversed;
+	return m_roster->isPlayOrderReversed();
 }
 
 void Room::updateCardDescription(const QString &card_name, const QVariantMap &placeholders)
@@ -7830,8 +7700,8 @@ Card*Room::askForDiscard(ServerPlayer*player, const QString&reason, int discard_
 			if(to_discard.length()<min_num&&jilei_list.length()>0){
 				foreach(int id, jilei_list){
 					WrappedCard*wrapped = Sanguosha->getWrappedCard(id);
-					if (wrapped->isModified()) broadcastUpdateCard(m_players, id, wrapped);
-					//else broadcastResetCard(m_players, id);
+					if (wrapped->isModified()) broadcastUpdateCard(getPlayers(), id, wrapped);
+					//else broadcastResetCard(getPlayers(), id);
 					setCardFlag(id, "visible");
 				}
 				LogMessage log;
@@ -8059,7 +7929,7 @@ Player::Place Room::getCardPlace(int card_id) const
 ServerPlayer*Room::getLord() const
 {
 	if (mode == "04_2v2") return nullptr;
-	foreach(ServerPlayer*player, m_players){
+	foreach(ServerPlayer*player, getPlayers()){
 		if (player->getRole() == "lord")
 			return player;
 	}
@@ -8759,7 +8629,7 @@ void Room::fillAG(const QList<int>&card_ids, ServerPlayer*who, const QList<int>&
 
 void Room::takeAG(ServerPlayer*player, int card_id, bool move_cards, QList<ServerPlayer*> to_notify)
 {
-	if (to_notify.isEmpty()) to_notify = m_players;
+	if (to_notify.isEmpty()) to_notify = getPlayers();
 
 	JsonArray arg;
 	arg << (player ? QVariant(player->objectName()) : QVariant());
@@ -8968,8 +8838,8 @@ void Room::showCard(ServerPlayer*player, QList<int> card_ids, ServerPlayer*only_
 			//else notifyResetCard(only_viewer, card_id);
 		} else {
 			setCardFlag(card_id, "visible");
-			if (wrapped->isModified()) broadcastUpdateCard(m_players, card_id, wrapped);
-			//else broadcastResetCard(m_players, card_id);
+			if (wrapped->isModified()) broadcastUpdateCard(getPlayers(), card_id, wrapped);
+			//else broadcastResetCard(getPlayers(), card_id);
 		}
 	}
 
@@ -9018,7 +8888,7 @@ void Room::showCard(ServerPlayer*player, QList<int> card_ids, QList<ServerPlayer
 			setCardFlag(card_id, "visible");
 	}
 
-	if(players.isEmpty()) players = m_players;
+	if(players.isEmpty()) players = getPlayers();
 	m_notifier->showCard(player->objectName(), cardIds, players);
 	QVariant data = cardIds;
 	thread->trigger(ShowCards, this, player, data);
@@ -9063,8 +8933,8 @@ void Room::showAllCards(ServerPlayer*player, QList<ServerPlayer*> players)
 			if(wrapped->isModified()) notifyUpdateCard(to, cardId, wrapped);
 			//else notifyResetCard(to, cardId);
 		}else{
-			if(wrapped->isModified()) broadcastUpdateCard(m_players, cardId, wrapped);
-			//else broadcastResetCard(m_players, cardId);
+			if(wrapped->isModified()) broadcastUpdateCard(getPlayers(), cardId, wrapped);
+			//else broadcastResetCard(getPlayers(), cardId);
 		}
 	}*/
 	JsonArray gongxinArgs;
@@ -9355,7 +9225,7 @@ QList<ServerPlayer*> Room::getCardTargets(ServerPlayer*from, const Card*card, QL
 	QList<ServerPlayer*> targets;
 	//if (!card->isAvailable(from)) return targets;  //【杀】、【酒】就不能获取目标了
 	//这个函数获得的是所有可以成为目标的角色，所以【无中生有】、【桃】、【酒】、装备牌等不会只return自己
-	foreach(ServerPlayer*p, m_alivePlayers){
+	foreach(ServerPlayer*p, getAlivePlayers()){
 		if (except_players.contains(p)) continue;
 		int x = 0;
 		if (card->targetFilter(QList<const Player*>(),p,from,x)||x>0)
@@ -9368,7 +9238,7 @@ QList<ServerPlayer*> Room::getCardTargets(ServerPlayer*from, const Card*card, QL
 
 bool Room::canMoveField(const QString&flags, QList<ServerPlayer*> froms, QList<ServerPlayer*> tos)
 {
-	if (froms.isEmpty()) froms = m_alivePlayers;
+	if (froms.isEmpty()) froms = getAlivePlayers();
 	foreach(ServerPlayer*p, froms){
 		QList<ServerPlayer*> new_tos = tos;
 		if (new_tos.isEmpty()) new_tos = getOtherPlayers(p);
@@ -9402,7 +9272,7 @@ bool Room::moveField(ServerPlayer*player, const QString&reason, bool optional, c
 {
 
 	QList<ServerPlayer*> from_players;
-	if (froms.isEmpty()) froms = m_alivePlayers;
+	if (froms.isEmpty()) froms = getAlivePlayers();
 
 	foreach(ServerPlayer*p, froms){
 		QList<ServerPlayer*> newFroms;
