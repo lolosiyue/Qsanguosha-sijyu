@@ -25,6 +25,7 @@ struct AIResult;
 struct AiLegacyRequestView;
 struct PlayerUIState;
 class ServerPlayer;
+class AiDecisionCoordinator;
 class GameSnapshotService;
 class RoomNotifier;
 class RequestCoordinator;
@@ -60,6 +61,7 @@ public:
     friend class RoomThread1v1;
     friend class ServerPlayer;
     friend class GameRule;
+    friend class AiDecisionCoordinator;
     friend class RequestCoordinator;
     friend class CardMovementService;
     friend struct RoomTestAccess;
@@ -701,6 +703,7 @@ private:
     void recordSkillExecutionAudit(const SkillContext &context, SkillExecutionResult result) const;
     QSet<QString> m_changingSkillAmounts;
     SkillInstanceUtils::UsageReservationLedger m_activeSkillUsageReservations;
+    std::unique_ptr<AiDecisionCoordinator> m_aiDecisions;
     std::unique_ptr<ExtraTurnScheduler> m_extraTurns;
     std::unique_ptr<RoomNotifier> m_notifier;
     std::unique_ptr<RequestCoordinator> m_requests;
@@ -721,7 +724,6 @@ private:
     QList<ServerPlayer*> m_players, m_alivePlayers;
     int player_count;
     ServerPlayer*current;
-    QHash<QString, QSet<QString>> m_aiMarkViewers;
     QStack<DamageStruct> m_damageStack;
     int game_state;
     //bool game_started;
