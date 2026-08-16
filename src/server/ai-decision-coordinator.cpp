@@ -3,6 +3,7 @@
 #include "engine.h"
 #include "room.h"
 #include "server-info.h"
+#include "skill-runtime-coordinator.h"
 
 #include <cmath>
 #include <QJsonArray>
@@ -153,8 +154,9 @@ static AICardView makeAICardView(const Card *card)
 
 }
 
-AiDecisionCoordinator::AiDecisionCoordinator(Room &room)
-    : m_room(room)
+AiDecisionCoordinator::AiDecisionCoordinator(Room &room,
+                                             SkillRuntimeCoordinator &skillRuntime)
+    : m_room(room), m_skillRuntime(skillRuntime)
 {
 }
 
@@ -311,11 +313,12 @@ bool AiDecisionCoordinator::buildSkillActionRequest(
     context.invoker = player;
     context.owner = player;
     context.activationRef = request.activationRef;
-    context.sourceRef = m_room.resolveSkillInstanceRootRef(request.activationRef);
+    context.sourceRef = m_skillRuntime.resolveSkillInstanceRootRef(request.activationRef);
     if (!context.sourceRef.isValid()) return false;
     context.instanceID = instance.instanceID;
     bool amountOk = false;
-    context.amount = m_room.getSkillInstanceAmount(skill->getAmountRef(context), &amountOk);
+    context.amount = m_skillRuntime.getSkillInstanceAmount(skill->getAmountRef(context),
+                                                           &amountOk);
     if (!amountOk) context.amount = skill->getBaseAmount();
     const bool quotaAvailable = skill->isUsable(context);
     if (!quotaAvailable) return false;
