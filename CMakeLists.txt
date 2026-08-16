@@ -135,6 +135,8 @@ add_library(qsanguosha_engine STATIC
     src/server/basicai.cpp
     src/server/card-movement-service.cpp
     src/server/card-movement-service.h
+    src/server/extra-turn-scheduler.cpp
+    src/server/extra-turn-scheduler.h
     src/server/gamerule.cpp
     src/server/generalselector.cpp
     src/server/qtupnpportmapping.cpp
@@ -416,6 +418,32 @@ if(BUILD_TESTING)
     add_test(NAME qsanguosha_card_movement_service
              COMMAND qsanguosha_card_movement_service_test)
     set_tests_properties(qsanguosha_card_movement_service PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    add_executable(qsanguosha_extra_turn_scheduler_test
+        tests/extra-turn-scheduler-test.cpp
+        src/server/server-core.h
+    )
+    target_include_directories(qsanguosha_extra_turn_scheduler_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/freetype
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/client
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/package
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+    )
+    target_link_libraries(qsanguosha_extra_turn_scheduler_test PRIVATE
+        qsanguosha_engine Qt6::Core5Compat Qt6::Qml Qt6::Widgets
+        "$<$<CONFIG:Release>:dbghelp>"
+    )
+    add_test(NAME qsanguosha_extra_turn_scheduler
+             COMMAND qsanguosha_extra_turn_scheduler_test)
+    set_tests_properties(qsanguosha_extra_turn_scheduler PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     )
 

@@ -1,5 +1,6 @@
 #include "room.h"
 #include "card-movement-service.h"
+#include "extra-turn-scheduler.h"
 #include "request-coordinator.h"
 #include "room-notifier.h"
 #include "protocol/card-provenance-message.h"
@@ -30,7 +31,6 @@
 #include "skill-instance-utils.h"
 #include <algorithm>
 #include <cmath>
-#include <functional>
 #include <limits>
 #include <QJsonArray>
 #include <QSet>
@@ -105,24 +105,6 @@ static void syncKnownHandcards(Room *room, ServerPlayer *viewer, ServerPlayer *t
 	knownCardsArg << target->objectName() << JsonUtils::toJsonArray(target->handCards());
 	room->doNotify(viewer, S_COMMAND_SET_KNOWN_CARDS, knownCardsArg);
 }
-
-class ScopedCallback
-{
-public:
-	explicit ScopedCallback(const std::function<void()> &callback)
-		: m_callback(callback)
-	{
-	}
-
-	~ScopedCallback()
-	{
-		if (m_callback)
-			m_callback();
-	}
-
-private:
-	std::function<void()> m_callback;
-};
 
 static void clearControllerRelation(Room *room, ServerPlayer *player)
 {
@@ -334,7 +316,8 @@ void Room::clearControllerPileVisible(ServerPlayer *target, ServerPlayer *contro
 }
 
 Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionConfig)
-	: QThread(parent), m_processingScheduledExtraTurns(false), m_notifier(std::make_unique<RoomNotifier>(*this)),
+	: QThread(parent), m_extraTurns(std::make_unique<ExtraTurnScheduler>(*this)),
+	m_notifier(std::make_unique<RoomNotifier>(*this)),
 	m_requests(std::make_unique<RequestCoordinator>(*this)),
 	m_cardMovement(std::make_unique<CardMovementService>(*this)),
 	mode(mode), player_count(Sanguosha->getPlayerCount(mode)), current(nullptr),
@@ -439,168 +422,39 @@ void Room::setCurrent(ServerPlayer*current)
 int Room::scheduleExtraTurn(ServerPlayer *player, const QString &reason,
                             QList<Player::Phase> phases, int times)
 {
-    if (!player || player->getRoom() != this || !player->isAlive() || player->isRemoved() || times <= 0)
-        return 0;
-
-    ExtraTurnRequest request;
-    request.player = player;
-    request.phases = phases;
-    request.reason = reason;
-    for (int i = 0; i < times; ++i)
-        m_scheduledExtraTurns << request;
-    return times;
+    return m_extraTurns->schedule(player, reason, phases, times);
 }
 
 int Room::scheduleExtraTurn(ServerPlayer *player, const SkillInstanceRef &sourceRef,
                             QList<Player::Phase> phases, int times)
 {
-    if (!player || player->getRoom() != this || !player->isAlive() || player->isRemoved() || times <= 0)
-        return 0;
-
-    ExtraTurnRequest request;
-    request.player = player;
-    request.phases = phases;
-    request.reason = sourceRef.key.skillName;
-    request.sourceRef = sourceRef;
-    for (int i = 0; i < times; ++i)
-        m_scheduledExtraTurns << request;
-    return times;
+    return m_extraTurns->schedule(player, sourceRef, phases, times);
 }
 
 bool Room::isCurrentExtraTurn() const
 {
-    return !m_extraTurnContexts.isEmpty();
+    return m_extraTurns->isCurrentExtraTurn();
 }
 
 QString Room::getCurrentExtraTurnReason() const
 {
-    return m_extraTurnContexts.isEmpty() ? QString() : m_extraTurnContexts.last().reason;
+    return m_extraTurns->currentReason();
 }
 
 SkillInstanceRef Room::getCurrentExtraTurnSourceRef() const
 {
-    return m_extraTurnContexts.isEmpty() ? SkillInstanceRef() : m_extraTurnContexts.last().sourceRef;
-}
-
-void Room::restoreExtraTurnRequests(const QList<ExtraTurnRequest> &requests)
-{
-    if (requests.isEmpty()) return;
-    QList<ExtraTurnRequest> restored = requests;
-    restored.append(m_scheduledExtraTurns);
-    m_scheduledExtraTurns = restored;
+    return m_extraTurns->currentSourceRef();
 }
 
 void Room::processScheduledExtraTurns()
 {
-    if (m_processingScheduledExtraTurns || isFinished() || m_scheduledExtraTurns.isEmpty())
-        return;
-
-    m_processingScheduledExtraTurns = true;
-    ScopedCallback resetProcessing([this]() { m_processingScheduledExtraTurns = false; });
-
-    while (!m_scheduledExtraTurns.isEmpty() && !isFinished()) {
-        QList<ExtraTurnRequest> batch = m_scheduledExtraTurns;
-        m_scheduledExtraTurns.clear();
-
-        const QList<ServerPlayer *> actionOrder = getAllPlayers(true);
-        std::stable_sort(batch.begin(), batch.end(),
-            [&actionOrder](const ExtraTurnRequest &left, const ExtraTurnRequest &right) {
-                if (left.player == right.player) return false;
-                int leftIndex = actionOrder.indexOf(left.player);
-                int rightIndex = actionOrder.indexOf(right.player);
-                if (leftIndex < 0) leftIndex = actionOrder.length();
-                if (rightIndex < 0) rightIndex = actionOrder.length();
-                return leftIndex < rightIndex;
-            });
-
-        for (int i = 0; i < batch.length(); ++i) {
-            if (isFinished()) break;
-            const ExtraTurnRequest &request = batch.at(i);
-            if (!request.player || request.player->getRoom() != this
-                || !request.player->isAlive() || request.player->isRemoved())
-                continue;
-
-            try {
-                executeExtraTurn(request.player, request.phases, request.reason, request.sourceRef);
-            } catch (TriggerEvent controlEvent) {
-                if (controlEvent == TurnBroken)
-                    continue;
-
-                restoreExtraTurnRequests(batch.mid(i + 1));
-                throw controlEvent;
-            }
-        }
-    }
+    m_extraTurns->process();
 }
 
 void Room::executeExtraTurn(ServerPlayer *player, QList<Player::Phase> phases,
                             const QString &reason, const SkillInstanceRef &sourceRef)
 {
-    if (!player || player->getRoom() != this) return;
-
-    if (phases.isEmpty())
-        phases << Player::RoundStart << Player::Start << Player::Judge << Player::Draw
-               << Player::Play << Player::Discard << Player::Finish;
-
-    QVariantList phaseData;
-    foreach (Player::Phase phase, phases)
-        phaseData << static_cast<int>(phase);
-
-    const QString globalTag = "Global_ExtraTurn" + player->objectName();
-    const QVariant previousGlobalTag = getTag(globalTag);
-    const QVariant previousPhases = player->getTag("extraTurnPhases");
-    const int previousExtraTurnMark = player->getMark("@extra_turn");
-    ServerPlayer *previousCurrent = getCurrent();
-
-    ExtraTurnContext context;
-    context.player = player;
-    context.reason = reason;
-    context.sourceRef = sourceRef;
-    m_extraTurnContexts << context;
-
-    setCurrent(player);
-    player->setTag("extraTurnPhases", phaseData);
-    setTag(globalTag, true);
-
-    bool restored = false;
-    auto restoreState = [&]() {
-        if (restored) return;
-        restored = true;
-
-        if (previousGlobalTag.isValid()) setTag(globalTag, previousGlobalTag);
-        else removeTag(globalTag);
-
-        if (previousPhases.isValid()) player->setTag("extraTurnPhases", previousPhases);
-        else player->removeTag("extraTurnPhases");
-
-        if (player->getMark("@extra_turn") != previousExtraTurnMark)
-            setPlayerMark(player, "@extra_turn", previousExtraTurnMark);
-        if (!m_extraTurnContexts.isEmpty())
-            m_extraTurnContexts.removeLast();
-        setCurrent(previousCurrent);
-    };
-
-    try {
-        getThread()->trigger(TurnStart, this, player);
-    } catch (TriggerEvent controlEvent) {
-        if (controlEvent == TurnBroken && player->getPhase() != Player::NotActive) {
-            try {
-                QString gameRule = getMode() == "04_1v3" ? "hulaopass_mode" : "game_rule";
-                const GameRule *rule = qobject_cast<const GameRule *>(Sanguosha->getSkill(gameRule));
-                if (rule) rule->trigger(EventPhaseEnd, this, player);
-                player->changePhase(player->getPhase(), Player::NotActive);
-            } catch (TriggerEvent) {
-                // The original control event remains authoritative.
-            }
-        }
-        restoreState();
-        throw controlEvent;
-    } catch (...) {
-        restoreState();
-        throw;
-    }
-
-    restoreState();
+    m_extraTurns->execute(player, phases, reason, sourceRef);
 }
 
 int Room::alivePlayerCount() const
