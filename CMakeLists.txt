@@ -130,6 +130,8 @@ add_library(qsanguosha_engine STATIC
     src/core/wrapped-card.h
     src/server/server.cpp
     src/server/ai.cpp
+    src/server/ai-decision-coordinator.cpp
+    src/server/ai-decision-coordinator.h
     src/server/ai-runtime.cpp
     src/server/ai-runtime.h
     src/server/basicai.cpp
