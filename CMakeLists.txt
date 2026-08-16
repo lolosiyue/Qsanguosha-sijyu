@@ -148,6 +148,8 @@ add_library(qsanguosha_engine STATIC
     src/server/request-coordinator.h
     src/server/room-notifier.cpp
     src/server/room-notifier.h
+    src/server/room-roster.cpp
+    src/server/room-roster.h
     src/server/room-runtime.cpp
     src/server/room-runtime.h
     src/server/room.cpp
@@ -448,6 +450,31 @@ if(BUILD_TESTING)
     add_test(NAME qsanguosha_extra_turn_scheduler
              COMMAND qsanguosha_extra_turn_scheduler_test)
     set_tests_properties(qsanguosha_extra_turn_scheduler PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    add_executable(qsanguosha_room_roster_test
+        tests/room-roster-test.cpp
+        src/server/server-core.h
+    )
+    target_include_directories(qsanguosha_room_roster_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/freetype
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/client
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/package
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+    )
+    target_link_libraries(qsanguosha_room_roster_test PRIVATE
+        qsanguosha_engine Qt6::Core5Compat Qt6::Qml Qt6::Widgets
+        "$<$<CONFIG:Release>:dbghelp>"
+    )
+    add_test(NAME qsanguosha_room_roster COMMAND qsanguosha_room_roster_test)
+    set_tests_properties(qsanguosha_room_roster PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     )
 

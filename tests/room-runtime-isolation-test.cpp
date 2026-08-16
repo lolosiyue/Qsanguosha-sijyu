@@ -33,7 +33,7 @@ struct RoomTestAccess
         player->setState(QStringLiteral("online"));
         player->drainAllLocks();
         player->releaseLock(ServerPlayer::SEMA_MUTEX);
-        room.m_players << player;
+        room.addPlayerToRoster(player);
         return player;
     }
 
@@ -42,7 +42,7 @@ struct RoomTestAccess
         ServerPlayer *player = new ServerPlayer(&room);
         player->setObjectName(QStringLiteral("shadow-robot"));
         player->setState(QStringLiteral("robot"));
-        room.m_players << player;
+        room.addPlayerToRoster(player);
         return player;
     }
 

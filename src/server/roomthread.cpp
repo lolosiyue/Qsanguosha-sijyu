@@ -357,7 +357,7 @@ void RoomThread::constructTriggerTable()
 ServerPlayer*RoomThread::find3v3Next(QList<ServerPlayer*> &first, QList<ServerPlayer*> &second)
 {
 	bool all_actioned = true;
-	foreach (ServerPlayer*player, room->m_alivePlayers) {
+	foreach (ServerPlayer*player, room->getAlivePlayers()) {
 		if (!player->hasFlag("actioned")) {
 			all_actioned = false;
 			break;
@@ -365,7 +365,7 @@ ServerPlayer*RoomThread::find3v3Next(QList<ServerPlayer*> &first, QList<ServerPl
 	}
 
 	if (all_actioned) {
-		foreach (ServerPlayer*player, room->m_alivePlayers) {
+		foreach (ServerPlayer*player, room->getAlivePlayers()) {
 			room->setPlayerFlag(player, "-actioned");
 			trigger(ActionedReset, room, player);
 		}
@@ -634,7 +634,7 @@ void RoomThread::run()
 	try {
 		QList<ServerPlayer*> warm, cool, first, second;
 		if (room->getMode() == "06_3v3") {
-			foreach (ServerPlayer*player, room->m_players) {
+			foreach (ServerPlayer*player, room->getPlayers()) {
 				switch (player->getRoleEnum()) {
 				case Player::Lord: warm.prepend(player); break;
 				case Player::Loyalist: warm.append(player); break;

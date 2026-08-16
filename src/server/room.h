@@ -28,6 +28,7 @@ class ServerPlayer;
 class AiDecisionCoordinator;
 class GameSnapshotService;
 class RoomNotifier;
+class RoomRoster;
 class RequestCoordinator;
 class CardMovementService;
 class ExtraTurnScheduler;
@@ -658,6 +659,9 @@ protected:
     int _m_Id;
 
 private:
+    void addPlayerToRoster(ServerPlayer *player);
+    void removePlayerFromRoster(ServerPlayer *player);
+    void replacePlayerOrder(const QList<ServerPlayer *> &players);
     void executeExtraTurn(ServerPlayer *player, QList<Player::Phase> phases,
                           const QString &reason, const SkillInstanceRef &sourceRef);
     void processScheduledExtraTurns();
@@ -709,6 +713,7 @@ private:
     std::unique_ptr<RequestCoordinator> m_requests;
     std::unique_ptr<CardMovementService> m_cardMovement;
     std::unique_ptr<GameSnapshotService> m_snapshotService;
+    std::unique_ptr<RoomRoster> m_roster;
     int chooseSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skillName,
                             bool visibleOnly, bool acquiredOnly);
     bool removeSkillInstanceFromPlayer(ServerPlayer *owner, const QString &skillName, int instanceId,
@@ -721,7 +726,6 @@ private:
     bool _setPlayerGeneral(ServerPlayer*player, const QString&generalName, bool isFirst);
     ServerPlayer*getRequestTarget(ServerPlayer*player) const;
     QString mode;
-    QList<ServerPlayer*> m_players, m_alivePlayers;
     int player_count;
     ServerPlayer*current;
     QStack<DamageStruct> m_damageStack;
@@ -746,7 +750,6 @@ private:
 
     bool m_surrenderRequestReceived;
     bool _virtual;
-    bool m_playOrderReversed;
     GameSessionConfig m_sessionConfig;
     std::unique_ptr<RoomRuntime> m_runtime;
 
