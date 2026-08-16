@@ -137,6 +137,8 @@ add_library(qsanguosha_engine STATIC
     src/server/card-movement-service.h
     src/server/extra-turn-scheduler.cpp
     src/server/extra-turn-scheduler.h
+    src/server/game-snapshot-service.cpp
+    src/server/game-snapshot-service.h
     src/server/gamerule.cpp
     src/server/generalselector.cpp
     src/server/qtupnpportmapping.cpp
