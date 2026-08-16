@@ -152,6 +152,8 @@ add_library(qsanguosha_engine STATIC
     src/server/room-roster.h
     src/server/room-runtime.cpp
     src/server/room-runtime.h
+    src/server/skill-runtime-coordinator.cpp
+    src/server/skill-runtime-coordinator.h
     src/server/room.cpp
     src/server/roomthread.cpp
     src/server/roomthread1v1.cpp
@@ -373,6 +375,32 @@ if(BUILD_TESTING)
     )
     add_test(NAME qsanguosha_room_notifier COMMAND qsanguosha_room_notifier_test)
     set_tests_properties(qsanguosha_room_notifier PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    add_executable(qsanguosha_skill_runtime_coordinator_test
+        tests/skill-runtime-coordinator-test.cpp
+        src/server/server-core.h
+    )
+    target_include_directories(qsanguosha_skill_runtime_coordinator_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/freetype
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/client
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/package
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+    )
+    target_link_libraries(qsanguosha_skill_runtime_coordinator_test PRIVATE
+        qsanguosha_engine Qt6::Core5Compat Qt6::Qml Qt6::Widgets
+        "$<$<CONFIG:Release>:dbghelp>"
+    )
+    add_test(NAME qsanguosha_skill_runtime_coordinator
+             COMMAND qsanguosha_skill_runtime_coordinator_test)
+    set_tests_properties(qsanguosha_skill_runtime_coordinator PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     )
 

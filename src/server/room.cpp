@@ -6,6 +6,7 @@
 #include "request-coordinator.h"
 #include "room-notifier.h"
 #include "room-roster.h"
+#include "skill-runtime-coordinator.h"
 #include "protocol/card-provenance-message.h"
 #include "protocol/skill-instance-message.h"
 #include "protocol/state/player-ui-state.h"
@@ -173,7 +174,9 @@ void Room::clearControllerPileVisible(ServerPlayer *target, ServerPlayer *contro
 }
 
 Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionConfig)
-	: QThread(parent), m_aiDecisions(std::make_unique<AiDecisionCoordinator>(*this)),
+	: QThread(parent), m_runtime(std::make_unique<RoomRuntime>(this)),
+	m_skillRuntime(std::make_unique<SkillRuntimeCoordinator>(*this)),
+	m_aiDecisions(std::make_unique<AiDecisionCoordinator>(*this, *m_skillRuntime)),
 	m_extraTurns(std::make_unique<ExtraTurnScheduler>(*this)),
 	m_notifier(std::make_unique<RoomNotifier>(*this)),
 	m_requests(std::make_unique<RequestCoordinator>(*this)),
@@ -185,8 +188,7 @@ Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionC
 	thread(nullptr),//game_started(false), game_finished(false),
 	thread_3v3(nullptr), thread_xmode(nullptr), thread_1v1(nullptr),
 	scenario(Sanguosha->getScenario(mode)), m_surrenderRequestReceived(false), _virtual(false),
-	m_sessionConfig(sessionConfig),
-	m_runtime(std::make_unique<RoomRuntime>(this))
+	m_sessionConfig(sessionConfig)
 {
 	static int s_global_room_id = 0;
 	_m_Id = s_global_room_id++;
@@ -959,269 +961,51 @@ void Room::slashResult(const SlashEffectStruct&effect, const Card*jink)
 
 void Room::attachSkillToPlayer(ServerPlayer*player, const QString&skill_name)
 {
-	int instanceId = player->acquireSkill(skill_name);
-	const SkillInstance *instance = player->findSkillInstance(skill_name, instanceId);
-	if (instance)
-		notifySkillInstanceUpsert(player, *instance);
-
-    const Skill *skill = Sanguosha->getSkill(skill_name);
-    if (skill && skill->isVisible()) {
-        if (skill->getFrequency() == Skill::Club && !skill->getClubName().isEmpty())
-            player->addClub(skill->getClubName());
-    }
-
-	thread->addTriggerSkill(Sanguosha->getTriggerSkill(skill_name));
+	m_skillRuntime->attachSkillToPlayer(player, skill_name);
 }
 
 SkillInstanceRef Room::attachSkillToPlayer(ServerPlayer *player, const QString &skillName, const SkillInstanceRef &parentRef)
 {
-    if (!player || !parentRef.isValid()) return SkillInstanceRef();
-    ServerPlayer *parentOwner = findPlayer(parentRef.ownerObjectName, true);
-    if (!parentOwner || !parentOwner->hasSkillInstance(parentRef.key.skillName, parentRef.key.instanceID))
-        return SkillInstanceRef();
-
-    foreach (const SkillInstanceRef &child, m_runtime->attachedSkills().childrenOf(parentRef)) {
-        if (child.ownerObjectName == player->objectName() && child.key.skillName == skillName)
-            return child;
-    }
-
-    const Skill *skill = Sanguosha->getSkill(skillName);
-    if (!skill) return SkillInstanceRef();
-    int instanceId = player->createSkillInstance(skillName, SourceAttached, parentRef, skill->isVisible());
-    SkillInstanceRef child(player->objectName(), SkillInstanceKey(skillName, instanceId));
-    if (!m_runtime->attachedSkills().attach(parentRef, child)) {
-        player->removeSkillInstance(skillName, instanceId);
-        return SkillInstanceRef();
-    }
-    if (skill->inherits("TriggerSkill"))
-        thread->addTriggerSkill(qobject_cast<const TriggerSkill *>(skill));
-    notifySkillInstanceUpsert(player, *player->findSkillInstance(skillName, instanceId));
-    return child;
+	return m_skillRuntime->attachSkillToPlayer(player, skillName, parentRef);
 }
 
 bool Room::detachAttachedSkill(const SkillInstanceRef &ref)
 {
-    if (!ref.isValid()) return false;
-    bool removeRoot = m_runtime->attachedSkills().contains(ref);
-    QList<SkillInstanceRef> removed = m_runtime->attachedSkills().detach(ref);
-    bool changed = false;
-    foreach (const SkillInstanceRef &entry, removed) {
-        if (entry == ref && !removeRoot) continue;
-        ServerPlayer *owner = findPlayer(entry.ownerObjectName, true);
-        if (!owner) continue;
-        const SkillInstance *instance = owner->findSkillInstance(entry.key.skillName, entry.key.instanceID);
-        if (!instance || instance->source != SourceAttached) continue;
-        SkillInstance snapshot = *instance;
-        if (owner->removeSkillInstance(entry.key.skillName, entry.key.instanceID)) {
-            notifySkillInstanceRemove(owner, snapshot);
-            changed = true;
-        }
-    }
-    return changed;
-}
-
-static bool canReceiveSkillInstance(const ServerPlayer *receiver, const ServerPlayer *owner,
-                                    const SkillInstance &instance)
-{
-    if (receiver == owner) return true;
-    const Skill *skill = Sanguosha->getSkill(instance.skillName);
-    return instance.source != SourceHelper && instance.visible && skill && skill->isVisible();
-}
-
-static SkillInstanceEntryMessage skillInstanceMessage(const ServerPlayer *owner,
-                                                       const SkillInstance &instance,
-                                                       bool includePrivateState)
-{
-    SkillInstanceEntryMessage message;
-    message.ownerName = owner->objectName();
-    message.instance = instance;
-    // State 僅給持有者：他人 snapshot/upsert 不得帶私有 state
-    if (includePrivateState)
-        message.privateState = owner->getSkillInstanceState(instance.skillName,
-                                                            instance.instanceID);
-    return message;
+	return m_skillRuntime->detachAttachedSkill(ref);
 }
 
 void Room::notifySkillInstanceSnapshot(ServerPlayer *receiver)
 {
-    if (!receiver) return;
-    QList<SkillInstanceEntryMessage> entries;
-    foreach (ServerPlayer *owner, getAllPlayers(true)) {
-        foreach (const SkillInstance &instance, owner->getSkillInstances()) {
-            if (canReceiveSkillInstance(receiver, owner, instance))
-                entries << skillInstanceMessage(owner, instance, receiver == owner);
-        }
-    }
-    const SkillInstanceMessage message = SkillInstanceMessage::makeSnapshot(entries);
-    doNotify(receiver, S_COMMAND_SKILL_INSTANCE, message.toVariant());
+	m_skillRuntime->notifySkillInstanceSnapshot(receiver);
 }
 
 void Room::notifySkillInstanceUpsert(ServerPlayer *owner, const SkillInstance &instance)
 {
-    foreach (ServerPlayer *receiver, getPlayers()) {
-        if (!canReceiveSkillInstance(receiver, owner, instance)) continue;
-        const SkillInstanceMessage message = SkillInstanceMessage::makeUpsert(
-            skillInstanceMessage(owner, instance, receiver == owner));
-        doNotify(receiver, S_COMMAND_SKILL_INSTANCE, message.toVariant());
-    }
+	m_skillRuntime->notifySkillInstanceUpsert(owner, instance);
 }
 
 void Room::notifySkillInstanceRemove(ServerPlayer *owner, const SkillInstance &instance)
 {
-    foreach (ServerPlayer *receiver, getPlayers()) {
-        if (!canReceiveSkillInstance(receiver, owner, instance)) continue;
-        const SkillInstanceMessage message = SkillInstanceMessage::makeRemove(
-            owner->objectName(), instance.skillName, instance.instanceID);
-        doNotify(receiver, S_COMMAND_SKILL_INSTANCE, message.toVariant());
-    }
-}
-
-int Room::chooseSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skillName,
-                              bool visibleOnly, bool acquiredOnly)
-{
-    if (!chooser || !owner) return 0;
-
-    QStringList choices;
-    QList<int> candidateIds;
-    foreach (int instanceId, owner->getSkillInstanceIds(skillName)) {
-        const SkillInstance *instance = owner->findSkillInstance(skillName, instanceId);
-        if (!instance || instance->source == SourceHelper) continue;
-        if (acquiredOnly && instance->source != SourceAcquired) continue;
-        const Skill *skill = Sanguosha->getSkill(skillName);
-        if (visibleOnly && (!instance->visible || !skill || !skill->isVisible())) continue;
-        candidateIds << instanceId;
-        choices << SkillInstanceUtils::formatName(skillName, instanceId);
-    }
-
-    if (candidateIds.isEmpty()) return 0;
-    if (candidateIds.length() == 1) return candidateIds.first();
-
-    QString answer = askForChoice(chooser, "remove_skill_instance", choices.join("+"));
-    QString selectedName;
-    int selectedId = SkillInstanceUtils::parseName(answer, selectedName);
-    return candidateIds.contains(selectedId) ? selectedId : candidateIds.first();
-}
-
-bool Room::removeSkillInstanceFromPlayer(ServerPlayer *owner, const QString &skillName, int instanceId,
-                                         bool isEquip, bool eventAndLog)
-{
-    if (!owner || instanceId <= 0) return false;
-    const SkillInstance *instance = owner->findSkillInstance(skillName, instanceId);
-    if (!instance) return false;
-
-    SkillInstance removed = *instance;
-    const SkillInstanceRef instanceRef(owner->objectName(), instance->key());
-    if (instance->source == SourceAttached)
-        return detachAttachedSkill(instanceRef);
-    detachAttachedSkill(instanceRef);
-
-    // QMap 元素會在刪除時失效，先複製事件 metadata 與 child keys。
-    QList<SkillInstanceKey> children = owner->getChildSkillInstanceKeys(removed.key());
-    if (!owner->removeSkillInstance(skillName, instanceId)) return false;
-    notifySkillInstanceRemove(owner, removed);
-
-    const Skill *skill = Sanguosha->getSkill(skillName);
-    if (skill && skill->isVisible()) {
-        if (!isEquip && eventAndLog) {
-            LogMessage log;
-            log.type = "#LoseSkill";
-            log.from = owner;
-            log.arg = skillName;
-            sendLog(log);
-        }
-    }
-
-    if (eventAndLog) {
-        SkillChangeStruct change(skillName, instanceId);
-        change.source = removed.source;
-        change.parentSkillName = removed.parent.skillName;
-        change.parentInstanceID = removed.parent.instanceID;
-        change.visible = removed.visible;
-        QVariant data = change.toVariant();
-        thread->trigger(EventLoseSkill, this, owner, data);
-    }
-
-    foreach (const SkillInstanceKey &child, children)
-        removeSkillInstanceFromPlayer(owner, child.skillName, child.instanceID, true, eventAndLog);
-
-    if (skill && !owner->ownsSkill(skillName)) {
-        if (skill->getFrequency() == Skill::Club && !skill->getClubName().isEmpty())
-            clearClub(skill->getClubName());
-        if (skill->inherits("ViewAsEquipSkill")) {
-            const ViewAsEquipSkill *viewAsEquip = Sanguosha->getViewAsEquipSkill(skillName);
-            QString view = viewAsEquip->viewAsEquip(owner);
-            foreach (const QString &equipName, view.split(",", Qt::SkipEmptyParts)) {
-                if (skillName != equipName && Sanguosha->getViewAsSkill(equipName))
-                    detachSkillFromPlayer(owner, equipName, true);
-            }
-        }
-    }
-
-    owner->refreshUIState();
-    return true;
+	m_skillRuntime->notifySkillInstanceRemove(owner, instance);
 }
 
 int Room::detachSkillFromPlayer(ServerPlayer *player, const QString &skill_name, bool is_equip,
                                 bool acquire_only, bool event_and_log)
 {
-    if (!player) return 0;
-    QString baseName;
-    int requestedId = SkillInstanceUtils::parseName(skill_name, baseName);
-    int instanceId = requestedId;
-    if (instanceId > 0) {
-        const SkillInstance *instance = player->findSkillInstance(baseName, instanceId);
-        if (!instance || instance->source == SourceHelper
-            || (acquire_only && instance->source != SourceAcquired))
-            return 0;
-    } else {
-        instanceId = chooseSkillInstance(player, player, baseName, false, acquire_only);
-    }
-    if (instanceId <= 0) return 0;
-    return removeSkillInstanceFromPlayer(player, baseName, instanceId, is_equip, event_and_log)
-        ? instanceId : 0;
+	return m_skillRuntime->detachSkillFromPlayer(player, skill_name, is_equip,
+		acquire_only, event_and_log);
 }
 
 int Room::discardSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skill_name,
                                bool event_and_log)
 {
-    if (!chooser || !owner) return 0;
-    QString baseName;
-    int requestedId = SkillInstanceUtils::parseName(skill_name, baseName);
-    int instanceId = 0;
-
-    if (requestedId > 0) {
-        const SkillInstance *instance = owner->findSkillInstance(baseName, requestedId);
-        const Skill *skill = Sanguosha->getSkill(baseName);
-        if (instance && instance->source != SourceHelper && instance->visible
-            && skill && skill->isVisible())
-            instanceId = requestedId;
-    } else {
-        instanceId = chooseSkillInstance(chooser, owner, baseName, true, false);
-        if (instanceId == 0) {
-            // 不向 chooser 洩漏隱藏候選；由引擎直接取最小的非 helper ID。
-            foreach (int id, owner->getSkillInstanceIds(baseName)) {
-                const SkillInstance *instance = owner->findSkillInstance(baseName, id);
-                if (instance && instance->source != SourceHelper) {
-                    instanceId = id;
-                    break;
-                }
-            }
-        }
-    }
-
-    if (instanceId <= 0) return 0;
-    return removeSkillInstanceFromPlayer(owner, baseName, instanceId, false, event_and_log)
-        ? instanceId : 0;
+	return m_skillRuntime->discardSkillInstance(chooser, owner, skill_name, event_and_log);
 }
 
 void Room::handleAcquireDetachSkills(ServerPlayer*player, const QStringList&skill_names, bool acquire_only, bool getmark, bool event_and_log)
 {
-	foreach (QString skillName, skill_names) {
-		if (skillName.startsWith("-"))
-			detachSkillFromPlayer(player, skillName.mid(1), false, acquire_only, event_and_log);
-		else
-			acquireSkill(player, skillName, true, getmark, event_and_log);
-	}
+	m_skillRuntime->handleAcquireDetachSkills(player, skill_names, acquire_only,
+		getmark, event_and_log);
 }
 
 void Room::handleAcquireDetachSkills(ServerPlayer*player, const QString&skill_names, bool acquire_only, bool getmark, bool event_and_log)
@@ -4838,90 +4622,12 @@ CardUseStruct Room::getUseStruct(const Card*card)
 
 SkillInstanceRef Room::resolveSkillInstanceRootRef(const SkillInstanceRef &ref) const
 {
-	SkillInstanceRef current = ref;
-	QList<SkillInstanceRef> visited;
-	while (current.isValid() && !visited.contains(current)) {
-		visited << current;
-		ServerPlayer *owner = findPlayerByObjectName(current.ownerObjectName, true);
-		if (!owner) return SkillInstanceRef();
-		const SkillInstance *instance = owner->findSkillInstance(current.key.skillName, current.key.instanceID);
-		if (!instance) return SkillInstanceRef();
-		if (!instance->parentRef.isValid()) return current;
-		current = instance->parentRef;
-	}
-	return SkillInstanceRef();
+	return m_skillRuntime->resolveSkillInstanceRootRef(ref);
 }
 
 bool Room::resolveCardSkillInstance(CardUseStruct &use)
 {
-	// 裝備 ViewAs 與非 ViewAs 產生的內部卡沒有玩家技能實例，維持 legacy ID 0。
-	if (!use.card || !use.from) return false;
-	QString activationName = use.card->getActivationSkillName();
-	int activationId = use.card->getActivationSkillInstanceId();
-	if (!use.hasSkillActivationRequest && activationId == 0) return true;
-	if (activationId == 0) {
-		if (activationName.isEmpty()) return true;
-		QList<int> ids = use.from->getSkillInstanceIds(activationName);
-		if (ids.isEmpty()) return false;
-		activationId = ids.first();
-	}
-	if (activationName.isEmpty() || activationId < 0) return false;
-	const ViewAsSkill *activationSkill = Sanguosha->getViewAsSkill(activationName);
-	if (!use.card->isVirtualCard() && activationSkill == nullptr) {
-		// A physical response cannot originate from an unregistered helper such
-		// as the client-only ResponseSkill.  Discard stale optional provenance
-		// instead of treating an otherwise valid human response as cancellation.
-		Card *mutableCard = const_cast<Card *>(use.card);
-		mutableCard->setSkillInstanceId(0);
-		mutableCard->setSourceSkill(QString(), 0);
-		mutableCard->setActivationSkill(QString(), 0);
-		use.hasSkillActivationRequest = false;
-		use.sourceRef = SkillInstanceRef();
-		use.activationRef = SkillInstanceRef();
-		return true;
-	}
-	const ViewAsSkillV2 *activeSkill = dynamic_cast<const ViewAsSkillV2 *>(activationSkill);
-	const bool hasActivationInstance = use.from->hasSkillInstance(activationName, activationId);
-	const bool continuesViewAsEffect = activeSkill && hasViewAsSkillEffect(use.from, activationName);
-	if (!hasActivationInstance && !continuesViewAsEffect) return false;
-
-	use.activationRef = SkillInstanceRef(use.from->objectName(), SkillInstanceKey(activationName, activationId));
-	use.sourceRef = resolveSkillInstanceRootRef(use.activationRef);
-	if (!use.sourceRef.isValid()) {
-		if (!continuesViewAsEffect) return false;
-		// The detached instance no longer has a live parent chain.  Preserve the
-		// submitted activation identity as the best available execution snapshot.
-		use.sourceRef = use.activationRef;
-	}
-
-	Card *mutableCard = const_cast<Card *>(use.card);
-	mutableCard->setActivationSkill(use.activationRef.key.skillName, use.activationRef.key.instanceID);
-	mutableCard->setSourceSkill(use.sourceRef.key.skillName, use.sourceRef.key.instanceID);
-
-	if (activeSkill) {
-		ActiveSkillRequest request;
-		request.reason = m_runtime->state().getCurrentCardUseReason();
-		request.pattern = m_runtime->state().getCurrentCardUsePattern();
-		request.initiator = use.from;
-		request.activationRef = use.activationRef;
-		request.selectedCardIds = use.card->getSubcards();
-		// NoTarget：V2 本身不選角色；use.to 是視為牌（桃/酒等）的目標，不可塞進
-		// selectedTargetNames，否則 resolveActiveSkillRequest 會因非空目標直接失敗
-		// （瀕死 askForSinglePeach → useCard(card, from, dying) 必帶 to）。
-		if (activeSkill->targetMode() != ViewAsSkillV2::NoTarget) {
-			foreach (ServerPlayer *target, use.to)
-				request.selectedTargetNames << target->objectName();
-		}
-		if (use.card->isKindOf("SkillCard"))
-			request.userString = qobject_cast<const SkillCard *>(use.card->getRealCard())->getUserString();
-		const Card *serverCard = resolveActiveSkillRequest(use.from, activeSkill, request);
-		if (!serverCard) return false;
-		use.changeCard(const_cast<Card *>(serverCard));
-		// V2 權威重建：勿把 client/AI 代理留在 change_cards，否則 Card::onUse
-		// 會對代理與最終牌各打一條 #UseCard（例如「发动勇毅」+「发动勇毅，使用酒」）。
-		const_cast<Card *>(use.card)->change_cards.clear();
-	}
-	return true;
+	return m_skillRuntime->resolveCardSkillInstance(use);
 }
 
 bool Room::areCardTargetsLegal(const CardUseStruct &use) const
@@ -5092,79 +4798,42 @@ AiLegacyRequestView Room::getAiSkillActionContext(ServerPlayer *player,
 
 bool Room::reserveActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context)
 {
-	if (!skill || skill->getLimitScope() == Skill::Limit_None) return true;
-	if (skill->getLimitScope() == Skill::Limit_Custom)
-		return skill->isUsable(context);
-	ServerPlayer *holder = skill->getUsageHolder(context);
-	if (!holder || !skill->isUsable(context)) return false;
-	const QString usageTagKey = skill->getUsageTagKey(context);
-	const QString reservationKey = SkillInstanceUtils::formatUsageReservationKey(
-		holder->objectName(), usageTagKey);
-	return m_activeSkillUsageReservations.reserve(reservationKey,
-		holder->getMark(usageTagKey), skill->getMaxUsageLimit(context));
+	return m_skillRuntime->reserveActiveSkillUsage(skill, context);
 }
 
 void Room::releaseActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context)
 {
-	if (!skill || skill->getLimitScope() == Skill::Limit_None
-		|| skill->getLimitScope() == Skill::Limit_Custom) return;
-	ServerPlayer *holder = skill->getUsageHolder(context);
-	if (!holder) return;
-	const QString reservationKey = SkillInstanceUtils::formatUsageReservationKey(
-		holder->objectName(), skill->getUsageTagKey(context));
-	m_activeSkillUsageReservations.release(reservationKey);
+	m_skillRuntime->releaseActiveSkillUsage(skill, context);
 }
 
 void Room::commitActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context)
 {
-	if (!skill || skill->getLimitScope() == Skill::Limit_None
-		|| skill->getLimitScope() == Skill::Limit_Custom) return;
-	ServerPlayer *holder = skill->getUsageHolder(context);
-	if (!holder) return;
-	const QString reservationKey = SkillInstanceUtils::formatUsageReservationKey(
-		holder->objectName(), skill->getUsageTagKey(context));
-	if (m_activeSkillUsageReservations.release(reservationKey))
-		skill->addUsage(context);
+	m_skillRuntime->commitActiveSkillUsage(skill, context);
 }
 
 SkillExecutionRegistry::Guard Room::beginSkillExecution(const QVariant &backingData)
 {
-	return m_runtime->skillExecutions().begin(backingData);
+	return m_skillRuntime->beginSkillExecution(backingData);
 }
 
 SkillExecutionRegistry::Guard Room::beginSkillExecution(SkillContext &context, const QVariant &backingData)
 {
-	SkillExecutionRegistry::Guard guard = m_runtime->skillExecutions().begin(backingData);
-	SkillExecutionRegistry::Entry *entry = guard.get();
-	context.executionID = guard.executionID();
-	context.original_data = entry ? &entry->backingData : nullptr;
-	if (entry) {
-		entry->immutableContextData = QVariant::fromValue(context);
-		entry->contextData = QVariant::fromValue(context);
-	}
-	return guard;
+	return m_skillRuntime->beginSkillExecution(context, backingData);
 }
 
 SkillExecutionRegistry::Entry *Room::findSkillExecution(qint64 executionID) const
 {
-	return m_runtime->skillExecutions().find(executionID);
+	return m_skillRuntime->findSkillExecution(executionID);
 }
 
 SkillContext Room::getSkillExecutionContext(qint64 executionID) const
 {
-	SkillExecutionRegistry::Entry *entry = findSkillExecution(executionID);
-	SkillContext context = entry ? entry->contextData.value<SkillContext>() : SkillContext();
-	if (entry) context.original_data = &entry->backingData;
-	return context;
+	return m_skillRuntime->getSkillExecutionContext(executionID);
 }
 
 void Room::setSkillExecutionContext(qint64 executionID, const SkillContext &context)
 {
-	SkillExecutionRegistry::Entry *entry = findSkillExecution(executionID);
-	if (!entry) return;
-	SkillContext stored = context;
-	stored.original_data = &entry->backingData;
-	entry->contextData = QVariant::fromValue(stored);
+	m_skillRuntime->setSkillExecutionContext(executionID, context);
 }
 
 void Room::recordSkillExecutionAudit(const SkillContext &context, SkillExecutionResult result) const
@@ -5900,238 +5569,61 @@ bool Room::hasWelfare(const ServerPlayer*player) const
 
 void Room::notifySkillInstanceAmount(ServerPlayer *owner, const SkillInstance &instance)
 {
-    if (!owner) return;
-    foreach (ServerPlayer *receiver, getPlayers()) {
-        if (!canReceiveSkillInstance(receiver, owner, instance)) continue;
-        const SkillInstanceMessage message = SkillInstanceMessage::makeAmount(
-            owner->objectName(), instance.skillName, instance.instanceID,
-            instance.hasAmountOverride, instance.amountOverride);
-        doNotify(receiver, S_COMMAND_SKILL_INSTANCE, message.toVariant());
-    }
+	m_skillRuntime->notifySkillInstanceAmount(owner, instance);
 }
 
 void Room::notifySkillInstanceCorrectState(ServerPlayer *owner, const SkillInstance &instance,
                                            const QString &operation, const QString &key,
                                            const QVariant &value)
 {
-    if (!owner) return;
-    foreach (ServerPlayer *receiver, getPlayers()) {
-        if (!canReceiveSkillInstance(receiver, owner, instance)) continue;
-        const SkillInstanceMessage message = SkillInstanceMessage::makeCorrectState(
-            owner->objectName(), instance.skillName, instance.instanceID,
-            operation, key, value);
-        doNotify(receiver, S_COMMAND_SKILL_INSTANCE, message.toVariant());
-    }
+	m_skillRuntime->notifySkillInstanceCorrectState(owner, instance, operation, key, value);
 }
 
 void Room::notifySkillInstanceState(ServerPlayer *owner, const SkillInstance &instance,
                                     const QString &operation, const QString &key,
                                     const QVariant &value)
 {
-	// 僅同步給持有者本人（含重連後的 Self），不廣播給其他座位
-	m_notifier->notifySkillInstanceState(owner, instance, operation, key, value);
-}
-
-static QString skillAmountGuardKey(const SkillInstanceRef &ref)
-{
-    return ref.ownerObjectName + QChar('\x1f') + ref.key.skillName
-        + QChar('#') + QString::number(ref.key.instanceID);
-}
-
-class SkillAmountRecursionGuard
-{
-public:
-    SkillAmountRecursionGuard(QSet<QString> &activeKeys, const QString &key)
-        : m_activeKeys(activeKeys), m_key(key) {}
-    ~SkillAmountRecursionGuard() { m_activeKeys.remove(m_key); }
-
-private:
-    QSet<QString> &m_activeKeys;
-    QString m_key;
-};
-
-static bool isCorrectSkillV2Definition(const Skill *skill)
-{
-    return dynamic_cast<const DistanceSkillV2 *>(skill)
-        || dynamic_cast<const MaxCardsSkillV2 *>(skill)
-        || dynamic_cast<const TargetModSkillV2 *>(skill)
-        || dynamic_cast<const AttackRangeSkillV2 *>(skill);
+	m_skillRuntime->notifySkillInstanceState(owner, instance, operation, key, value);
 }
 
 int Room::getSkillInstanceAmount(const SkillInstanceRef &ref, bool *ok) const
 {
-    if (ok) *ok = false;
-    if (!ref.isValid()) return 0;
-    ServerPlayer *owner = findPlayerByObjectName(ref.ownerObjectName, true);
-    if (!owner) return 0;
-    const SkillInstance *instance = owner->findSkillInstance(ref.key.skillName, ref.key.instanceID);
-    const Skill *skill = Sanguosha->getSkill(ref.key.skillName);
-    const AmountSkillV2 *amountSkill = dynamic_cast<const AmountSkillV2 *>(skill);
-    if (!instance || !amountSkill) return 0;
-    if (ok) *ok = true;
-    return instance->hasAmountOverride ? instance->amountOverride : amountSkill->getBaseAmount();
+	return m_skillRuntime->getSkillInstanceAmount(ref, ok);
 }
 
 bool Room::setSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int amount,
                                   const QString &reason)
 {
-    bool valid = false;
-    const int oldAmount = getSkillInstanceAmount(ref, &valid);
-    if (!valid) return false;
-    ServerPlayer *owner = findPlayerByObjectName(ref.ownerObjectName, true);
-    const SkillInstance *before = owner ? owner->findSkillInstance(ref.key.skillName, ref.key.instanceID) : nullptr;
-    if (!before) return false;
-    if (before->hasAmountOverride && oldAmount == amount) return true;
-
-    const QString guardKey = skillAmountGuardKey(ref);
-    if (m_changingSkillAmounts.contains(guardKey)) {
-        qWarning() << "Recursive skill amount change rejected:" << guardKey;
-        return false;
-    }
-    m_changingSkillAmounts.insert(guardKey);
-    SkillAmountRecursionGuard recursionGuard(m_changingSkillAmounts, guardKey);
-
-    SkillAmountChangeStruct change;
-    change.source = source;
-    change.skillRef = ref;
-    change.oldAmount = oldAmount;
-    change.newAmount = amount;
-    change.reason = reason;
-    QVariant data = QVariant::fromValue(change);
-    const bool intercepted = thread->trigger(EventSkillAmountChanging, this, owner, data);
-    SkillAmountChangeStruct updated = data.value<SkillAmountChangeStruct>();
-    updated.source = source;
-    updated.skillRef = ref;
-    updated.oldAmount = oldAmount;
-    updated.reason = reason;
-    updated.resetToBase = false;
-
-    bool changed = false;
-    if (!intercepted && !updated.canceled) {
-        changed = owner->setSkillInstanceAmountOverride(ref.key.skillName,
-                                                        ref.key.instanceID,
-                                                        updated.newAmount);
-        const SkillInstance *instance = owner->findSkillInstance(ref.key.skillName, ref.key.instanceID);
-        if (changed && instance) notifySkillInstanceAmount(owner, *instance);
-        if (changed) {
-            QVariant changedData = QVariant::fromValue(updated);
-            thread->trigger(EventSkillAmountChanged, this, owner, changedData);
-        }
-    }
-    return changed;
+	return m_skillRuntime->setSkillInstanceAmount(source, ref, amount, reason);
 }
 
 bool Room::addSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int delta,
                                   const QString &reason)
 {
-    bool valid = false;
-    const int current = getSkillInstanceAmount(ref, &valid);
-    if (!valid) return false;
-    const qint64 next = static_cast<qint64>(current) + static_cast<qint64>(delta);
-    if (next < std::numeric_limits<int>::min() || next > std::numeric_limits<int>::max()) {
-        qWarning() << "Skill amount overflow rejected:" << ref.key.skillName << ref.key.instanceID;
-        return false;
-    }
-    return setSkillInstanceAmount(source, ref, static_cast<int>(next), reason);
+	return m_skillRuntime->addSkillInstanceAmount(source, ref, delta, reason);
 }
 
 bool Room::resetSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref,
                                     const QString &reason)
 {
-    bool valid = false;
-    const int oldAmount = getSkillInstanceAmount(ref, &valid);
-    if (!valid) return false;
-    ServerPlayer *owner = findPlayerByObjectName(ref.ownerObjectName, true);
-    const SkillInstance *before = owner ? owner->findSkillInstance(ref.key.skillName, ref.key.instanceID) : nullptr;
-    const Skill *skill = Sanguosha->getSkill(ref.key.skillName);
-    const AmountSkillV2 *amountSkill = dynamic_cast<const AmountSkillV2 *>(skill);
-    if (!before || !amountSkill) return false;
-    if (!before->hasAmountOverride) return true;
-
-    const QString guardKey = skillAmountGuardKey(ref);
-    if (m_changingSkillAmounts.contains(guardKey)) {
-        qWarning() << "Recursive skill amount reset rejected:" << guardKey;
-        return false;
-    }
-    m_changingSkillAmounts.insert(guardKey);
-    SkillAmountRecursionGuard recursionGuard(m_changingSkillAmounts, guardKey);
-
-    SkillAmountChangeStruct change;
-    change.source = source;
-    change.skillRef = ref;
-    change.oldAmount = oldAmount;
-    change.newAmount = amountSkill->getBaseAmount();
-    change.reason = reason;
-    change.resetToBase = true;
-    QVariant data = QVariant::fromValue(change);
-    const bool intercepted = thread->trigger(EventSkillAmountChanging, this, owner, data);
-    SkillAmountChangeStruct updated = data.value<SkillAmountChangeStruct>();
-    updated.source = source;
-    updated.skillRef = ref;
-    updated.oldAmount = oldAmount;
-    updated.reason = reason;
-    updated.resetToBase = true;
-
-    bool changed = false;
-    if (!intercepted && !updated.canceled) {
-        if (updated.newAmount == amountSkill->getBaseAmount())
-            changed = owner->resetSkillInstanceAmountOverride(ref.key.skillName, ref.key.instanceID);
-        else
-            changed = owner->setSkillInstanceAmountOverride(ref.key.skillName,
-                                                            ref.key.instanceID,
-                                                            updated.newAmount);
-        const SkillInstance *instance = owner->findSkillInstance(ref.key.skillName, ref.key.instanceID);
-        if (changed && instance) notifySkillInstanceAmount(owner, *instance);
-        if (changed) {
-            QVariant changedData = QVariant::fromValue(updated);
-            thread->trigger(EventSkillAmountChanged, this, owner, changedData);
-        }
-    }
-    return changed;
+	return m_skillRuntime->resetSkillInstanceAmount(source, ref, reason);
 }
 
 bool Room::setSkillInstanceCorrectState(ServerPlayer *source, const SkillInstanceRef &ref,
                                         const QString &key, const QVariant &value)
 {
-    Q_UNUSED(source);
-    if (!ref.isValid() || key.isEmpty()) return false;
-    ServerPlayer *owner = findPlayerByObjectName(ref.ownerObjectName, true);
-    const Skill *skill = Sanguosha->getSkill(ref.key.skillName);
-    if (!owner || !isCorrectSkillV2Definition(skill)
-        || !owner->setSkillInstanceCorrectStateValue(ref.key.skillName, ref.key.instanceID, key, value))
-        return false;
-    const SkillInstance *instance = owner->findSkillInstance(ref.key.skillName, ref.key.instanceID);
-    if (instance) notifySkillInstanceCorrectState(owner, *instance, "set", key, value);
-    return instance != nullptr;
+	return m_skillRuntime->setSkillInstanceCorrectState(source, ref, key, value);
 }
 
 bool Room::removeSkillInstanceCorrectState(ServerPlayer *source, const SkillInstanceRef &ref,
                                            const QString &key)
 {
-    Q_UNUSED(source);
-    if (!ref.isValid() || key.isEmpty()) return false;
-    ServerPlayer *owner = findPlayerByObjectName(ref.ownerObjectName, true);
-    const Skill *skill = Sanguosha->getSkill(ref.key.skillName);
-    if (!owner || !isCorrectSkillV2Definition(skill)
-        || !owner->removeSkillInstanceCorrectStateValue(ref.key.skillName, ref.key.instanceID, key))
-        return false;
-    const SkillInstance *instance = owner->findSkillInstance(ref.key.skillName, ref.key.instanceID);
-    if (instance) notifySkillInstanceCorrectState(owner, *instance, "remove", key);
-    return instance != nullptr;
+	return m_skillRuntime->removeSkillInstanceCorrectState(source, ref, key);
 }
 
 bool Room::clearSkillInstanceCorrectState(ServerPlayer *source, const SkillInstanceRef &ref)
 {
-    Q_UNUSED(source);
-    if (!ref.isValid()) return false;
-    ServerPlayer *owner = findPlayerByObjectName(ref.ownerObjectName, true);
-    const Skill *skill = Sanguosha->getSkill(ref.key.skillName);
-    if (!owner || !isCorrectSkillV2Definition(skill)
-        || !owner->clearSkillInstanceCorrectState(ref.key.skillName, ref.key.instanceID))
-        return false;
-    const SkillInstance *instance = owner->findSkillInstance(ref.key.skillName, ref.key.instanceID);
-    if (instance) notifySkillInstanceCorrectState(owner, *instance, "clear");
-    return instance != nullptr;
+	return m_skillRuntime->clearSkillInstanceCorrectState(source, ref);
 }
 
 bool Room::hasPendingSummons() const
@@ -7094,176 +6586,27 @@ void Room::filterCards(ServerPlayer*player, QList<const Card*> cards, bool refil
 
 int Room::acquireSkill(ServerPlayer*player, const Skill*skill, bool open, bool getmark, bool event_and_log)
 {
-	if (!skill) return 0;
-
-	// 名稱 overload 是唯一獲得路徑，避免 ViewAsEquipSkill 被處理兩次。
-	return acquireSkill(player, skill->objectName(), open, getmark, event_and_log);
+	return m_skillRuntime->acquireSkill(player, skill, open, getmark, event_and_log);
 }
 
 int Room::acquireSkill(ServerPlayer*player, const QString&skill_name, bool open, bool getmark, bool event_and_log)
 {
-    const Skill *skill = Sanguosha->getSkill(skill_name);
-    if (!skill) return 0;
-
-    // 每次呼叫都建立新的後天技能實例，並把精確 ID 回傳給呼叫者。
-    int instanceId = player->acquireSkill(skill_name);
-    const SkillInstance *created = player->findSkillInstance(skill_name, instanceId);
-    if (created)
-        notifySkillInstanceUpsert(player, *created);
-
-    if (skill->inherits("TriggerSkill"))
-        thread->addTriggerSkill(qobject_cast<const TriggerSkill*>(skill));
-    else if (skill->inherits("ViewAsEquipSkill")){
-        const ViewAsEquipSkill*vaes = Sanguosha->getViewAsEquipSkill(skill->objectName());
-        QString view = vaes->viewAsEquip(player);
-        if(view!=""){
-            foreach(QString equip_name, view.split(",")){
-                if (Sanguosha->getViewAsSkill(equip_name))
-                    attachSkillToPlayer(player,equip_name);
-            }
-        }
-    }
-
-    if (skill->isVisible()){
-        if (getmark&&!skill->getLimitMark().isEmpty())
-            setPlayerMark(player, skill->getLimitMark(), 1);
-        if (skill->getFrequency() == Skill::Club && !skill->getClubName().isEmpty())
-            player->addClub(skill->getClubName());
-        if (open){
-            if (event_and_log){
-                LogMessage log;
-                log.from = player;
-                log.type = "#AcquireSkill";
-                log.arg = skill->objectName();
-                sendLog(log);
-            }
-        }
-    }
-
-    if (event_and_log) {
-        SkillChangeStruct change(skill->objectName(), instanceId);
-        change.source = SourceAcquired;
-        change.visible = skill->isVisible();
-        QVariant data = change.toVariant();
-        thread->trigger(EventAcquireSkill, this, player, data);
-    }
-
-    // 每個父實例建立自己的 helper；helper 使用自己的 ID 序列並保存顯式父鍵。
-    foreach (const Skill *related, Sanguosha->getRelatedSkills(skill->objectName())) {
-        int helperId = player->createSkillInstance(related->objectName(), SourceHelper,
-                                                   skill->objectName(), instanceId,
-                                                   related->isVisible());
-        const SkillInstance *helper = player->findSkillInstance(related->objectName(), helperId);
-        if (helper)
-            notifySkillInstanceUpsert(player, *helper);
-        if (related->inherits("TriggerSkill"))
-            thread->addTriggerSkill(qobject_cast<const TriggerSkill *>(related));
-
-        if (event_and_log) {
-            SkillChangeStruct helperChange(related->objectName(), helperId);
-            helperChange.source = SourceHelper;
-            helperChange.parentSkillName = skill->objectName();
-            helperChange.parentInstanceID = instanceId;
-            helperChange.visible = related->isVisible();
-            QVariant helperData = helperChange.toVariant();
-            thread->trigger(EventAcquireSkill, this, player, helperData);
-        }
-    }
-
-    player->refreshUIState();
-    return instanceId;
+	return m_skillRuntime->acquireSkill(player, skill_name, open, getmark, event_and_log);
 }
 
 void Room::addSkillInvalidity(ServerPlayer *target, const QString &skillName, const QString &sourceName, const QString &reason, int instanceId)
 {
-    if (!target) return;
-
-    QStringList records = target->getTag("SkillInvalidityRecords").toStringList();
-    QString recordSkillName = skillName;
-    if (instanceId > 0)
-        recordSkillName = QString("%1#%2").arg(skillName).arg(instanceId);
-    QString newRecord = QString("%1|%2|%3").arg(recordSkillName, sourceName, reason);
-
-    if (!records.contains(newRecord)) {
-        QVariant data = recordSkillName;
-        if (thread->trigger(EventSkillInvalidated, this, target, data)) {
-            return;
-        }
-
-        records.append(newRecord);
-        target->setTag("SkillInvalidityRecords", records);
-
-        QString notifyName = skillName;
-        if (instanceId > 0)
-            notifyName = QString("%1#%2").arg(skillName).arg(instanceId);
-        doNotify(target, S_COMMAND_UPDATE_SKILL, notifyName);
-    }
+	m_skillRuntime->addSkillInvalidity(target, skillName, sourceName, reason, instanceId);
 }
 
 void Room::removeSkillInvalidity(ServerPlayer *target, const QString &skillName, const QString &sourceName, const QString &reason, int instanceId)
 {
-    if (!target) return;
-
-    QStringList records = target->getTag("SkillInvalidityRecords").toStringList();
-    QString recordSkillName = skillName;
-    if (instanceId > 0)
-        recordSkillName = QString("%1#%2").arg(skillName).arg(instanceId);
-    QString targetRecord = QString("%1|%2|%3").arg(recordSkillName, sourceName, reason);
-
-    if (records.removeOne(targetRecord)) {
-        target->setTag("SkillInvalidityRecords", records);
-
-        QString notifyName = skillName;
-        if (instanceId > 0)
-            notifyName = QString("%1#%2").arg(skillName).arg(instanceId);
-        doNotify(target, S_COMMAND_UPDATE_SKILL, notifyName);
-
-        QVariant data = notifyName;
-        thread->trigger(EventSkillValidityRestored, this, target, data);
-    }
+	m_skillRuntime->removeSkillInvalidity(target, skillName, sourceName, reason, instanceId);
 }
 
 void Room::clearSkillInvalidityBySource(ServerPlayer *source)
 {
-    if (!source) return;
-    QString sourceName = source->objectName();
-
-    foreach (ServerPlayer *p, getAlivePlayers()) {
-        QStringList records = p->getTag("SkillInvalidityRecords").toStringList();
-        QStringList recordsToKeep;
-        bool changed = false;
-
-        foreach (const QString &record, records) {
-            QStringList parts = record.split("|");
-            if (parts.size() >= 2) {
-                QString recordSource = parts.at(1);
-                if (recordSource == sourceName) {
-                    changed = true;
-                } else {
-                    recordsToKeep.append(record);
-                }
-            }
-        }
-
-        if (changed) {
-            p->setTag("SkillInvalidityRecords", recordsToKeep);
-
-            foreach (const QString &removed, records) {
-                if (!recordsToKeep.contains(removed)) {
-                    QStringList parts = removed.split("|");
-                    if (parts.size() >= 1) {
-                        QString skillName;
-                        int instanceId = SkillInstanceUtils::parseName(parts.at(0), skillName);
-                        QString notifyName = SkillInstanceUtils::formatName(skillName, instanceId);
-                        doNotify(p, S_COMMAND_UPDATE_SKILL, notifyName);
-
-                        QVariant data = notifyName;
-                        thread->trigger(EventSkillValidityRestored, this, p, data);
-                    }
-                }
-            }
-        }
-    }
+	m_skillRuntime->clearSkillInvalidityBySource(source);
 }
 
 void Room::setTag(const QString&key, const QVariant&value)
