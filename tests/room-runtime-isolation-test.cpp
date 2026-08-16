@@ -5,6 +5,7 @@
 #include "general.h"
 #include "lua-runtime.h"
 #include "package.h"
+#include "card-movement-service.h"
 #include "room.h"
 #include "room-runtime.h"
 #include "roomthread1v1.h"
@@ -52,7 +53,7 @@ struct RoomTestAccess
 
     static QList<int> drawPile(const Room &room)
     {
-        return room.pile1;
+        return room.m_cardMovement->drawPile();
     }
 
     static AIRequest makeRequest(Room &room, ServerPlayer *player,
