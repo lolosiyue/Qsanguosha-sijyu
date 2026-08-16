@@ -28,6 +28,7 @@ class ServerPlayer;
 class RoomNotifier;
 class RequestCoordinator;
 class CardMovementService;
+class ExtraTurnScheduler;
 class GameRule;
 class RoomThread;
 class RoomThread3v3;
@@ -654,29 +655,9 @@ protected:
     int _m_Id;
 
 private:
-    struct ExtraTurnRequest {
-        ServerPlayer *player;
-        QList<Player::Phase> phases;
-        QString reason;
-        SkillInstanceRef sourceRef;
-
-        ExtraTurnRequest()
-            : player(nullptr) {}
-    };
-
-    struct ExtraTurnContext {
-        ServerPlayer *player;
-        QString reason;
-        SkillInstanceRef sourceRef;
-
-        ExtraTurnContext()
-            : player(nullptr) {}
-    };
-
     void executeExtraTurn(ServerPlayer *player, QList<Player::Phase> phases,
                           const QString &reason, const SkillInstanceRef &sourceRef);
     void processScheduledExtraTurns();
-    void restoreExtraTurnRequests(const QList<ExtraTurnRequest> &requests);
 
     void notifySkillInstanceSnapshot(ServerPlayer *receiver);
     void notifySkillInstanceUpsert(ServerPlayer *owner, const SkillInstance &instance);
@@ -719,9 +700,7 @@ private:
     void recordSkillExecutionAudit(const SkillContext &context, SkillExecutionResult result) const;
     QSet<QString> m_changingSkillAmounts;
     SkillInstanceUtils::UsageReservationLedger m_activeSkillUsageReservations;
-    QList<ExtraTurnRequest> m_scheduledExtraTurns;
-    QList<ExtraTurnContext> m_extraTurnContexts;
-    bool m_processingScheduledExtraTurns;
+    std::unique_ptr<ExtraTurnScheduler> m_extraTurns;
     std::unique_ptr<RoomNotifier> m_notifier;
     std::unique_ptr<RequestCoordinator> m_requests;
     std::unique_ptr<CardMovementService> m_cardMovement;
