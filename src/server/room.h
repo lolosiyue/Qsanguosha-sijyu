@@ -27,6 +27,7 @@ struct PlayerUIState;
 class ServerPlayer;
 class RoomNotifier;
 class RequestCoordinator;
+class CardMovementService;
 class GameRule;
 class RoomThread;
 class RoomThread3v3;
@@ -58,6 +59,7 @@ public:
     friend class ServerPlayer;
     friend class GameRule;
     friend class RequestCoordinator;
+    friend class CardMovementService;
     friend struct RoomTestAccess;
 
     typedef void (Room::*Callback)(ServerPlayer*, const QVariant&);
@@ -379,14 +381,8 @@ public:
     void clearSkillInvalidityBySource(ServerPlayer *source);
     void adjustSeats();
     void swapPile();
-    inline QList<int> getDiscardPile()
-    {
-        return*m_discardPile;
-    }
-    inline QList<int>&getDrawPile()
-    {
-        return*m_drawPile;
-    }
+    QList<int> getDiscardPile();
+    QList<int> &getDrawPile();
     int getCardFromPile(const QString&card_name);
     ServerPlayer*findPlayer(const QString&general_name, bool include_dead = false) const;
     QList<ServerPlayer*> findPlayersBySkillName(const QString&skill_name) const;
@@ -728,6 +724,7 @@ private:
     bool m_processingScheduledExtraTurns;
     std::unique_ptr<RoomNotifier> m_notifier;
     std::unique_ptr<RequestCoordinator> m_requests;
+    std::unique_ptr<CardMovementService> m_cardMovement;
     int chooseSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skillName,
                             bool visibleOnly, bool acquiredOnly);
     bool removeSkillInstanceFromPlayer(ServerPlayer *owner, const QString &skillName, int instanceId,
@@ -735,129 +732,7 @@ private:
 
     void _setAreaMark(ServerPlayer*player, int i, bool flag);
 
-    struct _MoveSourceClassifier
-    {
-        inline _MoveSourceClassifier(const CardsMoveStruct&move)
-        {
-            m_from = move.from;
-			m_from_place = move.from_place;
-            m_from_pile_name = move.from_pile_name;
-			m_from_player_name = move.from_player_name;
-        }
-        inline void copyTo(CardsMoveStruct&move)
-        {
-            move.from = m_from;
-			move.from_place = m_from_place;
-            move.from_pile_name = m_from_pile_name;
-			move.from_player_name = m_from_player_name;
-        }
-        inline bool operator == (const _MoveSourceClassifier&other) const
-        {
-            return m_from == other.m_from && m_from_place == other.m_from_place
-				// && m_from_player_name == other.m_from_player_name
-                && m_from_pile_name == other.m_from_pile_name;
-        }
-        inline bool operator < (const _MoveSourceClassifier&other) const
-        {
-            // 逐欄位字典序比較，避免 QMap 比較器同時判定 a < b 與 b < a。
-            const std::less<Player *> playerLess;
-            if (m_from != other.m_from)
-                return playerLess(m_from, other.m_from);
-            if (m_from_place != other.m_from_place)
-                return m_from_place < other.m_from_place;
-            return m_from_pile_name < other.m_from_pile_name;
-        }
-        Player*m_from;
-        Player::Place m_from_place;
-        QString m_from_pile_name, m_from_player_name;
-    };
-
-    struct _MoveMergeClassifier
-    {
-        inline _MoveMergeClassifier(const CardsMoveStruct&move)
-        {
-            m_from = move.from;
-			m_to = move.to;
-            m_to_place = move.to_place;
-            m_to_pile_name = move.to_pile_name;
-			m_reason = move.reason;
-            m_is_last_handcard = move.is_last_handcard;
-        }
-        inline bool operator == (const _MoveMergeClassifier&other) const
-        {
-            return m_from == other.m_from && m_to == other.m_to && m_to_place == other.m_to_place
-				 && m_to_pile_name == other.m_to_pile_name;// && m_reason == other.m_reason;
-        }
-        inline bool operator < (const _MoveMergeClassifier&other) const
-        {
-            // 比較欄位與 operator== 保持一致，保留既有移動合併語義。
-            const std::less<Player *> playerLess;
-            if (m_from != other.m_from)
-                return playerLess(m_from, other.m_from);
-            if (m_to != other.m_to)
-                return playerLess(m_to, other.m_to);
-            if (m_to_place != other.m_to_place)
-                return m_to_place < other.m_to_place;
-            return m_to_pile_name < other.m_to_pile_name;
-        }
-        Player*m_from,*m_to;
-        Player::Place m_to_place;
-        QString m_to_pile_name;
-		CardMoveReason m_reason;
-        bool m_is_last_handcard;
-    };
-
-    struct _MoveSeparateClassifier
-    {
-        inline _MoveSeparateClassifier(const CardsMoveOneTimeStruct&moveOneTime, int index)
-        {
-            m_from = moveOneTime.from;
-			m_to = moveOneTime.to;
-            m_from_place = moveOneTime.from_places[index];
-			m_to_place = moveOneTime.to_place;
-            m_from_pile_name = moveOneTime.from_pile_names[index];
-			m_to_pile_name = moveOneTime.to_pile_name;
-            m_open = moveOneTime.open[index];
-            m_reason = moveOneTime.reason;
-            //m_is_last_handcard = moveOneTime.is_last_handcard;
-        }
-        inline bool operator == (const _MoveSeparateClassifier&other) const
-        {
-            return m_from == other.m_from && m_to == other.m_to && m_from_place == other.m_from_place
-				 && m_to_place == other.m_to_place && m_from_pile_name == other.m_from_pile_name
-				 && m_to_pile_name == other.m_to_pile_name// && m_open == other.m_open
-				// && m_is_last_handcard == other.m_is_last_handcard
-				 && m_reason == other.m_reason;
-        }
-        inline bool operator < (const _MoveSeparateClassifier&other) const
-        {
-            // reason 屬於相等判斷的一部分，排序亦必須納入以免不同原因被合併。
-            const std::less<Player *> playerLess;
-            if (m_from != other.m_from)
-                return playerLess(m_from, other.m_from);
-            if (m_to != other.m_to)
-                return playerLess(m_to, other.m_to);
-            if (m_from_place != other.m_from_place)
-                return m_from_place < other.m_from_place;
-            if (m_to_place != other.m_to_place)
-                return m_to_place < other.m_to_place;
-            if (m_from_pile_name != other.m_from_pile_name)
-                return m_from_pile_name < other.m_from_pile_name;
-            if (m_to_pile_name != other.m_to_pile_name)
-                return m_to_pile_name < other.m_to_pile_name;
-            return m_reason < other.m_reason;
-        }
-        Player*m_from,*m_to;
-        Player::Place m_from_place, m_to_place;
-        QString m_from_pile_name, m_to_pile_name;
-        bool m_open;//, m_is_last_handcard;
-        CardMoveReason m_reason;
-    };
-
     int _m_lastMovementId;
-    void _fillMoveInfo(CardsMoveStruct&moves, int id) const;
-    QList<CardsMoveOneTimeStruct> _mergeMoves(QList<CardsMoveStruct> cards_moves);
-    QList<CardsMoveStruct> _separateMoves(QList<CardsMoveOneTimeStruct> moveOneTimes);
     QString _chooseDefaultGeneral(ServerPlayer*player) const;
     bool _setPlayerGeneral(ServerPlayer*player, const QString&generalName, bool isFirst);
     ServerPlayer*getRequestTarget(ServerPlayer*player) const;
@@ -866,8 +741,6 @@ private:
     int player_count;
     ServerPlayer*current;
     QHash<QString, QSet<QString>> m_aiMarkViewers;
-    QList<int> pile1, pile2, table_cards;
-    QList<int>*m_drawPile,*m_discardPile;
     QStack<DamageStruct> m_damageStack;
     int game_state;
     //bool game_started;
@@ -887,9 +760,6 @@ private:
 
     QElapsedTimer _m_timeSinceLastSurrenderRequest; // Timer used to ensure that surrender polls are not initiated too frequently
     bool _m_isFirstSurrenderRequest; // We allow the first surrender poll to go through regardless of the timer.
-
-    QMap<int, Player::Place> place_map;
-    QMap<int, ServerPlayer*> owner_map;
 
     QVariantMap tag;
     const Scenario*scenario;
