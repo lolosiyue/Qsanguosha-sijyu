@@ -26,6 +26,7 @@ struct AiLegacyRequestView;
 struct PlayerUIState;
 class ServerPlayer;
 class AiDecisionCoordinator;
+class SkillRuntimeCoordinator;
 class GameSnapshotService;
 class RoomNotifier;
 class RoomRoster;
@@ -63,6 +64,7 @@ public:
     friend class ServerPlayer;
     friend class GameRule;
     friend class AiDecisionCoordinator;
+    friend class SkillRuntimeCoordinator;
     friend class RequestCoordinator;
     friend class CardMovementService;
     friend struct RoomTestAccess;
@@ -705,8 +707,8 @@ private:
     void releaseActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
     void commitActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
     void recordSkillExecutionAudit(const SkillContext &context, SkillExecutionResult result) const;
-    QSet<QString> m_changingSkillAmounts;
-    SkillInstanceUtils::UsageReservationLedger m_activeSkillUsageReservations;
+    std::unique_ptr<RoomRuntime> m_runtime;
+    std::unique_ptr<SkillRuntimeCoordinator> m_skillRuntime;
     std::unique_ptr<AiDecisionCoordinator> m_aiDecisions;
     std::unique_ptr<ExtraTurnScheduler> m_extraTurns;
     std::unique_ptr<RoomNotifier> m_notifier;
@@ -714,10 +716,6 @@ private:
     std::unique_ptr<CardMovementService> m_cardMovement;
     std::unique_ptr<GameSnapshotService> m_snapshotService;
     std::unique_ptr<RoomRoster> m_roster;
-    int chooseSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skillName,
-                            bool visibleOnly, bool acquiredOnly);
-    bool removeSkillInstanceFromPlayer(ServerPlayer *owner, const QString &skillName, int instanceId,
-                                       bool isEquip, bool eventAndLog);
 
     void _setAreaMark(ServerPlayer*player, int i, bool flag);
 
@@ -751,7 +749,6 @@ private:
     bool m_surrenderRequestReceived;
     bool _virtual;
     GameSessionConfig m_sessionConfig;
-    std::unique_ptr<RoomRuntime> m_runtime;
 
     JsonArray m_fillAGarg;
     QList<JsonArray> m_takeAGargs;

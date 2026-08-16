@@ -7,11 +7,12 @@
 #include <QSet>
 
 class Room;
+class SkillRuntimeCoordinator;
 
 class AiDecisionCoordinator
 {
 public:
-    explicit AiDecisionCoordinator(Room &room);
+    AiDecisionCoordinator(Room &room, SkillRuntimeCoordinator &skillRuntime);
 
     AIWorldView buildWorldView(ServerPlayer *viewer) const;
     bool isMarkVisibleTo(const ServerPlayer *owner, const QString &mark,
@@ -42,6 +43,7 @@ public:
 
 private:
     Room &m_room;
+    SkillRuntimeCoordinator &m_skillRuntime;
     QHash<QString, QSet<QString>> m_markViewers;
 };
 
