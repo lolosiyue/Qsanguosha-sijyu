@@ -7,6 +7,7 @@
 #include "skill-execution-registry.h"
 #include "room-runtime.h"
 #include "game-session-config.h"
+#include "event-dispatcher.h"
 
 #include <functional>
 #include <memory>
@@ -33,6 +34,7 @@ class RoomRoster;
 class RequestCoordinator;
 class CardMovementService;
 class ExtraTurnScheduler;
+class PlayerLifecycleService;
 class GameRule;
 class RoomThread;
 class RoomThread3v3;
@@ -46,7 +48,7 @@ class RoomThread1v1;
 #include "room-state.h"
 #include "json.h"
 
-class Room : public QThread, public EngineRuntimeContext
+class Room : public QThread, public EngineRuntimeContext, private EventDispatcher
 {
     Q_OBJECT
         Q_ENUMS(GuanxingType)
@@ -67,7 +69,9 @@ public:
     friend class SkillRuntimeCoordinator;
     friend class RequestCoordinator;
     friend class CardMovementService;
+    friend class PlayerLifecycleService;
     friend struct RoomTestAccess;
+    friend struct PlayerLifecycleServiceTestAccess;
 
     typedef void (Room::*Callback)(ServerPlayer*, const QVariant&);
     typedef bool (Room::*ResponseVerifyFunction)(ServerPlayer*, const QVariant&, void*);
@@ -716,6 +720,11 @@ private:
     std::unique_ptr<CardMovementService> m_cardMovement;
     std::unique_ptr<GameSnapshotService> m_snapshotService;
     std::unique_ptr<RoomRoster> m_roster;
+    std::unique_ptr<PlayerLifecycleService> m_playerLifecycle;
+
+    bool dispatch(TriggerEvent event, ServerPlayer *target, QVariant &data) override;
+    void registerTriggerSkill(const TriggerSkill *skill) override;
+    void clearControllerRelation(ServerPlayer *player);
 
     void _setAreaMark(ServerPlayer*player, int i, bool flag);
 
@@ -796,15 +805,6 @@ private:
         ServerPlayer*m_to;
     };
     void _setupChooseGeneralRequestArgs(ServerPlayer*player);
-
-    struct SummonRequest {
-        ServerPlayer *before;
-        ServerPlayer *after;
-        QString general_name;
-    };
-
-    QList<SummonRequest> m_pendingSummons;
-    QList<ServerPlayer*> m_dynamicPlayers;
 
     void handleAnytimeSkillRequest(ServerPlayer *player, const QVariant &arg);
     void processPendingAnytimeSkills();
