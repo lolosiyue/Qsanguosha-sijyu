@@ -25,6 +25,7 @@ struct AIResult;
 struct AiLegacyRequestView;
 struct PlayerUIState;
 class ServerPlayer;
+class GameSnapshotService;
 class RoomNotifier;
 class RequestCoordinator;
 class CardMovementService;
@@ -704,6 +705,7 @@ private:
     std::unique_ptr<RoomNotifier> m_notifier;
     std::unique_ptr<RequestCoordinator> m_requests;
     std::unique_ptr<CardMovementService> m_cardMovement;
+    std::unique_ptr<GameSnapshotService> m_snapshotService;
     int chooseSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skillName,
                             bool visibleOnly, bool acquiredOnly);
     bool removeSkillInstanceFromPlayer(ServerPlayer *owner, const QString &skillName, int instanceId,
@@ -733,9 +735,6 @@ private:
     QPointer<RoomThreadXMode> thread_xmode;
     QPointer<RoomThread1v1> thread_1v1;
     QVariantList m_chatHistory;
-    QList<GameSnapshot*> m_snapshots;
-    QString m_replayPath;
-    int m_lastSnapshotTurn;
 
     QElapsedTimer _m_timeSinceLastSurrenderRequest; // Timer used to ensure that surrender polls are not initiated too frequently
     bool _m_isFirstSurrenderRequest; // We allow the first surrender poll to go through regardless of the timer.
