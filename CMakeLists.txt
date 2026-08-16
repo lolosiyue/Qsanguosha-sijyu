@@ -137,6 +137,7 @@ add_library(qsanguosha_engine STATIC
     src/server/basicai.cpp
     src/server/card-movement-service.cpp
     src/server/card-movement-service.h
+    src/server/event-dispatcher.h
     src/server/extra-turn-scheduler.cpp
     src/server/extra-turn-scheduler.h
     src/server/game-snapshot-service.cpp
@@ -152,6 +153,8 @@ add_library(qsanguosha_engine STATIC
     src/server/room-roster.h
     src/server/room-runtime.cpp
     src/server/room-runtime.h
+    src/server/player-lifecycle-service.cpp
+    src/server/player-lifecycle-service.h
     src/server/skill-runtime-coordinator.cpp
     src/server/skill-runtime-coordinator.h
     src/server/room.cpp
@@ -503,6 +506,32 @@ if(BUILD_TESTING)
     )
     add_test(NAME qsanguosha_room_roster COMMAND qsanguosha_room_roster_test)
     set_tests_properties(qsanguosha_room_roster PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    add_executable(qsanguosha_player_lifecycle_service_test
+        tests/player-lifecycle-service-test.cpp
+        src/server/server-core.h
+    )
+    target_include_directories(qsanguosha_player_lifecycle_service_test PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/freetype
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/client
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/package
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+    )
+    target_link_libraries(qsanguosha_player_lifecycle_service_test PRIVATE
+        qsanguosha_engine Qt6::Core5Compat Qt6::Qml Qt6::Widgets
+        "$<$<CONFIG:Release>:dbghelp>"
+    )
+    add_test(NAME qsanguosha_player_lifecycle_service
+             COMMAND qsanguosha_player_lifecycle_service_test)
+    set_tests_properties(qsanguosha_player_lifecycle_service PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     )
 
