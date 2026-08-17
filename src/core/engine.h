@@ -35,6 +35,7 @@ class RoomState;
 class ExpPattern;
 class TransferSkill;
 class RoomRuntime;
+class RoomDefinitionRegistry;
 class EngineRuntimeContextScope;
 class Package;
 using EnginePackageFactory = Package *(*)();
@@ -246,7 +247,7 @@ public:
 
 private:
     friend class EngineRuntimeContextScope;
-    friend class RoomRuntime;
+    friend class RoomDefinitionRegistry;
 
     EngineRuntimeContext *swapCurrentRoomContext(EngineRuntimeContext *context);
     RoomRuntime *currentRoomRuntime() const;
