@@ -1,5 +1,6 @@
 #include "engine-bootstrap.h"
 #include "ai.h"
+#include "room-test-access.h"
 #include "room.h"
 #include "roomthread.h"
 #include "serverplayer.h"
@@ -8,39 +9,7 @@
 #include <QCoreApplication>
 #include <QDebug>
 
-struct RoomTestAccess
-{
-    static ServerPlayer *addPlayer(Room &room, const QString &objectName)
-    {
-        ServerPlayer *player = new ServerPlayer(&room);
-        player->setObjectName(objectName);
-        player->setAlive(true);
-        player->setRemoved(false);
-        player->setPhase(Player::NotActive);
-        TrustAI *ai = new TrustAI(player);
-        ai->setParent(player);
-        player->setAI(ai);
-        room.addPlayerToRoster(player);
-        return player;
-    }
-
-    static void attachThread(Room &room, const TriggerSkill *skill)
-    {
-        room.thread = new RoomThread(&room);
-        room.thread->addTriggerSkill(skill);
-    }
-
-    static void process(Room &room)
-    {
-        room.processScheduledExtraTurns();
-    }
-
-    static void execute(Room &room, ServerPlayer *player, QList<Player::Phase> phases,
-                        const QString &reason, const SkillInstanceRef &sourceRef)
-    {
-        room.executeExtraTurn(player, phases, reason, sourceRef);
-    }
-};
+namespace {
 
 struct ExtraTurnObservation
 {
@@ -145,9 +114,9 @@ static bool scheduledTurnsPreserveBatchOrderingAndFacade()
 {
     ExtraTurnProbe probe;
     Room room(nullptr, QStringLiteral("02_1v1"));
-    ServerPlayer *first = RoomTestAccess::addPlayer(room, QStringLiteral("first"));
-    ServerPlayer *second = RoomTestAccess::addPlayer(room, QStringLiteral("second"));
-    ServerPlayer *third = RoomTestAccess::addPlayer(room, QStringLiteral("third"));
+    ServerPlayer *first = RoomTestAccess::addOrdinaryPlayer(room, QStringLiteral("first"), true);
+    ServerPlayer *second = RoomTestAccess::addOrdinaryPlayer(room, QStringLiteral("second"), true);
+    ServerPlayer *third = RoomTestAccess::addOrdinaryPlayer(room, QStringLiteral("third"), true);
     room.setCurrent(second);
     RoomTestAccess::attachThread(room, &probe);
 
@@ -203,8 +172,8 @@ static bool nestedExecutionRestoresOuterContext()
 {
     ExtraTurnProbe probe;
     Room room(nullptr, QStringLiteral("02_1v1"));
-    ServerPlayer *outer = RoomTestAccess::addPlayer(room, QStringLiteral("outer"));
-    ServerPlayer *previous = RoomTestAccess::addPlayer(room, QStringLiteral("previous"));
+    ServerPlayer *outer = RoomTestAccess::addOrdinaryPlayer(room, QStringLiteral("outer"), true);
+    ServerPlayer *previous = RoomTestAccess::addOrdinaryPlayer(room, QStringLiteral("previous"), true);
     room.setCurrent(previous);
     RoomTestAccess::attachThread(room, &probe);
 
@@ -227,9 +196,9 @@ static bool controlEventsRestoreProcessingAndPendingRequests()
 {
     ExtraTurnProbe probe;
     Room room(nullptr, QStringLiteral("02_1v1"));
-    ServerPlayer *first = RoomTestAccess::addPlayer(room, QStringLiteral("first"));
-    ServerPlayer *second = RoomTestAccess::addPlayer(room, QStringLiteral("second"));
-    ServerPlayer *third = RoomTestAccess::addPlayer(room, QStringLiteral("third"));
+    ServerPlayer *first = RoomTestAccess::addOrdinaryPlayer(room, QStringLiteral("first"), true);
+    ServerPlayer *second = RoomTestAccess::addOrdinaryPlayer(room, QStringLiteral("second"), true);
+    ServerPlayer *third = RoomTestAccess::addOrdinaryPlayer(room, QStringLiteral("third"), true);
     room.setCurrent(first);
     RoomTestAccess::attachThread(room, &probe);
     const QList<Player::Phase> phases = QList<Player::Phase>() << Player::Finish;
@@ -267,9 +236,10 @@ static bool controlEventsRestoreProcessingAndPendingRequests()
                       << QStringLiteral("scheduled-during-stage"));
 }
 
-int main(int argc, char **argv)
+}
+
+int runExtraTurnSchedulerTests()
 {
-    QCoreApplication application(argc, argv);
     QString error;
     if (!EngineBootstrap::initialize(false, &error)) {
         qCritical() << "engine initialization failed:" << error;

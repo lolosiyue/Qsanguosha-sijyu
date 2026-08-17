@@ -141,9 +141,8 @@ bool verifyNormalizeFacade()
 }
 }
 
-int main(int argc, char *argv[])
+int runCardMovementServiceTests()
 {
-    QCoreApplication app(argc, argv);
     QString engineError;
     if (!EngineBootstrap::initialize(false, &engineError)) {
         QTextStream(stderr) << "engine initialization failed: " << engineError << "\n";

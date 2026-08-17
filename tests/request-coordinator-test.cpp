@@ -1,5 +1,6 @@
 #include "engine-bootstrap.h"
 #include "request-coordinator.h"
+#include "room-test-access.h"
 #include "room.h"
 #include "serverplayer.h"
 #include "settings.h"
@@ -10,30 +11,7 @@
 
 using namespace QSanProtocol;
 
-struct RoomTestAccess
-{
-    static ServerPlayer *addPlayer(Room &room, const QString &objectName,
-                                   const QString &state = QStringLiteral("online"))
-    {
-        ServerPlayer *player = new ServerPlayer(&room);
-        player->setObjectName(objectName);
-        player->setState(state);
-        player->drainAllLocks();
-        player->releaseLock(ServerPlayer::SEMA_MUTEX);
-        room.addPlayerToRoster(player);
-        return player;
-    }
-
-    static void dispatch(Room &room, ServerPlayer *player, const Packet &packet)
-    {
-        room.m_requests->processClientPacket(player, packet, packet.toString());
-    }
-
-    static bool isPaused(const Room &room)
-    {
-        return room.game_paused;
-    }
-};
+namespace {
 
 struct RequestRecord
 {
@@ -167,9 +145,10 @@ static bool raceTimeoutClearsPendingState(Room &room, ServerPlayer *player)
         && player->m_expectedReplySerial == -1;
 }
 
-int main(int argc, char **argv)
+}
+
+int runRequestCoordinatorTests()
 {
-    QCoreApplication application(argc, argv);
     QString error;
     if (!EngineBootstrap::initialize(false, &error)) {
         qCritical() << "engine initialization failed:" << error;
@@ -178,7 +157,8 @@ int main(int argc, char **argv)
 
     ScopedOperationLimit operationLimit;
     Room room(nullptr, QStringLiteral("02_1v1"));
-    ServerPlayer *owner = RoomTestAccess::addPlayer(room, QStringLiteral("request-owner"));
+    ServerPlayer *owner = RoomTestAccess::addPlayer(room, QStringLiteral("request-owner"),
+                                                    QStringLiteral("online"));
     RoomTestAccess::addPlayer(room, QStringLiteral("request-robot"), QStringLiteral("robot"));
 
     RequestRecorder recorder;

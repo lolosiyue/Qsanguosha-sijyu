@@ -91,14 +91,21 @@ static bool gameRngInstancesDoNotShareSequenceState()
 {
     GameRng first;
     GameRng second;
-    first.seed(20260813);
-    second.seed(20260813);
+    GameRng differentHighBits;
+    const quint64 seed = Q_UINT64_C(0x12345678abcdef01);
+    first.seed(seed);
+    second.seed(seed);
+    differentHighBits.seed(Q_UINT64_C(0x87654321abcdef01));
 
-    const int firstA = first.bounded(1000000);
-    const int firstB = first.bounded(1000000);
-    const int secondA = second.bounded(1000000);
-    const int secondB = second.bounded(1000000);
-    return firstA == secondA && firstB == secondB;
+    QList<int> firstSequence;
+    QList<int> secondSequence;
+    QList<int> differentSequence;
+    for (int i = 0; i < 4; ++i) {
+        firstSequence << first.bounded(1000000);
+        secondSequence << second.bounded(1000000);
+        differentSequence << differentHighBits.bounded(1000000);
+    }
+    return firstSequence == secondSequence && firstSequence != differentSequence;
 }
 
 static bool oneRuntimeSerializesThreadHandoffs()
@@ -146,9 +153,8 @@ static bool hardMemoryLimitRejectsOversizedAllocation()
     return rejected && runtime.memoryBytes() <= hardLimit;
 }
 
-int main(int argc, char *argv[])
+int runLuaRuntimeIsolationTests()
 {
-    QCoreApplication app(argc, argv);
     if (!statesAndGlobalsAreIsolated()) {
         qCritical() << "Lua runtimes shared state or globals";
         return 1;
@@ -162,7 +168,7 @@ int main(int argc, char *argv[])
         return 3;
     }
     if (!gameRngInstancesDoNotShareSequenceState()) {
-        qCritical() << "Game RNG instances contaminated each other";
+        qCritical() << "Game RNG instances shared state or truncated the 64-bit seed";
         return 4;
     }
     if (!oneRuntimeSerializesThreadHandoffs()) {

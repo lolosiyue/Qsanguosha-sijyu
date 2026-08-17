@@ -2,6 +2,7 @@
 #include "engine.h"
 #include "aux-skills.h"
 #include "card.h"
+#include "game-snapshot.h"
 #include "json.h"
 #include "player.h"
 #include "player-ui-state-builder.h"
@@ -14,8 +15,9 @@
 #include "skill-instance-utils.h"
 #include "skill-registry.h"
 
-#include <QCoreApplication>
 #include <QDebug>
+#include <QFileInfo>
+#include <QTemporaryDir>
 
 class TestPlayer : public Player
 {
@@ -44,6 +46,12 @@ struct RoomTestAccess
     static bool resolveCardSkillInstance(Room &room, CardUseStruct &use)
     {
         return room.resolveCardSkillInstance(use);
+    }
+
+    static void startVirtualGame(Room &room)
+    {
+        room._virtual = true;
+        room.startGame();
     }
 };
 
@@ -268,10 +276,64 @@ static bool playerUIStateBuilderAggregatesPresentationState()
     return valid;
 }
 
-int main(int argc, char **argv)
+static bool gameStartupConstructsRoomThreadBeforePreparingViewAsEquipSkills()
 {
-    QCoreApplication application(argc, argv);
+    const General *wolong = Sanguosha->getGeneral(QStringLiteral("wolong"));
+    const General *caocao = Sanguosha->getGeneral(QStringLiteral("caocao"));
+    if (!wolong || !caocao) {
+        qCritical() << "startup regression fixture generals are unavailable";
+        return false;
+    }
 
+    Room room(nullptr, QStringLiteral("02_1v1"));
+    ServerPlayer *first = RoomTestAccess::addPlayer(room, QStringLiteral("first"));
+    ServerPlayer *second = RoomTestAccess::addPlayer(room, QStringLiteral("second"));
+    first->setState(QStringLiteral("robot"));
+    second->setState(QStringLiteral("robot"));
+    first->setGeneral(wolong);
+    second->setGeneral(caocao);
+
+    RoomTestAccess::startVirtualGame(room);
+    if (!room.getThread()) {
+        qCritical() << "RoomThread was not constructed before preparing ViewAsEquipSkill mappings";
+        return false;
+    }
+    return true;
+}
+
+static bool roomSnapshotFacadePersistsAndRetrievesSnapshot()
+{
+    QTemporaryDir temporaryDir;
+    if (!temporaryDir.isValid()) {
+        qCritical() << "Unable to create snapshot regression directory";
+        return false;
+    }
+
+    Room room(nullptr, QStringLiteral("02_1v1"));
+    const QString replayPath = temporaryDir.filePath(QStringLiteral("snapshot-facade.replay.txt"));
+    room.setReplayPath(replayPath);
+    room.setTag(QStringLiteral("TurnLengthCount"), 7);
+
+    room.saveSnapshot(QStringLiteral("turn"));
+
+    GameSnapshot *snapshot = room.getSnapshot(7);
+    const QString snapshotDir = GameSnapshot::getSnapshotDir(replayPath);
+    const QString snapshotPath = snapshotDir + QStringLiteral("/")
+        + GameSnapshot::generateSnapshotFilename(7, QStringLiteral("turn"));
+    const bool valid = room.getReplayPath() == replayPath
+        && room.getSnapshotDir() == snapshotDir
+        && QFileInfo::exists(snapshotPath)
+        && snapshot
+        && snapshot->getReplayPath() == replayPath
+        && snapshot->getSnapshotType() == QStringLiteral("turn")
+        && snapshot->getDescription() == QStringLiteral("Turn 7");
+    if (!valid)
+        qCritical() << "Room snapshot facade did not preserve persisted snapshot state";
+    return valid;
+}
+
+int runEngineSmokeTests()
+{
     ServerInfoStruct info;
     const QString setup = QString::fromLatin1("U2VydmVy:02_1v1_standard:15:3:standard:RC");
     if (!info.parse(setup) || info.GameMode != QStringLiteral("02_1v1")
@@ -315,6 +377,12 @@ int main(int argc, char **argv)
 
     if (!engineLegacySkillApisDelegateToRegistry())
         return 100;
+
+    if (!gameStartupConstructsRoomThreadBeforePreparingViewAsEquipSkills())
+        return 110;
+
+    if (!roomSnapshotFacadePersistsAndRetrievesSnapshot())
+        return 120;
 
     qInfo() << "qsanguosha_engine smoke passed";
     return 0;
