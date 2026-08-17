@@ -1,5 +1,6 @@
 #include "engine-bootstrap.h"
 #include "room-roster.h"
+#include "room-test-access.h"
 #include "room.h"
 #include "serverplayer.h"
 
@@ -7,26 +8,7 @@
 #include <QDebug>
 #include <QPointer>
 
-struct RoomTestAccess
-{
-    static ServerPlayer *addPlayer(Room &room, const QString &objectName)
-    {
-        ServerPlayer *player = new ServerPlayer(&room);
-        player->setObjectName(objectName);
-        room.m_roster->add(player);
-        return player;
-    }
-
-    static RoomRoster &roster(Room &room)
-    {
-        return *room.m_roster;
-    }
-
-    static void resetAlive(Room &room)
-    {
-        room.m_roster->resetAliveToPlayers();
-    }
-};
+namespace {
 
 class RosterFixture
 {
@@ -38,7 +20,7 @@ public:
 
     ServerPlayer *add(const QString &objectName)
     {
-        return RoomTestAccess::addPlayer(room, objectName);
+        return RoomTestAccess::addListedPlayer(room, objectName);
     }
 
     RoomRoster &roster()
@@ -314,9 +296,10 @@ static bool rosterNeverOwnsPlayers()
     return expect(preserved && guard.isNull(), "RoomRoster does not delete or reparent players");
 }
 
-int main(int argc, char **argv)
+}
+
+int runRoomRosterTests()
 {
-    QCoreApplication application(argc, argv);
     QString error;
     if (!EngineBootstrap::initialize(false, &error)) {
         qCritical() << "engine initialization failed:" << error;

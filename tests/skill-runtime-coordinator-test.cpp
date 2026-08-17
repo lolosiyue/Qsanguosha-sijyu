@@ -1,6 +1,7 @@
 #include "engine-bootstrap.h"
 #include "ai.h"
 #include "engine.h"
+#include "room-test-access.h"
 #include "room.h"
 #include "roomthread.h"
 #include "serverplayer.h"
@@ -10,49 +11,7 @@
 #include <QCoreApplication>
 #include <QDebug>
 
-struct RoomTestAccess
-{
-    static ServerPlayer *addPlayer(Room &room, const QString &objectName)
-    {
-        ServerPlayer *player = new ServerPlayer(&room);
-        player->setObjectName(objectName);
-        player->setAlive(true);
-        player->setRemoved(false);
-        TrustAI *ai = new TrustAI(player);
-        ai->setParent(player);
-        player->setAI(ai);
-        room.addPlayerToRoster(player);
-        return player;
-    }
-
-    static void attachThread(Room &room)
-    {
-        room.thread = new RoomThread(&room);
-    }
-
-    static SkillInstanceRef resolveRoot(Room &room, const SkillInstanceRef &ref)
-    {
-        return room.resolveSkillInstanceRootRef(ref);
-    }
-
-    static bool reserveUsage(Room &room, const ViewAsSkillV2 *skill,
-                             const SkillContext &context)
-    {
-        return room.reserveActiveSkillUsage(skill, context);
-    }
-
-    static void releaseUsage(Room &room, const ViewAsSkillV2 *skill,
-                             const SkillContext &context)
-    {
-        room.releaseActiveSkillUsage(skill, context);
-    }
-
-    static void commitUsage(Room &room, const ViewAsSkillV2 *skill,
-                            const SkillContext &context)
-    {
-        room.commitActiveSkillUsage(skill, context);
-    }
-};
+namespace {
 
 class TestLimitedSkill : public ViewAsSkillV2
 {
@@ -180,8 +139,8 @@ static bool lifecycleAndRuntimeFacade()
 
     Room room(nullptr, QStringLiteral("02_1v1"));
     RoomTestAccess::attachThread(room);
-    ServerPlayer *owner = RoomTestAccess::addPlayer(room, QStringLiteral("owner"));
-    ServerPlayer *recipient = RoomTestAccess::addPlayer(room, QStringLiteral("recipient"));
+    ServerPlayer *owner = RoomTestAccess::addOrdinaryPlayer(room, QStringLiteral("owner"));
+    ServerPlayer *recipient = RoomTestAccess::addOrdinaryPlayer(room, QStringLiteral("recipient"));
     room.setCurrent(owner);
 
     const int firstRootId = room.acquireSkill(owner, rootSkill.objectName(),
@@ -228,9 +187,10 @@ static bool lifecycleAndRuntimeFacade()
     return thirdRootId > secondRootId;
 }
 
-int main(int argc, char **argv)
+}
+
+int runSkillRuntimeCoordinatorTests()
 {
-    QCoreApplication application(argc, argv);
     QString error;
     if (!EngineBootstrap::initialize(false, &error)) {
         qCritical() << "engine initialization failed:" << error;

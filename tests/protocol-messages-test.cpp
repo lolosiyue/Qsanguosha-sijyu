@@ -1,11 +1,14 @@
 #include "json.h"
 #include "protocol/card-provenance-message.h"
 #include "protocol/skill-instance-message.h"
+#include "protocol/state/player-ui-state.h"
 #include "protocol/switch-context-message.h"
 #include "protocol/sync-pile-message.h"
 
 #include <QJsonDocument>
 #include <QTextStream>
+#include <QVariantList>
+#include <QVariantMap>
 
 namespace
 {
@@ -201,6 +204,101 @@ bool skillInstanceMessages()
                                                << 3 << "replace" << "" << "not-a-map"),
                   "SkillInstance typed replace rejection");
 }
+
+PlayerUIState completePlayerUIState()
+{
+    PlayerUIState state;
+    state.handMax = 7;
+    state.offensiveDistance = -2;
+    state.defensiveDistance = 3;
+    state.maxCardsSkills << "keji^2^sgs1" << "yongsi^F7^sgs2";
+    state.offensiveSkills << "mashu";
+    state.defensiveSkills << "feiying";
+    state.viewAsEquipSkills << "Crossbow^paoxiao";
+    return state;
+}
+
+bool playerUIStateMessages()
+{
+    const PlayerUIState expected = completePlayerUIState();
+    PlayerUIState parsed;
+    if (!expect(parsed.tryParse(expected.toVariant()) && parsed == expected,
+                "PlayerUIState round trip"))
+        return false;
+
+    PlayerUIState emptyLists;
+    emptyLists.handMax = 4;
+    PlayerUIState parsedEmptyLists;
+    if (!expect(parsedEmptyLists.tryParse(emptyLists.toVariant())
+                    && parsedEmptyLists == emptyLists,
+                "PlayerUIState empty lists"))
+        return false;
+
+    PlayerUIStateMessage expectedMessage;
+    expectedMessage.playerName = "sgs1";
+    expectedMessage.state = expected;
+    PlayerUIStateMessage parsedMessage;
+    if (!expect(parsedMessage.tryParse(expectedMessage.toVariant())
+                    && parsedMessage.playerName == expectedMessage.playerName
+                    && parsedMessage.state == expectedMessage.state,
+                "PlayerUIStateMessage round trip"))
+        return false;
+
+    const QVariant decodedWireValue = throughJson(expectedMessage.toVariant());
+    PlayerUIStateMessage wireMessage;
+    if (!expect(wireMessage.tryParse(decodedWireValue)
+                    && wireMessage.playerName == expectedMessage.playerName
+                    && wireMessage.state == expectedMessage.state,
+                "PlayerUIStateMessage JSON round trip"))
+        return false;
+
+    QVariantMap missingField = expected.toVariant().toMap();
+    missingField.remove("handMax");
+    if (!expect(!parsed.tryParse(missingField), "PlayerUIState missing field"))
+        return false;
+
+    QVariantMap wrongInteger = expected.toVariant().toMap();
+    wrongInteger.insert("handMax", QString("7"));
+    if (!expect(!parsed.tryParse(wrongInteger), "PlayerUIState wrong integer type"))
+        return false;
+
+    QVariantMap wrongList = expected.toVariant().toMap();
+    wrongList.insert("offensiveSkills", QVariantList() << "mashu" << 1);
+    if (!expect(!parsed.tryParse(wrongList), "PlayerUIState wrong list type"))
+        return false;
+
+    PlayerUIState unchanged = expected;
+    QVariantMap invalidNestedState = expected.toVariant().toMap();
+    invalidNestedState.insert("defensiveSkills", true);
+    if (!expect(!unchanged.tryParse(invalidNestedState) && unchanged == expected,
+                "PlayerUIState invalid nested leaves original"))
+        return false;
+
+    QVariantMap invalidMessage = expectedMessage.toVariant().toMap();
+    invalidMessage.insert("state", invalidNestedState);
+    PlayerUIStateMessage unchangedMessage = expectedMessage;
+    if (!expect(!unchangedMessage.tryParse(invalidMessage)
+                    && unchangedMessage.playerName == expectedMessage.playerName
+                    && unchangedMessage.state == expectedMessage.state,
+                "PlayerUIStateMessage invalid nested leaves original"))
+        return false;
+
+    QVariantMap withUnknownField = expected.toVariant().toMap();
+    withUnknownField.insert("futureField", "ignored");
+    if (!expect(parsed.tryParse(withUnknownField) && parsed == expected,
+                "PlayerUIState unknown field compatibility"))
+        return false;
+
+    PlayerUIState different = expected;
+    different.handMax++;
+    if (!expect(!(different == expected), "PlayerUIState equality"))
+        return false;
+
+    QVariantMap wrongPlayerName = expectedMessage.toVariant().toMap();
+    wrongPlayerName.insert("playerName", 1);
+    return expect(!parsedMessage.tryParse(wrongPlayerName),
+                  "PlayerUIStateMessage wrong playerName type");
+}
 }
 
 int main()
@@ -210,5 +308,6 @@ int main()
             && switchContextMessages()
             && skillInstanceEntries()
             && skillInstanceMessages()
+            && playerUIStateMessages()
         ? 0 : 1;
 }

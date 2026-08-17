@@ -3,6 +3,7 @@
 #include "protocol.h"
 #include "protocol/skill-instance-message.h"
 #include "protocol/state/player-ui-state.h"
+#include "room-test-access.h"
 #include "room.h"
 #include "roomthread.h"
 #include "serverplayer.h"
@@ -13,26 +14,7 @@
 
 using namespace QSanProtocol;
 
-struct RoomTestAccess
-{
-    static ServerPlayer *addPlayer(Room &room, const QString &objectName)
-    {
-        ServerPlayer *player = new ServerPlayer(&room);
-        player->setObjectName(objectName);
-        room.addPlayerToRoster(player);
-        return player;
-    }
-
-    static void notifySkillInstanceState(Room &room, ServerPlayer *owner,
-                                         const SkillInstance &instance,
-                                         const QString &operation,
-                                         const QString &key,
-                                         const QVariant &value)
-    {
-        room.notifySkillInstanceState(owner, instance, operation, key, value);
-    }
-
-};
+namespace {
 
 struct PacketRecord
 {
@@ -265,9 +247,10 @@ static bool presentationPayloadsStayStable(Room &room, PacketRecorder &recorder,
     return true;
 }
 
-int main(int argc, char **argv)
+}
+
+int runRoomNotifierTests()
 {
-    QCoreApplication application(argc, argv);
     QString error;
     if (!EngineBootstrap::initialize(false, &error)) {
         qCritical() << "engine initialization failed:" << error;

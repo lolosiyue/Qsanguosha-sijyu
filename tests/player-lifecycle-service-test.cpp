@@ -64,6 +64,8 @@ struct PlayerLifecycleServiceTestAccess
     }
 };
 
+namespace {
+
 class RecordingEventDispatcher : public EventDispatcher
 {
 public:
@@ -433,9 +435,10 @@ static bool marshalReplaysDynamicPlayerInProtocolOrder()
                   "reconnect replays the marshal protocol");
 }
 
-int main(int argc, char **argv)
+}
+
+int runPlayerLifecycleServiceTests(int argc, char **argv)
 {
-    QCoreApplication application(argc, argv);
     QString error;
     if (!EngineBootstrap::initialize(false, &error)) {
         qCritical() << "engine initialization failed:" << error;
