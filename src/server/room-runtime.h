@@ -5,14 +5,10 @@
 #include "ai-runtime.h"
 #include "game-rng.h"
 #include "lua-runtime.h"
+#include "room-definition-registry.h"
 #include "room-state.h"
 #include "skill-execution-registry.h"
 #include "skill-instance-attachment-registry.h"
-#include "skill-registry.h"
-
-#include <QHash>
-#include <QMultiMap>
-#include <QObject>
 
 class CardPattern;
 class General;
@@ -41,6 +37,9 @@ public:
     bool isLoadingDefinitions() const { return m_loadingDefinitions; }
     bool definitionsLoaded() const { return m_definitionsLoaded; }
     void finishDefinitionLoading() { m_definitionsLoaded = true; }
+
+    RoomDefinitionRegistry &definitions() { return m_definitions; }
+    const RoomDefinitionRegistry &definitions() const { return m_definitions; }
 
     LuaRuntime &lua() { return m_lua; }
     const LuaRuntime &lua() const { return m_lua; }
@@ -98,32 +97,18 @@ public:
     RoomRuntime *roomRuntime() override { return this; }
 
 private:
-    void indexPackage(Package *package);
-
     Room *m_room;
+    RoomDefinitionRegistry m_definitions;
     LuaRuntime m_lua;
     AiLuaRuntime m_ai;
     GameRng m_rng;
     RoomState m_roomState;
     SkillExecutionRegistry m_skillExecutions;
     SkillInstanceAttachmentRegistry m_attachedSkills;
-    SkillRegistry m_skills;
     bool m_loadingDefinitions;
     bool m_definitionsLoaded;
-    int m_nextCardId;
     quint64 m_nextDecisionId;
     quint64 m_stateRevision;
-    QHash<QString, Package *> m_packages;
-    QHash<QString, const General *> m_generals;
-    QHash<int, const Card *> m_cards;
-    QHash<const Card *, int> m_cardIds;
-    QHash<QString, const Card *> m_cardTemplates;
-    QMap<QString, const CardPattern *> m_patterns;
-    QMultiMap<QString, QString> m_relatedSkills;
-    QHash<QString, QString> m_translations;
-    QHash<QString, QString> m_initialTranslations;
-    QHash<QString, const LuaSkillCard *> m_luaSkillCards;
-    QObject m_definitionRoot;
 };
 
 #endif

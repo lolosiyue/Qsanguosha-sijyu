@@ -112,6 +112,8 @@ add_library(qsanguosha_engine STATIC
     src/core/protocol/sync-pile-message.h
     src/core/record-buffer.cpp
     src/core/record-buffer.h
+    src/core/room-definition-registry.cpp
+    src/core/room-definition-registry.h
     src/core/room-state.cpp
     src/core/room-state.h
     src/core/server-info.cpp

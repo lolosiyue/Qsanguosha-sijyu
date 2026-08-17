@@ -1,16 +1,13 @@
 #include "room-runtime.h"
 
 #include "engine.h"
-#include "general.h"
-#include "lua-wrapper.h"
-#include "package.h"
 #include "room.h"
 
 #include <QDebug>
 
 RoomRuntime::RoomRuntime(Room *room)
-    : m_room(room), m_lua(LuaRuntime::Game), m_ai(room), m_roomState(false),
-      m_loadingDefinitions(false), m_definitionsLoaded(false), m_nextCardId(0),
+    : m_room(room), m_definitions(*Sanguosha), m_lua(LuaRuntime::Game), m_ai(room),
+      m_roomState(false), m_loadingDefinitions(false), m_definitionsLoaded(false),
       m_nextDecisionId(0), m_stateRevision(0)
 {
 }
@@ -23,7 +20,6 @@ RoomRuntime::~RoomRuntime()
 
 bool RoomRuntime::initialize(QString *error)
 {
-    m_nextCardId = Sanguosha->getCardCount();
     if (!m_lua.initialize(error))
         return false;
     LuaRuntime::Binding luaBinding(m_lua);
@@ -63,201 +59,157 @@ void RoomRuntime::advanceStateRevision(StateMutation mutation)
 
 void RoomRuntime::addPackage(Package *package)
 {
-    if (!package || m_packages.contains(package->objectName()))
-        return;
-    package->setParent(&m_definitionRoot);
-    m_packages.insert(package->objectName(), package);
-    indexPackage(package);
+    m_definitions.addPackage(package);
 }
 
 void RoomRuntime::setPackage(Package *package)
 {
-    if (!package)
-        return;
-    if (!m_packages.contains(package->objectName())) {
-        addPackage(package);
-        return;
-    }
-    indexPackage(package);
-}
-
-void RoomRuntime::indexPackage(Package *package)
-{
-    const QList<int> bootstrapIds = Sanguosha->m_packageCardIds.value(package->objectName());
-    const QList<Card *> packageCards = package->findChildren<Card *>();
-    for (int index = 0; index < packageCards.size(); ++index) {
-        Card *card = packageCards.at(index);
-        if (m_cardIds.contains(card)) {
-            card->setId(m_cardIds.value(card));
-            continue;
-        }
-        int id = index < bootstrapIds.size() ? bootstrapIds.at(index) : m_nextCardId++;
-        if (m_cards.contains(id) && m_cards.value(id) != card) {
-            qWarning("Room package '%s' card id %d collided; assigning a room-local id.",
-                     qPrintable(package->objectName()), id);
-            while (m_cards.contains(m_nextCardId))
-                ++m_nextCardId;
-            id = m_nextCardId++;
-        }
-        card->setId(id);
-        m_cards.insert(id, card);
-        m_cardIds.insert(card, id);
-        if (!m_cardTemplates.contains(card->objectName()))
-            m_cardTemplates.insert(card->objectName(), card);
-        if (!m_cardTemplates.contains(card->getClassName()))
-            m_cardTemplates.insert(card->getClassName(), card);
-    }
-
-    const QMap<QString, const CardPattern *> packagePatterns = package->getPatterns();
-    for (auto it = packagePatterns.cbegin(); it != packagePatterns.cend(); ++it)
-        m_patterns.insert(it.key(), it.value());
-    m_relatedSkills.unite(package->getRelatedSkills());
-
-    QList<const Skill *> packageSkills = package->getSkills();
-    packageSkills << package->findChildren<const Skill *>();
-    addSkills(packageSkills);
-
-    foreach (General *general, package->findChildren<General *>())
-        m_generals.insert(general->objectName(), general);
+    m_definitions.setPackage(package);
 }
 
 void RoomRuntime::addSkills(const QList<const Skill *> &skills)
 {
-    foreach (const Skill *skill, skills) {
-        if (!skill)
-            continue;
-        Skill *mutableSkill = const_cast<Skill *>(skill);
-        if (!mutableSkill->parent())
-            mutableSkill->setParent(&m_definitionRoot);
-        m_skills.add(skill);
-    }
+    m_definitions.addSkills(skills);
 }
 
 void RoomRuntime::addTranslationEntry(const QString &key, const QString &value)
 {
-    if (!m_translations.contains(key))
-        m_initialTranslations.insert(key, value);
-    m_translations.insert(key, value);
+    m_definitions.addTranslationEntry(key, value);
 }
 
 QString RoomRuntime::translate(const QString &key, bool initial) const
 {
-    const QHash<QString, QString> &catalog = initial ? m_initialTranslations : m_translations;
-    return catalog.value(key, key);
+    return m_definitions.translate(key, initial);
 }
 
 bool RoomRuntime::hasTranslation(const QString &key) const
 {
-    return m_translations.contains(key);
+    return m_definitions.hasTranslation(key);
 }
 
 const Package *RoomRuntime::package(const QString &name) const
 {
-    return m_packages.value(name, nullptr);
+    return m_definitions.package(name);
 }
 
 Package *RoomRuntime::packageOverlay(const Package *basePackage)
 {
-    if (!basePackage)
-        return nullptr;
-    Package *overlay = m_packages.value(basePackage->objectName(), nullptr);
-    if (overlay)
-        return overlay;
-
-    overlay = Sanguosha->clonePackageDefinition(basePackage->objectName());
-    if (!overlay) {
-        qWarning("Package '%s' has no factory for a room-local overlay.",
-                 qPrintable(basePackage->objectName()));
-        return nullptr;
-    }
-    addPackage(overlay);
-    return overlay;
+    return m_definitions.packageOverlay(basePackage);
 }
 
 QList<const Package *> RoomRuntime::packages() const
 {
-    QList<const Package *> result;
-    foreach (Package *package, m_packages)
-        result << package;
-    return result;
+    return m_definitions.packages();
 }
 
 const General *RoomRuntime::general(const QString &name) const
 {
-    return m_generals.value(name, nullptr);
+    return m_definitions.general(name);
 }
 
 QList<const General *> RoomRuntime::generals() const
 {
-    return m_generals.values();
+    return m_definitions.generals();
 }
 
 const Skill *RoomRuntime::skill(const QString &name) const
 {
-    return m_skills.find(name);
+    return m_definitions.skill(name);
 }
 
 QStringList RoomRuntime::skillNames() const
 {
-    return m_skills.names();
+    return m_definitions.skillNames();
 }
 
 QList<const Skill *> RoomRuntime::allSkills() const
 {
-    return m_skills.allSkills();
+    return m_definitions.allSkills();
 }
 
 const Card *RoomRuntime::engineCard(int id) const
 {
-    return m_cards.value(id, nullptr);
+    return m_definitions.engineCard(id);
 }
 
 const Card *RoomRuntime::cardTemplate(const QString &name) const
 {
-    return m_cardTemplates.value(name, nullptr);
+    return m_definitions.cardTemplate(name);
 }
 
 int RoomRuntime::cardCount(int bootstrapCount) const
 {
-    int count = bootstrapCount;
-    foreach (int id, m_cards.keys())
-        count = qMax(count, id + 1);
-    return count;
+    return m_definitions.cardCount(bootstrapCount);
 }
 
 const CardPattern *RoomRuntime::pattern(const QString &name) const
 {
-    return m_patterns.value(name, nullptr);
+    return m_definitions.pattern(name);
 }
 
 QStringList RoomRuntime::relatedSkillNames(const QString &name) const
 {
-    return m_relatedSkills.values(name);
+    return m_definitions.relatedSkillNames(name);
 }
 
-QList<const ProhibitSkill *> RoomRuntime::prohibitSkills() const { return m_skills.prohibitSkills(); }
-QList<const DistanceSkill *> RoomRuntime::distanceSkills() const { return m_skills.distanceSkills(); }
-QList<const MaxCardsSkill *> RoomRuntime::maxCardsSkills() const { return m_skills.maxCardsSkills(); }
-QList<const TargetModSkill *> RoomRuntime::targetModSkills() const { return m_skills.targetModSkills(); }
-QList<const InvaliditySkill *> RoomRuntime::invaliditySkills() const { return m_skills.invaliditySkills(); }
-QList<const TriggerSkill *> RoomRuntime::globalTriggerSkills() const { return m_skills.globalTriggerSkills(); }
-QList<const AttackRangeSkill *> RoomRuntime::attackRangeSkills() const { return m_skills.attackRangeSkills(); }
-QList<const ViewAsEquipSkill *> RoomRuntime::viewAsEquipSkills() const { return m_skills.viewAsEquipSkills(); }
-QList<const CardLimitSkill *> RoomRuntime::cardLimitSkills() const { return m_skills.cardLimitSkills(); }
-QList<const ProhibitPindianSkill *> RoomRuntime::prohibitPindianSkills() const { return m_skills.prohibitPindianSkills(); }
+QList<const ProhibitSkill *> RoomRuntime::prohibitSkills() const
+{
+    return m_definitions.prohibitSkills();
+}
+
+QList<const DistanceSkill *> RoomRuntime::distanceSkills() const
+{
+    return m_definitions.distanceSkills();
+}
+
+QList<const MaxCardsSkill *> RoomRuntime::maxCardsSkills() const
+{
+    return m_definitions.maxCardsSkills();
+}
+
+QList<const TargetModSkill *> RoomRuntime::targetModSkills() const
+{
+    return m_definitions.targetModSkills();
+}
+
+QList<const InvaliditySkill *> RoomRuntime::invaliditySkills() const
+{
+    return m_definitions.invaliditySkills();
+}
+
+QList<const TriggerSkill *> RoomRuntime::globalTriggerSkills() const
+{
+    return m_definitions.globalTriggerSkills();
+}
+
+QList<const AttackRangeSkill *> RoomRuntime::attackRangeSkills() const
+{
+    return m_definitions.attackRangeSkills();
+}
+
+QList<const ViewAsEquipSkill *> RoomRuntime::viewAsEquipSkills() const
+{
+    return m_definitions.viewAsEquipSkills();
+}
+
+QList<const CardLimitSkill *> RoomRuntime::cardLimitSkills() const
+{
+    return m_definitions.cardLimitSkills();
+}
+
+QList<const ProhibitPindianSkill *> RoomRuntime::prohibitPindianSkills() const
+{
+    return m_definitions.prohibitPindianSkills();
+}
 
 void RoomRuntime::registerLuaSkillCard(const QString &name, const LuaSkillCard *card)
 {
-    LuaSkillCard *ownedCard = const_cast<LuaSkillCard *>(card);
-    if (ownedCard && !ownedCard->parent())
-        ownedCard->setParent(&m_definitionRoot);
-    if (!name.isEmpty() && card)
-        m_luaSkillCards.insert(name, card);
+    m_definitions.registerLuaSkillCard(name, card);
 }
 
 const LuaSkillCard *RoomRuntime::luaSkillCard(const QString &name) const
 {
-    return m_luaSkillCards.value(name, nullptr);
+    return m_definitions.luaSkillCard(name);
 }
 
 QObject *RoomRuntime::runtimeObject()
