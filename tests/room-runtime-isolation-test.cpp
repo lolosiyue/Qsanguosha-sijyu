@@ -1095,9 +1095,8 @@ static bool aiInstructionLimitRebuildsRuntime(Room &room)
         && room.roomRuntime()->ai().lua().generation() > generation;
 }
 
-int main(int argc, char *argv[])
+int runRoomRuntimeIsolationTests()
 {
-    QCoreApplication app(argc, argv);
     QString error;
     if (!EngineBootstrap::initialize(false, &error)) {
         qCritical() << "Engine bootstrap failed:" << error;

@@ -6,6 +6,7 @@
 #include "player-decision-service.h"
 #include "protocol.h"
 #include "request-coordinator.h"
+#include "room-test-access.h"
 #include "room.h"
 #include "roomthread.h"
 #include "serverplayer.h"
@@ -509,13 +510,7 @@ struct PlayerDecisionServiceTestAccess
     }
 };
 
-struct RoomTestAccess
-{
-    static void dispatch(Room &room, ServerPlayer *player, const Packet &packet)
-    {
-        room.m_requests->processClientPacket(player, packet, packet.toString());
-    }
-};
+namespace {
 
 class RecordingEventDispatcher : public EventDispatcher
 {
@@ -2203,9 +2198,10 @@ static bool aiDelayIsHonoredWhenConfigured()
     return expect(timer.elapsed() < 40, "zero AIDelay adds no extra wait");
 }
 
-int main(int argc, char **argv)
+}
+
+int runPlayerDecisionServiceTests()
 {
-    QCoreApplication application(argc, argv);
     QString error;
     if (!EngineBootstrap::initialize(false, &error)) {
         qCritical() << "engine initialization failed:" << error;
