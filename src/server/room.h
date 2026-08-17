@@ -32,6 +32,7 @@ class GameSnapshotService;
 class RoomNotifier;
 class RoomRoster;
 class RequestCoordinator;
+class PlayerDecisionService;
 class CardMovementService;
 class ExtraTurnScheduler;
 class PlayerLifecycleService;
@@ -70,8 +71,10 @@ public:
     friend class RequestCoordinator;
     friend class CardMovementService;
     friend class PlayerLifecycleService;
+    friend class PlayerDecisionService;
     friend struct RoomTestAccess;
     friend struct PlayerLifecycleServiceTestAccess;
+    friend struct PlayerDecisionServiceTestAccess;
 
     typedef void (Room::*Callback)(ServerPlayer*, const QVariant&);
     typedef bool (Room::*ResponseVerifyFunction)(ServerPlayer*, const QVariant&, void*);
@@ -717,6 +720,7 @@ private:
     std::unique_ptr<ExtraTurnScheduler> m_extraTurns;
     std::unique_ptr<RoomNotifier> m_notifier;
     std::unique_ptr<RequestCoordinator> m_requests;
+    std::unique_ptr<PlayerDecisionService> m_playerDecisions;
     std::unique_ptr<CardMovementService> m_cardMovement;
     std::unique_ptr<GameSnapshotService> m_snapshotService;
     std::unique_ptr<RoomRoster> m_roster;
@@ -764,9 +768,6 @@ private:
 
     QWaitCondition m_waitCond;
     mutable QMutex m_mutex;
-    QMap<QString, QVariant> m_testOverrides;
-    mutable QMutex m_testOverrideMutex;
-
     volatile bool playerPropertySet;
     //QMutex mutexPlayerProperty;
     //QWaitCondition wcPlayerProperty;
