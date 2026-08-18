@@ -49,7 +49,7 @@ ColumnLayout {
 
         Layout.alignment: Qt.AlignHCenter
 
-        Accessible.name: qsTr("切換主題")
+        Accessible.name: qsTranslate("HomeScene", "Toggle theme")
 
         iconSource: homeController.isDarkTheme
                     ? "qrc:/QSanguosha/Home/icons/moon.svg"
@@ -66,7 +66,7 @@ ColumnLayout {
 
         Layout.alignment: Qt.AlignHCenter
 
-        text: qsTr("设置")
+        text: qsTranslate("HomeScene", "Settings")
         iconSource: "qrc:/QSanguosha/Home/icons/settings.svg"
 
         onClicked: panel.settingsClicked()
@@ -80,7 +80,7 @@ ColumnLayout {
 
         Layout.alignment: Qt.AlignHCenter
 
-        text: qsTr("关于")
+        text: qsTranslate("HomeScene", "About")
         iconSource: "qrc:/QSanguosha/Home/icons/about.svg"
 
         onClicked: panel.aboutClicked()
@@ -94,7 +94,7 @@ ColumnLayout {
 
         Layout.alignment: Qt.AlignHCenter
 
-        text: qsTr("检查更新")
+        text: qsTranslate("HomeScene", "Check for updates")
         iconSource: "qrc:/QSanguosha/Home/icons/update.svg"
 
         onClicked: panel.updateClicked()

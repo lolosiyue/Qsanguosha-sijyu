@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Effects
 import QtQuick.Layouts
+import QSanguosha.HomeFx 1.0
 import "."
 
 Item {
@@ -10,6 +11,8 @@ Item {
     focus: true
 
     Keys.onPressed: function(event) {
+        if (root.generalsOpen)
+            return
         switch (event.key) {
         case Qt.Key_1:
             homeController.quickJoin();
@@ -139,7 +142,7 @@ Item {
 
                 source: homeController.logoImage
                 fillMode: Image.PreserveAspectFit
-                mipmap: true
+                mipmap: false
                 opacity: 0
 
                 transform: Translate {
@@ -198,9 +201,16 @@ Item {
                 anchors.bottomMargin: 148
                 z: 40
                 asynchronous: true
-                active: root.generalsOpen || item !== null
+                active: root.generalsOpen
                 source: "GeneralScene.qml"
                 visible: root.generalsOpen && !root.generalPageBusy
+                onStatusChanged: {
+                    if (status === Loader.Ready && generalPage.item) {
+                        root.applyGeneralsNavGraph()
+                        if (root.generalsOpen)
+                            generalPage.item.takeKeyboard()
+                    }
+                }
             }
 
             // 點擊當幀先畫與載入後相同的面板框架，內容格用 skeleton 佔位
@@ -387,17 +397,21 @@ Item {
         id: visualEffect
 
         anchors.fill: contentHost
-        source: contentHost
-
+        visible: enabled
         enabled: root.visualMode !== "normal"
+        source: enabled ? contentHost : null
 
         saturation: root.visualMode === "grayscale" ? 0.0 : 1.0
         contrast: root.visualMode === "highcontrast" ? 0.35 : 0.0
     }
 
+    HomePointerFx {
+        anchors.fill: parent
+        z: 200
+    }
+
     // 鍵盤方向鍵導航圖：各面板按鈕之間的上下左右連線
-    Component.onCompleted: {
-        // 行動面板 ↔ 右側欄：左右切換（同行對應）
+    function applyHomeNavGraph() {
         actionPanel.quickJoinBtn.KeyNavigation.right = sideBar.settingsBtn
         actionPanel.joinGameBtn.KeyNavigation.right = sideBar.aboutBtn
         actionPanel.startServerBtn.KeyNavigation.right = sideBar.updateBtn
@@ -405,7 +419,6 @@ Item {
         sideBar.aboutBtn.KeyNavigation.left = actionPanel.joinGameBtn
         sideBar.updateBtn.KeyNavigation.left = actionPanel.startServerBtn
 
-        // 行動面板：上下（上端連底部列、下端連底部列）
         actionPanel.quickJoinBtn.KeyNavigation.down = actionPanel.joinGameBtn
         actionPanel.joinGameBtn.KeyNavigation.down = actionPanel.startServerBtn
         actionPanel.startServerBtn.KeyNavigation.down = bottomBar.replaysBtn
@@ -413,7 +426,6 @@ Item {
         actionPanel.joinGameBtn.KeyNavigation.up = actionPanel.quickJoinBtn
         actionPanel.quickJoinBtn.KeyNavigation.up = bottomBar.homeBtn
 
-        // 右側欄：上下循環
         sideBar.settingsBtn.KeyNavigation.down = sideBar.aboutBtn
         sideBar.aboutBtn.KeyNavigation.down = sideBar.updateBtn
         sideBar.updateBtn.KeyNavigation.down = sideBar.settingsBtn
@@ -421,7 +433,6 @@ Item {
         sideBar.aboutBtn.KeyNavigation.up = sideBar.settingsBtn
         sideBar.settingsBtn.KeyNavigation.up = sideBar.updateBtn
 
-        // 底部導航列：左右循環
         bottomBar.homeBtn.KeyNavigation.right = bottomBar.generalsBtn
         bottomBar.generalsBtn.KeyNavigation.right = bottomBar.cardsBtn
         bottomBar.cardsBtn.KeyNavigation.right = bottomBar.replaysBtn
@@ -433,14 +444,49 @@ Item {
         bottomBar.generalsBtn.KeyNavigation.left = bottomBar.homeBtn
         bottomBar.homeBtn.KeyNavigation.left = bottomBar.settingsBtn
 
-        // 底部導航列 → 行動面板：向上
         bottomBar.homeBtn.KeyNavigation.up = actionPanel.quickJoinBtn
         bottomBar.generalsBtn.KeyNavigation.up = actionPanel.joinGameBtn
         bottomBar.cardsBtn.KeyNavigation.up = actionPanel.startServerBtn
         bottomBar.replaysBtn.KeyNavigation.up = actionPanel.quickJoinBtn
         bottomBar.settingsBtn.KeyNavigation.up = actionPanel.joinGameBtn
 
-        // 初始焦點：主按鈕
+        bottomBar.homeBtn.KeyNavigation.tab = bottomBar.generalsBtn
+        bottomBar.generalsBtn.KeyNavigation.tab = bottomBar.cardsBtn
+        bottomBar.cardsBtn.KeyNavigation.tab = bottomBar.replaysBtn
+        bottomBar.replaysBtn.KeyNavigation.tab = bottomBar.settingsBtn
+        bottomBar.settingsBtn.KeyNavigation.tab = bottomBar.homeBtn
+        bottomBar.homeBtn.KeyNavigation.backtab = bottomBar.settingsBtn
+        bottomBar.generalsBtn.KeyNavigation.backtab = bottomBar.homeBtn
+        bottomBar.cardsBtn.KeyNavigation.backtab = bottomBar.generalsBtn
+        bottomBar.replaysBtn.KeyNavigation.backtab = bottomBar.cardsBtn
+        bottomBar.settingsBtn.KeyNavigation.backtab = bottomBar.replaysBtn
+    }
+
+    function applyGeneralsNavGraph() {
+        var g = generalPage.item
+        if (!g)
+            return
+        g.banBtn.KeyNavigation.tab = bottomBar.generalsBtn
+        g.searchField.KeyNavigation.backtab = bottomBar.settingsBtn
+        bottomBar.homeBtn.KeyNavigation.up = g.searchField
+        bottomBar.generalsBtn.KeyNavigation.up = g.searchField
+        bottomBar.cardsBtn.KeyNavigation.up = g.searchField
+        bottomBar.replaysBtn.KeyNavigation.up = g.searchField
+        bottomBar.settingsBtn.KeyNavigation.up = g.searchField
+        bottomBar.settingsBtn.KeyNavigation.tab = g.searchField
+        bottomBar.homeBtn.KeyNavigation.backtab = g.banBtn
+    }
+
+    function restoreHomeKeyboard() {
+        applyHomeNavGraph()
+        if (actionPanel.visible)
+            actionPanel.quickJoinBtn.forceActiveFocus()
+        else
+            bottomBar.homeBtn.forceActiveFocus()
+    }
+
+    Component.onCompleted: {
+        applyHomeNavGraph()
         actionPanel.quickJoinBtn.forceActiveFocus()
         enterAnim.start()
     }
@@ -449,6 +495,14 @@ Item {
         target: homeController
         function onCurrentPageChanged() {
             bottomBar.currentIndex = root.generalsOpen ? 1 : 0
+            if (root.generalsOpen) {
+                if (generalPage.item) {
+                    root.applyGeneralsNavGraph()
+                    generalPage.item.takeKeyboard()
+                }
+            } else {
+                Qt.callLater(root.restoreHomeKeyboard)
+            }
         }
     }
 

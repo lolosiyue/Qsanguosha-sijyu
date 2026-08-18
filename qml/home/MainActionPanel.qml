@@ -23,7 +23,7 @@ Item {
         height: 80
 
         primary: true
-        text: qsTr("快速加入")
+        text: qsTranslate("HomeScene", "Quick Join")
         iconSource: "qrc:/QSanguosha/Home/icons/quick-join.svg"
 
         onClicked: panel.quickJoinClicked()
@@ -40,7 +40,7 @@ Item {
         width: 440
         height: 76
 
-        text: qsTr("加入游戏")
+        text: qsTranslate("HomeScene", "Join Game")
         iconSource: "qrc:/QSanguosha/Home/icons/join-game.svg"
 
         onClicked: panel.joinGameClicked()
@@ -57,7 +57,7 @@ Item {
         width: 410
         height: 76
 
-        text: qsTr("启动服务器")
+        text: qsTranslate("HomeScene", "Start Server")
         iconSource: "qrc:/QSanguosha/Home/icons/server.svg"
 
         onClicked: panel.startServerClicked()

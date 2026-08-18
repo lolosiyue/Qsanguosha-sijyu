@@ -113,6 +113,11 @@ Item {
     readonly property color navTextActive: baNavTextActive
     readonly property color navTextFocus:  baNavTextActive
 
+    readonly property color tableRowSelected: isDark ? "#16324A" : "#2A5574"
+    readonly property color tableRowHidden: "#A0A0A0"
+    readonly property color tableRowHiddenText: "#2C2C2C"
+    readonly property color tableRowSelectedText: isDark ? "#F2F8FC" : "#FFFFFF"
+
     // 武將頁布局：骨架與載入後畫面共用，避免尺寸對不齊
     readonly property int generalHeaderHeight: 88
     readonly property int generalPageHMargin: 28
@@ -122,21 +127,38 @@ Item {
     readonly property real generalListShare: 0.40
     readonly property int generalGridMargin: 16
     readonly property int generalCellMinWidth: 122
+    readonly property int generalGridMinColumns: 5
+    readonly property int generalGridMaxColumns: 9
+    readonly property int generalTableRowHeight: 30
+    readonly property int generalTableHeaderHeight: 28
     readonly property real generalCellAspect: 1.50
     readonly property int generalCellInset: 2
 
-    function generalCellWidth(gridWidth) {
+    function resolvedGridColumns(gridWidth, columns) {
+        var v = columns > 0 ? columns : generalGridMinColumns
+        return Math.max(generalGridMinColumns, Math.min(v, generalGridMaxColumns))
+    }
+
+    function generalMaxColumns(gridWidth) {
+        return generalGridMaxColumns
+    }
+
+    function generalCellWidth(gridWidth, columns) {
         var w = Math.max(1, gridWidth)
-        var cols = Math.max(1, Math.floor(w / generalCellMinWidth))
+        var cols = resolvedGridColumns(w, columns)
+        if (cols >= generalGridMaxColumns)
+            return w
         return Math.floor(w / cols)
     }
 
-    function generalCellHeight(gridWidth) {
-        return Math.round(generalCellWidth(gridWidth) * generalCellAspect)
+    function generalCellHeight(gridWidth, columns) {
+        var cols = resolvedGridColumns(gridWidth, columns)
+        if (cols >= generalGridMaxColumns)
+            return generalTableRowHeight
+        return Math.round(generalCellWidth(gridWidth, columns) * generalCellAspect)
     }
 
-    function generalCellColumns(gridWidth) {
-        var w = Math.max(1, gridWidth)
-        return Math.max(1, Math.floor(w / generalCellMinWidth))
+    function generalCellColumns(gridWidth, columns) {
+        return resolvedGridColumns(gridWidth, columns)
     }
 }
