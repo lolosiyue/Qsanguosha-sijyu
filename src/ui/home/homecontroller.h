@@ -22,6 +22,8 @@ public:
         KingdomRole,
         KingdomsRole,
         GenderRole,
+        GenderDisplayRole,
+        KingdomDisplayRole,
         MaxHpRole,
         StartHpRole,
         PackageRole,
@@ -37,6 +39,8 @@ public:
         QString kingdom;
         QString kingdoms;
         QString gender;
+        QString genderDisplay;
+        QString kingdomDisplay;
         QString package;
         QString packageName;
         int maxHp = 0;
@@ -58,6 +62,7 @@ public:
 
     Q_INVOKABLE bool containsName(const QString &name) const;
     Q_INVOKABLE QString nameAt(int row) const;
+    Q_INVOKABLE int indexOfName(const QString &name) const;
 
 signals:
     void filterChanged();
@@ -85,6 +90,7 @@ class HomeController final : public QObject
     Q_PROPERTY(QUrl playerAvatar READ playerAvatar NOTIFY playerInfoChanged)
     Q_PROPERTY(QString currentPage READ currentPage NOTIFY currentPageChanged)
     Q_PROPERTY(HomeGeneralModel *generalModel READ generalModel CONSTANT)
+    Q_PROPERTY(int artRevision READ artRevision NOTIFY artRevisionChanged)
 
 public:
     explicit HomeController(QObject *parent = nullptr);
@@ -135,6 +141,14 @@ public:
     Q_INVOKABLE void playAudio(const QString &path) const;
     Q_INVOKABLE void applyGeneralFilter(const QVariantMap &filters);
 
+    int artRevision() const;
+    Q_INVOKABLE QVariantList heroSkinList(const QString &generalName) const;
+    Q_INVOKABLE void setHeroSkin(const QString &generalName, int skinIndex);
+    Q_INVOKABLE void setGeneralBanned(const QString &generalName, bool banned);
+    Q_INVOKABLE void setUserAvatar(const QString &generalName);
+    Q_INVOKABLE int generalGridColumns() const;
+    Q_INVOKABLE void setGeneralGridColumns(int columns);
+
     Q_INVOKABLE QUrl randomBackdrop() const;
 
     Q_INVOKABLE void refreshCharacterImage();
@@ -160,6 +174,7 @@ signals:
     void themeChanged();
     void playerInfoChanged();
     void currentPageChanged();
+    void artRevisionChanged();
 
 private:
     void switchQmlScene(const QUrl &source);
@@ -167,6 +182,7 @@ private:
 
     bool m_updateAvailable = false;
     uint m_characterVersion = 0;
+    int m_artRevision = 0;
     QString m_currentPage = QStringLiteral("home");
     HomeGeneralModel m_generalModel;
     mutable QHash<QString, QUrl> m_cardImageCache;

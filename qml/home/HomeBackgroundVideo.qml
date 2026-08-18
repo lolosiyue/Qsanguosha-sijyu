@@ -23,7 +23,7 @@ Item {
             anchors.fill: parent
             source: isVideo ? "" : backdropSource
             fillMode: Image.PreserveAspectCrop
-            mipmap: true
+            mipmap: false
             opacity: HomeTheme.backdropOpacity
             visible: !isVideo && backdropSource.toString() !== ""
 

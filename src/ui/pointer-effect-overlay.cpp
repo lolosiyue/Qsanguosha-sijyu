@@ -3,6 +3,7 @@
 
 #include <QApplication>
 #include <QCoreApplication>
+#include <QCursor>
 #include <QEvent>
 #include <QFile>
 #include <QGuiApplication>
@@ -13,6 +14,7 @@
 #include <QPen>
 #include <QPixmap>
 #include <QPolygon>
+#include <QQuickWindow>
 #include <QRandomGenerator>
 #include <QtMath>
 
@@ -210,21 +212,9 @@ QImage makeBuiltinMask(const QString &fileName)
 }
 }
 
-PointerEffectOverlay::PointerEffectOverlay(QWidget *host)
-    : QWidget(host, Qt::Tool | Qt::FramelessWindowHint | Qt::WindowDoesNotAcceptFocus
-              | Qt::WindowTransparentForInput)
-    , m_host(host)
-    , m_prevButtons(Qt::NoButton)
+PointerFxEngine::PointerFxEngine()
+    : m_prevButtons(Qt::NoButton)
 {
-    setAttribute(Qt::WA_TranslucentBackground, true);
-    setAttribute(Qt::WA_ShowWithoutActivating, true);
-    setAttribute(Qt::WA_NoSystemBackground, true);
-    setAttribute(Qt::WA_TransparentForMouseEvents, true);
-    setAutoFillBackground(false);
-    setFocusPolicy(Qt::NoFocus);
-    // 使用獨立 Tool 視窗：FitView 的 QOpenGLWidget viewport 不能再疊 GL widget，
-    // 且一般 QWidget 子控件會被 native GL 視窗蓋住。
-
     const QImage circle = loadAsset(QStringLiteral("FX_TEX_Circle_01.png"), true);
     const QImage ring = loadAsset(QStringLiteral("FX_TEX_Grad_Ring3.png"), false);
     const QImage triangle = loadAsset(QStringLiteral("FX_TEX_Triangle_02_1.png"), false);
@@ -239,15 +229,87 @@ PointerEffectOverlay::PointerEffectOverlay(QWidget *host)
         m_baCursor = QCursor(QPixmap::fromImage(styleCursorImage(cursorImage)), 2, 2);
         m_hasBaCursor = true;
     }
-
     m_clock.start();
+}
+
+void PointerFxEngine::reset()
+{
+    m_trailPoints.clear();
+    m_clickEffects.clear();
+    m_moveParticles.clear();
+    m_hasLastTrailPos = false;
+    m_emissionCarry = 0;
+    m_prevButtons = Qt::NoButton;
+}
+
+qreal PointerFxEngine::elapsed() const
+{
+    return m_clock.elapsed();
+}
+
+bool PointerFxEngine::hasBaCursor() const
+{
+    return m_hasBaCursor;
+}
+
+QCursor PointerFxEngine::baCursor() const
+{
+    return m_baCursor;
+}
+
+bool PointerFxEngine::hasContent() const
+{
+    return hasVisibleContent(m_clock.elapsed());
+}
+
+QRect PointerFxEngine::tick(const QPointF &localPos, bool inside, Qt::MouseButtons buttons)
+{
+    const qreal now = m_clock.elapsed();
+    if (inside) {
+        const Qt::MouseButtons pressed = buttons & ~m_prevButtons;
+        if (pressed)
+            spawnClick(localPos, now);
+        m_prevButtons = buttons;
+        updateTrail(localPos, now);
+    } else {
+        m_prevButtons = Qt::NoButton;
+        m_hasLastTrailPos = false;
+    }
+    pruneExpired(now);
+    return hasVisibleContent(now) ? visibleBounds(now) : QRect();
+}
+
+void PointerFxEngine::paint(QPainter &painter)
+{
+    const qreal now = m_clock.elapsed();
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    drawTrail(painter, now);
+    drawClickEffects(painter, now);
+    drawTriangles(painter, now, m_moveParticles);
+    for (const ClickEffect &effect : m_clickEffects)
+        drawTriangles(painter, now, effect.triangles);
+}
+
+PointerEffectOverlay::PointerEffectOverlay(QWidget *host)
+    : QWidget(host, Qt::Tool | Qt::FramelessWindowHint | Qt::WindowDoesNotAcceptFocus
+              | Qt::WindowTransparentForInput)
+    , m_host(host)
+{
+    setAttribute(Qt::WA_TranslucentBackground, true);
+    setAttribute(Qt::WA_ShowWithoutActivating, true);
+    setAttribute(Qt::WA_NoSystemBackground, true);
+    setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    setAutoFillBackground(false);
+    setFocusPolicy(Qt::NoFocus);
+    // 使用獨立 Tool 視窗：FitView 的 QOpenGLWidget viewport 不能再疊 GL widget，
+    // 且一般 QWidget 子控件會被 native GL 視窗蓋住。
+
     m_timer.setInterval(16);
     connect(&m_timer, &QTimer::timeout, this, &PointerEffectOverlay::onFrame);
 
     if (m_host)
         m_host->installEventFilter(this);
 
-    setActive(Config.EnablePointerEffect);
     syncToHost();
 }
 
@@ -273,13 +335,28 @@ void PointerEffectOverlay::syncToHost()
 
     const bool dialogOpen = QApplication::activeModalWidget() != nullptr;
 
-    const bool hostVisible = m_host->isVisible() && !m_host->isMinimized() && !dialogOpen;
+    const bool hostVisible = m_pageEnabled && m_host->isVisible()
+        && !m_host->isMinimized() && !dialogOpen;
     if (m_active && hostVisible) {
         if (!isVisible())
             show();
     } else if (isVisible()) {
         hide();
     }
+}
+
+void PointerEffectOverlay::setPageEnabled(bool enabled)
+{
+    if (m_pageEnabled == enabled)
+        return;
+    m_pageEnabled = enabled;
+    if (!enabled) {
+        applyCursor(false);
+        m_fx.reset();
+        if (isVisible())
+            hide();
+    }
+    onFrame();
 }
 
 bool PointerEffectOverlay::eventFilter(QObject *watched, QEvent *event)
@@ -305,7 +382,7 @@ bool PointerEffectOverlay::eventFilter(QObject *watched, QEvent *event)
 
 void PointerEffectOverlay::onFrame()
 {
-    const bool want = Config.EnablePointerEffect;
+    const bool want = Config.EnablePointerEffect && m_pageEnabled;
     if (want != m_active)
         setActive(want);
     if (!m_active)
@@ -314,38 +391,19 @@ void PointerEffectOverlay::onFrame()
     syncToHost();
     if (!isVisible()) {
         applyCursor(false);
-        m_prevButtons = Qt::NoButton;
-        m_hasLastTrailPos = false;
+        m_fx.reset();
         return;
     }
 
-    const qreal now = m_clock.elapsed();
     const QPoint local = mapFromGlobal(QCursor::pos());
     const bool inside = rect().contains(local);
-
     applyCursor(inside);
-
-    if (inside) {
-        const QPointF pos(local);
-        const Qt::MouseButtons buttons = QGuiApplication::mouseButtons();
-        const Qt::MouseButtons pressed = buttons & ~m_prevButtons;
-        if (pressed)
-            spawnClick(pos, now);
-        m_prevButtons = buttons;
-        updateTrail(pos, now);
-    } else {
-        m_prevButtons = Qt::NoButton;
-        m_hasLastTrailPos = false;
-    }
-
-    pruneExpired(now);
-    const bool content = hasVisibleContent(now);
-    const QRect dirty = content ? visibleBounds(now) : QRect();
-    const QRect toPaint = dirty.united(m_lastPainted);
+    const QRect dirty = m_fx.tick(QPointF(local), inside, QGuiApplication::mouseButtons());
+    const QRect toPaint = dirty.united(m_lastPainted).intersected(rect());
     if (!toPaint.isEmpty())
         update(toPaint.adjusted(-4, -4, 4, 4));
-    m_lastPainted = dirty;
-    m_lastHadContent = content;
+    m_lastPainted = dirty.intersected(rect());
+    m_lastHadContent = !dirty.isEmpty();
 }
 
 void PointerEffectOverlay::setActive(bool active)
@@ -354,12 +412,7 @@ void PointerEffectOverlay::setActive(bool active)
         return;
 
     m_active = active;
-    m_trailPoints.clear();
-    m_clickEffects.clear();
-    m_moveParticles.clear();
-    m_hasLastTrailPos = false;
-    m_emissionCarry = 0;
-    m_prevButtons = Qt::NoButton;
+    m_fx.reset();
     m_lastHadContent = true;
     m_lastPainted = QRect();
 
@@ -376,9 +429,9 @@ void PointerEffectOverlay::setActive(bool active)
 
 void PointerEffectOverlay::applyCursor(bool inside)
 {
-    if (inside && m_active && m_hasBaCursor) {
+    if (inside && m_active && m_fx.hasBaCursor()) {
         if (!m_cursorOverridden) {
-            QApplication::setOverrideCursor(m_baCursor);
+            QApplication::setOverrideCursor(m_fx.baCursor());
             m_cursorOverridden = true;
         }
     } else if (m_cursorOverridden) {
@@ -387,7 +440,7 @@ void PointerEffectOverlay::applyCursor(bool inside)
     }
 }
 
-void PointerEffectOverlay::spawnClick(const QPointF &pos, qreal now)
+void PointerFxEngine::spawnClick(const QPointF &pos, qreal now)
 {
     ClickEffect effect;
     effect.position = pos;
@@ -404,7 +457,7 @@ void PointerEffectOverlay::spawnClick(const QPointF &pos, qreal now)
     m_clickEffects.append(effect);
 }
 
-PointerEffectOverlay::TriangleParticle PointerEffectOverlay::createTriangle(
+PointerFxEngine::TriangleParticle PointerFxEngine::createTriangle(
     const QPointF &pos, qreal now, bool movement)
 {
     const qreal angle = randomRange(0, kPi * 2);
@@ -422,7 +475,7 @@ PointerEffectOverlay::TriangleParticle PointerEffectOverlay::createTriangle(
     return particle;
 }
 
-void PointerEffectOverlay::updateTrail(const QPointF &pos, qreal now)
+void PointerFxEngine::updateTrail(const QPointF &pos, qreal now)
 {
     const qreal pixels = kPixelsPerUnit * kEffectScale;
     if (!m_hasLastTrailPos) {
@@ -452,7 +505,7 @@ void PointerEffectOverlay::updateTrail(const QPointF &pos, qreal now)
     m_lastTrailPos = pos;
 }
 
-void PointerEffectOverlay::pruneExpired(qreal now)
+void PointerFxEngine::pruneExpired(qreal now)
 {
     const qreal cutoff = now - kTrailDurationMs;
     int first = 0;
@@ -474,13 +527,13 @@ void PointerEffectOverlay::pruneExpired(qreal now)
     }
 }
 
-bool PointerEffectOverlay::hasVisibleContent(qreal now) const
+bool PointerFxEngine::hasVisibleContent(qreal now) const
 {
     Q_UNUSED(now);
     return !m_trailPoints.isEmpty() || !m_clickEffects.isEmpty() || !m_moveParticles.isEmpty();
 }
 
-QPointF PointerEffectOverlay::trianglePosition(const TriangleParticle &particle, qreal now) const
+QPointF PointerFxEngine::trianglePosition(const TriangleParticle &particle, qreal now) const
 {
     const qreal simulatedAge = (now - particle.startedAt) / 1000.0 / kDurationScale;
     const qreal pixels = kPixelsPerUnit * kEffectScale;
@@ -488,7 +541,7 @@ QPointF PointerEffectOverlay::trianglePosition(const TriangleParticle &particle,
         + (particle.shapeOffset + particle.direction * (particle.speed * simulatedAge)) * pixels;
 }
 
-QRect PointerEffectOverlay::visibleBounds(qreal now) const
+QRect PointerFxEngine::visibleBounds(qreal now) const
 {
     QRect bounds;
     auto include = [&bounds](const QPointF &pos, qreal radius) {
@@ -504,7 +557,7 @@ QRect PointerEffectOverlay::visibleBounds(qreal now) const
     }
     for (const TriangleParticle &particle : m_moveParticles)
         include(trianglePosition(particle, now), 40);
-    return bounds.intersected(rect());
+    return bounds;
 }
 
 void PointerEffectOverlay::paintEvent(QPaintEvent *event)
@@ -513,16 +566,10 @@ void PointerEffectOverlay::paintEvent(QPaintEvent *event)
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.setCompositionMode(QPainter::CompositionMode_Source);
     painter.fillRect(event->rect(), Qt::transparent);
-
-    const qreal now = m_clock.elapsed();
-    drawTrail(painter, now);
-    drawClickEffects(painter, now);
-    drawTriangles(painter, now, m_moveParticles);
-    for (const ClickEffect &effect : m_clickEffects)
-        drawTriangles(painter, now, effect.triangles);
+    m_fx.paint(painter);
 }
 
-void PointerEffectOverlay::drawTrail(QPainter &painter, qreal now)
+void PointerFxEngine::drawTrail(QPainter &painter, qreal now)
 {
     if (m_trailPoints.size() < 2)
         return;
@@ -570,7 +617,7 @@ void PointerEffectOverlay::drawTrail(QPainter &painter, qreal now)
     }
 }
 
-void PointerEffectOverlay::drawClickEffects(QPainter &painter, qreal now)
+void PointerFxEngine::drawClickEffects(QPainter &painter, qreal now)
 {
     for (const ClickEffect &effect : m_clickEffects) {
         const qreal flashProgress = (now - effect.startedAt) / (200.0 * kDurationScale);
@@ -617,7 +664,7 @@ void PointerEffectOverlay::drawClickEffects(QPainter &painter, qreal now)
     }
 }
 
-void PointerEffectOverlay::drawTriangles(QPainter &painter, qreal now,
+void PointerFxEngine::drawTriangles(QPainter &painter, qreal now,
                                          const QVector<TriangleParticle> &particles)
 {
     if (m_trianglePm.isNull())
@@ -644,7 +691,7 @@ void PointerEffectOverlay::drawTriangles(QPainter &painter, qreal now,
     }
 }
 
-void PointerEffectOverlay::drawSprite(QPainter &painter, const QPixmap &pixmap, const QRectF &src,
+void PointerFxEngine::drawSprite(QPainter &painter, const QPixmap &pixmap, const QRectF &src,
                                       const QPointF &center, const QSizeF &size, qreal rotationRad,
                                       qreal opacity)
 {
@@ -661,7 +708,7 @@ void PointerEffectOverlay::drawSprite(QPainter &painter, const QPixmap &pixmap, 
     painter.restore();
 }
 
-QImage PointerEffectOverlay::loadAsset(const QString &fileName, bool luminanceAsAlpha)
+QImage PointerFxEngine::loadAsset(const QString &fileName, bool luminanceAsAlpha)
 {
     QImage image(assetPath(fileName));
     if (image.isNull())
@@ -682,7 +729,7 @@ QImage PointerEffectOverlay::loadAsset(const QString &fileName, bool luminanceAs
     return image.convertToFormat(QImage::Format_ARGB32_Premultiplied);
 }
 
-QString PointerEffectOverlay::assetPath(const QString &fileName)
+QString PointerFxEngine::assetPath(const QString &fileName)
 {
     const QString relative = QStringLiteral("image/system/pointer/") + fileName;
     if (QFile::exists(relative))
@@ -693,7 +740,7 @@ QString PointerEffectOverlay::assetPath(const QString &fileName)
     return relative;
 }
 
-QColor PointerEffectOverlay::lerpColor(const QColor &from, const QColor &to, qreal t)
+QColor PointerFxEngine::lerpColor(const QColor &from, const QColor &to, qreal t)
 {
     t = qBound(0.0, t, 1.0);
     return QColor::fromRgbF(lerp(from.redF(), to.redF(), t),
@@ -702,18 +749,18 @@ QColor PointerEffectOverlay::lerpColor(const QColor &from, const QColor &to, qre
                             lerp(from.alphaF(), to.alphaF(), t));
 }
 
-qreal PointerEffectOverlay::lerp(qreal from, qreal to, qreal t)
+qreal PointerFxEngine::lerp(qreal from, qreal to, qreal t)
 {
     return from + (to - from) * qBound(0.0, t, 1.0);
 }
 
-qreal PointerEffectOverlay::smoothStep(qreal value)
+qreal PointerFxEngine::smoothStep(qreal value)
 {
     value = qBound(0.0, value, 1.0);
     return value * value * (3.0 - 2.0 * value);
 }
 
-qreal PointerEffectOverlay::cubicHermite(qreal from, qreal to, qreal outgoing, qreal incoming,
+qreal PointerFxEngine::cubicHermite(qreal from, qreal to, qreal outgoing, qreal incoming,
                                          qreal normalizedTime, qreal duration)
 {
     const qreal time = qBound(0.0, normalizedTime, 1.0);
@@ -727,14 +774,14 @@ qreal PointerEffectOverlay::cubicHermite(qreal from, qreal to, qreal outgoing, q
                   1.0);
 }
 
-qreal PointerEffectOverlay::ringSizeCurve(qreal progress)
+qreal PointerFxEngine::ringSizeCurve(qreal progress)
 {
     return progress <= 0.2139
         ? cubicHermite(0.325836, 0.715977, 2.400473, 0.911574, progress / 0.2139, 0.2139)
         : cubicHermite(0.715977, 1, 0.911574, 0, (progress - 0.2139) / 0.7861, 0.7861);
 }
 
-qreal PointerEffectOverlay::meshTriSizeCurve(qreal progress)
+qreal PointerFxEngine::meshTriSizeCurve(qreal progress)
 {
     if (progress <= 0.00721)
         return 0.4205;
@@ -744,7 +791,7 @@ qreal PointerEffectOverlay::meshTriSizeCurve(qreal progress)
     return cubicHermite(0.715977, 1, 0.911574, 0, (progress - 0.2139) / 0.7861, 0.7861);
 }
 
-qreal PointerEffectOverlay::meshTriRotationDelta(qreal progress, qreal blend)
+qreal PointerFxEngine::meshTriRotationDelta(qreal progress, qreal blend)
 {
     auto angularVelocity = [blend](qreal p) {
         const qreal first = p <= 0.149 ? 1.0 : lerp(1.0, 0.4556, smoothStep((p - 0.149) / 0.851));
@@ -760,14 +807,14 @@ qreal PointerEffectOverlay::meshTriRotationDelta(qreal progress, qreal blend)
     return sum;
 }
 
-qreal PointerEffectOverlay::meshTriDissolveThreshold(qreal progress)
+qreal PointerFxEngine::meshTriDissolveThreshold(qreal progress)
 {
     return progress <= 0.2
         ? cubicHermite(1, 0, 0, 0, progress / 0.2, 0.2)
         : cubicHermite(0, 1, 2.4249368, 0.27735636, (progress - 0.2) / 0.8, 0.8);
 }
 
-QColor PointerEffectOverlay::meshTriColor(qreal progress)
+QColor PointerFxEngine::meshTriColor(qreal progress)
 {
     if (progress <= 0.1118)
         return Qt::white;
@@ -776,14 +823,14 @@ QColor PointerEffectOverlay::meshTriColor(qreal progress)
     return QColor(76, 167, 255);
 }
 
-qreal PointerEffectOverlay::triangleSizeCurve(qreal progress)
+qreal PointerFxEngine::triangleSizeCurve(qreal progress)
 {
     return progress <= 0.15445
         ? smoothStep(progress / 0.15445)
         : 1.0 - smoothStep((progress - 0.15445) / 0.84555);
 }
 
-qreal PointerEffectOverlay::triangleOpacity(qreal progress)
+qreal PointerFxEngine::triangleOpacity(qreal progress)
 {
     static const qreal times[] = {0, 0.2882, 0.3647, 0.4706, 0.5734, 0.6676, 0.7561, 0.8529, 1};
     static const qreal values[] = {1, 1, 0, 1, 0, 1, 0, 1, 1};
@@ -795,7 +842,7 @@ qreal PointerEffectOverlay::triangleOpacity(qreal progress)
     return 1;
 }
 
-QColor PointerEffectOverlay::triangleColor(qreal progress)
+QColor PointerFxEngine::triangleColor(qreal progress)
 {
     static const qreal times[] = {
         11951.0 / 65535.0, 18504.0 / 65535.0, 30262.0 / 65535.0,
@@ -834,7 +881,7 @@ QColor PointerEffectOverlay::triangleColor(qreal progress)
                             gradient.blueF() * startColor);
 }
 
-QColor PointerEffectOverlay::trailColor(qreal progress)
+QColor PointerFxEngine::trailColor(qreal progress)
 {
     const qreal firstTime = 1349.0 / 65535.0;
     const qreal secondTime = 27563.0 / 65535.0;
@@ -845,4 +892,90 @@ QColor PointerEffectOverlay::trailColor(qreal progress)
     if (progress <= secondTime)
         return lerpColor(bright, dim, (progress - firstTime) / (secondTime - firstTime));
     return lerpColor(dim, Qt::black, (progress - secondTime) / (1.0 - secondTime));
+}
+
+HomePointerFxItem::HomePointerFxItem(QQuickItem *parent)
+    : QQuickPaintedItem(parent)
+{
+    setAcceptedMouseButtons(Qt::NoButton);
+    setAcceptHoverEvents(false);
+    setOpaquePainting(false);
+    setFillColor(Qt::transparent);
+    setAntialiasing(true);
+    setMipmap(false);
+    // NVIDIA：FramebufferObject + Plus 混合會在 nvoglv64 對 nullptr 讀取 (0xC0000005)
+    setRenderTarget(QQuickPaintedItem::Image);
+    m_timer.setInterval(16);
+    connect(&m_timer, &QTimer::timeout, this, &HomePointerFxItem::onFrame);
+    connect(this, &QQuickItem::windowChanged, this, [this](QQuickWindow *win) {
+        if (win) {
+            m_timer.start();
+        } else {
+            m_timer.stop();
+            applyCursor(false);
+            m_fx.reset();
+            m_hadContent = false;
+        }
+    });
+    if (window())
+        m_timer.start();
+}
+
+HomePointerFxItem::~HomePointerFxItem()
+{
+    applyCursor(false);
+}
+
+void HomePointerFxItem::paint(QPainter *painter)
+{
+    if (!painter || width() < 1 || height() < 1)
+        return;
+    m_fx.paint(*painter);
+}
+
+void HomePointerFxItem::itemChange(ItemChange change, const ItemChangeData &value)
+{
+    if (change == ItemVisibleHasChanged && !value.boolValue) {
+        applyCursor(false);
+        m_fx.reset();
+    }
+    QQuickPaintedItem::itemChange(change, value);
+}
+
+void HomePointerFxItem::onFrame()
+{
+    if (!window())
+        return;
+    const bool want = Config.EnablePointerEffect && isVisible() && width() > 0 && height() > 0;
+    if (!want) {
+        applyCursor(false);
+        if (m_hadContent) {
+            m_fx.reset();
+            m_hadContent = false;
+            update();
+        }
+        return;
+    }
+
+    const QPointF pos = mapFromGlobal(QCursor::pos());
+    const bool inside = QRectF(0, 0, width(), height()).contains(pos);
+    applyCursor(inside);
+    const QRect dirty = m_fx.tick(pos, inside, QGuiApplication::mouseButtons());
+    const bool content = !dirty.isEmpty();
+    if (content || m_hadContent)
+        update();
+    m_hadContent = content;
+}
+
+void HomePointerFxItem::applyCursor(bool inside)
+{
+    if (inside && Config.EnablePointerEffect && m_fx.hasBaCursor()) {
+        if (!m_cursorOverridden) {
+            QApplication::setOverrideCursor(m_fx.baCursor());
+            m_cursorOverridden = true;
+        }
+    } else if (m_cursorOverridden) {
+        QApplication::restoreOverrideCursor();
+        m_cursorOverridden = false;
+    }
 }

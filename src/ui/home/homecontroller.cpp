@@ -4,10 +4,12 @@
 #include "skill.h"
 #include "settings.h"
 #include "package.h"
+#include "heroskincontainer.h"
 #include <QCoreApplication>
 #include <QSet>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QRandomGenerator>
 #include <QGuiApplication>
 #include <QStyleHints>
@@ -27,11 +29,15 @@ QUrl firstExistingImage(const QStringList &stems)
         QStringLiteral(".png"), QStringLiteral(".jpg"),
         QStringLiteral(".webp"), QStringLiteral(".jpeg")
     };
-    for (const QString &stem : stems) {
-        for (const QString &suffix : suffixes) {
-            const QString path = QDir::current().absoluteFilePath(stem + suffix);
-            if (QFile::exists(path))
-                return QUrl::fromLocalFile(path);
+    const QStringList roots = HeroSkinContainer::skinSearchRoots();
+    for (const QString &root : roots) {
+        const QDir rootDir(root);
+        for (const QString &stem : stems) {
+            for (const QString &suffix : suffixes) {
+                const QString path = rootDir.absoluteFilePath(stem + suffix);
+                if (QFile::exists(path))
+                    return QUrl::fromLocalFile(path);
+            }
         }
     }
     return {};
@@ -58,6 +64,30 @@ QString genderKeyOf(const General *general)
     if (general->isNeuter())
         return QStringLiteral("neuter");
     return QStringLiteral("sexless");
+}
+
+QString genderDisplayOf(const QString &key)
+{
+    if (key == QLatin1String("male"))
+        return QCoreApplication::translate("GeneralOverview", "Male");
+    if (key == QLatin1String("female"))
+        return QCoreApplication::translate("GeneralOverview", "Female");
+    if (key == QLatin1String("neuter"))
+        return QCoreApplication::translate("GeneralOverview", "Neuter");
+    if (key == QLatin1String("sexless"))
+        return QCoreApplication::translate("GeneralOverview", "Sexless");
+    return QCoreApplication::translate("GeneralOverview", "NoGender");
+}
+
+QString kingdomDisplayOf(const QString &kingdoms)
+{
+    if (!Sanguosha)
+        return kingdoms;
+    QStringList labels;
+    const QStringList keys = kingdoms.split(QLatin1Char('+'), Qt::SkipEmptyParts);
+    for (const QString &key : keys)
+        labels << Sanguosha->translate(key);
+    return labels.join(QLatin1Char('/'));
 }
 
 QString aliasedGeneralName(const QString &name)
@@ -350,6 +380,8 @@ QHash<int, QByteArray> HomeGeneralModel::roleNames() const
         { KingdomRole, "kingdom" },
         { KingdomsRole, "kingdoms" },
         { GenderRole, "gender" },
+        { GenderDisplayRole, "genderDisplay" },
+        { KingdomDisplayRole, "kingdomDisplay" },
         { MaxHpRole, "maxHp" },
         { StartHpRole, "startHp" },
         { PackageRole, "package" },
@@ -371,6 +403,8 @@ QVariant HomeGeneralModel::data(const QModelIndex &index, int role) const
     case KingdomRole: return row.kingdom;
     case KingdomsRole: return row.kingdoms;
     case GenderRole: return row.gender;
+    case GenderDisplayRole: return row.genderDisplay;
+    case KingdomDisplayRole: return row.kingdomDisplay;
     case MaxHpRole: return row.maxHp;
     case StartHpRole: return row.startHp;
     case PackageRole: return row.package;
@@ -399,6 +433,8 @@ void HomeGeneralModel::ensureLoaded()
         row.kingdom = general->getKingdom();
         row.kingdoms = general->getKingdoms();
         row.gender = genderKeyOf(general);
+        row.genderDisplay = genderDisplayOf(row.gender);
+        row.kingdomDisplay = kingdomDisplayOf(row.kingdoms);
         row.maxHp = general->getMaxHp();
         row.startHp = qMin(general->getStartHp(), row.maxHp);
         row.package = general->getPackage();
@@ -495,6 +531,15 @@ QString HomeGeneralModel::nameAt(int row) const
     return m_all.at(m_shown.at(row)).name;
 }
 
+int HomeGeneralModel::indexOfName(const QString &name) const
+{
+    for (int i = 0; i < m_shown.size(); ++i) {
+        if (m_all.at(m_shown.at(i)).name == name)
+            return i;
+    }
+    return -1;
+}
+
 HomeController::HomeController(QObject *parent)
     : QObject(parent)
 {
@@ -554,17 +599,9 @@ QString HomeController::playerName() const
 
 QUrl HomeController::playerAvatar() const
 {
-    const QString &avatar = Config.UserAvatar;
-    if (avatar.isEmpty())
-        return QUrl();
-
-    const QString absPath = QDir::current().absoluteFilePath(
-        QStringLiteral("image/fullskin/generals/full/%1.jpg").arg(avatar));
-
-    if (QFile::exists(absPath))
-        return QUrl::fromLocalFile(absPath);
-
-    return QUrl();
+    if (Config.UserAvatar.isEmpty())
+        return {};
+    return generalFullImage(Config.UserAvatar);
 }
 
 void HomeController::refreshPlayerInfo()
@@ -733,47 +770,82 @@ QUrl HomeController::kingdomIcon(const QString &kingdom) const
     });
 }
 
+static QUrl taggedArtUrl(const QUrl &url, const QString &cacheKey, int revision)
+{
+    if (url.isEmpty())
+        return url;
+    QUrl tagged = url;
+    tagged.setQuery(QStringLiteral("k=%1&r=%2").arg(cacheKey).arg(revision));
+    return tagged;
+}
+
+static QUrl skinFullUrl(const QString &generalName, int skinIndex)
+{
+    QUrl url;
+    if (skinIndex > 0 && Sanguosha) {
+        const QString skinGn = Sanguosha->getResourceAlias(QStringLiteral("heroskin"), generalName);
+        url = firstExistingImage({
+            QStringLiteral("hero-skin/%1/%2/full").arg(skinGn).arg(skinIndex),
+            QStringLiteral("hero-skin/%1/%2/card").arg(skinGn).arg(skinIndex),
+            QStringLiteral("hero-skin/%1/%2/full").arg(generalName).arg(skinIndex),
+            QStringLiteral("hero-skin/%1/%2/card").arg(generalName).arg(skinIndex),
+            QStringLiteral("image/heroskin/fullskin/generals/full/%1_%2").arg(skinGn).arg(skinIndex),
+            QStringLiteral("image/heroskin/fullskin/generals/full/%1_%2").arg(generalName).arg(skinIndex)
+        });
+    }
+    if (url.isEmpty()) {
+        const QString actual = artworkName(generalName);
+        url = firstExistingImage({
+            QStringLiteral("image/fullskin/generals/full/%1").arg(actual),
+            QStringLiteral("image/fullskin/generals/full/%1").arg(generalName)
+        });
+    }
+    return url;
+}
+
 QUrl HomeController::generalCardImage(const QString &generalName) const
 {
     if (generalName.isEmpty())
         return {};
-    if (m_cardImageCache.contains(generalName))
-        return m_cardImageCache.value(generalName);
+    const int skinIndex = Config.value("HeroSkin/" + generalName, 0).toInt();
+    const QString cacheKey = QStringLiteral("%1#%2").arg(generalName).arg(skinIndex);
+    if (m_cardImageCache.contains(cacheKey))
+        return taggedArtUrl(m_cardImageCache.value(cacheKey), cacheKey, m_artRevision);
 
-    const QString actual = artworkName(generalName);
-    const QUrl url = firstExistingImage({
-        QStringLiteral("image/general/card/%1").arg(actual),
-        QStringLiteral("image/generals/card/%1").arg(actual),
-        QStringLiteral("image/card/%1").arg(actual)
-    });
-    m_cardImageCache.insert(generalName, url);
-    return url;
+    QUrl url;
+    if (skinIndex > 0 && Sanguosha) {
+        const QString skinGn = Sanguosha->getResourceAlias(QStringLiteral("heroskin"), generalName);
+        url = firstExistingImage({
+            QStringLiteral("hero-skin/%1/%2/card").arg(skinGn).arg(skinIndex),
+            QStringLiteral("hero-skin/%1/%2/card").arg(generalName).arg(skinIndex),
+            QStringLiteral("image/heroskin/fullskin/generals/card/%1_%2").arg(skinGn).arg(skinIndex),
+            QStringLiteral("image/heroskin/fullskin/generals/card/%1_%2").arg(generalName).arg(skinIndex)
+        });
+    }
+    if (url.isEmpty()) {
+        const QString actual = artworkName(generalName);
+        url = firstExistingImage({
+            QStringLiteral("image/general/card/%1").arg(actual),
+            QStringLiteral("image/generals/card/%1").arg(actual),
+            QStringLiteral("image/card/%1").arg(actual)
+        });
+    }
+    m_cardImageCache.insert(cacheKey, url);
+    return taggedArtUrl(url, cacheKey, m_artRevision);
 }
 
 QUrl HomeController::generalFullImage(const QString &generalName) const
 {
     if (generalName.isEmpty())
         return {};
-    if (m_fullImageCache.contains(generalName))
-        return m_fullImageCache.value(generalName);
+    const int skinIndex = Config.value("HeroSkin/" + generalName, 0).toInt();
+    const QString cacheKey = QStringLiteral("%1#%2").arg(generalName).arg(skinIndex);
+    if (m_fullImageCache.contains(cacheKey))
+        return taggedArtUrl(m_fullImageCache.value(cacheKey), cacheKey, m_artRevision);
 
-    const QString actual = artworkName(generalName);
-    QUrl url = firstExistingImage({
-        QStringLiteral("image/fullskin/generals/full/%1").arg(actual),
-        QStringLiteral("image/fullskin/generals/full/%1").arg(generalName)
-    });
-    if (url.isEmpty() && Sanguosha) {
-        const int skinIndex = Config.value("HeroSkin/" + generalName, 0).toInt();
-        if (skinIndex > 0) {
-            const QString skinGn = Sanguosha->getResourceAlias(QStringLiteral("heroskin"), generalName);
-            const QString skinPath = QDir::current().absoluteFilePath(
-                QStringLiteral("hero-skin/%1/%2/full.png").arg(skinGn).arg(skinIndex));
-            if (QFile::exists(skinPath))
-                url = QUrl::fromLocalFile(skinPath);
-        }
-    }
-    m_fullImageCache.insert(generalName, url);
-    return url;
+    QUrl url = skinFullUrl(generalName, skinIndex);
+    m_fullImageCache.insert(cacheKey, url);
+    return taggedArtUrl(url, cacheKey, m_artRevision);
 }
 
 QUrl HomeController::magatamaImage(int index) const
@@ -900,6 +972,11 @@ QVariantMap HomeController::generalDetails(const QString &generalName) const
 
     result.insert(QStringLiteral("name"), generalName);
     result.insert(QStringLiteral("displayName"), Sanguosha->translate(generalName));
+    result.insert(QStringLiteral("hasSkin"), HeroSkinContainer::hasSkin(generalName));
+    result.insert(QStringLiteral("banned"),
+                  Config.value(QStringLiteral("Banlist/Roles")).toStringList().contains(generalName));
+    result.insert(QStringLiteral("isAvatar"), Config.UserAvatar == generalName);
+    result.insert(QStringLiteral("skinIndex"), skinIndex);
     result.insert(QStringLiteral("nickname"), nicknameOf(generalName));
     result.insert(QStringLiteral("lord"), general->isLord());
     result.insert(QStringLiteral("hidden"),
@@ -1055,13 +1132,25 @@ QVariantMap HomeController::generalDetails(const QString &generalName) const
 
 QUrl HomeController::randomBackdrop() const
 {
+    static const QStringList imageSuffixes = {
+        QStringLiteral("jpg"), QStringLiteral("jpeg"),
+        QStringLiteral("png"), QStringLiteral("webp"),
+        QStringLiteral("bmp"), QStringLiteral("gif")
+    };
     QDir dir(QStringLiteral("image/system/backdrop"));
     const QStringList files = dir.entryList(QDir::Files);
-    if (files.isEmpty())
+    QStringList images;
+    images.reserve(files.size());
+    for (const QString &file : files) {
+        const QString suffix = QFileInfo(file).suffix().toLower();
+        if (imageSuffixes.contains(suffix))
+            images << file;
+    }
+    if (images.isEmpty())
         return QUrl();
 
-    const int index = QRandomGenerator::global()->bounded(files.size());
-    return QUrl::fromLocalFile(dir.absoluteFilePath(files.at(index)));
+    const int index = QRandomGenerator::global()->bounded(images.size());
+    return QUrl::fromLocalFile(dir.absoluteFilePath(images.at(index)));
 }
 
 void HomeController::refreshCharacterImage()
@@ -1087,4 +1176,105 @@ void HomeController::toggleTheme()
     Config.setValue("ColorScheme", next);
     applyColorScheme(next);
     emit themeChanged();
+}
+
+int HomeController::artRevision() const
+{
+    return m_artRevision;
+}
+
+void HomeController::setHeroSkin(const QString &generalName, int skinIndex)
+{
+    if (generalName.isEmpty())
+        return;
+
+    Config.beginGroup("HeroSkin");
+    if (skinIndex <= 0)
+        Config.remove(generalName);
+    else
+        Config.setValue(generalName, skinIndex);
+    Config.endGroup();
+
+    if (skinIndex > 0 && Sanguosha) {
+        const General *general = Sanguosha->getGeneral(generalName);
+        if (general)
+            general->tryLoadingSkinTranslation(skinIndex);
+    }
+
+    ++m_artRevision;
+    emit artRevisionChanged();
+    if (Config.UserAvatar == generalName)
+        emit playerInfoChanged();
+}
+
+QVariantList HomeController::heroSkinList(const QString &generalName) const
+{
+    QVariantList result;
+    if (generalName.isEmpty() || !HeroSkinContainer::hasSkin(generalName))
+        return result;
+
+    const int current = Config.value("HeroSkin/" + generalName, 0).toInt();
+    QList<int> indices;
+    indices << 0;
+    for (int index : HeroSkinContainer::getAvailableSkinIndices(generalName)) {
+        if (!indices.contains(index))
+            indices << index;
+    }
+
+    for (int index : indices) {
+        QVariantMap item;
+        item.insert(QStringLiteral("index"), index);
+        item.insert(QStringLiteral("current"), index == current);
+        item.insert(QStringLiteral("image"),
+                    taggedArtUrl(skinFullUrl(generalName, index),
+                                 QStringLiteral("%1#%2").arg(generalName).arg(index),
+                                 m_artRevision));
+        QString label;
+        if (index <= 0) {
+            label = QCoreApplication::translate("GeneralOverview", "Default skin");
+        } else {
+            label = Sanguosha ? Sanguosha->translate(
+                        QStringLiteral("illustrator:%1_%2").arg(generalName).arg(index)) : QString();
+            if (label.isEmpty() || label.startsWith(QStringLiteral("illustrator:")))
+                label = QString::number(index);
+        }
+        item.insert(QStringLiteral("label"), label);
+        result.append(item);
+    }
+    return result;
+}
+
+void HomeController::setGeneralBanned(const QString &generalName, bool banned)
+{
+    if (generalName.isEmpty())
+        return;
+
+    QStringList roles = Config.value(QStringLiteral("Banlist/Roles")).toStringList();
+    if (banned) {
+        if (!roles.contains(generalName))
+            roles << generalName;
+    } else {
+        roles.removeAll(generalName);
+    }
+    Config.setValue(QStringLiteral("Banlist/Roles"), roles);
+}
+
+void HomeController::setUserAvatar(const QString &generalName)
+{
+    if (generalName.isEmpty())
+        return;
+
+    Config.UserAvatar = generalName;
+    Config.setValue(QStringLiteral("UserAvatar"), generalName);
+    emit playerInfoChanged();
+}
+
+int HomeController::generalGridColumns() const
+{
+    return Config.value(QStringLiteral("Home/GeneralGridColumns"), 0).toInt();
+}
+
+void HomeController::setGeneralGridColumns(int columns)
+{
+    Config.setValue(QStringLiteral("Home/GeneralGridColumns"), columns);
 }

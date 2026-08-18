@@ -36,6 +36,7 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlError>
+#include <QtQml>
 #include <QFile>
 #include <QDebug>
 
@@ -138,7 +139,7 @@ MainWindow::MainWindow(QWidget *parent)
 	gameView = new FitView(nullptr, this);
 
 	homeView->setResizeMode(QQuickWidget::SizeRootObjectToView);
-	homeView->setClearColor(Qt::transparent);
+	homeView->setClearColor(QColor(QStringLiteral("#0B1A2E")));
 
 	pageStack->addWidget(homeView);
 	pageStack->addWidget(gameView);
@@ -169,7 +170,9 @@ void MainWindow::setupHomePage()
 		<< QFile::exists(QStringLiteral(":/QSanguosha/Home/HomeScene.qml"));
 
 	homeView->setResizeMode(QQuickWidget::SizeRootObjectToView);
-	homeView->setClearColor(QColor("#DCEEFF"));
+	homeView->setClearColor(homeController && homeController->isDarkTheme()
+		? QColor(QStringLiteral("#0B1A2E"))
+		: QColor(QStringLiteral("#DCEEFF")));
 
 	connect(homeView, &QQuickWidget::statusChanged, this,
 		[this](QQuickWidget::Status status) {
@@ -192,6 +195,9 @@ void MainWindow::setupHomePage()
 	const QString qmlImportPath = QStringLiteral(QT_QML_IMPORT_PATH);
 	qInfo().noquote() << "QML import path:" << qmlImportPath;
 	homeView->engine()->addImportPath(qmlImportPath);
+
+	qmlRegisterType<HomePointerFxItem>(
+		"QSanguosha.HomeFx", 1, 0, "HomePointerFx");
 
 	homeView->setSource(homeUrl);
 
@@ -280,6 +286,8 @@ void MainWindow::showHomePage()
 	homeController->refreshPlayerInfo();
 	pageStack->setCurrentWidget(homeView);
 	homeView->setFocus();
+	if (m_pointerOverlay)
+		m_pointerOverlay->setPageEnabled(false);
 
 	if (ClientInstance) {
 		ClientInstance->disconnectFromHost();
@@ -306,6 +314,8 @@ void MainWindow::showGamePage(QGraphicsScene *newScene)
 	gameView->refit();
 
 	pageStack->setCurrentWidget(gameView);
+	if (m_pointerOverlay)
+		m_pointerOverlay->setPageEnabled(true);
 }
 
 void MainWindow::restoreFromConfig()
