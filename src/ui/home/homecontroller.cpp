@@ -869,6 +869,15 @@ QUrl HomeController::lordIcon() const
         QStringLiteral("image/system/roles/lord.png")));
 }
 
+QUrl HomeController::navButtonImage(const QString &name) const
+{
+    if (name.isEmpty())
+        return {};
+    return firstExistingImage({
+        QStringLiteral("qml/home/nav/%1").arg(name)
+    });
+}
+
 qreal HomeController::generalOverlayLuma(const QString &generalName) const
 {
     const QUrl url = generalFullImage(generalName);

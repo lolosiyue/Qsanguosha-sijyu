@@ -63,6 +63,7 @@ Item {
 
             text: qsTranslate("HomeScene", "Home")
             iconSource: "qrc:/QSanguosha/Home/icons/home.svg"
+            characterSource: homeController.navButtonImage("home")
 
             active: root.currentIndex === 0
 
@@ -83,6 +84,7 @@ Item {
 
             text: qsTranslate("HomeScene", "Generals")
             iconSource: "qrc:/QSanguosha/Home/icons/generals.svg"
+            characterSource: homeController.navButtonImage("generals")
 
             active: root.currentIndex === 1
 
@@ -103,6 +105,7 @@ Item {
 
             text: qsTranslate("HomeScene", "Cards")
             iconSource: "qrc:/QSanguosha/Home/icons/cards.svg"
+            characterSource: homeController.navButtonImage("cards")
 
             active: root.currentIndex === 2
 
@@ -123,6 +126,7 @@ Item {
 
             text: qsTranslate("HomeScene", "Replays")
             iconSource: "qrc:/QSanguosha/Home/icons/replays.svg"
+            characterSource: homeController.navButtonImage("replays")
 
             active: root.currentIndex === 3
 
@@ -143,6 +147,7 @@ Item {
 
             text: qsTranslate("HomeScene", "Settings")
             iconSource: "qrc:/QSanguosha/Home/icons/settings.svg"
+            characterSource: homeController.navButtonImage("settings")
 
             active: root.currentIndex === 4
 
