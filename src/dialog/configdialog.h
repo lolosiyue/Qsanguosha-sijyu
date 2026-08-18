@@ -28,6 +28,7 @@ private:
         bool noEquipAnim = false;
         bool noCardMoveAnim = false;
         bool enableAnimatedGenerals = true;
+        bool enablePointerEffect = true;
     } m_visual;
 
     void loadConfig();

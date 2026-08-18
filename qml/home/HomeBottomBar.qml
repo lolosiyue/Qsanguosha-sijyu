@@ -65,7 +65,7 @@ Rectangle {
             Layout.fillHeight: true
 
             text: qsTr("首頁")
-            iconSource: "qrc:/QSanguosha/Home/nav/home.png"
+            iconSource: "qrc:/QSanguosha/Home/icons/home.svg"
 
             active: root.currentIndex === 0
 
@@ -85,7 +85,7 @@ Rectangle {
             Layout.fillHeight: true
 
             text: qsTr("武將")
-            iconSource: "qrc:/QSanguosha/Home/nav/generals.png"
+            iconSource: "qrc:/QSanguosha/Home/icons/generals.svg"
 
             active: root.currentIndex === 1
 
@@ -105,7 +105,7 @@ Rectangle {
             Layout.fillHeight: true
 
             text: qsTr("卡牌")
-            iconSource: "qrc:/QSanguosha/Home/nav/cards.png"
+            iconSource: "qrc:/QSanguosha/Home/icons/cards.svg"
 
             active: root.currentIndex === 2
 
@@ -125,7 +125,7 @@ Rectangle {
             Layout.fillHeight: true
 
             text: qsTr("錄像")
-            iconSource: "qrc:/QSanguosha/Home/nav/replays.png"
+            iconSource: "qrc:/QSanguosha/Home/icons/replays.svg"
 
             active: root.currentIndex === 3
 
@@ -145,7 +145,7 @@ Rectangle {
             Layout.fillHeight: true
 
             text: qsTr("設定")
-            iconSource: "qrc:/QSanguosha/Home/nav/settings.png"
+            iconSource: "qrc:/QSanguosha/Home/icons/settings.svg"
 
             active: root.currentIndex === 4
 

@@ -9,3 +9,8 @@ extensions/
 builds/cmake-vs2019/
 CMakeUserPresets.json
 __pycache__/
+
+# home QML 介面圖片資源
+qml/home/assets/*.png
+qml/home/icons/*.svg
+qml/home/nav/*.png

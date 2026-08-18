@@ -20,6 +20,7 @@ Item {
         fillMode: Image.PreserveAspectFit
         horizontalAlignment: Image.AlignLeft
         verticalAlignment: Image.AlignBottom
+        visible: source.toString() !== "" && status !== Image.Error
 
         mipmap: true
         asynchronous: true

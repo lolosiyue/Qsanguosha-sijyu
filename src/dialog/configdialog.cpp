@@ -34,6 +34,12 @@ ConfigDialog::ConfigDialog(QWidget *parent)
     connect(ui->noEquipAnimCheckBox, &QCheckBox::toggled, this, [this](bool v) { if (!m_loading) Config.setValue("NoEquipAnim", v); });
     connect(ui->noCardMoveAnimCheckBox, &QCheckBox::toggled, this, [this](bool v) { if (!m_loading) Config.setValue("NoCardMoveAnim", v); });
     connect(ui->enableAnimatedGeneralsCheckBox, &QCheckBox::toggled, this, [this](bool v) { if (!m_loading) Config.setValue("EnableAnimatedGenerals", v); });
+    connect(ui->enablePointerEffectCheckBox, &QCheckBox::toggled, this, [this](bool v) {
+        if (!m_loading) {
+            Config.EnablePointerEffect = v;
+            Config.setValue("EnablePointerEffect", v);
+        }
+    });
 
     connect(this, SIGNAL(accepted()), this, SLOT(saveConfig()));
     connect(this, SIGNAL(rejected()), this, SLOT(restoreVisualSettings()));
@@ -83,6 +89,7 @@ void ConfigDialog::loadConfig()
     ui->noEquipAnimCheckBox->setChecked(Config.value("NoEquipAnim").toBool());
     ui->noCardMoveAnimCheckBox->setChecked(Config.value("NoCardMoveAnim", false).toBool());
     ui->enableAnimatedGeneralsCheckBox->setChecked(Config.value("EnableAnimatedGenerals", true).toBool());
+    ui->enablePointerEffectCheckBox->setChecked(Config.EnablePointerEffect);
 
     ui->uiScaleSlider->setValue(qRound(Config.UIScale * 20.0));
     ui->uiScaleValueLabel->setText(QString::number(ui->uiScaleSlider->value() / 20.0, 'f', 2) + "x");
@@ -136,6 +143,7 @@ void ConfigDialog::snapshotVisualSettings()
     m_visual.noEquipAnim = Config.value("NoEquipAnim").toBool();
     m_visual.noCardMoveAnim = Config.value("NoCardMoveAnim", false).toBool();
     m_visual.enableAnimatedGenerals = Config.value("EnableAnimatedGenerals", true).toBool();
+    m_visual.enablePointerEffect = Config.EnablePointerEffect;
 }
 
 void ConfigDialog::refitRoomScene()
@@ -199,6 +207,8 @@ void ConfigDialog::restoreVisualSettings()
     Config.setValue("NoEquipAnim", m_visual.noEquipAnim);
     Config.setValue("NoCardMoveAnim", m_visual.noCardMoveAnim);
     Config.setValue("EnableAnimatedGenerals", m_visual.enableAnimatedGenerals);
+    Config.EnablePointerEffect = m_visual.enablePointerEffect;
+    Config.setValue("EnablePointerEffect", m_visual.enablePointerEffect);
 }
 
 void ConfigDialog::showFont(QLineEdit *lineedit, const QFont &font)
@@ -282,6 +292,8 @@ void ConfigDialog::saveConfig()
     Config.setValue("NoEquipAnim", ui->noEquipAnimCheckBox->isChecked());
     Config.setValue("NoCardMoveAnim", ui->noCardMoveAnimCheckBox->isChecked());
     Config.setValue("EnableAnimatedGenerals", ui->enableAnimatedGeneralsCheckBox->isChecked());
+    Config.EnablePointerEffect = ui->enablePointerEffectCheckBox->isChecked();
+    Config.setValue("EnablePointerEffect", Config.EnablePointerEffect);
     Config.UIScale = ui->uiScaleSlider->value() / 20.0;
     Config.setValue("UIScale", Config.UIScale);
 

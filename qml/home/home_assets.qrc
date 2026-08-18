@@ -1,6 +1,5 @@
 <RCC>
   <qresource prefix="/QSanguosha/Home">
-    <file alias="assets/character.png">assets/character.png</file>
     <file alias="icons/quick-join.svg">icons/quick-join.svg</file>
     <file alias="icons/join-game.svg">icons/join-game.svg</file>
     <file alias="icons/server.svg">icons/server.svg</file>
@@ -13,11 +12,5 @@
     <file alias="icons/generals.svg">icons/generals.svg</file>
     <file alias="icons/cards.svg">icons/cards.svg</file>
     <file alias="icons/replays.svg">icons/replays.svg</file>
-
-    <file alias="nav/home.png">nav/home.png</file>
-    <file alias="nav/generals.png">nav/generals.png</file>
-    <file alias="nav/cards.png">nav/cards.png</file>
-    <file alias="nav/replays.png">nav/replays.png</file>
-    <file alias="nav/settings.png">nav/settings.png</file>
   </qresource>
 </RCC>
