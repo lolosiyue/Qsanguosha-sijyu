@@ -7,6 +7,7 @@
 #include "table-pile.h"
 #include "carditem.h"
 #include "engine.h"
+#include "room.h"
 #include "client.h"
 #include "settings.h"
 #include "cardcontainer.h"
@@ -6808,10 +6809,16 @@ void RoomScene::recorderAutoSave()
 			return;
 	}
 
-	QString path = QDir::currentPath()+"/record";
-	if(!QDir(path).exists())
-		QDir().mkpath(path);
-	QString filename = path+"/"+QDateTime::currentDateTime().toString("yyyy年MM月dd日HH时mm分ss秒")+".txt";
+	QString filename;
+	Room *room = Sanguosha->currentRoom();
+	if (room && !room->getReplayPath().isEmpty())
+		filename = room->getReplayPath();
+	else {
+		QString path = QDir::currentPath()+"/record";
+		if(!QDir(path).exists())
+			QDir().mkpath(path);
+		filename = path+"/"+QDateTime::currentDateTime().toString("yyyy年MM月dd日HH时mm分ss秒")+".txt";
+	}
 	ClientInstance->save(filename);
 }
 
