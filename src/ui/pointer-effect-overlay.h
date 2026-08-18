@@ -4,7 +4,9 @@
 #include <QCursor>
 #include <QElapsedTimer>
 #include <QImage>
+#include <QPixmap>
 #include <QPointF>
+#include <QRect>
 #include <QTimer>
 #include <QVector>
 #include <QWidget>
@@ -58,12 +60,14 @@ private:
     void updateTrail(const QPointF &pos, qreal now);
     void pruneExpired(qreal now);
     bool hasVisibleContent(qreal now) const;
+    QRect visibleBounds(qreal now) const;
+    QPointF trianglePosition(const TriangleParticle &particle, qreal now) const;
     void drawTrail(QPainter &painter, qreal now);
     void drawClickEffects(QPainter &painter, qreal now);
     void drawTriangles(QPainter &painter, qreal now, const QVector<TriangleParticle> &particles);
-    void drawSprite(QPainter &painter, const QImage &image, const QRectF &src,
+    void drawSprite(QPainter &painter, const QPixmap &pixmap, const QRectF &src,
                     const QPointF &center, const QSizeF &size, qreal rotationRad,
-                    const QColor &tint, qreal opacity, qreal emission);
+                    qreal opacity);
     static QImage loadAsset(const QString &fileName, bool luminanceAsAlpha = false);
     static QString assetPath(const QString &fileName);
     static QColor lerpColor(const QColor &from, const QColor &to, qreal t);
@@ -80,20 +84,22 @@ private:
     static qreal triangleOpacity(qreal progress);
     static QColor triangleColor(qreal progress);
     static QColor trailColor(qreal progress);
-    static QPointF trailOffset(const QVector<QPointF> &pts, int index, qreal halfWidth);
 
     QWidget *m_host = nullptr;
     QTimer m_timer;
     QElapsedTimer m_clock;
-    QImage m_circle;
-    QImage m_ring;
-    QImage m_trail;
-    QImage m_triangle;
+    QPixmap m_circlePm;
+    QPixmap m_circleBluePm;
+    QPixmap m_ringPm;
+    QPixmap m_ringBluePm;
+    QPixmap m_trianglePm;
     QCursor m_baCursor;
     QVector<TrailPoint> m_trailPoints;
     QVector<ClickEffect> m_clickEffects;
     QVector<TriangleParticle> m_moveParticles;
     QPointF m_lastTrailPos;
+    QRect m_syncedGeo;
+    QRect m_lastPainted;
     qreal m_emissionCarry = 0;
     Qt::MouseButtons m_prevButtons;
     bool m_active = false;
