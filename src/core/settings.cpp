@@ -315,6 +315,7 @@ void Settings::init()
     OperationTimeout = value("OperationTimeout", 15).toInt();
     OperationNoLimit = value("OperationNoLimit", false).toBool();
     EnableEffects = value("EnableEffects", true).toBool();
+    EnablePointerEffect = value("EnablePointerEffect", true).toBool();
     EnableLastWord = value("EnableLastWord", true).toBool();
     EnableBgMusic = value("EnableBgMusic", true).toBool();
     EnableCardDescription = value("EnableCardDescription", true).toBool();

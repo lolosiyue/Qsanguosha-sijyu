@@ -196,6 +196,7 @@ AbstractButton {
             fillMode: Image.PreserveAspectFit
             asynchronous: true
             mipmap: true
+            visible: source.toString() !== "" && status !== Image.Error
 
             opacity: control.active
                      ? 1.0

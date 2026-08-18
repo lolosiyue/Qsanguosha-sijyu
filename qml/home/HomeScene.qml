@@ -114,6 +114,7 @@ Item {
                 source: homeController.logoImage
                 fillMode: Image.PreserveAspectFit
                 mipmap: true
+                visible: source.toString() !== "" && status === Image.Ready
             }
 
             MainActionPanel {
