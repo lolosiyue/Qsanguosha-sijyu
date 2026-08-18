@@ -36,6 +36,8 @@
 #include "skill-instance-utils.h"
 #include <algorithm>
 #include <limits>
+#include <QDateTime>
+#include <QDir>
 #include <QSet>
 
 #ifdef QSAN_UI_LIBRARY_AVAILABLE
@@ -6862,6 +6864,34 @@ void Room::setReplayPath(const QString &path)
 QString Room::getReplayPath() const
 {
 	return m_snapshotService->getReplayPath();
+}
+
+void Room::initializeReplayRecordPath()
+{
+	if (!Config.value("recorder/autosave", true).toBool())
+		return;
+
+	if (Config.value("recorder/networkonly", true).toBool()) {
+		bool hasNonRobot = false;
+		foreach (ServerPlayer *player, getPlayers()) {
+			if (player->getState() != QStringLiteral("robot")) {
+				hasNonRobot = true;
+				break;
+			}
+		}
+		if (!hasNonRobot)
+			return;
+	}
+
+	const QString recordDir = QDir::currentPath() + QStringLiteral("/record");
+	QDir dir;
+	if (!dir.exists(recordDir))
+		dir.mkpath(recordDir);
+
+	const QString replayPath = recordDir + QStringLiteral("/")
+		+ QDateTime::currentDateTime().toString(QStringLiteral("yyyy年MM月dd日HH时mm分ss秒"))
+		+ QStringLiteral(".txt");
+	setReplayPath(replayPath);
 }
 
 void Room::registerTestOverride(ServerPlayer *player, const QString &queryType, const QString &key, const QVariant &answer)

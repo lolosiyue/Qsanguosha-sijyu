@@ -18,6 +18,9 @@ GameSnapshotService::~GameSnapshotService()
 
 void GameSnapshotService::saveSnapshot(const QString &type, const QString &playerName)
 {
+    if (m_replayPath.isEmpty())
+        return;
+
     const int turnCount = m_room.getTag("TurnLengthCount").toInt();
     if (type == "turn" && turnCount == m_lastSnapshotTurn)
         return;

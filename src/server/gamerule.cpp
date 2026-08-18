@@ -135,6 +135,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 		if(player) break;
 		// 登記本局總人數,供崩潰摘要用(輪數稍後由 RoundStart 更新)
 		CrashHandler::setGameStats(room->getPlayers().length(), 0);
+		room->initializeReplayRecordPath();
 		ServerPlayer *lord = room->getLord();
 		if(room->getMode()=="04_boss") {
 			int difficulty = Config.value("BossModeDifficulty").toInt();
