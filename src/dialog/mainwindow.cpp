@@ -21,6 +21,7 @@
 #include "settings.h"
 #include "button.h"
 #include "homecontroller.h"
+#include "pointer-effect-overlay.h"
 #include "crashhandler.h"
 #ifdef AUDIO_SUPPORT
 #include "audio.h"
@@ -143,6 +144,7 @@ MainWindow::MainWindow(QWidget *parent)
 	pageStack->addWidget(gameView);
 
 	setCentralWidget(pageStack);
+	m_pointerOverlay = new PointerEffectOverlay(this);
 	restoreFromConfig();
 
 	setupHomePage();

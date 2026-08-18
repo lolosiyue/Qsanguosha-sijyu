@@ -25,10 +25,10 @@ Item {
             fillMode: Image.PreserveAspectCrop
             mipmap: true
             opacity: HomeTheme.backdropOpacity
-            visible: !isVideo
+            visible: !isVideo && backdropSource.toString() !== ""
 
             onStatusChanged: {
-                if (status === Image.Error)
+                if (status === Image.Error && backdropSource.toString() !== "")
                     backdropSource = homeController.randomBackdrop();
             }
         }

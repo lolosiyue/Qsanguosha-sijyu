@@ -90,6 +90,7 @@ public:
     int OperationTimeout;
     bool OperationNoLimit;
     bool EnableEffects;
+    bool EnablePointerEffect;
     bool EnableLastWord;
     bool EnableBgMusic;
     float BGMVolume, EffectVolume, FrontBGMVolume;

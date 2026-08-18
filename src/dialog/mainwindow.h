@@ -17,6 +17,7 @@ class ConfigDialog;
 class QStackedWidget;
 class QQuickWidget;
 class HomeController;
+class PointerEffectOverlay;
 
 class BroadcastBox : public QDialog
 {
@@ -79,6 +80,7 @@ private:
     QSystemTrayIcon *systray = nullptr;
     Server *server = nullptr;
     HomeController *homeController = nullptr;
+    PointerEffectOverlay *m_pointerOverlay = nullptr;
 
 public slots:
     void startConnection();

@@ -43,20 +43,21 @@ QUrl HomeController::characterImage() const
     const QString absPath = QDir::current().absoluteFilePath(
         QStringLiteral("image/home/character.png"));
 
-    if (QFile::exists(absPath)) {
-        QUrl url = QUrl::fromLocalFile(absPath);
-        url.setQuery(QStringLiteral("v=%1").arg(m_characterVersion));
-        return url;
-    }
+    if (!QFile::exists(absPath))
+        return QUrl();
 
-    return QUrl(QStringLiteral("qrc:/QSanguosha/Home/assets/character.png"));
+    QUrl url = QUrl::fromLocalFile(absPath);
+    url.setQuery(QStringLiteral("v=%1").arg(m_characterVersion));
+    return url;
 }
 
 QUrl HomeController::logoImage() const
 {
-    return QUrl::fromLocalFile(
-        QDir::current().absoluteFilePath(
-            QStringLiteral("image/logo/logo.png")));
+    const QString absPath = QDir::current().absoluteFilePath(
+        QStringLiteral("image/logo/logo.png"));
+    if (!QFile::exists(absPath))
+        return QUrl();
+    return QUrl::fromLocalFile(absPath);
 }
 
 QString HomeController::playerName() const
