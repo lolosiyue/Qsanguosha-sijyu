@@ -291,6 +291,19 @@ bool Room::stopGameThreads(int timeoutMs)
 	return true;
 }
 
+void Room::abortWaitingRequests()
+{
+	game_state = -1;
+	{
+		QMutexLocker locker(&m_mutex);
+		game_paused = false;
+		m_waitCond.wakeAll();
+	}
+	foreach (ServerPlayer *player, getPlayers())
+		player->releaseLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
+	m_requests->unblockWaits();
+}
+
 ServerPlayer*Room::getCurrent() const
 {
 	return current;
@@ -2102,6 +2115,15 @@ void Room::reportDisconnection()
 			}
 
 			doBroadcastNotify(S_COMMAND_REMOVE_PLAYER, player->objectName());
+		} else {
+			// 房間已滿且 Room::run 已啟動 (Game Seed 已送出), 但身份尚未分配。
+			// 舊邏輯不移除玩家也不標 offline, doRequest 會對空 socket 等到逾時,
+			// 殘留 RoomThread 再與下一局 Room 建構在 main 上互鎖。
+			if (player->m_isWaitingReply)
+				player->releaseLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
+			game_state = -1;
+			emit game_over("");
+			return;
 		}
 	} else {
 		// fourth case
@@ -2814,6 +2836,8 @@ void Room::run()
 #endif
 
 	prepareForStart();
+	if (isFinished())
+		return;
 
 	bool using_countdown = !_virtual&&property("to_test").toString().isEmpty();
 
@@ -2828,6 +2852,9 @@ void Room::run()
 		}
 	} else
 		doBroadcastNotify(S_COMMAND_START_IN_X_SECONDS, QVariant(0));
+
+	if (isFinished())
+		return;
 
 	if (scenario&&!scenario->generalSelection()){
 	} else if (mode == "06_3v3"){
@@ -2985,6 +3012,8 @@ void Room::run()
 			setPlayerProperty(player, "general", "anjiang");
 	} else
 		chooseGenerals();
+	if (isFinished())
+		return;
 	startGame();
 
 	if (_m_Id<1&&QFile::exists("lua/ai/cstring")){

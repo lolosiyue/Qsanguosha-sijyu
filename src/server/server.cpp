@@ -34,6 +34,8 @@
 #include <QHashSeed>
 #include <QTimer>
 #include <QPointer>
+#include <QCoreApplication>
+#include <QElapsedTimer>
 
 using namespace QSanProtocol;
 
@@ -1680,6 +1682,7 @@ void Server::daemonize()
 
 Room *Server::createNewRoom()
 {
+	waitForDisposingRooms();
 	const GameSessionConfig sessionConfig = gameSessionConfig(m_nextGameSeedIndex++);
 	qInfo().noquote() << "Game Seed:" << QString::number(sessionConfig.seed);
 	current = new Room(this, Config.GameMode.mode_id, sessionConfig);
@@ -1797,12 +1800,94 @@ void Server::signupPlayer(ServerPlayer *player)
 void Server::gameOver()
 {
 	Room *room = qobject_cast<Room *>(sender());
+	if (!room)
+		return;
 	rooms.remove(room);
 
 	foreach(ServerPlayer *player, room->findChildren<ServerPlayer *>()) {
 		name2objname.remove(player->screenName(), player->objectName());
 		players.remove(player->objectName());
     }
+
+	if (current == room)
+		current = nullptr;
+	room->abortWaitingRequests();
+	scheduleDisposeRoom(room);
+}
+
+bool Server::disposingRoomStillRunning() const
+{
+	foreach (const QPointer<Room> &roomPtr, m_disposingRooms) {
+		Room *room = roomPtr.data();
+		if (!room)
+			continue;
+		if (room->isRunning())
+			return true;
+		RoomThread *rt = room->getThread();
+		if (rt && rt->isRunning())
+			return true;
+	}
+	return false;
+}
+
+void Server::waitForDisposingRooms()
+{
+	if (!disposingRoomStillRunning())
+		return;
+	// Room ctor 在 main 同步執行, 期間無法處理 leftover RoomThread 的
+	// BlockingQueuedConnection。先泵 queued slot, 等舊 worker 結束再 new Room。
+	QElapsedTimer timer;
+	timer.start();
+	while (disposingRoomStillRunning() && timer.elapsed() < 10000)
+		QCoreApplication::processEvents(QEventLoop::ExcludeSocketNotifiers);
+	if (disposingRoomStillRunning())
+		qWarning("waitForDisposingRooms: leftover RoomThread still running");
+}
+
+void Server::scheduleDisposeRoom(Room *room)
+{
+	if (!room)
+		return;
+	m_disposingRooms.append(QPointer<Room>(room));
+	QPointer<Room> roomPtr(room);
+	QTimer::singleShot(500, this, [this, roomPtr]() {
+		if (!roomPtr) {
+			QList<QPointer<Room> >::iterator it = m_disposingRooms.begin();
+			while (it != m_disposingRooms.end()) {
+				if (it->isNull())
+					it = m_disposingRooms.erase(it);
+				else
+					++it;
+			}
+			return;
+		}
+		RoomThread *rt = roomPtr->getThread();
+		const bool workerRunning = roomPtr->isRunning() || (rt && rt->isRunning());
+		if (workerRunning) {
+			QTimer *pollTimer = new QTimer(this);
+			int *elapsedMs = new int(0);
+			connect(pollTimer, &QTimer::timeout, this,
+				[this, roomPtr, rt, pollTimer, elapsedMs]() {
+					*elapsedMs += 100;
+					const bool stillRunning = roomPtr
+						&& (roomPtr->isRunning() || (rt && rt->isRunning()));
+					if (!stillRunning || *elapsedMs >= 10000) {
+						pollTimer->stop();
+						pollTimer->deleteLater();
+						delete elapsedMs;
+						m_disposingRooms.removeAll(roomPtr);
+						if (roomPtr && !stillRunning)
+							roomPtr->deleteLater();
+						else if (stillRunning)
+							qWarning("scheduleDisposeRoom: timeout, leaking Room");
+					}
+				});
+			pollTimer->start(100);
+			return;
+		}
+		m_disposingRooms.removeAll(roomPtr);
+		roomPtr->deleteLater();
+	});
 }
 
 #endif
