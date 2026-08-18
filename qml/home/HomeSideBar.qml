@@ -16,16 +16,24 @@ ColumnLayout {
     signal updateClicked()
     signal themeToggleClicked()
 
-    spacing: 12
+    spacing: 10
 
-    Rectangle {
-        Layout.preferredWidth: 120
-        Layout.preferredHeight: 36
+    BASlantedPanel {
+        Layout.preferredWidth: 124
+        Layout.preferredHeight: 32
         Layout.alignment: Qt.AlignHCenter
 
-        radius: 18
-        color: HomeTheme.pillBg
         visible: versionLabel.text !== ""
+        slant: -0.08
+        cornerRadius: 8
+        shadowBlur: 6
+        shadowOffset: 3
+        borderWidth: 1
+
+        topColor: HomeTheme.baToolTop
+        bottomColor: HomeTheme.baToolBottom
+        borderColor: HomeTheme.baDockBorder
+        shadowColor: HomeTheme.baDockShadow
 
         Text {
             id: versionLabel
@@ -36,44 +44,26 @@ ColumnLayout {
         }
     }
 
-    // 明暗主題切換：目前暗色顯示太陽(切亮)，亮色顯示月亮(切暗)
-    Rectangle {
+    BAToolButton {
         id: themeToggle
 
-        Layout.preferredWidth: 44
-        Layout.preferredHeight: 44
         Layout.alignment: Qt.AlignHCenter
 
-        radius: 22
-        color: HomeTheme.pillBg
-        border.width: 1
-        border.color: HomeTheme.panelBorder
+        Accessible.name: qsTr("切換主題")
 
-        Image {
-            anchors.centerIn: parent
-            width: 22
-            height: 22
-
-            source: homeController.isDarkTheme
+        iconSource: homeController.isDarkTheme
                     ? "qrc:/QSanguosha/Home/icons/moon.svg"
                     : "qrc:/QSanguosha/Home/icons/sun.svg"
-            fillMode: Image.PreserveAspectFit
-            mipmap: true
-        }
 
-        MouseArea {
-            anchors.fill: parent
-            hoverEnabled: true
-            cursorShape: Qt.PointingHandCursor
-            onClicked: {
-                homeController.toggleTheme()
-                panel.themeToggleClicked()
-            }
+        onClicked: {
+            homeController.toggleTheme()
+            panel.themeToggleClicked()
         }
     }
 
-    HomeNavButton {
+    BAToolButton {
         id: settingsBtn
+
         Layout.alignment: Qt.AlignHCenter
 
         text: qsTr("设置")
@@ -85,8 +75,9 @@ ColumnLayout {
         KeyNavigation.backtab: updateBtn
     }
 
-    HomeNavButton {
+    BAToolButton {
         id: aboutBtn
+
         Layout.alignment: Qt.AlignHCenter
 
         text: qsTr("关于")
@@ -98,8 +89,9 @@ ColumnLayout {
         KeyNavigation.backtab: settingsBtn
     }
 
-    HomeNavButton {
+    BAToolButton {
         id: updateBtn
+
         Layout.alignment: Qt.AlignHCenter
 
         text: qsTr("检查更新")

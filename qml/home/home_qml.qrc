@@ -10,6 +10,8 @@
     <file alias="MainActionPanel.qml">MainActionPanel.qml</file>
     <file alias="HomeBottomBar.qml">HomeBottomBar.qml</file>
     <file alias="HomeNavButton.qml">HomeNavButton.qml</file>
+    <file alias="BASlantedPanel.qml">BASlantedPanel.qml</file>
+    <file alias="BAToolButton.qml">BAToolButton.qml</file>
     <file alias="HomeSideBar.qml">HomeSideBar.qml</file>
     <file alias="CharacterLayer.qml">CharacterLayer.qml</file>
     <file alias="HomePlayerInfo.qml">HomePlayerInfo.qml</file>

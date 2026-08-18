@@ -8,13 +8,14 @@ AbstractButton {
     property url iconSource: ""
     property url hoverIconSource: ""
     property url pressedIconSource: ""
+    property url characterSource: ""
 
     property bool active: false
     property real characterScale: 1.0
-    property bool highContrast: Config.getValue("VisualMode", "normal") === "highcontrast"
+    property bool highContrast: Config ? Config.getValue("VisualMode", "normal") === "highcontrast" : false
 
-    implicitWidth: 132
-    implicitHeight: 124
+    implicitWidth: 160
+    implicitHeight: 136
 
     hoverEnabled: true
     focusPolicy: Qt.StrongFocus
@@ -23,32 +24,45 @@ AbstractButton {
     Accessible.name: control.text
     Accessible.description: control.text
 
-    scale: control.activeFocus
-           ? 1.05
-           : down
-             ? 0.94
-             : hovered
-               ? 1.045
-               : 1.0
+    scale: control.down ? 0.92 : 1.0
 
     Behavior on scale {
         NumberAnimation {
-            duration: 110
+            duration: 90
             easing.type: Easing.OutCubic
         }
     }
 
+    readonly property url resolvedIcon: {
+        if (control.down && control.pressedIconSource.toString().length > 0)
+            return control.pressedIconSource
+        if ((control.hovered || control.active)
+                && control.hoverIconSource.toString().length > 0)
+            return control.hoverIconSource
+        if (characterProbe.status === Image.Ready)
+            return control.characterSource
+        return control.iconSource
+    }
+
+    Image {
+        id: characterProbe
+        source: control.characterSource
+        visible: false
+        asynchronous: true
+    }
+
     background: Item {
-        // 鍵盤焦點外框
         Rectangle {
             anchors.fill: parent
             anchors.margins: -5
 
-            radius: 22
+            radius: 12
             color: "transparent"
 
-            border.width: 3
-            border.color: control.activeFocus ? HomeTheme.focusBorderHigh : "transparent"
+            border.width: control.highContrast ? 3 : 2
+            border.color: control.activeFocus
+                          ? (control.highContrast ? HomeTheme.focusBorderHigh : HomeTheme.baFocusRing)
+                          : "transparent"
 
             visible: control.activeFocus
 
@@ -59,50 +73,51 @@ AbstractButton {
             }
         }
 
-        // 選中項目後方的柔光底板
+        BASlantedPanel {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 6
+
+            width: Math.min(parent.width - 12, 148)
+            height: 72
+
+            visible: control.active || control.hovered || control.activeFocus
+
+            slant: -0.12
+            cornerRadius: 8
+            shadowOffset: 4
+            shadowBlur: 8
+            borderWidth: control.activeFocus ? 2 : 1
+
+            topColor: control.down
+                      ? HomeTheme.navBgDown
+                      : control.active
+                        ? HomeTheme.baNavBgActive
+                        : HomeTheme.baNavBgHover
+            bottomColor: topColor
+            borderColor: control.activeFocus
+                         ? HomeTheme.navBorderFocus
+                         : control.active
+                           ? HomeTheme.navBorderActive
+                           : HomeTheme.navBorderHover
+            shadowColor: HomeTheme.baDockShadow
+        }
+
         Rectangle {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 4
 
-            width: Math.min(parent.width - 8, 150)
-            height: 92
-            radius: 22
-
-            visible: control.active
-                     || control.hovered
-                     || control.activeFocus
-
-            color: control.down
-                   ? HomeTheme.navBgDown
-                   : control.active
-                     ? HomeTheme.navBgActive
-                     : HomeTheme.navBgHover
-
-            border.width: control.activeFocus ? 2 : 1
-
-            border.color: control.activeFocus
-                          ? HomeTheme.navBorderFocus
-                          : control.active
-                            ? HomeTheme.navBorderActive
-                            : HomeTheme.navBorderHover
-        }
-
-        // 選中時底部藍色發光線
-        Rectangle {
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-
-            width: control.active ? 74 : 0
+            width: control.active ? 48 : 0
             height: 3
-            radius: 2
+            radius: 1.5
 
-            color: HomeTheme.navLine
+            color: HomeTheme.baYellow
             visible: width > 0
 
             Behavior on width {
                 NumberAnimation {
-                    duration: 180
+                    duration: 170
                     easing.type: Easing.OutCubic
                 }
             }
@@ -112,42 +127,39 @@ AbstractButton {
     contentItem: Item {
         id: content
 
-        // 選中或 hover 時整個內容稍微升高
-        y: control.active
-           ? -7
-           : control.hovered
-             ? -4
-             : 0
+        y: control.down
+           ? 3
+           : control.active
+             ? -8
+             : control.hovered
+               ? -4
+               : 0
 
         Behavior on y {
             NumberAnimation {
-                duration: 150
+                duration: control.down ? 90 : (control.active ? 170 : 140)
                 easing.type: Easing.OutCubic
             }
         }
 
-        // 角色後方光圈（與圖示同尺寸，同步放大）
         Rectangle {
             id: outerGlow
 
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
-            anchors.topMargin: 1
+            anchors.topMargin: 2
 
-            width: control.active ? 104 : 96
+            width: control.active ? 96 : (control.hovered ? 88 : 80)
             height: width
             radius: width / 2
 
             color: control.active
-                   ? HomeTheme.navGlowActive
+                   ? HomeTheme.baHaloOuter
                    : control.hovered
                      ? HomeTheme.navGlowHover
                      : "transparent"
 
-            border.width: control.active ? 2 : 0
-            border.color: HomeTheme.navLine
-
-            opacity: control.down ? 0.65 : 1.0
+            opacity: control.down ? 0.7 : 1.0
 
             Behavior on width {
                 NumberAnimation {
@@ -157,16 +169,15 @@ AbstractButton {
             }
         }
 
-        // 第二層較小光圈
         Rectangle {
             anchors.centerIn: outerGlow
 
-            width: outerGlow.width * 0.78
+            width: outerGlow.width * 0.72
             height: width
             radius: width / 2
 
             visible: control.active || control.hovered
-            color: HomeTheme.navGlowInner
+            color: HomeTheme.baHaloInner
         }
 
         Image {
@@ -174,53 +185,40 @@ AbstractButton {
 
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: parent.top
-            anchors.topMargin: control.active ? -5 : 1
+            anchors.topMargin: 0
 
-            width: control.active ? 136 : 128
+            width: 105 * control.characterScale
             height: width
 
-            source: {
-                if (control.down
-                        && control.pressedIconSource.toString().length > 0) {
-                    return control.pressedIconSource
-                }
-
-                if ((control.hovered || control.active)
-                        && control.hoverIconSource.toString().length > 0) {
-                    return control.hoverIconSource
-                }
-
-                return control.iconSource
-            }
-
+            source: control.resolvedIcon
             fillMode: Image.PreserveAspectFit
             asynchronous: true
             mipmap: true
             visible: source.toString() !== "" && status !== Image.Error
 
+            scale: control.active
+                   ? 1.09
+                   : control.hovered
+                     ? 1.05
+                     : 1.0
+
             opacity: control.active
                      ? 1.0
                      : control.hovered
                        ? 0.95
-                       : 0.76
+                       : 0.82
 
-            Behavior on width {
+            Behavior on scale {
                 NumberAnimation {
-                    duration: 140
+                    duration: 170
                     easing.type: Easing.OutBack
-                }
-            }
-
-            Behavior on anchors.topMargin {
-                NumberAnimation {
-                    duration: 150
-                    easing.type: Easing.OutCubic
                 }
             }
 
             Behavior on opacity {
                 NumberAnimation {
-                    duration: 120
+                    duration: 140
+                    easing.type: Easing.OutCubic
                 }
             }
         }
@@ -230,21 +228,21 @@ AbstractButton {
 
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
-            anchors.bottomMargin: 5
+            anchors.bottomMargin: 8
 
             text: control.text
 
             color: control.activeFocus
                    ? HomeTheme.navTextFocus
                    : control.active
-                     ? HomeTheme.navTextActive
+                     ? HomeTheme.baNavTextActive
                      : control.hovered
-                       ? HomeTheme.navTextHover
-                       : HomeTheme.navTextIdle
+                       ? HomeTheme.baNavTextHover
+                       : HomeTheme.baNavTextIdle
 
             font.pixelSize: control.highContrast
-                            ? (control.active ? 21 : 20)
-                            : (control.active ? 17 : 16)
+                            ? (control.active ? 18 : 17)
+                            : (control.active ? 16 : 15)
             font.weight: control.highContrast
                          ? Font.Bold
                          : (control.active ? Font.DemiBold : Font.Medium)
@@ -254,7 +252,7 @@ AbstractButton {
 
             Behavior on color {
                 ColorAnimation {
-                    duration: 120
+                    duration: 140
                 }
             }
         }
