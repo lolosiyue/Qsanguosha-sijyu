@@ -355,7 +355,7 @@ Item {
 
     Timer {
         id: detailsTimer
-        interval: 1
+        interval: 48
         onTriggered: {
             if (root.selectedName.length > 0)
                 root.details = homeController.generalDetails(root.selectedName)
@@ -383,7 +383,7 @@ Item {
 
     Timer {
         id: catalogLoadTimer
-        interval: 16
+        interval: 32
         onTriggered: root.rebuild()
     }
 
@@ -751,7 +751,7 @@ Item {
                     cellWidth: HomeTheme.generalCellWidth(width, root.gridColumns)
                     cellHeight: HomeTheme.generalCellHeight(width, root.gridColumns)
                     cacheBuffer: cellHeight * 2
-                    reuseItems: true
+                    reuseItems: false
                     model: (root.tableMode || root.catalogPending) ? null : root.catalog
                     boundsBehavior: Flickable.StopAtBounds
                     ScrollBar.vertical: HomeScrollBar { }
@@ -771,6 +771,7 @@ Item {
 
                     delegate: Item {
                         id: delegateRoot
+                        required property int index
                         required property string name
                         required property string displayName
                         required property string kingdoms
@@ -782,6 +783,46 @@ Item {
                         width: generalGrid.cellWidth
                         height: generalGrid.cellHeight
                         readonly property int artRev: homeController.artRevision
+                        property bool artEnabled: false
+
+                        function restartArt() {
+                            artEnabled = false
+                            artEnableTimer.interval = 16 + (Math.max(0, index) % 12) * 24
+                            if (name && root.visible)
+                                artEnableTimer.restart()
+                            else
+                                artEnableTimer.stop()
+                        }
+
+                        Timer {
+                            id: artEnableTimer
+                            repeat: false
+                            onTriggered: {
+                                if (!root.visible) {
+                                    interval = 32
+                                    start()
+                                    return
+                                }
+                                delegateRoot.artEnabled = true
+                            }
+                        }
+
+                        Component.onCompleted: restartArt()
+                        GridView.onReused: restartArt()
+                        GridView.onPooled: {
+                            artEnableTimer.stop()
+                            artEnabled = false
+                        }
+
+                        Connections {
+                            target: root
+                            function onVisibleChanged() {
+                                if (root.visible && !delegateRoot.artEnabled && delegateRoot.name)
+                                    delegateRoot.restartArt()
+                                else if (!root.visible)
+                                    artEnableTimer.stop()
+                            }
+                        }
 
                         Rectangle {
                             id: cardFrame
@@ -805,7 +846,9 @@ Item {
                                 cache: true
                                 visible: true
                                 opacity: status === Image.Ready ? (delegateRoot.hidden ? 0.62 : 1) : 0
-                                source: (delegateRoot.name && delegateRoot.artRev >= 0)
+                                sourceSize.width: width > 1 ? Math.ceil(width) : 0
+                                sourceSize.height: height > 1 ? Math.ceil(height) : 0
+                                source: (delegateRoot.artEnabled && delegateRoot.name && delegateRoot.artRev >= 0)
                                         ? homeController.generalFullImage(delegateRoot.name) : ""
                             }
 
@@ -938,7 +981,7 @@ Item {
                         activeFocusOnTab: true
                         reuseItems: false
                         cacheBuffer: HomeTheme.generalTableRowHeight * 8
-                        model: (!root.tableMode || root.catalogPending) ? null : root.catalog
+                        model: root.catalogPending ? null : root.catalog
                         boundsBehavior: Flickable.StopAtBounds
                         ScrollBar.vertical: HomeScrollBar { }
                         KeyNavigation.tab: skinBtn.visible ? skinBtn : avatarBtn
@@ -1162,7 +1205,7 @@ Item {
                             smooth: true
                             mipmap: false
                             opacity: status === Image.Ready ? 1 : 0
-                            source: (!root.catalogPending && selectedName && homeController.artRevision >= 0)
+                            source: (root.detailsReady && selectedName && homeController.artRevision >= 0)
                                     ? homeController.generalCardImage(selectedName) : ""
                         }
                     }
