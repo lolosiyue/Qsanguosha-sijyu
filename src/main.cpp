@@ -3,7 +3,6 @@
 #include <QDir>
 #include <QFile>
 #include <QLoggingCategory>
-#include <QPointer>
 #include <QApplication>
 #include <QCoreApplication>
 #include <QStringList>
@@ -12,14 +11,8 @@
 #include "settings.h"
 #include "banpair.h"
 #include "server.h"
-#include "ai.h"
-#include "serverplayer.h"
-#include "room.h"
 #include "engine.h"
 #include "engine-bootstrap.h"
-#include "lua-runtime.h"
-#include "lua.hpp"
-#include "lua-wrapper.h"
 #include "audio.h"
 #include <QSurfaceFormat>
 #include <QQuickWindow>
@@ -69,7 +62,7 @@ int main(int argc, char *argv[]) {
 #ifdef ANDROID
 	AndroidAssets::copyAssetsToWritableLocation();
 #endif
-    // headless 模式 (-server / --headless / --lua-test) 只用 QCoreApplication,
+    // headless 模式 (-server / --headless) 只用 QCoreApplication,
     // 不載入 QPA 平台插件與 QtWidgets/QML:記憶體↓、無桌面環境可跑、啟動加快。
     QStringList appArgs;
     for (int i = 1; i < argc; ++i)
@@ -84,7 +77,6 @@ int main(int argc, char *argv[]) {
     }
 
     const bool headlessApp = appArgs.contains("-server")
-        || appArgs.contains("--lua-test")
         || appArgs.contains("--headless")
         || (hasTestScenarioArg && appArgs.contains("-h"));
 
@@ -189,198 +181,6 @@ int main(int argc, char *argv[]) {
     if (qobject_cast<QApplication *>(qApp))
         qApp->setFont(UiConfig.AppFont);
     BanPair::loadBanPairs();
-
-    if (qApp->arguments().contains("--lua-test")) {
-        int idx = qApp->arguments().indexOf("--lua-test");
-        QString scriptPath;
-        if (idx + 1 < qApp->arguments().size())
-            scriptPath = qApp->arguments().at(idx + 1);
-
-        if (scriptPath.isEmpty()) {
-            printf("Usage: QSanguosha.exe --lua-test <script.lua>\n");
-            return 1;
-        }
-
-        bool verbose = qApp->arguments().contains("--lua-test-verbose");
-        Server::isHeadlessMode = true;
-        printf(">>> Lua Test Mode: %s <<<\n", qPrintable(scriptPath));
-
-        QString tmpPath = QDir::tempPath() + "/sgs_lua_test_scene.txt";
-        QFile tmpFile(tmpPath);
-        if (!tmpFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            printf("ERROR: Cannot write temp scenario file\n");
-            return 1;
-        }
-        tmpFile.write("general:sujiang|role:lord|hp:4|starter\n");
-        tmpFile.write("general:sujiang|role:rebel|hp:4\n");
-        tmpFile.write("extraOptions:singleTurn:lord\n");
-        tmpFile.close();
-        Sanguosha->loadTestScenario(tmpPath);
-
-        Config.GameMode = Sanguosha->getGameMode("test_scenario");
-        Config.setValue("GameMode", "test_scenario");
-
-        Server *server = new Server(qApp);
-        Room *room = server->createNewRoom();
-        if (!room) {
-            printf("ERROR: Failed to create room\n");
-            return 1;
-        }
-
-        int playerCount = Sanguosha->getTestScenarioPlayerCount();
-        for (int i = 0; i < playerCount; i++) {
-            ServerPlayer *player = room->addAIPlayer();
-            player->setAI(new TrustAI(player));
-            if (i == 0) player->setOwner(true);
-            room->signup(player, QString("Test_%1").arg(i), "", true);
-        }
-
-        auto clearLuaTestState = [](Room *testRoom, lua_State *state) {
-            testRoom->clearTestOverrides();
-            lua_pushnil(state);
-            lua_setglobal(state, "RUNNER_DO_ASSERTIONS");
-            lua_pushnil(state);
-            lua_setglobal(state, "ROOM");
-            lua_settop(state, 0);
-        };
-        auto runLuaTestAssertions = [clearLuaTestState](Room *testRoom) {
-            LuaRuntime *runtime = testRoom ? testRoom->luaRuntime() : nullptr;
-            if (!runtime) {
-                printf("ERROR: Test room has no Lua runtime\n");
-                return false;
-            }
-
-            LuaRuntime::Binding roomBinding(*runtime);
-            EngineRuntimeContextScope contextScope(*Sanguosha, testRoom);
-            lua_State *state = testRoom->getLuaState();
-            if (!state) {
-                printf("ERROR: Failed to get room Lua state\n");
-                return false;
-            }
-
-            bool passed = false;
-            lua_getglobal(state, "RUNNER_DO_ASSERTIONS");
-            if (lua_isfunction(state, -1)) {
-                if (lua_pcall(state, 0, 1, 0) != 0) {
-                    const QString err = luaErrorWithTraceback(state);
-                    printf("ERROR in assertions: %s\n", qUtf8Printable(err));
-                    lua_pop(state, 1);
-                } else {
-                    passed = lua_toboolean(state, -1);
-                    lua_pop(state, 1);
-                }
-            } else {
-                lua_pop(state, 1);
-                printf("ERROR: Test runner has no assertions callback\n");
-            }
-            clearLuaTestState(testRoom, state);
-            return passed;
-        };
-
-        bool luaTestReady = true;
-        bool factoryOnly = false;
-        {
-            LuaRuntime *runtime = room->luaRuntime();
-            if (!runtime) {
-                printf("ERROR: Test room has no Lua runtime\n");
-                luaTestReady = false;
-            } else {
-                LuaRuntime::Binding roomBinding(*runtime);
-                EngineRuntimeContextScope contextScope(*Sanguosha, room);
-                lua_State *state = room->getLuaState();
-                if (!state) {
-                    printf("ERROR: Failed to get room Lua state\n");
-                    luaTestReady = false;
-                } else {
-                    room->initializeLuaTestEnvironment();
-                    if (!DoLuaScript(state, "lua/test/runner.lua")) {
-                        printf("ERROR: Failed to load lua/test/runner.lua\n");
-                        luaTestReady = false;
-                    } else if (!DoLuaScript(state, scriptPath.toLocal8Bit().constData())) {
-                        printf("ERROR: Failed to load test script: %s\n", qPrintable(scriptPath));
-                        luaTestReady = false;
-                    } else if (lua_gettop(state) < 1 || (!lua_istable(state, -1)
-                               && !lua_isfunction(state, -1) && !lua_isuserdata(state, -1))) {
-                        printf("ERROR: Test script must return a runner table\n");
-                        luaTestReady = false;
-                    } else {
-                        const int runnerIndex = lua_gettop(state);
-                        lua_getfield(state, runnerIndex, "execute");
-                        if (lua_isfunction(state, -1)) {
-                            lua_pushvalue(state, runnerIndex);
-                            if (lua_pcall(state, 1, 0, 0) != 0) {
-                                const QString err = luaErrorWithTraceback(state);
-                                printf("ERROR: %s\n", qUtf8Printable(err));
-                                lua_pop(state, 1);
-                                Server::writeHeadlessLog(QString("Test execution failed: %1").arg(err));
-                                luaTestReady = false;
-                            }
-                        } else {
-                            lua_pop(state, 1);
-                            printf("ERROR: Runner has no execute() method\n");
-                            luaTestReady = false;
-                        }
-                        if (luaTestReady) {
-                            lua_getfield(state, runnerIndex, "_factoryOnly");
-                            factoryOnly = lua_toboolean(state, -1);
-                            lua_pop(state, 1);
-                        }
-                    }
-
-                    if (!luaTestReady)
-                        clearLuaTestState(room, state);
-                    else
-                        lua_settop(state, 0);
-                }
-            }
-        }
-
-        if (!luaTestReady) {
-            delete server;
-            CrashHandler::beginShutdown();
-            return 1;
-        }
-        if (factoryOnly) {
-            const bool passed = runLuaTestAssertions(room);
-            delete server;
-            CrashHandler::beginShutdown();
-            return passed ? 0 : 1;
-        }
-
-        bool luaTestPassed = false;
-        QPointer<Room> roomPtr(room);
-        QTimer *shutdownTimer = new QTimer(qApp);
-        shutdownTimer->setInterval(10);
-        QObject::connect(room, &Room::game_over, qApp, [verbose, shutdownTimer](const QString &winner) {
-            if (verbose)
-                Server::writeHeadlessLog(QString("Game over. Winner: %1").arg(winner));
-            shutdownTimer->start();
-        });
-        QObject::connect(shutdownTimer, &QTimer::timeout, qApp,
-            [server, roomPtr, shutdownTimer, runLuaTestAssertions, &luaTestPassed]() {
-                if (!roomPtr) {
-                    shutdownTimer->stop();
-                    qApp->exit(1);
-                    return;
-                }
-                if (roomPtr->isRunning())
-                    return;
-                foreach (QThread *worker, roomPtr->findChildren<QThread *>()) {
-                    if (worker && worker->isRunning())
-                        return;
-                }
-
-                shutdownTimer->stop();
-                luaTestPassed = runLuaTestAssertions(roomPtr);
-                delete server;
-                qApp->exit(luaTestPassed ? 0 : 1);
-            });
-
-        room->start();
-        const int rc = qApp->exec();
-        CrashHandler::beginShutdown(); // 正常關閉流程,退出清理階段的崩潰不再上報
-        return rc;
-    }
 
     bool hasTestScenarioArgument = qApp->arguments().contains("--test-scenario");
     foreach (const QString &arg, qApp->arguments()) {
