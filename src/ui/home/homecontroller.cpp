@@ -101,9 +101,6 @@ void HomeController::startServer() { emit startServerRequested(); }
 
 void HomeController::switchQmlScene(const QUrl &source)
 {
-    // HomeController is parented by MainWindow; the home QQuickWidget is a descendant.
-    // Switching its source keeps navigation inside the existing page stack instead of
-    // opening another top-level QWidget dialog.
     if (QObject *window = parent()) {
         if (QQuickWidget *view = window->findChild<QQuickWidget *>()) {
             view->setSource(source);
@@ -130,6 +127,38 @@ void HomeController::openReplays() { emit replaysRequested(); }
 void HomeController::openSettings() { emit settingsRequested(); }
 void HomeController::openAbout() { emit aboutRequested(); }
 void HomeController::checkUpdates() { emit updateCheckRequested(); }
+
+QString HomeController::translate(const QString &key) const
+{
+    return Sanguosha ? Sanguosha->translate(key) : key;
+}
+
+QString HomeController::uiText(const QString &source) const
+{
+    return QCoreApplication::translate("GeneralScene", source.toUtf8().constData());
+}
+
+QString HomeController::kingdomColor(const QString &kingdom) const
+{
+    return Sanguosha ? Sanguosha->getKingdomColor(kingdom) : QString();
+}
+
+QVariantList HomeController::kingdoms() const
+{
+    QVariantList result;
+    if (!Sanguosha)
+        return result;
+
+    const QStringList list = Sanguosha->getKingdoms();
+    for (const QString &kingdom : list) {
+        QVariantMap item;
+        item.insert(QStringLiteral("key"), kingdom);
+        item.insert(QStringLiteral("label"), Sanguosha->translate(kingdom));
+        item.insert(QStringLiteral("color"), Sanguosha->getKingdomColor(kingdom));
+        result.append(item);
+    }
+    return result;
+}
 
 QUrl HomeController::generalPortrait(const QString &generalName) const
 {
