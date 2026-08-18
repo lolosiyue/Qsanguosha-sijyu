@@ -6,7 +6,7 @@ CLAUDE.md
 structure.md
 lua/ai/
 extensions/
-builds/cmake-vs2019/
+builds/cmake-vs2026/
 CMakeUserPresets.json
 __pycache__/
 

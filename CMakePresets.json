@@ -1,28 +1,17 @@
 {
   "version": 6,
   "cmakeMinimumRequired": {
-    "major": 3,
-    "minor": 28,
+    "major": 4,
+    "minor": 2,
     "patch": 0
   },
   "configurePresets": [
     {
-      "name": "vs2019-x64",
-      "displayName": "Visual Studio 2019 x64",
-      "generator": "Visual Studio 16 2019",
+      "name": "vs2026-x64",
+      "displayName": "Visual Studio 2026 x64",
+      "generator": "Visual Studio 18 2026",
       "architecture": "x64",
-      "binaryDir": "${sourceDir}/builds/cmake-vs2019",
-      "cacheVariables": {
-        "CMAKE_PREFIX_PATH": "$env{QTDIR}"
-      }
-    },
-    {
-      "name": "vs2022-v142-x64",
-      "displayName": "Visual Studio 2022 x64 with v142",
-      "generator": "Visual Studio 17 2022",
-      "architecture": "x64",
-      "toolset": "v142,host=x64",
-      "binaryDir": "${sourceDir}/builds/cmake-vs2022-v142",
+      "binaryDir": "${sourceDir}/builds/cmake-vs2026",
       "cacheVariables": {
         "CMAKE_PREFIX_PATH": "$env{QTDIR}"
       }
@@ -31,70 +20,36 @@
   "buildPresets": [
     {
       "name": "debug",
-      "configurePreset": "vs2019-x64",
+      "configurePreset": "vs2026-x64",
       "configuration": "Debug"
     },
     {
       "name": "release",
-      "configurePreset": "vs2019-x64",
+      "configurePreset": "vs2026-x64",
       "configuration": "Release"
     },
     {
       "name": "deploy-debug",
-      "configurePreset": "vs2019-x64",
+      "configurePreset": "vs2026-x64",
       "configuration": "Debug",
       "targets": ["deploy"]
     },
     {
       "name": "deploy-release",
-      "configurePreset": "vs2019-x64",
+      "configurePreset": "vs2026-x64",
       "configuration": "Release",
       "targets": ["deploy"]
     },
     {
       "name": "deploy-server-debug",
-      "configurePreset": "vs2019-x64",
+      "configurePreset": "vs2026-x64",
       "configuration": "Debug",
       "targets": ["deploy-server"]
     },
     {
       "name": "deploy-server-release",
-      "configurePreset": "vs2019-x64",
+      "configurePreset": "vs2026-x64",
       "configuration": "Release",
-      "targets": ["deploy-server"]
-    },
-    {
-      "name": "debug-vs2022-v142",
-      "configurePreset": "vs2022-v142-x64",
-      "configuration": "Debug"
-    },
-    {
-      "name": "deploy-debug-vs2022-v142",
-      "configurePreset": "vs2022-v142-x64",
-      "configuration": "Debug",
-      "targets": ["deploy"]
-    },
-    {
-      "name": "deploy-server-debug-vs2022-v142",
-      "configurePreset": "vs2022-v142-x64",
-      "configuration": "Debug",
-      "targets": ["deploy-server"]
-    },
-    {
-      "name": "relwithdebinfo-vs2022-v142",
-      "configurePreset": "vs2022-v142-x64",
-      "configuration": "RelWithDebInfo"
-    },
-    {
-      "name": "deploy-relwithdebinfo-vs2022-v142",
-      "configurePreset": "vs2022-v142-x64",
-      "configuration": "RelWithDebInfo",
-      "targets": ["deploy"]
-    },
-    {
-      "name": "deploy-server-relwithdebinfo-vs2022-v142",
-      "configurePreset": "vs2022-v142-x64",
-      "configuration": "RelWithDebInfo",
       "targets": ["deploy-server"]
     }
   ]

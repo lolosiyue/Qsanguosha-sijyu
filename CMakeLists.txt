@@ -5,8 +5,8 @@ project(QSanguosha LANGUAGES C CXX)
 if(NOT WIN32 OR NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "This CMake build currently supports Windows x64 with MSVC only")
 endif()
-if(MSVC_VERSION LESS 1920 OR MSVC_VERSION GREATER_EQUAL 1930)
-    message(FATAL_ERROR "This CMake build currently supports the Visual Studio 2019 toolchain only")
+if(MSVC_VERSION LESS 1950)
+    message(FATAL_ERROR "This CMake build currently supports the Visual Studio 2026 v145 toolchain only")
 endif()
 
 enable_language(RC)
@@ -18,7 +18,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS
+find_package(Qt6 6.11 REQUIRED COMPONENTS
     Core
     Core5Compat
     Gui
