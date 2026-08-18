@@ -50,7 +50,14 @@ public:
     Q_INVOKABLE void openAbout();
     Q_INVOKABLE void checkUpdates();
 
-    // Lightweight data bridge used by GeneralScene.qml.
+    // Shared engine data used by GeneralScene.qml. Kingdom names come from the
+    // Lua translation tables (Common.lua for the common kingdoms), while colors
+    // come from config.kingdom_colors via Engine::getKingdomColor().
+    Q_INVOKABLE QString translate(const QString &key) const;
+    Q_INVOKABLE QString kingdomColor(const QString &kingdom) const;
+    Q_INVOKABLE QVariantList kingdoms() const;
+
+    // Lightweight general data bridge used by GeneralScene.qml.
     Q_INVOKABLE QVariantList generals() const;
     Q_INVOKABLE QVariantMap generalDetails(const QString &generalName) const;
     Q_INVOKABLE QUrl generalPortrait(const QString &generalName) const;
