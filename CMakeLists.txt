@@ -405,6 +405,8 @@ qt_add_lupdate(QSanguosha
         qml/home/HomeBottomBar.qml
         qml/home/HomeNavButton.qml
         qml/home/HomeSideBar.qml
+        qml/home/GeneralScene.qml
+        qml/home/HomeTheme.qml
 )
 
 set(QSAN_FMOD_RUNTIME "" CACHE FILEPATH "Path to fmodex64.dll for Release deployment")
