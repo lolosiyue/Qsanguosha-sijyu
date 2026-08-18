@@ -8,6 +8,7 @@
 #include "ai.h"
 #include "room.h"
 #include "roomthread.h"
+#include "lua-wrapper.h"
 
 //#include <QDir>
 
@@ -146,6 +147,16 @@ public:
 	QString getCompanions() const;
 
 	void lastWord() const;
+};
+
+%extend General {
+	QString objectName() const {
+		return $self->objectName();
+	}
+
+	QVariant property(const char*name) const {
+		return $self->property(name);
+	}
 };
 
 class Player: public QObject {
@@ -486,6 +497,19 @@ static bool isNostalGeneral(const Player*p, const char*general_name);
 	void removeTag(const char*tag_name) {
 		$self->removeTag(tag_name);
     }
+
+	// Lua 直接綁在 Player*，避免走 QObject::objectName/property 的 SWIG 上轉型
+	QString objectName() const {
+		return $self->objectName();
+	}
+
+	QVariant property(const char*name) const {
+		return $self->property(name);
+	}
+
+	bool setProperty(const char*name, const QVariant&value) {
+		return $self->setProperty(name, value);
+	}
 };
 
 class ServerPlayer: public Player {
@@ -647,6 +671,18 @@ bool damageRevises(QVariant&data, int n);
 
 	void removePileByName(const char*pile_name) {
 		$self->clearOnePrivatePile(pile_name);
+	}
+
+	QString objectName() const {
+		return $self->objectName();
+	}
+
+	QVariant property(const char*name) const {
+		return $self->property(name);
+	}
+
+	bool setProperty(const char*name, const QVariant&value) {
+		return $self->setProperty(name, value);
 	}
 };
 
@@ -1382,6 +1418,14 @@ public:
 	QVariant getTag(const char*key) const{
 		return $self->getTag(key);
 	}
+
+	void deleteLater() {
+		$self->deleteLater();
+	}
+
+	bool inherits(const char*class_name) {
+		return $self->inherits(class_name);
+	}
 };
 
 class WrappedCard: public Card {
@@ -1430,6 +1474,12 @@ public:
 	void insertRelatedSkills(const char*main_skill, const char*related_skill);
 	void insertConvertPairs(const char*from, const char*to);
 	void addSkills(const Skill*skill);
+};
+
+%extend Package {
+	QString objectName() const {
+		return $self->objectName();
+	}
 };
 
 class Scenario : public QObject {
@@ -1590,6 +1640,16 @@ public:
 	// Resource Alias System
 	void addResourceAlias(const char*category, const char*original, const char*alias);
 	QString getResourceAlias(const char*category, const char*original) const;
+};
+
+%extend Engine {
+	QString objectName() const {
+		return $self->objectName();
+	}
+
+	QVariant property(const char*name) const {
+		return $self->property(name);
+	}
 };
 
 extern Engine*Sanguosha;
@@ -1804,6 +1864,18 @@ bool isHideSkill() const;
 %extend Skill {
 	const TriggerSkill*toTriggerSkill() const{
 		return qobject_cast<const TriggerSkill*>($self);
+	}
+
+	QString objectName() const {
+		return $self->objectName();
+	}
+
+	QVariant property(const char*name) const {
+		return $self->property(name);
+	}
+
+	bool inherits(const char*class_name) {
+		return $self->inherits(class_name);
 	}
 };
 
@@ -2315,3 +2387,59 @@ void Room::doScript(const QString&script)
 %include "card.i"
 %include "luaskills.i"
 %include "ai.i"
+
+%extend LuaTriggerSkill {
+	QString objectName() const {
+		return $self->objectName();
+	}
+
+	QVariant property(const char*name) const {
+		return $self->property(name);
+	}
+
+	bool inherits(const char*class_name) {
+		return $self->inherits(class_name);
+	}
+}
+
+%extend LuaTriggerSkillV2 {
+	QString objectName() const {
+		return $self->objectName();
+	}
+
+	QVariant property(const char*name) const {
+		return $self->property(name);
+	}
+
+	bool inherits(const char*class_name) {
+		return $self->inherits(class_name);
+	}
+}
+
+%extend LuaViewAsSkill {
+	QString objectName() const {
+		return $self->objectName();
+	}
+
+	QVariant property(const char*name) const {
+		return $self->property(name);
+	}
+
+	bool inherits(const char*class_name) {
+		return $self->inherits(class_name);
+	}
+}
+
+%extend LuaViewAsSkillV2 {
+	QString objectName() const {
+		return $self->objectName();
+	}
+
+	QVariant property(const char*name) const {
+		return $self->property(name);
+	}
+
+	bool inherits(const char*class_name) {
+		return $self->inherits(class_name);
+	}
+}
