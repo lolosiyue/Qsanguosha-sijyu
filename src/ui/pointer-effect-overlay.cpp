@@ -137,15 +137,63 @@ QImage makeCursorArrow()
     QPainter painter(&image);
     painter.setRenderHint(QPainter::Antialiasing, true);
     QPolygon arrow;
-    arrow << QPoint(2, 2) << QPoint(2, 28) << QPoint(8, 22)
-          << QPoint(14, 30) << QPoint(18, 28) << QPoint(12, 18) << QPoint(22, 18);
-    painter.setPen(QPen(QColor(20, 30, 70), 1.4));
-    QLinearGradient fill(2, 2, 20, 24);
-    fill.setColorAt(0.0, QColor(210, 235, 255));
-    fill.setColorAt(1.0, QColor(180, 170, 230));
+    arrow << QPoint(3, 3) << QPoint(3, 27) << QPoint(9, 21)
+          << QPoint(14, 29) << QPoint(18, 27) << QPoint(12, 18) << QPoint(21, 18);
+    QLinearGradient fill(3, 3, 18, 24);
+    fill.setColorAt(0.0, QColor(120, 214, 250));
+    fill.setColorAt(1.0, QColor(47, 142, 196));
     painter.setBrush(fill);
+    painter.setPen(QPen(Qt::white, 2.2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
     painter.drawPolygon(arrow);
     return image;
+}
+
+QImage styleCursorImage(const QImage &src)
+{
+    if (src.isNull())
+        return makeCursorArrow();
+
+    const QImage src32 = src.convertToFormat(QImage::Format_ARGB32);
+    const int w = src32.width();
+    const int h = src32.height();
+    QImage out(w, h, QImage::Format_ARGB32);
+    out.fill(Qt::transparent);
+
+    const QColor innerTop(120, 214, 250);
+    const QColor innerBot(47, 142, 196);
+
+    auto alphaAt = [&](int x, int y) -> int {
+        if (x < 0 || y < 0 || x >= w || y >= h)
+            return 0;
+        return qAlpha(src32.pixel(x, y));
+    };
+
+    for (int y = 0; y < h; ++y) {
+        const qreal t = h > 1 ? qreal(y) / qreal(h - 1) : 0;
+        const QColor fill(
+            int(innerTop.red() + (innerBot.red() - innerTop.red()) * t),
+            int(innerTop.green() + (innerBot.green() - innerTop.green()) * t),
+            int(innerTop.blue() + (innerBot.blue() - innerTop.blue()) * t));
+        for (int x = 0; x < w; ++x) {
+            const int a = alphaAt(x, y);
+            if (a < 8)
+                continue;
+            bool edge = false;
+            for (int dy = -1; dy <= 1 && !edge; ++dy) {
+                for (int dx = -1; dx <= 1; ++dx) {
+                    if (dx == 0 && dy == 0)
+                        continue;
+                    if (alphaAt(x + dx, y + dy) < 48) {
+                        edge = true;
+                        break;
+                    }
+                }
+            }
+            const QColor c = edge ? Qt::white : fill;
+            out.setPixelColor(x, y, QColor(c.red(), c.green(), c.blue(), a));
+        }
+    }
+    return out.convertToFormat(QImage::Format_ARGB32_Premultiplied);
 }
 
 QImage makeBuiltinMask(const QString &fileName)
@@ -188,7 +236,7 @@ PointerEffectOverlay::PointerEffectOverlay(QWidget *host)
 
     const QImage cursorImage = loadAsset(QStringLiteral("PCIcon_MousePoint.png"));
     if (!cursorImage.isNull()) {
-        m_baCursor = QCursor(QPixmap::fromImage(cursorImage), 2, 2);
+        m_baCursor = QCursor(QPixmap::fromImage(styleCursorImage(cursorImage)), 2, 2);
         m_hasBaCursor = true;
     }
 
