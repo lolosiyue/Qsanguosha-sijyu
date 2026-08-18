@@ -9,6 +9,7 @@
 #include <QRandomGenerator>
 #include <QGuiApplication>
 #include <QStyleHints>
+#include <QQuickWidget>
 
 HomeController::HomeController(QObject *parent)
     : QObject(parent)
@@ -100,6 +101,17 @@ void HomeController::startServer() { emit startServerRequested(); }
 
 void HomeController::switchQmlScene(const QUrl &source)
 {
+    // HomeController is parented by MainWindow; the home QQuickWidget is a descendant.
+    // Switching its source keeps navigation inside the existing page stack instead of
+    // opening another top-level QWidget dialog.
+    if (QObject *window = parent()) {
+        if (QQuickWidget *view = window->findChild<QQuickWidget *>()) {
+            view->setSource(source);
+            view->setFocus();
+            emit qmlSceneRequested(source);
+            return;
+        }
+    }
     emit qmlSceneRequested(source);
 }
 
