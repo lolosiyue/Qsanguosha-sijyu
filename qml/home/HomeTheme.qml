@@ -17,6 +17,24 @@ Item {
     readonly property color baWhite: isDark ? "#E8F3FA" : "#F3F8FD"
     readonly property color baYellow: "#FFD84D"
 
+    // 技能名：亮／暗都維持對比，勿用 btnPrimary（暗色過深）
+    readonly property color skillName: isDark ? "#7EDAF2" : "#0B6B8A"
+    readonly property color skillNameRelated: isDark ? "#B7D4E4" : "#3A7A94"
+    readonly property color skillPlate: isDark ? "#553AA8D4" : "#CCE4F4"
+    readonly property color skillPlateRelated: isDark ? "#221A334C" : "#14FFFFFF"
+    readonly property color nativeSkillBg: isDark ? "#221A334C" : "#66E8F3FB"
+    readonly property color relatedSkillBg: isDark ? "#18142838" : "#55F3F0EA"
+    readonly property color hiddenBadge: isDark ? "#C4A15A" : "#B8892E"
+    readonly property color hiddenBadgeText: "#FFF8EC"
+    readonly property color tabSkillsBg: isDark ? "#33203A58" : "#88DCEAF6"
+    readonly property color tabVoiceBg: isDark ? "#33201838" : "#88E8DFEE"
+    readonly property color tabSkillsBorder: isDark ? "#5AA8D4" : "#4EB8EA"
+    readonly property color tabVoiceBorder: isDark ? "#8A7AB0" : "#8B73A8"
+
+    // 疊在立繪／卡圖上的標籤（不隨亮暗主題反轉，保證對比）
+    readonly property color onArtScrim: "#D10B1A2E"
+    readonly property color onArtText: "#F4F8FC"
+
     readonly property color baDockTop: isDark ? "#CC243A58" : "#F0F3F8FD"
     readonly property color baDockBottom: isDark ? "#E0142844" : "#E6DCEAF6"
     readonly property color baDockBorder: isDark ? "#5A8AAB" : "#8AB3CC"
@@ -94,4 +112,31 @@ Item {
     readonly property color navTextHover:  baNavTextHover
     readonly property color navTextActive: baNavTextActive
     readonly property color navTextFocus:  baNavTextActive
+
+    // 武將頁布局：骨架與載入後畫面共用，避免尺寸對不齊
+    readonly property int generalHeaderHeight: 88
+    readonly property int generalPageHMargin: 28
+    readonly property int generalPageTopMargin: 18
+    readonly property int generalPageBottomMargin: 8
+    readonly property int generalPanelGap: 16
+    readonly property real generalListShare: 0.40
+    readonly property int generalGridMargin: 16
+    readonly property int generalCellMinWidth: 122
+    readonly property real generalCellAspect: 1.50
+    readonly property int generalCellInset: 2
+
+    function generalCellWidth(gridWidth) {
+        var w = Math.max(1, gridWidth)
+        var cols = Math.max(1, Math.floor(w / generalCellMinWidth))
+        return Math.floor(w / cols)
+    }
+
+    function generalCellHeight(gridWidth) {
+        return Math.round(generalCellWidth(gridWidth) * generalCellAspect)
+    }
+
+    function generalCellColumns(gridWidth) {
+        var w = Math.max(1, gridWidth)
+        return Math.max(1, Math.floor(w / generalCellMinWidth))
+    }
 }
