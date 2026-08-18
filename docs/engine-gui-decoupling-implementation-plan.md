@@ -341,7 +341,7 @@ target_precompile_headers(qsanguosha_engine PRIVATE
 建置與測試命令使用既有增量流程：
 
 ```powershell
-cmake --preset vs2019-x64
+cmake --preset vs2026-x64
 cmake --build --preset debug --target qsanguosha_engine --parallel 8
 cmake --build --preset debug --parallel 8
 ctest --preset debug --output-on-failure

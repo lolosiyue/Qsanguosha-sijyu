@@ -1,5 +1,5 @@
 param(
-    [string]$QtRoot = 'C:\Qt\6.5.3\msvc2019_64',
+    [string]$QtRoot = 'H:\Qt6111\6.11.1\msvc2022_64',
     [string]$CMakeExe = '',
     [switch]$Deploy,
     [string]$FmodRuntime = ''
