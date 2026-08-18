@@ -1865,18 +1865,6 @@ bool isHideSkill() const;
 	const TriggerSkill*toTriggerSkill() const{
 		return qobject_cast<const TriggerSkill*>($self);
 	}
-
-	QString objectName() const {
-		return $self->objectName();
-	}
-
-	QVariant property(const char*name) const {
-		return $self->property(name);
-	}
-
-	bool inherits(const char*class_name) {
-		return $self->inherits(class_name);
-	}
 };
 
 class TriggerSkill: public Skill {

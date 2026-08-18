@@ -1,7 +1,6 @@
 import QtQuick
-import QtQuick.Layouts
 
-ColumnLayout {
+Item {
     id: panel
 
     property alias quickJoinBtn: quickJoinBtn
@@ -12,11 +11,16 @@ ColumnLayout {
     signal joinGameClicked()
     signal startServerClicked()
 
-    spacing: 16
+    implicitWidth: 470
+    implicitHeight: 264
 
     HomeMainButton {
         id: quickJoinBtn
-        Layout.fillWidth: true
+
+        x: 0
+        y: 0
+        width: 470
+        height: 80
 
         primary: true
         text: qsTr("快速加入")
@@ -30,7 +34,11 @@ ColumnLayout {
 
     HomeMainButton {
         id: joinGameBtn
-        Layout.fillWidth: true
+
+        x: 18
+        y: 96
+        width: 440
+        height: 76
 
         text: qsTr("加入游戏")
         iconSource: "qrc:/QSanguosha/Home/icons/join-game.svg"
@@ -43,7 +51,11 @@ ColumnLayout {
 
     HomeMainButton {
         id: startServerBtn
-        Layout.fillWidth: true
+
+        x: 36
+        y: 188
+        width: 410
+        height: 76
 
         text: qsTr("启动服务器")
         iconSource: "qrc:/QSanguosha/Home/icons/server.svg"

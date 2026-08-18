@@ -24,7 +24,7 @@ Item {
         }
     }
 
-    property string visualMode: Config.getValue("VisualMode", "normal")
+    property string visualMode: Config ? Config.getValue("VisualMode", "normal") : "normal"
 
     Item {
         id: contentHost
@@ -72,14 +72,18 @@ Item {
                 HomeBottomBar {
                     id: bottomBar
 
-                    anchors.left: parent.left
-                    anchors.right: parent.right
+                    anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
-                    anchors.leftMargin: parent.width * 0.12
-                    anchors.rightMargin: parent.width * 0.12
                     anchors.bottomMargin: 12
 
+                    width: 1440
                     height: 136
+                    opacity: 0
+
+                    transform: Translate {
+                        id: bottomEnter
+                        y: 180
+                    }
 
                     onHomeClicked: {}
                     onGeneralsClicked: homeController.openGenerals()
@@ -97,6 +101,12 @@ Item {
                 anchors.top: parent.top
                 anchors.leftMargin: 32
                 anchors.topMargin: 24
+                opacity: 0
+
+                transform: Translate {
+                    id: playerEnter
+                    x: -180
+                }
             }
 
             // LOGO：移至右側三個主按鈕上方
@@ -115,6 +125,12 @@ Item {
                 fillMode: Image.PreserveAspectFit
                 mipmap: true
                 visible: source.toString() !== "" && status === Image.Ready
+                opacity: 0
+
+                transform: Translate {
+                    id: logoEnter
+                    y: -20
+                }
             }
 
             MainActionPanel {
@@ -126,6 +142,12 @@ Item {
                 anchors.verticalCenterOffset: -25
 
                 width: Math.min(520, parent.width * 0.3)
+                opacity: 0
+
+                transform: Translate {
+                    id: actionEnter
+                    x: 250
+                }
 
                 onQuickJoinClicked: homeController.quickJoin()
                 onJoinGameClicked: homeController.joinGame()
@@ -138,6 +160,12 @@ Item {
                 anchors.right: parent.right
                 anchors.rightMargin: 16
                 anchors.verticalCenter: parent.verticalCenter
+                opacity: 0
+
+                transform: Translate {
+                    id: sideEnter
+                    x: 150
+                }
 
                 onSettingsClicked: homeController.openSettings()
                 onAboutClicked: homeController.openAbout()
@@ -205,5 +233,85 @@ Item {
 
         // 初始焦點：主按鈕
         actionPanel.quickJoinBtn.forceActiveFocus()
+        enterAnim.start()
+    }
+
+    ParallelAnimation {
+        id: enterAnim
+
+        NumberAnimation {
+            target: bottomEnter
+            property: "y"
+            to: 0
+            duration: 320
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            target: bottomBar
+            property: "opacity"
+            to: 1
+            duration: 200
+            easing.type: Easing.OutCubic
+        }
+
+        NumberAnimation {
+            target: actionEnter
+            property: "x"
+            to: 0
+            duration: 300
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            target: actionPanel
+            property: "opacity"
+            to: 1
+            duration: 200
+            easing.type: Easing.OutCubic
+        }
+
+        NumberAnimation {
+            target: sideEnter
+            property: "x"
+            to: 0
+            duration: 260
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            target: sideBar
+            property: "opacity"
+            to: 1
+            duration: 180
+            easing.type: Easing.OutCubic
+        }
+
+        NumberAnimation {
+            target: playerEnter
+            property: "x"
+            to: 0
+            duration: 280
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            target: playerInfo
+            property: "opacity"
+            to: 1
+            duration: 200
+            easing.type: Easing.OutCubic
+        }
+
+        NumberAnimation {
+            target: logoEnter
+            property: "y"
+            to: 0
+            duration: 300
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            target: logo
+            property: "opacity"
+            to: 1
+            duration: 220
+            easing.type: Easing.OutCubic
+        }
     }
 }
