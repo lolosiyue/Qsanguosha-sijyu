@@ -428,6 +428,7 @@ public:
     QString getSnapshotDir() const;
     void setReplayPath(const QString &path);
     QString getReplayPath() const;
+    void initializeReplayRecordPath();
 
     void sortByActionOrder(QList<ServerPlayer*>&players);
 
