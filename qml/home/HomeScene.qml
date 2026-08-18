@@ -31,12 +31,16 @@ Item {
 
     property string visualMode: Config ? Config.getValue("VisualMode", "normal") : "normal"
     readonly property bool generalsOpen: homeController.currentPage === "generals"
+    property bool generalsMounted: false
     readonly property bool generalPageBusy: {
         if (!generalsOpen)
             return false
-        if (generalPage.status !== Loader.Ready || generalPage.item === null)
-            return true
-        return generalPage.item.catalogPending === true
+        return generalPage.status !== Loader.Ready || generalPage.item === null
+    }
+
+    onGeneralsOpenChanged: {
+        if (generalsOpen)
+            generalsMounted = true
     }
 
     Item {
@@ -201,7 +205,7 @@ Item {
                 anchors.bottomMargin: 148
                 z: 40
                 asynchronous: true
-                active: root.generalsOpen
+                active: root.generalsMounted
                 source: "GeneralScene.qml"
                 visible: root.generalsOpen && !root.generalPageBusy
                 onStatusChanged: {
@@ -213,7 +217,7 @@ Item {
                 }
             }
 
-            // 點擊當幀先畫與載入後相同的面板框架，內容格用 skeleton 佔位
+            // Loader 編譯期間先畫面板骨架；Ready 後揭 GeneralScene，立繪再分幀載入
             Item {
                 id: generalPageSkeleton
                 anchors.fill: generalPage
