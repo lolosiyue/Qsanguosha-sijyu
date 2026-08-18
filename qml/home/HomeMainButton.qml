@@ -7,10 +7,10 @@ AbstractButton {
 
     property url iconSource: ""
     property bool primary: false
-    property bool highContrast: Config.getValue("VisualMode", "normal") === "highcontrast"
+    property bool highContrast: Config ? Config.getValue("VisualMode", "normal") === "highcontrast" : false
 
-    implicitWidth: 540
-    implicitHeight: 112
+    implicitWidth: control.primary ? 470 : 440
+    implicitHeight: control.primary ? 80 : 76
 
     hoverEnabled: true
     focusPolicy: Qt.StrongFocus
@@ -19,40 +19,37 @@ AbstractButton {
     Accessible.name: control.text
     Accessible.description: control.text
 
-    scale: control.activeFocus
-           ? 1.03
-           : down ? 0.975
-                  : hovered ? 1.025
-                            : 1.0
+    scale: control.down ? 0.91 : 1.0
 
-    x: hovered && !down ? 6 : 0
+    transform: Translate {
+        y: control.hovered && !control.down ? -3 : 0
 
-    Behavior on scale {
-        NumberAnimation {
-            duration: 110
-            easing.type: Easing.OutCubic
+        Behavior on y {
+            NumberAnimation {
+                duration: 140
+                easing.type: Easing.OutCubic
+            }
         }
     }
 
-    Behavior on x {
+    Behavior on scale {
         NumberAnimation {
-            duration: 130
+            duration: 90
             easing.type: Easing.OutCubic
         }
     }
 
     background: Item {
-        // 鍵盤焦點外光環
         Rectangle {
             anchors.fill: parent
             anchors.margins: -6
 
-            radius: height / 2
+            radius: 12
             color: "transparent"
 
-            border.width: control.activeFocus ? (control.highContrast ? 7 : 5) : 0
+            border.width: control.activeFocus ? (control.highContrast ? 4 : 2) : 0
             border.color: control.activeFocus
-                          ? (control.highContrast ? HomeTheme.focusBorderHigh : HomeTheme.focusBorder)
+                          ? (control.highContrast ? HomeTheme.focusBorderHigh : HomeTheme.baFocusRing)
                           : "transparent"
 
             visible: control.activeFocus
@@ -64,29 +61,29 @@ AbstractButton {
             }
         }
 
-        Rectangle {
-            anchors.fill: parent
-            anchors.topMargin: 8
-
-            radius: height / 2
-            color: HomeTheme.btnShadow
-        }
-
-        Rectangle {
+        BASlantedPanel {
             anchors.fill: parent
 
-            radius: height / 2
+            slant: -0.12
+            cornerRadius: 10
+            shadowBlur: 12
+            shadowOffset: 5
+            borderWidth: control.activeFocus ? 2 : 1
 
-            color: control.primary
-                   ? (control.down ? HomeTheme.btnPrimaryDown : HomeTheme.btnPrimary)
-                   : (control.down ? HomeTheme.btnSecondaryDown : HomeTheme.btnSecondary)
+            topColor: control.primary
+                      ? HomeTheme.baPrimaryTop
+                      : HomeTheme.baSecondaryTop
+            bottomColor: control.primary
+                         ? (control.down ? HomeTheme.btnPrimaryDown : HomeTheme.baPrimaryBottom)
+                         : (control.down ? HomeTheme.btnSecondaryDown : HomeTheme.baSecondaryBottom)
+            borderColor: control.primary
+                         ? HomeTheme.btnPrimaryBorder
+                         : HomeTheme.baDockBorder
+            shadowColor: HomeTheme.baDockShadow
 
-            border.width: control.activeFocus ? 4
-                         : control.hovered ? 3
-                                           : 2
-            border.color: control.activeFocus
-                          ? HomeTheme.focusBorderHigh
-                          : control.primary ? HomeTheme.btnPrimaryBorder : HomeTheme.btnSecondaryBorder
+            accentVisible: control.primary
+            accentColor: HomeTheme.baYellow
+            accentHeight: 3
         }
     }
 
@@ -95,10 +92,10 @@ AbstractButton {
             id: iconCircle
 
             anchors.left: parent.left
-            anchors.leftMargin: 10
+            anchors.leftMargin: 14
             anchors.verticalCenter: parent.verticalCenter
 
-            width: control.height - 20
+            width: control.height - 28
             height: width
             radius: width / 2
 
@@ -123,19 +120,19 @@ AbstractButton {
             id: label
 
             anchors.left: iconCircle.right
-            anchors.leftMargin: 28
+            anchors.leftMargin: 20
             anchors.right: parent.right
-            anchors.rightMargin: 38
+            anchors.rightMargin: 24
             anchors.verticalCenter: parent.verticalCenter
 
             text: control.text
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
 
-            color: control.primary ? HomeTheme.btnPrimaryText : HomeTheme.btnSecondaryText
+            color: control.primary ? HomeTheme.btnPrimaryText : HomeTheme.baNavy
             font.pixelSize: control.highContrast
-                            ? Math.max(28, control.height * 0.37)
-                            : Math.max(22, control.height * 0.29)
+                            ? Math.max(22, control.height * 0.32)
+                            : Math.max(20, control.height * 0.28)
             font.weight: control.highContrast ? Font.Bold : Font.DemiBold
         }
     }
