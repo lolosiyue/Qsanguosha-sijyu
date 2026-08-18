@@ -3,17 +3,17 @@
 
 #include <QApplication>
 #include <QCoreApplication>
-#include <QDialog>
 #include <QEvent>
 #include <QFile>
 #include <QGuiApplication>
 #include <QMainWindow>
+#include <QPaintEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPen>
+#include <QPixmap>
 #include <QPolygon>
-#include <QPolygonF>
 #include <QRandomGenerator>
-#include <QTransform>
 #include <QtMath>
 
 namespace {
@@ -24,7 +24,9 @@ const qreal kDurationScale = 1.0;
 const qreal kFragmentScale = 1.2;
 const qreal kTrailDurationMs = 300.0;
 const qreal kPixelsPerUnit = 720.0;
-const int kMaxTrailPoints = 320;
+const int kMaxTrailPoints = 80;
+const int kMaxMoveParticles = 24;
+const int kMaxMoveSpawnPerStep = 6;
 
 qreal randomRange(qreal minimum, qreal maximum)
 {
@@ -63,6 +65,13 @@ QImage tintCopy(const QImage &src, const QRect &srcRect, const QColor &tint, qre
     return piece;
 }
 
+QPixmap bakeTintedPixmap(const QImage &src, const QColor &tint, qreal emission)
+{
+    if (src.isNull())
+        return {};
+    return QPixmap::fromImage(tintCopy(src, src.rect(), tint, emission));
+}
+
 QImage makeCircleMask()
 {
     const int size = 128;
@@ -90,21 +99,6 @@ QImage makeRingMask()
     QLinearGradient gradient(0, 0, width, 0);
     gradient.setColorAt(0.0, QColor(255, 255, 255, 0));
     gradient.setColorAt(0.5, QColor(255, 255, 255, 255));
-    gradient.setColorAt(1.0, QColor(255, 255, 255, 0));
-    painter.fillRect(image.rect(), gradient);
-    return image;
-}
-
-QImage makeTrailMask()
-{
-    const int size = 128;
-    QImage image(size, size, QImage::Format_ARGB32_Premultiplied);
-    image.fill(Qt::transparent);
-    QPainter painter(&image);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-    QRadialGradient gradient(size * 0.35, size * 0.5, size * 0.65);
-    gradient.setColorAt(0.0, QColor(255, 255, 255, 255));
-    gradient.setColorAt(0.45, QColor(255, 255, 255, 140));
     gradient.setColorAt(1.0, QColor(255, 255, 255, 0));
     painter.fillRect(image.rect(), gradient);
     return image;
@@ -160,8 +154,6 @@ QImage makeBuiltinMask(const QString &fileName)
         return makeCircleMask();
     if (fileName.contains(QLatin1String("Ring")))
         return makeRingMask();
-    if (fileName.contains(QLatin1String("Trail")))
-        return makeTrailMask();
     if (fileName.contains(QLatin1String("Triangle")))
         return makeTriangleMask();
     if (fileName.contains(QLatin1String("MousePoint")))
@@ -185,10 +177,14 @@ PointerEffectOverlay::PointerEffectOverlay(QWidget *host)
     // 使用獨立 Tool 視窗：FitView 的 QOpenGLWidget viewport 不能再疊 GL widget，
     // 且一般 QWidget 子控件會被 native GL 視窗蓋住。
 
-    m_circle = loadAsset(QStringLiteral("FX_TEX_Circle_01.png"), true);
-    m_ring = loadAsset(QStringLiteral("FX_TEX_Grad_Ring3.png"), false);
-    m_trail = loadAsset(QStringLiteral("FX_TEX_Trail_03.png"), true);
-    m_triangle = loadAsset(QStringLiteral("FX_TEX_Triangle_02_1.png"), false);
+    const QImage circle = loadAsset(QStringLiteral("FX_TEX_Circle_01.png"), true);
+    const QImage ring = loadAsset(QStringLiteral("FX_TEX_Grad_Ring3.png"), false);
+    const QImage triangle = loadAsset(QStringLiteral("FX_TEX_Triangle_02_1.png"), false);
+    m_circlePm = QPixmap::fromImage(circle);
+    m_circleBluePm = bakeTintedPixmap(circle, QColor::fromRgbF(0.24056602, 0.39061815, 1.0), 2.0);
+    m_ringPm = QPixmap::fromImage(ring);
+    m_ringBluePm = bakeTintedPixmap(ring, QColor(76, 167, 255), 3.2);
+    m_trianglePm = bakeTintedPixmap(triangle, QColor::fromRgbF(0.3726415, 0.7731873, 1.0), 1.86);
 
     const QImage cursorImage = loadAsset(QStringLiteral("PCIcon_MousePoint.png"));
     if (!cursorImage.isNull()) {
@@ -222,18 +218,12 @@ void PointerEffectOverlay::syncToHost()
         ? mainWindow->centralWidget()
         : m_host;
     const QRect geo(area->mapToGlobal(QPoint(0, 0)), area->size());
-    setGeometry(geo);
-
-    bool dialogOpen = false;
-    const auto topLevels = QApplication::topLevelWidgets();
-    for (QWidget *widget : topLevels) {
-        if (widget == m_host || widget == this || !widget->isVisible())
-            continue;
-        if (qobject_cast<QDialog *>(widget)) {
-            dialogOpen = true;
-            break;
-        }
+    if (geo != m_syncedGeo) {
+        m_syncedGeo = geo;
+        setGeometry(geo);
     }
+
+    const bool dialogOpen = QApplication::activeModalWidget() != nullptr;
 
     const bool hostVisible = m_host->isVisible() && !m_host->isMinimized() && !dialogOpen;
     if (m_active && hostVisible) {
@@ -302,8 +292,11 @@ void PointerEffectOverlay::onFrame()
 
     pruneExpired(now);
     const bool content = hasVisibleContent(now);
-    if (content || m_lastHadContent)
-        update();
+    const QRect dirty = content ? visibleBounds(now) : QRect();
+    const QRect toPaint = dirty.united(m_lastPainted);
+    if (!toPaint.isEmpty())
+        update(toPaint.adjusted(-4, -4, 4, 4));
+    m_lastPainted = dirty;
     m_lastHadContent = content;
 }
 
@@ -320,6 +313,7 @@ void PointerEffectOverlay::setActive(bool active)
     m_emissionCarry = 0;
     m_prevButtons = Qt::NoButton;
     m_lastHadContent = true;
+    m_lastPainted = QRect();
 
     if (active) {
         m_timer.start();
@@ -392,12 +386,12 @@ void PointerEffectOverlay::updateTrail(const QPointF &pos, qreal now)
 
     const QPointF delta = pos - m_lastTrailPos;
     const qreal distance = qHypot(delta.x(), delta.y());
-    if (distance < 0.01 * pixels)
+    if (distance < 0.02 * pixels)
         return;
 
     m_trailPoints.append({pos, now});
-    const qreal expected = m_emissionCarry + distance / pixels * 5.0;
-    const int count = qMin(int(qFloor(expected)), 64);
+    const qreal expected = m_emissionCarry + distance / pixels * 2.0;
+    const int count = qMin(int(qFloor(expected)), kMaxMoveSpawnPerStep);
     m_emissionCarry = expected - qFloor(expected);
     for (int i = 0; i < count; ++i) {
         const qreal t = qreal(i + 1) / qreal(count + 1);
@@ -405,14 +399,19 @@ void PointerEffectOverlay::updateTrail(const QPointF &pos, qreal now)
                             m_lastTrailPos.y() + delta.y() * t);
         m_moveParticles.append(createTriangle(spawn, now, true));
     }
+    while (m_moveParticles.size() > kMaxMoveParticles)
+        m_moveParticles.removeFirst();
     m_lastTrailPos = pos;
 }
 
 void PointerEffectOverlay::pruneExpired(qreal now)
 {
     const qreal cutoff = now - kTrailDurationMs;
-    while (!m_trailPoints.isEmpty() && m_trailPoints.first().time < cutoff)
-        m_trailPoints.removeFirst();
+    int first = 0;
+    while (first < m_trailPoints.size() && m_trailPoints[first].time < cutoff)
+        ++first;
+    if (first > 0)
+        m_trailPoints.erase(m_trailPoints.begin(), m_trailPoints.begin() + first);
     if (m_trailPoints.size() > kMaxTrailPoints)
         m_trailPoints.erase(m_trailPoints.begin(),
                             m_trailPoints.begin() + (m_trailPoints.size() - kMaxTrailPoints));
@@ -433,13 +432,39 @@ bool PointerEffectOverlay::hasVisibleContent(qreal now) const
     return !m_trailPoints.isEmpty() || !m_clickEffects.isEmpty() || !m_moveParticles.isEmpty();
 }
 
-void PointerEffectOverlay::paintEvent(QPaintEvent *)
+QPointF PointerEffectOverlay::trianglePosition(const TriangleParticle &particle, qreal now) const
+{
+    const qreal simulatedAge = (now - particle.startedAt) / 1000.0 / kDurationScale;
+    const qreal pixels = kPixelsPerUnit * kEffectScale;
+    return particle.origin
+        + (particle.shapeOffset + particle.direction * (particle.speed * simulatedAge)) * pixels;
+}
+
+QRect PointerEffectOverlay::visibleBounds(qreal now) const
+{
+    QRect bounds;
+    auto include = [&bounds](const QPointF &pos, qreal radius) {
+        bounds = bounds.united(QRect(int(pos.x() - radius), int(pos.y() - radius),
+                                     int(radius * 2) + 2, int(radius * 2) + 2));
+    };
+    for (const TrailPoint &point : m_trailPoints)
+        include(point.pos, 36);
+    for (const ClickEffect &effect : m_clickEffects) {
+        include(effect.position, 96);
+        for (const TriangleParticle &particle : effect.triangles)
+            include(trianglePosition(particle, now), 40);
+    }
+    for (const TriangleParticle &particle : m_moveParticles)
+        include(trianglePosition(particle, now), 40);
+    return bounds.intersected(rect());
+}
+
+void PointerEffectOverlay::paintEvent(QPaintEvent *event)
 {
     QPainter painter(this);
-    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.setCompositionMode(QPainter::CompositionMode_Source);
-    painter.fillRect(rect(), Qt::transparent);
+    painter.fillRect(event->rect(), Qt::transparent);
 
     const qreal now = m_clock.elapsed();
     drawTrail(painter, now);
@@ -451,54 +476,49 @@ void PointerEffectOverlay::paintEvent(QPaintEvent *)
 
 void PointerEffectOverlay::drawTrail(QPainter &painter, qreal now)
 {
-    if (m_trail.isNull() || m_trailPoints.size() < 2)
+    if (m_trailPoints.size() < 2)
         return;
 
-    QVector<QPointF> pts;
-    QVector<qreal> ages;
-    pts.reserve(m_trailPoints.size());
-    ages.reserve(m_trailPoints.size());
-    QPointF previous;
-    bool hasPrevious = false;
+    QPainterPath buckets[4];
+    int prevBucket = -1;
+    QPointF prevPos;
+    bool hasPrev = false;
     for (const TrailPoint &point : m_trailPoints) {
-        if (hasPrevious) {
-            const QPointF d = point.pos - previous;
+        if (hasPrev) {
+            const QPointF d = point.pos - prevPos;
             if (d.x() * d.x() + d.y() * d.y() < 0.0625)
                 continue;
         }
-        pts.append(point.pos);
-        ages.append(qBound(0.0, (now - point.time) / kTrailDurationMs, 1.0));
-        previous = point.pos;
-        hasPrevious = true;
+        const qreal age = qBound(0.0, (now - point.time) / kTrailDurationMs, 1.0);
+        const int bucket = qBound(0, int(age * 4.0), 3);
+        if (!hasPrev || bucket != prevBucket)
+            buckets[bucket].moveTo(hasPrev ? prevPos : point.pos);
+        buckets[bucket].lineTo(point.pos);
+        prevPos = point.pos;
+        prevBucket = bucket;
+        hasPrev = true;
     }
-    if (pts.size() < 2)
-        return;
 
-    // 無 HDR Bloom，加寬帶狀網格以接近原特效可見寬度
     const qreal coreWidth = qMax(0.5, 0.005 * kPixelsPerUnit * kEffectScale);
-    const qreal halfWidth = coreWidth * 4.0;
-    const QRect src(0, 0, m_trail.width(), m_trail.height());
+    const qreal widths[] = {coreWidth * 16.0, coreWidth * 9.0, coreWidth * 3.5};
+    const qreal opacities[] = {0.22, 0.5, 1.0};
+    const qreal bucketAge[] = {0.12, 0.38, 0.62, 0.88};
 
-    for (int i = 0; i < pts.size() - 1; ++i) {
-        const QPointF off0 = trailOffset(pts, i, halfWidth);
-        const QPointF off1 = trailOffset(pts, i + 1, halfWidth);
-        QPolygonF quad;
-        quad << pts[i] + off0 << pts[i] - off0 << pts[i + 1] - off1 << pts[i + 1] + off1;
-        const QPolygonF srcPoly = QPolygonF(QRectF(src));
-        QTransform transform;
-        if (!QTransform::quadToQuad(srcPoly, quad, transform))
-            continue;
-        const qreal age = (ages[i] + ages[i + 1]) * 0.5;
-        qreal fade = 1.0 - age;
-        fade = fade * fade * (3.0 - 2.0 * fade);
-        const QColor color = trailColor(age);
-        const QImage slice = tintCopy(m_trail, src, color, 2.4);
-        painter.save();
-        painter.setTransform(transform, true);
-        painter.setCompositionMode(QPainter::CompositionMode_Plus);
-        painter.setOpacity(kEffectOpacity * fade);
-        painter.drawImage(src, slice);
-        painter.restore();
+    painter.setCompositionMode(QPainter::CompositionMode_Plus);
+    for (int layer = 0; layer < 3; ++layer) {
+        QPen pen(Qt::white, widths[layer], Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+        for (int bucket = 0; bucket < 4; ++bucket) {
+            if (buckets[bucket].elementCount() < 2)
+                continue;
+            qreal fade = 1.0 - bucketAge[bucket];
+            fade = fade * fade * (3.0 - 2.0 * fade);
+            QColor color = trailColor(bucketAge[bucket]);
+            color.setAlphaF(qBound(0.0, kEffectOpacity * opacities[layer] * fade, 1.0));
+            pen.setColor(color);
+            painter.setPen(pen);
+            painter.setBrush(Qt::NoBrush);
+            painter.drawPath(buckets[bucket]);
+        }
     }
 }
 
@@ -513,13 +533,14 @@ void PointerEffectOverlay::drawClickEffects(QPainter &painter, qreal now)
                 ? 1.0
                 : 1.0 - (flashProgress - 0.1088) / 0.8912;
             const qreal blueTime = 7903.0 / 65535.0;
-            const QColor blue = QColor::fromRgbF(0.24056602, 0.39061815, 1.0);
-            const QColor color = flashProgress < blueTime
-                ? lerpColor(Qt::white, blue, flashProgress / blueTime)
-                : blue;
-            drawSprite(painter, m_circle, m_circle.rect(), effect.position,
-                       QSizeF(diameter * 1.34, diameter * 1.34), 0, color,
-                       fade * kEffectOpacity, 2.0);
+            const qreal mix = flashProgress < blueTime ? flashProgress / blueTime : 1.0;
+            const QSizeF size(diameter * 1.34, diameter * 1.34);
+            if (1.0 - mix > 0.01)
+                drawSprite(painter, m_circlePm, m_circlePm.rect(), effect.position,
+                           size, 0, fade * (1.0 - mix) * kEffectOpacity);
+            if (mix > 0.01)
+                drawSprite(painter, m_circleBluePm, m_circleBluePm.rect(), effect.position,
+                           size, 0, fade * mix * kEffectOpacity);
         }
 
         for (const MeshParticle &particle : effect.meshParticles) {
@@ -534,9 +555,16 @@ void PointerEffectOverlay::drawClickEffects(QPainter &painter, qreal now)
             const qreal opacity = kEffectOpacity * 0.92 * (1.0 - qBound(0.0, threshold, 1.0));
             if (opacity <= 0.01)
                 continue;
-            drawSprite(painter, m_ring, m_ring.rect(), effect.position,
-                       QSizeF(scale, scale), rotation, meshTriColor(progress),
-                       opacity, 3.2);
+            const qreal mix = progress <= 0.1118
+                ? 0.0
+                : (progress >= 0.5 ? 1.0 : (progress - 0.1118) / 0.3882);
+            const QSizeF size(scale, scale);
+            if (1.0 - mix > 0.01)
+                drawSprite(painter, m_ringPm, m_ringPm.rect(), effect.position,
+                           size, rotation, opacity * (1.0 - mix));
+            if (mix > 0.01)
+                drawSprite(painter, m_ringBluePm, m_ringBluePm.rect(), effect.position,
+                           size, rotation, opacity * mix);
         }
     }
 }
@@ -544,48 +572,44 @@ void PointerEffectOverlay::drawClickEffects(QPainter &painter, qreal now)
 void PointerEffectOverlay::drawTriangles(QPainter &painter, qreal now,
                                          const QVector<TriangleParticle> &particles)
 {
-    if (m_triangle.isNull())
+    if (m_trianglePm.isNull())
         return;
 
-    const int halfW = qMax(1, m_triangle.width() / 2);
+    const int halfW = qMax(1, m_trianglePm.width() / 2);
     for (const TriangleParticle &particle : particles) {
         const qreal simulatedAge = (now - particle.startedAt) / 1000.0 / kDurationScale;
         const qreal progress = simulatedAge / particle.lifetime;
         if (progress < 0.0 || progress > 1.0)
             continue;
 
-        const qreal pixels = kPixelsPerUnit * kEffectScale;
-        const QPointF position = particle.origin
-            + (particle.shapeOffset + particle.direction * (particle.speed * simulatedAge)) * pixels;
-        const qreal size = particle.size * pixels * 0.3078824 * triangleSizeCurve(progress)
-            * kFragmentScale;
+        const QPointF position = trianglePosition(particle, now);
+        const qreal size = particle.size * kPixelsPerUnit * kEffectScale * 0.3078824
+            * triangleSizeCurve(progress) * kFragmentScale;
         const qreal opacity = kEffectOpacity * triangleOpacity(progress);
         if (opacity <= 0.01 || size <= 0.5)
             continue;
 
         const QRect src = particle.alternateFrame
-            ? QRect(halfW, 0, m_triangle.width() - halfW, m_triangle.height())
-            : QRect(0, 0, halfW, m_triangle.height());
-        drawSprite(painter, m_triangle, src, position, QSizeF(size, size), 0,
-                   triangleColor(progress), opacity, 1.86);
+            ? QRect(halfW, 0, m_trianglePm.width() - halfW, m_trianglePm.height())
+            : QRect(0, 0, halfW, m_trianglePm.height());
+        drawSprite(painter, m_trianglePm, src, position, QSizeF(size, size), 0, opacity);
     }
 }
 
-void PointerEffectOverlay::drawSprite(QPainter &painter, const QImage &image, const QRectF &src,
+void PointerEffectOverlay::drawSprite(QPainter &painter, const QPixmap &pixmap, const QRectF &src,
                                       const QPointF &center, const QSizeF &size, qreal rotationRad,
-                                      const QColor &tint, qreal opacity, qreal emission)
+                                      qreal opacity)
 {
-    if (image.isNull() || opacity <= 0.0 || size.width() <= 0.0 || size.height() <= 0.0)
+    if (pixmap.isNull() || opacity <= 0.0 || size.width() <= 0.0 || size.height() <= 0.0)
         return;
 
-    const QImage tinted = tintCopy(image, src.toRect(), tint, emission);
     painter.save();
     painter.translate(center);
     painter.rotate(qRadiansToDegrees(rotationRad));
     painter.setCompositionMode(QPainter::CompositionMode_Plus);
     painter.setOpacity(qBound(0.0, opacity, 1.0));
-    painter.drawImage(QRectF(-size.width() * 0.5, -size.height() * 0.5, size.width(), size.height()),
-                      tinted);
+    painter.drawPixmap(QRectF(-size.width() * 0.5, -size.height() * 0.5, size.width(), size.height()),
+                       pixmap, src);
     painter.restore();
 }
 
@@ -773,32 +797,4 @@ QColor PointerEffectOverlay::trailColor(qreal progress)
     if (progress <= secondTime)
         return lerpColor(bright, dim, (progress - firstTime) / (secondTime - firstTime));
     return lerpColor(dim, Qt::black, (progress - secondTime) / (1.0 - secondTime));
-}
-
-QPointF PointerEffectOverlay::trailOffset(const QVector<QPointF> &pts, int index, qreal halfWidth)
-{
-    auto directionAt = [&pts](int from, int to) {
-        QPointF d = pts[to] - pts[from];
-        const qreal len = qHypot(d.x(), d.y());
-        if (len < 0.0001)
-            return QPointF(0, 1);
-        return d / len;
-    };
-    const QPointF prevDir = index > 0 ? directionAt(index - 1, index) : directionAt(0, 1);
-    const QPointF nextDir = index < pts.size() - 1 ? directionAt(index, index + 1) : prevDir;
-    const QPointF prevNormal(-prevDir.y(), prevDir.x());
-    const QPointF nextNormal(-nextDir.y(), nextDir.x());
-    if (index == 0)
-        return nextNormal * halfWidth;
-    if (index == pts.size() - 1)
-        return prevNormal * halfWidth;
-
-    QPointF miter = prevNormal + nextNormal;
-    const qreal miterLen2 = miter.x() * miter.x() + miter.y() * miter.y();
-    if (miterLen2 < 0.0001)
-        return nextNormal * halfWidth;
-    miter /= qSqrt(miterLen2);
-    const qreal denominator = qMax(0.35, qAbs(QPointF::dotProduct(miter, nextNormal)));
-    const qreal length = qMin(halfWidth / denominator, halfWidth * 2.0);
-    return miter * length;
 }
