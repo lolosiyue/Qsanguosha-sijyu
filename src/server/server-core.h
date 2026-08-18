@@ -44,10 +44,14 @@ public:
 
 private:
     GameSessionConfig gameSessionConfig(quint64 sessionIndex) const;
+    void scheduleDisposeRoom(Room *room);
+    void waitForDisposingRooms();
+    bool disposingRoomStillRunning() const;
 
     ServerSocket *server;
     Room *current;
     QSet<Room *> rooms;
+    QList<QPointer<Room> > m_disposingRooms;
     QHash<QString, ServerPlayer *> players;
     QSet<QString> addresses;
     QMultiHash<QString, QString> name2objname;
