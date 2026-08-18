@@ -133,9 +133,11 @@ QString HomeController::translate(const QString &key) const
     return Sanguosha ? Sanguosha->translate(key) : key;
 }
 
-QString HomeController::uiText(const QString &source) const
+QString HomeController::qtTranslate(const QString &context, const QString &source) const
 {
-    return QCoreApplication::translate("GeneralScene", source.toUtf8().constData());
+    const QByteArray contextUtf8 = context.toUtf8();
+    const QByteArray sourceUtf8 = source.toUtf8();
+    return QCoreApplication::translate(contextUtf8.constData(), sourceUtf8.constData());
 }
 
 QString HomeController::kingdomColor(const QString &kingdom) const
