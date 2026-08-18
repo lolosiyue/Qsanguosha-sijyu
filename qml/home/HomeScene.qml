@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Effects
+import QtQuick.Layouts
+import "."
 
 Item {
     id: root
@@ -25,6 +27,14 @@ Item {
     }
 
     property string visualMode: Config ? Config.getValue("VisualMode", "normal") : "normal"
+    readonly property bool generalsOpen: homeController.currentPage === "generals"
+    readonly property bool generalPageBusy: {
+        if (!generalsOpen)
+            return false
+        if (generalPage.status !== Loader.Ready || generalPage.item === null)
+            return true
+        return generalPage.item.catalogPending === true
+    }
 
     Item {
         id: contentHost
@@ -50,6 +60,8 @@ Item {
             // 角色：佔滿上下，放大且底緣下沉，下半身疊入底部導覽列，略偏中間
             CharacterLayer {
                 id: characterLayer
+
+                visible: !root.generalsOpen
 
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
@@ -85,7 +97,7 @@ Item {
                         y: 180
                     }
 
-                    onHomeClicked: {}
+                    onHomeClicked: homeController.openHome()
                     onGeneralsClicked: homeController.openGenerals()
                     onCardsClicked: homeController.openCards()
                     onReplaysClicked: homeController.openReplays()
@@ -96,6 +108,8 @@ Item {
             // 左上角玩家資訊：頭像＋名稱（與快速加入對話框一致）
             HomePlayerInfo {
                 id: playerInfo
+
+                visible: !root.generalsOpen
 
                 anchors.left: parent.left
                 anchors.top: parent.top
@@ -113,6 +127,8 @@ Item {
             Image {
                 id: logo
 
+                visible: !root.generalsOpen && source.toString() !== "" && status === Image.Ready
+
                 anchors.right: actionPanel.right
                 anchors.bottom: actionPanel.top
                 anchors.rightMargin: 4
@@ -124,7 +140,6 @@ Item {
                 source: homeController.logoImage
                 fillMode: Image.PreserveAspectFit
                 mipmap: true
-                visible: source.toString() !== "" && status === Image.Ready
                 opacity: 0
 
                 transform: Translate {
@@ -135,6 +150,8 @@ Item {
 
             MainActionPanel {
                 id: actionPanel
+
+                visible: !root.generalsOpen
 
                 anchors.right: sideBar.left
                 anchors.rightMargin: 28
@@ -157,6 +174,8 @@ Item {
             HomeSideBar {
                 id: sideBar
 
+                visible: !root.generalsOpen
+
                 anchors.right: parent.right
                 anchors.rightMargin: 16
                 anchors.verticalCenter: parent.verticalCenter
@@ -170,6 +189,196 @@ Item {
                 onSettingsClicked: homeController.openSettings()
                 onAboutClicked: homeController.openAbout()
                 onUpdateClicked: homeController.checkUpdates()
+            }
+
+            Loader {
+                id: generalPage
+
+                anchors.fill: parent
+                anchors.bottomMargin: 148
+                z: 40
+                asynchronous: true
+                active: root.generalsOpen || item !== null
+                source: "GeneralScene.qml"
+                visible: root.generalsOpen && !root.generalPageBusy
+            }
+
+            // 點擊當幀先畫與載入後相同的面板框架，內容格用 skeleton 佔位
+            Item {
+                id: generalPageSkeleton
+                anchors.fill: generalPage
+                z: 41
+                visible: root.generalsOpen && root.generalPageBusy
+
+                Column {
+                    anchors.fill: parent
+                    anchors.leftMargin: HomeTheme.generalPageHMargin
+                    anchors.rightMargin: HomeTheme.generalPageHMargin
+                    anchors.topMargin: HomeTheme.generalPageTopMargin
+                    anchors.bottomMargin: HomeTheme.generalPageBottomMargin
+                    spacing: HomeTheme.generalPanelGap
+
+                    BASlantedPanel {
+                        width: parent.width
+                        height: HomeTheme.generalHeaderHeight
+                        slant: -0.08
+                        cornerRadius: 10
+                        shadowBlur: 0
+                        shadowOffset: 0
+                        topColor: HomeTheme.baDockTop
+                        bottomColor: HomeTheme.baDockBottom
+                        borderColor: HomeTheme.baDockBorder
+                        shadowColor: HomeTheme.baDockShadow
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 28
+                            anchors.rightMargin: 28
+                            anchors.bottomMargin: 8
+                            spacing: 18
+
+                            Text {
+                                text: homeController.qtTranslate("GeneralOverview", "General Overview")
+                                color: HomeTheme.btnSecondaryText
+                                font.pixelSize: 28
+                                font.bold: true
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.maximumWidth: 480
+                                Layout.preferredHeight: 48
+                                radius: 24
+                                color: HomeTheme.btnSecondary
+                                border.color: HomeTheme.btnSecondaryBorder
+                            }
+
+                            Rectangle {
+                                Layout.preferredWidth: 220
+                                Layout.preferredHeight: 48
+                                radius: 24
+                                color: HomeTheme.btnSecondary
+                                border.color: HomeTheme.btnSecondaryBorder
+                            }
+
+                            Rectangle {
+                                Layout.preferredWidth: 140
+                                Layout.preferredHeight: 48
+                                radius: 8
+                                color: HomeTheme.btnSecondary
+                                border.color: HomeTheme.btnSecondaryBorder
+                            }
+
+                            Text {
+                                text: "0"
+                                color: HomeTheme.btnSecondaryText
+                                font.pixelSize: 22
+                                font.bold: true
+                            }
+                        }
+                    }
+
+                    Row {
+                        width: parent.width
+                        height: parent.height - HomeTheme.generalHeaderHeight - HomeTheme.generalPanelGap
+                        spacing: HomeTheme.generalPanelGap
+
+                        BASlantedPanel {
+                            width: Math.round((parent.width - HomeTheme.generalPanelGap) * HomeTheme.generalListShare)
+                            height: parent.height
+                            slant: 0
+                            cornerRadius: 10
+                            shadowBlur: 0
+                            shadowOffset: 0
+                            topColor: HomeTheme.baDockTop
+                            bottomColor: HomeTheme.baDockBottom
+                            borderColor: HomeTheme.baDockBorder
+                            shadowColor: HomeTheme.baDockShadow
+
+                            Item {
+                                id: skGrid
+                                anchors.fill: parent
+                                anchors.margins: HomeTheme.generalGridMargin
+                                property int cellW: HomeTheme.generalCellWidth(width)
+                                property int cellH: HomeTheme.generalCellHeight(width)
+                                property int cols: HomeTheme.generalCellColumns(width)
+
+                                Grid {
+                                    anchors.fill: parent
+                                    columns: skGrid.cols
+
+                                    Repeater {
+                                        model: skGrid.cols * 3
+                                        Item {
+                                            width: skGrid.cellW
+                                            height: skGrid.cellH
+                                            SkeletonBlock {
+                                                anchors.fill: parent
+                                                anchors.margins: HomeTheme.generalCellInset
+                                                radius: 8
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        BASlantedPanel {
+                            width: Math.round((parent.width - HomeTheme.generalPanelGap) * (1.0 - HomeTheme.generalListShare))
+                            height: parent.height
+                            slant: 0
+                            cornerRadius: 10
+                            shadowBlur: 0
+                            shadowOffset: 0
+                            topColor: HomeTheme.baDockTop
+                            bottomColor: HomeTheme.baDockBottom
+                            borderColor: HomeTheme.baDockBorder
+                            clip: true
+
+                            Row {
+                                anchors.fill: parent
+                                anchors.margins: 14
+                                spacing: 12
+
+                                SkeletonBlock {
+                                    width: Math.round(parent.width * 0.33)
+                                    height: Math.min(parent.height - 28, Math.round(parent.width * 0.33 * 1.45))
+                                    radius: 10
+                                }
+
+                                Column {
+                                    width: parent.width - parent.children[0].width - 12
+                                    spacing: 8
+
+                                    SkeletonBlock { width: 140; height: 16 }
+                                    SkeletonBlock { width: 220; height: 32 }
+                                    Row {
+                                        spacing: 10
+                                        Repeater {
+                                            model: 5
+                                            SkeletonBlock { width: 22; height: 22; radius: 4 }
+                                        }
+                                    }
+                                    Row {
+                                        spacing: 8
+                                        Repeater {
+                                            model: 3
+                                            SkeletonBlock { width: 88; height: 24; radius: 4 }
+                                        }
+                                    }
+                                    Row {
+                                        spacing: 8
+                                        SkeletonBlock { width: 88; height: 36; radius: 8 }
+                                        SkeletonBlock { width: 88; height: 36; radius: 8 }
+                                    }
+                                    SkeletonBlock { width: parent.width; height: 14 }
+                                    SkeletonBlock { width: parent.width * 0.88; height: 14 }
+                                    SkeletonBlock { width: parent.width * 0.62; height: 14 }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -234,6 +443,13 @@ Item {
         // 初始焦點：主按鈕
         actionPanel.quickJoinBtn.forceActiveFocus()
         enterAnim.start()
+    }
+
+    Connections {
+        target: homeController
+        function onCurrentPageChanged() {
+            bottomBar.currentIndex = root.generalsOpen ? 1 : 0
+        }
     }
 
     ParallelAnimation {
