@@ -1,5 +1,7 @@
 #include "homecontroller.h"
 #include "engine.h"
+#include "general.h"
+#include "skill.h"
 #include "settings.h"
 #include <QCoreApplication>
 #include <QDir>
@@ -15,9 +17,7 @@ HomeController::HomeController(QObject *parent)
 
 QString HomeController::version() const
 {
-    return Sanguosha
-        ? Sanguosha->getVersionNumber()
-        : QString();
+    return Sanguosha ? Sanguosha->getVersionNumber() : QString();
 }
 
 bool HomeController::updateAvailable() const
@@ -30,33 +30,25 @@ QUrl HomeController::backgroundImage() const
     const QString &path = Config.BackgroundImage;
     if (path.isEmpty())
         return QUrl();
-
     if (QDir::isAbsolutePath(path))
         return QUrl::fromLocalFile(path);
-
-    return QUrl::fromLocalFile(
-        QDir::current().absoluteFilePath(path));
+    return QUrl::fromLocalFile(QDir::current().absoluteFilePath(path));
 }
 
 QUrl HomeController::characterImage() const
 {
-    const QString absPath = QDir::current().absoluteFilePath(
-        QStringLiteral("image/home/character.png"));
-
+    const QString absPath = QDir::current().absoluteFilePath(QStringLiteral("image/home/character.png"));
     if (QFile::exists(absPath)) {
         QUrl url = QUrl::fromLocalFile(absPath);
         url.setQuery(QStringLiteral("v=%1").arg(m_characterVersion));
         return url;
     }
-
     return QUrl(QStringLiteral("qrc:/QSanguosha/Home/assets/character.png"));
 }
 
 QUrl HomeController::logoImage() const
 {
-    return QUrl::fromLocalFile(
-        QDir::current().absoluteFilePath(
-            QStringLiteral("image/logo/logo.png")));
+    return QUrl::fromLocalFile(QDir::current().absoluteFilePath(QStringLiteral("image/logo/logo.png")));
 }
 
 QString HomeController::playerName() const
@@ -69,15 +61,9 @@ QUrl HomeController::playerAvatar() const
     const QString &avatar = Config.UserAvatar;
     if (avatar.isEmpty())
         return QUrl();
-
-    // 與快速加入對話框相同的頭像圖源
     const QString absPath = QDir::current().absoluteFilePath(
         QStringLiteral("image/fullskin/generals/full/%1.jpg").arg(avatar));
-
-    if (QFile::exists(absPath))
-        return QUrl::fromLocalFile(absPath);
-
-    return QUrl();
+    return QFile::exists(absPath) ? QUrl::fromLocalFile(absPath) : QUrl();
 }
 
 void HomeController::refreshPlayerInfo()
@@ -88,17 +74,13 @@ void HomeController::refreshPlayerInfo()
 bool HomeController::hasVideoSupport() const
 {
 #ifdef HAS_QT_MULTIMEDIA
-    // 執行期偵測 multimedia 後端 plugin 是否真的可載入，
-    // 避免編譯期有 QtMultimedia 但部署環境缺少 ffmpegmediaplugin.dll 時，
-    // QML Video 仍建立並在控制台噴出一串 "could not load multimedia backend"。
     static const bool backendAvailable = []() {
         const QStringList pluginPaths = QCoreApplication::libraryPaths();
         for (const QString &base : pluginPaths) {
             QDir dir(QStringLiteral("%1/multimedia").arg(base));
             if (!dir.exists())
                 continue;
-            const QStringList plugins =
-                dir.entryList(QStringList() << QStringLiteral("*.dll"), QDir::Files);
+            const QStringList plugins = dir.entryList(QStringList() << QStringLiteral("*.dll"), QDir::Files);
             for (const QString &plugin : plugins) {
                 if (plugin.contains(QStringLiteral("mediaplugin"), Qt::CaseInsensitive))
                     return true;
@@ -112,49 +94,130 @@ bool HomeController::hasVideoSupport() const
 #endif
 }
 
-void HomeController::quickJoin()
+void HomeController::quickJoin() { emit quickJoinRequested(); }
+void HomeController::joinGame() { emit joinGameRequested(); }
+void HomeController::startServer() { emit startServerRequested(); }
+
+void HomeController::switchQmlScene(const QUrl &source)
 {
-    emit quickJoinRequested();
+    emit qmlSceneRequested(source);
 }
 
-void HomeController::joinGame()
+void HomeController::openHome()
 {
-    emit joinGameRequested();
-}
-
-void HomeController::startServer()
-{
-    emit startServerRequested();
+    switchQmlScene(QUrl(QStringLiteral("qrc:/QSanguosha/Home/HomeScene.qml")));
 }
 
 void HomeController::openGenerals()
 {
-    emit generalsRequested();
+    switchQmlScene(QUrl(QStringLiteral("qrc:/QSanguosha/Home/GeneralScene.qml")));
 }
 
-void HomeController::openCards()
+void HomeController::openCards() { emit cardsRequested(); }
+void HomeController::openReplays() { emit replaysRequested(); }
+void HomeController::openSettings() { emit settingsRequested(); }
+void HomeController::openAbout() { emit aboutRequested(); }
+void HomeController::checkUpdates() { emit updateCheckRequested(); }
+
+QUrl HomeController::generalPortrait(const QString &generalName) const
 {
-    emit cardsRequested();
+    if (generalName.isEmpty())
+        return QUrl();
+
+    QString actual = generalName;
+    if (Sanguosha) {
+        const QString alias = Sanguosha->getResourceAlias("generals", generalName);
+        if (!alias.isEmpty())
+            actual = alias;
+    }
+
+    const QString base = QDir::current().absoluteFilePath(
+        QStringLiteral("image/fullskin/generals/full/%1").arg(actual));
+    const QStringList suffixes = { QStringLiteral(".jpg"), QStringLiteral(".png"),
+                                   QStringLiteral(".webp"), QStringLiteral(".jpeg") };
+    for (const QString &suffix : suffixes) {
+        const QString candidate = base + suffix;
+        if (QFile::exists(candidate))
+            return QUrl::fromLocalFile(candidate);
+    }
+    return QUrl();
 }
 
-void HomeController::openReplays()
+QVariantList HomeController::generals() const
 {
-    emit replaysRequested();
+    QVariantList result;
+    if (!Sanguosha)
+        return result;
+
+    const QList<const General *> list = Sanguosha->getAllGenerals();
+    for (const General *general : list) {
+        if (!general || general->isTotallyHidden())
+            continue;
+
+        QVariantMap item;
+        const QString name = general->objectName();
+        QString nickname = Sanguosha->translate("#" + name);
+        if (nickname.contains('_'))
+            nickname = Sanguosha->translate("#" + nickname.split('_').last());
+        if (nickname.startsWith('#'))
+            nickname.clear();
+
+        item.insert(QStringLiteral("name"), name);
+        item.insert(QStringLiteral("displayName"), Sanguosha->translate(name));
+        item.insert(QStringLiteral("nickname"), nickname);
+        item.insert(QStringLiteral("kingdom"), general->getKingdom());
+        item.insert(QStringLiteral("kingdoms"), general->getKingdoms());
+        item.insert(QStringLiteral("maxHp"), general->getMaxHp());
+        item.insert(QStringLiteral("package"), general->getPackage());
+        item.insert(QStringLiteral("packageName"), Sanguosha->translate(general->getPackage()));
+        item.insert(QStringLiteral("hidden"), Sanguosha->isGeneralHidden(name));
+        item.insert(QStringLiteral("lord"), general->isLord());
+        item.insert(QStringLiteral("portrait"), generalPortrait(name));
+        result.append(item);
+    }
+    return result;
 }
 
-void HomeController::openSettings()
+QVariantMap HomeController::generalDetails(const QString &generalName) const
 {
-    emit settingsRequested();
-}
+    QVariantMap result;
+    if (!Sanguosha)
+        return result;
 
-void HomeController::openAbout()
-{
-    emit aboutRequested();
-}
+    const General *general = Sanguosha->getGeneral(generalName);
+    if (!general)
+        return result;
 
-void HomeController::checkUpdates()
-{
-    emit updateCheckRequested();
+    result.insert(QStringLiteral("name"), generalName);
+    result.insert(QStringLiteral("displayName"), Sanguosha->translate(generalName));
+    result.insert(QStringLiteral("kingdom"), general->getKingdom());
+    result.insert(QStringLiteral("kingdoms"), general->getKingdoms());
+    result.insert(QStringLiteral("maxHp"), general->getMaxHp());
+    result.insert(QStringLiteral("package"), Sanguosha->translate(general->getPackage()));
+    result.insert(QStringLiteral("portrait"), generalPortrait(generalName));
+    result.insert(QStringLiteral("oracleText"), general->getOracleText());
+    result.insert(QStringLiteral("skillDescription"), general->getSkillDescription(true));
+
+    QString nickname = Sanguosha->translate("#" + generalName);
+    if (nickname.contains('_'))
+        nickname = Sanguosha->translate("#" + nickname.split('_').last());
+    if (nickname.startsWith('#'))
+        nickname.clear();
+    result.insert(QStringLiteral("nickname"), nickname);
+
+    QVariantList skills;
+    for (const Skill *skill : general->getVisibleSkillList()) {
+        if (!skill)
+            continue;
+        QVariantMap entry;
+        entry.insert(QStringLiteral("name"), skill->objectName());
+        entry.insert(QStringLiteral("displayName"), Sanguosha->translate(skill->objectName()));
+        entry.insert(QStringLiteral("description"), skill->getDescription());
+        entry.insert(QStringLiteral("oracleText"), skill->getOracleText());
+        skills.append(entry);
+    }
+    result.insert(QStringLiteral("skills"), skills);
+    return result;
 }
 
 QUrl HomeController::randomBackdrop() const
@@ -163,7 +226,6 @@ QUrl HomeController::randomBackdrop() const
     const QStringList files = dir.entryList(QDir::Files);
     if (files.isEmpty())
         return QUrl();
-
     const int index = QRandomGenerator::global()->bounded(files.size());
     return QUrl::fromLocalFile(dir.absoluteFilePath(files.at(index)));
 }
@@ -186,7 +248,6 @@ bool HomeController::isDarkTheme() const
 
 void HomeController::toggleTheme()
 {
-    // 二元切換：目前有效暗→設亮色(1)；有效亮→設暗色(2)
     const int next = isDarkTheme() ? 1 : 2;
     Config.ColorScheme = next;
     Config.setValue("ColorScheme", next);
