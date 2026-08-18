@@ -137,6 +137,7 @@ public:
     Q_INVOKABLE QUrl magatamaImage(int index) const;
     Q_INVOKABLE QUrl hujiaImage() const;
     Q_INVOKABLE QUrl lordIcon() const;
+    Q_INVOKABLE QUrl navButtonImage(const QString &name) const;
     Q_INVOKABLE qreal generalOverlayLuma(const QString &generalName) const;
     Q_INVOKABLE void playAudio(const QString &path) const;
     Q_INVOKABLE void applyGeneralFilter(const QVariantMap &filters);
