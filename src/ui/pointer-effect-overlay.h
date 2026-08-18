@@ -6,24 +6,26 @@
 #include <QImage>
 #include <QPixmap>
 #include <QPointF>
+#include <QQuickPaintedItem>
 #include <QRect>
 #include <QTimer>
 #include <QVector>
 #include <QWidget>
 
-class PointerEffectOverlay : public QWidget
+class QPainter;
+
+class PointerFxEngine
 {
-    Q_OBJECT
-
 public:
-    explicit PointerEffectOverlay(QWidget *host);
-    ~PointerEffectOverlay() override;
+    PointerFxEngine();
 
-    void syncToHost();
-
-protected:
-    bool eventFilter(QObject *watched, QEvent *event) override;
-    void paintEvent(QPaintEvent *event) override;
+    void reset();
+    qreal elapsed() const;
+    QRect tick(const QPointF &localPos, bool inside, Qt::MouseButtons buttons);
+    void paint(QPainter &painter);
+    bool hasContent() const;
+    bool hasBaCursor() const;
+    QCursor baCursor() const;
 
 private:
     struct TrailPoint {
@@ -52,9 +54,6 @@ private:
         QVector<TriangleParticle> triangles;
     };
 
-    void onFrame();
-    void setActive(bool active);
-    void applyCursor(bool inside);
     void spawnClick(const QPointF &pos, qreal now);
     TriangleParticle createTriangle(const QPointF &pos, qreal now, bool movement);
     void updateTrail(const QPointF &pos, qreal now);
@@ -85,8 +84,6 @@ private:
     static QColor triangleColor(qreal progress);
     static QColor trailColor(qreal progress);
 
-    QWidget *m_host = nullptr;
-    QTimer m_timer;
     QElapsedTimer m_clock;
     QPixmap m_circlePm;
     QPixmap m_circleBluePm;
@@ -98,15 +95,64 @@ private:
     QVector<ClickEffect> m_clickEffects;
     QVector<TriangleParticle> m_moveParticles;
     QPointF m_lastTrailPos;
+    qreal m_emissionCarry = 0;
+    Qt::MouseButtons m_prevButtons = Qt::NoButton;
+    bool m_hasBaCursor = false;
+    bool m_hasLastTrailPos = false;
+};
+
+class PointerEffectOverlay : public QWidget
+{
+    Q_OBJECT
+
+public:
+    explicit PointerEffectOverlay(QWidget *host);
+    ~PointerEffectOverlay() override;
+
+    void syncToHost();
+    void setPageEnabled(bool enabled);
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+    void paintEvent(QPaintEvent *event) override;
+
+private:
+    void onFrame();
+    void setActive(bool active);
+    void applyCursor(bool inside);
+
+    QWidget *m_host = nullptr;
+    QTimer m_timer;
+    PointerFxEngine m_fx;
     QRect m_syncedGeo;
     QRect m_lastPainted;
-    qreal m_emissionCarry = 0;
-    Qt::MouseButtons m_prevButtons;
     bool m_active = false;
+    bool m_pageEnabled = false;
     bool m_cursorOverridden = false;
-    bool m_hasBaCursor = false;
     bool m_lastHadContent = true;
-    bool m_hasLastTrailPos = false;
+};
+
+class HomePointerFxItem : public QQuickPaintedItem
+{
+    Q_OBJECT
+
+public:
+    explicit HomePointerFxItem(QQuickItem *parent = nullptr);
+    ~HomePointerFxItem() override;
+
+    void paint(QPainter *painter) override;
+
+protected:
+    void itemChange(ItemChange change, const ItemChangeData &value) override;
+
+private:
+    void onFrame();
+    void applyCursor(bool inside);
+
+    PointerFxEngine m_fx;
+    QTimer m_timer;
+    bool m_cursorOverridden = false;
+    bool m_hadContent = false;
 };
 
 #endif

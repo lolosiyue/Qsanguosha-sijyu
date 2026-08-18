@@ -23,6 +23,7 @@
 #include "audio.h"
 #include <QSurfaceFormat>
 #include <QQuickWindow>
+#include <QQuickStyle>
 #include <QSGRendererInterface>
 
 #ifdef ANDROID
@@ -94,8 +95,11 @@ int main(int argc, char *argv[]) {
         return 0;
     } else if (headlessApp)
         new QCoreApplication(argc, argv);
-    else
+    else {
         new QApplication(argc, argv);
+        // 主頁自訂 contentItem／indicator；Windows 原生樣式不支援會報錯並閃爍
+        QQuickStyle::setStyle(QStringLiteral("Basic"));
+    }
 
     // 美術 PNG 內嵌的 iCCP chunk 帶有錯誤的 sRGB profile，libpng 1.6+ 會對每張
     // 圖發出 "known incorrect sRGB profile" warning（qt.gui.imageio category）。

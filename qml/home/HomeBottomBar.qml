@@ -61,7 +61,7 @@ Item {
             width: 160
             height: parent.height
 
-            text: qsTr("首頁")
+            text: qsTranslate("HomeScene", "Home")
             iconSource: "qrc:/QSanguosha/Home/icons/home.svg"
 
             active: root.currentIndex === 0
@@ -81,7 +81,7 @@ Item {
             width: 160
             height: parent.height
 
-            text: qsTr("武將")
+            text: qsTranslate("HomeScene", "Generals")
             iconSource: "qrc:/QSanguosha/Home/icons/generals.svg"
 
             active: root.currentIndex === 1
@@ -101,7 +101,7 @@ Item {
             width: 160
             height: parent.height
 
-            text: qsTr("卡牌")
+            text: qsTranslate("HomeScene", "Cards")
             iconSource: "qrc:/QSanguosha/Home/icons/cards.svg"
 
             active: root.currentIndex === 2
@@ -121,7 +121,7 @@ Item {
             width: 160
             height: parent.height
 
-            text: qsTr("錄像")
+            text: qsTranslate("HomeScene", "Replays")
             iconSource: "qrc:/QSanguosha/Home/icons/replays.svg"
 
             active: root.currentIndex === 3
@@ -141,7 +141,7 @@ Item {
             width: 160
             height: parent.height
 
-            text: qsTr("設定")
+            text: qsTranslate("HomeScene", "Settings")
             iconSource: "qrc:/QSanguosha/Home/icons/settings.svg"
 
             active: root.currentIndex === 4

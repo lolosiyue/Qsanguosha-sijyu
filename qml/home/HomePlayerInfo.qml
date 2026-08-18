@@ -31,7 +31,7 @@ Item {
             fillMode: Image.PreserveAspectCrop
             clip: true
             antialiasing: true
-            mipmap: true
+            mipmap: false
         }
 
         // 無頭像或載入失敗時，以名稱首字代替

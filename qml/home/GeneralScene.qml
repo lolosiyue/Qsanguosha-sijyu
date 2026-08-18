@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Basic as Basic
 import QtQuick.Layouts
 import "."
 
@@ -7,7 +8,7 @@ Item {
     id: root
     focus: true
 
-    component ThemeCheckBox: CheckBox {
+    component ThemeCheckBox: Basic.CheckBox {
         id: box
         padding: 4
         contentItem: Text {
@@ -33,6 +34,10 @@ Item {
                 visible: box.checked
                 color: HomeTheme.baSky
             }
+        }
+        Keys.onShortcutOverride: function(event) {
+            if (event.key === Qt.Key_Space)
+                event.accepted = true
         }
     }
 
@@ -116,14 +121,14 @@ Item {
 
         Text {
             anchors.centerIn: parent
-            text: root.ui("GeneralOverview", "隱")
+            text: qsTranslate("GeneralOverview", "Hidden mark")
             color: HomeTheme.hiddenBadgeText
             font.pixelSize: 11
             font.bold: true
         }
     }
 
-    component ThemeField: TextField {
+    component ThemeField: Basic.TextField {
         color: HomeTheme.btnSecondaryText
         placeholderTextColor: HomeTheme.pillText
         font.pixelSize: 16
@@ -193,6 +198,32 @@ Item {
     property var genderFilter: []
     property var packageFilter: []
     property int detailTab: 0
+    property int gridColumns: 5
+    property bool gridColsReady: false
+    readonly property bool tableMode: gridColumns >= HomeTheme.generalGridMaxColumns
+    property bool keyboardReady: false
+    property alias searchField: searchField
+    property alias banBtn: banBtn
+
+    onTableModeChanged: {
+        if (!keyboardReady)
+            return
+        if (tableMode) {
+            generalTable.forceActiveFocus()
+            Qt.callLater(function() {
+                if (!root.tableMode || !catalog || catalog.count <= 0)
+                    return
+                var idx = catalog.indexOfName(root.selectedName)
+                if (idx < 0)
+                    idx = 0
+                generalTable.positionViewAtIndex(idx, ListView.Contain)
+            })
+        } else {
+            generalGrid.forceActiveFocus()
+        }
+    }
+
+    readonly property int maxGridColumns: HomeTheme.generalGridMaxColumns
 
     readonly property var catalog: homeController.generalModel
     readonly property bool catalogPending: !catalog || !catalog.loaded
@@ -237,6 +268,31 @@ Item {
         detailsTimer.restart()
     }
 
+    function reloadDetails() {
+        if (root.selectedName.length > 0)
+            root.details = homeController.generalDetails(root.selectedName)
+    }
+
+    function applyGridColumns(n) {
+        var v = Math.max(HomeTheme.generalGridMinColumns,
+                         Math.min(Math.round(n), HomeTheme.generalGridMaxColumns))
+        root.gridColumns = v
+        homeController.setGeneralGridColumns(v)
+    }
+
+    function hpText(startHp, maxHp) {
+        if (Number(startHp) !== Number(maxHp))
+            return String(startHp) + "/" + String(maxHp)
+        return String(maxHp)
+    }
+
+    function takeKeyboard() {
+        if (skinPanel.visible)
+            skinPanel.forceActiveFocus()
+        else
+            searchField.forceActiveFocus()
+    }
+
     function toggleIn(list, key) {
         var copy = (list || []).slice()
         var idx = copy.indexOf(key)
@@ -245,6 +301,56 @@ Item {
         else
             copy.push(key)
         return copy
+    }
+
+    function isTextEditing() {
+        return searchField.activeFocus || nicknameField.activeFocus
+               || hpMinBox.activeFocus || hpMaxBox.activeFocus
+    }
+
+    function listViewItem() {
+        return root.tableMode ? generalTable : generalGrid
+    }
+
+    function moveSelection(delta) {
+        if (!catalog || catalog.count <= 0)
+            return
+        var idx = catalog.indexOfName(root.selectedName)
+        if (idx < 0)
+            idx = 0
+        var next = Math.max(0, Math.min(catalog.count - 1, idx + delta))
+        if (next === idx)
+            return
+        root.selectGeneral(catalog.nameAt(next))
+        var view = root.listViewItem()
+        if (view && view.positionViewAtIndex)
+            view.positionViewAtIndex(next, view.Contain)
+    }
+
+    function handleListKeys(event) {
+        if (!catalog || catalog.count <= 0)
+            return
+        var cols = root.tableMode ? 1 : Math.max(1, root.gridColumns)
+        var page = root.tableMode ? 12 : cols * 3
+        if (event.key === Qt.Key_Left)
+            root.moveSelection(root.tableMode ? 0 : -1)
+        else if (event.key === Qt.Key_Right)
+            root.moveSelection(root.tableMode ? 0 : 1)
+        else if (event.key === Qt.Key_Up)
+            root.moveSelection(-cols)
+        else if (event.key === Qt.Key_Down)
+            root.moveSelection(cols)
+        else if (event.key === Qt.Key_PageUp)
+            root.moveSelection(-page)
+        else if (event.key === Qt.Key_PageDown)
+            root.moveSelection(page)
+        else if (event.key === Qt.Key_Home)
+            root.moveSelection(-catalog.count)
+        else if (event.key === Qt.Key_End)
+            root.moveSelection(catalog.count)
+        else
+            return
+        event.accepted = true
     }
 
     Timer {
@@ -264,7 +370,15 @@ Item {
             icon: ""
         }].concat(homeController.kingdoms())
         packageEntries = homeController.generalPackages()
+        var saved = homeController.generalGridColumns()
+        root.gridColumns = saved > 0
+                ? Math.max(HomeTheme.generalGridMinColumns,
+                           Math.min(saved, HomeTheme.generalGridMaxColumns))
+                : HomeTheme.generalGridMinColumns
+        root.gridColsReady = true
         catalogLoadTimer.start()
+        root.keyboardReady = true
+        searchField.forceActiveFocus()
     }
 
     Timer {
@@ -274,10 +388,18 @@ Item {
     }
 
     Keys.onEscapePressed: {
-        if (filterPanel.visible)
+        if (skinPanel.visible)
+            skinPanel.visible = false
+        else if (filterPanel.visible)
             filterPanel.visible = false
         else
             homeController.openHome()
+    }
+
+    Keys.priority: Keys.AfterItem
+    Keys.onPressed: function(event) {
+        if (event.key === Qt.Key_Space && !root.isTextEditing())
+            event.accepted = true
     }
 
     Column {
@@ -325,7 +447,7 @@ Item {
                                   ? HomeTheme.focusBorderHigh
                                   : HomeTheme.btnSecondaryBorder
 
-                    TextField {
+                    Basic.TextField {
                         id: searchField
                         anchors.left: parent.left
                         anchors.right: clearSearch.visible ? clearSearch.left : parent.right
@@ -347,6 +469,8 @@ Item {
                             root.searchText = text
                             root.rebuild()
                         }
+                        KeyNavigation.tab: kingdomCombo
+                        KeyNavigation.backtab: banBtn
                     }
 
                     Rectangle {
@@ -381,17 +505,23 @@ Item {
                     }
                 }
 
-                ComboBox {
+                Basic.ComboBox {
                     id: kingdomCombo
                     Layout.preferredWidth: 220
                     Layout.preferredHeight: 48
                     model: root.kingdomOptions
                     textRole: "label"
                     font.pixelSize: 16
+                    Keys.onShortcutOverride: function(event) {
+                        if (event.key === Qt.Key_Space)
+                            event.accepted = true
+                    }
                     onActivated: function(index) {
                         root.kingdomFilter = String(root.kingdomOptions[index].key)
                         root.rebuild()
                     }
+                    KeyNavigation.tab: filterBtn
+                    KeyNavigation.backtab: searchField
 
                     background: Rectangle {
                         radius: 24
@@ -494,9 +624,12 @@ Item {
                 }
 
                 BAToolButton {
+                    id: filterBtn
                     text: root.ui("GeneralOverview", "Search...")
                     implicitWidth: 140
                     onClicked: filterPanel.visible = !filterPanel.visible
+                    KeyNavigation.tab: colSlider
+                    KeyNavigation.backtab: kingdomCombo
                 }
 
                 Text {
@@ -505,6 +638,86 @@ Item {
                     font.pixelSize: 22
                     font.bold: true
                 }
+
+                BASlantedPanel {
+                    id: colSliderPanel
+                    Layout.alignment: Qt.AlignVCenter | Qt.AlignRight
+                    implicitWidth: 204
+                    implicitHeight: 44
+                    slant: -0.10
+                    cornerRadius: 8
+                    shadowBlur: 6
+                    shadowOffset: 3
+                    borderWidth: 1
+                    topColor: HomeTheme.baToolTop
+                    bottomColor: HomeTheme.baToolBottom
+                    borderColor: HomeTheme.baDockBorder
+                    shadowColor: HomeTheme.baDockShadow
+
+                    Row {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 10
+                        spacing: 6
+
+                    Basic.Slider {
+                        id: colSlider
+                        anchors.verticalCenter: parent.verticalCenter
+                        from: HomeTheme.generalGridMinColumns
+                        to: HomeTheme.generalGridMaxColumns
+                        stepSize: 1
+                        snapMode: Slider.SnapAlways
+                        live: true
+                        value: root.gridColumns
+                        implicitWidth: 148
+                        implicitHeight: 36
+                        onMoved: root.applyGridColumns(value)
+                        KeyNavigation.tab: root.tableMode ? generalTable : generalGrid
+                        KeyNavigation.backtab: filterBtn
+                        Keys.onShortcutOverride: function(event) {
+                            if (event.key === Qt.Key_Space)
+                                event.accepted = true
+                        }
+
+                        background: Rectangle {
+                            x: colSlider.leftPadding
+                            y: colSlider.topPadding + colSlider.availableHeight / 2 - height / 2
+                            implicitWidth: 148
+                            implicitHeight: 6
+                            width: colSlider.availableWidth
+                            height: implicitHeight
+                            radius: 3
+                            color: HomeTheme.btnSecondary
+                            Rectangle {
+                                width: colSlider.visualPosition * parent.width
+                                height: parent.height
+                                color: HomeTheme.baSky
+                                radius: 3
+                            }
+                        }
+
+                        handle: Rectangle {
+                            x: colSlider.leftPadding + colSlider.visualPosition * (colSlider.availableWidth - width)
+                            y: colSlider.topPadding + colSlider.availableHeight / 2 - height / 2
+                            implicitWidth: 16
+                            implicitHeight: 16
+                            radius: 8
+                            color: HomeTheme.baWhite
+                            border.color: HomeTheme.baSky
+                        }
+                    }
+
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: String(root.gridColumns)
+                        color: HomeTheme.btnSecondaryText
+                        font.pixelSize: 16
+                        font.bold: true
+                        width: 24
+                        horizontalAlignment: Text.AlignRight
+                    }
+                }
+            }
             }
         }
 
@@ -527,16 +740,34 @@ Item {
 
                 GridView {
                     id: generalGrid
+                    visible: !root.tableMode
                     anchors.fill: parent
                     anchors.margins: HomeTheme.generalGridMargin
                     anchors.bottomMargin: 22
                     clip: true
-                    cellWidth: HomeTheme.generalCellWidth(width)
-                    cellHeight: HomeTheme.generalCellHeight(width)
+                    focus: !root.tableMode
+                    keyNavigationEnabled: false
+                    activeFocusOnTab: true
+                    cellWidth: HomeTheme.generalCellWidth(width, root.gridColumns)
+                    cellHeight: HomeTheme.generalCellHeight(width, root.gridColumns)
                     cacheBuffer: cellHeight * 2
-                    model: root.catalog
+                    reuseItems: true
+                    model: (root.tableMode || root.catalogPending) ? null : root.catalog
                     boundsBehavior: Flickable.StopAtBounds
                     ScrollBar.vertical: HomeScrollBar { }
+                    KeyNavigation.tab: skinBtn.visible ? skinBtn : avatarBtn
+                    KeyNavigation.backtab: colSlider
+                    Keys.onPressed: function(event) { root.handleListKeys(event) }
+                    onWidthChanged: {
+                        if (root.gridColsReady || width <= 1)
+                            return
+                        var saved = homeController.generalGridColumns()
+                        root.gridColumns = saved > 0
+                                ? Math.max(HomeTheme.generalGridMinColumns,
+                                           Math.min(saved, HomeTheme.generalGridMaxColumns))
+                                : HomeTheme.generalGridMinColumns
+                        root.gridColsReady = true
+                    }
 
                     delegate: Item {
                         id: delegateRoot
@@ -550,6 +781,7 @@ Item {
 
                         width: generalGrid.cellWidth
                         height: generalGrid.cellHeight
+                        readonly property int artRev: homeController.artRevision
 
                         Rectangle {
                             id: cardFrame
@@ -571,8 +803,10 @@ Item {
                                 fillMode: Image.PreserveAspectCrop
                                 asynchronous: true
                                 cache: true
+                                visible: true
                                 opacity: status === Image.Ready ? (delegateRoot.hidden ? 0.62 : 1) : 0
-                                source: delegateRoot.name ? homeController.generalFullImage(delegateRoot.name) : ""
+                                source: (delegateRoot.name && delegateRoot.artRev >= 0)
+                                        ? homeController.generalFullImage(delegateRoot.name) : ""
                             }
 
                             SkeletonBlock {
@@ -591,6 +825,7 @@ Item {
                             }
 
                             ListMetaOverlay {
+                                visible: delegateRoot.width >= 100
                                 anchors.left: parent.left
                                 anchors.right: parent.right
                                 anchors.top: parent.top
@@ -634,7 +869,7 @@ Item {
                                         text: delegateRoot.displayName
                                         elide: Text.ElideRight
                                         color: HomeTheme.onArtText
-                                        font.pixelSize: 13
+                                        font.pixelSize: Math.max(10, Math.round(delegateRoot.width / 10))
                                         font.bold: true
                                     }
                                 }
@@ -650,17 +885,205 @@ Item {
                     }
                 }
 
+                Column {
+                    id: tablePane
+                    visible: root.tableMode
+                    anchors.fill: parent
+                    anchors.margins: HomeTheme.generalGridMargin
+                    anchors.bottomMargin: 22
+                    spacing: 0
+
+                    Row {
+                        id: tableHeader
+                        width: parent.width
+                        height: HomeTheme.generalTableHeaderHeight
+
+                        Repeater {
+                            model: [
+                                { share: 0.20, label: qsTranslate("GeneralOverview", "Nick") },
+                                { share: 0.22, label: qsTranslate("GeneralOverview", "General") },
+                                { share: 0.16, label: qsTranslate("GeneralOverview", "Kingdom") },
+                                { share: 0.12, label: qsTranslate("GeneralOverview", "Gender") },
+                                { share: 0.10, label: qsTranslate("GeneralOverview", "MaxHP") },
+                                { share: 0.20, label: qsTranslate("GeneralOverview", "Package") }
+                            ]
+                            delegate: Text {
+                                required property var modelData
+                                width: tableHeader.width * modelData.share
+                                height: tableHeader.height
+                                text: modelData.label
+                                elide: Text.ElideRight
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                color: HomeTheme.pillText
+                                font.pixelSize: 12
+                                font.bold: true
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: 1
+                        color: HomeTheme.baDockBorder
+                    }
+
+                    ListView {
+                        id: generalTable
+                        width: parent.width
+                        height: parent.height - tableHeader.height - 1
+                        clip: true
+                        focus: root.tableMode
+                        keyNavigationEnabled: false
+                        activeFocusOnTab: true
+                        reuseItems: false
+                        cacheBuffer: HomeTheme.generalTableRowHeight * 8
+                        model: (!root.tableMode || root.catalogPending) ? null : root.catalog
+                        boundsBehavior: Flickable.StopAtBounds
+                        ScrollBar.vertical: HomeScrollBar { }
+                        KeyNavigation.tab: skinBtn.visible ? skinBtn : avatarBtn
+                        KeyNavigation.backtab: colSlider
+                        Keys.onPressed: function(event) { root.handleListKeys(event) }
+
+                        delegate: Item {
+                            id: tableRow
+                            required property int index
+                            required property string name
+                            required property string displayName
+                            required property string nickname
+                            required property string kingdoms
+                            required property string gender
+                            required property string kingdomDisplay
+                            required property string genderDisplay
+                            required property int maxHp
+                            required property int startHp
+                            required property string packageName
+                            required property bool hidden
+
+                            width: generalTable.width
+                            height: HomeTheme.generalTableRowHeight
+                            objectName: "general-row-" + index
+
+                            Rectangle {
+                                anchors.fill: parent
+                                color: root.selectedName === tableRow.name
+                                       ? HomeTheme.tableRowSelected
+                                       : (tableRow.hidden ? HomeTheme.tableRowHidden : "transparent")
+
+                                Rectangle {
+                                    visible: root.selectedName === tableRow.name
+                                    width: 4
+                                    height: parent.height
+                                    color: HomeTheme.baSky
+                                }
+
+                                Row {
+                                    anchors.fill: parent
+
+                                    Text {
+                                        width: parent.width * 0.20
+                                        height: parent.height
+                                        text: tableRow.nickname
+                                        elide: Text.ElideRight
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        color: root.selectedName === tableRow.name
+                                               ? HomeTheme.tableRowSelectedText
+                                               : (tableRow.hidden ? HomeTheme.tableRowHiddenText
+                                                                  : HomeTheme.btnSecondaryText)
+                                        font.pixelSize: 12
+                                    }
+                                    Text {
+                                        width: parent.width * 0.22
+                                        height: parent.height
+                                        text: tableRow.displayName
+                                        elide: Text.ElideRight
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        color: root.selectedName === tableRow.name
+                                               ? HomeTheme.tableRowSelectedText
+                                               : (tableRow.hidden ? HomeTheme.tableRowHiddenText
+                                                                  : HomeTheme.btnSecondaryText)
+                                        font.pixelSize: 12
+                                        font.bold: true
+                                    }
+                                    Text {
+                                        width: parent.width * 0.16
+                                        height: parent.height
+                                        text: tableRow.kingdomDisplay
+                                        elide: Text.ElideRight
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        color: root.selectedName === tableRow.name
+                                               ? HomeTheme.tableRowSelectedText
+                                               : (tableRow.hidden ? HomeTheme.tableRowHiddenText
+                                                                  : HomeTheme.btnSecondaryText)
+                                        font.pixelSize: 12
+                                    }
+                                    Text {
+                                        width: parent.width * 0.12
+                                        height: parent.height
+                                        text: tableRow.genderDisplay
+                                        elide: Text.ElideRight
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        color: root.selectedName === tableRow.name
+                                               ? HomeTheme.tableRowSelectedText
+                                               : (tableRow.hidden ? HomeTheme.tableRowHiddenText
+                                                                  : HomeTheme.btnSecondaryText)
+                                        font.pixelSize: 12
+                                    }
+                                    Text {
+                                        width: parent.width * 0.10
+                                        height: parent.height
+                                        text: root.hpText(tableRow.startHp, tableRow.maxHp)
+                                        elide: Text.ElideRight
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        color: root.selectedName === tableRow.name
+                                               ? HomeTheme.tableRowSelectedText
+                                               : (tableRow.hidden ? HomeTheme.tableRowHiddenText
+                                                                  : HomeTheme.btnSecondaryText)
+                                        font.pixelSize: 12
+                                    }
+                                    Text {
+                                        width: parent.width * 0.20
+                                        height: parent.height
+                                        text: tableRow.packageName
+                                        elide: Text.ElideRight
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        color: root.selectedName === tableRow.name
+                                               ? HomeTheme.tableRowSelectedText
+                                               : (tableRow.hidden ? HomeTheme.tableRowHiddenText
+                                                                  : HomeTheme.btnSecondaryText)
+                                        font.pixelSize: 12
+                                    }
+                                }
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.selectGeneral(tableRow.name)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Item {
                     id: listSkeleton
                     anchors.fill: parent
                     anchors.margins: HomeTheme.generalGridMargin
                     visible: root.catalogPending
 
-                    property int cellW: HomeTheme.generalCellWidth(width)
-                    property int cellH: HomeTheme.generalCellHeight(width)
-                    property int cols: HomeTheme.generalCellColumns(width)
+                    property int cellW: HomeTheme.generalCellWidth(width, root.gridColumns)
+                    property int cellH: HomeTheme.generalCellHeight(width, root.gridColumns)
+                    property int cols: HomeTheme.generalCellColumns(width, root.gridColumns)
 
                     Grid {
+                        visible: !root.tableMode
                         anchors.fill: parent
                         columns: listSkeleton.cols
 
@@ -674,6 +1097,20 @@ Item {
                                     anchors.margins: HomeTheme.generalCellInset
                                     radius: 8
                                 }
+                            }
+                        }
+                    }
+
+                    Column {
+                        visible: root.tableMode
+                        anchors.fill: parent
+                        spacing: 4
+                        Repeater {
+                            model: 12
+                            SkeletonBlock {
+                                width: listSkeleton.width
+                                height: HomeTheme.generalTableRowHeight
+                                radius: 4
                             }
                         }
                     }
@@ -723,9 +1160,9 @@ Item {
                             asynchronous: true
                             cache: true
                             smooth: true
-                            mipmap: true
+                            mipmap: false
                             opacity: status === Image.Ready ? 1 : 0
-                            source: (!root.catalogPending && selectedName)
+                            source: (!root.catalogPending && selectedName && homeController.artRevision >= 0)
                                     ? homeController.generalCardImage(selectedName) : ""
                         }
                     }
@@ -860,7 +1297,7 @@ Item {
 
                             MetaBadge {
                                 visible: details.hidden === true
-                                label: root.ui("GeneralOverview", "隱藏")
+                                label: qsTranslate("GeneralOverview", "Hidden")
                                 accent: HomeTheme.hiddenBadge
                             }
 
@@ -876,7 +1313,7 @@ Item {
 
                             MetaBadge {
                                 visible: String(details.cv || "").length > 0
-                                label: "CV " + (details.cv || "")
+                                label: qsTranslate("GeneralOverview", "CV") + " " + (details.cv || "")
                             }
 
                             MetaBadge {
@@ -897,8 +1334,8 @@ Item {
 
                             Repeater {
                                 model: [
-                                    { key: 0, label: root.ui("GeneralOverview", "技能機制") },
-                                    { key: 1, label: root.ui("GeneralOverview", "語音台詞") }
+                                    { key: 0, label: qsTranslate("GeneralOverview", "Skill details") },
+                                    { key: 1, label: qsTranslate("GeneralOverview", "Voice lines") }
                                 ]
                                 delegate: Rectangle {
                                     required property var modelData
@@ -1160,6 +1597,220 @@ Item {
                                 }
                             }
                         }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 48
+                            spacing: 8
+                            visible: root.detailsReady
+
+                            BAToolButton {
+                                id: skinBtn
+                                visible: details.hasSkin === true
+                                Layout.fillWidth: true
+                                implicitWidth: 80
+                                implicitHeight: 48
+                                text: root.ui("GeneralOverview", "changeHeroSkin")
+                                onClicked: skinPanel.open()
+                                KeyNavigation.tab: avatarBtn
+                                KeyNavigation.backtab: root.tableMode ? generalTable : generalGrid
+                            }
+
+                            BAToolButton {
+                                id: avatarBtn
+                                Layout.fillWidth: true
+                                implicitWidth: 80
+                                implicitHeight: 48
+                                enabled: details.isAvatar !== true
+                                text: details.isAvatar === true
+                                      ? qsTranslate("GeneralOverview", "Current avatar")
+                                      : qsTranslate("GeneralOverview", "Set as avatar")
+                                onClicked: {
+                                    homeController.setUserAvatar(root.selectedName)
+                                    root.reloadDetails()
+                                }
+                                KeyNavigation.tab: banBtn
+                                KeyNavigation.backtab: skinBtn.visible ? skinBtn : (root.tableMode ? generalTable : generalGrid)
+                            }
+
+                            BAToolButton {
+                                id: banBtn
+                                Layout.fillWidth: true
+                                implicitWidth: 80
+                                implicitHeight: 48
+                                text: details.banned === true
+                                      ? root.ui("GeneralOverview", "untieGeneral")
+                                      : root.ui("GeneralOverview", "banGeneral")
+                                onClicked: {
+                                    homeController.setGeneralBanned(
+                                                root.selectedName, details.banned !== true)
+                                    root.reloadDetails()
+                                }
+                                KeyNavigation.tab: searchField
+                                KeyNavigation.backtab: avatarBtn
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Item {
+        id: skinPanel
+        visible: false
+        anchors.fill: parent
+        z: 90
+        property var skins: []
+        property int currentIndex: 0
+        focus: visible
+
+        function open() {
+            skins = homeController.heroSkinList(root.selectedName)
+            currentIndex = 0
+            for (var i = 0; i < skins.length; ++i) {
+                if (skins[i].current === true)
+                    currentIndex = i
+            }
+            visible = true
+            forceActiveFocus()
+        }
+
+        Keys.onPressed: function(event) {
+            if (!visible)
+                return
+            if (event.key === Qt.Key_Left) {
+                currentIndex = Math.max(0, currentIndex - 1)
+                event.accepted = true
+            } else if (event.key === Qt.Key_Right) {
+                currentIndex = Math.min(Math.max(0, skins.length - 1), currentIndex + 1)
+                event.accepted = true
+            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                if (currentIndex >= 0 && currentIndex < skins.length) {
+                    homeController.setHeroSkin(root.selectedName, Number(skins[currentIndex].index))
+                    root.reloadDetails()
+                    visible = false
+                }
+                event.accepted = true
+            } else if (event.key === Qt.Key_Space) {
+                event.accepted = true
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: skinPanel.visible = false
+        }
+
+        BASlantedPanel {
+            anchors.centerIn: parent
+            width: Math.min(parent.width - 80, 760)
+            height: Math.min(parent.height - 80, 520)
+            slant: -0.04
+            cornerRadius: 12
+            shadowBlur: 0
+            shadowOffset: 0
+            topColor: HomeTheme.baDockTop
+            bottomColor: HomeTheme.baDockBottom
+            borderColor: HomeTheme.baDockBorder
+
+            MouseArea { anchors.fill: parent }
+
+            Column {
+                anchors.fill: parent
+                anchors.margins: 20
+                spacing: 12
+
+                Row {
+                    width: parent.width
+                    spacing: 12
+
+                    Text {
+                        text: root.ui("GeneralOverview", "changeHeroSkin")
+                        color: HomeTheme.btnSecondaryText
+                        font.pixelSize: 22
+                        font.bold: true
+                    }
+
+                    Item { width: parent.width - 220; height: 1 }
+
+                    BAToolButton {
+                        implicitWidth: 88
+                        implicitHeight: 40
+                        text: qsTranslate("GeneralOverview", "OK")
+                        onClicked: skinPanel.visible = false
+                    }
+                }
+
+                Flickable {
+                    width: parent.width
+                    height: parent.height - 56
+                    contentWidth: width
+                    contentHeight: skinFlow.height
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: HomeScrollBar { }
+
+                    Flow {
+                        id: skinFlow
+                        width: parent.width
+                        spacing: 10
+
+                        Repeater {
+                            model: skinPanel.skins
+                            delegate: Item {
+                                required property var modelData
+                                required property int index
+                                width: 108
+                                height: 176
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: 8
+                                    clip: true
+                                    color: HomeTheme.btnSecondary
+                                    border.width: (modelData.current === true
+                                                   || index === skinPanel.currentIndex) ? 2 : 1
+                                    border.color: (modelData.current === true
+                                                   || index === skinPanel.currentIndex)
+                                                  ? HomeTheme.focusBorderHigh
+                                                  : HomeTheme.btnSecondaryBorder
+
+                                    Image {
+                                        anchors.fill: parent
+                                        anchors.bottomMargin: 28
+                                        fillMode: Image.PreserveAspectCrop
+                                        asynchronous: true
+                                        cache: true
+                                        source: modelData.image || ""
+                                    }
+
+                                    Text {
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.bottom: parent.bottom
+                                        anchors.margins: 6
+                                        text: modelData.label || ""
+                                        elide: Text.ElideRight
+                                        horizontalAlignment: Text.AlignHCenter
+                                        color: HomeTheme.btnSecondaryText
+                                        font.pixelSize: 12
+                                    }
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            skinPanel.currentIndex = index
+                                            homeController.setHeroSkin(
+                                                        root.selectedName, Number(modelData.index))
+                                            root.reloadDetails()
+                                            skinPanel.visible = false
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1357,7 +2008,7 @@ Item {
                             }
                         }
                         BAToolButton {
-                            text: "OK"
+                            text: qsTranslate("GeneralOverview", "OK")
                             onClicked: {
                                 filterPanel.visible = false
                                 root.rebuild()

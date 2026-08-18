@@ -14,6 +14,10 @@ AbstractButton {
 
     hoverEnabled: true
     focusPolicy: Qt.StrongFocus
+    Keys.onShortcutOverride: function(event) {
+        if (event.key === Qt.Key_Space)
+            event.accepted = true
+    }
 
     Accessible.role: Accessible.Button
     Accessible.name: control.text
@@ -112,7 +116,7 @@ AbstractButton {
 
                 source: control.iconSource
                 fillMode: Image.PreserveAspectFit
-                mipmap: true
+                mipmap: false
             }
         }
 
