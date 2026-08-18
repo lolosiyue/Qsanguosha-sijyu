@@ -31,11 +31,9 @@ public:
     QUrl logoImage() const;
     bool hasVideoSupport() const;
 
-    // 玩家資訊：名稱＋頭像（與快速加入對話框同一資料源）
     QString playerName() const;
     QUrl playerAvatar() const;
 
-    // 有效明暗：ColorScheme 0=跟隨系統 / 1=亮色 / 2=暗色
     bool isDarkTheme() const;
     Q_INVOKABLE void toggleTheme();
 
@@ -43,7 +41,7 @@ public:
     Q_INVOKABLE void joinGame();
     Q_INVOKABLE void startServer();
 
-    // 首頁 / 武將一覽使用同一個 QQuickWidget，在 QML Scene 之間切換。
+    // Home and General Overview share the same QQuickWidget and switch QML scenes.
     Q_INVOKABLE void openHome();
     Q_INVOKABLE void openGenerals();
     Q_INVOKABLE void openCards();
@@ -52,16 +50,13 @@ public:
     Q_INVOKABLE void openAbout();
     Q_INVOKABLE void checkUpdates();
 
-    // 武將 Scene 資料橋接。列表只傳輕量欄位；右側詳情按選中武將再取。
+    // Lightweight data bridge used by GeneralScene.qml.
     Q_INVOKABLE QVariantList generals() const;
     Q_INVOKABLE QVariantMap generalDetails(const QString &generalName) const;
     Q_INVOKABLE QUrl generalPortrait(const QString &generalName) const;
 
     Q_INVOKABLE QUrl randomBackdrop() const;
-
     Q_INVOKABLE void refreshCharacterImage();
-
-    // 重新發送玩家資訊變更信號（回到首頁時由 MainWindow 呼叫）
     Q_INVOKABLE void refreshPlayerInfo();
 
 signals:
@@ -69,13 +64,14 @@ signals:
     void joinGameRequested();
     void startServerRequested();
 
-    // 保留既有 signal 給其他舊介面使用；首頁的武將按鈕現在直接切換 QML Scene。
     void generalsRequested();
     void cardsRequested();
     void replaysRequested();
     void settingsRequested();
     void aboutRequested();
     void updateCheckRequested();
+
+    void qmlSceneRequested(const QUrl &source);
 
     void updateAvailableChanged();
     void characterImageChanged();
