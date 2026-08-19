@@ -398,6 +398,7 @@ qt_add_lupdate(QSanguosha
     TS_FILES "${translation_source}"
     SOURCES
         ${QSAN_SOURCES}
+        src/core/engine.cpp
         ${QSAN_FORMS}
         qml/home/HomeScene.qml
         qml/home/HomeMainButton.qml

@@ -88,6 +88,7 @@ class HomeController final : public QObject
     Q_PROPERTY(bool isDarkTheme READ isDarkTheme NOTIFY themeChanged)
     Q_PROPERTY(QString playerName READ playerName NOTIFY playerInfoChanged)
     Q_PROPERTY(QUrl playerAvatar READ playerAvatar NOTIFY playerInfoChanged)
+    Q_PROPERTY(QString currentGameModeName READ currentGameModeName NOTIFY gameModeChanged)
     Q_PROPERTY(QString currentPage READ currentPage NOTIFY currentPageChanged)
     Q_PROPERTY(HomeGeneralModel *generalModel READ generalModel CONSTANT)
     Q_PROPERTY(int artRevision READ artRevision NOTIFY artRevisionChanged)
@@ -104,6 +105,7 @@ public:
 
     QString playerName() const;
     QUrl playerAvatar() const;
+    QString currentGameModeName() const;
 
     bool isDarkTheme() const;
     Q_INVOKABLE void toggleTheme();
@@ -174,6 +176,7 @@ signals:
     void characterImageChanged();
     void themeChanged();
     void playerInfoChanged();
+    void gameModeChanged();
     void currentPageChanged();
     void artRevisionChanged();
 

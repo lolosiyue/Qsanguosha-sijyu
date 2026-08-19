@@ -6,6 +6,7 @@ AbstractButton {
     id: control
 
     property url iconSource: ""
+    property string leadingText: ""
     property bool primary: false
     property bool highContrast: Config ? Config.getValue("VisualMode", "normal") === "highcontrast" : false
 
@@ -20,8 +21,10 @@ AbstractButton {
     }
 
     Accessible.role: Accessible.Button
-    Accessible.name: control.text
-    Accessible.description: control.text
+    Accessible.name: control.leadingText !== ""
+                     ? (control.leadingText + " " + control.text)
+                     : control.text
+    Accessible.description: Accessible.name
 
     scale: control.down ? 0.91 : 1.0
 
@@ -121,10 +124,45 @@ AbstractButton {
         }
 
         Text {
-            id: label
+            id: leadingLabel
+
+            visible: control.leadingText !== ""
+            width: visible ? Math.min(168, implicitWidth) : 0
 
             anchors.left: iconCircle.right
-            anchors.leftMargin: 20
+            anchors.leftMargin: visible ? 12 : 0
+            anchors.verticalCenter: parent.verticalCenter
+
+            text: control.leadingText
+            elide: Text.ElideRight
+            color: control.primary ? HomeTheme.btnPrimaryText : HomeTheme.baNavy
+            opacity: 0.82
+            font.pixelSize: control.highContrast
+                            ? Math.max(16, control.height * 0.24)
+                            : Math.max(15, control.height * 0.22)
+            font.weight: Font.DemiBold
+        }
+
+        Rectangle {
+            id: leadingDivider
+
+            visible: leadingLabel.visible
+            width: 1
+            height: Math.max(18, control.height * 0.36)
+
+            anchors.left: leadingLabel.right
+            anchors.leftMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+
+            color: control.primary ? HomeTheme.btnPrimaryText : HomeTheme.baNavy
+            opacity: 0.28
+        }
+
+        Text {
+            id: label
+
+            anchors.left: leadingDivider.visible ? leadingDivider.right : iconCircle.right
+            anchors.leftMargin: leadingDivider.visible ? 12 : 20
             anchors.right: parent.right
             anchors.rightMargin: 24
             anchors.verticalCenter: parent.verticalCenter

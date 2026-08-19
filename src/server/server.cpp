@@ -988,7 +988,7 @@ QGroupBox *ServerDialog::createGameModeBox()
 		foreach (const QString &modeId, modeIds) {
 			if (!modes.contains(modeId))
 				continue;
-			combo->addItem(modes.value(modeId).display_name, modeId);
+			combo->addItem(Sanguosha->getModeName(modeId), modeId);
 			groupedModes.insert(modeId);
 			if (modeId == Config.GameMode.mode_id)
 				selectedIndex = combo->count() - 1;
@@ -1015,7 +1015,7 @@ QGroupBox *ServerDialog::createGameModeBox()
 		if (groupedModes.contains(itor.key()))
 			continue;
 
-		QRadioButton *button = new QRadioButton(itor.value().display_name);
+		QRadioButton *button = new QRadioButton(Sanguosha->getModeName(itor.key()));
 		button->setObjectName(itor.key());
 		mode_group->addButton(button);
 
