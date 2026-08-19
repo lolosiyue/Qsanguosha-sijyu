@@ -1,7 +1,7 @@
 param(
     [ValidateSet('Debug', 'Release')]
     [string]$Configuration = 'Release',
-    [string]$QtRoot = 'C:\Qt\6.5.3\msvc2019_64',
+    [string]$QtRoot = 'H:\Qt6111\6.11.1\msvc2022_64',
     [string]$CMakeExe = '',
     [switch]$Deploy,
     [string]$FmodRuntime = ''
@@ -10,13 +10,51 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
+function Get-CMakeMajorMinor([string]$cmakePath) {
+    $firstLine = & $cmakePath --version 2>$null | Select-Object -First 1
+    if ($firstLine -notmatch 'cmake version (\d+)\.(\d+)') {
+        return $null
+    }
+    return @{
+        Major = [int]$Matches[1]
+        Minor = [int]$Matches[2]
+    }
+}
+
+function Test-CMake42Plus([string]$cmakePath) {
+    if ([string]::IsNullOrWhiteSpace($cmakePath) -or -not (Test-Path -LiteralPath $cmakePath -PathType Leaf)) {
+        return $false
+    }
+    $ver = Get-CMakeMajorMinor $cmakePath
+    if ($null -eq $ver) {
+        return $false
+    }
+    return ($ver.Major -gt 4) -or ($ver.Major -eq 4 -and $ver.Minor -ge 2)
+}
+
 if ([string]::IsNullOrWhiteSpace($CMakeExe)) {
+    $candidates = @()
     $cmakeCommand = Get-Command cmake -ErrorAction SilentlyContinue
     if ($null -ne $cmakeCommand) {
-        $CMakeExe = $cmakeCommand.Source
-    } else {
-        $CMakeExe = 'C:\Qt\Tools\CMake_64\bin\cmake.exe'
+        $candidates += $cmakeCommand.Source
     }
+    $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (Test-Path -LiteralPath $vswhere -PathType Leaf) {
+        $vsPath = & $vswhere -latest -products * -version '[18.0,19.0)' -property installationPath
+        if (-not [string]::IsNullOrWhiteSpace($vsPath)) {
+            $candidates += (Join-Path $vsPath 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe')
+        }
+    }
+    foreach ($candidate in $candidates) {
+        if (Test-CMake42Plus $candidate) {
+            $CMakeExe = $candidate
+            break
+        }
+    }
+}
+
+if (-not (Test-CMake42Plus $CMakeExe)) {
+    throw 'CMake 4.2+ not found. Use Visual Studio 2026 bundled CMake or install CMake 4.2+. Do not use C:\Qt\Tools\CMake_64.'
 }
 
 foreach ($required in @($CMakeExe, (Join-Path $QtRoot 'lib\cmake\Qt6\Qt6Config.cmake'))) {
@@ -35,7 +73,7 @@ $oldQtDir = $env:QTDIR
 try {
     $env:QTDIR = $QtRoot
 
-    $configureArguments = @('--preset', 'vs2019-x64')
+    $configureArguments = @('--preset', 'vs2026-x64')
     if (-not [string]::IsNullOrWhiteSpace($FmodRuntime)) {
         $configureArguments += "-DQSAN_FMOD_RUNTIME=$FmodRuntime"
     }

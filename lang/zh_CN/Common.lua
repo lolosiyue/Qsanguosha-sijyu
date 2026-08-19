@@ -414,6 +414,7 @@ CommonTranslationTable = {
 	["UI_DIST_Defend"] = "防御距离 %1",
 	["UI_DIST_SkillTitle"] = "【%1】",
 	["#IgnoreArmor"] = "%from 使用的 %card 无视防具",
+	["#GameSeed"] = "Game Seed: %arg",
 	["skill_transform"] = "技能转化",
 	["skill_transform_from"] = "%1技能转化",
 	["equip_slot_occupied"] = "此装备位被 %1 占据",

@@ -8,6 +8,7 @@
 #include "skill-instance-utils.h"
 #include "crashhandler.h"
 #include <QDebug>
+#include <QScopeGuard>
 
 #ifdef QSAN_UI_LIBRARY_AVAILABLE
 #pragma message WARN("UI elements detected in server side!!!")
@@ -258,6 +259,7 @@ bool CardUseStruct::tryParse(const QVariant &usage, Room*room)
 
 void CardUseStruct::parse(const QString &str, Room*room)
 {
+	m_ownedCard.clear();
 	to.clear();
 	m_validateTargets = true;
 	card = Card::Parse(str);
@@ -278,6 +280,7 @@ void CardUseStruct::clientReply()
 
 void CardUseStruct::changeCard(Card*newcard)
 {
+	const bool replacingOwnedCard = !m_ownedCard.isNull() && m_ownedCard.data() == card;
 	QVariantMap tag = newcard->tag;
 	for (auto it = card->tag.cbegin(); it != card->tag.cend(); ++it)
 		tag.insert(it.key(), it.value());
@@ -287,8 +290,17 @@ void CardUseStruct::changeCard(Card*newcard)
 		newcard->setActivationSkill(activationRef.key.skillName, activationRef.key.instanceID);
 	if (sourceRef.isValid())
 		newcard->setSourceSkill(sourceRef.key.skillName, sourceRef.key.instanceID);
-	newcard->change_cards << card;
+	if (!replacingOwnedCard)
+		newcard->change_cards << card;
 	card = newcard;
+	if (replacingOwnedCard)
+		m_ownedCard.clear();
+}
+
+void CardUseStruct::setOwnedCard(Card *ownedCard)
+{
+	m_ownedCard.reset(ownedCard);
+	card = ownedCard;
 }
 
 void CardResponseStruct::changeCard(Card*newcard)
@@ -345,7 +357,7 @@ void RoomThread::constructTriggerTable()
 ServerPlayer*RoomThread::find3v3Next(QList<ServerPlayer*> &first, QList<ServerPlayer*> &second)
 {
 	bool all_actioned = true;
-	foreach (ServerPlayer*player, room->m_alivePlayers) {
+	foreach (ServerPlayer*player, room->getAlivePlayers()) {
 		if (!player->hasFlag("actioned")) {
 			all_actioned = false;
 			break;
@@ -353,7 +365,7 @@ ServerPlayer*RoomThread::find3v3Next(QList<ServerPlayer*> &first, QList<ServerPl
 	}
 
 	if (all_actioned) {
-		foreach (ServerPlayer*player, room->m_alivePlayers) {
+		foreach (ServerPlayer*player, room->getAlivePlayers()) {
 			room->setPlayerFlag(player, "-actioned");
 			trigger(ActionedReset, room, player);
 		}
@@ -590,11 +602,14 @@ void RoomThread::_handleTurnBrokenNormal(GameRule*game_rule)
 
 void RoomThread::run()
 {
-	qsrand(QTime(0, 0, 0).secsTo(QTime::currentTime()));
+	LuaRuntime::Binding luaBinding(room->roomRuntime()->lua());
+	GameRng::Binding rngBinding(room->roomRuntime()->rng());
 	Sanguosha->registerRoom(room);
-
-	// 登記本執行緒的 Lua 狀態機:崩在此執行緒時,崩潰摘要順帶走出 Lua 呼叫棧
 	CrashHandler::setLuaState(room->getLuaState());
+	auto runtimeCleanup = qScopeGuard([]() {
+		CrashHandler::setLuaState(nullptr);
+		Sanguosha->unregisterRoom();
+	});
 
 	foreach(const TriggerSkill*triggerSkill, Sanguosha->getGlobalTriggerSkills())
 		addTriggerSkill(triggerSkill);
@@ -619,7 +634,7 @@ void RoomThread::run()
 	try {
 		QList<ServerPlayer*> warm, cool, first, second;
 		if (room->getMode() == "06_3v3") {
-			foreach (ServerPlayer*player, room->m_players) {
+			foreach (ServerPlayer*player, room->getPlayers()) {
 				switch (player->getRoleEnum()) {
 				case Player::Lord: warm.prepend(player); break;
 				case Player::Loyalist: warm.append(player); break;
@@ -657,7 +672,6 @@ void RoomThread::run()
 		}
 	}catch (TriggerEvent triggerEvent) {
 		if (triggerEvent == GameFinished) {
-			Sanguosha->unregisterRoom();
 			return;
 		} else if (triggerEvent == TurnBroken || triggerEvent == StageChange) { // caused in Debut trigger
 			ServerPlayer*first = room->getAlivePlayers().first();
@@ -1102,20 +1116,13 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 		if (event_stack.isEmpty()) {
 			if (room->getTag("HandMaxDirty").toBool()) {
 				room->setTag("HandMaxDirty", false);
-
-				LuaLocker locker;
 				foreach(ServerPlayer*p, room->getAlivePlayers()){
-					p->calculateUITooltips();
-					int hand_max = p->getMaxCards();
-					if (p->getTag("UI_Hand_Max").toInt() == hand_max) continue;
-					p->setTag("UI_Hand_Max", hand_max);
+					p->refreshUIState();
 				}
 			}
 
 if (room->getTag("DistanceCacheDirty").toBool()) {
                 room->setTag("DistanceCacheDirty", false);
-
-                LuaLocker locker;
                 QList<ServerPlayer *> players = room->getAlivePlayers();
                 foreach(ServerPlayer *from, players) {
                     foreach(ServerPlayer *to, players) {
@@ -1144,19 +1151,13 @@ if (room->getTag("DistanceCacheDirty").toBool()) {
 		if (event_stack.isEmpty()) {
 			if (room->getTag("HandMaxDirty").toBool()) {
 				room->setTag("HandMaxDirty", false);
-				LuaLocker locker;
 				foreach(ServerPlayer*p, room->getAlivePlayers()){
-					p->calculateUITooltips();
-					int hand_max = p->getMaxCards();
-					if (p->getTag("UI_Hand_Max").toInt() == hand_max) continue;
-					p->setTag("UI_Hand_Max", hand_max);
+					p->refreshUIState();
 				}
 			}
 
 if (room->getTag("DistanceCacheDirty").toBool()) {
                 room->setTag("DistanceCacheDirty", false);
-
-                LuaLocker locker;
                 QList<ServerPlayer *> players = room->getAlivePlayers();
                 foreach(ServerPlayer *from, players) {
                     foreach(ServerPlayer *to, players) {
@@ -1221,7 +1222,6 @@ void RoomThread::addTriggerSkill(const TriggerSkill*skill)
 
 void RoomThread::delay(long secs)
 {
-	LuaUnlocker unlocker; // Release lua_mutex during AI delay sleep
 	//Q_ASSERT(secs >= 0);
 	if (secs<0) secs = Config.AIDelay;
 	if (Config.AIDelay>0&&room->property("to_test").isNull())

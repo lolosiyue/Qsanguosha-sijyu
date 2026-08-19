@@ -20,34 +20,33 @@ Item {
         fillMode: Image.PreserveAspectFit
         horizontalAlignment: Image.AlignLeft
         verticalAlignment: Image.AlignBottom
+        visible: source.toString() !== "" && status === Image.Ready
 
-        mipmap: true
+        mipmap: false
         asynchronous: true
+        cache: true
 
         transform: Translate {
-            x: mouseArea.normalizedX * 10
-            y: mouseArea.normalizedY * 5
+            id: idleBob
+            y: 0
         }
 
-        Behavior on x {
-            NumberAnimation { duration: 250 }
-        }
-
-        Behavior on y {
-            NumberAnimation { duration: 250 }
-        }
-
-        SequentialAnimation on anchors.bottomMargin {
+        SequentialAnimation {
+            running: character.visible
             loops: Animation.Infinite
 
             NumberAnimation {
-                to: root.baseBottomMargin + 4
+                target: idleBob
+                property: "y"
+                to: 4
                 duration: 2400
                 easing.type: Easing.InOutSine
             }
 
             NumberAnimation {
-                to: root.baseBottomMargin - 4
+                target: idleBob
+                property: "y"
+                to: -4
                 duration: 2400
                 easing.type: Easing.InOutSine
             }
@@ -57,15 +56,5 @@ Item {
             if (status === Image.Error)
                 console.error("Character load failed:", source)
         }
-    }
-
-    MouseArea {
-        id: mouseArea
-
-        anchors.fill: parent
-        hoverEnabled: true
-
-        property real normalizedX: (mouseX / width - 0.5) * 2
-        property real normalizedY: (mouseY / height - 0.5) * 2
     }
 }

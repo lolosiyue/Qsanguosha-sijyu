@@ -31,10 +31,10 @@
 | 項目 | 固定基線 |
 |---|---|
 | C++ | C++17 |
-| Windows 編譯器 | MSVC 2022 x64 |
+| Windows 編譯器 | Visual Studio 2026 v145 x64（官方 Qt kit 為 `msvc2022_64`） |
 | Qt | Qt 6.11.1，一次性切換，不維護 Qt 5 相容層 |
 | Lua | Lua 5.4.8，提供專案實際需要的 Lua 5.2 相容層 |
-| 建置系統 | CMake 3.28+、`CMakePresets.json`、Visual Studio 2022 Open Folder |
+| 建置系統 | CMake 4.2+、`CMakePresets.json`、Visual Studio 2026 Open Folder |
 | Android | min API 28、target/compile API 36、NDK r27c、JDK 21 |
 | Android ABI | Google Play 正式版僅 `arm64-v8a`；`x86_64` 僅供 CI／模擬器 |
 
@@ -228,7 +228,7 @@ M1 已完成（2026-08-09 對照 CMakeLists.txt 確認）：`qsanguosha_engine` 
 |---|---|---|---|
 | M0 | Not Started | 建立可重現的現況基線、測試清單與資產盤點 | 現有 Windows 行為、協定與重播樣本可重現；無功能性改動 |
 | M1 | **Complete**（2026-08-09） | Windows CMake 過渡建置、STATIC engine（僅 Qt Core／Network）、引擎／GUI 解耦契約（SkillDialogInfo／EngineRuntimeContext／audioEffectRequested／EngineBootstrap）、allowlist gate、`deploy-server`、engine smoke test | Windows GUI 與既有建置結果可對照；STATIC engine 僅連結 Qt Core／Network；GUI／CMD server 驗收完成 |
-| M2 | Not Started | Qt 6.11.1、MSVC 2022 與 Lua 5.4.8 遷移 | Windows GUI、server、Lua/SWIG 及 CTest 全數通過 |
+| M2 | In Progress（2026-08-18：Windows 工具鏈） | Qt 6.11.1、VS 2026 v145 + `msvc2022_64` kit；Lua 5.4.8 仍未遷移 | Windows GUI、server、Lua/SWIG 及 CTest 全數通過 |
 | M3 | Not Started | `SkillDialogInfo`、選包白名單、確定性 RNG | 相同種子、輸入與包集合產生相同結果；白名單不可由客戶端繞過 |
 | M4 | Not Started | 協定與重播版本化、相容性拒絕路徑 | 新舊版本差異可診斷；不支援版本被明確拒絕而非靜默誤讀 |
 | M5 | Not Started | Ubuntu 無頭伺服器與 Null 音訊 | 無 X11/Wayland、FMOD 或 GUI 依賴仍可啟動及完成整局測試 |
@@ -246,7 +246,7 @@ M1 已完成（2026-08-09 對照 CMakeLists.txt 確認）：`qsanguosha_engine` 
 
 | 類別 | Windows GUI | Ubuntu 無頭伺服器 | Android 客戶端 |
 |---|---|---|---|
-| 建置 | MSVC 2022、Qt 6.11.1、Release/Debug | CMake、Qt 6.11.1、無 GUI／FMOD | API 28 裝置、target API 36、`arm64-v8a` AAB |
+| 建置 | VS 2026 v145、Qt 6.11.1 `msvc2022_64`、Release/Debug | CMake、Qt 6.11.1、無 GUI／FMOD | API 28 裝置、target API 36、`arm64-v8a` AAB |
 | 單元測試 | engine、RNG、序列化、資產定位 | engine、RNG、協定、房間生命週期 | engine 可移植子集、`AssetLocator`、播放器池 |
 | 整合測試 | GUI 對局、重連、重播、FMOD | 建房、完整對局、斷線重連、Null 音訊 | 登入、對局、Qt Multimedia、PAD 下載與缺包處理 |
 | 相容性 | 協定版本、重播版本、選包白名單 | 不相容客戶端拒絕與診斷 | 不相容伺服器提示、資產版本驗證 |
@@ -271,7 +271,8 @@ M1 已完成（2026-08-09 對照 CMakeLists.txt 確認）：`qsanguosha_engine` 
 
 | 日期 | 決策 | 狀態 |
 |---|---|---|
-| 2026-07-25 | CMake、Qt 6.11.1、Lua 5.4.8、MSVC 2022 為現代化基線 | Approved |
+| 2026-07-25 | CMake、Qt 6.11.1、Lua 5.4.8、MSVC 2022 為現代化基線 | Superseded（編譯器見 2026-08-18） |
+| 2026-08-18 | Windows 建置改 Visual Studio 2026 v145 + Qt 6.11.1 `msvc2022_64`（官方無 msvc2026 kit） | Approved |
 | 2026-07-25 | Windows GUI、Ubuntu 無頭伺服器、Android 客戶端為三項正式交付 | Approved |
 | 2026-07-25 | Android 使用 API 28/36、Google Play AAB＋PAD、正式 ABI `arm64-v8a` | Approved |
 | 2026-07-25 | 音訊採 Windows FMOD、Android Qt Multimedia、無頭 Null 三後端 | Approved |

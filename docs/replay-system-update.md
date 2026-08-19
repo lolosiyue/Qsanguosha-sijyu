@@ -94,7 +94,8 @@ replays/
 
 **相關檔案**：
 - `src/util/game-snapshot.h/cpp` - `GameSnapshot`
-- `src/server/room.cpp` - `saveSnapshot()`
+- `src/server/game-snapshot-service.h/cpp` - `GameSnapshotService`
+- `src/server/room.cpp` - Snapshot/Replay 公開 API façade
 - `src/server/gamerule.cpp` - 觸發點
 
 ---
@@ -105,6 +106,8 @@ replays/
 |------|------|
 | `src/util/game-snapshot.h` | 遊戲狀態快照結構定義 |
 | `src/util/game-snapshot.cpp` | 快照序列化/反序列化實作 |
+| `src/server/game-snapshot-service.h` | 伺服器快照服務介面與狀態所有權 |
+| `src/server/game-snapshot-service.cpp` | 快照保存、查詢與 Replay 路徑管理 |
 | `src/util/replay-index.h` | 節點索引結構定義 |
 | `src/util/replay-index.cpp` | 索引建立與查詢實作 |
 | `src/util/replay-game-state.h` | 遊戲狀態重建結構定義 |
@@ -167,6 +170,9 @@ GameSnapshot* Room::getSnapshot(int turnCount) const;
 
 // 設定錄影路徑
 void Room::setReplayPath(const QString &path);
+
+// 取得錄影路徑
+QString Room::getReplayPath() const;
 ```
 
 ---
@@ -206,7 +212,7 @@ replayer->jumpToNode(nodeIndex);
 
 ## 注意事項
 
-1. **編譯驗證**：本次實作尚未進行編譯驗證，建議先編譯測試。
+1. **驗證**：2026-08-16 `GameSnapshotService` 抽取後 Debug build、CTest 13/13 與 `03_1v2` headless 單局均通過。
 
 2. **UI 位置**：`ReplayTimeline` 的位置需要根據實際 UI 佈局調整。
 

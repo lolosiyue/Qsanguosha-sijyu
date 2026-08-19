@@ -2,6 +2,7 @@
 #define _SKILL_H
 
 class Room;
+class SkillRuntimeCoordinator;
 class QDialog;
 
 #include "skill-dialog-info.h"
@@ -218,6 +219,7 @@ protected:
 
 private:
     friend class Room;
+    friend class SkillRuntimeCoordinator;
     ServerPlayer *getUsageHolder(const SkillContext &ctx) const;
     QString getUsageTagKey(const SkillContext &ctx) const;
 

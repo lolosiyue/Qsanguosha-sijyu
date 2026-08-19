@@ -1,4 +1,5 @@
 #include "serverplayer.h"
+#include "player-ui-state-builder.h"
 //#include "skill.h"
 #include "engine.h"
 //#include "standard.h"
@@ -24,12 +25,44 @@ const int ServerPlayer::S_NUM_SEMAPHORES = 6;
 ServerPlayer::ServerPlayer(Room *room)
 	: Player(room), m_isClientResponseReady(false), m_isWaitingReply(false),
 	socket(nullptr), room(room), ai(nullptr), trust_ai(new BasicAI(this)),
-	recordBuffer(nullptr), _m_phases_index(NotActive), next(nullptr), m_tooltipDirty(false)
+	recordBuffer(nullptr), _m_phases_index(NotActive), next(nullptr)
 {
 	semas = new QSemaphore *[S_NUM_SEMAPHORES];
 	for (int i = 0; i < S_NUM_SEMAPHORES; i++)
 		semas[i] = new QSemaphore(0);
 	onsole_owner = this;
+
+    const auto advanceProperty = [this]() {
+        if (this->room && this->room->roomRuntime())
+            this->room->roomRuntime()->advanceStateRevision(RoomRuntime::PlayerPropertyChanged);
+    };
+    connect(this, &Player::general_changed, this, advanceProperty);
+    connect(this, &Player::general2_changed, this, advanceProperty);
+    connect(this, &Player::role_changed, this, advanceProperty);
+    connect(this, &Player::state_changed, this, advanceProperty);
+    connect(this, &Player::hp_changed, this, advanceProperty);
+    connect(this, &Player::kingdom_changed, this, advanceProperty);
+    connect(this, &Player::gameplay_property_changed, this, advanceProperty);
+    connect(this, &Player::phase_changed, this, [this]() {
+        if (this->room && this->room->roomRuntime())
+            this->room->roomRuntime()->advanceStateRevision(RoomRuntime::TurnStateChanged);
+    });
+    connect(this, &Player::mark_changed, this, [this]() {
+        if (this->room && this->room->roomRuntime())
+            this->room->roomRuntime()->advanceStateRevision(RoomRuntime::PlayerMarkChanged);
+    });
+    connect(this, &Player::skill_set_changed, this, [this]() {
+        if (this->room && this->room->roomRuntime())
+            this->room->roomRuntime()->advanceStateRevision(RoomRuntime::SkillSetChanged);
+    });
+    connect(this, &Player::skill_state_changed, this, [this]() {
+        if (this->room && this->room->roomRuntime())
+            this->room->roomRuntime()->advanceStateRevision(RoomRuntime::SkillInstanceStateChanged);
+    });
+    connect(this, &Player::card_limitation_changed, this, [this]() {
+        if (this->room && this->room->roomRuntime())
+            this->room->roomRuntime()->advanceStateRevision(RoomRuntime::CardLimitationChanged);
+    });
 }
 
 ServerPlayer::~ServerPlayer()
@@ -74,66 +107,16 @@ void ServerPlayer::setTag(const QString &key, const QVariant &value)
 	}
 }
 
-void ServerPlayer::calculateUITooltips()
+void ServerPlayer::refreshUIState()
 {
     if (!room || !getGeneral() || !isAlive()) return;
 
-    QStringList mc_list;
-    int off_dist = 0, def_dist = 0;
-    QStringList off_skills, def_skills;
+    const PlayerUIState state = PlayerUIStateBuilder::build(*this, *room);
+    if (state == m_uiState)
+        return;
 
-    // 1. 計算手牌上限（V1/V2 皆走 Engine::listMaxCardsSkillContributions）
-    foreach (const MaxCardsSkill *mc_skill, Sanguosha->getMaxCardsSkills()) {
-        if (!mc_skill || mc_skill->objectName() == "gamerulemaxcards") continue;
-
-        foreach (const SkillUIContribution &c,
-                 Sanguosha->listMaxCardsSkillContributions(mc_skill, this)) {
-            if (c.isFixed) {
-                mc_list << QString("%1^F%2^%3")
-                               .arg(mc_skill->objectName()).arg(c.value).arg(c.holderName);
-            } else if (c.value != 0) {
-                mc_list << QString("%1^%2^%3")
-                               .arg(mc_skill->objectName()).arg(c.value).arg(c.holderName);
-            }
-        }
-    }
-    mc_list.removeDuplicates();
-
-    // 2. 計算距離修正（V1/V2 皆走 Engine::contributionOfDistanceSkill）
-    QList<ServerPlayer *> siblings = room->getOtherPlayers(this);
-    if (!siblings.isEmpty()) {
-        foreach (const Skill *skill, this->getSkills(true, false)) {
-            const DistanceSkill *dist_skill = qobject_cast<const DistanceSkill *>(skill);
-            if (!dist_skill) continue;
-            // 恒定 ±N 以第一個其他存活角色為參照；條件型可能失真（已接受）
-            int off_val = Sanguosha->contributionOfDistanceSkill(dist_skill, this, siblings.first());
-            if (off_val < 0) { off_dist += off_val; off_skills << dist_skill->objectName(); }
-            int def_val = Sanguosha->contributionOfDistanceSkill(dist_skill, siblings.first(), this);
-            if (def_val > 0) { def_dist += def_val; def_skills << dist_skill->objectName(); }
-        }
-    }
-    QStringList vae_list;
-    foreach (const Skill *skill, this->getSkills(true, false)) {
-        const ViewAsEquipSkill *vaes = qobject_cast<const ViewAsEquipSkill *>(skill);
-        if (vaes) {
-            QString cns = vaes->viewAsEquip(this);
-            if (!cns.isEmpty()) {
-                foreach (const QString &eq, cns.split(",", Qt::SkipEmptyParts)) {
-                    vae_list << QString("%1^%2").arg(eq).arg(vaes->objectName());
-                }
-            }
-        }
-    }
-    setTag("UI_VAE_Skills", QVariant(vae_list));
-
-    int final_max_cards = this->getMaxCards();
-
-    setTag("UI_MC_Skills", QVariant(mc_list));
-    setTag("UI_Off_Dist", off_dist);
-    setTag("UI_Off_Skills", QVariant(off_skills));
-    setTag("UI_Def_Dist", def_dist);
-    setTag("UI_Def_Skills", QVariant(def_skills));
-    setTag("UI_Hand_Max", final_max_cards);
+    m_uiState = state;
+    room->notifyPlayerUIState(this, state);
 }
 
 QStringList ServerPlayer::getPendingAnytimeSkills() const
@@ -1128,7 +1111,7 @@ void ServerPlayer::addSkill(const QString &skill_name)
     JsonArray args;
     args << (int)QSanProtocol::S_GAME_EVENT_ADD_SKILL << objectName() << skill_name;
     room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
-    calculateUITooltips();
+    refreshUIState();
 }
 
 void ServerPlayer::addSkill(const QString &skill_name, bool head_skill)
@@ -1142,7 +1125,7 @@ void ServerPlayer::addSkill(const QString &skill_name, bool head_skill)
     JsonArray args;
     args << (int)QSanProtocol::S_GAME_EVENT_ADD_SKILL << objectName() << skill_name << head_skill;
     room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
-    calculateUITooltips();
+    refreshUIState();
 }
 
 void ServerPlayer::loseSkill(const QString &skill_name)
@@ -1151,7 +1134,7 @@ void ServerPlayer::loseSkill(const QString &skill_name)
     JsonArray args;
     args << (int)QSanProtocol::S_GAME_EVENT_LOSE_SKILL << objectName() << skill_name;
     room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
-    calculateUITooltips();
+    refreshUIState();
 }
 
 void ServerPlayer::loseSkill(const QString &skill_name, bool head)
@@ -1160,7 +1143,7 @@ void ServerPlayer::loseSkill(const QString &skill_name, bool head)
     JsonArray args;
     args << (int)QSanProtocol::S_GAME_EVENT_LOSE_SKILL << objectName() << skill_name << head;
     room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
-    calculateUITooltips();
+    refreshUIState();
 }
 
 void ServerPlayer::setGender(General::Gender gender)
@@ -1396,6 +1379,8 @@ void ServerPlayer::marshal(ServerPlayer *player) const
 
 	foreach(const char *property_name, propertys)
 		room->notifyProperty(player, this, property_name);
+
+	room->notifyPlayerUIState(player, this, m_uiState);
 
 	QList<CardsMoveStruct> moves;
 
@@ -2497,7 +2482,7 @@ void ServerPlayer::showGeneral(bool head_general, bool trigger_event, bool sendL
         }
     }
 
-    calculateUITooltips();
+    refreshUIState();
 }
 
 void ServerPlayer::notifyPreshow()

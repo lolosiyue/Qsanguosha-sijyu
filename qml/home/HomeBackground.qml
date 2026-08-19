@@ -21,16 +21,22 @@ Item {
         color: HomeTheme.windowBg
 
         Image {
+            id: backdropImage
             anchors.fill: parent
             source: isVideo ? "" : backdropSource
             fillMode: Image.PreserveAspectCrop
-            mipmap: true
+            mipmap: false
+            asynchronous: true
+            cache: true
             opacity: HomeTheme.backdropOpacity
-            visible: !isVideo
+            visible: !isVideo && status === Image.Ready
 
             onStatusChanged: {
-                if (status === Image.Error)
-                    backdropSource = homeController.randomBackdrop();
+                if (status === Image.Error && backdropSource.toString() !== "") {
+                    var next = homeController.randomBackdrop()
+                    if (next.toString() !== "" && next !== backdropSource)
+                        backdropSource = next
+                }
             }
         }
 
@@ -40,8 +46,11 @@ Item {
             sourceComponent: VideoOverlay {
                 source: backdropSource
 
-                // 影片載入/播放失敗（編碼不支援、來源損壞等）時回退隨機靜態背景
-                onErrorOccurred: backdropSource = homeController.randomBackdrop()
+                onErrorOccurred: {
+                    var next = homeController.randomBackdrop()
+                    if (next.toString() !== "")
+                        backdropSource = next
+                }
             }
         }
     }

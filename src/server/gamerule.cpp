@@ -97,13 +97,26 @@ void GameRule::onPhaseProceed(ServerPlayer *player,Room *room) const
         break;
     }
     case Player::Play: {
+		player->removeTag("AI_FailedUse");
 		for (int i = 0; i < 9; i++){//防止无限询问
             if(!player->isAlive()) break;
 			CardUseStruct card_use;
             room->activate(player,card_use);
             if(card_use.card==nullptr) break;
-			if(room->useCard(card_use,true)) i = 0;
+			if(room->useCard(card_use,true)) {
+				i = 0;
+			} else {
+				// activate 每次只交 turnUse[0]；同一張被 areCardTargetsLegal／validate 駁回會空耗 9 次後直接棄牌
+				QStringList failed = player->getTag("AI_FailedUse").toStringList();
+				const QString key = card_use.card->toString();
+				if (!failed.contains(key))
+					failed << key;
+				player->setTag("AI_FailedUse", failed);
+				if (!card_use.card->isVirtualCard())
+					room->setCardFlag(card_use.card, "AI_FailedUse");
+			}
 		}
+		player->removeTag("AI_FailedUse");
         break;
     }
     case Player::Discard: {
@@ -135,6 +148,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 		if(player) break;
 		// 登記本局總人數,供崩潰摘要用(輪數稍後由 RoundStart 更新)
 		CrashHandler::setGameStats(room->getPlayers().length(), 0);
+		room->initializeReplayRecordPath();
 		ServerPlayer *lord = room->getLord();
 		if(room->getMode()=="04_boss") {
 			int difficulty = Config.value("BossModeDifficulty").toInt();

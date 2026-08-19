@@ -8,6 +8,7 @@
 #include "ai.h"
 #include "room.h"
 #include "roomthread.h"
+#include "lua-wrapper.h"
 
 //#include <QDir>
 
@@ -53,6 +54,41 @@ public:
 	void setParent(QObject*parent);
 	void deleteLater();
 };
+
+%feature("new", "0") General;
+%feature("new", "0") Package;
+%feature("new", "0") LuaScenario;
+%feature("new", "0") LuaTriggerSkill;
+%feature("new", "0") LuaTriggerSkillV2;
+%feature("new", "0") LuaScenarioRule;
+%feature("new", "0") LuaProhibitSkill;
+%feature("new", "0") LuaProhibitPindianSkill;
+%feature("new", "0") LuaDistanceSkill;
+%feature("new", "0") LuaDistanceSkillV2;
+%feature("new", "0") LuaMaxCardsSkill;
+%feature("new", "0") LuaMaxCardsSkillV2;
+%feature("new", "0") LuaTargetModSkill;
+%feature("new", "0") LuaTargetModSkillV2;
+%feature("new", "0") LuaInvaliditySkill;
+%feature("new", "0") LuaAttackRangeSkill;
+%feature("new", "0") LuaAttackRangeSkillV2;
+%feature("new", "0") LuaViewAsEquipSkill;
+%feature("new", "0") LuaCardLimitSkill;
+%feature("new", "0") LuaPreSelectionMetaSkill;
+%feature("new", "0") LuaAnytimeSkill;
+%feature("new", "0") LuaBattleArraySkill;
+%feature("new", "0") LuaViewAsSkillV2;
+%feature("new", "0") LuaViewAsSkill;
+%feature("new", "0") LuaFilterSkill;
+%feature("new", "0") LuaSkillCard;
+%feature("new", "0") LuaBasicCard;
+%feature("new", "0") LuaTrickCard;
+%feature("new", "0") LuaWeapon;
+%feature("new", "0") LuaArmor;
+%feature("new", "0") LuaHorse;
+%feature("new", "0") LuaOffensiveHorse;
+%feature("new", "0") LuaDefensiveHorse;
+%feature("new", "0") LuaTreasure;
 
 struct SkillDialogInfo {
     QString type;
@@ -111,6 +147,16 @@ public:
 	QString getCompanions() const;
 
 	void lastWord() const;
+};
+
+%extend General {
+	QString objectName() const {
+		return $self->objectName();
+	}
+
+	QVariant property(const char*name) const {
+		return $self->property(name);
+	}
 };
 
 class Player: public QObject {
@@ -451,6 +497,19 @@ static bool isNostalGeneral(const Player*p, const char*general_name);
 	void removeTag(const char*tag_name) {
 		$self->removeTag(tag_name);
     }
+
+	// Lua 直接綁在 Player*，避免走 QObject::objectName/property 的 SWIG 上轉型
+	QString objectName() const {
+		return $self->objectName();
+	}
+
+	QVariant property(const char*name) const {
+		return $self->property(name);
+	}
+
+	bool setProperty(const char*name, const QVariant&value) {
+		return $self->setProperty(name, value);
+	}
 };
 
 class ServerPlayer: public Player {
@@ -612,6 +671,18 @@ bool damageRevises(QVariant&data, int n);
 
 	void removePileByName(const char*pile_name) {
 		$self->clearOnePrivatePile(pile_name);
+	}
+
+	QString objectName() const {
+		return $self->objectName();
+	}
+
+	QVariant property(const char*name) const {
+		return $self->property(name);
+	}
+
+	bool setProperty(const char*name, const QVariant&value) {
+		return $self->setProperty(name, value);
 	}
 };
 
@@ -1347,6 +1418,14 @@ public:
 	QVariant getTag(const char*key) const{
 		return $self->getTag(key);
 	}
+
+	void deleteLater() {
+		$self->deleteLater();
+	}
+
+	bool inherits(const char*class_name) {
+		return $self->inherits(class_name);
+	}
 };
 
 class WrappedCard: public Card {
@@ -1397,6 +1476,12 @@ public:
 	void addSkills(const Skill*skill);
 };
 
+%extend Package {
+	QString objectName() const {
+		return $self->objectName();
+	}
+};
+
 class Scenario : public QObject {
 public:
 	Scenario(const char*name);
@@ -1423,7 +1508,12 @@ public:
 class Engine: public QObject {
 public:
 	void addTranslationEntry(const char*key, const char*value);
+	QString getAiData() const;
+	bool setAiData(const char *json) const;
 	QString translate(const char*to_translate, bool initial = false) const;
+	bool isGameLuaRuntime() const;
+	bool isLuaDefinitionsLoaded() const;
+	void finishLuaDefinitions();
 	bool addModes(const char*key, const char*value, const char*roles = "");
 	void setGameModeShuffleSeats(const char *mode_id, bool shuffle_seats);
 	void setGameModeLordWelfare(const char *mode_id, bool lord_welfare);
@@ -1552,6 +1642,16 @@ public:
 	QString getResourceAlias(const char*category, const char*original) const;
 };
 
+%extend Engine {
+	QString objectName() const {
+		return $self->objectName();
+	}
+
+	QVariant property(const char*name) const {
+		return $self->property(name);
+	}
+};
+
 extern Engine*Sanguosha;
 
 struct ActiveSkillRequest {
@@ -1565,8 +1665,23 @@ struct ActiveSkillRequest {
 	QString getUserString() const;
 };
 
-struct ActiveSkillAIRequest {
+struct AiSkillActionContext {
 	bool isValid() const;
+	QString getActivationOwner() const;
+	QString getActivationSkillName() const;
+	int getActivationInstanceId() const;
+	QString getSourceOwner() const;
+	QString getSourceSkillName() const;
+	int getSourceInstanceID() const;
+	bool isActivationQuotaAvailable() const;
+	bool isSourceQuotaAvailable() const;
+};
+
+struct AiLegacyRequestView {
+	bool isValid() const;
+	QString getDecisionId() const;
+	QString getStateRevision() const;
+	int getDecisionKind() const;
 	CardUseStruct::CardUseReason getReason() const;
 	QString getPattern() const;
 	QString getPrompt() const;
@@ -1580,16 +1695,6 @@ struct ActiveSkillAIRequest {
 	int getSourceInstanceID() const;
 	bool isActivationQuotaAvailable() const;
 	bool isSourceQuotaAvailable() const;
-};
-
-struct ActiveSkillAIResult {
-	bool accepted;
-	bool callbackHandled;
-	bool legacyHandled;
-	QString legacyAnswer;
-	QList<int> selectedCardIds;
-	QStringList selectedTargetNames;
-	QString userString;
 };
 
 struct SkillInstanceRef;
@@ -1997,9 +2102,9 @@ public:
 
 	int acquireSkill(ServerPlayer*player, const Skill*skill, bool open = true, bool getmark = true, bool event_and_log = true);
 	int acquireSkill(ServerPlayer*player, const char*skill_name, bool open = true, bool getmark = true, bool event_and_log = true);
-	int getActiveSkillAIInstanceId(ServerPlayer *player, const char *skillName) const;
-	ActiveSkillAIRequest getActiveSkillAIRequest(ServerPlayer *player, const char *skillName) const;
-	ActiveSkillAIRequest getActiveSkillAIRequest(ServerPlayer *player, const char *skillName,
+	int getAiSkillActionInstanceId(ServerPlayer *player, const char *skillName) const;
+	AiLegacyRequestView getAiSkillActionContext(ServerPlayer *player, const char *skillName) const;
+	AiLegacyRequestView getAiSkillActionContext(ServerPlayer *player, const char *skillName,
 		CardUseStruct::CardUseReason reason, const char *pattern, const char *prompt,
 		Card::HandlingMethod method) const;
 	int getSkillInstanceAmount(const SkillInstanceRef &ref) const;
@@ -2250,16 +2355,17 @@ public:
 
 void Room::doScript(const QString&script)
 {
-	SWIG_NewPointerObj(m_lua, this, SWIGTYPE_p_Room, 0);
-	lua_setglobal(m_lua, "R");
+	lua_State *L = getLuaState();
+	SWIG_NewPointerObj(L, this, SWIGTYPE_p_Room, 0);
+	lua_setglobal(L, "R");
 
-	SWIG_NewPointerObj(m_lua, current, SWIGTYPE_p_ServerPlayer, 0);
-	lua_setglobal(m_lua, "P");
+	SWIG_NewPointerObj(L, current, SWIGTYPE_p_ServerPlayer, 0);
+	lua_setglobal(L, "P");
 
-	int err = luaL_dostring(m_lua, script.toLatin1());
+	int err = luaL_dostring(L, script.toLatin1());
 	if (err) {
-		QString err_str = lua_tostring(m_lua, -1);
-		lua_pop(m_lua, 1);
+		QString err_str = lua_tostring(L, -1);
+		lua_pop(L, 1);
 		output(err_str);
 	}
 }
@@ -2269,3 +2375,59 @@ void Room::doScript(const QString&script)
 %include "card.i"
 %include "luaskills.i"
 %include "ai.i"
+
+%extend LuaTriggerSkill {
+	QString objectName() const {
+		return $self->objectName();
+	}
+
+	QVariant property(const char*name) const {
+		return $self->property(name);
+	}
+
+	bool inherits(const char*class_name) {
+		return $self->inherits(class_name);
+	}
+}
+
+%extend LuaTriggerSkillV2 {
+	QString objectName() const {
+		return $self->objectName();
+	}
+
+	QVariant property(const char*name) const {
+		return $self->property(name);
+	}
+
+	bool inherits(const char*class_name) {
+		return $self->inherits(class_name);
+	}
+}
+
+%extend LuaViewAsSkill {
+	QString objectName() const {
+		return $self->objectName();
+	}
+
+	QVariant property(const char*name) const {
+		return $self->property(name);
+	}
+
+	bool inherits(const char*class_name) {
+		return $self->inherits(class_name);
+	}
+}
+
+%extend LuaViewAsSkillV2 {
+	QString objectName() const {
+		return $self->objectName();
+	}
+
+	QVariant property(const char*name) const {
+		return $self->property(name);
+	}
+
+	bool inherits(const char*class_name) {
+		return $self->inherits(class_name);
+	}
+}

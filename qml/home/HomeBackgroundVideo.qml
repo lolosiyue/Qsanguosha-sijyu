@@ -23,12 +23,12 @@ Item {
             anchors.fill: parent
             source: isVideo ? "" : backdropSource
             fillMode: Image.PreserveAspectCrop
-            mipmap: true
+            mipmap: false
             opacity: HomeTheme.backdropOpacity
-            visible: !isVideo
+            visible: !isVideo && backdropSource.toString() !== ""
 
             onStatusChanged: {
-                if (status === Image.Error)
+                if (status === Image.Error && backdropSource.toString() !== "")
                     backdropSource = homeController.randomBackdrop();
             }
         }
