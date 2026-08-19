@@ -1176,6 +1176,21 @@ void HomeController::refreshCharacterImage()
     emit characterImageChanged();
 }
 
+qreal HomeController::uiScale() const
+{
+    return Config.UIScale;
+}
+
+QString HomeController::visualMode() const
+{
+    return Config.VisualMode;
+}
+
+void HomeController::notifyVisualSettings()
+{
+    emit visualSettingsChanged();
+}
+
 bool HomeController::isDarkTheme() const
 {
     const int scheme = Config.ColorScheme;

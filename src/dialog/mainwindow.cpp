@@ -29,6 +29,7 @@
 #include <QOpenGLWidget>
 #include <QStackedWidget>
 #include <QQuickWidget>
+#include <QQuickItem>
 #include <QTimer>
 #include <QDateTime>
 #include <QFile>
@@ -52,10 +53,18 @@ public:
         setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
         setAlignment(Qt::AlignCenter);
+        m_uiScale = qBound<qreal>(1.0, Config.UIScale, 2.0);
         QOpenGLWidget *glWidget = new QOpenGLWidget(this);
         glWidget->setUpdateBehavior(QOpenGLWidget::PartialUpdate);
         setViewport(glWidget);
         setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
+    }
+
+    void setUiScale(qreal scale)
+    {
+        m_uiScale = qBound<qreal>(1.0, scale, 2.0);
+        if (auto *room_scene = qobject_cast<RoomScene *>(scene()))
+            room_scene->applyUiElementScale(m_uiScale);
     }
 
     void refit()
@@ -76,6 +85,8 @@ private:
         if (!scene() || viewportSize.isEmpty())
             return;
 
+        resetTransform();
+
         if (scene()->inherits("RoomScene")) {
             RoomScene *room_scene = qobject_cast<RoomScene *>(scene());
             QRectF newSceneRect(QPointF(0, 0), QSizeF(viewportSize));
@@ -84,8 +95,7 @@ private:
             setSceneRect(room_scene->sceneRect());
             if (newSceneRect != room_scene->sceneRect())
                 fitInView(room_scene->sceneRect(), Qt::KeepAspectRatio);
-            else
-                resetTransform();
+            room_scene->applyUiElementScale(m_uiScale);
             if (m_mainWindow)
                 m_mainWindow->setBackgroundBrush(false);
             return;
@@ -97,14 +107,13 @@ private:
             setSceneRect(start_scene->sceneRect());
             if (newSceneRect != start_scene->sceneRect())
                 fitInView(start_scene->sceneRect(), Qt::KeepAspectRatio);
-            else
-                resetTransform();
         }
         if (m_mainWindow)
             m_mainWindow->setBackgroundBrush(true);
     }
 
     MainWindow *m_mainWindow;
+    qreal m_uiScale = 1.0;
 };
 
 MainWindow::MainWindow(QWidget *parent)
@@ -128,6 +137,7 @@ MainWindow::MainWindow(QWidget *parent)
 	connect(config_dialog, SIGNAL(bg_changed()), this, SLOT(changeBackground()));
 	// 預覽視覺模式/背景時,重新載入主頁 QML 讓 MultiEffect 即時套用
 	connect(config_dialog, &ConfigDialog::previewChanged, this, &MainWindow::reloadHomePage);
+	connect(config_dialog, &ConfigDialog::uiScalePreviewChanged, this, &MainWindow::setUiScale);
 
 	connect(ui->actionAbout_Qt, SIGNAL(triggered()), qApp, SLOT(aboutQt()));
 	connect(ui->actionAcknowledgement_2, SIGNAL(triggered()), this, SLOT(on_actionAcknowledgement_triggered()));
@@ -135,6 +145,7 @@ MainWindow::MainWindow(QWidget *parent)
 	pageStack = new QStackedWidget(this);
 
 	homeController = new HomeController(this);
+	connect(config_dialog, &ConfigDialog::liveVisualChanged, homeController, &HomeController::notifyVisualSettings);
 	homeView = new QQuickWidget(pageStack);
 	gameView = new FitView(nullptr, this);
 
@@ -220,6 +231,8 @@ void MainWindow::setupHomePage()
 
 	connect(config_dialog, &ConfigDialog::accepted,
 		this, &MainWindow::reloadHomePage);
+
+	setUiScale(Config.UIScale);
 }
 
 void MainWindow::reloadHomePage()
@@ -229,6 +242,7 @@ void MainWindow::reloadHomePage()
 
 	homeView->setSource(QUrl());
 	homeView->setSource(QUrl(QStringLiteral("qrc:/QSanguosha/Home/HomeScene.qml")));
+	setUiScale(Config.UIScale);
 	homeView->setFocus();
 }
 
@@ -389,6 +403,14 @@ void MainWindow::refitScene()
 {
 	if (gameView)
 		gameView->refit();
+}
+
+void MainWindow::setUiScale(qreal scale)
+{
+	if (gameView)
+		gameView->setUiScale(scale);
+	if (homeView && homeView->rootObject())
+		homeView->rootObject()->setProperty("uiScale", scale);
 }
 
 void MainWindow::on_actionExit_triggered()

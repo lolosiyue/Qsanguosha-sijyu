@@ -23,9 +23,12 @@ ConfigDialog::ConfigDialog(QWidget *parent)
     connect(ui->themeLightRadio, &QRadioButton::toggled, this, [this](bool on) { if (on && !m_loading) previewTheme(1); });
     connect(ui->themeDarkRadio, &QRadioButton::toggled, this, [this](bool on) { if (on && !m_loading) previewTheme(2); });
     connect(ui->uiScaleSlider, &QSlider::valueChanged, this, [this](int value) {
-        ui->uiScaleValueLabel->setText(QString::number(value / 20.0, 'f', 2) + "x");
-        if (!m_loading)
-            applyUiScalePreview();
+        const qreal scale = value / 20.0;
+        ui->uiScaleValueLabel->setText(QString::number(scale, 'f', 2) + "x");
+        if (!m_loading) {
+            Config.UIScale = scale;
+            emit uiScalePreviewChanged(scale);
+        }
     });
     connect(ui->visualModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) { if (!m_loading) previewVisualMode(); });
 
@@ -146,21 +149,6 @@ void ConfigDialog::snapshotVisualSettings()
     m_visual.enablePointerEffect = Config.EnablePointerEffect;
 }
 
-void ConfigDialog::refitRoomScene()
-{
-    if (RoomSceneInstance) {
-        MainWindow *mw = static_cast<MainWindow *>(Sanguosha->parent());
-        if (qobject_cast<RoomScene *>(mw->getScene()) == RoomSceneInstance)
-            mw->refitScene();
-    }
-}
-
-void ConfigDialog::applyUiScalePreview()
-{
-    Config.UIScale = ui->uiScaleSlider->value() / 20.0;
-    refitRoomScene();
-}
-
 void ConfigDialog::previewTheme(int scheme)
 {
     Config.ColorScheme = scheme;
@@ -176,10 +164,9 @@ void ConfigDialog::previewVisualMode()
     case 2: Config.VisualMode = "highcontrast"; break;
     default: Config.VisualMode = "normal"; break;
     }
-    // QML 主頁用 Config.getValue("VisualMode") 讀取,必須即時寫入才看得到效果
     Config.setValue("VisualMode", Config.VisualMode);
     applyVisualMode(Config.VisualMode);
-    emit previewChanged();
+    emit liveVisualChanged();
 }
 
 void ConfigDialog::restoreVisualSettings()
@@ -190,7 +177,7 @@ void ConfigDialog::restoreVisualSettings()
     }
     if (!qFuzzyCompare(m_visual.uiScale, Config.UIScale)) {
         Config.UIScale = m_visual.uiScale;
-        refitRoomScene();
+        emit uiScalePreviewChanged(Config.UIScale);
     }
     if (m_visual.backgroundImage != Config.BackgroundImage) {
         Config.BackgroundImage = m_visual.backgroundImage;
@@ -201,7 +188,7 @@ void ConfigDialog::restoreVisualSettings()
         Config.VisualMode = m_visual.visualMode;
         Config.setValue("VisualMode", Config.VisualMode);
         applyVisualMode(Config.VisualMode);
-        emit previewChanged();
+        emit liveVisualChanged();
     }
     Config.setValue("NoIndicator", m_visual.noIndicator);
     Config.setValue("NoEquipAnim", m_visual.noEquipAnim);
@@ -294,7 +281,6 @@ void ConfigDialog::saveConfig()
     Config.setValue("EnableAnimatedGenerals", ui->enableAnimatedGeneralsCheckBox->isChecked());
     Config.EnablePointerEffect = ui->enablePointerEffectCheckBox->isChecked();
     Config.setValue("EnablePointerEffect", Config.EnablePointerEffect);
-    Config.UIScale = ui->uiScaleSlider->value() / 20.0;
     Config.setValue("UIScale", Config.UIScale);
 
     // 主題預覽時已寫入 Config.ColorScheme 並套用 palette,確定時一律持久化
@@ -317,6 +303,7 @@ void ConfigDialog::saveConfig()
     Config.setValue("VisualMode", Config.VisualMode);
     // 確保視覺模式(灰階/高對比)與目前主題疊加正確
     applyVisualMode(Config.VisualMode);
+    emit liveVisualChanged();
 
     Config.NeverNullifyMyTrick = ui->neverNullifyMyTrickCheckBox->isChecked();
     Config.setValue("NeverNullifyMyTrick", Config.NeverNullifyMyTrick);
