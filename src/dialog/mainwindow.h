@@ -48,8 +48,9 @@ public:
     explicit MainWindow(QWidget *parent = 0);
     ~MainWindow();
     void setBackgroundBrush(bool center_as_origin);
-    QGraphicsScene* getScene();
+    QGraphicsScene *getScene();
     void refitScene();
+    void setUiScale(qreal scale);
 
 protected:
     virtual void closeEvent(QCloseEvent *);

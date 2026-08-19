@@ -12,7 +12,7 @@ AbstractButton {
 
     property bool active: false
     property real characterScale: 1.0
-    property bool highContrast: Config ? Config.getValue("VisualMode", "normal") === "highcontrast" : false
+    property bool highContrast: homeController && homeController.visualMode === "highcontrast"
 
     implicitWidth: 160
     implicitHeight: 136

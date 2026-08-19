@@ -1237,9 +1237,8 @@ void RoomScene::adjustItems()
 	// update the sizes since we have reloaded the skin.
 	_getSceneSizes(minSize,maxSize);
 
-	// Clamp the logical scene between the skin's design bounds. A smaller
-	// logical scene is enlarged by FitView; UIScale interpolates from native
-	// 1:1 rendering to that full fit without changing layout coordinates.
+	// Clamp the logical scene between the skin's design bounds.
+	// UIScale 不改 layout：座位／Dashboard 座標仍按 1.0x 排，元素稍後 applyUiElementScale。
 	double sceneScale = 1.0;
 	if (displayRegion.width() > 0.0 && displayRegion.height() > 0.0) {
 		const double width = displayRegion.width();
@@ -1249,13 +1248,6 @@ void RoomScene::adjustItems()
 		if (maxSize.isValid()) {
 			const double maximumScale = qMin(maxSize.width() / width, maxSize.height() / height);
 			scale = qMax(minimumScale, qMin(1.0, maximumScale));
-		}
-
-		if (scale < 1.0 && Config.UIScale < 2.0) {
-			const double fullMagnification = 1.0 / scale;
-			const double magnification = 1.0
-				+ (Config.UIScale - 1.0) * (fullMagnification - 1.0);
-			scale = 1.0 / magnification;
 		}
 
 		sceneScale = scale;
@@ -1339,6 +1331,36 @@ void RoomScene::adjustItems()
 		iter.next();
 		iter.value()->setArea(getBubbleChatBoxShowArea(iter.key()));
 	}
+
+	applyUiElementScale(Config.UIScale);
+}
+
+void RoomScene::applyUiElementScale(qreal scale)
+{
+	scale = qBound<qreal>(1.0, scale, 2.0);
+
+	auto scaleAt = [scale](QGraphicsItem *item, const QPointF &origin) {
+		if (!item)
+			return;
+		item->setTransformOriginPoint(origin);
+		item->setScale(scale);
+	};
+	auto scaleCenter = [&](QGraphicsItem *item) {
+		if (!item)
+			return;
+		scaleAt(item, item->boundingRect().center());
+	};
+
+	if (dashboard) {
+		const QRectF r = dashboard->boundingRect();
+		scaleAt(dashboard, QPointF(r.center().x(), r.bottom()));
+	}
+	foreach (Photo *photo, photos)
+		scaleCenter(photo);
+	scaleCenter(m_tablePile);
+	scaleCenter(self_box);
+	scaleCenter(enemy_box);
+	scaleCenter(control_panel);
 }
 
 void RoomScene::_dispersePhotos(QList<Photo*>&photos,QRectF fillRegion,

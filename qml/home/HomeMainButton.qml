@@ -8,7 +8,7 @@ AbstractButton {
     property url iconSource: ""
     property string leadingText: ""
     property bool primary: false
-    property bool highContrast: Config ? Config.getValue("VisualMode", "normal") === "highcontrast" : false
+    property bool highContrast: homeController && homeController.visualMode === "highcontrast"
 
     implicitWidth: control.primary ? 470 : 440
     implicitHeight: control.primary ? 80 : 76

@@ -180,6 +180,7 @@ public:
     ~RoomScene();
     void changeTextEditBackground();
     void adjustItems();
+    void applyUiElementScale(qreal scale);
     void showIndicator(const QString &from, const QString &to);
     void showPromptBox();
     void closeAllDialogs();
