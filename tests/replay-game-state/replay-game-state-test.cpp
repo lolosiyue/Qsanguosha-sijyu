@@ -21,6 +21,16 @@ QString provenanceCommand(const JsonArray &body)
     packet.setMessageBody(body);
     return packet.toString();
 }
+
+QString gameSeedCommand(quint64 seed)
+{
+    JsonArray log;
+    log << "#GameSeed" << "" << "" << "" << QString::number(seed)
+        << "" << "" << "" << "";
+    Packet packet(S_TYPE_NOTIFICATION | S_DEST_CLIENT, S_COMMAND_LOG_SKILL);
+    packet.setMessageBody(log);
+    return packet.toString();
+}
 }
 
 int main(int argc, char *argv[])
@@ -47,6 +57,11 @@ int main(int argc, char *argv[])
     ok = expect(records.size() == 2, "V1 record count") && ok;
     ok = expect(records.last().value("sourceOwner").toString() == "legacyInitiator", "V1 source fallback") && ok;
     ok = expect(records.last().value("activationOwner").toString() == "legacyInitiator", "V1 activation fallback") && ok;
+
+    ok = expect(state.applyCommand(gameSeedCommand(Q_UINT64_C(4815162342))),
+                "Game seed replay log accepted") && ok;
+    ok = expect(state.getCardProvenance().size() == 2,
+                "Game seed replay log preserved existing state") && ok;
 
     JsonArray malformed;
     malformed << 2 << "use" << "initiator";

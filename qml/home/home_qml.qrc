@@ -1,6 +1,7 @@
 <RCC>
   <qresource prefix="/QSanguosha/Home">
     <file alias="HomeScene.qml">HomeScene.qml</file>
+    <file alias="GeneralScene.qml">GeneralScene.qml</file>
     <file alias="HomeTheme.qml">HomeTheme.qml</file>
     <file alias="qmldir">qmldir</file>
     <file alias="HomeBackground.qml">HomeBackground.qml</file>
@@ -10,6 +11,10 @@
     <file alias="MainActionPanel.qml">MainActionPanel.qml</file>
     <file alias="HomeBottomBar.qml">HomeBottomBar.qml</file>
     <file alias="HomeNavButton.qml">HomeNavButton.qml</file>
+    <file alias="BASlantedPanel.qml">BASlantedPanel.qml</file>
+    <file alias="BAToolButton.qml">BAToolButton.qml</file>
+    <file alias="HomeScrollBar.qml">HomeScrollBar.qml</file>
+    <file alias="SkeletonBlock.qml">SkeletonBlock.qml</file>
     <file alias="HomeSideBar.qml">HomeSideBar.qml</file>
     <file alias="CharacterLayer.qml">CharacterLayer.qml</file>
     <file alias="HomePlayerInfo.qml">HomePlayerInfo.qml</file>

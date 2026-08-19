@@ -7,6 +7,7 @@
 #include "table-pile.h"
 #include "carditem.h"
 #include "engine.h"
+#include "room.h"
 #include "client.h"
 #include "settings.h"
 #include "cardcontainer.h"
@@ -1236,9 +1237,8 @@ void RoomScene::adjustItems()
 	// update the sizes since we have reloaded the skin.
 	_getSceneSizes(minSize,maxSize);
 
-	// Clamp the logical scene between the skin's design bounds. A smaller
-	// logical scene is enlarged by FitView; UIScale interpolates from native
-	// 1:1 rendering to that full fit without changing layout coordinates.
+	// Clamp the logical scene between the skin's design bounds.
+	// UIScale 不改 layout：座位／Dashboard 座標仍按 1.0x 排，元素稍後 applyUiElementScale。
 	double sceneScale = 1.0;
 	if (displayRegion.width() > 0.0 && displayRegion.height() > 0.0) {
 		const double width = displayRegion.width();
@@ -1248,13 +1248,6 @@ void RoomScene::adjustItems()
 		if (maxSize.isValid()) {
 			const double maximumScale = qMin(maxSize.width() / width, maxSize.height() / height);
 			scale = qMax(minimumScale, qMin(1.0, maximumScale));
-		}
-
-		if (scale < 1.0 && Config.UIScale < 2.0) {
-			const double fullMagnification = 1.0 / scale;
-			const double magnification = 1.0
-				+ (Config.UIScale - 1.0) * (fullMagnification - 1.0);
-			scale = 1.0 / magnification;
 		}
 
 		sceneScale = scale;
@@ -1338,6 +1331,36 @@ void RoomScene::adjustItems()
 		iter.next();
 		iter.value()->setArea(getBubbleChatBoxShowArea(iter.key()));
 	}
+
+	applyUiElementScale(Config.UIScale);
+}
+
+void RoomScene::applyUiElementScale(qreal scale)
+{
+	scale = qBound<qreal>(1.0, scale, 2.0);
+
+	auto scaleAt = [scale](QGraphicsItem *item, const QPointF &origin) {
+		if (!item)
+			return;
+		item->setTransformOriginPoint(origin);
+		item->setScale(scale);
+	};
+	auto scaleCenter = [&](QGraphicsItem *item) {
+		if (!item)
+			return;
+		scaleAt(item, item->boundingRect().center());
+	};
+
+	if (dashboard) {
+		const QRectF r = dashboard->boundingRect();
+		scaleAt(dashboard, QPointF(r.center().x(), r.bottom()));
+	}
+	foreach (Photo *photo, photos)
+		scaleCenter(photo);
+	scaleCenter(m_tablePile);
+	scaleCenter(self_box);
+	scaleCenter(enemy_box);
+	scaleCenter(control_panel);
 }
 
 void RoomScene::_dispersePhotos(QList<Photo*>&photos,QRectF fillRegion,
@@ -2182,7 +2205,7 @@ void RoomScene::contextMenuEvent(QGraphicsSceneContextMenuEvent*event)
 
 		pile = miscellaneous_menu->addMenu(tr("View Maxcards"));
 		foreach (const ClientPlayer*player,item2player.values()){
-			pile->addAction(G_ROOM_SKIN.getCardAvatarPixmap(player->getGeneralName()),QString("%1：%2").arg(player->getLogName()).arg(player->getMaxCards()));
+			pile->addAction(G_ROOM_SKIN.getCardAvatarPixmap(player->getGeneralName()),QString("%1：%2").arg(player->getLogName()).arg(player->uiState().handMax));
 		}
 		//QAction*maxcards = miscellaneous_menu->addAction(tr("View Maxcards"));
 		//connect(maxcards,SIGNAL(triggered()),this,SLOT(viewMaxCards()));
@@ -2740,6 +2763,9 @@ void RoomScene::getCards(int moveId,QList<CardsMoveStruct> card_moves)
 		_processCardsMove(card_moves[i],false);
 		if(_shouldIgnoreDisplayMove(card_moves[i])) continue;
 		card_container->m_currentPlayer = (ClientPlayer*)card_moves[i].to;
+		// 未配對的 GET（moveId=-1）時 stash 為空；Qt6 Release takeFirst() 對空 QList 是 AV
+		if(!_m_cardsMoveStash.contains(moveId)||_m_cardsMoveStash[moveId].isEmpty())
+			continue;
 		QList<CardItem*> cards = _m_cardsMoveStash[moveId].takeFirst();
 		foreach (CardItem*card,cards){
 			card->setFlag(QGraphicsItem::ItemIsMovable,false);
@@ -6808,10 +6834,16 @@ void RoomScene::recorderAutoSave()
 			return;
 	}
 
-	QString path = QDir::currentPath()+"/record";
-	if(!QDir(path).exists())
-		QDir().mkpath(path);
-	QString filename = path+"/"+QDateTime::currentDateTime().toString("yyyy年MM月dd日HH时mm分ss秒")+".txt";
+	QString filename;
+	Room *room = Sanguosha->currentRoom();
+	if (room && !room->getReplayPath().isEmpty())
+		filename = room->getReplayPath();
+	else {
+		QString path = QDir::currentPath()+"/record";
+		if(!QDir(path).exists())
+			QDir().mkpath(path);
+		filename = path+"/"+QDateTime::currentDateTime().toString("yyyy年MM月dd日HH时mm分ss秒")+".txt";
+	}
 	ClientInstance->save(filename);
 }
 

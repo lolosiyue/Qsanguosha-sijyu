@@ -1,9 +1,7 @@
 import QtQuick
-import QtQuick.Layouts
-import QtQuick.Controls
 import "."
 
-Rectangle {
+Item {
     id: root
 
     property alias homeBtn: homeBtn
@@ -20,52 +18,52 @@ Rectangle {
     signal replaysClicked()
     signal settingsClicked()
 
+    implicitWidth: 1440
     implicitHeight: 136
+    clip: false
 
-    color: HomeTheme.panelTop
-    radius: 22
+    BASlantedPanel {
+        id: dockPlate
 
-    gradient: Gradient {
-        GradientStop {
-            position: 0.0
-            color: HomeTheme.panelTop
-        }
-
-        GradientStop {
-            position: 1.0
-            color: HomeTheme.panelBottom
-        }
-    }
-
-    // 上方微亮邊線
-    Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.top: parent.top
-        anchors.leftMargin: 22
-        anchors.rightMargin: 22
+        anchors.bottom: parent.bottom
 
-        height: 1
-        color: HomeTheme.panelBorder
+        height: 82
+
+        slant: -0.17
+        cornerRadius: 10
+        shadowBlur: 12
+        shadowOffset: 5
+        borderWidth: 1
+
+        topColor: HomeTheme.baDockTop
+        bottomColor: HomeTheme.baDockBottom
+        borderColor: HomeTheme.baDockBorder
+        shadowColor: HomeTheme.baDockShadow
+
+        accentVisible: true
+        accentColor: HomeTheme.baSky
+        accentHeight: 2
     }
 
-    RowLayout {
-        anchors.fill: parent
-        anchors.leftMargin: 26
-        anchors.rightMargin: 26
-        anchors.topMargin: 6
-        anchors.bottomMargin: 5
+    Row {
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 4
 
-        spacing: 4
+        spacing: 28
 
         HomeNavButton {
             id: homeBtn
 
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            width: 160
+            height: parent.height
 
-            text: qsTr("首頁")
-            iconSource: "qrc:/QSanguosha/Home/nav/home.png"
+            text: qsTranslate("HomeScene", "Home")
+            iconSource: "qrc:/QSanguosha/Home/icons/home.svg"
+            characterSource: homeController.navButtonImage("home")
 
             active: root.currentIndex === 0
 
@@ -81,11 +79,12 @@ Rectangle {
         HomeNavButton {
             id: generalsBtn
 
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            width: 160
+            height: parent.height
 
-            text: qsTr("武將")
-            iconSource: "qrc:/QSanguosha/Home/nav/generals.png"
+            text: qsTranslate("HomeScene", "Generals")
+            iconSource: "qrc:/QSanguosha/Home/icons/generals.svg"
+            characterSource: homeController.navButtonImage("generals")
 
             active: root.currentIndex === 1
 
@@ -101,11 +100,12 @@ Rectangle {
         HomeNavButton {
             id: cardsBtn
 
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            width: 160
+            height: parent.height
 
-            text: qsTr("卡牌")
-            iconSource: "qrc:/QSanguosha/Home/nav/cards.png"
+            text: qsTranslate("HomeScene", "Cards")
+            iconSource: "qrc:/QSanguosha/Home/icons/cards.svg"
+            characterSource: homeController.navButtonImage("cards")
 
             active: root.currentIndex === 2
 
@@ -121,11 +121,12 @@ Rectangle {
         HomeNavButton {
             id: replaysBtn
 
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            width: 160
+            height: parent.height
 
-            text: qsTr("錄像")
-            iconSource: "qrc:/QSanguosha/Home/nav/replays.png"
+            text: qsTranslate("HomeScene", "Replays")
+            iconSource: "qrc:/QSanguosha/Home/icons/replays.svg"
+            characterSource: homeController.navButtonImage("replays")
 
             active: root.currentIndex === 3
 
@@ -141,11 +142,12 @@ Rectangle {
         HomeNavButton {
             id: settingsBtn
 
-            Layout.fillWidth: true
-            Layout.fillHeight: true
+            width: 160
+            height: parent.height
 
-            text: qsTr("設定")
-            iconSource: "qrc:/QSanguosha/Home/nav/settings.png"
+            text: qsTranslate("HomeScene", "Settings")
+            iconSource: "qrc:/QSanguosha/Home/icons/settings.svg"
+            characterSource: homeController.navButtonImage("settings")
 
             active: root.currentIndex === 4
 

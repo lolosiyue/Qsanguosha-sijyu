@@ -5,32 +5,95 @@ class ResponseSkill;
 
 struct lua_State;
 
-typedef int LuaFunction;
-
 #include "card.h"
+#include "lua-runtime.h"
 #include "structs.h"
 
-struct ActiveSkillAIRequest {
-    CardUseStruct::CardUseReason reason;
-    QString pattern;
-    QString prompt;
-    Card::HandlingMethod handlingMethod;
-    ServerPlayer *initiator;
+#include <QJsonObject>
+
+struct AICardView {
+    int cardId;
+    int effectiveId;
+    QString objectName;
+    QString className;
+    int suit;
+    int number;
+    QString skillName;
+    bool red;
+    bool black;
+    QStringList kindOfNames;
+
+    AICardView()
+        : cardId(-1), effectiveId(-1), suit(int(Card::NoSuit)), number(0),
+          red(false), black(false) {}
+};
+
+struct AISkillView {
+    QString skillName;
+    int instanceId;
+    int source;
+    bool invalid;
+    bool hasAmountOverride;
+    int amount;
+    bool hasPrivateState;
+    QJsonObject state;
+    QJsonObject correctState;
+
+    AISkillView()
+        : instanceId(0), source(int(SourceInnate)), invalid(false),
+          hasAmountOverride(false), amount(0), hasPrivateState(false) {}
+};
+
+struct AIPlayerView {
+    QString objectName;
+    int seat;
+    int hp;
+    int maxHp;
+    int handcardCount;
+    int phase;
+    bool alive;
+    bool dead;
+    bool removed;
+    bool kongcheng;
+    bool wounded;
+    bool faceUp;
+    bool chained;
+    QString kingdom;
+    QString role;
+    QString generalName;
+    QString general2Name;
+    QList<AICardView> equips;
+    QList<AICardView> judgingArea;
+    QMap<QString, int> publicMarks;
+    QList<AISkillView> skills;
+
+    AIPlayerView()
+        : seat(0), hp(0), maxHp(0), handcardCount(0), phase(int(Player::NotActive)),
+          alive(false), dead(true), removed(false), kongcheng(true), wounded(false),
+          faceUp(true), chained(false) {}
+};
+
+struct AIWorldView {
+    quint64 revision;
+    AIPlayerView self;
+    QList<AIPlayerView> players;
+    QList<AICardView> handCards;
+    QString currentPlayer;
+    int currentPhase;
+
+    AIWorldView() : revision(0), currentPhase(int(Player::NotActive)) {}
+};
+
+struct AiSkillActionContext {
     SkillInstanceRef activationRef;
     SkillInstanceRef sourceRef;
     bool activationQuotaAvailable;
     bool sourceQuotaAvailable;
 
-    ActiveSkillAIRequest() : reason(CardUseStruct::CARD_USE_REASON_UNKNOWN),
-                             handlingMethod(Card::MethodUse), initiator(nullptr),
-                             activationQuotaAvailable(false), sourceQuotaAvailable(false) {}
+    AiSkillActionContext()
+        : activationQuotaAvailable(false), sourceQuotaAvailable(false) {}
 
-    bool isValid() const { return initiator && activationRef.isValid() && sourceRef.isValid(); }
-    CardUseStruct::CardUseReason getReason() const { return reason; }
-    QString getPattern() const { return pattern; }
-    QString getPrompt() const { return prompt; }
-    Card::HandlingMethod getHandlingMethod() const { return handlingMethod; }
-    ServerPlayer *getInitiator() const { return initiator; }
+    bool isValid() const { return activationRef.isValid() && sourceRef.isValid(); }
     QString getActivationOwner() const { return activationRef.ownerObjectName; }
     QString getActivationSkillName() const { return activationRef.key.skillName; }
     int getActivationInstanceId() const { return activationRef.key.instanceID; }
@@ -41,19 +104,98 @@ struct ActiveSkillAIRequest {
     bool isSourceQuotaAvailable() const { return sourceQuotaAvailable; }
 };
 
-// The Lua bridge is already bound to the ActiveSkillAIRequest supplied by Room.
-// A structured result carries choices only; a legacy string remains available
-// for the existing ai_skill_use parser. Room restores authoritative identity.
-struct ActiveSkillAIResult {
-    bool accepted;
-    bool callbackHandled;
-    bool legacyHandled;
-    QString legacyAnswer;
+struct AIRequest {
+    enum DecisionKind { Activate, UseCard };
+
+    DecisionKind kind;
+    quint64 decisionId;
+    quint64 stateRevision;
+    QString viewerObjectName;
+    CardUseStruct::CardUseReason reason;
+    QString pattern;
+    QString prompt;
+    Card::HandlingMethod handlingMethod;
+    AIWorldView worldView;
+    bool hasSkillActionContext;
+    AiSkillActionContext skillActionContext;
+
+    AIRequest()
+        : kind(UseCard), decisionId(0), stateRevision(0),
+          reason(CardUseStruct::CARD_USE_REASON_UNKNOWN), handlingMethod(Card::MethodUse),
+          hasSkillActionContext(false) {}
+
+    bool isValid() const { return !viewerObjectName.isEmpty(); }
+    QString getDecisionId() const { return QString::number(decisionId); }
+    QString getStateRevision() const { return QString::number(stateRevision); }
+    int getDecisionKind() const { return int(kind); }
+    CardUseStruct::CardUseReason getReason() const { return reason; }
+    QString getPattern() const { return pattern; }
+    QString getPrompt() const { return prompt; }
+    Card::HandlingMethod getHandlingMethod() const { return handlingMethod; }
+    bool hasSkillAction() const { return hasSkillActionContext; }
+    QString getActivationOwner() const { return skillActionContext.getActivationOwner(); }
+    QString getActivationSkillName() const { return skillActionContext.getActivationSkillName(); }
+    int getActivationInstanceId() const { return skillActionContext.getActivationInstanceId(); }
+    QString getSourceOwner() const { return skillActionContext.getSourceOwner(); }
+    QString getSourceSkillName() const { return skillActionContext.getSourceSkillName(); }
+    int getSourceInstanceID() const { return skillActionContext.getSourceInstanceID(); }
+    bool isActivationQuotaAvailable() const {
+        return hasSkillActionContext && skillActionContext.isActivationQuotaAvailable();
+    }
+    bool isSourceQuotaAvailable() const {
+        return hasSkillActionContext && skillActionContext.isSourceQuotaAvailable();
+    }
+};
+
+struct AiLegacyRequestView {
+    AIRequest request;
+    ServerPlayer *initiator;
+
+    AiLegacyRequestView() : initiator(nullptr) {}
+    AiLegacyRequestView(const AIRequest &request, ServerPlayer *initiator)
+        : request(request), initiator(initiator) {}
+
+    bool isValid() const { return request.isValid() && initiator; }
+    QString getDecisionId() const { return request.getDecisionId(); }
+    QString getStateRevision() const { return request.getStateRevision(); }
+    int getDecisionKind() const { return request.getDecisionKind(); }
+    CardUseStruct::CardUseReason getReason() const { return request.getReason(); }
+    QString getPattern() const { return request.getPattern(); }
+    QString getPrompt() const { return request.getPrompt(); }
+    Card::HandlingMethod getHandlingMethod() const { return request.getHandlingMethod(); }
+    ServerPlayer *getInitiator() const { return initiator; }
+    QString getActivationOwner() const { return request.getActivationOwner(); }
+    QString getActivationSkillName() const { return request.getActivationSkillName(); }
+    int getActivationInstanceId() const { return request.getActivationInstanceId(); }
+    QString getSourceOwner() const { return request.getSourceOwner(); }
+    QString getSourceSkillName() const { return request.getSourceSkillName(); }
+    int getSourceInstanceID() const { return request.getSourceInstanceID(); }
+    bool isActivationQuotaAvailable() const { return request.isActivationQuotaAvailable(); }
+    bool isSourceQuotaAvailable() const { return request.isSourceQuotaAvailable(); }
+};
+
+struct CardActionSpec {
+    QString legacyCardString;
     QList<int> selectedCardIds;
     QStringList selectedTargetNames;
     QString userString;
+    bool hasSkillActionContext;
+    AiSkillActionContext skillActionContext;
 
-    ActiveSkillAIResult() : accepted(false), callbackHandled(false), legacyHandled(false) {}
+    CardActionSpec() : hasSkillActionContext(false) {}
+};
+
+struct AIResult {
+    enum ActionKind { Pass, UseCard };
+
+    ActionKind kind;
+    bool handled;
+    quint64 decisionId;
+    quint64 stateRevision;
+    CardActionSpec action;
+    QString errorCode;
+
+    AIResult() : kind(Pass), handled(false), decisionId(0), stateRevision(0) {}
 };
 
 class AI : public QObject
@@ -78,6 +220,7 @@ public:
     QList<ServerPlayer *> getEnemies() const;
     QList<ServerPlayer *> getFriends() const;
 
+    virtual AIResult decide(const AIRequest &request);
     virtual void activate(CardUseStruct &card_use) = 0;
     virtual Card::Suit askForSuit(const QString &reason) = 0;
     virtual QString askForKingdom(QStringList kingdoms) = 0;
@@ -90,7 +233,6 @@ public:
     virtual int askForCardChosen(ServerPlayer *who, const QString &flags, const QString &reason, Card::HandlingMethod method) = 0;
     virtual const Card *askForCard(const QString &pattern, const QString &prompt, const QVariant &data, const Card::HandlingMethod method) = 0;
     virtual QString askForUseCard(const QString &pattern, const QString &prompt, const Card::HandlingMethod method) = 0;
-    virtual ActiveSkillAIResult askForActiveSkill(const ActiveSkillAIRequest &) { return ActiveSkillAIResult(); }
     virtual int askForAG(const QList<int> &card_ids, bool refusable, const QString &reason) = 0;
     virtual const Card *askForCardShow(ServerPlayer *requestor, const QString &reason) = 0;
     virtual const Card *askForPindian(ServerPlayer *requestor, const QString &reason) = 0;
@@ -149,11 +291,11 @@ class LuaAI : public TrustAI
 public:
     LuaAI(ServerPlayer *player);
 
+    virtual AIResult decide(const AIRequest &request);
     virtual const Card *askForCardShow(ServerPlayer *requestor, const QString &reason);
     virtual bool askForSkillInvoke(const QString &skill_name, const QVariant &data);
     virtual void activate(CardUseStruct &card_use);
     virtual QString askForUseCard(const QString &pattern, const QString &prompt, const Card::HandlingMethod method);
-    virtual ActiveSkillAIResult askForActiveSkill(const ActiveSkillAIRequest &request);
     virtual QList<int> askForDiscard(const QString &reason, int discard_num, int min_num, bool optional, bool include_equip, const QString &pattern = ".");
     virtual const Card *askForNullification(const Card *trick, ServerPlayer *from, ServerPlayer *to, bool positive);
     virtual QString askForChoice(const QString &skill_name, const QString &choices, const QVariant &data);

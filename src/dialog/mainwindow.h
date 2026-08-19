@@ -17,6 +17,7 @@ class ConfigDialog;
 class QStackedWidget;
 class QQuickWidget;
 class HomeController;
+class PointerEffectOverlay;
 
 class BroadcastBox : public QDialog
 {
@@ -47,8 +48,9 @@ public:
     explicit MainWindow(QWidget *parent = 0);
     ~MainWindow();
     void setBackgroundBrush(bool center_as_origin);
-    QGraphicsScene* getScene();
+    QGraphicsScene *getScene();
     void refitScene();
+    void setUiScale(qreal scale);
 
 protected:
     virtual void closeEvent(QCloseEvent *);
@@ -79,6 +81,7 @@ private:
     QSystemTrayIcon *systray = nullptr;
     Server *server = nullptr;
     HomeController *homeController = nullptr;
+    PointerEffectOverlay *m_pointerOverlay = nullptr;
 
 public slots:
     void startConnection();
@@ -103,6 +106,7 @@ private slots:
     void on_actionCard_Overview_triggered();
     void on_actionGeneral_Overview_triggered();
     void on_actionStart_Server_triggered();
+    void startLocalConsoleGame();
     void on_actionExit_triggered();
     void on_actionCard_editor_triggered();
 

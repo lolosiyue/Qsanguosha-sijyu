@@ -1,6 +1,9 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Effects
+import QtQuick.Layouts
+import QSanguosha.HomeFx 1.0
+import "."
 
 Item {
     id: root
@@ -8,6 +11,8 @@ Item {
     focus: true
 
     Keys.onPressed: function(event) {
+        if (root.generalsOpen)
+            return
         switch (event.key) {
         case Qt.Key_1:
             homeController.quickJoin();
@@ -24,19 +29,40 @@ Item {
         }
     }
 
-    property string visualMode: Config.getValue("VisualMode", "normal")
+    property string visualMode: homeController ? homeController.visualMode : "normal"
+    property real uiScale: 1.0
+    readonly property bool generalsOpen: homeController.currentPage === "generals"
+    property bool generalsMounted: false
+    readonly property bool generalPageBusy: {
+        if (!generalsOpen)
+            return false
+        return generalPage.status !== Loader.Ready || generalPage.item === null
+    }
+
+    onGeneralsOpenChanged: {
+        if (generalsOpen)
+            generalsMounted = true
+    }
 
     Item {
         id: contentHost
         anchors.fill: parent
+        clip: true
+        // 僅在灰階/高對比時離屏合成；Qt 6 saturation -1.0 才是去色（0.0 為不變）
+        layer.enabled: root.visualMode !== "normal"
+        layer.effect: MultiEffect {
+            autoPaddingEnabled: false
+            saturation: root.visualMode === "grayscale" ? -1.0 : 0.0
+            contrast: root.visualMode === "highcontrast" ? 0.35 : 0.0
+        }
 
         HomeBackground {
             id: backgroundLayer
             anchors.fill: parent
         }
 
-        // 固定 1920x1080 設計畫布：依視窗尺寸等比縮放並置中，
-        // 使 150% 縮放（邏輯 1280x720）下所有元件等比例縮小而不擁擠
+        // 固定 1920×1080 設計畫布：永遠完整 fit 進視窗（框架不動）。
+        // UIScale 只作用在各元素自己的 transform，不缩放整張畫布。
         Item {
             id: uiCanvas
 
@@ -50,6 +76,8 @@ Item {
             // 角色：佔滿上下，放大且底緣下沉，下半身疊入底部導覽列，略偏中間
             CharacterLayer {
                 id: characterLayer
+
+                visible: !root.generalsOpen
 
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
@@ -72,16 +100,23 @@ Item {
                 HomeBottomBar {
                     id: bottomBar
 
-                    anchors.left: parent.left
-                    anchors.right: parent.right
+                    anchors.horizontalCenter: parent.horizontalCenter
                     anchors.bottom: parent.bottom
-                    anchors.leftMargin: parent.width * 0.12
-                    anchors.rightMargin: parent.width * 0.12
                     anchors.bottomMargin: 12
 
+                    width: 1440
                     height: 136
+                    opacity: 0
 
-                    onHomeClicked: {}
+                    transformOrigin: Item.Bottom
+                    scale: root.uiScale
+
+                    transform: Translate {
+                        id: bottomEnter
+                        y: 180
+                    }
+
+                    onHomeClicked: homeController.openHome()
                     onGeneralsClicked: homeController.openGenerals()
                     onCardsClicked: homeController.openCards()
                     onReplaysClicked: homeController.openReplays()
@@ -93,15 +128,28 @@ Item {
             HomePlayerInfo {
                 id: playerInfo
 
+                visible: !root.generalsOpen
+
                 anchors.left: parent.left
                 anchors.top: parent.top
                 anchors.leftMargin: 32
                 anchors.topMargin: 24
+                opacity: 0
+
+                transformOrigin: Item.TopLeft
+                scale: root.uiScale
+
+                transform: Translate {
+                    id: playerEnter
+                    x: -180
+                }
             }
 
             // LOGO：移至右側三個主按鈕上方
             Image {
                 id: logo
+
+                visible: !root.generalsOpen && source.toString() !== "" && status === Image.Ready
 
                 anchors.right: actionPanel.right
                 anchors.bottom: actionPanel.top
@@ -113,11 +161,22 @@ Item {
 
                 source: homeController.logoImage
                 fillMode: Image.PreserveAspectFit
-                mipmap: true
+                mipmap: false
+                opacity: 0
+
+                transformOrigin: Item.BottomRight
+                scale: root.uiScale
+
+                transform: Translate {
+                    id: logoEnter
+                    y: -20
+                }
             }
 
             MainActionPanel {
                 id: actionPanel
+
+                visible: !root.generalsOpen
 
                 anchors.right: sideBar.left
                 anchors.rightMargin: 28
@@ -125,6 +184,15 @@ Item {
                 anchors.verticalCenterOffset: -25
 
                 width: Math.min(520, parent.width * 0.3)
+                opacity: 0
+
+                transformOrigin: Item.Right
+                scale: root.uiScale
+
+                transform: Translate {
+                    id: actionEnter
+                    x: 250
+                }
 
                 onQuickJoinClicked: homeController.quickJoin()
                 onJoinGameClicked: homeController.joinGame()
@@ -134,32 +202,241 @@ Item {
             HomeSideBar {
                 id: sideBar
 
+                visible: !root.generalsOpen
+
                 anchors.right: parent.right
                 anchors.rightMargin: 16
                 anchors.verticalCenter: parent.verticalCenter
+                opacity: 0
+
+                transformOrigin: Item.Right
+                scale: root.uiScale
+
+                transform: Translate {
+                    id: sideEnter
+                    x: 150
+                }
 
                 onSettingsClicked: homeController.openSettings()
                 onAboutClicked: homeController.openAbout()
                 onUpdateClicked: homeController.checkUpdates()
             }
+
+            Loader {
+                id: generalPage
+
+                anchors.fill: parent
+                anchors.bottomMargin: 148
+                z: 40
+                asynchronous: true
+                active: root.generalsMounted
+                source: "GeneralScene.qml"
+                visible: root.generalsOpen && !root.generalPageBusy
+                onStatusChanged: {
+                    if (status === Loader.Ready && generalPage.item) {
+                        generalPage.item.uiScale = root.uiScale
+                        if (root.generalsOpen) {
+                            root.applyGeneralsNavGraph()
+                            generalPage.item.takeKeyboard()
+                        }
+                    }
+                }
+            }
+
+            Binding {
+                target: generalPage.item
+                property: "uiScale"
+                value: root.uiScale
+                when: generalPage.item !== null
+            }
+
+            // Loader 編譯期間先畫面板骨架；Ready 後揭 GeneralScene，立繪再分幀載入
+            Item {
+                id: generalPageSkeleton
+                anchors.fill: generalPage
+                z: 41
+                visible: root.generalsOpen && root.generalPageBusy
+
+                Column {
+                    anchors.fill: parent
+                    anchors.leftMargin: HomeTheme.generalPageHMargin
+                    anchors.rightMargin: HomeTheme.generalPageHMargin
+                    anchors.topMargin: HomeTheme.generalPageTopMargin
+                    anchors.bottomMargin: HomeTheme.generalPageBottomMargin
+                    spacing: HomeTheme.generalPanelGap
+
+                    BASlantedPanel {
+                        width: parent.width
+                        height: HomeTheme.generalHeaderHeight
+                        slant: -0.08
+                        cornerRadius: 10
+                        shadowBlur: 0
+                        shadowOffset: 0
+                        topColor: HomeTheme.baDockTop
+                        bottomColor: HomeTheme.baDockBottom
+                        borderColor: HomeTheme.baDockBorder
+                        shadowColor: HomeTheme.baDockShadow
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 28
+                            anchors.rightMargin: 28
+                            anchors.bottomMargin: 8
+                            spacing: 18
+
+                            Text {
+                                text: homeController.qtTranslate("GeneralOverview", "General Overview")
+                                color: HomeTheme.btnSecondaryText
+                                font.pixelSize: 28
+                                font.bold: true
+                            }
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.maximumWidth: 480
+                                Layout.preferredHeight: 48
+                                radius: 24
+                                color: HomeTheme.btnSecondary
+                                border.color: HomeTheme.btnSecondaryBorder
+                            }
+
+                            Rectangle {
+                                Layout.preferredWidth: 220
+                                Layout.preferredHeight: 48
+                                radius: 24
+                                color: HomeTheme.btnSecondary
+                                border.color: HomeTheme.btnSecondaryBorder
+                            }
+
+                            Rectangle {
+                                Layout.preferredWidth: 140
+                                Layout.preferredHeight: 48
+                                radius: 8
+                                color: HomeTheme.btnSecondary
+                                border.color: HomeTheme.btnSecondaryBorder
+                            }
+
+                            Text {
+                                text: "0"
+                                color: HomeTheme.btnSecondaryText
+                                font.pixelSize: 22
+                                font.bold: true
+                            }
+                        }
+                    }
+
+                    Row {
+                        width: parent.width
+                        height: parent.height - HomeTheme.generalHeaderHeight - HomeTheme.generalPanelGap
+                        spacing: HomeTheme.generalPanelGap
+
+                        BASlantedPanel {
+                            width: Math.round((parent.width - HomeTheme.generalPanelGap) * HomeTheme.generalListShare)
+                            height: parent.height
+                            slant: 0
+                            cornerRadius: 10
+                            shadowBlur: 0
+                            shadowOffset: 0
+                            topColor: HomeTheme.baDockTop
+                            bottomColor: HomeTheme.baDockBottom
+                            borderColor: HomeTheme.baDockBorder
+                            shadowColor: HomeTheme.baDockShadow
+
+                            Item {
+                                id: skGrid
+                                anchors.fill: parent
+                                anchors.margins: HomeTheme.generalGridMargin
+                                property int cellW: HomeTheme.generalCellWidth(width)
+                                property int cellH: HomeTheme.generalCellHeight(width)
+                                property int cols: HomeTheme.generalCellColumns(width)
+
+                                Grid {
+                                    anchors.fill: parent
+                                    columns: skGrid.cols
+
+                                    Repeater {
+                                        model: skGrid.cols * 3
+                                        Item {
+                                            width: skGrid.cellW
+                                            height: skGrid.cellH
+                                            SkeletonBlock {
+                                                anchors.fill: parent
+                                                anchors.margins: HomeTheme.generalCellInset
+                                                radius: 8
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        BASlantedPanel {
+                            width: Math.round((parent.width - HomeTheme.generalPanelGap) * (1.0 - HomeTheme.generalListShare))
+                            height: parent.height
+                            slant: 0
+                            cornerRadius: 10
+                            shadowBlur: 0
+                            shadowOffset: 0
+                            topColor: HomeTheme.baDockTop
+                            bottomColor: HomeTheme.baDockBottom
+                            borderColor: HomeTheme.baDockBorder
+                            clip: true
+
+                            Row {
+                                anchors.fill: parent
+                                anchors.margins: 14
+                                spacing: 12
+
+                                SkeletonBlock {
+                                    width: Math.round(parent.width * 0.33)
+                                    height: Math.min(parent.height - 28, Math.round(parent.width * 0.33 * 1.45))
+                                    radius: 10
+                                }
+
+                                Column {
+                                    width: parent.width - parent.children[0].width - 12
+                                    spacing: 8
+
+                                    SkeletonBlock { width: 140; height: 16 }
+                                    SkeletonBlock { width: 220; height: 32 }
+                                    Row {
+                                        spacing: 10
+                                        Repeater {
+                                            model: 5
+                                            SkeletonBlock { width: 22; height: 22; radius: 4 }
+                                        }
+                                    }
+                                    Row {
+                                        spacing: 8
+                                        Repeater {
+                                            model: 3
+                                            SkeletonBlock { width: 88; height: 24; radius: 4 }
+                                        }
+                                    }
+                                    Row {
+                                        spacing: 8
+                                        SkeletonBlock { width: 88; height: 36; radius: 8 }
+                                        SkeletonBlock { width: 88; height: 36; radius: 8 }
+                                    }
+                                    SkeletonBlock { width: parent.width; height: 14 }
+                                    SkeletonBlock { width: parent.width * 0.88; height: 14 }
+                                    SkeletonBlock { width: parent.width * 0.62; height: 14 }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
-    MultiEffect {
-        id: visualEffect
-
-        anchors.fill: contentHost
-        source: contentHost
-
-        enabled: root.visualMode !== "normal"
-
-        saturation: root.visualMode === "grayscale" ? 0.0 : 1.0
-        contrast: root.visualMode === "highcontrast" ? 0.35 : 0.0
+    HomePointerFx {
+        anchors.fill: parent
+        z: 200
     }
 
     // 鍵盤方向鍵導航圖：各面板按鈕之間的上下左右連線
-    Component.onCompleted: {
-        // 行動面板 ↔ 右側欄：左右切換（同行對應）
+    function applyHomeNavGraph() {
         actionPanel.quickJoinBtn.KeyNavigation.right = sideBar.settingsBtn
         actionPanel.joinGameBtn.KeyNavigation.right = sideBar.aboutBtn
         actionPanel.startServerBtn.KeyNavigation.right = sideBar.updateBtn
@@ -167,7 +444,6 @@ Item {
         sideBar.aboutBtn.KeyNavigation.left = actionPanel.joinGameBtn
         sideBar.updateBtn.KeyNavigation.left = actionPanel.startServerBtn
 
-        // 行動面板：上下（上端連底部列、下端連底部列）
         actionPanel.quickJoinBtn.KeyNavigation.down = actionPanel.joinGameBtn
         actionPanel.joinGameBtn.KeyNavigation.down = actionPanel.startServerBtn
         actionPanel.startServerBtn.KeyNavigation.down = bottomBar.replaysBtn
@@ -175,7 +451,6 @@ Item {
         actionPanel.joinGameBtn.KeyNavigation.up = actionPanel.quickJoinBtn
         actionPanel.quickJoinBtn.KeyNavigation.up = bottomBar.homeBtn
 
-        // 右側欄：上下循環
         sideBar.settingsBtn.KeyNavigation.down = sideBar.aboutBtn
         sideBar.aboutBtn.KeyNavigation.down = sideBar.updateBtn
         sideBar.updateBtn.KeyNavigation.down = sideBar.settingsBtn
@@ -183,7 +458,6 @@ Item {
         sideBar.aboutBtn.KeyNavigation.up = sideBar.settingsBtn
         sideBar.settingsBtn.KeyNavigation.up = sideBar.updateBtn
 
-        // 底部導航列：左右循環
         bottomBar.homeBtn.KeyNavigation.right = bottomBar.generalsBtn
         bottomBar.generalsBtn.KeyNavigation.right = bottomBar.cardsBtn
         bottomBar.cardsBtn.KeyNavigation.right = bottomBar.replaysBtn
@@ -195,14 +469,221 @@ Item {
         bottomBar.generalsBtn.KeyNavigation.left = bottomBar.homeBtn
         bottomBar.homeBtn.KeyNavigation.left = bottomBar.settingsBtn
 
-        // 底部導航列 → 行動面板：向上
         bottomBar.homeBtn.KeyNavigation.up = actionPanel.quickJoinBtn
         bottomBar.generalsBtn.KeyNavigation.up = actionPanel.joinGameBtn
         bottomBar.cardsBtn.KeyNavigation.up = actionPanel.startServerBtn
         bottomBar.replaysBtn.KeyNavigation.up = actionPanel.quickJoinBtn
         bottomBar.settingsBtn.KeyNavigation.up = actionPanel.joinGameBtn
 
-        // 初始焦點：主按鈕
+        bottomBar.homeBtn.KeyNavigation.tab = bottomBar.generalsBtn
+        bottomBar.generalsBtn.KeyNavigation.tab = bottomBar.cardsBtn
+        bottomBar.cardsBtn.KeyNavigation.tab = bottomBar.replaysBtn
+        bottomBar.replaysBtn.KeyNavigation.tab = bottomBar.settingsBtn
+        bottomBar.settingsBtn.KeyNavigation.tab = bottomBar.homeBtn
+        bottomBar.homeBtn.KeyNavigation.backtab = bottomBar.settingsBtn
+        bottomBar.generalsBtn.KeyNavigation.backtab = bottomBar.homeBtn
+        bottomBar.cardsBtn.KeyNavigation.backtab = bottomBar.generalsBtn
+        bottomBar.replaysBtn.KeyNavigation.backtab = bottomBar.cardsBtn
+        bottomBar.settingsBtn.KeyNavigation.backtab = bottomBar.replaysBtn
+    }
+
+    function applyGeneralsNavGraph() {
+        var g = generalPage.item
+        if (!g)
+            return
+        g.banBtn.KeyNavigation.tab = bottomBar.generalsBtn
+        g.searchField.KeyNavigation.backtab = bottomBar.settingsBtn
+        bottomBar.homeBtn.KeyNavigation.up = g.searchField
+        bottomBar.generalsBtn.KeyNavigation.up = g.searchField
+        bottomBar.cardsBtn.KeyNavigation.up = g.searchField
+        bottomBar.replaysBtn.KeyNavigation.up = g.searchField
+        bottomBar.settingsBtn.KeyNavigation.up = g.searchField
+        bottomBar.settingsBtn.KeyNavigation.tab = g.searchField
+        bottomBar.homeBtn.KeyNavigation.backtab = g.banBtn
+    }
+
+    function restoreHomeKeyboard() {
+        applyHomeNavGraph()
+        if (actionPanel.visible)
+            actionPanel.quickJoinBtn.forceActiveFocus()
+        else
+            bottomBar.homeBtn.forceActiveFocus()
+    }
+
+    // 首頁站穩後再偷載：800ms 空等，避免跟進場動畫搶 IO／解碼。
+    Item {
+        id: generalArtPrefetch
+        x: -4000
+        y: -4000
+        width: 1
+        height: 1
+        opacity: 0
+        enabled: false
+        z: -1
+
+        readonly property int gridInnerWidth: {
+            var colW = 1920 - HomeTheme.generalPageHMargin * 2
+            var listW = Math.round((colW - HomeTheme.generalPanelGap)
+                                   * HomeTheme.generalListShare)
+            return Math.max(1, listW - HomeTheme.generalGridMargin * 2)
+        }
+        readonly property int cols: {
+            var saved = homeController.generalGridColumns()
+            var v = saved > 0 ? saved : HomeTheme.generalGridMinColumns
+            return Math.max(HomeTheme.generalGridMinColumns,
+                            Math.min(v, HomeTheme.generalGridMaxColumns - 1))
+        }
+        readonly property int cellW: HomeTheme.generalCellWidth(gridInnerWidth, cols)
+        readonly property int cellH: HomeTheme.generalCellHeight(gridInnerWidth, cols)
+        readonly property int artW: Math.max(1, cellW - HomeTheme.generalCellInset * 2)
+        readonly property int artH: Math.max(1, cellH - HomeTheme.generalCellInset * 2)
+        property int mounted: 0
+        property int target: 0
+
+        Repeater {
+            model: generalArtPrefetch.mounted
+            Image {
+                width: generalArtPrefetch.artW
+                height: generalArtPrefetch.artH
+                asynchronous: true
+                cache: true
+                sourceSize.width: Math.ceil(width)
+                sourceSize.height: Math.ceil(height)
+                source: homeController.prefetchArtUrl(index)
+            }
+        }
+    }
+
+    Timer {
+        id: generalPrefetchStart
+        interval: 800
+        repeat: false
+        onTriggered: root.startGeneralPrefetch()
+    }
+
+    Timer {
+        id: generalPrefetchTick
+        interval: 32
+        repeat: true
+        onTriggered: {
+            if (generalArtPrefetch.mounted >= generalArtPrefetch.target) {
+                stop()
+                return
+            }
+            generalArtPrefetch.mounted += 1
+        }
+    }
+
+    function startGeneralPrefetch() {
+        homeController.warmGeneralCatalog()
+        var n = homeController.generalModel ? homeController.generalModel.count : 0
+        generalArtPrefetch.target = Math.min(16, n)
+        if (generalArtPrefetch.target > 0) {
+            generalArtPrefetch.mounted = 1
+            if (generalArtPrefetch.target > 1)
+                generalPrefetchTick.start()
+        }
+        generalsMounted = true
+    }
+
+    Component.onCompleted: {
+        applyHomeNavGraph()
         actionPanel.quickJoinBtn.forceActiveFocus()
+        enterAnim.start()
+        generalPrefetchStart.start()
+    }
+
+    Connections {
+        target: homeController
+        function onCurrentPageChanged() {
+            bottomBar.currentIndex = root.generalsOpen ? 1 : 0
+            if (root.generalsOpen) {
+                if (generalPage.item) {
+                    root.applyGeneralsNavGraph()
+                    generalPage.item.takeKeyboard()
+                }
+            } else {
+                Qt.callLater(root.restoreHomeKeyboard)
+            }
+        }
+    }
+
+    ParallelAnimation {
+        id: enterAnim
+
+        NumberAnimation {
+            target: bottomEnter
+            property: "y"
+            to: 0
+            duration: 320
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            target: bottomBar
+            property: "opacity"
+            to: 1
+            duration: 200
+            easing.type: Easing.OutCubic
+        }
+
+        NumberAnimation {
+            target: actionEnter
+            property: "x"
+            to: 0
+            duration: 300
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            target: actionPanel
+            property: "opacity"
+            to: 1
+            duration: 200
+            easing.type: Easing.OutCubic
+        }
+
+        NumberAnimation {
+            target: sideEnter
+            property: "x"
+            to: 0
+            duration: 260
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            target: sideBar
+            property: "opacity"
+            to: 1
+            duration: 180
+            easing.type: Easing.OutCubic
+        }
+
+        NumberAnimation {
+            target: playerEnter
+            property: "x"
+            to: 0
+            duration: 280
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            target: playerInfo
+            property: "opacity"
+            to: 1
+            duration: 200
+            easing.type: Easing.OutCubic
+        }
+
+        NumberAnimation {
+            target: logoEnter
+            property: "y"
+            to: 0
+            duration: 300
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            target: logo
+            property: "opacity"
+            to: 1
+            duration: 220
+            easing.type: Easing.OutCubic
+        }
     }
 }

@@ -28453,6 +28453,83 @@ public:
 	}
 };
 
+static QString huashangZhizheName(int area)
+{
+	if(area==0) return "_zhizhe_weapon";
+	if(area==1) return "_zhizhe_armor";
+	if(area==2) return "_zhizhe_defensivehorse";
+	if(area==3) return "_zhizhe_offensivehorse";
+	if(area==4) return "_zhizhe_treasure";
+	return QString();
+}
+
+// filterCards(refilter) 會 resetCard 再 takeOver，equips 仍握著已被 deleteLater 的舊 getRealCard()。
+static void huashangSyncEquipPointer(ServerPlayer *player, int cardId)
+{
+	const Card *c = Sanguosha->getCard(cardId);
+	if(!player||!c) return;
+	player->removeEquip(c);
+	if(c->isKindOf("EquipCard"))
+		player->setEquip(c);
+}
+
+static bool huashangPutAsEquip(Room *room, ServerPlayer *player, int cardId, int area)
+{
+	const QString name = huashangZhizheName(area);
+	if(!room||!player||name.isEmpty()||!player->hasEquipArea(area))
+		return false;
+	const Player::Place place = room->getCardPlace(cardId);
+	if(place!=Player::PlaceHand&&place!=Player::DrawPile)
+		return false;
+
+	const Card *raw = Sanguosha->getCard(cardId);
+	if(!raw) return false;
+	Card *cloned = Sanguosha->cloneCard(name, raw->getSuit(), raw->getNumber());
+	if(!cloned||!cloned->isKindOf("EquipCard")){
+		delete cloned;
+		return false;
+	}
+	WrappedCard *wrapped = Sanguosha->getWrappedCard(cardId);
+	if(!wrapped){
+		delete cloned;
+		return false;
+	}
+	wrapped->takeOver(cloned);
+	room->notifyUpdateCard(player, cardId, wrapped);
+
+	QList<CardsMoveStruct> moves;
+	if(player->getEquips(area).length()>=player->getEquipArea(area)){
+		const Card *oldEquip = player->getEquip(area);
+		if(oldEquip)
+			moves << CardsMoveStruct(oldEquip->getEffectiveId(), nullptr, Player::DiscardPile,
+				CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP, player->objectName(), "huashang", "change equip"));
+	}
+	moves << CardsMoveStruct(cardId, player, Player::PlaceEquip,
+		CardMoveReason(CardMoveReason::S_REASON_USE, player->objectName(), "huashang", ""));
+	room->moveCardsAtomic(moves, true);
+	huashangSyncEquipPointer(player, cardId);
+
+	QStringList filter;
+	filter << name << wrapped->getSuitString() << QString::number(wrapped->getNumber());
+	room->setTag("ZhizheFilter_" + QString::number(cardId), filter.join("+"));
+	QStringList ids = room->getTag("huashangEquip").toStringList();
+	ids << QString::number(cardId);
+	room->setTag("huashangEquip", ids);
+	foreach(ServerPlayer *p, room->getAlivePlayers())
+		room->acquireSkill(p, "#zhizhe");
+	return true;
+}
+
+static int huashangEquipSuitCount(const ServerPlayer *player)
+{
+	QList<int> suits;
+	foreach(const Card *e, player->getEquips()){
+		if(!e||suits.contains(e->getSuit())) continue;
+		suits.append(e->getSuit());
+	}
+	return suits.length();
+}
+
 class Huashang : public TriggerSkill
 {
 public:
@@ -28463,7 +28540,7 @@ public:
 	bool trigger(TriggerEvent event,Room*room,ServerPlayer*player,QVariant&data)const
 	{
 		if(event==GameStart){
-			QStringList choices,has;
+			QStringList choices;
 			for(int i = 0; i < 5; i++){
 				if(player->hasEquipArea(i))
 					choices << QString("EquipArea%1").arg(i);
@@ -28472,6 +28549,7 @@ public:
 			QList<const Card*>cs;
 			foreach(int id,room->getDrawPile()){
 				const Card*c = Sanguosha->getCard(id);
+				if(!c||c->getColor()==Card::Colorless) continue;
 				foreach(const Card*bc,cs){
 					if(bc->getColor()==c->getColor()){
 						c = nullptr;
@@ -28479,88 +28557,40 @@ public:
 					}
 				}
 				if(c)cs << c;
+				if(cs.length()>=2) break;
 			}
 			if(cs.isEmpty())return false;
 			room->sendCompulsoryTriggerLog(player,this);
-			for(int i = 0; i < cs.length(); i++){
+			for(int i = 0; i < cs.length()&&!choices.isEmpty(); i++){
 				QString choice = room->askForChoice(player,"huashang",choices.join("+"));
 				choices.removeOne(choice);
-				has << choice;
-				if(choices.isEmpty())break;
+				choice.remove("EquipArea");
+				huashangPutAsEquip(room, player, cs[i]->getId(), choice.toInt());
 			}
-			QList<CardsMoveStruct> exchangeMove;
-			for(int i = 0; i < has.length(); i++){
-				QString cn = has[i];
-				cn.remove("EquipArea");
-				int n = cn.toInt();
-				if(cn.contains("0"))cn = "_zhizhe_weapon";
-				else if(cn.contains("1"))cn = "_zhizhe_armor";
-				else if(cn.contains("2"))cn = "_zhizhe_defensivehorse";
-				else if(cn.contains("3"))cn = "_zhizhe_offensivehorse";
-				else if(cn.contains("4"))cn = "_zhizhe_treasure";
-				WrappedCard*card = Sanguosha->getWrappedCard(cs[i]->getId());
-				card->takeOver(Sanguosha->cloneCard(cn,cs[i]->getSuit(),cs[i]->getNumber()));
-				room->notifyUpdateCard(player,cs[i]->getId(),card);
-				if(player->getEquips(n).length()>=player->getEquipArea(n)){
-					CardsMoveStruct move2(player->getEquip(n)->getEffectiveId(),nullptr,Player::DiscardPile,
-						CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP,player->objectName(),"huashang","change equip"));
-					exchangeMove.append(move2);
-				}
-				CardsMoveStruct move1(cs[i]->getId(),player,Player::PlaceEquip,
-					CardMoveReason(CardMoveReason::S_REASON_USE,player->objectName(),"huashang",""));
-				exchangeMove.append(move1);
-				QStringList info;
-				info << cn << cs[i]->getSuitString()<< QString::number(cs[i]->getNumber());
-				room->setTag("ZhizheFilter_" + cs[i]->toString(),info.join("+"));
-				info = room->getTag("huashangEquip").toStringList();
-				info << cs[i]->toString();
-				room->setTag("huashangEquip",info);
-			}
-			foreach(ServerPlayer*p,room->getAlivePlayers())
-				room->acquireSkill(p,"#zhizhe");
-			room->moveCardsAtomic(exchangeMove,true);
 		}else if(event==CardFinished){
 			CardUseStruct use = data.value<CardUseStruct>();
-			if(use.card->getTypeId()>0&&player->getHandcardNum()>0){
-				QStringList choices;
-				for(int i = 0; i < 5; i++){
-					if(player->hasEquipArea(i))
-						choices << QString("EquipArea%1").arg(i);
+			if(use.card->getTypeId()<1||player->getHandcardNum()<1) return false;
+			QStringList choices;
+			for(int i = 0; i < 5; i++){
+				if(player->hasEquipArea(i))
+					choices << QString("EquipArea%1").arg(i);
+			}
+			if(choices.isEmpty())return false;
+			const QString pattern = QString("^EquipCard|%1|.|hand").arg(use.card->getSuitString());
+			bool hasMatch = false;
+			foreach(const Card *c, player->getHandcards()){
+				if(c&&Sanguosha->matchExpPattern(pattern, player, c)){
+					hasMatch = true;
+					break;
 				}
-				if(choices.isEmpty())return false;
-				const Card*dc = room->askForCard(player,"^EquipCard|"+use.card->getSuitString(),"huashang0:"+use.card->getSuitString(),data,Card::MethodNone);
-				if(dc){
-					player->skillInvoked(this);
-					QString choice = room->askForChoice(player,"huashang",choices.join("+"));
-					choice.remove("EquipArea");
-					int n = choice.toInt();
-					if(choice.contains("0"))choice = "_zhizhe_weapon";
-					else if(choice.contains("1"))choice = "_zhizhe_armor";
-					else if(choice.contains("2"))choice = "_zhizhe_defensivehorse";
-					else if(choice.contains("3"))choice = "_zhizhe_offensivehorse";
-					else if(choice.contains("4"))choice = "_zhizhe_treasure";
-					WrappedCard*card = Sanguosha->getWrappedCard(dc->getId());
-					card->takeOver(Sanguosha->cloneCard(choice,dc->getSuit(),dc->getNumber()));
-					room->notifyUpdateCard(player,dc->getId(),card);
-					QList<CardsMoveStruct> exchangeMove;
-					if(player->getEquips(n).length()>=player->getEquipArea(n)){
-						CardsMoveStruct move2(player->getEquip(n)->getId(),nullptr,Player::DiscardPile,
-							CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP,player->objectName(),"huashang","change equip"));
-						exchangeMove.append(move2);
-					}
-					CardsMoveStruct move1(dc->getId(),player,Player::PlaceEquip,
-						CardMoveReason(CardMoveReason::S_REASON_USE,player->objectName(),"huashang",""));
-					exchangeMove.append(move1);
-					QStringList info;
-					info << choice << dc->getSuitString()<< QString::number(dc->getNumber());
-					room->setTag("ZhizheFilter_" + dc->toString(),info.join("+"));
-					info = room->getTag("huashangEquip").toStringList();
-					info << dc->toString();
-					room->setTag("huashangEquip",info);
-					foreach(ServerPlayer*p,room->getAlivePlayers())
-						room->acquireSkill(p,"#zhizhe");
-					room->moveCardsAtomic(exchangeMove,true);
-				}
+			}
+			if(!hasMatch) return false;
+			const Card*dc = room->askForCard(player,pattern,"huashang0:"+use.card->getSuitString(),data,Card::MethodNone);
+			if(dc){
+				player->skillInvoked(this);
+				QString choice = room->askForChoice(player,"huashang",choices.join("+"));
+				choice.remove("EquipArea");
+				huashangPutAsEquip(room, player, dc->getId(), choice.toInt());
 			}
 		}else{
 			CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
@@ -28575,17 +28605,16 @@ public:
 						}
 					}
 				}
-				if(move.from_places.contains(Player::PlaceHand)){
-					QList<int> suits;
-					foreach(const Card*e,player->getEquips()){
-						if(suits.contains(e->getSuit()))continue;
-						suits.append(e->getSuit());
-					}
-					int n = suits.length()-player->getHandcardNum();
-					if(n>0){
-						room->sendCompulsoryTriggerLog(player,this);
-						player->drawCards(n,objectName());
-					}
+			}
+			if((move.from==player&&move.from_places.contains(Player::PlaceHand))
+				||(move.to==player&&move.to_place==Player::PlaceEquip)){
+				if(player->hasFlag("huashangFilling")) return false;
+				int n = huashangEquipSuitCount(player)-player->getHandcardNum();
+				if(n>0){
+					room->setPlayerFlag(player,"huashangFilling");
+					room->sendCompulsoryTriggerLog(player,this);
+					player->drawCards(n,objectName());
+					room->setPlayerFlag(player,"-huashangFilling");
 				}
 			}
 		}

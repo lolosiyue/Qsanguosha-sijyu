@@ -74,6 +74,8 @@ class ComPtr:
 def find_msdia():
     """依序搜尋 VS 的 msdia140.dll (優先 amd64 版, 需與 Python 位元數一致)。"""
     bases = [
+        r"H:\Program file\visualstudio\Common7\Packages\Debugger\X64",
+        r"H:\Program file\visualstudio\DIA SDK\bin\amd64",
         r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\DIA SDK\bin\amd64",
         r"C:\Program Files (x86)\Microsoft Visual Studio\2019\Community\Common7\IDE",
         r"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE",

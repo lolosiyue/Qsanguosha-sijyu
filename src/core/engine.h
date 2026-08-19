@@ -3,12 +3,12 @@
 
 //#include "card.h"
 #include "skill.h"
+#include "skill-registry.h"
 #include "engine-runtime-context.h"
+#include "lua-runtime.h"
 #include "util.h"
 #include "json.h"
-#include <QPointer>
 #include <QMutex>
-#include <QReadWriteLock>
 #include <QThread>
 
 // Recursive mutex with yield/restore support.
@@ -34,6 +34,11 @@ class CardPattern;
 class RoomState;
 class ExpPattern;
 class TransferSkill;
+class RoomRuntime;
+class RoomDefinitionRegistry;
+class EngineRuntimeContextScope;
+class Package;
+using EnginePackageFactory = Package *(*)();
 
 struct EasyTextItem {
     QString text;
@@ -67,8 +72,14 @@ public:
 
     void addTranslationEntry(const QString &key, const QString &value);
     QString translate(const QString &to_translate, bool initial = false) const;
+    QString getAiData() const;
+    bool setAiData(const QString &json) const;
     lua_State *getLuaState() const;
+    LuaRuntime *bootstrapLuaRuntime() const { return m_bootstrapLua.get(); }
     SafeLuaMutex &getLuaMutex() const;
+    bool isGameLuaRuntime() const;
+    bool isLuaDefinitionsLoaded() const;
+    void finishLuaDefinitions();
     bool addModes(const QString &key, const QString &value, const QString &roles = "");
     bool addGameMode(const GameModeStruct &mode);
 
@@ -182,10 +193,7 @@ public:
     QStringList getSlashNames() const;
     QStringList getCardNames(const QString &pattern = ".") const;
     bool hasCard(const QString &name) const;
-    inline QList<const General *> getAllGenerals() const
-    {
-        return findChildren<const General *>();
-    }
+    QList<const General *> getAllGenerals() const;
     bool sameNameWith(const QString &name1, const QString &name2) const;
 
     bool playSystemAudioEffect(const QString &name, bool superpose = true) const;
@@ -199,7 +207,7 @@ public:
     const CardLimitSkill *isCardLimited(const Player *player, const Card *card, Card::HandlingMethod method, bool isHandcard = false) const;
     int correctDistance(const Player *from, const Player *to, bool fixed = false) const;
     int correctMaxCards(const Player *target, bool fixed = false) const;
-    // 單一距離技能貢獻（V1 getCorrect／V2 evaluateCorrectSkill）；供 calculateUITooltips
+    // 單一距離技能貢獻（V1 getCorrect／V2 evaluateCorrectSkill）；供 refreshUIState
     int contributionOfDistanceSkill(const DistanceSkill *skill, const Player *from, const Player *to, bool fixed = false) const;
     // 單一手牌上限技能貢獻列表（依實際 holder 拆條；fixed 優先於 extra）
     QList<SkillUIContribution> listMaxCardsSkillContributions(const MaxCardsSkill *skill, const Player *target) const;
@@ -238,27 +246,22 @@ public:
     }
 
 private:
+    friend class EngineRuntimeContextScope;
+    friend class RoomDefinitionRegistry;
+
+    EngineRuntimeContext *swapCurrentRoomContext(EngineRuntimeContext *context);
+    RoomRuntime *currentRoomRuntime() const;
+    Package *clonePackageDefinition(const QString &objectName) const;
     void _loadMiniScenarios();
     void _loadModScenarios();
     void godLottery(QStringList &) const;
 	void godLottery(QSet<QString> &) const;
     QList<const Skill *> getSafeSkills() const;
-    mutable QReadWriteLock m_rwLock;
     QHash<QString, QString> translations, engine_translations;
     QHash<QString, const General *> generals, available_generals;
     QHash<QString, const QMetaObject *> metaobjects;
     //QHash<QString, QString> className2objectName;
-    QHash<QString, QPointer<Skill>> skills;
-    QList<QPointer<Skill>> m_prohibitSkills;
-    QList<QPointer<Skill>> m_distanceSkills;
-    QList<QPointer<Skill>> m_maxCardsSkills;
-    QList<QPointer<Skill>> m_targetModSkills;
-    QList<QPointer<Skill>> m_invaliditySkills;
-    QList<QPointer<Skill>> m_globalTriggerSkills;
-    QList<QPointer<Skill>> m_attackRangeSkills;
-    QList<QPointer<Skill>> m_viewAsEquipSkills;
-    QList<QPointer<Skill>> m_cardLimitSkills;
-    QList<QPointer<Skill>> m_prohibitPindianSkills;
+    SkillRegistry m_skillRegistry;
     QHash<QThread *, EngineRuntimeContext *> m_rooms;
     mutable QMutex m_mutex;
     QMap<QString, GameModeStruct> modes;
@@ -283,8 +286,15 @@ private:
     Scenario *m_customScene;
     Scenario *m_testScene;
 
-    lua_State *lua;
+    std::unique_ptr<LuaRuntime> m_bootstrapLua;
     mutable SafeLuaMutex lua_mutex;
+    bool m_loadingLuaDefinitions = false;
+    QSet<QString> m_luaPackageNames;
+    QSet<QString> m_luaGeneralNames;
+    QSet<QString> m_luaSkillNames;
+    QSet<int> m_luaCardIds;
+    QHash<QString, QList<int>> m_packageCardIds;
+    QHash<QString, EnginePackageFactory> m_packageFactories;
 
     //QHash<QString,const Card *> luaBasicCards, luaTrickCards;
     //QHash<QString,const Card *> luaWeapons, luaArmors ,luaTreasures;
@@ -309,6 +319,20 @@ private:
 signals:
     void audioEffectRequested(const QString &filename, bool superpose);
 
+};
+
+class EngineRuntimeContextScope
+{
+public:
+    EngineRuntimeContextScope(Engine &engine, EngineRuntimeContext *context);
+    ~EngineRuntimeContextScope();
+
+    EngineRuntimeContextScope(const EngineRuntimeContextScope &) = delete;
+    EngineRuntimeContextScope &operator=(const EngineRuntimeContextScope &) = delete;
+
+private:
+    Engine &m_engine;
+    EngineRuntimeContext *m_previous;
 };
 
 static inline QVariant GetConfigFromLuaState(lua_State *L, const char *key)

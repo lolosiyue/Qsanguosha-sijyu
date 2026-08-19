@@ -1,4 +1,5 @@
 #include "lua-wrapper.h"
+#include "room-runtime.h"
 #include "engine.h"
 #include "util.h"
 #ifndef QSAN_ENGINE_BUILD
@@ -272,10 +273,10 @@ void LuaBattleArraySkill::summonFriends(ServerPlayer *player) const
         BattleArraySkill::summonFriends(player);
         return;
     }
-    LuaLocker locker;
-    lua_State *L = Sanguosha->getLuaState();
-    lua_pushinteger(L, on_summon);
-    lua_gettable(L, LUA_REGISTRYINDEX);
+    lua_State *L = on_summon.state();
+    if (!L)
+        return;
+    on_summon.push(L);
     lua_pushlightuserdata(L, player);
     int result = lua_pcall(L, 1, 0, 0);
     if (result != 0) {
@@ -292,7 +293,12 @@ LuaSkillCard::LuaSkillCard(const QString &name, const QString &skillName)
 {
 	if(name.isEmpty()) return;
 	setObjectName(name);
-	LuaSkillCards.insert(name, this);
+	EngineRuntimeContext *context = Sanguosha ? Sanguosha->currentRoomContext() : nullptr;
+	RoomRuntime *runtime = context ? context->roomRuntime() : nullptr;
+	if (runtime)
+		runtime->registerLuaSkillCard(name, this);
+	else
+		LuaSkillCards.insert(name, this);
 	if (skillName.isEmpty())
 		m_skillName = name.toLower().remove("card");
 	else
@@ -327,19 +333,35 @@ LuaSkillCard *LuaSkillCard::clone() const
     return new_card;
 }
 
+static const LuaSkillCard *lookupLuaSkillCardPrototype(const QString &name)
+{
+    EngineRuntimeContext *context = Sanguosha ? Sanguosha->currentRoomContext() : nullptr;
+    RoomRuntime *runtime = context ? context->roomRuntime() : nullptr;
+    if (runtime) {
+        if (const LuaSkillCard *c = runtime->luaSkillCard(name))
+            return c;
+    }
+    return LuaSkillCards.value(name, nullptr);
+}
+
 LuaSkillCard *LuaSkillCard::Parse(const QString &str)
 {
     static QRegularExpression rx("#(\\w+):(.*):(.*)");
     static QRegularExpression e_rx("#(\\w*)\\[(\\w+):(.+)\\]:(.*):(.*)");
 
+    // objectName 已含 # 時 toString 曾產出 ##name[...]，正規化成單一 # 前綴
+    QString wire = str;
+    while (wire.startsWith(QStringLiteral("##")))
+        wire.remove(0, 1);
+
     QString name, suit, number, subcard_str, user_string;
 
-    QRegularExpressionMatch match = rx.match(str);
+    QRegularExpressionMatch match = rx.match(wire);
     if (match.hasMatch()) {
         name = match.captured(1);
         subcard_str = match.captured(2);
         user_string = match.captured(3);
-    } else if ((match = e_rx.match(str)).hasMatch()) {
+    } else if ((match = e_rx.match(wire)).hasMatch()) {
         name = match.captured(1);
         suit = match.captured(2);
         number = match.captured(3);
@@ -348,7 +370,13 @@ LuaSkillCard *LuaSkillCard::Parse(const QString &str)
     } else
         return nullptr;
 
-    const LuaSkillCard *c = LuaSkillCards.value(name, nullptr);
+    const LuaSkillCard *c = lookupLuaSkillCardPrototype(name);
+    if (!c) {
+        if (name.startsWith(QLatin1Char('#')))
+            c = lookupLuaSkillCardPrototype(name.mid(1));
+        else
+            c = lookupLuaSkillCardPrototype(QLatin1Char('#') + name);
+    }
     if (c == nullptr) return nullptr;
 
     LuaSkillCard *new_card = c->clone();
@@ -383,9 +411,11 @@ LuaSkillCard *LuaSkillCard::Parse(const QString &str)
 
 QString LuaSkillCard::toString(bool hidden) const
 {
-    //Q_UNUSED(hidden);
-	if(hidden) return QString("#%1[no_suit:0]:.:").arg(objectName());
-    return QString("#%1[%2:%3]:%4:%5").arg(objectName())
+    QString name = objectName();
+    if (!name.startsWith(QLatin1Char('#')))
+        name.prepend(QLatin1Char('#'));
+	if(hidden) return QString("%1[no_suit:0]:.:").arg(name);
+    return QString("%1[%2:%3]:%4:%5").arg(name)
         .arg(getSuitString()).arg(getNumberString())
         .arg(subcardString()).arg(user_string);
 }

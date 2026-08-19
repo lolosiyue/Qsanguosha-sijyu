@@ -21,6 +21,7 @@
 #endif
 //#include "json.h"
 #include "gamerule.h"
+#include "game-rng.h"
 #if !defined(QSAN_SERVER_CORE_ONLY)
 #include "clientstruct.h"
 #endif
@@ -30,8 +31,11 @@
 #include <QFile>
 #include <QTextStream>
 #include <QDateTime>
+#include <QHashSeed>
 #include <QTimer>
 #include <QPointer>
+#include <QCoreApplication>
+#include <QElapsedTimer>
 
 using namespace QSanProtocol;
 
@@ -984,7 +988,7 @@ QGroupBox *ServerDialog::createGameModeBox()
 		foreach (const QString &modeId, modeIds) {
 			if (!modes.contains(modeId))
 				continue;
-			combo->addItem(modes.value(modeId).display_name, modeId);
+			combo->addItem(Sanguosha->getModeName(modeId), modeId);
 			groupedModes.insert(modeId);
 			if (modeId == Config.GameMode.mode_id)
 				selectedIndex = combo->count() - 1;
@@ -1011,7 +1015,7 @@ QGroupBox *ServerDialog::createGameModeBox()
 		if (groupedModes.contains(itor.key()))
 			continue;
 
-		QRadioButton *button = new QRadioButton(itor.value().display_name);
+		QRadioButton *button = new QRadioButton(Sanguosha->getModeName(itor.key()));
 		button->setObjectName(itor.key());
 		mode_group->addButton(button);
 
@@ -1576,6 +1580,7 @@ Server::Server(QObject *parent)
 	server = new NativeServerSocket;
 	server->setParent(this);
 	playerCount = 0;
+	m_nextGameSeedIndex = 0;
 
 	upnpPortMapping=nullptr;
 	networkReply=nullptr;
@@ -1677,8 +1682,11 @@ void Server::daemonize()
 
 Room *Server::createNewRoom()
 {
-	current = new Room(this, Config.GameMode.mode_id);
-	if (!current->getLuaState()) {
+	waitForDisposingRooms();
+	const GameSessionConfig sessionConfig = gameSessionConfig(m_nextGameSeedIndex++);
+	qInfo().noquote() << "Game Seed:" << QString::number(sessionConfig.seed);
+	current = new Room(this, Config.GameMode.mode_id, sessionConfig);
+	if (!current->hasLuaRuntime()) {
 		delete current;
 		return nullptr;
 	}
@@ -1792,12 +1800,94 @@ void Server::signupPlayer(ServerPlayer *player)
 void Server::gameOver()
 {
 	Room *room = qobject_cast<Room *>(sender());
+	if (!room)
+		return;
 	rooms.remove(room);
 
 	foreach(ServerPlayer *player, room->findChildren<ServerPlayer *>()) {
 		name2objname.remove(player->screenName(), player->objectName());
 		players.remove(player->objectName());
     }
+
+	if (current == room)
+		current = nullptr;
+	room->abortWaitingRequests();
+	scheduleDisposeRoom(room);
+}
+
+bool Server::disposingRoomStillRunning() const
+{
+	foreach (const QPointer<Room> &roomPtr, m_disposingRooms) {
+		Room *room = roomPtr.data();
+		if (!room)
+			continue;
+		if (room->isRunning())
+			return true;
+		RoomThread *rt = room->getThread();
+		if (rt && rt->isRunning())
+			return true;
+	}
+	return false;
+}
+
+void Server::waitForDisposingRooms()
+{
+	if (!disposingRoomStillRunning())
+		return;
+	// Room ctor 在 main 同步執行, 期間無法處理 leftover RoomThread 的
+	// BlockingQueuedConnection。先泵 queued slot, 等舊 worker 結束再 new Room。
+	QElapsedTimer timer;
+	timer.start();
+	while (disposingRoomStillRunning() && timer.elapsed() < 10000)
+		QCoreApplication::processEvents(QEventLoop::ExcludeSocketNotifiers);
+	if (disposingRoomStillRunning())
+		qWarning("waitForDisposingRooms: leftover RoomThread still running");
+}
+
+void Server::scheduleDisposeRoom(Room *room)
+{
+	if (!room)
+		return;
+	m_disposingRooms.append(QPointer<Room>(room));
+	QPointer<Room> roomPtr(room);
+	QTimer::singleShot(500, this, [this, roomPtr]() {
+		if (!roomPtr) {
+			QList<QPointer<Room> >::iterator it = m_disposingRooms.begin();
+			while (it != m_disposingRooms.end()) {
+				if (it->isNull())
+					it = m_disposingRooms.erase(it);
+				else
+					++it;
+			}
+			return;
+		}
+		RoomThread *rt = roomPtr->getThread();
+		const bool workerRunning = roomPtr->isRunning() || (rt && rt->isRunning());
+		if (workerRunning) {
+			QTimer *pollTimer = new QTimer(this);
+			int *elapsedMs = new int(0);
+			connect(pollTimer, &QTimer::timeout, this,
+				[this, roomPtr, rt, pollTimer, elapsedMs]() {
+					*elapsedMs += 100;
+					const bool stillRunning = roomPtr
+						&& (roomPtr->isRunning() || (rt && rt->isRunning()));
+					if (!stillRunning || *elapsedMs >= 10000) {
+						pollTimer->stop();
+						pollTimer->deleteLater();
+						delete elapsedMs;
+						m_disposingRooms.removeAll(roomPtr);
+						if (roomPtr && !stillRunning)
+							roomPtr->deleteLater();
+						else if (stillRunning)
+							qWarning("scheduleDisposeRoom: timeout, leaking Room");
+					}
+				});
+			pollTimer->start(100);
+			return;
+		}
+		m_disposingRooms.removeAll(roomPtr);
+		roomPtr->deleteLater();
+	});
 }
 
 #endif
@@ -1944,7 +2034,40 @@ bool Server::isHeadlessMode = false;
 int Server::headlessGameLimit = 10000;
 QString Server::forcedHeadlessGeneral;
 QString Server::forcedHeadlessGeneral2;
+bool Server::s_hasGameSeed = false;
+quint64 Server::s_gameSeedBase = 0;
 static QString s_headlessLogFile;
+
+bool Server::configureGameSeed(const QString &seedText, QString *error)
+{
+    if (seedText.isEmpty()) {
+        if (error) *error = QStringLiteral("--seed requires an unsigned decimal integer");
+        return false;
+    }
+    for (const QChar c : seedText) {
+        if (c < QLatin1Char('0') || c > QLatin1Char('9')) {
+            if (error) *error = QStringLiteral("Invalid --seed '%1'").arg(seedText);
+            return false;
+        }
+    }
+    bool ok = false;
+    const quint64 seed = seedText.toULongLong(&ok, 10);
+    if (!ok) {
+        if (error) *error = QStringLiteral("Invalid --seed '%1'").arg(seedText);
+        return false;
+    }
+    s_gameSeedBase = seed;
+    s_hasGameSeed = true;
+    qsanSeedRandom(seed);
+    QHashSeed::setDeterministicGlobalSeed();
+    return true;
+}
+
+GameSessionConfig Server::gameSessionConfig(quint64 sessionIndex) const
+{
+    return s_hasGameSeed ? GameSessionConfig(s_gameSeedBase + sessionIndex)
+                         : GameSessionConfig();
+}
 
 void Server::setHeadlessLogFile(const QString &path)
 {
@@ -2010,8 +2133,10 @@ void Server::startHeadlessGame()
     gameCount++;
     Server::writeHeadlessLog(QString(">>> Starting headless game %1 <<<").arg(gameCount));
 
-    Room *room = new Room(this, mode);
-    if (!room->getLuaState()) {
+    const GameSessionConfig sessionConfig = gameSessionConfig(quint64(gameCount - 1));
+    Server::writeHeadlessLog(QString("[AUTOTEST] Game Seed: %1").arg(sessionConfig.seed));
+    Room *room = new Room(this, mode, sessionConfig);
+    if (!room->hasLuaRuntime()) {
         delete room;
         Server::writeHeadlessLog(QString("Game %1 FAILED - Lua state is null").arg(gameCount));
         return;
@@ -2119,8 +2244,11 @@ void Server::startTestGame(const QString &scenarioFile, bool headless)
         writeHeadlessLog(QString("Starting test game with %1 players").arg(playerCount));
     }
 
-    Room *room = new Room(this, "test_scenario");
-    if (!room->getLuaState()) {
+    const GameSessionConfig sessionConfig = gameSessionConfig(0);
+    if (headless)
+        writeHeadlessLog(QString("[AUTOTEST] Game Seed: %1").arg(sessionConfig.seed));
+    Room *room = new Room(this, "test_scenario", sessionConfig);
+    if (!room->hasLuaRuntime()) {
         delete room;
         qDebug() << "Test game FAILED - Lua state is null";
         qApp->quit();

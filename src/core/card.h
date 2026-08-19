@@ -155,6 +155,7 @@ public:
     {
         return metaObject()->className();
     }
+    virtual QStringList getKindOfNames() const;
     virtual bool isVirtualCard(bool include_filter = false) const;
     virtual bool isEquipped() const;
     virtual QString getCommonEffectName() const;

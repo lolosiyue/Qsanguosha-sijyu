@@ -52,5 +52,5 @@ void MaxCardsViewDialog::showMaxCards()
 
     const ClientPlayer *player = ClientInstance->getPlayer(player_name);
 
-    ui->final->setText(QString::number(player->getMaxCards()));
+    ui->final->setText(QString::number(player->uiState().handMax));
 }

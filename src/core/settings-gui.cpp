@@ -5,6 +5,7 @@
 #include <QStyleHints>
 #include <QGuiApplication>
 #include <QFontDatabase>
+#include <QFont>
 #include <QMessageBox>
 
 // 构建明暗主题的基础 palette(不依赖 standardPalette,详见 applyColorScheme 注释)。

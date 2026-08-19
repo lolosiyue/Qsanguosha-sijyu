@@ -84,11 +84,8 @@ ULONGLONG g_gameStartTick = 0;
 int g_playerCount = 0;
 int g_gameRound   = 0;
 
-// 对局逻辑线程的 Lua 状态机及其线程 ID,由 setLuaState 在 RoomThread::run() 登记。
-// 仅当崩溃线程 == g_luaThreadId 时才回查 Lua 调用栈 —— 那个线程已冻结、无并发,
-// 只读遍历 Lua 调用信息才安全;崩在别的线程时该状态机可能正被这个线程改写。
-void *g_luaState    = nullptr;
-DWORD g_luaThreadId = 0;
+thread_local void *g_luaState = nullptr;
+thread_local DWORD g_luaThreadId = 0;
 
 void appendEnv(const char *fmt, ...)
 {
@@ -637,8 +634,7 @@ void setGameStats(int playerCount, int round)
 void setLuaState(void *L)
 {
     g_luaState = L;
-    if (L) // 登记时把当前线程记为"对局逻辑线程",崩在此线程才回查 Lua 栈
-        g_luaThreadId = GetCurrentThreadId();
+    g_luaThreadId = L ? GetCurrentThreadId() : 0;
 }
 
 void setWindowState(int x, int y, int w, int h, const wchar_t *screenName)

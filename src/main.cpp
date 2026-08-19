@@ -3,7 +3,6 @@
 #include <QDir>
 #include <QFile>
 #include <QLoggingCategory>
-#include <QPointer>
 #include <QApplication>
 #include <QCoreApplication>
 #include <QStringList>
@@ -12,16 +11,12 @@
 #include "settings.h"
 #include "banpair.h"
 #include "server.h"
-#include "ai.h"
-#include "serverplayer.h"
-#include "room.h"
 #include "engine.h"
 #include "engine-bootstrap.h"
-#include "lua.hpp"
-#include "lua-wrapper.h"
 #include "audio.h"
 #include <QSurfaceFormat>
 #include <QQuickWindow>
+#include <QQuickStyle>
 #include <QSGRendererInterface>
 
 #ifdef ANDROID
@@ -32,6 +27,12 @@
 
 int main(int argc, char *argv[]) {
     CrashHandler::install();
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--seed") == 0) {
+            qputenv("QT_HASH_SEED", "0");
+            break;
+        }
+    }
 
     // 隱藏入口:-crashtest <type> 觸發一次崩潰用於驗證 crash handler
     if (argc > 2 && strcmp(argv[1], "-crashtest") == 0) {
@@ -61,7 +62,7 @@ int main(int argc, char *argv[]) {
 #ifdef ANDROID
 	AndroidAssets::copyAssetsToWritableLocation();
 #endif
-    // headless 模式 (-server / --headless / --lua-test) 只用 QCoreApplication,
+    // headless 模式 (-server / --headless) 只用 QCoreApplication,
     // 不載入 QPA 平台插件與 QtWidgets/QML:記憶體↓、無桌面環境可跑、啟動加快。
     QStringList appArgs;
     for (int i = 1; i < argc; ++i)
@@ -76,7 +77,6 @@ int main(int argc, char *argv[]) {
     }
 
     const bool headlessApp = appArgs.contains("-server")
-        || appArgs.contains("--lua-test")
         || appArgs.contains("--headless")
         || (hasTestScenarioArg && appArgs.contains("-h"));
 
@@ -87,8 +87,11 @@ int main(int argc, char *argv[]) {
         return 0;
     } else if (headlessApp)
         new QCoreApplication(argc, argv);
-    else
+    else {
         new QApplication(argc, argv);
+        // 主頁自訂 contentItem／indicator；Windows 原生樣式不支援會報錯並閃爍
+        QQuickStyle::setStyle(QStringLiteral("Basic"));
+    }
 
     // 美術 PNG 內嵌的 iCCP chunk 帶有錯誤的 sRGB profile，libpng 1.6+ 會對每張
     // 圖發出 "known incorrect sRGB profile" warning（qt.gui.imageio category）。
@@ -104,6 +107,23 @@ int main(int argc, char *argv[]) {
     const int earlyLogIdx = qApp->arguments().indexOf("--headless-log");
     if (earlyLogIdx >= 0 && earlyLogIdx + 1 < qApp->arguments().size())
         Server::setHeadlessLogFile(qApp->arguments().at(earlyLogIdx + 1));
+
+    qsrand(QTime(0, 0, 0).secsTo(QTime::currentTime()));
+
+    const QStringList arguments = qApp->arguments();
+    const int seedIdx = arguments.indexOf("--seed");
+    if (seedIdx >= 0) {
+        const QString candidate = seedIdx + 1 < arguments.size() ? arguments.at(seedIdx + 1) : QString();
+        const QString seedText = candidate.startsWith("--") ? QString() : candidate;
+        QString seedError;
+        if (!Server::configureGameSeed(seedText, &seedError)) {
+            if (headlessApp)
+                Server::writeHeadlessLog("ERROR: " + seedError);
+            else
+                qCritical().noquote() << seedError;
+            return 1;
+        }
+    }
 
     QCoreApplication::addLibraryPath(QCoreApplication::applicationDirPath() + "/plugins");
 
@@ -134,9 +154,6 @@ int main(int argc, char *argv[]) {
         QDir::setCurrent(qApp->applicationFilePath().replace("games", "share"));
 #endif
 
-    // initialize random seed for later use
-    qsrand(QTime(0, 0, 0).secsTo(QTime::currentTime()));
-
     QTranslator qt_translator, translator;
     qt_translator.load("qt_zh_CN.qm");
     translator.load("sanguosha.qm");
@@ -164,126 +181,6 @@ int main(int argc, char *argv[]) {
     if (qobject_cast<QApplication *>(qApp))
         qApp->setFont(UiConfig.AppFont);
     BanPair::loadBanPairs();
-
-    if (qApp->arguments().contains("--lua-test")) {
-        int idx = qApp->arguments().indexOf("--lua-test");
-        QString scriptPath;
-        if (idx + 1 < qApp->arguments().size())
-            scriptPath = qApp->arguments().at(idx + 1);
-
-        if (scriptPath.isEmpty()) {
-            printf("Usage: QSanguosha.exe --lua-test <script.lua>\n");
-            return 1;
-        }
-
-        bool verbose = qApp->arguments().contains("--lua-test-verbose");
-        Server::isHeadlessMode = true;
-        printf(">>> Lua Test Mode: %s <<<\n", qPrintable(scriptPath));
-
-        lua_State *L = Sanguosha->getLuaState();
-        if (!L) {
-            printf("ERROR: Failed to get Lua state\n");
-            return 1;
-        }
-
-        if (!DoLuaScript(L, "lua/test/runner.lua")) {
-            printf("ERROR: Failed to load lua/test/runner.lua\n");
-            return 1;
-        }
-        if (!DoLuaScript(L, scriptPath.toLocal8Bit().constData())) {
-            printf("ERROR: Failed to load test script: %s\n", qPrintable(scriptPath));
-            return 1;
-        }
-
-        if (lua_gettop(L) < 1 || (!lua_istable(L, -1) && !lua_isfunction(L, -1) && !lua_isuserdata(L, -1))) {
-            printf("ERROR: Test script must return a runner table\n");
-            return 1;
-        }
-
-        QString tmpPath = QDir::tempPath() + "/sgs_lua_test_scene.txt";
-        QFile tmpFile(tmpPath);
-        if (!tmpFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-            printf("ERROR: Cannot write temp scenario file\n");
-            return 1;
-        }
-        tmpFile.write("general:sujiang|role:lord|hp:4|starter\n");
-        tmpFile.write("general:sujiang|role:rebel|hp:4\n");
-        tmpFile.write("extraOptions:singleTurn:lord\n");
-        tmpFile.close();
-        Sanguosha->loadTestScenario(tmpPath);
-
-        Config.GameMode = Sanguosha->getGameMode("test_scenario");
-        Config.setValue("GameMode", "test_scenario");
-
-        Server *server = new Server(qApp);
-        Room *room = server->createNewRoom();
-        if (!room) {
-            printf("ERROR: Failed to create room\n");
-            return 1;
-        }
-
-        int playerCount = Sanguosha->getTestScenarioPlayerCount();
-        for (int i = 0; i < playerCount; i++) {
-            ServerPlayer *player = room->addAIPlayer();
-            player->setAI(new TrustAI(player));
-            if (i == 0) player->setOwner(true);
-            room->signup(player, QString("Test_%1").arg(i), "", true);
-        }
-
-        room->initializeLuaTestEnvironment();
-
-        bool luaTestPassed = true;
-        QPointer<Room> roomPtr(room);
-        QObject::connect(room, &Room::game_over, qApp, [L, verbose, roomPtr, &luaTestPassed](const QString &winner) {
-            if (verbose)
-                Server::writeHeadlessLog(QString("Game over. Winner: %1").arg(winner));
-
-            lua_getglobal(L, "RUNNER_DO_ASSERTIONS");
-            if (lua_isfunction(L, -1)) {
-                if (lua_pcall(L, 0, 1, 0) != 0) {
-                    const QString err = luaErrorWithTraceback(L);
-                    printf("ERROR in assertions: %s\n", qUtf8Printable(err));
-                    lua_pop(L, 1);
-                    luaTestPassed = false;
-                } else {
-                    luaTestPassed = lua_toboolean(L, -1);
-                    lua_pop(L, 1);
-                }
-            } else {
-                lua_pop(L, 1);
-                printf("ERROR: Test runner has no assertions callback\n");
-                luaTestPassed = false;
-            }
-
-            if (roomPtr) {
-                roomPtr->clearTestOverrides();
-            }
-
-            const int exitCode = luaTestPassed ? 0 : 1;
-            QTimer::singleShot(0, qApp, [exitCode]() { qApp->exit(exitCode); });
-        });
-
-        int topBefore = lua_gettop(L);
-        lua_getfield(L, -1, "execute");
-        if (lua_isfunction(L, -1)) {
-            if (lua_pcall(L, 0, 0, 0) != 0) {
-                const QString err = luaErrorWithTraceback(L);
-                printf("ERROR: %s\n", qUtf8Printable(err));
-                lua_pop(L, 1);
-                Server::writeHeadlessLog(QString("Test execution failed: %1").arg(err));
-                return 1;
-            }
-        } else {
-            lua_pop(L, 1);
-            printf("ERROR: Runner has no execute() method\n");
-            return 1;
-        }
-        lua_settop(L, topBefore);
-
-        const int rc = qApp->exec();
-        CrashHandler::beginShutdown(); // 正常關閉流程,退出清理階段的崩潰不再上報
-        return rc;
-    }
 
     bool hasTestScenarioArgument = qApp->arguments().contains("--test-scenario");
     foreach (const QString &arg, qApp->arguments()) {

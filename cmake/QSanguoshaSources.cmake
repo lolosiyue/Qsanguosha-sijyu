@@ -125,6 +125,7 @@ set(QSAN_SOURCES
     src/ui/magatamas-item.cpp
     src/ui/photo.cpp
     src/ui/pixmapanimation.cpp
+    src/ui/pointer-effect-overlay.cpp
     src/ui/playercardbox.cpp
     src/ui/qsanbutton.cpp
     src/ui/qsan-selectable-item.cpp
@@ -292,6 +293,7 @@ set(QSAN_MOC_HEADERS
     src/ui/magatamas-item.h
     src/ui/photo.h
     src/ui/pixmapanimation.h
+    src/ui/pointer-effect-overlay.h
     src/ui/playercardbox.h
     src/ui/qsanbutton.h
     src/ui/qsan-selectable-item.h

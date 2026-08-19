@@ -231,6 +231,27 @@ AI use_func / ai_skill_use_func
 - 舊 AI 未遷移時仍可透過 base-name fallback，但 source-sensitive attached 技能必須另審。
 - 不為了通過 AI 而把 instanceID 再塞入技能名稱字串。
 
+### 13.1 通用 AIRequest／AIResult 與 VM 遷移
+
+- 新 AI 邊界只使用 value-only `AIRequest`／`AIResult`。`activate` 與 `askForUseCard`
+  共用同一 gate；`ActionKind` 區分出牌、回應與取消，`AIResult` 在提交前轉成
+  `CardActionSpec`，由 Room 驗證 result 回送同一 request 的 revision、牌／目標 ID 與 quota。
+  權威 gameplay revision ledger 尚未接入，純 request/query 不得推進 revision。
+- ActiveSkillV2 的 activation/source identity 與 quota 僅作
+  `AIRequest.SkillActionContext`，不可另建技能專用 request/result，也不可把 instance ID
+  編碼進技能名稱或舊字串。
+- 每個 Room 的 `AiLuaRuntime` 與 Gameplay Lua VM 分離，兩者均由 `RoomThread` 同步執行。
+  第一階段 Isolated handler 只取得 value-only request、`AiData` 與 decision-scoped `AiRng`；
+  完整 `AIWorldView` 尚未接入，未遷移 legacy AI 仍留在 Gameplay VM。
+- `LegacyDirect` 僅供過渡；`LegacyAdapted` 將舊 `activate`／`askForUseCard` 結果複製成
+  `AIResult`，再走通用 Room 驗證 gate。
+- 第一階段 `Isolated Shadow` 以同一 request 與獨立 deterministic `AiRng` 計算，只產生
+  bounded audit／差異結果，不改變正式 gameplay。遷移期間允許同一 Room 按
+  decision/callback 混用 `LegacyAdapted` 與 `Isolated`，並共享 C++ `AiDataStore`。
+- `RoomThread` 在同一同步 gate 完成 request 建立、AI callback、result 驗證及
+  `Room::useCard`／response resolver 提交；Shadow 不得回寫 Room、持鎖等待其他執行緒或
+  在 callback 返回後提交卡牌。
+
 ## 14. 單技能遷移 ticket 模板
 
 ```markdown
