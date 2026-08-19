@@ -92,6 +92,8 @@ class HomeController final : public QObject
     Q_PROPERTY(QString currentPage READ currentPage NOTIFY currentPageChanged)
     Q_PROPERTY(HomeGeneralModel *generalModel READ generalModel CONSTANT)
     Q_PROPERTY(int artRevision READ artRevision NOTIFY artRevisionChanged)
+    Q_PROPERTY(qreal uiScale READ uiScale NOTIFY visualSettingsChanged)
+    Q_PROPERTY(QString visualMode READ visualMode NOTIFY visualSettingsChanged)
 
 public:
     explicit HomeController(QObject *parent = nullptr);
@@ -159,6 +161,10 @@ public:
     // 重新發送玩家資訊變更信號（回到首頁時由 MainWindow 呼叫）
     Q_INVOKABLE void refreshPlayerInfo();
 
+    qreal uiScale() const;
+    QString visualMode() const;
+    Q_INVOKABLE void notifyVisualSettings();
+
 signals:
     void quickJoinRequested();
     void joinGameRequested();
@@ -179,6 +185,7 @@ signals:
     void gameModeChanged();
     void currentPageChanged();
     void artRevisionChanged();
+    void visualSettingsChanged();
 
 private:
     void switchQmlScene(const QUrl &source);

@@ -29,7 +29,8 @@ Item {
         }
     }
 
-    property string visualMode: Config ? Config.getValue("VisualMode", "normal") : "normal"
+    property string visualMode: homeController ? homeController.visualMode : "normal"
+    property real uiScale: 1.0
     readonly property bool generalsOpen: homeController.currentPage === "generals"
     property bool generalsMounted: false
     readonly property bool generalPageBusy: {
@@ -46,14 +47,22 @@ Item {
     Item {
         id: contentHost
         anchors.fill: parent
+        clip: true
+        // 僅在灰階/高對比時離屏合成；Qt 6 saturation -1.0 才是去色（0.0 為不變）
+        layer.enabled: root.visualMode !== "normal"
+        layer.effect: MultiEffect {
+            autoPaddingEnabled: false
+            saturation: root.visualMode === "grayscale" ? -1.0 : 0.0
+            contrast: root.visualMode === "highcontrast" ? 0.35 : 0.0
+        }
 
         HomeBackground {
             id: backgroundLayer
             anchors.fill: parent
         }
 
-        // 固定 1920x1080 設計畫布：依視窗尺寸等比縮放並置中，
-        // 使 150% 縮放（邏輯 1280x720）下所有元件等比例縮小而不擁擠
+        // 固定 1920×1080 設計畫布：永遠完整 fit 進視窗（框架不動）。
+        // UIScale 只作用在各元素自己的 transform，不缩放整張畫布。
         Item {
             id: uiCanvas
 
@@ -99,6 +108,9 @@ Item {
                     height: 136
                     opacity: 0
 
+                    transformOrigin: Item.Bottom
+                    scale: root.uiScale
+
                     transform: Translate {
                         id: bottomEnter
                         y: 180
@@ -123,6 +135,9 @@ Item {
                 anchors.leftMargin: 32
                 anchors.topMargin: 24
                 opacity: 0
+
+                transformOrigin: Item.TopLeft
+                scale: root.uiScale
 
                 transform: Translate {
                     id: playerEnter
@@ -149,6 +164,9 @@ Item {
                 mipmap: false
                 opacity: 0
 
+                transformOrigin: Item.BottomRight
+                scale: root.uiScale
+
                 transform: Translate {
                     id: logoEnter
                     y: -20
@@ -167,6 +185,9 @@ Item {
 
                 width: Math.min(520, parent.width * 0.3)
                 opacity: 0
+
+                transformOrigin: Item.Right
+                scale: root.uiScale
 
                 transform: Translate {
                     id: actionEnter
@@ -187,6 +208,9 @@ Item {
                 anchors.rightMargin: 16
                 anchors.verticalCenter: parent.verticalCenter
                 opacity: 0
+
+                transformOrigin: Item.Right
+                scale: root.uiScale
 
                 transform: Translate {
                     id: sideEnter
@@ -210,11 +234,19 @@ Item {
                 visible: root.generalsOpen && !root.generalPageBusy
                 onStatusChanged: {
                     if (status === Loader.Ready && generalPage.item) {
+                        generalPage.item.uiScale = root.uiScale
                         root.applyGeneralsNavGraph()
                         if (root.generalsOpen)
                             generalPage.item.takeKeyboard()
                     }
                 }
+            }
+
+            Binding {
+                target: generalPage.item
+                property: "uiScale"
+                value: root.uiScale
+                when: generalPage.item !== null
             }
 
             // Loader 編譯期間先畫面板骨架；Ready 後揭 GeneralScene，立繪再分幀載入
@@ -395,18 +427,6 @@ Item {
                 }
             }
         }
-    }
-
-    MultiEffect {
-        id: visualEffect
-
-        anchors.fill: contentHost
-        visible: enabled
-        enabled: root.visualMode !== "normal"
-        source: enabled ? contentHost : null
-
-        saturation: root.visualMode === "grayscale" ? 0.0 : 1.0
-        contrast: root.visualMode === "highcontrast" ? 0.35 : 0.0
     }
 
     HomePointerFx {

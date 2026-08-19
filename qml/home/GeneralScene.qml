@@ -198,6 +198,7 @@ Item {
     property var genderFilter: []
     property var packageFilter: []
     property int detailTab: 0
+    property real uiScale: 1.0
     property int gridColumns: 5
     property bool gridColsReady: false
     readonly property bool tableMode: gridColumns >= HomeTheme.generalGridMaxColumns
@@ -830,6 +831,8 @@ Item {
                             anchors.margins: HomeTheme.generalCellInset
                             radius: 8
                             clip: true
+                            transformOrigin: Item.Center
+                            scale: root.uiScale
                             color: root.selectedName === delegateRoot.name
                                    ? HomeTheme.navBgActive
                                    : HomeTheme.btnSecondary
@@ -1182,6 +1185,8 @@ Item {
                         Layout.preferredWidth: Math.round(detailPanel.width * 0.33)
                         Layout.fillHeight: true
                         clip: true
+                        transformOrigin: Item.Top
+                        scale: root.uiScale
 
                         SkeletonBlock {
                             anchors.horizontalCenter: parent.horizontalCenter
@@ -1213,6 +1218,8 @@ Item {
                     ColumnLayout {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
+                        transformOrigin: Item.TopLeft
+                        scale: root.uiScale
                         spacing: 8
 
                         SkeletonBlock {
@@ -1882,6 +1889,8 @@ Item {
             topColor: HomeTheme.baDockTop
             bottomColor: HomeTheme.baDockBottom
             borderColor: HomeTheme.baDockBorder
+            transformOrigin: Item.Center
+            scale: root.uiScale
 
             MouseArea { anchors.fill: parent }
 
