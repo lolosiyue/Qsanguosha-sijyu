@@ -333,19 +333,35 @@ LuaSkillCard *LuaSkillCard::clone() const
     return new_card;
 }
 
+static const LuaSkillCard *lookupLuaSkillCardPrototype(const QString &name)
+{
+    EngineRuntimeContext *context = Sanguosha ? Sanguosha->currentRoomContext() : nullptr;
+    RoomRuntime *runtime = context ? context->roomRuntime() : nullptr;
+    if (runtime) {
+        if (const LuaSkillCard *c = runtime->luaSkillCard(name))
+            return c;
+    }
+    return LuaSkillCards.value(name, nullptr);
+}
+
 LuaSkillCard *LuaSkillCard::Parse(const QString &str)
 {
     static QRegularExpression rx("#(\\w+):(.*):(.*)");
     static QRegularExpression e_rx("#(\\w*)\\[(\\w+):(.+)\\]:(.*):(.*)");
 
+    // objectName 已含 # 時 toString 曾產出 ##name[...]，正規化成單一 # 前綴
+    QString wire = str;
+    while (wire.startsWith(QStringLiteral("##")))
+        wire.remove(0, 1);
+
     QString name, suit, number, subcard_str, user_string;
 
-    QRegularExpressionMatch match = rx.match(str);
+    QRegularExpressionMatch match = rx.match(wire);
     if (match.hasMatch()) {
         name = match.captured(1);
         subcard_str = match.captured(2);
         user_string = match.captured(3);
-    } else if ((match = e_rx.match(str)).hasMatch()) {
+    } else if ((match = e_rx.match(wire)).hasMatch()) {
         name = match.captured(1);
         suit = match.captured(2);
         number = match.captured(3);
@@ -354,9 +370,13 @@ LuaSkillCard *LuaSkillCard::Parse(const QString &str)
     } else
         return nullptr;
 
-    EngineRuntimeContext *context = Sanguosha ? Sanguosha->currentRoomContext() : nullptr;
-    RoomRuntime *runtime = context ? context->roomRuntime() : nullptr;
-    const LuaSkillCard *c = runtime ? runtime->luaSkillCard(name) : LuaSkillCards.value(name, nullptr);
+    const LuaSkillCard *c = lookupLuaSkillCardPrototype(name);
+    if (!c) {
+        if (name.startsWith(QLatin1Char('#')))
+            c = lookupLuaSkillCardPrototype(name.mid(1));
+        else
+            c = lookupLuaSkillCardPrototype(QLatin1Char('#') + name);
+    }
     if (c == nullptr) return nullptr;
 
     LuaSkillCard *new_card = c->clone();
@@ -391,9 +411,11 @@ LuaSkillCard *LuaSkillCard::Parse(const QString &str)
 
 QString LuaSkillCard::toString(bool hidden) const
 {
-    //Q_UNUSED(hidden);
-	if(hidden) return QString("#%1[no_suit:0]:.:").arg(objectName());
-    return QString("#%1[%2:%3]:%4:%5").arg(objectName())
+    QString name = objectName();
+    if (!name.startsWith(QLatin1Char('#')))
+        name.prepend(QLatin1Char('#'));
+	if(hidden) return QString("%1[no_suit:0]:.:").arg(name);
+    return QString("%1[%2:%3]:%4:%5").arg(name)
         .arg(getSuitString()).arg(getNumberString())
         .arg(subcardString()).arg(user_string);
 }
