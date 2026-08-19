@@ -604,9 +604,17 @@ QUrl HomeController::playerAvatar() const
     return generalFullImage(Config.UserAvatar);
 }
 
+QString HomeController::currentGameModeName() const
+{
+    if (!Sanguosha || !Config.GameMode.isValid())
+        return {};
+    return Sanguosha->getModeName(Config.GameMode.mode_id);
+}
+
 void HomeController::refreshPlayerInfo()
 {
     emit playerInfoChanged();
+    emit gameModeChanged();
 }
 
 bool HomeController::hasVideoSupport() const

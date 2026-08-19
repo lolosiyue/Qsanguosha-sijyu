@@ -202,7 +202,7 @@ void MainWindow::setupHomePage()
 	homeView->setSource(homeUrl);
 
 	connect(homeController, &HomeController::quickJoinRequested,
-		ui->actionStart_Game, &QAction::trigger);
+		this, &MainWindow::startLocalConsoleGame);
 	connect(homeController, &HomeController::joinGameRequested,
 		ui->actionStart_Game, &QAction::trigger);
 	connect(homeController, &HomeController::startServerRequested,
@@ -436,6 +436,26 @@ void MainWindow::on_actionStart_Server_triggered()
 		Config.HostAddress = "127.0.0.1";
 		startConnection();
 	}
+}
+
+void MainWindow::startLocalConsoleGame()
+{
+	if (server) {
+		server->deleteLater();
+		server = nullptr;
+	}
+
+	server = new Server(this);
+	if (!server->listen()) {
+		QMessageBox::warning(this, tr("Warning"), tr("Can not start server!"));
+		server->deleteLater();
+		server = nullptr;
+		return;
+	}
+
+	server->checkUpnpAndListServer();
+	Config.HostAddress = "127.0.0.1";
+	startConnection();
 }
 
 void MainWindow::checkVersion(const QString &server_version, const QString &server_mod, int card_num)
