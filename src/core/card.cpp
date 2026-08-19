@@ -623,8 +623,9 @@ const Card*Card::Parse(const QString &str)
 		dummy->deleteLater();
 		return dummy;
 	} else if (str.startsWith("#")) {
-		LuaSkillCard*new_card = LuaSkillCard::Parse(copy);
-		new_card->deleteLater();
+		LuaSkillCard *new_card = LuaSkillCard::Parse(copy);
+		if (new_card)
+			new_card->deleteLater();
 		return new_card;
 	} else if (str.contains("=")) {
 		static const QRegularExpression pattern("^(\\w+):(\\w*)\\[(\\w+):(.+)\\]=(.+)$");

@@ -67,6 +67,10 @@ void ClientLogBox::appendLog(const QString &type, const QString &from_general, c
         // do Indicator animation
         const Card *card = Card::Parse(card_str);
         if (card == nullptr) return;
+        // `#FooCard` 是隱藏機制卡。舊 toString 產出 ##，Parse 失敗後整行丟掉；
+        // 修好雙井號後不能改成公開「發動」。
+        if (card->objectName().startsWith(QLatin1Char('#')))
+            return;
         foreach(QString t, tos)
             RoomSceneInstance->showIndicator(from_general, t);
         QString card_name = bold(card->getLogName(), Qt::yellow);
