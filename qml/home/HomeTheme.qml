@@ -2,70 +2,163 @@ pragma Singleton
 import QtQuick
 
 // 主頁主題色集中表：依 homeController.isDarkTheme 在亮/暗兩套色間切換。
+// 亮色為 BA-style 主視覺；暗色用深海軍藍／暗冰藍，避免純黑。
 // 各元件一律引用 HomeTheme.xxx，不得再寫死色值。
 Item {
     id: theme
 
     readonly property bool isDark: homeController.isDarkTheme
 
-    // 背景底層（底色，背景圖半透明疊其上；亮色主題用較深的灰藍，避免全窗過亮刺眼）
-    readonly property color windowBg: isDark ? "#0A0E27" : "#D8E2F0"
+    // —— BA 語意色 ——
+    readonly property color baNavy: isDark ? "#D6E8F4" : "#073B5B"
+    readonly property color baBlue: isDark ? "#8FBDD4" : "#185879"
+    readonly property color baSky: isDark ? "#3AA8D4" : "#4EB8EA"
+    readonly property color baIce: isDark ? "#1A334C" : "#DCEAF6"
+    readonly property color baWhite: isDark ? "#E8F3FA" : "#F3F8FD"
+    readonly property color baYellow: "#FFD84D"
 
-    // 背景圖不透明度（亮色主題下略微調淡但保留質感，避免畫面平坦過亮）
+    // 技能名：亮／暗都維持對比，勿用 btnPrimary（暗色過深）
+    readonly property color skillName: isDark ? "#7EDAF2" : "#0B6B8A"
+    readonly property color skillNameRelated: isDark ? "#B7D4E4" : "#3A7A94"
+    readonly property color skillPlate: isDark ? "#553AA8D4" : "#CCE4F4"
+    readonly property color skillPlateRelated: isDark ? "#221A334C" : "#14FFFFFF"
+    readonly property color nativeSkillBg: isDark ? "#221A334C" : "#66E8F3FB"
+    readonly property color relatedSkillBg: isDark ? "#18142838" : "#55F3F0EA"
+    readonly property color hiddenBadge: isDark ? "#C4A15A" : "#B8892E"
+    readonly property color hiddenBadgeText: "#FFF8EC"
+    readonly property color tabSkillsBg: isDark ? "#33203A58" : "#88DCEAF6"
+    readonly property color tabVoiceBg: isDark ? "#33201838" : "#88E8DFEE"
+    readonly property color tabSkillsBorder: isDark ? "#5AA8D4" : "#4EB8EA"
+    readonly property color tabVoiceBorder: isDark ? "#8A7AB0" : "#8B73A8"
+
+    // 疊在立繪／卡圖上的標籤（不隨亮暗主題反轉，保證對比）
+    readonly property color onArtScrim: "#D10B1A2E"
+    readonly property color onArtText: "#F4F8FC"
+
+    readonly property color baDockTop: isDark ? "#CC243A58" : "#F0F3F8FD"
+    readonly property color baDockBottom: isDark ? "#E0142844" : "#E6DCEAF6"
+    readonly property color baDockBorder: isDark ? "#5A8AAB" : "#8AB3CC"
+    readonly property color baDockShadow: isDark ? "#40061428" : "#260A2A50"
+
+    readonly property color baNavTextIdle: isDark ? "#8AA4B8" : "#61768B"
+    readonly property color baNavTextHover: isDark ? "#D2E7F4" : "#185879"
+    readonly property color baNavTextActive: isDark ? "#F2F8FC" : "#073B5B"
+
+    readonly property color baHaloOuter: isDark ? "#553AA8D4" : "#554EB8EA"
+    readonly property color baHaloInner: isDark ? "#66245880" : "#66185879"
+
+    readonly property color baNavBgHover: isDark ? "#332A4A66" : "#66F3F8FD"
+    readonly property color baNavBgActive: isDark ? "#44305070" : "#88E8F3FB"
+
+    readonly property color baToolTop: isDark ? "#F01E334C" : "#F2FFFFFF"
+    readonly property color baToolBottom: isDark ? "#E6142844" : "#E6E8F3FA"
+
+    readonly property color baPrimaryTop: isDark ? "#4AA8D0" : "#5EC4EE"
+    readonly property color baPrimaryBottom: isDark ? "#1E6A94" : "#2F8EC4"
+    readonly property color baSecondaryTop: isDark ? "#F01E334C" : "#F2FFFFFF"
+    readonly property color baSecondaryBottom: isDark ? "#E6142844" : "#E6DCEAF6"
+
+    readonly property color baFocusRing: isDark ? "#CCFFFFFF" : "#4EB8EA"
+    readonly property color baFocusRingHigh: isDark ? "#FFFFFFFF" : "#FFFFFF"
+
+    // 背景底層（底色，背景圖半透明疊其上）
+    readonly property color windowBg: isDark ? "#0B1A2E" : "#D8E2F0"
+
     readonly property real backdropOpacity: isDark ? 0.45 : 0.32
 
-    // 背景遮罩漸層（上緣微白 → 下緣透明融入底色）
     readonly property color gradientTop:    "#00FFFFFF"
     readonly property color gradientMidTop: isDark ? "#10FFFFFF" : "#14FFFFFF"
     readonly property color gradientMidBot: isDark ? "#05FFFFFF" : "#06FFFFFF"
-    readonly property color gradientBottom: isDark ? "#000A0E27" : "#00D8E2F0"
+    readonly property color gradientBottom: isDark ? "#000B1A2E" : "#00D8E2F0"
 
-    // 底部導航列面板
-    readonly property color panelTop:    isDark ? "#F0101428" : "#F2F7FD"
-    readonly property color panelBottom: isDark ? "#D0080D22" : "#D6E2F2"
-    readonly property color panelBorder: isDark ? "#45A9CFFF" : "#4A6E9E"
+    // 底部 Dock／面板（對應 baDock*）
+    readonly property color panelTop:    baDockTop
+    readonly property color panelBottom: baDockBottom
+    readonly property color panelBorder: baDockBorder
 
-    // 版本藥丸／小型膠囊
-    readonly property color pillBg:   isDark ? "#20FFFFFF" : "#33000000"
-    readonly property color pillText: isDark ? "#80FFFFFF" : "#46536B"
+    readonly property color pillBg:   isDark ? "#33243A58" : "#66FFFFFF"
+    readonly property color pillText: isDark ? "#B8D0E0" : "#073B5B"
 
-    // 主按鈕：主要（藍色；亮色主題改用深藍以在淺底保有對比）
-    readonly property color btnPrimary:       isDark ? "#4C83ED" : "#2E6BD8"
-    readonly property color btnPrimaryDown:   isDark ? "#3167CC" : "#2458B5"
-    readonly property color btnPrimaryBorder: isDark ? "#D9ECFF" : "#1E4E9E"
+    readonly property color btnPrimary:       baPrimaryBottom
+    readonly property color btnPrimaryDown:   isDark ? "#185878" : "#2478A8"
+    readonly property color btnPrimaryBorder: isDark ? "#8FD4EE" : "#FFFFFF"
     readonly property color btnPrimaryText:   "#FFFFFF"
-    readonly property color btnPrimaryIconBg:   "#35FFFFFF"
-    readonly property color btnPrimaryIconBdr: isDark ? "#B8D9FF" : "#9CC3F5"
+    readonly property color btnPrimaryIconBg:   "#55FFFFFF"
+    readonly property color btnPrimaryIconBdr: isDark ? "#C8E8F8" : "#FFFFFF"
 
-    // 主按鈕：次要（暗色主題為深藍底+淺字；亮色主題為白底+深色邊線）
-    readonly property color btnSecondary:       isDark ? "#263A5C" : "#FFFFFF"
-    readonly property color btnSecondaryDown:   isDark ? "#1D2E4B" : "#E4EDF8"
-    readonly property color btnSecondaryBorder: isDark ? "#42608F" : "#A9BDD6"
-    readonly property color btnSecondaryText:   isDark ? "#DCE6F5" : "#1A3A66"
-    readonly property color btnSecondaryIconBg:   isDark ? "#24FFFFFF" : "#E8F0FB"
-    readonly property color btnSecondaryIconBdr: isDark ? "#4E6FA3" : "#B9CCE4"
+    readonly property color btnSecondary:       baSecondaryTop
+    readonly property color btnSecondaryDown:   isDark ? "#1A2E46" : "#D4E4F2"
+    readonly property color btnSecondaryBorder: baDockBorder
+    readonly property color btnSecondaryText:   baNavy
+    readonly property color btnSecondaryIconBg:   isDark ? "#332A4A66" : "#E8F0FB"
+    readonly property color btnSecondaryIconBdr: baDockBorder
 
-    // 按鈕底部投影（亮色主題陰影加深，按鈕從淺底浮起）
-    readonly property color btnShadow: isDark ? "#450A315F" : "#350A2A50"
+    readonly property color btnShadow: baDockShadow
 
-    // 鍵盤焦點外框
-    readonly property color focusBorder:     isDark ? "#55FFFFFF" : "#3D6AA8"
-    readonly property color focusBorderHigh: isDark ? "#FFFFFFFF" : "#1A3A66"
+    readonly property color focusBorder:     baFocusRing
+    readonly property color focusBorderHigh: isDark ? "#FFFFFFFF" : "#073B5B"
 
-    // 側欄／底部導航按鈕
-    readonly property color navGlowActive: isDark ? "#263F9FFF" : "#3A59A6"
-    readonly property color navGlowHover:  isDark ? "#183C7ED8" : "#2E4A86"
-    readonly property color navGlowInner:  isDark ? "#124D91F2" : "#24407E"
-    readonly property color navBgActive:   isDark ? "#283F75CC" : "#2F5FA8"
-    readonly property color navBgHover:    isDark ? "#162E5EA8" : "#274E8A"
-    readonly property color navBgDown:     isDark ? "#324D82D9" : "#3565B0"
-    readonly property color navBorderFocus:  isDark ? "#B8DBFFFF" : "#1A3A66"
-    readonly property color navBorderActive: isDark ? "#659CDFFF" : "#2C5288"
-    readonly property color navBorderHover:  isDark ? "#357DAFEA" : "#2E4A86"
-    readonly property color navLine:         isDark ? "#70B7FF" : "#2C5288"
-    readonly property color navTextIdle:   isDark ? "#9FB0CE" : "#46536B"
-    // hover 時文字疊在深藍色柔光板上，兩主題統一用亮白才能與背景區隔
-    readonly property color navTextHover:  "#FFFFFF"
-    readonly property color navTextActive: isDark ? "#FFFFFF" : "#FFFFFF"
-    readonly property color navTextFocus:  isDark ? "#FFFFFF" : "#0F2A4E"
+    readonly property color navGlowActive: baHaloOuter
+    readonly property color navGlowHover:  isDark ? "#333AA8D4" : "#334EB8EA"
+    readonly property color navGlowInner:  baHaloInner
+    readonly property color navBgActive:   baNavBgActive
+    readonly property color navBgHover:    baNavBgHover
+    readonly property color navBgDown:     isDark ? "#55305070" : "#99DCEAF6"
+    readonly property color navBorderFocus:  baFocusRing
+    readonly property color navBorderActive: baSky
+    readonly property color navBorderHover:  baDockBorder
+    readonly property color navLine:         baYellow
+    readonly property color navTextIdle:   baNavTextIdle
+    readonly property color navTextHover:  baNavTextHover
+    readonly property color navTextActive: baNavTextActive
+    readonly property color navTextFocus:  baNavTextActive
+
+    readonly property color tableRowSelected: isDark ? "#16324A" : "#2A5574"
+    readonly property color tableRowHidden: "#A0A0A0"
+    readonly property color tableRowHiddenText: "#2C2C2C"
+    readonly property color tableRowSelectedText: isDark ? "#F2F8FC" : "#FFFFFF"
+
+    // 武將頁布局：骨架與載入後畫面共用，避免尺寸對不齊
+    readonly property int generalHeaderHeight: 88
+    readonly property int generalPageHMargin: 28
+    readonly property int generalPageTopMargin: 18
+    readonly property int generalPageBottomMargin: 8
+    readonly property int generalPanelGap: 16
+    readonly property real generalListShare: 0.40
+    readonly property int generalGridMargin: 16
+    readonly property int generalCellMinWidth: 122
+    readonly property int generalGridMinColumns: 5
+    readonly property int generalGridMaxColumns: 9
+    readonly property int generalTableRowHeight: 30
+    readonly property int generalTableHeaderHeight: 28
+    readonly property real generalCellAspect: 1.50
+    readonly property int generalCellInset: 2
+
+    function resolvedGridColumns(gridWidth, columns) {
+        var v = columns > 0 ? columns : generalGridMinColumns
+        return Math.max(generalGridMinColumns, Math.min(v, generalGridMaxColumns))
+    }
+
+    function generalMaxColumns(gridWidth) {
+        return generalGridMaxColumns
+    }
+
+    function generalCellWidth(gridWidth, columns) {
+        var w = Math.max(1, gridWidth)
+        var cols = resolvedGridColumns(w, columns)
+        if (cols >= generalGridMaxColumns)
+            return w
+        return Math.floor(w / cols)
+    }
+
+    function generalCellHeight(gridWidth, columns) {
+        var cols = resolvedGridColumns(gridWidth, columns)
+        if (cols >= generalGridMaxColumns)
+            return generalTableRowHeight
+        return Math.round(generalCellWidth(gridWidth, columns) * generalCellAspect)
+    }
+
+    function generalCellColumns(gridWidth, columns) {
+        return resolvedGridColumns(gridWidth, columns)
+    }
 }

@@ -28,7 +28,9 @@ for _, script in ipairs(sgs.GetFileNames("extensions")) do
 		end
 	end
 end
-sgs.SetConfig("LuaPackages", table.concat(package_names, "+"))
+if not sgs.Sanguosha:isGameLuaRuntime() then
+	sgs.SetConfig("LuaPackages", table.concat(package_names, "+"))
+end
 
 local skillList = sgs.SkillList()
 if not sgs.Sanguosha:getSkill("#bossModeExperience") then
@@ -129,8 +131,8 @@ for _, skill in sgs.qlist(skillList) do
 end
 sgs.Sanguosha:addSkills(filteredList)
 
-if not sgs.Sanguosha:property("DoneLoading"):toBool() then
-	sgs.Sanguosha:setProperty("DoneLoading", sgs.QVariant(true))
+if not sgs.Sanguosha:isLuaDefinitionsLoaded() then
+	sgs.Sanguosha:finishLuaDefinitions()
 	function load_translation(file)
 		local t = dofile(file)
 		if type(t) ~= "table" then

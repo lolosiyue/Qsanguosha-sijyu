@@ -751,13 +751,7 @@ void PlayerCardContainer::updateHandcardNum()
     if (m_player) {
         int handcardNum = m_player->getHandcardNum();
         int hp = m_player->getHp();
-        int maxCards = 0;
-        QVariant uiHandMax = m_player->getTag("UI_Hand_Max");
-        if (uiHandMax.isValid()) {
-            maxCards = uiHandMax.toInt();
-        } else {
-            maxCards = qMax(m_player->getMaxCards(), 0);
-        }
+        const int maxCards = m_player->uiState().handMax;
 
         int W = wideArea.width(), H = wideArea.height();
         int midW = W / 10;
@@ -790,16 +784,11 @@ void PlayerCardContainer::updateHandcardNum()
 
     if (!m_player) return;
     int limitBase = m_player->getHp();
-    int maxCards = 0;
-    QVariant uiHandMax = m_player->getTag("UI_Hand_Max");
-    if (uiHandMax.isValid()) {
-        maxCards = uiHandMax.toInt();
-    } else {
-        maxCards = qMax(m_player->getMaxCards(), 0);
-    }
+    const PlayerUIState &uiState = m_player->uiState();
+    const int maxCards = uiState.handMax;
     if (maxCards != limitBase) {
         QStringList tooltipInfo;
-        QStringList mc_tag = m_player->getTag("UI_MC_Skills").toStringList();
+        const QStringList &mc_tag = uiState.maxCardsSkills;
         bool hasFixedMaxCards = false;
 
         foreach (const QString &entry, mc_tag) {
@@ -1026,7 +1015,7 @@ void PlayerCardContainer::_updateEquips()
         Card *ec = Sanguosha->cloneCard(eq_name);
         if (ec) try_add_simulated_equip(ec, QString());
     }
-    QStringList vae_tag = m_player->getTag("UI_VAE_Skills").toStringList();
+    const QStringList &vae_tag = m_player->uiState().viewAsEquipSkills;
     foreach (QString entry, vae_tag) {
         QStringList parts = entry.split("^"); // 記得用 ^ 切割
         if (parts.length() >= 2) {
@@ -1070,11 +1059,11 @@ void PlayerCardContainer::_updateEquips()
         }
     }
 
-    // 從 Server 推播的 Tag 讀取距離修正（零 Lua 呼叫）
-    int off_dist = m_player->getTag("UI_Off_Dist").toInt();
-    QStringList off_skills = m_player->getTag("UI_Off_Skills").toStringList();
-    int def_dist = m_player->getTag("UI_Def_Dist").toInt();
-    QStringList def_skills = m_player->getTag("UI_Def_Skills").toStringList();
+    const PlayerUIState &uiState = m_player->uiState();
+    const int off_dist = uiState.offensiveDistance;
+    const QStringList &off_skills = uiState.offensiveSkills;
+    const int def_dist = uiState.defensiveDistance;
+    const QStringList &def_skills = uiState.defensiveSkills;
     // PHOTO 馬位窄：字級依 horsePointArea 縮放；Dashboard 高度較大時接近原 13
     const int distFontPx = qBound(8, _m_layout->m_horsePointArea.height(), 14);
 

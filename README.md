@@ -2,7 +2,7 @@
 
 [中文版](./README_zh.md) | English
 
-An open-source clone of the popular board game _Sanguosha_, built with C++17 and Qt 6.5.3. This project is positioned as a **modpack-style distribution**, focusing on a "mishmash" of extensive content and AI expansion chaos.
+An open-source clone of the popular board game _Sanguosha_, built with C++17 and Qt 6.11.1. This project is positioned as a **modpack-style distribution**, focusing on a "mishmash" of extensive content and AI expansion chaos.
 
 ## 🚀 Key Features
 
@@ -26,17 +26,17 @@ An open-source clone of the popular board game _Sanguosha_, built with C++17 and
 
 ## 🛠️ Development Environment
 
-- **Framework**: Qt 6.5.3 (`msvc2019_64`)
-- **Compiler**: MSVC 2019
-- **Build system**: CMake 3.28+
-- **Generator**: Visual Studio 16 2019 x64
+- **Framework**: Qt 6.11.1 (`msvc2022_64`)
+- **Compiler**: MSVC 2026 (VS 2026 v145 toolchain)
+- **Build system**: CMake 4.2+
+- **Generator**: Visual Studio 18 2026 x64
 
 Set `QTDIR` to the Qt kit before using the presets:
 
 ```powershell
-$env:QTDIR = 'C:\Qt\6.5.3\msvc2019_64'
-C:\Qt\Tools\CMake_64\bin\cmake.exe --preset vs2019-x64
-C:\Qt\Tools\CMake_64\bin\cmake.exe --build --preset release
+$env:QTDIR = 'H:\Qt6111\6.11.1\msvc2022_64'
+cmake --preset vs2026-x64
+cmake --build --preset release
 ```
 
 Alternatively, use the PowerShell entry point:

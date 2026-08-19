@@ -28,12 +28,11 @@ private:
         bool noEquipAnim = false;
         bool noCardMoveAnim = false;
         bool enableAnimatedGenerals = true;
+        bool enablePointerEffect = true;
     } m_visual;
 
     void loadConfig();
     void snapshotVisualSettings();
-    void refitRoomScene();
-    void applyUiScalePreview();
     void previewTheme(int scheme);
     void previewVisualMode();
     void restoreVisualSettings();
@@ -55,6 +54,8 @@ private slots:
 signals:
     void bg_changed();
     void previewChanged();
+    void liveVisualChanged();
+    void uiScalePreviewChanged(qreal scale);
 };
 
 #endif

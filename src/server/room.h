@@ -5,8 +5,13 @@
 #include "skill-instance-utils.h"
 #include "skill-instance-attachment-registry.h"
 #include "skill-execution-registry.h"
+#include "room-runtime.h"
+#include "game-session-config.h"
+#include "event-dispatcher.h"
 
 #include <functional>
+#include <memory>
+#include <QPointer>
 
 class ProhibitSkill;
 class ProhibitPindianSkill;
@@ -16,8 +21,21 @@ class GameSnapshot;
 
 struct lua_State;
 struct LogMessage;
-struct ActiveSkillAIRequest;
+struct AIRequest;
+struct AIResult;
+struct AiLegacyRequestView;
+struct PlayerUIState;
 class ServerPlayer;
+class AiDecisionCoordinator;
+class SkillRuntimeCoordinator;
+class GameSnapshotService;
+class RoomNotifier;
+class RoomRoster;
+class RequestCoordinator;
+class PlayerDecisionService;
+class CardMovementService;
+class ExtraTurnScheduler;
+class PlayerLifecycleService;
 class GameRule;
 class RoomThread;
 class RoomThread3v3;
@@ -31,7 +49,7 @@ class RoomThread1v1;
 #include "room-state.h"
 #include "json.h"
 
-class Room : public QThread, public EngineRuntimeContext
+class Room : public QThread, public EngineRuntimeContext, private EventDispatcher
 {
     Q_OBJECT
         Q_ENUMS(GuanxingType)
@@ -48,12 +66,21 @@ public:
     friend class RoomThread1v1;
     friend class ServerPlayer;
     friend class GameRule;
+    friend class AiDecisionCoordinator;
+    friend class SkillRuntimeCoordinator;
+    friend class RequestCoordinator;
+    friend class CardMovementService;
+    friend class PlayerLifecycleService;
+    friend class PlayerDecisionService;
     friend struct RoomTestAccess;
+    friend struct PlayerLifecycleServiceTestAccess;
+    friend struct PlayerDecisionServiceTestAccess;
 
     typedef void (Room::*Callback)(ServerPlayer*, const QVariant&);
     typedef bool (Room::*ResponseVerifyFunction)(ServerPlayer*, const QVariant&, void*);
 
-    explicit Room(QObject*parent, const QString&mode);
+    explicit Room(QObject*parent, const QString&mode,
+                  const GameSessionConfig &sessionConfig = GameSessionConfig());
     ~Room();
     ServerPlayer*addSocket(ClientSocket*socket);
     ServerPlayer*addAIPlayer();
@@ -61,8 +88,12 @@ public:
     {
         return _m_Id;
     }
+    quint64 getGameSeed() const { return m_sessionConfig.seed; }
     bool isFull() const;
     bool isFinished() const;
+    // 喚醒 doRequest / pause 等待, 不 join worker。供 gameOver 回收前使用
+    // (stopGameThreads 的 wait 會與 BlockingQueuedConnection 在 main 互鎖)。
+    void abortWaitingRequests();
     bool canPause(ServerPlayer*p) const;
     void tryPause();
     int getLack() const;
@@ -312,6 +343,8 @@ public:
 
     bool broadcastProperty(ServerPlayer*owner, const char*property_name, const QString&value = "");
     void broadcastTagProperty(ServerPlayer *owner, const QString &tagKey, const QString &value);
+    void notifyPlayerUIState(ServerPlayer *owner, const PlayerUIState &state);
+    void notifyPlayerUIState(ServerPlayer *receiver, const ServerPlayer *owner, const PlayerUIState &state);
     void notifySkillInvoked(ServerPlayer*player, const QString&skill_name);
     void broadcastSkillInvoke(const QString&skillName, const ServerPlayer*player = nullptr);
     void broadcastSkillInvoke(const QString&skillName, const QString&category);
@@ -342,12 +375,12 @@ public:
 
     int acquireSkill(ServerPlayer*player, const Skill*skill, bool open = true, bool getmark = true, bool event_and_log = true);
     int acquireSkill(ServerPlayer*player, const QString&skill_name, bool open = true, bool getmark = true, bool event_and_log = true);
-    int getActiveSkillAIInstanceId(ServerPlayer *player, const QString &skillName) const;
-    ActiveSkillAIRequest getActiveSkillAIRequest(ServerPlayer *player, const QString &skillName) const;
-    ActiveSkillAIRequest getActiveSkillAIRequest(ServerPlayer *player, const QString &skillName,
-                                                 CardUseStruct::CardUseReason reason,
-                                                 const QString &pattern, const QString &prompt,
-                                                 Card::HandlingMethod method) const;
+    int getAiSkillActionInstanceId(ServerPlayer *player, const QString &skillName) const;
+    AiLegacyRequestView getAiSkillActionContext(ServerPlayer *player, const QString &skillName) const;
+    AiLegacyRequestView getAiSkillActionContext(ServerPlayer *player, const QString &skillName,
+                                                CardUseStruct::CardUseReason reason,
+                                                const QString &pattern, const QString &prompt,
+                                                Card::HandlingMethod method) const;
     int getSkillInstanceAmount(const SkillInstanceRef &ref, bool *ok = nullptr) const;
     bool setSkillInstanceAmount(ServerPlayer *source, const SkillInstanceRef &ref, int amount,
                                 const QString &reason = QString());
@@ -365,14 +398,8 @@ public:
     void clearSkillInvalidityBySource(ServerPlayer *source);
     void adjustSeats();
     void swapPile();
-    inline QList<int> getDiscardPile()
-    {
-        return*m_discardPile;
-    }
-    inline QList<int>&getDrawPile()
-    {
-        return*m_drawPile;
-    }
+    QList<int> getDiscardPile();
+    QList<int> &getDrawPile();
     int getCardFromPile(const QString&card_name);
     ServerPlayer*findPlayer(const QString&general_name, bool include_dead = false) const;
     QList<ServerPlayer*> findPlayersBySkillName(const QString&skill_name) const;
@@ -384,6 +411,7 @@ public:
         bool isSecondaryHero = false, bool sendLog = true, int start_hp = 0);
     void swapSeat(ServerPlayer*a, ServerPlayer*b);
     lua_State*getLuaState() const;
+    bool hasLuaRuntime() const;
     void setFixedDistance(Player*from, const Player*to, int distance);
     void removeFixedDistance(Player*from, const Player*to, int distance);
     void insertAttackRangePair(Player*from, const Player*to);
@@ -403,6 +431,7 @@ public:
     QString getSnapshotDir() const;
     void setReplayPath(const QString &path);
     QString getReplayPath() const;
+    void initializeReplayRecordPath();
 
     void sortByActionOrder(QList<ServerPlayer*>&players);
 
@@ -544,7 +573,6 @@ public:
     void speakCommand(ServerPlayer*player, const QVariant&arg);
     void trustCommand(ServerPlayer*player, const QVariant&arg);
     void pauseCommand(ServerPlayer*player, const QVariant&arg);
-    void processResponse(ServerPlayer*player, const QSanProtocol::Packet*arg);
     void addRobotCommand(ServerPlayer*player, const QVariant&arg);
     void broadcastInvoke(const QSanProtocol::AbstractPacket*packet, ServerPlayer*except = nullptr);
     void broadcastInvoke(const char*method, const QString&arg = ".", ServerPlayer*except = nullptr);
@@ -597,10 +625,9 @@ public:
 
     QVariant askForQml(ServerPlayer *player, const QString &qmlPath, const QVariantMap &params, int timeout = 30000);
 
-    inline RoomState*getRoomState()
-    {
-        return&_m_roomState;
-    }
+    inline RoomState*getRoomState() { return &m_runtime->state(); }
+    RoomRuntime *roomRuntime() override { return m_runtime.get(); }
+    LuaRuntime *luaRuntime() const { return m_runtime ? &m_runtime->lua() : nullptr; }
 
     QObject *runtimeObject() override { return this; }
     RoomState *roomState() override { return getRoomState(); }
@@ -609,16 +636,16 @@ public:
     Card *card(int card_id) const override { return getCard(card_id); }
     inline Card*getCard(int cardId) const
     {
-		return _m_roomState.getCard(cardId);
+		return m_runtime->state().getCard(cardId);
     }
     inline void resetCard(int cardId) const
     {
-        _m_roomState.resetCard(cardId);
+        m_runtime->state().resetCard(cardId);
     }
     inline void setCurrentCardUse(const QString&newPattern, CardUseStruct::CardUseReason reason)
     {
-		_m_roomState.setCurrentCardUsePattern(newPattern);
-		_m_roomState.setCurrentCardUseReason(reason);
+		m_runtime->state().setCurrentCardUsePattern(newPattern);
+		m_runtime->state().setCurrentCardUseReason(reason);
     }
     void updateCardsChange(const CardsMoveStruct&move);
 
@@ -645,29 +672,12 @@ protected:
     int _m_Id;
 
 private:
-    struct ExtraTurnRequest {
-        ServerPlayer *player;
-        QList<Player::Phase> phases;
-        QString reason;
-        SkillInstanceRef sourceRef;
-
-        ExtraTurnRequest()
-            : player(nullptr) {}
-    };
-
-    struct ExtraTurnContext {
-        ServerPlayer *player;
-        QString reason;
-        SkillInstanceRef sourceRef;
-
-        ExtraTurnContext()
-            : player(nullptr) {}
-    };
-
+    void addPlayerToRoster(ServerPlayer *player);
+    void removePlayerFromRoster(ServerPlayer *player);
+    void replacePlayerOrder(const QList<ServerPlayer *> &players);
     void executeExtraTurn(ServerPlayer *player, QList<Player::Phase> phases,
                           const QString &reason, const SkillInstanceRef &sourceRef);
     void processScheduledExtraTurns();
-    void restoreExtraTurnRequests(const QList<ExtraTurnRequest> &requests);
 
     void notifySkillInstanceSnapshot(ServerPlayer *receiver);
     void notifySkillInstanceUpsert(ServerPlayer *owner, const SkillInstance &instance);
@@ -687,220 +697,81 @@ private:
     bool areCardTargetsLegal(const CardUseStruct &use) const;
     const Card *resolveActiveSkillRequest(ServerPlayer *player, const ViewAsSkillV2 *skill,
                                           const ActiveSkillRequest &request) const;
-    bool buildActiveSkillAIRequest(ServerPlayer *player, const SkillInstance &instance,
+    AIWorldView buildAIWorldView(ServerPlayer *viewer) const;
+    bool isAIMarkVisibleTo(const ServerPlayer *owner, const QString &mark,
+                           const ServerPlayer *viewer) const;
+    AIRequest makeAIRequest(ServerPlayer *player, AIRequest::DecisionKind kind,
+                            CardUseStruct::CardUseReason reason, const QString &pattern,
+                            const QString &prompt, Card::HandlingMethod method) const;
+    bool buildAiSkillActionRequest(ServerPlayer *player, const SkillInstance &instance,
                                    CardUseStruct::CardUseReason reason, const QString &pattern,
                                    const QString &prompt, Card::HandlingMethod method,
-                                   ActiveSkillAIRequest &request) const;
-    bool askForActiveSkill(ServerPlayer *player, CardUseStruct::CardUseReason reason,
-                           const QString &pattern, const QString &prompt, Card::HandlingMethod method,
-                           CardUseStruct &cardUse) const;
+                                   AIRequest &request) const;
+    bool decideAiSkillAction(ServerPlayer *player, CardUseStruct::CardUseReason reason,
+                             const QString &pattern, const QString &prompt,
+                             Card::HandlingMethod method, CardUseStruct &cardUse) const;
+    bool decideAiAction(ServerPlayer *player, const AIRequest &request,
+                        CardUseStruct &cardUse) const;
+    bool applyAIResult(ServerPlayer *player, const AIRequest &request,
+                       const AIResult &result, CardUseStruct &cardUse) const;
     bool reserveActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
     void releaseActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
     void commitActiveSkillUsage(const ViewAsSkillV2 *skill, const SkillContext &context);
     void recordSkillExecutionAudit(const SkillContext &context, SkillExecutionResult result) const;
-    SkillExecutionRegistry m_skillExecutions;
-    QSet<QString> m_changingSkillAmounts;
-    SkillInstanceUtils::UsageReservationLedger m_activeSkillUsageReservations;
-    QList<ExtraTurnRequest> m_scheduledExtraTurns;
-    QList<ExtraTurnContext> m_extraTurnContexts;
-    bool m_processingScheduledExtraTurns;
-    int chooseSkillInstance(ServerPlayer *chooser, ServerPlayer *owner, const QString &skillName,
-                            bool visibleOnly, bool acquiredOnly);
-    bool removeSkillInstanceFromPlayer(ServerPlayer *owner, const QString &skillName, int instanceId,
-                                       bool isEquip, bool eventAndLog);
+    std::unique_ptr<RoomRuntime> m_runtime;
+    std::unique_ptr<SkillRuntimeCoordinator> m_skillRuntime;
+    std::unique_ptr<AiDecisionCoordinator> m_aiDecisions;
+    std::unique_ptr<ExtraTurnScheduler> m_extraTurns;
+    std::unique_ptr<RoomNotifier> m_notifier;
+    std::unique_ptr<RequestCoordinator> m_requests;
+    std::unique_ptr<PlayerDecisionService> m_playerDecisions;
+    std::unique_ptr<CardMovementService> m_cardMovement;
+    std::unique_ptr<GameSnapshotService> m_snapshotService;
+    std::unique_ptr<RoomRoster> m_roster;
+    std::unique_ptr<PlayerLifecycleService> m_playerLifecycle;
+
+    bool dispatch(TriggerEvent event, ServerPlayer *target, QVariant &data) override;
+    void registerTriggerSkill(const TriggerSkill *skill) override;
+    void clearControllerRelation(ServerPlayer *player);
 
     void _setAreaMark(ServerPlayer*player, int i, bool flag);
 
-    struct _MoveSourceClassifier
-    {
-        inline _MoveSourceClassifier(const CardsMoveStruct&move)
-        {
-            m_from = move.from;
-			m_from_place = move.from_place;
-            m_from_pile_name = move.from_pile_name;
-			m_from_player_name = move.from_player_name;
-        }
-        inline void copyTo(CardsMoveStruct&move)
-        {
-            move.from = m_from;
-			move.from_place = m_from_place;
-            move.from_pile_name = m_from_pile_name;
-			move.from_player_name = m_from_player_name;
-        }
-        inline bool operator == (const _MoveSourceClassifier&other) const
-        {
-            return m_from == other.m_from && m_from_place == other.m_from_place
-				// && m_from_player_name == other.m_from_player_name
-                && m_from_pile_name == other.m_from_pile_name;
-        }
-        inline bool operator < (const _MoveSourceClassifier&other) const
-        {
-            // 逐欄位字典序比較，避免 QMap 比較器同時判定 a < b 與 b < a。
-            const std::less<Player *> playerLess;
-            if (m_from != other.m_from)
-                return playerLess(m_from, other.m_from);
-            if (m_from_place != other.m_from_place)
-                return m_from_place < other.m_from_place;
-            return m_from_pile_name < other.m_from_pile_name;
-        }
-        Player*m_from;
-        Player::Place m_from_place;
-        QString m_from_pile_name, m_from_player_name;
-    };
-
-    struct _MoveMergeClassifier
-    {
-        inline _MoveMergeClassifier(const CardsMoveStruct&move)
-        {
-            m_from = move.from;
-			m_to = move.to;
-            m_to_place = move.to_place;
-            m_to_pile_name = move.to_pile_name;
-			m_reason = move.reason;
-            m_is_last_handcard = move.is_last_handcard;
-        }
-        inline bool operator == (const _MoveMergeClassifier&other) const
-        {
-            return m_from == other.m_from && m_to == other.m_to && m_to_place == other.m_to_place
-				 && m_to_pile_name == other.m_to_pile_name;// && m_reason == other.m_reason;
-        }
-        inline bool operator < (const _MoveMergeClassifier&other) const
-        {
-            // 比較欄位與 operator== 保持一致，保留既有移動合併語義。
-            const std::less<Player *> playerLess;
-            if (m_from != other.m_from)
-                return playerLess(m_from, other.m_from);
-            if (m_to != other.m_to)
-                return playerLess(m_to, other.m_to);
-            if (m_to_place != other.m_to_place)
-                return m_to_place < other.m_to_place;
-            return m_to_pile_name < other.m_to_pile_name;
-        }
-        Player*m_from,*m_to;
-        Player::Place m_to_place;
-        QString m_to_pile_name;
-		CardMoveReason m_reason;
-        bool m_is_last_handcard;
-    };
-
-    struct _MoveSeparateClassifier
-    {
-        inline _MoveSeparateClassifier(const CardsMoveOneTimeStruct&moveOneTime, int index)
-        {
-            m_from = moveOneTime.from;
-			m_to = moveOneTime.to;
-            m_from_place = moveOneTime.from_places[index];
-			m_to_place = moveOneTime.to_place;
-            m_from_pile_name = moveOneTime.from_pile_names[index];
-			m_to_pile_name = moveOneTime.to_pile_name;
-            m_open = moveOneTime.open[index];
-            m_reason = moveOneTime.reason;
-            //m_is_last_handcard = moveOneTime.is_last_handcard;
-        }
-        inline bool operator == (const _MoveSeparateClassifier&other) const
-        {
-            return m_from == other.m_from && m_to == other.m_to && m_from_place == other.m_from_place
-				 && m_to_place == other.m_to_place && m_from_pile_name == other.m_from_pile_name
-				 && m_to_pile_name == other.m_to_pile_name// && m_open == other.m_open
-				// && m_is_last_handcard == other.m_is_last_handcard
-				 && m_reason == other.m_reason;
-        }
-        inline bool operator < (const _MoveSeparateClassifier&other) const
-        {
-            // reason 屬於相等判斷的一部分，排序亦必須納入以免不同原因被合併。
-            const std::less<Player *> playerLess;
-            if (m_from != other.m_from)
-                return playerLess(m_from, other.m_from);
-            if (m_to != other.m_to)
-                return playerLess(m_to, other.m_to);
-            if (m_from_place != other.m_from_place)
-                return m_from_place < other.m_from_place;
-            if (m_to_place != other.m_to_place)
-                return m_to_place < other.m_to_place;
-            if (m_from_pile_name != other.m_from_pile_name)
-                return m_from_pile_name < other.m_from_pile_name;
-            if (m_to_pile_name != other.m_to_pile_name)
-                return m_to_pile_name < other.m_to_pile_name;
-            return m_reason < other.m_reason;
-        }
-        Player*m_from,*m_to;
-        Player::Place m_from_place, m_to_place;
-        QString m_from_pile_name, m_to_pile_name;
-        bool m_open;//, m_is_last_handcard;
-        CardMoveReason m_reason;
-    };
-
     int _m_lastMovementId;
-    void _fillMoveInfo(CardsMoveStruct&moves, int id) const;
-    QList<CardsMoveOneTimeStruct> _mergeMoves(QList<CardsMoveStruct> cards_moves);
-    QList<CardsMoveStruct> _separateMoves(QList<CardsMoveOneTimeStruct> moveOneTimes);
     QString _chooseDefaultGeneral(ServerPlayer*player) const;
     bool _setPlayerGeneral(ServerPlayer*player, const QString&generalName, bool isFirst);
     ServerPlayer*getRequestTarget(ServerPlayer*player) const;
-    void notifyArrangeSeats(ServerPlayer *player);
-    void clearDualControlRequest(ServerPlayer*player, bool restore_context = true);
     QString mode;
-    QList<ServerPlayer*> m_players, m_alivePlayers;
     int player_count;
     ServerPlayer*current;
-    QList<int> pile1, pile2, table_cards;
-    QList<int>*m_drawPile,*m_discardPile;
     QStack<DamageStruct> m_damageStack;
     int game_state;
     //bool game_started;
     //bool game_finished;
     bool game_paused;
-    lua_State*m_lua;
     QList<AI*> ais;
 	bool AIHumanized;
 
     RoomThread*thread;
-    RoomThread3v3*thread_3v3;
-    RoomThreadXMode*thread_xmode;
-    RoomThread1v1*thread_1v1;
-    QSemaphore _m_semRaceRequest; // When race starts, server waits on his semaphore for the first replier
-    QSemaphore _m_semRoomMutex; // Provide per-room  (rather than per-player) level protection of any shared variables
-
-    QHash<QSanProtocol::CommandType, Callback> m_callbacks; // Stores the callbacks for client request. Do not use this
-    // this map for anything else but S_CLIENT_REQUEST!!!!!
-    QHash<QSanProtocol::CommandType, QSanProtocol::CommandType> m_requestResponsePair;
-    // Stores the expected client response for each server request, any unmatched client response will be discarded.
-
-    QHash<QString, QString> m_dualControlReplyOwners;
-    QHash<QString, QString> m_dualControlRequestTargets;
-
+    QPointer<RoomThread3v3> thread_3v3;
+    QPointer<RoomThreadXMode> thread_xmode;
+    QPointer<RoomThread1v1> thread_1v1;
     QVariantList m_chatHistory;
-    QList<GameSnapshot*> m_snapshots;
-    QString m_replayPath;
-    int m_lastSnapshotTurn;
 
     QElapsedTimer _m_timeSinceLastSurrenderRequest; // Timer used to ensure that surrender polls are not initiated too frequently
     bool _m_isFirstSurrenderRequest; // We allow the first surrender poll to go through regardless of the timer.
-
-    //helper variables for race request function
-    bool _m_raceStarted;
-    ServerPlayer*_m_raceWinner;
-
-    QMap<int, Player::Place> place_map;
-    QMap<int, ServerPlayer*> owner_map;
-    SkillInstanceAttachmentRegistry m_attachedSkillRegistry;
 
     QVariantMap tag;
     const Scenario*scenario;
 
     bool m_surrenderRequestReceived;
     bool _virtual;
-    bool m_playOrderReversed;
-    RoomState _m_roomState;
+    GameSessionConfig m_sessionConfig;
 
     JsonArray m_fillAGarg;
     QList<JsonArray> m_takeAGargs;
 
     QWaitCondition m_waitCond;
     mutable QMutex m_mutex;
-    QMap<QString, QVariant> m_testOverrides;
-    mutable QMutex m_testOverrideMutex;
-
     volatile bool playerPropertySet;
     //QMutex mutexPlayerProperty;
     //QWaitCondition wcPlayerProperty;
@@ -915,7 +786,7 @@ private:
     void triggerGeneralNotChosen(ServerPlayer *player, const QStringList &generals, const QString &chosen, const QString &reason);
     AI*cloneAI(ServerPlayer*player);
     void broadcast(const QString&message, ServerPlayer*except = nullptr);
-    void initCallbacks();
+    bool stopGameThreads(int timeoutMs);
     QString askForOrder(ServerPlayer*player, const QString&default_choice);
     QString askForRole(ServerPlayer*player, const QStringList&roles, const QString&scheme);
 
@@ -939,15 +810,6 @@ private:
         ServerPlayer*m_to;
     };
     void _setupChooseGeneralRequestArgs(ServerPlayer*player);
-
-    struct SummonRequest {
-        ServerPlayer *before;
-        ServerPlayer *after;
-        QString general_name;
-    };
-
-    QList<SummonRequest> m_pendingSummons;
-    QList<ServerPlayer*> m_dynamicPlayers;
 
     void handleAnytimeSkillRequest(ServerPlayer *player, const QVariant &arg);
     void processPendingAnytimeSkills();

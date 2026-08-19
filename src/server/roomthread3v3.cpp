@@ -63,14 +63,15 @@ QStringList RoomThread3v3::getGeneralsWithoutExtension() const
 
 void RoomThread3v3::run()
 {
-    // initialize the random seed for this thread
-    qsrand(QTime(0, 0, 0).secsTo(QTime::currentTime()));
+    LuaRuntime::Binding luaBinding(room->roomRuntime()->lua());
+    GameRng::Binding rngBinding(room->roomRuntime()->rng());
+    EngineRuntimeContextScope contextScope(*Sanguosha, room);
 
     QString scheme = Config.value("3v3/RoleChoose", "Normal").toString();
     assignRoles(scheme);
     room->adjustSeats();
 
-    foreach (ServerPlayer *player, room->m_players) {
+    foreach (ServerPlayer *player, room->getPlayers()) {
         switch (player->getRoleEnum()) {
         case Player::Lord: warm_leader = player; break;
         case Player::Renegade: cool_leader = player; break;
@@ -134,7 +135,6 @@ void RoomThread3v3::askForTakeGeneral(ServerPlayer *player)
             takeGeneral(player, name);
         }
     } else {
-        LuaUnlocker unlocker; // Release lua_mutex during AI delay
         msleep(Config.AIDelay);
         takeGeneral(player, name);
     }
@@ -189,21 +189,22 @@ void RoomThread3v3::startArrange(QList<ServerPlayer *> players)
 void RoomThread3v3::arrange(ServerPlayer *player, const QStringList &arranged)
 {
     Q_ASSERT(arranged.length() == 3);
+    const QList<ServerPlayer *> players = room->getPlayers();
 
     if (player->isLord()) {
-        room->m_players.at(5)->setGeneralName(arranged.at(0));
-        room->m_players.at(0)->setGeneralName(arranged.at(1));
-        room->m_players.at(1)->setGeneralName(arranged.at(2));
-        room->setTag(room->m_players.at(5)->objectName(), QStringList(arranged.at(0)));
-        room->setTag(room->m_players.at(0)->objectName(), QStringList(arranged.at(1)));
-        room->setTag(room->m_players.at(1)->objectName(), QStringList(arranged.at(2)));
+        players.at(5)->setGeneralName(arranged.at(0));
+        players.at(0)->setGeneralName(arranged.at(1));
+        players.at(1)->setGeneralName(arranged.at(2));
+        room->setTag(players.at(5)->objectName(), QStringList(arranged.at(0)));
+        room->setTag(players.at(0)->objectName(), QStringList(arranged.at(1)));
+        room->setTag(players.at(1)->objectName(), QStringList(arranged.at(2)));
     } else {
-        room->m_players.at(2)->setGeneralName(arranged.at(0));
-        room->m_players.at(3)->setGeneralName(arranged.at(1));
-        room->m_players.at(4)->setGeneralName(arranged.at(2));
-        room->setTag(room->m_players.at(2)->objectName(), QStringList(arranged.at(0)));
-        room->setTag(room->m_players.at(3)->objectName(), QStringList(arranged.at(1)));
-        room->setTag(room->m_players.at(4)->objectName(), QStringList(arranged.at(2)));
+        players.at(2)->setGeneralName(arranged.at(0));
+        players.at(3)->setGeneralName(arranged.at(1));
+        players.at(4)->setGeneralName(arranged.at(2));
+        room->setTag(players.at(2)->objectName(), QStringList(arranged.at(0)));
+        room->setTag(players.at(3)->objectName(), QStringList(arranged.at(1)));
+        room->setTag(players.at(4)->objectName(), QStringList(arranged.at(2)));
     }
 }
 
@@ -216,7 +217,7 @@ void RoomThread3v3::assignRoles(const QStringList &roles, const QString &scheme)
     for (int i = 0; i < 6; i++)
         new_players << nullptr;
 
-    foreach (ServerPlayer *player, room->m_players) {
+    foreach (ServerPlayer *player, room->getPlayers()) {
         if (player->isOnline()) {
             QString role = room->askForRole(player, roleChoices, scheme);
             if (role != "abstain") {
@@ -250,7 +251,7 @@ void RoomThread3v3::assignRoles(const QStringList &roles, const QString &scheme)
         }
     }
 
-    room->m_players = new_players;
+    room->replacePlayerOrder(new_players);
 }
 
 // there are 3 scheme
@@ -265,10 +266,12 @@ void RoomThread3v3::assignRoles(const QString &scheme)
 
     if (scheme == "Random") {
         // the easiest way
-        qShuffle(room->m_players);
+        QList<ServerPlayer *> players = room->getPlayers();
+        qShuffle(players);
+        room->replacePlayerOrder(players);
 
         for (int i = 0; i < roles.length(); i++)
-            room->setPlayerProperty(room->m_players.at(i), "role", roles.at(i));
+            room->setPlayerProperty(players.at(i), "role", roles.at(i));
     } else if (scheme == "AllRoles") {
         assignRoles(roles, scheme);
     } else {
@@ -289,16 +292,18 @@ void RoomThread3v3::assignRoles(const QString &scheme)
             map["leader2"] = "lord";
             map["guard2"] = "loyalist";
 
-            room->m_players.swapItemsAt(0, 3);
-            room->m_players.swapItemsAt(1, 4);
-            room->m_players.swapItemsAt(2, 5);
+            QList<ServerPlayer *> players = room->getPlayers();
+            players.swapItemsAt(0, 3);
+            players.swapItemsAt(1, 4);
+            players.swapItemsAt(2, 5);
+            room->replacePlayerOrder(players);
         }
 
-        foreach(ServerPlayer *player, room->m_players)
+        foreach(ServerPlayer *player, room->getPlayers())
             player->setRole(map[player->getRole()]);
     }
 
-    foreach(ServerPlayer *player, room->m_players)
+    foreach(ServerPlayer *player, room->getPlayers())
         room->broadcastProperty(player, "role");
 }
 

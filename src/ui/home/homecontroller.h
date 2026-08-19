@@ -1,7 +1,77 @@
 #pragma once
 
+#include <QAbstractListModel>
+#include <QHash>
 #include <QObject>
 #include <QUrl>
+#include <QVariantList>
+#include <QVariantMap>
+#include <QVector>
+
+class HomeGeneralModel final : public QAbstractListModel
+{
+    Q_OBJECT
+    Q_PROPERTY(int count READ count NOTIFY filterChanged)
+    Q_PROPERTY(bool loaded READ isLoaded NOTIFY filterChanged)
+
+public:
+    enum Role {
+        NameRole = Qt::UserRole + 1,
+        DisplayNameRole,
+        NicknameRole,
+        KingdomRole,
+        KingdomsRole,
+        GenderRole,
+        GenderDisplayRole,
+        KingdomDisplayRole,
+        MaxHpRole,
+        StartHpRole,
+        PackageRole,
+        PackageNameRole,
+        HiddenRole,
+        LordRole
+    };
+
+    struct Row {
+        QString name;
+        QString displayName;
+        QString nickname;
+        QString kingdom;
+        QString kingdoms;
+        QString gender;
+        QString genderDisplay;
+        QString kingdomDisplay;
+        QString package;
+        QString packageName;
+        int maxHp = 0;
+        int startHp = 0;
+        bool hidden = false;
+        bool lord = false;
+    };
+
+    explicit HomeGeneralModel(QObject *parent = nullptr);
+
+    int rowCount(const QModelIndex &parent = QModelIndex()) const override;
+    QVariant data(const QModelIndex &index, int role) const override;
+    QHash<int, QByteArray> roleNames() const override;
+
+    int count() const;
+    bool isLoaded() const;
+    void ensureLoaded();
+    void applyFilter(const QVariantMap &filters);
+
+    Q_INVOKABLE bool containsName(const QString &name) const;
+    Q_INVOKABLE QString nameAt(int row) const;
+    Q_INVOKABLE int indexOfName(const QString &name) const;
+
+signals:
+    void filterChanged();
+
+private:
+    QVector<Row> m_all;
+    QVector<int> m_shown;
+    bool m_loaded = false;
+};
 
 class HomeController final : public QObject
 {
@@ -18,6 +88,12 @@ class HomeController final : public QObject
     Q_PROPERTY(bool isDarkTheme READ isDarkTheme NOTIFY themeChanged)
     Q_PROPERTY(QString playerName READ playerName NOTIFY playerInfoChanged)
     Q_PROPERTY(QUrl playerAvatar READ playerAvatar NOTIFY playerInfoChanged)
+    Q_PROPERTY(QString currentGameModeName READ currentGameModeName NOTIFY gameModeChanged)
+    Q_PROPERTY(QString currentPage READ currentPage NOTIFY currentPageChanged)
+    Q_PROPERTY(HomeGeneralModel *generalModel READ generalModel CONSTANT)
+    Q_PROPERTY(int artRevision READ artRevision NOTIFY artRevisionChanged)
+    Q_PROPERTY(qreal uiScale READ uiScale NOTIFY visualSettingsChanged)
+    Q_PROPERTY(QString visualMode READ visualMode NOTIFY visualSettingsChanged)
 
 public:
     explicit HomeController(QObject *parent = nullptr);
@@ -29,18 +105,21 @@ public:
     QUrl logoImage() const;
     bool hasVideoSupport() const;
 
-    // 玩家資訊：名稱＋頭像（與快速加入對話框同一資料源）
     QString playerName() const;
     QUrl playerAvatar() const;
+    QString currentGameModeName() const;
 
-    // 有效明暗：ColorScheme 0=跟隨系統 / 1=亮色 / 2=暗色
     bool isDarkTheme() const;
     Q_INVOKABLE void toggleTheme();
+
+    QString currentPage() const;
+    HomeGeneralModel *generalModel();
 
     Q_INVOKABLE void quickJoin();
     Q_INVOKABLE void joinGame();
     Q_INVOKABLE void startServer();
 
+    Q_INVOKABLE void openHome();
     Q_INVOKABLE void openGenerals();
     Q_INVOKABLE void openCards();
     Q_INVOKABLE void openReplays();
@@ -48,12 +127,46 @@ public:
     Q_INVOKABLE void openAbout();
     Q_INVOKABLE void checkUpdates();
 
+    Q_INVOKABLE QString translate(const QString &key) const;
+    Q_INVOKABLE QString qtTranslate(const QString &context, const QString &source) const;
+    Q_INVOKABLE QString kingdomColor(const QString &kingdom) const;
+    Q_INVOKABLE QVariantList kingdoms() const;
+    Q_INVOKABLE QUrl kingdomIcon(const QString &kingdom) const;
+
+    Q_INVOKABLE QVariantList generals() const;
+    Q_INVOKABLE QVariantList generalPackages() const;
+    Q_INVOKABLE QVariantMap generalDetails(const QString &generalName) const;
+    Q_INVOKABLE QUrl generalCardImage(const QString &generalName) const;
+    Q_INVOKABLE QUrl generalFullImage(const QString &generalName) const;
+    Q_INVOKABLE QUrl magatamaImage(int index) const;
+    Q_INVOKABLE QUrl hujiaImage() const;
+    Q_INVOKABLE QUrl lordIcon() const;
+    Q_INVOKABLE QUrl navButtonImage(const QString &name) const;
+    Q_INVOKABLE qreal generalOverlayLuma(const QString &generalName) const;
+    Q_INVOKABLE void playAudio(const QString &path) const;
+    Q_INVOKABLE void applyGeneralFilter(const QVariantMap &filters);
+    // 僅 GUI 首頁 idle 呼叫：預設篩選目錄。已載入則略過，避免蓋掉玩家篩選。
+    Q_INVOKABLE void warmGeneralCatalog();
+    Q_INVOKABLE QUrl prefetchArtUrl(int index) const;
+
+    int artRevision() const;
+    Q_INVOKABLE QVariantList heroSkinList(const QString &generalName) const;
+    Q_INVOKABLE void setHeroSkin(const QString &generalName, int skinIndex);
+    Q_INVOKABLE void setGeneralBanned(const QString &generalName, bool banned);
+    Q_INVOKABLE void setUserAvatar(const QString &generalName);
+    Q_INVOKABLE int generalGridColumns() const;
+    Q_INVOKABLE void setGeneralGridColumns(int columns);
+
     Q_INVOKABLE QUrl randomBackdrop() const;
 
     Q_INVOKABLE void refreshCharacterImage();
 
     // 重新發送玩家資訊變更信號（回到首頁時由 MainWindow 呼叫）
     Q_INVOKABLE void refreshPlayerInfo();
+
+    qreal uiScale() const;
+    QString visualMode() const;
+    Q_INVOKABLE void notifyVisualSettings();
 
 signals:
     void quickJoinRequested();
@@ -67,12 +180,25 @@ signals:
     void aboutRequested();
     void updateCheckRequested();
 
+    void qmlSceneRequested(const QUrl &source);
     void updateAvailableChanged();
     void characterImageChanged();
     void themeChanged();
     void playerInfoChanged();
+    void gameModeChanged();
+    void currentPageChanged();
+    void artRevisionChanged();
+    void visualSettingsChanged();
 
 private:
+    void switchQmlScene(const QUrl &source);
+    void setCurrentPage(const QString &page);
+
     bool m_updateAvailable = false;
     uint m_characterVersion = 0;
+    int m_artRevision = 0;
+    QString m_currentPage = QStringLiteral("home");
+    HomeGeneralModel m_generalModel;
+    mutable QHash<QString, QUrl> m_cardImageCache;
+    mutable QHash<QString, QUrl> m_fullImageCache;
 };

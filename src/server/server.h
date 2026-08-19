@@ -13,6 +13,7 @@ class QtUpnpPortMapping;
 
 #include <QtCore>
 #include <QtNetwork>
+#include "game-session-config.h"
 #if !defined(QSAN_SERVER_CORE_ONLY)
 #include <QtWidgets>
 #endif
@@ -240,6 +241,7 @@ public:
     // 自動化測試: headless 指定主公武將 (--test-general/--test-general2, 空 = 隨機)
     static QString forcedHeadlessGeneral;
     static QString forcedHeadlessGeneral2;
+    static bool configureGameSeed(const QString &seedText, QString *error = nullptr);
 
     void broadcast(const QString &msg);
     bool listen();
@@ -252,14 +254,24 @@ public:
     void startTestGame(const QString &scenarioFile, bool headless);
 
 private:
+    GameSessionConfig gameSessionConfig(quint64 sessionIndex) const;
+    void scheduleDisposeRoom(Room *room);
+    void waitForDisposingRooms();
+    bool disposingRoomStillRunning() const;
+
     ServerSocket *server;
     Room *current;
     QSet<Room *> rooms;
+    QList<QPointer<Room> > m_disposingRooms;
     QHash<QString, ServerPlayer *> players;
     QSet<QString> addresses;
     QMultiHash<QString, QString> name2objname;
     bool created_successfully;
 	int playerCount;
+    quint64 m_nextGameSeedIndex;
+
+    static bool s_hasGameSeed;
+    static quint64 s_gameSeedBase;
 
     QtUpnpPortMapping *upnpPortMapping;
     QNetworkAccessManager networkAccessManager;

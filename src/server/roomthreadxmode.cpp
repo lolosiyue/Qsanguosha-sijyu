@@ -18,12 +18,14 @@ RoomThreadXMode::RoomThreadXMode(Room *room)
 
 void RoomThreadXMode::run()
 {
-    // initialize the random seed for this thread
-    qsrand(QTime(0, 0, 0).secsTo(QTime::currentTime()));
+    LuaRuntime::Binding luaBinding(room->roomRuntime()->lua());
+    GameRng::Binding rngBinding(room->roomRuntime()->rng());
+    EngineRuntimeContextScope contextScope(*Sanguosha, room);
     QString scheme = Config.value("XMode/RoleChooseX", "Normal").toString();
     assignRoles(scheme);
     room->adjustSeats();
-    foreach (ServerPlayer *player, room->m_players) {
+    const QList<ServerPlayer *> players = room->getPlayers();
+    foreach (ServerPlayer *player, players) {
         switch (player->getRoleEnum()) {
         case Player::Lord: warm_leader = player; break;
         case Player::Renegade: cool_leader = player; break;
@@ -32,7 +34,7 @@ void RoomThreadXMode::run()
         }
     }
     QStringList xmode_gens;
-    { LuaLocker locker; xmode_gens = GetConfigFromLuaState(Sanguosha->getLuaState(), "xmode_generals").toStringList(); }
+    xmode_gens = GetConfigFromLuaState(room->getLuaState(), "xmode_generals").toStringList();
     foreach (QString gen_name, xmode_gens) {
         if (gen_name.startsWith("-")) { // means banned generals
             general_names.removeOne(gen_name.mid(1));
@@ -51,7 +53,7 @@ void RoomThreadXMode::run()
     qShuffle(general_names);
     int index = 0;
     QList<QStringList> all_names;
-    for (int i = 0; i < room->m_players.length(); i++) {
+	for (int i = 0; i < players.length(); i++) {
 		QStringList names;
         for (int j = 0; j < 5; j++) {
             names << general_names.at(index);
@@ -59,9 +61,9 @@ void RoomThreadXMode::run()
         }
         all_names << names;
     }
-    startArrange(room->m_players, all_names);
+    startArrange(players, all_names);
     QStringList warm_backup, cool_backup;
-    foreach (ServerPlayer *player, room->m_players) {
+    foreach (ServerPlayer *player, players) {
         if (player->getRole().startsWith("r")) {
             // �ץ��G�ϥ� setTag
             player->setTag("XModeLeader", QVariant::fromValue(cool_leader));
@@ -134,7 +136,7 @@ void RoomThreadXMode::assignRoles(const QStringList &roles, const QString &schem
     QList<ServerPlayer *> new_players, abstained;
     for (int i = 0; i < 6; i++)
         new_players << nullptr;
-    foreach (ServerPlayer *player, room->m_players) {
+    foreach (ServerPlayer *player, room->getPlayers()) {
         if (player->isOnline()) {
             QString role = room->askForRole(player, roleChoices, scheme);
             if (role != "abstain") {
@@ -162,7 +164,7 @@ void RoomThreadXMode::assignRoles(const QStringList &roles, const QString &schem
             }
         }
     }
-    room->m_players = new_players;
+    room->replacePlayerOrder(new_players);
 }
 
 // there are 3 scheme
@@ -177,8 +179,9 @@ void RoomThreadXMode::assignRoles(const QString &scheme)
 
     if (scheme == "Random") {
         qShuffle(roles);
+        const QList<ServerPlayer *> players = room->getPlayers();
         for (int i = 0; i < roles.length(); i++)
-            room->m_players.at(i)->setRole(roles.at(i));
+            players.at(i)->setRole(roles.at(i));
     } else if (scheme == "AllRoles") {
         assignRoles(roles, scheme);
     } else {
@@ -198,12 +201,12 @@ void RoomThreadXMode::assignRoles(const QString &scheme)
             map["leader2"] = "lord";
             map["guard2"] = "loyalist";
         }
-        foreach(ServerPlayer *player, room->m_players)
+        foreach(ServerPlayer *player, room->getPlayers())
             player->setRole(map[player->getRole()]);
     }
 
     bool valid = true;
-    QList<ServerPlayer *> players = room->m_players;
+    QList<ServerPlayer *> players = room->getPlayers();
     do {
         qShuffle(players);
         valid = true;
@@ -218,7 +221,7 @@ void RoomThreadXMode::assignRoles(const QString &scheme)
             }
         }
     } while (!valid);
-    room->m_players = players;
+    room->replacePlayerOrder(players);
 
     foreach(ServerPlayer *player, players)
         room->broadcastProperty(player, "role");

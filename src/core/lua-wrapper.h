@@ -2,10 +2,10 @@
 #define _LUA_WRAPPER_H
 
 //#include "skill.h"
+#include "lua-runtime.h"
 #include "standard.h"
 
 struct lua_State;
-typedef int LuaFunction;
 
 // Lua 除錯: 產生含 Lua call stack (stack traceback, 檔名:行號) 的錯誤訊息。
 // 呼叫時錯誤訊息須在堆疊頂; 本函數只 push/pop 自己的 traceback, 原錯誤訊息留在原位。
@@ -585,6 +585,17 @@ public:
     LuaFunction on_summon;
 };
 
+inline QStringList luaCardKindOfNames(const QStringList &classNames,
+                                      const QStringList &baseNames,
+                                      const QStringList &extraNames = QStringList())
+{
+    QStringList names = classNames;
+    names << QStringLiteral("LuaCard") << extraNames << baseNames;
+    names.removeAll(QString());
+    names.removeDuplicates();
+    return names;
+}
+
 class LuaSkillCard : public SkillCard
 {
     Q_OBJECT
@@ -679,6 +690,10 @@ public:
 		|| class_names.contains(QString(cardType))
 		|| BasicCard::isKindOf(cardType);
     }
+    inline QStringList getKindOfNames() const override
+    {
+        return luaCardKindOfNames(class_names, BasicCard::getKindOfNames());
+    }
     const Card *validate(CardUseStruct &cardUse) const;
     const Card *validateInResponse(ServerPlayer *user) const;
 
@@ -763,8 +778,20 @@ public:
 		//case TypeNormal:
 		default:
 			break;
-        }
+		}
 		return false;
+    }
+    inline QStringList getKindOfNames() const override
+    {
+        QStringList extraNames;
+        switch (subclass) {
+        case TypeSingleTargetTrick: extraNames << QStringLiteral("SingleTargetTrick"); break;
+        case TypeDelayedTrick: extraNames << QStringLiteral("DelayedTrick"); break;
+        case TypeGlobalEffect: extraNames << QStringLiteral("GlobalEffect"); break;
+        case TypeAOE: extraNames << QStringLiteral("AOE"); break;
+        default: break;
+        }
+        return luaCardKindOfNames(class_names, TrickCard::getKindOfNames(), extraNames);
     }
     const Card *validate(CardUseStruct &cardUse) const;
     const Card *validateInResponse(ServerPlayer *user) const;
@@ -818,6 +845,10 @@ public:
 			|| class_names.contains(QString(cardType))
 			|| Weapon::isKindOf(cardType);
     }
+    inline QStringList getKindOfNames() const override
+    {
+        return luaCardKindOfNames(class_names, Weapon::getKindOfNames());
+    }
     inline void setTargetFixed(bool target_fixed)
     {
         this->target_fixed = target_fixed;
@@ -861,6 +892,10 @@ public:
 		return strcmp(cardType, "LuaCard") == 0
 			|| class_names.contains(QString(cardType))
 			|| Armor::isKindOf(cardType);
+    }
+    inline QStringList getKindOfNames() const override
+    {
+        return luaCardKindOfNames(class_names, Armor::getKindOfNames());
     }
     inline void setTargetFixed(bool target_fixed)
     {
@@ -906,6 +941,10 @@ public:
 		return strcmp(cardType, "LuaCard") == 0
 			|| class_names.contains(QString(cardType))
 			|| Horse::isKindOf(cardType);
+    }
+    inline QStringList getKindOfNames() const override
+    {
+        return luaCardKindOfNames(class_names, Horse::getKindOfNames());
     }
     inline void setTargetFixed(bool target_fixed)
     {
@@ -953,6 +992,10 @@ public:
 			|| class_names.contains(QString(cardType))
 			|| OffensiveHorse::isKindOf(cardType);
     }
+    inline QStringList getKindOfNames() const override
+    {
+        return luaCardKindOfNames(class_names, OffensiveHorse::getKindOfNames());
+    }
     inline void setTargetFixed(bool target_fixed)
     {
         this->target_fixed = target_fixed;
@@ -999,6 +1042,10 @@ public:
 			|| class_names.contains(QString(cardType))
 			|| DefensiveHorse::isKindOf(cardType);
     }
+    inline QStringList getKindOfNames() const override
+    {
+        return luaCardKindOfNames(class_names, DefensiveHorse::getKindOfNames());
+    }
     inline void setTargetFixed(bool target_fixed)
     {
         this->target_fixed = target_fixed;
@@ -1041,6 +1088,10 @@ public:
 		return strcmp(cardType, "LuaCard") == 0
 			|| class_names.contains(QString(cardType))
 			|| Treasure::isKindOf(cardType);
+    }
+    inline QStringList getKindOfNames() const override
+    {
+        return luaCardKindOfNames(class_names, Treasure::getKindOfNames());
     }
     inline void setTargetFixed(bool target_fixed)
     {

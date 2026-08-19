@@ -4,6 +4,7 @@
 #include "player.h"
 //#include "clientstruct.h"
 #include "json.h"
+#include "protocol/state/player-ui-state.h"
 
 class Client;
 class QTextDocument;
@@ -45,6 +46,8 @@ public:
     void addKnownHandCard(const Card *card);
     bool isLastHandCard(const Card *card, bool contain = false) const override;
     int getMaxCards() const override;
+    const PlayerUIState &uiState() const;
+    void setUIState(const PlayerUIState &state);
     void setMark(const QString &mark, int value);
 
 private:
@@ -53,6 +56,7 @@ private:
     QList<const Card *> known_cards;
     QList<int> hand_ids;
     QTextDocument *mark_doc;
+    PlayerUIState m_uiState;
 
 signals:
     void pile_changed(const QString &name);

@@ -2,17 +2,48 @@
 
 #include "ai.h"
 
-ActiveSkillAIResult LuaAI::askForActiveSkill(const ActiveSkillAIRequest &request)
-{
-	ActiveSkillAIResult result;
-	if (callback == 0)
-		return result;
+#include <cmath>
+#include <limits>
 
-	LuaLocker locker;
+static bool readAiResultInteger(lua_Number value, int &result)
+{
+	if (!std::isfinite(double(value))
+		|| value < lua_Number(std::numeric_limits<int>::min())
+		|| value > lua_Number(std::numeric_limits<int>::max()))
+		return false;
+	const int converted = static_cast<int>(value);
+	if (lua_Number(converted) != value)
+		return false;
+	result = converted;
+	return true;
+}
+
+static bool readAiResultString(lua_State *state, int index, QString &result)
+{
+	size_t size = 0;
+	const char *data = lua_tolstring(state, index, &size);
+	if (!data || size > 64u * 1024u)
+		return false;
+	result = QString::fromUtf8(data, qsizetype(size));
+	return true;
+}
+
+AIResult LuaAI::decide(const AIRequest &request)
+{
+	if (request.kind == AIRequest::Activate || !request.hasSkillActionContext || callback == 0)
+		return AI::decide(request);
+
+	AIResult result;
+	result.decisionId = request.decisionId;
+	result.stateRevision = request.stateRevision;
 	lua_State *L = room->getLuaState();
-	pushCallback(L, __FUNCTION__);
-	SWIG_NewPointerObj(L, &request, SWIGTYPE_p_ActiveSkillAIRequest, 0);
-	if (lua_pcall(L, 2, 1, 0) != 0) {
+	pushCallback(L, "askForUseCard");
+	lua_pushstring(L, request.pattern.toLatin1());
+	lua_pushstring(L, request.prompt.toLatin1());
+	lua_pushinteger(L, request.handlingMethod);
+	AiLegacyRequestView *legacyRequest = new AiLegacyRequestView(request, self);
+	SWIG_NewPointerObj(L, legacyRequest, SWIGTYPE_p_AiLegacyRequestView, SWIG_POINTER_OWN);
+	if (lua_pcall(L, 5, 1, 0) != 0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -22,42 +53,70 @@ ActiveSkillAIResult LuaAI::askForActiveSkill(const ActiveSkillAIRequest &request
 		lua_pop(L, 1);
 		return result;
 	}
-	result.callbackHandled = true;
 	if (lua_type(L, -1) == LUA_TSTRING) {
-		result.legacyHandled = true;
-		result.legacyAnswer = QString::fromUtf8(lua_tostring(L, -1));
+		result.handled = true;
+		if (!readAiResultString(L, -1, result.action.legacyCardString)) {
+			lua_pop(L, 1);
+			result.errorCode = "invalid_legacy_ai_result";
+			return result;
+		}
 		lua_pop(L, 1);
+		if (result.action.legacyCardString.isEmpty() || result.action.legacyCardString == ".")
+			return result;
+		result.kind = AIResult::UseCard;
+		result.action.hasSkillActionContext = true;
+		result.action.skillActionContext = request.skillActionContext;
 		return result;
 	}
 	if (!lua_istable(L, -1)) {
 		lua_pop(L, 1);
+		result.errorCode = "invalid_legacy_ai_result";
+		return result;
+	}
+
+	lua_getfield(L, -1, "accepted");
+	if (lua_type(L, -1) != LUA_TBOOLEAN) { lua_pop(L, 2); result.errorCode = "invalid_legacy_ai_result"; return result; }
+	const bool accepted = lua_toboolean(L, -1);
+	lua_pop(L, 1);
+	if (!accepted) {
+		lua_pop(L, 1);
+		result.handled = true;
 		return result;
 	}
 
 	lua_getfield(L, -1, "cards");
 	if (!lua_isnil(L, -1)) {
-		if (!lua_istable(L, -1)) { lua_pop(L, 2); return result; }
+		if (!lua_istable(L, -1)) { lua_pop(L, 2); result.errorCode = "invalid_legacy_ai_result"; return result; }
 		const size_t count = lua_rawlen(L, -1);
+		if (count > 2048u) { lua_pop(L, 2); result.errorCode = "invalid_legacy_ai_result"; return result; }
 		for (size_t i = 1; i <= count; ++i) {
 			lua_rawgeti(L, -1, i);
-			if (lua_type(L, -1) != LUA_TNUMBER) { lua_pop(L, 3); return result; }
+			if (lua_type(L, -1) != LUA_TNUMBER) { lua_pop(L, 3); result.errorCode = "invalid_legacy_ai_result"; return result; }
 			const lua_Number value = lua_tonumber(L, -1);
-			const int id = int(value);
+			int id = 0;
+			const bool validId = readAiResultInteger(value, id);
 			lua_pop(L, 1);
-			if (value != id) { lua_pop(L, 2); return result; }
-			result.selectedCardIds << id;
+			if (!validId || result.action.selectedCardIds.contains(id)) {
+				lua_pop(L, 2);
+				result.errorCode = "invalid_legacy_ai_result";
+				return result;
+			}
+			result.action.selectedCardIds << id;
 		}
 	}
 	lua_pop(L, 1);
 
 	lua_getfield(L, -1, "targets");
 	if (!lua_isnil(L, -1)) {
-		if (!lua_istable(L, -1)) { lua_pop(L, 2); return result; }
+		if (!lua_istable(L, -1)) { lua_pop(L, 2); result.errorCode = "invalid_legacy_ai_result"; return result; }
 		const size_t count = lua_rawlen(L, -1);
+		if (count > 64u) { lua_pop(L, 2); result.errorCode = "invalid_legacy_ai_result"; return result; }
 		for (size_t i = 1; i <= count; ++i) {
 			lua_rawgeti(L, -1, i);
-			if (lua_type(L, -1) != LUA_TSTRING) { lua_pop(L, 3); return result; }
-			result.selectedTargetNames << QString::fromUtf8(lua_tostring(L, -1));
+			if (lua_type(L, -1) != LUA_TSTRING) { lua_pop(L, 3); result.errorCode = "invalid_legacy_ai_result"; return result; }
+			QString targetName;
+			if (!readAiResultString(L, -1, targetName)) { lua_pop(L, 3); result.errorCode = "invalid_legacy_ai_result"; return result; }
+			result.action.selectedTargetNames << targetName;
 			lua_pop(L, 1);
 		}
 	}
@@ -65,12 +124,15 @@ ActiveSkillAIResult LuaAI::askForActiveSkill(const ActiveSkillAIRequest &request
 
 	lua_getfield(L, -1, "user_string");
 	if (!lua_isnil(L, -1)) {
-		if (lua_type(L, -1) != LUA_TSTRING) { lua_pop(L, 2); return result; }
-		result.userString = QString::fromUtf8(lua_tostring(L, -1));
+		if (lua_type(L, -1) != LUA_TSTRING) { lua_pop(L, 2); result.errorCode = "invalid_legacy_ai_result"; return result; }
+		if (!readAiResultString(L, -1, result.action.userString)) { lua_pop(L, 2); result.errorCode = "invalid_legacy_ai_result"; return result; }
 	}
 	lua_pop(L, 1);
-	result.accepted = true;
 	lua_pop(L, 1);
+	result.handled = true;
+	result.kind = AIResult::UseCard;
+	result.action.hasSkillActionContext = true;
+	result.action.skillActionContext = request.skillActionContext;
 	return result;
 }
 
@@ -90,6 +152,7 @@ public:
 
 	QList<ServerPlayer *> getEnemies() const;
 	QList<ServerPlayer *> getFriends() const;
+	virtual AIResult decide(const AIRequest &request);
 
 	virtual void activate(CardUseStruct &card_use) = 0;
 	virtual Card::Suit askForSuit(const QString&) = 0;
@@ -127,7 +190,6 @@ public:
 	virtual int askForCardChosen(ServerPlayer *who, const char *flags, const char *reason, Card::HandlingMethod method);
 	virtual const Card *askForCard(const char *pattern, const char *prompt, const QVariant &data, const Card::HandlingMethod method);
 	virtual QString askForUseCard(const char *pattern, const char *prompt, const Card::HandlingMethod method);
-	virtual ActiveSkillAIResult askForActiveSkill(const ActiveSkillAIRequest &request);
 	virtual int askForAG(const QList<int> &card_ids, bool refusable, const char *reason);
 	virtual const Card *askForCardShow(ServerPlayer *requestor, const char *reason);
 	virtual const Card *askForPindian(ServerPlayer *requestor, const char *reason);
@@ -144,7 +206,7 @@ public:
 class LuaAI: public TrustAI {
 public:
 	LuaAI(ServerPlayer *player);
-	virtual ActiveSkillAIResult askForActiveSkill(const ActiveSkillAIRequest &request);
+	virtual AIResult decide(const AIRequest &request);
 
 	virtual const Card *askForCardShow(ServerPlayer *requestor, const char *reason);
 	virtual bool askForSkillInvoke(const char *skill_name, const QVariant &data);
@@ -183,8 +245,6 @@ bool LuaAI::askForSkillInvoke(const QString &skill_name, const QVariant &data)
 {
 	if (callback == 0)
 		return TrustAI::askForSkillInvoke(skill_name, data);
-
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -206,8 +266,6 @@ QString LuaAI::askForChoice(const QString &skill_name, const QString &choices, c
 {
 	if (callback == 0)
 		return TrustAI::askForChoice(skill_name, choices, data);
-
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 	pushCallback(L, __FUNCTION__);
 	lua_pushstring(L, skill_name.toLatin1());
@@ -226,8 +284,6 @@ QString LuaAI::askForChoice(const QString &skill_name, const QString &choices, c
 void LuaAI::activate(CardUseStruct &card_use)
 {
 	Q_ASSERT(callback);
-
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -244,22 +300,22 @@ void LuaAI::activate(CardUseStruct &card_use)
 
 AI *Room::cloneAI(ServerPlayer *player)
 {
-	if (m_lua == nullptr || !Config.EnableAI)
+	lua_State *L = getLuaState();
+	if (L == nullptr || !Config.EnableAI)
 		return new TrustAI(player);
 
-	LuaLocker locker;
-	lua_getglobal(m_lua, "CloneAI");
+	lua_getglobal(L, "CloneAI");
 
-	SWIG_NewPointerObj(m_lua, player, SWIGTYPE_p_ServerPlayer, 0);
+	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(m_lua, 1, 1, 0)!=0) {
-		const char *error_msg = lua_tostring(m_lua, -1);
-		lua_pop(m_lua, 1);
+	if (lua_pcall(L, 1, 1, 0)!=0) {
+		const char *error_msg = lua_tostring(L, -1);
+		lua_pop(L, 1);
 		output(error_msg);
 	} else {
 		void *ai_ptr;
-		int result = SWIG_ConvertPtr(m_lua, -1, &ai_ptr, SWIGTYPE_p_AI, 0);
-		lua_pop(m_lua, 1);
+		int result = SWIG_ConvertPtr(L, -1, &ai_ptr, SWIGTYPE_p_AI, 0);
+		lua_pop(L, 1);
 		if (SWIG_IsOK(result))
 			return static_cast<AI *>(ai_ptr);
 	}
@@ -270,8 +326,6 @@ ServerPlayer *LuaAI::askForYiji(const QList<int> &cards, const QString &reason, 
 {
 	if (callback == 0)
 		return TrustAI::askForYiji(cards, reason, card_id);
-
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -308,8 +362,6 @@ void LuaAI::filterEvent(TriggerEvent event, ServerPlayer *player, const QVariant
 {
 	if (callback == 0)
 		return;
-
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -330,7 +382,6 @@ void LuaAI::filterEvent(TriggerEvent event, ServerPlayer *player, const QVariant
 
 const Card *LuaAI::askForCard(const QString &pattern, const QString &prompt, const QVariant &data, const Card::HandlingMethod method)
 {
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -346,14 +397,8 @@ const Card *LuaAI::askForCard(const QString &pattern, const QString &prompt, con
 		room->output(result);
 		return TrustAI::askForCard(pattern, prompt, data, method);
 	}
-	ActiveSkillAIRequest callbackRequest;
-	void *requestPtr = nullptr;
-	const int requestResult = SWIG_ConvertPtr(L, -1, &requestPtr,
-		SWIGTYPE_p_ActiveSkillAIRequest, 0);
-	if (SWIG_IsOK(requestResult) && requestPtr)
-		callbackRequest = *static_cast<ActiveSkillAIRequest *>(requestPtr);
-	const QString result = lua_tostring(L, -2);
-	lua_pop(L, 2);
+	const QString result = lua_tostring(L, -1);
+	lua_pop(L, 1);
 	if (result.isEmpty())
 		return TrustAI::askForCard(pattern, prompt, data, method);
 
@@ -365,9 +410,7 @@ const Card *LuaAI::askForCard(const QString &pattern, const QString &prompt, con
 	const CardUseStruct::CardUseReason reason = method == Card::MethodResponse
 		? CardUseStruct::CARD_USE_REASON_RESPONSE
 		: CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
-	ActiveSkillAIRequest request = callbackRequest;
-	if (!request.isValid() || request.getInitiator() != self)
-		request = room->getActiveSkillAIRequest(self, card->getActivationSkillName(),
+	AiLegacyRequestView request = room->getAiSkillActionContext(self, card->getActivationSkillName(),
 			reason, pattern, prompt, method);
 	if (request.isValid()) {
 		Card *mutableCard = const_cast<Card *>(card);
@@ -381,7 +424,6 @@ const Card *LuaAI::askForCard(const QString &pattern, const QString &prompt, con
 
 int LuaAI::askForCardChosen(ServerPlayer *who, const QString &flags, const QString &reason, Card::HandlingMethod method)
 {
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -408,7 +450,6 @@ int LuaAI::askForCardChosen(ServerPlayer *who, const QString &flags, const QStri
 
 ServerPlayer *LuaAI::askForPlayerChosen(const QList<ServerPlayer *> &targets, const QString &reason)
 {
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -431,7 +472,6 @@ ServerPlayer *LuaAI::askForPlayerChosen(const QList<ServerPlayer *> &targets, co
 
 QList<ServerPlayer *> LuaAI::askForPlayersChosen(const QList<ServerPlayer *> &targets, const QString &reason, int max_num, int min_num)
 {
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -469,7 +509,6 @@ QList<ServerPlayer *> LuaAI::askForPlayersChosen(const QList<ServerPlayer *> &ta
 
 const Card *LuaAI::askForNullification(const Card *trick, ServerPlayer *from, ServerPlayer *to, bool positive)
 {
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -496,7 +535,6 @@ const Card *LuaAI::askForNullification(const Card *trick, ServerPlayer *from, Se
 
 const Card *LuaAI::askForCardShow(ServerPlayer *requestor, const QString &reason)
 {
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -520,7 +558,6 @@ const Card *LuaAI::askForCardShow(ServerPlayer *requestor, const QString &reason
 
 const Card *LuaAI::askForSinglePeach(ServerPlayer *dying)
 {
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -539,7 +576,7 @@ const Card *LuaAI::askForSinglePeach(ServerPlayer *dying)
 	// 供後續 useCard → resolveCardSkillInstance 走 V2 cost/pay。
 	const QString pattern = (self == dying) ? QStringLiteral("peach+analeptic")
 						   : QStringLiteral("peach");
-	ActiveSkillAIRequest request = room->getActiveSkillAIRequest(
+	AiLegacyRequestView request = room->getAiSkillActionContext(
 		self, card->getActivationSkillName(),
 		CardUseStruct::CARD_USE_REASON_RESPONSE_USE, pattern, QString(),
 		Card::MethodUse);
@@ -555,7 +592,6 @@ const Card *LuaAI::askForSinglePeach(ServerPlayer *dying)
 
 const Card *LuaAI::askForPindian(ServerPlayer *requestor, const QString &reason)
 {
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);
@@ -577,7 +613,6 @@ const Card *LuaAI::askForPindian(ServerPlayer *requestor, const QString &reason)
 
 Card::Suit LuaAI::askForSuit(const QString &reason)
 {
-	LuaLocker locker;
 	lua_State*L = room->getLuaState();
 
 	pushCallback(L, __FUNCTION__);

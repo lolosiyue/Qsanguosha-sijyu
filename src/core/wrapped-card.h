@@ -265,6 +265,11 @@ public:
         return m_card->isKindOf(cardType);
     }
 
+    inline QStringList getKindOfNames() const override
+    {
+        return m_card ? m_card->getKindOfNames() : Card::getKindOfNames();
+    }
+
 protected:
     Card *m_card;
     mutable bool m_isModified;

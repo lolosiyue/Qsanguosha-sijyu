@@ -7,14 +7,14 @@
 ## 🛠️ 建置環境
 
 - **語言標準**：C++17
-- **Qt**：6.5.3 (`msvc2019_64`)
-- **編譯器**：MSVC 2019 x64
-- **建置系統**：CMake 3.28+
+- **Qt**：6.11.1 (`msvc2022_64`)
+- **編譯器**：MSVC 2026 x64（VS 2026 v145 toolchain）
+- **建置系統**：CMake 4.2+
 
 ```powershell
-$env:QTDIR = 'C:\Qt\6.5.3\msvc2019_64'
-C:\Qt\Tools\CMake_64\bin\cmake.exe --preset vs2019-x64
-C:\Qt\Tools\CMake_64\bin\cmake.exe --build --preset release
+$env:QTDIR = 'H:\Qt6111\6.11.1\msvc2022_64'
+cmake --preset vs2026-x64
+cmake --build --preset release
 ```
 
 或使用統一腳本：

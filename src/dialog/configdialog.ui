@@ -210,6 +210,13 @@
              </widget>
             </item>
             <item>
+             <widget class="QCheckBox" name="enablePointerEffectCheckBox">
+              <property name="text">
+               <string>Pointer effect</string>
+              </property>
+             </widget>
+            </item>
+            <item>
              <spacer name="animOptionsSpacer">
               <property name="orientation">
                <enum>Qt::Horizontal</enum>

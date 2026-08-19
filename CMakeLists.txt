@@ -5,8 +5,8 @@ project(QSanguosha LANGUAGES C CXX)
 if(NOT WIN32 OR NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     message(FATAL_ERROR "This CMake build currently supports Windows x64 with MSVC only")
 endif()
-if(MSVC_VERSION LESS 1920 OR MSVC_VERSION GREATER_EQUAL 1930)
-    message(FATAL_ERROR "This CMake build currently supports the Visual Studio 2019 toolchain only")
+if(MSVC_VERSION LESS 1950)
+    message(FATAL_ERROR "This CMake build currently supports the Visual Studio 2026 v145 toolchain only")
 endif()
 
 enable_language(RC)
@@ -18,7 +18,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS
+find_package(Qt6 6.11 REQUIRED COMPONENTS
     Core
     Core5Compat
     Gui
@@ -78,12 +78,18 @@ add_library(qsanguosha_engine STATIC
     src/core/banpair.h
     src/core/card.cpp
     src/core/card.h
+    src/core/ai-data-store.cpp
+    src/core/ai-data-store.h
     src/core/engine.cpp
     src/core/engine.h
     src/core/engine-bootstrap.cpp
     src/core/engine-bootstrap.h
     src/core/general.cpp
     src/core/general.h
+    src/core/game-rng.cpp
+    src/core/game-rng.h
+    src/core/lua-runtime.cpp
+    src/core/lua-runtime.h
     src/core/lua-wrapper.cpp
     src/core/lua-wrapper.h
     src/core/filehandler.cpp
@@ -93,13 +99,28 @@ add_library(qsanguosha_engine STATIC
     src/core/player-self.cpp
     src/core/player.h
     src/core/protocol.cpp
+    src/core/protocol/card-provenance-message.cpp
+    src/core/protocol/card-provenance-message.h
+    src/core/protocol/protocol-message-utils.h
+    src/core/protocol/skill-instance-message.cpp
+    src/core/protocol/skill-instance-message.h
+    src/core/protocol/state/player-ui-state.cpp
+    src/core/protocol/state/player-ui-state.h
+    src/core/protocol/switch-context-message.cpp
+    src/core/protocol/switch-context-message.h
+    src/core/protocol/sync-pile-message.cpp
+    src/core/protocol/sync-pile-message.h
     src/core/record-buffer.cpp
     src/core/record-buffer.h
+    src/core/room-definition-registry.cpp
+    src/core/room-definition-registry.h
     src/core/room-state.cpp
     src/core/room-state.h
     src/core/server-info.cpp
     src/core/settings.cpp
     src/core/skill.cpp
+    src/core/skill-registry.cpp
+    src/core/skill-registry.h
     src/core/skill-instance-utils.cpp
     src/core/skill-instance-utils.h
     src/core/skill.h
@@ -111,15 +132,42 @@ add_library(qsanguosha_engine STATIC
     src/core/wrapped-card.h
     src/server/server.cpp
     src/server/ai.cpp
+    src/server/ai-decision-coordinator.cpp
+    src/server/ai-decision-coordinator.h
+    src/server/ai-runtime.cpp
+    src/server/ai-runtime.h
     src/server/basicai.cpp
+    src/server/card-movement-service.cpp
+    src/server/card-movement-service.h
+    src/server/event-dispatcher.h
+    src/server/extra-turn-scheduler.cpp
+    src/server/extra-turn-scheduler.h
+    src/server/game-snapshot-service.cpp
+    src/server/game-snapshot-service.h
     src/server/gamerule.cpp
     src/server/generalselector.cpp
     src/server/qtupnpportmapping.cpp
+    src/server/request-coordinator.cpp
+    src/server/request-coordinator.h
+    src/server/player-decision-service.cpp
+    src/server/player-decision-service.h
+    src/server/room-notifier.cpp
+    src/server/room-notifier.h
+    src/server/room-roster.cpp
+    src/server/room-roster.h
+    src/server/room-runtime.cpp
+    src/server/room-runtime.h
+    src/server/player-lifecycle-service.cpp
+    src/server/player-lifecycle-service.h
+    src/server/skill-runtime-coordinator.cpp
+    src/server/skill-runtime-coordinator.h
     src/server/room.cpp
     src/server/roomthread.cpp
     src/server/roomthread1v1.cpp
     src/server/roomthread3v3.cpp
     src/server/roomthreadxmode.cpp
+    src/server/player-ui-state-builder.cpp
+    src/server/player-ui-state-builder.h
     src/server/serverplayer.cpp
     src/util/nativesocket.cpp
     src/util/nativesocket.h
@@ -183,58 +231,6 @@ foreach(qsan_engine_link IN LISTS qsan_engine_links)
     endif()
 endforeach()
 
-add_executable(qsanguosha_engine_smoke
-    tests/engine-smoke-test.cpp
-    src/server/server-core.h
-)
-target_include_directories(qsanguosha_engine_smoke PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/freetype
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/client
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/package
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/server
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/util
-)
-target_link_libraries(qsanguosha_engine_smoke PRIVATE qsanguosha_engine Qt6::Core5Compat Qt6::Qml Qt6::Widgets)
-
-add_executable(qsanguosha_engine_self_bridge_axe_test
-    tests/engine-self-bridge-axe-test.cpp
-)
-target_link_libraries(qsanguosha_engine_self_bridge_axe_test PRIVATE
-    qsanguosha_engine
-)
-
-add_executable(qsanguosha_card_parse_regex_test tests/card-parse-regex-test.cpp)
-target_link_libraries(qsanguosha_card_parse_regex_test PRIVATE Qt6::Core)
-
-include(CTest)
-if(BUILD_TESTING)
-    add_test(NAME qsanguosha_engine_smoke COMMAND qsanguosha_engine_smoke)
-    set_tests_properties(qsanguosha_engine_smoke PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    )
-
-    add_test(
-        NAME qsanguosha_engine_self_bridge_axe
-        COMMAND qsanguosha_engine_self_bridge_axe_test
-    )
-    set_tests_properties(qsanguosha_engine_self_bridge_axe PROPERTIES
-        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    )
-
-    add_test(NAME qsanguosha_card_parse_regex_test COMMAND qsanguosha_card_parse_regex_test)
-
-    add_executable(qsanguosha_photo_layout_fit tests/photo-layout-fit-test.cpp)
-    target_include_directories(qsanguosha_photo_layout_fit PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src/ui
-    )
-    add_test(NAME qsanguosha_photo_layout_fit COMMAND qsanguosha_photo_layout_fit)
-endif()
-
 add_executable(qsanguosha_server
     src/server-main.cpp
     src/server/server-core.h
@@ -273,7 +269,11 @@ set_target_properties(qsanguosha_server PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/debug"
     RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/release"
     RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_CURRENT_SOURCE_DIR}/relwithdebinfo"
+    PDB_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/debug"
+    PDB_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/release"
+    PDB_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_CURRENT_SOURCE_DIR}/relwithdebinfo"
 )
+target_link_options(qsanguosha_server PRIVATE "$<$<CONFIG:Release>:/DEBUG>")
 
 add_custom_target(deploy-server
     COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -398,6 +398,7 @@ qt_add_lupdate(QSanguosha
     TS_FILES "${translation_source}"
     SOURCES
         ${QSAN_SOURCES}
+        src/core/engine.cpp
         ${QSAN_FORMS}
         qml/home/HomeScene.qml
         qml/home/HomeMainButton.qml
@@ -405,6 +406,8 @@ qt_add_lupdate(QSanguosha
         qml/home/HomeBottomBar.qml
         qml/home/HomeNavButton.qml
         qml/home/HomeSideBar.qml
+        qml/home/GeneralScene.qml
+        qml/home/HomeTheme.qml
 )
 
 set(QSAN_FMOD_RUNTIME "" CACHE FILEPATH "Path to fmodex64.dll for Release deployment")
@@ -433,3 +436,8 @@ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
     ${QSAN_FORMS}
 )
 source_group("Generated" FILES "${qsan_swig_wrapper}")
+
+include(CTest)
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

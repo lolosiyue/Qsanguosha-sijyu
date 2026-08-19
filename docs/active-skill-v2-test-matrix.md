@@ -63,6 +63,29 @@
   可回傳舊字串或結構化 table 的 `ai_skill_use[pattern]`；`ai_cardsview`／
   `ai_cardsview_valuable` 以第 4 參數取得 response request，並保留舊字串回傳。尚待實際 Room
   驗證舊／新回傳、pure response／response-use、多 instance 及 attached source fallback。
+- 新 AI 邊界統一為 value-only `AIRequest`／`AIResult`；`activate` 與 `askForUseCard` 共用
+  request/result gate，ActiveSkillV2 identity／quota 僅作 `AIRequest.SkillActionContext`。
+  測試須驗證 result 回送同一 request 的 revision、ActionKind、CardActionSpec、牌／目標 ID
+  與 quota 失配時 fail-closed，且純 query 不推進 revision、Lua userdata／Gameplay pointer
+  不得帶出 callback。
+- AI VM 與 Gameplay VM 必須分離，兩者由同一 `RoomThread` 同步 gate 執行。矩陣新增
+  `LegacyAdapted` 舊結果 value-copy 路徑及第一階段 `Isolated Shadow`：Shadow 使用同一 request
+  與獨立 deterministic `AiRng`，只寫 bounded audit，不得改變正式 gameplay。
+- `askForUseCard` 第一階段 Shadow 基礎已完成：global route 的 official 結果仍走
+  `LegacyAdapted`，isolated dispatcher 可按 activation skill 或 pattern 漸進註冊；未註冊
+  request 記為 `NotCovered`，不計入 mismatch。audit 另區分 `Match`／`Mismatch`／`Error`
+  並維持固定大小累積計數。`activate` 預設仍為 `LegacyAdapted`，尚未開始自己的 Shadow 階段。
+- Value facade 是 runtime-wide mandatory 層，不屬於 `ask-for-use-card.lua` 或 configured
+  allowlist。矩陣須在不載入 askForUseCard dispatcher 時，分別證明 `activate` 與直接
+  `use_card` handler 都以 `(self, request)` 取得相同 `SmartAIView`／`PlayerView`／
+  `CardView`／`SkillView`，且 malformed viewer snapshot 會在 handler 前 fail-closed。
+- 第一個正式 `sgs.ai_skill_use` handler 已搬入：`standard-ai.lua` 的 `@@lianying` 確定
+  單目標分支以 isolated `ai_skill_use[pattern] = function(self, prompt, request)` 註冊，必須
+  透過 `SmartAIView`／`PlayerView` 與 C++ 注入的 `sgs.Player_Play` 得出和 Legacy 一致的
+  回傳；需要額外 userdata／友方排序的分支維持 `NotCovered`。
+- production allowlist script 的頂層無限迴圈須在 initialization instruction budget 內停用
+  Isolated VM 並讓 Room 繼續 legacy；超長字串、過多牌／目標須 fail-closed，audit 只保留
+  capped 摘要，不得隨 Lua payload 線性放大 C++ heap。
 - `DoLuaScript()` 在 `--headless` 下會以 `qCritical` 報告 Lua 載入錯誤而非開啟 modal dialog，讓本機自動化可取得失敗原因；GUI 模式維持既有對話框。
 - `LuaViewAsSkillV2`、選用 AI callback、provenance V2 與 execution audit 曾完成編譯整合；Ticket 13 的 wrapper、quota ledger、immutable provenance 與中斷收束修改仍待重新編譯，再以合成技能自動化端到端驗證。
 - `@@skill` 指名回應的 client 自動啟動已改為按 activation instance 呼叫 `canActivate()`；Lua factory 對舊
