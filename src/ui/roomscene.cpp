@@ -2763,6 +2763,9 @@ void RoomScene::getCards(int moveId,QList<CardsMoveStruct> card_moves)
 		_processCardsMove(card_moves[i],false);
 		if(_shouldIgnoreDisplayMove(card_moves[i])) continue;
 		card_container->m_currentPlayer = (ClientPlayer*)card_moves[i].to;
+		// 未配對的 GET（moveId=-1）時 stash 為空；Qt6 Release takeFirst() 對空 QList 是 AV
+		if(!_m_cardsMoveStash.contains(moveId)||_m_cardsMoveStash[moveId].isEmpty())
+			continue;
 		QList<CardItem*> cards = _m_cardsMoveStash[moveId].takeFirst();
 		foreach (CardItem*card,cards){
 			card->setFlag(QGraphicsItem::ItemIsMovable,false);

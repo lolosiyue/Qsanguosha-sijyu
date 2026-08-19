@@ -927,8 +927,9 @@ void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
                     target->removeCard(id, Player::PlaceEquip);
                     m_discardPile->prepend(id);
                     setCardMapping(id, nullptr, Player::DiscardPile);
-                    invalidEquipMoves << CardsMoveStruct(id, nullptr,
-                        Player::DiscardPile,
+                    // from 必須是原裝備區，否則 client loseCards 對不到 CardItem
+                    invalidEquipMoves << CardsMoveStruct(id, target, nullptr,
+                        Player::PlaceEquip, Player::DiscardPile,
                         CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP,
                                        target->objectName(), QString(),
                                        "change equip"));
@@ -955,8 +956,9 @@ void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
                     target->removeCard(id, Player::PlaceEquip);
                     m_discardPile->prepend(id);
                     setCardMapping(id, nullptr, Player::DiscardPile);
-                    invalidEquipMoves << CardsMoveStruct(id, nullptr,
-                        Player::DiscardPile,
+                    // from 必須是原裝備區，否則 client loseCards 對不到 CardItem
+                    invalidEquipMoves << CardsMoveStruct(id, target, nullptr,
+                        Player::PlaceEquip, Player::DiscardPile,
                         CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP,
                                        target->objectName(), QString(),
                                        "change equip"));
@@ -967,8 +969,8 @@ void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
                     target->removeCard(cardId, Player::PlaceEquip);
                     m_discardPile->prepend(cardId);
                     setCardMapping(cardId, nullptr, Player::DiscardPile);
-                    invalidEquipMoves << CardsMoveStruct(cardId, nullptr,
-                        Player::DiscardPile,
+                    invalidEquipMoves << CardsMoveStruct(cardId, target, nullptr,
+                        Player::PlaceEquip, Player::DiscardPile,
                         CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP,
                                        target->objectName(), QString(),
                                        "change equip"));
@@ -982,8 +984,8 @@ void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
                         target->removeCard(cardId, Player::PlaceEquip);
                         m_discardPile->prepend(cardId);
                         setCardMapping(cardId, nullptr, Player::DiscardPile);
-                        invalidEquipMoves << CardsMoveStruct(cardId, nullptr,
-                            Player::DiscardPile,
+                        invalidEquipMoves << CardsMoveStruct(cardId, target, nullptr,
+                            Player::PlaceEquip, Player::DiscardPile,
                             CardMoveReason(CardMoveReason::S_REASON_CHANGE_EQUIP,
                                            target->objectName(), QString(),
                                            "change equip"));
@@ -992,8 +994,11 @@ void CardMovementService::moveCardsAtomic(QList<CardsMoveStruct> cardsMoves,
             }
         }
     }
-    if (!invalidEquipMoves.isEmpty())
+    if (!invalidEquipMoves.isEmpty()) {
+        // 必須成對：只送 GET 會讓 moveId 變 -1，client getCards 對空 stash takeFirst AV
+        m_room.notifyMoveCards(true, invalidEquipMoves, true);
         m_room.notifyMoveCards(false, invalidEquipMoves, true);
+    }
 
     foreach (CardsMoveStruct move, cardsMoves) {
         if (move.to_place == Player::PlaceEquip && move.to) {
