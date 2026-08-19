@@ -1,5 +1,6 @@
 #include "card.h"
 #include "engine-bootstrap.h"
+#include "lua-wrapper.h"
 
 #include <QDebug>
 #include <QtGlobal>
@@ -48,5 +49,35 @@ int runCardParseTests()
     }
 
     qInfo() << "Card::Parse(@KurouCard=.) regression passed";
+
+    // 無效 LuaSkillCard 字串不得對 nullptr 呼叫 deleteLater（宿敵自動用牌 client 閃退）
+    if (Card::Parse(QStringLiteral("##notARealLuaSkillCard[no_suit:0]:.:")) != nullptr) {
+        qCritical() << "Card::Parse(unknown ##LuaSkillCard) should return nullptr";
+        return 4;
+    }
+
+    LuaSkillCard proto(QStringLiteral("#establishOECard"), QStringLiteral("establishOECard"));
+    const QString encoded = proto.toString();
+    if (encoded.startsWith(QStringLiteral("##"))) {
+        qCritical() << "LuaSkillCard::toString double hash" << encoded;
+        return 5;
+    }
+    const Card *oeCard = Card::Parse(encoded);
+    if (oeCard == nullptr) {
+        qCritical() << "Card::Parse(#establishOECard) failed" << encoded;
+        return 6;
+    }
+    if (oeCard->objectName() != QStringLiteral("#establishOECard")) {
+        qCritical() << "Card::Parse(#establishOECard) objectName" << oeCard->objectName();
+        return 7;
+    }
+
+    const Card *legacyDoubleHash = Card::Parse(QStringLiteral("##establishOECard[no_suit:0]:.:"));
+    if (legacyDoubleHash == nullptr) {
+        qCritical() << "Card::Parse(##establishOECard legacy) failed";
+        return 8;
+    }
+
+    qInfo() << "Card::Parse LuaSkillCard #objectName regression passed";
     return 0;
 }
