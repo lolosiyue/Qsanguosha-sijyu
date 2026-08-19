@@ -105,6 +105,7 @@ private slots:
     void on_actionCard_Overview_triggered();
     void on_actionGeneral_Overview_triggered();
     void on_actionStart_Server_triggered();
+    void startLocalConsoleGame();
     void on_actionExit_triggered();
     void on_actionCard_editor_triggered();
 

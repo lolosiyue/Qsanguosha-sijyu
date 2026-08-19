@@ -23,6 +23,7 @@ Item {
         height: 80
 
         primary: true
+        leadingText: homeController.currentGameModeName
         text: qsTranslate("HomeScene", "Quick Join")
         iconSource: "qrc:/QSanguosha/Home/icons/quick-join.svg"
 
