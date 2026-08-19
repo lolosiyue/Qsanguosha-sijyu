@@ -379,7 +379,8 @@ Item {
         root.gridColsReady = true
         catalogLoadTimer.start()
         root.keyboardReady = true
-        searchField.forceActiveFocus()
+        if (root.visible)
+            searchField.forceActiveFocus()
     }
 
     Timer {

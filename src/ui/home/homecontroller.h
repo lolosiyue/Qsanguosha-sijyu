@@ -145,6 +145,9 @@ public:
     Q_INVOKABLE qreal generalOverlayLuma(const QString &generalName) const;
     Q_INVOKABLE void playAudio(const QString &path) const;
     Q_INVOKABLE void applyGeneralFilter(const QVariantMap &filters);
+    // 僅 GUI 首頁 idle 呼叫：預設篩選目錄。已載入則略過，避免蓋掉玩家篩選。
+    Q_INVOKABLE void warmGeneralCatalog();
+    Q_INVOKABLE QUrl prefetchArtUrl(int index) const;
 
     int artRevision() const;
     Q_INVOKABLE QVariantList heroSkinList(const QString &generalName) const;

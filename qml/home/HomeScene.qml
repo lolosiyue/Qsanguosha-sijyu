@@ -235,9 +235,10 @@ Item {
                 onStatusChanged: {
                     if (status === Loader.Ready && generalPage.item) {
                         generalPage.item.uiScale = root.uiScale
-                        root.applyGeneralsNavGraph()
-                        if (root.generalsOpen)
+                        if (root.generalsOpen) {
+                            root.applyGeneralsNavGraph()
                             generalPage.item.takeKeyboard()
+                        }
                     }
                 }
             }
@@ -509,10 +510,87 @@ Item {
             bottomBar.homeBtn.forceActiveFocus()
     }
 
+    // 首頁站穩後再偷載：800ms 空等，避免跟進場動畫搶 IO／解碼。
+    Item {
+        id: generalArtPrefetch
+        x: -4000
+        y: -4000
+        width: 1
+        height: 1
+        opacity: 0
+        enabled: false
+        z: -1
+
+        readonly property int gridInnerWidth: {
+            var colW = 1920 - HomeTheme.generalPageHMargin * 2
+            var listW = Math.round((colW - HomeTheme.generalPanelGap)
+                                   * HomeTheme.generalListShare)
+            return Math.max(1, listW - HomeTheme.generalGridMargin * 2)
+        }
+        readonly property int cols: {
+            var saved = homeController.generalGridColumns()
+            var v = saved > 0 ? saved : HomeTheme.generalGridMinColumns
+            return Math.max(HomeTheme.generalGridMinColumns,
+                            Math.min(v, HomeTheme.generalGridMaxColumns - 1))
+        }
+        readonly property int cellW: HomeTheme.generalCellWidth(gridInnerWidth, cols)
+        readonly property int cellH: HomeTheme.generalCellHeight(gridInnerWidth, cols)
+        readonly property int artW: Math.max(1, cellW - HomeTheme.generalCellInset * 2)
+        readonly property int artH: Math.max(1, cellH - HomeTheme.generalCellInset * 2)
+        property int mounted: 0
+        property int target: 0
+
+        Repeater {
+            model: generalArtPrefetch.mounted
+            Image {
+                width: generalArtPrefetch.artW
+                height: generalArtPrefetch.artH
+                asynchronous: true
+                cache: true
+                sourceSize.width: Math.ceil(width)
+                sourceSize.height: Math.ceil(height)
+                source: homeController.prefetchArtUrl(index)
+            }
+        }
+    }
+
+    Timer {
+        id: generalPrefetchStart
+        interval: 800
+        repeat: false
+        onTriggered: root.startGeneralPrefetch()
+    }
+
+    Timer {
+        id: generalPrefetchTick
+        interval: 32
+        repeat: true
+        onTriggered: {
+            if (generalArtPrefetch.mounted >= generalArtPrefetch.target) {
+                stop()
+                return
+            }
+            generalArtPrefetch.mounted += 1
+        }
+    }
+
+    function startGeneralPrefetch() {
+        homeController.warmGeneralCatalog()
+        var n = homeController.generalModel ? homeController.generalModel.count : 0
+        generalArtPrefetch.target = Math.min(16, n)
+        if (generalArtPrefetch.target > 0) {
+            generalArtPrefetch.mounted = 1
+            if (generalArtPrefetch.target > 1)
+                generalPrefetchTick.start()
+        }
+        generalsMounted = true
+    }
+
     Component.onCompleted: {
         applyHomeNavGraph()
         actionPanel.quickJoinBtn.forceActiveFocus()
         enterAnim.start()
+        generalPrefetchStart.start()
     }
 
     Connections {
