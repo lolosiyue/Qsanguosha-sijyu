@@ -709,6 +709,22 @@ void HomeController::applyGeneralFilter(const QVariantMap &filters)
     m_generalModel.applyFilter(filters);
 }
 
+void HomeController::warmGeneralCatalog()
+{
+    if (m_generalModel.isLoaded())
+        return;
+
+    QVariantMap filters;
+    filters.insert(QStringLiteral("kingdom"), QStringLiteral("all"));
+    filters.insert(QStringLiteral("includeHidden"), true);
+    m_generalModel.applyFilter(filters);
+}
+
+QUrl HomeController::prefetchArtUrl(int index) const
+{
+    return generalFullImage(m_generalModel.nameAt(index));
+}
+
 void HomeController::openCards()
 {
     emit cardsRequested();
