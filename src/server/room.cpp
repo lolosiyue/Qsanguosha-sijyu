@@ -5111,6 +5111,7 @@ void Room::removeTag(const QString&key)
 
 void Room::setEmotion(ServerPlayer*target, const QString&emotion)
 {
+	if (!target) return;
 	JsonArray arg;
 	arg << target->objectName();
 	arg << (emotion.isEmpty() ? QString(".") : emotion);
