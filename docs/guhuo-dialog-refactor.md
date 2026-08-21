@@ -4,7 +4,7 @@
 
 目前定案是只將 `JuguanDialog` 改為 Dashboard 手牌區 presenter；`GuhuoDialog` 因候選牌數量過大、擴展包會繼續膨脹，回退為原本的彈出式對話框流程。
 
-另見：`docs/guhuo-juguan-presenter-impact.md`，說明這一輪是否影響 SmartAI、哪些層級有變更、哪些協議保持不變。
+> **SmartAI 影響**：本輪僅改客戶端展示層與互動流程（`Dashboard`／`RoomScene` presenter），`SmartAI` 決策仍沿用原本的 tag／mark／card name 協議，**不影響 AI 行為**。原獨立說明 `guhuo-juguan-presenter-impact.md` 已合併至本文末節「附錄：對 SmartAI 的影響邊界」，該獨立文件已移除。
 
 ## 安全分階段方案
 
@@ -202,3 +202,44 @@ if (dashboard->isShowingDialogOptions()) {
 - Lua 技能定義無需修改，完全向後相容
 - 原有 `Self->setTag(skillName, card)` 邏輯保持不變
 - `ViewAsSkill::getDialog()` 返回值類型不變
+
+## 附錄：對 SmartAI 的影響邊界（原 `guhuo-juguan-presenter-impact.md` 合併）
+
+### 結論
+
+- `JuguanDialog` 保留 Dashboard presenter，`GuhuoDialog` 回退 modal dialog；影響範圍僅在客戶端展示層與互動流程（UX）。
+- `SmartAI` 的出牌決策、質疑判斷、禁用項判斷仍沿用原本 tag／mark／card name 協議，**不應改變 AI 行為**。
+
+| 層級 | 本輪是否改動 | 說明 |
+|------|--------------|------|
+| `Dashboard`／`RoomScene` presenter | 是 | `JuguanDialog` 候選項改為手牌區單列疊放 option item |
+| `GuhuoDialog`／`JuguanDialog` 選項 API | 是 | 新增 `prepareOptions()`／`getOptionNames()`／`getOptionCard()`／`applyOption()` |
+| `GuhuoCard::validate()`／`validateInResponse()` | 否 | 仍由原本邏輯處理 `slash`／`normal_slash`／實際 clone card |
+| `JuguanCard::onUse()`／`JuguanVS` | 否 | 仍由 `user_string` 與 `Self->getTag("juguan")` 驅動 |
+| Lua `SmartAI` 決策 | 否 | 仍讀取 room tag、player mark、card class／objectName |
+
+### 為什麼不影響 SmartAI
+
+1. **AI 不操作 dialog widget**：Lua 側僅 `skill:setGuhuoDialog(...)`／`setJuguanDialog(...)` 綁定類型，不點按鈕、不依賴 `popup()`／`exec()` 生命週期。
+2. **Guhuo 依賴 room tag 與 card name**：`lua/ai/wind-ai.lua` 讀 `getTag("GuhuoType")`、正規化 `normal_slash`→`slash`、組裝 `@GuhuoCard=id:objectName`——協議未改。
+3. **Juguan 依賴 mark 與可用牌型**：`lua/ai/NyarzSecond-ai.lua` 讀 `gsjici_juguan_remove_<pattern>`；`ol.cpp` 的 `isButtonEnabled()` 與 `JuguanCard::onUse()` 仍用 `objectName()+"_juguan_remove_"+button_name` 與 `user_string` clone——規則訊號未改。
+
+### 真正改到的是什麼
+
+- **Guhuo**：不再額外插入 UI 用 `normal_slash` 候選；已回退 modal dialog，後端 `normal_slash` 兼容分支保留。
+- **Juguan**：候選顯示與選中確認改在 `Dashboard`；回寫仍為 `applyOption()` → `Self->setTag(objectName(), Card*)`；presenter 期間封住 `showCardFilterContainer()`。
+
+### 風險邊界與何時才會影響 AI
+
+| 項目 | 狀態 |
+|------|------|
+| 人類玩家 UX／事件時序 | 已改（僅 Juguan presenter） |
+| AI 決策模型／伺服器結算 | 未改 |
+
+只有改動 `GuhuoType`／`NosGuhuoType`／`Self->setTag("juguan", ...)`、`*_guhuo_remove_*`／`*_juguan_remove_*` mark 命名、`@GuhuoCard`／`#skill:.::pattern` 字串格式、或 `slash`／`normal_slash` 正規化協議時，才會波及 SmartAI——本輪均未做。
+
+### 建議驗證
+
+1. 人機局中讓 AI 使用 `guhuo`／`juguan`，確認出牌與質疑與重構前一致。
+2. 人類玩家操作 `Juguan`，確認 presenter 選項與最終結算牌型一致。
+3. 人類玩家操作 `Guhuo`，確認已回退舊 dialog 且不受手牌區 option layout 影響。
