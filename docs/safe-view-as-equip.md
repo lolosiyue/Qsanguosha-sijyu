@@ -21,11 +21,13 @@
 
 ## Lua 參考實作
 
-已在 [lua/sgs_ex.lua](../lua/sgs_ex.lua) 新增通用 API：
+> **更正（2026-08-21 校對）**：`lua/sgs_ex.lua` 並未提供 `sgs.SafeTurn*` 通用 Lua API；安全換裝的權威實作為 `src/package/yjcm2023.cpp` 內的**靜態 C++ helper** `zhizheEquipObjectNameByArea()`／`safeTurnCardToEquip()`，僅由 `GongqiaoCard::use` 等 C++ 技能直接調用。Lua 擴充如需同等安全路徑，應在各自技能內參照該 helper 的 `cloneCard`→`WrappedCard::takeOver`→換裝流程自行實作，或將 helper 抽為共用工具後再以 SWIG 暴露（尚未落地）。
 
-- `sgs.GetZhizheEquipObjectNameByArea(area)`
-- `sgs.SafeTurnHandCardToEquip(room, player, card_id, equip_name, skill_name)`
-- `sgs.SafeTurnHandCardToZhizheEquip(room, player, card_id, area, skill_name)`
+原文件所述 `lua/sgs_ex.lua` 的三個 `sgs.*` API 屬規劃未落地，已更正：
+
+- ~~`sgs.GetZhizheEquipObjectNameByArea(area)`~~
+- ~~`sgs.SafeTurnHandCardToEquip(room, player, card_id, equip_name, skill_name)`~~
+- ~~`sgs.SafeTurnHandCardToZhizheEquip(room, player, card_id, area, skill_name)`~~
 
 ### Lua 用法示例
 
