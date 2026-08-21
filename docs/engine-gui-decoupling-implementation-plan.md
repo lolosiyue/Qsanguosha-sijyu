@@ -1,10 +1,10 @@
 # 引擎與 GUI 解耦實作計畫 (Engine/GUI Decoupling Implementation Plan)
 
-- Status: **Implemented**（契約已全部落地，2026-08-09 確認；僅 `Skill::getDialog()` 舊路徑殘留，見 §1 註記）
+- Status: **Implemented**（契約已全部落地，2026-08-09 確認；僅 `Skill::getDialog()` 舊路徑殘留，見 §1 註記；工具鏈已於 2026-08-18 升級至 VS 2026 v145 + Qt 6.11.1 `msvc2022_64`，契約本身不變）
 - Parent Plan: `docs/cross-platform-modernization-plan.md`
 - Milestone: M1
-- Last Updated: 2026-08-09
-- Scope: Windows x64、Qt 6.5.3、MSVC 2019 過渡基線
+- Last Updated: 2026-08-21
+- Scope: Windows x64、Qt 6.11.1 `msvc2022_64`、VS 2026 v145（原 2026-08-09 為 Qt 6.5.3／MSVC 2019 過渡基線，已升級）
 
 > **實作狀態（2026-08-09 對照）**：以下 §1 完成標準 1-7 與 §3 契約（SkillDialogInfo／EngineRuntimeContext／audioEffectRequested／EngineBootstrap／SkillDialogRegistry／server-main／deploy-server／allowlist gate）均已落地並通過 build。殘留項：`Skill::getDialog()`（skill.h:179）與 `class QDialog` 前向宣告（skill.h:5）仍在 engine，§3.1 的「遷移完成後搜尋結果必須為零」尚未達成；此為唯一未完成條目。
 
