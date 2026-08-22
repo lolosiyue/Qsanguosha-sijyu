@@ -458,6 +458,17 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
                 result, shadowResult);
         }
     }
+    if (route == AiRouteLegacyAdapted) {
+        // Live Lua already ran on the current Room. getTurnUse / fillSkillCards
+        // may bump stateRevision (marks, skill instance, card moves). Stamping the
+        // pre-callback revision then fail-closes a filled turnUse as Pass, which
+        // ends Play and goes straight to discard.
+        result.decisionId = request.decisionId;
+        result.stateRevision = m_room.roomRuntime()->stateRevision();
+        AIRequest liveRequest = request;
+        liveRequest.stateRevision = result.stateRevision;
+        return applyResult(player, liveRequest, result, cardUse);
+    }
     return applyResult(player, request, result, cardUse);
 }
 
