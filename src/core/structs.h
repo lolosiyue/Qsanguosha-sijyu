@@ -315,14 +315,19 @@ struct CardsMoveOneTimeStruct {
 
     inline void removeCardIds(const QList<int>&to_remove)
     {
+        // from_places / from_pile_names / open 必須與 card_ids 平行；
+        // 上游若長度不一致，舊實作 removeAt 會越界（PROD headless Qt6Core AV）。
         foreach (int id, to_remove) {
             int index = card_ids.indexOf(id);
-            if (index > -1) {
-                card_ids.removeAt(index);
+            if (index < 0)
+                continue;
+            card_ids.removeAt(index);
+            if (index < from_places.size())
                 from_places.removeAt(index);
+            if (index < from_pile_names.size())
                 from_pile_names.removeAt(index);
+            if (index < open.size())
                 open.removeAt(index);
-            }
         }
     }
 };
