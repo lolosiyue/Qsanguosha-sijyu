@@ -1,11 +1,28 @@
 #include <QCoreApplication>
 #include <QTextStream>
+#include <QTimer>
+
+#if defined(Q_OS_UNIX)
+#include <csignal>
+#endif
 
 #include "core/engine-bootstrap.h"
 #include "core/engine.h"
 #include "core/settings.h"
 #include "server/server-core.h"
 #include "crashhandler.h"
+
+#if defined(Q_OS_UNIX)
+namespace
+{
+volatile std::sig_atomic_t shutdownSignal = 0;
+
+void requestShutdown(int signal)
+{
+    shutdownSignal = signal;
+}
+}
+#endif
 
 // 自動化測試支援:
 //   --game-mode <id>  覆寫 config.ini 的 GameMode (10p / 20p / 02_1v1 / 05p ...)
@@ -41,6 +58,10 @@ int main(int argc, char **argv)
     }
 
     QCoreApplication app(argc, argv);
+#if defined(Q_OS_UNIX)
+    std::signal(SIGINT, requestShutdown);
+    std::signal(SIGTERM, requestShutdown);
+#endif
     const QStringList arguments = QCoreApplication::arguments();
     const int seedIdx = arguments.indexOf("--seed");
     if (seedIdx >= 0) {
@@ -57,6 +78,9 @@ int main(int argc, char **argv)
         QTextStream(stderr) << error << Qt::endl;
         return 1;
     }
+    // The dedicated entry point owns explicit teardown after Server/Room cleanup.
+    // Avoid the legacy GUI lifetime hook deleting the engine during aboutToQuit().
+    QObject::disconnect(&app, SIGNAL(aboutToQuit()), Sanguosha, SLOT(deleteLater()));
 
     // Engine 已就緒,把真實版本號補登記給 crash handler(install() 時拿不到)
     CrashHandler::setVersion(Sanguosha->getVersionNumber().toUtf8().constData());
@@ -66,32 +90,46 @@ int main(int argc, char **argv)
         return 1;
     }
     Server::isHeadlessMode = true;
-    Server server(&app);
-    QTextStream out(stdout);
-    QObject::connect(&server, &Server::logMessage, &app,
-        [&out](const QString &message) { out << message << Qt::endl; });
-    QObject::connect(&server, &Server::roomGameStarted, &app,
-        [&out]() {
-            out << "[AUTOTEST] game start" << Qt::endl;
-            Server::writeHeadlessLog("[AUTOTEST] game start");
-        });
-    QObject::connect(&server, &Server::roomGameOver, &app,
-        [&out](const QString &winner) {
-            out << "[AUTOTEST] game over " << winner << Qt::endl;
-            Server::writeHeadlessLog(QString("[AUTOTEST] game over %1").arg(winner));
-        });
+    int result;
+    {
+        Server server(&app);
+        QTextStream out(stdout);
+#if defined(Q_OS_UNIX)
+        QTimer shutdownTimer;
+        shutdownTimer.setInterval(100);
+        QObject::connect(&shutdownTimer, &QTimer::timeout, &app,
+            [&app, &out]() {
+                if (shutdownSignal == 0)
+                    return;
+                out << "Shutdown requested by signal " << shutdownSignal << Qt::endl;
+                app.quit();
+            });
+        shutdownTimer.start();
+#endif
+        QObject::connect(&server, &Server::logMessage, &app,
+            [&out](const QString &message) { out << message << Qt::endl; });
+        QObject::connect(&server, &Server::roomGameStarted, &app,
+            [&out]() {
+                out << "[AUTOTEST] game start" << Qt::endl;
+                Server::writeHeadlessLog("[AUTOTEST] game start");
+            });
+        QObject::connect(&server, &Server::roomGameOver, &app,
+            [&out](const QString &winner) {
+                out << "[AUTOTEST] game over " << winner << Qt::endl;
+                Server::writeHeadlessLog(QString("[AUTOTEST] game over %1").arg(winner));
+            });
 
-    if (!server.listen()) {
-        out << QObject::tr("Unable to listen on the configured server port") << Qt::endl;
-        EngineBootstrap::shutdown();
-        return 2;
+        if (!server.listen()) {
+            out << QObject::tr("Unable to listen on the configured server port") << Qt::endl;
+            result = 2;
+        } else {
+            for (const QString &message : server.startupMessages())
+                out << message << Qt::endl;
+
+            result = app.exec();
+            CrashHandler::beginShutdown(); // 正常關閉流程,退出清理階段的崩潰不再上報
+        }
     }
-
-    for (const QString &message : server.startupMessages())
-        out << message << Qt::endl;
-
-    const int result = app.exec();
-    CrashHandler::beginShutdown(); // 正常關閉流程,退出清理階段的崩潰不再上報
     EngineBootstrap::shutdown();
     return result;
 }
