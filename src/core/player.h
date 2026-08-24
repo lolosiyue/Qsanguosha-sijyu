@@ -67,6 +67,7 @@ public:
     };
 
     explicit Player(QObject *parent);
+    ~Player() override;
 
     void setScreenName(const QString &screen_name);
     QString screenName() const;
@@ -504,7 +505,7 @@ private:
 
     Phase phase;
     QList<int> equip_area;
-    QList<const EquipCard *> equips;
+    QList<const WrappedCard *> equips;
     //WrappedCard *weapon, *armor, *defensive_horse, *offensive_horse, *treasure;
     bool face_up;
     bool chained;

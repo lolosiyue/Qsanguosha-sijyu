@@ -68,6 +68,8 @@ public:
     };
 
     // constructor
+    ~Card() override;
+    void deleteLater();
     Card(Suit suit = SuitToBeDecided, int number = -1, bool target_fixed = false, bool damage_card = false, bool is_gift = false, bool single_target = false);
 
     inline QString objectName(bool different_slash = true) const
@@ -81,6 +83,8 @@ public:
     bool isRed() const;
     bool isBlack() const;
     int getId() const;
+    quint64 lifetimeGeneration() const;
+    bool lifetimeIsLive() const;
     virtual void setId(int id);
     int getEffectiveId() const;
 

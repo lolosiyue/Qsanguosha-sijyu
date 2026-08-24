@@ -1,10 +1,13 @@
 #ifndef QSAN_LUA_RUNTIME_H
 #define QSAN_LUA_RUNTIME_H
 
+#include "card-lifetime-manager.h"
+
 #include <QMutex>
 #include <QString>
 #include <QThread>
 
+#include <atomic>
 #include <cstddef>
 
 struct lua_State;
@@ -13,6 +16,7 @@ class LuaRuntime
 {
 public:
     enum Kind { Bootstrap, Game, Client, Auxiliary };
+    enum class Lifecycle : quint8 { Running, Closing, Closed };
 
     explicit LuaRuntime(Kind kind);
     ~LuaRuntime();
@@ -27,6 +31,9 @@ public:
     bool loadScript(const QString &path, QString *error = nullptr);
     void shutdown();
 
+    void setLifetimeDomain(const void *domain) { m_lifetimeDomain = domain; }
+    const void *lifetimeDomain() const { return m_lifetimeDomain ? m_lifetimeDomain : this; }
+
     lua_State *state() const;
     lua_State *rawState() const { return m_state; }
     quint64 generation() const { return m_generation; }
@@ -38,6 +45,10 @@ public:
     }
 
     bool isCurrentThreadOwner() const;
+    int invocationDepth() const { return m_invocationDepth.load(std::memory_order_acquire); }
+    Lifecycle lifecycle() const { return m_lifecycle.load(std::memory_order_acquire); }
+    bool isClosing() const { return lifecycle() == Lifecycle::Closing; }
+    bool isClosed() const { return lifecycle() == Lifecycle::Closed; }
 
     static LuaRuntime *fromState(lua_State *state);
     static LuaRuntime *current();
@@ -56,6 +67,18 @@ public:
     private:
         LuaRuntime *m_runtime;
         LuaRuntime *m_previous;
+        CardLifetimeRuntimeContext m_previousContext;
+    };
+
+    class LuaInvocationScope
+    {
+    public:
+        explicit LuaInvocationScope(LuaRuntime &runtime);
+        ~LuaInvocationScope();
+        LuaInvocationScope(const LuaInvocationScope &) = delete;
+        LuaInvocationScope &operator=(const LuaInvocationScope &) = delete;
+    private:
+        LuaRuntime *m_runtime;
     };
 
 private:
@@ -71,6 +94,8 @@ private:
                                  size_t oldSize, size_t newSize);
 
     void adoptCurrentThread();
+    bool beginInvocation();
+    void endInvocation();
 
     Kind m_kind;
     lua_State *m_state;
@@ -79,7 +104,10 @@ private:
     bool m_hasSeed;
     QThread *m_owner;
     QRecursiveMutex m_executionMutex;
+    std::atomic<int> m_invocationDepth{0};
+    std::atomic<Lifecycle> m_lifecycle{Lifecycle::Running};
     MemoryState m_memory;
+    const void *m_lifetimeDomain = nullptr;
 };
 
 class LuaCallbackRef

@@ -1,6 +1,7 @@
 #include "engine-bootstrap.h"
 #include "ai.h"
 #include "card-movement-service.h"
+#include "card-lifetime-manager.h"
 #include "engine.h"
 #include "json.h"
 #include "player-decision-service.h"
@@ -22,8 +23,17 @@
 #include <QMap>
 
 #include <atomic>
+#include <cstdio>
 #include <thread>
 #include <type_traits>
+
+// An unregistered Card-bearing metatype: not part of the N8.3 frozen matrix, so
+// the manager must reject it instead of guessing at its layout.
+struct UnregisteredCardPayload
+{
+    const Card *card = nullptr;
+};
+Q_DECLARE_METATYPE(UnregisteredCardPayload)
 
 using namespace QSanProtocol;
 
@@ -2178,6 +2188,135 @@ static bool nullificationPeachTriggerOrderAndResidual()
     return expect(!skipped.started, "askForYishi stays on Room and bails with <2 participants");
 }
 
+static bool trickEffectTagPreservesNullificationTarget()
+{
+    ServerPlayer source(nullptr);
+    ServerPlayer target(nullptr);
+    DummyCard trick;
+
+    CardEffectStruct copied;
+    copied.card = &trick;
+    copied.from = &source;
+    copied.to = &target;
+    CardEffectStruct moved(std::move(copied));
+    const QVariant payload = QVariant::fromValue(moved);
+    const QByteArray key("TrickEffectData");
+    CardLifetimeManager &manager = globalCardLifetimeManager();
+    const CardLifetimeGauge before = manager.gauge();
+    QByteArray retainError;
+    const bool retained = manager.retainVariantTag(&target, key, payload, &retainError);
+    target.setTag(QString::fromLatin1(key), payload);
+    const QVariant stored = target.getTag(QString::fromLatin1(key));
+    const CardEffectStruct restored = stored.value<CardEffectStruct>();
+    const CardLifetimeGauge afterSet = manager.gauge();
+    const bool pointerPreserved = stored.isValid() && restored.to == &target
+        && restored.from == &source && restored.card == &trick;
+    std::fprintf(stderr,
+                 "TAG_DISCRIMINATOR retainVariantTag=%d storedValid=%d toMatch=%d "
+                 "unknown_qvariant_card_payload_delta=%llu error=%s\n",
+                 retained ? 1 : 0, stored.isValid() ? 1 : 0,
+                 restored.to == &target ? 1 : 0,
+                 static_cast<unsigned long long>(afterSet.unknown_qvariant_card_payload
+                                                 - before.unknown_qvariant_card_payload),
+                 retainError.constData());
+    if (!expect(retained, "CardEffectStruct is accepted by Variant tag retention")
+        || !expect(pointerPreserved, "TrickEffectData preserves non-null to pointer")
+        || !expect(afterSet.unknown_qvariant_card_payload
+                       == before.unknown_qvariant_card_payload,
+                   "known CardEffectStruct does not increment opaque QVariant counter"))
+        return false;
+
+    CardEffectStruct nullTarget = moved;
+    nullTarget.to = nullptr;
+    const QByteArray nullKey("TrickEffectData-null");
+    const QVariant nullPayload = QVariant::fromValue(nullTarget);
+    QByteArray nullError;
+    const bool nullRetained = manager.retainVariantTag(&target, nullKey, nullPayload, &nullError);
+    target.setTag(QString::fromLatin1(nullKey), nullPayload);
+    const CardEffectStruct restoredNull = target.getTag(QString::fromLatin1(nullKey))
+        .value<CardEffectStruct>();
+    if (!expect(nullRetained, "CardEffectStruct with null to is accepted")
+        || !expect(nullError.isEmpty(), "null CardEffectStruct has no retention error")
+        || !expect(restoredNull.to == nullptr, "null TrickEffectData preserves null target"))
+        return false;
+    target.removeTag(QString::fromLatin1(nullKey));
+
+    const quint64 opaqueBefore = afterSet.unknown_qvariant_card_payload;
+    QByteArray opaqueError;
+    const bool opaqueRetained = manager.retainVariantTag(
+        &target, QByteArray("opaque-card-effect"),
+        QVariant::fromValue(UnregisteredCardPayload()), &opaqueError);
+    const CardLifetimeGauge afterOpaque = manager.gauge();
+    if (!expect(!opaqueRetained, "unclassified Card payload remains rejected")
+        || !expect(opaqueError == CardLifetimeManager::opaqueVariantError(),
+                   "opaque Card payload reports the exact lifetime error")
+        || !expect(afterOpaque.unknown_qvariant_card_payload == opaqueBefore + 1,
+                   "opaque Card payload increments the diagnostic counter"))
+        return false;
+
+    // CardUseStruct is a frozen-matrix, self-leasing struct: production code stores it
+    // in Room/Player tags (for example Nullification's "UseHistory" tag), so retention
+    // must accept it without incrementing the opaque diagnostic counter.
+    const quint64 useStructBefore = afterOpaque.unknown_qvariant_card_payload;
+    QByteArray useStructError;
+    const bool useStructRetained = manager.retainVariantTag(
+        &target, QByteArray("card-use-struct"), QVariant::fromValue(CardUseStruct()),
+        &useStructError);
+    if (!expect(useStructRetained, "lease-bearing CardUseStruct tag is accepted")
+        || !expect(useStructError.isEmpty(), "accepted CardUseStruct reports no error")
+        || !expect(manager.gauge().unknown_qvariant_card_payload == useStructBefore,
+                   "accepted CardUseStruct does not increment the opaque counter"))
+        return false;
+    manager.releaseVariantTag(&target, QByteArray("card-use-struct"));
+
+    // SkillContext / CorrectSkillContext carry raw Card pointers whose type names do not
+    // contain "Card", so the opaque-name heuristic never sees them. They are stored in
+    // Room tags (Room::useCard / GameRule skill-card contexts), so a tag holding one must
+    // lease every Card it names for as long as the tag lives.
+    DummyCard useCard;
+    DummyCard updatedCard;
+    DummyCard nestedCard;
+    const quint64 skillLeaseBefore = manager.gauge().native_leases;
+    SkillContext skillCtx;
+    skillCtx.use_card = &useCard;
+    skillCtx.updated_card = &updatedCard;
+    skillCtx.extra_data = QVariant::fromValue(static_cast<Card *>(&nestedCard));
+    QByteArray skillError;
+    const bool skillRetained = manager.retainVariantTag(
+        &target, QByteArray("skill-context"), QVariant::fromValue(skillCtx), &skillError);
+    if (!expect(skillRetained, "SkillContext tag is accepted")
+        || !expect(skillError.isEmpty(), "accepted SkillContext reports no error")
+        || !expect(manager.gauge().native_leases == skillLeaseBefore + 3,
+                   "SkillContext tag leases use_card, updated_card and nested extra_data"))
+        return false;
+    manager.releaseVariantTag(&target, QByteArray("skill-context"));
+    if (!expect(manager.gauge().native_leases == skillLeaseBefore,
+                "releasing the SkillContext tag releases every Card lease it held"))
+        return false;
+
+    DummyCard correctCard;
+    const quint64 correctLeaseBefore = manager.gauge().native_leases;
+    CorrectSkillContext correctCtx;
+    correctCtx.card = &correctCard;
+    QByteArray correctError;
+    const bool correctRetained = manager.retainVariantTag(
+        &target, QByteArray("correct-skill-context"), QVariant::fromValue(correctCtx),
+        &correctError);
+    if (!expect(correctRetained, "CorrectSkillContext tag is accepted")
+        || !expect(correctError.isEmpty(), "accepted CorrectSkillContext reports no error")
+        || !expect(manager.gauge().native_leases == correctLeaseBefore + 1,
+                   "CorrectSkillContext tag leases its Card pointer"))
+        return false;
+    manager.releaseVariantTag(&target, QByteArray("correct-skill-context"));
+    if (!expect(manager.gauge().native_leases == correctLeaseBefore,
+                "releasing the CorrectSkillContext tag releases its Card lease"))
+        return false;
+
+    target.removeTag(QString::fromLatin1(key));
+    manager.releaseVariantTag(&target, QByteArray("opaque-card-effect"));
+    return true;
+}
+
 static bool aiDelayIsHonoredWhenConfigured()
 {
     DecisionFixture fixture;
@@ -2253,7 +2392,8 @@ int runPlayerDecisionServiceTests()
     run(discardExchangeYijiAndGuanxing, "discard-yiji-guanxing", 23);
     run(activateUseCardAndSlashFlags, "activate-use-card", 24);
     run(nullificationPeachTriggerOrderAndResidual, "reactive-trigger-order", 25);
-    run(aiDelayIsHonoredWhenConfigured, "ai-delay", 26);
+    run(trickEffectTagPreservesNullificationTarget, "tag-discriminator", 26);
+    run(aiDelayIsHonoredWhenConfigured, "ai-delay", 27);
 
     Config.AIDelay = savedAIDelay;
     Config.OriginAIDelay = savedOriginAIDelay;

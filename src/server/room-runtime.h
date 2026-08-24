@@ -10,15 +10,30 @@
 #include "skill-execution-registry.h"
 #include "skill-instance-attachment-registry.h"
 
+#include <QSet>
+#include <QHash>
+
+#include <atomic>
+#include <memory>
+
 class CardPattern;
 class General;
 class LuaSkillCard;
 class Package;
 class Room;
+struct CardLifetimeGauge;
+struct CardLifetimeToken;
 
 class RoomRuntime : public EngineRuntimeContext
 {
 public:
+    enum class ShutdownState : quint8 {
+        Running,
+        Closing,
+        Closed,
+        Failed
+    };
+
     enum StateMutation {
         CardsMoved,
         PlayerPropertyChanged,
@@ -34,6 +49,10 @@ public:
     ~RoomRuntime() override;
 
     bool initialize(QString *error = nullptr);
+    void shutdownForInitFailure();
+    void shutdownFinal();
+    ShutdownState shutdownState() const { return m_shutdownState.load(); }
+    bool isClosing() const { return shutdownState() != ShutdownState::Running; }
     bool isLoadingDefinitions() const { return m_loadingDefinitions; }
     bool definitionsLoaded() const { return m_definitionsLoaded; }
     void finishDefinitionLoading() { m_definitionsLoaded = true; }
@@ -97,6 +116,15 @@ public:
     RoomRuntime *roomRuntime() override { return this; }
 
 private:
+    bool onCanonicalOwner() const;
+    quint64 drainShutdownStage(const char *stage);
+    void releaseShutdownRoots();
+    bool finalGaugeIsZero(const CardLifetimeGauge &gauge) const;
+    void failShutdown(const char *stage, const CardLifetimeGauge &gauge);
+    void emitFinalGauge(const CardLifetimeGauge &gauge);
+    void restorePreviousDomain();
+    void invalidateOrphanedRuntimeEntries();
+
     Room *m_room;
     RoomDefinitionRegistry m_definitions;
     LuaRuntime m_lua;
@@ -109,6 +137,33 @@ private:
     bool m_definitionsLoaded;
     quint64 m_nextDecisionId;
     quint64 m_stateRevision;
+    std::atomic<ShutdownState> m_shutdownState {ShutdownState::Running};
+    bool m_finalMarkerEmitted = false;
+    const void *m_previousDomain = nullptr;
+    std::atomic_bool m_domainRestored {false};
+    quint64 m_baselineManagedLive = 0;
+    quint64 m_baselinePendingDelete = 0;
+    quint64 m_baselineAdoptionReserved = 0;
+    quint64 m_baselineWrapperLeases = 0;
+    quint64 m_baselineNativeLeases = 0;
+    quint64 m_baselineLuaPinsGauge = 0;
+    quint64 m_baselineSidecarEdges = 0;
+    quint64 m_baselineEntries = 0;
+    quint64 m_baselineActiveScopes = 0;
+    quint64 m_baselineLuaPins = 0;
+    quint64 m_baselineActuallyDestroyed = 0;
+    quint64 m_baselineCloneCreated = 0;
+    quint64 m_baselineFactoryUnclaimed = 0;
+    quint64 m_baselineUnknownUnclaimed = 0;
+    const void *m_gameRuntimeIdentity = nullptr;
+    lua_State *m_gameRuntimeState = nullptr;
+    quint64 m_gameRuntimeGeneration = 0;
+    const void *m_aiRuntimeIdentity = nullptr;
+    lua_State *m_aiRuntimeState = nullptr;
+    quint64 m_aiRuntimeGeneration = 0;
+    QSet<const void *> m_baselineAddresses;
+    QHash<const void *, std::shared_ptr<const CardLifetimeToken>> m_baselineTokenEntries;
+    QHash<const void *, std::shared_ptr<const CardLifetimeToken>> m_runtimeObservedEntries;
 };
 
 #endif

@@ -1,10 +1,13 @@
 #include "lua-runtime.h"
+#include "card-lifetime-manager.h"
 
 #include "lua.hpp"
 #include "util.h"
 
 #include <QAtomicInteger>
+#include <QCoreApplication>
 #include <QDebug>
+#include <QEvent>
 #include <QHash>
 #include <QMutexLocker>
 
@@ -42,23 +45,61 @@ LuaRuntime::~LuaRuntime()
 
 void LuaRuntime::shutdown()
 {
-    if (!m_state)
+    QMutexLocker executionLock(&m_executionMutex);
+    Lifecycle expected = Lifecycle::Running;
+    if (!m_lifecycle.compare_exchange_strong(expected, Lifecycle::Closing,
+                                              std::memory_order_acq_rel))
         return;
+    if (!m_state) {
+        m_lifecycle.store(Lifecycle::Closed, std::memory_order_release);
+        return;
+    }
+    if (m_invocationDepth.load(std::memory_order_acquire) != 0) {
+        m_lifecycle.store(Lifecycle::Running, std::memory_order_release);
+        return;
+    }
 
+    LuaRuntime *previousRuntime = currentRuntime;
+    const CardLifetimeRuntimeContext previousContext =
+        CardLifetimeManager::setCurrentRuntimeContext(lifetimeDomain(), this,
+                                                       m_generation, m_state);
+    currentRuntime = this;
+    CardLifetimeManager &manager = globalCardLifetimeManager();
+    manager.drain();
+    if (QCoreApplication::instance())
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     {
         QMutexLocker locker(&registryMutex());
         runtimeRegistry().remove(m_state);
     }
-    if (currentRuntime == this)
-        currentRuntime = nullptr;
-    lua_close(m_state);
+    lua_State *closingState = m_state;
+    lua_close(closingState);
     m_state = nullptr;
+    manager.releaseWrapperBindings(lifetimeDomain(), this, m_generation, closingState);
+    manager.drain();
+    if (QCoreApplication::instance())
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    manager.drain();
+    manager.unregisterRuntimeDomain(lifetimeDomain(), this, m_generation, closingState);
+    m_lifecycle.store(Lifecycle::Closed, std::memory_order_release);
+    currentRuntime = previousRuntime;
+    CardLifetimeManager::setCurrentRuntimeContext(previousContext.domain,
+                                                  previousContext.identity,
+                                                  previousContext.generation,
+                                                  previousContext.state);
 }
 
 bool LuaRuntime::initialize(QString *error)
 {
+    QMutexLocker executionLock(&m_executionMutex);
     if (m_state)
         return true;
+
+    Lifecycle lifecycle = m_lifecycle.load(std::memory_order_acquire);
+    if (lifecycle == Lifecycle::Closing)
+        return false;
+    if (lifecycle == Lifecycle::Closed)
+        m_lifecycle.store(Lifecycle::Running, std::memory_order_release);
 
     if (m_memory.hardLimit > 0) {
         m_state = m_hasSeed
@@ -79,6 +120,8 @@ bool LuaRuntime::initialize(QString *error)
         QMutexLocker locker(&registryMutex());
         runtimeRegistry().insert(m_state, this);
     }
+    globalCardLifetimeManager().registerRuntimeDomain(lifetimeDomain(), this,
+                                                      m_generation, m_state);
     return true;
 }
 
@@ -112,6 +155,7 @@ bool LuaRuntime::loadScript(const QString &path, QString *error)
         lua_pop(L, 1);
         return false;
     }
+    LuaInvocationScope invocation(*this);
     if (lua_pcall(L, 0, LUA_MULTRET, 0) != 0) {
         if (error)
             *error = QString::fromUtf8(lua_tostring(L, -1));
@@ -154,7 +198,8 @@ bool LuaRuntime::addPackagePath(const QString &pattern, QString *error)
 
 lua_State *LuaRuntime::state() const
 {
-    if (!m_state || !isCurrentThreadOwner() || currentRuntime != this)
+    if (!m_state || lifecycle() != Lifecycle::Running
+        || !isCurrentThreadOwner() || currentRuntime != this)
         return nullptr;
     return m_state;
 }
@@ -196,13 +241,50 @@ LuaRuntime::Binding::Binding(LuaRuntime &runtime, bool adoptOwner)
     m_runtime->m_executionMutex.lock();
     if (adoptOwner)
         runtime.adoptCurrentThread();
+    m_previousContext = CardLifetimeManager::setCurrentRuntimeContext(
+        runtime.lifetimeDomain(), &runtime, runtime.generation(), runtime.rawState());
     currentRuntime = &runtime;
 }
 
 LuaRuntime::Binding::~Binding()
 {
     currentRuntime = m_previous;
+    CardLifetimeManager::setCurrentRuntimeContext(m_previousContext.domain,
+                                                  m_previousContext.identity,
+                                                  m_previousContext.generation,
+                                                  m_previousContext.state);
     m_runtime->m_executionMutex.unlock();
+}
+
+LuaRuntime::LuaInvocationScope::LuaInvocationScope(LuaRuntime &runtime)
+    : m_runtime(runtime.beginInvocation() ? &runtime : nullptr)
+{
+}
+
+LuaRuntime::LuaInvocationScope::~LuaInvocationScope()
+{
+    if (m_runtime)
+        m_runtime->endInvocation();
+}
+
+bool LuaRuntime::beginInvocation()
+{
+    QMutexLocker lock(&m_executionMutex);
+    if (m_lifecycle.load(std::memory_order_acquire) != Lifecycle::Running)
+        return false;
+    m_invocationDepth.fetch_add(1, std::memory_order_acq_rel);
+    CardLifetimeManager::enterLuaPinForCurrentThread();
+    return true;
+}
+
+void LuaRuntime::endInvocation()
+{
+    QMutexLocker lock(&m_executionMutex);
+    int depth = m_invocationDepth.load(std::memory_order_acquire);
+    if (depth > 0) {
+        m_invocationDepth.fetch_sub(1, std::memory_order_acq_rel);
+        CardLifetimeManager::leaveLuaPinForCurrentThread();
+    }
 }
 
 QMutex &LuaRuntime::registryMutex()

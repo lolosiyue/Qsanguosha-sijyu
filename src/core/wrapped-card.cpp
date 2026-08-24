@@ -1,85 +1,138 @@
 #include "wrapped-card.h"
+#include "card-lifetime-manager.h"
+
+#include <QMetaObject>
+
+namespace {
+bool moveCardToOwner(Card *card, QThread *ownerThread)
+{
+    if (!card || !ownerThread || card->parent())
+        return false;
+    if (card->thread() == ownerThread)
+        return true;
+    bool moved = false;
+    if (QThread::currentThread() == card->thread()) {
+        card->moveToThread(ownerThread);
+        return card->thread() == ownerThread;
+    }
+    const bool invoked = QMetaObject::invokeMethod(card, [&] {
+        card->moveToThread(ownerThread);
+        moved = card->thread() == ownerThread;
+    }, Qt::BlockingQueuedConnection);
+    return invoked && moved;
+}
+
+bool ownerDispatchAvailable(Card *card, QThread *ownerThread)
+{
+    if (!card)
+        return true;
+    if (!ownerThread || card->thread() != ownerThread || card->parent())
+        return false;
+    if (QThread::currentThread() == ownerThread)
+        return true;
+    return QMetaObject::invokeMethod(card, [] {}, Qt::BlockingQueuedConnection);
+}
+
+bool destroyOwnedCard(Card *card)
+{
+    if (!card)
+        return true;
+    if (QThread::currentThread() == card->thread()) {
+        delete card;
+        return true;
+    }
+    return QMetaObject::invokeMethod(card, [card] { delete card; },
+                                     Qt::BlockingQueuedConnection);
+}
+}
 
 WrappedCard::WrappedCard(Card *card)
-    : Card(card->getSuit(), card->getNumber()), m_card(nullptr), m_isModified(false)
+    : Card(card ? card->getSuit() : Card::SuitToBeDecided,
+           card ? card->getNumber() : -1), m_card(nullptr), m_isModified(false),
+      m_adoptionOwnerThread(QThread::currentThread())
 {
-    m_id = card->getId();
-    copyEverythingFrom(card);
+    if (card) {
+        m_id = card->getId();
+        copyEverythingFrom(card);
+    }
 }
 
 WrappedCard::~WrappedCard()
 {
-    //Q_ASSERT(m_card != nullptr);
-    delete m_card;
+    destroyOwnedCard(m_card);
 }
 
 void WrappedCard::takeOver(Card *card)
 {
-    /*Q_ASSERT(getId() >= 0);
-    Q_ASSERT(card != this);
-    Q_ASSERT(m_card != card);
-    if (m_card != nullptr) {
-        m_isModified = true;
-        delete m_card;
-    }
-    m_card = card;
-    m_card->setId(getId());
-    setObjectName(card->objectName());
-    setSuit(card->getSuit());
-    setNumber(card->getNumber());
-    m_skillName = card->getSkillName(false);*/
-	if(card != this && m_card != card){
-		if(m_card){
-			m_isModified = true;
-			m_card->deleteLater();
-			card->tag = m_card->tag;
-			card->setFlags(m_card->getFlags());
-		}
-		m_card = card;
-		m_card->setId(getId());
-		setSuit(card->getSuit());
-		setNumber(card->getNumber());
-		setObjectName(card->objectName());
-		m_skillName = card->getSkillName(false);
-		m_skillInstanceId = card->getSkillInstanceId();
-		setSourceSkill(card->getSourceSkillName(), card->getSourceSkillInstanceId());
-		setActivationSkill(card->getActivationSkillName(), card->getActivationSkillInstanceId());
-	}
+	adoptCard(card, false);
 }
 
 void WrappedCard::copyEverythingFrom(Card *card)
 {
-    /*Q_ASSERT(card->getId() >= 0);
-    Q_ASSERT(card != this);
-    Q_ASSERT(m_card != card);
-    if (m_card != nullptr) {
+	adoptCard(card, true);
+}
+
+void WrappedCard::setAdoptionOwnerThread(QThread *thread)
+{
+    m_adoptionOwnerThread = thread ? thread : QThread::currentThread();
+}
+
+void WrappedCard::adoptCard(Card *card, bool requireId)
+{
+    if (!card || card == this || m_card == card || (requireId && card->getId() < 0))
+        return;
+
+    CardLifetimeManager &lifetimeManager = globalCardLifetimeManager();
+    const auto token = lifetimeManager.observeCard(card);
+    CardLifetimeLease lease(lifetimeManager, token);
+    if (!lease.isValid() || !lifetimeManager.reserveAdoption(token))
+        return;
+
+    if (!ownerDispatchAvailable(m_card, m_adoptionOwnerThread)
+        || !moveCardToOwner(card, m_adoptionOwnerThread)) {
+        lifetimeManager.cancelAdoption(token, true);
+        return;
+    }
+
+    const bool adopted = lifetimeManager.markAdopted(token);
+    if (!adopted) {
+        Q_ASSERT(adopted);
+        lifetimeManager.cancelAdoption(token, true);
+        destroyOwnedCard(card);
+        return;
+    }
+
+    Card *oldCard = m_card;
+    m_card = nullptr;
+    if (oldCard) {
         m_isModified = true;
-        m_card->deleteLater();
+        // Legacy takeOver()/copyEverythingFrom() hand the retired inner card's
+        // tags (and, for takeOver, its flags) to the replacement before deleting.
+        for (auto it = oldCard->tag.cbegin(); it != oldCard->tag.cend(); ++it)
+            card->setTag(it.key(), it.value());
+        if (!requireId)
+            card->setFlags(oldCard->getFlags());
+        const bool destroyed = destroyOwnedCard(oldCard);
+        Q_ASSERT(destroyed);
     }
     m_card = card;
-    Card::setId(card->getId());
+    lifetimeManager.cancelAdoption(token);
+    // copyEverythingFrom() adopts the inner card's id onto the wrapper; takeOver()
+    // keeps the wrapper's id and stamps it onto the new inner card.
+    if (requireId)
+        Card::setId(card->getId());
+    const int wrapperId = getId();
+    if (wrapperId >= 0)
+        m_card->Card::setId(wrapperId);
     Card::setSuit(card->getSuit());
     Card::setNumber(card->getNumber());
     m_skillName = card->getSkillName(false);
+    m_skillInstanceId = card->getSkillInstanceId();
+    setSourceSkill(card->getSourceSkillName(), card->getSourceSkillInstanceId());
+    setActivationSkill(card->getActivationSkillName(), card->getActivationSkillInstanceId());
     setObjectName(card->objectName());
-    flags = card->getFlags();*/
-	if(card->getId() >= 0 && card != this && m_card != card){
-		if (m_card) {
-			m_isModified = true;
-			m_card->deleteLater();
-			card->tag = m_card->tag;
-		}
-		m_card = card;
-		Card::setId(card->getId());
-		Card::setSuit(card->getSuit());
-		Card::setNumber(card->getNumber());
-		m_skillName = card->getSkillName(false);
-		m_skillInstanceId = card->getSkillInstanceId();
-		setSourceSkill(card->getSourceSkillName(), card->getSourceSkillInstanceId());
-		setActivationSkill(card->getActivationSkillName(), card->getActivationSkillInstanceId());
-		setObjectName(card->objectName());
-		flags = card->getFlags();
-	}
+    if (requireId)
+        flags = card->getFlags();
 }
 
 void WrappedCard::setFlags(const QString &flag) const

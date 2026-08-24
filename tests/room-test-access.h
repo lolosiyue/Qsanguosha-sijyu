@@ -6,6 +6,9 @@
 #include "room.h"
 #include "room-roster.h"
 #include "roomthread.h"
+#include "roomthread1v1.h"
+#include "roomthread3v3.h"
+#include "roomthreadxmode.h"
 #include "serverplayer.h"
 #include "skill.h"
 #include "skill-instance-types.h"
@@ -66,6 +69,11 @@ struct RoomTestAccess
         attachThread(room);
         if (skill)
             room.thread->addTriggerSkill(skill);
+    }
+
+    static QThread *canonicalThread(Room &room)
+    {
+        return room.thread;
     }
 
     static void notifySkillInstanceState(Room &room, ServerPlayer *owner,
