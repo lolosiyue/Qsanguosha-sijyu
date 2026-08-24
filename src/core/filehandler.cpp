@@ -1,5 +1,5 @@
 
-#include "FileHandler.h"
+#include "filehandler.h"
 //#include <QDir>
 #ifdef ANDROID
 //#include "android_assets.h"
