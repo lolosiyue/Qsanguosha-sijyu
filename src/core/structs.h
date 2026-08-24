@@ -46,7 +46,6 @@ struct SkillAmountChangeStruct {
 };
 Q_DECLARE_METATYPE(SkillAmountChangeStruct)
 
-
 struct DamageStruct {
     enum Nature
     {
@@ -61,6 +60,11 @@ struct DamageStruct {
     DamageStruct();
     DamageStruct(const Card*card, ServerPlayer*from, ServerPlayer*to, int damage = 1, Nature nature = Normal);
     DamageStruct(const QString&reason, ServerPlayer*from, ServerPlayer*to, int damage = 1, Nature nature = Normal);
+    DamageStruct(const DamageStruct &other);
+    DamageStruct(DamageStruct &&other) noexcept;
+    DamageStruct &operator=(const DamageStruct &other);
+    DamageStruct &operator=(DamageStruct &&other) noexcept;
+    ~DamageStruct();
 
     ServerPlayer*from;
     ServerPlayer*to;
@@ -92,6 +96,11 @@ struct HpLostStruct {
 
 struct CardEffectStruct {
     CardEffectStruct();
+    CardEffectStruct(const CardEffectStruct &other);
+    CardEffectStruct(CardEffectStruct &&other) noexcept;
+    CardEffectStruct &operator=(const CardEffectStruct &other);
+    CardEffectStruct &operator=(CardEffectStruct &&other) noexcept;
+    ~CardEffectStruct();
 
     const Card*card;
 	
@@ -112,6 +121,11 @@ struct CardEffectStruct {
 
 struct SlashEffectStruct {
     SlashEffectStruct();
+    SlashEffectStruct(const SlashEffectStruct &other);
+    SlashEffectStruct(SlashEffectStruct &&other) noexcept;
+    SlashEffectStruct &operator=(const SlashEffectStruct &other);
+    SlashEffectStruct &operator=(SlashEffectStruct &&other) noexcept;
+    ~SlashEffectStruct();
 
     int jink_num;
 
@@ -145,6 +159,11 @@ struct CardUseStruct {
                   const Card*whocard = nullptr, ServerPlayer*who = nullptr);
     CardUseStruct(const Card*card, ServerPlayer*from, ServerPlayer*target = nullptr, bool isOwnerUse = true,
                   const Card*whocard = nullptr, ServerPlayer*who = nullptr);
+    CardUseStruct(const CardUseStruct &other);
+    CardUseStruct(CardUseStruct &&other) noexcept;
+    CardUseStruct &operator=(const CardUseStruct &other);
+    CardUseStruct &operator=(CardUseStruct &&other) noexcept;
+    ~CardUseStruct();
     bool isValid(const QString&pattern) const;
     void parse(const QString&str, Room*room);
     bool tryParse(const QVariant&usage, Room*room);
@@ -173,11 +192,35 @@ struct CardUseStruct {
     int skillExecutionID;
 
 private:
-    QSharedPointer<Card> m_ownedCard;
+    // CardUseStruct owns only a transient Card; use a manager-aware deleter.
+    class OwnedCardPtr final {
+    public:
+        OwnedCardPtr() = default;
+        OwnedCardPtr(const OwnedCardPtr &) = default;
+        OwnedCardPtr(OwnedCardPtr &&) noexcept = default;
+        OwnedCardPtr &operator=(const OwnedCardPtr &) = default;
+        OwnedCardPtr &operator=(OwnedCardPtr &&) noexcept = default;
+        ~OwnedCardPtr() = default;
+
+        void reset(Card *card);
+        void clear() { m_ptr.clear(); }
+        bool isNull() const { return m_ptr.isNull(); }
+        Card *data() const { return m_ptr.data(); }
+
+    private:
+        QSharedPointer<Card> m_ptr;
+    };
+
+    OwnedCardPtr m_ownedCard;
 };
 
 class CardMoveReason {
 public:
+    CardMoveReason(const CardMoveReason &other);
+    CardMoveReason(CardMoveReason &&other) noexcept;
+    CardMoveReason &operator=(const CardMoveReason &other);
+    CardMoveReason &operator=(CardMoveReason &&other) noexcept;
+    ~CardMoveReason();
     int m_reason;
     QString m_playerId; // the cause (not the source) of the movement, such as "lusu" when "dimeng", or "zhanghe" when "qiaobian"
     QString m_targetId; // To keep this structure lightweight, currently this is only used for UI purpose.
@@ -299,6 +342,13 @@ public:
 };
 
 struct CardsMoveOneTimeStruct {
+    CardsMoveOneTimeStruct() = default;
+    CardsMoveOneTimeStruct(const CardsMoveOneTimeStruct &other);
+    CardsMoveOneTimeStruct(CardsMoveOneTimeStruct &&other) noexcept;
+    CardsMoveOneTimeStruct &operator=(const CardsMoveOneTimeStruct &other);
+    CardsMoveOneTimeStruct &operator=(CardsMoveOneTimeStruct &&other) noexcept;
+    ~CardsMoveOneTimeStruct();
+
     QList<int> card_ids;
     QList<Player::Place> from_places;
     Player::Place to_place;
@@ -333,6 +383,12 @@ struct CardsMoveOneTimeStruct {
 };
 
 struct CardsMoveStruct {
+    CardsMoveStruct(const CardsMoveStruct &other);
+    CardsMoveStruct(CardsMoveStruct &&other) noexcept;
+    CardsMoveStruct &operator=(const CardsMoveStruct &other);
+    CardsMoveStruct &operator=(CardsMoveStruct &&other) noexcept;
+    ~CardsMoveStruct();
+
     inline CardsMoveStruct()
     {
         from_place = Player::PlaceUnknown;
@@ -473,6 +529,11 @@ struct DeathStruct {
 struct RecoverStruct {
     RecoverStruct(ServerPlayer*who = nullptr, const Card*card = nullptr, int recover = 1, const QString&reason = "");
     RecoverStruct(const QString&reason, ServerPlayer*who = nullptr, int recover = 1);
+    RecoverStruct(const RecoverStruct &other);
+    RecoverStruct(RecoverStruct &&other) noexcept;
+    RecoverStruct &operator=(const RecoverStruct &other);
+    RecoverStruct &operator=(RecoverStruct &&other) noexcept;
+    ~RecoverStruct();
 
     int recover;
     ServerPlayer*who;
@@ -555,41 +616,15 @@ struct PhaseStruct {
 };
 
 struct CardResponseStruct {
-    inline CardResponseStruct()
-    {
-        m_card = nullptr;
-        m_who = nullptr;
-        m_isUse = false;
-        m_isRetrial = false;
-        m_toCard = nullptr;
-        m_isHandcard = false;
-        nullified = false;
-        skillExecutionID = 0;
-    }
+    CardResponseStruct();
+    CardResponseStruct(const Card*card, bool isUse);
+    CardResponseStruct(const Card*card, ServerPlayer*who, bool isUse = false);
 
-    inline CardResponseStruct(const Card*card, bool isUse)
-    {
-        m_card = card;
-        m_who = nullptr;
-        m_isUse = isUse;
-        m_isRetrial = false;
-        m_toCard = nullptr;
-        m_isHandcard = false;
-        nullified = false;
-        skillExecutionID = 0;
-    }
-
-    inline CardResponseStruct(const Card*card, ServerPlayer*who = nullptr, bool isUse = false)
-    {
-        m_card = card;
-        m_who = who;
-        m_isUse = isUse;
-        m_isRetrial = false;
-        m_toCard = nullptr;
-        m_isHandcard = false;
-        nullified = false;
-        skillExecutionID = 0;
-    }
+    CardResponseStruct(const CardResponseStruct &other);
+    CardResponseStruct(CardResponseStruct &&other) noexcept;
+    CardResponseStruct &operator=(const CardResponseStruct &other);
+    CardResponseStruct &operator=(CardResponseStruct &&other) noexcept;
+    ~CardResponseStruct();
 
     void changeCard(Card*newcard);
 

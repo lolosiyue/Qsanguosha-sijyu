@@ -9,6 +9,8 @@
 #include "room.h"
 #include "roomthread.h"
 #include "lua-wrapper.h"
+#include "card-lifetime-manager.h"
+#include <stdexcept>
 
 //#include <QDir>
 
@@ -20,22 +22,62 @@
 %include "list.i"
 
 %init %{
-	// Lua compares full userdata by wrapper identity. All SWIG classes share this
-	// pointer-based __eq so two wrappers for the same C++ object compare equal.
-#if SWIG_VERSION >= 0x040400
-	lua_pushcfunction(L, SWIG_Lua_equal);
-#else
-	lua_pushcfunction(L, SWIG_Lua_class_equal);
-#endif
+	lua_CFunction cardGc = [](lua_State *state) -> int {
+		if (!lua_isuserdata(state, 1))
+			return 0;
+		swig_lua_userdata *userdata = (swig_lua_userdata *)lua_touserdata(state, 1);
+		Card *card = static_cast<Card *>(userdata->ptr);
+		bool originalOwner = userdata->own != 0;
+		const auto boundToken = globalCardLifetimeManager().releaseWrapperBinding(
+			lua_touserdata(state, 1), &originalOwner);
+		if (!boundToken)
+			return SWIG_Lua_class_destruct(state);
+		if (!card) {
+			userdata->own = 0;
+			return 0;
+		}
+		if (originalOwner && globalCardLifetimeManager().isLive(boundToken))
+			globalCardLifetimeManager().requestLuaDelete(boundToken);
+		userdata->own = 0;
+		userdata->ptr = nullptr;
+		return 0;
+	};
+	lua_CFunction equalsFunction = [](lua_State *state) -> int {
+		if (!lua_isuserdata(state, 1) || !lua_isuserdata(state, 2))
+			return 0;
+		const auto leftToken = globalCardLifetimeManager().wrapperBinding(
+			lua_touserdata(state, 1));
+		const auto rightToken = globalCardLifetimeManager().wrapperBinding(
+			lua_touserdata(state, 2));
+		const bool leftCard = !!leftToken;
+		const bool rightCard = !!rightToken;
+		if (leftCard || rightCard) {
+			if (!leftCard || !rightCard)
+				lua_pushboolean(state, 0);
+			else {
+				lua_pushboolean(state, leftToken && rightToken && leftToken.get() == rightToken.get());
+			}
+			return 1;
+		}
+		return SWIG_Lua_class_equal(state);
+	};
+	lua_pushcfunction(L, equalsFunction);
 	const int pointerEquals = lua_gettop(L);
 	for (int i = 0; swig_types[i]; ++i) {
 		if (!swig_types[i]->clientdata) continue;
 		swig_lua_class *clss = (swig_lua_class *)swig_types[i]->clientdata;
 		SWIG_Lua_get_class_metatable(L, clss->name);
 		if (lua_istable(L, -1)) {
-			lua_pushstring(L, "__eq");
-			lua_pushvalue(L, pointerEquals);
-			lua_rawset(L, -3);
+            const bool cardClass = qsgsCardExposure(swig_types[i])
+                || qsgsQObjectExposure(swig_types[i]);
+			if (cardClass) {
+				lua_pushstring(L, "__eq");
+				lua_pushvalue(L, pointerEquals);
+				lua_rawset(L, -3);
+				lua_pushstring(L, "__gc");
+				lua_pushcfunction(L, cardGc);
+				lua_rawset(L, -3);
+			}
 		}
 		lua_pop(L, 1);
 	}
@@ -1260,6 +1302,8 @@ public:
 
 	// constructor
 	Card(Suit suit, int number, bool target_fixed = false, bool damage_card = false, bool is_gift = false, bool single_target = false);
+	quint64 lifetimeGeneration() const;
+	bool lifetimeIsLive() const;
 
 	virtual QString objectName(bool different_slash = true) const;
 
@@ -1420,13 +1464,207 @@ public:
 	}
 
 	void deleteLater() {
-		$self->deleteLater();
+		QByteArray error;
+		if (!globalCardLifetimeManager().requestLuaDelete($self, &error))
+			throw std::runtime_error(error.constData());
 	}
 
 	bool inherits(const char*class_name) {
 		return $self->inherits(class_name);
 	}
 };
+
+%typemap(out) Card *
+%{
+SWIG_NewPointerObj(L, (void *)$1, SWIGTYPE_p_Card, 0);
+SWIG_arg++;
+%}
+
+%insert(runtime) %{
+#include "engine.h"
+#include "card-lifetime-manager.h"
+#include <cstring>
+
+/* Card exposure policy is layered after SWIG's stock Lua helpers.  The
+ * relation follows SWIG's resolved base metadata, never a class-name guess.
+ * Non-Card types continue through the unmodified SWIG runtime functions. */
+static bool qsgsCardClass(const swig_lua_class *klass)
+{
+    if (!klass)
+        return false;
+    if (klass->name && strcmp(klass->name, "Card") == 0)
+        return true;
+    for (int i = 0; klass->base_names && klass->base_names[i]; ++i) {
+        if (strcmp(klass->base_names[i], "Card *") == 0)
+            return true;
+        if (klass->bases && klass->bases[i] && qsgsCardClass(klass->bases[i]))
+            return true;
+    }
+    return false;
+}
+
+static bool qsgsCardExposure(swig_type_info *type)
+{
+    return type && type->clientdata
+        && qsgsCardClass(static_cast<const swig_lua_class *>(type->clientdata));
+}
+
+static bool qsgsQObjectExposure(swig_type_info *type)
+{
+    return type && type->clientdata
+        && static_cast<const swig_lua_class *>(type->clientdata)->name
+        && strcmp(static_cast<const swig_lua_class *>(type->clientdata)->name,
+                  "QObject") == 0;
+}
+
+static bool qsgsCardListExposure(swig_type_info *type)
+{
+    const char *name = type ? type->name : nullptr;
+    if (!name)
+        return false;
+    static const char *const cardListTypes[] = {
+        "_p_QListT_Card_const_p_t",
+        "_p_QListT_DelayedTrick_const_p_t",
+        "_p_QListT_EquipCard_const_p_t",
+        nullptr
+    };
+    for (int i = 0; cardListTypes[i]; ++i) {
+        if (strcmp(name, cardListTypes[i]) == 0)
+            return true;
+    }
+    return false;
+}
+
+static Card *qsgsDynamicCard(void *pointer, swig_type_info *type)
+{
+    if (!pointer)
+        return nullptr;
+    if (qsgsCardExposure(type) && !qsgsCardListExposure(type))
+        return static_cast<Card *>(pointer);
+    if (qsgsQObjectExposure(type))
+        return qobject_cast<Card *>(static_cast<QObject *>(pointer));
+    return nullptr;
+}
+
+static void qsgsCardNewPointerObj(lua_State *state, void *pointer,
+                                  swig_type_info *type, int owner)
+{
+    Card *dynamicCard = qsgsCardListExposure(type)
+        ? nullptr : qsgsDynamicCard(pointer, type);
+    if (!dynamicCard) {
+        SWIG_Lua_NewPointerObj(state, pointer, type, owner);
+        return;
+    }
+    Card *card = dynamicCard;
+    const auto token = card ? globalCardLifetimeManager().observeLive(card) : nullptr;
+    if (!token || !card->lifetimeIsLive()) {
+        lua_pushnil(state);
+        return;
+    }
+    SWIG_Lua_NewPointerObj(state, pointer, type, 0);
+    globalCardLifetimeManager().retainWrapper(token);
+    globalCardLifetimeManager().bindWrapper(lua_touserdata(state, -1), token,
+                                            owner != 0);
+}
+
+static int qsgsCardConvertPtr(lua_State *state, int index, void **pointer,
+                              swig_type_info *type, int flags)
+{
+    const bool cardType = (qsgsCardExposure(type) && !qsgsCardListExposure(type))
+        || qsgsQObjectExposure(type);
+    const auto boundToken = lua_isuserdata(state, index)
+        ? globalCardLifetimeManager().wrapperBinding(lua_touserdata(state, index))
+        : std::shared_ptr<const CardLifetimeToken>();
+    if (boundToken && !globalCardLifetimeManager().isLive(boundToken)) {
+        *pointer = nullptr;
+        return SWIG_ERROR;
+    }
+    if (cardType && lua_islightuserdata(state, index)) {
+        *pointer = nullptr;
+        return SWIG_ERROR;
+    }
+    const int result = SWIG_Lua_ConvertPtr(state, index, pointer, type, flags);
+    if (SWIG_IsOK(result) && pointer && *pointer) {
+        Card *card = qsgsDynamicCard(*pointer, type);
+        if (!card)
+            return result;
+        if (!globalCardLifetimeManager().isLive(card)
+            || !card->lifetimeIsLive()) {
+            *pointer = nullptr;
+            return SWIG_ERROR;
+        }
+    }
+    return result;
+}
+
+static void *qsgsCardMustGetPtr(lua_State *state, int index,
+                                swig_type_info *type, int flags, int argnum,
+                                const char *functionName)
+{
+    void *pointer = nullptr;
+    if (!SWIG_IsOK(qsgsCardConvertPtr(state, index, &pointer, type, flags))) {
+        if (qsgsCardExposure(type) && !qsgsCardListExposure(type))
+            luaL_error(state, "Lua error: attempt to use deleted Card");
+        luaL_error(state, "Error in %s, expected a %s at argument number %d\n",
+                   functionName, (type && type->str) ? type->str : "void*",
+                   argnum);
+    }
+    return pointer;
+}
+
+#undef SWIG_NewPointerObj
+#undef SWIG_ConvertPtr
+#undef SWIG_MustGetPtr
+#define SWIG_NewPointerObj(L, ptr, type, owner) \
+    qsgsCardNewPointerObj(L, (void *)(ptr), type, owner)
+#define SWIG_ConvertPtr(L, index, ptr, type, flags) \
+    qsgsCardConvertPtr(L, index, ptr, type, flags)
+#define SWIG_MustGetPtr(L, index, type, flags, argnum, fnname) \
+    qsgsCardMustGetPtr(L, index, type, flags, argnum, fnname)
+%}
+
+%typemap(out) const Card *
+%{
+SWIG_NewPointerObj(L, (void *)$1, SWIGTYPE_p_Card, 0);
+SWIG_arg++;
+%}
+
+%typemap(in) Card *
+%{
+if (lua_islightuserdata(L, $input)) {
+    luaL_error(L, "expected Card userdata");
+}
+void *cardPointer;
+cardPointer = nullptr;
+if (!SWIG_IsOK(SWIG_ConvertPtr(L, $input, &cardPointer, SWIGTYPE_p_Card, 0)) || cardPointer == nullptr) {
+    lua_pushliteral(L, "expected Card userdata");
+    SWIG_fail;
+}
+$1 = ($1_ltype)cardPointer;
+if (!globalCardLifetimeManager().observeLive($1) || !$1->lifetimeIsLive()) {
+    lua_pushliteral(L, "Lua error: attempt to use deleted Card");
+    SWIG_fail;
+}
+%}
+
+%typemap(in) const Card *
+%{
+if (lua_islightuserdata(L, $input)) {
+    lua_pushliteral(L, "Lua error: attempt to use deleted Card");
+    SWIG_fail;
+}
+void *cardPointer;
+cardPointer = nullptr;
+if (!SWIG_IsOK(SWIG_ConvertPtr(L, $input, &cardPointer, SWIGTYPE_p_Card, 0)) || cardPointer == nullptr) {
+    lua_pushliteral(L, "expected Card userdata");
+    SWIG_fail;
+}
+$1 = ($1_ltype)cardPointer;
+if (!globalCardLifetimeManager().observeLive($1) || !$1->lifetimeIsLive()) {
+    lua_pushliteral(L, "Lua error: attempt to use deleted Card");
+    SWIG_fail;
+}
+%}
 
 class WrappedCard: public Card {
 public:
@@ -2375,6 +2613,14 @@ void Room::doScript(const QString&script)
 %include "card.i"
 %include "luaskills.i"
 %include "ai.i"
+
+/* A freshly cloned Lua card is a native owner surface.  Route it through the
+ * same Card interceptor while retaining the original-own bit in its sidecar. */
+%typemap(out) LuaBasicCard *
+%{
+SWIG_NewPointerObj(L, (void *)$1, SWIGTYPE_p_LuaBasicCard, SWIG_POINTER_OWN);
+SWIG_arg++;
+%}
 
 %extend LuaTriggerSkill {
 	QString objectName() const {

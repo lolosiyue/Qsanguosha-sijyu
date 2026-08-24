@@ -2,6 +2,7 @@
 #include "engine.h"
 #include "room.h"
 #include "json.h"
+#include "card-lifetime-manager.h"
 #include <QMetaType>
 
 // 註冊技能多實例相關 metatype——確保 QVariant::toString() 回傳基礎技能名
@@ -16,6 +17,123 @@ static struct SkillInstanceMetaRegistrar {
         });
     }
 } _sir;
+
+namespace {
+void releaseOwnedCard(Card *card)
+{
+    if (card)
+        card->QObject::deleteLater();
+}
+}
+
+void CardUseStruct::OwnedCardPtr::reset(Card *card)
+{
+    if (!card) {
+        m_ptr.clear();
+        return;
+    }
+    m_ptr = QSharedPointer<Card>(card, &releaseOwnedCard);
+}
+
+CardMoveReason::CardMoveReason(const CardMoveReason &other) { *this = other; }
+CardMoveReason::CardMoveReason(CardMoveReason &&other) noexcept { *this = other; }
+CardMoveReason &CardMoveReason::operator=(const CardMoveReason &other)
+{
+    if (this == &other) return *this;
+    const QVariant previousExtraData = m_extraData;
+    globalCardLifetimeManager().releaseEventPayload(this);
+    m_reason=other.m_reason; m_playerId=other.m_playerId; m_targetId=other.m_targetId;
+    m_skillName=other.m_skillName; m_eventName=other.m_eventName; m_extraData=other.m_extraData;
+    m_useStruct=other.m_useStruct;
+    QByteArray error;
+    if (!globalCardLifetimeManager().retainVariantPayload(this, m_extraData, &error)) {
+        m_extraData = previousExtraData;
+        globalCardLifetimeManager().retainVariantPayload(this, previousExtraData, nullptr);
+    }
+    return *this;
+}
+CardMoveReason &CardMoveReason::operator=(CardMoveReason &&other) noexcept { return operator=(static_cast<const CardMoveReason &>(other)); }
+CardMoveReason::~CardMoveReason() { globalCardLifetimeManager().releaseEventPayload(this); }
+
+CardsMoveOneTimeStruct::CardsMoveOneTimeStruct(const CardsMoveOneTimeStruct &other)
+{
+    *this = other;
+}
+
+CardsMoveOneTimeStruct::CardsMoveOneTimeStruct(CardsMoveOneTimeStruct &&other) noexcept
+{
+    *this = other;
+}
+
+CardsMoveOneTimeStruct &CardsMoveOneTimeStruct::operator=(const CardsMoveOneTimeStruct &other)
+{
+    if (this == &other) return *this;
+    globalCardLifetimeManager().releaseEventPayload(this);
+    card_ids = other.card_ids;
+    from_places = other.from_places;
+    to_place = other.to_place;
+    reason = other.reason;
+    from = other.from;
+    to = other.to;
+    from_pile_names = other.from_pile_names;
+    to_pile_name = other.to_pile_name;
+    open = other.open;
+    is_last_handcard = other.is_last_handcard;
+    last_hand_suits = other.last_hand_suits;
+    shown_ids = other.shown_ids;
+    broken_ids = other.broken_ids;
+    return *this;
+}
+
+CardsMoveOneTimeStruct &CardsMoveOneTimeStruct::operator=(CardsMoveOneTimeStruct &&other) noexcept
+{
+    return operator=(static_cast<const CardsMoveOneTimeStruct &>(other));
+}
+
+CardsMoveOneTimeStruct::~CardsMoveOneTimeStruct()
+{
+    globalCardLifetimeManager().releaseEventPayload(this);
+}
+
+CardsMoveStruct::CardsMoveStruct(const CardsMoveStruct &other)
+{
+    *this = other;
+}
+
+CardsMoveStruct::CardsMoveStruct(CardsMoveStruct &&other) noexcept
+{
+    *this = other;
+}
+
+CardsMoveStruct &CardsMoveStruct::operator=(const CardsMoveStruct &other)
+{
+    if (this == &other) return *this;
+    globalCardLifetimeManager().releaseEventPayload(this);
+    card_ids = other.card_ids;
+    to_place = other.to_place;
+    from_place = other.from_place;
+    from_player_name = other.from_player_name;
+    to_player_name = other.to_player_name;
+    from_pile_name = other.from_pile_name;
+    to_pile_name = other.to_pile_name;
+    from = other.from;
+    to = other.to;
+    reason = other.reason;
+    open = other.open;
+    is_last_handcard = other.is_last_handcard;
+    last_hand_suits = other.last_hand_suits;
+    return *this;
+}
+
+CardsMoveStruct &CardsMoveStruct::operator=(CardsMoveStruct &&other) noexcept
+{
+    return operator=(static_cast<const CardsMoveStruct &>(other));
+}
+
+CardsMoveStruct::~CardsMoveStruct()
+{
+    globalCardLifetimeManager().releaseEventPayload(this);
+}
 
 SkillAmountChangeStruct::SkillAmountChangeStruct()
     : source(nullptr), oldAmount(0), newAmount(0), canceled(false), resetToBase(false)

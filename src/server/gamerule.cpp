@@ -5,6 +5,7 @@
 #include "roomthread.h"
 #include "wrapped-card.h"
 #include "crashhandler.h"
+#include "card-lifetime-manager.h"
 
 static void restoreSkillExecutionIdentity(Room *room, qint64 executionID,
                                           SkillContext &context, ServerPlayer *acceptedInvoker)
@@ -553,11 +554,13 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
 
 		if(card_use.card->getTypeId()>0){
 			if(player->getTag("ComboMovesCard").isValid()){
-				delete player->getTag("ComboMovesCard").value<const Card*>();
+				const CardTagOwner owner = player->getTag("ComboMovesCard").value<CardTagOwner>();
+				if (owner.card)
+					owner.card->deleteLater();
 				player->removeTag("ComboMovesCard");
 			}
 			if(!card_use.card->hasFlag("ComboMoves"))
-				player->setTag("ComboMovesCard", QVariant::fromValue((const Card*)Sanguosha->cloneCard(card_use.card)));
+				player->setTag("ComboMovesCard", QVariant::fromValue(CardTagOwner{Sanguosha->cloneCard(card_use.card)}));
 		}
 
 		const Card *ec = Sanguosha->getEngineCard(card_use.card->getId());

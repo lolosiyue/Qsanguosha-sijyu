@@ -1,12 +1,24 @@
 #include "room-state.h"
+#include "card-lifetime-manager.h"
 #include "engine.h"
 #include "wrapped-card.h"
 
 RoomState::~RoomState()
 {
-    foreach(Card *card, m_cards.values())
+    clear();
+}
+
+void RoomState::clear()
+{
+    CardLifetimeManager &manager = globalCardLifetimeManager();
+    foreach(Card *card, m_cards.values()) {
+        manager.observeCard(card);
         delete card;
+    }
     m_cards.clear();
+    m_currentPlayer = nullptr;
+    m_currentCardUsePattern.clear();
+    m_flags.clear();
 }
 
 Card *RoomState::getCard(int cardId) const
@@ -36,7 +48,11 @@ Card *RoomState::getCard(int cardId) const
 
 void RoomState::resetCard(int cardId) const
 {
-    Card *newCard = Card::Clone(Sanguosha->getEngineCard(cardId));
+    WrappedCard *wrapped = m_cards.value(cardId, nullptr);
+    const Card *engineCard = Sanguosha->getEngineCard(cardId);
+    if (!wrapped || !engineCard)
+        return;
+    Card *newCard = Card::Clone(engineCard);
     if (newCard){/*
 		newCard->tag = m_cards[cardId]->tag;
 		newCard->setFlags(m_cards[cardId]->getFlags());*/
@@ -50,10 +66,18 @@ void RoomState::resetCard(int cardId) const
 // Reset all cards, generals' states of the room instance
 void RoomState::reset()
 {
-    foreach(WrappedCard *card, m_cards.values())
-        delete card;
-    m_cards.clear();
-    for (int i = 0; i < Sanguosha->getCardCount(); i++)
-        m_cards[i] = new WrappedCard(Card::Clone(Sanguosha->getEngineCard(i)));
+    clear();
+    for (int i = 0; i < Sanguosha->getCardCount(); i++) {
+        const Card *engineCard = Sanguosha->getEngineCard(i);
+        if (!engineCard)
+            continue;
+        Card *clone = Card::Clone(engineCard);
+        if (!clone)
+            continue;
+        WrappedCard *wrapped = new WrappedCard(nullptr);
+        wrapped->setAdoptionOwnerThread(m_ownerThread);
+        wrapped->copyEverythingFrom(clone);
+        m_cards[i] = wrapped;
+    }
 }
 

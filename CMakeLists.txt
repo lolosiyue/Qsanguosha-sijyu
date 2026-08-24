@@ -77,6 +77,8 @@ add_library(qsanguosha_engine STATIC
     src/core/banpair.cpp
     src/core/banpair.h
     src/core/card.cpp
+    src/core/card-lifetime-manager.cpp
+    src/core/card-lifetime-manager.h
     src/core/card.h
     src/core/ai-data-store.cpp
     src/core/ai-data-store.h

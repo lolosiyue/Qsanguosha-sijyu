@@ -7,6 +7,7 @@
 #include <QMap>
 #include <QMultiMap>
 #include <QObject>
+#include <QSet>
 
 class Card;
 class CardPattern;
@@ -19,6 +20,9 @@ class RoomDefinitionRegistry
 {
 public:
     explicit RoomDefinitionRegistry(Engine &engine);
+
+    void setBaselineAddresses(const QSet<const void *> &addresses) { m_baselineAddresses = addresses; }
+    void clear();
 
     void addPackage(Package *package);
     void setPackage(Package *package);
@@ -36,6 +40,7 @@ public:
     QList<const General *> generals() const;
 
     const Card *engineCard(int id) const;
+    bool isEngineCard(const Card *card) const;
     const Card *cardTemplate(const QString &name) const;
     int cardCount(int bootstrapCount) const;
 
@@ -83,6 +88,7 @@ private:
     QHash<QString, const LuaSkillCard *> m_luaSkillCards;
 
     QObject m_definitionRoot;
+    QSet<const void *> m_baselineAddresses;
 };
 
 #endif

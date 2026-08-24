@@ -127,7 +127,9 @@ lua_State *CreateLuaState()
 {
     lua_State *L = luaL_newstate();
     if (!L)
+    {
         return nullptr;
+    }
     luaL_openlibs(L);
     luaopen_sgs(L);
     return L;

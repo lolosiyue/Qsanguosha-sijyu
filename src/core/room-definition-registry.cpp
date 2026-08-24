@@ -1,5 +1,7 @@
 #include "room-definition-registry.h"
 
+#include "card.h"
+#include "card-lifetime-manager.h"
 #include "engine.h"
 #include "general.h"
 #include "lua-wrapper.h"
@@ -12,11 +14,63 @@ RoomDefinitionRegistry::RoomDefinitionRegistry(Engine &engine)
 {
 }
 
+void RoomDefinitionRegistry::clear()
+{
+    const QObjectList children = m_definitionRoot.children();
+    CardLifetimeManager &manager = globalCardLifetimeManager();
+    QSet<const void *> baselineAddresses = m_baselineAddresses;
+    for (const Card *card : std::as_const(m_engine.cards))
+        if (card)
+            baselineAddresses.insert(card);
+    for (QObject *child : children) {
+        const QList<Card *> cards = child->findChildren<Card *>();
+        if (const Card *card = qobject_cast<const Card *>(child))
+            baselineAddresses.insert(card);
+        for (const Card *card : cards) {
+            if (card && m_engine.cards.contains(const_cast<Card *>(card)))
+                baselineAddresses.insert(card);
+        }
+    }
+    if (baselineAddresses != m_baselineAddresses) {
+        m_baselineAddresses = baselineAddresses;
+        manager.setDomainBaseline(this, baselineAddresses);
+    }
+    const auto borrowedCard = [this](const Card *card) {
+        return card && (m_baselineAddresses.contains(card) || m_engine.cards.contains(card));
+    };
+    for (QObject *child : children) {
+        QList<Card *> cards = child->findChildren<Card *>();
+        if (Card *card = qobject_cast<Card *>(child))
+            cards.prepend(card);
+        for (Card *card : cards) {
+            if (borrowedCard(card)) {
+                card->setParent(m_engine.cards.contains(card) ? &m_engine : nullptr);
+                continue;
+            }
+            manager.observeCard(card);
+        }
+        delete child;
+    }
+    if (!m_definitionRoot.children().isEmpty())
+        qFatal("Room definition root retained children after shutdown");
+    m_packages.clear();
+    m_generals.clear();
+    m_cards.clear();
+    m_cardIds.clear();
+    m_cardTemplates.clear();
+    m_patterns.clear();
+    m_relatedSkills.clear();
+    m_translations.clear();
+    m_initialTranslations.clear();
+    m_luaSkillCards.clear();
+}
+
 void RoomDefinitionRegistry::addPackage(Package *package)
 {
     if (!package || m_packages.contains(package->objectName()))
         return;
-    package->setParent(&m_definitionRoot);
+    if (!package->parent())
+        package->setParent(&m_definitionRoot);
     m_packages.insert(package->objectName(), package);
     indexPackage(package);
 }
@@ -162,6 +216,11 @@ QList<const Skill *> RoomDefinitionRegistry::allSkills() const
 const Card *RoomDefinitionRegistry::engineCard(int id) const
 {
     return m_cards.value(id, nullptr);
+}
+
+bool RoomDefinitionRegistry::isEngineCard(const Card *card) const
+{
+    return card && m_engine.cards.contains(const_cast<Card *>(card));
 }
 
 const Card *RoomDefinitionRegistry::cardTemplate(const QString &name) const

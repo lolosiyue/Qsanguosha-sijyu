@@ -1,4 +1,5 @@
 #include "room.h"
+#include "card-lifetime-manager.h"
 #include "ai-decision-coordinator.h"
 #include "card-movement-service.h"
 #include "extra-turn-scheduler.h"
@@ -18,6 +19,7 @@
 #include "settings.h"
 #include "standard.h"
 #include "ai.h"
+#include "card-lifetime-manager.h"
 #include "scenario.h"
 #include "gamerule.h"
 #include "banpair.h"
@@ -28,6 +30,7 @@
 #include "generalselector.h"
 #include "miniscenarios.h"
 #include "lua.hpp"
+#include "lua-runtime.h"
 #include "lua-wrapper.h"
 #include "exppattern.h"
 #include "wrapped-card.h"
@@ -209,7 +212,7 @@ Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionC
 	const bool runtimeReady = m_runtime->initialize(&runtimeError);
 	if (!runtimeReady) {
 		qCritical("Room Lua runtime initialization failed: %s", qUtf8Printable(runtimeError));
-		m_runtime->lua().shutdown();
+		m_runtime->shutdownForInitFailure();
 	} else {
 		LuaRuntime::Binding luaBinding(m_runtime->lua());
 		EngineRuntimeContextScope contextScope(*Sanguosha, this);
@@ -222,8 +225,11 @@ Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionC
 
 Room::~Room()
 {
+    globalCardLifetimeManager().releaseVariantTags(this);
 	if (!stopGameThreads(10000))
 		qFatal("Room worker did not stop before runtime destruction");
+	if (m_runtime)
+		m_runtime->shutdownFinal();
 	delete thread_3v3.data();
 	delete thread_xmode.data();
 	delete thread_1v1.data();
@@ -1153,7 +1159,7 @@ const Card*Room::isCanceled(const CardEffectStruct&effect)
 		effect.to->setTag("TrickEffectData", QVariant::fromValue(effect));
 		return askForNullification(effect.card, effect.from, effect.to, true);
 	}else if (effect.card->isKindOf("Slash")){
-		tag["SlashData"] = QVariant::fromValue(effect);
+		setTag("SlashData", QVariant::fromValue(effect));
 		if (effect.offset_num==1){
 			const Card*jink = askForUseCard(effect.to,"jink","slash-jink:"+effect.from->objectName(),-1,Card::MethodUse,true,effect.from,effect.card);
 			if (jink&&!useNullified(jink))
@@ -3634,6 +3640,7 @@ bool Room::useCard(const CardUseStruct&use, bool add_history)
 
 bool Room::useCard(CardUseStruct&use, bool add_history)
 {
+	CardLifetimeScope cardScope(globalCardLifetimeManager());
 	if (!resolveCardSkillInstance(use)) return false;
 	// Revalidate only client/AI-selected targets. Server-created uses may carry
 	// authoritative targets for target-fixed cards, such as Peach in dying rescue.
@@ -5095,6 +5102,11 @@ void Room::clearSkillInvalidityBySource(ServerPlayer *source)
 
 void Room::setTag(const QString&key, const QVariant&value)
 {
+	QByteArray error;
+	if (!globalCardLifetimeManager().retainVariantTag(this, key.toUtf8(), value, &error)) {
+		qWarning("Room tag '%s' rejected: %s", qPrintable(key), error.constData());
+		return;
+	}
 	tag.insert(key, value);
 	if (scenario) scenario->onTagSet(this, key);
 }
@@ -5106,6 +5118,7 @@ QVariant Room::getTag(const QString&key) const
 
 void Room::removeTag(const QString&key)
 {
+	globalCardLifetimeManager().releaseVariantTag(this, key.toUtf8());
 	tag.remove(key);
 }
 
@@ -6830,6 +6843,7 @@ int Room::getBossModeExpMult(int level) const
 	lua_getglobal(getLuaState(), "bossModeExpMult");
 	lua_pushinteger(getLuaState(), level);
 	int res = 0;
+	LuaRuntime::LuaInvocationScope invocation(m_runtime->lua());
 	if (lua_pcall(getLuaState(), 1, 1, 0) == 0){
 		res = lua_tointeger(getLuaState(), -1);
 		lua_pop(getLuaState(), 1);

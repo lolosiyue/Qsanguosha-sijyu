@@ -68,10 +68,23 @@ qsan_add_ctest(qsanguosha_protocol_messages qsanguosha_protocol_tests
 
 add_executable(qsanguosha_runtime_tests
     runtime-tests-main.cpp
+    card-lifetime-manager-test.cpp
+    card-lifetime-event-lease/card-lifetime-event-lease-test.cpp
+    card-lifetime-wrapped-adoption/wrapped-adoption-test.cpp
+    card-lifetime-shutdown/shutdown_protocol_test.cpp
     lua-runtime-isolation-test.cpp
     room-runtime-isolation-test.cpp
     ${QSAN_TEST_ROOT}/src/server/server-core.h
 )
+set_source_files_properties(
+    card-lifetime-event-lease/card-lifetime-event-lease-test.cpp
+    PROPERTIES COMPILE_DEFINITIONS main=runCardLifetimeEventLeaseFixture)
+set_source_files_properties(
+    card-lifetime-wrapped-adoption/wrapped-adoption-test.cpp
+    PROPERTIES COMPILE_DEFINITIONS main=runCardLifetimeWrappedAdoptionFixture)
+set_source_files_properties(
+    card-lifetime-shutdown/shutdown_protocol_test.cpp
+    PROPERTIES COMPILE_DEFINITIONS main=runCardLifetimeShutdownFixture)
 qsan_link_engine_test(qsanguosha_runtime_tests)
 qsan_add_ctest(qsanguosha_lua_runtime_isolation qsanguosha_runtime_tests
     SUITE lua-runtime
@@ -81,6 +94,22 @@ qsan_add_ctest(qsanguosha_room_runtime_isolation qsanguosha_runtime_tests
     SUITE room-runtime
     LABELS runtime
 )
+qsan_add_ctest(qsanguosha_card_lifetime qsanguosha_runtime_tests
+    SUITE card-lifetime
+    LABELS runtime
+)
+add_test(NAME "qsanguosha_card_lifetime:synthetic-30"
+    COMMAND qsanguosha_runtime_tests --suite card-lifetime-synthetic-30 --seed 2026082201)
+set_tests_properties("qsanguosha_card_lifetime:synthetic-30" PROPERTIES
+    WORKING_DIRECTORY "${QSAN_TEST_ROOT}" LABELS runtime)
+add_test(NAME "qsanguosha_card_lifetime:synthetic-50"
+    COMMAND qsanguosha_runtime_tests --suite card-lifetime-synthetic-50 --seed 2026082201)
+set_tests_properties("qsanguosha_card_lifetime:synthetic-50" PROPERTIES
+    WORKING_DIRECTORY "${QSAN_TEST_ROOT}" LABELS runtime)
+add_test(NAME "qsanguosha_card_lifetime:lua"
+    COMMAND qsanguosha_runtime_tests --suite card-lifetime-lua)
+set_tests_properties("qsanguosha_card_lifetime:lua" PROPERTIES
+    WORKING_DIRECTORY "${QSAN_TEST_ROOT}" LABELS runtime)
 
 add_executable(qsanguosha_server_tests
     server-tests-main.cpp

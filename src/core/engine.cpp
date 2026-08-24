@@ -309,7 +309,9 @@ Engine::Engine(bool isManualMode)
     }
     LuaRuntime::setCurrentForThread(m_bootstrapLua.get());
     lua_State *bootstrapLua = m_bootstrapLua->state();
-    if (!DoLuaScript(bootstrapLua, "lua/config.lua")) exit(1);
+    if (!DoLuaScript(bootstrapLua, "lua/config.lua")) {
+        exit(1);
+    }
 
     /*foreach (QString cv_pair, GetConfigFromLuaState(lua, "convert_pairs").toStringList()) {
         QStringList pairs = cv_pair.split("->");
@@ -371,7 +373,9 @@ Engine::Engine(bool isManualMode)
     m_loadingLuaDefinitions = true;
     const bool loadedLuaDefinitions = DoLuaScript(bootstrapLua, "lua/sanguosha.lua");
     m_loadingLuaDefinitions = false;
-    if (!loadedLuaDefinitions) exit(1);
+    if (!loadedLuaDefinitions) {
+        exit(1);
+    }
 
     // Load resource aliases from JSON
     {

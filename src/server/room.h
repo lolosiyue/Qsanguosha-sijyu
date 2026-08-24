@@ -72,6 +72,7 @@ public:
     friend class CardMovementService;
     friend class PlayerLifecycleService;
     friend class PlayerDecisionService;
+    friend class RoomRuntime;
     friend struct RoomTestAccess;
     friend struct PlayerLifecycleServiceTestAccess;
     friend struct PlayerDecisionServiceTestAccess;

@@ -11,9 +11,11 @@
 #include "clientplayer.h"
 #endif
 #include "wrapped-card.h"
+#include "card-lifetime-manager.h"
 #include "roomthread.h"
 #include <src/util/ThreadSafeHelper.h>
 #include <QRegularExpression>
+#include <cstring>
 
 const int Card::S_UNKNOWN_CARD_ID = -1;
 
@@ -48,6 +50,26 @@ Card::Card(Suit suit, int number, bool target_fixed, bool damage_card, bool is_g
 {
 }
 
+Card::~Card()
+{
+    globalCardLifetimeManager().removeChangeEdges(this);
+	globalCardLifetimeManager().releaseTags(this);
+	change_cards.clear();
+}
+
+void Card::deleteLater()
+{
+    CardLifetimeManager &manager = globalCardLifetimeManager();
+    const auto token = manager.observeCard(this);
+    if (manager.mode() == CardLifetimeMode::ObserveOnly) {
+        manager.requestNativeDelete(token);
+        QObject::deleteLater();
+        return;
+    }
+    manager.requestNativeDelete(token);
+    manager.drain();
+}
+
 QString Card::getSuitString() const
 {
 	return Suit2String(getSuit());
@@ -78,7 +100,18 @@ bool Card::isBlack() const
 
 int Card::getId() const
 {
-	return m_id;
+    return m_id;
+}
+
+quint64 Card::lifetimeGeneration() const
+{
+    const auto token = globalCardLifetimeManager().observeLive(this);
+    return token ? token->generation : 0;
+}
+
+bool Card::lifetimeIsLive() const
+{
+    return globalCardLifetimeManager().isLive(this);
 }
 
 void Card::setId(int id)
@@ -920,7 +953,10 @@ QStringList Card::getMarkNames() const
 
 void Card::addChange(const Card*card)
 {
-	change_cards << card;
+	if (!card)
+		return;
+	if (globalCardLifetimeManager().addChangeEdge(this, card))
+		change_cards << card;
 }
 
 QStringList Card::getSkillNames(bool removePrefix) const
@@ -978,6 +1014,16 @@ bool Card::hasTip(const QString &tip, bool split) const
 
 void Card::setTag(const QString &key, const QVariant &data) const
 {
+	Card *tagged = nullptr;
+	if (data.canConvert<CardTagOwner>())
+		tagged = data.value<CardTagOwner>().card;
+	const char *typeName = QMetaType::typeName(data.userType());
+	if (!tagged && typeName && (std::strcmp(typeName, "Card*") == 0 ||
+		std::strcmp(typeName, "const Card*") == 0))
+		tagged = data.value<Card *>();
+	globalCardLifetimeManager().releaseTag(this, key.toUtf8());
+	if (tagged)
+		globalCardLifetimeManager().bindTag(this, key.toUtf8(), tagged);
 	tag[key] = data;
 }
 
@@ -988,6 +1034,7 @@ QVariant Card::getTag(const QString &key, const QVariant &defaultValue) const
 
 void Card::removeTag(const QString &key) const
 {
+	globalCardLifetimeManager().releaseTag(this, key.toUtf8());
 	tag.remove(key);
 }
 

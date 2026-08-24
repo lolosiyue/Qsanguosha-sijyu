@@ -1,0 +1,118 @@
+{
+  "version": 2,
+  "categories": [
+    "raw_delete",
+    "deferred_delete",
+    "qdeleteall",
+    "upcast_delete",
+    "member_pointer",
+    "macro_delete",
+    "default_deleter",
+    "parent_child",
+    "factory",
+    "sink"
+  ],
+  "ledger_sites": [
+    "1v1 RoomThread",
+    "3v3 RoomThread",
+    "SWIG Card exposure",
+    "XMode RoomThread",
+    "`Card::Clone`",
+    "`Card::Parse` temporary cards",
+    "`Card::change_cards`",
+    "`Card::tag`",
+    "`CardMoveReason::m_extraData`",
+    "`CardUseStruct::m_ownedCard`",
+    "`CorrectSkillContext` QVariant payload",
+    "`DummyCard` decision paths",
+    "`Player::ComboMovesCard`",
+    "`Player::equips`",
+    "`RoomState::m_cards`",
+    "`SkillContext` QVariant payload",
+    "`WrappedCard::m_card`",
+    "`ai-runtime` Lua callback",
+    "`gamerule.cpp:1345 judge card`",
+    "`gamerule.cpp:556 ComboMovesCard`",
+    "`generic-cardcontainer-ui.cpp:1208 simulated equips`",
+    "ordinary RoomThread"
+  ],
+  "legacy_sites": [
+    {
+      "site": "src/core/wrapped-card.cpp:41",
+      "category": "raw_delete",
+      "reason": "quiescent WrappedCard owner"
+    },
+    {
+      "site": "src/core/wrapped-card.cpp:69",
+      "category": "deferred_delete",
+      "reason": "legacy inner replacement timing"
+    },
+    {
+      "site": "src/server/gamerule.cpp:559",
+      "category": "deferred_delete",
+      "reason": "legacy ComboMovesCard cleanup"
+    },
+    {
+      "site": "src/server/gamerule.cpp:1348",
+      "category": "upcast_delete",
+      "reason": "legacy judge cleanup base-qualified call"
+    },
+    {
+      "site": "src/ui/generic-cardcontainer-ui.cpp:1208",
+      "category": "deferred_delete",
+      "reason": "legacy simulated-equips cleanup"
+    },
+    {
+      "site": "src/core/structs.h:196",
+      "category": "default_deleter",
+      "reason": "CardUseStruct legacy smart owner"
+    }
+  ],
+  "legacy_patterns": [
+    {
+      "pattern": "^src/(?:client|core|package|scenario|server|ui)/[^:]+:\\d+$",
+      "category": "raw_delete",
+      "reason": "existing finite Card raw-delete inventory"
+    },
+    {
+      "pattern": "^src/(?:client|core|package|scenario|server|ui)/[^:]+:\\d+$",
+      "category": "deferred_delete",
+      "reason": "existing finite Card deleteLater inventory"
+    },
+    {
+      "pattern": "^src/(?:client|core|package|scenario|server|ui)/[^:]+:\\d+$",
+      "category": "upcast_delete",
+      "reason": "existing base-qualified Card deletion inventory"
+    },
+    {
+      "pattern": "^src/(?:client|core|package|scenario|server|ui)/[^:]+:\\d+$",
+      "category": "parent_child",
+      "reason": "existing QObject-owned Card definitions"
+    },
+    {
+      "pattern": "^src/(?:package|scenario)/[^:]+:\\d+$",
+      "category": "factory",
+      "reason": "registered package/scenario Card factories"
+    },
+    {
+      "pattern": "^src/core/structs\\.h:196$",
+      "category": "default_deleter",
+      "reason": "m_ownedCard requires manager-aware migration"
+    }
+  ],
+  "known_factories": [
+    "`Card::Clone`"
+  ],
+  "known_sources": [
+    "`Card::Parse` temporary cards",
+    "`DummyCard` decision paths"
+  ],
+  "known_sinks": [
+    "`CardMoveReason::m_extraData`",
+    "`CardUseStruct::m_ownedCard`",
+    "`Player::ComboMovesCard`",
+    "`Player::equips`",
+    "`RoomState::m_cards`"
+  ],
+  "known_opaque_variants": []
+}

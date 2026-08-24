@@ -8,6 +8,7 @@
 #include "server-info.h"
 #include "exppattern.h"
 #include "wrapped-card.h"
+#include "card-lifetime-manager.h"
 #include <src/util/ThreadSafeHelper.h>
 
 Player::Player(QObject *parent)
@@ -141,6 +142,11 @@ void Player::setSeat(int seat)
     if (this->seat == seat) return;
     this->seat = seat;
     emit gameplay_property_changed();
+}
+
+Player::~Player()
+{
+    globalCardLifetimeManager().releaseVariantTags(this);
 }
 
 int Player::getPlayerSeat() const
@@ -874,16 +880,25 @@ void Player::setPhaseString(const QString &phase_str)
     setPhase(phase_map.value(phase_str, NotActive));
 }
 
-static bool CompareByLocation(const EquipCard *a, const EquipCard *b)
+static const EquipCard *realEquip(const WrappedCard *outer)
 {
-    return a->location() < b->location();
+    return outer ? qobject_cast<const EquipCard *>(outer->getRealCard()) : nullptr;
+}
+
+static bool CompareByLocation(const WrappedCard *a, const WrappedCard *b)
+{
+    const EquipCard *left = realEquip(a);
+    const EquipCard *right = realEquip(b);
+    return left && right && left->location() < right->location();
 }
 
 void Player::setEquip(const Card *equip)
 {
     //const EquipCard *card = qobject_cast<const EquipCard *>(equip->getRealCard());
     //Q_ASSERT(card != nullptr);
-	equips << qobject_cast<const EquipCard *>(equip->getRealCard());
+	const WrappedCard *outer = qobject_cast<const WrappedCard *>(Sanguosha->getCard(equip->getId()));
+	if (outer)
+		equips << outer;
 	/*switch (card->location()){
     case EquipCard::WeaponLocation: weapon = equip; break;
     case EquipCard::ArmorLocation: armor = equip; break;
@@ -900,9 +915,9 @@ void Player::removeEquip(const Card *equip)
     //const EquipCard *card = qobject_cast<const EquipCard *>(Sanguosha->getEngineCard(equip->getId()));
     //const EquipCard *card = qobject_cast<const EquipCard *>(equip->getRealCard());
     //Q_ASSERT(card != nullptr);
-    foreach(const EquipCard *e, equips){
-        if (e->getId()==equip->getId())
-			equips.removeOne(e);
+    foreach(const WrappedCard *outer, equips){
+        if (outer->getId()==equip->getId())
+			equips.removeOne(outer);
     }
 	/*switch (card->location()){
     case EquipCard::WeaponLocation: weapon = nullptr; break;
@@ -921,8 +936,8 @@ bool Player::hasEquip(const Card *card) const
         ids << card->getSubcards();
     else ids << card->getId();
     if (ids.isEmpty()) return false;
-    foreach(const EquipCard *e, equips){
-        if (ids.contains(e->getId()))
+    foreach(const WrappedCard *outer, equips){
+        if (ids.contains(outer->getId()))
             return true;
     }
     return false;
@@ -948,41 +963,45 @@ QList<int> Player::getEquipRealSlots(int card_id) const
 QList<const EquipCard *> Player::getWeapons() const
 {
     QList<const EquipCard *> _equips;
-    foreach(const EquipCard *e, equips){
-        if (getEquipRealSlots(e->getEffectiveId()).contains(0))
-            _equips << e;
+    foreach(const WrappedCard *outer, equips){
+        if (getEquipRealSlots(outer->getEffectiveId()).contains(0))
+            if (const EquipCard *e = realEquip(outer)) _equips << e;
     }
     return _equips;
 }
 
 QList<const EquipCard *> Player::getArmors() const {
     QList<const EquipCard *> _equips;
-    foreach(const EquipCard *e, equips){
-        if (getEquipRealSlots(e->getEffectiveId()).contains(1)) _equips << e;
+    foreach(const WrappedCard *outer, equips){
+        if (getEquipRealSlots(outer->getEffectiveId()).contains(1))
+            if (const EquipCard *e = realEquip(outer)) _equips << e;
     }
     return _equips;
 }
 
 QList<const EquipCard *> Player::getDefensiveHorses() const {
     QList<const EquipCard *> _equips;
-    foreach(const EquipCard *e, equips){
-        if (getEquipRealSlots(e->getEffectiveId()).contains(2)) _equips << e;
+    foreach(const WrappedCard *outer, equips){
+        if (getEquipRealSlots(outer->getEffectiveId()).contains(2))
+            if (const EquipCard *e = realEquip(outer)) _equips << e;
     }
     return _equips;
 }
 
 QList<const EquipCard *> Player::getOffensiveHorses() const {
     QList<const EquipCard *> _equips;
-    foreach(const EquipCard *e, equips){
-        if (getEquipRealSlots(e->getEffectiveId()).contains(3)) _equips << e;
+    foreach(const WrappedCard *outer, equips){
+        if (getEquipRealSlots(outer->getEffectiveId()).contains(3))
+            if (const EquipCard *e = realEquip(outer)) _equips << e;
     }
     return _equips;
 }
 
 QList<const EquipCard *> Player::getTreasures() const {
     QList<const EquipCard *> _equips;
-    foreach(const EquipCard *e, equips){
-        if (getEquipRealSlots(e->getEffectiveId()).contains(4)) _equips << e;
+    foreach(const WrappedCard *outer, equips){
+        if (getEquipRealSlots(outer->getEffectiveId()).contains(4))
+            if (const EquipCard *e = realEquip(outer)) _equips << e;
     }
     return _equips;
 }
@@ -1001,40 +1020,40 @@ int Player::getTreasuresCount() const { return getTreasures().length(); }
 
 const EquipCard *Player::getWeapon() const
 {
-    foreach(const EquipCard *e, equips){
-        if (getEquipRealSlots(e->getEffectiveId()).contains(0)) return e;
+    foreach(const WrappedCard *outer, equips){
+        if (getEquipRealSlots(outer->getEffectiveId()).contains(0)) return realEquip(outer);
     }
 	return nullptr;
 }
 
 const EquipCard *Player::getArmor() const
 {
-    foreach(const EquipCard *e, equips){
-        if (getEquipRealSlots(e->getEffectiveId()).contains(1)) return e;
+    foreach(const WrappedCard *outer, equips){
+        if (getEquipRealSlots(outer->getEffectiveId()).contains(1)) return realEquip(outer);
     }
 	return nullptr;
 }
 
 const EquipCard *Player::getDefensiveHorse() const
 {
-    foreach(const EquipCard *e, equips){
-        if (getEquipRealSlots(e->getEffectiveId()).contains(2)) return e;
+    foreach(const WrappedCard *outer, equips){
+        if (getEquipRealSlots(outer->getEffectiveId()).contains(2)) return realEquip(outer);
     }
     return nullptr;
 }
 
 const EquipCard *Player::getOffensiveHorse() const
 {
-    foreach(const EquipCard *e, equips){
-        if (getEquipRealSlots(e->getEffectiveId()).contains(3)) return e;
+    foreach(const WrappedCard *outer, equips){
+        if (getEquipRealSlots(outer->getEffectiveId()).contains(3)) return realEquip(outer);
     }
     return nullptr;
 }
 
 const EquipCard *Player::getTreasure() const
 {
-    foreach(const EquipCard *e, equips){
-        if (getEquipRealSlots(e->getEffectiveId()).contains(4)) return e;
+    foreach(const WrappedCard *outer, equips){
+        if (getEquipRealSlots(outer->getEffectiveId()).contains(4)) return realEquip(outer);
     }
     return nullptr;
 }
@@ -1042,8 +1061,9 @@ const EquipCard *Player::getTreasure() const
 QList<const Card *> Player::getEquips(int index) const
 {
     QList<const Card *> _equips;
-    foreach(const EquipCard *e, equips){
-        if (index<0||e->location()==index)
+    foreach(const WrappedCard *outer, equips){
+        const EquipCard *e = realEquip(outer);
+        if (e && (index<0||e->location()==index))
 			_equips << e;
     }/*
     if (weapon)
@@ -1062,15 +1082,16 @@ QList<const Card *> Player::getEquips(int index) const
 QList<int> Player::getEquipsId() const
 {
     QList<int> _equips;
-    foreach(const EquipCard *e, equips)
-        _equips << e->getId();
+    foreach(const WrappedCard *outer, equips)
+        _equips << outer->getId();
     return _equips;
 }
 
 const EquipCard *Player::getEquip(int index) const
 {
-    foreach(const EquipCard *e, equips){
-        if (e->location()==index) return e;
+    foreach(const WrappedCard *outer, equips){
+        const EquipCard *e = realEquip(outer);
+        if (e && e->location()==index) return e;
     }/*
     WrappedCard *equip;
     switch (index){
@@ -1176,7 +1197,8 @@ bool Player::hasWeapon(const QString &weapon_name, const Player *sourcePlayer, b
 			w_equips << w->objectName();
 	}
 	if(w_equips.contains(weapon_name)){
-		foreach(const EquipCard*w,equips){
+		foreach(const WrappedCard *outer,equips){
+			const EquipCard *w = realEquip(outer);
 			if(w->objectName()==weapon_name&&!isEquipsNullified(w, sourcePlayer))
 				return true;
 		}
@@ -1186,7 +1208,8 @@ bool Player::hasWeapon(const QString &weapon_name, const Player *sourcePlayer, b
 			return !isEquipsNullified(ec, sourcePlayer);
 		}
 	}else{
-		foreach(const EquipCard*w,equips){
+		foreach(const WrappedCard *outer,equips){
+			const EquipCard *w = realEquip(outer);
 			if(w->inherits("Weapon")&&w->inherits(weapon_name.toStdString().c_str()))
 				return !isEquipsNullified(w, sourcePlayer);
 		}
@@ -1204,7 +1227,8 @@ bool Player::hasArmorEffect(const QString &armor_name, const Player *sourcePlaye
 			a_equips << a->objectName();
 	}
     if (armor_name.isEmpty()){
-		foreach(const EquipCard*a,equips){
+		foreach(const WrappedCard *outer,equips){
+			const EquipCard *a = realEquip(outer);
 			if(a->inherits("Armor")&&!isEquipsNullified(a, sourcePlayer))
 				return true;
 		}
@@ -1226,7 +1250,8 @@ bool Player::hasArmorEffect(const QString &armor_name, const Player *sourcePlaye
 			}
 		}
     } else if(a_equips.contains(armor_name)){
-		foreach(const EquipCard*a,equips){
+		foreach(const WrappedCard *outer,equips){
+			const EquipCard *a = realEquip(outer);
 			if(a->objectName()==armor_name&&!isEquipsNullified(a, sourcePlayer))
 				return true;
 		}
@@ -1248,7 +1273,8 @@ bool Player::hasDefensiveHorse(const QString &horse_name, bool need_area) const
 			d_equips << d->objectName();
 	}
 	if(d_equips.contains(horse_name)){
-		foreach(const EquipCard*h,equips){
+		foreach(const WrappedCard *outer,equips){
+			const EquipCard *h = realEquip(outer);
 			if(h->objectName()==horse_name&&!isEquipsNullified(h))
 				return true;
 		}
@@ -1270,7 +1296,8 @@ bool Player::hasOffensiveHorse(const QString &horse_name, bool need_area) const
 			o_equips << o->objectName();
 	}
 	if(o_equips.contains(horse_name)){
-		foreach(const EquipCard*h,equips){
+		foreach(const WrappedCard *outer,equips){
+			const EquipCard *h = realEquip(outer);
 			if(h->objectName()==horse_name&&!isEquipsNullified(h))
 				return true;
 		}
@@ -1292,7 +1319,8 @@ bool Player::hasTreasure(const QString &treasure_name, bool need_area) const
 			t_equips << t->objectName();
 	}
 	if(t_equips.contains(treasure_name)){
-		foreach(const EquipCard*t,equips){
+		foreach(const WrappedCard *outer,equips){
+			const EquipCard *t = realEquip(outer);
 			if(t->objectName()==treasure_name&&!isEquipsNullified(t))
 				return true;
 		}
@@ -1664,8 +1692,8 @@ QString Player::getPileName(int card_id) const
         if (h->getId() == card_id)
             return "hand_area";
     }
-    foreach(const EquipCard *e, equips){
-        if (e->getId() == card_id)
+    foreach(const WrappedCard *outer, equips){
+        if (outer->getId() == card_id)
             return "equip_area";
     }
     foreach(const Card *j, judging_area){
@@ -2526,7 +2554,10 @@ void Player::copyFrom(Player *p)
     fixed_distance = QMultiHash<const Player *, int>(p->fixed_distance);
     card_limitation = QMap<Card::HandlingMethod, QStringList>(p->card_limitation);
 
-    tag = QVariantMap(p->tag);
+    globalCardLifetimeManager().releaseVariantTags(this);
+    tag.clear();
+    for (auto it = p->tag.cbegin(); it != p->tag.cend(); ++it)
+        setTag(it.key(), it.value());
 }
 
 QList<const Player *> Player::getSiblings(bool include_self) const
@@ -3051,6 +3082,11 @@ const QMap<QString, QHash<QString, QString> > &Player::getAllCardDescriptionSwap
 }
 
 void Player::setTag(const QString &key, const QVariant &value) {
+    QByteArray error;
+    if (!globalCardLifetimeManager().retainVariantTag(this, key.toUtf8(), value, &error)) {
+        qWarning("Player tag '%s' rejected: %s", qPrintable(key), error.constData());
+        return;
+    }
     if (tag.value(key) == value) return;
     tag[key] = value;
 }
@@ -3060,6 +3096,7 @@ QVariant Player::getTag(const QString &key, const QVariant &defaultValue) const 
 }
 
 void Player::removeTag(const QString &key) {
+    globalCardLifetimeManager().releaseVariantTag(this, key.toUtf8());
     tag.remove(key);
 }
 
