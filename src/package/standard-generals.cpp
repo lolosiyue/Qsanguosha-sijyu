@@ -180,7 +180,7 @@ void FanjianCard::onEffect(CardEffectStruct &effect) const
 		}
 		if (dummy->subcardsLength() > 0)
 			room->throwCard(dummy, target);
-		delete dummy;
+		dummy->deleteLater();
 	} else
 		room->loseHp(HpLostStruct(target, 1, "fanjian", zhouyu));
 }
@@ -537,7 +537,7 @@ void JianyanCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &)
         DummyCard *dummy = new DummyCard(cardIds);
         CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, source->objectName(), "jianyan", "");
         room->throwCard(dummy, reason, nullptr);
-        delete dummy;
+        dummy->deleteLater();
     }
 }
 
@@ -760,7 +760,7 @@ public:
             DummyCard *dummy = new DummyCard(target->getPile("yiji"));
             CardMoveReason reason(CardMoveReason::S_REASON_EXCHANGE_FROM_PILE, target->objectName(), "yiji", "");
             room->obtainCard(target, dummy, reason, false);
-            delete dummy;
+            dummy->deleteLater();
         }
         return false;
     }
@@ -989,12 +989,12 @@ public:
                     DummyCard *dummy = new DummyCard(card_to_throw);
                     CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, player->objectName(), "luoyi", "");
                     room->throwCard(dummy, reason, nullptr);
-                    delete dummy;
+                    dummy->deleteLater();
                 }
                 if (!card_to_gotback.isEmpty()) {
                     DummyCard *dummy = new DummyCard(card_to_gotback);
                     room->obtainCard(player, dummy);
-                    delete dummy;
+                    dummy->deleteLater();
                 }
             }
         }
@@ -1049,7 +1049,7 @@ public:
                 if (dummy->subcardsLength() > 0)
                     zhenji->obtainCard(dummy);
                 zhenji->removeTag(objectName());
-                delete dummy;
+                dummy->deleteLater();
             }
         } else if (triggerEvent == FinishJudge) {
             JudgeStruct *judge = data.value<JudgeStruct *>();
@@ -1073,7 +1073,7 @@ public:
                         if (dummy->subcardsLength() > 0)
                             zhenji->obtainCard(dummy);
                         zhenji->removeTag(objectName());
-                        delete dummy;
+                        dummy->deleteLater();
                     }
                 }
             }
@@ -2538,7 +2538,7 @@ public:
                         DummyCard *dummy = new DummyCard(p->getPile("qianxun"));
                         CardMoveReason reason(CardMoveReason::S_REASON_EXCHANGE_FROM_PILE, p->objectName(), "qianxun", "");
                         room->obtainCard(p, dummy, reason, false);
-                        delete dummy;
+                        dummy->deleteLater();
                     }
                 }
             }
@@ -2927,7 +2927,7 @@ public:
                 room->askForGuanxing(lidian, card_ids, Room::GuanxingDownOnly);
                 DummyCard *dummy = new DummyCard(obtained);
                 lidian->obtainCard(dummy, false);
-                delete dummy;
+                dummy->deleteLater();
 
                 return true;
             }
@@ -3371,7 +3371,7 @@ void NosYiji::onDamaged(ServerPlayer *guojia, const DamageStruct &damage) const
 		if(!yiji_cards.isEmpty()){
 			DummyCard *dummy = new DummyCard(yiji_cards);
 			guojia->obtainCard(dummy, false);
-			delete dummy;
+			dummy->deleteLater();
 		}
 
         /*CardsMoveStruct move(yiji_cards, nullptr, guojia, Player::PlaceTable, Player::PlaceHand,

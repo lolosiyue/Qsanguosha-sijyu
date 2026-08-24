@@ -101,7 +101,7 @@ bool MiniSceneRule::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer 
                     dummy->addSubcard(id);
             }
             room->moveCardTo(dummy, nullptr, Player::DiscardPile);
-            delete dummy;
+            dummy->deleteLater();
         }
 
         QList<int> int_list;

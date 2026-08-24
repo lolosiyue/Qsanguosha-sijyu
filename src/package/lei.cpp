@@ -258,7 +258,7 @@ public:
                 room->sendLog(log);
                 room->obtainCard(player, dummy, true);
             }
-            delete dummy;
+            dummy->deleteLater();
         }
         return false;
     }

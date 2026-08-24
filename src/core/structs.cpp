@@ -22,7 +22,7 @@ namespace {
 void releaseOwnedCard(Card *card)
 {
     if (card)
-        card->QObject::deleteLater();
+        card->deleteLater();
 }
 }
 

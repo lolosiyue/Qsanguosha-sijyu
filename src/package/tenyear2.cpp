@@ -1272,7 +1272,7 @@ public:
 				}
 			}
 		}
-		delete dummy;
+		dummy->deleteLater();
 		return false;
 	}
 private:
@@ -2153,7 +2153,7 @@ bool PingjianCard::targetFilter(const QList<const Player*>&targets,const Player*
 		const Card*card = vs_skill->viewAs(cards);
 		if(card){
 			bool has = card->targetFilter(targets,to_select,Self);
-			delete card;
+			const_cast<Card *>(card)->deleteLater();
 			return has;
 		}
 	}
@@ -2170,7 +2170,7 @@ bool PingjianCard::targetsFeasible(const QList<const Player*>&targets,const Play
 		const Card*card = vs_skill->viewAs(cards);
 		if(card){
 			bool has = card->targetsFeasible(targets,Self);
-			delete card;
+			const_cast<Card *>(card)->deleteLater();
 			return has;
 		}
 	}
@@ -3964,7 +3964,7 @@ public:
 				DummyCard*dummy = new DummyCard(mingfa);
 				CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER,p->objectName(),"tenyearmingfa","");
 				room->throwCard(dummy,reason,nullptr);
-				delete dummy;
+				dummy->deleteLater();
 			}
 			return false;
 		}
@@ -3993,7 +3993,7 @@ public:
 			DummyCard*dummy = new DummyCard(mingfa);
 			CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER,p->objectName(),"tenyearmingfa","");
 			room->throwCard(dummy,reason,nullptr);
-			delete dummy;
+			dummy->deleteLater();
 		}
 		return false;
 	}
@@ -6015,7 +6015,7 @@ public:
 					if(dummy->subcardsLength()> player->getHp()&& player->getMaxHp()< 8)
 						room->gainMaxHp(player,1,objectName());
 				}
-				delete dummy;
+				dummy->deleteLater();
 			}
 		} else if(event==BeforeCardsMove){
 			if(player->hasFlag("CurrentPlayer"))return false;
@@ -10938,7 +10938,7 @@ void ShuaijieCard::use(Room*room,ServerPlayer*source,QList<ServerPlayer*>&)const
 			}
 			if(dummy->subcardsLength()>0)
 				room->obtainCard(source,dummy,false);
-			delete dummy;
+			dummy->deleteLater();
 		}
 	}
 	if(!has){
@@ -10952,7 +10952,7 @@ void ShuaijieCard::use(Room*room,ServerPlayer*source,QList<ServerPlayer*>&)const
 		}
 		if(dummy->subcardsLength()>0)
 			room->obtainCard(source,dummy,false);
-		delete dummy;
+		dummy->deleteLater();
 	}
 	room->setPlayerMark(source,"&silve+#"+source->objectName(),1);
 }
@@ -15446,7 +15446,7 @@ public:
 		int length = dummy->subcardsLength();
 		if(length > 0)
 			room->obtainCard(player,dummy,true);
-		delete dummy;
+		dummy->deleteLater();
 
 		DummyCard*dum = new DummyCard;
 		dum->deleteLater();
@@ -15958,7 +15958,7 @@ void ShilieCard::use(Room*room,ServerPlayer*source,QList<ServerPlayer*>&)const
 				CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER,source->objectName(),"shilie","");
 				room->throwCard(dummy,reason,nullptr);
 			}
-			delete dummy;
+			dummy->deleteLater();
 		}
 	} else {
 		room->loseHp(HpLostStruct(source,1,"shilie",source));
@@ -18165,7 +18165,7 @@ public:
 				}
 			}
 			room->obtainCard(player,dummy,true);
-			delete dummy;
+			dummy->deleteLater();
 		} else if(player->getPhase()== Player::Finish){
 			if(player->getMark("qingjiao-Clear")<= 0)return false;
 			room->setPlayerMark(player,"qingjiao-Clear",0);
@@ -18702,7 +18702,7 @@ public:
 					if(get.isEmpty())return false;
 					DummyCard*dummy = new DummyCard(get);
 					room->obtainCard(player,dummy,true);
-					delete dummy;
+					dummy->deleteLater();
 				}
 			}
 		}
@@ -18849,7 +18849,7 @@ public:
 				CardMoveReason reason(CardMoveReason::S_REASON_GIVE,player->objectName(),p->objectName(),objectName());
 				room->obtainCard(p,dummy,reason,false);
 			}
-			delete dummy;
+			dummy->deleteLater();
 		}
 		return false;
 	}
@@ -19015,7 +19015,7 @@ public:
 		if(dummy->subcardsLength()> 0){
 			room->obtainCard(player,dummy,true);
 		}
-		delete dummy;
+		dummy->deleteLater();
 		return 0;
 	}
 };
@@ -19466,7 +19466,7 @@ public:
 						dummy->addSubcard(id);
 						CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER,player->objectName(),objectName(),"");
 						room->throwCard(dummy,reason,nullptr);
-						delete dummy;
+						dummy->deleteLater();
 					} else
 						room->useCard(CardUseStruct(card,player));
 				} else {
@@ -19476,7 +19476,7 @@ public:
 						dummy->addSubcard(id);
 						CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER,player->objectName(),objectName(),"");
 						room->throwCard(dummy,reason,nullptr);
-						delete dummy;
+						dummy->deleteLater();
 					}
 				}
 			}catch(TriggerEvent triggerEvent){
@@ -19485,7 +19485,7 @@ public:
 					dummy->addSubcard(id);
 					CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER,player->objectName(),objectName(),"");
 					room->throwCard(dummy,reason,nullptr);
-					delete dummy;
+					dummy->deleteLater();
 				}
 				throw triggerEvent;
 			}
@@ -21496,7 +21496,7 @@ void AnzhiCard::use(Room*room,ServerPlayer*source,QList<ServerPlayer*>&)const
 		}
 		if(dummy->subcardsLength()> 0&& t->isAlive())
 			room->obtainCard(t,dummy);
-		delete dummy;
+		dummy->deleteLater();
 	}
 }
 
@@ -21534,7 +21534,7 @@ public:
 			AnzhiCard*az = new AnzhiCard;
 			QList<ServerPlayer*> targets;
 			az->use(room,player,targets);
-			delete az;
+			az->deleteLater();
 		}
 		return false;
 	}
@@ -22769,7 +22769,7 @@ public:
 				dummy->addSubcard(black.at(qrand()% black.length()));
 			if(dummy->subcardsLength()> 0)
 				room->obtainCard(player,dummy);
-			delete dummy;
+			dummy->deleteLater();
 			QString choice = room->askForChoice(player,objectName(),"red+black");
 			if(choice=="red")
 				room->addPlayerMark(player,"&pianchong+red");
@@ -22837,7 +22837,7 @@ public:
 			}
 			if(dummy->subcardsLength()> 0)
 				room->obtainCard(player,dummy);
-			delete dummy;
+			dummy->deleteLater();
 		}
 		return false;
 	}
@@ -25517,7 +25517,7 @@ void JingzaoCard::getCards(ServerPlayer*player,QList<int> card_ids)const
 	if(!dummy_ids.isEmpty()){
 		DummyCard*dummy = new DummyCard(dummy_ids);
 		room->obtainCard(player,dummy);
-		delete dummy;
+		dummy->deleteLater();
 	}
 
 	if(room->hasCurrent())
@@ -25532,7 +25532,7 @@ void JingzaoCard::getCards(ServerPlayer*player,QList<int> card_ids)const
 		CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER,player->objectName(),"jingzao","");
 		room->throwCard(to_throw,reason,nullptr);
 	}
-	delete to_throw;
+	to_throw->deleteLater();
 }
 
 void JingzaoCard::onEffect(CardEffectStruct&effect)const
@@ -25565,7 +25565,7 @@ void JingzaoCard::onEffect(CardEffectStruct&effect)const
 		DummyCard*dummy = new DummyCard(shows);
 		CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER,from->objectName(),"jingzao","");
 		room->throwCard(dummy,reason,nullptr);
-		delete dummy;
+		dummy->deleteLater();
 	} else
 		getCards(from,shows);
 }
@@ -26022,7 +26022,7 @@ const Card*FengyingCard::validate(CardUseStruct&card_use)const
 			if(c&& c->isKindOf("Slash")&& !guhuo_list.contains(name))
 				guhuo_list << name;
 			if(c)
-				delete c;
+				c->deleteLater();
 		}
 		if(guhuo_list.isEmpty())return nullptr;
 		to_yizan = room->askForChoice(player,"fengying_slash",guhuo_list.join("+"));
@@ -26060,7 +26060,7 @@ const Card*FengyingCard::validateInResponse(ServerPlayer*player)const
 				guhuo_list << name;
 			else if(c->isKindOf("Analeptic")&& !guhuo_list.contains(name))
 				guhuo_list << name;
-			delete c;
+			c->deleteLater();
 		}
 		if(guhuo_list.isEmpty())return nullptr;
 		to_yizan = room->askForChoice(player,"fengying_saveself",guhuo_list.join("+"));
@@ -26071,7 +26071,7 @@ const Card*FengyingCard::validateInResponse(ServerPlayer*player)const
 			if(c&& c->isKindOf("Slash")&& !guhuo_list.contains(name))
 				guhuo_list << name;
 			if(c)
-				delete c;
+				c->deleteLater();
 		}
 		if(guhuo_list.isEmpty())return nullptr;
 		to_yizan = room->askForChoice(player,"fengying_slash",guhuo_list.join("+"));
@@ -28486,12 +28486,12 @@ static bool huashangPutAsEquip(Room *room, ServerPlayer *player, int cardId, int
 	if(!raw) return false;
 	Card *cloned = Sanguosha->cloneCard(name, raw->getSuit(), raw->getNumber());
 	if(!cloned||!cloned->isKindOf("EquipCard")){
-		delete cloned;
+		cloned->deleteLater();
 		return false;
 	}
 	WrappedCard *wrapped = Sanguosha->getWrappedCard(cardId);
 	if(!wrapped){
-		delete cloned;
+		cloned->deleteLater();
 		return false;
 	}
 	wrapped->takeOver(cloned);

@@ -1,4 +1,5 @@
 #include "card-lifetime-manager.h"
+#include "card-lifetime-test-check.h"
 #include "card.h"
 #include "engine-bootstrap.h"
 #include "room.h"
@@ -7,17 +8,40 @@
 #include <QCoreApplication>
 #include <QThread>
 
-#include <cassert>
-
 namespace {
 
 int runNormal(RoomRuntime &runtime)
 {
-    assert(runtime.shutdownState() == RoomRuntime::ShutdownState::Running);
+    QThread worker;
+    QObject context;
+    QThread *ownerThread = QThread::currentThread();
+    context.moveToThread(&worker);
+    worker.start();
+    QPointer<Card> workerCard;
+    std::shared_ptr<const CardLifetimeToken> workerToken;
+    QMetaObject::invokeMethod(&context, [&] {
+        const void *previousDomain = CardLifetimeManager::setCurrentDomain(&runtime);
+        auto *card = new DummyCard;
+        workerCard = card;
+        CardLifetimeManager &manager = globalCardLifetimeManager();
+        workerToken = manager.observeCard(card);
+        CARD_LIFETIME_CHECK(workerToken && manager.retainWrapper(workerToken));
+        CARD_LIFETIME_CHECK(manager.requestNativeDelete(workerToken));
+        runtime.finalizeWorker();
+        CardLifetimeManager::setCurrentDomain(previousDomain);
+        context.moveToThread(ownerThread);
+    }, Qt::BlockingQueuedConnection);
+    worker.quit();
+    CARD_LIFETIME_CHECK(worker.wait(5000));
+    CARD_LIFETIME_CHECK(workerCard.isNull());
+    CARD_LIFETIME_CHECK(workerToken && workerToken->state == CardLifetimeState::Dead);
+    CARD_LIFETIME_CHECK(globalCardLifetimeManager().releaseWrapper(workerToken));
+
+    CARD_LIFETIME_CHECK(runtime.shutdownState() == RoomRuntime::ShutdownState::Running);
     runtime.shutdownFinal();
-    assert(runtime.shutdownState() == RoomRuntime::ShutdownState::Closed);
+    CARD_LIFETIME_CHECK(runtime.shutdownState() == RoomRuntime::ShutdownState::Closed);
     runtime.shutdownFinal();
-    assert(runtime.shutdownState() == RoomRuntime::ShutdownState::Closed);
+    CARD_LIFETIME_CHECK(runtime.shutdownState() == RoomRuntime::ShutdownState::Closed);
     return 0;
 }
 
@@ -29,7 +53,7 @@ int runPendingWorkerCard(RoomRuntime &runtime)
     card->moveToThread(&worker);
     CardLifetimeManager &manager = globalCardLifetimeManager();
     const auto token = manager.observeCard(card);
-    assert(token && manager.requestNativeDelete(token));
+    CARD_LIFETIME_CHECK(token && manager.requestNativeDelete(token));
     runtime.shutdownFinal();
     return 99;
 }
@@ -39,8 +63,8 @@ int runNonzeroLease(RoomRuntime &runtime)
     auto *card = new DummyCard;
     CardLifetimeManager &manager = globalCardLifetimeManager();
     const auto token = manager.observeCard(card);
-    assert(token && manager.retainNativeLease(token));
-    assert(manager.requestNativeDelete(token));
+    CARD_LIFETIME_CHECK(token && manager.retainNativeLease(token));
+    CARD_LIFETIME_CHECK(manager.requestNativeDelete(token));
     runtime.shutdownFinal();
     return 98;
 }
@@ -50,8 +74,8 @@ int runNonzeroReservation(RoomRuntime &runtime)
     auto *card = new DummyCard;
     CardLifetimeManager &manager = globalCardLifetimeManager();
     const auto token = manager.observeCard(card);
-    assert(token && manager.reserveAdoption(token));
-    assert(manager.requestNativeDelete(token));
+    CARD_LIFETIME_CHECK(token && manager.reserveAdoption(token));
+    CARD_LIFETIME_CHECK(manager.requestNativeDelete(token));
     runtime.shutdownFinal();
     return 97;
 }

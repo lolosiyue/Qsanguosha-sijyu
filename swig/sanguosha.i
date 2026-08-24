@@ -36,8 +36,12 @@
 			userdata->own = 0;
 			return 0;
 		}
-		if (originalOwner && globalCardLifetimeManager().isLive(boundToken))
-			globalCardLifetimeManager().requestLuaDelete(boundToken);
+		if (originalOwner && globalCardLifetimeManager().isLive(boundToken)) {
+			if (card->parent())
+				globalCardLifetimeManager().markAdopted(boundToken);
+			else
+				globalCardLifetimeManager().requestLuaDelete(boundToken);
+		}
 		userdata->own = 0;
 		userdata->ptr = nullptr;
 		return 0;
@@ -1556,15 +1560,20 @@ static void qsgsCardNewPointerObj(lua_State *state, void *pointer,
         return;
     }
     Card *card = dynamicCard;
-    const auto token = card ? globalCardLifetimeManager().observeLive(card) : nullptr;
+    CardLifetimeManager &manager = globalCardLifetimeManager();
+    const bool borrowedDefinition = owner == 0 && card && card->parent();
+    const auto token = !card ? std::shared_ptr<const CardLifetimeToken>()
+        : borrowedDefinition ? manager.observeLive(card, true)
+                             : manager.observeCard(card);
     if (!token || !card->lifetimeIsLive()) {
         lua_pushnil(state);
         return;
     }
+    if (owner != 0)
+        manager.recordOwningFactoryResult(token);
     SWIG_Lua_NewPointerObj(state, pointer, type, 0);
-    globalCardLifetimeManager().retainWrapper(token);
-    globalCardLifetimeManager().bindWrapper(lua_touserdata(state, -1), token,
-                                            owner != 0);
+    manager.retainWrapper(token);
+    manager.bindWrapper(lua_touserdata(state, -1), token, owner != 0);
 }
 
 static int qsgsCardConvertPtr(lua_State *state, int index, void **pointer,
@@ -2611,16 +2620,67 @@ void Room::doScript(const QString&script)
 %}
 
 %include "card.i"
-%include "luaskills.i"
-%include "ai.i"
 
-/* A freshly cloned Lua card is a native owner surface.  Route it through the
- * same Card interceptor while retaining the original-own bit in its sidecar. */
+/* These clone results are fresh native Cards owned by their Lua wrappers.
+ * Keep the typemaps before luaskills.i: SWIG applies them while parsing each
+ * clone declaration, and qsgsCardNewPointerObj records this original-own bit. */
+%typemap(out) LuaSkillCard *
+%{
+globalCardLifetimeManager().recordFactoryClone($1);
+SWIG_NewPointerObj(L, (void *)$1, SWIGTYPE_p_LuaSkillCard, SWIG_POINTER_OWN);
+SWIG_arg++;
+%}
 %typemap(out) LuaBasicCard *
 %{
+globalCardLifetimeManager().recordFactoryClone($1);
 SWIG_NewPointerObj(L, (void *)$1, SWIGTYPE_p_LuaBasicCard, SWIG_POINTER_OWN);
 SWIG_arg++;
 %}
+%typemap(out) LuaTrickCard *
+%{
+globalCardLifetimeManager().recordFactoryClone($1);
+SWIG_NewPointerObj(L, (void *)$1, SWIGTYPE_p_LuaTrickCard, SWIG_POINTER_OWN);
+SWIG_arg++;
+%}
+%typemap(out) LuaWeapon *
+%{
+globalCardLifetimeManager().recordFactoryClone($1);
+SWIG_NewPointerObj(L, (void *)$1, SWIGTYPE_p_LuaWeapon, SWIG_POINTER_OWN);
+SWIG_arg++;
+%}
+%typemap(out) LuaArmor *
+%{
+globalCardLifetimeManager().recordFactoryClone($1);
+SWIG_NewPointerObj(L, (void *)$1, SWIGTYPE_p_LuaArmor, SWIG_POINTER_OWN);
+SWIG_arg++;
+%}
+%typemap(out) LuaHorse *
+%{
+globalCardLifetimeManager().recordFactoryClone($1);
+SWIG_NewPointerObj(L, (void *)$1, SWIGTYPE_p_LuaHorse, SWIG_POINTER_OWN);
+SWIG_arg++;
+%}
+%typemap(out) LuaOffensiveHorse *
+%{
+globalCardLifetimeManager().recordFactoryClone($1);
+SWIG_NewPointerObj(L, (void *)$1, SWIGTYPE_p_LuaOffensiveHorse, SWIG_POINTER_OWN);
+SWIG_arg++;
+%}
+%typemap(out) LuaDefensiveHorse *
+%{
+globalCardLifetimeManager().recordFactoryClone($1);
+SWIG_NewPointerObj(L, (void *)$1, SWIGTYPE_p_LuaDefensiveHorse, SWIG_POINTER_OWN);
+SWIG_arg++;
+%}
+%typemap(out) LuaTreasure *
+%{
+globalCardLifetimeManager().recordFactoryClone($1);
+SWIG_NewPointerObj(L, (void *)$1, SWIGTYPE_p_LuaTreasure, SWIG_POINTER_OWN);
+SWIG_arg++;
+%}
+
+%include "luaskills.i"
+%include "ai.i"
 
 %extend LuaTriggerSkill {
 	QString objectName() const {

@@ -242,6 +242,8 @@ public:
     mutable QList<const Card *> change_cards;
 
 protected:
+    bool event(QEvent *event) override;
+
     QList<int> subcards;
     bool target_fixed;
     bool mute;

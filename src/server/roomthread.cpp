@@ -277,6 +277,22 @@ CardUseStruct &CardUseStruct::operator=(CardUseStruct &&other) noexcept
 }
 CardUseStruct::~CardUseStruct() { globalCardLifetimeManager().releaseEventPayload(this); }
 
+void CardUseStruct::replaceCard(const Card *newCard, Card *ownedCard)
+{
+	Q_ASSERT(!ownedCard || ownedCard == newCard);
+	CardLifetimeManager &manager = globalCardLifetimeManager();
+	CardLifetimeLease replacementLease(manager, manager.liveToken(newCard));
+	manager.releaseEventPayload(this);
+	card = nullptr;
+	if (m_ownedCard.data() != ownedCard) {
+		m_ownedCard.clear();
+		if (ownedCard)
+			m_ownedCard.reset(ownedCard);
+	}
+	card = newCard;
+	manager.retainEventPayload(this, {card, whocard, m_ownedCard.data()});
+}
+
 bool CardUseStruct::isValid(const QString &pattern) const
 {
 	Q_UNUSED(pattern)
@@ -327,7 +343,7 @@ bool CardUseStruct::isValid(const QString &pattern) const
 bool CardUseStruct::tryParse(const QVariant &usage, Room*room)
 {
 	JsonArray use = usage.value<JsonArray>();
-	card = nullptr;
+	replaceCard(nullptr);
 	to.clear();
 	m_validateTargets = true;
 	hasSkillActivationRequest = false;
@@ -338,13 +354,17 @@ bool CardUseStruct::tryParse(const QVariant &usage, Room*room)
 			if (!player) return false;
 			to << player;
 		}
-		card = Card::Parse(use[0].toString());
-		if (!card) return false;
+		const Card *parsedCard = Card::Parse(use[0].toString());
+		if (!parsedCard) return false;
 		SkillInstanceUtils::SkillActivationRequest request;
-		if (!SkillInstanceUtils::decodeActivationRequest(use, card->getSkillName(false), request)) return false;
+		if (!SkillInstanceUtils::decodeActivationRequest(use, parsedCard->getSkillName(false), request)) return false;
 		hasSkillActivationRequest = request.supplied;
 		if (request.instanceID > 0)
-			const_cast<Card *>(card)->setActivationSkill(request.skillName, request.instanceID);
+			const_cast<Card *>(parsedCard)->setActivationSkill(request.skillName, request.instanceID);
+		CardLifetimeManager &manager = globalCardLifetimeManager();
+		const auto token = manager.liveToken(parsedCard);
+		replaceCard(parsedCard, token && manager.state(token) == CardLifetimeState::PendingDelete
+			? const_cast<Card *>(parsedCard) : nullptr);
 		return true;
 	}
 	return false;
@@ -352,10 +372,14 @@ bool CardUseStruct::tryParse(const QVariant &usage, Room*room)
 
 void CardUseStruct::parse(const QString &str, Room*room)
 {
-	m_ownedCard.clear();
+	replaceCard(nullptr);
 	to.clear();
 	m_validateTargets = true;
-	card = Card::Parse(str);
+	const Card *parsedCard = Card::Parse(str);
+	CardLifetimeManager &manager = globalCardLifetimeManager();
+	const auto token = manager.liveToken(parsedCard);
+	replaceCard(parsedCard, token && manager.state(token) == CardLifetimeState::PendingDelete
+		? const_cast<Card *>(parsedCard) : nullptr);
 	if (str.contains("->sgs")){
 		foreach(QString target_name, str.split("->").last().split("+"))
 			to << room->findChild<ServerPlayer*>(target_name);
@@ -386,18 +410,12 @@ void CardUseStruct::changeCard(Card*newcard)
 		newcard->setSourceSkill(sourceRef.key.skillName, sourceRef.key.instanceID);
 	if (!replacingOwnedCard)
 		newcard->change_cards << card;
-	card = newcard;
-	if (replacingOwnedCard)
-		m_ownedCard.clear();
-	globalCardLifetimeManager().retainEventPayload(this, {card, whocard, m_ownedCard.data()});
+	replaceCard(newcard);
 }
 
 void CardUseStruct::setOwnedCard(Card *ownedCard)
 {
-	globalCardLifetimeManager().releaseEventPayload(this);
-	m_ownedCard.reset(ownedCard);
-	card = ownedCard;
-	globalCardLifetimeManager().retainEventPayload(this, {card, whocard, m_ownedCard.data()});
+	replaceCard(ownedCard, ownedCard);
 }
 
 CardResponseStruct::CardResponseStruct()
@@ -755,6 +773,9 @@ void RoomThread::run()
 	auto runtimeCleanup = qScopeGuard([]() {
 		CrashHandler::setLuaState(nullptr);
 		Sanguosha->unregisterRoom();
+	});
+	auto workerFinal = qScopeGuard([this]() {
+		room->roomRuntime()->finalizeWorker();
 	});
 
 	foreach(const TriggerSkill*triggerSkill, Sanguosha->getGlobalTriggerSkills())

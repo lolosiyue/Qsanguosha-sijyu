@@ -1225,7 +1225,7 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
                 QString prompt = QString("@multi-jink%1:%2::%3").arg(i==effect.jink_num ? "-start" : "").arg(slasher).arg(i);
 				const Card *asked_jink = room->askForCard(effect.to,"jink",prompt,data,Card::MethodUse,effect.from,false,"",false,effect.slash);
                 if(!room->isJinkEffected(effect.to,asked_jink)) {
-                    delete jink;
+                    jink->deleteLater();
                     room->slashResult(effect,nullptr);
                     return false;
                 } else {

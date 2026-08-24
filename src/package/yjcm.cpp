@@ -90,7 +90,7 @@ public:
                 Config.AIDelay = ai_delay;
 				move.reason.m_skillName = objectName();
 				room->moveCardTo(dummy, caozhi, Player::PlaceHand, move.reason, true);
-				delete dummy;
+				dummy->deleteLater();
             }
         }
         return false;
@@ -377,7 +377,7 @@ public:
 						dummy->addSubcard(id);
                     }
                     room->moveCardTo(dummy, fazheng, Player::PlaceHand, false);
-                    delete dummy;
+                    dummy->deleteLater();
                 }
 
                 return true;
@@ -997,7 +997,7 @@ void XinzhanCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &)
             foreach(int id, dummy->getSubcards())
                 room->showCard(source, id);
         }
-        delete dummy;
+        dummy->deleteLater();
     }
 
     if (!left.isEmpty())
@@ -1773,7 +1773,7 @@ public:
             room->sendLog(log);
             DummyCard *dummy = new DummyCard(player->getPile("jieyue_pile"));
             player->obtainCard(dummy);
-            delete dummy;
+            dummy->deleteLater();
         } else if (player->getPhase() == Player::Finish) {
             room->askForUseCard(player, "@@jieyue", "@jieyue", -1, Card::MethodDiscard, false);
         }

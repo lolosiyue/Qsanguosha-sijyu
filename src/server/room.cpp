@@ -5064,7 +5064,7 @@ void Room::filterCards(ServerPlayer*player, QList<const Card*> cards, bool refil
 		const Card*card = nullptr;
 		foreach(const FilterSkill*skill, filterSkills){
 			if (skill->viewFilter(cards[i])&&player->hasSkill(skill->objectName())){
-				if(card) delete card;
+				if(card) const_cast<Card *>(card)->deleteLater();
 				card = skill->viewAs(cards[i]);
 			}
 		}
@@ -6409,7 +6409,7 @@ QList<int> Room::getAvailableCardList(ServerPlayer*player, const QString&flags, 
 				names << c->objectName();
 				list << id;
 			}
-			delete dc;
+			dc->deleteLater();
 		}
 	}
 	return list;

@@ -1,5 +1,6 @@
 #include "card-lifetime-manager.h"
 #include "card.h"
+#include "json.h"
 #include "structs.h"
 
 #include <QCoreApplication>
@@ -171,17 +172,67 @@ void ownedCardUsesManagedDeleter(Result &result)
     CardLifetimeManager &manager = globalCardLifetimeManager();
     manager.resetForTest();
     auto *owned = new DummyCard;
-    manager.observeCard(owned, true);
+    const auto token = manager.observeCard(owned);
     const quint64 destroyedBefore = manager.gauge().actually_destroyed;
     {
         CardUseStruct use;
         use.setOwnedCard(owned);
     }
+    check(result, token && token->state == CardLifetimeState::Retired,
+          "owned_card.deleter_enters_managed_policy");
     check(result, manager.gauge().actually_destroyed == destroyedBefore,
           "owned_card.deleter_is_deferred_policy");
     flushDeferredDeletes();
     check(result, manager.gauge().actually_destroyed == destroyedBefore + 1,
           "owned_card.deleter_destroys_once");
+}
+
+void parseRefreshesOwnedCardAndLease(Result &result)
+{
+    CardLifetimeManager &manager = globalCardLifetimeManager();
+    manager.resetForTest();
+    const quint64 destroyedBefore = manager.gauge().actually_destroyed;
+    {
+        CardUseStruct use;
+        {
+            CardLifetimeScope scope(manager);
+            use.parse(QStringLiteral("$1+2"), nullptr);
+        }
+        const auto token = manager.liveToken(use.card);
+        check(result, token && token->state == CardLifetimeState::PendingDelete,
+              "use.parse.pending_transient_is_owned");
+        manager.drain();
+        flushDeferredDeletes();
+        check(result, manager.gauge().actually_destroyed == destroyedBefore,
+              "use.parse.lease_blocks_drain");
+    }
+    flushDeferredDeletes();
+    check(result, manager.gauge().actually_destroyed == destroyedBefore + 1,
+          "use.parse.owner_release_destroys_once");
+
+    manager.resetForTest();
+    const quint64 tryParseDestroyedBefore = manager.gauge().actually_destroyed;
+    {
+        CardUseStruct use;
+        JsonArray targets;
+        JsonArray usage;
+        usage << QStringLiteral("$3+4") << QVariant::fromValue(targets);
+        {
+            CardLifetimeScope scope(manager);
+            check(result, use.tryParse(QVariant::fromValue(usage), nullptr),
+                  "use.try_parse.accepts_transient");
+        }
+        const auto token = manager.liveToken(use.card);
+        check(result, token && token->state == CardLifetimeState::PendingDelete,
+              "use.try_parse.pending_transient_is_owned");
+        manager.drain();
+        flushDeferredDeletes();
+        check(result, manager.gauge().actually_destroyed == tryParseDestroyedBefore,
+              "use.try_parse.lease_blocks_drain");
+    }
+    flushDeferredDeletes();
+    check(result, manager.gauge().actually_destroyed == tryParseDestroyedBefore + 1,
+          "use.try_parse.owner_release_destroys_once");
 }
 }
 
@@ -194,6 +245,7 @@ int main(int argc, char **argv)
     moveTransfersAndEmptiesSource(result);
     changeRefreshesLeases(result);
     ownedCardUsesManagedDeleter(result);
+    parseRefreshesOwnedCardAndLease(result);
     const auto gauge = globalCardLifetimeManager().gauge();
     std::printf("CARD_EVENT_LEASE checks=%d failures=%d pending=%llu destroyed=%llu native_leases=%llu\n",
                 result.checks, result.failures,

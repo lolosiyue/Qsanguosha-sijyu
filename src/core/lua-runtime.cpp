@@ -230,6 +230,23 @@ lua_State *LuaRuntime::currentState()
     return currentRuntime ? currentRuntime->state() : nullptr;
 }
 
+int LuaRuntime::protectedCall(lua_State *state, int argumentCount,
+                              int resultCount, int errorFunction)
+{
+    LuaRuntime *runtime = fromState(state);
+    if (!runtime)
+        return lua_pcall(state, argumentCount, resultCount, errorFunction);
+
+    if (currentRuntime == runtime) {
+        LuaInvocationScope invocation(*runtime);
+        return lua_pcall(state, argumentCount, resultCount, errorFunction);
+    }
+
+    Binding binding(*runtime, false);
+    LuaInvocationScope invocation(*runtime);
+    return lua_pcall(state, argumentCount, resultCount, errorFunction);
+}
+
 void LuaRuntime::setCurrentForThread(LuaRuntime *runtime)
 {
     currentRuntime = runtime;
@@ -272,8 +289,9 @@ bool LuaRuntime::beginInvocation()
     QMutexLocker lock(&m_executionMutex);
     if (m_lifecycle.load(std::memory_order_acquire) != Lifecycle::Running)
         return false;
-    m_invocationDepth.fetch_add(1, std::memory_order_acq_rel);
-    CardLifetimeManager::enterLuaPinForCurrentThread();
+    const int previousDepth = m_invocationDepth.fetch_add(1, std::memory_order_acq_rel);
+    if (previousDepth == 0)
+        m_luaPinManager = CardLifetimeManager::enterLuaPinForCurrentThread();
     return true;
 }
 
@@ -283,7 +301,10 @@ void LuaRuntime::endInvocation()
     int depth = m_invocationDepth.load(std::memory_order_acquire);
     if (depth > 0) {
         m_invocationDepth.fetch_sub(1, std::memory_order_acq_rel);
-        CardLifetimeManager::leaveLuaPinForCurrentThread();
+        if (depth == 1) {
+            CardLifetimeManager::leaveLuaPinForCurrentThread(m_luaPinManager);
+            m_luaPinManager = nullptr;
+        }
     }
 }
 

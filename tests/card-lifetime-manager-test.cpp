@@ -1,4 +1,5 @@
 #include "card-lifetime-manager.h"
+#include "card-lifetime-test-check.h"
 #include "card.h"
 #include "engine-bootstrap.h"
 #include "lua-runtime.h"
@@ -14,7 +15,6 @@
 #include <QThread>
 #include <QTimer>
 
-#include <cassert>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QProcess>
@@ -24,6 +24,7 @@
 #include "lua.hpp"
 #include <cstdio>
 #include <limits>
+#include <new>
 
 // An unregistered Card-bearing metatype: not part of the N8.3 frozen matrix, so
 // the manager must reject it instead of guessing at its layout.
@@ -93,6 +94,222 @@ bool probeWrappedCardCanonicalOwner(const QString &mode)
         result = outer.thread() == canonical && inner->thread() == canonical;
     }
     return result;
+}
+
+bool probeBlockers12()
+{
+    CardLifetimeManager manager(CardLifetimeMode::ManagedReclaim);
+
+    auto *retiredCard = new DummyCard;
+    const auto retiredToken = manager.observeCard(retiredCard);
+    const bool retiredRequested = retiredToken && manager.requestNativeDelete(retiredToken);
+    const quint64 retiredCount = manager.drain();
+    const auto reobservedRetired = manager.observeLive(retiredCard);
+    const bool retiredRefused = retiredRequested && retiredCount == 1
+        && !reobservedRetired && manager.state(retiredToken) == CardLifetimeState::Retired;
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    const bool retiredDestroyed = !manager.isLive(retiredToken)
+        && manager.state(retiredToken) == CardLifetimeState::Dead;
+
+    auto *repeatedCard = new DummyCard;
+    const auto repeatedToken = manager.observeCard(repeatedCard);
+    const auto repeatedAgain = manager.observeCard(repeatedCard);
+    const auto repeatedThird = manager.observeCard(repeatedCard);
+    const quint64 destroyedBeforeRepeated = manager.gauge().actually_destroyed;
+    delete repeatedCard;
+    const bool repeatedObservationIdempotent = repeatedToken && repeatedAgain == repeatedToken
+        && repeatedThird == repeatedToken
+        && manager.gauge().actually_destroyed == destroyedBeforeRepeated + 1;
+
+    void *storage = ::operator new(sizeof(DummyCard));
+    int wrapperIdentity = 0;
+    auto *firstCard = new (storage) DummyCard;
+    const auto firstToken = manager.observeCard(firstCard);
+    const bool firstWrapperRetained = firstToken && manager.retainWrapper(firstToken);
+    const bool firstWrapperBound = firstWrapperRetained
+        && manager.bindWrapper(&wrapperIdentity, firstToken);
+    const bool firstNativeRetained = firstWrapperBound
+        && manager.retainNativeLease(firstToken);
+    firstCard->~DummyCard();
+    auto *secondCard = new (storage) DummyCard;
+    const auto secondToken = manager.observeCard(secondCard);
+    const auto staleWrapperBinding = manager.wrapperBinding(&wrapperIdentity);
+    const bool reusedAddressGetsNewGeneration = firstToken && secondToken
+        && firstToken->generation != secondToken->generation
+        && !manager.isLive(firstToken) && manager.isLive(secondToken)
+        && staleWrapperBinding == firstToken;
+    const auto releasedWrapperBinding = manager.releaseWrapperBinding(&wrapperIdentity);
+    const bool releasedOldNativeLease = manager.releaseNativeLease(firstToken);
+    const bool releasingOldGenerationLeavesNewLive = releasedWrapperBinding == firstToken
+        && releasedOldNativeLease && !manager.isLive(firstToken)
+        && manager.isLive(secondToken)
+        && manager.gauge().wrapper_leases == 0
+        && manager.gauge().native_leases == 0;
+    secondCard->~DummyCard();
+    const bool resetAfterCompleteReuseCleanup = manager.resetForTest();
+    ::operator delete(storage);
+
+    return retiredRefused && retiredDestroyed && repeatedObservationIdempotent
+        && firstWrapperRetained && firstWrapperBound && firstNativeRetained
+        && reusedAddressGetsNewGeneration && releasingOldGenerationLeavesNewLive
+        && resetAfterCompleteReuseCleanup;
+}
+
+bool probeResidualGaugeProducersAndDomainIsolation()
+{
+    CardLifetimeManager isolation(CardLifetimeMode::ManagedReclaim);
+    static int domainA = 0;
+    static int domainB = 0;
+    int pendingA = 0;
+    const void *previousDomain = CardLifetimeManager::setCurrentDomain(&domainA);
+    const auto pendingToken = isolation.observeLive(&pendingA);
+    const bool pendingRequested = pendingToken && isolation.requestNativeDelete(pendingToken);
+    CardLifetimeManager::setCurrentDomain(&domainB);
+    isolation.enterScope();
+    isolation.enterLuaPin();
+    const quint64 isolatedDrain = isolation.drain();
+    isolation.leaveLuaPin();
+    isolation.leaveScope();
+    CardLifetimeManager::setCurrentDomain(previousDomain);
+    const bool crossDomainIsolation = pendingRequested && isolatedDrain == 1
+        && isolation.state(pendingToken) == CardLifetimeState::Retired;
+
+    CardLifetimeManager producer(CardLifetimeMode::ManagedReclaim);
+    int wrapperIdentity = 0;
+    auto *factoryCard = new DummyCard;
+    const auto factoryToken = producer.recordFactoryClone(factoryCard);
+    const CardLifetimeGauge factoryGauge = producer.gauge();
+    const bool factoryProduced = factoryToken && factoryGauge.clone_created == 1
+        && factoryGauge.factory_unclaimed == 1;
+    producer.recordOwningFactoryResult(factoryToken);
+    const bool factoryClaimed = producer.retainWrapper(factoryToken)
+        && producer.bindWrapper(&wrapperIdentity, factoryToken, true)
+        && producer.gauge().factory_unclaimed == 0
+        && producer.gauge().unknown_unclaimed == 0;
+    producer.releaseWrapperBinding(&wrapperIdentity);
+    CARD_LIFETIME_CHECK(producer.requestNativeDelete(factoryToken));
+    CARD_LIFETIME_CHECK(producer.drain() == 1);
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+
+    auto *unknownCard = new DummyCard;
+    const auto unknownToken = producer.observeCard(unknownCard);
+    producer.recordOwningFactoryResult(unknownToken);
+    const bool unknownProduced = unknownToken && producer.gauge().unknown_unclaimed == 1;
+    CARD_LIFETIME_CHECK(producer.retainWrapper(unknownToken));
+    CARD_LIFETIME_CHECK(producer.bindWrapper(&wrapperIdentity, unknownToken, true));
+    const bool unknownClaimed = producer.gauge().unknown_unclaimed == 0;
+    producer.releaseWrapperBinding(&wrapperIdentity);
+    CARD_LIFETIME_CHECK(producer.requestNativeDelete(unknownToken));
+    CARD_LIFETIME_CHECK(producer.drain() == 1);
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+
+    const quint64 bypassBefore = producer.gauge().card_delete_bypass;
+    auto *bypassCard = new DummyCard;
+    CARD_LIFETIME_CHECK(producer.observeCard(bypassCard));
+    producer.recordDeferredDelete(bypassCard);
+    const bool bypassProduced = producer.gauge().card_delete_bypass == bypassBefore + 1;
+    delete bypassCard;
+
+    const quint64 rawBefore = producer.gauge().unapproved_card_raw_delete;
+    auto *rawCard = new DummyCard;
+    CARD_LIFETIME_CHECK(producer.observeCard(rawCard));
+    delete rawCard;
+    const bool rawDeleteProduced = producer.gauge().unapproved_card_raw_delete
+        == rawBefore + 1;
+
+    const quint64 externalBefore = producer.gauge().external_direct_destroy;
+    auto *externalCard = new DummyCard;
+    const auto externalToken = producer.observeCard(externalCard);
+    CARD_LIFETIME_CHECK(externalToken && producer.retainNativeLease(externalToken));
+    delete externalCard;
+    const bool externalDestroyProduced = producer.gauge().external_direct_destroy
+        == externalBefore + 1;
+    CARD_LIFETIME_CHECK(producer.releaseNativeLease(externalToken));
+
+    fprintf(stdout,
+            "CARD_LIFETIME_RESIDUAL_DETAIL isolated=%d factory=%d claimed=%d unknown=%d unknown_claimed=%d bypass=%d raw=%d external=%d\n",
+            crossDomainIsolation, factoryProduced, factoryClaimed, unknownProduced,
+            unknownClaimed, bypassProduced, rawDeleteProduced, externalDestroyProduced);
+
+    return crossDomainIsolation && factoryProduced && factoryClaimed
+        && unknownProduced && unknownClaimed && bypassProduced
+        && rawDeleteProduced && externalDestroyProduced;
+}
+
+bool probeBlocker4CorePins()
+{
+    CardLifetimeManager &manager = globalCardLifetimeManager();
+    CardLifetimeManager unrelated(CardLifetimeMode::ObserveOnly);
+    static int runtimeDomain = 0;
+    static int unrelatedDomain = 0;
+    LuaRuntime runtime(LuaRuntime::Auxiliary);
+    runtime.setLifetimeDomain(&runtimeDomain);
+    if (!runtime.initialize())
+        return false;
+    const quint64 runtimeGeneration = runtime.generation();
+    lua_State *runtimeState = runtime.rawState();
+
+    unrelated.registerRuntimeDomain(&unrelatedDomain, &runtime, runtimeGeneration,
+                                    runtimeState);
+    bool managerOwnerDiffers = false;
+    bool workerRan = false;
+    bool outerPin = false;
+    bool nestedDepth = false;
+    bool nestedPin = false;
+    bool errorReturned = false;
+    bool pinSurvivedError = false;
+    bool pinSurvivedInnerExit = false;
+    bool pinReleased = false;
+    bool unrelatedUnpinned = false;
+    QThread *worker = QThread::create([&] {
+        LuaRuntime::Binding binding(runtime);
+        managerOwnerDiffers = manager.ownerThread() != QThread::currentThread();
+        workerRan = runtime.state() != nullptr && LuaRuntime::current() == &runtime;
+        {
+            LuaRuntime::LuaInvocationScope outer(runtime);
+            const auto outerGauge = manager.gaugeForRuntime(
+                runtime.lifetimeDomain(), &runtime, runtime.generation(), runtime.rawState());
+            outerPin = runtime.invocationDepth() == 1 && outerGauge.lua_pins == 1;
+            unrelatedUnpinned = unrelated.gauge().lua_pins == 0;
+            {
+                LuaRuntime::LuaInvocationScope nested(runtime);
+                const auto nestedGauge = manager.gaugeForRuntime(
+                    runtime.lifetimeDomain(), &runtime, runtime.generation(), runtime.rawState());
+                nestedDepth = runtime.invocationDepth() == 2;
+                nestedPin = nestedGauge.lua_pins == 1;
+                lua_State *state = runtime.state();
+                if (state && luaL_loadstring(state, "error('blocker4 nested error')") == 0) {
+                    errorReturned = lua_pcall(state, 0, 0, 0) != 0;
+                    lua_pop(state, 1);
+                }
+                pinSurvivedError = manager.gaugeForRuntime(
+                    runtime.lifetimeDomain(), &runtime, runtime.generation(), runtime.rawState())
+                    .lua_pins == 1;
+            }
+            pinSurvivedInnerExit = manager.gaugeForRuntime(
+                runtime.lifetimeDomain(), &runtime, runtime.generation(), runtime.rawState())
+                .lua_pins == 1;
+        }
+        pinReleased = manager.gaugeForRuntime(
+            runtime.lifetimeDomain(), &runtime, runtime.generation(), runtime.rawState())
+            .lua_pins == 0;
+    });
+    worker->start();
+    worker->wait();
+    delete worker;
+    unrelated.unregisterRuntimeDomain(&unrelatedDomain, &runtime, runtimeGeneration,
+                                      runtimeState);
+    {
+        LuaRuntime::Binding binding(runtime);
+        runtime.shutdown();
+    }
+    fprintf(stdout,
+            "CARD_LIFETIME_BLOCKER_4_CORE_DETAIL owner_diff=%d worker=%d outer=%d depth=%d nested=%d error=%d survived_error=%d survived_inner=%d released=%d unrelated=%d\n",
+            managerOwnerDiffers, workerRan, outerPin, nestedDepth, nestedPin, errorReturned,
+            pinSurvivedError, pinSurvivedInnerExit, pinReleased, unrelatedUnpinned);
+    return managerOwnerDiffers && workerRan && outerPin && nestedDepth && nestedPin
+        && errorReturned && pinSurvivedError && pinSurvivedInnerExit && pinReleased
+        && unrelatedUnpinned;
 }
 
 bool probeRoomStateCanonicalReset()
@@ -242,7 +459,7 @@ QJsonObject lifetimeChildSummary(const LifetimeChildReceipt &receipt)
                       ? QStringLiteral("normal") : QStringLiteral("crash"));
     summary.insert(QStringLiteral("exit_status_code"), static_cast<int>(receipt.exitStatus));
     summary.insert(QStringLiteral("exit_code_valid"),
-                   receipt.exitStatus == QProcess::NormalExit);
+                   receipt.finished && !receipt.timedOut);
     summary.insert(QStringLiteral("exit_code"), receipt.exitCode);
     summary.insert(QStringLiteral("stdout_bytes"), receipt.standardOutput.size());
     summary.insert(QStringLiteral("stderr_bytes"), receipt.standardError.size());
@@ -273,6 +490,10 @@ bool expectedShutdownFailure(const LifetimeChildReceipt &receipt, const QString 
 #ifdef _WIN32
     constexpr int expectedFatalExitCode = -1073740791;
 #endif
+    const bool stageSequenceMatches = stage == QLatin1String("worker-final")
+        ? receipt.shutdownStages.isEmpty()
+        : receipt.shutdownStages == QList<QString>{QStringLiteral("preclose"),
+              QStringLiteral("lua-close"), QStringLiteral("postclose")};
     return receipt.started && receipt.finished && receipt.cleanupComplete
         && !receipt.timedOut && receipt.exitStatus == QProcess::CrashExit
 #ifdef _WIN32
@@ -285,7 +506,7 @@ bool expectedShutdownFailure(const LifetimeChildReceipt &receipt, const QString 
             (QByteArray("ROOM_RUNTIME_FAIL stage=") + stage.toUtf8()).constData())
         && receipt.shutdownFailureStages == QList<QString>{stage}
         && receipt.shutdownFailures.size() == 1
-        && receipt.shutdownStages.size() >= 1
+        && stageSequenceMatches
         && receipt.shutdownFailures.constFirst().value(invariantKey).toInteger() > 0;
 }
 }
@@ -295,39 +516,48 @@ int runCardLifetimeLegacyRedTests();
 int runCardLifetimeTests()
 {
     QString bootstrapError;
-    assert(EngineBootstrap::initialize(false, &bootstrapError));
+    CARD_LIFETIME_CHECK(EngineBootstrap::initialize(false, &bootstrapError));
     const bool defaultModeRegression =
         defaultCardLifetimeMode() == CardLifetimeMode::ManagedReclaim;
     const CardLifetimeGauge defaultGauge = globalCardLifetimeManager().gauge();
-    assert(defaultGauge.unknown_unclaimed == 0);
-    assert(defaultGauge.unknown_qvariant_card_payload == 0);
-    assert(defaultGauge.change_list_self_cycle == 0);
-    assert(defaultGauge.change_list_cycles == 0);
-    assert(defaultGauge.change_list_reuse_reconnect == 0);
-    assert(defaultGauge.unapproved_card_raw_delete == 0);
-    assert(defaultGauge.card_delete_bypass == 0);
-    assert(defaultGauge.adoption_failed == 0);
-    assert(defaultGauge.affinity_transfer_failed == 0);
+    const bool blocker12Regression = probeBlockers12();
+    fprintf(stdout, "CARD_LIFETIME_BLOCKERS_1_2 %s\n",
+            blocker12Regression ? "PASS" : "FAIL");
+    const bool residualGaugeRegression = probeResidualGaugeProducersAndDomainIsolation();
+    fprintf(stdout, "CARD_LIFETIME_RESIDUAL_GAUGES %s\n",
+            residualGaugeRegression ? "PASS" : "FAIL");
+    const bool blocker4CoreRegression = probeBlocker4CorePins();
+    fprintf(stdout, "CARD_LIFETIME_BLOCKER_4_CORE %s\n",
+            blocker4CoreRegression ? "PASS" : "FAIL");
+    CARD_LIFETIME_CHECK(defaultGauge.unknown_unclaimed == 0);
+    CARD_LIFETIME_CHECK(defaultGauge.unknown_qvariant_card_payload == 0);
+    CARD_LIFETIME_CHECK(defaultGauge.change_list_self_cycle == 0);
+    CARD_LIFETIME_CHECK(defaultGauge.change_list_cycles == 0);
+    CARD_LIFETIME_CHECK(defaultGauge.change_list_reuse_reconnect == 0);
+    CARD_LIFETIME_CHECK(defaultGauge.unapproved_card_raw_delete == 0);
+    CARD_LIFETIME_CHECK(defaultGauge.card_delete_bypass == 0);
+    CARD_LIFETIME_CHECK(defaultGauge.adoption_failed == 0);
+    CARD_LIFETIME_CHECK(defaultGauge.affinity_transfer_failed == 0);
     QProcess legacy;
     legacy.start(QCoreApplication::applicationFilePath(), {QStringLiteral("--suite"),
                                                             QStringLiteral("card-lifetime-legacy-red")});
-    assert(legacy.waitForFinished(15000));
-    assert(legacy.exitCode() == 0);
+    CARD_LIFETIME_CHECK(legacy.waitForFinished(15000));
+    CARD_LIFETIME_CHECK(legacy.exitCode() == 0);
     const QJsonDocument legacyReport = QJsonDocument::fromJson(legacy.readAllStandardOutput());
-    assert(legacyReport.object().value(QStringLiteral("classification")).toString() == QLatin1String("RED"));
-    assert(legacyReport.object().value(QStringLiteral("normalized_exit")).toInt() == 70);
+    CARD_LIFETIME_CHECK(legacyReport.object().value(QStringLiteral("classification")).toString() == QLatin1String("RED"));
+    CARD_LIFETIME_CHECK(legacyReport.object().value(QStringLiteral("normalized_exit")).toInt() == 70);
     LuaRuntime runtime(LuaRuntime::Auxiliary);
-    assert(runtime.invocationDepth() == 0);
+    CARD_LIFETIME_CHECK(runtime.invocationDepth() == 0);
     {
         LuaRuntime::LuaInvocationScope invocation(runtime);
-        assert(runtime.invocationDepth() == 1);
+        CARD_LIFETIME_CHECK(runtime.invocationDepth() == 1);
         {
             LuaRuntime::LuaInvocationScope nested(runtime);
-            assert(runtime.invocationDepth() == 2);
+            CARD_LIFETIME_CHECK(runtime.invocationDepth() == 2);
         }
-        assert(runtime.invocationDepth() == 1);
+        CARD_LIFETIME_CHECK(runtime.invocationDepth() == 1);
     }
-    assert(runtime.invocationDepth() == 0);
+    CARD_LIFETIME_CHECK(runtime.invocationDepth() == 0);
     {
         static int runtimeDomainA = 0;
         static int runtimeDomainB = 0;
@@ -344,71 +574,71 @@ int runCardLifetimeTests()
             CardLifetimeManager::setCurrentRuntimeContext(
                 &runtimeDomainA, &runtimeIdentityA, 1, stateA);
         const auto first = identityManager.observeLive(&reusedAddress);
-        assert(first);
-        assert(identityManager.retainWrapper(first));
-        assert(identityManager.bindWrapper(&wrapperAddress, first));
+        CARD_LIFETIME_CHECK(first);
+        CARD_LIFETIME_CHECK(identityManager.retainWrapper(first));
+        CARD_LIFETIME_CHECK(identityManager.bindWrapper(&wrapperAddress, first));
         CardLifetimeManager::setCurrentRuntimeContext(previous.domain, previous.identity,
                                                        previous.generation, previous.state);
         CardLifetimeManager::setCurrentRuntimeContext(
             &runtimeDomainB, &runtimeIdentityB, 1, stateB);
-        assert(!identityManager.wrapperBinding(&wrapperAddress));
-        assert(!identityManager.releaseWrapperBinding(&wrapperAddress));
+        CARD_LIFETIME_CHECK(!identityManager.wrapperBinding(&wrapperAddress));
+        CARD_LIFETIME_CHECK(!identityManager.releaseWrapperBinding(&wrapperAddress));
         CardLifetimeManager::setCurrentRuntimeContext(
             &runtimeDomainA, &runtimeIdentityA, 1, stateA);
-        assert(identityManager.releaseWrapperBinding(&wrapperAddress));
-        assert(identityManager.invalidateIfObserved(&reusedAddress));
-        assert(!identityManager.bindWrapper(&wrapperAddress, first));
+        CARD_LIFETIME_CHECK(identityManager.releaseWrapperBinding(&wrapperAddress));
+        CARD_LIFETIME_CHECK(identityManager.invalidateIfObserved(&reusedAddress));
+        CARD_LIFETIME_CHECK(!identityManager.bindWrapper(&wrapperAddress, first));
         CardLifetimeManager::setCurrentRuntimeContext(
             &runtimeDomainB, &runtimeIdentityB, 2, stateB);
         const auto second = identityManager.observeLive(&reusedAddress);
-        assert(second && second->generation != first->generation);
-        assert(identityManager.retainWrapper(second));
-        assert(identityManager.bindWrapper(&wrapperAddress, second));
+        CARD_LIFETIME_CHECK(second && second->generation != first->generation);
+        CARD_LIFETIME_CHECK(identityManager.retainWrapper(second));
+        CARD_LIFETIME_CHECK(identityManager.bindWrapper(&wrapperAddress, second));
         CardLifetimeManager::setCurrentRuntimeContext(
             &runtimeDomainA, &runtimeIdentityA, 1, stateA);
-        assert(!identityManager.releaseWrapperBinding(&wrapperAddress));
+        CARD_LIFETIME_CHECK(!identityManager.releaseWrapperBinding(&wrapperAddress));
         CardLifetimeManager::setCurrentRuntimeContext(
             &runtimeDomainB, &runtimeIdentityB, 2, stateB);
-        assert(identityManager.releaseWrapperBinding(&wrapperAddress));
-        assert(identityManager.invalidateIfObserved(&reusedAddress));
+        CARD_LIFETIME_CHECK(identityManager.releaseWrapperBinding(&wrapperAddress));
+        CARD_LIFETIME_CHECK(identityManager.invalidateIfObserved(&reusedAddress));
         CardLifetimeManager::setCurrentRuntimeContext(previous.domain, previous.identity,
                                                        previous.generation, previous.state);
-        assert(identityManager.resetForTest());
+        CARD_LIFETIME_CHECK(identityManager.resetForTest());
         CardLifetimeManager baselineManager(CardLifetimeMode::ObserveOnly);
         int baselineAddress = 0;
         const auto baselineToken = baselineManager.observeLive(&baselineAddress);
-        assert(baselineToken);
+        CARD_LIFETIME_CHECK(baselineToken);
         baselineManager.setDomainBaseline(&runtimeDomainA, {&baselineAddress});
-        assert(!baselineManager.resetForTest());
-        assert(baselineManager.invalidateIfObserved(&baselineAddress));
-        assert(baselineManager.resetForTest());
+        CARD_LIFETIME_CHECK(!baselineManager.resetForTest());
+        CARD_LIFETIME_CHECK(baselineManager.invalidateIfObserved(&baselineAddress));
+        CARD_LIFETIME_CHECK(baselineManager.resetForTest());
     }
     {
         LuaRuntime guardedRuntime(LuaRuntime::Auxiliary);
         LuaRuntime otherRuntime(LuaRuntime::Auxiliary);
-        assert(guardedRuntime.initialize());
-        assert(otherRuntime.initialize());
+        CARD_LIFETIME_CHECK(guardedRuntime.initialize());
+        CARD_LIFETIME_CHECK(otherRuntime.initialize());
         {
             LuaRuntime::Binding binding(guardedRuntime);
             LuaRuntime::LuaInvocationScope invocation(guardedRuntime);
-            assert(guardedRuntime.invocationDepth() == 1);
-            assert(globalCardLifetimeManager().gaugeForRuntime(
+            CARD_LIFETIME_CHECK(guardedRuntime.invocationDepth() == 1);
+            CARD_LIFETIME_CHECK(globalCardLifetimeManager().gaugeForRuntime(
                        guardedRuntime.lifetimeDomain(), &guardedRuntime,
                        guardedRuntime.generation(), guardedRuntime.rawState()).lua_pins == 1);
             guardedRuntime.shutdown();
-            assert(guardedRuntime.lifecycle() == LuaRuntime::Lifecycle::Running);
-            assert(guardedRuntime.rawState() != nullptr);
+            CARD_LIFETIME_CHECK(guardedRuntime.lifecycle() == LuaRuntime::Lifecycle::Running);
+            CARD_LIFETIME_CHECK(guardedRuntime.rawState() != nullptr);
         }
-        assert(globalCardLifetimeManager().gaugeForRuntime(
+        CARD_LIFETIME_CHECK(globalCardLifetimeManager().gaugeForRuntime(
                    guardedRuntime.lifetimeDomain(), &guardedRuntime,
                    guardedRuntime.generation(), guardedRuntime.rawState()).lua_pins == 0);
         guardedRuntime.shutdown();
-        assert(guardedRuntime.lifecycle() == LuaRuntime::Lifecycle::Closed);
+        CARD_LIFETIME_CHECK(guardedRuntime.lifecycle() == LuaRuntime::Lifecycle::Closed);
         guardedRuntime.shutdown();
-        assert(guardedRuntime.lifecycle() == LuaRuntime::Lifecycle::Closed);
-        assert(otherRuntime.lifecycle() == LuaRuntime::Lifecycle::Running);
+        CARD_LIFETIME_CHECK(guardedRuntime.lifecycle() == LuaRuntime::Lifecycle::Closed);
+        CARD_LIFETIME_CHECK(otherRuntime.lifecycle() == LuaRuntime::Lifecycle::Running);
         otherRuntime.shutdown();
-        assert(otherRuntime.lifecycle() == LuaRuntime::Lifecycle::Closed);
+        CARD_LIFETIME_CHECK(otherRuntime.lifecycle() == LuaRuntime::Lifecycle::Closed);
     }
     {
         static int sharedDomain = 0;
@@ -416,8 +646,8 @@ int runCardLifetimeTests()
         LuaRuntime aiRuntime(LuaRuntime::Auxiliary);
         gameRuntime.setLifetimeDomain(&sharedDomain);
         aiRuntime.setLifetimeDomain(&sharedDomain);
-        assert(gameRuntime.initialize());
-        assert(aiRuntime.initialize());
+        CARD_LIFETIME_CHECK(gameRuntime.initialize());
+        CARD_LIFETIME_CHECK(aiRuntime.initialize());
         int gameCard = 0;
         int aiCard = 0;
         int gameWrapper = 0;
@@ -428,65 +658,65 @@ int runCardLifetimeTests()
         {
             LuaRuntime::Binding binding(gameRuntime);
             gameToken = manager.observeLive(&gameCard);
-            assert(gameToken && manager.retainWrapper(gameToken));
-            assert(manager.bindWrapper(&gameWrapper, gameToken));
+            CARD_LIFETIME_CHECK(gameToken && manager.retainWrapper(gameToken));
+            CARD_LIFETIME_CHECK(manager.bindWrapper(&gameWrapper, gameToken));
         }
         {
             LuaRuntime::Binding binding(aiRuntime);
             aiToken = manager.observeLive(&aiCard);
-            assert(aiToken && manager.retainWrapper(aiToken));
-            assert(manager.bindWrapper(&aiWrapper, aiToken));
+            CARD_LIFETIME_CHECK(aiToken && manager.retainWrapper(aiToken));
+            CARD_LIFETIME_CHECK(manager.bindWrapper(&aiWrapper, aiToken));
         }
         gameRuntime.shutdown();
         {
             LuaRuntime::Binding binding(aiRuntime);
-            assert(manager.wrapperBinding(&aiWrapper));
-            assert(manager.gaugeForRuntime(aiRuntime.lifetimeDomain(), &aiRuntime,
+            CARD_LIFETIME_CHECK(manager.wrapperBinding(&aiWrapper));
+            CARD_LIFETIME_CHECK(manager.gaugeForRuntime(aiRuntime.lifetimeDomain(), &aiRuntime,
                                            aiRuntime.generation(), aiRuntime.rawState())
                        .wrapper_leases == 1);
         }
         aiRuntime.shutdown();
-        assert(manager.invalidateIfObserved(&gameCard));
-        assert(manager.invalidateIfObserved(&aiCard));
+        CARD_LIFETIME_CHECK(manager.invalidateIfObserved(&gameCard));
+        CARD_LIFETIME_CHECK(manager.invalidateIfObserved(&aiCard));
     }
-    assert(probeCanonicalOwner());
-    assert(probeCanonicalOwner());
-    assert(probeCanonicalOwner());
-    assert(probeCanonicalOwner());
+    CARD_LIFETIME_CHECK(probeCanonicalOwner());
+    CARD_LIFETIME_CHECK(probeCanonicalOwner());
+    CARD_LIFETIME_CHECK(probeCanonicalOwner());
+    CARD_LIFETIME_CHECK(probeCanonicalOwner());
     const QStringList roomModes = {QStringLiteral("03_1v2"), QStringLiteral("02_1v1"),
                                    QStringLiteral("06_3v3"), QStringLiteral("06_XMode")};
     for (const QString &mode : roomModes) {
-        assert(probeRoomMode(mode));
-        assert(probeWrappedCardCanonicalOwner(mode));
+        CARD_LIFETIME_CHECK(probeRoomMode(mode));
+        CARD_LIFETIME_CHECK(probeWrappedCardCanonicalOwner(mode));
     }
-    assert(probeRoomStateCanonicalReset());
+    CARD_LIFETIME_CHECK(probeRoomStateCanonicalReset());
     CardLifetimeManager observe(CardLifetimeMode::ObserveOnly);
     const auto token = observe.observeLive(&liveObject, false);
-    assert(token);
-    assert(observe.isLive(token));
-    assert(observe.retainWrapper(token));
+    CARD_LIFETIME_CHECK(token);
+    CARD_LIFETIME_CHECK(observe.isLive(token));
+    CARD_LIFETIME_CHECK(observe.retainWrapper(token));
     QByteArray error;
-    assert(observe.requestLuaDelete(token, &error));
-    assert(observe.gauge().pending_delete == 1);
-    assert(observe.drain() == 0);
-    assert(observe.releaseWrapper(token));
-    assert(observe.invalidateIfObserved(&liveObject));
-    assert(!observe.isLive(token));
+    CARD_LIFETIME_CHECK(observe.requestLuaDelete(token, &error));
+    CARD_LIFETIME_CHECK(observe.gauge().pending_delete == 1);
+    CARD_LIFETIME_CHECK(observe.drain() == 0);
+    CARD_LIFETIME_CHECK(observe.releaseWrapper(token));
+    CARD_LIFETIME_CHECK(observe.invalidateIfObserved(&liveObject));
+    CARD_LIFETIME_CHECK(!observe.isLive(token));
     const auto reusedObserved = observe.observeLive(&liveObject);
-    assert(reusedObserved && reusedObserved->generation != token->generation);
+    CARD_LIFETIME_CHECK(reusedObserved && reusedObserved->generation != token->generation);
     CardLifetimeManager reuseManager(CardLifetimeMode::ObserveOnly);
     int reused = 0;
     const auto firstGeneration = reuseManager.observeLive(&reused);
-    assert(firstGeneration);
-    assert(reuseManager.invalidateIfObserved(&reused));
-    assert(reuseManager.resetForTest());
+    CARD_LIFETIME_CHECK(firstGeneration);
+    CARD_LIFETIME_CHECK(reuseManager.invalidateIfObserved(&reused));
+    CARD_LIFETIME_CHECK(reuseManager.resetForTest());
     const auto secondGeneration = reuseManager.observeLive(&reused);
-    assert(secondGeneration && secondGeneration->generation != firstGeneration->generation);
+    CARD_LIFETIME_CHECK(secondGeneration && secondGeneration->generation != firstGeneration->generation);
     CardLifetimeManager secondDomain(CardLifetimeMode::ObserveOnly);
     const auto secondDomainToken = secondDomain.observeLive(&reused);
-    assert(secondDomainToken);
-    assert(secondDomain.isLive(secondDomainToken));
-    assert(!reuseManager.isLive(secondDomainToken));
+    CARD_LIFETIME_CHECK(secondDomainToken);
+    CARD_LIFETIME_CHECK(secondDomain.isLive(secondDomainToken));
+    CARD_LIFETIME_CHECK(!reuseManager.isLive(secondDomainToken));
     CardLifetimeManager managed(CardLifetimeMode::ManagedReclaim);
     bool activeScopeBlocked = false;
     bool luaPinBlocked = false;
@@ -501,96 +731,96 @@ int runCardLifetimeTests()
         DummyCard card;
         CardLifetimeManager &cardManager = globalCardLifetimeManager();
         const auto cardToken = cardManager.observeLive(&card);
-        assert(cardToken);
-        assert(card.lifetimeGeneration() == cardToken->generation);
-        assert(card.lifetimeIsLive());
-        assert(cardManager.invalidateIfObserved(&card));
-        assert(!card.lifetimeIsLive());
+        CARD_LIFETIME_CHECK(cardToken);
+        CARD_LIFETIME_CHECK(card.lifetimeGeneration() == cardToken->generation);
+        CARD_LIFETIME_CHECK(card.lifetimeIsLive());
+        CARD_LIFETIME_CHECK(cardManager.invalidateIfObserved(&card));
+        CARD_LIFETIME_CHECK(!card.lifetimeIsLive());
     }
     {
         CardLifetimeManager &cardManager = globalCardLifetimeManager();
         auto *card = new DummyCard;
         const auto cardToken = cardManager.observeLive(card);
-        assert(cardToken);
+        CARD_LIFETIME_CHECK(cardToken);
         card->deleteLater();
-    assert(cardManager.gauge().native_delete_requested > 0);
+    CARD_LIFETIME_CHECK(cardManager.gauge().native_delete_requested > 0);
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-        assert(!cardManager.isLive(cardToken));
+        CARD_LIFETIME_CHECK(!cardManager.isLive(cardToken));
     }
     const auto managedToken = managed.observeLive(&otherObject, false);
-    assert(managedToken);
+    CARD_LIFETIME_CHECK(managedToken);
     {
         CardLifetimeLease lease(managed, managedToken);
-        assert(lease.isValid());
-        assert(managed.gauge().native_leases > 0);
+        CARD_LIFETIME_CHECK(lease.isValid());
+        CARD_LIFETIME_CHECK(managed.gauge().native_leases > 0);
     }
     int adoptedObject = 0;
     const auto adoptedToken = managed.observeLive(&adoptedObject, false);
-    assert(adoptedToken);
-    assert(managed.requestNativeDelete(adoptedToken));
-    assert(managed.markAdopted(adoptedToken));
+    CARD_LIFETIME_CHECK(adoptedToken);
+    CARD_LIFETIME_CHECK(managed.requestNativeDelete(adoptedToken));
+    CARD_LIFETIME_CHECK(managed.markAdopted(adoptedToken));
     error.clear();
-    assert(managed.requestLuaDelete(adoptedToken, &error));
-    assert(error.isEmpty());
-    assert(managed.gauge().adopted_delete_ignored > 0);
-    assert(!managed.resetForTest());
-    assert(managed.requestNativeDelete(adoptedToken));
-    assert(managed.drain() == 0);
-    assert(managed.gauge().adopted_after_delete_request > 0);
-    assert(managed.requestNativeDelete(managedToken));
-    assert(managed.state(managedToken) == CardLifetimeState::PendingDelete);
-    assert(managed.drain() == 1);
-    assert(managed.state(managedToken) == CardLifetimeState::Retired);
+    CARD_LIFETIME_CHECK(managed.requestLuaDelete(adoptedToken, &error));
+    CARD_LIFETIME_CHECK(error.isEmpty());
+    CARD_LIFETIME_CHECK(managed.gauge().adopted_delete_ignored > 0);
+    CARD_LIFETIME_CHECK(!managed.resetForTest());
+    CARD_LIFETIME_CHECK(managed.requestNativeDelete(adoptedToken));
+    CARD_LIFETIME_CHECK(managed.drain() == 0);
+    CARD_LIFETIME_CHECK(managed.gauge().adopted_after_delete_request > 0);
+    CARD_LIFETIME_CHECK(managed.requestNativeDelete(managedToken));
+    CARD_LIFETIME_CHECK(managed.state(managedToken) == CardLifetimeState::PendingDelete);
+    CARD_LIFETIME_CHECK(managed.drain() == 1);
+    CARD_LIFETIME_CHECK(managed.state(managedToken) == CardLifetimeState::Retired);
 
     int scopedObject = 0;
     const auto scopedToken = managed.observeLive(&scopedObject);
-    assert(scopedToken && managed.requestNativeDelete(scopedToken));
+    CARD_LIFETIME_CHECK(scopedToken && managed.requestNativeDelete(scopedToken));
     {
         CardLifetimeScope scope(managed);
         activeScopeBlocked = managed.drain() == 0;
-        assert(activeScopeBlocked);
-        assert(managed.state(scopedToken) == CardLifetimeState::PendingDelete);
+        CARD_LIFETIME_CHECK(activeScopeBlocked);
+        CARD_LIFETIME_CHECK(managed.state(scopedToken) == CardLifetimeState::PendingDelete);
     }
-    assert(managed.drain() == 1);
+    CARD_LIFETIME_CHECK(managed.drain() == 1);
     int reservedObject = 0;
     const auto reservedToken = managed.observeLive(&reservedObject);
-    assert(reservedToken && managed.requestNativeDelete(reservedToken));
-    assert(managed.reserveAdoption(reservedToken));
+    CARD_LIFETIME_CHECK(reservedToken && managed.requestNativeDelete(reservedToken));
+    CARD_LIFETIME_CHECK(managed.reserveAdoption(reservedToken));
     reservationBlocked = managed.drain() == 0;
-    assert(reservationBlocked);
+    CARD_LIFETIME_CHECK(reservationBlocked);
     managed.cancelAdoption(reservedToken);
-    assert(managed.drain() == 1);
+    CARD_LIFETIME_CHECK(managed.drain() == 1);
     QThread foreignOwner;
     CardLifetimeManager affinity(CardLifetimeMode::ManagedReclaim, &foreignOwner);
     int foreignObject = 0;
     const auto foreignToken = affinity.observeLive(&foreignObject);
-    assert(foreignToken && affinity.requestNativeDelete(foreignToken));
+    CARD_LIFETIME_CHECK(foreignToken && affinity.requestNativeDelete(foreignToken));
     wrongThreadBlocked = affinity.drain() == 0;
-    assert(wrongThreadBlocked);
-    assert(affinity.state(foreignToken) == CardLifetimeState::PendingDelete);
-    assert(affinity.invalidateIfObserved(&foreignObject));
-    assert(affinity.resetForTest());
+    CARD_LIFETIME_CHECK(wrongThreadBlocked);
+    CARD_LIFETIME_CHECK(affinity.state(foreignToken) == CardLifetimeState::PendingDelete);
+    CARD_LIFETIME_CHECK(affinity.invalidateIfObserved(&foreignObject));
+    CARD_LIFETIME_CHECK(affinity.resetForTest());
 
     CardLifetimeManager deadLeaseManager(CardLifetimeMode::ManagedReclaim);
     auto *deadLeaseCard = new DummyCard;
     const auto deadLeaseToken = deadLeaseManager.observeCard(deadLeaseCard);
-    assert(deadLeaseToken);
-    assert(deadLeaseManager.retainWrapper(deadLeaseToken));
-    assert(deadLeaseManager.retainNativeLease(deadLeaseToken));
-    assert(deadLeaseManager.requestNativeDelete(deadLeaseToken));
+    CARD_LIFETIME_CHECK(deadLeaseToken);
+    CARD_LIFETIME_CHECK(deadLeaseManager.retainWrapper(deadLeaseToken));
+    CARD_LIFETIME_CHECK(deadLeaseManager.retainNativeLease(deadLeaseToken));
+    CARD_LIFETIME_CHECK(deadLeaseManager.requestNativeDelete(deadLeaseToken));
     realEligibleCreated = deadLeaseManager.gauge().pending_delete;
-    assert(deadLeaseManager.drain() == 0);
+    CARD_LIFETIME_CHECK(deadLeaseManager.drain() == 0);
     leaseBlocked = deadLeaseManager.gauge().pending_delete == realEligibleCreated
         && deadLeaseManager.gauge().native_leases > 0
         && deadLeaseManager.gauge().wrapper_leases > 0;
-    assert(leaseBlocked);
+    CARD_LIFETIME_CHECK(leaseBlocked);
     delete deadLeaseCard;
     realDestructorCompleted = deadLeaseManager.gauge().actually_destroyed;
     realActuallyDestroyed = deadLeaseManager.gauge().actually_destroyed;
     const auto wrongGeneration = std::make_shared<CardLifetimeToken>(*deadLeaseToken);
     ++wrongGeneration->generation;
-    assert(!deadLeaseManager.releaseNativeLease(wrongGeneration));
-    const bool noResurrection = !deadLeaseManager.observeLive(deadLeaseCard);
+    CARD_LIFETIME_CHECK(!deadLeaseManager.releaseNativeLease(wrongGeneration));
+    const bool noResurrection = !deadLeaseManager.isLive(deadLeaseToken);
     const bool releasedWrapper = deadLeaseManager.releaseWrapper(deadLeaseToken);
     const bool releasedNative = deadLeaseManager.releaseNativeLease(deadLeaseToken);
     realDeadRelease = noResurrection && releasedWrapper && releasedNative
@@ -598,39 +828,46 @@ int runCardLifetimeTests()
         && deadLeaseManager.gauge().wrapper_leases == 0
         && deadLeaseManager.entryCount() == 0
         && realDestructorCompleted == realActuallyDestroyed;
-    assert(realDeadRelease);
+    CARD_LIFETIME_CHECK(realDeadRelease);
 
     int luaPinnedObject = 0;
-    const auto luaPinnedToken = managed.observeLive(&luaPinnedObject);
-    assert(luaPinnedToken && managed.requestNativeDelete(luaPinnedToken));
+    CardLifetimeManager &luaPinManager = globalCardLifetimeManager();
+    std::shared_ptr<const CardLifetimeToken> luaPinnedToken;
     LuaRuntime pinnedRuntime(LuaRuntime::Auxiliary);
+    const bool pinnedRuntimeInitialized = pinnedRuntime.initialize();
+    CARD_LIFETIME_CHECK(pinnedRuntimeInitialized);
     {
+        LuaRuntime::Binding binding(pinnedRuntime);
+        luaPinnedToken = luaPinManager.observeLive(&luaPinnedObject);
+        CARD_LIFETIME_CHECK(luaPinnedToken
+            && luaPinManager.requestNativeDelete(luaPinnedToken));
         LuaRuntime::LuaInvocationScope invocation(pinnedRuntime);
-        assert(pinnedRuntime.invocationDepth() == 1);
-        luaPinBlocked = managed.drain() == 0;
-        assert(luaPinBlocked);
+        CARD_LIFETIME_CHECK(pinnedRuntime.invocationDepth() == 1);
+        luaPinBlocked = luaPinManager.drain() == 0;
+        CARD_LIFETIME_CHECK(luaPinBlocked);
     }
-    assert(managed.drain() == 1);
+    CARD_LIFETIME_CHECK(luaPinManager.drain() == 1);
+    pinnedRuntime.shutdown();
 
     const auto definition = managed.observeLive(&liveObject, true);
-    assert(definition);
+    CARD_LIFETIME_CHECK(definition);
     error.clear();
-    assert(managed.requestLuaDelete(definition, &error));
-    assert(error.isEmpty());
-    assert(managed.invalidateIfObserved(&adoptedObject) == true);
+    CARD_LIFETIME_CHECK(managed.requestLuaDelete(definition, &error));
+    CARD_LIFETIME_CHECK(error.isEmpty());
+    CARD_LIFETIME_CHECK(managed.invalidateIfObserved(&adoptedObject) == true);
     DummyCard *physical = new DummyCard;
     const auto physicalToken = managed.observeCard(physical);
-    assert(physicalToken);
-    assert(managed.requestNativeDelete(physicalToken));
+    CARD_LIFETIME_CHECK(physicalToken);
+    CARD_LIFETIME_CHECK(managed.requestNativeDelete(physicalToken));
     const auto destroyedBefore = managed.gauge().actually_destroyed;
     const auto eligible = managed.drain();
-    assert(eligible == 1);
-    assert(managed.gauge().actually_destroyed == destroyedBefore);
+    CARD_LIFETIME_CHECK(eligible == 1);
+    CARD_LIFETIME_CHECK(managed.gauge().actually_destroyed == destroyedBefore);
     QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-    assert(managed.gauge().actually_destroyed == destroyedBefore + eligible);
-    assert(!managed.isLive(physicalToken));
-    assert(managed.state(physicalToken) == CardLifetimeState::Dead);
-    assert(managed.gauge().actually_destroyed >= 1);
+    CARD_LIFETIME_CHECK(managed.gauge().actually_destroyed == destroyedBefore + eligible);
+    CARD_LIFETIME_CHECK(!managed.isLive(physicalToken));
+    CARD_LIFETIME_CHECK(managed.state(physicalToken) == CardLifetimeState::Dead);
+    CARD_LIFETIME_CHECK(managed.gauge().actually_destroyed >= 1);
 
 
     DummyCard *lateCard = nullptr;
@@ -638,7 +875,7 @@ int runCardLifetimeTests()
         CardLifetimeManager teardownManager(CardLifetimeMode::ManagedReclaim);
         lateCard = new DummyCard;
         const auto lateToken = teardownManager.observeCard(lateCard);
-        assert(lateToken);
+        CARD_LIFETIME_CHECK(lateToken);
     }
     delete lateCard;
     auto *unassociatedCard = new DummyCard;
@@ -646,19 +883,19 @@ int runCardLifetimeTests()
 
     const auto before = managed.gauge().unknown_card_delete;
     error.clear();
-    assert(!managed.requestLuaDelete({}, &error));
-    assert(error == CardLifetimeManager::unknownOwnershipError());
-    assert(managed.gauge().unknown_card_delete == before + 1);
+    CARD_LIFETIME_CHECK(!managed.requestLuaDelete({}, &error));
+    CARD_LIFETIME_CHECK(error == CardLifetimeManager::unknownOwnershipError());
+    CARD_LIFETIME_CHECK(managed.gauge().unknown_card_delete == before + 1);
     error.clear();
-    assert(!managed.requestLuaDelete(reinterpret_cast<const void *>(static_cast<quintptr>(0xdeadbeef)), &error));
-    assert(error == CardLifetimeManager::unknownOwnershipError());
-    assert(managed.gauge().unknown_card_delete == before + 2);
+    CARD_LIFETIME_CHECK(!managed.requestLuaDelete(reinterpret_cast<const void *>(static_cast<quintptr>(0xdeadbeef)), &error));
+    CARD_LIFETIME_CHECK(error == CardLifetimeManager::unknownOwnershipError());
+    CARD_LIFETIME_CHECK(managed.gauge().unknown_card_delete == before + 2);
     const auto opaqueBefore = managed.gauge().unknown_qvariant_card_payload;
     error.clear();
-    assert(!managed.rejectOpaqueVariant(&error));
-    assert(error == CardLifetimeManager::opaqueVariantError());
-    assert(managed.gauge().unknown_qvariant_card_payload == opaqueBefore + 1);
-    assert(QByteArray(CardLifetimeManager::opaqueVariantError())
+    CARD_LIFETIME_CHECK(!managed.rejectOpaqueVariant(&error));
+    CARD_LIFETIME_CHECK(error == CardLifetimeManager::opaqueVariantError());
+    CARD_LIFETIME_CHECK(managed.gauge().unknown_qvariant_card_payload == opaqueBefore + 1);
+    CARD_LIFETIME_CHECK(QByteArray(CardLifetimeManager::opaqueVariantError())
            == QByteArray("Card lifetime error: rejected opaque QVariant Card payload"));
     DummyCard cycle;
     DummyCard cycleTarget;
@@ -668,22 +905,22 @@ int runCardLifetimeTests()
     cycle.addChange(&cycleTarget);
     cycle.addChange(&cycleTarget);
     cycleTarget.addChange(&cycle);
-    assert(cycle.change_cards.size() == 1);
+    CARD_LIFETIME_CHECK(cycle.change_cards.size() == 1);
     const auto cycleAfter = globalManager.gauge();
-    assert(cycleAfter.change_list_self_cycle > cycleBefore.change_list_self_cycle);
-    assert(cycleAfter.change_list_reuse_reconnect + cycleAfter.change_list_cycles
+    CARD_LIFETIME_CHECK(cycleAfter.change_list_self_cycle > cycleBefore.change_list_self_cycle);
+    CARD_LIFETIME_CHECK(cycleAfter.change_list_reuse_reconnect + cycleAfter.change_list_cycles
            > cycleBefore.change_list_reuse_reconnect + cycleBefore.change_list_cycles);
-    assert(cycleAfter.sidecar_edges == cycleBefore.sidecar_edges + 1);
+    CARD_LIFETIME_CHECK(cycleAfter.sidecar_edges == cycleBefore.sidecar_edges + 1);
     globalManager.removeChangeEdges(&cycle);
     globalManager.removeChangeEdges(&cycleTarget);
-    assert(globalManager.gauge().sidecar_edges == cycleBefore.sidecar_edges);
+    CARD_LIFETIME_CHECK(globalManager.gauge().sidecar_edges == cycleBefore.sidecar_edges);
     DummyCard tagSource;
     DummyCard tagTarget;
     const auto leaseBefore = globalManager.gauge().native_leases;
     tagSource.setTag(QStringLiteral("cardLease"), QVariant::fromValue(static_cast<Card *>(&tagTarget)));
-    assert(globalManager.gauge().native_leases == leaseBefore + 1);
+    CARD_LIFETIME_CHECK(globalManager.gauge().native_leases == leaseBefore + 1);
     tagSource.setTag(QStringLiteral("cardLease"), QVariant(42));
-    assert(globalManager.gauge().native_leases == leaseBefore);
+    CARD_LIFETIME_CHECK(globalManager.gauge().native_leases == leaseBefore);
     {
         DamageStruct damage(&tagTarget, nullptr, nullptr);
         DamageStruct damageCopy(damage);
@@ -701,19 +938,19 @@ int runCardLifetimeTests()
         CardUseStruct useCopy(use);
         CardResponseStruct response(&tagTarget, false);
         CardResponseStruct responseCopy(response);
-        assert(globalManager.gauge().native_leases > leaseBefore);
+        CARD_LIFETIME_CHECK(globalManager.gauge().native_leases > leaseBefore);
     }
-    assert(globalManager.gauge().native_leases == leaseBefore);
+    CARD_LIFETIME_CHECK(globalManager.gauge().native_leases == leaseBefore);
     {
         QVariantMap nested;
         nested.insert(QStringLiteral("card"), QVariant::fromValue(static_cast<Card *>(&tagTarget)));
         QVariantList list;
         list << nested;
         QByteArray variantError;
-        assert(globalManager.retainVariantPayload(&tagSource, list, &variantError));
-        assert(globalManager.gauge().native_leases > leaseBefore);
+        CARD_LIFETIME_CHECK(globalManager.retainVariantPayload(&tagSource, list, &variantError));
+        CARD_LIFETIME_CHECK(globalManager.gauge().native_leases > leaseBefore);
         globalManager.releaseEventPayload(&tagSource);
-    assert(globalManager.gauge().native_leases == leaseBefore);
+    CARD_LIFETIME_CHECK(globalManager.gauge().native_leases == leaseBefore);
     }
     {
         CardMoveReason reason;
@@ -729,9 +966,9 @@ int runCardLifetimeTests()
             CardsMoveOneTimeStruct oneCopy(one);
             CardsMoveOneTimeStruct oneAssigned;
             oneAssigned = oneCopy;
-            assert(globalManager.gauge().native_leases > moveLeaseBefore);
+            CARD_LIFETIME_CHECK(globalManager.gauge().native_leases > moveLeaseBefore);
         }
-        assert(globalManager.gauge().native_leases == moveLeaseBefore);
+        CARD_LIFETIME_CHECK(globalManager.gauge().native_leases == moveLeaseBefore);
 
         CardMoveReason valid;
         valid.m_extraData = QVariant::fromValue(static_cast<Card *>(&tagTarget));
@@ -739,25 +976,25 @@ int runCardLifetimeTests()
         CardMoveReason opaque;
         opaque.m_extraData = QVariant::fromValue(UnregisteredCardPayload());
         valid = opaque;
-        assert(valid.m_extraData == validPayload);
+        CARD_LIFETIME_CHECK(valid.m_extraData == validPayload);
 
         ServerPlayer tagPlayer(nullptr);
         const auto playerLeaseBefore = globalManager.gauge().native_leases;
         tagPlayer.setTag(QStringLiteral("nestedCard"), QVariant::fromValue(static_cast<Card *>(&tagTarget)));
-        assert(globalManager.gauge().native_leases == playerLeaseBefore + 1);
+        CARD_LIFETIME_CHECK(globalManager.gauge().native_leases == playerLeaseBefore + 1);
         tagPlayer.setTag(QStringLiteral("nestedCard"), QVariant(7));
-        assert(globalManager.gauge().native_leases == playerLeaseBefore);
+        CARD_LIFETIME_CHECK(globalManager.gauge().native_leases == playerLeaseBefore);
         tagPlayer.setTag(QStringLiteral("nestedCard"), QVariant::fromValue(static_cast<Card *>(&tagTarget)));
         ServerPlayer copiedPlayer(nullptr);
         copiedPlayer.copyFrom(&tagPlayer);
-        assert(globalManager.gauge().native_leases >= playerLeaseBefore + 2);
+        CARD_LIFETIME_CHECK(globalManager.gauge().native_leases >= playerLeaseBefore + 2);
         copiedPlayer.removeTag(QStringLiteral("nestedCard"));
         tagPlayer.removeTag(QStringLiteral("nestedCard"));
-        assert(globalManager.gauge().native_leases == playerLeaseBefore);
+        CARD_LIFETIME_CHECK(globalManager.gauge().native_leases == playerLeaseBefore);
     }
-    assert(managed.invalidateIfObserved(&liveObject));
+    CARD_LIFETIME_CHECK(managed.invalidateIfObserved(&liveObject));
     const CardLifetimeGauge preResetGauge = managed.gauge();
-    assert(managed.resetForTest());
+    CARD_LIFETIME_CHECK(managed.resetForTest());
     const CardLifetimeGauge finalGauge = managed.gauge();
     const quint64 finalEntries = managed.entryCount();
     QJsonObject marker;
@@ -821,9 +1058,10 @@ int runCardLifetimeTests()
         && adoptionReceipt.standardOutput.contains("failures=0");
     const bool shutdownProtocol = normalLifetimeChild(shutdownReceipt)
         && shutdownReceipt.markerCount("CARD_LIFETIME_ZERO") == 1
-        && shutdownReceipt.markerCount("CARD_LIFETIME_SHUTDOWN_STAGE") == 4
-        && shutdownReceipt.shutdownStages == QList<QString>{QStringLiteral("worker-final"),
-            QStringLiteral("preclose"), QStringLiteral("lua-close"), QStringLiteral("postclose")}
+        && shutdownReceipt.markerCount("CARD_LIFETIME_WORKER_FINAL") == 1
+        && shutdownReceipt.markerCount("CARD_LIFETIME_SHUTDOWN_STAGE") == 3
+        && shutdownReceipt.shutdownStages == QList<QString>{QStringLiteral("preclose"),
+            QStringLiteral("lua-close"), QStringLiteral("postclose")}
         && shutdownReceipt.shutdownFailures.isEmpty();
     const QList<QPair<QString, QString>> shutdownCases = {
         {QStringLiteral("worker"), QStringLiteral("managed_live")},
@@ -857,7 +1095,9 @@ int runCardLifetimeTests()
     integrated.insert(QStringLiteral("adversarial_receipts"), adversarialReceipts);
     fprintf(stdout, "CARD_LIFETIME_INTEGRATED %s\n",
             QJsonDocument(integrated).toJson(QJsonDocument::Compact).constData());
-    return defaultModeRegression && eventProtocol && adoptionProtocol
+    return defaultModeRegression && blocker12Regression && residualGaugeRegression
+        && blocker4CoreRegression
+        && eventProtocol && adoptionProtocol
         && shutdownProtocol && adversarialShutdown ? 0 : 72;
 }
 
@@ -872,25 +1112,25 @@ int runCardLifetimeLegacyRedTests()
 
     int stale = 0;
     const auto staleToken = manager.observeLive(&stale);
-    assert(staleToken);
-    assert(manager.invalidateIfObserved(&stale));
+    CARD_LIFETIME_CHECK(staleToken);
+    CARD_LIFETIME_CHECK(manager.invalidateIfObserved(&stale));
     const auto reusedToken = manager.observeLive(&stale);
     staleAccess = !manager.isLive(staleToken) && reusedToken
         && reusedToken->generation != staleToken->generation;
 
     int doubleTarget = 0;
     const auto doubleToken = manager.observeLive(&doubleTarget);
-    assert(manager.requestNativeDelete(doubleToken));
+    CARD_LIFETIME_CHECK(manager.requestNativeDelete(doubleToken));
     doubleDelete = !manager.requestNativeDelete(doubleToken);
 
     int adopted = 0;
     const auto adoptedToken = manager.observeLive(&adopted);
-    assert(manager.requestNativeDelete(adoptedToken));
+    CARD_LIFETIME_CHECK(manager.requestNativeDelete(adoptedToken));
     adoptionAfterDelete = manager.isLive(adoptedToken);
 
     int deferred = 0;
     const auto deferredToken = manager.observeLive(&deferred);
-    assert(manager.requestNativeDelete(deferredToken));
+    CARD_LIFETIME_CHECK(manager.requestNativeDelete(deferredToken));
     deferredDelete = manager.gauge().pending_delete > 0;
 
     int owner = 0;
@@ -911,7 +1151,7 @@ int runCardLifetimeLegacyRedTests()
 int runCardLifetimeRoomStateTests()
 {
     QString bootstrapError;
-    assert(EngineBootstrap::initialize(false, &bootstrapError));
+    CARD_LIFETIME_CHECK(EngineBootstrap::initialize(false, &bootstrapError));
     const bool ok = probeRoomStateCanonicalReset();
     EngineBootstrap::shutdown();
     return ok ? 0 : 71;
@@ -927,10 +1167,10 @@ int runCardLifetimeSyntheticTests(int actorCount, quint64 seed)
         for (int iteration = 0; iteration < 10000; ++iteration) {
             auto *card = new DummyCard;
             const auto token = manager.observeCard(card);
-            assert(token);
-            assert(manager.requestNativeDelete(token));
+            CARD_LIFETIME_CHECK(token);
+            CARD_LIFETIME_CHECK(manager.requestNativeDelete(token));
             const quint64 drained = manager.drain();
-            assert(drained == 1);
+            CARD_LIFETIME_CHECK(drained == 1);
             eligibleCreated += drained;
             QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
             ring.push_back(token);
@@ -938,11 +1178,11 @@ int runCardLifetimeSyntheticTests(int actorCount, quint64 seed)
                 ring.pop_front();
         }
         const auto ringGauge = manager.gauge();
-        assert(ringGauge.managed_live == 0);
-        assert(ringGauge.pending_delete == 0);
-        assert(ringGauge.wrapper_leases == 0);
-        assert(ringGauge.peak_managed_cards <= 64);
-        assert(ringGauge.actually_destroyed == eligibleCreated);
+        CARD_LIFETIME_CHECK(ringGauge.managed_live == 0);
+        CARD_LIFETIME_CHECK(ringGauge.pending_delete == 0);
+        CARD_LIFETIME_CHECK(ringGauge.wrapper_leases == 0);
+        CARD_LIFETIME_CHECK(ringGauge.peak_managed_cards <= 64);
+        CARD_LIFETIME_CHECK(ringGauge.actually_destroyed == eligibleCreated);
     }
     for (int epoch = 0; epoch < 200; ++epoch) {
         QList<std::shared_ptr<const CardLifetimeToken>> tokens;
@@ -950,29 +1190,29 @@ int runCardLifetimeSyntheticTests(int actorCount, quint64 seed)
         for (int actor = 0; actor < actorCount; ++actor) {
             auto *card = new DummyCard;
             const auto token = manager.observeCard(card);
-            assert(token);
-            assert(manager.retainWrapper(token));
-            assert(manager.requestNativeDelete(token));
+            CARD_LIFETIME_CHECK(token);
+            CARD_LIFETIME_CHECK(manager.retainWrapper(token));
+            CARD_LIFETIME_CHECK(manager.requestNativeDelete(token));
             tokens.push_back(token);
         }
         const auto gauge = manager.gauge();
-        assert(gauge.managed_live <= static_cast<quint64>(actorCount));
-        assert(gauge.pending_delete <= static_cast<quint64>(actorCount));
-        assert(gauge.wrapper_leases <= static_cast<quint64>(actorCount * 2));
+        CARD_LIFETIME_CHECK(gauge.managed_live <= static_cast<quint64>(actorCount));
+        CARD_LIFETIME_CHECK(gauge.pending_delete <= static_cast<quint64>(actorCount));
+        CARD_LIFETIME_CHECK(gauge.wrapper_leases <= static_cast<quint64>(actorCount * 2));
         for (const auto &token : tokens)
-            assert(manager.releaseWrapper(token));
+            CARD_LIFETIME_CHECK(manager.releaseWrapper(token));
         const quint64 drainedCount = manager.drain();
-        assert(drainedCount == static_cast<quint64>(actorCount));
+        CARD_LIFETIME_CHECK(drainedCount == static_cast<quint64>(actorCount));
         eligibleCreated += drainedCount;
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
         const auto drained = manager.gauge();
-        assert(drained.managed_live == 0);
-        assert(drained.pending_delete == 0);
-        assert(drained.wrapper_leases == 0);
+        CARD_LIFETIME_CHECK(drained.managed_live == 0);
+        CARD_LIFETIME_CHECK(drained.pending_delete == 0);
+        CARD_LIFETIME_CHECK(drained.wrapper_leases == 0);
     }
     const auto finalGauge = manager.gauge();
-    assert(finalGauge.actually_destroyed == eligibleCreated);
-    assert(finalGauge.peak_managed_cards <= 64);
+    CARD_LIFETIME_CHECK(finalGauge.actually_destroyed == eligibleCreated);
+    CARD_LIFETIME_CHECK(finalGauge.peak_managed_cards <= 64);
     QJsonObject result;
     result.insert(QStringLiteral("actor_count"), actorCount);
     result.insert(QStringLiteral("seed"), QString::number(seed));
@@ -996,6 +1236,31 @@ int runCardLifetimeLuaTests()
     const bool wrapperHasCardDispatch = generatedText.contains("qsgsCardNewPointerObj")
         && generatedText.contains("qsgsCardConvertPtr")
         && generatedText.contains("qsgsCardMustGetPtr");
+    const QList<QByteArray> owningCloneTypes = {
+        "LuaSkillCard", "LuaBasicCard", "LuaTrickCard", "LuaWeapon", "LuaArmor",
+        "LuaHorse", "LuaOffensiveHorse", "LuaDefensiveHorse", "LuaTreasure"
+    };
+    bool generatedOwningClones = !generatedText.isEmpty();
+    for (const QByteArray &type : owningCloneTypes) {
+        const QByteArray wrapperPrefix = "static int _wrap_" + type + "_clone";
+        int searchFrom = 0;
+        bool foundCloneBody = false;
+        while (generatedOwningClones
+               && (searchFrom = generatedText.indexOf(wrapperPrefix, searchFrom)) >= 0) {
+            int bodyEnd = generatedText.indexOf("\nstatic int _wrap_",
+                                                searchFrom + wrapperPrefix.size());
+            if (bodyEnd < 0)
+                bodyEnd = generatedText.size();
+            const QByteArray body = generatedText.mid(searchFrom, bodyEnd - searchFrom);
+            if (body.contains("->clone(")) {
+                foundCloneBody = true;
+                generatedOwningClones = body.contains("SWIG_NewPointerObj")
+                    && body.contains("SWIG_POINTER_OWN");
+            }
+            searchFrom = bodyEnd;
+        }
+        generatedOwningClones = generatedOwningClones && foundCloneBody;
+    }
     const bool auditedCardRoots = generatedText.contains("\"Horse *\"")
         && generatedText.contains("\"OffensiveHorse *\"")
         && generatedText.contains("\"DefensiveHorse *\"")
@@ -1023,12 +1288,43 @@ int runCardLifetimeLuaTests()
     bool stockNonCard = false;
     bool duplicateGcReleasedOnce = false;
     bool duplicateGcIdempotent = false;
+    bool owningCloneDestroyedOnce = false;
     bool wrapperLeasesReleased = false;
     quint64 wrapperLeasesBeforeClose = 0;
     quint64 wrapperLeasesAfterClose = 0;
     QString luaError;
     const quint64 wrapperLeaseBaseline = globalCardLifetimeManager().gauge().wrapper_leases;
     if (runtime.initialize(&luaError)) {
+        const quint64 destroyedBeforeClone =
+            globalCardLifetimeManager().gauge().actually_destroyed;
+        {
+            LuaRuntime::Binding binding(runtime);
+            LuaRuntime::LuaInvocationScope invocation(runtime);
+            lua_State *state = runtime.state();
+            const char *cloneGcScript =
+                "local source = sgs.LuaBasicCard(sgs.Card_SuitToBeDecided, 1, "
+                "'lua_clone_source', 'LuaBasicCard', 'BasicCard')\n"
+                "local clone = source:clone()\n"
+                "assert(clone ~= nil)\n"
+                "_G.card_lifetime_clone_source = source\n"
+                "clone:deleteLater()\n"
+                "local gc = debug.getmetatable(clone).__gc\n"
+                "gc(clone)\n"
+                "gc(clone)\n"
+                "clone = nil\n"
+                "collectgarbage('collect')\n";
+            if (luaL_loadstring(state, cloneGcScript) != 0
+                || lua_pcall(state, 0, 0, 0) != 0) {
+                luaError = QString::fromUtf8(lua_tostring(state, -1));
+                lua_pop(state, 1);
+            }
+        }
+        const quint64 cloneDrain = globalCardLifetimeManager().drain();
+        if (QCoreApplication::instance())
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+        owningCloneDestroyedOnce = cloneDrain == 1
+            && globalCardLifetimeManager().gauge().actually_destroyed
+                == destroyedBeforeClone + 1;
         {
             LuaRuntime::Binding binding(runtime);
             LuaRuntime::LuaInvocationScope invocation(runtime);
@@ -1122,6 +1418,7 @@ int runCardLifetimeLuaTests()
     QJsonObject marker;
     marker.insert(QStringLiteral("lua_executed"), luaExecuted);
     marker.insert(QStringLiteral("wrapper_dispatch"), wrapperHasCardDispatch);
+    marker.insert(QStringLiteral("generated_owning_clones"), generatedOwningClones);
     marker.insert(QStringLiteral("audited_card_roots"), auditedCardRoots);
     marker.insert(QStringLiteral("owner0"), ownerZero);
     marker.insert(QStringLiteral("owner1"), ownerOne);
@@ -1133,6 +1430,7 @@ int runCardLifetimeLuaTests()
     marker.insert(QStringLiteral("stock_noncard"), stockNonCard);
     marker.insert(QStringLiteral("duplicate_gc_released_once"), duplicateGcReleasedOnce);
     marker.insert(QStringLiteral("duplicate_gc_idempotent"), duplicateGcIdempotent);
+    marker.insert(QStringLiteral("owning_clone_destroyed_once"), owningCloneDestroyedOnce);
     marker.insert(QStringLiteral("wrapper_leases_before_close"),
                   static_cast<qint64>(wrapperLeasesBeforeClose));
     marker.insert(QStringLiteral("wrapper_leases_after_close"),
@@ -1141,10 +1439,12 @@ int runCardLifetimeLuaTests()
     marker.insert(QStringLiteral("error"), luaError);
     fprintf(stdout, "LUA_CARD_LIFETIME %s\n",
             QJsonDocument(marker).toJson(QJsonDocument::Compact).constData());
-    return luaExecuted && wrapperHasCardDispatch && auditedCardRoots && ownerZero && ownerOne
+    return luaExecuted && wrapperHasCardDispatch && generatedOwningClones
+        && auditedCardRoots && ownerZero && ownerOne
         && cardList && mustGet && sameGeneration && lightuserdataRejected
         && aliasMetatables && stockNonCard && duplicateGcReleasedOnce
-        && duplicateGcIdempotent && wrapperLeasesReleased ? 0 : 71;
+        && duplicateGcIdempotent && owningCloneDestroyedOnce
+        && wrapperLeasesReleased ? 0 : 71;
 }
 
 int runCardLifetimeDerivedCardConversionTests()

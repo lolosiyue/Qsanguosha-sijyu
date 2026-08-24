@@ -5409,7 +5409,7 @@ public:
 					}
 					if (dummy->subcardsLength() > 0)
 						room->throwCard(dummy, target, player);
-					delete dummy;
+					dummy->deleteLater();
 				}
 			}
 		}
@@ -7092,7 +7092,7 @@ public:
 				}
 			}
 		}
-		delete dummy;
+		dummy->deleteLater();
 		return false;
 	}
 };
@@ -8964,7 +8964,7 @@ public:
 				room->setCardFlag(card, "zhiyi_card");
 			else
 				player->drawCards(1, objectName());
-			delete c;
+			c->deleteLater();
 		} else {
 			if (player->getMark("zhiyi-Clear") > 0) return false;
 			const Card *card = data.value<CardResponseStruct>().m_card;
@@ -8991,7 +8991,7 @@ public:
 					room->useCard(CardUseStruct(c, player, targets.at(qrand() % targets.length())), false);
 			}else
 				player->drawCards(1, objectName());
-			delete c;
+			c->deleteLater();
 		}
 		return false;
 	}
@@ -9050,7 +9050,7 @@ public:
 				c->setSkillName("_secondzhiyi");
 				if (c->isAvailable(p))
 					choices << card_name;
-				delete c;
+				c->deleteLater();
 			}
 			choices << "draw";
 			QString choice = room->askForChoice(p, objectName(), choices.join("+"));
@@ -9647,7 +9647,7 @@ public:
 
 					DummyCard *dummy = new DummyCard(yiji_cards);
 					p->obtainCard(dummy, false);
-					delete dummy;
+					dummy->deleteLater();
 				}
 			}
 		}

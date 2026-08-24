@@ -83,7 +83,7 @@ public:
 			DummyCard *dummy = new DummyCard;
 			dummy->addSubcards(player->getPile("hautain"));
 			player->obtainCard(dummy, false);
-			delete dummy;
+			dummy->deleteLater();
 
 			player->skip(Player::Draw);
 		}
@@ -118,7 +118,7 @@ public:
 				dummy->addSubcard(to_card_id);
 			if (!dummy->getSubcards().isEmpty())
 				pindian->from->obtainCard(dummy);
-			delete dummy;
+			dummy->deleteLater();
 		}
 		return false;
 	}
@@ -752,7 +752,7 @@ public:
 				DummyCard *dummy = new DummyCard;
 				dummy->addSubcards(player->getJudgingArea());
 				tianfeng->obtainCard(dummy);
-				delete dummy;
+				dummy->deleteLater();
 				break;
 			}
 		}
