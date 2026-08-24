@@ -16,6 +16,7 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QEvent>
 #include <QElapsedTimer>
 #include <QMetaEnum>
 #include <QPointer>
@@ -994,6 +995,7 @@ static bool ownedAiProxyUsesValueLifetime()
         if (pointer.isNull())
             return false;
     }
+    QCoreApplication::sendPostedEvents(pointer.data(), QEvent::DeferredDelete);
     return pointer.isNull();
 }
 

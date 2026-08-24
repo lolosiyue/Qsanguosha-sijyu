@@ -3,6 +3,8 @@
 
 #include "card.h"
 
+class QThread;
+
 // This is a wrapper class around a card. Each card id should have one and only one WrappedCard
 // copy in each room after game initialization is done. Each room's WrappedCards are isolated,
 // but inside the room they are shared and synced between server/client.
@@ -58,6 +60,7 @@ public:
     // to CardEffect including objectName.
     void takeOver(Card *card);
     void copyEverythingFrom(Card *card);
+    void setAdoptionOwnerThread(QThread *thread);
     void setModified(bool modified)
     {
         m_isModified = modified;
@@ -271,8 +274,10 @@ public:
     }
 
 protected:
+    void adoptCard(Card *card, bool requireId);
     Card *m_card;
     mutable bool m_isModified;
+    QThread *m_adoptionOwnerThread;
 };
 
 #endif

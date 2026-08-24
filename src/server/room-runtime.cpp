@@ -2,26 +2,353 @@
 
 #include "engine.h"
 #include "room.h"
+#include "card-lifetime-manager.h"
 
+#include <QCoreApplication>
 #include <QDebug>
+#include <QEvent>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QThread>
+
+#include <cstdio>
+
+namespace {
+thread_local QList<RoomRuntime *> activeRoomRuntimes;
+}
 
 RoomRuntime::RoomRuntime(Room *room)
     : m_room(room), m_definitions(*Sanguosha), m_lua(LuaRuntime::Game), m_ai(room),
       m_roomState(false), m_loadingDefinitions(false), m_definitionsLoaded(false),
       m_nextDecisionId(0), m_stateRevision(0)
 {
+    CardLifetimeManager &manager = globalCardLifetimeManager();
+    const CardLifetimeGauge baseline = manager.gauge();
+    m_baselineManagedLive = baseline.managed_live;
+    m_baselinePendingDelete = baseline.pending_delete;
+    m_baselineAdoptionReserved = baseline.adoption_reserved;
+    m_baselineWrapperLeases = baseline.wrapper_leases;
+    m_baselineNativeLeases = baseline.native_leases;
+    m_baselineLuaPinsGauge = baseline.lua_pins;
+    m_baselineSidecarEdges = baseline.sidecar_edges;
+    m_baselineActuallyDestroyed = baseline.actually_destroyed;
+    m_baselineCloneCreated = baseline.clone_created;
+    m_baselineFactoryUnclaimed = baseline.factory_unclaimed;
+    m_baselineUnknownUnclaimed = baseline.unknown_unclaimed;
+    m_baselineEntries = manager.entryCount();
+    m_baselineActiveScopes = manager.activeScopeDepth();
+    m_baselineLuaPins = manager.luaPinDepth();
+    m_baselineAddresses = manager.entryAddresses();
+    for (const void *address : m_baselineAddresses)
+        if (const auto token = manager.liveToken(address))
+            m_baselineTokenEntries.insert(address, token);
+    m_definitions.setBaselineAddresses(m_baselineAddresses);
+    manager.setDomainBaseline(this, m_baselineAddresses);
+    m_lua.setLifetimeDomain(this);
+    m_ai.lua().setLifetimeDomain(this);
+    m_previousDomain = CardLifetimeManager::setCurrentDomain(this);
+    activeRoomRuntimes.append(this);
 }
 
 RoomRuntime::~RoomRuntime()
 {
+    shutdownFinal();
+}
+
+void RoomRuntime::shutdownFinal()
+{
+    ShutdownState expected = ShutdownState::Running;
+    if (!m_shutdownState.compare_exchange_strong(expected, ShutdownState::Closing))
+        return;
+
+    if (!onCanonicalOwner()) {
+        restorePreviousDomain();
+        failShutdown("owner", globalCardLifetimeManager().gauge());
+        return;
+    }
+    if (m_room && !m_room->stopGameThreads(10000)) {
+        restorePreviousDomain();
+        failShutdown("worker-stop", globalCardLifetimeManager().gauge());
+        return;
+    }
+
+    drainShutdownStage("worker-final");
+    const CardLifetimeGauge workerGauge = globalCardLifetimeManager().gauge();
+    if (globalCardLifetimeManager().activeScopeDepthForDomain(this) != 0
+        || globalCardLifetimeManager().gaugeForDomain(this).lua_pins != 0)
+        failShutdown("worker-final", workerGauge);
+
+    releaseShutdownRoots();
+    drainShutdownStage("preclose");
+    const CardLifetimeGauge precloseGauge = globalCardLifetimeManager().gauge();
+    if (globalCardLifetimeManager().activeScopeDepthForDomain(this) != 0
+        || globalCardLifetimeManager().gaugeForDomain(this).lua_pins != 0)
+        failShutdown("preclose", precloseGauge);
+
     m_ai.shutdown();
     m_lua.shutdown();
+    globalCardLifetimeManager().releaseWrapperBindings(this);
+    drainShutdownStage("lua-close");
+
+    const CardLifetimeRuntimeContext previousContext =
+        CardLifetimeManager::setCurrentRuntimeContext(this, nullptr, 0, nullptr);
+    m_roomState.clear();
+    m_definitions.clear();
+    CardLifetimeManager::setCurrentRuntimeContext(previousContext.domain,
+                                                  previousContext.identity,
+                                                  previousContext.generation,
+                                                  previousContext.state);
+    releaseShutdownRoots();
+    invalidateOrphanedRuntimeEntries();
+    drainShutdownStage("postclose");
+    const CardLifetimeGauge gauge = globalCardLifetimeManager().gauge();
+    if (!finalGaugeIsZero(gauge)) {
+        globalCardLifetimeManager().dumpDomain(this);
+        failShutdown("postclose", gauge);
+        return;
+    }
+
+    emitFinalGauge(gauge);
+    globalCardLifetimeManager().unregisterDomainBaseline(this);
+    m_shutdownState = ShutdownState::Closed;
+    restorePreviousDomain();
+}
+
+void RoomRuntime::shutdownForInitFailure()
+{
+    ShutdownState expected = ShutdownState::Running;
+    if (!m_shutdownState.compare_exchange_strong(expected, ShutdownState::Closing))
+        return;
+
+    m_ai.shutdown();
+    m_lua.shutdown();
+    const CardLifetimeRuntimeContext previousContext =
+        CardLifetimeManager::setCurrentRuntimeContext(this, nullptr, 0, nullptr);
+    m_roomState.clear();
+    m_definitions.clear();
+    CardLifetimeManager::setCurrentRuntimeContext(previousContext.domain,
+                                                  previousContext.identity,
+                                                  previousContext.generation,
+                                                  previousContext.state);
+    releaseShutdownRoots();
+    globalCardLifetimeManager().unregisterDomainBaseline(this);
+    m_shutdownState = ShutdownState::Failed;
+    restorePreviousDomain();
+}
+
+bool RoomRuntime::onCanonicalOwner() const
+{
+    CardLifetimeManager &manager = globalCardLifetimeManager();
+    const QThread *roomThread = m_room ? m_room->QObject::thread() : nullptr;
+    const QThread *canonical = manager.ownerThread();
+    return canonical != nullptr && QThread::currentThread() == canonical
+        && (!roomThread || roomThread == canonical);
+}
+
+quint64 RoomRuntime::drainShutdownStage(const char *stage)
+{
+    Q_ASSERT(onCanonicalOwner());
+    const quint64 retired = globalCardLifetimeManager().drain();
+    if (QCoreApplication::instance())
+        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    std::fprintf(stdout, "CARD_LIFETIME_SHUTDOWN_STAGE %s retired=%llu\n",
+                 stage, static_cast<unsigned long long>(retired));
+    std::fflush(stdout);
+    return retired;
+}
+
+void RoomRuntime::releaseShutdownRoots()
+{
+    CardLifetimeManager &manager = globalCardLifetimeManager();
+    manager.releaseVariantTags(this);
+    manager.releaseVariantTags(&m_definitions);
+    manager.releaseVariantTags(&m_roomState);
+    manager.releaseVariantTags(&m_lua);
+    manager.releaseVariantTags(&m_ai);
+    if (m_room)
+        manager.releaseVariantTags(m_room);
+}
+
+void RoomRuntime::restorePreviousDomain()
+{
+    bool expected = false;
+    if (!m_domainRestored.compare_exchange_strong(expected, true))
+        return;
+    activeRoomRuntimes.removeAll(this);
+    for (RoomRuntime *runtime : std::as_const(activeRoomRuntimes)) {
+        if (runtime->m_previousDomain == this)
+            runtime->m_previousDomain = m_previousDomain;
+    }
+    const void *current = CardLifetimeManager::setCurrentDomain(nullptr);
+    if (current != this) {
+        CardLifetimeManager::setCurrentDomain(current);
+        return;
+    }
+    CardLifetimeManager::setCurrentDomain(
+        activeRoomRuntimes.isEmpty() ? m_previousDomain
+                                     : activeRoomRuntimes.constLast());
+}
+
+void RoomRuntime::invalidateOrphanedRuntimeEntries()
+{
+    CardLifetimeManager &manager = globalCardLifetimeManager();
+    const QSet<const void *> currentAddresses = manager.entryAddresses();
+    for (const void *address : currentAddresses) {
+        const auto token = manager.liveToken(address);
+        if (token && (!m_baselineTokenEntries.contains(address)
+                      || m_baselineTokenEntries.value(address).get() != token.get())
+            && !m_runtimeObservedEntries.contains(address))
+            m_runtimeObservedEntries.insert(address, token);
+    }
+    for (auto observed = m_runtimeObservedEntries.cbegin();
+         observed != m_runtimeObservedEntries.cend(); ++observed) {
+        const void *address = observed.key();
+        const auto &token = observed.value();
+        if (!token)
+            continue;
+        const auto baseline = m_baselineTokenEntries.value(address);
+        if (baseline && baseline.get() == token.get())
+            continue;
+        const QThread *affinity = manager.affinityThread(token);
+        if (affinity && affinity != QThread::currentThread())
+            continue;
+        manager.invalidateIfObserved(token);
+    }
+}
+
+bool RoomRuntime::finalGaugeIsZero(const CardLifetimeGauge &gauge) const
+{
+    CardLifetimeManager &manager = globalCardLifetimeManager();
+    const CardLifetimeGauge domainGauge = manager.gaugeForDomain(this);
+    const CardLifetimeGauge gameRuntimeGauge = manager.gaugeForRuntime(
+        this, m_gameRuntimeIdentity, m_gameRuntimeGeneration, m_gameRuntimeState);
+    const CardLifetimeGauge aiRuntimeGauge = manager.gaugeForRuntime(
+        this, m_aiRuntimeIdentity, m_aiRuntimeGeneration, m_aiRuntimeState);
+    const auto runtimeHasWork = [](const CardLifetimeGauge &runtimeGauge) {
+        return runtimeGauge.managed_live != 0
+            || runtimeGauge.pending_delete != 0
+            || runtimeGauge.adoption_reserved != 0
+            || runtimeGauge.wrapper_leases != 0
+            || runtimeGauge.native_leases != 0
+            || runtimeGauge.sidecar_edges != 0
+            || runtimeGauge.lua_pins != 0;
+    };
+    if (m_gameRuntimeIdentity && m_aiRuntimeIdentity
+        && m_gameRuntimeIdentity == m_aiRuntimeIdentity)
+        return false;
+    if (runtimeHasWork(gameRuntimeGauge) || runtimeHasWork(aiRuntimeGauge))
+        return false;
+    if (domainGauge.managed_live != 0
+        || domainGauge.pending_delete != 0
+        || domainGauge.adoption_reserved != 0
+        || domainGauge.wrapper_leases != 0
+        || domainGauge.native_leases != 0
+        || domainGauge.lua_pins != 0
+        || domainGauge.sidecar_edges != 0
+        || manager.entryCountForDomain(this) != 0
+        || manager.activeScopeDepthForDomain(this) != 0)
+        return false;
+    return gauge.actually_destroyed >= m_baselineActuallyDestroyed
+        && gauge.clone_created >= m_baselineCloneCreated
+        && gauge.factory_unclaimed >= m_baselineFactoryUnclaimed
+        && gauge.unknown_unclaimed >= m_baselineUnknownUnclaimed;
+}
+
+void RoomRuntime::failShutdown(const char *stage, const CardLifetimeGauge &gauge)
+{
+    std::fprintf(stderr, "ROOM_RUNTIME_FAIL stage=%s live=%llu pending=%llu reservations=%llu wrappers=%llu leases=%llu pins=%llu entries=%llu\n",
+                 stage,
+                 static_cast<unsigned long long>(gauge.managed_live),
+                 static_cast<unsigned long long>(gauge.pending_delete),
+                 static_cast<unsigned long long>(gauge.adoption_reserved),
+                 static_cast<unsigned long long>(gauge.wrapper_leases),
+                 static_cast<unsigned long long>(gauge.native_leases),
+                 static_cast<unsigned long long>(gauge.lua_pins),
+                 static_cast<unsigned long long>(globalCardLifetimeManager().entryCount()));
+    m_shutdownState = ShutdownState::Failed;
+    restorePreviousDomain();
+    QJsonObject details;
+    details.insert(QStringLiteral("managed_live"), qint64(gauge.managed_live));
+    details.insert(QStringLiteral("pending_delete"), qint64(gauge.pending_delete));
+    details.insert(QStringLiteral("adoption_reserved"), qint64(gauge.adoption_reserved));
+    details.insert(QStringLiteral("wrapper_leases"), qint64(gauge.wrapper_leases));
+    details.insert(QStringLiteral("native_leases"), qint64(gauge.native_leases));
+    details.insert(QStringLiteral("lua_pins"), qint64(gauge.lua_pins));
+    details.insert(QStringLiteral("sidecar_edges"), qint64(gauge.sidecar_edges));
+    details.insert(QStringLiteral("entries"), qint64(globalCardLifetimeManager().entryCount()));
+    details.insert(QStringLiteral("active_scopes"), qint64(globalCardLifetimeManager().activeScopeDepth()));
+    const QByteArray failure = QJsonDocument(details).toJson(QJsonDocument::Compact);
+    std::fprintf(stderr, "CARD_LIFETIME_SHUTDOWN_FAILED stage=%s %s\n",
+                 stage, failure.constData());
+    qFatal("RoomRuntime shutdown failed with non-zero Card lifetime gauges");
+}
+
+void RoomRuntime::emitFinalGauge(const CardLifetimeGauge &gauge)
+{
+    if (m_finalMarkerEmitted)
+        return;
+    m_finalMarkerEmitted = true;
+    CardLifetimeManager &manager = globalCardLifetimeManager();
+    const CardLifetimeGauge domainGauge = manager.gaugeForDomain(this);
+    const CardLifetimeGauge gameRuntimeGauge = manager.gaugeForRuntime(
+        this, m_gameRuntimeIdentity, m_gameRuntimeGeneration, m_gameRuntimeState);
+    const CardLifetimeGauge aiRuntimeGauge = manager.gaugeForRuntime(
+        this, m_aiRuntimeIdentity, m_aiRuntimeGeneration, m_aiRuntimeState);
+    const auto runtimeGaugeObject = [](const void *identity, quint64 generation,
+                                       lua_State *state,
+                                       const CardLifetimeGauge &runtimeGauge) {
+        QJsonObject result;
+        result.insert(QStringLiteral("identity"),
+                      QString::number(static_cast<qulonglong>(
+                          reinterpret_cast<quintptr>(identity)), 16));
+        result.insert(QStringLiteral("generation"), qint64(generation));
+        result.insert(QStringLiteral("state_present"), state != nullptr);
+        result.insert(QStringLiteral("managed_live"), qint64(runtimeGauge.managed_live));
+        result.insert(QStringLiteral("pending_delete"), qint64(runtimeGauge.pending_delete));
+        result.insert(QStringLiteral("adoption_reserved"), qint64(runtimeGauge.adoption_reserved));
+        result.insert(QStringLiteral("wrapper_leases"), qint64(runtimeGauge.wrapper_leases));
+        result.insert(QStringLiteral("native_leases"), qint64(runtimeGauge.native_leases));
+        result.insert(QStringLiteral("sidecar_edges"), qint64(runtimeGauge.sidecar_edges));
+        result.insert(QStringLiteral("lua_pins"), qint64(runtimeGauge.lua_pins));
+        return result;
+    };
+    QJsonObject marker;
+    marker.insert(QStringLiteral("event"), QStringLiteral("[CardLifetime] FINAL_GAUGE"));
+    marker.insert(QStringLiteral("managed_live"), qint64(domainGauge.managed_live));
+    marker.insert(QStringLiteral("pending_delete"), qint64(domainGauge.pending_delete));
+    marker.insert(QStringLiteral("adoption_reserved"), qint64(domainGauge.adoption_reserved));
+    marker.insert(QStringLiteral("wrapper_leases"), qint64(domainGauge.wrapper_leases));
+    marker.insert(QStringLiteral("native_leases"), qint64(domainGauge.native_leases));
+    marker.insert(QStringLiteral("lua_pins"), qint64(domainGauge.lua_pins));
+    marker.insert(QStringLiteral("sidecar_edges"), qint64(domainGauge.sidecar_edges));
+    marker.insert(QStringLiteral("entries"), qint64(manager.entryCountForDomain(this)));
+    marker.insert(QStringLiteral("active_scopes"), qint64(manager.activeScopeDepthForDomain(this)));
+    marker.insert(QStringLiteral("runtime_delta_complete"), true);
+    marker.insert(QStringLiteral("game_runtime_delta"), runtimeGaugeObject(
+        m_gameRuntimeIdentity, m_gameRuntimeGeneration, m_gameRuntimeState, gameRuntimeGauge));
+    marker.insert(QStringLiteral("ai_runtime_delta"), runtimeGaugeObject(
+        m_aiRuntimeIdentity, m_aiRuntimeGeneration, m_aiRuntimeState, aiRuntimeGauge));
+    marker.insert(QStringLiteral("clone_created_delta"), qint64(gauge.clone_created - m_baselineCloneCreated));
+    marker.insert(QStringLiteral("factory_unclaimed_delta"), qint64(gauge.factory_unclaimed - m_baselineFactoryUnclaimed));
+    marker.insert(QStringLiteral("unknown_unclaimed_delta"), qint64(gauge.unknown_unclaimed - m_baselineUnknownUnclaimed));
+    marker.insert(QStringLiteral("actually_destroyed_delta"), qint64(gauge.actually_destroyed - m_baselineActuallyDestroyed));
+    const QByteArray markerJson = QJsonDocument(marker).toJson(QJsonDocument::Compact);
+    std::fprintf(stdout, "CARD_LIFETIME_ZERO %s\n", markerJson.constData());
+    std::fflush(stdout);
 }
 
 bool RoomRuntime::initialize(QString *error)
 {
+    if (shutdownState() != ShutdownState::Running) {
+        if (error)
+            *error = QStringLiteral("Room runtime is closing");
+        return false;
+    }
     if (!m_lua.initialize(error))
         return false;
+    m_gameRuntimeIdentity = &m_lua;
+    m_gameRuntimeGeneration = m_lua.generation();
+    m_gameRuntimeState = m_lua.rawState();
     LuaRuntime::Binding luaBinding(m_lua);
     if (!m_lua.addPackagePath(QStringLiteral("./lua/?.lua"), error)
         || !m_lua.addPackagePath(QStringLiteral("./lua/?/init.lua"), error))
@@ -36,14 +363,31 @@ bool RoomRuntime::initialize(QString *error)
     if (!m_lua.loadScript(QStringLiteral("lua/ai/smart-ai.lua"), error))
         return false;
 
+    const QSet<const void *> currentAddresses = globalCardLifetimeManager().entryAddresses();
+    for (const void *address : currentAddresses)
+        if (const auto token = globalCardLifetimeManager().liveToken(address))
+            if ((!m_baselineTokenEntries.contains(address)
+                 || m_baselineTokenEntries.value(address).get() != token.get())
+                && !m_runtimeObservedEntries.contains(address))
+                m_runtimeObservedEntries.insert(address, token);
+
     QString aiError;
+    m_aiRuntimeIdentity = &m_ai.lua();
     if (!m_ai.initialize(&aiError))
         qWarning().noquote() << "AI Lua runtime disabled:" << aiError;
+    else {
+        m_aiRuntimeGeneration = m_ai.lua().generation();
+        m_aiRuntimeState = m_ai.lua().rawState();
+    }
     return true;
 }
 
 void RoomRuntime::seedRandom(quint64 seed)
 {
+    if (shutdownState() != ShutdownState::Running) {
+        qWarning() << "Ignoring random seed after Room runtime shutdown began";
+        return;
+    }
     m_rng.seed(seed);
     m_lua.setSeed(seed);
     m_ai.seed(seed);

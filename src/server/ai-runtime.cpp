@@ -1,6 +1,7 @@
 #include "ai-runtime.h"
 
 #include "ai-data-store.h"
+#include "lua-runtime.h"
 #include "lua.hpp"
 #include "settings.h"
 
@@ -443,6 +444,7 @@ AIResult AiLuaRuntime::decideShadow(const AIRequest &request)
         m_instructionsRemaining = m_instructionBudget;
         m_instructionLimitExceeded = false;
         lua_sethook(state, &AiLuaRuntime::luaInstructionHook, LUA_MASKCOUNT, 1000);
+        LuaRuntime::LuaInvocationScope invocation(m_lua);
         const int status = lua_pcall(state, 1, 1, 0);
         lua_sethook(state, nullptr, 0, 0);
         if (status != 0) {
@@ -737,6 +739,7 @@ bool AiLuaRuntime::loadScriptWithBudget(const QString &path, qint64 instructionB
     m_instructionsRemaining = instructionBudget;
     m_instructionLimitExceeded = false;
     lua_sethook(state, &AiLuaRuntime::luaInstructionHook, LUA_MASKCOUNT, 1000);
+    LuaRuntime::LuaInvocationScope invocation(m_lua);
     const int status = lua_pcall(state, 0, LUA_MULTRET, 0);
     lua_sethook(state, nullptr, 0, 0);
     if (status == 0) {

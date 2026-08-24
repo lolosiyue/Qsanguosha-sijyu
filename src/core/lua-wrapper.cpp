@@ -1,5 +1,6 @@
 #include "lua-wrapper.h"
 #include "room-runtime.h"
+#include "lua-runtime.h"
 #include "engine.h"
 #include "util.h"
 #ifndef QSAN_ENGINE_BUILD
@@ -278,6 +279,10 @@ void LuaBattleArraySkill::summonFriends(ServerPlayer *player) const
         return;
     on_summon.push(L);
     lua_pushlightuserdata(L, player);
+    LuaRuntime *runtime = LuaRuntime::fromState(L);
+    if (runtime == nullptr)
+        return;
+    LuaRuntime::LuaInvocationScope invocation(*runtime);
     int result = lua_pcall(L, 1, 0, 0);
     if (result != 0) {
         qWarning("LuaBattleArraySkill::summonFriends error: %s",

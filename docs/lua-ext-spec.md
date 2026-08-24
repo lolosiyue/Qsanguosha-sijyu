@@ -1457,3 +1457,37 @@ room:scheduleExtraTurn(target, self:objectName())
 - **Q_SKILL 巨集**：Lua 技能無需此巨集，僅供 C++ 技能使用
 - **card_use 結構**：對 AOE/GlobalEffect 錦囊，框架自動填充目標列表
 - **延時錦囊**：須設定 `subclass = sgs.LuaTrickCard_TypeDelayedTrick` 與 `movable`
+
+## Card lifetime and headless verification contract
+
+Lua bindings expose Card aliases, not independent native ownership. A stale
+alias is rejected with the exact error `Lua error: attempt to use deleted Card`.
+Lua may request retirement only when the manager can prove Lua owns the
+transient; otherwise the exact error is
+`Lua error: attempt to delete Card with unknown ownership`.
+
+`PendingDelete` has a same-stack grace period: a Card that receives
+`deleteLater()` remains usable by the current Lua call stack until that stack
+unwinds and the next managed safe point drains the request. A later call must
+observe the retired state and receive the deleted-Card error. This grace does
+not make a retained alias valid across a safe point.
+
+An alias is a non-owning Lua view identified by the manager's live generation.
+Adoption transfers a proven transient into a canonical native owner and
+cancels its pending deletion; aliases remain views and do not become owners.
+A definition Card is an Engine or Package-owned Card whose lifetime is not
+controlled by Lua; `deleteLater()` on it is ignored for compatibility and the
+definition remains owned by its native definition owner.
+
+`ObserveOnly` and `ManagedReclaim` are lifetime-policy modes, not game modes.
+They describe whether eligible transient Cards are observed only or reclaimed
+at managed safe points; callers must not rely on either policy being the
+current default. The product headless runner accepts only the registered real
+game mode `20p`. The `30p` and `50p` values are synthetic actor-count stress
+rows only and are not product modes.
+
+Headless verification requires an explicit `--exe` and an explicit unsigned
+32-bit `--seed`; there is no hardcoded executable default and no implicit
+executable discovery. The runner forwards the exact executable and seed to the
+child and writes one deterministic CSV row per attempted run. A missing or
+duplicate shutdown marker, or a nonzero child exit, makes that row failed.

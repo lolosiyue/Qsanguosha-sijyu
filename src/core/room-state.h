@@ -3,6 +3,7 @@
 
 //#include "player.h"
 #include "structs.h"
+#include <QThread>
 //#include "wrapped-card.h"
 
 class Player;
@@ -16,8 +17,8 @@ class RoomState
 {
 public:
     inline RoomState(bool isClient)
+        : m_isClient(isClient), m_ownerThread(QThread::currentThread())
     {
-        m_isClient = isClient;
     }
     ~RoomState();
     inline bool isClient() const
@@ -73,10 +74,12 @@ public:
     void resetCard(int cardId) const;
     // Reset all cards, generals' states of the room instance
     void reset();
+    void clear();
 
 protected:
     QHash<int, WrappedCard *> m_cards;
     bool m_isClient;
+    QThread *m_ownerThread;
     Player *m_currentPlayer;
     QString m_currentCardUsePattern;
     CardUseStruct::CardUseReason m_currentCardUseReason;
