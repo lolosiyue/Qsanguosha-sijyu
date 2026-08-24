@@ -2,14 +2,20 @@ cmake_minimum_required(VERSION 3.28)
 
 project(QSanguosha LANGUAGES C CXX)
 
-if(NOT WIN32 OR NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
-    message(FATAL_ERROR "This CMake build currently supports Windows x64 with MSVC only")
-endif()
-if(MSVC_VERSION LESS 1950)
-    message(FATAL_ERROR "This CMake build currently supports the Visual Studio 2026 v145 toolchain only")
+if(WIN32)
+    if(NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+        message(FATAL_ERROR "The Windows CMake build supports x64 MSVC only")
+    endif()
+    if(MSVC_VERSION LESS 1950)
+        message(FATAL_ERROR "The Windows CMake build supports the Visual Studio 2026 v145 toolchain only")
+    endif()
+elseif(NOT UNIX)
+    message(FATAL_ERROR "Unsupported platform")
 endif()
 
-enable_language(RC)
+if(WIN32)
+    enable_language(RC)
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,20 +24,24 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
-find_package(Qt6 6.11 REQUIRED COMPONENTS
-    Core
-    Core5Compat
-    Gui
-    LinguistTools
-    Multimedia
-    Network
-    OpenGLWidgets
-    Qml
-    Quick
-    QuickControls2
-    QuickWidgets
-    Widgets
-)
+if(WIN32)
+    find_package(Qt6 6.11 REQUIRED COMPONENTS
+        Core
+        Core5Compat
+        Gui
+        LinguistTools
+        Multimedia
+        Network
+        OpenGLWidgets
+        Qml
+        Quick
+        QuickControls2
+        QuickWidgets
+        Widgets
+    )
+else()
+    find_package(Qt6 REQUIRED COMPONENTS Core Network)
+endif()
 
 get_filename_component(QT_PREFIX "${Qt6_DIR}/../../.." ABSOLUTE)
 
@@ -205,12 +215,13 @@ target_include_directories(qsanguosha_engine PRIVATE
 target_compile_definitions(qsanguosha_engine PRIVATE
     QSAN_ENGINE_BUILD
     QSAN_SERVER_CORE_ONLY
-    WIN64
-    _CRT_SECURE_NO_WARNINGS
     "$<$<CONFIG:Release>:QSG_CRASH_HANDLER>"
 )
 
-target_compile_options(qsanguosha_engine PRIVATE /utf-8 /bigobj /MP8)
+if(MSVC)
+    target_compile_definitions(qsanguosha_engine PRIVATE WIN64 _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(qsanguosha_engine PRIVATE /utf-8 /bigobj /MP8)
+endif()
 
 target_precompile_headers(qsanguosha_engine PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core/engine-pch.h
@@ -250,9 +261,10 @@ target_include_directories(qsanguosha_server PRIVATE
 target_compile_definitions(qsanguosha_server PRIVATE
     QSAN_ENGINE_BUILD
     QSAN_SERVER_CORE_ONLY
-    WIN64
-    _CRT_SECURE_NO_WARNINGS
 )
+if(MSVC)
+    target_compile_definitions(qsanguosha_server PRIVATE WIN64 _CRT_SECURE_NO_WARNINGS)
+endif()
 target_link_libraries(qsanguosha_server PRIVATE
     "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>"
     Qt6::Core
@@ -275,7 +287,9 @@ set_target_properties(qsanguosha_server PROPERTIES
     PDB_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/release"
     PDB_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_CURRENT_SOURCE_DIR}/relwithdebinfo"
 )
-target_link_options(qsanguosha_server PRIVATE "$<$<CONFIG:Release>:/DEBUG>")
+if(MSVC)
+    target_link_options(qsanguosha_server PRIVATE "$<$<CONFIG:Release>:/DEBUG>")
+endif()
 
 add_custom_target(deploy-server
     COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -285,6 +299,7 @@ add_custom_target(deploy-server
     VERBATIM
 )
 
+if(WIN32)
 qt_add_executable(QSanguosha WIN32
     ${QSAN_SOURCES}
     ${QSAN_MOC_HEADERS}
@@ -430,13 +445,16 @@ add_custom_target(deploy
     DEPENDS QSanguosha
     VERBATIM
 )
+endif()
 
-source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
-    ${QSAN_SOURCES}
-    ${QSAN_LUA_SOURCES}
-    ${QSAN_MOC_HEADERS}
-    ${QSAN_FORMS}
-)
+if(WIN32)
+    source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES
+        ${QSAN_SOURCES}
+        ${QSAN_LUA_SOURCES}
+        ${QSAN_MOC_HEADERS}
+        ${QSAN_FORMS}
+    )
+endif()
 source_group("Generated" FILES "${qsan_swig_wrapper}")
 
 include(CTest)
