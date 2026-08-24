@@ -1182,7 +1182,7 @@ public:
 
                 DummyCard *dummy = new DummyCard(move.card_ids);
                 room->obtainCard(shuangying, dummy);
-                delete dummy;
+                dummy->deleteLater();
 
                 if (diff) {
                     room->handleAcquireDetachSkills(shuangying, "wusheng|paoxiao");
@@ -1438,7 +1438,7 @@ public:
                 wangyi->setFlags("Global_GongxinOperator");
                 target->obtainCard(dummy, false);
                 wangyi->setFlags("-Global_GongxinOperator");
-                delete dummy;
+                dummy->deleteLater();
             }
         }
         return false;

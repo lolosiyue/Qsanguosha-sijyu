@@ -1473,7 +1473,7 @@ public:
                 if (Self->getMark("Huomo_" + us) == 0)
                     can_use = true;
 
-                delete c;
+                const_cast<Card *>(c)->deleteLater();
                 if (can_use)
                     break;
             }

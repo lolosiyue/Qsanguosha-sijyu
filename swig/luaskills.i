@@ -821,6 +821,7 @@ public:
 #include "lua-wrapper.h"
 #include "clientplayer.h"
 
+
 bool LuaTriggerSkill::triggerable(ServerPlayer *target, Room *room, TriggerEvent event, ServerPlayer *owner, QVariant data) const
 {
 	if (can_trigger == 0)
@@ -837,7 +838,7 @@ bool LuaTriggerSkill::triggerable(ServerPlayer *target, Room *room, TriggerEvent
 	SWIG_NewPointerObj(L, owner, SWIGTYPE_p_ServerPlayer, 0);
 	SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);
 
-	if (lua_pcall(L, 6, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 6, 1, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -864,7 +865,7 @@ bool LuaTriggerSkill::canWake(TriggerEvent event, ServerPlayer *player, QVariant
 	SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 
-	if (lua_pcall(L, 5, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 5, 1, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -895,7 +896,7 @@ bool LuaTriggerSkill::trigger(TriggerEvent event, Room *room, ServerPlayer *play
 	// append Room as an argument
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 
-	if (lua_pcall(L, 5, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 5, 1, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -914,7 +915,7 @@ static SkillInstanceRef luaSkillUsageRef(lua_State *L, const LuaFunction &callba
 	callback.push(L);
 	SWIG_NewPointerObj(L, self, selfType, 0);
 	SWIG_NewPointerObj(L, const_cast<SkillContext *>(&ctx), SWIGTYPE_p_SkillContext, 0);
-	if (lua_pcall(L, 2, 1, 0) != 0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0) != 0) {
 		qWarning("%s::get_usage_ref error: %s", owner, lua_tostring(L, -1));
 		lua_pop(L, 1);
 		return SkillInstanceRef();
@@ -986,7 +987,7 @@ bool LuaTriggerSkillV2::cost(TriggerEvent triggerEvent, Room *room, ServerPlayer
 
 		SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
-		int error = lua_pcall(L, 5, 1, 0);
+		int error = LuaRuntime::protectedCall(L, 5, 1, 0);
 		if (error) {
 			const char *error_msg = lua_tostring(L, -1);
 			lua_pop(L, 1);
@@ -1027,7 +1028,7 @@ bool LuaTriggerSkillV2::pay(TriggerEvent triggerEvent, Room *room, ServerPlayer 
 
 		SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
-		int error = lua_pcall(L, 5, 1, 0);
+		int error = LuaRuntime::protectedCall(L, 5, 1, 0);
 		if (error) {
 			const char *error_msg = lua_tostring(L, -1);
 			lua_pop(L, 1);
@@ -1069,7 +1070,7 @@ bool LuaTriggerSkillV2::effect(TriggerEvent triggerEvent, Room *room, ServerPlay
 
 		SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
-		int error = lua_pcall(L, 5, 1, 0);
+		int error = LuaRuntime::protectedCall(L, 5, 1, 0);
 		if (error) {
 			const char *error_msg = lua_tostring(L, -1);
 			lua_pop(L, 1);
@@ -1113,7 +1114,7 @@ bool LuaTriggerSkillV2::effectTarget(TriggerEvent triggerEvent, Room *room, Serv
 
 		SWIG_NewPointerObj(L, target, SWIGTYPE_p_ServerPlayer, 0);
 
-		int error = lua_pcall(L, 6, 1, 0);
+		int error = LuaRuntime::protectedCall(L, 6, 1, 0);
 		if (error) {
 			const char *error_msg = lua_tostring(L, -1);
 			lua_pop(L, 1);
@@ -1154,7 +1155,7 @@ void LuaTriggerSkillV2::onTurnBroken(const char *function_name, TriggerEvent tri
 
 	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
-	lua_pcall(L, 6, 0, 0);
+	LuaRuntime::protectedCall(L, 6, 0, 0);
 }
 
 void LuaTriggerSkillV2::record(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, SkillContext &ctx) const
@@ -1176,7 +1177,7 @@ void LuaTriggerSkillV2::record(TriggerEvent triggerEvent, Room *room, ServerPlay
 
 	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
-	lua_pcall(L, 5, 0, 0);
+	LuaRuntime::protectedCall(L, 5, 0, 0);
 }
 
 TriggerList LuaTriggerSkillV2::triggerable(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
@@ -1199,7 +1200,7 @@ TriggerList LuaTriggerSkillV2::triggerable(TriggerEvent triggerEvent, Room *room
 
 	SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);
 
-	if (lua_pcall(L, 5, 2, 0) != 0) {
+	if (LuaRuntime::protectedCall(L, 5, 2, 0) != 0) {
 		lua_pop(L, 1);
 		return result;
 	}
@@ -1281,7 +1282,7 @@ void LuaTriggerSkillV2::willInvoke(SkillContext &ctx) const
 
 	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
-	lua_pcall(L, 2, 0, 0);
+	LuaRuntime::protectedCall(L, 2, 0, 0);
 }
 
 void LuaTriggerSkillV2::targetConfirming(SkillContext &ctx) const
@@ -1297,7 +1298,7 @@ void LuaTriggerSkillV2::targetConfirming(SkillContext &ctx) const
 
 	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
-	lua_pcall(L, 2, 0, 0);
+	LuaRuntime::protectedCall(L, 2, 0, 0);
 }
 
 void LuaTriggerSkillV2::invoking(SkillContext &ctx) const
@@ -1313,7 +1314,7 @@ void LuaTriggerSkillV2::invoking(SkillContext &ctx) const
 
 	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
-	lua_pcall(L, 2, 0, 0);
+	LuaRuntime::protectedCall(L, 2, 0, 0);
 }
 
 void LuaTriggerSkillV2::effect(SkillContext &ctx) const
@@ -1329,7 +1330,7 @@ void LuaTriggerSkillV2::effect(SkillContext &ctx) const
 
 	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
-	lua_pcall(L, 2, 0, 0);
+	LuaRuntime::protectedCall(L, 2, 0, 0);
 }
 
 void LuaTriggerSkillV2::effectFinished(SkillContext &ctx) const
@@ -1345,7 +1346,7 @@ void LuaTriggerSkillV2::effectFinished(SkillContext &ctx) const
 
 	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
-	lua_pcall(L, 2, 0, 0);
+	LuaRuntime::protectedCall(L, 2, 0, 0);
 }
 
 bool LuaTriggerSkillV2::checkCustomUsage(const SkillContext &ctx) const
@@ -1362,7 +1363,7 @@ bool LuaTriggerSkillV2::checkCustomUsage(const SkillContext &ctx) const
 
 	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
-	if (lua_pcall(L, 2, 1, 0) != 0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0) != 0) {
 		lua_pop(L, 1);
 		return false;
 	}
@@ -1386,7 +1387,7 @@ void LuaTriggerSkillV2::addUsage(const SkillContext &ctx) const
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_LuaTriggerSkillV2, 0);
 	SWIG_NewPointerObj(L, &ctx, SWIGTYPE_p_SkillContext, 0);
 
-	if (lua_pcall(L, 2, 0, 0) != 0)
+	if (LuaRuntime::protectedCall(L, 2, 0, 0) != 0)
 		lua_pop(L, 1);
 }
 
@@ -1416,7 +1417,7 @@ void LuaTriggerSkillV2::onShimingSuccess(Room *room, ServerPlayer *player) const
 
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	int error = lua_pcall(L, 3, 0, 0);
+	int error = LuaRuntime::protectedCall(L, 3, 0, 0);
 	if (error) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
@@ -1440,7 +1441,7 @@ void LuaTriggerSkillV2::onShimingFail(Room *room, ServerPlayer *player) const
 
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	int error = lua_pcall(L, 3, 0, 0);
+	int error = LuaRuntime::protectedCall(L, 3, 0, 0);
 	if (error) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
@@ -1460,7 +1461,7 @@ bool LuaScenarioRule::triggerable(const ServerPlayer *target) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaScenarioRule, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		target->getRoom()->output(error_msg);
@@ -1487,7 +1488,7 @@ bool LuaScenarioRule::trigger(TriggerEvent event, Room *room, ServerPlayer *play
 	SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);// the last event: data
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);// append Room as an argument
 
-	if (lua_pcall(L, 5, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 5, 1, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -1546,7 +1547,7 @@ bool LuaProhibitSkill::isProhibited(const Player *from, const Player *to, const 
 		lua_rawseti(L, -2, i + 1);
 	}
 
-	if (lua_pcall(L, 5, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 5, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -1568,7 +1569,7 @@ bool LuaProhibitPindianSkill::isPindianProhibited(const Player *from, const Play
 	SWIG_NewPointerObj(L, from, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, to, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -1614,7 +1615,7 @@ CorrectSkillResult CLASS::METHOD(const CorrectSkillContext &context) const \
 	FIELD.push(L); \
 	SWIG_NewPointerObj(L, const_cast<CLASS *>(this), SWIGTYPE_p_##CLASS, 0); \
 	SWIG_NewPointerObj(L, const_cast<CorrectSkillContext *>(&context), SWIGTYPE_p_CorrectSkillContext, 0); \
-	if (lua_pcall(L, 2, 1, 0) != 0) { \
+	if (LuaRuntime::protectedCall(L, 2, 1, 0) != 0) { \
 		luaCorrectSkillError(L, LABEL); \
 		return CorrectSkillResult::noEffect(); \
 	} \
@@ -1650,7 +1651,7 @@ int LuaDistanceSkill::getCorrect(const Player *from, const Player *to) const
 	SWIG_NewPointerObj(L, from, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, to, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return DistanceSkill::getCorrect(from,to);
 	}
@@ -1672,7 +1673,7 @@ int LuaDistanceSkill::getFixed(const Player *from, const Player *to) const
 	SWIG_NewPointerObj(L, from, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, to, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return DistanceSkill::getFixed(from,to);
 	}
@@ -1693,7 +1694,7 @@ int LuaMaxCardsSkill::getExtra(const Player *target) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaMaxCardsSkill, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return MaxCardsSkill::getExtra(target);
 	}
@@ -1714,7 +1715,7 @@ int LuaMaxCardsSkill::getFixed(const Player *target) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaMaxCardsSkill, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return MaxCardsSkill::getFixed(target);
 	}
@@ -1739,7 +1740,7 @@ int LuaTargetModSkill::getResidueNum(const Player *from, const Card *card, const
 	SWIG_NewPointerObj(L, card, SWIGTYPE_p_Card, 0);
 	SWIG_NewPointerObj(L, to, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 4, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 4, 1, 0)!=0) {
 		Error(L);
 		return TargetModSkill::getResidueNum(from,card,to);
 	}
@@ -1764,7 +1765,7 @@ int LuaTargetModSkill::getDistanceLimit(const Player *from, const Card *card, co
 	SWIG_NewPointerObj(L, card, SWIGTYPE_p_Card, 0);
 	SWIG_NewPointerObj(L, to, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 4, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 4, 1, 0)!=0) {
 		Error(L);
 		return TargetModSkill::getDistanceLimit(from,card,to);
 	}
@@ -1788,7 +1789,7 @@ int LuaTargetModSkill::getExtraTargetNum(const Player *from, const Card *card) c
 	SWIG_NewPointerObj(L, from, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, card, SWIGTYPE_p_Card, 0);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return TargetModSkill::getExtraTargetNum(from,card);
 	}
@@ -1810,7 +1811,7 @@ int LuaAttackRangeSkill::getExtra(const Player *target, bool include_weapon) con
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
 	lua_pushboolean(L, include_weapon);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return AttackRangeSkill::getExtra(target, include_weapon);
 	}
@@ -1832,7 +1833,7 @@ int LuaAttackRangeSkill::getFixed(const Player *target, bool include_weapon) con
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
 	lua_pushboolean(L, include_weapon);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return AttackRangeSkill::getFixed(target, include_weapon);
 	}
@@ -1854,7 +1855,7 @@ bool LuaInvaliditySkill::isSkillValid(const Player *player, const Skill *skill) 
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, skill, SWIGTYPE_p_Skill, 0);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return true;
 	}
@@ -1875,7 +1876,7 @@ bool LuaFilterSkill::viewFilter(const Card *to_select) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaFilterSkill, 0);
 	SWIG_NewPointerObj(L, to_select, SWIGTYPE_p_Card, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -1896,7 +1897,7 @@ const Card *LuaFilterSkill::viewAs(const Card *originalCard) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaFilterSkill, 0);
 	SWIG_NewPointerObj(L, originalCard, SWIGTYPE_p_Card, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return nullptr;
 	}
@@ -1920,7 +1921,7 @@ QString LuaViewAsEquipSkill::viewAsEquip(const Player *target) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaViewAsEquipSkill, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return QString();
 	}
@@ -1942,7 +1943,7 @@ QString LuaCardLimitSkill::limitList(const Player *target, const Card *card) con
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, card, SWIGTYPE_p_Card, 0);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return QString();
 	}
@@ -1964,7 +1965,7 @@ QString LuaCardLimitSkill::limitPattern(const Player *target, const Card *card) 
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, card, SWIGTYPE_p_Card, 0);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return QString();
 	}
@@ -1986,7 +1987,7 @@ QString LuaCardLimitSkill::limitReason(const Player *target, const Card *card) c
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, card, SWIGTYPE_p_Card, 0);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return QString();
 	}
@@ -2015,7 +2016,7 @@ QStringList LuaPreSelectionMetaSkill::onGeneralChoosing(Room *room, ServerPlayer
 	}
 	lua_pushstring(L, reason.toLatin1().data());
 
-	if (lua_pcall(L, 5, 1, 0) != 0) {
+	if (LuaRuntime::protectedCall(L, 5, 1, 0) != 0) {
 		Error(L);
 		return generals;
 	}
@@ -2057,7 +2058,7 @@ void LuaPreSelectionMetaSkill::onGeneralNotChosen(Room *room, ServerPlayer *play
 	lua_pushstring(L, chosen.toLatin1().data());
 	lua_pushstring(L, reason.toLatin1().data());
 
-	if (lua_pcall(L, 6, 0, 0) != 0) {
+	if (LuaRuntime::protectedCall(L, 6, 0, 0) != 0) {
 		Error(L);
 	}
 }
@@ -2073,7 +2074,7 @@ bool LuaAnytimeSkill::canTrigger(ServerPlayer *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaAnytimeSkill, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 2, 1, 0) != 0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0) != 0) {
 		Error(L);
 		return false;
 	}
@@ -2095,7 +2096,7 @@ bool LuaAnytimeSkill::onTrigger(Room *room, ServerPlayer *player) const
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 3, 1, 0) != 0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0) != 0) {
 		Error(L);
 		return false;
 	}
@@ -2123,7 +2124,7 @@ bool LuaViewAsSkill::viewFilter(const QList<const Card *> &selected, const Card 
 	}
 	SWIG_NewPointerObj(L, to_select, SWIGTYPE_p_Card, 0);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -2148,7 +2149,7 @@ const Card *LuaViewAsSkill::viewAs(const QList<const Card *> &cards) const
 		lua_rawseti(L, -2, i + 1);
 	}
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return nullptr;
 	}
@@ -2173,7 +2174,7 @@ bool LuaViewAsSkill::shouldBeVisible(const Player *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaViewAsSkill, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -2195,7 +2196,7 @@ bool LuaViewAsSkill::isEnabledAtPlay(const Player *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaViewAsSkill, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -2219,7 +2220,7 @@ bool LuaViewAsSkill::isEnabledAtResponse(const Player *player, const QString &pa
 
 	lua_pushstring(L, pattern.toLatin1());
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -2241,7 +2242,7 @@ bool LuaViewAsSkill::isEnabledAtNullification(const ServerPlayer *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaViewAsSkill, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -2282,7 +2283,7 @@ bool LuaSkillCard::targetFilter(const QList<const Player *> &targets, const Play
 	SWIG_NewPointerObj(L, to_select, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 4, 2, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 4, 2, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -2313,7 +2314,7 @@ bool LuaSkillCard::targetsFeasible(const QList<const Player *> &targets, const P
 	}
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -2336,7 +2337,7 @@ void LuaSkillCard::onUse(Room *room, CardUseStruct &card_use) const
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 	SWIG_NewPointerObj(L, &card_use, SWIGTYPE_p_CardUseStruct, 0);
 
-	if (lua_pcall(L, 3, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -2361,7 +2362,7 @@ void LuaSkillCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 		lua_rawseti(L, -2, i + 1);
 	}
 
-	if (lua_pcall(L, 4, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 4, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -2380,7 +2381,7 @@ void LuaSkillCard::onEffect(CardEffectStruct &effect) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaSkillCard, 0);
 	SWIG_NewPointerObj(L, &effect, SWIGTYPE_p_CardEffectStruct, 0);
 
-	if (lua_pcall(L, 2, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		effect.to->getRoom()->output(error_msg);
@@ -2399,7 +2400,7 @@ const Card *LuaSkillCard::validate(CardUseStruct &cardUse) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaSkillCard, 0);
 	SWIG_NewPointerObj(L, &cardUse, SWIGTYPE_p_CardUseStruct, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return SkillCard::validate(cardUse);
 	}
@@ -2424,7 +2425,7 @@ const Card *LuaSkillCard::validateInResponse(ServerPlayer *user) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaSkillCard, 0);
 	SWIG_NewPointerObj(L, user, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return SkillCard::validateInResponse(user);
 	}
@@ -2457,7 +2458,7 @@ bool LuaBasicCard::targetFilter(const QList<const Player *> &targets, const Play
 	SWIG_NewPointerObj(L, to_select, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 4, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 4, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -2489,7 +2490,7 @@ bool LuaBasicCard::targetFilter(const QList<const Player *> &targets, const Play
 	SWIG_NewPointerObj(L, to_select, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 4, 2, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 4, 2, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -2520,7 +2521,7 @@ bool LuaBasicCard::targetsFeasible(const QList<const Player *> &targets, const P
 	}
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -2543,7 +2544,7 @@ void LuaBasicCard::onUse(Room *room, CardUseStruct &card_use) const
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 	SWIG_NewPointerObj(L, &card_use, SWIGTYPE_p_CardUseStruct, 0);
 
-	if (lua_pcall(L, 3, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -2568,7 +2569,7 @@ void LuaBasicCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 		lua_rawseti(L, -2, i + 1);
 	}
 
-	if (lua_pcall(L, 4, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 4, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -2587,7 +2588,7 @@ void LuaBasicCard::onEffect(CardEffectStruct &effect) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	SWIG_NewPointerObj(L, &effect, SWIGTYPE_p_CardEffectStruct, 0);
 
-	if (lua_pcall(L, 2, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		effect.to->getRoom()->output(error_msg);
@@ -2606,7 +2607,7 @@ bool LuaBasicCard::isAvailable(const Player *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -2628,7 +2629,7 @@ const Card *LuaBasicCard::validate(CardUseStruct &cardUse) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	SWIG_NewPointerObj(L, &cardUse, SWIGTYPE_p_CardUseStruct, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return BasicCard::validate(cardUse);
 	}
@@ -2653,7 +2654,7 @@ const Card *LuaBasicCard::validateInResponse(ServerPlayer *user) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaBasicCard, 0);
 	SWIG_NewPointerObj(L, user, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return BasicCard::validateInResponse(user);
 	}
@@ -2686,7 +2687,7 @@ bool LuaTrickCard::targetFilter(const QList<const Player *> &targets, const Play
 	SWIG_NewPointerObj(L, to_select, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 4, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 4, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -2718,7 +2719,7 @@ bool LuaTrickCard::targetFilter(const QList<const Player *> &targets, const Play
 	SWIG_NewPointerObj(L, to_select, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 4, 2, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 4, 2, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -2749,7 +2750,7 @@ bool LuaTrickCard::targetsFeasible(const QList<const Player *> &targets, const P
 	}
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -2771,7 +2772,7 @@ void LuaTrickCard::onNullified(ServerPlayer *target) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, target, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 2, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		target->getRoom()->output(error_msg);
@@ -2790,7 +2791,7 @@ bool LuaTrickCard::isCancelable(const CardEffectStruct &effect) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, &effect, SWIGTYPE_p_CardEffectStruct, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -2812,7 +2813,7 @@ void LuaTrickCard::onUse(Room *room, CardUseStruct &card_use) const
 	SWIG_NewPointerObj(L, room, SWIGTYPE_p_Room, 0);
 	SWIG_NewPointerObj(L, &card_use, SWIGTYPE_p_CardUseStruct, 0);
 
-	if (lua_pcall(L, 3, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -2838,7 +2839,7 @@ void LuaTrickCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 		lua_rawseti(L, -2, i + 1);
 	}
 
-	if (lua_pcall(L, 4, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 4, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -2857,7 +2858,7 @@ void LuaTrickCard::onEffect(CardEffectStruct &effect) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, &effect, SWIGTYPE_p_CardEffectStruct, 0);
 
-	if (lua_pcall(L, 2, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		effect.to->getRoom()->output(error_msg);
@@ -2876,7 +2877,7 @@ bool LuaTrickCard::isAvailable(const Player *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -2898,7 +2899,7 @@ const Card *LuaTrickCard::validate(CardUseStruct &cardUse) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, &cardUse, SWIGTYPE_p_CardUseStruct, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return TrickCard::validate(cardUse);
 	}
@@ -2923,7 +2924,7 @@ const Card *LuaTrickCard::validateInResponse(ServerPlayer *user) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTrickCard, 0);
 	SWIG_NewPointerObj(L, user, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return TrickCard::validateInResponse(user);
 	}
@@ -2954,7 +2955,7 @@ bool LuaWeapon::targetFilter(const QList<const Player *> &targets, const Player 
 	SWIG_NewPointerObj(L, to_select, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 4, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 4, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -2981,7 +2982,7 @@ bool LuaWeapon::targetsFeasible(const QList<const Player *> &targets, const Play
 	}
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -3003,7 +3004,7 @@ bool LuaWeapon::isAvailable(const Player *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaWeapon, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -3025,7 +3026,7 @@ void LuaWeapon::onInstall(ServerPlayer *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaWeapon, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 2, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		player->getRoom()->output(error_msg);
@@ -3044,7 +3045,7 @@ void LuaWeapon::onUninstall(ServerPlayer *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaWeapon, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 2, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		player->getRoom()->output(error_msg);
@@ -3069,7 +3070,7 @@ bool LuaArmor::targetFilter(const QList<const Player *> &targets, const Player *
 	SWIG_NewPointerObj(L, to_select, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 4, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 4, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -3096,7 +3097,7 @@ bool LuaArmor::targetsFeasible(const QList<const Player *> &targets, const Playe
 	}
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -3118,7 +3119,7 @@ bool LuaArmor::isAvailable(const Player *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaArmor, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -3140,7 +3141,7 @@ void LuaArmor::onInstall(ServerPlayer *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaArmor, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 2, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		player->getRoom()->output(error_msg);
@@ -3159,7 +3160,7 @@ void LuaArmor::onUninstall(ServerPlayer *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaArmor, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 2, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		player->getRoom()->output(error_msg);
@@ -3184,7 +3185,7 @@ bool LuaHorse::targetFilter(const QList<const Player *> &targets, const Player *
 	SWIG_NewPointerObj(L, to_select, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 4, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 4, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -3211,7 +3212,7 @@ bool LuaHorse::targetsFeasible(const QList<const Player *> &targets, const Playe
 	}
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -3233,7 +3234,7 @@ bool LuaHorse::isAvailable(const Player *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -3255,7 +3256,7 @@ void LuaHorse::onInstall(ServerPlayer *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 2, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		player->getRoom()->output(error_msg);
@@ -3274,7 +3275,7 @@ void LuaHorse::onUninstall(ServerPlayer *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 2, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		player->getRoom()->output(error_msg);
@@ -3292,7 +3293,7 @@ int LuaHorse::getCorrect(const Player *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return Horse::getCorrect(player);
 	}
@@ -3320,7 +3321,7 @@ bool LuaOffensiveHorse::targetFilter(const QList<const Player *> &targets, const
 	SWIG_NewPointerObj(L, to_select, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 4, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 4, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -3342,7 +3343,7 @@ bool LuaOffensiveHorse::isAvailable(const Player *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaOffensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -3369,7 +3370,7 @@ bool LuaOffensiveHorse::targetsFeasible(const QList<const Player *> &targets, co
 	}
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -3391,7 +3392,7 @@ void LuaOffensiveHorse::onInstall(ServerPlayer *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaOffensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 2, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		player->getRoom()->output(error_msg);
@@ -3410,7 +3411,7 @@ void LuaOffensiveHorse::onUninstall(ServerPlayer *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaOffensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 2, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		player->getRoom()->output(error_msg);
@@ -3428,7 +3429,7 @@ int LuaOffensiveHorse::getCorrect(const Player *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaOffensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return OffensiveHorse::getCorrect(player);
 	}
@@ -3457,7 +3458,7 @@ bool LuaDefensiveHorse::targetFilter(const QList<const Player *> &targets, const
 	SWIG_NewPointerObj(L, to_select, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 4, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 4, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -3484,7 +3485,7 @@ bool LuaDefensiveHorse::targetsFeasible(const QList<const Player *> &targets, co
 	}
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -3506,7 +3507,7 @@ bool LuaDefensiveHorse::isAvailable(const Player *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaDefensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -3528,7 +3529,7 @@ void LuaDefensiveHorse::onInstall(ServerPlayer *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaDefensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 2, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		player->getRoom()->output(error_msg);
@@ -3547,7 +3548,7 @@ void LuaDefensiveHorse::onUninstall(ServerPlayer *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaDefensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 2, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		player->getRoom()->output(error_msg);
@@ -3565,7 +3566,7 @@ int LuaDefensiveHorse::getCorrect(const Player *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaDefensiveHorse, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return DefensiveHorse::getCorrect(player);
 	}
@@ -3593,7 +3594,7 @@ bool LuaTreasure::targetFilter(const QList<const Player *> &targets, const Playe
 	SWIG_NewPointerObj(L, to_select, SWIGTYPE_p_Player, 0);
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 4, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 4, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -3620,7 +3621,7 @@ bool LuaTreasure::targetsFeasible(const QList<const Player *> &targets, const Pl
 	}
 	SWIG_NewPointerObj(L, self, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -3642,7 +3643,7 @@ bool LuaTreasure::isAvailable(const Player *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTreasure, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_Player, 0);
 
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		Error(L);
 		return false;
 	}
@@ -3664,7 +3665,7 @@ void LuaTreasure::onInstall(ServerPlayer *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTreasure, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 2, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		player->getRoom()->output(error_msg);
@@ -3683,7 +3684,7 @@ void LuaTreasure::onUninstall(ServerPlayer *player) const
 	SWIG_NewPointerObj(L, this, SWIGTYPE_p_LuaTreasure, 0);
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 2, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		player->getRoom()->output(error_msg);
@@ -3691,7 +3692,7 @@ void LuaTreasure::onUninstall(ServerPlayer *player) const
 }
 static bool luaActivePCall(lua_State *L, int nargs, int nresults, const char *callback)
 {
-	if (lua_pcall(L, nargs, nresults, 0) == 0) return true;
+	if (LuaRuntime::protectedCall(L, nargs, nresults, 0) == 0) return true;
 	qWarning("LuaViewAsSkillV2::%s error: %s", callback, lua_tostring(L, -1));
 	lua_pop(L, 1);
 	return false;

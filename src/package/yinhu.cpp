@@ -834,7 +834,7 @@ public:
 			DummyCard *dummy = new DummyCard(ids);
 			CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, player->objectName(), "yhjifeng", "");
 			room->throwCard(dummy, reason, nullptr);
-			delete dummy;
+			dummy->deleteLater();
 			return false;
 		}
 
@@ -918,7 +918,7 @@ void YHHuntianCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> 
 			DummyCard *dummy = new DummyCard(card_ids);
 			CardMoveReason reason2(CardMoveReason::S_REASON_NATURAL_ENTER, source->objectName(), "yhhuntian", "");
 			room->throwCard(dummy, reason2, nullptr);
-			delete dummy;
+			dummy->deleteLater();
 			return;
 		}
 
@@ -974,7 +974,7 @@ void YHHuntianCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> 
 				room->moveCardTo(dummy, nullptr, Player::DrawPile, reason2, true, true);
 			}
 		}
-		delete dummy;
+		dummy->deleteLater();
 	}
 }
 
@@ -4779,7 +4779,7 @@ public:
 		DummyCard *dummy = new DummyCard(ids);
 		CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, "", "yhyange", "");
 		room->throwCard(dummy, reason, nullptr);
-		delete dummy;
+		dummy->deleteLater();
 	}
 
 	bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const

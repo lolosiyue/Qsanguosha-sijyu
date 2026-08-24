@@ -36,7 +36,7 @@ public:
                 CardMoveReason reason(CardMoveReason::S_REASON_RECYCLE, caopi->objectName());
                 room->obtainCard(caopi, dummy, reason, false);
             }
-            delete dummy;
+            dummy->deleteLater();
         }
 
         return false;
@@ -287,13 +287,13 @@ public:
                     DummyCard *dummy = new DummyCard(card_to_throw);
                     CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, menghuo->objectName(), "zaiqi", "");
                     room->throwCard(dummy, reason, nullptr);
-                    delete dummy;
+                    dummy->deleteLater();
                     //has_heart = true;
                 }
                 if (!card_to_gotback.isEmpty()) {
                     DummyCard *dummy2 = new DummyCard(card_to_gotback);
                     room->obtainCard(menghuo, dummy2);
-                    delete dummy2;
+                    dummy2->deleteLater();
                 }/*
 
                 if (has_heart)
@@ -506,7 +506,7 @@ public:
                 QList<ServerPlayer *> targets;
                 targets << beggar;
                 haoshi_card->use(room, lusu, targets);
-                delete haoshi_card;
+                haoshi_card->deleteLater();
             }
         }
 

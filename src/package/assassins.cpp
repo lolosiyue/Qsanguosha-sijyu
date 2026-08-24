@@ -865,7 +865,7 @@ public:
             if (dummy->subcardsLength() > 0)
                 room->throwCard(dummy, objectName(), use.from, player);
             room->loseHp(HpLostStruct(player, 1, objectName(), player));
-            delete dummy;
+            dummy->deleteLater();
         }
         return false;
     }
@@ -902,7 +902,7 @@ public:
             if (dummy->subcardsLength() > 0)
                 room->throwCard(dummy, objectName(), use.from, player);
             room->loseHp(HpLostStruct(player, 1, objectName(), player));
-            delete dummy;
+            dummy->deleteLater();
         }
         return false;
     }

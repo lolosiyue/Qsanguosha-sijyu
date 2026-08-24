@@ -523,7 +523,7 @@ void ZhibaCard::onUse(Room *room, CardUseStruct &card_use) const
 					dummy->addSubcard(to_card_id);
 				if (dummy->subcardsLength()>0 && room->askForChoice(pindian->to, "zhiba_pindian_obtain", "obtainPindianCards+reject") != "reject")
 					pindian->to->obtainCard(dummy);
-				delete dummy;
+				dummy->deleteLater();
 			}
 		}
 	}

@@ -1620,7 +1620,7 @@ void ServerPlayer::exchangeFreelyFromPrivatePile(const QString &skill_name, cons
 
 	DummyCard *dummy = new DummyCard(will_to_handcard_x);
 	room->obtainCard(this, dummy, CardMoveReason(CardMoveReason::S_REASON_EXCHANGE_FROM_PILE, objectName()), false);
-	delete dummy;
+	dummy->deleteLater();
 }
 
 void ServerPlayer::clearOneGeneralPile(const QString &pile_name)

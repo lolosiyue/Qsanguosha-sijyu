@@ -2117,7 +2117,7 @@ void OLZhibaCard::onEffect(CardEffectStruct &effect) const
 			dummy->addSubcard(to_card_id);
 		if (!dummy->getSubcards().isEmpty() && room->askForChoice(pindian->from, "olzhiba_pindian_obtain", "obtainPindianCards+reject") == "obtainPindianCards")
 			pindian->from->obtainCard(dummy);
-		delete dummy;
+		dummy->deleteLater();
 	}
 }
 
@@ -2232,7 +2232,7 @@ void OLZhibaPindianCard::onUse(Room *room, CardUseStruct &use) const
 				dummy->addSubcard(to_card_id);
 			if (dummy->subcardsLength()>0 && room->askForChoice(pindian->to, "olzhiba_pindian_obtain", "obtainPindianCards+reject") != "reject")
 				pindian->to->obtainCard(dummy);
-			delete dummy;
+			dummy->deleteLater();
 		}
 	}
 	room->getThread()->trigger(CardFinished, room, use.from, data);
@@ -4130,7 +4130,7 @@ public:
 				CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, player->objectName(), objectName(), "");
 				room->throwCard(dummy, reason, nullptr);
 			}
-			delete dummy;
+			dummy->deleteLater();
 			if (player->isDead()) break;
 		}
 		return false;

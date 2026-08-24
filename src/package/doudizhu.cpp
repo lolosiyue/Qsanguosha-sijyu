@@ -112,8 +112,8 @@ public:
         if (player->isAlive() && room->getCardPlace(card->getEffectiveId()) == Player::PlaceDelayedTrick)
 			room->throwCard(card, objectName(), nullptr, player);
 
-        delete dummy;
-        delete card;
+        dummy->deleteLater();
+        card->deleteLater();
         return false;
     }
 };
@@ -162,8 +162,8 @@ public:
         if (player->isAlive() && room->getCardPlace(card->getEffectiveId()) == Player::PlaceDelayedTrick)
 			room->throwCard(card, objectName(), nullptr, player);
 
-        delete dummy;
-        delete card;
+        dummy->deleteLater();
+        card->deleteLater();
         return false;
     }
 };

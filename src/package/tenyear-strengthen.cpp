@@ -546,7 +546,7 @@ public:
 			}
 			if (dummy->subcardsLength() > 0)
 				room->throwCard(dummy, player, nullptr);
-			delete dummy;
+			dummy->deleteLater();
 			room->setPlayerMark(player, "&tenyeartishen", 1);
 		}
 		return false;
@@ -821,7 +821,7 @@ public:
 					DummyCard *dummy = new DummyCard(card_to_throw);
 					CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, player->objectName(), "tenyearluoyi", "");
 					room->throwCard(dummy, reason, nullptr);
-					delete dummy;
+					dummy->deleteLater();
 				}
 				return false;
 			}
@@ -841,12 +841,12 @@ public:
 				DummyCard *dummy = new DummyCard(card_to_throw);
 				CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, player->objectName(), "tenyearluoyi", "");
 				room->throwCard(dummy, reason, nullptr);
-				delete dummy;
+				dummy->deleteLater();
 			}
 			if (!card_to_gotback.isEmpty()) {
 				DummyCard *dummy = new DummyCard(card_to_gotback);
 				room->obtainCard(player, dummy);
-				delete dummy;
+				dummy->deleteLater();
 			}
 			return true;
 		} else {
@@ -2927,7 +2927,7 @@ void TenyearYanzhuCard::onEffect(CardEffectStruct &effect) const
 		DummyCard *dummy = new DummyCard(list);
 		CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, effect.from->objectName());
 		room->obtainCard(effect.from, dummy, reason);
-		delete dummy;
+		dummy->deleteLater();
 		room->setPlayerProperty(effect.from, "tenyearyanzhu_level_up", true);
 		room->setPlayerProperty(effect.from, "tenyearxingxue_level_up", true);
 		LogMessage log;
@@ -5217,7 +5217,7 @@ void TenyearXianzhouCard::onEffect(CardEffectStruct &effect) const
 	int len = dummy->subcardsLength();
 	room->setPlayerMark(effect.from, "tenyearxianzhou", len);
 	effect.to->obtainCard(dummy);
-	delete dummy;
+	dummy->deleteLater();
 
 	room->recover(effect.from, RecoverStruct(effect.from, nullptr, qMin(len, effect.from->getMaxHp() - effect.from->getHp()), "tenyearxianzhou"));
 	if (effect.from->isDead() || effect.to->isDead()) return;
@@ -6376,7 +6376,7 @@ void TenyearJianyanCard::use(Room *room, ServerPlayer *source, QList<ServerPlaye
 			dummy->addSubcard(card_id);
 			CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, source->objectName(), "tenyearjianyan", "");
 			room->throwCard(dummy, reason, nullptr);
-			delete dummy;
+			dummy->deleteLater();
 		} else {
 			const Card *card = Sanguosha->getCard(card_id);
 			if (!room->CardInTable(card)) return;

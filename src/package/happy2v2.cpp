@@ -283,7 +283,7 @@ public:
             }
             if (dummy->subcardsLength() > 0)
                 player->obtainCard(dummy, true);
-            delete dummy;
+            dummy->deleteLater();
         }
         return false;
     }

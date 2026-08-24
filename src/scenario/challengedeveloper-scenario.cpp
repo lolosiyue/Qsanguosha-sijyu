@@ -2565,7 +2565,7 @@ public:
         if (!c) return nullptr;
         c->setSkillName("dev_juanlao");
         if (!c->isAvailable(Self)) {
-            delete c;
+            c->deleteLater();
             return nullptr;
         }
         return c;

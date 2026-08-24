@@ -1002,7 +1002,7 @@ GuhuoDialog *GuhuoDialog::getInstance(const QString &object, bool left, bool rig
     if (update || shouldRebuildGuhuoDialog(GuhuoDialogs.value(object, nullptr))) {
 		if(GuhuoDialogs[object]){
 			foreach (Card *c, GuhuoDialogs[object]->findChildren<Card *>())
-				delete c;
+				c->deleteLater();
 			delete GuhuoDialogs[object];
 		}
 		GuhuoDialogs[object] = new GuhuoDialog(object,left,right,play_only,slash_combined,delayed_tricks);
@@ -1233,7 +1233,7 @@ QGroupBox *GuhuoDialog::createLeft()
             Card *dc = Sanguosha->cloneCard(rec);
             if (dc){
 				if(dc->isKindOf("BasicCard")) layout->addWidget(createButton(dc));
-				else delete dc;
+				else dc->deleteLater();
 			}
         }
     } else if (objectName() == "wuxinghelingshan") {
@@ -1252,7 +1252,7 @@ QGroupBox *GuhuoDialog::createLeft()
             Card *dc = Sanguosha->cloneCard(rec);
             if (dc){
 				if(dc->isKindOf("BasicCard")) layout->addWidget(createButton(dc));
-				else delete dc;
+				else dc->deleteLater();
 			}
         }
     } else if (objectName() == "tenyeargue") {
@@ -1309,7 +1309,7 @@ QGroupBox *GuhuoDialog::createRight()
 					else
 						layout2->addWidget(createButton(dc));
 				}else
-					delete dc;
+					dc->deleteLater();
 			}
         }
     } else if (objectName() == "fengying") {
@@ -1324,7 +1324,7 @@ QGroupBox *GuhuoDialog::createRight()
 					else
 						layout2->addWidget(createButton(dc));
 				}else
-					delete dc;
+					dc->deleteLater();
 			}
         }
     } else {
@@ -2634,7 +2634,7 @@ public:
             CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, shenlvmeng->objectName(), objectName(), "");
             room->throwCard(dummy, reason, nullptr);
         }
-        delete dummy;
+        dummy->deleteLater();
         return true;
     }
 };

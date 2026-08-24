@@ -499,7 +499,7 @@ QString LuaAI::askForUseCard(const QString &pattern, const QString &prompt, cons
     lua_pushstring(L, prompt.toLatin1());
     lua_pushinteger(L, method);
 
-    int error = lua_pcall(L, 4, 1, 0);
+    int error = LuaRuntime::protectedCall(L, 4, 1, 0);
     QString result;
     if (error != 0)
         result = luaErrorWithTraceback(L);
@@ -526,7 +526,7 @@ QList<int> LuaAI::askForDiscard(const QString &reason, int discard_num, int min_
     lua_pushboolean(L, include_equip);
     lua_pushstring(L, pattern.toLatin1());
 
-    if (lua_pcall(L, 7, 1, 0)!=0) {
+    if (LuaRuntime::protectedCall(L, 7, 1, 0)!=0) {
 		const QString error_msg = luaErrorWithTraceback(L);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -563,7 +563,7 @@ int LuaAI::askForAG(const QList<int> &card_ids, bool refusable, const QString &r
     lua_pushboolean(L, refusable);
     lua_pushstring(L, reason.toLatin1());
 
-    if (lua_pcall(L, 4, 1, 0)!=0) {
+    if (LuaRuntime::protectedCall(L, 4, 1, 0)!=0) {
 		const QString error_msg = luaErrorWithTraceback(L);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -602,7 +602,7 @@ void LuaAI::askForGuanxing(const QList<int> &cards, QList<int> &up, QList<int> &
     pushQIntList(L, cards);
     lua_pushinteger(L, guanxing_type);
 
-    if (lua_pcall(L, 3, 2, 0)!=0) {
+    if (LuaRuntime::protectedCall(L, 3, 2, 0)!=0) {
 		const QString error_msg = luaErrorWithTraceback(L);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -639,7 +639,7 @@ QString LuaAI::askForGeneral(const QStringList &generals, const QString &default
     lua_pushstring(L, default_choice.toLatin1().data());
     lua_pushstring(L, reason.toLatin1().data());
 
-    if (lua_pcall(L, 4, 1, 0) != 0) {
+    if (LuaRuntime::protectedCall(L, 4, 1, 0) != 0) {
         const QString error_msg = luaErrorWithTraceback(L);
         lua_pop(L, 1);
         room->output(error_msg);

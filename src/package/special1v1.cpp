@@ -157,7 +157,7 @@ public:
                 CardMoveReason reason(CardMoveReason::S_REASON_RECYCLE, xiahouyuan->objectName());
                 room->obtainCard(xiahouyuan, dummy, reason, false);
             }
-            delete dummy;
+            dummy->deleteLater();
         }
         return false;
     }
@@ -513,7 +513,7 @@ public:
 				room->clearAG(sunshangxiang);
                 Config.AIDelay = ai_delay;
 				sunshangxiang->obtainCard(dummy);
-				delete dummy;
+				dummy->deleteLater();
             }
         }
         return false;

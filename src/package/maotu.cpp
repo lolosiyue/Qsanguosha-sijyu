@@ -716,14 +716,14 @@ public:
 
             DummyCard *dummy = new DummyCard(subcards);
             room->obtainCard(player, dummy);
-            delete dummy;
+            dummy->deleteLater();
         }
 
         if (!cards.isEmpty()) {
             DummyCard *dummy = new DummyCard(cards);
             CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, player->objectName(), "mtweiqie", "");
             room->throwCard(dummy, reason, nullptr);
-            delete dummy;
+            dummy->deleteLater();
         }
         return 0;
     }
@@ -850,7 +850,7 @@ void MTZhilieCard::onEffect(CardEffectStruct &effect) const
             room->throwCard(discard, from);
             room->damage(DamageStruct("mtzhilie", from, to, same));
         }
-        delete discard;
+        discard->deleteLater();
     } else {
         if (usecard && from->canUse(usecard, to, true))
             room->useCard(CardUseStruct(usecard, from, to));

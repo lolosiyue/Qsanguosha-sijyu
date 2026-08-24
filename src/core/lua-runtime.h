@@ -53,6 +53,8 @@ public:
     static LuaRuntime *fromState(lua_State *state);
     static LuaRuntime *current();
     static lua_State *currentState();
+    static int protectedCall(lua_State *state, int argumentCount,
+                             int resultCount, int errorFunction);
     static void setCurrentForThread(LuaRuntime *runtime);
 
     class Binding
@@ -105,6 +107,7 @@ private:
     QThread *m_owner;
     QRecursiveMutex m_executionMutex;
     std::atomic<int> m_invocationDepth{0};
+    CardLifetimeManager *m_luaPinManager = nullptr;
     std::atomic<Lifecycle> m_lifecycle{Lifecycle::Running};
     MemoryState m_memory;
     const void *m_lifetimeDomain = nullptr;

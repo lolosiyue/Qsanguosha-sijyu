@@ -214,7 +214,7 @@ void JuguanDialog::prepareOptions()
         if (card && !map.contains(card->objectName()))
             button_layout->addWidget(createButton(card));
         else
-            delete card;
+            card->deleteLater();
     }
 }
 

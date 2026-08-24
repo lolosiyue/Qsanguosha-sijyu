@@ -12,7 +12,7 @@ void RoomState::clear()
 {
     CardLifetimeManager &manager = globalCardLifetimeManager();
     foreach(Card *card, m_cards.values()) {
-        manager.observeCard(card);
+        manager.observeCard(card, true);
         delete card;
     }
     m_cards.clear();
@@ -80,4 +80,3 @@ void RoomState::reset()
         m_cards[i] = wrapped;
     }
 }
-

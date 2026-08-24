@@ -14,6 +14,7 @@
 #include "card-lifetime-manager.h"
 #include "roomthread.h"
 #include <src/util/ThreadSafeHelper.h>
+#include <QEvent>
 #include <QRegularExpression>
 #include <cstring>
 
@@ -54,6 +55,7 @@ Card::~Card()
 {
     globalCardLifetimeManager().removeChangeEdges(this);
 	globalCardLifetimeManager().releaseTags(this);
+	CardLifetimeManager::invalidateObservedCard(this);
 	change_cards.clear();
 }
 
@@ -68,6 +70,13 @@ void Card::deleteLater()
     }
     manager.requestNativeDelete(token);
     manager.drain();
+}
+
+bool Card::event(QEvent *event)
+{
+    if (event && event->type() == QEvent::DeferredDelete)
+        globalCardLifetimeManager().recordDeferredDelete(this);
+    return QObject::event(event);
 }
 
 QString Card::getSuitString() const

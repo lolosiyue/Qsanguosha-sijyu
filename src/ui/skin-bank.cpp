@@ -1899,7 +1899,7 @@ bool IQSanComponentSkin::isHorseEquipByName(const QString &equipName)
 		return false;
 
 	bool isHorse = card->isKindOf("OffensiveHorse") || card->isKindOf("DefensiveHorse");
-	delete card;
+	card->deleteLater();
 	return isHorse;
 }
 

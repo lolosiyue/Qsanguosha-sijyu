@@ -761,7 +761,7 @@ public:
 
 			if (dummy->subcardsLength() > 0)
 				room->obtainCard(player, dummy, false);
-			delete dummy;
+			dummy->deleteLater();
 		}
 		return false;
 	}
@@ -2696,7 +2696,7 @@ void LvxinCard::onEffect(CardEffectStruct &effect) const
 				}
 			}
 		}
-		delete dummy;
+		dummy->deleteLater();
 	}
 }
 
