@@ -45,6 +45,39 @@ Alternatively, use the PowerShell entry point:
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-cmake.ps1 -Configuration Release
 ```
 
+### 🐧 Linux (Headless Server)
+
+On Linux the project builds the **headless server** (`qsanguosha_server`) only — no GUI, no FMOD, no X11 dependency. It links just `Qt6::Core` and `Qt6::Network`.
+
+```bash
+sudo apt install -y build-essential cmake ninja-build qt6-base-dev swig
+
+# GCC
+cmake -S . -B build-linux-gcc -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_CXX_COMPILER=/usr/bin/c++
+cmake --build build-linux-gcc
+cmake --build build-linux-gcc --target deploy-server
+
+# or Clang
+cmake -S . -B build-linux-clang -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_CXX_COMPILER=/usr/bin/clang++
+cmake --build build-linux-clang
+```
+
+Run the server, optional `--game-mode`, `--seed`, `--autotest-log`:
+
+```bash
+./qsanguosha_server [--game-mode 10p] [--seed 12345] [--autotest-log /tmp/autotest.log]
+```
+
+CTest:
+
+```bash
+ctest --test-dir build-linux-gcc --output-on-failure
+```
+
+See the full guide: [`docs/linux-development-environment.md`](docs/linux-development-environment.md).
+
 ---
 
 _For more details, see the [Credits & Disclaimer](#-credits--disclaimer) section in the full document._
