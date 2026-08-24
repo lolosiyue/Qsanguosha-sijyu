@@ -23,6 +23,39 @@ cmake --build --preset release
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-cmake.ps1 -Configuration Release
 ```
 
+### 🐧 Linux（無頭伺服器）
+
+Linux 本階段只建置 **無頭伺服器**（`qsanguosha_server`），冇 GUI、冇 FMOD、冇 X11 依賴，只連結 `Qt6::Core` 同 `Qt6::Network`。
+
+```bash
+sudo apt install -y build-essential cmake ninja-build qt6-base-dev swig
+
+# GCC
+cmake -S . -B build-linux-gcc -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_CXX_COMPILER=/usr/bin/c++
+cmake --build build-linux-gcc
+cmake --build build-linux-gcc --target deploy-server
+
+# 或者用 Clang
+cmake -S . -B build-linux-clang -G Ninja -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_CXX_COMPILER=/usr/bin/clang++
+cmake --build build-linux-clang
+```
+
+執行伺服器，可選 `--game-mode`、`--seed`、`--autotest-log`：
+
+```bash
+./qsanguosha_server [--game-mode 10p] [--seed 12345] [--autotest-log /tmp/autotest.log]
+```
+
+CTest：
+
+```bash
+ctest --test-dir build-linux-gcc --output-on-failure
+```
+
+完整指南見：[`docs/linux-development-environment.md`](docs/linux-development-environment.md)。
+
 ## 🚀 核心特性
 
 ### 🖥️ 技術演進
