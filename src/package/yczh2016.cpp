@@ -761,7 +761,7 @@ public:
                 room->obtainCard(player, dummy, true);
                 p->drawCards(dummy->subcardsLength(), objectName());
             }
-            delete dummy;
+            dummy->deleteLater();
         }
         return false;
     }

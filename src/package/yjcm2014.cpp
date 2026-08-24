@@ -667,7 +667,7 @@ public:
         room->broadcastSkillInvoke(objectName());
         DummyCard *dummy = new DummyCard(ids);
         room->obtainCard(target, dummy);
-        delete dummy;
+        dummy->deleteLater();
 
         if (player->isAlive() && effect.to->isAlive() && target != player) {
             if (player->canSlash(effect.to, nullptr, false))
@@ -1032,7 +1032,7 @@ void XianzhouCard::onEffect(CardEffectStruct &effect) const
     }
     room->setPlayerMark(effect.to, "xianzhou", len);
     effect.to->obtainCard(dummy);
-    delete dummy;
+    dummy->deleteLater();
 
     bool rec = true;
     int count = 0;

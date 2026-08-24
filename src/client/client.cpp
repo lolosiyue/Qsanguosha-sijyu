@@ -801,7 +801,7 @@ void Client::onPlayerResponseCard(const Card *card, const QList<const Player *> 
 			<< QVariant::fromValue(targetNames) << activationName << activationId);
 
 		if (card->isVirtualCard() && !card->parent())
-			delete card;
+			const_cast<Card *>(card)->deleteLater();
 	} else
 		replyToServer(S_COMMAND_RESPONSE_CARD);
 
@@ -1788,7 +1788,7 @@ void Client::onPlayerDiscardCards(const Card *cards)
 		foreach(int card_id, cards->getSubcards())
 			arr << card_id;
 		if (cards->isVirtualCard() && !cards->parent())
-			delete cards;
+			const_cast<Card *>(cards)->deleteLater();
 		replyToServer(S_COMMAND_DISCARD_CARD, arr);
 	} else {
 		replyToServer(S_COMMAND_DISCARD_CARD);

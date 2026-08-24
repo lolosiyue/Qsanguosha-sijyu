@@ -60,7 +60,7 @@ void Chengxiang::onDamaged(ServerPlayer *target, const DamageStruct &damage) con
         CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, target->objectName(), objectName(), "");
         room->throwCard(dummy, reason, nullptr);
     }
-    delete dummy;
+    dummy->deleteLater();
 }
 
 class Renxin : public TriggerSkill
@@ -1427,7 +1427,7 @@ void NosRenxinCard::use(Room *room, ServerPlayer *player, QList<ServerPlayer *> 
     player->turnOver();
     CardMoveReason reason(CardMoveReason::S_REASON_GIVE, player->objectName(), who->objectName(), "nosrenxin", "");
     room->obtainCard(who, handcards, reason, false);
-    delete handcards;
+    handcards->deleteLater();
     room->recover(who, RecoverStruct("nosrenxin", player));
 }
 

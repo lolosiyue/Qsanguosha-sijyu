@@ -1,4 +1,5 @@
 set(QSAN_TEST_ROOT "${CMAKE_SOURCE_DIR}")
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 set(QSAN_ENGINE_TEST_INCLUDES
     ${QSAN_TEST_ROOT}
@@ -98,6 +99,13 @@ qsan_add_ctest(qsanguosha_card_lifetime qsanguosha_runtime_tests
     SUITE card-lifetime
     LABELS runtime
 )
+add_test(NAME "qsanguosha_card_lifetime:source-check"
+    COMMAND "${Python3_EXECUTABLE}" "${QSAN_TEST_ROOT}/tools/check-card-lifetime.py"
+            --root "${QSAN_TEST_ROOT}"
+            --ledger docs/card-lifetime-ownership.md
+            --allowlist tools/card-lifetime-allowlist.json)
+set_tests_properties("qsanguosha_card_lifetime:source-check" PROPERTIES
+    WORKING_DIRECTORY "${QSAN_TEST_ROOT}" LABELS "runtime;source-check")
 add_test(NAME "qsanguosha_card_lifetime:synthetic-30"
     COMMAND qsanguosha_runtime_tests --suite card-lifetime-synthetic-30 --seed 2026082201)
 set_tests_properties("qsanguosha_card_lifetime:synthetic-30" PROPERTIES

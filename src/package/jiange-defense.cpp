@@ -886,7 +886,7 @@ public:
 
             DummyCard *dummy = new DummyCard(move.card_ids);
             room->obtainCard(target, dummy);
-            delete dummy;
+            dummy->deleteLater();
 
             if (diff) {
                 QList<ServerPlayer *> enemies;
@@ -1052,12 +1052,12 @@ public:
                 DummyCard *dummy = new DummyCard(card_to_throw);
                 CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, target->objectName(), objectName(), "");
                 room->throwCard(dummy, reason, nullptr);
-                delete dummy;
+                dummy->deleteLater();
             }
             if (togive) {
                 DummyCard *dummy2 = new DummyCard(card_to_give);
                 room->obtainCard(togive, dummy2);
-                delete dummy2;
+                dummy2->deleteLater();
             }
         }
         return false;

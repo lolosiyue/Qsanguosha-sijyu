@@ -108,6 +108,9 @@ public:
                                                          bool originalOwner = false);
     std::shared_ptr<const CardLifetimeToken> observeCard(Card *card,
                                                          bool originalOwner = false);
+    std::shared_ptr<const CardLifetimeToken> recordFactoryClone(Card *card);
+    void recordOwningFactoryResult(const std::shared_ptr<const CardLifetimeToken> &token);
+    void recordDeferredDelete(Card *card);
     std::shared_ptr<const CardLifetimeToken> liveToken(const void *card) const;
     QThread *affinityThread(const std::shared_ptr<const CardLifetimeToken> &token) const;
     bool isBaselineToken(const void *domain,
@@ -115,8 +118,8 @@ public:
     bool requestNativeDelete(Card *card);
     void notifyDestroyed(Card *card);
     static void notifyDestroyedCard(Card *card);
-    static void enterLuaPinForCurrentThread();
-    static void leaveLuaPinForCurrentThread();
+    static CardLifetimeManager *enterLuaPinForCurrentThread();
+    static void leaveLuaPinForCurrentThread(CardLifetimeManager *manager);
     static const void *setCurrentDomain(const void *domain);
     static CardLifetimeRuntimeContext setCurrentRuntimeContext(
         const void *domain, const void *identity, quint64 generation, lua_State *state);
@@ -163,6 +166,7 @@ public:
     quint64 releaseWrapperBindings(const void *domain, const void *identity,
                                    quint64 generation, lua_State *state);
     quint64 drain();
+    bool finalizeWorkerDomain(const void *domain, quint64 *retired = nullptr);
 
     void registerRuntimeDomain(const void *domain, const void *identity,
                                quint64 generation, lua_State *state = nullptr);
@@ -204,6 +208,11 @@ private:
         QPointer<QObject> object;
         QThread *affinityThread = nullptr;
         bool physical = false;
+        bool cloneRecorded = false;
+        bool factoryUnclaimed = false;
+        bool unknownUnclaimed = false;
+        bool deleteBypass = false;
+        bool destructionClassified = false;
         const void *domain = nullptr;
         const void *runtimeIdentity = nullptr;
         quint64 runtimeGeneration = 0;
@@ -235,12 +244,15 @@ private:
     Entry *entryForLease(const std::shared_ptr<const CardLifetimeToken> &token);
     bool invalidateIfObservedLocked(const void *card,
                                     const CardLifetimeToken *expectedToken);
+    void clearUnclaimedLocked(Entry &entry);
+    void classifyPhysicalDestructionLocked(Entry &entry);
     void reconcileDestroyedLocked();
     void reapDeadLocked(const std::shared_ptr<const CardLifetimeToken> &token);
     void updatePeaksLocked();
 
     mutable QMutex m_mutex;
     QHash<const void *, Entry> m_entries;
+    QHash<const CardLifetimeToken *, Entry> m_deadEntries;
     QHash<const void *, WrapperBinding> m_wrappers;
     QList<ChangeEdge> m_changeEdges;
     QList<TagBinding> m_tagBindings;

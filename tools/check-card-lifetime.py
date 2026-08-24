@@ -40,6 +40,11 @@ class Allowlist:
 class CheckerError(Exception): pass
 
 CATEGORIES: Final = frozenset(Category); SOURCE_SUFFIXES: Final = frozenset({".c", ".cc", ".cpp", ".cxx", ".h", ".hpp"})
+ENFORCED_CATEGORIES: Final = frozenset({
+    Category.RAW_DELETE, Category.QDELETEALL, Category.UPCAST_DELETE,
+    Category.MEMBER_POINTER, Category.MACRO_DELETE, Category.DEFAULT_DELETER,
+})
+TRUSTED_SOURCE_BOUNDARIES: Final = frozenset({"card-lifetime-manager.cpp"})
 CARD_DECL = re.compile(r"\b(?:const\s+)?(?:[A-Za-z_]\w*Card|Card)\s*(?:\*+|&+)\s*([A-Za-z_]\w*)")
 CARD_CONTAINER = re.compile(r"\b(?:QList|QVector|QSet|std::vector)\s*<\s*(?:const\s+)?(?:[A-Za-z_]\w*Card|Card)\s*\*[^>]*>\s*([A-Za-z_]\w*)")
 
@@ -99,6 +104,11 @@ def symbol_list(value: JsonValue, label: str) -> tuple[str, ...]:
     return result
 
 
+def require_finite_patterns(patterns: tuple[Rule, ...]) -> None:
+    if patterns:
+        raise CheckerError("allowlist.legacy_patterns must be empty; use finite exact sites")
+
+
 def load_allowlist(path: Path) -> Allowlist:
     try:
         raw: JsonValue = json.loads(path.read_text(encoding="utf-8"))
@@ -118,6 +128,7 @@ def load_allowlist(path: Path) -> Allowlist:
         raise CheckerError("allowlist.categories must contain every category exactly once")
     sites = rule_list(data["legacy_sites"], "allowlist.legacy_sites", False)
     patterns = rule_list(data["legacy_patterns"], "allowlist.legacy_patterns", True)
+    require_finite_patterns(patterns)
     symbols = symbol_list(data["known_factories"], "allowlist.known_factories") + symbol_list(data["known_sources"], "allowlist.known_sources") + symbol_list(data["known_sinks"], "allowlist.known_sinks")
     symbol_list(data["known_opaque_variants"], "allowlist.known_opaque_variants")
     ledger_sites = symbol_list(data["ledger_sites"], "allowlist.ledger_sites")
@@ -231,30 +242,26 @@ def scan_text(path: str, text: str) -> list[Finding]:
         if macro:
             macros.add(macro.group(1))
             add(findings, path, number, Category.MACRO_DELETE, "macro expands to deletion")
-        casted = bool(re.search(r"(?:\(\s*(?:QObject|Card)\s*\*\s*\)|static_cast\s*<\s*(?:QObject|Card)\s*\*>)", line))
-        upcast = re.search(r"\b(?:QObject|Card)\s*\*\s*([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)", code_line)
+        qobject_casted = bool(re.search(r"(?:\(\s*QObject\s*\*\s*\)|static_cast\s*<\s*QObject\s*\*>)", code_line))
+        card_casted = bool(re.search(r"(?:\(\s*Card\s*\*\s*\)|static_cast\s*<\s*Card\s*\*>)", code_line))
+        upcast = re.search(r"\bQObject\s*\*\s*([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)", code_line)
         if upcast and (upcast.group(2) in code_names or "Card" in code_line):
             upcasts.add(upcast.group(1))
-        delete_match = re.search(r"\bdelete\s+([A-Za-z_]\w*)", line)
-        if delete_match and (delete_match.group(1) in names or casted or delete_match.group(1) in upcasts):
-            kind = Category.UPCAST_DELETE if casted or delete_match.group(1) in upcasts else Category.RAW_DELETE
+        delete_match = re.search(r"\bdelete\s+([A-Za-z_]\w*)", code_line)
+        if delete_match and (delete_match.group(1) in code_names or qobject_casted or card_casted or delete_match.group(1) in upcasts):
+            kind = Category.UPCAST_DELETE if qobject_casted or delete_match.group(1) in upcasts else Category.RAW_DELETE
             add(findings, path, number, kind, "direct Card delete")
-        legacy_delete_later = re.search(r"(?:->|\.)deleteLater\s*\(", code_line)
         delete_later = re.search(
-            r"\b([A-Za-z_]\w*)\s*(?:->|\.)\s*(?:(?:QObject|Card)\s*::\s*)?deleteLater\s*\(",
+            r"\b([A-Za-z_]\w*)\s*(?:->|\.)\s*(?:(QObject|Card)\s*::\s*)?deleteLater\s*\(",
             code_line,
         )
-        if legacy_delete_later and (casted or has_name(line) or "Card" in line):
-            kind = Category.UPCAST_DELETE if casted or "QObject::" in line else Category.DEFERRED_DELETE
-            add(findings, path, number, kind, "Card deleteLater ingress")
-        elif delete_later and (
-            casted
-            or delete_later.group(1) in code_names
+        if delete_later and (
+            qobject_casted
             or delete_later.group(1) in upcasts
-            or "Card" in code_line
+            or delete_later.group(2) == "QObject"
         ):
-            kind = Category.UPCAST_DELETE if casted else Category.DEFERRED_DELETE
-            add(findings, path, number, kind, "Card deleteLater ingress")
+            add(findings, path, number, Category.UPCAST_DELETE,
+                "Card bypasses policy through QObject::deleteLater")
         member_pointer = re.search(r"=\s*&\s*(?:QObject|Card)\s*::\s*(?:deleteLater|operator\s+delete)", code_line)
         if member_pointer and ("Card" in code_line or bool(scope_names)):
             add(findings, path, number, Category.MEMBER_POINTER, "qualified Card deletion member")
@@ -286,7 +293,7 @@ def scan_sources(root: Path) -> list[Finding]:
     if not source_root.is_dir():
         raise CheckerError("source root is missing")
     for path in sorted(source_root.rglob("*")):
-        if path.suffix not in SOURCE_SUFFIXES or path.name == "card-lifetime-manager.cpp":
+        if path.suffix not in SOURCE_SUFFIXES or path.name in TRUSTED_SOURCE_BOUNDARIES:
             continue
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
@@ -297,11 +304,12 @@ def scan_sources(root: Path) -> list[Finding]:
 
 
 def allowed(finding: Finding, rules: Allowlist) -> bool:
-    return any(rule.value == finding.location and rule.category == finding.category for rule in rules.sites) or any(rule.category == finding.category and rule.regex is not None and rule.regex.fullmatch(finding.location) is not None for rule in rules.patterns)
+    return any(rule.value == finding.location and rule.category == finding.category for rule in rules.sites)
 
 
 def self_test() -> None:
     fixtures = {
+        Category.RAW_DELETE: "Card *card; delete card;",
         Category.QDELETEALL: "QList<Card *> cards; qDeleteAll(cards);", Category.UPCAST_DELETE: "Card *card; QObject *base = card; delete base;",
         Category.MEMBER_POINTER: "Card *card; auto fn = &QObject::deleteLater;", Category.MACRO_DELETE: "#define DROP(x) delete x\nCard *card; DROP(card);",
         Category.DEFAULT_DELETER: "std::unique_ptr<Card> card(new Card);", Category.PARENT_CHILD: "Card *card = new DummyCard(this);",
@@ -310,8 +318,9 @@ def self_test() -> None:
     missing = [kind.value for kind, text in fixtures.items() if not any(item.category == kind for item in scan_text(f"self-test/{kind.value}.cpp", text))]
     if missing: raise CheckerError("self-test missed categories: " + ", ".join(missing))
     regressions = {
-        "base_deleteLater_split": (Category.DEFERRED_DELETE, "Card *card;\nQObject *base = card;\nbase->deleteLater();"),
-        "qualified_base_deleteLater": (Category.DEFERRED_DELETE, "Card *card;\nQObject *base = card;\nbase->QObject::deleteLater();"),
+        "base_deleteLater_split": (Category.UPCAST_DELETE, "Card *card;\nQObject *base = card;\nbase->deleteLater();"),
+        "qualified_base_deleteLater": (Category.UPCAST_DELETE, "Card *card;\nQObject *base = card;\nbase->QObject::deleteLater();"),
+        "qualified_card_deleteLater": (Category.UPCAST_DELETE, "Card *card;\ncard->QObject::deleteLater();"),
         "member_pointer_split": (Category.MEMBER_POINTER, "Card *card;\nauto fn = &QObject::deleteLater;"),
     }
     missing_regressions = [
@@ -321,6 +330,24 @@ def self_test() -> None:
     ]
     if missing_regressions:
         raise CheckerError("self-test missed regressions: " + ", ".join(missing_regressions))
+    safe_ingress = scan_text("self-test/managed-delete.cpp", "Card *card;\ncard->deleteLater();")
+    if any(item.category in {Category.DEFERRED_DELETE, Category.UPCAST_DELETE} for item in safe_ingress):
+        raise CheckerError("self-test rejected manager-aware Card::deleteLater")
+    comment_findings = scan_text("self-test/comment.cpp", "// Card *card; delete card;")
+    if any(item.category in {Category.RAW_DELETE, Category.UPCAST_DELETE} for item in comment_findings):
+        raise CheckerError("self-test classified a commented Card delete")
+    finite_rules = Allowlist(
+        (Rule("self-test/approved.cpp:1", Category.RAW_DELETE, None),), (), (), ()
+    )
+    negative_cases = {
+        "unknown_raw": "Card *card; delete card;",
+        "unknown_upcast": "Card *card;\nQObject *base = card;\nbase->deleteLater();",
+        "unknown_qualified": "Card *card;\ncard->QObject::deleteLater();",
+    }
+    for fixture_id, fixture in negative_cases.items():
+        findings = scan_text(f"self-test/{fixture_id}.cpp", fixture)
+        if not findings or any(allowed(item, finite_rules) for item in findings):
+            raise CheckerError(f"self-test allowed negative case: {fixture_id}")
     rejected = 0
     try:
         category("unknown", "self-test.category")
@@ -338,8 +365,13 @@ def self_test() -> None:
             load_ledger(malformed)
         except CheckerError:
             rejected += 1
-    if rejected != 3: raise CheckerError(f"self-test rejected={rejected}, expected=3")
-    print(f"card-lifetime: self-test fixtures={len(fixtures)} classified=8 rejected={rejected}")
+    broad_pattern = [{"pattern": r"^src/[^:]+:\d+$", "category": "raw_delete", "reason": "broad"}]
+    try:
+        require_finite_patterns(rule_list(broad_pattern, "self-test.pattern", True))
+    except CheckerError:
+        rejected += 1
+    if rejected != 4: raise CheckerError(f"self-test rejected={rejected}, expected=4")
+    print(f"card-lifetime: self-test fixtures={len(fixtures)} negatives={len(negative_cases)} rejected={rejected}")
     print("card-lifetime: self-test regressions=" + ",".join(regressions))
 
 
@@ -364,12 +396,13 @@ def main() -> int:
     except CheckerError as exc:
         print(f"card-lifetime: ERROR: {exc}")
         return 2
-    unclassified = [item for item in findings if not allowed(item, rules)]
+    enforced = [item for item in findings if item.category in ENFORCED_CATEGORIES]
+    unclassified = [item for item in enforced if not allowed(item, rules)]
     if unclassified:
         details = ", ".join(f"{item.location}[{item.category.value}]" for item in unclassified[:30])
         print(f"card-lifetime: unclassified={len(unclassified)}: {details}")
         return 1
-    print(f"card-lifetime: scanned findings={len(findings)}; allowlisted={len(findings)}; unclassified=0")
+    print(f"card-lifetime: scanned findings={len(findings)}; enforced={len(enforced)}; unclassified=0")
     print("card-lifetime: static scan complete; runtime counters/tests remain required")
     return 0
 

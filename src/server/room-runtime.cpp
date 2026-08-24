@@ -55,6 +55,19 @@ RoomRuntime::~RoomRuntime()
     shutdownFinal();
 }
 
+void RoomRuntime::finalizeWorker()
+{
+    releaseShutdownRoots();
+    quint64 retired = 0;
+    if (!globalCardLifetimeManager().finalizeWorkerDomain(this, &retired)) {
+        globalCardLifetimeManager().dumpDomain(this);
+        qFatal("Room worker exited with live worker-affinity Card transients");
+    }
+    std::fprintf(stdout, "CARD_LIFETIME_WORKER_FINAL retired=%llu\n",
+                 static_cast<unsigned long long>(retired));
+    std::fflush(stdout);
+}
+
 void RoomRuntime::shutdownFinal()
 {
     ShutdownState expected = ShutdownState::Running;
@@ -72,7 +85,6 @@ void RoomRuntime::shutdownFinal()
         return;
     }
 
-    drainShutdownStage("worker-final");
     const CardLifetimeGauge workerGauge = globalCardLifetimeManager().gauge();
     if (globalCardLifetimeManager().activeScopeDepthForDomain(this) != 0
         || globalCardLifetimeManager().gaugeForDomain(this).lua_pins != 0)
@@ -226,6 +238,8 @@ bool RoomRuntime::finalGaugeIsZero(const CardLifetimeGauge &gauge) const
         this, m_aiRuntimeIdentity, m_aiRuntimeGeneration, m_aiRuntimeState);
     const auto runtimeHasWork = [](const CardLifetimeGauge &runtimeGauge) {
         return runtimeGauge.managed_live != 0
+            || runtimeGauge.factory_unclaimed != 0
+            || runtimeGauge.unknown_unclaimed != 0
             || runtimeGauge.pending_delete != 0
             || runtimeGauge.adoption_reserved != 0
             || runtimeGauge.wrapper_leases != 0
@@ -239,6 +253,8 @@ bool RoomRuntime::finalGaugeIsZero(const CardLifetimeGauge &gauge) const
     if (runtimeHasWork(gameRuntimeGauge) || runtimeHasWork(aiRuntimeGauge))
         return false;
     if (domainGauge.managed_live != 0
+        || domainGauge.factory_unclaimed != 0
+        || domainGauge.unknown_unclaimed != 0
         || domainGauge.pending_delete != 0
         || domainGauge.adoption_reserved != 0
         || domainGauge.wrapper_leases != 0
@@ -250,8 +266,8 @@ bool RoomRuntime::finalGaugeIsZero(const CardLifetimeGauge &gauge) const
         return false;
     return gauge.actually_destroyed >= m_baselineActuallyDestroyed
         && gauge.clone_created >= m_baselineCloneCreated
-        && gauge.factory_unclaimed >= m_baselineFactoryUnclaimed
-        && gauge.unknown_unclaimed >= m_baselineUnknownUnclaimed;
+        && gauge.factory_unclaimed == m_baselineFactoryUnclaimed
+        && gauge.unknown_unclaimed == m_baselineUnknownUnclaimed;
 }
 
 void RoomRuntime::failShutdown(const char *stage, const CardLifetimeGauge &gauge)

@@ -981,7 +981,7 @@ public:
 				if (dummy->subcardsLength() > 0)
 					caizhaoji->obtainCard(dummy);
 				caizhaoji->removeTag(objectName());
-				delete dummy;
+				dummy->deleteLater();
 			}
 		} else if (triggerEvent == FinishJudge) {
 			JudgeStruct *judge = data.value<JudgeStruct *>();
@@ -1005,7 +1005,7 @@ public:
 						if (dummy->subcardsLength() > 0)
 							caizhaoji->obtainCard(dummy);
 						caizhaoji->removeTag(objectName());
-						delete dummy;
+						dummy->deleteLater();
 					}
 				}
 			}

@@ -50,6 +50,7 @@ public:
 
     bool initialize(QString *error = nullptr);
     void shutdownForInitFailure();
+    void finalizeWorker();
     void shutdownFinal();
     ShutdownState shutdownState() const { return m_shutdownState.load(); }
     bool isClosing() const { return shutdownState() != ShutdownState::Running; }

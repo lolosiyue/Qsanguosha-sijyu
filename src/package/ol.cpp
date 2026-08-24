@@ -177,7 +177,7 @@ public:
 					room->sendCompulsoryTriggerLog(player, objectName(), true, true);
 					room->throwCard(dummy, objectName(), player);
 				}
-				delete dummy;
+				dummy->deleteLater();
 			} else if (player->getPhase() == Player::Discard) {
 				int n = player->getMark("bijing_lose-Clear");
 				if (n <= 0) return false;
@@ -2447,7 +2447,7 @@ public:
 							dummy->addSubcard(player->getRandomHandCardId());
 						if (dummy->subcardsLength() > 0)
 							room->obtainCard(p, dummy, false);
-						delete dummy;
+						dummy->deleteLater();
 					}
 				}
 			}
@@ -2705,7 +2705,7 @@ public:
 
 			if (dummy->subcardsLength() > 0)
 				room->obtainCard(player, dummy, false);
-			delete dummy;
+			dummy->deleteLater();
 		}
 		return false;
 	}
@@ -4487,7 +4487,7 @@ public:
 				left->addSubcards(list);
 				CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, "", objectName(), "");
 				room->throwCard(left, reason, nullptr);
-				delete left;
+				left->deleteLater();
 			}
 			if (up && player->isAlive()){
 				QList<int> give = card->getSubcards();
@@ -7754,7 +7754,7 @@ void DingpanCard::onEffect(CardEffectStruct &effect) const
 		DummyCard*dummy = new DummyCard;
 		dummy->addSubcards(effect.to->getEquips());
 		room->obtainCard(effect.to, dummy);
-		delete dummy;
+		dummy->deleteLater();
 		room->damage(DamageStruct("dingpan", effect.from, effect.to));
 	}
 }
@@ -7858,7 +7858,7 @@ public:
 			DummyCard*dummy = new DummyCard(ids);
 			CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, player->objectName());
 			room->obtainCard(player, dummy, reason);
-			delete dummy;
+			dummy->deleteLater();
 		} else {
 			DummyCard*dummy = new DummyCard;
 			foreach(int id, target->handCards()){
@@ -7867,7 +7867,7 @@ public:
 			}
 			CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, player->objectName());
 			room->obtainCard(player, dummy, reason, false);
-			delete dummy;
+			dummy->deleteLater();
 		}
 		return false;
 	}
@@ -8222,7 +8222,7 @@ public:
 			room->throwCard(dummy, player, nullptr);
 			player->drawCards(2* subcards.length());
 		}
-		delete dummy;
+		dummy->deleteLater();
 		return false;
 	}
 };
@@ -8347,7 +8347,7 @@ public:
 		}
 		if (dummy->subcardsLength() > 0)
 			room->obtainCard(player, dummy, true);
-		delete dummy;
+		dummy->deleteLater();
 		if (views.isEmpty()) return false;
 
 		QList<ServerPlayer*> _player;
@@ -8436,7 +8436,7 @@ public:
 		DummyCard*new_dummy = new DummyCard(views);
 		CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, player->objectName(), "denglou", "");
 		room->throwCard(new_dummy, reason, nullptr);
-		delete new_dummy;
+		new_dummy->deleteLater();
 		return false;
 	}
 };
@@ -8860,7 +8860,7 @@ public:
 						room->obtainCard(player, dummy, reason, false);
 					}
 				}
-				delete dummy;
+				dummy->deleteLater();
 			} else {
 				if (player->isNude()) return false;
 				const Card*card = room->askForExchange(player, objectName(), 1, 1, true, "fenglve-give:" + target->objectName());
@@ -11923,7 +11923,7 @@ void JuguanDialog::prepareOptions()
 		if (card && !map.contains(card->objectName()))
 			button_layout->addWidget(createButton(card));
 		else
-			delete card;
+			card->deleteLater();
 	}
 }
 
@@ -13898,7 +13898,7 @@ public:
 					CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, player->objectName(), "shoufu", "");
 					room->throwCard(dummy, reason, nullptr);
 				}
-				delete dummy;
+				dummy->deleteLater();
 			}
 		}
 		return false;
@@ -14893,12 +14893,12 @@ public:
 
 					DummyCard*dummy = new DummyCard(ids);
 					p->obtainCard(dummy, false);
-					delete dummy;
+					dummy->deleteLater();
 				} else {
 					DummyCard*dummy = new DummyCard(ids);
 					CardMoveReason reason(CardMoveReason::S_REASON_NATURAL_ENTER, p->objectName(), objectName(), "");
 					room->throwCard(dummy, reason, nullptr);
-					delete dummy;
+					dummy->deleteLater();
 				}
 
 			}
@@ -15103,7 +15103,7 @@ public:
 			room->recover(to_give, RecoverStruct("juedi", target));
 			DummyCard*dummy = new DummyCard(target->getPile("yinbing"));
 			room->obtainCard(to_give, dummy);
-			delete dummy;
+			dummy->deleteLater();
 		} else {
 			int len = target->getPile("yinbing").length();
 			target->clearOnePrivatePile("yinbing");
@@ -15136,7 +15136,7 @@ public:
 					if (!p->getPile("zhenweipile").isEmpty()){
 						DummyCard*dummy = new DummyCard(p->getPile("zhenweipile"));
 						room->obtainCard(p, dummy);
-						delete dummy;
+						dummy->deleteLater();
 					}
 				}
 			}
@@ -18040,7 +18040,7 @@ void OLXingwuCard::onEffect(CardEffectStruct &effect) const
 		}
 		if (dummy->subcardsLength() > 0)
 			room->throwCard(dummy, to, from);
-		delete dummy;
+		dummy->deleteLater();
 	}
 
 	if (to->isDead()) return;
@@ -30143,7 +30143,7 @@ public:
 			room->sendLog(log);
 			DummyCard*dummy = new DummyCard(target->getPile("cychu"));
 			room->obtainCard(target, dummy);
-			delete dummy;
+			dummy->deleteLater();
 			room->handleAcquireDetachSkills(target, "tenyearjianxiong|tianxing");
 		}
 		return false;
@@ -30189,7 +30189,7 @@ public:
 			room->sendLog(log);
 			DummyCard*dummy = new DummyCard(target->getPile("cychu"));
 			room->obtainCard(target, dummy);
-			delete dummy;
+			dummy->deleteLater();
 			QStringList skills;
 			if (target->hasSkill("chuyuan", true))
 				room->handleAcquireDetachSkills(target, "-chuyuan");

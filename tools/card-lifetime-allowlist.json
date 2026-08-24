@@ -38,68 +38,22 @@
   ],
   "legacy_sites": [
     {
+      "site": "src/core/room-state.cpp:16",
+      "category": "raw_delete",
+      "reason": "quiescent RoomState physical owner"
+    },
+    {
       "site": "src/core/wrapped-card.cpp:41",
       "category": "raw_delete",
       "reason": "quiescent WrappedCard owner"
     },
     {
-      "site": "src/core/wrapped-card.cpp:69",
-      "category": "deferred_delete",
-      "reason": "legacy inner replacement timing"
-    },
-    {
-      "site": "src/server/gamerule.cpp:559",
-      "category": "deferred_delete",
-      "reason": "legacy ComboMovesCard cleanup"
-    },
-    {
-      "site": "src/server/gamerule.cpp:1348",
-      "category": "upcast_delete",
-      "reason": "legacy judge cleanup base-qualified call"
-    },
-    {
-      "site": "src/ui/generic-cardcontainer-ui.cpp:1208",
-      "category": "deferred_delete",
-      "reason": "legacy simulated-equips cleanup"
-    },
-    {
-      "site": "src/core/structs.h:196",
-      "category": "default_deleter",
-      "reason": "CardUseStruct legacy smart owner"
-    }
-  ],
-  "legacy_patterns": [
-    {
-      "pattern": "^src/(?:client|core|package|scenario|server|ui)/[^:]+:\\d+$",
+      "site": "src/core/wrapped-card.cpp:44",
       "category": "raw_delete",
-      "reason": "existing finite Card raw-delete inventory"
-    },
-    {
-      "pattern": "^src/(?:client|core|package|scenario|server|ui)/[^:]+:\\d+$",
-      "category": "deferred_delete",
-      "reason": "existing finite Card deleteLater inventory"
-    },
-    {
-      "pattern": "^src/(?:client|core|package|scenario|server|ui)/[^:]+:\\d+$",
-      "category": "upcast_delete",
-      "reason": "existing base-qualified Card deletion inventory"
-    },
-    {
-      "pattern": "^src/(?:client|core|package|scenario|server|ui)/[^:]+:\\d+$",
-      "category": "parent_child",
-      "reason": "existing QObject-owned Card definitions"
-    },
-    {
-      "pattern": "^src/(?:package|scenario)/[^:]+:\\d+$",
-      "category": "factory",
-      "reason": "registered package/scenario Card factories"
-    },
-    {
-      "pattern": "^src/core/structs\\.h:196$",
-      "category": "default_deleter",
-      "reason": "m_ownedCard requires manager-aware migration"
+      "reason": "quiescent WrappedCard owner-thread dispatch"
     }
   ],
+  "legacy_patterns": [],
   "known_factories": [
     "`Card::Clone`"
   ],

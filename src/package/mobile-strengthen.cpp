@@ -213,7 +213,7 @@ public:
 						CardMoveReason reason(CardMoveReason::S_REASON_GIVE, p->objectName(), target->objectName(), "mobileqingjian", "");
 						room->obtainCard(target, dummy, reason, false);
 						p->addMark("mobileqingjian_num",dummy->subcardsLength());
-						delete dummy;
+						dummy->deleteLater();
 					}
 				}
 				if (p->getMark("mobileqingjian_num") > 1)
@@ -797,7 +797,7 @@ public:
                     CardMoveReason reason(CardMoveReason::S_REASON_RECYCLE, caopi->objectName());
                     room->obtainCard(caopi, dummy, reason, false);
                 }
-                delete dummy;
+                dummy->deleteLater();
             } else {
                 room->recover(caopi, RecoverStruct("mobilexingshang", caopi));
             }
@@ -1609,7 +1609,7 @@ public:
             }
             if (dummy->subcardsLength() > 0)
                 room->throwCard(dummy, target, nullptr);
-            delete dummy;
+            dummy->deleteLater();
         } else {
             player->drawCards(3, objectName());
         }
@@ -2513,7 +2513,7 @@ void MobileMiejiCard::onEffect(CardEffectStruct &effect) const
                     dis->addSubcard(dd);
                 }
                 room->throwCard(dis, effect.to, nullptr);
-                delete dis;
+                dis->deleteLater();
             }
         } else {
             const Card *c = Sanguosha->getCard(cc->getSubcards().first());

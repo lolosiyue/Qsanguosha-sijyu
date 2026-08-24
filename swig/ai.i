@@ -5,6 +5,7 @@
 #include <cmath>
 #include <limits>
 
+
 static bool readAiResultInteger(lua_Number value, int &result)
 {
 	if (!std::isfinite(double(value))
@@ -43,7 +44,7 @@ AIResult LuaAI::decide(const AIRequest &request)
 	lua_pushinteger(L, request.handlingMethod);
 	AiLegacyRequestView *legacyRequest = new AiLegacyRequestView(request, self);
 	SWIG_NewPointerObj(L, legacyRequest, SWIGTYPE_p_AiLegacyRequestView, SWIG_POINTER_OWN);
-	if (lua_pcall(L, 5, 1, 0) != 0) {
+	if (LuaRuntime::protectedCall(L, 5, 1, 0) != 0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -241,6 +242,7 @@ public:
 
 %{
 
+
 bool LuaAI::askForSkillInvoke(const QString &skill_name, const QVariant &data)
 {
 	if (callback == 0)
@@ -251,7 +253,7 @@ bool LuaAI::askForSkillInvoke(const QString &skill_name, const QVariant &data)
 	lua_pushstring(L, skill_name.toLatin1());
 	SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -271,7 +273,7 @@ QString LuaAI::askForChoice(const QString &skill_name, const QString &choices, c
 	lua_pushstring(L, skill_name.toLatin1());
 	lua_pushstring(L, choices.toLatin1());
 	SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);
-	int error = lua_pcall(L, 4, 1, 0);
+	int error = LuaRuntime::protectedCall(L, 4, 1, 0);
 	const char *result = lua_tostring(L, -1);
 	lua_pop(L, 1);
 	if (error!=0) {
@@ -289,7 +291,7 @@ void LuaAI::activate(CardUseStruct &card_use)
 	pushCallback(L, __FUNCTION__);
 	SWIG_NewPointerObj(L, &card_use, SWIGTYPE_p_CardUseStruct, 0);
 
-	if (lua_pcall(L, 2, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -308,7 +310,7 @@ AI *Room::cloneAI(ServerPlayer *player)
 
 	SWIG_NewPointerObj(L, player, SWIGTYPE_p_ServerPlayer, 0);
 
-	if (lua_pcall(L, 1, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 1, 1, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		output(error_msg);
@@ -338,7 +340,7 @@ ServerPlayer *LuaAI::askForYiji(const QList<int> &cards, const QString &reason, 
 		lua_rawseti(L, -3, i + 1);
 	}
 
-	if (lua_pcall(L, 3, 2, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 2, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -373,7 +375,7 @@ void LuaAI::filterEvent(TriggerEvent event, ServerPlayer *player, const QVariant
 	QVariant *dataCopy = new QVariant(data);
 	SWIG_NewPointerObj(L, dataCopy, SWIGTYPE_p_QVariant, SWIG_POINTER_OWN);
 
-	if (lua_pcall(L, 4, 0, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 4, 0, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -390,7 +392,7 @@ const Card *LuaAI::askForCard(const QString &pattern, const QString &prompt, con
 	SWIG_NewPointerObj(L, &data, SWIGTYPE_p_QVariant, 0);
 	lua_pushinteger(L, (int)method);
 
-	int error = lua_pcall(L, 5, 2, 0);
+	int error = LuaRuntime::protectedCall(L, 5, 2, 0);
 	if (error != 0) {
 		const QString result = lua_tostring(L, -1);
 		lua_pop(L, 1);
@@ -432,7 +434,7 @@ int LuaAI::askForCardChosen(ServerPlayer *who, const QString &flags, const QStri
 	lua_pushstring(L, reason.toLatin1());
 	lua_pushinteger(L, (int)method);
 
-	if (lua_pcall(L, 5, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 5, 1, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -456,7 +458,7 @@ ServerPlayer *LuaAI::askForPlayerChosen(const QList<ServerPlayer *> &targets, co
 	SWIG_NewPointerObj(L, &targets, SWIGTYPE_p_QListT_ServerPlayer_p_t, 0);
 	lua_pushstring(L, reason.toLatin1());
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -480,7 +482,7 @@ QList<ServerPlayer *> LuaAI::askForPlayersChosen(const QList<ServerPlayer *> &ta
 	lua_pushnumber(L, max_num);
 	lua_pushnumber(L, min_num);
 
-	if (lua_pcall(L, 5, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 5, 1, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -517,7 +519,7 @@ const Card *LuaAI::askForNullification(const Card *trick, ServerPlayer *from, Se
 	SWIG_NewPointerObj(L, to, SWIGTYPE_p_ServerPlayer, 0);
 	lua_pushboolean(L, positive);
 
-	if (lua_pcall(L, 5, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 5, 1, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -541,7 +543,7 @@ const Card *LuaAI::askForCardShow(ServerPlayer *requestor, const QString &reason
 	SWIG_NewPointerObj(L, requestor, SWIGTYPE_p_ServerPlayer, 0);
 	lua_pushstring(L, reason.toLatin1());
 
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -563,7 +565,7 @@ const Card *LuaAI::askForSinglePeach(ServerPlayer *dying)
 	pushCallback(L, __FUNCTION__);
 	SWIG_NewPointerObj(L, dying, SWIGTYPE_p_ServerPlayer, 0);
 
-	int error = lua_pcall(L, 2, 1, 0);
+	int error = LuaRuntime::protectedCall(L, 2, 1, 0);
 	const QString &result = lua_tostring(L, -1);
 	lua_pop(L, 1);
 	if (error!=0||result.isEmpty()) {
@@ -597,7 +599,7 @@ const Card *LuaAI::askForPindian(ServerPlayer *requestor, const QString &reason)
 	pushCallback(L, __FUNCTION__);
 	SWIG_NewPointerObj(L, requestor, SWIGTYPE_p_ServerPlayer, 0);
 	lua_pushstring(L, reason.toLatin1());
-	if (lua_pcall(L, 3, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 3, 1, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);
@@ -617,7 +619,7 @@ Card::Suit LuaAI::askForSuit(const QString &reason)
 
 	pushCallback(L, __FUNCTION__);
 	lua_pushstring(L, reason.toLatin1());
-	if (lua_pcall(L, 2, 1, 0)!=0) {
+	if (LuaRuntime::protectedCall(L, 2, 1, 0)!=0) {
 		const char *error_msg = lua_tostring(L, -1);
 		lua_pop(L, 1);
 		room->output(error_msg);

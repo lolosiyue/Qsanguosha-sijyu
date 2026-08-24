@@ -192,6 +192,8 @@ struct CardUseStruct {
     int skillExecutionID;
 
 private:
+    void replaceCard(const Card *newCard, Card *ownedCard = nullptr);
+
     // CardUseStruct owns only a transient Card; use a manager-aware deleter.
     class OwnedCardPtr final {
     public:
