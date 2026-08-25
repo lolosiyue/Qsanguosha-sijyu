@@ -68,6 +68,31 @@ qsan_add_ctest(qsanguosha_protocol_messages qsanguosha_protocol_tests
     LABELS protocol
 )
 
+add_executable(qsanguosha_cli_tests
+    server-command-line-test.cpp
+    ${QSAN_TEST_ROOT}/src/server/server-command-line.cpp
+    ${QSAN_TEST_ROOT}/src/server/server-command-line.h
+)
+target_include_directories(qsanguosha_cli_tests PRIVATE
+    ${QSAN_TEST_ROOT}/src/server
+)
+target_link_libraries(qsanguosha_cli_tests PRIVATE Qt6::Core Qt6::Network)
+qsan_add_ctest(qsanguosha_server_cli_parser qsanguosha_cli_tests
+    LABELS "cli;fast"
+)
+add_test(NAME qsanguosha_server_cli_help COMMAND qsanguosha_server --help)
+set_tests_properties(qsanguosha_server_cli_help PROPERTIES
+    WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
+    LABELS "cli;fast"
+    PASS_REGULAR_EXPRESSION "--bind-address"
+)
+add_test(NAME qsanguosha_server_cli_version COMMAND qsanguosha_server --version)
+set_tests_properties(qsanguosha_server_cli_version PROPERTIES
+    WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
+    LABELS "cli;fast"
+    PASS_REGULAR_EXPRESSION "qsanguosha_server [0-9]+"
+)
+
 add_executable(qsanguosha_runtime_tests
     runtime-tests-main.cpp
     card-lifetime-manager-test.cpp

@@ -108,23 +108,51 @@ cp -r lua <executable_dir>/lua
 
 ## 6. 執行 headless server
 
-確認 `config.ini` 用邊個 GameMode 同 port；`config.ini` 由 QSettings 處理。
+CLI 未指定嘅值會沿用 Linux QSettings；CLI override 只影響今次 process，唔會寫回設定檔。先用以下指令查看完整介面同可用模式：
 
 ```bash
-# 基本啟動（listen 喺 config 指定 port）
+./qsanguosha_server --help
+./qsanguosha_server --version
+./qsanguosha_server --list-game-modes
+```
+
+常用啟動方式：
+
+```bash
+# 基本啟動（沿用已保存設定）
 ./qsanguosha_server
 
-# 指定 game mode，例如 10p / 20p / 02_1v1 / 05p
-./qsanguosha_server --game-mode 10p
+# 公開監聽 IPv4、指定 port／模式／名稱
+./qsanguosha_server --bind-address any-ipv4 --port 9527 \
+    --game-mode 10p --server-name "Linux server"
 
-# 固定 random seed（test 用，同一 seed 結果 deterministic）
-./qsanguosha_server --seed 12345
+# 測試用：固定 random seed、停用 AI、取消操作時限
+./qsanguosha_server --seed 12345 --ai off --operation-timeout 0
 
 # 輸出 [AUTOTEST] marker 去檔案（stdout redirect 會 buffer，檔案較可靠）
 ./qsanguosha_server --autotest-log /tmp/autotest.log
+
+# 顯示合併 QSettings 與 CLI override 後嘅有效設定，唔會 listen
+./qsanguosha_server --port 19527 --game-mode 02p --print-config
 ```
 
-所有參數喺 `src/server-main.cpp` 嘅 `parseArguments()` 處理。Linux 上 `SIGINT`／`SIGTERM` 會 clean shutdown（見 `src/server-main.cpp`）。
+| 參數 | 用途 |
+|---|---|
+| `-h`, `--help` | 顯示 help 後退出 |
+| `-v`, `--version` | 顯示版本後退出 |
+| `-p`, `--port <1-65535>` | TCP listen port |
+| `--bind-address <value>` | 數字 IPv4／IPv6，或 `any`、`any-ipv4`、`any-ipv6` |
+| `-m`, `--game-mode <id>` | 今次使用嘅遊戲模式 |
+| `-n`, `--server-name <name>` | 對外顯示嘅伺服器名稱 |
+| `--operation-timeout <0-86400>` | 操作時限（秒）；`0` 代表無限 |
+| `--ai <on\|off>` | 啟用／停用 server AI |
+| `--ai-delay <0-600000>` | AI 延遲（毫秒） |
+| `-s`, `--seed <uint64>` | 固定遊戲 seed，方便重現測試 |
+| `--autotest-log <path>` | 將 automation marker 寫入檔案 |
+| `--list-game-modes` | 列出模式 ID／名稱後退出 |
+| `--print-config` | 顯示有效設定後退出 |
+
+格式錯誤或不支援嘅參數會以 exit code `64` 結束；初始化失敗係 `1`，listen 失敗係 `2`。Linux 上 `SIGINT`／`SIGTERM` 會 clean shutdown。解析器位於 `src/server/server-command-line.cpp`，process 啟動流程位於 `src/server-main.cpp`。
 
 ## 7. 測試 (CTest)
 
@@ -135,7 +163,7 @@ cmake --build build-linux-gcc
 ctest --test-dir build-linux-gcc --output-on-failure
 ```
 
-測試包括 engine smoke test、card-lifetime、player-decision-service、room-runtime-isolation、protocol messages、request-coordinator、room-roster、player-lifecycle-service、skill-runtime-coordinator、lua-runtime-isolation、extra-turn-scheduler 等。可配置 `-DBUILD_TESTING=OFF` 跳過。
+測試包括 server CLI parser／help／version、engine smoke test、card-lifetime、player-decision-service、room-runtime-isolation、protocol messages、request-coordinator、room-roster、player-lifecycle-service、skill-runtime-coordinator、lua-runtime-isolation、extra-turn-scheduler 等。可配置 `-DBUILD_TESTING=OFF` 跳過。
 
 ## 8. GitHub Actions CI
 

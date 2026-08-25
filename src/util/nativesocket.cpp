@@ -11,7 +11,19 @@ NativeServerSocket::NativeServerSocket()
 
 bool NativeServerSocket::listen()
 {
-    return server->listen(QHostAddress::Any, Config.ServerPort);
+    const QString configured = Config.BindAddress.trimmed().toLower();
+    QHostAddress address;
+    if (configured.isEmpty() || configured == QLatin1String("any"))
+        address = QHostAddress::Any;
+    else if (configured == QLatin1String("any-ipv4"))
+        address = QHostAddress::AnyIPv4;
+    else if (configured == QLatin1String("any-ipv6"))
+        address = QHostAddress::AnyIPv6;
+    else if (!address.setAddress(configured)) {
+        qWarning("Invalid server bind address: %s", qPrintable(Config.BindAddress));
+        return false;
+    }
+    return server->listen(address, Config.ServerPort);
 }
 
 void NativeServerSocket::daemonize()
@@ -153,4 +165,3 @@ void NativeClientSocket::raiseError(QAbstractSocket::SocketError socket_error)
 
     emit error_message(tr("Connection failed, error code = %1\n reason:\n %2").arg(socket_error).arg(reason));
 }
-

@@ -1643,6 +1643,7 @@ QStringList Server::startupMessages() const
             items << tr("Your other address: %1, if this is a public IP, that will be available for all cases").arg(item);
     }
 
+    items << tr("Binding address is %1").arg(Config.BindAddress);
     items << tr("Binding port number is %1").arg(Config.ServerPort);
     items << tr("Game mode is %1").arg(Sanguosha->getModeName(Config.GameMode.mode_id));
     items << tr("Player count is %1").arg(Sanguosha->getPlayerCount(Config.GameMode.mode_id));
