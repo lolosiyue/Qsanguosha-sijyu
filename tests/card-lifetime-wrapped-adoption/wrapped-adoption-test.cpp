@@ -93,6 +93,10 @@ void canonicalOwnerTransfer()
         outer.copyEverythingFrom(incoming);
         check(outer.getRealCard() == incoming, "owner.incoming-installed");
         check(incoming->thread() == QThread::currentThread(), "owner.canonical-thread");
+        const auto incomingToken = manager.liveToken(incoming);
+        check(incomingToken
+                  && manager.affinityThread(incomingToken) == QThread::currentThread(),
+              "owner.manager-affinity-refreshed");
     }
     worker.quit();
     worker.wait();

@@ -17,6 +17,10 @@ class Settings : public QSettings
 public:
     explicit Settings();
     void init();
+    QVariant value(const QString &key, const QVariant &defaultValue = QVariant()) const;
+    bool hasValueOverride(const QString &key) const;
+    void setValueOverrides(const QVariantMap &overrides);
+    QVariantMap valueOverrides() const;
     Q_INVOKABLE QVariant getValue(const QString &key, const QVariant &defaultValue = QVariant()) const {
         return value(key, defaultValue);
     }
@@ -117,6 +121,9 @@ public:
 private:
     static QString getAndroidConfigPath();
 #endif
+
+private:
+    QVariantMap m_valueOverrides;
 };
 
 extern Settings Config;

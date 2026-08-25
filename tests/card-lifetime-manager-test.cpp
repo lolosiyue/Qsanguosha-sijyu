@@ -987,8 +987,8 @@ int runCardLifetimeTests()
         ServerPlayer copiedPlayer(nullptr);
         copiedPlayer.copyFrom(&tagPlayer);
         CARD_LIFETIME_CHECK(globalManager.gauge().native_leases >= playerLeaseBefore + 2);
-        copiedPlayer.removeTag(QStringLiteral("nestedCard"));
-        tagPlayer.removeTag(QStringLiteral("nestedCard"));
+        copiedPlayer.clearTags();
+        tagPlayer.clearTags();
         CARD_LIFETIME_CHECK(globalManager.gauge().native_leases == playerLeaseBefore);
     }
     CARD_LIFETIME_CHECK(managed.invalidateIfObserved(&liveObject));

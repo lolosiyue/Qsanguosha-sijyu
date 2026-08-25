@@ -11,12 +11,17 @@
 #include "core/settings.h"
 #include "core/version.h"
 #include "server/server-command-line.h"
+#include "server/server-config.h"
+#include "server/server-console.h"
 #include "server/server-core.h"
+#include "server/server-logger.h"
 #include "crashhandler.h"
 
 namespace
 {
 constexpr int CliUsageExitCode = 64;
+constexpr int LogFileExitCode = 73;
+constexpr int ConfigErrorExitCode = 78;
 
 #if defined(Q_OS_UNIX)
 volatile std::sig_atomic_t shutdownSignal = 0;
@@ -33,6 +38,14 @@ void printCommandLineError(const QString &error)
     err << QCoreApplication::applicationName() << ": error: " << error << Qt::endl;
     err << "Try '" << QCoreApplication::applicationName() << " --help' for usage."
         << Qt::endl;
+}
+
+void printConfigurationErrors(const QStringList &errors)
+{
+    QTextStream err(stderr);
+    for (const QString &error : errors)
+        err << QCoreApplication::applicationName() << ": configuration error: "
+            << error << Qt::endl;
 }
 
 bool applyCommandLineOptions(const ServerCommandLineOptions &options, QString &error)
@@ -81,22 +94,53 @@ void printAvailableGameModes(QTextStream &out)
     }
 }
 
-void printEffectiveConfiguration(QTextStream &out, const ServerCommandLineOptions &options)
+QVariantMap effectiveServerConfiguration()
 {
-    out << "server-name=" << Config.ServerName << Qt::endl;
-    out << "bind-address=" << Config.BindAddress << Qt::endl;
-    out << "port=" << Config.ServerPort << Qt::endl;
-    out << "game-mode=" << Config.GameMode.mode_id << Qt::endl;
-    out << "operation-timeout="
-        << (Config.OperationNoLimit ? QStringLiteral("unlimited")
-                                    : QString::number(Config.OperationTimeout))
-        << Qt::endl;
-    out << "ai=" << (Config.EnableAI ? QStringLiteral("on") : QStringLiteral("off"))
-        << Qt::endl;
-    out << "ai-delay=" << Config.OriginAIDelay << Qt::endl;
-    out << "seed="
-        << (options.seed ? QString::number(*options.seed) : QStringLiteral("random"))
-        << Qt::endl;
+    QVariantMap values = defaultServerConfigValues();
+    for (auto it = values.begin(); it != values.end(); ++it)
+        it.value() = Config.value(it.key(), it.value());
+    for (const QString &key : Config.allKeys()) {
+        if (isKnownServerConfigKey(key))
+            values.insert(key, Config.value(key));
+    }
+    const QVariantMap overrides = Config.valueOverrides();
+    for (auto it = overrides.cbegin(); it != overrides.cend(); ++it)
+        values.insert(it.key(), it.value());
+
+    values.insert(QStringLiteral("ServerName"), Config.ServerName);
+    values.insert(QStringLiteral("GameMode"), Config.GameMode.mode_id);
+    values.insert(QStringLiteral("ServerPort"), Config.ServerPort);
+    values.insert(QStringLiteral("DetectorPort"), Config.DetectorPort);
+    values.insert(QStringLiteral("BindAddress"), Config.BindAddress);
+    values.insert(QStringLiteral("Address"), Config.Address);
+    values.insert(QStringLiteral("OperationTimeout"), Config.OperationTimeout);
+    values.insert(QStringLiteral("OperationNoLimit"), Config.OperationNoLimit);
+    values.insert(QStringLiteral("CountDownSeconds"), Config.CountDownSeconds);
+    values.insert(QStringLiteral("NullificationCountDown"), Config.NullificationCountDown);
+    values.insert(QStringLiteral("BanPackages"), Config.BanPackages);
+    values.insert(QStringLiteral("RandomSeat"), Config.RandomSeat);
+    values.insert(QStringLiteral("EnableCheat"), Config.EnableCheat);
+    values.insert(QStringLiteral("FreeChoose"), Config.FreeChoose);
+    values.insert(QStringLiteral("FreeAssignSelf"), Config.FreeAssignSelf);
+    values.insert(QStringLiteral("ForbidSIMC"), Config.ForbidSIMC);
+    values.insert(QStringLiteral("DisableChat"), Config.DisableChat);
+    values.insert(QStringLiteral("Enable2ndGeneral"), Config.Enable2ndGeneral);
+    values.insert(QStringLiteral("EnableSame"), Config.EnableSame);
+    values.insert(QStringLiteral("EnableBasara"), Config.EnableBasara);
+    values.insert(QStringLiteral("EnableHegemony"), Config.EnableHegemony);
+    values.insert(QStringLiteral("EnableMeleeMode"), Config.EnableMeleeMode);
+    values.insert(QStringLiteral("MaxHpScheme"), Config.MaxHpScheme);
+    values.insert(QStringLiteral("Scheme0Subtraction"), Config.Scheme0Subtraction);
+    values.insert(QStringLiteral("PreventAwakenBelow3"), Config.PreventAwakenBelow3);
+    values.insert(QStringLiteral("EnableAI"), Config.EnableAI);
+    values.insert(QStringLiteral("OriginAIDelay"), Config.OriginAIDelay);
+    values.insert(QStringLiteral("AlterAIDelayAD"), Config.AlterAIDelayAD);
+    values.insert(QStringLiteral("AIDelayAD"), Config.AIDelayAD);
+    values.insert(QStringLiteral("SurrenderAtDeath"), Config.SurrenderAtDeath);
+    values.insert(QStringLiteral("EnableLuckCard"), Config.EnableLuckCard);
+    values.insert(QStringLiteral("DisableLua"), Config.DisableLua);
+    values.insert(QStringLiteral("AddGodGeneral"), Config.AddGodGeneral);
+    return values;
 }
 }
 
@@ -133,6 +177,41 @@ int main(int argc, char **argv)
         return 0;
     }
 
+    if (options.configFile) {
+        const ServerConfigLoadResult configFile = loadServerConfigFile(*options.configFile);
+        if (!configFile.success) {
+            printConfigurationErrors(configFile.errors);
+            return ConfigErrorExitCode;
+        }
+        Config.setValueOverrides(configFile.values);
+    }
+
+    const bool startsServer = !options.listGameModes
+        && !options.printConfig && !options.checkConfig;
+    ServerLogger logger;
+    QString error;
+    if (startsServer) {
+        ServerLogConfiguration logConfiguration;
+        if (options.logLevel
+            && !parseServerLogLevel(*options.logLevel, logConfiguration.level)) {
+            printCommandLineError(QStringLiteral("invalid log level '%1'")
+                .arg(*options.logLevel));
+            return CliUsageExitCode;
+        }
+        if (options.logFormat
+            && !parseServerLogFormat(*options.logFormat, logConfiguration.format)) {
+            printCommandLineError(QStringLiteral("invalid log format '%1'")
+                .arg(*options.logFormat));
+            return CliUsageExitCode;
+        }
+        if (options.logFile)
+            logConfiguration.filePath = *options.logFile;
+        if (!logger.start(logConfiguration, error)) {
+            printCommandLineError(error);
+            return LogFileExitCode;
+        }
+    }
+
     CrashHandler::install();
     if (options.seed) {
         QString seedError;
@@ -142,9 +221,11 @@ int main(int argc, char **argv)
         }
     }
 
-    QString error;
     if (!EngineBootstrap::initialize(false, &error)) {
-        QTextStream(stderr) << error << Qt::endl;
+        if (startsServer)
+            logger.error(QStringLiteral("engine"), error);
+        else
+            QTextStream(stderr) << error << Qt::endl;
         return 1;
     }
     // The dedicated entry point owns explicit teardown after Server/Room cleanup.
@@ -152,7 +233,17 @@ int main(int argc, char **argv)
     QObject::disconnect(&app, SIGNAL(aboutToQuit()), Sanguosha, SLOT(deleteLater()));
 
     CrashHandler::setVersion(Sanguosha->getVersionNumber().toUtf8().constData());
-    if (options.listGameModes && !options.printConfig) {
+    if (options.configFile) {
+        const QVariantMap overrides = Config.valueOverrides();
+        const auto mode = overrides.constFind(QStringLiteral("GameMode"));
+        if (mode != overrides.cend() && !Sanguosha->getGameMode(mode->toString()).isValid()) {
+            printConfigurationErrors({QStringLiteral("GameMode: unknown game mode '%1'")
+                                          .arg(mode->toString())});
+            EngineBootstrap::shutdown();
+            return ConfigErrorExitCode;
+        }
+    }
+    if (options.listGameModes && !options.printConfig && !options.checkConfig) {
         printAvailableGameModes(out);
         EngineBootstrap::shutdown();
         return 0;
@@ -164,11 +255,23 @@ int main(int argc, char **argv)
         EngineBootstrap::shutdown();
         return CliUsageExitCode;
     }
+    const QVariantMap effectiveConfig = effectiveServerConfiguration();
+    if (options.checkConfig) {
+        const QStringList configErrors = validateServerConfigValues(effectiveConfig);
+        if (!configErrors.isEmpty()) {
+            printConfigurationErrors(configErrors);
+            EngineBootstrap::shutdown();
+            return ConfigErrorExitCode;
+        }
+    }
     if (options.listGameModes)
         printAvailableGameModes(out);
     if (options.printConfig)
-        printEffectiveConfiguration(out, options);
-    if (options.listGameModes || options.printConfig) {
+        out << (options.jsonOutput ? serverConfigJson(effectiveConfig)
+                                  : serverConfigText(effectiveConfig));
+    if (options.checkConfig && !options.printConfig)
+        out << "Configuration OK" << Qt::endl;
+    if (options.listGameModes || options.printConfig || options.checkConfig) {
         EngineBootstrap::shutdown();
         return 0;
     }
@@ -181,42 +284,81 @@ int main(int argc, char **argv)
     int result;
     {
         Server server(&app);
+        ServerConsole console(&server, &app);
 #if defined(Q_OS_UNIX)
         QTimer shutdownTimer;
         shutdownTimer.setInterval(100);
         QObject::connect(&shutdownTimer, &QTimer::timeout, &app,
-            [&app, &out]() {
+            [&app, &console, &logger]() {
                 if (shutdownSignal == 0)
                     return;
-                out << "Shutdown requested by signal " << shutdownSignal << Qt::endl;
+                const QString message = QStringLiteral("Shutdown requested by signal %1")
+                    .arg(shutdownSignal);
+                logger.info(QStringLiteral("server"), message, -1, QString(),
+                    {{QStringLiteral("signal"), int(shutdownSignal)}});
+                if (console.isInteractive())
+                    console.writeLog(message);
                 app.quit();
             });
         shutdownTimer.start();
 #endif
         QObject::connect(&server, &Server::logMessage, &app,
-            [&out](const QString &message) { out << message << Qt::endl; });
+            [&console, &logger](const QString &message) {
+                logger.info(QStringLiteral("server"), message);
+                if (console.isInteractive())
+                    console.writeLog(message);
+            });
+        QObject::connect(&server, &Server::roomLogMessage, &app,
+            [&console, &logger](int roomId, const QString &message) {
+                logger.info(QStringLiteral("room"), message, roomId);
+                if (console.isInteractive())
+                    console.writeLog(message);
+            });
+        QObject::connect(&server, &Server::playerJoined, &app,
+            [&logger](const QString &playerId, const QString &playerName, int roomId) {
+                logger.info(QStringLiteral("player"), QStringLiteral("joined"), roomId,
+                    playerId, {{QStringLiteral("name"), playerName}});
+            });
         QObject::connect(&server, &Server::roomGameStarted, &app,
-            [&out]() {
-                out << "[AUTOTEST] game start" << Qt::endl;
+            [&logger](int roomId, const QString &mode) {
+                logger.info(QStringLiteral("room"), QStringLiteral("game_started"),
+                    roomId, QString(), {{QStringLiteral("mode"), mode}});
                 Server::writeHeadlessLog("[AUTOTEST] game start");
             });
         QObject::connect(&server, &Server::roomGameOver, &app,
-            [&out](const QString &winner) {
-                out << "[AUTOTEST] game over " << winner << Qt::endl;
+            [&logger](int roomId, const QString &mode, const QString &winner) {
+                logger.info(QStringLiteral("room"), QStringLiteral("game_over"),
+                    roomId, QString(), {{QStringLiteral("mode"), mode},
+                                      {QStringLiteral("winner"), winner}});
                 Server::writeHeadlessLog(QString("[AUTOTEST] game over %1").arg(winner));
             });
+        QObject::connect(&app, &QCoreApplication::aboutToQuit, &app,
+            [&logger]() { logger.info(QStringLiteral("server"), QStringLiteral("stopping")); });
 
         if (!server.listen()) {
-            out << QObject::tr("Unable to listen on the configured server endpoint") << Qt::endl;
+            logger.error(QStringLiteral("server"),
+                QObject::tr("Unable to listen on the configured server endpoint"),
+                -1, QString(), {{QStringLiteral("address"), Config.BindAddress},
+                                {QStringLiteral("port"), Config.ServerPort}});
             result = 2;
         } else {
             for (const QString &message : server.startupMessages())
-                out << message << Qt::endl;
+                logger.debug(QStringLiteral("server"), message);
 
+            const ServerStatusSnapshot snapshot = server.statusSnapshot();
+            logger.info(QStringLiteral("server"),
+                QStringLiteral("Listening on %1:%2")
+                    .arg(snapshot.bindAddress).arg(snapshot.port),
+                -1, QString(), {{QStringLiteral("address"), snapshot.bindAddress},
+                                {QStringLiteral("port"), snapshot.port},
+                                {QStringLiteral("mode"), snapshot.gameMode}});
+            console.start();
             result = app.exec();
             CrashHandler::beginShutdown();
         }
     }
     EngineBootstrap::shutdown();
+    logger.info(QStringLiteral("server"), QStringLiteral("stopped"), -1, QString(),
+        {{QStringLiteral("exit_code"), result}});
     return result;
 }

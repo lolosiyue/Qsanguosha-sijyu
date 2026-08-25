@@ -69,18 +69,49 @@ Inspect the CLI and start a server with one-run overrides:
 ```bash
 ./qsanguosha_server --help
 ./qsanguosha_server --list-game-modes
-./qsanguosha_server --bind-address 0.0.0.0 --port 9527 \
-    --game-mode 10p --server-name "Linux server"
+cp docs/server.ini.example server.ini
+./qsanguosha_server --config server.ini --check-config
+./qsanguosha_server --config server.ini --port 9527 --game-mode 10p
+./qsanguosha_server --config server.ini --bind-address 127.0.0.1 --port 0
+./qsanguosha_server --config server.ini --log-level info --log-format json \
+    --log-file /var/log/qsanguosha/server.log
 ```
 
-CLI values override the saved settings for the current process only. Use
-`--print-config` to inspect the effective values before listening.
+The precedence is built-in defaults, normal QSettings, `--config` INI, then
+explicit CLI overrides. Neither the INI overlay nor CLI overrides are written
+back. Use `--print-config --json` to inspect the complete effective server
+configuration before listening.
+Port `0` requests an ephemeral port from the kernel; the startup line reports
+the actual endpoint, for example `Listening on 127.0.0.1:43817`.
+
+After the server starts, its terminal is an interactive administration console:
+
+```text
+server> status
+server> players
+server> rooms
+server> say Server maintenance in 10 minutes
+server> kick p001
+server> shutdown
+```
+
+Run `help` in the console for the seven supported commands. `kick` requires the
+exact ID shown by `players`. The console reads stdin without blocking the Qt
+event loop; closing stdin disables console input but leaves the server running.
+
+Linux installs also include `qsanguosha-server.service`. It keeps the process in
+the foreground, sends `SIGTERM` for graceful shutdown, and uses
+`Restart=on-failure`; the legacy daemon mode is not used. See the Linux guide
+for installation and configuration commands.
 
 CTest:
 
 ```bash
 ctest --test-dir build-linux-gcc --output-on-failure
 ```
+
+Linux CTest includes three real TCP integration levels, from connect/disconnect
+through handshake/signup to a complete automated `02p` game and clean disposal.
 
 See the full guide: [`docs/linux-development-environment.md`](docs/linux-development-environment.md).
 

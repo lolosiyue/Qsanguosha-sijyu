@@ -4,6 +4,7 @@
 #include "engine-bootstrap.h"
 #include "room.h"
 #include "room-runtime.h"
+#include "structs.h"
 
 #include <QCoreApplication>
 #include <QThread>
@@ -18,6 +19,7 @@ int runNormal(RoomRuntime &runtime)
     context.moveToThread(&worker);
     worker.start();
     QPointer<Card> workerCard;
+    QPointer<Card> workerEventCard;
     std::shared_ptr<const CardLifetimeToken> workerToken;
     QMetaObject::invokeMethod(&context, [&] {
         const void *previousDomain = CardLifetimeManager::setCurrentDomain(&runtime);
@@ -27,13 +29,18 @@ int runNormal(RoomRuntime &runtime)
         workerToken = manager.observeCard(card);
         CARD_LIFETIME_CHECK(workerToken && manager.retainWrapper(workerToken));
         CARD_LIFETIME_CHECK(manager.requestNativeDelete(workerToken));
+        workerEventCard = new DummyCard;
+        DamageStruct eventSource(workerEventCard, nullptr, nullptr);
+        DamageStruct eventPayload(eventSource);
         runtime.finalizeWorker();
+        CARD_LIFETIME_CHECK(workerEventCard.isNull());
         CardLifetimeManager::setCurrentDomain(previousDomain);
         context.moveToThread(ownerThread);
     }, Qt::BlockingQueuedConnection);
     worker.quit();
     CARD_LIFETIME_CHECK(worker.wait(5000));
     CARD_LIFETIME_CHECK(workerCard.isNull());
+    CARD_LIFETIME_CHECK(workerEventCard.isNull());
     CARD_LIFETIME_CHECK(workerToken && workerToken->state == CardLifetimeState::Dead);
     CARD_LIFETIME_CHECK(globalCardLifetimeManager().releaseWrapper(workerToken));
 

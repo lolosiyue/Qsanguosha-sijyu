@@ -15,7 +15,8 @@ void configureParser(QCommandLineParser &parser)
     parser.addOption(QCommandLineOption({QStringLiteral("v"), QStringLiteral("version")},
         QStringLiteral("Show the server version and exit.")));
     parser.addOption(QCommandLineOption({QStringLiteral("p"), QStringLiteral("port")},
-        QStringLiteral("Listen on TCP port <port> (1-65535)."), QStringLiteral("port")));
+        QStringLiteral("Listen on TCP port <port> (0-65535; 0 selects an ephemeral port)."),
+        QStringLiteral("port")));
     parser.addOption(QCommandLineOption(QStringLiteral("bind-address"),
         QStringLiteral("Bind to an IP address, any, any-ipv4, or any-ipv6."),
         QStringLiteral("address")));
@@ -36,10 +37,25 @@ void configureParser(QCommandLineParser &parser)
         QStringLiteral("seed")));
     parser.addOption(QCommandLineOption(QStringLiteral("autotest-log"),
         QStringLiteral("Write automation markers to <path>."), QStringLiteral("path")));
+    parser.addOption(QCommandLineOption(QStringLiteral("log-level"),
+        QStringLiteral("Set the minimum log level (debug|info|warning|error)."),
+        QStringLiteral("level"), QStringLiteral("info")));
+    parser.addOption(QCommandLineOption(QStringLiteral("log-file"),
+        QStringLiteral("Append operational logs to <path> instead of stdout."),
+        QStringLiteral("path")));
+    parser.addOption(QCommandLineOption(QStringLiteral("log-format"),
+        QStringLiteral("Set the operational log format (text|json)."),
+        QStringLiteral("format"), QStringLiteral("text")));
+    parser.addOption(QCommandLineOption({QStringLiteral("c"), QStringLiteral("config")},
+        QStringLiteral("Overlay server settings from an INI <path>."), QStringLiteral("path")));
     parser.addOption(QCommandLineOption(QStringLiteral("list-game-modes"),
         QStringLiteral("List available game modes and exit.")));
+    parser.addOption(QCommandLineOption(QStringLiteral("check-config"),
+        QStringLiteral("Validate the effective server configuration and exit.")));
     parser.addOption(QCommandLineOption(QStringLiteral("print-config"),
         QStringLiteral("Print the effective server configuration and exit.")));
+    parser.addOption(QCommandLineOption(QStringLiteral("json"),
+        QStringLiteral("Use JSON output with --print-config.")));
 }
 
 bool rejectDuplicateValue(const QCommandLineParser &parser, const QString &name, QString &error)
@@ -143,10 +159,20 @@ ServerCommandLineResult parseServerCommandLine(const QStringList &arguments)
     result.options.versionRequested = parser.isSet(QStringLiteral("version"));
     result.options.listGameModes = parser.isSet(QStringLiteral("list-game-modes"));
     result.options.printConfig = parser.isSet(QStringLiteral("print-config"));
+    result.options.checkConfig = parser.isSet(QStringLiteral("check-config"));
+    result.options.jsonOutput = parser.isSet(QStringLiteral("json"));
+    if (result.options.jsonOutput && !result.options.printConfig) {
+        result.error = QStringLiteral("option '--json' requires '--print-config'");
+        return result;
+    }
+    if (result.options.jsonOutput && result.options.listGameModes) {
+        result.error = QStringLiteral("option '--json' cannot be combined with '--list-game-modes'");
+        return result;
+    }
 
     qlonglong integer = 0;
     if (parser.isSet(QStringLiteral("port"))) {
-        if (!parseBoundedInteger(parser, QStringLiteral("port"), 1, 65535,
+        if (!parseBoundedInteger(parser, QStringLiteral("port"), 0, 65535,
                                  integer, result.error))
             return result;
         result.options.port = static_cast<quint16>(integer);
@@ -192,7 +218,34 @@ ServerCommandLineResult parseServerCommandLine(const QStringList &arguments)
     };
     if (!parseNonEmptyText(QStringLiteral("game-mode"), result.options.gameMode)
         || !parseNonEmptyText(QStringLiteral("server-name"), result.options.serverName)
-        || !parseNonEmptyText(QStringLiteral("autotest-log"), result.options.autotestLog))
+        || !parseNonEmptyText(QStringLiteral("autotest-log"), result.options.autotestLog)
+        || !parseNonEmptyText(QStringLiteral("config"), result.options.configFile)
+        || !parseNonEmptyText(QStringLiteral("log-file"), result.options.logFile))
+        return result;
+
+    const auto parseChoice = [&parser, &result](const QString &name,
+                                                const QStringList &choices,
+                                                std::optional<QString> &target) {
+        if (!parser.isSet(name))
+            return true;
+        if (!rejectDuplicateValue(parser, name, result.error))
+            return false;
+        const QString value = parser.value(name).trimmed().toLower();
+        if (!choices.contains(value)) {
+            result.error = QStringLiteral("invalid --%1 value '%2' (expected %3)")
+                .arg(name, parser.value(name), choices.join(QStringLiteral(" or ")));
+            return false;
+        }
+        target = value;
+        return true;
+    };
+    if (!parseChoice(QStringLiteral("log-level"),
+                     {QStringLiteral("debug"), QStringLiteral("info"),
+                      QStringLiteral("warning"), QStringLiteral("error")},
+                     result.options.logLevel)
+        || !parseChoice(QStringLiteral("log-format"),
+                        {QStringLiteral("text"), QStringLiteral("json")},
+                        result.options.logFormat))
         return result;
 
     if (parser.isSet(QStringLiteral("ai"))) {

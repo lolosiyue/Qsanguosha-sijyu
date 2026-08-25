@@ -63,9 +63,8 @@ void RoomRuntime::finalizeWorker()
         globalCardLifetimeManager().dumpDomain(this);
         qFatal("Room worker exited with live worker-affinity Card transients");
     }
-    std::fprintf(stdout, "CARD_LIFETIME_WORKER_FINAL retired=%llu\n",
-                 static_cast<unsigned long long>(retired));
-    std::fflush(stdout);
+    qInfo().noquote() << QStringLiteral("CARD_LIFETIME_WORKER_FINAL retired=%1")
+        .arg(retired);
 }
 
 void RoomRuntime::shutdownFinal()
@@ -163,22 +162,26 @@ quint64 RoomRuntime::drainShutdownStage(const char *stage)
     const quint64 retired = globalCardLifetimeManager().drain();
     if (QCoreApplication::instance())
         QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-    std::fprintf(stdout, "CARD_LIFETIME_SHUTDOWN_STAGE %s retired=%llu\n",
-                 stage, static_cast<unsigned long long>(retired));
-    std::fflush(stdout);
+    qInfo().noquote() << QStringLiteral("CARD_LIFETIME_SHUTDOWN_STAGE %1 retired=%2")
+        .arg(QString::fromLatin1(stage)).arg(retired);
     return retired;
 }
 
 void RoomRuntime::releaseShutdownRoots()
 {
     CardLifetimeManager &manager = globalCardLifetimeManager();
+    manager.releaseEventPayloads(this);
     manager.releaseVariantTags(this);
     manager.releaseVariantTags(&m_definitions);
     manager.releaseVariantTags(&m_roomState);
     manager.releaseVariantTags(&m_lua);
     manager.releaseVariantTags(&m_ai);
-    if (m_room)
+    if (m_room) {
         manager.releaseVariantTags(m_room);
+        m_room->tag.clear();
+        for (ServerPlayer *player : m_room->getPlayers())
+            player->clearTags();
+    }
 }
 
 void RoomRuntime::restorePreviousDomain()
@@ -350,8 +353,7 @@ void RoomRuntime::emitFinalGauge(const CardLifetimeGauge &gauge)
     marker.insert(QStringLiteral("unknown_unclaimed_delta"), qint64(gauge.unknown_unclaimed - m_baselineUnknownUnclaimed));
     marker.insert(QStringLiteral("actually_destroyed_delta"), qint64(gauge.actually_destroyed - m_baselineActuallyDestroyed));
     const QByteArray markerJson = QJsonDocument(marker).toJson(QJsonDocument::Compact);
-    std::fprintf(stdout, "CARD_LIFETIME_ZERO %s\n", markerJson.constData());
-    std::fflush(stdout);
+    qInfo().noquote() << "CARD_LIFETIME_ZERO" << markerJson;
 }
 
 bool RoomRuntime::initialize(QString *error)
