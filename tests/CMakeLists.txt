@@ -17,13 +17,14 @@ set(QSAN_ENGINE_TEST_INCLUDES
 
 function(qsan_link_engine_test target)
     target_include_directories(${target} PRIVATE ${QSAN_ENGINE_TEST_INCLUDES})
+    target_compile_definitions(${target} PRIVATE QSAN_ENGINE_TEST_BUILD)
     target_link_libraries(${target} PRIVATE
         qsanguosha_engine
-        Qt6::Core5Compat
-        Qt6::Qml
-        Qt6::Widgets
-        "$<$<CONFIG:Release>:dbghelp>"
+        Qt6::Gui
     )
+    if(WIN32)
+        target_link_libraries(${target} PRIVATE "$<$<CONFIG:Release>:dbghelp>")
+    endif()
 endfunction()
 
 function(qsan_add_ctest name executable)
@@ -87,6 +88,9 @@ set_source_files_properties(
     card-lifetime-shutdown/shutdown_protocol_test.cpp
     PROPERTIES COMPILE_DEFINITIONS main=runCardLifetimeShutdownFixture)
 qsan_link_engine_test(qsanguosha_runtime_tests)
+target_compile_definitions(qsanguosha_runtime_tests PRIVATE
+    QSAN_GENERATED_WRAPPER_PATH="${qsan_swig_wrapper}"
+)
 qsan_add_ctest(qsanguosha_lua_runtime_isolation qsanguosha_runtime_tests
     SUITE lua-runtime
     LABELS runtime

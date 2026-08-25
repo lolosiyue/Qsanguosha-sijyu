@@ -2,8 +2,8 @@
 
 Linux 本階段只交付 **無頭伺服器 (headless server)**，唔會 build GUI 客戶端。目標 output 係 `qsanguosha_server`，使用 `QCoreApplication`，唔需要 X11／Wayland、FMOD 或任何 GUI／Qt Widgets／Quick／Multimedia 依賴。
 
-- Status: In Progress（`linux-headless-server` branch）
-- Last Updated: 2026-08-24
+- Status: CMake／CI Complete；M5 完整對局驗證仍 In Progress（`debug` branch）
+- Last Updated: 2026-08-25
 - 對應 Windows 開發環境請見 [`README.md`](../README.md) 嘅 🛠️ Development Environment section。
 
 ## 1. 平台基線
@@ -30,6 +30,7 @@ sudo apt install -y \
     build-essential \
     cmake \
     ninja-build \
+    qt6-5compat-dev \
     qt6-base-dev \
     swig
 ```
@@ -40,6 +41,7 @@ sudo apt install -y \
 - **cmake** — 建置系統
 - **ninja-build** — Ninja generator（快速）
 - **qt6-base-dev** — Qt6 Core／Network head 同 library（`/usr/lib/x86_64-linux-gnu/cmake/Qt6*`）
+- **qt6-5compat-dev** — CTest replay 測試所需嘅 Qt6 Core5Compat；`BUILD_TESTING=OFF` 嘅 server-only build 唔需要
 - **swig** — 生成 C++／Lua binding
 
 如果想用 **Clang** 編譯，加：
@@ -58,8 +60,10 @@ sudo apt install -y clang
 
 ```bash
 cmake -S . -B build-linux-gcc -G Ninja \
+    -DBUILD_TESTING=ON \
     -DCMAKE_BUILD_TYPE=Debug \
-    -DCMAKE_CXX_COMPILER=/usr/bin/c++
+    -DCMAKE_C_COMPILER=/usr/bin/gcc \
+    -DCMAKE_CXX_COMPILER=/usr/bin/g++
 cmake --build build-linux-gcc
 ```
 
@@ -67,14 +71,16 @@ cmake --build build-linux-gcc
 
 ```bash
 cmake -S . -B build-linux-clang -G Ninja \
+    -DBUILD_TESTING=ON \
     -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_C_COMPILER=/usr/bin/clang \
     -DCMAKE_CXX_COMPILER=/usr/bin/clang++
 cmake --build build-linux-clang
 ```
 
 ### 3.3 Build 做完嘅 output
 
-`qsanguosha_server` 會生成喺 each build tree 嘅 subdirectory（例如 `build-linux-gcc/qsanguosha_server`）。因為 `CMakeLists.txt` 用 `RUNTIME_OUTPUT_DIRECTORY_*` 指去 `sourceDir/debug`、`release`、`relwithdebinfo`，Linux 都會照跟（Windows 先至係主要用家，不過無妨）。
+`qsanguosha_server` 會按 build type 生成喺 source tree 嘅 `debug/`、`release/` 或 `relwithdebinfo/`（例如 Debug 係 `debug/qsanguosha_server`）。
 
 > `qsanguosha_engine` 係 STATIC library，用 [`$<LINK_LIBRARY:WHOLE_ARCHIVE,...>`](../CMakeLists.txt) 在 `qsanguosha_server` 引入 source，淨係 link `Qt6::Core` 同 `Qt6::Network`。CMake 有 allowlist gate，link 咗其他 Qt target（例如 Widgets）會立刻 `FATAL_ERROR`。
 
@@ -131,9 +137,27 @@ ctest --test-dir build-linux-gcc --output-on-failure
 
 測試包括 engine smoke test、card-lifetime、player-decision-service、room-runtime-isolation、protocol messages、request-coordinator、room-roster、player-lifecycle-service、skill-runtime-coordinator、lua-runtime-isolation、extra-turn-scheduler 等。可配置 `-DBUILD_TESTING=OFF` 跳過。
 
-## 8. 常見問題
+## 8. GitHub Actions CI
 
-- **搵唔到 Qt6**：確認裝咗 `qt6-base-dev`，或設定 `-DCMAKE_PREFIX_PATH=/path/to/qt6`。
+`.github/workflows/linux-server-ci.yml` 會喺 Ubuntu 24.04 並行驗證 GCC 同 Clang：
+
+1. 安裝 Qt6／Ninja 同 hash-pinned SWIG 4.3.1。
+2. 下載 `lua/ai/`、`extensions/` 同共用 Lua runtime。
+3. 以 RelWithDebInfo configure、build，再執行完整 CTest。
+4. 啟動 `qsanguosha_server`，確認成功 listen 並可由 SIGTERM clean shutdown。
+5. 無論成功或失敗都上傳 JUnit 同 server log。
+
+本機可以用相同 smoke script 驗證：
+
+```bash
+QSAN_SERVER_SMOKE_TIMEOUT_SECONDS=8 \
+    bash tools/ci/server-shutdown-smoke.sh \
+    debug/qsanguosha_server /tmp/server-shutdown.log
+```
+
+## 9. 常見問題
+
+- **搵唔到 Qt6**：確認裝咗 `qt6-base-dev`；啟用 CTest 時亦要裝 `qt6-5compat-dev`。亦可設定 `-DCMAKE_PREFIX_PATH=/path/to/qt6`。
 - **搵唔到 swig**：`sudo apt install swig`，或將 swig 放喺 `tools/swig/`。
 - **`qsanguosha_engine` link 到 Qt 之外嘅 target 而 FATAL_ERROR**：呢個係 design 嘅 allowlist gate，唔可以 hack 過去。
 - **build 完跑唔起，話搵唔到 lua**：行 `--target deploy-server`，或手動 `cp -r lua <exe_dir>/lua`。

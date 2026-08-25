@@ -19,7 +19,6 @@
 #include <QJsonObject>
 #include <QProcess>
 #include <QFile>
-#include <QDir>
 #include <QStringList>
 #include "lua.hpp"
 #include <cstdio>
@@ -1228,8 +1227,7 @@ int runCardLifetimeSyntheticTests(int actorCount, quint64 seed)
 
 int runCardLifetimeLuaTests()
 {
-    const QString generatedPath = QDir::currentPath()
-        + QStringLiteral("/builds/cmake-vs2026/generated/sanguosha_wrap.cxx");
+    const QString generatedPath = QStringLiteral(QSAN_GENERATED_WRAPPER_PATH);
     QFile generated(generatedPath);
     const QByteArray generatedText = generated.open(QIODevice::ReadOnly)
         ? generated.readAll() : QByteArray();

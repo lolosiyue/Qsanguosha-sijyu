@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.28)
 
 project(QSanguosha LANGUAGES C CXX)
 
+include(CTest)
+
 if(WIN32)
     if(NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
         message(FATAL_ERROR "The Windows CMake build supports x64 MSVC only")
@@ -40,7 +42,11 @@ if(WIN32)
         Widgets
     )
 else()
-    find_package(Qt6 REQUIRED COMPONENTS Core Network)
+    set(qsan_linux_qt_components Core Network)
+    if(BUILD_TESTING)
+        list(APPEND qsan_linux_qt_components Core5Compat Gui)
+    endif()
+    find_package(Qt6 REQUIRED COMPONENTS ${qsan_linux_qt_components})
 endif()
 
 get_filename_component(QT_PREFIX "${Qt6_DIR}/../../.." ABSOLUTE)
@@ -457,7 +463,6 @@ if(WIN32)
 endif()
 source_group("Generated" FILES "${qsan_swig_wrapper}")
 
-include(CTest)
 if(BUILD_TESTING)
     add_subdirectory(tests)
 endif()
