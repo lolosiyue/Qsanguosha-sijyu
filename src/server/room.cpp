@@ -4299,7 +4299,8 @@ void Room::damage(DamageStruct damage)
 			else setTag("CurrentDamageStruct", QVariant::fromValue(m_damageStack.first()));
 		}
 	} catch (TriggerEvent triggerEvent){
-		if (triggerEvent == StageChange || triggerEvent == TurnBroken){
+		if (triggerEvent == StageChange || triggerEvent == TurnBroken
+			|| triggerEvent == GameFinished){
 			removeTag("CurrentDamageStruct");
 			m_damageStack.clear();
 		}
@@ -6958,4 +6959,3 @@ QVariant Room::findTestOverride(ServerPlayer *player, const QString &queryType, 
 {
 	return m_playerDecisions->findTestOverride(player, queryType, key);
 }
-

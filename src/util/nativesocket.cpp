@@ -23,7 +23,13 @@ bool NativeServerSocket::listen()
         qWarning("Invalid server bind address: %s", qPrintable(Config.BindAddress));
         return false;
     }
-    return server->listen(address, Config.ServerPort);
+    if (server->listen(address, Config.ServerPort))
+        return true;
+
+    qWarning("Unable to listen on %s:%u: %s",
+        qPrintable(address.toString()), static_cast<unsigned int>(Config.ServerPort),
+        qPrintable(server->errorString()));
+    return false;
 }
 
 void NativeServerSocket::daemonize()
@@ -31,6 +37,16 @@ void NativeServerSocket::daemonize()
     daemon = new QUdpSocket(this);
     daemon->bind(Config.ServerPort, QUdpSocket::ShareAddress);
     connect(daemon, SIGNAL(readyRead()), this, SLOT(processNewDatagram()));
+}
+
+QString NativeServerSocket::listeningAddress() const
+{
+    return server->serverAddress().toString();
+}
+
+quint16 NativeServerSocket::listeningPort() const
+{
+    return server->serverPort();
 }
 
 void NativeServerSocket::processNewDatagram()
@@ -104,7 +120,7 @@ void NativeClientSocket::getMessage()
         buffer_t msg;
         socket->readLine(msg, sizeof(msg));
 #ifndef QT_NO_DEBUG
-        printf("RX: %s", msg);
+        qDebug().noquote() << "RX:" << QString::fromLatin1(msg).trimmed();
 #endif
         emit message_got(msg);
     }
@@ -121,7 +137,7 @@ void NativeClientSocket::send(const QString &message)
     if (!message.endsWith("\n"))
         socket->write("\n");
 #ifndef QT_NO_DEBUG
-    printf("TX: %s\n", message.toLatin1().constData());
+    qDebug().noquote() << "TX:" << message;
 #endif
     socket->flush();
 }

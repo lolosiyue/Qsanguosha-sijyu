@@ -965,6 +965,35 @@ void CardLifetimeManager::releaseEventPayload(const void *owner)
         releaseNativeLease(token);
 }
 
+quint64 CardLifetimeManager::releaseEventPayloads(const void *domain)
+{
+    if (!domain)
+        return 0;
+    QList<std::shared_ptr<const CardLifetimeToken>> tokens;
+    {
+        QMutexLocker lock(&m_mutex);
+        for (auto owner = m_eventLeases.begin(); owner != m_eventLeases.end();) {
+            QList<std::shared_ptr<const CardLifetimeToken>> &heldTokens = owner.value();
+            for (auto held = heldTokens.begin(); held != heldTokens.end();) {
+                const Entry *entry = entryForLease(*held);
+                if (entry && entry->domain == domain) {
+                    tokens.append(*held);
+                    held = heldTokens.erase(held);
+                } else {
+                    ++held;
+                }
+            }
+            if (heldTokens.isEmpty())
+                owner = m_eventLeases.erase(owner);
+            else
+                ++owner;
+        }
+    }
+    for (const auto &token : std::as_const(tokens))
+        releaseNativeLease(token);
+    return static_cast<quint64>(tokens.size());
+}
+
 namespace {
 // N8.3 frozen matrix: Card-bearing event structs that already hold their own
 // native leases through their copy/assign/destructor hooks. A QVariant copy of

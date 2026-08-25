@@ -2,8 +2,8 @@
 
 Linux 本階段只交付 **無頭伺服器 (headless server)**，唔會 build GUI 客戶端。目標 output 係 `qsanguosha_server`，使用 `QCoreApplication`，唔需要 X11／Wayland、FMOD 或任何 GUI／Qt Widgets／Quick／Multimedia 依賴。
 
-- Status: CMake／CI Complete；M5 完整對局驗證仍 In Progress（`debug` branch）
-- Last Updated: 2026-08-25
+- Status: CMake／CI／三級 TCP Network Integration Complete（`debug` branch）
+- Last Updated: 2026-08-26
 - 對應 Windows 開發環境請見 [`README.md`](../README.md) 嘅 🛠️ Development Environment section。
 
 ## 1. 平台基線
@@ -108,12 +108,20 @@ cp -r lua <executable_dir>/lua
 
 ## 6. 執行 headless server
 
-CLI 未指定嘅值會沿用 Linux QSettings；CLI override 只影響今次 process，唔會寫回設定檔。先用以下指令查看完整介面同可用模式：
+Dedicated server 可以用獨立 INI 完整設定，唔需要開 GUI `ServerDialog`。設定優先次序固定為：
+
+```text
+程式預設 → 原有 QSettings → --config 指定嘅 INI → CLI --xxx override
+```
+
+INI overlay 同 CLI override 只影響今次 process，唔會寫回來源 INI。先複製範例並驗證：
 
 ```bash
 ./qsanguosha_server --help
 ./qsanguosha_server --version
 ./qsanguosha_server --list-game-modes
+cp docs/server.ini.example server.ini
+./qsanguosha_server --config server.ini --check-config
 ```
 
 常用啟動方式：
@@ -122,9 +130,11 @@ CLI 未指定嘅值會沿用 Linux QSettings；CLI override 只影響今次 proc
 # 基本啟動（沿用已保存設定）
 ./qsanguosha_server
 
-# 公開監聽 IPv4、指定 port／模式／名稱
-./qsanguosha_server --bind-address any-ipv4 --port 9527 \
-    --game-mode 10p --server-name "Linux server"
+# 由完整 INI 啟動，再用 CLI 覆蓋最常改嘅 port／模式
+./qsanguosha_server --config server.ini --port 9527 --game-mode 10p
+
+# 測試／編排用：由 kernel 選擇未使用 port
+./qsanguosha_server --config server.ini --bind-address 127.0.0.1 --port 0
 
 # 測試用：固定 random seed、停用 AI、取消操作時限
 ./qsanguosha_server --seed 12345 --ai off --operation-timeout 0
@@ -132,15 +142,16 @@ CLI 未指定嘅值會沿用 Linux QSettings；CLI override 只影響今次 proc
 # 輸出 [AUTOTEST] marker 去檔案（stdout redirect 會 buffer，檔案較可靠）
 ./qsanguosha_server --autotest-log /tmp/autotest.log
 
-# 顯示合併 QSettings 與 CLI override 後嘅有效設定，唔會 listen
-./qsanguosha_server --port 19527 --game-mode 02p --print-config
+# 顯示完整有效設定，唔會 listen
+./qsanguosha_server --config server.ini --print-config
+./qsanguosha_server --config server.ini --print-config --json
 ```
 
 | 參數 | 用途 |
 |---|---|
 | `-h`, `--help` | 顯示 help 後退出 |
 | `-v`, `--version` | 顯示版本後退出 |
-| `-p`, `--port <1-65535>` | TCP listen port |
+| `-p`, `--port <0-65535>` | TCP listen port；`0` 由 kernel 分配 ephemeral port |
 | `--bind-address <value>` | 數字 IPv4／IPv6，或 `any`、`any-ipv4`、`any-ipv6` |
 | `-m`, `--game-mode <id>` | 今次使用嘅遊戲模式 |
 | `-n`, `--server-name <name>` | 對外顯示嘅伺服器名稱 |
@@ -149,10 +160,118 @@ CLI 未指定嘅值會沿用 Linux QSettings；CLI override 只影響今次 proc
 | `--ai-delay <0-600000>` | AI 延遲（毫秒） |
 | `-s`, `--seed <uint64>` | 固定遊戲 seed，方便重現測試 |
 | `--autotest-log <path>` | 將 automation marker 寫入檔案 |
+| `--log-level <level>` | 最低 production log level：`debug`、`info`、`warning`、`error` |
+| `--log-file <path>` | append log 至指定檔案；未指定時寫 stdout |
+| `--log-format <format>` | production log 格式：`text` 或 newline-delimited `json` |
+| `-c`, `--config <path>` | 以獨立 INI 覆蓋原有 QSettings |
 | `--list-game-modes` | 列出模式 ID／名稱後退出 |
+| `--check-config` | 驗證完整有效設定後退出 |
 | `--print-config` | 顯示有效設定後退出 |
+| `--json` | 配合 `--print-config` 輸出 JSON |
 
-格式錯誤或不支援嘅參數會以 exit code `64` 結束；初始化失敗係 `1`，listen 失敗係 `2`。Linux 上 `SIGINT`／`SIGTERM` 會 clean shutdown。解析器位於 `src/server/server-command-line.cpp`，process 啟動流程位於 `src/server-main.cpp`。
+`--config` 支援完整 server-side 設定，包括：
+
+- 基本設定：`ServerName`、`GameMode`、`BindAddress`、`ServerPort`、操作／開局倒數。
+- 遊戲規則：`BanPackages`、`RandomSeat`、作弊／自由選將、雙將、同將、暗將、國戰、混戰及體力方案。
+- AI／服務：AI delay、禁聊、同 IP 限制、投降、手氣卡、Lua、神將、UPnP／列表伺服器。
+- 模式設定：`1v1/*`、`3v3/*`、`XMode/*`、`Banlist/*`。
+- Boss mode：難度 bitmask、十殿閻羅、經驗、可選 Boss、無盡及回合限制。
+
+完整可修改範例見 [`server.ini.example`](server.ini.example)。未知 key、錯誤 boolean／enum 或超出範圍嘅數字會令 `--check-config` 失敗；啟動時讀到無效外部 INI 亦會拒絕啟動。
+
+CLI 格式錯誤使用 exit code `64`，設定錯誤使用 `78`，初始化失敗係 `1`，listen 失敗係 `2`。Linux 上 `SIGINT`／`SIGTERM` 會 clean shutdown。CLI parser 位於 `src/server/server-command-line.cpp`，INI schema 位於 `src/server/server-config.cpp`，process 啟動流程位於 `src/server-main.cpp`。
+
+成功 listen 後會輸出 socket 實際綁定嘅 endpoint，例如 `Listening on 127.0.0.1:43817`；使用 `--port 0` 時，CI client 應由呢一行取得 kernel 分配嘅 port。
+
+### Server Console
+
+成功 listen 後，前景 terminal 會進入非阻塞管理 console：
+
+```text
+QSanguosha Server 20251231
+Listening on 0.0.0.0:9527
+Mode: 10p
+
+server> status
+server> players
+server> rooms
+server> say Server maintenance in 10 minutes
+server> kick p001
+server> shutdown
+```
+
+首版固定提供 7 個 command：
+
+| Command | 用途 |
+|---|---|
+| `help` | 顯示 command help |
+| `status` | 顯示 uptime、listen endpoint、模式、房間／玩家數、AI／Lua 狀態 |
+| `players` | 顯示玩家 ID、名稱、房間及連線狀態 |
+| `rooms` | 顯示房間 ID、狀態、模式、人數及 uptime |
+| `say <message>` | 以管理員訊息廣播到所有房間 |
+| `kick <player-id>` | 按 `players` 顯示嘅精確 ID 斷開玩家 |
+| `shutdown` | 經正常 Qt shutdown 流程停止 server |
+
+Console 只經 `Server` 嘅 snapshot／管理 API 操作，唔會持有 `Room *` 或 `ServerPlayer *`。stdin 使用 Qt socket notifier 非阻塞讀取；stdin 關閉時只停用 console，server 仍繼續運行，適合由 systemd 配合 signal 管理。
+
+### Production logging
+
+預設使用 `info` level、`text` 格式並寫 stdout；指定 `--log-file` 時會以 append 模式寫入檔案，每筆立即 flush。目標目錄必須已存在且可寫，否則以 exit code `73` 拒絕啟動。
+
+```bash
+# journal／terminal 友善文字
+./qsanguosha_server --config server.ini \
+    --log-level info --log-format text
+
+# 每行一個 JSON object，方便 Loki／Vector／Fluent Bit 收集
+./qsanguosha_server --config server.ini \
+    --log-level info --log-format json \
+    --log-file /var/log/qsanguosha/server.log
+```
+
+每筆 JSON 固定包含：
+
+- `timestamp`：UTC ISO-8601，包含毫秒。
+- `level`：`debug`／`info`／`warning`／`error`。
+- `component`：例如 `server`、`room`、`player`、`qt`。
+- `room_id`、`player_id`：無相關 context 時為 `null`。
+- `message`：事件名稱或診斷內容。
+
+額外欄位會直接加入同一筆 record，例如實際 listen `address`／`port`、room `mode`、玩家 `name`、game over `winner`。典型 text log：
+
+```text
+2026-08-26T13:30:42.123Z INFO server Listening on 0.0.0.0:9527 address=0.0.0.0 mode=10p port=9527
+2026-08-26T13:31:04.456Z INFO player room_id=3 player_id=p001 joined name=playerA
+2026-08-26T13:32:11.789Z INFO room room_id=3 game_started mode=10p
+```
+
+Qt warning／critical 亦會經相同 sink，以 `component=qt` 記錄。`--autotest-log` 仍係獨立 automation marker，唔應當作 production log。
+
+### systemd
+
+CMake install 會部署 server binary、`lua/`、`extensions/`、文件及 `qsanguosha-server.service`。Unit 使用 foreground `Type=simple`、`SIGTERM` graceful shutdown、`Restart=on-failure`、dynamic user 與 systemd sandbox；不會呼叫 legacy `Server::daemonize()`。
+
+```bash
+sudo cmake --install build-linux-gcc
+
+sudo install -d -m 0755 /etc/qsanguosha
+sudo install -m 0644 docs/server.ini.example /etc/qsanguosha/server.ini
+sudo systemctl daemon-reload
+sudo systemctl enable --now qsanguosha-server.service
+
+systemctl status qsanguosha-server.service
+journalctl -u qsanguosha-server.service -f
+```
+
+預設 unit 以 text log 寫 journald，由 systemd 負責 rotation。需要 JSON file 時，用 `sudo systemctl edit qsanguosha-server.service` 清空並覆蓋 `ExecStart`：
+
+```ini
+[Service]
+ExecStart=
+ExecStart=/usr/local/bin/qsanguosha_server --config /etc/qsanguosha/server.ini --log-level info --log-format json --log-file /var/log/qsanguosha/server.log
+```
+
+`LogsDirectory=qsanguosha` 會建立可寫嘅 `/var/log/qsanguosha`。若安裝 prefix 唔係 `/usr/local`，以 CMake 產生並安裝嘅 unit 內實際路徑為準。
 
 ## 7. 測試 (CTest)
 
@@ -163,7 +282,19 @@ cmake --build build-linux-gcc
 ctest --test-dir build-linux-gcc --output-on-failure
 ```
 
-測試包括 server CLI parser／help／version、engine smoke test、card-lifetime、player-decision-service、room-runtime-isolation、protocol messages、request-coordinator、room-roster、player-lifecycle-service、skill-runtime-coordinator、lua-runtime-isolation、extra-turn-scheduler 等。可配置 `-DBUILD_TESTING=OFF` 跳過。
+Linux CTest 包括三級真實 TCP network integration：
+
+1. Level 1：啟動 server、TCP connect／disconnect，確認 server 仍可回應 console，再以 SIGTERM 正常退出。
+2. Level 2：完成 version／setup handshake、signup，從 `players` snapshot 確認 server 已識別玩家，再正常斷線。
+3. Level 3：兩個 TCP client handshake／signup、填滿 `02p` room、開局後轉托管、完成自動對局、收到 game over、等待 room dispose，再驗證 SIGTERM clean exit 同 `CARD_LIFETIME_ZERO`。
+
+三個測試使用獨立臨時 `XDG_CONFIG_HOME`、CLI `--port 0` 同固定 seed，從 `Listening on` 取得實際 port，標記為 `network;server;integration` 並強制 serial 執行。只跑 network suite：
+
+```bash
+ctest --test-dir build-linux-gcc --output-on-failure -L network
+```
+
+其餘測試包括 server CLI parser／help／version、INI validation／precedence、7-command console smoke、engine smoke、card-lifetime、player-decision-service、room-runtime-isolation、protocol messages、request-coordinator、room-roster、player-lifecycle-service、skill-runtime-coordinator、lua-runtime-isolation、extra-turn-scheduler 等。可配置 `-DBUILD_TESTING=OFF` 跳過。
 
 ## 8. GitHub Actions CI
 
@@ -171,8 +302,8 @@ ctest --test-dir build-linux-gcc --output-on-failure
 
 1. 安裝 Qt6／Ninja 同 hash-pinned SWIG 4.3.1。
 2. 下載 `lua/ai/`、`extensions/` 同共用 Lua runtime。
-3. 以 RelWithDebInfo configure、build，再執行完整 CTest。
-4. 啟動 `qsanguosha_server`，確認成功 listen 並可由 SIGTERM clean shutdown。
+3. 以 RelWithDebInfo configure、build，再執行完整 CTest，包括三級 TCP network integration。
+4. 另跑 server process smoke，從實際 endpoint 建立 TCP 連線，再確認可由 SIGTERM clean shutdown。
 5. 無論成功或失敗都上傳 JUnit 同 server log。
 
 本機可以用相同 smoke script 驗證：
@@ -181,6 +312,10 @@ ctest --test-dir build-linux-gcc --output-on-failure
 QSAN_SERVER_SMOKE_TIMEOUT_SECONDS=8 \
     bash tools/ci/server-shutdown-smoke.sh \
     debug/qsanguosha_server /tmp/server-shutdown.log
+
+QSAN_SERVER_SMOKE_TIMEOUT_SECONDS=8 \
+    bash tools/ci/server-console-smoke.sh \
+    debug/qsanguosha_server /tmp/server-console.log
 ```
 
 ## 9. 常見問題

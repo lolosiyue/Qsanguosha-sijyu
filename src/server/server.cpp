@@ -37,6 +37,8 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 
+#include <algorithm>
+
 using namespace QSanProtocol;
 
 #if !defined(QSAN_SERVER_CORE_ONLY)
@@ -1544,7 +1546,7 @@ int ServerDialog::config()
 	Config.beginGroup("3v3");
 	Config.setValue("UsingExtension", !official_3v3_radiobutton->isChecked());
 	Config.setValue("RoleChoose", role_choose_ComboBox->itemData(role_choose_ComboBox->currentIndex()).toString());
-	Config.setValue("ExcludeDisaster", exclude_disaster_checkbox->isChecked());
+	Config.setValue("ExcludeDisasters", exclude_disaster_checkbox->isChecked());
 	Config.setValue("OfficialRule", official_3v3_ComboBox->itemData(official_3v3_ComboBox->currentIndex()).toString());
 	Config.endGroup();
 
@@ -1576,6 +1578,7 @@ int ServerDialog::config()
 Server::Server(QObject *parent)
 	: QObject(parent)//, created_successfully(true)
 {
+	m_uptimeTimer.start();
 	connect(this, SIGNAL(server_message(QString)), this, SIGNAL(logMessage(QString)));
 	server = new NativeServerSocket;
 	server->setParent(this);
@@ -1603,6 +1606,136 @@ void Server::broadcast(const QString &msg)
 	packet.setMessageBody(arg);
 	foreach(Room *room, rooms)
 		room->broadcastInvoke(&packet);
+}
+
+ServerStatusSnapshot Server::statusSnapshot() const
+{
+	ServerStatusSnapshot snapshot;
+	snapshot.uptimeMs = m_uptimeTimer.isValid() ? m_uptimeTimer.elapsed() : 0;
+	snapshot.bindAddress = server->listeningAddress();
+	snapshot.port = server->listeningPort();
+	snapshot.gameMode = Config.GameMode.mode_id;
+
+	const QList<RoomStatusSnapshot> roomItems = roomSnapshots();
+	snapshot.roomCount = roomItems.size();
+	foreach (const RoomStatusSnapshot &room, roomItems) {
+		if (room.state == QLatin1String("playing"))
+			++snapshot.gamesRunning;
+	}
+
+	const QList<PlayerStatusSnapshot> playerItems = playerSnapshots();
+	snapshot.playerCount = playerItems.size();
+	foreach (const PlayerStatusSnapshot &player, playerItems) {
+		if (player.state == QLatin1String("online"))
+			++snapshot.onlineCount;
+		if (player.state == QLatin1String("robot"))
+			++snapshot.robotCount;
+	}
+
+	snapshot.aiEnabled = Config.EnableAI;
+	snapshot.luaEnabled = !Config.DisableLua;
+	return snapshot;
+}
+
+QList<RoomStatusSnapshot> Server::roomSnapshots() const
+{
+	QList<RoomStatusSnapshot> snapshots;
+	QSet<Room *> seen;
+	auto appendRoom = [this, &snapshots, &seen](Room *room, bool disposing) {
+		if (!room || seen.contains(room))
+			return;
+		seen.insert(room);
+
+		RoomStatusSnapshot snapshot;
+		snapshot.id = room->getId();
+		snapshot.state = disposing || room->isFinished()
+			? QStringLiteral("disposing")
+			: (room->isRunning() ? QStringLiteral("playing") : QStringLiteral("waiting"));
+		snapshot.gameMode = room->getMode();
+		snapshot.playerCount = room->getPlayers().size();
+		snapshot.playerCapacity = snapshot.playerCount + room->getLack();
+		if (!disposing) {
+			const qint64 createdAt = m_roomCreatedAtMs.value(room, m_uptimeTimer.elapsed());
+			snapshot.uptimeMs = qMax<qint64>(0, m_uptimeTimer.elapsed() - createdAt);
+		}
+		snapshots.append(snapshot);
+	};
+
+	foreach (Room *room, rooms)
+		appendRoom(room, false);
+	foreach (const QPointer<Room> &room, m_disposingRooms)
+		appendRoom(room.data(), true);
+
+	std::sort(snapshots.begin(), snapshots.end(),
+		[](const RoomStatusSnapshot &left, const RoomStatusSnapshot &right) {
+			return left.id < right.id;
+		});
+	return snapshots;
+}
+
+QList<PlayerStatusSnapshot> Server::playerSnapshots() const
+{
+	QList<PlayerStatusSnapshot> snapshots;
+	QSet<ServerPlayer *> seen;
+	auto appendPlayer = [&snapshots, &seen](ServerPlayer *player) {
+		if (!player || player->objectName().isEmpty() || seen.contains(player))
+			return;
+		seen.insert(player);
+
+		PlayerStatusSnapshot snapshot;
+		snapshot.id = player->objectName();
+		snapshot.name = player->screenName();
+		Room *room = player->getRoom();
+		if (room)
+			snapshot.roomId = room->getId();
+		snapshot.state = player->getState();
+		snapshots.append(snapshot);
+	};
+
+	foreach (Room *room, rooms) {
+		if (!room)
+			continue;
+		foreach (ServerPlayer *player, room->getPlayers())
+			appendPlayer(player);
+	}
+	for (auto it = players.cbegin(); it != players.cend(); ++it)
+		appendPlayer(it.value());
+
+	std::sort(snapshots.begin(), snapshots.end(),
+		[](const PlayerStatusSnapshot &left, const PlayerStatusSnapshot &right) {
+			return left.id < right.id;
+		});
+	return snapshots;
+}
+
+bool Server::kickPlayer(const QString &id)
+{
+	ServerPlayer *player = players.value(id, nullptr);
+	if (!player) {
+		foreach (Room *room, rooms) {
+			if (!room)
+				continue;
+			foreach (ServerPlayer *candidate, room->getPlayers()) {
+				if (candidate && candidate->objectName() == id) {
+					player = candidate;
+					break;
+				}
+			}
+			if (player)
+				break;
+		}
+	}
+	if (!player)
+		return false;
+	player->kick();
+	emit server_message(tr("Administrator kicked player %1").arg(id));
+	return true;
+}
+
+void Server::broadcastAdminMessage(const QString &message)
+{
+	broadcast(message);
+	emit server_message(tr("Administrator broadcast: %1").arg(message));
 }
 
 bool Server::listen()
@@ -1643,8 +1776,9 @@ QStringList Server::startupMessages() const
             items << tr("Your other address: %1, if this is a public IP, that will be available for all cases").arg(item);
     }
 
-    items << tr("Binding address is %1").arg(Config.BindAddress);
-    items << tr("Binding port number is %1").arg(Config.ServerPort);
+    items << tr("Listening on %1:%2")
+        .arg(server->listeningAddress())
+        .arg(server->listeningPort());
     items << tr("Game mode is %1").arg(Sanguosha->getModeName(Config.GameMode.mode_id));
     items << tr("Player count is %1").arg(Sanguosha->getPlayerCount(Config.GameMode.mode_id));
     items << (Config.OperationNoLimit ? tr("There is no time limit")
@@ -1692,11 +1826,26 @@ Room *Server::createNewRoom()
 		return nullptr;
 	}
 	rooms.insert(current);
+	m_roomCreatedAtMs.insert(current, m_uptimeTimer.elapsed());
+	Room *createdRoom = current;
+	connect(createdRoom, &QObject::destroyed, this,
+		[this, createdRoom]() { m_roomCreatedAtMs.remove(createdRoom); });
 
-	connect(current, SIGNAL(room_message(QString)), this, SIGNAL(server_message(QString)));
+	connect(createdRoom, &Room::room_message, this,
+		[this, createdRoom](const QString &message) {
+			if (isHeadlessMode)
+				emit roomLogMessage(createdRoom->getId(), message);
+			else
+				emit server_message(message);
+		});
 	connect(current, SIGNAL(game_over(QString)), this, SLOT(gameOver()));
-	connect(current, SIGNAL(game_start()), this, SIGNAL(roomGameStarted()));
-	connect(current, SIGNAL(game_over(QString)), this, SIGNAL(roomGameOver(QString)));
+	connect(createdRoom, &Room::game_start, this, [this, createdRoom]() {
+		emit roomGameStarted(createdRoom->getId(), createdRoom->getMode());
+	});
+	connect(createdRoom, &Room::game_over, this,
+		[this, createdRoom](const QString &winner) {
+			emit roomGameOver(createdRoom->getId(), createdRoom->getMode(), winner);
+		});
 
 	return current;
 }
@@ -1781,6 +1930,7 @@ void Server::processRequest(const char *request)
 	ServerPlayer *player = current->addSocket(socket);
 	current->signup(player, screen_name, avatar, false);
 	emit newPlayer(player);
+	emit playerJoined(player->objectName(), player->screenName(), current->getId());
 }
 
 void Server::cleanup()

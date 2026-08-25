@@ -10,6 +10,8 @@ class ServerSocket : public QObject
 public:
     virtual bool listen() = 0;
     virtual void daemonize() = 0;
+    virtual QString listeningAddress() const = 0;
+    virtual quint16 listeningPort() const = 0;
 
 signals:
     void new_connection(ClientSocket *connection);

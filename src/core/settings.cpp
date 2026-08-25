@@ -177,6 +177,35 @@ Settings::Settings()
 {
 }
 
+QVariant Settings::value(const QString &key, const QVariant &defaultValue) const
+{
+    QString effectiveKey = key;
+    if (!group().isEmpty())
+        effectiveKey = group() + QLatin1Char('/') + key;
+    const auto override = m_valueOverrides.constFind(effectiveKey);
+    if (override != m_valueOverrides.cend())
+        return override.value();
+    return QSettings::value(key, defaultValue);
+}
+
+bool Settings::hasValueOverride(const QString &key) const
+{
+    const QString effectiveKey = group().isEmpty()
+        ? key
+        : group() + QLatin1Char('/') + key;
+    return m_valueOverrides.contains(effectiveKey);
+}
+
+void Settings::setValueOverrides(const QVariantMap &overrides)
+{
+    m_valueOverrides = overrides;
+}
+
+QVariantMap Settings::valueOverrides() const
+{
+    return m_valueOverrides;
+}
+
 #ifdef ANDROID
 QString Settings::getAndroidConfigPath()
 {
@@ -243,7 +272,8 @@ void Settings::init()
         qWarning("Saved game mode '%s' is unavailable; falling back to '02p'.",
                  qPrintable(savedModeId));
         GameMode = Sanguosha->getGameMode("02p");
-        setValue("GameMode", GameMode.mode_id);
+        if (!hasValueOverride(QStringLiteral("GameMode")))
+            setValue("GameMode", GameMode.mode_id);
     }
 
     BanPackages = value("BanPackages").toStringList();
@@ -257,7 +287,8 @@ void Settings::init()
             << "New3v3Card" << "New3v3_2013Card" << "New1v1Card"
             << "yitian" << "wisdom" << "BGM" << "BGMDIY"
             << "hegemony" << "h_formation" << "h_momentum";
-		setValue("BanPackages", BanPackages);
+		if (!hasValueOverride(QStringLiteral("BanPackages")))
+			setValue("BanPackages", BanPackages);
     }
 
     RandomSeat = value("RandomSeat", true).toBool();
@@ -339,41 +370,50 @@ void Settings::init()
     //hulao_ban = GetConfigFromLuaState(lua, "hulao_ban").toStringList();
     //xmode_ban = GetConfigFromLuaState(lua, "xmode_ban").toStringList();
 
-    if (value("Banlist/Roles").toStringList().isEmpty()) {
+    if (value("Banlist/Roles").toStringList().isEmpty()
+        && !hasValueOverride(QStringLiteral("Banlist/Roles"))) {
         setValue("Banlist/Roles", GetConfigFromLuaState(lua, "roles_ban").toStringList());
     }
 
-    if (value("Banlist/1v1").toStringList().isEmpty()) {
+    if (value("Banlist/1v1").toStringList().isEmpty()
+        && !hasValueOverride(QStringLiteral("Banlist/1v1"))) {
         setValue("Banlist/1v1", GetConfigFromLuaState(lua, "kof_ban").toStringList());
     }
 
-    if (value("Banlist/Doudizhu").toStringList().isEmpty()) {
+    if (value("Banlist/Doudizhu").toStringList().isEmpty()
+        && !hasValueOverride(QStringLiteral("Banlist/Doudizhu"))) {
         setValue("Banlist/Doudizhu", GetConfigFromLuaState(lua, "doudizhu_ban").toStringList());
     }
 
-    if (value("Banlist/Happy2v2").toStringList().isEmpty()) {
+    if (value("Banlist/Happy2v2").toStringList().isEmpty()
+        && !hasValueOverride(QStringLiteral("Banlist/Happy2v2"))) {
         setValue("Banlist/Happy2v2", GetConfigFromLuaState(lua, "happy2v2_ban").toStringList());
     }
 
-    if (value("Banlist/BossMode").toStringList().isEmpty()) {
+    if (value("Banlist/BossMode").toStringList().isEmpty()
+        && !hasValueOverride(QStringLiteral("Banlist/BossMode"))) {
         setValue("Banlist/BossMode", GetConfigFromLuaState(lua, "bossmode_ban").toStringList());
     }
 
-    if (value("Banlist/05_ol").toStringList().isEmpty()) {
+    if (value("Banlist/05_ol").toStringList().isEmpty()
+        && !hasValueOverride(QStringLiteral("Banlist/05_ol"))) {
         setValue("Banlist/05_ol", GetConfigFromLuaState(lua, "god_ban").toStringList());
     }
 
-    if (value("Banlist/06_ol").toStringList().isEmpty()) {
+    if (value("Banlist/06_ol").toStringList().isEmpty()
+        && !hasValueOverride(QStringLiteral("Banlist/06_ol"))) {
         setValue("Banlist/06_ol", GetConfigFromLuaState(lua, "god_ban").toStringList());
     }
 
     QStringList basara_ban = value("Banlist/Basara").toStringList();
-    if (basara_ban.isEmpty()) {
+    if (basara_ban.isEmpty()
+        && !hasValueOverride(QStringLiteral("Banlist/Basara"))) {
 		basara_ban = GetConfigFromLuaState(lua, "basara_ban").toStringList();
         setValue("Banlist/Basara", basara_ban);
     }
 
-    if (value("Banlist/Hegemony").toStringList().isEmpty()) {
+    if (value("Banlist/Hegemony").toStringList().isEmpty()
+        && !hasValueOverride(QStringLiteral("Banlist/Hegemony"))) {
 		basara_ban << GetConfigFromLuaState(lua, "hegemony_ban").toStringList();
 		foreach (QString general, Sanguosha->getLimitedGeneralNames()) {
 			if (!basara_ban.contains(general)&&Sanguosha->getGeneral(general)->getKingdom() == "god")
@@ -382,7 +422,8 @@ void Settings::init()
 		setValue("Banlist/Hegemony", basara_ban);
     }
 
-    if (value("Banlist/Pairs").toStringList().isEmpty()) {
+    if (value("Banlist/Pairs").toStringList().isEmpty()
+        && !hasValueOverride(QStringLiteral("Banlist/Pairs"))) {
         setValue("Banlist/Pairs", GetConfigFromLuaState(lua, "pairs_ban").toStringList());
     }
 

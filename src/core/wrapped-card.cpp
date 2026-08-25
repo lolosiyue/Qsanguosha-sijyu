@@ -94,6 +94,12 @@ void WrappedCard::adoptCard(Card *card, bool requireId)
         return;
     }
 
+    // observeCard() ran before moveCardToOwner(), so refresh the manager's
+    // recorded QObject affinity before the worker-exit lifetime sweep.
+    // Otherwise a successfully adopted card still looks worker-owned and makes
+    // RoomRuntime::finalizeWorker() reject a clean game shutdown.
+    lifetimeManager.observeCard(card);
+
     const bool adopted = lifetimeManager.markAdopted(token);
     if (!adopted) {
         Q_ASSERT(adopted);
@@ -166,4 +172,3 @@ void WrappedCard::setMark(const QString &mark, int value) const
     Card::setMark(mark, value);
     m_card->setMark(mark, value);
 }
-

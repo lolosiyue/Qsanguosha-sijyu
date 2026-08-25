@@ -12,6 +12,8 @@ struct ServerCommandLineOptions
     bool versionRequested = false;
     bool listGameModes = false;
     bool printConfig = false;
+    bool checkConfig = false;
+    bool jsonOutput = false;
     std::optional<quint16> port;
     std::optional<int> operationTimeout;
     std::optional<int> aiDelay;
@@ -21,6 +23,10 @@ struct ServerCommandLineOptions
     std::optional<QString> gameMode;
     std::optional<QString> serverName;
     std::optional<QString> autotestLog;
+    std::optional<QString> configFile;
+    std::optional<QString> logLevel;
+    std::optional<QString> logFile;
+    std::optional<QString> logFormat;
 };
 
 struct ServerCommandLineResult

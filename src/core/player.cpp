@@ -146,7 +146,7 @@ void Player::setSeat(int seat)
 
 Player::~Player()
 {
-    globalCardLifetimeManager().releaseVariantTags(this);
+    clearTags();
 }
 
 int Player::getPlayerSeat() const
@@ -3100,6 +3100,11 @@ void Player::removeTag(const QString &key) {
     tag.remove(key);
 }
 
+void Player::clearTags() {
+    globalCardLifetimeManager().releaseVariantTags(this);
+    tag.clear();
+}
+
 bool Player::setProperty(const char* name, const QVariant& value) {
     return ThreadSafeHelper::setProperty(this, name, value);
 }
@@ -3411,4 +3416,3 @@ bool Player::isAbnormal() const
 {
     return chained || !shown_handcards.isEmpty() || !broken_equips.isEmpty();
 }
-

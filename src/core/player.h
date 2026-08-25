@@ -434,6 +434,7 @@ public:
     void setTag(const QString &key, const QVariant &value);
     QVariant getTag(const QString &key, const QVariant &defaultValue = QVariant()) const;
     void removeTag(const QString &key);
+    void clearTags();
 
     bool setProperty(const char* name, const QVariant& value);
 

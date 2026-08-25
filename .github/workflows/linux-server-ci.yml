@@ -32,7 +32,7 @@ env:
 
 jobs:
   build-and-test:
-    name: ${{ matrix.compiler.name }} configure/build, CTest, shutdown
+    name: ${{ matrix.compiler.name }} configure/build, CTest network E2E, shutdown
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
@@ -104,7 +104,16 @@ jobs:
           test -d relwithdebinfo/lua
           test -f relwithdebinfo/lua/sanguosha.lua
 
-      - name: Run CTest
+      - name: Verify Linux install and systemd layout
+        run: |
+          install_root="${RUNNER_TEMP}/qsanguosha-install-${{ matrix.compiler.id }}"
+          cmake --install 'build/linux-${{ matrix.compiler.id }}' --prefix "$install_root"
+          test -x "$install_root/bin/qsanguosha_server"
+          test -f "$install_root/lib/systemd/system/qsanguosha-server.service"
+          test -f "$install_root/share/qsanguosha/lua/config.lua"
+          test -d "$install_root/share/qsanguosha/extensions"
+
+      - name: Run CTest including network E2E
         run: |
           mkdir -p ci-logs
           ctest \
@@ -113,7 +122,7 @@ jobs:
             --output-on-failure \
             --output-junit 'ci-logs/ctest-${{ matrix.compiler.id }}.xml'
 
-      - name: Verify server startup and clean SIGTERM shutdown
+      - name: Verify ephemeral TCP connect and clean SIGTERM shutdown
         run: |
           bash tools/ci/server-shutdown-smoke.sh \
             relwithdebinfo/qsanguosha_server \
