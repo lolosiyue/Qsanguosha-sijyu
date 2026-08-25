@@ -10,7 +10,7 @@
 #include <memory>
 #include <utility>
 
-#ifdef QSAN_ENGINE_BUILD
+#if defined(QSAN_ENGINE_BUILD) || defined(QSAN_ENGINE_TEST_BUILD)
 #include "game-rng.h"
 
 inline int qrand()

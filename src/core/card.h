@@ -13,7 +13,7 @@ class ViewAsSkillV2;
 struct CardEffectStruct;
 struct CardUseStruct;
 
-#ifdef QSAN_ENGINE_BUILD
+#if defined(QSAN_ENGINE_BUILD) || defined(QSAN_ENGINE_TEST_BUILD)
 #include "engine-pch.h"
 #else
 #include "src/pch.h"

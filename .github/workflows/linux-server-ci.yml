@@ -1,0 +1,118 @@
+name: Linux server CI
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - 'docs/**'
+      - 'memory/**'
+      - '*.md'
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'docs/**'
+      - 'memory/**'
+      - '*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-server-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: 2
+  QT_QPA_PLATFORM: offscreen
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.compiler.name }} configure/build, CTest, shutdown
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        compiler:
+          - name: GCC
+            id: gcc
+            cc: gcc
+            cxx: g++
+            cxx_flags: ''
+            package: g++
+          - name: Clang
+            id: clang
+            cc: clang
+            cxx: clang++
+            cxx_flags: -Wno-inconsistent-missing-override
+            package: clang
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends \
+            cmake \
+            ninja-build \
+            python3-venv \
+            qt6-5compat-dev \
+            qt6-base-dev \
+            '${{ matrix.compiler.package }}'
+
+      - name: Install pinned SWIG
+        run: |
+          python3 -m venv "$RUNNER_TEMP/qsanguosha-ci-venv"
+          "$RUNNER_TEMP/qsanguosha-ci-venv/bin/python" -m pip install \
+            --disable-pip-version-check \
+            --require-hashes \
+            -r tools/ci/requirements.txt
+          echo "$RUNNER_TEMP/qsanguosha-ci-venv/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/qsanguosha-ci-venv/bin/swig" -version
+
+      - name: Fetch Lua AI and extensions
+        run: bash tools/ci/fetch-extensions.sh "$GITHUB_WORKSPACE"
+
+      - name: Configure with ${{ matrix.compiler.name }}
+        run: |
+          cmake -S . -B 'build/linux-${{ matrix.compiler.id }}' -G Ninja \
+            -DBUILD_TESTING=ON \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER='${{ matrix.compiler.cc }}' \
+            -DCMAKE_CXX_COMPILER='${{ matrix.compiler.cxx }}' \
+            -DCMAKE_CXX_FLAGS='${{ matrix.compiler.cxx_flags }}'
+
+      - name: Build with ${{ matrix.compiler.name }}
+        run: cmake --build 'build/linux-${{ matrix.compiler.id }}' --parallel
+
+      - name: Run CTest
+        run: |
+          mkdir -p ci-logs
+          ctest \
+            --test-dir 'build/linux-${{ matrix.compiler.id }}' \
+            --build-config RelWithDebInfo \
+            --output-on-failure \
+            --output-junit 'ci-logs/ctest-${{ matrix.compiler.id }}.xml'
+
+      - name: Verify server startup and clean SIGTERM shutdown
+        run: |
+          bash tools/ci/server-shutdown-smoke.sh \
+            relwithdebinfo/qsanguosha_server \
+            'ci-logs/server-shutdown-${{ matrix.compiler.id }}.log'
+
+      - name: Upload Linux diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-server-${{ matrix.compiler.id }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-logs/**
+          if-no-files-found: warn
+          retention-days: 7

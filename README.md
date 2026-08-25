@@ -50,7 +50,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-cmake.ps1 -Confi
 On Linux the project builds the **headless server** (`qsanguosha_server`) only — no GUI, no FMOD, no X11 dependency. It links just `Qt6::Core` and `Qt6::Network`.
 
 ```bash
-sudo apt install -y build-essential cmake ninja-build qt6-base-dev swig
+sudo apt install -y build-essential cmake ninja-build qt6-base-dev qt6-5compat-dev swig
 
 # GCC
 cmake -S . -B build-linux-gcc -G Ninja -DCMAKE_BUILD_TYPE=Debug \
