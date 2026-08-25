@@ -180,6 +180,7 @@ public:
     void dumpDomain(const void *domain) const;
     quint64 entryCount() const;
     QSet<const void *> entryAddresses() const;
+    QSet<const void *> entryAddressesForDomain(const void *domain) const;
     void setDomainBaseline(const void *domain, const QSet<const void *> &addresses);
     void unregisterDomainBaseline(const void *domain);
     quint64 entryCountForDomain(const void *domain) const;

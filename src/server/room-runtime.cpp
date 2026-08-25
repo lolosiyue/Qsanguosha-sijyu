@@ -204,7 +204,7 @@ void RoomRuntime::restorePreviousDomain()
 void RoomRuntime::invalidateOrphanedRuntimeEntries()
 {
     CardLifetimeManager &manager = globalCardLifetimeManager();
-    const QSet<const void *> currentAddresses = manager.entryAddresses();
+    const QSet<const void *> currentAddresses = manager.entryAddressesForDomain(this);
     for (const void *address : currentAddresses) {
         const auto token = manager.liveToken(address);
         if (token && (!m_baselineTokenEntries.contains(address)
@@ -219,7 +219,8 @@ void RoomRuntime::invalidateOrphanedRuntimeEntries()
         if (!token)
             continue;
         const auto baseline = m_baselineTokenEntries.value(address);
-        if (baseline && baseline.get() == token.get())
+        if ((baseline && baseline.get() == token.get())
+            || manager.isBaselineToken(this, token))
             continue;
         const QThread *affinity = manager.affinityThread(token);
         if (affinity && affinity != QThread::currentThread())
@@ -379,7 +380,8 @@ bool RoomRuntime::initialize(QString *error)
     if (!m_lua.loadScript(QStringLiteral("lua/ai/smart-ai.lua"), error))
         return false;
 
-    const QSet<const void *> currentAddresses = globalCardLifetimeManager().entryAddresses();
+    const QSet<const void *> currentAddresses =
+        globalCardLifetimeManager().entryAddressesForDomain(this);
     for (const void *address : currentAddresses)
         if (const auto token = globalCardLifetimeManager().liveToken(address))
             if ((!m_baselineTokenEntries.contains(address)
