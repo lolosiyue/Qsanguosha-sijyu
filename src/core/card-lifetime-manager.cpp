@@ -1629,6 +1629,16 @@ QSet<const void *> CardLifetimeManager::entryAddresses() const
     return addresses;
 }
 
+QSet<const void *> CardLifetimeManager::entryAddressesForDomain(const void *domain) const
+{
+    QMutexLocker lock(&m_mutex);
+    QSet<const void *> addresses;
+    for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it)
+        if (it->domain == domain && it->baselineDomain != domain)
+            addresses.insert(it.key());
+    return addresses;
+}
+
 quint64 CardLifetimeManager::entryCountForDomain(const void *domain) const
 {
     QMutexLocker lock(&m_mutex);
