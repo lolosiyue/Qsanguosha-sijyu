@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.28)
 project(QSanguosha LANGUAGES C CXX)
 
 include(CTest)
+include(GNUInstallDirs)
 
 if(WIN32)
     if(NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
@@ -255,7 +256,14 @@ add_executable(qsanguosha_server
     src/server-main.cpp
     src/server/server-command-line.cpp
     src/server/server-command-line.h
+    src/server/server-config.cpp
+    src/server/server-config.h
+    src/server/server-console.cpp
+    src/server/server-console.h
+    src/server/server-logger.cpp
+    src/server/server-logger.h
     src/server/server-core.h
+    src/server/server-status.h
 )
 set_source_files_properties(src/server/server-core.h PROPERTIES SKIP_AUTOMOC OFF)
 target_include_directories(qsanguosha_server PRIVATE
@@ -307,6 +315,31 @@ add_custom_target(deploy-server
     DEPENDS qsanguosha_server
     VERBATIM
 )
+
+if(UNIX)
+    set(QSAN_SYSTEMD_SERVICE_FILE
+        "${CMAKE_CURRENT_BINARY_DIR}/qsanguosha-server.service")
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/packaging/systemd/qsanguosha-server.service.in"
+        "${QSAN_SYSTEMD_SERVICE_FILE}"
+        @ONLY
+    )
+    install(TARGETS qsanguosha_server
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    )
+    install(DIRECTORY lua extensions
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/qsanguosha"
+    )
+    install(FILES docs/server.ini.example
+        DESTINATION "${CMAKE_INSTALL_DOCDIR}"
+    )
+    install(FILES docs/linux-development-environment.md
+        DESTINATION "${CMAKE_INSTALL_DOCDIR}"
+    )
+    install(FILES "${QSAN_SYSTEMD_SERVICE_FILE}"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/systemd/system"
+    )
+endif()
 
 if(WIN32)
 qt_add_executable(QSanguosha WIN32

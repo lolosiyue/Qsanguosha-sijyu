@@ -1,0 +1,37 @@
+[Unit]
+Description=QSanguosha dedicated server
+Documentation=file://@CMAKE_INSTALL_FULL_DOCDIR@/linux-development-environment.md
+After=network.target
+ConditionPathExists=/etc/qsanguosha/server.ini
+
+[Service]
+Type=simple
+DynamicUser=yes
+ConfigurationDirectory=qsanguosha
+StateDirectory=qsanguosha
+LogsDirectory=qsanguosha
+WorkingDirectory=/var/lib/qsanguosha
+BindReadOnlyPaths=@CMAKE_INSTALL_FULL_DATADIR@/qsanguosha/lua:/var/lib/qsanguosha/lua
+BindReadOnlyPaths=@CMAKE_INSTALL_FULL_DATADIR@/qsanguosha/extensions:/var/lib/qsanguosha/extensions
+Environment=XDG_CONFIG_HOME=/var/lib/qsanguosha/config
+ExecStart=@CMAKE_INSTALL_FULL_BINDIR@/qsanguosha_server --config /etc/qsanguosha/server.ini --log-level info --log-format text
+Restart=on-failure
+RestartSec=5s
+KillSignal=SIGTERM
+TimeoutStopSec=45s
+StandardOutput=journal
+StandardError=journal
+UMask=0027
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictRealtime=yes
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

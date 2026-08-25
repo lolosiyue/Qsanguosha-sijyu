@@ -72,6 +72,8 @@ add_executable(qsanguosha_cli_tests
     server-command-line-test.cpp
     ${QSAN_TEST_ROOT}/src/server/server-command-line.cpp
     ${QSAN_TEST_ROOT}/src/server/server-command-line.h
+    ${QSAN_TEST_ROOT}/src/server/server-config.cpp
+    ${QSAN_TEST_ROOT}/src/server/server-config.h
 )
 target_include_directories(qsanguosha_cli_tests PRIVATE
     ${QSAN_TEST_ROOT}/src/server
@@ -80,6 +82,29 @@ target_link_libraries(qsanguosha_cli_tests PRIVATE Qt6::Core Qt6::Network)
 qsan_add_ctest(qsanguosha_server_cli_parser qsanguosha_cli_tests
     LABELS "cli;fast"
 )
+add_executable(qsanguosha_server_logger_tests
+    server-logger-test.cpp
+    ${QSAN_TEST_ROOT}/src/server/server-logger.cpp
+    ${QSAN_TEST_ROOT}/src/server/server-logger.h
+)
+target_include_directories(qsanguosha_server_logger_tests PRIVATE
+    ${QSAN_TEST_ROOT}/src/server
+)
+target_link_libraries(qsanguosha_server_logger_tests PRIVATE Qt6::Core)
+qsan_add_ctest(qsanguosha_server_logging qsanguosha_server_logger_tests
+    LABELS "logging;server;fast"
+)
+if(UNIX)
+    add_test(NAME qsanguosha_systemd_unit
+        COMMAND "${Python3_EXECUTABLE}"
+            "${QSAN_TEST_ROOT}/tests/systemd-unit-test.py"
+            --service "${QSAN_SYSTEMD_SERVICE_FILE}"
+    )
+    set_tests_properties(qsanguosha_systemd_unit PROPERTIES
+        WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
+        LABELS "packaging;server;fast"
+    )
+endif()
 add_test(NAME qsanguosha_server_cli_help COMMAND qsanguosha_server --help)
 set_tests_properties(qsanguosha_server_cli_help PROPERTIES
     WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
@@ -92,6 +117,77 @@ set_tests_properties(qsanguosha_server_cli_version PROPERTIES
     LABELS "cli;fast"
     PASS_REGULAR_EXPRESSION "qsanguosha_server [0-9]+"
 )
+add_test(NAME qsanguosha_server_config_check
+    COMMAND qsanguosha_server
+        --config ${QSAN_TEST_ROOT}/docs/server.ini.example
+        --check-config
+)
+set_tests_properties(qsanguosha_server_config_check PROPERTIES
+    WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
+    LABELS "cli;server"
+    PASS_REGULAR_EXPRESSION "Configuration OK"
+)
+add_test(NAME qsanguosha_server_config_precedence
+    COMMAND qsanguosha_server
+        --config ${QSAN_TEST_ROOT}/docs/server.ini.example
+        --port 19527
+        --print-config
+        --json
+)
+set_tests_properties(qsanguosha_server_config_precedence PROPERTIES
+    WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
+    LABELS "cli;server"
+    PASS_REGULAR_EXPRESSION "\"DisableChat\": true.*\"GameMode\": \"10p\".*\"ServerPort\": 19527"
+)
+if(UNIX)
+    add_test(NAME qsanguosha_server_console
+        COMMAND bash ${QSAN_TEST_ROOT}/tools/ci/server-console-smoke.sh
+            $<TARGET_FILE:qsanguosha_server>
+            ${CMAKE_CURRENT_BINARY_DIR}/server-console-smoke.log
+    )
+    set_tests_properties(qsanguosha_server_console PROPERTIES
+        WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
+        LABELS "cli;server;smoke"
+        TIMEOUT 45
+    )
+    add_test(NAME qsanguosha_server_logging_smoke
+        COMMAND bash ${QSAN_TEST_ROOT}/tools/ci/server-logging-smoke.sh
+            $<TARGET_FILE:qsanguosha_server>
+            ${CMAKE_CURRENT_BINARY_DIR}/server-logging-smoke.log
+    )
+    set_tests_properties(qsanguosha_server_logging_smoke PROPERTIES
+        WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
+        LABELS "logging;server;smoke"
+        TIMEOUT 45
+    )
+endif()
+
+if(UNIX)
+    add_executable(qsanguosha_network_integration_tests
+        server-network-integration-test.cpp
+    )
+    target_include_directories(qsanguosha_network_integration_tests PRIVATE
+        ${QSAN_TEST_ROOT}/src/core
+    )
+    target_link_libraries(qsanguosha_network_integration_tests PRIVATE
+        qsanguosha_engine
+        Qt6::Core
+        Qt6::Network
+    )
+    foreach(network_level RANGE 1 3)
+        add_test(NAME qsanguosha_network_integration_level${network_level}
+            COMMAND qsanguosha_network_integration_tests
+                --level ${network_level}
+                --server $<TARGET_FILE:qsanguosha_server>
+        )
+        set_tests_properties(qsanguosha_network_integration_level${network_level} PROPERTIES
+            WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
+            LABELS "network;server;integration"
+            RUN_SERIAL TRUE
+            TIMEOUT 360
+        )
+    endforeach()
+endif()
 
 add_executable(qsanguosha_runtime_tests
     runtime-tests-main.cpp

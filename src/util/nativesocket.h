@@ -14,6 +14,8 @@ public:
 
     virtual bool listen();
     virtual void daemonize();
+    QString listeningAddress() const override;
+    quint16 listeningPort() const override;
 
 private slots:
     void processNewConnection();
@@ -51,4 +53,3 @@ private:
 };
 
 #endif
-

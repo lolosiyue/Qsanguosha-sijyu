@@ -1,0 +1,105 @@
+; Linux dedicated server overlay. Copy this file and pass it with:
+;   qsanguosha_server --config server.ini
+; Values here override the normal QSettings file but are never written back.
+
+[General]
+ServerName=QSanguosha Linux Server
+GameMode=10p
+BindAddress=any-ipv4
+ServerPort=9527
+DetectorPort=9526
+Address=
+OperationTimeout=15
+OperationNoLimit=false
+CountDownSeconds=3
+NullificationCountDown=8
+
+BanPackages=nostalgia, test
+RandomSeat=true
+EnableCheat=false
+FreeChoose=false
+FreeAssign=false
+FreeAssignSelf=false
+ForbidSIMC=true
+DisableChat=true
+Enable2ndGeneral=false
+EnableSame=false
+EnableBasara=false
+EnableHegemony=false
+EnableMeleeMode=false
+MaxHpScheme=0
+Scheme0Subtraction=3
+PreventAwakenBelow3=false
+PileSwappingLimitation=5
+WithoutLordskill=false
+EnableSPConvert=true
+MaxChoice=5
+LordMaxChoice=-1
+NonLordMaxChoice=2
+HegemonyMaxChoice=7
+HegemonyMaxShown=2
+HegemonyCompanionReward=Postponed
+
+EnableAI=true
+AIChat=true
+AIHumanized=true
+OriginAIDelay=1000
+AlterAIDelayAD=false
+AIDelayAD=0
+SurrenderAtDeath=false
+EnableLuckCard=false
+LuckCardTimes=-1
+DisableLua=false
+AddGodGeneral=true
+BannedIP=
+ForbidPackages=
+OfficialServer=false
+EnableOracleConcepts=true
+MiniSceneStage=1
+jiange_seat=0
+fuck_god_spinbox=3
+; LuaPackages uses a '+' separated extension list. Leave it absent to inherit QSettings.
+; LuaPackages=extension_a+extension_b
+
+; BossModeDifficulty is a bitmask: revive=1, recover=2, draw=4,
+; reward=8, increase max HP=16, decrease max HP=32.
+BossModeDifficulty=0
+BossYanluo=false
+BossModeExp=false
+OptionalBoss=false
+BossModeEndless=false
+BossModeTurnLimit=70
+
+[1v1]
+Rule=2013
+UsingExtension=false
+UsingCardExtension=false
+
+[3v3]
+OfficialRule=2013
+UsingExtension=false
+RoleChoose=Normal
+ExcludeDisasters=true
+ExtensionGenerals=
+
+[XMode]
+RoleChooseX=Normal
+
+[Banlist]
+Roles=
+1v1=
+Doudizhu=
+Happy2v2=
+BossMode=
+Basara=
+Hegemony=
+Pairs=
+Cards=
+Zombie=
+; Leave these absent to inherit the mode defaults loaded from Lua.
+; 05_ol=general_a, general_b
+; 06_ol=general_a, general_b
+
+[serverconfig]
+upnp=false
+addtolistserver=false

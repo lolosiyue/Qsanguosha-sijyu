@@ -14,6 +14,7 @@ class QtUpnpPortMapping;
 #include <QtCore>
 #include <QtNetwork>
 #include "game-session-config.h"
+#include "server-status.h"
 #if !defined(QSAN_SERVER_CORE_ONLY)
 #include <QtWidgets>
 #endif
@@ -244,6 +245,11 @@ public:
     static bool configureGameSeed(const QString &seedText, QString *error = nullptr);
 
     void broadcast(const QString &msg);
+    ServerStatusSnapshot statusSnapshot() const;
+    QList<RoomStatusSnapshot> roomSnapshots() const;
+    QList<PlayerStatusSnapshot> playerSnapshots() const;
+    bool kickPlayer(const QString &id);
+    void broadcastAdminMessage(const QString &message);
     bool listen();
     QStringList startupMessages() const;
     void daemonize();
@@ -269,6 +275,8 @@ private:
     bool created_successfully;
 	int playerCount;
     quint64 m_nextGameSeedIndex;
+    QElapsedTimer m_uptimeTimer;
+    QHash<Room *, qint64> m_roomCreatedAtMs;
 
     static bool s_hasGameSeed;
     static quint64 s_gameSeedBase;
@@ -293,11 +301,13 @@ private slots:
 
 signals:
     void logMessage(const QString &message);
+    void roomLogMessage(int roomId, const QString &message);
     void server_message(const QString &);
     void newPlayer(ServerPlayer *player);
+    void playerJoined(const QString &playerId, const QString &playerName, int roomId);
     // 自動化測試: 房間對局開始/結束標記
-    void roomGameStarted();
-    void roomGameOver(const QString &winner);
+    void roomGameStarted(int roomId, const QString &mode);
+    void roomGameOver(int roomId, const QString &mode, const QString &winner);
 };
 #endif
 

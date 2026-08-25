@@ -150,6 +150,7 @@ public:
     void retainEventPayload(const void *owner,
                             std::initializer_list<const Card *> cards);
     void releaseEventPayload(const void *owner);
+    quint64 releaseEventPayloads(const void *domain);
     bool retainVariantPayload(const void *owner, const QVariant &value, QByteArray *error = nullptr);
     bool retainVariantTag(const void *container, const QByteArray &key, const QVariant &value,
                           QByteArray *error = nullptr);
