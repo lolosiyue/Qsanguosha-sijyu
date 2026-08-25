@@ -282,6 +282,7 @@ void Settings::init()
     SurrenderAtDeath = value("SurrenderAtDeath", false).toBool();
     EnableLuckCard = value("EnableLuckCard", false).toBool();
     ServerPort = value("ServerPort", 9527u).toUInt();
+    BindAddress = value("BindAddress", "any").toString().trimmed().toLower();
     DisableLua = value("DisableLua", false).toBool();
     AddGodGeneral = value("AddGodGeneral", true).toBool();
 
@@ -425,8 +426,9 @@ QByteArray buildGameConfigSummary()
     auto onOff = [](bool b) { return b ? "開" : "關"; };
 
     QStringList lines;
-    lines << QString("伺服器: 名稱='%1'  端口=%2  局時=%3 秒  無懈=%4 秒")
+    lines << QString("伺服器: 名稱='%1'  綁定=%2:%3  局時=%4 秒  無懈=%5 秒")
         .arg(Config.ServerName)
+        .arg(Config.BindAddress)
         .arg(Config.ServerPort)
         .arg(Config.CountDownSeconds)
         .arg(Config.NullificationCountDown);
@@ -476,4 +478,3 @@ void stashGameConfigForCrash()
     QByteArray ba = buildGameConfigSummary();
     CrashHandler::setGameConfig(ba.constData());
 }
-

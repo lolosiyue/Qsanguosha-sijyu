@@ -100,6 +100,7 @@ add_library(qsanguosha_engine STATIC
     src/core/ai-data-store.h
     src/core/engine.cpp
     src/core/engine.h
+    src/core/version.h
     src/core/engine-bootstrap.cpp
     src/core/engine-bootstrap.h
     src/core/general.cpp
@@ -252,6 +253,8 @@ endforeach()
 
 add_executable(qsanguosha_server
     src/server-main.cpp
+    src/server/server-command-line.cpp
+    src/server/server-command-line.h
     src/server/server-core.h
 )
 set_source_files_properties(src/server/server-core.h PROPERTIES SKIP_AUTOMOC OFF)

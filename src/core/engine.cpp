@@ -1,4 +1,5 @@
 #include "engine.h"
+#include "version.h"
 #include "ai-data-store.h"
 #include "aux-skills.h"
 #ifdef AUDIO_SUPPORT
@@ -1377,7 +1378,7 @@ SkillCard*Engine::cloneSkillCard(const QString &name) const
 #ifndef USE_BUILDBOT
 QString Engine::getVersionNumber() const
 {
-    return "20251231";
+    return QString::fromLatin1(QSanVersion::Number);
 }
 #endif
 

@@ -64,11 +64,17 @@ cmake -S . -B build-linux-clang -G Ninja -DCMAKE_BUILD_TYPE=Debug \
 cmake --build build-linux-clang
 ```
 
-Run the server, optional `--game-mode`, `--seed`, `--autotest-log`:
+Inspect the CLI and start a server with one-run overrides:
 
 ```bash
-./qsanguosha_server [--game-mode 10p] [--seed 12345] [--autotest-log /tmp/autotest.log]
+./qsanguosha_server --help
+./qsanguosha_server --list-game-modes
+./qsanguosha_server --bind-address 0.0.0.0 --port 9527 \
+    --game-mode 10p --server-name "Linux server"
 ```
+
+CLI values override the saved settings for the current process only. Use
+`--print-config` to inspect the effective values before listening.
 
 CTest:
 
