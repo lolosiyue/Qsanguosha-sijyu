@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - debug
     paths-ignore:
       - 'docs/**'
       - 'memory/**'
@@ -11,6 +12,7 @@ on:
   push:
     branches:
       - main
+      - debug
     paths-ignore:
       - 'docs/**'
       - 'memory/**'
@@ -92,6 +94,15 @@ jobs:
 
       - name: Build with ${{ matrix.compiler.name }}
         run: cmake --build 'build/linux-${{ matrix.compiler.id }}' --parallel
+
+      - name: Build and verify deploy-server
+        run: |
+          cmake --build 'build/linux-${{ matrix.compiler.id }}' \
+            --target deploy-server \
+            --parallel
+          test -x relwithdebinfo/qsanguosha_server
+          test -d relwithdebinfo/lua
+          test -f relwithdebinfo/lua/sanguosha.lua
 
       - name: Run CTest
         run: |
