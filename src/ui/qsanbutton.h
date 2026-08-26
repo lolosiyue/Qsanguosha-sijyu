@@ -84,6 +84,7 @@ signals:
 class QSanSkillButton : public QSanButton
 {
     Q_OBJECT
+    friend class LocalResponseUiProbe;
 
 public:
     enum SkillType

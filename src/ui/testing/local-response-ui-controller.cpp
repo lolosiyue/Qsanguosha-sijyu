@@ -1,0 +1,940 @@
+#include "local-response-ui-controller.h"
+
+#include "card.h"
+#include "client.h"
+#include "clientplayer.h"
+#include "engine.h"
+#include "local-response-ui-probe.h"
+#include "roomscene.h"
+#include "server-info.h"
+#include "settings.h"
+#include "structs.h"
+#include "test-client-socket.h"
+
+#include <QApplication>
+#include <QDir>
+#include <QElapsedTimer>
+#include <QEventLoop>
+#include <QFileInfo>
+#include <QFrame>
+#include <QGraphicsView>
+#include <QImage>
+#include <QJsonDocument>
+#include <QMainWindow>
+#include <QMetaEnum>
+#include <QMutex>
+#include <QMutexLocker>
+#include <QPainter>
+#include <QSaveFile>
+#include <QTimer>
+
+using namespace QSanProtocol;
+
+namespace {
+
+QJsonArray *localUiQtMessages = nullptr;
+QtMessageHandler previousMessageHandler = nullptr;
+QMutex localUiMessageMutex;
+
+QString qtMessageTypeName(QtMsgType type)
+{
+    switch (type) {
+    case QtDebugMsg: return QStringLiteral("debug");
+    case QtInfoMsg: return QStringLiteral("info");
+    case QtWarningMsg: return QStringLiteral("warning");
+    case QtCriticalMsg: return QStringLiteral("critical");
+    case QtFatalMsg: return QStringLiteral("fatal");
+    }
+    return QStringLiteral("unknown");
+}
+
+void localUiMessageHandler(QtMsgType type, const QMessageLogContext &context,
+    const QString &message)
+{
+    {
+        QMutexLocker locker(&localUiMessageMutex);
+        if (localUiQtMessages) {
+            QJsonObject item;
+            item.insert(QStringLiteral("type"), qtMessageTypeName(type));
+            item.insert(QStringLiteral("message"), message);
+            item.insert(QStringLiteral("category"), QString::fromUtf8(context.category));
+            if (context.file)
+                item.insert(QStringLiteral("file"), QString::fromUtf8(context.file));
+            if (context.line > 0)
+                item.insert(QStringLiteral("line"), context.line);
+            localUiQtMessages->append(item);
+        }
+    }
+    if (previousMessageHandler)
+        previousMessageHandler(type, context, message);
+}
+
+QString argumentValue(const QStringList &arguments, const QString &name)
+{
+    const int index = arguments.indexOf(name);
+    if (index >= 0 && index + 1 < arguments.size())
+        return arguments.at(index + 1);
+    const QString prefix = name + QLatin1Char('=');
+    for (const QString &argument : arguments) {
+        if (argument.startsWith(prefix))
+            return argument.mid(prefix.size());
+    }
+    return QString();
+}
+
+QString jsonScalarText(const QJsonValue &value)
+{
+    if (value.isBool())
+        return value.toBool() ? QStringLiteral("true") : QStringLiteral("false");
+    if (value.isDouble())
+        return QString::number(value.toInt());
+    return value.toString();
+}
+
+QString clientStatusName(Client::Status status)
+{
+    const int index = Client::staticMetaObject.indexOfEnumerator("Status");
+    const QMetaEnum statusEnum = Client::staticMetaObject.enumerator(index);
+    const char *key = statusEnum.valueToKey(status);
+    return key ? QString::fromLatin1(key) : QString::number(status);
+}
+
+bool jsonArraysEqual(const QJsonArray &left, const QJsonArray &right)
+{
+    return QJsonDocument(left).toJson(QJsonDocument::Compact)
+        == QJsonDocument(right).toJson(QJsonDocument::Compact);
+}
+
+} // namespace
+
+LocalResponseUiController::LocalResponseUiController(QObject *parent)
+    : QObject(parent), m_timeoutMs(3000), m_showUi(false),
+      m_screenshotOnFailure(false), m_client(nullptr), m_socket(nullptr),
+      m_mainWindow(nullptr), m_scene(nullptr), m_probe(nullptr)
+{
+}
+
+LocalResponseUiController::~LocalResponseUiController()
+{
+    delete m_probe;
+    delete m_mainWindow;
+}
+
+int LocalResponseUiController::run(const QStringList &arguments)
+{
+    LocalResponseUiController *controller = new LocalResponseUiController(qApp);
+    localUiQtMessages = &controller->m_qtMessages;
+    previousMessageHandler = qInstallMessageHandler(localUiMessageHandler);
+    QString error;
+    if (!controller->configure(arguments, &error)) {
+        qCritical().noquote() << error;
+        if (!controller->m_reportPath.isEmpty()) {
+            controller->m_report.insert(QStringLiteral("schema_version"), 1);
+            controller->m_report.insert(QStringLiteral("result"), QStringLiteral("FAIL"));
+            controller->m_report.insert(QStringLiteral("failed_stage"), QStringLiteral("schema"));
+            controller->m_report.insert(QStringLiteral("error"), error);
+            controller->m_report.insert(QStringLiteral("qt_messages"), controller->m_qtMessages);
+            QString writeError;
+            controller->writeReport(&writeError);
+        }
+        qInstallMessageHandler(previousMessageHandler);
+        previousMessageHandler = nullptr;
+        localUiQtMessages = nullptr;
+        delete controller;
+        return InvalidCase;
+    }
+
+    QTimer::singleShot(0, controller, &LocalResponseUiController::execute);
+    const int exitCode = qApp->exec();
+    qInstallMessageHandler(previousMessageHandler);
+    previousMessageHandler = nullptr;
+    localUiQtMessages = nullptr;
+    delete controller;
+    return exitCode;
+}
+
+bool LocalResponseUiController::configure(const QStringList &arguments, QString *error)
+{
+    m_casePath = argumentValue(arguments, QStringLiteral("--local-response-ui-case"));
+    m_reportPath = argumentValue(arguments, QStringLiteral("--local-response-ui-report"));
+    m_screenshotDir = argumentValue(arguments, QStringLiteral("--screenshot-dir"));
+    m_showUi = arguments.contains(QStringLiteral("--show-ui"));
+    m_screenshotOnFailure = arguments.contains(QStringLiteral("--screenshot-on-failure"));
+
+    const QString timeoutText = argumentValue(arguments, QStringLiteral("--case-timeout-ms"));
+    if (!timeoutText.isEmpty()) {
+        bool ok = false;
+        const int timeout = timeoutText.toInt(&ok);
+        if (!ok || timeout <= 0) {
+            *error = QStringLiteral("--case-timeout-ms must be a positive integer");
+            return false;
+        }
+        m_timeoutMs = timeout;
+    }
+
+    if (m_casePath.isEmpty()) {
+        *error = QStringLiteral("--local-response-ui-case requires a path");
+        return false;
+    }
+    if (!LocalResponseUiCase::load(m_casePath, &m_case, error))
+        return false;
+
+    if (m_reportPath.isEmpty())
+        m_reportPath = QDir::current().filePath(QStringLiteral("artifacts/skill-ui/%1/report.json").arg(m_case.name()));
+    if (m_screenshotDir.isEmpty())
+        m_screenshotDir = QFileInfo(m_reportPath).absolutePath();
+    return true;
+}
+
+bool LocalResponseUiController::bootstrap(QString *error)
+{
+    const QJsonArray packages = m_case.root().value(QStringLiteral("packages")).toArray();
+    for (const QJsonValue &value : packages) {
+        const QString packageName = value.toString();
+        if (!Sanguosha->getPackage(packageName)) {
+            *error = QStringLiteral("required package '%1' is not loaded").arg(packageName);
+            return false;
+        }
+    }
+
+    const QJsonObject bootstrapObject = m_case.bootstrap();
+    const QString modeId = bootstrapObject.value(QStringLiteral("mode")).toString(QStringLiteral("02p"));
+    const GameModeStruct mode = Sanguosha->getGameMode(modeId);
+    if (!mode.isValid()) {
+        *error = QStringLiteral("unknown bootstrap mode '%1'").arg(modeId);
+        return false;
+    }
+    ServerInfo.GameMode = modeId;
+    Config.GameMode = modeId;
+
+    const QJsonObject selfObject = bootstrapObject.value(QStringLiteral("self")).toObject();
+    const QString selfName = selfObject.value(QStringLiteral("object_name")).toString(QStringLiteral("self"));
+
+    m_socket = new TestClientSocket;
+    m_client = new Client(this, QString(), m_socket);
+    Self->setObjectName(selfName);
+    Self->setScreenName(selfObject.value(QStringLiteral("screen_name")).toString(QStringLiteral("Tester")));
+
+    m_mainWindow = new QMainWindow;
+    if (!m_showUi)
+        m_mainWindow->setAttribute(Qt::WA_DontShowOnScreen);
+    m_scene = new RoomScene(m_mainWindow);
+    QGraphicsView *view = new QGraphicsView(m_scene, m_mainWindow);
+    view->setFrameStyle(QFrame::NoFrame);
+    view->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    view->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_mainWindow->setCentralWidget(view);
+    m_mainWindow->resize(1280, 720);
+    m_mainWindow->show();
+    m_scene->adjustItems();
+    flushEvents();
+
+    const QJsonArray players = bootstrapObject.value(QStringLiteral("players")).toArray();
+    for (const QJsonValue &value : players) {
+        const QJsonObject player = value.toObject();
+        const QString name = player.value(QStringLiteral("object_name")).toString();
+        const QString screenName = player.value(QStringLiteral("screen_name")).toString(name);
+        const QString avatar = player.value(QStringLiteral("general")).toString(QStringLiteral("caocao"));
+        if (name.isEmpty()) {
+            *error = QStringLiteral("bootstrap player object_name is empty");
+            return false;
+        }
+        JsonArray body;
+        body << name << QString::fromLatin1(screenName.toUtf8().toBase64()) << avatar;
+        injectNotification(S_COMMAND_ADD_PLAYER, body);
+    }
+
+    auto setProperties = [this](const QString &name, const QJsonObject &player) {
+        static const QMap<QString, QString> properties {
+            { QStringLiteral("general"), QStringLiteral("general") },
+            { QStringLiteral("general2"), QStringLiteral("general2") },
+            { QStringLiteral("hp"), QStringLiteral("hp") },
+            { QStringLiteral("max_hp"), QStringLiteral("maxhp") },
+            { QStringLiteral("maxhp"), QStringLiteral("maxhp") },
+            { QStringLiteral("phase"), QStringLiteral("phase") },
+            { QStringLiteral("alive"), QStringLiteral("alive") },
+            { QStringLiteral("state"), QStringLiteral("state") }
+        };
+        for (auto property = properties.cbegin(); property != properties.cend(); ++property) {
+            if (!player.contains(property.key()))
+                continue;
+            JsonArray body;
+            body << name << property.value() << jsonScalarText(player.value(property.key()));
+            injectNotification(S_COMMAND_SET_PROPERTY, body);
+        }
+        const QJsonObject marks = player.value(QStringLiteral("marks")).toObject();
+        for (auto mark = marks.constBegin(); mark != marks.constEnd(); ++mark)
+            injectNotification(S_COMMAND_SET_MARK, JsonArray() << name << mark.key() << mark.value().toInt());
+        for (const QJsonValue &flag : player.value(QStringLiteral("flags")).toArray())
+            injectNotification(S_COMMAND_SET_PROPERTY,
+                JsonArray() << name << QStringLiteral("flags") << flag.toString());
+    };
+    JsonArray seats;
+    seats << selfName;
+    for (const QJsonValue &value : players)
+        seats << value.toObject().value(QStringLiteral("object_name")).toString();
+    injectNotification(S_COMMAND_ARRANGE_SEATS, seats);
+
+    // The production client registers its EngineRuntimeContext only when the
+    // room sends GAME_START. All request UI paths read the current RoomState.
+    injectNotification(S_COMMAND_GAME_START, JsonArray());
+
+    setProperties(selfName, selfObject);
+    for (const QJsonValue &value : players) {
+        const QJsonObject player = value.toObject();
+        setProperties(player.value(QStringLiteral("object_name")).toString(), player);
+    }
+
+    const QJsonArray skills = selfObject.value(QStringLiteral("skills")).toArray();
+    for (const QJsonValue &value : skills) {
+        const QString skillName = value.toString();
+        if (!Sanguosha->getSkill(skillName)) {
+            *error = QStringLiteral("bootstrap skill '%1' is not loaded").arg(skillName);
+            return false;
+        }
+        injectNotification(S_COMMAND_ATTACH_SKILL, JsonArray() << selfName << skillName);
+    }
+
+    if (!resolveCards(error))
+        return false;
+    m_probe = new LocalResponseUiProbe(m_client, m_scene, m_aliasToId);
+    flushEvents();
+    return true;
+}
+
+bool LocalResponseUiController::resolveCards(QString *error)
+{
+    const QJsonArray cards = m_case.bootstrap().value(QStringLiteral("cards")).toArray();
+    QSet<int> usedIds;
+    QMap<Player::Place, QList<int>> moves;
+    QJsonArray resolved;
+
+    for (const QJsonValue &value : cards) {
+        const QJsonObject cardObject = value.toObject();
+        const QString alias = cardObject.value(QStringLiteral("alias")).toString();
+        const QString name = cardObject.value(QStringLiteral("name")).toString();
+        const QString suit = cardObject.value(QStringLiteral("suit")).toString().toLower();
+        const int number = cardObject.value(QStringLiteral("number")).toInt(-1);
+        int resolvedId = -1;
+        const Card *resolvedCard = nullptr;
+        for (int id = 0; id < Sanguosha->getCardCount(); ++id) {
+            const Card *candidate = Sanguosha->getEngineCard(id);
+            if (!candidate || usedIds.contains(id))
+                continue;
+            if (candidate->objectName() == name
+                && candidate->getSuitString().toLower() == suit
+                && candidate->getNumber() == number) {
+                resolvedId = id;
+                resolvedCard = candidate;
+                break;
+            }
+        }
+        const QString owner = cardObject.value(QStringLiteral("owner")).toString(Self->objectName());
+        if (owner != Self->objectName()) {
+            *error = QStringLiteral("card '%1' owner '%2' is unsupported; MVP cards must belong to self")
+                .arg(alias, owner);
+            return false;
+        }
+        if (alias.isEmpty() || m_aliasToId.contains(alias) || resolvedId < 0) {
+            *error = QStringLiteral("cannot resolve exact physical card '%1' (%2 %3 %4)")
+                .arg(alias, name, suit).arg(number);
+            return false;
+        }
+        usedIds.insert(resolvedId);
+        m_aliasToId.insert(alias, resolvedId);
+        const QString placeName = cardObject.value(QStringLiteral("place")).toString(QStringLiteral("hand"));
+        if (placeName != QStringLiteral("hand") && placeName != QStringLiteral("equip")) {
+            *error = QStringLiteral("card '%1' place '%2' is unsupported; MVP cards must be in hand or equip")
+                .arg(alias, placeName);
+            return false;
+        }
+        const Player::Place place = placeName == QStringLiteral("equip")
+            ? Player::PlaceEquip : Player::PlaceHand;
+        moves[place] << resolvedId;
+
+        QJsonObject item;
+        item.insert(QStringLiteral("alias"), alias);
+        item.insert(QStringLiteral("card_id"), resolvedId);
+        item.insert(QStringLiteral("object_name"), resolvedCard->objectName());
+        item.insert(QStringLiteral("suit"), resolvedCard->getSuitString());
+        item.insert(QStringLiteral("number"), resolvedCard->getNumber());
+        resolved.append(item);
+    }
+
+    JsonArray movePayload;
+    movePayload << 1;
+    for (auto it = moves.cbegin(); it != moves.cend(); ++it) {
+        CardsMoveStruct move;
+        move.card_ids = it.value();
+        move.from_place = Player::PlaceTable;
+        move.to_place = it.key();
+        move.to_player_name = Self->objectName();
+        move.open = true;
+        movePayload << move.toVariant();
+    }
+    if (movePayload.size() > 1) {
+        injectNotification(S_COMMAND_LOSE_CARD, movePayload);
+        injectNotification(S_COMMAND_GET_CARD, movePayload);
+    }
+
+    QJsonObject bootstrapReport;
+    bootstrapReport.insert(QStringLiteral("resolved_cards"), resolved);
+    m_report.insert(QStringLiteral("bootstrap"), bootstrapReport);
+    return true;
+}
+
+void LocalResponseUiController::injectNotification(CommandType command, const QVariant &body)
+{
+    Packet packet(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT, command);
+    packet.setMessageBody(body);
+    m_socket->injectServerPacket(QString::fromUtf8(packet.toJson()));
+}
+
+void LocalResponseUiController::execute()
+{
+    m_report.insert(QStringLiteral("schema_version"), 1);
+    m_report.insert(QStringLiteral("case"), m_case.name());
+    m_report.insert(QStringLiteral("result"), QStringLiteral("FAIL"));
+    m_report.insert(QStringLiteral("qt_messages"), m_qtMessages);
+    m_report.insert(QStringLiteral("artifacts"), QJsonObject());
+
+    QString error;
+    if (!bootstrap(&error)) {
+        finish(SetupFailed, QStringLiteral("bootstrap"), error);
+        return;
+    }
+
+    Packet requestPacket;
+    QString commandName;
+    QVariant requestBody;
+    if (!m_case.makeRequestPacket(&requestPacket, &commandName, &requestBody, &error)) {
+        finish(InvalidCase, QStringLiteral("request"), error);
+        return;
+    }
+
+    QJsonObject requestReport;
+    requestReport.insert(QStringLiteral("command"), commandName);
+    requestReport.insert(QStringLiteral("global_serial"), static_cast<int>(requestPacket.globalSerial));
+    requestReport.insert(QStringLiteral("body"), QJsonValue::fromVariant(requestBody));
+    m_report.insert(QStringLiteral("request"), requestReport);
+
+    m_snapshots.insert(QStringLiteral("before_request"), m_probe->snapshot());
+    m_socket->clearSentPackets();
+    m_socket->injectServerPacket(QString::fromUtf8(requestPacket.toJson()));
+
+    const QJsonObject expectedPresented = m_case.presentedExpectation();
+    QString expectedStatus;
+    if (expectedPresented.value(QStringLiteral("client")).isObject())
+        expectedStatus = expectedPresented.value(QStringLiteral("client")).toObject()
+            .value(QStringLiteral("status")).toString();
+    if (expectedStatus.isEmpty())
+        expectedStatus = expectedPresented.value(QStringLiteral("client_status")).toString();
+    const bool presented = waitForCondition([this, expectedStatus]() {
+        if (!expectedStatus.isEmpty()
+            && clientStatusName(m_client->getStatus()) != expectedStatus) {
+            return false;
+        }
+        const QJsonObject dialogExpectation = m_case.presentedExpectation()
+            .value(QStringLiteral("dialog")).toObject();
+        if (dialogExpectation.value(QStringLiteral("open")).toBool(false))
+            return m_probe->snapshot().value(QStringLiteral("dialog")).toObject()
+                .value(QStringLiteral("open")).toBool();
+        return true;
+    }, m_timeoutMs);
+    if (!presented) {
+        finish(PresentationTimeout, QStringLiteral("expect_presented"),
+            QStringLiteral("request presentation timed out"));
+        return;
+    }
+
+    flushEvents();
+    const QJsonObject presentedSnapshot = m_probe->snapshot();
+    m_snapshots.insert(QStringLiteral("presented"), presentedSnapshot);
+    if (m_screenshotOnFailure || m_showUi)
+        captureScreenshot(QStringLiteral("presented"));
+    if (!validateSnapshot(expectedPresented, presentedSnapshot,
+        QStringLiteral("expect_presented"))) {
+        finish(AssertionFailed, QStringLiteral("expect_presented"),
+            QStringLiteral("presentation assertions failed"));
+        return;
+    }
+
+    if (!runActions(&error)) {
+        finish(AssertionFailed, QStringLiteral("actions"), error);
+        return;
+    }
+
+    if (!waitForCondition([this]() { return !m_socket->sentPackets().isEmpty(); }, m_timeoutMs)) {
+        finish(ReplyTimeout, QStringLiteral("reply"), QStringLiteral("reply timed out"));
+        return;
+    }
+    if (!validateReply(&error)) {
+        finish(AssertionFailed, QStringLiteral("expect_reply"), error);
+        return;
+    }
+
+    flushEvents();
+    const QJsonObject finalSnapshot = m_probe->snapshot();
+    m_snapshots.insert(QStringLiteral("final"), finalSnapshot);
+    if (!validateSnapshot(m_case.finalExpectation(), finalSnapshot,
+        QStringLiteral("expect_final"))) {
+        finish(AssertionFailed, QStringLiteral("expect_final"),
+            QStringLiteral("final-state assertions failed"));
+        return;
+    }
+    finish(Passed);
+}
+
+bool LocalResponseUiController::runActions(QString *error)
+{
+    const QJsonArray actions = m_case.actions();
+    for (int index = 0; index < actions.size(); ++index) {
+        const QJsonObject action = actions.at(index).toObject();
+        const QString type = action.value(QStringLiteral("type")).toString();
+        QString actionError;
+        bool ok = false;
+
+        if (type == QStringLiteral("select_card")) {
+            ok = m_probe->selectCard(action.value(QStringLiteral("card")).toString(), true, &actionError);
+        } else if (type == QStringLiteral("unselect_card")) {
+            ok = m_probe->selectCard(action.value(QStringLiteral("card")).toString(), false, &actionError);
+        } else if (type == QStringLiteral("activate_skill")) {
+            ok = m_probe->activateSkill(action.value(QStringLiteral("skill")).toString(), true, &actionError);
+        } else if (type == QStringLiteral("deactivate_skill")) {
+            ok = m_probe->activateSkill(action.value(QStringLiteral("skill")).toString(), false, &actionError);
+        } else if (type == QStringLiteral("select_player")) {
+            ok = m_probe->selectPlayer(action.value(QStringLiteral("player")).toString(), true, &actionError);
+        } else if (type == QStringLiteral("unselect_player")) {
+            ok = m_probe->selectPlayer(action.value(QStringLiteral("player")).toString(), false, &actionError);
+        } else if (type == QStringLiteral("click_ok") || type == QStringLiteral("invoke_skill_yes")) {
+            ok = m_probe->clickButton(QStringLiteral("ok"), &actionError);
+        } else if (type == QStringLiteral("click_cancel") || type == QStringLiteral("invoke_skill_no")) {
+            ok = m_probe->clickButton(QStringLiteral("cancel"), &actionError);
+        } else if (type == QStringLiteral("click_discard")) {
+            ok = m_probe->clickButton(QStringLiteral("discard"), &actionError);
+        } else if (type == QStringLiteral("choose_option")) {
+            ok = m_probe->chooseOption(action.value(QStringLiteral("option")).toString(), &actionError);
+        } else if (type == QStringLiteral("assert")) {
+            ok = validateSnapshot(action.value(QStringLiteral("expect")).toObject(),
+                m_probe->snapshot(), QStringLiteral("actions[%1].assert").arg(index));
+            if (!ok)
+                actionError = QStringLiteral("action assertion failed");
+        } else if (type == QStringLiteral("take_screenshot")) {
+            ok = !captureScreenshot(action.value(QStringLiteral("name"))
+                .toString(QStringLiteral("action_%1").arg(index))).isEmpty();
+            if (!ok)
+                actionError = QStringLiteral("screenshot could not be saved");
+        } else {
+            actionError = QStringLiteral("unsupported action '%1'").arg(type);
+        }
+
+        QJsonObject result;
+        result.insert(QStringLiteral("type"), type);
+        result.insert(QStringLiteral("status"), ok ? QStringLiteral("PASS") : QStringLiteral("FAIL"));
+        if (!actionError.isEmpty())
+            result.insert(QStringLiteral("error"), actionError);
+        m_actionResults.append(result);
+        flushEvents();
+        m_snapshots.insert(QStringLiteral("after_action_%1").arg(index + 1), m_probe->snapshot());
+        if (!ok) {
+            *error = QStringLiteral("action %1 (%2) failed: %3").arg(index).arg(type, actionError);
+            return false;
+        }
+    }
+    return true;
+}
+
+bool LocalResponseUiController::validateSnapshot(const QJsonObject &expected,
+    const QJsonObject &actual, const QString &path)
+{
+    bool passed = true;
+    for (auto it = expected.constBegin(); it != expected.constEnd(); ++it) {
+        const QString childPath = path.isEmpty() ? it.key() : path + QLatin1Char('.') + it.key();
+        if (it.key() == QStringLiteral("prompt")) {
+            passed = validatePrompt(it.value().toObject(), actual, childPath) && passed;
+        } else if (it.key() == QStringLiteral("cards")) {
+            passed = validateNamedStates(it.value().toObject(),
+                actual.value(QStringLiteral("cards")).toArray(), QStringLiteral("alias"), childPath) && passed;
+        } else if (it.key() == QStringLiteral("players")) {
+            passed = validateNamedStates(it.value().toObject(),
+                actual.value(QStringLiteral("players")).toArray(), QStringLiteral("object_name"), childPath) && passed;
+        } else if (it.key() == QStringLiteral("skills")) {
+            passed = validateNamedStates(it.value().toObject(),
+                actual.value(QStringLiteral("skills")).toArray(), QStringLiteral("object_name"), childPath) && passed;
+        } else if (it.key() == QStringLiteral("client_status")) {
+            passed = validateJsonValue(it.value(), actual.value(QStringLiteral("client")).toObject()
+                .value(QStringLiteral("status")), childPath) && passed;
+        } else if (it.key() == QStringLiteral("current_pattern")) {
+            passed = validateJsonValue(it.value(), actual.value(QStringLiteral("client")).toObject()
+                .value(QStringLiteral("pattern")), childPath) && passed;
+        } else if (it.key() == QStringLiteral("use_reason")) {
+            passed = validateJsonValue(it.value(), actual.value(QStringLiteral("client")).toObject()
+                .value(QStringLiteral("use_reason")), childPath) && passed;
+        } else {
+            passed = validateJsonValue(it.value(), actual.value(it.key()), childPath) && passed;
+        }
+    }
+    return passed;
+}
+
+bool LocalResponseUiController::validateJsonValue(const QJsonValue &expected,
+    const QJsonValue &actual, const QString &path)
+{
+    if (expected.isObject()) {
+        if (!actual.isObject()) {
+            recordAssertion(path, expected, actual, false);
+            return false;
+        }
+        return validateSnapshot(expected.toObject(), actual.toObject(), path);
+    }
+    if (expected.isArray()) {
+        const QJsonArray expectedArray = expected.toArray();
+        const QJsonArray actualArray = actual.toArray();
+        bool containsAll = true;
+        for (const QJsonValue &value : expectedArray)
+            containsAll = actualArray.contains(value) && containsAll;
+        recordAssertion(path, expected, actual, containsAll);
+        return containsAll;
+    }
+    const bool passed = expected == actual;
+    recordAssertion(path, expected, actual, passed);
+    return passed;
+}
+
+bool LocalResponseUiController::validatePrompt(const QJsonObject &expected,
+    const QJsonObject &snapshot, const QString &path)
+{
+    const QJsonObject client = snapshot.value(QStringLiteral("client")).toObject();
+    const QString plain = client.value(QStringLiteral("prompt_plain_text")).toString();
+    bool passed = true;
+    if (expected.contains(QStringLiteral("equals"))) {
+        const QString value = expected.value(QStringLiteral("equals")).toString();
+        const bool itemPassed = plain == value;
+        recordAssertion(path + QStringLiteral(".equals"), value, plain, itemPassed);
+        passed = itemPassed && passed;
+    }
+    for (const QJsonValue &value : expected.value(QStringLiteral("contains")).toArray()) {
+        const bool itemPassed = plain.contains(value.toString());
+        recordAssertion(path + QStringLiteral(".contains"), value, plain, itemPassed);
+        passed = itemPassed && passed;
+    }
+    for (const QJsonValue &value : expected.value(QStringLiteral("not_contains")).toArray()) {
+        const bool itemPassed = !plain.contains(value.toString());
+        recordAssertion(path + QStringLiteral(".not_contains"), value, plain, itemPassed);
+        passed = itemPassed && passed;
+    }
+    if (expected.value(QStringLiteral("translation_required")).toBool()) {
+        const bool itemPassed = !plain.trimmed().isEmpty() && !plain.trimmed().startsWith(QLatin1Char('@'))
+            && !plain.contains(QStringLiteral("%src")) && !plain.contains(QStringLiteral("%dest"))
+            && !plain.contains(QStringLiteral("%arg")) && !plain.contains(QStringLiteral("%arg2"));
+        recordAssertion(path + QStringLiteral(".translation_required"), true, plain, itemPassed);
+        passed = itemPassed && passed;
+    }
+    return passed;
+}
+
+bool LocalResponseUiController::validateNamedStates(const QJsonObject &expected,
+    const QJsonArray &actual, const QString &nameKey, const QString &path)
+{
+    static const QMap<QString, QPair<QString, bool>> states {
+        { QStringLiteral("enabled"), { QStringLiteral("enabled"), true } },
+        { QStringLiteral("disabled"), { QStringLiteral("enabled"), false } },
+        { QStringLiteral("selected"), { QStringLiteral("selected"), true } },
+        { QStringLiteral("unselected"), { QStringLiteral("selected"), false } },
+        { QStringLiteral("visible"), { QStringLiteral("visible"), true } }
+    };
+    bool passed = true;
+    for (auto state = states.cbegin(); state != states.cend(); ++state) {
+        for (const QJsonValue &nameValue : expected.value(state.key()).toArray()) {
+            const QString name = nameValue.toString();
+            QJsonObject found;
+            for (const QJsonValue &item : actual) {
+                if (item.toObject().value(nameKey).toString() == name) {
+                    found = item.toObject();
+                    break;
+                }
+            }
+            const bool itemPassed = !found.isEmpty()
+                && found.value(state.value().first).toBool() == state.value().second;
+            recordAssertion(path + QLatin1Char('.') + state.key() + QLatin1Char('.') + name,
+                state.value().second, found.value(state.value().first), itemPassed);
+            passed = itemPassed && passed;
+        }
+    }
+    return passed;
+}
+
+bool LocalResponseUiController::validateReply(QString *error)
+{
+    const QList<QString> sent = m_socket->sentPackets();
+    if (sent.size() != 1) {
+        *error = QStringLiteral("expected one terminal reply, captured %1").arg(sent.size());
+        return false;
+    }
+
+    Packet packet;
+    if (!packet.parse(sent.first().toUtf8())) {
+        *error = QStringLiteral("captured reply is not a valid Packet");
+        return false;
+    }
+
+    QJsonObject captured;
+    captured.insert(QStringLiteral("packet_type"), packet.getPacketType());
+    captured.insert(QStringLiteral("source"), packet.getPacketSource());
+    captured.insert(QStringLiteral("destination"), packet.getPacketDestination());
+    captured.insert(QStringLiteral("command"), LocalResponseUiCase::commandName(packet.getCommandType()));
+    captured.insert(QStringLiteral("global_serial"), static_cast<int>(packet.globalSerial));
+    captured.insert(QStringLiteral("local_serial"), static_cast<int>(packet.localSerial));
+    captured.insert(QStringLiteral("body"), QJsonValue::fromVariant(packet.getMessageBody()));
+
+    QJsonObject decodedCard;
+    if (packet.getCommandType() == S_COMMAND_RESPONSE_CARD
+        && packet.getMessageBody().canConvert<JsonArray>()) {
+        const JsonArray body = packet.getMessageBody().value<JsonArray>();
+        if (!body.isEmpty() && !body.first().toString().isEmpty()) {
+            const Card *card = Card::Parse(body.first().toString());
+            if (card) {
+                decodedCard.insert(QStringLiteral("card_name"), card->objectName());
+                decodedCard.insert(QStringLiteral("skill_name"), card->getSkillName());
+                decodedCard.insert(QStringLiteral("activation_skill_name"),
+                    body.size() >= 3 ? body.at(2).toString() : card->getActivationSkillName());
+                decodedCard.insert(QStringLiteral("activation_instance_id"),
+                    body.size() >= 4 ? body.at(3).toInt() : card->getActivationSkillInstanceId());
+                const int effectiveId = card->getEffectiveId();
+                decodedCard.insert(QStringLiteral("card_id"), effectiveId);
+                decodedCard.insert(QStringLiteral("card_alias"), m_aliasToId.key(effectiveId));
+                QJsonArray subcards;
+                for (int id : card->getSubcards())
+                    subcards.append(m_aliasToId.key(id, QString::number(id)));
+                decodedCard.insert(QStringLiteral("subcards"), subcards);
+                QJsonArray targets;
+                if (body.size() >= 2) {
+                    for (const QVariant &target : body.at(1).toList())
+                        targets.append(target.toString());
+                }
+                decodedCard.insert(QStringLiteral("targets"), targets);
+            }
+        }
+    }
+    if (!decodedCard.isEmpty())
+        captured.insert(QStringLiteral("decoded_card"), decodedCard);
+    m_capturedPackets.append(captured);
+
+    const QJsonObject expected = m_case.replyExpectation();
+    bool passed = true;
+    const QString expectedCommand = expected.value(QStringLiteral("command")).toString();
+    if (!expectedCommand.isEmpty()) {
+        const QString actualCommand = LocalResponseUiCase::commandName(packet.getCommandType());
+        const bool itemPassed = actualCommand == expectedCommand;
+        recordAssertion(QStringLiteral("expect_reply.command"), expectedCommand, actualCommand, itemPassed);
+        passed = itemPassed && passed;
+    }
+    if (expected.contains(QStringLiteral("local_serial"))) {
+        const int expectedSerial = expected.value(QStringLiteral("local_serial")).toInt();
+        const bool itemPassed = static_cast<int>(packet.localSerial) == expectedSerial;
+        recordAssertion(QStringLiteral("expect_reply.local_serial"), expectedSerial,
+            static_cast<int>(packet.localSerial), itemPassed);
+        passed = itemPassed && passed;
+    }
+    const bool packetShape = packet.getPacketType() == S_TYPE_REPLY
+        && packet.getPacketSource() == S_SRC_CLIENT
+        && packet.getPacketDestination() == S_DEST_ROOM;
+    recordAssertion(QStringLiteral("expect_reply.packet_shape"), true, packetShape, packetShape);
+    passed = packetShape && passed;
+
+    if (expected.contains(QStringLiteral("invoke"))) {
+        const bool expectedInvoke = expected.value(QStringLiteral("invoke")).toBool();
+        const bool actualInvoke = packet.getMessageBody().toBool();
+        const bool itemPassed = expectedInvoke == actualInvoke;
+        recordAssertion(QStringLiteral("expect_reply.invoke"), expectedInvoke, actualInvoke, itemPassed);
+        passed = itemPassed && passed;
+    }
+    if (expected.contains(QStringLiteral("choice"))) {
+        const QString expectedChoice = expected.value(QStringLiteral("choice")).toString();
+        const QString actualChoice = packet.getMessageBody().toString();
+        const bool itemPassed = expectedChoice == actualChoice;
+        recordAssertion(QStringLiteral("expect_reply.choice"), expectedChoice, actualChoice, itemPassed);
+        passed = itemPassed && passed;
+    }
+    if (expected.contains(QStringLiteral("card_aliases"))) {
+        QJsonArray actualAliases;
+        for (const QVariant &idValue : packet.getMessageBody().toList())
+            actualAliases.append(m_aliasToId.key(idValue.toInt(), QString::number(idValue.toInt())));
+        const QJsonArray expectedAliases = expected.value(QStringLiteral("card_aliases")).toArray();
+        const bool itemPassed = jsonArraysEqual(expectedAliases, actualAliases);
+        recordAssertion(QStringLiteral("expect_reply.card_aliases"), expectedAliases,
+            actualAliases, itemPassed);
+        passed = itemPassed && passed;
+    }
+    if (expected.contains(QStringLiteral("players"))) {
+        QJsonArray actualPlayers;
+        const QString names = packet.getMessageBody().toString();
+        if (!names.isEmpty()) {
+            for (const QString &name : names.split(QLatin1Char('+')))
+                actualPlayers.append(name);
+        }
+        const QJsonArray expectedPlayers = expected.value(QStringLiteral("players")).toArray();
+        const bool itemPassed = jsonArraysEqual(expectedPlayers, actualPlayers);
+        recordAssertion(QStringLiteral("expect_reply.players"), expectedPlayers,
+            actualPlayers, itemPassed);
+        passed = itemPassed && passed;
+    }
+    if (expected.value(QStringLiteral("cancelled")).toBool()) {
+        const bool cancelled = !packet.getMessageBody().isValid()
+            || packet.getMessageBody().isNull();
+        recordAssertion(QStringLiteral("expect_reply.cancelled"), true, cancelled, cancelled);
+        passed = cancelled && passed;
+    }
+
+    static const QStringList decodedKeys {
+        QStringLiteral("card_name"), QStringLiteral("card_alias"),
+        QStringLiteral("skill_name"), QStringLiteral("activation_skill_name"),
+        QStringLiteral("activation_instance_id"), QStringLiteral("subcards"),
+        QStringLiteral("targets")
+    };
+    for (const QString &key : decodedKeys) {
+        if (!expected.contains(key))
+            continue;
+        passed = validateJsonValue(expected.value(key), decodedCard.value(key),
+            QStringLiteral("expect_reply.") + key) && passed;
+    }
+
+    if (!passed)
+        *error = QStringLiteral("reply assertions failed");
+    return passed;
+}
+
+void LocalResponseUiController::recordAssertion(const QString &path,
+    const QJsonValue &expected, const QJsonValue &actual, bool passed)
+{
+    QJsonObject assertion;
+    assertion.insert(QStringLiteral("path"), path);
+    assertion.insert(QStringLiteral("expected"), expected);
+    assertion.insert(QStringLiteral("actual"), actual);
+    assertion.insert(QStringLiteral("result"), passed ? QStringLiteral("PASS") : QStringLiteral("FAIL"));
+    m_assertions.append(assertion);
+}
+
+void LocalResponseUiController::flushEvents()
+{
+    QEventLoop loop;
+    QTimer::singleShot(0, &loop, &QEventLoop::quit);
+    loop.exec();
+}
+
+bool LocalResponseUiController::waitForCondition(const std::function<bool()> &condition,
+    int timeoutMs)
+{
+    if (condition())
+        return true;
+    QEventLoop loop;
+    QTimer pollTimer;
+    QTimer timeoutTimer;
+    bool satisfied = false;
+    pollTimer.setInterval(10);
+    timeoutTimer.setSingleShot(true);
+    connect(&pollTimer, &QTimer::timeout, &loop, [&]() {
+        if (!condition())
+            return;
+        satisfied = true;
+        loop.quit();
+    });
+    connect(&timeoutTimer, &QTimer::timeout, &loop, &QEventLoop::quit);
+    pollTimer.start();
+    timeoutTimer.start(timeoutMs);
+    loop.exec();
+    return satisfied || condition();
+}
+
+QString LocalResponseUiController::captureScreenshot(const QString &name)
+{
+    if (!m_mainWindow)
+        return QString();
+    QDir directory;
+    if (!directory.mkpath(m_screenshotDir))
+        return QString();
+    const QString path = QDir(m_screenshotDir).filePath(name + QStringLiteral(".png"));
+
+    QList<QPair<QRect, QPixmap>> captures;
+    QRect bounds;
+    auto appendWidget = [&captures, &bounds](QWidget *widget) {
+        if (!widget || !widget->isVisible())
+            return;
+        const QPixmap pixmap = widget->grab();
+        if (pixmap.isNull())
+            return;
+        const QRect rect(widget->mapToGlobal(QPoint(0, 0)),
+            pixmap.deviceIndependentSize().toSize());
+        captures.append(qMakePair(rect, pixmap));
+        bounds = bounds.isNull() ? rect : bounds.united(rect);
+    };
+    appendWidget(m_mainWindow);
+    for (QWidget *widget : QApplication::topLevelWidgets()) {
+        if (widget != m_mainWindow)
+            appendWidget(widget);
+    }
+    if (captures.isEmpty())
+        return QString();
+
+    QImage image(bounds.size(), QImage::Format_ARGB32_Premultiplied);
+    image.fill(Qt::black);
+    QPainter painter(&image);
+    for (const auto &capture : captures)
+        painter.drawPixmap(capture.first.topLeft() - bounds.topLeft(), capture.second);
+    painter.end();
+    if (!image.save(path, "PNG"))
+        return QString();
+    QJsonObject artifacts = m_report.value(QStringLiteral("artifacts")).toObject();
+    artifacts.insert(name, QFileInfo(path).absoluteFilePath());
+    m_report.insert(QStringLiteral("artifacts"), artifacts);
+    return path;
+}
+
+void LocalResponseUiController::finish(ExitCode code, const QString &stage,
+    const QString &message)
+{
+    if (code != Passed && m_screenshotOnFailure)
+        captureScreenshot(QStringLiteral("failed"));
+    m_report.insert(QStringLiteral("result"), code == Passed ? QStringLiteral("PASS") : QStringLiteral("FAIL"));
+    if (!stage.isEmpty())
+        m_report.insert(QStringLiteral("failed_stage"), stage);
+    if (!message.isEmpty())
+        m_report.insert(QStringLiteral("error"), message);
+    m_report.insert(QStringLiteral("snapshots"), m_snapshots);
+    m_report.insert(QStringLiteral("actions"), m_actionResults);
+    m_report.insert(QStringLiteral("captured_packets"), m_capturedPackets);
+    m_report.insert(QStringLiteral("assertions"), m_assertions);
+    m_report.insert(QStringLiteral("qt_messages"), m_qtMessages);
+
+    QString writeError;
+    if (!writeReport(&writeError)) {
+        qCritical().noquote() << writeError;
+        qApp->exit(InternalError);
+        return;
+    }
+    qInfo().noquote() << QStringLiteral("LOCAL RESPONSE UI %1: %2")
+        .arg(code == Passed ? QStringLiteral("PASS") : QStringLiteral("FAIL"), m_case.name());
+    if (!message.isEmpty())
+        qCritical().noquote() << message;
+    qApp->exit(code);
+}
+
+bool LocalResponseUiController::writeReport(QString *error)
+{
+    const QFileInfo reportInfo(m_reportPath);
+    if (!QDir().mkpath(reportInfo.absolutePath())) {
+        *error = QStringLiteral("cannot create report directory '%1'").arg(reportInfo.absolutePath());
+        return false;
+    }
+    QSaveFile file(m_reportPath);
+    if (!file.open(QIODevice::WriteOnly)) {
+        *error = QStringLiteral("cannot open report '%1': %2").arg(m_reportPath, file.errorString());
+        return false;
+    }
+    file.write(QJsonDocument(m_report).toJson(QJsonDocument::Indented));
+    if (!file.commit()) {
+        *error = QStringLiteral("cannot commit report '%1': %2").arg(m_reportPath, file.errorString());
+        return false;
+    }
+    return true;
+}
