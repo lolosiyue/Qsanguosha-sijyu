@@ -1,0 +1,16 @@
+services:
+  qsanguosha:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: qsanguosha-server:local
+    ports:
+      - "9527:9527/tcp"
+    volumes:
+      - qsanguosha-data:/data
+      - ./packaging/docker/server.ini:/config/server.ini:ro
+    restart: unless-stopped
+    stop_grace_period: 45s
+
+volumes:
+  qsanguosha-data:
