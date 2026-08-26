@@ -169,6 +169,7 @@ public:
 class RoomScene : public QGraphicsScene
 {
     Q_OBJECT
+    friend class LocalResponseUiProbe;
 
 public:
     enum ShefuAskState

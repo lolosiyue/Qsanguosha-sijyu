@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "name": "ask_for_choice",
+  "packages": ["standard"],
+  "bootstrap": {
+    "mode": "02p",
+    "self": { "object_name": "self", "screen_name": "Tester", "general": "caocao", "hp": 4, "max_hp": 4, "phase": "NotActive", "skills": [] },
+    "players": [{ "object_name": "target", "screen_name": "Target", "general": "liubei", "hp": 4, "max_hp": 4, "alive": true }],
+    "cards": []
+  },
+  "request": {
+    "api": "askForChoice",
+    "command": "S_COMMAND_MULTIPLE_CHOICE",
+    "serial": 1003,
+    "args": { "skill": "deep_seek", "choices": "loyalist+rebel+renegade+lord", "except": "lord", "tip": "" }
+  },
+  "expect_presented": {
+    "client_status": "ExecDialog",
+    "dialog": {
+      "open": true,
+      "options": ["loyalist", "rebel", "renegade", "lord"],
+      "enabled_options": ["rebel"],
+      "disabled_options": ["lord"]
+    }
+  },
+  "actions": [{ "type": "choose_option", "option": "rebel" }],
+  "expect_reply": { "command": "S_COMMAND_MULTIPLE_CHOICE", "local_serial": 1003, "choice": "rebel" },
+  "expect_final": { "client_status": "NotActive", "open_dialog_count": 0 }
+}

@@ -52,7 +52,7 @@ static ClientPlayer *getControlRootPlayer(ClientPlayer *player)
 	return player;
 }
 
-Client::Client(QObject *parent, const QString &filename)
+Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedSocket)
 	: QObject(parent), m_isDiscardActionRefusable(true), m_bossLevel(0),
 	status(NotActive), alive_count(1), swap_pile(0), add_round(0), _m_roomState(true),
 	m_client_lua(nullptr), m_original_self(nullptr), m_takeoverManager(nullptr),
@@ -207,8 +207,11 @@ Client::Client(QObject *parent, const QString &filename)
 	prompt_doc->setDefaultFont(QFont("SimHei"));
 #endif
 
+	if (injectedSocket)
+		injectedSocket->setParent(this);
+
 	if (filename.isEmpty()) {
-		socket = new NativeClientSocket;
+		socket = injectedSocket ? injectedSocket : new NativeClientSocket;
 		recorder = new Recorder(this);
 		m_isDisconnected = false;
 
