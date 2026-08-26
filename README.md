@@ -114,6 +114,8 @@ Linux CTest includes three real TCP integration levels, from connect/disconnect
 through handshake/signup to a complete automated `02p` game and clean disposal.
 
 See the full guide: [`docs/linux-development-environment.md`](docs/linux-development-environment.md).
+For production-oriented container packaging, see
+[`docs/docker-server.md`](docs/docker-server.md).
 
 ---
 
