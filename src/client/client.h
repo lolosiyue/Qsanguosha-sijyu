@@ -49,7 +49,8 @@ public:
         ClientStatusBasicMask = 0x0F
     };
 
-    explicit Client(QObject *parent, const QString &filename = "");
+    // injectedSocket ownership is transferred to Client when it is non-null.
+    explicit Client(QObject *parent, const QString &filename = "", ClientSocket *injectedSocket = nullptr);
     ~Client();
 
     // cheat functions

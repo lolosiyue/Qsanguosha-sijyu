@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qsanguosha.local/schemas/local-response-ui-case.json",
+  "title": "QSanguosha local response UI case",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "name", "bootstrap", "request", "actions"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "name": { "type": "string", "minLength": 1 },
+    "packages": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "provenance": { "type": "object" },
+    "bootstrap": { "$ref": "#/$defs/bootstrap" },
+    "request": { "$ref": "#/$defs/request" },
+    "expect_presented": { "$ref": "#/$defs/expectation" },
+    "actions": { "type": "array", "items": { "$ref": "#/$defs/action" } },
+    "expect_reply": { "type": "object" },
+    "expect_final": { "$ref": "#/$defs/expectation" }
+  },
+  "$defs": {
+    "player": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["object_name", "general"],
+      "properties": {
+        "object_name": { "type": "string", "minLength": 1 },
+        "screen_name": { "type": "string" },
+        "general": { "type": "string", "minLength": 1 },
+        "hp": { "type": "integer" },
+        "max_hp": { "type": "integer", "minimum": 1 },
+        "alive": { "type": "boolean" },
+        "phase": { "type": "string" },
+        "skills": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+        "marks": { "type": "object", "additionalProperties": { "type": "integer" } },
+        "flags": { "type": "array", "items": { "type": "string" }, "uniqueItems": true }
+      }
+    },
+    "card": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["alias", "name", "suit", "number", "owner", "place"],
+      "properties": {
+        "alias": { "type": "string", "minLength": 1 },
+        "name": { "type": "string", "minLength": 1 },
+        "suit": { "enum": ["spade", "club", "heart", "diamond", "no_suit"] },
+        "number": { "type": "integer", "minimum": 0, "maximum": 13 },
+        "owner": { "type": "string", "minLength": 1 },
+        "place": { "enum": ["hand", "equip"] }
+      }
+    },
+    "bootstrap": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["self", "players", "cards"],
+      "properties": {
+        "mode": { "type": "string", "minLength": 1 },
+        "self": { "$ref": "#/$defs/player" },
+        "players": { "type": "array", "items": { "$ref": "#/$defs/player" } },
+        "cards": { "type": "array", "items": { "$ref": "#/$defs/card" } }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["command", "serial"],
+      "properties": {
+        "api": {
+          "enum": ["askForSkillInvoke", "askForChoice", "askForCard", "askForUseCard", "askForDiscard", "askForExchange", "askForPlayerChosen"]
+        },
+        "command": { "type": "string", "pattern": "^S_COMMAND_[A-Z0-9_]+$" },
+        "serial": { "type": "integer", "minimum": 1 },
+        "args": { "type": "object" },
+        "raw_body": {}
+      },
+      "oneOf": [
+        { "required": ["raw_body"], "not": { "required": ["args"] } },
+        { "required": ["api", "args"], "not": { "required": ["raw_body"] } }
+      ]
+    },
+    "action": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "enum": ["invoke_skill_yes", "invoke_skill_no", "choose_option", "activate_skill", "select_card", "select_player", "click_ok", "click_cancel", "click_discard", "assert", "take_screenshot"]
+        },
+        "option": { "type": "string" },
+        "skill": { "type": "string" },
+        "card": { "type": "string" },
+        "player": { "type": "string" },
+        "expect": { "$ref": "#/$defs/expectation" }
+      }
+    },
+    "expectation": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "client_status": { "type": "string" },
+        "current_pattern": { "type": "string" },
+        "use_reason": { "type": "string" },
+        "open_dialog_count": { "type": "integer", "minimum": 0 },
+        "prompt": { "type": "object" },
+        "buttons": { "type": "object" },
+        "cards": { "type": "object" },
+        "players": { "type": "object" },
+        "skills": { "type": "object" },
+        "dialog": { "type": "object" }
+      }
+    }
+  }
+}

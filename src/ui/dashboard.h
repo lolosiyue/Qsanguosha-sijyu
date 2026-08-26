@@ -32,6 +32,7 @@ class PixmapAnimation;
 class Dashboard : public PlayerCardContainer
 {
     Q_OBJECT
+    friend class LocalResponseUiProbe;
     Q_ENUMS(SortType)
 
 public:
