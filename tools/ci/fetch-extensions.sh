@@ -37,8 +37,20 @@ lua_target="$root/lua"
 mkdir -p "$ai_target" "$extensions_target" "$lua_target"
 
 find "$clone_dir/ai" -maxdepth 1 -type f -name '*.lua' -exec cp -f -- {} "$ai_target/" \;
+mkdir -p "$ai_target/isolated"
+find "$clone_dir/ai/isolated" -maxdepth 1 -type f -name '*.lua' -exec cp -f -- {} "$ai_target/isolated/" \;
 find "$clone_dir/extensions" -maxdepth 1 -type f -name '*.lua' -exec cp -f -- {} "$extensions_target/" \;
 find "$clone_dir/lua" -maxdepth 1 -type f -name '*.lua' -exec cp -f -- {} "$lua_target/" \;
+
+# Workaround (upstream bug in lolosiyue/extensions): the AI load loop uses the
+# lowercased package name as filename ("lua/ai/"..sl), but the files on disk are
+# mixed-case (e.g. NyarzFirst-ai.lua). On case-sensitive filesystems dofile()
+# fails for every mixed-case package. Patch it to use the real filename instead.
+sed -i 's/"lua\/ai\/"\.\.sl/"lua\/ai\/"\.\.ai_file/g' "$ai_target/smart-ai.lua"
+if ! grep -q '"lua/ai/"\.\.ai_file' "$ai_target/smart-ai.lua"; then
+    echo 'lua/ai/smart-ai.lua patch failed: lowercase AI filename loop not fixed' >&2
+    exit 1
+fi
 
 if [[ ! -f "$ai_target/smart-ai.lua" ]]; then
     echo 'lua/ai is incomplete: smart-ai.lua is missing after fetch' >&2
@@ -46,6 +58,10 @@ if [[ ! -f "$ai_target/smart-ai.lua" ]]; then
 fi
 if [[ ! -f "$lua_target/luaoldenemy_lib.lua" ]]; then
     echo 'lua is incomplete: luaoldenemy_lib.lua is missing after fetch' >&2
+    exit 1
+fi
+if [[ ! -f "$ai_target/isolated/ask-for-use-card.lua" ]]; then
+    echo 'lua/ai/isolated is incomplete: ask-for-use-card.lua is missing after fetch' >&2
     exit 1
 fi
 
