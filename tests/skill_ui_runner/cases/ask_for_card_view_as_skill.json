@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "name": "ask_for_card_view_as_skill",
+  "packages": ["standard", "standard_cards"],
+  "bootstrap": {
+    "mode": "02p",
+    "self": { "object_name": "self", "screen_name": "Tester", "general": "caocao", "hp": 4, "max_hp": 4, "phase": "NotActive", "skills": ["longdan"] },
+    "players": [{ "object_name": "target", "screen_name": "Target", "general": "liubei", "hp": 4, "max_hp": 4, "alive": true }],
+    "cards": [
+      { "alias": "slash_c2", "name": "slash", "suit": "club", "number": 2, "owner": "self", "place": "hand" },
+      { "alias": "peach_h3", "name": "peach", "suit": "heart", "number": 3, "owner": "self", "place": "hand" }
+    ]
+  },
+  "request": {
+    "api": "askForCard",
+    "command": "S_COMMAND_RESPONSE_CARD",
+    "serial": 1005,
+    "args": { "pattern": "jink", "prompt": "@hujia-jink:target", "method": "response", "notice_index": -1 }
+  },
+  "expect_presented": {
+    "client_status": "Responding",
+    "current_pattern": "jink",
+    "skills": { "visible": ["longdan"], "enabled": ["longdan"] }
+  },
+  "actions": [
+    { "type": "activate_skill", "skill": "longdan" },
+    { "type": "select_card", "card": "slash_c2" },
+    { "type": "assert", "expect": { "skills": { "selected": ["longdan"] }, "cards": { "selected": ["slash_c2"] }, "buttons": { "ok": { "enabled": true } } } },
+    { "type": "take_screenshot", "name": "view_as_selected" },
+    { "type": "click_ok" }
+  ],
+  "expect_reply": { "command": "S_COMMAND_RESPONSE_CARD", "local_serial": 1005, "card_name": "jink", "skill_name": "longdan", "subcards": ["slash_c2"], "targets": [] },
+  "expect_final": { "client_status": "NotActive", "open_dialog_count": 0 }
+}
