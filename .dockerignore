@@ -1,0 +1,77 @@
+# Version-control and agent-local state
+.git/
+.github/
+.agents/
+.codex/
+.commandcode/
+.omo/
+memory/
+AGENTS.md
+AI_RULES.md
+CLAUDE.md
+
+# Existing and generated build trees
+/build/
+/build-*/
+/cmake-build-*/
+/debug/
+/release/
+/relwithdebinfo/
+/Testing/
+/ci-logs/
+/test-results/
+
+# Compiler, test, log, and crash artifacts
+*.a
+*.o
+*.obj
+*.pdb
+*.so
+*.log
+*.dmp
+/core
+/core.*
+/dmp/
+/record/
+/g.json
+/REPORT.json
+/headless_log_*.txt
+/swig/sanguosha_wrap.cxx
+
+# IDE and operating-system metadata
+.idea/
+.vs/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Developer-local runtime copies. The builder fetches these itself.
+/lua/ai/
+/lua/luaoldenemy_lib.lua
+/extensions/
+/tools/swig/
+
+# GUI/client-only assets and bundled Windows libraries
+/artifacts/
+/assets/
+/audio/
+/builds/
+/font/
+/hero-skin/
+/image/
+/include/
+/lang/
+/lib/
+/listserver/
+/qml/
+/qss/
+/resource/
+/resources/
+/skins/
+/tests/
+/tools/autotest/
+/tools/warrior_*
+/ui-script/
+/qt_zh_CN.qm
