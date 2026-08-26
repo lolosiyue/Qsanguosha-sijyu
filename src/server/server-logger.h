@@ -5,7 +5,7 @@
 #include <QMutex>
 #include <QString>
 #include <QVariantMap>
-#include <QtLogging>
+#include <QtCore/qlogging.h>
 
 #include <atomic>
 
