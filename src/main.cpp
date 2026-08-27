@@ -135,18 +135,22 @@ int main(int argc, char *argv[]) {
 
     QCoreApplication::addLibraryPath(QCoreApplication::applicationDirPath() + "/plugins");
 
+#ifdef Q_OS_WIN
     // 若 exe 旁放了 Qt6 DLL，Qt 會把 prefix 重定位到 exe 目錄，導致 multimedia 後端
     // （plugins/multimedia/ffmpegmediaplugin.dll）在 exe 旁的 plugins 找不到。
     // 把 Qt 安裝的 plugins 目錄也加入搜尋路徑，確保影片背景可播放。
+    // 這是 Windows DLL 搜尋的補救；Linux 由 distro Qt 自行解析 plugin 路徑，
+    // 毋須改 PATH，所以整段只在 Windows 生效。
     const QString qtBinDir = QStringLiteral(QT_BIN_DIR);
     QCoreApplication::addLibraryPath(QDir(qtBinDir).filePath("../plugins"));
     QString path = qEnvironmentVariable("PATH");
     if (!path.contains(qtBinDir, Qt::CaseInsensitive)) {
         if (!path.isEmpty())
-            path.prepend(QLatin1Char(';'));
+            path.prepend(QDir::listSeparator());
         path.prepend(qtBinDir);
         qputenv("PATH", path.toUtf8());
     }
+#endif
 
 #ifdef Q_OS_MAC
 #ifdef QT_NO_DEBUG
