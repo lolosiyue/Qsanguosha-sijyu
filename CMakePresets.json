@@ -15,6 +15,44 @@
       "cacheVariables": {
         "CMAKE_PREFIX_PATH": "$env{QTDIR}"
       }
+    },
+    {
+      "name": "linux-server-gcc-debug",
+      "displayName": "Linux dedicated server (GCC, Debug)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/builds/cmake-linux-server-gcc-debug",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "BUILD_TESTING": "ON",
+        "QSAN_BUILD_GUI": "OFF",
+        "QSAN_BUILD_SERVER": "ON"
+      }
+    },
+    {
+      "name": "linux-gui-gcc-debug",
+      "displayName": "Linux GUI client + server (GCC, Debug)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/builds/cmake-linux-gui-gcc-debug",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "BUILD_TESTING": "ON",
+        "QSAN_BUILD_GUI": "ON",
+        "QSAN_BUILD_SERVER": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -68,6 +106,17 @@
       "configurePreset": "vs2026-x64",
       "configuration": "RelWithDebInfo",
       "targets": ["deploy-server"]
+    },
+    {
+      "name": "linux-server-debug",
+      "displayName": "Linux dedicated server (GCC, Debug)",
+      "configurePreset": "linux-server-gcc-debug"
+    },
+    {
+      "name": "linux-gui-debug",
+      "displayName": "Linux GUI client (GCC, Debug)",
+      "configurePreset": "linux-gui-gcc-debug",
+      "targets": ["QSanguosha"]
     }
   ]
 }
