@@ -353,8 +353,14 @@ qt_add_executable(QSanguosha WIN32
 
 target_sources(QSanguosha PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/home/home_qml.qrc"
-    "${CMAKE_CURRENT_SOURCE_DIR}/qml/home/home_assets.qrc"
 )
+
+# home 介面圖示為本機資源，不入庫；本機存在 icons 目錄時才編譯進 qrc，避免 CI 缺少資源導致 RCC 錯誤
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/qml/home/icons")
+    target_sources(QSanguosha PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml/home/home_assets.qrc"
+    )
+endif()
 
 target_sources(QSanguosha PRIVATE
     src/ui/testing/local-response-ui-case.cpp
