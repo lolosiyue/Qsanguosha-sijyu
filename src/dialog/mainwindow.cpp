@@ -642,6 +642,8 @@ void MainWindow::enterRoom()
 		QTimer::singleShot(15000, autoRobotTimer, &QTimer::stop);
 		autoRobotTimer->start();
 	}
+
+	emit roomSceneCreated(room_scene);
 }
 
 void MainWindow::gotoStartScene()

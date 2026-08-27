@@ -25,6 +25,7 @@
 
 #include "crashhandler.h"
 #include "testing/local-response-ui-controller.h"
+#include "testing/network-ui-smoke-controller.h"
 #include "testing/ui-startup-smoke-controller.h"
 
 int main(int argc, char *argv[]) {
@@ -441,6 +442,18 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // Linux GUI M2 network smoke。行喺 -connect: 之後:到呢一步 Client 已經建立,
+    // socket 亦已經 connectToHost(),但 QTcpSocket 係非同步,connected() 一定要等
+    // event loop 先觸發,所以唔會漏咗第一個 stage。
+    //
+    // 呢個入口只做觀測同代替真人操作,唔會改變產品的連線/進房/對局流程,亦唔會喺
+    // 冇明確 flag 的正常玩家啟動下生效。
+    if (NetworkUiSmokeController::isRequested(arguments)) {
+        int smokeExitCode = 0;
+        if (!NetworkUiSmokeController::begin(arguments, main_window, &smokeExitCode))
+            return smokeExitCode;
+    }
+
     // 自動化測試診斷
     if (Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty()) {
         QFile diag("client_autotest_diag.log");
@@ -454,5 +467,7 @@ int main(int argc, char *argv[]) {
 
     const int rc = qApp->exec();
     CrashHandler::beginShutdown(); // 正常關閉流程,退出清理階段的崩潰不再上報
+    if (NetworkUiSmokeController::isRequested(arguments))
+        return NetworkUiSmokeController::finish(rc);
     return rc;
 }

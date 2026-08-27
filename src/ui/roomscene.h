@@ -170,6 +170,8 @@ class RoomScene : public QGraphicsScene
 {
     Q_OBJECT
     friend class LocalResponseUiProbe;
+    friend class NetworkUiSmokeController;
+    friend class NetworkUiSmokeResponder;
 
 public:
     enum ShefuAskState
