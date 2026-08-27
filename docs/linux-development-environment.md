@@ -10,20 +10,18 @@ Server 使用 `QCoreApplication`，唔需要 X11／Wayland、FMOD 或任何 GUI�
 |---|---|
 | Linux Server（build／CI／三級 TCP network integration／systemd） | **Complete** |
 | Linux GUI M0（configure ＋ compile ＋ link） | **Complete** — `linux-gui-ci.yml` 喺 ubuntu-24.04 ＋ Qt 6.11.1 驗證 |
-| Linux GUI runtime／完整對局（WSLg／X11／Wayland、HomeScene／RoomScene、audio、video） | **Not started**（M1／M2） |
+| Linux GUI M1（GUI startup：`QApplication`／`MainWindow`／HomeScene／event loop） | **Complete** — `linux-gui-ci.yml` 喺 Xvfb ＋ `xcb` 跑 `--ui-startup-smoke`；WSLg 人手驗證 |
+| Linux GUI M2（RoomScene 完整對局、audio、video、Spine） | **Not started** |
 | Linux packaging（AppImage／deb／desktop entry／installer） | **Not started**（M3） |
 
 M0 的定義固定為 **configure ＋ compile ＋ link**，加上一個 binary capability smoke。
+M1 的定義固定為 **真正行完一次 GUI startup path 然後自動正常退出**。
 
-以下全部 **未完成**，唔喺 M0 範圍：
+以下全部 **未完成**，唔喺 M0／M1 範圍：
 
 ```text
-visible startup
-WSLg
-X11
-Wayland
-HomeScene runtime
 RoomScene runtime
+完整對局
 audio
 video
 Spine
@@ -33,10 +31,10 @@ Linux packaging
 
 > ⚠️ `--local-response-ui-capabilities` 喺建立 `QApplication` 之前就直接回傳 JSON，所以佢係
 > **binary capability smoke**，唔係 GUI／offscreen startup smoke。真正的 `QApplication`／
-> `MainWindow`／`HomeScene` 啟動驗證屬於 Linux GUI M1。
+> `MainWindow`／`HomeScene` 啟動驗證係 M1 的 `--ui-startup-smoke`（見 [§4.5](#45-linux-gui-m1-startup-smoke)）。
 
-- Status: Linux Server Complete；Linux GUI M0（configure／compile／link）Complete
-- Last Updated: 2026-08-27
+- Status: Linux Server Complete；Linux GUI M0（configure／compile／link）Complete；Linux GUI M1（GUI startup）Complete
+- Last Updated: 2026-08-28
 - 對應 Windows 開發環境請見 [`README.md`](../README.md) 嘅 🛠️ Development Environment section。
 
 ## 1. 平台基線
@@ -247,8 +245,138 @@ M0 的 binary capability smoke：
 
 > 呢個 flag 喺建立 `QApplication` 之前就回傳，所以毋須 `QT_QPA_PLATFORM=offscreen`，
 > 亦唔算 GUI startup 驗證。以上全部只驗證 configure／compile／link 同 binary 可執行。
-> 實際開窗、HomeScene／RoomScene、audio／video、WSLg／Wayland／X11 行為屬於
-> Linux GUI M1／M2，未喺本階段驗證。
+> 真正的 GUI 啟動驗證見下面 4.5。
+
+## 4.5 Linux GUI M1 startup smoke
+
+`--ui-startup-smoke` 係 M1 的自動化啟動驗證。同 `--local-response-ui-capabilities`
+最大的分別係：佢**唔會**喺 `QApplication` 之前 return，而係行足產品正常的啟動路徑：
+
+```text
+QApplication → Engine/runtime → MainWindow → HomeScene/QML → Qt event loop
+    → ready condition → 自動正常退出
+```
+
+佢唔會另外複製一份假的 HomeScene 啟動流程：MainWindow 照常 `setupHomePage()`
+載入 `qrc:/QSanguosha/Home/HomeScene.qml`，smoke 只係透過 MainWindow 公開的
+`homeSceneReady()`／`homeSceneFailed()` signal 觀察結果。
+
+```bash
+# 可見桌面（WSLg／X11／Wayland）
+./debug/QSanguosha --ui-startup-smoke
+
+# 明確指定 platform plugin 同 app 內部 timeout，並且輸出完整 JSON report
+QT_QPA_PLATFORM=xcb ./debug/QSanguosha \
+    --ui-startup-smoke \
+    --ui-startup-timeout-ms 30000 \
+    --ui-startup-report /tmp/ui-startup.json
+
+# 完全冇 X server（次要驗證，唔可以當作 M1 的唯一證據）
+QT_QPA_PLATFORM=offscreen ./debug/QSanguosha --ui-startup-smoke
+```
+
+### Stage 與結果 marker
+
+每個 stage 一行 `UI_STARTUP_STAGE`，最後一定有一行 `UI_STARTUP_RESULT`：
+
+```text
+UI_STARTUP_STAGE {"schema_version":1,"stage":"application","ok":true,...}
+UI_STARTUP_STAGE {"schema_version":1,"stage":"engine","ok":true,...}
+UI_STARTUP_STAGE {"schema_version":1,"stage":"main_window","ok":true,...}
+UI_STARTUP_STAGE {"schema_version":1,"stage":"event_loop","ok":true,...}
+UI_STARTUP_STAGE {"schema_version":1,"stage":"home_scene","ok":true,...}
+UI_STARTUP_STAGE {"schema_version":1,"stage":"shutdown","ok":true,...}
+UI_STARTUP_RESULT {"schema_version":1,"ok":true,"stage":"shutdown","reason":"ok","exit_code":0,...}
+```
+
+失敗時 `ok` 為 `false`，`stage` 指出失敗喺邊一步，`reason` 分辨 `stage_failed`
+同 `timeout`，並帶 `error` 文字。任何退出路徑（包括舊有 `exit(1)`）都會補一行
+result marker，所以 CI 可以將「marker 缺失」直接當失敗。
+
+### Ready condition
+
+`home_scene` stage 唔係靠 `QTimer::singleShot(0, quit)` 就算數，要同時成立：
+
+| 條件 | 判定 |
+|---|---|
+| `QApplication` 已建立 | `qobject_cast<QApplication *>(qApp)` |
+| Engine/runtime 已就緒 | `Sanguosha != nullptr`，回報版本同武將數 |
+| `MainWindow` 已建立並顯示 | `isVisible()` ＋ `windowHandle() != nullptr` |
+| HomeScene/QML 已載入 | `QQuickWidget::Ready` ＋ `rootObject() != nullptr` |
+| event loop 真的行過 | 入到 `exec()` 之後的 queued callback |
+| top-level GUI object 捱得住 startup | 再行 250ms event loop 後 MainWindow 同 QML root 仍然生存 |
+
+### Exit code
+
+| Exit code | 意思 |
+|---|---|
+| `0` | 全部 stage 通過並正常退出 |
+| `1` | `QApplication`／engine／`MainWindow` 建立失敗 |
+| `2` | HomeScene／QML component 載入失敗 |
+| `3` | app 內部 timeout |
+| `4` | `--ui-startup-*` 參數不合法 |
+| `5` | 內部錯誤 |
+
+### Timeout：兩層保護
+
+| 層 | 機制 |
+|---|---|
+| App 內部 | `--ui-startup-timeout-ms`（預設 15000，範圍 100–120000）。同步階段亦會主動比對 deadline，因為 `QTimer` 喺 `exec()` 之前唔會觸發。 |
+| Runner 外部 | `tools/ci/linux-gui-startup-smoke.sh` 的 `timeout --kill-after`，防止 Qt event loop 完全 hang 死。收工前會清走自己 process group 內剩低的 `QSanguosha`／`Xvfb`。 |
+
+### 缺少 optional 美術資源
+
+Clean checkout **冇入庫** `qml/home/icons/`、`image/system/backdrop/` 等 optional
+美術資源，所以啟動時會見到一批 `QML Image: Cannot open: ...` warning。呢啲會被
+分類為 optional asset warning 記錄落 report，**唔會**升級成 fatal——真正的 QML
+component 失敗係由 `QQuickWidget::Error` 判定，兩者唔會混淆。
+
+### CI／本機一鍵驗證
+
+```bash
+# Xvfb + xcb（CI 的主驗證）
+bash tools/ci/linux-gui-startup-smoke.sh ./relwithdebinfo/QSanguosha artifacts \
+    --platform xcb --label xvfb-xcb
+
+# 可見桌面（WSLg），唔開 Xvfb
+bash tools/ci/linux-gui-startup-smoke.sh ./debug/QSanguosha artifacts \
+    --no-xvfb --platform xcb --label wslg
+```
+
+## 4.6 WSLg 人手驗證
+
+Xvfb CI 通過**唔可以**取代 WSLg 人手驗證：Xvfb 冇 compositor，亦唔會行 WSLg 的
+Wayland／X11 橋接。喺 WSLg 下重複以下步驟：
+
+```bash
+CMAKE_PREFIX_PATH=~/Qt/6.11.1/gcc_64 cmake --preset linux-gui-gcc-debug
+cmake --build --preset linux-gui-debug --parallel
+
+# 自動 startup smoke
+./debug/QSanguosha --ui-startup-smoke
+
+# 正常可見啟動（要自己關窗）
+./debug/QSanguosha
+```
+
+記錄以下環境資料（`UI_STARTUP_RESULT` marker 本身已經包含大部分）：
+
+```bash
+echo "DISPLAY=$DISPLAY"
+echo "WAYLAND_DISPLAY=$WAYLAND_DISPLAY"
+echo "XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR"
+```
+
+| 項目 | 2026-08-28 於 WSLg 實測 |
+|---|---|
+| `DISPLAY` | `:0` |
+| `WAYLAND_DISPLAY` | `wayland-0` |
+| `XDG_RUNTIME_DIR` | `/run/user/1000` |
+| Qt platform plugin | `xcb` |
+| Qt 版本 | 6.11.1 |
+| Renderer | 預設（OpenGL）同 `QT_QUICK_BACKEND=software` 都通過 |
+| `--ui-startup-smoke` | PASS，exit code 0，6 個 stage 全部 `ok:true` |
+| 可見啟動 `./debug/QSanguosha` | PASS，開到主視窗，`Home QML status: QQuickWidget::Ready` |
 
 > `qsanguosha_engine` 係 STATIC library，用 [`$<LINK_LIBRARY:WHOLE_ARCHIVE,...>`](../CMakeLists.txt) 在 `qsanguosha_server` 引入 source，淨係 link `Qt6::Core` 同 `Qt6::Network`。CMake 有 allowlist gate，link 咗其他 Qt target（例如 Widgets）會立刻 `FATAL_ERROR`。
 
