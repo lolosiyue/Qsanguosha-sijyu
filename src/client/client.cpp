@@ -220,6 +220,8 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 		connect(socket, SIGNAL(message_got(const char *)), recorder, SLOT(record(const char *)));
 		connect(socket, SIGNAL(message_got(const char *)), this, SLOT(processServerPacket(const char *)));
 		connect(socket, SIGNAL(error_message(QString)), this, SIGNAL(error_message(QString)));
+		connect(socket, SIGNAL(connected()), this, SIGNAL(socket_connected()));
+		connect(socket, SIGNAL(disconnected()), this, SIGNAL(socket_disconnected()));
 		socket->connectToHost();
 	} else {
 		socket = nullptr;
@@ -349,6 +351,7 @@ void Client::replyToServer(CommandType command, const QVariant &arg)
 		packet.setMessageBody(arg);
 		socket->send(packet.toJson());
 	}
+	emit server_reply(static_cast<int>(command));
 }
 
 void Client::handleGameEvent(const QVariant &arg)
@@ -460,6 +463,7 @@ bool Client::processServerRequest(const Packet &packet)
 
 	Callback callback = m_interactions[command];
 	if (!callback) return false;
+	emit server_request(static_cast<int>(command));
 	(this->*callback)(msg);
 	return true;
 }
