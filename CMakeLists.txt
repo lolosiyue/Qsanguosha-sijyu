@@ -79,10 +79,24 @@ endif()
 
 list(REMOVE_DUPLICATES QSAN_QT_COMPONENTS)
 
-if(WIN32)
-    find_package(Qt6 6.11 REQUIRED COMPONENTS ${QSAN_QT_COMPONENTS})
+# GUI 產品的 Qt baseline 在 Windows 與 Linux 保持一致。GUI source 用到
+# Qt 6.5 才加入的 API（例如 QStyleHints::colorScheme()），且 Windows 正式
+# toolchain 已經係 Qt 6.11.1，所以 GUI build 明確要求 6.11。
+#
+# server-only build 刻意唔套用呢個下限：dedicated server 只需要 Core／Network，
+# 要繼續可以用 distro 提供的 Qt 6.x（例如 Ubuntu 24.04 的 6.4.2）建置。
+set(QSAN_QT_GUI_MINIMUM_VERSION 6.11)
+
+if(QSAN_BUILD_GUI OR WIN32)
+    set(qsan_qt_minimum_version ${QSAN_QT_GUI_MINIMUM_VERSION})
 else()
-    find_package(Qt6 REQUIRED COMPONENTS ${QSAN_QT_COMPONENTS})
+    set(qsan_qt_minimum_version "")
+endif()
+
+find_package(Qt6 ${qsan_qt_minimum_version} REQUIRED COMPONENTS ${QSAN_QT_COMPONENTS})
+
+if(QSAN_BUILD_GUI)
+    message(STATUS "QSanguosha GUI Qt baseline: ${QSAN_QT_GUI_MINIMUM_VERSION} (found ${Qt6_VERSION})")
 endif()
 
 get_filename_component(QT_PREFIX "${Qt6_DIR}/../../.." ABSOLUTE)
