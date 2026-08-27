@@ -69,6 +69,25 @@ REQUIRED_STAGES = (
 
 DEFAULT_REQUIRED_INTERACTIONS = ("choose_general", "play_phase")
 
+# 已知的 base 缺陷。列在這裡不等於可以忽略:runner 一定照樣偵測、照樣列印、照樣
+# 寫入 summary["known_base_defects"];--known-base-defect 只是把「這一項」由
+# problems 降級為警告,而且每一項都有明確的復原條件。
+#
+# server-teardown-crash
+#   現象 : 對局結束、client 正常離開之後, qsanguosha_server 在拆房時 SIGSEGV/SIGABRT。
+#   證據 : Room::~Room() → GameSnapshotService::~GameSnapshotService()
+#          → GlobalSnapshot::~GlobalSnapshot() → QMap<QString,QVariant>::~QMap()
+#          → CardUseStruct::~CardUseStruct() → QSharedPointer<Card> deref
+#          → Card::deleteLater() → CardLifetimeManager::observeCard()
+#          → QObject::thread() 讀到已釋放的 Card。
+#          全部 frame 都在本分支沒有改過的檔案裡; 以 M1 merge base 編出來的
+#          qsanguosha_server 一樣重現; 用舊有的 --auto-robots 托管流程(完全不經
+#          本分支的 UI responder)一樣重現。
+#   界線 : 只有在「server 已經寫出帶勝方的 game over」而且「client 已經 exit 0」
+#          之後發生的 server 崩潰才會被降級。對局途中的 server 崩潰永遠是失敗。
+#   移除 : card-lifetime / GameSnapshot 的擁有權修好之後, 拿掉這個 flag 即可。
+KNOWN_BASE_DEFECTS = {"server-teardown-crash"}
+
 
 def parse_markers(text):
     """由 client log 抽出 stage / result marker。"""
@@ -192,6 +211,8 @@ def build_client_command(args, client_exe, port, result_path, screenshot_path):
 
 def evaluate(args, summary, stages, results, client_code, server_markers):
     problems = []
+    downgraded = summary.setdefault("known_base_defects", [])
+    allowed = set(getattr(args, "known_base_defect", []) or [])
     stage_status = {}
     for stage in stages:
         name = stage.get("stage")
@@ -251,9 +272,27 @@ def evaluate(args, summary, stages, results, client_code, server_markers):
                         % responder.get("trustee_reason"))
 
     lifecycle = summary["lifecycle"]
-    if lifecycle["server_shutdown"] not in ("graceful", "already"):
-        problems.append("the server did not shut down cleanly on request (%s)"
-                        % lifecycle["server_shutdown"])
+    server_issues = []
+    # dedicated server 係常駐的:對局完咗佢應該仍然企喺度,等我哋開口先收工。
+    # "already" 代表佢喺我哋出聲之前就已經走咗 —— 即係佢自己死咗。
+    if lifecycle["server_shutdown"] != "graceful":
+        server_issues.append("the server did not shut down cleanly on request (%s, exit=%s)"
+                             % (lifecycle["server_shutdown"],
+                                describe_exit(lifecycle["server_exit"])))
+    if is_crash_code(lifecycle["server_exit"]):
+        server_issues.append("the server crashed: %s"
+                             % describe_exit(lifecycle["server_exit"]))
+
+    # 只有「完整打完一局、client 亦已經乾淨退出」之後的 server 崩潰,先至符合
+    # server-teardown-crash 的形狀。對局途中死掉的 server 永遠是失敗。
+    teardown_only = (server_markers["game_over"] not in (None, "none")
+                     and client_code == 0)
+    if server_issues and "server-teardown-crash" in allowed and teardown_only:
+        downgraded.append({"defect": "server-teardown-crash",
+                           "detail": server_issues,
+                           "server_exit": lifecycle["server_exit"]})
+    else:
+        problems += server_issues
     if lifecycle["orphans"]:
         problems.append("processes survived the smoke: %s" % lifecycle["orphans"])
     if not lifecycle["port_released"]:
@@ -302,6 +341,11 @@ def main():
                         help="必須經真 UI 覆過的互動名, 逗號分隔")
     parser.add_argument("--allow-trustee-fallback", action="store_true",
                         help="容許 responder 中途切 trustee (預設: 視為失敗)")
+    parser.add_argument("--known-base-defect", action="append", default=[],
+                        choices=sorted(KNOWN_BASE_DEFECTS),
+                        help="把指定的已知 base 缺陷降級為警告 (仍然會偵測、列印同"
+                             "寫入 summary)。只可以用喺已經對照過 base 並且證實"
+                             "同本分支無關的缺陷")
     args = parser.parse_args()
 
     args.require_interactions = [name.strip() for name in
@@ -456,10 +500,17 @@ def finalize(summary, summary_path, server, client, port, args,
     if marker_file:
         marker_text = read_text(marker_file)
         server_markers["game_start"] = MARK_GAME_START in marker_text
+        # 對局結束之後 client 會正常斷線,server 會為咗收拾房間再寫多一行冇 winner
+        # 的 "game over"。真正的結果係第一行有 winner 嗰個,唔可以被收尾嗰行蓋過。
         for line in marker_text.splitlines():
             match = MARK_GAME_OVER.search(line)
-            if match:
-                server_markers["game_over"] = match.group(1) or "none"
+            if not match:
+                continue
+            winner = (match.group(1) or "").strip()
+            if server_markers["game_over"] is None:
+                server_markers["game_over"] = winner or "none"
+            elif winner and server_markers["game_over"] == "none":
+                server_markers["game_over"] = winner
     summary["stages"] = stages
     summary["result"] = results[-1] if results else None
     summary["server_markers"] = server_markers
@@ -490,6 +541,10 @@ def finalize(summary, summary_path, server, client, port, args,
                           for item in sorted((responder.get("ui_actions") or {}).items())))
         print("trustee         : %s" % responder.get("trustee_engaged"))
     print("server game over: %s" % server_markers["game_over"])
+    for entry in summary.get("known_base_defects", []):
+        print("KNOWN BASE DEFECT (downgraded, still recorded): %s" % entry["defect"])
+        for detail in entry["detail"]:
+            print("  ! %s" % detail)
     print("summary         : %s" % summary_path)
 
     if summary["problems"]:

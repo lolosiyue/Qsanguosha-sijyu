@@ -72,8 +72,13 @@ private:
     bool stepPlayerChoose();
 
     // 用真正被 enable 嘅手牌 + 真正 selectable 嘅目標湊出一個合法出牌。
-    // 成功時已經撳咗 ok_button。
-    bool tryUseAnyCard(bool recordPlay);
+    //
+    // 一次 step 只試一張牌:每試一張都會令 RoomScene 重算目標、重排 graphics
+    // effect,一口氣試曬成手牌等於喺同一格 event loop 內狂 churn 場景。真人唔會
+    // 咁做,而 5 人局嘅 QGraphicsScene 亦捱唔住(見 docs 記錄的繪製崩潰)。
+    // 回傳 Attempted 代表已經送出回覆;Retry 代表要下一格 event loop 再試下一張。
+    enum class CardAttempt { Sent, Retry, Exhausted };
+    CardAttempt tryUseNextCard(bool recordPlay);
     bool trySelectTargetsFor();
     bool clickButton(const QString &name);
     void clearSelection();
@@ -89,6 +94,8 @@ private:
     QElapsedTimer m_pendingSince;
 
     int m_stallMs;
+    // 本次請求已經試過幾多張手牌(每格 event loop 試一張)。
+    int m_cardCursor = 0;
     bool m_stepScheduled = false;
     bool m_requestPending = false;
     bool m_trusteeEngaged = false;
