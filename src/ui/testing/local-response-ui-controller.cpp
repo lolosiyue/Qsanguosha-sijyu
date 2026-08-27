@@ -4,7 +4,9 @@
 #include "client.h"
 #include "clientplayer.h"
 #include "engine.h"
+#include "game-view.h"
 #include "local-response-ui-probe.h"
+#include "local-response-ui-inspector.h"
 #include "roomscene.h"
 #include "server-info.h"
 #include "settings.h"
@@ -12,12 +14,13 @@
 #include "test-client-socket.h"
 
 #include <QApplication>
+#include <QCloseEvent>
+#include <QDateTime>
 #include <QDir>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFileInfo>
 #include <QFrame>
-#include <QGraphicsView>
 #include <QImage>
 #include <QJsonDocument>
 #include <QMainWindow>
@@ -25,6 +28,7 @@
 #include <QMutex>
 #include <QMutexLocker>
 #include <QPainter>
+#include <QPushButton>
 #include <QSaveFile>
 #include <QTimer>
 
@@ -108,9 +112,12 @@ bool jsonArraysEqual(const QJsonArray &left, const QJsonArray &right)
 } // namespace
 
 LocalResponseUiController::LocalResponseUiController(QObject *parent)
-    : QObject(parent), m_timeoutMs(3000), m_showUi(false),
-      m_screenshotOnFailure(false), m_client(nullptr), m_socket(nullptr),
-      m_mainWindow(nullptr), m_scene(nullptr), m_probe(nullptr)
+    : QObject(parent), m_timeoutMs(3000), m_screenshotOnFailure(false),
+      m_mode(RunnerMode::Auto), m_stage(RunnerStage::Configuring),
+      m_client(nullptr), m_socket(nullptr), m_mainWindow(nullptr), m_view(nullptr),
+      m_scene(nullptr), m_probe(nullptr), m_inspector(nullptr), m_nextActionIndex(0),
+      m_replyProcessed(false), m_closing(false), m_closedByUser(false),
+      m_inspectExitCode(Passed)
 {
 }
 
@@ -144,6 +151,9 @@ int LocalResponseUiController::run(const QStringList &arguments)
         return InvalidCase;
     }
 
+    if (controller->m_mode == RunnerMode::Inspect)
+        qApp->setQuitOnLastWindowClosed(false);
+
     QTimer::singleShot(0, controller, &LocalResponseUiController::execute);
     const int exitCode = qApp->exec();
     qInstallMessageHandler(previousMessageHandler);
@@ -158,7 +168,12 @@ bool LocalResponseUiController::configure(const QStringList &arguments, QString 
     m_casePath = argumentValue(arguments, QStringLiteral("--local-response-ui-case"));
     m_reportPath = argumentValue(arguments, QStringLiteral("--local-response-ui-report"));
     m_screenshotDir = argumentValue(arguments, QStringLiteral("--screenshot-dir"));
-    m_showUi = arguments.contains(QStringLiteral("--show-ui"));
+    if (arguments.contains(QStringLiteral("--inspect-ui")))
+        m_mode = RunnerMode::Inspect;
+    else if (arguments.contains(QStringLiteral("--show-ui")))
+        m_mode = RunnerMode::ShowAuto;
+    else
+        m_mode = RunnerMode::Auto;
     m_screenshotOnFailure = arguments.contains(QStringLiteral("--screenshot-on-failure"));
 
     const QString timeoutText = argumentValue(arguments, QStringLiteral("--case-timeout-ms"));
@@ -188,6 +203,7 @@ bool LocalResponseUiController::configure(const QStringList &arguments, QString 
 
 bool LocalResponseUiController::bootstrap(QString *error)
 {
+    setStage(RunnerStage::Bootstrapping);
     const QJsonArray packages = m_case.root().value(QStringLiteral("packages")).toArray();
     for (const QJsonValue &value : packages) {
         const QString packageName = value.toString();
@@ -216,17 +232,17 @@ bool LocalResponseUiController::bootstrap(QString *error)
     Self->setScreenName(selfObject.value(QStringLiteral("screen_name")).toString(QStringLiteral("Tester")));
 
     m_mainWindow = new QMainWindow;
-    if (!m_showUi)
+    if (m_mode == RunnerMode::Auto)
         m_mainWindow->setAttribute(Qt::WA_DontShowOnScreen);
     m_scene = new RoomScene(m_mainWindow);
-    QGraphicsView *view = new QGraphicsView(m_scene, m_mainWindow);
-    view->setFrameStyle(QFrame::NoFrame);
-    view->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    view->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    m_mainWindow->setCentralWidget(view);
+    m_view = new FitView(nullptr, m_mainWindow);
+    m_view->setFrameStyle(QFrame::NoFrame);
+    m_mainWindow->setCentralWidget(m_view);
     m_mainWindow->resize(1280, 720);
     m_mainWindow->show();
-    m_scene->adjustItems();
+    flushEvents();
+    m_view->setScene(m_scene);
+    m_view->refit();
     flushEvents();
 
     const QJsonArray players = bootstrapObject.value(QStringLiteral("players")).toArray();
@@ -298,6 +314,10 @@ bool LocalResponseUiController::bootstrap(QString *error)
     if (!resolveCards(error))
         return false;
     m_probe = new LocalResponseUiProbe(m_client, m_scene, m_aliasToId);
+    connect(m_socket, &TestClientSocket::packetSent, this, [this]() {
+        if (m_mode == RunnerMode::Inspect)
+            QTimer::singleShot(0, this, &LocalResponseUiController::processInspectReply);
+    });
     flushEvents();
     return true;
 }
@@ -395,6 +415,14 @@ void LocalResponseUiController::execute()
     m_report.insert(QStringLiteral("schema_version"), 1);
     m_report.insert(QStringLiteral("case"), m_case.name());
     m_report.insert(QStringLiteral("result"), QStringLiteral("FAIL"));
+    m_report.insert(QStringLiteral("mode"),
+        m_mode == RunnerMode::Inspect ? QStringLiteral("inspect") : QStringLiteral("auto"));
+    if (m_mode == RunnerMode::Inspect) {
+        m_report.insert(QStringLiteral("presentation_result"), QStringLiteral("PENDING"));
+        m_report.insert(QStringLiteral("reply_received"), false);
+        m_report.insert(QStringLiteral("reply_result"), QStringLiteral("NOT_RECEIVED"));
+        m_report.insert(QStringLiteral("closed_by_user"), false);
+    }
     m_report.insert(QStringLiteral("qt_messages"), m_qtMessages);
     m_report.insert(QStringLiteral("artifacts"), QJsonObject());
 
@@ -417,10 +445,21 @@ void LocalResponseUiController::execute()
     requestReport.insert(QStringLiteral("global_serial"), static_cast<int>(requestPacket.globalSerial));
     requestReport.insert(QStringLiteral("body"), QJsonValue::fromVariant(requestBody));
     m_report.insert(QStringLiteral("request"), requestReport);
+    m_requestPacketJson = QString::fromUtf8(requestPacket.toJson());
+
+    if (m_mode == RunnerMode::Inspect)
+        createInspector(commandName, static_cast<int>(requestPacket.globalSerial));
+
+    QTimer::singleShot(0, this, &LocalResponseUiController::injectRequest);
+}
+
+void LocalResponseUiController::injectRequest()
+{
+    setStage(RunnerStage::InjectingRequest);
 
     m_snapshots.insert(QStringLiteral("before_request"), m_probe->snapshot());
     m_socket->clearSentPackets();
-    m_socket->injectServerPacket(QString::fromUtf8(requestPacket.toJson()));
+    m_socket->injectServerPacket(m_requestPacketJson);
 
     const QJsonObject expectedPresented = m_case.presentedExpectation();
     QString expectedStatus;
@@ -450,15 +489,43 @@ void LocalResponseUiController::execute()
     flushEvents();
     const QJsonObject presentedSnapshot = m_probe->snapshot();
     m_snapshots.insert(QStringLiteral("presented"), presentedSnapshot);
-    if (m_screenshotOnFailure || m_showUi)
+    setStage(RunnerStage::Presented);
+    if (m_mode != RunnerMode::Inspect
+        && (m_screenshotOnFailure || m_mode != RunnerMode::Auto)) {
         captureScreenshot(QStringLiteral("presented"));
+    }
     if (!validateSnapshot(expectedPresented, presentedSnapshot,
         QStringLiteral("expect_presented"))) {
+        if (m_mode == RunnerMode::Inspect) {
+            m_report.insert(QStringLiteral("presentation_result"), QStringLiteral("FAIL"));
+            if (m_inspector)
+                m_inspector->setPresentationResult(QStringLiteral("FAIL"));
+            captureScreenshot(QStringLiteral("presented"));
+            setInspectFailure(AssertionFailed, QStringLiteral("expect_presented"),
+                QStringLiteral("presentation assertions failed"));
+            return;
+        }
         finish(AssertionFailed, QStringLiteral("expect_presented"),
             QStringLiteral("presentation assertions failed"));
         return;
     }
 
+    if (m_mode == RunnerMode::Inspect) {
+        m_report.insert(QStringLiteral("presentation_result"), QStringLiteral("PASS"));
+        setStage(RunnerStage::AwaitingManualInput);
+        updateInspectorSnapshot();
+        if (m_inspector) {
+            m_inspector->setPresentationResult(QStringLiteral("PASS"));
+            m_inspector->setFinalResult(QStringLiteral("Awaiting manual input"));
+        }
+        captureScreenshot(QStringLiteral("presented"));
+        if (!persistReport(QStringLiteral("INSPECTING")))
+            finish(InternalError, QStringLiteral("report"),
+                QStringLiteral("could not persist inspect report"));
+        return;
+    }
+
+    QString error;
     if (!runActions(&error)) {
         finish(AssertionFailed, QStringLiteral("actions"), error);
         return;
@@ -489,59 +556,283 @@ bool LocalResponseUiController::runActions(QString *error)
 {
     const QJsonArray actions = m_case.actions();
     for (int index = 0; index < actions.size(); ++index) {
-        const QJsonObject action = actions.at(index).toObject();
-        const QString type = action.value(QStringLiteral("type")).toString();
-        QString actionError;
-        bool ok = false;
-
-        if (type == QStringLiteral("select_card")) {
-            ok = m_probe->selectCard(action.value(QStringLiteral("card")).toString(), true, &actionError);
-        } else if (type == QStringLiteral("unselect_card")) {
-            ok = m_probe->selectCard(action.value(QStringLiteral("card")).toString(), false, &actionError);
-        } else if (type == QStringLiteral("activate_skill")) {
-            ok = m_probe->activateSkill(action.value(QStringLiteral("skill")).toString(), true, &actionError);
-        } else if (type == QStringLiteral("deactivate_skill")) {
-            ok = m_probe->activateSkill(action.value(QStringLiteral("skill")).toString(), false, &actionError);
-        } else if (type == QStringLiteral("select_player")) {
-            ok = m_probe->selectPlayer(action.value(QStringLiteral("player")).toString(), true, &actionError);
-        } else if (type == QStringLiteral("unselect_player")) {
-            ok = m_probe->selectPlayer(action.value(QStringLiteral("player")).toString(), false, &actionError);
-        } else if (type == QStringLiteral("click_ok") || type == QStringLiteral("invoke_skill_yes")) {
-            ok = m_probe->clickButton(QStringLiteral("ok"), &actionError);
-        } else if (type == QStringLiteral("click_cancel") || type == QStringLiteral("invoke_skill_no")) {
-            ok = m_probe->clickButton(QStringLiteral("cancel"), &actionError);
-        } else if (type == QStringLiteral("click_discard")) {
-            ok = m_probe->clickButton(QStringLiteral("discard"), &actionError);
-        } else if (type == QStringLiteral("choose_option")) {
-            ok = m_probe->chooseOption(action.value(QStringLiteral("option")).toString(), &actionError);
-        } else if (type == QStringLiteral("assert")) {
-            ok = validateSnapshot(action.value(QStringLiteral("expect")).toObject(),
-                m_probe->snapshot(), QStringLiteral("actions[%1].assert").arg(index));
-            if (!ok)
-                actionError = QStringLiteral("action assertion failed");
-        } else if (type == QStringLiteral("take_screenshot")) {
-            ok = !captureScreenshot(action.value(QStringLiteral("name"))
-                .toString(QStringLiteral("action_%1").arg(index))).isEmpty();
-            if (!ok)
-                actionError = QStringLiteral("screenshot could not be saved");
-        } else {
-            actionError = QStringLiteral("unsupported action '%1'").arg(type);
-        }
-
-        QJsonObject result;
-        result.insert(QStringLiteral("type"), type);
-        result.insert(QStringLiteral("status"), ok ? QStringLiteral("PASS") : QStringLiteral("FAIL"));
-        if (!actionError.isEmpty())
-            result.insert(QStringLiteral("error"), actionError);
-        m_actionResults.append(result);
-        flushEvents();
-        m_snapshots.insert(QStringLiteral("after_action_%1").arg(index + 1), m_probe->snapshot());
-        if (!ok) {
-            *error = QStringLiteral("action %1 (%2) failed: %3").arg(index).arg(type, actionError);
+        if (!runAction(index, error))
             return false;
-        }
     }
     return true;
+}
+
+bool LocalResponseUiController::runAction(int index, QString *error)
+{
+    const QJsonObject action = m_case.actions().at(index).toObject();
+    const QString type = action.value(QStringLiteral("type")).toString();
+    QString actionError;
+    bool ok = false;
+
+    if (type == QStringLiteral("select_card"))
+        ok = m_probe->selectCard(action.value(QStringLiteral("card")).toString(), true, &actionError);
+    else if (type == QStringLiteral("unselect_card"))
+        ok = m_probe->selectCard(action.value(QStringLiteral("card")).toString(), false, &actionError);
+    else if (type == QStringLiteral("activate_skill"))
+        ok = m_probe->activateSkill(action.value(QStringLiteral("skill")).toString(), true, &actionError);
+    else if (type == QStringLiteral("deactivate_skill"))
+        ok = m_probe->activateSkill(action.value(QStringLiteral("skill")).toString(), false, &actionError);
+    else if (type == QStringLiteral("select_player"))
+        ok = m_probe->selectPlayer(action.value(QStringLiteral("player")).toString(), true, &actionError);
+    else if (type == QStringLiteral("unselect_player"))
+        ok = m_probe->selectPlayer(action.value(QStringLiteral("player")).toString(), false, &actionError);
+    else if (type == QStringLiteral("click_ok") || type == QStringLiteral("invoke_skill_yes"))
+        ok = m_probe->clickButton(QStringLiteral("ok"), &actionError);
+    else if (type == QStringLiteral("click_cancel") || type == QStringLiteral("invoke_skill_no"))
+        ok = m_probe->clickButton(QStringLiteral("cancel"), &actionError);
+    else if (type == QStringLiteral("click_discard"))
+        ok = m_probe->clickButton(QStringLiteral("discard"), &actionError);
+    else if (type == QStringLiteral("choose_option"))
+        ok = m_probe->chooseOption(action.value(QStringLiteral("option")).toString(), &actionError);
+    else if (type == QStringLiteral("assert")) {
+        ok = validateSnapshot(action.value(QStringLiteral("expect")).toObject(),
+            m_probe->snapshot(), QStringLiteral("actions[%1].assert").arg(index));
+        if (!ok)
+            actionError = QStringLiteral("action assertion failed");
+    } else if (type == QStringLiteral("take_screenshot")) {
+        ok = !captureScreenshot(action.value(QStringLiteral("name"))
+            .toString(QStringLiteral("action_%1").arg(index))).isEmpty();
+        if (!ok)
+            actionError = QStringLiteral("screenshot could not be saved");
+    } else {
+        actionError = QStringLiteral("unsupported action '%1'").arg(type);
+    }
+
+    QJsonObject result;
+    result.insert(QStringLiteral("type"), type);
+    result.insert(QStringLiteral("status"), ok ? QStringLiteral("PASS") : QStringLiteral("FAIL"));
+    if (!actionError.isEmpty())
+        result.insert(QStringLiteral("error"), actionError);
+    m_actionResults.append(result);
+    flushEvents();
+    m_snapshots.insert(QStringLiteral("after_action_%1").arg(index + 1), m_probe->snapshot());
+    updateInspectorSnapshot();
+    if (!ok)
+        *error = QStringLiteral("action %1 (%2) failed: %3").arg(index).arg(type, actionError);
+    return ok;
+}
+
+bool LocalResponseUiController::eventFilter(QObject *watched, QEvent *event)
+{
+    if (m_mode == RunnerMode::Inspect && !m_closing
+        && event->type() == QEvent::Close
+        && (watched == m_mainWindow || watched == m_inspector)) {
+        static_cast<QCloseEvent *>(event)->ignore();
+        QTimer::singleShot(0, this, &LocalResponseUiController::closeInspection);
+        return true;
+    }
+    return QObject::eventFilter(watched, event);
+}
+
+void LocalResponseUiController::createInspector(const QString &command, int serial)
+{
+    m_inspector = new LocalResponseUiInspector(m_mainWindow);
+    m_inspector->setCaseName(m_case.name());
+    m_inspector->setMode(QStringLiteral("Inspect"));
+    m_inspector->setRequest(command, serial);
+    m_mainWindow->installEventFilter(this);
+    m_inspector->installEventFilter(this);
+    connect(m_inspector->nextActionButton(), &QPushButton::clicked,
+        this, &LocalResponseUiController::runNextInspectAction);
+    connect(m_inspector->remainingActionsButton(), &QPushButton::clicked,
+        this, &LocalResponseUiController::runRemainingInspectActions);
+    connect(m_inspector->snapshotButton(), &QPushButton::clicked,
+        this, &LocalResponseUiController::saveManualSnapshot);
+    connect(m_inspector->screenshotButton(), &QPushButton::clicked,
+        this, &LocalResponseUiController::saveManualScreenshot);
+    connect(m_inspector->closeButton(), &QPushButton::clicked,
+        this, &LocalResponseUiController::closeInspection);
+    m_inspector->show();
+    m_inspector->move(m_mainWindow->frameGeometry().topRight() + QPoint(12, 0));
+    flushEvents();
+}
+
+void LocalResponseUiController::updateInspectorSnapshot()
+{
+    if (!m_inspector || !m_probe)
+        return;
+    const QJsonObject client = m_probe->snapshot().value(QStringLiteral("client")).toObject();
+    m_inspector->setClientState(client.value(QStringLiteral("status")).toString(),
+        client.value(QStringLiteral("pattern")).toString());
+}
+
+void LocalResponseUiController::setStage(RunnerStage stage)
+{
+    m_stage = stage;
+    QString name;
+    switch (stage) {
+    case RunnerStage::Configuring: name = QStringLiteral("Configuring"); break;
+    case RunnerStage::Bootstrapping: name = QStringLiteral("Bootstrapping"); break;
+    case RunnerStage::InjectingRequest: name = QStringLiteral("InjectingRequest"); break;
+    case RunnerStage::Presented: name = QStringLiteral("Presented"); break;
+    case RunnerStage::AwaitingManualInput: name = QStringLiteral("AwaitingManualInput"); break;
+    case RunnerStage::ReplyReceived: name = QStringLiteral("ReplyReceived"); break;
+    case RunnerStage::Completed: name = QStringLiteral("Completed"); break;
+    case RunnerStage::Closing: name = QStringLiteral("Closing"); break;
+    }
+    m_report.insert(QStringLiteral("runner_stage"), name);
+}
+
+void LocalResponseUiController::setInspectFailure(ExitCode code, const QString &stage,
+    const QString &message)
+{
+    m_inspectExitCode = code;
+    m_inspectFailureStage = stage;
+    m_inspectFailureMessage = message;
+    setStage(RunnerStage::Completed);
+    updateInspectorSnapshot();
+    if (m_inspector)
+        m_inspector->setFinalResult(QStringLiteral("FAIL: %1").arg(message));
+    if (!persistReport(QStringLiteral("FAIL"), stage, message))
+        finish(InternalError, QStringLiteral("report"),
+            QStringLiteral("could not persist inspect failure report"));
+}
+
+void LocalResponseUiController::runNextInspectAction()
+{
+    if (m_mode != RunnerMode::Inspect || m_replyProcessed
+        || m_nextActionIndex >= m_case.actions().size()) {
+        return;
+    }
+    QString error;
+    const int index = m_nextActionIndex++;
+    if (!runAction(index, &error)) {
+        setInspectFailure(AssertionFailed, QStringLiteral("actions"), error);
+        return;
+    }
+    if (!m_replyProcessed)
+        persistReport(QStringLiteral("INSPECTING"));
+}
+
+void LocalResponseUiController::runRemainingInspectActions()
+{
+    while (!m_replyProcessed && m_nextActionIndex < m_case.actions().size()) {
+        const int before = m_nextActionIndex;
+        runNextInspectAction();
+        if (m_inspectExitCode != Passed || m_nextActionIndex == before)
+            break;
+    }
+}
+
+void LocalResponseUiController::saveManualSnapshot()
+{
+    if (!m_probe)
+        return;
+    const QString timestamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz"));
+    QDir().mkpath(m_screenshotDir);
+    const QString path = QDir(m_screenshotDir).filePath(
+        QStringLiteral("manual-snapshot-%1.json").arg(timestamp));
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) {
+        setInspectFailure(InternalError, QStringLiteral("snapshot"), file.errorString());
+        return;
+    }
+    file.write(QJsonDocument(m_probe->snapshot()).toJson(QJsonDocument::Indented));
+    if (!file.commit()) {
+        setInspectFailure(InternalError, QStringLiteral("snapshot"), file.errorString());
+        return;
+    }
+    QJsonObject artifacts = m_report.value(QStringLiteral("artifacts")).toObject();
+    artifacts.insert(QStringLiteral("manual_snapshot_%1").arg(timestamp),
+        QFileInfo(path).absoluteFilePath());
+    m_report.insert(QStringLiteral("artifacts"), artifacts);
+    persistReport(m_replyProcessed ? QStringLiteral("PASS") : QStringLiteral("INSPECTING"));
+}
+
+void LocalResponseUiController::saveManualScreenshot()
+{
+    const QString timestamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz"));
+    if (captureScreenshot(QStringLiteral("manual-screenshot-%1").arg(timestamp)).isEmpty()) {
+        setInspectFailure(InternalError, QStringLiteral("screenshot"),
+            QStringLiteral("manual screenshot could not be saved"));
+        return;
+    }
+    persistReport(m_replyProcessed ? QStringLiteral("PASS") : QStringLiteral("INSPECTING"));
+}
+
+void LocalResponseUiController::processInspectReply()
+{
+    if (m_mode != RunnerMode::Inspect || m_closing)
+        return;
+    if (m_replyProcessed) {
+        if (m_socket->sentPackets().size() > 1)
+            setInspectFailure(AssertionFailed, QStringLiteral("expect_reply"),
+                QStringLiteral("multiple terminal replies were captured"));
+        return;
+    }
+
+    m_replyProcessed = true;
+    setStage(RunnerStage::ReplyReceived);
+    m_report.insert(QStringLiteral("reply_received"), true);
+    QString error;
+    const bool replyPassed = validateReply(&error);
+    flushEvents();
+    const QJsonObject finalSnapshot = m_probe->snapshot();
+    m_snapshots.insert(QStringLiteral("final"), finalSnapshot);
+    const bool finalPassed = validateSnapshot(m_case.finalExpectation(), finalSnapshot,
+        QStringLiteral("expect_final"));
+    const bool passed = replyPassed && finalPassed;
+    m_report.insert(QStringLiteral("reply_result"),
+        passed ? QStringLiteral("PASS") : QStringLiteral("FAIL"));
+
+    const QJsonObject captured = m_capturedPackets.isEmpty()
+        ? QJsonObject() : m_capturedPackets.last().toObject();
+    QByteArray encodedBody = QJsonDocument(QJsonArray { captured.value(QStringLiteral("body")) })
+        .toJson(QJsonDocument::Compact);
+    if (encodedBody.size() >= 2) {
+        encodedBody.remove(0, 1);
+        encodedBody.chop(1);
+    }
+    if (m_inspector) {
+        m_inspector->setReply(true, captured.value(QStringLiteral("command")).toString(),
+            QString::fromUtf8(encodedBody));
+    }
+    updateInspectorSnapshot();
+    setStage(RunnerStage::Completed);
+
+    if (!passed) {
+        const QString message = replyPassed
+            ? QStringLiteral("final-state assertions failed") : error;
+        setInspectFailure(AssertionFailed,
+            replyPassed ? QStringLiteral("expect_final") : QStringLiteral("expect_reply"), message);
+        return;
+    }
+
+    m_inspectExitCode = Passed;
+    if (m_inspector)
+        m_inspector->setFinalResult(QStringLiteral("PASS - close when finished inspecting"));
+    persistReport(QStringLiteral("PASS"));
+}
+
+void LocalResponseUiController::closeInspection()
+{
+    if (m_mode != RunnerMode::Inspect || m_closing)
+        return;
+    m_closing = true;
+    m_closedByUser = true;
+    setStage(RunnerStage::Closing);
+    m_report.insert(QStringLiteral("closed_by_user"), true);
+
+    const bool failed = m_inspectExitCode != Passed;
+    const QString result = failed ? QStringLiteral("FAIL")
+        : (m_replyProcessed ? QStringLiteral("PASS") : QStringLiteral("INSPECTED"));
+    if (m_inspector)
+        m_inspector->setFinalResult(result);
+    if (!persistReport(result, m_inspectFailureStage, m_inspectFailureMessage)) {
+        qApp->exit(InternalError);
+        return;
+    }
+    qInfo().noquote() << QStringLiteral("LOCAL RESPONSE UI %1: %2").arg(result, m_case.name());
+    if (m_inspector)
+        m_inspector->close();
+    if (m_mainWindow)
+        m_mainWindow->close();
+    qApp->exit(m_inspectExitCode);
 }
 
 bool LocalResponseUiController::validateSnapshot(const QJsonObject &expected,
@@ -857,12 +1148,19 @@ QString LocalResponseUiController::captureScreenshot(const QString &name)
 
     QList<QPair<QRect, QPixmap>> captures;
     QRect bounds;
-    auto appendWidget = [&captures, &bounds](QWidget *widget) {
+    auto appendWidget = [this, &captures, &bounds](QWidget *widget) {
         if (!widget || !widget->isVisible())
             return;
-        const QPixmap pixmap = widget->grab();
+        QPixmap pixmap = widget->grab();
         if (pixmap.isNull())
             return;
+        if (widget == m_mainWindow && m_view && m_view->scene()) {
+            QPainter scenePainter(&pixmap);
+            const QPoint offset = m_view->viewport()->mapTo(widget, QPoint(0, 0));
+            const QRectF target(offset, m_view->viewport()->size());
+            const QRectF source = m_view->mapToScene(m_view->viewport()->rect()).boundingRect();
+            m_view->scene()->render(&scenePainter, target, source, Qt::IgnoreAspectRatio);
+        }
         const QRect rect(widget->mapToGlobal(QPoint(0, 0)),
             pixmap.deviceIndependentSize().toSize());
         captures.append(qMakePair(rect, pixmap));
@@ -890,21 +1188,48 @@ QString LocalResponseUiController::captureScreenshot(const QString &name)
     return path;
 }
 
-void LocalResponseUiController::finish(ExitCode code, const QString &stage,
+void LocalResponseUiController::syncReport(const QString &result, const QString &stage,
     const QString &message)
 {
-    if (code != Passed && m_screenshotOnFailure)
-        captureScreenshot(QStringLiteral("failed"));
-    m_report.insert(QStringLiteral("result"), code == Passed ? QStringLiteral("PASS") : QStringLiteral("FAIL"));
-    if (!stage.isEmpty())
+    m_report.insert(QStringLiteral("result"), result);
+    if (stage.isEmpty())
+        m_report.remove(QStringLiteral("failed_stage"));
+    else
         m_report.insert(QStringLiteral("failed_stage"), stage);
-    if (!message.isEmpty())
+    if (message.isEmpty())
+        m_report.remove(QStringLiteral("error"));
+    else
         m_report.insert(QStringLiteral("error"), message);
     m_report.insert(QStringLiteral("snapshots"), m_snapshots);
     m_report.insert(QStringLiteral("actions"), m_actionResults);
     m_report.insert(QStringLiteral("captured_packets"), m_capturedPackets);
     m_report.insert(QStringLiteral("assertions"), m_assertions);
     m_report.insert(QStringLiteral("qt_messages"), m_qtMessages);
+    if (m_mode == RunnerMode::Inspect) {
+        m_report.insert(QStringLiteral("reply_received"), m_replyProcessed);
+        m_report.insert(QStringLiteral("closed_by_user"), m_closedByUser);
+    }
+}
+
+bool LocalResponseUiController::persistReport(const QString &result,
+    const QString &stage, const QString &message)
+{
+    syncReport(result, stage, message);
+    QString writeError;
+    if (writeReport(&writeError))
+        return true;
+    qCritical().noquote() << writeError;
+    return false;
+}
+
+void LocalResponseUiController::finish(ExitCode code, const QString &stage,
+    const QString &message)
+{
+    if (code != Passed && m_screenshotOnFailure)
+        captureScreenshot(QStringLiteral("failed"));
+    setStage(RunnerStage::Completed);
+    syncReport(code == Passed ? QStringLiteral("PASS") : QStringLiteral("FAIL"),
+        stage, message);
 
     QString writeError;
     if (!writeReport(&writeError)) {

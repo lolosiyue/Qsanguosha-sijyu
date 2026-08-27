@@ -22,11 +22,11 @@
 #include "button.h"
 #include "homecontroller.h"
 #include "pointer-effect-overlay.h"
+#include "game-view.h"
 #include "crashhandler.h"
 #ifdef AUDIO_SUPPORT
 #include "audio.h"
 #endif
-#include <QOpenGLWidget>
 #include <QStackedWidget>
 #include <QQuickWidget>
 #include <QQuickItem>
@@ -40,81 +40,6 @@
 #include <QtQml>
 #include <QFile>
 #include <QDebug>
-
-class FitView : public QGraphicsView
-{
-public:
-    FitView(QGraphicsScene *scene, MainWindow *mainWindow)
-        : QGraphicsView(scene), m_mainWindow(mainWindow)
-    {
-        setSceneRect(UiConfig.Rect);
-        setRenderHints(QPainter::TextAntialiasing | QPainter::Antialiasing
-            | QPainter::SmoothPixmapTransform);
-        setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-        setAlignment(Qt::AlignCenter);
-        m_uiScale = qBound<qreal>(1.0, Config.UIScale, 2.0);
-        QOpenGLWidget *glWidget = new QOpenGLWidget(this);
-        glWidget->setUpdateBehavior(QOpenGLWidget::PartialUpdate);
-        setViewport(glWidget);
-        setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
-    }
-
-    void setUiScale(qreal scale)
-    {
-        m_uiScale = qBound<qreal>(1.0, scale, 2.0);
-        if (auto *room_scene = qobject_cast<RoomScene *>(scene()))
-            room_scene->applyUiElementScale(m_uiScale);
-    }
-
-    void refit()
-    {
-        fitCurrentScene(viewport()->size());
-    }
-
-protected:
-    void resizeEvent(QResizeEvent *event) override
-    {
-        QGraphicsView::resizeEvent(event);
-        fitCurrentScene(viewport()->size());
-    }
-
-private:
-    void fitCurrentScene(const QSize &viewportSize)
-    {
-        if (!scene() || viewportSize.isEmpty())
-            return;
-
-        resetTransform();
-
-        if (scene()->inherits("RoomScene")) {
-            RoomScene *room_scene = qobject_cast<RoomScene *>(scene());
-            QRectF newSceneRect(QPointF(0, 0), QSizeF(viewportSize));
-            room_scene->setSceneRect(newSceneRect);
-            room_scene->adjustItems();
-            setSceneRect(room_scene->sceneRect());
-            if (newSceneRect != room_scene->sceneRect())
-                fitInView(room_scene->sceneRect(), Qt::KeepAspectRatio);
-            room_scene->applyUiElementScale(m_uiScale);
-            if (m_mainWindow)
-                m_mainWindow->setBackgroundBrush(false);
-            return;
-        } else if (scene()->inherits("StartScene")) {
-            StartScene *start_scene = qobject_cast<StartScene *>(scene());
-            QRectF newSceneRect(-viewportSize.width() / 2.0, -viewportSize.height() / 2.0,
-                viewportSize.width(), viewportSize.height());
-            start_scene->setSceneRect(newSceneRect);
-            setSceneRect(start_scene->sceneRect());
-            if (newSceneRect != start_scene->sceneRect())
-                fitInView(start_scene->sceneRect(), Qt::KeepAspectRatio);
-        }
-        if (m_mainWindow)
-            m_mainWindow->setBackgroundBrush(true);
-    }
-
-    MainWindow *m_mainWindow;
-    qreal m_uiScale = 1.0;
-};
 
 MainWindow::MainWindow(QWidget *parent)
 	: QMainWindow(parent), ui(new Ui::MainWindow), server(nullptr)
@@ -774,23 +699,8 @@ void MainWindow::on_actionAbout_triggered()
 
 void MainWindow::setBackgroundBrush(bool centerAsOrigin)
 {
-	if (scene) {
-		QTransform transform;
-		const QSize targetSize = gameView ? gameView->viewport()->size() : size();
-		if (centerAsOrigin)
-			transform.translate(-targetSize.width() / 2.0, -targetSize.height() / 2.0);
-		QPixmap source;
-		const QString sourceKey = "qsan-background:" + Config.BackgroundImage;
-		if (!QPixmapCache::find(sourceKey, &source)) {
-			source.load(Config.BackgroundImage);
-			if (!source.isNull())
-				QPixmapCache::insert(sourceKey, source);
-		}
-		QPixmap pixmap = scaledPixmapForDevice(source, targetSize, devicePixelRatioF());
-		QBrush brush(pixmap);
-		brush.setTransform(transform);
-		scene->setBackgroundBrush(brush);
-	}
+    if (gameView)
+        gameView->setBackgroundBrush(centerAsOrigin);
 }
 
 void MainWindow::changeBackground()

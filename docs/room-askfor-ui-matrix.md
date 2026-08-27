@@ -1,89 +1,193 @@
-# Room askFor 本地響應 UI Runner
+# Room askFor 回應 UI Runner
 
-## 目的與邊界
+## 用途與邊界
 
-本 runner 在既有 GUI 執行檔內重建真人玩家的回應路徑：`Packet` 解析 → `Client` 回呼 → `RoomScene`／`Dashboard`／對話框 → 真實 UI 動作 → `Client::replyToServer` → 假 socket 擷取。它不建立 `Server`、`Room` 或 TCP 連線，也不替代伺服器端 `Room::askForXXX` 測試。
+Local response UI runner 會在本機程序內建立實際的 `Client`、`RoomScene`、`Dashboard` 與 production `FitView`，注入 protocol request packet，再觀察 UI 狀態與 `TestClientSocket` 捕捉到的真實 reply packet。
 
-建置功能預設關閉：
+此工具不會啟動 `Server`／`Room`、建立 TCP 連線或驗證伺服器端 `Room::askForXXX`。它驗證的是 client request handler 到 production UI、signal/slot、`Client::replyToServer()` 的路徑。
 
-```powershell
-cmake --preset vs2026-x64 -DQSAN_BUILD_LOCAL_RESPONSE_UI_RUNNER=ON
-cmake --build --preset debug --parallel 8
-```
+## 一般建置流程
 
-單一案例：
+Runner 是 Windows GUI `QSanguosha` target 的一般來源，不再由 cache option、CTest 或 `BUILD_TESTING` 控制。第一次建立 build tree 時只需一般 configure：
 
 ```powershell
-debug\QSanguosha.exe --local-response-ui-case tests\skill_ui_runner\cases\ask_for_choice.json --local-response-ui-report artifacts\skill-ui\ask_for_choice\report.json --screenshot-dir artifacts\skill-ui\ask_for_choice
+cmake --preset vs2026-x64
 ```
 
-完整隔離套件：
+平常只做增量 Debug build：
 
 ```powershell
-python tools\autotest\skill_ui_runner.py --qt-root H:\Qt6111\6.11.1\msvc2022_64
+cmake --build --preset debug --target QSanguosha --parallel 8
 ```
 
-Windows runner 會固定 `QT_QPA_PLATFORM=windows`，並從執行檔旁或 `--qt-root` 尋找 `platforms/qwindows[d].dll`，避免平台外掛錯誤對話框。每個案例使用獨立程序；逾時、非 runner 結束碼及新 dump 都會保留在案例 artifact 目錄。
+`--build` 也只執行同一條增量命令；它不會重新 configure、執行 CTest 或建置其他測試 executable。若 build tree 不存在，會顯示一次性 configure 指令後停止。
 
-## 啟動生命週期
+Runner 僅加入 Windows GUI target；Linux server-only target 不會因此引入 Qt Widgets、QML 或 runner sources。Parser regression test 仍由一般 `BUILD_TESTING` 控制，但與 GUI runner 是否可用無關。
 
-1. 載入案例指定 package／extension。
-2. 建立注入 `TestClientSocket` 的真實 `Client`。
-3. 以通知建立 self、其他玩家、座位、武將、技能、牌、marks 及 flags。
-4. 注入 `S_COMMAND_GAME_START`，讓 `Client::startGame()` 執行正式的 `Engine::registerRoom()`；這是 `current_pattern` 與 `use_reason` 可安全查詢的必要 runtime context。
-5. 將 `request` 轉為真實 `Packet` 並走 `Client::processServerPacket()`。
-6. 透過語意 probe 驗證畫面狀態，並由按鈕、卡牌、玩家與技能元件的真實事件完成動作。
-7. 從假 socket 擷取 reply，核對 command、serial 與語意 payload。
+## 三種執行模式
 
-`bootstrap.cards[].alias` 是案例內穩定名稱；實際 card id 由 Engine 的精確 `name + suit + number` 決定。runner 拒絕重複 alias、找不到的實體牌，以及非 self 擁有的牌，避免將測試資料誤當任意合成牌。
-
-`request.raw_body` 直接覆蓋 protocol body，供 extension 的真實 `askFor` 形狀或尚未有 adapter 的命令使用。一般案例應優先使用 `api + args`，讓 schema 和 adapter 明確表達 Room API 語意。
-
-## Room askFor UI 矩陣
-
-| Room／流程 API | Protocol command | Client handler | UI surface | Reply path | Runner |
+| 模式 | CLI | 顯示 | Actions | Reply 後 | 用途 |
 |---|---|---|---|---|---|
-| `askForGeneral` | `S_COMMAND_CHOOSE_GENERAL` | `askForGeneral` | choose-general dialog | `onPlayerChooseGeneral` | 待補 |
-| `askForPlayerChosen` | `S_COMMAND_CHOOSE_PLAYER` | `askForPlayerChosen` | photos + dashboard OK | `doPlayerChoose` | 已支援 |
-| `askForAssign` | `S_COMMAND_CHOOSE_ROLE` | `askForAssign` | role dialog | dialog reply | 待補 |
-| `askForDirection` | `S_COMMAND_CHOOSE_DIRECTION` | `askForDirection` | choice dialog | dialog reply | 待補 |
-| `askForExchange` | `S_COMMAND_EXCHANGE_CARD` | `askForExchange` | dashboard cards | `replyToServer(S_COMMAND_DISCARD_CARD)` | 已支援 |
-| `askForSinglePeach` | `S_COMMAND_ASK_PEACH` | `askForSinglePeach` | dashboard response | response-card reply | 待補 |
-| `askForGuanxing` | `S_COMMAND_SKILL_GUANXING` | `askForGuanxing` | guanxing box | arrangement reply | 下一批 |
-| `askForGongxin` | `S_COMMAND_SKILL_GONGXIN` | `askForGongxin` | gongxin box | chosen-card reply | 下一批 |
-| `askForYiji` | `S_COMMAND_SKILL_YIJI` | `askForYiji` | cards + players | yiji reply | 下一批 |
-| play phase | `S_COMMAND_PLAY_CARD` | `activate` | dashboard + photos | `S_COMMAND_PLAY_CARD` | 待補 |
-| `askForDiscard` | `S_COMMAND_DISCARD_CARD` | `askForDiscard` | dashboard cards | discard-card reply | 已支援 |
-| `askForSuit` | `S_COMMAND_CHOOSE_SUIT` | `askForSuit` | choice dialog | dialog reply | 待補 |
-| `askForKingdom` | `S_COMMAND_CHOOSE_KINGDOM` | `askForKingdom` | choice dialog | dialog reply | 待補 |
-| `askForCard`／`askForUseCard` | `S_COMMAND_RESPONSE_CARD` | `askForCardOrUseCard` | dashboard + photos | response-card reply | 已支援 |
-| `askForSkillInvoke` | `S_COMMAND_INVOKE_SKILL` | `askForSkillInvoke` | dashboard OK/Cancel | boolean reply | 已支援 |
-| `askForChoice` | `S_COMMAND_MULTIPLE_CHOICE` | `askForChoice` | choice dialog | choice reply | 已支援 |
-| trigger-order choice | `S_COMMAND_TRIGGER_ORDER` | `askForTriggerOrder` | trigger-order box | choice reply | 待補 |
-| `askForNullification` | `S_COMMAND_NULLIFICATION` | `askForNullification` | dashboard response | response-card reply | 待補 |
-| `askForCardShow` | `S_COMMAND_SHOW_CARD` | `askForCardShow` | dashboard cards | card id reply | 待補 |
-| `askForAG` | `S_COMMAND_AMAZING_GRACE` | `askForAG` | amazing-grace box | card id reply | 下一批 |
-| `askForPindian` | `S_COMMAND_PINDIAN` | `askForPindian` | dashboard cards | card id reply | 待補 |
-| `askForCardChosen` | `S_COMMAND_CHOOSE_CARD` | `askForCardChosen` | card overview | card id reply | 下一批 |
-| `askForOrder` | `S_COMMAND_CHOOSE_ORDER` | `askForOrder` | kingdom/order box | choice reply | 待補 |
-| 3v3 role choice | `S_COMMAND_CHOOSE_ROLE_3V3` | `askForRole3v3` | role dialog | role reply | 待補 |
-| `askForSurrender` | `S_COMMAND_SURRENDER` | `askForSurrender` | vote dialog | boolean reply | 待補 |
-| `askForLuckCard` | `S_COMMAND_LUCK_CARD` | `askForLuckCard` | dashboard OK/Cancel | boolean reply | 待補 |
-| 3v3 general choice | `S_COMMAND_ASK_GENERAL` | `askForGeneral3v3` | general dialog | general reply | 待補 |
-| arrange generals | `S_COMMAND_ARRANGE_GENERAL` | `startArrange` | arrange dialog | arrangement reply | 待補 |
-| QML `askFor` | `S_COMMAND_QML_INTERACT` | `askForQml` | QML dialog | variant reply | 下一批 |
+| Auto | 預設 | hidden/offscreen | 自動全部執行 | 驗證後結束 | 回歸測試 |
+| ShowAuto | `--show-ui` | 顯示 production UI | 自動全部執行 | 驗證後結束 | 觀察自動案例 |
+| Inspect | `--inspect-ui` | 顯示 production UI 與 Inspector | 不自動執行 | 保持開啟，等使用者 Close | 人工檢查與互動 |
 
-## 已支援案例與語意驗證
+Inspect mode 的順序是：
 
-| 類型 | 案例 | 關鍵驗證 |
+1. 建立並顯示 production `FitView` 與 Inspector。
+2. 透過 queued call 注入 request，避免 modal dialog 阻擋 Inspector 建立。
+3. 等待 presented semantic snapshot，執行 `expect_presented`。
+4. 顯示 assertion 結果並停在 `AwaitingManualInput`，不執行 JSON actions，也沒有 reply timeout。
+5. 使用者直接操作 production UI，或用 Inspector 逐步執行案例 actions。
+6. 捕捉真實 outbound reply，顯示 command、body 與驗證結果，但不自動關閉。
+7. 使用者按 Close 後寫入最後 report 並結束。
+
+若使用者未送出 reply 就關閉，report 為 `INSPECTED`、`reply_received=false`，程序正常回傳 0。Bootstrap、request injection、schema 或 presentation assertion 失敗會保留視窗供檢查，最後以非零狀態結束。
+
+## Inspector
+
+Inspector 顯示：
+
+- Case、Mode
+- Request command／serial
+- Client status／current pattern
+- Presentation assertion
+- Reply received／command／body
+- Final result
+
+可用動作：
+
+- `Run Next Case Action`：執行下一個 semantic action。
+- `Run Remaining Case Actions`：依序執行剩餘 actions。
+- `Save Snapshot`：輸出 `manual-snapshot-<timestamp>.json`。
+- `Save Screenshot`：合成 main window、OpenGL viewport、所有可見 top-level dialog 與 Inspector。
+- `Close`：寫入最後 report 並關閉。
+
+Inspector actions 只驅動 production UI 的既有 probe／signal／slot；reply 仍必須經過 `Client::replyToServer()` 與 `TestClientSocket::send()`。
+
+## Python CLI
+
+列出案例：
+
+```powershell
+python tools\autotest\skill_ui_runner.py --list-cases
+```
+
+目前案例：
+
+```text
+ask_for_card_response
+ask_for_card_view_as_skill
+ask_for_choice
+ask_for_discard
+ask_for_exchange
+ask_for_player_chosen
+ask_for_skill_invoke_no
+ask_for_skill_invoke_yes
+extension_real_askfor
+```
+
+執行全部 Auto cases：
+
+```powershell
+python tools\autotest\skill_ui_runner.py
+```
+
+執行單一 Auto case 或顯示自動流程：
+
+```powershell
+python tools\autotest\skill_ui_runner.py --case tests\skill_ui_runner\cases\ask_for_choice.json
+python tools\autotest\skill_ui_runner.py --show-ui --case tests\skill_ui_runner\cases\ask_for_choice.json
+```
+
+依精確 stem 開啟 Inspect：
+
+```powershell
+python tools\autotest\skill_ui_runner.py --inspect ask_for_choice
+```
+
+增量建置後開啟 Inspect：
+
+```powershell
+python tools\autotest\skill_ui_runner.py --build --inspect ask_for_card_view_as_skill
+```
+
+Windows 簡易入口等同上一條命令：
+
+```powershell
+tools\autotest\inspect_skill_ui.bat ask_for_card_view_as_skill
+```
+
+Inspect 不會設定 `QT_QPA_PLATFORM=offscreen`、`CREATE_NO_WINDOW` 或程序 timeout，並繼承 console stdout／stderr；因此 crash/assert 訊息可直接看到。Auto mode 保留 hidden/offscreen、每 case 一個 process、timeout 與 report summary。
+
+Executable 探測順序為：
+
+1. `--exe <path>`
+2. `builds/cmake-vs2026/Debug/QSanguosha.exe`
+3. `debug/QSanguosha.exe`
+
+Runner 會先呼叫 capability command，不會把舊 executable 開到 lobby：
+
+```powershell
+QSanguosha.exe --local-response-ui-capabilities
+```
+
+預期輸出：
+
+```json
+{"schema_version":1,"auto":true,"show":true,"inspect":true}
+```
+
+若 executable 太舊，會要求執行增量 Debug build。
+
+## Artifacts 與 report
+
+預設輸出位於 `artifacts/skill-ui/<case>/`，包含 snapshots、actions、assertions、captured packets、Qt messages、screenshots 與 `report.json`。
+
+有 reply 的 Inspect report 核心欄位：
+
+```json
+{
+  "mode": "inspect",
+  "presentation_result": "PASS",
+  "reply_received": true,
+  "reply_result": "PASS",
+  "closed_by_user": true
+}
+```
+
+無 reply、人工關閉：
+
+```json
+{
+  "mode": "inspect",
+  "result": "INSPECTED",
+  "reply_received": false,
+  "closed_by_user": true
+}
+```
+
+## Room askFor UI 覆蓋矩陣
+
+| 類型 | Case | 驗證重點 |
 |---|---|---|
-| invoke | `ask_for_skill_invoke_yes/no` | 真實 OK／Cancel 與 boolean reply |
-| choice | `ask_for_choice` | 選項內容、禁用選項、choice reply |
-| card response | `ask_for_card_response` | pattern、prompt 翻譯、可用牌、實體牌 reply |
-| view-as | `ask_for_card_view_as_skill` | 技能啟動、subcard、轉換後 card 名稱 |
-| discard | `ask_for_discard` | 選牌、Discard 按鈕、card id 列表 |
-| exchange | `ask_for_exchange` | exchange 狀態與正式 discard-card reply |
-| player chosen | `ask_for_player_chosen` | 可選玩家、選取狀態與 player 名稱 reply |
-| extension | `extension_real_askfor` | `AIgeneral.lua` 的 `deep_seek` 真實來源、翻譯及 invoke reply |
+| invoke | `ask_for_skill_invoke_yes/no` | Dashboard OK／Cancel 與 boolean reply |
+| choice | `ask_for_choice` | 翻譯選項、modal dialog 與 choice reply |
+| card response | `ask_for_card_response` | pattern、prompt、卡牌可選狀態與 response-card reply |
+| view-as | `ask_for_card_view_as_skill` | skill button、subcard、確認與 virtual card reply |
+| discard | `ask_for_discard` | discard 數量、卡牌選取與 card id reply |
+| exchange | `ask_for_exchange` | exchange 限制與 discard-card reply |
+| player chosen | `ask_for_player_chosen` | player 可選狀態、確認與 player name reply |
+| extension | `extension_real_askfor` | 真實 extension skill 的 invoke request 與 reply |
 
-下一批 adapter 順序固定為：`askForCardChosen`、`askForAG`、`askForYiji`、`askForGuanxing`、`askForGongxin`、QML `askFor`。
+尚未涵蓋的 client surfaces 包括 `askForCardChosen`、`askForAG`、`askForYiji`、`askForGuanxing`、`askForGongxin` 與 QML `askFor`。
+
+## CTest
+
+CTest 是選用的 parser／launcher regression coverage，不是開啟或檢查 askFor UI 的必要步驟：
+
+```powershell
+ctest --test-dir builds/cmake-vs2026 -C Debug --output-on-failure
+```
+
+`qsanguosha_local_response_ui_case_parser` 在一般 `BUILD_TESTING` 下註冊，且不依賴舊 runner cache option。`qsanguosha_skill_ui_runner_contract` 驗證 Python CLI、capability probe、stem resolution 與純增量 `--build` 契約。

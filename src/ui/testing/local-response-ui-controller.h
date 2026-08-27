@@ -11,7 +11,10 @@
 #include <functional>
 
 class Client;
+class FitView;
+class LocalResponseUiInspector;
 class LocalResponseUiProbe;
+class QEvent;
 class QMainWindow;
 class RoomScene;
 class TestClientSocket;
@@ -21,6 +24,25 @@ class LocalResponseUiController final : public QObject
     Q_OBJECT
 
 public:
+    enum class RunnerMode
+    {
+        Auto,
+        ShowAuto,
+        Inspect
+    };
+
+    enum class RunnerStage
+    {
+        Configuring,
+        Bootstrapping,
+        InjectingRequest,
+        Presented,
+        AwaitingManualInput,
+        ReplyReceived,
+        Completed,
+        Closing
+    };
+
     enum ExitCode
     {
         Passed = 0,
@@ -39,12 +61,21 @@ public:
 
 private slots:
     void execute();
+    void injectRequest();
+    void processInspectReply();
+    void runNextInspectAction();
+    void runRemainingInspectActions();
+    void saveManualSnapshot();
+    void saveManualScreenshot();
+    void closeInspection();
 
 private:
+    bool eventFilter(QObject *watched, QEvent *event) override;
     bool configure(const QStringList &arguments, QString *error);
     bool bootstrap(QString *error);
     bool resolveCards(QString *error);
     bool runActions(QString *error);
+    bool runAction(int index, QString *error);
     bool validateReply(QString *error);
     bool validateSnapshot(const QJsonObject &expected, const QJsonObject &actual,
         const QString &path);
@@ -61,6 +92,14 @@ private:
     void flushEvents();
     bool waitForCondition(const std::function<bool()> &condition, int timeoutMs);
     QString captureScreenshot(const QString &name);
+    void createInspector(const QString &command, int serial);
+    void updateInspectorSnapshot();
+    void setStage(RunnerStage stage);
+    void setInspectFailure(ExitCode code, const QString &stage, const QString &message);
+    void syncReport(const QString &result, const QString &stage = QString(),
+        const QString &message = QString());
+    bool persistReport(const QString &result, const QString &stage = QString(),
+        const QString &message = QString());
     void finish(ExitCode code, const QString &stage = QString(),
         const QString &message = QString());
     bool writeReport(QString *error);
@@ -70,14 +109,26 @@ private:
     QString m_reportPath;
     QString m_screenshotDir;
     int m_timeoutMs;
-    bool m_showUi;
     bool m_screenshotOnFailure;
+    RunnerMode m_mode;
+    RunnerStage m_stage;
 
     Client *m_client;
     TestClientSocket *m_socket;
     QMainWindow *m_mainWindow;
+    FitView *m_view;
     RoomScene *m_scene;
     LocalResponseUiProbe *m_probe;
+    LocalResponseUiInspector *m_inspector;
+
+    QString m_requestPacketJson;
+    int m_nextActionIndex;
+    bool m_replyProcessed;
+    bool m_closing;
+    bool m_closedByUser;
+    ExitCode m_inspectExitCode;
+    QString m_inspectFailureStage;
+    QString m_inspectFailureMessage;
 
     QMap<QString, int> m_aliasToId;
     QJsonObject m_report;
