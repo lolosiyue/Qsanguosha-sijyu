@@ -38,6 +38,11 @@ function(qsan_add_ctest name executable)
         WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
         LABELS "${ARG_LABELS}"
     )
+    if(WIN32)
+        set_property(TEST ${name} PROPERTY ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+        )
+    endif()
 endfunction()
 
 add_executable(qsanguosha_core_tests
@@ -264,14 +269,29 @@ add_test(NAME "qsanguosha_card_lifetime:synthetic-30"
     COMMAND qsanguosha_runtime_tests --suite card-lifetime-synthetic-30 --seed 2026082201)
 set_tests_properties("qsanguosha_card_lifetime:synthetic-30" PROPERTIES
     WORKING_DIRECTORY "${QSAN_TEST_ROOT}" LABELS runtime)
+if(WIN32)
+    set_property(TEST "qsanguosha_card_lifetime:synthetic-30" PROPERTY ENVIRONMENT_MODIFICATION
+        "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    )
+endif()
 add_test(NAME "qsanguosha_card_lifetime:synthetic-50"
     COMMAND qsanguosha_runtime_tests --suite card-lifetime-synthetic-50 --seed 2026082201)
 set_tests_properties("qsanguosha_card_lifetime:synthetic-50" PROPERTIES
     WORKING_DIRECTORY "${QSAN_TEST_ROOT}" LABELS runtime)
+if(WIN32)
+    set_property(TEST "qsanguosha_card_lifetime:synthetic-50" PROPERTY ENVIRONMENT_MODIFICATION
+        "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    )
+endif()
 add_test(NAME "qsanguosha_card_lifetime:lua"
     COMMAND qsanguosha_runtime_tests --suite card-lifetime-lua)
 set_tests_properties("qsanguosha_card_lifetime:lua" PROPERTIES
     WORKING_DIRECTORY "${QSAN_TEST_ROOT}" LABELS runtime)
+if(WIN32)
+    set_property(TEST "qsanguosha_card_lifetime:lua" PROPERTY ENVIRONMENT_MODIFICATION
+        "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    )
+endif()
 
 add_executable(qsanguosha_server_tests
     server-tests-main.cpp
