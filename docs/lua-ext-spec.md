@@ -1483,8 +1483,8 @@ definition remains owned by its native definition owner.
 They describe whether eligible transient Cards are observed only or reclaimed
 at managed safe points; callers must not rely on either policy being the
 current default. The product headless runner accepts only the registered real
-game mode `20p`. The `30p` and `50p` values are synthetic actor-count stress
-rows only and are not product modes.
+game modes `08p` and `20p`. The `30p` and `50p` values are synthetic
+actor-count stress rows only and are not product modes.
 
 Headless verification requires an explicit `--exe` and an explicit unsigned
 32-bit `--seed`; there is no hardcoded executable default and no implicit

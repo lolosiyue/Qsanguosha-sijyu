@@ -5,7 +5,7 @@ rem  All options are set below. Leave empty = use default.
 rem ============================================================
 
 rem ---- your choices (edit here) ------------------------------
-set MODES=20p
+set MODES=08p
 set RUNS=1
 set GENERAL=s4_huangzhong
 set GENERAL2=
