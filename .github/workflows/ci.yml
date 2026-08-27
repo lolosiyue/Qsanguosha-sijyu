@@ -180,10 +180,11 @@ jobs:
           }
 
           $ctestStage = 'ci-handoff\ctest\builds\cmake-vs2026'
-          New-Item -ItemType Directory -Path "$ctestStage\RelWithDebInfo" -Force | Out-Null
+          New-Item -ItemType Directory -Path "$ctestStage\tests\RelWithDebInfo" -Force | Out-Null
           Copy-Item -LiteralPath builds\cmake-vs2026\CTestTestfile.cmake -Destination $ctestStage
-          Copy-Item -Path builds\cmake-vs2026\RelWithDebInfo\*.exe -Destination "$ctestStage\RelWithDebInfo"
-          if (-not (Get-ChildItem -Path "$ctestStage\RelWithDebInfo" -Filter *.exe)) {
+          Copy-Item -LiteralPath builds\cmake-vs2026\tests\CTestTestfile.cmake -Destination "$ctestStage\tests"
+          Copy-Item -Path builds\cmake-vs2026\tests\RelWithDebInfo\*.exe -Destination "$ctestStage\tests\RelWithDebInfo"
+          if (-not (Get-ChildItem -Path "$ctestStage\tests\RelWithDebInfo" -Filter *.exe)) {
             throw 'No CTest executables were staged'
           }
 
