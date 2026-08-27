@@ -8,6 +8,7 @@ namespace Ui {
 }
 
 class FitView;
+class RoomScene;
 class QGraphicsScene;
 class QSystemTrayIcon;
 class Server;
@@ -62,6 +63,11 @@ public:
 signals:
     void homeSceneReady();
     void homeSceneFailed(const QString &error);
+
+    // Linux GUI M2 network smoke 用的觀測點。RoomScene 唔喺 startup path,而係喺
+    // 收到 server setup 之後由 enterRoom() 建立,所以要另外一個 seam;同 M1 一樣,
+    // 呢度只係報告 MainWindow 本身已有的狀態,測試唔使複製一次進房流程。
+    void roomSceneCreated(RoomScene *scene);
 
 protected:
     virtual void closeEvent(QCloseEvent *);

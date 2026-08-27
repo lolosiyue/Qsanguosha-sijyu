@@ -105,6 +105,7 @@ static ClientPlayer *getControlRootPlayer(const ClientPlayer *player)
 	return const_cast<ClientPlayer *>(player);
 }
 
+#include "testing/network-ui-smoke-responder.h"
 #include "ui-utils.h"
 
 using namespace QSanProtocol;
@@ -2231,6 +2232,16 @@ void RoomScene::chooseGeneral(const QStringList&generals)
 	QApplication::alert(main_window);
 	if(!main_window->isActiveWindow())
 		Sanguosha->playSystemAudioEffect("prelude");
+
+	// Linux GUI M2 network smoke: 由 server 送嚟嘅清單揀第一個(名稱排序後),
+	// 令固定 seed 下成局可重現。放喺 --test-general 之前,因為 --test-general
+	// 揀嘅武將多數唔喺 5 選 1 清單內, server 會靜靜改用 _chooseDefaultGeneral,
+	// 反而令選將結果唔確定。
+	if (NetworkUiSmokeResponder::isActive() && Config.AutoPickGeneral.isEmpty()) {
+		m_autoPickGeneralAskCount++;
+		if (NetworkUiSmokeResponder::instance()->answerChooseGeneral(generals))
+			return;
+	}
 
 	// 自動化測試: --test-general 指定自動選將, 略過選將對話框
 	// server 在 FreeChoose(EnableCheat) 下接受任意回覆 (room.cpp askForGeneral/chooseGenerals),
@@ -5311,8 +5322,13 @@ void RoomScene::onGameStart()
 
 	trust_button->setEnabled(true);
 
-	// 自動化測試: 開局即托管, 避免真人操作阻塞對局
-	if (isAutoTestClient() && Self && Self->getState() != "trust") {
+	// 自動化測試: 開局即托管, 避免真人操作阻塞對局。
+	//
+	// M2 network smoke 除外:托管之後 server 端 AI 會接手回覆,askFor 請求就唔會
+	// 再到達 client 嘅 RoomScene,而「請求經真 TCP 到 UI、再由 UI 覆返 server」
+	// 正正就係 M2 要證明嘅嘢。responder 自己有 stall watchdog,真係卡住先切托管。
+	if (isAutoTestClient() && !NetworkUiSmokeResponder::isActive()
+		&& Self && Self->getState() != "trust") {
 		QTimer::singleShot(500, this, [this]() {
 			if (Self && Self->getState() != "trust")
 				trust();
