@@ -5,6 +5,28 @@ project(QSanguosha LANGUAGES C CXX)
 include(CTest)
 include(GNUInstallDirs)
 
+# 產品選項：GUI client 與 dedicated server 各自獨立，平台只決定預設值，
+# 不再由平台永久決定產品是否存在。
+if(WIN32)
+    set(QSAN_BUILD_GUI_DEFAULT ON)
+else()
+    set(QSAN_BUILD_GUI_DEFAULT OFF)
+endif()
+
+option(QSAN_BUILD_GUI
+    "Build the QSanguosha GUI client"
+    ${QSAN_BUILD_GUI_DEFAULT}
+)
+option(QSAN_BUILD_SERVER
+    "Build the dedicated QSanguosha server"
+    ON
+)
+
+if(BUILD_TESTING AND NOT QSAN_BUILD_SERVER)
+    message(FATAL_ERROR
+        "BUILD_TESTING=ON requires QSAN_BUILD_SERVER=ON (CTest drives qsanguosha_server)")
+endif()
+
 if(WIN32)
     if(NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
         message(FATAL_ERROR "The Windows CMake build supports x64 MSVC only")
@@ -27,14 +49,25 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
-if(WIN32)
-    find_package(Qt6 6.11 REQUIRED COMPONENTS
-        Core
+# 單一 Qt component 清單，按產品分層，避免 Windows／Linux 各自維護會漂移的兩份清單。
+set(QSAN_QT_COMPONENTS
+    Core
+    Network
+)
+
+if(BUILD_TESTING)
+    list(APPEND QSAN_QT_COMPONENTS
+        Core5Compat
+        Gui
+    )
+endif()
+
+if(QSAN_BUILD_GUI)
+    list(APPEND QSAN_QT_COMPONENTS
         Core5Compat
         Gui
         LinguistTools
         Multimedia
-        Network
         OpenGLWidgets
         Qml
         Quick
@@ -42,12 +75,28 @@ if(WIN32)
         QuickWidgets
         Widgets
     )
+endif()
+
+list(REMOVE_DUPLICATES QSAN_QT_COMPONENTS)
+
+# GUI 產品的 Qt baseline 在 Windows 與 Linux 保持一致。GUI source 用到
+# Qt 6.5 才加入的 API（例如 QStyleHints::colorScheme()），且 Windows 正式
+# toolchain 已經係 Qt 6.11.1，所以 GUI build 明確要求 6.11。
+#
+# server-only build 刻意唔套用呢個下限：dedicated server 只需要 Core／Network，
+# 要繼續可以用 distro 提供的 Qt 6.x（例如 Ubuntu 24.04 的 6.4.2）建置。
+set(QSAN_QT_GUI_MINIMUM_VERSION 6.11)
+
+if(QSAN_BUILD_GUI OR WIN32)
+    set(qsan_qt_minimum_version ${QSAN_QT_GUI_MINIMUM_VERSION})
 else()
-    set(qsan_linux_qt_components Core Network)
-    if(BUILD_TESTING)
-        list(APPEND qsan_linux_qt_components Core5Compat Gui)
-    endif()
-    find_package(Qt6 REQUIRED COMPONENTS ${qsan_linux_qt_components})
+    set(qsan_qt_minimum_version "")
+endif()
+
+find_package(Qt6 ${qsan_qt_minimum_version} REQUIRED COMPONENTS ${QSAN_QT_COMPONENTS})
+
+if(QSAN_BUILD_GUI)
+    message(STATUS "QSanguosha GUI Qt baseline: ${QSAN_QT_GUI_MINIMUM_VERSION} (found ${Qt6_VERSION})")
 endif()
 
 get_filename_component(QT_PREFIX "${Qt6_DIR}/../../.." ABSOLUTE)
@@ -252,71 +301,73 @@ foreach(qsan_engine_link IN LISTS qsan_engine_links)
     endif()
 endforeach()
 
-add_executable(qsanguosha_server
-    src/server-main.cpp
-    src/server/server-command-line.cpp
-    src/server/server-command-line.h
-    src/server/server-config.cpp
-    src/server/server-config.h
-    src/server/server-console.cpp
-    src/server/server-console.h
-    src/server/server-logger.cpp
-    src/server/server-logger.h
-    src/server/server-core.h
-    src/server/server-status.h
-)
-set_source_files_properties(src/server/server-core.h PROPERTIES SKIP_AUTOMOC OFF)
-target_include_directories(qsanguosha_server PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/package
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/server
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/util
-)
-target_compile_definitions(qsanguosha_server PRIVATE
-    QSAN_ENGINE_BUILD
-    QSAN_SERVER_CORE_ONLY
-)
-if(MSVC)
-    target_compile_definitions(qsanguosha_server PRIVATE WIN64 _CRT_SECURE_NO_WARNINGS)
-endif()
-target_link_libraries(qsanguosha_server PRIVATE
-    "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>"
-    Qt6::Core
-    Qt6::Network
-)
-if(WIN32)
-    target_link_libraries(qsanguosha_server PRIVATE Ws2_32 IPHLPAPI)
-    # crash handler(crashhandler.cpp, Release 啟用)需要
+if(QSAN_BUILD_SERVER)
+    add_executable(qsanguosha_server
+        src/server-main.cpp
+        src/server/server-command-line.cpp
+        src/server/server-command-line.h
+        src/server/server-config.cpp
+        src/server/server-config.h
+        src/server/server-console.cpp
+        src/server/server-console.h
+        src/server/server-logger.cpp
+        src/server/server-logger.h
+        src/server/server-core.h
+        src/server/server-status.h
+    )
+    set_source_files_properties(src/server/server-core.h PROPERTIES SKIP_AUTOMOC OFF)
+    target_include_directories(qsanguosha_server PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/package
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+    )
+    target_compile_definitions(qsanguosha_server PRIVATE
+        QSAN_ENGINE_BUILD
+        QSAN_SERVER_CORE_ONLY
+    )
+    if(MSVC)
+        target_compile_definitions(qsanguosha_server PRIVATE WIN64 _CRT_SECURE_NO_WARNINGS)
+    endif()
     target_link_libraries(qsanguosha_server PRIVATE
-        "$<$<CONFIG:Release>:dbghelp>"
-        "$<$<CONFIG:Release>:user32>"
-        "$<$<CONFIG:Release>:gdi32>"
+        "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>"
+        Qt6::Core
+        Qt6::Network
+    )
+    if(WIN32)
+        target_link_libraries(qsanguosha_server PRIVATE Ws2_32 IPHLPAPI)
+        # crash handler(crashhandler.cpp, Release 啟用)需要
+        target_link_libraries(qsanguosha_server PRIVATE
+            "$<$<CONFIG:Release>:dbghelp>"
+            "$<$<CONFIG:Release>:user32>"
+            "$<$<CONFIG:Release>:gdi32>"
+        )
+    endif()
+    set_target_properties(qsanguosha_server PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/debug"
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/release"
+        RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_CURRENT_SOURCE_DIR}/relwithdebinfo"
+        PDB_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/debug"
+        PDB_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/release"
+        PDB_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_CURRENT_SOURCE_DIR}/relwithdebinfo"
+    )
+    if(MSVC)
+        target_link_options(qsanguosha_server PRIVATE "$<$<CONFIG:Release>:/DEBUG>")
+    endif()
+
+    add_custom_target(deploy-server
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_CURRENT_SOURCE_DIR}/lua"
+            "$<TARGET_FILE_DIR:qsanguosha_server>/lua"
+        DEPENDS qsanguosha_server
+        VERBATIM
     )
 endif()
-set_target_properties(qsanguosha_server PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/debug"
-    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/release"
-    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_CURRENT_SOURCE_DIR}/relwithdebinfo"
-    PDB_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/debug"
-    PDB_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/release"
-    PDB_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_CURRENT_SOURCE_DIR}/relwithdebinfo"
-)
-if(MSVC)
-    target_link_options(qsanguosha_server PRIVATE "$<$<CONFIG:Release>:/DEBUG>")
-endif()
 
-add_custom_target(deploy-server
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_CURRENT_SOURCE_DIR}/lua"
-        "$<TARGET_FILE_DIR:qsanguosha_server>/lua"
-    DEPENDS qsanguosha_server
-    VERBATIM
-)
-
-if(UNIX)
+if(UNIX AND QSAN_BUILD_SERVER)
     set(QSAN_SYSTEMD_SERVICE_FILE
         "${CMAKE_CURRENT_BINARY_DIR}/qsanguosha-server.service")
     configure_file(
@@ -341,171 +392,235 @@ if(UNIX)
     )
 endif()
 
-if(WIN32)
-qt_add_executable(QSanguosha WIN32
-    ${QSAN_SOURCES}
-    ${QSAN_MOC_HEADERS}
-    ${QSAN_FORMS}
-    src/ui/package-dialogs.cpp
-    src/ui/package-dialogs.h
-    resource/icon.rc
-)
-
-target_sources(QSanguosha PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/qml/home/home_qml.qrc"
-)
-
-# home 介面圖示為本機資源，不入庫；本機存在 icons 目錄時才編譯進 qrc，避免 CI 缺少資源導致 RCC 錯誤
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/qml/home/icons")
-    target_sources(QSanguosha PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/qml/home/home_assets.qrc"
-    )
-endif()
-
-target_sources(QSanguosha PRIVATE
-    src/ui/testing/local-response-ui-case.cpp
-    src/ui/testing/local-response-ui-case.h
-    src/ui/testing/local-response-ui-controller.cpp
-    src/ui/testing/local-response-ui-controller.h
-    src/ui/testing/local-response-ui-inspector.cpp
-    src/ui/testing/local-response-ui-inspector.h
-    src/ui/testing/local-response-ui-probe.cpp
-    src/ui/testing/local-response-ui-probe.h
-    src/ui/testing/test-client-socket.cpp
-    src/ui/testing/test-client-socket.h
-)
-
-target_sources(QSanguosha PRIVATE
-    "$<$<CONFIG:Release>:${CMAKE_CURRENT_SOURCE_DIR}/src/core/audio.cpp>"
-)
-
-target_include_directories(QSanguosha PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/freetype
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/spine-cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/client
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/core
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/dialog
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/package
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/server
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/home
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/util
-    "$<$<CONFIG:Release>:${CMAKE_CURRENT_SOURCE_DIR}/include/fmod>"
-)
-
-target_compile_definitions(QSanguosha PRIVATE
-    USING_PCH
-    WIN64
-    _CRT_SECURE_NO_WARNINGS
-    QT_DEPRECATED_WARNINGS
-    QT_DISABLE_DEPRECATED_BEFORE=0x060000
-    QT_QML_IMPORT_PATH="${QT_PREFIX}/qml"
-    QT_BIN_DIR="${QT_PREFIX}/bin"
-    "$<$<CONFIG:Release>:AUDIO_SUPPORT>"
-)
-
-target_compile_options(QSanguosha PRIVATE
-    "$<$<COMPILE_LANGUAGE:C>:/utf-8>"
-    "$<$<COMPILE_LANGUAGE:CXX>:/utf-8;/bigobj;/MP8>"
-)
-
-target_precompile_headers(QSanguosha PRIVATE
-    "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/src/pch.h>"
-)
-
-set(qsan_library_dir "${CMAKE_CURRENT_SOURCE_DIR}/lib/win/x64")
-foreach(required_library freetype.lib freetype_D.lib fmodex.lib)
-    if(NOT EXISTS "${qsan_library_dir}/${required_library}")
-        message(FATAL_ERROR "Missing bundled library: ${qsan_library_dir}/${required_library}")
-    endif()
-endforeach()
-
-target_link_libraries(QSanguosha PRIVATE
-    "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>"
-    Qt6::Core
-    Qt6::Core5Compat
-    Qt6::Gui
-    Qt6::Multimedia
-    Qt6::Network
-    Qt6::OpenGLWidgets
-    Qt6::Qml
-    Qt6::Quick
-    Qt6::QuickControls2
-    Qt6::QuickWidgets
-    Qt6::Widgets
-    dwmapi
-    legacy_stdio_definitions
-    winhttp
-    "$<$<CONFIG:Release>:dbghelp>"
-    "$<$<CONFIG:Release>:user32>"
-    "$<$<CONFIG:Release>:gdi32>"
-    "$<$<CONFIG:Debug>:${qsan_library_dir}/freetype_D.lib>"
-    "$<$<NOT:$<CONFIG:Debug>>:${qsan_library_dir}/freetype.lib>"
-    "$<$<CONFIG:Release>:${qsan_library_dir}/fmodex.lib>"
-)
-
-target_compile_definitions(QSanguosha PRIVATE HAS_QT_MULTIMEDIA)
-
-target_link_options(QSanguosha PRIVATE "$<$<CONFIG:Release>:/DEBUG>")
-
-set_target_properties(QSanguosha PROPERTIES
-    QT_QML_MODULE_NO_IMPORT_SCAN TRUE
-    RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/debug"
-    RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/release"
-    RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_CURRENT_SOURCE_DIR}/relwithdebinfo"
-    PDB_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/debug"
-    PDB_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/release"
-    PDB_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_CURRENT_SOURCE_DIR}/relwithdebinfo"
-    VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-)
-
-set(translation_source "${CMAKE_CURRENT_SOURCE_DIR}/builds/sanguosha.ts")
-set_source_files_properties("${translation_source}" PROPERTIES
-    OUTPUT_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}"
-)
-qt_add_lrelease(QSanguosha
-    TS_FILES "${translation_source}"
-    QM_FILES_OUTPUT_VARIABLE qsan_qm_files
-)
-
-qt_add_lupdate(QSanguosha
-    TS_FILES "${translation_source}"
-    SOURCES
+if(QSAN_BUILD_GUI)
+    # GUI 產品的 source／MOC header／form／QML resource／askFor runner 由 Windows
+    # 與 Linux 共用；平台只追加平台專屬項目，不維護第二套 source list。
+    set(QSAN_GUI_SOURCES
         ${QSAN_SOURCES}
-        src/core/engine.cpp
+        ${QSAN_MOC_HEADERS}
         ${QSAN_FORMS}
-        qml/home/HomeScene.qml
-        qml/home/HomeMainButton.qml
-        qml/home/MainActionPanel.qml
-        qml/home/HomeBottomBar.qml
-        qml/home/HomeNavButton.qml
-        qml/home/HomeSideBar.qml
-        qml/home/GeneralScene.qml
-        qml/home/HomeTheme.qml
-)
+        src/ui/package-dialogs.cpp
+        src/ui/package-dialogs.h
+    )
 
-set(QSAN_FMOD_RUNTIME "" CACHE FILEPATH "Path to fmodex64.dll for Release deployment")
-find_program(QSAN_WINDEPLOYQT
-    NAMES windeployqt
-    HINTS "${QT6_INSTALL_PREFIX}/bin"
-    NO_DEFAULT_PATH
-    REQUIRED
-)
-add_custom_target(deploy
-    COMMAND ${CMAKE_COMMAND}
-        -DQSAN_CONFIG=$<CONFIG>
-        -DQSAN_EXECUTABLE=$<TARGET_FILE:QSanguosha>
-        -DQSAN_WINDEPLOYQT=${QSAN_WINDEPLOYQT}
-        -DQSAN_QML_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-        -DQSAN_FMOD_RUNTIME=${QSAN_FMOD_RUNTIME}
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Deploy.cmake
-    DEPENDS QSanguosha
-    VERBATIM
-)
+    if(WIN32)
+        list(APPEND QSAN_GUI_SOURCES
+            resource/icon.rc
+        )
+        qt_add_executable(QSanguosha WIN32
+            ${QSAN_GUI_SOURCES}
+        )
+    else()
+        qt_add_executable(QSanguosha
+            ${QSAN_GUI_SOURCES}
+        )
+    endif()
+
+    target_sources(QSanguosha PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml/home/home_qml.qrc"
+    )
+
+    # home 介面圖示為本機資源，不入庫；本機存在 icons 目錄時才編譯進 qrc，避免 CI 缺少資源導致 RCC 錯誤
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/qml/home/icons")
+        target_sources(QSanguosha PRIVATE
+            "${CMAKE_CURRENT_SOURCE_DIR}/qml/home/home_assets.qrc"
+        )
+    endif()
+
+    target_sources(QSanguosha PRIVATE
+        src/ui/testing/local-response-ui-case.cpp
+        src/ui/testing/local-response-ui-case.h
+        src/ui/testing/local-response-ui-controller.cpp
+        src/ui/testing/local-response-ui-controller.h
+        src/ui/testing/local-response-ui-inspector.cpp
+        src/ui/testing/local-response-ui-inspector.h
+        src/ui/testing/local-response-ui-probe.cpp
+        src/ui/testing/local-response-ui-probe.h
+        src/ui/testing/test-client-socket.cpp
+        src/ui/testing/test-client-socket.h
+    )
+
+    if(WIN32)
+        # audio.cpp 是 FMOD 專用實作，只在 Windows Release 編入。
+        target_sources(QSanguosha PRIVATE
+            "$<$<CONFIG:Release>:${CMAKE_CURRENT_SOURCE_DIR}/src/core/audio.cpp>"
+        )
+    endif()
+
+    target_include_directories(QSanguosha PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/include/spine-cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/client
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/dialog
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/package
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ui
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/home
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+    )
+
+    if(WIN32)
+        # bundled Freetype／FMOD／vld header 只供 Windows 使用；放喺 Linux include
+        # path 會遮蔽系統 Freetype header（ft2build.h 與 <freetype/*.h> 混版）。
+        target_include_directories(QSanguosha PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+            ${CMAKE_CURRENT_SOURCE_DIR}/include/freetype
+            "$<$<CONFIG:Release>:${CMAKE_CURRENT_SOURCE_DIR}/include/fmod>"
+        )
+    endif()
+
+    # Qt QML import path / bin 目錄：Windows 的 Qt prefix layout 與 Linux distro
+    # layout 不同，改由 Qt 自身回報的安裝路徑推導。
+    if(DEFINED QT6_INSTALL_PREFIX AND DEFINED QT6_INSTALL_QML)
+        if(IS_ABSOLUTE "${QT6_INSTALL_QML}")
+            set(QSAN_QT_QML_DIR "${QT6_INSTALL_QML}")
+        else()
+            set(QSAN_QT_QML_DIR "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_QML}")
+        endif()
+    else()
+        set(QSAN_QT_QML_DIR "${QT_PREFIX}/qml")
+    endif()
+    if(DEFINED QT6_INSTALL_PREFIX AND DEFINED QT6_INSTALL_BINS)
+        if(IS_ABSOLUTE "${QT6_INSTALL_BINS}")
+            set(QSAN_QT_BIN_DIR "${QT6_INSTALL_BINS}")
+        else()
+            set(QSAN_QT_BIN_DIR "${QT6_INSTALL_PREFIX}/${QT6_INSTALL_BINS}")
+        endif()
+    else()
+        set(QSAN_QT_BIN_DIR "${QT_PREFIX}/bin")
+    endif()
+
+    target_compile_definitions(QSanguosha PRIVATE
+        USING_PCH
+        QT_DEPRECATED_WARNINGS
+        QT_DISABLE_DEPRECATED_BEFORE=0x060000
+        QT_QML_IMPORT_PATH="${QSAN_QT_QML_DIR}"
+        QT_BIN_DIR="${QSAN_QT_BIN_DIR}"
+        HAS_QT_MULTIMEDIA
+    )
+
+    if(WIN32)
+        target_compile_definitions(QSanguosha PRIVATE
+            WIN64
+            _CRT_SECURE_NO_WARNINGS
+            "$<$<CONFIG:Release>:AUDIO_SUPPORT>"
+        )
+    endif()
+
+    if(MSVC)
+        target_compile_options(QSanguosha PRIVATE
+            "$<$<COMPILE_LANGUAGE:C>:/utf-8>"
+            "$<$<COMPILE_LANGUAGE:CXX>:/utf-8;/bigobj;/MP8>"
+        )
+    endif()
+
+    target_precompile_headers(QSanguosha PRIVATE
+        "$<$<COMPILE_LANGUAGE:CXX>:${CMAKE_CURRENT_SOURCE_DIR}/src/pch.h>"
+    )
+
+    target_link_libraries(QSanguosha PRIVATE
+        "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>"
+        Qt6::Core
+        Qt6::Core5Compat
+        Qt6::Gui
+        Qt6::Multimedia
+        Qt6::Network
+        Qt6::OpenGLWidgets
+        Qt6::Qml
+        Qt6::Quick
+        Qt6::QuickControls2
+        Qt6::QuickWidgets
+        Qt6::Widgets
+    )
+
+    if(WIN32)
+        set(qsan_library_dir "${CMAKE_CURRENT_SOURCE_DIR}/lib/win/x64")
+        foreach(required_library freetype.lib freetype_D.lib fmodex.lib)
+            if(NOT EXISTS "${qsan_library_dir}/${required_library}")
+                message(FATAL_ERROR "Missing bundled library: ${qsan_library_dir}/${required_library}")
+            endif()
+        endforeach()
+
+        target_link_libraries(QSanguosha PRIVATE
+            dwmapi
+            legacy_stdio_definitions
+            winhttp
+            "$<$<CONFIG:Release>:dbghelp>"
+            "$<$<CONFIG:Release>:user32>"
+            "$<$<CONFIG:Release>:gdi32>"
+            "$<$<CONFIG:Debug>:${qsan_library_dir}/freetype_D.lib>"
+            "$<$<NOT:$<CONFIG:Debug>>:${qsan_library_dir}/freetype.lib>"
+            "$<$<CONFIG:Release>:${qsan_library_dir}/fmodex.lib>"
+        )
+    else()
+        # Linux 使用系統 Freetype；不 link 任何 bundled *.lib，亦不需要 FMOD。
+        find_package(Freetype REQUIRED)
+        target_link_libraries(QSanguosha PRIVATE Freetype::Freetype)
+    endif()
+
+    if(MSVC)
+        target_link_options(QSanguosha PRIVATE "$<$<CONFIG:Release>:/DEBUG>")
+    endif()
+
+    set_target_properties(QSanguosha PROPERTIES
+        QT_QML_MODULE_NO_IMPORT_SCAN TRUE
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/debug"
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/release"
+        RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_CURRENT_SOURCE_DIR}/relwithdebinfo"
+        PDB_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/debug"
+        PDB_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/release"
+        PDB_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_CURRENT_SOURCE_DIR}/relwithdebinfo"
+        VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    set(translation_source "${CMAKE_CURRENT_SOURCE_DIR}/builds/sanguosha.ts")
+    set_source_files_properties("${translation_source}" PROPERTIES
+        OUTPUT_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+    qt_add_lrelease(QSanguosha
+        TS_FILES "${translation_source}"
+        QM_FILES_OUTPUT_VARIABLE qsan_qm_files
+    )
+
+    qt_add_lupdate(QSanguosha
+        TS_FILES "${translation_source}"
+        SOURCES
+            ${QSAN_SOURCES}
+            src/core/engine.cpp
+            ${QSAN_FORMS}
+            qml/home/HomeScene.qml
+            qml/home/HomeMainButton.qml
+            qml/home/MainActionPanel.qml
+            qml/home/HomeBottomBar.qml
+            qml/home/HomeNavButton.qml
+            qml/home/HomeSideBar.qml
+            qml/home/GeneralScene.qml
+            qml/home/HomeTheme.qml
+    )
+
+    if(WIN32)
+        set(QSAN_FMOD_RUNTIME "" CACHE FILEPATH "Path to fmodex64.dll for Release deployment")
+        find_program(QSAN_WINDEPLOYQT
+            NAMES windeployqt
+            HINTS "${QT6_INSTALL_PREFIX}/bin"
+            NO_DEFAULT_PATH
+            REQUIRED
+        )
+        add_custom_target(deploy
+            COMMAND ${CMAKE_COMMAND}
+                -DQSAN_CONFIG=$<CONFIG>
+                -DQSAN_EXECUTABLE=$<TARGET_FILE:QSanguosha>
+                -DQSAN_WINDEPLOYQT=${QSAN_WINDEPLOYQT}
+                -DQSAN_QML_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+                -DQSAN_FMOD_RUNTIME=${QSAN_FMOD_RUNTIME}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Deploy.cmake
+            DEPENDS QSanguosha
+            VERBATIM
+        )
+    endif()
 endif()
 
 if(WIN32)
