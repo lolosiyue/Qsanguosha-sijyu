@@ -178,10 +178,23 @@ jobs:
           Get-ChildItem -Path relwithdebinfo -Directory | ForEach-Object {
             Copy-Item -LiteralPath $_.FullName -Destination $runtimeStage -Recurse
           }
+          # CTest 期望 relwithdebinfo 路徑，同步提供以修復 Not Run (qsanguosha_server_* 4 項)
+          $relWithDebInfoStage = 'ci-handoff\runtime\relwithdebinfo'
+          New-Item -ItemType Directory -Path $relWithDebInfoStage -Force | Out-Null
+          Get-ChildItem -Path relwithdebinfo -File |
+            Where-Object Extension -In '.exe', '.dll' |
+            Copy-Item -Destination $relWithDebInfoStage
+          Copy-Item -LiteralPath relwithdebinfo\QSanguosha.pdb -Destination $relWithDebInfoStage
+          Get-ChildItem -Path relwithdebinfo -Directory | ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination $relWithDebInfoStage -Recurse
+          }
 
           $ctestStage = 'ci-handoff\ctest\builds\cmake-vs2026'
           New-Item -ItemType Directory -Path "$ctestStage\tests\RelWithDebInfo" -Force | Out-Null
           Copy-Item -LiteralPath builds\cmake-vs2026\CTestTestfile.cmake -Destination $ctestStage
+          Copy-Item -LiteralPath builds\cmake-vs2026\CMakeCache.txt -Destination $ctestStage
+          New-Item -ItemType Directory -Path "$ctestStage\generated" -Force | Out-Null
+          Copy-Item -LiteralPath builds\cmake-vs2026\generated\sanguosha_wrap.cxx -Destination "$ctestStage\generated"
           Copy-Item -LiteralPath builds\cmake-vs2026\tests\CTestTestfile.cmake -Destination "$ctestStage\tests"
           Copy-Item -Path builds\cmake-vs2026\tests\RelWithDebInfo\*.exe -Destination "$ctestStage\tests\RelWithDebInfo"
           if (-not (Get-ChildItem -Path "$ctestStage\tests\RelWithDebInfo" -Filter *.exe)) {
@@ -251,11 +264,25 @@ jobs:
         run: |
           & .\tools\ci\fetch-extensions.ps1
 
+      - name: Reconstruct RelWithDebInfo layout for CTest
+        shell: pwsh
+        run: |
+          if (Test-Path release -and -not (Test-Path relwithdebinfo)) {
+            New-Item -ItemType Directory -Path relwithdebinfo -Force | Out-Null
+            Copy-Item -Path release\* -Destination relwithdebinfo -Recurse -Force
+          }
+
       - name: Run deterministic C++ tests
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
+          # 兼容部分階段僅提供 release 的情況，確保 CTest 指向的 relwithdebinfo 存在
+          if (Test-Path release -and -not (Test-Path relwithdebinfo)) {
+            New-Item -ItemType Directory -Path relwithdebinfo -Force | Out-Null
+            Copy-Item -Path release\* -Destination relwithdebinfo -Recurse -Force
+          }
           $runtime = (Resolve-Path release).Path
+          if (-not $runtime) { $runtime = (Resolve-Path relwithdebinfo).Path }
           $env:PATH = "$runtime;$env:PATH"
           $runtime | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           $junitPath = Join-Path $env:GITHUB_WORKSPACE 'ci-logs\ctest.xml'
