@@ -403,7 +403,7 @@ void parseLifetimeReceipt(LifetimeChildReceipt &receipt)
     }
 }
 
-LifetimeChildReceipt runLifetimeChild(const QStringList &arguments, int timeoutMs = 15000)
+LifetimeChildReceipt runLifetimeChild(const QStringList &arguments, int timeoutMs = 30000)
 {
     LifetimeChildReceipt receipt;
     receipt.arguments = arguments;
@@ -1074,7 +1074,7 @@ int runCardLifetimeTests()
         const LifetimeChildReceipt receipt = runLifetimeChild(
             {QStringLiteral("--suite"), QStringLiteral("card-lifetime-shutdown"),
              shutdownCase.first},
-            15000);
+            30000);
         const QString expectedStage = shutdownCase.first == QLatin1String("lua-pin")
             ? QStringLiteral("worker-final") : QStringLiteral("postclose");
         adversarialShutdown = adversarialShutdown

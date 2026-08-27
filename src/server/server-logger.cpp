@@ -212,8 +212,15 @@ void ServerLogger::qtMessageHandler(QtMsgType type,
                                     const QString &message)
 {
     ServerLogger *logger = s_activeLogger.load();
-    if (!logger)
+    if (!logger) {
+        // Fallback: forward to default Qt handler to avoid silently
+        // swallowing qInfo/qWarning markers needed by CTest harnesses
+        // (e.g., CARD_LIFETIME_SHUTDOWN_STAGE). Using stderr keeps
+        // QProcess capture compatible with fprintf paths.
+        std::fprintf(stderr, "%s\n", message.toUtf8().constData());
+        std::fflush(stderr);
         return;
+    }
 
     const QString category = QString::fromUtf8(context.category ? context.category : "");
     logger->log(qtLogLevel(type),
