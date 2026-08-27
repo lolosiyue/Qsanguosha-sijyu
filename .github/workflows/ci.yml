@@ -288,12 +288,11 @@ jobs:
         run: |
           New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
           # 兼容部分階段僅提供 release 的情況，確保 CTest 指向的 relwithdebinfo 存在
-          if (Test-Path release -and -not (Test-Path relwithdebinfo)) {
+          if ((Test-Path -LiteralPath release) -and -not (Test-Path -LiteralPath relwithdebinfo)) {
             New-Item -ItemType Directory -Path relwithdebinfo -Force | Out-Null
             Copy-Item -Path release\* -Destination relwithdebinfo -Recurse -Force
           }
-          $runtime = (Resolve-Path release).Path
-          if (-not $runtime) { $runtime = (Resolve-Path relwithdebinfo).Path }
+          $runtime = if (Test-Path -LiteralPath release) { (Resolve-Path -LiteralPath release).Path } elseif (Test-Path -LiteralPath relwithdebinfo) { (Resolve-Path -LiteralPath relwithdebinfo).Path } else { throw 'Neither release nor relwithdebinfo runtime directory was found' }
           $env:PATH = "$runtime;$env:PATH"
           $runtime | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           $junitPath = Join-Path $env:GITHUB_WORKSPACE 'ci-logs\ctest.xml'
@@ -369,7 +368,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
-          $runtime = (Resolve-Path release).Path
+          $runtime = if (Test-Path -LiteralPath release) { (Resolve-Path -LiteralPath release).Path } elseif (Test-Path -LiteralPath relwithdebinfo) { (Resolve-Path -LiteralPath relwithdebinfo).Path } else { throw 'Neither release nor relwithdebinfo runtime directory was found' }
           $env:PATH = "$runtime;$env:PATH"
           Start-Transcript -Path ci-logs\headless-${{ matrix.mode }}.log
           try {
@@ -438,7 +437,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
-          $runtime = (Resolve-Path release).Path
+          $runtime = if (Test-Path -LiteralPath release) { (Resolve-Path -LiteralPath release).Path } elseif (Test-Path -LiteralPath relwithdebinfo) { (Resolve-Path -LiteralPath relwithdebinfo).Path } else { throw 'Neither release nor relwithdebinfo runtime directory was found' }
           $env:PATH = "$runtime;$env:PATH"
           Start-Transcript -Path ci-logs\network.log
           try {
