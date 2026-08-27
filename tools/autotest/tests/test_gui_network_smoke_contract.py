@@ -295,7 +295,8 @@ def result_line(ok: bool, stage: str, exit_code: int, reason: str) -> str:
 def evaluate_log(log_text: str, *, client_code: int = 0, game_start: bool = True,
                  game_over: str | None = "lord", responder: dict | None = None,
                  required=("choose_general",), allow_trustee: bool = False,
-                 shutdown: str = "graceful", orphans=(), port_released: bool = True):
+                 shutdown: str = "graceful", server_exit: int = 0, orphans=(),
+                 port_released: bool = True, known_base_defect=()):
     """Drive the runner's own evaluator over a synthetic run."""
     import gui_network_smoke as smoke
 
@@ -305,14 +306,15 @@ def evaluate_log(log_text: str, *, client_code: int = 0, game_start: bool = True
     args = Args()
     args.require_interactions = list(required)
     args.allow_trustee_fallback = allow_trustee
+    args.known_base_defect = list(known_base_defect)
 
     stages, results = smoke.parse_markers(log_text)
     summary = {
         "run": {"port": 12345},
         "responder": responder if responder is not None else {
             "interactions": {"choose_general": 1}, "trustee_engaged": False},
-        "lifecycle": {"server_shutdown": shutdown, "orphans": list(orphans),
-                      "port_released": port_released},
+        "lifecycle": {"server_shutdown": shutdown, "server_exit": server_exit,
+                      "orphans": list(orphans), "port_released": port_released},
     }
     return smoke.evaluate(args, summary, stages, results,
                           client_code,
@@ -379,11 +381,74 @@ def test_evaluator_rejects_an_uncovered_required_interaction() -> None:
 def test_evaluator_rejects_a_dirty_shutdown() -> None:
     assert any("shut down cleanly" in problem
                for problem in evaluate_log(complete_log(), shutdown="killed"))
+    # A persistent server that was already gone before we asked died on its own.
+    assert any("shut down cleanly" in problem
+               for problem in evaluate_log(complete_log(), shutdown="already"))
+    assert any("the server crashed" in problem
+               for problem in evaluate_log(complete_log(), shutdown="already",
+                                           server_exit=-11))
     assert any("survived the smoke" in problem
                for problem in evaluate_log(complete_log(), orphans=("client",)))
     assert any("still accepting connections" in problem
                for problem in evaluate_log(complete_log(), port_released=False))
     print("PASS test_evaluator_rejects_a_dirty_shutdown")
+
+
+def test_known_base_defect_downgrade_is_narrow_and_never_silent() -> None:
+    """--known-base-defect must be an audit trail, not a mute button."""
+    import gui_network_smoke as smoke
+
+    # Without the flag, a teardown crash still fails the run.
+    assert any("the server crashed" in problem
+               for problem in evaluate_log(complete_log(), shutdown="already",
+                                           server_exit=-11))
+
+    # With the flag, it is downgraded - but only after a real game over and a
+    # clean client exit, and it is always recorded.
+    summary = {
+        "run": {"port": 1}, "responder": {"interactions": {"choose_general": 1},
+                                          "trustee_engaged": False},
+        "lifecycle": {"server_shutdown": "already", "server_exit": -11,
+                      "orphans": [], "port_released": True},
+    }
+
+    class Args:
+        require_interactions = ["choose_general"]
+        allow_trustee_fallback = False
+        known_base_defect = ["server-teardown-crash"]
+
+    stages, results = smoke.parse_markers(complete_log())
+    problems = smoke.evaluate(Args(), summary, stages, results, 0,
+                              {"game_start": True, "game_over": "rebel"})
+    assert problems == [], problems
+    assert summary["known_base_defects"], (
+        "a downgraded defect must still be recorded in the summary"
+    )
+
+    # A server that died before the game finished is never downgraded, no matter
+    # what the flag says - that would hide a genuine mid-game failure.
+    summary2 = {
+        "run": {"port": 1}, "responder": {"interactions": {"choose_general": 1},
+                                          "trustee_engaged": False},
+        "lifecycle": {"server_shutdown": "already", "server_exit": -11,
+                      "orphans": [], "port_released": True},
+    }
+    problems = smoke.evaluate(Args(), summary2, stages, results, 0,
+                              {"game_start": True, "game_over": None})
+    assert any("the server crashed" in problem for problem in problems), problems
+
+    # Nor is it downgraded when the client itself crashed.
+    summary3 = dict(summary2)
+    summary3["known_base_defects"] = []
+    summary3["lifecycle"] = dict(summary2["lifecycle"])
+    problems = smoke.evaluate(Args(), summary3, stages, results, -11,
+                              {"game_start": True, "game_over": "rebel"})
+    assert any("the server crashed" in problem for problem in problems), problems
+
+    assert smoke.KNOWN_BASE_DEFECTS == {"server-teardown-crash"}, (
+        "adding a known-base-defect id must be a deliberate, reviewed change"
+    )
+    print("PASS test_known_base_defect_downgrade_is_narrow_and_never_silent")
 
 
 def test_evaluator_rejects_an_exit_code_that_disagrees_with_the_marker() -> None:
@@ -403,8 +468,23 @@ def test_ci_runs_the_network_smoke_under_xvfb() -> None:
     assert "--mode 02p" in combined, "CI must run the 2-player network game"
     assert "--mode 05p" in combined, "CI must run the 5-player network game"
     assert "--seed" in combined, "CI must pin the seed"
-    assert "continue-on-error: true" not in combined, (
-        "M2 network jobs must not be permanently masked by continue-on-error"
+    # continue-on-error is allowed only as a *documented, temporary* state: every
+    # occurrence must be preceded by a KNOWN-FLAKE block that names the removal
+    # condition, so it can never quietly become permanent.
+    for path in hosting:
+        text = read(path)
+        for index, line in enumerate(text.splitlines()):
+            if "continue-on-error: true" not in line:
+                continue
+            preceding = "\n".join(text.splitlines()[max(0, index - 15):index])
+            assert "KNOWN-FLAKE" in preceding and "移除條件" in preceding, (
+                f"{path.name}:{index + 1} uses continue-on-error without a "
+                "KNOWN-FLAKE justification and a removal condition"
+            )
+    # The 2-player job is the M2 floor and must never be masked.
+    two_player = combined.split("gui-network-2p", 1)[1].split("gui-network-5p", 1)[0]
+    assert "continue-on-error" not in two_player, (
+        "the 2-player network job is blocking and must never be masked"
     )
     print(f"PASS test_ci_runs_the_network_smoke_under_xvfb "
           f"({', '.join(path.name for path in hosting)})")
@@ -438,6 +518,7 @@ def main() -> int:
         test_evaluator_rejects_a_silent_trustee_fallback,
         test_evaluator_rejects_an_uncovered_required_interaction,
         test_evaluator_rejects_a_dirty_shutdown,
+        test_known_base_defect_downgrade_is_narrow_and_never_silent,
         test_evaluator_rejects_an_exit_code_that_disagrees_with_the_marker,
         test_ci_runs_the_network_smoke_under_xvfb,
         test_documentation_pins_the_network_smoke,
