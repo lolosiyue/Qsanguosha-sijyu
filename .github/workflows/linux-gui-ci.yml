@@ -30,6 +30,10 @@ env:
   CMAKE_BUILD_PARALLEL_LEVEL: 2
 
 jobs:
+  # 分層:compile -> M1 startup -> M2 network 2p -> M2 network 5p。
+  # 後面的 job 用 artifact 收下前面砌好的 binary 與 runtime Lua 內容,唔重複 build,
+  # 亦唔會因為重新 fetch extensions 而換咗內容 — 跑網絡局的就係編譯 job 驗過的
+  # 同一份檔案。
   gui-compile:
     name: Linux GUI compile + M1 runtime startup smoke
     runs-on: ubuntu-24.04
@@ -229,5 +233,229 @@ jobs:
             gui-runtime-artifacts/
             capabilities.json
             ldd.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+      # M2 的網絡 job 要用同一份 binary 同同一份 runtime Lua 內容。lua/ 與
+      # extensions/ 一併打包,而唔係喺下游 job 重新 fetch:extensions 的預設 ref 係
+      # 可動的 main,重新 fetch 會令兩個 job 的內容有機會唔一樣,咁就唔係同一個
+      # 可重現的組合。
+      - name: Record the fetched extensions commit
+        run: |
+          git -C "$GITHUB_WORKSPACE" rev-parse HEAD > build-provenance.txt
+          {
+            echo "repo_commit=$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
+            echo "qt_version=6.11.1"
+            echo "build_type=RelWithDebInfo"
+            echo "client_sha256=$(sha256sum relwithdebinfo/QSanguosha | cut -d' ' -f1)"
+            echo "server_sha256=$(sha256sum relwithdebinfo/qsanguosha_server | cut -d' ' -f1)"
+          } | tee build-provenance.txt
+
+      - name: Upload the Linux GUI runtime bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-gui-runtime-bundle
+          path: |
+            relwithdebinfo/QSanguosha
+            relwithdebinfo/qsanguosha_server
+            lua/
+            extensions/
+            build-provenance.txt
+          if-no-files-found: error
+          retention-days: 3
+
+  # ---------------------------------------------------------------------
+  # Linux GUI M2:真實 TCP 網絡對局
+  # ---------------------------------------------------------------------
+  gui-network-2p:
+    name: Linux GUI M2 network game (02p, 2 players)
+    needs: gui-compile
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      # 固定 seed:同一個 commit + 同一個 seed 應該重現同一副牌局起手。
+      # 換 seed 等於換測試案例,要連同 artifact 一齊記錄。
+      QSAN_M2_SEED: '20260828'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install Qt 6.11.1
+        uses: jurplel/install-qt-action/action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: '6.11.1'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          modules: 'qt5compat qtmultimedia'
+          cache: true
+          cache-key-prefix: qt-ubuntu-24.04-x64-6.11.1-linux_gcc_64-qt5compat-qtmultimedia-aqtmaster16db45a7-v1
+          aqtsource: 'git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e'
+
+      - name: Install Linux GUI runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            fonts-dejavu-core \
+            libegl1 \
+            libgl1 \
+            libglx-mesa0 \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-shape0 \
+            libxcb-sync1 \
+            libxcb-xfixes0 \
+            libxcb-xinerama0 \
+            libxcb-xkb1 \
+            libxkbcommon-x11-0 \
+            xauth \
+            xvfb
+
+      - name: Download the Linux GUI runtime bundle
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v7.0.0
+        with:
+          name: linux-gui-runtime-bundle
+
+      - name: Restore executable bits and report provenance
+        run: |
+          chmod +x relwithdebinfo/QSanguosha relwithdebinfo/qsanguosha_server
+          cat build-provenance.txt
+          sha256sum relwithdebinfo/QSanguosha relwithdebinfo/qsanguosha_server
+
+      - name: Linux GUI M2 network game (02p)
+        run: |
+          python3 tools/autotest/gui_network_smoke.py \
+            --exe-root . \
+            --mode 02p \
+            --seed "$QSAN_M2_SEED" \
+            --artifact-dir gui-network-artifacts \
+            --xvfb --platform xcb \
+            --process-timeout 900 \
+            --client-timeout-ms 600000 \
+            --require-interactions choose_general
+
+      # 負向契約:server 未啟動時,runner 一定要快速失敗並講清楚係連線層,
+      # 唔可以靜靜等到 timeout 或者當成 PASS。
+      - name: Network smoke fails fast when the server is unreachable
+        run: |
+          set +e
+          python3 tools/autotest/gui_network_smoke.py \
+            --exe-root . \
+            --server-exe /bin/true \
+            --mode 02p \
+            --seed "$QSAN_M2_SEED" \
+            --artifact-dir gui-network-artifacts \
+            --label 02p-no-server \
+            --xvfb --platform xcb \
+            --server-startup-timeout 20 \
+            --process-timeout 120 \
+            --client-timeout-ms 60000 > no-server.log 2>&1
+          status=$?
+          set -e
+          cat no-server.log
+          if [ "$status" -eq 0 ]; then
+            echo "The runner passed with no server listening" >&2
+            exit 1
+          fi
+          grep -q "never started listening" no-server.log
+
+      - name: Upload M2 network artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-gui-m2-network-02p
+          path: |
+            gui-network-artifacts/
+            build-provenance.txt
+            no-server.log
+          if-no-files-found: warn
+          retention-days: 7
+
+  gui-network-5p:
+    name: Linux GUI M2 network game (05p, 5 players)
+    needs: gui-network-2p
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      QSAN_M2_SEED: '20260828'
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install Qt 6.11.1
+        uses: jurplel/install-qt-action/action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: '6.11.1'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          modules: 'qt5compat qtmultimedia'
+          cache: true
+          cache-key-prefix: qt-ubuntu-24.04-x64-6.11.1-linux_gcc_64-qt5compat-qtmultimedia-aqtmaster16db45a7-v1
+          aqtsource: 'git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e'
+
+      - name: Install Linux GUI runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            fonts-dejavu-core \
+            libegl1 \
+            libgl1 \
+            libglx-mesa0 \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-shape0 \
+            libxcb-sync1 \
+            libxcb-xfixes0 \
+            libxcb-xinerama0 \
+            libxcb-xkb1 \
+            libxkbcommon-x11-0 \
+            xauth \
+            xvfb
+
+      - name: Download the Linux GUI runtime bundle
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v7.0.0
+        with:
+          name: linux-gui-runtime-bundle
+
+      - name: Restore executable bits and report provenance
+        run: |
+          chmod +x relwithdebinfo/QSanguosha relwithdebinfo/qsanguosha_server
+          cat build-provenance.txt
+
+      - name: Linux GUI M2 network game (05p)
+        run: |
+          python3 tools/autotest/gui_network_smoke.py \
+            --exe-root . \
+            --mode 05p \
+            --seed "$QSAN_M2_SEED" \
+            --artifact-dir gui-network-artifacts \
+            --xvfb --platform xcb \
+            --process-timeout 1800 \
+            --client-timeout-ms 1500000 \
+            --require-interactions choose_general
+
+      - name: Upload M2 network artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-gui-m2-network-05p
+          path: |
+            gui-network-artifacts/
+            build-provenance.txt
           if-no-files-found: warn
           retention-days: 7
