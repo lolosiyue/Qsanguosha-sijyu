@@ -334,7 +334,7 @@ jobs:
           $env:PATH = "$runtime;$env:PATH"
           Start-Transcript -Path ci-logs\headless-${{ matrix.mode }}.log
           try {
-            python tools\autotest\headless_runner.py --exe-root . --log-dir artifacts\autotest\${{ matrix.mode }} --modes ${{ matrix.mode }} --games 1 --parallel 1
+            python tools\autotest\headless_runner.py --exe (Join-Path $runtime QSanguosha.exe) --seed 2026082801 --exe-root . --log-dir artifacts\autotest\${{ matrix.mode }} --modes ${{ matrix.mode }} --games 1 --parallel 1
             if ($LASTEXITCODE -ne 0) {
               throw "Headless runner failed with exit code $LASTEXITCODE"
             }

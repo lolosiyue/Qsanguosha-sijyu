@@ -27,7 +27,7 @@ from runner_common import (HEADLESS_HEADER, common_args, describe_exit,
                            HEADLESS_FINISHED)
 
 MAX_SEED: Final[int] = (1 << 32) - 1
-REGISTERED_REAL_MODES: Final[frozenset[str]] = frozenset({"20p"})
+REGISTERED_REAL_MODES: Final[frozenset[str]] = frozenset({"08p"})
 PER_GAME_TIMEOUT: Final[int] = int(
     os.environ.get("QSAN_HEADLESS_PER_GAME_TIMEOUT", "3600")
 )  # 可由環境變數覆寫的每局有界上限 (秒)

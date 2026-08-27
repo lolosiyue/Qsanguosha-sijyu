@@ -14,15 +14,20 @@ GUI 解耦後的現代化測試 runner, 取代舊的 `L:\QsgsFinal\autotest.py`
 
 ```powershell
 python tools\autotest\headless_runner.py `
+    --exe L:\finaldebug\QSanguosha-v2\release\QSanguosha.exe `
+    --seed 20260828 `
     --exe-root L:\finaldebug\QSanguosha-v2 `
-    --modes 10p,20p,02_1v1,05p `
+    --modes 08p `
     --games 5 --parallel 2
 ```
 
-`--parallel` = 同時執行的 **process 總數**：模式數 ≥ parallel 時每個模式
+`--exe`／`--seed` 為必填 (runner 契約無隱式執行檔發現／隱式種子, 見
+`docs/lua-ext-spec.md`); seed 須為 unsigned 32-bit, 慣例用當日日期
+`yyyyMMdd` (如 20260828, 建議用 `run_headless.bat` 自動生成並隨日期前進)。
+`--parallel` 為同時執行的 **process 總數**：模式數 ≥ parallel 時每個模式
 一個 process；模式數不足時同一模式開多份 (round-robin)，每份獨立 log
-(`<mode>-N.log` / `<mode>-N-headless.log`)。例: `--modes 20p --parallel 10`
-= 10 個 20p process 同時跑。注意多 process 同時打 20p 對 CPU/RAM 負載高。
+(`<mode>-N.log` / `<mode>-N-headless.log`)。例: `--modes 08p --parallel 10`
+= 10 個 08p process 同時跑。注意多 process 同時打 08p 對 CPU/RAM 負載高。
 
 輸出: `tools\autotest\autotest-logs\headless\<mode>[-N].log` + `summary-headless-<時間>.csv`
 
@@ -67,11 +72,11 @@ python tools\autotest\crash_report.py `
 
 | 檔案 | 用途 | 頂部變數 |
 |---|---|---|
-| `run_headless.bat` | headless 壓力測試 | `MODES/GAMES/PARALLEL/LOG_DIR/LABEL` |
-| `run_network.bat` | 真實網路測試 | `MODES/RUNS/GENERAL/GENERAL2/LOG_DIR/LABEL` |
+| `run_headless.bat` | headless 壓力測試 | `MODES/GAMES/PARALLEL/GENERAL/GENERAL2/SPAWNDELAY/LOG_DIR/LABEL`（`EXE`/`SEED` 具預設，可覆寫） |
+| `run_network.bat` | 真實網路測試 | `MODES/RUNS/GENERAL/GENERAL2/CONSOLE/LOG_DIR/LABEL` |
 
-例: 20p 一局、主將 s4_huangzhong、副將隨機 → 改 `run_network.bat` 頂部
-`MODES=20p RUNS=1 GENERAL=s4_huangzhong GENERAL2=` 後直接執行。
+例: 08p 一局、主將 s4_huangzhong、副將隨機 → 改 `run_network.bat` 頂部
+`MODES=08p RUNS=1 GENERAL=s4_huangzhong GENERAL2=` 後直接執行。
 
 ## C++ 支援參數
 
