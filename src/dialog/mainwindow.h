@@ -52,6 +52,17 @@ public:
     void refitScene();
     void setUiScale(qreal scale);
 
+    // Linux GUI M1 startup smoke 用的觀測點。HomeScene 的載入結果本身就係
+    // MainWindow 的狀態，喺度公開出嚟，測試就唔使另外複製一份啟動流程。
+    bool isHomeSceneReady() const;
+    bool hasHomeSceneError() const;
+    QString homeSceneError() const;
+    QQuickWidget *homeSceneView() const;
+
+signals:
+    void homeSceneReady();
+    void homeSceneFailed(const QString &error);
+
 protected:
     virtual void closeEvent(QCloseEvent *);
     void resizeEvent(QResizeEvent *event) override;
@@ -82,6 +93,8 @@ private:
     Server *server = nullptr;
     HomeController *homeController = nullptr;
     PointerEffectOverlay *m_pointerOverlay = nullptr;
+    bool m_homeSceneReady = false;
+    QString m_homeSceneError;
 
 public slots:
     void startConnection();

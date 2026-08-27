@@ -115,12 +115,37 @@ void MainWindow::setupHomePage()
 			qInfo().noquote()
 				<< "Home QML status:" << status;
 
-			if (status != QQuickWidget::Error)
+			if (status == QQuickWidget::Null || status == QQuickWidget::Loading) {
+				// reloadHomePage() 會先 setSource(QUrl()) 再重新載入；重載期間
+				// 唔算 ready，但亦唔算錯誤。
+				m_homeSceneReady = false;
 				return;
+			}
 
+			if (status == QQuickWidget::Ready) {
+				m_homeSceneError.clear();
+				m_homeSceneReady = homeView->rootObject() != nullptr;
+				if (m_homeSceneReady) {
+					emit homeSceneReady();
+				} else {
+					m_homeSceneError =
+						QStringLiteral("HomeScene reported Ready without a QML root object");
+					emit homeSceneFailed(m_homeSceneError);
+				}
+				return;
+			}
+
+			QStringList errorTexts;
 			const auto errors = homeView->errors();
-			for (const QQmlError &error : errors)
+			for (const QQmlError &error : errors) {
 				qCritical().noquote() << error.toString();
+				errorTexts << error.toString();
+			}
+			m_homeSceneReady = false;
+			m_homeSceneError = errorTexts.isEmpty()
+				? QStringLiteral("HomeScene failed to load (no QQmlError reported)")
+				: errorTexts.join(QLatin1Char('\n'));
+			emit homeSceneFailed(m_homeSceneError);
 		});
 
 	homeView->rootContext()->setContextProperty(
@@ -158,6 +183,26 @@ void MainWindow::setupHomePage()
 		this, &MainWindow::reloadHomePage);
 
 	setUiScale(Config.UIScale);
+}
+
+bool MainWindow::isHomeSceneReady() const
+{
+	return m_homeSceneReady;
+}
+
+bool MainWindow::hasHomeSceneError() const
+{
+	return !m_homeSceneError.isEmpty();
+}
+
+QString MainWindow::homeSceneError() const
+{
+	return m_homeSceneError;
+}
+
+QQuickWidget *MainWindow::homeSceneView() const
+{
+	return homeView;
 }
 
 void MainWindow::reloadHomePage()
