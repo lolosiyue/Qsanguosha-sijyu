@@ -1,0 +1,116 @@
+name: Linux GUI compile CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - debug
+    paths-ignore:
+      - 'docs/**'
+      - 'memory/**'
+      - '*.md'
+  push:
+    branches:
+      - main
+      - debug
+    paths-ignore:
+      - 'docs/**'
+      - 'memory/**'
+      - '*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-gui-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: 2
+
+jobs:
+  gui-compile:
+    name: GCC configure/compile/link of the Linux GUI client
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install Linux GUI build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            cmake \
+            g++ \
+            libfreetype-dev \
+            libgl-dev \
+            ninja-build \
+            python3-venv \
+            qt6-5compat-dev \
+            qt6-base-dev \
+            qt6-declarative-dev \
+            qt6-l10n-tools \
+            qt6-multimedia-dev \
+            qt6-tools-dev \
+            qt6-tools-dev-tools
+
+      - name: Install pinned SWIG
+        run: |
+          python3 -m venv "$RUNNER_TEMP/qsanguosha-ci-venv"
+          "$RUNNER_TEMP/qsanguosha-ci-venv/bin/python" -m pip install \
+            --disable-pip-version-check \
+            --require-hashes \
+            -r tools/ci/requirements.txt
+          echo "$RUNNER_TEMP/qsanguosha-ci-venv/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/qsanguosha-ci-venv/bin/swig" -version
+
+      - name: Fetch Lua AI and extensions
+        run: bash tools/ci/fetch-extensions.sh "$GITHUB_WORKSPACE"
+
+      - name: Configure GUI build with GCC
+        run: |
+          cmake -S . -B build/linux-gui-gcc -G Ninja \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DQSAN_BUILD_GUI=ON \
+            -DQSAN_BUILD_SERVER=ON
+
+      - name: Compile and link QSanguosha
+        run: cmake --build build/linux-gui-gcc --target QSanguosha --parallel
+
+      - name: Verify the linked executable
+        run: |
+          test -x relwithdebinfo/QSanguosha
+          file relwithdebinfo/QSanguosha
+          ldd relwithdebinfo/QSanguosha | tee ldd.txt
+          if grep -q 'not found' ldd.txt; then
+            echo "Missing shared library dependency" >&2
+            exit 1
+          fi
+
+      # 純 offscreen capability 查詢：喺建立任何 window／OpenGL context 之前就返回，
+      # 唔需要 X11／Wayland／GPU。完整 GUI runtime smoke 屬於 Linux GUI M1。
+      - name: Offscreen local response UI capability smoke
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_QUICK_BACKEND: software
+        run: |
+          ./relwithdebinfo/QSanguosha --local-response-ui-capabilities | tee capabilities.json
+          python3 - capabilities.json <<'PY'
+          import json
+          import sys
+
+          payload = json.loads(open(sys.argv[1], encoding="utf-8").read())
+          missing = [key for key in ("auto", "show", "inspect") if not payload.get(key)]
+          if missing:
+              raise SystemExit(f"local response UI capabilities not advertised: {missing}")
+          print("local response UI capabilities OK")
+          PY
