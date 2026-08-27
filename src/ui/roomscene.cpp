@@ -5322,8 +5322,13 @@ void RoomScene::onGameStart()
 
 	trust_button->setEnabled(true);
 
-	// 自動化測試: 開局即托管, 避免真人操作阻塞對局
-	if (isAutoTestClient() && Self && Self->getState() != "trust") {
+	// 自動化測試: 開局即托管, 避免真人操作阻塞對局。
+	//
+	// M2 network smoke 除外:托管之後 server 端 AI 會接手回覆,askFor 請求就唔會
+	// 再到達 client 嘅 RoomScene,而「請求經真 TCP 到 UI、再由 UI 覆返 server」
+	// 正正就係 M2 要證明嘅嘢。responder 自己有 stall watchdog,真係卡住先切托管。
+	if (isAutoTestClient() && !NetworkUiSmokeResponder::isActive()
+		&& Self && Self->getState() != "trust") {
 		QTimer::singleShot(500, this, [this]() {
 			if (Self && Self->getState() != "trust")
 				trust();

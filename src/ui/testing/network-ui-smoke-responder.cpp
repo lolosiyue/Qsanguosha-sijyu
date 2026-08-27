@@ -164,6 +164,8 @@ void NetworkUiSmokeResponder::onServerReply(int)
 
 void NetworkUiSmokeResponder::onStatusChanged(Client::Status, Client::Status)
 {
+    // 新一個請求 = 由第一張手牌重新試起。
+    m_cardCursor = 0;
     scheduleStep();
 }
 
@@ -334,35 +336,46 @@ bool NetworkUiSmokeResponder::trySelectTargetsFor()
     return m_scene->ok_button != nullptr && m_scene->ok_button->isEnabled();
 }
 
-bool NetworkUiSmokeResponder::tryUseAnyCard(bool recordPlay)
+NetworkUiSmokeResponder::CardAttempt NetworkUiSmokeResponder::tryUseNextCard(bool recordPlay)
 {
     if (m_scene.isNull() || m_scene->dashboard == nullptr)
-        return false;
+        return CardAttempt::Exhausted;
 
     const QList<CardItem *> candidates = enabledHandCards();
-    for (CardItem *item : candidates) {
+    if (m_cardCursor >= candidates.size()) {
         clearSelection();
-        item->clickItem();
-        if (!item->isSelected() && m_scene->dashboard->getSelected() == nullptr
-            && m_scene->dashboard->getPendings().isEmpty())
-            continue; // 撳唔郁（例如 view-as skill 拒絕呢張牌）
+        return CardAttempt::Exhausted;
+    }
 
-        if (trySelectTargetsFor() && clickButton(QStringLiteral("ok"))) {
-            if (recordPlay)
-                recordAction(QLatin1String(NetworkUiSmokeReport::ActionPlayCard));
-            else
-                recordAction(QLatin1String(NetworkUiSmokeReport::ActionChooseCard));
-            return true;
-        }
+    CardItem *item = candidates.at(m_cardCursor);
+    ++m_cardCursor;
+
+    clearSelection();
+    item->clickItem();
+    if (!item->isSelected() && m_scene->dashboard->getSelected() == nullptr
+        && m_scene->dashboard->getPendings().isEmpty())
+        return CardAttempt::Retry; // 撳唔郁（例如 view-as skill 拒絕呢張牌）
+
+    if (trySelectTargetsFor() && clickButton(QStringLiteral("ok"))) {
+        recordAction(recordPlay ? QLatin1String(NetworkUiSmokeReport::ActionPlayCard)
+                                : QLatin1String(NetworkUiSmokeReport::ActionChooseCard));
+        return CardAttempt::Sent;
     }
     clearSelection();
-    return false;
+    return CardAttempt::Retry;
 }
 
 bool NetworkUiSmokeResponder::stepPlaying()
 {
-    if (tryUseAnyCard(true))
+    switch (tryUseNextCard(true)) {
+    case CardAttempt::Sent:
         return true;
+    case CardAttempt::Retry:
+        scheduleStep(); // 下一格 event loop 再試下一張,畀場景喘啖氣
+        return true;
+    case CardAttempt::Exhausted:
+        break;
+    }
     // 冇合法出牌就結束出牌階段：discard_button 喺 Playing 狀態即係「結束」，
     // RoomScene::doDiscardButton() 會 onPlayerResponseCard(nullptr)。
     if (clickButton(QStringLiteral("discard"))) {
@@ -376,8 +389,15 @@ bool NetworkUiSmokeResponder::stepResponding(Client::Status status)
 {
     Q_UNUSED(status)
     // 有得回應就回應（證明 askForCard 真係經 UI 打得返出去），冇就 cancel。
-    if (tryUseAnyCard(true))
+    switch (tryUseNextCard(true)) {
+    case CardAttempt::Sent:
         return true;
+    case CardAttempt::Retry:
+        scheduleStep();
+        return true;
+    case CardAttempt::Exhausted:
+        break;
+    }
     if (clickButton(QStringLiteral("cancel"))) {
         recordAction(QLatin1String(NetworkUiSmokeReport::ActionDecline));
         return true;
