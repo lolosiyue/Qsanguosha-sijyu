@@ -65,7 +65,7 @@
       "required": ["command", "serial"],
       "properties": {
         "api": {
-          "enum": ["askForSkillInvoke", "askForChoice", "askForCard", "askForUseCard", "askForDiscard", "askForExchange", "askForPlayerChosen"]
+          "enum": ["askForSkillInvoke", "askForChoice", "askForCard", "askForUseCard", "askForDiscard", "askForExchange", "askForPlayerChosen", "askForCardChosen", "askForAG", "askForYiji", "askForGuanxing", "askForGongxin"]
         },
         "command": { "type": "string", "pattern": "^S_COMMAND_[A-Z0-9_]+$" },
         "serial": { "type": "integer", "minimum": 1 },
@@ -82,7 +82,7 @@
       "required": ["type"],
       "properties": {
         "type": {
-          "enum": ["invoke_skill_yes", "invoke_skill_no", "choose_option", "activate_skill", "select_card", "select_player", "click_ok", "click_cancel", "click_discard", "assert", "take_screenshot"]
+          "enum": ["invoke_skill_yes", "invoke_skill_no", "choose_option", "activate_skill", "deactivate_skill", "select_card", "unselect_card", "select_player", "unselect_player", "choose_surface_card", "toggle_guanxing_card", "click_ok", "click_cancel", "click_discard", "assert", "take_screenshot"]
         },
         "option": { "type": "string" },
         "skill": { "type": "string" },
@@ -102,6 +102,8 @@
         "prompt": { "type": "object" },
         "buttons": { "type": "object" },
         "cards": { "type": "object" },
+        "surface_cards": { "type": "object" },
+        "surfaces": { "type": "object" },
         "players": { "type": "object" },
         "skills": { "type": "object" },
         "dialog": { "type": "object" }

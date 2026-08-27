@@ -1,14 +1,17 @@
 #include "local-response-ui-probe.h"
 
 #include "carditem.h"
+#include "cardcontainer.h"
 #include "client.h"
 #include "dashboard.h"
 #include "engine.h"
 #include "photo.h"
+#include "playercardbox.h"
 #include "qsanbutton.h"
 #include "roomscene.h"
 #include "skill-instance-utils.h"
 
+#include <QAbstractAnimation>
 #include <QAbstractButton>
 #include <QApplication>
 #include <QDialog>
@@ -47,6 +50,26 @@ QJsonObject buttonSnapshot(const QSanButton *button)
     result.insert(QStringLiteral("visible"), button && button->isVisible());
     result.insert(QStringLiteral("enabled"), button && button->isEnabled());
     return result;
+}
+
+void collectCardItems(QGraphicsItem *parent, QList<CardItem *> *result)
+{
+    if (!parent)
+        return;
+    for (QGraphicsItem *child : parent->childItems()) {
+        if (CardItem *card = dynamic_cast<CardItem *>(child))
+            result->append(card);
+        collectCardItems(child, result);
+    }
+}
+
+bool isDescendantOf(const QGraphicsItem *item, const QGraphicsItem *parent)
+{
+    for (const QGraphicsItem *current = item; current; current = current->parentItem()) {
+        if (current == parent)
+            return true;
+    }
+    return false;
 }
 
 } // namespace
@@ -96,6 +119,45 @@ QJsonObject LocalResponseUiProbe::snapshot() const
     for (int i = 0; i < S_EQUIP_AREA_LENGTH; ++i)
         appendCard(m_scene->dashboard->_m_equipCards[i], QStringLiteral("equip"));
     root.insert(QStringLiteral("cards"), cards);
+
+    QJsonArray surfaceCards;
+    auto appendSurfaceCard = [this, &surfaceCards](CardItem *item, const QString &surface) {
+        if (!item || !item->getCard())
+            return;
+        const int id = item->getCard()->getEffectiveId();
+        QJsonObject card;
+        card.insert(QStringLiteral("alias"), m_idToAlias.value(id));
+        card.insert(QStringLiteral("card_id"), id);
+        card.insert(QStringLiteral("object_name"), item->getCard()->objectName());
+        card.insert(QStringLiteral("surface"), surface);
+        card.insert(QStringLiteral("enabled"), item->isEnabled());
+        card.insert(QStringLiteral("selected"), item->isSelected() || item->isMarked());
+        card.insert(QStringLiteral("visible"), item->isVisible());
+        surfaceCards.append(card);
+    };
+    QList<CardItem *> playerBoxCards;
+    collectCardItems(m_scene->m_playerCardBox, &playerBoxCards);
+    for (CardItem *item : playerBoxCards)
+        appendSurfaceCard(item, QStringLiteral("player_card_box"));
+    for (CardItem *item : m_scene->card_container->getItems())
+        appendSurfaceCard(item, QStringLiteral("card_container"));
+    QList<CardItem *> guanxingCards;
+    collectCardItems(m_scene->m_guanxingBox, &guanxingCards);
+    for (CardItem *item : guanxingCards)
+        appendSurfaceCard(item, QStringLiteral("guanxing"));
+    root.insert(QStringLiteral("surface_cards"), surfaceCards);
+
+    QJsonObject surfaces;
+    surfaces.insert(QStringLiteral("player_card_box"), QJsonObject {
+        { QStringLiteral("open"), m_scene->m_playerCardBox && m_scene->m_playerCardBox->isVisible() }
+    });
+    surfaces.insert(QStringLiteral("card_container"), QJsonObject {
+        { QStringLiteral("open"), m_scene->card_container->isVisible() }
+    });
+    surfaces.insert(QStringLiteral("guanxing"), QJsonObject {
+        { QStringLiteral("open"), m_scene->m_guanxingBox->isVisible() }
+    });
+    root.insert(QStringLiteral("surfaces"), surfaces);
 
     QJsonArray players;
     for (auto it = m_scene->name2photo.cbegin(); it != m_scene->name2photo.cend(); ++it) {
@@ -157,6 +219,20 @@ QJsonObject LocalResponseUiProbe::snapshot() const
     return root;
 }
 
+bool LocalResponseUiProbe::surfaceCardsSettled() const
+{
+    QList<CardItem *> items;
+    collectCardItems(m_scene->m_playerCardBox, &items);
+    items.append(m_scene->card_container->getItems());
+    collectCardItems(m_scene->m_guanxingBox, &items);
+    for (CardItem *item : items) {
+        QAbstractAnimation *animation = item ? item->getCurrentAnimation(false) : nullptr;
+        if (animation && animation->state() != QAbstractAnimation::Stopped)
+            return false;
+    }
+    return true;
+}
+
 int LocalResponseUiProbe::openDialogCount() const
 {
     int count = 0;
@@ -178,6 +254,22 @@ CardItem *LocalResponseUiProbe::findCard(const QString &alias) const
     }
     for (int i = 0; i < S_EQUIP_AREA_LENGTH; ++i) {
         CardItem *item = m_scene->dashboard->_m_equipCards[i];
+        if (item && item->getCard() && item->getCard()->getEffectiveId() == id)
+            return item;
+    }
+    return nullptr;
+}
+
+CardItem *LocalResponseUiProbe::findSurfaceCard(const QString &alias) const
+{
+    if (!m_aliasToId.contains(alias))
+        return nullptr;
+    const int id = m_aliasToId.value(alias);
+    QList<CardItem *> items;
+    collectCardItems(m_scene->m_playerCardBox, &items);
+    items.append(m_scene->card_container->getItems());
+    collectCardItems(m_scene->m_guanxingBox, &items);
+    for (CardItem *item : items) {
         if (item && item->getCard() && item->getCard()->getEffectiveId() == id)
             return item;
     }
@@ -281,4 +373,42 @@ bool LocalResponseUiProbe::chooseOption(const QString &option, QString *error)
     }
     *error = QStringLiteral("option '%1' is not present").arg(option);
     return false;
+}
+
+bool LocalResponseUiProbe::chooseSurfaceCard(const QString &alias, QString *error)
+{
+    CardItem *item = findSurfaceCard(alias);
+    if (!item || !item->isVisible() || !item->isEnabled()) {
+        *error = QStringLiteral("surface card '%1' is not enabled and visible").arg(alias);
+        return false;
+    }
+
+    const Client::Status status = static_cast<Client::Status>(
+        m_client->getStatus() & Client::ClientStatusBasicMask);
+    if (status == Client::ExecDialog
+        && isDescendantOf(item, m_scene->m_playerCardBox)) {
+        item->clickItem();
+        return true;
+    }
+    if ((status == Client::AskForAG || status == Client::AskForGongxin)
+        && isDescendantOf(item, m_scene->card_container)) {
+        item->double_clicked();
+        return true;
+    }
+
+    *error = QStringLiteral("surface card '%1' does not match client status").arg(alias);
+    return false;
+}
+
+bool LocalResponseUiProbe::toggleGuanxingCard(const QString &alias, QString *error)
+{
+    CardItem *item = findSurfaceCard(alias);
+    if (!item || !item->isVisible() || !item->isEnabled()
+        || !isDescendantOf(item, m_scene->m_guanxingBox)
+        || (m_client->getStatus() & Client::ClientStatusBasicMask) != Client::AskForGuanxing) {
+        *error = QStringLiteral("guanxing card '%1' is not enabled and visible").arg(alias);
+        return false;
+    }
+    item->clickItem();
+    return true;
 }

@@ -39,7 +39,26 @@ int handlingMethod(const QJsonValue &value, bool *ok)
     return methods.value(method, Card::MethodNone);
 }
 
-QVariant makeAdaptedBody(const QJsonObject &request, QString *error)
+bool resolveCardAliases(const QJsonValue &value, const QMap<QString, int> &cardAliases,
+    JsonArray *ids, QString *error)
+{
+    if (!value.isArray()) {
+        *error = QStringLiteral("card aliases must be an array");
+        return false;
+    }
+    for (const QJsonValue &item : value.toArray()) {
+        const QString alias = item.toString();
+        if (alias.isEmpty() || !cardAliases.contains(alias)) {
+            *error = QStringLiteral("unknown card alias '%1'").arg(alias);
+            return false;
+        }
+        *ids << cardAliases.value(alias);
+    }
+    return true;
+}
+
+QVariant makeAdaptedBody(const QJsonObject &request, const QMap<QString, int> &cardAliases,
+    QString *error)
 {
     const QString api = request.value(QStringLiteral("api")).toString();
     const QJsonObject args = request.value(QStringLiteral("args")).toObject();
@@ -85,6 +104,58 @@ QVariant makeAdaptedBody(const QJsonObject &request, QString *error)
              << args.value(QStringLiteral("prompt")).toString()
              << args.value(QStringLiteral("max")).toInt(1)
              << args.value(QStringLiteral("min")).toInt(1);
+    } else if (api == QStringLiteral("askForCardChosen")) {
+        bool methodOk = false;
+        const int method = handlingMethod(args.value(QStringLiteral("method")), &methodOk);
+        JsonArray disabledIds;
+        if (!methodOk) {
+            *error = QStringLiteral("request.args.method is invalid");
+            return QVariant();
+        }
+        if (!resolveCardAliases(args.value(QStringLiteral("disabled_cards")), cardAliases,
+            &disabledIds, error)) {
+            return QVariant();
+        }
+        body << args.value(QStringLiteral("player")).toString()
+             << args.value(QStringLiteral("flags")).toString(QStringLiteral("hej"))
+             << args.value(QStringLiteral("reason")).toString()
+             << args.value(QStringLiteral("handcard_visible")).toBool()
+             << method << QVariant(disabledIds)
+             << args.value(QStringLiteral("can_cancel")).toBool();
+    } else if (api == QStringLiteral("askForAG")) {
+        body << args.value(QStringLiteral("refusable")).toBool()
+             << args.value(QStringLiteral("reason")).toString()
+             << args.value(QStringLiteral("prompt")).toString();
+    } else if (api == QStringLiteral("askForYiji")) {
+        JsonArray cardIds;
+        if (!resolveCardAliases(args.value(QStringLiteral("cards")), cardAliases,
+            &cardIds, error)) {
+            return QVariant();
+        }
+        body << QVariant(cardIds)
+             << args.value(QStringLiteral("optional")).toBool()
+             << args.value(QStringLiteral("max_num")).toInt(1)
+             << QVariant(args.value(QStringLiteral("players")).toArray().toVariantList())
+             << args.value(QStringLiteral("prompt")).toString();
+    } else if (api == QStringLiteral("askForGuanxing")) {
+        JsonArray cardIds;
+        if (!resolveCardAliases(args.value(QStringLiteral("cards")), cardAliases,
+            &cardIds, error)) {
+            return QVariant();
+        }
+        body << QVariant(cardIds) << args.value(QStringLiteral("type")).toInt();
+    } else if (api == QStringLiteral("askForGongxin")) {
+        JsonArray cardIds;
+        JsonArray enabledIds;
+        if (!resolveCardAliases(args.value(QStringLiteral("cards")), cardAliases,
+                &cardIds, error)
+            || !resolveCardAliases(args.value(QStringLiteral("enabled_cards")), cardAliases,
+                &enabledIds, error)) {
+            return QVariant();
+        }
+        body << args.value(QStringLiteral("player")).toString()
+             << args.value(QStringLiteral("enable_heart")).toBool()
+             << QVariant(cardIds) << QVariant(enabledIds);
     } else {
         *error = QStringLiteral("unsupported request.api '%1'").arg(api);
         return QVariant();
@@ -179,7 +250,7 @@ QJsonObject LocalResponseUiCase::finalExpectation() const
 }
 
 bool LocalResponseUiCase::makeRequestPacket(Packet *packet, QString *actualCommandName,
-    QVariant *actualBody, QString *error) const
+    QVariant *actualBody, const QMap<QString, int> &cardAliases, QString *error) const
 {
     const QJsonObject requestObject = request();
     const QString requestedCommand = requestObject.value(QStringLiteral("command")).toString();
@@ -193,7 +264,7 @@ bool LocalResponseUiCase::makeRequestPacket(Packet *packet, QString *actualComma
     if (requestObject.contains(QStringLiteral("raw_body")))
         body = requestObject.value(QStringLiteral("raw_body")).toVariant();
     else
-        body = makeAdaptedBody(requestObject, error);
+        body = makeAdaptedBody(requestObject, cardAliases, error);
     if (!body.isValid() && !error->isEmpty())
         return false;
 
@@ -219,7 +290,12 @@ bool LocalResponseUiCase::commandFromName(const QString &name, CommandType *comm
         { QStringLiteral("S_COMMAND_RESPONSE_CARD"), S_COMMAND_RESPONSE_CARD },
         { QStringLiteral("S_COMMAND_DISCARD_CARD"), S_COMMAND_DISCARD_CARD },
         { QStringLiteral("S_COMMAND_EXCHANGE_CARD"), S_COMMAND_EXCHANGE_CARD },
-        { QStringLiteral("S_COMMAND_CHOOSE_PLAYER"), S_COMMAND_CHOOSE_PLAYER }
+        { QStringLiteral("S_COMMAND_CHOOSE_PLAYER"), S_COMMAND_CHOOSE_PLAYER },
+        { QStringLiteral("S_COMMAND_CHOOSE_CARD"), S_COMMAND_CHOOSE_CARD },
+        { QStringLiteral("S_COMMAND_AMAZING_GRACE"), S_COMMAND_AMAZING_GRACE },
+        { QStringLiteral("S_COMMAND_SKILL_YIJI"), S_COMMAND_SKILL_YIJI },
+        { QStringLiteral("S_COMMAND_SKILL_GUANXING"), S_COMMAND_SKILL_GUANXING },
+        { QStringLiteral("S_COMMAND_SKILL_GONGXIN"), S_COMMAND_SKILL_GONGXIN }
     };
     if (!commands.contains(name))
         return false;
@@ -235,7 +311,13 @@ QString LocalResponseUiCase::commandName(CommandType command)
         { S_COMMAND_RESPONSE_CARD, QStringLiteral("S_COMMAND_RESPONSE_CARD") },
         { S_COMMAND_DISCARD_CARD, QStringLiteral("S_COMMAND_DISCARD_CARD") },
         { S_COMMAND_EXCHANGE_CARD, QStringLiteral("S_COMMAND_EXCHANGE_CARD") },
-        { S_COMMAND_CHOOSE_PLAYER, QStringLiteral("S_COMMAND_CHOOSE_PLAYER") }
+        { S_COMMAND_CHOOSE_PLAYER, QStringLiteral("S_COMMAND_CHOOSE_PLAYER") },
+        { S_COMMAND_CHOOSE_CARD, QStringLiteral("S_COMMAND_CHOOSE_CARD") },
+        { S_COMMAND_AMAZING_GRACE, QStringLiteral("S_COMMAND_AMAZING_GRACE") },
+        { S_COMMAND_SKILL_YIJI, QStringLiteral("S_COMMAND_SKILL_YIJI") },
+        { S_COMMAND_SKILL_GUANXING, QStringLiteral("S_COMMAND_SKILL_GUANXING") },
+        { S_COMMAND_SKILL_GONGXIN, QStringLiteral("S_COMMAND_SKILL_GONGXIN") },
+        { S_COMMAND_MIRROR_GUANXING_STEP, QStringLiteral("S_COMMAND_MIRROR_GUANXING_STEP") }
     };
     return names.value(command, QStringLiteral("UNKNOWN_COMMAND"));
 }
