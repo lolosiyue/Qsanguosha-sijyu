@@ -17,15 +17,19 @@ public:
 
     QJsonObject snapshot() const;
     int openDialogCount() const;
+    bool surfaceCardsSettled() const;
 
     bool selectCard(const QString &alias, bool selected, QString *error);
     bool activateSkill(const QString &skillName, bool active, QString *error);
     bool selectPlayer(const QString &playerName, bool selected, QString *error);
     bool clickButton(const QString &name, QString *error);
     bool chooseOption(const QString &option, QString *error);
+    bool chooseSurfaceCard(const QString &alias, QString *error);
+    bool toggleGuanxingCard(const QString &alias, QString *error);
 
 private:
     CardItem *findCard(const QString &alias) const;
+    CardItem *findSurfaceCard(const QString &alias) const;
     QSanSkillButton *findSkillButton(const QString &skillName) const;
 
     Client *m_client;
