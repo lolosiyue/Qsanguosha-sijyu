@@ -189,6 +189,10 @@ jobs:
           New-Item -ItemType Directory -Path "$ctestStage\tests\RelWithDebInfo" -Force | Out-Null
           Copy-Item -LiteralPath builds\cmake-vs2026\CTestTestfile.cmake -Destination $ctestStage
           Copy-Item -LiteralPath builds\cmake-vs2026\tests\CTestTestfile.cmake -Destination "$ctestStage\tests"
+          # skill_ui_runner 的 build_gui() 以 CMakeCache.txt 判斷有冇 configured build
+          # tree，qsanguosha_skill_ui_runner_contract 的 Windows-only 子測試需要佢存在
+          # (該子測試用 PATH 上的 fake cmake.cmd 攔截，唔會真係 build)。
+          Copy-Item -LiteralPath builds\cmake-vs2026\CMakeCache.txt -Destination $ctestStage
           Copy-Item -Path builds\cmake-vs2026\tests\RelWithDebInfo\*.exe -Destination "$ctestStage\tests\RelWithDebInfo"
           if (-not (Get-ChildItem -Path "$ctestStage\tests\RelWithDebInfo" -Filter *.exe)) {
             throw 'No CTest executables were staged'
