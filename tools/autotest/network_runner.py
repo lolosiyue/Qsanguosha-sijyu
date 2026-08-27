@@ -9,6 +9,11 @@
   3. 以 server 的 [AUTOTEST] 標記檔判定開局/結束, 按 PID 殺 client
   4. 模式跑完後殺 server, 進入下一個模式
 
+跨平台: 執行檔名、process 啟動與清理、exit code 解讀全部走 runner_common,
+所以同一份 runner 喺 Windows 同 Linux 都行得到。Linux 上 GUI client 需要一個
+可用的 DISPLAY (WSLg 或者外部 Xvfb); 單局的合約驗證請改用 gui_network_smoke.py,
+本 runner 的責任係 soak。
+
 用法:
     python network_runner.py --exe-root L:\\finaldebug\\QSanguosha-v2 ^
         --modes 10p,20p,02_1v1,05p --runs 2 --general zhenji
@@ -16,43 +21,24 @@
 import argparse
 import os
 import shutil
-import socket
 import sys
 import time
 from typing import Final
 
 from runner_common import (MARK_GAME_OVER, MARK_GAME_START, common_args,
-                           describe_exit, find_exe, is_crash_code, kill_pid,
-                           log_dir_for, log_has_smart_ai_failure,
-                           qt_console_env, resolve_workdir, spawn, stamp,
-                           tail_lines, wait_exit, write_csv)
+                           describe_exit, find_exe, is_crash_code, log_dir_for,
+                           log_has_smart_ai_failure, qt_console_env,
+                           resolve_workdir, spawn, stamp, tail_lines,
+                           terminate_tree, wait_exit, wait_port, write_csv)
 
-SERVER_EXE = "qsanguosha_server.exe"
-CLIENT_EXE = "QSanguosha.exe"
-SERVER_PORT = 9527  # 與 config.ini ServerPort 一致
+SERVER_EXE = "qsanguosha_server"
+CLIENT_EXE = "QSanguosha"
+DEFAULT_SERVER_PORT = 9527  # 與 config.ini ServerPort 一致
 SERVER_STARTUP_TIMEOUT = 60   # 等 server 就緒 (秒)
 GAME_TIMEOUT: Final[int] = int(
     os.environ.get("QSAN_NETWORK_GAME_TIMEOUT", "3600")
 )  # 可由環境變數覆寫的單局有界上限 (秒)
 CLIENT_JOIN_TIMEOUT = 120     # 等 client 連上並開局 (秒)
-
-
-def port_open(port, timeout=0.5):
-    try:
-        s = socket.create_connection(("127.0.0.1", port), timeout=timeout)
-        s.close()
-        return True
-    except OSError:
-        return False
-
-
-def wait_port(port, timeout):
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        if port_open(port):
-            return True
-        time.sleep(0.5)
-    return False
 
 
 def read_markers(log_path, offset):
@@ -100,22 +86,28 @@ def _backup_runtime_files(workdir, run_dir, run_id):
             print("  [WARN] 複製 %s 失敗: %s" % (os.path.basename(src), e))
 
 
+def server_command(server_exe, mode, marker_file, port):
+    return [server_exe, "--port", str(port), "--game-mode", mode,
+            "--autotest-log", marker_file]
+
+
 def restart_server(args, exe_root, workdir, mode, proc, marker_file, server_log, server_exe, reason):
     """重啟常駐 server, 回傳新 proc。reason 用於 log 說明。"""
     exit_code = proc.poll()
     print("  %s (server exit=%s %s)" % (
         reason, exit_code, describe_exit(exit_code) if exit_code is not None else ""))
-    kill_pid(proc.pid)
+    terminate_tree(proc)
     close_proc(proc)
     if os.path.isfile(marker_file):
         os.remove(marker_file)  # 標記檔是 Append, 新 server 需從乾淨檔開始
-    proc = spawn([server_exe, "--game-mode", mode, "--autotest-log", marker_file],
+    port = args.port
+    proc = spawn(server_command(server_exe, mode, marker_file, port),
                  workdir, server_log,
                  console=getattr(args, "console", False))
-    if not wait_port(SERVER_PORT, SERVER_STARTUP_TIMEOUT):
+    if not wait_port(port, SERVER_STARTUP_TIMEOUT, proc=proc):
         print("  [FAIL] %s: 重啟 server 未就緒" % mode)
         return None
-    print("  server 已重啟 (port %d)" % SERVER_PORT)
+    print("  server 已重啟 (port %d)" % port)
     return proc
 
 
@@ -130,16 +122,17 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
 
     results = []
     server_log = os.path.join(run_dir, "server.log")
+    port = args.port
     print("=== 模式 %s: 啟動 server ===" % mode)
-    proc = spawn([server_exe, "--game-mode", mode, "--autotest-log", marker_file],
+    proc = spawn(server_command(server_exe, mode, marker_file, port),
                  workdir, server_log,
                  console=getattr(args, "console", False))
     try:
-        if not wait_port(SERVER_PORT, SERVER_STARTUP_TIMEOUT):
+        if not wait_port(port, SERVER_STARTUP_TIMEOUT, proc=proc):
             code = wait_exit(proc, 5)
             print("[FAIL] %s: server 未就緒 (exit=%s)" % (mode, code))
             return [{"run": "-", "ok": False, "note": "server startup failed"}]
-        print("  server 就緒 (port %d)" % SERVER_PORT)
+        print("  server 就緒 (port %d)" % port)
 
         marker_offset = 0
         for run_id in range(1, runs + 1):
@@ -150,7 +143,7 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
             # 保存上一局的遊戲/AI 內容。
             _backup_runtime_files(workdir, run_dir, run_id)
             print("  局 %d/%d: 啟動 client" % (run_id, runs))
-            client_cmd = [client_exe, "-connect:127.0.0.1",
+            client_cmd = [client_exe, "-connect:127.0.0.1:%d" % port,
                           "--test-general", general]
             if getattr(args, "general2", ""):
                 client_cmd += ["--test-general2", args.general2]
@@ -164,7 +157,7 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
             ccode = None
             if start_line == "SERVER_DIED":
                 # 自動化測試: server 閃退 — 重啟後重試本局
-                kill_pid(client.pid)
+                terminate_tree(client)
                 close_proc(client)
                 ctx = tail_lines(marker_file, 20)
                 for line in ctx:
@@ -181,7 +174,7 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
             if start_line is None:
                 ccode = wait_exit(client, 5)
                 if ccode is None:
-                    kill_pid(client.pid)
+                    terminate_tree(client)
                 close_proc(client)
                 note = "no game start (client exit=%s %s)" % (
                     ccode, describe_exit(ccode) if ccode is not None else "")
@@ -202,7 +195,7 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                 GAME_TIMEOUT, marker_offset, server_proc=proc)
             if over_line == "SERVER_DIED":
                 # 自動化測試: server 閃退 — 該局記失敗, 重啟後繼續下一局
-                kill_pid(client.pid)
+                terminate_tree(client)
                 close_proc(client)
                 ctx = tail_lines(marker_file, 20)
                 for line in ctx:
@@ -218,10 +211,10 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                 marker_offset = 0
                 time.sleep(1)
                 continue
-            # 先確認 client 是否已自行閃退, 再殺 (taskkill 會把 exit code 變成 1)
+            # 先確認 client 是否已自行閃退, 再殺 (強制終止會蓋掉真正的閃退碼)
             ccode = wait_exit(client, 3)
             if ccode is None:
-                kill_pid(client.pid)
+                terminate_tree(client)
             close_proc(client)
             crashed = is_crash_code(ccode)
             ctx = tail_lines(marker_file, 20) if crashed else []
@@ -266,7 +259,8 @@ def run_mode(args, exe_root, workdir, mode, runs, general):
                 marker_offset = 0
             time.sleep(1)
     finally:
-        kill_pid(proc.pid)
+        # 成功同失敗路徑都行同一條有界清理, 唔會留低孤兒 server。
+        terminate_tree(proc)
         close_proc(proc)
     return results
 
@@ -287,6 +281,9 @@ def main():
                         help="client 自動選將主將 (02_1v1 請用 x0; 預設 zhenji)")
     parser.add_argument("--general2", default="",
                         help="雙將模式副將 (空 = server 清單隨機)")
+    parser.add_argument("--port", type=int, default=DEFAULT_SERVER_PORT,
+                        help="server 監聽 port (預設 %d); 平行執行時請各自指定"
+                             % DEFAULT_SERVER_PORT)
     parser.add_argument("--console", action="store_true",
                         help="server stdout 同步顯示在終端 (不寫 server.log, 標記檔照常)")
     args = parser.parse_args()
