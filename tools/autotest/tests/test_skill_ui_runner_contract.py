@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -30,29 +31,35 @@ def write_case(directory: Path, name: str) -> Path:
 
 
 def write_fake_runner(directory: Path) -> Path:
+    body = (
+        "from pathlib import Path\n"
+        "import json\n"
+        "import sys\n"
+        "args = sys.argv[1:]\n"
+        "if '--local-response-ui-capabilities' in args:\n"
+        "    print(json.dumps({'schema_version': 1, 'auto': True, 'show': True, 'inspect': True}))\n"
+        "    raise SystemExit(0)\n"
+        "report = Path(args[args.index('--local-response-ui-report') + 1])\n"
+        "report.parent.mkdir(parents=True, exist_ok=True)\n"
+        "report.write_text(json.dumps({'mode': 'inspect', 'result': 'INSPECTED', "
+        "'reply_received': False, 'closed_by_user': True}), encoding='utf-8')\n"
+        "Path(report.parent / 'argv.txt').write_text('\\n'.join(args), encoding='utf-8')\n"
+    )
     child = directory / "fake_skill_ui.py"
-    child.write_text(
-        (
-            "from pathlib import Path\n"
-            "import json\n"
-            "import sys\n"
-            "args = sys.argv[1:]\n"
-            "if '--local-response-ui-capabilities' in args:\n"
-            "    print(json.dumps({'schema_version': 1, 'auto': True, 'show': True, 'inspect': True}))\n"
-            "    raise SystemExit(0)\n"
-            "report = Path(args[args.index('--local-response-ui-report') + 1])\n"
-            "report.parent.mkdir(parents=True, exist_ok=True)\n"
-            "report.write_text(json.dumps({'mode': 'inspect', 'result': 'INSPECTED', "
-            "'reply_received': False, 'closed_by_user': True}), encoding='utf-8')\n"
-            "Path(report.parent / 'argv.txt').write_text('\\n'.join(args), encoding='utf-8')\n"
-        ),
-        encoding="utf-8",
-    )
-    launcher = directory / "fake_skill_ui.cmd"
-    launcher.write_text(
-        f'@"{sys.executable}" "%~dp0fake_skill_ui.py" %*\n',
-        encoding="utf-8",
-    )
+    if os.name == "nt":
+        # Windows：批次檔 launcher 轉發到 python child
+        child.write_text(body, encoding="utf-8")
+        launcher = directory / "fake_skill_ui.cmd"
+        launcher.write_text(
+            f'@"{sys.executable}" "%~dp0fake_skill_ui.py" %*\n',
+            encoding="utf-8",
+        )
+        return launcher
+    # POSIX：無 .cmd，child 直接加 shebang + 執行位元當 exe
+    launcher = child
+    launcher.write_text("#!/usr/bin/env python3\n" + body, encoding="utf-8")
+    mode = launcher.stat().st_mode
+    launcher.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
     return launcher
 
 
@@ -146,6 +153,9 @@ def test_rejects_old_executable_without_starting_lobby(tmp_path: Path) -> None:
 
 
 def test_build_runs_only_incremental_gui_target(tmp_path: Path) -> None:
+    if os.name != "nt":
+        # build_gui 硬編碼 VS2026 build tree 與 .cmd PATH 慣例，僅在 Windows 有意義
+        return
     cases = tmp_path / "cases"
     write_case(cases, "ask_for_choice")
     executable = write_fake_runner(tmp_path)
