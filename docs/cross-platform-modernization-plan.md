@@ -1,8 +1,8 @@
 # 跨平台現代化與功能移植計劃 (Cross-Platform Modernization Plan)
 
 - Status: Approved Plan
-- Implementation: M1 Complete（2026-08-09 確認）
-- Last Updated: 2026-08-09
+- Implementation: M1 Complete（2026-08-09 確認）、M2 工具鏈進行中（2026-08-18：VS 2026 v145 + Qt 6.11.1）
+- Last Updated: 2026-08-21
 - **規範性**：本文件是跨平台現代化與另一分支通用功能移植的唯一權威執行計劃；與既有 roadmap 或審計結論衝突時，以本文件為準。
 
 ## 1. 來源、目的與範圍
@@ -58,7 +58,7 @@
 | `crashreporter` | Windows 純 Win32／DbgHelp 診斷工具 |
 | CTest targets | 單元、整合、Lua、自動對戰及性能測試 |
 
-CMake 必須啟用 AUTOMOC、AUTOUIC、AUTORCC，管理資源、翻譯、安裝規則與平台條件來源。2026-07-30 已先完成 Windows x64 過渡建置：CMake 3.28+、Qt 6.5.3、MSVC 2019、單一 `QSanguosha` target，並移除 qmake、舊 `.sln`／`.vcxproj` 及舊 Makefile 入口。此過渡建置已通過 Debug／Release，保留既有 FMOD、Breakpad、SWIG、翻譯與輸出路徑；尚未完成 `qsanguosha_engine` 邊界，也不取代最終 Qt 6.11.1／MSVC 2022／Lua 5.4.8 基線。（該邊界已於 2026-08-09 完成，見 §10 M1 狀態。）
+CMake 必須啟用 AUTOMOC、AUTOUIC、AUTORCC，管理資源、翻譯、安裝規則與平台條件來源。2026-07-30 已先完成 Windows x64 過渡建置：CMake 3.28+、Qt 6.5.3、MSVC 2019、單一 `QSanguosha` target，並移除 qmake、舊 `.sln`／`.vcxproj` 及舊 Makefile 入口。此過渡建置已通過 Debug／Release，保留既有 FMOD、Breakpad、SWIG、翻譯與輸出路徑；尚未完成 `qsanguosha_engine` 邊界，也不取代最終 Qt 6.11.1／MSVC 2022→2026／Lua 5.4.8 基線。（該邊界已於 2026-08-09 完成見 §10 M1；Windows 工具鏈已於 2026-08-18 升級至 VS 2026 v145 + Qt 6.11.1 `msvc2022_64`。）
 
 ### 3.1 引擎與 GUI 解耦
 

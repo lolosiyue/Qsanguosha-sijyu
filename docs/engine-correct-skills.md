@@ -1,6 +1,6 @@
-# CorrectSkillV2 數值修正系統
+# CorrectSkillV2 數值修正系統（引擎側快參）
 
-技能開發者的完整 API、Lua／C++ 範例與遷移流程，參閱 [`CorrectSkillV2功能與開發指南.md`](CorrectSkillV2功能與開發指南.md)。
+> **定位**：本文為引擎側快參（holder／context／amount／correctState／同步／legacy 保證／開放門檻）；**完整開發者指南、Lua 範例與遷移流程以 [`CorrectSkillV2功能與開發指南.md`](CorrectSkillV2功能與開發指南.md) 為準**。兩文件內容互補，不重複為冗餘；如有衝突以後者為準。
 
 ## 開放狀態
 
