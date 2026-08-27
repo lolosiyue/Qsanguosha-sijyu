@@ -105,6 +105,7 @@ static ClientPlayer *getControlRootPlayer(const ClientPlayer *player)
 	return const_cast<ClientPlayer *>(player);
 }
 
+#include "testing/network-ui-smoke-responder.h"
 #include "ui-utils.h"
 
 using namespace QSanProtocol;
@@ -2231,6 +2232,16 @@ void RoomScene::chooseGeneral(const QStringList&generals)
 	QApplication::alert(main_window);
 	if(!main_window->isActiveWindow())
 		Sanguosha->playSystemAudioEffect("prelude");
+
+	// Linux GUI M2 network smoke: 由 server 送嚟嘅清單揀第一個(名稱排序後),
+	// 令固定 seed 下成局可重現。放喺 --test-general 之前,因為 --test-general
+	// 揀嘅武將多數唔喺 5 選 1 清單內, server 會靜靜改用 _chooseDefaultGeneral,
+	// 反而令選將結果唔確定。
+	if (NetworkUiSmokeResponder::isActive() && Config.AutoPickGeneral.isEmpty()) {
+		m_autoPickGeneralAskCount++;
+		if (NetworkUiSmokeResponder::instance()->answerChooseGeneral(generals))
+			return;
+	}
 
 	// 自動化測試: --test-general 指定自動選將, 略過選將對話框
 	// server 在 FreeChoose(EnableCheat) 下接受任意回覆 (room.cpp askForGeneral/chooseGenerals),
