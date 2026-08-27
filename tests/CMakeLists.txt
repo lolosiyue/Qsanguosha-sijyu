@@ -88,6 +88,36 @@ if(WIN32)
     )
 endif()
 
+# Linux GUI M1 startup smoke 的 marker／exit code 契約。只 link Qt6::Core，令
+# server-only configure 都跑得到，唔會為咗測試而拉 GUI 依賴入 CTest。
+add_executable(qsanguosha_ui_startup_smoke_tests
+    ui_startup_smoke/ui-startup-smoke-report-test.cpp
+    ${QSAN_TEST_ROOT}/src/ui/testing/ui-startup-smoke-report.cpp
+    ${QSAN_TEST_ROOT}/src/ui/testing/ui-startup-smoke-report.h
+)
+target_include_directories(qsanguosha_ui_startup_smoke_tests PRIVATE
+    ${QSAN_TEST_ROOT}/src/ui/testing
+)
+target_link_libraries(qsanguosha_ui_startup_smoke_tests PRIVATE Qt6::Core)
+qsan_add_ctest(qsanguosha_ui_startup_smoke_contract qsanguosha_ui_startup_smoke_tests
+    LABELS "ui-runner;gui;fast"
+)
+if(WIN32)
+    set_property(TEST qsanguosha_ui_startup_smoke_contract
+        PROPERTY ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    )
+endif()
+
+add_test(NAME qsanguosha_ui_startup_smoke_cli_contract
+    COMMAND ${Python3_EXECUTABLE}
+        ${QSAN_TEST_ROOT}/tools/autotest/tests/test_ui_startup_smoke_contract.py
+)
+set_tests_properties(qsanguosha_ui_startup_smoke_cli_contract PROPERTIES
+    WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
+    LABELS "ui-runner;gui;fast"
+)
+
 add_test(NAME qsanguosha_skill_ui_runner_contract
     COMMAND ${Python3_EXECUTABLE}
         ${QSAN_TEST_ROOT}/tools/autotest/tests/test_skill_ui_runner_contract.py
