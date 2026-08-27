@@ -42,6 +42,23 @@ jobs:
           persist-credentials: false
           fetch-depth: 1
 
+      # GUI 的 Qt baseline 與 Windows 一致（6.11.1）。Ubuntu 24.04 apt 只有 Qt 6.4.2，
+      # 缺少 GUI source 需要的 API（例如 QStyleHints::colorScheme()，Qt 6.5+）。
+      # dedicated server 不受影響，linux-server-ci.yml 繼續用 distro Qt。
+      - name: Install Qt 6.11.1
+        uses: jurplel/install-qt-action/action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: '6.11.1'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          modules: 'qt5compat qtmultimedia'
+          cache: true
+          cache-key-prefix: qt-ubuntu-24.04-x64-6.11.1-linux_gcc_64-qt5compat-qtmultimedia-aqtmaster16db45a7-v1
+          # aqt 3.3.0 (最新 release) 不支援 Qt 6.11+ 的新 repo 目錄結構 (miurahr/aqtinstall#959)。
+          # 修復已合併至 master 但未發佈；固定到此 commit 以取得 Qt 6.11+ 支援。
+          aqtsource: 'git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e'
+
       - name: Install Linux GUI build dependencies
         run: |
           sudo apt-get update
@@ -51,14 +68,7 @@ jobs:
             libfreetype-dev \
             libgl-dev \
             ninja-build \
-            python3-venv \
-            qt6-5compat-dev \
-            qt6-base-dev \
-            qt6-declarative-dev \
-            qt6-l10n-tools \
-            qt6-multimedia-dev \
-            qt6-tools-dev \
-            qt6-tools-dev-tools
+            python3-venv
 
       - name: Install pinned SWIG
         run: |
@@ -96,12 +106,11 @@ jobs:
             exit 1
           fi
 
-      # 純 offscreen capability 查詢：喺建立任何 window／OpenGL context 之前就返回，
-      # 唔需要 X11／Wayland／GPU。完整 GUI runtime smoke 屬於 Linux GUI M1。
-      - name: Offscreen local response UI capability smoke
-        env:
-          QT_QPA_PLATFORM: offscreen
-          QT_QUICK_BACKEND: software
+      # M0 只驗證 binary 可以執行並回報 capability。--local-response-ui-capabilities
+      # 喺建立 QApplication 之前就直接回傳 JSON，所以呢個係 binary capability smoke，
+      # 唔係 GUI／offscreen startup smoke。真正的 QApplication／MainWindow／HomeScene
+      # 啟動驗證屬於 Linux GUI M1。
+      - name: Binary capability smoke
         run: |
           ./relwithdebinfo/QSanguosha --local-response-ui-capabilities | tee capabilities.json
           python3 - capabilities.json <<'PY'
