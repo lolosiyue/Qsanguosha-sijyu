@@ -9,7 +9,7 @@ Server 使用 `QCoreApplication`，唔需要 X11／Wayland、FMOD 或任何 GUI�
 | 階段 | 狀態 |
 |---|---|
 | Linux Server（build／CI／三級 TCP network integration／systemd） | **Complete** |
-| Linux GUI M0（configure ＋ compile ＋ link） | **In progress** — CI 驗證中 |
+| Linux GUI M0（configure ＋ compile ＋ link） | **Complete** — `linux-gui-ci.yml` 喺 ubuntu-24.04 ＋ Qt 6.11.1 驗證 |
 | Linux GUI runtime／完整對局（WSLg／X11／Wayland、HomeScene／RoomScene、audio、video） | **Not started**（M1／M2） |
 | Linux packaging（AppImage／deb／desktop entry／installer） | **Not started**（M3） |
 
@@ -35,7 +35,7 @@ Linux packaging
 > **binary capability smoke**，唔係 GUI／offscreen startup smoke。真正的 `QApplication`／
 > `MainWindow`／`HomeScene` 啟動驗證屬於 Linux GUI M1。
 
-- Status: Linux Server Complete；Linux GUI M0 CI 驗證中
+- Status: Linux Server Complete；Linux GUI M0（configure／compile／link）Complete
 - Last Updated: 2026-08-27
 - 對應 Windows 開發環境請見 [`README.md`](../README.md) 嘅 🛠️ Development Environment section。
 
