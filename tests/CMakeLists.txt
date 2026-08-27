@@ -68,27 +68,34 @@ qsan_add_ctest(qsanguosha_protocol_messages qsanguosha_protocol_tests
     LABELS protocol
 )
 
-if(QSAN_BUILD_LOCAL_RESPONSE_UI_RUNNER)
-    add_executable(qsanguosha_local_response_ui_case_tests
-        skill_ui_runner/local-response-ui-case-test.cpp
-        ${QSAN_TEST_ROOT}/src/ui/testing/local-response-ui-case.cpp
-        ${QSAN_TEST_ROOT}/src/ui/testing/local-response-ui-case.h
+add_executable(qsanguosha_local_response_ui_case_tests
+    skill_ui_runner/local-response-ui-case-test.cpp
+    ${QSAN_TEST_ROOT}/src/ui/testing/local-response-ui-case.cpp
+    ${QSAN_TEST_ROOT}/src/ui/testing/local-response-ui-case.h
+)
+qsan_link_engine_test(qsanguosha_local_response_ui_case_tests)
+target_include_directories(qsanguosha_local_response_ui_case_tests PRIVATE
+    ${QSAN_TEST_ROOT}/src/ui/testing
+)
+qsan_add_ctest(qsanguosha_local_response_ui_case_parser
+    qsanguosha_local_response_ui_case_tests
+    LABELS "ui-runner;fast"
+)
+if(WIN32)
+    set_property(TEST qsanguosha_local_response_ui_case_parser
+        PROPERTY ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
     )
-    qsan_link_engine_test(qsanguosha_local_response_ui_case_tests)
-    target_include_directories(qsanguosha_local_response_ui_case_tests PRIVATE
-        ${QSAN_TEST_ROOT}/src/ui/testing
-    )
-    qsan_add_ctest(qsanguosha_local_response_ui_case_parser
-        qsanguosha_local_response_ui_case_tests
-        LABELS "ui-runner;fast"
-    )
-    if(WIN32)
-        set_property(TEST qsanguosha_local_response_ui_case_parser
-            PROPERTY ENVIRONMENT_MODIFICATION
-                "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
-        )
-    endif()
 endif()
+
+add_test(NAME qsanguosha_skill_ui_runner_contract
+    COMMAND ${Python3_EXECUTABLE}
+        ${QSAN_TEST_ROOT}/tools/autotest/tests/test_skill_ui_runner_contract.py
+)
+set_tests_properties(qsanguosha_skill_ui_runner_contract PROPERTIES
+    WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
+    LABELS "ui-runner;fast"
+)
 
 add_executable(qsanguosha_cli_tests
     server-command-line-test.cpp

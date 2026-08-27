@@ -24,13 +24,17 @@
 #endif
 
 #include "crashhandler.h"
-
-#ifdef QSAN_LOCAL_RESPONSE_UI_RUNNER
 #include "testing/local-response-ui-controller.h"
-#endif
 
 int main(int argc, char *argv[]) {
     CrashHandler::install();
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--local-response-ui-capabilities") == 0) {
+            fputs("{\"schema_version\":1,\"auto\":true,\"show\":true,\"inspect\":true}\n", stdout);
+            fflush(stdout);
+            return 0;
+        }
+    }
     for (int i = 1; i < argc; ++i) {
         if (strcmp(argv[i], "--seed") == 0) {
             qputenv("QT_HASH_SEED", "0");
@@ -337,7 +341,6 @@ int main(int argc, char *argv[]) {
         qApp->setStyleSheet(stream.readAll());
     }
 
-#ifdef QSAN_LOCAL_RESPONSE_UI_RUNNER
     bool hasLocalResponseUiCase = false;
     for (const QString &argument : arguments) {
         if (argument == QStringLiteral("--local-response-ui-case")
@@ -351,7 +354,6 @@ int main(int argc, char *argv[]) {
         CrashHandler::beginShutdown();
         return rc;
     }
-#endif
 
     MainWindow *main_window = new MainWindow;
     Sanguosha->setParent(main_window);
