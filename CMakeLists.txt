@@ -438,6 +438,10 @@ if(QSAN_BUILD_GUI)
         src/ui/testing/local-response-ui-probe.h
         src/ui/testing/test-client-socket.cpp
         src/ui/testing/test-client-socket.h
+        src/ui/testing/ui-startup-smoke-controller.cpp
+        src/ui/testing/ui-startup-smoke-controller.h
+        src/ui/testing/ui-startup-smoke-report.cpp
+        src/ui/testing/ui-startup-smoke-report.h
     )
 
     if(WIN32)
