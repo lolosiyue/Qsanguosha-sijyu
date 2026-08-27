@@ -53,6 +53,40 @@ python tools\autotest\network_runner.py `
 
 輸出: `tools\autotest\autotest-logs\network\<mode>\server.log` / `runN.log` + `summary-network-<時間>.csv`
 
+`--port` 可指定 server 監聽 port (預設 9527); 平行跑多份時各自指定。
+
+本 runner 的責任是 **soak**: 連跑多局、閃退就重啟重試、以通過率作結論。
+要驗「一局固定 seed 的合約」請改用下面的 `gui_network_smoke.py`。
+
+## gui_network_smoke.py — 一局真實 TCP 網路對局的合約驗證 (Linux GUI M2)
+
+一個獨立的 `qsanguosha_server` process + 一個獨立的 GUI client process, 中間走
+真正的 TCP。client 以 `--network-ui-smoke` 啟動, 由真正的 RoomScene/Dashboard
+回答 askFor (撳真正的 CardItem / Photo / 按鈕), 打完一局後自己乾淨退出:
+
+```bash
+# Linux 本機 (WSLg, 用現有 DISPLAY)
+python3 tools/autotest/gui_network_smoke.py --exe-root . \
+    --mode 02p --seed 20260828 --artifact-dir gui-network-artifacts \
+    --no-xvfb --platform xcb
+
+# CI (Xvfb)
+python3 tools/autotest/gui_network_smoke.py --exe-root . \
+    --mode 05p --seed 20260828 --artifact-dir gui-network-artifacts \
+    --xvfb --platform xcb
+```
+
+同 `network_runner.py` 的分別: 這裡**不會 retry**。任何一個 stage 缺失、client
+不是 exit 0、server 沒有寫出 game over、留下孤兒 process 或 port 沒有釋放, 都是
+失敗。`--seed` 是必填的, 沒有隱式預設。
+
+輸出: `<artifact-dir>/network-ui-smoke-<mode>-summary.json` (含 mode/seed/port/
+兩個執行檔的 SHA-256/extensions commit)、`-result.json`、client/server log、
+marker log; 失敗時另存最後 UI state 與截圖。
+
+模式 ID 以 registry 為準 (`qsanguosha_server --list-game-modes`): 2 人局是
+`02p`, 5 人局是 `05p`。詳細契約見 `docs/linux-development-environment.md`。
+
 ## crash_report.py — 集中閃退資訊 (可持續執行)
 
 掃描 exe-root 的 `dmp/` + `record/` 與 `tools\autotest\autotest-logs\` 全部
@@ -93,3 +127,7 @@ python tools\autotest\crash_report.py `
 - 舊 `startserver.bat` 指向已不存在的 `H:\...\0705\`; 一律以 runner spawn。
 - `taskkill /IM QSanguosha.exe` 會誤殺 server; runner 一律按 PID 精準結束。
 - 02_1v1 的 KOF 選將以 `x0` 佔位 (伺服器映射到隨機未知將), 無法指定特定武將。
+- runner 已跨平台: 執行檔名、process group spawn、process-tree 清理、exit code
+  解讀 (Windows NTSTATUS / POSIX 訊號) 全部集中在 `runner_common.py`, 所以同一份
+  runner 在 Windows 與 Linux 都跑得到。Linux 上 GUI client 需要一個可用的
+  DISPLAY (WSLg, 或由 `gui_network_smoke.py --xvfb` 自動起 Xvfb)。
