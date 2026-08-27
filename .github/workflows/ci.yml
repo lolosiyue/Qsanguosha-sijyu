@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - debug
     paths-ignore:
       - 'docs/**'
       - 'memory/**'
@@ -189,6 +190,11 @@ jobs:
             Copy-Item -LiteralPath $_.FullName -Destination $relWithDebInfoStage -Recurse
           }
 
+          # 測試 target 定義喺 tests/ 子目錄，所以 MSVC 會將測試 exe 放喺
+          # builds\cmake-vs2026\tests\RelWithDebInfo\，而唔係 build tree 根目錄。
+          # 頂層 CTestTestfile.cmake 只有 subdirs("tests")，真正嘅 add_test() 喺
+          # tests\CTestTestfile.cmake，兩個都要 stage，layout 亦要原樣保留
+          # (生成嘅 CTestTestfile.cmake 內含絕對路徑)。
           $ctestStage = 'ci-handoff\ctest\builds\cmake-vs2026'
           New-Item -ItemType Directory -Path "$ctestStage\tests\RelWithDebInfo" -Force | Out-Null
           Copy-Item -LiteralPath builds\cmake-vs2026\CTestTestfile.cmake -Destination $ctestStage
@@ -264,12 +270,17 @@ jobs:
         run: |
           & .\tools\ci\fetch-extensions.ps1
 
-      - name: Reconstruct RelWithDebInfo layout for CTest
+      # qsanguosha_server / QSanguosha 的 RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO 係
+      # source tree 的 relwithdebinfo\，所以生成的 CTestTestfile.cmake 會用該絕對路徑
+      # 呼叫 server CLI 測試。runtime artifact 以 release\ 交付(其他 job 沿用該名稱)，
+      # 喺呢度補一份 relwithdebinfo\ 令絕對路徑解析得到。
+      - name: Restore RelWithDebInfo runtime layout
         shell: pwsh
         run: |
-          if (Test-Path release -and -not (Test-Path relwithdebinfo)) {
-            New-Item -ItemType Directory -Path relwithdebinfo -Force | Out-Null
-            Copy-Item -Path release\* -Destination relwithdebinfo -Recurse -Force
+          New-Item -ItemType Directory -Path relwithdebinfo -Force | Out-Null
+          Copy-Item -Path 'release\*' -Destination relwithdebinfo -Recurse -Force
+          if (-not (Test-Path -LiteralPath 'relwithdebinfo\qsanguosha_server.exe')) {
+            throw 'relwithdebinfo\qsanguosha_server.exe was not restored'
           }
 
       - name: Run deterministic C++ tests
