@@ -5,7 +5,7 @@ rem  All options are set below. Leave empty = use default.
 rem ============================================================
 
 rem ---- your choices (edit here) ------------------------------
-set MODES=20p
+set MODES=08p
 set GAMES=3
 set PARALLEL=1
 set GENERAL=
@@ -13,6 +13,12 @@ set GENERAL2=
 set SPAWNDELAY=3
 set LOG_DIR=
 set LABEL=
+rem  EXE/SEED are required by the runner contract (no implicit
+rem  discovery). EXE: release first, then debug. SEED defaults to
+rem  today's date yyyyMMdd; override either variable to pin them.
+if not defined EXE if exist "%~dp0..\..\release\QSanguosha.exe" set "EXE=%~dp0..\..\release\QSanguosha.exe"
+if not defined EXE set "EXE=%~dp0..\..\debug\QSanguosha.exe"
+if not defined SEED for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd"') do set "SEED=%%i"
 rem  PARALLEL    = total parallel processes; when there are fewer
 rem  modes than PARALLEL, the same mode is duplicated round-robin
 rem  GENERAL     = force the lord to this general every game
@@ -21,7 +27,7 @@ rem  SPAWNDELAY  = seconds between process spawns (0 = all at once);
 rem                staggered start avoids antivirus behavior blocking
 rem ------------------------------------------------------------
 
-set "ARGS=--exe-root "%~dp0..\..""
+set "ARGS=--exe-root "%~dp0..\.." --exe "%EXE%" --seed %SEED%"
 if not "%MODES%"==""   set "ARGS=%ARGS% --modes "%MODES%""
 if not "%GAMES%"==""   set "ARGS=%ARGS% --games %GAMES%"
 if not "%PARALLEL%"=="" set "ARGS=%ARGS% --parallel %PARALLEL%"
