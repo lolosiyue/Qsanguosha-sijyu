@@ -368,6 +368,13 @@ signals:
     void version_checked(const QString &version_number, const QString &mod_name, int card_num);
     void server_connected();
     void error_message(const QString &msg);
+    // 傳輸層觀測點:socket 真正接通 / 每個 server request 到埗 / 每個 client reply
+    // 送出。自動化測試靠呢三個訊號分辨「連唔上」「連到但冇 request」「有 request
+    // 但冇覆」,唔使解析 log 文字。無人連線時成本等同一次空 emit。
+    void socket_connected();
+    void socket_disconnected();
+    void server_request(int commandType);
+    void server_reply(int commandType);
     void player_added(ClientPlayer *new_player);
     void player_removed(const QString &player_name);
     void boss_level_changed();

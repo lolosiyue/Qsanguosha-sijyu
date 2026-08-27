@@ -114,6 +114,37 @@ if(WIN32)
     )
 endif()
 
+# Linux GUI M2 network UI smoke 的 marker／exit code／command 對照契約。同 M1
+# 一樣只 link Qt6::Core:契約唔應該要開 QApplication 或者起一局真網絡局先驗到。
+add_executable(qsanguosha_network_ui_smoke_tests
+    network_ui_smoke/network-ui-smoke-report-test.cpp
+    ${QSAN_TEST_ROOT}/src/ui/testing/network-ui-smoke-report.cpp
+    ${QSAN_TEST_ROOT}/src/ui/testing/network-ui-smoke-report.h
+)
+target_include_directories(qsanguosha_network_ui_smoke_tests PRIVATE
+    ${QSAN_TEST_ROOT}/src/core
+    ${QSAN_TEST_ROOT}/src/ui/testing
+)
+target_link_libraries(qsanguosha_network_ui_smoke_tests PRIVATE Qt6::Core)
+qsan_add_ctest(qsanguosha_network_ui_smoke_contract qsanguosha_network_ui_smoke_tests
+    LABELS "ui-runner;gui;network;fast"
+)
+if(WIN32)
+    set_property(TEST qsanguosha_network_ui_smoke_contract
+        PROPERTY ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    )
+endif()
+
+add_test(NAME qsanguosha_network_ui_smoke_cli_contract
+    COMMAND ${Python3_EXECUTABLE}
+        ${QSAN_TEST_ROOT}/tools/autotest/tests/test_gui_network_smoke_contract.py
+)
+set_tests_properties(qsanguosha_network_ui_smoke_cli_contract PROPERTIES
+    WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
+    LABELS "ui-runner;gui;network;fast"
+)
+
 add_test(NAME qsanguosha_ui_startup_smoke_cli_contract
     COMMAND ${Python3_EXECUTABLE}
         ${QSAN_TEST_ROOT}/tools/autotest/tests/test_ui_startup_smoke_contract.py
