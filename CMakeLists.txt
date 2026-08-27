@@ -436,6 +436,12 @@ if(QSAN_BUILD_GUI)
         src/ui/testing/local-response-ui-inspector.h
         src/ui/testing/local-response-ui-probe.cpp
         src/ui/testing/local-response-ui-probe.h
+        src/ui/testing/network-ui-smoke-controller.cpp
+        src/ui/testing/network-ui-smoke-controller.h
+        src/ui/testing/network-ui-smoke-report.cpp
+        src/ui/testing/network-ui-smoke-report.h
+        src/ui/testing/network-ui-smoke-responder.cpp
+        src/ui/testing/network-ui-smoke-responder.h
         src/ui/testing/test-client-socket.cpp
         src/ui/testing/test-client-socket.h
         src/ui/testing/ui-startup-smoke-controller.cpp
