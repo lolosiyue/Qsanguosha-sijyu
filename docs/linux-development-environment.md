@@ -343,7 +343,132 @@ bash tools/ci/linux-gui-startup-smoke.sh ./debug/QSanguosha artifacts \
     --no-xvfb --platform xcb --label wslg
 ```
 
-## 4.6 WSLg 人手驗證
+## 4.6 Linux GUI M2 network smoke（真實 TCP 對局）
+
+M1 證明 GUI **啟動得到**；M2 證明 GUI **玩得到**：一個獨立的 Linux
+`qsanguosha_server` process、一個獨立的 Linux GUI client process、中間行真正的
+TCP，走完 連線 → signup → RoomScene/Dashboard → 選將 → 出牌／askFor → game over
+→ 正常離開。
+
+### 模式 ID（以 registry 為準）
+
+M2 用 registry 真正註冊咗嘅身分模式，唔靠猜：
+
+| 用途 | mode ID | 人數 | 出處 |
+|---|---|---|---|
+| 2 人局 | `02p` | 2 | `src/core/engine.cpp` `modes.insert("02p", ...)`；`qsanguosha_server --list-game-modes` 亦會列出 |
+| 5 人局 | `05p` | 5 | `src/core/engine.cpp` `modes.insert("05p", ...)`；同上 |
+
+想自己確認：
+
+```bash
+./relwithdebinfo/qsanguosha_server --list-game-modes | grep -E '^(02p|05p)\b'
+```
+
+### `--network-ui-smoke`
+
+client 端嘅入口。**唔會**改變正常玩家啟動：所有測試行為都要顯式 flag。
+
+| Flag | 意思 |
+|---|---|
+| `--network-ui-smoke` | 啟用；同時要有 `-connect:<host>[:<port>]` 先有 Client 可以觀察 |
+| `--network-ui-smoke-result <path>` | 寫低完整 JSON report（stages／responder 統計／失敗時嘅最後 UI state） |
+| `--network-ui-smoke-timeout-ms <ms>` | app 層總 timeout（預設 600000） |
+| `--network-ui-smoke-stall-ms <ms>` | 單一 request 未經 UI 回覆嘅容忍時間，超過就切 trustee 並記錄（預設 20000） |
+| `--network-ui-smoke-screenshot <path>` | 失敗時影一張 PNG 作診斷（唔係 pixel gate） |
+
+呢個入口係**觀察者**，唔係第二套流程：MainWindow、Client、RoomScene、Dashboard
+全部係產品自己嗰啲，smoke 只係接產品已有嘅訊號
+（`Client::socket_connected` / `server_connected` / `game_started` / `game_over`、
+`MainWindow::roomSceneCreated`），再由 `NetworkUiSmokeResponder` 代替滑鼠去撳真正
+被 enable 嘅 `CardItem`／`Photo`／`QSanButton`，最後行 RoomScene 自己嘅
+`doOkButton()`／`doCancelButton()`／`doTimeout()` 把回覆送返 server。
+
+Responder **唔會**自己砌 protocol packet。遇到 M2 未特別處理嘅互動形態，會走
+RoomScene 自己嘅安全預設回覆（`doTimeout()`）；真係卡住超過 `--stall-ms` 先至切
+trustee，而且一定會喺 report 記低 `trustee_fallback`，唔會扮成正常路徑。
+
+### Stage 與結果 marker
+
+```
+NETWORK_UI_STAGE {"schema_version":1,"stage":"connected","ok":true,...}
+NETWORK_UI_STAGE {"schema_version":1,"stage":"signed_up","ok":true,...}
+NETWORK_UI_STAGE {"schema_version":1,"stage":"room_scene","ok":true,...}
+NETWORK_UI_STAGE {"schema_version":1,"stage":"dashboard","ok":true,...}
+NETWORK_UI_STAGE {"schema_version":1,"stage":"general_selected","ok":true,...}
+NETWORK_UI_STAGE {"schema_version":1,"stage":"game_started","ok":true,...}
+NETWORK_UI_STAGE {"schema_version":1,"stage":"game_over","ok":true,...}
+NETWORK_UI_STAGE {"schema_version":1,"stage":"shutdown","ok":true,...}
+NETWORK_UI_RESULT {"schema_version":1,"ok":true,"stage":"shutdown","exit_code":0,"reason":"ok",...}
+```
+
+次序同任務書列出嘅稍有不同，係**刻意**跟產品真實流程：RoomScene 喺 client 收到
+setup 之後即刻由 `MainWindow::enterRoom()` 建立，早過選將請求，所以
+`room_scene`／`dashboard` 排喺 `general_selected` 之前。
+
+### Exit code：每種故障有自己嘅編號
+
+| Exit code | 意思 |
+|---|---|
+| 0 | PASS |
+| 1 | 參數不合法 |
+| 2 | 連唔上（server 未啟動／port 錯） |
+| 3 | signup／setup 未完成 |
+| 4 | RoomScene 未建立 |
+| 5 | Dashboard 未建立 |
+| 6 | 選將請求未回覆 |
+| 7 | 未開局 |
+| 8 | askFor 無法經 UI 回覆 |
+| 9 | 開咗局但冇 game over |
+| 10 | 局中被 server 斷線 |
+| 11 | app 內部總 timeout |
+| 12 | 其他內部錯誤 |
+
+`reason` 欄再分辨 `stage_failed` / `timeout` / `disconnected` /
+`interaction_stalled`。client crash 同 shutdown hang 冇 result marker，由 runner 靠
+exit code（POSIX 訊號）判定。
+
+### Runner：`tools/autotest/gui_network_smoke.py`
+
+```bash
+# 本機（WSLg，用現有 DISPLAY）
+python3 tools/autotest/gui_network_smoke.py \
+    --exe-root . --mode 02p --seed 20260828 \
+    --artifact-dir gui-network-artifacts --no-xvfb --platform xcb
+
+# CI（Xvfb）
+python3 tools/autotest/gui_network_smoke.py \
+    --exe-root . --mode 05p --seed 20260828 \
+    --artifact-dir gui-network-artifacts --xvfb --platform xcb
+```
+
+Runner 負責：
+
+- 借一個**空閒 TCP port**（平行 CI job 唔會撞）
+- 用**固定 seed**，並且喺 summary 記低 mode／seed／port／server 同 client 嘅
+  SHA-256／extensions commit／timeout 設定
+- 寫一份確定性嘅 server INI overlay（關掉 RandomSeat／雙將／作弊／幸運牌），
+  唔靠開發機留低嘅 `config.ini`
+- 兩層有界 timeout：`--client-timeout-ms`（app 層）＋ `--process-timeout`（runner 層）
+- 成功同失敗路徑都行同一條清理：graceful shutdown → terminate → kill，之後確認
+  冇孤兒、port 已釋放
+- **冇任何 retry**。一局就係一局，唔會跑到偶然 PASS 為止。
+
+`--require-interactions` 可以要求某啲互動一定要經真 UI 覆蓋過（預設
+`choose_general,play_phase`）。CI 只 gate `choose_general`，因為對局點樣展開受
+server 端 AI 影響，其餘覆蓋率照樣寫入 artifact 供檢視。
+
+跨平台部分（執行檔定位、process group spawn、process-tree 清理、exit code 解讀、
+空閒 port）抽咗喺 `tools/autotest/runner_common.py`，`network_runner.py` 同
+`gui_network_smoke.py` 共用；`network_runner.py` 亦因此喺 Linux 行得到。
+
+### 素材
+
+自動化測試喺**冇美術素材**嘅情況下跑（`image/`、`audio/`、`font/`、`hero-skin/`
+唔入庫）。缺素材只會產生 optional asset warning，唔可以令 RoomScene、Dashboard、
+選目標、網絡回覆或者對局流程崩潰 — 呢個係 M2 要證明嘅嘢之一。
+
+## 4.7 WSLg 人手驗證
 
 Xvfb CI 通過**唔可以**取代 WSLg 人手驗證：Xvfb 冇 compositor，亦唔會行 WSLg 的
 Wayland／X11 橋接。喺 WSLg 下重複以下步驟：
@@ -630,7 +755,25 @@ Linux GUI M0 compile CI，Ubuntu 24.04 + GCC + Ninja + RelWithDebInfo：
 6. `file` + `ldd` 檢查，出現 `not found` 即 fail。
 7. 跑 `--local-response-ui-capabilities` binary capability smoke。
 
-呢個 workflow **刻意唔做**完整 GUI 對局、visible startup、X11／Wayland、FMOD、AppImage 或者 pixel screenshot；runtime smoke 留俾 Linux GUI M1。
+M1 喺同一個 job 加咗 Xvfb + xcb 嘅 runtime startup smoke（見 [4.5](#45-linux-gui-m1-startup-smoke)）。
+
+M2 再加兩個**分層**嘅 job，用 artifact 收下 compile job 砌好嘅同一份 binary 同
+runtime Lua 內容（唔重新 fetch extensions，免得兩個 job 拎到唔同版本）：
+
+```
+Linux GUI compile ── M1 startup smoke
+        ↓ linux-gui-runtime-bundle
+Linux GUI M2 network game (02p)
+        ↓
+Linux GUI M2 network game (05p)
+```
+
+兩個 network job 都係**阻擋性**嘅，冇用 `continue-on-error` 掩蓋。02p job 額外行
+一個負向契約：server 唔存在時 runner 一定要快速失敗並且講明係連線層，唔可以等到
+timeout 或者當 PASS。
+
+呢個 workflow **刻意唔做**：完整音效／影片／Spine／GIF、visible startup、
+Wayland、AppImage、pixel screenshot gate。呢啲留俾 M2B／M3。
 
 Linux Server CI 繼續用 distro Qt，唔會受 GUI 的 Qt 6.11 baseline 影響。
 
