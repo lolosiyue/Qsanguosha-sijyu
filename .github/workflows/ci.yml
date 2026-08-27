@@ -5,9 +5,6 @@ on:
     branches:
       - main
       - debug
-      # Linux GUI 的 milestone PR 係 stacked 喺 agent/linux-gui-* 上，base 唔係
-      # main／debug。冇呢一行，stacked PR 就攞唔到 regression 證據。
-      - 'agent/**'
     paths-ignore:
       - 'docs/**'
       - 'memory/**'
