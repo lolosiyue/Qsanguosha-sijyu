@@ -9,13 +9,33 @@ Server 使用 `QCoreApplication`，唔需要 X11／Wayland、FMOD 或任何 GUI�
 | 階段 | 狀態 |
 |---|---|
 | Linux Server（build／CI／三級 TCP network integration／systemd） | **Complete** |
-| Linux GUI M0（configure／compile／link） | **Available** |
-| Linux GUI runtime／完整對局（WSLg／X11／Wayland、HomeScene／RoomScene、audio、video） | **In progress**（M1／M2） |
+| Linux GUI M0（configure ＋ compile ＋ link） | **In progress** — CI 驗證中 |
+| Linux GUI runtime／完整對局（WSLg／X11／Wayland、HomeScene／RoomScene、audio、video） | **Not started**（M1／M2） |
 | Linux packaging（AppImage／deb／desktop entry／installer） | **Not started**（M3） |
 
-> ⚠️ Linux GUI M0 只代表 `QSanguosha` 喺 Linux 編得成、link 得成，並且 `--local-response-ui-capabilities` 可以喺 offscreen 之下回應。**唔代表** audio、video 背景、Spine 表現、WSLg／Wayland／X11 視窗行為或者 packaging 已經完成，亦未做過完整 GUI 對局驗證。
+M0 的定義固定為 **configure ＋ compile ＋ link**，加上一個 binary capability smoke。
 
-- Status: Linux Server Complete；Linux GUI M0 compile/link Available
+以下全部 **未完成**，唔喺 M0 範圍：
+
+```text
+visible startup
+WSLg
+X11
+Wayland
+HomeScene runtime
+RoomScene runtime
+audio
+video
+Spine
+完整 network game
+Linux packaging
+```
+
+> ⚠️ `--local-response-ui-capabilities` 喺建立 `QApplication` 之前就直接回傳 JSON，所以佢係
+> **binary capability smoke**，唔係 GUI／offscreen startup smoke。真正的 `QApplication`／
+> `MainWindow`／`HomeScene` 啟動驗證屬於 Linux GUI M1。
+
+- Status: Linux Server Complete；Linux GUI M0 CI 驗證中
 - Last Updated: 2026-08-27
 - 對應 Windows 開發環境請見 [`README.md`](../README.md) 嘅 🛠️ Development Environment section。
 
@@ -25,13 +45,20 @@ Server 使用 `QCoreApplication`，唔需要 X11／Wayland、FMOD 或任何 GUI�
 |---|---|
 | 平台 | Ubuntu 24.04 x64（CI 基線；本機亦驗證過 Ubuntu 26.04，其他 Linux distro 一般相容） |
 | C++ | C++17（`CMAKE_CXX_STANDARD 17`） |
-| Qt | 系統 Qt 6（server 只需 `qt6-base-dev`；GUI 另需 declarative／multimedia／tools，版本 6.10.2） |
+| Qt | Server：distro Qt 6.x（`qt6-base-dev`，Ubuntu 24.04 為 6.4.2）<br>GUI：**Qt 6.11.1**，與 Windows 同一 baseline |
 | Lua | 內建喺 `src/lua/`（SWIG 自動生成 binding） |
 | 建置系統 | CMake 4.2+（`CMakeLists.txt` 下限係 3.28）、Ninja |
 | Generator | Ninja（本機 `build-linux-gcc/`、`build-linux-clang/` 均用 Ninja） |
 | 編譯器 | GCC（`/usr/bin/c++`）或者 Clang（`/usr/bin/clang++`） |
 
-> 注意：Windows 用 Qt 6.11.1 `msvc2022_64`（CMake 對 Windows 有 `find_package(Qt6 6.11 ...)` 下限）；Linux 直接用系統套件嘅 Qt 6，唔會 lock 到 6.11.1。Server-only build 只要 CMake 搵到 Qt6 Core／Network 就編到。
+> **Qt baseline 分層**：GUI client 喺 Windows 同 Linux 都要求 Qt **6.11** 或以上
+> （`QSAN_QT_GUI_MINIMUM_VERSION`），因為 GUI source 用咗 Qt 6.5+ 先有嘅 API
+> （例如 `QStyleHints::colorScheme()`），而 Windows 正式 toolchain 已經係
+> Qt 6.11.1 `msvc2022_64`。
+>
+> dedicated server **唔受呢個下限限制** — server-only configure（`QSAN_BUILD_GUI=OFF`）
+> 只要 CMake 搵到 Qt6 Core／Network 就編到，可以繼續用 distro Qt（Ubuntu 24.04 的
+> 6.4.2 亦可）。Linux Server CI 就係咁行。
 
 ## 2. 系統依賴
 
@@ -61,12 +88,46 @@ sudo apt install -y \
 
 ### 2.2 GUI client（`QSAN_BUILD_GUI=ON`）
 
-除咗上面 server 嘅依賴，再加：
+GUI 要求 **Qt 6.11 或以上**。distro apt 的 Qt 版本要視乎發行版：
+
+| 發行版 | apt Qt 版本 | 夠唔夠 GUI？ |
+|---|---|---|
+| Ubuntu 24.04 LTS | 6.4.2 | ✗ 太舊，要另外裝 Qt 6.11.1 |
+| Ubuntu 26.04 LTS | 6.10.2 | ✗ 差少少，要另外裝 Qt 6.11.1 |
+
+先裝非 Qt 的系統依賴（任何發行版都要）：
 
 ```bash
 sudo apt install -y \
     libfreetype-dev \
-    libgl-dev \
+    libgl-dev
+```
+
+再用 `aqtinstall` 取得官方 Qt 6.11.1（唔需要 root，同 CI 完全一致）：
+
+```bash
+python3 -m venv ~/.venvs/aqt
+~/.venvs/aqt/bin/pip install \
+    'git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e'
+~/.venvs/aqt/bin/aqt install-qt linux desktop 6.11.1 linux_gcc_64 \
+    -m qt5compat qtmultimedia -O ~/Qt
+```
+
+> aqt 3.3.0（最新 release）未支援 Qt 6.11+ 的新 repo 目錄結構
+> （[miurahr/aqtinstall#959](https://github.com/miurahr/aqtinstall/issues/959)），
+> 所以固定到已合併修復的 commit — 同 `.github/workflows/ci.yml` 及
+> `linux-gui-ci.yml` 用同一個 pin。
+
+configure 時指向該 Qt：
+
+```bash
+CMAKE_PREFIX_PATH=~/Qt/6.11.1/gcc_64 cmake --preset linux-gui-gcc-debug
+```
+
+如果你的發行版 apt 本身已經提供 Qt ≥ 6.11，亦可以直接裝 distro 套件代替 aqt：
+
+```bash
+sudo apt install -y \
     qt6-declarative-dev \
     qt6-l10n-tools \
     qt6-multimedia-dev \
@@ -80,11 +141,11 @@ sudo apt install -y \
 |---|---|---|
 | compiler / build | `build-essential`、`cmake`、`ninja-build` | — |
 | SWIG | `swig` | — |
-| Qt Base | `qt6-base-dev` | `Core`、`Gui`、`Network`、`Widgets`、`OpenGLWidgets` |
-| Qt 5Compat | `qt6-5compat-dev` | `Core5Compat` |
-| Qt Declarative / QML / Quick | `qt6-declarative-dev`（另 `qt6-declarative-dev-tools` 提供 `qmlcachegen`／`qmltyperegistrar`，一般由前者拉入） | `Qml`、`Quick`、`QuickControls2`、`QuickWidgets` |
-| Qt Multimedia | `qt6-multimedia-dev` | `Multimedia` |
-| Qt Tools / LinguistTools | `qt6-tools-dev`、`qt6-tools-dev-tools`、`qt6-l10n-tools` | `LinguistTools`（`lrelease`／`lupdate`） |
+| Qt Base | `qt6-base-dev` / aqt base | `Core`、`Gui`、`Network`、`Widgets`、`OpenGLWidgets` |
+| Qt 5Compat | `qt6-5compat-dev` / aqt `-m qt5compat` | `Core5Compat` |
+| Qt Declarative / QML / Quick | `qt6-declarative-dev`（另 `qt6-declarative-dev-tools` 提供 `qmlcachegen`／`qmltyperegistrar`，一般由前者拉入）/ aqt base | `Qml`、`Quick`、`QuickControls2`、`QuickWidgets` |
+| Qt Multimedia | `qt6-multimedia-dev` / aqt `-m qtmultimedia` | `Multimedia` |
+| Qt Tools / LinguistTools | `qt6-tools-dev`、`qt6-tools-dev-tools`、`qt6-l10n-tools` / aqt base | `LinguistTools`（`lrelease`／`lupdate`） |
 | OpenGL development | `libgl-dev`（連帶 `libglx-dev`） | `WrapOpenGL` |
 | Freetype development | `libfreetype-dev` | `Freetype::Freetype` |
 
@@ -124,12 +185,15 @@ Linux 預設 `OFF` 係為咗保護現有 Linux Server CI：server-only configure
 | `linux-server-gcc-debug` | `linux-server-debug` | `builds/cmake-linux-server-gcc-debug` | server + CTest |
 | `linux-gui-gcc-debug` | `linux-gui-debug` | `builds/cmake-linux-gui-gcc-debug` | GUI + server + CTest |
 
-Linux GUI：
+Linux GUI（`CMAKE_PREFIX_PATH` 指向 Qt 6.11.1，見 [2.2](#22-gui-clientqsan_build_guion)）：
 
 ```bash
-cmake --preset linux-gui-gcc-debug
+CMAKE_PREFIX_PATH=~/Qt/6.11.1/gcc_64 cmake --preset linux-gui-gcc-debug
 cmake --build --preset linux-gui-debug --parallel
 ```
+
+如果 distro Qt 本身已經 ≥ 6.11，可以省略 `CMAKE_PREFIX_PATH`。Qt 版本不足時
+configure 會直接失敗並列出搵到嘅版本，唔會走到 compile 先爆。
 
 Linux server：
 
@@ -174,15 +238,17 @@ file debug/QSanguosha
 ldd debug/QSanguosha | grep 'not found'   # 應該冇輸出
 ```
 
-M0 亦可以做一個唔開窗嘅 capability smoke：
+M0 的 binary capability smoke：
 
 ```bash
-QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software \
-    ./debug/QSanguosha --local-response-ui-capabilities
+./debug/QSanguosha --local-response-ui-capabilities
 # {"schema_version":1,"auto":true,"show":true,"inspect":true}
 ```
 
-> 再次提醒：以上只驗證 compile／link 同 capability 回應。實際開窗、HomeScene／RoomScene、audio／video、WSLg／Wayland／X11 行為屬於 Linux GUI M1／M2，未喺本階段驗證。
+> 呢個 flag 喺建立 `QApplication` 之前就回傳，所以毋須 `QT_QPA_PLATFORM=offscreen`，
+> 亦唔算 GUI startup 驗證。以上全部只驗證 configure／compile／link 同 binary 可執行。
+> 實際開窗、HomeScene／RoomScene、audio／video、WSLg／Wayland／X11 行為屬於
+> Linux GUI M1／M2，未喺本階段驗證。
 
 > `qsanguosha_engine` 係 STATIC library，用 [`$<LINK_LIBRARY:WHOLE_ARCHIVE,...>`](../CMakeLists.txt) 在 `qsanguosha_server` 引入 source，淨係 link `Qt6::Core` 同 `Qt6::Network`。CMake 有 allowlist gate，link 咗其他 Qt target（例如 Widgets）會立刻 `FATAL_ERROR`。
 
@@ -428,19 +494,23 @@ QSAN_SERVER_SMOKE_TIMEOUT_SECONDS=8 \
 
 Linux GUI M0 compile CI，Ubuntu 24.04 + GCC + Ninja + RelWithDebInfo：
 
-1. 安裝 GUI build dependency（Qt6 base／5compat／declarative／multimedia／tools、`libfreetype-dev`、`libgl-dev`）同 hash-pinned SWIG 4.3.1。
-2. 下載 `lua/ai/`、`extensions/` 同共用 Lua runtime。
-3. 以 `-DQSAN_BUILD_GUI=ON -DQSAN_BUILD_SERVER=ON` configure。
-4. 只 build target `QSanguosha`，驗證 configure／compile／link。
-5. `file` + `ldd` 檢查，出現 `not found` 即 fail。
-6. 跑 `--local-response-ui-capabilities` offscreen capability smoke（唔開窗、唔需要 X11／Wayland／OpenGL context）。
+1. 用 `jurplel/install-qt-action` 裝官方 **Qt 6.11.1**（`linux_gcc_64`，modules `qt5compat qtmultimedia`），同 Windows job 用同一個 aqt pin。Ubuntu 24.04 apt 只有 Qt 6.4.2，唔夠 GUI baseline。
+2. apt 裝非 Qt 依賴（`libfreetype-dev`、`libgl-dev`、`ninja-build` 等）同 hash-pinned SWIG 4.3.1。
+3. 下載 `lua/ai/`、`extensions/` 同共用 Lua runtime。
+4. 以 `-DQSAN_BUILD_GUI=ON -DQSAN_BUILD_SERVER=ON` configure。
+5. 只 build target `QSanguosha`，驗證 configure／compile／link。
+6. `file` + `ldd` 檢查，出現 `not found` 即 fail。
+7. 跑 `--local-response-ui-capabilities` binary capability smoke。
 
-呢個 workflow **刻意唔做**完整 GUI 對局、X11／Wayland、FMOD、AppImage 或者 pixel screenshot；runtime smoke 留俾 Linux GUI M1。
+呢個 workflow **刻意唔做**完整 GUI 對局、visible startup、X11／Wayland、FMOD、AppImage 或者 pixel screenshot；runtime smoke 留俾 Linux GUI M1。
+
+Linux Server CI 繼續用 distro Qt，唔會受 GUI 的 Qt 6.11 baseline 影響。
 
 ## 10. 常見問題
 
 - **搵唔到 Qt6**：確認裝咗 `qt6-base-dev`；啟用 CTest 時亦要裝 `qt6-5compat-dev`。亦可設定 `-DCMAKE_PREFIX_PATH=/path/to/qt6`。
-- **`QSAN_BUILD_GUI=ON` 之後 configure 話搵唔到 `LinguistTools`／`Quick`／`Multimedia`**：裝齊 [2.2](#22-gui-clientqsan_build_guion) 嘅 GUI 套件。Qt6 嘅 component config 必須同 `Qt6Config.cmake` 放喺同一個 cmake 目錄，所以唔可以只靠 `CMAKE_PREFIX_PATH` 指去另一個 prefix 補件。
+- **`QSAN_BUILD_GUI=ON` 之後 configure 話 Qt6 版本不相容**：GUI 要求 Qt ≥ 6.11。用 [2.2](#22-gui-clientqsan_build_guion) 的 aqt 步驟裝 Qt 6.11.1，再用 `CMAKE_PREFIX_PATH` 指過去。
+- **`QSAN_BUILD_GUI=ON` 之後 configure 話搵唔到 `LinguistTools`／`Quick`／`Multimedia`**：裝齊 [2.2](#22-gui-clientqsan_build_guion) 嘅 GUI 套件。Qt6 嘅 component config 必須同 `Qt6Config.cmake` 放喺同一個 cmake 目錄，所以唔可以只靠 `CMAKE_PREFIX_PATH` 指去另一個 prefix 補件（混用 distro Qt ＋ 另一個 prefix 唔會 work）。
 - **`ldd` 見到 `libQt6QuickTemplates2.so.6 => not found`**：Qt Quick Controls 嘅間接依賴。正常系統安裝唔會出現；如果 Qt 唔喺標準 loader path，要設定 `LD_LIBRARY_PATH`（`RUNPATH` 唔會傳遞到間接依賴）。
 - **搵唔到 swig**：`sudo apt install swig`，或將 swig 放喺 `tools/swig/`。
 - **`qsanguosha_engine` link 到 Qt 之外嘅 target 而 FATAL_ERROR**：呢個係 design 嘅 allowlist gate，唔可以 hack 過去。

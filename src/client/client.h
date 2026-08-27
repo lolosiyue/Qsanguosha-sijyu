@@ -6,6 +6,11 @@
 //#include "skill.h"
 #include "room-state.h"
 //#include "protocol.h"
+// Client 的 signal/slot 以 ClientPlayer * / const ClientPlayer * /
+// QList<const ClientPlayer *> 為參數，moc 產生的 metatype array 需要完整型別
+// (Q_DECLARE_METATYPE(T*) 會 static_assert(sizeof(T)))，所以必須完整 include。
+// clientplayer.h 只前置宣告 class Client，不會造成 circular include。
+#include "clientplayer.h"
 
 class Recorder;
 class Replayer;

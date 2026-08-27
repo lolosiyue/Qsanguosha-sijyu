@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+      - debug
     paths-ignore:
       - 'docs/**'
       - 'memory/**'
