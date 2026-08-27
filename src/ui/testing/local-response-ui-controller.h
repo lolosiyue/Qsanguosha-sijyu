@@ -74,6 +74,7 @@ private:
     bool configure(const QStringList &arguments, QString *error);
     bool bootstrap(QString *error);
     bool resolveCards(QString *error);
+    bool prepareRequest(QString *error);
     bool runActions(QString *error);
     bool runAction(int index, QString *error);
     bool validateReply(QString *error);

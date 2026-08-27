@@ -78,12 +78,17 @@ python tools\autotest\skill_ui_runner.py --list-cases
 ```text
 ask_for_card_response
 ask_for_card_view_as_skill
+ask_for_card_chosen
+ask_for_ag
 ask_for_choice
 ask_for_discard
 ask_for_exchange
+ask_for_gongxin
+ask_for_guanxing
 ask_for_player_chosen
 ask_for_skill_invoke_no
 ask_for_skill_invoke_yes
+ask_for_yiji
 extension_real_askfor
 ```
 
@@ -178,9 +183,14 @@ QSanguosha.exe --local-response-ui-capabilities
 | discard | `ask_for_discard` | discard 數量、卡牌選取與 card id reply |
 | exchange | `ask_for_exchange` | exchange 限制與 discard-card reply |
 | player chosen | `ask_for_player_chosen` | player 可選狀態、確認與 player name reply |
+| card chosen | `ask_for_card_chosen` | `PlayerCardBox` 顯示、disabled card 與 card id reply |
+| AG | `ask_for_ag` | `FILL_AMAZING_GRACE` 前置通知、容器可選狀態與 card id reply |
+| Yiji | `ask_for_yiji` | 指定手牌、目標選擇與 `[card_ids, player]` reply |
+| Guanxing | `ask_for_guanxing` | 上下區卡牌呈現、點擊換區與雙牌堆 reply |
+| Gongxin | `ask_for_gongxin` | enabled card 篩選、容器互動與 card id reply |
 | extension | `extension_real_askfor` | 真實 extension skill 的 invoke request 與 reply |
 
-尚未涵蓋的 client surfaces 包括 `askForCardChosen`、`askForAG`、`askForYiji`、`askForGuanxing`、`askForGongxin` 與 QML `askFor`。
+QML `askFor` 不納入本 runner；其 production surface 尚未完成，依目前測試範圍明確排除。
 
 ## CTest
 

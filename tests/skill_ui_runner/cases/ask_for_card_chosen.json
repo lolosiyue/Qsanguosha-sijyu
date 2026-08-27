@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "name": "ask_for_card_chosen",
+  "packages": ["standard", "standard_cards"],
+  "bootstrap": {
+    "mode": "03_1v2",
+    "self": { "object_name": "self", "screen_name": "Tester", "general": "caocao", "hp": 4, "max_hp": 4, "phase": "NotActive", "skills": [] },
+    "players": [
+      { "object_name": "target", "screen_name": "Target", "general": "liubei", "hp": 4, "max_hp": 4, "alive": true },
+      { "object_name": "other", "screen_name": "Other", "general": "sunquan", "hp": 4, "max_hp": 4, "alive": true }
+    ],
+    "cards": [
+      { "alias": "slash_s7", "name": "slash", "suit": "spade", "number": 7, "owner": "self", "place": "hand" },
+      { "alias": "jink_h2", "name": "jink", "suit": "heart", "number": 2, "owner": "self", "place": "hand" }
+    ]
+  },
+  "request": {
+    "api": "askForCardChosen",
+    "command": "S_COMMAND_CHOOSE_CARD",
+    "serial": 1010,
+    "args": { "player": "self", "flags": "h", "reason": "test", "handcard_visible": true, "method": "none", "disabled_cards": ["slash_s7"], "can_cancel": true }
+  },
+  "expect_presented": {
+    "client_status": "ExecDialog",
+    "surfaces": { "player_card_box": { "open": true } },
+    "surface_cards": { "enabled": ["jink_h2"], "disabled": ["slash_s7"], "visible": ["slash_s7", "jink_h2"] }
+  },
+  "actions": [{ "type": "choose_surface_card", "card": "jink_h2" }],
+  "expect_reply": { "command": "S_COMMAND_CHOOSE_CARD", "local_serial": 1010, "card_alias": "jink_h2" },
+  "expect_final": { "client_status": "NotActive", "surfaces": { "player_card_box": { "open": false } }, "open_dialog_count": 0 }
+}

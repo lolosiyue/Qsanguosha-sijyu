@@ -5,6 +5,7 @@
 #include "protocol.h"
 
 #include <QJsonObject>
+#include <QMap>
 #include <ctime>
 
 class LocalResponseUiCase
@@ -23,7 +24,7 @@ public:
     QJsonObject finalExpectation() const;
 
     bool makeRequestPacket(QSanProtocol::Packet *packet, QString *commandName,
-        QVariant *body, QString *error) const;
+        QVariant *body, const QMap<QString, int> &cardAliases, QString *error) const;
 
     static bool commandFromName(const QString &name,
         QSanProtocol::CommandType *command);

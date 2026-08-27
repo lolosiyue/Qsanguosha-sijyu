@@ -109,6 +109,20 @@ bool jsonArraysEqual(const QJsonArray &left, const QJsonArray &right)
         == QJsonDocument(right).toJson(QJsonDocument::Compact);
 }
 
+bool resolveAliases(const QJsonArray &aliases, const QMap<QString, int> &aliasToId,
+    QList<int> *ids, QString *error)
+{
+    for (const QJsonValue &value : aliases) {
+        const QString alias = value.toString();
+        if (alias.isEmpty() || !aliasToId.contains(alias)) {
+            *error = QStringLiteral("unknown card alias '%1'").arg(alias);
+            return false;
+        }
+        ids->append(aliasToId.value(alias));
+    }
+    return true;
+}
+
 } // namespace
 
 LocalResponseUiController::LocalResponseUiController(QObject *parent)
@@ -410,6 +424,27 @@ void LocalResponseUiController::injectNotification(CommandType command, const QV
     m_socket->injectServerPacket(QString::fromUtf8(packet.toJson()));
 }
 
+bool LocalResponseUiController::prepareRequest(QString *error)
+{
+    const QJsonObject request = m_case.request();
+    if (request.value(QStringLiteral("api")).toString() != QStringLiteral("askForAG"))
+        return true;
+
+    const QJsonObject args = request.value(QStringLiteral("args")).toObject();
+    QList<int> cardIds;
+    QList<int> disabledIds;
+    if (!resolveAliases(args.value(QStringLiteral("cards")).toArray(), m_aliasToId,
+            &cardIds, error)
+        || !resolveAliases(args.value(QStringLiteral("disabled_cards")).toArray(), m_aliasToId,
+            &disabledIds, error)) {
+        return false;
+    }
+    injectNotification(S_COMMAND_FILL_AMAZING_GRACE,
+        JsonArray() << JsonUtils::toJsonArray(cardIds) << JsonUtils::toJsonArray(disabledIds));
+    flushEvents();
+    return true;
+}
+
 void LocalResponseUiController::execute()
 {
     m_report.insert(QStringLiteral("schema_version"), 1);
@@ -435,8 +470,13 @@ void LocalResponseUiController::execute()
     Packet requestPacket;
     QString commandName;
     QVariant requestBody;
-    if (!m_case.makeRequestPacket(&requestPacket, &commandName, &requestBody, &error)) {
+    if (!m_case.makeRequestPacket(&requestPacket, &commandName, &requestBody,
+            m_aliasToId, &error)) {
         finish(InvalidCase, QStringLiteral("request"), error);
+        return;
+    }
+    if (!prepareRequest(&error)) {
+        finish(InvalidCase, QStringLiteral("request_setup"), error);
         return;
     }
 
@@ -468,11 +508,15 @@ void LocalResponseUiController::injectRequest()
             .value(QStringLiteral("status")).toString();
     if (expectedStatus.isEmpty())
         expectedStatus = expectedPresented.value(QStringLiteral("client_status")).toString();
-    const bool presented = waitForCondition([this, expectedStatus]() {
+    const bool requiresSettledSurfaceCards = expectedPresented
+        .value(QStringLiteral("surface_cards")).isObject();
+    const bool presented = waitForCondition([this, expectedStatus, requiresSettledSurfaceCards]() {
         if (!expectedStatus.isEmpty()
             && clientStatusName(m_client->getStatus()) != expectedStatus) {
             return false;
         }
+        if (requiresSettledSurfaceCards && !m_probe->surfaceCardsSettled())
+            return false;
         const QJsonObject dialogExpectation = m_case.presentedExpectation()
             .value(QStringLiteral("dialog")).toObject();
         if (dialogExpectation.value(QStringLiteral("open")).toBool(false))
@@ -589,6 +633,10 @@ bool LocalResponseUiController::runAction(int index, QString *error)
         ok = m_probe->clickButton(QStringLiteral("discard"), &actionError);
     else if (type == QStringLiteral("choose_option"))
         ok = m_probe->chooseOption(action.value(QStringLiteral("option")).toString(), &actionError);
+    else if (type == QStringLiteral("choose_surface_card"))
+        ok = m_probe->chooseSurfaceCard(action.value(QStringLiteral("card")).toString(), &actionError);
+    else if (type == QStringLiteral("toggle_guanxing_card"))
+        ok = m_probe->toggleGuanxingCard(action.value(QStringLiteral("card")).toString(), &actionError);
     else if (type == QStringLiteral("assert")) {
         ok = validateSnapshot(action.value(QStringLiteral("expect")).toObject(),
             m_probe->snapshot(), QStringLiteral("actions[%1].assert").arg(index));
@@ -846,6 +894,9 @@ bool LocalResponseUiController::validateSnapshot(const QJsonObject &expected,
         } else if (it.key() == QStringLiteral("cards")) {
             passed = validateNamedStates(it.value().toObject(),
                 actual.value(QStringLiteral("cards")).toArray(), QStringLiteral("alias"), childPath) && passed;
+        } else if (it.key() == QStringLiteral("surface_cards")) {
+            passed = validateNamedStates(it.value().toObject(),
+                actual.value(QStringLiteral("surface_cards")).toArray(), QStringLiteral("alias"), childPath) && passed;
         } else if (it.key() == QStringLiteral("players")) {
             passed = validateNamedStates(it.value().toObject(),
                 actual.value(QStringLiteral("players")).toArray(), QStringLiteral("object_name"), childPath) && passed;
@@ -958,13 +1009,35 @@ bool LocalResponseUiController::validateNamedStates(const QJsonObject &expected,
 bool LocalResponseUiController::validateReply(QString *error)
 {
     const QList<QString> sent = m_socket->sentPackets();
-    if (sent.size() != 1) {
-        *error = QStringLiteral("expected one terminal reply, captured %1").arg(sent.size());
+    QList<QString> replies;
+    for (const QString &raw : sent) {
+        Packet outgoing;
+        if (!outgoing.parse(raw.toUtf8())) {
+            *error = QStringLiteral("captured outbound packet is not a valid Packet");
+            return false;
+        }
+        if (outgoing.getPacketType() == S_TYPE_REPLY) {
+            replies.append(raw);
+            continue;
+        }
+        QJsonObject intermediate;
+        intermediate.insert(QStringLiteral("packet_type"), outgoing.getPacketType());
+        intermediate.insert(QStringLiteral("source"), outgoing.getPacketSource());
+        intermediate.insert(QStringLiteral("destination"), outgoing.getPacketDestination());
+        intermediate.insert(QStringLiteral("command"),
+            LocalResponseUiCase::commandName(outgoing.getCommandType()));
+        intermediate.insert(QStringLiteral("global_serial"), static_cast<int>(outgoing.globalSerial));
+        intermediate.insert(QStringLiteral("local_serial"), static_cast<int>(outgoing.localSerial));
+        intermediate.insert(QStringLiteral("body"), QJsonValue::fromVariant(outgoing.getMessageBody()));
+        m_capturedPackets.append(intermediate);
+    }
+    if (replies.size() != 1) {
+        *error = QStringLiteral("expected one terminal reply, captured %1 replies in %2 packets")
+            .arg(replies.size()).arg(sent.size());
         return false;
     }
-
     Packet packet;
-    if (!packet.parse(sent.first().toUtf8())) {
+    if (!packet.parse(replies.first().toUtf8())) {
         *error = QStringLiteral("captured reply is not a valid Packet");
         return false;
     }
@@ -1049,7 +1122,10 @@ bool LocalResponseUiController::validateReply(QString *error)
     }
     if (expected.contains(QStringLiteral("card_aliases"))) {
         QJsonArray actualAliases;
-        for (const QVariant &idValue : packet.getMessageBody().toList())
+        QVariantList idValues = packet.getMessageBody().toList();
+        if (packet.getCommandType() == S_COMMAND_SKILL_YIJI && !idValues.isEmpty())
+            idValues = idValues.first().toList();
+        for (const QVariant &idValue : idValues)
             actualAliases.append(m_aliasToId.key(idValue.toInt(), QString::number(idValue.toInt())));
         const QJsonArray expectedAliases = expected.value(QStringLiteral("card_aliases")).toArray();
         const bool itemPassed = jsonArraysEqual(expectedAliases, actualAliases);
@@ -1057,6 +1133,42 @@ bool LocalResponseUiController::validateReply(QString *error)
             actualAliases, itemPassed);
         passed = itemPassed && passed;
     }
+    if (expected.contains(QStringLiteral("card_alias"))) {
+        const QString expectedAlias = expected.value(QStringLiteral("card_alias")).toString();
+        const QString actualAlias = decodedCard.contains(QStringLiteral("card_alias"))
+            ? decodedCard.value(QStringLiteral("card_alias")).toString()
+            : m_aliasToId.key(packet.getMessageBody().toInt(),
+                QString::number(packet.getMessageBody().toInt()));
+        const bool itemPassed = expectedAlias == actualAlias;
+        recordAssertion(QStringLiteral("expect_reply.card_alias"), expectedAlias,
+            actualAlias, itemPassed);
+        passed = itemPassed && passed;
+    }
+    if (expected.contains(QStringLiteral("player"))) {
+        const QVariantList body = packet.getMessageBody().toList();
+        const QString actualPlayer = body.size() >= 2 ? body.at(1).toString() : QString();
+        const QString expectedPlayer = expected.value(QStringLiteral("player")).toString();
+        const bool itemPassed = expectedPlayer == actualPlayer;
+        recordAssertion(QStringLiteral("expect_reply.player"), expectedPlayer,
+            actualPlayer, itemPassed);
+        passed = itemPassed && passed;
+    }
+    auto validateDeck = [this, &packet, &expected, &passed](const QString &key, int index) {
+        if (!expected.contains(key))
+            return;
+        const QVariantList decks = packet.getMessageBody().toList();
+        const QVariantList ids = decks.size() > index ? decks.at(index).toList() : QVariantList();
+        QJsonArray actualAliases;
+        for (const QVariant &id : ids)
+            actualAliases.append(m_aliasToId.key(id.toInt(), QString::number(id.toInt())));
+        const QJsonArray expectedAliases = expected.value(key).toArray();
+        const bool itemPassed = jsonArraysEqual(expectedAliases, actualAliases);
+        recordAssertion(QStringLiteral("expect_reply.") + key, expectedAliases,
+            actualAliases, itemPassed);
+        passed = itemPassed && passed;
+    };
+    validateDeck(QStringLiteral("up_cards"), 0);
+    validateDeck(QStringLiteral("down_cards"), 1);
     if (expected.contains(QStringLiteral("players"))) {
         QJsonArray actualPlayers;
         const QString names = packet.getMessageBody().toString();
@@ -1078,7 +1190,7 @@ bool LocalResponseUiController::validateReply(QString *error)
     }
 
     static const QStringList decodedKeys {
-        QStringLiteral("card_name"), QStringLiteral("card_alias"),
+        QStringLiteral("card_name"),
         QStringLiteral("skill_name"), QStringLiteral("activation_skill_name"),
         QStringLiteral("activation_instance_id"), QStringLiteral("subcards"),
         QStringLiteral("targets")
