@@ -25,6 +25,7 @@
 
 #include "crashhandler.h"
 #include "testing/local-response-ui-controller.h"
+#include "testing/ui-startup-smoke-controller.h"
 
 int main(int argc, char *argv[]) {
     CrashHandler::install();
@@ -84,9 +85,14 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    const bool headlessApp = appArgs.contains("-server")
-        || appArgs.contains("--headless")
-        || (hasTestScenarioArg && appArgs.contains("-h"));
+    // --ui-startup-smoke 係真正的 GUI startup 驗證，一定要行 QApplication path，
+    // 唔可以被 headless 判斷截走。
+    const bool uiStartupSmoke = UiStartupSmokeController::isRequested(appArgs);
+
+    const bool headlessApp = !uiStartupSmoke
+        && (appArgs.contains("-server")
+            || appArgs.contains("--headless")
+            || (hasTestScenarioArg && appArgs.contains("-h")));
 
     if (argc > 1 && strcmp(argv[1], "-manual") == 0) {
         new QCoreApplication(argc, argv);
@@ -99,6 +105,14 @@ int main(int argc, char *argv[]) {
         new QApplication(argc, argv);
         // 主頁自訂 contentItem／indicator；Windows 原生樣式不支援會報錯並閃爍
         QQuickStyle::setStyle(QStringLiteral("Basic"));
+    }
+
+    // startup smoke：QApplication 已經建立，喺度接手 Qt message hook 並登記
+    // application stage。呢個入口任何情況都唔會喺 QApplication 之前 return。
+    if (uiStartupSmoke) {
+        int smokeExitCode = 0;
+        if (!UiStartupSmokeController::begin(qApp->arguments(), &smokeExitCode))
+            return smokeExitCode;
     }
 
     // 美術 PNG 內嵌的 iCCP chunk 帶有錯誤的 sRGB profile，libpng 1.6+ 會對每張
@@ -175,6 +189,9 @@ int main(int argc, char *argv[]) {
 
     if (!EngineBootstrap::initialize()) {
         Server::writeHeadlessLog("ERROR: EngineBootstrap::initialize failed");
+        if (uiStartupSmoke)
+            return UiStartupSmokeController::abortEarly(QStringLiteral("engine"),
+                QStringLiteral("EngineBootstrap::initialize failed"), 1);
         return 1;
     }
     // Engine 已就緒,把真實版本號補登記給 crash handler(install() 時拿不到)
@@ -355,6 +372,14 @@ int main(int argc, char *argv[]) {
     }
     if (hasLocalResponseUiCase) {
         const int rc = LocalResponseUiController::run(arguments);
+        CrashHandler::beginShutdown();
+        return rc;
+    }
+
+    if (uiStartupSmoke) {
+        // 由呢度開始同正常啟動走同一條路：建立真正的 MainWindow、載入真正的
+        // HomeScene、行真正的 Qt event loop，等 ready condition 之後自動退出。
+        const int rc = UiStartupSmokeController::run();
         CrashHandler::beginShutdown();
         return rc;
     }
