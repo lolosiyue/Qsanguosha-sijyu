@@ -5,12 +5,6 @@ project(QSanguosha LANGUAGES C CXX)
 include(CTest)
 include(GNUInstallDirs)
 
-option(
-    QSAN_BUILD_LOCAL_RESPONSE_UI_RUNNER
-    "Build local askFor response UI test support"
-    OFF
-)
-
 if(WIN32)
     if(NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
         message(FATAL_ERROR "The Windows CMake build supports x64 MSVC only")
@@ -362,19 +356,18 @@ target_sources(QSanguosha PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/home/home_assets.qrc"
 )
 
-if(QSAN_BUILD_LOCAL_RESPONSE_UI_RUNNER)
-    target_sources(QSanguosha PRIVATE
-        src/ui/testing/local-response-ui-case.cpp
-        src/ui/testing/local-response-ui-case.h
-        src/ui/testing/local-response-ui-controller.cpp
-        src/ui/testing/local-response-ui-controller.h
-        src/ui/testing/local-response-ui-probe.cpp
-        src/ui/testing/local-response-ui-probe.h
-        src/ui/testing/test-client-socket.cpp
-        src/ui/testing/test-client-socket.h
-    )
-    target_compile_definitions(QSanguosha PRIVATE QSAN_LOCAL_RESPONSE_UI_RUNNER)
-endif()
+target_sources(QSanguosha PRIVATE
+    src/ui/testing/local-response-ui-case.cpp
+    src/ui/testing/local-response-ui-case.h
+    src/ui/testing/local-response-ui-controller.cpp
+    src/ui/testing/local-response-ui-controller.h
+    src/ui/testing/local-response-ui-inspector.cpp
+    src/ui/testing/local-response-ui-inspector.h
+    src/ui/testing/local-response-ui-probe.cpp
+    src/ui/testing/local-response-ui-probe.h
+    src/ui/testing/test-client-socket.cpp
+    src/ui/testing/test-client-socket.h
+)
 
 target_sources(QSanguosha PRIVATE
     "$<$<CONFIG:Release>:${CMAKE_CURRENT_SOURCE_DIR}/src/core/audio.cpp>"

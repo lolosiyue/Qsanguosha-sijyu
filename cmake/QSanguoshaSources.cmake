@@ -119,6 +119,7 @@ set(QSAN_SOURCES
     src/ui/generic-cardcontainer-ui.cpp
     src/ui/gifchatbox.cpp
     src/ui/giftitem.cpp
+    src/ui/game-view.cpp
     src/ui/graphicsbox.cpp
     src/ui/graphicspixmaphoveritem.cpp
     src/ui/indicatoritem.cpp
@@ -287,6 +288,7 @@ set(QSAN_MOC_HEADERS
     src/ui/generic-cardcontainer-ui.h
     src/ui/gifchatbox.h
     src/ui/giftitem.h
+    src/ui/game-view.h
     src/ui/graphicsbox.h
     src/ui/graphicspixmaphoveritem.h
     src/ui/indicatoritem.h
