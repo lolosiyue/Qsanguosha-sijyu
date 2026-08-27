@@ -41,11 +41,27 @@ if ($LASTEXITCODE -ne 0) {
     throw "sparse-checkout failed (exit=$LASTEXITCODE)"
 }
 
-# <repo>/ai/*.lua -> <root>/lua/ai/
+# <repo>/ai/*.lua -> <root>/lua/ai/ + isolated
 New-Item -ItemType Directory -Path $aiTarget -Force | Out-Null
 Copy-Item -Path (Join-Path $cloneDir "ai\*.lua") -Destination $aiTarget -Force
+New-Item -ItemType Directory -Path (Join-Path $aiTarget "isolated") -Force | Out-Null
+Copy-Item -Path (Join-Path $cloneDir "ai\isolated\*.lua") -Destination (Join-Path $aiTarget "isolated") -Force -ErrorAction SilentlyContinue
 if (-not (Test-Path -LiteralPath (Join-Path $aiTarget "smart-ai.lua"))) {
     throw "lua/ai is incomplete: smart-ai.lua missing after fetch"
+}
+# Case-sensitive 修正：上游 extensions 倉庫檔名大小寫混合，Linux 下 pcall(dofile,"lua/ai/"..sl) 會失配
+# 對齊 fetch-extensions.sh 的 sed 邏輯： "lua/ai/"..sl -> "lua/ai/"..ai_file (保留原始檔案大小寫)
+$smartAiPath = Join-Path $aiTarget "smart-ai.lua"
+$smartAiContent = Get-Content -LiteralPath $smartAiPath -Raw
+if ($smartAiContent.Contains('"lua/ai/"..sl')) {
+    $smartAiContent = $smartAiContent.Replace('"lua/ai/"..sl', '"lua/ai/"..ai_file')
+    Set-Content -LiteralPath $smartAiPath -Value $smartAiContent -NoNewline -Encoding UTF8
+}
+if (-not ((Get-Content -LiteralPath $smartAiPath -Raw).Contains('"lua/ai/"..ai_file'))) {
+    throw "lua/ai/smart-ai.lua patch failed: lowercase AI filename loop not fixed"
+}
+if (-not (Test-Path -LiteralPath (Join-Path $aiTarget "isolated\ask-for-use-card.lua"))) {
+    throw "lua/ai/isolated is incomplete: ask-for-use-card.lua missing after fetch"
 }
 
 # <repo>/extensions/*.lua -> <root>/extensions/ (skip temp/ and non-lua files)
