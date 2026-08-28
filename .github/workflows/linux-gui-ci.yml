@@ -30,7 +30,7 @@ env:
   CMAKE_BUILD_PARALLEL_LEVEL: 2
 
 jobs:
-  # 分層:compile -> M1 startup -> M2B-A multimedia。
+  # 分層:compile -> M1 startup -> M2B-A multimedia -> M2B-B effects matrix。
   # 後面的 job 用 artifact 收下前面砌好的 binary 與 runtime Lua 內容,唔重複 build,
   # 亦唔會因為重新 fetch extensions 而換咗內容 — 跑 multimedia 的就係編譯 job
   # 驗過的同一份檔案。
@@ -423,6 +423,146 @@ jobs:
           name: linux-gui-m2b-multimedia
           path: |
             gui-multimedia-artifacts/
+            build-provenance.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+  # M2B-B:三個效果 profile 各跑一次 GUI runtime。三個都係 blocking —— 唔係
+  # 「full 綠燈就算」:REDUCED／NONE 先至係新加嘅路徑,亦係最易靜靜壞咗嗰啲。
+  #
+  # 呢個 matrix 用嘅係 tests/fixtures/effects/ 嘅合成 fixture(一個 4x4 GIF、
+  # 幾張 8x8 PNG、一個特登整壞嘅 Spine 目錄),唔需要任何正式美術資產。真正
+  # 有齊資產嘅 production smoke 唔會喺 clean checkout 度成為 blocker ——
+  # 見 docs/linux-gui-effects-profiles.md。
+  gui-effects:
+    name: Linux GUI M2B-B effects (${{ matrix.profile }} profile)
+    needs: gui-compile
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [none, reduced, full]
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install Qt 6.11.1
+        uses: jurplel/install-qt-action/action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: '6.11.1'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          modules: 'qt5compat qtmultimedia'
+          cache: true
+          cache-key-prefix: qt-ubuntu-24.04-x64-6.11.1-linux_gcc_64-qt5compat-qtmultimedia-aqtmaster16db45a7-v1
+          aqtsource: 'git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e'
+
+      - name: Install Linux GUI runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            fonts-dejavu-core \
+            libasound2t64 \
+            libegl1 \
+            libgl1 \
+            libglx-mesa0 \
+            libpulse0 \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-shape0 \
+            libxcb-sync1 \
+            libxcb-xfixes0 \
+            libxcb-xinerama0 \
+            libxcb-xkb1 \
+            libxkbcommon-x11-0 \
+            xauth \
+            xvfb
+
+      - name: Download the Linux GUI runtime bundle
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v7.0.0
+        with:
+          name: linux-gui-runtime-bundle
+
+      - name: Restore executable bits and report provenance
+        run: |
+          chmod +x relwithdebinfo/QSanguosha
+          cat build-provenance.txt
+          sha256sum relwithdebinfo/QSanguosha
+
+      # 主驗證:Xvfb + xcb + software renderer,一個 profile 一次。
+      # --profile 會同時做 --effects-profile,而 validator 要求 resolution
+      # source 係 "cli" —— 靜靜退返設定值就會 fail,唔會扮成綠燈。
+      - name: Linux GUI M2B-B effects smoke (Xvfb, xcb)
+        run: |
+          bash tools/ci/linux-gui-effects-smoke.sh \
+            ./relwithdebinfo/QSanguosha \
+            gui-effects-artifacts \
+            --profile ${{ matrix.profile }} \
+            --platform xcb \
+            --label xvfb-${{ matrix.profile }} \
+            --timeout-ms 60000 \
+            --process-timeout 150
+
+      # 次要 smoke:完全冇 X server(offscreen)亦要行得完,方便日後 container。
+      - name: Linux GUI M2B-B effects smoke (offscreen, secondary)
+        run: |
+          bash tools/ci/linux-gui-effects-smoke.sh \
+            ./relwithdebinfo/QSanguosha \
+            gui-effects-artifacts \
+            --profile ${{ matrix.profile }} \
+            --platform offscreen \
+            --label offscreen-${{ matrix.profile }} \
+            --no-xvfb \
+            --timeout-ms 60000 \
+            --process-timeout 150
+
+      # 負向契約:打錯 profile 名一定要即刻非零退出,唔可以靜靜當冇指定 ——
+      # 否則整個 matrix 會變成「full 跑咗三次」。
+      - name: An unknown effects profile is rejected
+        run: |
+          set +e
+          ./relwithdebinfo/QSanguosha --effects-profile turbo --effects-smoke
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "An unknown --effects-profile value was accepted." >&2
+            exit 1
+          fi
+          echo "rejected with exit code $status"
+
+      # 負向契約:app 內部 timeout 一定要回非零 exit code 同 timeout result marker,
+      # 而唔係靜靜掛住等 runner 斬。
+      - name: Effects smoke timeout contract
+        if: matrix.profile == 'none'
+        run: |
+          bash tools/ci/linux-gui-effects-smoke.sh \
+            ./relwithdebinfo/QSanguosha \
+            gui-effects-artifacts \
+            --profile none \
+            --platform offscreen \
+            --label timeout-contract \
+            --no-xvfb \
+            --timeout-ms 100 \
+            --process-timeout 150 \
+            --expect fail \
+            --expect-reason timeout
+
+      - name: Upload M2B-B effects artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-gui-m2b-effects-${{ matrix.profile }}
+          path: |
+            gui-effects-artifacts/
             build-provenance.txt
           if-no-files-found: warn
           retention-days: 7

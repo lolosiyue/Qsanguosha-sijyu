@@ -194,6 +194,37 @@
            </layout>
           </item>
           <item>
+           <layout class="QHBoxLayout" name="effectsProfileLayout">
+            <item>
+             <widget class="QLabel" name="effectsProfileLabel">
+              <property name="text">
+               <string>Visual effects</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QComboBox" name="effectsProfileComboBox">
+              <property name="toolTip">
+               <string>Full: every animation, Spine, GIF and video. Reduced: shorter animations, no Spine/video. None: no decorative animation at all.</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <spacer name="effectsProfileSpacer">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item>
            <layout class="QHBoxLayout" name="animOptionsLayout">
             <item>
              <widget class="QCheckBox" name="enableAnimatedGeneralsCheckBox">

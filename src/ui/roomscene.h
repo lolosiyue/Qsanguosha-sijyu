@@ -469,7 +469,7 @@ private:
     bool pindian_success;
 
     // ─── Spine pop-out action controller ────────────────────────
-    CharacterSpineActionController *_spineActionController;
+    CharacterSpineActionController *_spineActionController = nullptr;
 
     /// Active fullscreen SpineGlItem instances (for resize handling)
     QList<SpineGlItem *> _activeSpineItems;

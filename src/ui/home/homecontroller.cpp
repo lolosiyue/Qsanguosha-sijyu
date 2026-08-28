@@ -7,6 +7,7 @@
 #include "package.h"
 #include "heroskincontainer.h"
 #include "skin-bank.h"
+#include "effects/effects-policy.h"
 #include <QCoreApplication>
 #include <QLibraryInfo>
 #include <QSet>
@@ -657,7 +658,10 @@ bool HomeController::hasVideoSupport() const
 
 bool HomeController::videoBackgroundEnabled() const
 {
-    return Config.EnableBackgroundVideo;
+    // videoEnabled() 已經夾埋 Config.EnableBackgroundVideo:profile 只可以再
+    // 收窄,唔會幫使用者開返佢關咗嘅影片背景。REDUCED／NONE 一律靜態背景,
+    // 連 QML Video component 都唔會 instantiate。
+    return G_EFFECTS.videoEnabled();
 }
 
 QVariantMap HomeController::videoStatus() const
