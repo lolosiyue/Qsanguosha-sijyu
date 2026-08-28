@@ -385,7 +385,7 @@ private:
     QString setPromptList(const QStringList &text);
     // 淨係計字串,唔掂 prompt_doc:已遷移嘅 interaction 由 DesktopInteractionView
     // 負責呈現,所以 request builder 唔應該喺呢個階段寫 UI 文件。
-    QString formatPromptList(const QStringList &text) const;
+    QString formatPromptList(const QStringList &text);
     QString _processCardPattern(const QString &pattern);
     void commandFormatWarning(const QString &str, const QRegExp &rx, const char *command);
 
