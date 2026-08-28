@@ -74,6 +74,11 @@ fi
 
 [ -n "$LABEL" ] || LABEL="$PLATFORM"
 mkdir -p "$ARTIFACT_DIR"
+# The game now resolves its data directory and chdir()s into it, so a
+# relative report path would land inside the install tree instead of the
+# artifact directory.  Absolutise before handing anything to the binary.
+ARTIFACT_DIR="$(cd "$ARTIFACT_DIR" && pwd)"
+EXECUTABLE="$(cd "$(dirname "$EXECUTABLE")" && pwd)/$(basename "$EXECUTABLE")"
 LOG="$ARTIFACT_DIR/ui-startup-smoke-$LABEL.log"
 REPORT="$ARTIFACT_DIR/ui-startup-smoke-$LABEL.json"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

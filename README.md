@@ -45,9 +45,46 @@ Alternatively, use the PowerShell entry point:
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-cmake.ps1 -Configuration Release
 ```
 
-### 🐧 Linux (Headless Server)
+### 🐧 Linux (Playing the game)
 
-On Linux the project builds the **headless server** (`qsanguosha_server`) only — no GUI, no FMOD, no X11 dependency. It links just `Qt6::Core` and `Qt6::Network`.
+Ready-made Linux builds need no development tools and no source tree. Take either:
+
+```bash
+# Portable bundle
+tar --zstd -xf QSanguosha-<version>-linux-x86_64.tar.zst
+cd QSanguosha-<version>-linux-x86_64
+./QSanguosha                 # GUI
+./qsanguosha-server          # dedicated server
+
+# AppImage
+chmod +x QSanguosha-<version>-x86_64.AppImage
+./QSanguosha-<version>-x86_64.AppImage
+```
+
+Both carry their own Qt runtime, so no `LD_LIBRARY_PATH`, `QT_PLUGIN_PATH` or
+`QML2_IMPORT_PATH` has to be set. Settings, replays and logs go to
+`~/.config/QSanguosha.org` and `~/.local/share/QSanguosha`, never into the
+package.
+
+Large artwork and voice packs are **not** part of the download. The game runs
+without them (placeholder visuals, no voice-over); point it at an external copy
+with `--asset-root <path>` or `QSAN_ASSET_ROOT`. To see exactly what was found
+and what is missing:
+
+```bash
+./QSanguosha --asset-report
+```
+
+There is no `.deb` yet: no current Ubuntu release ships Qt 6.11, which the GUI
+requires. See [docs/linux-packaging.md](docs/linux-packaging.md) for the full
+layout, the packaging pipeline and that decision.
+
+### 🐧 Linux (Building from source)
+
+A Linux build produces the **headless server** (`qsanguosha_server`) by default —
+no GUI, no FMOD, no X11 dependency, linking just `Qt6::Core` and `Qt6::Network`.
+Add `-DQSAN_BUILD_GUI=ON` for the GUI client; that needs Qt 6.11 or newer, which
+is beyond what current distributions package.
 
 ```bash
 sudo apt install -y build-essential cmake ninja-build qt6-base-dev qt6-5compat-dev swig
