@@ -202,6 +202,37 @@ def test_packaged_installs_never_write_into_themselves() -> None:
     print("PASS test_packaged_installs_never_write_into_themselves")
 
 
+def test_install_directory_rules_tolerate_an_incomplete_build_context() -> None:
+    """`install(DIRECTORY)` is fatal when the source directory is absent.
+
+    The Docker server image's .dockerignore deliberately strips the GUI/client
+    asset directories (lang/, qss/, skins/, ui-script/) from the build context,
+    and extensions/ is fetched during the build rather than copied in.  Naming
+    such a directory directly in an install rule turns a deliberately slim
+    context into a hard CMake error halfway through installing.  Directories
+    that may be absent must be collected behind an EXISTS check, so a missing
+    one is reported by the asset manifest - loudly, and at a useful moment -
+    instead of aborting the install.
+    """
+    cmake = read(CMAKELISTS)
+    guarded_lists = {"${QSAN_DATA_DIRECTORIES}", "${QSAN_GUI_DATA_DIRECTORIES}"}
+    for match in re.finditer(r"install\(DIRECTORY ([^\n]+)", cmake):
+        argument = match.group(1).strip()
+        assert argument in guarded_lists, (
+            f"install(DIRECTORY {argument} ...) names directories directly; collect "
+            "them behind an EXISTS check instead, or a build context without one "
+            "of them fails the install"
+        )
+
+    # Each collector must actually test for existence before appending.
+    for variable in ("QSAN_DATA_DIRECTORIES", "QSAN_GUI_DATA_DIRECTORIES"):
+        block = re.search(
+            rf"foreach\((\w+) [^)]*\)\s*\n\s*if\(EXISTS [^)]*\)\s*\n\s*"
+            rf"list\(APPEND {variable} ", cmake)
+        assert block, f"{variable} is not built from an EXISTS check"
+    print("PASS test_install_directory_rules_tolerate_an_incomplete_build_context")
+
+
 def test_deploy_never_bundles_host_libraries() -> None:
     """Bundling the host's glibc/libGL/libX11 is what breaks portable builds.
 
@@ -359,6 +390,7 @@ def main() -> int:
         test_manifest_template_and_cmake_agree,
         test_installed_layout_beats_the_working_directory,
         test_packaged_installs_never_write_into_themselves,
+        test_install_directory_rules_tolerate_an_incomplete_build_context,
         test_deploy_never_bundles_host_libraries,
         test_private_qt_mirrors_the_qt_prefix_layout,
         test_qml_and_plugins_are_deployed_explicitly,

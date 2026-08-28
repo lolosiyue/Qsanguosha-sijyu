@@ -437,6 +437,18 @@ if(UNIX)
 
     # 資產清單:安裝樹入面實際有乜嘢係「冇咗行唔到」、乜嘢係「冇咗只係少啲
     # 聲畫」。GUI 專用資產只有喺 GUI build 先至列入 required。
+    # 唔係每個 build context 都有齊呢啲目錄:Docker server image 嘅
+    # .dockerignore 就特登剔走 GUI/client 資產(lang/、qss/、skins/、
+    # ui-script/),而 extensions/ 同 lua/ai/ 係 build 入面 fetch 返嚟。
+    # install(DIRECTORY) 撞到唔存在嘅目錄會直接 fatal,所以逐個檢查存在先裝;
+    # 「應該有但係冇」由資產清單負責大聲講出嚟,而唔係喺 install 中途炸。
+    set(QSAN_DATA_DIRECTORIES lua)
+    foreach(qsan_data_directory lang etc extensions)
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${qsan_data_directory}")
+            list(APPEND QSAN_DATA_DIRECTORIES ${qsan_data_directory})
+        endif()
+    endforeach()
+
     set(QSAN_ASSET_REQUIRED
         lua/config.lua
         lua/sanguosha.lua
@@ -446,7 +458,6 @@ if(UNIX)
         lua/lib
         lua/ai/smart-ai.lua
         extensions
-        lang/zh_CN
     )
     set(QSAN_ASSET_OPTIONAL
         etc/customScenes
@@ -455,6 +466,17 @@ if(UNIX)
         font
         hero-skin
     )
+    # lang/ 冇咗唔會 crash —— sgs.GetFileNames() 對住一個唔存在嘅目錄回空
+    # list,遊戲照跑,只係顯示內部名而唔係中文。dedicated server 一路以嚟
+    # (Docker image)就係咁行。但一個冇翻譯嘅 GUI 對玩家嚟講唔算能用,
+    # 所以 GUI build 當佢係 required。
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/lang")
+        if(QSAN_BUILD_GUI)
+            list(APPEND QSAN_ASSET_REQUIRED lang/zh_CN)
+        else()
+            list(APPEND QSAN_ASSET_OPTIONAL lang/zh_CN)
+        endif()
+    endif()
     if(QSAN_BUILD_GUI)
         list(APPEND QSAN_ASSET_REQUIRED
             skins/skinList.json
@@ -499,15 +521,11 @@ if(UNIX)
     # --asset-report 講緊邊個 build 完全睇彩數。開發樹冇 manifest 係正常情況,
     # QSanAssetManifest::inspect() 會老實報「無法驗證」而唔係報錯。
 
-    install(DIRECTORY lua lang etc
+    install(DIRECTORY ${QSAN_DATA_DIRECTORIES}
         DESTINATION "${QSAN_DATA_INSTALL_DIR}"
         COMPONENT qsan_data
         PATTERN "data/AiData*" EXCLUDE
         PATTERN "*.log" EXCLUDE
-    )
-    install(DIRECTORY extensions
-        DESTINATION "${QSAN_DATA_INSTALL_DIR}"
-        COMPONENT qsan_data
     )
     install(FILES "${QSAN_ASSET_MANIFEST_FILE}"
         DESTINATION "${QSAN_DATA_INSTALL_DIR}"
@@ -857,10 +875,20 @@ if(UNIX AND QSAN_BUILD_GUI)
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
         COMPONENT qsan_gui
     )
-    install(DIRECTORY qss skins ui-script
-        DESTINATION "${QSAN_DATA_INSTALL_DIR}"
-        COMPONENT qsan_gui
-    )
+    # 同 shared data 一樣:有先裝,冇就由資產清單報「required 缺失」,
+    # 而唔係喺 install 中途 fatal。package smoke 會因此紅燈。
+    set(QSAN_GUI_DATA_DIRECTORIES "")
+    foreach(qsan_gui_directory qss skins ui-script)
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${qsan_gui_directory}")
+            list(APPEND QSAN_GUI_DATA_DIRECTORIES ${qsan_gui_directory})
+        endif()
+    endforeach()
+    if(QSAN_GUI_DATA_DIRECTORIES)
+        install(DIRECTORY ${QSAN_GUI_DATA_DIRECTORIES}
+            DESTINATION "${QSAN_DATA_INSTALL_DIR}"
+            COMPONENT qsan_gui
+        )
+    endif()
     # 翻譯放喺 share/qsanguosha/translations/;resolver 會由嗰度載,搵唔到
     # 先返 asset root(舊有部署嘅 .qm 就係擺喺 root)。
     install(FILES ${qsan_qm_files} qt_zh_CN.qm
