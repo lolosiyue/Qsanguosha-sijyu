@@ -38,6 +38,10 @@ public:
     // 強制首頁背景用指定的檔案（可以係一個唔存在或者解唔到的影片），令 CI 可以
     // 真係行一次影片失敗 → 靜態背景的降級路徑，而唔使入庫一段影片。
     static const char *const FlagVideoSource;    // "--multimedia-video-source"
+    // 音訊 fixture 的所在目錄。M3 之後遊戲會 chdir 去解析出嚟嘅 asset root，
+    // 所以喺一個安裝／可攜／AppImage bundle 度跑呢個 smoke 時，fixture 唔會
+    // 喺 CWD 下面，一定要明確指出佢喺邊。
+    static const char *const FlagFixtureRoot;    // "--multimedia-fixtures"
 
     static int defaultTimeoutMs();
     static int minimumTimeoutMs();
@@ -47,6 +51,7 @@ public:
     static bool parseTimeoutMs(const QStringList &arguments, int *timeoutMs, QString *error);
     static QString parseReportPath(const QStringList &arguments);
     static QString parseVideoSource(const QStringList &arguments);
+    static QString parseFixtureRoot(const QStringList &arguments);
 
     // 影片背景的結果分類。「冇 console error」唔可以當成功，所以要明確分開
     // 「資產缺失」「後端唔喺度」「codec 唔支援」「播放出錯」「已成功降級」。
