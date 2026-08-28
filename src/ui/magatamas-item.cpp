@@ -1,6 +1,7 @@
 #include "magatamas-item.h"
 #include "skin-bank.h"
 #include "sprite.h"
+#include "effects/effects-policy.h"
 
 MagatamasBoxItem::MagatamasBoxItem()
     : QGraphicsObject(nullptr)
@@ -114,6 +115,13 @@ void MagatamasBoxItem::_doHpChangeAnimation(int newHp)
 {
     if (newHp >= m_hp) return;
 
+    // 掉血嘅飛勾玉純粹係演出:真正嘅血量由 paint() 讀 m_hp 畫,所以 NONE
+    // 唔起呢個 Sprite,血量一樣即刻更新到最終值。
+    if (!G_EFFECTS.animationsEnabled()) {
+        G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+        return;
+    }
+
     if (newHp < 0)
         newHp = 0;
 
@@ -140,7 +148,7 @@ void MagatamasBoxItem::_doHpChangeAnimation(int newHp)
 
         QPropertyAnimation *fade = new QPropertyAnimation(aniMaga, "opacity");
         fade->setEndValue(0);
-        fade->setDuration(500);
+        fade->setDuration(G_EFFECTS.scaledDuration(500));
 
         connect(fade, SIGNAL(finished()), aniMaga, SLOT(deleteLater()));
 
@@ -148,9 +156,10 @@ void MagatamasBoxItem::_doHpChangeAnimation(int newHp)
         group->addAnimation(fade);
         fade = new QPropertyAnimation(aniMaga, "scale");
         fade->setEndValue(5);
-        fade->setDuration(500);
+        fade->setDuration(G_EFFECTS.scaledDuration(500));
         group->addAnimation(fade);
 
+        G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
         group->start(QAbstractAnimation::DeleteWhenStopped);
 
         aniMaga->show();

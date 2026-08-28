@@ -13,7 +13,7 @@ Server 使用 `QCoreApplication`，唔需要 X11／Wayland、FMOD 或任何 GUI�
 | Linux GUI M1（GUI startup：`QApplication`／`MainWindow`／HomeScene／event loop） | **Complete** — `linux-gui-ci.yml` 喺 Xvfb ＋ `xcb` 跑 `--ui-startup-smoke`；WSLg 人手驗證 |
 | Linux GUI M2（RoomScene 真實 TCP 對局） | **Complete** — 由 `gui_network_smoke.py` 喺**齊資產嘅本機**驗；唔喺 CI 跑（見 [§4.6](#46-linux-gui-m2-network-smoke真實-tcp-對局)） |
 | Linux GUI M2B-A（Qt multimedia：短音效／語音／BGM／影片背景降級） | **Complete** — `linux-gui-ci.yml` 跑 `--multimedia-smoke`（見 [§4.7](#47-linux-gui-m2b-a-multimedia-smoke)） |
-| Linux GUI M2B-B（Spine／GIF／完整視覺特效） | **Not started** |
+| Linux GUI M2B-B（效果 profile：Spine／GIF／動畫降級） | **Complete** — `linux-gui-ci.yml` 跑 `--effects-smoke` full／reduced／none 三個 profile（見 [§4.8](#48-linux-gui-m2b-b-effects-smoke)） |
 | Linux packaging（AppImage／deb／desktop entry／installer） | **Not started**（M3） |
 
 M0 的定義固定為 **configure ＋ compile ＋ link**，加上一個 binary capability smoke。
@@ -21,21 +21,24 @@ M1 的定義固定為 **真正行完一次 GUI startup path 然後自動正常�
 M2B-A 的定義固定為 **audio backend 同 QML media component 建得起、收得落 media
 source、缺資產／缺裝置有明確降級、收得乾淨**；佢**唔包括**「真係聽到聲」——
 CI runner 冇音訊裝置。
+M2B-B 的定義固定為 **一個 client 三個效果 profile（full／reduced／none）行同一
+條集中 policy、動畫 completion 保證 exactly once、缺／壞資產降級成靜態 UI、
+NONE 唔建立 Spine／QMovie／video object**；佢**唔包括**「畫面睇落一樣」——
+CI runner 冇正式美術資產，pixel diff 唔會做 blocking gate。
 
-以下全部 **未完成**，唔喺 M0／M1／M2／M2B-A 範圍：
+以下全部 **未完成**，唔喺 M0／M1／M2／M2B-A／M2B-B 範圍：
 
 ```text
-Spine
-GIF
-完整動畫 profile
-Linux packaging
+Linux packaging（AppImage／deb／installer）
+Android／直版 UI／WASM
+Protocol V2／WebSocket
 ```
 
 > ⚠️ `--local-response-ui-capabilities` 喺建立 `QApplication` 之前就直接回傳 JSON，所以佢係
 > **binary capability smoke**，唔係 GUI／offscreen startup smoke。真正的 `QApplication`／
 > `MainWindow`／`HomeScene` 啟動驗證係 M1 的 `--ui-startup-smoke`（見 [§4.5](#45-linux-gui-m1-startup-smoke)）。
 
-- Status: Linux Server Complete；Linux GUI M0（configure／compile／link）Complete；Linux GUI M1（GUI startup）Complete；Linux GUI M2（network game）Complete；Linux GUI M2B-A（multimedia）Complete
+- Status: Linux Server Complete；Linux GUI M0（configure／compile／link）Complete；Linux GUI M1（GUI startup）Complete；Linux GUI M2（network game）Complete；Linux GUI M2B-A（multimedia）Complete；Linux GUI M2B-B（effects profiles）Complete
 - Last Updated: 2026-08-28
 - 對應 Windows 開發環境請見 [`README.md`](../README.md) 嘅 🛠️ Development Environment section。
 
@@ -700,7 +703,186 @@ Key 名 Windows／Linux 共用；舊設定檔冇呢幾個 key 時有穩定預設
 `clampVolume()`，設定檔被手改成非數字／負數／NaN 都唔會傳落 backend。
 Dedicated server 唔需要讀呢啲值。
 
-## 4.8 WSLg 人手驗證
+## 4.8 Linux GUI M2B-B effects smoke
+
+M2B-A 證明**多媒體**建得起同降得到級，M2B-B 證明**視覺特效**可以喺同一個
+client 用三個正式 profile 行，而且三個 profile 有完全相同嘅遊戲規則同網絡回覆。
+
+```text
+FULL      完整動畫 + Spine + GIF + QML 技能特效 + 影片背景（Windows 現有行為）
+REDUCED   保留必要狀態提示，動畫縮到約 30%，停用 Spine／影片／QML 疊層，GIF 只用首幀
+NONE      唔等任何裝飾動畫，遊戲狀態即刻到達最終位置，
+          一個 Spine skeleton／QMovie／video object 都唔建立
+```
+
+### 集中 policy
+
+UI code **唔准**自己 `#ifdef Q_OS_LINUX` 跳動畫。單一入口：
+
+| 部件 | 檔案 | 依賴 |
+|---|---|---|
+| Profile 契約（名稱／gate／duration scale／CLI 同設定解析） | `src/ui/effects/effects-profile.{h,cpp}` | 只 Qt Core |
+| exactly-once completion 保證 | `src/ui/effects/effects-completion.{h,cpp}` | 只 Qt Core |
+| Runtime 門面 `G_EFFECTS`、物件記數 | `src/ui/effects/effects-policy.{h,cpp}` | `Settings` |
+
+```cpp
+#include "effects/effects-policy.h"
+if (!G_EFFECTS.animationsEnabled()) { /* 落最終狀態 */ return; }
+animation->setDuration(G_EFFECTS.scaledDuration(600));
+```
+
+Gate 只可以**收窄**：`videoEnabled()` 係
+`profileAllowsVideo && Config.EnableBackgroundVideo`，所以 FULL 唔會幫使用者
+開返佢自己關咗嘅影片背景；`gifEnabled()` 同樣夾埋 `EnableAnimatedGenerals`。
+
+解析次序：**CLI override > 使用者設定 > 預設（`full`）**。設定對話框
+（顯示 → 視覺特效，`QSettings` key `EffectsProfile`）同 `--effects-profile`
+行同一個 `VisualEffectsPolicy`，唔係兩套開關。打錯 profile 名會**即刻**以
+exit code 5 退出 —— 靜靜退返 `full` 會令三個 profile 嘅 CI matrix 變成
+「同一個 profile 跑咗三次」。
+
+### 點解 NONE 唔係將 duration 設做 0
+
+zero-duration 嘅 `QAbstractAnimation` 會喺 `start()` **入面同步** emit
+`finished()`。所有靠 `finished()` 續流程嘅 call site 都會喺自己未砌好狀態
+之前俾人重入 —— double callback 同 use-after-free 就係咁嚟。
+
+所以 NONE 行 skip branch 直接落最終狀態；仲要派 callback 嘅就經
+`EffectsCompletion::completeNow()`（綁 context object 嘅 queued invocation）。
+`scaledDuration()` 守住另一半：REDUCED 最少 1ms，永遠唔會變 0。
+
+### Completion 契約
+
+| 路徑 | 結果 |
+|---|---|
+| 動畫播完 | callback 一次 |
+| 動畫被跳過／未起動 | callback 一次（queued） |
+| 動畫播緊俾人拆 | callback 一次（流程唔可以就咁卡住） |
+| watchdog timeout | callback 一次 |
+| context 銷毀 | 取消 —— 唔會 callback 落死物 |
+
+冇 double，冇 never。`deliveredCount()` / `cancelledCount()` 令佢可觀察。
+
+### 執行 smoke
+
+```bash
+# 一個 profile 一次（CI 用 Xvfb；本機 WSLg 用 --no-xvfb）
+bash tools/ci/linux-gui-effects-smoke.sh ./relwithdebinfo/QSanguosha artifacts \
+    --profile none --no-xvfb --platform xcb --label wslg
+
+# 直接叫 binary
+./relwithdebinfo/QSanguosha --effects-smoke --effects-profile reduced \
+    --effects-timeout-ms 60000 --effects-report artifacts/effects.json
+```
+
+輸出 marker：
+
+```text
+EFFECTS_PROFILE_RESULT {"profile":"none","source":"cli",...}
+EFFECTS_STAGE {"stage":"policy","ok":true,...}
+EFFECTS_STAGE {"stage":"completion","ok":true,...}
+EFFECTS_STAGE {"stage":"animation","ok":true,...}
+EFFECTS_STAGE {"stage":"gif","ok":true,...}
+EFFECTS_STAGE {"stage":"spine","ok":true,...}
+EFFECTS_STAGE {"stage":"budget","ok":true,...}
+EFFECTS_STAGE {"stage":"shutdown","ok":true,...}
+EFFECTS_RESULT {"schema_version":1,"ok":true,...}
+```
+
+exit code：`0` pass、`1` GUI setup、`2` policy、`3` completion、
+`4` asset fallback、`5` budget／shutdown、`6` app 內部 timeout、`7` 參數錯、
+`8` internal。
+
+### 打完一整局
+
+真正證明「跳咗動畫都唔會卡死」嘅係網絡 runner（真 TCP、真 `RoomScene`）：
+
+```bash
+python3 tools/autotest/gui_network_smoke.py --exe-root . \
+    --mode 02p --seed 20260828 --artifact-dir artifacts \
+    --no-xvfb --platform xcb --effects-profile none \
+    --known-base-defect server-teardown-crash \
+    --require-interactions choose_general,play_phase,ask_for_card
+```
+
+Runner 會驗 client 真係由 CLI 解析出要求嗰個 profile，而 `none` 嗰次仲要驗
+成局打完之後 Spine／QMovie／QML 疊層／video object 全部係 0。同 §4.6 一樣，
+呢個係**本機** gate，唔入 CI。
+
+### 物件預算
+
+`EffectsSmokeReport::budgetFor()` 就係每個 profile 嘅可執行定義，
+`validate-effects-smoke.py` 亦有一份，所以單邊「改鬆咗預算」嘅 regression
+一樣會紅：
+
+| Profile | Spine item | QMovie | QML 疊層 | Video |
+|---|---|---|---|---|
+| `none` | 0 | 0 | 0 | 0 |
+| `reduced` | 0 | 不限（只用首幀） | 0 | 0 |
+| `full` | 不限 | 不限 | 不限 | 不限 |
+
+### 冇資產的 CI
+
+`linux-gui-ci.yml` 嘅 `gui-effects` job 係 **blocking matrix**：三個 profile
+各跑一次，每個 profile 再分 `xcb` 同 `offscreen`，另加兩個負向契約（打錯
+profile 名要被拒；app 內部 timeout 要出 `reason:"timeout"`）。
+
+整個 matrix 只用 `tests/fixtures/effects/` 嘅合成 fixture（4x4 GIF、幾張
+8x8 PNG、一個特登整壞嘅 Spine 目錄），全部由
+`tools/ci/make-effects-fixtures.py` 用標準庫生成，唔係遊戲資產。
+**有齊正式資產嘅 production smoke 唔會成為 clean checkout 嘅 blocker。**
+點解冇合法 Spine fixture、將來要加要點做，見該目錄嘅 `README.md`。
+
+驗嘅係行為，唔係 pixel。screenshot 只作 failure artifact。
+
+### 順手整返好嘅缺資產處理
+
+**`PixmapAnimation::valid()` 以前永遠都係 true。** `setPath()` 用 `do`-`while`，
+即係喺未驗過 frame 0 存唔存在之前就已經 append 咗一格；而
+`getPixmapFromFileName()` 缺檔案時回嘅係一張 1x1 佔位圖（**唔係** null pixmap）。
+所以 `frames` 永遠唔會空，`valid()` 永遠 true，全部「缺資產就唔好播」嘅分支
+根本從來冇行過：
+
+* `GetPixmapAnimation()` 從來冇行過 `else { delete pma; return nullptr; }`，
+  所以查 `nullptr` 嘅 caller（例如 `doPindianAnimation()` 嘅
+  `else pindian_box->disappear()`）從來冇收過；
+* `_createEquipBorderAnimations()` 從來冇行過 `!valid()`，`_m_equipBorders[i]`
+  從來冇被設做 `nullptr`。
+
+冇資產時真正發生嘅係：每個動畫多一個睇唔到嘅 1x1 sprite 加一個 20Hz timer。
+唔係 crash，但 fallback 從來冇跑過 —— REDUCED／NONE 一旦開始靠佢哋，就正正
+係最唔想見到嘅狀態。`setPath()` 改成普通 `while`，只讀真係存在嘅 frame。
+資產齊嗰陣行為完全一樣（loop 條件本來就係同一個 `QFile::exists()`）。
+
+`valid()` 誠實返之後，以下三條路由「不可達」變成「可達」，所以要補守衛：
+
+* **永久黑幕**：`doLightboxAnimation()` 嘅 `anim=` 分支起咗塊 80% 不透明嘅
+  rect，只喺 `PixmapAnimation::finished()` 先拆。而家
+  `GetPixmapAnimation()` 真係會回 `nullptr`，塊 rect 就會永遠留喺畫面 ——
+  遊戲仲玩得但係乜都睇唔到。已改成即刻拆走並且 warn。
+* **裝備牌 nullptr deref**：`_setEquipBorderAnimation()` 用 `Q_ASSERT` 守住
+  `_m_equipBorders[index]`，但 `Q_ASSERT` 喺 Release／RelWithDebInfo 係 no-op。
+  已改成真 null check。
+* **`PixmapAnimation` 自己**：`_m_timerId`／`current`／`off_x`／`off_y` 都未
+  初始化（未 `start()` 就 `stop()` 會殺一個垃圾 timer id），而
+  `paint()`／`boundingRect()`／`advance()` 都冇檢查 `frames` 空唔空。四樣都
+  補咗。
+
+同上面無關、獨立嘅一個：
+
+* **動態立繪 nullptr deref**：`GraphicsPixmapHoverItem` 喺 item 未入 scene
+  時 `m_proxyWidget` 會留低 null，跟住照 `->show()`。已改成落返靜態立繪。
+
+### 設定
+
+| Key | 預設 | 說明 |
+|---|---|---|
+| `EffectsProfile` | `full` | `full` / `reduced` / `none`；設定對話框「視覺特效」 |
+
+Key 名 Windows／Linux 共用；舊設定檔冇呢個 key 或者值唔認得都會落返 `full`
+並且喺 log 講明點解。
+
+## 4.9 WSLg 人手驗證
 
 Xvfb CI 通過**唔可以**取代 WSLg 人手驗證：Xvfb 冇 compositor，亦唔會行 WSLg 的
 Wayland／X11 橋接。喺 WSLg 下重複以下步驟：
