@@ -92,21 +92,28 @@ CMake 必須啟用 AUTOMOC、AUTOUIC、AUTORCC，管理資源、翻譯、安裝�
 Audio
  └─ IAudioBackend
      ├─ FmodAudioBackend      Windows／桌面 GUI
-     ├─ QtMediaAudioBackend   Android
+     ├─ QtMediaAudioBackend   Linux GUI、Android
      └─ NullAudioBackend      無頭伺服器
 ```
 
-| 行為 | Windows FMOD | Android Qt Multimedia | Null |
+> **已實作（2026-08-28，Linux GUI M2B-A）**：本節的三後端抽象已落地於
+> `src/ui/audio/`，`Audio` facade 維持不變。Linux GUI 使用 `QtMediaAudioBackend`，
+> Windows GUI Release 維持 `FmodAudioBackend`（行為未變），dedicated server 與
+> Windows Debug 使用 `NullAudioBackend`。Android 尚未接上，屬 M7。
+> 契約與驗證方式見 [`linux-development-environment.md`](linux-development-environment.md) §4.7。
+
+| 行為 | Windows FMOD | Linux／Android Qt Multimedia | Null |
 |---|---|---|---|
-| 短 UI 音效 | FMOD 快取 | `QSoundEffect` 預載少量 WAV | no-op |
-| OGG 語音 | FMOD sound/cache | `QMediaPlayer + QAudioOutput` 播放器池 | no-op |
+| 短 UI 音效 | FMOD 快取 | `QSoundEffect` 預載少量音效；解不到時退到獨立小型播放器池 | no-op |
+| OGG 語音 | FMOD sound/cache | `QMediaPlayer + QAudioOutput` 播放器池（上限 8） | no-op |
 | OGG BGM | FMOD stream | 獨立 `QMediaPlayer` 循環播放 | no-op |
 | `superpose=false` | 同檔播放中則抑制 | 播放器池檢查同檔活動實例 | no-op |
 | 錯誤 | 記錄警告，不崩潰 | 記錄警告，不崩潰 | 不產生日誌噪音 |
+| 無輸出裝置 | 靜音執行 | 靜音執行，`hasOutputDevice()=false` | n/a |
 
 Android 固定只為 `button-down`、`button-hover`、`choose-item`、`pop-up` 等觸控回饋提供 WAV 衍生資產，以 `QSoundEffect` 預載。約 15,357 個原有 OGG 語音與 BGM 不整批轉 WAV；語音使用可重用播放器池，BGM 使用獨立播放器。App 進入背景時暫停音訊，返回前景後按原狀態恢復。Android 不打包任何 FMOD `.so`、Java 元件或標頭。
 
-CMake 提供 `QSAN_AUDIO_BACKEND=FMOD|QT|NULL` 並按平台設定固定預設。`Audio::getVersion()` 回傳實際後端名稱及版本，不再假設一定是 FMOD。
+CMake 提供 `QSAN_AUDIO_BACKEND=FMOD|QT|NULL` 並按平台設定固定預設（Windows→`FMOD`、Linux GUI→`QT`、server-only→`NULL`）。後端選擇只發生在 CMake 與 `src/ui/audio/audio-backend-factory.cpp`，呼叫端沒有平台 `#ifdef`。`Audio::backendName()` 回報實際生效的後端，`Audio::getVersion()` 回報該後端的版本，不再假設一定是 FMOD；About 對話框顯示兩者。
 
 M1 引擎解耦先以 `Engine::audioEffectRequested` signal 建立不含 FMOD 的純 Core port；本節的完整 `IAudioBackend` 三後端仍在 M6 實作，兩者不是互斥方案。
 
@@ -232,7 +239,7 @@ M1 已完成（2026-08-09 對照 CMakeLists.txt 確認）：`qsanguosha_engine` 
 | M3 | Not Started | `SkillDialogInfo`、選包白名單、確定性 RNG | 相同種子、輸入與包集合產生相同結果；白名單不可由客戶端繞過 |
 | M4 | Not Started | 協定與重播版本化、相容性拒絕路徑 | 新舊版本差異可診斷；不支援版本被明確拒絕而非靜默誤讀 |
 | M5 | Not Started | Ubuntu 無頭伺服器與 Null 音訊 | 無 X11/Wayland、FMOD 或 GUI 依賴仍可啟動及完成整局測試 |
-| M6 | Not Started | 桌面 FMOD 後端抽象化及診斷 | Windows 音效行為無回歸；音訊失敗不影響遊戲狀態 |
+| M6 | In Progress（2026-08-28：Linux GUI M2B-A 交付 `IAudioBackend`／FMOD／Qt／Null 三後端、`QSAN_AUDIO_BACKEND`、結構化診斷與 `--multimedia-smoke`） | 桌面 FMOD 後端抽象化及診斷 | Windows 音效行為無回歸；音訊失敗不影響遊戲狀態 |
 | M7 | Not Started | Android Qt Multimedia、WAV/OGG 播放器池與觸控 UI | API 28 真機及 API 36 目標建置通過；前後景切換與音訊生命週期穩定 |
 | M8 | Not Started | Android AAB、PAD 與 `AssetLocator` | `arm64-v8a` AAB 可安裝；fast-follow/on-demand 缺包、下載、重試路徑可驗證 |
 | M9A | Not Started | 第一批 HiDPI、視窗縮放及安全區修復 | Windows 與 Android 代表解析度無截斷、重疊或不可操作控制項 |
