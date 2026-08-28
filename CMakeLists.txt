@@ -177,6 +177,10 @@ add_library(qsanguosha_engine STATIC
     src/core/card.h
     src/core/ai-data-store.cpp
     src/core/ai-data-store.h
+    src/core/asset-manifest.cpp
+    src/core/asset-manifest.h
+    src/core/runtime-paths.cpp
+    src/core/runtime-paths.h
     src/core/engine.cpp
     src/core/engine.h
     src/core/version.h
@@ -396,6 +400,143 @@ if(QSAN_BUILD_SERVER)
     )
 endif()
 
+# ---------------------------------------------------------------------------
+# Linux install layout (M3)
+#
+# 三個 install component,令「GUI 包」同「server 包」可以各自出貨:
+#
+#   qsan_data    lua / extensions / lang / etc —— 兩邊都要的規則資料
+#   qsan_server  dedicated server binary、systemd unit、server 文件
+#   qsan_gui     GUI binary、介面資產、desktop entry、圖示
+#
+# server-only 安裝因此唔會拉到任何 GUI 資產,亦唔會拉到 Qt GUI runtime。
+# ---------------------------------------------------------------------------
+if(UNIX)
+    set(QSAN_DATA_INSTALL_DIR "${CMAKE_INSTALL_DATADIR}/qsanguosha")
+
+    # bin/ 望去 share/qsanguosha/ 的相對路徑。runtime resolver 用呢個而唔用
+    # 絕對的 CMAKE_INSTALL_FULL_DATADIR:binary 入面唔應該燒死安裝機器的路徑,
+    # 而且 portable bundle 同 AppImage 要可以解壓到任何地方都行得到。
+    file(RELATIVE_PATH QSAN_BIN_TO_DATA_RELATIVE
+        "${CMAKE_INSTALL_FULL_BINDIR}"
+        "${CMAKE_INSTALL_FULL_DATADIR}/qsanguosha"
+    )
+    # bin/ 望去私有 Qt runtime 的相對路徑。Qt 自己的 library／plugin／QML
+    # plugin 都已經帶 $ORIGIN-relative RUNPATH,而且假設標準 prefix 版面
+    # (lib/、plugins/<type>/、qml/<Module>/ 全部 $ORIGIN/../../lib),所以
+    # 私有 runtime 必須照抄呢個版面 —— 咁就唔需要 patchelf 改寫每個 Qt .so。
+    set(QSAN_PRIVATE_QT_DIR "${CMAKE_INSTALL_LIBDIR}/qsanguosha/qt")
+    file(RELATIVE_PATH QSAN_BIN_TO_QT_LIB_RELATIVE
+        "${CMAKE_INSTALL_FULL_BINDIR}"
+        "${CMAKE_INSTALL_FULL_LIBDIR}/qsanguosha/qt/lib"
+    )
+
+    target_compile_definitions(qsanguosha_engine PRIVATE
+        QSAN_BIN_TO_DATA_RELATIVE="${QSAN_BIN_TO_DATA_RELATIVE}"
+    )
+
+    # 資產清單:安裝樹入面實際有乜嘢係「冇咗行唔到」、乜嘢係「冇咗只係少啲
+    # 聲畫」。GUI 專用資產只有喺 GUI build 先至列入 required。
+    # 唔係每個 build context 都有齊呢啲目錄:Docker server image 嘅
+    # .dockerignore 就特登剔走 GUI/client 資產(lang/、qss/、skins/、
+    # ui-script/),而 extensions/ 同 lua/ai/ 係 build 入面 fetch 返嚟。
+    # install(DIRECTORY) 撞到唔存在嘅目錄會直接 fatal,所以逐個檢查存在先裝;
+    # 「應該有但係冇」由資產清單負責大聲講出嚟,而唔係喺 install 中途炸。
+    set(QSAN_DATA_DIRECTORIES lua)
+    foreach(qsan_data_directory lang etc extensions)
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${qsan_data_directory}")
+            list(APPEND QSAN_DATA_DIRECTORIES ${qsan_data_directory})
+        endif()
+    endforeach()
+
+    set(QSAN_ASSET_REQUIRED
+        lua/config.lua
+        lua/sanguosha.lua
+        lua/sgs_ex.lua
+        lua/utilities.lua
+        lua/chat_config.lua
+        lua/lib
+        lua/ai/smart-ai.lua
+        extensions
+    )
+    set(QSAN_ASSET_OPTIONAL
+        etc/customScenes
+        image
+        audio
+        font
+        hero-skin
+    )
+    # lang/ 冇咗唔會 crash —— sgs.GetFileNames() 對住一個唔存在嘅目錄回空
+    # list,遊戲照跑,只係顯示內部名而唔係中文。dedicated server 一路以嚟
+    # (Docker image)就係咁行。但一個冇翻譯嘅 GUI 對玩家嚟講唔算能用,
+    # 所以 GUI build 當佢係 required。
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/lang")
+        if(QSAN_BUILD_GUI)
+            list(APPEND QSAN_ASSET_REQUIRED lang/zh_CN)
+        else()
+            list(APPEND QSAN_ASSET_OPTIONAL lang/zh_CN)
+        endif()
+    endif()
+    if(QSAN_BUILD_GUI)
+        list(APPEND QSAN_ASSET_REQUIRED
+            skins/skinList.json
+            skins/resource_aliases.json
+            qss
+            ui-script/animation.qml
+        )
+        list(APPEND QSAN_ASSET_OPTIONAL
+            translations/sanguosha.qm
+            translations/qt_zh_CN.qm
+            # 首頁 QML 圖示同背景:唔入庫,clean checkout 開 GUI 一定會見到
+            # 一批 "QML Image: Cannot open" warning。列喺度令嗰批 warning
+            # 由「唔知係咩」變成「manifest 講明預期缺失」。
+            qml/home/icons
+            image/system/backdrop
+        )
+    endif()
+
+    # 版本欄位:game_version 跟 src/core/version.h,asset_pack_version 描述
+    # 呢個 core package 帶咗邊一套資產(唔包大型美術／音訊)。
+    file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/src/core/version.h" qsan_version_line
+        REGEX "Number\\[\\] *= *\"")
+    string(REGEX REPLACE ".*\"([^\"]+)\".*" "\\1" QSAN_GAME_VERSION "${qsan_version_line}")
+    if(NOT QSAN_GAME_VERSION)
+        message(FATAL_ERROR "Unable to read QSanVersion::Number from src/core/version.h")
+    endif()
+    set(QSAN_ASSET_PACK_VERSION "core-1")
+
+    string(REPLACE ";" "\",\n    \"" QSAN_ASSET_REQUIRED_JSON "${QSAN_ASSET_REQUIRED}")
+    set(QSAN_ASSET_REQUIRED_JSON "\"${QSAN_ASSET_REQUIRED_JSON}\"")
+    string(REPLACE ";" "\",\n    \"" QSAN_ASSET_OPTIONAL_JSON "${QSAN_ASSET_OPTIONAL}")
+    set(QSAN_ASSET_OPTIONAL_JSON "\"${QSAN_ASSET_OPTIONAL_JSON}\"")
+
+    set(QSAN_ASSET_MANIFEST_FILE "${CMAKE_CURRENT_BINARY_DIR}/assets-manifest.json")
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/packaging/assets-manifest.json.in"
+        "${QSAN_ASSET_MANIFEST_FILE}"
+        @ONLY
+    )
+    # 刻意唔喺 source tree 放一份:GUI build 同 server-only build 的 required
+    # 清單唔同,兩個 build directory 會互相覆寫同一個檔案,令開發樹嘅
+    # --asset-report 講緊邊個 build 完全睇彩數。開發樹冇 manifest 係正常情況,
+    # QSanAssetManifest::inspect() 會老實報「無法驗證」而唔係報錯。
+
+    install(DIRECTORY ${QSAN_DATA_DIRECTORIES}
+        DESTINATION "${QSAN_DATA_INSTALL_DIR}"
+        COMPONENT qsan_data
+        PATTERN "data/AiData*" EXCLUDE
+        PATTERN "*.log" EXCLUDE
+    )
+    install(FILES "${QSAN_ASSET_MANIFEST_FILE}"
+        DESTINATION "${QSAN_DATA_INSTALL_DIR}"
+        COMPONENT qsan_data
+    )
+    install(FILES gpl-3.0.txt LICENSE
+        DESTINATION "${CMAKE_INSTALL_DOCDIR}"
+        COMPONENT qsan_data
+    )
+endif()
+
 if(UNIX AND QSAN_BUILD_SERVER)
     set(QSAN_SYSTEMD_SERVICE_FILE
         "${CMAKE_CURRENT_BINARY_DIR}/qsanguosha-server.service")
@@ -404,22 +545,29 @@ if(UNIX AND QSAN_BUILD_SERVER)
         "${QSAN_SYSTEMD_SERVICE_FILE}"
         @ONLY
     )
+    # 私有 Qt runtime 喺 distro 式安裝根本唔存在,個時 loader 直接落系統 Qt;
+    # 喺 portable／AppImage 就會命中 bundle 入面嗰份。同一個 binary 兩邊都啱。
+    set_target_properties(qsanguosha_server PROPERTIES
+        INSTALL_RPATH "$ORIGIN/${QSAN_BIN_TO_QT_LIB_RELATIVE}"
+    )
     install(TARGETS qsanguosha_server
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
-    )
-    install(DIRECTORY lua extensions
-        DESTINATION "${CMAKE_INSTALL_DATADIR}/qsanguosha"
+        COMPONENT qsan_server
     )
     install(FILES docs/server.ini.example
         DESTINATION "${CMAKE_INSTALL_DOCDIR}"
+        COMPONENT qsan_server
     )
     install(FILES docs/linux-development-environment.md
         DESTINATION "${CMAKE_INSTALL_DOCDIR}"
+        COMPONENT qsan_server
     )
     install(FILES "${QSAN_SYSTEMD_SERVICE_FILE}"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/systemd/system"
+        COMPONENT qsan_server
     )
 endif()
+
 
 if(QSAN_BUILD_GUI)
     # GUI 產品的 source／MOC header／form／QML resource／askFor runner 由 Windows
@@ -718,6 +866,57 @@ if(WIN32)
     )
 endif()
 source_group("Generated" FILES "${qsan_swig_wrapper}")
+
+if(UNIX AND QSAN_BUILD_GUI)
+    set_target_properties(QSanguosha PROPERTIES
+        INSTALL_RPATH "$ORIGIN/${QSAN_BIN_TO_QT_LIB_RELATIVE}"
+    )
+    install(TARGETS QSanguosha
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+        COMPONENT qsan_gui
+    )
+    # 同 shared data 一樣:有先裝,冇就由資產清單報「required 缺失」,
+    # 而唔係喺 install 中途 fatal。package smoke 會因此紅燈。
+    set(QSAN_GUI_DATA_DIRECTORIES "")
+    foreach(qsan_gui_directory qss skins ui-script)
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${qsan_gui_directory}")
+            list(APPEND QSAN_GUI_DATA_DIRECTORIES ${qsan_gui_directory})
+        endif()
+    endforeach()
+    if(QSAN_GUI_DATA_DIRECTORIES)
+        install(DIRECTORY ${QSAN_GUI_DATA_DIRECTORIES}
+            DESTINATION "${QSAN_DATA_INSTALL_DIR}"
+            COMPONENT qsan_gui
+        )
+    endif()
+    # 翻譯放喺 share/qsanguosha/translations/;resolver 會由嗰度載,搵唔到
+    # 先返 asset root(舊有部署嘅 .qm 就係擺喺 root)。
+    install(FILES ${qsan_qm_files} qt_zh_CN.qm
+        DESTINATION "${QSAN_DATA_INSTALL_DIR}/translations"
+        COMPONENT qsan_gui
+        OPTIONAL
+    )
+    install(FILES packaging/linux/qsanguosha.desktop
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/applications"
+        COMPONENT qsan_gui
+    )
+    install(FILES resource/icon/linux/qsanguosha.svg
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps"
+        COMPONENT qsan_gui
+    )
+    foreach(qsan_icon_size 16 24 32 48 64 128 256 512)
+        install(FILES "resource/icon/linux/qsanguosha-${qsan_icon_size}.png"
+            DESTINATION
+                "${CMAKE_INSTALL_DATADIR}/icons/hicolor/${qsan_icon_size}x${qsan_icon_size}/apps"
+            RENAME "qsanguosha.png"
+            COMPONENT qsan_gui
+        )
+    endforeach()
+    install(FILES docs/linux-packaging.md
+        DESTINATION "${CMAKE_INSTALL_DOCDIR}"
+        COMPONENT qsan_gui
+    )
+endif()
 
 if(BUILD_TESTING)
     add_subdirectory(tests)

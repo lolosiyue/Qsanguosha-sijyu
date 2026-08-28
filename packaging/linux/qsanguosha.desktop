@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Version=1.1
+Name=QSanguosha
+GenericName=Three Kingdoms Card Game
+GenericName[zh_CN]=三国杀
+Comment=Play the Three Kingdoms strategy card game online or against AI
+Comment[zh_CN]=三国杀：在线或与电脑对战的策略卡牌游戏
+Exec=QSanguosha
+Icon=qsanguosha
+Terminal=false
+Categories=Game;CardGame;
+Keywords=sanguosha;cards;strategy;
+StartupNotify=true
+StartupWMClass=QSanguosha

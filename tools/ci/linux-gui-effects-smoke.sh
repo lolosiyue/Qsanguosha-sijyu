@@ -79,17 +79,29 @@ fi
 
 [ -n "$LABEL" ] || LABEL="$PROFILE"
 mkdir -p "$ARTIFACT_DIR"
+# The game now resolves its data directory and chdir()s into it, so a
+# relative report path would land inside the install tree instead of the
+# artifact directory.  Absolutise before handing anything to the binary.
+ARTIFACT_DIR="$(cd "$ARTIFACT_DIR" && pwd)"
+EXECUTABLE="$(cd "$(dirname "$EXECUTABLE")" && pwd)/$(basename "$EXECUTABLE")"
 LOG="$ARTIFACT_DIR/effects-smoke-$LABEL.log"
 REPORT="$ARTIFACT_DIR/effects-smoke-$LABEL.json"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 [ -n "$FIXTURES" ] || FIXTURES="tests/fixtures/effects"
+# Relative fixture paths are relative to the repository, not to the data
+# directory the game chdir()s into.  Resolve them here so the same command line
+# works against a build tree and against an installed/portable/AppImage bundle.
+case "$FIXTURES" in
+    /*) ;;
+    *) FIXTURES="$REPO_ROOT/$FIXTURES" ;;
+esac
 
 # The asset stages are only meaningful with their fixtures present; regenerate
 # them if this is a bundle-only checkout.
-if [ ! -f "$REPO_ROOT/$FIXTURES/animated.gif" ]; then
-    python3 "$SCRIPT_DIR/make-effects-fixtures.py" "$REPO_ROOT/$FIXTURES"
+if [ ! -f "$FIXTURES/animated.gif" ]; then
+    python3 "$SCRIPT_DIR/make-effects-fixtures.py" "$FIXTURES"
 fi
 
 # Qt/Mesa software rendering: the CI runner has no GPU, and pixel output is not
@@ -153,6 +165,17 @@ VALIDATION=$?
 # No orphan may outlive the smoke: a leaked QSanguosha or Xvfb would poison the
 # next CI step.  Scoped to this run's own process group.
 LEAKED=0
+# `wait` returns as soon as the app exits, but xvfb-run still has to reap its
+# Xvfb, and a process group does not empty instantaneously.  Checking at that
+# exact moment turns a normal few-hundred-millisecond teardown into a failure,
+# so give the group a bounded grace period first.  A process that is genuinely
+# stuck is still caught - it simply never leaves.
+if [ -n "$SETSID" ]; then
+    for _ in $(seq 1 20); do
+        pgrep -g "$CHILD" >/dev/null 2>&1 || break
+        sleep 0.5
+    done
+fi
 if [ -n "$SETSID" ] && pgrep -g "$CHILD" >/dev/null 2>&1; then
     echo "Processes survived the effects smoke:" >&2
     ps -o pid,pgid,comm -g "$CHILD" >&2 2>/dev/null || pgrep -ag "$CHILD" >&2

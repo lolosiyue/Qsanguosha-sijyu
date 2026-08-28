@@ -1,4 +1,5 @@
 #include "engine.h"
+#include "runtime-paths.h"
 #include "version.h"
 #include "ai-data-store.h"
 #include "aux-skills.h"
@@ -110,7 +111,7 @@ void Engine::_loadMiniScenarios()
     static bool loaded = false;
     if (loaded) return;
     for (int i = 1;; i++){
-        if (QFile::exists(QString("etc/customScenes/%1.txt").arg(i)))
+        if (QFile::exists(QSanRuntimePaths::readablePath(QString("etc/customScenes/%1.txt").arg(i))))
 			m_miniScenes[QString(MiniScene::S_KEY_MINISCENE).arg(i)] = new LoadedScenario(QString::number(i));
 		else
             break;
@@ -122,7 +123,7 @@ bool Engine::loadTestScenario(const QString &filePath)
 {
     QString fullPath = filePath;
     if (!QFile::exists(fullPath)) {
-        fullPath = QString("etc/testScenes/%1.txt").arg(filePath);
+        fullPath = QSanRuntimePaths::assetPath(QString("etc/testScenes/%1.txt").arg(filePath));
     }
 
     if (!QFile::exists(fullPath)) {

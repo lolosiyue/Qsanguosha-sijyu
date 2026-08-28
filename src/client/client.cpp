@@ -1,4 +1,5 @@
 #include "client.h"
+#include "runtime-paths.h"
 #include "settings.h"
 #include "engine.h"
 #include "lua.hpp"
@@ -357,9 +358,7 @@ void Client::replyToServer(CommandType command, const QVariant &arg)
 void Client::handleGameEvent(const QVariant &arg)
 {
 	if(recorder_eventsave){
-		QString path = QDir::currentPath()+"/record";
-		if(!QDir(path).exists()) QDir().mkpath(path);
-		save(path+"/debug.txt");
+		save(QSanRuntimePaths::recordDir()+"/debug.txt");
 	}
 	emit event_received(arg);
 }
@@ -631,9 +630,7 @@ void Client::getCards(const QVariant &arg)
 	}
 	updatePileNum();
 	if(recorder_eventsave){
-		QString path = QDir::currentPath()+"/record";
-		if(!QDir(path).exists()) QDir().mkpath(path);
-		save(path+"/debug.txt");
+		save(QSanRuntimePaths::recordDir()+"/debug.txt");
 	}
 	emit move_cards_got(args[0].toInt(), moves);
 }
@@ -918,9 +915,7 @@ void Client::setStatus(Status status)
 	else
 		_m_roomState.setCurrentCardUseReason(CardUseStruct::CARD_USE_REASON_UNKNOWN);
 	if(recorder_eventsave){
-		QString path = QDir::currentPath()+"/record";
-		if(!QDir(path).exists()) QDir().mkpath(path);
-		save(path+"/debug.txt");
+		save(QSanRuntimePaths::recordDir()+"/debug.txt");
 	}
 	emit status_changed(old_status, status);
 }
@@ -2362,9 +2357,7 @@ void Client::log(const QVariant &log_str)
 {
 	QStringList log;
 	if(recorder_eventsave){
-		QString path = QDir::currentPath()+"/record";
-		if(!QDir(path).exists()) QDir().mkpath(path);
-		save(path+"/debug.txt");
+		save(QSanRuntimePaths::recordDir()+"/debug.txt");
 	}
 	if (JsonUtils::tryParse(log_str,log)&&log.size()>8) {
 		if (log.first().contains("#BasaraReveal"))
