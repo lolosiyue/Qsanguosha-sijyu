@@ -66,6 +66,21 @@ qsan_gui     GUI binary、介面資產、desktop entry、圖示
 `QSAN_BUILD_GUI=OFF` 嘅 server-only 安裝**唔會**帶任何 GUI 資產，亦唔會
 link 任何 GUI Qt library；packaging CI 每次都驗呢兩點。
 
+資料目錄係「有先裝」：`install(DIRECTORY)` 撞到一個唔存在嘅來源目錄會直接
+fatal，而唔係每個 build context 都有齊嘢 —— Docker server image 嘅
+`.dockerignore` 就特登剔走 `lang/`、`qss/`、`skins/`、`ui-script/`，
+`extensions/` 亦係喺 build 入面 fetch 返嚟。所以呢啲目錄收埋喺
+`QSAN_DATA_DIRECTORIES` / `QSAN_GUI_DATA_DIRECTORIES` 後面，逐個
+`if(EXISTS)` 檢查。
+
+「應該有但係冇」唔會靜靜咁溜走：資產清單會照樣列佢做 required，
+`--asset-report` 回 exit 7，package smoke 紅燈。換句話講，缺嘢係喺一個
+講得出係缺乜嘢嘅時刻報，而唔係喺 install 中途炸一句 CMake error。
+
+`lang/` 嘅分類：缺翻譯**唔會** crash（`sgs.GetFileNames()` 對住一個唔存在
+嘅目錄回空 list，dedicated server 一路以嚟就係咁行），但一個顯示內部名嘅
+GUI 對玩家嚟講唔算能用 —— 所以 GUI build 當佢 required，其他情況 optional。
+
 `DESTDIR` 有效（distro packaging 靠佢），`--strip` 令 binary 由 ~420 MB 跌到
 ~35 MB。Debug 同 Release 各自 install 去唔同 prefix，唔會互相污染。
 
