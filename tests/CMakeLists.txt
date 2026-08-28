@@ -242,6 +242,17 @@ set_tests_properties(qsanguosha_ui_startup_smoke_cli_contract PROPERTIES
     LABELS "ui-runner;gui;fast"
 )
 
+# M3:打包契約。呢個 test 只讀 repository,唔會整包,所以每次 CI 都跑得起 ——
+# 真正整包同由成品 smoke 嗰啲喺 linux-package-ci.yml。
+add_test(NAME qsanguosha_packaging_contract
+    COMMAND ${Python3_EXECUTABLE}
+        ${QSAN_TEST_ROOT}/tools/autotest/tests/test_packaging_contract.py
+)
+set_tests_properties(qsanguosha_packaging_contract PROPERTIES
+    WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
+    LABELS "packaging;fast"
+)
+
 add_test(NAME qsanguosha_skill_ui_runner_contract
     COMMAND ${Python3_EXECUTABLE}
         ${QSAN_TEST_ROOT}/tools/autotest/tests/test_skill_ui_runner_contract.py
@@ -265,6 +276,16 @@ target_link_libraries(qsanguosha_cli_tests PRIVATE Qt6::Core Qt6::Network)
 qsan_add_ctest(qsanguosha_server_cli_parser qsanguosha_cli_tests
     LABELS "cli;fast"
 )
+# M3:執行期版面同資產清單。呢個 test 唔 link GUI,因為 resolver 同 manifest
+# 兩樣都住喺 engine —— dedicated server 一樣要靠佢哋搵到 lua/。
+add_executable(qsanguosha_runtime_paths_tests
+    runtime-paths-test.cpp
+)
+qsan_link_engine_test(qsanguosha_runtime_paths_tests)
+qsan_add_ctest(qsanguosha_runtime_paths qsanguosha_runtime_paths_tests
+    LABELS "packaging;fast"
+)
+
 add_executable(qsanguosha_server_logger_tests
     server-logger-test.cpp
     ${QSAN_TEST_ROOT}/src/server/server-logger.cpp

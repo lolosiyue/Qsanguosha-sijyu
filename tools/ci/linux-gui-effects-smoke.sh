@@ -79,17 +79,29 @@ fi
 
 [ -n "$LABEL" ] || LABEL="$PROFILE"
 mkdir -p "$ARTIFACT_DIR"
+# The game now resolves its data directory and chdir()s into it, so a
+# relative report path would land inside the install tree instead of the
+# artifact directory.  Absolutise before handing anything to the binary.
+ARTIFACT_DIR="$(cd "$ARTIFACT_DIR" && pwd)"
+EXECUTABLE="$(cd "$(dirname "$EXECUTABLE")" && pwd)/$(basename "$EXECUTABLE")"
 LOG="$ARTIFACT_DIR/effects-smoke-$LABEL.log"
 REPORT="$ARTIFACT_DIR/effects-smoke-$LABEL.json"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 [ -n "$FIXTURES" ] || FIXTURES="tests/fixtures/effects"
+# Relative fixture paths are relative to the repository, not to the data
+# directory the game chdir()s into.  Resolve them here so the same command line
+# works against a build tree and against an installed/portable/AppImage bundle.
+case "$FIXTURES" in
+    /*) ;;
+    *) FIXTURES="$REPO_ROOT/$FIXTURES" ;;
+esac
 
 # The asset stages are only meaningful with their fixtures present; regenerate
 # them if this is a bundle-only checkout.
-if [ ! -f "$REPO_ROOT/$FIXTURES/animated.gif" ]; then
-    python3 "$SCRIPT_DIR/make-effects-fixtures.py" "$REPO_ROOT/$FIXTURES"
+if [ ! -f "$FIXTURES/animated.gif" ]; then
+    python3 "$SCRIPT_DIR/make-effects-fixtures.py" "$FIXTURES"
 fi
 
 # Qt/Mesa software rendering: the CI runner has no GPU, and pixel output is not

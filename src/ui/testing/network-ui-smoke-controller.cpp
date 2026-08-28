@@ -1,4 +1,5 @@
 #include "network-ui-smoke-controller.h"
+#include "runtime-paths.h"
 
 #include "network-ui-smoke-responder.h"
 
@@ -439,6 +440,10 @@ QJsonObject NetworkUiSmokeController::environmentDetails() const
     details.insert(QStringLiteral("qt_quick_backend"), environmentValue("QT_QUICK_BACKEND"));
     details.insert(QStringLiteral("display"), environmentValue("DISPLAY"));
     details.insert(QStringLiteral("working_directory"), QDir::currentPath());
+    details.insert(QStringLiteral("asset_root"), QSanRuntimePaths::assetRoot());
+    details.insert(QStringLiteral("asset_root_source"),
+        QSanRuntimePaths::sourceName(QSanRuntimePaths::resolution().assetRootSource));
+    details.insert(QStringLiteral("user_data_root"), QSanRuntimePaths::userDataRoot());
     details.insert(QStringLiteral("host_address"), Config.HostAddress);
     details.insert(QStringLiteral("game_mode"), ServerInfo.GameMode);
     details.insert(QStringLiteral("timeout_ms"), m_timeoutMs);

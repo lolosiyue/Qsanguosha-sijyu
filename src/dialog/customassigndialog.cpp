@@ -1,4 +1,5 @@
 #include "customassigndialog.h"
+#include "runtime-paths.h"
 #include "miniscenarios.h"
 #include "skin-bank.h"
 #include "settings.h"
@@ -920,11 +921,15 @@ void CustomAssignDialog::setMoveButtonAvaliable(bool toggled)
 
 void CustomAssignDialog::accept()
 {
-    if (save("etc/customScenes/custom_scenario.txt")) {
+    // 使用者自訂劇本一律存喺使用者可寫目錄:安裝樹/AppImage 唯讀,寫返入去
+    // 只會靜靜咁失敗。
+    const QString customScenario =
+        QSanRuntimePaths::userDataPath(QStringLiteral("etc/customScenes/custom_scenario.txt"));
+    if (save(customScenario)) {
         const Scenario *scene = Sanguosha->getScenario("custom_scenario");
         MiniSceneRule *rule = qobject_cast<MiniSceneRule *>(scene->getRule());
         Q_ASSERT(rule != nullptr);
-        rule->loadSetting("etc/customScenes/custom_scenario.txt");
+        rule->loadSetting(customScenario);
         emit scenario_changed();
         QDialog::accept();
     }
@@ -1159,10 +1164,12 @@ void CustomAssignDialog::checkEndedByPileBox(bool toggled)
 void CustomAssignDialog::load()
 {
     QString filename;
-    if (sender()->objectName() == "default_load") filename = "etc/customScenes/custom_scenario.txt";
+    if (sender()->objectName() == "default_load")
+        filename = QSanRuntimePaths::readablePath(
+            QStringLiteral("etc/customScenes/custom_scenario.txt"));
     else filename = QFileDialog::getOpenFileName(this,
         tr("Open mini scenario settings"),
-        "etc/customScenes",
+        QSanRuntimePaths::customSceneDir(),
         tr("Pure text replay file (*.txt)"));
 
     QFile file(filename);
@@ -1544,7 +1551,7 @@ bool CustomAssignDialog::save(QString path)
     if (path.size() < 1)
         filename = QFileDialog::getSaveFileName(this,
         tr("Save mini scenario settings"),
-        "etc/customScenes/",
+        QSanRuntimePaths::customSceneDir(),
         tr("Pure text replay file (*.txt)"));
 
     QFile file(filename);

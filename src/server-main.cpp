@@ -1,13 +1,18 @@
 #include <QCoreApplication>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTextStream>
 #include <QTimer>
+#include <QVariantMap>
 
 #if defined(Q_OS_UNIX)
 #include <csignal>
 #endif
 
+#include "core/asset-manifest.h"
 #include "core/engine-bootstrap.h"
 #include "core/engine.h"
+#include "core/runtime-paths.h"
 #include "core/settings.h"
 #include "core/version.h"
 #include "server/server-command-line.h"
@@ -184,6 +189,36 @@ int main(int argc, char **argv)
             return ConfigErrorExitCode;
         }
         Config.setValueOverrides(configFile.values);
+    }
+
+    // 執行期版面要喺 engine bootstrap 之前解析:engine 直接 load "lua/config.lua",
+    // 冇一個真正嘅 asset root 佢會喺 constructor 入面 exit(1)。
+    {
+        // --asset-root 已經喺 app.arguments() 入面;喺度只係確認佢通過咗
+        // CLI 驗證先至用,唔會靜靜接受一個空值。
+        QString pathError;
+        if (!QSanRuntimePaths::resolve(app.arguments(), &pathError)) {
+            QTextStream err(stderr);
+            err << pathError << Qt::endl;
+            for (const QString &line : QSanRuntimePaths::resolution().candidates)
+                err << "  tried " << line << Qt::endl;
+            return ConfigErrorExitCode;
+        }
+    }
+
+    if (options.assetReport) {
+        QVariantMap payload;
+        payload.insert(QStringLiteral("schema_version"), 1);
+        payload.insert(QStringLiteral("runtime_paths"), QSanRuntimePaths::describe());
+        const QSanAssetManifest::Report assetReport = QSanAssetManifest::inspect(
+            QString(), options.assetManifest.value_or(QString()));
+        payload.insert(QStringLiteral("assets"), QSanAssetManifest::describe(assetReport));
+        out << QString::fromUtf8(QJsonDocument(QJsonObject::fromVariantMap(payload))
+                                     .toJson(QJsonDocument::Indented));
+        QTextStream err(stderr);
+        for (const QString &line : QSanAssetManifest::diagnostics(assetReport))
+            err << line << Qt::endl;
+        return assetReport.complete() ? 0 : 7;
     }
 
     const bool startsServer = !options.listGameModes

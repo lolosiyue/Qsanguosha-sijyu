@@ -42,6 +42,7 @@ const char *const MultimediaSmokeReport::FlagMultimediaSmoke = "--multimedia-smo
 const char *const MultimediaSmokeReport::FlagReportPath = "--multimedia-report";
 const char *const MultimediaSmokeReport::FlagTimeoutMs = "--multimedia-timeout-ms";
 const char *const MultimediaSmokeReport::FlagVideoSource = "--multimedia-video-source";
+const char *const MultimediaSmokeReport::FlagFixtureRoot = "--multimedia-fixtures";
 const char *const MultimediaSmokeReport::ReasonOk = "ok";
 const char *const MultimediaSmokeReport::ReasonStageFailed = "stage_failed";
 const char *const MultimediaSmokeReport::ReasonTimeout = "timeout";
@@ -167,6 +168,13 @@ QString MultimediaSmokeReport::parseVideoSource(const QStringList &arguments)
 {
     bool found = false;
     const QString value = flagValue(arguments, QLatin1String(FlagVideoSource), &found);
+    return found ? value : QString();
+}
+
+QString MultimediaSmokeReport::parseFixtureRoot(const QStringList &arguments)
+{
+    bool found = false;
+    const QString value = flagValue(arguments, QLatin1String(FlagFixtureRoot), &found);
     return found ? value : QString();
 }
 
