@@ -1929,8 +1929,11 @@ void Client::askForChoice(const QVariant &ask_str)
 	request.type = InteractionType::Choice;
 	request.command = S_COMMAND_MULTIPLE_CHOICE;
 	request.skillName = skill_name;
+	// 連空字串都照收:server 送嘅 option 串有可能有多餘嘅 "+",split 出嚟嗰個
+	// 空項喺 dialog 度一樣會變成一個撳得嘅掣(objectName 就係空字串),而 server
+	// 收得起。core 唔可以攔一個 desktop 產生得到嘅答案。
 	foreach (const QString &option, options) {
-		if (!option.isEmpty() && !request.hasOption(option))
+		if (!request.hasOption(option))
 			request.options << InteractionOption(option);
 	}
 	// except_options 喺 dialog 度係「睇得到、撳唔到」嘅掣
