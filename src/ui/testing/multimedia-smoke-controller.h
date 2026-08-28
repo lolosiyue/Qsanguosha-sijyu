@@ -74,6 +74,7 @@ private:
     int m_timeoutMs = MultimediaSmokeReport::defaultTimeoutMs();
     QString m_reportPath;
     QString m_videoSource;
+    QString m_fixtureRoot;
 
     QPointer<MainWindow> m_mainWindow;
     QTimer *m_timeoutTimer = nullptr;

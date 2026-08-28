@@ -82,6 +82,11 @@ fi
 
 [ -n "$LABEL" ] || LABEL="$PLATFORM"
 mkdir -p "$ARTIFACT_DIR"
+# The game now resolves its data directory and chdir()s into it, so a
+# relative report path would land inside the install tree instead of the
+# artifact directory.  Absolutise before handing anything to the binary.
+ARTIFACT_DIR="$(cd "$ARTIFACT_DIR" && pwd)"
+EXECUTABLE="$(cd "$(dirname "$EXECUTABLE")" && pwd)/$(basename "$EXECUTABLE")"
 LOG="$ARTIFACT_DIR/multimedia-smoke-$LABEL.log"
 REPORT="$ARTIFACT_DIR/multimedia-smoke-$LABEL.json"
 DIAG="$ARTIFACT_DIR/multimedia-plugins-$LABEL.txt"
@@ -92,6 +97,15 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # them if this is a bundle-only checkout.
 if [ ! -f "$REPO_ROOT/tests/fixtures/media/button-down.wav" ]; then
     python3 "$SCRIPT_DIR/make-media-fixtures.py" "$REPO_ROOT/tests/fixtures/media"
+fi
+
+# Same reason as the artifact directory: a relative --video-source would be
+# resolved against the data directory the game chdir()s into, not the repository.
+if [ -n "${VIDEO_SOURCE:-}" ]; then
+    case "$VIDEO_SOURCE" in
+        /*) ;;
+        *) VIDEO_SOURCE="$REPO_ROOT/$VIDEO_SOURCE" ;;
+    esac
 fi
 
 # Qt/Mesa software rendering: the CI runner has no GPU, and pixel output is not
@@ -132,6 +146,7 @@ APP_ARGS=(
     --multimedia-timeout-ms "$TIMEOUT_MS"
     --multimedia-report "$REPORT"
 )
+APP_ARGS+=(--multimedia-fixtures "$REPO_ROOT/tests/fixtures/media")
 [ -n "$VIDEO_SOURCE" ] && APP_ARGS+=(--multimedia-video-source "$VIDEO_SOURCE")
 
 echo "== Linux GUI multimedia smoke ($LABEL) =="

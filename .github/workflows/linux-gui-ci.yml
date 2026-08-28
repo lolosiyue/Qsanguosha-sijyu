@@ -134,6 +134,23 @@ jobs:
           print("local response UI capabilities OK")
           PY
 
+      # 缺資產診斷（M3）。clean checkout 冇美術／音訊／首頁圖示，所以下面
+      # 每個 GUI job 都會刷一批 "QML Image: Cannot open" 同 "could not be
+      # loaded" warning。呢個步驟喺佢哋出現之前先講清楚「邊啲係預期缺失」，
+      # 令嗰批 warning 由查極都唔知係咩，變成一份對得上嘅清單。
+      #
+      # 資產清單由 CMake 產生喺 build directory（未 install，所以要明確指
+      # 一份）。呢步唔係 gate：缺 optional 資產係正常，只有缺 required 先
+      # 至代表個 tree 壞咗，嗰個由 packaging CI 把關。
+      - name: Declare which optional assets are absent
+        continue-on-error: true
+        run: |
+          mkdir -p gui-runtime-artifacts
+          ./relwithdebinfo/QSanguosha --asset-report \
+            --asset-manifest build/linux-gui-gcc/assets-manifest.json \
+            >gui-runtime-artifacts/asset-report.json || true
+          echo "(a non-zero exit above only means optional content is absent, which is expected here)"
+
       # ---------------------------------------------------------------------
       # Linux GUI M1：真正的 GUI runtime startup
       # ---------------------------------------------------------------------

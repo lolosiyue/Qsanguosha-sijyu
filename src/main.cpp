@@ -23,6 +23,13 @@
 #include "android_assets.h"
 #endif
 
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QVariantMap>
+
+#include "asset-manifest.h"
+#include "runtime-paths.h"
+
 #include "crashhandler.h"
 #include "effects/effects-policy.h"
 #include "effects/effects-profile.h"
@@ -105,9 +112,12 @@ int main(int argc, char *argv[]) {
     // class（QMovie／SpineGlItem／PixmapAnimation）都只喺 QApplication 之下存在。
     const bool effectsSmoke = EffectsSmokeController::isRequested(appArgs);
 
+    // --asset-report 係純診斷輸出,唔應該要求有 display:同 -server 一樣行
+    // QCoreApplication path。
     const bool headlessApp = !uiStartupSmoke && !multimediaSmoke && !effectsSmoke
         && (appArgs.contains("-server")
             || appArgs.contains("--headless")
+            || appArgs.contains("--asset-report")
             || (hasTestScenarioArg && appArgs.contains("-h")));
 
     // 打錯 profile 名唔可以靜靜當冇指定 —— CI 會以為跑咗 none 但其實跑緊 full。
@@ -131,6 +141,55 @@ int main(int argc, char *argv[]) {
         new QApplication(argc, argv);
         // 主頁自訂 contentItem／indicator；Windows 原生樣式不支援會報錯並閃爍
         QQuickStyle::setStyle(QStringLiteral("Basic"));
+    }
+
+    // 執行期版面：一定要喺任何 smoke controller、engine、資產讀取之前解析。
+    // 舊有嘅「CWD 有冇 lua/config.lua」平台 #ifdef 已經由呢個 resolver 取代，
+    // 佢會揀出真正嘅 asset root（安裝樹／可攜包／開發樹）再 setCurrent()，
+    // 令由任意 CWD 啟動都行得到。相對路徑嘅 report／log 參數因此係相對
+    // asset root，runner 一律傳絕對路徑。
+    {
+        QString pathError;
+        if (!QSanRuntimePaths::resolve(qApp->arguments(), &pathError)) {
+            fprintf(stderr, "%s\n", qPrintable(pathError));
+            for (const QString &line : QSanRuntimePaths::resolution().candidates)
+                fprintf(stderr, "  tried %s\n", qPrintable(line));
+            Server::writeHeadlessLog("ERROR: " + pathError);
+            if (uiStartupSmoke)
+                exitStartupSmoke(UiStartupSmokeController::abortEarly(
+                    QStringLiteral("runtime_paths"), pathError, 6));
+            if (multimediaSmoke)
+                return MultimediaSmokeController::abortEarly(
+                    QStringLiteral("runtime_paths"), pathError, 6);
+            if (effectsSmoke)
+                return EffectsSmokeController::abortEarly(
+                    QStringLiteral("runtime_paths"), pathError, 6);
+            return 6;
+        }
+    }
+
+    // --asset-report：印出解析結果同資產清單狀態就收工。愛好者裝完之後
+    // 「點解冇畫面／點解開唔到」第一步就係跑呢個，package smoke 亦用佢。
+    if (appArgs.contains(QStringLiteral("--asset-report"))) {
+        QVariantMap payload;
+        payload.insert(QStringLiteral("schema_version"), 1);
+        payload.insert(QStringLiteral("runtime_paths"), QSanRuntimePaths::describe());
+        // --asset-manifest 令未安裝嘅 build tree（開發機同 CI）都答到
+        // 「邊啲資產係預期缺失」；manifest 由 CMake 產生喺 build directory。
+        QString manifestOverride;
+        const int manifestIndex = appArgs.indexOf(QStringLiteral("--asset-manifest"));
+        if (manifestIndex >= 0 && manifestIndex + 1 < appArgs.size())
+            manifestOverride = appArgs.at(manifestIndex + 1);
+        const QSanAssetManifest::Report assetReport =
+            QSanAssetManifest::inspect(QString(), manifestOverride);
+        payload.insert(QStringLiteral("assets"), QSanAssetManifest::describe(assetReport));
+        const QByteArray json = QJsonDocument(QJsonObject::fromVariantMap(payload))
+                                    .toJson(QJsonDocument::Indented);
+        fwrite(json.constData(), 1, json.size(), stdout);
+        for (const QString &line : QSanAssetManifest::diagnostics(assetReport))
+            fprintf(stderr, "%s\n", qPrintable(line));
+        fflush(nullptr);
+        return assetReport.complete() ? 0 : 7;
     }
 
     // startup smoke：QApplication 已經建立，喺度接手 Qt message hook 並登記
@@ -202,23 +261,16 @@ int main(int argc, char *argv[]) {
     }
 #endif
 
-#ifdef Q_OS_MAC
-#ifdef QT_NO_DEBUG
-    QDir::setCurrent(qApp->applicationDirPath());
-#endif
-#endif
-
-#ifdef Q_OS_LINUX
-    QDir dir("lua");
-    if (dir.exists() && (dir.exists("config.lua"))) {
-        // things look good and use current dir
-    } else
-        QDir::setCurrent(qApp->applicationFilePath().replace("games", "share"));
-#endif
-
+    // 翻譯:安裝樹擺喺 share/qsanguosha/translations/,舊有部署擺喺 asset root。
+    // 兩邊都試,唔會因為版面改咗就靜靜變返英文。
     QTranslator qt_translator, translator;
-    qt_translator.load("qt_zh_CN.qm");
-    translator.load("sanguosha.qm");
+    const auto loadTranslation = [](QTranslator &target, const QString &fileName) {
+        if (target.load(QSanRuntimePaths::assetPath(QStringLiteral("translations/") + fileName)))
+            return;
+        target.load(QSanRuntimePaths::assetPath(fileName));
+    };
+    loadTranslation(qt_translator, QStringLiteral("qt_zh_CN.qm"));
+    loadTranslation(translator, QStringLiteral("sanguosha.qm"));
 
     qApp->installTranslator(&qt_translator);
     qApp->installTranslator(&translator);

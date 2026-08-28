@@ -1,0 +1,338 @@
+name: Linux package CI
+
+# Linux GUI M3:build the shipping artifacts and smoke-test the artifacts
+# themselves.
+#
+# 呢個 workflow 同 linux-gui-ci.yml 唔同層:嗰邊驗嘅係 build tree 入面嘅
+# binary,呢邊驗嘅係真正落到玩家手上嗰個檔案。一個 build-tree binary 靠絕對
+# RPATH 搵到 Qt、靠 repository 搵到資產,所以佢可以完全通過 M0–M2B 但個包
+# 一放上去就開唔到 —— 呢個差別就係 M3 存在嘅原因。
+#
+# 刻意唔喺每次改 source 都跑:整包 + 全套 smoke 要成半個鐘。改動 packaging
+# 相關路徑、開 PR 去 debug／main、打 tag、或者手動 dispatch 先至跑。
+#
+# GUI 對局(gui_network_smoke.py)一樣唔喺呢度跑:runner 冇美術／音訊資產,
+# 缺資產打完一局 client 同 server 會一齊 SIGSEGV,同本 PR 無關。呢個決定同
+# 本機驗證做法見 AGENTS.md「GUI runtime 唔入 CI」。
+
+on:
+  pull_request:
+    branches:
+      - main
+      - debug
+    paths:
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'packaging/**'
+      - 'tools/packaging/**'
+      - 'tools/ci/linux-package-smoke.sh'
+      - 'resource/icon/linux/**'
+      - 'src/core/runtime-paths.*'
+      - 'src/core/asset-manifest.*'
+      - '.github/workflows/linux-package-ci.yml'
+  push:
+    branches:
+      - main
+      - debug
+    paths:
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'packaging/**'
+      - 'tools/packaging/**'
+      - 'tools/ci/linux-package-smoke.sh'
+      - 'resource/icon/linux/**'
+      - 'src/core/runtime-paths.*'
+      - 'src/core/asset-manifest.*'
+      - '.github/workflows/linux-package-ci.yml'
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-package-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: 2
+  # AppImage type2 runtime。upstream 只有一個 rolling "continuous" release,
+  # 所以呢度釘住實測過嗰個 build 嘅 sha256;佢重新 build 之後呢個 job 會即刻
+  # 紅燈,要人手驗過新 runtime 再更新呢個值 —— 唔可以靜靜咁食一個未驗過嘅
+  # 二進位入包。
+  QSAN_APPIMAGE_RUNTIME_SHA256: 1cc49bcf1e2ccd593c379adb17c9f85a36d619088296504de95b1d06215aebbf
+
+jobs:
+  package:
+    name: Linux package (build, audit, smoke)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install Qt 6.11.1
+        uses: jurplel/install-qt-action/action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: '6.11.1'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          modules: 'qt5compat qtmultimedia'
+          cache: true
+          cache-key-prefix: qt-ubuntu-24.04-x64-6.11.1-linux_gcc_64-qt5compat-qtmultimedia-aqtmaster16db45a7-v1
+          aqtsource: 'git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e'
+
+      - name: Install build and packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            cmake \
+            desktop-file-utils \
+            g++ \
+            libfreetype-dev \
+            libgl-dev \
+            ninja-build \
+            python3-venv \
+            squashfs-tools \
+            zstd
+
+      - name: Install Linux GUI runtime dependencies
+        run: |
+          sudo apt-get install --no-install-recommends -y \
+            fonts-dejavu-core \
+            libasound2t64 \
+            libegl1 \
+            libgl1 \
+            libglx-mesa0 \
+            libpulse0 \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-shape0 \
+            libxcb-sync1 \
+            libxcb-xfixes0 \
+            libxcb-xinerama0 \
+            libxcb-xkb1 \
+            libxkbcommon-x11-0 \
+            xauth \
+            xvfb
+
+      - name: Install pinned SWIG
+        run: |
+          python3 -m venv "$RUNNER_TEMP/qsanguosha-ci-venv"
+          "$RUNNER_TEMP/qsanguosha-ci-venv/bin/python" -m pip install \
+            --disable-pip-version-check \
+            --require-hashes \
+            -r tools/ci/requirements.txt
+          echo "$RUNNER_TEMP/qsanguosha-ci-venv/bin" >> "$GITHUB_PATH"
+
+      # extensions/ 同 lua/ai/ 係 required assets:冇佢哋個包裝得成但開唔到局。
+      # 所以 fetch 失敗要喺呢度紅燈,而唔係出一個壞包。
+      - name: Fetch Lua AI and extensions
+        run: bash tools/ci/fetch-extensions.sh "$GITHUB_WORKSPACE"
+
+      # ------------------------------------------------------------------
+      # Contract checks that need no build
+      # ------------------------------------------------------------------
+      - name: Packaging contract tests
+        run: python3 tools/autotest/tests/test_packaging_contract.py
+
+      - name: Validate the desktop entry
+        run: |
+          desktop-file-validate packaging/linux/qsanguosha.desktop
+          echo "desktop-file-validate: OK"
+          python3 tools/packaging/validate-desktop-entry.py packaging/linux/qsanguosha.desktop
+
+      # ------------------------------------------------------------------
+      # Build and package
+      # ------------------------------------------------------------------
+      - name: Configure the Release GUI build
+        run: |
+          cmake -S . -B build/package -G Ninja \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_C_COMPILER=gcc \
+            -DCMAKE_CXX_COMPILER=g++ \
+            -DQSAN_BUILD_GUI=ON \
+            -DQSAN_BUILD_SERVER=ON
+
+      - name: Build QSanguosha and the dedicated server
+        run: cmake --build build/package --target QSanguosha qsanguosha_server --parallel
+
+      - name: Build the portable archive and the AppImage
+        run: |
+          python3 tools/packaging/build-linux-packages.py \
+            --build-dir build/package \
+            --source-dir . \
+            --qt-prefix "$QT_ROOT_DIR" \
+            --qt-version 6.11.1 \
+            --output-dir dist \
+            --work-dir "$RUNNER_TEMP/package-work" \
+            --appimage-runtime-sha256 "$QSAN_APPIMAGE_RUNTIME_SHA256" \
+            --forbid "$GITHUB_WORKSPACE" \
+            --forbid "$RUNNER_TEMP" \
+            --forbid "$QT_ROOT_DIR" \
+            --forbid "$HOME"
+
+      - name: Report the install manifest
+        run: |
+          cmake --install build/package --prefix "$RUNNER_TEMP/manifest-check" --strip \
+            >"$RUNNER_TEMP/install-manifest.txt"
+          grep -c '^-- Installing:' "$RUNNER_TEMP/install-manifest.txt"
+          cp build/package/install_manifest.txt dist/ 2>/dev/null || true
+          cp "$RUNNER_TEMP/install-manifest.txt" dist/install-log.txt
+
+      - name: Show the release metadata
+        run: |
+          cat dist/build-info.json
+          cat dist/SHA256SUMS
+
+      # ------------------------------------------------------------------
+      # Verify the artifacts, not the build tree
+      # ------------------------------------------------------------------
+      - name: Extract the portable archive outside the repository
+        run: |
+          # A directory with a space in the name is the classic packaging bug;
+          # so is assuming the archive is unpacked next to its build.
+          mkdir -p "$RUNNER_TEMP/portable check"
+          tar --zstd -xf dist/QSanguosha-*-linux-x86_64.tar.zst \
+            -C "$RUNNER_TEMP/portable check"
+          ls "$RUNNER_TEMP/portable check"
+
+      - name: Audit the extracted portable bundle
+        run: |
+          root=$(find "$RUNNER_TEMP/portable check" -maxdepth 1 -mindepth 1 -type d | head -n 1)
+          python3 tools/packaging/audit-bundle.py "$root" \
+            --report dist/audit-portable.json \
+            --forbid "$GITHUB_WORKSPACE" \
+            --forbid "$RUNNER_TEMP" \
+            --forbid "$QT_ROOT_DIR" \
+            --forbid "$HOME"
+
+      - name: Portable bundle package smoke
+        run: |
+          root=$(find "$RUNNER_TEMP/portable check" -maxdepth 1 -mindepth 1 -type d | head -n 1)
+          bash tools/ci/linux-package-smoke.sh "$root" package-artifacts \
+            --kind portable --label portable --platform offscreen --no-xvfb \
+            --process-timeout 300
+
+      # xcb 係真正開 native window 嗰條路,offscreen 唔可以當作唯一證據。
+      - name: Portable bundle startup smoke under Xvfb (xcb)
+        run: |
+          root=$(find "$RUNNER_TEMP/portable check" -maxdepth 1 -mindepth 1 -type d | head -n 1)
+          bash tools/ci/linux-gui-startup-smoke.sh "$root/bin/QSanguosha" package-artifacts \
+            --platform xcb --label portable-xvfb-xcb \
+            --timeout-ms 60000 --process-timeout 300
+
+      # CI container 冇 FUSE,所以 AppImage 要用佢自己嘅 --appimage-extract。
+      # 呢個亦係 AppImage 用家喺冇 libfuse2 嘅機上會行嘅路徑。
+      - name: Extract the AppImage without FUSE
+        run: |
+          mkdir -p "$RUNNER_TEMP/appimage check"
+          cp dist/QSanguosha-*-x86_64.AppImage "$RUNNER_TEMP/appimage check/"
+          cd "$RUNNER_TEMP/appimage check"
+          ./QSanguosha-*-x86_64.AppImage --appimage-extract >/dev/null
+          ls squashfs-root
+
+      - name: Audit the extracted AppImage
+        run: |
+          python3 tools/packaging/audit-bundle.py "$RUNNER_TEMP/appimage check/squashfs-root" \
+            --report dist/audit-appimage.json \
+            --forbid "$GITHUB_WORKSPACE" \
+            --forbid "$RUNNER_TEMP" \
+            --forbid "$QT_ROOT_DIR" \
+            --forbid "$HOME"
+
+      - name: AppImage package smoke
+        run: |
+          bash tools/ci/linux-package-smoke.sh \
+            "$RUNNER_TEMP/appimage check/squashfs-root" package-artifacts \
+            --kind appimage --label appimage --platform offscreen --no-xvfb \
+            --process-timeout 300
+
+      - name: AppImage startup smoke under Xvfb (xcb)
+        run: |
+          bash tools/ci/linux-gui-startup-smoke.sh \
+            "$RUNNER_TEMP/appimage check/squashfs-root/usr/bin/QSanguosha" package-artifacts \
+            --platform xcb --label appimage-xvfb-xcb \
+            --timeout-ms 60000 --process-timeout 300
+
+      - name: Validate the installed desktop entry and icons
+        run: |
+          root=$(find "$RUNNER_TEMP/portable check" -maxdepth 1 -mindepth 1 -type d | head -n 1)
+          desktop-file-validate "$root/share/applications/qsanguosha.desktop"
+          python3 tools/packaging/validate-desktop-entry.py \
+            "$root/share/applications/qsanguosha.desktop"
+          for size in 16 24 32 48 64 128 256 512; do
+            icon="$root/share/icons/hicolor/${size}x${size}/apps/qsanguosha.png"
+            [ -f "$icon" ] || { echo "missing icon: $icon" >&2; exit 1; }
+          done
+          [ -f "$root/share/icons/hicolor/scalable/apps/qsanguosha.svg" ] \
+            || { echo "missing scalable icon" >&2; exit 1; }
+          echo "desktop integration OK"
+
+      # ------------------------------------------------------------------
+      # Server packaging must not regress
+      # ------------------------------------------------------------------
+      - name: A server-only install pulls in no GUI Qt and no GUI assets
+        run: |
+          cmake -S . -B build/server-only -G Ninja \
+            -DBUILD_TESTING=OFF \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DQSAN_BUILD_GUI=OFF \
+            -DQSAN_BUILD_SERVER=ON
+          cmake --build build/server-only --target qsanguosha_server --parallel
+          cmake --install build/server-only --prefix "$RUNNER_TEMP/server-only" --strip \
+            >/dev/null
+          test ! -d "$RUNNER_TEMP/server-only/share/applications"
+          test ! -d "$RUNNER_TEMP/server-only/share/icons"
+          test ! -d "$RUNNER_TEMP/server-only/share/qsanguosha/skins"
+          test -f "$RUNNER_TEMP/server-only/lib/systemd/system/qsanguosha-server.service"
+          if ldd "$RUNNER_TEMP/server-only/bin/qsanguosha_server" \
+              | grep -E 'libQt6(Gui|Widgets|Quick|Qml|Multimedia)'; then
+            echo "the server-only build pulled in GUI Qt libraries" >&2
+            exit 1
+          fi
+          ( cd / && "$RUNNER_TEMP/server-only/bin/qsanguosha_server" --asset-report ) \
+            >"$RUNNER_TEMP/server-only-assets.json"
+          echo "server-only install OK"
+
+      # DESTDIR 係 distro packaging 嘅入口(.deb/.rpm 全部靠佢)。壞咗嘅話
+      # downstream packaging 會即刻死,所以喺度守住。
+      - name: The install tree honours DESTDIR
+        run: |
+          DESTDIR="$RUNNER_TEMP/destdir" cmake --install build/package --prefix /usr --strip \
+            >/dev/null
+          test -x "$RUNNER_TEMP/destdir/usr/bin/QSanguosha"
+          test -f "$RUNNER_TEMP/destdir/usr/share/qsanguosha/lua/config.lua"
+          test -f "$RUNNER_TEMP/destdir/usr/share/applications/qsanguosha.desktop"
+          echo "DESTDIR install OK"
+
+      - name: Upload the release artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-packages
+          path: |
+            dist/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload the package smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-package-smoke
+          path: |
+            package-artifacts/
+          if-no-files-found: warn
+          retention-days: 7

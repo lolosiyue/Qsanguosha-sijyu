@@ -1,4 +1,5 @@
 #include "multimedia-smoke-controller.h"
+#include "runtime-paths.h"
 
 #include "audio.h"
 #include "audio-backend.h"
@@ -116,8 +117,12 @@ bool MultimediaSmokeController::isRequested(const QStringList &arguments)
 
 QString MultimediaSmokeController::fixturePath(const QString &name)
 {
-    return QDir::current().absoluteFilePath(
-        QStringLiteral("tests/fixtures/media/%1").arg(name));
+    // 預設維持舊行為（相對 CWD 的 tests/fixtures/media）；--multimedia-fixtures
+    // 係畀 package smoke 用，因為個陣 CWD 係 bundle 入面嘅 asset root。
+    const QString root = s_active != nullptr && !s_active->m_fixtureRoot.isEmpty()
+        ? s_active->m_fixtureRoot
+        : QDir::current().absoluteFilePath(QStringLiteral("tests/fixtures/media"));
+    return QDir(root).absoluteFilePath(name);
 }
 
 bool MultimediaSmokeController::begin(const QStringList &arguments, int *exitCode)
@@ -150,6 +155,7 @@ bool MultimediaSmokeController::begin(const QStringList &arguments, int *exitCod
     }
     controller->m_reportPath = MultimediaSmokeReport::parseReportPath(arguments);
     controller->m_videoSource = MultimediaSmokeReport::parseVideoSource(arguments);
+    controller->m_fixtureRoot = MultimediaSmokeReport::parseFixtureRoot(arguments);
 
     if (!qobject_cast<QApplication *>(qApp)) {
         controller->finish(false, QStringLiteral("application"),
@@ -203,6 +209,10 @@ QJsonObject MultimediaSmokeController::environmentDetails() const
         QStringLiteral(QSAN_AUDIO_BACKEND_NAME));
     details.insert(QStringLiteral("forced_video_source"), m_videoSource);
     details.insert(QStringLiteral("working_directory"), QDir::currentPath());
+    details.insert(QStringLiteral("asset_root"), QSanRuntimePaths::assetRoot());
+    details.insert(QStringLiteral("asset_root_source"),
+        QSanRuntimePaths::sourceName(QSanRuntimePaths::resolution().assetRootSource));
+    details.insert(QStringLiteral("user_data_root"), QSanRuntimePaths::userDataRoot());
     details.insert(QStringLiteral("timeout_ms"), m_timeoutMs);
     return details;
 }

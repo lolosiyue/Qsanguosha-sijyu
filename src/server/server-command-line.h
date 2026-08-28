@@ -27,6 +27,9 @@ struct ServerCommandLineOptions
     std::optional<QString> logLevel;
     std::optional<QString> logFile;
     std::optional<QString> logFormat;
+    std::optional<QString> assetRoot;
+    std::optional<QString> assetManifest;
+    bool assetReport = false;
 };
 
 struct ServerCommandLineResult

@@ -2,6 +2,7 @@
 #define HEROSKINCONTAINER_H
 
 #include "engine.h"
+#include "runtime-paths.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -85,7 +86,7 @@ public:
             }
             roots << path;
         };
-        add(QDir::currentPath());
+        add(QSanRuntimePaths::assetRoot());
         add(QCoreApplication::applicationDirPath());
         add(QDir(QCoreApplication::applicationDirPath()).absoluteFilePath(QStringLiteral("..")));
         return roots;
