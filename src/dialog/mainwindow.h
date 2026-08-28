@@ -59,6 +59,9 @@ public:
     bool hasHomeSceneError() const;
     QString homeSceneError() const;
     QQuickWidget *homeSceneView() const;
+    // M2B-A multimedia smoke 的觀測點：影片背景的結果狀態由 HomeController 持有，
+    // 呢度只係將已有的 object 公開出嚟，唔會另外複製一次首頁載入流程。
+    HomeController *homeSceneController() const;
 
 signals:
     void homeSceneReady();

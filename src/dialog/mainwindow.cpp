@@ -205,6 +205,11 @@ QQuickWidget *MainWindow::homeSceneView() const
 	return homeView;
 }
 
+HomeController *MainWindow::homeSceneController() const
+{
+	return homeController;
+}
+
 void MainWindow::reloadHomePage()
 {
 	if (pageStack->currentWidget() != homeView)
@@ -1102,6 +1107,9 @@ void MainWindow::on_actionAbout_fmod_triggered()
 	content.append(tr("Official site: <a href='%1' style = \"color:#0072c1; \">%1</a> <br/>").arg(address));
 
 #ifdef AUDIO_SUPPORT
+	// Linux 唔會連 FMOD：呢個對話框而家報告實際生效嘅 backend，否則喺 Qt
+	// backend 上面會顯示一個同 FMOD 無關嘅版本號，睇落好似 FMOD 真係載咗。
+	content.append(tr("Audio backend in use: %1 <br/>").arg(Audio::backendName()));
 	content.append(tr("Current versionn %1 <br/>").arg(Audio::getVersion()));
 #endif
 

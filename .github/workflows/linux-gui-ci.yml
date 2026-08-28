@@ -30,7 +30,7 @@ env:
   CMAKE_BUILD_PARALLEL_LEVEL: 2
 
 jobs:
-  # 分層:compile -> M1 startup -> M2 network 2p -> M2 network 5p。
+  # 分層:compile -> M1 startup -> M2 network 2p -> M2 network 5p -> M2B-A multimedia。
   # 後面的 job 用 artifact 收下前面砌好的 binary 與 runtime Lua 內容,唔重複 build,
   # 亦唔會因為重新 fetch extensions 而換咗內容 — 跑網絡局的就係編譯 job 驗過的
   # 同一份檔案。
@@ -260,6 +260,7 @@ jobs:
             relwithdebinfo/qsanguosha_server
             lua/
             extensions/
+            tests/fixtures/media/
             build-provenance.txt
           if-no-files-found: error
           retention-days: 3
@@ -475,6 +476,145 @@ jobs:
           name: linux-gui-m2-network-05p
           path: |
             gui-network-artifacts/
+            build-provenance.txt
+          if-no-files-found: warn
+          retention-days: 7
+
+  # ---------------------------------------------------------------------
+  # Linux GUI M2B-A:Qt multimedia audio 同影片背景
+  # ---------------------------------------------------------------------
+  #
+  # 呢個 job 唔會、亦唔應該要求真係聽到聲:GitHub runner 冇實體音訊裝置。
+  # 通過條件係「backend 揀啱、media source 收得落、缺檔案／缺裝置有降級、
+  # 影片路徑有明確分類、收得乾淨、冇 crash／hang」。
+  gui-multimedia:
+    name: Linux GUI M2B-A multimedia (Qt audio + video fallback)
+    needs: gui-compile
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install Qt 6.11.1
+        uses: jurplel/install-qt-action/action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: '6.11.1'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          modules: 'qt5compat qtmultimedia'
+          cache: true
+          cache-key-prefix: qt-ubuntu-24.04-x64-6.11.1-linux_gcc_64-qt5compat-qtmultimedia-aqtmaster16db45a7-v1
+          aqtsource: 'git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e'
+
+      # 同 M1／M2 一樣的 runtime library,再加 Qt Multimedia 的 ffmpeg 後端會
+      # dlopen 的 ALSA／PulseAudio client library。裝咗唔代表有音效卡 ——
+      # runner 依然冇 /dev/snd,呢個 job 亦唔會要求有。
+      - name: Install Linux GUI runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            alsa-utils \
+            fonts-dejavu-core \
+            libasound2t64 \
+            libegl1 \
+            libgl1 \
+            libglx-mesa0 \
+            libpulse0 \
+            libxcb-cursor0 \
+            libxcb-icccm4 \
+            libxcb-image0 \
+            libxcb-keysyms1 \
+            libxcb-randr0 \
+            libxcb-render-util0 \
+            libxcb-shape0 \
+            libxcb-sync1 \
+            libxcb-xfixes0 \
+            libxcb-xinerama0 \
+            libxcb-xkb1 \
+            libxkbcommon-x11-0 \
+            xauth \
+            xvfb
+
+      - name: Download the Linux GUI runtime bundle
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v7.0.0
+        with:
+          name: linux-gui-runtime-bundle
+
+      - name: Restore executable bits and report provenance
+        run: |
+          chmod +x relwithdebinfo/QSanguosha relwithdebinfo/qsanguosha_server
+          cat build-provenance.txt
+          sha256sum relwithdebinfo/QSanguosha
+
+      # 主驗證:Xvfb + xcb + software renderer。--expect-backend qt 令
+      # 「Linux 靜靜地退返 null backend」變成失敗,而唔係一個綠色但冇意義的 job。
+      - name: Linux GUI M2B-A multimedia smoke (Xvfb, xcb)
+        run: |
+          bash tools/ci/linux-gui-multimedia-smoke.sh \
+            ./relwithdebinfo/QSanguosha \
+            gui-multimedia-artifacts \
+            --platform xcb \
+            --label xvfb-xcb \
+            --expect-backend qt \
+            --expect-video-reason not_requested \
+            --timeout-ms 60000 \
+            --process-timeout 150
+
+      # 影片降級路徑:特登指一個唔存在的 .mp4 做首頁背景,要求 GUI 分類成
+      # asset_missing 並且真係換返靜態背景,而唔係啟動唔到。
+      - name: Video background falls back to a static backdrop
+        run: |
+          bash tools/ci/linux-gui-multimedia-smoke.sh \
+            ./relwithdebinfo/QSanguosha \
+            gui-multimedia-artifacts \
+            --platform xcb \
+            --label video-missing \
+            --expect-backend qt \
+            --video-source tests/fixtures/media/no-such-clip.mp4 \
+            --expect-video-reason asset_missing \
+            --timeout-ms 60000 \
+            --process-timeout 150
+
+      # 次要 smoke:完全冇 X server(offscreen)亦要行得完,方便日後 container。
+      - name: Linux GUI M2B-A multimedia smoke (offscreen, secondary)
+        run: |
+          bash tools/ci/linux-gui-multimedia-smoke.sh \
+            ./relwithdebinfo/QSanguosha \
+            gui-multimedia-artifacts \
+            --platform offscreen \
+            --label offscreen \
+            --no-xvfb \
+            --expect-backend qt \
+            --timeout-ms 60000 \
+            --process-timeout 150
+
+      # 負向契約:app 內部 timeout 一定要回非零 exit code 同 timeout result marker,
+      # 而唔係靜靜掛住等 runner 斬 —— 卡死嘅 media decoder 正正就係咁死。
+      - name: Multimedia smoke timeout contract
+        run: |
+          bash tools/ci/linux-gui-multimedia-smoke.sh \
+            ./relwithdebinfo/QSanguosha \
+            gui-multimedia-artifacts \
+            --platform offscreen \
+            --label timeout-contract \
+            --no-xvfb \
+            --timeout-ms 100 \
+            --process-timeout 150 \
+            --expect fail \
+            --expect-reason timeout
+
+      - name: Upload M2B-A multimedia artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-gui-m2b-multimedia
+          path: |
+            gui-multimedia-artifacts/
             build-provenance.txt
           if-no-files-found: warn
           retention-days: 7
