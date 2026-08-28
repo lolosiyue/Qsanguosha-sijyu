@@ -153,25 +153,6 @@ def scan_qml_imports(qt_prefix: pathlib.Path, roots: list[pathlib.Path]) -> list
     return sorted(set(modules))
 
 
-def copy_tree_filtered(source: pathlib.Path, destination: pathlib.Path) -> list[pathlib.Path]:
-    """Copy a QML module directory, leaving development files behind."""
-    copied: list[pathlib.Path] = []
-    for item in sorted(source.rglob("*")):
-        if item.is_dir():
-            if item.name in EXCLUDED_NAMES:
-                continue
-            continue
-        if any(parent.name in EXCLUDED_NAMES for parent in item.relative_to(source).parents):
-            continue
-        if item.suffix in EXCLUDED_SUFFIXES:
-            continue
-        target = destination / item.relative_to(source)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(item, target, follow_symlinks=True)
-        copied.append(target)
-    return copied
-
-
 def resolve_library(soname: str, qt_lib: pathlib.Path) -> pathlib.Path | None:
     candidate = qt_lib / soname
     if candidate.exists():
