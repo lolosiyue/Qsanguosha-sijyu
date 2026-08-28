@@ -93,6 +93,11 @@ int main(int argc, char *argv[]) {
     // --ui-startup-smoke 係真正的 GUI startup 驗證，一定要行 QApplication path，
     // 唔可以被 headless 判斷截走。
     const bool uiStartupSmoke = UiStartupSmokeController::isRequested(appArgs);
+    const auto exitStartupSmoke = [](int code) -> void {
+        CrashHandler::beginShutdown();
+        fflush(nullptr);
+        std::_Exit(code);
+    };
     // --multimedia-smoke 同 startup smoke 一樣要行完整 GUI path：audio backend
     // 同 QML media component 都只喺 QApplication 之下先存在。
     const bool multimediaSmoke = MultimediaSmokeController::isRequested(appArgs);
@@ -133,7 +138,7 @@ int main(int argc, char *argv[]) {
     if (uiStartupSmoke) {
         int smokeExitCode = 0;
         if (!UiStartupSmokeController::begin(qApp->arguments(), &smokeExitCode))
-            return smokeExitCode;
+            exitStartupSmoke(smokeExitCode);
     }
     if (multimediaSmoke) {
         int smokeExitCode = 0;
@@ -221,8 +226,8 @@ int main(int argc, char *argv[]) {
     if (!EngineBootstrap::initialize()) {
         Server::writeHeadlessLog("ERROR: EngineBootstrap::initialize failed");
         if (uiStartupSmoke)
-            return UiStartupSmokeController::abortEarly(QStringLiteral("engine"),
-                QStringLiteral("EngineBootstrap::initialize failed"), 1);
+            exitStartupSmoke(UiStartupSmokeController::abortEarly(QStringLiteral("engine"),
+                QStringLiteral("EngineBootstrap::initialize failed"), 1));
         if (multimediaSmoke)
             return MultimediaSmokeController::abortEarly(QStringLiteral("engine"),
                 QStringLiteral("EngineBootstrap::initialize failed"), 1);
@@ -421,8 +426,7 @@ int main(int argc, char *argv[]) {
         // 由呢度開始同正常啟動走同一條路：建立真正的 MainWindow、載入真正的
         // HomeScene、行真正的 Qt event loop，等 ready condition 之後自動退出。
         const int rc = UiStartupSmokeController::run();
-        CrashHandler::beginShutdown();
-        return rc;
+        exitStartupSmoke(rc);
     }
 
     if (multimediaSmoke) {
