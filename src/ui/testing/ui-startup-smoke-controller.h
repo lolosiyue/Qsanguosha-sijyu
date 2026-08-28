@@ -72,6 +72,7 @@ private:
     QStringList m_arguments;
     int m_timeoutMs = UiStartupSmokeReport::defaultTimeoutMs();
     QString m_reportPath;
+    QString m_startupPage = QStringLiteral("home");
 
     QPointer<MainWindow> m_mainWindow;
     QTimer *m_timeoutTimer = nullptr;

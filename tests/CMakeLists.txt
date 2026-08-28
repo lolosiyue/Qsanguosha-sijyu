@@ -73,6 +73,46 @@ qsan_add_ctest(qsanguosha_protocol_messages qsanguosha_protocol_tests
     LABELS protocol
 )
 
+add_executable(qsanguosha_card_overview_classifier_tests
+    card-overview-classifier-test.cpp
+    ${QSAN_TEST_ROOT}/src/ui/card-overview-data.cpp
+    ${QSAN_TEST_ROOT}/src/ui/card-overview-data.h
+    ${QSAN_TEST_ROOT}/src/server/server-core.h
+)
+target_include_directories(qsanguosha_card_overview_classifier_tests PRIVATE
+    ${QSAN_ENGINE_TEST_INCLUDES}
+    ${QSAN_TEST_ROOT}/src/ui
+)
+target_compile_definitions(qsanguosha_card_overview_classifier_tests PRIVATE
+    QSAN_ENGINE_TEST_BUILD
+)
+target_link_libraries(qsanguosha_card_overview_classifier_tests PRIVATE
+    qsanguosha_engine
+    Qt6::Core
+)
+qsan_add_ctest(qsanguosha_card_overview_classifier
+    qsanguosha_card_overview_classifier_tests
+    LABELS "card-overview;fast"
+)
+
+add_executable(qsanguosha_card_overview_model_tests
+    card-overview-model-test.cpp
+    ${QSAN_TEST_ROOT}/src/ui/card-overview-data.cpp
+    ${QSAN_TEST_ROOT}/src/ui/card-overview-data.h
+    ${QSAN_TEST_ROOT}/src/ui/home/homecardmodel.cpp
+    ${QSAN_TEST_ROOT}/src/ui/home/homecardmodel.h
+    ${QSAN_TEST_ROOT}/src/server/server-core.h
+)
+qsan_link_engine_test(qsanguosha_card_overview_model_tests)
+target_include_directories(qsanguosha_card_overview_model_tests PRIVATE
+    ${QSAN_TEST_ROOT}/src/ui
+    ${QSAN_TEST_ROOT}/src/ui/home
+)
+qsan_add_ctest(qsanguosha_card_overview_model
+    qsanguosha_card_overview_model_tests
+    LABELS "card-overview;engine"
+)
+
 add_executable(qsanguosha_local_response_ui_case_tests
     skill_ui_runner/local-response-ui-case-test.cpp
     ${QSAN_TEST_ROOT}/src/ui/testing/local-response-ui-case.cpp

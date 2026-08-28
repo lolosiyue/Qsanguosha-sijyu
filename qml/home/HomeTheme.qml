@@ -118,6 +118,132 @@ Item {
     readonly property color tableRowHiddenText: "#2C2C2C"
     readonly property color tableRowSelectedText: isDark ? "#F2F8FC" : "#FFFFFF"
 
+    readonly property color cardTransparent: "transparent"
+    readonly property color cardPageTint: isDark ? "#9907162A" : "#B8EDF5FB"
+    readonly property color cardPanelTop: isDark ? "#F01A3049" : "#F2F8FCFF"
+    readonly property color cardPanelBottom: isDark ? "#ED0D2037" : "#E8DCEAF6"
+    readonly property color cardPanelBorder: isDark ? "#7295B4C9" : "#8AB3CC"
+    readonly property color cardPanelInner: isDark ? "#66233C56" : "#8AEAF3FA"
+    readonly property color cardAccent: isDark ? baYellow : "#8A5A00"
+    readonly property color cardAccentSoft: isDark ? "#44FFD84D" : "#55F4C932"
+    readonly property color cardInteractive: isDark ? baSky : "#126F9B"
+    readonly property color cardInteractiveSoft: isDark ? "#443AA8D4" : "#554EB8EA"
+    readonly property color cardTextPrimary: isDark ? "#F2F8FC" : "#073B5B"
+    readonly property color cardTextSecondary: isDark ? "#D2E4F0" : "#355E77"
+    readonly property color cardTextMuted: isDark ? "#AEC4D5" : "#526B80"
+    readonly property color cardInputFill: isDark ? "#B00B1C31" : "#DDF5F9FD"
+    readonly property color cardTileFill: isDark ? "#C5152A42" : "#EAF6FAFD"
+    readonly property color cardTileHover: isDark ? "#E01C3C59" : "#F5FFFFFF"
+    readonly property color cardTileSelected: isDark ? "#E5255574" : "#F1DCEFF8"
+    readonly property color cardTileBorder: isDark ? "#567E9CB2" : "#769FB8"
+    readonly property color cardBadgeBasic: isDark ? "#2B9A82" : "#1F806C"
+    readonly property color cardBadgeTrick: isDark ? "#7566C4" : "#6553B5"
+    readonly property color cardBadgeEquip: isDark ? "#3D7FC7" : "#2D6FAF"
+    readonly property color cardBadgeSkill: isDark ? "#B06A9B" : "#95527F"
+    readonly property color cardBadgeText: "#FFFFFF"
+    readonly property color cardSuitRed: isDark ? "#FF7E8A" : "#B82437"
+    readonly property color cardSuitBlack: isDark ? "#DCE8F0" : "#182632"
+    readonly property color cardPositive: isDark ? "#72D6A1" : "#23794A"
+    readonly property color cardWarning: isDark ? "#F2BE66" : "#9A6417"
+    readonly property color cardDanger: isDark ? "#F0808D" : "#A52535"
+    readonly property color cardControlHoverFill: isDark ? "#D21A334C" : "#F8FFFFFF"
+    readonly property color cardControlPressedFill: isDark ? "#E5244B68" : "#E4D7EEF9"
+    readonly property color cardControlDisabledFill: isDark ? "#66101B28" : "#88E4EBF0"
+    readonly property color cardControlDisabledText: isDark ? "#738695" : "#7D8C97"
+    readonly property color cardTagFill: isDark ? "#B8172A40" : "#DDEAF3F9"
+    readonly property color cardTagHover: isDark ? "#DC23435D" : "#F2FFFFFF"
+    readonly property color cardTagChecked: isDark ? "#D42B6A82" : "#17658D"
+    readonly property color cardTagMark: "#FFFFFF"
+    readonly property color cardVariantFill: isDark ? "#8A142A42" : "#BDEAF3FA"
+    readonly property color cardVariantAlternateFill: isDark ? "#A31B334B" : "#D6F3F8FC"
+
+    readonly property int cardHeaderHeight: 92
+    readonly property int cardPageHMargin: 28
+    readonly property int cardPageTopMargin: 18
+    readonly property int cardPageBottomMargin: 8
+    readonly property int cardPanelGap: 16
+    readonly property int cardPanelRadius: 10
+    readonly property int cardHeaderPadding: 26
+    readonly property int cardPanelContentPadding: 18
+    readonly property int cardPanelFocusInset: 4
+    readonly property int cardFilterWidth: 300
+    readonly property int cardDetailWidth: 470
+    readonly property int cardGridGap: 10
+    readonly property int cardControlHeight: 42
+    readonly property int cardControlRadius: 7
+    readonly property int cardControlHPadding: 12
+    readonly property int cardPopupMaxHeight: 280
+    readonly property int cardSectionGap: 11
+    readonly property int cardTitleFontSize: 29
+    readonly property int cardSectionTitleFontSize: 21
+    readonly property int cardBodyFontSize: 14
+    readonly property int cardCaptionFontSize: 13
+    readonly property int cardMetaFontSize: 12
+    readonly property int cardControlFontSize: 13
+    readonly property int cardBorderWidth: 1
+    readonly property int cardSelectedBorderWidth: 2
+    readonly property int cardFocusBorderWidth: 3
+    readonly property int cardHighContrastFocusBorderWidth: 4
+    readonly property int cardHeaderButtonWidth: 104
+    readonly property int cardActionButtonExtent: 48
+    readonly property int cardHeaderTitleGap: 1
+    readonly property int cardCountBadgeHPadding: 14
+    readonly property int cardCountBadgeHeight: 38
+    readonly property int cardSortWidth: 170
+    readonly property int cardGridBottomInset: 4
+    readonly property int cardPaginationBottomInset: 7
+    readonly property int cardPaginationHeight: 48
+    readonly property int cardPaginationButtonWidth: 54
+    readonly property int cardPaginationLabelWidth: 150
+    readonly property int cardPaginationFontSize: 15
+    readonly property int cardEmptyFontSize: 17
+    readonly property int cardTileAccentWidth: 5
+    readonly property int cardTileAccentRadius: 3
+    readonly property int cardTileMotionDuration: 120
+    readonly property int cardTileImageMaxWidth: 116
+    readonly property int cardTileImageInset: 3
+    readonly property int cardTileTextGap: 6
+    readonly property int cardTileTitleFontSize: 17
+    readonly property int cardBadgeHPadding: 8
+    readonly property int cardBadgeHeight: 24
+    readonly property int cardBadgeRadius: 5
+    readonly property int cardSuitIconSize: 18
+    readonly property int cardDetailEmptyTopMargin: 40
+    readonly property int cardDetailHeroGap: 13
+    readonly property int cardDetailImageWidth: 170
+    readonly property int cardDetailImageHeight: 238
+    readonly property int cardDetailImageInset: 4
+    readonly property int cardDetailMetaGap: 7
+    readonly property int cardDetailNameFontSize: 24
+    readonly property int cardDetailSuitFontSize: 16
+    readonly property int cardDetailTypeFontSize: 15
+    readonly property int cardDetailFlagHeight: 25
+    readonly property int cardDetailFlagRadius: 5
+    readonly property int cardDetailSectionFontSize: 17
+    readonly property int cardDetailAudioGap: 8
+    readonly property int cardDividerHeight: 1
+    readonly property int cardFilterDividerTopMargin: 4
+    readonly property int cardFilterResetHeight: 46
+    readonly property int cardPopupOffset: 2
+    readonly property int cardPopupPadding: 4
+    readonly property real cardControlDisabledOpacity: 0.82
+    readonly property int cardTagHeight: 32
+    readonly property int cardTagRadius: 16
+    readonly property int cardTagGap: 7
+    readonly property int cardTagCheckSize: 17
+    readonly property int cardTagHPadding: 10
+    readonly property int cardTagCountGap: 5
+    readonly property int cardVariantRowRadius: 6
+    readonly property int cardVariantRowPadding: 9
+    readonly property int cardVariantRowGap: 5
+    readonly property int cardVariantSuitWidth: 92
+    readonly property int cardVariantPackageWidth: 112
+    readonly property int cardSkeletonHeaderPadding: 22
+    readonly property int cardSkeletonTitleWidth: 260
+    readonly property int cardSkeletonSubtitleWidth: 420
+    readonly property int cardSkeletonTitleHeight: 26
+    readonly property int cardSkeletonSubtitleHeight: 13
+
     // 武將頁布局：骨架與載入後畫面共用，避免尺寸對不齊
     readonly property int generalHeaderHeight: 88
     readonly property int generalPageHMargin: 28
