@@ -1,5 +1,7 @@
 #include "ui-utils.h"
 
+#include "runtime-paths.h"
+
 #ifndef ANDROID
 #include FT_FREETYPE_H
 #include FT_BITMAP_H
@@ -95,8 +97,9 @@ QString QSanUiUtils::QSanFreeTypeFont::resolveFont(const QString &fontName)
         QStringList extsToTry;
         QString sysfolder = QStandardPaths::writableLocation(QStandardPaths::FontsLocation);
         dirsToResolve.push_back(sysfolder);
-        dirsToResolve.push_back(QDir::currentPath());
-        dirsToResolve.push_back("./font");
+        // 字型隨資產走,唔係跟使用者碰巧喺邊度開遊戲。
+        dirsToResolve.push_back(QSanRuntimePaths::assetRoot());
+        dirsToResolve.push_back(QSanRuntimePaths::assetPath(QStringLiteral("font")));
         extsToTry.push_back("ttf");
         extsToTry.push_back("ttc");
         foreach (QString sdir, dirsToResolve) {

@@ -1,0 +1,23 @@
+#!/bin/sh
+#
+# AppImage entry point.
+#
+# The payload keeps the GNUInstallDirs layout that `cmake --install` produced,
+# so the only thing AppRun has to do is run the real binary from inside the
+# mount point.  Everything else resolves on its own:
+#
+#   * the executable's RUNPATH is $ORIGIN-relative, so it finds the private Qt;
+#   * usr/bin/qt.conf points Qt at the bundled plugins and QML modules; and
+#   * the runtime layout resolver finds usr/share/qsanguosha next to usr/bin.
+#
+# No LD_LIBRARY_PATH, QT_PLUGIN_PATH or QML2_IMPORT_PATH is exported: leaking
+# a private Qt into the environment breaks any host program the game launches,
+# and Qt already has everything it needs from qt.conf.
+set -eu
+
+HERE="$(dirname "$(readlink -f "${0}")")"
+
+# Desktop integration helpers (appimaged) look at these.
+export APPDIR="${HERE}"
+
+exec "${HERE}/usr/bin/QSanguosha" "$@"

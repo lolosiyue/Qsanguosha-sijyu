@@ -1,4 +1,5 @@
 #include "ui-startup-smoke-controller.h"
+#include "runtime-paths.h"
 
 #include "engine.h"
 #include "homecontroller.h"
@@ -204,6 +205,10 @@ QJsonObject UiStartupSmokeController::environmentDetails() const
     details.insert(QStringLiteral("qml_import_path"),
         QLibraryInfo::path(QLibraryInfo::QmlImportsPath));
     details.insert(QStringLiteral("working_directory"), QDir::currentPath());
+    details.insert(QStringLiteral("asset_root"), QSanRuntimePaths::assetRoot());
+    details.insert(QStringLiteral("asset_root_source"),
+        QSanRuntimePaths::sourceName(QSanRuntimePaths::resolution().assetRootSource));
+    details.insert(QStringLiteral("user_data_root"), QSanRuntimePaths::userDataRoot());
     details.insert(QStringLiteral("timeout_ms"), m_timeoutMs);
     details.insert(QStringLiteral("startup_page"), m_startupPage);
     return details;

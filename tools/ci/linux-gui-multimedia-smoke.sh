@@ -82,6 +82,11 @@ fi
 
 [ -n "$LABEL" ] || LABEL="$PLATFORM"
 mkdir -p "$ARTIFACT_DIR"
+# The game now resolves its data directory and chdir()s into it, so a
+# relative report path would land inside the install tree instead of the
+# artifact directory.  Absolutise before handing anything to the binary.
+ARTIFACT_DIR="$(cd "$ARTIFACT_DIR" && pwd)"
+EXECUTABLE="$(cd "$(dirname "$EXECUTABLE")" && pwd)/$(basename "$EXECUTABLE")"
 LOG="$ARTIFACT_DIR/multimedia-smoke-$LABEL.log"
 REPORT="$ARTIFACT_DIR/multimedia-smoke-$LABEL.json"
 DIAG="$ARTIFACT_DIR/multimedia-plugins-$LABEL.txt"
@@ -92,6 +97,15 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # them if this is a bundle-only checkout.
 if [ ! -f "$REPO_ROOT/tests/fixtures/media/button-down.wav" ]; then
     python3 "$SCRIPT_DIR/make-media-fixtures.py" "$REPO_ROOT/tests/fixtures/media"
+fi
+
+# Same reason as the artifact directory: a relative --video-source would be
+# resolved against the data directory the game chdir()s into, not the repository.
+if [ -n "${VIDEO_SOURCE:-}" ]; then
+    case "$VIDEO_SOURCE" in
+        /*) ;;
+        *) VIDEO_SOURCE="$REPO_ROOT/$VIDEO_SOURCE" ;;
+    esac
 fi
 
 # Qt/Mesa software rendering: the CI runner has no GPU, and pixel output is not
@@ -132,6 +146,7 @@ APP_ARGS=(
     --multimedia-timeout-ms "$TIMEOUT_MS"
     --multimedia-report "$REPORT"
 )
+APP_ARGS+=(--multimedia-fixtures "$REPO_ROOT/tests/fixtures/media")
 [ -n "$VIDEO_SOURCE" ] && APP_ARGS+=(--multimedia-video-source "$VIDEO_SOURCE")
 
 echo "== Linux GUI multimedia smoke ($LABEL) =="
@@ -178,6 +193,17 @@ VALIDATION=$?
 # No orphan may outlive the smoke: a leaked QSanguosha, Xvfb or media decoder
 # would poison the next CI step.  Scoped to this run's own process group.
 LEAKED=0
+# `wait` returns as soon as the app exits, but xvfb-run still has to reap its
+# Xvfb, and a process group does not empty instantaneously.  Checking at that
+# exact moment turns a normal few-hundred-millisecond teardown into a failure,
+# so give the group a bounded grace period first.  A process that is genuinely
+# stuck is still caught - it simply never leaves.
+if [ -n "$SETSID" ]; then
+    for _ in $(seq 1 20); do
+        pgrep -g "$CHILD" >/dev/null 2>&1 || break
+        sleep 0.5
+    done
+fi
 if [ -n "$SETSID" ] && pgrep -g "$CHILD" >/dev/null 2>&1; then
     echo "Processes survived the multimedia smoke:" >&2
     ps -o pid,pgid,comm -g "$CHILD" >&2 2>/dev/null || pgrep -ag "$CHILD" >&2

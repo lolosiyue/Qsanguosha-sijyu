@@ -1,4 +1,5 @@
 #include "effects-smoke-controller.h"
+#include "runtime-paths.h"
 
 #include "SpineGlItem.h"
 #include "effects/effects-completion.h"
@@ -214,6 +215,10 @@ QJsonObject EffectsSmokeController::environmentDetails() const
     details.insert(QStringLiteral("qt_qpa_platform"), environmentValue("QT_QPA_PLATFORM"));
     details.insert(QStringLiteral("display"), environmentValue("DISPLAY"));
     details.insert(QStringLiteral("working_directory"), QDir::currentPath());
+    details.insert(QStringLiteral("asset_root"), QSanRuntimePaths::assetRoot());
+    details.insert(QStringLiteral("asset_root_source"),
+        QSanRuntimePaths::sourceName(QSanRuntimePaths::resolution().assetRootSource));
+    details.insert(QStringLiteral("user_data_root"), QSanRuntimePaths::userDataRoot());
     details.insert(QStringLiteral("fixture_root"), m_fixtureRoot);
     details.insert(QStringLiteral("fixtures_available"), QDir(m_fixtureRoot).exists());
     details.insert(QStringLiteral("timeout_ms"), m_timeoutMs);
