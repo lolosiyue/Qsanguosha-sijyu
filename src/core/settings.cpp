@@ -155,6 +155,19 @@ void applyVisualMode(const QString &mode)
 }
 #endif
 
+// 設定檔可能係手改的：非數字、負數、大過 1 都要收成一個安全值，而唔係
+// 將 0／NaN 直接交畀 audio backend。
+static float clampVolume(const QVariant &raw, float fallback)
+{
+    if (!raw.isValid())
+        return fallback;
+    bool ok = false;
+    const float parsed = raw.toFloat(&ok);
+    if (!ok || parsed != parsed) // NaN
+        return fallback;
+    return qBound(0.0f, parsed, 1.0f);
+}
+
 static const qreal ViewWidth = 1280 * 0.8;
 static const qreal ViewHeight = 800 * 0.8;
 
@@ -351,9 +364,16 @@ void Settings::init()
     EnableLastWord = value("EnableLastWord", true).toBool();
     EnableBgMusic = value("EnableBgMusic", true).toBool();
     EnableCardDescription = value("EnableCardDescription", true).toBool();
-    BGMVolume = value("BGMVolume", 1.0f).toFloat();
-    EffectVolume = value("EffectVolume", 1.0f).toFloat();
-    FrontBGMVolume = value("FrontBGMVolume", 1.0f).toFloat();
+    // 音量一律經 clampVolume()：舊設定檔可能冇呢個 key，亦可能被手改成
+    // 非數字或者超出 [0,1]。任何一種情況都要有穩定預設，唔可以令 backend
+    // 收到 NaN／負數。
+    BGMVolume = clampVolume(value("BGMVolume"), 1.0f);
+    EffectVolume = clampVolume(value("EffectVolume"), 1.0f);
+    FrontBGMVolume = clampVolume(value("FrontBGMVolume"), 1.0f);
+    MasterVolume = clampVolume(value("MasterVolume"), 1.0f);
+    VoiceVolume = clampVolume(value("VoiceVolume"), 1.0f);
+    AudioMuted = value("AudioMuted", false).toBool();
+    EnableBackgroundVideo = value("EnableBackgroundVideo", true).toBool();
 
     BackgroundImage = value("BackgroundImage", "image/system/backdrop/new-version.jpg").toString();
 
