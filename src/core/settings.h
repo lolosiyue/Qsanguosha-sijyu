@@ -99,6 +99,12 @@ public:
     bool EnableLastWord;
     bool EnableBgMusic;
     float BGMVolume, EffectVolume, FrontBGMVolume;
+    // M2B-A：master 係所有通道的總增益，VoiceVolume 係語音喺 EffectVolume 之上
+    // 再多一級 trim（預設 1.0，即係同舊行為一樣）。名稱 Windows／Linux 共用。
+    float MasterVolume, VoiceVolume;
+    bool AudioMuted;
+    // 首頁影片背景。關咗就永遠行靜態背景，唔會建立 QML Video component。
+    bool EnableBackgroundVideo;
     bool EnableCardDescription;
     bool BossModeExp;
 
