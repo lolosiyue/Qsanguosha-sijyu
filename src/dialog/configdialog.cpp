@@ -108,6 +108,10 @@ void ConfigDialog::loadConfig()
     ui->bgmVolumeSlider->setValue(Config.BGMVolume * 100);
     ui->effectVolumeSlider->setValue(Config.EffectVolume * 100);
     ui->frontVolumeSlider->setValue(Config.FrontBGMVolume * 100);
+    ui->masterVolumeSlider->setValue(Config.MasterVolume * 100);
+    ui->voiceVolumeSlider->setValue(Config.VoiceVolume * 100);
+    ui->muteCheckBox->setChecked(Config.AudioMuted);
+    ui->backgroundVideoCheckBox->setChecked(Config.EnableBackgroundVideo);
     ui->frontVolumeSlider->setToolTip(tr("音频文件地址：audio/system/BGM/front-bgm.ogg 可替换为自己喜欢的音频"));
 
     // tab 2
@@ -254,6 +258,17 @@ void ConfigDialog::saveConfig()
     Config.FrontBGMVolume = volume;
     Config.setValue("FrontBGMVolume", volume);
 
+    // M2B-A：master／voice／mute 同影片背景。key 名 Windows 同 Linux 共用，
+    // 舊設定檔冇呢幾個 key 時 Settings::init() 已經有穩定預設。
+    Config.MasterVolume = ui->masterVolumeSlider->value() / 100.0f;
+    Config.setValue("MasterVolume", Config.MasterVolume);
+    Config.VoiceVolume = ui->voiceVolumeSlider->value() / 100.0f;
+    Config.setValue("VoiceVolume", Config.VoiceVolume);
+    Config.AudioMuted = ui->muteCheckBox->isChecked();
+    Config.setValue("AudioMuted", Config.AudioMuted);
+    Config.EnableBackgroundVideo = ui->backgroundVideoCheckBox->isChecked();
+    Config.setValue("EnableBackgroundVideo", Config.EnableBackgroundVideo);
+
     bool enabled = ui->enableEffectCheckBox->isChecked();
     Config.EnableEffects = enabled;
     Config.setValue("EnableEffects", enabled);
@@ -267,6 +282,9 @@ void ConfigDialog::saveConfig()
     Config.setValue("EnableBgMusic", enabled);*/
 
 #ifdef AUDIO_SUPPORT
+	// 先推新的 master／effect／voice／mute 落 backend，再決定 BGM 播定停：
+	// 否則靜音之後 BGM 仲會用舊增益響一次。
+	Audio::applyConfigVolumes();
 	if(volume>0){
 		if (!ServerInfo.DuringGame&&QFile::exists("audio/system/BGM/front-bgm.ogg"))
 			Audio::playBGM("audio/system/BGM/front-bgm.ogg");
