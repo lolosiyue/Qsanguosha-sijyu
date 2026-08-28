@@ -151,6 +151,17 @@ VALIDATION=$?
 # next CI step.  Scoped to this run's own process group, so a developer running
 # the game in another window is never touched.
 LEAKED=0
+# `wait` returns as soon as the app exits, but xvfb-run still has to reap its
+# Xvfb, and a process group does not empty instantaneously.  Checking at that
+# exact moment turns a normal few-hundred-millisecond teardown into a failure,
+# so give the group a bounded grace period first.  A process that is genuinely
+# stuck is still caught - it simply never leaves.
+if [ -n "$SETSID" ]; then
+    for _ in $(seq 1 20); do
+        pgrep -g "$CHILD" >/dev/null 2>&1 || break
+        sleep 0.5
+    done
+fi
 if [ -n "$SETSID" ] && pgrep -g "$CHILD" >/dev/null 2>&1; then
     echo "Processes survived the startup smoke:" >&2
     ps -o pid,pgid,comm -g "$CHILD" >&2 2>/dev/null || pgrep -ag "$CHILD" >&2
