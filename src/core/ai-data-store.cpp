@@ -1,5 +1,7 @@
 #include "ai-data-store.h"
 
+#include "runtime-paths.h"
+
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonParseError>
@@ -16,15 +18,33 @@ QMutex &aiDataMutex()
     return mutex;
 }
 
-const QString AiDataPath = QStringLiteral("lua/ai/data/AiData");
+const QString AiDataRelativePath = QStringLiteral("lua/ai/data/AiData");
 const qsizetype AiDataMaximumBytes = 8 * 1024 * 1024;
+
+// AI 學習資料係執行期產生嘅使用者資料,唔可以寫返入安裝樹 —— AppImage 係
+// 唯讀 squashfs,/usr/share 亦通常唔屬於使用者。寫一律去 user data root;
+// 讀就 user data 行先,搵唔到先返去資產樹入面隨包附帶嗰份(舊有部署同開發樹
+// 嘅 user data root 本身就係資產樹,行為同以前一樣)。
+QString aiDataWritePath()
+{
+    return QSanRuntimePaths::userDataPath(AiDataRelativePath);
+}
+
+QString aiDataReadPath()
+{
+    const QString writable = QSanRuntimePaths::userDataPath(AiDataRelativePath);
+    if (QFile::exists(writable))
+        return writable;
+    const QString bundled = QSanRuntimePaths::assetPath(AiDataRelativePath);
+    return QFile::exists(bundled) ? bundled : writable;
+}
 
 }
 
 QString AiDataStore::read()
 {
     QMutexLocker locker(&aiDataMutex());
-    QFile file(AiDataPath);
+    QFile file(aiDataReadPath());
     if (!file.open(QIODevice::ReadOnly))
         return QString();
     const QByteArray data = file.read(AiDataMaximumBytes + 1);
@@ -54,14 +74,15 @@ bool AiDataStore::write(const QString &json, QString *error)
     }
 
     QMutexLocker locker(&aiDataMutex());
-    QLockFile processLock(AiDataPath + QStringLiteral(".lock"));
+    const QString target = aiDataWritePath();
+    QLockFile processLock(target + QStringLiteral(".lock"));
     processLock.setStaleLockTime(30000);
     if (!processLock.tryLock(100)) {
         if (error)
             *error = QStringLiteral("AI data store is busy");
         return false;
     }
-    QSaveFile file(AiDataPath);
+    QSaveFile file(target);
     if (!file.open(QIODevice::WriteOnly) || file.write(data) != data.size()
         || !file.commit()) {
         if (error)

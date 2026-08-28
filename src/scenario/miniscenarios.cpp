@@ -1,4 +1,5 @@
 #include "miniscenarios.h"
+#include "runtime-paths.h"
 //#include "util.h"
 #include "room.h"
 #include "engine.h"
@@ -350,8 +351,9 @@ MiniScene::MiniScene(const QString &name)
 void MiniScene::setupCustom(QString name) const
 {
     if (name == "") name = "custom_scenario";
-    name.prepend("etc/customScenes/");
-    name.append(".txt");
+    // 自訂劇本可以係使用者自己存低嘅,亦可以係隨包附帶嗰啲。
+    name = QSanRuntimePaths::readablePath(
+        QStringLiteral("etc/customScenes/") + name + QStringLiteral(".txt"));
 
     MiniSceneRule *arule = qobject_cast<MiniSceneRule *>(this->getRule());
     arule->loadSetting(name);
