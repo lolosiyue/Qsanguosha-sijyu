@@ -121,6 +121,31 @@ QML media component、乾淨關閉。**不要求真的聽到聲音** — CI runn
 契約細節與 exit code 對照見
 `docs/linux-development-environment.md` §4.7。
 
+## tools/ci/linux-gui-effects-smoke.sh — 效果 profile 合約 (Linux GUI M2B-B)
+
+同 multimedia smoke 一樣係「起一個 GUI process, 驗它印出的 structured
+marker」。一個 profile 一次執行。
+
+```bash
+for profile in none reduced full; do
+    bash tools/ci/linux-gui-effects-smoke.sh ./relwithdebinfo/QSanguosha artifacts \
+        --profile "$profile" --no-xvfb --platform xcb --label "wslg-$profile"
+done
+```
+
+驗 `EFFECTS_STAGE` / `EFFECTS_PROFILE_RESULT` / `EFFECTS_RESULT` 三種 marker:
+profile 解析（要求嘅 profile 一定要真係行到, 而且 resolution source 要係
+`cli`）、exactly-once completion、frame animation／GIF／Spine 的缺資產降級、
+每個 profile 的物件預算、乾淨關閉。**不比較 pixel** — screenshot 只作
+failure artifact。
+
+`gui_network_smoke.py --effects-profile <p>` 則用真 TCP 打完一整局來證明
+「跳咗動畫都唔會卡死」; `none` 嗰次會額外驗成局打完之後 Spine／QMovie／
+QML 疊層／video object 全部係 0。
+
+契約細節與 exit code 對照見
+`docs/linux-development-environment.md` §4.8。
+
 ## 一鍵 batch (選擇寫在 bat 頂部)
 
 | 檔案 | 用途 | 頂部變數 |
