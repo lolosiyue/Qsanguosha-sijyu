@@ -22,6 +22,35 @@ option(QSAN_BUILD_SERVER
     ON
 )
 
+# Audio backend。GUI client 用邊個實作由呢個變數單點決定，call site 冇任何
+# 平台 #ifdef：
+#
+#   FMOD  Windows GUI Release（bundled fmodex，行為同以前一樣）
+#   QT    Linux GUI（Qt Multimedia）
+#   NULL  dedicated server／CI／任何唔想出聲的 build
+#
+# dedicated server 唔會編入任何 audio 檔案，所以 NULL 亦係 server-only build
+# 的自然預設。
+if(WIN32)
+    set(QSAN_AUDIO_BACKEND_DEFAULT "FMOD")
+elseif(QSAN_BUILD_GUI)
+    set(QSAN_AUDIO_BACKEND_DEFAULT "QT")
+else()
+    set(QSAN_AUDIO_BACKEND_DEFAULT "NULL")
+endif()
+set(QSAN_AUDIO_BACKEND "${QSAN_AUDIO_BACKEND_DEFAULT}" CACHE STRING
+    "Audio backend for the GUI client: FMOD | QT | NULL")
+set_property(CACHE QSAN_AUDIO_BACKEND PROPERTY STRINGS FMOD QT NULL)
+if(NOT QSAN_AUDIO_BACKEND MATCHES "^(FMOD|QT|NULL)$")
+    message(FATAL_ERROR
+        "QSAN_AUDIO_BACKEND must be one of FMOD, QT, NULL (got '${QSAN_AUDIO_BACKEND}')")
+endif()
+if(QSAN_AUDIO_BACKEND STREQUAL "FMOD" AND NOT WIN32)
+    message(FATAL_ERROR
+        "QSAN_AUDIO_BACKEND=FMOD is Windows-only: lib/win/x64/fmodex.lib and include/fmod "
+        "are Windows binaries and must never be linked or included on other platforms")
+endif()
+
 if(BUILD_TESTING AND NOT QSAN_BUILD_SERVER)
     message(FATAL_ERROR
         "BUILD_TESTING=ON requires QSAN_BUILD_SERVER=ON (CTest drives qsanguosha_server)")
@@ -436,6 +465,10 @@ if(QSAN_BUILD_GUI)
         src/ui/testing/local-response-ui-inspector.h
         src/ui/testing/local-response-ui-probe.cpp
         src/ui/testing/local-response-ui-probe.h
+        src/ui/testing/multimedia-smoke-controller.cpp
+        src/ui/testing/multimedia-smoke-controller.h
+        src/ui/testing/multimedia-smoke-report.cpp
+        src/ui/testing/multimedia-smoke-report.h
         src/ui/testing/network-ui-smoke-controller.cpp
         src/ui/testing/network-ui-smoke-controller.h
         src/ui/testing/network-ui-smoke-report.cpp
@@ -450,11 +483,35 @@ if(QSAN_BUILD_GUI)
         src/ui/testing/ui-startup-smoke-report.h
     )
 
-    if(WIN32)
-        # audio.cpp 是 FMOD 專用實作，只在 Windows Release 編入。
+    # Audio facade + backend。facade（src/core/audio.h + src/ui/audio/audio.cpp）
+    # 同 null backend 一定編入，所以任何 config 的 call site 都有實作可以連；
+    # 真正的 FMOD／Qt 實作先至按 QSAN_AUDIO_BACKEND 加入。
+    target_sources(QSanguosha PRIVATE
+        src/core/audio.h
+        src/ui/audio/audio.cpp
+        src/ui/audio/audio-backend.h
+        src/ui/audio/audio-backend-factory.cpp
+        src/ui/audio/null-audio-backend.cpp
+        src/ui/audio/null-audio-backend.h
+    )
+    message(STATUS "QSanguosha audio backend: ${QSAN_AUDIO_BACKEND}")
+
+    if(QSAN_AUDIO_BACKEND STREQUAL "FMOD")
+        # bundled fmodex.lib 只喺 Release 連結，所以 FMOD 實作亦只喺 Release
+        # 編入；Debug 落返 null backend，同以前「Debug 冇 AUDIO_SUPPORT」一樣冇聲。
         target_sources(QSanguosha PRIVATE
-            "$<$<CONFIG:Release>:${CMAKE_CURRENT_SOURCE_DIR}/src/core/audio.cpp>"
+            "$<$<CONFIG:Release>:${CMAKE_CURRENT_SOURCE_DIR}/src/ui/audio/fmod-audio-backend.cpp>"
+            src/ui/audio/fmod-audio-backend.h
         )
+        target_compile_definitions(QSanguosha PRIVATE
+            "$<$<CONFIG:Release>:QSAN_AUDIO_BACKEND_FMOD>"
+        )
+    elseif(QSAN_AUDIO_BACKEND STREQUAL "QT")
+        target_sources(QSanguosha PRIVATE
+            src/ui/audio/qt-audio-backend.cpp
+            src/ui/audio/qt-audio-backend.h
+        )
+        target_compile_definitions(QSanguosha PRIVATE QSAN_AUDIO_BACKEND_QT)
     endif()
 
     target_include_directories(QSanguosha PRIVATE
@@ -468,6 +525,7 @@ if(QSAN_BUILD_GUI)
         ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
         ${CMAKE_CURRENT_SOURCE_DIR}/src/server
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ui
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/audio
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/home
         ${CMAKE_CURRENT_SOURCE_DIR}/src/util
     )
@@ -510,13 +568,18 @@ if(QSAN_BUILD_GUI)
         QT_QML_IMPORT_PATH="${QSAN_QT_QML_DIR}"
         QT_BIN_DIR="${QSAN_QT_BIN_DIR}"
         HAS_QT_MULTIMEDIA
+        # facade 喺所有 GUI config 都存在（最差情況係 null backend），所以
+        # AUDIO_SUPPORT 而家係「呢個 target 有 audio facade」而唔再係
+        # 「呢個 target 連得到 FMOD」。engine／server target 一樣冇呢個定義，
+        # 佢哋照舊唔會拉到任何 audio 實作。
+        AUDIO_SUPPORT
+        QSAN_AUDIO_BACKEND_NAME="${QSAN_AUDIO_BACKEND}"
     )
 
     if(WIN32)
         target_compile_definitions(QSanguosha PRIVATE
             WIN64
             _CRT_SECURE_NO_WARNINGS
-            "$<$<CONFIG:Release>:AUDIO_SUPPORT>"
         )
     endif()
 

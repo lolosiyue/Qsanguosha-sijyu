@@ -102,6 +102,25 @@ python tools\autotest\crash_report.py `
 (每顆 dmp 一列) + `batches.csv` (各批次局數摘要)。每次執行新增時間戳
 目錄, 不刪改任何既有檔案。
 
+## tools/ci/linux-gui-multimedia-smoke.sh — Qt 音訊/影片背景合約 (Linux GUI M2B-A)
+
+不在 `tools/autotest/` 而在 `tools/ci/`, 因為它同 M1 的
+`linux-gui-startup-smoke.sh` 一樣是「起一個 GUI process, 驗它印出的
+structured marker」而不是驅動一局遊戲。
+
+```bash
+bash tools/ci/linux-gui-multimedia-smoke.sh ./relwithdebinfo/QSanguosha artifacts \
+    --no-xvfb --platform xcb --label wslg --expect-backend qt
+```
+
+驗 `MULTIMEDIA_STAGE` / `VIDEO_BACKEND_RESULT` / `MULTIMEDIA_RESULT` 三種
+marker: audio backend 選擇、短 UI 音效、語音 player pool、BGM、缺資產降級、
+QML media component、乾淨關閉。**不要求真的聽到聲音** — CI runner 沒有音訊
+裝置, `output_device: false` 是被記錄的正常狀態。
+
+契約細節與 exit code 對照見
+`docs/linux-development-environment.md` §4.7。
+
 ## 一鍵 batch (選擇寫在 bat 頂部)
 
 | 檔案 | 用途 | 頂部變數 |
