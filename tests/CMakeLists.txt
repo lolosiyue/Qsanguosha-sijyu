@@ -239,12 +239,6 @@ target_link_libraries(qsanguosha_client_core_tests PRIVATE
 qsan_add_ctest(qsanguosha_client_core_contract qsanguosha_client_core_tests
     LABELS "client-core;fast"
 )
-if(WIN32)
-    set_property(TEST qsanguosha_client_core_contract
-        PROPERTY ENVIRONMENT_MODIFICATION
-            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
-    )
-endif()
 
 add_test(NAME qsanguosha_network_ui_smoke_cli_contract
     COMMAND ${Python3_EXECUTABLE}
