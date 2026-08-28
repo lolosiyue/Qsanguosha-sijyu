@@ -198,6 +198,32 @@ if(WIN32)
     )
 endif()
 
+# Linux GUI M2B-B 效果 profile 契約 + exactly-once completion。只 link
+# Qt6::Core:profile 解析、feature gate、duration scale 同 completion 保證
+# 全部唔應該要開 QApplication、OpenGL 或者美術資產先驗到。AUTOMOC 要開,
+# 因為測試入面有一個帶 Q_PROPERTY 嘅最小動畫目標。
+add_executable(qsanguosha_effects_profile_tests
+    effects_profile/effects-profile-test.cpp
+    ${QSAN_TEST_ROOT}/src/ui/effects/effects-completion.cpp
+    ${QSAN_TEST_ROOT}/src/ui/effects/effects-completion.h
+    ${QSAN_TEST_ROOT}/src/ui/effects/effects-profile.cpp
+    ${QSAN_TEST_ROOT}/src/ui/effects/effects-profile.h
+)
+set_target_properties(qsanguosha_effects_profile_tests PROPERTIES AUTOMOC ON)
+target_include_directories(qsanguosha_effects_profile_tests PRIVATE
+    ${QSAN_TEST_ROOT}/src/ui/effects
+)
+target_link_libraries(qsanguosha_effects_profile_tests PRIVATE Qt6::Core)
+qsan_add_ctest(qsanguosha_effects_profile_contract qsanguosha_effects_profile_tests
+    LABELS "ui-runner;gui;effects;fast"
+)
+if(WIN32)
+    set_property(TEST qsanguosha_effects_profile_contract
+        PROPERTY ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    )
+endif()
+
 add_test(NAME qsanguosha_network_ui_smoke_cli_contract
     COMMAND ${Python3_EXECUTABLE}
         ${QSAN_TEST_ROOT}/tools/autotest/tests/test_gui_network_smoke_contract.py

@@ -1,6 +1,7 @@
 #include "emotionpanel.h"
 #include <QApplication>
 #include <QDebug>
+#include "effects/effects-policy.h"
 #include <algorithm>
 
 QMap<int, QString> EmotionPanel::emotionIdToPath;
@@ -8,23 +9,36 @@ QMap<int, QString> EmotionPanel::emotionIdToPath;
 EmotionItem::EmotionItem(const QString &imagePath, int emotionId, QWidget *parent)
     : QLabel(parent), m_emotionId(emotionId), m_imagePath(imagePath), m_movie(nullptr)
 {
-    if (imagePath.toLower().endsWith(".gif")) {
+    // NONE profile 一個 QMovie 都唔會 new;REDUCED 建立但唔播,只顯示首幀。
+    // 兩種情況表情面板都仲用得,只係唔會郁。
+    bool showing = false;
+    if (imagePath.toLower().endsWith(".gif") && G_EFFECTS.gifEnabled()) {
         m_movie = new QMovie(imagePath, QByteArray(), this);
+        G_EFFECTS.note(VisualEffectsPolicy::MovieObjectsCreated);
         if (m_movie->isValid()) {
             m_movie->setScaledSize(QSize(32, 32));
             setMovie(m_movie);
-            m_movie->start();
+            if (G_EFFECTS.gifPlaybackAllowed()) {
+                m_movie->start();
+            } else {
+                // jumpToFrame(0) 令 QLabel 有嘢畫;唔 start() 就唔會有 decode
+                // 同 frame timer。
+                m_movie->jumpToFrame(0);
+            }
+            showing = true;
         } else {
             delete m_movie;
             m_movie = nullptr;
-            setText(QString::number(emotionId));
-            setStyleSheet("QLabel { background-color: #ffcccc; border: 1px solid red; }");
         }
-    } else {
+    }
+
+    // 靜態路：非 GIF、profile 唔准 QMovie、或者 QMovie 讀唔到個檔案,
+    // 三種都落呢度。讀唔到就落返數字 placeholder,個格永遠唔會空白。
+    if (!showing) {
         m_originalPixmap = QPixmap(imagePath);
         if (!m_originalPixmap.isNull()) {
-            QPixmap scaledPixmap = m_originalPixmap.scaled(32, 32, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-            setPixmap(scaledPixmap);
+            setPixmap(m_originalPixmap.scaled(32, 32, Qt::KeepAspectRatio,
+                Qt::SmoothTransformation));
         } else {
             setText(QString::number(emotionId));
             setStyleSheet("QLabel { background-color: #ffcccc; border: 1px solid red; }");

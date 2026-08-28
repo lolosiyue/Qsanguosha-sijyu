@@ -465,6 +465,10 @@ if(QSAN_BUILD_GUI)
         src/ui/testing/local-response-ui-inspector.h
         src/ui/testing/local-response-ui-probe.cpp
         src/ui/testing/local-response-ui-probe.h
+        src/ui/testing/effects-smoke-controller.cpp
+        src/ui/testing/effects-smoke-controller.h
+        src/ui/testing/effects-smoke-report.cpp
+        src/ui/testing/effects-smoke-report.h
         src/ui/testing/multimedia-smoke-controller.cpp
         src/ui/testing/multimedia-smoke-controller.h
         src/ui/testing/multimedia-smoke-report.cpp
@@ -526,6 +530,7 @@ if(QSAN_BUILD_GUI)
         ${CMAKE_CURRENT_SOURCE_DIR}/src/server
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ui
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/audio
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/effects
         ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/home
         ${CMAKE_CURRENT_SOURCE_DIR}/src/util
     )

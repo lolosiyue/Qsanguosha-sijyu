@@ -3,6 +3,7 @@
 #include "pixmapanimation.h"
 #include "structs.h"
 #include "carditem.h"
+#include "effects/effects-policy.h"
 
 QList<CardItem *> TablePile::removeCardItems(const QList<int> &card_ids, Player::Place)
 {
@@ -86,14 +87,31 @@ void TablePile::_fadeOutCardsLocked(const QList<CardItem *> &cards)
 {
 	if (cards.isEmpty()) return;
 
+	if (!G_EFFECTS.animationsEnabled()) {
+		// 最終狀態:張牌透明兼且要拆走。deleteLater() 本來就係排隊嘅,
+		// 所以呢度唔會喺 caller 手上炸咗 m_visibleCards 入面嘅 item。
+		G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+		foreach (CardItem *toRemove, cards) {
+			toRemove->setZValue(0.0);
+			toRemove->setHomeOpacity(0.0);
+			toRemove->setOpacity(0.0);
+			toRemove->goBack(false);
+			toRemove->setVisible(false);
+			toRemove->deleteLater();
+		}
+		return;
+	}
+
 	QParallelAnimationGroup *group = new QParallelAnimationGroup;
 	foreach (CardItem *toRemove, cards) {
 		toRemove->setZValue(0.0);
 		toRemove->setHomeOpacity(0.0);
 		toRemove->setHomePos(QPointF(toRemove->homePos().x(), toRemove->homePos().y()));
+		// duration 由 getGoBackAnimation() 自己 scale,唔可以喺呢度再 scale 一次。
 		group->addAnimation(toRemove->getGoBackAnimation(true, false, 1000));
 		toRemove->deleteLater();
 	}
+	G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
 	group->start(QAbstractAnimation::DeleteWhenStopped);
 }
 
@@ -114,7 +132,10 @@ void TablePile::showJudgeResult(int cardId, bool takeEffect)
 	m_visibleCards.clear();
 	m_visibleCards.append(judgeCard);
 	_m_mutex_pileCards.unlock();
-	PixmapAnimation::GetPixmapAnimation(judgeCard, takeEffect ? "judgegood" : "judgebad");
+	if (G_EFFECTS.animationsEnabled())
+		PixmapAnimation::GetPixmapAnimation(judgeCard, takeEffect ? "judgegood" : "judgebad");
+	else
+		G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
 	adjustCards();
 }
 
@@ -181,11 +202,23 @@ void TablePile::adjustCards()
 	if (m_visibleCards.isEmpty()) return;
 	_disperseCards(m_visibleCards, m_cardsDisplayRegion, Qt::AlignCenter, true, true);
 
+	if (!G_EFFECTS.animationsEnabled()) {
+		// 牌堆嘅牌一定要到達 home 位同 home 透明度,唔係就會攤喺原位。
+		G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+		foreach(CardItem *card_item, m_visibleCards){
+			card_item->goBack(false);
+			card_item->setOpacity(card_item->getHomeOpacity());
+		}
+		updateContainer();
+		return;
+	}
+
 	QParallelAnimationGroup *animation = new QParallelAnimationGroup;
 	foreach(CardItem *card_item, m_visibleCards){
 		animation->addAnimation(card_item->getGoBackAnimation(true));
 	}
 	connect(animation, SIGNAL(finished()), this, SLOT(onAnimationFinished()));
+	G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
 	animation->start();
 }
 

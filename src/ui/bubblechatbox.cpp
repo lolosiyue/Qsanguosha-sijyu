@@ -1,5 +1,6 @@
 #include "bubblechatbox.h"
 #include "settings.h"
+#include "effects/effects-policy.h"
 
 static const int PixelsPerLine = 168;
 static const int BoxMinWidth = 42;
@@ -25,7 +26,7 @@ BubbleChatBox::BubbleChatBox(const QRect &area, QGraphicsItem *parent)
 
     appearAndDisappear->setStartValue(0);
     appearAndDisappear->setEndValue(1);
-    appearAndDisappear->setDuration(AnimationDuration);
+    appearAndDisappear->setDuration(G_EFFECTS.scaledDuration(AnimationDuration));
 }
 
 BubbleChatBox::~BubbleChatBox()

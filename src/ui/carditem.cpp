@@ -4,6 +4,7 @@
 #include "roomscene.h"
 #include "qsanbutton.h"
 #include "skin-bank.h"
+#include "effects/effects-policy.h"
 
 #include <QPainterPath>
 
@@ -150,6 +151,12 @@ QPointF CardItem::homePos() const
 
 void CardItem::goBack(bool playAnimation, bool doFade)
 {
+    // NONE profile：唔起動畫，直接落最終位置。所有 caller 嘅語意都保住 ——
+    // goBack(false) 本來就係「即刻返位」嗰條 branch。
+    if (playAnimation && !G_EFFECTS.animationsEnabled()) {
+        G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+        playAnimation = false;
+    }
     if (playAnimation) {
         getGoBackAnimation(doFade);
         if (m_currentAnimation)
@@ -176,7 +183,9 @@ QAbstractAnimation *CardItem::getGoBackAnimation(bool doFade, bool smoothTransit
     }
     QPropertyAnimation *goback = new QPropertyAnimation(this, "pos");
     goback->setEasingCurve(QEasingCurve::OutQuad);
-    goback->setDuration(duration);
+    // REDUCED 縮短、FULL 原值。0 唔會喺呢度出現：NONE 行唔到落嚟（goBack 已經
+    // 轉咗 playAnimation=false，_playMoveCardsAnimation 亦已經走咗 skip branch）。
+    goback->setDuration(qMax(1, G_EFFECTS.scaledDuration(duration)));
     goback->setEndValue(home_pos);
     m_currentAnimation = goback;
 
@@ -189,7 +198,7 @@ QAbstractAnimation *CardItem::getGoBackAnimation(bool doFade, bool smoothTransit
         if (!smoothTransition) {
             disappear->setKeyValueAt(0.2, middleOpacity);
             disappear->setKeyValueAt(0.8, middleOpacity);
-            disappear->setDuration(duration);
+            disappear->setDuration(qMax(1, G_EFFECTS.scaledDuration(duration)));
         }
 
         group->addAnimation(goback);

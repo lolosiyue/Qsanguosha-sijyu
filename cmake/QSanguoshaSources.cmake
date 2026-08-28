@@ -114,6 +114,9 @@ set(QSAN_SOURCES
     src/ui/dashboard.cpp
     src/ui/easytextpanel.cpp
     src/ui/card-overview-data.cpp
+    src/ui/effects/effects-completion.cpp
+    src/ui/effects/effects-policy.cpp
+    src/ui/effects/effects-profile.cpp
     src/ui/home/homecontroller.cpp
     src/ui/home/homecardmodel.cpp
     src/ui/EmbeddedQmlLoader.cpp
@@ -285,6 +288,7 @@ set(QSAN_MOC_HEADERS
     src/ui/dashboard.h
     src/ui/easytextpanel.h
     src/ui/card-overview-data.h
+    src/ui/effects/effects-completion.h
     src/ui/home/homecontroller.h
     src/ui/home/homecardmodel.h
     src/ui/EmbeddedQmlLoader.h
