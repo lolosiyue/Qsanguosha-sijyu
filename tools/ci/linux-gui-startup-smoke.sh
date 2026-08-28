@@ -22,6 +22,7 @@
 #   --expect-stage <stage>       with --expect fail: the stage to blame
 #   --expect-reason <reason>     with --expect fail: stage_failed | timeout
 #   --label <name>               artifact filename prefix (default: platform)
+#   --page <home|cards>          embedded page to verify (default: home)
 
 set -uo pipefail
 
@@ -35,6 +36,7 @@ EXPECT="pass"
 EXPECT_STAGE=""
 EXPECT_REASON=""
 LABEL=""
+PAGE="home"
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -46,6 +48,7 @@ while [ $# -gt 0 ]; do
         --expect-stage) EXPECT_STAGE="$2"; shift 2 ;;
         --expect-reason) EXPECT_REASON="$2"; shift 2 ;;
         --label) LABEL="$2"; shift 2 ;;
+        --page) PAGE="$2"; shift 2 ;;
         -*) echo "Unknown option: $1" >&2; exit 2 ;;
         *)
             if [ -z "$EXECUTABLE" ]; then EXECUTABLE="$1"
@@ -62,6 +65,10 @@ if [ -z "$EXECUTABLE" ] || [ -z "$ARTIFACT_DIR" ]; then
 fi
 if [ ! -x "$EXECUTABLE" ]; then
     echo "Not an executable: $EXECUTABLE" >&2
+    exit 2
+fi
+if [ "$PAGE" != "home" ] && [ "$PAGE" != "cards" ]; then
+    echo "Unsupported startup page: $PAGE" >&2
     exit 2
 fi
 
@@ -87,6 +94,9 @@ APP_ARGS=(
     --ui-startup-timeout-ms "$TIMEOUT_MS"
     --ui-startup-report "$REPORT"
 )
+if [ "$PAGE" != "home" ]; then
+    APP_ARGS+=(--ui-startup-page "$PAGE")
+fi
 
 echo "== Linux GUI startup smoke ($LABEL) =="
 echo "executable       : $EXECUTABLE"
@@ -95,6 +105,7 @@ echo "QT_QUICK_BACKEND : $QT_QUICK_BACKEND"
 echo "app timeout      : ${TIMEOUT_MS}ms"
 echo "process timeout  : ${PROCESS_TIMEOUT}s"
 echo "xvfb             : $([ "$USE_XVFB" -eq 1 ] && echo yes || echo no)"
+echo "startup page     : $PAGE"
 
 # Run in a private session so cleanup can address exactly the processes this
 # script started - never a GUI the developer happens to have open.
