@@ -1,10 +1,12 @@
 #include "homecontroller.h"
+#include "card.h"
 #include "engine.h"
 #include "general.h"
 #include "skill.h"
 #include "settings.h"
 #include "package.h"
 #include "heroskincontainer.h"
+#include "skin-bank.h"
 #include <QCoreApplication>
 #include <QSet>
 #include <QDir>
@@ -704,6 +706,11 @@ HomeGeneralModel *HomeController::generalModel()
     return &m_generalModel;
 }
 
+HomeCardModel *HomeController::cardModel()
+{
+    return &m_cardModel;
+}
+
 void HomeController::applyGeneralFilter(const QVariantMap &filters)
 {
     m_generalModel.applyFilter(filters);
@@ -727,7 +734,7 @@ QUrl HomeController::prefetchArtUrl(int index) const
 
 void HomeController::openCards()
 {
-    emit cardsRequested();
+    setCurrentPage(QStringLiteral("cards"));
 }
 
 void HomeController::openReplays()
@@ -941,6 +948,32 @@ void HomeController::playAudio(const QString &path) const
 {
     if (Sanguosha && !path.isEmpty())
         Sanguosha->playAudioEffect(path, false);
+}
+
+void HomeController::playCardAudio(int cardId, const QString &variant) const
+{
+    if (!Sanguosha)
+        return;
+    const int representativeId = m_cardModel.cardDetails(cardId)
+                                     .value(QStringLiteral("cardId"), -1).toInt();
+    const Card *card = Sanguosha->getEngineCard(representativeId);
+    if (!card || card->getId() != representativeId)
+        return;
+    if (variant == QLatin1String("male") || variant == QLatin1String("female")) {
+        Sanguosha->playAudioEffect(
+            G_ROOM_SKIN.getPlayerAudioEffectPath(card->objectName(), variant == QLatin1String("male")), false);
+        return;
+    }
+    if (variant != QLatin1String("effect") || card->getTypeId() != Card::TypeEquip)
+        return;
+    QString objectName = card->objectName();
+    if (objectName == QLatin1String("vscrossbow"))
+        objectName = QStringLiteral("crossbow");
+    QString fileName = G_ROOM_SKIN.getPlayerAudioEffectPath(objectName, QStringLiteral("equip"), -1);
+    if (!QFile::exists(fileName))
+        fileName = G_ROOM_SKIN.getPlayerAudioEffectPath(
+            card->getCommonEffectName(), QStringLiteral("common"), -1);
+    Sanguosha->playAudioEffect(fileName, false);
 }
 
 QVariantList HomeController::generalPackages() const

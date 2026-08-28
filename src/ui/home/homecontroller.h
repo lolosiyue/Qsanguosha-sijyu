@@ -1,5 +1,7 @@
 #pragma once
 
+#include "homecardmodel.h"
+
 #include <QAbstractListModel>
 #include <QHash>
 #include <QObject>
@@ -91,6 +93,7 @@ class HomeController final : public QObject
     Q_PROPERTY(QString currentGameModeName READ currentGameModeName NOTIFY gameModeChanged)
     Q_PROPERTY(QString currentPage READ currentPage NOTIFY currentPageChanged)
     Q_PROPERTY(HomeGeneralModel *generalModel READ generalModel CONSTANT)
+    Q_PROPERTY(HomeCardModel *cardModel READ cardModel CONSTANT)
     Q_PROPERTY(int artRevision READ artRevision NOTIFY artRevisionChanged)
     Q_PROPERTY(qreal uiScale READ uiScale NOTIFY visualSettingsChanged)
     Q_PROPERTY(QString visualMode READ visualMode NOTIFY visualSettingsChanged)
@@ -114,6 +117,7 @@ public:
 
     QString currentPage() const;
     HomeGeneralModel *generalModel();
+    HomeCardModel *cardModel();
 
     Q_INVOKABLE void quickJoin();
     Q_INVOKABLE void joinGame();
@@ -144,6 +148,7 @@ public:
     Q_INVOKABLE QUrl navButtonImage(const QString &name) const;
     Q_INVOKABLE qreal generalOverlayLuma(const QString &generalName) const;
     Q_INVOKABLE void playAudio(const QString &path) const;
+    Q_INVOKABLE void playCardAudio(int cardId, const QString &variant) const;
     Q_INVOKABLE void applyGeneralFilter(const QVariantMap &filters);
     // 僅 GUI 首頁 idle 呼叫：預設篩選目錄。已載入則略過，避免蓋掉玩家篩選。
     Q_INVOKABLE void warmGeneralCatalog();
@@ -199,6 +204,7 @@ private:
     int m_artRevision = 0;
     QString m_currentPage = QStringLiteral("home");
     HomeGeneralModel m_generalModel;
+    HomeCardModel m_cardModel;
     mutable QHash<QString, QUrl> m_cardImageCache;
     mutable QHash<QString, QUrl> m_fullImageCache;
 };
