@@ -2,6 +2,14 @@
   <qresource prefix="/QSanguosha/Home">
     <file alias="HomeScene.qml">HomeScene.qml</file>
     <file alias="GeneralScene.qml">GeneralScene.qml</file>
+    <file alias="CardScene.qml">CardScene.qml</file>
+    <file alias="CardBrowserTile.qml">CardBrowserTile.qml</file>
+    <file alias="CardComboBox.qml">CardComboBox.qml</file>
+    <file alias="CardFilterPanel.qml">CardFilterPanel.qml</file>
+    <file alias="CardTagChip.qml">CardTagChip.qml</file>
+    <file alias="CardDetailPanel.qml">CardDetailPanel.qml</file>
+    <file alias="CardVariantList.qml">CardVariantList.qml</file>
+    <file alias="CardPagination.qml">CardPagination.qml</file>
     <file alias="HomeTheme.qml">HomeTheme.qml</file>
     <file alias="qmldir">qmldir</file>
     <file alias="HomeBackground.qml">HomeBackground.qml</file>
