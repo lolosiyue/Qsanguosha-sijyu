@@ -1,4 +1,6 @@
 #include "client.h"
+#include "client-core.h"
+#include "desktop-interaction-view.h"
 #include "runtime-paths.h"
 #include "settings.h"
 #include "engine.h"
@@ -57,7 +59,8 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 	: QObject(parent), m_isDiscardActionRefusable(true), m_bossLevel(0),
 	status(NotActive), alive_count(1), swap_pile(0), add_round(0), _m_roomState(true),
 	m_client_lua(nullptr), m_original_self(nullptr), m_takeoverManager(nullptr),
-	m_replaySawCardProvenance(false), m_replayWarnedLegacyProvenance(false)
+	m_replaySawCardProvenance(false), m_replayWarnedLegacyProvenance(false),
+	m_interactionCore(nullptr), m_desktopInteractionView(nullptr)
 {
 	ClientInstance = this;
 	m_isGameOver = false;
@@ -198,6 +201,14 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 
 	m_players << Self;
 
+	// F1:interaction 中間層。Client 建立佢同 desktop adapter,係因為 Client
+	// 本身就係 GUI 客戶端;一個 text／Android／WASM front-end 只需要
+	// interactionCore()->setView(自己嗰個 view) 就可以換走 desktop adapter。
+	m_interactionCore = new ClientCore(this);
+	m_desktopInteractionView = new DesktopInteractionView(this);
+	m_interactionCore->setView(m_desktopInteractionView);
+	syncInteractionState();
+
 	lines_doc = new QTextDocument(this);
 
 	prompt_doc = new QTextDocument(this);
@@ -235,6 +246,9 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 
 Client::~Client()
 {
+	// View 一定要死喺 core 之前:core 唔可以 present 落一嚿死物度。
+	delete m_desktopInteractionView;
+	m_desktopInteractionView = nullptr;
 	setEngineSelf(nullptr);
 	Self = nullptr;
 	foreach (const ClientPlayer *p, m_players)
@@ -416,6 +430,9 @@ void Client::setup(const QVariant &setup_json)
 
 void Client::disconnectFromHost()
 {
+	// 斷線之後冇人收得到答案,pending request 即刻作廢,唔好留住一個永遠
+	// 完成唔到嘅 request。
+	cancelInteraction(InteractionType::None, InteractionCancelReason::Disconnected);
 	if (!m_isDisconnected) {
 		socket->disconnectFromHost();
 		socket->deleteLater();
@@ -448,6 +465,7 @@ void Client::processServerPacket(const char *cmd)
 bool Client::processServerRequest(const Packet &packet)
 {
 	setStatus(NotActive);
+	cancelInteraction(InteractionType::None, InteractionCancelReason::Superseded);
 	_m_lastServerSerial = packet.globalSerial;
 	CommandType command = packet.getCommandType();
 	QVariant msg = packet.getMessageBody();
@@ -465,6 +483,124 @@ bool Client::processServerRequest(const Packet &packet)
 	emit server_request(static_cast<int>(command));
 	(this->*callback)(msg);
 	return true;
+}
+
+// ── Client Architecture F1:ClientCore plumbing ─────────────────────────
+//
+// server 嘅每一個 request 到埗,舊嗰個就作廢:server 已經行咗落去,遲到嘅答案
+// 唔應該再被當成有效。未遷移嘅 interaction 亦因此唔會撞到殘留嘅 core request
+// (例如 choose direction 同 choice 共用 onPlayerMakeChoice() 呢個 slot)。
+void Client::cancelInteraction(InteractionType type, InteractionCancelReason reason)
+{
+	if (m_interactionCore == nullptr)
+		return;
+	if (type != InteractionType::None && !m_interactionCore->hasActiveRequest(type))
+		return;
+	m_interactionCore->cancelActiveRequest(reason);
+}
+
+// core 拎嚟做 reply 驗證同 snapshot 嘅最小客戶端狀態。刻意保持「寬」:
+// 攞唔到就唔填,寧可少驗一樣,都唔可以攔錯一個合法回覆。
+void Client::syncInteractionState()
+{
+	if (m_interactionCore == nullptr)
+		return;
+
+	ClientGameState *state = m_interactionCore->state();
+	state->setSelfName(Self != nullptr ? Self->objectName() : QString());
+
+	QStringList names;
+	foreach (const ClientPlayer *player, m_players) {
+		if (player != nullptr)
+			names << player->objectName();
+	}
+	state->setPlayerNames(names);
+
+	// 卡 id 就係 Engine 卡表嘅 index,所以任何合法 id 都細過卡數。
+	if (Sanguosha != nullptr)
+		state->setCardIdSpace(Sanguosha->getCardCount());
+}
+
+void Client::beginInteraction(InteractionRequest request)
+{
+	if (m_interactionCore == nullptr)
+		return;
+
+	syncInteractionState();
+	request.serverSerial = _m_lastServerSerial;
+
+	// 死線刻意用 server 嗰個(client timeout + gracious period)再加一段
+	// margin,而唔係 UI 倒數用嗰個 client timeout:RoomScene::doTimeout() 就係
+	// 喺 client timeout 嗰刻先送安全預設答案,如果 core 喺同一刻過期,呢個
+	// 答案就會被自己攔住,一局變成要等 server timeout 先行得落去。
+	// 過咗呢條線嘅答案,server 一定已經放棄咗,送出去亦冇意義。
+	if (request.timeoutMs <= 0 && request.command != 0) {
+		const time_t serverTimeout = ServerInfo.getCommandTimeout(
+			static_cast<CommandType>(request.command), S_SERVER_INSTANCE);
+		if (serverTimeout > 0)
+			request.timeoutMs = static_cast<qint64>(serverTimeout) + 5000;
+	}
+
+	m_interactionCore->beginRequest(request);
+}
+
+Client::InteractionOutcome Client::completeInteraction(InteractionType type,
+	InteractionResponse response)
+{
+	// core 冇對應嘅 active request,即係呢條 reply 路徑今次係為咗一個未遷移
+	// 嘅 interaction 而行(RESPONSE_CARD 嘅 reply 就同時服務出牌階段、
+	// 無懈可擊、求桃同 show/pindian)。行舊路,唔攔。
+	if (m_interactionCore == nullptr || !m_interactionCore->hasActiveRequest(type))
+		return InteractionOutcome::Passthrough;
+
+	response.requestId = m_interactionCore->activeRequestId();
+	const InteractionValidation validation = m_interactionCore->submitResponse(response);
+	return validation.accepted() ? InteractionOutcome::Accepted : InteractionOutcome::Rejected;
+}
+
+// ── DesktopInteractionView 嘅呈現 port ──────────────────────────────────
+
+void Client::presentGeneralChoice(const InteractionRequest &request)
+{
+	QStringList generals;
+	foreach (const InteractionOption &option, request.options)
+		generals << option.value;
+	emit generals_got(generals);
+	setStatus(ExecDialog);
+}
+
+void Client::presentOptionChoice(const InteractionRequest &request)
+{
+	// chooseOption() 要嘅係 server 原本嗰三份資料(可揀項／唔可揀項／tip),
+	// 而唔係 core 砌好嘅 option 清單:清單入面重有一個 dialog 專用嘅 cancel
+	// sentinel。原值放咗喺 context,所以 desktop 呈現同以前逐字一樣。
+	emit options_got(request.skillName,
+		request.context.value(QStringLiteral("options")).toStringList(),
+		request.context.value(QStringLiteral("except_options")).toString(),
+		request.context.value(QStringLiteral("tip")).toString());
+	setStatus(ExecDialog);
+}
+
+void Client::presentPlayerChoice(const InteractionRequest &request)
+{
+	prompt_doc->setHtml(request.prompt);
+	setStatus(AskForPlayerChoose);
+}
+
+void Client::presentSkillInvoke(const InteractionRequest &request)
+{
+	prompt_doc->setHtml(request.prompt);
+	setStatus(AskForSkillInvoke);
+}
+
+void Client::presentCardResponse(const InteractionRequest &request)
+{
+	// 呢個 request 嘅 prompt 由 builder 直接砌落 prompt_doc:當中「附加技能
+	// Notice」嗰步要讀返 document 已經 render 好嘅 HTML(prompt_doc->toHtml()),
+	// 唔可以喺呢度用一個純字串重砌。所以呢個 view 只負責狀態切換。
+	const int requested = request.context.value(QStringLiteral("client_status"),
+		static_cast<int>(Responding)).toInt();
+	setStatus(static_cast<Status>(requested));
 }
 
 void Client::addPlayer(const QVariant &player_info)
@@ -712,11 +848,17 @@ Player::Place Client::getCardPlace(int card_id) const
 void Client::onPlayerChooseGeneral(const QString &item_name)
 {
 	setStatus(NotActive);
-	if (!item_name.isEmpty()) {
-		replyToServer(S_COMMAND_CHOOSE_GENERAL, item_name);
-		if(available_cards.isEmpty())
-			Sanguosha->playSystemAudioEffect("choose-item");
+	if (item_name.isEmpty()) {
+		// 舊行為:空名唔會送任何 reply。喺 core 度就係本機放棄呢個 request。
+		cancelInteraction(InteractionType::ChooseGeneral, InteractionCancelReason::Abandoned);
+		return;
 	}
+	if (completeInteraction(InteractionType::ChooseGeneral,
+			InteractionResponse::makeOption(0, item_name)) == InteractionOutcome::Rejected)
+		return;
+	replyToServer(S_COMMAND_CHOOSE_GENERAL, item_name);
+	if(available_cards.isEmpty())
+		Sanguosha->playSystemAudioEffect("choose-item");
 }
 
 void Client::requestCheatRunScript(const QString &script)
@@ -794,6 +936,34 @@ void Client::onPlayerResponseCard(const Card *card, const QList<const Player *> 
 {
 	if ((status & ClientStatusBasicMask) == Responding)
 		_m_roomState.setCurrentCardUsePattern("");
+
+	// 一次回應永遠係「一張牌」:實牌就係佢自己嘅 id,virtual card 冇實 id,
+	// 靠 toString() 上線,子卡放喺 payload 度畀其他 front-end 睇。
+	InteractionResponse response;
+	if (card) {
+		QList<int> cardIds;
+		if (!card->isVirtualCard())
+			cardIds << card->getEffectiveId();
+		response = InteractionResponse::makeCards(0, cardIds, card->toString());
+
+		QVariantList subcards;
+		foreach (int subcardId, card->getSubcards())
+			subcards << subcardId;
+		if (!subcards.isEmpty())
+			response.payload.insert(QStringLiteral("subcards"), subcards);
+
+		QStringList targetNameList;
+		foreach (const Player *target, targets)
+			targetNameList << target->objectName();
+		if (!targetNameList.isEmpty())
+			response.payload.insert(QStringLiteral("targets"), targetNameList);
+	} else {
+		response = InteractionResponse::makeCancel(0);
+	}
+
+	if (completeInteraction(InteractionType::ResponseCard, response) == InteractionOutcome::Rejected)
+		return;
+
 	if (card) {
 		JsonArray targetNames;
 		foreach (const Player *target, targets)
@@ -1044,14 +1214,24 @@ QString Client::getSkillNameToInvokeData() const
 
 void Client::onPlayerInvokeSkill(bool invoke)
 {
-	if (skill_name == "surrender")
+	if (skill_name == "surrender") {
+		// 投降表決同 luck card 都借用 AskForSkillInvoke 呢個狀態,但佢哋唔係
+		// S_COMMAND_INVOKE_SKILL request,所以未遷移,行舊路。
 		replyToServer(S_COMMAND_SURRENDER, invoke);
-	else
-		replyToServer(S_COMMAND_INVOKE_SKILL, invoke);
+		setStatus(NotActive);
+		return;
+	}
+
+	if (completeInteraction(InteractionType::SkillInvoke,
+			InteractionResponse::makeOption(0, invoke ? QStringLiteral("yes") : QStringLiteral("no")))
+			== InteractionOutcome::Rejected)
+		return;
+
+	replyToServer(S_COMMAND_INVOKE_SKILL, invoke);
 	setStatus(NotActive);
 }
 
-QString Client::setPromptList(const QStringList &texts)
+QString Client::formatPromptList(const QStringList &texts) const
 {
 	QString prompt = Sanguosha->translate(texts.at(0));
 	if (texts.length() >= 5)
@@ -1061,11 +1241,17 @@ QString Client::setPromptList(const QStringList &texts)
 		prompt.replace("%arg", Sanguosha->translate(texts.at(3)));
 
 	if (texts.length() >= 3)
-		prompt.replace("%dest", getPlayerName(texts.at(2)));
+		prompt.replace("%dest", const_cast<Client *>(this)->getPlayerName(texts.at(2)));
 
 	if (texts.length() >= 2)
-		prompt.replace("%src", getPlayerName(texts.at(1)));
+		prompt.replace("%src", const_cast<Client *>(this)->getPlayerName(texts.at(1)));
 
+	return prompt;
+}
+
+QString Client::setPromptList(const QStringList &texts)
+{
+	QString prompt = formatPromptList(texts);
 	prompt_doc->setHtml(prompt);
 	return prompt;
 }
@@ -1120,9 +1306,11 @@ void Client::askForCardOrUseCard(const QVariant &cardUsage)
 	}
 
 	Status status = Responding;
+	int handlingMethod = -1;
 	m_respondingUseFixedTarget = nullptr;
 	if (usage.size() >= 3 && JsonUtils::isNumber(usage[2])) {
-		switch ((Card::HandlingMethod)usage[2].toInt()) {
+		handlingMethod = usage[2].toInt();
+		switch ((Card::HandlingMethod)handlingMethod) {
 		case Card::MethodPlay: status = Playing; break;
 		case Card::MethodDiscard: status = RespondingForDiscard; break;
 		case Card::MethodUse: status = RespondingUse; break;
@@ -1130,7 +1318,24 @@ void Client::askForCardOrUseCard(const QVariant &cardUsage)
 		default: status = RespondingNonTrigger; break;
 		}
 	}
-	setStatus(status);
+
+	InteractionRequest request;
+	request.type = InteractionType::ResponseCard;
+	request.command = S_COMMAND_RESPONSE_CARD;
+	// 合法牌嘅集合係 pattern 配對嘅結果,而 pattern 配對係 engine 規則:
+	// server 冇喺 request 入面列出可選牌,ClientCore 亦唔應該扮規則引擎自己
+	// 猜一份出嚟(猜錯就會攔住一個合法回覆)。所以呢類 request 唔枚舉,
+	// core 只執行數量、取消權、卡 id 值域同 exactly-once。
+	request.cards.enumerated = false;
+	request.cards.pattern = card_pattern;
+	request.cards.handlingMethod = handlingMethod;
+	request.cards.minSelection = 1;
+	request.cards.maxSelection = 1;
+	// pattern 尾巴嘅 "!" 就係「唔准唔覆」,同 m_isDiscardActionRefusable 同一件事。
+	request.cancelable = m_isDiscardActionRefusable;
+	request.prompt = prompt_doc->toHtml();
+	request.context.insert(QStringLiteral("client_status"), static_cast<int>(status));
+	beginInteraction(request);
 }
 
 void Client::askForSkillInvoke(const QVariant &arg)
@@ -1147,26 +1352,40 @@ void Client::askForSkillInvoke(const QVariant &arg)
 	QString text;
 	if (data.isEmpty()) {
 		text = tr("Do you want to invoke skill [%1] ?").arg(Sanguosha->translate(skill_name));
-		prompt_doc->setHtml(text);
 	} else if (data.startsWith("playerdata:")) {
 		QString name = getPlayerName(data.split(":").last());
 		text = tr("Do you want to invoke skill [%1] to %2 ?").arg(Sanguosha->translate(skill_name)).arg(name);
-		prompt_doc->setHtml(text);
 	} else if (skill_name.startsWith("cv_")) {
-		setPromptList(QStringList() << "@sp_convert" << "" << "" << data);
+		text = formatPromptList(QStringList() << "@sp_convert" << "" << "" << data);
 	} else {
 		QStringList texts = data.split(":");
 		text = QString("%1:%2").arg(skill_name).arg(texts.first());
 		texts.replace(0, text);
-		setPromptList(texts);
+		text = formatPromptList(texts);
 	}
 
-	setStatus(AskForSkillInvoke);
+	InteractionRequest request;
+	request.type = InteractionType::SkillInvoke;
+	request.command = S_COMMAND_INVOKE_SKILL;
+	request.skillName = skill_name;
+	request.prompt = text;
+	// 發動技能係一條 yes／no 題。Dashboard 嘅 Cancel 掣就係 "no",所以佢
+	// 永遠答得起,cancelable 亦因此係 true。
+	request.options << InteractionOption(QStringLiteral("yes"))
+			<< InteractionOption(QStringLiteral("no"));
+	request.cancelable = true;
+	request.context.insert(QStringLiteral("skill_data"), data);
+	beginInteraction(request);
 }
 
 void Client::onPlayerMakeChoice()
 {
 	QString option = sender()->objectName();
+	// 呢個 slot 亦服務未遷移嘅花色／勢力／方向 dialog,嗰啲情況冇 core
+	// request,completeInteraction() 會回 Passthrough 行舊路。
+	if (completeInteraction(InteractionType::Choice,
+			InteractionResponse::makeOption(0, option)) == InteractionOutcome::Rejected)
+		return;
 	replyToServer(S_COMMAND_MULTIPLE_CHOICE, option);
 	setStatus(NotActive);
 }
@@ -1257,16 +1476,30 @@ void Client::onPlayerChoosePlayer(const QList<const Player *> &players)
 	foreach (const Player *p, players)
 		names << p->objectName();
 	if (players.length() < choose_min_num && !m_isDiscardActionRefusable) {
+		// UI 交上嚟嘅目標唔夠數(逾時／trust 嘅安全預設答案),就隨機補夠。
+		// 補嘅時候優先揀 server 講明可揀嗰批:舊碼由 findChildren<Player *>()
+		// 度隨機抽,抽得中一個唔喺可揀清單入面嘅玩家,server 一樣會當佢無效,
+		// 所以先行合法池係同一個結果嘅較準版本,唔會改變可見行為。
 		QList<const Player*> to_choose;
+		QList<const Player*> fallback;
 		foreach (const Player *p, findChildren<const Player *>()) {
-			if (!players.contains(p))
+			if (players.contains(p))
+				continue;
+			if (players_to_choose.contains(p->objectName()))
 				to_choose.append(p);
+			else
+				fallback.append(p);
 		}
 		while (names.length() < choose_min_num) {
-			if (to_choose.isEmpty()) break;
-			names << to_choose.takeAt(qrand() % to_choose.length())->objectName();
+			QList<const Player*> &pool = to_choose.isEmpty() ? fallback : to_choose;
+			if (pool.isEmpty()) break;
+			names << pool.takeAt(qrand() % pool.length())->objectName();
 		}
 	}
+
+	if (completeInteraction(InteractionType::ChoosePlayer,
+			InteractionResponse::makePlayers(0, names)) == InteractionOutcome::Rejected)
+		return;
 
 	replyToServer(S_COMMAND_CHOOSE_PLAYER, (names.isEmpty()) ? QVariant() : names.join("+"));
 	setStatus(NotActive);
@@ -1653,8 +1886,18 @@ void Client::askForGeneral(const QVariant &arg)
 {
 	QStringList generals;
 	if (!JsonUtils::tryParse(arg, generals)) return;
-	emit generals_got(generals);
-	setStatus(ExecDialog);
+
+	InteractionRequest request;
+	request.type = InteractionType::ChooseGeneral;
+	request.command = S_COMMAND_CHOOSE_GENERAL;
+	// 清單只係建議,唔係合法答案嘅完整集合:server 喺 FreeChoose 之下收清單
+	// 以外嘅武將(player-decision-service.cpp:332),而 free-choose dialog 同
+	// --test-general 自動選將(roomscene.cpp:2255)正正會咁答。ClientCore 唔可以
+	// 攔一啲 server 本身收得起嘅答案。
+	request.optionsEnumerated = false;
+	foreach (const QString &general, generals)
+		request.options << InteractionOption(general);
+	beginInteraction(request);
 }
 
 void Client::askForSuit(const QVariant &)
@@ -1681,8 +1924,33 @@ void Client::askForChoice(const QVariant &ask_str)
 	QStringList options = ask[1].toString().split("+");
 	QString except_options = ask[2].toString();
 	QString tip = ask[3].toString();
-	emit options_got(skill_name, options, except_options, tip);
-	setStatus(ExecDialog);
+
+	InteractionRequest request;
+	request.type = InteractionType::Choice;
+	request.command = S_COMMAND_MULTIPLE_CHOICE;
+	request.skillName = skill_name;
+	foreach (const QString &option, options) {
+		if (!option.isEmpty() && !request.hasOption(option))
+			request.options << InteractionOption(option);
+	}
+	// except_options 喺 dialog 度係「睇得到、撳唔到」嘅掣
+	// (roomscene.cpp:2551 createOptionBox(..., false)),所以入 model 係
+	// disabled option,而唔係唔存在。
+	foreach (const QString &option, except_options.split("+")) {
+		if (!option.isEmpty() && !request.hasOption(option))
+			request.options << InteractionOption(option, QString(), false);
+	}
+	// 揀項 dialog 自己嘅 objectName 就係 "cancel"(roomscene.cpp:2549):撳 Esc
+	// 關窗會經同一個 slot 用 "cancel" 覆,BossModeExpStore 亦有一個永遠 enabled
+	// 嘅 cancel 掣。server 收得起,所以 core 亦要收得起,否則關窗會變成冇覆。
+	if (!request.hasOption(QStringLiteral("cancel")))
+		request.options << InteractionOption(QStringLiteral("cancel"));
+	request.cancelable = true;
+	// desktop chooseOption() 要嘅係 server 原本嗰三份資料,原值留喺 context。
+	request.context.insert(QStringLiteral("options"), options);
+	request.context.insert(QStringLiteral("except_options"), except_options);
+	request.context.insert(QStringLiteral("tip"), tip);
+	beginInteraction(request);
 }
 
 void Client::askForTriggerOrder(const QVariant &ask_str)
@@ -2280,13 +2548,22 @@ void Client::askForPlayerChosen(const QVariant &players)
 		if (!description.isEmpty() && description != skill_name)
 			text.append(tr("<br/> <b>Source</b>: %1<br/>").arg(description));
 	} else {
-		text = setPromptList(prompt.split(":"));
+		text = formatPromptList(prompt.split(":"));
 		if (prompt.startsWith("@") && !description.isEmpty() && description != skill_name)
 			text.append(tr("<br/> <b>Source</b>: %1<br/>").arg(description));
 	}
-	prompt_doc->setHtml(text);
 
-	setStatus(AskForPlayerChoose);
+	InteractionRequest request;
+	request.type = InteractionType::ChoosePlayer;
+	request.command = S_COMMAND_CHOOSE_PLAYER;
+	request.skillName = skill_name;
+	request.prompt = text;
+	request.players.selectablePlayers = players_to_choose;
+	request.players.minSelection = qMax(0, choose_min_num);
+	request.players.maxSelection = choose_max_num;
+	// server 送 min <= 0 就即係「可以唔揀」,同 m_isDiscardActionRefusable 同一件事。
+	request.cancelable = m_isDiscardActionRefusable;
+	beginInteraction(request);
 }
 
 void Client::onPlayerReplyYiji(const Card *card, const Player *to)

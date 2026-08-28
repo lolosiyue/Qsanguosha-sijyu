@@ -3894,11 +3894,27 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 	case Client::AskForPlayerChoose: {
 		showPromptBox();
 
+		// F1:選人嘅約束由結構化 request 嚟,唔再由 Client 幾個公開欄位嚟。
+		// 數值同以前逐個一樣(askForPlayerChosen() 就係由同一份 server
+		// payload 砌呢個 request),所以 UI 行為唔變;分別係規則約束而家有
+		// 一個單一出處,而唔係散落喺 Client 嘅可寫欄位度。
+		ClientCore *core = ClientInstance->interactionCore();
+		const bool hasRequest = core != nullptr
+			&& core->hasActiveRequest(InteractionType::ChoosePlayer);
+		const QStringList selectablePlayers = hasRequest
+			? core->activeRequest().players.selectablePlayers : ClientInstance->players_to_choose;
+		const int maxNum = hasRequest
+			? core->activeRequest().players.maxSelection : ClientInstance->choose_max_num;
+		const int minNum = hasRequest
+			? core->activeRequest().players.minSelection : ClientInstance->choose_min_num;
+		const bool cancelable = hasRequest
+			? core->activeRequest().cancelable : ClientInstance->m_isDiscardActionRefusable;
+
 		ok_button->setEnabled(false);
-		cancel_button->setEnabled(ClientInstance->m_isDiscardActionRefusable);
+		cancel_button->setEnabled(cancelable);
 		discard_button->setEnabled(false);
 
-		choose_skill->setPlayerNames(ClientInstance->players_to_choose,ClientInstance->choose_max_num,ClientInstance->choose_min_num);
+		choose_skill->setPlayerNames(selectablePlayers,maxNum,minNum);
 		dashboard->startPending(choose_skill);
 		break;
 	}
