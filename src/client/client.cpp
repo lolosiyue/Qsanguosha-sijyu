@@ -1231,7 +1231,7 @@ void Client::onPlayerInvokeSkill(bool invoke)
 	setStatus(NotActive);
 }
 
-QString Client::formatPromptList(const QStringList &texts) const
+QString Client::formatPromptList(const QStringList &texts)
 {
 	QString prompt = Sanguosha->translate(texts.at(0));
 	if (texts.length() >= 5)
@@ -1241,10 +1241,10 @@ QString Client::formatPromptList(const QStringList &texts) const
 		prompt.replace("%arg", Sanguosha->translate(texts.at(3)));
 
 	if (texts.length() >= 3)
-		prompt.replace("%dest", const_cast<Client *>(this)->getPlayerName(texts.at(2)));
+		prompt.replace("%dest", getPlayerName(texts.at(2)));
 
 	if (texts.length() >= 2)
-		prompt.replace("%src", const_cast<Client *>(this)->getPlayerName(texts.at(1)));
+		prompt.replace("%src", getPlayerName(texts.at(1)));
 
 	return prompt;
 }
