@@ -62,8 +62,10 @@ private:
         qint64 startedAt = 0;
     };
 
-    // shutdown() 之後再有播放請求時重新建起資源。StartScene::switchToServer()
-    // 會喺開房時 Audio::quit()，Linux 唔應該因此永久收聲。
+    // 建資源；已經建好就即刻回 true。shutdown() 之後再收到播放請求會重新建，
+    // 所以 backend 層面「shutdown 完再 play」係安全的 no-crash 路徑而唔係 UB。
+    //（透過 Audio facade 呼叫 quit() 時 backend 本身會被 delete，所以嗰條路
+    // 依然同 Windows 一樣係終局 —— 呢個 guard 只係守住 backend 直接用嘅情況。）
     bool ensureReady();
     void teardown();
 
