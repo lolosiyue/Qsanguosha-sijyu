@@ -176,6 +176,28 @@ if(WIN32)
     )
 endif()
 
+# Linux GUI M2B-A multimedia smoke 的 marker／exit code／影片分類契約。同 M1／M2
+# 一樣只 link Qt6::Core：契約唔應該要開 QApplication、Qt Multimedia 或者真音訊
+# 裝置先驗到。
+add_executable(qsanguosha_multimedia_smoke_tests
+    multimedia_smoke/multimedia-smoke-report-test.cpp
+    ${QSAN_TEST_ROOT}/src/ui/testing/multimedia-smoke-report.cpp
+    ${QSAN_TEST_ROOT}/src/ui/testing/multimedia-smoke-report.h
+)
+target_include_directories(qsanguosha_multimedia_smoke_tests PRIVATE
+    ${QSAN_TEST_ROOT}/src/ui/testing
+)
+target_link_libraries(qsanguosha_multimedia_smoke_tests PRIVATE Qt6::Core)
+qsan_add_ctest(qsanguosha_multimedia_smoke_contract qsanguosha_multimedia_smoke_tests
+    LABELS "ui-runner;gui;multimedia;fast"
+)
+if(WIN32)
+    set_property(TEST qsanguosha_multimedia_smoke_contract
+        PROPERTY ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    )
+endif()
+
 add_test(NAME qsanguosha_network_ui_smoke_cli_contract
     COMMAND ${Python3_EXECUTABLE}
         ${QSAN_TEST_ROOT}/tools/autotest/tests/test_gui_network_smoke_contract.py
