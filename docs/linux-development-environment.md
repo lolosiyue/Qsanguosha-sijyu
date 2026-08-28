@@ -583,9 +583,11 @@ Qt backend 的資源策略（三條路徑刻意分開）：
 * `superpose=false` 的舊語義保留：同一個檔案響緊就唔重疊播。
 * 缺檔案只係 `qWarning`；冇音訊裝置只係 `hasOutputDevice()=false`，兩者都唔會 crash。
 * `Audio::quit()` 會拆晒 player／output（全部掛喺一個 parent `QObject` 下），
-  唔會留低 active QObject 或者 decoder thread。Qt backend 之後再收到播放請求會
-  重新建資源 —— `StartScene::switchToServer()` 開房時會 `Audio::quit()`，
-  Linux 唔應該因此永久收聲。FMOD backend 保持舊行為，`quit()` 係終局。
+  唔會留低 active QObject 或者 decoder thread。`quit()` 之後 facade 會連 backend
+  一齊 delete，所以再有播放請求係 no-op —— 同 Windows FMOD 一樣係終局，M2B-A
+  冇改呢個語義。（`StartScene::switchToServer()` 嗰條 `Audio::quit()` 只會喺
+  「只做 host、自己唔入局」嘅 `accept_type == 1` 路徑行到；正常「開房兼玩」
+  行 `startConnection()`，唔會經過。）
 
 ### 影片背景
 
