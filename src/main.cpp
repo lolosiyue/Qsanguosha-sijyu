@@ -25,6 +25,7 @@
 
 #include "crashhandler.h"
 #include "testing/local-response-ui-controller.h"
+#include "testing/multimedia-smoke-controller.h"
 #include "testing/network-ui-smoke-controller.h"
 #include "testing/ui-startup-smoke-controller.h"
 
@@ -89,8 +90,11 @@ int main(int argc, char *argv[]) {
     // --ui-startup-smoke 係真正的 GUI startup 驗證，一定要行 QApplication path，
     // 唔可以被 headless 判斷截走。
     const bool uiStartupSmoke = UiStartupSmokeController::isRequested(appArgs);
+    // --multimedia-smoke 同 startup smoke 一樣要行完整 GUI path：audio backend
+    // 同 QML media component 都只喺 QApplication 之下先存在。
+    const bool multimediaSmoke = MultimediaSmokeController::isRequested(appArgs);
 
-    const bool headlessApp = !uiStartupSmoke
+    const bool headlessApp = !uiStartupSmoke && !multimediaSmoke
         && (appArgs.contains("-server")
             || appArgs.contains("--headless")
             || (hasTestScenarioArg && appArgs.contains("-h")));
@@ -113,6 +117,11 @@ int main(int argc, char *argv[]) {
     if (uiStartupSmoke) {
         int smokeExitCode = 0;
         if (!UiStartupSmokeController::begin(qApp->arguments(), &smokeExitCode))
+            return smokeExitCode;
+    }
+    if (multimediaSmoke) {
+        int smokeExitCode = 0;
+        if (!MultimediaSmokeController::begin(qApp->arguments(), &smokeExitCode))
             return smokeExitCode;
     }
 
@@ -192,6 +201,9 @@ int main(int argc, char *argv[]) {
         Server::writeHeadlessLog("ERROR: EngineBootstrap::initialize failed");
         if (uiStartupSmoke)
             return UiStartupSmokeController::abortEarly(QStringLiteral("engine"),
+                QStringLiteral("EngineBootstrap::initialize failed"), 1);
+        if (multimediaSmoke)
+            return MultimediaSmokeController::abortEarly(QStringLiteral("engine"),
                 QStringLiteral("EngineBootstrap::initialize failed"), 1);
         return 1;
     }
@@ -381,6 +393,14 @@ int main(int argc, char *argv[]) {
         // 由呢度開始同正常啟動走同一條路：建立真正的 MainWindow、載入真正的
         // HomeScene、行真正的 Qt event loop，等 ready condition 之後自動退出。
         const int rc = UiStartupSmokeController::run();
+        CrashHandler::beginShutdown();
+        return rc;
+    }
+
+    if (multimediaSmoke) {
+        // 同上，再喺 HomeScene 就緒之後行 audio backend／voice pool／BGM／影片
+        // 背景嘅 stage，最後乾淨收 media 資源。
+        const int rc = MultimediaSmokeController::run();
         CrashHandler::beginShutdown();
         return rc;
     }
