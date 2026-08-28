@@ -113,7 +113,9 @@ set(QSAN_SOURCES
     src/ui/clientlogbox.cpp
     src/ui/dashboard.cpp
     src/ui/easytextpanel.cpp
+    src/ui/card-overview-data.cpp
     src/ui/home/homecontroller.cpp
+    src/ui/home/homecardmodel.cpp
     src/ui/EmbeddedQmlLoader.cpp
     src/ui/emotionpanel.cpp
     src/ui/generic-cardcontainer-ui.cpp
@@ -282,7 +284,9 @@ set(QSAN_MOC_HEADERS
     src/ui/clientlogbox.h
     src/ui/dashboard.h
     src/ui/easytextpanel.h
+    src/ui/card-overview-data.h
     src/ui/home/homecontroller.h
+    src/ui/home/homecardmodel.h
     src/ui/EmbeddedQmlLoader.h
     src/ui/emotionpanel.h
     src/ui/generic-cardcontainer-ui.h

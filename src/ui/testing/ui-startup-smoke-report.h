@@ -36,6 +36,7 @@ public:
     static const char *const FlagStartupSmoke; // "--ui-startup-smoke"
     static const char *const FlagTimeoutMs;    // "--ui-startup-timeout-ms"
     static const char *const FlagReportPath;   // "--ui-startup-report"
+    static const char *const FlagStartupPage;
 
     static int defaultTimeoutMs();
     static int minimumTimeoutMs();
@@ -46,6 +47,7 @@ public:
     static bool isRequested(const QStringList &arguments);
     static bool parseTimeoutMs(const QStringList &arguments, int *timeoutMs, QString *error);
     static QString parseReportPath(const QStringList &arguments);
+    static bool parseStartupPage(const QStringList &arguments, QString *page, QString *error);
 
     // 缺少 optional 美術資源（icon／立繪／音效）唔應該升級成 fatal：clean checkout
     // 本身就冇入庫呢啲檔案。真正的 QML component load 失敗由 QQuickWidget::Error
