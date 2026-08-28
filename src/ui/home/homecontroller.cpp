@@ -8,6 +8,7 @@
 #include "heroskincontainer.h"
 #include "skin-bank.h"
 #include <QCoreApplication>
+#include <QLibraryInfo>
 #include <QSet>
 #include <QDir>
 #include <QFile>
@@ -22,6 +23,7 @@
 #include <QImage>
 #include <QImageReader>
 #include <QtGlobal>
+#include <utility>
 
 namespace {
 
@@ -545,6 +547,14 @@ int HomeGeneralModel::indexOfName(const QString &name) const
 HomeController::HomeController(QObject *parent)
     : QObject(parent)
 {
+    // 未有 QML 結論之前先寫低一個確定的狀態：唔會出現「冇人報告過」呢種
+    // 分辨唔到的空白。
+    if (!videoBackgroundEnabled())
+        reportVideoStatus(QStringLiteral("disabled"), QString());
+    else if (!hasVideoSupport())
+        reportVideoStatus(QStringLiteral("backend_unavailable"), QString());
+    else
+        reportVideoStatus(QStringLiteral("not_requested"), QString());
 }
 
 QString HomeController::version() const
@@ -623,17 +633,19 @@ bool HomeController::hasVideoSupport() const
 {
 #ifdef HAS_QT_MULTIMEDIA
     static const bool backendAvailable = []() {
-        const QStringList pluginPaths = QCoreApplication::libraryPaths();
-        for (const QString &base : pluginPaths) {
+        // 原本只搵 *.dll，即係 Linux 永遠答 false，影片背景喺 Linux 一定行唔到。
+        // 改成用 glob 認 plugin 名，唔再假設副檔名；QLibraryInfo 的 plugin 路徑
+        // 亦一齊搵，因為 Qt 重定位 prefix 之後 libraryPaths() 唔一定包含佢。
+        QStringList roots = QCoreApplication::libraryPaths();
+        roots << QLibraryInfo::path(QLibraryInfo::PluginsPath);
+        roots.removeDuplicates();
+        for (const QString &base : std::as_const(roots)) {
             QDir dir(QStringLiteral("%1/multimedia").arg(base));
             if (!dir.exists())
                 continue;
-            const QStringList plugins =
-                dir.entryList(QStringList() << QStringLiteral("*.dll"), QDir::Files);
-            for (const QString &plugin : plugins) {
-                if (plugin.contains(QStringLiteral("mediaplugin"), Qt::CaseInsensitive))
-                    return true;
-            }
+            if (!dir.entryList(QStringList() << QStringLiteral("*mediaplugin*"),
+                    QDir::Files).isEmpty())
+                return true;
         }
         return false;
     }();
@@ -641,6 +653,50 @@ bool HomeController::hasVideoSupport() const
 #else
     return false;
 #endif
+}
+
+bool HomeController::videoBackgroundEnabled() const
+{
+    return Config.EnableBackgroundVideo;
+}
+
+QVariantMap HomeController::videoStatus() const
+{
+    return m_videoStatus;
+}
+
+bool HomeController::localFileExists(const QUrl &url) const
+{
+    if (url.isEmpty())
+        return false;
+    if (url.isLocalFile())
+        return QFile::exists(url.toLocalFile());
+    if (url.scheme().isEmpty())
+        return QFile::exists(url.toString());
+    // qrc:／http: 之類唔喺度判斷，交返畀 media backend。
+    return true;
+}
+
+void HomeController::reportVideoStatus(const QString &reason, const QString &error)
+{
+    const bool loaded = reason == QLatin1String("ok");
+    m_videoStatus.insert(QStringLiteral("schema_version"), 1);
+    m_videoStatus.insert(QStringLiteral("available"), hasVideoSupport());
+    m_videoStatus.insert(QStringLiteral("enabled"), videoBackgroundEnabled());
+    m_videoStatus.insert(QStringLiteral("loaded"), loaded);
+    // 除咗真係播到，其餘每一種結果都代表靜態背景頂上咗。
+    m_videoStatus.insert(QStringLiteral("fallback"), !loaded);
+    m_videoStatus.insert(QStringLiteral("reason"), reason);
+    m_videoStatus.insert(QStringLiteral("error"), error);
+    m_videoStatus.insert(QStringLiteral("fallback_confirmed"), false);
+    emit videoStatusChanged();
+}
+
+void HomeController::confirmVideoFallback()
+{
+    m_videoStatus.insert(QStringLiteral("fallback"), true);
+    m_videoStatus.insert(QStringLiteral("fallback_confirmed"), true);
+    emit videoStatusChanged();
 }
 
 void HomeController::quickJoin()

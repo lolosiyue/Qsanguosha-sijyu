@@ -25,6 +25,7 @@
 
 #include "crashhandler.h"
 #include "testing/local-response-ui-controller.h"
+#include "testing/multimedia-smoke-controller.h"
 #include "testing/network-ui-smoke-controller.h"
 #include "testing/ui-startup-smoke-controller.h"
 
@@ -94,8 +95,11 @@ int main(int argc, char *argv[]) {
         fflush(nullptr);
         std::_Exit(code);
     };
+    // --multimedia-smoke 同 startup smoke 一樣要行完整 GUI path：audio backend
+    // 同 QML media component 都只喺 QApplication 之下先存在。
+    const bool multimediaSmoke = MultimediaSmokeController::isRequested(appArgs);
 
-    const bool headlessApp = !uiStartupSmoke
+    const bool headlessApp = !uiStartupSmoke && !multimediaSmoke
         && (appArgs.contains("-server")
             || appArgs.contains("--headless")
             || (hasTestScenarioArg && appArgs.contains("-h")));
@@ -119,6 +123,11 @@ int main(int argc, char *argv[]) {
         int smokeExitCode = 0;
         if (!UiStartupSmokeController::begin(qApp->arguments(), &smokeExitCode))
             exitStartupSmoke(smokeExitCode);
+    }
+    if (multimediaSmoke) {
+        int smokeExitCode = 0;
+        if (!MultimediaSmokeController::begin(qApp->arguments(), &smokeExitCode))
+            return smokeExitCode;
     }
 
     // 美術 PNG 內嵌的 iCCP chunk 帶有錯誤的 sRGB profile，libpng 1.6+ 會對每張
@@ -198,6 +207,9 @@ int main(int argc, char *argv[]) {
         if (uiStartupSmoke)
             exitStartupSmoke(UiStartupSmokeController::abortEarly(QStringLiteral("engine"),
                 QStringLiteral("EngineBootstrap::initialize failed"), 1));
+        if (multimediaSmoke)
+            return MultimediaSmokeController::abortEarly(QStringLiteral("engine"),
+                QStringLiteral("EngineBootstrap::initialize failed"), 1);
         return 1;
     }
     // Engine 已就緒,把真實版本號補登記給 crash handler(install() 時拿不到)
@@ -387,6 +399,14 @@ int main(int argc, char *argv[]) {
         // HomeScene、行真正的 Qt event loop，等 ready condition 之後自動退出。
         const int rc = UiStartupSmokeController::run();
         exitStartupSmoke(rc);
+    }
+
+    if (multimediaSmoke) {
+        // 同上，再喺 HomeScene 就緒之後行 audio backend／voice pool／BGM／影片
+        // 背景嘅 stage，最後乾淨收 media 資源。
+        const int rc = MultimediaSmokeController::run();
+        CrashHandler::beginShutdown();
+        return rc;
     }
 
     MainWindow *main_window = new MainWindow;
