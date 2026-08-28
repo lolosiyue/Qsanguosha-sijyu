@@ -3,6 +3,7 @@
 #include "audio.h"
 #include "settings.h"
 #include "button.h"
+#include "effects/effects-policy.h"
 #include "qsan-selectable-item.h"
 #include "server.h"
 
@@ -76,9 +77,13 @@ void StartScene::switchToServer(Server *server)
 	QPropertyAnimation *logo_shrink = new QPropertyAnimation(logo, "scale");
 	logo_shrink->setEndValue(0.5);
 
+	logo_shift->setDuration(G_EFFECTS.scaledDuration(logo_shift->duration()));
+	logo_shrink->setDuration(G_EFFECTS.scaledDuration(logo_shrink->duration()));
+
 	QParallelAnimationGroup *group = new QParallelAnimationGroup(this);
 	group->addAnimation(logo_shift);
 	group->addAnimation(logo_shrink);
+	G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
 	group->start(QAbstractAnimation::DeleteWhenStopped);
 
 	foreach(Button *button, buttons)

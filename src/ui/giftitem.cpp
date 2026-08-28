@@ -1,5 +1,7 @@
 #include "giftitem.h"
 #include "engine.h"
+#include "effects/effects-policy.h"
+#include "effects/effects-completion.h"
 #include <QParallelAnimationGroup>
 #include <QPainter>
 #include <QBrush>
@@ -42,31 +44,38 @@ GiftItem::GiftItem(const QPointF &start, const QPointF &real_finish, const QStri
 
 void GiftItem::doAnimation()
 {
+    if (!G_EFFECTS.animationsEnabled()) {
+        G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+        EffectsCompletion::completeNow(this, [this]() { deleteLater(); });
+        return;
+    }
+
     QParallelAnimationGroup *group = new QParallelAnimationGroup(this);
 
     QPropertyAnimation *move_animation = new QPropertyAnimation(this, "pos");
     move_animation->setStartValue(start);
     move_animation->setEndValue(real_finish);
     move_animation->setEasingCurve(QEasingCurve::OutCubic);
-    move_animation->setDuration(2000);
+    move_animation->setDuration(G_EFFECTS.scaledDuration(2000));
 
     QPropertyAnimation *rotation_animation = new QPropertyAnimation(this, "rotation");
     rotation_animation->setStartValue(0);
     rotation_animation->setEndValue(720);
-    rotation_animation->setDuration(2000);
+    rotation_animation->setDuration(G_EFFECTS.scaledDuration(2000));
 
     QPropertyAnimation *fade_animation = new QPropertyAnimation(this, "opacity");
     fade_animation->setStartValue(1.0);
     fade_animation->setKeyValueAt(0.85, 1.0);
     fade_animation->setEndValue(0.0);
-    fade_animation->setDuration(2000);
+    fade_animation->setDuration(G_EFFECTS.scaledDuration(2000));
 
     group->addAnimation(move_animation);
     group->addAnimation(rotation_animation);
     group->addAnimation(fade_animation);
 
+    G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
     group->start(QAbstractAnimation::DeleteWhenStopped);
-    connect(group, SIGNAL(finished()), this, SLOT(deleteLater()));
+    EffectsCompletion::whenFinished(group, this, [this]() { deleteLater(); });
 }
 
 qreal GiftItem::getRotation() const
