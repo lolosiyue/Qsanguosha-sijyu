@@ -11,7 +11,7 @@ Server 使用 `QCoreApplication`，唔需要 X11／Wayland、FMOD 或任何 GUI�
 | Linux Server（build／CI／三級 TCP network integration／systemd） | **Complete** |
 | Linux GUI M0（configure ＋ compile ＋ link） | **Complete** — `linux-gui-ci.yml` 喺 ubuntu-24.04 ＋ Qt 6.11.1 驗證 |
 | Linux GUI M1（GUI startup：`QApplication`／`MainWindow`／HomeScene／event loop） | **Complete** — `linux-gui-ci.yml` 喺 Xvfb ＋ `xcb` 跑 `--ui-startup-smoke`；WSLg 人手驗證 |
-| Linux GUI M2（RoomScene 真實 TCP 對局） | **Complete** — `linux-gui-ci.yml` 跑 `--network-ui-smoke`；05p 有一個已記錄嘅繪製 flake（見 [§4.6](#46-linux-gui-m2-network-smoke真實-tcp-對局)） |
+| Linux GUI M2（RoomScene 真實 TCP 對局） | **Complete** — 由 `gui_network_smoke.py` 喺**齊資產嘅本機**驗；唔喺 CI 跑（見 [§4.6](#46-linux-gui-m2-network-smoke真實-tcp-對局)） |
 | Linux GUI M2B-A（Qt multimedia：短音效／語音／BGM／影片背景降級） | **Complete** — `linux-gui-ci.yml` 跑 `--multimedia-smoke`（見 [§4.7](#47-linux-gui-m2b-a-multimedia-smoke)） |
 | Linux GUI M2B-B（Spine／GIF／完整視覺特效） | **Not started** |
 | Linux packaging（AppImage／deb／desktop entry／installer） | **Not started**（M3） |
@@ -346,6 +346,11 @@ bash tools/ci/linux-gui-startup-smoke.sh ./debug/QSanguosha artifacts \
 ```
 
 ## 4.6 Linux GUI M2 network smoke（真實 TCP 對局）
+
+> ⚠️ **呢個 smoke 唔喺 CI 跑，係本機 gate。** runner 冇美術／音訊資產，缺資產
+> 之下 client 同 server 打完一局會一齊 SIGSEGV（已實測：同一個 binary 喺齊資產
+> 嘅本機 8/8 PASS）。Windows 環境有同樣問題。所以呢個 runner 保留、但要喺
+> **齊資產** 嘅本機行，唔會 gate PR。詳見 `AGENTS.md`「GUI runtime 唔入 CI」。
 
 M1 證明 GUI **啟動得到**；M2 證明 GUI **玩得到**：一個獨立的 Linux
 `qsanguosha_server` process、一個獨立的 Linux GUI client process、中間行真正的
@@ -990,21 +995,19 @@ runtime Lua 內容（唔重新 fetch extensions，免得兩個 job 拎到唔同�
 ```
 Linux GUI compile ── M1 startup smoke
         ↓ linux-gui-runtime-bundle
-Linux GUI M2 network game (02p) ──┐
-        ↓                         │
-Linux GUI M2 network game (05p)   │
-                                  ↓
-                    Linux GUI M2B-A multimedia
+Linux GUI M2B-A multimedia
 ```
 
-兩個 network job 都係**阻擋性**嘅，冇用 `continue-on-error` 掩蓋。02p job 額外行
-一個負向契約：server 唔存在時 runner 一定要快速失敗並且講明係連線層，唔可以等到
-timeout 或者當 PASS。
-
-M2B-A 的 multimedia job（見 [4.7](#47-linux-gui-m2b-a-multimedia-smoke)）同樣接
+M2B-A 的 multimedia job（見 [4.7](#47-linux-gui-m2b-a-multimedia-smoke)）接
 `linux-gui-runtime-bundle`，用同一份 binary 行四個步驟：Xvfb+xcb 主驗證、影片缺
 資產降級、offscreen 次要驗證、timeout 負向契約。四個都係阻擋性。artifact 收
 multimedia report JSON、stdout/stderr、Qt multimedia plugin 診斷同 exit status。
+
+> **M2 的 network game job 已經由 CI 移除（2026-08-28）。** runner 冇美術／音訊
+> 資產，喺無資產環境下 client 同 server 打完一局之後會一齊 SIGSEGV；同一個
+> binary 喺齊資產嘅本機係 8/8 PASS。Windows 環境同樣有呢個問題，headless mode
+> 閃退本身亦係遊戲中已有現象。所以 `gui_network_smoke.py` 改為**本機 gate**，
+> 見 [§4.6](#46-linux-gui-m2-network-smoke真實-tcp-對局)。
 
 呢個 workflow **刻意唔做**：Spine／GIF／完整動畫 profile、visible startup、
 Wayland、AppImage、pixel screenshot gate。呢啲留俾 M2B-B／M3。

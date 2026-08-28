@@ -30,10 +30,13 @@ env:
   CMAKE_BUILD_PARALLEL_LEVEL: 2
 
 jobs:
-  # 分層:compile -> M1 startup -> M2 network 2p -> M2 network 5p -> M2B-A multimedia。
+  # 分層:compile -> M1 startup -> M2B-A multimedia。
   # 後面的 job 用 artifact 收下前面砌好的 binary 與 runtime Lua 內容,唔重複 build,
-  # 亦唔會因為重新 fetch extensions 而換咗內容 — 跑網絡局的就係編譯 job 驗過的
-  # 同一份檔案。
+  # 亦唔會因為重新 fetch extensions 而換咗內容 — 跑 multimedia 的就係編譯 job
+  # 驗過的同一份檔案。
+  #
+  # GUI 對局(M2 network game)刻意唔喺 CI 跑:見 AGENTS.md「GUI runtime 唔入 CI」。
+  # runner 本身(tools/autotest/gui_network_smoke.py)保留,喺本機齊資產環境下跑。
   gui-compile:
     name: Linux GUI compile + M1 runtime startup smoke
     runs-on: ubuntu-24.04
@@ -97,25 +100,17 @@ jobs:
             -DQSAN_BUILD_GUI=ON \
             -DQSAN_BUILD_SERVER=ON
 
-      # 兩個 target 都要砌:下游的 M2 network job 用 bundle 入面嘅
-      # qsanguosha_server 起真伺服器。之前淨係砌 QSanguosha,server binary 根本
-      # 冇出現過,但係 upload-artifact 對「其中一條 path 冇檔案」唔會出聲,
-      # 所以問題一路要等到下游 job chmod 嗰陣先爆。
-      - name: Compile and link QSanguosha and the dedicated server
-        run: |
-          cmake --build build/linux-gui-gcc \
-            --target QSanguosha qsanguosha_server --parallel
+      - name: Compile and link QSanguosha
+        run: cmake --build build/linux-gui-gcc --target QSanguosha --parallel
 
-      - name: Verify the linked executables
+      - name: Verify the linked executable
         run: |
-          for binary in relwithdebinfo/QSanguosha relwithdebinfo/qsanguosha_server; do
-            if [ ! -x "$binary" ]; then
-              echo "Expected executable is missing: $binary" >&2
-              exit 1
-            fi
-            file "$binary"
-            ldd "$binary" | tee -a ldd.txt
-          done
+          if [ ! -x relwithdebinfo/QSanguosha ]; then
+            echo "Expected executable is missing: relwithdebinfo/QSanguosha" >&2
+            exit 1
+          fi
+          file relwithdebinfo/QSanguosha
+          ldd relwithdebinfo/QSanguosha | tee ldd.txt
           if grep -q 'not found' ldd.txt; then
             echo "Missing shared library dependency" >&2
             exit 1
@@ -252,12 +247,11 @@ jobs:
       # 可動的 main,重新 fetch 會令兩個 job 的內容有機會唔一樣,咁就唔係同一個
       # 可重現的組合。
       # sha256sum 喺 $( ) 入面失敗唔會令步驟失敗,只會寫低一個空 sha ——
-      # 缺 binary 就係咁樣靜靜咁溜到下游。先算好再檢查,唔准空值。
+      # 缺 binary 就係咁樣靜靜咁溜到下游 job。先算好再檢查,唔准空值。
       - name: Record the fetched extensions commit
         run: |
           client_sha256=$(sha256sum relwithdebinfo/QSanguosha | cut -d' ' -f1)
-          server_sha256=$(sha256sum relwithdebinfo/qsanguosha_server | cut -d' ' -f1)
-          if [ -z "$client_sha256" ] || [ -z "$server_sha256" ]; then
+          if [ -z "$client_sha256" ]; then
             echo "Refusing to publish a bundle with a missing binary" >&2
             exit 1
           fi
@@ -266,7 +260,6 @@ jobs:
             echo "qt_version=6.11.1"
             echo "build_type=RelWithDebInfo"
             echo "client_sha256=$client_sha256"
-            echo "server_sha256=$server_sha256"
           } | tee build-provenance.txt
 
       - name: Upload the Linux GUI runtime bundle
@@ -275,228 +268,12 @@ jobs:
           name: linux-gui-runtime-bundle
           path: |
             relwithdebinfo/QSanguosha
-            relwithdebinfo/qsanguosha_server
             lua/
             extensions/
             tests/fixtures/media/
             build-provenance.txt
           if-no-files-found: error
           retention-days: 3
-
-  # ---------------------------------------------------------------------
-  # Linux GUI M2:真實 TCP 網絡對局
-  # ---------------------------------------------------------------------
-  gui-network-2p:
-    name: Linux GUI M2 network game (02p, 2 players)
-    needs: gui-compile
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    env:
-      # 固定 seed:同一個 commit + 同一個 seed 應該重現同一副牌局起手。
-      # 換 seed 等於換測試案例,要連同 artifact 一齊記錄。
-      QSAN_M2_SEED: '20260828'
-    steps:
-      - name: Check out source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-          fetch-depth: 1
-
-      - name: Install Qt 6.11.1
-        uses: jurplel/install-qt-action/action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
-        with:
-          version: '6.11.1'
-          host: linux
-          target: desktop
-          arch: linux_gcc_64
-          modules: 'qt5compat qtmultimedia'
-          cache: true
-          cache-key-prefix: qt-ubuntu-24.04-x64-6.11.1-linux_gcc_64-qt5compat-qtmultimedia-aqtmaster16db45a7-v1
-          aqtsource: 'git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e'
-
-      - name: Install Linux GUI runtime dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            fonts-dejavu-core \
-            libegl1 \
-            libgl1 \
-            libglx-mesa0 \
-            libxcb-cursor0 \
-            libxcb-icccm4 \
-            libxcb-image0 \
-            libxcb-keysyms1 \
-            libxcb-randr0 \
-            libxcb-render-util0 \
-            libxcb-shape0 \
-            libxcb-sync1 \
-            libxcb-xfixes0 \
-            libxcb-xinerama0 \
-            libxcb-xkb1 \
-            libxkbcommon-x11-0 \
-            xauth \
-            xvfb
-
-      - name: Download the Linux GUI runtime bundle
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v7.0.0
-        with:
-          name: linux-gui-runtime-bundle
-
-      - name: Restore executable bits and report provenance
-        run: |
-          chmod +x relwithdebinfo/QSanguosha relwithdebinfo/qsanguosha_server
-          cat build-provenance.txt
-          sha256sum relwithdebinfo/QSanguosha relwithdebinfo/qsanguosha_server
-
-      # --known-base-defect server-teardown-crash:對局打完、client 乾淨退出之後,
-      # qsanguosha_server 拆房時會 SIGSEGV/SIGABRT。已對照 base 證實與本分支無關
-      # (M1 merge base 編出來的 server 一樣重現,舊有的托管流程亦一樣重現),
-      # 詳情與復原條件見 tools/autotest/gui_network_smoke.py 的 KNOWN_BASE_DEFECTS。
-      # runner 仍然會偵測、列印並寫入 summary,只是不再讓它擋住本分支。
-      # 對局途中的 server 崩潰不受影響,永遠是失敗。
-      - name: Linux GUI M2 network game (02p)
-        run: |
-          python3 tools/autotest/gui_network_smoke.py \
-            --exe-root . \
-            --mode 02p \
-            --seed "$QSAN_M2_SEED" \
-            --artifact-dir gui-network-artifacts \
-            --xvfb --platform xcb \
-            --process-timeout 900 \
-            --client-timeout-ms 600000 \
-            --known-base-defect server-teardown-crash \
-            --require-interactions choose_general,play_phase,ask_for_card
-
-      # 負向契約:server 未啟動時,runner 一定要快速失敗並講清楚係連線層,
-      # 唔可以靜靜等到 timeout 或者當成 PASS。
-      - name: Network smoke fails fast when the server is unreachable
-        run: |
-          set +e
-          python3 tools/autotest/gui_network_smoke.py \
-            --exe-root . \
-            --server-exe /bin/true \
-            --mode 02p \
-            --seed "$QSAN_M2_SEED" \
-            --artifact-dir gui-network-artifacts \
-            --label 02p-no-server \
-            --xvfb --platform xcb \
-            --server-startup-timeout 20 \
-            --process-timeout 120 \
-            --client-timeout-ms 60000 > no-server.log 2>&1
-          status=$?
-          set -e
-          cat no-server.log
-          if [ "$status" -eq 0 ]; then
-            echo "The runner passed with no server listening" >&2
-            exit 1
-          fi
-          grep -q "never started listening" no-server.log
-
-      - name: Upload M2 network artifacts
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: linux-gui-m2-network-02p
-          path: |
-            gui-network-artifacts/
-            build-provenance.txt
-            no-server.log
-          if-no-files-found: warn
-          retention-days: 7
-
-  gui-network-5p:
-    name: Linux GUI M2 network game (05p, 5 players)
-    needs: gui-network-2p
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    env:
-      QSAN_M2_SEED: '20260828'
-    steps:
-      - name: Check out source
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          persist-credentials: false
-          fetch-depth: 1
-
-      - name: Install Qt 6.11.1
-        uses: jurplel/install-qt-action/action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
-        with:
-          version: '6.11.1'
-          host: linux
-          target: desktop
-          arch: linux_gcc_64
-          modules: 'qt5compat qtmultimedia'
-          cache: true
-          cache-key-prefix: qt-ubuntu-24.04-x64-6.11.1-linux_gcc_64-qt5compat-qtmultimedia-aqtmaster16db45a7-v1
-          aqtsource: 'git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e'
-
-      - name: Install Linux GUI runtime dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y \
-            fonts-dejavu-core \
-            libegl1 \
-            libgl1 \
-            libglx-mesa0 \
-            libxcb-cursor0 \
-            libxcb-icccm4 \
-            libxcb-image0 \
-            libxcb-keysyms1 \
-            libxcb-randr0 \
-            libxcb-render-util0 \
-            libxcb-shape0 \
-            libxcb-sync1 \
-            libxcb-xfixes0 \
-            libxcb-xinerama0 \
-            libxcb-xkb1 \
-            libxkbcommon-x11-0 \
-            xauth \
-            xvfb
-
-      - name: Download the Linux GUI runtime bundle
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v7.0.0
-        with:
-          name: linux-gui-runtime-bundle
-
-      - name: Restore executable bits and report provenance
-        run: |
-          chmod +x relwithdebinfo/QSanguosha relwithdebinfo/qsanguosha_server
-          cat build-provenance.txt
-
-      # KNOWN-FLAKE: 05p 的 GUI client 會喺對局途中喺 QGraphicsScene 繪製路徑
-      # SIGSEGV(backtrace 全部喺 Qt Widgets 的 QGraphicsView::paintEvent →
-      # QGraphicsScene draw 內,冇任何 QSanguosha frame)。同一個 client 用舊有的
-      # --auto-robots 托管流程唔會重現,即係要有真實 UI 互動先觸發;02p 用同一條
-      # responder 路徑亦唔會重現,所以係 5 人版面特有的繪製問題,唔屬於本分支的
-      # 修復範圍(見 docs/linux-development-environment.md)。
-      #
-      # 暫時非阻擋。seed 已經固定喺 QSAN_M2_SEED,完整 artifact(client log、
-      # server log、marker、summary)照樣上傳,失敗照樣顯示喺 job 上。
-      # 移除條件:5 人局 RoomScene 的繪製崩潰修好之後,拿掉 continue-on-error。
-      - name: Linux GUI M2 network game (05p)
-        continue-on-error: true
-        run: |
-          python3 tools/autotest/gui_network_smoke.py \
-            --exe-root . \
-            --mode 05p \
-            --seed "$QSAN_M2_SEED" \
-            --artifact-dir gui-network-artifacts \
-            --xvfb --platform xcb \
-            --process-timeout 1800 \
-            --client-timeout-ms 1500000 \
-            --known-base-defect server-teardown-crash \
-            --require-interactions choose_general
-
-      - name: Upload M2 network artifacts
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: linux-gui-m2-network-05p
-          path: |
-            gui-network-artifacts/
-            build-provenance.txt
-          if-no-files-found: warn
-          retention-days: 7
 
   # ---------------------------------------------------------------------
   # Linux GUI M2B-A:Qt multimedia audio 同影片背景
