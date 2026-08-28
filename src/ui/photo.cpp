@@ -10,6 +10,7 @@
 #include "rolecombobox.h"
 //#include "skin-bank.h"
 #include "sprite.h"
+#include "effects/effects-policy.h"
 
 #include "pixmapanimation.h"
 
@@ -184,32 +185,52 @@ void Photo::setEmotion(const QString &emotion, bool permanent)
             (photoLayout->m_normalHeight - pixmap.height()) / 2);
         _layBetween(emotion_item, _m_chainIcon, _m_roleComboBox);
 
+        if (!G_EFFECTS.animationsEnabled()) {
+            // 即刻到達最終狀態：permanent 嘅（例如拼點問號）要留喺畫面，
+            // 一次性嘅淡入淡出最終狀態就係「唔見咗」。
+            G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+            emotion_item->setOpacity(permanent ? 1.0 : 0.0);
+            return;
+        }
+
         QPropertyAnimation *appear = new QPropertyAnimation(emotion_item, "opacity");
         appear->setStartValue(0.0);
         if (permanent) {
             appear->setEndValue(1.0);
-            appear->setDuration(500);
+            appear->setDuration(G_EFFECTS.scaledDuration(500));
         } else {
             appear->setKeyValueAt(0.25, 1.0);
             appear->setKeyValueAt(0.75, 1.0);
             appear->setEndValue(0.0);
-            appear->setDuration(2000);
+            appear->setDuration(G_EFFECTS.scaledDuration(2000));
         }
+        G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
         appear->start(QAbstractAnimation::DeleteWhenStopped);
-    } else
+    } else if (G_EFFECTS.animationsEnabled()) {
         PixmapAnimation::GetPixmapAnimation(this, emotion);
+    } else {
+        G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+    }
 }
 
 void Photo::tremble()
 {
+    // 純裝飾：受傷震動嘅最終狀態就係「返返原位」，NONE 直接乜都唔做。
+    if (!G_EFFECTS.animationsEnabled()) {
+        G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+        return;
+    }
+
     QPropertyAnimation *vibrate = new QPropertyAnimation(this, "x");
     static qreal offset = 20;
 
     vibrate->setKeyValueAt(0.5, x() - offset);
     vibrate->setEndValue(x());
+    vibrate->setDuration(G_EFFECTS.scaledDuration(vibrate->duration()));
 
     vibrate->setEasingCurve(QEasingCurve::OutInBounce);
 
+    G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
     vibrate->start(QAbstractAnimation::DeleteWhenStopped);
 }
 
@@ -229,10 +250,17 @@ void Photo::hideSkillName()
 
 void Photo::hideEmotion()
 {
+    if (!G_EFFECTS.animationsEnabled()) {
+        G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+        emotion_item->setOpacity(0.0);
+        return;
+    }
+
     QPropertyAnimation *disappear = new QPropertyAnimation(emotion_item, "opacity");
     disappear->setStartValue(1.0);
     disappear->setEndValue(0.0);
-    disappear->setDuration(500);
+    disappear->setDuration(G_EFFECTS.scaledDuration(500));
+    G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
     disappear->start(QAbstractAnimation::DeleteWhenStopped);
 }
 

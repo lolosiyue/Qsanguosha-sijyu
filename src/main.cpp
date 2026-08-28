@@ -24,6 +24,9 @@
 #endif
 
 #include "crashhandler.h"
+#include "effects/effects-policy.h"
+#include "effects/effects-profile.h"
+#include "testing/effects-smoke-controller.h"
 #include "testing/local-response-ui-controller.h"
 #include "testing/multimedia-smoke-controller.h"
 #include "testing/network-ui-smoke-controller.h"
@@ -93,11 +96,24 @@ int main(int argc, char *argv[]) {
     // --multimedia-smoke 同 startup smoke 一樣要行完整 GUI path：audio backend
     // 同 QML media component 都只喺 QApplication 之下先存在。
     const bool multimediaSmoke = MultimediaSmokeController::isRequested(appArgs);
+    // --effects-smoke 同上面兩個一樣要行完整 GUI path：RoomScene 用嘅效果
+    // class（QMovie／SpineGlItem／PixmapAnimation）都只喺 QApplication 之下存在。
+    const bool effectsSmoke = EffectsSmokeController::isRequested(appArgs);
 
-    const bool headlessApp = !uiStartupSmoke && !multimediaSmoke
+    const bool headlessApp = !uiStartupSmoke && !multimediaSmoke && !effectsSmoke
         && (appArgs.contains("-server")
             || appArgs.contains("--headless")
             || (hasTestScenarioArg && appArgs.contains("-h")));
+
+    // 打錯 profile 名唔可以靜靜當冇指定 —— CI 會以為跑咗 none 但其實跑緊 full。
+    {
+        const EffectsProfileContract::CliOverride effectsCli =
+            EffectsProfileContract::parseCliOverride(appArgs);
+        if (effectsCli.present && !effectsCli.valid) {
+            fprintf(stderr, "%s\n", qPrintable(effectsCli.error));
+            return 5;
+        }
+    }
 
     if (argc > 1 && strcmp(argv[1], "-manual") == 0) {
         new QCoreApplication(argc, argv);
@@ -122,6 +138,11 @@ int main(int argc, char *argv[]) {
     if (multimediaSmoke) {
         int smokeExitCode = 0;
         if (!MultimediaSmokeController::begin(qApp->arguments(), &smokeExitCode))
+            return smokeExitCode;
+    }
+    if (effectsSmoke) {
+        int smokeExitCode = 0;
+        if (!EffectsSmokeController::begin(qApp->arguments(), &smokeExitCode))
             return smokeExitCode;
     }
 
@@ -205,6 +226,9 @@ int main(int argc, char *argv[]) {
         if (multimediaSmoke)
             return MultimediaSmokeController::abortEarly(QStringLiteral("engine"),
                 QStringLiteral("EngineBootstrap::initialize failed"), 1);
+        if (effectsSmoke)
+            return EffectsSmokeController::abortEarly(QStringLiteral("engine"),
+                QStringLiteral("EngineBootstrap::initialize failed"), 1);
         return 1;
     }
     // Engine 已就緒,把真實版本號補登記給 crash handler(install() 時拿不到)
@@ -214,6 +238,10 @@ int main(int argc, char *argv[]) {
                      [](const QString &filename, bool superpose) { Audio::play(filename, superpose); });
 #endif
     Config.init();
+    // 效果 profile 一定要喺任何 UI 物件之前定好：RoomScene／Dashboard／Spine
+    // controller 建構嗰陣就已經會問 policy「呢個效果做唔做得」。正常使用者
+    // 設定同測試用嘅 --effects-profile 行同一條 resolve()。
+    G_EFFECTS.initialize(qApp->arguments());
     // UiConfig 載入 QFontDatabase/QFont,必須在有 QGuiApplication 的環境才安全;
     // headless(QCoreApplication)直接跳過,字型與 palette 只有 GUI 需要。
     if (qobject_cast<QApplication *>(qApp))
@@ -401,6 +429,14 @@ int main(int argc, char *argv[]) {
         // 同上，再喺 HomeScene 就緒之後行 audio backend／voice pool／BGM／影片
         // 背景嘅 stage，最後乾淨收 media 資源。
         const int rc = MultimediaSmokeController::run();
+        CrashHandler::beginShutdown();
+        return rc;
+    }
+
+    if (effectsSmoke) {
+        // 同上，再喺 HomeScene 就緒之後行 effects policy／completion 契約、
+        // GIF／Spine／frame animation 嘅缺資產降級，同 profile 物件預算。
+        const int rc = EffectsSmokeController::run();
         CrashHandler::beginShutdown();
         return rc;
     }

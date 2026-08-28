@@ -11,6 +11,8 @@
 #include "protocol.h"
 #include "roomscene.h"
 #include "settings.h"
+#include "effects/effects-completion.h"
+#include "effects/effects-policy.h"
 
 #include <QApplication>
 #include <QDir>
@@ -441,6 +443,17 @@ QJsonObject NetworkUiSmokeController::environmentDetails() const
     details.insert(QStringLiteral("game_mode"), ServerInfo.GameMode);
     details.insert(QStringLiteral("timeout_ms"), m_timeoutMs);
     details.insert(QStringLiteral("stall_ms"), m_stallMs);
+    // M2B-B：完整一局要證明「三個 profile 有完全相同嘅遊戲規則同網絡回覆」，
+    // 所以每次網絡 smoke 都記低佢實際行緊邊個 profile、建立咗幾多高成本
+    // 物件、同埋派咗幾多次 completion。
+    details.insert(QStringLiteral("effects"), G_EFFECTS.describe());
+    details.insert(QStringLiteral("effects_counters"), G_EFFECTS.countersJson());
+    QJsonObject completion;
+    completion.insert(QStringLiteral("delivered"),
+        static_cast<double>(EffectsCompletion::deliveredCount()));
+    completion.insert(QStringLiteral("cancelled"),
+        static_cast<double>(EffectsCompletion::cancelledCount()));
+    details.insert(QStringLiteral("effects_completion"), completion);
     return details;
 }
 

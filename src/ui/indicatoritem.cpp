@@ -1,5 +1,7 @@
 #include "indicatoritem.h"
 #include "engine.h"
+#include "effects/effects-policy.h"
+#include "effects/effects-completion.h"
 
 IndicatorItem::IndicatorItem(const QPointF &start, const QPointF &real_finish, Player *player)
     : start(start), finish(start), real_finish(real_finish)
@@ -14,24 +16,33 @@ IndicatorItem::IndicatorItem(const QPointF &start, const QPointF &real_finish, P
 
 void IndicatorItem::doAnimation()
 {
+    if (!G_EFFECTS.animationsEnabled()) {
+        // 指示線冇最終狀態要保留:即刻收工,但一定經 event loop 拆自己,
+        // 唔可以喺 caller 手上炸咗個啱啱 addItem 落 scene 嘅 item。
+        G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+        EffectsCompletion::completeNow(this, [this]() { deleteLater(); });
+        return;
+    }
+
     QSequentialAnimationGroup *group = new QSequentialAnimationGroup(this);
 
     QPropertyAnimation *animation = new QPropertyAnimation(this, "finish");
     animation->setEndValue(real_finish);
     animation->setEasingCurve(QEasingCurve::OutCubic);
-    animation->setDuration(500);
+    animation->setDuration(G_EFFECTS.scaledDuration(500));
 
     QPropertyAnimation *pause = new QPropertyAnimation(this, "opacity");
     pause->setEndValue(0);
     pause->setEasingCurve(QEasingCurve::InQuart);
-    pause->setDuration(600);
+    pause->setDuration(G_EFFECTS.scaledDuration(600));
 
     group->addAnimation(animation);
     group->addAnimation(pause);
 
+    G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
     group->start(QAbstractAnimation::DeleteWhenStopped);
 
-    connect(group, SIGNAL(finished()), this, SLOT(deleteLater()));
+    EffectsCompletion::whenFinished(group, this, [this]() { deleteLater(); });
 }
 
 QPointF IndicatorItem::getFinish() const
