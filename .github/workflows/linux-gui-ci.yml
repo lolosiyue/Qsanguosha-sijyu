@@ -97,14 +97,25 @@ jobs:
             -DQSAN_BUILD_GUI=ON \
             -DQSAN_BUILD_SERVER=ON
 
-      - name: Compile and link QSanguosha
-        run: cmake --build build/linux-gui-gcc --target QSanguosha --parallel
-
-      - name: Verify the linked executable
+      # 兩個 target 都要砌:下游的 M2 network job 用 bundle 入面嘅
+      # qsanguosha_server 起真伺服器。之前淨係砌 QSanguosha,server binary 根本
+      # 冇出現過,但係 upload-artifact 對「其中一條 path 冇檔案」唔會出聲,
+      # 所以問題一路要等到下游 job chmod 嗰陣先爆。
+      - name: Compile and link QSanguosha and the dedicated server
         run: |
-          test -x relwithdebinfo/QSanguosha
-          file relwithdebinfo/QSanguosha
-          ldd relwithdebinfo/QSanguosha | tee ldd.txt
+          cmake --build build/linux-gui-gcc \
+            --target QSanguosha qsanguosha_server --parallel
+
+      - name: Verify the linked executables
+        run: |
+          for binary in relwithdebinfo/QSanguosha relwithdebinfo/qsanguosha_server; do
+            if [ ! -x "$binary" ]; then
+              echo "Expected executable is missing: $binary" >&2
+              exit 1
+            fi
+            file "$binary"
+            ldd "$binary" | tee -a ldd.txt
+          done
           if grep -q 'not found' ldd.txt; then
             echo "Missing shared library dependency" >&2
             exit 1
@@ -240,15 +251,22 @@ jobs:
       # extensions/ 一併打包,而唔係喺下游 job 重新 fetch:extensions 的預設 ref 係
       # 可動的 main,重新 fetch 會令兩個 job 的內容有機會唔一樣,咁就唔係同一個
       # 可重現的組合。
+      # sha256sum 喺 $( ) 入面失敗唔會令步驟失敗,只會寫低一個空 sha ——
+      # 缺 binary 就係咁樣靜靜咁溜到下游。先算好再檢查,唔准空值。
       - name: Record the fetched extensions commit
         run: |
-          git -C "$GITHUB_WORKSPACE" rev-parse HEAD > build-provenance.txt
+          client_sha256=$(sha256sum relwithdebinfo/QSanguosha | cut -d' ' -f1)
+          server_sha256=$(sha256sum relwithdebinfo/qsanguosha_server | cut -d' ' -f1)
+          if [ -z "$client_sha256" ] || [ -z "$server_sha256" ]; then
+            echo "Refusing to publish a bundle with a missing binary" >&2
+            exit 1
+          fi
           {
             echo "repo_commit=$(git -C "$GITHUB_WORKSPACE" rev-parse HEAD)"
             echo "qt_version=6.11.1"
             echo "build_type=RelWithDebInfo"
-            echo "client_sha256=$(sha256sum relwithdebinfo/QSanguosha | cut -d' ' -f1)"
-            echo "server_sha256=$(sha256sum relwithdebinfo/qsanguosha_server | cut -d' ' -f1)"
+            echo "client_sha256=$client_sha256"
+            echo "server_sha256=$server_sha256"
           } | tee build-provenance.txt
 
       - name: Upload the Linux GUI runtime bundle
@@ -545,9 +563,10 @@ jobs:
         with:
           name: linux-gui-runtime-bundle
 
+      # multimedia smoke 唔使起伺服器,所以只還原 client 嘅執行權限。
       - name: Restore executable bits and report provenance
         run: |
-          chmod +x relwithdebinfo/QSanguosha relwithdebinfo/qsanguosha_server
+          chmod +x relwithdebinfo/QSanguosha
           cat build-provenance.txt
           sha256sum relwithdebinfo/QSanguosha
 
