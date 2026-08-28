@@ -6,6 +6,7 @@
 #include "clientstruct.h"
 #include "clientplayer.h"
 #include "engine.h"
+#include "effects/effects-policy.h"
 #include "settings.h"
 
 #include <QDebug>
@@ -224,7 +225,7 @@ void TriggerOptionButton::hoverEnterEvent(QGraphicsSceneHoverEvent *)
 {
     QPropertyAnimation *animation = new QPropertyAnimation(this, "opacity");
     animation->setEndValue(1.0);
-    animation->setDuration(100);
+    animation->setDuration(G_EFFECTS.scaledDuration(100));
     animation->start(QAbstractAnimation::DeleteWhenStopped);
     emit hovered(true);
 }
@@ -233,7 +234,7 @@ void TriggerOptionButton::hoverLeaveEvent(QGraphicsSceneHoverEvent *)
 {
     QPropertyAnimation *animation = new QPropertyAnimation(this, "opacity");
     animation->setEndValue(initialOpacity);
-    animation->setDuration(100);
+    animation->setDuration(G_EFFECTS.scaledDuration(100));
     animation->start(QAbstractAnimation::DeleteWhenStopped);
     emit hovered(false);
 }
@@ -268,12 +269,12 @@ void TriggerOptionButton::needDisabled(bool disabled)
     if (disabled) {
         QPropertyAnimation *animation = new QPropertyAnimation(this, "opacity");
         animation->setEndValue(0.2);
-        animation->setDuration(100);
+        animation->setDuration(G_EFFECTS.scaledDuration(100));
         animation->start(QAbstractAnimation::DeleteWhenStopped);
     } else {
         QPropertyAnimation *animation = new QPropertyAnimation(this, "opacity");
         animation->setEndValue(initialOpacity);
-        animation->setDuration(100);
+        animation->setDuration(G_EFFECTS.scaledDuration(100));
         animation->start(QAbstractAnimation::DeleteWhenStopped);
     }
 }

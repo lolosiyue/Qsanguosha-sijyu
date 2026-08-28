@@ -284,11 +284,16 @@ def stage_line(stage: str, ok: bool = True) -> str:
         {"schema_version": 1, "stage": stage, "ok": ok}, separators=(",", ":"))
 
 
-def result_line(ok: bool, stage: str, exit_code: int, reason: str) -> str:
+def result_line(ok: bool, stage: str, exit_code: int, reason: str,
+                effects: dict | None = None, counters: dict | None = None) -> str:
     payload = {"schema_version": 1, "ok": ok, "stage": stage,
                "exit_code": exit_code, "reason": reason}
     if not ok:
         payload["error"] = "synthetic failure"
+    if effects is not None:
+        payload["effects"] = effects
+    if counters is not None:
+        payload["effects_counters"] = counters
     return "NETWORK_UI_RESULT " + json.dumps(payload, separators=(",", ":"))
 
 
@@ -296,7 +301,8 @@ def evaluate_log(log_text: str, *, client_code: int = 0, game_start: bool = True
                  game_over: str | None = "lord", responder: dict | None = None,
                  required=("choose_general",), allow_trustee: bool = False,
                  shutdown: str = "graceful", server_exit: int = 0, orphans=(),
-                 port_released: bool = True, known_base_defect=()):
+                 port_released: bool = True, known_base_defect=(),
+                 effects_profile: str | None = None):
     """Drive the runner's own evaluator over a synthetic run."""
     import gui_network_smoke as smoke
 
@@ -307,6 +313,7 @@ def evaluate_log(log_text: str, *, client_code: int = 0, game_start: bool = True
     args.require_interactions = list(required)
     args.allow_trustee_fallback = allow_trustee
     args.known_base_defect = list(known_base_defect)
+    args.effects_profile = effects_profile
 
     stages, results = smoke.parse_markers(log_text)
     summary = {
@@ -321,9 +328,13 @@ def evaluate_log(log_text: str, *, client_code: int = 0, game_start: bool = True
                           {"game_start": game_start, "game_over": game_over})
 
 
-def complete_log() -> str:
+def complete_log(effects: dict | None = None, counters: dict | None = None) -> str:
     return "\n".join([stage_line(stage) for stage in STAGES]
-                     + [result_line(True, "shutdown", 0, "ok")])
+                     + [result_line(True, "shutdown", 0, "ok", effects, counters)])
+
+
+NO_EFFECT_OBJECTS = {"spine_items": 0, "movie_objects": 0,
+                     "qml_overlays": 0, "video_objects": 0}
 
 
 def test_evaluator_accepts_a_complete_successful_run() -> None:
@@ -416,6 +427,7 @@ def test_known_base_defect_downgrade_is_narrow_and_never_silent() -> None:
         require_interactions = ["choose_general"]
         allow_trustee_fallback = False
         known_base_defect = ["server-teardown-crash"]
+        effects_profile = None
 
     stages, results = smoke.parse_markers(complete_log())
     problems = smoke.evaluate(Args(), summary, stages, results, 0,
@@ -498,6 +510,44 @@ def test_documentation_pins_the_network_smoke() -> None:
     print("PASS test_documentation_pins_the_network_smoke")
 
 
+def test_effects_profile_matrix_must_actually_run_the_requested_profile() -> None:
+    """M2B-B: `--effects-profile none` that silently ran `full` is the whole risk.
+
+    A mistyped or ignored override turns a three-profile matrix into the same
+    profile three times, and every "NONE completes a full game" claim becomes a
+    claim about FULL.  So the runner checks both the resolved profile *and* that
+    the CLI is what resolved it.
+    """
+    sys.path.insert(0, str(ROOT / "tools" / "autotest"))
+
+    honoured = complete_log({"profile": "none", "source": "cli"}, NO_EFFECT_OBJECTS)
+    assert evaluate_log(honoured, effects_profile="none") == [], \
+        "a run that honoured --effects-profile none must pass"
+
+    ignored = complete_log({"profile": "full", "source": "settings"}, NO_EFFECT_OBJECTS)
+    problems = evaluate_log(ignored, effects_profile="none")
+    assert any("resolved" in problem for problem in problems), problems
+
+    fell_back = complete_log({"profile": "none", "source": "settings"}, NO_EFFECT_OBJECTS)
+    problems = evaluate_log(fell_back, effects_profile="none")
+    assert any("resolution source" in problem for problem in problems), problems
+
+    # Without the flag the runner must not invent an expectation.
+    assert evaluate_log(complete_log()) == []
+    print("PASS test_effects_profile_matrix_must_actually_run_the_requested_profile")
+
+
+def test_none_profile_must_not_construct_effect_objects_during_a_game() -> None:
+    """The executable definition of NONE, asserted over a whole finished game."""
+    sys.path.insert(0, str(ROOT / "tools" / "autotest"))
+    for key in NO_EFFECT_OBJECTS:
+        counters = dict(NO_EFFECT_OBJECTS, **{key: 3})
+        log = complete_log({"profile": "none", "source": "cli"}, counters)
+        problems = evaluate_log(log, effects_profile="none")
+        assert any(key in problem for problem in problems), (key, problems)
+    print("PASS test_none_profile_must_not_construct_effect_objects_during_a_game")
+
+
 def main() -> int:
     tests = (
         test_smoke_rides_the_product_network_path,
@@ -519,6 +569,8 @@ def main() -> int:
         test_evaluator_rejects_a_dirty_shutdown,
         test_known_base_defect_downgrade_is_narrow_and_never_silent,
         test_evaluator_rejects_an_exit_code_that_disagrees_with_the_marker,
+        test_effects_profile_matrix_must_actually_run_the_requested_profile,
+        test_none_profile_must_not_construct_effect_objects_during_a_game,
         test_gui_runtime_smoke_is_a_local_gate_not_a_ci_gate,
         test_documentation_pins_the_network_smoke,
     )

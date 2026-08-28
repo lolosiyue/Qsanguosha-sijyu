@@ -29,6 +29,7 @@ private:
         bool noCardMoveAnim = false;
         bool enableAnimatedGenerals = true;
         bool enablePointerEffect = true;
+        QString effectsProfile;
     } m_visual;
 
     void loadConfig();

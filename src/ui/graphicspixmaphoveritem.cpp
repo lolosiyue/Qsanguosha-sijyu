@@ -3,6 +3,7 @@
 #include "pixmapanimation.h"
 #include "engine.h"
 #include "settings.h"
+#include "effects/effects-policy.h"
 
 #include <QPainter>
 #include <QStyleOptionGraphicsItem>
@@ -323,9 +324,12 @@ void GraphicsPixmapHoverItem::setGeneralImage(const QString &imagePath, const QS
         m_staticPixmap = staticPixmap;
     }
 
-    if (hasGif && Config.value("EnableAnimatedGenerals", true).toBool()) {
+    // gifEnabled() 已經夾埋使用者嘅 EnableAnimatedGenerals;NONE profile 一個
+    // QMovie 都唔會 new,角色框落返上面已經 setPixmap 咗嘅靜態立繪。
+    if (hasGif && G_EFFECTS.gifEnabled()) {
         if (!m_movie) {
             m_movie = new QMovie(gifPath, QByteArray(), this);
+            G_EFFECTS.note(VisualEffectsPolicy::MovieObjectsCreated);
         } else {
             m_movie->stop();
             m_movie->setFileName(gifPath);
@@ -361,7 +365,22 @@ void GraphicsPixmapHoverItem::setGeneralImage(const QString &imagePath, const QS
                 m_proxyWidget->setPos(0, 0);
             }
 
-            m_movie->start();
+            // item 未入 scene 嗰陣 addWidget 做唔到,m_proxyWidget 會留返 null。
+            // 原本嘅寫法跟住就 m_proxyWidget->show(),即係 nullptr deref。
+            // 冇 proxy 就落返靜態立繪,唔可以拖冧成個角色框。
+            if (!m_proxyWidget) {
+                m_isAnimated = false;
+                m_movie->stop();
+                if (!m_staticPixmap.isNull())
+                    setPixmap(m_staticPixmap);
+                QGraphicsPixmapItem::show();
+                return;
+            }
+
+            if (G_EFFECTS.gifPlaybackAllowed())
+                m_movie->start();
+            else
+                m_movie->jumpToFrame(0);   // REDUCED:只顯示首幀,唔行 decode loop
             m_proxyWidget->show();
             setPixmap(QPixmap());
             return;
@@ -416,11 +435,12 @@ void GraphicsPixmapHoverItem::setGeneralImage(const QPixmap &pixmap, const QSize
 
 void GraphicsPixmapHoverItem::startGifAnimation()
 {
-    if (m_isAnimated && m_movie && m_movie->isValid()) {
-        if (m_proxyWidget) {
-            m_proxyWidget->show();
-        }
-        m_movie->start();
+    if (m_isAnimated && m_movie && m_movie->isValid() && m_proxyWidget) {
+        m_proxyWidget->show();
+        if (G_EFFECTS.gifPlaybackAllowed())
+            m_movie->start();
+        else
+            m_movie->jumpToFrame(0);
         setPixmap(QPixmap());
     }
 }

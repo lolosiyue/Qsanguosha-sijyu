@@ -203,6 +203,8 @@ def build_client_command(args, client_exe, port, result_path, screenshot_path):
         "--network-ui-smoke-stall-ms", str(args.stall_ms),
         "--network-ui-smoke-screenshot", screenshot_path,
     ]
+    if args.effects_profile:
+        command += ["--effects-profile", args.effects_profile]
     if args.xvfb:
         # -a 自動揀空閒 display number，令平行 CI job 唔會爭同一個 :99。
         command = ["xvfb-run", "-a", "-s", "-screen 0 1280x720x24"] + command
@@ -253,6 +255,32 @@ def evaluate(args, summary, stages, results, client_code, server_markers):
             problems.append("stage %r was never reported" % stage)
         elif not stage_status[stage]:
             problems.append("stage %r reported ok=false" % stage)
+
+    # M2B-B: 要求咗邊個 profile 就一定要真係行嗰個。默默退返 full 會令
+    # 「NONE 完成一局」變成一個只證明咗 full 嘅綠色 job。
+    effects = (result.get("effects") or {})
+    summary["effects"] = {
+        "requested": args.effects_profile,
+        "resolved": effects.get("profile"),
+        "source": effects.get("source"),
+        "counters": result.get("effects_counters") or {},
+        "completion": result.get("effects_completion") or {},
+    }
+    if args.effects_profile:
+        if effects.get("profile") != args.effects_profile:
+            problems.append("asked for effects profile %r but the client resolved %r"
+                            % (args.effects_profile, effects.get("profile")))
+        elif effects.get("source") != "cli":
+            problems.append("--effects-profile did not become the resolution source "
+                            "(got %r)" % effects.get("source"))
+        if args.effects_profile == "none":
+            # NONE 嘅硬性定義:一局打完都唔准建立呢啲物件。
+            counters = result.get("effects_counters") or {}
+            for key in ("spine_items", "movie_objects", "qml_overlays", "video_objects"):
+                created = counters.get(key)
+                if isinstance(created, (int, float)) and created > 0:
+                    problems.append("effects profile 'none' created %d %s during the game"
+                                    % (int(created), key))
 
     if not server_markers["game_start"]:
         problems.append("the server never logged '%s'" % MARK_GAME_START)
@@ -341,6 +369,11 @@ def main():
                         help="必須經真 UI 覆過的互動名, 逗號分隔")
     parser.add_argument("--allow-trustee-fallback", action="store_true",
                         help="容許 responder 中途切 trustee (預設: 視為失敗)")
+    parser.add_argument("--effects-profile", default=None,
+                        choices=("full", "reduced", "none"),
+                        help="M2B-B: 用邊個效果 profile 跑呢一局。三個 profile 必須有"
+                             "完全相同嘅遊戲規則同網絡回覆,所以呢個 flag 唔准改任何"
+                             "通過條件——只係換咗畫面上做啲乜。")
     parser.add_argument("--known-base-defect", action="append", default=[],
                         choices=sorted(KNOWN_BASE_DEFECTS),
                         help="把指定的已知 base 缺陷降級為警告 (仍然會偵測、列印同"
@@ -394,6 +427,7 @@ def main():
             "process_timeout": args.process_timeout,
             "client_timeout_ms": args.client_timeout_ms,
             "stall_ms": args.stall_ms,
+            "effects_profile": args.effects_profile,
         },
         "lifecycle": {
             "server_started": False,
