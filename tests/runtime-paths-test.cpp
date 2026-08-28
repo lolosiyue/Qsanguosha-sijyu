@@ -18,6 +18,24 @@ bool expect(bool condition, const char *message)
     return false;
 }
 
+// Windows hands back the current directory in whatever form the OS stored it
+// (drive-letter case, 8.3 short components under %TEMP%), so comparing the
+// strings that went in against the strings that came out is not portable.
+// Compare what the filesystem says the paths are instead.
+QString normalized(const QString &path)
+{
+    if (path.isEmpty())
+        return path;
+    const QString canonical = QFileInfo(path).canonicalFilePath();
+    return canonical.isEmpty() ? QDir::cleanPath(QFileInfo(path).absoluteFilePath())
+                               : canonical;
+}
+
+bool samePath(const QString &left, const QString &right)
+{
+    return !left.isEmpty() && normalized(left) == normalized(right);
+}
+
 bool writeFile(const QString &path, const QString &content)
 {
     QDir().mkpath(QFileInfo(path).absolutePath());
@@ -67,8 +85,7 @@ bool commandLineOverrideWins()
     const bool resolved =
         QSanRuntimePaths::resolve(argv({QStringLiteral("--asset-root"), chosen}), &error);
     return expect(resolved, "an explicit --asset-root was rejected")
-        && expect(QSanRuntimePaths::assetRoot() == QDir(chosen).canonicalPath()
-                      || QSanRuntimePaths::assetRoot() == chosen,
+        && expect(samePath(QSanRuntimePaths::assetRoot(), chosen),
                   "--asset-root did not win over the working directory")
         && expect(QSanRuntimePaths::resolution().assetRootSource
                       == QSanRuntimePaths::AssetRootSource::CommandLine,
@@ -76,7 +93,7 @@ bool commandLineOverrideWins()
         // Resolving must also make the legacy relative paths ("lua/config.lua",
         // "image/...") point at the resolved root rather than at whatever
         // directory the player happened to start the game from.
-        && expect(QDir::currentPath() == QSanRuntimePaths::assetRoot(),
+        && expect(samePath(QDir::currentPath(), QSanRuntimePaths::assetRoot()),
                   "resolve() did not move the working directory to the asset root");
 }
 
@@ -99,7 +116,7 @@ bool explicitOverrideNeverFallsBack()
         QSanRuntimePaths::resolve(argv({QStringLiteral("--asset-root"), empty}), &error);
     return expect(!resolved, "a --asset-root without lua/config.lua was accepted")
         && expect(!error.isEmpty(), "the failure carried no explanation")
-        && expect(QDir::currentPath() == usable,
+        && expect(samePath(QDir::currentPath(), usable),
                   "a failed resolution must not move the working directory");
 }
 
@@ -146,7 +163,7 @@ bool installedLayoutBeatsWorkingDirectory()
     };
     const int workingIndex = candidateIndex(QStringLiteral("working-directory"));
     const int installedIndex = candidateIndex(QStringLiteral("installed-prefix"));
-    return expect(resolution.assetRoot == elsewhere,
+    return expect(samePath(resolution.assetRoot, elsewhere),
                   "the working directory was not used as the last-resort root")
         && expect(installedIndex >= 0, "the installed-prefix candidate was never tried")
         && expect(installedIndex < workingIndex,
@@ -168,7 +185,7 @@ bool userDataFollowsWhetherTheRootIsPackaged()
     if (!QSanRuntimePaths::resolve(argv()))
         return expect(false, "the development tree did not resolve");
     const bool developmentWritesInPlace =
-        expect(QSanRuntimePaths::userDataRoot() == QSanRuntimePaths::assetRoot(),
+        expect(samePath(QSanRuntimePaths::userDataRoot(), QSanRuntimePaths::assetRoot()),
                "a development tree must keep writing beside the game");
 
     QSanRuntimePaths::resetForTesting();
@@ -178,9 +195,10 @@ bool userDataFollowsWhetherTheRootIsPackaged()
     if (!QSanRuntimePaths::resolve(argv({QStringLiteral("--asset-root"), packaged})))
         return expect(false, "the packaged root did not resolve");
     return developmentWritesInPlace
-        && expect(QSanRuntimePaths::userDataRoot() != QSanRuntimePaths::assetRoot(),
+        && expect(!samePath(QSanRuntimePaths::userDataRoot(), QSanRuntimePaths::assetRoot()),
                   "a packaged root must not be used as the user data directory")
-        && expect(!QSanRuntimePaths::recordDir().startsWith(QSanRuntimePaths::assetRoot()),
+        && expect(!normalized(QSanRuntimePaths::recordDir())
+                       .startsWith(normalized(QSanRuntimePaths::assetRoot())),
                   "replays must not be written into a packaged asset root")
         && expect(QDir(QSanRuntimePaths::recordDir()).exists(),
                   "the record directory was not created");
@@ -201,7 +219,7 @@ bool userDataRootIsOverridable()
     const QString observed = QSanRuntimePaths::userDataRoot();
     qunsetenv("QSAN_USER_DATA_ROOT");
     return expect(resolved, "the fixture root did not resolve")
-        && expect(observed == userData, "QSAN_USER_DATA_ROOT was ignored");
+        && expect(samePath(observed, userData), "QSAN_USER_DATA_ROOT was ignored");
 }
 
 // A read that has no user copy has to fall back to the one shipped in the
@@ -223,7 +241,7 @@ bool readablePathPrefersUserDataThenAssets()
     const QString relative = QStringLiteral("etc/customScenes/1.txt");
     const QString bundled = QSanRuntimePaths::readablePath(relative);
     const bool fellBackToBundle =
-        expect(bundled == QDir(root).filePath(relative),
+        expect(samePath(bundled, QDir(root).filePath(relative)),
                "a file that only exists in the package was not found there");
 
     if (!writeFile(QDir(userData).filePath(relative), QStringLiteral("mine")))
@@ -232,7 +250,7 @@ bool readablePathPrefersUserDataThenAssets()
     qunsetenv("QSAN_USER_DATA_ROOT");
     return expect(resolved, "the fixture root did not resolve")
         && fellBackToBundle
-        && expect(mine == QDir(userData).filePath(relative),
+        && expect(samePath(mine, QDir(userData).filePath(relative)),
                   "the user's own copy did not win over the packaged one");
 }
 
