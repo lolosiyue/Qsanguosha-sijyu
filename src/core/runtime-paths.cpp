@@ -74,9 +74,16 @@ bool acceptExplicitRoot(const QString &raw, const QString &sourceLabel, AssetRoo
         return false;
     const QString absolute = cleanedAbsolutePath(raw);
     if (!QDir(absolute).exists()) {
-        recordCandidate(sourceLabel, absolute, QStringLiteral("missing"));
-        g_resolution.error = QStringLiteral("%1 points at a directory that does not exist: %2")
-            .arg(sourceLabel, absolute);
+        // 「唔存在」同「存在但唔係目錄」係兩個唔同嘅打錯法（後者通常係指咗
+        // 一個檔案），講得準先幫到手。
+        const bool existsButNotADirectory = QFileInfo::exists(absolute);
+        recordCandidate(sourceLabel, absolute,
+                        existsButNotADirectory ? QStringLiteral("not-a-directory")
+                                               : QStringLiteral("missing"));
+        g_resolution.error = existsButNotADirectory
+            ? QStringLiteral("%1 is not a directory: %2").arg(sourceLabel, absolute)
+            : QStringLiteral("%1 points at a directory that does not exist: %2")
+                  .arg(sourceLabel, absolute);
         *failed = true;
         return false;
     }
