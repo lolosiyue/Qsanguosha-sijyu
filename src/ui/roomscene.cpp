@@ -50,6 +50,8 @@
 #include "oracle_helper.h"
 #include "lua-wrapper.h"
 #include "crashhandler.h"
+#include "effects/effects-completion.h"
+#include "effects/effects-policy.h"
 #include "lua.hpp"
 #include <QOpenGLWidget>
 #include <QMutexLocker>
@@ -603,23 +605,28 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	animations->setParent(this);
 
 	// ── Spine pop-out action controller ──
-	_spineActionController = new CharacterSpineActionController(this, this);
-	_spineActionController->setAssetPathPrefix("image");
-	connect(_spineActionController, &CharacterSpineActionController::actionStarted,
-		this, [](const QString &, ActionType) {});
-	connect(_spineActionController, &CharacterSpineActionController::actionFinished,
-		this, [](const QString &, ActionType) {});
-	connect(_spineActionController, &CharacterSpineActionController::skinBackgroundChanged,
-		this, [this](const QString &playerId, const QString &bgPath) {
-		// Find the matching Photo or Dashboard and set its dynamic background
-		if (Self && playerId == Self->objectName()) {
-			if (dashboard) dashboard->setDynamicBackground(bgPath);
-		} else if (name2photo.contains(playerId)) {
-			name2photo[playerId]->setDynamicBackground(bgPath);
-		}
-	});
-	connect(_spineActionController, &CharacterSpineActionController::actionUnavailable,
-		this, [](const QString &, ActionType) {});
+	// spineEnabled() 為 false（REDUCED／NONE）就完全唔建立 controller：
+	// 冇 controller 就唔會有 skeleton、atlas texture 或者 GL 資源。所有
+	// call site 本身已經 null-guard，語意唔變。
+	if (G_EFFECTS.spineEnabled()) {
+		_spineActionController = new CharacterSpineActionController(this, this);
+		_spineActionController->setAssetPathPrefix("image");
+		connect(_spineActionController, &CharacterSpineActionController::actionStarted,
+			this, [](const QString &, ActionType) {});
+		connect(_spineActionController, &CharacterSpineActionController::actionFinished,
+			this, [](const QString &, ActionType) {});
+		connect(_spineActionController, &CharacterSpineActionController::skinBackgroundChanged,
+			this, [this](const QString &playerId, const QString &bgPath) {
+			// Find the matching Photo or Dashboard and set its dynamic background
+			if (Self && playerId == Self->objectName()) {
+				if (dashboard) dashboard->setDynamicBackground(bgPath);
+			} else if (name2photo.contains(playerId)) {
+				name2photo[playerId]->setDynamicBackground(bgPath);
+			}
+		});
+		connect(_spineActionController, &CharacterSpineActionController::actionUnavailable,
+			this, [](const QString &, ActionType) {});
+	}
 
 	pausing_item = new QGraphicsRectItem;
 	pausing_text = new QGraphicsSimpleTextItem(tr("Paused ..."));
@@ -5493,12 +5500,14 @@ void RoomScene::setEmotion(const QString&who,const QString&emotion)
 	Photo*photo = name2photo[who];
 	if(photo){
 		photo->setEmotion(emotion,emotion.contains("question"));
-	}else {
+	}else if(G_EFFECTS.animationsEnabled()){
 		PixmapAnimation*pma = PixmapAnimation::GetPixmapAnimation(dashboard,emotion);
 		if(pma){
 			pma->moveBy(0,-dashboard->boundingRect().height()/1.5);
 			pma->setZValue(20);
 		}
+	}else{
+		G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
 	}
 }
 
@@ -5561,6 +5570,13 @@ QGraphicsObject*RoomScene::getAnimationObject(const QString&name) const
 
 void RoomScene::doMovingAnimation(const QString&name,const QStringList&args)
 {
+	// 純裝飾（無懈可擊嘅飛行圖示）：NONE 唔建立任何 item，最終狀態就係
+	// 「畫面冇多咗嘢」。遊戲流程唔會等呢個動畫。
+	if (!G_EFFECTS.animationsEnabled()) {
+		G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+		return;
+	}
+
 	QSanSelectableItem*item = new QSanSelectableItem(QString("image/system/animation/%1.png").arg(name));
 	item->setZValue(16);
 	addItem(item);
@@ -5580,21 +5596,28 @@ void RoomScene::doMovingAnimation(const QString&name,const QStringList&args)
 	QPropertyAnimation*move = new QPropertyAnimation(item,"pos");
 	move->setStartValue(from);
 	move->setEndValue(to);
-	move->setDuration(1000);
+	move->setDuration(G_EFFECTS.scaledDuration(1000));
 
 	QPropertyAnimation*disappear = new QPropertyAnimation(item,"opacity");
 	disappear->setEndValue(0.0);
-	disappear->setDuration(1000);
+	disappear->setDuration(G_EFFECTS.scaledDuration(1000));
 
 	group->addAnimation(move);
 	group->addAnimation(disappear);
 
+	G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
 	group->start(QAbstractAnimation::DeleteWhenStopped);
-	connect(group,SIGNAL(finished()),item,SLOT(deleteLater()));
+	// exactly-once：播完、被拆、或者 scene 收檔，item 都一定會清走一次。
+	EffectsCompletion::whenFinished(group, item, [item]() { item->deleteLater(); });
 }
 
 void RoomScene::doAppearingAnimation(const QString&name,const QStringList&args)
 {
+	if (!G_EFFECTS.animationsEnabled()) {
+		G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+		return;
+	}
+
 	QSanSelectableItem*item = new QSanSelectableItem(QString("image/system/animation/%1.png").arg(name));
 	item->setZValue(16);
 	addItem(item);
@@ -5607,18 +5630,27 @@ void RoomScene::doAppearingAnimation(const QString&name,const QStringList&args)
 
 	QPropertyAnimation*disappear = new QPropertyAnimation(item,"opacity");
 	disappear->setEndValue(0.0);
-	disappear->setDuration(1000);
+	disappear->setDuration(G_EFFECTS.scaledDuration(1000));
 
+	G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
 	disappear->start(QAbstractAnimation::DeleteWhenStopped);
-	connect(disappear,SIGNAL(finished()),item,SLOT(deleteLater()));
+	EffectsCompletion::whenFinished(disappear, item, [item]() { item->deleteLater(); });
 }
 
 void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 {
+	// Lightbox 係一塊蓋住成張枱嘅半透明 rect，靠動畫 finished() 先至拆走。
+	// NONE profile 唔可以起佢：起咗但唔播動畫就永遠拆唔走。呢個亦係下面
+	// missing-asset 修正嘅同一個問題。
+	if (!G_EFFECTS.animationsEnabled()) {
+		G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+		return;
+	}
+
 	QString word = args.first();
 	word = Sanguosha->translate(word);
 	QStringList disp_arg = args.value(1,"2000:0").split(":");
-	int duration = disp_arg.first().toInt();
+	int duration = G_EFFECTS.scaledDuration(disp_arg.first().toInt());
 	int pixelSize = disp_arg.last().toInt();
 
 	// 支援動態參數替換：duration:pixelSize:arg1:arg2:...
@@ -5670,10 +5702,31 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 			pma->setZValue(22);
 			pma->moveBy(-sceneRect().width()*_m_roomLayout->m_infoPlaneWidthPercentage/2,0);
 			connect(pma,SIGNAL(finished()),this,SLOT(removeLightBox()));
+		} else {
+			// image/system/emotion/<name>/0.png 唔喺度（clean checkout 冇正式
+			// 美術資產就係咁）。塊 lightbox 係 80% 不透明,而佢淨係靠
+			// PixmapAnimation::finished() 拆走 —— 冇動畫就冇 finished(),
+			// 塊嘢會永遠蓋住成張枱,遊戲仲玩得但係乜都睇唔到。
+			//
+			// 呢條 branch 以前係死 code:PixmapAnimation::setPath() 嘅 do-while
+			// 令 valid() 永遠 true,所以 GetPixmapAnimation() 從來冇回過
+			// nullptr。setPath() 改成 while 之後呢度先至真係行得到。
+			qWarning("[RoomScene] lightbox animation '%s' has no frames; removing the lightbox",
+				qPrintable(word.mid(5)));
+			removeItem(lightbox);
+			delete lightbox;
 		}
 	}
 #ifndef Q_OS_WINRT
     else if(word.startsWith("skill=")){  // 重新启用武将特效的使用异步动画
+        // 全屏 QML 技能特效只喺 FULL 行。REDUCED／NONE 直接清走 lightbox：
+        // 呢個 rect 本身就係俾 QML 疊層蓋住嘅，冇疊層就唔可以留低。
+        if (!G_EFFECTS.qmlEffectsEnabled()) {
+            G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+            removeItem(lightbox);
+            delete lightbox;
+            return;
+        }
         QString hero = word.mid(6);
         const QString skill = args.value(1,QString());
 
@@ -5718,6 +5771,7 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 
         // 创建嵌入式QML加载器
         EmbeddedQmlLoader*embeddedLoader = new EmbeddedQmlLoader(this);
+        G_EFFECTS.note(VisualEffectsPolicy::QmlOverlaysCreated);
 
         // 连接信号
         connect(embeddedLoader,&EmbeddedQmlLoader::effectFinished,[embeddedLoader,this](){
@@ -5764,6 +5818,12 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
         delete lightbox;
     }
     else if(word.startsWith("ghost=")){
+        if (!G_EFFECTS.qmlEffectsEnabled()) {
+            G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+            removeItem(lightbox);
+            delete lightbox;
+            return;
+        }
         const QString hero = word.mid(6);
         const QString skill = args.value(1,QString());
 
@@ -5787,6 +5847,7 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 
         // 创建嵌入式QML加载器
         EmbeddedQmlLoader*embeddedLoader = new EmbeddedQmlLoader(this);
+        G_EFFECTS.note(VisualEffectsPolicy::QmlOverlaysCreated);
 
         // 连接信号
         connect(embeddedLoader,&EmbeddedQmlLoader::effectFinished,[embeddedLoader,this](){
@@ -5837,6 +5898,15 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
         // Spine 动态全屏特效——render as QGraphicsItem (SpineGlItem)
         // NOTE: Cannot use QOpenGLWidget overlay because FitView already
         // uses QOpenGLWidget as viewport; Qt 5 forbids nested QOpenGLWidgets.
+        //
+        // REDUCED／NONE 一個 SpineGlItem 都唔會 new：唔會讀 atlas／skel，
+        // 唔會分配 GL texture，亦唔會等 animationFinished。
+        if (!G_EFFECTS.spineEnabled()) {
+            G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+            removeItem(lightbox);
+            delete lightbox;
+            return;
+        }
         QString spineArg = word.mid(6);
         QString animName;
 		QString runtimeVersion;
@@ -5875,6 +5945,7 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
         }
 
         SpineGlItem *spineItem = new SpineGlItem();
+        G_EFFECTS.note(VisualEffectsPolicy::SpineItemsCreated);
 		if (!runtimeVersion.isEmpty())
 			spineItem->setRuntimeVersionHint(runtimeVersion);
         addItem(spineItem);
@@ -6003,12 +6074,18 @@ void RoomScene::showIndicator(const QString&from,const QString&to)
 	QPointF start = obj1->sceneBoundingRect().center();
 	QPointF finish = obj2->sceneBoundingRect().center();
 
-	IndicatorItem*indicator = new IndicatorItem(start,finish,ClientInstance->getPlayer(from));
-	indicator->setPos(qMin(start.x(),finish.x()),qMin(start.y(),finish.y()));
-	indicator->setZValue(INT_MAX);
+	// 指示線係一次性嘅裝飾：REDUCED 保留（縮短）令玩家仲睇到「邊個指住邊個」，
+	// NONE 唔起 —— 佢冇最終狀態要到達，遊戲流程亦冇等佢。
+	if (G_EFFECTS.animationsEnabled()) {
+		IndicatorItem*indicator = new IndicatorItem(start,finish,ClientInstance->getPlayer(from));
+		indicator->setPos(qMin(start.x(),finish.x()),qMin(start.y(),finish.y()));
+		indicator->setZValue(INT_MAX);
 
-	addItem(indicator);
-	indicator->doAnimation();
+		addItem(indicator);
+		indicator->doAnimation();
+	} else {
+		G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+	}
 
 	// ── Spine pop-out: trigger Attack action on indicator (from → to) ──
 	if (_spineActionController && game_started) {
@@ -6082,6 +6159,11 @@ void RoomScene::doGiftAnimation(const QString &gift_type, const QStringList &arg
 
 	QPointF start = obj1->sceneBoundingRect().center();
 	QPointF finish = obj2->sceneBoundingRect().center();
+
+	if (!G_EFFECTS.animationsEnabled()) {
+		G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+		return;
+	}
 
 	GiftItem *gift = new GiftItem(start, finish, gift_type, ClientInstance->getPlayer(from));
 	gift->setPos(start);
@@ -6571,16 +6653,22 @@ void RoomScene::showPindianBox(const QString&from_name,int from_id,const QString
 
 	bringToFront(pindian_box);
 	pindian_box->appear();
-	QTimer::singleShot(444,this,SLOT(doPindianAnimation()));
+	// 444ms 純粹係「等副牌翻開先報結果」嘅演出時間。NONE 直接 0ms:
+	// 結果一樣係經 event loop 派出去,唔會喺呢度重入。
+	QTimer::singleShot(G_EFFECTS.scaledDelay(444),this,SLOT(doPindianAnimation()));
 }
 
 void RoomScene::doPindianAnimation()
 {
 	if(pindian_box->isVisible()&&pindian_from_card){
 		QString emotion = pindian_success ? "success" : "no-success";
-		PixmapAnimation*pma = PixmapAnimation::GetPixmapAnimation(pindian_from_card,emotion);
+		// 唔准動畫（NONE）或者缺資產,兩條路都一定要收返個盒 —— 呢度就係
+		// 「completion callback 靠動畫播完」最容易 hang 嘅位。
+		PixmapAnimation*pma = G_EFFECTS.animationsEnabled()
+			? PixmapAnimation::GetPixmapAnimation(pindian_from_card,emotion)
+			: nullptr;
 		if(pma) connect(pma,SIGNAL(finished()),pindian_box,SLOT(disappear()));
-		else pindian_box->disappear();
+		else EffectsCompletion::completeNow(pindian_box,[this](){ pindian_box->disappear(); });
 	}
 }
 

@@ -1,6 +1,7 @@
 #include "window.h"
 #include "settings.h"
 #include "button.h"
+#include "effects/effects-policy.h"
 
 Window::Window(const QString &title, const QSizeF &size, const QString &path)
     : size(size), keep_when_disappear(false)
@@ -117,6 +118,15 @@ void Window::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget 
 
 void Window::appear()
 {
+    if (!G_EFFECTS.animationsEnabled()) {
+        // 最終狀態:視窗完全展開、完全不透明。
+        G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+        scaleTransform->setXScale(1);
+        scaleTransform->setYScale(1);
+        setOpacity(1.0);
+        return;
+    }
+
     QPropertyAnimation *scale_x = new QPropertyAnimation(scaleTransform, "xScale");
     QPropertyAnimation *scale_y = new QPropertyAnimation(scaleTransform, "yScale");
     QPropertyAnimation *opacity = new QPropertyAnimation(this, "opacity");
@@ -125,15 +135,31 @@ void Window::appear()
     scale_x->setEndValue(1);
     scale_y->setEndValue(1);
     opacity->setEndValue(1.0);
+    scale_x->setDuration(G_EFFECTS.scaledDuration(scale_x->duration()));
+    scale_y->setDuration(G_EFFECTS.scaledDuration(scale_y->duration()));
+    opacity->setDuration(G_EFFECTS.scaledDuration(opacity->duration()));
     group->addAnimation(scale_x);
     group->addAnimation(scale_y);
     group->addAnimation(opacity);
 
+    G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
     group->start(QAbstractAnimation::DeleteWhenStopped);
 }
 
 void Window::disappear()
 {
+    if (!G_EFFECTS.animationsEnabled()) {
+        // 最終狀態:完全透明;keep_when_disappear 之外仲要拆走個 window。
+        // deleteLater 必須經 event loop,唔可以喺 caller 嘅 stack 上面拆。
+        G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+        scaleTransform->setXScale(1.05);
+        scaleTransform->setYScale(0.95);
+        setOpacity(0.0);
+        if (!keep_when_disappear)
+            deleteLater();
+        return;
+    }
+
     QPropertyAnimation *scale_x = new QPropertyAnimation(scaleTransform, "xScale");
     QPropertyAnimation *scale_y = new QPropertyAnimation(scaleTransform, "yScale");
     QPropertyAnimation *opacity = new QPropertyAnimation(this, "opacity");
@@ -142,10 +168,14 @@ void Window::disappear()
     scale_x->setEndValue(1.05);
     scale_y->setEndValue(0.95);
     opacity->setEndValue(0.0);
+    scale_x->setDuration(G_EFFECTS.scaledDuration(scale_x->duration()));
+    scale_y->setDuration(G_EFFECTS.scaledDuration(scale_y->duration()));
+    opacity->setDuration(G_EFFECTS.scaledDuration(opacity->duration()));
     group->addAnimation(scale_x);
     group->addAnimation(scale_y);
     group->addAnimation(opacity);
 
+    G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
     group->start(QAbstractAnimation::DeleteWhenStopped);
 
     if (!keep_when_disappear)

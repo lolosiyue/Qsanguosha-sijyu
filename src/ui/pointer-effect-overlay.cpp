@@ -1,5 +1,6 @@
 #include "pointer-effect-overlay.h"
 #include "settings.h"
+#include "effects/effects-policy.h"
 
 #include <QApplication>
 #include <QCoreApplication>
@@ -382,7 +383,7 @@ bool PointerEffectOverlay::eventFilter(QObject *watched, QEvent *event)
 
 void PointerEffectOverlay::onFrame()
 {
-    const bool want = Config.EnablePointerEffect && m_pageEnabled;
+    const bool want = (Config.EnablePointerEffect && G_EFFECTS.animationsEnabled()) && m_pageEnabled;
     if (want != m_active)
         setActive(want);
     if (!m_active)
@@ -946,7 +947,7 @@ void HomePointerFxItem::onFrame()
 {
     if (!window())
         return;
-    const bool want = Config.EnablePointerEffect && isVisible() && width() > 0 && height() > 0;
+    const bool want = (Config.EnablePointerEffect && G_EFFECTS.animationsEnabled()) && isVisible() && width() > 0 && height() > 0;
     if (!want) {
         applyCursor(false);
         if (m_hadContent) {
@@ -969,7 +970,7 @@ void HomePointerFxItem::onFrame()
 
 void HomePointerFxItem::applyCursor(bool inside)
 {
-    if (inside && Config.EnablePointerEffect && m_fx.hasBaCursor()) {
+    if (inside && (Config.EnablePointerEffect && G_EFFECTS.animationsEnabled()) && m_fx.hasBaCursor()) {
         if (!m_cursorOverridden) {
             QApplication::setOverrideCursor(m_fx.baCursor());
             m_cursorOverridden = true;

@@ -5,6 +5,8 @@
 #include "mainwindow.h"
 #include "engine.h"
 #include "clientstruct.h"
+#include "effects/effects-policy.h"
+#include "effects/effects-profile.h"
 #ifdef AUDIO_SUPPORT
 #include "audio.h"
 #endif
@@ -43,6 +45,18 @@ ConfigDialog::ConfigDialog(QWidget *parent)
             Config.setValue("EnablePointerEffect", v);
         }
     });
+    // 效果 profile 同 --effects-profile 行同一個 VisualEffectsPolicy:呢度改嘅
+    // 係同一個 object,唔係第二套設定。即時生效兼寫入 QSettings,取消時由
+    // restoreVisualSettings() 復原。
+    connect(ui->effectsProfileComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
+        this, [this](int index) {
+            if (m_loading)
+                return;
+            EffectsProfile profile = EffectsProfileContract::defaultProfile();
+            if (EffectsProfileContract::parseProfileName(
+                    ui->effectsProfileComboBox->itemData(index).toString(), &profile))
+                G_EFFECTS.setProfile(profile, true);
+        });
 
     connect(this, SIGNAL(accepted()), this, SLOT(saveConfig()));
     connect(this, SIGNAL(rejected()), this, SLOT(restoreVisualSettings()));
@@ -93,6 +107,15 @@ void ConfigDialog::loadConfig()
     ui->noCardMoveAnimCheckBox->setChecked(Config.value("NoCardMoveAnim", false).toBool());
     ui->enableAnimatedGeneralsCheckBox->setChecked(Config.value("EnableAnimatedGenerals", true).toBool());
     ui->enablePointerEffectCheckBox->setChecked(Config.EnablePointerEffect);
+
+    ui->effectsProfileComboBox->clear();
+    ui->effectsProfileComboBox->addItem(tr("Full effects"), QStringLiteral("full"));
+    ui->effectsProfileComboBox->addItem(tr("Reduced effects"), QStringLiteral("reduced"));
+    ui->effectsProfileComboBox->addItem(tr("No decorative effects"), QStringLiteral("none"));
+    {
+        const int index = ui->effectsProfileComboBox->findData(G_EFFECTS.profileName());
+        ui->effectsProfileComboBox->setCurrentIndex(index >= 0 ? index : 0);
+    }
 
     ui->uiScaleSlider->setValue(qRound(Config.UIScale * 20.0));
     ui->uiScaleValueLabel->setText(QString::number(ui->uiScaleSlider->value() / 20.0, 'f', 2) + "x");
@@ -151,6 +174,7 @@ void ConfigDialog::snapshotVisualSettings()
     m_visual.noCardMoveAnim = Config.value("NoCardMoveAnim", false).toBool();
     m_visual.enableAnimatedGenerals = Config.value("EnableAnimatedGenerals", true).toBool();
     m_visual.enablePointerEffect = Config.EnablePointerEffect;
+    m_visual.effectsProfile = G_EFFECTS.profileName();
 }
 
 void ConfigDialog::previewTheme(int scheme)
@@ -200,6 +224,11 @@ void ConfigDialog::restoreVisualSettings()
     Config.setValue("EnableAnimatedGenerals", m_visual.enableAnimatedGenerals);
     Config.EnablePointerEffect = m_visual.enablePointerEffect;
     Config.setValue("EnablePointerEffect", m_visual.enablePointerEffect);
+    {
+        EffectsProfile profile = EffectsProfileContract::defaultProfile();
+        if (EffectsProfileContract::parseProfileName(m_visual.effectsProfile, &profile))
+            G_EFFECTS.setProfile(profile, true);
+    }
 }
 
 void ConfigDialog::showFont(QLineEdit *lineedit, const QFont &font)
