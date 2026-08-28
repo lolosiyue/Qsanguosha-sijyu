@@ -1,6 +1,7 @@
 #include "ui-startup-smoke-controller.h"
 
 #include "engine.h"
+#include "homecontroller.h"
 #include "mainwindow.h"
 #include "settings.h"
 
@@ -140,6 +141,13 @@ bool UiStartupSmokeController::begin(const QStringList &arguments, int *exitCode
         return false;
     }
     controller->m_reportPath = UiStartupSmokeReport::parseReportPath(arguments);
+    if (!UiStartupSmokeReport::parseStartupPage(arguments, &controller->m_startupPage, &error)) {
+        controller->finish(false, QStringLiteral("arguments"), error,
+            UiStartupSmokeReport::InvalidArguments);
+        if (exitCode)
+            *exitCode = controller->m_exitCode;
+        return false;
+    }
 
     // 到呢一步 QApplication 一定已經建立好：--ui-startup-smoke 唔會喺 QApplication
     // 之前 return，呢個係同 --local-response-ui-capabilities 最大的分別。
@@ -197,6 +205,7 @@ QJsonObject UiStartupSmokeController::environmentDetails() const
         QLibraryInfo::path(QLibraryInfo::QmlImportsPath));
     details.insert(QStringLiteral("working_directory"), QDir::currentPath());
     details.insert(QStringLiteral("timeout_ms"), m_timeoutMs);
+    details.insert(QStringLiteral("startup_page"), m_startupPage);
     return details;
 }
 
@@ -322,10 +331,20 @@ void UiStartupSmokeController::onHomeSceneReady()
         {QStringLiteral("elapsed_ms"), static_cast<int>(m_elapsed.elapsed())}
     });
 
-    // 再行多幾轉 event loop 先落結論：確認 top-level GUI object 捱得住 startup，
-    // 而唔係載入完即刻塌。
     m_pendingStage = QStringLiteral("shutdown");
-    QTimer::singleShot(250, this, &UiStartupSmokeController::onSettled);
+    if (m_startupPage == QLatin1String("cards")) {
+        HomeController *controller = m_mainWindow->findChild<HomeController *>();
+        if (!controller) {
+            finish(false, QStringLiteral("home_scene"),
+                QStringLiteral("HomeController was not found below MainWindow"),
+                UiStartupSmokeReport::SetupFailed);
+            return;
+        }
+        controller->openCards();
+        QTimer::singleShot(0, this, &UiStartupSmokeController::onSettled);
+    } else {
+        QTimer::singleShot(250, this, &UiStartupSmokeController::onSettled);
+    }
 }
 
 void UiStartupSmokeController::onHomeSceneFailed(const QString &error)
@@ -354,8 +373,33 @@ void UiStartupSmokeController::onSettled()
             UiStartupSmokeReport::QmlLoadFailed);
         return;
     }
+    QQuickItem *root = view->rootObject();
+    if (m_startupPage == QLatin1String("cards")) {
+        if (!root->property("cardsReadyForSmoke").toBool()) {
+            if (!failIfDeadlineExceeded(QStringLiteral("shutdown")))
+                QTimer::singleShot(25, this, &UiStartupSmokeController::onSettled);
+            return;
+        }
+        const int modelCount = root->property("cardsModelCount").toInt();
+        const int detailCardId = root->property("cardsDetailCardId").toInt();
+        if (modelCount < 1 || detailCardId < 0) {
+            finish(false, QStringLiteral("shutdown"),
+                QStringLiteral("CardScene became ready without a populated model and exact detail card"),
+                UiStartupSmokeReport::QmlLoadFailed);
+            return;
+        }
+    }
+    if (m_criticalCount > 0) {
+        finish(false, QStringLiteral("shutdown"),
+            QStringLiteral("Qt emitted critical messages during startup"),
+            UiStartupSmokeReport::QmlLoadFailed);
+        return;
+    }
     emitStage(QStringLiteral("shutdown"), true, QJsonObject{
         {QStringLiteral("main_window_visible"), m_mainWindow->isVisible()},
+        {QStringLiteral("startup_page"), m_startupPage},
+        {QStringLiteral("cards_model_count"), root->property("cardsModelCount").toInt()},
+        {QStringLiteral("cards_detail_card_id"), root->property("cardsDetailCardId").toInt()},
         {QStringLiteral("elapsed_ms"), static_cast<int>(m_elapsed.elapsed())}
     });
     finish(true, QStringLiteral("shutdown"), QString(), UiStartupSmokeReport::Passed);

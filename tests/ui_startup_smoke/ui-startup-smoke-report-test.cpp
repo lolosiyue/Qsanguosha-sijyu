@@ -191,6 +191,19 @@ void testArgumentParsing()
             {QStringLiteral("--ui-startup-report"), QStringLiteral("/tmp/r.json")})
             == QLatin1String("/tmp/r.json"),
         "the report path is parsed");
+
+    QString page;
+    check(UiStartupSmokeReport::parseStartupPage({}, &page, &error)
+            && page == QLatin1String("home"),
+        "the startup page defaults to home");
+    check(UiStartupSmokeReport::parseStartupPage(
+            {QStringLiteral("--ui-startup-page"), QStringLiteral("cards")},
+            &page, &error) && page == QLatin1String("cards"),
+        "the cards startup page is accepted");
+    check(!UiStartupSmokeReport::parseStartupPage(
+            {QStringLiteral("--ui-startup-page=generals")}, &page, &error)
+            && !error.isEmpty(),
+        "an unsupported startup page is rejected");
 }
 
 void testOptionalAssetClassification()

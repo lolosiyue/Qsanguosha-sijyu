@@ -11,7 +11,7 @@ Item {
     focus: true
 
     Keys.onPressed: function(event) {
-        if (root.generalsOpen)
+        if (root.subPageOpen)
             return
         switch (event.key) {
         case Qt.Key_1:
@@ -32,16 +32,34 @@ Item {
     property string visualMode: homeController ? homeController.visualMode : "normal"
     property real uiScale: 1.0
     readonly property bool generalsOpen: homeController.currentPage === "generals"
+    readonly property bool cardsOpen: homeController.currentPage === "cards"
+    readonly property bool subPageOpen: generalsOpen || cardsOpen
     property bool generalsMounted: false
+    property bool cardsMounted: false
     readonly property bool generalPageBusy: {
         if (!generalsOpen)
             return false
         return generalPage.status !== Loader.Ready || generalPage.item === null
     }
+    readonly property bool cardPageBusy: {
+        if (!cardsOpen)
+            return false
+        return cardPage.status !== Loader.Ready || cardPage.item === null
+    }
+    readonly property bool cardsReadyForSmoke: cardsOpen && cardPage.status === Loader.Ready
+                                                && cardPage.item !== null
+                                                && cardPage.item.readyForSmoke
+    readonly property int cardsModelCount: cardPage.item ? cardPage.item.modelCount : 0
+    readonly property int cardsDetailCardId: cardPage.item ? cardPage.item.detailCardId : -1
 
     onGeneralsOpenChanged: {
         if (generalsOpen)
             generalsMounted = true
+    }
+
+    onCardsOpenChanged: {
+        if (cardsOpen)
+            cardsMounted = true
     }
 
     Item {
@@ -77,7 +95,7 @@ Item {
             CharacterLayer {
                 id: characterLayer
 
-                visible: !root.generalsOpen
+                visible: !root.subPageOpen
 
                 anchors.top: parent.top
                 anchors.bottom: parent.bottom
@@ -128,7 +146,7 @@ Item {
             HomePlayerInfo {
                 id: playerInfo
 
-                visible: !root.generalsOpen
+                visible: !root.subPageOpen
 
                 anchors.left: parent.left
                 anchors.top: parent.top
@@ -149,7 +167,7 @@ Item {
             Image {
                 id: logo
 
-                visible: !root.generalsOpen && source.toString() !== "" && status === Image.Ready
+                visible: !root.subPageOpen && source.toString() !== "" && status === Image.Ready
 
                 anchors.right: actionPanel.right
                 anchors.bottom: actionPanel.top
@@ -176,7 +194,7 @@ Item {
             MainActionPanel {
                 id: actionPanel
 
-                visible: !root.generalsOpen
+                visible: !root.subPageOpen
 
                 anchors.right: sideBar.left
                 anchors.rightMargin: 28
@@ -202,7 +220,7 @@ Item {
             HomeSideBar {
                 id: sideBar
 
-                visible: !root.generalsOpen
+                visible: !root.subPageOpen
 
                 anchors.right: parent.right
                 anchors.rightMargin: 16
@@ -427,6 +445,147 @@ Item {
                     }
                 }
             }
+
+            Loader {
+                id: cardPage
+
+                anchors.fill: parent
+                anchors.bottomMargin: 148
+                z: 40
+                asynchronous: true
+                active: root.cardsMounted
+                source: "CardScene.qml"
+                visible: root.cardsOpen && !root.cardPageBusy
+                onStatusChanged: {
+                    if (status === Loader.Ready && cardPage.item) {
+                        cardPage.item.uiScale = root.uiScale
+                        if (root.cardsOpen) {
+                            root.applyCardsNavGraph()
+                            cardPage.item.takeKeyboard()
+                        }
+                    }
+                }
+            }
+
+            Binding {
+                target: cardPage.item
+                property: "uiScale"
+                value: root.uiScale
+                when: cardPage.item !== null
+            }
+
+            Connections {
+                target: cardPage.item
+                ignoreUnknownSignals: true
+                function onNavigationEndpointChanged() {
+                    if (root.cardsOpen)
+                        Qt.callLater(root.applyCardsNavGraph)
+                }
+            }
+
+            Item {
+                anchors.fill: cardPage
+                z: 41
+                visible: root.cardsOpen && root.cardPageBusy
+
+                Column {
+                    anchors.fill: parent
+                    anchors.leftMargin: HomeTheme.cardPageHMargin
+                    anchors.rightMargin: HomeTheme.cardPageHMargin
+                    anchors.topMargin: HomeTheme.cardPageTopMargin
+                    anchors.bottomMargin: HomeTheme.cardPageBottomMargin
+                    spacing: HomeTheme.cardPanelGap
+
+                    BASlantedPanel {
+                        width: parent.width
+                        height: HomeTheme.cardHeaderHeight
+                        slant: -0.05
+                        cornerRadius: HomeTheme.cardPanelRadius
+                        shadowBlur: 0
+                        shadowOffset: 0
+                        topColor: HomeTheme.cardPanelTop
+                        bottomColor: HomeTheme.cardPanelBottom
+                        borderColor: HomeTheme.cardPanelBorder
+                        transformOrigin: Item.Top
+                        scale: root.uiScale
+
+                        Row {
+                            anchors.fill: parent
+                            anchors.margins: HomeTheme.cardSkeletonHeaderPadding
+                            spacing: HomeTheme.cardPanelGap
+                            SkeletonBlock {
+                                width: HomeTheme.cardHeaderButtonWidth
+                                height: HomeTheme.cardActionButtonExtent
+                                radius: HomeTheme.cardControlRadius
+                            }
+                            Column {
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: HomeTheme.cardDetailMetaGap
+                                SkeletonBlock {
+                                    width: HomeTheme.cardSkeletonTitleWidth
+                                    height: HomeTheme.cardSkeletonTitleHeight
+                                }
+                                SkeletonBlock {
+                                    width: HomeTheme.cardSkeletonSubtitleWidth
+                                    height: HomeTheme.cardSkeletonSubtitleHeight
+                                }
+                            }
+                        }
+                    }
+
+                    Row {
+                        width: parent.width
+                        height: parent.height - HomeTheme.cardHeaderHeight - HomeTheme.cardPanelGap
+                        spacing: HomeTheme.cardPanelGap
+
+                        SkeletonBlock {
+                            width: HomeTheme.cardFilterWidth
+                            height: parent.height
+                            radius: HomeTheme.cardPanelRadius
+                            transformOrigin: Item.TopLeft
+                            scale: root.uiScale
+                        }
+
+                        Item {
+                            width: parent.width - HomeTheme.cardFilterWidth - HomeTheme.cardDetailWidth
+                                   - HomeTheme.cardPanelGap * 2
+                            height: parent.height
+                            transformOrigin: Item.Top
+                            scale: root.uiScale
+
+                            Grid {
+                                id: cardSkeletonGrid
+                                anchors.fill: parent
+                                anchors.margins: HomeTheme.cardGridGap
+                                columns: 4
+                                rows: 3
+                                property real tileWidth: width / columns
+                                property real tileHeight: height / rows
+                                Repeater {
+                                    model: 12
+                                    Item {
+                                        width: cardSkeletonGrid.tileWidth
+                                        height: cardSkeletonGrid.tileHeight
+                                        SkeletonBlock {
+                                            anchors.fill: parent
+                                            anchors.margins: HomeTheme.cardGridGap / 2
+                                            radius: HomeTheme.cardPanelRadius
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        SkeletonBlock {
+                            width: HomeTheme.cardDetailWidth
+                            height: parent.height
+                            radius: HomeTheme.cardPanelRadius
+                            transformOrigin: Item.TopRight
+                            scale: root.uiScale
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -500,6 +659,30 @@ Item {
         bottomBar.settingsBtn.KeyNavigation.up = g.searchField
         bottomBar.settingsBtn.KeyNavigation.tab = g.searchField
         bottomBar.homeBtn.KeyNavigation.backtab = g.banBtn
+    }
+
+    function applyCardsNavGraph() {
+        var c = cardPage.item
+        if (!c)
+            return
+        c.backButton.KeyNavigation.tab = c.sortControl
+        c.backButton.KeyNavigation.backtab = bottomBar.settingsBtn
+        c.sortControl.KeyNavigation.tab = c.themeButton
+        c.sortControl.KeyNavigation.backtab = c.backButton
+        c.themeButton.KeyNavigation.tab = c.reloadButton
+        c.themeButton.KeyNavigation.backtab = c.sortControl
+        c.reloadButton.KeyNavigation.tab = c.searchField
+        c.reloadButton.KeyNavigation.backtab = c.themeButton
+        c.searchField.KeyNavigation.backtab = c.reloadButton
+        c.lastControl.KeyNavigation.tab = bottomBar.cardsBtn
+        c.lastControl.KeyNavigation.down = bottomBar.cardsBtn
+        bottomBar.homeBtn.KeyNavigation.up = c.searchField
+        bottomBar.generalsBtn.KeyNavigation.up = c.searchField
+        bottomBar.cardsBtn.KeyNavigation.up = c.lastControl
+        bottomBar.replaysBtn.KeyNavigation.up = c.searchField
+        bottomBar.settingsBtn.KeyNavigation.up = c.searchField
+        bottomBar.settingsBtn.KeyNavigation.tab = c.backButton
+        bottomBar.cardsBtn.KeyNavigation.backtab = c.lastControl
     }
 
     function restoreHomeKeyboard() {
@@ -596,11 +779,16 @@ Item {
     Connections {
         target: homeController
         function onCurrentPageChanged() {
-            bottomBar.currentIndex = root.generalsOpen ? 1 : 0
+            bottomBar.currentIndex = root.generalsOpen ? 1 : (root.cardsOpen ? 2 : 0)
             if (root.generalsOpen) {
                 if (generalPage.item) {
                     root.applyGeneralsNavGraph()
                     generalPage.item.takeKeyboard()
+                }
+            } else if (root.cardsOpen) {
+                if (cardPage.item) {
+                    root.applyCardsNavGraph()
+                    cardPage.item.takeKeyboard()
                 }
             } else {
                 Qt.callLater(root.restoreHomeKeyboard)

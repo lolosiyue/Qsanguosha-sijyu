@@ -42,6 +42,7 @@ const char *const UiStartupSmokeReport::ResultMarker = "UI_STARTUP_RESULT";
 const char *const UiStartupSmokeReport::FlagStartupSmoke = "--ui-startup-smoke";
 const char *const UiStartupSmokeReport::FlagTimeoutMs = "--ui-startup-timeout-ms";
 const char *const UiStartupSmokeReport::FlagReportPath = "--ui-startup-report";
+const char *const UiStartupSmokeReport::FlagStartupPage = "--ui-startup-page";
 const char *const UiStartupSmokeReport::ReasonOk = "ok";
 const char *const UiStartupSmokeReport::ReasonStageFailed = "stage_failed";
 const char *const UiStartupSmokeReport::ReasonTimeout = "timeout";
@@ -126,6 +127,26 @@ QString UiStartupSmokeReport::parseReportPath(const QStringList &arguments)
     bool found = false;
     const QString value = flagValue(arguments, QLatin1String(FlagReportPath), &found);
     return found ? value : QString();
+}
+
+bool UiStartupSmokeReport::parseStartupPage(const QStringList &arguments, QString *page,
+    QString *error)
+{
+    *page = QStringLiteral("home");
+    if (error)
+        error->clear();
+    bool found = false;
+    const QString value = flagValue(arguments, QLatin1String(FlagStartupPage), &found);
+    if (!found)
+        return true;
+    if (value == QLatin1String("home") || value == QLatin1String("cards")) {
+        *page = value;
+        return true;
+    }
+    if (error)
+        *error = QStringLiteral("%1 expects 'home' or 'cards', got '%2'")
+            .arg(QLatin1String(FlagStartupPage), value);
+    return false;
 }
 
 bool UiStartupSmokeReport::isOptionalAssetWarning(const QString &message)

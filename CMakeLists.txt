@@ -676,6 +676,14 @@ if(QSAN_BUILD_GUI)
             qml/home/HomeNavButton.qml
             qml/home/HomeSideBar.qml
             qml/home/GeneralScene.qml
+            qml/home/CardScene.qml
+            qml/home/CardBrowserTile.qml
+            qml/home/CardComboBox.qml
+            qml/home/CardFilterPanel.qml
+            qml/home/CardTagChip.qml
+            qml/home/CardDetailPanel.qml
+            qml/home/CardVariantList.qml
+            qml/home/CardPagination.qml
             qml/home/HomeTheme.qml
     )
 
