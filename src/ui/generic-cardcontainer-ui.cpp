@@ -14,6 +14,8 @@
 #include "window.h"
 #include "button.h"
 #include "heroskincontainer.h"
+#include "effects/effects-completion.h"
+#include "effects/effects-policy.h"
 #include <QElapsedTimer>
 #include <QMutexLocker>
 
@@ -36,7 +38,11 @@ qint64 g_skipCardMoveAnimUntilMs = 0;
 
 bool shouldSkipCardMoveAnimation()
 {
-    return Config.value("NoCardMoveAnim", false).toBool()
+    // NONE profile 唔係「duration 設做 0」：zero-duration 動畫會喺 start()
+    // 入面同步派 finished()，令 _destroyCard() 喺 group 未砌好之前就重入。
+    // 直接行返本來就存在嘅 skip branch，卡牌即刻到最終位置同透明度。
+    return !G_EFFECTS.animationsEnabled()
+        || Config.value("NoCardMoveAnim", false).toBool()
         || currentCardMoveMonitorMs() < g_skipCardMoveAnimUntilMs;
 }
 
@@ -221,6 +227,7 @@ void GenericCardContainer::onAnimationFinished()
 void GenericCardContainer::_playMoveCardsAnimation(QList<CardItem *> &cards, bool destroyCards)
 {
     if (shouldSkipCardMoveAnimation()) {
+        G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
         foreach (CardItem *card_item, cards) {
             card_item->goBack(false);
             card_item->setOpacity(card_item->getHomeOpacity());
@@ -237,13 +244,18 @@ void GenericCardContainer::_playMoveCardsAnimation(QList<CardItem *> &cards, boo
     foreach (CardItem *card_item, cards) {
 		if (destroyCards)
             connect(card_item, SIGNAL(movement_animation_finished()), this, SLOT(_destroyCard()));
+        // duration 唔喺呢度 scale：getGoBackAnimation() 係唯一一個 scale 點,
+        // 喺兩邊都做就會變成 scale 兩次（REDUCED 會由 600ms 變 54ms）。
         animation->addAnimation(card_item->getGoBackAnimation(true));
     }
 
     animation->setProperty("cardMoveAnimStartedAt", currentCardMoveMonitorMs());
-    animation->setProperty("cardMoveAnimExpectedDuration", Config.S_MOVE_CARD_ANIMATION_DURATION);
+    // 自適應延遲偵測要同「真正會播幾耐」比較,所以呢度要用 scale 後嘅值。
+    animation->setProperty("cardMoveAnimExpectedDuration",
+        G_EFFECTS.scaledDuration(Config.S_MOVE_CARD_ANIMATION_DURATION));
     connect(animation, SIGNAL(finished()), this, SLOT(updateContainer()));
     connect(animation, SIGNAL(finished()), this, SLOT(onAnimationFinished()));
+    G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
     animation->start();
 }
 
@@ -1660,7 +1672,17 @@ void PlayerCardContainer::startHuaShen(QString generalName, QString skillName)
 
     stopHuaShen();
     _m_huashenAnimation = G_ROOM_SKIN.createHuaShenAnimation(pixmap, animRect.topLeft(), _getAvatarParent(), _m_huashenItem);
-    _m_huashenAnimation->start();
+    // 化身係一個 loopCount=2000 嘅循環閃爍。NONE 唔起佢:頭像照樣建立同顯示
+    // （化身狀態要睇得到）,只係唔會不斷 repaint。唔可以將 duration 設做 0
+    // ——loop 動畫 duration 0 會即刻 finish,即係狀態消失。
+    if (G_EFFECTS.animationsEnabled()) {
+        G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
+        _m_huashenAnimation->start();
+    } else {
+        G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+        if (_m_huashenItem)
+            _m_huashenItem->setOpacity(1.0);
+    }
 
     _paintPixmap(_m_extraSkillBg, _m_layout->m_extraSkillArea, QSanRoomSkin::S_SKIN_KEY_EXTRA_SKILL_BG, _getAvatarParent());
     _m_layout->m_extraSkillFont.paintText(_m_extraSkillText, _m_layout->m_extraSkillTextArea, Qt::AlignCenter, Sanguosha->translate(skillName).left(2));

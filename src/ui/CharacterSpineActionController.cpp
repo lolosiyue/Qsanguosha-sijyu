@@ -8,6 +8,7 @@
 #include "CharacterSpineActionController.h"
 #include "SpineGlItem.h"
 #include "SpineIndicatorLine.h"
+#include "effects/effects-policy.h"
 
 #include <QGraphicsScene>
 #include <QDateTime>
@@ -115,6 +116,7 @@ static const char *actionTypeName(ActionType a)
 
 void CharacterSpineActionController::preloadPlayer(const QString &playerId)
 {
+    if (!G_EFFECTS.spineEnabled()) return;
     if (!_skinConfigs.contains(playerId)) return;
 
     QHash<QString, SkinConfig> &skins = _skinConfigs[playerId];
@@ -127,6 +129,7 @@ void CharacterSpineActionController::preloadPlayer(const QString &playerId)
 
         // Preload idle skeleton
         SpineGlItem *probe = new SpineGlItem();
+        G_EFFECTS.note(VisualEffectsPolicy::SpineItemsCreated);
         if (!skin.runtimeVersion.isEmpty())
             probe->setRuntimeVersionHint(skin.runtimeVersion);
         if (probe->loadSpine(fullBase)) {
@@ -161,6 +164,7 @@ void CharacterSpineActionController::preloadPlayer(const QString &playerId)
             ActionMetadata &meta = ait.value();
             if (!meta.skelBasePath.isEmpty() && meta.skelBasePath != skin.basePath) {
                 SpineGlItem *actionProbe = new SpineGlItem();
+                G_EFFECTS.note(VisualEffectsPolicy::SpineItemsCreated);
                 if (!meta.runtimeVersion.isEmpty())
                     actionProbe->setRuntimeVersionHint(meta.runtimeVersion);
                 QString actionPath = _assetPrefix + meta.skelBasePath;
@@ -353,7 +357,10 @@ void CharacterSpineActionController::registerDynamicSkin(const QString &playerId
            qPrintable(playerId), qPrintable(resolvedGeneral), qPrintable(rootPath));
 
     // Probe skeleton to discover animations
+    if (!G_EFFECTS.spineEnabled())
+        return;
     SpineGlItem *probe = new SpineGlItem();
+    G_EFFECTS.note(VisualEffectsPolicy::SpineItemsCreated);
     if (!probe->loadSpine(fullBasePath)) {
         qDebug("[SpineAction]   no dynamic skin at '%s'", qPrintable(fullBasePath));
         delete probe;
@@ -423,6 +430,11 @@ bool CharacterSpineActionController::triggerAction(const QString &playerId,
                                                     bool isLocalPlayer,
                                                     const QPointF &attackDirection)
 {
+    // RoomScene 喺 spineEnabled() 為 false 嗰陣根本唔會建立呢個 controller,
+    // 但 controller 亦要自己守住:唔准 Spine 就一個 skeleton 都唔起。
+    if (!G_EFFECTS.spineEnabled())
+        return false;
+
     if (!_playerStates.contains(playerId))
         return false;
 
@@ -580,7 +592,10 @@ ActionMetadata *CharacterSpineActionController::resolveAction(SkinConfig *skin, 
 SpineGlItem *CharacterSpineActionController::createPopOutItem(const SkinConfig &skin,
                                                                 const ActionMetadata &meta)
 {
+    if (!G_EFFECTS.spineEnabled())
+        return nullptr;
     SpineGlItem *item = new SpineGlItem();
+    G_EFFECTS.note(VisualEffectsPolicy::SpineItemsCreated);
     item->setZValue(10000); // Above normal scene items
 
     // Determine which skeleton to load

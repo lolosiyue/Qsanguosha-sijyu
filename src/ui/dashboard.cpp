@@ -13,6 +13,7 @@
 #include "button.h"
 #include "magatamas-item.h"
 #include "skill-instance-utils.h"
+#include "effects/effects-policy.h"
 
 #include <QGraphicsSceneMouseEvent>
 #include <QGraphicsTextItem>
@@ -1278,25 +1279,44 @@ void Dashboard::_setEquipBorderAnimation(int index, bool turnOn)
 
     _m_equipAnim[index]->stop();
     _m_equipAnim[index]->clear();
-    QPropertyAnimation *anim = new QPropertyAnimation(_m_equipRegions[index], "pos");
-    anim->setEndValue(newPos);
-    anim->setDuration(200);
-    _m_equipAnim[index]->addAnimation(anim);
-    connect(anim, SIGNAL(finished()), anim, SLOT(deleteLater()));
-    anim = new QPropertyAnimation(_m_equipRegions[index], "opacity");
-    anim->setEndValue(255);
-    anim->setDuration(200);
-    _m_equipAnim[index]->addAnimation(anim);
-    connect(anim, SIGNAL(finished()), anim, SLOT(deleteLater()));
-    _m_equipAnim[index]->start();
-
-    Q_ASSERT(_m_equipBorders[index]);
-    if (turnOn) {
-        _m_equipBorders[index]->show();
-        _m_equipBorders[index]->start();
+    if (G_EFFECTS.animationsEnabled()) {
+        const int duration = G_EFFECTS.scaledDuration(200);
+        QPropertyAnimation *anim = new QPropertyAnimation(_m_equipRegions[index], "pos");
+        anim->setEndValue(newPos);
+        anim->setDuration(duration);
+        _m_equipAnim[index]->addAnimation(anim);
+        connect(anim, SIGNAL(finished()), anim, SLOT(deleteLater()));
+        anim = new QPropertyAnimation(_m_equipRegions[index], "opacity");
+        anim->setEndValue(255);
+        anim->setDuration(duration);
+        _m_equipAnim[index]->addAnimation(anim);
+        connect(anim, SIGNAL(finished()), anim, SLOT(deleteLater()));
+        G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
+        _m_equipAnim[index]->start();
     } else {
+        // 裝備選中／取消嘅最終狀態:區塊移到 newPos、完全不透明。
+        G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+        _m_equipRegions[index]->setPos(newPos);
+        _m_equipRegions[index]->setOpacity(255);
+    }
+
+    // _createEquipBorderAnimations() 喺 image/system/emotion/equipborder/ 缺失
+    // 嗰陣會將呢個指標設做 nullptr,而 Q_ASSERT 喺 Release／RelWithDebInfo 係
+    // no-op,跟住就會 nullptr deref。
+    //
+    // 呢條 branch 以前係死 code:PixmapAnimation::setPath() 嘅 do-while 令
+    // valid() 永遠 true,所以指標從來冇被設做 nullptr。setPath() 改成 while
+    // 之後缺資產先至真係會落呢度。
+    if (_m_equipBorders[index] != nullptr && G_EFFECTS.animationsEnabled()) {
+        if (turnOn) {
+            _m_equipBorders[index]->show();
+            _m_equipBorders[index]->start();
+        } else {
+            _m_equipBorders[index]->hide();
+            _m_equipBorders[index]->stop();
+        }
+    } else if (_m_equipBorders[index] != nullptr) {
         _m_equipBorders[index]->hide();
-        _m_equipBorders[index]->stop();
     }
 
     _m_isEquipsAnimOn[index] = turnOn;
@@ -2120,9 +2140,16 @@ void Dashboard::_startHoverScaleAnimation(CardItem *card, qreal endScale, QEasin
         old->deleteLater();
     }
 
+    if (!G_EFFECTS.animationsEnabled()) {
+        // hover 放大嘅最終狀態就係目標倍率,即刻套用。
+        G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+        card->setScale(endScale);
+        return;
+    }
+
     QPropertyAnimation *anim = new QPropertyAnimation(card, "scale", this);
     anim->setEasingCurve(curve);
-    anim->setDuration(120);
+    anim->setDuration(G_EFFECTS.scaledDuration(120));
     anim->setStartValue(card->scale());
     anim->setEndValue(endScale);
     // When the animation is deleted (naturally after finished, or via stop +
@@ -2140,6 +2167,7 @@ void Dashboard::_startHoverScaleAnimation(CardItem *card, qreal endScale, QEasin
             }
         }));
     connect(anim, &QPropertyAnimation::finished, anim, &QObject::deleteLater);
+    G_EFFECTS.note(VisualEffectsPolicy::AnimationsStarted);
     anim->start();
     m_hoverScaleAnimations.insert(card, anim);
 }

@@ -1,5 +1,6 @@
 #include "gifchatbox.h"
 #include "settings.h"
+#include "effects/effects-policy.h"
 #include <QDebug>
 #include <QTextDocument>
 
@@ -10,7 +11,9 @@ GifChatBox::GifChatBox(QWidget *parent)
 
     m_gifTimer = new QTimer(this);
     connect(m_gifTimer, SIGNAL(timeout()), this, SLOT(updateGifFrames()));
-    m_gifTimer->start(100);
+    // 唔准播 GIF 就連個 10Hz 嘅刷新 timer 都唔開。
+    if (G_EFFECTS.gifPlaybackAllowed())
+        m_gifTimer->start(100);
 }
 
 GifChatBox::~GifChatBox()
@@ -26,13 +29,17 @@ QVariant GifChatBox::loadResource(int type, const QUrl &name)
     if (type == QTextDocument::ImageResource) {
         QString path = name.toString();
 
-        if (path.toLower().endsWith(".gif")) {
+        if (path.toLower().endsWith(".gif") && G_EFFECTS.gifEnabled()) {
             if (!m_gifMovies.contains(path)) {
                 QMovie *movie = new QMovie(path);
+                G_EFFECTS.note(VisualEffectsPolicy::MovieObjectsCreated);
                 if (movie->isValid()) {
                     movie->setScaledSize(QSize(100, 100));
                     m_gifMovies[path] = movie;
-                    movie->start();
+                    if (G_EFFECTS.gifPlaybackAllowed())
+                        movie->start();
+                    else
+                        movie->jumpToFrame(0);
                     qDebug() << "Created GIF animation:" << path;
                 } else {
                     delete movie;
