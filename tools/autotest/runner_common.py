@@ -125,8 +125,15 @@ def hex_exit(code):
     return "0x%08X" % (code & 0xFFFFFFFF)
 
 # POSIX: Popen.returncode 對被訊號殺死的行程回傳 -N (N = 訊號編號)。
+#
+# 用 getattr 而唔係直接寫 signal.SIGBUS: Windows 的 signal module 冇 SIGBUS,
+# 直接 attribute access 會喺 import 期間就 AttributeError, 令每一個 import 呢個
+# module 的 Windows runner (headless smoke、CTest 的 runner 契約測試) 即刻死,
+# 同 exit code 翻譯本身完全無關。
 _POSIX_CRASH_SIGNALS = {
-    signal.SIGILL, signal.SIGABRT, signal.SIGFPE, signal.SIGSEGV, signal.SIGBUS,
+    getattr(signal, name)
+    for name in ("SIGILL", "SIGABRT", "SIGFPE", "SIGSEGV", "SIGBUS")
+    if hasattr(signal, name)
 }
 
 
