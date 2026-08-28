@@ -11,21 +11,23 @@ Server 使用 `QCoreApplication`，唔需要 X11／Wayland、FMOD 或任何 GUI�
 | Linux Server（build／CI／三級 TCP network integration／systemd） | **Complete** |
 | Linux GUI M0（configure ＋ compile ＋ link） | **Complete** — `linux-gui-ci.yml` 喺 ubuntu-24.04 ＋ Qt 6.11.1 驗證 |
 | Linux GUI M1（GUI startup：`QApplication`／`MainWindow`／HomeScene／event loop） | **Complete** — `linux-gui-ci.yml` 喺 Xvfb ＋ `xcb` 跑 `--ui-startup-smoke`；WSLg 人手驗證 |
-| Linux GUI M2（RoomScene 完整對局、audio、video、Spine） | **Not started** |
+| Linux GUI M2（RoomScene 真實 TCP 對局） | **Complete** — `linux-gui-ci.yml` 跑 `--network-ui-smoke`；05p 有一個已記錄嘅繪製 flake（見 [§4.6](#46-linux-gui-m2-network-smoke真實-tcp-對局)） |
+| Linux GUI M2B-A（Qt multimedia：短音效／語音／BGM／影片背景降級） | **Complete** — `linux-gui-ci.yml` 跑 `--multimedia-smoke`（見 [§4.7](#47-linux-gui-m2b-a-multimedia-smoke)） |
+| Linux GUI M2B-B（Spine／GIF／完整視覺特效） | **Not started** |
 | Linux packaging（AppImage／deb／desktop entry／installer） | **Not started**（M3） |
 
 M0 的定義固定為 **configure ＋ compile ＋ link**，加上一個 binary capability smoke。
 M1 的定義固定為 **真正行完一次 GUI startup path 然後自動正常退出**。
+M2B-A 的定義固定為 **audio backend 同 QML media component 建得起、收得落 media
+source、缺資產／缺裝置有明確降級、收得乾淨**；佢**唔包括**「真係聽到聲」——
+CI runner 冇音訊裝置。
 
-以下全部 **未完成**，唔喺 M0／M1 範圍：
+以下全部 **未完成**，唔喺 M0／M1／M2／M2B-A 範圍：
 
 ```text
-RoomScene runtime
-完整對局
-audio
-video
 Spine
-完整 network game
+GIF
+完整動畫 profile
 Linux packaging
 ```
 
@@ -33,7 +35,7 @@ Linux packaging
 > **binary capability smoke**，唔係 GUI／offscreen startup smoke。真正的 `QApplication`／
 > `MainWindow`／`HomeScene` 啟動驗證係 M1 的 `--ui-startup-smoke`（見 [§4.5](#45-linux-gui-m1-startup-smoke)）。
 
-- Status: Linux Server Complete；Linux GUI M0（configure／compile／link）Complete；Linux GUI M1（GUI startup）Complete
+- Status: Linux Server Complete；Linux GUI M0（configure／compile／link）Complete；Linux GUI M1（GUI startup）Complete；Linux GUI M2（network game）Complete；Linux GUI M2B-A（multimedia）Complete
 - Last Updated: 2026-08-28
 - 對應 Windows 開發環境請見 [`README.md`](../README.md) 嘅 🛠️ Development Environment section。
 
@@ -532,7 +534,166 @@ CI 的 05p job 因此暫時 `continue-on-error: true`,但 seed 固定、artifact
 唔入庫）。缺素材只會產生 optional asset warning，唔可以令 RoomScene、Dashboard、
 選目標、網絡回覆或者對局流程崩潰 — 呢個係 M2 要證明嘅嘢之一。
 
-## 4.7 WSLg 人手驗證
+## 4.7 Linux GUI M2B-A multimedia smoke
+
+M1 證明 GUI **啟動得到**，M2 證明 GUI **玩得到**，M2B-A 證明 GUI 的
+**多媒體子系統建得起、失敗降得到、關得乾淨**。
+
+### Audio 架構
+
+產品一直只有 `Audio` 一個 facade（`src/core/audio.h`）。M2B-A **冇**另開第二套
+facade，只係將實作交畀 `IAudioBackend`（`src/ui/audio/audio-backend.h`）：
+
+```text
+Audio  ──►  IAudioBackend
+              ├── FmodAudioBackend      Windows GUI Release（行為不變）
+              ├── QtMediaAudioBackend   Linux GUI（Qt Multimedia）
+              └── NullAudioBackend      dedicated server／CI／降級
+```
+
+揀邊個 backend 只喺兩個地方發生：CMake 的 `QSAN_AUDIO_BACKEND` 同
+`src/ui/audio/audio-backend-factory.cpp`。call site 一個 `#ifdef Q_OS_LINUX`
+都冇。
+
+| 產品 | 預設 | 備註 |
+|---|---|---|
+| Windows GUI Release | `FMOD` | bundled `fmodex.lib`，同以前完全一樣 |
+| Windows GUI Debug | `FMOD`（實際落 null） | FMOD 只喺 Release 連結，Debug 一直都冇聲 |
+| Linux GUI | `QT` | Qt Multimedia，唔會連 `fmodex.lib`，亦唔會 include Windows FMOD header |
+| Dedicated server | `NULL` | `qsanguosha_engine`／`qsanguosha_server` 完全唔會拉到 Qt Multimedia |
+
+`AUDIO_SUPPORT` 的意思由「呢個 target 連得到 FMOD」改成「呢個 target 有 audio
+facade」，只喺 GUI target 定義；engine／server target 照舊冇。FMOD header 改由
+`QSAN_AUDIO_BACKEND_FMOD` 守住。
+
+Qt backend 的資源策略（三條路徑刻意分開）：
+
+| 用途 | 實作 | 上限 |
+|---|---|---|
+| 短 UI 音效 | `QSoundEffect` 預載 `button-down`／`button-hover`／`choose-item`／`pop-up` | 預載 4 個 |
+| 短音效 fallback | 獨立細 player pool（`QSoundEffect` 解唔到嗰啲，例如某些機的 `.ogg`） | 4 個 slot |
+| 武將語音 | 可重用 `QMediaPlayer` + `QAudioOutput` pool | 8 個 slot |
+| BGM | 獨立一個 player／output，`QMediaPlayer::Infinite` | 1 |
+
+要點：
+
+* 武將語音**唔會**整批轉 WAV，亦唔會預載入記憶體。
+* pool 滿就搶最舊嗰個 slot，所以播放永遠唔會 `new` 一對新 player／output。
+  撳掣嘅短音效有自己嗰個 pool，唔會打斷一句語音。
+* `superpose=false` 的舊語義保留：同一個檔案響緊就唔重疊播。
+* 缺檔案只係 `qWarning`；冇音訊裝置只係 `hasOutputDevice()=false`，兩者都唔會 crash。
+* `Audio::quit()` 會拆晒 player／output（全部掛喺一個 parent `QObject` 下），
+  唔會留低 active QObject 或者 decoder thread。Qt backend 之後再收到播放請求會
+  重新建資源 —— `StartScene::switchToServer()` 開房時會 `Audio::quit()`，
+  Linux 唔應該因此永久收聲。FMOD backend 保持舊行為，`quit()` 係終局。
+
+### 影片背景
+
+`HomeController::hasVideoSupport()` 以前只搵 `*.dll`，即係 Linux 永遠答 false。
+而家改成用 glob 認 plugin 名，並且連 `QLibraryInfo` 的 plugin 路徑一齊搵。
+
+`qml/home/VideoOverlay.qml` 由 `Video` 改成 `MediaPlayer` + `VideoOutput`：
+`Video` 冇 expose `mediaStatus`，分唔出「載入成功」同「格式唔支援」。
+
+影片背景**唔係** HomeScene 啟動的必要條件。QML 每次都會報告一個分類結果：
+
+```text
+VIDEO_BACKEND_RESULT {"schema_version":1,"available":true,"loaded":false,
+                      "fallback":true,"reason":"asset_missing","error":"..."}
+```
+
+| `reason` | 意思 |
+|---|---|
+| `ok` | 影片載入成功 |
+| `not_requested` | 背景本身係圖片，冇要求過影片 |
+| `disabled` | 使用者喺設定關咗影片背景 |
+| `asset_missing` | 指定咗影片但檔案唔存在 |
+| `backend_unavailable` | 搵唔到 Qt multimedia plugin |
+| `codec_unsupported` | backend 在但解唔到呢個格式 |
+| `playback_error` | 其餘播放錯誤 |
+
+失敗嗰陣原因**唔會**被 `fallback_ok` 蓋走：靜態背景頂上之後只會額外標記
+`fallback_confirmed`，所以 CI 分得出係缺資產定係 codec 唔支援。
+
+### 執行 smoke
+
+```bash
+# 主驗證（CI 用 Xvfb；本機 WSLg 用 --no-xvfb）
+bash tools/ci/linux-gui-multimedia-smoke.sh ./relwithdebinfo/QSanguosha artifacts \
+    --no-xvfb --platform xcb --label wslg --expect-backend qt
+
+# 影片降級路徑：特登指一個唔存在的 .mp4
+bash tools/ci/linux-gui-multimedia-smoke.sh ./relwithdebinfo/QSanguosha artifacts \
+    --no-xvfb --platform xcb --label video-missing \
+    --video-source tests/fixtures/media/no-such-clip.mp4 \
+    --expect-video-reason asset_missing
+```
+
+直接叫 binary（runner 額外提供 process-level timeout、artifact 收集同 orphan 清理）：
+
+```bash
+./relwithdebinfo/QSanguosha --multimedia-smoke \
+    --multimedia-timeout-ms 60000 \
+    --multimedia-report artifacts/multimedia.json
+```
+
+輸出 marker：
+
+```text
+MULTIMEDIA_STAGE {"stage":"backend","ok":true,...}
+MULTIMEDIA_STAGE {"stage":"ui_effect","ok":true,...}
+MULTIMEDIA_STAGE {"stage":"voice","ok":true,...}
+MULTIMEDIA_STAGE {"stage":"bgm","ok":true,...}
+MULTIMEDIA_STAGE {"stage":"missing_asset","ok":true,...}
+VIDEO_BACKEND_RESULT {...}
+MULTIMEDIA_STAGE {"stage":"video","ok":true,...}
+MULTIMEDIA_STAGE {"stage":"shutdown","ok":true,...}
+MULTIMEDIA_RESULT {"schema_version":1,"ok":true,...}
+```
+
+exit code：`0` pass、`1` GUI setup、`2` audio stage、`3` video stage、
+`4` app 內部 timeout、`5` 參數錯、`6` internal。app 內部 timeout **一定**會回
+非零 exit code 同 `reason:"timeout"`，唔會靜靜掛住等 runner 斬 —— 卡死的 media
+decoder 正正就係咁死。
+
+### 冇硬件的 CI
+
+GitHub runner 冇實體音訊裝置，亦冇入庫任何影片資產。所以 smoke 驗嘅係：
+
+```text
+backend 揀啱（--expect-backend qt，防止靜靜地退返 null backend）
+media source 收得落
+player／QSoundEffect 建得起、pool 有上限
+缺檔案 fallback（missing_files > 0）
+冇裝置 fallback（output_device=false 唔算失敗）
+影片路徑有明確分類 + 靜態背景頂上
+Audio::quit() 之後 backend 真係 "none"
+冇 crash／hang
+```
+
+**唔會**用「冇 console error」做成功條件。
+
+測試 fixture 喺 `tests/fixtures/media/`，全部係
+`tools/ci/make-media-fixtures.py` 生成的合成正弦波（1–5 KB），唔係正式遊戲資產。
+`button-down.wav` 個名唔可以改：`classifyAudioFile()` 靠 basename 認短 UI 音效。
+刻意**冇**影片 fixture（見該目錄的 `README.md`）。
+
+### 設定
+
+| Key | 預設 | 說明 |
+|---|---|---|
+| `MasterVolume` | `1.0` | 總增益，套用喺所有通道 |
+| `EffectVolume` | `1.0` | 既有 key |
+| `VoiceVolume` | `1.0` | 語音喺 `EffectVolume` 之上再多一級 trim |
+| `BGMVolume` / `FrontBGMVolume` | `1.0` | 既有 key |
+| `AudioMuted` | `false` | 全部靜音 |
+| `EnableBackgroundVideo` | `true` | 首頁影片背景開關 |
+
+Key 名 Windows／Linux 共用；舊設定檔冇呢幾個 key 時有穩定預設。所有音量都經
+`clampVolume()`，設定檔被手改成非數字／負數／NaN 都唔會傳落 backend。
+Dedicated server 唔需要讀呢啲值。
+
+## 4.8 WSLg 人手驗證
 
 Xvfb CI 通過**唔可以**取代 WSLg 人手驗證：Xvfb 冇 compositor，亦唔會行 WSLg 的
 Wayland／X11 橋接。喺 WSLg 下重複以下步驟：
@@ -827,17 +988,24 @@ runtime Lua 內容（唔重新 fetch extensions，免得兩個 job 拎到唔同�
 ```
 Linux GUI compile ── M1 startup smoke
         ↓ linux-gui-runtime-bundle
-Linux GUI M2 network game (02p)
-        ↓
-Linux GUI M2 network game (05p)
+Linux GUI M2 network game (02p) ──┐
+        ↓                         │
+Linux GUI M2 network game (05p)   │
+                                  ↓
+                    Linux GUI M2B-A multimedia
 ```
 
 兩個 network job 都係**阻擋性**嘅，冇用 `continue-on-error` 掩蓋。02p job 額外行
 一個負向契約：server 唔存在時 runner 一定要快速失敗並且講明係連線層，唔可以等到
 timeout 或者當 PASS。
 
-呢個 workflow **刻意唔做**：完整音效／影片／Spine／GIF、visible startup、
-Wayland、AppImage、pixel screenshot gate。呢啲留俾 M2B／M3。
+M2B-A 的 multimedia job（見 [4.7](#47-linux-gui-m2b-a-multimedia-smoke)）同樣接
+`linux-gui-runtime-bundle`，用同一份 binary 行四個步驟：Xvfb+xcb 主驗證、影片缺
+資產降級、offscreen 次要驗證、timeout 負向契約。四個都係阻擋性。artifact 收
+multimedia report JSON、stdout/stderr、Qt multimedia plugin 診斷同 exit status。
+
+呢個 workflow **刻意唔做**：Spine／GIF／完整動畫 profile、visible startup、
+Wayland、AppImage、pixel screenshot gate。呢啲留俾 M2B-B／M3。
 
 Linux Server CI 繼續用 distro Qt，唔會受 GUI 的 Qt 6.11 baseline 影響。
 
