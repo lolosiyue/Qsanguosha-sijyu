@@ -1,4 +1,5 @@
 #include "room.h"
+#include "runtime-paths.h"
 #include "card-lifetime-manager.h"
 #include "ai-decision-coordinator.h"
 #include "card-movement-service.h"
@@ -6928,10 +6929,8 @@ void Room::initializeReplayRecordPath()
 			return;
 	}
 
-	const QString recordDir = QDir::currentPath() + QStringLiteral("/record");
-	QDir dir;
-	if (!dir.exists(recordDir))
-		dir.mkpath(recordDir);
+	// replay 係使用者資料,唔可以寫入安裝樹/AppImage(唯讀)。
+	const QString recordDir = QSanRuntimePaths::recordDir();
 
 	const QString replayPath = recordDir + QStringLiteral("/")
 		+ QDateTime::currentDateTime().toString(QStringLiteral("yyyy年MM月dd日HH时mm分ss秒"))

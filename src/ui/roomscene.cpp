@@ -1,4 +1,5 @@
 #include "roomscene.h"
+#include "runtime-paths.h"
 #include "skill-dialog-registry.h"
 #include "choosetriggerorderbox.h"
 #include "photo.h"
@@ -6943,10 +6944,7 @@ void RoomScene::recorderAutoSave()
 	if (room && !room->getReplayPath().isEmpty())
 		filename = room->getReplayPath();
 	else {
-		QString path = QDir::currentPath()+"/record";
-		if(!QDir(path).exists())
-			QDir().mkpath(path);
-		filename = path+"/"+QDateTime::currentDateTime().toString("yyyy年MM月dd日HH时mm分ss秒")+".txt";
+		filename = QSanRuntimePaths::recordDir()+"/"+QDateTime::currentDateTime().toString("yyyy年MM月dd日HH时mm分ss秒")+".txt";
 	}
 	ClientInstance->save(filename);
 }

@@ -56,6 +56,14 @@ void configureParser(QCommandLineParser &parser)
         QStringLiteral("Print the effective server configuration and exit.")));
     parser.addOption(QCommandLineOption(QStringLiteral("json"),
         QStringLiteral("Use JSON output with --print-config.")));
+    parser.addOption(QCommandLineOption(QStringLiteral("asset-root"),
+        QStringLiteral("Load game data from <path> instead of the detected install tree."),
+        QStringLiteral("path")));
+    parser.addOption(QCommandLineOption(QStringLiteral("asset-manifest"),
+        QStringLiteral("Check assets against <path> instead of the installed manifest."),
+        QStringLiteral("path")));
+    parser.addOption(QCommandLineOption(QStringLiteral("asset-report"),
+        QStringLiteral("Print the resolved runtime layout and asset manifest state, then exit.")));
 }
 
 bool rejectDuplicateValue(const QCommandLineParser &parser, const QString &name, QString &error)
@@ -161,6 +169,7 @@ ServerCommandLineResult parseServerCommandLine(const QStringList &arguments)
     result.options.printConfig = parser.isSet(QStringLiteral("print-config"));
     result.options.checkConfig = parser.isSet(QStringLiteral("check-config"));
     result.options.jsonOutput = parser.isSet(QStringLiteral("json"));
+    result.options.assetReport = parser.isSet(QStringLiteral("asset-report"));
     if (result.options.jsonOutput && !result.options.printConfig) {
         result.error = QStringLiteral("option '--json' requires '--print-config'");
         return result;
@@ -220,7 +229,9 @@ ServerCommandLineResult parseServerCommandLine(const QStringList &arguments)
         || !parseNonEmptyText(QStringLiteral("server-name"), result.options.serverName)
         || !parseNonEmptyText(QStringLiteral("autotest-log"), result.options.autotestLog)
         || !parseNonEmptyText(QStringLiteral("config"), result.options.configFile)
-        || !parseNonEmptyText(QStringLiteral("log-file"), result.options.logFile))
+        || !parseNonEmptyText(QStringLiteral("log-file"), result.options.logFile)
+        || !parseNonEmptyText(QStringLiteral("asset-root"), result.options.assetRoot)
+        || !parseNonEmptyText(QStringLiteral("asset-manifest"), result.options.assetManifest))
         return result;
 
     const auto parseChoice = [&parser, &result](const QString &name,
