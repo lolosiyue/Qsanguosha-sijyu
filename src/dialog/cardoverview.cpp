@@ -5,6 +5,7 @@
 #include "clientstruct.h"
 #include "client.h"
 #include "skin-bank.h"
+#include "card-overview-data.h"
 
 static CardOverview *Overview;
 
@@ -72,20 +73,7 @@ void CardOverview::loadFromAll()
 	else
         ui->getCardButton->hide();
 
-    QList<const Card *> list;
-	bool cstring = !ServerInfo.DuringGame&&QFile::exists("lua/ai/cstring");
-    QList<int> ava = Sanguosha->getRandomCards(true);
-    for (int i = 0; i < Sanguosha->getCardCount(); i++) {
-		if (ServerInfo.DuringGame&&!ava.contains(i)) continue;
-		const Card *card = Sanguosha->getEngineCard(i);
-		if (cstring){
-			list << card;
-			continue;
-		}
-		if (card->objectName().contains("_zhizhe_")||card->objectName().startsWith("__")) continue;
-		list << card;
-    }
-    loadFromList(list);
+    loadFromList(CardOverviewData::collectCards());
 }
 
 void CardOverview::loadFromList(const QList<const Card *> &list)
@@ -112,12 +100,7 @@ void CardOverview::loadFromList(const QList<const Card *> &list)
 
 void CardOverview::addCard(int i, const Card *card)
 {
-    QString name = Sanguosha->translate(card->objectName());
-
-    QString yingbian = card->property("YingBianEffects").toString();
-    if (!yingbian.isEmpty()) name += QString("(%1)").arg(Sanguosha->translate(yingbian));
-	foreach (QString tag, card->property("CharTag").toStringList())
-		name += QString("(%1)").arg(Sanguosha->translate(tag));
+    QString name = CardOverviewData::overviewName(card);
 
     QTableWidgetItem *item = new QTableWidgetItem(name);
     item->setData(Qt::UserRole, card->getId());
