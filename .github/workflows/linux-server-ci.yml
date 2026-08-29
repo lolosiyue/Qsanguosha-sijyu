@@ -29,28 +29,18 @@ concurrency:
 env:
   CMAKE_BUILD_PARALLEL_LEVEL: 2
   QT_QPA_PLATFORM: offscreen
+  QSAN_FULL_SERVER_CI: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
 
 jobs:
   build-and-test:
-    name: ${{ matrix.compiler.name }} configure/build, CTest network E2E, shutdown
+    name: ${{ matrix.compiler.name }} server gate
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        compiler:
-          - name: GCC
-            id: gcc
-            cc: gcc
-            cxx: g++
-            cxx_flags: ''
-            package: g++
-          - name: Clang
-            id: clang
-            cc: clang
-            cxx: clang++
-            cxx_flags: -Wno-inconsistent-missing-override
-            package: clang
+        # PR 與 debug push 只建立 GCC job；main push／手動驗證才展開 GCC + Clang。
+        compiler: ${{ fromJSON((github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && '[{"name":"GCC","id":"gcc","cc":"gcc","cxx":"g++","cxx_flags":"","package":"g++"},{"name":"Clang","id":"clang","cc":"clang","cxx":"clang++","cxx_flags":"-Wno-inconsistent-missing-override","package":"clang"}]' || '[{"name":"GCC","id":"gcc","cc":"gcc","cxx":"g++","cxx_flags":"","package":"g++"}]') }}
 
     steps:
       - name: Check out source
@@ -96,6 +86,7 @@ jobs:
         run: cmake --build 'build/linux-${{ matrix.compiler.id }}' --parallel
 
       - name: Build and verify deploy-server
+        if: env.QSAN_FULL_SERVER_CI == 'true'
         run: |
           cmake --build 'build/linux-${{ matrix.compiler.id }}' \
             --target deploy-server \
@@ -105,6 +96,7 @@ jobs:
           test -f relwithdebinfo/lua/sanguosha.lua
 
       - name: Verify Linux install and systemd layout
+        if: env.QSAN_FULL_SERVER_CI == 'true'
         run: |
           install_root="${RUNNER_TEMP}/qsanguosha-install-${{ matrix.compiler.id }}"
           cmake --install 'build/linux-${{ matrix.compiler.id }}' --prefix "$install_root"
@@ -113,7 +105,29 @@ jobs:
           test -f "$install_root/share/qsanguosha/lua/config.lua"
           test -d "$install_root/share/qsanguosha/extensions"
 
-      - name: Run CTest including network E2E
+      - name: Run daily fast CTest
+        if: env.QSAN_FULL_SERVER_CI != 'true'
+        run: |
+          mkdir -p ci-logs
+          ctest \
+            --test-dir 'build/linux-${{ matrix.compiler.id }}' \
+            --build-config RelWithDebInfo \
+            --output-on-failure \
+            --label-regex fast \
+            --output-junit 'ci-logs/ctest-${{ matrix.compiler.id }}.xml'
+
+      # Level 2 覆蓋真實 TCP handshake／signup；Level 1 與 shutdown smoke 重疊，
+      # Level 3 完整 02p 對局留給 main／手動的 full CTest。
+      - name: Run daily network integration level 2
+        if: env.QSAN_FULL_SERVER_CI != 'true'
+        run: |
+          'build/linux-${{ matrix.compiler.id }}/tests/qsanguosha_network_integration_tests' \
+            --level 2 \
+            --server "$GITHUB_WORKSPACE/relwithdebinfo/qsanguosha_server" \
+            | tee 'ci-logs/network-level2-${{ matrix.compiler.id }}.log'
+
+      - name: Run full CTest including network E2E
+        if: env.QSAN_FULL_SERVER_CI == 'true'
         run: |
           mkdir -p ci-logs
           ctest \
