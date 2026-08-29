@@ -95,6 +95,20 @@ qsan_add_ctest(qsanguosha_protocol_messages qsanguosha_protocol_tests
     LABELS protocol
 )
 
+add_executable(qsanguosha_protocol_v1_tests
+    protocol/protocol-v1-codec-test.cpp
+)
+target_include_directories(qsanguosha_protocol_v1_tests PRIVATE
+    ${QSAN_TEST_ROOT}/src/core
+)
+target_link_libraries(qsanguosha_protocol_v1_tests PRIVATE
+    qsanguosha_engine
+    Qt6::Core
+)
+qsan_add_ctest(qsanguosha_protocol_v1_contract qsanguosha_protocol_v1_tests
+    LABELS "protocol;fast"
+)
+
 add_executable(qsanguosha_card_overview_classifier_tests
     card-overview-classifier-test.cpp
     ${QSAN_TEST_ROOT}/src/ui/card-overview-data.cpp

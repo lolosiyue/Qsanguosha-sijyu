@@ -1,11 +1,11 @@
 #include "protocol.h"
 #include "json.h"
+#include "protocol/protocol-v1-codec.h"
 
 using namespace std;
 using namespace QSanProtocol;
 
 unsigned int QSanProtocol::Packet::globalSerialSequence = 0;
-const int QSanProtocol::Packet::S_MAX_PACKET_SIZE = 65535;
 const char *QSanProtocol::S_PLAYER_SELF_REFERENCE_ID = "MG_SELF";
 
 const int QSanProtocol::S_ALL_ALIVE_PLAYERS = 0;
@@ -66,44 +66,14 @@ unsigned int QSanProtocol::Packet::createGlobalSerial()
 
 bool QSanProtocol::Packet::parse(const QByteArray &raw)
 {
-    if (raw.length() > S_MAX_PACKET_SIZE) {
-        return false;
-    }
-
-    JsonDocument doc = JsonDocument::fromJson(raw);
-    JsonArray result = doc.array();
-
-    if (!JsonUtils::isNumberArray(result, 0, 3) || result.size() > 5)
-        return false;
-
-    globalSerial = result[0].toUInt();
-    localSerial = result[1].toUInt();
-    packetDescription = static_cast<PacketDescription>(result[2].toInt());
-    command = (CommandType)result[3].toInt();
-
-    if (result.size() == 5)
-        messageBody = result[4];
-    return true;
+    const ProtocolV1Codec codec;
+    return codec.decode(QByteArrayView(raw), this).success;
 }
 
 QByteArray QSanProtocol::Packet::toJson() const
 {
-    JsonArray result;
-    result << globalSerial;
-    result << localSerial;
-    result << packetDescription;
-    result << command;
-    if (!messageBody.isNull())
-        result << messageBody;
-
-    JsonDocument doc(result);
-    const QByteArray &msg = doc.toJson();
-
-    //return an empty string here, for Packet::parse won't parse it (line 92)
-    if (msg.length() > S_MAX_PACKET_SIZE)
-        return QByteArray();
-
-    return msg;
+    const ProtocolV1Codec codec;
+    return codec.encode(*this);
 }
 
 QString QSanProtocol::Packet::toString() const
