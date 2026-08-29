@@ -6,6 +6,7 @@
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
+#include <QList>
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QRegularExpression>
@@ -616,10 +617,17 @@ int main(int argc, char **argv)
     QCoreApplication app(argc, argv);
     const QStringList arguments = app.arguments();
     int level = 0;
+    bool levelSpecified = false;
     QString serverPath;
     for (int i = 1; i < arguments.size(); ++i) {
         if (arguments.at(i) == QLatin1String("--level") && i + 1 < arguments.size()) {
-            level = arguments.at(++i).toInt();
+            bool validLevel = false;
+            level = arguments.at(++i).toInt(&validLevel);
+            if (!validLevel) {
+                QTextStream(stderr) << "Invalid network level" << Qt::endl;
+                return 2;
+            }
+            levelSpecified = true;
         } else if (arguments.at(i) == QLatin1String("--server") && i + 1 < arguments.size()) {
             serverPath = arguments.at(++i);
         } else {
@@ -628,15 +636,63 @@ int main(int argc, char **argv)
             return 2;
         }
     }
-    if (level < 1 || level > 3 || serverPath.isEmpty()) {
+    if ((levelSpecified && (level < 1 || level > 3)) || serverPath.isEmpty()) {
         QTextStream(stderr) << "Usage: " << arguments.constFirst()
-                            << " --level <1|2|3> --server <qsanguosha_server>"
+                            << " [--level <1|2|3>] --server <qsanguosha_server>"
                             << Qt::endl;
         return 2;
     }
 
     const QString gameStatePath = QDir::current().filePath(QStringLiteral("g.json"));
     const bool gameStatePreexisted = QFileInfo::exists(gameStatePath);
+    if (!levelSpecified) {
+        QList<bool> results;
+        QStringList details;
+        int passedCount = 0;
+        for (int currentLevel = 1; currentLevel <= 3; ++currentLevel) {
+            QString error;
+            bool passed = false;
+            {
+                ServerRunner server;
+                if (currentLevel == 1)
+                    passed = runLevel1(serverPath, server, error);
+                else if (currentLevel == 2)
+                    passed = runLevel2(serverPath, server, error);
+                else
+                    passed = runLevel3(serverPath, server, error);
+
+                if (!passed) {
+                    const QByteArray tail = server.outputTail();
+                    if (!tail.isEmpty()) {
+                        error += QStringLiteral("\n--- server output tail ---\n")
+                            + QString::fromUtf8(tail);
+                    }
+                }
+            }
+            if (!gameStatePreexisted)
+                QFile::remove(gameStatePath);
+            results.append(passed);
+            details.append(error);
+            passedCount += passed ? 1 : 0;
+            QTextStream(passed ? stdout : stderr)
+                << (passed ? "[PASS] network level " : "[FAIL] network level ")
+                << currentLevel << (passed ? QString() : QStringLiteral(": ") + error)
+                << Qt::endl;
+        }
+
+        QTextStream summary(stdout);
+        summary << "\nNETWORK_INTEGRATION_RESULT\n\n";
+        for (int i = 0; i < results.size(); ++i) {
+            summary << (results.at(i) ? "PASS" : "FAIL") << " network level " << i + 1;
+            if (!results.at(i))
+                summary << ": " << details.at(i);
+            summary << '\n';
+        }
+        summary << "\nTOTAL: 3\nPASS: " << passedCount
+                << "\nFAIL: " << 3 - passedCount << Qt::endl;
+        return passedCount == 3 ? 0 : 1;
+    }
+
     ServerRunner server;
     QString error;
     bool passed = false;

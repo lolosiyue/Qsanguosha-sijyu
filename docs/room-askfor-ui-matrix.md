@@ -209,4 +209,25 @@ CTest 是選用的 parser／launcher regression coverage，不是開啟或檢查
 ctest --test-dir builds/cmake-vs2026 -C Debug --output-on-failure
 ```
 
-`qsanguosha_local_response_ui_case_parser` 在一般 `BUILD_TESTING` 下註冊，且不依賴舊 runner cache option。`qsanguosha_skill_ui_runner_contract` 驗證 Python CLI、capability probe、stem resolution 與純增量 `--build` 契約。
+## F1.1 更新（2026-08-29）
+
+上方 ClientCore 段落保留的是 F1 首個五-command slice 的歷史快照。F1.1 已把
+`Client::m_interactions` 的 29 個 built-in commands 全部遷移；現有 14 個可見 GUI case
+仍使用 production RoomScene／Dashboard／dialog surface，protocol fixture test 另逐一覆蓋
+29 個 command 名稱與 serial。QML 現在有 versioned structured model 與 registry policy；
+舊 QML surface 透過明確 `legacy.qml` adapter 保留，不再是無界定的 passthrough。
+
+`qsanguosha_ui_runner_contract` 在一般 `BUILD_TESTING` 下合併 local-response parser、
+startup/network CLI 與 skill UI runner；它仍驗證 capability probe、stem resolution
+與純增量 `--build` 契約，且不依賴舊 runner cache option。
+# F1.1 canonical interaction status（2026-08-29）
+
+本文件其餘 ClientCore 段落若提到「首五條已遷移」或「其餘 24 條未遷移」，只屬 F1 歷史快照。PR #13 的現行權威狀態如下：
+
+| 分類 | 數量 | 備註 |
+|---|---:|---|
+| Canonical typed gameplay interaction | 28 | typed request/response payload；統一 ClientCore reply boundary |
+| Explicit legacy adapter | 1 | `S_COMMAND_QML_INTERACT` / `legacy.qml` |
+| Implicit passthrough | 0 | built-in interaction 全部由 production descriptor registry 登記 |
+
+目前 local-response UI suite 的 14 個 production GUI cases 仍是可見操作與 wire capture 的主要回歸集合；這不代表只有 14 個 canonical interaction。Production matrix 由 `debug/QSanguosha.exe --interaction-inventory` 生成，CTest 另以 fake recorder 實際 dispatch 29/29 presenters。完整架構與特殊語意見 `docs/client-core-interaction-model.md`。

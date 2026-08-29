@@ -4,6 +4,8 @@
 #include "standard.h"
 #include "engine-runtime-context.h"
 #include "client-core.h"
+#include "client-interaction-presenter.h"
+#include "custom-interaction-registry.h"
 //#include "skill.h"
 #include "room-state.h"
 //#include "protocol.h"
@@ -12,6 +14,7 @@
 // (Q_DECLARE_METATYPE(T*) 會 static_assert(sizeof(T)))，所以必須完整 include。
 // clientplayer.h 只前置宣告 class Client，不會造成 circular include。
 #include "clientplayer.h"
+#include <QJsonArray>
 
 class Recorder;
 class Replayer;
@@ -20,7 +23,8 @@ class QTextDocument;
 class ClientSocket;
 class ReplayTakeoverManager;
 
-class Client : public QObject, public EngineRuntimeContext
+class Client : public QObject, public EngineRuntimeContext,
+    public IClientInteractionPresenter
 {
     Q_OBJECT
     Q_PROPERTY(Client::Status status READ getStatus WRITE setStatus)
@@ -93,6 +97,10 @@ public:
     void onPlayerReplyGuanxing(const QList<int> &up_cards, const QList<int> &down_cards);
     void onPlayerDoGuanxingStep(int from, int to);
     void onPlayerAssignRole(const QList<QString> &names, const QList<QString> &roles);
+    void onPlayerCancelAssignRole();
+    void onPlayerChooseDraftGeneral(const QString &name);
+    void onPlayerArrangeGenerals(const QStringList &names);
+    void onPlayerChooseTriggerOrder(const QString &choice);
     QList<const ClientPlayer *> getPlayers() const;
     inline int getPlayerCount() const
     {
@@ -298,15 +306,42 @@ public:
     // response card。其餘 interaction 仍然行舊路,見
     // docs/client-core-interaction-model.md。
     ClientCore *interactionCore() const { return m_interactionCore; }
+    quint64 legacyCustomInteractionCount() const { return m_legacyCustomInteractionCount; }
+    QJsonArray interactionInventory() const;
 
     // DesktopInteractionView 用嘅呈現 port。每一個都係原本 askForXxx() 尾段
     // 嗰一兩行(emit signal + setStatus)原封不動搬過嚟,所以 RoomScene／
     // Dashboard 一行都唔使改,desktop 外觀同操作亦保證唔變。
-    void presentGeneralChoice(const InteractionRequest &request);
-    void presentOptionChoice(const InteractionRequest &request);
-    void presentPlayerChoice(const InteractionRequest &request);
-    void presentSkillInvoke(const InteractionRequest &request);
-    void presentCardResponse(const InteractionRequest &request);
+    void presentGeneralChoice(const InteractionRequest &request) override;
+    void presentOptionChoice(const InteractionRequest &request) override;
+    void presentPlayerChoice(const InteractionRequest &request) override;
+    void presentSkillInvoke(const InteractionRequest &request) override;
+    void presentCardResponse(const InteractionRequest &request) override;
+    void presentRoleAssignment(const InteractionRequest &request) override;
+    void presentDirectionChoice(const InteractionRequest &request) override;
+    void presentCardExchange(const InteractionRequest &request) override;
+    void presentCardDiscard(const InteractionRequest &request) override;
+    void presentRespondingUse(const InteractionRequest &request) override;
+    void presentShowOrPindian(const InteractionRequest &request) override;
+    void presentPlayCard(const InteractionRequest &request) override;
+    void presentGuanxing(const InteractionRequest &request) override;
+    void presentGongxin(const InteractionRequest &request) override;
+    void presentYiji(const InteractionRequest &request) override;
+    void presentSuitChoice(const InteractionRequest &request) override;
+    void presentKingdomChoice(const InteractionRequest &request) override;
+    void presentTriggerOrder(const InteractionRequest &request) override;
+    void presentAmazingGrace(const InteractionRequest &request) override;
+    void presentChooseCard(const InteractionRequest &request) override;
+    void presentOrderChoice(const InteractionRequest &request) override;
+    void presentRole3v3(const InteractionRequest &request) override;
+    void presentBooleanPrompt(const InteractionRequest &request) override;
+    void presentDraftGeneral(const InteractionRequest &request) override;
+    void presentArrangeGeneral(const InteractionRequest &request) override;
+    void presentQmlInteraction(const InteractionRequest &request) override;
+
+    // 唯一 UI reply 入口：填 identity、交畀 ClientCore validate/complete，
+    // accepted 後先由 V1 adapter encode 並送出一次 wire reply。
+    bool submitInteractionResponse(InteractionResponse response);
 
 public slots:
     void signup();
@@ -354,6 +389,12 @@ private:
     QString skill_to_invoke;
     QString skill_to_invoke_data;
     QList<int> available_cards;
+    QList<int> m_amazingGraceCards;
+    QList<int> m_amazingGraceDisabledCards;
+    QList<int> m_amazingGraceTakenCards;
+    QStringList m_filledGenerals;
+    quint64 m_legacyCustomInteractionCount = 0;
+    CustomInteractionRegistry m_customInteractionRegistry;
     QSet<QString> m_anytimeSkillPending;
 
     QMap<int, const Player*> owner_map;
@@ -364,19 +405,9 @@ private:
     ClientCore *m_interactionCore;
     DesktopInteractionView *m_desktopInteractionView;
 
-    // 一個 reply 走完 ClientCore 之後嘅三種結局。
-    enum class InteractionOutcome
-    {
-        // core 收咗:可以送 reply。
-        Accepted,
-        // 呢個 interaction 未遷移(或者 core 冇對應嘅 active request):行舊路。
-        Passthrough,
-        // core 拒絕咗:唔准送 reply。
-        Rejected
-    };
-
     void beginInteraction(InteractionRequest request);
-    InteractionOutcome completeInteraction(InteractionType type, InteractionResponse response);
+    InteractionRequest makeInteractionRequest(InteractionType type,
+        InteractionPayload payload, bool cancelable = false) const;
     void cancelInteraction(InteractionType type, InteractionCancelReason reason);
     void syncInteractionState();
 

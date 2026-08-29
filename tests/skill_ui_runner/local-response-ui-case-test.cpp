@@ -4,7 +4,9 @@
 #include "json.h"
 
 #include <QCoreApplication>
+#include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonObject>
 #include <QTemporaryFile>
 
 using namespace QSanProtocol;
@@ -38,6 +40,68 @@ int main(int argc, char **argv)
 {
     QCoreApplication app(argc, argv);
     int failures = 0;
+
+    {
+        const QStringList commands {
+            QStringLiteral("S_COMMAND_CHOOSE_ROLE"),
+            QStringLiteral("S_COMMAND_CHOOSE_GENERAL"),
+            QStringLiteral("S_COMMAND_CHOOSE_DIRECTION"),
+            QStringLiteral("S_COMMAND_EXCHANGE_CARD"),
+            QStringLiteral("S_COMMAND_ASK_PEACH"),
+            QStringLiteral("S_COMMAND_SKILL_GUANXING"),
+            QStringLiteral("S_COMMAND_SKILL_GONGXIN"),
+            QStringLiteral("S_COMMAND_SKILL_YIJI"),
+            QStringLiteral("S_COMMAND_PLAY_CARD"),
+            QStringLiteral("S_COMMAND_RESPONSE_CARD"),
+            QStringLiteral("S_COMMAND_DISCARD_CARD"),
+            QStringLiteral("S_COMMAND_MULTIPLE_CHOICE"),
+            QStringLiteral("S_COMMAND_CHOOSE_SUIT"),
+            QStringLiteral("S_COMMAND_CHOOSE_KINGDOM"),
+            QStringLiteral("S_COMMAND_CHOOSE_PLAYER"),
+            QStringLiteral("S_COMMAND_INVOKE_SKILL"),
+            QStringLiteral("S_COMMAND_TRIGGER_ORDER"),
+            QStringLiteral("S_COMMAND_NULLIFICATION"),
+            QStringLiteral("S_COMMAND_SHOW_CARD"),
+            QStringLiteral("S_COMMAND_AMAZING_GRACE"),
+            QStringLiteral("S_COMMAND_PINDIAN"),
+            QStringLiteral("S_COMMAND_CHOOSE_CARD"),
+            QStringLiteral("S_COMMAND_CHOOSE_ORDER"),
+            QStringLiteral("S_COMMAND_CHOOSE_ROLE_3V3"),
+            QStringLiteral("S_COMMAND_SURRENDER"),
+            QStringLiteral("S_COMMAND_LUCK_CARD"),
+            QStringLiteral("S_COMMAND_ASK_GENERAL"),
+            QStringLiteral("S_COMMAND_ARRANGE_GENERAL"),
+            QStringLiteral("S_COMMAND_QML_INTERACT")
+        };
+        bool passed = commands.size() == 29;
+        int serial = 3000;
+        for (const QString &expectedCommand : commands) {
+            QJsonObject request;
+            request.insert(QStringLiteral("command"), expectedCommand);
+            request.insert(QStringLiteral("serial"), ++serial);
+            request.insert(QStringLiteral("raw_body"), QJsonArray());
+            QJsonObject root;
+            root.insert(QStringLiteral("schema_version"), 1);
+            root.insert(QStringLiteral("name"), expectedCommand.toLower());
+            root.insert(QStringLiteral("bootstrap"), QJsonObject());
+            root.insert(QStringLiteral("request"), request);
+            root.insert(QStringLiteral("actions"), QJsonArray());
+
+            LocalResponseUiCase testCase;
+            QString error;
+            Packet packet;
+            QString command;
+            QVariant body;
+            const bool mapped = loadCase(QJsonDocument(root).toJson(QJsonDocument::Compact),
+                    &testCase, &error)
+                && testCase.makeRequestPacket(&packet, &command, &body, {}, &error)
+                && command == expectedCommand && packet.globalSerial == static_cast<uint>(serial);
+            passed = check(mapped,
+                QStringLiteral("interactive command fixture failed for %1: %2")
+                    .arg(expectedCommand, error)) && passed;
+        }
+        failures += passed ? 0 : 1;
+    }
 
     {
         const QByteArray json = R"json({

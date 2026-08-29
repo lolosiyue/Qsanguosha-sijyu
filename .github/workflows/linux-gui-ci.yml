@@ -5,18 +5,70 @@ on:
     branches:
       - main
       - debug
-    paths-ignore:
-      - 'docs/**'
-      - 'memory/**'
-      - '*.md'
+    paths:
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - 'cmake/**'
+      - 'src/client/**'
+      - '!src/client/core/**'
+      - 'src/core/audio.h'
+      - 'src/core/json-gui.cpp'
+      - 'src/core/oracle_helper.*'
+      - 'src/core/record-analysis.*'
+      - 'src/core/settings-gui.*'
+      - 'src/dialog/**'
+      - 'src/main.cpp'
+      - 'src/pch.h'
+      - 'src/spine/**'
+      - 'src/ui/**'
+      - 'src/util/**'
+      - 'qml/**'
+      - 'resource/**'
+      - 'tools/ci/fetch-extensions.sh'
+      - 'tools/ci/requirements.txt'
+      - 'tools/ci/linux-gui-*.sh'
+      - 'tools/ci/make-effects-fixtures.py'
+      - 'tools/ci/make-media-fixtures.py'
+      - 'tools/ci/validate-effects-smoke.py'
+      - 'tools/ci/validate-multimedia-smoke.py'
+      - 'tools/ci/validate-ui-startup-smoke.py'
+      - 'tests/fixtures/effects/**'
+      - 'tests/fixtures/media/**'
+      - '.github/workflows/linux-gui-ci.yml'
   push:
     branches:
       - main
       - debug
-    paths-ignore:
-      - 'docs/**'
-      - 'memory/**'
-      - '*.md'
+    paths:
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - 'cmake/**'
+      - 'src/client/**'
+      - '!src/client/core/**'
+      - 'src/core/audio.h'
+      - 'src/core/json-gui.cpp'
+      - 'src/core/oracle_helper.*'
+      - 'src/core/record-analysis.*'
+      - 'src/core/settings-gui.*'
+      - 'src/dialog/**'
+      - 'src/main.cpp'
+      - 'src/pch.h'
+      - 'src/spine/**'
+      - 'src/ui/**'
+      - 'src/util/**'
+      - 'qml/**'
+      - 'resource/**'
+      - 'tools/ci/fetch-extensions.sh'
+      - 'tools/ci/requirements.txt'
+      - 'tools/ci/linux-gui-*.sh'
+      - 'tools/ci/make-effects-fixtures.py'
+      - 'tools/ci/make-media-fixtures.py'
+      - 'tools/ci/validate-effects-smoke.py'
+      - 'tools/ci/validate-multimedia-smoke.py'
+      - 'tools/ci/validate-ui-startup-smoke.py'
+      - 'tests/fixtures/effects/**'
+      - 'tests/fixtures/media/**'
+      - '.github/workflows/linux-gui-ci.yml'
   workflow_dispatch:
 
 permissions:
@@ -28,9 +80,11 @@ concurrency:
 
 env:
   CMAKE_BUILD_PARALLEL_LEVEL: 2
+  QSAN_FULL_GUI_CI: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') }}
 
 jobs:
-  # 分層:compile -> M1 startup -> M2B-A multimedia -> M2B-B effects matrix。
+  # 日常 GUI 路徑只跑 compile -> M1 Xvfb startup；main／手動先展開
+  # offscreen／負向契約 -> M2B-A multimedia -> M2B-B effects matrix。
   # 後面的 job 用 artifact 收下前面砌好的 binary 與 runtime Lua 內容,唔重複 build,
   # 亦唔會因為重新 fetch extensions 而換咗內容 — 跑 multimedia 的就係編譯 job
   # 驗過的同一份檔案。
@@ -222,6 +276,7 @@ jobs:
 
       # 次要 smoke：確認完全冇 X server 時亦啟動得到，方便日後 container 場景。
       - name: Linux GUI M1 startup smoke (offscreen, secondary)
+        if: env.QSAN_FULL_GUI_CI == 'true'
         run: |
           bash tools/ci/linux-gui-startup-smoke.sh \
             ./relwithdebinfo/QSanguosha \
@@ -233,6 +288,7 @@ jobs:
             --process-timeout 120
 
       - name: Card Overview embedded scene smoke (offscreen)
+        if: env.QSAN_FULL_GUI_CI == 'true'
         run: |
           bash tools/ci/linux-gui-startup-smoke.sh \
             ./relwithdebinfo/QSanguosha \
@@ -247,6 +303,7 @@ jobs:
       # 負向契約：app 內部 timeout 一定要回非零 exit code 同 timeout result marker，
       # 而唔係靜靜掛住等 runner 斬。
       - name: Startup smoke timeout contract
+        if: env.QSAN_FULL_GUI_CI == 'true'
         run: |
           bash tools/ci/linux-gui-startup-smoke.sh \
             ./relwithdebinfo/QSanguosha \
@@ -278,6 +335,7 @@ jobs:
       # sha256sum 喺 $( ) 入面失敗唔會令步驟失敗,只會寫低一個空 sha ——
       # 缺 binary 就係咁樣靜靜咁溜到下游 job。先算好再檢查,唔准空值。
       - name: Record the fetched extensions commit
+        if: env.QSAN_FULL_GUI_CI == 'true'
         run: |
           client_sha256=$(sha256sum relwithdebinfo/QSanguosha | cut -d' ' -f1)
           if [ -z "$client_sha256" ]; then
@@ -292,6 +350,7 @@ jobs:
           } | tee build-provenance.txt
 
       - name: Upload the Linux GUI runtime bundle
+        if: env.QSAN_FULL_GUI_CI == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: linux-gui-runtime-bundle
@@ -314,6 +373,7 @@ jobs:
   gui-multimedia:
     name: Linux GUI M2B-A multimedia (Qt audio + video fallback)
     needs: gui-compile
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -454,6 +514,7 @@ jobs:
   gui-effects:
     name: Linux GUI M2B-B effects (${{ matrix.profile }} profile)
     needs: gui-compile
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
