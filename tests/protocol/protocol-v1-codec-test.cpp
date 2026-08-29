@@ -1,5 +1,6 @@
 #include "json.h"
 #include "protocol.h"
+#include "protocol/protocol-v1-codec.h"
 
 #include <QTextStream>
 #include <QVariantMap>
@@ -195,9 +196,112 @@ bool invalidInput()
     }
     return true;
 }
+
+bool expectDecodeError(const ProtocolV1Codec &codec, QByteArrayView raw,
+                       Packet *packet, ProtocolDecodeError expected,
+                       const QString &label)
+{
+    const ProtocolDecodeResult result = codec.decode(raw, packet);
+    return expect(!result.success && result.error == expected && !result.detail.isEmpty(),
+                  label);
+}
+
+bool codecBoundary()
+{
+    const ProtocolV1Codec codec;
+    if (!expect(codec.version() == ProtocolVersion::V1, "V1 codec version"))
+        return false;
+
+    Packet source(S_SRC_CLIENT | S_TYPE_REPLY | S_DEST_ROOM,
+                  S_COMMAND_RESPONSE_CARD);
+    source.globalSerial = 12;
+    source.localSerial = 34;
+    source.setMessageBody(QStringLiteral("reply"));
+    QString encodeError = QStringLiteral("stale");
+    const QByteArray encoded = codec.encode(source, &encodeError);
+    if (!expect(encoded == QByteArray("[12,34,322,3,\"reply\"]"),
+                "codec golden encode")
+        || !expect(encodeError.isEmpty(), "codec successful encode clears error")
+        || !expect(encoded == source.toJson(), "facade and codec encode match")
+        || !expect(source.toString() == QString::fromUtf8(encoded),
+                   "facade toString matches codec"))
+        return false;
+
+    Packet decoded;
+    const ProtocolDecodeResult decodedResult = codec.decode(encoded, &decoded);
+    if (!expect(decodedResult.success
+                    && decodedResult.error == ProtocolDecodeError::None
+                    && decodedResult.detail.isEmpty(),
+                "codec successful decode result")
+        || !expect(decoded.globalSerial == source.globalSerial
+                       && decoded.localSerial == source.localSerial
+                       && decoded.getPacketDescription() == source.getPacketDescription()
+                       && decoded.getCommandType() == source.getCommandType()
+                       && decoded.getMessageBody() == source.getMessageBody(),
+                   "codec decoded fields")
+        || !expect(codec.encode(decoded) == encoded, "codec round trip bytes"))
+        return false;
+
+    const QByteArray valid = "[0,0,1041,8]";
+    if (!expectDecodeError(codec, valid, nullptr, ProtocolDecodeError::NullOutput,
+                           "null output rejection"))
+        return false;
+
+    Packet failureTarget;
+    failureTarget.globalSerial = 91;
+    failureTarget.setMessageBody(QStringLiteral("unchanged"));
+    if (!expectDecodeError(codec, QByteArrayView(), &failureTarget,
+                           ProtocolDecodeError::EmptyInput, "empty input diagnostic")
+        || !expectDecodeError(codec, QByteArray(65536, ' '), &failureTarget,
+                              ProtocolDecodeError::PacketTooLarge,
+                              "oversized input diagnostic")
+        || !expectDecodeError(codec, QByteArray("not-json"), &failureTarget,
+                              ProtocolDecodeError::InvalidJson,
+                              "invalid JSON diagnostic")
+        || !expectDecodeError(codec, QByteArray("{}"), &failureTarget,
+                              ProtocolDecodeError::InvalidEnvelope,
+                              "non-array diagnostic")
+        || !expectDecodeError(codec, QByteArray("[0,0,1041]"), &failureTarget,
+                              ProtocolDecodeError::InvalidEnvelope,
+                              "short envelope diagnostic")
+        || !expectDecodeError(codec, QByteArray("[0,0,{},8]"), &failureTarget,
+                              ProtocolDecodeError::InvalidHeader,
+                              "invalid header diagnostic")
+        || !expectDecodeError(codec, QByteArray("[0,0,1041,8,null,6]"), &failureTarget,
+                              ProtocolDecodeError::InvalidEnvelope,
+                              "long envelope diagnostic")
+        || !expect(failureTarget.globalSerial == 91
+                       && failureTarget.getMessageBody() == QStringLiteral("unchanged"),
+                   "codec failures leave output unchanged"))
+        return false;
+
+    Packet unknown;
+    const QByteArray unknownWire = "[1,2,32767,4096]";
+    if (!expect(codec.decode(unknownWire, &unknown).success,
+                "codec accepts unknown numeric values")
+        || !expect(codec.encode(unknown) == unknownWire,
+                   "codec preserves unknown numeric values"))
+        return false;
+
+    Packet reused;
+    reused.setMessageBody(QStringLiteral("legacy-body"));
+    if (!expect(codec.decode(valid, &reused).success,
+                "codec four-field reuse decode")
+        || !expect(reused.getMessageBody() == QStringLiteral("legacy-body"),
+                   "codec preserves legacy four-field body retention"))
+        return false;
+
+    Packet oversizedOutput(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT,
+                           S_COMMAND_SPEAK);
+    oversizedOutput.setMessageBody(QString(65536, QLatin1Char('x')));
+    encodeError.clear();
+    return expect(codec.encode(oversizedOutput, &encodeError).isEmpty()
+                      && !encodeError.isEmpty(),
+                  "oversized encode diagnostic");
+}
 }
 
 int main()
 {
-    return goldenEncode() && goldenDecode() && invalidInput() ? 0 : 1;
+    return goldenEncode() && goldenDecode() && invalidInput() && codecBoundary() ? 0 : 1;
 }
