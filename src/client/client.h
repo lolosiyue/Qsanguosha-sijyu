@@ -6,6 +6,7 @@
 #include "client-core.h"
 #include "client-interaction-presenter.h"
 #include "custom-interaction-registry.h"
+#include "protocol/protocol-negotiation.h"
 //#include "skill.h"
 #include "room-state.h"
 //#include "protocol.h"
@@ -117,6 +118,9 @@ public:
     QString getPlayerName(const QString &str);
     QString getSkillNameToInvoke() const;
     QString getSkillNameToInvokeData() const;
+    QList<QSanProtocol::ProtocolVersion> peerSupportedVersions() const;
+    QSanProtocol::ProtocolVersion preferredProtocolVersion() const;
+    QSanProtocol::ProtocolVersion activeProtocolVersion() const;
 
     lua_State *getLuaState() const;
 
@@ -372,6 +376,7 @@ protected:
 
 private:
     ClientSocket *socket;
+    QSanProtocol::ProtocolSessionState m_protocolSessionState;
     bool m_isGameOver;
     bool m_isDisconnected;
     ClientPlayer *m_original_self;
