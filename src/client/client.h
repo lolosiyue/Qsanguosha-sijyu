@@ -3,6 +3,7 @@
 
 #include "standard.h"
 #include "engine-runtime-context.h"
+#include "client-core.h"
 //#include "skill.h"
 #include "room-state.h"
 //#include "protocol.h"
@@ -14,6 +15,7 @@
 
 class Recorder;
 class Replayer;
+class DesktopInteractionView;
 class QTextDocument;
 class ClientSocket;
 class ReplayTakeoverManager;
@@ -286,6 +288,26 @@ public:
 
     void setSelf(ClientPlayer *newSelf);
 
+    // ── Client Architecture F1:結構化 interaction ────────────────────────
+    //
+    // Client 依然係 protocol／transport 層:佢收 packet、砌 InteractionRequest,
+    // 交畀 ClientCore,再喺 core 接納答案之後先真正 replyToServer()。規則真相
+    // 留喺 server,UI 只負責呈現同收集答案。
+    //
+    // 已遷移嘅五類:choose general／choice／choose player／skill invoke／
+    // response card。其餘 interaction 仍然行舊路,見
+    // docs/client-core-interaction-model.md。
+    ClientCore *interactionCore() const { return m_interactionCore; }
+
+    // DesktopInteractionView 用嘅呈現 port。每一個都係原本 askForXxx() 尾段
+    // 嗰一兩行(emit signal + setStatus)原封不動搬過嚟,所以 RoomScene／
+    // Dashboard 一行都唔使改,desktop 外觀同操作亦保證唔變。
+    void presentGeneralChoice(const InteractionRequest &request);
+    void presentOptionChoice(const InteractionRequest &request);
+    void presentPlayerChoice(const InteractionRequest &request);
+    void presentSkillInvoke(const InteractionRequest &request);
+    void presentCardResponse(const InteractionRequest &request);
+
 public slots:
     void signup();
     void processContextSwitch(const QVariant &target_name);
@@ -339,9 +361,31 @@ private:
 
     unsigned int _m_lastServerSerial;
     lua_State *m_client_lua;
+    ClientCore *m_interactionCore;
+    DesktopInteractionView *m_desktopInteractionView;
+
+    // 一個 reply 走完 ClientCore 之後嘅三種結局。
+    enum class InteractionOutcome
+    {
+        // core 收咗:可以送 reply。
+        Accepted,
+        // 呢個 interaction 未遷移(或者 core 冇對應嘅 active request):行舊路。
+        Passthrough,
+        // core 拒絕咗:唔准送 reply。
+        Rejected
+    };
+
+    void beginInteraction(InteractionRequest request);
+    InteractionOutcome completeInteraction(InteractionType type, InteractionResponse response);
+    void cancelInteraction(InteractionType type, InteractionCancelReason reason);
+    void syncInteractionState();
 
     void updatePileNum();
+    // prompt_doc 都寫埋。
     QString setPromptList(const QStringList &text);
+    // 淨係計字串,唔掂 prompt_doc:已遷移嘅 interaction 由 DesktopInteractionView
+    // 負責呈現,所以 request builder 唔應該喺呢個階段寫 UI 文件。
+    QString formatPromptList(const QStringList &text);
     QString _processCardPattern(const QString &pattern);
     void commandFormatWarning(const QString &str, const QRegExp &rx, const char *command);
 

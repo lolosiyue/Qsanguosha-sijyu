@@ -192,6 +192,15 @@ QSanguosha.exe --local-response-ui-capabilities
 
 QML `askFor` 不納入本 runner；其 production surface 尚未完成，依目前測試範圍明確排除。
 
+## ClientCore（Client Architecture F1）
+
+`choice`、`player chosen`、`invoke`、`card response`／`view-as` 與 choose general
+的 reply 已經改為先經 `ClientCore` 驗證（可選集合、數量、cancelable、死線、
+exactly-once），再由 `Client` 送出 packet；desktop 呈現仍由同一批 RoomScene／
+Dashboard slot 負責，所以本 runner 的案例與斷言不變。其餘案例（AG、discard、
+exchange、gongxin、guanxing、yiji、card chosen、extension）仍行舊路。分層、
+驗證規則與未遷移清單見 `docs/client-core-interaction-model.md`。
+
 ## CTest
 
 CTest 是選用的 parser／launcher regression coverage，不是開啟或檢查 askFor UI 的必要步驟：

@@ -296,6 +296,10 @@ target_include_directories(qsanguosha_engine PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core
     ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
     ${CMAKE_CURRENT_SOURCE_DIR}/src/client
+    # package／scenario 嘅 TU include 到 client.h,而 client.h 而家見到
+    # ClientCore。呢個係 header-only 依賴:engine 唔會 link
+    # qsanguosha_client_core,亦冇 call 過佢任何 symbol。
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/client/core
     ${CMAKE_CURRENT_SOURCE_DIR}/src/package
     ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
     ${CMAKE_CURRENT_SOURCE_DIR}/src/server
@@ -331,6 +335,50 @@ set(_qsan_engine_qt_allowlist Qt6::Core Qt6::Network)
 foreach(qsan_engine_link IN LISTS qsan_engine_links)
     if(qsan_engine_link MATCHES "^Qt6::" AND NOT qsan_engine_link IN_LIST _qsan_engine_qt_allowlist)
         message(FATAL_ERROR "qsanguosha_engine links forbidden Qt target: ${qsan_engine_link}")
+    endif()
+endforeach()
+
+# Client Architecture F1:ClientCore。
+#
+# 中間層自己一個 static library,而唔係 GUI target 入面嘅幾個 .cpp,係為咗令
+# 「ClientCore 唔依賴 GUI」由 build system 保證,而唔係靠人自律:下面嘅
+# allowlist gate 只准 Qt6::Core,所以任何人試圖喺 ClientCore 度 include
+# QWidget／QQuickItem／Dashboard／RoomScene 都會喺 configure 或者 link 爆。
+#
+# 佢亦刻意唔 link qsanguosha_engine:interaction model 只講卡 id、玩家
+# objectName 同 option 字串,規則真相仍然喺 server。dedicated server build
+# 一樣會起呢個 target,所以 server-only configure 都驗得到佢冇 GUI 依賴。
+set(QSAN_CLIENT_CORE_SOURCES
+    src/client/core/client-core.cpp
+    src/client/core/client-core.h
+    src/client/core/client-game-state.cpp
+    src/client/core/client-game-state.h
+    src/client/core/client-interaction-view.h
+    src/client/core/interaction-model.cpp
+    src/client/core/interaction-model.h
+)
+
+add_library(qsanguosha_client_core STATIC ${QSAN_CLIENT_CORE_SOURCES})
+set_target_properties(qsanguosha_client_core PROPERTIES
+    AUTOMOC ON
+    POSITION_INDEPENDENT_CODE ON
+)
+target_include_directories(qsanguosha_client_core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/client/core
+)
+target_link_libraries(qsanguosha_client_core PUBLIC Qt6::Core)
+if(MSVC)
+    target_compile_definitions(qsanguosha_client_core PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(qsanguosha_client_core PRIVATE /utf-8)
+endif()
+
+get_target_property(qsan_client_core_links qsanguosha_client_core LINK_LIBRARIES)
+set(_qsan_client_core_qt_allowlist Qt6::Core)
+foreach(qsan_client_core_link IN LISTS qsan_client_core_links)
+    if(qsan_client_core_link MATCHES "^Qt6::"
+        AND NOT qsan_client_core_link IN_LIST _qsan_client_core_qt_allowlist)
+        message(FATAL_ERROR
+            "qsanguosha_client_core links forbidden Qt target: ${qsan_client_core_link}")
     endif()
 endforeach()
 
@@ -749,6 +797,7 @@ if(QSAN_BUILD_GUI)
 
     target_link_libraries(QSanguosha PRIVATE
         "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>"
+        qsanguosha_client_core
         Qt6::Core
         Qt6::Core5Compat
         Qt6::Gui
