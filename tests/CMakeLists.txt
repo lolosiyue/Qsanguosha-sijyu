@@ -109,6 +109,20 @@ qsan_add_ctest(qsanguosha_protocol_v1_contract qsanguosha_protocol_v1_tests
     LABELS "protocol;fast"
 )
 
+add_executable(qsanguosha_protocol_v2_tests
+    protocol/protocol-v2-codec-test.cpp
+)
+target_include_directories(qsanguosha_protocol_v2_tests PRIVATE
+    ${QSAN_TEST_ROOT}/src/core
+)
+target_link_libraries(qsanguosha_protocol_v2_tests PRIVATE
+    qsanguosha_engine
+    Qt6::Core
+)
+qsan_add_ctest(qsanguosha_protocol_v2_contract qsanguosha_protocol_v2_tests
+    LABELS "protocol;fast"
+)
+
 add_executable(qsanguosha_protocol_negotiation_tests
     protocol/protocol-negotiation-test.cpp
 )

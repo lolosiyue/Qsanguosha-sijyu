@@ -18,7 +18,8 @@ enum class ProtocolDecodeError
     InvalidJson,
     InvalidEnvelope,
     InvalidHeader,
-    UnsupportedVersion
+    UnsupportedVersion,
+    InvalidPayload
 };
 
 struct ProtocolDecodeResult
