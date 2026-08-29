@@ -412,6 +412,26 @@ void ServerPlayer::setSocket(ClientSocket *socket)
 	this->socket = socket;
 }
 
+void ServerPlayer::setProtocolSessionState(const ProtocolSessionState &state)
+{
+	m_protocolSessionState = state;
+}
+
+QList<ProtocolVersion> ServerPlayer::peerSupportedVersions() const
+{
+	return m_protocolSessionState.peerSupportedVersions();
+}
+
+ProtocolVersion ServerPlayer::preferredProtocolVersion() const
+{
+	return m_protocolSessionState.preferredVersion();
+}
+
+ProtocolVersion ServerPlayer::activeProtocolVersion() const
+{
+	return m_protocolSessionState.activeVersion();
+}
+
 void ServerPlayer::kick()
 {
 	room->notifyProperty(this, this, "flags", "is_kicked");
