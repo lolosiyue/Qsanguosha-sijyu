@@ -2,6 +2,7 @@
 #define _NATIVESOCKET_H
 
 #include "socket.h"
+#include "protocol/protocol-runtime.h"
 
 class QUdpSocket;
 
@@ -37,7 +38,7 @@ public:
 
     virtual void connectToHost();
     virtual void disconnectFromHost();
-    virtual void send(const QString &message);
+    virtual void send(const QByteArray &message);
     virtual bool isConnected() const;
     virtual QString peerName() const;
     virtual QString peerAddress() const;
@@ -48,6 +49,7 @@ private slots:
 
 private:
     QTcpSocket *const socket;
+    QSanProtocol::ProtocolFrameBuffer m_frameBuffer;
 
     void init();
 };

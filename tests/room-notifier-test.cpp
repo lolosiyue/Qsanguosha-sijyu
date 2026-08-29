@@ -29,9 +29,9 @@ public:
     void watch(ServerPlayer *player)
     {
         QObject::connect(player, &ServerPlayer::message_ready, player,
-                         [this, player](const QString &message) {
+                         [this, player](const QByteArray &message) {
             Packet packet;
-            if (!packet.parse(message.toUtf8())) {
+            if (!packet.parse(message)) {
                 parseFailed = true;
                 return;
             }

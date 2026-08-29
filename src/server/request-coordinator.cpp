@@ -154,6 +154,7 @@ void RequestCoordinator::clearDualControlRequest(ServerPlayer *player, bool rest
     target->m_expectedReplyCommand = S_COMMAND_UNKNOWN;
     target->m_isWaitingReply = false;
     target->m_expectedReplySerial = -1;
+    target->m_expectedReplyMessageId = 0;
     target->m_isClientResponseReady = false;
     target->setClientReplyString("");
     target->releaseLock(ServerPlayer::SEMA_MUTEX);
@@ -236,7 +237,15 @@ bool RequestCoordinator::request(ServerPlayer *player, CommandType command,
         resultTarget = player;
     }
 
-    target->invoke(&packet);
+    const quint64 requestMessageId = target->invoke(&packet);
+    target->acquireLock(ServerPlayer::SEMA_MUTEX);
+    target->m_expectedReplyMessageId = requestMessageId;
+    target->releaseLock(ServerPlayer::SEMA_MUTEX);
+    if (redirectedToController) {
+        player->acquireLock(ServerPlayer::SEMA_MUTEX);
+        player->m_expectedReplyMessageId = requestMessageId;
+        player->releaseLock(ServerPlayer::SEMA_MUTEX);
+    }
     return !wait || getResult(resultTarget, timeOut);
 }
 
@@ -395,6 +404,7 @@ ServerPlayer *RequestCoordinator::getRaceResult(QList<ServerPlayer *> players, C
         player->m_expectedReplyCommand = S_COMMAND_UNKNOWN;
         player->m_isWaitingReply = false;
         player->m_expectedReplySerial = -1;
+        player->m_expectedReplyMessageId = 0;
         player->releaseLock(ServerPlayer::SEMA_MUTEX);
     }
     m_roomSemaphore.release();
@@ -427,6 +437,7 @@ bool RequestCoordinator::getResult(ServerPlayer *player, time_t timeOut)
     player->m_expectedReplyCommand = S_COMMAND_UNKNOWN;
     player->m_isWaitingReply = false;
     player->m_expectedReplySerial = -1;
+    player->m_expectedReplyMessageId = 0;
     player->releaseLock(ServerPlayer::SEMA_MUTEX);
     if (!redirectedTargetName.isEmpty())
         clearDualControlRequest(player);
@@ -446,14 +457,15 @@ bool RequestCoordinator::verifyRaceReply(ServerPlayer *player, const QVariant &r
     return (m_room.*context->validateFunc)(player, reply, context->funcArg);
 }
 
-void RequestCoordinator::processClientPacket(ServerPlayer *player, const Packet &packet,
-                                             const QString &rawRequest)
+void RequestCoordinator::processClientPacket(
+    ServerPlayer *player, const Packet &packet, const ProtocolMessage &message,
+    const QString &rawRequest)
 {
     if (packet.getPacketType() == S_TYPE_REPLY) {
         if (player == nullptr)
             return;
         player->setClientReplyString(rawRequest);
-        processResponse(player, &packet);
+        processResponse(player, message);
         return;
     }
 
@@ -466,7 +478,8 @@ void RequestCoordinator::processClientPacket(ServerPlayer *player, const Packet 
         (m_room.*callback)(player, packet.getMessageBody());
 }
 
-void RequestCoordinator::processResponse(ServerPlayer *player, const Packet *packet)
+void RequestCoordinator::processResponse(
+    ServerPlayer *player, const ProtocolMessage &message)
 {
     player->acquireLock(ServerPlayer::SEMA_MUTEX);
     bool success = false;
@@ -485,24 +498,25 @@ void RequestCoordinator::processResponse(ServerPlayer *player, const Packet *pac
     else if (!player->m_isWaitingReply || player->m_isClientResponseReady)
         emit m_room.room_message(m_room.tr("Server is not waiting for reply from %1")
                                  .arg(player->objectName()));
-    else if (packet->getCommandType() != player->m_expectedReplyCommand)
+    else if (static_cast<CommandType>(message.command) != player->m_expectedReplyCommand)
         emit m_room.room_message(m_room.tr("Reply command should be %1 instead of %2")
                                  .arg(player->m_expectedReplyCommand)
-                                 .arg(packet->getCommandType()));
-    else if (packet->localSerial != player->m_expectedReplySerial)
-        emit m_room.room_message(m_room.tr("Reply serial should be %1 instead of %2")
-                                 .arg(player->m_expectedReplySerial)
-                                 .arg(packet->localSerial));
+                                 .arg(message.command));
+    else if (message.replyTo != player->m_expectedReplyMessageId)
+        emit m_room.room_message(m_room.tr("Reply message id should be %1 instead of %2")
+                                 .arg(player->m_expectedReplyMessageId)
+                                 .arg(message.replyTo));
     else
         success = true;
 
     if (success) {
-        const QVariant reply = packet->getMessageBody();
+        const QVariant reply = message.hasPayload ? message.payload : QVariant();
         player->setClientReply(reply);
         player->m_isClientResponseReady = true;
         player->m_isWaitingReply = false;
         player->m_expectedReplyCommand = S_COMMAND_UNKNOWN;
         player->m_expectedReplySerial = -1;
+        player->m_expectedReplyMessageId = 0;
 
         if (replyOwner != player) {
             replyOwner->acquireLock(ServerPlayer::SEMA_MUTEX);

@@ -11,7 +11,7 @@ public:
     explicit TestClientSocket(QObject *parent = nullptr);
 
     void connectToHost() override;
-    void send(const QString &message) override;
+    void send(const QByteArray &message) override;
     bool isConnected() const override;
     QString peerName() const override;
     QString peerAddress() const override;
@@ -28,7 +28,6 @@ signals:
 
 private:
     bool m_connected;
-    QByteArray m_injectedPacket;
     QList<QString> m_sentPackets;
 };
 

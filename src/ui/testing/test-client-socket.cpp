@@ -14,10 +14,11 @@ void TestClientSocket::connectToHost()
     emit connected();
 }
 
-void TestClientSocket::send(const QString &message)
+void TestClientSocket::send(const QByteArray &message)
 {
-    m_sentPackets << message;
-    emit packetSent(message);
+    const QString text = QString::fromUtf8(message);
+    m_sentPackets << text;
+    emit packetSent(text);
 }
 
 bool TestClientSocket::isConnected() const
@@ -37,10 +38,7 @@ QString TestClientSocket::peerAddress() const
 
 void TestClientSocket::injectServerPacket(const QString &packetJson)
 {
-    // The signal uses a legacy const char * contract. Retain the QByteArray as
-    // a member so its backing storage remains valid for the complete delivery.
-    m_injectedPacket = packetJson.toUtf8();
-    emit message_got(m_injectedPacket.constData());
+    emit message_got(packetJson.toUtf8());
 }
 
 QList<QString> TestClientSocket::sentPackets() const
