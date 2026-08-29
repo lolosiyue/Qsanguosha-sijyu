@@ -95,9 +95,11 @@ decode、round trip、malformed input、大小限制、facade delegation 與 dia
 |---|---|
 | Protocol V1 codec boundary | Complete |
 | Protocol V2 codec／payload | Not Started |
-| Capability negotiation／handshake | Not Started |
+| Capability negotiation／handshake | Complete；preferred 可為 V2，active 固定 V1 |
+| Runtime codec switching | Not Started |
 | Replay version bump／migration | Not Started |
 
-未來 Protocol V2 不應依賴隱含 `QVariant` schema。下一個最小 vertical slice 應先
-設計 capability negotiation 與不支援版本的明確拒絕路徑，而不是立即切換 gameplay
-commands 或 wire payload。
+Capability wire、fallback 與 per-connection state contract 見
+[`protocol-capability-negotiation.md`](protocol-capability-negotiation.md)。未來
+Protocol V2 不應依賴隱含 `QVariant` schema；下一個 slice 必須先提供實際 codec 與
+switch contract，才能改變 active version 或 gameplay wire。

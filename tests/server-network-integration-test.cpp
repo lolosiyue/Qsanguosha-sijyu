@@ -1,5 +1,6 @@
 #include "json.h"
 #include "protocol.h"
+#include "protocol/protocol-negotiation.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -52,6 +53,21 @@ public:
             error = QStringLiteral("version handshake body is not a string");
             return false;
         }
+        const ProtocolServerAdvertisement advertisement =
+            ProtocolNegotiation::parseServerAdvertisement(
+                version.getMessageBody().toString());
+        if (!advertisement.capabilityAdvertised || !advertisement.capability.valid
+            || !advertisement.capability.capabilities.supports(ProtocolVersion::V2)) {
+            error = QStringLiteral("server did not advertise valid Protocol V2 capability");
+            return false;
+        }
+        m_protocolSession.setPeerCapabilities(advertisement.capability.capabilities,
+                                              advertisement.capability.diagnostic);
+        if (m_protocolSession.preferredVersion() != ProtocolVersion::V2
+            || m_protocolSession.activeVersion() != ProtocolVersion::V1) {
+            error = QStringLiteral("server negotiation did not prefer V2 while keeping V1 active");
+            return false;
+        }
 
         Packet setup;
         if (!waitForPacket([](const Packet &packet) {
@@ -67,10 +83,15 @@ public:
         return true;
     }
 
-    bool signup(const QString &name, QString &playerId, bool &owner, QString &error)
+    bool signup(const QString &name, QString &playerId, bool &owner, QString &error,
+                bool advertiseCapabilities = false)
     {
         JsonArray body;
         body << false << QString::fromLatin1(name.toUtf8().toBase64()) << QString();
+        if (advertiseCapabilities) {
+            body << QVariant::fromValue(ProtocolNegotiation::encodeClientCapabilities(
+                m_protocolSession.localCapabilities()));
+        }
         if (!sendNotification(S_COMMAND_SIGNUP, body, error))
             return false;
 
@@ -230,6 +251,7 @@ private:
     }
 
     QTcpSocket m_socket;
+    ProtocolSessionState m_protocolSession;
     QByteArray m_buffer;
     QList<Packet> m_packets;
     QString m_error;
@@ -498,7 +520,7 @@ bool runLevel2(const QString &serverPath, ServerRunner &server, QString &error)
     const QString playerName = QStringLiteral("network-level2-player");
     QString playerId;
     bool owner = false;
-    if (!client.signup(playerName, playerId, owner, error))
+    if (!client.signup(playerName, playerId, owner, error, true))
         return false;
     if (!owner) {
         error = QStringLiteral("first signed-up player was not assigned room ownership");
@@ -549,7 +571,8 @@ bool runLevel3(const QString &serverPath, ServerRunner &server, QString &error)
         return false;
     }
     if (!second.connectTo(server.port(), error) || !second.handshake(error)
-        || !second.signup(QStringLiteral("network-e2e-b"), secondId, secondOwner, error)) {
+        || !second.signup(QStringLiteral("network-e2e-b"), secondId, secondOwner, error,
+                          true)) {
         return false;
     }
     if (!firstOwner || secondOwner) {

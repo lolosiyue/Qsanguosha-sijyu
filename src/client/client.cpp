@@ -250,6 +250,21 @@ Client::~Client()
 	ClientInstance = nullptr;
 }
 
+QList<ProtocolVersion> Client::peerSupportedVersions() const
+{
+	return m_protocolSessionState.peerSupportedVersions();
+}
+
+ProtocolVersion Client::preferredProtocolVersion() const
+{
+	return m_protocolSessionState.preferredVersion();
+}
+
+ProtocolVersion Client::activeProtocolVersion() const
+{
+	return m_protocolSessionState.activeVersion();
+}
+
 void Client::setSelf(ClientPlayer *newSelf)
 {
 	if (newSelf == nullptr)
@@ -331,6 +346,8 @@ void Client::signup()
 		arg << Config.value("EnableReconnection").toBool();
 		arg << QString(Config.UserName.toUtf8().toBase64());
 		arg << Config.UserAvatar;
+		arg << QVariant::fromValue(ProtocolNegotiation::encodeClientCapabilities(
+			m_protocolSessionState.localCapabilities()));
 
 		if (m_original_self == nullptr)
 			m_original_self = Self;
@@ -383,20 +400,25 @@ void Client::notifyServer(CommandType command, const QVariant &arg)
 
 void Client::checkVersion(const QVariant &server_version)
 {
-	QString version = server_version.toString(), mod_name = "official";
-	int cn = Sanguosha->getCardCount();
-	if (version.contains(":")) {
-		QStringList texts = version.split(":");
-		version = texts.first();
-		if(texts.length()>2)
-			mod_name = texts.at(1);
-		cn = texts.last().toInt();
-	}/*
+	const ProtocolServerAdvertisement advertisement =
+		ProtocolNegotiation::parseServerAdvertisement(server_version.toString());
+	m_protocolSessionState.setPeerCapabilities(
+		advertisement.capability.capabilities,
+		advertisement.capability.diagnostic);
+	if (advertisement.capabilityAdvertised && !advertisement.capability.valid) {
+		qWarning().noquote() << "Protocol capability fallback:"
+			<< advertisement.capability.diagnostic;
+	}
+
+	const int cardCount = advertisement.hasCardCount
+		? advertisement.cardCount
+		: Sanguosha->getCardCount();
+	/*
 	QStringList ps;
 	foreach (const Package*p, Sanguosha->getPackages())
 		ps << p->objectName();*/
 
-	emit version_checked(version, mod_name, cn);
+	emit version_checked(advertisement.gameVersion, advertisement.modName, cardCount);
 }
 
 void Client::setup(const QVariant &setup_json)
