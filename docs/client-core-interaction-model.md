@@ -2,7 +2,9 @@
 
 - 狀態：F1.1 Architecture Cleanup 完成（2026-08-29）
 - 範圍：PR #13 的 client interaction 中間層
-- 相容邊界：不改 server gameplay、Protocol V1 wire、RoomScene UI；不在本階段實作 Protocol V2、TUI、Android、WASM 或 structured `askForQml`
+- 相容邊界：不改 server gameplay、Protocol V1 wire、RoomScene UI；Protocol V1
+  codec boundary 已抽出，但不在本階段實作 Protocol V2、TUI、Android、WASM 或
+  structured `askForQml`
 
 ## 最終分類
 
@@ -154,8 +156,14 @@ debug\QSanguosha.exe --interaction-inventory artifacts\client-core-interaction-m
 ## 後續工作
 
 - F1.2 structured custom interaction / `askForQml` migration
-- Protocol V2 codec
 - TUI、Android、WASM front-end
 - Desktop RoomScene redesign
+
+| Protocol roadmap item | 狀態 |
+|---|---|
+| Protocol V1 codec boundary | Complete |
+| Protocol V2 codec／payload | Not Started |
+| Capability negotiation | Not Started |
+| Replay version bump | Not Started |
 
 以上均不屬 F1.1。
