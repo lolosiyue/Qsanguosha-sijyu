@@ -9,12 +9,12 @@ Server 使用 `QCoreApplication`，唔需要 X11／Wayland、FMOD 或任何 GUI�
 | 階段 | 狀態 |
 |---|---|
 | Linux Server（build／CI／三級 TCP network integration／systemd） | **Complete** |
-| Linux GUI M0（configure ＋ compile ＋ link） | **Complete** — `linux-gui-ci.yml` 喺 ubuntu-24.04 ＋ Qt 6.11.1 驗證 |
-| Linux GUI M1（GUI startup：`QApplication`／`MainWindow`／HomeScene／event loop） | **Complete** — `linux-gui-ci.yml` 喺 Xvfb ＋ `xcb` 跑 `--ui-startup-smoke`；WSLg 人手驗證 |
+| Linux GUI M0（configure ＋ compile ＋ link） | **Complete** — 本機驗證；冇獨立 Linux GUI compile CI |
+| Linux GUI M1（GUI startup：`QApplication`／`MainWindow`／HomeScene／event loop） | **Complete** — `linux-package-ci.yml` 由成品喺 Xvfb ＋ `xcb` 跑 `--ui-startup-smoke`；WSLg 人手驗證 |
 | Linux GUI M2（RoomScene 真實 TCP 對局） | **Complete** — 由 `gui_network_smoke.py` 喺**齊資產嘅本機**驗；唔喺 CI 跑（見 [§4.6](#46-linux-gui-m2-network-smoke真實-tcp-對局)） |
-| Linux GUI M2B-A（Qt multimedia：短音效／語音／BGM／影片背景降級） | **Complete** — `linux-gui-ci.yml` 跑 `--multimedia-smoke`（見 [§4.7](#47-linux-gui-m2b-a-multimedia-smoke)） |
-| Linux GUI M2B-B（效果 profile：Spine／GIF／動畫降級） | **Complete** — `linux-gui-ci.yml` 跑 `--effects-smoke` full／reduced／none 三個 profile（見 [§4.8](#48-linux-gui-m2b-b-effects-smoke)） |
-| Linux packaging（AppImage／deb／desktop entry／installer） | **Not started**（M3） |
+| Linux GUI M2B-A（Qt multimedia：短音效／語音／BGM／影片背景降級） | **Complete** — `linux-package-ci.yml` 由成品跑 `--multimedia-smoke`（見 [§4.7](#47-linux-gui-m2b-a-multimedia-smoke)） |
+| Linux GUI M2B-B（效果 profile：Spine／GIF／動畫降級） | **Complete** — `linux-package-ci.yml` 由成品跑 `--effects-smoke` full／reduced／none 三個 profile（見 [§4.8](#48-linux-gui-m2b-b-effects-smoke)） |
+| Linux packaging（portable tar.zst／AppImage／desktop entry） | **Complete**（M3）；`.deb` 延後至 M3.1 |
 
 M0 的定義固定為 **configure ＋ compile ＋ link**，加上一個 binary capability smoke。
 M1 的定義固定為 **真正行完一次 GUI startup path 然後自動正常退出**。
@@ -119,7 +119,7 @@ python3 -m venv ~/.venvs/aqt
 > aqt 3.3.0（最新 release）未支援 Qt 6.11+ 的新 repo 目錄結構
 > （[miurahr/aqtinstall#959](https://github.com/miurahr/aqtinstall/issues/959)），
 > 所以固定到已合併修復的 commit — 同 `.github/workflows/ci.yml` 及
-> `linux-gui-ci.yml` 用同一個 pin。
+> `linux-package-ci.yml` 用同一個 pin。
 
 configure 時指向該 Qt：
 
@@ -821,14 +821,13 @@ Runner 會驗 client 真係由 CLI 解析出要求嗰個 profile，而 `none` �
 | `reduced` | 0 | 不限（只用首幀） | 0 | 0 |
 | `full` | 不限 | 不限 | 不限 | 不限 |
 
-### 冇資產的 CI
+### 冇資產的 package CI
 
-`linux-gui-ci.yml` 嘅 `gui-effects` job 係 **main／手動完整 gate**：三個 profile
-各跑一次，每個 profile 再分 `xcb` 同 `offscreen`，另加兩個負向契約（打錯
-profile 名要被拒；app 內部 timeout 要出 `reason:"timeout"`）。普通 PR 同
-`push debug` 只跑 compile／link 加一個 Xvfb startup smoke，唔展開呢個 matrix。
+獨立 Linux GUI compile／effects workflow 已移除。`linux-package-ci.yml` 會對
+portable 同 AppImage 成品各跑 full／reduced／none profile；呢個係成品 gate，
+唔會因一般 GUI source 改動而單獨觸發。
 
-整個 matrix 只用 `tests/fixtures/effects/` 嘅合成 fixture（4x4 GIF、幾張
+成品 smoke 只用 `tests/fixtures/effects/` 嘅合成 fixture（4x4 GIF、幾張
 8x8 PNG、一個特登整壞嘅 Spine 目錄），全部由
 `tools/ci/make-effects-fixtures.py` 用標準庫生成，唔係遊戲資產。
 **有齊正式資產嘅 production smoke 唔會成為 clean checkout 嘅 blocker。**
@@ -1170,38 +1169,18 @@ QSAN_SERVER_SMOKE_TIMEOUT_SECONDS=8 \
     debug/qsanguosha_server /tmp/server-console.log
 ```
 
-### 9.2 `linux-gui-ci.yml`
+### 9.2 Linux GUI 驗證政策
 
-Linux GUI 只喺 GUI 相關路徑變更時觸發；純 `src/client/core/**` 改動由 Linux
-Server GCC build 與 fast CTest 覆蓋，唔會啟動 GUI workflow。Ubuntu 24.04 +
-GCC + Ninja + RelWithDebInfo 的共同步驟：
+`linux-gui-ci.yml` 已於 2026-08-30 移除；一般 GUI source 改動冇獨立 Linux GUI
+compile gate。本機驗證沿用 [§4.5](#45-linux-gui-m1-startup-smoke)、
+[§4.7](#47-linux-gui-m2b-a-multimedia-smoke) 同
+[§4.8](#48-linux-gui-m2b-b-effects-smoke) 嘅指令。
 
-1. 用 `jurplel/install-qt-action` 裝官方 **Qt 6.11.1**（`linux_gcc_64`，modules `qt5compat qtmultimedia`），同 Windows job 用同一個 aqt pin。Ubuntu 24.04 apt 只有 Qt 6.4.2，唔夠 GUI baseline。
-2. apt 裝非 Qt 依賴（`libfreetype-dev`、`libgl-dev`、`ninja-build` 等）同 hash-pinned SWIG 4.3.1。
-3. 下載 `lua/ai/`、`extensions/` 同共用 Lua runtime。
-4. 以 `-DQSAN_BUILD_GUI=ON -DQSAN_BUILD_SERVER=ON` configure。
-5. 只 build target `QSanguosha`，驗證 configure／compile／link。
-6. `file` + `ldd` 檢查，出現 `not found` 即 fail。
-7. 跑 `--local-response-ui-capabilities` binary capability smoke。
-
-PR 同 `push debug` 只加一個 Xvfb + xcb runtime startup smoke（見
-[4.5](#45-linux-gui-m1-startup-smoke)）。`push main` 同 `workflow_dispatch` 先再跑
-offscreen、Card Overview 同 timeout 負向契約。
-
-main／手動完整 gate 再加兩個**分層**嘅 job，用 artifact 收下 compile job 砌好嘅
-同一份 binary 同 runtime Lua 內容（唔重新 fetch extensions，免得兩個 job 拎到
-唔同版本）：
-
-```
-Linux GUI compile ── M1 startup smoke
-        ↓ linux-gui-runtime-bundle
-Linux GUI M2B-A multimedia
-```
-
-M2B-A 的 multimedia job（見 [4.7](#47-linux-gui-m2b-a-multimedia-smoke)）接
-`linux-gui-runtime-bundle`，用同一份 binary 行四個步驟：Xvfb+xcb 主驗證、影片缺
-資產降級、offscreen 次要驗證、timeout 負向契約。四個都係阻擋性。artifact 收
-multimedia report JSON、stdout/stderr、Qt multimedia plugin 診斷同 exit status。
+CI 只喺 `linux-package-ci.yml` 的成品 gate 建 GUI：Ubuntu 24.04、Qt 6.11.1、
+GCC、Ninja、RelWithDebInfo 產生 portable tar.zst 同 AppImage，再由兩個成品跑
+M1 startup、M2B-A multimedia 同 M2B-B full／reduced／none。呢個 workflow 由
+packaging 路徑、相關 PR、`push main`、tag 或手動 dispatch 觸發，唔係一般 GUI
+compile CI。
 
 > **M2 的 network game job 已經由 CI 移除（2026-08-28）。** runner 冇美術／音訊
 > 資產，喺無資產環境下 client 同 server 打完一局之後會一齊 SIGSEGV；同一個
@@ -1209,9 +1188,7 @@ multimedia report JSON、stdout/stderr、Qt multimedia plugin 診斷同 exit sta
 > 閃退本身亦係遊戲中已有現象。所以 `gui_network_smoke.py` 改為**本機 gate**，
 > 見 [§4.6](#46-linux-gui-m2-network-smoke真實-tcp-對局)。
 
-呢個 workflow **刻意唔做**：visible startup、Wayland、AppImage、pixel screenshot
-gate。Spine／GIF／完整動畫 profile 由 main／手動的 M2B-B matrix 驗證；AppImage
-留俾 M3 packaging CI。
+成品 workflow **刻意唔做**：visible startup、Wayland、pixel screenshot gate。
 
 Linux Server CI 繼續用 distro Qt，唔會受 GUI 的 Qt 6.11 baseline 影響。
 

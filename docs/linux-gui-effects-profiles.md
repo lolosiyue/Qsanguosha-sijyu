@@ -209,15 +209,13 @@ ctest --test-dir build/linux-gui-gcc -R qsanguosha_effects_profile_contract -V
 
 ## CI
 
-On `push main` and `workflow_dispatch`, `linux-gui-ci.yml` job `gui-effects`
-runs a **blocking** matrix over all three profiles (Ubuntu 24.04, Qt 6.11.1,
-GCC, Xvfb, software renderer), each on both `xcb` and `offscreen`, plus two
-negative contracts: an unknown profile name must be rejected, and the app-level
-timeout must produce a `timeout` result marker rather than hanging until the
-runner kills it. Pull requests and `push debug` stop after compile/link plus one
-Xvfb startup smoke.
+The standalone Linux GUI compile/effects workflow was removed on 2026-08-30.
+`linux-package-ci.yml` still runs all three profiles as blocking package smokes
+against both the portable archive and extracted AppImage when the packaging
+gate is triggered. Ordinary GUI source changes do not start a separate Linux
+GUI compile job.
 
-The matrix runs entirely on the synthetic fixtures in `tests/fixtures/effects/`
+The package smokes run entirely on the synthetic fixtures in `tests/fixtures/effects/`
 (a 4x4 GIF, a few 8x8 PNGs, a deliberately broken Spine directory). **A
 production-asset smoke is never a clean-checkout blocker** — see
 `tests/fixtures/effects/README.md` for why there is no valid Spine fixture and
