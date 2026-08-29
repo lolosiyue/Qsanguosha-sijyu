@@ -823,9 +823,10 @@ Runner 會驗 client 真係由 CLI 解析出要求嗰個 profile，而 `none` �
 
 ### 冇資產的 CI
 
-`linux-gui-ci.yml` 嘅 `gui-effects` job 係 **blocking matrix**：三個 profile
+`linux-gui-ci.yml` 嘅 `gui-effects` job 係 **main／手動完整 gate**：三個 profile
 各跑一次，每個 profile 再分 `xcb` 同 `offscreen`，另加兩個負向契約（打錯
-profile 名要被拒；app 內部 timeout 要出 `reason:"timeout"`）。
+profile 名要被拒；app 內部 timeout 要出 `reason:"timeout"`）。普通 PR 同
+`push debug` 只跑 compile／link 加一個 Xvfb startup smoke，唔展開呢個 matrix。
 
 整個 matrix 只用 `tests/fixtures/effects/` 嘅合成 fixture（4x4 GIF、幾張
 8x8 PNG、一個特登整壞嘅 Spine 目錄），全部由
@@ -1145,13 +1146,17 @@ Linux 有兩個獨立 workflow，刻意唔合併：server CI 保持穩定，唔�
 
 ### 9.1 `linux-server-ci.yml`
 
-會喺 Ubuntu 24.04 並行驗證 GCC 同 Clang：
+Ubuntu 24.04 依事件分成日常 gate 同完整 gate：
 
-1. 安裝 Qt6／Ninja 同 hash-pinned SWIG 4.3.1。
-2. 下載 `lua/ai/`、`extensions/` 同共用 Lua runtime。
-3. 以 RelWithDebInfo configure、build，再執行完整 CTest，包括三級 TCP network integration。
-4. 另跑 server process smoke，從實際 endpoint 建立 TCP 連線，再確認可由 SIGTERM clean shutdown。
-5. 無論成功或失敗都上傳 JUnit 同 server log。
+| 事件 | 編譯器 | CTest／network | install | shutdown |
+|---|---|---|---|---|
+| PR → `debug`／`main`、`push debug` | GCC | 現有 `fast` label + network Level 2（handshake／signup） | 不跑 | 跑 |
+| `push main`、`workflow_dispatch` | GCC + Clang | 完整 CTest，包含 network Level 1–3 | deploy-server、install、systemd | 跑 |
+
+兩層都安裝 Qt6／Ninja、hash-pinned SWIG 4.3.1，下載 `lua/ai/`、`extensions/`
+與共用 Lua runtime，再以 RelWithDebInfo configure／build。Level 1 與獨立 shutdown
+smoke 重疊；完整 `02p` 自動對局 Level 3 留喺 main／手動 gate。無論成功或失敗
+都上傳 JUnit 同 server log。冇 nightly schedule。
 
 本機可以用相同 smoke script 驗證：
 
@@ -1167,7 +1172,9 @@ QSAN_SERVER_SMOKE_TIMEOUT_SECONDS=8 \
 
 ### 9.2 `linux-gui-ci.yml`
 
-Linux GUI M0 compile CI，Ubuntu 24.04 + GCC + Ninja + RelWithDebInfo：
+Linux GUI 只喺 GUI 相關路徑變更時觸發；純 `src/client/core/**` 改動由 Linux
+Server GCC build 與 fast CTest 覆蓋，唔會啟動 GUI workflow。Ubuntu 24.04 +
+GCC + Ninja + RelWithDebInfo 的共同步驟：
 
 1. 用 `jurplel/install-qt-action` 裝官方 **Qt 6.11.1**（`linux_gcc_64`，modules `qt5compat qtmultimedia`），同 Windows job 用同一個 aqt pin。Ubuntu 24.04 apt 只有 Qt 6.4.2，唔夠 GUI baseline。
 2. apt 裝非 Qt 依賴（`libfreetype-dev`、`libgl-dev`、`ninja-build` 等）同 hash-pinned SWIG 4.3.1。
@@ -1177,10 +1184,13 @@ Linux GUI M0 compile CI，Ubuntu 24.04 + GCC + Ninja + RelWithDebInfo：
 6. `file` + `ldd` 檢查，出現 `not found` 即 fail。
 7. 跑 `--local-response-ui-capabilities` binary capability smoke。
 
-M1 喺同一個 job 加咗 Xvfb + xcb 嘅 runtime startup smoke（見 [4.5](#45-linux-gui-m1-startup-smoke)）。
+PR 同 `push debug` 只加一個 Xvfb + xcb runtime startup smoke（見
+[4.5](#45-linux-gui-m1-startup-smoke)）。`push main` 同 `workflow_dispatch` 先再跑
+offscreen、Card Overview 同 timeout 負向契約。
 
-M2 再加兩個**分層**嘅 job，用 artifact 收下 compile job 砌好嘅同一份 binary 同
-runtime Lua 內容（唔重新 fetch extensions，免得兩個 job 拎到唔同版本）：
+main／手動完整 gate 再加兩個**分層**嘅 job，用 artifact 收下 compile job 砌好嘅
+同一份 binary 同 runtime Lua 內容（唔重新 fetch extensions，免得兩個 job 拎到
+唔同版本）：
 
 ```
 Linux GUI compile ── M1 startup smoke
@@ -1199,8 +1209,9 @@ multimedia report JSON、stdout/stderr、Qt multimedia plugin 診斷同 exit sta
 > 閃退本身亦係遊戲中已有現象。所以 `gui_network_smoke.py` 改為**本機 gate**，
 > 見 [§4.6](#46-linux-gui-m2-network-smoke真實-tcp-對局)。
 
-呢個 workflow **刻意唔做**：Spine／GIF／完整動畫 profile、visible startup、
-Wayland、AppImage、pixel screenshot gate。呢啲留俾 M2B-B／M3。
+呢個 workflow **刻意唔做**：visible startup、Wayland、AppImage、pixel screenshot
+gate。Spine／GIF／完整動畫 profile 由 main／手動的 M2B-B matrix 驗證；AppImage
+留俾 M3 packaging CI。
 
 Linux Server CI 繼續用 distro Qt，唔會受 GUI 的 Qt 6.11 baseline 影響。
 
