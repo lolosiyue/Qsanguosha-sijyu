@@ -355,6 +355,7 @@ set(QSAN_CLIENT_CORE_SOURCES
     src/client/core/client-game-state.cpp
     src/client/core/client-game-state.h
     src/client/core/client-interaction-view.h
+    src/client/core/client-interaction-presenter.h
     src/client/core/interaction-model.cpp
     src/client/core/interaction-model.h
     src/client/core/custom-interaction-registry.h

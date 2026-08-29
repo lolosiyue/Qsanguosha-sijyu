@@ -127,6 +127,8 @@ private:
         const InteractionResponse &response) const;
     InteractionValidation validateDistribution(const InteractionRequest &request,
         const InteractionResponse &response) const;
+    InteractionValidation validateGeneralArrangement(const InteractionRequest &request,
+        const InteractionResponse &response) const;
     InteractionValidation validateCustom(const InteractionRequest &request,
         const InteractionResponse &response) const;
     InteractionValidation rejectionForCompleted(quint64 requestId) const;

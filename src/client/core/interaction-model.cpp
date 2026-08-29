@@ -86,6 +86,10 @@ QJsonObject requestPayloadToJson(const InteractionPayload &payload)
             options.append(option.toJson());
         object.insert(QStringLiteral("options"), options);
         object.insert(QStringLiteral("enumerated"), value->enumerated);
+        if (!value->tip.isEmpty())
+            object.insert(QStringLiteral("tip"), value->tip);
+        if (!value->scheme.isEmpty())
+            object.insert(QStringLiteral("scheme"), value->scheme);
     } else if (const PlayerInteractionPayload *value = std::get_if<PlayerInteractionPayload>(&payload)) {
         object = value->selection.toJson();
         object.insert(QStringLiteral("min"), value->selection.minSelection);
@@ -98,20 +102,28 @@ QJsonObject requestPayloadToJson(const InteractionPayload &payload)
             object.insert(QStringLiteral("source_player"), value->sourcePlayer);
         if (!value->fixedTargets.isEmpty())
             object.insert(QStringLiteral("fixed_targets"), toJsonArray(value->fixedTargets));
+        if (!value->optionalTargets.isEmpty())
+            object.insert(QStringLiteral("optional_targets"), toJsonArray(value->optionalTargets));
         if (!value->zoneFlags.isEmpty())
             object.insert(QStringLiteral("zone_flags"), value->zoneFlags);
         if (value->handCardsVisible)
             object.insert(QStringLiteral("hand_cards_visible"), true);
         if (value->includeEquip)
             object.insert(QStringLiteral("include_equip"), true);
+        object.insert(QStringLiteral("card_text_allowed"), value->cardTextAllowed);
+        object.insert(QStringLiteral("virtual_card_allowed"), value->virtualCardAllowed);
         if (!value->suggestedCards.isEmpty())
             object.insert(QStringLiteral("suggested_cards"), toJsonArray(value->suggestedCards));
+        if (!value->suggestedDisabledCards.isEmpty())
+            object.insert(QStringLiteral("suggested_disabled_cards"),
+                toJsonArray(value->suggestedDisabledCards));
     } else if (const RoleAssignmentInteractionPayload *value = std::get_if<RoleAssignmentInteractionPayload>(&payload)) {
         object.insert(QStringLiteral("scheme"), value->scheme);
         object.insert(QStringLiteral("players"), toJsonArray(value->playerNames));
         object.insert(QStringLiteral("roles"), toJsonArray(value->roles));
     } else if (const RearrangeCardsInteractionPayload *value = std::get_if<RearrangeCardsInteractionPayload>(&payload)) {
         object.insert(QStringLiteral("cards"), toJsonArray(value->cardIds));
+        object.insert(QStringLiteral("mode"), rearrangementModeName(value->mode));
         object.insert(QStringLiteral("min_top"), value->minTop);
         object.insert(QStringLiteral("max_top"), value->maxTop);
         object.insert(QStringLiteral("min_bottom"), value->minBottom);
@@ -121,24 +133,49 @@ QJsonObject requestPayloadToJson(const InteractionPayload &payload)
         object.insert(QStringLiteral("target_player"), value->targetPlayer);
         object.insert(QStringLiteral("visible_cards"), toJsonArray(value->visibleCards));
         object.insert(QStringLiteral("selectable_cards"), toJsonArray(value->selectableCards));
-        object.insert(QStringLiteral("enable_heart"), value->enableHeart);
+        object.insert(QStringLiteral("allow_heart_operation"), value->allowHeartOperation);
     } else if (const YijiInteractionPayload *value = std::get_if<YijiInteractionPayload>(&payload)) {
         object.insert(QStringLiteral("cards"), toJsonArray(value->cardIds));
         object.insert(QStringLiteral("target_players"), toJsonArray(value->targetPlayers));
         object.insert(QStringLiteral("min_cards"), value->minCards);
         object.insert(QStringLiteral("max_cards"), value->maxCards);
+        object.insert(QStringLiteral("remaining_count"), value->remainingCount);
     } else if (const PindianInteractionPayload *value = std::get_if<PindianInteractionPayload>(&payload)) {
         object = value->selection.toJson();
         object.insert(QStringLiteral("opponent"), value->opponent);
         object.insert(QStringLiteral("reveal_immediately"), value->revealImmediately);
+        object.insert(QStringLiteral("hidden_until_resolved"), value->hiddenUntilResolved);
     } else if (const AmazingGraceInteractionPayload *value = std::get_if<AmazingGraceInteractionPayload>(&payload)) {
-        object.insert(QStringLiteral("cards"), toJsonArray(value->cardIds));
-        object.insert(QStringLiteral("disabled_cards"), toJsonArray(value->disabledCards));
+        object = value->selection.toJson();
+        object.insert(QStringLiteral("min"), value->selection.minSelection);
+        object.insert(QStringLiteral("max"), value->selection.maxSelection);
         object.insert(QStringLiteral("taken_cards"), toJsonArray(value->takenCards));
+        object.insert(QStringLiteral("selectable"), value->selectable);
     } else if (const ArrangeGeneralsInteractionPayload *value = std::get_if<ArrangeGeneralsInteractionPayload>(&payload)) {
         object.insert(QStringLiteral("generals"), toJsonArray(value->generalNames));
         object.insert(QStringLiteral("arrangement"), value->arrangement);
         object.insert(QStringLiteral("slot_count"), value->slotCount);
+    } else if (const TriggerOrderInteractionPayload *value = std::get_if<TriggerOrderInteractionPayload>(&payload)) {
+        QJsonArray options;
+        for (const TriggerOrderOption &option : value->options) {
+            QJsonObject entry;
+            entry.insert(QStringLiteral("skill"), option.skillName);
+            entry.insert(QStringLiteral("instance_id"), option.instanceId);
+            entry.insert(QStringLiteral("invoker"), option.invoker);
+            entry.insert(QStringLiteral("owner"), option.owner);
+            if (!option.preferredTarget.isEmpty())
+                entry.insert(QStringLiteral("preferred_target"), option.preferredTarget);
+            entry.insert(QStringLiteral("preferred_target_seat"), option.preferredTargetSeat);
+            entry.insert(QStringLiteral("response_value"), option.responseValue);
+            options.append(entry);
+        }
+        object.insert(QStringLiteral("options"), options);
+    } else if (const ChooseOrderInteractionPayload *value = std::get_if<ChooseOrderInteractionPayload>(&payload)) {
+        QJsonArray options;
+        for (const InteractionOption &option : value->options)
+            options.append(option.toJson());
+        object.insert(QStringLiteral("options"), options);
+        object.insert(QStringLiteral("reason"), value->reason);
     } else if (const CustomInteractionPayload *value = std::get_if<CustomInteractionPayload>(&payload)) {
         object.insert(QStringLiteral("schema_version"), value->schemaVersion);
         object.insert(QStringLiteral("type"), value->typeName);
@@ -154,6 +191,16 @@ QJsonObject requestPayloadToJson(const InteractionPayload &payload)
 
 }  // namespace
 
+QString rearrangementModeName(RearrangementMode mode)
+{
+    switch (mode) {
+    case RearrangementMode::UpOnly: return QStringLiteral("up_only");
+    case RearrangementMode::BothSides: return QStringLiteral("both_sides");
+    case RearrangementMode::DownOnly: return QStringLiteral("down_only");
+    }
+    return QStringLiteral("both_sides");
+}
+
 QString interactionResponseShapeName(InteractionResponseShape shape)
 {
     switch (shape) {
@@ -163,6 +210,7 @@ QString interactionResponseShapeName(InteractionResponseShape shape)
     case InteractionResponseShape::Assignment: return QStringLiteral("assignment");
     case InteractionResponseShape::Rearrangement: return QStringLiteral("rearrangement");
     case InteractionResponseShape::Distribution: return QStringLiteral("distribution");
+    case InteractionResponseShape::GeneralArrangement: return QStringLiteral("general_arrangement");
     case InteractionResponseShape::Custom: return QStringLiteral("custom");
     case InteractionResponseShape::None: break;
     }
@@ -254,21 +302,14 @@ int InteractionRequest::minSelection() const
         return value->minCards;
     if (const PindianInteractionPayload *value = payloadAs<PindianInteractionPayload>())
         return value->selection.minSelection;
+    if (const AmazingGraceInteractionPayload *value = payloadAs<AmazingGraceInteractionPayload>())
+        return value->selection.minSelection;
     if (const ArrangeGeneralsInteractionPayload *value = payloadAs<ArrangeGeneralsInteractionPayload>())
         return value->slotCount;
     if (const RearrangeCardsInteractionPayload *value = payloadAs<RearrangeCardsInteractionPayload>())
         return value->cardIds.isEmpty() ? 0 : 1;
-    if (responseSchema == InteractionResponseShape::Cards)
-        return cards.minSelection;
     if (responseSchema == InteractionResponseShape::Option)
         return cancelable ? 0 : 1;
-    if (type == InteractionType::ChooseGeneral || type == InteractionType::Choice
-        || type == InteractionType::SkillInvoke)
-        return cancelable ? 0 : 1;
-    if (type == InteractionType::ChoosePlayer)
-        return players.minSelection;
-    if (type == InteractionType::ResponseCard)
-        return cards.minSelection;
     return 0;
 }
 
@@ -282,21 +323,14 @@ int InteractionRequest::maxSelection() const
         return value->maxCards;
     if (const PindianInteractionPayload *value = payloadAs<PindianInteractionPayload>())
         return value->selection.maxSelection;
+    if (const AmazingGraceInteractionPayload *value = payloadAs<AmazingGraceInteractionPayload>())
+        return value->selection.maxSelection;
     if (const ArrangeGeneralsInteractionPayload *value = payloadAs<ArrangeGeneralsInteractionPayload>())
         return value->slotCount;
     if (const RearrangeCardsInteractionPayload *value = payloadAs<RearrangeCardsInteractionPayload>())
         return value->cardIds.size();
-    if (responseSchema == InteractionResponseShape::Cards)
-        return cards.maxSelection;
     if (responseSchema == InteractionResponseShape::Option)
         return 1;
-    if (type == InteractionType::ChooseGeneral || type == InteractionType::Choice
-        || type == InteractionType::SkillInvoke)
-        return 1;
-    if (type == InteractionType::ChoosePlayer)
-        return players.maxSelection;
-    if (type == InteractionType::ResponseCard)
-        return cards.maxSelection;
     return 0;
 }
 
@@ -307,10 +341,15 @@ bool InteractionRequest::hasOption(const QString &value) const
 
 const InteractionOption *InteractionRequest::option(const QString &value) const
 {
-    const OptionInteractionPayload *typed = payloadAs<OptionInteractionPayload>();
-    const QList<InteractionOption> &available = typed != nullptr ? typed->options : options;
-    for (QList<InteractionOption>::const_iterator it = available.constBegin();
-         it != available.constEnd(); ++it) {
+    const QList<InteractionOption> *available = nullptr;
+    if (const OptionInteractionPayload *typed = payloadAs<OptionInteractionPayload>())
+        available = &typed->options;
+    else if (const ChooseOrderInteractionPayload *order = payloadAs<ChooseOrderInteractionPayload>())
+        available = &order->options;
+    if (available == nullptr)
+        return nullptr;
+    for (QList<InteractionOption>::const_iterator it = available->constBegin();
+         it != available->constEnd(); ++it) {
         if (it->value == value)
             return &(*it);
     }
@@ -340,28 +379,8 @@ QJsonObject InteractionRequest::toJson() const
         object.insert(QStringLiteral("prompt"), prompt);
     if (timeoutMs > 0)
         object.insert(QStringLiteral("timeout_ms"), timeoutMs);
-    if (!optionsEnumerated)
-        object.insert(QStringLiteral("enumerated_options"), false);
-    if (!options.isEmpty()) {
-        QJsonArray array;
-        foreach (const InteractionOption &entry, options)
-            array.append(entry.toJson());
-        object.insert(QStringLiteral("options"), array);
-    }
-    if (players.isActive()) {
-        const QJsonObject playerJson = players.toJson();
-        for (QJsonObject::const_iterator it = playerJson.constBegin();
-             it != playerJson.constEnd(); ++it)
-            object.insert(it.key(), it.value());
-    }
-    if (cards.isActive()) {
-        const QJsonObject cardJson = cards.toJson();
-        for (QJsonObject::const_iterator it = cardJson.constBegin();
-             it != cardJson.constEnd(); ++it)
-            object.insert(it.key(), it.value());
-    }
-    if (!context.isEmpty())
-        object.insert(QStringLiteral("context"), toJsonObject(context));
+    if (!metadata.isEmpty())
+        object.insert(QStringLiteral("metadata"), toJsonObject(metadata));
     if (!std::holds_alternative<std::monostate>(payload))
         object.insert(QStringLiteral("payload"), requestPayloadToJson(payload));
     return object;
@@ -378,6 +397,7 @@ QString interactionResponseKindName(InteractionResponseKind kind)
     case InteractionResponseKind::Assignment: return QStringLiteral("assignment");
     case InteractionResponseKind::Rearrangement: return QStringLiteral("rearrangement");
     case InteractionResponseKind::Distribution: return QStringLiteral("distribution");
+    case InteractionResponseKind::GeneralArrangement: return QStringLiteral("general_arrangement");
     case InteractionResponseKind::Custom: return QStringLiteral("custom");
     case InteractionResponseKind::Cancel: return QStringLiteral("cancel");
     case InteractionResponseKind::Option: return QStringLiteral("option");
@@ -393,6 +413,7 @@ InteractionResponse InteractionResponse::makeCancel(quint64 requestId)
     InteractionResponse response;
     response.requestId = requestId;
     response.kind = InteractionResponseKind::Cancel;
+    response.payload = CancelData {};
     return response;
 }
 
@@ -401,8 +422,7 @@ InteractionResponse InteractionResponse::makeOption(quint64 requestId, const QSt
     InteractionResponse response;
     response.requestId = requestId;
     response.kind = InteractionResponseKind::Option;
-    response.option = value;
-    response.structuredPayload = value;
+    response.payload = OptionData { value };
     return response;
 }
 
@@ -411,8 +431,7 @@ InteractionResponse InteractionResponse::makePlayers(quint64 requestId, const QS
     InteractionResponse response;
     response.requestId = requestId;
     response.kind = InteractionResponseKind::Players;
-    response.players = names;
-    response.structuredPayload = names;
+    response.payload = PlayerSelectionData { names };
     return response;
 }
 
@@ -422,9 +441,7 @@ InteractionResponse InteractionResponse::makeCards(quint64 requestId, const QLis
     InteractionResponse response;
     response.requestId = requestId;
     response.kind = InteractionResponseKind::Cards;
-    response.cards = ids;
-    response.cardText = cardText;
-    response.structuredPayload = ids;
+    response.payload = CardSelectionData { ids, cardText, QList<int>(), QStringList(), QString(), 0 };
     return response;
 }
 
@@ -434,7 +451,7 @@ InteractionResponse InteractionResponse::makeAssignment(quint64 requestId,
     InteractionResponse response;
     response.requestId = requestId;
     response.kind = InteractionResponseKind::Assignment;
-    response.structuredPayload = AssignmentData { names, values };
+    response.payload = AssignmentData { names, values };
     return response;
 }
 
@@ -444,7 +461,7 @@ InteractionResponse InteractionResponse::makeRearrangement(quint64 requestId,
     InteractionResponse response;
     response.requestId = requestId;
     response.kind = InteractionResponseKind::Rearrangement;
-    response.structuredPayload = RearrangementData { first, second };
+    response.payload = RearrangementData { first, second };
     return response;
 }
 
@@ -454,17 +471,27 @@ InteractionResponse InteractionResponse::makeDistribution(quint64 requestId,
     InteractionResponse response;
     response.requestId = requestId;
     response.kind = InteractionResponseKind::Distribution;
-    response.structuredPayload = DistributionData { ids, target };
+    response.payload = DistributionData { ids, target };
+    return response;
+}
+
+InteractionResponse InteractionResponse::makeGeneralArrangement(quint64 requestId,
+    const QStringList &generalNames)
+{
+    InteractionResponse response;
+    response.requestId = requestId;
+    response.kind = InteractionResponseKind::GeneralArrangement;
+    response.payload = GeneralArrangementData { generalNames };
     return response;
 }
 
 InteractionResponse InteractionResponse::makeCustom(quint64 requestId, int schemaVersion,
-    const QString &typeName, const QJsonObject &value)
+    const QString &typeName, const QVariant &value)
 {
     InteractionResponse response;
     response.requestId = requestId;
     response.kind = InteractionResponseKind::Custom;
-    response.structuredPayload = CustomData { schemaVersion, typeName, value };
+    response.payload = CustomData { schemaVersion, typeName, value };
     return response;
 }
 
@@ -477,38 +504,41 @@ QJsonObject InteractionResponse::toJson() const
         object.insert(QStringLiteral("server_serial"), static_cast<qint64>(serverSerial));
     if (command != 0)
         object.insert(QStringLiteral("command"), command);
-    if (!option.isEmpty())
-        object.insert(QStringLiteral("option"), option);
-    if (!players.isEmpty())
-        object.insert(QStringLiteral("players"), toJsonArray(players));
-    if (!cards.isEmpty())
-        object.insert(QStringLiteral("cards"), toJsonArray(cards));
-    if (!cardText.isEmpty())
-        object.insert(QStringLiteral("card_text"), cardText);
-    if (!payload.isEmpty())
-        object.insert(QStringLiteral("payload"), toJsonObject(payload));
-    if (const AssignmentData *value = std::get_if<AssignmentData>(&structuredPayload)) {
-        QJsonObject structured;
+    QJsonObject structured;
+    if (const OptionData *value = payloadAs<OptionData>()) {
+        structured.insert(QStringLiteral("value"), value->value);
+    } else if (const PlayerSelectionData *value = payloadAs<PlayerSelectionData>()) {
+        structured.insert(QStringLiteral("players"), toJsonArray(value->names));
+    } else if (const CardSelectionData *value = payloadAs<CardSelectionData>()) {
+        structured.insert(QStringLiteral("cards"), toJsonArray(value->cardIds));
+        if (!value->cardText.isEmpty())
+            structured.insert(QStringLiteral("card_text"), value->cardText);
+        if (!value->subcardIds.isEmpty())
+            structured.insert(QStringLiteral("subcards"), toJsonArray(value->subcardIds));
+        if (!value->targets.isEmpty())
+            structured.insert(QStringLiteral("targets"), toJsonArray(value->targets));
+        if (!value->activationSkillName.isEmpty())
+            structured.insert(QStringLiteral("activation_skill"), value->activationSkillName);
+        if (value->activationSkillInstanceId > 0)
+            structured.insert(QStringLiteral("activation_instance"), value->activationSkillInstanceId);
+    } else if (const AssignmentData *value = payloadAs<AssignmentData>()) {
         structured.insert(QStringLiteral("names"), toJsonArray(value->names));
         structured.insert(QStringLiteral("values"), toJsonArray(value->values));
-        object.insert(QStringLiteral("structured_payload"), structured);
-    } else if (const RearrangementData *value = std::get_if<RearrangementData>(&structuredPayload)) {
-        QJsonObject structured;
+    } else if (const RearrangementData *value = payloadAs<RearrangementData>()) {
         structured.insert(QStringLiteral("first"), toJsonArray(value->first));
         structured.insert(QStringLiteral("second"), toJsonArray(value->second));
-        object.insert(QStringLiteral("structured_payload"), structured);
-    } else if (const DistributionData *value = std::get_if<DistributionData>(&structuredPayload)) {
-        QJsonObject structured;
+    } else if (const DistributionData *value = payloadAs<DistributionData>()) {
         structured.insert(QStringLiteral("cards"), toJsonArray(value->cards));
         structured.insert(QStringLiteral("target"), value->target);
-        object.insert(QStringLiteral("structured_payload"), structured);
-    } else if (const CustomData *value = std::get_if<CustomData>(&structuredPayload)) {
-        QJsonObject structured;
+    } else if (const GeneralArrangementData *value = payloadAs<GeneralArrangementData>()) {
+        structured.insert(QStringLiteral("generals"), toJsonArray(value->generalNames));
+    } else if (const CustomData *value = payloadAs<CustomData>()) {
         structured.insert(QStringLiteral("schema_version"), value->schemaVersion);
         structured.insert(QStringLiteral("type"), value->typeName);
-        structured.insert(QStringLiteral("value"), value->value);
-        object.insert(QStringLiteral("structured_payload"), structured);
+        structured.insert(QStringLiteral("value"), QJsonValue::fromVariant(value->value));
     }
+    if (!structured.isEmpty())
+        object.insert(QStringLiteral("payload"), structured);
     return object;
 }
 
@@ -538,6 +568,8 @@ QString interactionRejectionName(InteractionRejection rejection)
     case InteractionRejection::UnknownCard: return QStringLiteral("unknown_card");
     case InteractionRejection::DisabledCard: return QStringLiteral("disabled_card");
     case InteractionRejection::DuplicateCard: return QStringLiteral("duplicate_card");
+    case InteractionRejection::UnknownGeneral: return QStringLiteral("unknown_general");
+    case InteractionRejection::DuplicateGeneral: return QStringLiteral("duplicate_general");
     case InteractionRejection::SelectionCountOutOfRange: return QStringLiteral("selection_count_out_of_range");
     case InteractionRejection::NotCancelable: return QStringLiteral("not_cancelable");
     }

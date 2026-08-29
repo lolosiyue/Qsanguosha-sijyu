@@ -27,29 +27,43 @@ bool isEmptyAnswer(const InteractionResponse &response)
     switch (response.kind) {
     case InteractionResponseKind::Cancel:
         return true;
-    case InteractionResponseKind::Option:
-        return response.option.isEmpty();
-    case InteractionResponseKind::Players:
-        return response.players.isEmpty();
-    case InteractionResponseKind::Cards:
-        return response.cards.isEmpty() && response.cardText.isEmpty();
+    case InteractionResponseKind::Option: {
+        const InteractionResponse::OptionData *value
+            = response.payloadAs<InteractionResponse::OptionData>();
+        return value == nullptr || value->value.isEmpty();
+    }
+    case InteractionResponseKind::Players: {
+        const InteractionResponse::PlayerSelectionData *value
+            = response.payloadAs<InteractionResponse::PlayerSelectionData>();
+        return value == nullptr || value->names.isEmpty();
+    }
+    case InteractionResponseKind::Cards: {
+        const InteractionResponse::CardSelectionData *value
+            = response.payloadAs<InteractionResponse::CardSelectionData>();
+        return value == nullptr || (value->cardIds.isEmpty() && value->cardText.isEmpty());
+    }
     case InteractionResponseKind::Assignment: {
         const InteractionResponse::AssignmentData *value
-            = std::get_if<InteractionResponse::AssignmentData>(&response.structuredPayload);
+            = response.payloadAs<InteractionResponse::AssignmentData>();
         return value == nullptr || value->names.isEmpty();
     }
     case InteractionResponseKind::Rearrangement: {
         const InteractionResponse::RearrangementData *value
-            = std::get_if<InteractionResponse::RearrangementData>(&response.structuredPayload);
+            = response.payloadAs<InteractionResponse::RearrangementData>();
         return value == nullptr || (value->first.isEmpty() && value->second.isEmpty());
     }
     case InteractionResponseKind::Distribution: {
         const InteractionResponse::DistributionData *value
-            = std::get_if<InteractionResponse::DistributionData>(&response.structuredPayload);
+            = response.payloadAs<InteractionResponse::DistributionData>();
         return value == nullptr || value->cards.isEmpty() || value->target.isEmpty();
     }
+    case InteractionResponseKind::GeneralArrangement: {
+        const InteractionResponse::GeneralArrangementData *value
+            = response.payloadAs<InteractionResponse::GeneralArrangementData>();
+        return value == nullptr || value->generalNames.isEmpty();
+    }
     case InteractionResponseKind::Custom:
-        return !std::holds_alternative<InteractionResponse::CustomData>(response.structuredPayload);
+        return response.payloadAs<InteractionResponse::CustomData>() == nullptr;
     case InteractionResponseKind::None:
         break;
     }
@@ -73,6 +87,20 @@ InteractionResponseKind expectedKind(InteractionType type)
     return InteractionResponseKind::None;
 }
 
+void sanitizeRequestMetadata(InteractionRequest &request)
+{
+    static const QString eligibilityDiagnostic
+        = QStringLiteral("eligibility_diagnostic");
+    const QStringList keys = request.metadata.keys();
+    for (const QString &key : keys) {
+        if (key == eligibilityDiagnostic)
+            continue;
+        qCWarning(qsanClientCore).noquote()
+            << "discarding non-diagnostic interaction metadata key:" << key;
+        request.metadata.remove(key);
+    }
+}
+
 InteractionResponseKind expectedKind(InteractionResponseShape shape)
 {
     switch (shape) {
@@ -82,6 +110,7 @@ InteractionResponseKind expectedKind(InteractionResponseShape shape)
     case InteractionResponseShape::Assignment: return InteractionResponseKind::Assignment;
     case InteractionResponseShape::Rearrangement: return InteractionResponseKind::Rearrangement;
     case InteractionResponseShape::Distribution: return InteractionResponseKind::Distribution;
+    case InteractionResponseShape::GeneralArrangement: return InteractionResponseKind::GeneralArrangement;
     case InteractionResponseShape::Custom: return InteractionResponseKind::Custom;
     case InteractionResponseShape::None: break;
     }
@@ -133,8 +162,9 @@ void ClientCore::enrichEligibilityHints(InteractionRequest &request) const
 
     const CardEligibilityResult result = m_cardEligibilityProvider->resolve(request);
     payload->suggestedCards = result.suggestedCards;
+    payload->suggestedDisabledCards = result.suggestedDisabledCards;
     if (!result.diagnostic.isEmpty())
-        request.context.insert(QStringLiteral("eligibility_diagnostic"), result.diagnostic);
+        request.metadata.insert(QStringLiteral("eligibility_diagnostic"), result.diagnostic);
 }
 
 void ClientCore::scheduleDeadlineTimer()
@@ -180,6 +210,7 @@ quint64 ClientCore::beginRequest(InteractionRequest request)
     else if (request.requestId >= m_nextRequestId)
         m_nextRequestId = request.requestId + 1;
 
+    sanitizeRequestMetadata(request);
     enrichEligibilityHints(request);
     request.deadlineMs = request.timeoutMs > 0 ? now() + request.timeoutMs : 0;
 
@@ -337,24 +368,27 @@ InteractionValidation ClientCore::validateAgainst(const InteractionRequest &requ
                 .arg(interactionResponseKindName(response.kind)));
     }
 
-    switch (response.kind) {
-    case InteractionResponseKind::Option:
-        return validateOption(request, response);
-    case InteractionResponseKind::Players:
-        return validatePlayers(request, response);
-    case InteractionResponseKind::Cards:
-        return validateCards(request, response);
-    case InteractionResponseKind::Assignment:
-        return validateAssignment(request, response);
-    case InteractionResponseKind::Rearrangement:
-        return validateRearrangement(request, response);
-    case InteractionResponseKind::Distribution:
-        return validateDistribution(request, response);
-    case InteractionResponseKind::Custom:
-        return validateCustom(request, response);
-    case InteractionResponseKind::Cancel:
-    case InteractionResponseKind::None:
-        break;
+    using Validator = InteractionValidation (ClientCore::*)(
+        const InteractionRequest &, const InteractionResponse &) const;
+    struct ValidatorEntry
+    {
+        InteractionResponseKind kind;
+        Validator validator;
+    };
+    static const ValidatorEntry validators[] = {
+        { InteractionResponseKind::Option, &ClientCore::validateOption },
+        { InteractionResponseKind::Players, &ClientCore::validatePlayers },
+        { InteractionResponseKind::Cards, &ClientCore::validateCards },
+        { InteractionResponseKind::Assignment, &ClientCore::validateAssignment },
+        { InteractionResponseKind::Rearrangement, &ClientCore::validateRearrangement },
+        { InteractionResponseKind::Distribution, &ClientCore::validateDistribution },
+        { InteractionResponseKind::GeneralArrangement,
+            &ClientCore::validateGeneralArrangement },
+        { InteractionResponseKind::Custom, &ClientCore::validateCustom },
+    };
+    for (const ValidatorEntry &entry : validators) {
+        if (entry.kind == response.kind)
+            return (this->*entry.validator)(request, response);
     }
     return InteractionValidation::ok();
 }
@@ -362,9 +396,23 @@ InteractionValidation ClientCore::validateAgainst(const InteractionRequest &requ
 InteractionValidation ClientCore::validateOption(const InteractionRequest &request,
     const InteractionResponse &response) const
 {
-    const InteractionOption *option = request.option(response.option);
+    const InteractionResponse::OptionData *answer
+        = response.payloadAs<InteractionResponse::OptionData>();
+    if (answer == nullptr)
+        return InteractionValidation::fail(InteractionRejection::MalformedResponse);
+	if (const TriggerOrderInteractionPayload *trigger
+		= request.payloadAs<TriggerOrderInteractionPayload>()) {
+		for (const TriggerOrderOption &option : trigger->options) {
+			if (option.responseValue == answer->value)
+				return InteractionValidation::ok();
+		}
+		return InteractionValidation::fail(InteractionRejection::UnknownOption,
+			QStringLiteral("'%1' is not a trigger option of request %2")
+				.arg(answer->value).arg(request.requestId));
+	}
+    const InteractionOption *option = request.option(answer->value);
     const OptionInteractionPayload *typed = request.payloadAs<OptionInteractionPayload>();
-    const bool enumerated = typed != nullptr ? typed->enumerated : request.optionsEnumerated;
+    const bool enumerated = typed == nullptr || typed->enumerated;
     if (option == nullptr) {
         // 非枚舉 request（例如 FreeChoose 之下嘅 choose general）冇清單以外
         // 嘅約束,但答案本身仍然唔可以係空。
@@ -372,12 +420,12 @@ InteractionValidation ClientCore::validateOption(const InteractionRequest &reque
             return InteractionValidation::ok();
         return InteractionValidation::fail(InteractionRejection::UnknownOption,
             QStringLiteral("'%1' is not an option of request %2")
-                .arg(response.option).arg(request.requestId));
+                .arg(answer->value).arg(request.requestId));
     }
     if (!option->enabled) {
         return InteractionValidation::fail(InteractionRejection::DisabledOption,
             QStringLiteral("option '%1' of request %2 is disabled")
-                .arg(response.option).arg(request.requestId));
+                .arg(answer->value).arg(request.requestId));
     }
     return InteractionValidation::ok();
 }
@@ -385,27 +433,15 @@ InteractionValidation ClientCore::validateOption(const InteractionRequest &reque
 InteractionValidation ClientCore::validatePlayers(const InteractionRequest &request,
     const InteractionResponse &response) const
 {
-    if (const ArrangeGeneralsInteractionPayload *arrangement
-        = request.payloadAs<ArrangeGeneralsInteractionPayload>()) {
-        QSet<QString> seen;
-        for (const QString &name : response.players) {
-            if (seen.contains(name))
-                return InteractionValidation::fail(InteractionRejection::DuplicatePlayer, name);
-            seen.insert(name);
-            if (!arrangement->generalNames.isEmpty()
-                && !arrangement->generalNames.contains(name)) {
-                return InteractionValidation::fail(InteractionRejection::UnknownOption, name);
-            }
-        }
-        if (arrangement->slotCount > 0 && response.players.size() != arrangement->slotCount)
-            return InteractionValidation::fail(InteractionRejection::SelectionCountOutOfRange);
-        return InteractionValidation::ok();
-    }
     const PlayerInteractionPayload *typed = request.payloadAs<PlayerInteractionPayload>();
-    const PlayerSelectionState &selection = typed != nullptr ? typed->selection : request.players;
+    const InteractionResponse::PlayerSelectionData *answer
+        = response.payloadAs<InteractionResponse::PlayerSelectionData>();
+    if (typed == nullptr || answer == nullptr)
+        return InteractionValidation::fail(InteractionRejection::MalformedResponse);
+    const PlayerSelectionState &selection = typed->selection;
 
     QSet<QString> seen;
-    foreach (const QString &name, response.players) {
+    foreach (const QString &name, answer->names) {
         if (seen.contains(name)) {
             return InteractionValidation::fail(InteractionRejection::DuplicatePlayer,
                 QStringLiteral("player '%1' was selected twice").arg(name));
@@ -418,7 +454,7 @@ InteractionValidation ClientCore::validatePlayers(const InteractionRequest &requ
         }
     }
 
-    const int count = response.players.size();
+    const int count = answer->names.size();
     if (count < selection.minSelection
         || (selection.maxSelection > 0 && count > selection.maxSelection)) {
         return InteractionValidation::fail(InteractionRejection::SelectionCountOutOfRange,
@@ -434,11 +470,33 @@ InteractionValidation ClientCore::validateCards(const InteractionRequest &reques
 {
     const CardInteractionPayload *typed = request.payloadAs<CardInteractionPayload>();
     const PindianInteractionPayload *pindian = request.payloadAs<PindianInteractionPayload>();
+    const GongxinInteractionPayload *gongxin = request.payloadAs<GongxinInteractionPayload>();
+    const AmazingGraceInteractionPayload *amazingGrace
+        = request.payloadAs<AmazingGraceInteractionPayload>();
+    const InteractionResponse::CardSelectionData *answer
+        = response.payloadAs<InteractionResponse::CardSelectionData>();
+    if (answer == nullptr)
+        return InteractionValidation::fail(InteractionRejection::MalformedResponse);
+    CardSelectionState gongxinSelection;
+    if (gongxin != nullptr) {
+        gongxinSelection.enumerated = true;
+        gongxinSelection.selectableCards = gongxin->selectableCards;
+        gongxinSelection.minSelection = 0;
+        gongxinSelection.maxSelection = 1;
+    }
+    if (typed == nullptr && pindian == nullptr && gongxin == nullptr && amazingGrace == nullptr)
+        return InteractionValidation::fail(InteractionRejection::MalformedResponse);
     const CardSelectionState &selection = typed != nullptr ? typed->selection
-        : (pindian != nullptr ? pindian->selection : request.cards);
+        : (pindian != nullptr ? pindian->selection
+            : (gongxin != nullptr ? gongxinSelection : amazingGrace->selection));
+	if (amazingGrace != nullptr && !amazingGrace->selectable
+		&& !answer->cardIds.isEmpty()) {
+		return InteractionValidation::fail(InteractionRejection::DisabledCard,
+			QStringLiteral("Amazing Grace selection is disabled"));
+	}
 
     QSet<int> seen;
-    foreach (int cardId, response.cards) {
+    foreach (int cardId, answer->cardIds) {
         if (seen.contains(cardId)) {
             return InteractionValidation::fail(InteractionRejection::DuplicateCard,
                 QStringLiteral("card %1 was selected twice").arg(cardId));
@@ -464,8 +522,12 @@ InteractionValidation ClientCore::validateCards(const InteractionRequest &reques
     }
 
     // virtual card 冇實 id,但一定有 cardText。數量檢查對佢嚟講係「一張牌」。
-    const int count = response.cards.isEmpty() && !response.cardText.isEmpty()
-        ? 1 : response.cards.size();
+    if (!answer->cardText.isEmpty() && typed != nullptr && !typed->cardTextAllowed) {
+        return InteractionValidation::fail(InteractionRejection::MalformedResponse,
+            QStringLiteral("request %1 does not allow card text").arg(request.requestId));
+    }
+    const int count = answer->cardIds.isEmpty() && !answer->cardText.isEmpty()
+        ? 1 : answer->cardIds.size();
     if (count < selection.minSelection
         || (selection.maxSelection > 0 && count > selection.maxSelection)) {
         return InteractionValidation::fail(InteractionRejection::SelectionCountOutOfRange,
@@ -482,7 +544,7 @@ InteractionValidation ClientCore::validateAssignment(const InteractionRequest &r
     const RoleAssignmentInteractionPayload *payload
         = request.payloadAs<RoleAssignmentInteractionPayload>();
     const InteractionResponse::AssignmentData *answer
-        = std::get_if<InteractionResponse::AssignmentData>(&response.structuredPayload);
+        = response.payloadAs<InteractionResponse::AssignmentData>();
     if (payload == nullptr || answer == nullptr || answer->names.size() != answer->values.size()) {
         return InteractionValidation::fail(InteractionRejection::MalformedResponse,
             QStringLiteral("assignment response does not match its request schema"));
@@ -509,7 +571,7 @@ InteractionValidation ClientCore::validateRearrangement(const InteractionRequest
     const RearrangeCardsInteractionPayload *payload
         = request.payloadAs<RearrangeCardsInteractionPayload>();
     const InteractionResponse::RearrangementData *answer
-        = std::get_if<InteractionResponse::RearrangementData>(&response.structuredPayload);
+        = response.payloadAs<InteractionResponse::RearrangementData>();
     if (payload == nullptr || answer == nullptr)
         return InteractionValidation::fail(InteractionRejection::MalformedResponse);
 
@@ -528,6 +590,12 @@ InteractionValidation ClientCore::validateRearrangement(const InteractionRequest
     if (actual != expected)
         return InteractionValidation::fail(InteractionRejection::UnknownCard,
             QStringLiteral("rearrangement must contain every requested card exactly once"));
+    if (payload->mode == RearrangementMode::UpOnly && !answer->second.isEmpty())
+        return InteractionValidation::fail(InteractionRejection::SelectionCountOutOfRange,
+            QStringLiteral("up-only rearrangement cannot contain bottom cards"));
+    if (payload->mode == RearrangementMode::DownOnly && !answer->first.isEmpty())
+        return InteractionValidation::fail(InteractionRejection::SelectionCountOutOfRange,
+            QStringLiteral("down-only rearrangement cannot contain top cards"));
     if (answer->first.size() < payload->minTop
         || (payload->maxTop > 0 && answer->first.size() > payload->maxTop)
         || answer->second.size() < payload->minBottom
@@ -542,7 +610,7 @@ InteractionValidation ClientCore::validateDistribution(const InteractionRequest 
 {
     const YijiInteractionPayload *payload = request.payloadAs<YijiInteractionPayload>();
     const InteractionResponse::DistributionData *answer
-        = std::get_if<InteractionResponse::DistributionData>(&response.structuredPayload);
+        = response.payloadAs<InteractionResponse::DistributionData>();
     if (payload == nullptr || answer == nullptr)
         return InteractionValidation::fail(InteractionRejection::MalformedResponse);
     if (!payload->targetPlayers.contains(answer->target))
@@ -558,10 +626,35 @@ InteractionValidation ClientCore::validateDistribution(const InteractionRequest 
             return InteractionValidation::fail(InteractionRejection::UnknownCard,
                 QString::number(cardId));
     }
+    const int effectiveMax = payload->remainingCount > 0
+        ? qMin(payload->maxCards, payload->remainingCount) : payload->maxCards;
     if (answer->cards.size() < payload->minCards
-        || (payload->maxCards > 0 && answer->cards.size() > payload->maxCards)) {
+        || (effectiveMax > 0 && answer->cards.size() > effectiveMax)) {
         return InteractionValidation::fail(InteractionRejection::SelectionCountOutOfRange);
     }
+    return InteractionValidation::ok();
+}
+
+InteractionValidation ClientCore::validateGeneralArrangement(
+    const InteractionRequest &request, const InteractionResponse &response) const
+{
+    const ArrangeGeneralsInteractionPayload *payload
+        = request.payloadAs<ArrangeGeneralsInteractionPayload>();
+    const InteractionResponse::GeneralArrangementData *answer
+        = response.payloadAs<InteractionResponse::GeneralArrangementData>();
+    if (payload == nullptr || answer == nullptr)
+        return InteractionValidation::fail(InteractionRejection::MalformedResponse);
+
+    QSet<QString> seen;
+    for (const QString &name : answer->generalNames) {
+        if (seen.contains(name))
+            return InteractionValidation::fail(InteractionRejection::DuplicateGeneral, name);
+        seen.insert(name);
+        if (!payload->generalNames.contains(name))
+            return InteractionValidation::fail(InteractionRejection::UnknownGeneral, name);
+    }
+    if (answer->generalNames.size() != payload->slotCount)
+        return InteractionValidation::fail(InteractionRejection::SelectionCountOutOfRange);
     return InteractionValidation::ok();
 }
 
@@ -570,7 +663,7 @@ InteractionValidation ClientCore::validateCustom(const InteractionRequest &reque
 {
     const CustomInteractionPayload *payload = request.payloadAs<CustomInteractionPayload>();
     const InteractionResponse::CustomData *answer
-        = std::get_if<InteractionResponse::CustomData>(&response.structuredPayload);
+        = response.payloadAs<InteractionResponse::CustomData>();
     if (payload == nullptr || answer == nullptr)
         return InteractionValidation::fail(InteractionRejection::MalformedResponse);
     if (answer->schemaVersion != payload->schemaVersion || answer->typeName != payload->typeName) {
