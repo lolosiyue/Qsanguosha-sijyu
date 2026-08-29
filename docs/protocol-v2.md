@@ -5,15 +5,15 @@
 ```text
 Wire envelope: defined
 Codec: implemented
-Production activation: disabled
-Replay: V1
-Framing: legacy newline transport
+Production activation: enabled after explicit V1 barrier
+Replay: V1 logical normalization
+Framing: byte-oriented newline transport, maximum 65535 encoded bytes
 ```
 
 `QSanProtocol::ProtocolV2Codec` can independently encode and decode a
-`ProtocolMessage`. Client and server production packet paths still use
-`ProtocolV1Codec`; merely constructing a V2 codec does not change a session's
-`activeVersion`.
+`ProtocolMessage`. A mutually capable production connection starts on V1 and
+changes its per-connection codec only after the OFFER/ACK/COMMIT barrier defined
+in [protocol-runtime-switch.md](protocol-runtime-switch.md).
 
 ## Envelope
 
@@ -131,20 +131,21 @@ V1 codec does not parse V2
 V2 codec does not parse V1
 Negotiation still begins on V1
 preferredVersion may be V2
-activeVersion remains V1
-Production and replay remain V1
+activeVersion remains V1 until COMMIT
+Production may become V2 per connection
+Replay remains V1-compatible logical packets
 ```
 
 The V2 codec has no dependency on legacy `Packet` or `PacketDescription`.
-Runtime codec selection, switch acknowledgement, gameplay migration, and replay
-V2 belong to later work.
+Gameplay payload schemas remain unchanged in this slice; typed payload migration
+and a future replay version remain later work.
 
 ## Transport
 
 Newline framing remains external to the codec. `encode()` returns only the JSON
 object bytes and does not append `\n`.
 
-The legacy transport still contains an approximately 16 KB read buffer while
-the codec-level packet limit is 65535 bytes. This is a blocker for unrestricted
-Protocol V2 production activation and must be resolved or reflected in the
-active V2 frame limit before runtime switching is enabled.
+The socket transport accumulates raw bytes dynamically. It accepts an encoded
+frame of at most 65535 bytes plus its external newline delimiter and disconnects
+on over-limit data, including an unterminated over-limit frame. It does not
+round-trip protocol bytes through `QString` or Latin-1.
