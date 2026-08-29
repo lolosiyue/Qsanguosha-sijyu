@@ -201,8 +201,6 @@ struct AIResult {
 class AI : public QObject
 {
     Q_OBJECT
-    Q_ENUMS(Relation)
-
 public:
     AI(ServerPlayer *player);
 
@@ -210,6 +208,7 @@ public:
     {
         Friend, Enemy, Neutrality
     };
+    Q_ENUM(Relation)
     static Relation GetRelation3v3(const ServerPlayer *a, const ServerPlayer *b);
     static Relation GetRelationHegemony(const ServerPlayer *a, const ServerPlayer *b);
     static Relation GetRelation(const ServerPlayer *a, const ServerPlayer *b);

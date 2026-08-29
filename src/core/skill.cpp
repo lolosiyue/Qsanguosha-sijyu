@@ -269,7 +269,7 @@ void Skill::playAudioEffect(int index, bool superpose) const
 {
     if (sources.length()>0) {
         if (index == -1)
-            index = qrand() % sources.length();
+            index = qsanRandomBounded(sources.length());
         else
             index--;
 

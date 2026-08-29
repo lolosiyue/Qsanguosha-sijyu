@@ -421,7 +421,7 @@ public:
         if (current == nullptr || current->isDead() || current->getPhase() == Player::NotActive)
             return false;
         if (player->askForSkillInvoke(this)) {
-            int index = qrand() % 2 + 1;
+            int index = qsanRandomBounded(2) + 1;
             if (player->isJieGeneral()) index += 2;
             room->broadcastSkillInvoke(objectName(), index);
             current->drawCards(1, objectName());
@@ -1884,7 +1884,7 @@ void NewAnguoCard::onEffect(CardEffectStruct &effect) const
     }
     if (isOK(effect.to, "equip")) {
         if (!equips.isEmpty()) {
-            int id = equips.at(qrand() % equips.length());
+            int id = equips.at(qsanRandomBounded(equips.length()));
             const Card *c = Sanguosha->getCard(id);
             if (c->isAvailable(effect.to))
                 room->useCard(CardUseStruct(c, effect.to, effect.to));
@@ -1900,7 +1900,7 @@ void NewAnguoCard::onEffect(CardEffectStruct &effect) const
 
     if (!equip && effect.from->isAlive() && isOK(effect.from, "equip")) {
         if (!equips.isEmpty()) {
-            int id = equips.at(qrand() % equips.length());
+            int id = equips.at(qsanRandomBounded(equips.length()));
             const Card *c = Sanguosha->getCard(id);
             if (c->isAvailable(effect.from))
                 room->useCard(CardUseStruct(c, effect.from, effect.from));

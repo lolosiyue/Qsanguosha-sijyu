@@ -2057,7 +2057,7 @@ QStringList Engine::getRandomLords() const
 {
 	QStringList lords = getLords(true),gns = getLimitedGeneralNames();
     godLottery(gns);
-    qShuffle(gns);
+    qsanShuffle(gns);
 	bool ban = false;
     int n = Config.value("LordMaxChoice", -1).toInt();
     if (n <= 0)
@@ -2214,7 +2214,7 @@ QStringList Engine::getRandomGenerals(int count, const QSet<QString> &ban_set, c
     //Q_ASSERT(all_generals.count() > count);
 
     godLottery(all_generals);
-    qShuffle(all_generals);
+    qsanShuffle(all_generals);
 
 	bool ban = false;
 	foreach (QString general_name, all_generals) {
@@ -2285,7 +2285,7 @@ QList<int> Engine::getRandomCards(bool derivative) const
         list.removeOne(98);
     }else if(using_2012_3v3)
         list.removeOne(98);
-    qShuffle(list);
+    qsanShuffle(list);
     return list;
 }
 
@@ -2293,7 +2293,7 @@ QString Engine::getRandomGeneralName() const
 {
     const QList<const General *> allGenerals = getAllGenerals();
     return allGenerals.isEmpty() ? QString()
-        : allGenerals.at(qrand() % allGenerals.size())->objectName();
+        : allGenerals.at(qsanRandomBounded(allGenerals.size()))->objectName();
 }
 
 bool Engine::playSystemAudioEffect(const QString &name, bool superpose) const
@@ -2318,7 +2318,7 @@ int Engine::revisesAudioType(const QString &general_name, const QString &filenam
 	QList<int> ras = audio_type[general_name+filename];
 	if(ras.isEmpty()||type>ras.length()) return type;
 	if(type>0) return ras[type-1];
-	return ras[qrand()%ras.length()];
+	return ras[qsanRandomBounded(ras.length())];
 }
 
 void Engine::playSkillAudioEffect(const QString &skill_name, int index, bool superpose) const
@@ -3047,7 +3047,7 @@ void Engine::godLottery(QStringList &list) const
 	Config.beginGroup("godlottery");
 	foreach (const General *general, getAllGenerals()) {
 		if(general->getKingdom()=="god"&&general->objectName().contains("shen")){
-			if(qrand()%10000<=Config.value(general->objectName()).toInt()) {
+			if(qsanRandomBounded(10000)<=Config.value(general->objectName()).toInt()) {
                 //qDebug((general->objectName()+"被抽中").toUtf8().data());
 				list.append(general->objectName());
 			}//else

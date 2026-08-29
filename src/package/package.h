@@ -20,13 +20,12 @@ public:
 class Package : public QObject
 {
     Q_OBJECT
-    Q_ENUMS(Type)
-
 public:
     enum Type
     {
         GeneralPack, CardPack, SpecialPack
     };
+    Q_ENUM(Type)
 
     Package(const QString &name, Type pack_type = GeneralPack)
     {

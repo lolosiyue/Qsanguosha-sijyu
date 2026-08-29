@@ -566,7 +566,7 @@ void MouzhuCard::onEffect(CardEffectStruct &effect) const
     if (target->getHandcardNum() > 1) {
         card = room->askForCard(target, ".!", "@mouzhu-give:" + hejin->objectName(), QVariant(), Card::MethodNone);
         if (!card)
-            card = target->getHandcards().at(qrand() % target->getHandcardNum());
+            card = target->getHandcards().at(qsanRandomBounded(target->getHandcardNum()));
     } else {
         card = target->getHandcards().first();
     }
@@ -832,7 +832,7 @@ public:
     {
         CardUseStruct use = data.value<CardUseStruct>();
         if (use.card->isKindOf("Slash") && use.to.contains(player) && room->askForSkillInvoke(player, objectName(), data)) {
-            room->broadcastSkillInvoke("liuli", qrand() % 2 + 1); // wanrong has no audio effect at this time.
+            room->broadcastSkillInvoke("liuli", qsanRandomBounded(2) + 1); // wanrong has no audio effect at this time.
             player->drawCards(1, objectName());
         }
         return false;

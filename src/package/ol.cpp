@@ -75,7 +75,7 @@ void TunanCard::onEffect(CardEffectStruct &effect) const
 				if (card->targetFixed())
 					target = effect.to;
 				else
-					target = players.at(qrand() % players.length());
+					target = players.at(qsanRandomBounded(players.length()));
 
 				if (target)
 					room->useCard(CardUseStruct(card, effect.to, target));
@@ -83,7 +83,7 @@ void TunanCard::onEffect(CardEffectStruct &effect) const
 		}
 	} else {
 		if (!room->askForUseCard(effect.to, "@@tunan2!", "@tunan2", 2)) {
-			target = slash_to.at(qrand() % slash_to.length());
+			target = slash_to.at(qsanRandomBounded(slash_to.length()));
 			if (target)
 				room->useCard(CardUseStruct(slash, effect.to, target));
 		}
@@ -1074,7 +1074,7 @@ public:
 				n = p->getHandcardNum();
 		}
 		if (n < 0) n = 0;
-		ServerPlayer*target = room->getOtherPlayers(player).at(qrand() % room->getOtherPlayers(player).length());
+		ServerPlayer*target = room->getOtherPlayers(player).at(qsanRandomBounded(room->getOtherPlayers(player).length()));
 		room->broadcastSkillInvoke(objectName());
 		room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, player->objectName(), target->objectName());;
 		room->notifySkillInvoked(player, objectName());
@@ -1094,7 +1094,7 @@ public:
 			}
 			for (int i = 1; i <= n; i++){
 				if (handcards.isEmpty()) break;
-				int id = handcards.at(qrand() % handcards.length());
+				int id = handcards.at(qsanRandomBounded(handcards.length()));
 				handcards.removeOne(id);
 				list << id;
 			}
@@ -2416,7 +2416,7 @@ public:
 				if (p->hasSkill(objectName()) && player->isAlive() && player->getMark("&brutal") > 0){
 					room->sendCompulsoryTriggerLog(p, "xionghuo", true, true);
 					player->loseAllMarks("&brutal");
-					int i = qrand() % 3;
+					int i = qsanRandomBounded(3);
 					LogMessage log;
 					log.type = "#XionghuoEffect";
 					log.from = player;
@@ -2440,7 +2440,7 @@ public:
 						room->sendLog(log);
 						DummyCard*dummy = new DummyCard;
 						if (player->hasEquip()){
-							int i = qrand() % player->getEquips().length();
+							int i = qsanRandomBounded(player->getEquips().length());
 							dummy->addSubcard(player->getEquips().at(i));
 						}
 						if (!player->isKongcheng())
@@ -2697,11 +2697,11 @@ public:
 
 			DummyCard*dummy = new DummyCard;
 			if (!basic.isEmpty())
-				dummy->addSubcard(basic.at(qrand() % basic.length()));
+				dummy->addSubcard(basic.at(qsanRandomBounded(basic.length())));
 			if (!equip.isEmpty())
-				dummy->addSubcard(equip.at(qrand() % equip.length()));
+				dummy->addSubcard(equip.at(qsanRandomBounded(equip.length())));
 			if (!trick.isEmpty())
-				dummy->addSubcard(trick.at(qrand() % trick.length()));
+				dummy->addSubcard(trick.at(qsanRandomBounded(trick.length())));
 
 			if (dummy->subcardsLength() > 0)
 				room->obtainCard(player, dummy, false);
@@ -3226,7 +3226,7 @@ public:
 					if(c->getPackage()!="HulaoPass") continue;
 					ids << i;
 				}
-				qShuffle(ids);
+				qsanShuffle(ids);
 				foreach(int id, ids){
 					const Card*c = Sanguosha->getCard(id);
 					if(c->getTypeId()!=3) continue;
@@ -4579,7 +4579,7 @@ public:
 				give = room->askForUseCard(damage.to, "@@ziqu!", "@ziqu:" + player->objectName());
 			CardMoveReason reason(CardMoveReason::S_REASON_GIVE, damage.to->objectName(), player->objectName(), objectName(), "");
 			if (give == nullptr)
-				give = big.at(qrand() % big.length());
+				give = big.at(qsanRandomBounded(big.length()));
 			if (give == nullptr) return false;
 			room->obtainCard(player, give, reason, true);
 		}
@@ -5851,7 +5851,7 @@ void ShengongCard::use(Room*room, ServerPlayer*source, QList<ServerPlayer*> &) c
 	}
 	for (int i = 0; i < n; i++){
 		if(ids.isEmpty()) break;
-		int id = ids.at(qrand()%ids.length());
+		int id = ids.at(qsanRandomBounded(ids.length()));
 		ids.removeOne(id);
 		ids2 << id;
 	}
@@ -6420,7 +6420,7 @@ public:
 						if (player->getCardCount() > 1){
 							card = room->askForCard(player, "..!", "@kangkai-give:" + to->objectName(), data, Card::MethodNone);
 							if (!card)
-								card = player->getCards("he").at(qrand() % player->getCardCount());
+								card = player->getCards("he").at(qsanRandomBounded(player->getCardCount()));
 						} else {
 							Q_ASSERT(player->getCardCount() == 1);
 							card = player->getCards("he").first();
@@ -6605,7 +6605,7 @@ public:
 		if (player->isKongcheng()) return true;
 		if (!room->askForUseCard(player, "@@lilu!", "@lilu", -1, Card::MethodNone)){
 			room->setPlayerMark(player, "&lilu", 1);
-			ServerPlayer*to = room->getOtherPlayers(player).at(qrand() % room->getOtherPlayers(player).length());
+			ServerPlayer*to = room->getOtherPlayers(player).at(qsanRandomBounded(room->getOtherPlayers(player).length()));
 			int id = player->getRandomHandCardId();
 			room->giveCard(player, to, QList<int>() << id, objectName());
 		}
@@ -6730,7 +6730,7 @@ public:
 				room->sendLog(log);
 				player->drawCards(1, objectName());
 			} else {
-				int get = same_names.at(qrand() % same_names.length());
+				int get = same_names.at(qsanRandomBounded(same_names.length()));
 				room->obtainCard(player, get, false);
 			}
 		}
@@ -7305,7 +7305,7 @@ public:
 
 				room->sendCompulsoryTriggerLog(player, this);
 
-				int id = equips.at(qrand() % equips.length());
+				int id = equips.at(qsanRandomBounded(equips.length()));
 				room->obtainCard(player, id);
 			}
 		}
@@ -7399,7 +7399,7 @@ public:
 			const Card*c = nullptr;
 			const Card*card = room->askForCard(target, "..", "wenji-give:" + player->objectName(), QVariant::fromValue(player), Card::MethodNone);
 			if (!card){
-				card = target->getCards("he").at(qrand() % target->getCards("he").length());
+				card = target->getCards("he").at(qsanRandomBounded(target->getCards("he").length()));
 				c = card;
 			} else
 				c = Sanguosha->getCard(card->getSubcards().first());
@@ -7564,7 +7564,7 @@ public:
 		}
 		if (list.isEmpty()) return false;
 
-		int id = list.at(qrand() % list.length());
+		int id = list.at(qsanRandomBounded(list.length()));
 		room->obtainCard(target, id, true);
 
 		return false;
@@ -7827,7 +7827,7 @@ public:
 		if (player->getPhase() != Player::Play || player->isKongcheng()) return false;
 		ServerPlayer*target = room->askForPlayerChosen(player, room->getOtherPlayers(player), objectName(), "@xiashu-invoke", true, true);
 		if (!target) return false;
-		int index = qrand() % 2 + 1;
+		int index = qsanRandomBounded(2) + 1;
 		if (player->getGeneralName().contains("tenyear_") || player->getGeneral2Name().contains("tenyear_"))
 			index += 2;
 		room->broadcastSkillInvoke(objectName(), index);
@@ -8022,7 +8022,7 @@ public:
 				room->sendLog(log, room->getOtherPlayers(player, true));
 		
 				room->doAnimate(1, player->objectName(), target->objectName(), QList<ServerPlayer*>() << player);
-				player->peiyin("xianfu", qrand() % 2 + 1);
+				player->peiyin("xianfu", qsanRandomBounded(2) + 1);
 				room->notifySkillInvoked(player, "xianfu");
 				room->addPlayerMark(target, "&xianfu+#" + player->objectName(), 1, QList<ServerPlayer*>() << player);
 				room->setPlayerMark(target, "xianfu_hide_" + player->objectName(), 1);
@@ -8038,7 +8038,7 @@ public:
 				}
 				for (int i = 0; i < mark; i++){
 					if (p->isDead()) break;
-					room->sendCompulsoryTriggerLog(p, objectName(), true, true, qrand() % 2 + 3);
+					room->sendCompulsoryTriggerLog(p, objectName(), true, true, qsanRandomBounded(2) + 3);
 					room->damage(DamageStruct(objectName(), nullptr, p, d));
 				}
 			}
@@ -8054,7 +8054,7 @@ public:
 				for (int i = 0; i < mark; i++){
 					if (p->isDead()) break;
 					if (p->getLostHp() > 0)
-						room->sendCompulsoryTriggerLog(p, objectName(), true, true, qrand() % 2 + 5);
+						room->sendCompulsoryTriggerLog(p, objectName(), true, true, qsanRandomBounded(2) + 5);
 					room->recover(p, RecoverStruct(p, nullptr, qMin(rec, p->getMaxHp() - p->getHp()), "xianfu"));
 				}
 			}
@@ -8250,7 +8250,7 @@ public:
 			if (p->isAlive() && !p->isNude()){
 				const Card*card = room->askForCard(p, "..", "qiai-give:" + player->objectName(), QVariant::fromValue(player), Card::MethodNone);
 				if (!card)
-					card = p->getCards("he").at(qrand() % p->getCards("he").length());
+					card = p->getCards("he").at(qsanRandomBounded(p->getCards("he").length()));
 				CardMoveReason reason(CardMoveReason::S_REASON_GIVE, p->objectName(), player->objectName(), "qiai", "");
 				room->obtainCard(player, card, reason, false);
 			}
@@ -8398,7 +8398,7 @@ public:
 			const Card*use = nullptr;
 
 			if (!c){
-				int id = use_ids.at(qrand() & use_ids.length());
+				int id = use_ids.at(qsanRandomBounded(use_ids.length()));
 				views.removeOne(id);
 				use = Sanguosha->getEngineCard(id);
 			} else {
@@ -8426,7 +8426,7 @@ public:
 						ava << p;
 					}
 					if (ava.isEmpty()) continue;
-					room->useCard(CardUseStruct(use, player, ava.at(qrand() % ava.length())));
+					room->useCard(CardUseStruct(use, player, ava.at(qsanRandomBounded(ava.length()))));
 				}
 			}
 		}
@@ -8610,7 +8610,7 @@ public:
 			room->throwCard(Sanguosha->getCard(player->getPile("zengdao").first()), reason, nullptr);
 		} else {
 			if (!room->askForUseCard(player, "@@zengdao!", "@zengdao")){
-				int id = player->getPile("zengdao").at(qrand() % player->getPile("zengdao").length());
+				int id = player->getPile("zengdao").at(qsanRandomBounded(player->getPile("zengdao").length()));
 				room->throwCard(Sanguosha->getCard(id), reason, nullptr);
 			}
 		}
@@ -8852,9 +8852,9 @@ public:
 					if (!target->isKongcheng())
 						dummy->addSubcard(target->getRandomHandCardId());
 					if (!target->getEquips().isEmpty())
-						dummy->addSubcard(target->getEquips().at(qrand() % target->getEquips().length()));
+						dummy->addSubcard(target->getEquips().at(qsanRandomBounded(target->getEquips().length())));
 					if (!judge_ids.isEmpty())
-						dummy->addSubcard(judge_ids.at(qrand() % judge_ids.length()));
+						dummy->addSubcard(judge_ids.at(qsanRandomBounded(judge_ids.length())));
 					if (dummy->subcardsLength() > 0){
 						CardMoveReason reason(CardMoveReason::S_REASON_GIVE, target->objectName(), player->objectName(), "fenglve", "");
 						room->obtainCard(player, dummy, reason, false);
@@ -9506,7 +9506,7 @@ public:
 				}
 			}
 			if (a_list.isEmpty()) return false;
-			ServerPlayer*a = a_list.at(qrand() % a_list.length());
+			ServerPlayer*a = a_list.at(qsanRandomBounded(a_list.length()));
 			int hand = a->getHandcardNum();
 
 			QList<ServerPlayer*> b_list;
@@ -9515,7 +9515,7 @@ public:
 				b_list << p;
 			}
 			if (b_list.isEmpty()) return false;
-			ServerPlayer*b = b_list.at(qrand() % b_list.length());
+			ServerPlayer*b = b_list.at(qsanRandomBounded(b_list.length()));
 
 			ServerPlayer*more,*less;
 			if (a->getHandcardNum() > b->getHandcardNum()){
@@ -10183,7 +10183,7 @@ void JinChongxinCard::onEffect(CardEffectStruct &effect) const
 
 		const Card*c = room->askForCard(p, "..", "@jinchongxin-recast", QVariant::fromValue(from), Card::MethodRecast);
 		if (!c)
-			c = recasts.at(qrand() % recasts.length());
+			c = recasts.at(qsanRandomBounded(recasts.length()));
 
 		LogMessage log;
 		log.type = "$RecastCard";
@@ -11499,7 +11499,7 @@ void OLLianjiCard::onEffect(CardEffectStruct &effect) const
 	}
 	if (weapons.isEmpty()) return;
 
-	const Card*weapon = weapons.at(qrand() % weapons.length());
+	const Card*weapon = weapons.at(qsanRandomBounded(weapons.length()));
 	room->useCard(CardUseStruct(weapon, effect.to));
 
 	if (effect.to->isDead() || effect.from->isDead()) return;
@@ -12655,11 +12655,11 @@ public:
 			}else{
 				QList<int> ag_ids;
 				if(!ids.isEmpty()){
-					int id = ids.at(qrand() % ids.length());
+					int id = ids.at(qsanRandomBounded(ids.length()));
 					ag_ids << id;
 					ids.removeOne(id);
 					if(!ids.isEmpty())
-						ag_ids << ids.at(qrand() % ids.length());
+						ag_ids << ids.at(qsanRandomBounded(ids.length()));
 				}
 				if(ag_ids.isEmpty()){
 					player->drawCards(1,xingluan);
@@ -12682,7 +12682,7 @@ public:
 				player->drawCards(6, xingluan);
 			return false;
 		}
-		int id = ids.at(qrand() % ids.length());
+		int id = ids.at(qsanRandomBounded(ids.length()));
 		room->obtainCard(player, id, true);
 		return false;
 	}
@@ -13795,7 +13795,7 @@ void ShoufuCard::use(Room*room, ServerPlayer*source, QList<ServerPlayer*> &) con
 
 	if (!room->askForUseCard(source, "@@shoufu!", "@shoufu", Card::MethodNone)){
 		int id = source->getRandomHandCardId();
-		targets.at(qrand() % targets.length())->addToPile("sflu", id);
+		targets.at(qsanRandomBounded(targets.length()))->addToPile("sflu", id);
 	}
 }
 
@@ -14034,7 +14034,7 @@ void GuanxuCard::onEffect(CardEffectStruct &effect) const
 	if (card2)
 		room->throwCard(card2, effect.to, effect.from);
 	else {
-		int id = all.at(qrand() % all.length());
+		int id = all.at(qsanRandomBounded(all.length()));
 		Card::Suit suit = Sanguosha->getCard(id)->getSuit();
 		QList<int> _discard;
 		foreach(int id, all){
@@ -14471,8 +14471,8 @@ public:
 			if (!player->hasSkill(objectName())) return false;
 			if (room->askForUseCard(player, "@@jianjie!", "@jianjie")) return false;
 			room->sendCompulsoryTriggerLog(player, objectName(), true, true);
-			ServerPlayer*first = room->getAlivePlayers().at(qrand() % room->getAlivePlayers().length());
-			ServerPlayer*second = room->getOtherPlayers(first).at(qrand() % room->getOtherPlayers(first).length());
+			ServerPlayer*first = room->getAlivePlayers().at(qsanRandomBounded(room->getAlivePlayers().length()));
+			ServerPlayer*second = room->getOtherPlayers(first).at(qsanRandomBounded(room->getOtherPlayers(first).length()));
 			room->doAnimate(1, player->objectName(), first->objectName());
 			room->doAnimate(1, player->objectName(), second->objectName());
 			first->gainMark("&dragon_signet");
@@ -14999,7 +14999,7 @@ public:
 		/*room->fillAG(trickIDs, player);
 		int trick_id = room->askForAG(player, trickIDs, true, "olqirang");
 		room->clearAG(player);*/
-		int trick_id = trickIDs.at(qrand() % trickIDs.length());
+		int trick_id = trickIDs.at(qsanRandomBounded(trickIDs.length()));
 		if (trick_id > -1)
 			room->obtainCard(player, trick_id, true);
 
@@ -15616,7 +15616,7 @@ public:
 						break;
 					} else {
 						room->sendCompulsoryTriggerLog(player, this);
-						int id = ids.at(qrand() % ids.length());
+						int id = ids.at(qsanRandomBounded(ids.length()));
 						room->obtainCard(player, id, true);
 					}
 				}
@@ -16332,7 +16332,7 @@ public:
 			if (ids.isEmpty())
 				return false;
 			else
-			card_id = ids.at(qrand() % ids.length());
+			card_id = ids.at(qsanRandomBounded(ids.length()));
 		}
 
 		CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, player->objectName());
@@ -16496,7 +16496,7 @@ public:
 		}
 		if (equips.isEmpty()) return false;
 
-		const Card*equip = equips.at(qrand() % equips.length());
+		const Card*equip = equips.at(qsanRandomBounded(equips.length()));
 		room->useCard(CardUseStruct(equip, player));
 
 		if (player->getMark(objectName()) > 0) return false;
@@ -16547,7 +16547,7 @@ void XiaosiCard::onEffect(CardEffectStruct &effect) const
 		if (dis)
 			to_id = dis->getEffectiveId();
 		else {
-			to_id = basics.at(qrand() % basics.length());
+			to_id = basics.at(qsanRandomBounded(basics.length()));
 			room->throwCard(to_id, to);
 		} 
 	}
@@ -17660,7 +17660,7 @@ void XingguCard::onEffect(CardEffectStruct &effect) const
 	}
 	if (diamond.isEmpty()) return;
 
-	int id = diamond.at(qrand() % diamond.length());
+	int id = diamond.at(qsanRandomBounded(diamond.length()));
 	room->obtainCard(from, id);
 }
 
@@ -17708,7 +17708,7 @@ public:
 
 			for (int i = 0; i < 3; i++){
 				if (horses.isEmpty()) break;
-				int id = horses.at(qrand() % horses.length());
+				int id = horses.at(qsanRandomBounded(horses.length()));
 				horses.removeOne(id);
 				add << id;
 			}
@@ -17751,7 +17751,7 @@ public:
 			log.card_str = use.card->toString();
 			log.arg = "olduanbing";
 			room->sendLog(log);
-			int index = qrand() % 2 + 1;
+			int index = qsanRandomBounded(2) + 1;
 			if (player->getGeneralName().contains("heqi") || (!player->getGeneralName().contains("dingfeng") && player->getGeneral2Name().contains("heqi")))
 				index = 3;
 			room->broadcastSkillInvoke(objectName(), index);
@@ -19186,7 +19186,7 @@ void HongtuCard::onUse(Room*room, CardUseStruct &use) const
 	if(dc){
 		ids.removeOne(dc->getEffectiveId());
 		for (int i = 0; i < 9; i++){
-			int id = ids.at(qrand()%ids.length());
+			int id = ids.at(qsanRandomBounded(ids.length()));
 			if(use.from->canDiscard(use.from,id)){
 				room->throwCard(id,"hongtu",use.from);
 				break;
@@ -19510,12 +19510,12 @@ void ZuolianCard::use(Room*room, ServerPlayer*source, QList<ServerPlayer*> &targ
 	QList<int>ids;
 	foreach(ServerPlayer*p, targets){
 		if(p->isKongcheng()) continue;
-		int id = p->handCards().at(qrand()%p->getHandcardNum());
+		int id = p->handCards().at(qsanRandomBounded(p->getHandcardNum()));
 		room->showCard(p,id);
 		ids << id;
 	}
 	if(source->isDead()||ids.isEmpty()||!source->askForSkillInvoke("zuolian","zuolian0:",false)) return;
-	qShuffle(ids);
+	qsanShuffle(ids);
 	QList<CardsMoveStruct> exchangeMove;
 	foreach(int id, room->getDrawPile()+room->getDiscardPile()){
 		if(Sanguosha->getCard(id)->isKindOf("FireSlash")){
@@ -19625,7 +19625,7 @@ public:
 							else use.to.append(p);
 							QList<const Card*> cs = p->getCards("he");
 							if(cs.length()>0&&player->isAlive()){
-								const Card*c = cs.at(qrand()%cs.length());
+								const Card*c = cs.at(qsanRandomBounded(cs.length()));
 								room->giveCard(p,player,c,objectName(),false);
 							}
 							room->setPlayerMark(p,"&pijing+#"+player->objectName(),1);
@@ -20033,7 +20033,7 @@ public:
 				if(cs.length()>0){
 					player->addMark("qingyuanUse-Clear");
 					room->sendCompulsoryTriggerLog(player,this);
-					room->obtainCard(player,cs.at(qrand()%cs.length()),objectName(),false);
+					room->obtainCard(player,cs.at(qsanRandomBounded(cs.length())),objectName(),false);
 				}
 			}
 			return false;
@@ -23666,7 +23666,7 @@ void JingxianCard::use(Room*room, ServerPlayer*source, QList<ServerPlayer*> &tar
 				p->drawCards(1,"jingxian");
 			}else{
 				QList<int>ids = room->getDrawPile();
-				qShuffle(ids);
+				qsanShuffle(ids);
 				foreach(int id, ids){
 					if(Sanguosha->getCard(id)->isKindOf("Slash")){
 						room->obtainCard(source,id);
@@ -24867,7 +24867,7 @@ void DeruCard::use(Room*room, ServerPlayer*source, QList<ServerPlayer*> &targets
 		if(yes||!no)
 			room->recover(source,RecoverStruct("deru",source));
 		if(no){
-			qShuffle(hs);
+			qsanShuffle(hs);
 			foreach(const Card*c, hs){
 				if(c->isKindOf("BasicCard")){
 					source->obtainCard(c);
@@ -25824,7 +25824,7 @@ void SuyiCard::use(Room*room, ServerPlayer*source, QList<ServerPlayer*> &targets
 {
 	foreach(ServerPlayer*p, targets){
 		QList<int>ids = room->getDrawPile();
-		qShuffle(ids);
+		qsanShuffle(ids);
 		foreach(int id, ids){
 			const Card*c = Sanguosha->getCard(id);
 			if(c->isKindOf("EquipCard")&&c->isAvailable(p)){
@@ -26219,7 +26219,7 @@ public:
 						hands.removeOne(id);
 				}
 				if(hands.length()>0){
-					qShuffle(hands);
+					qsanShuffle(hands);
 					room->obtainCard(player,hands.first(),false);
 					if(player->handCards().contains(hands.first()))
 						room->setCardTip(hands.first(),"duo_qi");
@@ -26468,13 +26468,13 @@ public:
 					int n = 0;
 					QList<const Card*>hs = player->getHandcards();
 					while(player->isAlive()&&n<2&&!hs.isEmpty()){
-						qShuffle(hs);
+						qsanShuffle(hs);
 						bool has = false;
 						foreach(const Card*h, hs){
 							if(h->isAvailable(player)){
 								if(room->askForUseCard(player,h->toString(),"huanhuo1:"+h->objectName())){
 									hs = player->getHandcards();
-									qShuffle(hs);
+									qsanShuffle(hs);
 									foreach(const Card*h, hs){
 										if(player->canDiscard(player,h->getId())){
 											room->throwCard(h,objectName(),player);
@@ -28140,7 +28140,7 @@ public:
 	}
 	int getEffectIndex(const ServerPlayer*, const Card*) const
 	{
-		return qrand()%3+1;
+		return qsanRandomBounded(3)+1;
 	}
 	QDialog*getDialog() const
 	{
@@ -28151,7 +28151,7 @@ public:
 		if(player->hasEquip()) return false;
 		int x = player->property("FuzhaiHp").toInt();
 		if(x!=player->getHp()){
-			player->peiyin(objectName(),qrand()%2+4);
+			player->peiyin(objectName(),qsanRandomBounded(2)+4);
 			x = player->getHp();
 			room->safeSetPlayerProperty(player,"FuzhaiHp",x);
 			QStringList esn;
@@ -28804,7 +28804,7 @@ public:
 					player->addMark("tianen2-Clear");
 					room->sendCompulsoryTriggerLog(player,this);
 					QList<int>ids = tp->handCards()+tp->getEquipsId();
-					qShuffle(ids);
+					qsanShuffle(ids);
 					foreach(int id, ids){
 						if(player->canDiscard(tp,id)){
 							room->throwCard(id,objectName(),tp,player);
@@ -30474,7 +30474,7 @@ public:
 
         QStringList selected;
         for (int i = 0; i < 5 && !valid_generals.isEmpty(); ++i) {
-            int index = qrand() % valid_generals.size();
+            int index = qsanRandomBounded(valid_generals.size());
             selected << valid_generals.at(index);
             valid_generals.removeAt(index);
         }

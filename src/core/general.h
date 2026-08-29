@@ -8,7 +8,6 @@ class Package;
 class General : public QObject
 {
     Q_OBJECT
-    Q_ENUMS(Gender)
     Q_PROPERTY(QString kingdom READ getKingdom CONSTANT)
     Q_PROPERTY(int maxhp READ getMaxHp CONSTANT)
     Q_PROPERTY(bool male READ isMale STORED false CONSTANT)
@@ -41,6 +40,7 @@ public:
     {
         Sexless, Male, Female, Neuter
     };
+    Q_ENUM(Gender)
     Gender getGender() const;
     void setGender(Gender gender);
 

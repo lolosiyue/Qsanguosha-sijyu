@@ -4,6 +4,7 @@
 #include "roomscene.h"
 #include "qsanbutton.h"
 #include "skin-bank.h"
+#include "ui-rng.h"
 #include "effects/effects-policy.h"
 
 #include <QPainterPath>
@@ -36,7 +37,7 @@ void CardItem::_initialize()
 CardItem::CardItem(const Card *card)
 {
     _initialize();
-    m_isShiny = qrand() < (RAND_MAX + 1L) / 4096;
+    m_isShiny = UiRng::bounded(4096) == 0;
     setCard(card);
     setAcceptHoverEvents(true);
 }

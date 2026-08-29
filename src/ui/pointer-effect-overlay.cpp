@@ -1,5 +1,6 @@
 #include "pointer-effect-overlay.h"
 #include "settings.h"
+#include "ui-rng.h"
 #include "effects/effects-policy.h"
 
 #include <QApplication>
@@ -16,7 +17,6 @@
 #include <QPixmap>
 #include <QPolygon>
 #include <QQuickWindow>
-#include <QRandomGenerator>
 #include <QtMath>
 
 namespace {
@@ -33,14 +33,14 @@ const int kMaxMoveSpawnPerStep = 6;
 
 qreal randomRange(qreal minimum, qreal maximum)
 {
-    return minimum + QRandomGenerator::global()->generateDouble() * (maximum - minimum);
+    return minimum + UiRng::generateDouble() * (maximum - minimum);
 }
 
 QPointF randomPointInTriangle(qreal scale)
 {
-    const qreal root = qSqrt(QRandomGenerator::global()->generateDouble());
+    const qreal root = qSqrt(UiRng::generateDouble());
     const qreal a = 1.0 - root;
-    const qreal b = root * (1.0 - QRandomGenerator::global()->generateDouble());
+    const qreal b = root * (1.0 - UiRng::generateDouble());
     const qreal c = 1.0 - a - b;
     return QPointF((a * 0.099028 + b * -0.146066 + c * 0.099028) * scale,
                    (a * 0.134899 + c * -0.134899) * scale);
@@ -450,7 +450,7 @@ void PointerFxEngine::spawnClick(const QPointF &pos, qreal now)
         MeshParticle mesh;
         mesh.startSize = randomRange(0.12, 0.14);
         mesh.initialRotation = randomRange(0, kPi * 2);
-        mesh.rotationBlend = QRandomGenerator::global()->generateDouble();
+        mesh.rotationBlend = UiRng::generateDouble();
         effect.meshParticles.append(mesh);
     }
     for (int i = 0; i < 4; ++i)
@@ -472,7 +472,7 @@ PointerFxEngine::TriangleParticle PointerFxEngine::createTriangle(
     particle.lifetime = movement ? randomRange(0.2, 0.4) : randomRange(0.6, 0.7);
     particle.speed = movement ? randomRange(0.067, 0.1) : randomRange(0.09, 0.13);
     particle.size = randomRange(0.1, 0.2);
-    particle.alternateFrame = QRandomGenerator::global()->bounded(2) == 1;
+    particle.alternateFrame = UiRng::bounded(2) == 1;
     return particle;
 }
 

@@ -809,7 +809,7 @@ public:
 				if (id3 > 0)
 					ids << id3;
 				if (ids.isEmpty()) continue;
-				int id = ids.at(qrand() % ids.length());
+				int id = ids.at(qsanRandomBounded(ids.length()));
 
 				CardMoveReason reason(CardMoveReason::S_REASON_PUT, "chexuan");
 				CardsMoveStruct move(id, nullptr, player, Player::PlaceTable, Player::PlaceEquip, reason);
@@ -1154,7 +1154,7 @@ public:
 	{
 		room->sendCompulsoryTriggerLog(player, objectName(), true, true);
 		QList<int> list = room->getDrawPile() + room->getDiscardPile();
-		qShuffle(list);
+		qsanShuffle(list);
 		foreach (int id, list) {
 			const Card *card = Sanguosha->getCard(id);
 			if (card->isKindOf("Treasure")){
@@ -1716,12 +1716,12 @@ public:
 						player->removeTag("ExtraCollateralTarget");
 						if (!extra) {
 							QList<ServerPlayer *> victims;
-							extra = available_targets.at(qrand() % available_targets.length());
+							extra = available_targets.at(qsanRandomBounded(available_targets.length()));
 							room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, player->objectName(), extra->objectName());
 							foreach (ServerPlayer *p, room->getOtherPlayers(extra)) {
 								if (extra->canSlash(p)) victims << p;
 							}
-							extra->setTag("attachTarget", QVariant::fromValue(victims.at(qrand() % victims.length())));
+							extra->setTag("attachTarget", QVariant::fromValue(victims.at(qsanRandomBounded(victims.length()))));
 							LogMessage log;
 							log.type = "#QiaoshuiAdd";
 							log.from = player;
@@ -2273,9 +2273,9 @@ void JinYanxiCard::onEffect(CardEffectStruct &effect) const
 	QList<int> list = room->getNCards(2);
 	QList<int> new_list;
 	list << hand_id;
-	//qShuffle(list);
+	//qsanShuffle(list);
 	for (int i = 0; i < 3; i++) {
-		int id = list.at(qrand() % list.length());
+		int id = list.at(qsanRandomBounded(list.length()));
 		new_list << id;
 		list.removeOne(id);
 		if (list.isEmpty()) break;
@@ -2886,7 +2886,7 @@ public:
 
 			skill_names << skn;
 		}
-		qShuffle(skill_names);
+		qsanShuffle(skill_names);
 
 		for (int i = 0; i < 3; i++) {
 			if (skill_names.isEmpty()) break;

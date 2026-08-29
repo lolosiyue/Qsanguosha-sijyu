@@ -64,6 +64,20 @@ qsan_add_ctest(qsanguosha_engine_smoke qsanguosha_core_tests
     SUITE engine-smoke
     LABELS fast
 )
+qsan_add_ctest(qsanguosha_enum_reflection qsanguosha_core_tests
+    SUITE enum-reflection
+    LABELS "qt6;fast"
+)
+
+add_test(NAME qsanguosha_qt6_api_debt
+    COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qt6-api-debt-check.py"
+        --root "${QSAN_TEST_ROOT}"
+)
+set_tests_properties(qsanguosha_qt6_api_debt PROPERTIES
+    WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
+    LABELS "qt6;fast"
+)
 
 add_executable(qsanguosha_protocol_tests
     protocol-messages-test.cpp
@@ -467,7 +481,6 @@ target_include_directories(qsanguosha_replay_tests PRIVATE
 target_link_libraries(qsanguosha_replay_tests PRIVATE
     qsanguosha_engine
     Qt6::Core
-    Qt6::Core5Compat
 )
 qsan_add_ctest(qsanguosha_replay_game_state_protocol qsanguosha_replay_tests
     LABELS "protocol;fast"

@@ -5,6 +5,7 @@
 int runEngineSmokeTests();
 int runEngineSelfBridgeTests();
 int runCardParseTests();
+int runEnumReflectionTests();
 
 int main(int argc, char **argv)
 {
@@ -18,7 +19,10 @@ int main(int argc, char **argv)
         const int bridge = runEngineSelfBridgeTests();
         if (bridge != 0)
             return bridge;
-        return runCardParseTests();
+        const int cardParse = runCardParseTests();
+        if (cardParse != 0)
+            return cardParse;
+        return runEnumReflectionTests();
     };
 
     if (suite.isEmpty() || suite == QLatin1String("engine-smoke"))
@@ -27,5 +31,7 @@ int main(int argc, char **argv)
         return runEngineSelfBridgeTests();
     if (suite == QLatin1String("card-parse"))
         return runCardParseTests();
+    if (suite == QLatin1String("enum-reflection"))
+        return runEnumReflectionTests();
     return 64;
 }

@@ -50,7 +50,7 @@ void RoomThread1v1::run()
 					<< "niujin" << "hansui";
 			}
 		}
-		qShuffle(general_names);
+		qsanShuffle(general_names);
 		general_names = general_names.mid(0, total_num);
 	}
 
@@ -75,7 +75,7 @@ void RoomThread1v1::run()
 			<< "x3" << "x4" << "x5"));
 	}
 
-	int index = qrand() % 2;
+	int index = qsanRandomBounded(2);
 	ServerPlayer *first = room->getPlayers().at(index), *next = room->getPlayers().at(1 - index);
 	QString order = room->askForOrder(first, "warm");
 	if (order == "cool")

@@ -927,7 +927,7 @@ public:
 
     int getEffectIndex(const ServerPlayer *player, const Card *) const
     {
-        int index = qrand() % 2 + 1;
+        int index = qsanRandomBounded(2) + 1;
         if (player->getGeneralName().contains("sp_tongyuan") || player->getGeneral2Name().contains("sp_tongyuan"))
             index = 3;
         return index;
@@ -1286,7 +1286,7 @@ public:
             if (targets.isEmpty()) return false;
             ServerPlayer *target = room->askForPlayerChosen(player, targets, objectName(), "@mobilezhengrong-invoke", false, true);
             room->broadcastSkillInvoke(objectName());
-            const Card * card = target->getCards("he").at(qrand() % target->getCards("he").length());
+            const Card * card = target->getCards("he").at(qsanRandomBounded(target->getCards("he").length()));
             player->addToPile("rong", card);
         }
         return false;
@@ -2072,7 +2072,7 @@ public:
                 areas << i;
             }
             if (areas.isEmpty()) return false;
-            int area = areas.at(qrand() % areas.length());
+            int area = areas.at(qsanRandomBounded(areas.length()));
             target->throwEquipArea(area);
         }
         return false;

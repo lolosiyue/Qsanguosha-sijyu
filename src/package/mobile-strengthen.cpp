@@ -199,7 +199,7 @@ public:
 				while (!p->getPile("mobileqingjian").isEmpty()) {
 					if (p->isDead()) break;
 					if (!room->askForUseCard(p, "@@mobileqingjian!", "@mobileqingjian")) {
-						ServerPlayer *target = room->getOtherPlayers(p).at(qrand() % room->getOtherPlayers(p).length());
+						ServerPlayer *target = room->getOtherPlayers(p).at(qsanRandomBounded(room->getOtherPlayers(p).length()));
 						LogMessage log;
 						log.type = "#ChoosePlayerWithSkill";
 						log.from = p;
@@ -1636,7 +1636,7 @@ public:
                     slash << id;
             }
             if (!slash.isEmpty())
-                room->obtainCard(player, slash.at(qrand() % slash.length()), true);
+                room->obtainCard(player, slash.at(qsanRandomBounded(slash.length())), true);
 
             if (player->isDead()) return false;
 
@@ -1992,7 +1992,7 @@ public:
                 tricks << id;
         }
         if (tricks.isEmpty()) return;
-        int id = tricks.at(qrand() % tricks.length());
+        int id = tricks.at(qsanRandomBounded(tricks.length()));
         room->obtainCard(player, id, true);
     }
 
@@ -2003,7 +2003,7 @@ public:
             if (use.card->getSkillNames().contains(objectName()))
                 player->turnOver();
         } else if (triggerEvent == TurnedOver&&player->property("mobilejiushi_levelup").toBool()) {
-            room->sendCompulsoryTriggerLog(player, this, qrand()%2+1);
+            room->sendCompulsoryTriggerLog(player, this, qsanRandomBounded(2)+1);
             getTrick(player);
         } else if (triggerEvent == Damaged) {
             bool facedown = player->getTag("MobilePredamagedFace").toBool();
@@ -2498,18 +2498,18 @@ void MobileMiejiCard::onEffect(CardEffectStruct &effect) const
         const Card *cc = room->askForUseCard(effect.to, "@@mobilemieji!", "@mobilemieji:" + effect.from->objectName());
         if (!cc) {
             if (!trick.isEmpty()) {
-                const Card *give = trick.at(qrand() % trick.length());
+                const Card *give = trick.at(qsanRandomBounded(trick.length()));
                 CardMoveReason reason(CardMoveReason::S_REASON_GIVE, effect.to->objectName(), effect.from->objectName(), "mobilemieji", "");
                 room->obtainCard(effect.from, give, reason, true);
                 return;
             }
             if (!nottrick.isEmpty()) {
                 DummyCard *dis = new DummyCard;
-                const Card *d = nottrick.at(qrand() % nottrick.length());
+                const Card *d = nottrick.at(qsanRandomBounded(nottrick.length()));
                 nottrick.removeOne(d);
                 dis->addSubcard(d);
                 if (!nottrick.isEmpty()) {
-                    const Card *dd = nottrick.at(qrand() % nottrick.length());
+                    const Card *dd = nottrick.at(qsanRandomBounded(nottrick.length()));
                     dis->addSubcard(dd);
                 }
                 room->throwCard(dis, effect.to, nullptr);
@@ -2942,13 +2942,13 @@ public:
                         extra = jianyong->getTag("ExtraCollateralTarget").value<ServerPlayer *>();
 						jianyong->removeTag("ExtraCollateralTarget");
                         if (!extra) {
-                            extra = available_targets.at(qrand() % available_targets.length());
+                            extra = available_targets.at(qsanRandomBounded(available_targets.length()));
                             QList<ServerPlayer *> victims;
                             foreach (ServerPlayer *p, room->getOtherPlayers(extra)) {
                                 if (extra->canSlash(p))
                                     victims << p;
                             }
-                            extra->setTag("attachTarget", QVariant::fromValue((victims.at(qrand() % victims.length()))));
+                            extra->setTag("attachTarget", QVariant::fromValue((victims.at(qsanRandomBounded(victims.length())))));
                         }
 					}else
                         extra = room->askForPlayerChosen(jianyong, available_targets, "qiaoshui", "@qiaoshui-add:::" + use.card->objectName());
@@ -4483,7 +4483,7 @@ public:
 			}
 			if(max<0&&player->isAlive()){
 				QList<int>ids = room->getDrawPile();
-				qShuffle(ids);
+				qsanShuffle(ids);
 				foreach (int id,ids){
 					if(Sanguosha->getCard(id)->isKindOf("EquipCard")){
 						room->obtainCard(player,id);

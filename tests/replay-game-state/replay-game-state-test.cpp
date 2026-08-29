@@ -31,6 +31,13 @@ QString gameSeedCommand(quint64 seed)
     packet.setMessageBody(log);
     return packet.toString();
 }
+
+QString setupCommand(const QString &setup)
+{
+    Packet packet(S_TYPE_NOTIFICATION | S_DEST_CLIENT, S_COMMAND_SETUP);
+    packet.setMessageBody(setup);
+    return packet.toString();
+}
 }
 
 int main(int argc, char *argv[])
@@ -62,6 +69,15 @@ int main(int argc, char *argv[])
                 "Game seed replay log accepted") && ok;
     ok = expect(state.getCardProvenance().size() == 2,
                 "Game seed replay log preserved existing state") && ok;
+
+    ok = expect(state.applyCommand(setupCommand(
+                    QStringLiteral("server:03_1v2:3:1:standard+wind:RC"))),
+                "Setup command accepted") && ok;
+    ok = expect(state.getGlobalState().gameMode == QStringLiteral("03_1v2"),
+                "Setup command captured game mode") && ok;
+    ok = expect(!state.applyCommand(setupCommand(
+                    QStringLiteral("server:03_1v2:3:1:standard:RC!"))),
+                "Setup command rejected trailing garbage") && ok;
 
     JsonArray malformed;
     malformed << 2 << "use" << "initiator";

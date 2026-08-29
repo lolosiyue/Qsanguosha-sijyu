@@ -1193,7 +1193,7 @@ void Dashboard::selectAll()
 
 void Dashboard::cardTip()
 {
-	//qShuffle(m_handCards);
+	//qsanShuffle(m_handCards);
 	foreach(CardItem *h, m_handCards)
 		h->hideFootnote();
 	adjustCards(true);

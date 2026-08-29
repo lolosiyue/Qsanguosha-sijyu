@@ -47,13 +47,12 @@ private slots:
 class FreeChooseDialog : public QDialog
 {
     Q_OBJECT
-        Q_ENUMS(ButtonGroupType)
-
 public:
     enum ButtonGroupType
     {
         Exclusive, Pair, Multi
     };
+    Q_ENUM(ButtonGroupType)
 
     explicit FreeChooseDialog(const QString &name, QWidget *parent, ButtonGroupType type = Exclusive);
 

@@ -70,7 +70,7 @@ void ClientPlayer::addCard(int id, Place place)
 		if (this != Self)
 			addKnownHandCard(Sanguosha->getCard(id));
 		if(!hand_ids.contains(id)) hand_ids << id;
-		if(hand_ids.size()>1) qShuffle(hand_ids);
+		if(hand_ids.size()>1) qsanShuffle(hand_ids);
 	}
 }
 
@@ -91,7 +91,7 @@ void ClientPlayer::removeCard(int id, Place place)
 			known_cards << card;
 			if(!hand_ids.contains(card->getId())){
 				hand_ids << card->getId();
-				if (hand_ids.size()>1) qShuffle(hand_ids);
+				if (hand_ids.size()>1) qsanShuffle(hand_ids);
 			}
 		}
 	}
@@ -199,7 +199,7 @@ void ClientPlayer::addHandIds(JsonArray args)
 		hand_ids << id;
 	}
 	if (hand_ids.size()>1)
-		qShuffle(hand_ids);
+		qsanShuffle(hand_ids);
 }
 
 void ClientPlayer::removeHandIds(JsonArray args)
@@ -227,7 +227,7 @@ void ClientPlayer::setKnownCards(QList<int> card_ids)
 		return;
 	hand_ids = exact_ids;
 	if (hand_ids.size() > 1)
-		qShuffle(hand_ids);
+		qsanShuffle(hand_ids);
 }
 
 void ClientPlayer::setKnownCards(QList<const Card*> cards)
@@ -243,7 +243,7 @@ void ClientPlayer::setKnownCards(QList<const Card*> cards)
 		return;
 	hand_ids = exact_ids;
 	if (hand_ids.size() > 1)
-		qShuffle(hand_ids);
+		qsanShuffle(hand_ids);
 }
 
 QTextDocument *ClientPlayer::getMarkDoc() const

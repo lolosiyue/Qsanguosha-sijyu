@@ -115,7 +115,7 @@ public:
                     room->gameOver("lord+loyalist");
                 } else if (room->getTag("TurnLengthCount").toInt() == 2) {
                     QList<ServerPlayer *> players = room->getOtherPlayers(player);
-                    qShuffle(players);
+                    qsanShuffle(players);
                     players.first()->setTag("zombie", true);
                     players.last()->setTag("zombie", true);
                 }
@@ -151,7 +151,7 @@ void ZombieScenario::assign(QStringList &generals, QStringList &roles) const
     for (int i = 0; i < 7; i++)
         roles << "loyalist";
 
-    qShuffle(roles);
+    qsanShuffle(roles);
 }
 
 int ZombieScenario::getPlayerCount() const

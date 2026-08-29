@@ -251,7 +251,7 @@ bool TrustAI::useCard(const Card *card)
 
 Card::Suit TrustAI::askForSuit(const QString &)
 {
-    return Card::AllSuits[qrand() % 4];
+    return Card::AllSuits[qsanRandomBounded(4)];
 }
 
 QString TrustAI::askForKingdom(QStringList kingdoms)
@@ -274,7 +274,7 @@ QString TrustAI::askForKingdom(QStringList kingdoms)
 			}
 		}
 	}
-	qShuffle(kingdoms);
+	qsanShuffle(kingdoms);
 	foreach (ServerPlayer *p, room->getAlivePlayers()) {
 		foreach (const Skill *s, p->getVisibleSkillList()) {
 			if(s->getDescription(p).contains("势力数")){
@@ -294,7 +294,7 @@ QString TrustAI::askForKingdom(QStringList kingdoms)
     QString role;
 
     switch (self->getRoleEnum()) {
-    case Player::Lord: role = kingdoms.at(qrand() % kingdoms.length()); break;
+    case Player::Lord: role = kingdoms.at(qsanRandomBounded(kingdoms.length())); break;
     case Player::Renegade:
     case Player::Rebel: {
         if ((lord->hasLordSkill("xueyi") && self->getRoleEnum() == Player::Rebel) || lord->hasLordSkill("shichou"))
@@ -310,7 +310,7 @@ QString TrustAI::askForKingdom(QStringList kingdoms)
             role = lord->getGeneral2()->getKingdom();
         else {
             if (lord->hasSkill("yongsi")) kingdoms.removeOne(lord->getKingdom());
-            role = kingdoms.at(qrand() % kingdoms.length());
+            role = kingdoms.at(qsanRandomBounded(kingdoms.length()));
         }
         break;
     }
@@ -329,7 +329,7 @@ bool TrustAI::askForSkillInvoke(const QString &, const QVariant &)
 QString TrustAI::askForChoice(const QString &, const QString &choice, const QVariant &)
 {
     QStringList choices = choice.split("+");
-    return choices.at(qrand() % choices.length());
+    return choices.at(qsanRandomBounded(choices.length()));
 }
 
 QString TrustAI::askForTriggerOrder(const QString &, QMap<ServerPlayer*, QStringList> &skills,
@@ -345,7 +345,7 @@ QString TrustAI::askForTriggerOrder(const QString &, QMap<ServerPlayer*, QString
     }
     if (allSkills.isEmpty())
         return QString();
-    return allSkills.at(qrand() % allSkills.length());
+    return allSkills.at(qsanRandomBounded(allSkills.length()));
 }
 
 QList<int> TrustAI::askForDiscard(const QString &, int, int min_num, bool optional, bool include_equip, const QString &pattern)
@@ -387,7 +387,7 @@ int TrustAI::askForAG(const QList<int> &card_ids, bool refusable, const QString 
     if (refusable)
         return -1;
 
-    return card_ids.at(qrand() % card_ids.length());
+    return card_ids.at(qsanRandomBounded(card_ids.length()));
 }
 
 const Card *TrustAI::askForCardShow(ServerPlayer *, const QString &)
@@ -417,7 +417,7 @@ const Card *TrustAI::askForPindian(ServerPlayer *requestor, const QString &reaso
 ServerPlayer *TrustAI::askForPlayerChosen(const QList<ServerPlayer *> &targets, const QString &reason)
 {
     Q_UNUSED(reason);
-    return targets.at(qrand() % targets.length());
+    return targets.at(qsanRandomBounded(targets.length()));
 }
 
 QList<ServerPlayer *> TrustAI::askForPlayersChosen(const QList<ServerPlayer *> &targets, const QString &reason, int min_num, int max_num)
@@ -427,7 +427,7 @@ QList<ServerPlayer *> TrustAI::askForPlayersChosen(const QList<ServerPlayer *> &
     QList<ServerPlayer *> result, copy = targets;
     while (result.length() < min_num) {
         if (copy.isEmpty()) break;
-        result << copy.takeAt(qrand() % copy.length());
+        result << copy.takeAt(qsanRandomBounded(copy.length()));
     }
     return result;
 }
@@ -479,7 +479,7 @@ QString TrustAI::askForGeneral(const QStringList &generals, const QString &defau
     if (!default_choice.isEmpty() && generals.contains(default_choice))
         return default_choice;
     if (!generals.isEmpty())
-        return generals.at(qrand() % generals.length());
+        return generals.at(qsanRandomBounded(generals.length()));
     return "caocao";
 }
 
