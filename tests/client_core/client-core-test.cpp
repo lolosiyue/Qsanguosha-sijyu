@@ -10,8 +10,11 @@
 
 #include <QCoreApplication>
 #include <QEventLoop>
+#include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcess>
 #include <QTimer>
 
 #include <cstdio>
@@ -1033,6 +1036,93 @@ void testProductionDeadlineTimer()
         "the production QTimer expires a pending request without polling");
 }
 
+QString argumentValue(int argc, char **argv, const char *option)
+{
+    for (int i = 1; i + 1 < argc; ++i) {
+        if (QLatin1String(argv[i]) == QLatin1String(option))
+            return QString::fromLocal8Bit(argv[i + 1]);
+    }
+    return QString();
+}
+
+void testProductionInteractionInventory(int argc, char **argv)
+{
+    const QString generator = argumentValue(argc, argv, "--interaction-generator");
+    const QString committedPath = argumentValue(argc, argv, "--interaction-matrix");
+    const QString generatedPath = argumentValue(argc, argv, "--generated-interaction-matrix");
+    if (generator.isEmpty() && committedPath.isEmpty() && generatedPath.isEmpty())
+        return;
+
+    if (generator.isEmpty() || committedPath.isEmpty() || generatedPath.isEmpty()) {
+        check(false, "production interaction inventory arguments are complete");
+        return;
+    }
+
+    QFile::remove(generatedPath);
+    QProcess process;
+    process.setProcessChannelMode(QProcess::MergedChannels);
+    process.start(generator, {QStringLiteral("--interaction-inventory"), generatedPath});
+    const bool started = process.waitForStarted(30000);
+    const bool finished = started && process.waitForFinished(60000);
+    if (started && !finished) {
+        process.terminate();
+        if (!process.waitForFinished(5000)) {
+            process.kill();
+            process.waitForFinished(5000);
+        }
+    }
+    if (!started || !finished
+        || process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+        printf("FAIL production interaction inventory generator runs successfully\n%s\n",
+            process.readAll().constData());
+        ++failures;
+        return;
+    }
+    check(true, "production interaction inventory generator runs successfully");
+
+    QFile generatedFile(generatedPath);
+    QFile committedFile(committedPath);
+    if (!generatedFile.open(QIODevice::ReadOnly) || !committedFile.open(QIODevice::ReadOnly)) {
+        check(false, "production and committed interaction inventories are readable");
+        return;
+    }
+    const QByteArray generatedJson = generatedFile.readAll();
+    const QByteArray committedJson = committedFile.readAll();
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(generatedJson, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        check(false, "production interaction inventory is valid JSON");
+        return;
+    }
+    check(true, "production interaction inventory is valid JSON");
+
+    const QJsonObject inventory = document.object();
+    check(inventory.value(QStringLiteral("schema_version")).toInt() == 2,
+        "interaction inventory schema is version 2");
+    check(inventory.value(QStringLiteral("total_commands")).toInt() == 29
+            && inventory.value(QStringLiteral("commands")).toArray().size() == 29,
+        "interaction registry contains all 29 production commands");
+    check(inventory.value(QStringLiteral("canonical_typed")).toInt() == 28,
+        "interaction registry contains 28 canonical typed commands");
+    check(inventory.value(QStringLiteral("legacy_adapter")).toInt() == 1,
+        "interaction registry contains one explicit legacy adapter");
+    check(inventory.value(QStringLiteral("implicit_passthrough")).toInt(-1) == 0,
+        "interaction registry contains no implicit passthrough");
+    check(inventory.value(QStringLiteral("missing_builder")).toInt(-1) == 0,
+        "every interaction descriptor has a builder");
+    check(inventory.value(QStringLiteral("missing_validator")).toInt(-1) == 0,
+        "every interaction descriptor has a validator");
+    check(inventory.value(QStringLiteral("missing_presenter")).toInt(-1) == 0,
+        "every interaction descriptor has a presenter");
+    check(inventory.value(QStringLiteral("missing_reply_encoder")).toInt(-1) == 0,
+        "every interaction descriptor has a reply encoder");
+    check(inventory.value(QStringLiteral("presenter_invocations")).toInt() == 29
+            && inventory.value(QStringLiteral("presented_types")).toInt() == 29,
+        "production registry dispatches every presenter and interaction type");
+    checkEqual(generatedJson, committedJson,
+        "the committed interaction artifact matches the production registry");
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -1055,6 +1145,7 @@ int main(int argc, char **argv)
     testSpecialInteractionSemantics();
     testMetadataAllowlist();
     testProductionDeadlineTimer();
+    testProductionInteractionInventory(argc, argv);
 
     if (failures > 0) {
         printf("%d ClientCore contract check(s) failed\n", failures);

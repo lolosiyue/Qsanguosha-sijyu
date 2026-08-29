@@ -1117,19 +1117,27 @@ cmake --build build-linux-gcc
 ctest --test-dir build-linux-gcc --output-on-failure
 ```
 
-Linux CTest 包括三級真實 TCP network integration：
+Linux CTest 的單一 `qsanguosha_network_integration` suite 依序執行三級真實 TCP
+network integration，並逐 level 輸出 PASS/FAIL 與結尾摘要：
 
 1. Level 1：啟動 server、TCP connect／disconnect，確認 server 仍可回應 console，再以 SIGTERM 正常退出。
 2. Level 2：完成 version／setup handshake、signup，從 `players` snapshot 確認 server 已識別玩家，再正常斷線。
 3. Level 3：兩個 TCP client handshake／signup、填滿 `02p` room、開局後轉托管、完成自動對局、收到 game over、等待 room dispose，再驗證 SIGTERM clean exit 同 `CARD_LIFETIME_ZERO`。
 
-三個測試使用獨立臨時 `XDG_CONFIG_HOME`、CLI `--port 0` 同固定 seed，從 `Listening on` 取得實際 port，標記為 `network;server;integration` 並強制 serial 執行。只跑 network suite：
+三個 child case 使用獨立臨時 `XDG_CONFIG_HOME`、CLI `--port 0` 同固定 seed，
+從 `Listening on` 取得實際 port；suite 標記為 `network` 並強制 serial 執行。
+只跑 network suite：
 
 ```bash
 ctest --test-dir build-linux-gcc --output-on-failure -L network
 ```
 
-其餘測試包括 server CLI parser／help／version、INI validation／precedence、7-command console smoke、engine smoke、card-lifetime、player-decision-service、room-runtime-isolation、protocol messages、request-coordinator、room-roster、player-lifecycle-service、skill-runtime-coordinator、lua-runtime-isolation、extra-turn-scheduler 等。可配置 `-DBUILD_TESTING=OFF` 跳過。
+其餘測試以 `qsanguosha_server_cli_contract`、`qsanguosha_server_unit`、
+`qsanguosha_runtime_contract` 等 suite 整理 parser／help／version、INI
+validation／precedence、engine smoke、card-lifetime、player-decision、room-runtime、
+protocol messages、request、room-roster、player-lifecycle、skill-runtime、lua-runtime、
+extra-turn 等 coverage。7-command console smoke 因 runtime/failure domain 不同仍獨立。
+可配置 `-DBUILD_TESTING=OFF` 跳過。
 
 ## 9. GitHub Actions CI
 
