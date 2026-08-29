@@ -240,14 +240,38 @@ qsan_add_ctest(qsanguosha_client_core_contract qsanguosha_client_core_tests
     LABELS "client-core;fast"
 )
 
-add_test(NAME qsanguosha_client_interaction_matrix
-    COMMAND ${CMAKE_COMMAND}
-        -DMATRIX_FILE=${QSAN_TEST_ROOT}/artifacts/client-core-interaction-matrix.json
-        -P ${CMAKE_CURRENT_SOURCE_DIR}/client_core/verify-interaction-matrix.cmake
+add_executable(qsanguosha_interaction_reply_adapter_tests
+    client_core/interaction-reply-adapter-test.cpp
+    ${QSAN_TEST_ROOT}/src/client/legacy-v1-interaction-reply-adapter.cpp
+    ${QSAN_TEST_ROOT}/src/client/interaction-reply-coordinator.cpp
 )
-set_tests_properties(qsanguosha_client_interaction_matrix PROPERTIES
-    LABELS "client-core;inventory;fast"
+target_include_directories(qsanguosha_interaction_reply_adapter_tests PRIVATE
+    ${QSAN_TEST_ROOT}/src/client
+    ${QSAN_TEST_ROOT}/src/core
 )
+target_link_libraries(qsanguosha_interaction_reply_adapter_tests PRIVATE
+    qsanguosha_client_core
+    Qt6::Core
+)
+qsan_add_ctest(qsanguosha_interaction_reply_adapter_contract
+    qsanguosha_interaction_reply_adapter_tests
+    LABELS "client-core;protocol;fast"
+)
+
+if(TARGET QSanguosha)
+    add_test(NAME qsanguosha_client_interaction_matrix
+        COMMAND ${CMAKE_COMMAND}
+            -DMATRIX_FILE=${QSAN_TEST_ROOT}/artifacts/client-core-interaction-matrix.json
+            -DGENERATOR_EXE=$<TARGET_FILE:QSanguosha>
+            -DGENERATED_FILE=${CMAKE_CURRENT_BINARY_DIR}/generated-client-core-interaction-matrix.json
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/client_core/verify-interaction-matrix.cmake
+    )
+    set_tests_properties(qsanguosha_client_interaction_matrix PROPERTIES
+        LABELS "client-core;inventory;fast"
+        ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
+    )
+endif()
 
 add_test(NAME qsanguosha_network_ui_smoke_cli_contract
     COMMAND ${Python3_EXECUTABLE}
