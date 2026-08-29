@@ -2,6 +2,7 @@
 
 - 狀態：Protocol V1 codec boundary 完成
 - 預設 codec：`QSanProtocol::ProtocolV1Codec`
+- canonical codec input/output：`QSanProtocol::ProtocolMessage`
 - 相容 facade：`QSanProtocol::Packet`
 - wire／replay 版本：維持既有 Protocol V1，沒有版本提升
 
@@ -25,9 +26,10 @@ Protocol V1 使用 newline-delimited JSON。每一行是一個 JSON packet；cod
 | 3 | `command` | `CommandType` 的原始數值；本邊界不重新編號 |
 | 4 | `optionalBody` | legacy `QVariant`／JSON representation；`QVariant::isNull()` 時不輸出第五欄 |
 
-四欄與五欄 envelope 都是合法 V1。為保持完整 compatibility，重用同一個
-`Packet` 解析四欄 envelope 時，仍保留該物件先前的 `messageBody`；新程式不應
-依賴此 legacy 行為，Protocol V2 設計亦不應沿用。
+四欄與五欄 envelope 都是合法 V1。`ProtocolMessage::hasPayload` 會區分四欄的
+payload absent 與五欄的 explicit null。為保持完整 compatibility，重用同一個
+`Packet` 解析四欄 envelope 時，仍由 facade 保留該物件先前的 `messageBody`；
+`ProtocolV1Codec` 本身沒有這項 V1-only lifecycle 行為。
 
 ## Packet-description bits
 
@@ -54,9 +56,14 @@ V1 decoder 只要求 header 可依現有 `JsonUtils::isNumberArray()` 規則轉�
 
 ## Encoding and decoding
 
-`Packet::parse()`、`Packet::toJson()` 與 `Packet::toString()` 是現有 public API，
-實作統一委派給無狀態 (stateless) `ProtocolV1Codec`。合法 packet 的 compact JSON
-bytes、欄位順序與 `QVariant` body 表示不變。
+`IProtocolCodec` 與無狀態 (stateless) `ProtocolV1Codec` 只接受
+`ProtocolMessage`，不依賴 `Packet`。`Packet::parse()`、`Packet::toJson()` 與
+`Packet::toString()` 是現有 public API，經唯一的 V1 adapter 委派給 codec。
+合法 packet 的 compact JSON bytes、欄位順序與 `QVariant` body 表示不變。
+
+```text
+Packet facade <-> V1 message adapter <-> ProtocolMessage <-> ProtocolV1Codec
+```
 
 最大 packet 大小為 65535 bytes：
 
@@ -66,7 +73,7 @@ bytes、欄位順序與 `QVariant` body 表示不變。
 
 | `ProtocolDecodeError` | 條件 |
 |---|---|
-| `NullOutput` | output `Packet *` 為 null |
+| `NullOutput` | output `ProtocolMessage *` 為 null |
 | `EmptyInput` | input 為空 |
 | `PacketTooLarge` | input 超過 65535 bytes |
 | `InvalidJson` | JSON parser 拒絕 input |
@@ -86,20 +93,23 @@ bytes、欄位順序與 `QVariant` body 表示不變。
 ## Validation
 
 `qsanguosha_protocol_v1_contract` 以 hard-coded golden bytes 覆蓋 request、reply、
-notification、serial、description bits、command ID、Unicode、nested body、四／五欄
-decode、round trip、malformed input、大小限制、facade delegation 與 diagnostic result。
+notification、serial、description bits、command ID、null／bool／正負整數／double、
+Unicode、nested body、四／五欄 decode、round trip、malformed input、大小邊界、
+facade delegation、adapter mapping 與 diagnostic result。
 
 ## Versioning boundary
 
 | 項目 | 狀態 |
 |---|---|
 | Protocol V1 codec boundary | Complete |
+| Codec-neutral `ProtocolMessage` boundary | Complete |
 | Protocol V2 codec／payload | Not Started |
 | Capability negotiation／handshake | Complete；preferred 可為 V2，active 固定 V1 |
 | Runtime codec switching | Not Started |
 | Replay version bump／migration | Not Started |
 
 Capability wire、fallback 與 per-connection state contract 見
-[`protocol-capability-negotiation.md`](protocol-capability-negotiation.md)。未來
-Protocol V2 不應依賴隱含 `QVariant` schema；下一個 slice 必須先提供實際 codec 與
-switch contract，才能改變 active version 或 gameplay wire。
+[`protocol-capability-negotiation.md`](protocol-capability-negotiation.md)。
+`ProtocolMessage::payload` 只是 C++ 過渡 bridge；V2 codec 必須另行定義允許的
+JSON-domain 型別、正式 schema 與 golden bytes，才能改變 active version 或
+gameplay wire。

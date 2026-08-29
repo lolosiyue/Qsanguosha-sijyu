@@ -1,7 +1,9 @@
 #include "protocol-v1-codec.h"
 
 #include "json.h"
-#include "protocol.h"
+#include "protocol-v1-message-adapter.h"
+
+#include <limits>
 
 using namespace QSanProtocol;
 
@@ -21,33 +23,46 @@ ProtocolVersion ProtocolV1Codec::version() const
     return ProtocolVersion::V1;
 }
 
-QByteArray ProtocolV1Codec::encode(const Packet &packet, QString *error) const
+QByteArray ProtocolV1Codec::encode(const ProtocolMessage &message, QString *error) const
 {
     if (error != nullptr)
         error->clear();
 
-    JsonArray result;
-    result << packet.globalSerial;
-    result << packet.localSerial;
-    result << packet.getPacketDescription();
-    result << packet.getCommandType();
-    if (!packet.getMessageBody().isNull())
-        result << packet.getMessageBody();
+    if (message.version != ProtocolVersion::V1) {
+        if (error != nullptr)
+            *error = QStringLiteral("Protocol V1 codec cannot encode another version");
+        return QByteArray();
+    }
+    if (message.messageId > std::numeric_limits<unsigned int>::max()
+        || message.replyTo > std::numeric_limits<unsigned int>::max()) {
+        if (error != nullptr)
+            *error = QStringLiteral("Protocol V1 serial exceeds the 32-bit range");
+        return QByteArray();
+    }
 
-    const QByteArray message = JsonDocument(result).toJson();
-    if (message.length() > MaxPacketSize) {
+    JsonArray result;
+    result << static_cast<unsigned int>(message.messageId);
+    result << static_cast<unsigned int>(message.replyTo);
+    result << protocolV1Description(message);
+    result << message.command;
+    if (message.hasPayload)
+        result << message.payload;
+
+    const QByteArray encoded = JsonDocument(result).toJson();
+    if (encoded.length() > MaxPacketSize) {
         if (error != nullptr)
             *error = QStringLiteral("Protocol V1 packet exceeds 65535 bytes");
         return QByteArray();
     }
-    return message;
+    return encoded;
 }
 
-ProtocolDecodeResult ProtocolV1Codec::decode(QByteArrayView raw, Packet *packet) const
+ProtocolDecodeResult ProtocolV1Codec::decode(
+    QByteArrayView raw, ProtocolMessage *message) const
 {
-    if (packet == nullptr)
+    if (message == nullptr)
         return decodeFailure(ProtocolDecodeError::NullOutput,
-                             QStringLiteral("Protocol V1 output packet is null"));
+                             QStringLiteral("Protocol V1 output message is null"));
     if (raw.isEmpty())
         return decodeFailure(ProtocolDecodeError::EmptyInput,
                              QStringLiteral("Protocol V1 input is empty"));
@@ -71,15 +86,16 @@ ProtocolDecodeResult ProtocolV1Codec::decode(QByteArrayView raw, Packet *packet)
         return decodeFailure(ProtocolDecodeError::InvalidHeader,
                              QStringLiteral("Protocol V1 header fields must be numeric"));
 
-    Packet decoded(static_cast<PacketDescription>(values[2].toInt()),
-                   static_cast<CommandType>(values[3].toInt()));
-    decoded.globalSerial = values[0].toUInt();
-    decoded.localSerial = values[1].toUInt();
-    if (values.size() == 5)
-        decoded.setMessageBody(values[4]);
-    else
-        decoded.setMessageBody(packet->getMessageBody());
-    *packet = decoded;
+    ProtocolMessage decoded;
+    decoded.version = ProtocolVersion::V1;
+    decoded.messageId = values[0].toUInt();
+    decoded.replyTo = values[1].toUInt();
+    applyProtocolV1Description(values[2].toInt(), decoded);
+    decoded.command = values[3].toInt();
+    decoded.hasPayload = values.size() == 5;
+    if (decoded.hasPayload)
+        decoded.payload = values[4];
+    *message = decoded;
 
     ProtocolDecodeResult result;
     result.success = true;
