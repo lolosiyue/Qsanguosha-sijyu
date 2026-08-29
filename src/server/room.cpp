@@ -12,6 +12,7 @@
 #include "player-lifecycle-service.h"
 #include "skill-runtime-coordinator.h"
 #include "protocol/card-provenance-message.h"
+#include "protocol/protocol-v1-message-adapter.h"
 #include "protocol/skill-instance-message.h"
 #include "protocol/state/player-ui-state.h"
 #include "protocol/switch-context-message.h"
@@ -2318,21 +2319,23 @@ void Room::processRequestSurrender(ServerPlayer*player, const QVariant&)
 	return;
 }
 
-void Room::processClientPacket(const QString&request)
+void Room::processClientPacket(
+	const QString &request, const ProtocolMessage &message)
 {
+	ProtocolMessage legacy = message;
+	legacy.version = ProtocolVersion::V1;
 	Packet packet;
-	if (packet.parse(request.toLatin1())){
-		ServerPlayer*player = qobject_cast<ServerPlayer*>(sender());
+	applyProtocolMessageToV1Packet(legacy, packet);
+	ServerPlayer*player = qobject_cast<ServerPlayer*>(sender());
 #ifdef LOGNETWORK
-		emit Sanguosha->logNetworkMessage("recv "+player->objectName()+":"+request);
+	emit Sanguosha->logNetworkMessage("recv "+player->objectName()+":"+request);
 #endif // LOGNETWORK
-		if (game_state<0){
-			if (player&&player->isOnline())
-				doNotify(player, S_COMMAND_WARN, QString("GAME_OVER"));
-			return;
-		}
-		m_requests->processClientPacket(player, packet, request);
+	if (game_state<0){
+		if (player&&player->isOnline())
+			doNotify(player, S_COMMAND_WARN, QString("GAME_OVER"));
+		return;
 	}
+	m_requests->processClientPacket(player, packet, message, request);
 }
 
 void Room::addRobotCommand(ServerPlayer*player, const QVariant&arg)

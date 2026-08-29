@@ -111,7 +111,7 @@ ProtocolNegotiationResult ProtocolNegotiation::negotiate(
     if (local.supports(ProtocolVersion::V2) && peer.supports(ProtocolVersion::V2)) {
         result.preferredVersion = ProtocolVersion::V2;
         result.reason = QStringLiteral(
-            "Protocol V2 is mutually advertised; Protocol V1 remains active until a V2 codec is available");
+            "Protocol V2 is mutually advertised; Protocol V1 remains active until the explicit activation barrier completes");
     } else if (local.supports(ProtocolVersion::V1) && peer.supports(ProtocolVersion::V1)) {
         result.reason = QStringLiteral("Protocol V1 compatibility fallback");
     } else {
@@ -119,7 +119,8 @@ ProtocolNegotiationResult ProtocolNegotiation::negotiate(
             "No common advertised version; Protocol V1 compatibility fallback");
     }
 
-    // This slice negotiates preference only. Production framing and codec remain V1.
+    // Capability negotiation chooses a preference only. Runtime activation owns
+    // the later V1-to-V2 switch boundary.
     result.activeVersion = ProtocolVersion::V1;
     return result;
 }
@@ -263,6 +264,18 @@ QString ProtocolSessionState::diagnostic() const
     return m_diagnostic;
 }
 
+ProtocolActivationState ProtocolSessionState::activationState() const
+{
+    return m_activationState;
+}
+
+bool ProtocolSessionState::switchInProgress() const
+{
+    return m_activationState == ProtocolActivationState::OfferSent
+        || m_activationState == ProtocolActivationState::AwaitingCommit
+        || m_activationState == ProtocolActivationState::AckReceived;
+}
+
 void ProtocolSessionState::setPeerCapabilities(
     const ProtocolCapabilities &capabilities, const QString &diagnostic)
 {
@@ -272,4 +285,117 @@ void ProtocolSessionState::setPeerCapabilities(
     m_diagnostic = diagnostic;
     m_negotiation = ProtocolNegotiation::negotiate(m_localCapabilities,
                                                    m_peerCapabilities);
+    m_activationState = ProtocolActivationState::V1Active;
+    m_switchId.clear();
+    m_nextSwitchId = 1;
+}
+
+bool ProtocolSessionState::beginServerSwitch(QVariantMap *offer, QString *error)
+{
+    if (error != nullptr)
+        error->clear();
+    if (offer == nullptr) {
+        if (error != nullptr)
+            *error = QStringLiteral("Protocol switch offer output is null");
+        return false;
+    }
+    if (m_negotiation.preferredVersion != ProtocolVersion::V2
+        || m_negotiation.activeVersion != ProtocolVersion::V1
+        || m_activationState != ProtocolActivationState::V1Active) {
+        if (error != nullptr)
+            *error = QStringLiteral("Protocol V2 offer is invalid in the current state");
+        return false;
+    }
+
+    m_switchId = QString::number(m_nextSwitchId++);
+    ProtocolSwitchPayload payload;
+    payload.phase = QStringLiteral("offer");
+    payload.switchId = m_switchId;
+    *offer = payload.toVariant();
+    m_activationState = ProtocolActivationState::OfferSent;
+    return true;
+}
+
+bool ProtocolSessionState::acceptClientOffer(
+    const QVariant &value, QVariantMap *ack, QString *error)
+{
+    if (error != nullptr)
+        error->clear();
+    ProtocolSwitchPayload payload;
+    if (ack == nullptr
+        || m_negotiation.preferredVersion != ProtocolVersion::V2
+        || m_negotiation.activeVersion != ProtocolVersion::V1
+        || m_activationState != ProtocolActivationState::V1Active
+        || !ProtocolSwitchPayload::parse(value, QStringLiteral("offer"), &payload, error)) {
+        if (error != nullptr && error->isEmpty())
+            *error = QStringLiteral("Protocol V2 offer is invalid in the current state");
+        return false;
+    }
+
+    m_switchId = payload.switchId;
+    ProtocolSwitchPayload response;
+    response.phase = QStringLiteral("ack");
+    response.switchId = m_switchId;
+    *ack = response.toVariant();
+    m_activationState = ProtocolActivationState::AwaitingCommit;
+    return true;
+}
+
+bool ProtocolSessionState::acceptServerAck(
+    const QVariant &value, QVariantMap *commit, QString *error)
+{
+    if (error != nullptr)
+        error->clear();
+    ProtocolSwitchPayload payload;
+    if (commit == nullptr || m_activationState != ProtocolActivationState::OfferSent
+        || !ProtocolSwitchPayload::parse(value, QStringLiteral("ack"), &payload, error)
+        || payload.switchId != m_switchId) {
+        if (error != nullptr && error->isEmpty())
+            *error = QStringLiteral("Protocol V2 ack is invalid in the current state");
+        return false;
+    }
+
+    ProtocolSwitchPayload response;
+    response.phase = QStringLiteral("commit");
+    response.switchId = m_switchId;
+    *commit = response.toVariant();
+    m_activationState = ProtocolActivationState::AckReceived;
+    return true;
+}
+
+bool ProtocolSessionState::activateServerAfterCommit(QString *error)
+{
+    if (error != nullptr)
+        error->clear();
+    if (m_activationState != ProtocolActivationState::AckReceived) {
+        if (error != nullptr)
+            *error = QStringLiteral("Protocol V2 cannot activate before COMMIT is queued");
+        return false;
+    }
+    m_negotiation.activeVersion = ProtocolVersion::V2;
+    m_activationState = ProtocolActivationState::V2Active;
+    return true;
+}
+
+bool ProtocolSessionState::acceptClientCommit(const QVariant &value, QString *error)
+{
+    if (error != nullptr)
+        error->clear();
+    ProtocolSwitchPayload payload;
+    if (m_activationState != ProtocolActivationState::AwaitingCommit
+        || !ProtocolSwitchPayload::parse(value, QStringLiteral("commit"), &payload, error)
+        || payload.switchId != m_switchId) {
+        if (error != nullptr && error->isEmpty())
+            *error = QStringLiteral("Protocol V2 commit is invalid in the current state");
+        return false;
+    }
+    m_negotiation.activeVersion = ProtocolVersion::V2;
+    m_activationState = ProtocolActivationState::V2Active;
+    return true;
+}
+
+void ProtocolSessionState::failActivation(const QString &diagnostic)
+{
+    m_diagnostic = diagnostic;
+    m_activationState = ProtocolActivationState::Failed;
 }
