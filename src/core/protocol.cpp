@@ -1,5 +1,6 @@
 #include "protocol.h"
 #include "json.h"
+#include "protocol/protocol-v1-message-adapter.h"
 #include "protocol/protocol-v1-codec.h"
 
 using namespace std;
@@ -67,13 +68,18 @@ unsigned int QSanProtocol::Packet::createGlobalSerial()
 bool QSanProtocol::Packet::parse(const QByteArray &raw)
 {
     const ProtocolV1Codec codec;
-    return codec.decode(QByteArrayView(raw), this).success;
+    ProtocolMessage message;
+    const ProtocolDecodeResult result = codec.decode(QByteArrayView(raw), &message);
+    if (!result.success)
+        return false;
+    applyProtocolMessageToV1Packet(message, *this);
+    return true;
 }
 
 QByteArray QSanProtocol::Packet::toJson() const
 {
     const ProtocolV1Codec codec;
-    return codec.encode(*this);
+    return codec.encode(protocolMessageFromV1Packet(*this));
 }
 
 QString QSanProtocol::Packet::toString() const

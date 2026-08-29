@@ -202,11 +202,15 @@ add_library(qsanguosha_engine STATIC
     src/core/protocol/protocol-codec.h
     src/core/protocol/card-provenance-message.cpp
     src/core/protocol/card-provenance-message.h
+    src/core/protocol/protocol-message.cpp
+    src/core/protocol/protocol-message.h
     src/core/protocol/protocol-message-utils.h
     src/core/protocol/protocol-negotiation.cpp
     src/core/protocol/protocol-negotiation.h
     src/core/protocol/protocol-v1-codec.cpp
     src/core/protocol/protocol-v1-codec.h
+    src/core/protocol/protocol-v1-message-adapter.cpp
+    src/core/protocol/protocol-v1-message-adapter.h
     src/core/protocol/protocol-version.h
     src/core/protocol/skill-instance-message.cpp
     src/core/protocol/skill-instance-message.h
