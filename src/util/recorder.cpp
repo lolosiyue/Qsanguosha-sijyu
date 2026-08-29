@@ -91,24 +91,15 @@ Replayer::Replayer(QObject *parent, const QString &filename)
     if (!device->open(QIODevice::ReadOnly | QIODevice::Text))
         return;
 
-    typedef char buffer_t[16000];
-
     while (!device->atEnd()) {
-        buffer_t line;
-        memset(line, 0, sizeof(buffer_t));
-        device->readLine(line, sizeof(buffer_t));
-
-        char *space = strchr(line, ' ');
-        if (space == nullptr)
+        const QByteArray line = device->readLine();
+        const qsizetype space = line.indexOf(' ');
+        if (space < 0)
             continue;
 
-        *space = '\0';
-        QString cmd = space + 1;
-        int elapsed = atoi(line);
-
         Pair pair;
-        pair.elapsed = elapsed;
-        pair.cmd = cmd;
+        pair.elapsed = line.left(space).toInt();
+        pair.cmd = QString::fromUtf8(line.mid(space + 1));
 
         pairs << pair;
     }

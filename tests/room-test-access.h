@@ -14,6 +14,7 @@
 #include "skill-instance-types.h"
 
 #include "protocol.h"
+#include "protocol/protocol-v1-message-adapter.h"
 
 struct RoomTestAccess
 {
@@ -111,7 +112,9 @@ struct RoomTestAccess
     static void dispatch(Room &room, ServerPlayer *player,
                          const QSanProtocol::Packet &packet)
     {
-        room.m_requests->processClientPacket(player, packet, packet.toString());
+        room.m_requests->processClientPacket(
+            player, packet, QSanProtocol::protocolMessageFromV1Packet(packet),
+            packet.toString());
     }
 
     static bool isPaused(const Room &room)

@@ -5,6 +5,8 @@
 #include <QtNetwork>
 
 #include "game-session-config.h"
+#include "protocol/protocol-negotiation.h"
+#include "protocol/protocol-runtime.h"
 #include "server-status.h"
 
 class Room;
@@ -49,10 +51,20 @@ public:
     void startTestGame(const QString &scenarioFile, bool headless);
 
 private:
+    struct PendingSignup
+    {
+        bool reconnectionEnabled = false;
+        QString screenName;
+        QString avatar;
+        QSanProtocol::ProtocolSessionState protocolSession;
+    };
+
     GameSessionConfig gameSessionConfig(quint64 sessionIndex) const;
     void scheduleDisposeRoom(Room *room);
     void waitForDisposingRooms();
     bool disposingRoomStillRunning() const;
+    void finalizeSignup(ClientSocket *socket, const PendingSignup &signup);
+    void failPendingSignup(ClientSocket *socket, const QString &detail);
 
     ServerSocket *server;
     Room *current;
@@ -66,6 +78,8 @@ private:
     quint64 m_nextGameSeedIndex;
     QElapsedTimer m_uptimeTimer;
     QHash<Room *, qint64> m_roomCreatedAtMs;
+    QHash<ClientSocket *, PendingSignup> m_pendingSignups;
+    QSanProtocol::ProtocolCodecRouter m_protocolRouter;
 
     static bool s_hasGameSeed;
     static quint64 s_gameSeedBase;
@@ -78,7 +92,8 @@ private:
 
 private slots:
     void processNewConnection(ClientSocket *socket);
-    void processRequest(const char *request);
+    void processRequest(const QByteArray &request);
+    void processProtocolSwitch(const QByteArray &request);
     void cleanup();
     void gameOver();
 

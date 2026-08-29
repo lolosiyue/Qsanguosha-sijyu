@@ -20,6 +20,7 @@
 #include "wrapped-card.h"
 #include "skill-instance-utils.h"
 #include "protocol/card-provenance-message.h"
+#include "protocol/protocol-v1-message-adapter.h"
 #include "protocol/skill-instance-message.h"
 #include "protocol/state/player-ui-state.h"
 #include "protocol/switch-context-message.h"
@@ -66,7 +67,9 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 	status(NotActive), alive_count(1), swap_pile(0), add_round(0), _m_roomState(true),
 	m_client_lua(nullptr), m_original_self(nullptr), m_takeoverManager(nullptr),
 	m_replaySawCardProvenance(false), m_replayWarnedLegacyProvenance(false),
-	m_interactionCore(nullptr), m_desktopInteractionView(nullptr)
+	m_interactionCore(nullptr), m_desktopInteractionView(nullptr),
+	_m_lastServerSerial(0), m_lastServerMessageId(0),
+	m_protocolActivationPending(false), m_deferredServerConnected(false)
 {
 	ClientInstance = this;
 	m_isGameOver = false;
@@ -216,8 +219,7 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 
 		replayer = nullptr;
 
-		connect(socket, SIGNAL(message_got(const char *)), recorder, SLOT(record(const char *)));
-		connect(socket, SIGNAL(message_got(const char *)), this, SLOT(processServerPacket(const char *)));
+		connect(socket, SIGNAL(message_got(QByteArray)), this, SLOT(processServerPacket(QByteArray)));
 		connect(socket, SIGNAL(error_message(QString)), this, SIGNAL(error_message(QString)));
 		connect(socket, SIGNAL(connected()), this, SIGNAL(socket_connected()));
 		connect(socket, SIGNAL(disconnected()), this, SIGNAL(socket_disconnected()));
@@ -354,6 +356,14 @@ void Client::signup()
 			m_original_self = Self;
 
 		notifyServer(S_COMMAND_SIGNUP, arg);
+		m_protocolActivationPending =
+			m_protocolSessionState.preferredVersion() == ProtocolVersion::V2;
+		if (m_protocolActivationPending) {
+			QTimer::singleShot(5500, this, [this]() {
+				if (m_protocolActivationPending)
+					failProtocol(QStringLiteral("Protocol V2 switch timed out awaiting OFFER/COMMIT"));
+			});
+		}
 	}
 }
 
@@ -366,9 +376,11 @@ void Client::replyToServer(CommandType command, const QVariant &arg)
 {
 	if (socket) {
 		Packet packet(S_SRC_CLIENT | S_TYPE_REPLY | S_DEST_ROOM, command);
-		packet.localSerial = _m_lastServerSerial;
 		packet.setMessageBody(arg);
-		socket->send(packet.toJson());
+		ProtocolMessage message = protocolMessageFromV1Packet(packet);
+		message.replyTo = activeProtocolVersion() == ProtocolVersion::V2
+			? m_lastServerMessageId : _m_lastServerSerial;
+		sendProtocolMessage(message);
 	}
 	emit server_reply(static_cast<int>(command));
 }
@@ -386,7 +398,7 @@ void Client::requestServer(CommandType command, const QVariant &arg)
 	if (socket) {
 		Packet packet(S_SRC_CLIENT | S_TYPE_REQUEST | S_DEST_ROOM, command);
 		packet.setMessageBody(arg);
-		socket->send(packet.toJson());
+		sendProtocolMessage(protocolMessageFromV1Packet(packet));
 	}
 }
 
@@ -395,7 +407,41 @@ void Client::notifyServer(CommandType command, const QVariant &arg)
 	if (socket) {
 		Packet packet(S_SRC_CLIENT | S_TYPE_NOTIFICATION | S_DEST_ROOM, command);
 		packet.setMessageBody(arg);
-		socket->send(packet.toJson());
+		sendProtocolMessage(protocolMessageFromV1Packet(packet));
+	}
+}
+
+void Client::sendProtocolMessage(ProtocolMessage message)
+{
+	if (socket == nullptr)
+		return;
+	if (m_protocolActivationPending
+		&& message.command != S_COMMAND_SIGNUP
+		&& message.command != S_COMMAND_PROTOCOL_SWITCH) {
+		m_deferredProtocolMessages.append(message);
+		return;
+	}
+	const ProtocolVersion active = m_protocolSessionState.activeVersion();
+	if (active == ProtocolVersion::V2 && message.messageId == 0)
+		message.messageId = m_protocolMessageIds.next();
+
+	QString error;
+	const QByteArray encoded = m_protocolRouter.encode(active, message, &error);
+	if (encoded.isEmpty()) {
+		failProtocol(QStringLiteral("Protocol encode failed: %1").arg(error));
+		return;
+	}
+	socket->send(encoded);
+}
+
+void Client::flushDeferredProtocolMessages()
+{
+	const QList<ProtocolMessage> pending = m_deferredProtocolMessages;
+	m_deferredProtocolMessages.clear();
+	for (const ProtocolMessage &message : pending) {
+		if (m_protocolSessionState.activationState() != ProtocolActivationState::V2Active)
+			break;
+		sendProtocolMessage(message);
 	}
 }
 
@@ -430,7 +476,10 @@ void Client::setup(const QVariant &setup_json)
 	QString setup_str = setup_json.toString();
 
 	if (ServerInfo.parse(setup_str)) {
-		emit server_connected();
+		if (m_protocolActivationPending)
+			m_deferredServerConnected = true;
+		else
+			emit server_connected();
 		notifyServer(S_COMMAND_TOGGLE_READY);
 	} else {
 		QMessageBox::warning(nullptr, tr("Warning"), tr("Setup string can not be parsed: %1").arg(setup_str));
@@ -451,24 +500,134 @@ void Client::disconnectFromHost()
 
 void Client::processServerPacket(const QString &cmd)
 {
-	processServerPacket(cmd.toLatin1().data());
+	ProtocolMessage message;
+	const ProtocolDecodeResult result = m_protocolRouter.decode(
+		ProtocolVersion::V1, cmd.toUtf8(), &message);
+	if (result.success)
+		dispatchProtocolMessage(message, true);
 }
 
-void Client::processServerPacket(const char *cmd)
+void Client::processServerPacket(const QByteArray &cmd)
 {
-	if (m_isGameOver) return;
-	Packet packet;
-	if (packet.parse(cmd)) {
-		if (packet.getPacketType() == S_TYPE_NOTIFICATION) {
-			Callback callback = m_callbacks[packet.getCommandType()];
-			if (callback) {
-				(this->*callback)(packet.getMessageBody());
-			}
-		} else if (packet.getPacketType() == S_TYPE_REQUEST) {
-			if (!replayer)
-				processServerRequest(packet);
-		}
+	if (m_isGameOver)
+		return;
+
+	ProtocolMessage message;
+	const ProtocolDecodeResult result = m_protocolRouter.decode(
+		m_protocolSessionState.activeVersion(), cmd, &message);
+	if (!result.success) {
+		failProtocol(QStringLiteral("Protocol decode failed: %1").arg(result.detail));
+		return;
 	}
+	if (m_protocolSessionState.switchInProgress()
+		&& message.command != S_COMMAND_PROTOCOL_SWITCH) {
+		failProtocol(QStringLiteral("Gameplay traffic arrived during protocol switch"));
+		return;
+	}
+	if (m_protocolActivationPending
+		&& !m_protocolSessionState.switchInProgress()
+		&& message.command != S_COMMAND_PROTOCOL_SWITCH
+		&& message.command != S_COMMAND_CHECK_VERSION
+		&& message.command != S_COMMAND_SETUP) {
+		failProtocol(QStringLiteral("Application traffic arrived before protocol switch OFFER"));
+		return;
+	}
+
+	if (recorder != nullptr && message.command != S_COMMAND_PROTOCOL_SWITCH) {
+		QString replayError;
+		const QByteArray replayLine = m_protocolRouter.encodeReplayV1(message, &replayError);
+		if (replayLine.isEmpty()) {
+			failProtocol(QStringLiteral("Replay normalization failed: %1").arg(replayError));
+			return;
+		}
+		recorder->recordLine(QString::fromUtf8(replayLine));
+	}
+	dispatchProtocolMessage(message, false);
+}
+
+bool Client::dispatchProtocolMessage(const ProtocolMessage &message, bool replayInput)
+{
+	if (message.command == S_COMMAND_PROTOCOL_SWITCH)
+		return !replayInput && handleProtocolSwitch(message);
+
+	ProtocolMessage legacy = message;
+	legacy.version = ProtocolVersion::V1;
+	Packet packet;
+	applyProtocolMessageToV1Packet(legacy, packet);
+	if (message.type == ProtocolMessageType::Notification) {
+		Callback callback = m_callbacks.value(static_cast<CommandType>(message.command), nullptr);
+		if (callback)
+			(this->*callback)(message.payload);
+		return true;
+	}
+	if (message.type == ProtocolMessageType::Request && !replayInput) {
+		m_lastServerMessageId = message.messageId;
+		_m_lastServerSerial = static_cast<unsigned int>(message.messageId);
+		return processServerRequest(packet);
+	}
+	return replayInput && message.type == ProtocolMessageType::Request;
+}
+
+bool Client::handleProtocolSwitch(const ProtocolMessage &message)
+{
+	if (message.version != ProtocolVersion::V1
+		|| message.type != ProtocolMessageType::Notification
+		|| message.source != ProtocolEndpoint::Room
+		|| message.destination != ProtocolEndpoint::Client
+		|| !message.hasPayload) {
+		failProtocol(QStringLiteral("Invalid Protocol V2 switch control envelope"));
+		return false;
+	}
+
+	QString error;
+	QVariantMap ack;
+	if (m_protocolSessionState.activationState() == ProtocolActivationState::V1Active) {
+		if (!m_protocolActivationPending) {
+			failProtocol(QStringLiteral("Protocol V2 OFFER arrived before signup"));
+			return false;
+		}
+		if (!m_protocolSessionState.acceptClientOffer(message.payload, &ack, &error)) {
+			failProtocol(error);
+			return false;
+		}
+		Packet packet(S_SRC_CLIENT | S_TYPE_NOTIFICATION | S_DEST_ROOM,
+			S_COMMAND_PROTOCOL_SWITCH);
+		packet.setMessageBody(ack);
+		// ACK is deliberately encoded before the active codec can change.
+		sendProtocolMessage(protocolMessageFromV1Packet(packet));
+		QTimer::singleShot(5000, this, [this]() {
+			if (m_protocolSessionState.activationState()
+				== ProtocolActivationState::AwaitingCommit) {
+				failProtocol(QStringLiteral("Protocol V2 switch timed out awaiting COMMIT"));
+			}
+		});
+		return true;
+	}
+
+	if (!m_protocolSessionState.acceptClientCommit(message.payload, &error)) {
+		failProtocol(error);
+		return false;
+	}
+	m_protocolActivationPending = false;
+	qInfo().noquote() << "Protocol switch active: V2";
+	if (m_deferredServerConnected) {
+		m_deferredServerConnected = false;
+		emit server_connected();
+	}
+	flushDeferredProtocolMessages();
+	return true;
+}
+
+void Client::failProtocol(const QString &detail)
+{
+	m_protocolActivationPending = false;
+	m_deferredServerConnected = false;
+	m_deferredProtocolMessages.clear();
+	m_protocolSessionState.failActivation(detail);
+	qWarning().noquote() << detail;
+	emit error_message(detail);
+	if (socket != nullptr && socket->isConnected())
+		socket->disconnectFromHost();
 }
 
 bool Client::processServerRequest(const Packet &packet)
