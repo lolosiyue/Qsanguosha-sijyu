@@ -345,8 +345,6 @@ namespace QSanProtocol {
         PacketDescription packetDescription;
         QVariant messageBody;
 
-        //helper functions
-        static const int S_MAX_PACKET_SIZE;
     };
 }
 
