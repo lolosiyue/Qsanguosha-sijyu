@@ -7,6 +7,7 @@ set(QSAN_ENGINE_TEST_INCLUDES
     ${QSAN_TEST_ROOT}/include
     ${QSAN_TEST_ROOT}/include/freetype
     ${QSAN_TEST_ROOT}/src/client
+    ${QSAN_TEST_ROOT}/src/client/core
     ${QSAN_TEST_ROOT}/src/core
     ${QSAN_TEST_ROOT}/src/lua
     ${QSAN_TEST_ROOT}/src/package
@@ -223,6 +224,21 @@ if(WIN32)
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>"
     )
 endif()
+
+# Client Architecture F1:ClientCore 契約。只 link Qt6::Core 同
+# qsanguosha_client_core —— 呢個 test 一旦要拉 GUI 先 link 得到,就代表
+# ClientCore 已經漏咗 GUI 依賴入去,所以佢本身就係「ClientCore 唔依賴 GUI」
+# 呢條完成標準嘅 gate。server-only configure 一樣跑得。
+add_executable(qsanguosha_client_core_tests
+    client_core/client-core-test.cpp
+)
+target_link_libraries(qsanguosha_client_core_tests PRIVATE
+    qsanguosha_client_core
+    Qt6::Core
+)
+qsan_add_ctest(qsanguosha_client_core_contract qsanguosha_client_core_tests
+    LABELS "client-core;fast"
+)
 
 add_test(NAME qsanguosha_network_ui_smoke_cli_contract
     COMMAND ${Python3_EXECUTABLE}

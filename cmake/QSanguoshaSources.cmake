@@ -4,6 +4,7 @@ set(QSAN_SOURCES
     src/client/client.cpp
     src/client/clientplayer.cpp
     src/client/clientstruct.cpp
+    src/client/desktop-interaction-view.cpp
     src/core/json-gui.cpp
     src/core/oracle_helper.cpp
     src/core/record-analysis.cpp
