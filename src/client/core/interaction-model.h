@@ -21,17 +21,43 @@
 #include <QStringList>
 #include <QVariantMap>
 
+#include <variant>
+
 // F1 第一個垂直切片遷移嘅五類 interaction。其餘（guanxing、gongxin、yiji、
 // AG、pindian、trigger order、nullification……）仍然行舊路,見
 // docs/client-core-interaction-model.md 嘅 remaining 清單。
 enum class InteractionType
 {
     None = 0,
-    ChooseGeneral,  // S_COMMAND_CHOOSE_GENERAL
-    Choice,         // S_COMMAND_MULTIPLE_CHOICE
-    ChoosePlayer,   // S_COMMAND_CHOOSE_PLAYER
-    SkillInvoke,    // S_COMMAND_INVOKE_SKILL
-    ResponseCard    // S_COMMAND_RESPONSE_CARD
+    ChooseRole,
+    ChooseGeneral,
+    ChooseDirection,
+    ExchangeCard,
+    AskPeach,
+    SkillGuanxing,
+    SkillGongxin,
+    SkillYiji,
+    PlayCard,
+    ResponseCard,
+    DiscardCard,
+    Choice,
+    ChooseSuit,
+    ChooseKingdom,
+    ChoosePlayer,
+    SkillInvoke,
+    TriggerOrder,
+    Nullification,
+    ShowCard,
+    AmazingGrace,
+    Pindian,
+    ChooseCard,
+    ChooseOrder,
+    ChooseRole3v3,
+    Surrender,
+    LuckCard,
+    AskGeneral,
+    ArrangeGeneral,
+    QmlInteract
 };
 
 // snapshot／log 用嘅穩定字串，唔會跟住 enum 次序漂移。
@@ -86,6 +112,124 @@ struct PlayerSelectionState
     QJsonObject toJson() const;
 };
 
+// QtCore-only request payloads. Commands with the same interaction shape may
+// share a payload type while InteractionType preserves protocol identity.
+struct OptionInteractionPayload
+{
+    QList<InteractionOption> options;
+    bool enumerated = true;
+};
+
+struct PlayerInteractionPayload
+{
+    PlayerSelectionState selection;
+};
+
+struct CardInteractionPayload
+{
+    CardSelectionState selection;
+    QString sourcePlayer;
+    QStringList fixedTargets;
+    QString zoneFlags;
+    bool handCardsVisible = false;
+    bool includeEquip = false;
+    // Provider-derived eligibility is a UI hint. Only selection.enumerated
+    // makes the server-provided selectableCards list authoritative.
+    QList<int> suggestedCards;
+};
+
+struct RoleAssignmentInteractionPayload
+{
+    QString scheme;
+    QStringList playerNames;
+    QStringList roles;
+};
+
+struct RearrangeCardsInteractionPayload
+{
+    QList<int> cardIds;
+    int minTop = 0;
+    int maxTop = 0;
+    int minBottom = 0;
+    int maxBottom = 0;
+    bool mirrored = false;
+};
+
+struct GongxinInteractionPayload
+{
+    QString targetPlayer;
+    QList<int> visibleCards;
+    QList<int> selectableCards;
+    bool enableHeart = false;
+};
+
+struct YijiInteractionPayload
+{
+    QList<int> cardIds;
+    QStringList targetPlayers;
+    int minCards = 0;
+    int maxCards = 0;
+};
+
+struct PindianInteractionPayload
+{
+    QString opponent;
+    CardSelectionState selection;
+    bool revealImmediately = false;
+};
+
+struct AmazingGraceInteractionPayload
+{
+    QList<int> cardIds;
+    QList<int> disabledCards;
+    QList<int> takenCards;
+};
+
+struct ArrangeGeneralsInteractionPayload
+{
+    QStringList generalNames;
+    QString arrangement;
+    int slotCount = 0;
+};
+
+struct CustomInteractionPayload
+{
+    int schemaVersion = 1;
+    QString typeName;
+    QString title;
+    QJsonObject payload;
+    QJsonObject responseSchema;
+    QString legacyQmlPath;
+    bool legacy = false;
+};
+
+using InteractionPayload = std::variant<std::monostate,
+    OptionInteractionPayload,
+    PlayerInteractionPayload,
+    CardInteractionPayload,
+    RoleAssignmentInteractionPayload,
+    RearrangeCardsInteractionPayload,
+    GongxinInteractionPayload,
+    YijiInteractionPayload,
+    PindianInteractionPayload,
+    AmazingGraceInteractionPayload,
+    ArrangeGeneralsInteractionPayload,
+    CustomInteractionPayload>;
+
+enum class InteractionResponseShape
+{
+    None = 0,
+    Option,
+    Players,
+    Cards,
+    Assignment,
+    Rearrangement,
+    Distribution,
+    Custom
+};
+
+QString interactionResponseShapeName(InteractionResponseShape shape);
+
 // 一個 server request 嘅完整結構化描述。
 struct InteractionRequest
 {
@@ -119,6 +263,9 @@ struct InteractionRequest
     qint64 timeoutMs = 0;
     qint64 deadlineMs = 0;
 
+    InteractionResponseShape responseSchema = InteractionResponseShape::None;
+    InteractionPayload payload;
+
     // skill／context metadata:唔影響驗證,但 view 同 log 睇得到。
     QVariantMap context;
 
@@ -129,6 +276,12 @@ struct InteractionRequest
     bool hasOption(const QString &value) const;
     const InteractionOption *option(const QString &value) const;
 
+    template<typename T>
+    const T *payloadAs() const
+    {
+        return std::get_if<T>(&payload);
+    }
+
     QJsonObject toJson() const;
     // 穩定排序、compact 嘅 JSON。QJsonObject 本身按 key 排序,所以同一個
     // request 喺任何平台都出同一串 bytes —— snapshot test 靠呢個。
@@ -137,6 +290,10 @@ struct InteractionRequest
 
 enum class InteractionResponseKind
 {
+    Assignment = 5,
+    Rearrangement,
+    Distribution,
+    Custom,
     None = 0,
     Cancel,   // 放棄／唔答。只有 cancelable request 收
     Option,   // 揀咗一個 option value
@@ -149,6 +306,8 @@ QString interactionResponseKindName(InteractionResponseKind kind);
 struct InteractionResponse
 {
     quint64 requestId = 0;
+    uint serverSerial = 0;
+    int command = 0;
     InteractionResponseKind kind = InteractionResponseKind::None;
     QString option;
     QStringList players;
@@ -157,11 +316,48 @@ struct InteractionResponse
     QString cardText;
     QVariantMap payload;
 
+    struct AssignmentData
+    {
+        QStringList names;
+        QStringList values;
+    };
+
+    struct RearrangementData
+    {
+        QList<int> first;
+        QList<int> second;
+    };
+
+    struct DistributionData
+    {
+        QList<int> cards;
+        QString target;
+    };
+
+    struct CustomData
+    {
+        int schemaVersion = 1;
+        QString typeName;
+        QJsonObject value;
+    };
+
+    using Payload = std::variant<std::monostate, QString, QStringList, QList<int>,
+        AssignmentData, RearrangementData, DistributionData, CustomData>;
+    Payload structuredPayload;
+
     static InteractionResponse makeCancel(quint64 requestId);
     static InteractionResponse makeOption(quint64 requestId, const QString &value);
     static InteractionResponse makePlayers(quint64 requestId, const QStringList &names);
     static InteractionResponse makeCards(quint64 requestId, const QList<int> &ids,
         const QString &cardText = QString());
+    static InteractionResponse makeAssignment(quint64 requestId,
+        const QStringList &names, const QStringList &values);
+    static InteractionResponse makeRearrangement(quint64 requestId,
+        const QList<int> &first, const QList<int> &second);
+    static InteractionResponse makeDistribution(quint64 requestId,
+        const QList<int> &ids, const QString &target);
+    static InteractionResponse makeCustom(quint64 requestId, int schemaVersion,
+        const QString &typeName, const QJsonObject &value);
 
     QJsonObject toJson() const;
     QByteArray toSnapshot() const;
@@ -170,6 +366,10 @@ struct InteractionResponse
 // 拒絕原因。每一個都對應完成標準入面「ClientCore 必須拒絕」嗰張清單。
 enum class InteractionRejection
 {
+    ServerSerialMismatch = 16,
+    CommandMismatch,
+    MalformedResponse,
+    UnsupportedInteraction,
     None = 0,
     NoActiveRequest,           // 而家冇 request 等緊答
     RequestIdMismatch,         // reply 嘅 id 唔係 active request

@@ -44,6 +44,9 @@ void DesktopInteractionView::presentRequest(const InteractionRequest &request)
         return;
     case InteractionType::None:
         break;
+    default:
+        m_client->presentStructuredInteraction(request);
+        return;
     }
     qCWarning(qsanDesktopInteraction) << "cannot present interaction type"
         << interactionTypeName(request.type);

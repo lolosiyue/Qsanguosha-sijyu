@@ -9,8 +9,10 @@
 #include "interaction-model.h"
 
 #include <QCoreApplication>
+#include <QEventLoop>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QTimer>
 
 #include <cstdio>
 
@@ -678,6 +680,141 @@ void testGameState()
         "reset clears the client game state");
 }
 
+class FakeEligibilityProvider : public ICardEligibilityProvider
+{
+public:
+    CardEligibilityResult resolve(const InteractionRequest &) const override
+    {
+        CardEligibilityResult result;
+        result.suggestedCards << 7 << 8;
+        result.disabledCards << 9;
+        result.diagnostic = QStringLiteral("fake-provider");
+        return result;
+    }
+};
+
+void testStructuredModels()
+{
+    ClientCore roleCore;
+    InteractionRequest role;
+    role.type = InteractionType::ChooseRole;
+    role.command = 91;
+    role.serverSerial = 17;
+    role.responseSchema = InteractionResponseShape::Assignment;
+    role.payload = RoleAssignmentInteractionPayload {
+        QStringLiteral("standard"),
+        QStringList() << QStringLiteral("sgs1") << QStringLiteral("sgs2"),
+        QStringList() << QStringLiteral("lord") << QStringLiteral("rebel") };
+    const quint64 roleId = roleCore.beginRequest(role);
+    InteractionResponse wrongCommand = InteractionResponse::makeAssignment(roleId,
+        QStringList() << QStringLiteral("sgs1"), QStringList() << QStringLiteral("lord"));
+    wrongCommand.command = 92;
+    checkRejection(roleCore.validate(wrongCommand), InteractionRejection::CommandMismatch,
+        "a response for a different command is rejected");
+    InteractionResponse wrongSerial = wrongCommand;
+    wrongSerial.command = 91;
+    wrongSerial.serverSerial = 18;
+    checkRejection(roleCore.validate(wrongSerial), InteractionRejection::ServerSerialMismatch,
+        "a response for a different server serial is rejected");
+    InteractionResponse roleAnswer = InteractionResponse::makeAssignment(roleId,
+        QStringList() << QStringLiteral("sgs1") << QStringLiteral("sgs2"),
+        QStringList() << QStringLiteral("lord") << QStringLiteral("rebel"));
+    roleAnswer.command = 91;
+    roleAnswer.serverSerial = 17;
+    check(roleCore.submitResponse(roleAnswer).accepted(),
+        "a command-correlated role assignment is accepted");
+
+    ClientCore rearrangeCore;
+    InteractionRequest rearrange;
+    rearrange.type = InteractionType::SkillGuanxing;
+    rearrange.responseSchema = InteractionResponseShape::Rearrangement;
+    rearrange.payload = RearrangeCardsInteractionPayload {
+        QList<int>() << 1 << 2 << 3, 0, 3, 0, 3, false };
+    const quint64 rearrangeId = rearrangeCore.beginRequest(rearrange);
+    check(rearrangeCore.validate(InteractionResponse::makeRearrangement(rearrangeId,
+            QList<int>() << 3 << 1, QList<int>() << 2)).accepted(),
+        "a Guanxing rearrangement that preserves every card is accepted");
+    checkRejection(rearrangeCore.validate(InteractionResponse::makeRearrangement(rearrangeId,
+            QList<int>() << 1 << 1, QList<int>() << 2)),
+        InteractionRejection::DuplicateCard,
+        "a Guanxing rearrangement cannot duplicate cards");
+
+    ClientCore yijiCore;
+    InteractionRequest yiji;
+    yiji.type = InteractionType::SkillYiji;
+    yiji.responseSchema = InteractionResponseShape::Distribution;
+    yiji.payload = YijiInteractionPayload {
+        QList<int>() << 4 << 5, QStringList() << QStringLiteral("sgs2"), 1, 2 };
+    const quint64 yijiId = yijiCore.beginRequest(yiji);
+    check(yijiCore.validate(InteractionResponse::makeDistribution(yijiId,
+            QList<int>() << 4, QStringLiteral("sgs2"))).accepted(),
+        "a typed Yiji distribution is accepted");
+    checkRejection(yijiCore.validate(InteractionResponse::makeDistribution(yijiId,
+            QList<int>() << 4, QStringLiteral("sgs9"))),
+        InteractionRejection::UnknownPlayer,
+        "a Yiji distribution cannot target an unlisted player");
+
+    ClientCore customCore;
+    InteractionRequest custom;
+    custom.type = InteractionType::QmlInteract;
+    custom.responseSchema = InteractionResponseShape::Custom;
+    CustomInteractionPayload customPayload;
+    customPayload.schemaVersion = 2;
+    customPayload.typeName = QStringLiteral("extension.pick");
+    custom.payload = customPayload;
+    const quint64 customId = customCore.beginRequest(custom);
+    checkRejection(customCore.validate(InteractionResponse::makeCustom(customId, 1,
+            QStringLiteral("extension.pick"), QJsonObject())),
+        InteractionRejection::MalformedResponse,
+        "a custom response with the wrong schema version is rejected");
+}
+
+void testEligibilityHints()
+{
+    ClientCore core;
+    core.state()->setCardIdSpace(100);
+    FakeEligibilityProvider provider;
+    core.setCardEligibilityProvider(&provider);
+
+    InteractionRequest request;
+    request.type = InteractionType::ResponseCard;
+    request.responseSchema = InteractionResponseShape::Cards;
+    CardInteractionPayload payload;
+    payload.selection.pattern = QStringLiteral("jink");
+    payload.selection.minSelection = 1;
+    payload.selection.maxSelection = 1;
+    request.payload = payload;
+    const quint64 id = core.beginRequest(request);
+    const CardInteractionPayload *active
+        = core.activeRequest().payloadAs<CardInteractionPayload>();
+    check(active != nullptr && active->suggestedCards == (QList<int>() << 7 << 8),
+        "an injected eligibility provider enriches presentation hints");
+    check(active != nullptr && !active->selection.enumerated,
+        "provider hints never become authoritative membership constraints");
+    check(core.validate(InteractionResponse::makeCards(id, QList<int>() << 10)).accepted(),
+        "a card outside provider hints remains valid for a pattern request");
+}
+
+void testProductionDeadlineTimer()
+{
+    ClientCore core;
+    InteractionRequest request = choiceRequest();
+    request.timeoutMs = 5;
+
+    QEventLoop loop;
+    bool expired = false;
+    QObject::connect(&core, &ClientCore::requestCancelled, &loop,
+        [&expired, &loop](quint64, int reason) {
+            expired = reason == static_cast<int>(InteractionCancelReason::Expired);
+            loop.quit();
+        });
+    QTimer::singleShot(500, &loop, &QEventLoop::quit);
+    core.beginRequest(request);
+    loop.exec();
+    check(expired && !core.hasActiveRequest(),
+        "the production QTimer expires a pending request without polling");
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -695,6 +832,9 @@ int main(int argc, char **argv)
     testViewContract();
     testReentrantAnswer();
     testGameState();
+    testStructuredModels();
+    testEligibilityHints();
+    testProductionDeadlineTimer();
 
     if (failures > 0) {
         printf("%d ClientCore contract check(s) failed\n", failures);
