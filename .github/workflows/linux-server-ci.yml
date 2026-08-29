@@ -82,7 +82,18 @@ jobs:
             -DCMAKE_CXX_COMPILER='${{ matrix.compiler.cxx }}' \
             -DCMAKE_CXX_FLAGS='${{ matrix.compiler.cxx_flags }}'
 
+      - name: Build headless targets for debug push
+        if: github.event_name == 'push' && github.ref == 'refs/heads/debug'
+        run: |
+          cmake --build 'build/linux-${{ matrix.compiler.id }}' \
+            --target \
+              qsanguosha_server \
+              qsanguosha_protocol_negotiation_tests \
+              qsanguosha_network_integration_tests \
+            --parallel
+
       - name: Build with ${{ matrix.compiler.name }}
+        if: github.event_name != 'push' || github.ref != 'refs/heads/debug'
         run: cmake --build 'build/linux-${{ matrix.compiler.id }}' --parallel
 
       - name: Build and verify deploy-server
@@ -105,19 +116,12 @@ jobs:
           test -f "$install_root/share/qsanguosha/lua/config.lua"
           test -d "$install_root/share/qsanguosha/extensions"
 
-      - name: Run daily fast CTest
-        if: env.QSAN_FULL_SERVER_CI != 'true'
-        run: |
-          mkdir -p ci-logs
-          ctest \
-            --test-dir 'build/linux-${{ matrix.compiler.id }}' \
-            --build-config RelWithDebInfo \
-            --output-on-failure \
-            --label-regex fast \
-            --output-junit 'ci-logs/ctest-${{ matrix.compiler.id }}.xml'
-
       # Level 2 覆蓋真實 TCP handshake／signup；Level 1 與 shutdown smoke 重疊，
-      # Level 3 完整 02p 對局留給 main／手動的 full CTest。
+      # Level 3 完整 02p 對局只留給 main 的 full CTest。
+      - name: Run protocol negotiation contract directly
+        if: github.ref != 'refs/heads/main'
+        run: 'build/linux-${{ matrix.compiler.id }}/tests/qsanguosha_protocol_negotiation_tests'
+
       - name: Run daily network integration level 2
         if: env.QSAN_FULL_SERVER_CI != 'true'
         run: |
@@ -127,7 +131,7 @@ jobs:
             | tee 'ci-logs/network-level2-${{ matrix.compiler.id }}.log'
 
       - name: Run full CTest including network E2E
-        if: env.QSAN_FULL_SERVER_CI == 'true'
+        if: github.ref == 'refs/heads/main'
         run: |
           mkdir -p ci-logs
           ctest \

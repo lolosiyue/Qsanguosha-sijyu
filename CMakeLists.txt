@@ -203,6 +203,8 @@ add_library(qsanguosha_engine STATIC
     src/core/protocol/card-provenance-message.cpp
     src/core/protocol/card-provenance-message.h
     src/core/protocol/protocol-message-utils.h
+    src/core/protocol/protocol-negotiation.cpp
+    src/core/protocol/protocol-negotiation.h
     src/core/protocol/protocol-v1-codec.cpp
     src/core/protocol/protocol-v1-codec.h
     src/core/protocol/protocol-version.h

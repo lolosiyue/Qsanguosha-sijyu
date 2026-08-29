@@ -10,6 +10,7 @@
 #include "nativesocket.h"
 #include "banpair.h"
 #include "server-info.h"
+#include "protocol/protocol-negotiation.h"
 //#include "scenario.h"
 #if !defined(QSAN_SERVER_CORE_ONLY)
 #include "choosegeneraldialog.h"
@@ -1872,7 +1873,9 @@ void Server::processNewConnection(ClientSocket *socket)
 	connect(socket, SIGNAL(disconnected()), this, SLOT(cleanup()));
 
 	Packet packet(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT, S_COMMAND_CHECK_VERSION);
-	packet.setMessageBody(QString("%1:%2").arg(Sanguosha->getVersion()).arg(Sanguosha->getCardCount()));
+	packet.setMessageBody(ProtocolNegotiation::encodeServerAdvertisement(
+		Sanguosha->getVersionNumber(), Sanguosha->getMODName(),
+		ProtocolNegotiation::localCapabilities(), Sanguosha->getCardCount()));
 	socket->send(packet.toString());
 
 	Packet packet2(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT, S_COMMAND_SETUP);
@@ -1893,7 +1896,9 @@ void Server::processRequest(const char *request)
 	socket->timerSignup.stop();
 
 	Packet signup;
-	if (!signup.parse(request) || signup.getCommandType() != S_COMMAND_SIGNUP) {
+	if (!signup.parse(request) || signup.getCommandType() != S_COMMAND_SIGNUP
+		|| !signup.getMessageBody().canConvert<JsonArray>()
+		|| signup.getMessageBody().value<JsonArray>().size() < 3) {
 		emit server_message(tr("Invalid signup string: %1").arg(request));
 		QSanProtocol::Packet packet(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT, S_COMMAND_WARN);
 		packet.setMessageBody("INVALID_FORMAT");
@@ -1903,6 +1908,17 @@ void Server::processRequest(const char *request)
 	}
 
 	const JsonArray &body = signup.getMessageBody().value<JsonArray>();
+	ProtocolSessionState protocolSession;
+	if (body.size() >= 4) {
+		const ProtocolCapabilitiesParseResult capabilities =
+			ProtocolNegotiation::parseClientCapabilities(body.at(3));
+		protocolSession.setPeerCapabilities(capabilities.capabilities,
+			capabilities.diagnostic);
+		if (!capabilities.valid) {
+			emit server_message(tr("Protocol capability fallback for %1: %2")
+				.arg(socket->peerName(), capabilities.diagnostic));
+		}
+	}
 	bool reconnection_enabled = body[0].toBool();
 	QString screen_name = QString::fromUtf8(QByteArray::fromBase64(body[1].toString().toLatin1()));
 	QString avatar = body[2].toString();
@@ -1916,6 +1932,7 @@ void Server::processRequest(const char *request)
 				QString state = player->getState();
 				if (state != "offline" && state != "robot") continue;
 				if (player->getRoom()->isFinished()) continue;
+				player->setProtocolSessionState(protocolSession);
 				player->getRoom()->reconnect(player, socket);
 				return;
 			}
@@ -1928,6 +1945,7 @@ void Server::processRequest(const char *request)
 	}
 
 	ServerPlayer *player = current->addSocket(socket);
+	player->setProtocolSessionState(protocolSession);
 	current->signup(player, screen_name, avatar, false);
 	emit newPlayer(player);
 	emit playerJoined(player->objectName(), player->screenName(), current->getId());
