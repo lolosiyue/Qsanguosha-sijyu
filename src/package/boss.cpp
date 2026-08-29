@@ -480,7 +480,7 @@ public:
         room->sendCompulsoryTriggerLog(player, this);
 
         QList<const Card *> dtricks = player->getJudgingArea();
-        int index = qrand() % dtricks.length();
+        int index = qsanRandomBounded(dtricks.length());
         room->throwCard(dtricks.at(index), objectName(), nullptr, player);
         return false;
     }
@@ -507,7 +507,7 @@ public:
     {
         room->sendCompulsoryTriggerLog(player, this);
         QList<const Card *> dtricks = player->getJudgingArea();
-        int index = qrand() % dtricks.length();
+        int index = qsanRandomBounded(dtricks.length());
         room->throwCard(dtricks.at(index), objectName(), nullptr, player);
         return false;
     }

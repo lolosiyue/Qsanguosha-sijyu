@@ -254,7 +254,7 @@ public:
             log.to << death.damage->from;
             log.arg = objectName();
             room->sendLog(log);
-            int index = qrand() % 2 + 2;
+            int index = qsanRandomBounded(2) + 2;
             if (player->isJieGeneral())
                 index += 2;
             player->peiyin(this, index);
@@ -395,7 +395,7 @@ public:
 
     int getEffectIndex(const ServerPlayer *player, const Card *) const
     {
-        int index = qrand() % 2 + 1;
+        int index = qsanRandomBounded(2) + 1;
         if (player->isJieGeneral())
             index += 2;
         return index;
@@ -417,7 +417,7 @@ public:
         if (triggerEvent == TargetSpecified || (triggerEvent == TargetConfirmed && use.to.contains(sunce))) {
             if (use.card->isKindOf("Duel") || (use.card->isKindOf("Slash") && use.card->isRed())) {
                 if (sunce->askForSkillInvoke(this, data)) {
-                    int index = qrand()%2+1;
+                    int index = qsanRandomBounded(2)+1;
                     if (sunce->hasSkill("mouduan",true))
                         index += 2;
                     if (sunce->isJieGeneral())
@@ -458,7 +458,7 @@ public:
         }else if(!sunce->canWake(objectName()))
 			return false;
 
-        int index = qrand()%2+1;
+        int index = qsanRandomBounded(2)+1;
         if (sunce->hasSkill("xiongyisy",true))
             index += 2;
         room->broadcastSkillInvoke(objectName(), index, sunce);
@@ -642,7 +642,7 @@ public:
 
     int getEffectIndex(const ServerPlayer *player, const Card *) const
     {
-        int index = qrand() % 2 + 1;
+        int index = qsanRandomBounded(2) + 1;
         if (!player->hasInnateSkill(this) && player->hasSkill("baobian"))
             index += 3;
         else if (!player->hasInnateSkill(this) && player->getMark("fengliang") > 0)
@@ -916,7 +916,7 @@ public:
         if (triggerEvent == TargetConfirming) {
             CardUseStruct use = data.value<CardUseStruct>();
             if (use.card->isKindOf("Slash")) {
-                int index = qrand() % 2 + 1;
+                int index = qsanRandomBounded(2) + 1;
                 if (liushan->isJieGeneral())
                     index += 2;
                 room->broadcastSkillInvoke(objectName(), index);
@@ -1086,9 +1086,9 @@ public:
     static void playAudioEffect(ServerPlayer *zuoci, const QString &skill_name)
     {
         Room *room = zuoci->getRoom();
-        int index = qrand() % 2 + 1;
+        int index = qsanRandomBounded(2) + 1;
         if (zuoci->isJieGeneral() && skill_name == "xinsheng")
-            index = qrand() % 2 + 5;
+            index = qsanRandomBounded(2) + 5;
         else {
             if (zuoci->isFemale())
                 index += 2;
@@ -1101,7 +1101,7 @@ public:
         Room *room = zuoci->getRoom();
         QStringList list = GetAvailableGenerals(zuoci);
         if (list.isEmpty()) return;
-        qShuffle(list);
+        qsanShuffle(list);
         n = qMin(n, list.length());
         
         QStringList huashens = zuoci->property("Huashens").toString().split("+");

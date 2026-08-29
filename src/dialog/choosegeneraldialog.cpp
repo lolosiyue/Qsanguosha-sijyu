@@ -6,6 +6,7 @@
 //#include "settings.h"
 //#include "protocol.h"
 #include "skin-bank.h"
+#include "ui-rng.h"
 //#include "clientplayer.h"
 #include "clientstruct.h"
 #include "timed-progressbar.h"
@@ -150,7 +151,7 @@ ChooseGeneralDialog::ChooseGeneralDialog(const QStringList &general_names, QWidg
     }
     QString default_name = generals.first()->objectName();
     if (!_generals.isEmpty())
-        default_name = _generals.at(qrand() % _generals.length());
+        default_name = _generals.at(UiRng::bounded(_generals.length()));
 
     if (!view_only) {
         mapper->setMapping(this, default_name);

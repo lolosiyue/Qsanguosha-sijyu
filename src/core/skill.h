@@ -136,9 +136,6 @@ struct CorrectSkillResult {
 class Skill : public QObject
 {
     Q_OBJECT
-    Q_ENUMS(Frequency)
-    Q_ENUMS(LimitScope)
-
 public:
     enum Frequency
     {
@@ -150,6 +147,7 @@ public:
         Club,
         NotCompulsory
     };
+    Q_ENUM(Frequency)
 
     enum LimitScope
     {
@@ -160,6 +158,7 @@ public:
         Limit_Game,
         Limit_Custom
     };
+    Q_ENUM(LimitScope)
 
     explicit Skill(const QString &name, Frequency frequent = NotFrequent);
     bool isLordSkill() const;
@@ -604,7 +603,6 @@ protected:
 class TargetModSkill : public Skill
 {
     Q_OBJECT
-        Q_ENUMS(ModType)
 
 public:
     enum ModType
@@ -613,6 +611,7 @@ public:
         DistanceLimit,
         ExtraTarget
     };
+    Q_ENUM(ModType)
 
     TargetModSkill(const QString &name);
     virtual QString getPattern() const;

@@ -7,6 +7,7 @@
 #include "clientstruct.h"
 #include "client.h"
 #include "heroskincontainer.h"
+#include <QRegularExpression>
 //#include "clientplayer.h"
 //#include "package.h"
 
@@ -531,9 +532,12 @@ void GeneralOverview::addLines(const Skill *skill)
                 addCopyAction(button);
             }
         } else {
-            static QRegExp rx(".+/(\\w+\\d?).ogg");
+            static const QRegularExpression rx(
+                QRegularExpression::anchoredPattern(QStringLiteral(".+/(\\w+\\d?).ogg")),
+                QRegularExpression::UseUnicodePropertiesOption);
             for (int i = 0; i < sources.length(); i++) {
-                if (!rx.exactMatch(sources[i]))
+                const QRegularExpressionMatch match = rx.match(sources[i]);
+                if (!match.hasMatch())
                     continue;
 
                 QString button_text = skill_name;
@@ -543,7 +547,7 @@ void GeneralOverview::addLines(const Skill *skill)
                 button->setObjectName(sources[i]);
                 button_layout->addWidget(button);
 
-                QString filename = rx.capturedTexts().at(1);
+                QString filename = match.captured(1);
                 QString skill_line = Sanguosha->translate("$" + filename);
                 if (skill_line == "$" + filename) skill_line = tr("Translation missing.");
 
@@ -916,22 +920,24 @@ void GeneralOverview::startSearch(bool include_hidden, const QString &nickname, 
             QString v_nickname = nickname;
             v_nickname.replace("?", ".");
             v_nickname.replace("*", ".*");
-            QRegExp rx(v_nickname);
+            const QRegularExpression rx(
+                QRegularExpression::anchoredPattern(v_nickname),
+                QRegularExpression::UseUnicodePropertiesOption);
 
             QString g_nickname = Sanguosha->translate("#" + general_name);
             if (g_nickname.startsWith("#"))
                 g_nickname = Sanguosha->translate("#" + general_name.split("_").last());
-            if (!rx.exactMatch(g_nickname))
+            if (!rx.match(g_nickname).hasMatch())
                 continue;
         }
         if (!name.isEmpty()) {
             QString v_name = name;
             v_name.replace("?", ".");
             v_name.replace("*", ".*");
-            //QRegExp rx(v_name);
+            // QRegularExpression rx(v_name);
 
             QString g_name = Sanguosha->translate(general_name);
-            //if (!rx.exactMatch(g_name))
+            // if (!rx.match(g_name).hasMatch())
                 //continue;
             if (!g_name.contains(v_name) && !general_name.contains(v_name))
                 continue;

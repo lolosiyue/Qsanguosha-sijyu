@@ -76,6 +76,10 @@ CMake 必須啟用 AUTOMOC、AUTOUIC、AUTORCC，管理資源、翻譯、安裝�
 - 每局保存 seed；UI 動畫、外觀或繪製不得消耗遊戲 RNG。
 - 相同版本、設定、牌堆與 AI 在 Windows／Ubuntu 必須產生相同規範化事件雜湊。
 
+2026-08-30 實作狀態：PCH 的 `qrand`／`qsrand` shim 與自訂 `qShuffle` 已移除，遊戲與 UI RNG 呼叫邊界已分離；相同 seed 保證新實作內可重現，不維持舊 shim 的逐項序列。`QRegExp`／`Core5Compat` 與 `Q_ENUMS` 亦在同一 Qt6 API 債批次清除。
+
+Spine 的 GLSL 120 shader 與 `beginNativePainting()` 不屬於本批 API 相容債；現行 QPainter／原生 OpenGL 混合路徑仍保留 native-painting 邊界。core-profile 或 QRhi 遷移須以獨立 renderer 里程碑處理。
+
 ### 3.3 Lua 與 SWIG
 
 - 升級至 Lua 5.4.8，為 `bit32`、`unpack`、`loadstring` 等實際使用介面提供 Lua 5.2 相容層。

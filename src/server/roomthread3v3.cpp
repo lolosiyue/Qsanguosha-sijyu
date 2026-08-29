@@ -87,7 +87,7 @@ void RoomThread3v3::run()
     } else
         general_names = getGeneralsWithoutExtension();
 
-    qShuffle(general_names);
+    qsanShuffle(general_names);
     general_names = general_names.mid(0, 16);
 
     room->doBroadcastNotify(S_COMMAND_FILL_GENERAL, JsonUtils::toJsonArray(general_names));
@@ -241,7 +241,7 @@ void RoomThread3v3::assignRoles(const QStringList &roles, const QString &scheme)
     }
 
     if (!abstained.isEmpty()) {
-        qShuffle(abstained);
+        qsanShuffle(abstained);
 
         for (int i = 0; i < 6; i++) {
             if (new_players.at(i) == nullptr) {
@@ -267,7 +267,7 @@ void RoomThread3v3::assignRoles(const QString &scheme)
     if (scheme == "Random") {
         // the easiest way
         QList<ServerPlayer *> players = room->getPlayers();
-        qShuffle(players);
+        qsanShuffle(players);
         room->replacePlayerOrder(players);
 
         for (int i = 0; i < roles.length(); i++)
@@ -281,7 +281,7 @@ void RoomThread3v3::assignRoles(const QString &scheme)
         assignRoles(all_roles, scheme);
 
         QMap<QString, QString> map;
-        if (qrand() % 2 == 0) {
+        if (qsanRandomBounded(2) == 0) {
             map["leader1"] = "lord";
             map["guard1"] = "loyalist";
             map["leader2"] = "renegade";

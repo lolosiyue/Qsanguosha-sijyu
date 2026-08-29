@@ -636,7 +636,7 @@ public:
 		if (card)
 			get = card->getSubcards();
 		else {
-			int id = shi.at(qrand() % shi.length());
+			int id = shi.at(qsanRandomBounded(shi.length()));
 			get << id;
 		}
 
@@ -1074,9 +1074,9 @@ public:
 			if (t->isDead()) return false;
 			DummyCard *dummy = new DummyCard;
 			dummy->deleteLater();
-			num1 = nums1.at(qrand() % nums1.length());
-			num2 = nums2.at(qrand() % nums2.length());
-			num3 = nums3.at(qrand() % nums3.length());
+			num1 = nums1.at(qsanRandomBounded(nums1.length()));
+			num2 = nums2.at(qsanRandomBounded(nums2.length()));
+			num3 = nums3.at(qsanRandomBounded(nums3.length()));
 			dummy->addSubcard(num1);
 			dummy->addSubcard(num2);
 			dummy->addSubcard(num3);
@@ -1232,7 +1232,7 @@ void YHJuxianCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 	
 	QList<int> drawpile2 = drawpile, drawpile3 = drawpile;
 	drawpile.clear();
-	qShuffle(drawpile2);
+	qsanShuffle(drawpile2);
 	drawpile = drawpile2;
 	room->doBroadcastNotify(QSanProtocol::S_COMMAND_RESET_PILE, data);
 	QVariant discard = JsonUtils::toJsonArray(room->getDiscardPile());
@@ -1256,7 +1256,7 @@ void YHJuxianCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 
 	QList<int> all_cards = room->getNCards(drawpile.length(), false);
 	while (!all_cards.isEmpty()) {
-		int id = all_cards.at(qrand() % all_cards.length());
+		int id = all_cards.at(qsanRandomBounded(all_cards.length()));
 		room->returnToTopDrawPile(QList<int>() << id);
 		all_cards.removeOne(id);
 	}
@@ -4241,7 +4241,7 @@ public:
 			QStringList all_sk = yinnis, five_sk;
 			for (int i = 0; i < 5; i++) {
 				if (all_sk.isEmpty()) break;
-				QString sk = all_sk.at(qrand() % all_sk.length());
+				QString sk = all_sk.at(qsanRandomBounded(all_sk.length()));
 				all_sk.removeOne(sk);
 				five_sk << sk;
 			}
@@ -4301,7 +4301,7 @@ public:
 					if (gens.isEmpty()) continue;
 					QString genn = room->askForGeneral(player, gens.join("+"));
 					if (!gens.contains(genn))
-						genn = gens.at(qrand() % gens.length());
+						genn = gens.at(qsanRandomBounded(gens.length()));
 					room->addPlayerMark(player, "yhyanglian_add_general2-Keep");
 					room->changeHero(player, genn, false, false, true);
 				}

@@ -931,7 +931,7 @@ public:
     {
 		DrawStruct draw = data.value<DrawStruct>();
         if(draw.reason!="InitialHandCards"){
-			room->sendCompulsoryTriggerLog(player, this, qrand()%2+1);
+			room->sendCompulsoryTriggerLog(player, this, qsanRandomBounded(2)+1);
 			draw.top = false;
 			data = QVariant::fromValue(draw);
 		}

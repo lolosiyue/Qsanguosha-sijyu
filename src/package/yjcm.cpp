@@ -74,7 +74,7 @@ public:
                 i++;
             }
             if (card_ids.length()>0 && caozhi->askForSkillInvoke(this, data)) {
-				room->broadcastSkillInvoke(objectName(),qrand()%2+1,caozhi);
+				room->broadcastSkillInvoke(objectName(),qsanRandomBounded(2)+1,caozhi);
                 int ai_delay = Config.AIDelay;
                 Config.AIDelay = 0;
 				DummyCard *dummy = new DummyCard();
@@ -123,7 +123,7 @@ public:
 
     int getEffectIndex(const ServerPlayer *, const Card *) const
     {
-        return qrand() % 2 + 1;
+        return qsanRandomBounded(2) + 1;
     }
 };
 
@@ -660,7 +660,7 @@ public:
 
     int getEffectIndex(const ServerPlayer *player, const Card *) const
     {
-        int index = qrand() % 2 + 1;
+        int index = qsanRandomBounded(2) + 1;
         if (player->isJieGeneral())
             index += 2;
         return index;
@@ -1227,7 +1227,7 @@ bool Shangshi::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *zhan
     }
 
     if (zhangchunhua->getHandcardNum() < losthp && zhangchunhua->askForSkillInvoke(this)) {
-        int n = qrand() % 2 + 1;
+        int n = qsanRandomBounded(2) + 1;
         if (zhangchunhua->isJieGeneral())
             n += 2;
         room->broadcastSkillInvoke("shangshi", n);
@@ -1351,7 +1351,7 @@ public:
         if (triggerEvent == HpRecover) {
             RecoverStruct recover = data.value<RecoverStruct>();
             if (recover.who && recover.who != player) {
-                room->broadcastSkillInvoke("nosenyuan", qrand() % 2 + 1);
+                room->broadcastSkillInvoke("nosenyuan", qsanRandomBounded(2) + 1);
                 room->sendCompulsoryTriggerLog(player, objectName());
                 recover.who->drawCards(recover.recover, objectName());
             }
@@ -1359,7 +1359,7 @@ public:
             DamageStruct damage = data.value<DamageStruct>();
             ServerPlayer *source = damage.from;
             if (source && source != player) {
-                room->broadcastSkillInvoke("nosenyuan", qrand() % 2 + 3);
+                room->broadcastSkillInvoke("nosenyuan", qsanRandomBounded(2) + 3);
                 room->sendCompulsoryTriggerLog(player, objectName());
 
                 const Card *card = room->askForCard(source, ".|heart|.|hand", "@nosenyuan-heart", data, Card::MethodNone);
@@ -1838,7 +1838,7 @@ public:
         DamageStruct damage = data.value<DamageStruct>();
 
         if (player->askForSkillInvoke(this, QVariant::fromValue(damage.to))) {
-            int index = qrand() % 2 + 1;
+            int index = qsanRandomBounded(2) + 1;
             if (player->getGeneralName().contains("guansuo") || (!player->getGeneralName().contains("masu") && player->getGeneral2Name().contains("guansuo")))
                 index = 3;
             room->broadcastSkillInvoke(objectName(), index);

@@ -409,7 +409,7 @@ void Meirenji::onEffect(CardEffectStruct &effect) const
         room->obtainCard(p, Sanguosha->getCard(id), reason, false);
         if (p->isAlive() && effect.from->isAlive() && !p->isKongcheng()) {
             const Card*card = room->askForCard(p, ".|.|.|hand!", "@__meirenji-give:" + effect.from->objectName(), QVariant::fromValue(effect.from), Card::MethodNone);
-            if(!card) card = p->getHandcards().at(qrand()%p->getHandcardNum());
+            if(!card) card = p->getHandcards().at(qsanRandomBounded(p->getHandcardNum()));
 			if(card) room->giveCard(p, effect.from, card, objectName());
         }
     }

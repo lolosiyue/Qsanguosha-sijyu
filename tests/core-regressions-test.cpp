@@ -1,8 +1,16 @@
 #include "card.h"
+#include "ai.h"
 #include "engine-bootstrap.h"
+#include "general.h"
 #include "lua-wrapper.h"
+#include "package.h"
+#include "player.h"
+#include "room.h"
+#include "skill.h"
+#include "standard.h"
 
 #include <QDebug>
+#include <QMetaEnum>
 #include <QtGlobal>
 
 class Player;
@@ -13,6 +21,44 @@ extern Player *Self;
 }
 using QSanEngine::Self;
 void setEngineSelf(Player *player);
+
+namespace {
+
+bool hasEnumKey(const QMetaObject &metaObject, const char *enumName, const char *key)
+{
+    const int enumIndex = metaObject.indexOfEnumerator(enumName);
+    if (enumIndex < 0)
+        return false;
+    bool ok = false;
+    metaObject.enumerator(enumIndex).keyToValue(key, &ok);
+    return ok;
+}
+
+}
+
+int runEnumReflectionTests()
+{
+    const bool reflected =
+        hasEnumKey(Card::staticMetaObject, "Suit", "Spade")
+        && hasEnumKey(Card::staticMetaObject, "CardType", "TypeBasic")
+        && hasEnumKey(Card::staticMetaObject, "HandlingMethod", "MethodUse")
+        && hasEnumKey(General::staticMetaObject, "Gender", "Male")
+        && hasEnumKey(Player::staticMetaObject, "Phase", "Play")
+        && hasEnumKey(Player::staticMetaObject, "Place", "PlaceHand")
+        && hasEnumKey(Player::staticMetaObject, "Role", "Lord")
+        && hasEnumKey(Skill::staticMetaObject, "Frequency", "Compulsory")
+        && hasEnumKey(Skill::staticMetaObject, "LimitScope", "Limit_Game")
+        && hasEnumKey(TargetModSkill::staticMetaObject, "ModType", "ExtraTarget")
+        && hasEnumKey(AI::staticMetaObject, "Relation", "Friend")
+        && hasEnumKey(Room::staticMetaObject, "GuanxingType", "GuanxingBothSides")
+        && hasEnumKey(Package::staticMetaObject, "Type", "GeneralPack")
+        && hasEnumKey(EquipCard::staticMetaObject, "Location", "WeaponLocation");
+    if (!reflected) {
+        qCritical() << "Qt enum reflection metadata is incomplete";
+        return 1;
+    }
+    return 0;
+}
 
 int runEngineSelfBridgeTests()
 {

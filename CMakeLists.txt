@@ -86,14 +86,12 @@ set(QSAN_QT_COMPONENTS
 
 if(BUILD_TESTING)
     list(APPEND QSAN_QT_COMPONENTS
-        Core5Compat
         Gui
     )
 endif()
 
 if(QSAN_BUILD_GUI)
     list(APPEND QSAN_QT_COMPONENTS
-        Core5Compat
         Gui
         LinguistTools
         Multimedia
@@ -800,7 +798,6 @@ if(QSAN_BUILD_GUI)
         "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>"
         qsanguosha_client_core
         Qt6::Core
-        Qt6::Core5Compat
         Qt6::Gui
         Qt6::Multimedia
         Qt6::Network

@@ -1975,7 +1975,7 @@ void Room::prepareForStart()
 			}
 			if (!humans.isEmpty()){
 				already = true;
-				ServerPlayer*human = humans.at(qrand() % humans.length());
+				ServerPlayer*human = humans.at(qsanRandomBounded(humans.length()));
 				human->setGeneralName("sujiang");
 				broadcastProperty(human, "general");
 				human->setRole("lord");
@@ -2014,7 +2014,7 @@ void Room::prepareForStart()
 		GameModeStruct gameMode = Sanguosha->getGameMode(mode);
 		if (mode == "08_defense" || (Config.RandomSeat && gameMode.shuffle_seats)) {
 			QList<ServerPlayer *> players = getPlayers();
-			qShuffle(players);
+			qsanShuffle(players);
 			replacePlayerOrder(players);
 		}
 		if (mode!="04_2v2"&&!Config.EnableHegemony&&Config.value("FreeAssign").toBool()){
@@ -2034,7 +2034,7 @@ void Room::prepareForStart()
 							all_players.removeOne(owner);
 							QStringList roles = Sanguosha->getRoleList(mode);
 							roles.removeOne(role);
-							qShuffle(roles);
+							qsanShuffle(roles);
 							for (int i = 0; i < all_players.count(); i++){
 								all_players[i]->setRole(roles[i]);
 								if (mode.contains("_")||roles[i] == "lord")
@@ -2056,7 +2056,7 @@ void Room::prepareForStart()
 								owner->setRole(role);
 							}
 							replacePlayerOrder(players);
-							qShuffle(roles);
+							qsanShuffle(roles);
 							for (int i = 0; i < all_players.count(); i++)
 								all_players[i]->setRole(roles[i]);
 			for (int i = 0; i < players.count(); i++){
@@ -2074,7 +2074,7 @@ void Room::prepareForStart()
 		}
 		if (mode == "04_1v3" || mode == "04_boss"){
 			const QList<ServerPlayer *> players = getPlayers();
-			ServerPlayer*lord = players[qrand()%4];
+			ServerPlayer*lord = players[qsanRandomBounded(4)];
 			for (int i = 0; i < 4; i++){
 				if (players[i] == lord) players[i]->setRole("lord");
 				else players[i]->setRole("rebel");
@@ -2358,7 +2358,7 @@ void Room::addRobotCommand(ServerPlayer*player, const QVariant&arg)
 		if (general->objectName().contains("dev_"))
 			devs << general->objectName();
 	}
-	qShuffle(devs);
+	qsanShuffle(devs);
 
 	for (int i = 0; i < add_num; i++){
 		if (isFull()) break;
@@ -2374,7 +2374,7 @@ void Room::addRobotCommand(ServerPlayer*player, const QVariant&arg)
 			avatar = devs.takeFirst();
 		} else {
 			if (!all_generals.isEmpty()) {
-				avatar = all_generals.at(qrand() % all_generals.size());
+				avatar = all_generals.at(qsanRandomBounded(all_generals.size()));
 			} else {
 				avatar = "";
 			}
@@ -2563,7 +2563,7 @@ void Room::chooseGenerals(QList<ServerPlayer*> players)
 				lord_list = Sanguosha->getRandomGenerals(Config.value("MaxChoice", 5).toInt());
 				if(mode == "03_1v2"){
 					QStringList all_generals = Sanguosha->getLimitedGeneralNames();
-					qShuffle(all_generals);
+					qsanShuffle(all_generals);
 					foreach(QString general_name, all_generals){
 						if(general_name.contains("ddz_")&&!lord_list.contains(general_name)){
 							lord_list.prepend(general_name);
@@ -2777,7 +2777,7 @@ void Room::chooseGeneralsOfJianGeDefenseMode()
 		QString result = _chooseDefaultGeneral(player);
 		if (player->property("jiange_defense_type").toString() != "general"){ // randomly chosen
 			QStringList selected = player->getSelected();
-			result = selected.at(qrand() % selected.length());
+			result = selected.at(qsanRandomBounded(selected.length()));
 		}
 		_setPlayerGeneral(player, result, true);
 	}
@@ -2912,7 +2912,7 @@ void Room::run()
 			} else if (!names.contains(gen_name))
 				names << gen_name;
 		}
-		qShuffle(names);
+		qsanShuffle(names);
 		foreach(ServerPlayer*player, getPlayers()){
 			if (player == lord) continue;
 			lords.clear();
@@ -2936,7 +2936,7 @@ void Room::run()
 		if (Config.value("OptionalBoss").toBool()){
 			setPlayerProperty(lord, "general", askForGeneral(lord, boss_lv_1));
 		} else
-			setPlayerProperty(lord, "general", boss_lv_1.at(qrand() % boss_lv_1.length()));
+			setPlayerProperty(lord, "general", boss_lv_1.at(qsanRandomBounded(boss_lv_1.length())));
 		setPlayerMark(lord, "BossMode_Boss", 1);
 
 		QList<ServerPlayer*> players = getPlayers();
@@ -2989,7 +2989,7 @@ void Room::run()
 		}
 		foreach(QString god, Sanguosha->getLimitedGeneralNames("god"))
 			if (god.contains("shen")) list << god;
-		qShuffle(list);
+		qsanShuffle(list);
 		for (int i = 0; i < Config.value("fuck_god_spinbox", 3).toInt(); ++i){
 			if (list.isEmpty()) break;
 			god_list << list.takeFirst();
@@ -3064,15 +3064,15 @@ void Room::assignRoles()
 		|| (!Sanguosha->isCustomGameMode(mode) && mode.contains("_"));
 	if (mode == "04_2v2"){/*
 		roles.clear();
-		if (qrand()%2<1) roles << "loyalist" << "rebel" << "rebel" << "loyalist";
+		if (qsanRandomBounded(2)<1) roles << "loyalist" << "rebel" << "rebel" << "loyalist";
 		else roles << "rebel" << "loyalist" << "loyalist" << "rebel";*/
 		QList<ServerPlayer *> players = getPlayers();
-		qShuffle(players);
+		qsanShuffle(players);
 		replacePlayerOrder(players);
 	} else if (mode == "02_1v1"){
 		roles.prepend(roles.takeLast());
 	}else if (mode != "08_defense"&&mode != "05_ol"&&mode != "06_ol")
-		qShuffle(roles);
+		qsanShuffle(roles);
 
 	const QList<ServerPlayer *> players = getPlayers();
 	for (int i = 0; i < players.count(); i++){
@@ -5313,7 +5313,7 @@ void Room::askForLuckCard(QList<CardsMoveStruct>&cards_moves)
 
 			notifyMoveCards(false, moves, false, tmp_list);
 			foreach(int id, move.card_ids)
-				m_cardMovement->drawPile().insert(qrand()%m_cardMovement->drawPile().length(),id);
+				m_cardMovement->drawPile().insert(qsanRandomBounded(m_cardMovement->drawPile().length()),id);
 		}
 		foreach(ServerPlayer*player, players){
 			CardsMoveStruct move;

@@ -267,7 +267,7 @@ void CoupleScenario::assign(QStringList &generals, QStringList &roles) const
     ((CoupleScenario*)this)->loadCoupleMap();
 
     QStringList husbands = original_husband_map.keys();
-    qShuffle(husbands);
+    qsanShuffle(husbands);
     husbands = husbands.mid(0, 4);
 
     QStringList others;
@@ -275,7 +275,7 @@ void CoupleScenario::assign(QStringList &generals, QStringList &roles) const
         others << husband << original_husband_map[husband];
 
     generals << others;
-    qShuffle(generals);
+    qsanShuffle(generals);
 
     // roles
     for (int i = 0; i < 9; i++) {

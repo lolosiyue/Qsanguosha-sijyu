@@ -163,7 +163,7 @@ void CardMovementService::swapPile()
     m_room.doBroadcastNotify(S_COMMAND_RESET_PILE, data);
     m_room.doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_drawPile->length());
 
-    qShuffle(*m_drawPile);
+    qsanShuffle(*m_drawPile);
     foreach (int cardId, *m_drawPile) {
         setCardMapping(cardId, nullptr, Player::DrawPile);
         m_room.clearCardFlag(cardId);
@@ -1145,7 +1145,7 @@ void CardMovementService::moveCardsInToDrawpile(ServerPlayer *player,
                                                 const QString &skillName,
                                                 int n, bool visible)
 {
-    if (n <= 0) n = qrand() % m_drawPile->length() + 1;
+    if (n <= 0) n = qsanRandomBounded(m_drawPile->length()) + 1;
     if (n >= m_drawPile->length()) {
         moveCardsToEndOfDrawpile(player, cardIds, skillName, visible, false);
         return;
@@ -1285,7 +1285,7 @@ void CardMovementService::shuffleIntoDrawPile(ServerPlayer *player,
                 m_discardPile->prepend(id);
                 break;
             case Player::DrawPile:
-                m_drawPile->insert(qrand() % m_drawPile->length(), id);
+                m_drawPile->insert(qsanRandomBounded(m_drawPile->length()), id);
                 break;
             case Player::PlaceSpecial:
                 m_tableCards.append(id);

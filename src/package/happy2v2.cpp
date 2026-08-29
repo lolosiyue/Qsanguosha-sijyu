@@ -268,7 +268,7 @@ public:
                 }
                 if (hand.isEmpty()) continue;
 
-                int n = qrand() % hand.length();
+                int n = qsanRandomBounded(hand.length());
                 int id = hand.at(n);
                 if (!list.contains(id)) {
                     list << id;

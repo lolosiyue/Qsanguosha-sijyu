@@ -5,7 +5,7 @@
 #include "json.h"
 
 #include <QFile>
-#include <QRegExp>
+#include <QRegularExpression>
 
 using namespace QSanProtocol;
 
@@ -169,12 +169,15 @@ bool ReplayGameState::processSetup(const QVariant &body)
         return false;
 
     QString l = body.toString();
-    static QRegExp rx("(.*):(@?\\w+):(\\d+):(\\d+):([+\\w-]*):([RCFSTBHAMN123a-r]*)(\\s+)?");
-    if (!rx.exactMatch(l))
+    static const QRegularExpression rx(
+        QRegularExpression::anchoredPattern(QStringLiteral(
+            "(.*):(@?\\w+):(\\d+):(\\d+):([+\\w-]*):([RCFSTBHAMN123a-r]*)(\\s+)?")),
+        QRegularExpression::UseUnicodePropertiesOption);
+    const QRegularExpressionMatch match = rx.match(l);
+    if (!match.hasMatch())
         return false;
 
-    QStringList texts = rx.capturedTexts();
-    m_state.gameMode = texts.at(2);
+    m_state.gameMode = match.captured(2);
     return true;
 }
 

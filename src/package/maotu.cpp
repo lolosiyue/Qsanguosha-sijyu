@@ -3022,7 +3022,7 @@ public:
                 MoveAndChange(room, target, (ServerPlayer *)move.to, move.card_ids);
             else {
                 int id = target->getRandomHandCardId();
-                ServerPlayer * to = targets.at(qrand() % targets.length());
+                ServerPlayer * to = targets.at(qsanRandomBounded(targets.length()));
                 MoveAndChange(room, target, to, QList<int>() << id);
             }
         }
@@ -3787,7 +3787,7 @@ public:
             if (!room->askForUseCard(player, "@@mtwanghe!", "@mtwanghe:" + name)) {
                 QList<ServerPlayer *> targets = room->getCardTargets(player, card);
                 if (targets.isEmpty()) return false;
-                ServerPlayer *to = targets.at(qrand() % targets.length());
+                ServerPlayer *to = targets.at(qsanRandomBounded(targets.length()));
                 room->useCard(CardUseStruct(card, player, to), true);
             }
         }

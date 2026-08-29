@@ -1,5 +1,6 @@
 #include "game-rng.h"
 #include "lua-runtime.h"
+#include "util.h"
 
 #include "lua.hpp"
 
@@ -108,6 +109,36 @@ static bool gameRngInstancesDoNotShareSequenceState()
     return firstSequence == secondSequence && firstSequence != differentSequence;
 }
 
+static bool gameShuffleIsDeterministicAndPreservesElements()
+{
+    GameRng firstRng;
+    GameRng secondRng;
+    firstRng.seed(Q_UINT64_C(0x12345678abcdef01));
+    secondRng.seed(Q_UINT64_C(0x12345678abcdef01));
+
+    QList<int> first{0, 1, 2, 3, 4, 5};
+    QList<int> second = first;
+    {
+        GameRng::Binding binding(firstRng);
+        qsanShuffle(first);
+    }
+    {
+        GameRng::Binding binding(secondRng);
+        qsanShuffle(second);
+    }
+
+    QList<int> sorted = first;
+    std::sort(sorted.begin(), sorted.end());
+    QList<int> empty;
+    {
+        GameRng::Binding binding(firstRng);
+        qsanShuffle(empty);
+    }
+    return first == second
+        && sorted == QList<int>({0, 1, 2, 3, 4, 5})
+        && empty.isEmpty();
+}
+
 static bool oneRuntimeSerializesThreadHandoffs()
 {
     LuaRuntime runtime(LuaRuntime::Game);
@@ -171,13 +202,17 @@ int runLuaRuntimeIsolationTests()
         qCritical() << "Game RNG instances shared state or truncated the 64-bit seed";
         return 4;
     }
+    if (!gameShuffleIsDeterministicAndPreservesElements()) {
+        qCritical() << "Game shuffle was nondeterministic or changed its input set";
+        return 5;
+    }
     if (!oneRuntimeSerializesThreadHandoffs()) {
         qCritical() << "One Lua runtime executed on two threads concurrently";
-        return 5;
+        return 6;
     }
     if (!hardMemoryLimitRejectsOversizedAllocation()) {
         qCritical() << "Lua runtime hard memory limit was not enforced";
-        return 6;
+        return 7;
     }
     return 0;
 }

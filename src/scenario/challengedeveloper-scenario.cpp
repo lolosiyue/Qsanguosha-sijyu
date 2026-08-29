@@ -54,7 +54,7 @@ public:
         }
 
         for (int i = 0; i < 5; i++) {
-            QString skill = skills.at(qrand() % skills.length());
+            QString skill = skills.at(qsanRandomBounded(skills.length()));
             _skills << skill;
             skills.removeOne(skill);
         }
@@ -69,7 +69,7 @@ public:
             QStringList developers = getDevelopers();
             foreach (ServerPlayer *p, room->getAlivePlayers()) {
                 if (p->isLord()) continue;
-                QString developer = developers.at(qrand() % developers.length());
+                QString developer = developers.at(qsanRandomBounded(developers.length()));
                 developers.removeOne(developer);
                 const General *gen = Sanguosha->getGeneral(developer);
                 if (gen) room->changeHero(p, developer, false, false, false, false, gen->getStartHp());
@@ -147,7 +147,7 @@ public:
                             developers << p;
                     }
                     if (developers.isEmpty()) return false;
-                    ServerPlayer *developer = developers.at(qrand() % developers.length());
+                    ServerPlayer *developer = developers.at(qsanRandomBounded(developers.length()));
                     room->loseHp(HpLostStruct(developer, 1, "scenario"));
 
                     hp = player->getHp();
@@ -1346,7 +1346,7 @@ public:
 
     bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
     {
-        int num = qrand() % 4;
+        int num = qsanRandomBounded(4);
         if (num == 0) return false;
         room->sendCompulsoryTriggerLog(player, this);
         DamageStruct damage = data.value<DamageStruct>();
@@ -1366,7 +1366,7 @@ public:
 
     bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
     {
-        int num = qrand() % 4;
+        int num = qsanRandomBounded(4);
         if (num == 0) return false;
         DamageStruct damage = data.value<DamageStruct>();
 

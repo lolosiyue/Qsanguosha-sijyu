@@ -20,19 +20,6 @@
 
 // Qt 6 no longer exposes these compatibility APIs through umbrella headers.
 #include "game-rng.h"
-#include <QRegExp>
-#include <QTextCodec>
-#include <cstdlib>
-
-inline int qrand()
-{
-    return qsanRandomBounded(RAND_MAX + 1);
-}
-
-inline void qsrand(uint seed)
-{
-    qsanSeedRandom(seed);
-}
 
 // Include algorithm for std::sort and std::stable_sort.
 #include <algorithm>

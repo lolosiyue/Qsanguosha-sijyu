@@ -38,7 +38,7 @@ QString Scenario::getRoles() const
 void Scenario::assign(QStringList &generals, QStringList &roles) const
 {
     generals << lord << loyalists << rebels << renegades;
-    qShuffle(generals);
+    qsanShuffle(generals);
     foreach (QString general, generals) {
         if (general == lord) roles << "lord";
         else if (loyalists.contains(general)) roles << "loyalist";
@@ -69,7 +69,7 @@ LuaScenario::LuaScenario(const QString &name)
 void LuaScenario::assign(QStringList &generals, QStringList &roles) const
 {
     generals << lord << loyalists << rebels << renegades;
-    qShuffle(generals);
+    qsanShuffle(generals);
 	if (lord!="")
 		roles << "lord";
     for (int i = 0; i < loyalists.length(); i++)

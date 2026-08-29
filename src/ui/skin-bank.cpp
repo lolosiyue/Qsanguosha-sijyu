@@ -2,6 +2,7 @@
 #include "json.h"
 #include "protocol.h"
 #include "ui-utils.h"
+#include "ui-rng.h"
 #include "engine.h"
 #include "clientstruct.h"
 #include "settings.h"
@@ -512,7 +513,7 @@ QString QSanRoomSkin::getPlayerAudioEffectPath(const QString &eventName, const Q
 			QStringList fileNames = skill->getSources();
 			if (fileNames.length()>0) {
 				if (index < 1)
-					fileName = fileNames.at(qrand()%fileNames.length());
+					fileName = fileNames.at(UiRng::bounded(fileNames.length()));
 				else {
 					if (index>fileNames.length()) fileName = fileNames.last();
 					else fileName = fileNames[index-1];
@@ -544,7 +545,7 @@ QString QSanRoomSkin::getPlayerAudioEffectPath(const QString &eventName, const Q
 					QStringList fileNames = skill->getSources();
 					if (fileNames.length()>0) {
 						if (index < 1)
-							aliasFileName = fileNames.at(qrand()%fileNames.length());
+							aliasFileName = fileNames.at(UiRng::bounded(fileNames.length()));
 						else {
 							if (index>fileNames.length()) aliasFileName = fileNames.last();
 							else aliasFileName = fileNames[index-1];
@@ -592,7 +593,7 @@ QString QSanRoomSkin::getPlayerAudioEffectPathWithGeneral(const QString &eventNa
 			if (!matchedFiles.isEmpty()) {
 				QString targetFile;
 				if (index < 1) {
-					targetFile = matchedFiles.at(qrand() % matchedFiles.length());
+					targetFile = matchedFiles.at(UiRng::bounded(matchedFiles.length()));
 				} else {
 					QString indexedFile = QString("%1%2.ogg").arg(eventName).arg(index);
 					if (matchedFiles.contains(indexedFile)) {
@@ -626,7 +627,7 @@ QString QSanRoomSkin::getPlayerAudioEffectPathWithGeneral(const QString &eventNa
 			if (!matchedFiles.isEmpty()) {
 				QString targetFile;
 				if (index < 1) {
-					targetFile = matchedFiles.at(qrand() % matchedFiles.length());
+					targetFile = matchedFiles.at(UiRng::bounded(matchedFiles.length()));
 				} else {
 					QString indexedFile = QString("%1%2.ogg").arg(eventName).arg(index);
 					if (matchedFiles.contains(indexedFile)) {
@@ -661,7 +662,7 @@ QString QSanRoomSkin::getPlayerAudioEffectPathWithGeneral(const QString &eventNa
 		if (!matchedFiles.isEmpty()) {
 			QString targetFile;
 			if (index < 1) {
-				targetFile = matchedFiles.at(qrand() % matchedFiles.length());
+				targetFile = matchedFiles.at(UiRng::bounded(matchedFiles.length()));
 			} else {
 				QString indexedFile = QString("%1%2.ogg").arg(eventName).arg(index);
 				if (matchedFiles.contains(indexedFile)) {
@@ -846,7 +847,7 @@ QString IQSanComponentSkin::getRandomAudioFileName(const QString &key) const
 {
 	QStringList audios = getAudioFileNames(key);
 	if (audios.isEmpty()) return "";
-	return audios[qrand()%audios.length()];
+	return audios[UiRng::bounded(audios.length())];
 }
 
 QString IQSanComponentSkin::_readConfig(const QVariant &dict, const QString &key,

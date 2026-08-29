@@ -594,7 +594,7 @@ void SitianCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) 
 {
 	QStringList choices;
 	choices << "lieri" << "leidian" << "dalang" << "baoyu" << "dawu";
-	qShuffle(choices);
+	qsanShuffle(choices);
 	QString choice = room->askForChoice(source,getSkillName(),choices.first()+"+"+choices.last());
 	room->addPlayerMark(source,"&"+choice+"-PlayClear");
 	if(choice=="lieri"){
@@ -750,7 +750,7 @@ public:
 			if(use.card->isKindOf("TrickCard")){
 				use.to.removeAll(player);
 				if(use.to.length()>0){
-					qShuffle(use.to);
+					qsanShuffle(use.to);
 					room->sendCompulsoryTriggerLog(player,this);
 					room->damage(DamageStruct(objectName(),player,use.to.first(),1,DamageStruct::Thunder));
 				}
@@ -789,7 +789,7 @@ public:
 		if(event==TargetSpecifying){
             CardUseStruct use = data.value<CardUseStruct>();
 			use.to.removeAll(player);
-			qShuffle(use.to);
+			qsanShuffle(use.to);
 			room->sendCompulsoryTriggerLog(player,this);
 			room->damage(DamageStruct(objectName(),player,use.to.first(),1,DamageStruct::Thunder));
 		}
@@ -1279,7 +1279,7 @@ public:
 						skills["zongfan"] = 2;
 					}
 					QStringList sks = skills.keys();
-					qShuffle(sks);
+					qsanShuffle(sks);
 					foreach (QString sk, sks) {
 						if(Sanguosha->getSkill(sk)){
 							room->setChangeSkillState(player, objectName(), 2);
@@ -1353,7 +1353,7 @@ public:
 					skills["zongfan"] = 2;
 				}
 				QStringList sks = skills.keys();
-				qShuffle(sks);
+				qsanShuffle(sks);
 				foreach (QString sk, sks) {
 					if(Sanguosha->getSkill(sk)){
 						room->setChangeSkillState(owner, objectName(), 2);
@@ -1412,7 +1412,7 @@ bool LisaoCard::targetFilter(const QList<const Player *> &targets, const Player 
 
 void LisaoCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
 {
-	int n = qrand()%69+1;
+	int n = qsanRandomBounded(69)+1;
 	QString question = QString("lisaoQuestion%1").arg(n);
 	QString optionA = QString("lisaoOptionA%1").arg(n);
 	QString optionB = QString("lisaoOptionB%1").arg(n);
@@ -1739,7 +1739,7 @@ public:
 			if(f==Limited){
 				room->sendCompulsoryTriggerLog(player,this);
 				QList<ServerPlayer *>tps = room->getOtherPlayers(player);
-				qShuffle(tps);
+				qsanShuffle(tps);
 				room->doAnimate(1,player->objectName(),tps.first()->objectName());
 				room->damage(DamageStruct(objectName(),player,tps.first()));
 			}
@@ -1777,7 +1777,7 @@ public:
 		}
 		if(event==GameStart){
             room->sendCompulsoryTriggerLog(player,this);
-			qShuffle(skills);
+			qsanShuffle(skills);
 			QStringList sks = skills.mid(0, 3);
 			QString sk = room->askForChoice(player,objectName(),sks.join("+"));
 			sks = player->getTag("huyiSkills").toStringList();
@@ -1804,7 +1804,7 @@ public:
 			if(card&&card->isKindOf("BasicCard")){
 				QStringList sks = player->getTag("huyiSkills").toStringList();
 				if(sks.length()<5){
-					qShuffle(skills);
+					qsanShuffle(skills);
 					QString cn = "【"+Sanguosha->translate(card->objectName())+"】";
 					if(card->isKindOf("Slash")) cn = "【杀】";
 					foreach (QString sk, skills) {
@@ -2057,7 +2057,7 @@ public:
 							gs << "-"+s->objectName();
 					}
 					if(!gs.isEmpty()){
-						qShuffle(gs);
+						qsanShuffle(gs);
 						ds << gs.first();
 						ds << "lijian";
 						room->handleAcquireDetachSkills(p,ds);
@@ -2145,7 +2145,7 @@ public:
 			DamageStruct damage = data.value<DamageStruct>();
 			if(damage.card){
 				QList<int>ids = player->getPile("dingxi");
-				qShuffle(ids);
+				qsanShuffle(ids);
 				foreach (int id, ids) {
 					const Card*c = Sanguosha->getCard(id);
 					if(c->sameNameWith(damage.card)){
@@ -2213,7 +2213,7 @@ public:
             DrawStruct draw = data.value<DrawStruct>();
 			if (draw.reason=="InitialHandCards") return false;
 			QList<int>ids,ids2 = room->getDrawPile();
-			qShuffle(ids2);
+			qsanShuffle(ids2);
 			QStringList names;
 			foreach (int id, ids2) {
 				const Card*c = Sanguosha->getCard(id);
@@ -2919,7 +2919,7 @@ public:
 						if(player!=p){
 							QString choice = room->askForChoice(p,"huaquan0","huaquan1+huaquan2",data);
 							if(use.card->hasFlag(choice)||!player->hasSkill("sanou",true)) continue;
-							room->sendCompulsoryTriggerLog(player,"sanou",true,true,qrand()%2+1);
+							room->sendCompulsoryTriggerLog(player,"sanou",true,true,qsanRandomBounded(2)+1);
 							p->gainMark("&so_jidao");
 						}
 					}
@@ -2981,7 +2981,7 @@ public:
 		}else if(event==Damaged){
 			DamageStruct damage = data.value<DamageStruct>();
 			if(damage.from&&damage.from->hasSkill(objectName())){
-				room->sendCompulsoryTriggerLog(damage.from,this,qrand()%2+1);
+				room->sendCompulsoryTriggerLog(damage.from,this,qsanRandomBounded(2)+1);
 				player->gainMark("&so_jidao");
 			}
 		}
@@ -3070,7 +3070,7 @@ public:
 					if(tp){
 						QList<int>ids = ListV2I(tp->property("InitialHandCards").toList());
 						if(ids.length()>0){
-							qShuffle(ids);
+							qsanShuffle(ids);
 							room->obtainCard(player,ids.last());
 						}
 					}
