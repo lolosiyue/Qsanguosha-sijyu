@@ -264,6 +264,28 @@ python3 tools/autotest/gui_network_smoke.py --exe-root . --mode 02p \
     --seed 20260828 --artifact-dir art --no-xvfb --platform xcb
 ```
 
+## F1.1 完整互動模型（2026-08-29）
+
+本節取代上方「第一個垂直切片／剩餘 24 種」的階段性描述。Client 的 29 個
+built-in interactive commands 現在全部由同一份 descriptor table 註冊，並走：
+
+`Client::m_interactions → beginInteraction() → ClientCore → DesktopInteractionView → typed response → validation → replyToServer()`。
+
+| 項目 | F1.1 狀態 |
+|---|---|
+| Request identity | `requestId + serverSerial + command + InteractionType` |
+| Payload | QtCore-only `std::variant`，一般選項／玩家／卡牌與特殊模型分離 |
+| 特殊模型 | Guanxing、Gongxin、Yiji、Pindian、Amazing Grace、角色配置、武將排列、custom QML |
+| Eligibility | 可注入 provider；衍生結果只作 UI hint，不作 server-authoritative membership rejection |
+| Timeout | `ClientCore` 內 production `QTimer`，毋須 UI polling |
+| QML | 舊 `[qmlPath, params]` 明確包成 `legacy.qml` 並告警計數；未知 structured type 立即拒絕 |
+| Passthrough | built-in 為 0；只保留明確 legacy custom adapter |
+| Inventory | `Client::interactionInventory()` 遍歷實際 map；Debug constructor assertion 驗證 29 個 descriptor |
+| Matrix | `artifacts/client-core-interaction-matrix.json`，由 CTest gate 驗證 29/29 與零 passthrough |
+
+Core validation 包含 exactly-once、duplicate／stale reply、request／serial／command mismatch、
+cancel、superseded、disconnect、view detach、production expiry，以及各 special payload 的結構驗證。
+
 ## 9. 非目標
 
 Text client、Protocol V2、WebSocket、Android、WASM、其餘 24 個 interaction、

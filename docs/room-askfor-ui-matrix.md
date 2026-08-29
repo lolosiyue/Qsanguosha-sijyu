@@ -209,4 +209,12 @@ CTest 是選用的 parser／launcher regression coverage，不是開啟或檢查
 ctest --test-dir builds/cmake-vs2026 -C Debug --output-on-failure
 ```
 
+## F1.1 更新（2026-08-29）
+
+上方 ClientCore 段落保留的是 F1 首個五-command slice 的歷史快照。F1.1 已把
+`Client::m_interactions` 的 29 個 built-in commands 全部遷移；現有 14 個可見 GUI case
+仍使用 production RoomScene／Dashboard／dialog surface，protocol fixture test 另逐一覆蓋
+29 個 command 名稱與 serial。QML 現在有 versioned structured model 與 registry policy；
+舊 QML surface 透過明確 `legacy.qml` adapter 保留，不再是無界定的 passthrough。
+
 `qsanguosha_local_response_ui_case_parser` 在一般 `BUILD_TESTING` 下註冊，且不依賴舊 runner cache option。`qsanguosha_skill_ui_runner_contract` 驗證 Python CLI、capability probe、stem resolution 與純增量 `--build` 契約。

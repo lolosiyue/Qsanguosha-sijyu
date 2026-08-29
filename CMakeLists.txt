@@ -351,11 +351,13 @@ endforeach()
 set(QSAN_CLIENT_CORE_SOURCES
     src/client/core/client-core.cpp
     src/client/core/client-core.h
+    src/client/core/card-eligibility-provider.h
     src/client/core/client-game-state.cpp
     src/client/core/client-game-state.h
     src/client/core/client-interaction-view.h
     src/client/core/interaction-model.cpp
     src/client/core/interaction-model.h
+    src/client/core/custom-interaction-registry.h
 )
 
 add_library(qsanguosha_client_core STATIC ${QSAN_CLIENT_CORE_SOURCES})
@@ -373,12 +375,10 @@ if(MSVC)
 endif()
 
 get_target_property(qsan_client_core_links qsanguosha_client_core LINK_LIBRARIES)
-set(_qsan_client_core_qt_allowlist Qt6::Core)
 foreach(qsan_client_core_link IN LISTS qsan_client_core_links)
-    if(qsan_client_core_link MATCHES "^Qt6::"
-        AND NOT qsan_client_core_link IN_LIST _qsan_client_core_qt_allowlist)
+    if(NOT qsan_client_core_link STREQUAL "Qt6::Core")
         message(FATAL_ERROR
-            "qsanguosha_client_core links forbidden Qt target: ${qsan_client_core_link}")
+            "qsanguosha_client_core links forbidden target: ${qsan_client_core_link}; only Qt6::Core is allowed")
     endif()
 endforeach()
 
