@@ -3661,6 +3661,9 @@ void RoomScene::switchControlContext(const QString &target_name)
 void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 {
 	ClientPlayer *activePlayer = getCurrentOperationPlayer(dashboard);
+	ClientCore *interactionCore = ClientInstance->interactionCore();
+	const InteractionRequest *activeRequest = interactionCore != nullptr
+		&& interactionCore->hasActiveRequest() ? &interactionCore->activeRequest() : nullptr;
 	QString requestOnsoleTarget = currentOnsoleTarget();
 	if(requestOnsoleTarget != onsole_target){
 		onsole_target = requestOnsoleTarget;
@@ -3736,10 +3739,12 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 		showPromptBox();
 
 		ok_button->setEnabled(false);
-		cancel_button->setEnabled(ClientInstance->m_isDiscardActionRefusable);
+		cancel_button->setEnabled(activeRequest != nullptr && activeRequest->cancelable);
 		discard_button->setEnabled(false);
 
-		QString pattern = Sanguosha->getCurrentCardUsePattern();
+		QString pattern = activeRequest != nullptr && activeRequest->payloadAs<CardInteractionPayload>() != nullptr
+			? activeRequest->payloadAs<CardInteractionPayload>()->selection.pattern
+			: Sanguosha->getCurrentCardUsePattern();
 		static QRegExp rx("@@?([_A-Za-z]+)(\\d+)?!?");
 		if(rx.exactMatch(pattern)){
 			QString skill_name = rx.capturedTexts().at(1);
@@ -3823,7 +3828,16 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 		cancel_button->setEnabled(false);
 		discard_button->setEnabled(false);
 
-		showorpindian_skill->setPattern(Sanguosha->currentRoomState()->getCurrentCardUsePattern());
+		QString pattern = Sanguosha->currentRoomState()->getCurrentCardUsePattern();
+		if (activeRequest != nullptr) {
+			if (const CardInteractionPayload *payload
+				= activeRequest->payloadAs<CardInteractionPayload>())
+				pattern = payload->selection.pattern;
+			else if (const PindianInteractionPayload *payload
+				= activeRequest->payloadAs<PindianInteractionPayload>())
+				pattern = payload->selection.pattern;
+		}
+		showorpindian_skill->setPattern(pattern);
 		showorpindian_skill->setPlayer(getCurrentOperationPlayer(dashboard));
 		dashboard->startPending(showorpindian_skill);
 		break;
@@ -3839,16 +3853,20 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 	case Client::Discarding:
 	case Client::Exchanging: {
 		showPromptBox();
+		const CardInteractionPayload *payload = activeRequest != nullptr
+			? activeRequest->payloadAs<CardInteractionPayload>() : nullptr;
+		const CardSelectionState selection = payload != nullptr
+			? payload->selection : CardSelectionState();
 
 		ok_button->setEnabled(false);
-		cancel_button->setEnabled(ClientInstance->m_isDiscardActionRefusable);
+		cancel_button->setEnabled(activeRequest != nullptr && activeRequest->cancelable);
 		discard_button->setEnabled(false);
 
-		discard_skill->setNum(ClientInstance->discard_num);
-		discard_skill->setMinNum(ClientInstance->min_num);
-		discard_skill->setIncludeEquip(ClientInstance->m_canDiscardEquip);
+		discard_skill->setNum(selection.maxSelection);
+		discard_skill->setMinNum(selection.minSelection);
+		discard_skill->setIncludeEquip(payload != nullptr && payload->includeEquip);
 		discard_skill->setIsDiscard(newStatus!=Client::Exchanging);
-		discard_skill->setPattern(ClientInstance->m_cardDiscardPattern);
+		discard_skill->setPattern(selection.pattern);
 		discard_skill->setPlayer(getCurrentOperationPlayer(dashboard));
 		dashboard->startPending(discard_skill);
 		break;
@@ -3898,17 +3916,13 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 		// 數值同以前逐個一樣(askForPlayerChosen() 就係由同一份 server
 		// payload 砌呢個 request),所以 UI 行為唔變;分別係規則約束而家有
 		// 一個單一出處,而唔係散落喺 Client 嘅可寫欄位度。
-		ClientCore *core = ClientInstance->interactionCore();
-		const bool hasRequest = core != nullptr
-			&& core->hasActiveRequest(InteractionType::ChoosePlayer);
-		const QStringList selectablePlayers = hasRequest
-			? core->activeRequest().players.selectablePlayers : ClientInstance->players_to_choose;
-		const int maxNum = hasRequest
-			? core->activeRequest().players.maxSelection : ClientInstance->choose_max_num;
-		const int minNum = hasRequest
-			? core->activeRequest().players.minSelection : ClientInstance->choose_min_num;
-		const bool cancelable = hasRequest
-			? core->activeRequest().cancelable : ClientInstance->m_isDiscardActionRefusable;
+		const PlayerInteractionPayload *payload = activeRequest != nullptr
+			? activeRequest->payloadAs<PlayerInteractionPayload>() : nullptr;
+		const QStringList selectablePlayers = payload != nullptr
+			? payload->selection.selectablePlayers : QStringList();
+		const int maxNum = payload != nullptr ? payload->selection.maxSelection : 0;
+		const int minNum = payload != nullptr ? payload->selection.minSelection : 0;
+		const bool cancelable = activeRequest != nullptr && activeRequest->cancelable;
 
 		ok_button->setEnabled(false);
 		cancel_button->setEnabled(cancelable);
@@ -3922,7 +3936,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 		dashboard->disableAllCards();
 
 		ok_button->setEnabled(false);
-		cancel_button->setEnabled(ClientInstance->m_isDiscardActionRefusable);
+		cancel_button->setEnabled(activeRequest != nullptr && activeRequest->cancelable);
 		discard_button->setEnabled(false);
 
 		showPromptBox();
@@ -3932,11 +3946,18 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 	}
 	case Client::AskForYiji: {
 		ok_button->setEnabled(false);
-		cancel_button->setEnabled(ClientInstance->m_isDiscardActionRefusable);
+		const YijiInteractionPayload *payload = activeRequest != nullptr
+			? activeRequest->payloadAs<YijiInteractionPayload>() : nullptr;
+		cancel_button->setEnabled(activeRequest != nullptr && activeRequest->cancelable);
 		discard_button->setEnabled(false);
 
-		QStringList yiji_info = Sanguosha->currentRoomState()->getCurrentCardUsePattern().split("=");
-		yiji_skill->setPlayerNames(yiji_info.last().split("+"),yiji_info.first().toInt(),yiji_info.at(1));
+		QStringList cardIds;
+		if (payload != nullptr) {
+			for (int cardId : payload->cardIds)
+				cardIds << QString::number(cardId);
+		}
+		yiji_skill->setPlayerNames(payload != nullptr ? payload->targetPlayers : QStringList(),
+			payload != nullptr ? payload->maxCards : 0, cardIds.join("+"));
 		dashboard->startPending(yiji_skill);
 
 		showPromptBox();
@@ -6461,7 +6482,7 @@ void RoomScene::selectGeneral()
 {
 	CardItem*item = qobject_cast<CardItem*>(sender());
 	if(item){
-		ClientInstance->replyToServer(S_COMMAND_ASK_GENERAL,item->objectName());
+		ClientInstance->onPlayerChooseDraftGeneral(item->objectName());
 		foreach (CardItem*item,general_items){
 			item->setFlag(QGraphicsItem::ItemIsFocusable,false);
 			item->disconnect(this);
@@ -6631,8 +6652,7 @@ void RoomScene::finishArrange()
 
 	arrange_rects.clear();
 
-	ClientInstance->replyToServer(S_COMMAND_ARRANGE_GENERAL,JsonUtils::toJsonArray(names));
-	ClientInstance->setStatus(Client::NotActive);
+	ClientInstance->onPlayerArrangeGenerals(names);
 }
 
 void RoomScene::showPindianBox(const QString&from_name,int from_id,const QString&to_name,int to_id,const QString&reason)

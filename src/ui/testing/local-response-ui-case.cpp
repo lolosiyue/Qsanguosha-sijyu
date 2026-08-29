@@ -285,6 +285,10 @@ bool LocalResponseUiCase::makeRequestPacket(Packet *packet, QString *actualComma
 bool LocalResponseUiCase::commandFromName(const QString &name, CommandType *command)
 {
     static const QMap<QString, CommandType> commands {
+        { QStringLiteral("S_COMMAND_CHOOSE_ROLE"), S_COMMAND_CHOOSE_ROLE },
+        { QStringLiteral("S_COMMAND_CHOOSE_GENERAL"), S_COMMAND_CHOOSE_GENERAL },
+        { QStringLiteral("S_COMMAND_CHOOSE_DIRECTION"), S_COMMAND_CHOOSE_DIRECTION },
+        { QStringLiteral("S_COMMAND_ASK_PEACH"), S_COMMAND_ASK_PEACH },
         { QStringLiteral("S_COMMAND_INVOKE_SKILL"), S_COMMAND_INVOKE_SKILL },
         { QStringLiteral("S_COMMAND_MULTIPLE_CHOICE"), S_COMMAND_MULTIPLE_CHOICE },
         { QStringLiteral("S_COMMAND_RESPONSE_CARD"), S_COMMAND_RESPONSE_CARD },
@@ -295,7 +299,21 @@ bool LocalResponseUiCase::commandFromName(const QString &name, CommandType *comm
         { QStringLiteral("S_COMMAND_AMAZING_GRACE"), S_COMMAND_AMAZING_GRACE },
         { QStringLiteral("S_COMMAND_SKILL_YIJI"), S_COMMAND_SKILL_YIJI },
         { QStringLiteral("S_COMMAND_SKILL_GUANXING"), S_COMMAND_SKILL_GUANXING },
-        { QStringLiteral("S_COMMAND_SKILL_GONGXIN"), S_COMMAND_SKILL_GONGXIN }
+        { QStringLiteral("S_COMMAND_SKILL_GONGXIN"), S_COMMAND_SKILL_GONGXIN },
+        { QStringLiteral("S_COMMAND_PLAY_CARD"), S_COMMAND_PLAY_CARD },
+        { QStringLiteral("S_COMMAND_CHOOSE_SUIT"), S_COMMAND_CHOOSE_SUIT },
+        { QStringLiteral("S_COMMAND_CHOOSE_KINGDOM"), S_COMMAND_CHOOSE_KINGDOM },
+        { QStringLiteral("S_COMMAND_TRIGGER_ORDER"), S_COMMAND_TRIGGER_ORDER },
+        { QStringLiteral("S_COMMAND_NULLIFICATION"), S_COMMAND_NULLIFICATION },
+        { QStringLiteral("S_COMMAND_SHOW_CARD"), S_COMMAND_SHOW_CARD },
+        { QStringLiteral("S_COMMAND_PINDIAN"), S_COMMAND_PINDIAN },
+        { QStringLiteral("S_COMMAND_CHOOSE_ORDER"), S_COMMAND_CHOOSE_ORDER },
+        { QStringLiteral("S_COMMAND_CHOOSE_ROLE_3V3"), S_COMMAND_CHOOSE_ROLE_3V3 },
+        { QStringLiteral("S_COMMAND_SURRENDER"), S_COMMAND_SURRENDER },
+        { QStringLiteral("S_COMMAND_LUCK_CARD"), S_COMMAND_LUCK_CARD },
+        { QStringLiteral("S_COMMAND_ASK_GENERAL"), S_COMMAND_ASK_GENERAL },
+        { QStringLiteral("S_COMMAND_ARRANGE_GENERAL"), S_COMMAND_ARRANGE_GENERAL },
+        { QStringLiteral("S_COMMAND_QML_INTERACT"), S_COMMAND_QML_INTERACT }
     };
     if (!commands.contains(name))
         return false;
@@ -306,6 +324,10 @@ bool LocalResponseUiCase::commandFromName(const QString &name, CommandType *comm
 QString LocalResponseUiCase::commandName(CommandType command)
 {
     static const QMap<CommandType, QString> names {
+        { S_COMMAND_CHOOSE_ROLE, QStringLiteral("S_COMMAND_CHOOSE_ROLE") },
+        { S_COMMAND_CHOOSE_GENERAL, QStringLiteral("S_COMMAND_CHOOSE_GENERAL") },
+        { S_COMMAND_CHOOSE_DIRECTION, QStringLiteral("S_COMMAND_CHOOSE_DIRECTION") },
+        { S_COMMAND_ASK_PEACH, QStringLiteral("S_COMMAND_ASK_PEACH") },
         { S_COMMAND_INVOKE_SKILL, QStringLiteral("S_COMMAND_INVOKE_SKILL") },
         { S_COMMAND_MULTIPLE_CHOICE, QStringLiteral("S_COMMAND_MULTIPLE_CHOICE") },
         { S_COMMAND_RESPONSE_CARD, QStringLiteral("S_COMMAND_RESPONSE_CARD") },
@@ -317,6 +339,20 @@ QString LocalResponseUiCase::commandName(CommandType command)
         { S_COMMAND_SKILL_YIJI, QStringLiteral("S_COMMAND_SKILL_YIJI") },
         { S_COMMAND_SKILL_GUANXING, QStringLiteral("S_COMMAND_SKILL_GUANXING") },
         { S_COMMAND_SKILL_GONGXIN, QStringLiteral("S_COMMAND_SKILL_GONGXIN") },
+        { S_COMMAND_PLAY_CARD, QStringLiteral("S_COMMAND_PLAY_CARD") },
+        { S_COMMAND_CHOOSE_SUIT, QStringLiteral("S_COMMAND_CHOOSE_SUIT") },
+        { S_COMMAND_CHOOSE_KINGDOM, QStringLiteral("S_COMMAND_CHOOSE_KINGDOM") },
+        { S_COMMAND_TRIGGER_ORDER, QStringLiteral("S_COMMAND_TRIGGER_ORDER") },
+        { S_COMMAND_NULLIFICATION, QStringLiteral("S_COMMAND_NULLIFICATION") },
+        { S_COMMAND_SHOW_CARD, QStringLiteral("S_COMMAND_SHOW_CARD") },
+        { S_COMMAND_PINDIAN, QStringLiteral("S_COMMAND_PINDIAN") },
+        { S_COMMAND_CHOOSE_ORDER, QStringLiteral("S_COMMAND_CHOOSE_ORDER") },
+        { S_COMMAND_CHOOSE_ROLE_3V3, QStringLiteral("S_COMMAND_CHOOSE_ROLE_3V3") },
+        { S_COMMAND_SURRENDER, QStringLiteral("S_COMMAND_SURRENDER") },
+        { S_COMMAND_LUCK_CARD, QStringLiteral("S_COMMAND_LUCK_CARD") },
+        { S_COMMAND_ASK_GENERAL, QStringLiteral("S_COMMAND_ASK_GENERAL") },
+        { S_COMMAND_ARRANGE_GENERAL, QStringLiteral("S_COMMAND_ARRANGE_GENERAL") },
+        { S_COMMAND_QML_INTERACT, QStringLiteral("S_COMMAND_QML_INTERACT") },
         { S_COMMAND_MIRROR_GUANXING_STEP, QStringLiteral("S_COMMAND_MIRROR_GUANXING_STEP") }
     };
     return names.value(command, QStringLiteral("UNKNOWN_COMMAND"));

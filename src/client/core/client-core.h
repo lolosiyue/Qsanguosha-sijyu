@@ -27,11 +27,13 @@
 // 執行 server 喺 request 入面已經寫低嘅約束。
 
 #include "client-game-state.h"
+#include "card-eligibility-provider.h"
 #include "client-interaction-view.h"
 #include "interaction-model.h"
 
 #include <QList>
 #include <QObject>
+#include <QTimer>
 
 #include <functional>
 
@@ -48,6 +50,8 @@ public:
 
     void setClock(Clock clock);
     qint64 now() const;
+    void setCardEligibilityProvider(const ICardEligibilityProvider *provider);
+    const ICardEligibilityProvider *cardEligibilityProvider() const { return m_cardEligibilityProvider; }
 
     ClientGameState *state() { return &m_state; }
     const ClientGameState *state() const { return &m_state; }
@@ -117,14 +121,26 @@ private:
         const InteractionResponse &response) const;
     InteractionValidation validateCards(const InteractionRequest &request,
         const InteractionResponse &response) const;
+    InteractionValidation validateAssignment(const InteractionRequest &request,
+        const InteractionResponse &response) const;
+    InteractionValidation validateRearrangement(const InteractionRequest &request,
+        const InteractionResponse &response) const;
+    InteractionValidation validateDistribution(const InteractionRequest &request,
+        const InteractionResponse &response) const;
+    InteractionValidation validateCustom(const InteractionRequest &request,
+        const InteractionResponse &response) const;
     InteractionValidation rejectionForCompleted(quint64 requestId) const;
     const CompletedRequest *findCompleted(quint64 requestId) const;
     void recordCompleted(quint64 requestId, CompletionKind kind);
     void clearActive();
+    void enrichEligibilityHints(InteractionRequest &request) const;
+    void scheduleDeadlineTimer();
 
     ClientGameState m_state;
     IClientInteractionView *m_view = nullptr;
     Clock m_clock;
+    const ICardEligibilityProvider *m_cardEligibilityProvider = nullptr;
+    QTimer m_deadlineTimer;
     InteractionRequest m_active;
     QList<CompletedRequest> m_completed;
     quint64 m_nextRequestId = 1;

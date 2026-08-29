@@ -127,7 +127,7 @@ void RoleAssignDialog::accept()
 
 void RoleAssignDialog::reject()
 {
-    ClientInstance->replyToServer(S_COMMAND_CHOOSE_ROLE);
+    ClientInstance->onPlayerCancelAssignRole();
     QDialog::reject();
 }
 
@@ -177,7 +177,7 @@ void RoomScene::startAssign()
 {
     if (Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty()) {
         // 自動化模式略過模態對話框，沿用拒絕時的預設身份回覆。
-        ClientInstance->replyToServer(S_COMMAND_CHOOSE_ROLE);
+        ClientInstance->onPlayerCancelAssignRole();
         return;
     }
     RoleAssignDialog *dialog = new RoleAssignDialog(main_window);

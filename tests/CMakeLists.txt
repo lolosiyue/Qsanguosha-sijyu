@@ -240,6 +240,15 @@ qsan_add_ctest(qsanguosha_client_core_contract qsanguosha_client_core_tests
     LABELS "client-core;fast"
 )
 
+add_test(NAME qsanguosha_client_interaction_matrix
+    COMMAND ${CMAKE_COMMAND}
+        -DMATRIX_FILE=${QSAN_TEST_ROOT}/artifacts/client-core-interaction-matrix.json
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/client_core/verify-interaction-matrix.cmake
+)
+set_tests_properties(qsanguosha_client_interaction_matrix PROPERTIES
+    LABELS "client-core;inventory;fast"
+)
+
 add_test(NAME qsanguosha_network_ui_smoke_cli_contract
     COMMAND ${Python3_EXECUTABLE}
         ${QSAN_TEST_ROOT}/tools/autotest/tests/test_gui_network_smoke_contract.py
