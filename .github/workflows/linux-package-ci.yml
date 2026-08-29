@@ -9,7 +9,8 @@ name: Linux package CI
 # 一放上去就開唔到 —— 呢個差別就係 M3 存在嘅原因。
 #
 # 刻意唔喺每次改 source 都跑:整包 + 全套 smoke 要成半個鐘。改動 packaging
-# 相關路徑、開 PR 去 debug／main、打 tag、或者手動 dispatch 先至跑。
+# 相關路徑、開 PR 去 debug／main、push main、打 tag、或者手動 dispatch 先至跑；
+# push debug 唔會喺 PR gate 之後再重複整包。
 #
 # GUI 對局(gui_network_smoke.py)一樣唔喺呢度跑:runner 冇美術／音訊資產,
 # 缺資產打完一局 client 同 server 會一齊 SIGSEGV,同本 PR 無關。呢個決定同
@@ -33,7 +34,6 @@ on:
   push:
     branches:
       - main
-      - debug
     paths:
       - 'CMakeLists.txt'
       - 'cmake/**'
