@@ -5,6 +5,10 @@ set(QSAN_SOURCES
     src/client/clientplayer.cpp
     src/client/clientstruct.cpp
     src/client/desktop-interaction-view.cpp
+    src/client/interaction-descriptor-registry.cpp
+    src/client/interaction-request-factory.cpp
+    src/client/interaction-reply-coordinator.cpp
+    src/client/legacy-v1-interaction-reply-adapter.cpp
     src/core/json-gui.cpp
     src/core/oracle_helper.cpp
     src/core/record-analysis.cpp

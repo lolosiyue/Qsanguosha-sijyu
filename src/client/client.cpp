@@ -1,6 +1,10 @@
 #include "client.h"
 #include "client-core.h"
 #include "desktop-interaction-view.h"
+#include "interaction-descriptor-registry.h"
+#include "interaction-request-factory.h"
+#include "interaction-reply-coordinator.h"
+#include "legacy-v1-interaction-reply-adapter.h"
 #include "runtime-paths.h"
 #include "settings.h"
 #include "engine.h"
@@ -23,66 +27,11 @@
 #include <QJsonDocument>
 #include <QDebug>
 
-#include <array>
-
 using namespace std;
 using namespace QSanProtocol;
 
 Client *ClientInstance = nullptr;
 static bool recorder_eventsave = false;
-
-namespace {
-
-struct ClientInteractionDescriptor
-{
-	CommandType command;
-	InteractionType type;
-	Client::Callback builder;
-	const char *commandName;
-	const char *builderName;
-	const char *validatorId;
-	const char *rendererId;
-	const char *testId;
-	bool passthrough;
-};
-
-const std::array<ClientInteractionDescriptor, 29> &clientInteractionDescriptors()
-{
-	static const std::array<ClientInteractionDescriptor, 29> descriptors = {{
-		{ S_COMMAND_CHOOSE_ROLE, InteractionType::ChooseRole, &Client::askForAssign, "CHOOSE_ROLE", "askForAssign", "assignment", "desktop.role_assignment", "choose_role", false },
-		{ S_COMMAND_CHOOSE_GENERAL, InteractionType::ChooseGeneral, &Client::askForGeneral, "CHOOSE_GENERAL", "askForGeneral", "option", "desktop.general_choice", "choose_general", false },
-		{ S_COMMAND_CHOOSE_DIRECTION, InteractionType::ChooseDirection, &Client::askForDirection, "CHOOSE_DIRECTION", "askForDirection", "option", "desktop.direction", "choose_direction", false },
-		{ S_COMMAND_EXCHANGE_CARD, InteractionType::ExchangeCard, &Client::askForExchange, "EXCHANGE_CARD", "askForExchange", "cards", "desktop.dashboard_cards", "exchange", false },
-		{ S_COMMAND_ASK_PEACH, InteractionType::AskPeach, &Client::askForSinglePeach, "ASK_PEACH", "askForSinglePeach", "cards", "desktop.dashboard_cards", "ask_peach", false },
-		{ S_COMMAND_SKILL_GUANXING, InteractionType::SkillGuanxing, &Client::askForGuanxing, "SKILL_GUANXING", "askForGuanxing", "rearrangement", "desktop.guanxing", "guanxing", false },
-		{ S_COMMAND_SKILL_GONGXIN, InteractionType::SkillGongxin, &Client::askForGongxin, "SKILL_GONGXIN", "askForGongxin", "cards", "desktop.gongxin", "gongxin", false },
-		{ S_COMMAND_SKILL_YIJI, InteractionType::SkillYiji, &Client::askForYiji, "SKILL_YIJI", "askForYiji", "distribution", "desktop.yiji", "yiji", false },
-		{ S_COMMAND_PLAY_CARD, InteractionType::PlayCard, &Client::activate, "PLAY_CARD", "activate", "cards", "desktop.dashboard_cards", "play_card", false },
-		{ S_COMMAND_RESPONSE_CARD, InteractionType::ResponseCard, &Client::askForCardOrUseCard, "RESPONSE_CARD", "askForCardOrUseCard", "cards", "desktop.dashboard_cards", "card_response", false },
-		{ S_COMMAND_DISCARD_CARD, InteractionType::DiscardCard, &Client::askForDiscard, "DISCARD_CARD", "askForDiscard", "cards", "desktop.dashboard_cards", "discard", false },
-		{ S_COMMAND_MULTIPLE_CHOICE, InteractionType::Choice, &Client::askForChoice, "MULTIPLE_CHOICE", "askForChoice", "option", "desktop.option_choice", "choice", false },
-		{ S_COMMAND_CHOOSE_SUIT, InteractionType::ChooseSuit, &Client::askForSuit, "CHOOSE_SUIT", "askForSuit", "option", "desktop.suit", "choose_suit", false },
-		{ S_COMMAND_CHOOSE_KINGDOM, InteractionType::ChooseKingdom, &Client::askForKingdom, "CHOOSE_KINGDOM", "askForKingdom", "option", "desktop.kingdom", "choose_kingdom", false },
-		{ S_COMMAND_CHOOSE_PLAYER, InteractionType::ChoosePlayer, &Client::askForPlayerChosen, "CHOOSE_PLAYER", "askForPlayerChosen", "players", "desktop.player_choice", "player_chosen", false },
-		{ S_COMMAND_INVOKE_SKILL, InteractionType::SkillInvoke, &Client::askForSkillInvoke, "INVOKE_SKILL", "askForSkillInvoke", "option", "desktop.skill_invoke", "skill_invoke", false },
-		{ S_COMMAND_TRIGGER_ORDER, InteractionType::TriggerOrder, &Client::askForTriggerOrder, "TRIGGER_ORDER", "askForTriggerOrder", "option", "desktop.trigger_order", "trigger_order", false },
-		{ S_COMMAND_NULLIFICATION, InteractionType::Nullification, &Client::askForNullification, "NULLIFICATION", "askForNullification", "cards", "desktop.dashboard_cards", "nullification", false },
-		{ S_COMMAND_SHOW_CARD, InteractionType::ShowCard, &Client::askForCardShow, "SHOW_CARD", "askForCardShow", "cards", "desktop.show_card", "show_card", false },
-		{ S_COMMAND_AMAZING_GRACE, InteractionType::AmazingGrace, &Client::askForAG, "AMAZING_GRACE", "askForAG", "cards", "desktop.amazing_grace", "ask_for_ag", false },
-		{ S_COMMAND_PINDIAN, InteractionType::Pindian, &Client::askForPindian, "PINDIAN", "askForPindian", "cards", "desktop.pindian", "pindian", false },
-		{ S_COMMAND_CHOOSE_CARD, InteractionType::ChooseCard, &Client::askForCardChosen, "CHOOSE_CARD", "askForCardChosen", "cards", "desktop.card_chosen", "card_chosen", false },
-		{ S_COMMAND_CHOOSE_ORDER, InteractionType::ChooseOrder, &Client::askForOrder, "CHOOSE_ORDER", "askForOrder", "option", "desktop.order", "choose_order", false },
-		{ S_COMMAND_CHOOSE_ROLE_3V3, InteractionType::ChooseRole3v3, &Client::askForRole3v3, "CHOOSE_ROLE_3V3", "askForRole3v3", "option", "desktop.role_3v3", "choose_role_3v3", false },
-		{ S_COMMAND_SURRENDER, InteractionType::Surrender, &Client::askForSurrender, "SURRENDER", "askForSurrender", "option", "desktop.skill_invoke", "surrender", false },
-		{ S_COMMAND_LUCK_CARD, InteractionType::LuckCard, &Client::askForLuckCard, "LUCK_CARD", "askForLuckCard", "option", "desktop.skill_invoke", "luck_card", false },
-		{ S_COMMAND_ASK_GENERAL, InteractionType::AskGeneral, &Client::askForGeneral3v3, "ASK_GENERAL", "askForGeneral3v3", "option", "desktop.draft_general", "ask_general", false },
-		{ S_COMMAND_ARRANGE_GENERAL, InteractionType::ArrangeGeneral, &Client::startArrange, "ARRANGE_GENERAL", "startArrange", "players", "desktop.arrange_general", "arrange_general", false },
-		{ S_COMMAND_QML_INTERACT, InteractionType::QmlInteract, &Client::askForQml, "QML_INTERACT", "askForQml", "custom", "desktop.custom_registry", "qml_interact", false }
-	}};
-	return descriptors;
-}
-
-} // namespace
 
 static ClientPlayer *getControlRootPlayer(ClientPlayer *player)
 {
@@ -211,11 +160,11 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 	m_callbacks[S_COMMAND_ANYTIME_SKILL_DONE] = &Client::handleAnytimeSkillDone;
 	m_callbacks[S_COMMAND_SET_SHOWN_HANDCARD] = &Client::setShownHandCards;
 	m_callbacks[S_COMMAND_SET_BROKEN_EQUIP] = &Client::setBrokenEquips;
-	for (const ClientInteractionDescriptor &descriptor : clientInteractionDescriptors())
+	for (const ClientInteractionDescriptor &descriptor : InteractionDescriptorRegistry::descriptors())
 		m_interactions.insert(descriptor.command, descriptor.builder);
-	Q_ASSERT_X(m_interactions.size() == static_cast<int>(clientInteractionDescriptors().size()),
+	Q_ASSERT_X(m_interactions.size() == static_cast<int>(InteractionDescriptorRegistry::descriptors().size()),
 		"Client::Client", "interactive command inventory size mismatch");
-	for (const ClientInteractionDescriptor &descriptor : clientInteractionDescriptors()) {
+	for (const ClientInteractionDescriptor &descriptor : InteractionDescriptorRegistry::descriptors()) {
 		Q_ASSERT_X(m_interactions.value(descriptor.command) == descriptor.builder,
 			"Client::Client", "interactive command descriptor was not registered");
 	}
@@ -581,21 +530,29 @@ void Client::beginInteraction(InteractionRequest request)
 	m_interactionCore->beginRequest(request);
 }
 
-Client::InteractionOutcome Client::completeInteraction(InteractionType type,
-	InteractionResponse response)
+InteractionRequest Client::makeInteractionRequest(InteractionType type,
+	InteractionPayload payload, bool cancelable) const
 {
-	// core 冇對應嘅 active request,即係呢條 reply 路徑今次係為咗一個未遷移
-	// 嘅 interaction 而行(RESPONSE_CARD 嘅 reply 就同時服務出牌階段、
-	// 無懈可擊、求桃同 show/pindian)。行舊路,唔攔。
-	if (m_interactionCore == nullptr || !m_interactionCore->hasActiveRequest(type))
-		return InteractionOutcome::Rejected;
+	const ClientInteractionDescriptor *descriptor = InteractionDescriptorRegistry::find(type);
+	if (descriptor == nullptr)
+		return InteractionRequest();
+	return InteractionRequestFactory::create(descriptor->type, descriptor->command,
+		descriptor->responseShape, std::move(payload), cancelable);
+}
 
-	const InteractionRequest &active = m_interactionCore->activeRequest();
-	response.requestId = active.requestId;
-	response.serverSerial = active.serverSerial;
-	response.command = active.command;
-	const InteractionValidation validation = m_interactionCore->submitResponse(response);
-	return validation.accepted() ? InteractionOutcome::Accepted : InteractionOutcome::Rejected;
+bool Client::submitInteractionResponse(InteractionResponse response)
+{
+	if (m_interactionCore == nullptr || !m_interactionCore->hasActiveRequest())
+		return false;
+	const ClientInteractionDescriptor *descriptor
+		= InteractionDescriptorRegistry::find(m_interactionCore->activeRequest().type);
+	if (descriptor == nullptr || descriptor->replyEncoder == nullptr)
+		return false;
+	return InteractionReplyCoordinator::submit(m_interactionCore,
+		descriptor->replyEncoder, std::move(response),
+		[this](const LegacyV1InteractionReply &reply) {
+			replyToServer(reply.command, reply.argument);
+		});
 }
 
 // ── DesktopInteractionView 嘅呈現 port ──────────────────────────────────
@@ -603,21 +560,28 @@ Client::InteractionOutcome Client::completeInteraction(InteractionType type,
 void Client::presentGeneralChoice(const InteractionRequest &request)
 {
 	QStringList generals;
-	foreach (const InteractionOption &option, request.options)
-		generals << option.value;
+	if (const OptionInteractionPayload *payload = request.payloadAs<OptionInteractionPayload>()) {
+		for (const InteractionOption &option : payload->options)
+			generals << option.value;
+	}
 	emit generals_got(generals);
 	setStatus(ExecDialog);
 }
 
 void Client::presentOptionChoice(const InteractionRequest &request)
 {
-	// chooseOption() 要嘅係 server 原本嗰三份資料(可揀項／唔可揀項／tip),
-	// 而唔係 core 砌好嘅 option 清單:清單入面重有一個 dialog 專用嘅 cancel
-	// sentinel。原值放咗喺 context,所以 desktop 呈現同以前逐字一樣。
-	emit options_got(request.skillName,
-		request.context.value(QStringLiteral("options")).toStringList(),
-		request.context.value(QStringLiteral("except_options")).toString(),
-		request.context.value(QStringLiteral("tip")).toString());
+	QStringList enabled;
+	QStringList disabled;
+	QString tip;
+	if (const OptionInteractionPayload *payload = request.payloadAs<OptionInteractionPayload>()) {
+		tip = payload->tip;
+		for (const InteractionOption &option : payload->options) {
+			if (option.metadata.value(QStringLiteral("synthetic_cancel")).toBool())
+				continue;
+			(option.enabled ? enabled : disabled) << option.value;
+		}
+	}
+	emit options_got(request.skillName, enabled, disabled.join(QLatin1Char('+')), tip);
 	setStatus(ExecDialog);
 }
 
@@ -638,175 +602,199 @@ void Client::presentCardResponse(const InteractionRequest &request)
 	// 呢個 request 嘅 prompt 由 builder 直接砌落 prompt_doc:當中「附加技能
 	// Notice」嗰步要讀返 document 已經 render 好嘅 HTML(prompt_doc->toHtml()),
 	// 唔可以喺呢度用一個純字串重砌。所以呢個 view 只負責狀態切換。
-	const int requested = request.context.value(QStringLiteral("client_status"),
-		static_cast<int>(Responding)).toInt();
-	setStatus(static_cast<Status>(requested));
+	Status requested = Responding;
+	if (const CardInteractionPayload *payload = request.payloadAs<CardInteractionPayload>()) {
+		switch (static_cast<Card::HandlingMethod>(payload->selection.handlingMethod)) {
+		case Card::MethodPlay: requested = Playing; break;
+		case Card::MethodDiscard: requested = RespondingForDiscard; break;
+		case Card::MethodUse: requested = RespondingUse; break;
+		case Card::MethodResponse: requested = Responding; break;
+		default: requested = RespondingNonTrigger; break;
+		}
+	}
+	setStatus(requested);
 }
 
-void Client::presentStructuredInteraction(const InteractionRequest &request)
+void Client::presentRoleAssignment(const InteractionRequest &)
 {
-	switch (request.type) {
-	case InteractionType::ChooseRole:
-		emit assign_asked();
-		return;
-	case InteractionType::ChooseDirection:
-		emit directions_got();
-		setStatus(ExecDialog);
-		return;
-	case InteractionType::ExchangeCard:
-		prompt_doc->setHtml(request.prompt);
-		setStatus(Exchanging);
-		return;
-	case InteractionType::DiscardCard:
-		prompt_doc->setHtml(request.prompt);
-		setStatus(Discarding);
-		return;
-	case InteractionType::AskPeach:
-	case InteractionType::Nullification:
-	case InteractionType::ShowCard:
-	case InteractionType::Pindian:
-		prompt_doc->setHtml(request.prompt);
-		setStatus(static_cast<Status>(request.context.value(QStringLiteral("client_status"),
-			static_cast<int>(Responding)).toInt()));
-		return;
-	case InteractionType::PlayCard:
-		setStatus(Playing);
-		return;
-	case InteractionType::SkillGuanxing: {
-		const RearrangeCardsInteractionPayload *payload
-			= request.payloadAs<RearrangeCardsInteractionPayload>();
-		if (payload != nullptr)
-			emit guanxing(payload->cardIds,
-				request.context.value(QStringLiteral("single_side")).toInt());
-		setStatus(AskForGuanxing);
-		return;
+	emit assign_asked();
+}
+
+void Client::presentDirectionChoice(const InteractionRequest &)
+{
+	emit directions_got();
+	setStatus(ExecDialog);
+}
+
+void Client::presentCardExchange(const InteractionRequest &request)
+{
+	prompt_doc->setHtml(request.prompt);
+	setStatus(Exchanging);
+}
+
+void Client::presentCardDiscard(const InteractionRequest &request)
+{
+	prompt_doc->setHtml(request.prompt);
+	setStatus(Discarding);
+}
+
+void Client::presentRespondingUse(const InteractionRequest &request)
+{
+	prompt_doc->setHtml(request.prompt);
+	setStatus(RespondingUse);
+}
+
+void Client::presentShowOrPindian(const InteractionRequest &request)
+{
+	prompt_doc->setHtml(request.prompt);
+	setStatus(AskForShowOrPindian);
+}
+
+void Client::presentPlayCard(const InteractionRequest &)
+{
+	setStatus(Playing);
+}
+
+void Client::presentGuanxing(const InteractionRequest &request)
+{
+	const RearrangeCardsInteractionPayload *payload
+		= request.payloadAs<RearrangeCardsInteractionPayload>();
+	if (payload != nullptr) {
+		int legacyMode = 0;
+		if (payload->mode == RearrangementMode::UpOnly)
+			legacyMode = 1;
+		else if (payload->mode == RearrangementMode::DownOnly)
+			legacyMode = -1;
+		emit guanxing(payload->cardIds, legacyMode);
 	}
-	case InteractionType::SkillGongxin: {
-		const GongxinInteractionPayload *payload = request.payloadAs<GongxinInteractionPayload>();
-		if (payload != nullptr)
-			emit gongxin(payload->visibleCards, payload->enableHeart, payload->selectableCards);
-		setStatus(AskForGongxin);
-		return;
-	}
-	case InteractionType::SkillYiji:
-		prompt_doc->setHtml(request.prompt);
-		setStatus(AskForYiji);
-		return;
-	case InteractionType::ChooseSuit:
-	case InteractionType::ChooseKingdom: {
-		QStringList values;
-		if (const OptionInteractionPayload *payload = request.payloadAs<OptionInteractionPayload>()) {
-			for (const InteractionOption &option : payload->options)
-				values << option.value;
+	setStatus(AskForGuanxing);
+}
+
+void Client::presentGongxin(const InteractionRequest &request)
+{
+	const GongxinInteractionPayload *payload = request.payloadAs<GongxinInteractionPayload>();
+	if (payload != nullptr)
+		emit gongxin(payload->visibleCards, payload->allowHeartOperation,
+			payload->selectableCards);
+	setStatus(AskForGongxin);
+}
+
+void Client::presentYiji(const InteractionRequest &request)
+{
+	prompt_doc->setHtml(request.prompt);
+	setStatus(AskForYiji);
+}
+
+void Client::presentSuitChoice(const InteractionRequest &request)
+{
+	QStringList values;
+	if (const OptionInteractionPayload *payload = request.payloadAs<OptionInteractionPayload>())
+		for (const InteractionOption &option : payload->options) values << option.value;
+	emit suits_got(values);
+	setStatus(ExecDialog);
+}
+
+void Client::presentKingdomChoice(const InteractionRequest &request)
+{
+	QStringList values;
+	if (const OptionInteractionPayload *payload = request.payloadAs<OptionInteractionPayload>())
+		for (const InteractionOption &option : payload->options) values << option.value;
+	emit kingdoms_got(values);
+	setStatus(ExecDialog);
+}
+
+void Client::presentTriggerOrder(const InteractionRequest &request)
+{
+	QVariantList options;
+	if (const TriggerOrderInteractionPayload *payload
+		= request.payloadAs<TriggerOrderInteractionPayload>()) {
+		for (const TriggerOrderOption &option : payload->options) {
+			QVariantMap detail;
+			detail.insert(QStringLiteral("skill"), option.skillName);
+			detail.insert(QStringLiteral("instanceID"), option.instanceId);
+			detail.insert(QStringLiteral("invoker"), option.invoker);
+			detail.insert(QStringLiteral("owner"), option.owner);
+			if (!option.preferredTarget.isEmpty()) {
+				detail.insert(QStringLiteral("preferredtarget"), option.preferredTarget);
+				detail.insert(QStringLiteral("preferredtargetseat"), option.preferredTargetSeat);
+			}
+			options << detail;
 		}
-		if (request.type == InteractionType::ChooseSuit)
-			emit suits_got(values);
-		else
-			emit kingdoms_got(values);
-		setStatus(ExecDialog);
-		return;
 	}
-	case InteractionType::TriggerOrder:
-		emit trigger_order_got(request.context.value(QStringLiteral("trigger_options")).toList(),
-			request.cancelable);
-		setStatus(AskForTriggerOrder);
-		return;
-	case InteractionType::AmazingGrace:
-		prompt_doc->setHtml(request.prompt);
-		setStatus(AskForAG);
-		return;
-	case InteractionType::ChooseCard: {
-		const CardInteractionPayload *payload = request.payloadAs<CardInteractionPayload>();
-		ClientPlayer *player = payload != nullptr ? getPlayer(payload->sourcePlayer) : nullptr;
-		if (payload != nullptr && player != nullptr) {
-			emit cards_got(player, payload->zoneFlags,
-				request.context.value(QStringLiteral("reason")).toString(),
-				payload->handCardsVisible,
-				static_cast<Card::HandlingMethod>(payload->selection.handlingMethod),
-				payload->selection.disabledCards, request.cancelable);
-		}
-		setStatus(ExecDialog);
-		return;
+	emit trigger_order_got(options, request.cancelable);
+	setStatus(AskForTriggerOrder);
+}
+
+void Client::presentAmazingGrace(const InteractionRequest &request)
+{
+	prompt_doc->setHtml(request.prompt);
+	setStatus(AskForAG);
+}
+
+void Client::presentChooseCard(const InteractionRequest &request)
+{
+	const CardInteractionPayload *payload = request.payloadAs<CardInteractionPayload>();
+	ClientPlayer *player = payload != nullptr ? getPlayer(payload->sourcePlayer) : nullptr;
+	if (payload != nullptr && player != nullptr) {
+		emit cards_got(player, payload->zoneFlags, request.skillName,
+			payload->handCardsVisible,
+			static_cast<Card::HandlingMethod>(payload->selection.handlingMethod),
+			payload->selection.disabledCards, request.cancelable);
 	}
-	case InteractionType::ChooseOrder:
-		emit orders_got(static_cast<Game3v3ChooseOrderCommand>(
-			request.context.value(QStringLiteral("reason")).toInt()));
-		setStatus(ExecDialog);
-		return;
-	case InteractionType::ChooseRole3v3: {
-		const RoleAssignmentInteractionPayload *payload
-			= request.payloadAs<RoleAssignmentInteractionPayload>();
-		if (payload != nullptr)
-			emit roles_got(payload->scheme, payload->roles);
-		setStatus(ExecDialog);
-		return;
+	setStatus(ExecDialog);
+}
+
+void Client::presentOrderChoice(const InteractionRequest &request)
+{
+	const ChooseOrderInteractionPayload *payload
+		= request.payloadAs<ChooseOrderInteractionPayload>();
+	if (payload != nullptr)
+		emit orders_got(static_cast<Game3v3ChooseOrderCommand>(payload->reason));
+	setStatus(ExecDialog);
+}
+
+void Client::presentRole3v3(const InteractionRequest &request)
+{
+	if (const OptionInteractionPayload *payload = request.payloadAs<OptionInteractionPayload>()) {
+		QStringList roles;
+		for (const InteractionOption &option : payload->options) roles << option.value;
+		emit roles_got(payload->scheme, roles);
 	}
-	case InteractionType::Surrender:
-	case InteractionType::LuckCard:
-		prompt_doc->setHtml(request.prompt);
-		setStatus(AskForSkillInvoke);
-		return;
-	case InteractionType::AskGeneral:
-		emit general_asked();
-		setStatus(AskForGeneralTaken);
-		return;
-	case InteractionType::ArrangeGeneral: {
-		const ArrangeGeneralsInteractionPayload *payload
-			= request.payloadAs<ArrangeGeneralsInteractionPayload>();
-		if (payload != nullptr)
-			emit arrange_started(payload->arrangement);
-		setStatus(AskForArrangement);
-		return;
-	}
-	case InteractionType::QmlInteract: {
-		const CustomInteractionPayload *payload = request.payloadAs<CustomInteractionPayload>();
-		if (payload != nullptr && payload->legacy) {
-			emit qml_interact(payload->legacyQmlPath, payload->payload.toVariantMap());
-			setStatus(AskForQml);
-		}
-		return;
-	}
-	case InteractionType::ChooseGeneral:
-	case InteractionType::Choice:
-	case InteractionType::ChoosePlayer:
-	case InteractionType::SkillInvoke:
-	case InteractionType::ResponseCard:
-	case InteractionType::None:
-		break;
+	setStatus(ExecDialog);
+}
+
+void Client::presentBooleanPrompt(const InteractionRequest &request)
+{
+	prompt_doc->setHtml(request.prompt);
+	setStatus(AskForSkillInvoke);
+}
+
+void Client::presentDraftGeneral(const InteractionRequest &)
+{
+	emit general_asked();
+	setStatus(AskForGeneralTaken);
+}
+
+void Client::presentArrangeGeneral(const InteractionRequest &request)
+{
+	if (const ArrangeGeneralsInteractionPayload *payload
+		= request.payloadAs<ArrangeGeneralsInteractionPayload>())
+		emit arrange_started(payload->arrangement);
+	setStatus(AskForArrangement);
+}
+
+void Client::presentQmlInteraction(const InteractionRequest &request)
+{
+	const CustomInteractionPayload *payload = request.payloadAs<CustomInteractionPayload>();
+	if (payload != nullptr && payload->legacy) {
+		emit qml_interact(payload->legacyQmlPath, payload->payload.toVariantMap());
+		setStatus(AskForQml);
 	}
 }
 
 QJsonArray Client::interactionInventory() const
 {
-	QJsonArray inventory;
-	QSet<int> describedCommands;
-	for (const ClientInteractionDescriptor &descriptor : clientInteractionDescriptors()) {
-		describedCommands.insert(static_cast<int>(descriptor.command));
-		QJsonObject entry;
-		entry.insert(QStringLiteral("command"), descriptor.commandName);
-		entry.insert(QStringLiteral("command_value"), static_cast<int>(descriptor.command));
-		entry.insert(QStringLiteral("type"), interactionTypeName(descriptor.type));
-		entry.insert(QStringLiteral("builder"), descriptor.builderName);
-		entry.insert(QStringLiteral("validator"), descriptor.validatorId);
-		entry.insert(QStringLiteral("desktop_renderer"), descriptor.rendererId);
-		entry.insert(QStringLiteral("test"), descriptor.testId);
-		entry.insert(QStringLiteral("passthrough"), descriptor.passthrough);
-		entry.insert(QStringLiteral("registered"),
-			m_interactions.contains(descriptor.command)
-				&& m_interactions.value(descriptor.command) == descriptor.builder);
-		inventory.append(entry);
-	}
-	for (QHash<CommandType, Callback>::const_iterator it = m_interactions.constBegin();
-		 it != m_interactions.constEnd(); ++it) {
-		if (describedCommands.contains(static_cast<int>(it.key())))
-			continue;
-		QJsonObject entry;
-		entry.insert(QStringLiteral("command_value"), static_cast<int>(it.key()));
-		entry.insert(QStringLiteral("registered"), true);
-		entry.insert(QStringLiteral("unexpected"), true);
-		inventory.append(entry);
-	}
-	return inventory;
+	return InteractionDescriptorRegistry::inventory();
 }
 
 void Client::addPlayer(const QVariant &player_info)
@@ -1059,10 +1047,8 @@ void Client::onPlayerChooseGeneral(const QString &item_name)
 		cancelInteraction(InteractionType::ChooseGeneral, InteractionCancelReason::Abandoned);
 		return;
 	}
-	if (completeInteraction(InteractionType::ChooseGeneral,
-			InteractionResponse::makeOption(0, item_name)) == InteractionOutcome::Rejected)
+	if (!submitInteractionResponse(InteractionResponse::makeOption(0, item_name)))
 		return;
-	replyToServer(S_COMMAND_CHOOSE_GENERAL, item_name);
 	if(available_cards.isEmpty())
 		Sanguosha->playSystemAudioEffect("choose-item");
 }
@@ -1161,39 +1147,27 @@ void Client::onPlayerResponseCard(const Card *card, const QList<const Player *> 
 		if (!card->isVirtualCard())
 			cardIds << card->getEffectiveId();
 		response = InteractionResponse::makeCards(0, cardIds, card->toString());
-
-		QVariantList subcards;
+		InteractionResponse::CardSelectionData *answer
+			= std::get_if<InteractionResponse::CardSelectionData>(&response.payload);
 		foreach (int subcardId, card->getSubcards())
-			subcards << subcardId;
-		if (!subcards.isEmpty())
-			response.payload.insert(QStringLiteral("subcards"), subcards);
+			answer->subcardIds << subcardId;
 
-		QStringList targetNameList;
 		foreach (const Player *target, targets)
-			targetNameList << target->objectName();
-		if (!targetNameList.isEmpty())
-			response.payload.insert(QStringLiteral("targets"), targetNameList);
+			answer->targets << target->objectName();
+		answer->activationSkillInstanceId = card->getActivationSkillInstanceId();
+		if (answer->activationSkillInstanceId > 0)
+			answer->activationSkillName = card->getActivationSkillName();
 	} else {
 		response = InteractionResponse::makeCancel(0);
 	}
 
-	if (completeInteraction(activeType, response) == InteractionOutcome::Rejected)
+	if (!submitInteractionResponse(response))
 		return;
 
 	if (card) {
-		JsonArray targetNames;
-		foreach (const Player *target, targets)
-			targetNames << target->objectName();
-
-		int activationId = card->getActivationSkillInstanceId();
-		QString activationName = activationId > 0 ? card->getActivationSkillName() : QString();
-		replyToServer(S_COMMAND_RESPONSE_CARD, JsonArray() << card->toString()
-			<< QVariant::fromValue(targetNames) << activationName << activationId);
-
 		if (card->isVirtualCard() && !card->parent())
 			const_cast<Card *>(card)->deleteLater();
-	} else
-		replyToServer(S_COMMAND_RESPONSE_CARD);
+	}
 
 	setStatus(NotActive);
 }
@@ -1254,16 +1228,13 @@ void Client::notifyRoleChange(const QString &new_role)
 void Client::activate(const QVariant &)
 {
 	_m_roomState.setCurrentCardUsePattern("");
-	InteractionRequest request;
-	request.type = InteractionType::PlayCard;
-	request.command = S_COMMAND_PLAY_CARD;
-	request.cancelable = true;
-	request.responseSchema = InteractionResponseShape::Cards;
 	CardInteractionPayload payload;
 	payload.selection.minSelection = 0;
 	payload.selection.maxSelection = 1;
-	request.cards = payload.selection;
-	request.payload = payload;
+	payload.cardTextAllowed = true;
+	payload.virtualCardAllowed = true;
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::PlayCard, payload, true);
 	beginInteraction(request);
 }
 
@@ -1439,25 +1410,9 @@ QString Client::getSkillNameToInvokeData() const
 
 void Client::onPlayerInvokeSkill(bool invoke)
 {
-	if (m_interactionCore != nullptr && m_interactionCore->hasActiveRequest()) {
-		const InteractionType activeType = m_interactionCore->activeRequest().type;
-		if (activeType == InteractionType::Surrender || activeType == InteractionType::LuckCard) {
-			if (completeInteraction(activeType, InteractionResponse::makeOption(0,
-					invoke ? QStringLiteral("yes") : QStringLiteral("no")))
-					== InteractionOutcome::Rejected)
-				return;
-			replyToServer(activeType == InteractionType::Surrender
-				? S_COMMAND_SURRENDER : S_COMMAND_LUCK_CARD, invoke);
-			setStatus(NotActive);
-			return;
-		}
-	}
-	if (completeInteraction(InteractionType::SkillInvoke,
-			InteractionResponse::makeOption(0, invoke ? QStringLiteral("yes") : QStringLiteral("no")))
-			== InteractionOutcome::Rejected)
+	if (!submitInteractionResponse(InteractionResponse::makeOption(0,
+			invoke ? QStringLiteral("yes") : QStringLiteral("no"))))
 		return;
-
-	replyToServer(S_COMMAND_INVOKE_SKILL, invoke);
 	setStatus(NotActive);
 }
 
@@ -1535,40 +1490,28 @@ void Client::askForCardOrUseCard(const QVariant &cardUsage)
 		}
 	}
 
-	Status status = Responding;
 	int handlingMethod = -1;
 	m_respondingUseFixedTarget = nullptr;
 	if (usage.size() >= 3 && JsonUtils::isNumber(usage[2])) {
 		handlingMethod = usage[2].toInt();
-		switch ((Card::HandlingMethod)handlingMethod) {
-		case Card::MethodPlay: status = Playing; break;
-		case Card::MethodDiscard: status = RespondingForDiscard; break;
-		case Card::MethodUse: status = RespondingUse; break;
-		case Card::MethodResponse: status = Responding; break;
-		default: status = RespondingNonTrigger; break;
-		}
 	}
 
-	InteractionRequest request;
-	request.type = InteractionType::ResponseCard;
-	request.command = S_COMMAND_RESPONSE_CARD;
+	CardInteractionPayload cardPayload;
 	// 合法牌嘅集合係 pattern 配對嘅結果,而 pattern 配對係 engine 規則:
 	// server 冇喺 request 入面列出可選牌,ClientCore 亦唔應該扮規則引擎自己
 	// 猜一份出嚟(猜錯就會攔住一個合法回覆)。所以呢類 request 唔枚舉,
 	// core 只執行數量、取消權、卡 id 值域同 exactly-once。
-	request.cards.enumerated = false;
-	request.cards.pattern = card_pattern;
-	request.cards.handlingMethod = handlingMethod;
-	request.cards.minSelection = 1;
-	request.cards.maxSelection = 1;
+	cardPayload.selection.enumerated = false;
+	cardPayload.selection.pattern = card_pattern;
+	cardPayload.selection.handlingMethod = handlingMethod;
+	cardPayload.selection.minSelection = 1;
+	cardPayload.selection.maxSelection = 1;
+	cardPayload.cardTextAllowed = true;
+	cardPayload.virtualCardAllowed = true;
 	// pattern 尾巴嘅 "!" 就係「唔准唔覆」,同 m_isDiscardActionRefusable 同一件事。
-	request.cancelable = m_isDiscardActionRefusable;
+	InteractionRequest request = makeInteractionRequest(InteractionType::ResponseCard,
+		cardPayload, m_isDiscardActionRefusable);
 	request.prompt = prompt_doc->toHtml();
-	request.responseSchema = InteractionResponseShape::Cards;
-	CardInteractionPayload cardPayload;
-	cardPayload.selection = request.cards;
-	request.payload = cardPayload;
-	request.context.insert(QStringLiteral("client_status"), static_cast<int>(status));
 	beginInteraction(request);
 }
 
@@ -1598,19 +1541,15 @@ void Client::askForSkillInvoke(const QVariant &arg)
 		text = formatPromptList(texts);
 	}
 
-	InteractionRequest request;
-	request.type = InteractionType::SkillInvoke;
-	request.command = S_COMMAND_INVOKE_SKILL;
+	OptionInteractionPayload payload;
+	payload.options << InteractionOption(QStringLiteral("yes"))
+			<< InteractionOption(QStringLiteral("no"));
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::SkillInvoke, payload, true);
 	request.skillName = skill_name;
 	request.prompt = text;
 	// 發動技能係一條 yes／no 題。Dashboard 嘅 Cancel 掣就係 "no",所以佢
 	// 永遠答得起,cancelable 亦因此係 true。
-	request.options << InteractionOption(QStringLiteral("yes"))
-			<< InteractionOption(QStringLiteral("no"));
-	request.cancelable = true;
-	request.responseSchema = InteractionResponseShape::Option;
-	request.payload = OptionInteractionPayload { request.options, true };
-	request.context.insert(QStringLiteral("skill_data"), data);
 	beginInteraction(request);
 }
 
@@ -1619,11 +1558,8 @@ void Client::onPlayerMakeChoice()
 	QString option = sender()->objectName();
 	if (m_interactionCore == nullptr || !m_interactionCore->hasActiveRequest())
 		return;
-	const InteractionRequest active = m_interactionCore->activeRequest();
-	if (completeInteraction(active.type,
-			InteractionResponse::makeOption(0, option)) == InteractionOutcome::Rejected)
+	if (!submitInteractionResponse(InteractionResponse::makeOption(0, option)))
 		return;
-	replyToServer(static_cast<CommandType>(active.command), option);
 	setStatus(NotActive);
 }
 
@@ -1639,16 +1575,13 @@ void Client::askForSurrender(const QVariant &initiator)
 	skill_name = "surrender";
 	skill_to_invoke = skill_name;
 	skill_to_invoke_data.clear();
-	InteractionRequest request;
-	request.type = InteractionType::Surrender;
-	request.command = S_COMMAND_SURRENDER;
+	OptionInteractionPayload payload;
+	payload.options << InteractionOption(QStringLiteral("yes"))
+		<< InteractionOption(QStringLiteral("no"));
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::Surrender, payload, true);
 	request.skillName = skill_name;
 	request.prompt = text;
-	request.cancelable = true;
-	request.options << InteractionOption(QStringLiteral("yes"))
-		<< InteractionOption(QStringLiteral("no"));
-	request.responseSchema = InteractionResponseShape::Option;
-	request.payload = OptionInteractionPayload { request.options, true };
 	beginInteraction(request);
 }
 
@@ -1657,16 +1590,13 @@ void Client::askForLuckCard(const QVariant &)
 	skill_to_invoke = "luck_card";
 	skill_to_invoke_data = "";
 	skill_name = "luck_card";
-	InteractionRequest request;
-	request.type = InteractionType::LuckCard;
-	request.command = S_COMMAND_LUCK_CARD;
+	OptionInteractionPayload payload;
+	payload.options << InteractionOption(QStringLiteral("yes"))
+		<< InteractionOption(QStringLiteral("no"));
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::LuckCard, payload, true);
 	request.skillName = skill_name;
 	request.prompt = tr("Do you want to use the luck card?");
-	request.cancelable = true;
-	request.options << InteractionOption(QStringLiteral("yes"))
-		<< InteractionOption(QStringLiteral("no"));
-	request.responseSchema = InteractionResponseShape::Option;
-	request.payload = OptionInteractionPayload { request.options, true };
 	beginInteraction(request);
 }
 
@@ -1681,21 +1611,16 @@ void Client::askForNullification(const QVariant &arg)
 
 	QString trick_name = args[0].toString();
 	ClientPlayer *source = getPlayer(args[1].toString());
-	auto beginNullification = [this, &trick_name](const QString &prompt) {
-		InteractionRequest request;
-		request.type = InteractionType::Nullification;
-		request.command = S_COMMAND_NULLIFICATION;
-		request.prompt = prompt;
-		request.cancelable = true;
-		request.responseSchema = InteractionResponseShape::Cards;
+	auto beginNullification = [this](const QString &prompt) {
 		CardInteractionPayload payload;
 		payload.selection.pattern = QStringLiteral("nullification");
 		payload.selection.minSelection = 1;
 		payload.selection.maxSelection = 1;
-		request.cards = payload.selection;
-		request.payload = payload;
-		request.context.insert(QStringLiteral("trick"), trick_name);
-		request.context.insert(QStringLiteral("client_status"), static_cast<int>(RespondingUse));
+		payload.cardTextAllowed = true;
+		payload.virtualCardAllowed = true;
+		InteractionRequest request = makeInteractionRequest(
+			InteractionType::Nullification, payload, true);
+		request.prompt = prompt;
 		beginInteraction(request);
 	};
 
@@ -1738,16 +1663,11 @@ void Client::askForNullification(const QVariant &arg)
 
 void Client::onPlayerChooseCard(int card_id)
 {
-	QVariant reply;
 	InteractionResponse response = card_id == -2
 		? InteractionResponse::makeCancel(0)
 		: InteractionResponse::makeCards(0, QList<int>() << card_id);
-	if (completeInteraction(InteractionType::ChooseCard, response)
-			== InteractionOutcome::Rejected)
+	if (!submitInteractionResponse(response))
 		return;
-	if (card_id != -2)
-		reply = card_id;
-	replyToServer(S_COMMAND_CHOOSE_CARD, reply);
 	setStatus(NotActive);
 }
 
@@ -1779,11 +1699,8 @@ void Client::onPlayerChoosePlayer(const QList<const Player *> &players)
 		}
 	}
 
-	if (completeInteraction(InteractionType::ChoosePlayer,
-			InteractionResponse::makePlayers(0, names)) == InteractionOutcome::Rejected)
+	if (!submitInteractionResponse(InteractionResponse::makePlayers(0, names)))
 		return;
-
-	replyToServer(S_COMMAND_CHOOSE_PLAYER, (names.isEmpty()) ? QVariant() : names.join("+"));
 	setStatus(NotActive);
 }
 
@@ -2053,20 +1970,15 @@ void Client::askForDiscard(const QVariant &reqvar)
 		setPromptList(texts);
 	}
 
-	InteractionRequest request;
-	request.type = InteractionType::DiscardCard;
-	request.command = S_COMMAND_DISCARD_CARD;
-	request.prompt = prompt_doc->toHtml();
-	request.cancelable = m_isDiscardActionRefusable;
-	request.responseSchema = InteractionResponseShape::Cards;
 	CardInteractionPayload payload;
 	payload.selection.pattern = m_cardDiscardPattern;
 	payload.selection.minSelection = min_num;
 	payload.selection.maxSelection = discard_num;
 	payload.selection.handlingMethod = Card::MethodDiscard;
 	payload.includeEquip = m_canDiscardEquip;
-	request.cards = payload.selection;
-	request.payload = payload;
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::DiscardCard, payload, m_isDiscardActionRefusable);
+	request.prompt = prompt_doc->toHtml();
 	beginInteraction(request);
 }
 
@@ -2100,20 +2012,15 @@ void Client::askForExchange(const QVariant &exchange)
 		}
 		setPromptList(texts);
 	}
-	InteractionRequest request;
-	request.type = InteractionType::ExchangeCard;
-	request.command = S_COMMAND_EXCHANGE_CARD;
-	request.prompt = prompt_doc->toHtml();
-	request.cancelable = m_isDiscardActionRefusable;
-	request.responseSchema = InteractionResponseShape::Cards;
 	CardInteractionPayload payload;
 	payload.selection.pattern = m_cardDiscardPattern;
 	payload.selection.minSelection = min_num;
 	payload.selection.maxSelection = discard_num;
 	payload.selection.handlingMethod = Card::MethodDiscard;
 	payload.includeEquip = m_canDiscardEquip;
-	request.cards = payload.selection;
-	request.payload = payload;
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::ExchangeCard, payload, m_isDiscardActionRefusable);
+	request.prompt = prompt_doc->toHtml();
 	beginInteraction(request);
 }
 
@@ -2197,18 +2104,16 @@ void Client::askForGeneral(const QVariant &arg)
 	QStringList generals;
 	if (!JsonUtils::tryParse(arg, generals)) return;
 
-	InteractionRequest request;
-	request.type = InteractionType::ChooseGeneral;
-	request.command = S_COMMAND_CHOOSE_GENERAL;
+	OptionInteractionPayload payload;
 	// 清單只係建議,唔係合法答案嘅完整集合:server 喺 FreeChoose 之下收清單
 	// 以外嘅武將(player-decision-service.cpp:332),而 free-choose dialog 同
 	// --test-general 自動選將(roomscene.cpp:2255)正正會咁答。ClientCore 唔可以
 	// 攔一啲 server 本身收得起嘅答案。
-	request.optionsEnumerated = false;
 	foreach (const QString &general, generals)
-		request.options << InteractionOption(general);
-	request.responseSchema = InteractionResponseShape::Option;
-	request.payload = OptionInteractionPayload { request.options, false };
+		payload.options << InteractionOption(general);
+	payload.enumerated = false;
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::ChooseGeneral, payload, false);
 	beginInteraction(request);
 }
 
@@ -2216,13 +2121,11 @@ void Client::askForSuit(const QVariant &)
 {
 	QStringList suits;
 	suits << "spade" << "club" << "heart" << "diamond";
-	InteractionRequest request;
-	request.type = InteractionType::ChooseSuit;
-	request.command = S_COMMAND_CHOOSE_SUIT;
-	request.responseSchema = InteractionResponseShape::Option;
+	OptionInteractionPayload payload;
 	for (const QString &suit : suits)
-		request.options << InteractionOption(suit);
-	request.payload = OptionInteractionPayload { request.options, true };
+		payload.options << InteractionOption(suit);
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::ChooseSuit, payload, false);
 	beginInteraction(request);
 }
 
@@ -2230,13 +2133,11 @@ void Client::askForKingdom(const QVariant &arg)
 {
 	JsonArray ask = arg.value<JsonArray>();
 	if (ask.length() != 1/* || !JsonUtils::isString(ask[0])*/) return;
-	InteractionRequest request;
-	request.type = InteractionType::ChooseKingdom;
-	request.command = S_COMMAND_CHOOSE_KINGDOM;
-	request.responseSchema = InteractionResponseShape::Option;
+	OptionInteractionPayload payload;
 	for (const QString &kingdom : ask[0].toString().split("+"))
-		request.options << InteractionOption(kingdom);
-	request.payload = OptionInteractionPayload { request.options, true };
+		payload.options << InteractionOption(kingdom);
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::ChooseKingdom, payload, false);
 	beginInteraction(request);
 }
 
@@ -2249,36 +2150,51 @@ void Client::askForChoice(const QVariant &ask_str)
 	QString except_options = ask[2].toString();
 	QString tip = ask[3].toString();
 
-	InteractionRequest request;
-	request.type = InteractionType::Choice;
-	request.command = S_COMMAND_MULTIPLE_CHOICE;
-	request.skillName = skill_name;
+	OptionInteractionPayload payload;
+	payload.tip = tip;
+	auto hasOption = [&payload](const QString &value) {
+		for (const InteractionOption &option : payload.options) {
+			if (option.value == value)
+				return true;
+		}
+		return false;
+	};
 	// 連空字串都照收:server 送嘅 option 串有可能有多餘嘅 "+",split 出嚟嗰個
 	// 空項喺 dialog 度一樣會變成一個撳得嘅掣(objectName 就係空字串),而 server
 	// 收得起。core 唔可以攔一個 desktop 產生得到嘅答案。
 	foreach (const QString &option, options) {
-		if (!request.hasOption(option))
-			request.options << InteractionOption(option);
+		if (!hasOption(option))
+			payload.options << InteractionOption(option);
 	}
 	// except_options 喺 dialog 度係「睇得到、撳唔到」嘅掣
 	// (roomscene.cpp:2551 createOptionBox(..., false)),所以入 model 係
 	// disabled option,而唔係唔存在。
 	foreach (const QString &option, except_options.split("+")) {
-		if (!option.isEmpty() && !request.hasOption(option))
-			request.options << InteractionOption(option, QString(), false);
+		if (option.isEmpty())
+			continue;
+		bool found = false;
+		for (InteractionOption &entry : payload.options) {
+			if (entry.value == option) {
+				entry.enabled = false;
+				found = true;
+				break;
+			}
+		}
+		if (!found)
+			payload.options << InteractionOption(option, QString(), false);
 	}
 	// 揀項 dialog 自己嘅 objectName 就係 "cancel"(roomscene.cpp:2549):撳 Esc
 	// 關窗會經同一個 slot 用 "cancel" 覆,BossModeExpStore 亦有一個永遠 enabled
 	// 嘅 cancel 掣。server 收得起,所以 core 亦要收得起,否則關窗會變成冇覆。
-	if (!request.hasOption(QStringLiteral("cancel")))
-		request.options << InteractionOption(QStringLiteral("cancel"));
-	request.cancelable = true;
+	if (!hasOption(QStringLiteral("cancel"))) {
+		InteractionOption cancel(QStringLiteral("cancel"));
+		cancel.metadata.insert(QStringLiteral("synthetic_cancel"), true);
+		payload.options << cancel;
+	}
 	// desktop chooseOption() 要嘅係 server 原本嗰三份資料,原值留喺 context。
-	request.context.insert(QStringLiteral("options"), options);
-	request.context.insert(QStringLiteral("except_options"), except_options);
-	request.context.insert(QStringLiteral("tip"), tip);
-	request.responseSchema = InteractionResponseShape::Option;
-	request.payload = OptionInteractionPayload { request.options, true };
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::Choice, payload, true);
+	request.skillName = skill_name;
 	beginInteraction(request);
 }
 
@@ -2290,11 +2206,7 @@ void Client::askForTriggerOrder(const QVariant &ask_str)
 
     QVariantList skillOptions = options[0].toList();
     bool optional = options[1].toBool();
-    InteractionRequest request;
-    request.type = InteractionType::TriggerOrder;
-    request.command = S_COMMAND_TRIGGER_ORDER;
-    request.cancelable = optional;
-    request.responseSchema = InteractionResponseShape::Option;
+	TriggerOrderInteractionPayload payload;
     for (const QVariant &option : skillOptions) {
         const QVariantMap detail = option.toMap();
         QString skill = detail.value(QStringLiteral("skill")).toString();
@@ -2309,11 +2221,19 @@ void Client::askForTriggerOrder(const QVariant &ask_str)
             parts << target << QString::number(
                 detail.value(QStringLiteral("preferredtargetseat")).toInt());
         const QString value = parts.join(QStringLiteral(":"));
-        if (!value.isEmpty() && !request.hasOption(value))
-            request.options << InteractionOption(value);
+		TriggerOrderOption triggerOption;
+		triggerOption.skillName = detail.value(QStringLiteral("skill")).toString();
+		triggerOption.instanceId = instanceId;
+		triggerOption.invoker = invoker;
+		triggerOption.owner = owner;
+		triggerOption.preferredTarget = target;
+		triggerOption.preferredTargetSeat
+			= detail.value(QStringLiteral("preferredtargetseat")).toInt();
+		triggerOption.responseValue = value;
+		payload.options << triggerOption;
     }
-    request.payload = OptionInteractionPayload { request.options, true };
-    request.context.insert(QStringLiteral("trigger_options"), skillOptions);
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::TriggerOrder, payload, optional);
     beginInteraction(request);
 }
 
@@ -2333,12 +2253,6 @@ void Client::askForCardChosen(const QVariant &ask_str)
 	if (player == nullptr) return;
 	QList<int> disabled_ids;
 	JsonUtils::tryParse(ask[5], disabled_ids);
-	InteractionRequest request;
-	request.type = InteractionType::ChooseCard;
-	request.command = S_COMMAND_CHOOSE_CARD;
-	request.skillName = reason;
-	request.cancelable = can_cancel;
-	request.responseSchema = InteractionResponseShape::Cards;
 	CardInteractionPayload payload;
 	payload.sourcePlayer = player_name;
 	payload.zoneFlags = flags;
@@ -2347,9 +2261,9 @@ void Client::askForCardChosen(const QVariant &ask_str)
 	payload.selection.minSelection = can_cancel ? 0 : 1;
 	payload.selection.maxSelection = 1;
 	payload.selection.handlingMethod = static_cast<int>(method);
-	request.cards = payload.selection;
-	request.payload = payload;
-	request.context.insert(QStringLiteral("reason"), reason);
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::ChooseCard, payload, can_cancel);
+	request.skillName = reason;
 	beginInteraction(request);
 }
 
@@ -2358,14 +2272,12 @@ void Client::askForOrder(const QVariant &arg)
 {
 	if (!JsonUtils::isNumber(arg)) return;
 	Game3v3ChooseOrderCommand reason = (Game3v3ChooseOrderCommand)arg.toInt();
-	InteractionRequest request;
-	request.type = InteractionType::ChooseOrder;
-	request.command = S_COMMAND_CHOOSE_ORDER;
-	request.responseSchema = InteractionResponseShape::Option;
-	request.options << InteractionOption(QString::number(static_cast<int>(S_CAMP_COOL)))
+	ChooseOrderInteractionPayload payload;
+	payload.options << InteractionOption(QString::number(static_cast<int>(S_CAMP_COOL)))
 		<< InteractionOption(QString::number(static_cast<int>(S_CAMP_WARM)));
-	request.payload = OptionInteractionPayload { request.options, true };
-	request.context.insert(QStringLiteral("reason"), static_cast<int>(reason));
+	payload.reason = static_cast<int>(reason);
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::ChooseOrder, payload, false);
 	beginInteraction(request);
 }
 
@@ -2378,25 +2290,22 @@ void Client::askForRole3v3(const QVariant &arg)
 	QStringList roles;
 	if (!JsonUtils::tryParse(ask[1], roles)) return;
 	QString scheme = ask[0].toString();
-	InteractionRequest request;
-	request.type = InteractionType::ChooseRole3v3;
-	request.command = S_COMMAND_CHOOSE_ROLE_3V3;
-	request.responseSchema = InteractionResponseShape::Option;
+	OptionInteractionPayload payload;
 	for (const QString &role : roles)
-		request.options << InteractionOption(role);
-	request.payload = RoleAssignmentInteractionPayload { scheme, QStringList(), roles };
+		payload.options << InteractionOption(role);
+	payload.scheme = scheme;
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::ChooseRole3v3, payload, false);
 	beginInteraction(request);
 }
 
 void Client::askForDirection(const QVariant &)
 {
-	InteractionRequest request;
-	request.type = InteractionType::ChooseDirection;
-	request.command = S_COMMAND_CHOOSE_DIRECTION;
-	request.responseSchema = InteractionResponseShape::Option;
-	request.options << InteractionOption(QStringLiteral("cw"))
+	OptionInteractionPayload payload;
+	payload.options << InteractionOption(QStringLiteral("cw"))
 		<< InteractionOption(QStringLiteral("ccw"));
-	request.payload = OptionInteractionPayload { request.options, true };
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::ChooseDirection, payload, false);
 	beginInteraction(request);
 }
 
@@ -2428,21 +2337,17 @@ void Client::setMark(const QVariant &mark_var)
 
 void Client::onPlayerChooseSuit()
 {
-	if (completeInteraction(InteractionType::ChooseSuit,
-			InteractionResponse::makeOption(0, sender()->objectName()))
-			== InteractionOutcome::Rejected)
+	if (!submitInteractionResponse(
+			InteractionResponse::makeOption(0, sender()->objectName())))
 		return;
-	replyToServer(S_COMMAND_CHOOSE_SUIT, sender()->objectName());
 	setStatus(NotActive);
 }
 
 void Client::onPlayerChooseKingdom()
 {
-	if (completeInteraction(InteractionType::ChooseKingdom,
-			InteractionResponse::makeOption(0, sender()->objectName()))
-			== InteractionOutcome::Rejected)
+	if (!submitInteractionResponse(
+			InteractionResponse::makeOption(0, sender()->objectName())))
 		return;
-	replyToServer(S_COMMAND_CHOOSE_KINGDOM, sender()->objectName());
 	setStatus(NotActive);
 }
 
@@ -2459,17 +2364,11 @@ void Client::onPlayerDiscardCards(const Card *cards)
 	const InteractionResponse response = cards != nullptr
 		? InteractionResponse::makeCards(0, selectedCards)
 		: InteractionResponse::makeCancel(0);
-	if (completeInteraction(type, response) == InteractionOutcome::Rejected)
+	if (!submitInteractionResponse(response))
 		return;
 	if (cards) {
-		JsonArray arr;
-		foreach(int card_id, cards->getSubcards())
-			arr << card_id;
 		if (cards->isVirtualCard() && !cards->parent())
 			const_cast<Card *>(cards)->deleteLater();
-		replyToServer(S_COMMAND_DISCARD_CARD, arr);
-	} else {
-		replyToServer(S_COMMAND_DISCARD_CARD);
 	}
 
 	setStatus(NotActive);
@@ -2537,21 +2436,14 @@ void Client::askForSinglePeach(const QVariant &arg)
 	_m_roomState.setCurrentCardUsePattern(pattern);
 	m_respondingUseFixedTarget = dying;
 	m_isDiscardActionRefusable = true;
-	InteractionRequest request;
-	request.type = InteractionType::AskPeach;
-	request.command = S_COMMAND_ASK_PEACH;
-	request.prompt = prompt_doc->toHtml();
-	request.cancelable = true;
-	request.responseSchema = InteractionResponseShape::Cards;
 	CardInteractionPayload payload;
 	payload.selection.pattern = pattern;
 	payload.selection.minSelection = 1;
 	payload.selection.maxSelection = 1;
 	payload.fixedTargets << dying->objectName();
-	request.cards = payload.selection;
-	request.payload = payload;
-	request.context.insert(QStringLiteral("peaches"), peaches);
-	request.context.insert(QStringLiteral("client_status"), static_cast<int>(RespondingUse));
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::AskPeach, payload, true);
+	request.prompt = prompt_doc->toHtml();
 	beginInteraction(request);
 }
 
@@ -2561,19 +2453,14 @@ void Client::askForCardShow(const QVariant &requestor)
 	prompt_doc->setHtml(tr("%1 request you to show one hand card").arg(getPlayerName(requestor.toString())));
 
 	_m_roomState.setCurrentCardUsePattern(".");
-	InteractionRequest request;
-	request.type = InteractionType::ShowCard;
-	request.command = S_COMMAND_SHOW_CARD;
-	request.prompt = prompt_doc->toHtml();
-	request.responseSchema = InteractionResponseShape::Cards;
 	CardInteractionPayload payload;
 	payload.sourcePlayer = requestor.toString();
 	payload.selection.pattern = QStringLiteral(".");
 	payload.selection.minSelection = 1;
 	payload.selection.maxSelection = 1;
-	request.cards = payload.selection;
-	request.payload = payload;
-	request.context.insert(QStringLiteral("client_status"), static_cast<int>(AskForShowOrPindian));
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::ShowCard, payload, false);
+	request.prompt = prompt_doc->toHtml();
 	beginInteraction(request);
 }
 
@@ -2614,20 +2501,22 @@ void Client::askForAG(const QVariant &arg)
 		if (!translate.isEmpty()) text.append(tr("<br/> <b>Source</b>: %1<br/>").arg(translate));
 		prompt_doc->setHtml(text);
 	}
-	InteractionRequest request;
-	request.type = InteractionType::AmazingGrace;
-	request.command = S_COMMAND_AMAZING_GRACE;
+	AmazingGraceInteractionPayload payload;
+	payload.selection.enumerated = !m_amazingGraceCards.isEmpty();
+	payload.selection.selectableCards = m_amazingGraceCards;
+	payload.selection.disabledCards = m_amazingGraceDisabledCards;
+	for (int cardId : m_amazingGraceTakenCards) {
+		if (!payload.selection.disabledCards.contains(cardId))
+			payload.selection.disabledCards << cardId;
+	}
+	payload.selection.minSelection = refusable ? 0 : 1;
+	payload.selection.maxSelection = 1;
+	payload.takenCards = m_amazingGraceTakenCards;
+	payload.selectable = true;
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::AmazingGrace, payload, refusable);
 	request.skillName = reason;
 	request.prompt = prompt_doc->toHtml();
-	request.cancelable = refusable;
-	request.responseSchema = InteractionResponseShape::Cards;
-	request.cards.enumerated = !m_amazingGraceCards.isEmpty();
-	request.cards.selectableCards = m_amazingGraceCards;
-	request.cards.disabledCards = m_amazingGraceDisabledCards;
-	request.cards.minSelection = refusable ? 0 : 1;
-	request.cards.maxSelection = 1;
-	request.payload = AmazingGraceInteractionPayload {
-		m_amazingGraceCards, m_amazingGraceDisabledCards, m_amazingGraceTakenCards };
 	beginInteraction(request);
 }
 
@@ -2636,10 +2525,8 @@ void Client::onPlayerChooseAG(int card_id)
 	InteractionResponse response = card_id < 0
 		? InteractionResponse::makeCancel(0)
 		: InteractionResponse::makeCards(0, QList<int>() << card_id);
-	if (completeInteraction(InteractionType::AmazingGrace, response)
-			== InteractionOutcome::Rejected)
+	if (!submitInteractionResponse(response))
 		return;
-	replyToServer(S_COMMAND_AMAZING_GRACE, card_id);
 	setStatus(NotActive);
 }
 
@@ -2863,17 +2750,13 @@ void Client::syncSkillInstances(const QVariant &payload)
 
 void Client::askForAssign(const QVariant &)
 {
-	InteractionRequest request;
-	request.type = InteractionType::ChooseRole;
-	request.command = S_COMMAND_CHOOSE_ROLE;
-	request.cancelable = true;
-	request.responseSchema = InteractionResponseShape::Assignment;
 	RoleAssignmentInteractionPayload payload;
 	for (const ClientPlayer *player : m_players) {
 		if (player != nullptr)
 			payload.playerNames << player->objectName();
 	}
-	request.payload = payload;
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::ChooseRole, payload, true);
 	beginInteraction(request);
 }
 
@@ -2881,21 +2764,12 @@ void Client::onPlayerAssignRole(const QList<QString> &names, const QList<QString
 {
 	//Q_ASSERT(names.size() == roles.size());
 
-	JsonArray reply;
-	reply << JsonUtils::toJsonArray(names) << JsonUtils::toJsonArray(roles);
-	if (completeInteraction(InteractionType::ChooseRole,
-			InteractionResponse::makeAssignment(0, names, roles))
-			== InteractionOutcome::Rejected)
-		return;
-	replyToServer(S_COMMAND_CHOOSE_ROLE, reply);
+	submitInteractionResponse(InteractionResponse::makeAssignment(0, names, roles));
 }
 
 void Client::onPlayerCancelAssignRole()
 {
-	if (completeInteraction(InteractionType::ChooseRole,
-			InteractionResponse::makeCancel(0)) == InteractionOutcome::Rejected)
-		return;
-	replyToServer(S_COMMAND_CHOOSE_ROLE);
+	submitInteractionResponse(InteractionResponse::makeCancel(0));
 }
 
 void Client::askForGuanxing(const QVariant &arg)
@@ -2906,16 +2780,22 @@ void Client::askForGuanxing(const QVariant &arg)
 
 	QList<int> card_ids;
 	JsonUtils::tryParse(args[0], card_ids);
-	InteractionRequest request;
-	request.type = InteractionType::SkillGuanxing;
-	request.command = S_COMMAND_SKILL_GUANXING;
-	request.responseSchema = InteractionResponseShape::Rearrangement;
 	RearrangeCardsInteractionPayload payload;
 	payload.cardIds = card_ids;
-	payload.maxTop = card_ids.size();
-	payload.maxBottom = card_ids.size();
-	request.payload = payload;
-	request.context.insert(QStringLiteral("single_side"), args.value(1).toInt());
+	const int rawMode = args.value(1).toInt();
+	if (rawMode > 0) {
+		payload.mode = RearrangementMode::UpOnly;
+		payload.minTop = payload.maxTop = card_ids.size();
+	} else if (rawMode < 0) {
+		payload.mode = RearrangementMode::DownOnly;
+		payload.minBottom = payload.maxBottom = card_ids.size();
+	} else {
+		payload.mode = RearrangementMode::BothSides;
+		payload.maxTop = card_ids.size();
+		payload.maxBottom = card_ids.size();
+	}
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::SkillGuanxing, payload, false);
 	beginInteraction(request);
 }
 
@@ -2951,32 +2831,20 @@ void Client::askForGongxin(const QVariant &args)
 		return;
 	who->setKnownCards(card_ids);
 
-	InteractionRequest request;
-	request.type = InteractionType::SkillGongxin;
-	request.command = S_COMMAND_SKILL_GONGXIN;
-	request.cancelable = true;
-	request.responseSchema = InteractionResponseShape::Cards;
-	request.cards.enumerated = true;
-	request.cards.selectableCards = enabled_ids;
-	request.cards.minSelection = 0;
-	request.cards.maxSelection = 1;
-	request.payload = GongxinInteractionPayload {
+	GongxinInteractionPayload payload {
 		who->objectName(), card_ids, enabled_ids, enable_heart };
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::SkillGongxin, payload, true);
 	beginInteraction(request);
 }
 
 void Client::onPlayerReplyGongxin(int card_id)
 {
-	QVariant reply;
 	InteractionResponse response = card_id > -1
 		? InteractionResponse::makeCards(0, QList<int>() << card_id)
 		: InteractionResponse::makeCancel(0);
-	if (completeInteraction(InteractionType::SkillGongxin, response)
-			== InteractionOutcome::Rejected)
+	if (!submitInteractionResponse(response))
 		return;
-	if (card_id > -1)
-		reply = card_id;
-	replyToServer(S_COMMAND_SKILL_GONGXIN, reply);
 	setStatus(NotActive);
 }
 
@@ -2991,19 +2859,14 @@ void Client::askForPindian(const QVariant &ask_str)
 		prompt_doc->setHtml(tr("%1 ask for you to play a card to pindian").arg(getPlayerName(from)));
 	}
 	_m_roomState.setCurrentCardUsePattern(".");
-	InteractionRequest request;
-	request.type = InteractionType::Pindian;
-	request.command = S_COMMAND_PINDIAN;
-	request.prompt = prompt_doc->toHtml();
-	request.responseSchema = InteractionResponseShape::Cards;
 	PindianInteractionPayload payload;
 	payload.opponent = from;
 	payload.selection.pattern = QStringLiteral(".");
 	payload.selection.minSelection = 1;
 	payload.selection.maxSelection = 1;
-	request.cards = payload.selection;
-	request.payload = payload;
-	request.context.insert(QStringLiteral("client_status"), static_cast<int>(AskForShowOrPindian));
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::Pindian, payload, false);
+	request.prompt = prompt_doc->toHtml();
 	beginInteraction(request);
 }
 
@@ -3041,14 +2904,11 @@ void Client::askForYiji(const QVariant &ask_str)
 	_m_roomState.setCurrentCardUsePattern(QString("%1=%2=%3").arg(count).arg(card_str.join("+")).arg(names.join("+")));
 	QList<int> cardIds;
 	JsonUtils::tryParse(ask[0], cardIds);
-	InteractionRequest request;
-	request.type = InteractionType::SkillYiji;
-	request.command = S_COMMAND_SKILL_YIJI;
+	YijiInteractionPayload payload {
+		cardIds, names, m_isDiscardActionRefusable ? 0 : 1, count, count };
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::SkillYiji, payload, m_isDiscardActionRefusable);
 	request.prompt = prompt_doc->toHtml();
-	request.cancelable = m_isDiscardActionRefusable;
-	request.responseSchema = InteractionResponseShape::Distribution;
-	request.payload = YijiInteractionPayload {
-		cardIds, names, m_isDiscardActionRefusable ? 0 : 1, count };
 	beginInteraction(request);
 }
 
@@ -3088,18 +2948,15 @@ void Client::askForPlayerChosen(const QVariant &players)
 			text.append(tr("<br/> <b>Source</b>: %1<br/>").arg(description));
 	}
 
-	InteractionRequest request;
-	request.type = InteractionType::ChoosePlayer;
-	request.command = S_COMMAND_CHOOSE_PLAYER;
+	PlayerInteractionPayload payload;
+	payload.selection.selectablePlayers = players_to_choose;
+	payload.selection.minSelection = qMax(0, choose_min_num);
+	payload.selection.maxSelection = choose_max_num;
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::ChoosePlayer, payload, m_isDiscardActionRefusable);
 	request.skillName = skill_name;
 	request.prompt = text;
-	request.players.selectablePlayers = players_to_choose;
-	request.players.minSelection = qMax(0, choose_min_num);
-	request.players.maxSelection = choose_max_num;
 	// server 送 min <= 0 就即係「可以唔揀」,同 m_isDiscardActionRefusable 同一件事。
-	request.cancelable = m_isDiscardActionRefusable;
-	request.responseSchema = InteractionResponseShape::Players;
-	request.payload = PlayerInteractionPayload { request.players };
 	beginInteraction(request);
 }
 
@@ -3108,32 +2965,16 @@ void Client::onPlayerReplyYiji(const Card *card, const Player *to)
 	InteractionResponse response = card != nullptr && to != nullptr
 		? InteractionResponse::makeDistribution(0, card->getSubcards(), to->objectName())
 		: InteractionResponse::makeCancel(0);
-	if (completeInteraction(InteractionType::SkillYiji, response)
-			== InteractionOutcome::Rejected)
+	if (!submitInteractionResponse(response))
 		return;
-	if (card){
-		JsonArray req;
-		req << JsonUtils::toJsonArray(card->getSubcards());
-		req << to->objectName();
-		replyToServer(S_COMMAND_SKILL_YIJI, req);
-	}else
-		replyToServer(S_COMMAND_SKILL_YIJI);
-
 	setStatus(NotActive);
 }
 
 void Client::onPlayerReplyGuanxing(const QList<int> &up_cards, const QList<int> &down_cards)
 {
-	if (completeInteraction(InteractionType::SkillGuanxing,
-			InteractionResponse::makeRearrangement(0, up_cards, down_cards))
-			== InteractionOutcome::Rejected)
+	if (!submitInteractionResponse(
+			InteractionResponse::makeRearrangement(0, up_cards, down_cards)))
 		return;
-	JsonArray decks;
-	decks << JsonUtils::toJsonArray(up_cards);
-	decks << JsonUtils::toJsonArray(down_cards);
-
-	replyToServer(S_COMMAND_SKILL_GUANXING, decks);
-
 	setStatus(NotActive);
 }
 
@@ -3350,14 +3191,12 @@ void Client::fillGenerals(const QVariant &generals)
 
 void Client::askForGeneral3v3(const QVariant &)
 {
-	InteractionRequest request;
-	request.type = InteractionType::AskGeneral;
-	request.command = S_COMMAND_ASK_GENERAL;
-	request.responseSchema = InteractionResponseShape::Option;
+	OptionInteractionPayload payload;
 	for (const QString &general : m_filledGenerals)
-		request.options << InteractionOption(general);
-	request.payload = OptionInteractionPayload { request.options, !request.options.isEmpty() };
-	request.optionsEnumerated = !request.options.isEmpty();
+		payload.options << InteractionOption(general);
+	payload.enumerated = !payload.options.isEmpty();
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::AskGeneral, payload, false);
 	beginInteraction(request);
 }
 
@@ -3377,24 +3216,19 @@ void Client::startArrange(const QVariant &to_arrange)
 	QStringList arrangeList;
 	if (!to_arrange.isNull() && !JsonUtils::tryParse(to_arrange, arrangeList))
 		return;
-	InteractionRequest request;
-	request.type = InteractionType::ArrangeGeneral;
-	request.command = S_COMMAND_ARRANGE_GENERAL;
-	request.responseSchema = InteractionResponseShape::Players;
 	ArrangeGeneralsInteractionPayload payload;
 	payload.generalNames = arrangeList.isEmpty() ? m_filledGenerals : arrangeList;
 	payload.arrangement = arrangeList.join("+");
 	payload.slotCount = payload.generalNames.size();
-	request.payload = payload;
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::ArrangeGeneral, payload, false);
 	beginInteraction(request);
 }
 
 void Client::onPlayerChooseDraftGeneral(const QString &name)
 {
-	if (completeInteraction(InteractionType::AskGeneral,
-			InteractionResponse::makeOption(0, name)) == InteractionOutcome::Rejected)
+	if (!submitInteractionResponse(InteractionResponse::makeOption(0, name)))
 		return;
-	replyToServer(S_COMMAND_ASK_GENERAL, name);
 	setStatus(NotActive);
 }
 
@@ -3403,29 +3237,24 @@ void Client::onPlayerChooseTriggerOrder(const QString &choice)
 	const InteractionResponse response = choice.isEmpty()
 		? InteractionResponse::makeCancel(0)
 		: InteractionResponse::makeOption(0, choice);
-	if (completeInteraction(InteractionType::TriggerOrder, response)
-			== InteractionOutcome::Rejected)
+	if (!submitInteractionResponse(response))
 		return;
-	replyToServer(S_COMMAND_TRIGGER_ORDER, choice);
 	setStatus(NotActive);
 }
 
 void Client::onPlayerArrangeGenerals(const QStringList &names)
 {
-	if (completeInteraction(InteractionType::ArrangeGeneral,
-			InteractionResponse::makePlayers(0, names)) == InteractionOutcome::Rejected)
+	if (!submitInteractionResponse(
+			InteractionResponse::makeGeneralArrangement(0, names)))
 		return;
-	replyToServer(S_COMMAND_ARRANGE_GENERAL, JsonUtils::toJsonArray(names));
 	setStatus(NotActive);
 }
 
 void Client::onPlayerChooseRole3v3()
 {
 	const QString choice = sender()->objectName();
-	if (completeInteraction(InteractionType::ChooseRole3v3,
-			InteractionResponse::makeOption(0, choice)) == InteractionOutcome::Rejected)
+	if (!submitInteractionResponse(InteractionResponse::makeOption(0, choice)))
 		return;
-	replyToServer(S_COMMAND_CHOOSE_ROLE_3V3, choice);
 	setStatus(NotActive);
 }
 
@@ -3461,11 +3290,9 @@ void Client::onPlayerChooseOrder()
 	}
 	int req = (int)S_CAMP_COOL;
 	if (order == "warm") req = (int)S_CAMP_WARM;
-	if (completeInteraction(InteractionType::ChooseOrder,
-			InteractionResponse::makeOption(0, QString::number(req)))
-			== InteractionOutcome::Rejected)
+	if (!submitInteractionResponse(
+			InteractionResponse::makeOption(0, QString::number(req))))
 		return;
-	replyToServer(S_COMMAND_CHOOSE_ORDER, req);
 	setStatus(NotActive);
 }
 
@@ -3590,13 +3417,9 @@ void Client::askForQml(const QVariant &arg)
 		return;
 	}
 
-	InteractionRequest request;
-	request.type = InteractionType::QmlInteract;
-	request.command = S_COMMAND_QML_INTERACT;
+	InteractionRequest request = makeInteractionRequest(
+		InteractionType::QmlInteract, payload, true);
 	request.prompt = payload.title;
-	request.cancelable = true;
-	request.responseSchema = InteractionResponseShape::Custom;
-	request.payload = payload;
 	beginInteraction(request);
 }
 
@@ -3609,16 +3432,9 @@ void Client::replyQml(const QVariant &result)
 		= m_interactionCore->activeRequest().payloadAs<CustomInteractionPayload>();
 	if (payload == nullptr)
 		return;
-	QJsonObject value;
-	if (result.canConvert<QVariantMap>())
-		value = QJsonObject::fromVariantMap(result.toMap());
-	else
-		value.insert(QStringLiteral("value"), QJsonValue::fromVariant(result));
-	if (completeInteraction(InteractionType::QmlInteract,
-			InteractionResponse::makeCustom(0, payload->schemaVersion,
-				payload->typeName, value)) == InteractionOutcome::Rejected)
+	if (!submitInteractionResponse(InteractionResponse::makeCustom(0,
+			payload->schemaVersion, payload->typeName, result)))
 		return;
-	replyToServer(S_COMMAND_QML_INTERACT, result);
 	setStatus(NotActive);
 }
 
