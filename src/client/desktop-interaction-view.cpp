@@ -2,6 +2,7 @@
 
 #include "client.h"
 #include "client-core.h"
+#include "interaction-descriptor-registry.h"
 
 #include <QLoggingCategory>
 
@@ -26,24 +27,11 @@ void DesktopInteractionView::presentRequest(const InteractionRequest &request)
     if (m_client == nullptr)
         return;
 
-    switch (request.type) {
-    case InteractionType::ChooseGeneral:
-        m_client->presentGeneralChoice(request);
+    const ClientInteractionDescriptor *descriptor
+        = InteractionDescriptorRegistry::find(request.type);
+    if (descriptor != nullptr && descriptor->presenter != nullptr) {
+        (m_client->*(descriptor->presenter))(request);
         return;
-    case InteractionType::Choice:
-        m_client->presentOptionChoice(request);
-        return;
-    case InteractionType::ChoosePlayer:
-        m_client->presentPlayerChoice(request);
-        return;
-    case InteractionType::SkillInvoke:
-        m_client->presentSkillInvoke(request);
-        return;
-    case InteractionType::ResponseCard:
-        m_client->presentCardResponse(request);
-        return;
-    case InteractionType::None:
-        break;
     }
     qCWarning(qsanDesktopInteraction) << "cannot present interaction type"
         << interactionTypeName(request.type);

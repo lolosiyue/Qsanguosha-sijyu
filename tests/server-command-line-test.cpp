@@ -4,9 +4,14 @@
 #include <QCoreApplication>
 #include <QDebug>
 #include <QFile>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QProcess>
+#include <QRegularExpression>
 #include <QTemporaryDir>
 #include <QTextStream>
 
+#include <functional>
 #include <limits>
 
 namespace
@@ -232,26 +237,196 @@ bool loadsAndValidatesConfigFiles()
     return expect(!invalid.success, "invalid server config was accepted")
         && expect(invalid.errors.size() == 3, "invalid config did not report every error")
         && expect(!loadServerConfigFile(directory.filePath(QStringLiteral("missing.ini"))).success,
-                  "missing config file was accepted");
+                   "missing config file was accepted");
+}
+
+bool runsParserContract()
+{
+    bool passed = true;
+    if (!parsesDefaults())
+        passed = false;
+    if (!parsesCompleteOverrideSet())
+        passed = false;
+    if (!parsesShortOptions())
+        passed = false;
+    if (!parsesEphemeralPort())
+        passed = false;
+    if (!rejectsInvalidArguments())
+        passed = false;
+    if (!exposesDiscoverableHelp())
+        passed = false;
+    if (!loadsAndValidatesConfigFiles())
+        passed = false;
+    return passed;
+}
+
+struct ProcessResult
+{
+    bool started = false;
+    bool timedOut = false;
+    QProcess::ExitStatus exitStatus = QProcess::NormalExit;
+    int exitCode = -1;
+    QByteArray output;
+    QString error;
+};
+
+ProcessResult runServerProcess(const QString &serverPath, const QStringList &arguments)
+{
+    QProcess process;
+    process.setProcessChannelMode(QProcess::MergedChannels);
+    process.start(serverPath, arguments);
+
+    ProcessResult result;
+    result.started = process.waitForStarted(30000);
+    if (!result.started) {
+        result.error = process.errorString();
+        return result;
+    }
+    if (!process.waitForFinished(30000)) {
+        result.timedOut = true;
+        process.terminate();
+        if (!process.waitForFinished(5000)) {
+            process.kill();
+            process.waitForFinished(5000);
+        }
+    }
+    result.exitStatus = process.exitStatus();
+    result.exitCode = process.exitCode();
+    result.output = process.readAll();
+    result.error = process.errorString();
+    return result;
+}
+
+bool processSucceeded(const ProcessResult &result, const char *caseName)
+{
+    if (result.started && !result.timedOut
+        && result.exitStatus == QProcess::NormalExit && result.exitCode == 0) {
+        return true;
+    }
+    qCritical().noquote() << caseName << "failed:"
+                          << (result.started ? QStringLiteral("started")
+                                             : QStringLiteral("start failed"))
+                          << (result.timedOut ? QStringLiteral("timeout") : QString())
+                          << "exit" << result.exitCode << result.error;
+    if (!result.output.isEmpty())
+        qCritical().noquote() << QString::fromUtf8(result.output);
+    return false;
+}
+
+bool validatesHelpProcess(const QString &serverPath)
+{
+    const ProcessResult result = runServerProcess(serverPath, {QStringLiteral("--help")});
+    return processSucceeded(result, "--help")
+        && expect(result.output.contains("--bind-address"), "server --help omits --bind-address");
+}
+
+bool validatesVersionProcess(const QString &serverPath)
+{
+    const ProcessResult result = runServerProcess(serverPath, {QStringLiteral("--version")});
+    const QRegularExpression versionPattern(QStringLiteral("qsanguosha_server [0-9]+"));
+    return processSucceeded(result, "--version")
+        && expect(versionPattern.match(QString::fromUtf8(result.output)).hasMatch(),
+            "server --version output is invalid");
+}
+
+bool validatesConfigProcess(const QString &serverPath, const QString &configPath)
+{
+    const ProcessResult result = runServerProcess(serverPath, {
+        QStringLiteral("--config"), configPath, QStringLiteral("--check-config")});
+    return processSucceeded(result, "config validation")
+        && expect(result.output.contains("Configuration OK"),
+            "server config validation omitted success marker");
+}
+
+bool validatesConfigPrecedenceProcess(const QString &serverPath, const QString &configPath)
+{
+    const ProcessResult result = runServerProcess(serverPath, {
+        QStringLiteral("--config"), configPath,
+        QStringLiteral("--port"), QStringLiteral("19527"),
+        QStringLiteral("--print-config"), QStringLiteral("--json")});
+    if (!processSucceeded(result, "config precedence"))
+        return false;
+
+    const int objectStart = result.output.indexOf('{');
+    const int objectEnd = result.output.lastIndexOf('}');
+    QJsonParseError error;
+    const QJsonDocument document = QJsonDocument::fromJson(
+        objectStart >= 0 && objectEnd >= objectStart
+            ? result.output.mid(objectStart, objectEnd - objectStart + 1)
+            : QByteArray(),
+        &error);
+    if (!expect(error.error == QJsonParseError::NoError && document.isObject(),
+            "server config precedence output is not JSON")) {
+        qCritical().noquote() << QString::fromUtf8(result.output);
+        return false;
+    }
+    const QJsonObject config = document.object();
+    return expect(config.value(QStringLiteral("DisableChat")).toBool(),
+               "config file boolean was not loaded")
+        && expect(config.value(QStringLiteral("GameMode")).toString() == QLatin1String("10p"),
+            "config file game mode was not loaded")
+        && expect(config.value(QStringLiteral("ServerPort")).toInt() == 19527,
+            "CLI port did not override config file");
 }
 }
 
 int main(int argc, char **argv)
 {
     QCoreApplication application(argc, argv);
-    if (!parsesDefaults())
-        return 1;
-    if (!parsesCompleteOverrideSet())
-        return 2;
-    if (!parsesShortOptions())
-        return 3;
-    if (!parsesEphemeralPort())
-        return 4;
-    if (!rejectsInvalidArguments())
-        return 5;
-    if (!exposesDiscoverableHelp())
-        return 6;
-    if (!loadsAndValidatesConfigFiles())
-        return 7;
-    return 0;
+    QString serverPath;
+    QString configPath;
+    const QStringList arguments = application.arguments();
+    for (int i = 1; i < arguments.size(); ++i) {
+        if (arguments.at(i) == QLatin1String("--server") && i + 1 < arguments.size()) {
+            serverPath = arguments.at(++i);
+        } else if (arguments.at(i) == QLatin1String("--config") && i + 1 < arguments.size()) {
+            configPath = arguments.at(++i);
+        } else {
+            qCritical().noquote() << "Unknown or incomplete argument:" << arguments.at(i);
+            return 64;
+        }
+    }
+
+    struct NamedCase
+    {
+        QString name;
+        std::function<bool()> run;
+    };
+    QList<NamedCase> cases = {
+        {QStringLiteral("parser"), []() { return runsParserContract(); }}
+    };
+    if (!serverPath.isEmpty() || !configPath.isEmpty()) {
+        if (serverPath.isEmpty() || configPath.isEmpty()) {
+            qCritical().noquote() << "--server and --config must be provided together";
+            return 64;
+        }
+        cases.append({QStringLiteral("--help"),
+            [serverPath]() { return validatesHelpProcess(serverPath); }});
+        cases.append({QStringLiteral("--version"),
+            [serverPath]() { return validatesVersionProcess(serverPath); }});
+        cases.append({QStringLiteral("config validation"),
+            [serverPath, configPath]() { return validatesConfigProcess(serverPath, configPath); }});
+        cases.append({QStringLiteral("config/CLI precedence"),
+            [serverPath, configPath]() {
+                return validatesConfigPrecedenceProcess(serverPath, configPath);
+            }});
+    }
+
+    QList<bool> results;
+    int passedCount = 0;
+    for (const NamedCase &testCase : cases) {
+        const bool passed = testCase.run();
+        results.append(passed);
+        passedCount += passed ? 1 : 0;
+        qInfo().noquote() << (passed ? QStringLiteral("[PASS]") : QStringLiteral("[FAIL]"))
+                          << testCase.name;
+    }
+
+    qInfo().noquote() << "\nSERVER_CLI_RESULT\n";
+    for (int i = 0; i < cases.size(); ++i)
+        qInfo().noquote() << (results.at(i) ? QStringLiteral("PASS") : QStringLiteral("FAIL"))
+                          << cases.at(i).name;
+    qInfo().noquote() << QStringLiteral("\nTOTAL: %1\nPASS: %2\nFAIL: %3")
+                             .arg(cases.size()).arg(passedCount).arg(cases.size() - passedCount);
+    return passedCount == cases.size() ? 0 : 1;
 }

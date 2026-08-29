@@ -349,7 +349,8 @@ AppImage 可以用 `QSAN_ASSET_ROOT` 指去一個齊料嘅目錄跑同一條指�
 
 `.github/workflows/linux-package-ci.yml`。整包 + 全套 smoke 要成半個鐘，
 所以**唔係**每次改 source 都跑；觸發條件係 packaging 相關路徑、去
-`debug`／`main` 嘅 PR、`v*` tag，同 `workflow_dispatch`。
+`debug`／`main` 嘅 PR、`push main`、`v*` tag，同 `workflow_dispatch`。
+`push debug` 唔會喺 PR gate 通過後再重複整包。
 
 Action 全部釘 commit SHA，沿用 repository 現有政策。
 

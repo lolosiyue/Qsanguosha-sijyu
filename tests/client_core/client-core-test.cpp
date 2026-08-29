@@ -9,8 +9,13 @@
 #include "interaction-model.h"
 
 #include <QCoreApplication>
+#include <QEventLoop>
+#include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcess>
+#include <QTimer>
 
 #include <cstdio>
 
@@ -154,10 +159,13 @@ InteractionRequest chooseCardRequest()
     InteractionRequest request;
     request.requestId = 42;
     request.type = InteractionType::ResponseCard;
-    request.cards.enumerated = true;
-    request.cards.selectableCards = QList<int>() << 7 << 12;
-    request.cards.minSelection = 1;
-    request.cards.maxSelection = 1;
+    request.responseSchema = InteractionResponseShape::Cards;
+    CardInteractionPayload payload;
+    payload.selection.enumerated = true;
+    payload.selection.selectableCards = QList<int>() << 7 << 12;
+    payload.selection.minSelection = 1;
+    payload.selection.maxSelection = 1;
+    request.payload = payload;
     return request;
 }
 
@@ -166,9 +174,12 @@ InteractionRequest choiceRequest()
     InteractionRequest request;
     request.type = InteractionType::Choice;
     request.skillName = QStringLiteral("guhuo");
-    request.options << InteractionOption(QStringLiteral("yes"))
+    request.responseSchema = InteractionResponseShape::Option;
+    OptionInteractionPayload payload;
+    payload.options << InteractionOption(QStringLiteral("yes"))
                     << InteractionOption(QStringLiteral("no"))
                     << InteractionOption(QStringLiteral("later"), QString(), false);
+    request.payload = payload;
     return request;
 }
 
@@ -177,11 +188,13 @@ InteractionRequest playerRequest()
     InteractionRequest request;
     request.type = InteractionType::ChoosePlayer;
     request.skillName = QStringLiteral("guicai");
-    request.players.selectablePlayers = QStringList() << QStringLiteral("sgs1")
-                                                      << QStringLiteral("sgs2")
-                                                      << QStringLiteral("sgs3");
-    request.players.minSelection = 1;
-    request.players.maxSelection = 2;
+    request.responseSchema = InteractionResponseShape::Players;
+    PlayerInteractionPayload payload;
+    payload.selection.selectablePlayers = QStringList() << QStringLiteral("sgs1")
+        << QStringLiteral("sgs2") << QStringLiteral("sgs3");
+    payload.selection.minSelection = 1;
+    payload.selection.maxSelection = 2;
+    request.payload = payload;
     return request;
 }
 
@@ -193,8 +206,11 @@ void testRequestSnapshot()
     // 所以同一個 request 喺任何平台都出同一串 bytes。
     InteractionRequest request = chooseCardRequest();
     checkEqual(request.toSnapshot(),
-        QByteArray("{\"cancelable\":false,\"max\":1,\"min\":1,\"request_id\":42,"
-                   "\"selectable_cards\":[7,12],\"type\":\"response_card\"}"),
+        QByteArray("{\"cancelable\":false,\"max\":1,\"min\":1,"
+                   "\"payload\":{\"card_text_allowed\":false,\"max\":1,\"min\":1,"
+                   "\"selectable_cards\":[7,12],\"virtual_card_allowed\":false},"
+                   "\"request_id\":42,\"response_schema\":\"cards\","
+                   "\"type\":\"response_card\"}"),
         "choose card request snapshot is deterministic");
 
     InteractionRequest choice = choiceRequest();
@@ -204,17 +220,18 @@ void testRequestSnapshot()
     choice.timeoutMs = 15000;
     checkEqual(choice.toSnapshot(),
         QByteArray("{\"cancelable\":true,\"command\":24,\"max\":1,\"min\":0,"
-                   "\"options\":[{\"value\":\"yes\"},{\"value\":\"no\"},"
-                   "{\"enabled\":false,\"value\":\"later\"}],"
-                   "\"request_id\":7,\"skill\":\"guhuo\",\"timeout_ms\":15000,"
-                   "\"type\":\"choice\"}"),
+                   "\"payload\":{\"enumerated\":true,\"options\":[{\"value\":\"yes\"},"
+                   "{\"value\":\"no\"},{\"enabled\":false,\"value\":\"later\"}]},"
+                   "\"request_id\":7,\"response_schema\":\"option\",\"skill\":\"guhuo\","
+                   "\"timeout_ms\":15000,\"type\":\"choice\"}"),
         "choice request snapshot carries options and timeout");
 
     InteractionRequest players = playerRequest();
     players.requestId = 9;
     checkEqual(players.toSnapshot(),
-        QByteArray("{\"cancelable\":false,\"max\":2,\"min\":1,\"request_id\":9,"
-                   "\"selectable_players\":[\"sgs1\",\"sgs2\",\"sgs3\"],"
+        QByteArray("{\"cancelable\":false,\"max\":2,\"min\":1,"
+                   "\"payload\":{\"max\":2,\"min\":1,\"selectable_players\":[\"sgs1\","
+                   "\"sgs2\",\"sgs3\"]},\"request_id\":9,\"response_schema\":\"players\","
                    "\"skill\":\"guicai\",\"type\":\"choose_player\"}"),
         "player request snapshot carries the selectable roster");
 
@@ -225,16 +242,20 @@ void testRequestSnapshot()
     InteractionRequest general;
     general.requestId = 3;
     general.type = InteractionType::ChooseGeneral;
-    general.optionsEnumerated = false;
-    general.options << InteractionOption(QStringLiteral("zhangfei"));
+    general.responseSchema = InteractionResponseShape::Option;
+    OptionInteractionPayload generalPayload;
+    generalPayload.enumerated = false;
+    generalPayload.options << InteractionOption(QStringLiteral("zhangfei"));
+    general.payload = generalPayload;
     checkEqual(general.toSnapshot(),
-        QByteArray("{\"cancelable\":false,\"enumerated_options\":false,\"max\":1,\"min\":1,"
-                   "\"options\":[{\"value\":\"zhangfei\"}],\"request_id\":3,"
+        QByteArray("{\"cancelable\":false,\"max\":1,\"min\":1,"
+                   "\"payload\":{\"enumerated\":false,\"options\":[{\"value\":\"zhangfei\"}]},"
+                   "\"request_id\":3,\"response_schema\":\"option\","
                    "\"type\":\"choose_general\"}"),
         "choose general snapshot marks its options advisory");
 
     checkEqual(InteractionResponse::makeCards(42, QList<int>() << 7).toSnapshot(),
-        QByteArray("{\"cards\":[7],\"kind\":\"cards\",\"request_id\":42}"),
+        QByteArray("{\"kind\":\"cards\",\"payload\":{\"cards\":[7]},\"request_id\":42}"),
         "response snapshot is deterministic");
 
     check(interactionTypeFromName(QStringLiteral("choose_player")) == InteractionType::ChoosePlayer,
@@ -300,8 +321,11 @@ void testOptionValidation()
     ClientCore freeCore;
     InteractionRequest general;
     general.type = InteractionType::ChooseGeneral;
-    general.optionsEnumerated = false;
-    general.options << InteractionOption(QStringLiteral("zhangfei"));
+    general.responseSchema = InteractionResponseShape::Option;
+    OptionInteractionPayload generalPayload;
+    generalPayload.enumerated = false;
+    generalPayload.options << InteractionOption(QStringLiteral("zhangfei"));
+    general.payload = generalPayload;
     const quint64 generalId = freeCore.beginRequest(general);
     check(freeCore.validate(InteractionResponse::makeOption(generalId,
             QStringLiteral("caocao"))).accepted(),
@@ -334,7 +358,7 @@ void testPlayerValidation()
     // cancelable（min == 0）嘅 request 收得起空答案。
     ClientCore optionalCore;
     InteractionRequest optional = playerRequest();
-    optional.players.minSelection = 0;
+    std::get<PlayerInteractionPayload>(optional.payload).selection.minSelection = 0;
     optional.cancelable = true;
     const quint64 optionalId = optionalCore.beginRequest(optional);
     check(optionalCore.validate(InteractionResponse::makePlayers(optionalId, QStringList())).accepted(),
@@ -363,8 +387,10 @@ void testCardValidation()
     // disabled 清單贏過 selectable 清單。
     ClientCore disabledCore;
     InteractionRequest disabled = chooseCardRequest();
-    disabled.cards.selectableCards << 13;
-    disabled.cards.disabledCards << 13;
+    CardInteractionPayload &disabledPayload
+        = std::get<CardInteractionPayload>(disabled.payload);
+    disabledPayload.selection.selectableCards << 13;
+    disabledPayload.selection.disabledCards << 13;
     const quint64 disabledId = disabledCore.beginRequest(disabled);
     checkRejection(disabledCore.validate(InteractionResponse::makeCards(disabledId, QList<int>() << 13)),
         InteractionRejection::DisabledCard, "a disabled card is rejected even when listed");
@@ -375,10 +401,14 @@ void testCardValidation()
     patternCore.state()->setCardIdSpace(160);
     InteractionRequest pattern;
     pattern.type = InteractionType::ResponseCard;
-    pattern.cards.enumerated = false;
-    pattern.cards.pattern = QStringLiteral("jink");
-    pattern.cards.minSelection = 1;
-    pattern.cards.maxSelection = 1;
+    pattern.responseSchema = InteractionResponseShape::Cards;
+    CardInteractionPayload patternPayload;
+    patternPayload.selection.enumerated = false;
+    patternPayload.selection.pattern = QStringLiteral("jink");
+    patternPayload.selection.minSelection = 1;
+    patternPayload.selection.maxSelection = 1;
+    patternPayload.cardTextAllowed = true;
+    pattern.payload = patternPayload;
     const quint64 patternId = patternCore.beginRequest(pattern);
     check(patternCore.validate(InteractionResponse::makeCards(patternId, QList<int>() << 88)).accepted(),
         "a pattern-matched request does not police card membership");
@@ -678,6 +708,421 @@ void testGameState()
         "reset clears the client game state");
 }
 
+class FakeEligibilityProvider : public ICardEligibilityProvider
+{
+public:
+    CardEligibilityResult resolve(const InteractionRequest &) const override
+    {
+        CardEligibilityResult result;
+        result.suggestedCards << 7 << 8;
+        result.suggestedDisabledCards << 9;
+        result.diagnostic = QStringLiteral("fake-provider");
+        return result;
+    }
+};
+
+void testStructuredModels()
+{
+    ClientCore roleCore;
+    InteractionRequest role;
+    role.type = InteractionType::ChooseRole;
+    role.command = 91;
+    role.serverSerial = 17;
+    role.responseSchema = InteractionResponseShape::Assignment;
+    role.payload = RoleAssignmentInteractionPayload {
+        QStringLiteral("standard"),
+        QStringList() << QStringLiteral("sgs1") << QStringLiteral("sgs2"),
+        QStringList() << QStringLiteral("lord") << QStringLiteral("rebel") };
+    const quint64 roleId = roleCore.beginRequest(role);
+    InteractionResponse wrongCommand = InteractionResponse::makeAssignment(roleId,
+        QStringList() << QStringLiteral("sgs1"), QStringList() << QStringLiteral("lord"));
+    wrongCommand.command = 92;
+    checkRejection(roleCore.validate(wrongCommand), InteractionRejection::CommandMismatch,
+        "a response for a different command is rejected");
+    InteractionResponse wrongSerial = wrongCommand;
+    wrongSerial.command = 91;
+    wrongSerial.serverSerial = 18;
+    checkRejection(roleCore.validate(wrongSerial), InteractionRejection::ServerSerialMismatch,
+        "a response for a different server serial is rejected");
+    InteractionResponse roleAnswer = InteractionResponse::makeAssignment(roleId,
+        QStringList() << QStringLiteral("sgs1") << QStringLiteral("sgs2"),
+        QStringList() << QStringLiteral("lord") << QStringLiteral("rebel"));
+    roleAnswer.command = 91;
+    roleAnswer.serverSerial = 17;
+    check(roleCore.submitResponse(roleAnswer).accepted(),
+        "a command-correlated role assignment is accepted");
+
+    ClientCore rearrangeCore;
+    InteractionRequest rearrange;
+    rearrange.type = InteractionType::SkillGuanxing;
+    rearrange.responseSchema = InteractionResponseShape::Rearrangement;
+    RearrangeCardsInteractionPayload rearrangePayload;
+    rearrangePayload.cardIds = QList<int>() << 1 << 2 << 3;
+    rearrangePayload.maxTop = 3;
+    rearrangePayload.maxBottom = 3;
+    rearrange.payload = rearrangePayload;
+    const quint64 rearrangeId = rearrangeCore.beginRequest(rearrange);
+    check(rearrangeCore.validate(InteractionResponse::makeRearrangement(rearrangeId,
+            QList<int>() << 3 << 1, QList<int>() << 2)).accepted(),
+        "a Guanxing rearrangement that preserves every card is accepted");
+    checkRejection(rearrangeCore.validate(InteractionResponse::makeRearrangement(rearrangeId,
+            QList<int>() << 1 << 1, QList<int>() << 2)),
+        InteractionRejection::DuplicateCard,
+        "a Guanxing rearrangement cannot duplicate cards");
+
+    ClientCore yijiCore;
+    InteractionRequest yiji;
+    yiji.type = InteractionType::SkillYiji;
+    yiji.responseSchema = InteractionResponseShape::Distribution;
+    yiji.payload = YijiInteractionPayload {
+        QList<int>() << 4 << 5, QStringList() << QStringLiteral("sgs2"), 1, 2, 2 };
+    const quint64 yijiId = yijiCore.beginRequest(yiji);
+    check(yijiCore.validate(InteractionResponse::makeDistribution(yijiId,
+            QList<int>() << 4, QStringLiteral("sgs2"))).accepted(),
+        "a typed Yiji distribution is accepted");
+    checkRejection(yijiCore.validate(InteractionResponse::makeDistribution(yijiId,
+            QList<int>() << 4, QStringLiteral("sgs9"))),
+        InteractionRejection::UnknownPlayer,
+        "a Yiji distribution cannot target an unlisted player");
+
+    ClientCore customCore;
+    InteractionRequest custom;
+    custom.type = InteractionType::QmlInteract;
+    custom.responseSchema = InteractionResponseShape::Custom;
+    CustomInteractionPayload customPayload;
+    customPayload.schemaVersion = 2;
+    customPayload.typeName = QStringLiteral("extension.pick");
+    custom.payload = customPayload;
+    const quint64 customId = customCore.beginRequest(custom);
+    checkRejection(customCore.validate(InteractionResponse::makeCustom(customId, 1,
+            QStringLiteral("extension.pick"), QJsonObject())),
+        InteractionRejection::MalformedResponse,
+        "a custom response with the wrong schema version is rejected");
+}
+
+void testEligibilityHints()
+{
+    ClientCore core;
+    core.state()->setCardIdSpace(100);
+    FakeEligibilityProvider provider;
+    core.setCardEligibilityProvider(&provider);
+
+    InteractionRequest request;
+    request.type = InteractionType::ResponseCard;
+    request.responseSchema = InteractionResponseShape::Cards;
+    CardInteractionPayload payload;
+    payload.selection.pattern = QStringLiteral("jink");
+    payload.selection.minSelection = 1;
+    payload.selection.maxSelection = 1;
+    request.payload = payload;
+    const quint64 id = core.beginRequest(request);
+    const CardInteractionPayload *active
+        = core.activeRequest().payloadAs<CardInteractionPayload>();
+    check(active != nullptr && active->suggestedCards == (QList<int>() << 7 << 8),
+        "an injected eligibility provider enriches presentation hints");
+    check(active != nullptr && !active->selection.enumerated,
+        "provider hints never become authoritative membership constraints");
+    check(core.validate(InteractionResponse::makeCards(id, QList<int>() << 10)).accepted(),
+        "a card outside provider hints remains valid for a pattern request");
+}
+
+void testSpecialInteractionSemantics()
+{
+    ClientCore guanxingCore;
+    RearrangeCardsInteractionPayload upOnly;
+    upOnly.cardIds = QList<int>() << 1 << 2;
+    upOnly.mode = RearrangementMode::UpOnly;
+    upOnly.minTop = upOnly.maxTop = 2;
+    InteractionRequest upRequest;
+    upRequest.type = InteractionType::SkillGuanxing;
+    upRequest.responseSchema = InteractionResponseShape::Rearrangement;
+    upRequest.payload = upOnly;
+    const quint64 upId = guanxingCore.beginRequest(upRequest);
+    check(guanxingCore.validate(InteractionResponse::makeRearrangement(upId,
+            QList<int>() << 2 << 1, QList<int>())).accepted(),
+        "Guanxing up-only accepts every card on top");
+    checkRejection(guanxingCore.validate(InteractionResponse::makeRearrangement(upId,
+            QList<int>() << 1, QList<int>() << 2)),
+        InteractionRejection::SelectionCountOutOfRange,
+        "Guanxing up-only rejects bottom cards");
+    checkRejection(guanxingCore.validate(InteractionResponse::makeRearrangement(upId,
+            QList<int>() << 1, QList<int>())),
+        InteractionRejection::UnknownCard,
+        "Guanxing rejects a missing card");
+
+    ClientCore downCore;
+    RearrangeCardsInteractionPayload downOnly = upOnly;
+    downOnly.mode = RearrangementMode::DownOnly;
+    downOnly.minTop = downOnly.maxTop = 0;
+    downOnly.minBottom = downOnly.maxBottom = 2;
+    InteractionRequest downRequest = upRequest;
+    downRequest.payload = downOnly;
+    const quint64 downId = downCore.beginRequest(downRequest);
+    check(downCore.validate(InteractionResponse::makeRearrangement(downId,
+            QList<int>(), QList<int>() << 1 << 2)).accepted(),
+        "Guanxing down-only accepts every card on bottom");
+
+    ClientCore bothCore;
+    RearrangeCardsInteractionPayload both = upOnly;
+    both.mode = RearrangementMode::BothSides;
+    both.minTop = both.minBottom = 0;
+    both.maxTop = both.maxBottom = 2;
+    InteractionRequest bothRequest = upRequest;
+    bothRequest.payload = both;
+    const quint64 bothId = bothCore.beginRequest(bothRequest);
+    check(bothCore.validate(InteractionResponse::makeRearrangement(bothId,
+            QList<int>() << 1, QList<int>() << 2)).accepted(),
+        "Guanxing both-sides accepts a split arrangement");
+
+    ClientCore yijiCore;
+    InteractionRequest yiji;
+    yiji.type = InteractionType::SkillYiji;
+    yiji.responseSchema = InteractionResponseShape::Distribution;
+    yiji.payload = YijiInteractionPayload { QList<int>() << 4 << 5,
+        QStringList() << QStringLiteral("sgs2"), 1, 2, 1 };
+    const quint64 yijiId = yijiCore.beginRequest(yiji);
+    checkRejection(yijiCore.validate(InteractionResponse::makeDistribution(yijiId,
+            QList<int>() << 4 << 5, QStringLiteral("sgs2"))),
+        InteractionRejection::SelectionCountOutOfRange,
+        "Yiji cannot distribute more cards than remain");
+    checkRejection(yijiCore.validate(InteractionResponse::makeDistribution(yijiId,
+            QList<int>() << 9, QStringLiteral("sgs2"))),
+        InteractionRejection::UnknownCard,
+        "Yiji rejects a card outside the offered set");
+
+    ClientCore gongxinCore;
+    gongxinCore.state()->setCardIdSpace(20);
+    InteractionRequest gongxin;
+    gongxin.type = InteractionType::SkillGongxin;
+    gongxin.responseSchema = InteractionResponseShape::Cards;
+    gongxin.cancelable = true;
+    gongxin.payload = GongxinInteractionPayload { QStringLiteral("sgs2"),
+        QList<int>() << 5 << 6, QList<int>() << 5, false };
+    const quint64 gongxinId = gongxinCore.beginRequest(gongxin);
+    check(gongxinCore.validate(InteractionResponse::makeCards(gongxinId,
+            QList<int>() << 5)).accepted(),
+        "Gongxin accepts an explicitly selectable visible card");
+    checkRejection(gongxinCore.validate(InteractionResponse::makeCards(gongxinId,
+            QList<int>() << 6)), InteractionRejection::UnknownCard,
+        "Gongxin does not treat every visible card as selectable");
+
+    ClientCore pindianCore;
+    pindianCore.state()->setCardIdSpace(20);
+    PindianInteractionPayload pindianPayload;
+    pindianPayload.opponent = QStringLiteral("sgs2");
+    pindianPayload.selection.minSelection = 1;
+    pindianPayload.selection.maxSelection = 1;
+    pindianPayload.hiddenUntilResolved = true;
+    InteractionRequest pindian;
+    pindian.type = InteractionType::Pindian;
+    pindian.responseSchema = InteractionResponseShape::Cards;
+    pindian.payload = pindianPayload;
+    const quint64 pindianId = pindianCore.beginRequest(pindian);
+    check(pindianCore.validate(InteractionResponse::makeCards(pindianId,
+            QList<int>() << 7)).accepted(),
+        "Pindian accepts exactly one known card");
+    checkRejection(pindianCore.validate(InteractionResponse::makeCards(pindianId,
+            QList<int>() << 7 << 8)), InteractionRejection::SelectionCountOutOfRange,
+        "Pindian rejects multiple cards");
+
+    ClientCore agCore;
+    agCore.state()->setCardIdSpace(20);
+    AmazingGraceInteractionPayload agPayload;
+    agPayload.selection.enumerated = true;
+    agPayload.selection.selectableCards = QList<int>() << 7 << 8 << 9;
+    agPayload.selection.disabledCards = QList<int>() << 8 << 9;
+    agPayload.selection.minSelection = 1;
+    agPayload.selection.maxSelection = 1;
+    agPayload.takenCards = QList<int>() << 9;
+    InteractionRequest ag;
+    ag.type = InteractionType::AmazingGrace;
+    ag.responseSchema = InteractionResponseShape::Cards;
+    ag.payload = agPayload;
+    const quint64 agId = agCore.beginRequest(ag);
+    check(agCore.validate(InteractionResponse::makeCards(agId,
+            QList<int>() << 7)).accepted(),
+        "Amazing Grace accepts an available card");
+    checkRejection(agCore.validate(InteractionResponse::makeCards(agId,
+            QList<int>() << 8)), InteractionRejection::DisabledCard,
+        "Amazing Grace rejects a disabled card");
+    checkRejection(agCore.validate(InteractionResponse::makeCards(agId,
+            QList<int>() << 9)), InteractionRejection::DisabledCard,
+        "Amazing Grace rejects a taken card");
+
+    ClientCore arrangeCore;
+    ArrangeGeneralsInteractionPayload arrangePayload;
+    arrangePayload.generalNames = QStringList() << QStringLiteral("caocao")
+        << QStringLiteral("liubei") << QStringLiteral("sunquan");
+    arrangePayload.slotCount = 3;
+    InteractionRequest arrange;
+    arrange.type = InteractionType::ArrangeGeneral;
+    arrange.responseSchema = InteractionResponseShape::GeneralArrangement;
+    arrange.payload = arrangePayload;
+    const quint64 arrangeId = arrangeCore.beginRequest(arrange);
+    check(arrangeCore.validate(InteractionResponse::makeGeneralArrangement(arrangeId,
+            QStringList() << QStringLiteral("sunquan") << QStringLiteral("caocao")
+                          << QStringLiteral("liubei"))).accepted(),
+        "general arrangement accepts a complete permutation");
+    checkRejection(arrangeCore.validate(InteractionResponse::makeGeneralArrangement(arrangeId,
+            QStringList() << QStringLiteral("caocao") << QStringLiteral("caocao")
+                          << QStringLiteral("liubei"))), InteractionRejection::DuplicateGeneral,
+        "general arrangement rejects duplicate generals");
+    checkRejection(arrangeCore.validate(InteractionResponse::makeGeneralArrangement(arrangeId,
+            QStringList() << QStringLiteral("caocao") << QStringLiteral("liubei")
+                          << QStringLiteral("zhouyu"))), InteractionRejection::UnknownGeneral,
+        "general arrangement rejects unknown generals");
+
+    ClientCore role3v3Core;
+    OptionInteractionPayload role3v3Payload;
+    role3v3Payload.scheme = QStringLiteral("2013");
+    role3v3Payload.options << InteractionOption(QStringLiteral("leader"))
+                          << InteractionOption(QStringLiteral("guard"));
+    InteractionRequest role3v3;
+    role3v3.type = InteractionType::ChooseRole3v3;
+    role3v3.responseSchema = InteractionResponseShape::Option;
+    role3v3.payload = role3v3Payload;
+    const quint64 role3v3Id = role3v3Core.beginRequest(role3v3);
+    check(role3v3Core.validate(InteractionResponse::makeOption(role3v3Id,
+            QStringLiteral("leader"))).accepted(),
+        "3v3 role choice uses the canonical option model");
+
+    ClientCore triggerCore;
+    TriggerOrderOption triggerOption;
+    triggerOption.responseValue = QStringLiteral("jianxiong:sgs1:sgs1");
+    TriggerOrderInteractionPayload triggerPayload;
+    triggerPayload.options << triggerOption;
+    InteractionRequest trigger;
+    trigger.type = InteractionType::TriggerOrder;
+    trigger.responseSchema = InteractionResponseShape::Option;
+    trigger.payload = triggerPayload;
+    const quint64 triggerId = triggerCore.beginRequest(trigger);
+    check(triggerCore.validate(InteractionResponse::makeOption(triggerId,
+            triggerOption.responseValue)).accepted(),
+        "trigger order validates its typed response value");
+}
+
+void testMetadataAllowlist()
+{
+    ClientCore core;
+    InteractionRequest request = choiceRequest();
+    request.metadata.insert(QStringLiteral("eligibility_diagnostic"),
+        QStringLiteral("fixture"));
+    request.metadata.insert(QStringLiteral("gameplay_constraint"), 42);
+    core.beginRequest(request);
+    check(core.activeRequest().metadata.size() == 1
+            && core.activeRequest().metadata.value(
+                QStringLiteral("eligibility_diagnostic")).toString()
+                == QLatin1String("fixture"),
+        "request metadata keeps only diagnostic allowlist keys");
+}
+
+void testProductionDeadlineTimer()
+{
+    ClientCore core;
+    InteractionRequest request = choiceRequest();
+    request.timeoutMs = 5;
+
+    QEventLoop loop;
+    bool expired = false;
+    QObject::connect(&core, &ClientCore::requestCancelled, &loop,
+        [&expired, &loop](quint64, int reason) {
+            expired = reason == static_cast<int>(InteractionCancelReason::Expired);
+            loop.quit();
+        });
+    QTimer::singleShot(500, &loop, &QEventLoop::quit);
+    core.beginRequest(request);
+    loop.exec();
+    check(expired && !core.hasActiveRequest(),
+        "the production QTimer expires a pending request without polling");
+}
+
+QString argumentValue(int argc, char **argv, const char *option)
+{
+    for (int i = 1; i + 1 < argc; ++i) {
+        if (QLatin1String(argv[i]) == QLatin1String(option))
+            return QString::fromLocal8Bit(argv[i + 1]);
+    }
+    return QString();
+}
+
+void testProductionInteractionInventory(int argc, char **argv)
+{
+    const QString generator = argumentValue(argc, argv, "--interaction-generator");
+    const QString committedPath = argumentValue(argc, argv, "--interaction-matrix");
+    const QString generatedPath = argumentValue(argc, argv, "--generated-interaction-matrix");
+    if (generator.isEmpty() && committedPath.isEmpty() && generatedPath.isEmpty())
+        return;
+
+    if (generator.isEmpty() || committedPath.isEmpty() || generatedPath.isEmpty()) {
+        check(false, "production interaction inventory arguments are complete");
+        return;
+    }
+
+    QFile::remove(generatedPath);
+    QProcess process;
+    process.setProcessChannelMode(QProcess::MergedChannels);
+    process.start(generator, {QStringLiteral("--interaction-inventory"), generatedPath});
+    const bool started = process.waitForStarted(30000);
+    const bool finished = started && process.waitForFinished(60000);
+    if (started && !finished) {
+        process.terminate();
+        if (!process.waitForFinished(5000)) {
+            process.kill();
+            process.waitForFinished(5000);
+        }
+    }
+    if (!started || !finished
+        || process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+        printf("FAIL production interaction inventory generator runs successfully\n%s\n",
+            process.readAll().constData());
+        ++failures;
+        return;
+    }
+    check(true, "production interaction inventory generator runs successfully");
+
+    QFile generatedFile(generatedPath);
+    QFile committedFile(committedPath);
+    if (!generatedFile.open(QIODevice::ReadOnly) || !committedFile.open(QIODevice::ReadOnly)) {
+        check(false, "production and committed interaction inventories are readable");
+        return;
+    }
+    const QByteArray generatedJson = generatedFile.readAll();
+    const QByteArray committedJson = committedFile.readAll();
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(generatedJson, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        check(false, "production interaction inventory is valid JSON");
+        return;
+    }
+    check(true, "production interaction inventory is valid JSON");
+
+    const QJsonObject inventory = document.object();
+    check(inventory.value(QStringLiteral("schema_version")).toInt() == 2,
+        "interaction inventory schema is version 2");
+    check(inventory.value(QStringLiteral("total_commands")).toInt() == 29
+            && inventory.value(QStringLiteral("commands")).toArray().size() == 29,
+        "interaction registry contains all 29 production commands");
+    check(inventory.value(QStringLiteral("canonical_typed")).toInt() == 28,
+        "interaction registry contains 28 canonical typed commands");
+    check(inventory.value(QStringLiteral("legacy_adapter")).toInt() == 1,
+        "interaction registry contains one explicit legacy adapter");
+    check(inventory.value(QStringLiteral("implicit_passthrough")).toInt(-1) == 0,
+        "interaction registry contains no implicit passthrough");
+    check(inventory.value(QStringLiteral("missing_builder")).toInt(-1) == 0,
+        "every interaction descriptor has a builder");
+    check(inventory.value(QStringLiteral("missing_validator")).toInt(-1) == 0,
+        "every interaction descriptor has a validator");
+    check(inventory.value(QStringLiteral("missing_presenter")).toInt(-1) == 0,
+        "every interaction descriptor has a presenter");
+    check(inventory.value(QStringLiteral("missing_reply_encoder")).toInt(-1) == 0,
+        "every interaction descriptor has a reply encoder");
+    check(inventory.value(QStringLiteral("presenter_invocations")).toInt() == 29
+            && inventory.value(QStringLiteral("presented_types")).toInt() == 29,
+        "production registry dispatches every presenter and interaction type");
+    checkEqual(generatedJson, committedJson,
+        "the committed interaction artifact matches the production registry");
+}
+
 }  // namespace
 
 int main(int argc, char **argv)
@@ -695,6 +1140,12 @@ int main(int argc, char **argv)
     testViewContract();
     testReentrantAnswer();
     testGameState();
+    testStructuredModels();
+    testEligibilityHints();
+    testSpecialInteractionSemantics();
+    testMetadataAllowlist();
+    testProductionDeadlineTimer();
+    testProductionInteractionInventory(argc, argv);
 
     if (failures > 0) {
         printf("%d ClientCore contract check(s) failed\n", failures);
