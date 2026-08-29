@@ -29,6 +29,7 @@
 
 #include "asset-manifest.h"
 #include "runtime-paths.h"
+#include "interaction-descriptor-registry.h"
 
 #include "crashhandler.h"
 #include "effects/effects-policy.h"
@@ -45,6 +46,25 @@ int main(int argc, char *argv[]) {
         if (strcmp(argv[i], "--local-response-ui-capabilities") == 0) {
             fputs("{\"schema_version\":1,\"auto\":true,\"show\":true,\"inspect\":true}\n", stdout);
             fflush(stdout);
+            return 0;
+        }
+        if (strcmp(argv[i], "--interaction-inventory") == 0) {
+            const QByteArray json = QJsonDocument(
+                InteractionDescriptorRegistry::inventoryDocument())
+                .toJson(QJsonDocument::Indented);
+            if (i + 1 < argc) {
+                QFile output(QString::fromLocal8Bit(argv[i + 1]));
+                if (!output.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+                    fprintf(stderr, "cannot write interaction inventory: %s\n",
+                        qPrintable(output.errorString()));
+                    return 2;
+                }
+                if (output.write(json) != json.size())
+                    return 3;
+            } else {
+                fwrite(json.constData(), 1, static_cast<size_t>(json.size()), stdout);
+                fflush(stdout);
+            }
             return 0;
         }
     }

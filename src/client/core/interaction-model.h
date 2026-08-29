@@ -21,17 +21,43 @@
 #include <QStringList>
 #include <QVariantMap>
 
+#include <variant>
+
 // F1 第一個垂直切片遷移嘅五類 interaction。其餘（guanxing、gongxin、yiji、
 // AG、pindian、trigger order、nullification……）仍然行舊路,見
 // docs/client-core-interaction-model.md 嘅 remaining 清單。
 enum class InteractionType
 {
     None = 0,
-    ChooseGeneral,  // S_COMMAND_CHOOSE_GENERAL
-    Choice,         // S_COMMAND_MULTIPLE_CHOICE
-    ChoosePlayer,   // S_COMMAND_CHOOSE_PLAYER
-    SkillInvoke,    // S_COMMAND_INVOKE_SKILL
-    ResponseCard    // S_COMMAND_RESPONSE_CARD
+    ChooseRole,
+    ChooseGeneral,
+    ChooseDirection,
+    ExchangeCard,
+    AskPeach,
+    SkillGuanxing,
+    SkillGongxin,
+    SkillYiji,
+    PlayCard,
+    ResponseCard,
+    DiscardCard,
+    Choice,
+    ChooseSuit,
+    ChooseKingdom,
+    ChoosePlayer,
+    SkillInvoke,
+    TriggerOrder,
+    Nullification,
+    ShowCard,
+    AmazingGrace,
+    Pindian,
+    ChooseCard,
+    ChooseOrder,
+    ChooseRole3v3,
+    Surrender,
+    LuckCard,
+    AskGeneral,
+    ArrangeGeneral,
+    QmlInteract
 };
 
 // snapshot／log 用嘅穩定字串，唔會跟住 enum 次序漂移。
@@ -86,6 +112,167 @@ struct PlayerSelectionState
     QJsonObject toJson() const;
 };
 
+// QtCore-only request payloads. Commands with the same interaction shape may
+// share a payload type while InteractionType preserves protocol identity.
+struct OptionInteractionPayload
+{
+    QList<InteractionOption> options;
+    bool enumerated = true;
+    QString tip;
+    QString scheme;
+};
+
+struct PlayerInteractionPayload
+{
+    PlayerSelectionState selection;
+};
+
+struct CardInteractionPayload
+{
+    CardSelectionState selection;
+    QString sourcePlayer;
+    QStringList fixedTargets;
+    QStringList optionalTargets;
+    QString zoneFlags;
+    bool handCardsVisible = false;
+    bool includeEquip = false;
+    bool cardTextAllowed = false;
+    bool virtualCardAllowed = false;
+    // Provider-derived eligibility is a UI hint. Only selection.enumerated
+    // makes the server-provided selectableCards list authoritative.
+    QList<int> suggestedCards;
+    QList<int> suggestedDisabledCards;
+};
+
+struct RoleAssignmentInteractionPayload
+{
+    QString scheme;
+    QStringList playerNames;
+    QStringList roles;
+};
+
+enum class RearrangementMode
+{
+    UpOnly = 0,
+    BothSides,
+    DownOnly
+};
+
+QString rearrangementModeName(RearrangementMode mode);
+
+struct RearrangeCardsInteractionPayload
+{
+    QList<int> cardIds;
+    RearrangementMode mode = RearrangementMode::BothSides;
+    int minTop = 0;
+    int maxTop = 0;
+    int minBottom = 0;
+    int maxBottom = 0;
+    bool mirrored = false;
+};
+
+struct GongxinInteractionPayload
+{
+    QString targetPlayer;
+    QList<int> visibleCards;
+    QList<int> selectableCards;
+    bool allowHeartOperation = false;
+};
+
+struct YijiInteractionPayload
+{
+    QList<int> cardIds;
+    QStringList targetPlayers;
+    int minCards = 0;
+    int maxCards = 0;
+    int remainingCount = 0;
+};
+
+struct PindianInteractionPayload
+{
+    QString opponent;
+    CardSelectionState selection;
+    bool revealImmediately = false;
+    bool hiddenUntilResolved = true;
+};
+
+struct AmazingGraceInteractionPayload
+{
+    CardSelectionState selection;
+    QList<int> takenCards;
+    bool selectable = true;
+};
+
+struct ArrangeGeneralsInteractionPayload
+{
+    QStringList generalNames;
+    QString arrangement;
+    int slotCount = 0;
+};
+
+struct TriggerOrderOption
+{
+    QString skillName;
+    int instanceId = 0;
+    QString invoker;
+    QString owner;
+    QString preferredTarget;
+    int preferredTargetSeat = 0;
+    QString responseValue;
+};
+
+struct TriggerOrderInteractionPayload
+{
+    QList<TriggerOrderOption> options;
+};
+
+struct ChooseOrderInteractionPayload
+{
+    QList<InteractionOption> options;
+    int reason = 0;
+};
+
+struct CustomInteractionPayload
+{
+    int schemaVersion = 1;
+    QString typeName;
+    QString title;
+    QJsonObject payload;
+    QJsonObject responseSchema;
+    QString legacyQmlPath;
+    bool legacy = false;
+};
+
+using InteractionPayload = std::variant<std::monostate,
+    OptionInteractionPayload,
+    PlayerInteractionPayload,
+    CardInteractionPayload,
+    RoleAssignmentInteractionPayload,
+    RearrangeCardsInteractionPayload,
+    GongxinInteractionPayload,
+    YijiInteractionPayload,
+    PindianInteractionPayload,
+    AmazingGraceInteractionPayload,
+    ArrangeGeneralsInteractionPayload,
+    TriggerOrderInteractionPayload,
+    ChooseOrderInteractionPayload,
+    CustomInteractionPayload>;
+
+enum class InteractionResponseShape
+{
+    None = 0,
+    Option,
+    Players,
+    Cards,
+    Assignment,
+    Rearrangement,
+    Distribution,
+    GeneralArrangement,
+    Custom
+};
+
+QString interactionResponseShapeName(InteractionResponseShape shape);
+
 // 一個 server request 嘅完整結構化描述。
 struct InteractionRequest
 {
@@ -101,17 +288,6 @@ struct InteractionRequest
 
     QString skillName;
     QString prompt;
-    QList<InteractionOption> options;
-    // options 係咪合法答案嘅完整集合。
-    //
-    // true  → ClientCore 強制答案一定要係其中一個 enabled option。
-    // false → options 只係「server 提供咗嘅選擇」,但 server 本身會收清單以外
-    //         嘅答案,所以 client 唔可以攔。choose general 就係咁:
-    //         player-decision-service.cpp:332 喺 FreeChoose 之下接受任何武將,
-    //         而 roomscene.cpp:2255 嘅 free-choose／auto-pick 路徑正正會咁答。
-    bool optionsEnumerated = true;
-    CardSelectionState cards;
-    PlayerSelectionState players;
     bool cancelable = false;
 
     // 0 = 冇死線。deadlineMs 係 ClientCore clock 嘅單調毫秒數,由 beginRequest()
@@ -119,8 +295,12 @@ struct InteractionRequest
     qint64 timeoutMs = 0;
     qint64 deadlineMs = 0;
 
-    // skill／context metadata:唔影響驗證,但 view 同 log 睇得到。
-    QVariantMap context;
+    InteractionResponseShape responseSchema = InteractionResponseShape::None;
+    InteractionPayload payload;
+
+    // 只准 diagnostic／logging／display-only 資料。所有 gameplay constraint
+    // 必須有 typed payload field；metadata key 由測試 allowlist 鎖定。
+    QVariantMap metadata;
 
     bool isValid() const;
     // 按 type 決定邊條 selection 維度有效,畀 snapshot 同驗證共用。
@@ -128,6 +308,12 @@ struct InteractionRequest
     int maxSelection() const;
     bool hasOption(const QString &value) const;
     const InteractionOption *option(const QString &value) const;
+
+    template<typename T>
+    const T *payloadAs() const
+    {
+        return std::get_if<T>(&payload);
+    }
 
     QJsonObject toJson() const;
     // 穩定排序、compact 嘅 JSON。QJsonObject 本身按 key 排序,所以同一個
@@ -137,6 +323,11 @@ struct InteractionRequest
 
 enum class InteractionResponseKind
 {
+    Assignment = 5,
+    Rearrangement,
+    Distribution,
+    GeneralArrangement,
+    Custom,
     None = 0,
     Cancel,   // 放棄／唔答。只有 cancelable request 收
     Option,   // 揀咗一個 option value
@@ -149,19 +340,90 @@ QString interactionResponseKindName(InteractionResponseKind kind);
 struct InteractionResponse
 {
     quint64 requestId = 0;
+    uint serverSerial = 0;
+    int command = 0;
     InteractionResponseKind kind = InteractionResponseKind::None;
-    QString option;
-    QStringList players;
-    QList<int> cards;
-    // Card::toString() 嘅結果。virtual card 冇實 id,靠呢個字串上線。
-    QString cardText;
-    QVariantMap payload;
+
+    struct CancelData
+    {
+    };
+
+    struct OptionData
+    {
+        QString value;
+    };
+
+    struct PlayerSelectionData
+    {
+        QStringList names;
+    };
+
+    struct CardSelectionData
+    {
+        QList<int> cardIds;
+        QString cardText;
+        QList<int> subcardIds;
+        QStringList targets;
+        QString activationSkillName;
+        int activationSkillInstanceId = 0;
+    };
+
+    struct AssignmentData
+    {
+        QStringList names;
+        QStringList values;
+    };
+
+    struct RearrangementData
+    {
+        QList<int> first;
+        QList<int> second;
+    };
+
+    struct DistributionData
+    {
+        QList<int> cards;
+        QString target;
+    };
+
+    struct GeneralArrangementData
+    {
+        QStringList generalNames;
+    };
+
+    struct CustomData
+    {
+        int schemaVersion = 1;
+        QString typeName;
+        QVariant value;
+    };
+
+    using Payload = std::variant<std::monostate, CancelData, OptionData,
+        PlayerSelectionData, CardSelectionData, AssignmentData,
+        RearrangementData, DistributionData, GeneralArrangementData, CustomData>;
+    Payload payload;
+
+    template<typename T>
+    const T *payloadAs() const
+    {
+        return std::get_if<T>(&payload);
+    }
 
     static InteractionResponse makeCancel(quint64 requestId);
     static InteractionResponse makeOption(quint64 requestId, const QString &value);
     static InteractionResponse makePlayers(quint64 requestId, const QStringList &names);
     static InteractionResponse makeCards(quint64 requestId, const QList<int> &ids,
         const QString &cardText = QString());
+    static InteractionResponse makeAssignment(quint64 requestId,
+        const QStringList &names, const QStringList &values);
+    static InteractionResponse makeRearrangement(quint64 requestId,
+        const QList<int> &first, const QList<int> &second);
+    static InteractionResponse makeDistribution(quint64 requestId,
+        const QList<int> &ids, const QString &target);
+    static InteractionResponse makeGeneralArrangement(quint64 requestId,
+        const QStringList &generalNames);
+    static InteractionResponse makeCustom(quint64 requestId, int schemaVersion,
+        const QString &typeName, const QVariant &value);
 
     QJsonObject toJson() const;
     QByteArray toSnapshot() const;
@@ -170,6 +432,10 @@ struct InteractionResponse
 // 拒絕原因。每一個都對應完成標準入面「ClientCore 必須拒絕」嗰張清單。
 enum class InteractionRejection
 {
+    ServerSerialMismatch = 16,
+    CommandMismatch,
+    MalformedResponse,
+    UnsupportedInteraction,
     None = 0,
     NoActiveRequest,           // 而家冇 request 等緊答
     RequestIdMismatch,         // reply 嘅 id 唔係 active request
@@ -184,6 +450,8 @@ enum class InteractionRejection
     UnknownCard,               // 非 selectable card／id 超出值域
     DisabledCard,
     DuplicateCard,
+    UnknownGeneral = 20,
+    DuplicateGeneral,
     SelectionCountOutOfRange,  // selection 數量錯誤
     NotCancelable              // 唔准取消嘅 request 收到空答案
 };

@@ -30,7 +30,8 @@ image/
 /audio/
 font/
 hero-skin/
-artifacts/
+artifacts/*
+!artifacts/client-core-interaction-matrix.json
 assets/
 resources/
 autotest-logs/

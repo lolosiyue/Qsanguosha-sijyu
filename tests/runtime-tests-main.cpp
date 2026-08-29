@@ -99,6 +99,20 @@ int main(int argc, char **argv)
     }
     QCoreApplication application(argc, argv);
     const QString suite = parseSuite(argc, argv);
+    if (suite == QLatin1String("runtime-contract")) {
+        quint64 seed = 0;
+        if (!parseSyntheticSeed(argc, argv, seed))
+            return 64;
+        return runIsolatedTestCases("RUNTIME_CONTRACT_RESULT", {
+            {QStringLiteral("lua-runtime"), {QStringLiteral("--suite"), QStringLiteral("lua-runtime")}},
+            {QStringLiteral("room-runtime"), {QStringLiteral("--suite"), QStringLiteral("room-runtime")}},
+            {QStringLiteral("card-lifetime"), {QStringLiteral("--suite"), QStringLiteral("card-lifetime")}, 600000},
+            {QStringLiteral("card-lifetime-lua"), {QStringLiteral("--suite"), QStringLiteral("card-lifetime-lua")}},
+            {QStringLiteral("synthetic-30"), {
+                QStringLiteral("--suite"), QStringLiteral("card-lifetime-synthetic-30"),
+                QStringLiteral("--seed"), QString::number(seed)}}
+        });
+    }
     if (suite == QLatin1String("lua-runtime"))
         return runLuaRuntimeIsolationTests();
     if (suite == QLatin1String("room-runtime"))
