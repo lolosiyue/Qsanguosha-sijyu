@@ -4,6 +4,7 @@
 #include "standard.h"
 #include "engine-runtime-context.h"
 #include "client-core.h"
+#include "custom-interaction-registry.h"
 //#include "skill.h"
 #include "room-state.h"
 //#include "protocol.h"
@@ -12,6 +13,7 @@
 // (Q_DECLARE_METATYPE(T*) 會 static_assert(sizeof(T)))，所以必須完整 include。
 // clientplayer.h 只前置宣告 class Client，不會造成 circular include。
 #include "clientplayer.h"
+#include <QJsonArray>
 
 class Recorder;
 class Replayer;
@@ -93,6 +95,10 @@ public:
     void onPlayerReplyGuanxing(const QList<int> &up_cards, const QList<int> &down_cards);
     void onPlayerDoGuanxingStep(int from, int to);
     void onPlayerAssignRole(const QList<QString> &names, const QList<QString> &roles);
+    void onPlayerCancelAssignRole();
+    void onPlayerChooseDraftGeneral(const QString &name);
+    void onPlayerArrangeGenerals(const QStringList &names);
+    void onPlayerChooseTriggerOrder(const QString &choice);
     QList<const ClientPlayer *> getPlayers() const;
     inline int getPlayerCount() const
     {
@@ -298,6 +304,8 @@ public:
     // response card。其餘 interaction 仍然行舊路,見
     // docs/client-core-interaction-model.md。
     ClientCore *interactionCore() const { return m_interactionCore; }
+    quint64 legacyCustomInteractionCount() const { return m_legacyCustomInteractionCount; }
+    QJsonArray interactionInventory() const;
 
     // DesktopInteractionView 用嘅呈現 port。每一個都係原本 askForXxx() 尾段
     // 嗰一兩行(emit signal + setStatus)原封不動搬過嚟,所以 RoomScene／
@@ -307,6 +315,7 @@ public:
     void presentPlayerChoice(const InteractionRequest &request);
     void presentSkillInvoke(const InteractionRequest &request);
     void presentCardResponse(const InteractionRequest &request);
+    void presentStructuredInteraction(const InteractionRequest &request);
 
 public slots:
     void signup();
@@ -354,6 +363,12 @@ private:
     QString skill_to_invoke;
     QString skill_to_invoke_data;
     QList<int> available_cards;
+    QList<int> m_amazingGraceCards;
+    QList<int> m_amazingGraceDisabledCards;
+    QList<int> m_amazingGraceTakenCards;
+    QStringList m_filledGenerals;
+    quint64 m_legacyCustomInteractionCount = 0;
+    CustomInteractionRegistry m_customInteractionRegistry;
     QSet<QString> m_anytimeSkillPending;
 
     QMap<int, const Player*> owner_map;
@@ -370,7 +385,6 @@ private:
         // core 收咗:可以送 reply。
         Accepted,
         // 呢個 interaction 未遷移(或者 core 冇對應嘅 active request):行舊路。
-        Passthrough,
         // core 拒絕咗:唔准送 reply。
         Rejected
     };

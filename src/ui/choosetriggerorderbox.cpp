@@ -441,6 +441,6 @@ void ChooseTriggerOrderBox::reply()
         }
     }
 
-    ClientInstance->replyToServer(QSanProtocol::S_COMMAND_TRIGGER_ORDER, choice);
+    ClientInstance->onPlayerChooseTriggerOrder(choice);
     clear();
 }
