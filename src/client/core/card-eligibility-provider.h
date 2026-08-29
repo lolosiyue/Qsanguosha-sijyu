@@ -6,7 +6,7 @@
 struct CardEligibilityResult
 {
     QList<int> suggestedCards;
-    QList<int> disabledCards;
+    QList<int> suggestedDisabledCards;
     QString diagnostic;
 };
 
