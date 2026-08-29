@@ -3,10 +3,10 @@ name: Linux package CI
 # Linux GUI M3:build the shipping artifacts and smoke-test the artifacts
 # themselves.
 #
-# 呢個 workflow 同 linux-gui-ci.yml 唔同層:嗰邊驗嘅係 build tree 入面嘅
-# binary,呢邊驗嘅係真正落到玩家手上嗰個檔案。一個 build-tree binary 靠絕對
-# RPATH 搵到 Qt、靠 repository 搵到資產,所以佢可以完全通過 M0–M2B 但個包
-# 一放上去就開唔到 —— 呢個差別就係 M3 存在嘅原因。
+# 獨立 build-tree Linux GUI CI 已移除；呢度只驗真正落到玩家手上嗰個檔案。
+# 一個 build-tree binary 靠絕對 RPATH 搵到 Qt、靠 repository 搵到資產，所以
+# 佢可以完全通過本機 M0–M2B 但個包一放上去就開唔到 —— 呢個差別就係 M3
+# 存在嘅原因。
 #
 # 刻意唔喺每次改 source 都跑:整包 + 全套 smoke 要成半個鐘。改動 packaging
 # 相關路徑、開 PR 去 debug／main、push main、打 tag、或者手動 dispatch 先至跑；
