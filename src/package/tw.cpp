@@ -68,7 +68,7 @@ public:
                 if (player->askForSkillInvoke(this, data)) {
                     room->broadcastSkillInvoke(objectName(), 2);
                     QList<int> hc = damage.to->handCards();
-                    qShuffle(hc);
+                    qsanShuffle(hc);
                     int n = damage.to->getHandcardNum() - qMax(damage.to->getHp(), 0);
                     QList<int> to_discard = hc.mid(0, n - 1);
                     DummyCard dc(to_discard);

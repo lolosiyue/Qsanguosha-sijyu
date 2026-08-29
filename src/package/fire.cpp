@@ -449,7 +449,7 @@ public:
         if (!player->hasSkill("bazhen")) return false;
         QString skill = data.toString();
         if (skill != "eight_diagram") return false;
-        int index = qrand()%2+1;
+        int index = qsanRandomBounded(2)+1;
         if (player->isJieGeneral("wolong") || player->isJieGeneral("zhugeliang"))
             index += 2;
         else if (player->isJieGeneral("pangtong"))
@@ -522,7 +522,7 @@ public:
     {
         int index = 1;
         if (player->isJieGeneral())
-            index += qrand() % 2 + 1;
+            index += qsanRandomBounded(2) + 1;
         return index;
     }
 };

@@ -177,7 +177,7 @@ public:
             if (use.card->isKindOf("SavageAssault")) {
 				foreach (ServerPlayer *menghuo, room->findPlayersBySkillName(objectName())) {
 					if (menghuo != use.from) {
-						int index = qrand()%2+1;
+						int index = qsanRandomBounded(2)+1;
 						if (menghuo->isJieGeneral()) index += 2;
 						room->sendCompulsoryTriggerLog(menghuo, this, index);
 						use.card->setFlags("HuoshouDamage_" + menghuo->objectName());
@@ -187,7 +187,7 @@ public:
         } else if (triggerEvent == CardEffected) {
 			CardEffectStruct effect = data.value<CardEffectStruct>();
 			if (effect.card->isKindOf("SavageAssault")&&effect.to->hasSkill(objectName())) {
-				int index = qrand()%2+1;
+				int index = qsanRandomBounded(2)+1;
 				if (effect.to->isJieGeneral()) index += 2;
 				room->sendCompulsoryTriggerLog(effect.to, this, index);
 				effect.nullified = true;
@@ -226,7 +226,7 @@ public:
         if (damage.card && damage.card->isKindOf("Slash") && zhurong->canPindian(target) && !target->hasFlag("Global_DebutFlag") && !damage.chain && !damage.transfer
             && room->askForSkillInvoke(zhurong, objectName(), data)) {
 
-            int index = qrand()%2+1;
+            int index = qsanRandomBounded(2)+1;
             if (zhurong->isJieGeneral()) index += 2;
             room->broadcastSkillInvoke(objectName(), index);
 
@@ -327,7 +327,7 @@ public:
 				CardUseStruct use = move.reason.m_useStruct;
 				if (!use.card || !use.card->isKindOf("SavageAssault")) return false;
 				if (player!=use.from&&room->CardInTable(use.card)) {
-					int index = qrand() % 2 + 1;
+					int index = qsanRandomBounded(2) + 1;
 					if (player->isJieGeneral()) index += 2;
 					room->sendCompulsoryTriggerLog(player, this, index);
 	
@@ -384,7 +384,7 @@ public:
         if (to) {
             int x = sunjian->getLostHp();
 
-            int index = qrand()%2+1;
+            int index = qsanRandomBounded(2)+1;
             if (!sunjian->hasInnateSkill("yinghun")) {
                 if (sunjian->hasSkill("xiongyisy",true))
                     index = 9;
@@ -816,7 +816,7 @@ public:
                 }
                 use.from->setTag("Jink_" + use.card->toString(), jink_list);
                 if (play_effect) {
-                    index = (qrand() % 2)+1;
+                    index = (qsanRandomBounded(2))+1;
                     if (use.from->isJieGeneral()) index += 2;
                     room->broadcastSkillInvoke(objectName(), index);
                     room->sendCompulsoryTriggerLog(use.from, objectName());
@@ -835,7 +835,7 @@ public:
 
                 if (play_effect) {
                     //bool drunk = (use.card->getTag("drunk", 0).toInt() > 0);
-                    index = (qrand() % 2)+1;
+                    index = (qsanRandomBounded(2))+1;
                     if (player->isJieGeneral()) index += 2;
                     room->broadcastSkillInvoke(objectName(), index);
                     room->sendCompulsoryTriggerLog(player, objectName());
@@ -876,7 +876,7 @@ public:
             QString result = room->askForChoice(dongzhuo, "benghuai", "hp+maxhp");
             int index = (dongzhuo->isFemale()) ? 2 : 1;
             if (dongzhuo->isJieGeneral("dongzhuo"))
-                index = qrand() % 2 + 6;
+                index = qsanRandomBounded(2) + 6;
             else {
                 if (!dongzhuo->hasInnateSkill(this) && (dongzhuo->getMark("juyi") > 0 || dongzhuo->getMark("oljuyi") > 0))
                     index = 3;
@@ -982,7 +982,7 @@ public:
 							if (objectName() == "guixin")
 								card_id = room->askForCardChosen(shencc, player, "hej", objectName());
 							else if (objectName() == "newguixin")
-								card_id = player->getCards("hej").at(qrand() % player->getCards("hej").length())->getEffectiveId();
+								card_id = player->getCards("hej").at(qsanRandomBounded(player->getCards("hej").length()))->getEffectiveId();
 							if (card_id > 0)
 								room->obtainCard(shencc, Sanguosha->getCard(card_id), reason, room->getCardPlace(card_id) != Player::PlaceHand);
 	

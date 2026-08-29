@@ -882,10 +882,10 @@ static bool choiceOverrideForceCancelAndFallback()
         return false;
 
     fixture.ai()->choiceValue = QStringLiteral("invalid");
-    qsrand(1);
+    qsanSeedRandom(1);
     const QString firstFallback = fixture.room.askForChoice(
         fixture.player, QStringLiteral("tuxi"), QStringLiteral("left+right"));
-    qsrand(1);
+    qsanSeedRandom(1);
     const QString secondFallback = fixture.room.askForChoice(
         fixture.player, QStringLiteral("tuxi"), QStringLiteral("left+right"));
     const QString single = fixture.room.askForChoice(
@@ -932,11 +932,11 @@ static bool suitKingdomGeneralAndModeChoices()
         return false;
 
     fixture.ai()->kingdomValue = QStringLiteral("wu");
-    qsrand(7);
+    qsanSeedRandom(7);
     const QString invalidKingdom = fixture.room.askForKingdom(
         fixture.player, QString(),
         QStringList{QStringLiteral("wei"), QStringLiteral("shu")}, false);
-    qsrand(7);
+    qsanSeedRandom(7);
     const QString invalidKingdomAgain = fixture.room.askForKingdom(
         fixture.player, QString(),
         QStringList{QStringLiteral("wei"), QStringLiteral("shu")}, false);
@@ -999,9 +999,9 @@ static bool suitKingdomGeneralClientAndInvalidReplies()
         return false;
 
     agent.replyByCommand.insert(S_COMMAND_CHOOSE_SUIT, QStringLiteral("not-a-suit"));
-    qsrand(3);
+    qsanSeedRandom(3);
     const Card::Suit invalidSuit = fixture.room.askForSuit(fixture.player, QStringLiteral("luoyi"));
-    qsrand(3);
+    qsanSeedRandom(3);
     const Card::Suit invalidSuitAgain = fixture.room.askForSuit(
         fixture.player, QStringLiteral("luoyi"));
     agent.replyByCommand.insert(S_COMMAND_CHOOSE_GENERAL, QStringLiteral("nobody"));
@@ -1164,12 +1164,12 @@ static bool playerChosenClientInvalidOptionalAndTimeout()
 
     fixture.probe.records.clear();
     agent.replyByCommand.insert(S_COMMAND_CHOOSE_PLAYER, QStringLiteral("nobody"));
-    qsrand(4);
+    qsanSeedRandom(4);
     ServerPlayer *invalidFirst = fixture.room.askForPlayerChosen(
         fixture.player,
         QList<ServerPlayer *>{fixture.player, fixture.other},
         QStringLiteral("tuxi"));
-    qsrand(4);
+    qsanSeedRandom(4);
     ServerPlayer *invalidAgain = fixture.room.askForPlayerChosen(
         fixture.player,
         QList<ServerPlayer *>{fixture.player, fixture.other},
@@ -1282,10 +1282,10 @@ static bool playersChosenClientFillAndNotify()
     fixture.probe.records.clear();
     agent.replyByCommand.insert(S_COMMAND_CHOOSE_PLAYER,
                                 QStringLiteral("nobody+decision-other"));
-    qsrand(5);
+    qsanSeedRandom(5);
     QList<ServerPlayer *> filled = fixture.room.askForPlayersChosen(
         fixture.player, three, QStringLiteral("tuxi"), 2, 2, QString(), false, false);
-    qsrand(5);
+    qsanSeedRandom(5);
     QList<ServerPlayer *> filledAgain = fixture.room.askForPlayersChosen(
         fixture.player, three, QStringLiteral("tuxi"), 2, 2, QString(), false, false);
     return expect(filled.length() == 2, "min_num fills until the lower bound")
@@ -1565,10 +1565,10 @@ static bool cardShowSingletonClientAndRandom()
 
     online.probe.records.clear();
     agent.replyByCommand.insert(S_COMMAND_SHOW_CARD, QVariant::fromValue(JsonArray() << QStringLiteral("not-a-card")));
-    qsrand(6);
+    qsanSeedRandom(6);
     const Card *invalidFirst = online.room.askForCardShow(
         online.player, online.other, QStringLiteral("rende"));
-    qsrand(6);
+    qsanSeedRandom(6);
     const Card *invalidAgain = online.room.askForCardShow(
         online.player, online.other, QStringLiteral("rende"));
     return expect(invalidFirst != nullptr && invalidFirst == invalidAgain,
@@ -1632,10 +1632,10 @@ static bool pindianEmitsNoChoiceMade()
 
     agent.replyByCommand.insert(S_COMMAND_PINDIAN,
                                 QVariant::fromValue(JsonArray() << QStringLiteral("not-a-card")));
-    qsrand(7);
+    qsanSeedRandom(7);
     const Card *invalidFirst = online.room.askForPindian(
         online.player, online.other, QStringLiteral("tianyi"));
-    qsrand(7);
+    qsanSeedRandom(7);
     const Card *invalidAgain = online.room.askForPindian(
         online.player, online.other, QStringLiteral("tianyi"));
     return expect(invalidFirst != nullptr && invalidFirst == invalidAgain,
@@ -1721,10 +1721,10 @@ static bool pindianRaceBroadcastIndependentFallback()
                                     QVariant::fromValue(JsonArray() << QStringLiteral("0")));
     otherAgent.replyByCommand.insert(S_COMMAND_PINDIAN,
                                      QVariant::fromValue(JsonArray() << QStringLiteral("not-a-card")));
-    qsrand(8);
+    qsanSeedRandom(8);
     QList<const Card *> independent = humans.room.askForPindianRace(
         humans.player, humans.other, QStringLiteral("tianyi"));
-    qsrand(8);
+    qsanSeedRandom(8);
     QList<const Card *> independentAgain = humans.room.askForPindianRace(
         humans.player, humans.other, QStringLiteral("tianyi"));
     return expect(fromHumans.count(S_COMMAND_PINDIAN) >= 1
@@ -2163,10 +2163,10 @@ static bool nullificationPeachTriggerOrderAndResidual()
         return false;
 
     order.ai()->triggerOrderValue = QStringLiteral("missing");
-    qsrand(9);
+    qsanSeedRandom(9);
     const QString fallback = order.room.askForTriggerOrder(
         order.player, QStringLiteral("gameRule"), many, false);
-    qsrand(9);
+    qsanSeedRandom(9);
     const QString fallbackAgain = order.room.askForTriggerOrder(
         order.player, QStringLiteral("gameRule"), many, false);
     if (!expect(fallback == fallbackAgain, "invalid TriggerOrder uses seed-deterministic fallback")

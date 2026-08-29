@@ -1415,7 +1415,7 @@ public:
         QStringList five_shus;
         for (int i = 1; i < 6; i++) {
             if (shus.isEmpty()) break;
-            QString name = shus.at((qrand() % shus.length()));
+            QString name = shus.at((qsanRandomBounded(shus.length())));
             five_shus << name;
             shus.removeOne(name);
         }
@@ -1494,7 +1494,7 @@ public:
         QStringList five_shus;
         for (int i = 1; i < 6; i++) {
             if (shus.isEmpty()) break;
-            QString name = shus.at((qrand() % shus.length()));
+            QString name = shus.at((qsanRandomBounded(shus.length())));
             five_shus << name;
             shus.removeOne(name);
         }
@@ -1658,7 +1658,7 @@ public:
         ServerPlayer *target = room->askForPlayerChosen(player, room->getOtherPlayers(player), objectName(), "@zhennan-invoke", true, true);
         if (!target) return false;
         room->broadcastSkillInvoke(objectName());
-        int n = qrand() % 3 + 1;
+        int n = qsanRandomBounded(3) + 1;
         room->damage(DamageStruct(objectName(), player, target, n));
         return false;
     }

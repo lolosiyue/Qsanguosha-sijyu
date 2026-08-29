@@ -130,7 +130,7 @@ public:
             room->broadcastSkillInvoke(objectName());
             room->sendCompulsoryTriggerLog(damage.to, objectName());
             room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, damage.to->objectName(), damage.from->objectName());
-            room->throwCard(damage.from->getCards("he").at(qrand()%damage.from->getCards("he").length()), damage.from, damage.to);
+            room->throwCard(damage.from->getCards("he").at(qsanRandomBounded(damage.from->getCards("he").length())), damage.from, damage.to);
         }
         return false;
     }
@@ -497,7 +497,7 @@ public:
 				foreach (ServerPlayer *tp, room->getOtherPlayers(p))
 					if (tp!=player) all_cards << tp->getCards("hej");
                 if (all_cards.isEmpty()) continue;
-				const Card *c = all_cards.at(qrand() % all_cards.length());
+				const Card *c = all_cards.at(qsanRandomBounded(all_cards.length()));
 				ServerPlayer *to = room->getCardOwner(c->getId());
 				room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, p->objectName(), to->objectName());
 				CardMoveReason reason(CardMoveReason::S_REASON_EXTRACTION, p->objectName(),to->objectName(),objectName(),"");
@@ -767,7 +767,7 @@ public:
 				foreach (ServerPlayer *p, room->getOtherPlayers(player))
 					room->doAnimate(QSanProtocol::S_ANIMATE_INDICATE, player->objectName(), p->objectName());
 				foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
-					int n = ids.at(qrand() % ids.length());
+					int n = ids.at(qsanRandomBounded(ids.length()));
 					room->damage(DamageStruct(objectName(), player, p, n));
 				}
 			}
@@ -865,7 +865,7 @@ public:
                 room->broadcastSkillInvoke(objectName());
 				QList<int> ids;
 				ids << 0 << 1 << 2 << 3;
-				int n = ids.at(qrand() % ids.length());
+				int n = ids.at(qsanRandomBounded(ids.length()));
 				DummyCard*dc = new DummyCard;
 				foreach (int id, room->getDrawPile()) {
 					if (dc->subcardsLength()<n&&Sanguosha->getCard(id)->isRed())
@@ -878,7 +878,7 @@ public:
 				QList<ServerPlayer *> tos2;
 				for (int i = 0; i < n; i++) {
 					if (tos.isEmpty()) continue;
-					ServerPlayer *p = tos.at(qrand() % tos.length());
+					ServerPlayer *p = tos.at(qsanRandomBounded(tos.length()));
 					tos2 << p;
 					tos.removeOne(p);
 				}
@@ -1053,7 +1053,7 @@ public:
                         slashes << card_id;
                 }
                 if (!slashes.isEmpty())
-                    room->getLord()->obtainCard(Sanguosha->getCard(slashes.at(qrand() % slashes.length())));
+                    room->getLord()->obtainCard(Sanguosha->getCard(slashes.at(qsanRandomBounded(slashes.length()))));
             }
         }
         return false;
@@ -2094,7 +2094,7 @@ void GodSpeel::onEffect(CardEffectStruct &effect) const{
 	foreach(const Skill *skill, effect.to->getVisibleSkillList())
 		if (!skill->isAttachedLordSkill()) sks << skill->objectName();
 	if (sks.isEmpty()) return;
-	QString sk = sks.at(qrand() % sks.length());
+	QString sk = sks.at(qsanRandomBounded(sks.length()));
 	if (!skills.contains(sk)){
 		skills << sk;
 		effect.to->setTag("god_speelSkills", skills);

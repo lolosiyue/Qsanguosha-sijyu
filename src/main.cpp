@@ -245,7 +245,7 @@ int main(int argc, char *argv[]) {
     if (earlyLogIdx >= 0 && earlyLogIdx + 1 < qApp->arguments().size())
         Server::setHeadlessLogFile(qApp->arguments().at(earlyLogIdx + 1));
 
-    qsrand(QTime(0, 0, 0).secsTo(QTime::currentTime()));
+    qsanSeedRandom(QTime(0, 0, 0).secsTo(QTime::currentTime()));
 
     const QStringList arguments = qApp->arguments();
     const int seedIdx = arguments.indexOf("--seed");

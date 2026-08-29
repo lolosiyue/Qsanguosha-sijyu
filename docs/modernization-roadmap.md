@@ -2,11 +2,11 @@
 
 > **歷史文件（存檔）**：2026-07-20 全倉靜態審計快照，僅供歷史參考與技術債量化基線；**內文所述「現況」不得作為規範**。已推翻／過時內容：
 > - §1 硬性約束（qmake／Qt 5.14.2／`QSanguosha.pro`）：**已被 CMake 3.28+ 與 Qt 6.5.3 取代**（MSVC 2019 x64；見 `CMakeLists.txt`／`CMakePresets.json`、AGENTS.md §7）；C++17 約束維持。
-> - §2 語法債處置現況：`qrand/qsrand`（449+10 處）以 `src/pch.h:34-42` compat shim（`inline qrand()/qsrand()` 包 `QRandomGenerator`）繞過；`QRegExp`（32 處）經 `pch.h:23` compat include 保留（Qt 6.5 棄用但可編譯）；`QTextCodec` 於 `engine.cpp` 已改用 `QStringConverter`。
+> - §2 的 `qrand/qsrand`、`qShuffle`、`QRegExp` 數量是歷史基線。2026-08-30 已完成真遷移：遊戲邏輯改用 `GameRng`／`qsanRandomBounded()`／`qsanShuffle()`，UI 改用獨立 `UiRng`，並移除 PCH shim、`QRegExp`、`QTextCodec` 與 `Core5Compat`；正文舊數字不代表現況。
 > - §8/§9 提及的 `QSanguosha.pro` 已不存在（CMakeLists.txt 取代）；FMOD 音訊仍保留。
 > - **現行決策一律以 [跨平台現代化與功能移植計劃](cross-platform-modernization-plan.md) 為準**（含 Qt 6.11.1／Lua 5.4.8 長期基線）。
 
-> 版本：2026-07-20 ｜ 狀態：存檔（2026-08-09 更新橫幅，正文為當時快照）
+> 版本：2026-07-20 ｜ 狀態：存檔（2026-08-30 更新橫幅，正文為當時快照）
 > 資料來源：2026-07 全倉靜態審計（實測統計，非估算）
 
 ---

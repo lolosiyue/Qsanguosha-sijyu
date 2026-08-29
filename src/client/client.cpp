@@ -7,6 +7,7 @@
 #include "legacy-v1-interaction-reply-adapter.h"
 #include "runtime-paths.h"
 #include "settings.h"
+#include "ui-rng.h"
 #include "engine.h"
 #include "lua.hpp"
 #include "choosegeneraldialog.h"
@@ -1390,8 +1391,10 @@ Replayer *Client::getReplayer() const
 
 QString Client::getPlayerName(const QString &str)
 {
-	static QRegExp rx("sgs\\d+");
-	if (rx.exactMatch(str)) {
+	static const QRegularExpression rx(
+		QRegularExpression::anchoredPattern(QStringLiteral("sgs\\d+")),
+		QRegularExpression::UseUnicodePropertiesOption);
+	if (rx.match(str).hasMatch()) {
 		const ClientPlayer *player = getPlayer(str);
 		if (player) return player->getLogName();
 	}
@@ -1441,7 +1444,7 @@ QString Client::setPromptList(const QStringList &texts)
 	return prompt;
 }
 
-void Client::commandFormatWarning(const QString &str, const QRegExp &rx, const char *command)
+void Client::commandFormatWarning(const QString &str, const QRegularExpression &rx, const char *command)
 {
 	QString text = tr("The argument (%1) of command %2 does not conform the format %3")
 		.arg(str).arg(command).arg(rx.pattern());
@@ -1478,9 +1481,12 @@ void Client::askForCardOrUseCard(const QVariant &cardUsage)
 	m_isDiscardActionRefusable = !card_pattern.endsWith("!");
 
 	QString text = _processCardPattern(card_pattern);
-	static QRegExp rx("^@@?(\\w+)(-card)?$");
-	if (rx.exactMatch(text)) {
-		const Skill *skill = Sanguosha->getSkill(rx.capturedTexts().at(1));
+	static const QRegularExpression rx(
+		QStringLiteral("^@@?(\\w+)(-card)?$"),
+		QRegularExpression::UseUnicodePropertiesOption);
+	const QRegularExpressionMatch match = rx.match(text);
+	if (match.hasMatch()) {
+		const Skill *skill = Sanguosha->getSkill(match.captured(1));
 		if (skill) {
 			text = prompt_doc->toHtml();
 			textsString = skill->getNotice(index);
@@ -1695,7 +1701,7 @@ void Client::onPlayerChoosePlayer(const QList<const Player *> &players)
 		while (names.length() < choose_min_num) {
 			QList<const Player*> &pool = to_choose.isEmpty() ? fallback : to_choose;
 			if (pool.isEmpty()) break;
-			names << pool.takeAt(qrand() % pool.length())->objectName();
+			names << pool.takeAt(UiRng::bounded(pool.length()))->objectName();
 		}
 	}
 
@@ -3285,7 +3291,7 @@ void Client::onPlayerChooseOrder()
 	if (button) {
 		order = button->objectName();
 	} else {
-		if (qrand() % 2 == 0)
+		if (UiRng::bounded(2) == 0)
 			order = "warm";
 	}
 	int req = (int)S_CAMP_COOL;

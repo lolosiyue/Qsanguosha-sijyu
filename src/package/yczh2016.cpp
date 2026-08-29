@@ -309,7 +309,7 @@ void JiyuCard::onEffect(CardEffectStruct &effect) const
     if (target->canDiscard(target, "h")) {
         const Card *c = room->askForDiscard(target, "jiyu", 1, 1);
         if (!c) {
-            c = target->getCards("h").at(qrand() % target->getCards("h").length());
+            c = target->getCards("h").at(qsanRandomBounded(target->getCards("h").length()));
             room->throwCard(c, target, nullptr);
         } else
             c = Sanguosha->getCard(c->getSubcards().first());
@@ -891,7 +891,7 @@ void ZhigeCard::onEffect(CardEffectStruct &effect) const
         const Card *card = room->askForCard(effect.to, ".|.|.|equipped!", "zhige-give:" + effect.from->objectName(),
               QVariant::fromValue(effect.from), Card::MethodNone);
         if (!card)
-            card = effect.to->getCards("e").at(qrand() % effect.to->getCards("e").length());
+            card = effect.to->getCards("e").at(qsanRandomBounded(effect.to->getCards("e").length()));
         CardMoveReason reason(CardMoveReason::S_REASON_GIVE, effect.from->objectName(), effect.to->objectName(), "zhige", "");
         room->obtainCard(effect.from, card, reason, true);
     }

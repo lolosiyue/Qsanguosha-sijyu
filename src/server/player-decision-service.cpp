@@ -190,7 +190,7 @@ QString PlayerDecisionService::askForChoice(ServerPlayer *player, const QString 
         }
         if (!effectiveChoices.contains(answer)) {
             QStringList _choices = effectiveChoices.split("+");
-            answer = _choices.at(qrand() % _choices.length());
+            answer = _choices.at(qsanRandomBounded(_choices.length()));
         }
     }
     QVariant decisionData = "skillChoice:" + skill_name + ":" + answer;
@@ -204,7 +204,7 @@ Card::Suit PlayerDecisionService::askForSuit(ServerPlayer *player, const QString
     m_room.tryPause();
     m_room.notifyMoveFocus(player, S_COMMAND_CHOOSE_SUIT);
 
-    Card::Suit suit = Card::AllSuits[qrand() % 4];
+    Card::Suit suit = Card::AllSuits[qsanRandomBounded(4)];
     AI *ai = player->getAI();
     if (ai)
         suit = ai->askForSuit(reason);
@@ -270,7 +270,7 @@ QString PlayerDecisionService::askForKingdom(ServerPlayer *player, const QString
         }
     }
     if (!kingdoms.contains(result))
-        result = kingdoms.at(qrand() % kingdoms.length());
+        result = kingdoms.at(qsanRandomBounded(kingdoms.length()));
     if (send_log) {
         LogMessage log;
         log.type = "#ChooseKingdom";
@@ -340,7 +340,7 @@ QString PlayerDecisionService::askForGeneral(ServerPlayer *player, const QString
         if (!default_choice.isEmpty() && actualGenerals.contains(default_choice))
             chosenGeneral = default_choice;
         else
-            chosenGeneral = actualGenerals.at(qrand() % actualGenerals.length());
+            chosenGeneral = actualGenerals.at(qsanRandomBounded(actualGenerals.length()));
     }
 
     if (m_room.thread && m_room.game_state == 1) {
@@ -474,7 +474,7 @@ ServerPlayer *PlayerDecisionService::askForPlayerChosen(
             }
         }
         if (!choice && !optional)
-            choice = targets.at(qrand() % targets.length());
+            choice = targets.at(qsanRandomBounded(targets.length()));
     }
     if (choice) {
         if (notify_skill) {
@@ -544,7 +544,7 @@ QList<ServerPlayer *> PlayerDecisionService::askForPlayersChosen(
             foreach (ServerPlayer *p, log.to)
                 copy.removeOne(p);
             while (log.to.length() < min_num && copy.length() > 0)
-                log.to << copy.takeAt(qrand() % copy.length());
+                log.to << copy.takeAt(qsanRandomBounded(copy.length()));
         } else if (min_num < 0 && log.to.length() != max_num)
             log.to.clear();
     }
@@ -864,7 +864,7 @@ QString PlayerDecisionService::askForTriggerOrder(ServerPlayer*player, const QSt
     // 格式二支援：返回值格式為 "skillName:ownerObjectName" 或 "skillName"
     QString result;
     if (answer.isEmpty() && !contexts.isEmpty()) {
-        const SkillContext &ctx = contexts.at(qrand() % contexts.size());
+        const SkillContext &ctx = contexts.at(qsanRandomBounded(contexts.size()));
         QString skillFullName = ctx.skill_name;
         if (ctx.instanceID > 0) {
             skillFullName += "#" + QString::number(ctx.instanceID);
@@ -916,7 +916,7 @@ QString PlayerDecisionService::askForTriggerOrder(ServerPlayer*player, const QSt
         }
 
         if (!found && !contexts.isEmpty()) {
-            const SkillContext &ctx = contexts.at(qrand() % contexts.size());
+            const SkillContext &ctx = contexts.at(qsanRandomBounded(contexts.size()));
             QString skillFullName = ctx.skill_name;
             if (ctx.instanceID > 0) {
                 skillFullName += "#" + QString::number(ctx.instanceID);
@@ -1030,7 +1030,7 @@ const Card* PlayerDecisionService::_askForNullification(const Card*trick, Server
 	if (!use.card){
 		QElapsedTimer timer;
 		timer.start();
-		qShuffle(validPlayers);
+		qsanShuffle(validPlayers);
 		foreach(ServerPlayer*player, validPlayers){
 			AI*ai = player->getAI();
 			if (ai){
@@ -1708,7 +1708,7 @@ Card* PlayerDecisionService::askForDiscard(ServerPlayer*player, const QString&re
 		if(optional)
 			to_discard.clear();
 		else{
-			qShuffle(cards);
+			qsanShuffle(cards);
 			foreach(const Card*card, cards){
 				if(to_discard.contains(card->getId())||jilei_list.contains(card->getId())||ignore_list.contains(card->toString())) continue;
 				if(Sanguosha->matchExpPattern(pattern,player,card)){
@@ -1810,7 +1810,7 @@ Card* PlayerDecisionService::askForExchange(ServerPlayer*player, const QString&r
 		if(optional)
 			to_exchange.clear();
 		else{
-			qShuffle(cards);
+			qsanShuffle(cards);
 			foreach(const Card*card, cards){
 				if(to_exchange.contains(card->getId())) continue;
 				if(Sanguosha->matchExpPattern(pattern,player,card)){

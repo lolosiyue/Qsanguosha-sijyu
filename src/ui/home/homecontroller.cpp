@@ -7,6 +7,7 @@
 #include "package.h"
 #include "heroskincontainer.h"
 #include "skin-bank.h"
+#include "ui-rng.h"
 #include "effects/effects-policy.h"
 #include <QCoreApplication>
 #include <QLibraryInfo>
@@ -14,7 +15,6 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
-#include <QRandomGenerator>
 #include <QGuiApplication>
 #include <QStyleHints>
 #include <QPointer>
@@ -1275,7 +1275,7 @@ QUrl HomeController::randomBackdrop() const
     if (images.isEmpty())
         return QUrl();
 
-    const int index = QRandomGenerator::global()->bounded(images.size());
+    const int index = UiRng::bounded(images.size());
     return QUrl::fromLocalFile(dir.absoluteFilePath(images.at(index)));
 }
 

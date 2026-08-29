@@ -311,7 +311,7 @@ void BeiyuCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) c
 		if(h->getSuit()==dc->getSuit())
 			ids << h->getId();
 	}
-	//qShuffle(ids);
+	//qsanShuffle(ids);
 	room->moveCardsToEndOfDrawpile(source,ids,"beiyu");
 }
 
@@ -474,7 +474,7 @@ public:
 					for (int i = 0; i < 5; i++) {
 						if(tp->hasEquipArea(i)&&!tp->getEquip(i)){
 							QList<int>ids = room->getDrawPile()+room->getDiscardPile();
-							qShuffle(ids);
+							qsanShuffle(ids);
 							foreach (int id, ids){
 								const Card*tc = Sanguosha->getCard(id);
 								if(tc->isKindOf("EquipCard")){

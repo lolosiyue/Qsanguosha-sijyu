@@ -254,7 +254,7 @@ void ServerPlayer::peiyin(const QString &skillName, int type)
 const Card *ServerPlayer::getRandomHandCard() const
 {
 	if (handcards.isEmpty()) return nullptr;
-	return handcards.at(qrand()%handcards.length());
+	return handcards.at(qsanRandomBounded(handcards.length()));
 }*/
 
 void ServerPlayer::obtainCard(const Card *card, bool visible)
@@ -360,7 +360,7 @@ QList<int> ServerPlayer::forceToDiscard(int discard_num, bool include_equip, boo
 {
 	QList<const Card *> all_cards = getHandcards();
 	if (include_equip) all_cards << getEquips();
-	qShuffle(all_cards);
+	qsanShuffle(all_cards);
 
 	QList<int> to_discard;
 	ExpPattern exp_pattern(pattern);
@@ -2149,8 +2149,8 @@ QList<ServerPlayer *> ServerPlayer::assignmentCards(QList<int> &cards, const QSt
 		room->notifyMoveCards(false, _moves, false, _guojia);
 	}
 	while (min_num>n&&cards.length()>0) {
-		int id = cards.at(qrand()%cards.length());
-		ServerPlayer *to = players.at(qrand()%players.length());
+		int id = cards.at(qsanRandomBounded(cards.length()));
+		ServerPlayer *to = players.at(qsanRandomBounded(players.length()));
 		if(players.contains(this)) to = this;
 		if(!tos.contains(to)) tos << to;
 		moves << CardsMoveStruct(id,to,PlaceHand,CardMoveReason(CardMoveReason::S_REASON_GIVE,objectName(),to->objectName(),prompt1.split("=").first(),""));
@@ -2194,7 +2194,7 @@ void ServerPlayer::skillInvoked(const Skill* skill, int type, ServerPlayer *owne
 QList<ServerPlayer *> ServerPlayer::getRandomTargets(const Card *card, QList<ServerPlayer *> players)
 {
 	if (players.isEmpty()) players = room->getAlivePlayers();
-	qShuffle(players);
+	qsanShuffle(players);
 	QList<const Player *> tos;
 	for (int i = 0; i < players.length(); i++) {
 		int x = 0;

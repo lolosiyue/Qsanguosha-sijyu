@@ -575,7 +575,7 @@ public:
 			&&player->hasSkill(objectName())&&player->getMark("mobilemouweimuUseTo")<2){
 				room->sendCompulsoryTriggerLog(player,this);
 				QList<int>ids = room->getDiscardPile();
-				qShuffle(ids);
+				qsanShuffle(ids);
 				foreach (int id, ids) {
 					const Card*c = Sanguosha->getCard(id);
 					if(c->isKindOf("Armor")||(c->isKindOf("TrickCard")&&c->isBlack())){
@@ -801,7 +801,7 @@ public:
 	}
 	int getEffectIndex(const ServerPlayer *, const Card *) const
 	{
-		return qrand()%2+1;
+		return qsanRandomBounded(2)+1;
 	}
 };
 
@@ -1082,7 +1082,7 @@ void MobileMouXingshangCard::onEffect(CardEffectStruct &effect) const
 				ids << i;
 		}
 		if(ids.length()>0){
-			qShuffle(ids);
+			qsanShuffle(ids);
 			effect.to->obtainEquipArea(ids.first());
 		}
 	}else{

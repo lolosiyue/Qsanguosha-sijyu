@@ -294,7 +294,7 @@ public:
             QString new_lord;
 
             do {
-                int seed = qrand() % all_generals.length();
+                int seed = qsanRandomBounded(all_generals.length());
                 new_lord = all_generals[seed];
             } while (boss_banlist.contains(new_lord));
 
@@ -325,7 +325,7 @@ public:
         do {
             int index;
             do {
-                index = qrand() % all_skills.length();
+                index = qsanRandomBounded(all_skills.length());
             } while (player->isLord() && boss_skillbanned.contains(all_skills[index]));
             got_skill = all_skills[index];
 
@@ -389,7 +389,7 @@ public:
                 removeLordSkill(player);
 
                 room->installEquip(player, "SilverLion");
-                if ((qrand() % 2) == 1) {
+                if ((qsanRandomBounded(2)) == 1) {
                     room->acquireSkill(player, "silue");
                     room->acquireSkill(player, "kedi");
                 } else {
@@ -529,7 +529,7 @@ void ImpasseScenario::assign(QStringList &generals, QStringList &roles) const
     for (i = 0; i < 7; i++)
         roles << "rebel";
 
-    qShuffle(roles);
+    qsanShuffle(roles);
 }
 
 int ImpasseScenario::getPlayerCount() const

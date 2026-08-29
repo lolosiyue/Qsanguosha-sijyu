@@ -33,13 +33,13 @@ class Dashboard : public PlayerCardContainer
 {
     Q_OBJECT
     friend class LocalResponseUiProbe;
-    Q_ENUMS(SortType)
 
 public:
     enum SortType
     {
         ByType, BySuit, ByNumber
     };
+    Q_ENUM(SortType)
 
     Dashboard(QGraphicsPixmapItem *button_widget);
     ~Dashboard();

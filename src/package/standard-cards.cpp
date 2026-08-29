@@ -108,7 +108,7 @@ void Slash::onUse(Room *room, CardUseStruct &use) const
 				room->notifySkillInvoked(use.from, "crossbow");
 			}
         }else {
-            n = qrand() % 2 + 1;
+            n = qsanRandomBounded(2) + 1;
             if (name == "paoxiao") {
 				if (Player::isNostalGeneral(use.from, "zhangfei"))
                     n += 2;

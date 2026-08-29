@@ -1,6 +1,8 @@
 #ifndef _UTIL_H
 #define _UTIL_H
 
+#include "game-rng.h"
+
 #include <cstddef>
 
 struct lua_State;
@@ -9,11 +11,11 @@ class DummyCard;
 class Card;
 
 template<typename T>
-void qShuffle(QList<T> &list)
+void qsanShuffle(QList<T> &list)
 {
-    int n = list.length();
-    for (int i = 0; i < n; i++)
-        list.swapItemsAt(i, qrand()%(n-i)+i);
+    const int count = list.length();
+    for (int index = 0; index < count; ++index)
+        list.swapItemsAt(index, qsanRandomBounded(count - index) + index);
 }
 
 // lua interpreter related

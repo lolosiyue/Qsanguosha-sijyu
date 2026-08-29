@@ -109,7 +109,7 @@ bool MiniSceneRule::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer 
         for (int i = 0; i < players.length(); i++)
             int_list << i;
         if (ex_options.contains(S_EXTRA_OPTION_RANDOM_ROLES))
-            qShuffle(int_list);
+            qsanShuffle(int_list);
 
         QStringList all = Sanguosha->getRandomGenerals(Sanguosha->getGeneralCount());
         for (int i = 0; i < players.length(); i++) {
@@ -140,7 +140,7 @@ bool MiniSceneRule::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer 
                 general = room->askForGeneral(sp, available);
                 all.append(available);
                 all.removeOne(general);
-                qShuffle(all);
+                qsanShuffle(all);
             }
             room->changeHero(sp, general, false, false, false, false);
 
@@ -161,7 +161,7 @@ bool MiniSceneRule::trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer 
                     general = room->askForGeneral(sp, available);
                     all.append(available);
                     all.removeOne(general);
-                    qShuffle(all);
+                    qsanShuffle(all);
                 }
                 if (general == sp->getGeneralName()) general = this->players.at(i)["general3"];
                 room->changeHero(sp, general, false, false, true, false);
