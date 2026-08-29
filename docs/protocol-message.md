@@ -2,7 +2,7 @@
 
 - 狀態：C++ canonical codec boundary 完成
 - active protocol：Protocol V1
-- Protocol V2 wire schema：未定義
+- Protocol V2 wire schema：已定義，production 尚未啟用
 
 ## Boundary
 
@@ -11,13 +11,13 @@ Application / protocol routing
             |
      ProtocolMessage
        /           \
-ProtocolV1Codec   future ProtocolV2Codec
+ProtocolV1Codec   ProtocolV2Codec
        |                  |
-V1 JSON array       V2 wire object (not defined)
+V1 JSON array       V2 JSON object
 ```
 
 `IProtocolCodec` 的 encode／decode 只接受 `ProtocolMessage`。`Packet` 保留為 V1
-compatibility facade，不是 future codec 的 required API。production client、server、
+compatibility facade，不是 V2 codec 的 required API。production client、server、
 socket framing 與 replay call site 本階段仍可繼續使用 `Packet`。
 
 ## Canonical fields
@@ -60,16 +60,18 @@ wire contract。V1 combined `PacketDescription` 只存在 adapter 內；canonica
 `validateProtocolMessage()` 只檢查 version、message type 與 endpoint 是否為已知值。
 它不驗證 gameplay payload、卡牌合法性、目標選擇或 request/reply command pairing。
 Protocol V1 codec 為保存 legacy unknown numeric values，不會強制套用此 validation。
+Protocol V2 codec 另行嚴格驗證 message ID、reply correlation、command 型別與 payload
+domain；完整 wire contract 見 [`protocol-v2.md`](protocol-v2.md)。
 
 ## Payload contract
 
-`QVariant` 只作現階段 C++ bridge。future V2 codec 必須：
+`QVariant` 只作 C++ bridge。Protocol V2 codec：
 
 - 明列允許的 JSON-domain scalar／array／object／null 型別。
 - 不把 Qt-specific QVariant type name 放上 wire。
-- 另行定義正式 schema、malformed policy 與 golden bytes。
+- 拒絕超出 JSON safe integer 範圍的 integer QVariant，避免 silent corruption。
 
-以下僅為 future field inventory，屬 **DRAFT / NOT WIRE CONTRACT**：
+正式 V2 field inventory：
 
 ```text
 version, type, source, destination, message_id, reply_to, command, payload
@@ -77,6 +79,6 @@ version, type, source, destination, message_id, reply_to, command, payload
 
 ## Non-goals
 
-- 不新增 `ProtocolV2Codec`。
 - 不新增 switch／ack 或令 `activeVersion` 變成 V2。
 - 不修改 newline framing、replay、gameplay semantics 或 command registry。
+- 不建立 runtime codec registry 或修改 production packet path。

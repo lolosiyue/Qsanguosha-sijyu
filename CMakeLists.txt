@@ -211,6 +211,8 @@ add_library(qsanguosha_engine STATIC
     src/core/protocol/protocol-v1-codec.h
     src/core/protocol/protocol-v1-message-adapter.cpp
     src/core/protocol/protocol-v1-message-adapter.h
+    src/core/protocol/protocol-v2-codec.cpp
+    src/core/protocol/protocol-v2-codec.h
     src/core/protocol/protocol-version.h
     src/core/protocol/skill-instance-message.cpp
     src/core/protocol/skill-instance-message.h

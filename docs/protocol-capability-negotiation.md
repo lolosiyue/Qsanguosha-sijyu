@@ -3,7 +3,8 @@
 - 狀態：V1-compatible capability negotiation 完成
 - transport／framing／codec：仍為 Protocol V1
 - preferred version：雙方均廣告 V2 時為 V2
-- active version：固定為 V1，直到另案提供 Protocol V2 codec 與 switch contract
+- active version：固定為 V1，直到另案提供 runtime switch contract
+- Protocol V2 codec：contract 已完成，但不參與 production negotiation transport
 
 ## Server advertisement
 
@@ -70,7 +71,20 @@ integration targets，不編譯 Linux GUI。CTest workflow 僅在 `main` 執行�
 
 ## Non-goals
 
-- 不新增 `ProtocolV2Codec`
 - 不新增 protocol switch／ack command
 - 不改 packet envelope、newline framing、replay 或 gameplay payload
 - 不把 active version 設為 V2
+- 不因 `ProtocolV2Codec` 存在而建立 runtime codec registry
+
+## Roadmap status
+
+```text
+V1 codec boundary            Complete
+Capability negotiation       Complete
+ProtocolMessage model        Complete
+Protocol V2 envelope         Complete
+Protocol V2 codec            Complete
+Runtime V2 switching         Not Started
+Gameplay V2 migration        Not Started
+Replay V2                    Not Started
+```
