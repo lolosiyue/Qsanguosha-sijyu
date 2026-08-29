@@ -551,9 +551,9 @@ public:
     void watch(ServerPlayer *player)
     {
         QObject::connect(player, &ServerPlayer::message_ready, player,
-                         [this](const QString &message) {
+                         [this](const QByteArray &message) {
             Packet packet;
-            if (!packet.parse(message.toUtf8())) {
+            if (!packet.parse(message)) {
                 parseFailed = true;
                 return;
             }
@@ -610,9 +610,9 @@ public:
         : m_room(room), m_player(player)
     {
         QObject::connect(player, &ServerPlayer::message_ready, player,
-                         [this](const QString &message) {
+                         [this](const QByteArray &message) {
             Packet packet;
-            if (!packet.parse(message.toUtf8()))
+            if (!packet.parse(message))
                 return;
             if (packet.getPacketType() != S_TYPE_REQUEST)
                 return;

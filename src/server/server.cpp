@@ -1876,33 +1876,33 @@ void Server::processNewConnection(ClientSocket *socket)
 	packet.setMessageBody(ProtocolNegotiation::encodeServerAdvertisement(
 		Sanguosha->getVersionNumber(), Sanguosha->getMODName(),
 		ProtocolNegotiation::localCapabilities(), Sanguosha->getCardCount()));
-	socket->send(packet.toString());
+	socket->send(packet.toJson());
 
 	Packet packet2(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT, S_COMMAND_SETUP);
 	packet2.setMessageBody(QString("%1:%2").arg(Sanguosha->getSetupString()).arg(playerCount));
-	socket->send(packet2.toString());
+	socket->send(packet2.toJson());
 	playerCount++;
 
 	emit server_message(tr("%1 connected").arg(socket->peerName()));
 
-	connect(socket, SIGNAL(message_got(const char *)), this, SLOT(processRequest(const char *)));
+	connect(socket, SIGNAL(message_got(QByteArray)), this, SLOT(processRequest(QByteArray)));
 	socket->timerSignup.start(30000);
 }
 
-void Server::processRequest(const char *request)
+void Server::processRequest(const QByteArray &request)
 {
 	ClientSocket *socket = qobject_cast<ClientSocket *>(sender());
-	socket->disconnect(this, SLOT(processRequest(const char *)));
+	socket->disconnect(this, SLOT(processRequest(QByteArray)));
 	socket->timerSignup.stop();
 
 	Packet signup;
 	if (!signup.parse(request) || signup.getCommandType() != S_COMMAND_SIGNUP
 		|| !signup.getMessageBody().canConvert<JsonArray>()
 		|| signup.getMessageBody().value<JsonArray>().size() < 3) {
-		emit server_message(tr("Invalid signup string: %1").arg(request));
+		emit server_message(tr("Invalid signup string: %1").arg(QString::fromUtf8(request)));
 		QSanProtocol::Packet packet(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT, S_COMMAND_WARN);
 		packet.setMessageBody("INVALID_FORMAT");
-		socket->send(packet.toString());
+		socket->send(packet.toJson());
 		socket->disconnectFromHost();
 		return;
 	}
@@ -1919,9 +1919,109 @@ void Server::processRequest(const char *request)
 				.arg(socket->peerName(), capabilities.diagnostic));
 		}
 	}
-	bool reconnection_enabled = body[0].toBool();
-	QString screen_name = QString::fromUtf8(QByteArray::fromBase64(body[1].toString().toLatin1()));
-	QString avatar = body[2].toString();
+	PendingSignup pending;
+	pending.reconnectionEnabled = body[0].toBool();
+	pending.screenName = QString::fromUtf8(QByteArray::fromBase64(body[1].toString().toLatin1()));
+	pending.avatar = body[2].toString();
+	pending.protocolSession = protocolSession;
+
+	if (pending.protocolSession.preferredVersion() == ProtocolVersion::V2) {
+		QVariantMap offer;
+		QString error;
+		if (!pending.protocolSession.beginServerSwitch(&offer, &error)) {
+			failPendingSignup(socket, error);
+			return;
+		}
+		m_pendingSignups.insert(socket, pending);
+		connect(socket, SIGNAL(message_got(QByteArray)),
+			this, SLOT(processProtocolSwitch(QByteArray)));
+		socket->timerSignup.start(5500);
+
+		Packet control(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT,
+			S_COMMAND_PROTOCOL_SWITCH);
+		control.setMessageBody(offer);
+		socket->send(control.toJson());
+		qInfo().noquote() << "Protocol switch offer sent to" << socket->peerName();
+		QPointer<ClientSocket> guardedSocket(socket);
+		QTimer::singleShot(5000, this, [this, guardedSocket]() {
+			if (guardedSocket && m_pendingSignups.contains(guardedSocket.data()))
+				failPendingSignup(guardedSocket.data(),
+					QStringLiteral("Protocol V2 switch timed out awaiting ACK"));
+		});
+		return;
+	}
+
+	finalizeSignup(socket, pending);
+}
+
+void Server::processProtocolSwitch(const QByteArray &request)
+{
+	ClientSocket *socket = qobject_cast<ClientSocket *>(sender());
+	if (socket == nullptr || !m_pendingSignups.contains(socket)) {
+		if (socket != nullptr)
+			failPendingSignup(socket, QStringLiteral("Unexpected protocol switch frame"));
+		return;
+	}
+
+	ProtocolMessage message;
+	const ProtocolDecodeResult decoded = m_protocolRouter.decode(
+		ProtocolVersion::V1, request, &message);
+	if (!decoded.success || message.command != S_COMMAND_PROTOCOL_SWITCH
+		|| message.type != ProtocolMessageType::Notification
+		|| message.source != ProtocolEndpoint::Client
+		|| message.destination != ProtocolEndpoint::Room
+		|| !message.hasPayload) {
+		failPendingSignup(socket, decoded.success
+			? QStringLiteral("Invalid protocol switch ACK envelope")
+			: QStringLiteral("Protocol switch decode failed: %1").arg(decoded.detail));
+		return;
+	}
+
+	PendingSignup pending = m_pendingSignups.value(socket);
+	QVariantMap commit;
+	QString error;
+	if (!pending.protocolSession.acceptServerAck(message.payload, &commit, &error)) {
+		failPendingSignup(socket, error);
+		return;
+	}
+
+	Packet control(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT,
+		S_COMMAND_PROTOCOL_SWITCH);
+	control.setMessageBody(commit);
+	// COMMIT bytes must be queued under V1 before this connection activates V2.
+	socket->send(control.toJson());
+	if (!pending.protocolSession.activateServerAfterCommit(&error)) {
+		failPendingSignup(socket, error);
+		return;
+	}
+
+	m_pendingSignups.remove(socket);
+	socket->disconnect(this, SLOT(processProtocolSwitch(QByteArray)));
+	socket->timerSignup.stop();
+	qInfo().noquote() << "Protocol switch active for" << socket->peerName() << ": V2";
+	finalizeSignup(socket, pending);
+}
+
+void Server::failPendingSignup(ClientSocket *socket, const QString &detail)
+{
+	if (socket == nullptr)
+		return;
+	if (m_pendingSignups.contains(socket)) {
+		PendingSignup pending = m_pendingSignups.take(socket);
+		pending.protocolSession.failActivation(detail);
+	}
+	emit server_message(tr("Protocol switch failed for %1: %2")
+		.arg(socket->peerName(), detail));
+	socket->timerSignup.stop();
+	socket->disconnectFromHost();
+}
+
+void Server::finalizeSignup(ClientSocket *socket, const PendingSignup &pending)
+{
+	const bool reconnection_enabled = pending.reconnectionEnabled;
+	const QString screen_name = pending.screenName;
+	const QString avatar = pending.avatar;
+	const ProtocolSessionState protocolSession = pending.protocolSession;
 
 	if (reconnection_enabled) {
 		bool has = false;
@@ -1953,9 +2053,10 @@ void Server::processRequest(const char *request)
 
 void Server::cleanup()
 {
+	ClientSocket *socket = qobject_cast<ClientSocket *>(sender());
+	m_pendingSignups.remove(socket);
 	playerCount--;
 	if (Config.ForbidSIMC){
-		const ClientSocket *socket = qobject_cast<const ClientSocket *>(sender());
 		addresses.remove(socket->peerAddress());
 	}
 }
