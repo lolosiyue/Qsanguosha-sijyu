@@ -11,8 +11,10 @@ public:
     static constexpr qsizetype MaxPacketSize = 65535;
 
     ProtocolVersion version() const override;
-    QByteArray encode(const Packet &packet, QString *error = nullptr) const override;
-    ProtocolDecodeResult decode(QByteArrayView raw, Packet *packet) const override;
+    QByteArray encode(const ProtocolMessage &message,
+                      QString *error = nullptr) const override;
+    ProtocolDecodeResult decode(QByteArrayView raw,
+                                ProtocolMessage *message) const override;
 };
 
 }
