@@ -173,6 +173,8 @@ QJsonObject InteractionDescriptorRegistry::inventoryDocument()
         static_cast<int>(descriptors().size()));
     document.insert(QStringLiteral("canonical_typed"), canonicalCount);
     document.insert(QStringLiteral("legacy_adapter"), legacyCount);
+    document.insert(QStringLiteral("implicit_passthrough"),
+        static_cast<int>(descriptors().size()) - canonicalCount - legacyCount);
     document.insert(QStringLiteral("missing_builder"), missingBuilders);
     document.insert(QStringLiteral("missing_presenter"), missingPresenters);
     document.insert(QStringLiteral("missing_validator"), missingValidators);

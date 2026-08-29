@@ -437,6 +437,7 @@
             "validator": "custom"
         }
     ],
+    "implicit_passthrough": 0,
     "legacy_adapter": 1,
     "missing_builder": 0,
     "missing_presenter": 0,
