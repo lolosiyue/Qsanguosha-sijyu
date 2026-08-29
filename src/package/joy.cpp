@@ -145,7 +145,7 @@ void Deluge::takeEffect(ServerPlayer *target) const
 	int n = qMin(cards.length(), target->aliveCount());
 	if (n < 1) return;
 
-	qShuffle(cards);
+	qsanShuffle(cards);
 	QList<int> card_ids;
 	Room *room = target->getRoom();
 	foreach (const Card *card, cards.mid(0, n))

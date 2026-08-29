@@ -46,25 +46,24 @@ class Player : public QObject
     Q_PROPERTY(bool treasure_area READ hasTreasureArea WRITE setTreasureArea)
     Q_PROPERTY(bool hasjudgearea READ hasJudgeArea WRITE setJudgeArea)
 
-    Q_ENUMS(Phase)
-    Q_ENUMS(Place)
-    Q_ENUMS(Role)
-
 public:
     enum Phase
     {
         RoundStart, Start, Judge, Draw, Play, Discard, Finish, NotActive, PhaseNone
     };
+    Q_ENUM(Phase)
     enum Place
     {
         PlaceHand, PlaceEquip, PlaceDelayedTrick, PlaceJudge,
         PlaceSpecial, DiscardPile, DrawPile, PlaceTable, PlaceUnknown,
         PlaceWuGu
     };
+    Q_ENUM(Place)
     enum Role
     {
         UnknownRole = -1, Lord, Loyalist, Rebel, Renegade
     };
+    Q_ENUM(Role)
 
     explicit Player(QObject *parent);
     ~Player() override;

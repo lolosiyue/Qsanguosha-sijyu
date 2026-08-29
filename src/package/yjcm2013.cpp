@@ -416,13 +416,13 @@ public:
 						jianyong->removeTag("ExtraCollateralTarget");
 						if (!extra) {
 							QList<ServerPlayer *> victims;
-							extra = available_targets.at(qrand() % available_targets.length());
+							extra = available_targets.at(qsanRandomBounded(available_targets.length()));
 							foreach (ServerPlayer *p, room->getOtherPlayers(extra)) {
 								if (extra->canSlash(p))
 									victims << p;
 							}
 							if(victims.length()>0)
-								extra->setTag("attachTarget", QVariant::fromValue(victims.at(qrand() % victims.length())));
+								extra->setTag("attachTarget", QVariant::fromValue(victims.at(qsanRandomBounded(victims.length()))));
 						}
 					}else{
 						extra = room->askForPlayerChosen(jianyong, available_targets, "qiaoshui", "@qiaoshui-add:::" + use.card->objectName());
@@ -556,7 +556,7 @@ public:
 
     int getEffectIndex(const ServerPlayer *, const Card *card) const
     {
-        int index = qrand() % 2 + 1;
+        int index = qsanRandomBounded(2) + 1;
         if (card->isKindOf("Slash"))
             index += 2;
         return index;
@@ -969,7 +969,7 @@ public:
         ServerPlayer *to_damage = room->askForPlayerChosen(target, kongcheng_players, objectName(),
             "@juece", true, true);
         if (to_damage) {
-            int index = qrand() % 2 + 1;
+            int index = qsanRandomBounded(2) + 1;
             if (target->isJieGeneral())
                 index += 2;
             target->peiyin(this, index);
@@ -1035,7 +1035,7 @@ void MiejiCard::onEffect(CardEffectStruct &effect) const
         room->throwCard(&d, effect.to);
     } else if (!room->askForCard(effect.to, "@@miejidiscard!", "@mieji-discard")) {
         DummyCard d;
-        qShuffle(cards);
+        qsanShuffle(cards);
         int trickId = -1;
         foreach (const Card *c, cards) {
             if (c->getTypeId() == Card::TypeTrick) {
@@ -1163,7 +1163,7 @@ FenchengCard::FenchengCard()
 
 void FenchengCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const
 {
-	int n = qrand()%2+1;
+	int n = qsanRandomBounded(2)+1;
 	if(source->getGeneralName().contains("dongzhuo"))
 		n = 3;
     room->broadcastSkillInvoke("fencheng",n,source);

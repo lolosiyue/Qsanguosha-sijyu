@@ -10,6 +10,7 @@
 #include <QDir>
 #include <QScrollBar>
 #include <QGraphicsSceneWheelEvent>
+#include <QRegularExpression>
 
 const char *HEROSKIN_PIXMAP_PATH = "image/heroskin/fullskin/generals/full";
 const char *KINGDOM_COLORMASK_PIXMAP_PATH = "image/fullskin/kingdom/frame/dashboard/%1.png";
@@ -22,7 +23,9 @@ const int Y_START_POS = 32;
 const int SKIN_ITEM_WIDTH = SKIN_ITEM_AREA.width();
 const int SKIN_ITEM_HEIGHT = SKIN_ITEM_AREA.height();
 
-const QRegExp SKIN_FILE_NAME_PATTERN = QRegExp("(?:[A-Za-z_]+)(\\d+).png");
+const QRegularExpression SKIN_FILE_NAME_PATTERN(
+    QRegularExpression::anchoredPattern(QStringLiteral("(?:[A-Za-z_]+)(\\d+).png")),
+    QRegularExpression::UseUnicodePropertiesOption);
 
 HeroSkinContainer *HeroSkinContainer::m_currentTopMostContainer = NULL;
 QMap<QString, QStringList> HeroSkinContainer::m_generalToSkinFiles;
@@ -87,8 +90,9 @@ int HeroSkinContainer::getNextSkinIndex(const QString &generalName, int skinInde
 
     QStringList files = HeroSkinContainer::getHeroSkinFiles(generalName);
     foreach (const QString &file, files) {
-        if (SKIN_FILE_NAME_PATTERN.exactMatch(file)) {
-            int num = SKIN_FILE_NAME_PATTERN.capturedTexts().at(1).toInt();
+        const QRegularExpressionMatch match = SKIN_FILE_NAME_PATTERN.match(file);
+        if (match.hasMatch()) {
+            int num = match.captured(1).toInt();
             if (num > skinIndex) {
                 result = num;
                 break;

@@ -395,7 +395,7 @@ public:
         const Card *card = room->askForCard(player, ".|black", prompt, QVariant::fromValue(judge), Card::MethodResponse, judge->who, true);
 
         if (card != nullptr) {
-            int index = qrand() % 2 + 1;
+            int index = qsanRandomBounded(2) + 1;
             if (Player::isNostalGeneral(player, "zhangjiao"))
                 index += 2;
             room->broadcastSkillInvoke(objectName(), index);
@@ -465,7 +465,7 @@ void HuangtianCard::onUse(Room *room, CardUseStruct &use) const
 			room->broadcastSkillInvoke("weidi",-1,zhangjiao);
 			room->notifySkillInvoked(zhangjiao, "weidi");
 		}else {
-            int index = qrand() % 2 + 1;
+            int index = qsanRandomBounded(2) + 1;
             if (Player::isNostalGeneral(zhangjiao, "zhangjiao"))
                 index += 2;
             else if (zhangjiao->isJieGeneral())
@@ -635,7 +635,7 @@ public:
 
     int getEffectIndex(const ServerPlayer *player, const Card *) const
     {
-        int index = qrand() % 2 + 1;
+        int index = qsanRandomBounded(2) + 1;
         if (player->hasSkill("baobian",true))
             index += 2;
         return index;
@@ -964,7 +964,7 @@ public:
 
     int getEffectIndex(const ServerPlayer *player, const Card *) const
     {
-        int index = qrand() % 2 + 1;
+        int index = qsanRandomBounded(2) + 1;
         if (!player->hasInnateSkill(this) && player->hasSkill("luoyan"))
             index += 2;
 
@@ -2437,7 +2437,7 @@ public:
 			DamageStruct damage = data.value<DamageStruct>();
 			if (damage.from && damage.from != player) {
 				room->sendCompulsoryTriggerLog(player, objectName());
-				int index = qrand() % 2 + 4;
+				int index = qsanRandomBounded(2) + 4;
 				if (player->getGeneralName() == "shenguanyu" || (player->getGeneral2() && player->getGeneral2Name() == "shenguanyu"))
 					index = 1;
 				room->broadcastSkillInvoke(objectName(), index);
@@ -2470,7 +2470,7 @@ public:
 			room->judge(judge);
 	
 			if (judge.isBad()) {
-				int index = qrand() % 2 + 4;
+				int index = qsanRandomBounded(2) + 4;
 				if (player->getGeneralName() == "shenguanyu" || (player->getGeneral2() && player->getGeneral2Name() == "shenguanyu"))
 					index = 2;
 				room->broadcastSkillInvoke("wuhun", index);
@@ -2486,7 +2486,7 @@ public:
 	
 				room->killPlayer(foe);
 			} else {
-				int index = qrand() % 2 + 4;
+				int index = qsanRandomBounded(2) + 4;
 				if (player->getGeneralName() == "shenguanyu" || (player->getGeneral2() && player->getGeneral2Name() == "shenguanyu"))
 					index = 3;
 				room->broadcastSkillInvoke("wuhun", index);
@@ -2694,7 +2694,7 @@ public:
 
     int getEffectIndex(const ServerPlayer *player, const Card *) const
     {
-        int index = qrand() % 2 + 1;
+        int index = qsanRandomBounded(2) + 1;
         if (!player->hasInnateSkill(this))
             index += 2;
         return index;

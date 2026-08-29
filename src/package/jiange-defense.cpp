@@ -606,7 +606,7 @@ void JGHanjunCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 	foreach (ServerPlayer *p, room->getAllPlayers()) {
 		if(isJianGeFriend(p,source)) continue;
 		QList<const Card*>cs = p->getCards("he");
-		qShuffle(cs);
+		qsanShuffle(cs);
 		foreach (const Card*c, cs) {
 			if(source->canDiscard(p,c->getId())){
 				room->throwCard(c,"jghanjun",p,source);
@@ -661,7 +661,7 @@ public:
     {
         if (player->getPhase()!=Player::Start||player->hasEquip()) return false;
         QList<int> ids = room->getDiscardPile();
-		qShuffle(ids);
+		qsanShuffle(ids);
 		foreach (int id, ids) {
             if (Sanguosha->getCard(id)->getTypeId()==3){
 				room->sendCompulsoryTriggerLog(player,this);
@@ -671,7 +671,7 @@ public:
 			}
         }
 		ids = room->getDrawPile();
-		qShuffle(ids);
+		qsanShuffle(ids);
 		foreach (int id, ids) {
             if (Sanguosha->getCard(id)->getTypeId()==3){
 				room->sendCompulsoryTriggerLog(player,this);
@@ -1491,7 +1491,7 @@ public:
     bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const
     {
 		QList<ServerPlayer *>tps = room->getAlivePlayers();
-		qShuffle(tps);
+		qsanShuffle(tps);
 		foreach (ServerPlayer *p, tps) {
 			if (isJianGeFriend(p, player)){
 				room->sendCompulsoryTriggerLog(player,this);

@@ -52,13 +52,12 @@ class RoomThread1v1;
 class Room : public QThread, public EngineRuntimeContext, private EventDispatcher
 {
     Q_OBJECT
-        Q_ENUMS(GuanxingType)
-
 public:
     enum GuanxingType
     {
         GuanxingUpOnly = 1, GuanxingBothSides = 0, GuanxingDownOnly = -1
     };
+    Q_ENUM(GuanxingType)
 
     friend class RoomThread;
     friend class RoomThread3v3;

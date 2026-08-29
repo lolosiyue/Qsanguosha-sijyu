@@ -50,7 +50,7 @@ void RoomThreadXMode::run()
             general_names << gen_name;
         }
     }
-    qShuffle(general_names);
+    qsanShuffle(general_names);
     int index = 0;
     QList<QStringList> all_names;
 	for (int i = 0; i < players.length(); i++) {
@@ -91,7 +91,7 @@ void RoomThreadXMode::startArrange(QList<ServerPlayer *> players, QList<QStringL
         } else {
             // @todo: AI
             QStringList mutable_to_arrange = to_arrange.at(i);
-            qShuffle(mutable_to_arrange);
+            qsanShuffle(mutable_to_arrange);
             arrange(player, mutable_to_arrange.mid(0, 3));
         }
     }
@@ -109,7 +109,7 @@ void RoomThreadXMode::startArrange(QList<ServerPlayer *> players, QList<QStringL
             arrange(player, arranged);
         } else {
             QStringList mutable_to_arrange = to_arrange.at(online_index.at(i));
-            qShuffle(mutable_to_arrange);
+            qsanShuffle(mutable_to_arrange);
             arrange(player, mutable_to_arrange.mid(0, 3));
         }
     }
@@ -156,7 +156,7 @@ void RoomThreadXMode::assignRoles(const QStringList &roles, const QString &schem
         abstained << player;
     }
     if (!abstained.isEmpty()) {
-        qShuffle(abstained);
+        qsanShuffle(abstained);
         for (int i = 0; i < 6; i++) {
             if (new_players[i] == nullptr) {
                 new_players[i] = abstained.takeFirst();
@@ -178,7 +178,7 @@ void RoomThreadXMode::assignRoles(const QString &scheme)
         << "renegade" << "rebel" << "loyalist";
 
     if (scheme == "Random") {
-        qShuffle(roles);
+        qsanShuffle(roles);
         const QList<ServerPlayer *> players = room->getPlayers();
         for (int i = 0; i < roles.length(); i++)
             players.at(i)->setRole(roles.at(i));
@@ -190,7 +190,7 @@ void RoomThreadXMode::assignRoles(const QString &scheme)
             << "leader2" << "guard2" << "guard1";
         assignRoles(all_roles, scheme);
         QMap<QString, QString> map;
-        if (qrand() % 2 == 0) {
+        if (qsanRandomBounded(2) == 0) {
             map["leader1"] = "lord";
             map["guard1"] = "loyalist";
             map["leader2"] = "renegade";
@@ -208,7 +208,7 @@ void RoomThreadXMode::assignRoles(const QString &scheme)
     bool valid = true;
     QList<ServerPlayer *> players = room->getPlayers();
     do {
-        qShuffle(players);
+        qsanShuffle(players);
         valid = true;
         int total = players.length();
         for (int i = 0; i < total; i++) {

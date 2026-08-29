@@ -23,7 +23,7 @@ public:
             CardUseStruct use = data.value<CardUseStruct>();
 			if (use.card->isKindOf("Slash") || use.card->isNDTrick()) {
 				if (use.to.contains(player)&&use.from!=player&&player->askForSkillInvoke(this, data)) {
-					int index = qrand() % 2 + 1;
+					int index = qsanRandomBounded(2) + 1;
 					if (player->isJieGeneral())
 						index += 4;
 					else if (player->getGeneralName() == "second_wangyi" || player->getGeneral2Name() == "second_wangyi")
@@ -174,7 +174,7 @@ public:
 
     int getEffectIndex(const ServerPlayer *player, const Card *) const
     {
-        int index = qrand() % 2 + 1;
+        int index = qsanRandomBounded(2) + 1;
         if (player->isJieGeneral())
             index += 2;
         return index;
@@ -1135,7 +1135,7 @@ public:
         if (player->getPhase() != Player::Finish || player->getLostHp() <= 0) return false;
         if (!player->askForSkillInvoke(this)) return false;
 
-        int index = qrand() % 2 + 1;
+        int index = qsanRandomBounded(2) + 1;
         if (player->isJieGeneral())
             index += 2;
         room->broadcastSkillInvoke(this, index);
@@ -1186,7 +1186,7 @@ public:
 
                 if (diff) {
                     room->handleAcquireDetachSkills(shuangying, "wusheng|paoxiao");
-                    room->broadcastSkillInvoke(objectName(), qrand() % 2 + 1);
+                    room->broadcastSkillInvoke(objectName(), qsanRandomBounded(2) + 1);
                     shuangying->setFlags(objectName());
                 } else
                     room->broadcastSkillInvoke(objectName(), 3);
@@ -1574,7 +1574,7 @@ public:
 
             const Card *c = room->askForCard(target, "..!", "@olqianxi");
             if (c == nullptr) {
-                c = target->getCards("he").at(qrand() % target->getCardCount());
+                c = target->getCards("he").at(qsanRandomBounded(target->getCardCount()));
                 room->throwCard(c, target);
             }
 

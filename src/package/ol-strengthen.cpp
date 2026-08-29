@@ -74,7 +74,7 @@ public:
 			if (drawer->isWeidi())
 				room->broadcastSkillInvoke("weidi");
 			else {
-				int r = 1 + qrand() % 2;
+				int r = 1 + qsanRandomBounded(2);
 				room->broadcastSkillInvoke("hujia", r);
 			}
 			room->notifySkillInvoked(drawer, log.arg);
@@ -164,7 +164,7 @@ public:
 			if (!liubei->isLord() && liubei->hasSkill("weidi"))
 				room->broadcastSkillInvoke("weidi");
 			else {
-				int r = 1 + qrand() % 2;
+				int r = 1 + qsanRandomBounded(2);
 				if (!liubei->hasInnateSkill("jijiang") && liubei->getMark("ruoyu") > 0)
 					r += 2;
 				else if (liubei->isJieGeneral())
@@ -203,7 +203,7 @@ public:
 				if (drawer->isWeidi())
 					room->broadcastSkillInvoke("weidi");
 				else {
-					int r = 1 + qrand() % 2;
+					int r = 1 + qsanRandomBounded(2);
 					if (!drawer->hasInnateSkill("jijiang") && drawer->getMark("ruoyu") > 0)
 						r += 2;
 					else if (drawer->isJieGeneral())
@@ -562,7 +562,7 @@ void OLHuangtianCard::onUse(Room *room, CardUseStruct &use) const
 			room->broadcastSkillInvoke("weidi",-1,zhangjiao);
 			room->notifySkillInvoked(zhangjiao, "weidi");
 		}else
-			room->broadcastSkillInvoke("huangtian",qrand()%2+5,zhangjiao);
+			room->broadcastSkillInvoke("huangtian",qsanRandomBounded(2)+5,zhangjiao);
 		use.from->skillInvoked("olhuangtian",0,zhangjiao);
 
 		room->giveCard(use.from, zhangjiao, this, "olhuangtian", true);
@@ -1125,7 +1125,7 @@ public:
 
 	int getEffectIndex(const ServerPlayer *player, const Card *) const
 	{
-		int index = qrand() % 2 + 1;
+		int index = qsanRandomBounded(2) + 1;
 		if (!player->hasInnateSkill(this) && player->hasSkill("olluoyan"))
 			index += 2;
 
@@ -1392,7 +1392,7 @@ public:
 	}
 	int getEffectIndex(const ServerPlayer *player, const Card *) const
 	{
-		int index = qrand() % 2 + 1;
+		int index = qsanRandomBounded(2) + 1;
 		if (player->getGeneralName().contains("pangtong") || player->getGeneral2Name().contains("pangtong"))
 			index += 2;
 		return index;
@@ -1481,7 +1481,7 @@ public:
 
 	int getEffectIndex(const ServerPlayer *player, const Card *) const
 	{
-		int index = qrand() % 2 + 1;
+		int index = qsanRandomBounded(2) + 1;
 		if (player->getGeneralName().contains("pangtong") || player->getGeneral2Name().contains("pangtong"))
 			index += 2;
 		return index;
@@ -2363,7 +2363,7 @@ public:
 		Room *room = zuoci->getRoom();
 		QStringList list = GetAvailableGenerals(zuoci, remove_list);
 		if (list.isEmpty()) return;
-		qShuffle(list);
+		qsanShuffle(list);
 		n = qMin(n, list.length());
 		QStringList huashens = zuoci->property("Huashens").toString().split("+");
 		if(zuoci->property("Huashens").toString().isEmpty()) huashens.clear();
@@ -3822,7 +3822,7 @@ void OLMiejiCard::onEffect(CardEffectStruct &effect) const
 		room->throwCard(&d, effect.to);
 	} else if (!room->askForCard(effect.to, "@@olmiejidiscard!", "@mieji-discard")) {
 		DummyCard d;
-		qShuffle(cards);
+		qsanShuffle(cards);
 		int trickId = -1;
 		foreach (const Card *c, cards) {
 			if (c->getTypeId() == Card::TypeTrick) {
@@ -4619,7 +4619,7 @@ public:
 	}
 	int getEffectIndex(const ServerPlayer *player, const Card *) const
 	{
-		int index = qrand() % 2 + 1;
+		int index = qsanRandomBounded(2) + 1;
 		if (player->getGeneralName().contains("pangtong") || player->getGeneral2Name().contains("pangtong"))
 			index += 2;
 		return index;
@@ -4721,7 +4721,7 @@ public:
 	}
 	int getEffectIndex(const ServerPlayer *player, const Card *) const
 	{
-		int index = qrand() % 2 + 1;
+		int index = qsanRandomBounded(2) + 1;
 		if (player->getGeneralName().contains("pangtong") || player->getGeneral2Name().contains("pangtong"))
 			index += 2;
 		return index;
@@ -4996,7 +4996,7 @@ public:
 				player->addMark("oldangxiandraw-PlayClear");
 				QList<int> ids = room->getDiscardPile();
 				ids << room->getDrawPile();
-				qShuffle(ids);
+				qsanShuffle(ids);
 				foreach (int id, ids) {
 					if (Sanguosha->getCard(id)->isKindOf("Slash")){
 						room->obtainCard(player, id,true);

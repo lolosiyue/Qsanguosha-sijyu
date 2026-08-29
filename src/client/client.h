@@ -15,6 +15,7 @@
 // clientplayer.h 只前置宣告 class Client，不會造成 circular include。
 #include "clientplayer.h"
 #include <QJsonArray>
+#include <QRegularExpression>
 
 class Recorder;
 class Replayer;
@@ -28,8 +29,6 @@ class Client : public QObject, public EngineRuntimeContext,
 {
     Q_OBJECT
     Q_PROPERTY(Client::Status status READ getStatus WRITE setStatus)
-
-    Q_ENUMS(Status)
 
 public:
     enum Status
@@ -59,6 +58,7 @@ public:
 
         ClientStatusBasicMask = 0x0F
     };
+    Q_ENUM(Status)
 
     // injectedSocket ownership is transferred to Client when it is non-null.
     explicit Client(QObject *parent, const QString &filename = "", ClientSocket *injectedSocket = nullptr);
@@ -418,7 +418,7 @@ private:
     // 負責呈現,所以 request builder 唔應該喺呢個階段寫 UI 文件。
     QString formatPromptList(const QStringList &text);
     QString _processCardPattern(const QString &pattern);
-    void commandFormatWarning(const QString &str, const QRegExp &rx, const char *command);
+    void commandFormatWarning(const QString &str, const QRegularExpression &rx, const char *command);
 
     bool _loseSingleCard(int card_id, CardsMoveStruct move);
     bool _getSingleCard(int card_id, CardsMoveStruct move);

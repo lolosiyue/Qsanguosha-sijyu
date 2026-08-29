@@ -1164,7 +1164,7 @@ public:
     {
         Room *room = player->getRoom();
         if (player->getMark("shibei") > 0) {
-            room->sendCompulsoryTriggerLog(player, this, qrand()%2+1);
+            room->sendCompulsoryTriggerLog(player, this, qsanRandomBounded(2)+1);
 
             if (player->getMark("shibei") == 1)
                 room->recover(player, RecoverStruct("shibei", player));
@@ -1659,7 +1659,7 @@ public:
                         target = player->getTag("ExtraCollateralTarget").value<ServerPlayer *>();
 						player->removeTag("ExtraCollateralTarget");
                         if (!target) {
-                            target = available_targets.at(qrand() % available_targets.length() - 1);
+                            target = available_targets.at(qsanRandomBounded(available_targets.length()));
                             foreach (ServerPlayer *p, room->getOtherPlayers(target)) {
                                 if (target->canSlash(p)){
 									target->setTag("attachTarget", QVariant::fromValue(p));

@@ -3006,7 +3006,7 @@ int Player::getRandomHandCardId() const
 const Card *Player::getRandomHandCard() const
 {
 	if (handcards.isEmpty()) return nullptr;
-    return handcards.at(qrand()%handcards.length());
+    return handcards.at(qsanRandomBounded(handcards.length()));
 }
 
 void Player::drawCard(const Card *card)

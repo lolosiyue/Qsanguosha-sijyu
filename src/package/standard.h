@@ -45,7 +45,6 @@ private:
 class EquipCard : public Card
 {
     Q_OBJECT
-    Q_ENUMS(Location)
 
 public:
     enum Location
@@ -57,6 +56,7 @@ public:
         TreasureLocation,
         HorseLocation
     };
+    Q_ENUM(Location)
 
     EquipCard(Suit suit, int number) : Card(suit, number, true)
     {

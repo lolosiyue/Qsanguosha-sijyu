@@ -1297,7 +1297,7 @@ bool YanxiaoCard::targetFilter(const QList<const Player *> &targets, const Playe
 
 void YanxiaoCard::onUse(Room *room, CardUseStruct &card_use) const
 {
-    int x = qrand()%2+1;
+    int x = qsanRandomBounded(2)+1;
 	if(card_use.from->getGeneralName().contains("daqiao")){
 		x = 1;
 		foreach(ServerPlayer *to, card_use.to)

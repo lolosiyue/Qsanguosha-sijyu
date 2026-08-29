@@ -153,6 +153,8 @@ set(QSAN_SOURCES
     src/ui/startscene.cpp
     src/ui/table-pile.cpp
     src/ui/timed-progressbar.cpp
+    src/ui/ui-rng.cpp
+    src/ui/ui-rng.h
     src/ui/ui-utils.cpp
     src/ui/window.cpp
     src/util/detector.cpp

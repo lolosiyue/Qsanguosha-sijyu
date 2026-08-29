@@ -2,29 +2,25 @@
 #include "engine.h"
 #include "settings.h"
 
-static QRegExp *g_conceptRx = nullptr;
+#include <QRegularExpression>
 
-static QRegExp &getConceptRx() {
-    if (!g_conceptRx) {
-        g_conceptRx = new QRegExp("<a\\s+href=\"([^\"]+)\"[^>]*>(.*)</a>");
-        g_conceptRx->setMinimal(true);
-    }
-    return *g_conceptRx;
+static const QRegularExpression &conceptPattern()
+{
+    static const QRegularExpression pattern(
+        QStringLiteral("<a\\s+href=\"([^\"]+)\"[^>]*>(.*)</a>"),
+        QRegularExpression::UseUnicodePropertiesOption
+            | QRegularExpression::InvertedGreedinessOption);
+    return pattern;
 }
 
 static QStringList extractConcepts(const QString &html) {
     QStringList concepts;
     if (html.isEmpty()) return concepts;
 
-    QRegExp &rx = getConceptRx();
-    int pos = 0;
-    QString processed = html;
-
-    while ((pos = rx.indexIn(processed, pos)) != -1) {
-        QString href = rx.cap(1);
-        int matchStart = rx.pos();
-        int matchLen = rx.matchedLength();
-        pos = matchStart + matchLen;
+    QRegularExpressionMatchIterator matches = conceptPattern().globalMatch(html);
+    while (matches.hasNext()) {
+        const QRegularExpressionMatch match = matches.next();
+        const QString href = match.captured(1);
 
         if (!href.startsWith("#")) continue;
 

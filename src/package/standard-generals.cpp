@@ -116,7 +116,7 @@ void JieyinCard::onEffect(CardEffectStruct &effect) const
 {
     ServerPlayer *from = effect.from, *to = effect.to;
 
-    int index = qrand() % 2 + 1;
+    int index = qsanRandomBounded(2) + 1;
     if (from->isMale()) {
         index = 4;
         if (from == to)
@@ -406,11 +406,11 @@ const Card *JijiangCard::validate(CardUseStruct &cardUse) const
     if (!liubei->isLord() && liubei->hasSkill("weidi"))
         room->broadcastSkillInvoke("weidi");
     else {
-        int r = 1 + qrand() % 2;
+        int r = 1 + qsanRandomBounded(2);
         if (!liubei->hasInnateSkill("jijiang") && liubei->getMark("ruoyu") > 0)
             r += 2;
         else if (liubei->isJieGeneral())
-            r = qrand() % 2 + 5;
+            r = qsanRandomBounded(2) + 5;
         room->broadcastSkillInvoke("jijiang", r);
     }
 
@@ -566,7 +566,7 @@ public:
             log.arg = objectName();
             room->sendLog(log);
 
-            room->broadcastSkillInvoke(objectName(),qrand()%2+1,caocao);
+            room->broadcastSkillInvoke(objectName(),qsanRandomBounded(2)+1,caocao);
             room->notifySkillInvoked(caocao, objectName());
             if (choice == "obtain")
                 caocao->obtainCard(damage.card);
@@ -601,7 +601,7 @@ bool Hujia::trigger(TriggerEvent, Room *room, ServerPlayer *caocao, QVariant &da
     if (!caocao->isLord() && caocao->hasSkill("weidi"))
         room->broadcastSkillInvoke("weidi");
     else {
-        int index = qrand() % 2 + 1;
+        int index = qsanRandomBounded(2) + 1;
         if (objectName() == "olhujia")
             room->broadcastSkillInvoke("hujia", index);
         else {
@@ -686,7 +686,7 @@ public:
         QVariant data_card = QVariant::fromValue(card);
         if (room->getCardPlace(card->getEffectiveId()) == Player::PlaceJudge
             && guojia->askForSkillInvoke(this, data_card)) {
-            int index = qrand() % 2 + 1;
+            int index = qsanRandomBounded(2) + 1;
             if (Player::isNostalGeneral(guojia, "guojia"))
                 index += 2;
             else if (guojia->getGeneralName().contains("xizhicai") || (!guojia->getGeneralName().contains("guojia") && guojia->getGeneral2Name().contains("xizhicai")))
@@ -887,7 +887,7 @@ public:
         const Card *card = room->askForCard(player, forced ? "..!" : "..", prompt, QVariant::fromValue(judge), Card::MethodResponse, judge->who, true);
         if (forced && card == nullptr) {
             QList<const Card *> c = player->getCards("he");
-            card = c.at(qrand() % c.length());
+            card = c.at(qsanRandomBounded(c.length()));
         }
 
         if (card) {
@@ -1103,7 +1103,7 @@ public:
 
     int getEffectIndex(const ServerPlayer *player, const Card *) const
     {
-        int n = qrand() % 2 + 1;
+        int n = qsanRandomBounded(2) + 1;
         if (player->getGeneralName().startsWith("tenyear_") || (!player->getGeneralName().startsWith("tenyear_") && player->getGeneral2() &&
                 player->getGeneral2Name().startsWith("tenyear_")))
             n += 2;
@@ -1207,11 +1207,11 @@ public:
         if (!liubei->isLord() && liubei->hasSkill("weidi"))
             room->broadcastSkillInvoke("weidi");
         else {
-            int r = 1 + qrand() % 2;
+            int r = 1 + qsanRandomBounded(2);
             if (!liubei->hasInnateSkill("jijiang") && liubei->getMark("ruoyu") > 0)
                 r += 2;
             else if (liubei->isJieGeneral())
-                r = qrand() % 2 + 5;
+                r = qsanRandomBounded(2) + 5;
             room->broadcastSkillInvoke("jijiang", r);
         }
         foreach (ServerPlayer *liege, lieges) {
@@ -1267,7 +1267,7 @@ public:
 
     int getEffectIndex(const ServerPlayer *player, const Card *) const
     {
-        int index = qrand() % 2 + 1;
+        int index = qsanRandomBounded(2) + 1;
         if (Player::isNostalGeneral(player, "guanyu"))
             index += 2;
         else if (player->getGeneralName() == "jsp_guanyu" || (player->getGeneralName() != "guanyu" && player->getGeneral2Name() == "jsp_guanyu"))
@@ -1476,7 +1476,7 @@ public:
 
     int getEffectIndex(const ServerPlayer *player, const Card *) const
     {
-        int index = qrand() % 2 + 1;
+        int index = qsanRandomBounded(2) + 1;
         if (Player::isNostalGeneral(player, "zhaoyun"))
             index += 2;
         if (player->getGeneralName().contains("sp_tongyuan") || player->getGeneral2Name().contains("sp_tongyuan"))
@@ -1674,7 +1674,7 @@ public:
     bool onPhaseChange(ServerPlayer *zhuge, Room *room) const
     {
         if (zhuge->getPhase() == Player::Start && zhuge->askForSkillInvoke(this)) {
-            int index = qrand() % 2 + 1;
+            int index = qsanRandomBounded(2) + 1;
             if (objectName() == "guanxing" && !zhuge->hasInnateSkill(this) && zhuge->hasSkill("zhiji"))
                 index += 2;
             room->broadcastSkillInvoke(objectName(), index);
@@ -1724,7 +1724,7 @@ public:
         if (player->isKongcheng()) {
             CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
             if (move.from == player && move.from_places.contains(Player::PlaceHand)) {
-                int index = qrand() % 2 + 1;
+                int index = qsanRandomBounded(2) + 1;
                 if (player->getGeneralName().startsWith("tenyear_") || (!player->getGeneralName().startsWith("tenyear_")
                    && player->getGeneral2() && player->getGeneral2Name().startsWith("tenyear_")))
                     index += 2;
@@ -2020,7 +2020,7 @@ public:
     int getDrawNum(ServerPlayer *zhouyu, int n) const
     {
         Room *room = zhouyu->getRoom();
-        int index = qrand() % 2 + 1;
+        int index = qsanRandomBounded(2) + 1;
         if (zhouyu->isJieGeneral("sunce"))
             index += 6;
         else {
@@ -2096,7 +2096,7 @@ public:
                 if (lvmeng->getMark("KejiSlashInPlayPhase-Clear")<1&&lvmeng->isAlive()
 				&&lvmeng->hasSkill(objectName())&&lvmeng->askForSkillInvoke(this)) {
                     if (lvmeng->getHandcardNum() > lvmeng->getMaxCards()) {
-                        int index = qrand() % 2 + 1;
+                        int index = qsanRandomBounded(2) + 1;
                         if (!lvmeng->hasInnateSkill(this) && lvmeng->hasSkill("mouduan"))
                             index += 4;
                         else if (Player::isNostalGeneral(lvmeng, "lvmeng"))
@@ -2179,7 +2179,7 @@ public:
 
     int getEffectIndex(const ServerPlayer *player, const Card *) const
     {
-        int index = qrand() % 2 + 1;
+        int index = qsanRandomBounded(2) + 1;
         if (Player::isNostalGeneral(player, "ganning"))
             index += 2;
         return index;
@@ -2238,7 +2238,7 @@ public:
 
     int getEffectIndex(const ServerPlayer *player, const Card *) const
     {
-        int index = qrand() % 2 + 1;
+        int index = qsanRandomBounded(2) + 1;
         if (player->getGeneralName().contains("heqi") || (!player->getGeneralName().contains("ganning") && player->getGeneral2Name().contains("heqi")))
             index ++;
         return index;
@@ -2492,7 +2492,7 @@ public:
 
     int getEffectIndex(const ServerPlayer *player, const Card *) const
     {
-        int index = qrand() % 2 + 1;
+        int index = qsanRandomBounded(2) + 1;
         if (!player->hasInnateSkill(this) && player->hasSkills("luoyan|olluoyan"))
             index += 4;
         else if (Player::isNostalGeneral(player, "daqiao"))
@@ -2635,12 +2635,12 @@ public:
                     return false;
                 if (move.from_places[i] == Player::PlaceEquip) {
                     if (room->askForSkillInvoke(sunshangxiang, objectName())) {
-                        int index = qrand() % 2 + 1;
+                        int index = qsanRandomBounded(2) + 1;
                         if (!sunshangxiang->hasInnateSkill(this) && sunshangxiang->getMark("fanxiang") > 0)
                             index += 2;
                         if (sunshangxiang->getGeneralName().startsWith("tenyear_") || (!sunshangxiang->getGeneralName().startsWith("tenyear_")
                            && sunshangxiang->getGeneral2() && sunshangxiang->getGeneral2Name().startsWith("tenyear_")))
-                            index = qrand() % 2 + 5;
+                            index = qsanRandomBounded(2) + 5;
                         room->broadcastSkillInvoke(objectName(), index);
 
                         sunshangxiang->drawCards(2, objectName());
@@ -2675,7 +2675,7 @@ public:
             if (use.card->isKindOf("Duel")) {
 				QStringList wushuang_tag;
                 if (player->hasSkill(objectName())) {
-					int n = qrand()%2+1;
+					int n = qsanRandomBounded(2)+1;
 					if(player->getGeneralName().startsWith("nos_")||player->getGeneral2Name().startsWith("nos_"))
 						n++;
 					room->sendCompulsoryTriggerLog(player, this, n);
@@ -2684,7 +2684,7 @@ public:
                 }
 				foreach(ServerPlayer *to, use.to){
 					if(to->hasSkill(objectName())){
-						int n = qrand()%2+1;
+						int n = qsanRandomBounded(2)+1;
 						if(to->getGeneralName().startsWith("nos_")||to->getGeneral2Name().startsWith("nos_"))
 							n++;
 						room->sendCompulsoryTriggerLog(to, this, n);
@@ -2693,7 +2693,7 @@ public:
 				}
 				room->setTag("Wushuang_"+use.card->toString(), wushuang_tag);
             }else if(use.card->isKindOf("Slash")&&player->hasSkill(objectName())) {
-                int n = qrand()%2+1;
+                int n = qsanRandomBounded(2)+1;
 				if(player->getGeneralName().startsWith("nos_")||player->getGeneral2Name().startsWith("nos_"))
 					n++;
 				room->sendCompulsoryTriggerLog(player, this, n);
@@ -2873,7 +2873,7 @@ public:
 
     int getEffectIndex(const ServerPlayer *player, const Card *) const
     {
-        int index = qrand() % 2 + 1;
+        int index = qsanRandomBounded(2) + 1;
         if (Player::isNostalGeneral(player, "huatuo"))
             index += 2;
         return index;
@@ -2907,7 +2907,7 @@ public:
     {
         if (lidian->getPhase() == Player::Draw) {
             if (room->askForSkillInvoke(lidian, objectName())) {
-                int index = qrand() % 2 + 1;
+                int index = qsanRandomBounded(2) + 1;
                 if (lidian->getGeneralName().contains("tangzi") || (!lidian->getGeneralName().contains("lidian") && lidian->getGeneral2Name().contains("tangzi")))
                     index += 2;
                 room->broadcastSkillInvoke(objectName(), index);
@@ -3452,7 +3452,7 @@ void NosRendeCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
     QDateTime dtafter = QDateTime::currentDateTime();
 
     if (dtbefore.secsTo(dtafter) > 3 * Config.AIDelay / 1000)
-        room->broadcastSkillInvoke("rende",qrand()%2+1);
+        room->broadcastSkillInvoke("rende",qsanRandomBounded(2)+1);
 
     source->setTag("nosrende", QDateTime::currentDateTime());
 

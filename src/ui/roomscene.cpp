@@ -6,6 +6,7 @@
 #include "photo-layout-fit.h"
 #include "dashboard.h"
 #include "table-pile.h"
+#include "ui-rng.h"
 #include "carditem.h"
 #include "engine.h"
 #include "room.h"
@@ -43,6 +44,7 @@
 #include "sprite.h"
 #include "EmbeddedQmlLoader.h"
 #include "SpineGlItem.h"
+#include <QRegularExpression>
 #include "graphicspixmaphoveritem.h"
 #include "choosegeneraldialog.h"
 #include "cardoverview.h"
@@ -1015,7 +1017,7 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		if(pausing_item->isVisible()!=paused){
 			if(paused){
 				m_timerLabel->pause();
-				QBrush pausing_brush(QColor(qrand() % 256,qrand() % 256,qrand() % 256));
+				QBrush pausing_brush(QColor(UiRng::bounded(256),UiRng::bounded(256),UiRng::bounded(256)));
 				pausing_item->setBrush(pausing_brush);
 				bringToFront(pausing_item);
 				bringToFront(pausing_text);
@@ -2269,7 +2271,7 @@ void RoomScene::chooseGeneral(const QStringList&generals)
 					candidates << g;
 				}
 				if (!candidates.isEmpty())
-					pick = candidates.at(qrand() % candidates.size());
+					pick = candidates.at(UiRng::bounded(candidates.size()));
 			}
 		}
 		QFile diag("client_autotest_diag.log");
@@ -2908,7 +2910,7 @@ void RoomScene::keepLoseCardLog(const CardsMoveStruct&move)
 	if(move.from_place==Player::DrawPile){
 		if(move.to_place==Player::PlaceHand){
 			for (int i = 0;i < move.card_ids.length();i++){
-				Sanguosha->playSystemAudioEffect(QString("draw%1").arg(qrand()%2+1));
+				Sanguosha->playSystemAudioEffect(QString("draw%1").arg(UiRng::bounded(2)+1));
 				if(i>1) break;
 			}
 		}else
@@ -3640,8 +3642,10 @@ void RoomScene::switchControlContext(const QString &target_name)
 		if (status == Client::RespondingUse)
 			reason = CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
 		else {
-			static QRegExp rx("@@?([_A-Za-z]+)(\\d+)?!?");
-			if (rx.exactMatch(pattern) || status == Client::Responding)
+			static const QRegularExpression rx(
+				QRegularExpression::anchoredPattern(QStringLiteral("@@?([_A-Za-z]+)(\\d+)?!?")),
+				QRegularExpression::UseUnicodePropertiesOption);
+			if (rx.match(pattern).hasMatch() || status == Client::Responding)
 				reason = CardUseStruct::CARD_USE_REASON_RESPONSE;
 		}
 	}
@@ -3689,8 +3693,10 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 				if(newStatus==Client::RespondingUse)
 					reason = CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
 				else{
-					static QRegExp rx("@@?([_A-Za-z]+)(\\d+)?!?");
-					if(rx.exactMatch(pattern)||newStatus==Client::Responding)
+					static const QRegularExpression rx(
+						QRegularExpression::anchoredPattern(QStringLiteral("@@?([_A-Za-z]+)(\\d+)?!?")),
+						QRegularExpression::UseUnicodePropertiesOption);
+					if(rx.match(pattern).hasMatch()||newStatus==Client::Responding)
 						reason = CardUseStruct::CARD_USE_REASON_RESPONSE;
 				}
 			}
@@ -3745,9 +3751,12 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 		QString pattern = activeRequest != nullptr && activeRequest->payloadAs<CardInteractionPayload>() != nullptr
 			? activeRequest->payloadAs<CardInteractionPayload>()->selection.pattern
 			: Sanguosha->getCurrentCardUsePattern();
-		static QRegExp rx("@@?([_A-Za-z]+)(\\d+)?!?");
-		if(rx.exactMatch(pattern)){
-			QString skill_name = rx.capturedTexts().at(1);
+		static const QRegularExpression rx(
+			QRegularExpression::anchoredPattern(QStringLiteral("@@?([_A-Za-z]+)(\\d+)?!?")),
+			QRegularExpression::UseUnicodePropertiesOption);
+		const QRegularExpressionMatch match = rx.match(pattern);
+		if(match.hasMatch()){
+			QString skill_name = match.captured(1);
 			if(skill_name.endsWith("!")) skill_name.chop(1);
 			const ViewAsSkill*skill = Sanguosha->getViewAsSkill(skill_name);
 			if(skill){
@@ -6327,7 +6336,7 @@ void RoomScene::fillGenerals1v1(const QStringList&names)
 		general_items << item;
 	}
 
-	qShuffle(general_items);
+	qsanShuffle(general_items);
 
 	int n = names.length();
 	double scaleRatio = 116.0/G_COMMON_LAYOUT.m_cardNormalHeight;

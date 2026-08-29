@@ -73,7 +73,7 @@ QString GeneralSelector::selectFirst(ServerPlayer *player, const QStringList &ca
     }
 
     QString max_general;
-    int rnd = qrand() % 100;
+    int rnd = qsanRandomBounded(100);
     int total = choice_list.length();
     int prob[6] = { 70, 85, 92, 95, 97, 99 };
     for (int i = 0; i < 6; i++) {
@@ -153,7 +153,7 @@ static bool CompareByMaxHp(const QString &a, const QString &b)
 QStringList GeneralSelector::arrange3v3(ServerPlayer *player)
 {
     QStringList arranged = player->getSelected();
-    qShuffle(arranged);
+    qsanShuffle(arranged);
     arranged = arranged.mid(0, 3);
 
     std::sort(arranged.begin(), arranged.end(), CompareByMaxHp);

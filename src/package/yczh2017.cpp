@@ -378,7 +378,7 @@ public:
 					list << id;
 			}
 			if (!list.isEmpty()) {
-				int id = list.at(qrand() % list.length());
+				int id = list.at(qsanRandomBounded(list.length()));
 				room->obtainCard(target, id, true);
 			}
 			if (last_targets.isEmpty() || !last_targets.contains(target) || target->isDead()) return false;
@@ -633,7 +633,7 @@ public:
 						equiplist << id;
 				}
 				if (equiplist.isEmpty()) return false;
-				const Card* equip = Sanguosha->getCard(equiplist.at(qrand() % equiplist.length()));
+				const Card* equip = Sanguosha->getCard(equiplist.at(qsanRandomBounded(equiplist.length())));
 				if (!equip->isAvailable(target) || target->isProhibited(target, equip)) return false;
 				room->useCard(CardUseStruct(equip, target, target), true);
 				if (equip->getSuit() != Card::Club) return false;
@@ -651,7 +651,7 @@ public:
 				}
 				const Card *card = room->askForDiscard(target, objectName(), 1, 1, false, true, "qingxian-discard", "EquipCard");
 				if (!card) {
-					card = equipcards.at(qrand() % equipcards.length());
+					card = equipcards.at(qsanRandomBounded(equipcards.length()));
 					room->throwCard(card, target, nullptr);
 				} else
 					card = Sanguosha->getCard(card->getSubcards().first());
@@ -693,7 +693,7 @@ public:
 			if (!target->hasSkill("rouxian")) skills << "rouxian";
 			if (!target->hasSkill("hexian")) skills << "hexian";
 			if (skills.isEmpty()) return false;
-			QString skill_name = skills.at(qrand() % skills.length());
+			QString skill_name = skills.at(qsanRandomBounded(skills.length()));
 			room->handleAcquireDetachSkills(target, skill_name);
 			room->addPlayerMark(target, "juexiang_buff");
 		} else {
@@ -746,7 +746,7 @@ public:
 				equiplist << id;
 		}
 		if (equiplist.isEmpty()) return false;
-		const Card* equip = Sanguosha->getCard(equiplist.at(qrand() % equiplist.length()));
+		const Card* equip = Sanguosha->getCard(equiplist.at(qsanRandomBounded(equiplist.length())));
 		if (!equip->isAvailable(damage.from) || damage.from->isProhibited(damage.from, equip)) return false;
 		room->useCard(CardUseStruct(equip, damage.from, damage.from), true);
 		return false;
@@ -779,7 +779,7 @@ public:
 				equiplist << id;
 		}
 		if (equiplist.isEmpty()) return false;
-		const Card* equip = Sanguosha->getCard(equiplist.at(qrand() % equiplist.length()));
+		const Card* equip = Sanguosha->getCard(equiplist.at(qsanRandomBounded(equiplist.length())));
 		if (!equip->isAvailable(target) || target->isProhibited(target, equip)) return false;
 		room->useCard(CardUseStruct(equip, target, target), true);
 		return false;
@@ -816,7 +816,7 @@ public:
 		}
 		const Card *card = room->askForCard(damage.from, "EquipCard!", "qingxian-discard"); //rouxian-discard
 		if (!card) {
-			card = equipcards.at(qrand() % equipcards.length());
+			card = equipcards.at(qsanRandomBounded(equipcards.length()));
 			room->throwCard(card, damage.from, nullptr);
 		}
 		return false;
@@ -852,7 +852,7 @@ public:
 		}
 		const Card *card = room->askForCard(target, "EquipCard!", "qingxian-discard"); //hexian-discard
 		if (!card) {
-			card = equipcards.at(qrand() % equipcards.length());
+			card = equipcards.at(qsanRandomBounded(equipcards.length()));
 			room->throwCard(card, target, nullptr);
 		}
 		return false;
@@ -1331,12 +1331,12 @@ public:
 					if (p->hasFlag("huimin_target"))
 						room->setPlayerFlag(p, "-huimin_target");
 				}
-				start_player = sp.at(qrand() % length);
+				start_player = sp.at(qsanRandomBounded(length));
 				QList<int> handids;
 				foreach (int id, player->handCards())
 					handids << id;
 				for (int i = 1; i <= length; i++) {
-					int id = handids.at(qrand() % handids.length());
+					int id = handids.at(qsanRandomBounded(handids.length()));
 					handids.removeOne(id);
 					ids << id;
 					cardlist << Sanguosha->getCard(id)->toString();

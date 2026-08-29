@@ -39,16 +39,13 @@ class Card : public QObject
     Q_PROPERTY(bool damage_card READ isDamageCard WRITE setDamageCard)
     Q_PROPERTY(bool single_target READ isSingleTargetCard WRITE setSingleTargetCard)
 
-    Q_ENUMS(Suit)
-    Q_ENUMS(CardType)
-    Q_ENUMS(HandlingMethod)
-
 public:
     // enumeration type
     enum Suit
     {
         Spade, Club, Heart, Diamond, NoSuitBlack, NoSuitRed, NoSuit, SuitToBeDecided = -1
     };
+    Q_ENUM(Suit)
     enum Color
     {
         Red, Black, Colorless
@@ -58,6 +55,7 @@ public:
         MethodNone, MethodUse, MethodResponse, MethodDiscard, MethodRecast,
 		MethodPindian, MethodIgnore, MethodEffect, MethodPlay, MethodMove, MethodGet
     };
+    Q_ENUM(HandlingMethod)
 
     static const Suit AllSuits[4];
 
@@ -66,6 +64,7 @@ public:
     {
         TypeSkill, TypeBasic, TypeTrick, TypeEquip
     };
+    Q_ENUM(CardType)
 
     // constructor
     ~Card() override;

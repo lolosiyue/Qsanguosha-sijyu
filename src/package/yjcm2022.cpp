@@ -388,7 +388,7 @@ public:
                 }
                 if (ids.isEmpty()) return false;
                 room->sendCompulsoryTriggerLog(player, this);
-                int id = ids.at(qrand() % ids.length());
+                int id = ids.at(qsanRandomBounded(ids.length()));
                 room->obtainCard(player, id);
             }
         } else if (event == CardUsed) {

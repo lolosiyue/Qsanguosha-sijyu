@@ -50,21 +50,25 @@ void RecAnalysis::initialize(QString dir)
             const QVariant &body = packet.getMessageBody();
             if (JsonUtils::isString(body)) {
                 QString l = body.toString();
-                static QRegExp rx("(.*):(@?\\w+):(\\d+):(\\d+):([+\\w-]*):([RCFSTBHAMN123a-r]*)(\\s+)?");
-                if (!rx.exactMatch(l))
+                static const QRegularExpression rx(
+                    QRegularExpression::anchoredPattern(QStringLiteral(
+                        "(.*):(@?\\w+):(\\d+):(\\d+):([+\\w-]*):([RCFSTBHAMN123a-r]*)(\\s+)?")),
+                    QRegularExpression::UseUnicodePropertiesOption);
+                const QRegularExpressionMatch match = rx.match(l);
+                if (!match.hasMatch())
                     continue;
 
-                QStringList texts = rx.capturedTexts();
-                m_recordGameMode = texts.at(2);
-                m_recordPlayers = texts.at(2).split("_").first().remove(QRegularExpression("[^0-9]")).toInt();
-                QStringList ban_packages = texts.at(5).split("+");
+                m_recordGameMode = match.captured(2);
+                m_recordPlayers = match.captured(2).split("_").first()
+                    .remove(QRegularExpression("[^0-9]")).toInt();
+                QStringList ban_packages = match.captured(5).split("+");
                 foreach (const Package *package, Sanguosha->getPackages()) {
                     if (!ban_packages.contains(package->objectName())
                         && Sanguosha->getScenario(package->objectName()) == nullptr)
                         m_recordPackages << Sanguosha->translate(package->objectName());
                 }
 
-                QString flags = texts.at(6);
+                QString flags = match.captured(6);
                 if (flags.contains("R")) m_recordServerOptions << tr("RandomSeats");
                 if (flags.contains("C")) m_recordServerOptions << tr("EnableCheat");
                 if (flags.contains("F")) m_recordServerOptions << tr("FreeChoose");

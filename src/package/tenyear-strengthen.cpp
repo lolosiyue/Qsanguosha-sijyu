@@ -38,7 +38,7 @@ void TenyearZhihengCard::onUse(Room *room, CardUseStruct &card_use) const
 void TenyearZhihengCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const
 {
 	if (source->hasInnateSkill("tenyearzhiheng") || !source->hasSkill("jilve"))
-		room->broadcastSkillInvoke("tenyearzhiheng",qrand()%2+1);
+		room->broadcastSkillInvoke("tenyearzhiheng",qsanRandomBounded(2)+1);
 	else
 		room->broadcastSkillInvoke("jilve", 4);
 	int x = subcardsLength();
@@ -323,7 +323,7 @@ public:
 
 	int getEffectIndex(const ServerPlayer *player, const Card *) const
 	{
-		int index = qrand() % 2 + 1;
+		int index = qsanRandomBounded(2) + 1;
 		if (player->getKingdom() == "wei")
 			index += 2;
 		return index;
@@ -571,7 +571,7 @@ public:
 		if (zhuge->getPhase() == Player::Start || (zhuge->getPhase() == Player::Finish && zhuge->getMark("tenyearguanxing-Clear") > 0)) {
 			if (!zhuge->askForSkillInvoke(this)) return false;
 
-			int index = qrand() % 2 + 1;
+			int index = qsanRandomBounded(2) + 1;
 			if (zhuge->isJieGeneral("jiangwei", "zhugeliang") && zhuge->isJieGeneral("jiangwei", "wolong"))
 				index += 2;
 			room->broadcastSkillInvoke(objectName(), index);
@@ -1281,7 +1281,7 @@ public:
 		if (player->getTag("InvokeKuanggu").toBool()) {
 			for (int i = 0; i < damage.damage; i++) {
 				if (!player->isAlive()||!player->askForSkillInvoke(this)) break;
-				int index = qrand() % 2 + 1;
+				int index = qsanRandomBounded(2) + 1;
 				if (player->getGeneralName().startsWith("ol_") || player->getGeneral2Name().startsWith("ol_"))
 					index += 2;
 				room->broadcastSkillInvoke(objectName(), index);
@@ -1476,7 +1476,7 @@ public:
 		const Card *card = room->askForCard(player, pattern, "@tenyearjushou", QVariant(), Card::MethodNone);
 		if (!card) {
 			QList<int> ids = ListS2I(list);
-			card = Sanguosha->getCard(ids.at(qrand() % ids.length()));
+			card = Sanguosha->getCard(ids.at(qsanRandomBounded(ids.length())));
 		}
 		if (card->isKindOf("EquipCard"))
 			room->useCard(CardUseStruct(card, player));
@@ -1921,7 +1921,7 @@ public:
 				slash << id;
 			}
 			if (slash.isEmpty()) return false;
-			room->obtainCard(player, slash.at(qrand() % slash.length()),true);
+			room->obtainCard(player, slash.at(qsanRandomBounded(slash.length())),true);
 		}
 		return false;
 	}
@@ -2391,7 +2391,7 @@ void TenyearWurongCard::onEffect(CardEffectStruct &effect) const
 {
 	Room *room = effect.from->getRoom();
 
-	int index = qrand() % 2 + 1;
+	int index = qsanRandomBounded(2) + 1;
 	if (effect.from->isJieGeneral("second_tenyear_zhangyi"))
 		index += 2;
 	room->broadcastSkillInvoke("tenyearwurong", index);
@@ -2643,7 +2643,7 @@ public:
 					}
 					const Card *card = room->askForCard(target, pattern, prompt, data, Card::MethodNone);
 					if (!canbeextra && !card) {
-						card = target->getCards("he").at(qrand() % target->getCards("he").length());
+						card = target->getCards("he").at(qsanRandomBounded(target->getCards("he").length()));
 					}
 					if (card) {
 						extra_target = false;
@@ -2790,12 +2790,12 @@ public:
 						player->removeTag("ExtraCollateralTarget");
 						if (!target) {
 							QList<ServerPlayer *> victims;
-							target = available_targets.at(qrand() % available_targets.length() - 1);
+							target = available_targets.at(qsanRandomBounded(available_targets.length()));
 							foreach (ServerPlayer *p, room->getOtherPlayers(target)) {
 								if (target->canSlash(p))
 									victims << p;
 							}
-							target->setTag("attachTarget", QVariant::fromValue((victims.at(qrand() % victims.length() - 1))));
+							target->setTag("attachTarget", QVariant::fromValue((victims.at(qsanRandomBounded(victims.length())))));
 							log.type = "#QiaoshuiAdd";
 							log.to << target;
 							log.card_str = use.card->toString();
@@ -5494,7 +5494,7 @@ public:
 					room->moveCardTo(c, nullptr, Player::DrawPile, reason, true, true);
 				} else {
 					if (pattern.endsWith("!")) {
-						int id = zongxuan_card.at(qrand() % zongxuan_card.length());
+						int id = zongxuan_card.at(qsanRandomBounded(zongxuan_card.length()));
 						CardMoveReason reason(CardMoveReason::S_REASON_PUT, player->objectName(), "tenyearzongxuan", "");
 						room->moveCardTo(Sanguosha->getCard(id), nullptr, Player::DrawPile, reason, true);
 					}
@@ -6983,7 +6983,7 @@ public:
 		}
 		if (equips.isEmpty()) return false;
 
-		int equip = equips.at(qrand() % equips.length());
+		int equip = equips.at(qsanRandomBounded(equips.length()));
 		room->throwCard(equip, to);
 		return false;
 	}
@@ -7127,7 +7127,7 @@ void TenyearMiejiCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer 
 		room->throwCard(&d, t);
 	} else if (!room->askForCard(t, "@@tenyearmiejidiscard!", "@mieji-discard")) {
 		DummyCard d;
-		qShuffle(cards);
+		qsanShuffle(cards);
 		int trickId = -1;
 		foreach (const Card *c, cards) {
 			if (c->getTypeId() == Card::TypeTrick) {
