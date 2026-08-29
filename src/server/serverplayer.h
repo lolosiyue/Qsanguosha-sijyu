@@ -12,6 +12,7 @@ class ClientSocket;
 
 #include "player.h"
 #include "protocol.h"
+#include "protocol/protocol-negotiation.h"
 #include "protocol/state/player-ui-state.h"
 
 class ServerPlayer : public Player
@@ -24,6 +25,10 @@ public:
     ~ServerPlayer();
 
     void setSocket(ClientSocket *socket);
+    void setProtocolSessionState(const QSanProtocol::ProtocolSessionState &state);
+    QList<QSanProtocol::ProtocolVersion> peerSupportedVersions() const;
+    QSanProtocol::ProtocolVersion preferredProtocolVersion() const;
+    QSanProtocol::ProtocolVersion activeProtocolVersion() const;
     void kick();
     void invoke(const QSanProtocol::AbstractPacket *packet);
     QString reportHeader() const;
@@ -282,6 +287,7 @@ protected:
 
 private:
     ClientSocket *socket;
+    QSanProtocol::ProtocolSessionState m_protocolSessionState;
     //QList<const Card *> handcards;
     Room *room;
 	ServerPlayer *onsole_owner;
