@@ -5,17 +5,33 @@ on:
     branches:
       - main
       - debug
-    paths-ignore:
-      - 'docs/**'
-      - 'memory/**'
-      - '*.md'
+    paths:
+      - 'CMakeLists.txt'
+      - 'CMakePresets.json'
+      - 'cmake/**'
+      - 'src/client/**'
+      - '!src/client/core/**'
+      - 'src/core/audio.h'
+      - 'src/core/json-gui.cpp'
+      - 'src/core/oracle_helper.*'
+      - 'src/core/record-analysis.*'
+      - 'src/core/settings-gui.*'
+      - 'src/dialog/**'
+      - 'src/main.cpp'
+      - 'src/pch.h'
+      - 'src/spine/**'
+      - 'src/ui/**'
+      - 'src/util/**'
+      - 'qml/**'
+      - 'resource/**'
+      - 'tools/ci/fetch-extensions.ps1'
+      - 'tools/ci/requirements.txt'
+      - '.github/workflows/ci.yml'
   push:
     branches:
       - main
-    paths-ignore:
-      - 'docs/**'
-      - 'memory/**'
-      - '*.md'
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 permissions:
@@ -235,10 +251,11 @@ jobs:
           retention-days: 7
 
   ctest:
-    name: Quick CTest
+    name: Windows CTest (fast PR, full release)
     needs: build
     runs-on: windows-2025-vs2026
-    timeout-minutes: 15
+    # PR 的 fast suite 通常很短；main／tag／manual 會跑完整 consolidated suites。
+    timeout-minutes: 45
     steps:
       - name: Check out source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -296,9 +313,18 @@ jobs:
           $env:PATH = "$runtime;$env:PATH"
           $runtime | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
           $junitPath = Join-Path $env:GITHUB_WORKSPACE 'ci-logs\ctest.xml'
+          $ctestArguments = @(
+            '--test-dir', 'builds\cmake-vs2026',
+            '-C', 'RelWithDebInfo',
+            '--output-on-failure',
+            '--output-junit', $junitPath
+          )
+          if ($env:GITHUB_EVENT_NAME -eq 'pull_request') {
+            $ctestArguments += @('--label-regex', 'fast')
+          }
           Start-Transcript -Path ci-logs\ctest.log
           try {
-            ctest --test-dir builds\cmake-vs2026 -C RelWithDebInfo --output-on-failure --output-junit $junitPath
+            & ctest @ctestArguments
             if ($LASTEXITCODE -ne 0) {
               throw "CTest failed with exit code $LASTEXITCODE"
             }
