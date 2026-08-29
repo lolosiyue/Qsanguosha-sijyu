@@ -129,12 +129,14 @@ Invalid、duplicate、stale 或 expired response 不會產生 wire reply；valid
 debug\QSanguosha.exe --interaction-inventory artifacts\client-core-interaction-matrix.json
 ```
 
-CTest 會再次生成臨時檔，驗證以下摘要後與提交 artifact 逐字比較：
+`qsanguosha_client_core_contract` 會透過 production executable 再次生成臨時檔，
+驗證以下摘要後與提交 artifact 逐字比較；不再為 matrix 另建第二條 CTest：
 
 - schema version 2
 - total 29
 - canonical typed 28
 - legacy adapter 1
+- implicit passthrough 0
 - missing builder/presenter/validator/reply encoder 全為 0
 - fake recorder 實際 presenter dispatch 29 次，覆蓋 29 個 type
 
@@ -142,9 +144,8 @@ CTest 會再次生成臨時檔，驗證以下摘要後與提交 artifact 逐字�
 
 | Gate | 覆蓋 |
 |---|---|
-| `qsanguosha_client_core_contract` | canonical snapshot、identity、special semantics、metadata allowlist、deadline、cancel、duplicate/stale |
+| `qsanguosha_client_core_contract` | canonical snapshot、identity、special semantics、metadata allowlist、deadline、cancel、duplicate/stale、production registry 生成、28+1 分類、29 presenter dispatch、artifact drift |
 | `qsanguosha_interaction_reply_adapter_contract` | Protocol V1 scalar/card/structured/custom wire encoding |
-| `qsanguosha_client_interaction_matrix` | production registry 生成、28+1 分類、29 presenter dispatch、artifact drift |
 | local response UI suite | production RoomScene/Dashboard intent 與實際 reply capture |
 | GUI/network/server/Docker gates | integration 與跨平台 regression |
 

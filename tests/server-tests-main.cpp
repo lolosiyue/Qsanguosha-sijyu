@@ -29,11 +29,8 @@ int runRoomRosterTests();
 int runPlayerLifecycleServiceTests(int argc, char **argv);
 int runPlayerDecisionServiceTests();
 
-int main(int argc, char **argv)
+static int runSelectedSuite(const QString &suite, int argc, char **argv)
 {
-    configureNonInteractiveErrors();
-    QCoreApplication application(argc, argv);
-    const QString suite = parseSuite(argc, argv);
     if (suite == QLatin1String("room-notifier"))
         return runRoomNotifierTests();
     if (suite == QLatin1String("skill-runtime"))
@@ -51,4 +48,24 @@ int main(int argc, char **argv)
     if (suite == QLatin1String("player-decision"))
         return runPlayerDecisionServiceTests();
     return 64;
+}
+
+int main(int argc, char **argv)
+{
+    configureNonInteractiveErrors();
+    QCoreApplication application(argc, argv);
+    const QString suite = parseSuite(argc, argv);
+    if (!suite.isEmpty())
+        return runSelectedSuite(suite, argc, argv);
+
+    return runIsolatedTestCases("SERVER_UNIT_RESULT", {
+        {QStringLiteral("room-notifier"), {QStringLiteral("--suite"), QStringLiteral("room-notifier")}},
+        {QStringLiteral("skill-runtime"), {QStringLiteral("--suite"), QStringLiteral("skill-runtime")}},
+        {QStringLiteral("request"), {QStringLiteral("--suite"), QStringLiteral("request")}},
+        {QStringLiteral("card-movement"), {QStringLiteral("--suite"), QStringLiteral("card-movement")}},
+        {QStringLiteral("extra-turn"), {QStringLiteral("--suite"), QStringLiteral("extra-turn")}},
+        {QStringLiteral("room-roster"), {QStringLiteral("--suite"), QStringLiteral("room-roster")}},
+        {QStringLiteral("player-lifecycle"), {QStringLiteral("--suite"), QStringLiteral("player-lifecycle")}},
+        {QStringLiteral("player-decision"), {QStringLiteral("--suite"), QStringLiteral("player-decision")}, 900000}
+    });
 }
