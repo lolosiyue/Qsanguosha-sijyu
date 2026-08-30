@@ -34,7 +34,7 @@ public:
     void broadcastSkillInvoke(const QString &skillName, bool isMale, int type,
                               const QString &playerName);
     void broadcastTagProperty(ServerPlayer *owner, const QString &tagKey,
-                              const QString &value);
+                              const QVariant &value);
     void notifyPlayerUIState(ServerPlayer *owner, const PlayerUIState &state);
     void notifyPlayerUIState(ServerPlayer *receiver, const ServerPlayer *owner,
                              const PlayerUIState &state);

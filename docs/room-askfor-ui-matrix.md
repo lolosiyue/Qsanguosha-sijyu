@@ -226,8 +226,8 @@ startup/network CLI 與 skill UI runner；它仍驗證 capability probe、stem r
 
 | 分類 | 數量 | 備註 |
 |---|---:|---|
-| Canonical typed gameplay interaction | 28 | typed request/response payload；統一 ClientCore reply boundary |
-| Explicit legacy adapter | 1 | `S_COMMAND_QML_INTERACT` / `legacy.qml` |
+| Direct typed gameplay interaction | 29 | typed request/response payload；統一 ClientCore reply boundary |
+| Explicit legacy adapter | 0 | removed；QML 使用相同 direct typed path |
 | Implicit passthrough | 0 | built-in interaction 全部由 production descriptor registry 登記 |
 
 目前 local-response UI suite 的 14 個 production GUI cases 仍是可見操作與 wire capture 的主要回歸集合；這不代表只有 14 個 canonical interaction。Production matrix 由 `debug/QSanguosha.exe --interaction-inventory` 生成，CTest 另以 fake recorder 實際 dispatch 29/29 presenters。完整架構與特殊語意見 `docs/client-core-interaction-model.md`。

@@ -239,10 +239,22 @@ QList<FlowCase> requestCases()
                                QStringLiteral("g3")}}})},
         {QStringLiteral("qml interact"),
          request(S_COMMAND_QML_INTERACT, 129,
-                 QVariantList{QStringLiteral("qml/Choose.qml"), qmlParameters}),
-         object({{QStringLiteral("kind"), QStringLiteral("legacy_qml")},
-                 {QStringLiteral("qml_path"), QStringLiteral("qml/Choose.qml")},
-                 {QStringLiteral("parameters"), qmlParameters}})}
+                 QVariantMap{
+                     {QStringLiteral("schema_version"), 1},
+                     {QStringLiteral("type"), QStringLiteral("qsanguosha.qml")},
+                     {QStringLiteral("title"), QString()},
+                     {QStringLiteral("payload"), QVariantMap{
+                         {QStringLiteral("qml_path"), QStringLiteral("qml/Choose.qml")},
+                         {QStringLiteral("parameters"), qmlParameters}}},
+                     {QStringLiteral("response_schema"), QVariantMap()}}),
+         object({{QStringLiteral("interaction"), QVariantMap{
+                     {QStringLiteral("schema_version"), 1},
+                     {QStringLiteral("type"), QStringLiteral("qsanguosha.qml")},
+                     {QStringLiteral("title"), QString()},
+                     {QStringLiteral("payload"), QVariantMap{
+                         {QStringLiteral("qml_path"), QStringLiteral("qml/Choose.qml")},
+                         {QStringLiteral("parameters"), qmlParameters}}},
+                     {QStringLiteral("response_schema"), QVariantMap()}}}})}
     };
 }
 
@@ -321,7 +333,8 @@ QList<FlowCase> replyCases()
         object({{QStringLiteral("trigger"), QStringLiteral("jizhi#2:p1:p1")}})};
     const FlowCase amazingGrace{QStringLiteral("amazing grace"),
         reply(S_COMMAND_AMAZING_GRACE, 215, 115, 12),
-        object({{QStringLiteral("card_id"), 12}})};
+        object({{QStringLiteral("cancelled"), false},
+                {QStringLiteral("card_id"), 12}})};
     const FlowCase chooseCard{QStringLiteral("choose card"),
         reply(S_COMMAND_CHOOSE_CARD, 216, 116, 13),
         object({{QStringLiteral("cancelled"), false},
@@ -372,7 +385,7 @@ bool verifyRoundTrip(const FlowCase &flow)
     if (!expect(ProtocolGameplayPayloadRegistry::isMigratedFlow(flow.logical),
                 flow.name + QStringLiteral(" flow registered"))
         || !expect(ProtocolGameplayPayloadRegistry::encodeForWire(
-                       ProtocolVersion::V2, flow.logical, &wire, &error),
+                       flow.logical, &wire, &error),
                    flow.name + QStringLiteral(" V2 encode"))
         || !expect(wire.hasPayload && wire.payload.toMap() == flow.typed,
                    flow.name + QStringLiteral(" exact typed object"))) {
@@ -381,24 +394,20 @@ bool verifyRoundTrip(const FlowCase &flow)
 
     ProtocolMessage decoded;
     if (!expect(ProtocolGameplayPayloadRegistry::decodeFromWire(
-                    ProtocolVersion::V2, wire, &decoded, &error),
+                    wire, &decoded, &error),
                 flow.name + QStringLiteral(" V2 decode"))
-        || !expect(decoded.hasPayload == flow.logical.hasPayload
-                       && decoded.payload == flow.logical.payload,
-                   flow.name + QStringLiteral(" logical parity"))) {
+        || !expect(decoded.hasPayload && decoded.payload.toMap() == flow.typed,
+                   flow.name + QStringLiteral(" keeps typed V2 payload"))) {
         return false;
     }
 
-    const QByteArray v2Bytes = router.encode(ProtocolVersion::V2, flow.logical, &error);
+    const QByteArray v2Bytes = router.encode(flow.logical, &error);
     ProtocolMessage codecDecoded;
     if (!expect(!v2Bytes.isEmpty()
-                    && router.decode(ProtocolVersion::V2, v2Bytes, &codecDecoded).success
-                    && codecDecoded.hasPayload == flow.logical.hasPayload
-                    && codecDecoded.payload == flow.logical.payload,
-                flow.name + QStringLiteral(" codec boundary"))
-        || !expect(router.encode(ProtocolVersion::V1, flow.logical, &error)
-                       == router.encodeReplayV1(codecDecoded, &error),
-                   flow.name + QStringLiteral(" replay exact V1"))) {
+                    && router.decode(v2Bytes, &codecDecoded).success
+                    && codecDecoded.hasPayload
+                    && codecDecoded.payload.toMap() == flow.typed,
+                flow.name + QStringLiteral(" V2 codec boundary"))) {
         return false;
     }
 
@@ -408,10 +417,10 @@ bool verifyRoundTrip(const FlowCase &flow)
     extendedWire.payload = extended;
     ProtocolMessage extensionDecoded;
     if (!expect(ProtocolGameplayPayloadRegistry::decodeFromWire(
-                    ProtocolVersion::V2, extendedWire, &extensionDecoded, &error)
-                    && extensionDecoded.hasPayload == flow.logical.hasPayload
-                    && extensionDecoded.payload == flow.logical.payload,
-                flow.name + QStringLiteral(" ignores unknown fields"))) {
+                    extendedWire, &extensionDecoded, &error)
+                    && extensionDecoded.hasPayload
+                    && extensionDecoded.payload.toMap() == extended,
+                flow.name + QStringLiteral(" preserves unknown typed fields"))) {
         return false;
     }
 
@@ -422,17 +431,17 @@ bool verifyRoundTrip(const FlowCase &flow)
     ProtocolMessage sentinel = reply(S_COMMAND_SPEAK, 999, 998,
                                      QStringLiteral("unchanged"));
     if (!expect(!ProtocolGameplayPayloadRegistry::decodeFromWire(
-                    ProtocolVersion::V2, wrongSchema, &sentinel, &error)
+                    wrongSchema, &sentinel, &error)
                     && sentinel.payload == QStringLiteral("unchanged"),
                 flow.name + QStringLiteral(" rejects schema transactionally"))) {
         return false;
     }
 
-    ProtocolMessage legacyShape = flow.logical;
-    ProtocolMessage legacySentinel;
+    ProtocolMessage nonObjectWire = flow.logical;
+    ProtocolMessage nonObjectSentinel;
     return expect(!ProtocolGameplayPayloadRegistry::decodeFromWire(
-                      ProtocolVersion::V2, legacyShape, &legacySentinel, &error),
-                  flow.name + QStringLiteral(" rejects legacy V2 shape"));
+                      nonObjectWire, &nonObjectSentinel, &error),
+                  flow.name + QStringLiteral(" rejects non-object V2 shape"));
 }
 
 bool allRequestAndReplyFlows()
@@ -479,9 +488,11 @@ bool cancellationAndOptionalShapes()
          object({{QStringLiteral("cancelled"), true}})},
         {QStringLiteral("choose card cancel"), reply(S_COMMAND_CHOOSE_CARD, 307, 207, {}, false),
          object({{QStringLiteral("cancelled"), true}})},
-        {QStringLiteral("arrange cancel"), reply(S_COMMAND_ARRANGE_GENERAL, 308, 208, {}, false),
+        {QStringLiteral("amazing grace cancel"), reply(S_COMMAND_AMAZING_GRACE, 308, 208, {}, false),
          object({{QStringLiteral("cancelled"), true}})},
-        {QStringLiteral("qml cancel"), reply(S_COMMAND_QML_INTERACT, 309, 209, {}, false),
+        {QStringLiteral("arrange cancel"), reply(S_COMMAND_ARRANGE_GENERAL, 309, 209, {}, false),
+         object({{QStringLiteral("cancelled"), true}})},
+        {QStringLiteral("qml cancel"), reply(S_COMMAND_QML_INTERACT, 310, 210, {}, false),
          object({{QStringLiteral("has_value"), false}})}
     };
     for (const FlowCase &flow : cancellations) {
@@ -506,14 +517,13 @@ bool cancellationAndOptionalShapes()
     const FlowCase structuredQml{
         QStringLiteral("structured QML request"),
         request(S_COMMAND_QML_INTERACT, 312, structuredInteraction),
-        object({{QStringLiteral("kind"), QStringLiteral("structured")},
-                {QStringLiteral("interaction"), structuredInteraction}})};
+        object({{QStringLiteral("interaction"), structuredInteraction}})};
     return verifyRoundTrip(responseWithoutOptional)
         && verifyRoundTrip(arrangeWithoutPayload)
         && verifyRoundTrip(structuredQml);
 }
 
-bool flowAwareIdentityExceptions()
+bool nonInteractionFlowsFailClosed()
 {
     ProtocolMessage invokeNotification;
     invokeNotification.type = ProtocolMessageType::Notification;
@@ -534,18 +544,16 @@ bool flowAwareIdentityExceptions()
     surrenderInitiation.hasPayload = false;
 
     ProtocolMessage unrelated = request(S_COMMAND_SPEAK, 403, QStringLiteral("hello"));
-    const QList<ProtocolMessage> identities{
+    const QList<ProtocolMessage> nonInteractions{
         invokeNotification, surrenderInitiation, unrelated};
-    for (qsizetype index = 0; index < identities.size(); ++index) {
+    for (qsizetype index = 0; index < nonInteractions.size(); ++index) {
         ProtocolMessage wire;
         QString error;
-        if (!expect(!ProtocolGameplayPayloadRegistry::isMigratedFlow(identities.at(index)),
-                    QStringLiteral("identity flow %1 classification").arg(index))
-            || !expect(ProtocolGameplayPayloadRegistry::encodeForWire(
-                           ProtocolVersion::V2, identities.at(index), &wire, &error)
-                           && wire.hasPayload == identities.at(index).hasPayload
-                           && wire.payload == identities.at(index).payload,
-                       QStringLiteral("identity flow %1 unchanged").arg(index))) {
+        if (!expect(!ProtocolGameplayPayloadRegistry::isMigratedFlow(nonInteractions.at(index)),
+                    QStringLiteral("non-interaction flow %1 classification").arg(index))
+            || !expect(!ProtocolGameplayPayloadRegistry::encodeForWire(
+                           nonInteractions.at(index), &wire, &error),
+                       QStringLiteral("non-interaction flow %1 rejected").arg(index))) {
             return false;
         }
     }
@@ -557,7 +565,7 @@ int main()
 {
     const bool success = allRequestAndReplyFlows()
         && cancellationAndOptionalShapes()
-        && flowAwareIdentityExceptions();
+        && nonInteractionFlowsFailClosed();
     QTextStream(stdout) << "[AUTOTEST] PROTOCOL_ALL_INTERACTION_PAYLOAD_RESULT status="
                         << (success ? "PASS" : "FAIL")
                         << " cases=" << testCaseCount << "\n";

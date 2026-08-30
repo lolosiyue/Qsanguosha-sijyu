@@ -217,14 +217,14 @@ add_library(qsanguosha_engine STATIC
     src/core/protocol/protocol-message.cpp
     src/core/protocol/protocol-message.h
     src/core/protocol/protocol-message-utils.h
-    src/core/protocol/protocol-negotiation.cpp
-    src/core/protocol/protocol-negotiation.h
+    src/core/protocol/protocol-payload-registry.cpp
+    src/core/protocol/protocol-payload-registry.h
+    src/core/protocol/session/session-payloads.cpp
+    src/core/protocol/session/session-payloads.h
+    src/core/protocol/session/client-session-controller.cpp
+    src/core/protocol/session/client-session-controller.h
     src/core/protocol/protocol-runtime.cpp
     src/core/protocol/protocol-runtime.h
-    src/core/protocol/protocol-v1-codec.cpp
-    src/core/protocol/protocol-v1-codec.h
-    src/core/protocol/protocol-v1-message-adapter.cpp
-    src/core/protocol/protocol-v1-message-adapter.h
     src/core/protocol/protocol-v2-codec.cpp
     src/core/protocol/protocol-v2-codec.h
     src/core/protocol/protocol-version.h
@@ -421,6 +421,8 @@ if(QSAN_BUILD_SERVER)
         src/server/server-logger.cpp
         src/server/server-logger.h
         src/server/server-core.h
+        src/server/server-connection-context.cpp
+        src/server/server-connection-context.h
         src/server/server-status.h
     )
     set_source_files_properties(src/server/server-core.h PROPERTIES SKIP_AUTOMOC OFF)
@@ -651,6 +653,8 @@ if(QSAN_BUILD_GUI)
         ${QSAN_SOURCES}
         ${QSAN_MOC_HEADERS}
         ${QSAN_FORMS}
+        src/core/replay/replay-container.cpp
+        src/core/replay/replay-container.h
         src/ui/package-dialogs.cpp
         src/ui/package-dialogs.h
     )

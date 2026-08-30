@@ -8,14 +8,15 @@ namespace QSanProtocol {
 class ProtocolGameplayPayloadRegistry
 {
 public:
-    static bool encodeForWire(ProtocolVersion activeVersion,
-                              const ProtocolMessage &logicalMessage,
+    static bool encodeForWire(const ProtocolMessage &logicalMessage,
                               ProtocolMessage *wireMessage,
                               QString *error = nullptr);
-    static bool decodeFromWire(ProtocolVersion activeVersion,
-                               const ProtocolMessage &wireMessage,
+    static bool decodeFromWire(const ProtocolMessage &wireMessage,
                                ProtocolMessage *logicalMessage,
                                QString *error = nullptr);
+    static bool decodeReplyDomainValue(const ProtocolMessage &wireMessage,
+                                       QVariant *domainValue,
+                                       QString *error = nullptr);
 
     static bool isMigratedFlow(const ProtocolMessage &message);
     static bool isMigratedCommand(int command);

@@ -249,7 +249,7 @@ QJsonObject LocalResponseUiCase::finalExpectation() const
     return m_root.value(QStringLiteral("expect_final")).toObject();
 }
 
-bool LocalResponseUiCase::makeRequestPacket(Packet *packet, QString *actualCommandName,
+bool LocalResponseUiCase::makeRequestMessage(ProtocolMessage *message, QString *actualCommandName,
     QVariant *actualBody, const QMap<QString, int> &cardAliases, QString *error) const
 {
     const QJsonObject requestObject = request();
@@ -268,15 +268,21 @@ bool LocalResponseUiCase::makeRequestPacket(Packet *packet, QString *actualComma
     if (!body.isValid() && !error->isEmpty())
         return false;
 
-    Packet requestPacket(S_SRC_ROOM | S_TYPE_REQUEST | S_DEST_CLIENT, command);
-    requestPacket.globalSerial = requestObject.value(QStringLiteral("serial")).toInt();
-    if (requestPacket.globalSerial <= 0) {
+    ProtocolMessage requestMessage;
+    requestMessage.type = ProtocolMessageType::Request;
+    requestMessage.source = ProtocolEndpoint::Room;
+    requestMessage.destination = ProtocolEndpoint::Client;
+    requestMessage.command = static_cast<int>(command);
+    requestMessage.messageId = requestObject.value(QStringLiteral("serial")).toInt();
+    if (requestMessage.messageId == 0) {
         *error = QStringLiteral("request.serial must be positive");
         return false;
     }
-    requestPacket.setMessageBody(body);
+    requestMessage.hasPayload = !body.isNull();
+    if (requestMessage.hasPayload)
+        requestMessage.payload = body;
 
-    *packet = requestPacket;
+    *message = requestMessage;
     *actualCommandName = commandName(command);
     *actualBody = body;
     return true;

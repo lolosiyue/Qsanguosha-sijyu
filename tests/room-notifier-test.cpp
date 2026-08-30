@@ -1,6 +1,7 @@
 #include "engine-bootstrap.h"
 #include "json.h"
 #include "protocol.h"
+#include "protocol/protocol-runtime.h"
 #include "protocol/skill-instance-message.h"
 #include "protocol/state/player-ui-state.h"
 #include "room-test-access.h"
@@ -23,19 +24,20 @@ struct PacketRecord
     QVariant body;
 };
 
-class PacketRecorder
+class MessageRecorder
 {
 public:
     void watch(ServerPlayer *player)
     {
         QObject::connect(player, &ServerPlayer::message_ready, player,
                          [this, player](const QByteArray &message) {
-            Packet packet;
-            if (!packet.parse(message)) {
+            ProtocolMessage packet;
+            if (!ProtocolCodecRouter().decode(message, &packet).success) {
                 parseFailed = true;
                 return;
             }
-            records << PacketRecord{player, packet.getCommandType(), packet.getMessageBody()};
+            records << PacketRecord{player,
+                static_cast<CommandType>(packet.command), packet.payload};
         });
     }
 
@@ -68,7 +70,7 @@ public:
     bool parseFailed = false;
 };
 
-static bool expectCount(const PacketRecorder &recorder, ServerPlayer *receiver,
+static bool expectCount(const MessageRecorder &recorder, ServerPlayer *receiver,
                         CommandType command, int expected, const char *context)
 {
     const int actual = recorder.count(receiver, command);
@@ -78,7 +80,7 @@ static bool expectCount(const PacketRecorder &recorder, ServerPlayer *receiver,
     return false;
 }
 
-static bool directNotificationArrivesOnce(Room &room, PacketRecorder &recorder,
+static bool directNotificationArrivesOnce(Room &room, MessageRecorder &recorder,
                                           ServerPlayer *player)
 {
     recorder.clear();
@@ -91,7 +93,7 @@ static bool directNotificationArrivesOnce(Room &room, PacketRecorder &recorder,
         && record != nullptr && record->body == body;
 }
 
-static bool controllerReceivesLogicalPlayerNotification(Room &room, PacketRecorder &recorder,
+static bool controllerReceivesLogicalPlayerNotification(Room &room, MessageRecorder &recorder,
                                                         ServerPlayer *controller,
                                                         ServerPlayer *controlled,
                                                         ServerPlayer *other)
@@ -106,7 +108,7 @@ static bool controllerReceivesLogicalPlayerNotification(Room &room, PacketRecord
         && expectCount(recorder, other, S_COMMAND_LOG_EVENT, 0, "unrelated player notify");
 }
 
-static bool sharedControllerIsDeduplicated(Room &room, PacketRecorder &recorder,
+static bool sharedControllerIsDeduplicated(Room &room, MessageRecorder &recorder,
                                            ServerPlayer *controller,
                                            ServerPlayer *firstControlled,
                                            ServerPlayer *secondControlled)
@@ -131,7 +133,7 @@ static bool sharedControllerIsDeduplicated(Room &room, PacketRecorder &recorder,
                        "controller included in broadcast");
 }
 
-static bool ownerOnlySkillStateFollowsController(Room &room, PacketRecorder &recorder,
+static bool ownerOnlySkillStateFollowsController(Room &room, MessageRecorder &recorder,
                                                  ServerPlayer *controller,
                                                  ServerPlayer *owner,
                                                  ServerPlayer *other)
@@ -169,7 +171,7 @@ static bool ownerOnlySkillStateFollowsController(Room &room, PacketRecorder &rec
         && message.value.toInt() == 3;
 }
 
-static bool presentationPayloadsStayStable(Room &room, PacketRecorder &recorder,
+static bool presentationPayloadsStayStable(Room &room, MessageRecorder &recorder,
                                            ServerPlayer *controller,
                                            ServerPlayer *owner,
                                            ServerPlayer *target)
@@ -262,7 +264,7 @@ int runRoomNotifierTests()
     ServerPlayer *firstControlled = RoomTestAccess::addPlayer(room, QStringLiteral("controlled_b"));
     ServerPlayer *secondControlled = RoomTestAccess::addPlayer(room, QStringLiteral("controlled_c"));
 
-    PacketRecorder recorder;
+        MessageRecorder recorder;
     recorder.watch(controller);
     recorder.watch(firstControlled);
     recorder.watch(secondControlled);

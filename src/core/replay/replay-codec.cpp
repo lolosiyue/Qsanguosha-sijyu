@@ -1,15 +1,11 @@
 #include "replay-codec.h"
 
-#include "protocol.h"
-#include "protocol/protocol-v1-codec.h"
-#include "protocol/protocol-v2-codec.h"
+#include "protocol/protocol-payload-registry.h"
 
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonParseError>
 
-#include <cmath>
-#include <cstring>
 #include <limits>
 
 using namespace QSanProtocol;
@@ -17,9 +13,6 @@ using namespace QSanReplay;
 
 namespace
 {
-const QByteArray ReplayHeaderPrefix("QSAN_REPLAY ");
-const QByteArray ReplayHeaderMagic("QSAN_REPLAY");
-
 ReplayLoadResult failure(ReplayLoadError error, const QString &detail)
 {
     ReplayLoadResult result;
@@ -28,77 +21,47 @@ ReplayLoadResult failure(ReplayLoadError error, const QString &detail)
     return result;
 }
 
-bool jsonInteger(const QJsonValue &value, int *output)
+bool exactKeys(const QJsonObject &object, const QStringList &keys)
 {
-    if (!value.isDouble() || output == nullptr)
+    if (object.size() != keys.size())
         return false;
-    const double number = value.toDouble();
-    if (!std::isfinite(number) || std::trunc(number) != number
-        || number < std::numeric_limits<int>::min()
-        || number > std::numeric_limits<int>::max()) {
-        return false;
-    }
-    *output = static_cast<int>(number);
-    return true;
-}
-
-bool parseElapsed(QByteArrayView text, qint64 *elapsed)
-{
-    if (text.isEmpty() || elapsed == nullptr)
-        return false;
-
-    qint64 value = 0;
-    for (const char character : text) {
-        if (character < '0' || character > '9')
+    for (const QString &key : keys) {
+        if (!object.contains(key))
             return false;
-        const int digit = character - '0';
-        if (value > (std::numeric_limits<qint64>::max() - digit) / 10)
-            return false;
-        value = value * 10 + digit;
-    }
-    *elapsed = value;
-    return true;
-}
-
-bool startsWith(QByteArrayView value, const QByteArray &prefix)
-{
-    return value.size() >= prefix.size()
-        && std::memcmp(value.data(), prefix.constData(),
-                       static_cast<size_t>(prefix.size())) == 0;
-}
-
-bool isBlank(QByteArrayView line)
-{
-    for (const char character : line) {
-        if (character != ' ' && character != '\t'
-            && character != '\r' && character != '\n') {
-            return false;
-        }
     }
     return true;
 }
 
-bool nextLine(QByteArrayView data, qsizetype *cursor,
-              qsizetype *lineNumber, QByteArrayView *line)
+bool parseUnsignedDecimal(const QString &text, qint64 *value)
 {
-    if (cursor == nullptr || lineNumber == nullptr || line == nullptr
-        || *cursor < 0 || *cursor > data.size()) {
+    if (text.isEmpty() || value == nullptr)
+        return false;
+
+    qint64 parsed = 0;
+    for (const QChar character : text) {
+        if (!character.isDigit())
+            return false;
+        const int digit = character.digitValue();
+        if (parsed > (std::numeric_limits<qint64>::max() - digit) / 10)
+            return false;
+        parsed = parsed * 10 + digit;
+    }
+    *value = parsed;
+    return true;
+}
+
+bool parseJsonObject(QByteArrayView line, QJsonObject *object, QString *error)
+{
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(
+        QByteArray(line.data(), line.size()), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        if (error != nullptr)
+            *error = QStringLiteral("Replay line is not a JSON object: %1")
+                .arg(parseError.errorString());
         return false;
     }
-
-    const qsizetype start = *cursor;
-    qsizetype end = data.indexOf('\n', start);
-    if (end < 0) {
-        end = data.size();
-        *cursor = data.size() + 1;
-    } else {
-        *cursor = end + 1;
-    }
-
-    *line = QByteArrayView(data.data() + start, end - start);
-    if (!line->isEmpty() && line->at(line->size() - 1) == '\r')
-        *line = line->first(line->size() - 1);
-    ++(*lineNumber);
+    *object = document.object();
     return true;
 }
 }
@@ -106,191 +69,188 @@ bool nextLine(QByteArrayView data, qsizetype *cursor,
 ReplayLoadResult ReplayReader::read(QByteArrayView data) const
 {
     if (data.isEmpty())
-        return failure(ReplayLoadError::EmptyInput, QStringLiteral("Replay input is empty"));
+        return failure(ReplayLoadError::EmptyInput,
+                       QStringLiteral("Replay input is empty"));
 
-    qsizetype cursor = 0;
-    qsizetype lineNumber = 0;
-    qsizetype firstLineStart = 0;
-    qsizetype firstLineNumber = 0;
-    QByteArrayView first;
-    while (cursor <= data.size()) {
-        const qsizetype lineStart = cursor;
-        QByteArrayView line;
-        if (!nextLine(data, &cursor, &lineNumber, &line))
-            break;
-        if (isBlank(line))
-            continue;
-        firstLineStart = lineStart;
-        firstLineNumber = lineNumber;
-        first = line;
-        break;
+    const QByteArray bytes(data.data(), data.size());
+    const QList<QByteArray> lines = bytes.split('\n');
+    if (lines.isEmpty() || lines.constFirst().isEmpty())
+        return failure(ReplayLoadError::InvalidHeader,
+                       QStringLiteral("Replay header is missing"));
+    if (lines.constFirst().size() > MaxHeaderSize)
+        return failure(ReplayLoadError::InvalidHeader,
+                       QStringLiteral("Replay header exceeds the size limit"));
+
+    QJsonObject headerObject;
+    QString jsonError;
+    if (!parseJsonObject(lines.constFirst(), &headerObject, &jsonError))
+        return failure(ReplayLoadError::InvalidHeader, jsonError);
+
+    const QStringList headerKeys {
+        QStringLiteral("format"),
+        QStringLiteral("schema_version"),
+        QStringLiteral("format_version"),
+        QStringLiteral("protocol_version"),
+        QStringLiteral("game_version"),
+        QStringLiteral("mod_name"),
+        QStringLiteral("takeover")
+    };
+    if (!exactKeys(headerObject, headerKeys)
+        || headerObject.value(QStringLiteral("format")).toString()
+            != QLatin1String("qsanguosha-replay")
+        || headerObject.value(QStringLiteral("schema_version")).toInt(-1) != 1
+        || !headerObject.value(QStringLiteral("game_version")).isString()
+        || !headerObject.value(QStringLiteral("mod_name")).isString()
+        || !headerObject.value(QStringLiteral("takeover")).isBool()) {
+        return failure(ReplayLoadError::InvalidHeader,
+                       QStringLiteral("Replay header does not match schema version 1"));
     }
-    if (first.isEmpty())
-        return failure(ReplayLoadError::EmptyInput, QStringLiteral("Replay input contains no events"));
-
-    ReplayHeader header;
-    if (startsWith(first, ReplayHeaderMagic)) {
-        if (first.size() > MaxHeaderSize) {
-            return failure(ReplayLoadError::PacketTooLarge,
-                           QStringLiteral("Replay header exceeds 4096 bytes"));
-        }
-        if (!startsWith(first, ReplayHeaderPrefix)) {
-            return failure(ReplayLoadError::InvalidHeader,
-                           QStringLiteral("Replay header must begin with 'QSAN_REPLAY '"));
-        }
-
-        QJsonParseError parseError;
-        const QByteArray json(first.data() + ReplayHeaderPrefix.size(),
-                              first.size() - ReplayHeaderPrefix.size());
-        const QJsonDocument document = QJsonDocument::fromJson(json, &parseError);
-        if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-            return failure(ReplayLoadError::InvalidHeader,
-                           QStringLiteral("Replay header JSON must be an object: %1")
-                               .arg(parseError.errorString()));
-        }
-
-        const QJsonObject object = document.object();
-        int formatVersion = 0;
-        int protocolVersion = 0;
-        if (!object.contains(QStringLiteral("format_version"))
-            || !jsonInteger(object.value(QStringLiteral("format_version")), &formatVersion)
-            || !object.contains(QStringLiteral("protocol_version"))
-            || !jsonInteger(object.value(QStringLiteral("protocol_version")), &protocolVersion)) {
-            return failure(ReplayLoadError::InvalidHeader,
-                           QStringLiteral("Replay header requires integer format_version and protocol_version"));
-        }
-        if (formatVersion != static_cast<int>(ReplayFormatVersion::V2)) {
-            const QString detail = formatVersion > static_cast<int>(ReplayFormatVersion::V2)
-                ? QStringLiteral("Replay format version %1 is newer than supported version 2").arg(formatVersion)
-                : QStringLiteral("Replay format version %1 is too old").arg(formatVersion);
-            return failure(ReplayLoadError::UnsupportedFormatVersion, detail);
-        }
-        if (protocolVersion != static_cast<int>(ProtocolVersion::V2)) {
-            return failure(ReplayLoadError::UnsupportedProtocolVersion,
-                           QStringLiteral("Unsupported replay protocol version %1").arg(protocolVersion));
-        }
-
-        header.formatVersion = ReplayFormatVersion::V2;
-        header.protocolVersion = ProtocolVersion::V2;
-    } else {
-        header.formatVersion = ReplayFormatVersion::LegacyV1;
-        header.protocolVersion = ProtocolVersion::V1;
-        cursor = firstLineStart;
-        lineNumber = firstLineNumber - 1;
-    }
-
-    const ProtocolCodecRouter router;
-    QList<ReplayEvent> decodedEvents;
-    qint64 previousElapsed = 0;
-    bool hasPreviousElapsed = false;
-    QByteArrayView line;
-    while (nextLine(data, &cursor, &lineNumber, &line)) {
-        if (isBlank(line))
-            continue;
-
-        const qsizetype space = line.indexOf(' ');
-        if (space <= 0 || space == line.size() - 1) {
-            return failure(ReplayLoadError::InvalidTimelineEntry,
-                           QStringLiteral("Replay line %1 must contain elapsed time and a message")
-                               .arg(lineNumber));
-        }
-
-        qint64 elapsedMs = 0;
-        if (!parseElapsed(QByteArrayView(line).first(space), &elapsedMs)) {
-            return failure(ReplayLoadError::InvalidElapsedTime,
-                           QStringLiteral("Replay line %1 has an invalid elapsed time")
-                               .arg(lineNumber));
-        }
-        if (header.formatVersion == ReplayFormatVersion::V2
-            && hasPreviousElapsed && elapsedMs < previousElapsed) {
-            return failure(ReplayLoadError::InvalidElapsedTime,
-                           QStringLiteral("Replay line %1 decreases elapsed time")
-                               .arg(lineNumber));
-        }
-
-        const QByteArrayView rawMessage = line.sliced(space + 1);
-        const qsizetype maxPacketSize = header.protocolVersion == ProtocolVersion::V2
-            ? ProtocolV2Codec::MaxPacketSize : ProtocolV1Codec::MaxPacketSize;
-        if (rawMessage.size() > maxPacketSize) {
-            return failure(ReplayLoadError::PacketTooLarge,
-                           QStringLiteral("Replay line %1 message exceeds 65535 bytes")
-                               .arg(lineNumber));
-        }
-
-        ProtocolMessage message;
-        const ProtocolDecodeResult decode = router.decode(
-            header.protocolVersion, rawMessage, &message);
-        if (!decode.success) {
-            return failure(ReplayLoadError::ProtocolDecodeFailure,
-                           QStringLiteral("Replay line %1 protocol decode failed: %2")
-                               .arg(lineNumber).arg(decode.detail));
-        }
-        if (message.command == S_COMMAND_PROTOCOL_SWITCH) {
-            return failure(ReplayLoadError::ProtocolDecodeFailure,
-                           QStringLiteral("Replay line %1 contains a protocol switch event")
-                               .arg(lineNumber));
-        }
-
-        ReplayEvent event;
-        event.elapsedMs = elapsedMs;
-        event.message = message;
-        decodedEvents.append(event);
-        previousElapsed = elapsedMs;
-        hasPreviousElapsed = true;
-    }
+    if (headerObject.value(QStringLiteral("format_version")).toInt(-1) != 2)
+        return failure(ReplayLoadError::UnsupportedFormatVersion,
+                       QStringLiteral("Only Replay V2 is supported"));
+    if (headerObject.value(QStringLiteral("protocol_version")).toInt(-1) != 2)
+        return failure(ReplayLoadError::UnsupportedProtocolVersion,
+                       QStringLiteral("Only Protocol V2 replay messages are supported"));
 
     ReplayLoadResult result;
+    result.header.format = QStringLiteral("qsanguosha-replay");
+    result.header.schemaVersion = 1;
+    result.header.formatVersion = ReplayFormatVersion::V2;
+    result.header.protocolVersion = ProtocolVersion::V2;
+    result.header.gameVersion = headerObject.value(QStringLiteral("game_version")).toString();
+    result.header.modName = headerObject.value(QStringLiteral("mod_name")).toString();
+    result.header.takeover = headerObject.value(QStringLiteral("takeover")).toBool();
+
+    ProtocolCodecRouter router;
+    qint64 lastElapsed = 0;
+    bool hasEvents = false;
+    QSet<quint64> messageIds;
+    for (qsizetype index = 1; index < lines.size(); ++index) {
+        QByteArray line = lines.at(index);
+        if (line.endsWith('\r'))
+            line.chop(1);
+        if (line.isEmpty()) {
+            if (index + 1 == lines.size())
+                continue;
+            return failure(ReplayLoadError::InvalidTimelineEntry,
+                           QStringLiteral("Blank replay event at line %1").arg(index + 1));
+        }
+
+        QJsonObject eventObject;
+        if (!parseJsonObject(line, &eventObject, &jsonError))
+            return failure(ReplayLoadError::InvalidTimelineEntry,
+                           QStringLiteral("Line %1: %2").arg(index + 1).arg(jsonError));
+        const QStringList eventKeys {
+            QStringLiteral("schema_version"),
+            QStringLiteral("elapsed_ms"),
+            QStringLiteral("message")
+        };
+        if (!exactKeys(eventObject, eventKeys)
+            || eventObject.value(QStringLiteral("schema_version")).toInt(-1) != 1
+            || !eventObject.value(QStringLiteral("elapsed_ms")).isString()
+            || !eventObject.value(QStringLiteral("message")).isObject()) {
+            return failure(ReplayLoadError::InvalidTimelineEntry,
+                           QStringLiteral("Line %1 does not match the Replay V2 event schema")
+                               .arg(index + 1));
+        }
+
+        qint64 elapsed = 0;
+        if (!parseUnsignedDecimal(
+                eventObject.value(QStringLiteral("elapsed_ms")).toString(), &elapsed)
+            || (hasEvents && elapsed < lastElapsed)) {
+            return failure(ReplayLoadError::InvalidElapsedTime,
+                           QStringLiteral("Line %1 has an invalid or non-monotonic elapsed time")
+                               .arg(index + 1));
+        }
+
+        const QByteArray encodedMessage = QJsonDocument(
+            eventObject.value(QStringLiteral("message")).toObject())
+                                              .toJson(QJsonDocument::Compact);
+        ProtocolMessage message;
+        const ProtocolDecodeResult decoded = router.decode(encodedMessage, &message);
+        if (!decoded.success) {
+            return failure(ReplayLoadError::ProtocolDecodeFailure,
+                           QStringLiteral("Line %1: %2").arg(index + 1).arg(decoded.detail));
+        }
+        if (message.messageId == 0 || messageIds.contains(message.messageId)) {
+            return failure(ReplayLoadError::ProtocolDecodeFailure,
+                           QStringLiteral("Line %1 has a missing or duplicate message_id")
+                               .arg(index + 1));
+        }
+        if (!ProtocolPayloadRegistry::isReplayEligible(message, result.header.takeover)) {
+            return failure(ReplayLoadError::ProtocolDecodeFailure,
+                           QStringLiteral("Line %1 contains a flow not allowed by the replay policy")
+                               .arg(index + 1));
+        }
+
+        messageIds.insert(message.messageId);
+        result.events.append(ReplayEvent { elapsed, message });
+        lastElapsed = elapsed;
+        hasEvents = true;
+    }
+
     result.success = true;
-    result.header = header;
-    result.events = decodedEvents;
+    result.error = ReplayLoadError::None;
     return result;
 }
 
-ReplayWriter::ReplayWriter()
+ReplayWriter::ReplayWriter(const QString &gameVersion,
+                           const QString &modName,
+                           bool takeover)
 {
-    reset();
+    m_header.gameVersion = gameVersion;
+    m_header.modName = modName;
+    m_header.takeover = takeover;
 }
 
-bool ReplayWriter::appendEvent(
-    qint64 elapsedMs, const ProtocolMessage &message, QString *error)
+bool ReplayWriter::appendEvent(qint64 elapsedMs,
+                               const ProtocolMessage &message,
+                               QString *error)
 {
-    if (error != nullptr)
-        error->clear();
-    if (message.command == S_COMMAND_PROTOCOL_SWITCH)
-        return true;
-    if (elapsedMs < 0) {
+    if (elapsedMs < 0 || (m_hasEvents && elapsedMs < m_lastElapsedMs)) {
         if (error != nullptr)
-            *error = QStringLiteral("Replay elapsed time must not be negative");
+            *error = QStringLiteral("Replay elapsed time must be non-negative and monotonic");
         return false;
     }
-    if (m_hasEvents && elapsedMs < m_lastElapsedMs) {
+    if (!ProtocolPayloadRegistry::isReplayEligible(message, m_header.takeover)) {
         if (error != nullptr)
-            *error = QStringLiteral("Replay elapsed time must be monotonic");
+            *error = QStringLiteral("Protocol flow is not eligible for this replay mode");
         return false;
     }
 
     ProtocolMessage replayMessage = message;
-    if (replayMessage.messageId == 0) {
+    replayMessage.version = ProtocolVersion::V2;
+    if (replayMessage.messageId == 0)
         replayMessage.messageId = nextAvailableMessageId();
-        if (replayMessage.messageId == 0) {
-            if (error != nullptr)
-                *error = QStringLiteral("Replay-local message IDs are exhausted");
-            return false;
-        }
+    else if (m_usedMessageIds.contains(replayMessage.messageId)) {
+        if (error != nullptr)
+            *error = QStringLiteral("Replay message_id must be unique");
+        return false;
     } else {
         m_usedMessageIds.insert(replayMessage.messageId);
     }
-
-    QString encodeError;
-    const QByteArray encoded = m_router.encode(
-        ProtocolVersion::V2, replayMessage, &encodeError);
-    if (encoded.isEmpty()) {
+    if (replayMessage.messageId == 0) {
         if (error != nullptr)
-            *error = encodeError;
+            *error = QStringLiteral("Replay message_id space is exhausted");
         return false;
     }
 
-    m_eventRecords.append(QByteArray::number(elapsedMs) + ' ' + encoded);
+    QString encodeError;
+    const QByteArray encoded = m_router.encode(replayMessage, &encodeError);
+    QJsonParseError parseError;
+    const QJsonDocument messageDocument = QJsonDocument::fromJson(encoded, &parseError);
+    if (encoded.isEmpty() || parseError.error != QJsonParseError::NoError
+        || !messageDocument.isObject()) {
+        if (error != nullptr)
+            *error = encodeError.isEmpty() ? parseError.errorString() : encodeError;
+        return false;
+    }
+
+    QJsonObject eventObject;
+    eventObject.insert(QStringLiteral("schema_version"), 1);
+    eventObject.insert(QStringLiteral("elapsed_ms"), QString::number(elapsedMs));
+    eventObject.insert(QStringLiteral("message"), messageDocument.object());
+    m_eventRecords.append(QJsonDocument(eventObject).toJson(QJsonDocument::Compact));
     m_lastElapsedMs = elapsedMs;
     m_hasEvents = true;
     return true;
@@ -307,7 +267,7 @@ void ReplayWriter::reset()
 
 ReplayHeader ReplayWriter::header() const
 {
-    return ReplayHeader();
+    return m_header;
 }
 
 QList<QByteArray> ReplayWriter::eventRecords() const
@@ -317,7 +277,8 @@ QList<QByteArray> ReplayWriter::eventRecords() const
 
 QByteArray ReplayWriter::rawReplayData() const
 {
-    QByteArray data = headerLine();
+    QByteArray data = headerLine(
+        m_header.gameVersion, m_header.modName, m_header.takeover);
     data.append('\n');
     for (const QByteArray &record : m_eventRecords) {
         data.append(record);
@@ -326,9 +287,19 @@ QByteArray ReplayWriter::rawReplayData() const
     return data;
 }
 
-QByteArray ReplayWriter::headerLine()
+QByteArray ReplayWriter::headerLine(const QString &gameVersion,
+                                    const QString &modName,
+                                    bool takeover)
 {
-    return QByteArrayLiteral("QSAN_REPLAY {\"format_version\":2,\"protocol_version\":2}");
+    QJsonObject headerObject;
+    headerObject.insert(QStringLiteral("format"), QStringLiteral("qsanguosha-replay"));
+    headerObject.insert(QStringLiteral("schema_version"), 1);
+    headerObject.insert(QStringLiteral("format_version"), 2);
+    headerObject.insert(QStringLiteral("protocol_version"), 2);
+    headerObject.insert(QStringLiteral("game_version"), gameVersion);
+    headerObject.insert(QStringLiteral("mod_name"), modName);
+    headerObject.insert(QStringLiteral("takeover"), takeover);
+    return QJsonDocument(headerObject).toJson(QJsonDocument::Compact);
 }
 
 quint64 ReplayWriter::nextAvailableMessageId()
