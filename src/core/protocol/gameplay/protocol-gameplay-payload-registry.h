@@ -17,6 +17,7 @@ public:
                                ProtocolMessage *logicalMessage,
                                QString *error = nullptr);
 
+    static bool isMigratedFlow(const ProtocolMessage &message);
     static bool isMigratedCommand(int command);
     static int migratedCommandCount();
 };

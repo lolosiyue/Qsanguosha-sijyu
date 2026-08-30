@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "name": "surrender_v1",
+  "packages": ["standard"],
+  "bootstrap": {
+    "mode": "02p",
+    "self": { "object_name": "self", "screen_name": "Tester", "general": "caocao", "hp": 4, "max_hp": 4, "phase": "NotActive", "skills": [] },
+    "players": [{ "object_name": "target", "screen_name": "Target", "general": "liubei", "hp": 4, "max_hp": 4, "alive": true }],
+    "cards": []
+  },
+  "request": { "api": "raw", "command": "S_COMMAND_SURRENDER", "serial": 1106, "wire_version": 1, "raw_body": "caocao" },
+  "expect_presented": {
+    "client_status": "AskForSkillInvoke",
+    "interaction_request": {
+      "type": "surrender", "request_id": 1, "server_serial": 1106, "command": 34,
+      "skill": "surrender", "cancelable": true, "response_schema": "option",
+      "payload": { "enumerated": true, "options": [{ "value": "yes" }, { "value": "no" }] }
+    },
+    "buttons": { "ok": { "visible": true, "enabled": true }, "cancel": { "visible": true, "enabled": true } }
+  },
+  "actions": [{ "type": "invoke_skill_no" }],
+  "expect_reply": { "command": "S_COMMAND_SURRENDER", "local_serial": 1106, "invoke": false },
+  "expect_final": { "client_status": "NotActive", "open_dialog_count": 0 }
+}
