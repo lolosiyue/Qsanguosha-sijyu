@@ -29,6 +29,7 @@
     "api": "askForSkillInvoke",
     "command": "S_COMMAND_INVOKE_SKILL",
     "serial": 1001,
+    "wire_version": 1,
     "args": {
       "skill": "hujia",
       "data": ""
@@ -36,6 +37,19 @@
   },
   "expect_presented": {
     "client_status": "AskForSkillInvoke",
+    "interaction_request": {
+      "type": "skill_invoke",
+      "request_id": 1,
+      "server_serial": 1001,
+      "command": 8,
+      "skill": "hujia",
+      "cancelable": true,
+      "response_schema": "option",
+      "payload": {
+        "enumerated": true,
+        "options": [{ "value": "yes" }, { "value": "no" }]
+      }
+    },
     "buttons": {
       "ok": { "visible": true, "enabled": true },
       "cancel": { "visible": true, "enabled": true }

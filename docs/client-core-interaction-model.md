@@ -3,9 +3,9 @@
 - 狀態：F1.1 Architecture Cleanup 完成（2026-08-29）
 - 範圍：PR #13 的 client interaction 中間層
 - 相容邊界：不改 server gameplay、RoomScene UI 或 ClientCore typed model；
-  Protocol V2 已逐連線啟用，首個 typed wire payload 僅涵蓋
-  `S_COMMAND_MULTIPLE_CHOICE`。TUI、Android、WASM 與 structured `askForQml`
-  仍不在本階段。
+  Protocol V2 已逐連線啟用，typed wire payload 涵蓋 29/29 production
+  interaction。`QML_INTERACT` 的 legacy／structured union 只在 wire boundary
+  包裝；TUI、Android、WASM 與完整 structured `askForQml` model 仍不在本階段。
 
 ## 最終分類
 
@@ -113,10 +113,12 @@ ClientCore 在 request 啟動時移除其他 key。Choice 的 `synthetic_cancel`
 
 所有 accepted UI response 經 `Client::submitInteractionResponse()` 補上 request id、server serial、command，再由 ClientCore 驗證。只有 accepted response 才可進入 `LegacyV1InteractionReplyAdapter`。該 adapter 名稱保留歷史來源；其輸出現在是 logical payload，不代表連線必定使用 V1。
 
-`S_COMMAND_MULTIPLE_CHOICE` 的 logical request 仍為四個字串，logical reply
-仍為 scalar choice。`ProtocolCodecRouter` 的 registry 只在 V2 wire 邊界把兩者
-轉為 schema-versioned objects；因此 V1/V2 產生完全相同的 canonical
+全部 29 個 production interaction 的 logical request/reply 仍維持既有 scalar／array／numeric
+形狀。`ProtocolCodecRouter` 的 registry 只在 V2 wire 邊界轉成
+schema-versioned objects；因此 V1/V2 產生完全相同的 canonical
 `InteractionRequest`，ClientCore 與 Desktop presenter 不含 protocol-version branch。
+`CHOOSE_GENERAL` 仍保留 `enumerated=false`，不會在 client 阻擋 FreeChoose。
+`INVOKE_SKILL` Notification 與 `SURRENDER` initiation Request 仍是明確 identity flow。
 
 Adapter 保留既有 wire 細節，包括：
 
@@ -171,8 +173,10 @@ debug\QSanguosha.exe --interaction-inventory artifacts\client-core-interaction-m
 |---|---|
 | Protocol V1 codec boundary | Complete |
 | Protocol V2 codec／runtime activation | Complete |
-| Typed gameplay payload migration | In Progress（1/29：`MULTIPLE_CHOICE`） |
+| Typed gameplay payload migration | Complete（29/29 production interactions） |
 | Capability negotiation | Complete |
 | Replay version bump | Not Started |
 
-Replay version bump 與其餘 28 個 payload 不屬 F1.1。
+Replay version bump 仍是獨立後續工作。`CHOOSE_DIRECTION → MULTIPLE_CHOICE`
+與 `LUCK_CARD → INVOKE_SKILL` 的歷史 aliased reply command 已由
+`RequestCoordinator` 相容層與 dedicated typed reply identity 同時支援。
