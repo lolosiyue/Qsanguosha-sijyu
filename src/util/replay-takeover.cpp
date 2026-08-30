@@ -2,7 +2,6 @@
 #include "recorder.h"
 #include "replay-game-state.h"
 #include "game-snapshot.h"
-#include "recorder.h"
 #include "client.h"
 #include "clientplayer.h"
 #include "engine.h"
@@ -40,7 +39,10 @@ void ReplayTakeoverManager::enableTakeover()
 
     m_takeoverEnabled = true;
     m_startPairIndex = m_replayer->getCurrentPairIndex();
-    m_startTime = QDateTime::currentDateTime();
+
+    delete m_newRecorder;
+    m_newRecorder = new Recorder(this);
+    m_newCommands.clear();
 
     initializeFromReplay();
     syncHandcards(m_takeoverTarget);
@@ -79,19 +81,10 @@ void ReplayTakeoverManager::initializeFromReplay()
     if (!m_replayer)
         return;
 
+    delete m_gameState;
     m_gameState = new ReplayGameState(this);
-
-    QList<QPair<int, QString>> pairs;
-    int currentIndex = m_replayer->getCurrentPairIndex();
-    int duration = m_replayer->getDuration() * 1000;
-
-    for (int i = 0; i <= currentIndex; i++) {
-        int elapsed = m_replayer->getCurrentElapsed();
-        QString cmd;
-        pairs << qMakePair(elapsed, cmd);
-    }
-
-    m_gameState->rebuildFromCommands(pairs, currentIndex);
+    m_gameState->rebuildFromEvents(
+        m_replayer->events(), m_replayer->getCurrentPairIndex());
 }
 
 void ReplayTakeoverManager::syncHandcards(const QString &playerName)
@@ -109,19 +102,20 @@ void ReplayTakeoverManager::syncHandcards(const QString &playerName)
 
     JsonArray knownCardsArg;
     knownCardsArg << playerName << JsonUtils::toJsonArray(snapshot->handcards);
-    ClientInstance->processServerPacket(QString("{\"command\":%1,\"body\":%2}")
-        .arg(S_COMMAND_SET_KNOWN_CARDS)
-        .arg(QString::fromUtf8(QJsonDocument::fromVariant(knownCardsArg).toJson())));
+    ProtocolMessage message;
+    message.type = ProtocolMessageType::Notification;
+    message.source = ProtocolEndpoint::Room;
+    message.destination = ProtocolEndpoint::Client;
+    message.command = S_COMMAND_SET_KNOWN_CARDS;
+    message.hasPayload = true;
+    message.payload = knownCardsArg;
+    ClientInstance->processReplayMessage(message);
 }
 
-void ReplayTakeoverManager::processRequest(const QString &cmd)
+void ReplayTakeoverManager::processRequest(const ProtocolMessage &message)
 {
-    Packet packet;
-    if (!packet.parse(cmd.toLatin1().constData()))
-        return;
-
-    CommandType command = packet.getCommandType();
-    QVariant body = packet.getMessageBody();
+    const CommandType command = static_cast<CommandType>(message.command);
+    const QVariant body = message.payload;
 
     QString targetPlayer;
     if (command == S_COMMAND_INVOKE_SKILL) {
@@ -141,21 +135,18 @@ void ReplayTakeoverManager::processRequest(const QString &cmd)
     if (targetPlayer == m_takeoverTarget) {
         emit requestProcessed(targetPlayer, QVariant());
     } else {
-        QVariant aiResponse = generateAIResponse(cmd, targetPlayer);
+        QVariant aiResponse = generateAIResponse(message, targetPlayer);
         emit requestProcessed(targetPlayer, aiResponse);
     }
 
-    recordCommand(cmd);
+    recordMessage(message);
 }
 
-QVariant ReplayTakeoverManager::generateAIResponse(const QString &cmd, const QString &playerName)
+QVariant ReplayTakeoverManager::generateAIResponse(
+    const ProtocolMessage &message, const QString &playerName)
 {
-    Packet packet;
-    if (!packet.parse(cmd.toLatin1().constData()))
-        return QVariant();
-
-    CommandType command = packet.getCommandType();
-    QVariant body = packet.getMessageBody();
+    Q_UNUSED(playerName);
+    const CommandType command = static_cast<CommandType>(message.command);
 
     switch (command) {
     case S_COMMAND_INVOKE_SKILL:
@@ -181,20 +172,16 @@ QVariant ReplayTakeoverManager::generateAIResponse(const QString &cmd, const QSt
     }
 }
 
-void ReplayTakeoverManager::onCommandParsed(const QString &cmd)
+void ReplayTakeoverManager::onCommandParsed(const ProtocolMessage &message)
 {
     if (!m_takeoverEnabled)
         return;
 
-    Packet packet;
-    if (!packet.parse(cmd.toLatin1().constData()))
-        return;
-
-    if (packet.getPacketType() == S_TYPE_REQUEST) {
-        processRequest(cmd);
+    if (message.type == ProtocolMessageType::Request) {
+        processRequest(message);
     } else {
-        m_gameState->applyCommand(cmd);
-        recordCommand(cmd);
+        m_gameState->applyMessage(message);
+        recordMessage(message);
     }
 }
 
@@ -205,15 +192,17 @@ void ReplayTakeoverManager::onSeekFinished()
     }
 }
 
-void ReplayTakeoverManager::recordCommand(const QString &cmd)
+void ReplayTakeoverManager::recordMessage(const ProtocolMessage &message)
 {
     if (!m_newRecorder)
         return;
 
-    int elapsed = m_startTime.msecsTo(QDateTime::currentDateTime());
-    QString line = QString("%1 %2\n").arg(elapsed).arg(cmd);
-    m_newRecorder->recordLine(line);
-    m_newCommands.append(cmd);
+    QString error;
+    if (!m_newRecorder->recordMessage(message, &error)) {
+        qWarning().noquote() << "Replay takeover recording failed:" << error;
+        return;
+    }
+    m_newCommands.append(message);
 }
 
 void ReplayTakeoverManager::saveNewReplay(const QString &filepath)
