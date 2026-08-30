@@ -442,7 +442,7 @@ private:
     bool _getSingleCard(int card_id, CardsMoveStruct move);
 
 public slots:
-    void processServerPacket(const QString &cmd);
+    void processReplayMessage(const QSanProtocol::ProtocolMessage &message);
 
 private slots:
     void processServerPacket(const QByteArray &cmd);

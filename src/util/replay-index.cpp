@@ -7,25 +7,28 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 
+#include <limits>
+
 using namespace QSanProtocol;
+using namespace QSanReplay;
 
 ReplayIndex::ReplayIndex(QObject *parent)
     : QObject(parent), m_lastTurnCount(0)
 {
 }
 
-void ReplayIndex::buildIndex(const QList<QPair<int, QString>> &pairs)
+void ReplayIndex::buildIndex(const QList<ReplayEvent> &events)
 {
     clear();
     m_lastTurnCount = 0;
 
-    for (int i = 0; i < pairs.size(); i++) {
-        const QPair<int, QString> &pair = pairs[i];
+    for (int i = 0; i < events.size(); i++) {
+        const ReplayEvent &event = events.at(i);
         ReplayNode node;
         node.pairIndex = i;
-        node.elapsed = pair.first;
+        node.elapsed = event.elapsedMs;
 
-        if (parsePacket(pair.second, node)) {
+        if (parseMessage(event.message, node)) {
             m_nodes.append(node);
             int nodeIndex = m_nodes.size() - 1;
 
@@ -63,13 +66,15 @@ int ReplayIndex::getNodeCount() const
     return m_nodes.size();
 }
 
-int ReplayIndex::findNodeByElapsed(int elapsed) const
+int ReplayIndex::findNodeByElapsed(qint64 elapsed) const
 {
     int bestMatch = -1;
-    int bestDiff = INT_MAX;
+    qint64 bestDiff = std::numeric_limits<qint64>::max();
 
     for (int i = 0; i < m_nodes.size(); i++) {
-        int diff = qAbs(m_nodes[i].elapsed - elapsed);
+        const qint64 nodeElapsed = m_nodes.at(i).elapsed;
+        const qint64 diff = nodeElapsed >= elapsed
+            ? nodeElapsed - elapsed : elapsed - nodeElapsed;
         if (diff < bestDiff) {
             bestDiff = diff;
             bestMatch = i;
@@ -126,14 +131,10 @@ QString ReplayIndex::getNodeDescription(const ReplayNode &node) const
     return QString();
 }
 
-bool ReplayIndex::parsePacket(const QString &cmd, ReplayNode &node)
+bool ReplayIndex::parseMessage(const ProtocolMessage &message, ReplayNode &node)
 {
-    Packet packet;
-    if (!packet.parse(cmd.toLatin1().constData()))
-        return false;
-
-    CommandType commandType = packet.getCommandType();
-    const QVariant &body = packet.getMessageBody();
+    const CommandType commandType = static_cast<CommandType>(message.command);
+    const QVariant &body = message.payload;
 
     switch (commandType) {
     case S_COMMAND_SET_MARK: {
@@ -210,7 +211,12 @@ void ReplayIndex::loadSnapshots()
         f.close();
 
         QVariantMap root = doc.toVariant().toMap();
-        int turnCount = root["turnCount"].toInt();
+        // Current snapshots store turnCount under state; retain the legacy
+        // top-level fallback so old snapshot directories remain usable.
+        const QVariantMap state = root.value("state").toMap();
+        const int turnCount = state.contains("turnCount")
+            ? state.value("turnCount").toInt()
+            : root.value("turnCount").toInt();
         QString type = root["snapshotType"].toString();
 
         for (int i = 0; i < m_nodes.size(); i++) {

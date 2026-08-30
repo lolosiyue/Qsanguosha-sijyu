@@ -1,5 +1,5 @@
 #include "record-analysis.h"
-//#include "recorder.h"
+#include "recorder.h"
 #include "settings.h"
 #include "engine.h"
 //#include "package.h"
@@ -7,8 +7,11 @@
 #include "client.h"
 
 #include "json.h"
+#include "protocol/protocol-v1-message-adapter.h"
+#include "replay/replay-codec.h"
 
 using namespace QSanProtocol;
+using namespace QSanReplay;
 RecAnalysis::RecAnalysis(QString dir) : m_recordPlayers(0), m_currentPlayer(nullptr)
 {
     initialize(dir);
@@ -16,35 +19,36 @@ RecAnalysis::RecAnalysis(QString dir) : m_recordPlayers(0), m_currentPlayer(null
 
 void RecAnalysis::initialize(QString dir)
 {
-    QList<QByteArray> records_line;
+    QByteArray replayData;
     if (dir.isEmpty()) {
-        records_line = ClientInstance->getRecords();
+        if (ClientInstance == nullptr)
+            return;
+        replayData = ReplayWriter::headerLine() + '\n';
+        const QList<QByteArray> records = ClientInstance->getRecords();
+        for (const QByteArray &record : records)
+            replayData += record + '\n';
+    } else if (dir.endsWith(QStringLiteral(".png"), Qt::CaseInsensitive)) {
+        replayData = Recorder::PNG2TXT(dir);
     } else {
         QFile file(dir);
         if (file.open(QIODevice::ReadOnly)) {
-            char header;
-            file.getChar(&header);
-            if (header == 0) {
-                QByteArray lines = file.readAll();
-                lines = qUncompress(lines);
-                records_line = lines.split('\n');
-            } else {
-                file.ungetChar(header);
-                while (!file.atEnd())
-                    records_line << file.readLine();
-            }
+            replayData = file.readAll();
+            // Preserve the historical zero-byte + qCompress container.
+            if (!replayData.isEmpty() && replayData.at(0) == '\0')
+                replayData = qUncompress(replayData.mid(1));
         }
     }
-    records_line.removeAll(QByteArray());
+
+    const ReplayLoadResult load = ReplayReader().read(replayData);
+    if (!load.success) {
+        qWarning().noquote() << "Replay analysis load failed:" << load.detail;
+        return;
+    }
 
     QStringList role_list;
-    foreach (const QByteArray &_line, records_line) {
-        QByteArray line = _line;
-        line.remove(0, line.indexOf(' '));
-
+    for (const ReplayEvent &event : load.events) {
         Packet packet;
-        if (!packet.parse(line))
-            continue;
+        applyProtocolMessageToV1Packet(event.message, packet);
 
         if (packet.getCommandType() == S_COMMAND_SETUP) {
             const QVariant &body = packet.getMessageBody();
@@ -222,11 +226,12 @@ void RecAnalysis::initialize(QString dir)
         }
     }
 
-    QByteArray last_line = records_line.last();
-    last_line.remove(0, last_line.indexOf(' '));
-
+    if (load.events.isEmpty()) {
+        setDesignation();
+        return;
+    }
     Packet gameover_packet;
-    gameover_packet.parse(last_line);
+    applyProtocolMessageToV1Packet(load.events.constLast().message, gameover_packet);
     if (gameover_packet.getCommandType() == S_COMMAND_GAME_OVER) {
         JsonArray args = gameover_packet.getMessageBody().value<JsonArray>();
         if (args.size() == 2) {
