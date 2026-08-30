@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "name": "choose_suit_v1",
+  "packages": ["standard"],
+  "bootstrap": {
+    "mode": "02p",
+    "self": { "object_name": "self", "screen_name": "Tester", "general": "caocao", "hp": 4, "max_hp": 4, "phase": "NotActive", "skills": [] },
+    "players": [{ "object_name": "target", "screen_name": "Target", "general": "liubei", "hp": 4, "max_hp": 4, "alive": true }],
+    "cards": []
+  },
+  "request": { "api": "raw", "command": "S_COMMAND_CHOOSE_SUIT", "serial": 1102, "wire_version": 1, "raw_body": null },
+  "expect_presented": {
+    "client_status": "ExecDialog",
+    "interaction_request": {
+      "type": "choose_suit", "request_id": 1, "server_serial": 1102, "command": 12,
+      "cancelable": false, "response_schema": "option",
+      "payload": { "enumerated": true, "options": [{ "value": "spade" }, { "value": "club" }, { "value": "heart" }, { "value": "diamond" }] }
+    }
+  },
+  "actions": [{ "type": "choose_option", "option": "heart" }],
+  "expect_reply": { "command": "S_COMMAND_CHOOSE_SUIT", "local_serial": 1102, "choice": "heart" },
+  "expect_final": { "client_status": "NotActive", "open_dialog_count": 0 }
+}
