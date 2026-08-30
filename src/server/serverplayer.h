@@ -30,7 +30,7 @@ public:
     QSanProtocol::ProtocolVersion preferredProtocolVersion() const;
     QSanProtocol::ProtocolVersion activeProtocolVersion() const;
     void kick();
-    void invoke(const QSanProtocol::AbstractPacket *packet);
+    quint64 invoke(const QSanProtocol::AbstractPacket *packet);
     QString reportHeader() const;
     void unicast(const QString &message);
     //void drawCard(const Card *card);
@@ -253,6 +253,7 @@ public:
         propertys.insert(property_name);
     }
     unsigned int m_expectedReplySerial; // Suggest the acceptable serial number of an expected response.
+    quint64 m_expectedReplyMessageId = 0;
     bool m_isClientResponseReady; //Suggest whether a valid player's reponse has been received.
     bool m_isWaitingReply; // Suggest if the server player is waiting for client's response.
     QVariant m_cheatArgs; // Store the cheat code received from client.
@@ -288,6 +289,8 @@ protected:
 private:
     ClientSocket *socket;
     QSanProtocol::ProtocolSessionState m_protocolSessionState;
+    QSanProtocol::ProtocolCodecRouter m_protocolRouter;
+    QSanProtocol::ProtocolMessageIdGenerator m_protocolMessageIds;
     //QList<const Card *> handcards;
     Room *room;
 	ServerPlayer *onsole_owner;
@@ -308,13 +311,17 @@ private:
     QStringList m_pendingAnytimeSkills;
 
 private slots:
-    void getMessage(const char *message);
-    void sendMessage(const QString &message);
+    void getMessage(const QByteArray &message);
+    void sendMessage(const QByteArray &message);
+
+private:
+    quint64 sendProtocolMessage(QSanProtocol::ProtocolMessage message);
 
 signals:
     void disconnected();
-    void request_got(const QString &request);
-    void message_ready(const QString &msg);
+    void request_got(const QString &request,
+                     const QSanProtocol::ProtocolMessage &message);
+    void message_ready(const QByteArray &msg);
 };
 
 #endif

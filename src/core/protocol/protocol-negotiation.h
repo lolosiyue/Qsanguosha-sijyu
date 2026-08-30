@@ -2,6 +2,7 @@
 #define PROTOCOL_NEGOTIATION_H
 
 #include "protocol-version.h"
+#include "protocol-runtime.h"
 
 #include <QList>
 #include <QString>
@@ -77,15 +78,28 @@ public:
     ProtocolVersion activeVersion() const;
     QString reason() const;
     QString diagnostic() const;
+    ProtocolActivationState activationState() const;
+    bool switchInProgress() const;
 
     void setPeerCapabilities(const ProtocolCapabilities &capabilities,
                              const QString &diagnostic = QString());
+    bool beginServerSwitch(QVariantMap *offer, QString *error = nullptr);
+    bool acceptClientOffer(const QVariant &value, QVariantMap *ack,
+                           QString *error = nullptr);
+    bool acceptServerAck(const QVariant &value, QVariantMap *commit,
+                         QString *error = nullptr);
+    bool activateServerAfterCommit(QString *error = nullptr);
+    bool acceptClientCommit(const QVariant &value, QString *error = nullptr);
+    void failActivation(const QString &diagnostic);
 
 private:
     ProtocolCapabilities m_localCapabilities;
     ProtocolCapabilities m_peerCapabilities;
     ProtocolNegotiationResult m_negotiation;
     QString m_diagnostic;
+    ProtocolActivationState m_activationState = ProtocolActivationState::V1Active;
+    QString m_switchId;
+    quint64 m_nextSwitchId = 1;
 };
 
 }

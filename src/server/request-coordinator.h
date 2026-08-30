@@ -9,6 +9,7 @@
 #include <QVariant>
 
 #include "protocol.h"
+#include "protocol/protocol-message.h"
 
 #include <ctime>
 
@@ -48,8 +49,10 @@ private:
                                 void *funcArg = nullptr);
     bool verifyRaceReply(ServerPlayer *player, const QVariant &reply, void *funcArg);
     void processClientPacket(ServerPlayer *player, const QSanProtocol::Packet &packet,
+                             const QSanProtocol::ProtocolMessage &message,
                              const QString &rawRequest);
-    void processResponse(ServerPlayer *player, const QSanProtocol::Packet *packet);
+    void processResponse(ServerPlayer *player,
+                         const QSanProtocol::ProtocolMessage &message);
     void unblockWaits();
 
     Room &m_room;

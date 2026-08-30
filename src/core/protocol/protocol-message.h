@@ -65,4 +65,6 @@ ProtocolMessageValidationResult validateProtocolMessage(
 
 }
 
+Q_DECLARE_METATYPE(QSanProtocol::ProtocolMessage)
+
 #endif
