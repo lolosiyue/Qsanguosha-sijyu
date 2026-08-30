@@ -247,7 +247,7 @@ M1 已完成（2026-08-09 對照 CMakeLists.txt 確認）：`qsanguosha_engine` 
 | M1 | **Complete**（2026-08-09） | Windows CMake 過渡建置、STATIC engine（僅 Qt Core／Network）、引擎／GUI 解耦契約（SkillDialogInfo／EngineRuntimeContext／audioEffectRequested／EngineBootstrap）、allowlist gate、`deploy-server`、engine smoke test | Windows GUI 與既有建置結果可對照；STATIC engine 僅連結 Qt Core／Network；GUI／CMD server 驗收完成 |
 | M2 | In Progress（2026-08-18：Windows 工具鏈） | Qt 6.11.1、VS 2026 v145 + `msvc2022_64` kit；Lua 5.4.8 仍未遷移 | Windows GUI、server、Lua/SWIG 及 CTest 全數通過 |
 | M3 | Not Started | `SkillDialogInfo`、選包白名單、確定性 RNG | 相同種子、輸入與包集合產生相同結果；白名單不可由客戶端繞過 |
-| M4 | Acceptance Pending（2026-08-30：V1/V2 codec、negotiation、runtime activation、29/29 typed gameplay、Replay V1/V2 migration 與本地 targeted gates 完成；等待遠端 CI） | 協定與重播版本化、相容性拒絕路徑 | 新舊版本差異可診斷；不支援版本被明確拒絕而非靜默誤讀；遠端 Windows／Linux／Docker／package gates 全綠後才標記 Complete |
+| M4 | Complete（2026-08-30：V1/V2 codec、negotiation、runtime activation、29/29 typed gameplay、Replay V1/V2 migration、本地 targeted gates，以及遠端 Windows／Linux server／Docker／package gates 全數通過） | 協定與重播版本化、相容性拒絕路徑 | 新舊版本差異可診斷；不支援版本被明確拒絕而非靜默誤讀；遠端 Windows／Linux／Docker／package gates 全綠後才標記 Complete |
 | M5 | Not Started | Ubuntu 無頭伺服器與 Null 音訊 | 無 X11/Wayland、FMOD 或 GUI 依賴仍可啟動及完成整局測試 |
 | M6 | In Progress（2026-08-28：Linux GUI M2B-A 交付 `IAudioBackend`／FMOD／Qt／Null 三後端、`QSAN_AUDIO_BACKEND`、結構化診斷與 `--multimedia-smoke`） | 桌面 FMOD 後端抽象化及診斷 | Windows 音效行為無回歸；音訊失敗不影響遊戲狀態 |
 | M7 | Not Started | Android Qt Multimedia、WAV/OGG 播放器池與觸控 UI | API 28 真機及 API 36 目標建置通過；前後景切換與音訊生命週期穩定 |
