@@ -232,14 +232,14 @@ bool malformedPayloads()
 
 bool registryInventoryAndDirections()
 {
-    if (!expect(ProtocolGameplayPayloadRegistry::migratedCommandCount() == 7,
-                QStringLiteral("seven migrated commands"))
+    if (!expect(ProtocolGameplayPayloadRegistry::migratedCommandCount() == 29,
+                QStringLiteral("all interaction commands migrated"))
         || !expect(ProtocolGameplayPayloadRegistry::isMigratedCommand(
                        S_COMMAND_MULTIPLE_CHOICE),
                    QStringLiteral("multiple choice registered"))
-        || !expect(!ProtocolGameplayPayloadRegistry::isMigratedCommand(
+        || !expect(ProtocolGameplayPayloadRegistry::isMigratedCommand(
                        S_COMMAND_CHOOSE_PLAYER),
-                   QStringLiteral("non-migrated command absent"))) {
+                   QStringLiteral("choose player registered"))) {
         return false;
     }
 
