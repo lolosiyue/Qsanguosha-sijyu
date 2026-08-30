@@ -16,6 +16,27 @@
   },
   "expect_presented": {
     "client_status": "ExecDialog",
+    "interaction_request": {
+      "type": "choice",
+      "request_id": 1,
+      "server_serial": 1003,
+      "command": 24,
+      "skill": "deep_seek",
+      "min": 0,
+      "max": 1,
+      "cancelable": true,
+      "response_schema": "option",
+      "payload": {
+        "enumerated": true,
+        "options": [
+          { "value": "loyalist" },
+          { "value": "rebel" },
+          { "value": "renegade" },
+          { "value": "lord", "enabled": false },
+          { "value": "cancel", "metadata": { "synthetic_cancel": true } }
+        ]
+      }
+    },
     "dialog": {
       "open": true,
       "options": ["loyalist", "rebel", "renegade", "lord"],

@@ -3,6 +3,7 @@
 #include "carditem.h"
 #include "cardcontainer.h"
 #include "client.h"
+#include "core/client-core.h"
 #include "dashboard.h"
 #include "engine.h"
 #include "photo.h"
@@ -92,6 +93,11 @@ QJsonObject LocalResponseUiProbe::snapshot() const
     client.insert(QStringLiteral("prompt_html"), m_client->getPromptDoc()->toHtml());
     client.insert(QStringLiteral("prompt_plain_text"), m_client->getPromptDoc()->toPlainText());
     root.insert(QStringLiteral("client"), client);
+    if (m_client->interactionCore()
+        && m_client->interactionCore()->hasActiveRequest()) {
+        root.insert(QStringLiteral("interaction_request"),
+            m_client->interactionCore()->activeRequest().toJson());
+    }
 
     QJsonObject buttons;
     buttons.insert(QStringLiteral("ok"), buttonSnapshot(m_scene->ok_button));
