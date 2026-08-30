@@ -6,7 +6,7 @@
 Wire envelope: defined
 Codec: implemented
 Production activation: enabled after explicit V1 barrier
-Replay: V1 logical normalization
+Replay: Replay V2 current format; Legacy Replay V1 read compatibility
 Framing: byte-oriented newline transport, maximum 65535 encoded bytes
 Typed gameplay payloads: 29/29 production interaction commands
 ```
@@ -275,16 +275,19 @@ Negotiation still begins on V1
 preferredVersion may be V2
 activeVersion remains V1 until COMMIT
 Production may become V2 per connection
-Replay remains V1-compatible logical packets
+Production gameplay recording writes versioned Replay V2
+Legacy headerless Replay V1 remains readable
 All 29 production interaction request commands use typed V2 objects
 Non-interaction flows and the two explicit flow exceptions retain their shape
 ```
 
 The V2 codec has no dependency on legacy `Packet` or `PacketDescription`.
-After V2 decode, the registry restores the legacy-compatible logical payload
-before Client/server dispatch and before `encodeReplayV1()`. Replay therefore
-never receives the typed V2 object. A future replay version remains separate
-work; the production gameplay interaction inventory is fully migrated.
+After V2 decode, the registry restores the codec-neutral logical payload before
+Client/server dispatch. Production recording passes that `ProtocolMessage` to
+the Replay V2 writer, which applies the same registry and `ProtocolV2Codec` wire
+contract. Legacy headerless V1 replay is decoded once by `ReplayReader`; playback
+thereafter also consumes `ProtocolMessage`. Production has no
+`encodeReplayV1()` recording call site. See [replay-v2.md](replay-v2.md).
 
 ## Transport
 
