@@ -34,6 +34,7 @@ public:
     int NullificationCountDown;
     bool EnableMinimizeDialog;
     GameModeStruct GameMode;
+    QStringList EnabledPackages;
     QStringList BanPackages;
     bool RandomSeat;
     bool EnableCheat;
@@ -61,6 +62,7 @@ public:
     QString BindAddress;
     bool DisableLua;
     bool AddGodGeneral;
+    bool GeneralVersionDedup;
 
     QStringList BossGenerals;
     int BossLevel;

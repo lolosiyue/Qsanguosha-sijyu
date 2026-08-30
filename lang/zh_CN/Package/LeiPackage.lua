@@ -2,6 +2,8 @@
 
 return {
 	["Lei"] = "神话再临·雷",
+	["OLStLei"] = "OL强化·雷",
+	["MobileStLei"] = "手杀强化·雷",
 	
 	["chendao"] = "陈到",
 	["#chendao"] = "白毦督",

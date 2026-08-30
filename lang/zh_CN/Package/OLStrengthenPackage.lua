@@ -612,18 +612,38 @@ return {
 	["~oljie_guohuanghou"] = "",
 
 
+	["oljie_xiahoushi"] = "界夏侯氏[OL]",
+	["#oljie_xiahoushi"] = "疾冲之恋",
+	["illustrator:oljie_xiahoushi"] = "",
+	["oljieqianshi"] = "樵拾",
+	[":oljieqianshi"] = "每个结束阶段，你可以与当前回合角色各摸一张牌。然后若其与你手牌数不相等，此技能本轮失效。",
+	["oljieyanyu"] = "燕语",
+	[":oljieyanyu"] = "出牌阶段，你可以重铸【杀】。出牌阶段结束时，若你本阶段失去过至少两张【杀】，你可以令一名男性角色摸两张牌。",
+	["oljieyanyu0"] = "你可以发动“燕语”选择男性角色摸2张牌",
 
+["oljie_yujin"] = "界于禁[OL]",
+	["#oljie_yujin"] = "治法御人",
+	["illustrator:oljie_yujin"] = "",
+	["oljiezhenjun"] = "镇军",
+	[":oljiezhenjun"] = "准备阶段，你可以弃置一名角色X张牌（X为其手牌数减体力值且至少为1)，然后选择一项：1.你弃置与其中非装备牌数等量张牌；2.结束阶段，其摸与其中非装备牌数等量张牌。",
+	["oljieyizhong"] = "毅重",
+	[":oljieyizhong"] = "锁定技，当[体力值不小于你的角色/你]使用黑色【杀】指定[你/手牌数不大于你的角色]为目标后，你令此牌[无效/不能被响应]。",
+	["oljiezhenjun0"] = "你可以发动“镇军”选择角色弃置牌",
+	["oljiezhenjun:1"] = "你弃置%src张牌",
+	["oljiezhenjun:2"] = "结束阶段，其摸%src张牌",
 
+	["oljie_guanping"] = "界关平[OL]",
+	--["#oljie_guanping"] = "疾冲之恋",
+	["illustrator:oljie_guanping"] = "",
+	["oljiejieyong"] = "竭勇",
+	[":oljiejieyong"] = "你可将手牌中最后一张红色牌当【杀】使用或打出。",
 
-
-
-
-
-
-
-
-
-
-
+	["oljie_zhangsong"] = "界张松[OL]",
+	["#oljie_zhangsong"] = "跻路踌躇",
+	["illustrator:oljie_zhangsong"] = "",
+	["oljieiqiangshi"] = "强识",
+	[":oljieiqiangshi"] = "出牌阶段开始时，你可观看一名其他角色的手牌并展示其中一张牌，然后你本阶段使用此类别的牌后可摸一张牌。",
+	["oljiexiantu"] = "献图",
+	[":oljiexiantu"] = "其他角色出牌阶段开始时，你可以摸至多两张牌，然后交给其等量牌。此阶段结束时，若其造成伤害小于你以此法交给其的牌数，你失去1点体力。",
 
 }

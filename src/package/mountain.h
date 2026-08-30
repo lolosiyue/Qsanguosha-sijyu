@@ -81,6 +81,14 @@ public:
     MountainPackage();
 };
 
+class NewShenPackage : public Package
+{
+    Q_OBJECT
+
+public:
+    NewShenPackage();
+};
+
 class JilveCard : public SkillCard
 {
     Q_OBJECT
@@ -105,5 +113,7 @@ public:
 protected:
     virtual int getEffHp(const Player *zhaoyun) const;
 };
+
+void MigrateToMobileStMountain(Package *pkg);
 
 #endif

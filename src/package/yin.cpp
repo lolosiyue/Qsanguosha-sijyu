@@ -1046,7 +1046,11 @@ public:
         if (move.to_place != Player::DiscardPile) return false;
         if ((move.from_places.contains(Player::PlaceTable) && (move.reason.m_reason&CardMoveReason::S_MASK_BASIC_REASON)==CardMoveReason::S_REASON_USE)
 		 || move.reason.m_reason == CardMoveReason::S_REASON_RESPONSE) {
-            const Card *card = move.reason.m_extraData.value<const Card *>();
+            const Card *card = nullptr;
+            if (move.reason.m_reason == CardMoveReason::S_REASON_RESPONSE)
+                card = move.reason.m_extraData.value<CardResponseStruct>().m_card;
+            else
+                card = move.reason.m_extraData.value<const Card *>();
             if (!card) return false;
             const Card *ren = Sanguosha->getCard(player->getPile("mrren").first());
             if (card->getTypeId() != ren->getTypeId()) return false;
@@ -1165,7 +1169,11 @@ public:
         if (move.to_place != Player::DiscardPile) return false;
         if ((move.from_places.contains(Player::PlaceTable) && (move.reason.m_reason&CardMoveReason::S_MASK_BASIC_REASON)==CardMoveReason::S_REASON_USE)
 		 || move.reason.m_reason == CardMoveReason::S_REASON_RESPONSE) {
-            const Card *card = move.reason.m_extraData.value<const Card *>();
+            const Card *card = nullptr;
+            if (move.reason.m_reason == CardMoveReason::S_REASON_RESPONSE)
+                card = move.reason.m_extraData.value<CardResponseStruct>().m_card;
+            else
+                card = move.reason.m_extraData.value<const Card *>();
             if (!card) return false;
             const Card *ren = Sanguosha->getCard(player->getPile("mrren").first());
             if (!card->sameColorWith(ren)) return false;
@@ -1490,13 +1498,6 @@ YinPackage::YinPackage()
     sunliang->addSkill(new Lijun("lijun"));
     related_skills.insert("chezheng", "#chezhengpro");
 
-    General *ol_sunliang = new General(this, "ol_sunliang$", "wu", 3);
-    ol_sunliang->addSkill(new Kuizhu("olkuizhu"));
-    ol_sunliang->addSkill(new Chezheng("olchezheng"));
-    ol_sunliang->addSkill(new Lijun("ollijun"));
-    ol_sunliang->addSkill(new OLLijunTargetMod);
-    related_skills.insert("ollijun", "#ollijun-target");
-
     General *wangji = new General(this, "wangji", "wei", 3);
     wangji->addSkill(new Qizhi);
     wangji->addSkill(new Jinqu);
@@ -1519,10 +1520,6 @@ YinPackage::YinPackage()
     luzhi->addSkill(new Mingren);
     luzhi->addSkill(new Zhenliang);
 
-    General *ol_luzhi = new General(this, "ol_luzhi", "qun", 3);
-    ol_luzhi->addSkill(new OLMingren);
-    ol_luzhi->addSkill(new OLZhenliang);
-
     General *shenliubei = new General(this, "shenliubei", "god", 6);
     shenliubei->addSkill(new Longnu);
     shenliubei->addSkill(new LongnuTarget);
@@ -1539,11 +1536,28 @@ YinPackage::YinPackage()
 
     addMetaObject<FeijunCard>();
     addMetaObject<KuizhuCard>();
-    addMetaObject<OLKuizhuCard>();
     addMetaObject<ShenshiCard>();
     addMetaObject<ChenglveCard>();
     addMetaObject<ZhenliangCard>();
-    addMetaObject<OLZhenliangCard>();
 }
 
 ADD_PACKAGE(Yin)
+
+OLStYinPackage::OLStYinPackage()
+    : Package("OLStYin")
+{
+    General *ol_sunliang = new General(this, "ol_sunliang$", "wu", 3);
+    ol_sunliang->addSkill(new Kuizhu("olkuizhu"));
+    ol_sunliang->addSkill(new Chezheng("olchezheng"));
+    ol_sunliang->addSkill(new Lijun("ollijun"));
+    ol_sunliang->addSkill(new OLLijunTargetMod);
+    related_skills.insert("ollijun", "#ollijun-target");
+
+    General *ol_luzhi = new General(this, "ol_luzhi", "qun", 3);
+    ol_luzhi->addSkill(new OLMingren);
+    ol_luzhi->addSkill(new OLZhenliang);
+
+    addMetaObject<OLKuizhuCard>();
+    addMetaObject<OLZhenliangCard>();
+}
+ADD_PACKAGE(OLStYin)

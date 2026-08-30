@@ -1714,18 +1714,11 @@ YJCM2014Package::YJCM2014Package()
     caozhen->addSkill(new SidiTargetMod);
     related_skills.insert("sidi", "#sidi-target");
 
-    General *new_caozhen = new General(this, "new_caozhen", "wei");
-    new_caozhen->addSkill(new NewSidi);
-
     General *chenqun = new General(this, "chenqun", "wei", 3); // YJ 303
     chenqun->addSkill(new Dingpin);
     chenqun->addSkill(new Faen);
     chenqun->addSkill(new DingpinBf);
     related_skills.insert("dingpin", "#dingpinbf");
-
-    General *new_chenqun = new General(this, "new_chenqun", "wei", 3);
-    new_chenqun->addSkill(new NewDingpin);
-    new_chenqun->addSkill(new NewFaen);
 
     General *guyong = new General(this, "guyong", "wu", 3); // YJ 304
     guyong->addSkill(new Shenxing);
@@ -1756,9 +1749,6 @@ YJCM2014Package::YJCM2014Package()
     related_skills.insert("benxi", "#benxi-target");
     related_skills.insert("benxi", "#benxi-dist");
 
-    General *ol_wuyi = new General(this, "ol_wuyi", "shu");
-    ol_wuyi->addSkill(new OLBenxi);
-
     General *zhangsong = new General(this, "zhangsong", "shu", 3); // YJ 309
     zhangsong->addSkill(new Qiangzhi);
     zhangsong->addSkill(new Xiantu);
@@ -1766,15 +1756,8 @@ YJCM2014Package::YJCM2014Package()
     General *zhoucang = new General(this, "zhoucang", "shu"); // YJ 310
     zhoucang->addSkill(new Zhongyong);
 
-    General *new_zhoucang = new General(this, "new_zhoucang", "shu");
-    new_zhoucang->addSkill(new NewZhongyong);
-
     General *zhuhuan = new General(this, "zhuhuan", "wu"); // YJ 311
     zhuhuan->addSkill(new Youdi);
-
-    General *new_zhuhuan = new General(this, "new_zhuhuan", "wu");
-    new_zhuhuan->addSkill(new Fenli);
-    new_zhuhuan->addSkill(new Pingkou);
 
     addMetaObject<DingpinCard>();
     addMetaObject<ShenxingCard>();
@@ -1782,8 +1765,34 @@ YJCM2014Package::YJCM2014Package()
     addMetaObject<XianzhouCard>();
     addMetaObject<XianzhouDamageCard>();
     addMetaObject<SidiCard>();
-    addMetaObject<NewDingpinCard>();
-    addMetaObject<PingkouCard>();
 }
 
 ADD_PACKAGE(YJCM2014)
+
+NewYJCM2014Package::NewYJCM2014Package()
+    : Package("NewYJCM2014")
+{
+    General *new_caozhen = new General(this, "new_caozhen", "wei");
+    new_caozhen->addSkill(new NewSidi);
+
+    General *new_chenqun = new General(this, "new_chenqun", "wei", 3);
+    new_chenqun->addSkill(new NewDingpin);
+    new_chenqun->addSkill(new NewFaen);
+
+    General *new_zhoucang = new General(this, "new_zhoucang", "shu");
+    new_zhoucang->addSkill(new NewZhongyong);
+
+    General *new_zhuhuan = new General(this, "new_zhuhuan", "wu");
+    new_zhuhuan->addSkill(new Fenli);
+    new_zhuhuan->addSkill(new Pingkou);
+
+    addMetaObject<NewDingpinCard>();
+    addMetaObject<PingkouCard>();
+}
+ADD_PACKAGE(NewYJCM2014)
+
+void MigrateToOLStYJ2014(Package *pkg)
+{
+    General *ol_wuyi = new General(pkg, "ol_wuyi", "shu");
+    ol_wuyi->addSkill(new OLBenxi);
+}

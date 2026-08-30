@@ -12,12 +12,17 @@
 #include "roomthread.h"
 //#include "json.h"
 #include "wind.h"
+#include "yjcm.h"
+#include "yjcm2012.h"
+#include "yjcm2013.h"
+#include "yjcm2014.h"
 //#include "mountain.h"
 //#include "ai.h"
 #include "exppattern.h"
 #if !defined(QSAN_ENGINE_BUILD)
 #include "clientstruct.h"
 #endif
+#include "server-info.h"
 
 class OLHujia : public Hujia
 {
@@ -645,10 +650,20 @@ OLGuhuoCard::OLGuhuoCard()
 	handling_method = Card::MethodNone;
 }
 
+static void showGuhuoBox(Room *room, const QString &phase, ServerPlayer *yuji,
+	const QString &declared, int realId)
+{
+	JsonArray args;
+	args << QStringLiteral("guhuo_box") << phase
+		 << (yuji ? yuji->objectName() : QString()) << declared << realId;
+	room->doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args);
+}
+
 bool OLGuhuoCard::olguhuo(ServerPlayer *yuji) const
 {
 	Room *room = yuji->getRoom();
 	room->setTag("OLGuhuoType", user_string);
+	showGuhuoBox(room, "declare", yuji, user_string, -1);
 
 	QList<ServerPlayer *> questioned,aps = room->getOtherPlayers(yuji);
 	foreach (ServerPlayer *player, aps) {
@@ -675,6 +690,10 @@ bool OLGuhuoCard::olguhuo(ServerPlayer *yuji) const
 	log.from = yuji;
 	log.card_str = QString::number(subcards.first());
 	room->sendLog(log);
+
+	showGuhuoBox(room, "reveal", yuji, user_string, subcards.first());
+	room->getThread()->delay(2000);
+	showGuhuoBox(room, "clear", yuji, QString(), -1);
 
 	QList<CardsMoveStruct> moves;
 	bool success = false;
@@ -953,6 +972,11 @@ public:
 		response_or_use = true;
 	}
 
+	SkillDialogInfo getDialogInfo() const override
+	{
+		return SkillDialogInfo::guhuo(objectName(), true, true, true, false, false, false);
+	}
+
 	bool isEnabledAtResponse(const Player *player, const QString &pattern) const
 	{
 		bool current = false;
@@ -1008,11 +1032,6 @@ public:
 			return card;
 		}
 		return nullptr;
-	}
-
-	QDialog *getDialog() const
-	{
-		return GuhuoDialog::getInstance("olguhuo");
 	}
 
 	bool isEnabledAtNullification(const ServerPlayer *player) const
@@ -1813,9 +1832,9 @@ public:
 				}
 				if (slash.isEmpty()) return false;
 
-				room->notifyMoveToPile(p, slash, objectName(), Player::PlaceTable, true);
+				room->notifyMoveToPile(p, slash, objectName(), Player::PlaceUnknown, true);
 				const Card *c = room->askForUseCard(p, "@@secondolhanzhan", "@secondolhanzhan");
-				room->notifyMoveToPile(p, slash, objectName(), Player::PlaceTable, false);
+				room->notifyMoveToPile(p, slash, objectName(), Player::PlaceUnknown, false);
 				if (!c) continue;
 				LogMessage log;
 				log.type = "#InvokeSkill";
@@ -2358,6 +2377,11 @@ public:
 	{
 	}
 
+	SkillDialogInfo getDialogInfo() const override
+	{
+		return SkillDialogInfo::named("huashen", objectName());
+	}
+
 	static void AcquireGenerals(ServerPlayer *zuoci, int n, QStringList remove_list)
 	{
 		Room *room = zuoci->getRoom();
@@ -2513,20 +2537,6 @@ public:
 		zuoci->getRoom()->sendCompulsoryTriggerLog(zuoci, objectName());
 		AcquireGenerals(zuoci, 3, QStringList());
 		SelectSkill(zuoci);
-	}
-
-	QDialog *getDialog() const
-	{
-#if !defined(QSAN_ENGINE_BUILD)
-		static HuashenDialog *dialog;
-
-		if (dialog == nullptr)
-			dialog = new HuashenDialog;
-
-		return dialog;
-#else
-		return nullptr;
-#endif
 	}
 };
 
@@ -4099,7 +4109,7 @@ public:
 			if (!player->askForSkillInvoke(this, QVariant::fromValue(damage))) continue;
 			room->broadcastSkillInvoke(objectName());
 			QList<int> card_ids = room->getNCards(4);
-			room->fillAG(card_ids);
+			room->fillAG(card_ids, player);
 			QList<int> to_get, to_throw;
 			while (!card_ids.isEmpty()) {
 				int sum = 0;
@@ -4428,7 +4438,7 @@ public:
 			if (move.from->isAlive()&&ids.length()>1&&player->askForSkillInvoke(this,(ServerPlayer*)move.from)) {
 				player->peiyin(this);
 				player->addMark("olguzheng-"+QString::number(move.from->getPhase())+"Clear");
-				room->fillAG(ids,player);
+				room->fillAG(ids, player);
 				i = room->askForAG(player, ids, false, objectName());
 				room->takeAG(player, i, false ,QList<ServerPlayer *>()<<player);
 				room->obtainCard((ServerPlayer *)move.from,i);
@@ -4752,7 +4762,6 @@ public:
 	OLJiang() : TriggerSkill("oljiang")
 	{
 		events << TargetSpecified << TargetConfirmed << CardsMoveOneTime;
-		frequency = Frequent;
 	}
 
 	bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *sunce, QVariant &data) const
@@ -5102,7 +5111,7 @@ OLZongxuanCard::OLZongxuanCard()
 void OLZongxuanCard::use(Room *room, ServerPlayer *player, QList<ServerPlayer *> &) const
 {
 	CardMoveReason reason(CardMoveReason::S_REASON_PUT, player->objectName(), "olzongxuan", "");
-	room->moveCardTo(this, nullptr, Player::DrawPile, reason, true, true);
+	room->moveCardTo(this, nullptr, Player::DrawPile, reason, false, true);
 }
 
 class OLZongxuanVS : public ViewAsSkill
@@ -5168,7 +5177,7 @@ public:
 			if (ids.isEmpty())
 				return false;
 
-			room->notifyMoveToPile(player, ids, objectName(), Player::DiscardPile, true);
+			room->notifyMoveToPile(player, ids, objectName(), Player::PlaceUnknown, true);
 			room->askForUseCard(player, "@@olzongxuan", "olzongxuan0");
 		}
 		return false;
@@ -5724,7 +5733,7 @@ void OLJiaozhaoCard::use(Room *room, ServerPlayer *player, QList<ServerPlayer *>
 	}
 	if(ids.isEmpty()) return;
 	if(x<2) room->setCardTip(getEffectiveId(),"oljiaozhao-Clear");
-	room->fillAG(ids,player);
+	room->fillAG(ids, player);
 	int id = room->askForAG(player,ids,true,"oljiaozhao","oljiaozhao0");
 	room->clearAG(player);
 	if(id<0) id = ids.first();
@@ -5864,6 +5873,210 @@ public:
 	}
 };
 
+class OLJieZhenjun : public TriggerSkill
+{
+public:
+	OLJieZhenjun() : TriggerSkill("oljiezhenjun")
+	{
+		events << EventPhaseStart;
+	}
+	bool triggerable(const ServerPlayer *target) const
+	{
+		return target&&target->isAlive();
+	}
+
+    bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const
+	{
+		if (player->getPhase()==Player::Start) {
+			if (player->hasSkill(objectName())) {
+				QList<ServerPlayer *>tps;
+				foreach (ServerPlayer *p, room->getAlivePlayers()) {
+					if(player->canDiscard(p,"he")) tps << p;
+				}
+				ServerPlayer*tp = room->askForPlayerChosen(player,tps,objectName()+"$-1","oljiezhenjun0",true,true);
+				if(tp){
+					QList<int>ids;
+					int x = qMax(1,tp->getHandcardNum()-tp->getHp());
+					for (int i = 0; i < x; i++) {
+						int id = room->askForCardChosen(player,tp,"he",objectName(),true,Card::MethodDiscard,ids);
+						if(id>-1) ids << id;
+						else break;
+					}
+					x = 0;
+					room->throwCard(ids,objectName(),tp,player);
+					foreach (int id, ids) {
+						if(Sanguosha->getEngineCard(id)->getTypeId()!=3)
+							x++;
+					}
+					if(x>0){
+						if(player->canDiscard("he")&&room->askForChoice(player,objectName(),QString("1=%1+2=%1").arg(x),QVariant::fromValue(tp)).contains("1=")){
+							room->askForDiscard(player,objectName(),x,x,false,true);
+						}else
+							room->addPlayerMark(tp,"&oljiezhenjun-Clear",x);
+					}
+				}
+			}
+		}else if(player->getPhase()==Player::Finish){
+			foreach (ServerPlayer *p, room->getAllPlayers()) {
+				int n = p->getMark("&oljiezhenjun-Clear");
+				if(n>0) p->drawCards(n,objectName());
+			}
+		}
+		return false;
+	}
+};
+
+class OLJieYizhong : public TriggerSkill
+{
+public:
+	OLJieYizhong() : TriggerSkill("oljieyizhong")
+	{
+		events << TargetSpecified;
+		frequency = Compulsory;
+	}
+	bool triggerable(const ServerPlayer *target) const
+	{
+		return target&&target->isAlive();
+	}
+
+	bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
+	{
+		if(triggerEvent == TargetSpecified){
+			CardUseStruct use = data.value<CardUseStruct>();
+			if(use.card->isKindOf("Slash")&&use.card->isBlack()){
+				if(player->hasSkill(objectName())){
+					foreach (ServerPlayer *p, use.to) {
+						if(p->getHandcardNum()<=player->getHandcardNum()){
+							room->sendCompulsoryTriggerLog(player,this);
+							use.no_respond_list << "_ALL_TARGETS";
+							break;
+						}
+					}
+				}
+				foreach (ServerPlayer *p, use.to) {
+					if(p->getHp()<=player->getHp()&&p->hasSkill(objectName())){
+						room->sendCompulsoryTriggerLog(p,this);
+						use.nullified_list << "_ALL_TARGETS";
+					}
+				}
+				data.setValue(use);
+			}
+		}
+		return false;
+	}
+};
+
+class OLJieJieyong : public OneCardViewAsSkill
+{
+public:
+	OLJieJieyong() : OneCardViewAsSkill("oljiejieyong")
+	{
+		filter_pattern = ".|red";
+		response_or_use = true;
+	}
+
+	const Card *viewAs(const Card *originalCard) const
+	{
+		if(!Self->isLastHandCard(originalCard)) return nullptr;
+		Card *ncard = new Slash(originalCard->getSuit(), originalCard->getNumber());
+		ncard->setSkillName(objectName());
+		ncard->addSubcard(originalCard);
+		return ncard;
+	}
+
+	bool isEnabledAtResponse(const Player *player, const QString &pattern) const
+	{
+		return pattern.contains("slash")&&player->getHandcardNum()==1;
+	}
+
+	bool isEnabledAtNullification(const ServerPlayer *player) const
+	{
+		return Slash::IsAvailable(player)&&player->getHandcardNum()==1;
+	}
+};
+
+class OLJieQiangshi : public TriggerSkill
+{
+public:
+	OLJieQiangshi() : TriggerSkill("oljieiqiangshi")
+	{
+		events << EventPhaseStart << CardFinished;
+	}
+
+    bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
+	{
+		if (event==CardFinished) {
+			CardUseStruct use = data.value<CardUseStruct>();
+			if (use.card->getTypeId()>0&&player->getMark("&oljieiqiangshi+:+"+use.card->getType()+"-PlayClear")>0
+			&&player->askForSkillInvoke(objectName()+"$-1",data)) {
+				player->drawCards(1,objectName());
+			}
+		}else if(player->getPhase()==Player::Play){
+			QList<ServerPlayer *>tps;
+			foreach (ServerPlayer *p, room->getAlivePlayers()) {
+				if(p->getHandcardNum()>0) tps << p;
+			}
+			ServerPlayer*tp = room->askForPlayerChosen(player,tps,objectName()+"$-1","oljiezhenjun0",true,true);
+			if(tp){
+				int id = room->doGongxin(player,tp,tp->handCards(),objectName());
+				if(id>=0){
+					room->showCard(tp,id);
+					room->setPlayerMark(player,"&oljieiqiangshi+:+"+Sanguosha->getCard(id)->getType()+"-PlayClear",1);
+				}
+			}
+		}
+		return false;
+	}
+};
+
+class OLJieXiantu : public TriggerSkill
+{
+public:
+	OLJieXiantu() : TriggerSkill("oljiexiantu")
+	{
+		events << EventPhaseStart << EventPhaseEnd << Damage;
+	}
+	bool triggerable(const ServerPlayer *target) const
+	{
+		return target&&target->isAlive()&&target->getPhase()==Player::Play;
+	}
+
+    bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
+	{
+		if (event==EventPhaseStart) {
+			foreach (ServerPlayer *p, room->getAllPlayers()) {
+				if(p->hasSkill(objectName())&&p->askForSkillInvoke(objectName()+"$-1",player)){
+					int n = room->askForChoice(p,objectName(),"1+2").toInt();
+					p->drawCards(n,objectName());
+					if(p->isDead()||player->isDead()) continue;
+					Card*dc = room->askForExchange(p,objectName(),n,n,true,"oljiexiantu0:"+player->objectName());
+					room->setPlayerMark(p,"&oljiexiantu+#"+player->objectName()+"-PlayClear",n);
+					if(dc) room->giveCard(p,player,dc,objectName());
+				}
+			}
+		}else if(event==EventPhaseEnd){
+			foreach (ServerPlayer *p, room->getAllPlayers()) {
+				int n = p->getMark("&oljiexiantu+#"+player->objectName()+"-PlayClear");
+				if(n>0){
+					if(n>player->getMark("oljiexiantuDamage-PlayClear"))
+						room->loseHp(p,1,true,p,objectName());
+				}
+			}
+		}else{
+			DamageStruct damage = data.value<DamageStruct>();
+			foreach (ServerPlayer *p, room->getAlivePlayers()) {
+				if(p->getMark("&oljiexiantu+#"+player->objectName()+"-PlayClear")>0){
+					player->addMark("oljiexiantuDamage-PlayClear",damage.damage);
+					break;
+				}
+			}
+		}
+		return false;
+	}
+};
+
+
+
 
 
 
@@ -5873,7 +6086,7 @@ public:
 
 
 OLStStandardPackage::OLStStandardPackage()
-	: Package("OLStStandard")
+	: Package("ol_st_standard")
 {
 
 	General *ol_caocao = new General(this, "ol_caocao$", "wei", 4);
@@ -5946,7 +6159,7 @@ OLStStandardPackage::OLStStandardPackage()
 ADD_PACKAGE(OLStStandard)
 
 OLStWindPackage::OLStWindPackage()
-	: Package("OLStWind")
+	: Package("ol_st_wind")
 {
 	General *ol_weiyan = new General(this, "ol_weiyan", "shu", 4);
 	ol_weiyan->addSkill("tenyearkuanggu");
@@ -5976,12 +6189,12 @@ OLStWindPackage::OLStWindPackage()
 	General *ol_yuji = new General(this, "ol_yuji", "qun", 3);
 	ol_yuji->addSkill(new OLGuhuo);
 
-
+	MigrateToOLStWind(this);
 }
 ADD_PACKAGE(OLStWind)
 
 OLStThicketPackage::OLStThicketPackage()
-	: Package("OLStThicket")
+	: Package("ol_st_thicket")
 {
 	General *ol_zhurong = new General(this, "ol_zhurong", "shu", 4, false);
 	ol_zhurong->addSkill("juxiang");
@@ -6023,7 +6236,7 @@ OLStThicketPackage::OLStThicketPackage()
 ADD_PACKAGE(OLStThicket)
 
 OLStFirePackage::OLStFirePackage()
-	: Package("OLStFire")
+	: Package("ol_st_fire")
 {
 	General *ol_wolong = new General(this, "ol_wolong", "shu", 3);
 	ol_wolong->addSkill("bazhen");
@@ -6083,7 +6296,7 @@ OLStFirePackage::OLStFirePackage()
 ADD_PACKAGE(OLStFire)
 
 OLStMountainPackage::OLStMountainPackage()
-	: Package("OLStMountain")
+	: Package("ol_st_mountain")
 {
 	General *ol_jiangwei = new General(this, "ol_jiangwei", "shu", 4);
 	ol_jiangwei->addSkill(new OLTiaoxin);
@@ -6141,7 +6354,7 @@ OLStMountainPackage::OLStMountainPackage()
 ADD_PACKAGE(OLStMountain)
 
 OLStYJ2011Package::OLStYJ2011Package()
-	: Package("OLStYJ2011")
+	: Package("ol_st_yj2011")
 {
 	General *oljie_caozhi = new General(this, "oljie_caozhi", "wei", 3);
 	oljie_caozhi->addSkill("luoying");
@@ -6163,11 +6376,27 @@ OLStYJ2011Package::OLStYJ2011Package()
 	oljie_wuguotai->addSkill(new OLBuyi);
 	addMetaObject<OLGanluCard>();
 
+	General *oljie_yujin = new General(this, "oljie_yujin", "wei", 4);
+	oljie_yujin->addSkill(new OLJieZhenjun);
+	oljie_yujin->addSkill(new OLJieYizhong);
+
+
+
+
+
+
+
+
+
+
+
+
+	MigrateToOLStYJ2011(this);
 }
 ADD_PACKAGE(OLStYJ2011)
 
 OLStYJ2012Package::OLStYJ2012Package()
-	: Package("OLStYJ2012")
+	: Package("ol_st_yj2012")
 {
 	General *oljie_liaohua = new General(this, "oljie_liaohua", "shu", 4);
 	oljie_liaohua->addSkill(new OLDangxian);
@@ -6193,11 +6422,12 @@ OLStYJ2012Package::OLStYJ2012Package()
 	oljie_madai->addSkill(new OLJieQianxi);
 	oljie_madai->addSkill(new OLJieQianxiLimit);
 
+	MigrateToOLStYJ2012(this);
 }
 ADD_PACKAGE(OLStYJ2012)
 
 OLStYJ2013Package::OLStYJ2013Package()
-	: Package("OLStYJ2013")
+	: Package("ol_st_yj2013")
 {
 	General *oljie_caochong = new General(this, "oljie_caochong", "wei", 3);
 	oljie_caochong->addSkill(new OLChengxiang);
@@ -6220,13 +6450,19 @@ OLStYJ2013Package::OLStYJ2013Package()
 	oljie_liru->addSkill(new OLMieji);
 	oljie_liru->addSkill("tenyearfencheng");
 	addMetaObject<OLMiejiCard>();
+	MigrateToOLStYJ2013(this);
 
+	MigrateToOLStYJ2013(this);
+
+	General *oljie_guanping = new General(this, "oljie_guanping", "shu", 4);
+	oljie_guanping->addSkill("longyin");
+	oljie_guanping->addSkill(new OLJieJieyong);
 
 }
 ADD_PACKAGE(OLStYJ2013)
 
 OLStYJ2014Package::OLStYJ2014Package()
-	: Package("OLStYJ2014")
+	: Package("ol_st_yj2014")
 {
 	General *oljie_caifuren = new General(this, "oljie_caifuren", "qun", 3,false);
 	oljie_caifuren->addSkill(new OLQieting);
@@ -6235,17 +6471,19 @@ OLStYJ2014Package::OLStYJ2014Package()
 	General *oljie_sunluban = new General(this, "oljie_sunluban", "wu", 3,false);
 	oljie_sunluban->addSkill(new OLZenhui);
 	oljie_sunluban->addSkill(new OLJiaojin);
+	MigrateToOLStYJ2014(this);
 
+	MigrateToOLStYJ2014(this);
 
-
-
-
+	General *oljie_zhangsong = new General(this, "oljie_zhangsong", "shu", 3);
+	oljie_zhangsong->addSkill(new OLJieQiangshi);
+	oljie_zhangsong->addSkill(new OLJieXiantu);
 
 }
 ADD_PACKAGE(OLStYJ2014)
 
 OLStYC2016Package::OLStYC2016Package()
-	: Package("OLStYC2016")
+	: Package("ol_st_yc2016")
 {
 
 	General *oljie_guohuanghou = new General(this, "oljie_guohuanghou", "wei", 3,false);

@@ -304,6 +304,37 @@ public:
     static QDialog *getInstance(const QString &, const QString &) { return nullptr; }
     static QDialog *getInstance(const QString &) { return nullptr; }
 };
+class MobileHuxiaoCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE MobileHuxiaoCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *, const Player *Self) const;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class MobileWujiCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE MobileWujiCard();
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const;
+};
+
+class ZhanshiCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE ZhanshiCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+
 #endif
 
 class TiansuanCard : public SkillCard
