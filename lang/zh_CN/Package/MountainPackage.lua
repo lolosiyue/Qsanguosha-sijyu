@@ -2,6 +2,7 @@
 
 return {
 	["mountain"] = "神话再临·山",
+	["NewShen"] = "新版·神话",
 
 	["#zhanghe"] = "料敌机先",
 	["zhanghe"] = "张郃",

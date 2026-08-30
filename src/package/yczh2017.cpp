@@ -1961,14 +1961,6 @@ YCZH2017Package::YCZH2017Package()
 	related_skills.insert("caishi", "#caishimax");
 	related_skills.insert("caishi", "#caishipro");
 
-	General *ol_xinxianying = new General(this, "ol_xinxianying", "wei", 3, false);
-	ol_xinxianying->addSkill(new OLZhongjian);
-	ol_xinxianying->addSkill(new OLCaishi);
-	ol_xinxianying->addSkill(new OLCaishiMax);
-	ol_xinxianying->addSkill(new OLCaishiPro);
-	related_skills.insert("olcaishi", "#olcaishimax");
-	related_skills.insert("olcaishi", "#olcaishipro");
-
 	General *jikang = new General(this, "jikang", "wei", 3);
 	jikang->addSkill(new Qingxian);
 	jikang->addSkill(new Juexiang);
@@ -1978,11 +1970,6 @@ YCZH2017Package::YCZH2017Package()
 	jikang->addRelateSkill("rouxian");
 	jikang->addRelateSkill("hexian");
 	related_skills.insert("juexiang", "#juexiangpro");
-
-	General *mobile_jikang = new General(this, "mobile_jikang", "wei", 3);
-	mobile_jikang->addSkill(new MobileQingxian);
-	mobile_jikang->addSkill(new MobileJuexiang);
-	mobile_jikang->addRelateSkill("mobilecanyun");
 
 	General *xushi = new General(this, "xushi", "wu", 3, false);
 	xushi->addSkill(new Wengua);
@@ -2010,10 +1997,35 @@ YCZH2017Package::YCZH2017Package()
 	addMetaObject<WenguaCard>();
 	addMetaObject<HuiminCard>();
 	addMetaObject<TongboCard>();
-	addMetaObject<MobileQingxianCard>();
-	addMetaObject<MobileCanyunCard>();
-	addMetaObject<OLZhongjianCard>();
 
 	skills << new Jixian << new Liexian << new Rouxian << new Hexian << new Wenguagive << new MobileCanyun;
 }
 ADD_PACKAGE(YCZH2017)
+
+OLStYC2017Package::OLStYC2017Package()
+	: Package("OLStYC2017")
+{
+	General *ol_xinxianying = new General(this, "ol_xinxianying", "wei", 3, false);
+	ol_xinxianying->addSkill(new OLZhongjian);
+	ol_xinxianying->addSkill(new OLCaishi);
+	ol_xinxianying->addSkill(new OLCaishiMax);
+	ol_xinxianying->addSkill(new OLCaishiPro);
+	related_skills.insert("olcaishi", "#olcaishimax");
+	related_skills.insert("olcaishi", "#olcaishipro");
+
+	addMetaObject<OLZhongjianCard>();
+}
+ADD_PACKAGE(OLStYC2017)
+
+MobileStYC2017Package::MobileStYC2017Package()
+	: Package("MobileStYC2017")
+{
+	General *mobile_jikang = new General(this, "mobile_jikang", "wei", 3);
+	mobile_jikang->addSkill(new MobileQingxian);
+	mobile_jikang->addSkill(new MobileJuexiang);
+	mobile_jikang->addRelateSkill("mobilecanyun");
+
+	addMetaObject<MobileQingxianCard>();
+	addMetaObject<MobileCanyunCard>();
+}
+ADD_PACKAGE(MobileStYC2017)

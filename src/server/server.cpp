@@ -14,7 +14,9 @@
 //#include "scenario.h"
 #if !defined(QSAN_SERVER_CORE_ONLY)
 #include "choosegeneraldialog.h"
+#include "collapsible-section.h"
 #include "customassigndialog.h"
+#include "package.h"
 #endif
 #include "miniscenarios.h"
 #if !defined(QSAN_SERVER_CORE_ONLY)
@@ -37,6 +39,9 @@
 #include <QPointer>
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#if !defined(QSAN_SERVER_CORE_ONLY)
+#include <QScrollArea>
+#endif
 
 #include <algorithm>
 
@@ -152,116 +157,118 @@ QWidget *ServerDialog::createPackageTab()
 	extension_group = new QButtonGroup;
 	extension_group->setExclusive(false);
 
-	QGroupBox *box1 = new QGroupBox(tr("General package"));
-	QGroupBox *box2 = new QGroupBox(tr("Card package"));
-
-	QGridLayout *layout1 = new QGridLayout;
-	QGridLayout *layout2 = new QGridLayout;
-	box1->setLayout(layout1);
-	box2->setLayout(layout2);
-
-	select_all_generals_button = new QPushButton(tr("Select All"));
-	layout1->addWidget(select_all_generals_button, 0, 1);
-	connect(select_all_generals_button, &QPushButton::clicked, this, &ServerDialog::selectAllGenerals);
-	deselect_all_generals_button = new QPushButton(tr("Select None"));
-	layout1->addWidget(deselect_all_generals_button, 0, 2);
-	connect(deselect_all_generals_button, &QPushButton::clicked, this, &ServerDialog::deselectAllGenerals);
-	select_reverse_generals_button = new QPushButton(tr("Reverse Select"));
-	layout1->addWidget(select_reverse_generals_button, 0, 3);
-	connect(select_reverse_generals_button, &QPushButton::clicked, this, &ServerDialog::selectReverseGenerals);
-	select_all_cards_button = new QPushButton(tr("Select All"));
-	layout2->addWidget(select_all_cards_button, 0, 1);
-	connect(select_all_cards_button, &QPushButton::clicked, this, &ServerDialog::selectAllCards);
-	deselect_all_cards_button = new QPushButton(tr("Select None"));
-	layout2->addWidget(deselect_all_cards_button, 0, 2);
-	connect(deselect_all_cards_button, &QPushButton::clicked, this, &ServerDialog::deselectAllCards);
-	select_reverse_cards_button = new QPushButton(tr("Reverse Select"));
-	layout2->addWidget(select_reverse_cards_button, 0, 3);
-	connect(select_reverse_cards_button, &QPushButton::clicked, this, &ServerDialog::selectReverseCards);
-
-	int i = 0, j = 0, row = 0, column = 0;
-    static QList<const Package *> packages = Sanguosha->findChildren<const Package *>();
-	foreach (const Package *package, packages) {
-		if (package->inherits("Scenario")) continue;
+	auto makeCheckbox = [this](const Package *package) {
 		QCheckBox *checkbox = new QCheckBox;
 		checkbox->setObjectName(package->objectName());
 		checkbox->setText(Sanguosha->translate(package->objectName()));
-		checkbox->setChecked(!Config.BanPackages.contains(package->objectName()) && !package->isForbid());
+		checkbox->setChecked(
+			!Config.BanPackages.contains(package->objectName()) && !package->isForbid());
 		checkbox->setEnabled(!package->isForbid());
 
-		switch (package->getType()) {
-		case Package::GeneralPack: {
-			extension_group->addButton(checkbox);
-			row = i / 5;
-			column = i % 5;
-			i++;
-			layout1->addWidget(checkbox, row + 1, column + 1);
-			m_generalPackages << checkbox;
+		QString contents;
+		foreach (const General *general, package->findChildren<const General *>()) {
+			if (general->isTotallyHidden())
+				continue;
+			const QString translatedName = general->getBriefName();
+			if (contents.contains(translatedName))
+				continue;
+			contents.append(contents.isEmpty() ? "<b>武将</b>：" : "，");
+			contents.append(translatedName);
+		}
+		if (!contents.isEmpty())
+			contents += "<br/><br/>";
+		foreach (const Card *card, package->findChildren<const Card *>()) {
+			const QString translatedName = Sanguosha->translate(card->objectName());
+			if (contents.contains(translatedName))
+				continue;
+			contents.append(contents.contains("<b>卡牌</b>：") ? "，" : "<b>卡牌</b>：");
+			contents.append(translatedName);
+		}
+		checkbox->setToolTip(contents);
+		extension_group->addButton(checkbox);
+		return checkbox;
+	};
 
-			QString cardNames;
-			foreach (const General *general, package->findChildren<const General *>()) {
-				if (general->isTotallyHidden()) continue;
-				QString trn = Sanguosha->translate(general->objectName());
-				if (cardNames.contains(trn)) continue;
-				if (cardNames.isEmpty()) cardNames.append("<b>武将</b>：");
-				else cardNames.append("，");
-				cardNames.append(trn);
-			}
-			if (cardNames.length()>0) cardNames += "<br/><br/>";
-			foreach (const Card *card, package->findChildren<const Card *>()) {
-				QString trn = Sanguosha->translate(card->objectName());
-				if (cardNames.contains(trn)) continue;
-				if (cardNames.contains("<b>卡牌</b>："))
-					cardNames.append("，");
-				else
-					cardNames.append("<b>卡牌</b>：");
-				cardNames.append(trn);
-			}
-			checkbox->setToolTip(cardNames);
-			break;
-		}
-		case Package::CardPack: {
-			extension_group->addButton(checkbox);
-			row = j / 6;
-			column = j % 6;
-			j++;
-			layout2->addWidget(checkbox, row + 1, column + 1);
-			m_cardPackages << checkbox;
-
-			QString cardNames;
-			foreach (const Card *card, package->findChildren<const Card *>()) {
-				QString trn = Sanguosha->translate(card->objectName());
-				if (cardNames.contains(trn)) continue;
-				if (cardNames.isEmpty()) cardNames.append("<b>卡牌</b>：");
-				else cardNames.append("，");
-				cardNames.append(trn);
-			}
-			checkbox->setToolTip(cardNames);
-			break;
-		}
-		default:
-			delete checkbox;
-			break;
-		}
+	QVBoxLayout *sectionsLayout = new QVBoxLayout;
+	QHash<QString, const Package *> packagesByAdder;
+	foreach (const Package *package, Sanguosha->getPackages()) {
+		if (!package->adderName().isEmpty())
+			packagesByAdder.insert(package->adderName(), package);
 	}
 
-	QVBoxLayout *layout = new QVBoxLayout;
-	//layout->addWidget(disable_lua_checkbox);
+	const QMap<QString, QStringList> packageMap = Sanguosha->getPackageMap();
+	for (auto it = packageMap.cbegin(); it != packageMap.cend(); ++it) {
+		if (it.key() == QStringLiteral("g_special_play"))
+			continue;
+		CollapsibleSection *section =
+			new CollapsibleSection(Sanguosha->translate(it.key()));
+		foreach (const QString &adderName, it.value()) {
+			const Package *package = packagesByAdder.value(adderName, nullptr);
+			if (!package)
+				continue;
+			section->addPackageCheckbox(makeCheckbox(package));
+		}
+		if (section->isEmpty())
+			delete section;
+		else
+			sectionsLayout->addWidget(section);
+	}
+
+	CollapsibleSection *luaGeneralSection =
+		new CollapsibleSection(Sanguosha->translate(QStringLiteral("lua_package")));
+	CollapsibleSection *luaCardSection =
+		new CollapsibleSection(Sanguosha->translate(QStringLiteral("lua_card")));
+	const QStringList luaPackages = Config.value("LuaPackages").toString()
+		.split("+", Qt::SkipEmptyParts);
+	foreach (const QString &packageName, luaPackages) {
+		const Package *package =
+			Sanguosha->findChild<const Package *>(packageName);
+		if (!package)
+			continue;
+		QCheckBox *checkbox = makeCheckbox(package);
+		if (package->getType() == Package::CardPack)
+			luaCardSection->addPackageCheckbox(checkbox);
+		else
+			luaGeneralSection->addPackageCheckbox(checkbox);
+	}
+	if (luaGeneralSection->isEmpty())
+		delete luaGeneralSection;
+	else
+		sectionsLayout->addWidget(luaGeneralSection);
+	if (luaCardSection->isEmpty())
+		delete luaCardSection;
+	else
+		sectionsLayout->addWidget(luaCardSection);
+	sectionsLayout->addStretch();
+
+	QWidget *sectionsContainer = new QWidget;
+	sectionsContainer->setLayout(sectionsLayout);
+
+	QScrollArea *scroll = new QScrollArea;
+	scroll->setWidget(sectionsContainer);
+	scroll->setWidgetResizable(true);
+#ifndef ANDROID
+	scroll->setMinimumWidth(sectionsContainer->sizeHint().width() + 24);
+#endif
 
 	add_god_general = new QCheckBox("加入神将");
 	add_god_general->setChecked(Config.AddGodGeneral);
 	add_god_general->setToolTip("不启用此项则游戏中不会加入神势力武将");
 
-	layout->addLayout(HLay(disable_lua_checkbox, add_god_general));
+	general_version_dedup = new QCheckBox("同名武将只保留高版本");
+	general_version_dedup->setChecked(Config.GeneralVersionDedup);
+	general_version_dedup->setToolTip(
+		"三版 > 二版 > 谋攻篇 > 界·OL > 十周年 > 新版 > 手杀 > OL > 翼 > 怀旧 > 基础");
 
-	QScrollArea *scroll1 = new QScrollArea;
-	scroll1->setWidget(box1);
-	scroll1->setMaximumHeight(300);
-	QScrollArea *scroll2 = new QScrollArea;
-	scroll2->setWidget(box2);
-	scroll2->setMaximumHeight(300);
-	layout->addWidget(scroll1);
-	layout->addWidget(scroll2);
+	QHBoxLayout *optionRow = new QHBoxLayout;
+	optionRow->addWidget(disable_lua_checkbox);
+	optionRow->addWidget(add_god_general);
+	optionRow->addWidget(general_version_dedup);
+	optionRow->addStretch();
+
+	QVBoxLayout *layout = new QVBoxLayout;
+	layout->addLayout(optionRow);
+	layout->addWidget(scroll);
 
 	QWidget *widget = new QWidget;
 	widget->setLayout(layout);
@@ -1482,6 +1489,7 @@ int ServerDialog::config()
 	Config.ServerPort = port_edit->text().toInt();
 	Config.DisableLua = disable_lua_checkbox->isChecked();
 	Config.AddGodGeneral = add_god_general->isChecked();
+	Config.GeneralVersionDedup = general_version_dedup->isChecked();
 	Config.SurrenderAtDeath = surrender_at_death_checkbox->isChecked();
 
 	// game mode
@@ -1541,6 +1549,7 @@ int ServerDialog::config()
 	Config.setValue("Address", Config.Address);
 	Config.setValue("DisableLua", disable_lua_checkbox->isChecked());
 	Config.setValue("AddGodGeneral", add_god_general->isChecked());
+	Config.setValue("GeneralVersionDedup", Config.GeneralVersionDedup);
 	Config.setValue("serverconfig/upnp",checkBoxUpnp->isChecked());
 	Config.setValue("serverconfig/addtolistserver",checkBoxAddToListServer->isChecked());
 
@@ -1561,13 +1570,27 @@ int ServerDialog::config()
 	Config.setValue("RoleChooseX", role_choose_xmode_ComboBox->itemData(role_choose_xmode_ComboBox->currentIndex()).toString());
 	Config.endGroup();
 
+	Config.EnabledPackages.clear();
 	Config.BanPackages.clear();
 	foreach (QAbstractButton *checkbox, extension_group->buttons()) {
-		if (checkbox->isChecked()) continue;
-		Sanguosha->addBanPackage(checkbox->objectName());
-		Config.BanPackages << checkbox->objectName();
+		if (checkbox->isChecked())
+			Config.EnabledPackages << checkbox->objectName();
+		else
+			Config.BanPackages << checkbox->objectName();
 	}
-	Config.setValue("BanPackages", Config.BanPackages);
+	const QStringList specialPackageAdders =
+		Sanguosha->getPackageMap().value(QStringLiteral("g_special_play"));
+	foreach (const Package *package, Sanguosha->getPackages()) {
+		if ((package->inherits("Scenario")
+			 || specialPackageAdders.contains(package->adderName()))
+			 && !Config.BanPackages.contains(package->objectName())) {
+			Config.BanPackages << package->objectName();
+		}
+	}
+	Config.setValue("EnabledPackages", Config.EnabledPackages);
+	Config.setValue("EnabledPackagesMigrationVersion", 2);
+	Config.remove("BanPackages");
+	Config.sync();
 
 	return accept_type;
 }
@@ -2162,57 +2185,6 @@ void Server::scheduleDisposeRoom(Room *room)
 
 #endif
 
-#if !defined(QSAN_SERVER_CORE_ONLY)
-
-void ServerDialog::selectAllGenerals()
-{
-	foreach (QCheckBox *c, m_generalPackages) {
-		if (c->isEnabled())
-			c->setChecked(true);
-	}
-}
-
-void ServerDialog::deselectAllGenerals()
-{
-	foreach (QCheckBox *c, m_generalPackages) {
-		if (c->isEnabled())
-			c->setChecked(false);
-	}
-}
-
-void ServerDialog::selectReverseGenerals()
-{
-	foreach (QCheckBox *c, m_generalPackages) {
-		if (c->isEnabled())
-			c->setChecked(!c->isChecked());
-	}
-}
-
-void ServerDialog::selectAllCards()
-{
-	foreach (QCheckBox *c, m_cardPackages) {
-		if (c->isEnabled())
-			c->setChecked(true);
-	}
-}
-
-void ServerDialog::deselectAllCards()
-{
-	foreach (QCheckBox *c, m_cardPackages) {
-		if (c->isEnabled())
-			c->setChecked(false);
-	}
-}
-
-void ServerDialog::selectReverseCards()
-{
-	foreach (QCheckBox *c, m_cardPackages) {
-		if (c->isEnabled())
-			c->setChecked(!c->isChecked());
-    }
-}
-
-#endif
 
 #if !defined(QSAN_SERVER_DIALOGS_ONLY)
 

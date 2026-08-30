@@ -1244,18 +1244,15 @@ OLSanyaoCard::OLSanyaoCard()
 bool OLSanyaoCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const
 {
     if (!targets.isEmpty()) return false;
-    QList<const Player *> players = Self->getAliveSiblings();
-    players << Self;
-    QString choice = Self->getTag("olsanyao").toString();
-    int max = -1000;
-    if (choice == "hp") {
-        foreach (const Player *p, players) {
+    int max = 0;
+    if (user_string == "hp") {
+        foreach (const Player *p, Self->getAliveSiblings(true)) {
             if (max < p->getHp())
                 max = p->getHp();
         }
         return to_select->getHp() == max;
-    } else if (choice == "hand") {
-        foreach (const Player *p, players) {
+    } else if (user_string == "hand") {
+        foreach (const Player *p, Self->getAliveSiblings(true)) {
             if (max < p->getHandcardNum())
                 max = p->getHandcardNum();
         }
@@ -1267,10 +1264,7 @@ bool OLSanyaoCard::targetFilter(const QList<const Player *> &targets, const Play
 void OLSanyaoCard::onEffect(CardEffectStruct &effect) const
 {
     Room *room = effect.from->getRoom();
-    if (user_string == "hp")
-        room->addPlayerMark(effect.from, "olsanyao_hp-PlayClear");
-    else if (user_string == "hand")
-        room->addPlayerMark(effect.from, "olsanyao_hand-PlayClear");
+    room->addPlayerMark(effect.from, "olsanyao_tiansuan_remove_" + user_string + "-PlayClear");
     room->damage(DamageStruct("olsanyao", effect.from, effect.to));
 }
 
@@ -1282,15 +1276,16 @@ public:
         filter_pattern = ".!";
     }
 
-    QDialog *getDialog() const
+    SkillDialogInfo getDialogInfo() const override
     {
-        return TiansuanDialog::getInstance("olsanyao");
+        return SkillDialogInfo::tiansuan(objectName());
     }
 
     bool isEnabledAtPlay(const Player *player) const
     {
         return player->canDiscard(player, "he") &&
-                (player->getMark("olsanyao_hp-PlayClear") <= 0 || player->getMark("olsanyao_hand-PlayClear") <= 0);
+                (player->getMark("olsanyao_tiansuan_remove_hp-PlayClear") <= 0
+                 || player->getMark("olsanyao_tiansuan_remove_hand-PlayClear") <= 0);
     }
 
     const Card *viewAs(const Card *originalcard) const
@@ -2230,10 +2225,6 @@ YJCMPackage::YJCMPackage()
     caozhi->addSkill(new JiushiFlip);
     related_skills.insert("jiushi", "#jiushi-flip");
 
-    General *ol_caozhi = new General(this, "ol_caozhi", "wei", 3);
-    ol_caozhi->addSkill(new OLLuoying);
-    ol_caozhi->addSkill("jiushi");
-
     General *chengong = new General(this, "chengong", "qun", 3); // YJ 002
     chengong->addSkill(new Zhichi);
     chengong->addSkill(new ZhichiProtect);
@@ -2242,17 +2233,9 @@ YJCMPackage::YJCMPackage()
     related_skills.insert("zhichi", "#zhichi-protect");
     related_skills.insert("zhichi", "#zhichi-clear");
 
-    General *nos_fazheng = new General(this, "nos_fazheng", "shu", 3);
-    nos_fazheng->addSkill(new NosEnyuan);
-    nos_fazheng->addSkill(new NosXuanhuo);
-
     General *fazheng = new General(this, "fazheng", "shu", 3); // YJ 003
     fazheng->addSkill(new Enyuan);
     fazheng->addSkill(new Xuanhuo);
-
-    /*General *ol_fazheng = new General(this, "ol_fazheng", "shu", 3, true);
-    ol_fazheng->addSkill("enyuan");
-    ol_fazheng->addSkill("xuanhuo");*/
 
     General *gaoshun = new General(this, "gaoshun", "qun"); // YJ 004
     gaoshun->addSkill(new Xianzhen);
@@ -2260,10 +2243,6 @@ YJCMPackage::YJCMPackage()
     gaoshun->addSkill(new XianzhenTargetMod);
     related_skills.insert("xianzhen", "#xianzhen_target");
 
-    General *nos_lingtong = new General(this, "nos_lingtong", "wu");
-    nos_lingtong->addSkill(new NosXuanfeng);
-    nos_lingtong->addSkill(new SlashNoDistanceLimitSkill("nosxuanfeng"));
-    related_skills.insert("nosxuanfeng", "#nosxuanfeng-slash-ndl");
     General *lingtong = new General(this, "lingtong", "wu"); // YJ 005
     lingtong->addSkill(new Xuanfeng);
 
@@ -2271,63 +2250,23 @@ YJCMPackage::YJCMPackage()
     masu->addSkill(new Xinzhan);
     masu->addSkill(new Huilei);
 
-    General *ol_masu = new General(this, "ol_masu", "shu", 3);
-    ol_masu->addSkill(new OLSanyao);
-    ol_masu->addSkill(new OLZhiman);
-    addMetaObject<SanyaoCard>();
-
-    General *mobile_masu = new General(this, "mobile_masu", "shu", 3);
-    mobile_masu->addSkill(new Sanyao);
-    mobile_masu->addSkill(new Zhiman);
-
     General *wuguotai = new General(this, "wuguotai", "wu", 3, false); // YJ 007
     wuguotai->addSkill(new Ganlu);
     wuguotai->addSkill(new Buyi);
 
-    General *nos_xushu = new General(this, "nos_xushu", "shu", 3);
-    nos_xushu->addSkill(new NosWuyan);
-    nos_xushu->addSkill(new NosJujian);
-
     General *xusheng = new General(this, "xusheng", "wu"); // YJ 008
     xusheng->addSkill(new Pojun);
-
-    General *ol_xusheng = new General(this, "ol_xusheng", "wu");
-    ol_xusheng->addSkill(new OlPojun);
 
     General *xushu = new General(this, "xushu", "shu", 3); // YJ 009
     xushu->addSkill(new Wuyan);
     xushu->addSkill(new Jujian);
 
-    /*General *ol_xushu = new General(this, "ol_xushu", "shu", 3);
-    ol_xushu->addSkill("wuyan");
-    ol_xushu->addSkill("jujian");*/
-
     General *yujin = new General(this, "yujin", "wei"); // YJ 010
     yujin->addSkill(new Yizhong);
-
-    General *ol_yujin = new General(this, "ol_yujin", "wei");
-    ol_yujin->addSkill(new Jieyue);
-    addMetaObject<JieyueCard>();
-
-    General *nos_zhangchunhua = new General(this, "nos_zhangchunhua", "wei", 3, false);
-    nos_zhangchunhua->addSkill("jueqing");
-    nos_zhangchunhua->addSkill(new NosShangshi);
-
-    addMetaObject<NosXuanhuoCard>();
-    addMetaObject<NosJujianCard>();
 
     General *zhangchunhua = new General(this, "zhangchunhua", "wei", 3, false); // YJ 011
     zhangchunhua->addSkill(new Jueqing);
     zhangchunhua->addSkill(new Shangshi);
-
-    General *nos_zhonghui = new General(this, "nos_zhonghui", "wei", 3, true);
-    nos_zhonghui->addSkill(new NosZhenggong);
-    nos_zhonghui->addSkill(new NosQuanji);
-    nos_zhonghui->addSkill(new NosBaijiang);
-    nos_zhonghui->addSkill(new NosZili);
-
-    addMetaObject<NosYexinCard>();
-    addMetaObject<NosPaiyiCard>();
 
     General *zhonghui = new General(this, "zhonghui", "wei"); // YJ 012
     zhonghui->addSkill(new Quanji);
@@ -2342,9 +2281,78 @@ YJCMPackage::YJCMPackage()
     addMetaObject<XinzhanCard>();
     addMetaObject<JujianCard>();
     addMetaObject<PaiyiCard>();
-    addMetaObject<OLSanyaoCard>();
 
     skills << new Paiyi << new NosPaiyi << new NosYexin;
 }
 
 ADD_PACKAGE(YJCM)
+
+NostalgiaYJCMPackage::NostalgiaYJCMPackage()
+    : Package("nostal_yjcm")
+{
+    General *nos_fazheng = new General(this, "nos_fazheng", "shu", 3);
+    nos_fazheng->addSkill(new NosEnyuan);
+    nos_fazheng->addSkill(new NosXuanhuo);
+
+    General *nos_lingtong = new General(this, "nos_lingtong", "wu");
+    nos_lingtong->addSkill(new NosXuanfeng);
+    nos_lingtong->addSkill(new SlashNoDistanceLimitSkill("nosxuanfeng"));
+    related_skills.insert("nosxuanfeng", "#nosxuanfeng-slash-ndl");
+
+    General *nos_xushu = new General(this, "nos_xushu", "shu", 3);
+    nos_xushu->addSkill(new NosWuyan);
+    nos_xushu->addSkill(new NosJujian);
+
+    General *nos_zhangchunhua = new General(this, "nos_zhangchunhua", "wei", 3, false);
+    nos_zhangchunhua->addSkill("jueqing");
+    nos_zhangchunhua->addSkill(new NosShangshi);
+
+    General *nos_zhonghui = new General(this, "nos_zhonghui", "wei", 3, true);
+    nos_zhonghui->addSkill(new NosZhenggong);
+    nos_zhonghui->addSkill(new NosQuanji);
+    nos_zhonghui->addSkill(new NosBaijiang);
+    nos_zhonghui->addSkill(new NosZili);
+
+    addMetaObject<NosXuanhuoCard>();
+    addMetaObject<NosJujianCard>();
+    addMetaObject<NosYexinCard>();
+    addMetaObject<NosPaiyiCard>();
+}
+ADD_PACKAGE(NostalgiaYJCM)
+
+void MigrateToOLStYJ2011(Package *pkg)
+{
+    General *ol_caozhi = new General(pkg, "ol_caozhi", "wei", 3);
+    ol_caozhi->addSkill(new OLLuoying);
+    ol_caozhi->addSkill("jiushi");
+
+    /*General *ol_fazheng = new General(pkg, "ol_fazheng", "shu", 3, true);
+    ol_fazheng->addSkill("enyuan");
+    ol_fazheng->addSkill("xuanhuo");*/
+
+    General *ol_masu = new General(pkg, "ol_masu", "shu", 3);
+    ol_masu->addSkill(new OLSanyao);
+    ol_masu->addSkill(new OLZhiman);
+
+    General *ol_xusheng = new General(pkg, "ol_xusheng", "wu");
+    ol_xusheng->addSkill(new OlPojun);
+
+    /*General *ol_xushu = new General(pkg, "ol_xushu", "shu", 3);
+    ol_xushu->addSkill("wuyan");
+    ol_xushu->addSkill("jujian");*/
+
+    General *ol_yujin = new General(pkg, "ol_yujin", "wei");
+    ol_yujin->addSkill(new Jieyue);
+
+    pkg->addMetaObject<OLSanyaoCard>();
+    pkg->addMetaObject<JieyueCard>();
+}
+
+void MigrateToMobileStYJ2011(Package *pkg)
+{
+    General *mobile_masu = new General(pkg, "mobile_masu", "shu", 3);
+    mobile_masu->addSkill(new Sanyao);
+    mobile_masu->addSkill(new Zhiman);
+
+    pkg->addMetaObject<SanyaoCard>();
+}

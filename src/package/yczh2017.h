@@ -13,6 +13,22 @@ public:
     YCZH2017Package();
 };
 
+class OLStYC2017Package : public Package
+{
+    Q_OBJECT
+
+public:
+    OLStYC2017Package();
+};
+
+class MobileStYC2017Package : public Package
+{
+    Q_OBJECT
+
+public:
+    MobileStYC2017Package();
+};
+
 class FumianCard : public SkillCard
 {
     Q_OBJECT

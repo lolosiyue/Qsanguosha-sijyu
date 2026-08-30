@@ -2,6 +2,7 @@
 
 return {
 	["thicket"] = "神话再临·林",
+	["TenyearStThicket"] = "十周年强化·林",
 
 	["#caopi"] = "霸业的继承者",
 	["caopi"] = "曹丕",

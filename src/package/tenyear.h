@@ -1744,6 +1744,314 @@ public:
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
+class DuluCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE DuluCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class YinmouCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE YinmouCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class HongceCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE HongceCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class XixingCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE XixingCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class LingshuCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE LingshuCard();
+    bool targetFixed() const;
+    bool targetsFeasible(const QList<const Player *> &targets, const Player *Self) const;
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    const Card *validate(CardUseStruct &card_use) const;
+    const Card *validateInResponse(ServerPlayer *player) const;
+};
+
+class YuzhengCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE YuzhengCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class HuozhongCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE HuozhongCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class HerongCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE HerongCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class JuxiCard : public SkillCard
+{
+    Q_OBJECT
+public:
+    Q_INVOKABLE JuxiCard();
+    void onUse(Room *room, CardUseStruct &use) const;
+};
+
+class JuanjiCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE JuanjiCard();
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const;
+};
+
+class ZhouxiCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE ZhouxiCard();
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const;
+};
+
+class ShijinCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE ShijinCard();
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const;
+};
+
+class FenhuiCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE FenhuiCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class MinzeCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE MinzeCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class ZixiCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE ZixiCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class LiangxiuCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE LiangxiuCard();
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const;
+};
+
+class ZhengpiCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE ZhengpiCard();
+    bool targetFixed() const;
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void onUse(Room *room, CardUseStruct &use) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class CMFengyingCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE CMFengyingCard();
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const;
+};
+
+class KuizhenCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE KuizhenCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class LiexiangCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE LiexiangCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class RengouCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE RengouCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void onUse(Room *room, CardUseStruct &use) const;
+};
+
+class BinjiCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE BinjiCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void onUse(Room *room, CardUseStruct &use) const;
+};
+
+class ZangmaoCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE ZangmaoCard();
+    bool targetFixed() const;
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class XiangchenCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE XiangchenCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class YinzhiCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE YinzhiCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class ThSpShefuCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE ThSpShefuCard();
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const;
+};
+
+class RenshanCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE RenshanCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void onUse(Room *room, CardUseStruct &use) const;
+};
+
+class YizhiCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE YizhiCard();
+    const Card *validate(CardUseStruct &card_use) const;
+};
+
+class PoyinCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE PoyinCard();
+    void onUse(Room *room, CardUseStruct &use) const;
+};
+
+class MoguiCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE MoguiCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class RenchengCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE RenchengCard();
+    bool targetFixed() const;
+    bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+
 
 
 

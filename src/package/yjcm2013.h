@@ -13,6 +13,14 @@ public:
     YJCM2013Package();
 };
 
+class NostalgiaYJCM2013Package : public Package
+{
+    Q_OBJECT
+
+public:
+    NostalgiaYJCM2013Package();
+};
+
 class JunxingCard : public SkillCard
 {
     Q_OBJECT
@@ -141,5 +149,7 @@ public:
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
     void onEffect(CardEffectStruct &effect) const;
 };
+
+void MigrateToOLStYJ2013(Package *pkg);
 
 #endif

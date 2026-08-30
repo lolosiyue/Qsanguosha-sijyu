@@ -4115,6 +4115,169 @@ public:
     }
 };
 
+class Yuli : public TriggerSkill
+{
+public:
+    Yuli() : TriggerSkill("yuli")
+    {
+        events << DamageCaused << DamageInflicted;
+        frequency = Compulsory;
+    }
+
+    bool trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*player, QVariant &data) const
+    {
+        DamageStruct damage = data.value<DamageStruct>();
+        if (triggerEvent == DamageCaused) {
+            room->sendCompulsoryTriggerLog(player,this);
+			if(damage.nature==DamageStruct::Thunder)
+				player->damageRevises(data,1);
+			else{
+				damage.nature = DamageStruct::Thunder;
+				data.setValue(damage);
+			}
+			if(player->getMark("jimieBan")>0)
+				room->setPlayerMark(player,"&yuli+1",1);
+        } else {
+			if(damage.nature==DamageStruct::Thunder){
+				room->sendCompulsoryTriggerLog(player,this);
+				player->damageRevises(data,-damage.damage);
+				player->drawCards(damage.damage,objectName());
+				if(player->getMark("jimieBan")>0)
+					room->setPlayerMark(player,"&yuli+2",1);
+				return true;
+			}
+        }
+        return false;
+    }
+};
+
+class Tingwei : public TriggerSkill
+{
+public:
+    Tingwei() : TriggerSkill("tingwei")
+    {
+        events << TargetSpecified << ConfirmDamage;
+    }
+    bool triggerable(const ServerPlayer*target) const
+    {
+        return target && target->isAlive();
+    }
+
+    bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &data) const
+    {
+        if(event==TargetSpecified){
+			CardUseStruct use = data.value<CardUseStruct>();
+			if (use.card->isKindOf("Slash")&&player->hasSkill(objectName())){
+				room->sendCompulsoryTriggerLog(player,this);
+				player->gainMark("&ting_wei",4);
+				ServerPlayer*tp = room->askForPlayerChosen(player,use.to,objectName(),"tingwei0");
+				if(tp){
+					room->doAnimate(1,player->objectName(),tp->objectName());
+					QStringList choices;
+					choices << "1";
+					foreach (const Card*c ,tp->getCards("he")) {
+						if(c->isKindOf("EquipCard")){
+							choices << "2="+player->objectName();
+							break;
+						}
+					}
+					choices << "3";
+					if(tp->canDiscard("he"))
+						choices << "4";
+					choices << "cancel";
+					bool can = true;
+					for (int i = 0; i < 4; i++) {
+						QString choice = room->askForChoice(tp,objectName(),choices.join("+"),data);
+						choices.removeOne(choice);
+						if(choice=="cancel") break;
+						player->loseMark("&ting_wei");
+						can = false;
+						if(choice=="1")
+							room->setPlayerMark(tp,"&tingwei+1-SelfClear",1);
+						else if(choice.contains("2=")){
+							const Card*c = room->askForCard(tp,"EquipCard!","tingwei20"+player->objectName(),data,Card::MethodNone);
+							if(c) room->giveCard(tp,player,c,objectName());
+						}else if(choice=="3")
+							room->addCardMark(use.card,"tingweiDamage"+tp->objectName());
+						else{
+							QList<const Card*>cs = tp->getCards("he");
+							qsanShuffle(cs);
+							foreach (const Card*c ,cs) {
+								if(tp->isJilei(c)) continue;
+								room->throwCard(c,objectName(),tp);
+								break;
+							}
+						}
+					}
+					if(can){
+						room->setPlayerChained(tp,true);
+					}
+				}
+			}
+		}else{
+			DamageStruct damage = data.value<DamageStruct>();
+			if(damage.card&&damage.card->isKindOf("Slash")){
+				damage.damage += damage.card->getMark("tingweiDamage"+player->objectName());
+				data.setValue(damage);
+			}
+		}
+        return false;
+    }
+};
+
+class TingweiBf : public InvaliditySkill
+{
+public:
+	TingweiBf() : InvaliditySkill("#TingweiBf")
+	{
+	}
+
+	bool isSkillValid(const Player *player, const Skill *skill) const
+	{
+		return player->getMark("&tingwei+1-SelfClear")<1||skill->getFrequency(player)==Compulsory;
+	}
+};
+
+class Jimie : public TriggerSkill
+{
+public:
+    Jimie() : TriggerSkill("jimie")
+    {
+        events << EventPhaseEnd << MarkChanged;
+		setProperty("angyang_skill",true);
+    }
+    bool triggerable(const ServerPlayer*target) const
+    {
+        return target && target->isAlive();
+    }
+    bool trigger(TriggerEvent event, Room*room, ServerPlayer*player, QVariant &data) const
+    {
+        if (event == MarkChanged) {
+            if(player->getMark("jimieBan")>0){
+				MarkStruct mark = data.value<MarkStruct>();
+				if(mark.name.contains("&yuli+")&&mark.gain>0){
+					if(player->getMark("&yuli+1")>0&&player->getMark("&yuli+1")>0)
+						player->setMark("jimieBan",0);
+				}
+			}
+        }else{
+			if(player->getPhase()==Player::Play&&player->getMark("&ting_wei")>7
+			&&player->getMark("jimieBan")<1&&player->hasSkill(objectName())){
+				ServerPlayer*tp = room->askForPlayerChosen(player,room->getAlivePlayers(),objectName()+"$-1","jimie",true,true);
+				if(tp){
+					player->addMark("jimieBan");
+					player->loseMark("&ting_wei",8);
+					room->damage(DamageStruct(objectName(),player,tp,qMax(0,tp->getHp())));
+					room->setPlayerMark(player,"yuliDamage1",0);
+					room->setPlayerMark(player,"yuliDamage2",0);
+				}
+			}
+        }
+        return false;
+    }
+};
+
+
 MobileYongPackage::MobileYongPackage()
     : Package("mobileyong")
 {
@@ -4137,6 +4300,12 @@ MobileYongPackage::MobileYongPackage()
     mobileyong_gaolan->addSkill(new MobileYongJungongtMod);
     mobileyong_gaolan->addSkill(new MobileYongDengli);
     related_skills.insert("mobileyongjungong", "#mobileyongjungong-target");
+
+    General *yong_shenmachao = new General(this, "yong_shenmachao", "god", 4);
+    yong_shenmachao->addSkill(new Yuli);
+    yong_shenmachao->addSkill(new Tingwei);
+    yong_shenmachao->addSkill(new TingweiBf);
+    yong_shenmachao->addSkill(new Jimie);
 
     addMetaObject<MobileYongJungongCard>();
 }

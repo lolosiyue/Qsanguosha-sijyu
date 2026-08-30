@@ -13,6 +13,14 @@ public:
     YinPackage();
 };
 
+class OLStYinPackage : public Package
+{
+    Q_OBJECT
+
+public:
+    OLStYinPackage();
+};
+
 class FeijunCard : public SkillCard
 {
     Q_OBJECT
