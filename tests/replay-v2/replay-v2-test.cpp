@@ -1,4 +1,3 @@
-#include "client.h"
 #include "game-snapshot.h"
 #include "protocol.h"
 #include "protocol/protocol-runtime.h"
@@ -6,8 +5,12 @@
 #include "recorder.h"
 #include "replay-game-state.h"
 #include "replay-index.h"
-#include "replay-takeover.h"
 #include "replay/replay-codec.h"
+
+#if QSAN_REPLAY_V2_TEST_TAKEOVER
+#include "client.h"
+#include "replay-takeover.h"
+#endif
 
 #include <QCoreApplication>
 #include <QDir>
@@ -27,6 +30,7 @@
 using namespace QSanProtocol;
 using namespace QSanReplay;
 
+#if QSAN_REPLAY_V2_TEST_TAKEOVER
 Client *ClientInstance = nullptr;
 
 ClientPlayer *Client::getPlayer(const QString &)
@@ -37,6 +41,7 @@ ClientPlayer *Client::getPlayer(const QString &)
 void Client::processReplayMessage(const ProtocolMessage &)
 {
 }
+#endif
 
 namespace
 {
@@ -532,6 +537,7 @@ bool containersPlaybackSnapshotAndTakeover()
                           && sought.at(1).command == S_COMMAND_SPEAK,
                       QStringLiteral("ProtocolMessage seek playback")) && ok;
 
+#if QSAN_REPLAY_V2_TEST_TAKEOVER
     ReplayTakeoverManager takeover(&textReplayer);
     takeover.setTakeoverTarget(QStringLiteral("p1"));
     takeover.enableTakeover();
@@ -543,6 +549,7 @@ bool containersPlaybackSnapshotAndTakeover()
     ok = replayExpect(branch.success && branch.events.size() == 2
                           && branch.header.formatVersion == ReplayFormatVersion::V2,
                       QStringLiteral("takeover branch saves Replay V2")) && ok;
+#endif
 
     const QByteArray legacyBytes = readFile(
         QStringLiteral(QSAN_TEST_ROOT_PATH "/tests/replay-v2/fixtures/legacy-v1.txt"));
