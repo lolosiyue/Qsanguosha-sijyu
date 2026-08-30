@@ -456,15 +456,7 @@ void ServerPlayer::getMessage(const QByteArray &message)
 		return;
 	}
 
-	QString error;
-	const QByteArray normalized = m_protocolRouter.encodeReplayV1(decoded, &error);
-	if (normalized.isEmpty()) {
-		qWarning().noquote() << reportHeader() << "Protocol normalization failed:" << error;
-		if (socket != nullptr)
-			socket->disconnectFromHost();
-		return;
-	}
-	emit request_got(QString::fromUtf8(normalized), decoded);
+	emit request_got(QString::fromUtf8(message), decoded);
 }
 
 void ServerPlayer::unicast(const QString &message)
@@ -589,15 +581,12 @@ quint64 ServerPlayer::sendProtocolMessage(ProtocolMessage message)
 		return 0;
 	}
 
-	const QByteArray replayLine = m_protocolRouter.encodeReplayV1(message, &error);
-	if (replayLine.isEmpty()) {
-		qWarning().noquote() << reportHeader() << "Replay normalization failed:" << error;
+	if (recordBuffer && !recordBuffer->recordMessage(message, &error)) {
+		qWarning().noquote() << reportHeader() << "Replay recording failed:" << error;
 		if (socket != nullptr)
 			socket->disconnectFromHost();
 		return 0;
 	}
-	if (recordBuffer)
-		recordBuffer->recordLine(QString::fromUtf8(replayLine));
 	emit message_ready(encoded);
 	return message.messageId;
 }

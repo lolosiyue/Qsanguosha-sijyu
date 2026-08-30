@@ -1,27 +1,35 @@
 ﻿#include "recorder.h"
-#include "serverplayer.h"
+#include "protocol.h"
 #include "replay-index.h"
 #include "game-snapshot.h"
 
 #include <QFile>
-#include <QBuffer>
 #include <QDir>
 
+#include <cstring>
+#include <limits>
+
 using namespace QSanProtocol;
+using namespace QSanReplay;
+
+namespace
+{
+int elapsedSecondsForUi(qint64 elapsedMs)
+{
+    const qint64 seconds = elapsedMs / 1000;
+    return static_cast<int>(qMin<qint64>(
+        seconds, std::numeric_limits<int>::max()));
+}
+}
 
 Recorder::Recorder(QObject *parent)
     : QObject(parent)
 {
 }
 
-void Recorder::record(const char *line)
+bool Recorder::recordMessage(const ProtocolMessage &message, QString *error)
 {
-    recordLine(line);
-}
-
-void Recorder::recordLine(const QString &line)
-{
-    buffer.recordLine(line);
+    return buffer.recordMessage(message, error);
 }
 
 bool Recorder::save(const QString &filename) const
@@ -40,30 +48,40 @@ QList<QByteArray> Recorder::getRecords() const
     return buffer.getRecords();
 }
 
+QByteArray Recorder::rawReplayData() const
+{
+    return buffer.rawReplayData();
+}
+
 QImage Recorder::TXT2PNG(QByteArray txtData)
 {
     QByteArray data = qCompress(txtData, 9);
     qint32 actual_size = data.size();
     data.prepend((const char *)&actual_size, sizeof(qint32));
 
-    // actual data = width * height - padding
+    // Keep the historical square-pixel container while owning all pixel bytes.
     int width = ceil(sqrt((double)data.size()));
-    int height=width;
-    int padding = width * height - data.size();
-    QByteArray paddingData;
-    paddingData.fill('\0', padding);
-    data.append(paddingData);
-
-    QImage image((const uchar *)data.constData(), width, height, QImage::Format_ARGB32);
+    int height = width;
+    QImage image(width, height, QImage::Format_ARGB32);
+    image.fill(Qt::transparent);
+    std::memcpy(image.bits(), data.constData(), static_cast<size_t>(data.size()));
     return image;
 }
 
 QByteArray Recorder::PNG2TXT(const QString filename)
 {
     QImage image(filename);
+    if (image.isNull())
+        return QByteArray();
     image = image.convertToFormat(QImage::Format_ARGB32);
     const uchar *imageData = image.bits();
+    if (imageData == nullptr || image.sizeInBytes() < static_cast<qsizetype>(sizeof(qint32)))
+        return QByteArray();
     qint32 actual_size = *(const qint32 *)imageData;
+    if (actual_size < 0
+        || static_cast<qsizetype>(actual_size) > image.sizeInBytes() - sizeof(qint32)) {
+        return QByteArray();
+    }
     QByteArray data((const char *)(imageData + 4), actual_size);
     data = qUncompress(data);
 
@@ -73,38 +91,38 @@ QByteArray Recorder::PNG2TXT(const QString filename)
 Replayer::Replayer(QObject *parent, const QString &filename)
     : QThread(parent), m_commandSeriesCounter(1),
     filename(filename), speed(1.0), playing(true), m_seeking(false), m_currentPairIndex(0),
-    m_index(nullptr)
+    m_loadError(ReplayLoadError::None),
+    m_formatVersion(ReplayFormatVersion::LegacyV1),
+    m_messageProtocolVersion(ProtocolVersion::V1), m_index(nullptr)
 {
-    QIODevice *device = nullptr;
+    qRegisterMetaType<ProtocolMessage>("QSanProtocol::ProtocolMessage");
+
+    QByteArray replayData;
     if (filename.endsWith(".png")) {
-        QByteArray *data = new QByteArray(Recorder::PNG2TXT(filename));
-        QBuffer *buffer = new QBuffer(data);
-        device = buffer;
+        replayData = Recorder::PNG2TXT(filename);
     } else if (filename.endsWith(".txt")) {
-        QFile *file = new QFile(filename);
-        device = file;
+        QFile file(filename);
+        if (!file.open(QIODevice::ReadOnly)) {
+            m_loadError = ReplayLoadError::FileOpenFailure;
+            m_errorString = QStringLiteral("Replay file could not be opened: %1").arg(filename);
+            return;
+        }
+        replayData = file.readAll();
+    } else {
+        m_loadError = ReplayLoadError::UnsupportedContainer;
+        m_errorString = QStringLiteral("Replay container must be .txt or .png");
+        return;
     }
 
-    if (device == nullptr)
+    const ReplayLoadResult load = ReplayReader().read(replayData);
+    if (!load.success) {
+        m_loadError = load.error;
+        m_errorString = load.detail;
         return;
-
-    if (!device->open(QIODevice::ReadOnly | QIODevice::Text))
-        return;
-
-    while (!device->atEnd()) {
-        const QByteArray line = device->readLine();
-        const qsizetype space = line.indexOf(' ');
-        if (space < 0)
-            continue;
-
-        Pair pair;
-        pair.elapsed = line.left(space).toInt();
-        pair.cmd = QString::fromUtf8(line.mid(space + 1));
-
-        pairs << pair;
     }
-
-	delete device;
+    m_formatVersion = load.header.formatVersion;
+    m_messageProtocolVersion = load.header.protocolVersion;
+    m_events = load.events;
 
     m_index = new ReplayIndex(this);
     buildIndex();
@@ -124,11 +142,7 @@ void Replayer::buildIndex()
     if (!m_index)
         return;
 
-    QList<QPair<int, QString>> pairList;
-    foreach (const Pair &p, pairs) {
-        pairList << qMakePair(p.elapsed, p.cmd);
-    }
-    m_index->buildIndex(pairList);
+    m_index->buildIndex(m_events);
 
     QString snapshotPath = GameSnapshot::getSnapshotDir(filename);
     m_index->setSnapshotPath(snapshotPath);
@@ -173,11 +187,41 @@ int Replayer::getCurrentPairIndex() const
     return m_currentPairIndex;
 }
 
-int Replayer::getCurrentElapsed() const
+qint64 Replayer::getCurrentElapsed() const
 {
-    if (m_currentPairIndex >= 0 && m_currentPairIndex < pairs.size())
-        return pairs[m_currentPairIndex].elapsed;
+    if (m_currentPairIndex >= 0 && m_currentPairIndex < m_events.size())
+        return m_events[m_currentPairIndex].elapsedMs;
     return 0;
+}
+
+bool Replayer::isValid() const
+{
+    return m_loadError == ReplayLoadError::None;
+}
+
+ReplayLoadError Replayer::loadError() const
+{
+    return m_loadError;
+}
+
+QString Replayer::errorString() const
+{
+    return m_errorString;
+}
+
+ReplayFormatVersion Replayer::formatVersion() const
+{
+    return m_formatVersion;
+}
+
+ProtocolVersion Replayer::messageProtocolVersion() const
+{
+    return m_messageProtocolVersion;
+}
+
+const QList<ReplayEvent> &Replayer::events() const
+{
+    return m_events;
 }
 
 ReplayIndex* Replayer::getIndex() const
@@ -187,7 +231,9 @@ ReplayIndex* Replayer::getIndex() const
 
 int Replayer::getDuration() const
 {
-    return pairs.last().elapsed / 1000.0;
+    if (m_events.isEmpty())
+        return 0;
+    return elapsedSecondsForUi(m_events.constLast().elapsedMs);
 }
 
 qreal Replayer::getSpeed()
@@ -246,14 +292,14 @@ void Replayer::toggle()
 
 void Replayer::run()
 {
-    int last = 0;
+    qint64 last = 0;
 
     QList<CommandType> nondelays;
     nondelays << S_COMMAND_ADD_PLAYER
         << S_COMMAND_REMOVE_PLAYER
         << S_COMMAND_SPEAK;
 
-    for (m_currentPairIndex = 0; m_currentPairIndex < pairs.size(); m_currentPairIndex++) {
+    for (m_currentPairIndex = 0; m_currentPairIndex < m_events.size(); m_currentPairIndex++) {
         if (m_seeking) {
             mutex.lock();
             bool shouldSeek = m_seeking;
@@ -265,28 +311,25 @@ void Replayer::run()
             }
         }
 
-        Pair pair = pairs[m_currentPairIndex];
-        int delay = qMin(pair.elapsed - last, 2500);
-        last = pair.elapsed;
+        const ReplayEvent event = m_events.at(m_currentPairIndex);
+        qint64 delay = qMin<qint64>(event.elapsedMs - last, 2500);
+        last = event.elapsedMs;
 
         bool delayed = true;
-        Packet packet;
-        if (packet.parse(pair.cmd.toLatin1().constData())) {
-            if (nondelays.contains(packet.getCommandType()))
-                delayed = false;
-        }
+        if (nondelays.contains(static_cast<CommandType>(event.message.command)))
+            delayed = false;
 
         if (delayed) {
             delay /= getSpeed();
 
-            msleep(delay);
-            emit elasped(pair.elapsed / 1000.0);
+            msleep(static_cast<unsigned long>(delay));
+            emit elasped(elapsedSecondsForUi(event.elapsedMs));
 
             if (!playing)
                 play_sem.acquire();
         }
 
-        emit command_parsed(pair.cmd);
+        emit command_parsed(event.message);
 
         int nodeIndex = m_index ? m_index->findNearestNode(m_currentPairIndex) : -1;
         if (nodeIndex >= 0) {
@@ -304,13 +347,17 @@ void Replayer::jumpToNode(int nodeIndex)
     seekToPosition(node.pairIndex);
 }
 
-void Replayer::jumpToElapsed(int elapsed)
+void Replayer::jumpToElapsed(qint64 elapsed)
 {
+    if (elapsed < 0)
+        return;
     int bestIndex = 0;
-    int bestDiff = INT_MAX;
+    qint64 bestDiff = std::numeric_limits<qint64>::max();
 
-    for (int i = 0; i < pairs.size(); i++) {
-        int diff = qAbs(pairs[i].elapsed - elapsed);
+    for (int i = 0; i < m_events.size(); i++) {
+        const qint64 eventElapsed = m_events.at(i).elapsedMs;
+        const qint64 diff = eventElapsed >= elapsed
+            ? eventElapsed - elapsed : elapsed - eventElapsed;
         if (diff < bestDiff) {
             bestDiff = diff;
             bestIndex = i;
@@ -322,7 +369,7 @@ void Replayer::jumpToElapsed(int elapsed)
 
 void Replayer::seekToPosition(int pairIndex)
 {
-    if (pairIndex < 0 || pairIndex >= pairs.size())
+    if (pairIndex < 0 || pairIndex >= m_events.size())
         return;
 
     mutex.lock();
@@ -330,10 +377,10 @@ void Replayer::seekToPosition(int pairIndex)
     m_currentPairIndex = pairIndex;
     mutex.unlock();
 
-    emit elasped(pairs[pairIndex].elapsed / 1000.0);
+    emit elasped(elapsedSecondsForUi(m_events.at(pairIndex).elapsedMs));
 
     for (int i = 0; i <= pairIndex; i++) {
-        emit command_parsed(pairs[i].cmd);
+        emit command_parsed(m_events.at(i).message);
     }
 
     emit seek_finished();
@@ -341,8 +388,8 @@ void Replayer::seekToPosition(int pairIndex)
 
 void Replayer::emitCommand(int pairIndex)
 {
-    if (pairIndex >= 0 && pairIndex < pairs.size()) {
-        emit command_parsed(pairs[pairIndex].cmd);
+    if (pairIndex >= 0 && pairIndex < m_events.size()) {
+        emit command_parsed(m_events.at(pairIndex).message);
     }
 }
 
