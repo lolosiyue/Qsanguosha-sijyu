@@ -8,7 +8,7 @@ Codec: implemented
 Production activation: enabled after explicit V1 barrier
 Replay: V1 logical normalization
 Framing: byte-oriented newline transport, maximum 65535 encoded bytes
-Typed gameplay payloads: 1/29 interaction commands
+Typed gameplay payloads: 7/29 interaction commands
 ```
 
 `QSanProtocol::ProtocolV2Codec` can independently encode and decode a
@@ -137,10 +137,25 @@ logical payload. The router applies the following rules:
 | V2／non-migrated command | Identity |
 | V2／`S_COMMAND_MULTIPLE_CHOICE` Room → Client request | Legacy four-string array → typed request object |
 | V2／`S_COMMAND_MULTIPLE_CHOICE` Client → Room reply | Legacy scalar string → typed reply object |
-| V2／`S_COMMAND_MULTIPLE_CHOICE` other directions | Identity |
+| V2／`S_COMMAND_CHOOSE_GENERAL` Room → Client request | Legacy string array → `{schema_version, candidates}` |
+| V2／`S_COMMAND_CHOOSE_GENERAL` Client → Room reply | Legacy string → `{schema_version, general}` |
+| V2／`S_COMMAND_CHOOSE_SUIT` Room → Client request | Missing legacy payload → `{schema_version}` |
+| V2／`S_COMMAND_CHOOSE_SUIT` Client → Room reply | Legacy string → `{schema_version, suit}` |
+| V2／`S_COMMAND_CHOOSE_KINGDOM` Room → Client request | Legacy joined-string array → `{schema_version, kingdoms}` |
+| V2／`S_COMMAND_CHOOSE_KINGDOM` Client → Room reply | Legacy string → `{schema_version, kingdom}` |
+| V2／`S_COMMAND_CHOOSE_ORDER` Room → Client request | Legacy numeric reason → `{schema_version, reason}` |
+| V2／`S_COMMAND_CHOOSE_ORDER` Client → Room reply | Legacy numeric camp → `{schema_version, camp}` |
+| V2／`S_COMMAND_INVOKE_SKILL` Room → Client request | Legacy two-string array → `{schema_version, skill_name, data}` |
+| V2／`S_COMMAND_INVOKE_SKILL` Client → Room reply | Legacy boolean → `{schema_version, invoke}` |
+| V2／`S_COMMAND_SURRENDER` Room → Client vote request | Legacy initiator string → `{schema_version, initiator_general}` |
+| V2／`S_COMMAND_SURRENDER` Client → Room vote reply | Legacy boolean → `{schema_version, surrender}` |
+| V2／migrated command, any other flow | Identity |
 
-The first migrated inventory is therefore exactly **1 of 29** gameplay
-interaction commands. No new command ID is introduced.
+The migrated command inventory is exactly **7 of 29** gameplay interactions:
+`MULTIPLE_CHOICE`, `CHOOSE_GENERAL`, `CHOOSE_SUIT`, `CHOOSE_KINGDOM`,
+`CHOOSE_ORDER`, `INVOKE_SKILL`, and `SURRENDER`. No new command ID is introduced.
+Registry classification uses the complete message type/source/destination/command
+key rather than command identity alone.
 
 ### `S_COMMAND_MULTIPLE_CHOICE` request
 
@@ -186,6 +201,52 @@ array/scalar shapes sent inside a migrated V2 envelope fail with
 `InvalidPayload`; there is no V1 fallback after V2 activation. Parsing and
 registry transforms are transactional.
 
+### Simple-choice schemas
+
+Every object below requires integral `schema_version: 1`. The listed fields are
+also required and strictly typed; unknown additional members are ignored.
+
+| Interaction | V2 Room → Client request payload | V2 Client → Room reply payload | Normalized V1 logical payload |
+|---|---|---|---|
+| `CHOOSE_GENERAL` | `{"schema_version":1,"candidates":["caocao","liubei"]}` | `{"schema_version":1,"general":"caocao"}` | request string array; reply string |
+| `CHOOSE_SUIT` | `{"schema_version":1}` | `{"schema_version":1,"suit":"spade"}` | request has no payload; reply string |
+| `CHOOSE_KINGDOM` | `{"schema_version":1,"kingdoms":["wei","shu"]}` | `{"schema_version":1,"kingdom":"wei"}` | request `["wei+shu"]`; reply string |
+| `CHOOSE_ORDER` | `{"schema_version":1,"reason":"turn"}` | `{"schema_version":1,"camp":"warm"}` | request/reply numeric enums |
+| `INVOKE_SKILL` | `{"schema_version":1,"skill_name":"test_skill","data":"playerdata:sgs1"}` | `{"schema_version":1,"invoke":true}` | request two-string array; reply boolean |
+| `SURRENDER` vote | `{"schema_version":1,"initiator_general":"caocao"}` | `{"schema_version":1,"surrender":false}` | request string; reply boolean |
+
+The general, suit, and kingdom values are structurally validated strings.
+Candidate membership, known suits, known kingdoms, and gameplay legality remain
+server authority. This preserves `FreeChoose`, mini-scenario, and custom-scenario
+general selection. Kingdom order and empty legacy token behavior are preserved.
+
+`CHOOSE_ORDER` uses explicit mappings only:
+
+| Legacy enum | V2 string |
+|---|---|
+| `S_REASON_CHOOSE_ORDER_TURN` | `turn` |
+| `S_REASON_CHOOSE_ORDER_SELECT` | `select` |
+| `S_CAMP_WARM` | `warm` |
+| `S_CAMP_COOL` | `cool` |
+
+Unknown strings and numeric values inside V2 typed objects fail with
+`InvalidPayload`. `INVOKE_SKILL.data` remains an opaque legacy semantic string;
+formats such as `playerdata:<name>` are not parsed by the wire boundary.
+
+### Flow-aware exceptions
+
+| Flow | V2 behavior |
+|---|---|
+| Room → Client Notification `INVOKE_SKILL` | Identity; legacy notification array remains inside the V2 envelope |
+| Client → Room Request `SURRENDER` | Identity; surrender initiation remains payload-free |
+| `LUCK_CARD` request/reply | Identity; excluded until aliased reply commands are normalized |
+| `CHOOSE_DIRECTION` request/reply | Identity; excluded until aliased reply commands are normalized |
+
+`RequestCoordinator` currently maps expected replies from `LUCK_CARD` to
+`INVOKE_SKILL` and from `CHOOSE_DIRECTION` to `MULTIPLE_CHOICE`. Their request
+command, expected reply command, and Client reply encoder identity need a
+dedicated alias-normalization change before typed migration.
+
 ## Compatibility
 
 ```text
@@ -196,15 +257,17 @@ preferredVersion may be V2
 activeVersion remains V1 until COMMIT
 Production may become V2 per connection
 Replay remains V1-compatible logical packets
-MULTIPLE_CHOICE V2 wire uses typed objects
-All other gameplay payloads retain their current wire shape
+Seven migrated interaction request commands use typed V2 objects
+All non-migrated flows retain their current wire shape
 ```
 
 The V2 codec has no dependency on legacy `Packet` or `PacketDescription`.
 After V2 decode, the registry restores the legacy-compatible logical payload
 before Client/server dispatch and before `encodeReplayV1()`. Replay therefore
 never receives the typed V2 object. A future replay version and the remaining
-28 gameplay payload migrations remain later work.
+22 gameplay payload migrations remain later work. The next protocol batch should
+normalize the aliased `CHOOSE_DIRECTION` and `LUCK_CARD` reply-command identities
+before migrating their payloads.
 
 ## Transport
 
