@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "name": "choose_general_v2",
+  "packages": ["standard"],
+  "bootstrap": {
+    "mode": "02p",
+    "self": { "object_name": "self", "screen_name": "Tester", "general": "caocao", "hp": 4, "max_hp": 4, "phase": "NotActive", "skills": [] },
+    "players": [{ "object_name": "target", "screen_name": "Target", "general": "liubei", "hp": 4, "max_hp": 4, "alive": true }],
+    "cards": []
+  },
+  "request": {
+    "api": "raw",
+    "command": "S_COMMAND_CHOOSE_GENERAL",
+    "serial": 1101,
+    "wire_version": 2,
+    "raw_body": ["caocao", "liubei"]
+  },
+  "expect_presented": {
+    "client_status": "ExecDialog",
+    "interaction_request": {
+      "type": "choose_general",
+      "request_id": 1,
+      "server_serial": 1101,
+      "command": 10,
+      "cancelable": false,
+      "response_schema": "option",
+      "payload": {
+        "enumerated": false,
+        "options": [{ "value": "caocao" }, { "value": "liubei" }]
+      }
+    }
+  },
+  "actions": [{ "type": "choose_general", "general": "liubei" }],
+  "expect_reply": { "command": "S_COMMAND_CHOOSE_GENERAL", "local_serial": 1101, "choice": "liubei" },
+  "expect_final": { "client_status": "NotActive", "open_dialog_count": 0 }
+}

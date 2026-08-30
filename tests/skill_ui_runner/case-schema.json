@@ -83,9 +83,10 @@
       "required": ["type"],
       "properties": {
         "type": {
-          "enum": ["invoke_skill_yes", "invoke_skill_no", "choose_option", "activate_skill", "deactivate_skill", "select_card", "unselect_card", "select_player", "unselect_player", "choose_surface_card", "toggle_guanxing_card", "click_ok", "click_cancel", "click_discard", "assert", "take_screenshot"]
+          "enum": ["invoke_skill_yes", "invoke_skill_no", "choose_option", "choose_general", "activate_skill", "deactivate_skill", "select_card", "unselect_card", "select_player", "unselect_player", "choose_surface_card", "toggle_guanxing_card", "click_ok", "click_cancel", "click_discard", "assert", "take_screenshot"]
         },
         "option": { "type": "string" },
+        "general": { "type": "string" },
         "skill": { "type": "string" },
         "card": { "type": "string" },
         "player": { "type": "string" },

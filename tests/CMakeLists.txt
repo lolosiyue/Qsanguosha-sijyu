@@ -138,6 +138,21 @@ qsan_add_ctest(qsanguosha_protocol_gameplay_payload_contract
     LABELS "protocol;fast"
 )
 
+add_executable(qsanguosha_protocol_simple_choice_payload_tests
+    protocol/simple-choice-payloads-test.cpp
+)
+target_include_directories(qsanguosha_protocol_simple_choice_payload_tests PRIVATE
+    ${QSAN_TEST_ROOT}/src/core
+)
+target_link_libraries(qsanguosha_protocol_simple_choice_payload_tests PRIVATE
+    qsanguosha_engine
+    Qt6::Core
+)
+qsan_add_ctest(qsanguosha_protocol_simple_choice_payload_contract
+    qsanguosha_protocol_simple_choice_payload_tests
+    LABELS "protocol;fast"
+)
+
 add_executable(qsanguosha_protocol_gameplay_tcp_tests
     protocol/multiple-choice-tcp-test.cpp
 )
@@ -151,6 +166,20 @@ target_link_libraries(qsanguosha_protocol_gameplay_tcp_tests PRIVATE
 )
 qsan_add_ctest(qsanguosha_protocol_gameplay_tcp_contract
     qsanguosha_protocol_gameplay_tcp_tests
+    LABELS "protocol;network;fast"
+    TIMEOUT 30
+)
+
+add_executable(qsanguosha_protocol_simple_choice_tcp_tests
+    protocol/simple-choice-tcp-test.cpp
+    ${QSAN_TEST_ROOT}/src/server/server-core.h
+)
+qsan_link_engine_test(qsanguosha_protocol_simple_choice_tcp_tests)
+target_link_libraries(qsanguosha_protocol_simple_choice_tcp_tests PRIVATE
+    Qt6::Network
+)
+qsan_add_ctest(qsanguosha_protocol_simple_choice_tcp_contract
+    qsanguosha_protocol_simple_choice_tcp_tests
     LABELS "protocol;network;fast"
     TIMEOUT 30
 )
