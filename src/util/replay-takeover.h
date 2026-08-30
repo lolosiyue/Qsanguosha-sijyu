@@ -6,6 +6,7 @@
 #include <QString>
 #include <QVariant>
 
+#include "protocol.h"
 #include "protocol/protocol-message.h"
 
 class Replayer;
@@ -33,6 +34,9 @@ public:
     void processRequest(const QSanProtocol::ProtocolMessage &message);
     QVariant generateAIResponse(const QSanProtocol::ProtocolMessage &message,
                                 const QString &playerName);
+    bool submitPlayerResponse(QSanProtocol::CommandType command,
+                              const QVariant &response,
+                              quint64 replyTo);
 
     void saveNewReplay(const QString &filepath);
     QString generateNewReplayFilename() const;
@@ -51,6 +55,9 @@ private:
     void initializeFromReplay();
     void syncHandcards(const QString &playerName);
     void recordMessage(const QSanProtocol::ProtocolMessage &message);
+    bool recordReply(QSanProtocol::CommandType command,
+                     const QVariant &response,
+                     quint64 replyTo);
 
     Replayer *m_replayer;
     ReplayGameState *m_gameState;

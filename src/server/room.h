@@ -343,7 +343,7 @@ public:
     bool broadcastResetCard(const QList<ServerPlayer*>&players, int cardId);
 
     bool broadcastProperty(ServerPlayer*owner, const char*property_name, const QString&value = "");
-    void broadcastTagProperty(ServerPlayer *owner, const QString &tagKey, const QString &value);
+    void broadcastTagProperty(ServerPlayer *owner, const QString &tagKey, const QVariant &value);
     void notifyPlayerUIState(ServerPlayer *owner, const PlayerUIState &state);
     void notifyPlayerUIState(ServerPlayer *receiver, const ServerPlayer *owner, const PlayerUIState &state);
     void notifySkillInvoked(ServerPlayer*player, const QString&skill_name);
@@ -570,13 +570,11 @@ public:
     bool changeBGM(const QString&bgm_name, bool reset = false, QList<ServerPlayer*> to_assign = QList<ServerPlayer*>());
     void playAudioEffect(const QString&filename, bool superpose = true);
 
-    void toggleReadyCommand(ServerPlayer*player, const QVariant&);
+    void setReadyCommand(ServerPlayer *player, const QVariant &payload);
     void speakCommand(ServerPlayer*player, const QVariant&arg);
     void trustCommand(ServerPlayer*player, const QVariant&arg);
     void pauseCommand(ServerPlayer*player, const QVariant&arg);
     void addRobotCommand(ServerPlayer*player, const QVariant&arg);
-    void broadcastInvoke(const QSanProtocol::AbstractPacket*packet, ServerPlayer*except = nullptr);
-    void broadcastInvoke(const char*method, const QString&arg = ".", ServerPlayer*except = nullptr);
     void networkDelayTestCommand(ServerPlayer*player, const QVariant&);
     void moveCardsToEndOfDrawpile(ServerPlayer*player, QList<int> card_ids, const QString&skill_name, bool visible = false, bool guanxing = false);
     void moveCardsInToDrawpile(ServerPlayer*player, const Card*card, const QString&skill_name, int n = 0, bool visible = false);
@@ -786,7 +784,6 @@ private:
     QStringList triggerPreSelectionSkills(ServerPlayer *player, QStringList generals, const QString &reason);
     void triggerGeneralNotChosen(ServerPlayer *player, const QStringList &generals, const QString &chosen, const QString &reason);
     AI*cloneAI(ServerPlayer*player);
-    void broadcast(const QString&message, ServerPlayer*except = nullptr);
     bool stopGameThreads(int timeoutMs);
     QString askForOrder(ServerPlayer*player, const QString&default_choice);
     QString askForRole(ServerPlayer*player, const QStringList&roles, const QString&scheme);

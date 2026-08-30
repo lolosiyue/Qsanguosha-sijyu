@@ -7,7 +7,9 @@
 #include "player.h"
 #include "player-ui-state-builder.h"
 #include "protocol.h"
+#include "protocol/protocol-runtime.h"
 #include "record-buffer.h"
+#include "replay/replay-codec.h"
 #include "room.h"
 #include "server-info.h"
 #include "serverplayer.h"
@@ -351,24 +353,28 @@ int runEngineSmokeTests()
         || !request.supplied || request.instanceID != 3)
         return 3;
 
-    QSanProtocol::Packet packet(QSanProtocol::S_DESC_UNKNOWN,
-                                QSanProtocol::S_COMMAND_UNKNOWN);
-    if (!packet.parse(QByteArrayLiteral("[1,2,1,1]")))
-        return 4;
-
-    RecordBuffer recordBuffer;
     QSanProtocol::ProtocolMessage replayMessage;
     replayMessage.type = QSanProtocol::ProtocolMessageType::Notification;
     replayMessage.source = QSanProtocol::ProtocolEndpoint::Room;
     replayMessage.destination = QSanProtocol::ProtocolEndpoint::Client;
-    replayMessage.command = QSanProtocol::S_COMMAND_UNKNOWN;
+    replayMessage.messageId = 1;
+    replayMessage.command = QSanProtocol::S_COMMAND_ADD_PLAYER;
+    replayMessage.hasPayload = true;
+    replayMessage.payload = QVariantList{
+        QStringLiteral("p1"), QStringLiteral("UGxheWVy"), QStringLiteral("caocao")};
+    QString wireError;
+    if (QSanProtocol::ProtocolCodecRouter().encode(replayMessage, &wireError).isEmpty())
+        return 4;
+
+    RecordBuffer recordBuffer;
     QString replayError;
     if (!recordBuffer.recordMessage(replayMessage, &replayError))
         return 5;
     const QList<QByteArray> records = recordBuffer.getRecords();
-    if (records.size() != 1
-        || !recordBuffer.rawReplayData().startsWith(
-            "QSAN_REPLAY {\"format_version\":2,\"protocol_version\":2}\n"))
+    const QSanReplay::ReplayLoadResult replay = QSanReplay::ReplayReader().read(
+        recordBuffer.rawReplayData());
+    if (records.size() != 1 || !replay.success
+        || replay.header.protocolVersion != QSanProtocol::ProtocolVersion::V2)
         return 5;
 
     if (!discardSkillSelectsCardsForExplicitClientPlayerContext())

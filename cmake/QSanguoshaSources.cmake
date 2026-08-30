@@ -8,7 +8,7 @@ set(QSAN_SOURCES
     src/client/interaction-descriptor-registry.cpp
     src/client/interaction-request-factory.cpp
     src/client/interaction-reply-coordinator.cpp
-    src/client/legacy-v1-interaction-reply-adapter.cpp
+    src/client/interaction-reply-encoder.cpp
     src/core/json-gui.cpp
     src/core/oracle_helper.cpp
     src/core/record-analysis.cpp

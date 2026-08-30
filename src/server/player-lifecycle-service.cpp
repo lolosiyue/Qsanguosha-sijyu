@@ -14,6 +14,7 @@
 #include "banpair.h"
 #include "engine.h"
 #include "protocol/switch-context-message.h"
+#include "protocol/session/session-payloads.h"
 #include "settings.h"
 #include "standard.h"
 
@@ -35,6 +36,7 @@ PlayerLifecycleService::PlayerLifecycleService(Room &room, RoomRoster &roster,
 ServerPlayer *PlayerLifecycleService::addSocket(ClientSocket *socket)
 {
     ServerPlayer *player = new ServerPlayer(&m_room);
+    player->setObjectName(Room::generatePlayerName());
     player->setSocket(socket);
     m_roster.add(player);
 
@@ -59,7 +61,8 @@ ServerPlayer *PlayerLifecycleService::addAIPlayer()
 void PlayerLifecycleService::signup(ServerPlayer *player, const QString &screenName,
                                     const QString &avatar, bool isRobot)
 {
-    player->setObjectName(Room::generatePlayerName());
+    if (player->objectName().isEmpty())
+        player->setObjectName(Room::generatePlayerName());
     m_room.safeSetPlayerProperty(player, "avatar", avatar);
     player->setScreenName(screenName);
 
@@ -74,10 +77,12 @@ void PlayerLifecycleService::signup(ServerPlayer *player, const QString &screenN
     player->introduceTo(nullptr);
 
     if (isRobot) {
-        m_room.toggleReadyCommand(player, QVariant());
+        m_room.setReadyCommand(player, true);
     } else {
         const QString greetingStr = "<font color=#EEB422>已加入游戏</font>";
-        m_room.speakCommand(player, greetingStr.toUtf8().toBase64());
+        ChatPayload greeting;
+        greeting.text = greetingStr;
+        m_room.speakCommand(player, greeting.toVariant());
         player->startNetworkDelayTest();
         foreach (ServerPlayer *existing, m_roster.players()) {
             if (existing != player)
@@ -621,10 +626,10 @@ ServerPlayer *PlayerLifecycleService::insertPlayerMidGame(ServerPlayer *before,
     const int aliveIndex = m_roster.alivePlayers().indexOf(before);
     m_roster.insertAfter(before, player, aliveIndex >= 0 || before->isAlive());
 
-    JsonArray info;
-    info << player->objectName()
-         << QString::fromUtf8(QByteArray::fromBase64(player->screenName().toUtf8().toBase64()))
-         << generalName;
+    QVariantMap info{{QStringLiteral("schema_version"), 1},
+                     {QStringLiteral("player_name"), player->objectName()},
+                     {QStringLiteral("screen_name"), player->screenName()},
+                     {QStringLiteral("avatar"), generalName}};
     m_notifier.doBroadcastNotify(S_COMMAND_ADD_PLAYER_DYNAMIC, info);
 
     const QList<ServerPlayer *> players = m_roster.players();
@@ -649,7 +654,8 @@ ServerPlayer *PlayerLifecycleService::insertPlayerMidGame(ServerPlayer *before,
 
 void PlayerLifecycleService::reconnect(ServerPlayer *player, ClientSocket *socket)
 {
-    player->setSocket(socket);
+    if (socket != nullptr)
+        player->setSocket(socket);
     player->setState("online");
     marshal(player);
     m_room.broadcastProperty(player, "state");
@@ -670,14 +676,16 @@ void PlayerLifecycleService::marshal(ServerPlayer *player)
     m_notifier.doNotify(player, S_COMMAND_ARRANGE_SEATS, JsonUtils::toJsonArray(playerCircle));
 
     foreach (ServerPlayer *dynamicPlayer, m_dynamicPlayers) {
-        JsonArray info;
-        info << dynamicPlayer->objectName()
-             << QString::fromUtf8(QByteArray::fromBase64(dynamicPlayer->screenName().toUtf8().toBase64()))
-             << dynamicPlayer->getGeneralName();
+        QVariantMap info{{QStringLiteral("schema_version"), 1},
+                         {QStringLiteral("player_name"), dynamicPlayer->objectName()},
+                         {QStringLiteral("screen_name"), dynamicPlayer->screenName()},
+                         {QStringLiteral("avatar"), dynamicPlayer->getGeneralName()}};
         m_notifier.doNotify(player, S_COMMAND_ADD_PLAYER_DYNAMIC, info);
     }
 
-    m_notifier.doNotify(player, S_COMMAND_START_IN_X_SECONDS, QVariant(0));
+    m_notifier.doNotify(player, S_COMMAND_START_IN_X_SECONDS,
+        QVariantMap{{QStringLiteral("schema_version"), 1},
+                    {QStringLiteral("seconds"), 0}});
     foreach (ServerPlayer *existing, m_roster.players()) {
         m_room.notifyProperty(player, existing, "general");
         if (existing->getGeneral2())

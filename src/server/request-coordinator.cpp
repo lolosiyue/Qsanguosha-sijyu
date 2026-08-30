@@ -1,4 +1,6 @@
 #include "request-coordinator.h"
+#include "protocol/gameplay/protocol-gameplay-payload-registry.h"
+#include "protocol/session/session-payloads.h"
 
 #include "json.h"
 #include "protocol/switch-context-message.h"
@@ -69,14 +71,7 @@ void syncKnownHandcards(Room &room, ServerPlayer *viewer, ServerPlayer *target)
 
 bool isCompatibleReplyCommand(CommandType expected, CommandType actual)
 {
-    if (expected == actual)
-        return true;
-
-    // The dedicated request command is retained as the expected identity, so
-    // an unrelated MULTIPLE_CHOICE or INVOKE_SKILL request stays strict. Older
-    // clients may still answer the two aliased requests with the shared command.
-    return (expected == S_COMMAND_CHOOSE_DIRECTION && actual == S_COMMAND_MULTIPLE_CHOICE)
-        || (expected == S_COMMAND_LUCK_CARD && actual == S_COMMAND_INVOKE_SKILL);
+    return expected == actual;
 }
 
 }
@@ -99,7 +94,7 @@ void RequestCoordinator::initializeCallbacks()
 
     m_callbacks[S_COMMAND_SURRENDER] = &Room::processRequestSurrender;
     m_callbacks[S_COMMAND_CHEAT] = &Room::processRequestCheat;
-    m_callbacks[S_COMMAND_TOGGLE_READY] = &Room::toggleReadyCommand;
+    m_callbacks[S_COMMAND_READY] = &Room::setReadyCommand;
     m_callbacks[S_COMMAND_ADD_ROBOT] = &Room::addRobotCommand;
     m_callbacks[S_COMMAND_SPEAK] = &Room::speakCommand;
     m_callbacks[S_COMMAND_TRUST] = &Room::trustCommand;
@@ -163,7 +158,6 @@ void RequestCoordinator::clearDualControlRequest(ServerPlayer *player, bool rest
     target->acquireLock(ServerPlayer::SEMA_MUTEX);
     target->m_expectedReplyCommand = S_COMMAND_UNKNOWN;
     target->m_isWaitingReply = false;
-    target->m_expectedReplySerial = -1;
     target->m_expectedReplyMessageId = 0;
     target->m_isClientResponseReady = false;
     target->setClientReplyString("");
@@ -204,8 +198,13 @@ bool RequestCoordinator::request(ServerPlayer *player, CommandType command,
         }
     }
 
-    Packet packet(S_SRC_ROOM | S_TYPE_REQUEST | S_DEST_CLIENT, command);
-    packet.setMessageBody(arg);
+    ProtocolMessage requestMessage;
+    requestMessage.type = ProtocolMessageType::Request;
+    requestMessage.source = ProtocolEndpoint::Room;
+    requestMessage.destination = ProtocolEndpoint::Client;
+    requestMessage.command = command;
+    requestMessage.hasPayload = !arg.isNull();
+    requestMessage.payload = arg;
     CommandType expectedReply = m_requestResponsePairs.contains(command)
         ? m_requestResponsePairs[command]
         : command;
@@ -216,7 +215,6 @@ bool RequestCoordinator::request(ServerPlayer *player, CommandType command,
     target->setClientReply(QVariant());
     target->setClientReplyString("");
     target->m_isWaitingReply = true;
-    target->m_expectedReplySerial = packet.globalSerial;
     target->m_expectedReplyCommand = expectedReply;
     target->releaseLock(ServerPlayer::SEMA_MUTEX);
 
@@ -234,7 +232,6 @@ bool RequestCoordinator::request(ServerPlayer *player, CommandType command,
         player->setClientReply(QVariant());
         player->setClientReplyString("");
         player->m_isWaitingReply = true;
-        player->m_expectedReplySerial = packet.globalSerial;
         player->m_expectedReplyCommand = expectedReply;
         player->releaseLock(ServerPlayer::SEMA_MUTEX);
 
@@ -247,7 +244,7 @@ bool RequestCoordinator::request(ServerPlayer *player, CommandType command,
         resultTarget = player;
     }
 
-    const quint64 requestMessageId = target->invoke(&packet);
+    const quint64 requestMessageId = target->sendProtocolMessage(requestMessage);
     target->acquireLock(ServerPlayer::SEMA_MUTEX);
     target->m_expectedReplyMessageId = requestMessageId;
     target->releaseLock(ServerPlayer::SEMA_MUTEX);
@@ -413,7 +410,6 @@ ServerPlayer *RequestCoordinator::getRaceResult(QList<ServerPlayer *> players, C
         player->acquireLock(ServerPlayer::SEMA_MUTEX);
         player->m_expectedReplyCommand = S_COMMAND_UNKNOWN;
         player->m_isWaitingReply = false;
-        player->m_expectedReplySerial = -1;
         player->m_expectedReplyMessageId = 0;
         player->releaseLock(ServerPlayer::SEMA_MUTEX);
     }
@@ -446,7 +442,6 @@ bool RequestCoordinator::getResult(ServerPlayer *player, time_t timeOut)
     }
     player->m_expectedReplyCommand = S_COMMAND_UNKNOWN;
     player->m_isWaitingReply = false;
-    player->m_expectedReplySerial = -1;
     player->m_expectedReplyMessageId = 0;
     player->releaseLock(ServerPlayer::SEMA_MUTEX);
     if (!redirectedTargetName.isEmpty())
@@ -468,10 +463,10 @@ bool RequestCoordinator::verifyRaceReply(ServerPlayer *player, const QVariant &r
 }
 
 void RequestCoordinator::processClientPacket(
-    ServerPlayer *player, const Packet &packet, const ProtocolMessage &message,
+    ServerPlayer *player, const ProtocolMessage &message,
     const QString &rawRequest)
 {
-    if (packet.getPacketType() == S_TYPE_REPLY) {
+    if (message.type == ProtocolMessageType::Reply) {
         if (player == nullptr)
             return;
         player->setClientReplyString(rawRequest);
@@ -479,13 +474,29 @@ void RequestCoordinator::processClientPacket(
         return;
     }
 
-    if (packet.getPacketType() != S_TYPE_REQUEST
-        && packet.getPacketType() != S_TYPE_NOTIFICATION)
+    if (message.type != ProtocolMessageType::Request
+        && message.type != ProtocolMessageType::Notification)
         return;
 
-    Callback callback = m_callbacks.value(packet.getCommandType(), nullptr);
-    if (callback != nullptr)
-        (m_room.*callback)(player, packet.getMessageBody());
+    Callback callback = m_callbacks.value(
+        static_cast<CommandType>(message.command), nullptr);
+    if (callback != nullptr) {
+        (m_room.*callback)(player,
+            message.hasPayload ? message.payload : QVariant());
+        if (message.type == ProtocolMessageType::Request && player != nullptr) {
+            CommandResultPayload result;
+            result.success = true;
+            ProtocolMessage reply;
+            reply.type = ProtocolMessageType::Reply;
+            reply.source = ProtocolEndpoint::Room;
+            reply.destination = ProtocolEndpoint::Client;
+            reply.command = message.command;
+            reply.replyTo = message.messageId;
+            reply.hasPayload = true;
+            reply.payload = result.toVariant();
+            player->sendProtocolMessage(reply);
+        }
+    }
 }
 
 void RequestCoordinator::processResponse(
@@ -520,13 +531,21 @@ void RequestCoordinator::processResponse(
     else
         success = true;
 
+    QVariant reply;
     if (success) {
-        const QVariant reply = message.hasPayload ? message.payload : QVariant();
+        QString decodeError;
+        success = ProtocolGameplayPayloadRegistry::decodeReplyDomainValue(
+            message, &reply, &decodeError);
+        if (!success)
+            emit m_room.room_message(m_room.tr("Invalid interaction reply: %1")
+                                     .arg(decodeError));
+    }
+
+    if (success) {
         player->setClientReply(reply);
         player->m_isClientResponseReady = true;
         player->m_isWaitingReply = false;
         player->m_expectedReplyCommand = S_COMMAND_UNKNOWN;
-        player->m_expectedReplySerial = -1;
         player->m_expectedReplyMessageId = 0;
 
         if (replyOwner != player) {

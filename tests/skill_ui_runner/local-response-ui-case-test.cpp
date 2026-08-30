@@ -89,13 +89,13 @@ int main(int argc, char **argv)
 
             LocalResponseUiCase testCase;
             QString error;
-            Packet packet;
+            ProtocolMessage packet;
             QString command;
             QVariant body;
             const bool mapped = loadCase(QJsonDocument(root).toJson(QJsonDocument::Compact),
                     &testCase, &error)
-                && testCase.makeRequestPacket(&packet, &command, &body, {}, &error)
-                && command == expectedCommand && packet.globalSerial == static_cast<uint>(serial);
+                && testCase.makeRequestMessage(&packet, &command, &body, {}, &error)
+                && command == expectedCommand && packet.messageId == static_cast<quint64>(serial);
             passed = check(mapped,
                 QStringLiteral("interactive command fixture failed for %1: %2")
                     .arg(expectedCommand, error)) && passed;
@@ -117,15 +117,15 @@ int main(int argc, char **argv)
         })json";
         LocalResponseUiCase testCase;
         QString error;
-        Packet packet;
+        ProtocolMessage packet;
         QString command;
         QVariant body;
         bool passed = loadCase(json, &testCase, &error)
-            && testCase.makeRequestPacket(&packet, &command, &body, {}, &error);
+            && testCase.makeRequestMessage(&packet, &command, &body, {}, &error);
         passed = check(passed, QStringLiteral("raw_body case failed: %1").arg(error)) && passed;
         passed = check(command == QStringLiteral("S_COMMAND_RESPONSE_CARD"),
             QStringLiteral("raw_body command mismatch")) && passed;
-        passed = check(packet.globalSerial == 2001,
+        passed = check(packet.messageId == 2001,
             QStringLiteral("raw_body serial mismatch")) && passed;
         const JsonArray values = body.toList();
         passed = check(values.size() == 4 && values.at(0).toString() == QStringLiteral("@@skill!"),
@@ -155,11 +155,11 @@ int main(int argc, char **argv)
         })json";
         LocalResponseUiCase testCase;
         QString error;
-        Packet packet;
+        ProtocolMessage packet;
         QString command;
         QVariant body;
         bool passed = loadCase(json, &testCase, &error)
-            && testCase.makeRequestPacket(&packet, &command, &body, {}, &error);
+            && testCase.makeRequestMessage(&packet, &command, &body, {}, &error);
         const JsonArray values = body.toList();
         passed = check(passed, QStringLiteral("discard adapter failed: %1").arg(error)) && passed;
         passed = check(values.size() == 6 && values.at(0).toInt() == 2
@@ -190,11 +190,11 @@ int main(int argc, char **argv)
         })json";
         LocalResponseUiCase testCase;
         QString error;
-        Packet packet;
+        ProtocolMessage packet;
         QString command;
         QVariant body;
         bool passed = loadCase(json, &testCase, &error)
-            && testCase.makeRequestPacket(&packet, &command, &body, {}, &error);
+            && testCase.makeRequestMessage(&packet, &command, &body, {}, &error);
         const JsonArray values = body.toList();
         const JsonArray players = values.value(0).toList();
         passed = check(passed, QStringLiteral("player-chosen adapter failed: %1").arg(error)) && passed;
@@ -215,11 +215,11 @@ int main(int argc, char **argv)
         auto adaptedBody = [&aliases](const QByteArray &json, const QString &expectedCommand,
                                JsonArray *values, QString *error) {
             LocalResponseUiCase testCase;
-            Packet packet;
+            ProtocolMessage packet;
             QString command;
             QVariant body;
             if (!loadCase(json, &testCase, error)
-                || !testCase.makeRequestPacket(&packet, &command, &body, aliases, error)) {
+                || !testCase.makeRequestMessage(&packet, &command, &body, aliases, error)) {
                 return false;
             }
             if (command != expectedCommand) {

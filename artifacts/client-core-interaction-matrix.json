@@ -1,5 +1,4 @@
 {
-    "canonical_typed": 28,
     "commands": [
         {
             "builder": "askForAssign",
@@ -11,7 +10,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "assignment",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "choose_role",
             "type": "choose_role",
             "validator": "assignment"
@@ -26,7 +25,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "option_string",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "choose_general",
             "type": "choose_general",
             "validator": "option"
@@ -41,7 +40,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "option_string",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "choose_direction",
             "type": "choose_direction",
             "validator": "option"
@@ -56,7 +55,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "discard_cards",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "exchange",
             "type": "exchange_card",
             "validator": "cards"
@@ -71,7 +70,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "card_response",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "ask_peach",
             "type": "ask_peach",
             "validator": "cards"
@@ -86,7 +85,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "rearrangement",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "guanxing",
             "type": "skill_guanxing",
             "validator": "rearrangement"
@@ -101,7 +100,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "card_id",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "gongxin",
             "type": "skill_gongxin",
             "validator": "cards"
@@ -116,7 +115,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "distribution",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "yiji",
             "type": "skill_yiji",
             "validator": "distribution"
@@ -131,7 +130,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "card_response",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "play_card",
             "type": "play_card",
             "validator": "cards"
@@ -146,7 +145,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "card_response",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "card_response",
             "type": "response_card",
             "validator": "cards"
@@ -161,7 +160,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "discard_cards",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "discard",
             "type": "discard_card",
             "validator": "cards"
@@ -176,7 +175,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "option_string",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "choice",
             "type": "choice",
             "validator": "option"
@@ -191,7 +190,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "option_string",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "choose_suit",
             "type": "choose_suit",
             "validator": "option"
@@ -206,7 +205,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "option_string",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "choose_kingdom",
             "type": "choose_kingdom",
             "validator": "option"
@@ -221,7 +220,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "players_joined",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "player_chosen",
             "type": "choose_player",
             "validator": "players"
@@ -236,7 +235,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "option_bool",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "skill_invoke",
             "type": "skill_invoke",
             "validator": "option"
@@ -251,7 +250,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "option_string",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "trigger_order",
             "type": "trigger_order",
             "validator": "option"
@@ -266,7 +265,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "card_response",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "nullification",
             "type": "nullification",
             "validator": "cards"
@@ -281,7 +280,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "card_response",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "show_card",
             "type": "show_card",
             "validator": "cards"
@@ -296,7 +295,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "amazing_grace_card_id",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "ask_for_ag",
             "type": "amazing_grace",
             "validator": "cards"
@@ -311,7 +310,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "card_response",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "pindian",
             "type": "pindian",
             "validator": "cards"
@@ -326,7 +325,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "card_id",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "card_chosen",
             "type": "choose_card",
             "validator": "cards"
@@ -341,7 +340,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "option_int",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "choose_order",
             "type": "choose_order",
             "validator": "option"
@@ -356,7 +355,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "option_string",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "choose_role_3v3",
             "type": "choose_role_3v3",
             "validator": "option"
@@ -371,7 +370,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "option_bool",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "surrender",
             "type": "surrender",
             "validator": "option"
@@ -386,7 +385,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "option_bool",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "luck_card",
             "type": "luck_card",
             "validator": "option"
@@ -401,7 +400,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "option_string",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "ask_general",
             "type": "ask_general",
             "validator": "option"
@@ -416,7 +415,7 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "general_arrangement",
-            "support": "canonical_typed",
+            "support": "direct_typed",
             "test": "arrange_general",
             "type": "arrange_general",
             "validator": "general_arrangement"
@@ -431,20 +430,20 @@
             "has_reply_encoder": true,
             "has_validator": true,
             "reply_encoder": "custom",
-            "support": "legacy_adapter",
+            "support": "direct_typed",
             "test": "qml_interact",
             "type": "qml_interact",
             "validator": "custom"
         }
     ],
+    "direct_typed": 29,
     "implicit_passthrough": 0,
-    "legacy_adapter": 1,
     "missing_builder": 0,
     "missing_presenter": 0,
     "missing_reply_encoder": 0,
     "missing_validator": 0,
     "presented_types": 29,
     "presenter_invocations": 29,
-    "schema_version": 2,
+    "schema_version": 3,
     "total_commands": 29
 }

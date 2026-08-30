@@ -138,32 +138,30 @@ bool ReplayIndex::parseMessage(const ProtocolMessage &message, ReplayNode &node)
 
     switch (commandType) {
     case S_COMMAND_SET_MARK: {
-        JsonArray args = body.value<JsonArray>();
-        if (args.size() >= 3) {
-            QString mark = args[1].toString();
-            if (mark == "Global_TurnCount") {
-                int turnCount = args[2].toInt();
-                if (turnCount > m_lastTurnCount) {
-                    node.type = ReplayNodeType::TurnStart;
-                    node.turnCount = turnCount;
-                    node.description = tr("Turn %1").arg(turnCount);
-                    m_lastTurnCount = turnCount;
-                    return true;
-                }
+        const QVariantMap object = body.toMap();
+        const QString mark = object.value(QStringLiteral("mark_name")).toString();
+        if (mark == "Global_TurnCount") {
+            const int turnCount = object.value(QStringLiteral("value")).toInt();
+            if (turnCount > m_lastTurnCount) {
+                node.type = ReplayNodeType::TurnStart;
+                node.turnCount = turnCount;
+                node.description = tr("Turn %1").arg(turnCount);
+                m_lastTurnCount = turnCount;
+                return true;
             }
         }
         break;
     }
 
     case S_COMMAND_LOG_SKILL: {
-        QStringList log;
-        if (JsonUtils::tryParse(body, log) && log.size() >= 3) {
-            const QString &type = log.at(0);
+        const QVariantMap log = body.toMap();
+        QStringList recipients;
+        if (JsonUtils::tryParse(log.value(QStringLiteral("to_players")), recipients)) {
+            const QString type = log.value(QStringLiteral("log_type")).toString();
             if (type == "#Murder" || type == "#Suicide" || type == "#Contingency") {
                 node.type = ReplayNodeType::PlayerDeath;
-                QStringList tos = log.at(2).split('+');
-                if (!tos.isEmpty()) {
-                    node.playerName = tos.first();
+                if (!recipients.isEmpty()) {
+                    node.playerName = recipients.first();
                     node.description = tr("%1 died").arg(node.playerName);
                     node.turnCount = m_lastTurnCount;
                     return true;

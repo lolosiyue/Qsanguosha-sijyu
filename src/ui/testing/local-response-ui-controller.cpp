@@ -8,7 +8,7 @@
 #include "local-response-ui-probe.h"
 #include "local-response-ui-inspector.h"
 #include "protocol/protocol-runtime.h"
-#include "protocol/protocol-v1-message-adapter.h"
+#include "protocol/session/session-payloads.h"
 #include "roomscene.h"
 #include "server-info.h"
 #include "settings.h"
@@ -131,7 +131,8 @@ LocalResponseUiController::LocalResponseUiController(QObject *parent)
     : QObject(parent), m_timeoutMs(3000), m_screenshotOnFailure(false),
       m_mode(RunnerMode::Auto), m_stage(RunnerStage::Configuring),
       m_client(nullptr), m_socket(nullptr), m_mainWindow(nullptr), m_view(nullptr),
-      m_scene(nullptr), m_probe(nullptr), m_inspector(nullptr), m_nextActionIndex(0),
+      m_scene(nullptr), m_probe(nullptr), m_inspector(nullptr), m_nextServerMessageId(1),
+      m_nextActionIndex(0),
       m_replyProcessed(false), m_closing(false), m_closedByUser(false),
       m_inspectExitCode(Passed)
 {
@@ -244,6 +245,71 @@ bool LocalResponseUiController::bootstrap(QString *error)
 
     m_socket = new TestClientSocket;
     m_client = new Client(this, QString(), m_socket);
+
+    const ProtocolCodecRouter router;
+    auto injectSessionMessage = [this, &router](ProtocolMessage message) {
+        message.messageId = m_nextServerMessageId++;
+        QString encodeError;
+        const QByteArray wire = router.encode(message, &encodeError);
+        if (wire.isEmpty())
+            return false;
+        m_socket->injectServerPacket(QString::fromUtf8(wire));
+        return true;
+    };
+
+    ServerHelloPayload helloPayload;
+    helloPayload.gameVersion = Sanguosha->getVersion();
+    helloPayload.modName = Sanguosha->getMODName();
+    helloPayload.cardCount = Sanguosha->getCardCount();
+    ProtocolMessage hello;
+    hello.type = ProtocolMessageType::Notification;
+    hello.source = ProtocolEndpoint::Lobby;
+    hello.destination = ProtocolEndpoint::Client;
+    hello.command = S_COMMAND_CHECK_VERSION;
+    hello.hasPayload = true;
+    hello.payload = helloPayload.toVariant();
+    if (!injectSessionMessage(hello)) {
+        *error = QStringLiteral("cannot inject Protocol V2 server hello");
+        return false;
+    }
+    m_client->signup();
+
+    SignupReplyPayload signupPayload;
+    signupPayload.accepted = true;
+    signupPayload.playerId = selfName;
+    ProtocolMessage signupReply;
+    signupReply.type = ProtocolMessageType::Reply;
+    signupReply.source = ProtocolEndpoint::Lobby;
+    signupReply.destination = ProtocolEndpoint::Client;
+    signupReply.command = S_COMMAND_SIGNUP;
+    signupReply.replyTo = 1;
+    signupReply.hasPayload = true;
+    signupReply.payload = signupPayload.toVariant();
+    if (!injectSessionMessage(signupReply)) {
+        *error = QStringLiteral("cannot inject Protocol V2 signup reply");
+        return false;
+    }
+
+    SetupPayload setupPayload;
+    setupPayload.serverName = QStringLiteral("local-response-ui");
+    setupPayload.gameMode = modeId;
+    setupPayload.gameRuleMode = QStringLiteral("normal");
+    setupPayload.operationTimeout = 15;
+    setupPayload.nullificationCountdown = 8;
+    setupPayload.playerCount = mode.player_count;
+    ProtocolMessage setup;
+    setup.type = ProtocolMessageType::Notification;
+    setup.source = ProtocolEndpoint::Lobby;
+    setup.destination = ProtocolEndpoint::Client;
+    setup.command = S_COMMAND_SETUP;
+    setup.hasPayload = true;
+    setup.payload = setupPayload.toVariant();
+    if (!injectSessionMessage(setup)) {
+        *error = QStringLiteral("cannot inject Protocol V2 setup");
+        return false;
+    }
+    m_socket->clearSentPackets();
+
     Self->setObjectName(selfName);
     Self->setScreenName(selfObject.value(QStringLiteral("screen_name")).toString(QStringLiteral("Tester")));
 
@@ -421,9 +487,18 @@ bool LocalResponseUiController::resolveCards(QString *error)
 
 void LocalResponseUiController::injectNotification(CommandType command, const QVariant &body)
 {
-    Packet packet(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT, command);
-    packet.setMessageBody(body);
-    m_socket->injectServerPacket(QString::fromUtf8(packet.toJson()));
+    ProtocolMessage message;
+    message.type = ProtocolMessageType::Notification;
+    message.source = ProtocolEndpoint::Room;
+    message.destination = ProtocolEndpoint::Client;
+    message.messageId = m_nextServerMessageId++;
+    message.command = command;
+    message.hasPayload = !body.isNull();
+    message.payload = body;
+    QString error;
+    const QByteArray wire = ProtocolCodecRouter().encode(message, &error);
+    if (!wire.isEmpty())
+        m_socket->injectServerPacket(QString::fromUtf8(wire));
 }
 
 bool LocalResponseUiController::prepareRequest(QString *error)
@@ -469,10 +544,10 @@ void LocalResponseUiController::execute()
         return;
     }
 
-    Packet requestPacket;
+    ProtocolMessage logicalRequest;
     QString commandName;
     QVariant requestBody;
-    if (!m_case.makeRequestPacket(&requestPacket, &commandName, &requestBody,
+    if (!m_case.makeRequestMessage(&logicalRequest, &commandName, &requestBody,
             m_aliasToId, &error)) {
         finish(InvalidCase, QStringLiteral("request"), error);
         return;
@@ -483,49 +558,42 @@ void LocalResponseUiController::execute()
     }
 
     const int wireVersionValue = m_case.request()
-        .value(QStringLiteral("wire_version")).toInt(1);
-    if (wireVersionValue != 1 && wireVersionValue != 2) {
+        .value(QStringLiteral("wire_version")).toInt(2);
+    if (wireVersionValue != 2) {
         finish(InvalidCase, QStringLiteral("request"),
-            QStringLiteral("request.wire_version must be 1 or 2"));
+            QStringLiteral("request.wire_version must be 2"));
         return;
     }
-    const ProtocolVersion wireVersion = wireVersionValue == 2
-        ? ProtocolVersion::V2 : ProtocolVersion::V1;
-    const ProtocolMessage logicalRequest = protocolMessageFromV1Packet(requestPacket);
+    if (logicalRequest.messageId < m_nextServerMessageId)
+        logicalRequest.messageId = m_nextServerMessageId;
+    m_nextServerMessageId = logicalRequest.messageId + 1;
     const ProtocolCodecRouter router;
-    const QByteArray wireBytes = router.encode(wireVersion, logicalRequest, &error);
+    const QByteArray wireBytes = router.encode(logicalRequest, &error);
     if (wireBytes.isEmpty()) {
         finish(InvalidCase, QStringLiteral("request"),
             QStringLiteral("cannot encode request wire: %1").arg(error));
         return;
     }
 
-    // The fixture keeps the production Client on its ordinary V1 test socket.
-    // A V2 case still traverses the production router, then injects the
-    // normalized logical packet consumed by the same callback/UI path.
     ProtocolMessage normalizedRequest;
-    const ProtocolDecodeResult decoded = router.decode(
-        wireVersion, wireBytes, &normalizedRequest);
+    const ProtocolDecodeResult decoded = router.decode(wireBytes, &normalizedRequest);
     if (!decoded.success) {
         finish(InvalidCase, QStringLiteral("request"),
             QStringLiteral("cannot decode request wire: %1").arg(decoded.detail));
         return;
     }
-    normalizedRequest.version = ProtocolVersion::V1;
-    Packet normalizedPacket;
-    applyProtocolMessageToV1Packet(normalizedRequest, normalizedPacket);
-
     QJsonObject requestReport;
     requestReport.insert(QStringLiteral("command"), commandName);
-    requestReport.insert(QStringLiteral("global_serial"), static_cast<int>(requestPacket.globalSerial));
+    requestReport.insert(QStringLiteral("global_serial"),
+        QString::number(normalizedRequest.messageId));
     requestReport.insert(QStringLiteral("body"), QJsonValue::fromVariant(requestBody));
     requestReport.insert(QStringLiteral("wire_version"), wireVersionValue);
     requestReport.insert(QStringLiteral("wire_json"), QString::fromUtf8(wireBytes));
     m_report.insert(QStringLiteral("request"), requestReport);
-    m_requestPacketJson = QString::fromUtf8(normalizedPacket.toJson());
+    m_requestPacketJson = QString::fromUtf8(wireBytes);
 
     if (m_mode == RunnerMode::Inspect)
-        createInspector(commandName, static_cast<int>(requestPacket.globalSerial));
+        createInspector(commandName, static_cast<int>(normalizedRequest.messageId));
 
     QTimer::singleShot(0, this, &LocalResponseUiController::injectRequest);
 }
@@ -1058,24 +1126,24 @@ bool LocalResponseUiController::validateReply(QString *error)
     const QList<QString> sent = m_socket->sentPackets();
     QList<QString> replies;
     for (const QString &raw : sent) {
-        Packet outgoing;
-        if (!outgoing.parse(raw.toUtf8())) {
-            *error = QStringLiteral("captured outbound packet is not a valid Packet");
+        ProtocolMessage outgoing;
+        if (!ProtocolCodecRouter().decode(raw.toUtf8(), &outgoing).success) {
+            *error = QStringLiteral("captured outbound frame is not valid Protocol V2");
             return false;
         }
-        if (outgoing.getPacketType() == S_TYPE_REPLY) {
+        if (outgoing.type == ProtocolMessageType::Reply) {
             replies.append(raw);
             continue;
         }
         QJsonObject intermediate;
-        intermediate.insert(QStringLiteral("packet_type"), outgoing.getPacketType());
-        intermediate.insert(QStringLiteral("source"), outgoing.getPacketSource());
-        intermediate.insert(QStringLiteral("destination"), outgoing.getPacketDestination());
+        intermediate.insert(QStringLiteral("packet_type"), static_cast<int>(outgoing.type));
+        intermediate.insert(QStringLiteral("source"), static_cast<int>(outgoing.source));
+        intermediate.insert(QStringLiteral("destination"), static_cast<int>(outgoing.destination));
         intermediate.insert(QStringLiteral("command"),
-            LocalResponseUiCase::commandName(outgoing.getCommandType()));
-        intermediate.insert(QStringLiteral("global_serial"), static_cast<int>(outgoing.globalSerial));
-        intermediate.insert(QStringLiteral("local_serial"), static_cast<int>(outgoing.localSerial));
-        intermediate.insert(QStringLiteral("body"), QJsonValue::fromVariant(outgoing.getMessageBody()));
+            LocalResponseUiCase::commandName(static_cast<CommandType>(outgoing.command)));
+        intermediate.insert(QStringLiteral("global_serial"), QString::number(outgoing.messageId));
+        intermediate.insert(QStringLiteral("local_serial"), QString::number(outgoing.replyTo));
+        intermediate.insert(QStringLiteral("body"), QJsonValue::fromVariant(outgoing.payload));
         m_capturedPackets.append(intermediate);
     }
     if (replies.size() != 1) {
@@ -1083,34 +1151,36 @@ bool LocalResponseUiController::validateReply(QString *error)
             .arg(replies.size()).arg(sent.size());
         return false;
     }
-    Packet packet;
-    if (!packet.parse(replies.first().toUtf8())) {
-        *error = QStringLiteral("captured reply is not a valid Packet");
+    ProtocolMessage packet;
+    if (!ProtocolCodecRouter().decode(replies.first().toUtf8(), &packet).success) {
+        *error = QStringLiteral("captured reply is not valid Protocol V2");
         return false;
     }
 
     QJsonObject captured;
-    captured.insert(QStringLiteral("packet_type"), packet.getPacketType());
-    captured.insert(QStringLiteral("source"), packet.getPacketSource());
-    captured.insert(QStringLiteral("destination"), packet.getPacketDestination());
-    captured.insert(QStringLiteral("command"), LocalResponseUiCase::commandName(packet.getCommandType()));
-    captured.insert(QStringLiteral("global_serial"), static_cast<int>(packet.globalSerial));
-    captured.insert(QStringLiteral("local_serial"), static_cast<int>(packet.localSerial));
-    captured.insert(QStringLiteral("body"), QJsonValue::fromVariant(packet.getMessageBody()));
+    captured.insert(QStringLiteral("packet_type"), static_cast<int>(packet.type));
+    captured.insert(QStringLiteral("source"), static_cast<int>(packet.source));
+    captured.insert(QStringLiteral("destination"), static_cast<int>(packet.destination));
+    captured.insert(QStringLiteral("command"),
+        LocalResponseUiCase::commandName(static_cast<CommandType>(packet.command)));
+    captured.insert(QStringLiteral("global_serial"), QString::number(packet.messageId));
+    captured.insert(QStringLiteral("local_serial"), QString::number(packet.replyTo));
+    captured.insert(QStringLiteral("body"), QJsonValue::fromVariant(packet.payload));
+    const QVariantMap replyBody = packet.payload.toMap();
 
     QJsonObject decodedCard;
-    if (packet.getCommandType() == S_COMMAND_RESPONSE_CARD
-        && packet.getMessageBody().canConvert<JsonArray>()) {
-        const JsonArray body = packet.getMessageBody().value<JsonArray>();
-        if (!body.isEmpty() && !body.first().toString().isEmpty()) {
-            const Card *card = Card::Parse(body.first().toString());
+    if (packet.command == S_COMMAND_RESPONSE_CARD
+        && !replyBody.value(QStringLiteral("cancelled")).toBool()) {
+        const QString cardText = replyBody.value(QStringLiteral("card_text")).toString();
+        if (!cardText.isEmpty()) {
+            const Card *card = Card::Parse(cardText);
             if (card) {
                 decodedCard.insert(QStringLiteral("card_name"), card->objectName());
                 decodedCard.insert(QStringLiteral("skill_name"), card->getSkillName());
                 decodedCard.insert(QStringLiteral("activation_skill_name"),
-                    body.size() >= 3 ? body.at(2).toString() : card->getActivationSkillName());
+                    replyBody.value(QStringLiteral("activation_skill_name")).toString());
                 decodedCard.insert(QStringLiteral("activation_instance_id"),
-                    body.size() >= 4 ? body.at(3).toInt() : card->getActivationSkillInstanceId());
+                    replyBody.value(QStringLiteral("activation_skill_instance_id")).toInt());
                 const int effectiveId = card->getEffectiveId();
                 decodedCard.insert(QStringLiteral("card_id"), effectiveId);
                 decodedCard.insert(QStringLiteral("card_alias"), m_aliasToId.key(effectiveId));
@@ -1119,10 +1189,9 @@ bool LocalResponseUiController::validateReply(QString *error)
                     subcards.append(m_aliasToId.key(id, QString::number(id)));
                 decodedCard.insert(QStringLiteral("subcards"), subcards);
                 QJsonArray targets;
-                if (body.size() >= 2) {
-                    for (const QVariant &target : body.at(1).toList())
-                        targets.append(target.toString());
-                }
+                for (const QVariant &target
+                     : replyBody.value(QStringLiteral("targets")).toList())
+                    targets.append(target.toString());
                 decodedCard.insert(QStringLiteral("targets"), targets);
             }
         }
@@ -1135,43 +1204,54 @@ bool LocalResponseUiController::validateReply(QString *error)
     bool passed = true;
     const QString expectedCommand = expected.value(QStringLiteral("command")).toString();
     if (!expectedCommand.isEmpty()) {
-        const QString actualCommand = LocalResponseUiCase::commandName(packet.getCommandType());
+        const QString actualCommand = LocalResponseUiCase::commandName(
+            static_cast<CommandType>(packet.command));
         const bool itemPassed = actualCommand == expectedCommand;
         recordAssertion(QStringLiteral("expect_reply.command"), expectedCommand, actualCommand, itemPassed);
         passed = itemPassed && passed;
     }
     if (expected.contains(QStringLiteral("local_serial"))) {
         const int expectedSerial = expected.value(QStringLiteral("local_serial")).toInt();
-        const bool itemPassed = static_cast<int>(packet.localSerial) == expectedSerial;
+        const bool itemPassed = static_cast<int>(packet.replyTo) == expectedSerial;
         recordAssertion(QStringLiteral("expect_reply.local_serial"), expectedSerial,
-            static_cast<int>(packet.localSerial), itemPassed);
+            static_cast<int>(packet.replyTo), itemPassed);
         passed = itemPassed && passed;
     }
-    const bool packetShape = packet.getPacketType() == S_TYPE_REPLY
-        && packet.getPacketSource() == S_SRC_CLIENT
-        && packet.getPacketDestination() == S_DEST_ROOM;
+    const bool packetShape = packet.type == ProtocolMessageType::Reply
+        && packet.source == ProtocolEndpoint::Client
+        && packet.destination == ProtocolEndpoint::Room;
     recordAssertion(QStringLiteral("expect_reply.packet_shape"), true, packetShape, packetShape);
     passed = packetShape && passed;
 
     if (expected.contains(QStringLiteral("invoke"))) {
         const bool expectedInvoke = expected.value(QStringLiteral("invoke")).toBool();
-        const bool actualInvoke = packet.getMessageBody().toBool();
+        const bool actualInvoke = replyBody.value(QStringLiteral("invoke")).toBool();
         const bool itemPassed = expectedInvoke == actualInvoke;
         recordAssertion(QStringLiteral("expect_reply.invoke"), expectedInvoke, actualInvoke, itemPassed);
         passed = itemPassed && passed;
     }
     if (expected.contains(QStringLiteral("choice"))) {
         const QString expectedChoice = expected.value(QStringLiteral("choice")).toString();
-        const QString actualChoice = packet.getMessageBody().toString();
+        QString actualChoice;
+        static const QStringList choiceFields{
+            QStringLiteral("choice"), QStringLiteral("direction"),
+            QStringLiteral("suit"), QStringLiteral("kingdom"),
+            QStringLiteral("trigger"), QStringLiteral("role"),
+            QStringLiteral("general")
+        };
+        for (const QString &field : choiceFields) {
+            if (replyBody.contains(field)) {
+                actualChoice = replyBody.value(field).toString();
+                break;
+            }
+        }
         const bool itemPassed = expectedChoice == actualChoice;
         recordAssertion(QStringLiteral("expect_reply.choice"), expectedChoice, actualChoice, itemPassed);
         passed = itemPassed && passed;
     }
     if (expected.contains(QStringLiteral("card_aliases"))) {
         QJsonArray actualAliases;
-        QVariantList idValues = packet.getMessageBody().toList();
-        if (packet.getCommandType() == S_COMMAND_SKILL_YIJI && !idValues.isEmpty())
-            idValues = idValues.first().toList();
+        const QVariantList idValues = replyBody.value(QStringLiteral("card_ids")).toList();
         for (const QVariant &idValue : idValues)
             actualAliases.append(m_aliasToId.key(idValue.toInt(), QString::number(idValue.toInt())));
         const QJsonArray expectedAliases = expected.value(QStringLiteral("card_aliases")).toArray();
@@ -1184,27 +1264,27 @@ bool LocalResponseUiController::validateReply(QString *error)
         const QString expectedAlias = expected.value(QStringLiteral("card_alias")).toString();
         const QString actualAlias = decodedCard.contains(QStringLiteral("card_alias"))
             ? decodedCard.value(QStringLiteral("card_alias")).toString()
-            : m_aliasToId.key(packet.getMessageBody().toInt(),
-                QString::number(packet.getMessageBody().toInt()));
+            : m_aliasToId.key(replyBody.value(QStringLiteral("card_id")).toInt(),
+                QString::number(replyBody.value(QStringLiteral("card_id")).toInt()));
         const bool itemPassed = expectedAlias == actualAlias;
         recordAssertion(QStringLiteral("expect_reply.card_alias"), expectedAlias,
             actualAlias, itemPassed);
         passed = itemPassed && passed;
     }
     if (expected.contains(QStringLiteral("player"))) {
-        const QVariantList body = packet.getMessageBody().toList();
-        const QString actualPlayer = body.size() >= 2 ? body.at(1).toString() : QString();
+        const QString actualPlayer = replyBody
+            .value(QStringLiteral("target_player")).toString();
         const QString expectedPlayer = expected.value(QStringLiteral("player")).toString();
         const bool itemPassed = expectedPlayer == actualPlayer;
         recordAssertion(QStringLiteral("expect_reply.player"), expectedPlayer,
             actualPlayer, itemPassed);
         passed = itemPassed && passed;
     }
-    auto validateDeck = [this, &packet, &expected, &passed](const QString &key, int index) {
+    auto validateDeck = [this, &replyBody, &expected, &passed](
+                            const QString &key, const QString &field) {
         if (!expected.contains(key))
             return;
-        const QVariantList decks = packet.getMessageBody().toList();
-        const QVariantList ids = decks.size() > index ? decks.at(index).toList() : QVariantList();
+        const QVariantList ids = replyBody.value(field).toList();
         QJsonArray actualAliases;
         for (const QVariant &id : ids)
             actualAliases.append(m_aliasToId.key(id.toInt(), QString::number(id.toInt())));
@@ -1214,15 +1294,12 @@ bool LocalResponseUiController::validateReply(QString *error)
             actualAliases, itemPassed);
         passed = itemPassed && passed;
     };
-    validateDeck(QStringLiteral("up_cards"), 0);
-    validateDeck(QStringLiteral("down_cards"), 1);
+    validateDeck(QStringLiteral("up_cards"), QStringLiteral("top_card_ids"));
+    validateDeck(QStringLiteral("down_cards"), QStringLiteral("bottom_card_ids"));
     if (expected.contains(QStringLiteral("players"))) {
         QJsonArray actualPlayers;
-        const QString names = packet.getMessageBody().toString();
-        if (!names.isEmpty()) {
-            for (const QString &name : names.split(QLatin1Char('+')))
-                actualPlayers.append(name);
-        }
+        for (const QVariant &name : replyBody.value(QStringLiteral("players")).toList())
+            actualPlayers.append(name.toString());
         const QJsonArray expectedPlayers = expected.value(QStringLiteral("players")).toArray();
         const bool itemPassed = jsonArraysEqual(expectedPlayers, actualPlayers);
         recordAssertion(QStringLiteral("expect_reply.players"), expectedPlayers,
@@ -1230,8 +1307,9 @@ bool LocalResponseUiController::validateReply(QString *error)
         passed = itemPassed && passed;
     }
     if (expected.value(QStringLiteral("cancelled")).toBool()) {
-        const bool cancelled = !packet.getMessageBody().isValid()
-            || packet.getMessageBody().isNull();
+        const bool cancelled = replyBody.value(QStringLiteral("cancelled")).toBool()
+            || (replyBody.contains(QStringLiteral("has_value"))
+                && !replyBody.value(QStringLiteral("has_value")).toBool());
         recordAssertion(QStringLiteral("expect_reply.cancelled"), true, cancelled, cancelled);
         passed = cancelled && passed;
     }

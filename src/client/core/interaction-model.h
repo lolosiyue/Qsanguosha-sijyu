@@ -239,8 +239,6 @@ struct CustomInteractionPayload
     QString title;
     QJsonObject payload;
     QJsonObject responseSchema;
-    QString legacyQmlPath;
-    bool legacy = false;
 };
 
 using InteractionPayload = std::variant<std::monostate,
@@ -278,9 +276,7 @@ struct InteractionRequest
 {
     // ClientCore 派嘅 correlation ID,單調遞增,由 1 開始。0 = 未編號。
     quint64 requestId = 0;
-    // 對應嘅 protocol packet globalSerial。留住係為咗對數同診斷；
-    // reply 嘅 localSerial 仍然由 Client 依原有路徑填,wire 冇改。
-    uint serverSerial = 0;
+    // Protocol V2 message_id 直接存入 requestId，作完整 quint64 關聯。
     InteractionType type = InteractionType::None;
     // QSanProtocol::CommandType 嘅原始值。ClientCore 唔 include protocol.h,
     // 所以用 int 儲住。
@@ -340,7 +336,6 @@ QString interactionResponseKindName(InteractionResponseKind kind);
 struct InteractionResponse
 {
     quint64 requestId = 0;
-    uint serverSerial = 0;
     int command = 0;
     InteractionResponseKind kind = InteractionResponseKind::None;
 
@@ -432,8 +427,7 @@ struct InteractionResponse
 // 拒絕原因。每一個都對應完成標準入面「ClientCore 必須拒絕」嗰張清單。
 enum class InteractionRejection
 {
-    ServerSerialMismatch = 16,
-    CommandMismatch,
+    CommandMismatch = 17,
     MalformedResponse,
     UnsupportedInteraction,
     None = 0,

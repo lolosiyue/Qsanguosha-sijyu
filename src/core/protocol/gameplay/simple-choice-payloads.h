@@ -13,10 +13,10 @@ struct ChooseGeneralRequestPayload
 
     QStringList candidates;
 
-    QVariant toLegacyVariant() const;
+    QVariant toDomainVariant() const;
     QVariantMap toV2Variant() const;
 
-    static bool parseLegacy(const QVariant &value,
+    static bool parseDomain(const QVariant &value,
                             ChooseGeneralRequestPayload *payload,
                             QString *error = nullptr);
     static bool parseV2(const QVariant &value,
@@ -30,10 +30,10 @@ struct ChooseGeneralReplyPayload
 
     QString general;
 
-    QVariant toLegacyVariant() const;
+    QVariant toDomainVariant() const;
     QVariantMap toV2Variant() const;
 
-    static bool parseLegacy(const QVariant &value,
+    static bool parseDomain(const QVariant &value,
                             ChooseGeneralReplyPayload *payload,
                             QString *error = nullptr);
     static bool parseV2(const QVariant &value,
@@ -58,10 +58,10 @@ struct ChooseSuitReplyPayload
 
     QString suit;
 
-    QVariant toLegacyVariant() const;
+    QVariant toDomainVariant() const;
     QVariantMap toV2Variant() const;
 
-    static bool parseLegacy(const QVariant &value,
+    static bool parseDomain(const QVariant &value,
                             ChooseSuitReplyPayload *payload,
                             QString *error = nullptr);
     static bool parseV2(const QVariant &value,
@@ -75,10 +75,10 @@ struct ChooseKingdomRequestPayload
 
     QStringList kingdoms;
 
-    QVariant toLegacyVariant() const;
+    QVariant toDomainVariant() const;
     QVariantMap toV2Variant() const;
 
-    static bool parseLegacy(const QVariant &value,
+    static bool parseDomain(const QVariant &value,
                             ChooseKingdomRequestPayload *payload,
                             QString *error = nullptr);
     static bool parseV2(const QVariant &value,
@@ -92,10 +92,10 @@ struct ChooseKingdomReplyPayload
 
     QString kingdom;
 
-    QVariant toLegacyVariant() const;
+    QVariant toDomainVariant() const;
     QVariantMap toV2Variant() const;
 
-    static bool parseLegacy(const QVariant &value,
+    static bool parseDomain(const QVariant &value,
                             ChooseKingdomReplyPayload *payload,
                             QString *error = nullptr);
     static bool parseV2(const QVariant &value,
@@ -109,10 +109,10 @@ struct ChooseOrderRequestPayload
 
     int reason = 0;
 
-    QVariant toLegacyVariant() const;
+    QVariant toDomainVariant() const;
     QVariantMap toV2Variant() const;
 
-    static bool parseLegacy(const QVariant &value,
+    static bool parseDomain(const QVariant &value,
                             ChooseOrderRequestPayload *payload,
                             QString *error = nullptr);
     static bool parseV2(const QVariant &value,
@@ -126,10 +126,10 @@ struct ChooseOrderReplyPayload
 
     int camp = 0;
 
-    QVariant toLegacyVariant() const;
+    QVariant toDomainVariant() const;
     QVariantMap toV2Variant() const;
 
-    static bool parseLegacy(const QVariant &value,
+    static bool parseDomain(const QVariant &value,
                             ChooseOrderReplyPayload *payload,
                             QString *error = nullptr);
     static bool parseV2(const QVariant &value,
@@ -144,10 +144,10 @@ struct InvokeSkillRequestPayload
     QString skillName;
     QString data;
 
-    QVariant toLegacyVariant() const;
+    QVariant toDomainVariant() const;
     QVariantMap toV2Variant() const;
 
-    static bool parseLegacy(const QVariant &value,
+    static bool parseDomain(const QVariant &value,
                             InvokeSkillRequestPayload *payload,
                             QString *error = nullptr);
     static bool parseV2(const QVariant &value,
@@ -161,10 +161,10 @@ struct InvokeSkillReplyPayload
 
     bool invoke = false;
 
-    QVariant toLegacyVariant() const;
+    QVariant toDomainVariant() const;
     QVariantMap toV2Variant() const;
 
-    static bool parseLegacy(const QVariant &value,
+    static bool parseDomain(const QVariant &value,
                             InvokeSkillReplyPayload *payload,
                             QString *error = nullptr);
     static bool parseV2(const QVariant &value,
@@ -178,10 +178,10 @@ struct SurrenderVoteRequestPayload
 
     QString initiatorGeneral;
 
-    QVariant toLegacyVariant() const;
+    QVariant toDomainVariant() const;
     QVariantMap toV2Variant() const;
 
-    static bool parseLegacy(const QVariant &value,
+    static bool parseDomain(const QVariant &value,
                             SurrenderVoteRequestPayload *payload,
                             QString *error = nullptr);
     static bool parseV2(const QVariant &value,
@@ -195,10 +195,10 @@ struct SurrenderVoteReplyPayload
 
     bool surrender = false;
 
-    QVariant toLegacyVariant() const;
+    QVariant toDomainVariant() const;
     QVariantMap toV2Variant() const;
 
-    static bool parseLegacy(const QVariant &value,
+    static bool parseDomain(const QVariant &value,
                             SurrenderVoteReplyPayload *payload,
                             QString *error = nullptr);
     static bool parseV2(const QVariant &value,
