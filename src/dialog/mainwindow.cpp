@@ -537,6 +537,14 @@ void MainWindow::on_actionReplay_triggered()
 	Config.setValue("LastReplayDir", last_dir);
 
 	Client *client = new Client(this, filename);
+	Replayer *replayer = client->getReplayer();
+	if (replayer == nullptr || !replayer->isValid()) {
+		const QString detail = replayer != nullptr
+			? replayer->errorString() : tr("Replay loader is unavailable");
+		QMessageBox::warning(this, tr("Replay error"), detail);
+		delete client;
+		return;
+	}
 	connect(client, SIGNAL(server_connected()), SLOT(enterRoom()));
 	client->signup();
 }

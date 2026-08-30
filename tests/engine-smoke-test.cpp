@@ -357,9 +357,18 @@ int runEngineSmokeTests()
         return 4;
 
     RecordBuffer recordBuffer;
-    recordBuffer.recordLine(packet.toJson());
+    QSanProtocol::ProtocolMessage replayMessage;
+    replayMessage.type = QSanProtocol::ProtocolMessageType::Notification;
+    replayMessage.source = QSanProtocol::ProtocolEndpoint::Room;
+    replayMessage.destination = QSanProtocol::ProtocolEndpoint::Client;
+    replayMessage.command = QSanProtocol::S_COMMAND_UNKNOWN;
+    QString replayError;
+    if (!recordBuffer.recordMessage(replayMessage, &replayError))
+        return 5;
     const QList<QByteArray> records = recordBuffer.getRecords();
-    if (records.size() < 2 || !records.first().contains("[1,2,1,1]"))
+    if (records.size() != 1
+        || !recordBuffer.rawReplayData().startsWith(
+            "QSAN_REPLAY {\"format_version\":2,\"protocol_version\":2}\n"))
         return 5;
 
     if (!discardSkillSelectsCardsForExplicitClientPlayerContext())

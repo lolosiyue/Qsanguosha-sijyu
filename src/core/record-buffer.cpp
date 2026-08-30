@@ -7,23 +7,25 @@ RecordBuffer::RecordBuffer()
     watch.start();
 }
 
-void RecordBuffer::recordLine(const QString &line)
+bool RecordBuffer::recordMessage(
+    const QSanProtocol::ProtocolMessage &message, QString *error)
 {
-    const int elapsed = watch.elapsed();
-    if (line.endsWith("\n"))
-        data.append(QString("%1 %2").arg(elapsed).arg(line).toUtf8());
-    else
-        data.append(QString("%1 %2\n").arg(elapsed).arg(line).toUtf8());
+    return writer.appendEvent(watch.elapsed(), message, error);
 }
 
 QList<QByteArray> RecordBuffer::getRecords() const
 {
-    return data.split('\n');
+    return writer.eventRecords();
 }
 
 QByteArray RecordBuffer::rawData() const
 {
-    return data;
+    return rawReplayData();
+}
+
+QByteArray RecordBuffer::rawReplayData() const
+{
+    return writer.rawReplayData();
 }
 
 bool RecordBuffer::saveText(const QString &filename) const
@@ -34,5 +36,6 @@ bool RecordBuffer::saveText(const QString &filename) const
     QFile file(filename);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
-    return file.write(data) != -1;
+    const QByteArray data = rawReplayData();
+    return file.write(data) == data.size();
 }

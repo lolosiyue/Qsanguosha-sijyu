@@ -14,15 +14,16 @@ ReplayGameState::ReplayGameState(QObject *parent)
 {
 }
 
-bool ReplayGameState::rebuildFromCommands(const QList<QPair<int, QString>> &pairs, int upToIndex)
+bool ReplayGameState::rebuildFromEvents(
+    const QList<QSanReplay::ReplayEvent> &events, int upToIndex)
 {
     clear();
 
-    int limit = (upToIndex < 0 || upToIndex >= pairs.size()) ? pairs.size() : upToIndex + 1;
+    const int limit = (upToIndex < 0 || upToIndex >= events.size())
+        ? events.size() : upToIndex + 1;
 
     for (int i = 0; i < limit; i++) {
-        const QString &cmd = pairs[i].second;
-        if (!applyCommand(cmd)) {
+        if (!applyMessage(events.at(i).message)) {
             continue;
         }
     }
@@ -30,14 +31,10 @@ bool ReplayGameState::rebuildFromCommands(const QList<QPair<int, QString>> &pair
     return validateState();
 }
 
-bool ReplayGameState::applyCommand(const QString &cmd)
+bool ReplayGameState::applyMessage(const ProtocolMessage &message)
 {
-    Packet packet;
-    if (!packet.parse(cmd.toLatin1().constData()))
-        return false;
-
-    CommandType commandType = packet.getCommandType();
-    const QVariant &body = packet.getMessageBody();
+    const CommandType commandType = static_cast<CommandType>(message.command);
+    const QVariant &body = message.payload;
 
     switch (commandType) {
     case S_COMMAND_SETUP:

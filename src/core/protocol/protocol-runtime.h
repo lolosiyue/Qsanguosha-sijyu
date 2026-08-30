@@ -19,8 +19,8 @@ public:
                                 QByteArrayView raw,
                                 ProtocolMessage *message) const;
 
-    // Replay files retain the legacy logical packet schema even when the
-    // connection itself is using Protocol V2.
+    // Legacy compatibility helper retained for V1 golden tests. Production
+    // replay recording uses QSanReplay::ReplayWriter instead.
     QByteArray encodeReplayV1(const ProtocolMessage &message,
                               QString *error = nullptr) const;
 };
