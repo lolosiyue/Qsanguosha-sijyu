@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "name": "choose_direction_v2_identity",
+  "packages": ["standard"],
+  "bootstrap": {
+    "mode": "02p",
+    "self": { "object_name": "self", "screen_name": "Tester", "general": "caocao", "hp": 4, "max_hp": 4, "phase": "NotActive", "skills": [] },
+    "players": [{ "object_name": "target", "screen_name": "Target", "general": "liubei", "hp": 4, "max_hp": 4, "alive": true }],
+    "cards": []
+  },
+  "request": { "api": "raw", "command": "S_COMMAND_CHOOSE_DIRECTION", "serial": 1202, "wire_version": 2, "raw_body": null },
+  "expect_presented": {
+    "client_status": "ExecDialog",
+    "interaction_request": {
+      "type": "choose_direction", "request_id": 1, "server_serial": 1202, "command": 15,
+      "cancelable": false, "response_schema": "option",
+      "payload": { "enumerated": true, "options": [{ "value": "cw" }, { "value": "ccw" }] }
+    }
+  },
+  "actions": [{ "type": "choose_option", "option": "cw" }],
+  "expect_reply": { "command": "S_COMMAND_CHOOSE_DIRECTION", "local_serial": 1202, "choice": "cw" },
+  "expect_final": { "client_status": "NotActive", "open_dialog_count": 0 }
+}

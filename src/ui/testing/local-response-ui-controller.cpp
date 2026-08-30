@@ -670,6 +670,16 @@ bool LocalResponseUiController::runAction(int index, QString *error)
         ok = m_probe->clickButton(QStringLiteral("discard"), &actionError);
     else if (type == QStringLiteral("choose_option"))
         ok = m_probe->chooseOption(action.value(QStringLiteral("option")).toString(), &actionError);
+    else if (type == QStringLiteral("choose_general")) {
+        const QString general = action.value(QStringLiteral("general")).toString();
+        if (general.isEmpty())
+            actionError = QStringLiteral("choose_general requires a non-empty general");
+        else {
+            // Exercise the same public slot used by the production general chooser.
+            m_client->onPlayerChooseGeneral(general);
+            ok = true;
+        }
+    }
     else if (type == QStringLiteral("choose_surface_card"))
         ok = m_probe->chooseSurfaceCard(action.value(QStringLiteral("card")).toString(), &actionError);
     else if (type == QStringLiteral("toggle_guanxing_card"))
