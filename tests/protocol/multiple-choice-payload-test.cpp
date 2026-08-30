@@ -232,13 +232,13 @@ bool malformedPayloads()
 
 bool registryInventoryAndDirections()
 {
-    if (!expect(ProtocolGameplayPayloadRegistry::migratedCommandCount() == 1,
-                QStringLiteral("one migrated command"))
+    if (!expect(ProtocolGameplayPayloadRegistry::migratedCommandCount() == 7,
+                QStringLiteral("seven migrated commands"))
         || !expect(ProtocolGameplayPayloadRegistry::isMigratedCommand(
                        S_COMMAND_MULTIPLE_CHOICE),
                    QStringLiteral("multiple choice registered"))
         || !expect(!ProtocolGameplayPayloadRegistry::isMigratedCommand(
-                       S_COMMAND_CHOOSE_GENERAL),
+                       S_COMMAND_CHOOSE_PLAYER),
                    QStringLiteral("non-migrated command absent"))) {
         return false;
     }
@@ -367,7 +367,7 @@ bool nonMigratedIdentity()
     logical.source = ProtocolEndpoint::Room;
     logical.destination = ProtocolEndpoint::Client;
     logical.messageId = 7;
-    logical.command = S_COMMAND_CHOOSE_GENERAL;
+    logical.command = S_COMMAND_CHOOSE_PLAYER;
     logical.hasPayload = true;
     logical.payload = QVariantList{QStringLiteral("caocao"), QStringLiteral("liubei")};
 
@@ -375,7 +375,7 @@ bool nonMigratedIdentity()
     QString error;
     const QByteArray wire = router.encode(ProtocolVersion::V2, logical, &error);
     const QByteArray expected =
-        "{\"command\":10,\"destination\":\"client\",\"message_id\":\"7\","
+        "{\"command\":16,\"destination\":\"client\",\"message_id\":\"7\","
         "\"payload\":[\"caocao\",\"liubei\"],\"source\":\"room\","
         "\"type\":\"request\",\"v\":2}";
     ProtocolMessage decoded;
