@@ -98,6 +98,7 @@ public:
     void addPackage(Package *package);
     void addBanPackage(const QString &package_name);
     QList<const Package *> getPackages() const;
+    QMap<QString, QStringList> getPackageMap() const;
     Package *getPackage(const QString &package_name);
     void setPackage(Package *package);
     QStringList getBanPackages() const;
@@ -281,7 +282,6 @@ private:
     QMap<QString, QString> m_roleByAbbreviation;
 
     QList<Card *> cards;
-    QStringList ban_package;
     QHash<QString, Scenario *> m_scenarios, m_miniScenes;
     Scenario *m_customScene;
     Scenario *m_testScene;
@@ -295,6 +295,7 @@ private:
     QSet<int> m_luaCardIds;
     QHash<QString, QList<int>> m_packageCardIds;
     QHash<QString, EnginePackageFactory> m_packageFactories;
+    QMap<QString, QStringList> m_packageMap;
 
     //QHash<QString,const Card *> luaBasicCards, luaTrickCards;
     //QHash<QString,const Card *> luaWeapons, luaArmors ,luaTreasures;

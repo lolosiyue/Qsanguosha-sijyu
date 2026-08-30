@@ -58,6 +58,8 @@ add_executable(qsanguosha_core_tests
     engine-smoke-test.cpp
     lua-compat-test.cpp
     core-regressions-test.cpp
+    package-policy-test.cpp
+    package-ownership-test.cpp
     ${QSAN_TEST_ROOT}/src/server/server-core.h
 )
 qsan_link_engine_test(qsanguosha_core_tests)

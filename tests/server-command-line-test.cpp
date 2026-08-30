@@ -193,6 +193,7 @@ bool loadsAndValidatesConfigFiles()
         << "ServerPort=9527\n"
         << "BindAddress=127.0.0.1\n"
         << "DisableChat=true\n"
+        << "GeneralVersionDedup=true\n"
         << "BanPackages=nostalgia, test\n"
         << "BossModeDifficulty=63\n"
         << "[3v3]\n"
@@ -210,6 +211,8 @@ bool loadsAndValidatesConfigFiles()
                 "config port mismatch")
         || !expect(valid.values.value(QStringLiteral("DisableChat")).toBool(),
                    "config boolean mismatch")
+        || !expect(valid.values.value(QStringLiteral("GeneralVersionDedup")).toBool(),
+                   "general version dedup config mismatch")
         || !expect(valid.values.value(QStringLiteral("BanPackages")).toStringList()
                        == QStringList({QStringLiteral("nostalgia"), QStringLiteral("test")}),
                    "config list mismatch")

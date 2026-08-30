@@ -109,4 +109,14 @@ public:
     YJCM2014Package();
 };
 
+class NewYJCM2014Package : public Package
+{
+    Q_OBJECT
+
+public:
+    NewYJCM2014Package();
+};
+
+void MigrateToOLStYJ2014(Package *pkg);
+
 #endif

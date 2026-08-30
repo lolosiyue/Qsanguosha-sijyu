@@ -13,6 +13,7 @@
 //#include "json.h"
 #include "exppattern.h"
 #include "yjcm2013.h"
+#include "wind.h"
 
 TenyearZhihengCard::TenyearZhihengCard()
 {
@@ -479,14 +480,14 @@ public:
 	int getResidueNum(const Player *from, const Card *, const Player *) const
 	{
 		if (from->hasSkill(objectName()))
-			return 1000;
+			return 999;
 		return 0;
 	}
 
 	int getDistanceLimit(const Player *from, const Card *, const Player *) const
 	{
 		if (from->getMark("tenyearpaoxiao-PlayClear") > 0 && from->hasSkill(objectName()))
-			return 1000;
+			return 999;
 		return 0;
 	}
 };
@@ -1466,7 +1467,7 @@ public:
 			log.type = "#TenyearjushouShow";
 			log.from = player;
 			room->sendLog(log);
-			room->showAllCards(player);
+			room->showAllCards(player, static_cast<ServerPlayer *>(nullptr));
 			return false;
 		}
 
@@ -2368,7 +2369,7 @@ public:
 	int getDistanceLimit(const Player *from, const Card *, const Player *) const
 	{
 		if (from->getMark("secondtenyearjiangchi_slash-PlayClear") > 0)
-			return 1000;
+			return 999;
 		return 0;
 	}
 };
@@ -3315,7 +3316,7 @@ public:
 				}
 			}
 			while (!shenduan_card.isEmpty()&&player->isAlive()) {
-				room->notifyMoveToPile(player, shenduan_card, objectName(), Player::DiscardPile, true);
+				room->notifyMoveToPile(player, shenduan_card, objectName(), Player::PlaceUnknown, true);
 				const Card *c = room->askForUseCard(player, "@@tenyearshenduan", "@tenyearshenduan");
 				if (!c) break;
 				shenduan_card.removeOne(c->getEffectiveId());
@@ -3798,14 +3799,14 @@ public:
 	int getResidueNum(const Player *from, const Card *, const Player *to) const
 	{
 		if (from->getMark(xianzhen + "_from-Clear") > 0 && to && to->getMark(xianzhen + "_to-Clear") > 0)
-			return 1000;
+			return 999;
 		return 0;
 	}
 
 	int getDistanceLimit(const Player *from, const Card *, const Player *to) const
 	{
 		if (from->getMark(xianzhen + "_from-Clear") > 0 && to && to->getMark(xianzhen + "_to-Clear") > 0)
-			return 1000;
+			return 999;
 		return 0;
 	}
 private:
@@ -4116,7 +4117,7 @@ void TenyearyongjinCard::use(Room *room, ServerPlayer *source, QList<ServerPlaye
 
 	for (int i = 1; i <= 3; i++) {
 		if (source->isDead()) break;
-		if (!room->moveField(source, "tenyearyongjin", i==1, "e"))
+		if (room->moveField(source, "tenyearyongjin", i==1, "e")<0)
 			break;
 	}
 }
@@ -4572,7 +4573,7 @@ TenyearHuaiyiCard::TenyearHuaiyiCard()
 void TenyearHuaiyiCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const
 {
 	if (source->isKongcheng()) return;
-	room->showAllCards(source);
+	room->showAllCards(source, static_cast<ServerPlayer *>(nullptr));
 
 	QList<int> blacks;
 	QList<int> reds;
@@ -4806,7 +4807,7 @@ public:
 	int getResidueNum(const Player *from, const Card *card, const Player *) const
 	{
 		if (from->getMark("tenyeargongqi_slash_" + card->getSuitString() + "-Clear") > 0)
-			return 1000;
+			return 999;
 		return 0;
 	}
 };
@@ -5329,7 +5330,7 @@ bool TenyearBingyiCard::targetFilter(const QList<const Player *> &targets, const
 
 void TenyearBingyiCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
 {
-	room->showAllCards(source);
+	room->showAllCards(source, static_cast<ServerPlayer *>(nullptr));
 
 	bool same_number = true;
 	QList<const Card *>cards = source->getHandcards();
@@ -5472,7 +5473,7 @@ public:
 
 			if (player->isDead() || zongxuan_card.isEmpty()) return false;
 
-			room->notifyMoveToPile(player, zongxuan_card, objectName(), Player::DiscardPile, true);
+			room->notifyMoveToPile(player, zongxuan_card, objectName(), Player::PlaceUnknown, true);
 
 			try {
 				const Card *c = room->askForUseCard(player, pattern, pattern.endsWith("!") ? "@tenyearzongxuan" : "@mobilezongxuan");
@@ -5488,27 +5489,27 @@ public:
 					log.card_str = ListI2S(subcards).join("+");
 					room->sendLog(log);
 
-					room->notifyMoveToPile(player, subcards, objectName(), Player::DiscardPile, false);
+					room->notifyMoveToPile(player, subcards, objectName(), Player::PlaceUnknown, false);
 
 					CardMoveReason reason(CardMoveReason::S_REASON_PUT, player->objectName(), "tenyearzongxuan", "");
-					room->moveCardTo(c, nullptr, Player::DrawPile, reason, true, true);
+					room->moveCardTo(c, nullptr, Player::DrawPile, reason, false, true);
 				} else {
 					if (pattern.endsWith("!")) {
 						int id = zongxuan_card.at(qsanRandomBounded(zongxuan_card.length()));
 						CardMoveReason reason(CardMoveReason::S_REASON_PUT, player->objectName(), "tenyearzongxuan", "");
-						room->moveCardTo(Sanguosha->getCard(id), nullptr, Player::DrawPile, reason, true);
+						room->moveCardTo(Sanguosha->getCard(id), nullptr, Player::DrawPile, reason, false);
 					}
 				}
 			}
 			catch (TriggerEvent triggerEvent) {
 				if (triggerEvent == TurnBroken || triggerEvent == StageChange) {
 					if (!zongxuan_card.isEmpty())
-						room->notifyMoveToPile(player, zongxuan_card, objectName(), Player::DiscardPile, false);
+						room->notifyMoveToPile(player, zongxuan_card, objectName(), Player::PlaceUnknown, false);
 				}
 				throw triggerEvent;
 			}
 			if (!zongxuan_card.isEmpty())
-				room->notifyMoveToPile(player, zongxuan_card, objectName(), Player::DiscardPile, false);
+				room->notifyMoveToPile(player, zongxuan_card, objectName(), Player::PlaceUnknown, false);
 		}
 		return false;
 	}
@@ -6033,9 +6034,9 @@ public:
 		view_as_skill = new TenyearJiaozhaoVS;
 	}
 
-	QDialog *getDialog() const
+	SkillDialogInfo getDialogInfo() const override
 	{
-		return TiansuanDialog::getInstance("tenyearjiaozhao");
+		return SkillDialogInfo::tiansuan(objectName());
 	}
 
 	bool triggerable(const ServerPlayer *target) const
@@ -6760,7 +6761,7 @@ class TenyearXiansiAttach : public TriggerSkill
 public:
 	TenyearXiansiAttach() : TriggerSkill("#tenyearxiansi-attach")
 	{
-		events << GameStart << EventAcquireSkill << Debut;
+		events << GameStart << EventAcquireSkill << EventLoseSkill << Debut;
 	}
 
 	bool triggerable(const ServerPlayer *target) const
@@ -6768,13 +6769,18 @@ public:
 		return target != nullptr;
 	}
 
-	bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &) const
+	bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
 	{
 		if ((triggerEvent == GameStart && TriggerSkill::triggerable(player))
 			|| triggerEvent == EventAcquireSkill) {
 			foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
 				if (!p->hasSkill("tenyearxiansi_slash", true))
 					room->attachSkillToPlayer(p, "tenyearxiansi_slash");
+			}
+		} else if (triggerEvent == EventLoseSkill && data.toString() == "tenyearxiansi") {
+			foreach (ServerPlayer *p, room->getOtherPlayers(player)) {
+				if (p->hasSkill("tenyearxiansi_slash", true))
+					room->detachSkillFromPlayer(p, "tenyearxiansi_slash", true);
 			}
 		} else if (triggerEvent == Debut) {
 			foreach (ServerPlayer *liufeng, room->findPlayersBySkillName("tenyearxiansi")) {
@@ -7366,7 +7372,7 @@ public:
 				player->peiyin(this);
 	
 				if (!player->isKongcheng())
-					room->showAllCards(player);
+					room->showAllCards(player, static_cast<ServerPlayer *>(nullptr));
 
 				const Card *card = nullptr;
 				DamageStruct damage = data.value<DamageStruct>();
@@ -7410,7 +7416,7 @@ public:
 };
 
 TenyearStStandardPackage::TenyearStStandardPackage()
-	: Package("TenyearStStandard")
+	: Package("tenyear_st_standard")
 {
 	General *tenyear_sunquan = new General(this, "tenyear_sunquan$", "wu", 4);
 	tenyear_sunquan->addSkill(new TenyearZhiheng);
@@ -7548,7 +7554,7 @@ TenyearStStandardPackage::TenyearStStandardPackage()
 ADD_PACKAGE(TenyearStStandard)
 
 TenyearStWindPackage::TenyearStWindPackage()
-	: Package("TenyearStWind")
+	: Package("tenyear_st_wind")
 {
 	General *tenyear_huangzhong = new General(this, "tenyear_huangzhong", "shu", 4);
 	tenyear_huangzhong->addSkill(new TenyearLiegong);
@@ -7572,11 +7578,12 @@ TenyearStWindPackage::TenyearStWindPackage()
 	tenyear_xiaoqiao->addSkill(new TenyearTianxiang);
 	tenyear_xiaoqiao->addSkill("hongyan");
 
+	MigrateToTenyearStWind(this);
 }
 ADD_PACKAGE(TenyearStWind)
 
 TenyearStYJ2011Package::TenyearStYJ2011Package()
-	: Package("TenyearStYJ2011")
+	: Package("tenyear_st_yj2011")
 {
 	General *tenyear_xushu = new General(this, "tenyear_xushu", "shu", 4);
 	tenyear_xushu->addSkill(new TenyearZhuhai);
@@ -7638,7 +7645,7 @@ TenyearStYJ2011Package::TenyearStYJ2011Package()
 ADD_PACKAGE(TenyearStYJ2011)
 
 TenyearStYJ2012Package::TenyearStYJ2012Package()
-	: Package("TenyearStYJ2012")
+	: Package("tenyear_st_yj2012")
 {
 	General *tenyear_liaohua = new General(this, "tenyear_liaohua", "shu", 4);
 	tenyear_liaohua->addSkill(new TenyearDangxian);
@@ -7704,7 +7711,7 @@ TenyearStYJ2012Package::TenyearStYJ2012Package()
 ADD_PACKAGE(TenyearStYJ2012)
 
 TenyearStYJ2013Package::TenyearStYJ2013Package()
-	: Package("TenyearStYJ2013")
+	: Package("tenyear_st_yj2013")
 {
 	General *tenyear_guanping = new General(this, "tenyear_guanping", "shu", 4);
 	tenyear_guanping->addSkill(new TenyearJiezhong);
@@ -7761,7 +7768,7 @@ TenyearStYJ2013Package::TenyearStYJ2013Package()
 ADD_PACKAGE(TenyearStYJ2013)
 
 TenyearStYJ2014Package::TenyearStYJ2014Package()
-	: Package("TenyearStYJ2014")
+	: Package("tenyear_st_yj2014")
 {
 	General *tenyear_wuyi = new General(this, "tenyear_wuyi", "shu", 4);
 	tenyear_wuyi->addSkill(new TenyearBenxi);
@@ -7804,7 +7811,7 @@ TenyearStYJ2014Package::TenyearStYJ2014Package()
 ADD_PACKAGE(TenyearStYJ2014)
 
 TenyearStYJ2015Package::TenyearStYJ2015Package()
-	: Package("TenyearStYJ2015")
+	: Package("tenyear_st_yj2015")
 {
 	General *tenyear_xiahoushi = new General(this, "tenyear_xiahoushi", "shu", 3, false);
 	tenyear_xiahoushi->addSkill(new TenyearQiaoshi);

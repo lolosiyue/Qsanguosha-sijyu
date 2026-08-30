@@ -506,6 +506,7 @@ signals:
     void mirror_guanxing_move(int from, int to);
     void mirror_guanxing_finish();
     void gongxin(const QList<int> &card_ids, bool enable_heart, QList<int> enabled_ids);
+    void guhuoBox(const QString &phase, const QString &yuji, const QString &declared, int realId);
     void focus_moved(const QStringList &focus, QSanProtocol::Countdown countdown, int command);
     void emotion_set(const QString &target, const QString &emotion);
     void change_table_bg(const QString &tableBg);

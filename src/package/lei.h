@@ -13,6 +13,22 @@ public:
     LeiPackage();
 };
 
+class OLStLeiPackage : public Package
+{
+    Q_OBJECT
+
+public:
+    OLStLeiPackage();
+};
+
+class MobileStLeiPackage : public Package
+{
+    Q_OBJECT
+
+public:
+    MobileStLeiPackage();
+};
+
 class JueyanCard : public SkillCard
 {
     Q_OBJECT

@@ -75,6 +75,16 @@ public:
         return forbid;
     }
 
+    QString adderName() const
+    {
+        return m_adderName;
+    }
+
+    void setAdderName(const QString &name)
+    {
+        m_adderName = name;
+    }
+
     template<typename T>
     void addMetaObject()
     {
@@ -98,6 +108,7 @@ protected:
     QList<const QMetaObject *> metaobjects;
     QMap<QString, const CardPattern *> patterns;
     QMultiMap<QString, QString> related_skills, convert_pairs;
+    QString m_adderName;
 };
 typedef Package* (*PackageFactory)();
 
@@ -117,7 +128,11 @@ public:
 
 // 3. 延遲實例化的巨集
 #define ADD_PACKAGE(name) \
-    static Package* create##name##Package() { return new name##Package; } \
+    static Package* create##name##Package() { \
+        Package *package = new name##Package; \
+        package->setAdderName(#name); \
+        return package; \
+    } \
     static PackageAdder name##PackageAdder(#name, create##name##Package);
 
 #endif // _PACKAGE_H

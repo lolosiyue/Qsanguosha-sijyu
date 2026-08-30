@@ -397,6 +397,12 @@ void Client::handleGameEvent(const QVariant &arg)
 	if(recorder_eventsave){
 		save(QSanRuntimePaths::recordDir()+"/debug.txt");
 	}
+	const JsonArray args = arg.value<JsonArray>();
+	if (args.size() >= 5 && args[0].toString() == QStringLiteral("guhuo_box")) {
+		emit guhuoBox(args[1].toString(), args[2].toString(),
+		              args[3].toString(), args[4].toInt());
+		return;
+	}
 	emit event_received(arg);
 }
 

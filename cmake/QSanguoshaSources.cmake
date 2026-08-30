@@ -33,6 +33,7 @@ set(QSAN_SOURCES
     src/package/bgm.cpp
     src/package/boss.cpp
     src/package/doudizhu.cpp
+    src/package/dream.cpp
     src/package/exclusive-cards.cpp
     src/package/exppattern.cpp
     src/package/fire.cpp
@@ -111,8 +112,11 @@ set(QSAN_SOURCES
     src/spine/TransformConstraint.cpp
     src/ui/bubblechatbox.cpp
     src/ui/button.cpp
+    src/ui/collapsible-section.cpp
+    src/ui/collapsible-section.h
     src/ui/cardcontainer.cpp
     src/ui/carditem.cpp
+    src/ui/guhuo-box.cpp
     src/ui/CharacterSpineActionController.cpp
     src/ui/chatwidget.cpp
     src/ui/choosetriggerorderbox.cpp
@@ -227,6 +231,7 @@ set(QSAN_MOC_HEADERS
     src/package/bgm.h
     src/package/boss.h
     src/package/doudizhu.h
+    src/package/dream.h
     src/package/exclusive-cards.h
     src/package/fire.h
     src/package/godlailailai.h
@@ -290,6 +295,7 @@ set(QSAN_MOC_HEADERS
     src/ui/button.h
     src/ui/cardcontainer.h
     src/ui/carditem.h
+    src/ui/guhuo-box.h
     src/ui/CharacterSpineActionController.h
     src/ui/chatwidget.h
     src/ui/choosetriggerorderbox.h

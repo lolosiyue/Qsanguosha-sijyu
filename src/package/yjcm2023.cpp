@@ -3,6 +3,7 @@
 #include "maneuvering.h"
 #include "wrapped-card.h"
 #include "room.h"
+#include "roomthread.h"
 #include "clientplayer.h"
 
 static QString zhizheEquipObjectNameByArea(int area)
@@ -506,6 +507,99 @@ public:
 	}
 };
 
+FazhuCard::FazhuCard()
+{
+	will_throw = false;
+}
+
+bool FazhuCard::targetFixed() const
+{
+	return user_string=="@@fazhu";
+}
+
+bool FazhuCard::targetFilter(const QList<const Player *> &targets, const Player *, const Player *) const
+{
+	return targets.length()<subcardsLength();
+}
+
+void FazhuCard::onUse(Room*room,CardUseStruct&use) const
+{
+	if(user_string=="@@fazhu")
+		SkillCard::onUse(room,use);
+	else{
+		for(int i = 0; i < subcardsLength(); i++){
+			room->giveCard(use.from,use.to[i],Sanguosha->getCard(subcards[i]),"fazhu");
+		}
+		foreach(ServerPlayer*tp,use.to){
+			if(tp->isAlive())
+				room->askForUseSlashTo(tp,room->getOtherPlayers(tp),"fazhu2",false);
+		}
+	}
+}
+
+void FazhuCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const
+{
+	LogMessage log;
+	log.type = "$RecastCard";
+	log.from = source;
+	log.card_str = ListI2S(subcards).join("+");
+	room->sendLog(log);
+
+	CardMoveReason reason(CardMoveReason::S_REASON_RECAST,source->objectName(),"fazhu","");
+	room->moveCardTo(this,nullptr,Player::DiscardPile,reason,true);
+	foreach(int id,source->drawCardsList(subcardsLength(),"recast")){
+		room->setCardTip(id,"fazhu-Clear");
+	}
+	room->notifyMoveToPile(source, QList<int>(), "fazhu", Player::PlaceUnknown, true);
+	room->askForUseCard(source,"@@fazhu1","fazhu1");
+}
+
+class Fazhuvs : public ViewAsSkill
+{
+public:
+	Fazhuvs() : ViewAsSkill("fazhu")
+	{
+		response_pattern = "@@fazhu";
+		expand_pile = "#fazhu";
+	}
+	bool viewFilter(const QList<const Card*>&,const Card*card) const
+	{
+		QString pattern = Sanguosha->getCurrentCardUsePattern();
+		if(pattern=="@@fazhu1")
+			return card->hasTip("fazhu");
+		return !card->isDamageCard();
+	}
+	const Card*viewAs(const QList<const Card*>&cards) const
+	{
+		if(cards.isEmpty()) return nullptr;
+        SkillCard*sc = new FazhuCard;
+		sc->setUserString(Sanguosha->getCurrentCardUsePattern());
+		sc->addSubcards(cards);
+		return sc;
+	}
+	bool isEnabledAtResponse(const Player*,const QString&pattern) const
+	{
+		return pattern.contains(response_pattern);
+	}
+};
+
+class Fazhu : public TriggerSkill
+{
+public:
+	Fazhu() : TriggerSkill("fazhu")
+	{
+		events << EventPhaseStart;
+		view_as_skill = new Fazhuvs;
+	}
+	bool trigger(TriggerEvent,Room*room,ServerPlayer*player,QVariant&) const
+	{
+		if(player->getPhase()==Player::Start){
+			room->notifyMoveToPile(player, player->getJudgingAreaID(), objectName(), Player::PlaceUnknown, true);
+			room->askForUseCard(player,"@@fazhu","fazhu0");
+		}
+		return false;
+	}
+};
 
 
 
@@ -545,7 +639,7 @@ void Wangmeizhike::onEffect(CardEffectStruct &effect) const
 }
 
 YJCM2023Package::YJCM2023Package()
-	: Package("YJCM2023")
+	: Package("yjcm2023")
 {
 	General *th_peixiu = new General(this, "th_peixiu", "qun", 3);
 	th_peixiu->addSkill(new Zhitu);
@@ -566,6 +660,11 @@ YJCM2023Package::YJCM2023Package()
 	th_majun->addSkill(new Gongqiao);
 	th_majun->addSkill(new Jingqiao);
 	addMetaObject<GongqiaoCard>();
+
+	General*xukun = new General(this,"xukun","wu",4);
+	xukun->addSkill(new Fazhu);
+	addMetaObject<FazhuCard>();
+
 
 
 

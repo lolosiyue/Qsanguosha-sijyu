@@ -3901,6 +3901,10 @@ mobilePackage::mobilePackage()
 	mobile_liuhui->addSkill(new ChongchaLimit);
 	addMetaObject<ChongchaCard>();
 
+	General *mobile_luyu = new General(this, "mobile_luyu", "wei", 3);
+	mobile_luyu->addSkill(new Dingfa);
+	mobile_luyu->addSkill(new Shuxing);
+
 	General *luyu = new General(this, "luyu", "wei", 3);
 	luyu->addSkill(new Dingfa);
 	luyu->addSkill(new Shuxing);
@@ -4965,6 +4969,142 @@ public:
 
 
 
+
+
+
+class Fuyu : public TriggerSkill
+{
+public:
+	Fuyu() : TriggerSkill("fuyu")
+	{
+		events << TargetConfirmed << TargetSpecified;
+	}
+    bool trigger(TriggerEvent event, Room *, ServerPlayer *player, QVariant &data) const
+	{
+		CardUseStruct use = data.value<CardUseStruct>();
+		if((use.card->isKindOf("BasicCard")||use.card->isNDTrick())&&use.to.length()==1){}else return false;
+		if(event==TargetSpecified){
+			if(use.to.last()!=player){
+				if(player->getMark("fuyu1-Clear")<0&&player->canPindian(use.to.last())
+				&&player->askForSkillInvoke(objectName()+"$-1",use.to.last())){
+					player->addMark("fuyu1-Clear");
+					bool has = player->pindian(use.to.last(),objectName());
+					if(has){
+						use.extra_use++;
+					}else
+						use.nullified_list << "_ALL_TARGETS";
+					data.setValue(use);
+					if(player->getTag("fuyu_pd").isValid() && player->getTag("fuyu_pd").toBool() == has){
+						player->drawCards(2,objectName());
+					}
+					player->setTag("fuyu_pd", has);
+				}
+			}
+		}else{
+			if(use.to.contains(player)&&use.from&&player!=use.from){
+				if(player->getMark("fuyu2-Clear")<0&&player->canPindian(use.from)
+				&&player->askForSkillInvoke(objectName()+"$-1",use.from)){
+					player->addMark("fuyu2-Clear");
+					int n = player->pindianInt(use.from,objectName());
+					if(n<0){
+						use.extra_use++;
+					}else
+						use.nullified_list << "_ALL_TARGETS";
+					data.setValue(use);
+					if(player->getTag("fuyu_pd").isValid() && player->getTag("fuyu_pd").toBool() == (n > 0)){
+						player->drawCards(2,objectName());
+					}
+					player->setTag("fuyu_pd", n > 0);
+				}
+			}
+		}
+
+		return false;
+	}
+};
+
+ZhanshiCard::ZhanshiCard()
+{
+}
+
+bool ZhanshiCard::targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *) const
+{
+	return targets.length()<subcardsLength()&&to_select->hasFlag("zhanshiPd");
+}
+
+void ZhanshiCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
+{
+	foreach (ServerPlayer *p, targets){
+		room->setPlayerFlag(p,"zhanshi_choice"+source->objectName());
+	}
+}
+
+class Zhanshivs : public ViewAsSkill
+{
+public:
+	Zhanshivs() : ViewAsSkill("zhanshi")
+	{
+		response_pattern = "@@zhanshi";
+	}
+
+	bool viewFilter(const QList<const Card *> &, const Card *to_select) const
+	{
+		return !Self->isJilei(to_select);
+	}
+
+	const Card *viewAs(const QList<const Card *> &cards) const
+	{
+		ZhanshiCard*c = new ZhanshiCard;
+		c->addSubcards(cards);
+		return c;
+	}
+};
+
+class Zhanshi : public TriggerSkill
+{
+public:
+	Zhanshi() : TriggerSkill("zhanshi")
+	{
+		events << Pindian << PindianVerifying;
+		view_as_skill = new Zhanshivs;
+	}
+	bool triggerable(const ServerPlayer *target) const
+	{
+		return target && target->isAlive();
+	}
+    bool trigger(TriggerEvent event, Room *room, ServerPlayer *, QVariant &data) const
+	{
+		PindianStruct*pd = data.value<PindianStruct*>();
+		if(event==PindianVerifying){
+			foreach (ServerPlayer *p, room->getAllPlayers()){
+				if(p->hasSkill(objectName())&&p->canDiscard("he")){
+					room->setPlayerFlag(pd->from,"zhanshiPd");
+					room->setPlayerFlag(pd->to,"zhanshiPd");
+					room->askForUseCard(p,"@@zhanshi","zhanshi0");
+					room->setPlayerFlag(pd->from,"-zhanshiPd");
+					room->setPlayerFlag(pd->to,"-zhanshiPd");
+				}
+			}
+		}else{
+			foreach (ServerPlayer *p, room->getAllPlayers()){
+				if(pd->from_number>pd->to_number){
+					if(pd->from->hasFlag("zhanshi_choice"+p->objectName())){
+						p->drawCards(3,objectName());
+					}
+				}else if(pd->from_number<pd->to_number){
+					if(pd->to->hasFlag("zhanshi_choice"+p->objectName())){
+						p->drawCards(3,objectName());
+					}
+				}
+				room->setPlayerFlag(pd->from,"-zhanshi_choice"+p->objectName());
+				room->setPlayerFlag(pd->to,"-zhanshi_choice"+p->objectName());
+			}
+		}
+		return false;
+	}
+};
+
+
 mobileStarPackage::mobileStarPackage()
 	: Package("mobile_star")
 {
@@ -5020,6 +5160,11 @@ mobileStarPackage::mobileStarPackage()
 	xing_fazheng->addSkill(new Duohui);
 	xing_fazheng->addSkill(new Yueyuan);
 	addMetaObject<YueyuanCard>();
+
+	General *xing_wanglang = new General(this, "xing_wanglang", "qun", 4);
+	xing_wanglang->addSkill(new Fuyu);
+	xing_wanglang->addSkill(new Zhanshi);
+	addMetaObject<ZhanshiCard>();
 
 
 
@@ -17808,6 +17953,355 @@ public:
 
 
 
+
+
+
+class MobileXuehenvs : public OneCardViewAsSkill
+{
+public:
+	MobileXuehenvs() : OneCardViewAsSkill("mobilexuehen")
+	{
+		response_pattern = "slash";
+	}
+	bool viewFilter(const Card *card) const
+	{
+		return card->hasTip("mobilexuehen");
+	}
+
+	const Card *viewAs(const Card *c) const
+	{
+		Card*dc = Sanguosha->cloneCard("slash");
+		dc->setSkillName(objectName());
+		dc->addSubcard(c);
+		return dc;
+	}
+
+	bool isEnabledAtPlay(const Player *player) const
+	{
+		return Slash::IsAvailable(player);
+	}
+};
+
+class MobileXuehen : public TriggerSkill
+{
+public:
+	MobileXuehen() : TriggerSkill("mobilexuehen")
+	{
+		events << Damage << Damaged << CardFinished;
+		view_as_skill = new MobileXuehenvs;
+	}
+	bool triggerable(const ServerPlayer *target) const
+	{
+		return target&&target->isAlive();
+	}
+	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
+	{
+		if(event==CardFinished){
+			CardUseStruct use = data.value<CardUseStruct>();
+			if(use.card->isKindOf("Slash")&&use.card->getSkillNames().contains(objectName())){
+				if(player->getMark("mobilexuehenUp")>0)
+					player->drawCards(1,objectName());
+			}
+		}else{
+			if(event==Damage){
+				DamageStruct damage = data.value<DamageStruct>();
+				if(damage.card&&damage.card->getSkillNames().contains(objectName())){
+					foreach (int id, player->handCards()) {
+						room->setCardTip(id,"-mobilexuehen");
+					}
+				}
+			}
+			if(player->getMark("mobilexuehenDamage-Clear")>0){
+				player->addMark("mobilexuehenDamage-Clear");
+				int n = player->getLostHp();
+				if(n>0&&player->hasSkill(objectName())&&player->getHandcardNum()>0){
+					Card*dc = room->askForExchange(player,objectName(),n,1,false,QString("mobilexuehen0:%1").arg(n),true);
+					if(dc){
+						player->peiyin("xuehen");
+						player->skillInvoked(objectName());
+						room->showCard(player,dc->getSubcards());
+						foreach (int id, dc->getSubcards()) {
+							room->setCardTip(id,"mobilexuehen");
+						}
+					}
+				}
+			}
+		}
+		return false;
+	}
+};
+
+class MobileXuehenbf : public CardLimitSkill
+{
+public:
+	MobileXuehenbf() : CardLimitSkill("#MobileXuehenbf")
+	{
+	}
+
+	QString limitList(const Player *) const
+	{
+		return "use";
+	}
+
+	QString limitPattern(const Player *,const Card *card) const
+	{
+		if (card->hasTip("mobilexuehen"))
+			return card->toString();
+		return "";
+	}
+};
+
+MobileHuxiaoCard::MobileHuxiaoCard()
+{
+	mute = true;
+}
+
+bool MobileHuxiaoCard::targetFilter(const QList<const Player *> &targets, const Player *to, const Player *Self) const
+{
+	return targets.isEmpty()&&to->getHp()>=Self->getHp();
+}
+
+bool MobileHuxiaoCard::targetsFeasible(const QList<const Player *> &, const Player *) const
+{
+	return true;
+}
+
+void MobileHuxiaoCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
+{
+	source->peiyin("huxiao");
+	if(targets.isEmpty()||subcardsLength()>0)
+		room->setPlayerMark(source,"&mobilehuxiao-Clear",1);
+	foreach (ServerPlayer *p, targets) {
+		room->damage(DamageStruct("mobilehuxiao",source,p,1,DamageStruct::Fire));
+	}
+}
+
+class MobileHuxiao: public ViewAsSkill
+{
+public:
+	MobileHuxiao() : ViewAsSkill("mobilehuxiao")
+	{
+	}
+
+	bool viewFilter(const QList<const Card *> &cards, const Card *card) const
+	{
+		return cards.isEmpty()&&card->isRed()
+		&&!Self->isJilei(card);
+	}
+
+	const Card *viewAs(const QList<const Card *> &cards) const
+	{
+		MobileHuxiaoCard *sc = new MobileHuxiaoCard;
+		sc->addSubcards(cards);
+		return sc;
+	}
+
+	bool isEnabledAtPlay(const Player *player) const
+	{
+		return player->usedTimes("MobileHuxiaoCard")>0;
+	}
+};
+
+MobileWujiCard::MobileWujiCard()
+{
+	target_fixed = true;
+	mute = true;
+}
+
+void MobileWujiCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const
+{
+	source->peiyin("wuji");
+	room->removePlayerMark(source,"@mobilewuji");
+	room->doSuperLightbox(source, "mobilewuji");
+	source->addMark("mobilewujiRestore");
+	room->setPlayerMark(source,"mobilexuehenUp",1);
+	room->changeTranslation(source,"mobilexuehen",1);
+}
+
+class MobileWujivs : public ZeroCardViewAsSkill
+{
+public:
+	MobileWujivs() : ZeroCardViewAsSkill("mobilewuji")
+	{
+	}
+
+	bool isEnabledAtPlay(const Player *player) const
+	{
+		return player->getMark("@mobilewuji")>0;
+	}
+
+	const Card *viewAs() const
+	{
+		return new MobileWujiCard;
+	}
+};
+
+class MobileWuji : public TriggerSkill
+{
+public:
+	MobileWuji() : TriggerSkill("mobilewuji")
+	{
+		events << CardsMoveOneTime << EventPhaseChanging;
+		view_as_skill = new MobileWujivs;
+		limit_mark = "@mobilewuji";
+		frequency = Limited;
+	}
+	bool triggerable(const ServerPlayer *target) const
+	{
+		return target&&target->isAlive();
+	}
+	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
+	{
+		if(event==EventPhaseChanging){
+			if (data.value<PhaseChangeStruct>().from==Player::Play&&player->getMark("mobilewujiRestore")>0) {
+				room->setPlayerMark(player,"mobilexuehenUp",0);
+				player->setMark("mobilewujiRestore",0);
+				room->changeTranslation(player,"mobilexuehen",0);
+			}
+		}else{
+			CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+			if(move.to==player&&move.reason.m_skillName=="mobilexuehen") {
+				player->addMark("mobilewujiNum",move.card_ids.length());
+				if(player->getMark("mobilewujiNum")>1)
+					player->setMark("mobilewujiRestore",0);
+			}
+		}
+		return false;
+	}
+};
+
+class MobileJieyuan : public TriggerSkill
+{
+public:
+	MobileJieyuan() : TriggerSkill("mobilejieyuan")
+	{
+		events << DamageCaused << DamageInflicted;
+	}
+	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
+	{
+		int x = player->getTag("mobilejieyuanBan").toInt();
+		if(x==event||!player->askForSkillInvoke(objectName()+"$-1",data)) return false;
+		if(event==DamageCaused){
+			QString choice = "1=1";
+			foreach (const Card*h, player->getHandcards()) {
+				if(h->isBlack()&&player->canDiscard(h->getId())){
+					if(x>0)
+						choice = "1=2+2=2";
+					else
+						choice = "1=1+2=1+beishui";
+					break;
+				}
+			}
+			choice = room->askForChoice(player,objectName(),choice,data);
+			if(!choice.contains("2=")){
+				Card*dc = dummyCard();
+				foreach (int id, room->getDrawPile()) {
+					if(Sanguosha->getEngineCard(id)->isBlack()){
+						dc->addSubcard(id);
+						if(x<1||dc->subcardsLength()>1) break;
+					}
+				}
+				room->obtainCard(player,dc);
+			}
+			if(!choice.contains("1=")){
+				room->askForDiscard(player,objectName(),1,1,false,true,"mobilejieyuan0:black",".|black");
+				if(x>0)
+                    player->damageRevises(data,2);
+				else
+                    player->damageRevises(data,1);
+			}
+			if(choice=="beishui"){
+				room->changeTranslation(player,objectName(),1);
+				player->setTag("mobilejieyuanBan", DamageInflicted);
+			}
+		}else{
+			QString choice = "3=1";
+			foreach (const Card*h, player->getHandcards()) {
+				if(h->isRed()&&player->canDiscard(h->getId())){
+					if(x>0)
+						choice = "3=2+4=2";
+					else
+						choice = "3=1+4=1+beishui";
+					break;
+				}
+			}
+			choice = room->askForChoice(player,objectName(),choice,data);
+			if(!choice.contains("4=")){
+				Card*dc = dummyCard();
+				foreach (int id, room->getDrawPile()) {
+					if(Sanguosha->getEngineCard(id)->isRed()){
+						dc->addSubcard(id);
+						if(x<1||dc->subcardsLength()>1) break;
+					}
+				}
+				room->obtainCard(player,dc);
+			}
+			if(choice=="beishui"){
+				room->changeTranslation(player,objectName(),2);
+				player->setTag("mobilejieyuanBan", DamageCaused);
+			}
+			if(!choice.contains("3=")){
+				room->askForDiscard(player,objectName(),1,1,false,true,"mobilejieyuan0:red",".|red");
+				if(x>0)
+                    return player->damageRevises(data,-2);
+				else
+                    return player->damageRevises(data,-1);
+			}
+		}
+		return false;
+	}
+};
+
+class MobileFenxin : public TriggerSkill
+{
+public:
+	MobileFenxin() : TriggerSkill("mobilefenxin")
+	{
+		events << BeforeGameOverJudge << GameOverJudge;
+	}
+	bool triggerable(const ServerPlayer *target) const
+	{
+		return target&&target->isDead();
+	}
+	bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
+	{
+		DeathStruct death = data.value<DeathStruct>();
+		if(event==BeforeGameOverJudge){
+			if(player->hasShownRole()) return false;
+			if(death.damage&&death.damage->from&&death.damage->from->isAlive()
+			&&death.damage->from->askForSkillInvoke(objectName()+"$-1",data)){
+				QString choice = "1";
+				if(!death.damage->from->hasShownRole()) choice = "1+2";
+				choice = room->askForChoice(death.damage->from,objectName(),choice,data);
+				if(choice=="1"){
+					death.damage->from->setTag("mobilefenxinTo", player->objectName());
+				}else{
+					QString pr = player->getRole();
+					choice = death.damage->from->getRole();
+					player->setRole(choice);
+					death.damage->from->setRole(pr);
+                    room->notifyProperty(player,player,"role",choice);
+                    room->notifyProperty(death.damage->from,death.damage->from,"role",pr);
+				}
+			}
+		}else{
+			if(death.damage&&death.damage->from&&death.damage->from->isAlive()
+			&&death.damage->from->getTag("mobilefenxinTo").toString()==player->objectName()){
+				death.damage->from->removeTag("mobilefenxinTo");
+				QStringList skills;
+				foreach (const Skill*s, player->getGeneral()->getVisibleSkillList()) {
+					if(s->isLimitedSkill()||s->isLordSkill()||s->isShiMingSkill()
+						||s->getFrequency()==Wake||s->property("IgnoreInvalidity").toBool()) continue;
+					skills << s->objectName();
+				}
+				room->handleAcquireDetachSkills(death.damage->from,skills);
+			}
+		}
+		return false;
+	}
+};
+
+
 mobileSpPackage::mobileSpPackage()
 	: Package("mobile_sp")
 {
@@ -17854,6 +18348,14 @@ mobileSpPackage::mobileSpPackage()
 	guanyinping->addSkill(new Wuji);
 	related_skills.insert("huxiao", "#huxiao-count");
 	addMetaObject<XuejiCard>();
+
+	General *mobile_guanyinping = new General(this, "mobile_guanyinping", "shu", 4, false, false, false, 3);
+	mobile_guanyinping->addSkill(new MobileXuehen);
+	mobile_guanyinping->addSkill(new MobileXuehenbf);
+	mobile_guanyinping->addSkill(new MobileHuxiao);
+	mobile_guanyinping->addSkill(new MobileWuji);
+	addMetaObject<MobileHuxiaoCard>();
+	addMetaObject<MobileWujiCard>();
 
 	General *new_guanyinping = new General(this, "new_guanyinping", "shu", 3, false);
 	new_guanyinping->addSkill(new Newxuehen);
@@ -18078,9 +18580,9 @@ mobileSpPackage::mobileSpPackage()
 	maojie->addSkill(new YingfengTarget);
 	related_skills.insert("yingfeng", "#yingfeng");
 
-	General *lingju = new General(this, "lingju*xh_nvshi", "qun", 3, false);
-	lingju->addSkill("jieyuan");
-	lingju->addSkill("fenxin");
+	General *mobile_lingju = new General(this, "mobile_lingju", "qun", 3, false);
+	mobile_lingju->addSkill(new MobileJieyuan);
+	mobile_lingju->addSkill(new MobileFenxin);
 
 	General *yanpu = new General(this, "yanpu*xh_sibi", "qun", 3);
 	yanpu->addSkill(new Huantu);
