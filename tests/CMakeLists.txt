@@ -123,6 +123,38 @@ qsan_add_ctest(qsanguosha_protocol_v2_contract qsanguosha_protocol_v2_tests
     LABELS "protocol;fast"
 )
 
+add_executable(qsanguosha_protocol_gameplay_payload_tests
+    protocol/multiple-choice-payload-test.cpp
+)
+target_include_directories(qsanguosha_protocol_gameplay_payload_tests PRIVATE
+    ${QSAN_TEST_ROOT}/src/core
+)
+target_link_libraries(qsanguosha_protocol_gameplay_payload_tests PRIVATE
+    qsanguosha_engine
+    Qt6::Core
+)
+qsan_add_ctest(qsanguosha_protocol_gameplay_payload_contract
+    qsanguosha_protocol_gameplay_payload_tests
+    LABELS "protocol;fast"
+)
+
+add_executable(qsanguosha_protocol_gameplay_tcp_tests
+    protocol/multiple-choice-tcp-test.cpp
+)
+target_include_directories(qsanguosha_protocol_gameplay_tcp_tests PRIVATE
+    ${QSAN_TEST_ROOT}/src/core
+)
+target_link_libraries(qsanguosha_protocol_gameplay_tcp_tests PRIVATE
+    qsanguosha_engine
+    Qt6::Core
+    Qt6::Network
+)
+qsan_add_ctest(qsanguosha_protocol_gameplay_tcp_contract
+    qsanguosha_protocol_gameplay_tcp_tests
+    LABELS "protocol;network;fast"
+    TIMEOUT 30
+)
+
 add_executable(qsanguosha_protocol_negotiation_tests
     protocol/protocol-negotiation-test.cpp
 )
