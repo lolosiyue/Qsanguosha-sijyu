@@ -7,6 +7,8 @@
 #include "game-view.h"
 #include "local-response-ui-probe.h"
 #include "local-response-ui-inspector.h"
+#include "protocol/protocol-runtime.h"
+#include "protocol/protocol-v1-message-adapter.h"
 #include "roomscene.h"
 #include "server-info.h"
 #include "settings.h"
@@ -480,12 +482,47 @@ void LocalResponseUiController::execute()
         return;
     }
 
+    const int wireVersionValue = m_case.request()
+        .value(QStringLiteral("wire_version")).toInt(1);
+    if (wireVersionValue != 1 && wireVersionValue != 2) {
+        finish(InvalidCase, QStringLiteral("request"),
+            QStringLiteral("request.wire_version must be 1 or 2"));
+        return;
+    }
+    const ProtocolVersion wireVersion = wireVersionValue == 2
+        ? ProtocolVersion::V2 : ProtocolVersion::V1;
+    const ProtocolMessage logicalRequest = protocolMessageFromV1Packet(requestPacket);
+    const ProtocolCodecRouter router;
+    const QByteArray wireBytes = router.encode(wireVersion, logicalRequest, &error);
+    if (wireBytes.isEmpty()) {
+        finish(InvalidCase, QStringLiteral("request"),
+            QStringLiteral("cannot encode request wire: %1").arg(error));
+        return;
+    }
+
+    // The fixture keeps the production Client on its ordinary V1 test socket.
+    // A V2 case still traverses the production router, then injects the
+    // normalized logical packet consumed by the same callback/UI path.
+    ProtocolMessage normalizedRequest;
+    const ProtocolDecodeResult decoded = router.decode(
+        wireVersion, wireBytes, &normalizedRequest);
+    if (!decoded.success) {
+        finish(InvalidCase, QStringLiteral("request"),
+            QStringLiteral("cannot decode request wire: %1").arg(decoded.detail));
+        return;
+    }
+    normalizedRequest.version = ProtocolVersion::V1;
+    Packet normalizedPacket;
+    applyProtocolMessageToV1Packet(normalizedRequest, normalizedPacket);
+
     QJsonObject requestReport;
     requestReport.insert(QStringLiteral("command"), commandName);
     requestReport.insert(QStringLiteral("global_serial"), static_cast<int>(requestPacket.globalSerial));
     requestReport.insert(QStringLiteral("body"), QJsonValue::fromVariant(requestBody));
+    requestReport.insert(QStringLiteral("wire_version"), wireVersionValue);
+    requestReport.insert(QStringLiteral("wire_json"), QString::fromUtf8(wireBytes));
     m_report.insert(QStringLiteral("request"), requestReport);
-    m_requestPacketJson = QString::fromUtf8(requestPacket.toJson());
+    m_requestPacketJson = QString::fromUtf8(normalizedPacket.toJson());
 
     if (m_mode == RunnerMode::Inspect)
         createInspector(commandName, static_cast<int>(requestPacket.globalSerial));

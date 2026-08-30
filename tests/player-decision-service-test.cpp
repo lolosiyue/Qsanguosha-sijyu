@@ -6,6 +6,7 @@
 #include "json.h"
 #include "player-decision-service.h"
 #include "protocol.h"
+#include "protocol/protocol-runtime.h"
 #include "request-coordinator.h"
 #include "room-test-access.h"
 #include "room.h"
@@ -20,6 +21,7 @@
 #include <QDebug>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QJsonDocument>
 #include <QMap>
 
 #include <atomic>
@@ -606,37 +608,87 @@ public:
 class ClientReplyAgent
 {
 public:
-    ClientReplyAgent(Room &room, ServerPlayer *player)
-        : m_room(room), m_player(player)
+    ClientReplyAgent(Room &room, ServerPlayer *player,
+                     ProtocolVersion version = ProtocolVersion::V1)
+        : m_room(room), m_player(player), m_version(version)
     {
+        if (m_version == ProtocolVersion::V2) {
+            ProtocolSessionState server;
+            ProtocolSessionState client;
+            server.setPeerCapabilities(ProtocolNegotiation::localCapabilities());
+            client.setPeerCapabilities(ProtocolNegotiation::localCapabilities());
+            QVariantMap offer;
+            QVariantMap ack;
+            QVariantMap commit;
+            QString error;
+            protocolReady = server.beginServerSwitch(&offer, &error)
+                && client.acceptClientOffer(offer, &ack, &error)
+                && server.acceptServerAck(ack, &commit, &error)
+                && server.activateServerAfterCommit(&error)
+                && client.acceptClientCommit(commit, &error);
+            if (protocolReady)
+                player->setProtocolSessionState(server);
+        }
+
         QObject::connect(player, &ServerPlayer::message_ready, player,
                          [this](const QByteArray &message) {
-            Packet packet;
-            if (!packet.parse(message))
+            ProtocolMessage request;
+            const ProtocolDecodeResult requestResult = m_router.decode(
+                m_version, message, &request);
+            if (!requestResult.success) {
+                parseFailed = true;
                 return;
-            if (packet.getPacketType() != S_TYPE_REQUEST)
+            }
+            if (request.type != ProtocolMessageType::Request)
                 return;
-            if (!replyByCommand.contains(packet.getCommandType()))
+            const CommandType requestCommand = static_cast<CommandType>(request.command);
+            if (!replyByCommand.contains(requestCommand))
                 return;
-            CommandType replyCommand = packet.getCommandType();
+            lastRequestWire = message;
+            CommandType replyCommand = requestCommand;
             if (replyCommand == S_COMMAND_SHOW_CARD || replyCommand == S_COMMAND_PINDIAN
                 || replyCommand == S_COMMAND_PLAY_CARD || replyCommand == S_COMMAND_NULLIFICATION
                 || replyCommand == S_COMMAND_ASK_PEACH)
                 replyCommand = S_COMMAND_RESPONSE_CARD;
             else if (replyCommand == S_COMMAND_EXCHANGE_CARD)
                 replyCommand = S_COMMAND_DISCARD_CARD;
-            Packet reply(S_SRC_CLIENT | S_TYPE_REPLY | S_DEST_ROOM, replyCommand);
-            reply.localSerial = packet.globalSerial;
-            reply.setMessageBody(replyByCommand.value(packet.getCommandType()));
-            RoomTestAccess::dispatch(m_room, m_player, reply);
+
+            ProtocolMessage reply;
+            reply.type = ProtocolMessageType::Reply;
+            reply.source = ProtocolEndpoint::Client;
+            reply.destination = ProtocolEndpoint::Room;
+            reply.messageId = m_version == ProtocolVersion::V2 ? m_nextMessageId++ : 0;
+            reply.replyTo = request.messageId;
+            reply.command = replyCommand;
+            reply.hasPayload = true;
+            reply.payload = replyByCommand.value(requestCommand);
+
+            QString error;
+            lastReplyWire = m_router.encode(m_version, reply, &error);
+            ProtocolMessage normalizedReply;
+            const ProtocolDecodeResult replyResult = m_router.decode(
+                m_version, lastReplyWire, &normalizedReply);
+            if (lastReplyWire.isEmpty() || !replyResult.success) {
+                parseFailed = true;
+                return;
+            }
+            RoomTestAccess::dispatch(
+                m_room, m_player, normalizedReply, QString::fromUtf8(lastReplyWire));
         });
     }
 
     QMap<CommandType, QVariant> replyByCommand;
+    QByteArray lastRequestWire;
+    QByteArray lastReplyWire;
+    bool protocolReady = true;
+    bool parseFailed = false;
 
 private:
     Room &m_room;
     ServerPlayer *m_player;
+    ProtocolVersion m_version;
+    ProtocolCodecRouter m_router;
+    quint64 m_nextMessageId = 1;
 };
 
 struct DecisionFixture
@@ -900,12 +952,42 @@ static bool choiceOverrideForceCancelAndFallback()
 
 static bool choiceClientAnswer()
 {
-    DecisionFixture fixture(QStringLiteral("online"));
-    ClientReplyAgent agent(fixture.room, fixture.player);
-    agent.replyByCommand.insert(S_COMMAND_MULTIPLE_CHOICE, QStringLiteral("right"));
-    const QString answer = fixture.room.askForChoice(
-        fixture.player, QStringLiteral("tuxi"), QStringLiteral("left+right"));
-    return expect(answer == QStringLiteral("right"), "online choice reply is accepted");
+    DecisionFixture v1Fixture(QStringLiteral("online"));
+    ClientReplyAgent v1Agent(v1Fixture.room, v1Fixture.player, ProtocolVersion::V1);
+    v1Agent.replyByCommand.insert(S_COMMAND_MULTIPLE_CHOICE, QStringLiteral("right"));
+    const QString v1Answer = v1Fixture.room.askForChoice(
+        v1Fixture.player, QStringLiteral("tuxi"), QStringLiteral("left+right"));
+    const QStringList v1Choices = v1Fixture.probe.payloads(ChoiceMade);
+    if (!expect(v1Agent.protocolReady && !v1Agent.parseFailed,
+                "V1 online choice protocol is ready")
+        || !expect(v1Answer == QStringLiteral("right"),
+                   "V1 online choice reply is accepted")
+        || !expect(QJsonDocument::fromJson(v1Agent.lastRequestWire).isArray()
+                       && QJsonDocument::fromJson(v1Agent.lastReplyWire).isArray(),
+                   "V1 choice request and reply remain arrays")) {
+        return false;
+    }
+
+    DecisionFixture v2Fixture(QStringLiteral("online"));
+    ClientReplyAgent v2Agent(v2Fixture.room, v2Fixture.player, ProtocolVersion::V2);
+    v2Agent.replyByCommand.insert(S_COMMAND_MULTIPLE_CHOICE, QStringLiteral("right"));
+    const QString v2Answer = v2Fixture.room.askForChoice(
+        v2Fixture.player, QStringLiteral("tuxi"), QStringLiteral("left+right"));
+    const QStringList v2Choices = v2Fixture.probe.payloads(ChoiceMade);
+    if (!expect(v2Agent.protocolReady && !v2Agent.parseFailed,
+                "V2 online choice protocol is ready")
+        || !expect(v2Answer == QStringLiteral("right"),
+                   "V2 online choice reply is accepted")
+        || !expect(QJsonDocument::fromJson(v2Agent.lastRequestWire).isObject()
+                       && QJsonDocument::fromJson(v2Agent.lastReplyWire).isObject(),
+                   "V2 choice request and reply are objects")) {
+        return false;
+    }
+
+    return expect(v1Answer == v2Answer, "V1 and V2 choice answers match")
+        && expect(v1Choices == QStringList{QStringLiteral("skillChoice:tuxi:right")}
+                      && v2Choices == v1Choices,
+                  "V1 and V2 ChoiceMade payloads match exactly");
 }
 
 static bool suitKingdomGeneralAndModeChoices()
