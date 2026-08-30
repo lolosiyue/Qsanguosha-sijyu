@@ -206,6 +206,8 @@ add_library(qsanguosha_engine STATIC
     src/core/protocol/gameplay/multiple-choice-payload.h
     src/core/protocol/gameplay/protocol-gameplay-payload-registry.cpp
     src/core/protocol/gameplay/protocol-gameplay-payload-registry.h
+    src/core/protocol/gameplay/simple-choice-payloads.cpp
+    src/core/protocol/gameplay/simple-choice-payloads.h
     src/core/protocol/protocol-message.cpp
     src/core/protocol/protocol-message.h
     src/core/protocol/protocol-message-utils.h
