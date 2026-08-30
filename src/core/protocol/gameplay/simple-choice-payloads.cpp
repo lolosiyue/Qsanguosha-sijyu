@@ -114,25 +114,25 @@ bool requireStringList(const QVariantMap &object, const QString &key,
     return true;
 }
 
-bool parseLegacyString(const QVariant &value, const QString &context,
+bool parseDomainString(const QVariant &value, const QString &context,
                        QString *parsed, QString *error)
 {
     if (value.userType() != QMetaType::QString)
-        return fail(error, QStringLiteral("Legacy %1 must be a string").arg(context));
+        return fail(error, QStringLiteral("Domain %1 must be a string").arg(context));
     *parsed = value.toString();
     return true;
 }
 
-bool parseLegacyBool(const QVariant &value, const QString &context,
+bool parseDomainBool(const QVariant &value, const QString &context,
                      bool *parsed, QString *error)
 {
     if (value.userType() != QMetaType::Bool)
-        return fail(error, QStringLiteral("Legacy %1 must be a boolean").arg(context));
+        return fail(error, QStringLiteral("Domain %1 must be a boolean").arg(context));
     *parsed = value.toBool();
     return true;
 }
 
-bool parseLegacyInteger(const QVariant &value, const QString &context,
+bool parseDomainInteger(const QVariant &value, const QString &context,
                         int *parsed, QString *error)
 {
     bool ok = false;
@@ -141,18 +141,18 @@ bool parseLegacyInteger(const QVariant &value, const QString &context,
         || std::trunc(number) != number
         || number < std::numeric_limits<int>::min()
         || number > std::numeric_limits<int>::max()) {
-        return fail(error, QStringLiteral("Legacy %1 must be an integer").arg(context));
+        return fail(error, QStringLiteral("Domain %1 must be an integer").arg(context));
     }
     *parsed = static_cast<int>(number);
     return true;
 }
 
-bool parseLegacyStringArray(const QVariant &value, const QString &context,
+bool parseDomainStringArray(const QVariant &value, const QString &context,
                             QStringList *parsed, QString *error)
 {
     if (value.userType() != QMetaType::QVariantList) {
         return fail(error,
-                    QStringLiteral("Legacy %1 must be an array of strings").arg(context));
+                    QStringLiteral("Domain %1 must be an array of strings").arg(context));
     }
 
     QStringList result;
@@ -161,7 +161,7 @@ bool parseLegacyStringArray(const QVariant &value, const QString &context,
     for (const QVariant &entry : entries) {
         if (entry.userType() != QMetaType::QString) {
             return fail(error,
-                        QStringLiteral("Legacy %1 must be an array of strings")
+                        QStringLiteral("Domain %1 must be an array of strings")
                             .arg(context));
         }
         result.append(entry.toString());
@@ -170,16 +170,16 @@ bool parseLegacyStringArray(const QVariant &value, const QString &context,
     return true;
 }
 
-bool parseLegacyTwoStrings(const QVariant &value, const QString &context,
+bool parseDomainTwoStrings(const QVariant &value, const QString &context,
                            QString *first, QString *second, QString *error)
 {
     if (value.userType() != QMetaType::QVariantList)
-        return fail(error, QStringLiteral("Legacy %1 must be an array").arg(context));
+        return fail(error, QStringLiteral("Domain %1 must be an array").arg(context));
     const QVariantList entries = value.toList();
     if (entries.size() != 2 || entries.at(0).userType() != QMetaType::QString
         || entries.at(1).userType() != QMetaType::QString) {
         return fail(error,
-                    QStringLiteral("Legacy %1 must contain two strings").arg(context));
+                    QStringLiteral("Domain %1 must contain two strings").arg(context));
     }
     *first = entries.at(0).toString();
     *second = entries.at(1).toString();
@@ -231,7 +231,7 @@ bool parseCamp(const QString &name, int *camp, QString *error)
 }
 }
 
-QVariant ChooseGeneralRequestPayload::toLegacyVariant() const
+QVariant ChooseGeneralRequestPayload::toDomainVariant() const
 {
     return stringListVariant(candidates);
 }
@@ -244,7 +244,7 @@ QVariantMap ChooseGeneralRequestPayload::toV2Variant() const
     };
 }
 
-bool ChooseGeneralRequestPayload::parseLegacy(
+bool ChooseGeneralRequestPayload::parseDomain(
     const QVariant &value, ChooseGeneralRequestPayload *payload, QString *error)
 {
     if (error != nullptr)
@@ -252,7 +252,7 @@ bool ChooseGeneralRequestPayload::parseLegacy(
     if (payload == nullptr)
         return fail(error, QStringLiteral("Choose general request output is null"));
     ChooseGeneralRequestPayload parsed;
-    if (!parseLegacyStringArray(value, QStringLiteral("choose general request"),
+    if (!parseDomainStringArray(value, QStringLiteral("choose general request"),
                                 &parsed.candidates, error)) {
         return false;
     }
@@ -279,7 +279,7 @@ bool ChooseGeneralRequestPayload::parseV2(
     return true;
 }
 
-QVariant ChooseGeneralReplyPayload::toLegacyVariant() const
+QVariant ChooseGeneralReplyPayload::toDomainVariant() const
 {
     return general;
 }
@@ -292,7 +292,7 @@ QVariantMap ChooseGeneralReplyPayload::toV2Variant() const
     };
 }
 
-bool ChooseGeneralReplyPayload::parseLegacy(
+bool ChooseGeneralReplyPayload::parseDomain(
     const QVariant &value, ChooseGeneralReplyPayload *payload, QString *error)
 {
     if (error != nullptr)
@@ -300,7 +300,7 @@ bool ChooseGeneralReplyPayload::parseLegacy(
     if (payload == nullptr)
         return fail(error, QStringLiteral("Choose general reply output is null"));
     ChooseGeneralReplyPayload parsed;
-    if (!parseLegacyString(value, QStringLiteral("choose general reply"),
+    if (!parseDomainString(value, QStringLiteral("choose general reply"),
                            &parsed.general, error)) {
         return false;
     }
@@ -346,7 +346,7 @@ bool ChooseSuitRequestPayload::parseV2(
     return true;
 }
 
-QVariant ChooseSuitReplyPayload::toLegacyVariant() const
+QVariant ChooseSuitReplyPayload::toDomainVariant() const
 {
     return suit;
 }
@@ -359,7 +359,7 @@ QVariantMap ChooseSuitReplyPayload::toV2Variant() const
     };
 }
 
-bool ChooseSuitReplyPayload::parseLegacy(
+bool ChooseSuitReplyPayload::parseDomain(
     const QVariant &value, ChooseSuitReplyPayload *payload, QString *error)
 {
     if (error != nullptr)
@@ -367,7 +367,7 @@ bool ChooseSuitReplyPayload::parseLegacy(
     if (payload == nullptr)
         return fail(error, QStringLiteral("Choose suit reply output is null"));
     ChooseSuitReplyPayload parsed;
-    if (!parseLegacyString(value, QStringLiteral("choose suit reply"),
+    if (!parseDomainString(value, QStringLiteral("choose suit reply"),
                            &parsed.suit, error)) {
         return false;
     }
@@ -393,7 +393,7 @@ bool ChooseSuitReplyPayload::parseV2(
     return true;
 }
 
-QVariant ChooseKingdomRequestPayload::toLegacyVariant() const
+QVariant ChooseKingdomRequestPayload::toDomainVariant() const
 {
     return QVariantList{kingdoms.join(QLatin1Char('+'))};
 }
@@ -406,7 +406,7 @@ QVariantMap ChooseKingdomRequestPayload::toV2Variant() const
     };
 }
 
-bool ChooseKingdomRequestPayload::parseLegacy(
+bool ChooseKingdomRequestPayload::parseDomain(
     const QVariant &value, ChooseKingdomRequestPayload *payload, QString *error)
 {
     if (error != nullptr)
@@ -414,12 +414,12 @@ bool ChooseKingdomRequestPayload::parseLegacy(
     if (payload == nullptr)
         return fail(error, QStringLiteral("Choose kingdom request output is null"));
     if (value.userType() != QMetaType::QVariantList) {
-        return fail(error, QStringLiteral("Legacy choose kingdom request must be an array"));
+        return fail(error, QStringLiteral("Domain choose kingdom request must be an array"));
     }
     const QVariantList entries = value.toList();
     if (entries.size() != 1 || entries.first().userType() != QMetaType::QString) {
         return fail(error,
-                    QStringLiteral("Legacy choose kingdom request must contain one string"));
+                    QStringLiteral("Domain choose kingdom request must contain one string"));
     }
     ChooseKingdomRequestPayload parsed;
     parsed.kingdoms = entries.first().toString().split(
@@ -447,7 +447,7 @@ bool ChooseKingdomRequestPayload::parseV2(
     return true;
 }
 
-QVariant ChooseKingdomReplyPayload::toLegacyVariant() const
+QVariant ChooseKingdomReplyPayload::toDomainVariant() const
 {
     return kingdom;
 }
@@ -460,7 +460,7 @@ QVariantMap ChooseKingdomReplyPayload::toV2Variant() const
     };
 }
 
-bool ChooseKingdomReplyPayload::parseLegacy(
+bool ChooseKingdomReplyPayload::parseDomain(
     const QVariant &value, ChooseKingdomReplyPayload *payload, QString *error)
 {
     if (error != nullptr)
@@ -468,7 +468,7 @@ bool ChooseKingdomReplyPayload::parseLegacy(
     if (payload == nullptr)
         return fail(error, QStringLiteral("Choose kingdom reply output is null"));
     ChooseKingdomReplyPayload parsed;
-    if (!parseLegacyString(value, QStringLiteral("choose kingdom reply"),
+    if (!parseDomainString(value, QStringLiteral("choose kingdom reply"),
                            &parsed.kingdom, error)) {
         return false;
     }
@@ -495,7 +495,7 @@ bool ChooseKingdomReplyPayload::parseV2(
     return true;
 }
 
-QVariant ChooseOrderRequestPayload::toLegacyVariant() const
+QVariant ChooseOrderRequestPayload::toDomainVariant() const
 {
     return reason;
 }
@@ -508,7 +508,7 @@ QVariantMap ChooseOrderRequestPayload::toV2Variant() const
     };
 }
 
-bool ChooseOrderRequestPayload::parseLegacy(
+bool ChooseOrderRequestPayload::parseDomain(
     const QVariant &value, ChooseOrderRequestPayload *payload, QString *error)
 {
     if (error != nullptr)
@@ -516,12 +516,12 @@ bool ChooseOrderRequestPayload::parseLegacy(
     if (payload == nullptr)
         return fail(error, QStringLiteral("Choose order request output is null"));
     ChooseOrderRequestPayload parsed;
-    if (!parseLegacyInteger(value, QStringLiteral("choose order request"),
+    if (!parseDomainInteger(value, QStringLiteral("choose order request"),
                             &parsed.reason, error)) {
         return false;
     }
     if (orderReasonName(parsed.reason).isEmpty())
-        return fail(error, QStringLiteral("Legacy choose order reason is unknown"));
+        return fail(error, QStringLiteral("Domain choose order reason is unknown"));
     *payload = parsed;
     return true;
 }
@@ -546,7 +546,7 @@ bool ChooseOrderRequestPayload::parseV2(
     return true;
 }
 
-QVariant ChooseOrderReplyPayload::toLegacyVariant() const
+QVariant ChooseOrderReplyPayload::toDomainVariant() const
 {
     return camp;
 }
@@ -559,7 +559,7 @@ QVariantMap ChooseOrderReplyPayload::toV2Variant() const
     };
 }
 
-bool ChooseOrderReplyPayload::parseLegacy(
+bool ChooseOrderReplyPayload::parseDomain(
     const QVariant &value, ChooseOrderReplyPayload *payload, QString *error)
 {
     if (error != nullptr)
@@ -567,12 +567,12 @@ bool ChooseOrderReplyPayload::parseLegacy(
     if (payload == nullptr)
         return fail(error, QStringLiteral("Choose order reply output is null"));
     ChooseOrderReplyPayload parsed;
-    if (!parseLegacyInteger(value, QStringLiteral("choose order reply"),
+    if (!parseDomainInteger(value, QStringLiteral("choose order reply"),
                             &parsed.camp, error)) {
         return false;
     }
     if (campName(parsed.camp).isEmpty())
-        return fail(error, QStringLiteral("Legacy choose order camp is unknown"));
+        return fail(error, QStringLiteral("Domain choose order camp is unknown"));
     *payload = parsed;
     return true;
 }
@@ -597,7 +597,7 @@ bool ChooseOrderReplyPayload::parseV2(
     return true;
 }
 
-QVariant InvokeSkillRequestPayload::toLegacyVariant() const
+QVariant InvokeSkillRequestPayload::toDomainVariant() const
 {
     return QVariantList{skillName, data};
 }
@@ -611,7 +611,7 @@ QVariantMap InvokeSkillRequestPayload::toV2Variant() const
     };
 }
 
-bool InvokeSkillRequestPayload::parseLegacy(
+bool InvokeSkillRequestPayload::parseDomain(
     const QVariant &value, InvokeSkillRequestPayload *payload, QString *error)
 {
     if (error != nullptr)
@@ -619,7 +619,7 @@ bool InvokeSkillRequestPayload::parseLegacy(
     if (payload == nullptr)
         return fail(error, QStringLiteral("Invoke skill request output is null"));
     InvokeSkillRequestPayload parsed;
-    if (!parseLegacyTwoStrings(value, QStringLiteral("invoke skill request"),
+    if (!parseDomainTwoStrings(value, QStringLiteral("invoke skill request"),
                                &parsed.skillName, &parsed.data, error)) {
         return false;
     }
@@ -648,7 +648,7 @@ bool InvokeSkillRequestPayload::parseV2(
     return true;
 }
 
-QVariant InvokeSkillReplyPayload::toLegacyVariant() const
+QVariant InvokeSkillReplyPayload::toDomainVariant() const
 {
     return invoke;
 }
@@ -661,7 +661,7 @@ QVariantMap InvokeSkillReplyPayload::toV2Variant() const
     };
 }
 
-bool InvokeSkillReplyPayload::parseLegacy(
+bool InvokeSkillReplyPayload::parseDomain(
     const QVariant &value, InvokeSkillReplyPayload *payload, QString *error)
 {
     if (error != nullptr)
@@ -669,7 +669,7 @@ bool InvokeSkillReplyPayload::parseLegacy(
     if (payload == nullptr)
         return fail(error, QStringLiteral("Invoke skill reply output is null"));
     InvokeSkillReplyPayload parsed;
-    if (!parseLegacyBool(value, QStringLiteral("invoke skill reply"),
+    if (!parseDomainBool(value, QStringLiteral("invoke skill reply"),
                          &parsed.invoke, error)) {
         return false;
     }
@@ -695,7 +695,7 @@ bool InvokeSkillReplyPayload::parseV2(
     return true;
 }
 
-QVariant SurrenderVoteRequestPayload::toLegacyVariant() const
+QVariant SurrenderVoteRequestPayload::toDomainVariant() const
 {
     return initiatorGeneral;
 }
@@ -708,7 +708,7 @@ QVariantMap SurrenderVoteRequestPayload::toV2Variant() const
     };
 }
 
-bool SurrenderVoteRequestPayload::parseLegacy(
+bool SurrenderVoteRequestPayload::parseDomain(
     const QVariant &value, SurrenderVoteRequestPayload *payload, QString *error)
 {
     if (error != nullptr)
@@ -716,7 +716,7 @@ bool SurrenderVoteRequestPayload::parseLegacy(
     if (payload == nullptr)
         return fail(error, QStringLiteral("Surrender vote request output is null"));
     SurrenderVoteRequestPayload parsed;
-    if (!parseLegacyString(value, QStringLiteral("surrender vote request"),
+    if (!parseDomainString(value, QStringLiteral("surrender vote request"),
                            &parsed.initiatorGeneral, error)) {
         return false;
     }
@@ -743,7 +743,7 @@ bool SurrenderVoteRequestPayload::parseV2(
     return true;
 }
 
-QVariant SurrenderVoteReplyPayload::toLegacyVariant() const
+QVariant SurrenderVoteReplyPayload::toDomainVariant() const
 {
     return surrender;
 }
@@ -756,7 +756,7 @@ QVariantMap SurrenderVoteReplyPayload::toV2Variant() const
     };
 }
 
-bool SurrenderVoteReplyPayload::parseLegacy(
+bool SurrenderVoteReplyPayload::parseDomain(
     const QVariant &value, SurrenderVoteReplyPayload *payload, QString *error)
 {
     if (error != nullptr)
@@ -764,7 +764,7 @@ bool SurrenderVoteReplyPayload::parseLegacy(
     if (payload == nullptr)
         return fail(error, QStringLiteral("Surrender vote reply output is null"));
     SurrenderVoteReplyPayload parsed;
-    if (!parseLegacyBool(value, QStringLiteral("surrender vote reply"),
+    if (!parseDomainBool(value, QStringLiteral("surrender vote reply"),
                          &parsed.surrender, error)) {
         return false;
     }

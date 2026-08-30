@@ -16,10 +16,10 @@ struct MultipleChoiceRequestPayload
     QStringList disabledOptions;
     QString tip;
 
-    QVariant toLegacyVariant() const;
+    QVariant toDomainVariant() const;
     QVariantMap toV2Variant() const;
 
-    static bool parseLegacy(const QVariant &value,
+    static bool parseDomain(const QVariant &value,
                             MultipleChoiceRequestPayload *payload,
                             QString *error = nullptr);
     static bool parseV2(const QVariant &value,
@@ -33,10 +33,10 @@ struct MultipleChoiceReplyPayload
 
     QString choice;
 
-    QVariant toLegacyVariant() const;
+    QVariant toDomainVariant() const;
     QVariantMap toV2Variant() const;
 
-    static bool parseLegacy(const QVariant &value,
+    static bool parseDomain(const QVariant &value,
                             MultipleChoiceReplyPayload *payload,
                             QString *error = nullptr);
     static bool parseV2(const QVariant &value,

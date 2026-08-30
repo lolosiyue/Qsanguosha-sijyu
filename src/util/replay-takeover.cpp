@@ -6,17 +6,20 @@
 #include "clientplayer.h"
 #include "engine.h"
 #include "json.h"
+#include "protocol/gameplay/protocol-gameplay-payload-registry.h"
+#include "protocol/protocol-payload-registry.h"
 
 #include <QFile>
 #include <QDir>
 #include <QDateTime>
+#include <QFileInfo>
 
 using namespace QSanProtocol;
 
 ReplayTakeoverManager::ReplayTakeoverManager(Replayer *replayer, QObject *parent)
     : QObject(parent), m_replayer(replayer), m_gameState(nullptr), m_takeoverEnabled(false), m_startPairIndex(-1)
 {
-    m_newRecorder = new Recorder(this);
+    m_newRecorder = new Recorder(this, true);
 }
 
 ReplayTakeoverManager::~ReplayTakeoverManager()
@@ -41,7 +44,7 @@ void ReplayTakeoverManager::enableTakeover()
     m_startPairIndex = m_replayer->getCurrentPairIndex();
 
     delete m_newRecorder;
-    m_newRecorder = new Recorder(this);
+    m_newRecorder = new Recorder(this, true);
     m_newCommands.clear();
 
     initializeFromReplay();
@@ -100,46 +103,91 @@ void ReplayTakeoverManager::syncHandcards(const QString &playerName)
     if (!snapshot)
         return;
 
-    JsonArray knownCardsArg;
-    knownCardsArg << playerName << JsonUtils::toJsonArray(snapshot->handcards);
+    const QVariantMap knownCards{
+        {QStringLiteral("schema_version"), 1},
+        {QStringLiteral("player_name"), playerName},
+        {QStringLiteral("card_ids"), JsonUtils::toJsonArray(snapshot->handcards)}
+    };
     ProtocolMessage message;
     message.type = ProtocolMessageType::Notification;
     message.source = ProtocolEndpoint::Room;
     message.destination = ProtocolEndpoint::Client;
     message.command = S_COMMAND_SET_KNOWN_CARDS;
     message.hasPayload = true;
-    message.payload = knownCardsArg;
+    message.payload = knownCards;
     ClientInstance->processReplayMessage(message);
 }
 
 void ReplayTakeoverManager::processRequest(const ProtocolMessage &message)
 {
+    if (!m_takeoverEnabled || message.type != ProtocolMessageType::Request)
+        return;
+
     const CommandType command = static_cast<CommandType>(message.command);
-    const QVariant body = message.payload;
+    const QVariantMap body = message.payload.toMap();
 
     QString targetPlayer;
     if (command == S_COMMAND_INVOKE_SKILL) {
-        JsonArray args = body.value<JsonArray>();
-        if (args.size() > 0)
-            targetPlayer = args[0].toString();
+        targetPlayer = body.value(QStringLiteral("skill_name")).toString();
     } else if (command == S_COMMAND_RESPONSE_CARD) {
-        JsonArray args = body.value<JsonArray>();
-        if (args.size() > 1)
-            targetPlayer = args[0].toString();
+        targetPlayer = body.value(QStringLiteral("pattern")).toString();
     } else if (command == S_COMMAND_DISCARD_CARD) {
-        JsonArray args = body.value<JsonArray>();
-        if (args.size() > 0)
-            targetPlayer = args[0].toString();
-    }
-
-    if (targetPlayer == m_takeoverTarget) {
-        emit requestProcessed(targetPlayer, QVariant());
-    } else {
-        QVariant aiResponse = generateAIResponse(message, targetPlayer);
-        emit requestProcessed(targetPlayer, aiResponse);
+        targetPlayer = body.value(QStringLiteral("max_cards")).toString();
     }
 
     recordMessage(message);
+
+    if (targetPlayer == m_takeoverTarget) {
+        if (ClientInstance)
+            ClientInstance->processTakeoverRequest(message);
+        emit requestProcessed(targetPlayer, QVariant());
+    } else {
+        QVariant aiResponse = generateAIResponse(message, targetPlayer);
+        const ProtocolFlowDescriptor *flow = ProtocolPayloadRegistry::find(message);
+        const CommandType replyCommand = static_cast<CommandType>(
+            flow != nullptr && flow->replyCommand != 0
+                ? flow->replyCommand : message.command);
+        recordReply(replyCommand, aiResponse, message.messageId);
+        emit requestProcessed(targetPlayer, aiResponse);
+    }
+}
+
+bool ReplayTakeoverManager::submitPlayerResponse(CommandType command,
+                                                  const QVariant &response,
+                                                  quint64 replyTo)
+{
+    return m_takeoverEnabled && recordReply(command, response, replyTo);
+}
+
+bool ReplayTakeoverManager::recordReply(CommandType command,
+                                        const QVariant &response,
+                                        quint64 replyTo)
+{
+    if (replyTo == 0)
+        return false;
+
+    ProtocolMessage reply;
+    reply.type = ProtocolMessageType::Reply;
+    reply.source = ProtocolEndpoint::Client;
+    reply.destination = ProtocolEndpoint::Room;
+    reply.command = command;
+    reply.replyTo = replyTo;
+    reply.hasPayload = response.isValid() && !response.isNull();
+    reply.payload = response;
+    ProtocolMessage canonical;
+    QString error;
+    if (!ProtocolGameplayPayloadRegistry::encodeForWire(
+            reply, &canonical, &error)
+        || !ProtocolPayloadRegistry::encodeObjectPayload(
+            canonical, &canonical, &error)
+        || !ProtocolPayloadRegistry::validateObjectPayload(canonical, &error)) {
+        qWarning().noquote() << "Replay takeover reply encoding failed:" << error;
+        return false;
+    }
+
+    const int before = m_newCommands.size();
+    recordMessage(canonical);
+    return m_newCommands.size() == before + 1;
 }
 
 QVariant ReplayTakeoverManager::generateAIResponse(
@@ -209,6 +257,14 @@ void ReplayTakeoverManager::saveNewReplay(const QString &filepath)
 {
     if (!m_newRecorder)
         return;
+
+    const QFileInfo original(m_replayer ? m_replayer->getPath() : QString());
+    const QFileInfo target(filepath);
+    if (!original.filePath().isEmpty()
+        && original.canonicalFilePath() == target.canonicalFilePath()) {
+        qWarning().noquote() << "Replay takeover refuses to overwrite the source replay";
+        return;
+    }
 
     m_newRecorder->save(filepath);
 }

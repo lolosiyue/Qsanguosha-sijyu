@@ -7,6 +7,8 @@
 #include "defines.h"
 //#include "protocol.h"
 #include "connectiondialog.h"
+#include "protocol/protocol-runtime.h"
+#include "protocol/session/session-payloads.h"
 //#include "package.h"
 
 //#include <QByteArrayList>
@@ -486,8 +488,8 @@ void CSLSocketHandle::handleRead()
     if(!socket->canReadLine()) return;
 aa:
     QByteArray ba=socket->readLine();
-    QSanProtocol::Packet packet;
-    if(!packet.parse(ba))
+    QSanProtocol::ProtocolMessage packet;
+    if(!QSanProtocol::ProtocolCodecRouter().decode(ba.trimmed(), &packet).success)
     {
         infoError();
         this->deleteLater();
@@ -496,22 +498,26 @@ aa:
     int i=item->row();
     QTableWidgetItem *ti;
     QTableWidget* tw=msl->ui->tableWidgetServerList;
-    if(packet.getCommandType()==QSanProtocol::S_COMMAND_CHECK_VERSION)
+    if(packet.command==QSanProtocol::S_COMMAND_CHECK_VERSION)
     {
-        ti=tw->item(i,2);
-        ti->setText(packet.getMessageBody().toString());
-        ti->setForeground(QColor(0,0,0));
-        if(socket->canReadLine())
-            goto aa;
-        else
+        QSanProtocol::ServerHelloPayload hello;
+        QString error;
+        if (!QSanProtocol::ServerHelloPayload::parse(packet.payload, &hello, &error)) {
+            infoError();
+            this->deleteLater();
             return;
+        }
+        ti=tw->item(i,2);
+        ti->setText(hello.gameVersion);
+        ti->setForeground(QColor(0,0,0));
+        socket->disconnectFromHost();
+        return;
     }
-    else if(packet.getCommandType()==QSanProtocol::S_COMMAND_SETUP)
+    else if(packet.command==QSanProtocol::S_COMMAND_SETUP)
     {
-        QByteArrayList bal;
-        bal=packet.getMessageBody().toByteArray().split(':');
-        if(bal.size()<6)
-        {
+        QSanProtocol::SetupPayload setup;
+        QString setupError;
+        if (!QSanProtocol::SetupPayload::parse(packet.payload, &setup, &setupError)) {
             infoError();
             this->deleteLater();
             return;
@@ -522,7 +528,7 @@ aa:
             isOfficial=true;
         else
             isOfficial=false;
-        QString s=QString::fromUtf8(QByteArray::fromBase64(bal[0]));
+        QString s = setup.serverName;
         ti=tw->item(i,4);
         if(isOfficial) {
             ti->setForeground(QColor(255,153,0));
@@ -531,36 +537,32 @@ aa:
         else
             ti->setForeground(QColor(0,0,0));
         ti->setText(s);
-        s=Sanguosha->getModeName(QString::fromUtf8(bal[1]));
+        s = Sanguosha->getModeName(setup.gameMode);
         ti=tw->item(i,3);
         ti->setText(s);
         s.clear();
-        if(bal[5].contains('C'))
+        if (setup.enableCheat)
 			s.append(tr("作弊 "));
-        if(bal[5].contains('S'))
+        if (setup.enableSecondGeneral)
 			s.append(tr("双将 "));
-        if(bal[5].contains('T'))
+        if (setup.enableSame)
 			s.append(tr("同将 "));
-        if(bal[5].contains('B'))
+        if (setup.enableBasara)
 			s.append(tr("暗将 "));
-        if(bal[5].contains('H'))
+        if (setup.enableHegemony)
 			s.append(tr("国战 "));
-        if(bal[5].contains('M'))
+        if (setup.enableMeleeMode)
 			s.append(tr("禁聊 "));
-        if(bal[5].contains('A'))
+        if (setup.enableAi)
             s.append(tr("AI "));
         ti=tw->item(i,5);
         ti->setText(s);
-		if (bal.size() >= 7)
-		{
-			s = QString::fromUtf8(bal[6]);
-			ti = tw->item(i, 6);
-			ti->setText(s);
-		}
+		s = setup.gameRuleMode;
+		ti = tw->item(i, 6);
+		ti->setText(s);
 
         QString spackage;
-        QString banp=QString::fromUtf8(bal[4]);
-        QStringList ban_packages = banp.split('+');
+        const QStringList &ban_packages = setup.banPackages;
         static QList<const Package *> packages = Sanguosha->findChildren<const Package *>();
         foreach (const Package *package, packages) {
             if (package->inherits("Scenario"))

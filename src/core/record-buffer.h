@@ -10,7 +10,10 @@
 class RecordBuffer
 {
 public:
-    RecordBuffer();
+    explicit RecordBuffer(
+        const QString &gameVersion = QStringLiteral("unknown"),
+        const QString &modName = QStringLiteral("unknown"),
+        bool takeover = false);
 
     bool recordMessage(const QSanProtocol::ProtocolMessage &message,
                        QString *error = nullptr);

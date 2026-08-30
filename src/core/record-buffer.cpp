@@ -2,7 +2,10 @@
 
 #include <QFile>
 
-RecordBuffer::RecordBuffer()
+RecordBuffer::RecordBuffer(const QString &gameVersion,
+                           const QString &modName,
+                           bool takeover)
+    : writer(gameVersion, modName, takeover)
 {
     watch.start();
 }

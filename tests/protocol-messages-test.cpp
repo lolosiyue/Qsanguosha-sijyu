@@ -60,28 +60,26 @@ bool cardProvenanceMessages()
     expected.activationSkill = "activation_skill";
     expected.activationInstanceId = 7;
 
-    const JsonArray v2 = JsonArray() << 2 << "use" << "initiator" << "#testCard:.::"
-                                     << "source_owner" << "source_skill" << 3
-                                     << "activation_owner" << "activation_skill" << 7;
+    const QVariantMap v2 = expected.toVariant().toMap();
     CardProvenanceMessage parsed;
-    if (!expect(expected.toVariant() == v2, "CardProvenance V2 wire shape")
+    if (!expect(v2.value(QStringLiteral("schema_version")).toInt() == 2
+                    && v2.value(QStringLiteral("source_owner")).toString()
+                        == expected.sourceOwner,
+                "CardProvenance V2 named wire shape")
         || !expect(parsed.tryParse(throughJson(v2)), "CardProvenance V2 JSON parse")
         || !expect(parsed.sourceOwner == expected.sourceOwner
                        && parsed.activationInstanceId == expected.activationInstanceId,
                    "CardProvenance V2 fields"))
         return false;
 
-    const JsonArray v1 = JsonArray() << 1 << "response" << "legacy_owner" << "#legacy:.::"
-                                     << "legacy_source" << 1 << "legacy_activation" << 2;
-    if (!expect(parsed.tryParse(throughJson(v1)), "CardProvenance V1 parse")
-        || !expect(parsed.sourceOwner == "legacy_owner"
-                       && parsed.activationOwner == "legacy_owner",
-                   "CardProvenance V1 owner fallback")
-        || !expect(parsed.toVariant() == v1, "CardProvenance V1 wire preservation"))
+    QVariantMap wrongVersion = v2;
+    wrongVersion.insert(QStringLiteral("schema_version"), 1);
+    if (!expect(!parsed.tryParse(throughJson(wrongVersion)),
+                "old CardProvenance schema rejected"))
         return false;
 
     return expect(!parsed.tryParse(JsonArray() << 2 << "use"),
-                  "CardProvenance malformed rejection");
+                  "CardProvenance positional shape rejected");
 }
 
 bool syncPileMessages()
@@ -90,25 +88,20 @@ bool syncPileMessages()
     expected.playerName = "sgs1";
     expected.pileName = "wooden_ox";
     expected.cardIds << 1 << 4 << 9;
-    const JsonArray wire = JsonArray() << "sgs1" << "wooden_ox"
-                                       << QVariant::fromValue(JsonArray() << 1 << 4 << 9);
+    const QVariantMap wire = expected.toVariant().toMap();
     SyncPileMessage parsed;
     const QVariant decoded = throughJson(wire);
-    if (!parsed.tryParse(decoded)) {
-        const QVariantList values = decoded.toList();
-        QTextStream(stderr) << "SyncPile decoded types: " << decoded.typeName()
-                            << ", " << values.value(0).typeName()
-                            << ", " << values.value(1).typeName()
-                            << ", " << values.value(2).typeName() << "\n";
-    }
-    return expect(expected.toVariant() == wire, "SyncPile wire shape")
+    return expect(wire.value(QStringLiteral("schema_version")).toInt() == 1
+                      && wire.value(QStringLiteral("card_ids")).toList()
+                          == (QVariantList() << 1 << 4 << 9),
+                  "SyncPile named wire shape")
         && expect(parsed.tryParse(decoded), "SyncPile JSON parse")
         && expect(parsed.playerName == expected.playerName
                       && parsed.pileName == expected.pileName
                       && parsed.cardIds == expected.cardIds,
                   "SyncPile fields")
         && expect(!parsed.tryParse(JsonArray() << "sgs1" << "pile" << "not-an-array"),
-                  "SyncPile malformed rejection");
+                  "SyncPile positional shape rejected");
 }
 
 bool switchContextMessages()
@@ -116,7 +109,10 @@ bool switchContextMessages()
     SwitchContextMessage expected;
     expected.playerName = "sgs2";
     SwitchContextMessage parsed;
-    return expect(expected.toVariant() == QVariant("sgs2"), "SwitchContext wire shape")
+    const QVariantMap wire = expected.toVariant().toMap();
+    return expect(wire.value(QStringLiteral("schema_version")).toInt() == 1
+                      && wire.value(QStringLiteral("player_name")).toString() == "sgs2",
+                  "SwitchContext named wire shape")
         && expect(parsed.tryParse(expected.toVariant()) && parsed.playerName == "sgs2",
                   "SwitchContext parse")
         && expect(!parsed.tryParse(2), "SwitchContext malformed rejection");
@@ -125,17 +121,13 @@ bool switchContextMessages()
 bool skillInstanceEntries()
 {
     const SkillInstanceEntryMessage ownerEntry = sampleEntry(true);
-    QVariantMap metadata;
-    metadata.insert("has_amount", true);
-    metadata.insert("amount", -1);
-    metadata.insert("correct_state", QVariantMap{{"enabled", true}});
-    metadata.insert("state", QVariantMap{{"secret", 7}});
-    const JsonArray wire = JsonArray()
-        << "owner" << "sample_skill" << 3 << static_cast<int>(SourceAttached)
-        << "parent_owner" << "parent_skill" << 2 << true << 2 << metadata;
+    const QVariantMap wire = ownerEntry.toVariant().toMap();
 
     SkillInstanceEntryMessage parsed;
-    if (!expect(ownerEntry.toVariant() == wire, "SkillInstance entry wire shape")
+    if (!expect(wire.value(QStringLiteral("owner_name")).toString() == "owner"
+                    && wire.value(QStringLiteral("parent_owner")).toString() == "parent_owner"
+                    && wire.value(QStringLiteral("has_amount_override")).toBool(),
+                "SkillInstance entry named wire shape")
         || !expect(parsed.tryParse(throughJson(wire)), "SkillInstance entry JSON parse")
         || !expect(parsed.ownerName == ownerEntry.ownerName
                        && parsed.instance.parentRef == ownerEntry.instance.parentRef
@@ -145,19 +137,12 @@ bool skillInstanceEntries()
                    "SkillInstance entry fields"))
         return false;
 
-    const QVariant observerWire = sampleEntry(false).toVariant();
-    const QVariantMap observerMetadata = observerWire.toList().value(9).toMap();
-    if (!expect(!observerMetadata.contains("state"), "SkillInstance observer privacy"))
+    const QVariantMap observerWire = sampleEntry(false).toVariant().toMap();
+    if (!expect(!observerWire.contains("state"), "SkillInstance observer privacy"))
         return false;
 
-    const JsonArray legacy = JsonArray() << "owner" << "sample_skill" << 3
-                                         << static_cast<int>(SourceAcquired)
-                                         << "parent_skill" << 2 << true << 1;
-    return expect(parsed.tryParse(throughJson(legacy)), "SkillInstance legacy entry parse")
-        && expect(parsed.instance.parentRef.ownerObjectName == "owner",
-                  "SkillInstance legacy parent owner fallback")
-        && expect(!parsed.tryParse(JsonArray() << "owner" << "sample_skill" << "3"),
-                  "SkillInstance malformed entry rejection");
+    return expect(!parsed.tryParse(JsonArray() << "owner" << "sample_skill" << 3),
+                  "SkillInstance positional entry rejected");
 }
 
 bool skillInstanceMessages()
@@ -173,36 +158,33 @@ bool skillInstanceMessages()
     const SkillInstanceMessage state = SkillInstanceMessage::makeState(
         "owner", "skill", 3, "replace", "", QVariantMap{{"counter", 4}});
 
-    const QList<QPair<SkillInstanceMessage, JsonArray>> cases = {
-        {snapshot, JsonArray() << "snapshot"
-                               << QVariant::fromValue(JsonArray() << entry.toVariant())},
-        {upsert, JsonArray() << "upsert" << entry.toVariant()},
-        {remove, JsonArray() << "remove" << "owner" << "skill" << 3},
-        {amount, JsonArray() << "amount" << "owner" << "skill" << 3 << true << -2},
-        {correct, JsonArray() << "correct_state" << "owner" << "skill" << 3
-                              << "set" << "enabled" << true},
-        {state, JsonArray() << "state" << "owner" << "skill" << 3
-                            << "replace" << "" << QVariantMap{{"counter", 4}}}
+    const QList<SkillInstanceMessage> cases = {
+        snapshot, upsert, remove, amount, correct, state
     };
 
     foreach (const auto &testCase, cases) {
+        const QVariantMap wire = testCase.toVariant().toMap();
         SkillInstanceMessage parsed;
-        if (!expect(testCase.first.toVariant() == testCase.second,
-                    "SkillInstance action wire shape")
-            || !expect(parsed.tryParse(throughJson(testCase.second)),
+        if (!expect(wire.value(QStringLiteral("schema_version")).toInt() == 1
+                        && wire.value(QStringLiteral("action")).userType()
+                            == QMetaType::QString,
+                    "SkillInstance action named wire shape")
+            || !expect(parsed.tryParse(throughJson(wire)),
                        "SkillInstance action JSON parse")
-            || !expect(parsed.action == testCase.first.action,
+            || !expect(parsed.action == testCase.action,
                        "SkillInstance action identity"))
             return false;
     }
 
     SkillInstanceMessage parsed;
-    return expect(!parsed.tryParse(JsonArray() << "amount" << "owner" << "skill"
-                                               << 3 << "true" << 1),
+    QVariantMap invalidAmount = amount.toVariant().toMap();
+    invalidAmount.insert(QStringLiteral("has_amount_override"), QStringLiteral("true"));
+    QVariantMap invalidState = state.toVariant().toMap();
+    invalidState.insert(QStringLiteral("value"), QStringLiteral("not-a-map"));
+    return expect(!parsed.tryParse(invalidAmount),
                   "SkillInstance typed amount rejection")
-        && expect(!parsed.tryParse(JsonArray() << "state" << "owner" << "skill"
-                                               << 3 << "replace" << "" << "not-a-map"),
-                  "SkillInstance typed replace rejection");
+        && expect(!parsed.tryParse(invalidState),
+                   "SkillInstance typed replace rejection");
 }
 
 PlayerUIState completePlayerUIState()
@@ -295,7 +277,7 @@ bool playerUIStateMessages()
         return false;
 
     QVariantMap wrongPlayerName = expectedMessage.toVariant().toMap();
-    wrongPlayerName.insert("playerName", 1);
+    wrongPlayerName.insert("player_name", 1);
     return expect(!parsedMessage.tryParse(wrongPlayerName),
                   "PlayerUIStateMessage wrong playerName type");
 }
