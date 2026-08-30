@@ -1118,10 +1118,6 @@ FirePackage::FirePackage()
     pangde->addSkill("mashu");
     pangde->addSkill(new Mengjin);
 
-    General *tenyear_pangde = new General(this, "tenyear_pangde", "qun", 4);
-    tenyear_pangde->addSkill(new TenyearJianchu);
-    tenyear_pangde->addSkill("mashu");
-
     General *shenzhouyu = new General(this, "shenzhouyu", "god"); // LE 003
     shenzhouyu->addSkill(new Qinyin);
     shenzhouyu->addSkill(new Yeyan);
@@ -1143,3 +1139,12 @@ FirePackage::FirePackage()
     addMetaObject<TianyiCard>();
 }
 ADD_PACKAGE(Fire)
+
+TenyearStFirePackage::TenyearStFirePackage()
+    : Package("TenyearStFire")
+{
+    General *tenyear_pangde = new General(this, "tenyear_pangde", "qun", 4);
+    tenyear_pangde->addSkill(new TenyearJianchu);
+    tenyear_pangde->addSkill("mashu");
+}
+ADD_PACKAGE(TenyearStFire)

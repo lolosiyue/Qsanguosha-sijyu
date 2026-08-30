@@ -181,6 +181,10 @@ add_library(qsanguosha_engine STATIC
     src/core/runtime-paths.h
     src/core/engine.cpp
     src/core/engine.h
+    src/core/general-version.cpp
+    src/core/general-version.h
+    src/core/package-selection-policy.cpp
+    src/core/package-selection-policy.h
     src/core/version.h
     src/core/engine-bootstrap.cpp
     src/core/engine-bootstrap.h

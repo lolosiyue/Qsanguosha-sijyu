@@ -13,6 +13,7 @@
 #include "client.h"
 #include "settings.h"
 #include "cardcontainer.h"
+#include "guhuo-box.h"
 #include "standard.h"
 #include "clientplayer.h"
 #include "generic-cardcontainer-ui.h"
@@ -392,6 +393,12 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(ClientInstance, &Client::mirror_guanxing_move, m_guanxingBox, &GuanxingBox::mirrorGuanxingMove);
 	connect(ClientInstance, &Client::mirror_guanxing_finish, m_guanxingBox, &GuanxingBox::clear);
 	m_guanxingBox->moveBy(-120, 0);
+
+	m_guhuoBox = new GuhuoBox;
+	m_guhuoBox->hide();
+	m_guhuoBox->setZValue(20001.0);
+	addItem(m_guhuoBox);
+	connect(ClientInstance, &Client::guhuoBox, m_guhuoBox, &GuhuoBox::doGuhuoBox);
 
 	m_chooseTriggerOrderBox = new ChooseTriggerOrderBox();
 	m_chooseTriggerOrderBox->hide();
@@ -1573,6 +1580,7 @@ void RoomScene::updateTable()
 	m_tablePile->adjustCards();
 	card_container->setPos(m_tableCenterPos);
 	m_guanxingBox->setPos(m_tableCenterPos - QPointF(m_guanxingBox->boundingRect().width() / 2, m_guanxingBox->boundingRect().height() / 2));
+	m_guhuoBox->setPos(m_tableCenterPos);
 
 	m_timerLabel->setPos(QPointF(width()*0.77,-1));
 

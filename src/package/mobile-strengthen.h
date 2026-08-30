@@ -312,26 +312,6 @@ public:
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
-#if !defined(QSAN_ENGINE_BUILD)
-class MobileJianyingDialog : public GuhuoDialog
-{
-    Q_OBJECT
-
-public:
-    static MobileJianyingDialog *getInstance(const QString &object);
-
-protected:
-    explicit MobileJianyingDialog(const QString &object);
-    bool isButtonEnabled(const QString &button_name) const;
-};
-#else
-class MobileJianyingDialog
-{
-public:
-    static QDialog *getInstance(const QString &) { return nullptr; }
-};
-#endif
-
 class MobileJianyingCard : public SkillCard
 {
     Q_OBJECT
