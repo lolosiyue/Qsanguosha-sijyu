@@ -3,6 +3,7 @@
 #include "multiple-choice-payload.h"
 #include "protocol.h"
 #include "simple-choice-payloads.h"
+#include "typed-interaction-payloads.h"
 
 using namespace QSanProtocol;
 
@@ -18,6 +19,7 @@ bool fail(QString *error, const QString &detail)
 enum class MigrationKind
 {
     Identity,
+    TypedInteraction,
     MultipleChoiceRequest,
     MultipleChoiceReply,
     ChooseGeneralRequest,
@@ -34,6 +36,17 @@ enum class MigrationKind
     SurrenderVoteReply
 };
 
+struct MigrationTarget
+{
+    MigrationKind kind = MigrationKind::Identity;
+    TypedInteractionPayloadKind typedKind = TypedInteractionPayloadKind::ChooseRoleRequest;
+};
+
+MigrationTarget typed(TypedInteractionPayloadKind kind)
+{
+    return {MigrationKind::TypedInteraction, kind};
+}
+
 bool isRoomToClientRequest(const ProtocolMessage &message)
 {
     return message.type == ProtocolMessageType::Request
@@ -48,33 +61,124 @@ bool isClientToRoomReply(const ProtocolMessage &message)
         && message.destination == ProtocolEndpoint::Room;
 }
 
-MigrationKind migrationKind(const ProtocolMessage &message)
+MigrationTarget migrationTarget(const ProtocolMessage &message)
 {
     if (isRoomToClientRequest(message)) {
         switch (message.command) {
-        case S_COMMAND_MULTIPLE_CHOICE: return MigrationKind::MultipleChoiceRequest;
-        case S_COMMAND_CHOOSE_GENERAL: return MigrationKind::ChooseGeneralRequest;
-        case S_COMMAND_CHOOSE_SUIT: return MigrationKind::ChooseSuitRequest;
-        case S_COMMAND_CHOOSE_KINGDOM: return MigrationKind::ChooseKingdomRequest;
-        case S_COMMAND_CHOOSE_ORDER: return MigrationKind::ChooseOrderRequest;
-        case S_COMMAND_INVOKE_SKILL: return MigrationKind::InvokeSkillRequest;
-        case S_COMMAND_SURRENDER: return MigrationKind::SurrenderVoteRequest;
-        default: return MigrationKind::Identity;
+        case S_COMMAND_CHOOSE_ROLE:
+            return typed(TypedInteractionPayloadKind::ChooseRoleRequest);
+        case S_COMMAND_MULTIPLE_CHOICE:
+            return {MigrationKind::MultipleChoiceRequest};
+        case S_COMMAND_CHOOSE_GENERAL:
+            return {MigrationKind::ChooseGeneralRequest};
+        case S_COMMAND_CHOOSE_SUIT:
+            return {MigrationKind::ChooseSuitRequest};
+        case S_COMMAND_CHOOSE_KINGDOM:
+            return {MigrationKind::ChooseKingdomRequest};
+        case S_COMMAND_CHOOSE_ORDER:
+            return {MigrationKind::ChooseOrderRequest};
+        case S_COMMAND_INVOKE_SKILL:
+            return {MigrationKind::InvokeSkillRequest};
+        case S_COMMAND_SURRENDER:
+            return {MigrationKind::SurrenderVoteRequest};
+        case S_COMMAND_CHOOSE_DIRECTION:
+            return typed(TypedInteractionPayloadKind::ChooseDirectionRequest);
+        case S_COMMAND_EXCHANGE_CARD:
+            return typed(TypedInteractionPayloadKind::ExchangeCardRequest);
+        case S_COMMAND_ASK_PEACH:
+            return typed(TypedInteractionPayloadKind::AskPeachRequest);
+        case S_COMMAND_SKILL_GUANXING:
+            return typed(TypedInteractionPayloadKind::GuanxingRequest);
+        case S_COMMAND_SKILL_GONGXIN:
+            return typed(TypedInteractionPayloadKind::GongxinRequest);
+        case S_COMMAND_SKILL_YIJI:
+            return typed(TypedInteractionPayloadKind::YijiRequest);
+        case S_COMMAND_PLAY_CARD:
+            return typed(TypedInteractionPayloadKind::PlayCardRequest);
+        case S_COMMAND_RESPONSE_CARD:
+            return typed(TypedInteractionPayloadKind::ResponseCardRequest);
+        case S_COMMAND_DISCARD_CARD:
+            return typed(TypedInteractionPayloadKind::DiscardCardRequest);
+        case S_COMMAND_CHOOSE_PLAYER:
+            return typed(TypedInteractionPayloadKind::ChoosePlayerRequest);
+        case S_COMMAND_TRIGGER_ORDER:
+            return typed(TypedInteractionPayloadKind::TriggerOrderRequest);
+        case S_COMMAND_NULLIFICATION:
+            return typed(TypedInteractionPayloadKind::NullificationRequest);
+        case S_COMMAND_SHOW_CARD:
+            return typed(TypedInteractionPayloadKind::ShowCardRequest);
+        case S_COMMAND_AMAZING_GRACE:
+            return typed(TypedInteractionPayloadKind::AmazingGraceRequest);
+        case S_COMMAND_PINDIAN:
+            return typed(TypedInteractionPayloadKind::PindianRequest);
+        case S_COMMAND_CHOOSE_CARD:
+            return typed(TypedInteractionPayloadKind::ChooseCardRequest);
+        case S_COMMAND_CHOOSE_ROLE_3V3:
+            return typed(TypedInteractionPayloadKind::ChooseRole3v3Request);
+        case S_COMMAND_LUCK_CARD:
+            return typed(TypedInteractionPayloadKind::LuckCardRequest);
+        case S_COMMAND_ASK_GENERAL:
+            return typed(TypedInteractionPayloadKind::AskGeneralRequest);
+        case S_COMMAND_ARRANGE_GENERAL:
+            return typed(TypedInteractionPayloadKind::ArrangeGeneralRequest);
+        case S_COMMAND_QML_INTERACT:
+            return typed(TypedInteractionPayloadKind::QmlInteractRequest);
+        default:
+            return {};
         }
     }
     if (isClientToRoomReply(message)) {
         switch (message.command) {
-        case S_COMMAND_MULTIPLE_CHOICE: return MigrationKind::MultipleChoiceReply;
-        case S_COMMAND_CHOOSE_GENERAL: return MigrationKind::ChooseGeneralReply;
-        case S_COMMAND_CHOOSE_SUIT: return MigrationKind::ChooseSuitReply;
-        case S_COMMAND_CHOOSE_KINGDOM: return MigrationKind::ChooseKingdomReply;
-        case S_COMMAND_CHOOSE_ORDER: return MigrationKind::ChooseOrderReply;
-        case S_COMMAND_INVOKE_SKILL: return MigrationKind::InvokeSkillReply;
-        case S_COMMAND_SURRENDER: return MigrationKind::SurrenderVoteReply;
-        default: return MigrationKind::Identity;
+        case S_COMMAND_MULTIPLE_CHOICE:
+            return {MigrationKind::MultipleChoiceReply};
+        case S_COMMAND_CHOOSE_GENERAL:
+            return {MigrationKind::ChooseGeneralReply};
+        case S_COMMAND_CHOOSE_SUIT:
+            return {MigrationKind::ChooseSuitReply};
+        case S_COMMAND_CHOOSE_KINGDOM:
+            return {MigrationKind::ChooseKingdomReply};
+        case S_COMMAND_CHOOSE_ORDER:
+            return {MigrationKind::ChooseOrderReply};
+        case S_COMMAND_INVOKE_SKILL:
+            return {MigrationKind::InvokeSkillReply};
+        case S_COMMAND_SURRENDER:
+            return {MigrationKind::SurrenderVoteReply};
+        case S_COMMAND_CHOOSE_ROLE:
+            return typed(TypedInteractionPayloadKind::ChooseRoleReply);
+        case S_COMMAND_CHOOSE_DIRECTION:
+            return typed(TypedInteractionPayloadKind::ChooseDirectionReply);
+        case S_COMMAND_DISCARD_CARD:
+            return typed(TypedInteractionPayloadKind::CardIdsReply);
+        case S_COMMAND_RESPONSE_CARD:
+            return typed(TypedInteractionPayloadKind::ResponseCardReply);
+        case S_COMMAND_SKILL_GUANXING:
+            return typed(TypedInteractionPayloadKind::GuanxingReply);
+        case S_COMMAND_SKILL_GONGXIN:
+        case S_COMMAND_CHOOSE_CARD:
+            return typed(TypedInteractionPayloadKind::OptionalCardIdReply);
+        case S_COMMAND_SKILL_YIJI:
+            return typed(TypedInteractionPayloadKind::YijiReply);
+        case S_COMMAND_CHOOSE_PLAYER:
+            return typed(TypedInteractionPayloadKind::ChoosePlayerReply);
+        case S_COMMAND_TRIGGER_ORDER:
+            return typed(TypedInteractionPayloadKind::TriggerOrderReply);
+        case S_COMMAND_AMAZING_GRACE:
+            return typed(TypedInteractionPayloadKind::AmazingGraceReply);
+        case S_COMMAND_CHOOSE_ROLE_3V3:
+            return typed(TypedInteractionPayloadKind::ChooseRole3v3Reply);
+        case S_COMMAND_LUCK_CARD:
+            return typed(TypedInteractionPayloadKind::LuckCardReply);
+        case S_COMMAND_ASK_GENERAL:
+            return typed(TypedInteractionPayloadKind::AskGeneralReply);
+        case S_COMMAND_ARRANGE_GENERAL:
+            return typed(TypedInteractionPayloadKind::ArrangeGeneralReply);
+        case S_COMMAND_QML_INTERACT:
+            return typed(TypedInteractionPayloadKind::QmlInteractReply);
+        default:
+            return {};
         }
     }
-    return MigrationKind::Identity;
+    return {};
 }
 
 template <typename Payload>
@@ -145,6 +249,41 @@ bool decodeSuitRequest(const ProtocolMessage &wireMessage,
     *logicalMessage = transformed;
     return true;
 }
+
+bool encodeTypedInteraction(const MigrationTarget &target,
+                            const ProtocolMessage &logicalMessage,
+                            ProtocolMessage *wireMessage, QString *error)
+{
+    QVariant payload;
+    if (!TypedInteractionPayloads::encode(target.typedKind,
+            logicalMessage.hasPayload, logicalMessage.payload, &payload, error)) {
+        return false;
+    }
+    ProtocolMessage transformed = logicalMessage;
+    transformed.payload = payload;
+    transformed.hasPayload = true;
+    *wireMessage = transformed;
+    return true;
+}
+
+bool decodeTypedInteraction(const MigrationTarget &target,
+                            const ProtocolMessage &wireMessage,
+                            ProtocolMessage *logicalMessage, QString *error)
+{
+    if (!wireMessage.hasPayload)
+        return fail(error, QStringLiteral("Migrated Protocol V2 message requires a payload"));
+    bool hasPayload = false;
+    QVariant payload;
+    if (!TypedInteractionPayloads::decode(target.typedKind, wireMessage.payload,
+            &hasPayload, &payload, error)) {
+        return false;
+    }
+    ProtocolMessage transformed = wireMessage;
+    transformed.hasPayload = hasPayload;
+    transformed.payload = hasPayload ? payload : QVariant();
+    *logicalMessage = transformed;
+    return true;
+}
 }
 
 bool ProtocolGameplayPayloadRegistry::encodeForWire(
@@ -160,7 +299,10 @@ bool ProtocolGameplayPayloadRegistry::encodeForWire(
         *wireMessage = logicalMessage;
         return true;
     }
-    switch (migrationKind(logicalMessage)) {
+    const MigrationTarget target = migrationTarget(logicalMessage);
+    switch (target.kind) {
+    case MigrationKind::TypedInteraction:
+        return encodeTypedInteraction(target, logicalMessage, wireMessage, error);
     case MigrationKind::MultipleChoiceRequest:
         return encodePayload<MultipleChoiceRequestPayload>(
             logicalMessage, wireMessage, error);
@@ -224,7 +366,10 @@ bool ProtocolGameplayPayloadRegistry::decodeFromWire(
         *logicalMessage = wireMessage;
         return true;
     }
-    switch (migrationKind(wireMessage)) {
+    const MigrationTarget target = migrationTarget(wireMessage);
+    switch (target.kind) {
+    case MigrationKind::TypedInteraction:
+        return decodeTypedInteraction(target, wireMessage, logicalMessage, error);
     case MigrationKind::MultipleChoiceRequest:
         return decodePayload<MultipleChoiceRequestPayload>(
             wireMessage, logicalMessage, error);
@@ -276,19 +421,41 @@ bool ProtocolGameplayPayloadRegistry::decodeFromWire(
 
 bool ProtocolGameplayPayloadRegistry::isMigratedFlow(const ProtocolMessage &message)
 {
-    return migrationKind(message) != MigrationKind::Identity;
+    return migrationTarget(message).kind != MigrationKind::Identity;
 }
 
 bool ProtocolGameplayPayloadRegistry::isMigratedCommand(int command)
 {
     switch (command) {
+    case S_COMMAND_CHOOSE_ROLE:
     case S_COMMAND_MULTIPLE_CHOICE:
     case S_COMMAND_CHOOSE_GENERAL:
+    case S_COMMAND_CHOOSE_DIRECTION:
+    case S_COMMAND_EXCHANGE_CARD:
+    case S_COMMAND_ASK_PEACH:
+    case S_COMMAND_SKILL_GUANXING:
+    case S_COMMAND_SKILL_GONGXIN:
+    case S_COMMAND_SKILL_YIJI:
+    case S_COMMAND_PLAY_CARD:
+    case S_COMMAND_RESPONSE_CARD:
+    case S_COMMAND_DISCARD_CARD:
     case S_COMMAND_CHOOSE_SUIT:
     case S_COMMAND_CHOOSE_KINGDOM:
+    case S_COMMAND_CHOOSE_PLAYER:
     case S_COMMAND_CHOOSE_ORDER:
     case S_COMMAND_INVOKE_SKILL:
+    case S_COMMAND_TRIGGER_ORDER:
+    case S_COMMAND_NULLIFICATION:
+    case S_COMMAND_SHOW_CARD:
+    case S_COMMAND_AMAZING_GRACE:
+    case S_COMMAND_PINDIAN:
+    case S_COMMAND_CHOOSE_CARD:
+    case S_COMMAND_CHOOSE_ROLE_3V3:
     case S_COMMAND_SURRENDER:
+    case S_COMMAND_LUCK_CARD:
+    case S_COMMAND_ASK_GENERAL:
+    case S_COMMAND_ARRANGE_GENERAL:
+    case S_COMMAND_QML_INTERACT:
         return true;
     default:
         return false;
@@ -297,5 +464,5 @@ bool ProtocolGameplayPayloadRegistry::isMigratedCommand(int command)
 
 int ProtocolGameplayPayloadRegistry::migratedCommandCount()
 {
-    return 7;
+    return 29;
 }

@@ -153,6 +153,35 @@ qsan_add_ctest(qsanguosha_protocol_simple_choice_payload_contract
     LABELS "protocol;fast"
 )
 
+add_executable(qsanguosha_protocol_all_interaction_payload_tests
+    protocol/all-interaction-payloads-test.cpp
+    ${QSAN_TEST_ROOT}/src/core/json.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol/gameplay/multiple-choice-payload.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol/gameplay/protocol-gameplay-payload-registry.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol/gameplay/simple-choice-payloads.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol/gameplay/typed-interaction-payloads.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol/protocol-message.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol/protocol-runtime.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol/protocol-v1-codec.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol/protocol-v1-message-adapter.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol/protocol-v2-codec.cpp
+)
+target_include_directories(qsanguosha_protocol_all_interaction_payload_tests PRIVATE
+    ${QSAN_TEST_ROOT}/src/core
+)
+target_precompile_headers(qsanguosha_protocol_all_interaction_payload_tests PRIVATE
+    ${QSAN_TEST_ROOT}/src/core/engine-pch.h
+)
+target_link_libraries(qsanguosha_protocol_all_interaction_payload_tests PRIVATE
+    Qt6::Core
+    Qt6::Network
+)
+qsan_add_ctest(qsanguosha_protocol_all_interaction_payload_contract
+    qsanguosha_protocol_all_interaction_payload_tests
+    LABELS "protocol;fast"
+)
+
 add_executable(qsanguosha_protocol_gameplay_tcp_tests
     protocol/multiple-choice-tcp-test.cpp
 )
