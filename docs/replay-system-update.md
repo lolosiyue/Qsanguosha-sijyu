@@ -8,6 +8,21 @@
 - 跳到節點
 - 每回合快照
 
+## Replay V2 格式（2026-08-30）
+
+新錄影使用版本化 Replay V2；第一個非空白行固定為：
+
+```text
+QSAN_REPLAY {"format_version":2,"protocol_version":2}
+```
+
+後續事件為 `<elapsed_ms> <Protocol V2 JSON>`。錄製端由 logical
+`ProtocolMessage` 寫入；讀取端把 Replay V1/V2 都解成 `ReplayEvent`，因此
+Client、timeline、`ReplayIndex`、snapshot 與 takeover 不再重解 wire string。
+Headerless Legacy V1 `.txt`／`.png` 仍可讀；未支援版本、損壞 header、錯誤
+timeline 或 payload 會回傳結構化錯誤並由 UI 顯示。完整契約見
+[Replay V2 格式](replay-v2.md)。
+
 ---
 
 ## 功能說明
@@ -153,7 +168,7 @@ GameSnapshot* Replayer::getSnapshot(int nodeIndex) const;
 void Replayer::jumpToNode(int nodeIndex);
 
 // 跳到指定時間
-void Replayer::jumpToElapsed(int elapsed);
+void Replayer::jumpToElapsed(qint64 elapsed);
 
 // 跳到指定命令索引
 void Replayer::seekToPosition(int pairIndex);
@@ -219,3 +234,7 @@ replayer->jumpToNode(nodeIndex);
 3. **狀態重建**：`ReplayGameState` 的完整測試需要實際錄影檔案。
 
 4. **分支錄影**：接手後的新錄影會保存為原檔名加 `_branch_時間戳` 後綴。
+
+5. **Replay V2 驗證**：focused executable 覆蓋格式拒絕、V1/V2 `.txt`／`.png`、
+   timeline／seek／snapshot／takeover、完整 `quint64` ID、最大 frame，以及
+   29/29 typed interaction request/reply round-trip；長時間與跨平台 gate 由 CI 執行。
