@@ -2287,6 +2287,10 @@ SPPackage::SPPackage()
     related_skills.insert("tunchu", "#tunchu-limit");
     addMetaObject<ShuliangCard>();
 
+    General *lingju = new General(this, "lingju", "qun", 3, false);
+    lingju->addSkill("jieyuan");
+    lingju->addSkill("fenxin");
+
 }
 ADD_PACKAGE(SP)
 

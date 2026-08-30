@@ -13,6 +13,14 @@ public:
     YJCMPackage();
 };
 
+class NostalgiaYJCMPackage : public Package
+{
+    Q_OBJECT
+
+public:
+    NostalgiaYJCMPackage();
+};
+
 class Shangshi : public TriggerSkill
 {
 public:
@@ -159,5 +167,8 @@ public:
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
+
+void MigrateToOLStYJ2011(Package *pkg);
+void MigrateToMobileStYJ2011(Package *pkg);
 
 #endif

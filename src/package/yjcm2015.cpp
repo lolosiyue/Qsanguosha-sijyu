@@ -2085,6 +2085,118 @@ public:
     }
 };
 
+class OLJieQianshi : public TriggerSkill
+{
+public:
+    OLJieQianshi() : TriggerSkill("oljieqianshi")
+    {
+        events << EventPhaseStart;
+    }
+
+    bool triggerable(const ServerPlayer *target) const
+    {
+        return target && target->isAlive();
+    }
+
+    bool trigger(TriggerEvent, Room *room, ServerPlayer *player, QVariant &) const
+    {
+        if (player->getPhase() != Player::Finish) return false;
+        foreach (ServerPlayer *p, room->getAllPlayers()) {
+			if(p->hasSkill(objectName())&&p->getMark("oljieqianshiBan_lun")<1
+				&&p->askForSkillInvoke(objectName()+"$-1",player)){
+				QList<ServerPlayer *>aps;
+				aps << player << p;
+				room->drawCards(aps,1,objectName());
+				if(player->getHandcardNum()!=p->getHandcardNum())
+					p->addMark("oljieqianshiBan_lun");
+			}
+		}
+        return false;
+    }
+};
+
+OLJieYanyuCard::OLJieYanyuCard()
+{
+	will_throw = false;
+	target_fixed = true;
+}
+
+void OLJieYanyuCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const
+{
+	LogMessage log;
+	log.type = "#UseCard_Recast";
+	log.from = source;
+	log.card_str = QString::number(getEffectiveId());
+	room->sendLog(log);
+	CardMoveReason reason(CardMoveReason::S_REASON_RECAST,source->objectName(),"anliao","");
+	room->moveCardTo(this,source,nullptr,Player::DiscardPile,reason);
+	//from->broadcastSkillInvoke("@recast");
+	source->drawCards(1,"recast");
+}
+
+class OLJieYanyuvs : public OneCardViewAsSkill
+{
+public:
+    OLJieYanyuvs() : OneCardViewAsSkill("oljieyanyu")
+    {
+        filter_pattern = "Slash";
+    }
+
+    const Card *viewAs(const Card *originalCard) const
+    {
+        if(Self->isCardLimited(originalCard,Card::MethodRecast)) return nullptr;
+		OLJieYanyuCard *hm = new OLJieYanyuCard;
+        hm->addSubcard(originalCard);
+        return hm;
+    }
+
+    bool isEnabledAtPlay(const Player *player) const
+    {
+        return player->getHandcardNum()>0;
+    }
+};
+
+class OLJieYanyu : public TriggerSkill
+{
+public:
+    OLJieYanyu() : TriggerSkill("oljieyanyu")
+    {
+        view_as_skill = new OLJieYanyuvs;
+        events << EventPhaseEnd << CardsMoveOneTime;
+    }
+
+    bool triggerable(const ServerPlayer *target) const
+    {
+        return target&&target->isAlive()&&target->getPhase()==Player::Play;
+    }
+
+    bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
+    {
+        if(event==EventPhaseEnd){
+			if(player->getMark("oljieyanyuSlash-PlayClear")>1&&player->hasSkill(objectName())){
+				QList<ServerPlayer *>tps;
+				foreach (ServerPlayer *p, room->getAlivePlayers()){
+					if(p->isMale()) tps << p;
+				}
+				ServerPlayer *p = room->askForPlayerChosen(player,tps,objectName()+"$-1","oljieyanyu0",true,true);
+				if(p){
+					p->drawCards(2,objectName());
+				}
+			}
+		}else{
+            CardsMoveOneTimeStruct move = data.value<CardsMoveOneTimeStruct>();
+			if(move.from==player&&move.from_places.contains(Player::PlaceHand)){
+				foreach (int id, move.card_ids){
+					if(Sanguosha->getCard(id)->isKindOf("Slash"))
+						player->addMark("oljieyanyuSlash-PlayClear");
+				}
+			}
+		}
+        return false;
+    }
+};
+
+
 YJCM2015Package::YJCM2015Package()
     : Package("YJCM2015")
 {
@@ -2095,21 +2207,8 @@ YJCM2015Package::YJCM2015Package()
     related_skills.insert("mingjian", "#mingjian-give");
     caorui->addSkill(new Xingshuai);
 
-    General *new_caorui = new General(this, "new_caorui$", "wei", 3);
-    new_caorui->addSkill("huituo");
-    new_caorui->addSkill(new NewMingjian);
-    new_caorui->addSkill(new NewMingjianTargetMod);
-    new_caorui->addSkill(new NewMingjianKeep);
-    new_caorui->addSkill("xingshuai");
-    related_skills.insert("newmingjian", "#newmingjian-target");
-    related_skills.insert("newmingjian", "#newmingjian-keep");
-
     General *caoxiu = new General(this, "caoxiu", "wei");
     caoxiu->addSkill(new Taoxi);
-
-    General *new_caoxiu = new General(this, "new_caoxiu", "wei");
-    new_caoxiu->addSkill(new Qianju);
-    new_caoxiu->addSkill(new Qingxi);
 
     General *gongsun = new General(this, "gongsunyuan", "qun");
     gongsun->addSkill(new Huaiyi);
@@ -2124,25 +2223,13 @@ YJCM2015Package::YJCM2015Package()
     liuchen->addSkill(new Zhanjue);
     liuchen->addSkill(new Qinwang);
 
-    General *ol_liuchen = new General(this, "ol_liuchen$", "shu");
-    ol_liuchen->addSkill(new OLZhanjue);
-    ol_liuchen->addSkill("qinwang");
-
     General *quancong = new General(this, "quancong", "wu");
     quancong->addSkill(new Zhenshan);
-
-    General *new_quancong = new General(this, "new_quancong", "wu");
-    new_quancong->addSkill(new Yaoming);
 
     General *sunxiu = new General(this, "sunxiu$", "wu", 3);
     sunxiu->addSkill(new Yanzhu);
     sunxiu->addSkill(new Xingxue);
     sunxiu->addSkill(new Skill("zhaofu$", Skill::Compulsory));
-
-    General *ol_sunxiu = new General(this, "ol_sunxiu$", "wu", 3);
-    ol_sunxiu->addSkill("yanzhu");
-    ol_sunxiu->addSkill("xingxue");
-    ol_sunxiu->addSkill(new OLzhaofu);
 
     General *xiahou = new General(this, "yj_xiahoushi", "shu", 3, false);
     xiahou->addSkill(new Qiaoshi);
@@ -2163,9 +2250,6 @@ YJCM2015Package::YJCM2015Package()
     General *zhuzhi = new General(this, "zhuzhi", "wu");
     zhuzhi->addSkill(new Anguo);
 
-    General *new_zhuzhi = new General(this, "new_zhuzhi", "wu", 4);
-    new_zhuzhi->addSkill(new NewAnguo);
-
     addMetaObject<HuaiyiCard>();
     addMetaObject<HuaiyiSnatchCard>();
     addMetaObject<QinwangCard>();
@@ -2176,10 +2260,55 @@ YJCM2015Package::YJCM2015Package()
     addMetaObject<WurongCard>();
     addMetaObject<HuomoCard>();
     addMetaObject<AnguoCard>();
-    addMetaObject<NewMingjianCard>();
-    addMetaObject<NewAnguoCard>();
-    addMetaObject<OLzhaofuCard>();
 
     skills << new QinwangDraw;
 }
 ADD_PACKAGE(YJCM2015)
+
+OLStYJ2015Package::OLStYJ2015Package()
+    : Package("OLStYJ2015")
+{
+    General *ol_liuchen = new General(this, "ol_liuchen$", "shu");
+    ol_liuchen->addSkill(new OLZhanjue);
+    ol_liuchen->addSkill("qinwang");
+
+    General *ol_sunxiu = new General(this, "ol_sunxiu$", "wu", 3);
+    ol_sunxiu->addSkill("yanzhu");
+    ol_sunxiu->addSkill("xingxue");
+    ol_sunxiu->addSkill(new OLzhaofu);
+
+    General *oljie_xiahoushi = new General(this, "oljie_xiahoushi", "shu", 3, false);
+    oljie_xiahoushi->addSkill(new OLJieQianshi);
+    oljie_xiahoushi->addSkill(new OLJieYanyu);
+    addMetaObject<OLJieYanyuCard>();
+
+    addMetaObject<OLzhaofuCard>();
+}
+ADD_PACKAGE(OLStYJ2015)
+
+NewYJCM2015Package::NewYJCM2015Package()
+    : Package("NewYJCM2015")
+{
+    General *new_caorui = new General(this, "new_caorui$", "wei", 3);
+    new_caorui->addSkill("huituo");
+    new_caorui->addSkill(new NewMingjian);
+    new_caorui->addSkill(new NewMingjianTargetMod);
+    new_caorui->addSkill(new NewMingjianKeep);
+    new_caorui->addSkill("xingshuai");
+    related_skills.insert("newmingjian", "#newmingjian-target");
+    related_skills.insert("newmingjian", "#newmingjian-keep");
+
+    General *new_caoxiu = new General(this, "new_caoxiu", "wei");
+    new_caoxiu->addSkill(new Qianju);
+    new_caoxiu->addSkill(new Qingxi);
+
+    General *new_quancong = new General(this, "new_quancong", "wu");
+    new_quancong->addSkill(new Yaoming);
+
+    General *new_zhuzhi = new General(this, "new_zhuzhi", "wu", 4);
+    new_zhuzhi->addSkill(new NewAnguo);
+
+    addMetaObject<NewMingjianCard>();
+    addMetaObject<NewAnguoCard>();
+}
+ADD_PACKAGE(NewYJCM2015)

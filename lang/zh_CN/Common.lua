@@ -1,4 +1,15 @@
 CommonTranslationTable = {
+	["a_common_card"] = "通用卡牌",
+	["b_foundation_package"] = "基础将包",
+	["c_mobile"] = "移动版",
+	["d_ol"] = "Online",
+	["e_tenyear"] = "十周年",
+	["f_hegemony"] = "国战",
+	["g_special_play"] = "特殊玩法",
+	["h_other"] = "其他",
+	["lua_package"] = "扩展将包",
+	["lua_card"] = "扩展卡牌",
+
 	["lord"] = "主公",
 	["loyalist"] = "忠臣",
 	["rebel"] = "反贼",

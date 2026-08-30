@@ -10,8 +10,10 @@
 #include "wrapped-card.h"
 #include "room.h"
 #include "roomthread.h"
+#include "yjcm.h"
 #include "yjcm2013.h"
 #include "yjcm2014.h"
+#include "mountain.h"
 //#include "json.h"
 
 class MobileLiyong : public TriggerSkill
@@ -484,7 +486,7 @@ public:
             log.from = player;
             log.card_str = ListI2S(ids).join("+");
             room->sendLog(log);
-            room->fillAG(ids);
+            room->fillAG(ids, player);
             int id = room->askForAG(player, ids, false, objectName());
             room->clearAG();
             room->returnToTopDrawPile(ids);
@@ -635,11 +637,6 @@ public:
         response_pattern = "@@mobilezaiqi";
     }
 
-    bool isEnabledAtPlay(const Player *) const
-    {
-        return false;
-    }
-
     const Card *viewAs() const
     {
         return new MobileZaiqiCard;
@@ -707,7 +704,7 @@ public:
             if (move.to_place != Player::DiscardPile) return false;
             foreach (int id, move.card_ids) {
                 player->addMark(QString::number(id)+"AnzhiRecord-Clear");
-                if (Sanguosha->getCard(id)->isRed())
+                if (move.from==player&&Sanguosha->getCard(id)->isRed())
                     room->addPlayerMark(player, "mobilezaiqi-Clear");
             }
         } else {
@@ -2342,7 +2339,7 @@ public:
             if (zongxuan_card.isEmpty())
                 return false;
 
-            room->notifyMoveToPile(player, zongxuan_card, objectName(), Player::DiscardPile, true);
+            room->notifyMoveToPile(player, zongxuan_card, objectName(), Player::PlaceUnknown, true);
 
             try {
                 const Card *c = room->askForUseCard(player, "@@mobilezongxuan", "@mobilezongxuan");
@@ -2358,7 +2355,7 @@ public:
                     log.card_str = ListI2S(subcards).join("+");
                     room->sendLog(log);
 
-                    room->notifyMoveToPile(player, subcards, objectName(), Player::DiscardPile, false);
+                    room->notifyMoveToPile(player, subcards, objectName(), Player::PlaceUnknown, false);
 
                     CardMoveReason reason(CardMoveReason::S_REASON_PUT, player->objectName(), "mobilezongxuan", "");
                     room->moveCardTo(c, nullptr, Player::DrawPile, reason, true, true);
@@ -2367,12 +2364,12 @@ public:
             catch (TriggerEvent triggerEvent) {
                 if (triggerEvent == TurnBroken || triggerEvent == StageChange) {
                     if (!zongxuan_card.isEmpty())
-                        room->notifyMoveToPile(player, zongxuan_card, objectName(), Player::DiscardPile, false);
+                        room->notifyMoveToPile(player, zongxuan_card, objectName(), Player::PlaceUnknown, false);
                 }
                 throw triggerEvent;
             }
             if (!zongxuan_card.isEmpty())
-                room->notifyMoveToPile(player, zongxuan_card, objectName(), Player::DiscardPile, false);
+                room->notifyMoveToPile(player, zongxuan_card, objectName(), Player::PlaceUnknown, false);
         }
         return false;
     }
@@ -2725,14 +2722,14 @@ public:
     int getResidueNum(const Player *from, const Card *, const Player *to) const
     {
         if (from->getMark("mobilexianzhen_from-PlayClear") > 0 && to && to->getMark("mobilexianzhen_to-PlayClear") > 0)
-            return 1000;
+            return 999;
         return 0;
     }
 
     int getDistanceLimit(const Player *from, const Card *, const Player *to) const
     {
         if (from->getMark("mobilexianzhen_from-PlayClear") > 0 && to && to->getMark("mobilexianzhen_to-PlayClear") > 0)
-            return 1000;
+            return 999;
         return 0;
     }
 };
@@ -2766,15 +2763,6 @@ public:
     {
     }
 
-    bool gaoshun(const Player *target) const
-    {
-        foreach (const Player *p, target->getAliveSiblings()) {
-            if (p->hasFlag("CurrentPlayer") && p->hasSkill("mobilejinjiu"))
-                return true;
-        }
-        return false;
-    }
-
     QString limitList(const Player *) const
     {
         return "use";
@@ -2782,8 +2770,10 @@ public:
 
     QString limitPattern(const Player *target) const
     {
-        if (gaoshun(target))
-            return "Analeptic";
+        foreach (const Player *p, target->getAliveSiblings()) {
+            if (p->hasFlag("CurrentPlayer") && p->hasSkill("mobilejinjiu"))
+                return "Analeptic";
+        }
         return "";
     }
 };
@@ -3072,7 +3062,7 @@ public:
             log.from = p;
             log.card_str = ListI2S(draw).join("+");
             room->sendLog(log, p);
-            room->notifyMoveToPile(p, draw, "mobilezongshih_draw", Player::DrawPile, true);
+            room->notifyMoveToPile(p, draw, "mobilezongshih_draw", Player::PlaceUnknown, true);
 
             QList<int> pdlist;
             if (pindian->from_number > pindian->to_number && room->getCardPlace(pindian->to_card->getEffectiveId()) == Player::PlaceTable)
@@ -3086,12 +3076,12 @@ public:
                     pdlist << pindian->to_card->getEffectiveId();
             }
             if (!pdlist.isEmpty())
-                room->notifyMoveToPile(p, pdlist, "mobilezongshih_pindian", Player::PlaceTable, true);
+                room->notifyMoveToPile(p, pdlist, "mobilezongshih_pindian", Player::PlaceUnknown, true);
 
             const Card *c = room->askForUseCard(p, "@@mobilezongshih", "@mobilezongshih", -1, Card::MethodNone);
             room->notifyMoveToPile(p, draw, "mobilezongshih_draw", Player::DrawPile, false);
             if (!pdlist.isEmpty())
-                room->notifyMoveToPile(p, pdlist, "mobilezongshih_pindian", Player::PlaceTable, false);
+                room->notifyMoveToPile(p, pdlist, "mobilezongshih_pindian", Player::PlaceUnknown, false);
             room->returnToTopDrawPile(draw);
             if (!c) continue;
             room->obtainCard(p, c, false);
@@ -3330,7 +3320,7 @@ public:
             if (player==move.from&&move.to_place == Player::DiscardPile && ((move.reason.m_reason&CardMoveReason::S_MASK_BASIC_REASON)==CardMoveReason::S_REASON_USE
 			 ||move.reason.m_reason == CardMoveReason::S_REASON_RESPONSE)) {
                 //改判打出的牌CardMoveReason::S_REASON_RETRIAL，置入弃牌堆的原因是判定，而不是打出
-                const Card *card = move.reason.m_extraData.value<const Card *>();
+                const Card *card = move.reason.m_extraData.value<CardResponseStruct>().m_card;
                 if (!card || card->isKindOf("SkillCard")) return false;
                 int n = room->getTag("mobilejingce_record").toInt();
                 if (card->isVirtualCard())
@@ -3709,7 +3699,7 @@ bool MobileBingyiCard::targetFilter(const QList<const Player *> &targets, const 
 
 void MobileBingyiCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const
 {
-    room->showAllCards(source);
+    room->showAllCards(source, static_cast<ServerPlayer *>(nullptr));
     foreach(ServerPlayer *p, targets)
         room->drawCards(p, 1, "mobilebingyi");
 }
@@ -3803,29 +3793,6 @@ public:
         return false;
     }
 };
-
-#if !defined(QSAN_ENGINE_BUILD)
-MobileJianyingDialog *MobileJianyingDialog::getInstance(const QString &object)
-{
-    static MobileJianyingDialog *instance;
-    if (instance == nullptr || instance->objectName() != object)
-        instance = new MobileJianyingDialog(object);
-
-    return instance;
-}
-
-MobileJianyingDialog::MobileJianyingDialog(const QString &object)
-    : GuhuoDialog(object, true, false)
-{
-}
-
-bool MobileJianyingDialog::isButtonEnabled(const QString &button_name) const
-{
-    const Card *c = map[button_name];
-    c->setFlags(objectName());
-	return button_name != "normal_slash" && !Self->isCardLimited(c, Card::MethodUse) && c->isAvailable(Self);
-}
-#endif
 
 MobileJianyingCard::MobileJianyingCard()
 {
@@ -3960,9 +3927,9 @@ public:
         frequency = NotFrequent;
     }
 
-    QDialog *getDialog() const
+    SkillDialogInfo getDialogInfo() const override
     {
-        return MobileJianyingDialog::getInstance("mobilejianying");
+        return SkillDialogInfo::named("mobilejianying", objectName());
     }
 };
 
@@ -3978,7 +3945,7 @@ public:
     int getResidueNum(const Player *, const Card *card, const Player *) const
     {
         if (card->getSkillName() == "mobilejianying" || card->hasFlag("mobilejianying"))
-            return 1000;
+            return 999;
         return 0;
     }
 };
@@ -4068,9 +4035,8 @@ void MobileXingxueCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer
 
             if (choice == "put") {
                 const Card *c = room->askForExchange(t, "mobilexingxue", 1, 1, true, "@xingxue-put");
-                int id = c->getSubcards().first();
 
-                CardsMoveStruct m(id, nullptr, Player::DrawPile, CardMoveReason(CardMoveReason::S_REASON_PUT, t->objectName()));
+                CardsMoveStruct m(c->getSubcards(), nullptr, Player::DrawPile, CardMoveReason(CardMoveReason::S_REASON_PUT, t->objectName()));
                 room->setPlayerFlag(t, "Global_GongxinOperator");
                 room->moveCardsAtomic(m, false);
                 room->setPlayerFlag(t, "-Global_GongxinOperator");
@@ -4711,7 +4677,7 @@ public:
 
 
 MobileStStandardPackage::MobileStStandardPackage()
-    : Package("MobileStStandard")
+    : Package("mobile_st_standard")
 {
 
 
@@ -4762,7 +4728,7 @@ MobileStStandardPackage::MobileStStandardPackage()
 ADD_PACKAGE(MobileStStandard)
 
 MobileStWindPackage::MobileStWindPackage()
-    : Package("MobileStWind")
+    : Package("mobile_st_wind")
 {
     General *mobile_zhoutai = new General(this, "mobile_zhoutai", "wu", 4);
     mobile_zhoutai->addSkill("buqu");
@@ -4774,7 +4740,7 @@ MobileStWindPackage::MobileStWindPackage()
 ADD_PACKAGE(MobileStWind)
 
 MobileStThicketPackage::MobileStThicketPackage()
-    : Package("MobileStThicket")
+    : Package("mobile_st_thicket")
 {
     General *mobile_zhurong = new General(this, "mobile_zhurong", "shu", 4, false);
     mobile_zhurong->addSkill("juxiang");
@@ -4804,7 +4770,7 @@ MobileStThicketPackage::MobileStThicketPackage()
 ADD_PACKAGE(MobileStThicket)
 
 MobileStFirePackage::MobileStFirePackage()
-    : Package("MobileStFire")
+    : Package("mobile_st_fire")
 {
     General *mobile_wolong = new General(this, "mobile_wolong", "shu", 3);
     mobile_wolong->addSkill("bazhen");
@@ -4833,7 +4799,7 @@ MobileStFirePackage::MobileStFirePackage()
 ADD_PACKAGE(MobileStFire)
 
 MobileStMountainPackage::MobileStMountainPackage()
-    : Package("MobileStMountain")
+    : Package("mobile_st_mountain")
 {
     General *mobile_liushan = new General(this, "mobile_liushan$", "shu", 3);
     mobile_liushan->addSkill("xiangle");
@@ -4866,11 +4832,12 @@ MobileStMountainPackage::MobileStMountainPackage()
     mobile_caiwenji->addSkill(new MobileBeige);
     mobile_caiwenji->addSkill("duanchang");
 
+    MigrateToMobileStMountain(this);
 }
 ADD_PACKAGE(MobileStMountain)
 
 MobileStYJ2011Package::MobileStYJ2011Package()
-    : Package("MobileStYJ2011")
+    : Package("mobile_st_yj2011")
 {
     General *mobile_caozhi = new General(this, "mobile_caozhi", "wei", 3);
     mobile_caozhi->addSkill("luoying");
@@ -4902,11 +4869,12 @@ MobileStYJ2011Package::MobileStYJ2011Package()
     related_skills.insert("mobilejinjiu", "#mobilejinjiu-limit");
     related_skills.insert("mobilejinjiu", "#mobilejinjiu");
 
+    MigrateToMobileStYJ2011(this);
 }
 ADD_PACKAGE(MobileStYJ2011)
 
 MobileStYJ2012Package::MobileStYJ2012Package()
-    : Package("MobileStYJ2012")
+    : Package("mobile_st_yj2012")
 {
     General *mobile_liaohua = new General(this, "mobile_liaohua", "shu", 4);
     mobile_liaohua->addSkill(new MobileDangxian);
@@ -4948,7 +4916,7 @@ MobileStYJ2012Package::MobileStYJ2012Package()
 ADD_PACKAGE(MobileStYJ2012)
 
 MobileStYJ2013Package::MobileStYJ2013Package()
-    : Package("MobileStYJ2013")
+    : Package("mobile_st_yj2013")
 {
     General *mobile_jianyong = new General(this, "mobile_jianyong", "shu", 3);
     mobile_jianyong->addSkill(new MobileQiaoshui);
@@ -4996,7 +4964,7 @@ MobileStYJ2013Package::MobileStYJ2013Package()
 ADD_PACKAGE(MobileStYJ2013)
 
 MobileStYJ2014Package::MobileStYJ2014Package()
-    : Package("MobileStYJ2014")
+    : Package("mobile_st_yj2014")
 {
     General *mobile_wuyi = new General(this, "mobile_wuyi", "shu", 4);
     mobile_wuyi->addSkill(new MobileBenxi);
@@ -5039,7 +5007,7 @@ MobileStYJ2014Package::MobileStYJ2014Package()
 ADD_PACKAGE(MobileStYJ2014)
 
 MobileStYJ2015Package::MobileStYJ2015Package()
-    : Package("MobileStYJ2015")
+    : Package("mobile_st_yj2015")
 {
     General *mobile_zhangyi = new General(this, "mobile_zhangyi", "shu", 4);
     mobile_zhangyi->addSkill(new MobileFurong);

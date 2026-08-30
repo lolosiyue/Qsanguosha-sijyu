@@ -12,6 +12,14 @@ public:
     ThicketPackage();
 };
 
+class TenyearStThicketPackage : public Package
+{
+    Q_OBJECT
+
+public:
+    TenyearStThicketPackage();
+};
+
 class HaoshiCard : public SkillCard
 {
     Q_OBJECT
@@ -66,5 +74,7 @@ public:
     bool targetFilter(const QList<const Player *> &targets, const Player *to_select, const Player *Self) const;
     void onEffect(CardEffectStruct &effect) const;
 };
+
+void RegisterNewShencaocao(Package *pkg);
 
 #endif

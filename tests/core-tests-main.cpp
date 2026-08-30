@@ -7,6 +7,8 @@ int runLuaCompatibilityTests();
 int runEngineSelfBridgeTests();
 int runCardParseTests();
 int runEnumReflectionTests();
+int runPackagePolicyTests();
+int runMigratedGeneralPackageTests();
 
 int main(int argc, char **argv)
 {
@@ -17,6 +19,9 @@ int main(int argc, char **argv)
         const int luaCompatibility = runLuaCompatibilityTests();
         if (luaCompatibility != 0)
             return 130 + luaCompatibility;
+        const int packagePolicy = runPackagePolicyTests();
+        if (packagePolicy != 0)
+            return 140 + packagePolicy;
         const int smoke = runEngineSmokeTests();
         if (smoke != 0)
             return smoke;
@@ -39,5 +44,9 @@ int main(int argc, char **argv)
         return runEnumReflectionTests();
     if (suite == QLatin1String("lua-compat"))
         return runLuaCompatibilityTests();
+    if (suite == QLatin1String("package-policy"))
+        return runPackagePolicyTests();
+    if (suite == QLatin1String("package-ownership"))
+        return runMigratedGeneralPackageTests();
     return 64;
 }

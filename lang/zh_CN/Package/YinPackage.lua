@@ -2,6 +2,7 @@
 
 return {
 	["Yin"] = "神话再临·阴",
+	["OLStYin"] = "OL强化·阴",
 	
 	["yanyan"] = "严颜",
 	["#yanyan"] = "断头将军",
