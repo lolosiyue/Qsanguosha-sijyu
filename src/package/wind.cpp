@@ -1945,7 +1945,7 @@ public:
             QList<int> ids;
 			need = nosbuqu.length() - need;
             for (int i = 0; i < need; i++) {
-				room->fillAG(nosbuqu,zhoutai);
+				room->fillAG(nosbuqu, zhoutai);
                 int card_id = room->askForAG(zhoutai, nosbuqu, false, "nosbuqu");
                 nosbuqu.removeOne(card_id);
                 room->clearAG(zhoutai);
@@ -2322,6 +2322,11 @@ public:
         response_or_use = true;
     }
 
+    SkillDialogInfo getDialogInfo() const override
+    {
+        return SkillDialogInfo::guhuo(objectName(), true, true, true, false, false, false);
+    }
+
     bool isEnabledAtResponse(const Player *player, const QString &pattern) const
     {
         if (player->isKongcheng() || pattern.startsWith(".") || pattern.startsWith("@")) return false;
@@ -2352,18 +2357,15 @@ public:
         }
 
         const Card *c = Self->getTag("nosguhuo").value<const Card *>();
-        if (c) {
+		if (c) {
             NosGuhuoCard *card = new NosGuhuoCard;
 			card->setUserString(c->objectName());
+            if (c->objectName().contains("slash"))
+                card->setUserString(Self->getTag("NosGuhuoSlash").toString());
             card->addSubcard(originalCard);
             return card;
         }
 		return nullptr;
-    }
-
-    QDialog *getDialog() const
-    {
-        return GuhuoDialog::getInstance("nosguhuo");
     }
 
     int getEffectIndex(const ServerPlayer *, const Card *card) const
@@ -2709,9 +2711,6 @@ WindPackage::WindPackage()
     xiahouyuan->addSkill(new SlashNoDistanceLimitSkill("shensu"));
     related_skills.insert("shensu", "#shensu-slash-ndl");
 
-    General *noscaoren = new General(this, "nos_caoren", "wei");
-    noscaoren->addSkill(new NosJushou);
-
     General *caoren = new General(this, "caoren", "wei"); // WEI 011
     caoren->addSkill(new Jushou);
     caoren->addSkill(new Jiewei);
@@ -2730,38 +2729,16 @@ WindPackage::WindPackage()
     xiaoqiao->addSkill(new Hongyan);
     related_skills.insert("tianxiang", "#tianxiang");
 
-    General *nos_zhoutai = new General(this, "nos_zhoutai", "wu");
-    nos_zhoutai->addSkill(new NosBuqu);
-    nos_zhoutai->addSkill(new NosBuquRemove);
-    nos_zhoutai->addSkill(new NosBuquClear);
-    related_skills.insert("nosbuqu", "#nosbuqu-remove");
-    related_skills.insert("nosbuqu", "#nosbuqu-clear");
-
     General *zhoutai = new General(this, "zhoutai", "wu"); // WU 013
     zhoutai->addSkill(new Buqu);
     zhoutai->addSkill(new BuquMaxCards);
     zhoutai->addSkill(new Fenji);
     related_skills.insert("buqu", "#buqu");
 
-    General *nos_zhangjiao = new General(this, "nos_zhangjiao$", "qun", 3);
-    nos_zhangjiao->addSkill(new NosLeiji);
-    nos_zhangjiao->addSkill("guidao");
-    nos_zhangjiao->addSkill("huangtian");
-
     General *zhangjiao = new General(this, "zhangjiao$", "qun", 3); // QUN 010
     zhangjiao->addSkill(new Leiji);
     zhangjiao->addSkill(new Guidao);
     zhangjiao->addSkill(new Huangtian);
-
-    General *tenyear_zhangjiao = new General(this, "tenyear_zhangjiao$", "qun", 3);
-    tenyear_zhangjiao->addSkill(new TenyearLeiji);
-    tenyear_zhangjiao->addSkill("guidao");
-    tenyear_zhangjiao->addSkill("huangtian");
-
-    General *nos_yuji = new General(this, "nos_yuji", "qun", 3);
-    nos_yuji->addSkill(new NosGuhuo);
-
-    addMetaObject<NosGuhuoCard>();
 
     General *yuji = new General(this, "yuji", "qun", 3); // QUN 011
     yuji->addSkill(new Guhuo);
@@ -2772,14 +2749,6 @@ WindPackage::WindPackage()
     shenguanyu->addSkill(new WushenTargetMod);
     shenguanyu->addSkill(new Wuhun);
     related_skills.insert("wushen", "#wushen-target");
-
-    General *ol_shenguanyu = new General(this, "ol_shenguanyu", "god", 5);
-    ol_shenguanyu->addSkill(new OLWushen);
-    ol_shenguanyu->addSkill(new OLWushenTargetMod);
-    ol_shenguanyu->addSkill(new OLWushenSlash);
-    ol_shenguanyu->addSkill("wuhun");
-    related_skills.insert("olwushen", "#olwushen-target");
-    related_skills.insert("olwushen", "#olwushen-slash");
 
     General *shenlvmeng = new General(this, "shenlvmeng", "god", 3); // LE 002
     shenlvmeng->addSkill(new Shelie);
@@ -2796,3 +2765,47 @@ WindPackage::WindPackage()
     related_skills.insert("chanyuan", "#chanyuan-inv");
 }
 ADD_PACKAGE(Wind)
+
+NostalgiaWindPackage::NostalgiaWindPackage()
+    : Package("nostal_wind")
+{
+    General *noscaoren = new General(this, "nos_caoren", "wei");
+    noscaoren->addSkill(new NosJushou);
+
+    General *nos_zhoutai = new General(this, "nos_zhoutai", "wu");
+    nos_zhoutai->addSkill(new NosBuqu);
+    nos_zhoutai->addSkill(new NosBuquRemove);
+    nos_zhoutai->addSkill(new NosBuquClear);
+    related_skills.insert("nosbuqu", "#nosbuqu-remove");
+    related_skills.insert("nosbuqu", "#nosbuqu-clear");
+
+    General *nos_zhangjiao = new General(this, "nos_zhangjiao$", "qun", 3);
+    nos_zhangjiao->addSkill(new NosLeiji);
+    nos_zhangjiao->addSkill("guidao");
+    nos_zhangjiao->addSkill("huangtian");
+
+    General *nos_yuji = new General(this, "nos_yuji", "qun", 3);
+    nos_yuji->addSkill(new NosGuhuo);
+
+    addMetaObject<NosGuhuoCard>();
+}
+ADD_PACKAGE(NostalgiaWind)
+
+void MigrateToOLStWind(Package *pkg)
+{
+    General *ol_shenguanyu = new General(pkg, "ol_shenguanyu", "god", 5);
+    ol_shenguanyu->addSkill(new OLWushen);
+    ol_shenguanyu->addSkill(new OLWushenTargetMod);
+    ol_shenguanyu->addSkill(new OLWushenSlash);
+    ol_shenguanyu->addSkill("wuhun");
+    pkg->insertRelatedSkills("olwushen", "#olwushen-target");
+    pkg->insertRelatedSkills("olwushen", "#olwushen-slash");
+}
+
+void MigrateToTenyearStWind(Package *pkg)
+{
+    General *tenyear_zhangjiao = new General(pkg, "tenyear_zhangjiao$", "qun", 3);
+    tenyear_zhangjiao->addSkill(new TenyearLeiji);
+    tenyear_zhangjiao->addSkill("guidao");
+    tenyear_zhangjiao->addSkill("huangtian");
+}

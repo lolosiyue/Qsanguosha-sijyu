@@ -51,6 +51,7 @@ EnableLuckCard=false
 LuckCardTimes=-1
 DisableLua=false
 AddGodGeneral=true
+GeneralVersionDedup=false
 BannedIP=
 ForbidPackages=
 OfficialServer=false

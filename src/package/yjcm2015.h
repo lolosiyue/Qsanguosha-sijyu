@@ -158,6 +158,22 @@ public:
     YJCM2015Package();
 };
 
+class OLStYJ2015Package : public Package
+{
+    Q_OBJECT
+
+public:
+    OLStYJ2015Package();
+};
+
+class NewYJCM2015Package : public Package
+{
+    Q_OBJECT
+
+public:
+    NewYJCM2015Package();
+};
+
 class OLzhaofuCard : public SkillCard
 {
     Q_OBJECT
@@ -168,6 +184,15 @@ public:
     bool targetFilter(const QList<const Player *> &targets, const Player *, const Player *) const;
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
     void onEffect(CardEffectStruct &effect) const;
+};
+
+class OLJieYanyuCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE OLJieYanyuCard();
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &) const;
 };
 
 #endif

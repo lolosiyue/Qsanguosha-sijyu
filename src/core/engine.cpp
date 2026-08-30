@@ -12,6 +12,7 @@
 //#include "scenario.h"
 #include "lua.hpp"
 #include "banpair.h"
+#include "general-version.h"
 #include <QMutexLocker>
 #include <QFileInfo>
 #include <QDir>
@@ -326,8 +327,20 @@ Engine::Engine(bool isManualMode)
     extra_default_lords = GetConfigFromLuaState(bootstrapLua, "extra_default_lords").toStringList();
     removed_default_lords = GetConfigFromLuaState(bootstrapLua, "removed_default_lords").toStringList();
 
-    foreach (QString name, GetConfigFromLuaState(bootstrapLua, "package_names").toStringList())
-        addPackage(name);
+    const QVariantMap configuredPackages =
+        GetConfigFromLuaState(bootstrapLua, "package_names").toMap();
+    for (auto it = configuredPackages.cbegin(); it != configuredPackages.cend(); ++it) {
+        QStringList packageNames;
+        foreach (const QString &entry,
+                 it.value().toString().split(',', Qt::SkipEmptyParts)) {
+            const QString name = entry.trimmed();
+            if (!name.isEmpty() && !packageNames.contains(name))
+                packageNames << name;
+        }
+        m_packageMap.insert(it.key(), packageNames);
+        foreach (const QString &name, packageNames)
+            addPackage(name);
+    }
 
     _loadMiniScenarios();
     _loadModScenarios();
@@ -809,13 +822,13 @@ void Engine::addPackage(Package*package)
 
 void Engine::addBanPackage(const QString &package_name)
 {
-    ban_package << package_name;
+    if (!Config.BanPackages.contains(package_name))
+        Config.BanPackages << package_name;
 }
 
 QStringList Engine::getBanPackages() const
 {
-    if (qApp->arguments().contains("-server")) return Config.BanPackages;
-    return ban_package;//+Config.BanPackages;
+    return Config.BanPackages;
 }
 
 QList<const Package*> Engine::getPackages() const
@@ -2148,7 +2161,19 @@ QStringList Engine::getLimitedGeneralNames(const QString &kingdom, bool availabl
         if (kingdom.isEmpty() || kingdom == "wu")
             general_names << "sunquan" << "sunshangxiang";
     }
+    if (Config.GeneralVersionDedup) {
+        general_names = dedupByVersion(
+            general_names,
+            [this](const QString &first, const QString &second) {
+                return sameNameWith(first, second);
+            });
+    }
     return general_names;
+}
+
+QMap<QString, QStringList> Engine::getPackageMap() const
+{
+    return m_packageMap;
 }
 
 QStringList Engine::getSlashNames() const

@@ -1477,6 +1477,25 @@ public:
     void onUninstall(ServerPlayer *player) const;
 };
 
+class OLYishiCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE OLYishiCard();
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
+class WanceCard : public SkillCard
+{
+    Q_OBJECT
+
+public:
+    Q_INVOKABLE WanceCard();
+    bool targetFilter(const QList<const Player *> &targets, const Player *, const Player *Self) const;
+    void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
+};
+
 
 
 

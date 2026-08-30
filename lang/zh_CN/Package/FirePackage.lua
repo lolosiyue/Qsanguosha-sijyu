@@ -2,6 +2,7 @@
 
 return {
 	["fire"] = "神话再临·火",
+	["TenyearStFire"] = "十周年强化·火",
 
 	["#xunyu"] = "王佐之才",
 	["xunyu"] = "荀彧",
