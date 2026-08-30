@@ -3,10 +3,9 @@
 - 狀態：F1.1 Architecture Cleanup 完成（2026-08-29）
 - 範圍：PR #13 的 client interaction 中間層
 - 相容邊界：不改 server gameplay、RoomScene UI 或 ClientCore typed model；
-  Protocol V2 已逐連線啟用，typed wire payload 涵蓋 7/29 interaction：
-  `MULTIPLE_CHOICE`、`CHOOSE_GENERAL`、`CHOOSE_SUIT`、`CHOOSE_KINGDOM`、
-  `CHOOSE_ORDER`、`INVOKE_SKILL` 與 `SURRENDER` vote。TUI、Android、WASM 與 structured `askForQml`
-  仍不在本階段。
+  Protocol V2 已逐連線啟用，typed wire payload 涵蓋 29/29 production
+  interaction。`QML_INTERACT` 的 legacy／structured union 只在 wire boundary
+  包裝；TUI、Android、WASM 與完整 structured `askForQml` model 仍不在本階段。
 
 ## 最終分類
 
@@ -114,7 +113,7 @@ ClientCore 在 request 啟動時移除其他 key。Choice 的 `synthetic_cancel`
 
 所有 accepted UI response 經 `Client::submitInteractionResponse()` 補上 request id、server serial、command，再由 ClientCore 驗證。只有 accepted response 才可進入 `LegacyV1InteractionReplyAdapter`。該 adapter 名稱保留歷史來源；其輸出現在是 logical payload，不代表連線必定使用 V1。
 
-七個已遷移 command 的 logical request/reply 仍維持既有 scalar／array／numeric
+全部 29 個 production interaction 的 logical request/reply 仍維持既有 scalar／array／numeric
 形狀。`ProtocolCodecRouter` 的 registry 只在 V2 wire 邊界轉成
 schema-versioned objects；因此 V1/V2 產生完全相同的 canonical
 `InteractionRequest`，ClientCore 與 Desktop presenter 不含 protocol-version branch。
@@ -174,9 +173,10 @@ debug\QSanguosha.exe --interaction-inventory artifacts\client-core-interaction-m
 |---|---|
 | Protocol V1 codec boundary | Complete |
 | Protocol V2 codec／runtime activation | Complete |
-| Typed gameplay payload migration | In Progress（7/29：multiple/simple choice batch） |
+| Typed gameplay payload migration | Complete（29/29 production interactions） |
 | Capability negotiation | Complete |
 | Replay version bump | Not Started |
 
-Replay version bump 與其餘 22 個 payload 不屬 F1.1。下一批應先對齊
-`CHOOSE_DIRECTION → MULTIPLE_CHOICE` 與 `LUCK_CARD → INVOKE_SKILL` 的 aliased reply command。
+Replay version bump 仍是獨立後續工作。`CHOOSE_DIRECTION → MULTIPLE_CHOICE`
+與 `LUCK_CARD → INVOKE_SKILL` 的歷史 aliased reply command 已由
+`RequestCoordinator` 相容層與 dedicated typed reply identity 同時支援。

@@ -459,8 +459,8 @@ bool inventoryAndIdentityExceptions()
         S_COMMAND_INVOKE_SKILL,
         S_COMMAND_SURRENDER
     };
-    if (!expect(ProtocolGameplayPayloadRegistry::migratedCommandCount() == 7,
-                QStringLiteral("migration count is seven"))) {
+    if (!expect(ProtocolGameplayPayloadRegistry::migratedCommandCount() == 29,
+                QStringLiteral("migration count is 29"))) {
         return false;
     }
     for (int command : migrated) {
@@ -496,17 +496,8 @@ bool inventoryAndIdentityExceptions()
     surrenderInitiation.command = S_COMMAND_SURRENDER;
     surrenderInitiation.hasPayload = false;
 
-    const ProtocolMessage luckRequest = requestMessage(
-        S_COMMAND_LUCK_CARD, 9, QVariant(), false);
-    const ProtocolMessage luckReply = replyMessage(
-        S_COMMAND_LUCK_CARD, 9, 8, true);
-    const ProtocolMessage directionRequest = requestMessage(
-        S_COMMAND_CHOOSE_DIRECTION, 10, QVariant(), false);
-    const ProtocolMessage directionReply = replyMessage(
-        S_COMMAND_CHOOSE_DIRECTION, 10, 9, QStringLiteral("cw"));
     const QList<ProtocolMessage> exceptions{
-        invokeNotification, surrenderInitiation,
-        luckRequest, luckReply, directionRequest, directionReply};
+        invokeNotification, surrenderInitiation};
     for (qsizetype index = 0; index < exceptions.size(); ++index) {
         ProtocolMessage wire;
         if (!expect(!ProtocolGameplayPayloadRegistry::isMigratedFlow(exceptions.at(index)),
@@ -520,11 +511,11 @@ bool inventoryAndIdentityExceptions()
         }
     }
 
-    return expect(!ProtocolGameplayPayloadRegistry::isMigratedCommand(S_COMMAND_LUCK_CARD),
-                  QStringLiteral("luck card excluded"))
-        && expect(!ProtocolGameplayPayloadRegistry::isMigratedCommand(
+    return expect(ProtocolGameplayPayloadRegistry::isMigratedCommand(S_COMMAND_LUCK_CARD),
+                  QStringLiteral("luck card migrated"))
+        && expect(ProtocolGameplayPayloadRegistry::isMigratedCommand(
                       S_COMMAND_CHOOSE_DIRECTION),
-                  QStringLiteral("choose direction excluded"));
+                  QStringLiteral("choose direction migrated"));
 }
 }
 
