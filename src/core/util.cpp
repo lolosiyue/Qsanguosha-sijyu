@@ -17,6 +17,119 @@ extern "C" {
 
 namespace {
 
+const char kLua52Compatibility[] = R"lua(
+do
+	local global_table = _G
+	local package_table = package
+	local rawget_fn = rawget
+	local rawset_fn = rawset
+	local type_fn = type
+	local error_fn = error
+	local select_fn = select
+	local string_gmatch = string.gmatch
+	local string_match = string.match
+	local debug_getinfo = debug.getinfo
+	local debug_getupvalue = debug.getupvalue
+	local debug_setupvalue = debug.setupvalue
+	local getmetatable_fn = getmetatable
+	local setmetatable_fn = setmetatable
+
+	local bit32_table = rawget_fn(global_table, "bit32")
+	if type_fn(bit32_table) ~= "table" then
+		bit32_table = {}
+		rawset_fn(global_table, "bit32", bit32_table)
+	end
+	if rawget_fn(bit32_table, "band") == nil then
+		local tointeger = math.tointeger
+		rawset_fn(bit32_table, "band", function(...)
+			local result = 0xffffffff
+			for index = 1, select_fn("#", ...) do
+				local value = tointeger(select_fn(index, ...))
+				if value == nil then
+					error_fn("bad argument #" .. index
+						.. " to 'band' (number has no integer representation)", 2)
+				end
+				result = result & value
+			end
+			return result & 0xffffffff
+		end)
+	end
+
+	local function publish_module(name, value)
+		local parts = {}
+		for part in string_gmatch(name, "[^%.]+") do
+			parts[#parts + 1] = part
+		end
+		if #parts == 0 then
+			error_fn("invalid module name", 3)
+		end
+		local parent = global_table
+		for index = 1, #parts - 1 do
+			local child = rawget_fn(parent, parts[index])
+			if child == nil then
+				child = {}
+				rawset_fn(parent, parts[index], child)
+			elseif type_fn(child) ~= "table" then
+				error_fn("name conflict for module '" .. name .. "'", 3)
+			end
+			parent = child
+		end
+		rawset_fn(parent, parts[#parts], value)
+	end
+
+	local function legacy_module(name, ...)
+		if type_fn(name) ~= "string" then
+			error_fn("bad argument #1 to 'module' (string expected)", 2)
+		end
+		local value = package_table.loaded[name]
+		if type_fn(value) ~= "table" then
+			value = {}
+			package_table.loaded[name] = value
+		end
+		publish_module(name, value)
+		if rawget_fn(value, "_NAME") == nil then
+			rawset_fn(value, "_M", value)
+			rawset_fn(value, "_NAME", name)
+			rawset_fn(value, "_PACKAGE", string_match(name, "^(.*%.)") or "")
+		end
+
+		-- Lua 5.2 module() changed the caller chunk environment. In 5.4 the
+		-- same environment is the caller's _ENV upvalue.
+		local caller = debug_getinfo(2, "f").func
+		local upvalue_index = 1
+		while true do
+			local upvalue_name = debug_getupvalue(caller, upvalue_index)
+			if upvalue_name == nil then
+				error_fn("module() caller has no _ENV upvalue", 2)
+			end
+			if upvalue_name == "_ENV" then
+				debug_setupvalue(caller, upvalue_index, value)
+				break
+			end
+			upvalue_index = upvalue_index + 1
+		end
+
+		for option_index = 1, select_fn("#", ...) do
+			select_fn(option_index, ...)(value)
+		end
+		return value
+	end
+
+	rawset_fn(global_table, "module", legacy_module)
+	rawset_fn(package_table, "seeall", function(value)
+		if type_fn(value) ~= "table" then
+			error_fn("bad argument #1 to 'seeall' (table expected)", 2)
+		end
+		local metatable = getmetatable_fn(value)
+		if metatable == nil then
+			metatable = {}
+			setmetatable_fn(value, metatable)
+		end
+		rawset_fn(metatable, "__index", global_table)
+	end)
+end
+)lua";
+
 unsigned int luaHashSeed(quint64 seed)
 {
     return unsigned(seed) ^ unsigned(seed >> 32);
@@ -51,7 +164,7 @@ int luaGameRandom(lua_State *L)
 
 int luaGameRandomSeed(lua_State *L)
 {
-    luaL_checkunsigned(L, 1);
+    (void)luaL_checkinteger(L, 1);
     return 0;
 }
 
@@ -67,6 +180,18 @@ void installGameRandom(lua_State *L)
     lua_pushcfunction(L, &luaGameRandomSeed);
     lua_setfield(L, -2, "randomseed");
     lua_pop(L, 1);
+}
+
+bool installLua52Compatibility(lua_State *L)
+{
+    if (luaL_dostring(L, kLua52Compatibility) == LUA_OK)
+        return true;
+
+    const char *error = lua_tostring(L, -1);
+    qCritical().noquote() << "Unable to install Lua 5.2 compatibility:"
+                          << (error ? error : "unknown error");
+    lua_pop(L, 1);
+    return false;
 }
 
 }
@@ -131,6 +256,10 @@ lua_State *CreateLuaState()
         return nullptr;
     }
     luaL_openlibs(L);
+    if (!installLua52Compatibility(L)) {
+        lua_close(L);
+        return nullptr;
+    }
     luaopen_sgs(L);
     return L;
 }
@@ -141,6 +270,10 @@ lua_State *CreateLuaState(quint64 seed)
     if (!L)
         return nullptr;
     luaL_openlibs(L);
+    if (!installLua52Compatibility(L)) {
+        lua_close(L);
+        return nullptr;
+    }
     installGameRandom(L);
     luaopen_sgs(L);
     return L;
@@ -152,6 +285,10 @@ lua_State *CreateLuaState(LuaAllocatorFunction allocator, void *userData)
     if (!L)
         return nullptr;
     luaL_openlibs(L);
+    if (!installLua52Compatibility(L)) {
+        lua_close(L);
+        return nullptr;
+    }
     luaopen_sgs(L);
     return L;
 }
@@ -162,6 +299,10 @@ lua_State *CreateLuaState(LuaAllocatorFunction allocator, void *userData, quint6
     if (!L)
         return nullptr;
     luaL_openlibs(L);
+    if (!installLua52Compatibility(L)) {
+        lua_close(L);
+        return nullptr;
+    }
     installGameRandom(L);
     luaopen_sgs(L);
     return L;

@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 
 int runEngineSmokeTests();
+int runLuaCompatibilityTests();
 int runEngineSelfBridgeTests();
 int runCardParseTests();
 int runEnumReflectionTests();
@@ -13,6 +14,9 @@ int main(int argc, char **argv)
     const QString suite = parseSuite(argc, argv);
 
     const auto runAll = []() {
+        const int luaCompatibility = runLuaCompatibilityTests();
+        if (luaCompatibility != 0)
+            return 130 + luaCompatibility;
         const int smoke = runEngineSmokeTests();
         if (smoke != 0)
             return smoke;
@@ -33,5 +37,7 @@ int main(int argc, char **argv)
         return runCardParseTests();
     if (suite == QLatin1String("enum-reflection"))
         return runEnumReflectionTests();
+    if (suite == QLatin1String("lua-compat"))
+        return runLuaCompatibilityTests();
     return 64;
 }
