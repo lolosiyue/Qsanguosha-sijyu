@@ -8,6 +8,7 @@
 #include "room-runtime.h"
 #include "game-session-config.h"
 #include "event-dispatcher.h"
+#include "protocol/protocol-message.h"
 
 #include <functional>
 #include <memory>
@@ -819,7 +820,8 @@ private:
 
 private slots:
     void reportDisconnection();
-    void processClientPacket(const QString&packet);
+    void processClientPacket(const QString &packet,
+                             const QSanProtocol::ProtocolMessage &message);
     void assignRoles();
     void startGame();
     void slotSetProperty(ServerPlayer*player, const char*property_name, const QVariant&value);

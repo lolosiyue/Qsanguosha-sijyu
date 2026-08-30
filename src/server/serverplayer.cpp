@@ -17,6 +17,7 @@
 #include "room.h"
 #include "roomthread.h"
 #include "socket.h"
+#include "protocol/protocol-v1-message-adapter.h"
 
 using namespace QSanProtocol;
 
@@ -27,6 +28,7 @@ ServerPlayer::ServerPlayer(Room *room)
 	socket(nullptr), room(room), ai(nullptr), trust_ai(new BasicAI(this)),
 	recordBuffer(nullptr), _m_phases_index(NotActive), next(nullptr)
 {
+	qRegisterMetaType<ProtocolMessage>("QSanProtocol::ProtocolMessage");
 	semas = new QSemaphore *[S_NUM_SEMAPHORES];
 	for (int i = 0; i < S_NUM_SEMAPHORES; i++)
 		semas[i] = new QSemaphore(0);
@@ -396,8 +398,8 @@ void ServerPlayer::setSocket(ClientSocket *socket)
 {
 	if (socket) {
 		connect(socket, SIGNAL(disconnected()), this, SIGNAL(disconnected()));
-		connect(socket, SIGNAL(message_got(const char *)), this, SLOT(getMessage(const char *)));
-		connect(this, SIGNAL(message_ready(QString)), this, SLOT(sendMessage(QString)));
+		connect(socket, SIGNAL(message_got(QByteArray)), this, SLOT(getMessage(QByteArray)));
+		connect(this, SIGNAL(message_ready(QByteArray)), this, SLOT(sendMessage(QByteArray)));
 	} else {
 		if (this->socket) {
 			this->disconnect(this->socket);
@@ -406,7 +408,7 @@ void ServerPlayer::setSocket(ClientSocket *socket)
 			this->socket->deleteLater();
 		}
 
-		disconnect(this, SLOT(sendMessage(QString)));
+		disconnect(this, SLOT(sendMessage(QByteArray)));
 	}
 
 	this->socket = socket;
@@ -415,6 +417,7 @@ void ServerPlayer::setSocket(ClientSocket *socket)
 void ServerPlayer::setProtocolSessionState(const ProtocolSessionState &state)
 {
 	m_protocolSessionState = state;
+	m_protocolMessageIds.reset();
 }
 
 QList<ProtocolVersion> ServerPlayer::peerSupportedVersions() const
@@ -439,21 +442,41 @@ void ServerPlayer::kick()
 	setSocket(nullptr);
 }
 
-void ServerPlayer::getMessage(const char *message)
+void ServerPlayer::getMessage(const QByteArray &message)
 {
-	QString request = message;
-	if (request.endsWith("\n"))
-		request.chop(1);
+	ProtocolMessage decoded;
+	const ProtocolDecodeResult result = m_protocolRouter.decode(
+		m_protocolSessionState.activeVersion(), message, &decoded);
+	if (!result.success || decoded.command == S_COMMAND_PROTOCOL_SWITCH) {
+		qWarning().noquote() << reportHeader()
+			<< (result.success ? QStringLiteral("Unexpected protocol switch command")
+				: QStringLiteral("Protocol decode failed: %1").arg(result.detail));
+		if (socket != nullptr)
+			socket->disconnectFromHost();
+		return;
+	}
 
-	emit request_got(request);
+	QString error;
+	const QByteArray normalized = m_protocolRouter.encodeReplayV1(decoded, &error);
+	if (normalized.isEmpty()) {
+		qWarning().noquote() << reportHeader() << "Protocol normalization failed:" << error;
+		if (socket != nullptr)
+			socket->disconnectFromHost();
+		return;
+	}
+	emit request_got(QString::fromUtf8(normalized), decoded);
 }
 
 void ServerPlayer::unicast(const QString &message)
 {
-	emit message_ready(message);
-
-	if (recordBuffer)
-		recordBuffer->recordLine(message);
+	ProtocolMessage decoded;
+	const ProtocolDecodeResult result = m_protocolRouter.decode(
+		ProtocolVersion::V1, message.toUtf8(), &decoded);
+	if (!result.success) {
+		qWarning().noquote() << reportHeader() << "Invalid V1 unicast:" << result.detail;
+		return;
+	}
+	sendProtocolMessage(decoded);
 }
 
 void ServerPlayer::startNetworkDelayTest()
@@ -527,19 +550,56 @@ void ServerPlayer::clearSelected()
 	selected.clear();
 }
 
-void ServerPlayer::sendMessage(const QString &message)
+void ServerPlayer::sendMessage(const QByteArray &message)
 {
 	if (socket) {
 #ifdef LOGNETWORK
-		emit Sanguosha->logNetworkMessage("send "+this->objectName()+":"+message);
+		emit Sanguosha->logNetworkMessage("send "+this->objectName()+":"+QString::fromUtf8(message));
 #endif
 		socket->send(message);
 	}
 }
 
-void ServerPlayer::invoke(const AbstractPacket *packet)
+quint64 ServerPlayer::invoke(const AbstractPacket *packet)
 {
-	unicast(packet->toString());
+	if (packet == nullptr)
+		return 0;
+	ProtocolMessage message;
+	const ProtocolDecodeResult result = m_protocolRouter.decode(
+		ProtocolVersion::V1, packet->toJson(), &message);
+	if (!result.success) {
+		qWarning().noquote() << reportHeader() << "Packet bridge failed:" << result.detail;
+		return 0;
+	}
+	return sendProtocolMessage(message);
+}
+
+quint64 ServerPlayer::sendProtocolMessage(ProtocolMessage message)
+{
+	const ProtocolVersion active = m_protocolSessionState.activeVersion();
+	if (active == ProtocolVersion::V2 && message.messageId == 0)
+		message.messageId = m_protocolMessageIds.next();
+
+	QString error;
+	const QByteArray encoded = m_protocolRouter.encode(active, message, &error);
+	if (encoded.isEmpty()) {
+		qWarning().noquote() << reportHeader() << "Protocol encode failed:" << error;
+		if (socket != nullptr)
+			socket->disconnectFromHost();
+		return 0;
+	}
+
+	const QByteArray replayLine = m_protocolRouter.encodeReplayV1(message, &error);
+	if (replayLine.isEmpty()) {
+		qWarning().noquote() << reportHeader() << "Replay normalization failed:" << error;
+		if (socket != nullptr)
+			socket->disconnectFromHost();
+		return 0;
+	}
+	if (recordBuffer)
+		recordBuffer->recordLine(QString::fromUtf8(replayLine));
+	emit message_ready(encoded);
+	return message.messageId;
 }
 
 QString ServerPlayer::reportHeader() const

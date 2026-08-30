@@ -1,6 +1,8 @@
 #include "json.h"
 #include "protocol.h"
 #include "protocol/protocol-negotiation.h"
+#include "protocol/protocol-runtime.h"
+#include "protocol/protocol-v1-message-adapter.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -178,13 +180,38 @@ public:
             || m_socket.state() == QAbstractSocket::UnconnectedState;
     }
 
+    ProtocolVersion activeVersion() const
+    {
+        return m_protocolSession.activeVersion();
+    }
+
+    bool sawSwitchBarrier() const
+    {
+        return m_sawOffer && m_sawCommit;
+    }
+
+    ProtocolVersion firstApplicationVersionAfterCommit() const
+    {
+        return m_firstApplicationVersionAfterCommit;
+    }
+
 private:
     bool sendNotification(CommandType command, const QVariant &body, QString &error)
     {
         Packet packet(S_SRC_CLIENT | S_TYPE_NOTIFICATION | S_DEST_ROOM, command);
         if (!body.isNull())
             packet.setMessageBody(body);
-        QByteArray wire = packet.toJson();
+        ProtocolMessage message = protocolMessageFromV1Packet(packet);
+        if (m_protocolSession.activeVersion() == ProtocolVersion::V2)
+            message.messageId = m_messageIds.next();
+        QString encodeError;
+        QByteArray wire = m_router.encode(m_protocolSession.activeVersion(), message,
+                                          &encodeError);
+        if (wire.isEmpty()) {
+            error = QStringLiteral("encode command %1 failed: %2")
+                .arg(int(command)).arg(encodeError);
+            return false;
+        }
         wire.append('\n');
         if (m_socket.write(wire) != wire.size() || !m_socket.waitForBytesWritten(5000)) {
             error = QStringLiteral("send command %1 failed: %2")
@@ -228,33 +255,102 @@ private:
             }
         }
 
-        m_buffer.append(m_socket.readAll());
-        while (true) {
-            const qsizetype newline = m_buffer.indexOf('\n');
-            if (newline < 0)
-                break;
-            QByteArray line = m_buffer.left(newline);
-            m_buffer.remove(0, newline + 1);
-            if (line.endsWith('\r'))
-                line.chop(1);
+        const ProtocolFrameAppendResult framed = m_frameBuffer.append(m_socket.readAll());
+        if (!framed.success) {
+            m_error = framed.detail;
+            return false;
+        }
+        for (const QByteArray &line : framed.frames) {
             if (line.isEmpty())
                 continue;
-            Packet packet;
-            if (!packet.parse(line)) {
-                m_error = QStringLiteral("invalid packet from server: %1")
-                    .arg(QString::fromUtf8(line.left(200)));
+
+            const ProtocolVersion decodedVersion = m_protocolSession.activeVersion();
+            ProtocolMessage message;
+            const ProtocolDecodeResult decoded = m_router.decode(
+                decodedVersion, line, &message);
+            if (!decoded.success) {
+                m_error = QStringLiteral("invalid Protocol V%1 packet from server: %2")
+                    .arg(static_cast<int>(decodedVersion))
+                    .arg(decoded.detail);
                 return false;
             }
+
+            if (message.command == S_COMMAND_PROTOCOL_SWITCH) {
+                if (!handleSwitchMessage(message))
+                    return false;
+                continue;
+            }
+            if (m_protocolSession.switchInProgress()) {
+                m_error = QStringLiteral("gameplay packet arrived during protocol switch");
+                return false;
+            }
+            if (m_sawCommit
+                && m_firstApplicationVersionAfterCommit == ProtocolVersion::V1) {
+                m_firstApplicationVersionAfterCommit = decodedVersion;
+            }
+
+            ProtocolMessage legacy = message;
+            legacy.version = ProtocolVersion::V1;
+            Packet packet;
+            applyProtocolMessageToV1Packet(legacy, packet);
             m_packets.append(packet);
         }
         return true;
     }
 
+    bool handleSwitchMessage(const ProtocolMessage &message)
+    {
+        if (message.version != ProtocolVersion::V1
+            || message.type != ProtocolMessageType::Notification
+            || !message.hasPayload) {
+            m_error = QStringLiteral("invalid protocol switch envelope");
+            return false;
+        }
+
+        QString error;
+        if (m_protocolSession.activationState() == ProtocolActivationState::V1Active) {
+            QVariantMap ack;
+            if (!m_protocolSession.acceptClientOffer(message.payload, &ack, &error)) {
+                m_error = error;
+                return false;
+            }
+            m_sawOffer = true;
+            ProtocolMessage response;
+            response.type = ProtocolMessageType::Notification;
+            response.source = ProtocolEndpoint::Client;
+            response.destination = ProtocolEndpoint::Room;
+            response.command = S_COMMAND_PROTOCOL_SWITCH;
+            response.hasPayload = true;
+            response.payload = ack;
+            QByteArray wire = m_router.encode(ProtocolVersion::V1, response, &error);
+            wire.append('\n');
+            if (m_socket.write(wire) != wire.size()
+                || !m_socket.waitForBytesWritten(5000)) {
+                m_error = QStringLiteral("send switch ACK failed: %1")
+                    .arg(m_socket.errorString());
+                return false;
+            }
+            return true;
+        }
+
+        if (!m_protocolSession.acceptClientCommit(message.payload, &error)) {
+            m_error = error;
+            return false;
+        }
+        m_sawCommit = true;
+        return true;
+    }
+
     QTcpSocket m_socket;
     ProtocolSessionState m_protocolSession;
-    QByteArray m_buffer;
+    ProtocolCodecRouter m_router;
+    ProtocolMessageIdGenerator m_messageIds;
+    ProtocolFrameBuffer m_frameBuffer;
     QList<Packet> m_packets;
     QString m_error;
+    bool m_sawOffer = false;
+    bool m_sawCommit = false;
+    ProtocolVersion m_firstApplicationVersionAfterCommit = ProtocolVersion::V1;
 };
 
 class ServerRunner
@@ -522,6 +618,11 @@ bool runLevel2(const QString &serverPath, ServerRunner &server, QString &error)
     bool owner = false;
     if (!client.signup(playerName, playerId, owner, error, true))
         return false;
+    if (client.activeVersion() != ProtocolVersion::V2 || !client.sawSwitchBarrier()
+        || client.firstApplicationVersionAfterCommit() != ProtocolVersion::V2) {
+        error = QStringLiteral("modern client did not activate V2 at the COMMIT boundary");
+        return false;
+    }
     if (!owner) {
         error = QStringLiteral("first signed-up player was not assigned room ownership");
         return false;
@@ -578,6 +679,12 @@ bool runLevel3(const QString &serverPath, ServerRunner &server, QString &error)
     if (!firstOwner || secondOwner) {
         error = QStringLiteral("unexpected room ownership: first=%1 second=%2")
             .arg(firstOwner).arg(secondOwner);
+        return false;
+    }
+    if (first.activeVersion() != ProtocolVersion::V1 || first.sawSwitchBarrier()
+        || second.activeVersion() != ProtocolVersion::V2 || !second.sawSwitchBarrier()
+        || second.firstApplicationVersionAfterCommit() != ProtocolVersion::V2) {
+        error = QStringLiteral("mixed V1/V2 clients did not retain per-connection codecs");
         return false;
     }
     const auto pumpClients = [&first, &second]() {

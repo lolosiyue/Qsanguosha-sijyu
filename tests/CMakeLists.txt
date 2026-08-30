@@ -134,6 +134,21 @@ target_link_libraries(qsanguosha_protocol_negotiation_tests PRIVATE
     Qt6::Core
 )
 
+add_executable(qsanguosha_protocol_runtime_switch_tests
+    protocol/protocol-runtime-switch-test.cpp
+)
+target_include_directories(qsanguosha_protocol_runtime_switch_tests PRIVATE
+    ${QSAN_TEST_ROOT}/src/core
+)
+target_link_libraries(qsanguosha_protocol_runtime_switch_tests PRIVATE
+    qsanguosha_engine
+    Qt6::Core
+)
+qsan_add_ctest(qsanguosha_protocol_runtime_switch_contract
+    qsanguosha_protocol_runtime_switch_tests
+    LABELS "protocol;fast"
+)
+
 add_executable(qsanguosha_card_overview_classifier_tests
     card-overview-classifier-test.cpp
     ${QSAN_TEST_ROOT}/src/ui/card-overview-data.cpp
@@ -419,18 +434,18 @@ if(UNIX)
     )
 endif()
 
+add_executable(qsanguosha_network_integration_tests
+    server-network-integration-test.cpp
+)
+target_include_directories(qsanguosha_network_integration_tests PRIVATE
+    ${QSAN_TEST_ROOT}/src/core
+)
+target_link_libraries(qsanguosha_network_integration_tests PRIVATE
+    qsanguosha_engine
+    Qt6::Core
+    Qt6::Network
+)
 if(UNIX)
-    add_executable(qsanguosha_network_integration_tests
-        server-network-integration-test.cpp
-    )
-    target_include_directories(qsanguosha_network_integration_tests PRIVATE
-        ${QSAN_TEST_ROOT}/src/core
-    )
-    target_link_libraries(qsanguosha_network_integration_tests PRIVATE
-        qsanguosha_engine
-        Qt6::Core
-        Qt6::Network
-    )
     add_test(NAME qsanguosha_network_integration
         COMMAND qsanguosha_network_integration_tests
             --server $<TARGET_FILE:qsanguosha_server>
