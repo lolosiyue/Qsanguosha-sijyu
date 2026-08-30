@@ -116,13 +116,19 @@ void NativeClientSocket::connectToHost()
 
 void NativeClientSocket::getMessage()
 {
-    while (socket->canReadLine()) {
-        buffer_t msg;
-        socket->readLine(msg, sizeof(msg));
+    const QSanProtocol::ProtocolFrameAppendResult result =
+        m_frameBuffer.append(socket->readAll());
+    if (!result.success) {
+        emit error_message(result.detail);
+        disconnectFromHost();
+        return;
+    }
+
+    for (const QByteArray &message : result.frames) {
 #ifndef QT_NO_DEBUG
-        qDebug().noquote() << "RX:" << QString::fromLatin1(msg).trimmed();
+        qDebug().noquote() << "RX:" << QString::fromUtf8(message);
 #endif
-        emit message_got(msg);
+        emit message_got(message);
     }
 }
 
@@ -131,13 +137,18 @@ void NativeClientSocket::disconnectFromHost()
     socket->disconnectFromHost();
 }
 
-void NativeClientSocket::send(const QString &message)
+void NativeClientSocket::send(const QByteArray &message)
 {
-    socket->write(message.toLatin1());
-    if (!message.endsWith("\n"))
-        socket->write("\n");
+    if (message.isEmpty() || message.size() > QSanProtocol::ProtocolFrameBuffer::MaxFrameSize
+        || message.contains('\n') || message.contains('\r')) {
+        emit error_message(QStringLiteral("Refusing invalid protocol frame"));
+        disconnectFromHost();
+        return;
+    }
+    socket->write(message);
+    socket->write("\n", 1);
 #ifndef QT_NO_DEBUG
-    qDebug().noquote() << "TX:" << message;
+    qDebug().noquote() << "TX:" << QString::fromUtf8(message);
 #endif
     socket->flush();
 }
