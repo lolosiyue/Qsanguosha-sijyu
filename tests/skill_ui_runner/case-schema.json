@@ -69,6 +69,7 @@
         },
         "command": { "type": "string", "pattern": "^S_COMMAND_[A-Z0-9_]+$" },
         "serial": { "type": "integer", "minimum": 1 },
+        "wire_version": { "enum": [1, 2] },
         "args": { "type": "object" },
         "raw_body": {}
       },
@@ -106,7 +107,8 @@
         "surfaces": { "type": "object" },
         "players": { "type": "object" },
         "skills": { "type": "object" },
-        "dialog": { "type": "object" }
+        "dialog": { "type": "object" },
+        "interaction_request": { "type": "object" }
       }
     }
   }

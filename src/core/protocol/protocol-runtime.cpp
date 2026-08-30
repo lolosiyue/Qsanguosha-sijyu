@@ -1,5 +1,6 @@
 #include "protocol-runtime.h"
 
+#include "gameplay/protocol-gameplay-payload-registry.h"
 #include "protocol-v1-codec.h"
 #include "protocol-v2-codec.h"
 #include "json.h"
@@ -44,7 +45,11 @@ bool isPositiveDecimal(const QString &text)
 QByteArray ProtocolCodecRouter::encode(
     ProtocolVersion activeVersion, const ProtocolMessage &message, QString *error) const
 {
-    ProtocolMessage routed = message;
+    ProtocolMessage routed;
+    if (!ProtocolGameplayPayloadRegistry::encodeForWire(
+            activeVersion, message, &routed, error)) {
+        return QByteArray();
+    }
     routed.version = activeVersion;
     if (activeVersion == ProtocolVersion::V1)
         return ProtocolV1Codec().encode(routed, error);
@@ -57,11 +62,37 @@ QByteArray ProtocolCodecRouter::encode(
 ProtocolDecodeResult ProtocolCodecRouter::decode(
     ProtocolVersion activeVersion, QByteArrayView raw, ProtocolMessage *message) const
 {
+    if (message == nullptr) {
+        if (activeVersion == ProtocolVersion::V1)
+            return ProtocolV1Codec().decode(raw, message);
+        if (activeVersion == ProtocolVersion::V2)
+            return ProtocolV2Codec().decode(raw, message);
+        return unsupportedVersion();
+    }
+
+    ProtocolMessage wireMessage;
+    ProtocolDecodeResult result;
     if (activeVersion == ProtocolVersion::V1)
-        return ProtocolV1Codec().decode(raw, message);
-    if (activeVersion == ProtocolVersion::V2)
-        return ProtocolV2Codec().decode(raw, message);
-    return unsupportedVersion();
+        result = ProtocolV1Codec().decode(raw, &wireMessage);
+    else if (activeVersion == ProtocolVersion::V2)
+        result = ProtocolV2Codec().decode(raw, &wireMessage);
+    else
+        return unsupportedVersion();
+    if (!result.success)
+        return result;
+
+    ProtocolMessage logicalMessage;
+    QString payloadError;
+    if (!ProtocolGameplayPayloadRegistry::decodeFromWire(
+            activeVersion, wireMessage, &logicalMessage, &payloadError)) {
+        ProtocolDecodeResult failure;
+        failure.error = ProtocolDecodeError::InvalidPayload;
+        failure.detail = payloadError;
+        return failure;
+    }
+
+    *message = logicalMessage;
+    return result;
 }
 
 QByteArray ProtocolCodecRouter::encodeReplayV1(
