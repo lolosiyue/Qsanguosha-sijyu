@@ -630,6 +630,35 @@ qsan_add_ctest(qsanguosha_replay_game_state_protocol qsanguosha_replay_tests
     LABELS "protocol;fast"
 )
 
+add_executable(qsanguosha_replay_v2_tests
+    replay-v2/replay-v2-test.cpp
+    ${QSAN_TEST_ROOT}/src/util/recorder.cpp
+    ${QSAN_TEST_ROOT}/src/util/recorder.h
+    ${QSAN_TEST_ROOT}/src/util/replay-game-state.cpp
+    ${QSAN_TEST_ROOT}/src/util/replay-game-state.h
+    ${QSAN_TEST_ROOT}/src/util/replay-index.cpp
+    ${QSAN_TEST_ROOT}/src/util/replay-index.h
+    ${QSAN_TEST_ROOT}/src/util/replay-takeover.cpp
+    ${QSAN_TEST_ROOT}/src/util/replay-takeover.h
+    ${QSAN_TEST_ROOT}/src/server/server-core.h
+)
+target_include_directories(qsanguosha_replay_v2_tests PRIVATE
+    ${QSAN_ENGINE_TEST_INCLUDES}
+)
+target_compile_definitions(qsanguosha_replay_v2_tests PRIVATE
+    QSAN_TEST_ROOT_PATH="${QSAN_TEST_ROOT}"
+)
+target_link_libraries(qsanguosha_replay_v2_tests PRIVATE
+    qsanguosha_engine
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Qml
+    Qt6::Widgets
+)
+qsan_add_ctest(qsanguosha_replay_v2_contract qsanguosha_replay_v2_tests
+    LABELS "replay;protocol;fast"
+)
+
 add_executable(qsanguosha_ui_tests
     photo-layout-fit-test.cpp
 )
