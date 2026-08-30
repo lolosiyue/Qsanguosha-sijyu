@@ -3,6 +3,7 @@
 
 #include "json.h"
 #include "protocol.h"
+#include "protocol/protocol-message.h"
 
 #include <QJsonObject>
 #include <QMap>
@@ -23,7 +24,7 @@ public:
     QJsonObject replyExpectation() const;
     QJsonObject finalExpectation() const;
 
-    bool makeRequestPacket(QSanProtocol::Packet *packet, QString *commandName,
+    bool makeRequestMessage(QSanProtocol::ProtocolMessage *message, QString *commandName,
         QVariant *body, const QMap<QString, int> &cardAliases, QString *error) const;
 
     static bool commandFromName(const QString &name,

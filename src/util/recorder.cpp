@@ -1,12 +1,13 @@
 ﻿#include "recorder.h"
 #include "protocol.h"
+#include "engine.h"
 #include "replay-index.h"
 #include "game-snapshot.h"
+#include "replay/replay-container.h"
 
 #include <QFile>
 #include <QDir>
 
-#include <cstring>
 #include <limits>
 
 using namespace QSanProtocol;
@@ -22,8 +23,11 @@ int elapsedSecondsForUi(qint64 elapsedMs)
 }
 }
 
-Recorder::Recorder(QObject *parent)
-    : QObject(parent)
+Recorder::Recorder(QObject *parent, bool takeover)
+    : QObject(parent),
+    buffer(Sanguosha ? Sanguosha->getVersion() : QStringLiteral("unknown"),
+           Sanguosha ? Sanguosha->getMODName() : QStringLiteral("unknown"),
+           takeover)
 {
 }
 
@@ -55,45 +59,20 @@ QByteArray Recorder::rawReplayData() const
 
 QImage Recorder::TXT2PNG(QByteArray txtData)
 {
-    QByteArray data = qCompress(txtData, 9);
-    qint32 actual_size = data.size();
-    data.prepend((const char *)&actual_size, sizeof(qint32));
-
-    // Keep the historical square-pixel container while owning all pixel bytes.
-    int width = ceil(sqrt((double)data.size()));
-    int height = width;
-    QImage image(width, height, QImage::Format_ARGB32);
-    image.fill(Qt::transparent);
-    std::memcpy(image.bits(), data.constData(), static_cast<size_t>(data.size()));
-    return image;
+    return ReplayContainer::encodePng(txtData);
 }
 
 QByteArray Recorder::PNG2TXT(const QString filename)
 {
-    QImage image(filename);
-    if (image.isNull())
-        return QByteArray();
-    image = image.convertToFormat(QImage::Format_ARGB32);
-    const uchar *imageData = image.bits();
-    if (imageData == nullptr || image.sizeInBytes() < static_cast<qsizetype>(sizeof(qint32)))
-        return QByteArray();
-    qint32 actual_size = *(const qint32 *)imageData;
-    if (actual_size < 0
-        || static_cast<qsizetype>(actual_size) > image.sizeInBytes() - sizeof(qint32)) {
-        return QByteArray();
-    }
-    QByteArray data((const char *)(imageData + 4), actual_size);
-    data = qUncompress(data);
-
-    return data;
+    return ReplayContainer::decodePng(filename);
 }
 
 Replayer::Replayer(QObject *parent, const QString &filename)
     : QThread(parent), m_commandSeriesCounter(1),
     filename(filename), speed(1.0), playing(true), m_seeking(false), m_currentPairIndex(0),
     m_loadError(ReplayLoadError::None),
-    m_formatVersion(ReplayFormatVersion::LegacyV1),
-    m_messageProtocolVersion(ProtocolVersion::V1), m_index(nullptr)
+    m_formatVersion(ReplayFormatVersion::V2),
+    m_messageProtocolVersion(ProtocolVersion::V2), m_index(nullptr)
 {
     qRegisterMetaType<ProtocolMessage>("QSanProtocol::ProtocolMessage");
 

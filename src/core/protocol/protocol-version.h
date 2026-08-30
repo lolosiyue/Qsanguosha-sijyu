@@ -7,7 +7,6 @@ namespace QSanProtocol {
 
 enum class ProtocolVersion : quint8
 {
-    V1 = 1,
     V2 = 2
 };
 

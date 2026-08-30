@@ -98,147 +98,70 @@ qsan_add_ctest(qsanguosha_protocol_messages qsanguosha_protocol_tests
     LABELS protocol
 )
 
-add_executable(qsanguosha_protocol_v1_tests
-    protocol/protocol-v1-codec-test.cpp
-)
-target_include_directories(qsanguosha_protocol_v1_tests PRIVATE
-    ${QSAN_TEST_ROOT}/src/core
-)
-target_link_libraries(qsanguosha_protocol_v1_tests PRIVATE
-    qsanguosha_engine
-    Qt6::Core
-)
-qsan_add_ctest(qsanguosha_protocol_v1_contract qsanguosha_protocol_v1_tests
-    LABELS "protocol;fast"
-)
-
-add_executable(qsanguosha_protocol_v2_tests
-    protocol/protocol-v2-codec-test.cpp
-)
-target_include_directories(qsanguosha_protocol_v2_tests PRIVATE
-    ${QSAN_TEST_ROOT}/src/core
-)
-target_link_libraries(qsanguosha_protocol_v2_tests PRIVATE
-    qsanguosha_engine
-    Qt6::Core
-)
-qsan_add_ctest(qsanguosha_protocol_v2_contract qsanguosha_protocol_v2_tests
-    LABELS "protocol;fast"
-)
-
-add_executable(qsanguosha_protocol_gameplay_payload_tests
-    protocol/multiple-choice-payload-test.cpp
-)
-target_include_directories(qsanguosha_protocol_gameplay_payload_tests PRIVATE
-    ${QSAN_TEST_ROOT}/src/core
-)
-target_link_libraries(qsanguosha_protocol_gameplay_payload_tests PRIVATE
-    qsanguosha_engine
-    Qt6::Core
-)
-qsan_add_ctest(qsanguosha_protocol_gameplay_payload_contract
-    qsanguosha_protocol_gameplay_payload_tests
-    LABELS "protocol;fast"
-)
-
-add_executable(qsanguosha_protocol_simple_choice_payload_tests
-    protocol/simple-choice-payloads-test.cpp
-)
-target_include_directories(qsanguosha_protocol_simple_choice_payload_tests PRIVATE
-    ${QSAN_TEST_ROOT}/src/core
-)
-target_link_libraries(qsanguosha_protocol_simple_choice_payload_tests PRIVATE
-    qsanguosha_engine
-    Qt6::Core
-)
-qsan_add_ctest(qsanguosha_protocol_simple_choice_payload_contract
-    qsanguosha_protocol_simple_choice_payload_tests
-    LABELS "protocol;fast"
-)
-
-add_executable(qsanguosha_protocol_all_interaction_payload_tests
-    protocol/all-interaction-payloads-test.cpp
+add_library(qsanguosha_protocol_v2_contract_support STATIC
     ${QSAN_TEST_ROOT}/src/core/json.cpp
     ${QSAN_TEST_ROOT}/src/core/protocol.cpp
     ${QSAN_TEST_ROOT}/src/core/protocol/gameplay/multiple-choice-payload.cpp
     ${QSAN_TEST_ROOT}/src/core/protocol/gameplay/protocol-gameplay-payload-registry.cpp
     ${QSAN_TEST_ROOT}/src/core/protocol/gameplay/simple-choice-payloads.cpp
     ${QSAN_TEST_ROOT}/src/core/protocol/gameplay/typed-interaction-payloads.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol/card-provenance-message.cpp
     ${QSAN_TEST_ROOT}/src/core/protocol/protocol-message.cpp
     ${QSAN_TEST_ROOT}/src/core/protocol/protocol-runtime.cpp
-    ${QSAN_TEST_ROOT}/src/core/protocol/protocol-v1-codec.cpp
-    ${QSAN_TEST_ROOT}/src/core/protocol/protocol-v1-message-adapter.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol/protocol-payload-registry.cpp
     ${QSAN_TEST_ROOT}/src/core/protocol/protocol-v2-codec.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol/session/session-payloads.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol/skill-instance-message.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol/state/player-ui-state.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol/switch-context-message.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol/sync-pile-message.cpp
+)
+target_include_directories(qsanguosha_protocol_v2_contract_support PUBLIC
+    ${QSAN_TEST_ROOT}/src/core
+)
+target_precompile_headers(qsanguosha_protocol_v2_contract_support PRIVATE
+    ${QSAN_TEST_ROOT}/src/core/engine-pch.h
+)
+target_link_libraries(qsanguosha_protocol_v2_contract_support PUBLIC
+    Qt6::Core
+    Qt6::Network
+)
+
+add_executable(qsanguosha_protocol_v2_tests
+    protocol/protocol-v2-codec-test.cpp
+)
+target_link_libraries(qsanguosha_protocol_v2_tests PRIVATE
+    qsanguosha_protocol_v2_contract_support
+)
+qsan_add_ctest(qsanguosha_protocol_v2_contract qsanguosha_protocol_v2_tests
+    LABELS "protocol;fast"
+)
+
+add_executable(qsanguosha_protocol_flow_inventory
+    protocol/protocol-flow-inventory-test.cpp
+)
+target_include_directories(qsanguosha_protocol_flow_inventory PRIVATE
+    ${QSAN_TEST_ROOT}/src/core
+)
+target_link_libraries(qsanguosha_protocol_flow_inventory PRIVATE
+    qsanguosha_protocol_v2_contract_support
+)
+qsan_add_ctest(qsanguosha_protocol_flow_inventory_contract
+    qsanguosha_protocol_flow_inventory
+    LABELS "protocol;fast"
+)
+
+add_executable(qsanguosha_protocol_all_interaction_payload_tests
+    protocol/all-interaction-payloads-test.cpp
 )
 target_include_directories(qsanguosha_protocol_all_interaction_payload_tests PRIVATE
     ${QSAN_TEST_ROOT}/src/core
 )
-target_precompile_headers(qsanguosha_protocol_all_interaction_payload_tests PRIVATE
-    ${QSAN_TEST_ROOT}/src/core/engine-pch.h
-)
 target_link_libraries(qsanguosha_protocol_all_interaction_payload_tests PRIVATE
-    Qt6::Core
-    Qt6::Network
+    qsanguosha_protocol_v2_contract_support
 )
 qsan_add_ctest(qsanguosha_protocol_all_interaction_payload_contract
     qsanguosha_protocol_all_interaction_payload_tests
-    LABELS "protocol;fast"
-)
-
-add_executable(qsanguosha_protocol_gameplay_tcp_tests
-    protocol/multiple-choice-tcp-test.cpp
-)
-target_include_directories(qsanguosha_protocol_gameplay_tcp_tests PRIVATE
-    ${QSAN_TEST_ROOT}/src/core
-)
-target_link_libraries(qsanguosha_protocol_gameplay_tcp_tests PRIVATE
-    qsanguosha_engine
-    Qt6::Core
-    Qt6::Network
-)
-qsan_add_ctest(qsanguosha_protocol_gameplay_tcp_contract
-    qsanguosha_protocol_gameplay_tcp_tests
-    LABELS "protocol;network;fast"
-    TIMEOUT 30
-)
-
-add_executable(qsanguosha_protocol_simple_choice_tcp_tests
-    protocol/simple-choice-tcp-test.cpp
-    ${QSAN_TEST_ROOT}/src/server/server-core.h
-)
-qsan_link_engine_test(qsanguosha_protocol_simple_choice_tcp_tests)
-target_link_libraries(qsanguosha_protocol_simple_choice_tcp_tests PRIVATE
-    Qt6::Network
-)
-qsan_add_ctest(qsanguosha_protocol_simple_choice_tcp_contract
-    qsanguosha_protocol_simple_choice_tcp_tests
-    LABELS "protocol;network;fast"
-    TIMEOUT 30
-)
-
-add_executable(qsanguosha_protocol_negotiation_tests
-    protocol/protocol-negotiation-test.cpp
-)
-target_include_directories(qsanguosha_protocol_negotiation_tests PRIVATE
-    ${QSAN_TEST_ROOT}/src/core
-)
-target_link_libraries(qsanguosha_protocol_negotiation_tests PRIVATE
-    qsanguosha_engine
-    Qt6::Core
-)
-
-add_executable(qsanguosha_protocol_runtime_switch_tests
-    protocol/protocol-runtime-switch-test.cpp
-)
-target_include_directories(qsanguosha_protocol_runtime_switch_tests PRIVATE
-    ${QSAN_TEST_ROOT}/src/core
-)
-target_link_libraries(qsanguosha_protocol_runtime_switch_tests PRIVATE
-    qsanguosha_engine
-    Qt6::Core
-)
-qsan_add_ctest(qsanguosha_protocol_runtime_switch_contract
-    qsanguosha_protocol_runtime_switch_tests
     LABELS "protocol;fast"
 )
 
@@ -406,7 +329,7 @@ qsan_add_ctest(qsanguosha_client_core_contract qsanguosha_client_core_tests
 
 add_executable(qsanguosha_interaction_reply_adapter_tests
     client_core/interaction-reply-adapter-test.cpp
-    ${QSAN_TEST_ROOT}/src/client/legacy-v1-interaction-reply-adapter.cpp
+    ${QSAN_TEST_ROOT}/src/client/interaction-reply-encoder.cpp
     ${QSAN_TEST_ROOT}/src/client/interaction-reply-coordinator.cpp
 )
 target_include_directories(qsanguosha_interaction_reply_adapter_tests PRIVATE
@@ -415,6 +338,7 @@ target_include_directories(qsanguosha_interaction_reply_adapter_tests PRIVATE
 )
 target_link_libraries(qsanguosha_interaction_reply_adapter_tests PRIVATE
     qsanguosha_client_core
+    qsanguosha_protocol_v2_contract_support
     Qt6::Core
 )
 qsan_add_ctest(qsanguosha_interaction_reply_adapter_contract
@@ -633,50 +557,18 @@ qsan_add_ctest(qsanguosha_replay_game_state_protocol qsanguosha_replay_tests
     LABELS "protocol;fast"
 )
 
-set(qsan_replay_v2_test_sources
-    replay-v2/replay-v2-test.cpp
-    ${QSAN_TEST_ROOT}/src/util/recorder.cpp
-    ${QSAN_TEST_ROOT}/src/util/recorder.h
-    ${QSAN_TEST_ROOT}/src/util/replay-game-state.cpp
-    ${QSAN_TEST_ROOT}/src/util/replay-game-state.h
-    ${QSAN_TEST_ROOT}/src/util/replay-index.cpp
-    ${QSAN_TEST_ROOT}/src/util/replay-index.h
-    ${QSAN_TEST_ROOT}/src/server/server-core.h
-)
-
-# Server-only CI intentionally does not require Qt QML. Keep the codec,
-# container, playback, index, and snapshot contract there; add the
-# client-dependent takeover branch when the GUI Qt surface is available.
-set(qsan_replay_v2_test_takeover 0)
-if(TARGET Qt6::Qml AND TARGET Qt6::Widgets)
-    list(APPEND qsan_replay_v2_test_sources
-        ${QSAN_TEST_ROOT}/src/util/replay-takeover.cpp
-        ${QSAN_TEST_ROOT}/src/util/replay-takeover.h
-    )
-    set(qsan_replay_v2_test_takeover 1)
-endif()
-
 add_executable(qsanguosha_replay_v2_tests
-    ${qsan_replay_v2_test_sources}
+    replay-v2/replay-v2-test.cpp
+    ${QSAN_TEST_ROOT}/src/core/replay/replay-codec.cpp
+    ${QSAN_TEST_ROOT}/src/core/replay/replay-container.cpp
 )
 target_include_directories(qsanguosha_replay_v2_tests PRIVATE
-    ${QSAN_ENGINE_TEST_INCLUDES}
-)
-target_compile_definitions(qsanguosha_replay_v2_tests PRIVATE
-    QSAN_TEST_ROOT_PATH="${QSAN_TEST_ROOT}"
-    QSAN_REPLAY_V2_TEST_TAKEOVER=${qsan_replay_v2_test_takeover}
+    ${QSAN_TEST_ROOT}/src/core
 )
 target_link_libraries(qsanguosha_replay_v2_tests PRIVATE
-    qsanguosha_engine
-    Qt6::Core
+    qsanguosha_protocol_v2_contract_support
     Qt6::Gui
 )
-if(qsan_replay_v2_test_takeover)
-    target_link_libraries(qsanguosha_replay_v2_tests PRIVATE
-        Qt6::Qml
-        Qt6::Widgets
-    )
-endif()
 qsan_add_ctest(qsanguosha_replay_v2_contract qsanguosha_replay_v2_tests
     LABELS "replay;protocol;fast"
 )

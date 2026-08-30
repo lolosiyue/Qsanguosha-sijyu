@@ -1,13 +1,34 @@
 #include "replay-game-state.h"
+
+#include "protocol/session/session-payloads.h"
 #include "game-snapshot.h"
 #include "protocol/card-provenance-message.h"
+#include "protocol/protocol-message-utils.h"
 #include "protocol.h"
 #include "json.h"
 
 #include <QFile>
-#include <QRegularExpression>
 
 using namespace QSanProtocol;
+
+namespace {
+
+bool typedObject(const QVariant &value, QVariantMap *object)
+{
+    if (object == nullptr || value.userType() != QMetaType::QVariantMap)
+        return false;
+    const QVariantMap parsed = value.toMap();
+    int schemaVersion = 0;
+    if (!ProtocolMessageUtils::tryParseInt(
+            parsed.value(QStringLiteral("schema_version")), schemaVersion)
+        || schemaVersion != 1) {
+        return false;
+    }
+    *object = parsed;
+    return true;
+}
+
+}
 
 ReplayGameState::ReplayGameState(QObject *parent)
     : QObject(parent)
@@ -47,7 +68,8 @@ bool ReplayGameState::applyMessage(const ProtocolMessage &message)
         return processSetProperty(body);
     case S_COMMAND_SET_MARK:
         return processSetMark(body);
-    case S_COMMAND_MOVE_CARD:
+    case S_COMMAND_GET_CARD:
+    case S_COMMAND_LOSE_CARD:
         return processMoveCards(body);
     case S_COMMAND_CHANGE_HP:
         return processChangeHp(body);
@@ -162,30 +184,25 @@ QString ReplayGameState::getCurrentPlayer() const
 
 bool ReplayGameState::processSetup(const QVariant &body)
 {
-    if (!JsonUtils::isString(body))
+    QSanProtocol::SetupPayload setup;
+    if (!QSanProtocol::SetupPayload::parse(body, &setup))
         return false;
-
-    QString l = body.toString();
-    static const QRegularExpression rx(
-        QRegularExpression::anchoredPattern(QStringLiteral(
-            "(.*):(@?\\w+):(\\d+):(\\d+):([+\\w-]*):([RCFSTBHAMN123a-r]*)(\\s+)?")),
-        QRegularExpression::UseUnicodePropertiesOption);
-    const QRegularExpressionMatch match = rx.match(l);
-    if (!match.hasMatch())
-        return false;
-
-    m_state.gameMode = match.captured(2);
+    m_state.gameMode = setup.gameMode;
     return true;
 }
 
 bool ReplayGameState::processAddPlayer(const QVariant &body)
 {
-    JsonArray info = body.value<JsonArray>();
-    if (info.size() < 2)
+    QVariantMap object;
+    QString name;
+    QString screenName;
+    if (!typedObject(body, &object)
+        || !ProtocolMessageUtils::tryParseString(
+            object.value(QStringLiteral("player_name")), name)
+        || !ProtocolMessageUtils::tryParseString(
+            object.value(QStringLiteral("screen_name")), screenName)) {
         return false;
-
-    QString name = info[0].toString();
-    QString screenName = QString::fromUtf8(QByteArray::fromBase64(info[1].toString().toLatin1()));
+    }
 
     PlayerSnapshot p;
     p.objectName = name;
@@ -203,7 +220,13 @@ bool ReplayGameState::processAddPlayer(const QVariant &body)
 
 bool ReplayGameState::processRemovePlayer(const QVariant &body)
 {
-    QString name = body.toString();
+    QVariantMap object;
+    QString name;
+    if (!typedObject(body, &object)
+        || !ProtocolMessageUtils::tryParseString(
+            object.value(QStringLiteral("player_name")), name)) {
+        return false;
+    }
     m_playerMap.remove(name);
     m_state.seatOrder.removeAll(name);
 
@@ -219,13 +242,27 @@ bool ReplayGameState::processRemovePlayer(const QVariant &body)
 
 bool ReplayGameState::processSetProperty(const QVariant &body)
 {
-    QStringList self_info;
-    if (!JsonUtils::tryParse(body, self_info) || self_info.size() < 3)
+    QVariantMap object;
+    QString action;
+    QString who;
+    if (!typedObject(body, &object)
+        || !ProtocolMessageUtils::tryParseString(
+            object.value(QStringLiteral("action")), action)
+        || !ProtocolMessageUtils::tryParseString(
+            object.value(QStringLiteral("player_name")), who)) {
         return false;
-
-    const QString &who = self_info.at(0);
-    const QString &property = self_info.at(1);
-    const QString &value = self_info.at(2);
+    }
+    if (action == QLatin1String("tag") || action == QLatin1String("general_pile"))
+        return true;
+    QString property;
+    QString value;
+    if (action != QLatin1String("property")
+        || !ProtocolMessageUtils::tryParseString(
+            object.value(QStringLiteral("property_name")), property)
+        || !ProtocolMessageUtils::tryParseString(
+            object.value(QStringLiteral("string_value")), value)) {
+        return false;
+    }
 
     QString targetName = (who == S_PLAYER_SELF_REFERENCE_ID) ? m_state.seatOrder.value(0, QString()) : who;
     PlayerSnapshot *p = getPlayerState(targetName);
@@ -253,13 +290,19 @@ bool ReplayGameState::processSetProperty(const QVariant &body)
 
 bool ReplayGameState::processSetMark(const QVariant &body)
 {
-    JsonArray args = body.value<JsonArray>();
-    if (args.size() < 3)
+    QVariantMap object;
+    QString who;
+    QString mark;
+    int num = 0;
+    if (!typedObject(body, &object)
+        || !ProtocolMessageUtils::tryParseString(
+            object.value(QStringLiteral("player_name")), who)
+        || !ProtocolMessageUtils::tryParseString(
+            object.value(QStringLiteral("mark_name")), mark)
+        || !ProtocolMessageUtils::tryParseInt(
+            object.value(QStringLiteral("value")), num)) {
         return false;
-
-    QString who = args.at(0).toString();
-    QString mark = args.at(1).toString();
-    int num = args.at(2).toInt();
+    }
 
     if (mark == "Global_TurnCount") {
         m_state.turnCount = num;
@@ -275,38 +318,58 @@ bool ReplayGameState::processSetMark(const QVariant &body)
 
 bool ReplayGameState::processMoveCards(const QVariant &body)
 {
-    JsonArray args = body.value<JsonArray>();
-    if (args.size() < 2)
+    QVariantMap object;
+    if (!typedObject(body, &object)
+        || object.value(QStringLiteral("moves")).userType() != QMetaType::QVariantList) {
         return false;
+    }
 
-    JsonArray moves = args.at(0).value<JsonArray>();
+    const QVariantList moves = object.value(QStringLiteral("moves")).toList();
     foreach (const QVariant &moveVar, moves) {
-        JsonArray move = moveVar.value<JsonArray>();
-        if (move.size() < 6)
-            continue;
+        if (moveVar.userType() != QMetaType::QVariantMap)
+            return false;
+        const QVariantMap move = moveVar.toMap();
 
         QList<int> cardIds;
-        JsonArray ids = move.at(0).value<JsonArray>();
-        foreach (const QVariant &idVar, ids) {
-            cardIds << idVar.toInt();
+        const QVariantList ids = move.value(QStringLiteral("card_ids")).toList();
+        for (const QVariant &idVar : ids) {
+            int cardId = 0;
+            if (!ProtocolMessageUtils::tryParseInt(idVar, cardId))
+                return false;
+            cardIds << cardId;
         }
-
-        QString fromPlayer = move.at(2).toString();
-        QString fromPile = move.at(3).toString();
-        QString toPlayer = move.at(4).toString();
-        QString toPile = move.at(5).toString();
+        QString fromPlayer;
+        QString fromPile;
+        QString toPlayer;
+        QString toPile;
+        int fromPlace = 0;
+        int toPlace = 0;
+        if (!ProtocolMessageUtils::tryParseString(
+                move.value(QStringLiteral("from_player")), fromPlayer)
+            || !ProtocolMessageUtils::tryParseString(
+                move.value(QStringLiteral("from_pile")), fromPile)
+            || !ProtocolMessageUtils::tryParseString(
+                move.value(QStringLiteral("to_player")), toPlayer)
+            || !ProtocolMessageUtils::tryParseString(
+                move.value(QStringLiteral("to_pile")), toPile)
+            || !ProtocolMessageUtils::tryParseInt(
+                move.value(QStringLiteral("from_place")), fromPlace)
+            || !ProtocolMessageUtils::tryParseInt(
+                move.value(QStringLiteral("to_place")), toPlace)) {
+            return false;
+        }
 
         foreach (int cardId, cardIds) {
             if (!fromPlayer.isEmpty()) {
                 PlayerSnapshot *from = getPlayerState(fromPlayer);
                 if (from) {
-                    if (fromPile == "hand" || fromPile.isEmpty()) {
+                    if (fromPlace == Player::PlaceHand) {
                         from->handcards.removeAll(cardId);
-                    } else if (fromPile == "equip") {
+                    } else if (fromPlace == Player::PlaceEquip) {
                         from->equips.removeAll(cardId);
-                    } else if (fromPile == "judge") {
+                    } else if (fromPlace == Player::PlaceDelayedTrick) {
                         from->judgingArea.removeAll(cardId);
-                    } else {
+                    } else if (!fromPile.isEmpty()) {
                         if (from->piles.contains(fromPile)) {
                             from->piles[fromPile].removeAll(cardId);
                         }
@@ -317,21 +380,21 @@ bool ReplayGameState::processMoveCards(const QVariant &body)
             if (!toPlayer.isEmpty()) {
                 PlayerSnapshot *to = getPlayerState(toPlayer);
                 if (to) {
-                    if (toPile == "hand" || toPile.isEmpty()) {
+                    if (toPlace == Player::PlaceHand) {
                         to->handcards.append(cardId);
-                    } else if (toPile == "equip") {
+                    } else if (toPlace == Player::PlaceEquip) {
                         to->equips.append(cardId);
-                    } else if (toPile == "judge") {
+                    } else if (toPlace == Player::PlaceDelayedTrick) {
                         to->judgingArea.append(cardId);
-                    } else {
+                    } else if (!toPile.isEmpty()) {
                         to->piles[toPile].append(cardId);
                     }
                 }
                 updateCardMapping(cardId, toPlayer, toPile);
             } else {
-                if (toPile == "draw") {
+                if (toPlace == Player::DrawPile) {
                     m_state.drawPile.append(cardId);
-                } else if (toPile == "discard") {
+                } else if (toPlace == Player::DiscardPile) {
                     m_state.discardPile.append(cardId);
                 }
                 updateCardMapping(cardId, QString(), toPile);
@@ -344,12 +407,16 @@ bool ReplayGameState::processMoveCards(const QVariant &body)
 
 bool ReplayGameState::processChangeHp(const QVariant &body)
 {
-    JsonArray change = body.value<JsonArray>();
-    if (change.size() < 3)
+    QVariantMap object;
+    QString name;
+    int hpChange = 0;
+    if (!typedObject(body, &object)
+        || !ProtocolMessageUtils::tryParseString(
+            object.value(QStringLiteral("player_name")), name)
+        || !ProtocolMessageUtils::tryParseInt(
+            object.value(QStringLiteral("delta")), hpChange)) {
         return false;
-
-    QString name = change[0].toString();
-    int hpChange = change[1].toInt();
+    }
 
     PlayerSnapshot *p = getPlayerState(name);
     if (p) {
@@ -364,26 +431,36 @@ bool ReplayGameState::processChangeHp(const QVariant &body)
 
 bool ReplayGameState::processGameOver(const QVariant &body)
 {
-    JsonArray args = body.value<JsonArray>();
-    if (args.size() >= 2) {
-        QString winners = args.at(0).toString();
-        m_state.currentPlayer = QString();
+    QVariantMap object;
+    if (!typedObject(body, &object)
+        || object.value(QStringLiteral("winner_tokens")).userType() != QMetaType::QVariantList
+        || object.value(QStringLiteral("roles")).userType() != QMetaType::QVariantList) {
+        return false;
     }
+    m_state.currentPlayer.clear();
     return true;
 }
 
 bool ReplayGameState::processLogSkill(const QVariant &body)
 {
-    QStringList log;
-    if (!JsonUtils::tryParse(body, log) || log.size() < 3)
+    QVariantMap object;
+    QString type;
+    QString from;
+    QStringList tos;
+    QStringList arguments;
+    if (!typedObject(body, &object)
+        || !ProtocolMessageUtils::tryParseString(
+            object.value(QStringLiteral("log_type")), type)
+        || !ProtocolMessageUtils::tryParseString(
+            object.value(QStringLiteral("from_player")), from)
+        || !JsonUtils::tryParse(object.value(QStringLiteral("to_players")), tos)
+        || !JsonUtils::tryParse(object.value(QStringLiteral("arguments")), arguments)
+        || arguments.size() != 5) {
         return false;
-
-    const QString &type = log.at(0);
-    const QString &from = log.at(1);
-    QStringList tos = log.at(2).split('+');
+    }
 
     if (type.startsWith("#Damage")) {
-        int damage = log.value(4).toInt();
+        int damage = arguments.value(0).toInt();
         if (!from.isEmpty()) {
             PlayerSnapshot *p = getPlayerState(from);
             if (p) {

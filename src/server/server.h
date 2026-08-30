@@ -14,7 +14,6 @@ class QtUpnpPortMapping;
 #include <QtCore>
 #include <QtNetwork>
 #include "game-session-config.h"
-#include "protocol/protocol-negotiation.h"
 #include "protocol/protocol-runtime.h"
 #include "server-status.h"
 #if !defined(QSAN_SERVER_CORE_ONLY)
@@ -22,6 +21,8 @@ class QtUpnpPortMapping;
 #endif
 
 class Package;
+class ServerConnectionContext;
+namespace QSanProtocol { struct SignupRequestPayload; }
 
 #if !defined(QSAN_SERVER_CORE_ONLY)
 class Select3v3GeneralDialog : public QDialog
@@ -245,20 +246,15 @@ public:
     void startTestGame(const QString &scenarioFile, bool headless);
 
 private:
-    struct PendingSignup
-    {
-        bool reconnectionEnabled = false;
-        QString screenName;
-        QString avatar;
-        QSanProtocol::ProtocolSessionState protocolSession;
-    };
-
     GameSessionConfig gameSessionConfig(quint64 sessionIndex) const;
     void scheduleDisposeRoom(Room *room);
     void waitForDisposingRooms();
     bool disposingRoomStillRunning() const;
-    void finalizeSignup(ClientSocket *socket, const PendingSignup &signup);
-    void failPendingSignup(ClientSocket *socket, const QString &detail);
+    void finalizeSignup(ServerConnectionContext *context,
+                        const QSanProtocol::SignupRequestPayload &signup,
+                        quint64 requestId);
+    void rejectConnection(ServerConnectionContext *context,
+                          const QString &code, const QString &detail);
 
     ServerSocket *server;
     Room *current;
@@ -272,8 +268,8 @@ private:
     quint64 m_nextGameSeedIndex;
     QElapsedTimer m_uptimeTimer;
     QHash<Room *, qint64> m_roomCreatedAtMs;
-    QHash<ClientSocket *, PendingSignup> m_pendingSignups;
-    QSanProtocol::ProtocolCodecRouter m_protocolRouter;
+    QHash<ClientSocket *, ServerConnectionContext *> m_connectionContexts;
+    quint64 m_nextConnectionGeneration = 1;
 
     static bool s_hasGameSeed;
     static quint64 s_gameSeedBase;
@@ -287,7 +283,6 @@ private:
 private slots:
     void processNewConnection(ClientSocket *socket);
     void processRequest(const QByteArray &request);
-    void processProtocolSwitch(const QByteArray &request);
     void cleanup();
     void gameOver();
 

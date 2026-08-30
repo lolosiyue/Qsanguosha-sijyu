@@ -2,7 +2,7 @@
 #define CLIENT_INTERACTION_DESCRIPTOR_REGISTRY_H
 
 #include "client.h"
-#include "legacy-v1-interaction-reply-adapter.h"
+#include "interaction-reply-encoder.h"
 
 #include <QJsonArray>
 #include <QJsonObject>
@@ -11,8 +11,7 @@
 
 enum class InteractionSupport
 {
-    CanonicalTyped,
-    LegacyAdapter
+    CanonicalTyped
 };
 
 QString interactionSupportName(InteractionSupport support);
@@ -24,7 +23,7 @@ struct ClientInteractionDescriptor
     Client::Callback builder;
     void (IClientInteractionPresenter::*presenter)(const InteractionRequest &);
     InteractionResponseShape responseShape;
-    LegacyV1InteractionReplyAdapter::Encoder replyEncoder;
+    InteractionReplyEncoder::Encoder replyEncoder;
     InteractionSupport support;
     const char *commandName;
     const char *builderName;

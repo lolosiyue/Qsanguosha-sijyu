@@ -2,6 +2,7 @@
 
 #include "multiple-choice-payload.h"
 #include "protocol.h"
+#include "protocol/protocol-message-utils.h"
 #include "simple-choice-payloads.h"
 #include "typed-interaction-payloads.h"
 
@@ -18,7 +19,7 @@ bool fail(QString *error, const QString &detail)
 
 enum class MigrationKind
 {
-    Identity,
+    NotInteraction,
     TypedInteraction,
     MultipleChoiceRequest,
     MultipleChoiceReply,
@@ -38,7 +39,7 @@ enum class MigrationKind
 
 struct MigrationTarget
 {
-    MigrationKind kind = MigrationKind::Identity;
+    MigrationKind kind = MigrationKind::NotInteraction;
     TypedInteractionPayloadKind typedKind = TypedInteractionPayloadKind::ChooseRoleRequest;
 };
 
@@ -189,7 +190,7 @@ bool encodePayload(const ProtocolMessage &logicalMessage,
         return fail(error, QStringLiteral("Migrated Protocol V2 message requires a payload"));
 
     Payload parsed;
-    if (!Payload::parseLegacy(logicalMessage.payload, &parsed, error))
+    if (!Payload::parseDomain(logicalMessage.payload, &parsed, error))
         return false;
 
     ProtocolMessage transformed = logicalMessage;
@@ -211,7 +212,7 @@ bool decodePayload(const ProtocolMessage &wireMessage,
         return false;
 
     ProtocolMessage transformed = wireMessage;
-    transformed.payload = parsed.toLegacyVariant();
+    transformed.payload = parsed.toDomainVariant();
     transformed.hasPayload = true;
     *logicalMessage = transformed;
     return true;
@@ -222,7 +223,7 @@ bool encodeSuitRequest(const ProtocolMessage &logicalMessage,
 {
     if (logicalMessage.hasPayload) {
         return fail(error,
-                    QStringLiteral("Legacy choose suit request must not contain a payload"));
+                    QStringLiteral("Domain choose suit request must not contain a payload"));
     }
 
     ProtocolMessage transformed = logicalMessage;
@@ -243,7 +244,7 @@ bool decodeSuitRequest(const ProtocolMessage &wireMessage,
         return false;
 
     ProtocolMessage transformed = wireMessage;
-    // CHOOSE_SUIT historically has no logical payload; keep presence exact for V1 replay.
+    // CHOOSE_SUIT historically has no logical payload; keep presence exact for domain dispatch.
     transformed.payload = QVariant();
     transformed.hasPayload = false;
     *logicalMessage = transformed;
@@ -287,7 +288,7 @@ bool decodeTypedInteraction(const MigrationTarget &target,
 }
 
 bool ProtocolGameplayPayloadRegistry::encodeForWire(
-    ProtocolVersion activeVersion, const ProtocolMessage &logicalMessage,
+    const ProtocolMessage &logicalMessage,
     ProtocolMessage *wireMessage, QString *error)
 {
     if (error != nullptr)
@@ -295,11 +296,24 @@ bool ProtocolGameplayPayloadRegistry::encodeForWire(
     if (wireMessage == nullptr)
         return fail(error, QStringLiteral("Protocol wire message output is null"));
 
-    if (activeVersion != ProtocolVersion::V2) {
-        *wireMessage = logicalMessage;
-        return true;
-    }
     const MigrationTarget target = migrationTarget(logicalMessage);
+    if (logicalMessage.hasPayload
+        && logicalMessage.payload.userType() == QMetaType::QVariantMap) {
+        const QVariantMap object = logicalMessage.payload.toMap();
+        int schemaVersion = 0;
+        if (ProtocolMessageUtils::tryParseInt(
+                object.value(QStringLiteral("schema_version")), schemaVersion)
+            && schemaVersion == 1
+            && !(target.kind == MigrationKind::TypedInteraction
+                && target.typedKind == TypedInteractionPayloadKind::QmlInteractRequest
+                && !object.contains(QStringLiteral("interaction")))) {
+            ProtocolMessage validated;
+            if (!decodeFromWire(logicalMessage, &validated, error))
+                return false;
+            *wireMessage = logicalMessage;
+            return true;
+        }
+    }
     switch (target.kind) {
     case MigrationKind::TypedInteraction:
         return encodeTypedInteraction(target, logicalMessage, wireMessage, error);
@@ -344,17 +358,15 @@ bool ProtocolGameplayPayloadRegistry::encodeForWire(
     case MigrationKind::SurrenderVoteReply:
         return encodePayload<SurrenderVoteReplyPayload>(
             logicalMessage, wireMessage, error);
-    case MigrationKind::Identity:
-        break;
+    case MigrationKind::NotInteraction:
+        return fail(error, QStringLiteral("message is not a registered interaction flow"));
     }
 
-    // Commands and directions outside the migrated inventory remain identity.
-    *wireMessage = logicalMessage;
-    return true;
+    return fail(error, QStringLiteral("unknown interaction migration target"));
 }
 
 bool ProtocolGameplayPayloadRegistry::decodeFromWire(
-    ProtocolVersion activeVersion, const ProtocolMessage &wireMessage,
+    const ProtocolMessage &wireMessage,
     ProtocolMessage *logicalMessage, QString *error)
 {
     if (error != nullptr)
@@ -362,66 +374,126 @@ bool ProtocolGameplayPayloadRegistry::decodeFromWire(
     if (logicalMessage == nullptr)
         return fail(error, QStringLiteral("Protocol logical message output is null"));
 
-    if (activeVersion != ProtocolVersion::V2) {
-        *logicalMessage = wireMessage;
-        return true;
-    }
     const MigrationTarget target = migrationTarget(wireMessage);
+    ProtocolMessage validated;
+    bool success = true;
     switch (target.kind) {
     case MigrationKind::TypedInteraction:
-        return decodeTypedInteraction(target, wireMessage, logicalMessage, error);
-    case MigrationKind::MultipleChoiceRequest:
-        return decodePayload<MultipleChoiceRequestPayload>(
-            wireMessage, logicalMessage, error);
-    case MigrationKind::MultipleChoiceReply:
-        return decodePayload<MultipleChoiceReplyPayload>(
-            wireMessage, logicalMessage, error);
-    case MigrationKind::ChooseGeneralRequest:
-        return decodePayload<ChooseGeneralRequestPayload>(
-            wireMessage, logicalMessage, error);
-    case MigrationKind::ChooseGeneralReply:
-        return decodePayload<ChooseGeneralReplyPayload>(
-            wireMessage, logicalMessage, error);
-    case MigrationKind::ChooseSuitRequest:
-        return decodeSuitRequest(wireMessage, logicalMessage, error);
-    case MigrationKind::ChooseSuitReply:
-        return decodePayload<ChooseSuitReplyPayload>(
-            wireMessage, logicalMessage, error);
-    case MigrationKind::ChooseKingdomRequest:
-        return decodePayload<ChooseKingdomRequestPayload>(
-            wireMessage, logicalMessage, error);
-    case MigrationKind::ChooseKingdomReply:
-        return decodePayload<ChooseKingdomReplyPayload>(
-            wireMessage, logicalMessage, error);
-    case MigrationKind::ChooseOrderRequest:
-        return decodePayload<ChooseOrderRequestPayload>(
-            wireMessage, logicalMessage, error);
-    case MigrationKind::ChooseOrderReply:
-        return decodePayload<ChooseOrderReplyPayload>(
-            wireMessage, logicalMessage, error);
-    case MigrationKind::InvokeSkillRequest:
-        return decodePayload<InvokeSkillRequestPayload>(
-            wireMessage, logicalMessage, error);
-    case MigrationKind::InvokeSkillReply:
-        return decodePayload<InvokeSkillReplyPayload>(
-            wireMessage, logicalMessage, error);
-    case MigrationKind::SurrenderVoteRequest:
-        return decodePayload<SurrenderVoteRequestPayload>(
-            wireMessage, logicalMessage, error);
-    case MigrationKind::SurrenderVoteReply:
-        return decodePayload<SurrenderVoteReplyPayload>(
-            wireMessage, logicalMessage, error);
-    case MigrationKind::Identity:
+        success = decodeTypedInteraction(target, wireMessage, &validated, error);
         break;
+    case MigrationKind::MultipleChoiceRequest:
+        success = decodePayload<MultipleChoiceRequestPayload>(
+            wireMessage, &validated, error);
+        break;
+    case MigrationKind::MultipleChoiceReply:
+        success = decodePayload<MultipleChoiceReplyPayload>(
+            wireMessage, &validated, error);
+        break;
+    case MigrationKind::ChooseGeneralRequest:
+        success = decodePayload<ChooseGeneralRequestPayload>(
+            wireMessage, &validated, error);
+        break;
+    case MigrationKind::ChooseGeneralReply:
+        success = decodePayload<ChooseGeneralReplyPayload>(
+            wireMessage, &validated, error);
+        break;
+    case MigrationKind::ChooseSuitRequest:
+        success = decodeSuitRequest(wireMessage, &validated, error);
+        break;
+    case MigrationKind::ChooseSuitReply:
+        success = decodePayload<ChooseSuitReplyPayload>(
+            wireMessage, &validated, error);
+        break;
+    case MigrationKind::ChooseKingdomRequest:
+        success = decodePayload<ChooseKingdomRequestPayload>(
+            wireMessage, &validated, error);
+        break;
+    case MigrationKind::ChooseKingdomReply:
+        success = decodePayload<ChooseKingdomReplyPayload>(
+            wireMessage, &validated, error);
+        break;
+    case MigrationKind::ChooseOrderRequest:
+        success = decodePayload<ChooseOrderRequestPayload>(
+            wireMessage, &validated, error);
+        break;
+    case MigrationKind::ChooseOrderReply:
+        success = decodePayload<ChooseOrderReplyPayload>(
+            wireMessage, &validated, error);
+        break;
+    case MigrationKind::InvokeSkillRequest:
+        success = decodePayload<InvokeSkillRequestPayload>(
+            wireMessage, &validated, error);
+        break;
+    case MigrationKind::InvokeSkillReply:
+        success = decodePayload<InvokeSkillReplyPayload>(
+            wireMessage, &validated, error);
+        break;
+    case MigrationKind::SurrenderVoteRequest:
+        success = decodePayload<SurrenderVoteRequestPayload>(
+            wireMessage, &validated, error);
+        break;
+    case MigrationKind::SurrenderVoteReply:
+        success = decodePayload<SurrenderVoteReplyPayload>(
+            wireMessage, &validated, error);
+        break;
+    case MigrationKind::NotInteraction:
+        return fail(error, QStringLiteral("message is not a registered interaction flow"));
     }
+    if (!success)
+        return false;
 
+    // Validation is transactional; dispatch always retains the typed V2 object.
     *logicalMessage = wireMessage;
+    return true;
+}
+
+bool ProtocolGameplayPayloadRegistry::decodeReplyDomainValue(
+    const ProtocolMessage &wireMessage, QVariant *domainValue, QString *error)
+{
+    if (error != nullptr)
+        error->clear();
+    if (domainValue == nullptr)
+        return fail(error, QStringLiteral("interaction domain output is null"));
+    const MigrationTarget target = migrationTarget(wireMessage);
+    ProtocolMessage decoded;
+    bool success = false;
+    switch (target.kind) {
+    case MigrationKind::TypedInteraction:
+        success = decodeTypedInteraction(target, wireMessage, &decoded, error);
+        break;
+    case MigrationKind::MultipleChoiceReply:
+        success = decodePayload<MultipleChoiceReplyPayload>(wireMessage, &decoded, error);
+        break;
+    case MigrationKind::ChooseGeneralReply:
+        success = decodePayload<ChooseGeneralReplyPayload>(wireMessage, &decoded, error);
+        break;
+    case MigrationKind::ChooseSuitReply:
+        success = decodePayload<ChooseSuitReplyPayload>(wireMessage, &decoded, error);
+        break;
+    case MigrationKind::ChooseKingdomReply:
+        success = decodePayload<ChooseKingdomReplyPayload>(wireMessage, &decoded, error);
+        break;
+    case MigrationKind::ChooseOrderReply:
+        success = decodePayload<ChooseOrderReplyPayload>(wireMessage, &decoded, error);
+        break;
+    case MigrationKind::InvokeSkillReply:
+        success = decodePayload<InvokeSkillReplyPayload>(wireMessage, &decoded, error);
+        break;
+    case MigrationKind::SurrenderVoteReply:
+        success = decodePayload<SurrenderVoteReplyPayload>(wireMessage, &decoded, error);
+        break;
+    default:
+        return fail(error, QStringLiteral("message is not a registered interaction reply"));
+    }
+    if (!success)
+        return false;
+    *domainValue = decoded.hasPayload ? decoded.payload : QVariant();
     return true;
 }
 
 bool ProtocolGameplayPayloadRegistry::isMigratedFlow(const ProtocolMessage &message)
 {
-    return migrationTarget(message).kind != MigrationKind::Identity;
+    return migrationTarget(message).kind != MigrationKind::NotInteraction;
 }
 
 bool ProtocolGameplayPayloadRegistry::isMigratedCommand(int command)

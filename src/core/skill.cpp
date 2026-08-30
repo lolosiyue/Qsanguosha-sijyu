@@ -88,7 +88,7 @@ QString Skill::getDescription(const Player *target, int instanceId) const
 		QString propKey = instanceId > 0 ? QString("changeTranslation%1#%2").arg(objectName()).arg(instanceId) : QString("changeTranslation"+objectName());
 		QString data = target->property(propKey.toStdString().c_str()).toString();
 		if(data.length()==1) des_src = Sanguosha->translate(":"+objectName()+data);
-		else if(data.length()>1) des_src = QByteArray::fromBase64(data.toLatin1());
+		else if(data.length()>1) des_src = data;
 		QHash<QString, QString> swap = target->getSkillDescriptionSwap(objectName(), instanceId);
 		foreach (QString key, swap.keys())
 			des_src.replace(key, swap[key]);
