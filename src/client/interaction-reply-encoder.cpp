@@ -1,4 +1,8 @@
-#include "legacy-v1-interaction-reply-adapter.h"
+#include "interaction-reply-encoder.h"
+
+#include "protocol/gameplay/protocol-gameplay-payload-registry.h"
+
+#include <QDebug>
 
 namespace {
 
@@ -18,14 +22,37 @@ QVariantList toVariantList(const QStringList &values)
     return result;
 }
 
-LegacyV1InteractionReply replyFor(const InteractionRequest &request, const QVariant &argument)
+InteractionWireReply replyForCommand(const InteractionRequest &request,
+    QSanProtocol::CommandType command, const QVariant &domainValue)
 {
-    return { static_cast<QSanProtocol::CommandType>(request.command), argument };
+    QSanProtocol::ProtocolMessage logical;
+    logical.type = QSanProtocol::ProtocolMessageType::Reply;
+    logical.source = QSanProtocol::ProtocolEndpoint::Client;
+    logical.destination = QSanProtocol::ProtocolEndpoint::Room;
+    logical.command = static_cast<int>(command);
+    logical.replyTo = request.requestId;
+    logical.hasPayload = domainValue.isValid() && !domainValue.isNull();
+    logical.payload = domainValue;
+
+    QSanProtocol::ProtocolMessage wire;
+    QString error;
+    if (!QSanProtocol::ProtocolGameplayPayloadRegistry::encodeForWire(
+            logical, &wire, &error)) {
+        qWarning().noquote() << "Interaction reply encoding failed:" << error;
+        return {};
+    }
+    return {command, wire.payload, request.requestId};
+}
+
+InteractionWireReply replyFor(const InteractionRequest &request, const QVariant &domainValue)
+{
+    return replyForCommand(request,
+        static_cast<QSanProtocol::CommandType>(request.command), domainValue);
 }
 
 } // namespace
 
-LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::optionString(
+InteractionWireReply InteractionReplyEncoder::optionString(
     const InteractionRequest &request, const InteractionResponse &response)
 {
     const InteractionResponse::OptionData *answer
@@ -33,7 +60,7 @@ LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::optionString(
     return replyFor(request, answer != nullptr ? QVariant(answer->value) : QVariant());
 }
 
-LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::optionBool(
+InteractionWireReply InteractionReplyEncoder::optionBool(
     const InteractionRequest &request, const InteractionResponse &response)
 {
     const InteractionResponse::OptionData *answer
@@ -42,7 +69,7 @@ LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::optionBool(
         ? QVariant(answer->value == QLatin1String("yes")) : QVariant());
 }
 
-LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::optionInt(
+InteractionWireReply InteractionReplyEncoder::optionInt(
     const InteractionRequest &request, const InteractionResponse &response)
 {
     const InteractionResponse::OptionData *answer
@@ -50,7 +77,7 @@ LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::optionInt(
     return replyFor(request, answer != nullptr ? QVariant(answer->value.toInt()) : QVariant());
 }
 
-LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::playersJoined(
+InteractionWireReply InteractionReplyEncoder::playersJoined(
     const InteractionRequest &request, const InteractionResponse &response)
 {
     const InteractionResponse::PlayerSelectionData *answer
@@ -59,7 +86,7 @@ LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::playersJoined(
         ? QVariant(answer->names.join(QLatin1Char('+'))) : QVariant());
 }
 
-LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::cardIds(
+InteractionWireReply InteractionReplyEncoder::cardIds(
     const InteractionRequest &request, const InteractionResponse &response)
 {
     const InteractionResponse::CardSelectionData *answer
@@ -68,17 +95,17 @@ LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::cardIds(
         ? QVariant(toVariantList(answer->cardIds)) : QVariant());
 }
 
-LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::discardCards(
-    const InteractionRequest &, const InteractionResponse &response)
+InteractionWireReply InteractionReplyEncoder::discardCards(
+    const InteractionRequest &request, const InteractionResponse &response)
 {
     const InteractionResponse::CardSelectionData *answer
         = response.payloadAs<InteractionResponse::CardSelectionData>();
-    return { QSanProtocol::S_COMMAND_DISCARD_CARD,
+    return replyForCommand(request, QSanProtocol::S_COMMAND_DISCARD_CARD,
         answer != nullptr && !answer->cardIds.isEmpty()
-            ? QVariant(toVariantList(answer->cardIds)) : QVariant() };
+            ? QVariant(toVariantList(answer->cardIds)) : QVariant());
 }
 
-LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::cardId(
+InteractionWireReply InteractionReplyEncoder::cardId(
     const InteractionRequest &request, const InteractionResponse &response)
 {
     const InteractionResponse::CardSelectionData *answer
@@ -87,29 +114,29 @@ LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::cardId(
         ? QVariant(answer->cardIds.first()) : QVariant());
 }
 
-LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::amazingGraceCardId(
+InteractionWireReply InteractionReplyEncoder::amazingGraceCardId(
     const InteractionRequest &request, const InteractionResponse &response)
 {
     const InteractionResponse::CardSelectionData *answer
         = response.payloadAs<InteractionResponse::CardSelectionData>();
     return replyFor(request, answer != nullptr && !answer->cardIds.isEmpty()
-        ? QVariant(answer->cardIds.first()) : QVariant(-1));
+        ? QVariant(answer->cardIds.first()) : QVariant());
 }
 
-LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::cardResponse(
-    const InteractionRequest &, const InteractionResponse &response)
+InteractionWireReply InteractionReplyEncoder::cardResponse(
+    const InteractionRequest &request, const InteractionResponse &response)
 {
     const InteractionResponse::CardSelectionData *answer
         = response.payloadAs<InteractionResponse::CardSelectionData>();
     if (answer == nullptr || answer->cardText.isEmpty())
-        return { QSanProtocol::S_COMMAND_RESPONSE_CARD, QVariant() };
+        return replyForCommand(request, QSanProtocol::S_COMMAND_RESPONSE_CARD, QVariant());
     QVariantList wire;
     wire << answer->cardText << QVariant(toVariantList(answer->targets))
          << answer->activationSkillName << answer->activationSkillInstanceId;
-    return { QSanProtocol::S_COMMAND_RESPONSE_CARD, wire };
+    return replyForCommand(request, QSanProtocol::S_COMMAND_RESPONSE_CARD, wire);
 }
 
-LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::assignment(
+InteractionWireReply InteractionReplyEncoder::assignment(
     const InteractionRequest &request, const InteractionResponse &response)
 {
     const InteractionResponse::AssignmentData *answer
@@ -121,7 +148,7 @@ LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::assignment(
     return replyFor(request, wire);
 }
 
-LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::rearrangement(
+InteractionWireReply InteractionReplyEncoder::rearrangement(
     const InteractionRequest &request, const InteractionResponse &response)
 {
     const InteractionResponse::RearrangementData *answer
@@ -133,7 +160,7 @@ LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::rearrangement(
     return replyFor(request, wire);
 }
 
-LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::distribution(
+InteractionWireReply InteractionReplyEncoder::distribution(
     const InteractionRequest &request, const InteractionResponse &response)
 {
     const InteractionResponse::DistributionData *answer
@@ -145,7 +172,7 @@ LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::distribution(
     return replyFor(request, wire);
 }
 
-LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::generalArrangement(
+InteractionWireReply InteractionReplyEncoder::generalArrangement(
     const InteractionRequest &request, const InteractionResponse &response)
 {
     const InteractionResponse::GeneralArrangementData *answer
@@ -154,7 +181,7 @@ LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::generalArrangement(
         ? QVariant(toVariantList(answer->generalNames)) : QVariant());
 }
 
-LegacyV1InteractionReply LegacyV1InteractionReplyAdapter::custom(
+InteractionWireReply InteractionReplyEncoder::custom(
     const InteractionRequest &request, const InteractionResponse &response)
 {
     const InteractionResponse::CustomData *answer

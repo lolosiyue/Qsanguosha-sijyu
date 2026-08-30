@@ -12,7 +12,7 @@
 #include "player-lifecycle-service.h"
 #include "skill-runtime-coordinator.h"
 #include "protocol/card-provenance-message.h"
-#include "protocol/protocol-v1-message-adapter.h"
+#include "protocol/session/session-payloads.h"
 #include "protocol/skill-instance-message.h"
 #include "protocol/state/player-ui-state.h"
 #include "protocol/switch-context-message.h"
@@ -54,6 +54,14 @@ using namespace QSanProtocol;
 namespace {
 
 static const char *kControllerNameTag = "Controller_Name";
+
+static QVariantMap makeChatMessage(const QString &speaker, const QString &text)
+{
+	ChatMessagePayload payload;
+	payload.speaker = speaker;
+	payload.text = text;
+	return payload.toVariant();
+}
 
 static int getConvertedPhysicalCardId(const Card *card)
 {
@@ -726,8 +734,12 @@ void Room::gameOver(const QString&winner)
 		if (!player) continue;
 		all_roles << player->getRole();
 	}
-	JsonArray arg;
-	arg << winner << JsonUtils::toJsonArray(all_roles);
+	const QStringList winnerTokens = winner == QLatin1String(".")
+		? QStringList() : winner.split(QLatin1Char('+'), Qt::SkipEmptyParts);
+	QVariantMap arg{{QStringLiteral("schema_version"), 1},
+		{QStringLiteral("standoff"), winner == QLatin1String(".")},
+		{QStringLiteral("winner_tokens"), winnerTokens},
+		{QStringLiteral("roles"), all_roles}};
 	doBroadcastNotify(S_COMMAND_GAME_OVER, arg);
 	throw GameFinished;
 }
@@ -1030,16 +1042,6 @@ bool Room::doBroadcastNotify(int command, const QVariant&arg)
 }
 
 // end for Lua
-
-void Room::broadcastInvoke(const char*method, const QString&arg, ServerPlayer*except)
-{
-	broadcast(QString("%1 %2").arg(method).arg(arg), except);
-}
-
-void Room::broadcastInvoke(const QSanProtocol::AbstractPacket*packet, ServerPlayer*except)
-{
-	broadcast(packet->toString(), except);
-}
 
 bool Room::getResult(ServerPlayer*player, time_t timeOut)
 {
@@ -1531,8 +1533,12 @@ void Room::setPlayerCardLimitation(ServerPlayer*player, const QString&limit_list
 {
 	player->setCardLimitation(limit_list, pattern, reason.isEmpty() ? objectName() : reason, single_turn);
 
-	JsonArray arg;
-	arg << true << limit_list << pattern << reason << single_turn;
+	QVariantMap arg{{QStringLiteral("schema_version"), 1},
+		{QStringLiteral("action"), QStringLiteral("set")},
+		{QStringLiteral("methods"), limit_list.split(QLatin1Char(','), Qt::SkipEmptyParts)},
+		{QStringLiteral("pattern"), pattern},
+		{QStringLiteral("reason"), reason},
+		{QStringLiteral("single_turn"), single_turn}};
 	doNotify(player, S_COMMAND_CARD_LIMITATION, arg);
 }
 
@@ -1541,8 +1547,11 @@ void Room::removePlayerCardLimitation(ServerPlayer*player, const QString&limit_l
 {
 	player->removeCardLimitation(limit_list, pattern, reason.isEmpty() ? objectName() : reason);
 
-	JsonArray arg;
-	arg << false << limit_list << pattern << reason << false;
+	QVariantMap arg{{QStringLiteral("schema_version"), 1},
+		{QStringLiteral("action"), QStringLiteral("remove")},
+		{QStringLiteral("methods"), limit_list.split(QLatin1Char(','), Qt::SkipEmptyParts)},
+		{QStringLiteral("pattern"), pattern},
+		{QStringLiteral("reason"), reason}};
 	doNotify(player, S_COMMAND_CARD_LIMITATION, arg);
 }
 
@@ -1550,8 +1559,9 @@ void Room::removePlayerCardLimitationByReason(ServerPlayer*player, const QString
 {
 	player->removeCardLimitationByReason(reason);
 
-	JsonArray arg;
-	arg << 2 << reason;
+	QVariantMap arg{{QStringLiteral("schema_version"), 1},
+		{QStringLiteral("action"), QStringLiteral("remove_by_reason")},
+		{QStringLiteral("reason"), reason}};
 	doNotify(player, S_COMMAND_CARD_LIMITATION, arg);
 }
 
@@ -1559,8 +1569,9 @@ void Room::clearPlayerCardLimitation(ServerPlayer*player, bool single_turn)
 {
 	player->clearCardLimitation(single_turn);
 
-	JsonArray arg;
-	arg << true << QVariant() << QVariant() << QVariant() << single_turn;
+	QVariantMap arg{{QStringLiteral("schema_version"), 1},
+		{QStringLiteral("action"), QStringLiteral("clear")},
+		{QStringLiteral("single_turn"), single_turn}};
 	doNotify(player, S_COMMAND_CARD_LIMITATION, arg);
 }
 
@@ -1758,14 +1769,6 @@ QString Room::getMode() const
 const Scenario*Room::getScenario() const
 {
 	return scenario;
-}
-
-void Room::broadcast(const QString&message, ServerPlayer*except)
-{
-	foreach(ServerPlayer*player, getPlayers()){
-		if (player != except)
-			player->unicast(message);
-	}
 }
 
 void Room::swapPile()
@@ -2119,7 +2122,9 @@ void Room::reportDisconnection()
 
 			if (player->getState() != "robot"){
 				QString leaveStr = "<font color=#000000>已离开游戏</font>";//tr("<font color=#000000>Player <b>%1</b> left the game</font>").arg(player->screenName());
-				speakCommand(player, leaveStr.toUtf8().toBase64());
+				ChatPayload leave;
+				leave.text = leaveStr;
+				speakCommand(player, leave.toVariant());
 			}
 
 			doBroadcastNotify(S_COMMAND_REMOVE_PLAYER, player->objectName());
@@ -2167,14 +2172,17 @@ void Room::reportDisconnection()
 
 void Room::trustCommand(ServerPlayer*player, const QVariant&arg)
 {
-	Q_UNUSED(arg);
+	TrustPayload payload;
+	if (!TrustPayload::parse(arg, &payload))
+		return;
+
 	ServerPlayer *target = getActualController(player);
 	if (target == nullptr)
 		target = player;
 
 	QList<ServerPlayer *> waitingPlayers;
 	target->acquireLock(ServerPlayer::SEMA_MUTEX);
-	bool enteringTrust = target->isOnline();
+	bool enteringTrust = payload.trusted && target->isOnline();
 	target->releaseLock(ServerPlayer::SEMA_MUTEX);
 
 	if (enteringTrust) {
@@ -2193,10 +2201,7 @@ void Room::trustCommand(ServerPlayer*player, const QVariant&arg)
 	}
 
 	target->acquireLock(ServerPlayer::SEMA_MUTEX);
-	if (target->isOnline())
-		target->setState("trust");
-	else
-		target->setState("online");
+	target->setState(payload.trusted ? "trust" : "online");
 	target->releaseLock(ServerPlayer::SEMA_MUTEX);
 
 	foreach (ServerPlayer *waitingPlayer, waitingPlayers)
@@ -2208,12 +2213,16 @@ void Room::trustCommand(ServerPlayer*player, const QVariant&arg)
 
 void Room::pauseCommand(ServerPlayer*player, const QVariant&arg)
 {
+	PausePayload payload;
+	if (!PausePayload::parse(arg, &payload))
+		return;
+
 	if (canPause(player)){
 		QMutexLocker locker(&m_mutex);
-		if (game_paused != arg.toBool()){
-			game_paused = arg.toBool();
+		if (game_paused != payload.paused){
+			game_paused = payload.paused;
 			JsonArray json;
-			json << S_GAME_EVENT_PAUSE << arg;
+			json << S_GAME_EVENT_PAUSE << payload.paused;
 			doNotify(player, S_COMMAND_LOG_EVENT, json);
 			if (!game_paused) m_waitCond.wakeAll();
 		}
@@ -2224,10 +2233,11 @@ void Room::processRequestCheat(ServerPlayer*player, const QVariant&arg)
 {
 	player->m_cheatArgs = QVariant();
 	if (!Config.EnableCheat) return;
-	if (!arg.canConvert<JsonArray>() || !arg.value<JsonArray>().value(0).canConvert<int>())
+	CheatRequestPayload payload;
+	if (!CheatRequestPayload::parse(arg, &payload))
 		return;
 	//@todo: synchronize this
-	player->m_cheatArgs = arg;
+	player->m_cheatArgs = payload.toVariant();
 	player->releaseLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
 	return;
 }
@@ -2302,8 +2312,12 @@ bool Room::makeSurrender(ServerPlayer*initiator)
 	return true;
 }
 
-void Room::processRequestSurrender(ServerPlayer*player, const QVariant&)
+void Room::processRequestSurrender(ServerPlayer*player, const QVariant &arg)
 {
+	SurrenderRequestPayload payload;
+	if (!SurrenderRequestPayload::parse(arg, &payload))
+		return;
+
 	//@todo: Strictly speaking, the client must be in the PLAY phase
 	//@todo: return false for 3v3 and 1v1!!!
 	if (!player->m_isWaitingReply)
@@ -2322,20 +2336,21 @@ void Room::processRequestSurrender(ServerPlayer*player, const QVariant&)
 void Room::processClientPacket(
 	const QString &request, const ProtocolMessage &message)
 {
-	ProtocolMessage legacy = message;
-	legacy.version = ProtocolVersion::V1;
-	Packet packet;
-	applyProtocolMessageToV1Packet(legacy, packet);
 	ServerPlayer*player = qobject_cast<ServerPlayer*>(sender());
 #ifdef LOGNETWORK
 	emit Sanguosha->logNetworkMessage("recv "+player->objectName()+":"+request);
 #endif // LOGNETWORK
 	if (game_state<0){
-		if (player&&player->isOnline())
-			doNotify(player, S_COMMAND_WARN, QString("GAME_OVER"));
+		if (player&&player->isOnline()) {
+			DiagnosticPayload diagnostic;
+			diagnostic.code = QStringLiteral("game_over");
+			diagnostic.message = QStringLiteral("GAME_OVER");
+			diagnostic.fatal = false;
+			doNotify(player, S_COMMAND_WARN, diagnostic.toVariant());
+		}
 		return;
 	}
-	m_requests->processClientPacket(player, packet, message, request);
+	m_requests->processClientPacket(player, message, request);
 }
 
 void Room::addRobotCommand(ServerPlayer*player, const QVariant&arg)
@@ -2344,11 +2359,18 @@ void Room::addRobotCommand(ServerPlayer*player, const QVariant&arg)
 	if (player&&!player->isOwner())
 		return;
 
-	int r = 0, add_num = arg.toInt();
-	if (add_num == -1) add_num = player_count - getPlayers().length();
+	AddRobotPayload payload;
+	if (!AddRobotPayload::parse(arg, &payload))
+		return;
+
+	int r = 0;
+	const int add_num = payload.fillRemaining
+		? player_count - getPlayers().length()
+		: payload.count;
 	if (Server::isHeadlessMode)
-		Server::writeHeadlessLog(QString("[AUTOTEST] addRobot request=%1 fill=%2 players=%3/%4 owner=%5")
-			.arg(arg.toInt()).arg(add_num).arg(getPlayers().length()).arg(player_count)
+		Server::writeHeadlessLog(QString("[AUTOTEST] addRobot fill_remaining=%1 count=%2 fill=%3 players=%4/%5 owner=%6")
+			.arg(payload.fillRemaining).arg(payload.count).arg(add_num)
+			.arg(getPlayers().length()).arg(player_count)
 			.arg(player ? (player->isOwner() ? "yes" : "no") : "null"));
 	foreach(ServerPlayer*p, getPlayers()){
 		if (p->getState() == "robot") r++;
@@ -2384,7 +2406,6 @@ void Room::addRobotCommand(ServerPlayer*player, const QVariant&arg)
 		}
 		signup(robot, QString("神小杀0%1号").arg(r), avatar, true);
 
-		//robot_name = tr("Hello, I'm a robot").toUtf8().toBase64();
 		//speakCommand(robot, robot_name);
 
 		broadcastProperty(robot, "state");
@@ -2398,10 +2419,14 @@ ServerPlayer*Room::getOwner() const
 	return nullptr;
 }
 
-void Room::toggleReadyCommand(ServerPlayer*, const QVariant&)
+void Room::setReadyCommand(ServerPlayer *, const QVariant &payload)
 {
-	if (game_state<1&&isFull())
-		start();
+    ReadyPayload readyPayload;
+    if (!ReadyPayload::parse(payload, &readyPayload))
+        return;
+
+    if (readyPayload.ready && game_state < 1 && isFull())
+        start();
 }
 
 void Room::signup(ServerPlayer*player, const QString&screen_name, const QString&avatar, bool is_robot)
@@ -3169,14 +3194,15 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 {
 #define _NO_BROADCAST_SPEAKING {\
 	broadcast = false;\
-	JsonArray nbbody;\
-	nbbody << player->objectName();\
-	nbbody << arg;\
+	const QVariantMap nbbody = makeChatMessage(player->objectName(), sentence);\
 	doNotify(player, S_COMMAND_SPEAK, nbbody);\
 }
 	bool broadcast = true;
 	if (player){
-		QString sentence = QString::fromUtf8(QByteArray::fromBase64(arg.toString().toLatin1()));
+		ChatPayload payload;
+		if (!ChatPayload::parse(arg, &payload))
+			return;
+		const QString sentence = payload.text;
 		if (sentence.startsWith("$")){
 			QString new_sentence = sentence;
 			new_sentence = new_sentence.mid(1);
@@ -3186,8 +3212,8 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 				QString audio = QString("audio/skill/%1.ogg").arg(new_sentence);
 				if (QFile::exists(audio)){
 					if (Sanguosha->translate(sentence) != sentence){
-						JsonArray body;
-						body << player->objectName() << Sanguosha->translate(sentence).toUtf8().toBase64();
+						const QVariantMap body = makeChatMessage(
+							player->objectName(), Sanguosha->translate(sentence));
 						m_chatHistory << body;
 						doBroadcastNotify(S_COMMAND_SPEAK, body);
 					}
@@ -3198,8 +3224,8 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 				if (QFile::exists(audio)){
 					QString _sentence = "$" + _new_sentence.first() + _new_sentence.last();
 					if (Sanguosha->translate(_sentence) != _sentence){
-						JsonArray body;
-						body << player->objectName() << Sanguosha->translate(_sentence).toUtf8().toBase64();
+						const QVariantMap body = makeChatMessage(
+							player->objectName(), Sanguosha->translate(_sentence));
 						m_chatHistory << body;
 						doBroadcastNotify(S_COMMAND_SPEAK, body);
 					}
@@ -3212,8 +3238,8 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 			new_sentence = new_sentence.mid(1);
 			QString filename = QString("audio/death/%1.ogg").arg(new_sentence);
 			if (Sanguosha->translate(sentence) != sentence){
-				JsonArray body;
-				body << player->objectName() << Sanguosha->translate(sentence).toUtf8().toBase64();
+				const QVariantMap body = makeChatMessage(
+					player->objectName(), Sanguosha->translate(sentence));
 				m_chatHistory << body;
 				doBroadcastNotify(S_COMMAND_SPEAK, body);
 			}
@@ -3248,9 +3274,7 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 					friendly_msg = QString("%1 砸了一个蛋给 %2").arg(player->screenName()).arg(target->screenName());
 				}
 
-				QString msg_base64 = friendly_msg.toUtf8().toBase64();
-				JsonArray body;
-				body << QString("server") << msg_base64;
+				const QVariantMap body = makeChatMessage(QStringLiteral("server"), friendly_msg);
 				m_chatHistory << body;
 				doBroadcastNotify(S_COMMAND_SPEAK, body);
 			}
@@ -3273,8 +3297,8 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 			} else if (sentence == ".ShowHandCards"){
 				_NO_BROADCAST_SPEAKING
 	
-				JsonArray body;
-				body << player->objectName() << QString("----------").toUtf8().toBase64();
+				const QVariantMap body = makeChatMessage(
+					player->objectName(), QStringLiteral("----------"));
 				doNotify(player, S_COMMAND_SPEAK, body);
 	
 				foreach(ServerPlayer*p, getAlivePlayers()){
@@ -3283,8 +3307,8 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 						foreach(int id, p->handCards())
 							handcards << QString("<b>%1</b>").arg(Sanguosha->getEngineCard(id)->getLogName());
 	
-						JsonArray body;
-						body << p->objectName() << handcards.join("，").toUtf8().toBase64();
+						const QVariantMap body = makeChatMessage(
+							p->objectName(), handcards.join("，"));
 						doNotify(player, S_COMMAND_SPEAK, body);
 					}
 				}
@@ -3299,8 +3323,8 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 							foreach(int id, p->handCards())
 								handcards << QString("<b>%1</b>").arg(Sanguosha->getEngineCard(id)->getLogName());
 	
-							JsonArray body;
-							body << p->objectName() << handcards.join("，").toUtf8().toBase64();
+							const QVariantMap body = makeChatMessage(
+								p->objectName(), handcards.join("，"));
 							doNotify(player, S_COMMAND_SPEAK, body);
 						}
 						break;
@@ -3319,8 +3343,8 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 								foreach(int id, p->getPile(pile_name))
 									pile_cards << QString("<b>%1</b>").arg(Sanguosha->getEngineCard(id)->getLogName());
 	
-								JsonArray body;
-								body << p->objectName() << pile_cards.join("，").toUtf8().toBase64();
+								const QVariantMap body = makeChatMessage(
+									p->objectName(), pile_cards.join("，"));
 								doNotify(player, S_COMMAND_SPEAK, body);
 							}
 							break;
@@ -3335,8 +3359,8 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 					foreach(QString name, zuoci->property("Huashens").toString().split("+"))
 						huashen_name << QString("<b>%1</b>").arg(Sanguosha->translate(name));
 	
-					JsonArray body;
-					body << zuoci->objectName() << huashen_name.join("，").toUtf8().toBase64();
+					const QVariantMap body = makeChatMessage(
+						zuoci->objectName(), huashen_name.join("，"));
 					doNotify(player, S_COMMAND_SPEAK, body);
 				}
 			} else if (sentence.startsWith(".SetAIDelay=")){
@@ -3356,15 +3380,18 @@ void Room::speakCommand(ServerPlayer*player, const QVariant&arg)
 				setTag("NextGameSecondGeneral", !prop.isEmpty()&&prop != "0"&&prop != "false");
 			} else if (sentence == ".Pause"){
 				_NO_BROADCAST_SPEAKING
-				pauseCommand(player, true);
+				PausePayload pausePayload;
+				pausePayload.paused = true;
+				pauseCommand(player, pausePayload.toVariant());
 			} else if (sentence == ".Resume"){
 				_NO_BROADCAST_SPEAKING
-				pauseCommand(player, false);
+				PausePayload pausePayload;
+				pausePayload.paused = false;
+				pauseCommand(player, pausePayload.toVariant());
 			}
 		}
 		if (broadcast){
-			JsonArray body;
-			body << player->objectName() << arg;
+			const QVariantMap body = makeChatMessage(player->objectName(), sentence);
 			m_chatHistory << body;
 			doBroadcastNotify(S_COMMAND_SPEAK, body);
 		}
@@ -4514,11 +4541,13 @@ void Room::startGame()
 
 bool Room::notifyProperty(ServerPlayer*player, const ServerPlayer*owner, const char*property_name, const QString&value)
 {
-	JsonArray arg;
-	if (owner == player)
-		arg << QSanProtocol::S_PLAYER_SELF_REFERENCE_ID;
-	else arg << owner->objectName();
-	arg << property_name << (value.isEmpty()?owner->property(property_name).toString():value);
+	QVariantMap arg{{QStringLiteral("schema_version"), 1},
+		{QStringLiteral("action"), QStringLiteral("property")},
+		{QStringLiteral("player_name"), owner == player
+			? QSanProtocol::S_PLAYER_SELF_REFERENCE_ID : owner->objectName()},
+		{QStringLiteral("property_name"), QString::fromLatin1(property_name)},
+		{QStringLiteral("string_value"), value.isEmpty()
+			? owner->property(property_name).toString() : value}};
 	return doNotify(player, S_COMMAND_SET_PROPERTY, arg);
 }
 
@@ -4528,8 +4557,23 @@ bool Room::broadcastProperty(ServerPlayer*owner, const char*property_name, const
 		owner->setShownRole(true);
 	owner->addProperty(property_name);
 
-	JsonArray arg;
-	arg << owner->objectName() << property_name << (value.isEmpty()?owner->property(property_name).toString():value);
+	const QString propertyName = QString::fromLatin1(property_name);
+	const QString propertyValue = value.isEmpty()
+		? owner->property(property_name).toString() : value;
+	QVariantMap arg{{QStringLiteral("schema_version"), 1},
+		{QStringLiteral("action"), QStringLiteral("property")},
+		{QStringLiteral("player_name"), owner->objectName()},
+		{QStringLiteral("property_name"), propertyName},
+		{QStringLiteral("string_value"), propertyValue}};
+	if (propertyName == QLatin1String("general_pile_changed")) {
+		const QVariantMap pile = QJsonDocument::fromJson(propertyValue.toUtf8()).toVariant().toMap();
+		arg = QVariantMap{{QStringLiteral("schema_version"), 1},
+			{QStringLiteral("action"), QStringLiteral("general_pile")},
+			{QStringLiteral("player_name"), owner->objectName()},
+			{QStringLiteral("pile_name"), pile.value(QStringLiteral("pile_name"))},
+			{QStringLiteral("general_names"), pile.value(QStringLiteral("general_names"))},
+			{QStringLiteral("add"), pile.value(QStringLiteral("add"))}};
+	}
 	doBroadcastNotify(S_COMMAND_SET_PROPERTY, arg);
 
 	if (strcmp(property_name, "hp") == 0&&owner->getHp() > 0&&owner->hasFlag("Global_Dying")){
@@ -4541,7 +4585,7 @@ bool Room::broadcastProperty(ServerPlayer*owner, const char*property_name, const
 	return true;
 }
 
-void Room::broadcastTagProperty(ServerPlayer *owner, const QString &tagKey, const QString &value)
+void Room::broadcastTagProperty(ServerPlayer *owner, const QString &tagKey, const QVariant &value)
 {
 	m_notifier->broadcastTagProperty(owner, tagKey, value);
 }
@@ -5237,10 +5281,17 @@ QVariant Room::askForQml(ServerPlayer *player, const QString &qmlPath, const QVa
 	tryPause();
 	notifyMoveFocus(player, S_COMMAND_QML_INTERACT);
 
-	JsonArray arg;
-	arg << qmlPath << params;
+	QVariantMap payload;
+	payload.insert(QStringLiteral("schema_version"), 1);
+	payload.insert(QStringLiteral("type"), QStringLiteral("qsanguosha.qml"));
+	payload.insert(QStringLiteral("title"), QString());
+	QVariantMap rendererPayload;
+	rendererPayload.insert(QStringLiteral("qml_path"), qmlPath);
+	rendererPayload.insert(QStringLiteral("parameters"), params);
+	payload.insert(QStringLiteral("payload"), rendererPayload);
+	payload.insert(QStringLiteral("response_schema"), QVariantMap());
 
-	if (doRequest(player, S_COMMAND_QML_INTERACT, arg, timeout, true)) {
+	if (doRequest(player, S_COMMAND_QML_INTERACT, payload, timeout, true)) {
 		return player->getClientReply();
 	}
 
@@ -5721,36 +5772,21 @@ QString Room::askForGeneral(ServerPlayer*player, const QString&generals, const Q
 
 bool Room::makeCheat(ServerPlayer*player)
 {
-	JsonArray arg = player->m_cheatArgs.value<JsonArray>();
-	if (arg.isEmpty() || !JsonUtils::isNumber(arg[0])) return false;
+	CheatRequestPayload arg;
+	if (!CheatRequestPayload::parse(player->m_cheatArgs, &arg)) return false;
 	player->m_cheatArgs = QVariant();
 
-	CheatCode code = (CheatCode)arg[0].toInt();
-	if (code == S_CHEAT_KILL_PLAYER){
-		JsonArray arg1 = arg[1].value<JsonArray>();
-		if (!JsonUtils::isStringArray(arg1, 0, 1)) return false;
-		makeKilling(arg1[0].toString(), arg1[1].toString());
-
-	} else if (code == S_CHEAT_MAKE_DAMAGE){
-		JsonArray arg1 = arg[1].value<JsonArray>();
-		if (arg1.size() != 4 || !JsonUtils::isStringArray(arg1, 0, 1)
-			|| !JsonUtils::isNumber(arg1[2]) || !JsonUtils::isNumber(arg1[3]))
-			return false;
-		makeDamage(arg1[0].toString(), arg1[1].toString(), (QSanProtocol::CheatCategory)arg1[2].toInt(), arg1[3].toInt());
-
-	} else if (code == S_CHEAT_REVIVE_PLAYER){
-		if (!JsonUtils::isString(arg[1])) return false;
-		makeReviving(arg[1].toString());
-
-	} else if (code == S_CHEAT_RUN_SCRIPT){
-		if (!JsonUtils::isString(arg[1])) return false;
-		QByteArray data = QByteArray::fromBase64(arg[1].toString().toLatin1());
-		data = qUncompress(data);
-		doScript(data);
-
-	} else if (code == S_CHEAT_GET_ONE_CARD){
-		if (!JsonUtils::isNumber(arg[1])) return false;
-		int card_id = arg[1].toInt();
+	if (arg.action == QLatin1String("kill")) {
+		makeKilling(arg.sourcePlayer, arg.targetPlayer);
+	} else if (arg.action == QLatin1String("damage")) {
+		makeDamage(arg.sourcePlayer, arg.targetPlayer,
+			static_cast<QSanProtocol::CheatCategory>(arg.nature), arg.points);
+	} else if (arg.action == QLatin1String("revive")) {
+		makeReviving(arg.playerName);
+	} else if (arg.action == QLatin1String("run_script")) {
+		doScript(arg.scriptData.toUtf8());
+	} else if (arg.action == QLatin1String("get_card")) {
+		int card_id = arg.cardId;
 
 		LogMessage log;
 		log.type = "$CheatCard";
@@ -5764,20 +5800,12 @@ bool Room::makeCheat(ServerPlayer*player)
 		else
 			obtainCard(player, c);
 
-	} else if (code == S_CHEAT_CHANGE_GENERAL){
-		if (!JsonUtils::isString(arg[1]) || !JsonUtils::isBool(arg[2]))
-			return false;
-		QString generalName = arg[1].toString();
-		bool isSecondaryHero = arg[2].toBool();
-		changeHero(player, generalName, false, true, isSecondaryHero);
-
-	} else if (code == S_CHEAT_STATE_EDITOR){
-		JsonArray arg1 = arg[1].value<JsonArray>();
-		if (arg1.size() != 3 || !JsonUtils::isString(arg1[0])
-			|| !JsonUtils::isNumber(arg1[1]) || !JsonUtils::isNumber(arg1[2]))
-			return false;
-		stateChange(arg1[0].toString(), (QSanProtocol::StateEditorCheat)arg1[1].toInt(), arg1[2].toInt());
-	} else if (code == S_CHEAT_REVERSE_PLAY_ORDER) {
+	} else if (arg.action == QLatin1String("change_general")) {
+		changeHero(player, arg.generalName, false, true, arg.secondaryGeneral);
+	} else if (arg.action == QLatin1String("state_editor")) {
+		stateChange(arg.targetPlayer,
+			static_cast<QSanProtocol::StateEditorCheat>(arg.stateType), arg.points);
+	} else if (arg.action == QLatin1String("reverse_play_order")) {
 		reversePlayOrder();
 	}
 	return true;
@@ -6582,7 +6610,7 @@ void Room::changeTranslation(ServerPlayer*player, const QString&skill_name, cons
 		args1 << num;
 		setPlayerProperty(player,propKey.toStdString().c_str(),num);
 	}else{
-		args1 << new_translation.toUtf8().toBase64();
+		args1 << new_translation;
 		setPlayerProperty(player,propKey.toStdString().c_str(),args1.last());
 	}
 	doBroadcastNotify(QSanProtocol::S_COMMAND_LOG_EVENT, args1);
@@ -6820,12 +6848,18 @@ QString Room::askForRole(ServerPlayer*player, const QStringList&roles, const QSt
 	return m_playerDecisions->askForRole(player, roles, scheme);
 }
 
-void Room::networkDelayTestCommand(ServerPlayer*player, const QVariant&)
+void Room::networkDelayTestCommand(ServerPlayer*player, const QVariant &arg)
 {
+	NetworkDelayPayload delayPayload;
+	if (!NetworkDelayPayload::parse(arg, &delayPayload))
+		return;
+
 	qint64 delay = player->endNetworkDelayTest();
 	QString reportStr = QString("<font color=#EEB422>网络延迟为%1毫秒</font>").arg(delay);
 	//tr("<font color=#EEB422>The network delay of player <b>%1</b> is %2 milliseconds.</font>").arg(player->screenName()).arg(delay);
-	speakCommand(player, reportStr.toUtf8().toBase64());
+	ChatPayload chatPayload;
+	chatPayload.text = reportStr;
+	speakCommand(player, chatPayload.toVariant());
 }
 
 void Room::sortByActionOrder(QList<ServerPlayer*>&players)
@@ -6862,8 +6896,9 @@ int Room::getBossModeExpMult(int level) const
 
 void Room::handleAnytimeSkillRequest(ServerPlayer *player, const QVariant &arg)
 {
-	if (!player || !arg.canConvert<QString>()) return;
-	QString skill_name = arg.toString();
+	AnytimeSkillPayload payload;
+	if (!player || !AnytimeSkillPayload::parse(arg, &payload)) return;
+	QString skill_name = payload.skillName;
 	const AnytimeSkill *skill = qobject_cast<const AnytimeSkill *>(Sanguosha->getSkill(skill_name));
 	if (!skill || !player->hasSkill(skill_name)) return;
 	if (!skill->canTrigger(player)) return;
@@ -6887,7 +6922,9 @@ void Room::processPendingAnytimeSkills()
 
 void Room::notifyAnytimeSkillDone(ServerPlayer *player, const QString &skill_name)
 {
-	doNotify(player, S_COMMAND_ANYTIME_SKILL_DONE, skill_name);
+	AnytimeSkillPayload payload;
+	payload.skillName = skill_name;
+	doNotify(player, S_COMMAND_ANYTIME_SKILL_DONE, payload.toVariant());
 }
 
 void Room::saveSnapshot(const QString &type, const QString &playerName)

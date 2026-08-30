@@ -50,11 +50,11 @@ class TypedInteractionPayloads
 {
 public:
     static bool encode(TypedInteractionPayloadKind kind,
-                       bool hasLegacyPayload, const QVariant &legacyPayload,
+                       bool hasDomainPayload, const QVariant &domainPayload,
                        QVariant *v2Payload, QString *error = nullptr);
     static bool decode(TypedInteractionPayloadKind kind,
                        const QVariant &v2Payload,
-                       bool *hasLegacyPayload, QVariant *legacyPayload,
+                       bool *hasDomainPayload, QVariant *domainPayload,
                        QString *error = nullptr);
 };
 

@@ -1,5 +1,8 @@
 #include "engine-bootstrap.h"
 #include "request-coordinator.h"
+#include "protocol/gameplay/protocol-gameplay-payload-registry.h"
+#include "protocol/protocol-runtime.h"
+#include "protocol/session/session-payloads.h"
 #include "room-test-access.h"
 #include "room.h"
 #include "serverplayer.h"
@@ -16,7 +19,7 @@ namespace {
 struct RequestRecord
 {
     CommandType command;
-    unsigned int serial;
+    quint64 messageId;
 };
 
 class RequestRecorder
@@ -26,13 +29,15 @@ public:
     {
         QObject::connect(player, &ServerPlayer::message_ready, player,
                          [this](const QByteArray &message) {
-            Packet packet;
-            if (!packet.parse(message)) {
+            ProtocolMessage packet;
+            if (!ProtocolCodecRouter().decode(message, &packet).success) {
                 parseFailed = true;
                 return;
             }
-            if (packet.getPacketType() == S_TYPE_REQUEST)
-                records << RequestRecord{packet.getCommandType(), packet.globalSerial};
+            if (packet.type == ProtocolMessageType::Request)
+                records << RequestRecord{
+                    static_cast<CommandType>(packet.command),
+                    packet.messageId};
         });
     }
 
@@ -73,6 +78,21 @@ private:
     bool m_previous;
 };
 
+static bool makeReply(CommandType command, quint64 replyTo, const QVariant &domainValue,
+                      ProtocolMessage *reply)
+{
+    ProtocolMessage logical;
+    logical.type = ProtocolMessageType::Reply;
+    logical.source = ProtocolEndpoint::Client;
+    logical.destination = ProtocolEndpoint::Room;
+    logical.command = static_cast<int>(command);
+    logical.replyTo = replyTo;
+    logical.hasPayload = domainValue.isValid();
+    logical.payload = domainValue;
+    return ProtocolGameplayPayloadRegistry::encodeForWire(
+        logical, reply, nullptr);
+}
+
 static bool acceptedReplyCompletesRequest(Room &room, ServerPlayer *player,
                                           RequestRecorder &recorder)
 {
@@ -84,16 +104,16 @@ static bool acceptedReplyCompletesRequest(Room &room, ServerPlayer *player,
     if (recorder.parseFailed || request == nullptr)
         return false;
 
-    Packet reply(S_SRC_CLIENT | S_TYPE_REPLY | S_DEST_ROOM, S_COMMAND_RESPONSE_CARD);
-    reply.localSerial = request->serial;
-    reply.setMessageBody(QStringLiteral("accepted"));
+    ProtocolMessage reply;
+    if (!makeReply(S_COMMAND_RESPONSE_CARD, request->messageId,
+                   QStringLiteral("accepted"), &reply))
+        return false;
     RoomTestAccess::dispatch(room, player, reply);
 
     return room.getResult(player, 0)
         && player->getClientReply() == QStringLiteral("accepted")
         && !player->m_isWaitingReply
-        && player->m_expectedReplyCommand == S_COMMAND_UNKNOWN
-        && player->m_expectedReplySerial == -1;
+        && player->m_expectedReplyCommand == S_COMMAND_UNKNOWN;
 }
 
 static bool mismatchedReplyTimesOut(Room &room, ServerPlayer *player,
@@ -107,19 +127,19 @@ static bool mismatchedReplyTimesOut(Room &room, ServerPlayer *player,
     if (recorder.parseFailed || request == nullptr)
         return false;
 
-    Packet reply(S_SRC_CLIENT | S_TYPE_REPLY | S_DEST_ROOM, S_COMMAND_PLAY_CARD);
-    reply.localSerial = request->serial;
-    reply.setMessageBody(QStringLiteral("wrong-command"));
+    ProtocolMessage reply;
+    if (!makeReply(S_COMMAND_MULTIPLE_CHOICE, request->messageId,
+                   0, &reply))
+        return false;
     RoomTestAccess::dispatch(room, player, reply);
 
     return !room.getResult(player, 0)
         && !player->m_isWaitingReply
-        && player->m_expectedReplyCommand == S_COMMAND_UNKNOWN
-        && player->m_expectedReplySerial == -1;
+        && player->m_expectedReplyCommand == S_COMMAND_UNKNOWN;
 }
 
-static bool requestCommandAliasesRemainCompatible(Room &room, ServerPlayer *player,
-                                                  RequestRecorder &recorder)
+static bool requestCommandsAreStrict(Room &room, ServerPlayer *player,
+                                     RequestRecorder &recorder)
 {
     struct AliasCase
     {
@@ -127,13 +147,11 @@ static bool requestCommandAliasesRemainCompatible(Room &room, ServerPlayer *play
         CommandType replyCommand;
         QVariant payload;
     };
-    const QList<AliasCase> cases{
+    const QList<AliasCase> acceptedCases{
         {S_COMMAND_CHOOSE_DIRECTION, S_COMMAND_CHOOSE_DIRECTION, QStringLiteral("cw")},
-        {S_COMMAND_CHOOSE_DIRECTION, S_COMMAND_MULTIPLE_CHOICE, QStringLiteral("cw")},
-        {S_COMMAND_LUCK_CARD, S_COMMAND_LUCK_CARD, true},
-        {S_COMMAND_LUCK_CARD, S_COMMAND_INVOKE_SKILL, true}
+        {S_COMMAND_LUCK_CARD, S_COMMAND_LUCK_CARD, true}
     };
-    for (const auto &entry : cases) {
+    for (const auto &entry : acceptedCases) {
         recorder.clear();
         if (!room.doRequest(player, entry.requestCommand, QVariant(), 0, false))
             return false;
@@ -141,19 +159,21 @@ static bool requestCommandAliasesRemainCompatible(Room &room, ServerPlayer *play
         if (recorder.parseFailed || request == nullptr)
             return false;
 
-        Packet reply(S_SRC_CLIENT | S_TYPE_REPLY | S_DEST_ROOM, entry.replyCommand);
-        reply.localSerial = request->serial;
-        reply.setMessageBody(entry.payload);
+        ProtocolMessage reply;
+        if (!makeReply(entry.replyCommand, request->messageId, entry.payload, &reply))
+            return false;
         RoomTestAccess::dispatch(room, player, reply);
         if (!room.getResult(player, 0) || player->getClientReply() != entry.payload)
             return false;
     }
 
-    const QList<AliasCase> unrelatedCases{
+    const QList<AliasCase> rejectedAliases{
+        {S_COMMAND_CHOOSE_DIRECTION, S_COMMAND_MULTIPLE_CHOICE, QStringLiteral("cw")},
+        {S_COMMAND_LUCK_CARD, S_COMMAND_INVOKE_SKILL, true},
         {S_COMMAND_MULTIPLE_CHOICE, S_COMMAND_CHOOSE_DIRECTION, QStringLiteral("cw")},
         {S_COMMAND_INVOKE_SKILL, S_COMMAND_LUCK_CARD, true}
     };
-    for (const auto &entry : unrelatedCases) {
+    for (const auto &entry : rejectedAliases) {
         recorder.clear();
         if (!room.doRequest(player, entry.requestCommand, QVariant(), 0, false))
             return false;
@@ -161,9 +181,9 @@ static bool requestCommandAliasesRemainCompatible(Room &room, ServerPlayer *play
         if (recorder.parseFailed || request == nullptr)
             return false;
 
-        Packet reply(S_SRC_CLIENT | S_TYPE_REPLY | S_DEST_ROOM, entry.replyCommand);
-        reply.localSerial = request->serial;
-        reply.setMessageBody(entry.payload);
+        ProtocolMessage reply;
+        if (!makeReply(entry.replyCommand, request->messageId, entry.payload, &reply))
+            return false;
         RoomTestAccess::dispatch(room, player, reply);
         if (room.getResult(player, 0))
             return false;
@@ -175,14 +195,19 @@ static bool callbackDispatchesThroughCoordinator(Room &room, ServerPlayer *owner
 {
     owner->setOwner(true);
 
-    Packet pause(S_SRC_CLIENT | S_TYPE_NOTIFICATION | S_DEST_ROOM, S_COMMAND_PAUSE);
-    pause.setMessageBody(true);
+    ProtocolMessage pause;
+    pause.type = ProtocolMessageType::Notification;
+    pause.source = ProtocolEndpoint::Client;
+    pause.destination = ProtocolEndpoint::Room;
+    pause.command = S_COMMAND_PAUSE;
+    pause.hasPayload = true;
+    pause.payload = PausePayload{true}.toVariant();
     RoomTestAccess::dispatch(room, owner, pause);
     if (!RoomTestAccess::isPaused(room))
         return false;
 
-    Packet resume(S_SRC_CLIENT | S_TYPE_NOTIFICATION | S_DEST_ROOM, S_COMMAND_PAUSE);
-    resume.setMessageBody(false);
+    ProtocolMessage resume = pause;
+    resume.payload = PausePayload{false}.toVariant();
     RoomTestAccess::dispatch(room, owner, resume);
     return !RoomTestAccess::isPaused(room);
 }
@@ -194,8 +219,7 @@ static bool raceTimeoutClearsPendingState(Room &room, ServerPlayer *player)
         QList<ServerPlayer *>() << player, S_COMMAND_PLAY_CARD, 0);
     return winner == nullptr
         && !player->m_isWaitingReply
-        && player->m_expectedReplyCommand == S_COMMAND_UNKNOWN
-        && player->m_expectedReplySerial == -1;
+        && player->m_expectedReplyCommand == S_COMMAND_UNKNOWN;
 }
 
 }
@@ -221,7 +245,7 @@ int runRequestCoordinatorTests()
         return 2;
     if (!mismatchedReplyTimesOut(room, owner, recorder))
         return 3;
-    if (!requestCommandAliasesRemainCompatible(room, owner, recorder))
+    if (!requestCommandsAreStrict(room, owner, recorder))
         return 4;
     if (!callbackDispatchesThroughCoordinator(room, owner))
         return 5;

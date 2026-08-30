@@ -13,14 +13,18 @@ namespace QSanReplay {
 
 enum class ReplayFormatVersion : quint8
 {
-    LegacyV1 = 1,
     V2 = 2
 };
 
 struct ReplayHeader
 {
+    QString format = QStringLiteral("qsanguosha-replay");
     ReplayFormatVersion formatVersion = ReplayFormatVersion::V2;
     QSanProtocol::ProtocolVersion protocolVersion = QSanProtocol::ProtocolVersion::V2;
+    int schemaVersion = 1;
+    QString gameVersion;
+    QString modName;
+    bool takeover = false;
 };
 
 struct ReplayEvent
@@ -64,7 +68,9 @@ public:
 class ReplayWriter
 {
 public:
-    ReplayWriter();
+    explicit ReplayWriter(const QString &gameVersion = QStringLiteral("unknown"),
+                          const QString &modName = QStringLiteral("unknown"),
+                          bool takeover = false);
 
     bool appendEvent(qint64 elapsedMs,
                      const QSanProtocol::ProtocolMessage &message,
@@ -75,7 +81,10 @@ public:
     QList<QByteArray> eventRecords() const;
     QByteArray rawReplayData() const;
 
-    static QByteArray headerLine();
+    static QByteArray headerLine(
+        const QString &gameVersion = QStringLiteral("unknown"),
+        const QString &modName = QStringLiteral("unknown"),
+        bool takeover = false);
 
 private:
     quint64 nextAvailableMessageId();
@@ -86,6 +95,7 @@ private:
     QList<QByteArray> m_eventRecords;
     qint64 m_lastElapsedMs = 0;
     bool m_hasEvents = false;
+    ReplayHeader m_header;
 };
 
 }

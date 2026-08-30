@@ -31,8 +31,7 @@ bool isKnownEndpoint(ProtocolEndpoint endpoint)
 ProtocolMessageValidationResult QSanProtocol::validateProtocolMessage(
     const ProtocolMessage &message)
 {
-    if (message.version != ProtocolVersion::V1
-        && message.version != ProtocolVersion::V2) {
+    if (message.version != ProtocolVersion::V2) {
         return validationFailure(ProtocolMessageValidationError::UnsupportedVersion,
                                  QStringLiteral("Unknown protocol version"));
     }

@@ -1,89 +1,51 @@
 #include "protocol.h"
 #include "json.h"
-#include "protocol/protocol-v1-message-adapter.h"
-#include "protocol/protocol-v1-codec.h"
+#include "protocol/protocol-message-utils.h"
 
 using namespace std;
 using namespace QSanProtocol;
 
-unsigned int QSanProtocol::Packet::globalSerialSequence = 0;
 const char *QSanProtocol::S_PLAYER_SELF_REFERENCE_ID = "MG_SELF";
 
 const int QSanProtocol::S_ALL_ALIVE_PLAYERS = 0;
 
 bool QSanProtocol::Countdown::tryParse(const QVariant &var)
 {
-    if (!var.canConvert<JsonArray>())
+    if (var.userType() != QMetaType::QVariantMap)
         return false;
-    JsonArray val = var.value<JsonArray>();
-    //compatible with old JSON representation of Countdown
-    if (JsonUtils::isString(val[0])) {
-        if (val[0].toString() == "MG_COUNTDOWN")
-            val.removeFirst();
-        else
-            return false;
+    const QVariantMap value = var.toMap();
+    int rawType = 0;
+    if (!ProtocolMessageUtils::tryParseInt(
+            value.value(QStringLiteral("type")), rawType)
+        || rawType < S_COUNTDOWN_NO_LIMIT || rawType > S_COUNTDOWN_USE_DEFAULT) {
+        return false;
     }
-    if (val.size() == 2) {
-        if (!JsonUtils::isNumberArray(val, 0, 1)) return false;
-        current = (time_t)val[0].toInt();
-        max = (time_t)val[1].toInt();
-        type = S_COUNTDOWN_USE_SPECIFIED;
-        return true;
-    } else if (val.size() == 1 && val[0].canConvert<int>()) {
-        CountdownType type = (CountdownType)val[0].toInt();
-        if (type != S_COUNTDOWN_NO_LIMIT && type != S_COUNTDOWN_USE_DEFAULT)
+    Countdown parsed;
+    parsed.type = static_cast<CountdownType>(rawType);
+    if (parsed.type == S_COUNTDOWN_USE_SPECIFIED) {
+        int parsedCurrent = 0;
+        int parsedMaximum = 0;
+        if (!ProtocolMessageUtils::tryParseInt(
+                value.value(QStringLiteral("current")), parsedCurrent)
+            || !ProtocolMessageUtils::tryParseInt(
+                value.value(QStringLiteral("maximum")), parsedMaximum)
+            || parsedCurrent < 0 || parsedMaximum < 0) {
             return false;
-        else
-            this->type = type;
-        return true;
-    } else
-        return false;
+        }
+        parsed.current = static_cast<time_t>(parsedCurrent);
+        parsed.max = static_cast<time_t>(parsedMaximum);
+    }
+    *this = parsed;
+    return true;
 }
 
 QVariant QSanProtocol::Countdown::toVariant() const
 {
-    JsonArray val;
-    if (type == S_COUNTDOWN_NO_LIMIT || type == S_COUNTDOWN_USE_DEFAULT) {
-        val << (int)type;
-    } else {
-        val << (int)current;
-        val << (int)max;
+    QVariantMap value{{QStringLiteral("type"), static_cast<int>(type)}};
+    if (type == S_COUNTDOWN_USE_SPECIFIED) {
+        value.insert(QStringLiteral("current"), static_cast<qlonglong>(current));
+        value.insert(QStringLiteral("maximum"), static_cast<qlonglong>(max));
     }
-    return val;
-}
-
-QSanProtocol::Packet::Packet(int packetDescription, CommandType command)
-    : globalSerial(0), localSerial(0),
-    command(command),
-    packetDescription(static_cast<PacketDescription>(packetDescription))
-{
-}
-
-unsigned int QSanProtocol::Packet::createGlobalSerial()
-{
-    globalSerial = ++globalSerialSequence;
-    return globalSerial;
-}
-
-bool QSanProtocol::Packet::parse(const QByteArray &raw)
-{
-    const ProtocolV1Codec codec;
-    ProtocolMessage message;
-    const ProtocolDecodeResult result = codec.decode(QByteArrayView(raw), &message);
-    if (!result.success)
-        return false;
-    applyProtocolMessageToV1Packet(message, *this);
-    return true;
-}
-
-QByteArray QSanProtocol::Packet::toJson() const
-{
-    const ProtocolV1Codec codec;
-    return codec.encode(protocolMessageFromV1Packet(*this));
-}
-
-QString QSanProtocol::Packet::toString() const
-{
-    return QString::fromUtf8(toJson());
+    return value;
 }
 

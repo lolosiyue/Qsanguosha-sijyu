@@ -3,6 +3,7 @@
 #include "room.h"
 #include "json.h"
 #include "card-lifetime-manager.h"
+#include "protocol/protocol-message-utils.h"
 #include <QMetaType>
 
 // 註冊技能多實例相關 metatype——確保 QVariant::toString() 回傳基礎技能名
@@ -23,6 +24,51 @@ void releaseOwnedCard(Card *card)
 {
     if (card)
         card->deleteLater();
+}
+
+bool isKnownCardMoveReason(int reason)
+{
+    switch (reason) {
+    case CardMoveReason::S_REASON_UNKNOWN:
+    case CardMoveReason::S_REASON_USE:
+    case CardMoveReason::S_REASON_RESPONSE:
+    case CardMoveReason::S_REASON_DISCARD:
+    case CardMoveReason::S_REASON_RECAST:
+    case CardMoveReason::S_REASON_PINDIAN:
+    case CardMoveReason::S_REASON_DRAW:
+    case CardMoveReason::S_REASON_GOTCARD:
+    case CardMoveReason::S_REASON_SHOW:
+    case CardMoveReason::S_REASON_TRANSFER:
+    case CardMoveReason::S_REASON_PUT:
+    case CardMoveReason::S_REASON_LETUSE:
+    case CardMoveReason::S_REASON_RETRIAL:
+    case CardMoveReason::S_REASON_RULEDISCARD:
+    case CardMoveReason::S_REASON_THROW:
+    case CardMoveReason::S_REASON_DISMANTLE:
+    case CardMoveReason::S_REASON_GIVE:
+    case CardMoveReason::S_REASON_EXTRACTION:
+    case CardMoveReason::S_REASON_GOTBACK:
+    case CardMoveReason::S_REASON_RECYCLE:
+    case CardMoveReason::S_REASON_ROB:
+    case CardMoveReason::S_REASON_PREVIEWGIVE:
+    case CardMoveReason::S_REASON_EXCLUSIVE:
+    case CardMoveReason::S_REASON_TURNOVER:
+    case CardMoveReason::S_REASON_JUDGE:
+    case CardMoveReason::S_REASON_PREVIEW:
+    case CardMoveReason::S_REASON_DEMONSTRATE:
+    case CardMoveReason::S_REASON_SWAP:
+    case CardMoveReason::S_REASON_OVERRIDE:
+    case CardMoveReason::S_REASON_EXCHANGE_FROM_PILE:
+    case CardMoveReason::S_REASON_NATURAL_ENTER:
+    case CardMoveReason::S_REASON_REMOVE_FROM_PILE:
+    case CardMoveReason::S_REASON_JUDGEDONE:
+    case CardMoveReason::S_REASON_CHANGE_EQUIP:
+    case CardMoveReason::S_REASON_SHUFFLE:
+    case CardMoveReason::S_REASON_PUT_END:
+        return true;
+    default:
+        return false;
+    }
 }
 }
 
@@ -147,65 +193,102 @@ QVariant SkillAmountChangeStruct::toVariant() const
 
 bool CardsMoveStruct::tryParse(const QVariant &arg)
 {
-    JsonArray args = arg.value<JsonArray>();
-    if (args.size() < 8) return false;
-	JsonUtils::tryParse(args[0], card_ids);
-    from_place = (Player::Place)args[1].toInt();
-    to_place = (Player::Place)args[2].toInt();
-    from_player_name = args[3].toString();
-    to_player_name = args[4].toString();
-    from_pile_name = args[5].toString();
-    to_pile_name = args[6].toString();
-    reason.tryParse(args[7]);
-	open = args[8].toBool();
-	if (!open){
-        for (int i = 0; i < card_ids.length(); i++){
-			if(from_place==Player::PlaceSpecial||from_place==Player::DrawPile){
-				if(Sanguosha->getCard(card_ids[i])->hasFlag("visible")) continue;
+    if (arg.userType() != QMetaType::QVariantMap)
+        return false;
+    const QVariantMap object = arg.toMap();
+    CardsMoveStruct parsed;
+    int parsedFromPlace = 0;
+    int parsedToPlace = 0;
+    QString fromPlayer;
+    QString toPlayer;
+    QString fromPile;
+    QString toPile;
+    if (!JsonUtils::tryParse(object.value(QStringLiteral("card_ids")), parsed.card_ids)
+        || !ProtocolMessageUtils::tryParseInt(object.value(QStringLiteral("from_place")), parsedFromPlace)
+        || !ProtocolMessageUtils::tryParseInt(object.value(QStringLiteral("to_place")), parsedToPlace)
+        || parsedFromPlace < Player::PlaceHand || parsedFromPlace > Player::PlaceWuGu
+        || parsedToPlace < Player::PlaceHand || parsedToPlace > Player::PlaceWuGu
+        || !ProtocolMessageUtils::tryParseString(object.value(QStringLiteral("from_player")), fromPlayer)
+        || !ProtocolMessageUtils::tryParseString(object.value(QStringLiteral("to_player")), toPlayer)
+        || !ProtocolMessageUtils::tryParseString(object.value(QStringLiteral("from_pile")), fromPile)
+        || !ProtocolMessageUtils::tryParseString(object.value(QStringLiteral("to_pile")), toPile)
+        || !ProtocolMessageUtils::tryParseBool(object.value(QStringLiteral("open")), parsed.open)
+        || !parsed.reason.tryParse(object.value(QStringLiteral("reason")))) {
+        return false;
+    }
+    parsed.from_place = static_cast<Player::Place>(parsedFromPlace);
+    parsed.to_place = static_cast<Player::Place>(parsedToPlace);
+    parsed.from_player_name = fromPlayer;
+    parsed.to_player_name = toPlayer;
+    parsed.from_pile_name = fromPile;
+    parsed.to_pile_name = toPile;
+	if (!parsed.open){
+        for (int i = 0; i < parsed.card_ids.length(); i++){
+			if(parsed.from_place==Player::PlaceSpecial||parsed.from_place==Player::DrawPile){
+				if(Sanguosha->getCard(parsed.card_ids[i])->hasFlag("visible")) continue;
 			}
-			card_ids[i] = Card::S_UNKNOWN_CARD_ID;
+			parsed.card_ids[i] = Card::S_UNKNOWN_CARD_ID;
 		}
 	}
+    *this = parsed;
     return true;
 }
 
 QVariant CardsMoveStruct::toVariant() const
 {
-    JsonArray arg;
-	arg << JsonUtils::toJsonArray(card_ids);
-    arg << from_place;
-    arg << to_place;
-    arg << from_player_name;
-    arg << to_player_name;
-    arg << from_pile_name;
-    arg << to_pile_name;
-    arg << reason.toVariant();
-    arg << open;
-    return arg;
+    return QVariantMap{
+        {QStringLiteral("card_ids"), JsonUtils::toJsonArray(card_ids)},
+        {QStringLiteral("from_place"), static_cast<int>(from_place)},
+        {QStringLiteral("to_place"), static_cast<int>(to_place)},
+        {QStringLiteral("from_player"), from_player_name},
+        {QStringLiteral("to_player"), to_player_name},
+        {QStringLiteral("from_pile"), from_pile_name},
+        {QStringLiteral("to_pile"), to_pile_name},
+        {QStringLiteral("reason"), reason.toVariant()},
+        {QStringLiteral("open"), open}
+    };
 }
 
 bool CardMoveReason::tryParse(const QVariant &arg)
 {
-    JsonArray args = arg.value<JsonArray>();
-    if (args.size() < 5) return false;
-
-    m_reason = args[0].toInt();
-    m_playerId = args[1].toString();
-    m_skillName = args[2].toString();
-    m_eventName = args[3].toString();
-    m_targetId = args[4].toString();
+    if (arg.userType() != QMetaType::QVariantMap)
+        return false;
+    const QVariantMap object = arg.toMap();
+    int parsedReason = 0;
+    QString playerId;
+    QString skillName;
+    QString eventName;
+    QString targetId;
+    if (!ProtocolMessageUtils::tryParseInt(
+            object.value(QStringLiteral("reason")), parsedReason)
+        || !isKnownCardMoveReason(parsedReason)
+        || !ProtocolMessageUtils::tryParseString(
+            object.value(QStringLiteral("player_id")), playerId)
+        || !ProtocolMessageUtils::tryParseString(
+            object.value(QStringLiteral("skill_name")), skillName)
+        || !ProtocolMessageUtils::tryParseString(
+            object.value(QStringLiteral("event_name")), eventName)
+        || !ProtocolMessageUtils::tryParseString(
+            object.value(QStringLiteral("target_id")), targetId)) {
+        return false;
+    }
+    m_reason = parsedReason;
+    m_playerId = playerId;
+    m_skillName = skillName;
+    m_eventName = eventName;
+    m_targetId = targetId;
     return true;
 }
 
 QVariant CardMoveReason::toVariant() const
 {
-    JsonArray result;
-    result << m_reason;
-    result << m_playerId;
-    result << m_skillName;
-    result << m_eventName;
-    result << m_targetId;
-    return result;
+    return QVariantMap{
+        {QStringLiteral("reason"), m_reason},
+        {QStringLiteral("player_id"), m_playerId},
+        {QStringLiteral("skill_name"), m_skillName},
+        {QStringLiteral("event_name"), m_eventName},
+        {QStringLiteral("target_id"), m_targetId}
+    };
 }
 
 // GameModeStruct implementation
