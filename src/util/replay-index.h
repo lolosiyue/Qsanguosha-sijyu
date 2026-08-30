@@ -6,6 +6,8 @@
 #include <QString>
 #include <QMap>
 
+#include "replay/replay-codec.h"
+
 class Replayer;
 
 enum class ReplayNodeType
@@ -18,7 +20,7 @@ enum class ReplayNodeType
 struct ReplayNode
 {
     int pairIndex;
-    int elapsed;
+    qint64 elapsed;
     ReplayNodeType type;
     QString description;
     QString playerName;
@@ -36,14 +38,14 @@ class ReplayIndex : public QObject
 public:
     explicit ReplayIndex(QObject *parent = nullptr);
 
-    void buildIndex(const QList<QPair<int, QString>> &pairs);
+    void buildIndex(const QList<QSanReplay::ReplayEvent> &events);
     void clear();
 
     QList<ReplayNode> getNodes() const;
     ReplayNode getNode(int index) const;
     int getNodeCount() const;
 
-    int findNodeByElapsed(int elapsed) const;
+    int findNodeByElapsed(qint64 elapsed) const;
     int findNodeByTurn(int turnCount) const;
     int findNearestNode(int pairIndex) const;
 
@@ -53,12 +55,13 @@ public:
     QString getNodeDescription(const ReplayNode &node) const;
 
 private:
-    bool parsePacket(const QString &cmd, ReplayNode &node);
+    bool parseMessage(const QSanProtocol::ProtocolMessage &message,
+                      ReplayNode &node);
     void loadSnapshots();
 
     QList<ReplayNode> m_nodes;
     QMap<int, int> m_turnToNodeMap;
-    QMap<int, int> m_elapsedToNodeMap;
+    QMap<qint64, int> m_elapsedToNodeMap;
     QString m_snapshotPath;
     int m_lastTurnCount;
 };

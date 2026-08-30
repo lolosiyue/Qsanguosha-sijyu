@@ -3,8 +3,11 @@
 
 #include <QSemaphore>
 #include <QMutex>
+#include <QImage>
+#include <QThread>
 
 #include "record-buffer.h"
+#include "replay/replay-codec.h"
 
 class ReplayIndex;
 class GameSnapshot;
@@ -20,11 +23,10 @@ public:
     static QByteArray PNG2TXT(const QString filename);
 
     bool save(const QString &filename) const;
-    void recordLine(const QString &line);
+    bool recordMessage(const QSanProtocol::ProtocolMessage &message,
+                       QString *error = nullptr);
     QList<QByteArray> getRecords() const;
-
-public slots:
-    void record(const char *line);
+    QByteArray rawReplayData() const;
 
 private:
     RecordBuffer buffer;
@@ -42,7 +44,14 @@ public:
     qreal getSpeed();
     QString getPath() const;
     int getCurrentPairIndex() const;
-    int getCurrentElapsed() const;
+    qint64 getCurrentElapsed() const;
+
+    bool isValid() const;
+    QSanReplay::ReplayLoadError loadError() const;
+    QString errorString() const;
+    QSanReplay::ReplayFormatVersion formatVersion() const;
+    QSanProtocol::ProtocolVersion messageProtocolVersion() const;
+    const QList<QSanReplay::ReplayEvent> &events() const;
 
     ReplayIndex* getIndex() const;
     GameSnapshot* getSnapshot(int nodeIndex) const;
@@ -55,7 +64,7 @@ public slots:
     void speedUp();
     void slowDown();
     void jumpToNode(int nodeIndex);
-    void jumpToElapsed(int elapsed);
+    void jumpToElapsed(qint64 elapsed);
     void seekToPosition(int pairIndex);
 
 protected:
@@ -74,18 +83,17 @@ private:
     QMutex mutex;
     QSemaphore play_sem;
 
-    struct Pair
-    {
-        int elapsed;
-        QString cmd;
-    };
-    QList<Pair> pairs;
+    QList<QSanReplay::ReplayEvent> m_events;
+    QSanReplay::ReplayLoadError m_loadError;
+    QString m_errorString;
+    QSanReplay::ReplayFormatVersion m_formatVersion;
+    QSanProtocol::ProtocolVersion m_messageProtocolVersion;
 
     ReplayIndex *m_index;
     QList<GameSnapshot*> m_snapshots;
 
 signals:
-    void command_parsed(const QString &cmd);
+    void command_parsed(const QSanProtocol::ProtocolMessage &message);
     void elasped(int secs);
     void speed_changed(qreal speed);
     void node_reached(int nodeIndex);

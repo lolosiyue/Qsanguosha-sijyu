@@ -6,6 +6,8 @@
 #include <QString>
 #include <QVariant>
 
+#include "protocol/protocol-message.h"
+
 class Replayer;
 class ReplayGameState;
 class Recorder;
@@ -28,8 +30,9 @@ public:
     bool isTakeoverEnabled() const;
     QString getTakeoverTarget() const;
 
-    void processRequest(const QString &cmd);
-    QVariant generateAIResponse(const QString &cmd, const QString &playerName);
+    void processRequest(const QSanProtocol::ProtocolMessage &message);
+    QVariant generateAIResponse(const QSanProtocol::ProtocolMessage &message,
+                                const QString &playerName);
 
     void saveNewReplay(const QString &filepath);
     QString generateNewReplayFilename() const;
@@ -41,13 +44,13 @@ signals:
     void perspectiveChanged(const QString &playerName);
 
 private slots:
-    void onCommandParsed(const QString &cmd);
+    void onCommandParsed(const QSanProtocol::ProtocolMessage &message);
     void onSeekFinished();
 
 private:
     void initializeFromReplay();
     void syncHandcards(const QString &playerName);
-    void recordCommand(const QString &cmd);
+    void recordMessage(const QSanProtocol::ProtocolMessage &message);
 
     Replayer *m_replayer;
     ReplayGameState *m_gameState;
@@ -56,8 +59,7 @@ private:
     int m_startPairIndex;
 
     Recorder *m_newRecorder;
-    QList<QString> m_newCommands;
-    QDateTime m_startTime;
+    QList<QSanProtocol::ProtocolMessage> m_newCommands;
 
     QMap<QString, bool> m_playerAIEnabled;
 };
