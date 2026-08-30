@@ -1,26 +1,14 @@
 #ifndef _PROTOCOL_H
 #define _PROTOCOL_H
 
+#include <QByteArray>
+#include <QString>
+#include <QVariant>
+#include <QtGlobal>
+
+#include <ctime>
+
 namespace QSanProtocol {
-
-    enum PacketDescription
-    {
-        S_DESC_UNKNOWN,
-        S_TYPE_REQUEST = 0x1,
-        S_TYPE_REPLY = 0x2,
-        S_TYPE_NOTIFICATION = 0x4,
-        S_TYPE_MASK = 0xf,
-        S_SRC_ROOM = 0x10,
-        S_SRC_LOBBY = 0x20,
-        S_SRC_CLIENT = 0x40,
-        S_SRC_MASK = 0xf0,
-        S_DEST_ROOM = 0x100,
-        S_DEST_LOBBY = 0x200,
-        S_DEST_CLIENT = 0x400,
-        S_DEST_MASK = 0xf00,
-
-        S_DESC_DUMMY
-    };
 
     enum ProcessInstanceType
     {
@@ -163,7 +151,7 @@ namespace QSanProtocol {
         S_COMMAND_WARN,
         S_COMMAND_TRUST,
         S_COMMAND_PAUSE,
-        S_COMMAND_TOGGLE_READY,
+        S_COMMAND_READY,
         S_COMMAND_ADD_ROBOT,
         S_COMMAND_SIGNUP,
         S_COMMAND_UPDATE_SKILL,
@@ -189,8 +177,7 @@ namespace QSanProtocol {
         S_COMMAND_SYNC_PILE = 129,
         S_COMMAND_SKILL_INSTANCE = 130,
         S_COMMAND_CARD_PROVENANCE = 131,
-        S_COMMAND_UPDATE_PLAYER_UI_STATE = 132,
-        S_COMMAND_PROTOCOL_SWITCH = 133
+        S_COMMAND_UPDATE_PLAYER_UI_STATE = 132
     };
 
     enum GuanxingStepType
@@ -286,67 +273,6 @@ namespace QSanProtocol {
         }
     };
 
-    class AbstractPacket
-    {
-    public:
-        virtual bool parse(const QByteArray &) = 0;
-        virtual QByteArray toJson() const = 0;
-        virtual QString toString() const = 0;
-        virtual PacketDescription getPacketDestination() const = 0;
-        virtual PacketDescription getPacketSource() const = 0;
-        virtual PacketDescription getPacketType() const = 0;
-        virtual PacketDescription getPacketDescription() const = 0;
-        virtual CommandType getCommandType() const = 0;
-    };
-
-    class Packet : public AbstractPacket
-    {
-    public:
-        //format: [global_serial, local_serial, packet_type, command_name, command_body]
-        unsigned int globalSerial;
-        unsigned int localSerial;
-
-        Packet(int packetDescription = S_DESC_UNKNOWN, CommandType command = S_COMMAND_UNKNOWN);
-        unsigned int createGlobalSerial();
-        inline void setMessageBody(const QVariant &value)
-        {
-            messageBody = value;
-        }
-        inline const QVariant &getMessageBody() const
-        {
-            return messageBody;
-        }
-        bool parse(const QByteArray &raw);
-        QByteArray toJson() const;
-        QString toString() const;
-        PacketDescription getPacketDestination() const
-        {
-            return static_cast<PacketDescription>(packetDescription & S_DEST_MASK);
-        }
-        PacketDescription getPacketSource() const
-        {
-            return static_cast<PacketDescription>(packetDescription & S_SRC_MASK);
-        }
-        PacketDescription getPacketType() const
-        {
-            return static_cast<PacketDescription>(packetDescription & S_TYPE_MASK);
-        }
-        PacketDescription getPacketDescription() const
-        {
-            return packetDescription;
-        }
-        CommandType getCommandType() const
-        {
-            return command;
-        }
-
-    protected:
-        static unsigned int globalSerialSequence;
-        CommandType command;
-        PacketDescription packetDescription;
-        QVariant messageBody;
-
-    };
 }
 
 #endif

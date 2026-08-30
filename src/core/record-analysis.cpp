@@ -7,7 +7,7 @@
 #include "client.h"
 
 #include "json.h"
-#include "protocol/protocol-v1-message-adapter.h"
+#include "protocol/session/session-payloads.h"
 #include "replay/replay-codec.h"
 
 using namespace QSanProtocol;
@@ -33,9 +33,6 @@ void RecAnalysis::initialize(QString dir)
         QFile file(dir);
         if (file.open(QIODevice::ReadOnly)) {
             replayData = file.readAll();
-            // Preserve the historical zero-byte + qCompress container.
-            if (!replayData.isEmpty() && replayData.at(0) == '\0')
-                replayData = qUncompress(replayData.mid(1));
         }
     }
 
@@ -47,74 +44,64 @@ void RecAnalysis::initialize(QString dir)
 
     QStringList role_list;
     for (const ReplayEvent &event : load.events) {
-        Packet packet;
-        applyProtocolMessageToV1Packet(event.message, packet);
+        const int command = event.message.command;
+        const QVariant &body = event.message.payload;
 
-        if (packet.getCommandType() == S_COMMAND_SETUP) {
-            const QVariant &body = packet.getMessageBody();
-            if (JsonUtils::isString(body)) {
-                QString l = body.toString();
-                static const QRegularExpression rx(
-                    QRegularExpression::anchoredPattern(QStringLiteral(
-                        "(.*):(@?\\w+):(\\d+):(\\d+):([+\\w-]*):([RCFSTBHAMN123a-r]*)(\\s+)?")),
-                    QRegularExpression::UseUnicodePropertiesOption);
-                const QRegularExpressionMatch match = rx.match(l);
-                if (!match.hasMatch())
-                    continue;
-
-                m_recordGameMode = match.captured(2);
-                m_recordPlayers = match.captured(2).split("_").first()
-                    .remove(QRegularExpression("[^0-9]")).toInt();
-                QStringList ban_packages = match.captured(5).split("+");
-                foreach (const Package *package, Sanguosha->getPackages()) {
-                    if (!ban_packages.contains(package->objectName())
-                        && Sanguosha->getScenario(package->objectName()) == nullptr)
-                        m_recordPackages << Sanguosha->translate(package->objectName());
-                }
-
-                QString flags = match.captured(6);
-                if (flags.contains("R")) m_recordServerOptions << tr("RandomSeats");
-                if (flags.contains("C")) m_recordServerOptions << tr("EnableCheat");
-                if (flags.contains("F")) m_recordServerOptions << tr("FreeChoose");
-                if (flags.contains("S")) m_recordServerOptions << tr("Enable2ndGeneral");
-                if (flags.contains("T")) m_recordServerOptions << tr("EnableSame");
-                if (flags.contains("B")) m_recordServerOptions << tr("EnableBasara");
-                if (flags.contains("H")) m_recordServerOptions << tr("EnableHegemony");
-                if (flags.contains("E")) m_recordServerOptions << tr("EnableMeleeMode");
-                if (flags.contains("A")) m_recordServerOptions << tr("EnableAI");
-
+        if (command == S_COMMAND_SETUP) {
+            SetupPayload setup;
+            QString setupError;
+            if (!SetupPayload::parse(body, &setup, &setupError))
                 continue;
+
+            m_recordGameMode = setup.gameMode;
+            m_recordPlayers = setup.playerCount;
+            foreach (const Package *package, Sanguosha->getPackages()) {
+                if (!setup.banPackages.contains(package->objectName())
+                    && Sanguosha->getScenario(package->objectName()) == nullptr)
+                    m_recordPackages << Sanguosha->translate(package->objectName());
             }
+            if (setup.randomSeat) m_recordServerOptions << tr("RandomSeats");
+            if (setup.enableCheat) m_recordServerOptions << tr("EnableCheat");
+            if (setup.freeChoose) m_recordServerOptions << tr("FreeChoose");
+            if (setup.enableSecondGeneral) m_recordServerOptions << tr("Enable2ndGeneral");
+            if (setup.enableSame) m_recordServerOptions << tr("EnableSame");
+            if (setup.enableBasara) m_recordServerOptions << tr("EnableBasara");
+            if (setup.enableHegemony) m_recordServerOptions << tr("EnableHegemony");
+            if (setup.enableMeleeMode) m_recordServerOptions << tr("EnableMeleeMode");
+            if (setup.enableAi) m_recordServerOptions << tr("EnableAI");
+            continue;
         }
 
-        if (packet.getCommandType() == S_COMMAND_ARRANGE_SEATS) {
+        if (command == S_COMMAND_ARRANGE_SEATS) {
             role_list.clear();
-            JsonUtils::tryParse(packet.getMessageBody(), role_list);
+            JsonUtils::tryParse(body.toMap().value(QStringLiteral("player_names")), role_list);
             continue;
         }
 
-        if (packet.getCommandType() == S_COMMAND_ADD_PLAYER) {
-            JsonArray body = packet.getMessageBody().value<JsonArray>();
-            if (body.size() >= 2) {
-                getPlayer(body[0].toString())->m_screenName = body[1].toString();
-            }
+        if (command == S_COMMAND_ADD_PLAYER) {
+            const QVariantMap object = body.toMap();
+            getPlayer(object.value(QStringLiteral("player_name")).toString())->m_screenName
+                = object.value(QStringLiteral("screen_name")).toString();
             continue;
         }
 
-        if (packet.getCommandType() == S_COMMAND_REMOVE_PLAYER) {
-            QString name = packet.getMessageBody().toString();
+        if (command == S_COMMAND_REMOVE_PLAYER) {
+            const QString name = body.toMap()
+                .value(QStringLiteral("player_name")).toString();
             m_recordMap.remove(name);
             continue;
         }
 
-        if (packet.getCommandType() == S_COMMAND_SET_PROPERTY) {
-            QStringList self_info;
-            if (!JsonUtils::tryParse(packet.getMessageBody(), self_info) || self_info.size() < 3)
+        if (command == S_COMMAND_SET_PROPERTY) {
+            const QVariantMap object = body.toMap();
+            if (object.value(QStringLiteral("action")).toString()
+                != QLatin1String("property")) {
                 continue;
+            }
 
-            const QString &who = self_info.at(0);
-            const QString &property = self_info.at(1);
-            const QString &value = self_info.at(2);
+            const QString who = object.value(QStringLiteral("player_name")).toString();
+            const QString property = object.value(QStringLiteral("property_name")).toString();
+            const QString value = object.value(QStringLiteral("string_value")).toString();
 
             if (who == S_PLAYER_SELF_REFERENCE_ID) {
                 if (property == "objectName") {
@@ -131,11 +118,11 @@ void RecAnalysis::initialize(QString dir)
                 if (record == nullptr)
                     continue;
 
-                if (self_info.at(1) == "general") {
+                if (property == "general") {
                     record->m_generalName = value;
-                } else if (self_info.at(1) == "general2") {
+                } else if (property == "general2") {
                     record->m_general2Name = value;
-                } else if (self_info.at(1) == "state" && value == "robot") {
+                } else if (property == "state" && value == "robot") {
                     record->m_statue = "robot";
                 }
             }
@@ -143,14 +130,11 @@ void RecAnalysis::initialize(QString dir)
             continue;
         }
 
-        if (packet.getCommandType() == S_COMMAND_SET_MARK) {
-            JsonArray args = packet.getMessageBody().value<JsonArray>();
-            if (args.size() < 3)
-                continue;
-
-            QString who = args.at(0).toString();
-            QString mark = args.at(1).toString();
-            int num = args.at(2).toInt();
+        if (command == S_COMMAND_SET_MARK) {
+            const QVariantMap object = body.toMap();
+            const QString who = object.value(QStringLiteral("player_name")).toString();
+            const QString mark = object.value(QStringLiteral("mark_name")).toString();
+            const int num = object.value(QStringLiteral("value")).toInt();
             if (mark == "Global_TurnCount") {
                 PlayerRecordStruct *rec = getPlayer(who);
                 if (rec) {
@@ -162,28 +146,20 @@ void RecAnalysis::initialize(QString dir)
             continue;
         }
 
-        if (packet.getCommandType() == S_COMMAND_SPEAK) {
-            JsonArray body = packet.getMessageBody().value<JsonArray>();
-            if (body.size() < 2) {
-                continue;
-            }
-
-            QString speaker = body[0].toString();
-            QString words = body[1].toString();
+        if (command == S_COMMAND_SPEAK) {
+            const QVariantMap object = body.toMap();
+            const QString speaker = object.value(QStringLiteral("speaker")).toString();
+            const QString words = object.value(QStringLiteral("text")).toString();
             m_recordChat += getPlayer(speaker)->m_screenName + ": " + words;
             m_recordChat.append("<br/>");
 
             continue;
         }
 
-        if (packet.getCommandType() == S_COMMAND_CHANGE_HP) {
-            JsonArray change = packet.getMessageBody().value<JsonArray>();
-            if (change.size() < 3 || !JsonUtils::isString(change[0])
-                || !JsonUtils::isNumber(change[1]) || !JsonUtils::isNumber(change[2]))
-                continue;
-
-            QString name = change[0].toString();
-            int hp_change = change[1].toInt();
+        if (command == S_COMMAND_CHANGE_HP) {
+            const QVariantMap change = body.toMap();
+            const QString name = change.value(QStringLiteral("player_name")).toString();
+            const int hp_change = change.value(QStringLiteral("delta")).toInt();
 
             if (hp_change > 0)
                 getPlayer(name)->m_recover += hp_change;
@@ -191,36 +167,42 @@ void RecAnalysis::initialize(QString dir)
             continue;
         }
 
-        if (packet.getCommandType() == S_COMMAND_LOG_SKILL) {
-            QStringList log;
-            if (!JsonUtils::tryParse(packet.getMessageBody(), log) || log.size() < 9)
+        if (command == S_COMMAND_LOG_SKILL) {
+            const QVariantMap log = body.toMap();
+            QStringList tos;
+            QStringList arguments;
+            if (!JsonUtils::tryParse(log.value(QStringLiteral("to_players")), tos)
+                || !JsonUtils::tryParse(log.value(QStringLiteral("arguments")), arguments)
+                || arguments.size() != 5) {
                 continue;
+            }
 
-            const QString &type = log.at(0);
-            const QString &from = log.at(1);
-            QStringList tos = log.at(2).split('+');
-            //const QString &card_str = log.at(3);
-            const QString arg = log.at(4);
-            //const QString arg2 = log.at(5);
+            const QString type = log.value(QStringLiteral("log_type")).toString();
+            const QString from = log.value(QStringLiteral("from_player")).toString();
+            const QString arg = arguments.at(0);
 
             if (type.startsWith("#Damage")) {
                 int damage = arg.toInt();
 
                 if (!from.isEmpty())
                     getPlayer(from)->m_damage += damage;
-                getPlayer(tos.first())->m_damaged += damage;
+                if (!tos.isEmpty())
+                    getPlayer(tos.first())->m_damaged += damage;
                 continue;
 
             }
 
             if (type == "#Murder" || type == "#Suicide") {
-                getPlayer(from)->m_kill++;
-                getPlayer(tos.first())->m_isAlive = false;
+                if (!from.isEmpty())
+                    getPlayer(from)->m_kill++;
+                if (!tos.isEmpty())
+                    getPlayer(tos.first())->m_isAlive = false;
                 continue;
             }
 
             if (type == "#Contingency") {
-                getPlayer(tos.first())->m_isAlive = false;
+                if (!tos.isEmpty())
+                    getPlayer(tos.first())->m_isAlive = false;
                 continue;
             }
         }
@@ -230,18 +212,14 @@ void RecAnalysis::initialize(QString dir)
         setDesignation();
         return;
     }
-    Packet gameover_packet;
-    applyProtocolMessageToV1Packet(load.events.constLast().message, gameover_packet);
-    if (gameover_packet.getCommandType() == S_COMMAND_GAME_OVER) {
-        JsonArray args = gameover_packet.getMessageBody().value<JsonArray>();
-        if (args.size() == 2) {
-            QString winners = args.at(0).toString();
-            m_recordWinners = winners.split("+");
-
-            QStringList roles_order;
-            JsonUtils::tryParse(args.at(1), roles_order);
+    const ProtocolMessage &gameover = load.events.constLast().message;
+    if (gameover.command == S_COMMAND_GAME_OVER) {
+        const QVariantMap object = gameover.payload.toMap();
+        QStringList roles_order;
+        if (JsonUtils::tryParse(object.value(QStringLiteral("winner_tokens")), m_recordWinners)
+            && JsonUtils::tryParse(object.value(QStringLiteral("roles")), roles_order)) {
             for (int i = 0; i < role_list.length(); i++)
-                getPlayer(role_list.at(i))->m_role = roles_order.at(i);
+                getPlayer(role_list.at(i))->m_role = roles_order.value(i);
         }
     }
 

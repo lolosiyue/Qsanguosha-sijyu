@@ -1,0 +1,3982 @@
+{
+    "flow_identity": [
+        "message_type",
+        "source",
+        "destination",
+        "command_id"
+    ],
+    "flows": [
+        {
+            "command": "S_COMMAND_CHOOSE_CARD",
+            "command_id": 1,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 1,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_CHOOSE_CARD",
+            "command_id": 1,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_PLAY_CARD",
+            "command_id": 2,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 3,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_RESPONSE_CARD",
+            "command_id": 3,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 3,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_RESPONSE_CARD",
+            "command_id": 3,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_SHOW_CARD",
+            "command_id": 4,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 3,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_SHOW_CARD",
+            "command_id": 4,
+            "consumer": "Client::showCard",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::showCard"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "card_ids"
+            ],
+            "source": "room",
+            "target_typed_schema": "ShowCardPayload"
+        },
+        {
+            "command": "S_COMMAND_SHOW_ALL_CARDS",
+            "command_id": 5,
+            "consumer": "Client::showAllCards",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::showAllCards"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "card_ids"
+            ],
+            "source": "room",
+            "target_typed_schema": "ShowAllCardsPayload"
+        },
+        {
+            "command": "S_COMMAND_EXCHANGE_CARD",
+            "command_id": 6,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 7,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_DISCARD_CARD",
+            "command_id": 7,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 7,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_DISCARD_CARD",
+            "command_id": 7,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_INVOKE_SKILL",
+            "command_id": 8,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 8,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_INVOKE_SKILL",
+            "command_id": 8,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_INVOKE_SKILL",
+            "command_id": 8,
+            "consumer": "Client::skillInvoked",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::skillInvoked"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "skill_name"
+            ],
+            "source": "room",
+            "target_typed_schema": "SkillInvokedPayload"
+        },
+        {
+            "command": "S_COMMAND_MOVE_FOCUS",
+            "command_id": 9,
+            "consumer": "Client::moveFocus",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::moveFocus"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_names"
+            ],
+            "source": "room",
+            "target_typed_schema": "MoveFocusPayload"
+        },
+        {
+            "command": "S_COMMAND_CHOOSE_GENERAL",
+            "command_id": 10,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 10,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_CHOOSE_GENERAL",
+            "command_id": 10,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_CHOOSE_KINGDOM",
+            "command_id": 11,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 11,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_CHOOSE_KINGDOM",
+            "command_id": 11,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_CHOOSE_SUIT",
+            "command_id": 12,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 12,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_CHOOSE_SUIT",
+            "command_id": 12,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_CHOOSE_ROLE",
+            "command_id": 13,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 13,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_CHOOSE_ROLE",
+            "command_id": 13,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_CHOOSE_ROLE_3V3",
+            "command_id": 14,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 14,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_CHOOSE_ROLE_3V3",
+            "command_id": 14,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_CHOOSE_DIRECTION",
+            "command_id": 15,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 15,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_CHOOSE_DIRECTION",
+            "command_id": 15,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_CHOOSE_PLAYER",
+            "command_id": 16,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 16,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_CHOOSE_PLAYER",
+            "command_id": 16,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_CHOOSE_ORDER",
+            "command_id": 17,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 17,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_CHOOSE_ORDER",
+            "command_id": 17,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_ASK_PEACH",
+            "command_id": 18,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 3,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_SET_MARK",
+            "command_id": 19,
+            "consumer": "Client::setMark",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::setMark"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "mark_name",
+                "value"
+            ],
+            "source": "room",
+            "target_typed_schema": "SetMarkPayload"
+        },
+        {
+            "command": "S_COMMAND_CARD_MARK",
+            "command_id": 21,
+            "consumer": "Client::setCardMark",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::setCardMark"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "card_id",
+                "mark_name",
+                "value"
+            ],
+            "source": "room",
+            "target_typed_schema": "CardMarkPayload"
+        },
+        {
+            "command": "S_COMMAND_CARD_FLAG",
+            "command_id": 22,
+            "consumer": "Client::setCardFlag",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::setCardFlag"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "card_id",
+                "flag"
+            ],
+            "source": "room",
+            "target_typed_schema": "CardFlagPayload"
+        },
+        {
+            "command": "S_COMMAND_NULLIFICATION",
+            "command_id": 23,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 3,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_MULTIPLE_CHOICE",
+            "command_id": 24,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 24,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_MULTIPLE_CHOICE",
+            "command_id": 24,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_PINDIAN",
+            "command_id": 25,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 3,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_AMAZING_GRACE",
+            "command_id": 26,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 26,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_AMAZING_GRACE",
+            "command_id": 26,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_SKILL_YIJI",
+            "command_id": 27,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 27,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_SKILL_YIJI",
+            "command_id": 27,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_SKILL_GUANXING",
+            "command_id": 28,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 28,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_SKILL_GUANXING",
+            "command_id": 28,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_SKILL_GONGXIN",
+            "command_id": 29,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 29,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_SKILL_GONGXIN",
+            "command_id": 29,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_SKILL_GONGXIN",
+            "command_id": 29,
+            "consumer": "Client::askForGongxin",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::askForGongxin"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player",
+                "enable_heart",
+                "card_ids",
+                "enabled_card_ids"
+            ],
+            "source": "room",
+            "target_typed_schema": "GongxinNotificationPayload"
+        },
+        {
+            "command": "S_COMMAND_SET_PROPERTY",
+            "command_id": 30,
+            "consumer": "Client::updateProperty",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::updateProperty"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "action",
+                "player_name"
+            ],
+            "source": "room",
+            "target_typed_schema": "PlayerPropertyPayload"
+        },
+        {
+            "command": "S_COMMAND_CHANGE_HP",
+            "command_id": 31,
+            "consumer": "Client::hpChange",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::hpChange"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "delta",
+                "nature",
+                "lost_hp"
+            ],
+            "source": "room",
+            "target_typed_schema": "HpChangePayload"
+        },
+        {
+            "command": "S_COMMAND_CHANGE_MAXHP",
+            "command_id": 32,
+            "consumer": "Client::maxhpChange",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::maxhpChange"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "delta"
+            ],
+            "source": "room",
+            "target_typed_schema": "MaxHpChangePayload"
+        },
+        {
+            "command": "S_COMMAND_CHEAT",
+            "command_id": 33,
+            "consumer": "Room::processRequestCheat",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "Room::processRequestCheat"
+            ],
+            "replay_eligibility": "excluded",
+            "reply_command_id": 33,
+            "required_fields": [
+                "schema_version",
+                "action"
+            ],
+            "source": "client",
+            "target_typed_schema": "CheatRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_CHEAT",
+            "command_id": 33,
+            "consumer": "ClientSessionController",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientSessionController"
+            ],
+            "replay_eligibility": "excluded",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "success"
+            ],
+            "source": "room",
+            "target_typed_schema": "CommandResultPayload"
+        },
+        {
+            "command": "S_COMMAND_SURRENDER",
+            "command_id": 34,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 34,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_SURRENDER",
+            "command_id": 34,
+            "consumer": "Room::processRequestSurrender",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "Room::processRequestSurrender"
+            ],
+            "replay_eligibility": "excluded",
+            "reply_command_id": 34,
+            "required_fields": [
+                "schema_version",
+                "requested"
+            ],
+            "source": "client",
+            "target_typed_schema": "SurrenderRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_SURRENDER",
+            "command_id": 34,
+            "consumer": "ClientSessionController",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientSessionController"
+            ],
+            "replay_eligibility": "excluded",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "success"
+            ],
+            "source": "room",
+            "target_typed_schema": "CommandResultPayload"
+        },
+        {
+            "command": "S_COMMAND_SURRENDER",
+            "command_id": 34,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_ENABLE_SURRENDER",
+            "command_id": 35,
+            "consumer": "Client::enableSurrender",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::enableSurrender"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "enabled"
+            ],
+            "source": "room",
+            "target_typed_schema": "SurrenderEnabledPayload"
+        },
+        {
+            "command": "S_COMMAND_GAME_OVER",
+            "command_id": 36,
+            "consumer": "Client::gameOver",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::gameOver"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "standoff",
+                "winner_tokens",
+                "roles"
+            ],
+            "source": "room",
+            "target_typed_schema": "GameOverPayload"
+        },
+        {
+            "command": "S_COMMAND_GAME_START",
+            "command_id": 37,
+            "consumer": "Client::startGame",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::startGame"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "card_ids"
+            ],
+            "source": "room",
+            "target_typed_schema": "GameStartPayload"
+        },
+        {
+            "command": "S_COMMAND_GET_CARD",
+            "command_id": 39,
+            "consumer": "Client::getCards",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::getCards"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "move_id",
+                "moves"
+            ],
+            "source": "room",
+            "target_typed_schema": "CardMovementPayload"
+        },
+        {
+            "command": "S_COMMAND_LOSE_CARD",
+            "command_id": 40,
+            "consumer": "Client::loseCards",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::loseCards"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "move_id",
+                "moves"
+            ],
+            "source": "room",
+            "target_typed_schema": "CardMovementPayload"
+        },
+        {
+            "command": "S_COMMAND_LOG_EVENT",
+            "command_id": 41,
+            "consumer": "Client::handleGameEvent",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::handleGameEvent"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "event"
+            ],
+            "source": "room",
+            "target_typed_schema": "GameEventPayload"
+        },
+        {
+            "command": "S_COMMAND_LOG_SKILL",
+            "command_id": 42,
+            "consumer": "Client::log",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::log"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "log_type",
+                "from_player",
+                "to_players",
+                "card_string",
+                "arguments"
+            ],
+            "source": "room",
+            "target_typed_schema": "SkillLogPayload"
+        },
+        {
+            "command": "S_COMMAND_UPDATE_CARD",
+            "command_id": 43,
+            "consumer": "Client::updateCard",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::updateCard"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "action",
+                "card_id"
+            ],
+            "source": "room",
+            "target_typed_schema": "UpdateCardPayload"
+        },
+        {
+            "command": "S_COMMAND_CARD_LIMITATION",
+            "command_id": 44,
+            "consumer": "Client::cardLimitation",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::cardLimitation"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "action"
+            ],
+            "source": "room",
+            "target_typed_schema": "CardLimitationPayload"
+        },
+        {
+            "command": "S_COMMAND_ADD_HISTORY",
+            "command_id": 45,
+            "consumer": "Client::addHistory",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::addHistory"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "history_name",
+                "times"
+            ],
+            "source": "room",
+            "target_typed_schema": "HistoryPayload"
+        },
+        {
+            "command": "S_COMMAND_SET_EMOTION",
+            "command_id": 46,
+            "consumer": "Client::setEmotion",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::setEmotion"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "emotion"
+            ],
+            "source": "room",
+            "target_typed_schema": "EmotionPayload"
+        },
+        {
+            "command": "S_COMMAND_FILL_AMAZING_GRACE",
+            "command_id": 47,
+            "consumer": "Client::fillAG",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::fillAG"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "card_ids",
+                "disabled_card_ids"
+            ],
+            "source": "room",
+            "target_typed_schema": "FillAmazingGracePayload"
+        },
+        {
+            "command": "S_COMMAND_CLEAR_AMAZING_GRACE",
+            "command_id": 48,
+            "consumer": "Client::clearAG",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::clearAG"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "EmptyPayload"
+        },
+        {
+            "command": "S_COMMAND_TAKE_AMAZING_GRACE",
+            "command_id": 49,
+            "consumer": "Client::takeAG",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::takeAG"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "taker",
+                "card_id",
+                "move_cards"
+            ],
+            "source": "room",
+            "target_typed_schema": "TakeAmazingGracePayload"
+        },
+        {
+            "command": "S_COMMAND_FIXED_DISTANCE",
+            "command_id": 50,
+            "consumer": "Client::setFixedDistance",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::setFixedDistance"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "from_player",
+                "to_player",
+                "distance",
+                "set"
+            ],
+            "source": "room",
+            "target_typed_schema": "FixedDistancePayload"
+        },
+        {
+            "command": "S_COMMAND_ATTACK_RANGE",
+            "command_id": 51,
+            "consumer": "Client::setAttackRangePair",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::setAttackRangePair"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "from_player",
+                "to_player",
+                "set"
+            ],
+            "source": "room",
+            "target_typed_schema": "AttackRangePayload"
+        },
+        {
+            "command": "S_COMMAND_KILL_PLAYER",
+            "command_id": 52,
+            "consumer": "Client::killPlayer",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::killPlayer"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name"
+            ],
+            "source": "room",
+            "target_typed_schema": "PlayerIdentityPayload"
+        },
+        {
+            "command": "S_COMMAND_REVIVE_PLAYER",
+            "command_id": 53,
+            "consumer": "Client::revivePlayer",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::revivePlayer"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name"
+            ],
+            "source": "room",
+            "target_typed_schema": "PlayerIdentityPayload"
+        },
+        {
+            "command": "S_COMMAND_ATTACH_SKILL",
+            "command_id": 54,
+            "consumer": "Client::attachSkill",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::attachSkill"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "skill_name"
+            ],
+            "source": "room",
+            "target_typed_schema": "AttachSkillPayload"
+        },
+        {
+            "command": "S_COMMAND_NULLIFICATION_ASKED",
+            "command_id": 55,
+            "consumer": "Client::setNullification",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::setNullification"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "trick_name"
+            ],
+            "source": "room",
+            "target_typed_schema": "NullificationStatePayload"
+        },
+        {
+            "command": "S_COMMAND_EXCHANGE_KNOWN_CARDS",
+            "command_id": 56,
+            "consumer": "Client::exchangeKnownCards",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::exchangeKnownCards"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "first_player",
+                "second_player"
+            ],
+            "source": "room",
+            "target_typed_schema": "ExchangeKnownCardsPayload"
+        },
+        {
+            "command": "S_COMMAND_SET_KNOWN_CARDS",
+            "command_id": 57,
+            "consumer": "Client::setKnownCards",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::setKnownCards"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "card_ids"
+            ],
+            "source": "room",
+            "target_typed_schema": "KnownCardsPayload"
+        },
+        {
+            "command": "S_COMMAND_UPDATE_PILE",
+            "command_id": 58,
+            "consumer": "Client::setPileNumber",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::setPileNumber"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "count"
+            ],
+            "source": "room",
+            "target_typed_schema": "PileCountPayload"
+        },
+        {
+            "command": "S_COMMAND_RESET_PILE",
+            "command_id": 59,
+            "consumer": "Client::resetPiles",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::resetPiles"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "swap_count"
+            ],
+            "source": "room",
+            "target_typed_schema": "ResetPilePayload"
+        },
+        {
+            "command": "S_COMMAND_SYNCHRONIZE_DISCARD_PILE",
+            "command_id": 60,
+            "consumer": "Client::synchronizeDiscardPile",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::synchronizeDiscardPile"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "card_ids"
+            ],
+            "source": "room",
+            "target_typed_schema": "DiscardPilePayload"
+        },
+        {
+            "command": "S_COMMAND_UPDATE_BOSS_LEVEL",
+            "command_id": 61,
+            "consumer": "Client::updateBossLevel",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::updateBossLevel"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "level"
+            ],
+            "source": "room",
+            "target_typed_schema": "BossLevelPayload"
+        },
+        {
+            "command": "S_COMMAND_UPDATE_STATE_ITEM",
+            "command_id": 62,
+            "consumer": "Client::updateStateItem",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::updateStateItem"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "state"
+            ],
+            "source": "room",
+            "target_typed_schema": "StateItemPayload"
+        },
+        {
+            "command": "S_COMMAND_PRESHOW",
+            "command_id": 63,
+            "consumer": "Client::preshow",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::preshow"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "states"
+            ],
+            "source": "room",
+            "target_typed_schema": "PreshowPayload"
+        },
+        {
+            "command": "S_COMMAND_SPEAK",
+            "command_id": 64,
+            "consumer": "Client::speak",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::speak"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "speaker",
+                "text"
+            ],
+            "source": "room",
+            "target_typed_schema": "ChatMessagePayload"
+        },
+        {
+            "command": "S_COMMAND_SPEAK",
+            "command_id": 64,
+            "consumer": "Room::speakCommand",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "Room::speakCommand"
+            ],
+            "replay_eligibility": "excluded",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "text"
+            ],
+            "source": "client",
+            "target_typed_schema": "ChatPayload"
+        },
+        {
+            "command": "S_COMMAND_ASK_GENERAL",
+            "command_id": 65,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 65,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_ASK_GENERAL",
+            "command_id": 65,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_ARRANGE_GENERAL",
+            "command_id": 66,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 66,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_ARRANGE_GENERAL",
+            "command_id": 66,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_FILL_GENERAL",
+            "command_id": 67,
+            "consumer": "Client::fillGenerals",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::fillGenerals"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "general_names"
+            ],
+            "source": "room",
+            "target_typed_schema": "FillGeneralsPayload"
+        },
+        {
+            "command": "S_COMMAND_TAKE_GENERAL",
+            "command_id": 68,
+            "consumer": "Client::takeGeneral",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::takeGeneral"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "general_name",
+                "rule"
+            ],
+            "source": "room",
+            "target_typed_schema": "TakeGeneralPayload"
+        },
+        {
+            "command": "S_COMMAND_RECOVER_GENERAL",
+            "command_id": 69,
+            "consumer": "Client::recoverGeneral",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::recoverGeneral"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "index",
+                "general_name"
+            ],
+            "source": "room",
+            "target_typed_schema": "RecoverGeneralPayload"
+        },
+        {
+            "command": "S_COMMAND_REVEAL_GENERAL",
+            "command_id": 70,
+            "consumer": "Client::revealGeneral",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::revealGeneral"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "general_name"
+            ],
+            "source": "room",
+            "target_typed_schema": "RevealGeneralPayload"
+        },
+        {
+            "command": "S_COMMAND_AVAILABLE_CARDS",
+            "command_id": 71,
+            "consumer": "Client::setAvailableCards",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::setAvailableCards"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "card_ids"
+            ],
+            "source": "room",
+            "target_typed_schema": "AvailableCardsPayload"
+        },
+        {
+            "command": "S_COMMAND_ANIMATE",
+            "command_id": 72,
+            "consumer": "Client::animate",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::animate"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "animation",
+                "first_argument",
+                "second_argument"
+            ],
+            "source": "room",
+            "target_typed_schema": "AnimationPayload"
+        },
+        {
+            "command": "S_COMMAND_LUCK_CARD",
+            "command_id": 73,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 73,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_LUCK_CARD",
+            "command_id": 73,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_VIEW_GENERALS",
+            "command_id": 74,
+            "consumer": "Client::viewGenerals",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::viewGenerals"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "reason",
+                "general_names"
+            ],
+            "source": "room",
+            "target_typed_schema": "ViewGeneralsPayload"
+        },
+        {
+            "command": "S_COMMAND_CHECK_VERSION",
+            "command_id": 75,
+            "consumer": "ClientSessionController",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "ServerConnectionContext",
+            "production_call_site_evidence": [
+                "ServerConnectionContext",
+                "ClientSessionController"
+            ],
+            "replay_eligibility": "excluded",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "game_version",
+                "mod_name",
+                "card_count"
+            ],
+            "source": "lobby",
+            "target_typed_schema": "ServerHelloPayload"
+        },
+        {
+            "command": "S_COMMAND_SETUP",
+            "command_id": 76,
+            "consumer": "ClientSessionController",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "ServerConnectionContext",
+            "production_call_site_evidence": [
+                "ServerConnectionContext",
+                "ClientSessionController"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "server_name",
+                "game_mode",
+                "game_rule_mode",
+                "operation_timeout",
+                "nullification_countdown",
+                "server_timeout_gracious_period",
+                "ban_packages",
+                "random_seat",
+                "enable_cheat",
+                "free_choose",
+                "enable_second_general",
+                "enable_same",
+                "enable_basara",
+                "enable_hegemony",
+                "enable_melee_mode",
+                "enable_ai",
+                "disable_chat",
+                "max_hp_scheme",
+                "scheme0_subtraction",
+                "player_count"
+            ],
+            "source": "lobby",
+            "target_typed_schema": "SetupPayload"
+        },
+        {
+            "command": "S_COMMAND_NETWORK_DELAY_TEST",
+            "command_id": 77,
+            "consumer": "Room::networkDelayTest",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "Room::networkDelayTest"
+            ],
+            "replay_eligibility": "excluded",
+            "reply_command_id": 77,
+            "required_fields": [
+                "schema_version",
+                "nonce"
+            ],
+            "source": "client",
+            "target_typed_schema": "NetworkDelayPayload"
+        },
+        {
+            "command": "S_COMMAND_NETWORK_DELAY_TEST",
+            "command_id": 77,
+            "consumer": "ClientSessionController",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientSessionController"
+            ],
+            "replay_eligibility": "excluded",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "success"
+            ],
+            "source": "room",
+            "target_typed_schema": "CommandResultPayload"
+        },
+        {
+            "command": "S_COMMAND_NETWORK_DELAY_TEST",
+            "command_id": 77,
+            "consumer": "Client::networkDelayTest",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::networkDelayTest"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "nonce"
+            ],
+            "source": "room",
+            "target_typed_schema": "NetworkDelayPayload"
+        },
+        {
+            "command": "S_COMMAND_ADD_PLAYER",
+            "command_id": 78,
+            "consumer": "Client::addPlayer",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::addPlayer"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "screen_name",
+                "avatar"
+            ],
+            "source": "room",
+            "target_typed_schema": "AddPlayerPayload"
+        },
+        {
+            "command": "S_COMMAND_REMOVE_PLAYER",
+            "command_id": 79,
+            "consumer": "Client::removePlayer",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::removePlayer"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name"
+            ],
+            "source": "room",
+            "target_typed_schema": "PlayerIdentityPayload"
+        },
+        {
+            "command": "S_COMMAND_START_IN_X_SECONDS",
+            "command_id": 80,
+            "consumer": "Client::startInXs",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::startInXs"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "seconds"
+            ],
+            "source": "room",
+            "target_typed_schema": "CountdownStartPayload"
+        },
+        {
+            "command": "S_COMMAND_ARRANGE_SEATS",
+            "command_id": 81,
+            "consumer": "Client::arrangeSeats",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::arrangeSeats"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_names"
+            ],
+            "source": "room",
+            "target_typed_schema": "ArrangeSeatsPayload"
+        },
+        {
+            "command": "S_COMMAND_WARN",
+            "command_id": 82,
+            "consumer": "Client::warn",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::warn"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "code",
+                "message",
+                "fatal"
+            ],
+            "source": "room",
+            "target_typed_schema": "DiagnosticPayload"
+        },
+        {
+            "command": "S_COMMAND_WARN",
+            "command_id": 82,
+            "consumer": "ClientSessionController",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "ServerConnectionContext",
+            "production_call_site_evidence": [
+                "ServerConnectionContext",
+                "ClientSessionController"
+            ],
+            "replay_eligibility": "excluded",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "code",
+                "message",
+                "fatal"
+            ],
+            "source": "lobby",
+            "target_typed_schema": "DiagnosticPayload"
+        },
+        {
+            "command": "S_COMMAND_TRUST",
+            "command_id": 83,
+            "consumer": "Room::trustCommand",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "Room::trustCommand"
+            ],
+            "replay_eligibility": "excluded",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "trusted"
+            ],
+            "source": "client",
+            "target_typed_schema": "TrustPayload"
+        },
+        {
+            "command": "S_COMMAND_PAUSE",
+            "command_id": 84,
+            "consumer": "Room::pauseCommand",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "Room::pauseCommand"
+            ],
+            "replay_eligibility": "excluded",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "paused"
+            ],
+            "source": "client",
+            "target_typed_schema": "PausePayload"
+        },
+        {
+            "command": "S_COMMAND_READY",
+            "command_id": 85,
+            "consumer": "Room::setReadyCommand",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "Room::setReadyCommand"
+            ],
+            "replay_eligibility": "excluded",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "ready"
+            ],
+            "source": "client",
+            "target_typed_schema": "ReadyPayload"
+        },
+        {
+            "command": "S_COMMAND_ADD_ROBOT",
+            "command_id": 86,
+            "consumer": "Room::addRobotCommand",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "Room::addRobotCommand"
+            ],
+            "replay_eligibility": "excluded",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "fill_remaining",
+                "count"
+            ],
+            "source": "client",
+            "target_typed_schema": "AddRobotPayload"
+        },
+        {
+            "command": "S_COMMAND_SIGNUP",
+            "command_id": 87,
+            "consumer": "ServerConnectionContext",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "lobby",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "ServerConnectionContext"
+            ],
+            "replay_eligibility": "excluded",
+            "reply_command_id": 87,
+            "required_fields": [
+                "schema_version",
+                "reconnect_requested",
+                "screen_name",
+                "avatar"
+            ],
+            "source": "client",
+            "target_typed_schema": "SignupRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_SIGNUP",
+            "command_id": 87,
+            "consumer": "ClientSessionController",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+                "reconnected",
+                "player_id",
+                "error_code",
+                "message"
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "ServerConnectionContext",
+            "production_call_site_evidence": [
+                "ServerConnectionContext",
+                "ClientSessionController"
+            ],
+            "replay_eligibility": "excluded",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "accepted"
+            ],
+            "source": "lobby",
+            "target_typed_schema": "SignupReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_UPDATE_SKILL",
+            "command_id": 88,
+            "consumer": "Client::updateSkill",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::updateSkill"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "skill_name"
+            ],
+            "source": "room",
+            "target_typed_schema": "UpdateSkillPayload"
+        },
+        {
+            "command": "S_COMMAND_ADD_ROUND",
+            "command_id": 89,
+            "consumer": "Client::addRound",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::addRound"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "RoundPayload"
+        },
+        {
+            "command": "S_COMMAND_CHANGE_TABLE_BG",
+            "command_id": 90,
+            "consumer": "Client::changeTableBg",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::changeTableBg"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "path"
+            ],
+            "source": "room",
+            "target_typed_schema": "TableBackgroundPayload"
+        },
+        {
+            "command": "S_COMMAND_SKILL_DESCRIPTION_SWAP",
+            "command_id": 91,
+            "consumer": "Client::setSkillDescriptionSwap",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::setSkillDescriptionSwap"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "skill_name",
+                "key",
+                "value"
+            ],
+            "source": "room",
+            "target_typed_schema": "SkillDescriptionPayload"
+        },
+        {
+            "command": "S_COMMAND_OPERATION_TIMEOUT",
+            "command_id": 92,
+            "consumer": "Client::setTimeout",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::setTimeout"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "timeout_ms"
+            ],
+            "source": "room",
+            "target_typed_schema": "OperationTimeoutPayload"
+        },
+        {
+            "command": "S_COMMAND_WEAPON_RANGE",
+            "command_id": 93,
+            "consumer": "Client::updateWeaponRange",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::updateWeaponRange"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "weapon_name",
+                "range"
+            ],
+            "source": "room",
+            "target_typed_schema": "WeaponRangePayload"
+        },
+        {
+            "command": "S_COMMAND_PLAY_AUDIO",
+            "command_id": 94,
+            "consumer": "Client::playAudio",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::playAudio"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "path",
+                "loop"
+            ],
+            "source": "room",
+            "target_typed_schema": "PlayAudioPayload"
+        },
+        {
+            "command": "S_COMMAND_ADD_EQUIP_AREA",
+            "command_id": 95,
+            "consumer": "Client::addEquipArea",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::addEquipArea"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "area"
+            ],
+            "source": "room",
+            "target_typed_schema": "EquipAreaPayload"
+        },
+        {
+            "command": "S_COMMAND_SET_EQUIP_AREA_COUNT",
+            "command_id": 96,
+            "consumer": "Client::setEquipAreaCount",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::setEquipAreaCount"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "area",
+                "count"
+            ],
+            "source": "room",
+            "target_typed_schema": "EquipAreaCountPayload"
+        },
+        {
+            "command": "S_COMMAND_UPDATE_CARD_DESC",
+            "command_id": 97,
+            "consumer": "Client::updateCardDescription",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::updateCardDescription"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "card_name",
+                "key",
+                "value"
+            ],
+            "source": "room",
+            "target_typed_schema": "CardDescriptionPayload"
+        },
+        {
+            "command": "S_COMMAND_ADD_PLAYER_DYNAMIC",
+            "command_id": 98,
+            "consumer": "Client::onPlayerAddedMidGame",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::onPlayerAddedMidGame"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "screen_name",
+                "avatar"
+            ],
+            "source": "room",
+            "target_typed_schema": "AddPlayerPayload"
+        },
+        {
+            "command": "S_COMMAND_TRIGGER_ORDER",
+            "command_id": 99,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 99,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_TRIGGER_ORDER",
+            "command_id": 99,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_SHOW_VIRTUAL_CARD",
+            "command_id": 100,
+            "consumer": "Client::showVirtualCard",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::showVirtualCard"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "card_name",
+                "suit",
+                "number",
+                "skill_name",
+                "subcard_ids",
+                "target_player"
+            ],
+            "source": "room",
+            "target_typed_schema": "ShowVirtualCardPayload"
+        },
+        {
+            "command": "S_COMMAND_ANYTIME_SKILL",
+            "command_id": 101,
+            "consumer": "Room::handleAnytimeSkillRequest",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "Room::handleAnytimeSkillRequest"
+            ],
+            "replay_eligibility": "excluded",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "skill_name"
+            ],
+            "source": "client",
+            "target_typed_schema": "AnytimeSkillPayload"
+        },
+        {
+            "command": "S_COMMAND_ANYTIME_SKILL_DONE",
+            "command_id": 102,
+            "consumer": "Client::handleAnytimeSkillDone",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::handleAnytimeSkillDone"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "skill_name"
+            ],
+            "source": "room",
+            "target_typed_schema": "AnytimeSkillPayload"
+        },
+        {
+            "command": "S_COMMAND_QML_INTERACT",
+            "command_id": 103,
+            "consumer": "ClientCore",
+            "correlation": "starts_request",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "request",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "ClientCore"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 103,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "room",
+            "target_typed_schema": "InteractionRequestPayload"
+        },
+        {
+            "command": "S_COMMAND_QML_INTERACT",
+            "command_id": 103,
+            "consumer": "RequestCoordinator",
+            "correlation": "requires_reply_to",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolGameplayPayloadRegistry::encodeForWire",
+            "message_type": "reply",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolGameplayPayloadRegistry::decodeFromWire",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "RequestCoordinator"
+            ],
+            "replay_eligibility": "takeover_only",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version"
+            ],
+            "source": "client",
+            "target_typed_schema": "InteractionReplyPayload"
+        },
+        {
+            "command": "S_COMMAND_SET_SHOWN_HANDCARD",
+            "command_id": 104,
+            "consumer": "Client::setShownHandCards",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::setShownHandCards"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "card_ids"
+            ],
+            "source": "room",
+            "target_typed_schema": "ShownHandCardsPayload"
+        },
+        {
+            "command": "S_COMMAND_SET_BROKEN_EQUIP",
+            "command_id": 105,
+            "consumer": "Client::setBrokenEquips",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::setBrokenEquips"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "card_ids"
+            ],
+            "source": "room",
+            "target_typed_schema": "BrokenEquipPayload"
+        },
+        {
+            "command": "S_COMMAND_MIRROR_GUANXING_STEP",
+            "command_id": 106,
+            "consumer": "Client::mirrorGuanxingStep",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::mirrorGuanxingStep"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "action"
+            ],
+            "source": "room",
+            "target_typed_schema": "MirrorGuanxingPayload"
+        },
+        {
+            "command": "S_COMMAND_MIRROR_GUANXING_STEP",
+            "command_id": 106,
+            "consumer": "Room::mirrorGuanxingStep",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "room",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Client",
+            "production_call_site_evidence": [
+                "Client",
+                "Room::mirrorGuanxingStep"
+            ],
+            "replay_eligibility": "excluded",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "action"
+            ],
+            "source": "client",
+            "target_typed_schema": "MirrorGuanxingPayload"
+        },
+        {
+            "command": "S_COMMAND_SWITCH_CONTEXT",
+            "command_id": 128,
+            "consumer": "Client::processContextSwitch",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::processContextSwitch"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name"
+            ],
+            "source": "room",
+            "target_typed_schema": "SwitchContextPayload"
+        },
+        {
+            "command": "S_COMMAND_SYNC_PILE",
+            "command_id": 129,
+            "consumer": "Client::syncPile",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::syncPile"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "pile_name",
+                "card_ids"
+            ],
+            "source": "room",
+            "target_typed_schema": "SyncPilePayload"
+        },
+        {
+            "command": "S_COMMAND_SKILL_INSTANCE",
+            "command_id": 130,
+            "consumer": "Client::syncSkillInstances",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::syncSkillInstances"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "action"
+            ],
+            "source": "room",
+            "target_typed_schema": "SkillInstancePayload"
+        },
+        {
+            "command": "S_COMMAND_CARD_PROVENANCE",
+            "command_id": 131,
+            "consumer": "Client::cardProvenance",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::cardProvenance"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "kind",
+                "initiator",
+                "card",
+                "source_owner",
+                "source_skill",
+                "source_instance_id",
+                "activation_owner",
+                "activation_skill",
+                "activation_instance_id"
+            ],
+            "source": "room",
+            "target_typed_schema": "CardProvenancePayload"
+        },
+        {
+            "command": "S_COMMAND_UPDATE_PLAYER_UI_STATE",
+            "command_id": 132,
+            "consumer": "Client::updatePlayerUIState",
+            "correlation": "none",
+            "current_payload_shape": "typed_object",
+            "destination": "client",
+            "encoder": "ProtocolPayloadRegistry::encodeObjectPayload",
+            "message_type": "notification",
+            "migration_status": "complete",
+            "optional_fields": [
+            ],
+            "parser": "ProtocolPayloadRegistry::validateObjectPayload",
+            "producer": "Room/RoomNotifier",
+            "production_call_site_evidence": [
+                "Room/RoomNotifier",
+                "Client::updatePlayerUIState"
+            ],
+            "replay_eligibility": "record",
+            "reply_command_id": 0,
+            "required_fields": [
+                "schema_version",
+                "player_name",
+                "state"
+            ],
+            "source": "room",
+            "target_typed_schema": "PlayerUiStatePayload"
+        }
+    ],
+    "schema_version": 1,
+    "summary": {
+        "implicit_passthrough": 0,
+        "production_flow_count": 144,
+        "typed_complete": 144,
+        "typed_registry_flow_count": 144,
+        "unclassified_production_flow": 0
+    },
+    "unused_or_retired_commands": [
+        {
+            "command": "S_COMMAND_UNKNOWN",
+            "command_id": 0,
+            "reason": "sentinel; no production producer"
+        },
+        {
+            "command": "S_COMMAND_SET_FLAG",
+            "command_id": 20,
+            "reason": "no production producer or consumer found"
+        },
+        {
+            "command": "S_COMMAND_MOVE_CARD",
+            "command_id": 38,
+            "reason": "superseded by GET_CARD/LOSE_CARD; no live producer"
+        }
+    ]
+}

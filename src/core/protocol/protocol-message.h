@@ -8,7 +8,7 @@
 
 namespace QSanProtocol {
 
-// The numeric values are internal bridge values, not a Protocol V2 wire contract.
+// Stable semantic values serialized by the Protocol V2 envelope codec.
 enum class ProtocolMessageType : quint32
 {
     Unknown = 0,
@@ -27,7 +27,7 @@ enum class ProtocolEndpoint : quint32
 
 struct ProtocolMessage
 {
-    ProtocolVersion version = ProtocolVersion::V1;
+    ProtocolVersion version = ProtocolVersion::V2;
 
     ProtocolMessageType type = ProtocolMessageType::Notification;
     ProtocolEndpoint source = ProtocolEndpoint::Unknown;
@@ -38,8 +38,8 @@ struct ProtocolMessage
 
     int command = 0;
 
-    // Transitional C++ bridge only. A future V2 codec must restrict this to
-    // explicit JSON-domain values and must not expose QVariant type names.
+    // Internal logical payload. ProtocolCodecRouter always converts it to a
+    // registered, schema-versioned object before it reaches the wire.
     QVariant payload;
     bool hasPayload = false;
 };

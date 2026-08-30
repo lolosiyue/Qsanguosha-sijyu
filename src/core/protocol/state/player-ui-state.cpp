@@ -132,7 +132,8 @@ bool PlayerUIState::operator==(const PlayerUIState &other) const
 QVariant PlayerUIStateMessage::toVariant() const
 {
     QVariantMap result;
-    result.insert("playerName", playerName);
+    result.insert("schema_version", 1);
+    result.insert("player_name", playerName);
     result.insert("state", state.toVariant());
     return result;
 }
@@ -143,8 +144,9 @@ bool PlayerUIStateMessage::tryParse(const QVariant &value)
         return false;
 
     const QVariantMap map = value.toMap();
-    if (!hasRequiredFields(map, { "playerName", "state" })
-        || map.value("playerName").userType() != QMetaType::QString)
+    if (!hasRequiredFields(map, { "schema_version", "player_name", "state" })
+        || map.value("schema_version").toInt() != 1
+        || map.value("player_name").userType() != QMetaType::QString)
         return false;
 
     PlayerUIState parsedState;
@@ -152,7 +154,7 @@ bool PlayerUIStateMessage::tryParse(const QVariant &value)
         return false;
 
     PlayerUIStateMessage parsed;
-    parsed.playerName = map.value("playerName").toString();
+    parsed.playerName = map.value("player_name").toString();
     parsed.state = parsedState;
     *this = parsed;
     return true;

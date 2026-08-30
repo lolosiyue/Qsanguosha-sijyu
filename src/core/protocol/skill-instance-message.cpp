@@ -5,11 +5,12 @@
 
 namespace
 {
-bool tryParseIdentity(const JsonArray &args, QString &ownerName, QString &skillName, int &instanceId)
+bool tryParseIdentity(const QVariantMap &object, QString &ownerName,
+                      QString &skillName, int &instanceId)
 {
-    return ProtocolMessageUtils::tryParseString(args[1], ownerName)
-        && ProtocolMessageUtils::tryParseString(args[2], skillName)
-        && ProtocolMessageUtils::tryParseInt(args[3], instanceId)
+    return ProtocolMessageUtils::tryParseString(object.value(QStringLiteral("owner_name")), ownerName)
+        && ProtocolMessageUtils::tryParseString(object.value(QStringLiteral("skill_name")), skillName)
+        && ProtocolMessageUtils::tryParseInt(object.value(QStringLiteral("instance_id")), instanceId)
         && !ownerName.isEmpty() && !skillName.isEmpty() && instanceId > 0;
 }
 
@@ -22,43 +23,42 @@ bool isStateOperation(const QString &operation, bool privateState)
 
 QVariant SkillInstanceEntryMessage::toVariant() const
 {
-    JsonArray result;
     const SkillInstanceRef parentRef = instance.parentRef.isValid()
         ? instance.parentRef : SkillInstanceRef(ownerName, instance.parent);
-    result << ownerName << instance.skillName << instance.instanceID
-           << static_cast<int>(instance.source) << parentRef.ownerObjectName
-           << parentRef.key.skillName << parentRef.key.instanceID
-           << instance.visible << instance.bindHead;
-
-    QVariantMap metadata;
+    QVariantMap result{
+        {QStringLiteral("owner_name"), ownerName},
+        {QStringLiteral("skill_name"), instance.skillName},
+        {QStringLiteral("instance_id"), instance.instanceID},
+        {QStringLiteral("source"), static_cast<int>(instance.source)},
+        {QStringLiteral("parent_owner"), parentRef.ownerObjectName},
+        {QStringLiteral("parent_skill"), parentRef.key.skillName},
+        {QStringLiteral("parent_instance_id"), parentRef.key.instanceID},
+        {QStringLiteral("visible"), instance.visible},
+        {QStringLiteral("bind_head"), instance.bindHead},
+        {QStringLiteral("has_amount_override"), instance.hasAmountOverride}
+    };
     if (instance.hasAmountOverride) {
-        metadata.insert("has_amount", true);
-        metadata.insert("amount", instance.amountOverride);
+        result.insert(QStringLiteral("amount"), instance.amountOverride);
     }
     if (!instance.correctState.isEmpty())
-        metadata.insert("correct_state", instance.correctState);
+        result.insert(QStringLiteral("correct_state"), instance.correctState);
     if (!privateState.isEmpty())
-        metadata.insert("state", privateState);
-    if (!metadata.isEmpty())
-        result << metadata;
+        result.insert(QStringLiteral("state"), privateState);
     return result;
 }
 
 bool SkillInstanceEntryMessage::tryParse(const QVariant &value)
 {
-    if (value.userType() != QMetaType::QVariantList)
+    if (value.userType() != QMetaType::QVariantMap)
         return false;
-
-    const JsonArray args = value.toList();
-    if (args.size() < 8 || args.size() > 10)
-        return false;
+    const QVariantMap object = value.toMap();
 
     SkillInstanceEntryMessage parsed;
     int source = 0;
-    if (!ProtocolMessageUtils::tryParseString(args[0], parsed.ownerName)
-        || !ProtocolMessageUtils::tryParseString(args[1], parsed.instance.skillName)
-        || !ProtocolMessageUtils::tryParseInt(args[2], parsed.instance.instanceID)
-        || !ProtocolMessageUtils::tryParseInt(args[3], source)
+    if (!ProtocolMessageUtils::tryParseString(object.value(QStringLiteral("owner_name")), parsed.ownerName)
+        || !ProtocolMessageUtils::tryParseString(object.value(QStringLiteral("skill_name")), parsed.instance.skillName)
+        || !ProtocolMessageUtils::tryParseInt(object.value(QStringLiteral("instance_id")), parsed.instance.instanceID)
+        || !ProtocolMessageUtils::tryParseInt(object.value(QStringLiteral("source")), source)
         || parsed.ownerName.isEmpty() || parsed.instance.skillName.isEmpty()
         || parsed.instance.instanceID <= 0
         || source < static_cast<int>(SourceInnate)
@@ -66,53 +66,30 @@ bool SkillInstanceEntryMessage::tryParse(const QVariant &value)
         return false;
     parsed.instance.source = static_cast<SkillInstanceSource>(source);
 
-    if (args.size() == 8) {
-        QString parentSkill;
-        int parentId = 0;
-        if (!ProtocolMessageUtils::tryParseString(args[4], parentSkill)
-            || !ProtocolMessageUtils::tryParseInt(args[5], parentId)
-            || !ProtocolMessageUtils::tryParseBool(args[6], parsed.instance.visible)
-            || !ProtocolMessageUtils::tryParseInt(args[7], parsed.instance.bindHead))
+    QString parentOwner;
+    QString parentSkill;
+    int parentId = 0;
+    if (!ProtocolMessageUtils::tryParseString(object.value(QStringLiteral("parent_owner")), parentOwner)
+        || !ProtocolMessageUtils::tryParseString(object.value(QStringLiteral("parent_skill")), parentSkill)
+        || !ProtocolMessageUtils::tryParseInt(object.value(QStringLiteral("parent_instance_id")), parentId)
+        || !ProtocolMessageUtils::tryParseBool(object.value(QStringLiteral("visible")), parsed.instance.visible)
+        || !ProtocolMessageUtils::tryParseInt(object.value(QStringLiteral("bind_head")), parsed.instance.bindHead)
+        || !ProtocolMessageUtils::tryParseBool(object.value(QStringLiteral("has_amount_override")), parsed.instance.hasAmountOverride))
+        return false;
+    parsed.instance.parentRef = SkillInstanceRef(parentOwner, SkillInstanceKey(parentSkill, parentId));
+    parsed.instance.parent = parsed.instance.parentRef.key;
+    if (parsed.instance.hasAmountOverride
+        && !ProtocolMessageUtils::tryParseInt(object.value(QStringLiteral("amount")), parsed.instance.amountOverride))
+        return false;
+    if (object.contains(QStringLiteral("correct_state"))) {
+        if (object.value(QStringLiteral("correct_state")).userType() != QMetaType::QVariantMap)
             return false;
-        parsed.instance.parent = SkillInstanceKey(parentSkill, parentId);
-        parsed.instance.parentRef = SkillInstanceRef(parsed.ownerName, parsed.instance.parent);
-    } else {
-        QString parentOwner;
-        QString parentSkill;
-        int parentId = 0;
-        if (!ProtocolMessageUtils::tryParseString(args[4], parentOwner)
-            || !ProtocolMessageUtils::tryParseString(args[5], parentSkill)
-            || !ProtocolMessageUtils::tryParseInt(args[6], parentId)
-            || !ProtocolMessageUtils::tryParseBool(args[7], parsed.instance.visible)
-            || !ProtocolMessageUtils::tryParseInt(args[8], parsed.instance.bindHead))
-            return false;
-        parsed.instance.parentRef = SkillInstanceRef(parentOwner,
-                                                     SkillInstanceKey(parentSkill, parentId));
-        parsed.instance.parent = parsed.instance.parentRef.key;
+        parsed.instance.correctState = object.value(QStringLiteral("correct_state")).toMap();
     }
-
-    if (args.size() == 10) {
-        if (args[9].userType() != QMetaType::QVariantMap)
+    if (object.contains(QStringLiteral("state"))) {
+        if (object.value(QStringLiteral("state")).userType() != QMetaType::QVariantMap)
             return false;
-        const QVariantMap metadata = args[9].toMap();
-        if (metadata.contains("has_amount")
-            && !ProtocolMessageUtils::tryParseBool(metadata.value("has_amount"),
-                                                   parsed.instance.hasAmountOverride))
-            return false;
-        if (parsed.instance.hasAmountOverride
-            && !ProtocolMessageUtils::tryParseInt(metadata.value("amount"),
-                                                  parsed.instance.amountOverride))
-            return false;
-        if (metadata.contains("correct_state")) {
-            if (metadata.value("correct_state").userType() != QMetaType::QVariantMap)
-                return false;
-            parsed.instance.correctState = metadata.value("correct_state").toMap();
-        }
-        if (metadata.contains("state")) {
-            if (metadata.value("state").userType() != QMetaType::QVariantMap)
-                return false;
-            parsed.privateState = metadata.value("state").toMap();
-        }
+        parsed.privateState = object.value(QStringLiteral("state")).toMap();
     }
 
     *this = parsed;
@@ -183,32 +160,51 @@ SkillInstanceMessage SkillInstanceMessage::makeState(const QString &ownerName,
 
 QVariant SkillInstanceMessage::toVariant() const
 {
-    JsonArray result;
+    QVariantMap result{{QStringLiteral("schema_version"), 1}};
     switch (action) {
     case Snapshot: {
-        JsonArray serializedEntries;
+        QVariantList serializedEntries;
         foreach (const SkillInstanceEntryMessage &entry, entries)
             serializedEntries << entry.toVariant();
-        result << "snapshot" << QVariant::fromValue(serializedEntries);
+        result.insert(QStringLiteral("action"), QStringLiteral("snapshot"));
+        result.insert(QStringLiteral("entries"), serializedEntries);
         break;
     }
     case Upsert:
-        result << "upsert" << entry.toVariant();
+        result.insert(QStringLiteral("action"), QStringLiteral("upsert"));
+        result.insert(QStringLiteral("entry"), entry.toVariant());
         break;
     case Remove:
-        result << "remove" << ownerName << skillName << instanceId;
+        result.insert(QStringLiteral("action"), QStringLiteral("remove"));
+        result.insert(QStringLiteral("owner_name"), ownerName);
+        result.insert(QStringLiteral("skill_name"), skillName);
+        result.insert(QStringLiteral("instance_id"), instanceId);
         break;
     case Amount:
-        result << "amount" << ownerName << skillName << instanceId
-               << hasAmountOverride << amount;
+        result.insert(QStringLiteral("action"), QStringLiteral("amount"));
+        result.insert(QStringLiteral("owner_name"), ownerName);
+        result.insert(QStringLiteral("skill_name"), skillName);
+        result.insert(QStringLiteral("instance_id"), instanceId);
+        result.insert(QStringLiteral("has_amount_override"), hasAmountOverride);
+        result.insert(QStringLiteral("amount"), amount);
         break;
     case CorrectState:
-        result << "correct_state" << ownerName << skillName << instanceId
-               << operation << key << value;
+        result.insert(QStringLiteral("action"), QStringLiteral("correct_state"));
+        result.insert(QStringLiteral("owner_name"), ownerName);
+        result.insert(QStringLiteral("skill_name"), skillName);
+        result.insert(QStringLiteral("instance_id"), instanceId);
+        result.insert(QStringLiteral("operation"), operation);
+        result.insert(QStringLiteral("key"), key);
+        result.insert(QStringLiteral("value"), value);
         break;
     case State:
-        result << "state" << ownerName << skillName << instanceId
-               << operation << key << value;
+        result.insert(QStringLiteral("action"), QStringLiteral("state"));
+        result.insert(QStringLiteral("owner_name"), ownerName);
+        result.insert(QStringLiteral("skill_name"), skillName);
+        result.insert(QStringLiteral("instance_id"), instanceId);
+        result.insert(QStringLiteral("operation"), operation);
+        result.insert(QStringLiteral("key"), key);
+        result.insert(QStringLiteral("value"), value);
         break;
     default:
         return QVariant();
@@ -218,50 +214,52 @@ QVariant SkillInstanceMessage::toVariant() const
 
 bool SkillInstanceMessage::tryParse(const QVariant &value)
 {
-    if (value.userType() != QMetaType::QVariantList)
+    if (value.userType() != QMetaType::QVariantMap)
         return false;
-
-    const JsonArray args = value.toList();
+    const QVariantMap object = value.toMap();
+    int schemaVersion = 0;
     QString actionName;
-    if (args.isEmpty() || !ProtocolMessageUtils::tryParseString(args[0], actionName))
+    if (!ProtocolMessageUtils::tryParseInt(object.value(QStringLiteral("schema_version")), schemaVersion)
+        || schemaVersion != 1
+        || !ProtocolMessageUtils::tryParseString(object.value(QStringLiteral("action")), actionName))
         return false;
 
     SkillInstanceMessage parsed;
-    if (actionName == "snapshot" && args.size() == 2
-        && args[1].userType() == QMetaType::QVariantList) {
+    if (actionName == "snapshot"
+        && object.value(QStringLiteral("entries")).userType() == QMetaType::QVariantList) {
         parsed.action = Snapshot;
-        foreach (const QVariant &value, args[1].toList()) {
+        foreach (const QVariant &entryValue, object.value(QStringLiteral("entries")).toList()) {
             SkillInstanceEntryMessage entry;
-            if (!entry.tryParse(value))
+            if (!entry.tryParse(entryValue))
                 return false;
             parsed.entries << entry;
         }
-    } else if (actionName == "upsert" && args.size() == 2) {
+    } else if (actionName == "upsert") {
         parsed.action = Upsert;
-        if (!parsed.entry.tryParse(args[1]))
+        if (!parsed.entry.tryParse(object.value(QStringLiteral("entry"))))
             return false;
-    } else if (actionName == "remove" && args.size() == 4) {
+    } else if (actionName == "remove") {
         parsed.action = Remove;
-        if (!tryParseIdentity(args, parsed.ownerName, parsed.skillName, parsed.instanceId))
+        if (!tryParseIdentity(object, parsed.ownerName, parsed.skillName, parsed.instanceId))
             return false;
-    } else if (actionName == "amount" && args.size() == 6) {
+    } else if (actionName == "amount") {
         parsed.action = Amount;
-        if (!tryParseIdentity(args, parsed.ownerName, parsed.skillName, parsed.instanceId)
-            || !ProtocolMessageUtils::tryParseBool(args[4], parsed.hasAmountOverride)
-            || !ProtocolMessageUtils::tryParseInt(args[5], parsed.amount))
+        if (!tryParseIdentity(object, parsed.ownerName, parsed.skillName, parsed.instanceId)
+            || !ProtocolMessageUtils::tryParseBool(object.value(QStringLiteral("has_amount_override")), parsed.hasAmountOverride)
+            || !ProtocolMessageUtils::tryParseInt(object.value(QStringLiteral("amount")), parsed.amount))
             return false;
     } else if ((actionName == "correct_state" || actionName == "state")
-               && args.size() == 7) {
+               && object.contains(QStringLiteral("value"))) {
         const bool privateState = actionName == "state";
         parsed.action = privateState ? State : CorrectState;
-        if (!tryParseIdentity(args, parsed.ownerName, parsed.skillName, parsed.instanceId)
-            || !ProtocolMessageUtils::tryParseString(args[4], parsed.operation)
-            || !ProtocolMessageUtils::tryParseString(args[5], parsed.key)
+        if (!tryParseIdentity(object, parsed.ownerName, parsed.skillName, parsed.instanceId)
+            || !ProtocolMessageUtils::tryParseString(object.value(QStringLiteral("operation")), parsed.operation)
+            || !ProtocolMessageUtils::tryParseString(object.value(QStringLiteral("key")), parsed.key)
             || !isStateOperation(parsed.operation, privateState)
             || (privateState && parsed.operation == "replace"
-                && args[6].userType() != QMetaType::QVariantMap))
+                && object.value(QStringLiteral("value")).userType() != QMetaType::QVariantMap))
             return false;
-        parsed.value = args[6];
+        parsed.value = object.value(QStringLiteral("value"));
     } else {
         return false;
     }

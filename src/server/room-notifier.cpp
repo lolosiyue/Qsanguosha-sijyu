@@ -44,11 +44,17 @@ QList<ServerPlayer *> RoomNotifier::resolveRecipients(const QList<ServerPlayer *
 bool RoomNotifier::sendPacket(const QList<ServerPlayer *> &receivers, int command,
                               const QVariant &body)
 {
-    Packet packet(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT,
-                  static_cast<CommandType>(command));
-    packet.setMessageBody(body);
-    foreach (ServerPlayer *receiver, receivers)
-        receiver->invoke(&packet);
+    ProtocolMessage message;
+    message.type = ProtocolMessageType::Notification;
+    message.source = ProtocolEndpoint::Room;
+    message.destination = ProtocolEndpoint::Client;
+    message.command = command;
+    message.hasPayload = !body.isNull();
+    message.payload = body;
+    foreach (ServerPlayer *receiver, receivers) {
+        ProtocolMessage perConnection = message;
+        receiver->sendProtocolMessage(perConnection);
+    }
     return true;
 }
 
@@ -149,10 +155,21 @@ void RoomNotifier::broadcastSkillInvoke(const QString &skillName, bool isMale, i
 }
 
 void RoomNotifier::broadcastTagProperty(ServerPlayer *owner, const QString &tagKey,
-                                        const QString &value)
+                                        const QVariant &value)
 {
-    JsonArray args;
-    args << owner->objectName() << QString("tag:") + tagKey << value;
+    QVariantMap args{{QStringLiteral("schema_version"), 1},
+                     {QStringLiteral("action"), QStringLiteral("tag")},
+                     {QStringLiteral("player_name"), owner->objectName()},
+                     {QStringLiteral("tag_name"), tagKey}};
+    if (!value.isValid()) {
+        args.insert(QStringLiteral("value_kind"), QStringLiteral("removed"));
+    } else if (value.userType() == QMetaType::QStringList) {
+        args.insert(QStringLiteral("value_kind"), QStringLiteral("string_list"));
+        args.insert(QStringLiteral("value"), value.toStringList());
+    } else {
+        args.insert(QStringLiteral("value_kind"), QStringLiteral("scalar"));
+        args.insert(QStringLiteral("value"), value);
+    }
     doBroadcastNotify(S_COMMAND_SET_PROPERTY, args);
 }
 

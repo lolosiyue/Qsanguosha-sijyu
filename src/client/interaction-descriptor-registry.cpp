@@ -54,13 +54,13 @@ private:
 
 QString interactionSupportName(InteractionSupport support)
 {
-    return support == InteractionSupport::CanonicalTyped
-        ? QStringLiteral("canonical_typed") : QStringLiteral("legacy_adapter");
+    Q_UNUSED(support);
+    return QStringLiteral("direct_typed");
 }
 
 const std::array<ClientInteractionDescriptor, 29> &InteractionDescriptorRegistry::descriptors()
 {
-    using Adapter = LegacyV1InteractionReplyAdapter;
+    using Adapter = InteractionReplyEncoder;
     static const std::array<ClientInteractionDescriptor, 29> values = {{
         { S_COMMAND_CHOOSE_ROLE, InteractionType::ChooseRole, &Client::askForAssign, &IClientInteractionPresenter::presentRoleAssignment, InteractionResponseShape::Assignment, &Adapter::assignment, InteractionSupport::CanonicalTyped, "CHOOSE_ROLE", "askForAssign", "presentRoleAssignment", "assignment", "choose_role" },
         { S_COMMAND_CHOOSE_GENERAL, InteractionType::ChooseGeneral, &Client::askForGeneral, &IClientInteractionPresenter::presentGeneralChoice, InteractionResponseShape::Option, &Adapter::optionString, InteractionSupport::CanonicalTyped, "CHOOSE_GENERAL", "askForGeneral", "presentGeneralChoice", "option_string", "choose_general" },
@@ -90,7 +90,7 @@ const std::array<ClientInteractionDescriptor, 29> &InteractionDescriptorRegistry
         { S_COMMAND_LUCK_CARD, InteractionType::LuckCard, &Client::askForLuckCard, &IClientInteractionPresenter::presentBooleanPrompt, InteractionResponseShape::Option, &Adapter::optionBool, InteractionSupport::CanonicalTyped, "LUCK_CARD", "askForLuckCard", "presentBooleanPrompt", "option_bool", "luck_card" },
         { S_COMMAND_ASK_GENERAL, InteractionType::AskGeneral, &Client::askForGeneral3v3, &IClientInteractionPresenter::presentDraftGeneral, InteractionResponseShape::Option, &Adapter::optionString, InteractionSupport::CanonicalTyped, "ASK_GENERAL", "askForGeneral3v3", "presentDraftGeneral", "option_string", "ask_general" },
         { S_COMMAND_ARRANGE_GENERAL, InteractionType::ArrangeGeneral, &Client::startArrange, &IClientInteractionPresenter::presentArrangeGeneral, InteractionResponseShape::GeneralArrangement, &Adapter::generalArrangement, InteractionSupport::CanonicalTyped, "ARRANGE_GENERAL", "startArrange", "presentArrangeGeneral", "general_arrangement", "arrange_general" },
-        { S_COMMAND_QML_INTERACT, InteractionType::QmlInteract, &Client::askForQml, &IClientInteractionPresenter::presentQmlInteraction, InteractionResponseShape::Custom, &Adapter::custom, InteractionSupport::LegacyAdapter, "QML_INTERACT", "askForQml", "presentQmlInteraction", "custom", "qml_interact" }
+        { S_COMMAND_QML_INTERACT, InteractionType::QmlInteract, &Client::askForQml, &IClientInteractionPresenter::presentQmlInteraction, InteractionResponseShape::Custom, &Adapter::custom, InteractionSupport::CanonicalTyped, "QML_INTERACT", "askForQml", "presentQmlInteraction", "custom", "qml_interact" }
     }};
     return values;
 }
@@ -142,16 +142,15 @@ QJsonArray InteractionDescriptorRegistry::inventory()
 
 QJsonObject InteractionDescriptorRegistry::inventoryDocument()
 {
-    int canonicalCount = 0;
-    int legacyCount = 0;
+    int directTypedCount = 0;
     int missingBuilders = 0;
     int missingPresenters = 0;
     int missingValidators = 0;
     int missingEncoders = 0;
     RecordingInteractionPresenter recorder;
     for (const ClientInteractionDescriptor &descriptor : descriptors()) {
-        descriptor.support == InteractionSupport::CanonicalTyped
-            ? ++canonicalCount : ++legacyCount;
+        if (descriptor.support == InteractionSupport::CanonicalTyped)
+            ++directTypedCount;
         if (descriptor.builder == nullptr)
             ++missingBuilders;
         if (descriptor.presenter == nullptr)
@@ -168,13 +167,12 @@ QJsonObject InteractionDescriptorRegistry::inventoryDocument()
     }
 
     QJsonObject document;
-    document.insert(QStringLiteral("schema_version"), 2);
+    document.insert(QStringLiteral("schema_version"), 3);
     document.insert(QStringLiteral("total_commands"),
         static_cast<int>(descriptors().size()));
-    document.insert(QStringLiteral("canonical_typed"), canonicalCount);
-    document.insert(QStringLiteral("legacy_adapter"), legacyCount);
+    document.insert(QStringLiteral("direct_typed"), directTypedCount);
     document.insert(QStringLiteral("implicit_passthrough"),
-        static_cast<int>(descriptors().size()) - canonicalCount - legacyCount);
+        static_cast<int>(descriptors().size()) - directTypedCount);
     document.insert(QStringLiteral("missing_builder"), missingBuilders);
     document.insert(QStringLiteral("missing_presenter"), missingPresenters);
     document.insert(QStringLiteral("missing_validator"), missingValidators);

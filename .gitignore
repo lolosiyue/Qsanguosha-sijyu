@@ -31,7 +31,9 @@ image/
 font/
 hero-skin/
 artifacts/*
+!artifacts/
 !artifacts/client-core-interaction-matrix.json
+!artifacts/protocol-v2-flow-matrix.json
 assets/
 resources/
 autotest-logs/
