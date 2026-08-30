@@ -5,6 +5,7 @@
 #include "json.h"
 #include "player-lifecycle-service.h"
 #include "protocol.h"
+#include "protocol/protocol-runtime.h"
 #include "room-notifier.h"
 #include "room-roster.h"
 #include "room.h"
@@ -98,19 +99,19 @@ struct PacketRecord
     QVariant body;
 };
 
-class PacketRecorder
+class MessageRecorder
 {
 public:
     void watch(ServerPlayer *player)
     {
         QObject::connect(player, &ServerPlayer::message_ready, player,
                          [this](const QByteArray &message) {
-            Packet packet;
-            if (!packet.parse(message)) {
+            ProtocolMessage packet;
+            if (!ProtocolCodecRouter().decode(message, &packet).success) {
                 parseFailed = true;
                 return;
             }
-            records << PacketRecord{packet.getCommandType(), packet.getMessageBody()};
+            records << PacketRecord{static_cast<CommandType>(packet.command), packet.payload};
         });
     }
 
@@ -382,7 +383,7 @@ static bool signupKeepsHumanPacketOrderAndRobotState()
 
     Room humanRoom(nullptr, QStringLiteral("03_1v2"));
     ServerPlayer *human = humanRoom.addSocket(nullptr);
-    PacketRecorder recorder;
+        MessageRecorder recorder;
     recorder.watch(human);
     humanRoom.signup(human, QStringLiteral("Human"), QStringLiteral("liubei"), false);
 
@@ -410,7 +411,7 @@ static bool marshalReplaysDynamicPlayerInProtocolOrder()
 
     PlayerLifecycleService &service = PlayerLifecycleServiceTestAccess::service(room);
     PlayerLifecycleServiceTestAccess::appendDynamicPlayer(service, dynamic);
-    PacketRecorder recorder;
+        MessageRecorder recorder;
     recorder.watch(receiver);
     service.marshal(receiver);
 

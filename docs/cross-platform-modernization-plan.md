@@ -191,15 +191,15 @@ CI 使用 `bundletool` 檢查 base 及 pack 大小：[Google Play app size limit
 
 ### 6.3 協定與重播
 
-- 2026-08-30 已完成 Protocol V1 codec boundary、V1-compatible capability
-  negotiation、codec-neutral `ProtocolMessage`、Protocol V2 envelope／codec contract、
-  V1 OFFER／ACK／COMMIT runtime activation，以及 29/29 typed gameplay interactions。
-  `Packet` 保留 compatibility facade；production connection 可逐連線啟用 V2。
-- Replay V2 使用明確格式／協定版本 header 與 Protocol V2 event；新錄影一律
-  寫 V2，headerless Legacy V1 `.txt`／`.png` 保留唯讀相容。
-- 新客戶端可讀 Replay V1/V2；舊客戶端不保證可讀 Replay V2。不支援或損壞的
-  replay 必須顯示明確診斷後停止解析，不得 fallback、部分載入、崩潰或誤讀。
-- 新格式保留本項目現有重播時間軸、快照與接管功能。
+- 2026-08-31 完成 Protocol V2 breaking cutover：第一個 TCP frame 即為 V2，
+  production registry 144/144 typed complete，29/29 interaction direct typed。
+  Protocol V1、capability negotiation、OFFER／ACK／COMMIT、`Packet` facade、
+  runtime switching 與 compatibility fallback 均已退休。
+- Replay V2 使用嚴格 JSONL 與 Protocol V2 event；Replay V1／headerless input
+  明確拒絕，不提供 converter。
+- PNG Replay container 提供 magic/version/size/SHA-256 完整性保護；普通或損壞
+  PNG 明確拒絕。
+- 新格式保留時間軸、快照、視角切換與觀看途中玩家接管；TUI 永久不實作 Replay。
 - 新增伺服器能力宣告、無效詢問資訊、AI 除錯狀態及控制命令，使用明確型別及欄位驗證。
 
 ### 6.4 通用體驗
@@ -263,7 +263,7 @@ M1 已完成（2026-08-09 對照 CMakeLists.txt 確認）：`qsanguosha_engine` 
 | M1 | **Complete**（2026-08-09） | Windows CMake 過渡建置、STATIC engine（僅 Qt Core／Network）、引擎／GUI 解耦契約（SkillDialogInfo／EngineRuntimeContext／audioEffectRequested／EngineBootstrap）、allowlist gate、`deploy-server`、engine smoke test | Windows GUI 與既有建置結果可對照；STATIC engine 僅連結 Qt Core／Network；GUI／CMD server 驗收完成 |
 | M2 | In Progress（2026-08-30：Lua 5.4.8 本地實作） | Qt 6.11.1、VS 2026 v145 + `msvc2022_64` kit；Lua 5.4.8、最小相容層、seeded state API 與 focused 測試已落地 | 外部四個低頻 Lua 問題修正；Windows GUI、server、Lua/SWIG 及遠端完整測試通過 |
 | M3 | In Progress（2026-08-31：選包白名單與武將版本去重已實作） | `SkillDialogInfo`、選包白名單、確定性 RNG | 相同種子、輸入與包集合產生相同結果；白名單不可由客戶端繞過 |
-| M4 | Acceptance Pending（2026-08-30：V1/V2 codec、negotiation、runtime activation、29/29 typed gameplay、Replay V1/V2 migration 與本地 targeted gates 完成；Replay code head 遠端 4/4 通過，但最終驗收被既有 `extensions/main@4dd3010` 的 `hunlie.lua:1298` 解析錯誤阻塞） | 協定與重播版本化、相容性拒絕路徑 | 新舊版本差異可診斷；不支援版本被明確拒絕而非靜默誤讀；遠端 Windows／Linux／Docker／package gates 全綠後才標記 Complete |
+| M4 | Acceptance Pending（2026-08-31：Protocol V2-only breaking cutover、144/144 typed flows、29/29 direct typed interactions、Replay V2-only 與 PNG container 已實作；7 個本地 focused executable gates 通過，完整 GUI／engine／server、live TCP 與遠端 CI 尚待完成） | 協定與重播版本化、相容性拒絕路徑 | 舊協定／舊 Replay 明確拒絕；遠端 Windows／Linux／Docker／package gates 全綠後才標記 Complete |
 | M5 | Not Started | Ubuntu 無頭伺服器與 Null 音訊 | 無 X11/Wayland、FMOD 或 GUI 依賴仍可啟動及完成整局測試 |
 | M6 | In Progress（2026-08-28：Linux GUI M2B-A 交付 `IAudioBackend`／FMOD／Qt／Null 三後端、`QSAN_AUDIO_BACKEND`、結構化診斷與 `--multimedia-smoke`） | 桌面 FMOD 後端抽象化及診斷 | Windows 音效行為無回歸；音訊失敗不影響遊戲狀態 |
 | M7 | Not Started | Android Qt Multimedia、WAV/OGG 播放器池與觸控 UI | API 28 真機及 API 36 目標建置通過；前後景切換與音訊生命週期穩定 |

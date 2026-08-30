@@ -727,7 +727,6 @@ void testStructuredModels()
     InteractionRequest role;
     role.type = InteractionType::ChooseRole;
     role.command = 91;
-    role.serverSerial = 17;
     role.responseSchema = InteractionResponseShape::Assignment;
     role.payload = RoleAssignmentInteractionPayload {
         QStringLiteral("standard"),
@@ -739,16 +738,10 @@ void testStructuredModels()
     wrongCommand.command = 92;
     checkRejection(roleCore.validate(wrongCommand), InteractionRejection::CommandMismatch,
         "a response for a different command is rejected");
-    InteractionResponse wrongSerial = wrongCommand;
-    wrongSerial.command = 91;
-    wrongSerial.serverSerial = 18;
-    checkRejection(roleCore.validate(wrongSerial), InteractionRejection::ServerSerialMismatch,
-        "a response for a different server serial is rejected");
     InteractionResponse roleAnswer = InteractionResponse::makeAssignment(roleId,
         QStringList() << QStringLiteral("sgs1") << QStringLiteral("sgs2"),
         QStringList() << QStringLiteral("lord") << QStringLiteral("rebel"));
     roleAnswer.command = 91;
-    roleAnswer.serverSerial = 17;
     check(roleCore.submitResponse(roleAnswer).accepted(),
         "a command-correlated role assignment is accepted");
 
@@ -1097,15 +1090,13 @@ void testProductionInteractionInventory(int argc, char **argv)
     check(true, "production interaction inventory is valid JSON");
 
     const QJsonObject inventory = document.object();
-    check(inventory.value(QStringLiteral("schema_version")).toInt() == 2,
-        "interaction inventory schema is version 2");
+    check(inventory.value(QStringLiteral("schema_version")).toInt() == 3,
+        "interaction inventory schema is version 3");
     check(inventory.value(QStringLiteral("total_commands")).toInt() == 29
             && inventory.value(QStringLiteral("commands")).toArray().size() == 29,
         "interaction registry contains all 29 production commands");
-    check(inventory.value(QStringLiteral("canonical_typed")).toInt() == 28,
-        "interaction registry contains 28 canonical typed commands");
-    check(inventory.value(QStringLiteral("legacy_adapter")).toInt() == 1,
-        "interaction registry contains one explicit legacy adapter");
+    check(inventory.value(QStringLiteral("direct_typed")).toInt() == 29,
+        "interaction registry contains 29 direct typed commands");
     check(inventory.value(QStringLiteral("implicit_passthrough")).toInt(-1) == 0,
         "interaction registry contains no implicit passthrough");
     check(inventory.value(QStringLiteral("missing_builder")).toInt(-1) == 0,

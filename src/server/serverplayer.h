@@ -12,7 +12,7 @@ class ClientSocket;
 
 #include "player.h"
 #include "protocol.h"
-#include "protocol/protocol-negotiation.h"
+#include "protocol/protocol-runtime.h"
 #include "protocol/state/player-ui-state.h"
 
 class ServerPlayer : public Player
@@ -25,14 +25,11 @@ public:
     ~ServerPlayer();
 
     void setSocket(ClientSocket *socket);
-    void setProtocolSessionState(const QSanProtocol::ProtocolSessionState &state);
-    QList<QSanProtocol::ProtocolVersion> peerSupportedVersions() const;
-    QSanProtocol::ProtocolVersion preferredProtocolVersion() const;
-    QSanProtocol::ProtocolVersion activeProtocolVersion() const;
+    void adoptProtocolConnectionState(
+        const QSanProtocol::ProtocolConnectionState &state);
     void kick();
-    quint64 invoke(const QSanProtocol::AbstractPacket *packet);
+    quint64 sendProtocolMessage(QSanProtocol::ProtocolMessage message);
     QString reportHeader() const;
-    void unicast(const QString &message);
     //void drawCard(const Card *card);
     Room *getRoom() const;
     // Owner-only 同步 SkillInstanceState（覆寫 Player，既有 Lua player:set* 自動走 notify）
@@ -252,7 +249,6 @@ public:
     {
         propertys.insert(property_name);
     }
-    unsigned int m_expectedReplySerial; // Suggest the acceptable serial number of an expected response.
     quint64 m_expectedReplyMessageId = 0;
     bool m_isClientResponseReady; //Suggest whether a valid player's reponse has been received.
     bool m_isWaitingReply; // Suggest if the server player is waiting for client's response.
@@ -288,9 +284,10 @@ protected:
 
 private:
     ClientSocket *socket;
-    QSanProtocol::ProtocolSessionState m_protocolSessionState;
     QSanProtocol::ProtocolCodecRouter m_protocolRouter;
     QSanProtocol::ProtocolMessageIdGenerator m_protocolMessageIds;
+    quint64 m_connectionGeneration = 0;
+    quint64 m_lastIncomingMessageId = 0;
     //QList<const Card *> handcards;
     Room *room;
 	ServerPlayer *onsole_owner;
@@ -313,9 +310,6 @@ private:
 private slots:
     void getMessage(const QByteArray &message);
     void sendMessage(const QByteArray &message);
-
-private:
-    quint64 sendProtocolMessage(QSanProtocol::ProtocolMessage message);
 
 signals:
     void disconnected();

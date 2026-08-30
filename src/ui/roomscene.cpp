@@ -31,6 +31,7 @@
 #include "audio.h"
 #include "skill-instance-utils.h"
 #include "record-analysis.h"
+#include "protocol/session/session-payloads.h"
 #include "mountain.h"
 #include "wind.h"
 #include "ol.h"
@@ -761,12 +762,12 @@ RoomScene::~RoomScene()
 
 void RoomScene::handleGameEvent(const QVariant&args)
 {
-	JsonArray arg = args.value<JsonArray>();
-	if(arg.isEmpty()) return;
+	const QVariantMap event = args.toMap();
+	if(event.isEmpty()) return;
 
-	switch ((GameEventType)arg[0].toInt()){
+	switch ((GameEventType)event.value(QStringLiteral("event")).toInt()){
 	case S_GAME_EVENT_PLAYER_DYING: {
-		ClientPlayer*player = ClientInstance->getPlayer(arg[1].toString());
+		ClientPlayer*player = ClientInstance->getPlayer(event.value(QStringLiteral("player_name")).toString());
 		PlayerCardContainer*container = (PlayerCardContainer*)_getGenericCardContainer(Player::PlaceHand,player);
 		container->setSaveMeIcon(true);
 		Photo*photo = qobject_cast<Photo*>(container);
@@ -774,7 +775,7 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		break;
 	}
 	case S_GAME_EVENT_PLAYER_QUITDYING: {
-		ClientPlayer*player = ClientInstance->getPlayer(arg[1].toString());
+		ClientPlayer*player = ClientInstance->getPlayer(event.value(QStringLiteral("player_name")).toString());
 		PlayerCardContainer*container = (PlayerCardContainer*)_getGenericCardContainer(Player::PlaceHand,player);
 		container->setSaveMeIcon(false);
 		Photo*photo = qobject_cast<Photo*>(container);
@@ -782,22 +783,20 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		break;
 	}
 	case S_GAME_EVENT_HUASHEN: {
-		ClientPlayer*player = ClientInstance->getPlayer(arg[1].toString());
-		QString huashenGeneral = arg[2].toString();
-		QString huashenSkill = arg[3].toString();
+		ClientPlayer*player = ClientInstance->getPlayer(event.value(QStringLiteral("player_name")).toString());
+		QString huashenGeneral = event.value(QStringLiteral("general_name")).toString();
+		QString huashenSkill = event.value(QStringLiteral("skill_name")).toString();
 		PlayerCardContainer*container = (PlayerCardContainer*)_getGenericCardContainer(Player::PlaceHand,player);
 		container->startHuaShen(huashenGeneral,huashenSkill);
 		break;
 	}
 	case S_GAME_EVENT_PLAY_EFFECT: {
-		int type = arg[3].toInt();
+		int type = event.value(QStringLiteral("audio_type")).toInt();
 		if(type==0) break;
-		QString skillName = arg[1].toString();
+		QString skillName = event.value(QStringLiteral("skill_name")).toString();
 
-		ClientPlayer*player = ClientInstance->getPlayer(arg[4].toString());
-		QString category;
-		if(JsonUtils::isBool(arg[2])) category = arg[2].toBool() ? "male" : "female";
-		else category = arg[2].toString();
+		ClientPlayer*player = ClientInstance->getPlayer(event.value(QStringLiteral("player_name")).toString());
+		const QString category = event.value(QStringLiteral("category")).toString();
 
 		if(player){
 			QString generalName;
@@ -827,21 +826,21 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		break;
 	}
 	case S_GAME_EVENT_JUDGE_RESULT: {
-		int cardId = arg[1].toInt();
-		bool takeEffect = arg[2].toBool();
+		int cardId = event.value(QStringLiteral("card_id")).toInt();
+		bool takeEffect = event.value(QStringLiteral("take_effect")).toBool();
 		m_tablePile->showJudgeResult(cardId,takeEffect);
 		break;
 	}
 	case S_GAME_EVENT_DETACH_SKILL: {
-		QString player_name = arg[1].toString();
-		QString skill_name = arg[2].toString();
+		QString player_name = event.value(QStringLiteral("player_name")).toString();
+		QString skill_name = event.value(QStringLiteral("skill_name")).toString();
 
 		ClientPlayer*player = ClientInstance->getPlayer(player_name);
 		player->detachSkill(skill_name);
 		if(player==Self) detachSkill(skill_name);
 
-		if(arg.size()>3)
-			Sanguosha->addTranslationEntry(":"+skill_name,Sanguosha->translate(":"+skill_name+arg[3].toString()));
+		if(event.contains(QStringLiteral("translation_suffix")))
+			Sanguosha->addTranslationEntry(":"+skill_name,Sanguosha->translate(":"+skill_name+event.value(QStringLiteral("translation_suffix")).toString()));
 
 		// stop huashen animation
 		PlayerCardContainer*container = (PlayerCardContainer*)_getGenericCardContainer(Player::PlaceHand,player);
@@ -850,8 +849,8 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		break;
 	}
 	case S_GAME_EVENT_ACQUIRE_SKILL: {
-		QString player_name = arg[1].toString();
-		QString skill_name = arg[2].toString();
+		QString player_name = event.value(QStringLiteral("player_name")).toString();
+		QString skill_name = event.value(QStringLiteral("skill_name")).toString();
 
 		ClientPlayer*player = ClientInstance->getPlayer(player_name);
 		player->acquireSkill(skill_name);
@@ -862,8 +861,8 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		break;
 	}
 	case S_GAME_EVENT_ADD_SKILL: {
-		QString player_name = arg[1].toString();
-		QString skill_name = arg[2].toString();
+		QString player_name = event.value(QStringLiteral("player_name")).toString();
+		QString skill_name = event.value(QStringLiteral("skill_name")).toString();
 
 		ClientPlayer*player = ClientInstance->getPlayer(player_name);
 		player->addSkill(skill_name);/*
@@ -873,8 +872,8 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		break;
 	}
 	case S_GAME_EVENT_LOSE_SKILL: {
-		QString player_name = arg[1].toString();
-		QString skill_name = arg[2].toString();
+		QString player_name = event.value(QStringLiteral("player_name")).toString();
+		QString skill_name = event.value(QStringLiteral("skill_name")).toString();
 
 		ClientPlayer*player = ClientInstance->getPlayer(player_name);
 		player->loseSkill(skill_name);/*
@@ -885,22 +884,12 @@ void RoomScene::handleGameEvent(const QVariant&args)
 	}
 	case S_GAME_EVENT_PREPARE_SKILL:
 		updateSkillButtons(true);
-	case S_GAME_EVENT_UPDATE_SKILL: {/*
-		if(arg.size()>3){
-			QString skill_name = ":"+arg[2].toString();
-			if(JsonUtils::isNumber(arg[3]))
-				Sanguosha->addTranslationEntry(skill_name,Sanguosha->translate(skill_name+arg[3].toString()));
-			else
-				Sanguosha->addTranslationEntry(skill_name,QString::fromUtf8(QByteArray::fromBase64(arg[3].toString().toLatin1())));
-		}
-		foreach(Photo*photo,photos)
-			photo->updateAvatarTooltip();
-		dashboard->updateAvatarTooltip();*/
+	case S_GAME_EVENT_UPDATE_SKILL: {
 		break;
 	}
 	case S_GAME_EVENT_CHANGE_GENDER: {
-		QString player_name = arg[1].toString();
-		General::Gender gender = (General::Gender)arg[2].toInt();
+		QString player_name = event.value(QStringLiteral("player_name")).toString();
+		General::Gender gender = (General::Gender)event.value(QStringLiteral("gender")).toInt();
 
 		ClientPlayer*player = ClientInstance->getPlayer(player_name);
 		player->setGender(gender);
@@ -910,20 +899,17 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		break;
 	}
 	case S_GAME_EVENT_AVATAR_ICON: {
-		ClientPlayer*player = ClientInstance->getPlayer(arg[1].toString());/*
-		const General*general = player->getGeneral();
-		if(arg[2].toBool()) general = player->getGeneral2();
-		const_cast<General*>(general)->setObjectName(arg[3].toString());*/
+		ClientPlayer*player = ClientInstance->getPlayer(event.value(QStringLiteral("player_name")).toString());
 		PlayerCardContainer*container = (PlayerCardContainer*)_getGenericCardContainer(Player::PlaceHand,player);
-		if(arg[2].toBool()) container->updateSmallAvatar();
+		if(event.value(QStringLiteral("secondary")).toBool()) container->updateSmallAvatar();
 		else container->updateAvatar();
 		break;
 	}
 	case S_GAME_EVENT_CHANGE_HERO: {
-		QString playerName = arg[1].toString();
-		QString newHeroName = arg[2].toString();
-		bool isSecondaryHero = arg[3].toBool();
-		bool sendLog = arg[4].toBool();
+		QString playerName = event.value(QStringLiteral("player_name")).toString();
+		QString newHeroName = event.value(QStringLiteral("general_name")).toString();
+		bool isSecondaryHero = event.value(QStringLiteral("secondary")).toBool();
+		bool sendLog = event.value(QStringLiteral("send_log")).toBool();
 		qDebug() << "S_GAME_EVENT_CHANGE_HERO - playerName:" << playerName << "newHeroName:" << newHeroName << "isSecondaryHero:" << isSecondaryHero;
 		const General*hero = Sanguosha->getGeneral(newHeroName);
 		ClientPlayer*player = ClientInstance->getPlayer(playerName);
@@ -1002,17 +988,17 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		break;
 	}
 	case S_GAME_EVENT_PLAYER_REFORM: {
-		ClientPlayer*player = ClientInstance->getPlayer(arg[1].toString());
+		ClientPlayer*player = ClientInstance->getPlayer(event.value(QStringLiteral("player_name")).toString());
 		PlayerCardContainer*container = (PlayerCardContainer*)_getGenericCardContainer(Player::PlaceHand,player);
 		container->updateReformState();
 		break;
 	}
 	case S_GAME_EVENT_SKILL_INVOKED: {
-		QString skill_name = arg[2].toString();/*
+		QString skill_name = event.value(QStringLiteral("skill_name")).toString();/*
 		const Skill*skill = Sanguosha->getSkill(skill_name);
 		if(skill&&(skill->isAttachedLordSkill()||skill->inherits("SPConvertSkill"))) return;*/
 
-		ClientPlayer*player = ClientInstance->getPlayer(arg[1].toString());
+		ClientPlayer*player = ClientInstance->getPlayer(event.value(QStringLiteral("player_name")).toString());
 		if(player&&player!=Self){
 			Photo*photo = (Photo*)_getGenericCardContainer(Player::PlaceHand,player);
 			if(photo) photo->showSkillName(skill_name);
@@ -1020,7 +1006,7 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		break;
 	}
 	case S_GAME_EVENT_PAUSE: {
-		bool paused = arg[1].toBool();
+		bool paused = event.value(QStringLiteral("paused")).toBool();
 		if(pausing_item->isVisible()!=paused){
 			if(paused){
 				m_timerLabel->pause();
@@ -1040,11 +1026,13 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		break;
 	}
 	case S_GAME_EVENT_REVEAL_PINDIAN: {
-		QString from_name = arg[1].toString(),to_name = arg[3].toString();
-		int from_id = arg[2].toInt(),to_id = arg[4].toInt();
-		bool success = arg[5].toBool();
+		QString from_name = event.value(QStringLiteral("from_player")).toString();
+		QString to_name = event.value(QStringLiteral("to_player")).toString();
+		int from_id = event.value(QStringLiteral("from_card_id")).toInt();
+		int to_id = event.value(QStringLiteral("to_card_id")).toInt();
+		bool success = event.value(QStringLiteral("success")).toBool();
 		pindian_success = success;
-		QString reason = arg[6].toString();
+		QString reason = event.value(QStringLiteral("reason")).toString();
 
 		if(Config.value("EnablePindianBox",true).toBool())
 			showPindianBox(from_name,from_id,to_name,to_id,reason);
@@ -1053,20 +1041,23 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		break;
 	}
 	case S_GAME_EVENT_CHANGE_BGM: {
-		if(arg.length()<3||Config.BGMVolume<=0) break;
+		if(Config.BGMVolume<=0) break;
 
 #ifdef AUDIO_SUPPORT
-		if(arg[2].toBool()) Audio::stopBGM();
-		Audio::playBGM(arg[1].toString());
+		if(event.value(QStringLiteral("stop_current")).toBool()) Audio::stopBGM();
+		Audio::playBGM(event.value(QStringLiteral("path")).toString());
 		Audio::setBGMVolume(Config.BGMVolume);
 #endif
 		break;
 	}
 	case S_GAME_EVENT_SORT_HAND: {
-		ClientPlayer*player = ClientInstance->getPlayer(arg[1].toString());
+		ClientPlayer*player = ClientInstance->getPlayer(event.value(QStringLiteral("player_name")).toString());
+		QList<int> cardIds;
+		if (!JsonUtils::tryParse(event.value(QStringLiteral("card_ids")), cardIds))
+			break;
 		if(player==Self)
-			dashboard->sortHandCards(ListS2I(arg[2].toString().split("+")));
-		player->sortHandCards(ListS2I(arg[2].toString().split("+")));
+			dashboard->sortHandCards(cardIds);
+		player->sortHandCards(cardIds);
 		break;
 	}
 	default:
@@ -4486,10 +4477,6 @@ void ScriptExecutor::doScript()
 	if(box==nullptr) return;
 
 	QString script = box->toPlainText();
-	QByteArray data = script.toLatin1();
-	data = qCompress(data);
-	script = data.toBase64();
-
 	ClientInstance->requestCheatRunScript(script);
 }
 
@@ -6899,7 +6886,9 @@ void RoomScene::pause()
 			return;
 	}
 	bool paused = pausing_text->isVisible();
-	ClientInstance->notifyServer(S_COMMAND_PAUSE,!paused);
+	QSanProtocol::PausePayload payload;
+	payload.paused = !paused;
+	ClientInstance->notifyServer(S_COMMAND_PAUSE, payload.toVariant());
 }
 
 void RoomScene::addRobot()

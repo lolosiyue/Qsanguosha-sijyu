@@ -48,7 +48,7 @@ private:
                                 ResponseVerifyFunction validateFunc = nullptr,
                                 void *funcArg = nullptr);
     bool verifyRaceReply(ServerPlayer *player, const QVariant &reply, void *funcArg);
-    void processClientPacket(ServerPlayer *player, const QSanProtocol::Packet &packet,
+    void processClientPacket(ServerPlayer *player,
                              const QSanProtocol::ProtocolMessage &message,
                              const QString &rawRequest);
     void processResponse(ServerPlayer *player,

@@ -182,9 +182,6 @@ QJsonObject requestPayloadToJson(const InteractionPayload &payload)
         object.insert(QStringLiteral("title"), value->title);
         object.insert(QStringLiteral("payload"), value->payload);
         object.insert(QStringLiteral("response_schema"), value->responseSchema);
-        object.insert(QStringLiteral("legacy"), value->legacy);
-        if (!value->legacyQmlPath.isEmpty())
-            object.insert(QStringLiteral("legacy_qml_path"), value->legacyQmlPath);
     }
     return object;
 }
@@ -371,8 +368,6 @@ QJsonObject InteractionRequest::toJson() const
 
     if (command != 0)
         object.insert(QStringLiteral("command"), command);
-    if (serverSerial != 0)
-        object.insert(QStringLiteral("server_serial"), static_cast<qint64>(serverSerial));
     if (!skillName.isEmpty())
         object.insert(QStringLiteral("skill"), skillName);
     if (!prompt.isEmpty())
@@ -500,8 +495,6 @@ QJsonObject InteractionResponse::toJson() const
     QJsonObject object;
     object.insert(QStringLiteral("kind"), interactionResponseKindName(kind));
     object.insert(QStringLiteral("request_id"), static_cast<qint64>(requestId));
-    if (serverSerial != 0)
-        object.insert(QStringLiteral("server_serial"), static_cast<qint64>(serverSerial));
     if (command != 0)
         object.insert(QStringLiteral("command"), command);
     QJsonObject structured;
@@ -550,7 +543,6 @@ QByteArray InteractionResponse::toSnapshot() const
 QString interactionRejectionName(InteractionRejection rejection)
 {
     switch (rejection) {
-    case InteractionRejection::ServerSerialMismatch: return QStringLiteral("server_serial_mismatch");
     case InteractionRejection::CommandMismatch: return QStringLiteral("command_mismatch");
     case InteractionRejection::MalformedResponse: return QStringLiteral("malformed_response");
     case InteractionRejection::UnsupportedInteraction: return QStringLiteral("unsupported_interaction");

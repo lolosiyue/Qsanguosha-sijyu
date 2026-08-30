@@ -5,24 +5,16 @@
 
 #include <QByteArray>
 #include <QList>
-#include <QVariantMap>
 
 namespace QSanProtocol {
 
 class ProtocolCodecRouter
 {
 public:
-    QByteArray encode(ProtocolVersion activeVersion,
-                      const ProtocolMessage &message,
+    QByteArray encode(const ProtocolMessage &message,
                       QString *error = nullptr) const;
-    ProtocolDecodeResult decode(ProtocolVersion activeVersion,
-                                QByteArrayView raw,
+    ProtocolDecodeResult decode(QByteArrayView raw,
                                 ProtocolMessage *message) const;
-
-    // Legacy compatibility helper retained for V1 golden tests. Production
-    // replay recording uses QSanReplay::ReplayWriter instead.
-    QByteArray encodeReplayV1(const ProtocolMessage &message,
-                              QString *error = nullptr) const;
 };
 
 class ProtocolMessageIdGenerator
@@ -30,9 +22,18 @@ class ProtocolMessageIdGenerator
 public:
     quint64 next();
     void reset();
+    quint64 nextValue() const;
+    bool setNextValue(quint64 value);
 
 private:
     quint64 m_next = 1;
+};
+
+struct ProtocolConnectionState
+{
+    quint64 generation = 1;
+    quint64 nextOutgoingMessageId = 1;
+    quint64 lastIncomingMessageId = 0;
 };
 
 struct ProtocolFrameAppendResult
@@ -53,29 +54,6 @@ public:
 
 private:
     QByteArray m_buffer;
-};
-
-enum class ProtocolActivationState
-{
-    V1Active,
-    OfferSent,
-    AwaitingCommit,
-    AckReceived,
-    V2Active,
-    Failed
-};
-
-struct ProtocolSwitchPayload
-{
-    static constexpr int SchemaVersion = 1;
-
-    QString phase;
-    ProtocolVersion targetVersion = ProtocolVersion::V2;
-    QString switchId;
-
-    QVariantMap toVariant() const;
-    static bool parse(const QVariant &value, const QString &expectedPhase,
-                      ProtocolSwitchPayload *payload, QString *error = nullptr);
 };
 
 }

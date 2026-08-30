@@ -13,8 +13,7 @@
 #include "skill.h"
 #include "skill-instance-types.h"
 
-#include "protocol.h"
-#include "protocol/protocol-v1-message-adapter.h"
+#include "protocol/protocol-message.h"
 
 struct RoomTestAccess
 {
@@ -110,22 +109,10 @@ struct RoomTestAccess
     }
 
     static void dispatch(Room &room, ServerPlayer *player,
-                         const QSanProtocol::Packet &packet)
-    {
-        room.m_requests->processClientPacket(
-            player, packet, QSanProtocol::protocolMessageFromV1Packet(packet),
-            packet.toString());
-    }
-
-    static void dispatch(Room &room, ServerPlayer *player,
                          const QSanProtocol::ProtocolMessage &message,
-                         const QString &rawMessage)
+                         const QString &rawMessage = QString())
     {
-        QSanProtocol::ProtocolMessage legacy = message;
-        legacy.version = QSanProtocol::ProtocolVersion::V1;
-        QSanProtocol::Packet packet;
-        QSanProtocol::applyProtocolMessageToV1Packet(legacy, packet);
-        room.m_requests->processClientPacket(player, packet, message, rawMessage);
+        room.m_requests->processClientPacket(player, message, rawMessage);
     }
 
     static bool isPaused(const Room &room)

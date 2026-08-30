@@ -231,8 +231,8 @@ bool arraySchema(TypedInteractionPayloadKind kind,
     }
 }
 
-bool encodeArray(TypedInteractionPayloadKind kind, bool hasLegacyPayload,
-                 const QVariant &legacyPayload, QVariant *v2Payload, QString *error)
+bool encodeArray(TypedInteractionPayloadKind kind, bool hasDomainPayload,
+                 const QVariant &domainPayload, QVariant *v2Payload, QString *error)
 {
     const FieldSpec *fields = nullptr;
     int fieldCount = 0;
@@ -240,17 +240,17 @@ bool encodeArray(TypedInteractionPayloadKind kind, bool hasLegacyPayload,
     QString context;
     if (!arraySchema(kind, &fields, &fieldCount, &requiredCount, &context))
         return false;
-    if (!hasLegacyPayload || legacyPayload.userType() != QMetaType::QVariantList)
-        return fail(error, QStringLiteral("Legacy %1 must be an array").arg(context));
-    const QVariantList entries = legacyPayload.toList();
+    if (!hasDomainPayload || domainPayload.userType() != QMetaType::QVariantList)
+        return fail(error, QStringLiteral("Domain %1 must be an array").arg(context));
+    const QVariantList entries = domainPayload.toList();
     if (entries.size() < requiredCount || entries.size() > fieldCount)
-        return fail(error, QStringLiteral("Legacy %1 has the wrong field count").arg(context));
+        return fail(error, QStringLiteral("Domain %1 has the wrong field count").arg(context));
 
     QVariantMap object = typedObject();
     for (int index = 0; index < entries.size(); ++index) {
         const QString fieldName = QString::fromLatin1(fields[index].name);
         if (!validateField(entries.at(index), fields[index].type,
-                           QStringLiteral("Legacy %1 %2").arg(context, fieldName), error)) {
+                           QStringLiteral("Domain %1 %2").arg(context, fieldName), error)) {
             return false;
         }
         object.insert(fieldName, entries.at(index));
@@ -260,7 +260,7 @@ bool encodeArray(TypedInteractionPayloadKind kind, bool hasLegacyPayload,
 }
 
 bool decodeArray(TypedInteractionPayloadKind kind, const QVariantMap &object,
-                 bool *hasLegacyPayload, QVariant *legacyPayload, QString *error)
+                 bool *hasDomainPayload, QVariant *domainPayload, QString *error)
 {
     const FieldSpec *fields = nullptr;
     int fieldCount = 0;
@@ -289,25 +289,25 @@ bool decodeArray(TypedInteractionPayloadKind kind, const QVariantMap &object,
         }
         entries.append(field);
     }
-    *hasLegacyPayload = true;
-    *legacyPayload = entries;
+    *hasDomainPayload = true;
+    *domainPayload = entries;
     return true;
 }
 
-bool encodeNoPayload(bool hasLegacyPayload, const QString &context,
+bool encodeNoPayload(bool hasDomainPayload, const QString &context,
                      QVariant *v2Payload, QString *error)
 {
-    if (hasLegacyPayload)
-        return fail(error, QStringLiteral("Legacy %1 must not contain a payload").arg(context));
+    if (hasDomainPayload)
+        return fail(error, QStringLiteral("Domain %1 must not contain a payload").arg(context));
     *v2Payload = typedObject();
     return true;
 }
 
-bool decodeNoPayload(const QVariantMap &, bool *hasLegacyPayload,
-                     QVariant *legacyPayload)
+bool decodeNoPayload(const QVariantMap &, bool *hasDomainPayload,
+                     QVariant *domainPayload)
 {
-    *hasLegacyPayload = false;
-    *legacyPayload = QVariant();
+    *hasDomainPayload = false;
+    *domainPayload = QVariant();
     return true;
 }
 
@@ -325,50 +325,50 @@ bool requireField(const QVariantMap &object, const char *name, FieldType type,
     return true;
 }
 
-bool encodeScalar(bool hasLegacyPayload, const QVariant &legacyPayload,
+bool encodeScalar(bool hasDomainPayload, const QVariant &domainPayload,
                   const char *fieldName, FieldType type, const QString &context,
                   QVariant *v2Payload, QString *error)
 {
-    if (!hasLegacyPayload)
-        return fail(error, QStringLiteral("Legacy %1 requires a payload").arg(context));
-    if (!validateField(legacyPayload, type, QStringLiteral("Legacy %1").arg(context), error))
+    if (!hasDomainPayload)
+        return fail(error, QStringLiteral("Domain %1 requires a payload").arg(context));
+    if (!validateField(domainPayload, type, QStringLiteral("Domain %1").arg(context), error))
         return false;
     QVariantMap object = typedObject();
-    object.insert(QString::fromLatin1(fieldName), legacyPayload);
+    object.insert(QString::fromLatin1(fieldName), domainPayload);
     *v2Payload = object;
     return true;
 }
 
 bool decodeScalar(const QVariantMap &object, const char *fieldName, FieldType type,
-                  const QString &context, bool *hasLegacyPayload,
-                  QVariant *legacyPayload, QString *error)
+                  const QString &context, bool *hasDomainPayload,
+                  QVariant *domainPayload, QString *error)
 {
     QVariant value;
     if (!requireField(object, fieldName, type, context, &value, error))
         return false;
-    *hasLegacyPayload = true;
-    *legacyPayload = value;
+    *hasDomainPayload = true;
+    *domainPayload = value;
     return true;
 }
 
-bool encodeOptionalCardId(bool hasLegacyPayload, const QVariant &legacyPayload,
+bool encodeOptionalCardId(bool hasDomainPayload, const QVariant &domainPayload,
                           QVariant *v2Payload, QString *error)
 {
     QVariantMap object = typedObject();
-    object.insert(QStringLiteral("cancelled"), !hasLegacyPayload);
-    if (hasLegacyPayload) {
-        if (!validateField(legacyPayload, FieldType::Integer,
-                           QStringLiteral("Legacy card id reply"), error)) {
+    object.insert(QStringLiteral("cancelled"), !hasDomainPayload);
+    if (hasDomainPayload) {
+        if (!validateField(domainPayload, FieldType::Integer,
+                           QStringLiteral("Domain card id reply"), error)) {
             return false;
         }
-        object.insert(QStringLiteral("card_id"), legacyPayload);
+        object.insert(QStringLiteral("card_id"), domainPayload);
     }
     *v2Payload = object;
     return true;
 }
 
-bool decodeOptionalCardId(const QVariantMap &object, bool *hasLegacyPayload,
-                          QVariant *legacyPayload, QString *error)
+bool decodeOptionalCardId(const QVariantMap &object, bool *hasDomainPayload,
+                          QVariant *domainPayload, QString *error)
 {
     QVariant cancelledValue;
     if (!requireField(object, "cancelled", FieldType::Boolean,
@@ -376,27 +376,27 @@ bool decodeOptionalCardId(const QVariantMap &object, bool *hasLegacyPayload,
         return false;
     }
     if (cancelledValue.toBool()) {
-        *hasLegacyPayload = false;
-        *legacyPayload = QVariant();
+        *hasDomainPayload = false;
+        *domainPayload = QVariant();
         return true;
     }
     return decodeScalar(object, "card_id", FieldType::Integer,
                         QStringLiteral("card id reply"),
-                        hasLegacyPayload, legacyPayload, error);
+                        hasDomainPayload, domainPayload, error);
 }
 
-bool encodeCancelableList(bool hasLegacyPayload, const QVariant &legacyPayload,
+bool encodeCancelableList(bool hasDomainPayload, const QVariant &domainPayload,
                           const char *fieldName, FieldType type,
                           const QString &context, QVariant *v2Payload, QString *error)
 {
     QVariantMap object = typedObject();
-    object.insert(QStringLiteral("cancelled"), !hasLegacyPayload);
-    if (hasLegacyPayload) {
-        if (!validateField(legacyPayload, type,
-                           QStringLiteral("Legacy %1").arg(context), error)) {
+    object.insert(QStringLiteral("cancelled"), !hasDomainPayload);
+    if (hasDomainPayload) {
+        if (!validateField(domainPayload, type,
+                           QStringLiteral("Domain %1").arg(context), error)) {
             return false;
         }
-        object.insert(QString::fromLatin1(fieldName), legacyPayload);
+        object.insert(QString::fromLatin1(fieldName), domainPayload);
     }
     *v2Payload = object;
     return true;
@@ -404,7 +404,7 @@ bool encodeCancelableList(bool hasLegacyPayload, const QVariant &legacyPayload,
 
 bool decodeCancelableList(const QVariantMap &object, const char *fieldName,
                           FieldType type, const QString &context,
-                          bool *hasLegacyPayload, QVariant *legacyPayload, QString *error)
+                          bool *hasDomainPayload, QVariant *domainPayload, QString *error)
 {
     QVariant cancelledValue;
     if (!requireField(object, "cancelled", FieldType::Boolean,
@@ -412,31 +412,31 @@ bool decodeCancelableList(const QVariantMap &object, const char *fieldName,
         return false;
     }
     if (cancelledValue.toBool()) {
-        *hasLegacyPayload = false;
-        *legacyPayload = QVariant();
+        *hasDomainPayload = false;
+        *domainPayload = QVariant();
         return true;
     }
     return decodeScalar(object, fieldName, type, context,
-                        hasLegacyPayload, legacyPayload, error);
+                        hasDomainPayload, domainPayload, error);
 }
 
-bool encodeChooseRoleReply(bool hasLegacyPayload, const QVariant &legacyPayload,
+bool encodeChooseRoleReply(bool hasDomainPayload, const QVariant &domainPayload,
                            QVariant *v2Payload, QString *error)
 {
     QVariantMap object = typedObject();
-    object.insert(QStringLiteral("cancelled"), !hasLegacyPayload);
-    if (!hasLegacyPayload) {
+    object.insert(QStringLiteral("cancelled"), !hasDomainPayload);
+    if (!hasDomainPayload) {
         *v2Payload = object;
         return true;
     }
-    if (legacyPayload.userType() != QMetaType::QVariantList)
-        return fail(error, QStringLiteral("Legacy choose role reply must be an array"));
-    const QVariantList entries = legacyPayload.toList();
+    if (domainPayload.userType() != QMetaType::QVariantList)
+        return fail(error, QStringLiteral("Domain choose role reply must be an array"));
+    const QVariantList entries = domainPayload.toList();
     if (entries.size() != 2
         || !validateArray(entries.at(0), FieldType::StringArray,
-                          QStringLiteral("Legacy choose role players"), error)
+                          QStringLiteral("Domain choose role players"), error)
         || !validateArray(entries.at(1), FieldType::StringArray,
-                          QStringLiteral("Legacy choose role roles"), error)) {
+                          QStringLiteral("Domain choose role roles"), error)) {
         return false;
     }
     object.insert(QStringLiteral("players"), entries.at(0));
@@ -445,8 +445,8 @@ bool encodeChooseRoleReply(bool hasLegacyPayload, const QVariant &legacyPayload,
     return true;
 }
 
-bool decodeChooseRoleReply(const QVariantMap &object, bool *hasLegacyPayload,
-                           QVariant *legacyPayload, QString *error)
+bool decodeChooseRoleReply(const QVariantMap &object, bool *hasDomainPayload,
+                           QVariant *domainPayload, QString *error)
 {
     QVariant cancelled;
     if (!requireField(object, "cancelled", FieldType::Boolean,
@@ -454,8 +454,8 @@ bool decodeChooseRoleReply(const QVariantMap &object, bool *hasLegacyPayload,
         return false;
     }
     if (cancelled.toBool()) {
-        *hasLegacyPayload = false;
-        *legacyPayload = QVariant();
+        *hasDomainPayload = false;
+        *domainPayload = QVariant();
         return true;
     }
     QVariant players;
@@ -466,20 +466,20 @@ bool decodeChooseRoleReply(const QVariantMap &object, bool *hasLegacyPayload,
                          QStringLiteral("choose role reply"), &roles, error)) {
         return false;
     }
-    *hasLegacyPayload = true;
-    *legacyPayload = QVariantList{players, roles};
+    *hasDomainPayload = true;
+    *domainPayload = QVariantList{players, roles};
     return true;
 }
 
-bool encodeGuanxingRequest(bool hasLegacyPayload, const QVariant &legacyPayload,
+bool encodeGuanxingRequest(bool hasDomainPayload, const QVariant &domainPayload,
                            QVariant *v2Payload, QString *error)
 {
-    if (!hasLegacyPayload || legacyPayload.userType() != QMetaType::QVariantList)
-        return fail(error, QStringLiteral("Legacy guanxing request must be an array"));
-    const QVariantList entries = legacyPayload.toList();
+    if (!hasDomainPayload || domainPayload.userType() != QMetaType::QVariantList)
+        return fail(error, QStringLiteral("Domain guanxing request must be an array"));
+    const QVariantList entries = domainPayload.toList();
     if (entries.isEmpty() || entries.size() > 2
         || !validateArray(entries.at(0), FieldType::IntegerArray,
-                          QStringLiteral("Legacy guanxing card_ids"), error)) {
+                          QStringLiteral("Domain guanxing card_ids"), error)) {
         return false;
     }
     QVariantMap object = typedObject();
@@ -487,7 +487,7 @@ bool encodeGuanxingRequest(bool hasLegacyPayload, const QVariant &legacyPayload,
     if (entries.size() == 2) {
         int mode = 0;
         if (!isInteger(entries.at(1), &mode) || mode < -1 || mode > 1)
-            return fail(error, QStringLiteral("Legacy guanxing mode is unknown"));
+            return fail(error, QStringLiteral("Domain guanxing mode is unknown"));
         object.insert(QStringLiteral("mode"), mode > 0 ? QStringLiteral("up_only")
             : mode < 0 ? QStringLiteral("down_only") : QStringLiteral("both_sides"));
     }
@@ -495,8 +495,8 @@ bool encodeGuanxingRequest(bool hasLegacyPayload, const QVariant &legacyPayload,
     return true;
 }
 
-bool decodeGuanxingRequest(const QVariantMap &object, bool *hasLegacyPayload,
-                           QVariant *legacyPayload, QString *error)
+bool decodeGuanxingRequest(const QVariantMap &object, bool *hasDomainPayload,
+                           QVariant *domainPayload, QString *error)
 {
     QVariant cardIds;
     if (!requireField(object, "card_ids", FieldType::IntegerArray,
@@ -520,23 +520,23 @@ bool decodeGuanxingRequest(const QVariantMap &object, bool *hasLegacyPayload,
         else
             return fail(error, QStringLiteral("Guanxing request mode is unknown"));
     }
-    *hasLegacyPayload = true;
-    *legacyPayload = entries;
+    *hasDomainPayload = true;
+    *domainPayload = entries;
     return true;
 }
 
-bool encodeTwoIntegerLists(bool hasLegacyPayload, const QVariant &legacyPayload,
+bool encodeTwoIntegerLists(bool hasDomainPayload, const QVariant &domainPayload,
                            const char *firstName, const char *secondName,
                            const QString &context, QVariant *v2Payload, QString *error)
 {
-    if (!hasLegacyPayload || legacyPayload.userType() != QMetaType::QVariantList)
-        return fail(error, QStringLiteral("Legacy %1 must be an array").arg(context));
-    const QVariantList entries = legacyPayload.toList();
+    if (!hasDomainPayload || domainPayload.userType() != QMetaType::QVariantList)
+        return fail(error, QStringLiteral("Domain %1 must be an array").arg(context));
+    const QVariantList entries = domainPayload.toList();
     if (entries.size() != 2
         || !validateArray(entries.at(0), FieldType::IntegerArray,
-                          QStringLiteral("Legacy %1 first array").arg(context), error)
+                          QStringLiteral("Domain %1 first array").arg(context), error)
         || !validateArray(entries.at(1), FieldType::IntegerArray,
-                          QStringLiteral("Legacy %1 second array").arg(context), error)) {
+                          QStringLiteral("Domain %1 second array").arg(context), error)) {
         return false;
     }
     QVariantMap object = typedObject();
@@ -548,8 +548,8 @@ bool encodeTwoIntegerLists(bool hasLegacyPayload, const QVariant &legacyPayload,
 
 bool decodeTwoIntegerLists(const QVariantMap &object,
                            const char *firstName, const char *secondName,
-                           const QString &context, bool *hasLegacyPayload,
-                           QVariant *legacyPayload, QString *error)
+                           const QString &context, bool *hasDomainPayload,
+                           QVariant *domainPayload, QString *error)
 {
     QVariant first;
     QVariant second;
@@ -558,28 +558,28 @@ bool decodeTwoIntegerLists(const QVariantMap &object,
                          context, &second, error)) {
         return false;
     }
-    *hasLegacyPayload = true;
-    *legacyPayload = QVariantList{first, second};
+    *hasDomainPayload = true;
+    *domainPayload = QVariantList{first, second};
     return true;
 }
 
-bool encodeYijiReply(bool hasLegacyPayload, const QVariant &legacyPayload,
+bool encodeYijiReply(bool hasDomainPayload, const QVariant &domainPayload,
                      QVariant *v2Payload, QString *error)
 {
     QVariantMap object = typedObject();
-    object.insert(QStringLiteral("cancelled"), !hasLegacyPayload);
-    if (!hasLegacyPayload) {
+    object.insert(QStringLiteral("cancelled"), !hasDomainPayload);
+    if (!hasDomainPayload) {
         *v2Payload = object;
         return true;
     }
-    if (legacyPayload.userType() != QMetaType::QVariantList)
-        return fail(error, QStringLiteral("Legacy yiji reply must be an array"));
-    const QVariantList entries = legacyPayload.toList();
+    if (domainPayload.userType() != QMetaType::QVariantList)
+        return fail(error, QStringLiteral("Domain yiji reply must be an array"));
+    const QVariantList entries = domainPayload.toList();
     if (entries.size() != 2
         || !validateArray(entries.at(0), FieldType::IntegerArray,
-                          QStringLiteral("Legacy yiji card_ids"), error)
+                          QStringLiteral("Domain yiji card_ids"), error)
         || entries.at(1).userType() != QMetaType::QString) {
-        return fail(error, QStringLiteral("Legacy yiji reply has invalid fields"));
+        return fail(error, QStringLiteral("Domain yiji reply has invalid fields"));
     }
     object.insert(QStringLiteral("card_ids"), entries.at(0));
     object.insert(QStringLiteral("target_player"), entries.at(1));
@@ -587,8 +587,8 @@ bool encodeYijiReply(bool hasLegacyPayload, const QVariant &legacyPayload,
     return true;
 }
 
-bool decodeYijiReply(const QVariantMap &object, bool *hasLegacyPayload,
-                     QVariant *legacyPayload, QString *error)
+bool decodeYijiReply(const QVariantMap &object, bool *hasDomainPayload,
+                     QVariant *domainPayload, QString *error)
 {
     QVariant cancelled;
     if (!requireField(object, "cancelled", FieldType::Boolean,
@@ -596,8 +596,8 @@ bool decodeYijiReply(const QVariantMap &object, bool *hasLegacyPayload,
         return false;
     }
     if (cancelled.toBool()) {
-        *hasLegacyPayload = false;
-        *legacyPayload = QVariant();
+        *hasDomainPayload = false;
+        *domainPayload = QVariant();
         return true;
     }
     QVariant cardIds;
@@ -608,30 +608,30 @@ bool decodeYijiReply(const QVariantMap &object, bool *hasLegacyPayload,
                          QStringLiteral("yiji reply"), &target, error)) {
         return false;
     }
-    *hasLegacyPayload = true;
-    *legacyPayload = QVariantList{cardIds, target};
+    *hasDomainPayload = true;
+    *domainPayload = QVariantList{cardIds, target};
     return true;
 }
 
-bool encodeResponseCardReply(bool hasLegacyPayload, const QVariant &legacyPayload,
+bool encodeResponseCardReply(bool hasDomainPayload, const QVariant &domainPayload,
                              QVariant *v2Payload, QString *error)
 {
     QVariantMap object = typedObject();
-    object.insert(QStringLiteral("cancelled"), !hasLegacyPayload);
-    if (!hasLegacyPayload) {
+    object.insert(QStringLiteral("cancelled"), !hasDomainPayload);
+    if (!hasDomainPayload) {
         *v2Payload = object;
         return true;
     }
-    if (legacyPayload.userType() != QMetaType::QVariantList)
-        return fail(error, QStringLiteral("Legacy response card reply must be an array"));
-    const QVariantList entries = legacyPayload.toList();
+    if (domainPayload.userType() != QMetaType::QVariantList)
+        return fail(error, QStringLiteral("Domain response card reply must be an array"));
+    const QVariantList entries = domainPayload.toList();
     if (entries.size() != 4
         || entries.at(0).userType() != QMetaType::QString
         || !validateArray(entries.at(1), FieldType::StringArray,
-                          QStringLiteral("Legacy response card targets"), error)
+                          QStringLiteral("Domain response card targets"), error)
         || entries.at(2).userType() != QMetaType::QString
         || !isInteger(entries.at(3))) {
-        return fail(error, QStringLiteral("Legacy response card reply has invalid fields"));
+        return fail(error, QStringLiteral("Domain response card reply has invalid fields"));
     }
     object.insert(QStringLiteral("card_text"), entries.at(0));
     object.insert(QStringLiteral("targets"), entries.at(1));
@@ -641,8 +641,8 @@ bool encodeResponseCardReply(bool hasLegacyPayload, const QVariant &legacyPayloa
     return true;
 }
 
-bool decodeResponseCardReply(const QVariantMap &object, bool *hasLegacyPayload,
-                             QVariant *legacyPayload, QString *error)
+bool decodeResponseCardReply(const QVariantMap &object, bool *hasDomainPayload,
+                             QVariant *domainPayload, QString *error)
 {
     QVariant cancelled;
     if (!requireField(object, "cancelled", FieldType::Boolean,
@@ -650,8 +650,8 @@ bool decodeResponseCardReply(const QVariantMap &object, bool *hasLegacyPayload,
         return false;
     }
     if (cancelled.toBool()) {
-        *hasLegacyPayload = false;
-        *legacyPayload = QVariant();
+        *hasDomainPayload = false;
+        *domainPayload = QVariant();
         return true;
     }
     QVariant cardText;
@@ -668,21 +668,21 @@ bool decodeResponseCardReply(const QVariantMap &object, bool *hasLegacyPayload,
                          QStringLiteral("response card reply"), &instanceId, error)) {
         return false;
     }
-    *hasLegacyPayload = true;
-    *legacyPayload = QVariantList{cardText, targets, skillName, instanceId};
+    *hasDomainPayload = true;
+    *domainPayload = QVariantList{cardText, targets, skillName, instanceId};
     return true;
 }
 
-bool encodeChoosePlayerReply(bool hasLegacyPayload, const QVariant &legacyPayload,
+bool encodeChoosePlayerReply(bool hasDomainPayload, const QVariant &domainPayload,
                              QVariant *v2Payload, QString *error)
 {
     QVariantMap object = typedObject();
-    object.insert(QStringLiteral("cancelled"), !hasLegacyPayload);
-    if (hasLegacyPayload) {
-        if (legacyPayload.userType() != QMetaType::QString)
-            return fail(error, QStringLiteral("Legacy choose player reply must be a string"));
+    object.insert(QStringLiteral("cancelled"), !hasDomainPayload);
+    if (hasDomainPayload) {
+        if (domainPayload.userType() != QMetaType::QString)
+            return fail(error, QStringLiteral("Domain choose player reply must be a string"));
         QVariantList players;
-        for (const QString &name : legacyPayload.toString().split(QLatin1Char('+'), Qt::KeepEmptyParts))
+        for (const QString &name : domainPayload.toString().split(QLatin1Char('+'), Qt::KeepEmptyParts))
             players.append(name);
         object.insert(QStringLiteral("players"), players);
     }
@@ -690,8 +690,8 @@ bool encodeChoosePlayerReply(bool hasLegacyPayload, const QVariant &legacyPayloa
     return true;
 }
 
-bool decodeChoosePlayerReply(const QVariantMap &object, bool *hasLegacyPayload,
-                             QVariant *legacyPayload, QString *error)
+bool decodeChoosePlayerReply(const QVariantMap &object, bool *hasDomainPayload,
+                             QVariant *domainPayload, QString *error)
 {
     QVariant cancelled;
     if (!requireField(object, "cancelled", FieldType::Boolean,
@@ -699,8 +699,8 @@ bool decodeChoosePlayerReply(const QVariantMap &object, bool *hasLegacyPayload,
         return false;
     }
     if (cancelled.toBool()) {
-        *hasLegacyPayload = false;
-        *legacyPayload = QVariant();
+        *hasDomainPayload = false;
+        *domainPayload = QVariant();
         return true;
     }
     QVariant players;
@@ -711,24 +711,24 @@ bool decodeChoosePlayerReply(const QVariantMap &object, bool *hasLegacyPayload,
     QStringList names;
     for (const QVariant &entry : players.toList())
         names.append(entry.toString());
-    *hasLegacyPayload = true;
-    *legacyPayload = names.join(QLatin1Char('+'));
+    *hasDomainPayload = true;
+    *domainPayload = names.join(QLatin1Char('+'));
     return true;
 }
 
-bool encodeTriggerOrderRequest(bool hasLegacyPayload, const QVariant &legacyPayload,
+bool encodeTriggerOrderRequest(bool hasDomainPayload, const QVariant &domainPayload,
                                QVariant *v2Payload, QString *error)
 {
-    if (!hasLegacyPayload || legacyPayload.userType() != QMetaType::QVariantList)
-        return fail(error, QStringLiteral("Legacy trigger order request must be an array"));
-    const QVariantList entries = legacyPayload.toList();
+    if (!hasDomainPayload || domainPayload.userType() != QMetaType::QVariantList)
+        return fail(error, QStringLiteral("Domain trigger order request must be an array"));
+    const QVariantList entries = domainPayload.toList();
     if (entries.size() != 2 || entries.at(0).userType() != QMetaType::QVariantList
         || entries.at(1).userType() != QMetaType::Bool) {
-        return fail(error, QStringLiteral("Legacy trigger order request has invalid fields"));
+        return fail(error, QStringLiteral("Domain trigger order request has invalid fields"));
     }
     for (const QVariant &option : entries.at(0).toList()) {
         if (option.userType() != QMetaType::QVariantMap)
-            return fail(error, QStringLiteral("Legacy trigger order options must be objects"));
+            return fail(error, QStringLiteral("Domain trigger order options must be objects"));
     }
     QVariantMap object = typedObject();
     object.insert(QStringLiteral("options"), entries.at(0));
@@ -737,8 +737,8 @@ bool encodeTriggerOrderRequest(bool hasLegacyPayload, const QVariant &legacyPayl
     return true;
 }
 
-bool decodeTriggerOrderRequest(const QVariantMap &object, bool *hasLegacyPayload,
-                               QVariant *legacyPayload, QString *error)
+bool decodeTriggerOrderRequest(const QVariantMap &object, bool *hasDomainPayload,
+                               QVariant *domainPayload, QString *error)
 {
     if (!object.contains(QStringLiteral("options"))
         || object.value(QStringLiteral("options")).userType() != QMetaType::QVariantList) {
@@ -754,106 +754,74 @@ bool decodeTriggerOrderRequest(const QVariantMap &object, bool *hasLegacyPayload
                       QStringLiteral("trigger order request"), &optional, error)) {
         return false;
     }
-    *hasLegacyPayload = true;
-    *legacyPayload = QVariantList{options, optional};
+    *hasDomainPayload = true;
+    *domainPayload = QVariantList{options, optional};
     return true;
 }
 
-bool encodeArrangeRequest(bool hasLegacyPayload, const QVariant &legacyPayload,
+bool encodeArrangeRequest(bool hasDomainPayload, const QVariant &domainPayload,
                           QVariant *v2Payload, QString *error)
 {
     QVariantMap object = typedObject();
-    if (hasLegacyPayload) {
-        if (!validateArray(legacyPayload, FieldType::StringArray,
-                           QStringLiteral("Legacy arrange general request"), error)) {
+    if (hasDomainPayload) {
+        if (!validateArray(domainPayload, FieldType::StringArray,
+                           QStringLiteral("Domain arrange general request"), error)) {
             return false;
         }
-        object.insert(QStringLiteral("generals"), legacyPayload);
+        object.insert(QStringLiteral("generals"), domainPayload);
     }
     *v2Payload = object;
     return true;
 }
 
-bool decodeArrangeRequest(const QVariantMap &object, bool *hasLegacyPayload,
-                          QVariant *legacyPayload, QString *error)
+bool decodeArrangeRequest(const QVariantMap &object, bool *hasDomainPayload,
+                          QVariant *domainPayload, QString *error)
 {
     if (!object.contains(QStringLiteral("generals")))
-        return decodeNoPayload(object, hasLegacyPayload, legacyPayload);
+        return decodeNoPayload(object, hasDomainPayload, domainPayload);
     return decodeScalar(object, "generals", FieldType::StringArray,
                         QStringLiteral("arrange general request"),
-                        hasLegacyPayload, legacyPayload, error);
+                        hasDomainPayload, domainPayload, error);
 }
 
-bool encodeQmlRequest(bool hasLegacyPayload, const QVariant &legacyPayload,
+bool encodeQmlRequest(bool hasDomainPayload, const QVariant &domainPayload,
                       QVariant *v2Payload, QString *error)
 {
-    if (!hasLegacyPayload)
-        return fail(error, QStringLiteral("Legacy QML interaction request requires a payload"));
+    if (!hasDomainPayload)
+        return fail(error, QStringLiteral("QML interaction request requires a payload"));
     QVariantMap object = typedObject();
-    if (legacyPayload.userType() == QMetaType::QVariantList) {
-        const QVariantList entries = legacyPayload.toList();
-        if (entries.size() != 2 || entries.at(0).userType() != QMetaType::QString
-            || entries.at(1).userType() != QMetaType::QVariantMap) {
-            return fail(error, QStringLiteral("Legacy QML interaction request is invalid"));
-        }
-        object.insert(QStringLiteral("kind"), QStringLiteral("legacy_qml"));
-        object.insert(QStringLiteral("qml_path"), entries.at(0));
-        object.insert(QStringLiteral("parameters"), entries.at(1));
-    } else if (legacyPayload.userType() == QMetaType::QVariantMap) {
-        object.insert(QStringLiteral("kind"), QStringLiteral("structured"));
-        object.insert(QStringLiteral("interaction"), legacyPayload);
-    } else {
-        return fail(error, QStringLiteral("Legacy QML interaction request is invalid"));
-    }
+    if (domainPayload.userType() != QMetaType::QVariantMap)
+        return fail(error, QStringLiteral("QML interaction request must be an object"));
+    object.insert(QStringLiteral("interaction"), domainPayload);
     *v2Payload = object;
     return true;
 }
 
-bool decodeQmlRequest(const QVariantMap &object, bool *hasLegacyPayload,
-                      QVariant *legacyPayload, QString *error)
+bool decodeQmlRequest(const QVariantMap &object, bool *hasDomainPayload,
+                      QVariant *domainPayload, QString *error)
 {
-    QVariant kindValue;
-    if (!requireField(object, "kind", FieldType::String,
-                      QStringLiteral("QML interaction request"), &kindValue, error)) {
-        return false;
+    if (!object.contains(QStringLiteral("interaction"))
+        || object.value(QStringLiteral("interaction")).userType() != QMetaType::QVariantMap) {
+        return fail(error, QStringLiteral("QML interaction must be an object"));
     }
-    if (kindValue.toString() == QStringLiteral("legacy_qml")) {
-        QVariant path;
-        if (!requireField(object, "qml_path", FieldType::String,
-                          QStringLiteral("QML interaction request"), &path, error)
-            || !object.contains(QStringLiteral("parameters"))
-            || object.value(QStringLiteral("parameters")).userType() != QMetaType::QVariantMap) {
-            return fail(error, QStringLiteral("QML interaction parameters must be an object"));
-        }
-        *hasLegacyPayload = true;
-        *legacyPayload = QVariantList{path, object.value(QStringLiteral("parameters"))};
-        return true;
-    }
-    if (kindValue.toString() == QStringLiteral("structured")) {
-        if (!object.contains(QStringLiteral("interaction"))
-            || object.value(QStringLiteral("interaction")).userType() != QMetaType::QVariantMap) {
-            return fail(error, QStringLiteral("Structured QML interaction must be an object"));
-        }
-        *hasLegacyPayload = true;
-        *legacyPayload = object.value(QStringLiteral("interaction"));
-        return true;
-    }
-    return fail(error, QStringLiteral("QML interaction kind is unknown"));
+    *hasDomainPayload = true;
+    *domainPayload = object.value(QStringLiteral("interaction"));
+    return true;
 }
 
-bool encodeQmlReply(bool hasLegacyPayload, const QVariant &legacyPayload,
+bool encodeQmlReply(bool hasDomainPayload, const QVariant &domainPayload,
                     QVariant *v2Payload)
 {
     QVariantMap object = typedObject();
-    object.insert(QStringLiteral("has_value"), hasLegacyPayload);
-    if (hasLegacyPayload)
-        object.insert(QStringLiteral("value"), legacyPayload);
+    object.insert(QStringLiteral("has_value"), hasDomainPayload);
+    if (hasDomainPayload)
+        object.insert(QStringLiteral("value"), domainPayload);
     *v2Payload = object;
     return true;
 }
 
-bool decodeQmlReply(const QVariantMap &object, bool *hasLegacyPayload,
-                    QVariant *legacyPayload, QString *error)
+bool decodeQmlReply(const QVariantMap &object, bool *hasDomainPayload,
+                    QVariant *domainPayload, QString *error)
 {
     QVariant hasValue;
     if (!requireField(object, "has_value", FieldType::Boolean,
@@ -861,21 +829,21 @@ bool decodeQmlReply(const QVariantMap &object, bool *hasLegacyPayload,
         return false;
     }
     if (!hasValue.toBool()) {
-        *hasLegacyPayload = false;
-        *legacyPayload = QVariant();
+        *hasDomainPayload = false;
+        *domainPayload = QVariant();
         return true;
     }
     if (!object.contains(QStringLiteral("value")))
         return fail(error, QStringLiteral("QML interaction reply value is required"));
-    *hasLegacyPayload = true;
-    *legacyPayload = object.value(QStringLiteral("value"));
+    *hasDomainPayload = true;
+    *domainPayload = object.value(QStringLiteral("value"));
     return true;
 }
 }
 
 bool TypedInteractionPayloads::encode(
-    TypedInteractionPayloadKind kind, bool hasLegacyPayload,
-    const QVariant &legacyPayload, QVariant *v2Payload, QString *error)
+    TypedInteractionPayloadKind kind, bool hasDomainPayload,
+    const QVariant &domainPayload, QVariant *v2Payload, QString *error)
 {
     if (error != nullptr)
         error->clear();
@@ -894,71 +862,70 @@ bool TypedInteractionPayloads::encode(
         || kind == TypedInteractionPayloadKind::PindianRequest
         || kind == TypedInteractionPayloadKind::ChooseCardRequest
         || kind == TypedInteractionPayloadKind::ChooseRole3v3Request) {
-        return encodeArray(kind, hasLegacyPayload, legacyPayload, v2Payload, error);
+        return encodeArray(kind, hasDomainPayload, domainPayload, v2Payload, error);
     }
 
     switch (kind) {
     case TypedInteractionPayloadKind::ChooseRoleRequest:
-        return encodeNoPayload(hasLegacyPayload, QStringLiteral("choose role request"), v2Payload, error);
+        return encodeNoPayload(hasDomainPayload, QStringLiteral("choose role request"), v2Payload, error);
     case TypedInteractionPayloadKind::ChooseRoleReply:
-        return encodeChooseRoleReply(hasLegacyPayload, legacyPayload, v2Payload, error);
+        return encodeChooseRoleReply(hasDomainPayload, domainPayload, v2Payload, error);
     case TypedInteractionPayloadKind::ChooseDirectionRequest:
-        return encodeNoPayload(hasLegacyPayload, QStringLiteral("choose direction request"), v2Payload, error);
+        return encodeNoPayload(hasDomainPayload, QStringLiteral("choose direction request"), v2Payload, error);
     case TypedInteractionPayloadKind::ChooseDirectionReply:
-        return encodeScalar(hasLegacyPayload, legacyPayload, "direction", FieldType::String,
+        return encodeScalar(hasDomainPayload, domainPayload, "direction", FieldType::String,
                             QStringLiteral("choose direction reply"), v2Payload, error);
     case TypedInteractionPayloadKind::GuanxingRequest:
-        return encodeGuanxingRequest(hasLegacyPayload, legacyPayload, v2Payload, error);
+        return encodeGuanxingRequest(hasDomainPayload, domainPayload, v2Payload, error);
     case TypedInteractionPayloadKind::GuanxingReply:
-        return encodeTwoIntegerLists(hasLegacyPayload, legacyPayload, "top_card_ids",
+        return encodeTwoIntegerLists(hasDomainPayload, domainPayload, "top_card_ids",
             "bottom_card_ids", QStringLiteral("guanxing reply"), v2Payload, error);
     case TypedInteractionPayloadKind::OptionalCardIdReply:
-        return encodeOptionalCardId(hasLegacyPayload, legacyPayload, v2Payload, error);
+        return encodeOptionalCardId(hasDomainPayload, domainPayload, v2Payload, error);
     case TypedInteractionPayloadKind::YijiReply:
-        return encodeYijiReply(hasLegacyPayload, legacyPayload, v2Payload, error);
+        return encodeYijiReply(hasDomainPayload, domainPayload, v2Payload, error);
     case TypedInteractionPayloadKind::PlayCardRequest:
-        return encodeScalar(hasLegacyPayload, legacyPayload, "player", FieldType::String,
+        return encodeScalar(hasDomainPayload, domainPayload, "player", FieldType::String,
                             QStringLiteral("play card request"), v2Payload, error);
     case TypedInteractionPayloadKind::ResponseCardReply:
-        return encodeResponseCardReply(hasLegacyPayload, legacyPayload, v2Payload, error);
+        return encodeResponseCardReply(hasDomainPayload, domainPayload, v2Payload, error);
     case TypedInteractionPayloadKind::CardIdsReply:
-        return encodeCancelableList(hasLegacyPayload, legacyPayload, "card_ids",
+        return encodeCancelableList(hasDomainPayload, domainPayload, "card_ids",
             FieldType::IntegerArray, QStringLiteral("card ids reply"), v2Payload, error);
     case TypedInteractionPayloadKind::ChoosePlayerReply:
-        return encodeChoosePlayerReply(hasLegacyPayload, legacyPayload, v2Payload, error);
+        return encodeChoosePlayerReply(hasDomainPayload, domainPayload, v2Payload, error);
     case TypedInteractionPayloadKind::TriggerOrderRequest:
-        return encodeTriggerOrderRequest(hasLegacyPayload, legacyPayload, v2Payload, error);
+        return encodeTriggerOrderRequest(hasDomainPayload, domainPayload, v2Payload, error);
     case TypedInteractionPayloadKind::TriggerOrderReply:
-        return encodeScalar(hasLegacyPayload, legacyPayload, "trigger", FieldType::String,
+        return encodeScalar(hasDomainPayload, domainPayload, "trigger", FieldType::String,
                             QStringLiteral("trigger order reply"), v2Payload, error);
     case TypedInteractionPayloadKind::ShowCardRequest:
-        return encodeScalar(hasLegacyPayload, legacyPayload, "requestor", FieldType::String,
+        return encodeScalar(hasDomainPayload, domainPayload, "requestor", FieldType::String,
                             QStringLiteral("show card request"), v2Payload, error);
     case TypedInteractionPayloadKind::AmazingGraceReply:
-        return encodeScalar(hasLegacyPayload, legacyPayload, "card_id", FieldType::Integer,
-                            QStringLiteral("amazing grace reply"), v2Payload, error);
+        return encodeOptionalCardId(hasDomainPayload, domainPayload, v2Payload, error);
     case TypedInteractionPayloadKind::ChooseRole3v3Reply:
-        return encodeScalar(hasLegacyPayload, legacyPayload, "role", FieldType::String,
+        return encodeScalar(hasDomainPayload, domainPayload, "role", FieldType::String,
                             QStringLiteral("choose role 3v3 reply"), v2Payload, error);
     case TypedInteractionPayloadKind::LuckCardRequest:
-        return encodeNoPayload(hasLegacyPayload, QStringLiteral("luck card request"), v2Payload, error);
+        return encodeNoPayload(hasDomainPayload, QStringLiteral("luck card request"), v2Payload, error);
     case TypedInteractionPayloadKind::LuckCardReply:
-        return encodeScalar(hasLegacyPayload, legacyPayload, "use_luck_card", FieldType::Boolean,
+        return encodeScalar(hasDomainPayload, domainPayload, "use_luck_card", FieldType::Boolean,
                             QStringLiteral("luck card reply"), v2Payload, error);
     case TypedInteractionPayloadKind::AskGeneralRequest:
-        return encodeNoPayload(hasLegacyPayload, QStringLiteral("ask general request"), v2Payload, error);
+        return encodeNoPayload(hasDomainPayload, QStringLiteral("ask general request"), v2Payload, error);
     case TypedInteractionPayloadKind::AskGeneralReply:
-        return encodeScalar(hasLegacyPayload, legacyPayload, "general", FieldType::String,
+        return encodeScalar(hasDomainPayload, domainPayload, "general", FieldType::String,
                             QStringLiteral("ask general reply"), v2Payload, error);
     case TypedInteractionPayloadKind::ArrangeGeneralRequest:
-        return encodeArrangeRequest(hasLegacyPayload, legacyPayload, v2Payload, error);
+        return encodeArrangeRequest(hasDomainPayload, domainPayload, v2Payload, error);
     case TypedInteractionPayloadKind::ArrangeGeneralReply:
-        return encodeCancelableList(hasLegacyPayload, legacyPayload, "generals",
+        return encodeCancelableList(hasDomainPayload, domainPayload, "generals",
             FieldType::StringArray, QStringLiteral("arrange general reply"), v2Payload, error);
     case TypedInteractionPayloadKind::QmlInteractRequest:
-        return encodeQmlRequest(hasLegacyPayload, legacyPayload, v2Payload, error);
+        return encodeQmlRequest(hasDomainPayload, domainPayload, v2Payload, error);
     case TypedInteractionPayloadKind::QmlInteractReply:
-        return encodeQmlReply(hasLegacyPayload, legacyPayload, v2Payload);
+        return encodeQmlReply(hasDomainPayload, domainPayload, v2Payload);
     default:
         break;
     }
@@ -967,11 +934,11 @@ bool TypedInteractionPayloads::encode(
 
 bool TypedInteractionPayloads::decode(
     TypedInteractionPayloadKind kind, const QVariant &v2Payload,
-    bool *hasLegacyPayload, QVariant *legacyPayload, QString *error)
+    bool *hasDomainPayload, QVariant *domainPayload, QString *error)
 {
     if (error != nullptr)
         error->clear();
-    if (hasLegacyPayload == nullptr || legacyPayload == nullptr)
+    if (hasDomainPayload == nullptr || domainPayload == nullptr)
         return fail(error, QStringLiteral("Typed interaction logical output is null"));
 
     QVariantMap object;
@@ -990,7 +957,7 @@ bool TypedInteractionPayloads::decode(
         || kind == TypedInteractionPayloadKind::PindianRequest
         || kind == TypedInteractionPayloadKind::ChooseCardRequest
         || kind == TypedInteractionPayloadKind::ChooseRole3v3Request) {
-        return decodeArray(kind, object, hasLegacyPayload, legacyPayload, error);
+        return decodeArray(kind, object, hasDomainPayload, domainPayload, error);
     }
 
     switch (kind) {
@@ -998,60 +965,59 @@ bool TypedInteractionPayloads::decode(
     case TypedInteractionPayloadKind::ChooseDirectionRequest:
     case TypedInteractionPayloadKind::LuckCardRequest:
     case TypedInteractionPayloadKind::AskGeneralRequest:
-        return decodeNoPayload(object, hasLegacyPayload, legacyPayload);
+        return decodeNoPayload(object, hasDomainPayload, domainPayload);
     case TypedInteractionPayloadKind::ChooseRoleReply:
-        return decodeChooseRoleReply(object, hasLegacyPayload, legacyPayload, error);
+        return decodeChooseRoleReply(object, hasDomainPayload, domainPayload, error);
     case TypedInteractionPayloadKind::ChooseDirectionReply:
         return decodeScalar(object, "direction", FieldType::String,
-            QStringLiteral("choose direction reply"), hasLegacyPayload, legacyPayload, error);
+            QStringLiteral("choose direction reply"), hasDomainPayload, domainPayload, error);
     case TypedInteractionPayloadKind::GuanxingRequest:
-        return decodeGuanxingRequest(object, hasLegacyPayload, legacyPayload, error);
+        return decodeGuanxingRequest(object, hasDomainPayload, domainPayload, error);
     case TypedInteractionPayloadKind::GuanxingReply:
         return decodeTwoIntegerLists(object, "top_card_ids", "bottom_card_ids",
-            QStringLiteral("guanxing reply"), hasLegacyPayload, legacyPayload, error);
+            QStringLiteral("guanxing reply"), hasDomainPayload, domainPayload, error);
     case TypedInteractionPayloadKind::OptionalCardIdReply:
-        return decodeOptionalCardId(object, hasLegacyPayload, legacyPayload, error);
+        return decodeOptionalCardId(object, hasDomainPayload, domainPayload, error);
     case TypedInteractionPayloadKind::YijiReply:
-        return decodeYijiReply(object, hasLegacyPayload, legacyPayload, error);
+        return decodeYijiReply(object, hasDomainPayload, domainPayload, error);
     case TypedInteractionPayloadKind::PlayCardRequest:
         return decodeScalar(object, "player", FieldType::String,
-            QStringLiteral("play card request"), hasLegacyPayload, legacyPayload, error);
+            QStringLiteral("play card request"), hasDomainPayload, domainPayload, error);
     case TypedInteractionPayloadKind::ResponseCardReply:
-        return decodeResponseCardReply(object, hasLegacyPayload, legacyPayload, error);
+        return decodeResponseCardReply(object, hasDomainPayload, domainPayload, error);
     case TypedInteractionPayloadKind::CardIdsReply:
         return decodeCancelableList(object, "card_ids", FieldType::IntegerArray,
-            QStringLiteral("card ids reply"), hasLegacyPayload, legacyPayload, error);
+            QStringLiteral("card ids reply"), hasDomainPayload, domainPayload, error);
     case TypedInteractionPayloadKind::ChoosePlayerReply:
-        return decodeChoosePlayerReply(object, hasLegacyPayload, legacyPayload, error);
+        return decodeChoosePlayerReply(object, hasDomainPayload, domainPayload, error);
     case TypedInteractionPayloadKind::TriggerOrderRequest:
-        return decodeTriggerOrderRequest(object, hasLegacyPayload, legacyPayload, error);
+        return decodeTriggerOrderRequest(object, hasDomainPayload, domainPayload, error);
     case TypedInteractionPayloadKind::TriggerOrderReply:
         return decodeScalar(object, "trigger", FieldType::String,
-            QStringLiteral("trigger order reply"), hasLegacyPayload, legacyPayload, error);
+            QStringLiteral("trigger order reply"), hasDomainPayload, domainPayload, error);
     case TypedInteractionPayloadKind::ShowCardRequest:
         return decodeScalar(object, "requestor", FieldType::String,
-            QStringLiteral("show card request"), hasLegacyPayload, legacyPayload, error);
+            QStringLiteral("show card request"), hasDomainPayload, domainPayload, error);
     case TypedInteractionPayloadKind::AmazingGraceReply:
-        return decodeScalar(object, "card_id", FieldType::Integer,
-            QStringLiteral("amazing grace reply"), hasLegacyPayload, legacyPayload, error);
+        return decodeOptionalCardId(object, hasDomainPayload, domainPayload, error);
     case TypedInteractionPayloadKind::ChooseRole3v3Reply:
         return decodeScalar(object, "role", FieldType::String,
-            QStringLiteral("choose role 3v3 reply"), hasLegacyPayload, legacyPayload, error);
+            QStringLiteral("choose role 3v3 reply"), hasDomainPayload, domainPayload, error);
     case TypedInteractionPayloadKind::LuckCardReply:
         return decodeScalar(object, "use_luck_card", FieldType::Boolean,
-            QStringLiteral("luck card reply"), hasLegacyPayload, legacyPayload, error);
+            QStringLiteral("luck card reply"), hasDomainPayload, domainPayload, error);
     case TypedInteractionPayloadKind::AskGeneralReply:
         return decodeScalar(object, "general", FieldType::String,
-            QStringLiteral("ask general reply"), hasLegacyPayload, legacyPayload, error);
+            QStringLiteral("ask general reply"), hasDomainPayload, domainPayload, error);
     case TypedInteractionPayloadKind::ArrangeGeneralRequest:
-        return decodeArrangeRequest(object, hasLegacyPayload, legacyPayload, error);
+        return decodeArrangeRequest(object, hasDomainPayload, domainPayload, error);
     case TypedInteractionPayloadKind::ArrangeGeneralReply:
         return decodeCancelableList(object, "generals", FieldType::StringArray,
-            QStringLiteral("arrange general reply"), hasLegacyPayload, legacyPayload, error);
+            QStringLiteral("arrange general reply"), hasDomainPayload, domainPayload, error);
     case TypedInteractionPayloadKind::QmlInteractRequest:
-        return decodeQmlRequest(object, hasLegacyPayload, legacyPayload, error);
+        return decodeQmlRequest(object, hasDomainPayload, domainPayload, error);
     case TypedInteractionPayloadKind::QmlInteractReply:
-        return decodeQmlReply(object, hasLegacyPayload, legacyPayload, error);
+        return decodeQmlReply(object, hasDomainPayload, domainPayload, error);
     default:
         break;
     }

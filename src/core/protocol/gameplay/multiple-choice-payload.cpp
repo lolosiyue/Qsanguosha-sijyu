@@ -87,7 +87,7 @@ bool requireSchema(const QVariantMap &object, QString *error)
 }
 }
 
-QVariant MultipleChoiceRequestPayload::toLegacyVariant() const
+QVariant MultipleChoiceRequestPayload::toDomainVariant() const
 {
     return QVariantList{
         skillName,
@@ -108,7 +108,7 @@ QVariantMap MultipleChoiceRequestPayload::toV2Variant() const
     return result;
 }
 
-bool MultipleChoiceRequestPayload::parseLegacy(
+bool MultipleChoiceRequestPayload::parseDomain(
     const QVariant &value, MultipleChoiceRequestPayload *payload, QString *error)
 {
     if (error != nullptr)
@@ -116,15 +116,15 @@ bool MultipleChoiceRequestPayload::parseLegacy(
     if (payload == nullptr)
         return fail(error, QStringLiteral("Multiple choice request output is null"));
     if (value.userType() != QMetaType::QVariantList)
-        return fail(error, QStringLiteral("Legacy multiple choice request must be an array"));
+        return fail(error, QStringLiteral("Domain multiple choice request must be an array"));
 
     const QVariantList array = value.toList();
     if (array.size() != 4)
-        return fail(error, QStringLiteral("Legacy multiple choice request must contain 4 fields"));
+        return fail(error, QStringLiteral("Domain multiple choice request must contain 4 fields"));
     for (const QVariant &field : array) {
         if (field.userType() != QMetaType::QString) {
             return fail(error,
-                        QStringLiteral("Legacy multiple choice request fields must be strings"));
+                        QStringLiteral("Domain multiple choice request fields must be strings"));
         }
     }
 
@@ -164,7 +164,7 @@ bool MultipleChoiceRequestPayload::parseV2(
     return true;
 }
 
-QVariant MultipleChoiceReplyPayload::toLegacyVariant() const
+QVariant MultipleChoiceReplyPayload::toDomainVariant() const
 {
     return choice;
 }
@@ -177,7 +177,7 @@ QVariantMap MultipleChoiceReplyPayload::toV2Variant() const
     return result;
 }
 
-bool MultipleChoiceReplyPayload::parseLegacy(
+bool MultipleChoiceReplyPayload::parseDomain(
     const QVariant &value, MultipleChoiceReplyPayload *payload, QString *error)
 {
     if (error != nullptr)
@@ -185,7 +185,7 @@ bool MultipleChoiceReplyPayload::parseLegacy(
     if (payload == nullptr)
         return fail(error, QStringLiteral("Multiple choice reply output is null"));
     if (value.userType() != QMetaType::QString)
-        return fail(error, QStringLiteral("Legacy multiple choice reply must be a string"));
+        return fail(error, QStringLiteral("Domain multiple choice reply must be a string"));
 
     MultipleChoiceReplyPayload parsed;
     parsed.choice = value.toString();

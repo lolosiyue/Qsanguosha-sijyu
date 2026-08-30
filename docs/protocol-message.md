@@ -1,84 +1,52 @@
-# Codec-neutral ProtocolMessage
+# ProtocolMessage boundary
 
-- 狀態：C++ canonical codec boundary 完成
-- active protocol：Protocol V1
-- Protocol V2 wire schema：已定義，production 尚未啟用
-
-## Boundary
+`QSanProtocol::ProtocolMessage` is the only C++ message model used by production
+TCP, Replay, client dispatch, and server request correlation.
 
 ```text
-Application / protocol routing
-            |
-     ProtocolMessage
-       /           \
-ProtocolV1Codec   ProtocolV2Codec
-       |                  |
-V1 JSON array       V2 JSON object
+Application / typed payload registry
+                 |
+          ProtocolMessage
+                 |
+        Protocol V2 codec
+                 |
+       newline-framed TCP or Replay V2
 ```
-
-`IProtocolCodec` 的 encode／decode 只接受 `ProtocolMessage`。`Packet` 保留為 V1
-compatibility facade，不是 V2 codec 的 required API。production client、server、
-socket framing 與 replay call site 本階段仍可繼續使用 `Packet`。
 
 ## Canonical fields
 
 | Field | Meaning |
 |---|---|
-| `version` | message 所屬 protocol version；不會自行切換 connection |
-| `type` | request／reply／notification，與 source／destination 分離 |
-| `source`／`destination` | room／lobby／client endpoint |
-| `messageId` | message identity；V1 adapter 對應 `globalSerial` |
-| `replyTo` | reply correlation；V1 adapter 對應 `localSerial` |
-| `command` | 既有 `S_COMMAND_*` numeric identity；本階段不重編號 |
-| `payload` | QtCore transitional bridge，不是 V2 wire type registry |
-| `hasPayload` | 區分 absent 與 explicitly present null |
+| `version` | Always `ProtocolVersion::V2` |
+| `type` | Request, reply, or notification |
+| `source` / `destination` | Room, lobby, or client endpoint |
+| `messageId` | Positive full-range `quint64` identity |
+| `replyTo` | Positive full-range request identity on replies |
+| `command` | Numeric `S_COMMAND_*` identity |
+| `payload` | Registered schema-versioned `QVariantMap` |
+| `hasPayload` | Always true for an encoded production V2 frame |
 
-enum 的 C++ underlying value 只供 V1 adapter 保存未知 numeric component，不是 V2
-wire contract。V1 combined `PacketDescription` 只存在 adapter 內；canonical message
-沒有 combined bitmask。
+`ProtocolMessageIdGenerator` is connection-local and preserves the full
+`quint64` range. `RequestCoordinator` requires exact `replyTo` and command
+matching; historical reply aliases are not accepted.
 
-## V1 adapter
+## Validation order
 
-`protocol-v1-message-adapter` 是 production mapping 的唯一真相：
+1. `ProtocolV2Codec` validates the envelope, positive message IDs, reply
+   correlation shape, JSON domain, and positive payload schema version.
+2. `ProtocolPayloadRegistry` resolves the complete
+   type/source/destination/command identity and validates the exact production
+   payload schema.
+3. `ProtocolGameplayPayloadRegistry` validates the 29 interaction-specific
+   request/reply variants while keeping the typed V2 object for dispatch.
 
-| Protocol V1 | ProtocolMessage |
-|---|---|
-| `globalSerial` | `messageId` |
-| `localSerial` | `replyTo` |
-| `S_TYPE_*` | `type` |
-| `S_SRC_*` | `source` |
-| `S_DEST_*` | `destination` |
-| `CommandType` | `int command` |
-| fifth field present | `hasPayload = true` |
-
-未知 description component 與 command number 仍可由 V1 decode／encode 原值 round trip。
-四欄 decode 重用舊 `Packet` 時保留既有 body 的行為只在 facade adapter 實作，不進入
-`ProtocolMessage` 或 future codec lifecycle。
-
-## Structural validation
-
-`validateProtocolMessage()` 只檢查 version、message type 與 endpoint 是否為已知值。
-它不驗證 gameplay payload、卡牌合法性、目標選擇或 request/reply command pairing。
-Protocol V1 codec 為保存 legacy unknown numeric values，不會強制套用此 validation。
-Protocol V2 codec 另行嚴格驗證 message ID、reply correlation、command 型別與 payload
-domain；完整 wire contract 見 [`protocol-v2.md`](protocol-v2.md)。
-
-## Payload contract
-
-`QVariant` 只作 C++ bridge。Protocol V2 codec：
-
-- 明列允許的 JSON-domain scalar／array／object／null 型別。
-- 不把 Qt-specific QVariant type name 放上 wire。
-- 拒絕超出 JSON safe integer 範圍的 integer QVariant，避免 silent corruption。
-
-正式 V2 field inventory：
-
-```text
-version, type, source, destination, message_id, reply_to, command, payload
-```
+Unregistered flows fail closed. No decoded frame is converted to a V1 array,
+scalar, delimiter string, `Packet`, or compatibility facade.
 
 ## Non-goals
 
-- 不新增 switch／ack 或令 `activeVersion` 變成 V2。
-- 不修改 newline framing、replay、gameplay semantics 或 command registry。
-- 不建立 runtime codec registry 或修改 production packet path。
+- Protocol negotiation or runtime switching;
+- Protocol V1 encode/decode;
+- implicit payload passthrough;
+- Replay V1 conversion;
+- TUI Replay support.
