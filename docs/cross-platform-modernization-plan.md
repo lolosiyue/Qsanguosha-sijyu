@@ -82,11 +82,23 @@ Spine 的 GLSL 120 shader 與 `beginNativePainting()` 不屬於本批 API 相容
 
 ### 3.3 Lua 與 SWIG
 
-- 升級至 Lua 5.4.8，為 `bit32`、`unpack`、`loadstring` 等實際使用介面提供 Lua 5.2 相容層。
-- 內建 Lua、AI 與 extensions 必須全部通過；第三方擴充採最佳努力相容。
+- 內建直譯器升級至 Lua 5.4.8，保留專案既有 `continue` 語法、固定 seed 的 table hash 行為，以及 SWIG 整數轉字串相容行為。
+- 相容層只保留大量重複使用的 `bit32.band` 與 `module(..., package.seeall)`；低頻舊 API 直接修改 Lua 檔案，不建立完整 Lua 5.2 模擬層。
+- `extensions/main` 維持追蹤遠端最新版，不固定 commit；升級驗證應記錄當次檢查到的 commit。
 - CMake 在建置目錄的 `generated/sanguosha_wrap.cxx` 自動執行 SWIG。
 - wrapper 不存在或任一 `swig/*.i` 較新時會自動重新生成；來源樹的 wrapper 不參與建置，也不在工作區之間同步。
 - 自動生成檔留在 CMake build tree，正常建置不會改動來源樹。
+
+2026-08-30 實作狀態：Lua 5.4.8 核心、最小相容層、seeded state API、SWIG API 調整及 focused `lua-compat` 測試已落地。檢查 `extensions/main@4dd30101310f9c2cb7cca2de3bd4d40ac77e8736` 時，以下低頻問題只列入人工修改清單，本次不修改外部倉庫：
+
+| 檔案 | 位置 | 待修改內容 |
+|---|---:|---|
+| `ai/yjcm2014-ai.lua` | 27 | `bit32.lshift(1, card:getTypeId())` 改為 `(1 << card:getTypeId())`；第 19 行另有相同註解文字 |
+| `ai/ai-debug-logger.lua` | 331 | `unpack(results)` 改為 `table.unpack(results)` |
+| `ai/NyarzThird-ai.lua` | 110 | `unpack(num)` 改為 `table.unpack(num)` |
+| `extensions/hunlie.lua` | 1298 | `0then` 改為 `0 then` |
+
+在上述四個外部檔案修正前，完整 AI／extensions 載入 gate 仍為待完成；這不擴張成通用相容層。
 
 ## 4. 三後端音訊架構
 
@@ -243,7 +255,7 @@ M1 已完成（2026-08-09 對照 CMakeLists.txt 確認）：`qsanguosha_engine` 
 |---|---|---|---|
 | M0 | Not Started | 建立可重現的現況基線、測試清單與資產盤點 | 現有 Windows 行為、協定與重播樣本可重現；無功能性改動 |
 | M1 | **Complete**（2026-08-09） | Windows CMake 過渡建置、STATIC engine（僅 Qt Core／Network）、引擎／GUI 解耦契約（SkillDialogInfo／EngineRuntimeContext／audioEffectRequested／EngineBootstrap）、allowlist gate、`deploy-server`、engine smoke test | Windows GUI 與既有建置結果可對照；STATIC engine 僅連結 Qt Core／Network；GUI／CMD server 驗收完成 |
-| M2 | In Progress（2026-08-18：Windows 工具鏈） | Qt 6.11.1、VS 2026 v145 + `msvc2022_64` kit；Lua 5.4.8 仍未遷移 | Windows GUI、server、Lua/SWIG 及 CTest 全數通過 |
+| M2 | In Progress（2026-08-30：Lua 5.4.8 本地實作） | Qt 6.11.1、VS 2026 v145 + `msvc2022_64` kit；Lua 5.4.8、最小相容層、seeded state API 與 focused 測試已落地 | 外部四個低頻 Lua 問題修正；Windows GUI、server、Lua/SWIG 及遠端完整測試通過 |
 | M3 | Not Started | `SkillDialogInfo`、選包白名單、確定性 RNG | 相同種子、輸入與包集合產生相同結果；白名單不可由客戶端繞過 |
 | M4 | In Progress（V2 codec、negotiation、runtime activation complete；typed gameplay payload／replay migration pending） | 協定與重播版本化、相容性拒絕路徑 | 新舊版本差異可診斷；不支援版本被明確拒絕而非靜默誤讀 |
 | M5 | Not Started | Ubuntu 無頭伺服器與 Null 音訊 | 無 X11/Wayland、FMOD 或 GUI 依賴仍可啟動及完成整局測試 |
