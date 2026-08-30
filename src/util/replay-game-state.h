@@ -7,6 +7,7 @@
 #include <QString>
 #include <QVariant>
 #include "game-snapshot.h"
+#include "replay/replay-codec.h"
 
 class GameSnapshot;
 
@@ -17,8 +18,9 @@ class ReplayGameState : public QObject
 public:
     explicit ReplayGameState(QObject *parent = nullptr);
 
-    bool rebuildFromCommands(const QList<QPair<int, QString>> &pairs, int upToIndex);
-    bool applyCommand(const QString &cmd);
+    bool rebuildFromEvents(const QList<QSanReplay::ReplayEvent> &events,
+                           int upToIndex);
+    bool applyMessage(const QSanProtocol::ProtocolMessage &message);
     bool applySnapshot(GameSnapshot *snapshot);
 
     PlayerSnapshot* getPlayerState(const QString &playerName);
