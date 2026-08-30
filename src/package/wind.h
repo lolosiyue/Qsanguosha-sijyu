@@ -108,4 +108,15 @@ class WindPackage : public Package
 public:
     WindPackage();
 };
+
+class NostalgiaWindPackage : public Package
+{
+    Q_OBJECT
+
+public:
+    NostalgiaWindPackage();
+};
+
+void MigrateToOLStWind(Package *pkg);
+void MigrateToTenyearStWind(Package *pkg);
 #endif

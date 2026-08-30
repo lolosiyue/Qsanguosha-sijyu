@@ -1256,7 +1256,7 @@ public:
     int getDistanceLimit(const Player *from, const Card *, const Player *to) const
     {
         if (to&&from->getHandcardNum()<=to->getHandcardNum()&&from->hasSkill("tenyearduanliang"))
-            return 1000;
+            return 999;
         return 0;
     }
 };
@@ -1295,12 +1295,6 @@ ThicketPackage::ThicketPackage()
     xuhuang->addSkill(new Duanliang);
     xuhuang->addSkill(new DuanliangTargetMod);
     related_skills.insert("duanliang", "#duanliang-target");
-
-    General *tenyear_xuhuang = new General(this, "tenyear_xuhuang", "wei", 4);
-    tenyear_xuhuang->addSkill(new TenyearDuanliang);
-    tenyear_xuhuang->addSkill(new TenyearDuanliangTargetMod);
-    tenyear_xuhuang->addSkill(new TenyearJiezi);
-    related_skills.insert("tenyearduanliang", "#tenyearduanliang-target");
 
     General *caopi = new General(this, "caopi$", "wei", 3); // WEI 014
     caopi->addSkill(new Xingshang);
@@ -1342,10 +1336,6 @@ ThicketPackage::ThicketPackage()
     shencaocao->addSkill(new Guixin);
     shencaocao->addSkill(new Feiying);
 
-    General *new_shencaocao = new General(this, "new_shencaocao", "god", 3);
-    new_shencaocao->addSkill(new NewGuixin);
-    new_shencaocao->addSkill("feiying");
-
     General *shenlvbu = new General(this, "shenlvbu", "god", 5); // LE 006
     shenlvbu->addSkill(new Kuangbao);
     shenlvbu->addSkill(new MarkAssignSkill("&wrath", 2));
@@ -1361,3 +1351,21 @@ ThicketPackage::ThicketPackage()
     addMetaObject<HaoshiCard>();
 }
 ADD_PACKAGE(Thicket)
+
+TenyearStThicketPackage::TenyearStThicketPackage()
+    : Package("TenyearStThicket")
+{
+    General *tenyear_xuhuang = new General(this, "tenyear_xuhuang", "wei", 4);
+    tenyear_xuhuang->addSkill(new TenyearDuanliang);
+    tenyear_xuhuang->addSkill(new TenyearDuanliangTargetMod);
+    tenyear_xuhuang->addSkill(new TenyearJiezi);
+    related_skills.insert("tenyearduanliang", "#tenyearduanliang-target");
+}
+ADD_PACKAGE(TenyearStThicket)
+
+void RegisterNewShencaocao(Package *pkg)
+{
+    General *new_shencaocao = new General(pkg, "new_shencaocao", "god", 3);
+    new_shencaocao->addSkill(new NewGuixin);
+    new_shencaocao->addSkill("feiying");
+}

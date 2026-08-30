@@ -2,6 +2,8 @@
 //#include "photo.h"
 //#include "card.h"
 #include "engine.h"
+#include "package.h"
+#include "package-selection-policy.h"
 #include "crashhandler.h"
 #include <QMutexLocker>
 #if !defined(QSAN_ENGINE_BUILD)
@@ -289,19 +291,52 @@ void Settings::init()
             setValue("GameMode", GameMode.mode_id);
     }
 
-    BanPackages = value("BanPackages").toStringList();
-    if (BanPackages.isEmpty()) {
-        BanPackages << "ling" << "nostalgia"
-            << "nostal_standard" << "nostal_general" << "nostal_wind"
-            << "nostal_yjcm" << "nostal_yjcm2012" << "nostal_yjcm2013"
-            << "Special3v3" << "Special1v1"
-            << "BossMode" << "test" << "GreenHand" << "dragon"
-            << "sp_cards" << "GreenHandCard"
-            << "New3v3Card" << "New3v3_2013Card" << "New1v1Card"
-            << "yitian" << "wisdom" << "BGM" << "BGMDIY"
-            << "hegemony" << "h_formation" << "h_momentum";
-		if (!hasValueOverride(QStringLiteral("BanPackages")))
-			setValue("BanPackages", BanPackages);
+    const int enabledPackagesMigrationVersion = 2;
+    QStringList selectablePackages;
+    QStringList specialPackages;
+    const QStringList specialPackageAdders =
+        Sanguosha->getPackageMap().value(QStringLiteral("g_special_play"));
+    foreach (const Package *package, Sanguosha->getPackages()) {
+        const QString name = package->objectName();
+        if (package->inherits("Scenario")
+            || specialPackageAdders.contains(package->adderName())) {
+            specialPackages << name;
+        } else {
+            selectablePackages << name;
+        }
+    }
+
+    const bool hasBanPackagesOverride = hasValueOverride(QStringLiteral("BanPackages"));
+    if (hasBanPackagesOverride) {
+        // Dedicated server 的既有命令列／設定覆寫仍以 BanPackages 為契約。
+        BanPackages = PackageSelectionPolicy::normalize(
+            selectablePackages, value("BanPackages").toStringList());
+        EnabledPackages = PackageSelectionPolicy::complement(
+            selectablePackages, BanPackages);
+    } else {
+        const bool hasEnabledPackages = contains(QStringLiteral("EnabledPackages"));
+        if (hasEnabledPackages) {
+            EnabledPackages = PackageSelectionPolicy::normalize(
+                selectablePackages, value("EnabledPackages").toStringList());
+        } else if (contains(QStringLiteral("BanPackages"))) {
+            const QStringList legacyBanPackages = value("BanPackages").toStringList();
+            EnabledPackages = PackageSelectionPolicy::complement(
+                selectablePackages, legacyBanPackages);
+        } else {
+            EnabledPackages = PackageSelectionPolicy::normalize(
+                selectablePackages, PackageSelectionPolicy::defaultEnabledPackages());
+        }
+
+        setValue("EnabledPackages", EnabledPackages);
+        setValue("EnabledPackagesMigrationVersion", enabledPackagesMigrationVersion);
+        remove("BanPackages");
+        BanPackages = PackageSelectionPolicy::complement(
+            selectablePackages, EnabledPackages);
+    }
+
+    foreach (const QString &name, specialPackages) {
+        if (!BanPackages.contains(name))
+            BanPackages << name;
     }
 
     RandomSeat = value("RandomSeat", true).toBool();
@@ -329,6 +364,7 @@ void Settings::init()
     BindAddress = value("BindAddress", "any").toString().trimmed().toLower();
     DisableLua = value("DisableLua", false).toBool();
     AddGodGeneral = value("AddGodGeneral", true).toBool();
+    GeneralVersionDedup = value("GeneralVersionDedup", false).toBool();
 
 #ifdef Q_OS_WIN32
     UserName = value("UserName", qgetenv("USERNAME")).toString();
@@ -509,7 +545,7 @@ QByteArray buildGameConfigSummary()
              onOff(Config.PreventAwakenBelow3),
              Config.OperationNoLimit ? "不限時" : QString("%1 秒").arg(Config.OperationTimeout));
 
-    // 本項目以 BanPackages 表達包池增減,不具 gitee 的 EnabledPackages 欄位
+    // 顯示執行期禁用包；持久化設定由 EnabledPackages 白名單推導。
     const QStringList &ban = Config.BanPackages;
     QStringList pkgs;
     foreach (const QString &name, ban) {

@@ -120,6 +120,7 @@ const QList<SettingSpec> &settingSpecs()
         integerSetting("LuckCardTimes", -1, -1, 10),
         booleanSetting("DisableLua", false),
         booleanSetting("AddGodGeneral", true),
+        booleanSetting("GeneralVersionDedup", false),
 
         enumSetting("1v1/Rule", "2013", {"Classical", "2013", "WZZZ"}),
         booleanSetting("1v1/UsingExtension", false),
