@@ -1569,8 +1569,8 @@ public:
 
     bool isSkillValid(const Player *player, const Skill *skill) const
     {
-        return !player->property("duorui_invalidity_skills").toString().split("+").contains(skill->objectName())
-		&&!player->property("olduorui_invalidity_skills").toString().split("+").contains(skill->objectName());
+        return player->getMark("&duorui+:+" + skill->objectName()) < 1
+            && player->getMark("&olduorui+:+" + skill->objectName()) < 1;
     }
 };
 
@@ -1912,27 +1912,23 @@ public:
         if (player->getPhase() != Player::Play) return false;
         DamageStruct damage = data.value<DamageStruct>();
         if (damage.to->isDead()) return false;
-        QStringList dr = damage.to->property("olduorui_invalidity_skills").toString().split("+");
-        if (!dr.isEmpty()) return false;
+        foreach (QString mark, damage.to->getMarkNames()) {
+            if (mark.contains("&olduorui+:+")) return false;
+        }
 
         QStringList list;
         const General *g = Sanguosha->getGeneral(damage.to->getGeneralName());
         if (g) {
-            foreach (const Skill *skill, g->getSkillList()) {
-                if (!skill->isVisible()) continue;
+            foreach (const Skill *skill, g->getVisibleSkillList()) {
                 if (!list.contains(skill->objectName()))
                     list << skill->objectName();
             }
         }
 
         if (damage.to->getGeneral2()) {
-            g = Sanguosha->getGeneral(damage.to->getGeneral2Name());
-            if (g) {
-                foreach (const Skill *skill, g->getSkillList()) {
-                    if (!skill->isVisible()) continue;
-                    if (!list.contains(skill->objectName()))
-                        list << skill->objectName();
-                }
+            foreach (const Skill *skill, damage.to->getGeneral2()->getVisibleSkillList()) {
+                if (!list.contains(skill->objectName()))
+                    list << skill->objectName();
             }
         }
         if (list.isEmpty()) return false;
@@ -1940,9 +1936,6 @@ public:
         if (!player->askForSkillInvoke(this, QVariant::fromValue(damage.to))) return false;
         room->broadcastSkillInvoke(objectName());
         QString skill = room->askForChoice(player, objectName(), list.join("+"), data);
-        dr << skill;
-        room->setPlayerProperty(damage.to, "olduorui_invalidity_skills", dr.join("+"));
-
         LogMessage log;
         log.type = "#DuoruiInvalidity";
         log.from = player;
@@ -1950,8 +1943,7 @@ public:
         log.arg = skill;
         room->sendLog(log);
 
-        if (damage.to->getMark("&olduorui+:+" + skill) <= 0)
-            room->addPlayerMark(damage.to, "&olduorui+:+" + skill);
+        room->setPlayerMark(damage.to, "&olduorui+:+" + skill, 1);
 
         foreach(ServerPlayer *p, room->getAllPlayers())
             room->filterCards(p, p->getCards("he"), true);
@@ -1980,8 +1972,6 @@ public:
 
     bool trigger(TriggerEvent event, Room *room, ServerPlayer *player, QVariant &data) const
     {
-        QStringList sks = player->property("olduorui_invalidity_skills").toString().split("+");
-        if (sks.isEmpty()) return false;
         if (event == EventPhaseChanging) {
             if (player->isDead()) return false;
             if (data.value<PhaseChangeStruct>().to != Player::NotActive) return false;
@@ -1989,11 +1979,14 @@ public:
             if (data.value<DeathStruct>().who != player) return false;
         }
 
-        room->setPlayerProperty(player, "olduorui_invalidity_skills", QString());
-        foreach (QString sk, sks) {
-            if (player->getMark("&olduorui+:+" + sk) > 0)
-                room->setPlayerMark(player, "&olduorui+:+" + sk, 0);
+        bool has = false;
+        foreach (QString mark, player->getMarkNames()) {
+            if (mark.contains("&olduorui+:+")) {
+                room->setPlayerMark(player, mark, 0);
+                has = true;
+            }
         }
+        if (!has) return false;
 
         foreach(ServerPlayer *p, room->getAllPlayers())
             room->filterCards(p, p->getCards("he"), false);
@@ -2115,14 +2108,6 @@ LeiPackage::LeiPackage()
     guanqiujian->addSkill(new Zhengrong);
     guanqiujian->addSkill(new Hongju);
 
-    General *ol_guanqiujian = new General(this, "ol_guanqiujian", "wei", 4);
-    ol_guanqiujian->addSkill(new OLZhengrong);
-    ol_guanqiujian->addSkill(new OLHongju);
-
-    General *mobile_guanqiujian = new General(this, "mobile_guanqiujian", "wei", 4);
-    mobile_guanqiujian->addSkill(new MobileZhengrong);
-    mobile_guanqiujian->addSkill(new MobileHongju);
-
     General *lei_yuanshu = new General(this, "lei_yuanshu$", "qun", 4);
     lei_yuanshu->addSkill(new Leiyongsi);
     lei_yuanshu->addSkill(new LeiyongsiMaxCards);
@@ -2147,14 +2132,6 @@ LeiPackage::LeiPackage()
     related_skills.insert("duorui", "#duorui-inv");
     related_skills.insert("zhiti", "#zhiti-effect");
 
-    General *ol_shenzhangliao = new General(this, "ol_shenzhangliao", "god");
-    ol_shenzhangliao->addSkill(new OLDuorui);
-    ol_shenzhangliao->addSkill(new OLDuoruiClear);
-    ol_shenzhangliao->addSkill(new OLZhiti);
-    ol_shenzhangliao->addSkill(new OLZhitiEffect);
-    related_skills.insert("olduorui", "#olduorui-clear");
-    related_skills.insert("olzhiti", "#olzhiti-effect");
-
     General *shenganning = new General(this, "shenganning", "god", 6, true, false, false, 3);
     shenganning->addSkill(new Poxi);
     shenganning->addSkill(new Jieyingg);
@@ -2173,10 +2150,38 @@ LeiPackage::LeiPackage()
     addMetaObject<HongjuCard>();
     addMetaObject<QingceCard>();
     addMetaObject<XiongluanCard>();
-    addMetaObject<OLHongjuCard>();
     addMetaObject<OLQingceCard>();
-    addMetaObject<MobileHongjuCard>();
 
     skills << new Huairou << new Qingce << new OLQingce;
 }
 ADD_PACKAGE(Lei)
+
+OLStLeiPackage::OLStLeiPackage()
+    : Package("OLStLei")
+{
+    General *ol_guanqiujian = new General(this, "ol_guanqiujian", "wei", 4);
+    ol_guanqiujian->addSkill(new OLZhengrong);
+    ol_guanqiujian->addSkill(new OLHongju);
+
+    General *ol_shenzhangliao = new General(this, "ol_shenzhangliao", "god");
+    ol_shenzhangliao->addSkill(new OLDuorui);
+    ol_shenzhangliao->addSkill(new OLDuoruiClear);
+    ol_shenzhangliao->addSkill(new OLZhiti);
+    ol_shenzhangliao->addSkill(new OLZhitiEffect);
+    related_skills.insert("olduorui", "#olduorui-clear");
+    related_skills.insert("olzhiti", "#olzhiti-effect");
+
+    addMetaObject<OLHongjuCard>();
+}
+ADD_PACKAGE(OLStLei)
+
+MobileStLeiPackage::MobileStLeiPackage()
+    : Package("MobileStLei")
+{
+    General *mobile_guanqiujian = new General(this, "mobile_guanqiujian", "wei", 4);
+    mobile_guanqiujian->addSkill(new MobileZhengrong);
+    mobile_guanqiujian->addSkill(new MobileHongju);
+
+    addMetaObject<MobileHongjuCard>();
+}
+ADD_PACKAGE(MobileStLei)

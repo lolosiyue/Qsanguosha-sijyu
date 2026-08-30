@@ -1,8 +1,8 @@
 # 跨平台現代化與功能移植計劃 (Cross-Platform Modernization Plan)
 
 - Status: Approved Plan
-- Implementation: M1 Complete（2026-08-09 確認）、M2 工具鏈進行中（2026-08-18：VS 2026 v145 + Qt 6.11.1）
-- Last Updated: 2026-08-21
+- Implementation: M1 Complete（2026-08-09 確認）、M2 工具鏈進行中、M3 選包白名單與武將版本去重已實作（2026-08-30）
+- Last Updated: 2026-08-30
 - **規範性**：本文件是跨平台現代化與另一分支通用功能移植的唯一權威執行計劃；與既有 roadmap 或審計結論衝突時，以本文件為準。
 
 ## 1. 來源、目的與範圍
@@ -179,11 +179,15 @@ CI 使用 `bundletool` 檢查 base 及 pack 大小：[Google Play app size limit
 
 `standard`、`wind`、`fire`、`thicket`、`mountain`、`YJCM`、`YJCM2012`、`standard_cards`、`standard_ex_cards`、`maneuvering`。
 
+2026-08-31 實作狀態：已持久化 `EnabledPackages`、完成舊 `BanPackages` 一次性補集遷移、保留執行期 `BanPackages` 相容值，並同步 Gitee 由 `lua/config.lua::package_names` 驅動的通用卡牌、基礎將包、移動版、OL、十周年、國戰、特殊玩法、其他分類。特殊玩法／劇本包維持隱藏及執行期禁用；既有 CamelCase `objectName` 不改名，白名單讀取時相容 Gitee 小寫蛇形名稱。依使用者明確要求，§1 的「不移植擴充包內容」不適用於本次 Gitee 對齊：先將 54 名既有武將移至 17 個版本家族包，再以 Gitee `4f5f17f2e395599a8ed9fd689faf2b4a84a1c945` 為基準加入 Dream 12 名與其他 56 名新武將，完整同步 `mobile-strengthen`、`ol-strengthen`、`tenyear-strengthen`，並套用 OLDuorui、Yingbian、OLSanyao、NosGuhuo／NosBuqu、TenyearDuanliang 等 6 組實質技能差異。Gitee LuaAI 與未出現於來源清單的武將圖片／語音不移植；蠱惑中央聲明／翻牌提示沿用既有 `S_COMMAND_LOG_EVENT`，不改 V1/V2 命令編號。
+
 ### 6.2 武將版本去重
 
 - 預設關閉。
-- 使用純函式處理候選池，固定優先序為 `tenyear > new > mobile > ol > nos > base`。
+- 使用純函式處理候選池，固定優先序為 `third > second > mobilemou > oljie > tenyear > new > mobile > ol > neo > nos > base`。
 - 只影響同名候選的顯示與抽取，不改包載入、技能註冊或武將內容。
+
+2026-08-30 實作狀態：`GeneralVersionDedup` 已接入伺服器設定與候選池生成；去重保留原候選槽位，同名時只以較高優先版本替換。
 
 ### 6.3 協定與重播
 
@@ -258,7 +262,7 @@ M1 已完成（2026-08-09 對照 CMakeLists.txt 確認）：`qsanguosha_engine` 
 | M0 | Not Started | 建立可重現的現況基線、測試清單與資產盤點 | 現有 Windows 行為、協定與重播樣本可重現；無功能性改動 |
 | M1 | **Complete**（2026-08-09） | Windows CMake 過渡建置、STATIC engine（僅 Qt Core／Network）、引擎／GUI 解耦契約（SkillDialogInfo／EngineRuntimeContext／audioEffectRequested／EngineBootstrap）、allowlist gate、`deploy-server`、engine smoke test | Windows GUI 與既有建置結果可對照；STATIC engine 僅連結 Qt Core／Network；GUI／CMD server 驗收完成 |
 | M2 | In Progress（2026-08-30：Lua 5.4.8 本地實作） | Qt 6.11.1、VS 2026 v145 + `msvc2022_64` kit；Lua 5.4.8、最小相容層、seeded state API 與 focused 測試已落地 | 外部四個低頻 Lua 問題修正；Windows GUI、server、Lua/SWIG 及遠端完整測試通過 |
-| M3 | Not Started | `SkillDialogInfo`、選包白名單、確定性 RNG | 相同種子、輸入與包集合產生相同結果；白名單不可由客戶端繞過 |
+| M3 | In Progress（2026-08-31：選包白名單與武將版本去重已實作） | `SkillDialogInfo`、選包白名單、確定性 RNG | 相同種子、輸入與包集合產生相同結果；白名單不可由客戶端繞過 |
 | M4 | Acceptance Pending（2026-08-30：V1/V2 codec、negotiation、runtime activation、29/29 typed gameplay、Replay V1/V2 migration 與本地 targeted gates 完成；Replay code head 遠端 4/4 通過，但最終驗收被既有 `extensions/main@4dd3010` 的 `hunlie.lua:1298` 解析錯誤阻塞） | 協定與重播版本化、相容性拒絕路徑 | 新舊版本差異可診斷；不支援版本被明確拒絕而非靜默誤讀；遠端 Windows／Linux／Docker／package gates 全綠後才標記 Complete |
 | M5 | Not Started | Ubuntu 無頭伺服器與 Null 音訊 | 無 X11/Wayland、FMOD 或 GUI 依賴仍可啟動及完成整局測試 |
 | M6 | In Progress（2026-08-28：Linux GUI M2B-A 交付 `IAudioBackend`／FMOD／Qt／Null 三後端、`QSAN_AUDIO_BACKEND`、結構化診斷與 `--multimedia-smoke`） | 桌面 FMOD 後端抽象化及診斷 | Windows 音效行為無回歸；音訊失敗不影響遊戲狀態 |

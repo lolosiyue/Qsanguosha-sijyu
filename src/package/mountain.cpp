@@ -11,6 +11,7 @@
 #include "room.h"
 #include "roomthread.h"
 #include "maneuvering.h"
+#include "thicket.h"
 
 QiaobianCard::QiaobianCard()
 {
@@ -2379,12 +2380,6 @@ MountainPackage::MountainPackage()
     shenzhaoyun->addSkill(new Longhun);
     related_skills.insert("juejing", "#juejing-draw");
 
-    General *new_shenzhaoyun = new General(this, "new_shenzhaoyun", "god", 2);
-    new_shenzhaoyun->addSkill(new NewJuejing);
-    new_shenzhaoyun->addSkill(new NewJuejingDraw);
-    new_shenzhaoyun->addSkill(new NewLonghun);
-    related_skills.insert("newjuejing", "#newjuejing-draw");
-
     General *shensimayi = new General(this, "shensimayi", "god", 4); // LE 008
     shensimayi->addSkill(new Renjie);
     shensimayi->addSkill(new Baiyin);
@@ -2402,12 +2397,27 @@ MountainPackage::MountainPackage()
     addMetaObject<GuzhengCard>();
 
     skills << new ZhibaPindian << new Jixi << new Jilve << new JilveClear;
+}
+ADD_PACKAGE(Mountain)
 
-    General *mobile_shensimayi = new General(this, "mobile_shensimayi", "god", 4); // LE 008
+NewShenPackage::NewShenPackage()
+    : Package("NewShen")
+{
+    RegisterNewShencaocao(this);
+
+    General *new_shenzhaoyun = new General(this, "new_shenzhaoyun", "god", 2);
+    new_shenzhaoyun->addSkill(new NewJuejing);
+    new_shenzhaoyun->addSkill(new NewJuejingDraw);
+    new_shenzhaoyun->addSkill(new NewLonghun);
+    related_skills.insert("newjuejing", "#newjuejing-draw");
+}
+ADD_PACKAGE(NewShen)
+
+void MigrateToMobileStMountain(Package *pkg)
+{
+    General *mobile_shensimayi = new General(pkg, "mobile_shensimayi", "god", 4); // LE 008
     mobile_shensimayi->addSkill(new MobileRenjie);
     mobile_shensimayi->addSkill(new MobileLianpo);
     mobile_shensimayi->addSkill(new MobileBaiyin);
-    skills << new MobileJilve;
-
+    pkg->addSkills(new MobileJilve);
 }
-ADD_PACKAGE(Mountain)

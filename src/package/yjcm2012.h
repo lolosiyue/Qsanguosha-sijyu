@@ -13,6 +13,30 @@ public:
     YJCM2012Package();
 };
 
+class NostalgiaYJCM2012Package : public Package
+{
+    Q_OBJECT
+
+public:
+    NostalgiaYJCM2012Package();
+};
+
+class NewYJCM2012Package : public Package
+{
+    Q_OBJECT
+
+public:
+    NewYJCM2012Package();
+};
+
+class SecondYJCM2012Package : public Package
+{
+    Q_OBJECT
+
+public:
+    SecondYJCM2012Package();
+};
+
 class QiceCard : public SkillCard
 {
     Q_OBJECT
@@ -101,5 +125,6 @@ public:
     void use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &targets) const;
 };
 
-#endif
+void MigrateToOLStYJ2012(Package *pkg);
 
+#endif

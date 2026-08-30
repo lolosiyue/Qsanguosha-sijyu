@@ -1657,11 +1657,6 @@ YJCM2012Package::YJCM2012Package()
     bulianshi->addSkill(new Anxu);
     bulianshi->addSkill(new Zhuiyi);
 
-    General *ol_bulianshi = new General(this, "ol_bulianshi", "wu", 3, false);
-    ol_bulianshi->addSkill(new OlAnxu);
-    ol_bulianshi->addSkill("zhuiyi");
-    addMetaObject<OlAnxuCard>();
-
     General *caozhang = new General(this, "caozhang", "wei"); // YJ 102
     caozhang->addSkill(new Jiangchi);
     caozhang->addSkill(new JiangchiTargetMod);
@@ -1673,21 +1668,9 @@ YJCM2012Package::YJCM2012Package()
     chengpu->addSkill(new Chunlao);
     related_skills.insert("lihuo", "#lihuo-target");
 
-    General *nos_guanxingzhangbao = new General(this, "nos_guanxingzhangbao", "shu");
-    nos_guanxingzhangbao->addSkill(new NosFuhun);
-
     General *guanxingzhangbao = new General(this, "guanxingzhangbao", "shu"); // YJ 104
     guanxingzhangbao->addSkill(new Fuhun);
 
-    /*General *ol_guanxingzhangbao = new General(this, "ol_guanxingzhangbao", "shu", 4, true);
-    ol_guanxingzhangbao->addSkill("fuhun");*/
-
-    General *nos_handang = new General(this, "nos_handang", "wu");
-    nos_handang->addSkill(new NosGongqi);
-    nos_handang->addSkill(new NosGongqiTargetMod);
-    nos_handang->addSkill(new NosJiefan);
-    related_skills.insert("nosgongqi", "#nosgongqi-target");
-    addMetaObject<NosJiefanCard>();
     General *handang = new General(this, "handang", "wu"); // YJ 105
     handang->addSkill(new Gongqi);
     handang->addSkill(new Jiefan);
@@ -1703,46 +1686,15 @@ YJCM2012Package::YJCM2012Package()
     liubiao->addSkill(new Zishou);
     liubiao->addSkill(new Zongshi);
 
-    General *new_liubiao = new General(this, "new_liubiao", "qun", 3);
-    new_liubiao->addSkill(new NewZishou);
-    new_liubiao->addSkill(new NewZishouProhibit);
-    new_liubiao->addSkill("zongshi");
-    related_skills.insert("newzishou", "#newzishou");
-
-    General *ol_liubiao = new General(this, "ol_liubiao", "qun", 3);
-    ol_liubiao->addSkill(new OLZishou);
-    ol_liubiao->addSkill("zongshi");
-
-    General *nos_madai = new General(this, "nos_madai", "shu");
-    nos_madai->addSkill("mashu");
-    nos_madai->addSkill(new NosQianxi);
-
     General *madai = new General(this, "madai", "shu"); // YJ 109
     madai->addSkill("mashu");
     madai->addSkill(new Qianxi);
     madai->addSkill(new QianxiClear);
     related_skills.insert("qianxi", "#qianxi-clear");
 
-    General *ol_madai = new General(this, "ol_madai", "shu");
-    ol_madai->addSkill("mashu");
-    ol_madai->addSkill(new OlQianxi);
-    ol_madai->addSkill(new OlQianxiClear);
-    related_skills.insert("olqianxi", "#olqianxi-clear");
-
-    General *nos_wangyi = new General(this, "nos_wangyi", "wei", 3, false);
-    nos_wangyi->addSkill(new NosZhenlie);
-    nos_wangyi->addSkill(new NosMiji);
     General *wangyi = new General(this, "wangyi", "wei", 3, false); // YJ 110
     wangyi->addSkill(new Zhenlie);
     wangyi->addSkill(new Miji);
-
-    General *ol_wangyi = new General(this, "ol_wangyi", "wei", 3, false);
-    ol_wangyi->addSkill("zhenlie");
-    ol_wangyi->addSkill(new OlMiji);
-
-    General *second_wangyi = new General(this, "second_wangyi", "wei", 3, false);
-    second_wangyi->addSkill("zhenlie");
-    second_wangyi->addSkill(new SecondMiji);
 
     General *xunyou = new General(this, "xunyou", "wei", 3); // YJ 111
     xunyou->addSkill(new Qice);
@@ -1758,3 +1710,70 @@ YJCM2012Package::YJCM2012Package()
 
 ADD_PACKAGE(YJCM2012)
 
+NostalgiaYJCM2012Package::NostalgiaYJCM2012Package()
+    : Package("nostal_yjcm2012")
+{
+    General *nos_guanxingzhangbao = new General(this, "nos_guanxingzhangbao", "shu");
+    nos_guanxingzhangbao->addSkill(new NosFuhun);
+
+    General *nos_handang = new General(this, "nos_handang", "wu");
+    nos_handang->addSkill(new NosGongqi);
+    nos_handang->addSkill(new NosGongqiTargetMod);
+    nos_handang->addSkill(new NosJiefan);
+    related_skills.insert("nosgongqi", "#nosgongqi-target");
+    addMetaObject<NosJiefanCard>();
+
+    General *nos_madai = new General(this, "nos_madai", "shu");
+    nos_madai->addSkill("mashu");
+    nos_madai->addSkill(new NosQianxi);
+
+    General *nos_wangyi = new General(this, "nos_wangyi", "wei", 3, false);
+    nos_wangyi->addSkill(new NosZhenlie);
+    nos_wangyi->addSkill(new NosMiji);
+}
+ADD_PACKAGE(NostalgiaYJCM2012)
+
+NewYJCM2012Package::NewYJCM2012Package()
+    : Package("NewYJCM2012")
+{
+    General *new_liubiao = new General(this, "new_liubiao", "qun", 3);
+    new_liubiao->addSkill(new NewZishou);
+    new_liubiao->addSkill(new NewZishouProhibit);
+    new_liubiao->addSkill("zongshi");
+    related_skills.insert("newzishou", "#newzishou");
+}
+ADD_PACKAGE(NewYJCM2012)
+
+SecondYJCM2012Package::SecondYJCM2012Package()
+    : Package("SecondYJCM2012")
+{
+    General *second_wangyi = new General(this, "second_wangyi", "wei", 3, false);
+    second_wangyi->addSkill("zhenlie");
+    second_wangyi->addSkill(new SecondMiji);
+}
+ADD_PACKAGE(SecondYJCM2012)
+
+void MigrateToOLStYJ2012(Package *pkg)
+{
+    General *ol_bulianshi = new General(pkg, "ol_bulianshi", "wu", 3, false);
+    ol_bulianshi->addSkill(new OlAnxu);
+    ol_bulianshi->addSkill("zhuiyi");
+    pkg->addMetaObject<OlAnxuCard>();
+
+    /*General *ol_guanxingzhangbao = new General(pkg, "ol_guanxingzhangbao", "shu", 4, true);
+    ol_guanxingzhangbao->addSkill("fuhun");*/
+
+    General *ol_liubiao = new General(pkg, "ol_liubiao", "qun", 3);
+    ol_liubiao->addSkill(new OLZishou);
+    ol_liubiao->addSkill("zongshi");
+
+    General *ol_madai = new General(pkg, "ol_madai", "shu");
+    ol_madai->addSkill("mashu");
+    ol_madai->addSkill(new OlQianxi);
+    ol_madai->addSkill(new OlQianxiClear);
+    pkg->insertRelatedSkills("olqianxi", "#olqianxi-clear");
+
+    General *ol_wangyi = new General(pkg, "ol_wangyi", "wei", 3, false);
+    ol_wangyi->addSkill("zhenlie");
+    ol_wangyi->addSkill(new OlMiji);
+}

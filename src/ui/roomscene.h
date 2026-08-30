@@ -20,6 +20,7 @@ class CardContainer;
 class PileContainer;
 class GuanxingBox;
 class GuanxingXBox;
+class GuhuoBox;
 class QSanButton;
 class QGroupBox;
 class BubbleChatBox;
@@ -349,6 +350,7 @@ private:
 	ChooseTriggerOrderBox *m_chooseTriggerOrderBox;
 
 	GuanxingBox *m_guanxingBox;
+	GuhuoBox *m_guhuoBox;
 
 	QList<CardItem *> gongxin_items;
 

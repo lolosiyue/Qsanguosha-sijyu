@@ -12,6 +12,14 @@ public:
     FirePackage();
 };
 
+class TenyearStFirePackage : public Package
+{
+    Q_OBJECT
+
+public:
+    TenyearStFirePackage();
+};
+
 class QuhuCard : public SkillCard
 {
     Q_OBJECT
