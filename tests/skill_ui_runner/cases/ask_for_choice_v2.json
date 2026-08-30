@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "name": "ask_for_choice",
+  "name": "ask_for_choice_v2",
   "packages": ["standard"],
   "bootstrap": {
     "mode": "02p",
@@ -12,6 +12,7 @@
     "api": "askForChoice",
     "command": "S_COMMAND_MULTIPLE_CHOICE",
     "serial": 1003,
+    "wire_version": 2,
     "args": { "skill": "deep_seek", "choices": "loyalist+rebel+renegade+lord", "except": "lord", "tip": "" }
   },
   "expect_presented": {

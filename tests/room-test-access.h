@@ -117,6 +117,17 @@ struct RoomTestAccess
             packet.toString());
     }
 
+    static void dispatch(Room &room, ServerPlayer *player,
+                         const QSanProtocol::ProtocolMessage &message,
+                         const QString &rawMessage)
+    {
+        QSanProtocol::ProtocolMessage legacy = message;
+        legacy.version = QSanProtocol::ProtocolVersion::V1;
+        QSanProtocol::Packet packet;
+        QSanProtocol::applyProtocolMessageToV1Packet(legacy, packet);
+        room.m_requests->processClientPacket(player, packet, message, rawMessage);
+    }
+
     static bool isPaused(const Room &room)
     {
         return room.game_paused;
