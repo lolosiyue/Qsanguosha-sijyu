@@ -38,6 +38,7 @@ set(QSAN_SOURCES
     src/package/fire.cpp
     src/package/godlailailai.cpp
     src/package/happy2v2.cpp
+    src/package/hayate.cpp
     src/package/hegemony.cpp
     src/package/h-formation.cpp
     src/package/h-momentum.cpp
@@ -230,6 +231,7 @@ set(QSAN_MOC_HEADERS
     src/package/fire.h
     src/package/godlailailai.h
     src/package/happy2v2.h
+    src/package/hayate.h
     src/package/hegemony.h
     src/package/h-formation.h
     src/package/h-momentum.h
