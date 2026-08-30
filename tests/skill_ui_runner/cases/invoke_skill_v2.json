@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "name": "invoke_skill_v2",
+  "packages": ["standard"],
+  "bootstrap": {
+    "mode": "02p",
+    "self": { "object_name": "self", "screen_name": "Tester", "general": "caocao", "hp": 4, "max_hp": 4, "phase": "NotActive", "skills": [] },
+    "players": [{ "object_name": "target", "screen_name": "Target", "general": "liubei", "hp": 4, "max_hp": 4, "alive": true }],
+    "cards": []
+  },
+  "request": {
+    "api": "askForSkillInvoke", "command": "S_COMMAND_INVOKE_SKILL", "serial": 1001, "wire_version": 2,
+    "args": { "skill": "hujia", "data": "" }
+  },
+  "expect_presented": {
+    "client_status": "AskForSkillInvoke",
+    "interaction_request": {
+      "type": "skill_invoke", "request_id": 1, "server_serial": 1001, "command": 8,
+      "skill": "hujia", "cancelable": true, "response_schema": "option",
+      "payload": { "enumerated": true, "options": [{ "value": "yes" }, { "value": "no" }] }
+    },
+    "buttons": { "ok": { "visible": true, "enabled": true }, "cancel": { "visible": true, "enabled": true } }
+  },
+  "actions": [{ "type": "invoke_skill_yes" }],
+  "expect_reply": { "command": "S_COMMAND_INVOKE_SKILL", "local_serial": 1001, "invoke": true },
+  "expect_final": { "client_status": "NotActive", "open_dialog_count": 0 }
+}

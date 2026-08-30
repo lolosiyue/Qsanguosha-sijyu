@@ -118,6 +118,59 @@ static bool mismatchedReplyTimesOut(Room &room, ServerPlayer *player,
         && player->m_expectedReplySerial == -1;
 }
 
+static bool requestCommandAliasesRemainCompatible(Room &room, ServerPlayer *player,
+                                                  RequestRecorder &recorder)
+{
+    struct AliasCase
+    {
+        CommandType requestCommand;
+        CommandType replyCommand;
+        QVariant payload;
+    };
+    const QList<AliasCase> cases{
+        {S_COMMAND_CHOOSE_DIRECTION, S_COMMAND_CHOOSE_DIRECTION, QStringLiteral("cw")},
+        {S_COMMAND_CHOOSE_DIRECTION, S_COMMAND_MULTIPLE_CHOICE, QStringLiteral("cw")},
+        {S_COMMAND_LUCK_CARD, S_COMMAND_LUCK_CARD, true},
+        {S_COMMAND_LUCK_CARD, S_COMMAND_INVOKE_SKILL, true}
+    };
+    for (const auto &entry : cases) {
+        recorder.clear();
+        if (!room.doRequest(player, entry.requestCommand, QVariant(), 0, false))
+            return false;
+        const RequestRecord *request = recorder.last(entry.requestCommand);
+        if (recorder.parseFailed || request == nullptr)
+            return false;
+
+        Packet reply(S_SRC_CLIENT | S_TYPE_REPLY | S_DEST_ROOM, entry.replyCommand);
+        reply.localSerial = request->serial;
+        reply.setMessageBody(entry.payload);
+        RoomTestAccess::dispatch(room, player, reply);
+        if (!room.getResult(player, 0) || player->getClientReply() != entry.payload)
+            return false;
+    }
+
+    const QList<AliasCase> unrelatedCases{
+        {S_COMMAND_MULTIPLE_CHOICE, S_COMMAND_CHOOSE_DIRECTION, QStringLiteral("cw")},
+        {S_COMMAND_INVOKE_SKILL, S_COMMAND_LUCK_CARD, true}
+    };
+    for (const auto &entry : unrelatedCases) {
+        recorder.clear();
+        if (!room.doRequest(player, entry.requestCommand, QVariant(), 0, false))
+            return false;
+        const RequestRecord *request = recorder.last(entry.requestCommand);
+        if (recorder.parseFailed || request == nullptr)
+            return false;
+
+        Packet reply(S_SRC_CLIENT | S_TYPE_REPLY | S_DEST_ROOM, entry.replyCommand);
+        reply.localSerial = request->serial;
+        reply.setMessageBody(entry.payload);
+        RoomTestAccess::dispatch(room, player, reply);
+        if (room.getResult(player, 0))
+            return false;
+    }
+    return true;
+}
+
 static bool callbackDispatchesThroughCoordinator(Room &room, ServerPlayer *owner)
 {
     owner->setOwner(true);
@@ -168,10 +221,12 @@ int runRequestCoordinatorTests()
         return 2;
     if (!mismatchedReplyTimesOut(room, owner, recorder))
         return 3;
-    if (!callbackDispatchesThroughCoordinator(room, owner))
+    if (!requestCommandAliasesRemainCompatible(room, owner, recorder))
         return 4;
-    if (!raceTimeoutClearsPendingState(room, owner))
+    if (!callbackDispatchesThroughCoordinator(room, owner))
         return 5;
+    if (!raceTimeoutClearsPendingState(room, owner))
+        return 6;
 
     qInfo() << "request coordinator behavior passed";
     return 0;

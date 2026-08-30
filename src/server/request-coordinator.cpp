@@ -67,6 +67,18 @@ void syncKnownHandcards(Room &room, ServerPlayer *viewer, ServerPlayer *target)
     room.doNotify(viewer, S_COMMAND_SET_KNOWN_CARDS, knownCardsArg);
 }
 
+bool isCompatibleReplyCommand(CommandType expected, CommandType actual)
+{
+    if (expected == actual)
+        return true;
+
+    // The dedicated request command is retained as the expected identity, so
+    // an unrelated MULTIPLE_CHOICE or INVOKE_SKILL request stays strict. Older
+    // clients may still answer the two aliased requests with the shared command.
+    return (expected == S_COMMAND_CHOOSE_DIRECTION && actual == S_COMMAND_MULTIPLE_CHOICE)
+        || (expected == S_COMMAND_LUCK_CARD && actual == S_COMMAND_INVOKE_SKILL);
+}
+
 }
 
 RequestCoordinator::RequestCoordinator(Room &room)
@@ -84,8 +96,6 @@ void RequestCoordinator::initializeCallbacks()
     m_requestResponsePairs[S_COMMAND_ASK_PEACH] = S_COMMAND_RESPONSE_CARD;
     m_requestResponsePairs[S_COMMAND_PINDIAN] = S_COMMAND_RESPONSE_CARD;
     m_requestResponsePairs[S_COMMAND_EXCHANGE_CARD] = S_COMMAND_DISCARD_CARD;
-    m_requestResponsePairs[S_COMMAND_CHOOSE_DIRECTION] = S_COMMAND_MULTIPLE_CHOICE;
-    m_requestResponsePairs[S_COMMAND_LUCK_CARD] = S_COMMAND_INVOKE_SKILL;
 
     m_callbacks[S_COMMAND_SURRENDER] = &Room::processRequestSurrender;
     m_callbacks[S_COMMAND_CHEAT] = &Room::processRequestCheat;
@@ -498,7 +508,8 @@ void RequestCoordinator::processResponse(
     else if (!player->m_isWaitingReply || player->m_isClientResponseReady)
         emit m_room.room_message(m_room.tr("Server is not waiting for reply from %1")
                                  .arg(player->objectName()));
-    else if (static_cast<CommandType>(message.command) != player->m_expectedReplyCommand)
+    else if (!isCompatibleReplyCommand(player->m_expectedReplyCommand,
+                                       static_cast<CommandType>(message.command)))
         emit m_room.room_message(m_room.tr("Reply command should be %1 instead of %2")
                                  .arg(player->m_expectedReplyCommand)
                                  .arg(message.command));

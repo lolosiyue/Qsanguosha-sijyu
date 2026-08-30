@@ -990,6 +990,136 @@ static bool choiceClientAnswer()
                   "V1 and V2 ChoiceMade payloads match exactly");
 }
 
+static bool simpleChoiceClientV1V2Parity()
+{
+    auto wireMatchesVersion = [](const ClientReplyAgent &agent,
+                                 ProtocolVersion version) {
+        const QJsonDocument request = QJsonDocument::fromJson(agent.lastRequestWire);
+        const QJsonDocument reply = QJsonDocument::fromJson(agent.lastReplyWire);
+        return version == ProtocolVersion::V2
+            ? request.isObject() && reply.isObject()
+            : request.isArray() && reply.isArray();
+    };
+
+    DecisionFixture generalV1(QStringLiteral("online"));
+    ClientReplyAgent generalV1Agent(
+        generalV1.room, generalV1.player, ProtocolVersion::V1);
+    generalV1Agent.replyByCommand.insert(
+        S_COMMAND_CHOOSE_GENERAL, QStringLiteral("liubei"));
+    const QString generalV1Answer = generalV1.room.askForGeneral(
+        generalV1.player,
+        QStringList{QStringLiteral("caocao"), QStringLiteral("liubei")});
+
+    DecisionFixture generalV2(QStringLiteral("online"));
+    ClientReplyAgent generalV2Agent(
+        generalV2.room, generalV2.player, ProtocolVersion::V2);
+    generalV2Agent.replyByCommand.insert(
+        S_COMMAND_CHOOSE_GENERAL, QStringLiteral("liubei"));
+    const QString generalV2Answer = generalV2.room.askForGeneral(
+        generalV2.player,
+        QStringList{QStringLiteral("caocao"), QStringLiteral("liubei")});
+    if (!expect(generalV1Answer == generalV2Answer
+                    && generalV2Answer == QStringLiteral("liubei"),
+                "V1/V2 choose general gameplay answers match")
+        || !expect(wireMatchesVersion(generalV1Agent, ProtocolVersion::V1)
+                       && wireMatchesVersion(generalV2Agent, ProtocolVersion::V2),
+                   "choose general uses versioned request and reply wire")) {
+        return false;
+    }
+
+    DecisionFixture suitV1(QStringLiteral("online"));
+    ClientReplyAgent suitV1Agent(suitV1.room, suitV1.player, ProtocolVersion::V1);
+    suitV1Agent.replyByCommand.insert(S_COMMAND_CHOOSE_SUIT, QStringLiteral("diamond"));
+    const Card::Suit suitV1Answer = suitV1.room.askForSuit(
+        suitV1.player, QStringLiteral("test"));
+
+    DecisionFixture suitV2(QStringLiteral("online"));
+    ClientReplyAgent suitV2Agent(suitV2.room, suitV2.player, ProtocolVersion::V2);
+    suitV2Agent.replyByCommand.insert(S_COMMAND_CHOOSE_SUIT, QStringLiteral("diamond"));
+    const Card::Suit suitV2Answer = suitV2.room.askForSuit(
+        suitV2.player, QStringLiteral("test"));
+    if (!expect(suitV1Answer == suitV2Answer && suitV2Answer == Card::Diamond,
+                "V1/V2 choose suit gameplay answers match")
+        || !expect(wireMatchesVersion(suitV1Agent, ProtocolVersion::V1)
+                       && wireMatchesVersion(suitV2Agent, ProtocolVersion::V2),
+                   "choose suit uses versioned request and reply wire")) {
+        return false;
+    }
+
+    DecisionFixture kingdomV1(QStringLiteral("online"));
+    ClientReplyAgent kingdomV1Agent(
+        kingdomV1.room, kingdomV1.player, ProtocolVersion::V1);
+    kingdomV1Agent.replyByCommand.insert(
+        S_COMMAND_CHOOSE_KINGDOM, QStringLiteral("shu"));
+    const QString kingdomV1Answer = kingdomV1.room.askForKingdom(
+        kingdomV1.player, QStringLiteral("test"),
+        QStringList{QStringLiteral("wei"), QStringLiteral("shu")}, false);
+
+    DecisionFixture kingdomV2(QStringLiteral("online"));
+    ClientReplyAgent kingdomV2Agent(
+        kingdomV2.room, kingdomV2.player, ProtocolVersion::V2);
+    kingdomV2Agent.replyByCommand.insert(
+        S_COMMAND_CHOOSE_KINGDOM, QStringLiteral("shu"));
+    const QString kingdomV2Answer = kingdomV2.room.askForKingdom(
+        kingdomV2.player, QStringLiteral("test"),
+        QStringList{QStringLiteral("wei"), QStringLiteral("shu")}, false);
+    if (!expect(kingdomV1Answer == kingdomV2Answer
+                    && kingdomV2Answer == QStringLiteral("shu"),
+                "V1/V2 choose kingdom gameplay answers match")
+        || !expect(wireMatchesVersion(kingdomV1Agent, ProtocolVersion::V1)
+                       && wireMatchesVersion(kingdomV2Agent, ProtocolVersion::V2),
+                   "choose kingdom uses versioned request and reply wire")) {
+        return false;
+    }
+
+    DecisionFixture orderV1(QStringLiteral("online"));
+    ClientReplyAgent orderV1Agent(orderV1.room, orderV1.player, ProtocolVersion::V1);
+    orderV1Agent.replyByCommand.insert(
+        S_COMMAND_CHOOSE_ORDER, static_cast<int>(S_CAMP_COOL));
+    const QString orderV1Answer = PlayerDecisionServiceTestAccess::askForOrder(
+        orderV1.room, orderV1.player, QStringLiteral("warm"));
+
+    DecisionFixture orderV2(QStringLiteral("online"));
+    ClientReplyAgent orderV2Agent(orderV2.room, orderV2.player, ProtocolVersion::V2);
+    orderV2Agent.replyByCommand.insert(
+        S_COMMAND_CHOOSE_ORDER, static_cast<int>(S_CAMP_COOL));
+    const QString orderV2Answer = PlayerDecisionServiceTestAccess::askForOrder(
+        orderV2.room, orderV2.player, QStringLiteral("warm"));
+    if (!expect(orderV1Answer == orderV2Answer
+                    && orderV2Answer == QStringLiteral("cool"),
+                "V1/V2 choose order gameplay answers match")
+        || !expect(wireMatchesVersion(orderV1Agent, ProtocolVersion::V1)
+                       && wireMatchesVersion(orderV2Agent, ProtocolVersion::V2),
+                   "choose order uses numeric V1 and enum-string V2 wire")) {
+        return false;
+    }
+
+    DecisionFixture invokeV1(QStringLiteral("online"));
+    ClientReplyAgent invokeV1Agent(invokeV1.room, invokeV1.player, ProtocolVersion::V1);
+    invokeV1Agent.replyByCommand.insert(S_COMMAND_INVOKE_SKILL, true);
+    const bool invokeV1Answer = invokeV1.room.askForSkillInvoke(
+        invokeV1.player, QStringLiteral("test_skill"),
+        QStringLiteral("playerdata:decision-other"), false);
+
+    DecisionFixture invokeV2(QStringLiteral("online"));
+    ClientReplyAgent invokeV2Agent(invokeV2.room, invokeV2.player, ProtocolVersion::V2);
+    invokeV2Agent.replyByCommand.insert(S_COMMAND_INVOKE_SKILL, true);
+    const bool invokeV2Answer = invokeV2.room.askForSkillInvoke(
+        invokeV2.player, QStringLiteral("test_skill"),
+        QStringLiteral("playerdata:decision-other"), false);
+    return expect(invokeV1Answer == invokeV2Answer && invokeV2Answer,
+                  "V1/V2 invoke skill gameplay answers match")
+        && expect(wireMatchesVersion(invokeV1Agent, ProtocolVersion::V1)
+                      && wireMatchesVersion(invokeV2Agent, ProtocolVersion::V2),
+                  "invoke skill uses versioned request and reply wire")
+        && expect(!generalV1Agent.parseFailed && !generalV2Agent.parseFailed
+                      && !suitV1Agent.parseFailed && !suitV2Agent.parseFailed
+                      && !kingdomV1Agent.parseFailed && !kingdomV2Agent.parseFailed
+                      && !orderV1Agent.parseFailed && !orderV2Agent.parseFailed
+                      && !invokeV1Agent.parseFailed && !invokeV2Agent.parseFailed,
+                  "simple choice differential agents parse every frame");
+}
+
 static bool suitKingdomGeneralAndModeChoices()
 {
     DecisionFixture fixture;
@@ -2458,24 +2588,25 @@ int runPlayerDecisionServiceTests()
     run(skillInvokeClientAnswerAndNotifyFalse, "skill-invoke-client", 7);
     run(choiceOverrideForceCancelAndFallback, "choice", 8);
     run(choiceClientAnswer, "choice-client", 9);
-    run(suitKingdomGeneralAndModeChoices, "suit-kingdom-general", 10);
-    run(suitKingdomGeneralClientAndInvalidReplies, "client-invalid", 11);
-    run(orderAndRolePreserveLegacyFallbacks, "order-role", 12);
-    run(playerChosenEmptySingletonOverrideAndNotify, "player-chosen", 13);
-    run(playerChosenClientInvalidOptionalAndTimeout, "player-chosen-client", 14);
-    run(playersChosenMinMaxSortAndNegativeMin, "players-chosen", 15);
-    run(playersChosenClientFillAndNotify, "players-chosen-client", 16);
-    run(agEmptySingletonRefusableInvalidAndClient, "ask-for-ag", 17);
-    run(cardChosenOverrideFallbackVisibleAndClient, "card-chosen", 18);
-    run(cardShowSingletonClientAndRandom, "card-show", 19);
-    run(pindianEmitsNoChoiceMade, "pindian", 20);
-    run(pindianRaceBroadcastIndependentFallback, "pindian-race", 21);
-    run(cardResponseOverrideProvidedAndRetry, "card-response", 22);
-    run(discardExchangeYijiAndGuanxing, "discard-yiji-guanxing", 23);
-    run(activateUseCardAndSlashFlags, "activate-use-card", 24);
-    run(nullificationPeachTriggerOrderAndResidual, "reactive-trigger-order", 25);
-    run(trickEffectTagPreservesNullificationTarget, "tag-discriminator", 26);
-    run(aiDelayIsHonoredWhenConfigured, "ai-delay", 27);
+    run(simpleChoiceClientV1V2Parity, "simple-choice-client", 10);
+    run(suitKingdomGeneralAndModeChoices, "suit-kingdom-general", 11);
+    run(suitKingdomGeneralClientAndInvalidReplies, "client-invalid", 12);
+    run(orderAndRolePreserveLegacyFallbacks, "order-role", 13);
+    run(playerChosenEmptySingletonOverrideAndNotify, "player-chosen", 14);
+    run(playerChosenClientInvalidOptionalAndTimeout, "player-chosen-client", 15);
+    run(playersChosenMinMaxSortAndNegativeMin, "players-chosen", 16);
+    run(playersChosenClientFillAndNotify, "players-chosen-client", 17);
+    run(agEmptySingletonRefusableInvalidAndClient, "ask-for-ag", 18);
+    run(cardChosenOverrideFallbackVisibleAndClient, "card-chosen", 19);
+    run(cardShowSingletonClientAndRandom, "card-show", 20);
+    run(pindianEmitsNoChoiceMade, "pindian", 21);
+    run(pindianRaceBroadcastIndependentFallback, "pindian-race", 22);
+    run(cardResponseOverrideProvidedAndRetry, "card-response", 23);
+    run(discardExchangeYijiAndGuanxing, "discard-yiji-guanxing", 24);
+    run(activateUseCardAndSlashFlags, "activate-use-card", 25);
+    run(nullificationPeachTriggerOrderAndResidual, "reactive-trigger-order", 26);
+    run(trickEffectTagPreservesNullificationTarget, "tag-discriminator", 27);
+    run(aiDelayIsHonoredWhenConfigured, "ai-delay", 28);
 
     Config.AIDelay = savedAIDelay;
     Config.OriginAIDelay = savedOriginAIDelay;

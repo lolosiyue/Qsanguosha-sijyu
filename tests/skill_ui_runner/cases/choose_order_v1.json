@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "name": "choose_order_v1",
+  "packages": ["standard"],
+  "bootstrap": {
+    "mode": "02p",
+    "self": { "object_name": "self", "screen_name": "Tester", "general": "caocao", "hp": 4, "max_hp": 4, "phase": "NotActive", "skills": [] },
+    "players": [{ "object_name": "target", "screen_name": "Target", "general": "liubei", "hp": 4, "max_hp": 4, "alive": true }],
+    "cards": []
+  },
+  "request": { "api": "raw", "command": "S_COMMAND_CHOOSE_ORDER", "serial": 1104, "wire_version": 1, "raw_body": 0 },
+  "expect_presented": {
+    "client_status": "ExecDialog",
+    "interaction_request": {
+      "type": "choose_order", "request_id": 1, "server_serial": 1104, "command": 17,
+      "cancelable": false, "response_schema": "option",
+      "payload": { "reason": 0, "options": [{ "value": "1" }, { "value": "0" }] }
+    }
+  },
+  "actions": [{ "type": "choose_option", "option": "cool" }],
+  "expect_reply": { "command": "S_COMMAND_CHOOSE_ORDER", "local_serial": 1104, "choice": "1" },
+  "expect_final": { "client_status": "NotActive", "open_dialog_count": 0 }
+}
