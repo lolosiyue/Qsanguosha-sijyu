@@ -60,7 +60,7 @@ static int GetConfig(lua_State *lua)
 	int type = lua_type(lua, 2);
 	switch (type) {
 	case LUA_TNUMBER: {
-		int n = luaL_checkint(lua, 2);
+		int n = (int)luaL_checkinteger(lua, 2);
 		lua_pushinteger(lua, Config.value(key, n).toInt());
 		break;
 	}
@@ -89,7 +89,7 @@ static int SetConfig(lua_State *lua)
 
 	switch (type) {
 	case LUA_TNUMBER: {
-		int n = luaL_checkint(lua, 2);
+		int n = (int)luaL_checkinteger(lua, 2);
 		Config.setValue(key, n);
 
 		break;

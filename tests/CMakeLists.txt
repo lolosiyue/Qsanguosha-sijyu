@@ -56,6 +56,7 @@ endfunction()
 add_executable(qsanguosha_core_tests
     core-tests-main.cpp
     engine-smoke-test.cpp
+    lua-compat-test.cpp
     core-regressions-test.cpp
     ${QSAN_TEST_ROOT}/src/server/server-core.h
 )
