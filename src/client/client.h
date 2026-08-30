@@ -6,8 +6,8 @@
 #include "client-core.h"
 #include "client-interaction-presenter.h"
 #include "custom-interaction-registry.h"
-#include "protocol/protocol-negotiation.h"
 #include "protocol/protocol-runtime.h"
+#include "protocol/session/client-session-controller.h"
 //#include "skill.h"
 #include "room-state.h"
 //#include "protocol.h"
@@ -84,6 +84,7 @@ public:
     void enableTakeover(const QString &playerName);
     void disableTakeover();
     void saveTakeoverReplay(const QString &filepath);
+    void processTakeoverRequest(const QSanProtocol::ProtocolMessage &message);
 
     void disconnectFromHost();
     void replyToServer(QSanProtocol::CommandType command, const QVariant &arg = QVariant());
@@ -119,10 +120,6 @@ public:
     QString getPlayerName(const QString &str);
     QString getSkillNameToInvoke() const;
     QString getSkillNameToInvokeData() const;
-    QList<QSanProtocol::ProtocolVersion> peerSupportedVersions() const;
-    QSanProtocol::ProtocolVersion preferredProtocolVersion() const;
-    QSanProtocol::ProtocolVersion activeProtocolVersion() const;
-
     lua_State *getLuaState() const;
 
     QTextDocument *getLinesDoc() const;
@@ -192,6 +189,7 @@ public:
     void handleAnytimeSkillDone(const QVariant &arg);
     void setShownHandCards(const QVariant &arg);
     void setBrokenEquips(const QVariant &arg);
+    void preshow(const QVariant &arg);
 
     void askForQml(const QVariant &arg);
     void replyQml(const QVariant &result);
@@ -311,7 +309,6 @@ public:
     // response card。其餘 interaction 仍然行舊路,見
     // docs/client-core-interaction-model.md。
     ClientCore *interactionCore() const { return m_interactionCore; }
-    quint64 legacyCustomInteractionCount() const { return m_legacyCustomInteractionCount; }
     QJsonArray interactionInventory() const;
 
     // DesktopInteractionView 用嘅呈現 port。每一個都係原本 askForXxx() 尾段
@@ -345,7 +342,7 @@ public:
     void presentQmlInteraction(const InteractionRequest &request) override;
 
     // 唯一 UI reply 入口：填 identity、交畀 ClientCore validate/complete，
-    // accepted 後先由 V1 adapter encode 並送出一次 wire reply。
+    // accepted 後由 typed encoder 產生並送出唯一一次 V2 wire reply。
     bool submitInteractionResponse(InteractionResponse response);
 
 public slots:
@@ -377,12 +374,8 @@ protected:
 
 private:
     ClientSocket *socket;
-    QSanProtocol::ProtocolSessionState m_protocolSessionState;
+    QSanProtocol::ClientSessionController m_protocolSession;
     QSanProtocol::ProtocolCodecRouter m_protocolRouter;
-    QSanProtocol::ProtocolMessageIdGenerator m_protocolMessageIds;
-    QList<QSanProtocol::ProtocolMessage> m_deferredProtocolMessages;
-    bool m_protocolActivationPending;
-    bool m_deferredServerConnected;
     bool m_isGameOver;
     bool m_isDisconnected;
     ClientPlayer *m_original_self;
@@ -393,8 +386,7 @@ private:
     Recorder *recorder;
     Replayer *replayer;
     ReplayTakeoverManager *m_takeoverManager;
-    bool m_replaySawCardProvenance;
-    bool m_replayWarnedLegacyProvenance;
+    quint64 m_pendingTakeoverRequestId = 0;
     QTextDocument *lines_doc, *prompt_doc;
     int pile_num;
     QString skill_to_invoke;
@@ -404,25 +396,21 @@ private:
     QList<int> m_amazingGraceDisabledCards;
     QList<int> m_amazingGraceTakenCards;
     QStringList m_filledGenerals;
-    quint64 m_legacyCustomInteractionCount = 0;
     CustomInteractionRegistry m_customInteractionRegistry;
     QSet<QString> m_anytimeSkillPending;
 
     QMap<int, const Player*> owner_map;
     QMap<int, Player::Place> place_map;
 
-    unsigned int _m_lastServerSerial;
-    quint64 m_lastServerMessageId;
+    quint64 m_dispatchingRequestId = 0;
     lua_State *m_client_lua;
     ClientCore *m_interactionCore;
     DesktopInteractionView *m_desktopInteractionView;
 
     void beginInteraction(InteractionRequest request);
     void sendProtocolMessage(QSanProtocol::ProtocolMessage message);
-    void flushDeferredProtocolMessages();
     bool dispatchProtocolMessage(const QSanProtocol::ProtocolMessage &message,
                                  bool replayInput);
-    bool handleProtocolSwitch(const QSanProtocol::ProtocolMessage &message);
     void failProtocol(const QString &detail);
     InteractionRequest makeInteractionRequest(InteractionType type,
         InteractionPayload payload, bool cancelable = false) const;
@@ -446,7 +434,7 @@ public slots:
 
 private slots:
     void processServerPacket(const QByteArray &cmd);
-    bool processServerRequest(const QSanProtocol::Packet &packet);
+    bool processServerRequest(const QSanProtocol::ProtocolMessage &message);
     void notifyRoleChange(const QString &new_role);
     void onPlayerChooseSuit();
     void onPlayerChooseKingdom();

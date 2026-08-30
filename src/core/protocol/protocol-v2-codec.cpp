@@ -1,5 +1,7 @@
 #include "protocol-v2-codec.h"
 
+#include "protocol-message-utils.h"
+
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -197,10 +199,20 @@ bool jsonPayload(const QVariant &value, QJsonValue *output,
 bool validatePayloadFromWire(const QJsonValue &value, QVariant *output,
                              QString *error)
 {
+    if (!value.isObject())
+        return encodeFailure(error, QStringLiteral("Protocol V2 payload must be an object"));
     const QVariant decoded = value.toVariant();
     QJsonValue checked;
     if (!jsonPayload(decoded, &checked, error))
         return false;
+    const QVariantMap object = decoded.toMap();
+    int schemaVersion = 0;
+    if (!ProtocolMessageUtils::tryParseInt(
+            object.value(QStringLiteral("schema_version")), schemaVersion)
+        || schemaVersion <= 0) {
+        return encodeFailure(error,
+            QStringLiteral("Protocol V2 payload schema_version must be a positive integer"));
+    }
     *output = decoded;
     return true;
 }
@@ -245,6 +257,19 @@ QByteArray ProtocolV2Codec::encode(
         encodeFailure(error, QStringLiteral("Protocol V2 non-reply must not carry reply_to"));
         return QByteArray();
     }
+    if (!message.hasPayload || message.payload.userType() != QMetaType::QVariantMap) {
+        encodeFailure(error, QStringLiteral("Protocol V2 payload is required and must be an object"));
+        return QByteArray();
+    }
+    int schemaVersion = 0;
+    const QVariantMap payloadObject = message.payload.toMap();
+    if (!ProtocolMessageUtils::tryParseInt(
+            payloadObject.value(QStringLiteral("schema_version")), schemaVersion)
+        || schemaVersion <= 0) {
+        encodeFailure(error,
+            QStringLiteral("Protocol V2 payload schema_version must be a positive integer"));
+        return QByteArray();
+    }
 
     QJsonObject object;
     object.insert(QStringLiteral("v"), 2);
@@ -256,12 +281,10 @@ QByteArray ProtocolV2Codec::encode(
         object.insert(QStringLiteral("reply_to"), QString::number(message.replyTo));
     object.insert(QStringLiteral("command"), message.command);
 
-    if (message.hasPayload) {
-        QJsonValue payload;
-        if (!jsonPayload(message.payload, &payload, error))
-            return QByteArray();
-        object.insert(QStringLiteral("payload"), payload);
-    }
+    QJsonValue payload;
+    if (!jsonPayload(message.payload, &payload, error))
+        return QByteArray();
+    object.insert(QStringLiteral("payload"), payload);
 
     const QByteArray encoded = QJsonDocument(object).toJson(QJsonDocument::Compact);
     if (encoded.size() > MaxPacketSize) {
@@ -366,13 +389,15 @@ ProtocolDecodeResult ProtocolV2Codec::decode(
                              QStringLiteral("Protocol V2 non-reply must not carry reply_to"));
     }
 
-    decoded.hasPayload = object.contains(QStringLiteral("payload"));
-    if (decoded.hasPayload) {
-        QString payloadError;
-        if (!validatePayloadFromWire(object.value(QStringLiteral("payload")),
-                                     &decoded.payload, &payloadError)) {
-            return decodeFailure(ProtocolDecodeError::InvalidPayload, payloadError);
-        }
+    if (!object.contains(QStringLiteral("payload"))) {
+        return decodeFailure(ProtocolDecodeError::InvalidPayload,
+                             QStringLiteral("Protocol V2 payload field is required"));
+    }
+    decoded.hasPayload = true;
+    QString payloadError;
+    if (!validatePayloadFromWire(object.value(QStringLiteral("payload")),
+                                 &decoded.payload, &payloadError)) {
+        return decodeFailure(ProtocolDecodeError::InvalidPayload, payloadError);
     }
 
     *message = decoded;

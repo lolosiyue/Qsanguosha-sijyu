@@ -5,54 +5,44 @@
 
 QVariant CardProvenanceMessage::toVariant() const
 {
-    JsonArray result;
-    if (version == 1) {
-        result << 1 << kind << initiator << card
-               << sourceSkill << sourceInstanceId
-               << activationSkill << activationInstanceId;
-    } else {
-        result << CurrentVersion << kind << initiator << card
-               << sourceOwner << sourceSkill << sourceInstanceId
-               << activationOwner << activationSkill << activationInstanceId;
-    }
-    return result;
+    return QVariantMap{
+        {QStringLiteral("schema_version"), CurrentVersion},
+        {QStringLiteral("kind"), kind},
+        {QStringLiteral("initiator"), initiator},
+        {QStringLiteral("card"), card},
+        {QStringLiteral("source_owner"), sourceOwner},
+        {QStringLiteral("source_skill"), sourceSkill},
+        {QStringLiteral("source_instance_id"), sourceInstanceId},
+        {QStringLiteral("activation_owner"), activationOwner},
+        {QStringLiteral("activation_skill"), activationSkill},
+        {QStringLiteral("activation_instance_id"), activationInstanceId}
+    };
 }
 
 bool CardProvenanceMessage::tryParse(const QVariant &value)
 {
-    if (value.userType() != QMetaType::QVariantList)
+    if (value.userType() != QMetaType::QVariantMap)
         return false;
-
-    const JsonArray args = value.toList();
+    const QVariantMap object = value.toMap();
     int parsedVersion = 0;
-    if (args.isEmpty() || !ProtocolMessageUtils::tryParseInt(args[0], parsedVersion))
-        return false;
-    const bool legacy = parsedVersion == 1 && args.size() == 8;
-    const bool current = parsedVersion == CurrentVersion && args.size() == 10;
-    if (!legacy && !current)
+    if (!ProtocolMessageUtils::tryParseInt(
+            object.value(QStringLiteral("schema_version")), parsedVersion)
+        || parsedVersion != CurrentVersion)
         return false;
 
     CardProvenanceMessage parsed;
     parsed.version = parsedVersion;
-    if (!ProtocolMessageUtils::tryParseString(args[1], parsed.kind)
-        || !ProtocolMessageUtils::tryParseString(args[2], parsed.initiator)
-        || !ProtocolMessageUtils::tryParseString(args[3], parsed.card))
+    if (!ProtocolMessageUtils::tryParseString(object.value(QStringLiteral("kind")), parsed.kind)
+        || !ProtocolMessageUtils::tryParseString(object.value(QStringLiteral("initiator")), parsed.initiator)
+        || !ProtocolMessageUtils::tryParseString(object.value(QStringLiteral("card")), parsed.card))
         return false;
 
-    if (legacy) {
-        parsed.sourceOwner = parsed.initiator;
-        parsed.activationOwner = parsed.initiator;
-        if (!ProtocolMessageUtils::tryParseString(args[4], parsed.sourceSkill)
-            || !ProtocolMessageUtils::tryParseInt(args[5], parsed.sourceInstanceId)
-            || !ProtocolMessageUtils::tryParseString(args[6], parsed.activationSkill)
-            || !ProtocolMessageUtils::tryParseInt(args[7], parsed.activationInstanceId))
-            return false;
-    } else if (!ProtocolMessageUtils::tryParseString(args[4], parsed.sourceOwner)
-               || !ProtocolMessageUtils::tryParseString(args[5], parsed.sourceSkill)
-               || !ProtocolMessageUtils::tryParseInt(args[6], parsed.sourceInstanceId)
-               || !ProtocolMessageUtils::tryParseString(args[7], parsed.activationOwner)
-               || !ProtocolMessageUtils::tryParseString(args[8], parsed.activationSkill)
-               || !ProtocolMessageUtils::tryParseInt(args[9], parsed.activationInstanceId)) {
+    if (!ProtocolMessageUtils::tryParseString(object.value(QStringLiteral("source_owner")), parsed.sourceOwner)
+        || !ProtocolMessageUtils::tryParseString(object.value(QStringLiteral("source_skill")), parsed.sourceSkill)
+        || !ProtocolMessageUtils::tryParseInt(object.value(QStringLiteral("source_instance_id")), parsed.sourceInstanceId)
+        || !ProtocolMessageUtils::tryParseString(object.value(QStringLiteral("activation_owner")), parsed.activationOwner)
+        || !ProtocolMessageUtils::tryParseString(object.value(QStringLiteral("activation_skill")), parsed.activationSkill)
+        || !ProtocolMessageUtils::tryParseInt(object.value(QStringLiteral("activation_instance_id")), parsed.activationInstanceId)) {
         return false;
     }
 

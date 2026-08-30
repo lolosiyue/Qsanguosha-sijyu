@@ -554,15 +554,15 @@ public:
     {
         QObject::connect(player, &ServerPlayer::message_ready, player,
                          [this](const QByteArray &message) {
-            Packet packet;
-            if (!packet.parse(message)) {
+            ProtocolMessage packet;
+            if (!ProtocolCodecRouter().decode(message, &packet).success) {
                 parseFailed = true;
                 return;
             }
-            if (packet.getPacketType() == S_TYPE_REQUEST)
-                records << RequestRecord{packet.getCommandType()};
-            else if (packet.getPacketType() == S_TYPE_NOTIFICATION)
-                notifications << packet.getCommandType();
+            if (packet.type == ProtocolMessageType::Request)
+                records << RequestRecord{static_cast<CommandType>(packet.command)};
+            else if (packet.type == ProtocolMessageType::Notification)
+                notifications << static_cast<CommandType>(packet.command);
         });
     }
 
@@ -609,32 +609,14 @@ class ClientReplyAgent
 {
 public:
     ClientReplyAgent(Room &room, ServerPlayer *player,
-                     ProtocolVersion version = ProtocolVersion::V1)
-        : m_room(room), m_player(player), m_version(version)
+                     ProtocolVersion version = ProtocolVersion::V2)
+        : m_room(room), m_player(player)
     {
-        if (m_version == ProtocolVersion::V2) {
-            ProtocolSessionState server;
-            ProtocolSessionState client;
-            server.setPeerCapabilities(ProtocolNegotiation::localCapabilities());
-            client.setPeerCapabilities(ProtocolNegotiation::localCapabilities());
-            QVariantMap offer;
-            QVariantMap ack;
-            QVariantMap commit;
-            QString error;
-            protocolReady = server.beginServerSwitch(&offer, &error)
-                && client.acceptClientOffer(offer, &ack, &error)
-                && server.acceptServerAck(ack, &commit, &error)
-                && server.activateServerAfterCommit(&error)
-                && client.acceptClientCommit(commit, &error);
-            if (protocolReady)
-                player->setProtocolSessionState(server);
-        }
-
+        Q_UNUSED(version);
         QObject::connect(player, &ServerPlayer::message_ready, player,
                          [this](const QByteArray &message) {
             ProtocolMessage request;
-            const ProtocolDecodeResult requestResult = m_router.decode(
-                m_version, message, &request);
+            const ProtocolDecodeResult requestResult = m_router.decode(message, &request);
             if (!requestResult.success) {
                 parseFailed = true;
                 return;
@@ -657,17 +639,17 @@ public:
             reply.type = ProtocolMessageType::Reply;
             reply.source = ProtocolEndpoint::Client;
             reply.destination = ProtocolEndpoint::Room;
-            reply.messageId = m_version == ProtocolVersion::V2 ? m_nextMessageId++ : 0;
+            reply.messageId = m_nextMessageId++;
             reply.replyTo = request.messageId;
             reply.command = replyCommand;
             reply.hasPayload = true;
             reply.payload = replyByCommand.value(requestCommand);
 
             QString error;
-            lastReplyWire = m_router.encode(m_version, reply, &error);
+            lastReplyWire = m_router.encode(reply, &error);
             ProtocolMessage normalizedReply;
             const ProtocolDecodeResult replyResult = m_router.decode(
-                m_version, lastReplyWire, &normalizedReply);
+                lastReplyWire, &normalizedReply);
             if (lastReplyWire.isEmpty() || !replyResult.success) {
                 parseFailed = true;
                 return;
@@ -686,7 +668,6 @@ public:
 private:
     Room &m_room;
     ServerPlayer *m_player;
-    ProtocolVersion m_version;
     ProtocolCodecRouter m_router;
     quint64 m_nextMessageId = 1;
 };
@@ -953,7 +934,7 @@ static bool choiceOverrideForceCancelAndFallback()
 static bool choiceClientAnswer()
 {
     DecisionFixture v1Fixture(QStringLiteral("online"));
-    ClientReplyAgent v1Agent(v1Fixture.room, v1Fixture.player, ProtocolVersion::V1);
+    ClientReplyAgent v1Agent(v1Fixture.room, v1Fixture.player, ProtocolVersion::V2);
     v1Agent.replyByCommand.insert(S_COMMAND_MULTIPLE_CHOICE, QStringLiteral("right"));
     const QString v1Answer = v1Fixture.room.askForChoice(
         v1Fixture.player, QStringLiteral("tuxi"), QStringLiteral("left+right"));
@@ -962,9 +943,9 @@ static bool choiceClientAnswer()
                 "V1 online choice protocol is ready")
         || !expect(v1Answer == QStringLiteral("right"),
                    "V1 online choice reply is accepted")
-        || !expect(QJsonDocument::fromJson(v1Agent.lastRequestWire).isArray()
-                       && QJsonDocument::fromJson(v1Agent.lastReplyWire).isArray(),
-                   "V1 choice request and reply remain arrays")) {
+        || !expect(QJsonDocument::fromJson(v1Agent.lastRequestWire).isObject()
+                       && QJsonDocument::fromJson(v1Agent.lastReplyWire).isObject(),
+                   "first V2 choice request and reply are objects")) {
         return false;
     }
 
@@ -1003,7 +984,7 @@ static bool simpleChoiceClientV1V2Parity()
 
     DecisionFixture generalV1(QStringLiteral("online"));
     ClientReplyAgent generalV1Agent(
-        generalV1.room, generalV1.player, ProtocolVersion::V1);
+        generalV1.room, generalV1.player, ProtocolVersion::V2);
     generalV1Agent.replyByCommand.insert(
         S_COMMAND_CHOOSE_GENERAL, QStringLiteral("liubei"));
     const QString generalV1Answer = generalV1.room.askForGeneral(
@@ -1021,14 +1002,14 @@ static bool simpleChoiceClientV1V2Parity()
     if (!expect(generalV1Answer == generalV2Answer
                     && generalV2Answer == QStringLiteral("liubei"),
                 "V1/V2 choose general gameplay answers match")
-        || !expect(wireMatchesVersion(generalV1Agent, ProtocolVersion::V1)
+        || !expect(wireMatchesVersion(generalV1Agent, ProtocolVersion::V2)
                        && wireMatchesVersion(generalV2Agent, ProtocolVersion::V2),
                    "choose general uses versioned request and reply wire")) {
         return false;
     }
 
     DecisionFixture suitV1(QStringLiteral("online"));
-    ClientReplyAgent suitV1Agent(suitV1.room, suitV1.player, ProtocolVersion::V1);
+    ClientReplyAgent suitV1Agent(suitV1.room, suitV1.player, ProtocolVersion::V2);
     suitV1Agent.replyByCommand.insert(S_COMMAND_CHOOSE_SUIT, QStringLiteral("diamond"));
     const Card::Suit suitV1Answer = suitV1.room.askForSuit(
         suitV1.player, QStringLiteral("test"));
@@ -1040,7 +1021,7 @@ static bool simpleChoiceClientV1V2Parity()
         suitV2.player, QStringLiteral("test"));
     if (!expect(suitV1Answer == suitV2Answer && suitV2Answer == Card::Diamond,
                 "V1/V2 choose suit gameplay answers match")
-        || !expect(wireMatchesVersion(suitV1Agent, ProtocolVersion::V1)
+        || !expect(wireMatchesVersion(suitV1Agent, ProtocolVersion::V2)
                        && wireMatchesVersion(suitV2Agent, ProtocolVersion::V2),
                    "choose suit uses versioned request and reply wire")) {
         return false;
@@ -1048,7 +1029,7 @@ static bool simpleChoiceClientV1V2Parity()
 
     DecisionFixture kingdomV1(QStringLiteral("online"));
     ClientReplyAgent kingdomV1Agent(
-        kingdomV1.room, kingdomV1.player, ProtocolVersion::V1);
+        kingdomV1.room, kingdomV1.player, ProtocolVersion::V2);
     kingdomV1Agent.replyByCommand.insert(
         S_COMMAND_CHOOSE_KINGDOM, QStringLiteral("shu"));
     const QString kingdomV1Answer = kingdomV1.room.askForKingdom(
@@ -1066,14 +1047,14 @@ static bool simpleChoiceClientV1V2Parity()
     if (!expect(kingdomV1Answer == kingdomV2Answer
                     && kingdomV2Answer == QStringLiteral("shu"),
                 "V1/V2 choose kingdom gameplay answers match")
-        || !expect(wireMatchesVersion(kingdomV1Agent, ProtocolVersion::V1)
+        || !expect(wireMatchesVersion(kingdomV1Agent, ProtocolVersion::V2)
                        && wireMatchesVersion(kingdomV2Agent, ProtocolVersion::V2),
                    "choose kingdom uses versioned request and reply wire")) {
         return false;
     }
 
     DecisionFixture orderV1(QStringLiteral("online"));
-    ClientReplyAgent orderV1Agent(orderV1.room, orderV1.player, ProtocolVersion::V1);
+    ClientReplyAgent orderV1Agent(orderV1.room, orderV1.player, ProtocolVersion::V2);
     orderV1Agent.replyByCommand.insert(
         S_COMMAND_CHOOSE_ORDER, static_cast<int>(S_CAMP_COOL));
     const QString orderV1Answer = PlayerDecisionServiceTestAccess::askForOrder(
@@ -1088,14 +1069,14 @@ static bool simpleChoiceClientV1V2Parity()
     if (!expect(orderV1Answer == orderV2Answer
                     && orderV2Answer == QStringLiteral("cool"),
                 "V1/V2 choose order gameplay answers match")
-        || !expect(wireMatchesVersion(orderV1Agent, ProtocolVersion::V1)
+        || !expect(wireMatchesVersion(orderV1Agent, ProtocolVersion::V2)
                        && wireMatchesVersion(orderV2Agent, ProtocolVersion::V2),
                    "choose order uses numeric V1 and enum-string V2 wire")) {
         return false;
     }
 
     DecisionFixture invokeV1(QStringLiteral("online"));
-    ClientReplyAgent invokeV1Agent(invokeV1.room, invokeV1.player, ProtocolVersion::V1);
+    ClientReplyAgent invokeV1Agent(invokeV1.room, invokeV1.player, ProtocolVersion::V2);
     invokeV1Agent.replyByCommand.insert(S_COMMAND_INVOKE_SKILL, true);
     const bool invokeV1Answer = invokeV1.room.askForSkillInvoke(
         invokeV1.player, QStringLiteral("test_skill"),
@@ -1109,7 +1090,7 @@ static bool simpleChoiceClientV1V2Parity()
         QStringLiteral("playerdata:decision-other"), false);
     return expect(invokeV1Answer == invokeV2Answer && invokeV2Answer,
                   "V1/V2 invoke skill gameplay answers match")
-        && expect(wireMatchesVersion(invokeV1Agent, ProtocolVersion::V1)
+        && expect(wireMatchesVersion(invokeV1Agent, ProtocolVersion::V2)
                       && wireMatchesVersion(invokeV2Agent, ProtocolVersion::V2),
                   "invoke skill uses versioned request and reply wire")
         && expect(!generalV1Agent.parseFailed && !generalV2Agent.parseFailed

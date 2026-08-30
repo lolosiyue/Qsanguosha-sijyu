@@ -312,11 +312,6 @@ InteractionValidation ClientCore::validate(const InteractionResponse &response) 
                 .arg(response.requestId).arg(m_active.requestId));
     }
 
-    if (response.serverSerial != 0 && response.serverSerial != m_active.serverSerial) {
-        return InteractionValidation::fail(InteractionRejection::ServerSerialMismatch,
-            QStringLiteral("reply targets server serial %1 but %2 is active")
-                .arg(response.serverSerial).arg(m_active.serverSerial));
-    }
     if (response.command != 0 && response.command != m_active.command) {
         return InteractionValidation::fail(InteractionRejection::CommandMismatch,
             QStringLiteral("reply targets command %1 but %2 is active")

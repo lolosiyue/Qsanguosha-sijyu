@@ -2,17 +2,17 @@
 #define INTERACTION_REPLY_COORDINATOR_H
 
 #include "core/client-core.h"
-#include "legacy-v1-interaction-reply-adapter.h"
+#include "interaction-reply-encoder.h"
 
 #include <functional>
 
 class InteractionReplyCoordinator
 {
 public:
-    using Sender = std::function<void(const LegacyV1InteractionReply &)>;
+    using Sender = std::function<void(const InteractionWireReply &)>;
 
     static bool submit(ClientCore *core,
-        LegacyV1InteractionReplyAdapter::Encoder encoder,
+        InteractionReplyEncoder::Encoder encoder,
         InteractionResponse response, const Sender &sender);
 };
 

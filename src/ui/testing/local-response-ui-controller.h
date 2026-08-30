@@ -123,6 +123,7 @@ private:
     LocalResponseUiInspector *m_inspector;
 
     QString m_requestPacketJson;
+    quint64 m_nextServerMessageId;
     int m_nextActionIndex;
     bool m_replyProcessed;
     bool m_closing;

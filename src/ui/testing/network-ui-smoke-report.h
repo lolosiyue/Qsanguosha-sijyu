@@ -88,7 +88,7 @@ public:
     static const char *const ReasonDisconnected;        // "disconnected"
     static const char *const ReasonInteractionStalled;  // "interaction_stalled"
 
-    // server request（S_TYPE_REQUEST）→ 契約互動名。runner 同 CI 用呢啲名做
+// Protocol V2 server request → 契約互動名。runner 同 CI 用呢啲名做
     // askFor 覆蓋率 gate，所以名唔可以隨便改。
     //
     // 唔喺對照表內的 command 回傳空字串：呢啲係 notification／reply，唔算互動。

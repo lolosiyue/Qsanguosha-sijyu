@@ -23,11 +23,17 @@ LogMessage::LogMessage()
 
 QVariant LogMessage::toVariant() const
 {
-	QStringList tos,log;
+	QStringList tos;
 	foreach(ServerPlayer*player, to)
 		if (player != nullptr) tos << player->objectName();
-	log << type << (from ? from->objectName() : "") << tos.join("+") << card_str << arg << arg2 << arg3 << arg4 << arg5;
-	return JsonUtils::toJsonArray(log);
+	return QVariantMap{
+		{QStringLiteral("schema_version"), 1},
+		{QStringLiteral("log_type"), type},
+		{QStringLiteral("from_player"), from ? from->objectName() : QString()},
+		{QStringLiteral("to_players"), tos},
+		{QStringLiteral("card_string"), card_str},
+		{QStringLiteral("arguments"), QStringList{arg, arg2, arg3, arg4, arg5}}
+	};
 }
 
 DamageStruct::DamageStruct()
