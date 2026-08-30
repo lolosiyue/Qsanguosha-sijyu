@@ -229,7 +229,8 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 		recorder = nullptr;
 
 		replayer = new Replayer(this, filename);
-		connect(replayer, SIGNAL(command_parsed(QString)), this, SLOT(processServerPacket(QString)));
+		connect(replayer, &Replayer::command_parsed,
+			this, &Client::processReplayMessage);
 	}
 }
 
@@ -343,7 +344,13 @@ void Client::updateCard(const QVariant &val)
 void Client::signup()
 {
 	if (replayer)
+	{
+		if (!replayer->isValid()) {
+			emit error_message(replayer->errorString());
+			return;
+		}
 		replayer->start();
+	}
 	else {
 		JsonArray arg;
 		arg << Config.value("EnableReconnection").toBool();
@@ -498,13 +505,9 @@ void Client::disconnectFromHost()
 	}
 }
 
-void Client::processServerPacket(const QString &cmd)
+void Client::processReplayMessage(const ProtocolMessage &message)
 {
-	ProtocolMessage message;
-	const ProtocolDecodeResult result = m_protocolRouter.decode(
-		ProtocolVersion::V1, cmd.toUtf8(), &message);
-	if (result.success)
-		dispatchProtocolMessage(message, true);
+	dispatchProtocolMessage(message, true);
 }
 
 void Client::processServerPacket(const QByteArray &cmd)
@@ -535,12 +538,10 @@ void Client::processServerPacket(const QByteArray &cmd)
 
 	if (recorder != nullptr && message.command != S_COMMAND_PROTOCOL_SWITCH) {
 		QString replayError;
-		const QByteArray replayLine = m_protocolRouter.encodeReplayV1(message, &replayError);
-		if (replayLine.isEmpty()) {
-			failProtocol(QStringLiteral("Replay normalization failed: %1").arg(replayError));
+		if (!recorder->recordMessage(message, &replayError)) {
+			failProtocol(QStringLiteral("Replay recording failed: %1").arg(replayError));
 			return;
 		}
-		recorder->recordLine(QString::fromUtf8(replayLine));
 	}
 	dispatchProtocolMessage(message, false);
 }
@@ -3174,7 +3175,9 @@ void Client::onPlayerDoGuanxingStep(int from, int to)
 	if (recorder) {
 		Packet packet(S_SRC_ROOM | S_TYPE_NOTIFICATION | S_DEST_CLIENT, S_COMMAND_MIRROR_GUANXING_STEP);
 		packet.setMessageBody(args);
-		recorder->recordLine(packet.toJson());
+		QString error;
+		if (!recorder->recordMessage(protocolMessageFromV1Packet(packet), &error))
+			qWarning().noquote() << "Replay mirror recording failed:" << error;
 	}
 }
 

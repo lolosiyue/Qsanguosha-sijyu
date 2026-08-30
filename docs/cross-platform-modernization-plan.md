@@ -188,11 +188,13 @@ CI 使用 `bundletool` 檢查 base 及 pack 大小：[Google Play app size limit
 ### 6.3 協定與重播
 
 - 2026-08-30 已完成 Protocol V1 codec boundary、V1-compatible capability
-  negotiation、codec-neutral `ProtocolMessage`、Protocol V2 envelope／codec contract，
-  以及 V1 OFFER／ACK／COMMIT runtime activation。`Packet` 保留 compatibility facade；
-  production connection 可逐連線啟用 V2，replay 仍正規化為 V1 logical stream。
-- Qt6 切換時網路協定與重播格式各提升一版。
-- 舊客戶端及舊重播不相容；必須顯示「版本過舊」後停止解析，不得崩潰或誤讀。
+  negotiation、codec-neutral `ProtocolMessage`、Protocol V2 envelope／codec contract、
+  V1 OFFER／ACK／COMMIT runtime activation，以及 29/29 typed gameplay interactions。
+  `Packet` 保留 compatibility facade；production connection 可逐連線啟用 V2。
+- Replay V2 使用明確格式／協定版本 header 與 Protocol V2 event；新錄影一律
+  寫 V2，headerless Legacy V1 `.txt`／`.png` 保留唯讀相容。
+- 新客戶端可讀 Replay V1/V2；舊客戶端不保證可讀 Replay V2。不支援或損壞的
+  replay 必須顯示明確診斷後停止解析，不得 fallback、部分載入、崩潰或誤讀。
 - 新格式保留本項目現有重播時間軸、快照與接管功能。
 - 新增伺服器能力宣告、無效詢問資訊、AI 除錯狀態及控制命令，使用明確型別及欄位驗證。
 
@@ -257,7 +259,7 @@ M1 已完成（2026-08-09 對照 CMakeLists.txt 確認）：`qsanguosha_engine` 
 | M1 | **Complete**（2026-08-09） | Windows CMake 過渡建置、STATIC engine（僅 Qt Core／Network）、引擎／GUI 解耦契約（SkillDialogInfo／EngineRuntimeContext／audioEffectRequested／EngineBootstrap）、allowlist gate、`deploy-server`、engine smoke test | Windows GUI 與既有建置結果可對照；STATIC engine 僅連結 Qt Core／Network；GUI／CMD server 驗收完成 |
 | M2 | In Progress（2026-08-30：Lua 5.4.8 本地實作） | Qt 6.11.1、VS 2026 v145 + `msvc2022_64` kit；Lua 5.4.8、最小相容層、seeded state API 與 focused 測試已落地 | 外部四個低頻 Lua 問題修正；Windows GUI、server、Lua/SWIG 及遠端完整測試通過 |
 | M3 | Not Started | `SkillDialogInfo`、選包白名單、確定性 RNG | 相同種子、輸入與包集合產生相同結果；白名單不可由客戶端繞過 |
-| M4 | In Progress（V2 codec、negotiation、runtime activation complete；typed gameplay payload／replay migration pending） | 協定與重播版本化、相容性拒絕路徑 | 新舊版本差異可診斷；不支援版本被明確拒絕而非靜默誤讀 |
+| M4 | Acceptance Pending（2026-08-30：V1/V2 codec、negotiation、runtime activation、29/29 typed gameplay、Replay V1/V2 migration 與本地 targeted gates 完成；Replay code head 遠端 4/4 通過，但最終驗收被既有 `extensions/main@4dd3010` 的 `hunlie.lua:1298` 解析錯誤阻塞） | 協定與重播版本化、相容性拒絕路徑 | 新舊版本差異可診斷；不支援版本被明確拒絕而非靜默誤讀；遠端 Windows／Linux／Docker／package gates 全綠後才標記 Complete |
 | M5 | Not Started | Ubuntu 無頭伺服器與 Null 音訊 | 無 X11/Wayland、FMOD 或 GUI 依賴仍可啟動及完成整局測試 |
 | M6 | In Progress（2026-08-28：Linux GUI M2B-A 交付 `IAudioBackend`／FMOD／Qt／Null 三後端、`QSAN_AUDIO_BACKEND`、結構化診斷與 `--multimedia-smoke`） | 桌面 FMOD 後端抽象化及診斷 | Windows 音效行為無回歸；音訊失敗不影響遊戲狀態 |
 | M7 | Not Started | Android Qt Multimedia、WAV/OGG 播放器池與觸控 UI | API 28 真機及 API 36 目標建置通過；前後景切換與音訊生命週期穩定 |
