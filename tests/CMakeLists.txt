@@ -630,7 +630,7 @@ qsan_add_ctest(qsanguosha_replay_game_state_protocol qsanguosha_replay_tests
     LABELS "protocol;fast"
 )
 
-add_executable(qsanguosha_replay_v2_tests
+set(qsan_replay_v2_test_sources
     replay-v2/replay-v2-test.cpp
     ${QSAN_TEST_ROOT}/src/util/recorder.cpp
     ${QSAN_TEST_ROOT}/src/util/recorder.h
@@ -638,23 +638,42 @@ add_executable(qsanguosha_replay_v2_tests
     ${QSAN_TEST_ROOT}/src/util/replay-game-state.h
     ${QSAN_TEST_ROOT}/src/util/replay-index.cpp
     ${QSAN_TEST_ROOT}/src/util/replay-index.h
-    ${QSAN_TEST_ROOT}/src/util/replay-takeover.cpp
-    ${QSAN_TEST_ROOT}/src/util/replay-takeover.h
     ${QSAN_TEST_ROOT}/src/server/server-core.h
+)
+
+# Server-only CI intentionally does not require Qt QML. Keep the codec,
+# container, playback, index, and snapshot contract there; add the
+# client-dependent takeover branch when the GUI Qt surface is available.
+set(qsan_replay_v2_test_takeover 0)
+if(TARGET Qt6::Qml AND TARGET Qt6::Widgets)
+    list(APPEND qsan_replay_v2_test_sources
+        ${QSAN_TEST_ROOT}/src/util/replay-takeover.cpp
+        ${QSAN_TEST_ROOT}/src/util/replay-takeover.h
+    )
+    set(qsan_replay_v2_test_takeover 1)
+endif()
+
+add_executable(qsanguosha_replay_v2_tests
+    ${qsan_replay_v2_test_sources}
 )
 target_include_directories(qsanguosha_replay_v2_tests PRIVATE
     ${QSAN_ENGINE_TEST_INCLUDES}
 )
 target_compile_definitions(qsanguosha_replay_v2_tests PRIVATE
     QSAN_TEST_ROOT_PATH="${QSAN_TEST_ROOT}"
+    QSAN_REPLAY_V2_TEST_TAKEOVER=${qsan_replay_v2_test_takeover}
 )
 target_link_libraries(qsanguosha_replay_v2_tests PRIVATE
     qsanguosha_engine
     Qt6::Core
     Qt6::Gui
-    Qt6::Qml
-    Qt6::Widgets
 )
+if(qsan_replay_v2_test_takeover)
+    target_link_libraries(qsanguosha_replay_v2_tests PRIVATE
+        Qt6::Qml
+        Qt6::Widgets
+    )
+endif()
 qsan_add_ctest(qsanguosha_replay_v2_contract qsanguosha_replay_v2_tests
     LABELS "replay;protocol;fast"
 )
