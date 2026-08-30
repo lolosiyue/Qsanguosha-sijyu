@@ -2,9 +2,10 @@
 
 - 狀態：F1.1 Architecture Cleanup 完成（2026-08-29）
 - 範圍：PR #13 的 client interaction 中間層
-- 相容邊界：不改 server gameplay、Protocol V1 wire、RoomScene UI；Protocol V1
-  codec boundary 已抽出，但不在本階段實作 Protocol V2、TUI、Android、WASM 或
-  structured `askForQml`
+- 相容邊界：不改 server gameplay、RoomScene UI 或 ClientCore typed model；
+  Protocol V2 已逐連線啟用，首個 typed wire payload 僅涵蓋
+  `S_COMMAND_MULTIPLE_CHOICE`。TUI、Android、WASM 與 structured `askForQml`
+  仍不在本階段。
 
 ## 最終分類
 
@@ -19,7 +20,8 @@
 ## 資料流
 
 ```text
-Protocol V1 request
+Protocol V1 request，或 Protocol V2 typed request
+  -> ProtocolGameplayPayloadRegistry 正規化成 legacy-compatible logical payload
   -> InteractionDescriptorRegistry request builder
   -> InteractionRequestFactory
   -> canonical InteractionRequest
@@ -32,8 +34,9 @@ UI response
   -> canonical InteractionResponse
   -> Client::submitInteractionResponse()
   -> ClientCore validation
-  -> descriptor-selected LegacyV1InteractionReplyAdapter
+  -> descriptor-selected LegacyV1InteractionReplyAdapter（logical reply）
   -> exactly one replyToServer()
+  -> ProtocolGameplayPayloadRegistry 依 active version 編成 V1 scalar 或 V2 object
 ```
 
 `DesktopInteractionView` 只查 registry 並呼叫 typed presenter port；舊 `Client::presentStructuredInteraction()` 及其 20+ case switch 已移除。
@@ -106,9 +109,14 @@ ClientCore 在 request 啟動時移除其他 key。Choice 的 `synthetic_cancel`
 
 `ICardEligibilityProvider` 的輸出是 `suggestedCards`、`suggestedDisabledCards`、diagnostic，永遠只是 presentation hint；不得覆蓋 server-authoritative selection。
 
-## Protocol V1 adapter
+## Logical reply adapter 與 wire boundary
 
-所有 accepted UI response 經 `Client::submitInteractionResponse()` 補上 request id、server serial、command，再由 ClientCore 驗證。只有 accepted response 才可進入 `LegacyV1InteractionReplyAdapter`。
+所有 accepted UI response 經 `Client::submitInteractionResponse()` 補上 request id、server serial、command，再由 ClientCore 驗證。只有 accepted response 才可進入 `LegacyV1InteractionReplyAdapter`。該 adapter 名稱保留歷史來源；其輸出現在是 logical payload，不代表連線必定使用 V1。
+
+`S_COMMAND_MULTIPLE_CHOICE` 的 logical request 仍為四個字串，logical reply
+仍為 scalar choice。`ProtocolCodecRouter` 的 registry 只在 V2 wire 邊界把兩者
+轉為 schema-versioned objects；因此 V1/V2 產生完全相同的 canonical
+`InteractionRequest`，ClientCore 與 Desktop presenter 不含 protocol-version branch。
 
 Adapter 保留既有 wire 細節，包括：
 
@@ -162,8 +170,9 @@ debug\QSanguosha.exe --interaction-inventory artifacts\client-core-interaction-m
 | Protocol roadmap item | 狀態 |
 |---|---|
 | Protocol V1 codec boundary | Complete |
-| Protocol V2 codec／payload | Not Started |
-| Capability negotiation | Not Started |
+| Protocol V2 codec／runtime activation | Complete |
+| Typed gameplay payload migration | In Progress（1/29：`MULTIPLE_CHOICE`） |
+| Capability negotiation | Complete |
 | Replay version bump | Not Started |
 
-以上均不屬 F1.1。
+Replay version bump 與其餘 28 個 payload 不屬 F1.1。
