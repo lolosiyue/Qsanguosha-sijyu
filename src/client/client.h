@@ -7,6 +7,7 @@
 #include "client-interaction-presenter.h"
 #include "custom-interaction-registry.h"
 #include "protocol/protocol-negotiation.h"
+#include "protocol/protocol-runtime.h"
 //#include "skill.h"
 #include "room-state.h"
 //#include "protocol.h"
@@ -377,6 +378,11 @@ protected:
 private:
     ClientSocket *socket;
     QSanProtocol::ProtocolSessionState m_protocolSessionState;
+    QSanProtocol::ProtocolCodecRouter m_protocolRouter;
+    QSanProtocol::ProtocolMessageIdGenerator m_protocolMessageIds;
+    QList<QSanProtocol::ProtocolMessage> m_deferredProtocolMessages;
+    bool m_protocolActivationPending;
+    bool m_deferredServerConnected;
     bool m_isGameOver;
     bool m_isDisconnected;
     ClientPlayer *m_original_self;
@@ -406,11 +412,18 @@ private:
     QMap<int, Player::Place> place_map;
 
     unsigned int _m_lastServerSerial;
+    quint64 m_lastServerMessageId;
     lua_State *m_client_lua;
     ClientCore *m_interactionCore;
     DesktopInteractionView *m_desktopInteractionView;
 
     void beginInteraction(InteractionRequest request);
+    void sendProtocolMessage(QSanProtocol::ProtocolMessage message);
+    void flushDeferredProtocolMessages();
+    bool dispatchProtocolMessage(const QSanProtocol::ProtocolMessage &message,
+                                 bool replayInput);
+    bool handleProtocolSwitch(const QSanProtocol::ProtocolMessage &message);
+    void failProtocol(const QString &detail);
     InteractionRequest makeInteractionRequest(InteractionType type,
         InteractionPayload payload, bool cancelable = false) const;
     void cancelInteraction(InteractionType type, InteractionCancelReason reason);
@@ -432,7 +445,7 @@ public slots:
     void processServerPacket(const QString &cmd);
 
 private slots:
-    void processServerPacket(const char *cmd);
+    void processServerPacket(const QByteArray &cmd);
     bool processServerRequest(const QSanProtocol::Packet &packet);
     void notifyRoleChange(const QString &new_role);
     void onPlayerChooseSuit();

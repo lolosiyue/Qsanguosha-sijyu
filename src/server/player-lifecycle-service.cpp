@@ -39,7 +39,8 @@ ServerPlayer *PlayerLifecycleService::addSocket(ClientSocket *socket)
     m_roster.add(player);
 
     QObject::connect(player, SIGNAL(disconnected()), &m_room, SLOT(reportDisconnection()));
-    QObject::connect(player, SIGNAL(request_got(QString)), &m_room, SLOT(processClientPacket(QString)));
+    QObject::connect(player, &ServerPlayer::request_got,
+                     &m_room, &Room::processClientPacket);
     return player;
 }
 
@@ -50,7 +51,8 @@ ServerPlayer *PlayerLifecycleService::addAIPlayer()
     m_roster.add(player);
 
     QObject::connect(player, SIGNAL(disconnected()), &m_room, SLOT(reportDisconnection()));
-    QObject::connect(player, SIGNAL(request_got(QString)), &m_room, SLOT(processClientPacket(QString)));
+    QObject::connect(player, &ServerPlayer::request_got,
+                     &m_room, &Room::processClientPacket);
     return player;
 }
 
