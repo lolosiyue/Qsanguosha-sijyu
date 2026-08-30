@@ -8,6 +8,7 @@ Codec: implemented
 Production activation: enabled after explicit V1 barrier
 Replay: V1 logical normalization
 Framing: byte-oriented newline transport, maximum 65535 encoded bytes
+Typed gameplay payloads: 1/29 interaction commands
 ```
 
 `QSanProtocol::ProtocolV2Codec` can independently encode and decode a
@@ -124,6 +125,67 @@ rejected to keep recursive validation bounded.
 Decode is transactional: failure leaves the output message unchanged. Encode
 failure returns an empty `QByteArray` and, when supplied, fills `QString *error`.
 
+## Typed gameplay payload inventory
+
+`ProtocolGameplayPayloadRegistry` is the single wire-boundary registry. Gameplay,
+server decision code, `Client`, and ClientCore continue to exchange the existing
+logical payload. The router applies the following rules:
+
+| Active version／command／direction | Wire transformation |
+|---|---|
+| V1／any command | Identity |
+| V2／non-migrated command | Identity |
+| V2／`S_COMMAND_MULTIPLE_CHOICE` Room → Client request | Legacy four-string array → typed request object |
+| V2／`S_COMMAND_MULTIPLE_CHOICE` Client → Room reply | Legacy scalar string → typed reply object |
+| V2／`S_COMMAND_MULTIPLE_CHOICE` other directions | Identity |
+
+The first migrated inventory is therefore exactly **1 of 29** gameplay
+interaction commands. No new command ID is introduced.
+
+### `S_COMMAND_MULTIPLE_CHOICE` request
+
+```json
+{
+  "schema_version": 1,
+  "skill_name": "tuxi",
+  "options": ["left", "right"],
+  "disabled_options": ["left"],
+  "tip": "choose a side"
+}
+```
+
+| Field | Type | Required | Contract |
+|---|---|---|---|
+| `schema_version` | integer | yes | Exactly `1` |
+| `skill_name` | string | yes | Legacy skill/reason string |
+| `options` | array of strings | yes | Order and duplicates are preserved |
+| `disabled_options` | array of strings | yes | Structural data; subset membership is not enforced here |
+| `tip` | string | yes | Existing display tip |
+
+The V1 request remains exactly `[skill_name, "a+b", "disabled", tip]`.
+Empty option tokens retain the legacy `QString::split('+')` behavior; empty
+disabled tokens are omitted when normalizing to the legacy logical payload.
+
+### `S_COMMAND_MULTIPLE_CHOICE` reply
+
+```json
+{
+  "schema_version": 1,
+  "choice": "cancel"
+}
+```
+
+Both fields are required and strictly typed. `choice` is structural at this
+boundary; membership, enabled state, and gameplay legality remain server
+authority. `"cancel"` is an ordinary valid string. The V1 reply remains the
+scalar choice string.
+
+Unknown additional object members are ignored for compatible schema evolution.
+Missing required members, wrong types, a schema other than `1`, and legacy
+array/scalar shapes sent inside a migrated V2 envelope fail with
+`InvalidPayload`; there is no V1 fallback after V2 activation. Parsing and
+registry transforms are transactional.
+
 ## Compatibility
 
 ```text
@@ -134,11 +196,15 @@ preferredVersion may be V2
 activeVersion remains V1 until COMMIT
 Production may become V2 per connection
 Replay remains V1-compatible logical packets
+MULTIPLE_CHOICE V2 wire uses typed objects
+All other gameplay payloads retain their current wire shape
 ```
 
 The V2 codec has no dependency on legacy `Packet` or `PacketDescription`.
-Gameplay payload schemas remain unchanged in this slice; typed payload migration
-and a future replay version remain later work.
+After V2 decode, the registry restores the legacy-compatible logical payload
+before Client/server dispatch and before `encodeReplayV1()`. Replay therefore
+never receives the typed V2 object. A future replay version and the remaining
+28 gameplay payload migrations remain later work.
 
 ## Transport
 
