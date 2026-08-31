@@ -820,7 +820,91 @@ public:
 
 #include "lua-wrapper.h"
 #include "clientplayer.h"
+#include "gamerule.h"
+#include "room.h"
+#include "lua.hpp"
 
+static bool luaPushGameModeCallback(lua_State *L, const QString &mode, const char *field)
+{
+	lua_getglobal(L, "sgs");
+	if (!lua_istable(L, -1)) {
+		lua_pop(L, 1);
+		return false;
+	}
+	lua_getfield(L, -1, "GameModeCallbacks");
+	lua_remove(L, -2);
+	if (!lua_istable(L, -1)) {
+		lua_pop(L, 1);
+		return false;
+	}
+	lua_getfield(L, -1, mode.toUtf8().constData());
+	lua_remove(L, -2);
+	if (!lua_istable(L, -1)) {
+		lua_pop(L, 1);
+		return false;
+	}
+	lua_getfield(L, -1, field);
+	lua_remove(L, -2);
+	if (!lua_isfunction(L, -1)) {
+		lua_pop(L, 1);
+		return false;
+	}
+	return true;
+}
+
+bool tryLuaGameModeReward(Room *room, ServerPlayer *killer, ServerPlayer *victim)
+{
+	if (!room || !victim)
+		return false;
+	lua_State *L = room->getLuaState();
+	if (!L)
+		return false;
+	if (!luaPushGameModeCallback(L, room->getMode(), "reward"))
+		return false;
+	if (killer)
+		SWIG_NewPointerObj(L, killer, SWIGTYPE_p_ServerPlayer, 0);
+	else
+		lua_pushnil(L);
+	SWIG_NewPointerObj(L, victim, SWIGTYPE_p_ServerPlayer, 0);
+	if (LuaRuntime::protectedCall(L, 2, 1, 0) != 0) {
+		qWarning("GameMode reward callback error: %s", qUtf8Printable(luaErrorWithTraceback(L)));
+		lua_pop(L, 1);
+		return false;
+	}
+	const bool handled = lua_toboolean(L, -1) && !lua_isnil(L, -1);
+	lua_pop(L, 1);
+	return handled;
+}
+
+bool tryLuaGameModeGetWinner(Room *room, ServerPlayer *victim, QString *winner)
+{
+	if (!room || !victim || !winner)
+		return false;
+	lua_State *L = room->getLuaState();
+	if (!L)
+		return false;
+	if (!luaPushGameModeCallback(L, room->getMode(), "getWinner"))
+		return false;
+	SWIG_NewPointerObj(L, victim, SWIGTYPE_p_ServerPlayer, 0);
+	if (LuaRuntime::protectedCall(L, 1, 1, 0) != 0) {
+		qWarning("GameMode getWinner callback error: %s", qUtf8Printable(luaErrorWithTraceback(L)));
+		lua_pop(L, 1);
+		return false;
+	}
+	if (lua_isnil(L, -1)) {
+		lua_pop(L, 1);
+		return false;
+	}
+	if (lua_isboolean(L, -1) && !lua_toboolean(L, -1)) {
+		lua_pop(L, 1);
+		return false;
+	}
+	size_t len = 0;
+	const char *text = lua_tolstring(L, -1, &len);
+	*winner = text ? QString::fromUtf8(text, int(len)) : QString();
+	lua_pop(L, 1);
+	return true;
+}
 
 bool LuaTriggerSkill::triggerable(ServerPlayer *target, Room *room, TriggerEvent event, ServerPlayer *owner, QVariant data) const
 {

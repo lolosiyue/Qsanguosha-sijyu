@@ -16,6 +16,8 @@
 | `display_name` | QString | 模式顯示名稱 |
 | `player_count` | int | 人數 |
 | `roles` | QString | 身份配置字串 |
+| `reward_policy` | QString | 獎懲策略，預設 `identity` |
+| `win_policy` | QString | 勝負策略，預設 `identity` |
 | `is_scenario` | bool | 是否劇本模式 |
 | `is_mini_scene` | bool | 是否小型場景 |
 | `shuffle_seats` | bool | 是否依伺服器的隨機座次設定打亂玩家座次，預設 `true` |
@@ -42,11 +44,13 @@ bool Engine::addGameMode(const GameModeStruct &mode);
 // 設置模式特性
 void Engine::setGameModeShuffleSeats(const QString &mode_id, bool shuffle_seats);
 void Engine::setGameModeLordWelfare(const QString &mode_id, bool lord_welfare);
+void Engine::setGameModeRewardPolicy(const QString &mode_id, const QString &reward_policy);
+void Engine::setGameModeWinPolicy(const QString &mode_id, const QString &win_policy);
 ```
 
 `shuffle_seats` 只控制 `Room::m_players` 的座次打亂，不控制身份字串順序；需要固定身份配置的模式應由 Lua 自行配置身份。
 
-`getAvailableModes()` 與回傳 `GameModeStruct` 的 API 僅供 C++ 使用，不暴露給 Lua。未知 ID 的 `getGameMode()` 回傳無效空結構。
+`getAvailableModes()` 與回傳 `GameModeStruct` 的 API 僅供 C++ 使用，不暴露給 Lua。未知 ID 的 `getGameMode()` 回傳無效空結構。Lua 用 `createMode{}` 與上述 setter 設定政策，不把整個 `GameModeStruct` 包進 SWIG。
 
 ### 模式分組（合併）
 
@@ -140,6 +144,44 @@ createMode{
 
 `skipChooseGeneral = true` 會略過引擎選將、先將玩家設為 `anjiang`，讓 Lua 在 `GameReady` 完成選將。`showRole = true` 公開所有身份；為 `false` 時只公開主公，其餘僅通知本人。自訂模式的 `lordWelfare` 直接決定主公福利，不再依玩家數推導。
 
+### 獎懲／勝負政策（第一切片）
+
+`GameRule::rewardAndPunish`／`getWinner` 讀 `GameModeStruct.reward_policy`／`win_policy`，不再用 `mode_id` 字串分支。內建對照：
+
+| 模式 | reward_policy | win_policy |
+|------|---------------|------------|
+| 一般身份 | `identity` | `identity` |
+| `03_1v2` | `doudizhu` | `identity` |
+| `04_2v2` | `happy` | `team` |
+| `06_3v3` | `official3v3` | `3v3` |
+| `06_XMode` | `none` | `xmode` |
+| `08_defense` | `none` | `team` |
+| `04_boss`／`05_ol`／`06_ol` | `none` | `identity` |
+
+`createMode` 可用 camelCase（`rewardPolicy`／`winPolicy`／`getWinner`），snake_case 為別名。可選函數寫入當前 VM 的 `sgs.GameModeCallbacks[mode_id]`（`addModes` 因重複 ID 失敗時仍要寫，Room 會再載入 `sanguosha.lua`）。
+
+```lua
+createMode{
+    name = "競技模式",
+    class = "competitive",
+    roles = {"ZCFF", "ZCCCFF"},
+    rewardPolicy = "identity",
+    winPolicy = "team",
+    reward = function(killer, victim)
+        -- killer 可為 nil；回傳 true 已處理，false／nil 繼續跑 C++ 政策
+        return false
+    end,
+    getWinner = function(victim)
+        -- 勝負字串立刻結束；"" 還沒人贏；nil 交給 win_policy
+        return nil
+    end,
+}
+```
+
+`wujieNoRewardAndPunish-Keep` 在 Lua 之前跳過整段獎懲。未知政策 `qWarning` 後回退 `identity`。國戰疊加順序：`3v3`／`xmode`／`team` → `EnableHegemony` → `identity`。
+
+本切片不動：`RoomThread` 回合循環、`HulaoPassMode`、`02_1v1`／boss 的 `GameOverJudge` 前置、`BuryVictim` 的 OL 額外摸牌、選將緒程。`04_1v3` 不呼叫 `rewardAndPunish`／`getWinner`。自訂身份 `getRoleEnum()` 為 `UnknownRole`，須自寫 `getWinner`。
+
 ### 使用方法
 
 `addFunction.lua` 由擴展載入流程先行載入後，可直接使用全域 `createMode{}`。
@@ -159,5 +201,5 @@ if sgs.Sanguosha:getModeGroup(room:getMode()) == "世家模式" then ... end
 ## 注意事項
 
 - 本次重構涉及核心文件修改，**必須全編譯**。
-- 若 Lua 無法識別 `GameModeStruct`，請確保已重新執行 SWIG 生成。
+- `GameModeStruct` 不暴露給 Lua；用 `createMode{}` 與 Engine setter。
 - `addRoleMapping` 可在 Lua 中呼叫以註冊自訂身份，如 `sgs.Sanguosha:addRoleMapping("villager", "V")`。

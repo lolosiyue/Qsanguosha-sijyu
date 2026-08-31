@@ -1,6 +1,7 @@
 #include "gamerule.h"
 #include "room.h"
 #include "engine.h"
+#include "structs.h"
 #include "settings.h"
 #include "roomthread.h"
 #include "wrapped-card.h"
@@ -1823,8 +1824,17 @@ void GameRule::doBossModeDifficultySettings(ServerPlayer *lord) const
 void GameRule::rewardAndPunish(ServerPlayer *killer,ServerPlayer *victim) const
 {
     Room *room = victim->getRoom();
+    if(victim->getMark("wujieNoRewardAndPunish-Keep")>=1)
+        return;
+    if(tryLuaGameModeReward(room,killer,victim))
+        return;
 
-    if(room->getMode()=="03_1v2") {
+    GameModeStruct gameMode = Sanguosha->getGameMode(room->getMode());
+    QString policy = gameMode.reward_policy;
+    if(policy.isEmpty())
+        policy = QStringLiteral("identity");
+
+    if(policy=="doudizhu") {
         if(victim->getRole()=="rebel") {
             foreach (ServerPlayer *p,room->getOtherPlayers(victim)) {
                 if(p->isAlive()&&p->getRole()=="rebel") {
@@ -1839,58 +1849,82 @@ void GameRule::rewardAndPunish(ServerPlayer *killer,ServerPlayer *victim) const
                 }
             }
         }
-    } else if(room->getMode()=="04_2v2") {
+        return;
+    }
+    if(policy=="happy") {
         foreach (ServerPlayer *p,room->getOtherPlayers(victim)) {
             if(p->getRole()==victim->getRole()) {
                 p->drawCards(1,"04_2v2");
                 break;
             }
         }
-    }else if(killer&&killer->isAlive()&&victim->getMark("wujieNoRewardAndPunish-Keep")<1){
-		if(room->getMode()=="06_XMode"||room->getMode()=="04_boss"||room->getMode()=="06_ol"
-			|| room->getMode()=="05_ol"||room->getMode()=="08_defense")
-			return;
-		if(room->getMode()=="06_3v3") {
-			if(Config.value("3v3/OfficialRule","2013").toString().startsWith("201"))
-				killer->drawCards(2,"kill");
-			else
-				killer->drawCards(3,"kill");
-		} else {
-			if(victim->getRole()=="rebel"&&killer != victim)
-				killer->drawCards(3,"kill");
-			else if(victim->getRole()=="loyalist"&&killer->getRole()=="lord")
-				killer->throwAllHandCardsAndEquips("kill");
-		}
-	}
+        return;
+    }
+    if(policy=="none")
+        return;
+    if(policy=="official3v3") {
+        if(killer&&killer->isAlive()) {
+            if(Config.value("3v3/OfficialRule","2013").toString().startsWith("201"))
+                killer->drawCards(2,"kill");
+            else
+                killer->drawCards(3,"kill");
+        }
+        return;
+    }
+    if(policy!="identity")
+        qWarning("Unknown reward_policy '%s' for mode '%s'; falling back to identity.",
+                 qPrintable(policy), qPrintable(room->getMode()));
+    if(killer&&killer->isAlive()) {
+        if(victim->getRole()=="rebel"&&killer != victim)
+            killer->drawCards(3,"kill");
+        else if(victim->getRole()=="loyalist"&&killer->getRole()=="lord")
+            killer->throwAllHandCardsAndEquips("kill");
+    }
 }
 
 QString GameRule::getWinner(ServerPlayer *victim,Room *room) const
 {
     QString winner;
+    if(tryLuaGameModeGetWinner(room,victim,&winner))
+        return winner;
 
-    if(room->getMode()=="06_3v3") {
+    GameModeStruct gameMode = Sanguosha->getGameMode(room->getMode());
+    QString policy = gameMode.win_policy;
+    if(policy.isEmpty())
+        policy = QStringLiteral("identity");
+
+    if(policy=="3v3") {
         switch (victim->getRoleEnum()) {
         case Player::Lord: winner = "renegade+rebel"; break;
         case Player::Renegade: winner = "lord+loyalist"; break;
         default:
             break;
         }
-    } else if(room->getMode()=="06_XMode") {
+        return winner;
+    }
+    if(policy=="xmode") {
         QString role = victim->getRole();
         ServerPlayer *leader = victim->getTag("XModeLeader").value<ServerPlayer *>();
-        if(leader->getTag("XModeBackup").toStringList().isEmpty()) {
+        if(leader&&leader->getTag("XModeBackup").toStringList().isEmpty()) {
             if(role.startsWith('r'))
                 winner = "lord+loyalist";
             else
                 winner = "renegade+rebel";
         }
-    } else if(room->getMode()=="08_defense"||room->getMode()=="04_2v2") {
+        return winner;
+    }
+    if(policy=="team") {
         QStringList alive_roles = room->aliveRoles(victim);
         if(!alive_roles.contains("loyalist"))
             winner = "rebel";
         else if(!alive_roles.contains("rebel"))
             winner = "loyalist";
-    } else if(Config.EnableHegemony) {
+        return winner;
+    }
+    if(policy!="identity")
+        qWarning("Unknown win_policy '%s' for mode '%s'; falling back to identity.",
+                 qPrintable(policy), qPrintable(room->getMode()));
+    if(Config.EnableHegemony) {
         QString init_kingdom;
         foreach (ServerPlayer *p,room->getAlivePlayers()) {
             if(!p->property("basara_generals").toString().isEmpty())
