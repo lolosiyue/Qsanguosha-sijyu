@@ -1,6 +1,9 @@
 ﻿#ifndef _SOCKET_H
 #define _SOCKET_H
 
+#include <QObject>
+#include <QTimer>
+
 class ClientSocket;
 
 class ServerSocket : public QObject

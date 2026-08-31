@@ -1,5 +1,7 @@
 #include "client.h"
 #include "client-core.h"
+#include "client-live-session.h"
+#include "client-game-state-reducer.h"
 #include "desktop-interaction-view.h"
 #include "interaction-descriptor-registry.h"
 #include "interaction-request-factory.h"
@@ -20,6 +22,7 @@
 #include "wrapped-card.h"
 #include "skill-instance-utils.h"
 #include "protocol/card-provenance-message.h"
+#include "protocol/gameplay/simple-choice-payloads.h"
 #include "protocol/protocol-payload-registry.h"
 #include "protocol/session/session-payloads.h"
 #include "protocol/skill-instance-message.h"
@@ -67,7 +70,7 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 	: QObject(parent), m_isDiscardActionRefusable(true), m_bossLevel(0),
 	status(NotActive), alive_count(1), swap_pile(0), add_round(0), _m_roomState(true),
 	m_client_lua(nullptr), m_original_self(nullptr), m_takeoverManager(nullptr),
-	m_interactionCore(nullptr), m_desktopInteractionView(nullptr),
+	m_liveSession(nullptr), m_interactionCore(nullptr), m_desktopInteractionView(nullptr),
 	m_dispatchingRequestId(0)
 {
 	ClientInstance = this;
@@ -100,6 +103,7 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 	m_callbacks[S_COMMAND_SHOW_VIRTUAL_CARD] = &Client::showVirtualCard;
 	m_callbacks[S_COMMAND_CARD_PROVENANCE] = &Client::cardProvenance;
 	m_callbacks[S_COMMAND_UPDATE_PLAYER_UI_STATE] = &Client::updatePlayerUIState;
+	m_callbacks[S_COMMAND_STATE_SYNC] = &Client::stateSync;
 	m_callbacks[S_COMMAND_UPDATE_CARD] = &Client::updateCard;
 	m_callbacks[S_COMMAND_SET_MARK] = &Client::setMark;
 	m_callbacks[S_COMMAND_LOG_SKILL] = &Client::log;
@@ -213,19 +217,42 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 		injectedSocket->setParent(this);
 
 	if (filename.isEmpty()) {
-		socket = injectedSocket ? injectedSocket : new NativeClientSocket;
 		recorder = new Recorder(this);
 		m_isDisconnected = false;
 
 		replayer = nullptr;
+		m_liveSession = new ClientLiveSession(m_interactionCore, this);
+		connect(m_liveSession, &ClientLiveSession::transportConnected,
+			this, &Client::socket_connected);
+		connect(m_liveSession, &ClientLiveSession::frontendMessageReceived,
+			this, &Client::processLiveProtocolMessage);
+		connect(m_liveSession, &ClientLiveSession::disconnected, this, [this]() {
+			m_isDisconnected = true;
+			emit socket_disconnected();
+		});
+		connect(m_liveSession, &ClientLiveSession::fatalError, this,
+			[this](int, const QString &, const QString &detail) {
+				emit error_message(detail);
+			});
 
-		connect(socket, SIGNAL(message_got(QByteArray)), this, SLOT(processServerPacket(QByteArray)));
-		connect(socket, SIGNAL(error_message(QString)), this, SIGNAL(error_message(QString)));
-		connect(socket, SIGNAL(connected()), this, SIGNAL(socket_connected()));
-		connect(socket, SIGNAL(disconnected()), this, SIGNAL(socket_disconnected()));
-		socket->connectToHost();
+		ClientLiveSessionOptions options;
+		options.screenName = Config.UserName;
+		options.avatar = Config.UserAvatar;
+		options.reconnectRequested = Config.value("EnableReconnection").toBool();
+		options.automaticSignup = false;
+		options.host = Config.HostAddress;
+		options.port = Config.value("ServerPort", "9527").toString().toUShort();
+		const qsizetype separator = options.host.lastIndexOf(QLatin1Char(':'));
+		if (separator > 0 && options.host.indexOf(QLatin1Char(':')) == separator) {
+			bool portOk = false;
+			const quint16 explicitPort = options.host.mid(separator + 1).toUShort(&portOk);
+			if (portOk) {
+				options.port = explicitPort;
+				options.host.truncate(separator);
+			}
+		}
+		m_liveSession->connectToServer(options, injectedSocket);
 	} else {
-		socket = nullptr;
 		recorder = nullptr;
 
 		replayer = new Replayer(this, filename);
@@ -340,25 +367,10 @@ void Client::signup()
 	else {
 		if (m_original_self == nullptr)
 			m_original_self = Self;
-
-		SignupRequestPayload payload;
-		payload.reconnectRequested = Config.value("EnableReconnection").toBool();
-		payload.screenName = Config.UserName;
-		payload.avatar = Config.UserAvatar;
-		ProtocolMessage request;
 		QString error;
-		if (!m_protocolSession.makeSignupRequest(payload, &request, &error)) {
+		if (m_liveSession == nullptr || !m_liveSession->requestSignup(&error)) {
 			failProtocol(error);
-			return;
 		}
-		sendProtocolMessage(request);
-		const quint64 generation = m_protocolSession.generation();
-		QTimer::singleShot(30000, this, [this, generation]() {
-			if (m_protocolSession.generation() == generation
-				&& m_protocolSession.phase() == ClientSessionPhase::AwaitingSignupReply) {
-				failProtocol(QStringLiteral("Protocol V2 SIGNUP timed out"));
-			}
-		});
 	}
 }
 
@@ -375,20 +387,14 @@ void Client::networkDelayTest(const QVariant &arg)
 
 void Client::replyToServer(CommandType command, const QVariant &arg)
 {
-	if (socket) {
-		ProtocolMessage message;
-		message.type = ProtocolMessageType::Reply;
-		message.source = ProtocolEndpoint::Client;
-		message.destination = ProtocolEndpoint::Room;
-		message.command = command;
-		message.hasPayload = !arg.isNull();
-		message.payload = arg;
-		message.replyTo = m_dispatchingRequestId;
-		if (message.replyTo == 0) {
+	if (m_liveSession != nullptr) {
+		if (m_dispatchingRequestId == 0) {
 			qWarning().noquote() << "Refusing uncorrelated Protocol V2 reply" << command;
 			return;
 		}
-		sendProtocolMessage(message);
+		QString error;
+		if (!m_liveSession->sendReply(command, arg, m_dispatchingRequestId, &error))
+			failProtocol(error);
 	} else if (isTakeoverMode() && m_pendingTakeoverRequestId != 0) {
 		if (m_takeoverManager->submitPlayerResponse(
 				command, arg, m_pendingTakeoverRequestId)) {
@@ -414,49 +420,20 @@ void Client::handleGameEvent(const QVariant &arg)
 
 void Client::requestServer(CommandType command, const QVariant &arg)
 {
-	if (socket) {
-		ProtocolMessage message;
-		message.type = ProtocolMessageType::Request;
-		message.source = ProtocolEndpoint::Client;
-		message.destination = ProtocolEndpoint::Room;
-		message.command = command;
-		message.hasPayload = !arg.isNull();
-		message.payload = arg;
-		sendProtocolMessage(message);
-	}
+	if (m_liveSession == nullptr)
+		return;
+	QString error;
+	if (!m_liveSession->sendRequest(command, arg, &error))
+		failProtocol(error);
 }
 
 void Client::notifyServer(CommandType command, const QVariant &arg)
 {
-	if (socket) {
-		ProtocolMessage message;
-		message.type = ProtocolMessageType::Notification;
-		message.source = ProtocolEndpoint::Client;
-		message.destination = ProtocolEndpoint::Room;
-		message.command = command;
-		message.hasPayload = !arg.isNull();
-		message.payload = arg;
-		sendProtocolMessage(message);
-	}
-}
-
-void Client::sendProtocolMessage(ProtocolMessage message)
-{
-	if (socket == nullptr)
+	if (m_liveSession == nullptr)
 		return;
 	QString error;
-	if (message.messageId == 0
-		&& !m_protocolSession.prepareApplicationMessage(&message, &error)) {
+	if (!m_liveSession->sendControl(command, arg, &error))
 		failProtocol(error);
-		return;
-	}
-
-	const QByteArray encoded = m_protocolRouter.encode(message, &error);
-	if (encoded.isEmpty()) {
-		failProtocol(QStringLiteral("Protocol encode failed: %1").arg(error));
-		return;
-	}
-	socket->send(encoded);
 }
 
 void Client::checkVersion(const QVariant &server_version)
@@ -472,7 +449,7 @@ void Client::checkVersion(const QVariant &server_version)
 
 void Client::setup(const QVariant &setup_json)
 {
-	if (socket && !socket->isConnected())
+	if (m_liveSession != nullptr && !m_liveSession->isActive())
 		return;
 
 	SetupPayload payload;
@@ -506,12 +483,6 @@ void Client::setup(const QVariant &setup_json)
 		return;
 	}
 
-	ProtocolMessage ready;
-	if (!m_protocolSession.makeReadyNotification(&ready, &error)) {
-		failProtocol(error);
-		return;
-	}
-	sendProtocolMessage(ready);
 	emit server_connected();
 }
 
@@ -520,9 +491,8 @@ void Client::disconnectFromHost()
 	// 斷線之後冇人收得到答案,pending request 即刻作廢,唔好留住一個永遠
 	// 完成唔到嘅 request。
 	cancelInteraction(InteractionType::None, InteractionCancelReason::Disconnected);
-	if (!m_isDisconnected) {
-		socket->disconnectFromHost();
-		socket->deleteLater();
+	if (!m_isDisconnected && m_liveSession != nullptr) {
+		m_liveSession->disconnectGracefully();
 		m_isDisconnected = true;
 	}
 }
@@ -532,33 +502,12 @@ void Client::processReplayMessage(const ProtocolMessage &message)
 	dispatchProtocolMessage(message, true);
 }
 
-void Client::processServerPacket(const QByteArray &cmd)
+void Client::processLiveProtocolMessage(const ProtocolMessage &message)
 {
 	if (m_isGameOver)
 		return;
-
-	ProtocolMessage message;
-	const ProtocolDecodeResult result = m_protocolRouter.decode(cmd, &message);
-	if (!result.success) {
-		failProtocol(QStringLiteral("Protocol decode failed: %1").arg(result.detail));
-		return;
-	}
-	QString sessionError;
-	if (!m_protocolSession.acceptIncoming(message, &sessionError)) {
-		failProtocol(sessionError);
-		return;
-	}
 	if (message.command == S_COMMAND_SIGNUP
 		&& message.type == ProtocolMessageType::Reply) {
-		SignupReplyPayload signupReply;
-		if (!SignupReplyPayload::parse(message.payload, &signupReply, &sessionError)) {
-			failProtocol(sessionError);
-			return;
-		}
-		if (!signupReply.accepted) {
-			failProtocol(QStringLiteral("SIGNUP rejected (%1): %2")
-				.arg(signupReply.errorCode, signupReply.message));
-		}
 		return;
 	}
 
@@ -576,6 +525,46 @@ void Client::processServerPacket(const QByteArray &cmd)
 bool Client::dispatchProtocolMessage(const ProtocolMessage &message, bool replayInput)
 {
 	if (message.type == ProtocolMessageType::Notification) {
+		if (replayInput && message.source == ProtocolEndpoint::Room
+			&& message.destination == ProtocolEndpoint::Client) {
+			ClientGameState *targetState = m_interactionCore->state();
+			if (message.command == S_COMMAND_STATE_SYNC) {
+				StateSyncPayload sync;
+				QString error;
+				if (!StateSyncPayload::parse(message.payload, &sync, &error)) {
+					failProtocol(error);
+					return false;
+				}
+				if (sync.phase == QLatin1String("begin")) {
+					m_pendingStateSyncState = *targetState;
+					m_pendingStateSyncState.resetGameplayState();
+					m_stateSyncActive = true;
+					m_stateSyncId = sync.syncId;
+					targetState = &m_pendingStateSyncState;
+				} else if (!m_stateSyncActive || sync.syncId != m_stateSyncId) {
+					failProtocol(QStringLiteral("STATE_SYNC end does not match an active snapshot"));
+					return false;
+				} else {
+					targetState = &m_pendingStateSyncState;
+				}
+			} else if (m_stateSyncActive) {
+				targetState = &m_pendingStateSyncState;
+			}
+
+			const ClientStateReduction reduction
+				= ClientGameStateReducer::applyNotification(targetState,
+					message.command, message.payload);
+			if (!reduction.success) {
+				failProtocol(reduction.detail);
+				return false;
+			}
+			if (message.command == S_COMMAND_STATE_SYNC
+				&& message.payload.toMap().value(QStringLiteral("phase")) == QLatin1String("end")) {
+				*m_interactionCore->state() = m_pendingStateSyncState;
+				m_stateSyncActive = false;
+				m_stateSyncId.clear();
+			}
+		}
 		Callback callback = m_callbacks.value(static_cast<CommandType>(message.command), nullptr);
 		if (callback)
 			(this->*callback)(message.payload);
@@ -588,13 +577,17 @@ bool Client::dispatchProtocolMessage(const ProtocolMessage &message, bool replay
 	return replayInput && message.type == ProtocolMessageType::Request;
 }
 
+void Client::stateSync(const QVariant &)
+{
+    // Shared reducer commits the snapshot atomically before GUI presentation callbacks run.
+}
+
 void Client::failProtocol(const QString &detail)
 {
-	m_protocolSession.fail();
 	qWarning().noquote() << detail;
 	emit error_message(detail);
-	if (socket != nullptr && socket->isConnected())
-		socket->disconnectFromHost();
+	if (m_liveSession != nullptr)
+		m_liveSession->disconnectGracefully();
 }
 
 bool Client::processServerRequest(const ProtocolMessage &message)
@@ -695,6 +688,14 @@ bool Client::submitInteractionResponse(InteractionResponse response)
 {
 	if (m_interactionCore == nullptr || !m_interactionCore->hasActiveRequest())
 		return false;
+	if (m_liveSession != nullptr) {
+		QString error;
+		const bool accepted = m_liveSession->submitInteractionResponse(
+			std::move(response), &error);
+		if (!accepted && !error.isEmpty())
+			qWarning().noquote() << error;
+		return accepted;
+	}
 	const ClientInteractionDescriptor *descriptor
 		= InteractionDescriptorRegistry::find(m_interactionCore->activeRequest().type);
 	if (descriptor == nullptr || descriptor->replyEncoder == nullptr)
@@ -946,7 +947,8 @@ void Client::presentQmlInteraction(const InteractionRequest &request)
 		const QVariantMap parameters = payload->payload
 			.value(QStringLiteral("parameters")).toObject().toVariantMap();
 		if (qmlPath.isEmpty()) {
-			replyToServer(S_COMMAND_QML_INTERACT);
+			submitInteractionResponse(InteractionResponse::makeCustom(0,
+				payload->schemaVersion, payload->typeName, QVariant()));
 			return;
 		}
 		emit qml_interact(qmlPath, parameters);
@@ -2392,8 +2394,11 @@ void Client::askForCardChosen(const QVariant &ask_str)
 
 void Client::askForOrder(const QVariant &arg)
 {
-	Game3v3ChooseOrderCommand reason = static_cast<Game3v3ChooseOrderCommand>(
-		arg.toMap().value(QStringLiteral("reason")).toInt());
+	ChooseOrderRequestPayload parsed;
+	if (!ChooseOrderRequestPayload::parseV2(arg, &parsed))
+		return;
+	Game3v3ChooseOrderCommand reason
+		= static_cast<Game3v3ChooseOrderCommand>(parsed.reason);
 	ChooseOrderInteractionPayload payload;
 	payload.options << InteractionOption(QString::number(static_cast<int>(S_CAMP_COOL)))
 		<< InteractionOption(QString::number(static_cast<int>(S_CAMP_WARM)));
@@ -3471,8 +3476,7 @@ void Client::handleAnytimeSkillDone(const QVariant &arg)
 void Client::askForQml(const QVariant &arg)
 {
 	if (arg.userType() != QMetaType::QVariantMap) {
-		qWarning().noquote() << "rejecting non-object Protocol V2 custom interaction";
-		replyToServer(S_COMMAND_QML_INTERACT);
+		failProtocol(QStringLiteral("rejecting non-object Protocol V2 custom interaction"));
 		return;
 	}
 
@@ -3487,9 +3491,8 @@ void Client::askForQml(const QVariant &arg)
 		model.value(QStringLiteral("response_schema")).toMap());
 
 	if (!m_customInteractionRegistry.supports(payload.typeName, payload.schemaVersion)) {
-		qWarning().noquote() << "rejecting unsupported structured custom interaction"
-			<< payload.typeName << "schema" << payload.schemaVersion;
-		replyToServer(S_COMMAND_QML_INTERACT);
+		failProtocol(QStringLiteral("rejecting unsupported structured custom interaction %1 schema %2")
+			.arg(payload.typeName).arg(payload.schemaVersion));
 		return;
 	}
 

@@ -10840,8 +10840,8 @@ TenyearMouPackage::TenyearMouPackage()
 	addMetaObject<JieluCard>();
 
 	General *thmou_jianggan = new General(this, "thmou_jianggan", "wei", 3);
-	thmou_jianggan->addSkill(new Mingfang);
-	thmou_jianggan->addSkill(new Jibian);
+	thmou_jianggan->addSkill("mingfang");
+	thmou_jianggan->addSkill("jibian");
 
 	General *thmou_dengai = new General(this, "thmou_dengai", "wei", 4);
 	thmou_dengai->addSkill(new Zhouxi);

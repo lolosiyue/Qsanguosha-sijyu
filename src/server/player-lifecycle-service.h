@@ -5,6 +5,7 @@
 
 #include <QList>
 #include <QString>
+#include <QtGlobal>
 
 class CardMovementService;
 class ClientSocket;
@@ -68,6 +69,7 @@ private:
     EventDispatcher &m_eventDispatcher;
     QList<SummonRequest> m_pendingSummons;
     QList<ServerPlayer *> m_dynamicPlayers;
+    quint64 m_nextStateSyncId = 1;
 };
 
 #endif

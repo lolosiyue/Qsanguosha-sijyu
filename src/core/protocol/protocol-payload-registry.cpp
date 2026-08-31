@@ -520,6 +520,8 @@ bool validateKnownSchema(const QString &schema, const QVariant &value,
         return validateTypedPayload<SetupPayload>(value, error);
     if (schema == QLatin1String("ReadyPayload"))
         return validateTypedPayload<ReadyPayload>(value, error);
+    if (schema == QLatin1String("StateSyncPayload"))
+        return validateTypedPayload<StateSyncPayload>(value, error);
     if (schema == QLatin1String("DiagnosticPayload"))
         return validateTypedPayload<DiagnosticPayload>(value, error);
     if (schema == QLatin1String("NetworkDelayPayload"))
@@ -1087,6 +1089,7 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
     ROOM_NOTIFICATION(S_COMMAND_SHOW_VIRTUAL_CARD, "Client::showVirtualCard", "ShowVirtualCardPayload");
     ROOM_NOTIFICATION(S_COMMAND_CARD_PROVENANCE, "Client::cardProvenance", "CardProvenancePayload");
     ROOM_NOTIFICATION(S_COMMAND_UPDATE_PLAYER_UI_STATE, "Client::updatePlayerUIState", "PlayerUiStatePayload");
+    ROOM_NOTIFICATION(S_COMMAND_STATE_SYNC, "ClientLiveSession", "StateSyncPayload");
     ROOM_NOTIFICATION(S_COMMAND_UPDATE_CARD, "Client::updateCard", "UpdateCardPayload");
     ROOM_NOTIFICATION(S_COMMAND_SET_MARK, "Client::setMark", "SetMarkPayload");
     ROOM_NOTIFICATION(S_COMMAND_LOG_SKILL, "Client::log", "SkillLogPayload");
@@ -1280,6 +1283,7 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
         {QStringLiteral("ShowVirtualCardPayload"), {QStringLiteral("player_name"), QStringLiteral("card_name"), QStringLiteral("suit"), QStringLiteral("number"), QStringLiteral("skill_name"), QStringLiteral("subcard_ids"), QStringLiteral("target_player")}},
         {QStringLiteral("CardProvenancePayload"), {QStringLiteral("kind"), QStringLiteral("initiator"), QStringLiteral("card"), QStringLiteral("source_owner"), QStringLiteral("source_skill"), QStringLiteral("source_instance_id"), QStringLiteral("activation_owner"), QStringLiteral("activation_skill"), QStringLiteral("activation_instance_id")}},
         {QStringLiteral("PlayerUiStatePayload"), {QStringLiteral("player_name"), QStringLiteral("state")}},
+        {QStringLiteral("StateSyncPayload"), {QStringLiteral("sync_id"), QStringLiteral("phase"), QStringLiteral("reconnect")}},
         {QStringLiteral("UpdateCardPayload"), {QStringLiteral("action"), QStringLiteral("card_id")}},
         {QStringLiteral("SetMarkPayload"), {QStringLiteral("player_name"), QStringLiteral("mark_name"), QStringLiteral("value")}},
         {QStringLiteral("SkillLogPayload"), {QStringLiteral("log_type"), QStringLiteral("from_player"), QStringLiteral("to_players"), QStringLiteral("card_string"), QStringLiteral("arguments")}},
@@ -1543,7 +1547,7 @@ bool ProtocolPayloadRegistry::validateInventory(QString *error)
 {
     if (error != nullptr)
         error->clear();
-    constexpr int ExpectedProductionFlowCount = 144;
+    constexpr int ExpectedProductionFlowCount = 145;
     if (descriptors().size() != ExpectedProductionFlowCount) {
         return fail(error, QStringLiteral("Protocol V2 registry must contain exactly %1 production flows")
             .arg(ExpectedProductionFlowCount));

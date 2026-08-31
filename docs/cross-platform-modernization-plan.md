@@ -1,8 +1,9 @@
 # 跨平台現代化與功能移植計劃 (Cross-Platform Modernization Plan)
 
 - Status: Approved Plan
-- Implementation: M1 Complete（2026-08-09 確認）、M2 工具鏈進行中、M3 選包白名單與武將版本去重已實作（2026-08-30）
-- Last Updated: 2026-08-30
+- Implementation: M1 Complete；M2、M3、M4、M5、M6 實作已落地但仍有驗收缺口；M5 已完成 Linux headless server 與 Linux GUI client 程式；M7–M9 尚未達驗收標準
+- Last Updated: 2026-08-31
+- Current audit anchor: L `debug@94e119f`（已合入 PR #21 package 對齊及 PR #22 Protocol V2 cutover）；下文分開記錄 source implementation、focused evidence、remote／live／manual acceptance，不能互相替代。
 - **規範性**：本文件是跨平台現代化與另一分支通用功能移植的唯一權威執行計劃；與既有 roadmap 或審計結論衝突時，以本文件為準。
 
 ## 1. 來源、目的與範圍
@@ -52,8 +53,9 @@
 | 目標 | 責任與依賴限制 |
 |---|---|
 | `qsanguosha_engine` | 共用規則、資料及伺服器核心；只依賴必要的 Qt Core／Network，不得依賴 Widgets、Quick、Multimedia 或顯示伺服器 |
-| `QSanguosha` | Windows GUI 客戶端及本地遊戲入口 |
+| `QSanguosha` | Windows／Linux GUI 客戶端及本地遊戲入口 |
 | `qsanguosha_server` | Windows／Linux 無頭伺服器，使用 `QCoreApplication` |
+| `qsanguosha_tui` | Windows／Linux live TCP Protocol V2 客戶端；`QCoreApplication` + Qt Core／Network；Replay 永久不支援，GUI dependency 禁止 |
 | Android app target | Qt GUI／Quick／Widgets／Multimedia 客戶端；不提供公開專用伺服器，但單機可建立內嵌房間 |
 | `crashreporter` | Windows 純 Win32／DbgHelp 診斷工具 |
 | CTest targets | 單元、整合、Lua、自動對戰及性能測試 |
@@ -89,16 +91,16 @@ Spine 的 GLSL 120 shader 與 `beginNativePainting()` 不屬於本批 API 相容
 - wrapper 不存在或任一 `swig/*.i` 較新時會自動重新生成；來源樹的 wrapper 不參與建置，也不在工作區之間同步。
 - 自動生成檔留在 CMake build tree，正常建置不會改動來源樹。
 
-2026-08-30 實作狀態：Lua 5.4.8 核心、最小相容層、seeded state API、SWIG API 調整及 focused `lua-compat` 測試已落地。檢查 `extensions/main@4dd30101310f9c2cb7cca2de3bd4d40ac77e8736` 時，以下低頻問題只列入人工修改清單，本次不修改外部倉庫：
+2026-08-31 實作狀態：Lua 5.4.8 核心、最小相容層、seeded state API、SWIG API 調整及 focused `lua-compat` 測試已落地。檢查 `extensions/main@4dd30101310f9c2cb7cca2de3bd4d40ac77e8736` 時發現的 4 個低頻問題亦已由使用者確認修正：
 
-| 檔案 | 位置 | 待修改內容 |
+| 檔案 | 位置 | 修正內容 |
 |---|---:|---|
-| `ai/yjcm2014-ai.lua` | 27 | `bit32.lshift(1, card:getTypeId())` 改為 `(1 << card:getTypeId())`；第 19 行另有相同註解文字 |
-| `ai/ai-debug-logger.lua` | 331 | `unpack(results)` 改為 `table.unpack(results)` |
-| `ai/NyarzThird-ai.lua` | 110 | `unpack(num)` 改為 `table.unpack(num)` |
-| `extensions/hunlie.lua` | 1298 | `0then` 改為 `0 then` |
+| `ai/yjcm2014-ai.lua` | 27 | `bit32.lshift(1, card:getTypeId())` 已改為 `(1 << card:getTypeId())`；第 19 行相同註解文字亦已同步 |
+| `ai/ai-debug-logger.lua` | 331 | `unpack(results)` 已改為 `table.unpack(results)` |
+| `ai/NyarzThird-ai.lua` | 110 | `unpack(num)` 已改為 `table.unpack(num)` |
+| `extensions/hunlie.lua` | 1298 | `0then` 已改為 `0 then` |
 
-在上述四個外部檔案修正前，完整 AI／extensions 載入 gate 仍為待完成；這不擴張成通用相容層。
+上述四個外部檔案不再列為未完成程式碼；這不擴張成通用相容層。完整 AI／extensions 載入 gate 若尚未執行，仍只屬驗證狀態。
 
 ## 4. 三後端音訊架構
 
@@ -131,7 +133,7 @@ Android 固定只為 `button-down`、`button-hover`、`choose-item`、`pop-up` �
 
 CMake 提供 `QSAN_AUDIO_BACKEND=FMOD|QT|NULL` 並按平台設定固定預設（Windows→`FMOD`、Linux GUI→`QT`、server-only→`NULL`）。後端選擇只發生在 CMake 與 `src/ui/audio/audio-backend-factory.cpp`，呼叫端沒有平台 `#ifdef`。`Audio::backendName()` 回報實際生效的後端，`Audio::getVersion()` 回報該後端的版本，不再假設一定是 FMOD；About 對話框顯示兩者。
 
-M1 引擎解耦先以 `Engine::audioEffectRequested` signal 建立不含 FMOD 的純 Core port；本節的完整 `IAudioBackend` 三後端仍在 M6 實作，兩者不是互斥方案。
+M1 引擎解耦先以 `Engine::audioEffectRequested` signal 建立不含 FMOD 的純 Core port；完整 `IAudioBackend` 三後端已於 M6 的實作批次落地，但其跨平台及 Windows 行為驗收仍依 §10／§11 追蹤。
 
 Windows 先驗證現有 FMOD Ex 4.44 與 MSVC 2022 x64 的連結、啟動及壓力測試。若失敗，預定退路是由外部 `FMOD_SDK_ROOT` 提供 FMOD Core 2.03；不得修改 `include/` 或 `lib/`。發布前必須確認 [FMOD 授權與 attribution](https://www.fmod.com/legal)。
 
@@ -146,7 +148,7 @@ Windows 先驗證現有 FMOD Ex 4.44 與 MSVC 2022 x64 的連結、啟動及壓�
 
 約 1.09 GiB 音訊與 1.27 GiB 圖片不得直接放入 Android base module。正式渠道固定為 Google Play Android App Bundle (AAB)＋Play Asset Delivery (PAD)，不建立自有 CDN 或獨立資產下載器。
 
-新增統一 `AssetLocator`：
+Android 里程碑規劃新增統一 `AssetLocator`；目前 source 尚未提供此 production abstraction：
 
 ```text
 logical path
@@ -170,7 +172,7 @@ CI 使用 `bundletool` 檢查 base 及 pack 大小：[Google Play app size limit
 
 ### 6.1 選包白名單
 
-- 持久化 `EnabledPackages`，並以 `EnabledPackagesMigrationVersion=1` 控制一次性遷移。
+- 持久化 `EnabledPackages`，並以 `EnabledPackagesMigrationVersion=2` 控制一次性遷移及目前 package 名稱正規化。
 - 首次讀到舊 `BanPackages` 時，依當時完整普通包集合計算補集，保留完全相同的實際啟用結果；遷移完成後不再持久化舊鍵。
 - 現有依賴 `BanPackages` 的呼叫點暫時使用執行期衍生值。
 - 玩法及劇本專用包不出現在普通選包頁，由 GameModeStruct 按模式啟用。
@@ -179,7 +181,7 @@ CI 使用 `bundletool` 檢查 base 及 pack 大小：[Google Play app size limit
 
 `standard`、`wind`、`fire`、`thicket`、`mountain`、`YJCM`、`YJCM2012`、`standard_cards`、`standard_ex_cards`、`maneuvering`。
 
-2026-08-31 實作狀態：已持久化 `EnabledPackages`、完成舊 `BanPackages` 一次性補集遷移、保留執行期 `BanPackages` 相容值，並同步 Gitee 由 `lua/config.lua::package_names` 驅動的通用卡牌、基礎將包、移動版、OL、十周年、國戰、特殊玩法、其他分類。特殊玩法／劇本包維持隱藏及執行期禁用；既有 CamelCase `objectName` 不改名，白名單讀取時相容 Gitee 小寫蛇形名稱。依使用者明確要求，§1 的「不移植擴充包內容」不適用於本次 Gitee 對齊：先將 54 名既有武將移至 17 個版本家族包，再以 Gitee `4f5f17f2e395599a8ed9fd689faf2b4a84a1c945` 為基準加入 Dream 12 名與其他 56 名新武將，完整同步 `mobile-strengthen`、`ol-strengthen`、`tenyear-strengthen`，並套用 OLDuorui、Yingbian、OLSanyao、NosGuhuo／NosBuqu、TenyearDuanliang 等 6 組實質技能差異。Gitee LuaAI 與未出現於來源清單的武將圖片／語音不移植；蠱惑中央聲明／翻牌提示沿用既有 `S_COMMAND_LOG_EVENT`，不改 V1/V2 命令編號。
+2026-08-31 實作狀態：已持久化 `EnabledPackages`、完成舊 `BanPackages` 一次性補集遷移、保留執行期 `BanPackages` 相容值，並同步 Gitee 由 `lua/config.lua::package_names` 驅動的通用卡牌、基礎將包、移動版、OL、十周年、國戰、特殊玩法、其他分類。特殊玩法／劇本包維持隱藏及執行期禁用；既有 CamelCase `objectName` 不改名，白名單讀取時相容 Gitee 小寫蛇形名稱。依使用者明確要求，§1 的「不移植擴充包內容」不適用於本次 Gitee 對齊：先將 54 名既有武將移至 17 個版本家族包，再以 Gitee `4f5f17f2e395599a8ed9fd689faf2b4a84a1c945` 為基準加入 Dream 12 名與其他 56 名新武將，完整同步 `mobile-strengthen`、`ol-strengthen`、`tenyear-strengthen`，並套用 OLDuorui、Yingbian、OLSanyao、NosGuhuo／NosBuqu、TenyearDuanliang 等 6 組實質技能差異。Gitee LuaAI 與未出現於來源清單的武將圖片／語音不移植；蠱惑中央聲明／翻牌提示沿用既有 `S_COMMAND_LOG_EVENT`，不改 V1/V2 命令編號。package policy／ownership focused executable 已通過；每名武將實戰、選包頁人工操作、Guhuo 動畫及遠端 CI 仍待完成。
 
 ### 6.2 武將版本去重
 
@@ -187,12 +189,12 @@ CI 使用 `bundletool` 檢查 base 及 pack 大小：[Google Play app size limit
 - 使用純函式處理候選池，固定優先序為 `third > second > mobilemou > oljie > tenyear > new > mobile > ol > neo > nos > base`。
 - 只影響同名候選的顯示與抽取，不改包載入、技能註冊或武將內容。
 
-2026-08-30 實作狀態：`GeneralVersionDedup` 已接入伺服器設定與候選池生成；去重保留原候選槽位，同名時只以較高優先版本替換。
+2026-08-30 實作狀態：`GeneralVersionDedup` 已接入伺服器設定與候選池生成；去重保留原候選槽位，同名時只以較高優先版本替換。設定／ownership／focused contract 已有證據，但完整選將及對局回歸尚未完成。
 
 ### 6.3 協定與重播
 
 - 2026-08-31 完成 Protocol V2 breaking cutover：第一個 TCP frame 即為 V2，
-  production registry 144/144 typed complete，29/29 interaction direct typed。
+  production registry 145/145 typed complete，29/29 interaction direct typed。
   Protocol V1、capability negotiation、OFFER／ACK／COMMIT、`Packet` facade、
   runtime switching 與 compatibility fallback 均已退休。
 - Replay V2 使用嚴格 JSONL 與 Protocol V2 event；Replay V1／headerless input
@@ -200,7 +202,7 @@ CI 使用 `bundletool` 檢查 base 及 pack 大小：[Google Play app size limit
 - PNG Replay container 提供 magic/version/size/SHA-256 完整性保護；普通或損壞
   PNG 明確拒絕。
 - 新格式保留時間軸、快照、視角切換與觀看途中玩家接管；TUI 永久不實作 Replay。
-- 新增伺服器能力宣告、無效詢問資訊、AI 除錯狀態及控制命令，使用明確型別及欄位驗證。
+- 伺服器能力宣告、無效詢問跳過、AI 除錯狀態及控制命令仍是後續交付項；本次 V2 cutover 的 typed payload／欄位驗證不代表上述 UX／除錯功能已完成。
 
 ### 6.4 通用體驗
 
@@ -255,23 +257,40 @@ M1 先完成 GUI／CMD 共用的 `Server::logMessage()` 與純文字 console 格
 
 ## 10. 里程碑與合併門檻
 
-M1 已完成（2026-08-09 對照 CMakeLists.txt 確認）：`qsanguosha_engine` STATIC、Qt module allowlist gate（非 Core/Network 立即 FATAL_ERROR）、`engine-smoke-test`、`deploy-server`、WHOLE_ARCHIVE 連結與 `qsanguosha_server.exe` 獨立入口均已落地。其餘里程碑仍為 **Not Started**。
+M1 已完成（2026-08-09 對照 CMakeLists.txt 確認）：`qsanguosha_engine` STATIC、Qt module allowlist gate（非 Core/Network 立即 FATAL_ERROR）、`engine-smoke-test`、`deploy-server`、WHOLE_ARCHIVE 連結與 `qsanguosha_server.exe` 獨立入口均已落地。其餘里程碑依下表分為實作已落地、驗收待完成及尚未開始，不再把所有非 M1 項目統一標為 Not Started。
 
 | 里程碑 | 狀態 | 主要交付 | 合併門檻 |
 |---|---|---|---|
-| M0 | Not Started | 建立可重現的現況基線、測試清單與資產盤點 | 現有 Windows 行為、協定與重播樣本可重現；無功能性改動 |
+| M0 | Acceptance Pending | 建立可重現的現況基線、測試清單與資產盤點 | 現有 Windows 行為、協定與重播樣本可重現；無功能性改動 |
 | M1 | **Complete**（2026-08-09） | Windows CMake 過渡建置、STATIC engine（僅 Qt Core／Network）、引擎／GUI 解耦契約（SkillDialogInfo／EngineRuntimeContext／audioEffectRequested／EngineBootstrap）、allowlist gate、`deploy-server`、engine smoke test | Windows GUI 與既有建置結果可對照；STATIC engine 僅連結 Qt Core／Network；GUI／CMD server 驗收完成 |
-| M2 | In Progress（2026-08-30：Lua 5.4.8 本地實作） | Qt 6.11.1、VS 2026 v145 + `msvc2022_64` kit；Lua 5.4.8、最小相容層、seeded state API 與 focused 測試已落地 | 外部四個低頻 Lua 問題修正；Windows GUI、server、Lua/SWIG 及遠端完整測試通過 |
-| M3 | In Progress（2026-08-31：選包白名單與武將版本去重已實作） | `SkillDialogInfo`、選包白名單、確定性 RNG | 相同種子、輸入與包集合產生相同結果；白名單不可由客戶端繞過 |
-| M4 | Acceptance Pending（2026-08-31：Protocol V2-only breaking cutover、144/144 typed flows、29/29 direct typed interactions、Replay V2-only 與 PNG container 已實作；7 個本地 focused executable gates 通過，完整 GUI／engine／server、live TCP 與遠端 CI 尚待完成） | 協定與重播版本化、相容性拒絕路徑 | 舊協定／舊 Replay 明確拒絕；遠端 Windows／Linux／Docker／package gates 全綠後才標記 Complete |
-| M5 | Not Started | Ubuntu 無頭伺服器與 Null 音訊 | 無 X11/Wayland、FMOD 或 GUI 依賴仍可啟動及完成整局測試 |
-| M6 | In Progress（2026-08-28：Linux GUI M2B-A 交付 `IAudioBackend`／FMOD／Qt／Null 三後端、`QSAN_AUDIO_BACKEND`、結構化診斷與 `--multimedia-smoke`） | 桌面 FMOD 後端抽象化及診斷 | Windows 音效行為無回歸；音訊失敗不影響遊戲狀態 |
+| M2 | Acceptance Pending（2026-08-31：Qt6／Lua 5.4.8 核心實作、最小相容層、seeded state、SWIG 調整及 4 個外部低頻 Lua 問題修正已落地） | Qt 6.11.1、VS 2026 v145 + `msvc2022_64` kit；Lua 5.4.8、最小相容層、seeded state API 與 focused 測試 | Windows GUI、server、Lua/SWIG 及遠端完整測試通過 |
+| M3 | Acceptance Pending（2026-08-31：選包白名單、Gitee package/general 對齊、版本去重及確定性 RNG 實作已落地；ServerDialog 選包頁亦已改版） | `SkillDialogInfo`、選包白名單、確定性 RNG | 相同種子、輸入與包集合產生相同結果；白名單不可由客戶端繞過；選包頁人工 smoke、武將／Guhuo 實戰驗收完成 |
+| M4 | Acceptance Pending（2026-08-31：Protocol V2-only breaking cutover、145/145 typed flows、29/29 direct typed interactions、Replay V2-only 與 PNG container 已實作；本地 focused gates 通過） | 協定與重播版本化、相容性拒絕路徑 | 舊協定／舊 Replay 明確拒絕；完整 GUI／engine／server、GUI production inventory 及遠端 Windows／Linux／Docker／package gates 全綠後才標記 Complete |
+| M5 | Acceptance Pending（2026-08-31：Linux headless server、Linux GUI client 與 Null audio 程式實作已完成；完整 Ubuntu 驗收尚未完成） | Linux headless server、Linux GUI client 與 Null 音訊 | 無 X11/Wayland、FMOD 或 GUI 依賴仍可啟動及完成整局、斷線重連、長時間及資源釋放測試 |
+| M6 | Acceptance Pending（2026-08-28：Linux GUI M2B-A 已交付 `IAudioBackend`／FMOD／Qt／Null 三後端、`QSAN_AUDIO_BACKEND`、結構化診斷與 `--multimedia-smoke`） | 桌面 FMOD 後端抽象化及診斷 | Windows 音效行為無回歸；音訊失敗不影響遊戲狀態；跨平台音訊及裝置生命週期驗收完成 |
 | M7 | Not Started | Android Qt Multimedia、WAV/OGG 播放器池與觸控 UI | API 28 真機及 API 36 目標建置通過；前後景切換與音訊生命週期穩定 |
 | M8 | Not Started | Android AAB、PAD 與 `AssetLocator` | `arm64-v8a` AAB 可安裝；fast-follow/on-demand 缺包、下載、重試路徑可驗證 |
-| M9A | Not Started | 第一批 HiDPI、視窗縮放及安全區修復 | Windows 與 Android 代表解析度無截斷、重疊或不可操作控制項 |
-| M9B | Not Started | 第二批完整 UI 適配、輸入與可及性 | 鍵鼠、觸控、字體縮放及方向切換矩陣通過 |
-| M9C | Not Started | 診斷、崩潰報告及 LuaAI 除錯 | Release 可關閉敏感診斷；錯誤可由關聯 ID 定位 |
+| M9A | Partial／Acceptance Pending（已有 UIScale、主題及部分卡牌 UI；完整矩陣未完成） | 第一批 HiDPI、視窗縮放及安全區修復 | Windows 與 Android 代表解析度無截斷、重疊或不可操作控制項 |
+| M9B | Partial／Acceptance Pending（已有鍵盤／可及性局部契約；完整 UI／觸控矩陣未完成） | 第二批完整 UI 適配、輸入與可及性 | 鍵鼠、觸控、字體縮放及方向切換矩陣通過 |
+| M9C | Partial／Acceptance Pending（已有基礎 logger／crash reporter；JSONL retention、關聯診斷及 LuaAI debugger 未完成） | 診斷、崩潰報告及 LuaAI 除錯 | Release 可關閉敏感診斷；錯誤可由關聯 ID 定位 |
 | M9D | Not Started | 通用缺陷修復、長時間穩定性及發佈候選 | 測試矩陣全綠、無阻斷級缺陷、回滾及版本說明齊備 |
+
+### 10.1 2026-08-31 驗收缺口
+
+下表只列目前仍未達到里程碑完成標準的項目。`source landed` 代表程式／測試資產已在目前 `debug` 可見，不代表跨平台、live、人工或遠端驗收已通過。
+
+| 範圍 | 已確認證據 | 尚未完成 |
+|---|---|---|
+| M0 基線 | 已有現代化計畫、測試矩陣及多批 focused evidence | 尚未形成一份可重跑的 Windows 行為／協定／Replay 基準及正式 M0 sign-off |
+| M2 Lua 5.4.8 | 核心 5.4.8、最小相容層、seeded state、SWIG 調整、`lua-compat` focused gate 及 `extensions/main` 的 4 個低頻問題修正已落地 | 完整 AI／extensions、Windows GUI/server、Lua/SWIG 及遠端測試未完成 |
+| M3 package／general | `EnabledPackages` 遷移、Gitee package 對齊、版本去重、ServerDialog 選包頁改版及 package policy／ownership focused gate 已落地 | 選包頁「已改但未人工 smoke」；每名新增武將實戰、Guhuo 聲明／翻牌動畫、跨種子／包集合回歸及本批遠端 CI 全綠仍未完成；Gitee LuaAI 與缺少的資產仍按範圍不移植 |
+| M4 Protocol／Replay | `debug@94e119f` 已合入 PR #22；145/145 typed flows、29/29 direct typed interactions、Replay V2 JSONL／PNG container、拒絕舊格式及 focused live TCP lifecycle 已完成 | 本地完整 GUI／engine／server build 超過 60 秒限制未完成，未跑本地 CTest；GUI production inventory generator 及遠端全綠未完成 |
+| M5 Linux headless | Linux `qsanguosha_server`、Linux GUI client、Null audio source path 與 CI path 已存在 | Ubuntu 無顯示伺服器的乾淨部署、完整對局、斷線重連、長時間穩定性、資源釋放及 systemd acceptance 未完成 |
+| M6 audio／diagnostics | 三後端與 `QSAN_AUDIO_BACKEND` 已落地，並有 multimedia smoke path | Windows FMOD 無回歸、Linux／Android 音訊生命週期、無輸出裝置、錯誤不改變遊戲狀態及正式診斷 retention 尚未完成 |
+| M7／M8 Android | 目前只有 legacy Android 配置 | production Qt6 Android target、API 28／36、`arm64-v8a` AAB、PAD、`AssetLocator`、缺包／下載／重試及前後景音訊生命週期均未完成；現行 `AndroidManifest.xml` 仍為 min 21、target 28、Qt5 bindings |
+| M9 UI／diagnostics／release | 已有部分 UIScale、主題、鍵盤／可及性契約及基礎 logger／crash reporter | 完整 HiDPI／安全區／觸控矩陣、JSONL 輪替保留、關聯診斷、LuaAI 觀測式 debugger、通用缺陷批次、長時間穩定性及 release candidate 驗收未完成 |
+
+遠端 CI 快照（2026-08-31，針對 PR #22 source head `16a49c9`，不是 merge commit `94e119f`）：[Windows layered #33324772900](https://github.com/lolosiyue/Qsanguosha-sijyu/actions/runs/33324772900) 與 [Linux server #33324772890](https://github.com/lolosiyue/Qsanguosha-sijyu/actions/runs/33324772890) 當時仍在執行；[Docker server #33324772889](https://github.com/lolosiyue/Qsanguosha-sijyu/actions/runs/33324772889) 及 [Linux package #33324772916](https://github.com/lolosiyue/Qsanguosha-sijyu/actions/runs/33324772916) 當時失敗。故目前不能把 `debug@94e119f` 宣告為跨平台全綠。
 
 每一里程碑合併前必須同時滿足：變更範圍可審查、相關 CTest 通過、協定／重播影響有明確判定、平台特有程式碼不滲入 `qsanguosha_engine`、文件與測試同步更新。不得以「後續補測」繞過門檻。
 
@@ -296,7 +315,7 @@ M1 已完成（2026-08-09 對照 CMakeLists.txt 確認）：`qsanguosha_engine` 
 - 不承諾舊客戶端與新協定永久互通；以明確版本協商、拒絕訊息及受控遷移為準。
 - 不全面重寫引擎、技能或 LuaAI，不在現代化過程中順便更改卡牌平衡。
 - 不修改 `include/`、`lib/` 內第三方庫；依賴升級須以外部套件、可重現建置或獨立導入流程處理。
-- 本文件只定義總計畫；截至 2026-08-09，M1 已完成程式實作（STATIC engine、allowlist gate、deploy-server、smoke test），其餘里程碑狀態以上表為準。
+- 本文件只定義總計畫；截至 2026-08-31，M1 已完成程式實作（STATIC engine、allowlist gate、deploy-server、smoke test），M2–M6 已有不同程度的 source implementation 但仍有驗收缺口，M7–M9 尚未達里程碑完成標準；其餘狀態以上表及 §10.1 為準。
 
 ## 13. 決策紀錄與官方參考
 

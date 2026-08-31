@@ -6,8 +6,7 @@
 #include "client-core.h"
 #include "client-interaction-presenter.h"
 #include "custom-interaction-registry.h"
-#include "protocol/protocol-runtime.h"
-#include "protocol/session/client-session-controller.h"
+#include "protocol/protocol-message.h"
 //#include "skill.h"
 #include "room-state.h"
 //#include "protocol.h"
@@ -24,6 +23,7 @@ class Replayer;
 class DesktopInteractionView;
 class QTextDocument;
 class ClientSocket;
+class ClientLiveSession;
 class ReplayTakeoverManager;
 
 class Client : public QObject, public EngineRuntimeContext,
@@ -150,6 +150,7 @@ public:
     void getCards(const QVariant &);
     void updateProperty(const QVariant &);
     void updatePlayerUIState(const QVariant &);
+    void stateSync(const QVariant &);
     void killPlayer(const QVariant &player_arg);
     void revivePlayer(const QVariant &player_arg);
     void warn(const QVariant &reason_json);
@@ -373,9 +374,7 @@ protected:
     RoomState _m_roomState;
 
 private:
-    ClientSocket *socket;
-    QSanProtocol::ClientSessionController m_protocolSession;
-    QSanProtocol::ProtocolCodecRouter m_protocolRouter;
+    ClientLiveSession *m_liveSession;
     bool m_isGameOver;
     bool m_isDisconnected;
     ClientPlayer *m_original_self;
@@ -406,9 +405,11 @@ private:
     lua_State *m_client_lua;
     ClientCore *m_interactionCore;
     DesktopInteractionView *m_desktopInteractionView;
+    ClientGameState m_pendingStateSyncState;
+    bool m_stateSyncActive = false;
+    QString m_stateSyncId;
 
     void beginInteraction(InteractionRequest request);
-    void sendProtocolMessage(QSanProtocol::ProtocolMessage message);
     bool dispatchProtocolMessage(const QSanProtocol::ProtocolMessage &message,
                                  bool replayInput);
     void failProtocol(const QString &detail);
@@ -433,7 +434,7 @@ public slots:
     void processReplayMessage(const QSanProtocol::ProtocolMessage &message);
 
 private slots:
-    void processServerPacket(const QByteArray &cmd);
+    void processLiveProtocolMessage(const QSanProtocol::ProtocolMessage &message);
     bool processServerRequest(const QSanProtocol::ProtocolMessage &message);
     void notifyRoleChange(const QString &new_role);
     void onPlayerChooseSuit();
