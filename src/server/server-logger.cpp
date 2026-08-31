@@ -32,7 +32,7 @@ QString textValue(const QVariant &value)
 {
     if (!value.isValid() || value.isNull())
         return QStringLiteral("null");
-    if (value.metaType().id() == QMetaType::Bool)
+    if (value.userType() == QMetaType::Bool)
         return value.toBool() ? QStringLiteral("true") : QStringLiteral("false");
 
     const QString text = value.toString();

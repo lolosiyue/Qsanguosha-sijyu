@@ -165,8 +165,8 @@ jobs:
             -DQSAN_BUILD_GUI=ON \
             -DQSAN_BUILD_SERVER=ON
 
-      - name: Build QSanguosha and the dedicated server
-        run: cmake --build build/package --target QSanguosha qsanguosha_server --parallel
+      - name: Build QSanguosha, the dedicated server, and the TUI client
+        run: cmake --build build/package --target QSanguosha qsanguosha_server qsanguosha_tui --parallel
 
       - name: Build the portable archive and the AppImage
         run: |

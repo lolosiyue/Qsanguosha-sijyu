@@ -60,7 +60,6 @@ add_executable(qsanguosha_core_tests
     core-regressions-test.cpp
     package-policy-test.cpp
     package-ownership-test.cpp
-    ${QSAN_TEST_ROOT}/src/server/server-core.h
 )
 qsan_link_engine_test(qsanguosha_core_tests)
 qsan_add_ctest(qsanguosha_engine_smoke qsanguosha_core_tests
@@ -170,7 +169,6 @@ add_executable(qsanguosha_card_overview_classifier_tests
     card-overview-classifier-test.cpp
     ${QSAN_TEST_ROOT}/src/ui/card-overview-data.cpp
     ${QSAN_TEST_ROOT}/src/ui/card-overview-data.h
-    ${QSAN_TEST_ROOT}/src/server/server-core.h
 )
 target_include_directories(qsanguosha_card_overview_classifier_tests PRIVATE
     ${QSAN_ENGINE_TEST_INCLUDES}
@@ -189,7 +187,6 @@ add_executable(qsanguosha_card_overview_model_tests
     ${QSAN_TEST_ROOT}/src/ui/card-overview-data.h
     ${QSAN_TEST_ROOT}/src/ui/home/homecardmodel.cpp
     ${QSAN_TEST_ROOT}/src/ui/home/homecardmodel.h
-    ${QSAN_TEST_ROOT}/src/server/server-core.h
 )
 qsan_link_engine_test(qsanguosha_card_overview_model_tests)
 target_include_directories(qsanguosha_card_overview_model_tests PRIVATE
@@ -540,7 +537,6 @@ add_executable(qsanguosha_runtime_tests
     card-lifetime-shutdown/shutdown_protocol_test.cpp
     lua-runtime-isolation-test.cpp
     room-runtime-isolation-test.cpp
-    ${QSAN_TEST_ROOT}/src/server/server-core.h
 )
 set_source_files_properties(
     card-lifetime-event-lease/card-lifetime-event-lease-test.cpp
@@ -588,7 +584,6 @@ add_executable(qsanguosha_server_tests
     room-roster-test.cpp
     player-lifecycle-service-test.cpp
     player-decision-service-test.cpp
-    ${QSAN_TEST_ROOT}/src/server/server-core.h
 )
 qsan_link_engine_test(qsanguosha_server_tests)
 qsan_add_ctest(qsanguosha_server_unit qsanguosha_server_tests
@@ -598,17 +593,12 @@ qsan_add_ctest(qsanguosha_server_unit qsanguosha_server_tests
 
 add_executable(qsanguosha_replay_tests
     replay-game-state/replay-game-state-test.cpp
-    ${QSAN_TEST_ROOT}/src/server/server-core.h
     ${QSAN_TEST_ROOT}/src/util/replay-game-state.cpp
     ${QSAN_TEST_ROOT}/src/util/replay-game-state.h
 )
+qsan_link_engine_test(qsanguosha_replay_tests)
 target_include_directories(qsanguosha_replay_tests PRIVATE
-    ${QSAN_TEST_ROOT}/src/core
     ${QSAN_TEST_ROOT}/src/util
-)
-target_link_libraries(qsanguosha_replay_tests PRIVATE
-    qsanguosha_engine
-    Qt6::Core
 )
 qsan_add_ctest(qsanguosha_replay_game_state_protocol qsanguosha_replay_tests
     LABELS "protocol;fast"

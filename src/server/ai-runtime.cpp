@@ -704,8 +704,9 @@ bool AiLuaRuntime::loadConfiguredScripts(QString *error)
         QStringLiteral("^[A-Za-z0-9_-]+\\.lua$"));
     const QStringList defaultScripts({QStringLiteral("ask-for-use-card.lua"),
                                       QStringLiteral("standard-ai.lua")});
-    foreach (const QString &configuredName, Config.value(
-                 QStringLiteral("AiIsolatedScripts"), defaultScripts).toStringList()) {
+    const QStringList configuredScripts = Config.value(
+        QStringLiteral("AiIsolatedScripts"), defaultScripts).toStringList();
+    foreach (const QString &configuredName, configuredScripts) {
         const QString fileName = configuredName.trimmed();
         if (!fileNamePattern.match(fileName).hasMatch()) {
             if (error)

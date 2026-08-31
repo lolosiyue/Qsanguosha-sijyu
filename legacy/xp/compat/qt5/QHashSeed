@@ -1,0 +1,15 @@
+#ifndef QSAN_QT5_QHASHSEED_H
+#define QSAN_QT5_QHASHSEED_H
+
+#include <QtCore/qhashfunctions.h>
+
+class QHashSeed
+{
+public:
+    static void setDeterministicGlobalSeed()
+    {
+        qSetGlobalQHashSeed(0);
+    }
+};
+
+#endif

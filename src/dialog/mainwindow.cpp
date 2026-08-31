@@ -20,24 +20,31 @@
 #include "clientplayer.h"
 #include "settings.h"
 #include "button.h"
+#include "build-features.h"
+#if QSAN_ENABLE_QML
 #include "homecontroller.h"
 #include "pointer-effect-overlay.h"
+#endif
 #include "game-view.h"
 #include "crashhandler.h"
 #ifdef AUDIO_SUPPORT
 #include "audio.h"
 #endif
 #include <QStackedWidget>
+#if QSAN_ENABLE_QML
 #include <QQuickWidget>
 #include <QQuickItem>
+#endif
 #include <QTimer>
 #include <QDateTime>
 #include <QFile>
 #include <QTextStream>
+#if QSAN_ENABLE_QML
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQmlError>
 #include <QtQml>
+#endif
 #include <QFile>
 #include <QDebug>
 
@@ -69,19 +76,25 @@ MainWindow::MainWindow(QWidget *parent)
 
 	pageStack = new QStackedWidget(this);
 
+#if QSAN_ENABLE_QML
 	homeController = new HomeController(this);
 	connect(config_dialog, &ConfigDialog::liveVisualChanged, homeController, &HomeController::notifyVisualSettings);
 	homeView = new QQuickWidget(pageStack);
+#endif
 	gameView = new FitView(nullptr, this);
 
+#if QSAN_ENABLE_QML
 	homeView->setResizeMode(QQuickWidget::SizeRootObjectToView);
 	homeView->setClearColor(QColor(QStringLiteral("#0B1A2E")));
 
 	pageStack->addWidget(homeView);
+#endif
 	pageStack->addWidget(gameView);
 
 	setCentralWidget(pageStack);
+#if QSAN_ENABLE_QML
 	m_pointerOverlay = new PointerEffectOverlay(this);
+#endif
 	restoreFromConfig();
 
 	setupHomePage();
@@ -100,6 +113,7 @@ MainWindow::MainWindow(QWidget *parent)
 
 void MainWindow::setupHomePage()
 {
+#if QSAN_ENABLE_QML
 	const QUrl homeUrl(QStringLiteral("qrc:/QSanguosha/Home/HomeScene.qml"));
 
 	qInfo().noquote() << "Home QRC exists:"
@@ -182,6 +196,12 @@ void MainWindow::setupHomePage()
 	connect(config_dialog, &ConfigDialog::accepted,
 		this, &MainWindow::reloadHomePage);
 
+#else
+	m_homeSceneReady = true;
+	m_homeSceneError.clear();
+	emit homeSceneReady();
+#endif
+
 	setUiScale(Config.UIScale);
 }
 
@@ -212,6 +232,7 @@ HomeController *MainWindow::homeSceneController() const
 
 void MainWindow::reloadHomePage()
 {
+#if QSAN_ENABLE_QML
 	if (pageStack->currentWidget() != homeView)
 		return;
 
@@ -219,6 +240,10 @@ void MainWindow::reloadHomePage()
 	homeView->setSource(QUrl(QStringLiteral("qrc:/QSanguosha/Home/HomeScene.qml")));
 	setUiScale(Config.UIScale);
 	homeView->setFocus();
+#else
+	changeBackground();
+	refitScene();
+#endif
 }
 
 void MainWindow::showHomePage()
@@ -271,12 +296,29 @@ void MainWindow::showHomePage()
 	gameView->setScene(nullptr);
 
 	menuBar()->hide();
+#if QSAN_ENABLE_QML
 	homeController->refreshCharacterImage();
 	homeController->refreshPlayerInfo();
 	pageStack->setCurrentWidget(homeView);
 	homeView->setFocus();
 	if (m_pointerOverlay)
 		m_pointerOverlay->setPageEnabled(false);
+#else
+	StartScene *startScene = new StartScene;
+	startScene->addButton(ui->actionStart_Game);
+	startScene->addButton(ui->actionStart_Server);
+	startScene->addButton(ui->actionReplay);
+	startScene->addButton(ui->actionConfigure);
+	startScene->addButton(ui->actionGeneral_Overview);
+	startScene->addButton(ui->actionCard_Overview);
+	startScene->addButton(ui->actionScenario_Overview);
+	startScene->addButton(ui->actionAbout);
+	scene = startScene;
+	gameView->setScene(scene);
+	gameView->refit();
+	pageStack->setCurrentWidget(gameView);
+	gameView->setFocus();
+#endif
 
 	if (ClientInstance) {
 		ClientInstance->disconnectFromHost();
@@ -303,8 +345,10 @@ void MainWindow::showGamePage(QGraphicsScene *newScene)
 	gameView->refit();
 
 	pageStack->setCurrentWidget(gameView);
+#if QSAN_ENABLE_QML
 	if (m_pointerOverlay)
 		m_pointerOverlay->setPageEnabled(true);
+#endif
 }
 
 void MainWindow::restoreFromConfig()
@@ -342,7 +386,20 @@ void MainWindow::closeEvent(QCloseEvent *event)
 static void reportWindowState(QWidget *w)
 {
 	QRect g = w->geometry();
+#if QT_VERSION >= QT_VERSION_CHECK(5, 10, 0)
 	QScreen *scr = QGuiApplication::screenAt(g.center());
+#else
+	QScreen *scr = Q_NULLPTR;
+	const QList<QScreen *> screens = QGuiApplication::screens();
+	foreach (QScreen *candidate, screens) {
+		if (candidate->geometry().contains(g.center())) {
+			scr = candidate;
+			break;
+		}
+	}
+	if (scr == Q_NULLPTR)
+		scr = QGuiApplication::primaryScreen();
+#endif
 	QString name = scr ? scr->name() : QString();
 	CrashHandler::setWindowState(g.x(), g.y(), g.width(), g.height(),
 		(const wchar_t *)name.utf16());
@@ -384,8 +441,10 @@ void MainWindow::setUiScale(qreal scale)
 {
 	if (gameView)
 		gameView->setUiScale(scale);
+#if QSAN_ENABLE_QML
 	if (homeView && homeView->rootObject())
 		homeView->rootObject()->setProperty("uiScale", scale);
+#endif
 }
 
 void MainWindow::on_actionExit_triggered()

@@ -182,7 +182,7 @@ const SettingSpec *findSpec(const QString &key)
 
 bool normalizeBoolean(const QVariant &input, bool &value)
 {
-    if (input.metaType().id() == QMetaType::Bool) {
+    if (input.userType() == QMetaType::Bool) {
         value = input.toBool();
         return true;
     }
@@ -235,7 +235,7 @@ bool normalizeValue(const SettingSpec &spec, const QVariant &input,
     }
     case ValueKind::StringList: {
         QStringList values;
-        if (input.metaType().id() == QMetaType::QStringList)
+        if (input.userType() == QMetaType::QStringList)
             values = input.toStringList();
         else if (!input.toString().trimmed().isEmpty())
             values = input.toString().split(QLatin1Char(','), Qt::SkipEmptyParts);
@@ -275,9 +275,9 @@ bool normalizeValue(const SettingSpec &spec, const QVariant &input,
 
 QString configValueText(const QVariant &value)
 {
-    if (value.metaType().id() == QMetaType::Bool)
+    if (value.userType() == QMetaType::Bool)
         return value.toBool() ? QStringLiteral("true") : QStringLiteral("false");
-    if (value.metaType().id() == QMetaType::QStringList)
+    if (value.userType() == QMetaType::QStringList)
         return value.toStringList().join(QLatin1Char(','));
     return value.toString();
 }

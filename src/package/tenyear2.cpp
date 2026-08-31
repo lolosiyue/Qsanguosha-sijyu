@@ -6,6 +6,7 @@
 #include "clientplayer.h"
 //#include "clientstruct.h"
 #include "engine.h"
+#include "qt-collection-utils.h"
 #include "maneuvering.h"
 #include "wrapped-card.h"
 #include "room.h"
@@ -17471,7 +17472,7 @@ public:
 	{
 		CardUseStruct use = data.value<CardUseStruct>();
 		if(!use.card->isKindOf("Slash"))return false;
-		foreach(ServerPlayer*p,QSet<ServerPlayer*>(use.to.begin(),use.to.end())){
+		foreach(ServerPlayer*p, qsanToSet(use.to)){
 			if(player->isDead())return false;
 			if(!p->canDiscard(p,"e"))continue;
 			if(!player->askForSkillInvoke(this,p))continue;
