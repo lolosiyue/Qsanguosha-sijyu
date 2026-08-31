@@ -458,7 +458,7 @@ target_include_directories(qsanguosha_network_integration_tests PRIVATE
     ${QSAN_TEST_ROOT}/src/core
 )
 target_link_libraries(qsanguosha_network_integration_tests PRIVATE
-    qsanguosha_engine
+    qsanguosha_protocol_v2_contract_support
     Qt6::Core
     Qt6::Network
 )
