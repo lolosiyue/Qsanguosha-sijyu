@@ -317,9 +317,10 @@ bool ClientLiveSession::dispatchMessage(const ProtocolMessage &message)
     }
     if (!reduction.eventText.isEmpty()) {
         if (m_syncActive)
-            m_pendingPresentationEvents.append(qMakePair(message.command, reduction.eventText));
+            m_pendingPresentationEvents.append(
+                PendingPresentationEvent{message.command, reduction.eventText, message.payload});
         else
-            emit presentationEvent(message.command, reduction.eventText);
+            emit presentationEvent(message.command, reduction.eventText, message.payload);
     }
     if (m_syncActive)
         m_pendingFrontendMessages.append(message);
@@ -327,15 +328,15 @@ bool ClientLiveSession::dispatchMessage(const ProtocolMessage &message)
         *m_core->state() = m_pendingState;
         m_syncActive = false;
         m_syncId.clear();
-        const QList<QPair<int, QString>> committedEvents = m_pendingPresentationEvents;
+        const QList<PendingPresentationEvent> committedEvents = m_pendingPresentationEvents;
         m_pendingPresentationEvents.clear();
         const QList<ProtocolMessage> committedMessages = m_pendingFrontendMessages;
         m_pendingFrontendMessages.clear();
         emit stateChanged();
         for (const ProtocolMessage &committed : committedMessages)
             emit frontendMessageReceived(committed);
-        for (const QPair<int, QString> &event : committedEvents)
-            emit presentationEvent(event.first, event.second);
+        for (const PendingPresentationEvent &event : committedEvents)
+            emit presentationEvent(event.command, event.text, event.payload);
         return true;
     }
     if (!m_syncActive) {

@@ -46,6 +46,9 @@ private:
     QString renderSkills() const;
     QString renderEquipment() const;
     QString renderLog() const;
+    QString resolvePlayerName(const QString &objectName) const;
+    QString presentationText(int command, const QString &fallbackText,
+                             const QVariant &payload) const;
 
     TuiApplicationOptions m_options;
     ClientCore m_core;

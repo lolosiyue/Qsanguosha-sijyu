@@ -264,9 +264,11 @@ ClientFlowDisposition ClientGameStateReducer::classifyNotification(int command)
     case S_COMMAND_SET_EMOTION:
     case S_COMMAND_CHANGE_TABLE_BG:
     case S_COMMAND_INVOKE_SKILL:
-    case S_COMMAND_ANIMATE:
         return ClientFlowDisposition::PresentationEvent;
+    case S_COMMAND_ANIMATE:
     case S_COMMAND_PLAY_AUDIO:
+        // Both drive desktop presentation only; a text transcript has nothing
+        // to say about an animation or a sound.
         return ClientFlowDisposition::ExplicitTextIrrelevant;
     case S_COMMAND_ADD_PLAYER:
     case S_COMMAND_ADD_PLAYER_DYNAMIC:

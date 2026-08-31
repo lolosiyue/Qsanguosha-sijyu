@@ -4,6 +4,7 @@
 #include "engine.h"
 #include "protocol-interaction-request-builder.h"
 #include "tui-card-text.h"
+#include "tui-log-text.h"
 #include "protocol/session/session-payloads.h"
 #include "tui-script-runner.h"
 
@@ -77,7 +78,11 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
             writeOutput(m_renderer.renderState(*m_core.state()));
     });
     connect(&m_session, &ClientLiveSession::presentationEvent, this,
-        [this](int, const QString &text) { writeOutput(text); });
+        [this](int command, const QString &text, const QVariant &payload) {
+            const QString line = presentationText(command, text, payload);
+            if (!line.isEmpty())
+                writeOutput(line);
+        });
     connect(&m_session, &ClientLiveSession::commandResult, this,
         [this](int command, bool success, const QString &message) {
             writeOutput(tr("命令 %1：%2%3").arg(command)
@@ -134,6 +139,10 @@ bool TuiApplicationController::start(QString *error)
     } else {
         m_script = new TuiScriptRunner(&m_core,
             [this](const QString &line) { handleInputLine(line); }, this);
+        m_script->setEventFormatter([this](int command, const QString &fallbackText,
+                                           const QVariant &payload) {
+            return presentationText(command, fallbackText, payload);
+        });
         if (!m_script->load(m_options.scriptFile, error))
             return false;
         connect(m_script, &TuiScriptRunner::scriptError, this, [this](const QString &message) {
@@ -311,13 +320,40 @@ QString TuiApplicationController::renderEquipment() const
     return lines.join(QLatin1Char('\n'));
 }
 
+QString TuiApplicationController::resolvePlayerName(const QString &objectName) const
+{
+    const QVariantMap player = m_core.state()->player(objectName);
+    const QString screenName = player.value(QStringLiteral("screen_name")).toString();
+    if (!screenName.isEmpty())
+        return screenName;
+    // The server never echoes our own screen name back, so use the one we
+    // signed up with rather than showing the player their object name.
+    if (objectName == m_core.state()->selfName() && !m_options.session.screenName.isEmpty())
+        return m_options.session.screenName;
+    return objectName;
+}
+
+QString TuiApplicationController::presentationText(int command, const QString &fallbackText,
+                                                   const QVariant &payload) const
+{
+    return tuiPresentationEventText(command, fallbackText, payload,
+        [this](const QString &objectName) { return resolvePlayerName(objectName); });
+}
+
 QString TuiApplicationController::renderLog() const
 {
     QStringList lines{tr("== 記錄 ==")};
     const QVariantList events = m_core.state()->presentationEvents();
-    const int first = qMax(0, events.size() - 30);
-    for (int i = first; i < events.size(); ++i)
-        lines << TuiRenderer::sanitize(events.at(i).toMap().value(QStringLiteral("text")).toString(), 1024);
+    QStringList rendered;
+    for (const QVariant &entry : events) {
+        const QVariantMap event = entry.toMap();
+        const QString line = presentationText(event.value(QStringLiteral("command")).toInt(),
+            event.value(QStringLiteral("text")).toString(),
+            event.value(QStringLiteral("payload")));
+        if (!line.isEmpty())
+            rendered << TuiRenderer::sanitize(line, 1024);
+    }
+    lines << rendered.mid(qMax(0, rendered.size() - 30));
     return lines.join(QLatin1Char('\n'));
 }
 

@@ -47,6 +47,11 @@ void TuiScriptRunner::start()
     QTimer::singleShot(0, this, &TuiScriptRunner::advance);
 }
 
+void TuiScriptRunner::setEventFormatter(EventFormatter formatter)
+{
+    m_eventFormatter = std::move(formatter);
+}
+
 void TuiScriptRunner::notifyStateChanged()
 {
     if (!m_waitCondition.isEmpty() && conditionMatches(m_waitCondition)) {
@@ -135,8 +140,18 @@ bool TuiScriptRunner::logContains(const QStringList &tokens) const
         return false;
     const QString expected = tokens.join(QLatin1Char(' '));
     const QVariantList events = m_core->state()->presentationEvents();
-    for (const QVariant &event : events) {
-        if (event.toMap().value(QStringLiteral("text")).toString().contains(expected))
+    // Match what the player sees as well as the core's untranslated fallback.
+    for (const QVariant &entry : events) {
+        const QVariantMap event = entry.toMap();
+        const QString fallback = event.value(QStringLiteral("text")).toString();
+        if (fallback.contains(expected))
+            return true;
+        if (!m_eventFormatter)
+            continue;
+        const QString rendered = m_eventFormatter(
+            event.value(QStringLiteral("command")).toInt(), fallback,
+            event.value(QStringLiteral("payload")));
+        if (rendered.contains(expected))
             return true;
     }
     return false;
