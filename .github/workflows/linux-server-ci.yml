@@ -89,8 +89,10 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/debug'
         run: |
           cmake --build 'build/linux-${{ matrix.compiler.id }}' \
+            --target qsanguosha_server \
+            --parallel
+          cmake --build 'build/linux-${{ matrix.compiler.id }}' \
             --target \
-              qsanguosha_server \
               qsanguosha_protocol_v2_tests \
               qsanguosha_network_integration_tests \
             --parallel
