@@ -694,6 +694,10 @@ void testGameState()
     check(state->isKnownCardId(159) && !state->isKnownCardId(160) && !state->isKnownCardId(-1),
         "the card id space bounds valid ids");
 
+    state->setCardValue(900, QStringLiteral("name"), QStringLiteral("dynamic"));
+    check(state->isKnownCardId(900),
+        "a reducer-known card remains valid outside the initial id space");
+
     state->addPlayer(QStringLiteral("sgs3"));
     state->removePlayer(QStringLiteral("sgs2"));
     check(state->playerNames() == (QStringList() << QStringLiteral("sgs1") << QStringLiteral("sgs3")),

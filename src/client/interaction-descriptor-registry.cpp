@@ -1,4 +1,5 @@
 #include "interaction-descriptor-registry.h"
+#include "interaction-command-registry.h"
 
 #include <QSet>
 
@@ -92,6 +93,18 @@ const std::array<ClientInteractionDescriptor, 29> &InteractionDescriptorRegistry
         { S_COMMAND_ARRANGE_GENERAL, InteractionType::ArrangeGeneral, &Client::startArrange, &IClientInteractionPresenter::presentArrangeGeneral, InteractionResponseShape::GeneralArrangement, &Adapter::generalArrangement, InteractionSupport::CanonicalTyped, "ARRANGE_GENERAL", "startArrange", "presentArrangeGeneral", "general_arrangement", "arrange_general" },
         { S_COMMAND_QML_INTERACT, InteractionType::QmlInteract, &Client::askForQml, &IClientInteractionPresenter::presentQmlInteraction, InteractionResponseShape::Custom, &Adapter::custom, InteractionSupport::CanonicalTyped, "QML_INTERACT", "askForQml", "presentQmlInteraction", "custom", "qml_interact" }
     }};
+    static const bool sharedRegistryMatches = []() {
+        for (const ClientInteractionDescriptor &desktop : values) {
+            const InteractionCommandDescriptor *shared
+                = InteractionCommandRegistry::find(desktop.command);
+            Q_ASSERT(shared != nullptr);
+            Q_ASSERT(shared->type == desktop.type);
+            Q_ASSERT(shared->responseShape == desktop.responseShape);
+            Q_ASSERT(shared->replyEncoder == desktop.replyEncoder);
+        }
+        return true;
+    }();
+    Q_UNUSED(sharedRegistryMatches);
     return values;
 }
 

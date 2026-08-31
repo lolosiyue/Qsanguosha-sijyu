@@ -20,6 +20,8 @@
 
 #include <QSet>
 
+#include <limits>
+
 using namespace QSanProtocol;
 
 PlayerLifecycleService::PlayerLifecycleService(Room &room, RoomRoster &roster,
@@ -663,6 +665,15 @@ void PlayerLifecycleService::reconnect(ServerPlayer *player, ClientSocket *socke
 
 void PlayerLifecycleService::marshal(ServerPlayer *player)
 {
+    const QString syncId = QString::number(m_nextStateSyncId);
+    m_nextStateSyncId = m_nextStateSyncId == std::numeric_limits<quint64>::max()
+        ? 1 : m_nextStateSyncId + 1;
+    StateSyncPayload sync;
+    sync.syncId = syncId;
+    sync.phase = QStringLiteral("begin");
+    sync.reconnect = true;
+    m_notifier.doNotify(player, S_COMMAND_STATE_SYNC, sync.toVariant());
+
     m_room.notifyProperty(player, player, "objectName");
     m_room.notifyProperty(player, player, "role");
     m_room.notifyProperty(player, player, "flags", "marshalling");
@@ -754,4 +765,7 @@ void PlayerLifecycleService::marshal(ServerPlayer *player)
         m_notifier.doNotify(player, S_COMMAND_SYNCHRONIZE_DISCARD_PILE,
                             JsonUtils::toJsonArray(m_cardMovement.discardPile()));
     }
+
+    sync.phase = QStringLiteral("end");
+    m_notifier.doNotify(player, S_COMMAND_STATE_SYNC, sync.toVariant());
 }
