@@ -581,6 +581,7 @@ add_executable(qsanguosha_server_tests
     request-coordinator-test.cpp
     pre-game-lock-test.cpp
     outbound-ordering-test.cpp
+    room-disconnect-test.cpp
     move-classifier-ordering/move-classifier-ordering-test.cpp
     extra-turn-scheduler-test.cpp
     room-roster-test.cpp
