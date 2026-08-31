@@ -198,7 +198,7 @@ void PlayerStateService::setPlayerMark(ServerPlayer *player, const QString &mark
 
 	if (mark.endsWith("Clear") && value != 0 && !m_room.current) return;
 
-	bool trigger = m_room.game_state > 0 && !(mark.endsWith("Clear") ||
+	bool trigger = m_room.hasGameStarted() && !(mark.endsWith("Clear") ||
 		mark.endsWith("_lun") || mark.endsWith("-Keep") || mark == "@HuJia" ||
 		mark.contains("Global_") || mark.contains("sys_") || mark.contains("ExtraBf") ||
 		mark.contains("damage_point_") || (mark.startsWith("&") && mark.endsWith("_num")));
