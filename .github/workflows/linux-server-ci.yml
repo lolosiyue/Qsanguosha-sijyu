@@ -91,7 +91,7 @@ jobs:
           cmake --build 'build/linux-${{ matrix.compiler.id }}' \
             --target \
               qsanguosha_server \
-              qsanguosha_protocol_negotiation_tests \
+              qsanguosha_protocol_v2_tests \
               qsanguosha_network_integration_tests \
             --parallel
 
@@ -121,9 +121,9 @@ jobs:
 
       # Level 2 覆蓋真實 TCP handshake／signup；Level 1 與 shutdown smoke 重疊，
       # Level 3 完整 02p 對局只留給 main 的 full CTest。
-      - name: Run protocol negotiation contract directly
+      - name: Run protocol V2 contract directly
         if: github.ref != 'refs/heads/main'
-        run: 'build/linux-${{ matrix.compiler.id }}/tests/qsanguosha_protocol_negotiation_tests'
+        run: 'build/linux-${{ matrix.compiler.id }}/tests/qsanguosha_protocol_v2_tests'
 
       - name: Run daily network integration level 2
         if: env.QSAN_FULL_SERVER_CI != 'true'

@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 
-"""Perform the existing Level 2 handshake/signup sequence against a container."""
+"""Perform the Level 2 Protocol V2 handshake/signup sequence against a container."""
 
 from __future__ import annotations
 
 import argparse
-import base64
 import json
 import re
 import socket
@@ -48,6 +47,7 @@ def command_values(protocol_header: Path) -> dict[str, int]:
         "S_COMMAND_SETUP",
         "S_COMMAND_SET_PROPERTY",
         "S_COMMAND_SIGNUP",
+        "S_COMMAND_READY",
     }
     missing = sorted(required.difference(values))
     if missing:
@@ -55,13 +55,18 @@ def command_values(protocol_header: Path) -> dict[str, int]:
     return values
 
 
-class PacketStream:
+class ProtocolV2Stream:
     def __init__(self, connection: socket.socket, timeout: float) -> None:
         self.connection = connection
         self.timeout = timeout
         self.buffer = bytearray()
+        self.outgoing_id = 0
 
-    def receive(self, deadline: float) -> list[Any]:
+    def next_message_id(self) -> int:
+        self.outgoing_id += 1
+        return self.outgoing_id
+
+    def receive(self, deadline: float) -> dict[str, Any]:
         while b"\n" not in self.buffer:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -85,15 +90,59 @@ class PacketStream:
         except (UnicodeDecodeError, json.JSONDecodeError) as error:
             preview = raw_line[:200].decode("utf-8", errors="replace")
             raise SmokeFailure(f"invalid JSON packet from server: {preview}") from error
-        if not isinstance(packet, list) or not 4 <= len(packet) <= 5:
-            raise SmokeFailure(f"invalid protocol packet shape: {packet!r}")
-        if any(not isinstance(value, int) for value in packet[:4]):
-            raise SmokeFailure(f"invalid protocol packet header: {packet!r}")
+        if not isinstance(packet, dict) or packet.get("v") != 2:
+            raise SmokeFailure(f"invalid Protocol V2 envelope: {packet!r}")
         return packet
 
+    def send(
+        self,
+        message_type: str,
+        source: str,
+        destination: str,
+        command: int,
+        payload: dict[str, Any],
+        *,
+        message_id: int | None = None,
+        reply_to: int | None = None,
+    ) -> int:
+        outgoing_id = message_id if message_id is not None else self.next_message_id()
+        message: dict[str, Any] = {
+            "v": 2,
+            "type": message_type,
+            "source": source,
+            "destination": destination,
+            "message_id": str(outgoing_id),
+            "command": command,
+            "payload": payload,
+        }
+        if reply_to is not None:
+            message["reply_to"] = str(reply_to)
+        wire = json.dumps(message, separators=(",", ":"), ensure_ascii=False).encode("utf-8") + b"\n"
+        self.connection.sendall(wire)
+        return outgoing_id
 
-def packet_body(packet: list[Any]) -> Any:
-    return packet[4] if len(packet) == 5 else None
+
+def payload_map(packet: dict[str, Any]) -> dict[str, Any]:
+    payload = packet.get("payload")
+    if not isinstance(payload, dict):
+        raise SmokeFailure(f"packet payload is not an object: {packet!r}")
+    return payload
+
+
+def wait_for_command(
+    stream: ProtocolV2Stream,
+    deadline: float,
+    command: int,
+    *,
+    message_type: str | None = None,
+) -> dict[str, Any]:
+    while True:
+        packet = stream.receive(deadline)
+        if packet.get("command") != command:
+            continue
+        if message_type is not None and packet.get("type") != message_type:
+            continue
+        return packet
 
 
 def run_smoke(arguments: argparse.Namespace) -> tuple[str, str, str]:
@@ -109,52 +158,89 @@ def run_smoke(arguments: argparse.Namespace) -> tuple[str, str, str]:
         ) from error
 
     with connection:
-        stream = PacketStream(connection, arguments.timeout)
-        handshake: dict[int, Any] = {}
-        required_handshake = {
-            commands["S_COMMAND_CHECK_VERSION"],
-            commands["S_COMMAND_SETUP"],
-        }
-        while required_handshake.difference(handshake):
-            packet = stream.receive(deadline)
-            command = packet[3]
-            if command in required_handshake:
-                handshake[command] = packet_body(packet)
+        stream = ProtocolV2Stream(connection, arguments.timeout)
 
-        version = handshake[commands["S_COMMAND_CHECK_VERSION"]]
-        setup = handshake[commands["S_COMMAND_SETUP"]]
+        hello = wait_for_command(
+            stream,
+            deadline,
+            commands["S_COMMAND_CHECK_VERSION"],
+            message_type="notification",
+        )
+        if hello.get("source") != "lobby" or hello.get("destination") != "client":
+            raise SmokeFailure("first server frame is not typed SERVER_HELLO")
+        hello_payload = payload_map(hello)
+        version = hello_payload.get("game_version")
         if not isinstance(version, str) or not version:
             raise SmokeFailure("version handshake body is not a non-empty string")
+
+        signup_id = stream.send(
+            "request",
+            "client",
+            "lobby",
+            commands["S_COMMAND_SIGNUP"],
+            {
+                "schema_version": 1,
+                "reconnect_requested": False,
+                "screen_name": arguments.name,
+                "avatar": "",
+            },
+        )
+
+        signup_reply: dict[str, Any] | None = None
+        while signup_reply is None:
+            packet = stream.receive(deadline)
+            if packet.get("command") != commands["S_COMMAND_SIGNUP"]:
+                continue
+            if packet.get("type") != "reply":
+                continue
+            if str(packet.get("reply_to")) != str(signup_id):
+                continue
+            signup_reply = packet
+
+        signup_payload = payload_map(signup_reply)
+        if signup_payload.get("accepted") is not True:
+            raise SmokeFailure(
+                f"signup was rejected: {signup_payload.get('error_code')!r} "
+                f"{signup_payload.get('message')!r}"
+            )
+        player_id = signup_payload.get("player_id")
+        if not isinstance(player_id, str) or not player_id:
+            raise SmokeFailure("accepted signup reply is missing player_id")
+
+        setup_packet = wait_for_command(
+            stream,
+            deadline,
+            commands["S_COMMAND_SETUP"],
+            message_type="notification",
+        )
+        if setup_packet.get("source") != "lobby":
+            raise SmokeFailure("setup frame is not a lobby notification")
+        setup_payload = payload_map(setup_packet)
+        setup = setup_payload.get("game_mode")
         if not isinstance(setup, str) or not setup:
             raise SmokeFailure("setup handshake body is not a non-empty string")
 
-        encoded_name = base64.b64encode(arguments.name.encode("utf-8")).decode("ascii")
-        client_notification_to_room = 0x40 | 0x04 | 0x100
-        signup = [
-            0,
-            0,
-            client_notification_to_room,
-            commands["S_COMMAND_SIGNUP"],
-            [False, encoded_name, ""],
-        ]
-        connection.sendall(
-            json.dumps(signup, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-            + b"\n"
+        stream.send(
+            "notification",
+            "client",
+            "room",
+            commands["S_COMMAND_READY"],
+            {"schema_version": 1, "ready": True},
         )
 
-        player_id: str | None = None
         owner: bool | None = None
-        while player_id is None or owner is None:
+        while owner is None:
             packet = stream.receive(deadline)
-            if packet[3] != commands["S_COMMAND_SET_PROPERTY"]:
+            if packet.get("command") != commands["S_COMMAND_SET_PROPERTY"]:
                 continue
-            body = packet_body(packet)
-            if not isinstance(body, list) or len(body) < 3 or body[0] != "MG_SELF":
+            body = payload_map(packet)
+            if body.get("action") != "property":
                 continue
-            if body[1] == "objectName" and isinstance(body[2], str) and body[2]:
-                player_id = body[2]
-            elif body[1] == "owner":
-                owner = body[2] is True or str(body[2]).lower() == "true"
+            if body.get("player_name") != "MG_SELF":
+                continue
+            if body.get("property_name") == "owner":
+                value = body.get("string_value")
+                owner = value is True or str(value).lower() == "true"
 
         if not owner:
             raise SmokeFailure("first signed-up player was not assigned room ownership")
