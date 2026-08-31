@@ -35,6 +35,7 @@ RUN QSAN_EXTENSIONS_REPO="${QSAN_EXTENSIONS_REPO}" \
 
 RUN cmake -S /src -B /build -G Ninja \
         -DBUILD_TESTING=OFF \
+        -DQSAN_BUILD_TUI=OFF \
         -DCMAKE_BUILD_TYPE=RelWithDebInfo \
         -DCMAKE_C_COMPILER=gcc \
         -DCMAKE_CXX_COMPILER=g++ \
