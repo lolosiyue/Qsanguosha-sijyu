@@ -115,6 +115,14 @@ struct RoomTestAccess
         room.m_requests->processClientPacket(player, message, rawMessage);
     }
 
+    // Delivers the same signal the socket layer emits when a client drops.
+    static void simulateDisconnect(Room &room, ServerPlayer *player)
+    {
+        QObject::connect(player, SIGNAL(disconnected()), &room,
+                         SLOT(reportDisconnection()), Qt::UniqueConnection);
+        emit player->disconnected();
+    }
+
     static bool isPaused(const Room &room)
     {
         return room.game_paused;

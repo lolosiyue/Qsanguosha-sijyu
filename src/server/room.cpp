@@ -2145,14 +2145,19 @@ void Room::reportDisconnection()
 			player->releaseLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
 		setPlayerProperty(player, "state", "offline");
 
-		bool someone_is_online = false;
+		// isOffline() also covers robots, so counting it here ended the room the
+		// moment the only human dropped -- taking Server::gameOver() and the
+		// reconnect registration with it. A human seat is kept alive whatever its
+		// current connection state; the trust AI plays on and the room is reaped
+		// when the game really finishes.
+		bool human_seat_remains = false;
 		foreach(ServerPlayer*p, getPlayers()){
-			if (p->isOffline()) continue;
-			someone_is_online = true;
+			if (p->getState() == "robot") continue;
+			human_seat_remains = true;
 			break;
 		}
 
-		if (!someone_is_online){
+		if (!human_seat_remains){
 			game_state = -1;
 			emit game_over("");
 			return;
@@ -4515,7 +4520,10 @@ void Room::startGame()
 
 	Server*server = qobject_cast<Server*>(parent());
 	foreach(ServerPlayer*player, players){
-		if (player->getState() == "online")
+		// A trusted player is still a human connection: registering only
+		// "online" players left them out of name2objname, so reconnect could
+		// never find them.
+		if (!player->isOffline())
 			server->signupPlayer(player);
 	}
 
