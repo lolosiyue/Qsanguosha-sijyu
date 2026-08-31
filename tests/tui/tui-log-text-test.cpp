@@ -158,6 +158,17 @@ int main(int argc, char **argv)
               .contains(Sanguosha->translate(QStringLiteral("caocao"))),
           "a hero change the server did not log is announced here");
 
+    const QVariantMap chat{{QStringLiteral("schema_version"), 1},
+        {QStringLiteral("speaker"), QStringLiteral("sgs1")},
+        {QStringLiteral("text"),
+         QStringLiteral("<font color=#EEB422>已加入游戏</font>")}};
+    const QString chatText = tuiPresentationEventText(
+        QSanProtocol::S_COMMAND_SPEAK, QStringLiteral("sgs1: raw"), chat, playerName);
+    check(!chatText.contains(QLatin1Char('<')) && chatText.contains(QStringLiteral("已加入游戏")),
+          "chat strips server markup and keeps the message");
+    check(chatText.contains(QStringLiteral("刘玄德")),
+          "chat names the speaker, not their object name");
+
     const QVariantMap bgm{{QStringLiteral("schema_version"), 1},
         {QStringLiteral("event"), int(QSanProtocol::S_GAME_EVENT_CHANGE_BGM)},
         {QStringLiteral("path"), QStringLiteral("audio/system/test.ogg")},

@@ -48,6 +48,15 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
     connect(&m_session, &ClientLiveSession::sessionActive, this, [this](bool reconnected) {
         writeOutput(reconnected ? tr("已重連；等待原子狀態快照")
                                 : tr("Protocol V2 工作階段已啟用"));
+        // The server does not echo our own screen name back, so record the one
+        // we signed up with; every view then names us the same way.
+        const QString self = m_core.state()->selfName();
+        if (!self.isEmpty() && !m_options.session.screenName.isEmpty()
+            && m_core.state()->player(self).value(QStringLiteral("screen_name"))
+                   .toString().isEmpty()) {
+            m_core.state()->setPlayerValue(self, QStringLiteral("screen_name"),
+                                           m_options.session.screenName);
+        }
         if (reconnected && m_trusted) {
             TrustPayload payload;
             payload.trusted = true;
@@ -85,9 +94,9 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
         });
     connect(&m_session, &ClientLiveSession::commandResult, this,
         [this](int command, bool success, const QString &message) {
-            writeOutput(tr("命令 %1：%2%3").arg(command)
-                .arg(success ? tr("成功") : tr("失敗"),
-                     message.isEmpty() ? QString() : tr(" - %1").arg(message)));
+            const QString line = TuiRenderer::commandResultText(command, success, message);
+            if (!line.isEmpty())
+                writeOutput(line);
         });
     connect(&m_session, &ClientLiveSession::interactionRequested, this,
         [this](const ProtocolMessage &message) {
