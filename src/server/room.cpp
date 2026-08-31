@@ -224,6 +224,9 @@ Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionC
 	static int s_global_room_id = 0;
 	_m_Id = s_global_room_id++;
 	_m_lastMovementId = 0;
+	// 首次投降無視計時器；必須 start()，否則 elapsed() 未定義，首次請求會被 5 秒守衛攔死。
+	_m_isFirstSurrenderRequest = true;
+	_m_timeSinceLastSurrenderRequest.start();
 
 	m_runtime->seedRandom(m_sessionConfig.seed);
 	GameRng::Binding rngBinding(m_runtime->rng());
@@ -800,8 +803,12 @@ void Room::acquireNextTurnSkills(ServerPlayer*player, const QString&skill_name, 
 
 bool Room::doRequest(ServerPlayer*player, QSanProtocol::CommandType command, const QVariant&arg, bool wait)
 {
-	return m_requests->request(player, command, arg,
+	bool result = m_requests->request(player, command, arg,
 		ServerInfo.getCommandTimeout(command, S_SERVER_INSTANCE), wait);
+	if (wait && command != S_COMMAND_PLAY_CARD
+		&& m_surrenderRequestReceived && isSinglePlayerMode())
+		makeSurrender(player);
+	return result;
 }
 
 ServerPlayer *Room::getActualController(ServerPlayer *player) const
@@ -888,7 +895,12 @@ ServerPlayer *Room::getRequestTarget(ServerPlayer *player) const
 
 bool Room::doRequest(ServerPlayer*player, QSanProtocol::CommandType command, const QVariant&arg, time_t timeOut, bool wait)
 {
-	return m_requests->request(player, command, arg, timeOut, wait);
+	bool result = m_requests->request(player, command, arg, timeOut, wait);
+	// 單機對 AI：求閃／求桃等被投降打斷後就地結束。PLAY_CARD 仍走出牌階段原路徑。
+	if (wait && command != S_COMMAND_PLAY_CARD
+		&& m_surrenderRequestReceived && isSinglePlayerMode())
+		makeSurrender(player);
+	return result;
 }
 
 bool Room::doBroadcastRequest(QList<ServerPlayer*> players, QSanProtocol::CommandType command)
@@ -1453,6 +1465,28 @@ bool Room::canPause(ServerPlayer*player) const
 	return false;
 }
 
+bool Room::isSinglePlayerMode() const
+{
+	ServerPlayer *owner = getOwner();
+	if (!owner) return false;
+	// 用完整名單(含已陣亡)：其他真人死後若只看存活者會誤判成單機。
+	foreach (ServerPlayer *p, getPlayers()) {
+		if (p != owner && p->getState() != "robot")
+			return false;
+	}
+	return true;
+}
+
+void Room::trySinglePlayerSurrender()
+{
+	if (!m_surrenderRequestReceived || !isSinglePlayerMode())
+		return;
+	ServerPlayer *owner = getOwner();
+	if (!owner) return;
+	// 單機無人表決，makeSurrender 必走 gameOver 拋 GameFinished，由 RoomThread::run 接住。
+	makeSurrender(owner);
+}
+
 void Room::tryPause()
 {
 	//tag["callback"] = true;
@@ -1856,7 +1890,9 @@ void Room::processRequestSurrender(ServerPlayer*player, const QVariant &arg)
 
 	//@todo: Strictly speaking, the client must be in the PLAY phase
 	//@todo: return false for 3v3 and 1v1!!!
-	if (!player->m_isWaitingReply)
+	// 單機即使 idle 也受理，只記 flag；聯機仍要求服務端正在等回覆。
+	const bool single = isSinglePlayerMode();
+	if (!single && !player->m_isWaitingReply)
 		return;
 	if (!_m_isFirstSurrenderRequest
 		&&_m_timeSinceLastSurrenderRequest.elapsed() <= Config.S_SURRENDER_REQUEST_MIN_INTERVAL)
@@ -1865,7 +1901,9 @@ void Room::processRequestSurrender(ServerPlayer*player, const QVariant &arg)
 	_m_isFirstSurrenderRequest = false;
 	_m_timeSinceLastSurrenderRequest.restart();
 	m_surrenderRequestReceived = true;
-	player->releaseLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
+	// idle 時沒人 acquire，亂 release 會污染下次 getResult。
+	if (player->m_isWaitingReply)
+		player->releaseLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
 	return;
 }
 
