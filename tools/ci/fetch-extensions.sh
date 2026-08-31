@@ -64,6 +64,14 @@ if [[ ! -f "$ai_target/isolated/ask-for-use-card.lua" ]]; then
     echo 'lua/ai/isolated is incomplete: ask-for-use-card.lua is missing after fetch' >&2
     exit 1
 fi
+if [[ ! -f "$ai_target/isolated-bootstrap.lua" ]]; then
+    echo 'lua/ai is incomplete: isolated-bootstrap.lua is missing after fetch' >&2
+    exit 1
+fi
+if [[ ! -f "$ai_target/isolated-facades.lua" ]]; then
+    echo 'lua/ai is incomplete: isolated-facades.lua is missing after fetch' >&2
+    exit 1
+fi
 
 ai_count=$(find "$ai_target" -maxdepth 1 -type f -name '*.lua' | wc -l)
 extensions_count=$(find "$extensions_target" -maxdepth 1 -type f -name '*.lua' | wc -l)

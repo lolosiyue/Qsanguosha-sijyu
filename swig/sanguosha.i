@@ -883,6 +883,9 @@ struct SlashEffectStruct {
 	bool no_offset;
 };
 
+%ignore CardUseStruct::CardUseStruct(const Card *, ServerPlayer *, ServerPlayer *,
+	bool, const Card *, ServerPlayer *);
+
 struct CardUseStruct {
 	enum CardUseReason {
 		CARD_USE_REASON_UNKNOWN = 0x00,
@@ -893,8 +896,6 @@ struct CardUseStruct {
 
 	CardUseStruct();
 	CardUseStruct(const Card*card, ServerPlayer*from, QList<ServerPlayer*> to, bool isOwnerUse = true,
-				const Card*whocard = nullptr, ServerPlayer*who = nullptr);
-	CardUseStruct(const Card*card, ServerPlayer*from, ServerPlayer*target = nullptr, bool isOwnerUse = true,
 				const Card*whocard = nullptr, ServerPlayer*who = nullptr);
 	bool isValid(const char*pattern) const;
 	void parse(const char*str, Room*room);
@@ -915,6 +916,13 @@ struct CardUseStruct {
     int extra_use;
     bool bypass_cost;
 };
+
+%extend CardUseStruct {
+	CardUseStruct(const Card *card, ServerPlayer *from, ServerPlayer *target,
+			bool isOwnerUse = true, const Card *whocard = nullptr, ServerPlayer *who = nullptr) {
+		return new CardUseStruct(card, from, target, isOwnerUse, whocard, who);
+	}
+}
 
 struct CardsMoveStruct {
 	CardsMoveStruct();

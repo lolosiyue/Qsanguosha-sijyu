@@ -63,6 +63,12 @@ if (-not ((Get-Content -LiteralPath $smartAiPath -Raw).Contains('"lua/ai/"..ai_f
 if (-not (Test-Path -LiteralPath (Join-Path $aiTarget "isolated\ask-for-use-card.lua"))) {
     throw "lua/ai/isolated is incomplete: ask-for-use-card.lua missing after fetch"
 }
+if (-not (Test-Path -LiteralPath (Join-Path $aiTarget "isolated-bootstrap.lua"))) {
+    throw "lua/ai is incomplete: isolated-bootstrap.lua missing after fetch"
+}
+if (-not (Test-Path -LiteralPath (Join-Path $aiTarget "isolated-facades.lua"))) {
+    throw "lua/ai is incomplete: isolated-facades.lua missing after fetch"
+}
 
 # <repo>/extensions/*.lua -> <root>/extensions/ (skip temp/ and non-lua files)
 New-Item -ItemType Directory -Path $extTarget -Force | Out-Null
