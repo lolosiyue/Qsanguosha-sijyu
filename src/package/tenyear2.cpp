@@ -29947,7 +29947,7 @@ public:
 
 	int getCorrect(const Player*from,const Player*) const
 	{
-        if(from->hasSkill("zhijie")&&from->getMark("zhijieBan-Clear")<1)
+        if(from->hasSkill("th_zhijie")&&from->getMark("th_zhijieBan-Clear")<1)
 			return -2;
 		return 0;
 	}
@@ -29956,17 +29956,17 @@ public:
 class Zhijie : public TriggerSkill
 {
 public:
-	Zhijie(): TriggerSkill("zhijie")
+	Zhijie(): TriggerSkill("th_zhijie")
 	{
 		events << Damage;
         frequency = Skill::Compulsory;
 	}
 	bool trigger(TriggerEvent,Room*room,ServerPlayer*player,QVariant&) const
 	{
-		if(player->getMark("zhijieBan-Clear")<1&&player->getHandcardNum()<player->getMaxHp()){
+		if(player->getMark("th_zhijieBan-Clear")<1&&player->getHandcardNum()<player->getMaxHp()){
 			room->sendCompulsoryTriggerLog(player,this);
 			player->drawCards(player->getMaxHp()-player->getHandcardNum(),objectName());
-			room->addPlayerMark(player,"zhijieBan-Clear");
+			room->addPlayerMark(player,"th_zhijieBan-Clear");
 		}
 		return false;
 	}

@@ -93,6 +93,18 @@ struct ReadyPayload
                       QString *error = nullptr);
 };
 
+struct StateSyncPayload
+{
+    static constexpr int SchemaVersion = 1;
+    QString syncId;
+    QString phase;
+    bool reconnect = true;
+
+    QVariantMap toVariant() const;
+    static bool parse(const QVariant &value, StateSyncPayload *payload,
+                      QString *error = nullptr);
+};
+
 struct DiagnosticPayload
 {
     static constexpr int SchemaVersion = 1;

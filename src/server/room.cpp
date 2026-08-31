@@ -5290,7 +5290,8 @@ QVariant Room::askForQml(ServerPlayer *player, const QString &qmlPath, const QVa
 	rendererPayload.insert(QStringLiteral("qml_path"), qmlPath);
 	rendererPayload.insert(QStringLiteral("parameters"), params);
 	payload.insert(QStringLiteral("payload"), rendererPayload);
-	payload.insert(QStringLiteral("response_schema"), QVariantMap());
+	payload.insert(QStringLiteral("response_schema"),
+		QVariantMap{{QStringLiteral("type"), QStringLiteral("json")}});
 
 	if (doRequest(player, S_COMMAND_QML_INTERACT, payload, timeout, true)) {
 		return player->getClientReply();

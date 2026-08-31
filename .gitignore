@@ -37,6 +37,7 @@ artifacts/*
 !artifacts/
 !artifacts/client-core-interaction-matrix.json
 !artifacts/protocol-v2-flow-matrix.json
+!artifacts/tui-flow-coverage.json
 assets/
 !legacy/xp/assets/
 legacy/xp/assets/*

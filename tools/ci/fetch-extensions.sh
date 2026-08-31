@@ -30,6 +30,9 @@ trap cleanup EXIT
 git clone --depth 1 --filter=blob:none --sparse --branch "$ref" "$repo" "$clone_dir"
 git -C "$clone_dir" sparse-checkout set ai extensions lua
 fetched_commit=$(git -C "$clone_dir" rev-parse HEAD)
+if [[ -n "${GITHUB_ENV:-}" ]]; then
+    echo "QSAN_EXTENSIONS_COMMIT=$fetched_commit" >> "$GITHUB_ENV"
+fi
 
 ai_target="$root/lua/ai"
 extensions_target="$root/extensions"
@@ -62,6 +65,14 @@ if [[ ! -f "$lua_target/luaoldenemy_lib.lua" ]]; then
 fi
 if [[ ! -f "$ai_target/isolated/ask-for-use-card.lua" ]]; then
     echo 'lua/ai/isolated is incomplete: ask-for-use-card.lua is missing after fetch' >&2
+    exit 1
+fi
+if [[ ! -f "$ai_target/isolated-bootstrap.lua" ]]; then
+    echo 'lua/ai is incomplete: isolated-bootstrap.lua is missing after fetch' >&2
+    exit 1
+fi
+if [[ ! -f "$ai_target/isolated-facades.lua" ]]; then
+    echo 'lua/ai is incomplete: isolated-facades.lua is missing after fetch' >&2
     exit 1
 fi
 

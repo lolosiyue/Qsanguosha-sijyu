@@ -6453,8 +6453,6 @@ OLStYJ2013Package::OLStYJ2013Package()
 	addMetaObject<OLMiejiCard>();
 	MigrateToOLStYJ2013(this);
 
-	MigrateToOLStYJ2013(this);
-
 	General *oljie_guanping = new General(this, "oljie_guanping", "shu", 4);
 	oljie_guanping->addSkill("longyin");
 	oljie_guanping->addSkill(new OLJieJieyong);
@@ -6472,8 +6470,6 @@ OLStYJ2014Package::OLStYJ2014Package()
 	General *oljie_sunluban = new General(this, "oljie_sunluban", "wu", 3,false);
 	oljie_sunluban->addSkill(new OLZenhui);
 	oljie_sunluban->addSkill(new OLJiaojin);
-	MigrateToOLStYJ2014(this);
-
 	MigrateToOLStYJ2014(this);
 
 	General *oljie_zhangsong = new General(this, "oljie_zhangsong", "shu", 3);

@@ -167,6 +167,12 @@ def test_build_runs_only_incremental_gui_target(tmp_path: Path) -> None:
         f'@echo %* > "{cmake_log}"\n@exit /b 0\n',
         encoding="utf-8",
     )
+    cache_dir = tmp_path / "builds" / "cmake-vs2026"
+    cache_dir.mkdir(parents=True)
+    (cache_dir / "CMakeCache.txt").write_text(
+        f"CMAKE_COMMAND:INTERNAL={fake_cmake}\n",
+        encoding="utf-8",
+    )
     environment = dict(os.environ)
     environment["PATH"] = str(fake_bin) + os.pathsep + environment.get("PATH", "")
 
@@ -176,6 +182,8 @@ def test_build_runs_only_incremental_gui_target(tmp_path: Path) -> None:
         "--cases",
         str(cases),
         "--runtime-root",
+        str(tmp_path),
+        "--build-root",
         str(tmp_path),
         "--artifact-root",
         str(tmp_path / "artifacts"),
