@@ -460,9 +460,11 @@ if(QSAN_BUILD_TUI)
     target_compile_definitions(qsanguosha_tui_support PRIVATE QSAN_ENGINE_TEST_BUILD)
     target_link_libraries(qsanguosha_tui_support PUBLIC
         qsanguosha_client_core
-        qsanguosha_engine
         Qt6::Core
         Qt6::Network
+    )
+    target_link_libraries(qsanguosha_tui_support PRIVATE
+        qsanguosha_engine
     )
     # Static libraries can hide playback code from dumpbin/ldd. Reject every
     # Replay source from the TUI frontend and Recorder/Replayer playback sources
