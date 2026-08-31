@@ -565,7 +565,6 @@ public:
 	void setSocket(ClientSocket*socket);
 	void kick();
 	QString reportHeader() const;
-	void unicast(const char*message);
 	Room*getRoom() const;
 	void setOnsoleOwner(ServerPlayer*onsole_owner);
 	ServerPlayer*getOnsoleOwner() const;
@@ -2540,7 +2539,6 @@ public:
 	void notifyWeaponRange(const char*weapon_name, int range = 1);
 	QVariant askForQml(ServerPlayer *player, const char*qmlPath, const QVariantMap &params, int timeout = 30000);
 
-	void broadcastInvoke(const char*method, const char*arg = ".", ServerPlayer*except = nullptr);
 	ServerPlayer*getActualController(ServerPlayer *player) const;
 	void setPlayerController(ServerPlayer *target, ServerPlayer *controller = nullptr);
 	bool doNotify(ServerPlayer*player, int command, const char*arg);
