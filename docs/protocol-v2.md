@@ -7,7 +7,7 @@ subsequent frame use the V2 JSON-object envelope. There is no capability
 negotiation, runtime codec switch, V1 fallback, `Packet` facade, or mixed-version
 connection state.
 
-The production inventory contains exactly 144 registered flows. Every flow has
+The production inventory contains exactly 145 registered flows. Every flow has
 a schema-versioned typed-object payload, a parser, an encoder, replay policy,
 correlation policy, and producer/consumer evidence. The generated source of truth
 is [`artifacts/protocol-v2-flow-matrix.json`](../artifacts/protocol-v2-flow-matrix.json).
@@ -64,6 +64,10 @@ typed request and reply schemas. Cancellation is represented by named boolean
 discriminators such as `cancelled` or `has_value`; QML is not a legacy adapter.
 The generated interaction matrix is
 [`artifacts/client-core-interaction-matrix.json`](../artifacts/client-core-interaction-matrix.json).
+The production TUI/GUI shared-state coverage of every Room-to-Client flow is
+[`artifacts/tui-flow-coverage.json`](../artifacts/tui-flow-coverage.json); its
+contract rejects unclassified flows, silent drops, or an interaction without a
+registered presenter.
 
 ## Framing and errors
 
@@ -83,3 +87,9 @@ JSON Lines. Replay V1 and headerless recordings are rejected. Replay playback,
 timeline, perspective switching, and player takeover remain supported. TUI has
 no Replay implementation and is intentionally outside this contract. See
 [`replay-v2.md`](replay-v2.md).
+
+```text
+Replay in qsanguosha_tui: Permanently Unsupported
+Protocol V1: Unsupported
+GUI dependencies in qsanguosha_tui: Forbidden
+```
