@@ -55,6 +55,7 @@
 | `qsanguosha_engine` | 共用規則、資料及伺服器核心；只依賴必要的 Qt Core／Network，不得依賴 Widgets、Quick、Multimedia 或顯示伺服器 |
 | `QSanguosha` | Windows／Linux GUI 客戶端及本地遊戲入口 |
 | `qsanguosha_server` | Windows／Linux 無頭伺服器，使用 `QCoreApplication` |
+| `qsanguosha_tui` | Windows／Linux live TCP Protocol V2 客戶端；`QCoreApplication` + Qt Core／Network；Replay 永久不支援，GUI dependency 禁止 |
 | Android app target | Qt GUI／Quick／Widgets／Multimedia 客戶端；不提供公開專用伺服器，但單機可建立內嵌房間 |
 | `crashreporter` | Windows 純 Win32／DbgHelp 診斷工具 |
 | CTest targets | 單元、整合、Lua、自動對戰及性能測試 |
@@ -193,7 +194,7 @@ CI 使用 `bundletool` 檢查 base 及 pack 大小：[Google Play app size limit
 ### 6.3 協定與重播
 
 - 2026-08-31 完成 Protocol V2 breaking cutover：第一個 TCP frame 即為 V2，
-  production registry 144/144 typed complete，29/29 interaction direct typed。
+  production registry 145/145 typed complete，29/29 interaction direct typed。
   Protocol V1、capability negotiation、OFFER／ACK／COMMIT、`Packet` facade、
   runtime switching 與 compatibility fallback 均已退休。
 - Replay V2 使用嚴格 JSONL 與 Protocol V2 event；Replay V1／headerless input
@@ -264,7 +265,7 @@ M1 已完成（2026-08-09 對照 CMakeLists.txt 確認）：`qsanguosha_engine` 
 | M1 | **Complete**（2026-08-09） | Windows CMake 過渡建置、STATIC engine（僅 Qt Core／Network）、引擎／GUI 解耦契約（SkillDialogInfo／EngineRuntimeContext／audioEffectRequested／EngineBootstrap）、allowlist gate、`deploy-server`、engine smoke test | Windows GUI 與既有建置結果可對照；STATIC engine 僅連結 Qt Core／Network；GUI／CMD server 驗收完成 |
 | M2 | Acceptance Pending（2026-08-31：Qt6／Lua 5.4.8 核心實作、最小相容層、seeded state、SWIG 調整及 4 個外部低頻 Lua 問題修正已落地） | Qt 6.11.1、VS 2026 v145 + `msvc2022_64` kit；Lua 5.4.8、最小相容層、seeded state API 與 focused 測試 | Windows GUI、server、Lua/SWIG 及遠端完整測試通過 |
 | M3 | Acceptance Pending（2026-08-31：選包白名單、Gitee package/general 對齊、版本去重及確定性 RNG 實作已落地；ServerDialog 選包頁亦已改版） | `SkillDialogInfo`、選包白名單、確定性 RNG | 相同種子、輸入與包集合產生相同結果；白名單不可由客戶端繞過；選包頁人工 smoke、武將／Guhuo 實戰驗收完成 |
-| M4 | Acceptance Pending（2026-08-31：Protocol V2-only breaking cutover、144/144 typed flows、29/29 direct typed interactions、Replay V2-only 與 PNG container 已實作；本地 focused gates 通過） | 協定與重播版本化、相容性拒絕路徑 | 舊協定／舊 Replay 明確拒絕；完整 GUI／engine／server、live TCP、GUI production inventory 及遠端 Windows／Linux／Docker／package gates 全綠後才標記 Complete |
+| M4 | Acceptance Pending（2026-08-31：Protocol V2-only breaking cutover、145/145 typed flows、29/29 direct typed interactions、Replay V2-only 與 PNG container 已實作；本地 focused gates 通過） | 協定與重播版本化、相容性拒絕路徑 | 舊協定／舊 Replay 明確拒絕；完整 GUI／engine／server、GUI production inventory 及遠端 Windows／Linux／Docker／package gates 全綠後才標記 Complete |
 | M5 | Acceptance Pending（2026-08-31：Linux headless server、Linux GUI client 與 Null audio 程式實作已完成；完整 Ubuntu 驗收尚未完成） | Linux headless server、Linux GUI client 與 Null 音訊 | 無 X11/Wayland、FMOD 或 GUI 依賴仍可啟動及完成整局、斷線重連、長時間及資源釋放測試 |
 | M6 | Acceptance Pending（2026-08-28：Linux GUI M2B-A 已交付 `IAudioBackend`／FMOD／Qt／Null 三後端、`QSAN_AUDIO_BACKEND`、結構化診斷與 `--multimedia-smoke`） | 桌面 FMOD 後端抽象化及診斷 | Windows 音效行為無回歸；音訊失敗不影響遊戲狀態；跨平台音訊及裝置生命週期驗收完成 |
 | M7 | Not Started | Android Qt Multimedia、WAV/OGG 播放器池與觸控 UI | API 28 真機及 API 36 目標建置通過；前後景切換與音訊生命週期穩定 |
@@ -283,7 +284,7 @@ M1 已完成（2026-08-09 對照 CMakeLists.txt 確認）：`qsanguosha_engine` 
 | M0 基線 | 已有現代化計畫、測試矩陣及多批 focused evidence | 尚未形成一份可重跑的 Windows 行為／協定／Replay 基準及正式 M0 sign-off |
 | M2 Lua 5.4.8 | 核心 5.4.8、最小相容層、seeded state、SWIG 調整、`lua-compat` focused gate 及 `extensions/main` 的 4 個低頻問題修正已落地 | 完整 AI／extensions、Windows GUI/server、Lua/SWIG 及遠端測試未完成 |
 | M3 package／general | `EnabledPackages` 遷移、Gitee package 對齊、版本去重、ServerDialog 選包頁改版及 package policy／ownership focused gate 已落地 | 選包頁「已改但未人工 smoke」；每名新增武將實戰、Guhuo 聲明／翻牌動畫、跨種子／包集合回歸及本批遠端 CI 全綠仍未完成；Gitee LuaAI 與缺少的資產仍按範圍不移植 |
-| M4 Protocol／Replay | `debug@94e119f` 已合入 PR #22；144/144 typed flows、29/29 direct typed interactions、Replay V2 JSONL／PNG container 及拒絕舊格式已完成 | 本地完整 GUI／engine／server build 超過 60 秒限制未完成，未跑本地 CTest；live TCP lifecycle、GUI production inventory generator 及遠端全綠未完成 |
+| M4 Protocol／Replay | `debug@94e119f` 已合入 PR #22；145/145 typed flows、29/29 direct typed interactions、Replay V2 JSONL／PNG container、拒絕舊格式及 focused live TCP lifecycle 已完成 | 本地完整 GUI／engine／server build 超過 60 秒限制未完成，未跑本地 CTest；GUI production inventory generator 及遠端全綠未完成 |
 | M5 Linux headless | Linux `qsanguosha_server`、Linux GUI client、Null audio source path 與 CI path 已存在 | Ubuntu 無顯示伺服器的乾淨部署、完整對局、斷線重連、長時間穩定性、資源釋放及 systemd acceptance 未完成 |
 | M6 audio／diagnostics | 三後端與 `QSAN_AUDIO_BACKEND` 已落地，並有 multimedia smoke path | Windows FMOD 無回歸、Linux／Android 音訊生命週期、無輸出裝置、錯誤不改變遊戲狀態及正式診斷 retention 尚未完成 |
 | M7／M8 Android | 目前只有 legacy Android 配置 | production Qt6 Android target、API 28／36、`arm64-v8a` AAB、PAD、`AssetLocator`、缺包／下載／重試及前後景音訊生命週期均未完成；現行 `AndroidManifest.xml` 仍為 min 21、target 28、Qt5 bindings |
