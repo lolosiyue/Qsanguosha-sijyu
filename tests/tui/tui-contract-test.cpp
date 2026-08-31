@@ -285,8 +285,16 @@ void coverageContract()
           "Room-to-Client coverage has no unclassified or silent drops");
 
     QFile artifact(QStringLiteral("artifacts/tui-flow-coverage.json"));
-    const bool opened = artifact.open(QIODevice::ReadOnly);
     const QByteArray generated = QJsonDocument(coverage).toJson(QJsonDocument::Indented);
+    // Classification changes have to update the checked-in artifact. Rewriting
+    // 100+ entries by hand invites mistakes, so allow an explicit refresh.
+    if (qEnvironmentVariableIsSet("QSAN_TUI_COVERAGE_WRITE")) {
+        check(artifact.open(QIODevice::WriteOnly)
+                  && artifact.write(generated) == generated.size(),
+              "TUI flow coverage artifact rewritten on request");
+        return;
+    }
+    const bool opened = artifact.open(QIODevice::ReadOnly);
     check(opened && artifact.readAll() == generated,
           "checked TUI flow coverage artifact matches production registries");
 }

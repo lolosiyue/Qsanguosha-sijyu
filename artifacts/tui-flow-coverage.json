@@ -950,8 +950,8 @@
             "renderer_visibility": "TuiRenderer snapshots and command views"
         },
         {
-            "affected_state": "presentation event log",
-            "classification": "presentation event",
+            "affected_state": "none; typed flow history only",
+            "classification": "explicitly irrelevant to text mode",
             "command": "S_COMMAND_ANIMATE",
             "command_id": 72,
             "dto": "AnimationPayload",
@@ -960,7 +960,7 @@
             "parser": "ProtocolPayloadRegistry::validateObjectPayload",
             "reconnect_behavior": "staged during STATE_SYNC; committed atomically at sync end",
             "reducer": "ClientGameStateReducer::applyNotification",
-            "renderer_visibility": "TuiRenderer event log"
+            "renderer_visibility": "none; documented text-mode no-op"
         },
         {
             "affected_state": "active canonical interaction",
@@ -1395,7 +1395,7 @@
     "schema_version": 1,
     "scope": "all production Room-to-Client V2 flows",
     "summary": {
-        "explicit_text_mode_no_ops": 1,
+        "explicit_text_mode_no_ops": 2,
         "interaction_request_total": 29,
         "room_to_client_flow_count": 107,
         "silent_drops": 0,
