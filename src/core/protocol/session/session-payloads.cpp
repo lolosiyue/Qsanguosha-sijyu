@@ -16,6 +16,21 @@ bool fail(QString *error, const QString &detail)
     return false;
 }
 
+bool isCanonicalPositiveDecimal(const QString &value)
+{
+    if (value.isEmpty() || value == QLatin1String("0")
+        || (value.size() > 1 && value.startsWith(QLatin1Char('0')))) {
+        return false;
+    }
+    for (QChar character : value) {
+        if (character < QLatin1Char('0') || character > QLatin1Char('9'))
+            return false;
+    }
+    bool fitsUnsigned64 = false;
+    value.toULongLong(&fitsUnsigned64, 10);
+    return fitsUnsigned64;
+}
+
 bool objectWithSchema(const QVariant &value, QVariantMap *object,
                       const QString &name, QString *error)
 {
@@ -124,6 +139,38 @@ bool EmptyPayload::parse(const QVariant &value, EmptyPayload *payload, QString *
     if (!objectWithSchema(value, &object, QStringLiteral("EmptyPayload"), error))
         return false;
     *payload = EmptyPayload();
+    return true;
+}
+
+QVariantMap StateSyncPayload::toVariant() const
+{
+    return {{QStringLiteral("schema_version"), SchemaVersion},
+            {QStringLiteral("sync_id"), syncId},
+            {QStringLiteral("phase"), phase},
+            {QStringLiteral("reconnect"), reconnect}};
+}
+
+bool StateSyncPayload::parse(const QVariant &value, StateSyncPayload *payload,
+                             QString *error)
+{
+    if (payload == nullptr)
+        return fail(error, QStringLiteral("StateSyncPayload output is null"));
+    QVariantMap object;
+    StateSyncPayload parsed;
+    if (!objectWithSchema(value, &object, QStringLiteral("StateSyncPayload"), error)
+        || !requiredString(object, QStringLiteral("sync_id"), &parsed.syncId,
+                           QStringLiteral("StateSyncPayload"), error)
+        || !requiredString(object, QStringLiteral("phase"), &parsed.phase,
+                           QStringLiteral("StateSyncPayload"), error)
+        || !requiredBool(object, QStringLiteral("reconnect"), &parsed.reconnect,
+                         QStringLiteral("StateSyncPayload"), error)) {
+        return false;
+    }
+    if (!isCanonicalPositiveDecimal(parsed.syncId))
+        return fail(error, QStringLiteral("StateSyncPayload.sync_id must be a canonical positive decimal string"));
+    if (parsed.phase != QLatin1String("begin") && parsed.phase != QLatin1String("end"))
+        return fail(error, QStringLiteral("StateSyncPayload.phase must be begin or end"));
+    *payload = parsed;
     return true;
 }
 

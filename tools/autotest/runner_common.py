@@ -326,14 +326,35 @@ def _kill_tree(pid, sig):
         pass
 
 
-def request_shutdown(proc):
-    """要求行程自行收工 (POSIX: SIGTERM; Windows: taskkill /T 不帶 /F)。
+def _send_windows_console_break(process_group_id):
+    """向 CREATE_NEW_PROCESS_GROUP 子行程發送可攔截的 CTRL_BREAK_EVENT。"""
+    import ctypes
+    from ctypes import wintypes
 
-    dedicated server 在 POSIX 上有 SIGTERM handler, 會走正常 app.quit() 收尾,
-    所以「乾淨關機」與「被斬」是分得清的兩件事。"""
+    generate_console_ctrl_event = ctypes.WinDLL(
+        "kernel32", use_last_error=True).GenerateConsoleCtrlEvent
+    generate_console_ctrl_event.argtypes = (wintypes.DWORD, wintypes.DWORD)
+    generate_console_ctrl_event.restype = wintypes.BOOL
+    return bool(generate_console_ctrl_event(1, process_group_id))
+
+
+def request_shutdown(proc):
+    """要求行程自行收工 (POSIX: SIGTERM; Windows: CTRL_BREAK_EVENT)。
+
+    dedicated server 會在主事件迴圈處理對應的 shutdown flag 並走 app.quit()，
+    所以「乾淨關機」與「被斬」是分得清的兩件事。發送 Windows control event
+    失敗時保留原有 taskkill 後備，後續 timeout 仍會強制清理。"""
     if proc is None or proc.poll() is not None:
         return
-    _kill_tree(proc.pid, "term" if IS_WINDOWS else signal.SIGTERM)
+    if IS_WINDOWS:
+        try:
+            if _send_windows_console_break(proc.pid):
+                return
+        except (AttributeError, OSError):
+            pass
+        _kill_tree(proc.pid, "term")
+        return
+    _kill_tree(proc.pid, signal.SIGTERM)
 
 
 def terminate_tree(proc, graceful_timeout=10, kill_timeout=5):

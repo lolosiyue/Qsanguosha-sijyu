@@ -91,8 +91,11 @@ jobs:
           cmake --build 'build/linux-${{ matrix.compiler.id }}' \
             --target \
               qsanguosha_server \
+              qsanguosha_tui \
               qsanguosha_protocol_negotiation_tests \
               qsanguosha_network_integration_tests \
+              qsanguosha_tui_contract_tests \
+              qsanguosha_tui_live_tcp_tests \
             --parallel
 
       - name: Build with ${{ matrix.compiler.name }}
@@ -115,6 +118,8 @@ jobs:
           install_root="${RUNNER_TEMP}/qsanguosha-install-${{ matrix.compiler.id }}"
           cmake --install 'build/linux-${{ matrix.compiler.id }}' --prefix "$install_root"
           test -x "$install_root/bin/qsanguosha_server"
+          test -x "$install_root/bin/qsanguosha_tui"
+          "$install_root/bin/qsanguosha_tui" --version
           test -f "$install_root/lib/systemd/system/qsanguosha-server.service"
           test -f "$install_root/share/qsanguosha/lua/config.lua"
           test -d "$install_root/share/qsanguosha/extensions"
@@ -124,6 +129,44 @@ jobs:
       - name: Run protocol negotiation contract directly
         if: github.ref != 'refs/heads/main'
         run: 'build/linux-${{ matrix.compiler.id }}/tests/qsanguosha_protocol_negotiation_tests'
+
+      - name: Run TUI Protocol V2 contract and live TCP gates
+        run: |
+          python3 -m py_compile tools/autotest/tui_network_smoke.py
+          python3 tools/autotest/tests/test_tui_network_smoke_contract.py
+          'build/linux-${{ matrix.compiler.id }}/tests/qsanguosha_tui_contract_tests'
+          'build/linux-${{ matrix.compiler.id }}/tests/qsanguosha_tui_live_tcp_tests'
+
+      - name: Prepare isolated TUI core-game runtime
+        if: env.QSAN_FULL_SERVER_CI == 'true' && matrix.compiler.id == 'gcc'
+        run: |
+          tui_runtime="$RUNNER_TEMP/qsanguosha-tui-runtime"
+          mkdir -p "$tui_runtime/extensions"
+          ln -s "$GITHUB_WORKSPACE/lua" "$tui_runtime/lua"
+          ln -s "$GITHUB_WORKSPACE/lang" "$tui_runtime/lang"
+          : > "$tui_runtime/config.ini"
+          echo "QSAN_TUI_RUNTIME=$tui_runtime" >> "$GITHUB_ENV"
+
+      - name: Run production TUI deterministic complete game
+        if: env.QSAN_FULL_SERVER_CI == 'true' && matrix.compiler.id == 'gcc'
+        run: |
+          python3 tools/autotest/tui_network_smoke.py \
+            --exe-root "$GITHUB_WORKSPACE" \
+            --mode 03_1v2 \
+            --seed 20260831 \
+            --workdir "$QSAN_TUI_RUNTIME" \
+            --artifact-dir ci-logs/tui-real-complete
+
+      - name: Run production TUI mid-game reconnect and finish
+        if: env.QSAN_FULL_SERVER_CI == 'true' && matrix.compiler.id == 'gcc'
+        run: |
+          python3 tools/autotest/tui_network_smoke.py \
+            --exe-root "$GITHUB_WORKSPACE" \
+            --mode 03_1v2 \
+            --seed 20260831 \
+            --reconnect \
+            --workdir "$QSAN_TUI_RUNTIME" \
+            --artifact-dir ci-logs/tui-real-reconnect
 
       - name: Run daily network integration level 2
         if: env.QSAN_FULL_SERVER_CI != 'true'

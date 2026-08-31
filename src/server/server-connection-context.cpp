@@ -7,7 +7,7 @@ using namespace QSanProtocol;
 
 namespace
 {
-bool fail(QString *error, const QString &detail)
+bool reject(QString *error, const QString &detail)
 {
     if (error != nullptr)
         *error = detail;
@@ -57,23 +57,23 @@ bool ServerConnectionContext::acceptSignupFrame(
     if (error != nullptr)
         error->clear();
     if (m_phase != ServerConnectionPhase::AwaitingSignup)
-        return fail(error, QStringLiteral("Connection is not awaiting SIGNUP"));
+        return reject(error, QStringLiteral("Connection is not awaiting SIGNUP"));
     if (m_signupDeadline.hasExpired())
-        return fail(error, QStringLiteral("SIGNUP deadline expired"));
+        return reject(error, QStringLiteral("SIGNUP deadline expired"));
 
     ProtocolMessage message;
     const ProtocolDecodeResult decoded = m_router.decode(frame, &message);
     if (!decoded.success)
-        return fail(error, QStringLiteral("V2 SIGNUP decode failed: %1").arg(decoded.detail));
+        return reject(error, QStringLiteral("V2 SIGNUP decode failed: %1").arg(decoded.detail));
     if (message.type != ProtocolMessageType::Request
         || message.source != ProtocolEndpoint::Client
         || message.destination != ProtocolEndpoint::Lobby
         || message.command != S_COMMAND_SIGNUP
         || message.replyTo != 0) {
-        return fail(error, QStringLiteral("Expected V2 Client-to-Lobby SIGNUP request"));
+        return reject(error, QStringLiteral("Expected V2 Client-to-Lobby SIGNUP request"));
     }
     if (message.messageId == 0 || message.messageId <= m_lastIncomingId)
-        return fail(error, QStringLiteral("Client message_id must increase monotonically"));
+        return reject(error, QStringLiteral("Client message_id must increase monotonically"));
 
     SignupRequestPayload parsed;
     if (!SignupRequestPayload::parse(message.payload, &parsed, error))
@@ -90,7 +90,7 @@ bool ServerConnectionContext::sendSignupReply(
     const SignupReplyPayload &payload, quint64 replyTo, QString *error)
 {
     if (replyTo == 0)
-        return fail(error, QStringLiteral("SIGNUP reply requires reply_to"));
+        return reject(error, QStringLiteral("SIGNUP reply requires reply_to"));
     ProtocolMessage message;
     message.type = ProtocolMessageType::Reply;
     message.source = ProtocolEndpoint::Lobby;
@@ -134,11 +134,11 @@ void ServerConnectionContext::fail()
 bool ServerConnectionContext::send(ProtocolMessage message, QString *error)
 {
     if (m_socket.isNull())
-        return fail(error, QStringLiteral("Connection socket is unavailable"));
+        return reject(error, QStringLiteral("Connection socket is unavailable"));
     if (message.messageId == 0)
         message.messageId = m_outgoingIds.next();
     if (message.messageId == 0)
-        return fail(error, QStringLiteral("Server message IDs are exhausted"));
+        return reject(error, QStringLiteral("Server message IDs are exhausted"));
     const QByteArray frame = m_router.encode(message, error);
     if (frame.isEmpty())
         return false;
