@@ -5,6 +5,12 @@
 
 static QVariant _dummy_variant;
 
+class Room;
+class ServerPlayer;
+
+bool tryLuaGameModeReward(Room *room, ServerPlayer *killer, ServerPlayer *victim);
+bool tryLuaGameModeGetWinner(Room *room, ServerPlayer *victim, QString *winner);
+
 class GameRule : public TriggerSkill
 {
     Q_OBJECT

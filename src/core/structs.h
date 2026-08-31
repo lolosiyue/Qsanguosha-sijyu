@@ -18,6 +18,8 @@ struct GameModeStruct {
     QString display_name;
     int player_count;
     QString roles;
+    QString reward_policy;
+    QString win_policy;
     bool is_scenario;
     bool is_mini_scene;
     bool shuffle_seats;
