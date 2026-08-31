@@ -706,7 +706,7 @@ void PlayerLifecycleService::marshal(ServerPlayer *player)
         m_room.notifyProperty(player, existing, "RestPlayer");
     }
 
-    if (m_room.game_state > 0)
+    if (m_room.hasGameStarted())
         m_notifier.doNotify(player, S_COMMAND_GAME_START,
                             JsonUtils::toJsonArray(Sanguosha->getRandomCards()));
 
@@ -755,7 +755,7 @@ void PlayerLifecycleService::marshal(ServerPlayer *player)
     contextMessage.playerName = player->objectName();
     m_notifier.doNotify(player, S_COMMAND_SWITCH_CONTEXT, contextMessage.toVariant());
 
-    if (m_room.game_state > 0) {
+    if (m_room.hasGameStarted()) {
         m_notifier.doNotify(player, S_COMMAND_UPDATE_PILE,
                             QVariant(m_cardMovement.drawPile().length()));
         if (!m_room.m_fillAGarg.isEmpty()) {

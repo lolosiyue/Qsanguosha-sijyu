@@ -295,7 +295,7 @@ QString PlayerDecisionService::askForGeneral(ServerPlayer *player, const QString
         return generals.first();
 
     QStringList actualGenerals = generals;
-    if (m_room.thread && m_room.game_state == 1) {
+    if (m_room.thread && m_room.hasGameStarted()) {
         QVariant data = generals.join("+");
         m_eventDispatcher.dispatch(GeneralChoosing, player, data);
         actualGenerals = data.toString().split("+");
@@ -306,7 +306,7 @@ QString PlayerDecisionService::askForGeneral(ServerPlayer *player, const QString
     if (actualGenerals.length() < 2)
         return actualGenerals.first();
 
-    if (m_room.game_state != 1) {
+    if (!m_room.hasGameStarted()) {
         QStringList hidden;
         for (int i = 0; i < actualGenerals.length(); i++)
             hidden << "unknown";
@@ -344,7 +344,7 @@ QString PlayerDecisionService::askForGeneral(ServerPlayer *player, const QString
             chosenGeneral = actualGenerals.at(qsanRandomBounded(actualGenerals.length()));
     }
 
-    if (m_room.thread && m_room.game_state == 1) {
+    if (m_room.thread && m_room.hasGameStarted()) {
         QVariant data = chosenGeneral;
         m_eventDispatcher.dispatch(GeneralChosen, player, data);
         chosenGeneral = data.toString();
@@ -1634,7 +1634,7 @@ void PlayerDecisionService::activate(ServerPlayer*player, CardUseStruct&card_use
 
 		if (m_room.m_surrenderRequestReceived){
 			m_room.makeSurrender(player);
-			if (m_room.game_state>0) activate(player, card_use);
+			if (m_room.isGamePlaying()) activate(player, card_use);
 		} else if(Config.EnableCheat&&m_room.makeCheat(player)){
 			if (player->isAlive()) activate(player, card_use);
 		}else if(success){

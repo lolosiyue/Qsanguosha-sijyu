@@ -28,6 +28,7 @@ int runOutboundOrderingTests();
 int runRoomDisconnectTests();
 int runCardMovementServiceTests();
 int runExtraTurnSchedulerTests();
+int runGameSessionControllerTests();
 int runRoomRosterTests();
 int runPlayerLifecycleServiceTests(int argc, char **argv);
 int runPlayerDecisionServiceTests();
@@ -50,6 +51,8 @@ static int runSelectedSuite(const QString &suite, int argc, char **argv)
         return runCardMovementServiceTests();
     if (suite == QLatin1String("extra-turn"))
         return runExtraTurnSchedulerTests();
+    if (suite == QLatin1String("game-session"))
+        return runGameSessionControllerTests();
     if (suite == QLatin1String("room-roster"))
         return runRoomRosterTests();
     if (suite == QLatin1String("player-lifecycle"))
@@ -76,6 +79,7 @@ int main(int argc, char **argv)
         {QStringLiteral("room-disconnect"), {QStringLiteral("--suite"), QStringLiteral("room-disconnect")}},
         {QStringLiteral("card-movement"), {QStringLiteral("--suite"), QStringLiteral("card-movement")}},
         {QStringLiteral("extra-turn"), {QStringLiteral("--suite"), QStringLiteral("extra-turn")}},
+        {QStringLiteral("game-session"), {QStringLiteral("--suite"), QStringLiteral("game-session")}},
         {QStringLiteral("room-roster"), {QStringLiteral("--suite"), QStringLiteral("room-roster")}},
         {QStringLiteral("player-lifecycle"), {QStringLiteral("--suite"), QStringLiteral("player-lifecycle")}},
         {QStringLiteral("player-decision"), {QStringLiteral("--suite"), QStringLiteral("player-decision")}, 900000}

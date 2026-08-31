@@ -39,6 +39,7 @@ class CardStateService;
 class ExtraTurnScheduler;
 class PlayerLifecycleService;
 class PlayerStateService;
+class GameSessionController;
 class GameRule;
 class RoomThread;
 class RoomThread3v3;
@@ -75,6 +76,7 @@ public:
     friend class PlayerStateService;
     friend class PlayerLifecycleService;
     friend class PlayerDecisionService;
+    friend class GameSessionController;
     friend class RoomRuntime;
     friend struct RoomTestAccess;
     friend struct PlayerLifecycleServiceTestAccess;
@@ -733,6 +735,7 @@ private:
     std::unique_ptr<GameSnapshotService> m_snapshotService;
     std::unique_ptr<RoomRoster> m_roster;
     std::unique_ptr<PlayerLifecycleService> m_playerLifecycle;
+    std::unique_ptr<GameSessionController> m_gameSession;
 
     bool dispatch(TriggerEvent event, ServerPlayer *target, QVariant &data) override;
     void registerTriggerSkill(const TriggerSkill *skill) override;
@@ -748,9 +751,6 @@ private:
     int player_count;
     ServerPlayer*current;
     QStack<DamageStruct> m_damageStack;
-    int game_state;
-    //bool game_started;
-    //bool game_finished;
     bool game_paused;
     QList<AI*> ais;
 	bool AIHumanized;
@@ -782,12 +782,10 @@ private:
 
     static QString generatePlayerName();
     void prepareForStart();
-    void assignGeneralsForPlayers(const QList<ServerPlayer*>&to_assign);
-    void assignGeneralsForPlayersOfJianGeDefenseMode(const QList<ServerPlayer*>&to_assign);
     void chooseGenerals(QList<ServerPlayer*> players = QList<ServerPlayer*>());
-    void chooseGeneralsOfJianGeDefenseMode();
-    QStringList triggerPreSelectionSkills(ServerPlayer *player, QStringList generals, const QString &reason);
-    void triggerGeneralNotChosen(ServerPlayer *player, const QStringList &generals, const QString &chosen, const QString &reason);
+    bool hasGameStarted() const;
+    bool isGamePlaying() const;
+    void markGameReadyCompleted();
     AI*cloneAI(ServerPlayer*player);
     bool stopGameThreads(int timeoutMs);
     QString askForOrder(ServerPlayer*player, const QString&default_choice);
@@ -812,8 +810,6 @@ private:
         ServerPlayer*m_from;
         ServerPlayer*m_to;
     };
-    void _setupChooseGeneralRequestArgs(ServerPlayer*player);
-
     void handleAnytimeSkillRequest(ServerPlayer *player, const QVariant &arg);
     void processPendingAnytimeSkills();
     void notifyAnytimeSkillDone(ServerPlayer *player, const QString &skill_name);

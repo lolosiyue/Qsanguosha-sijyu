@@ -622,6 +622,7 @@ add_executable(qsanguosha_server_tests
     room-disconnect-test.cpp
     move-classifier-ordering/move-classifier-ordering-test.cpp
     extra-turn-scheduler-test.cpp
+    game-session-controller-test.cpp
     room-roster-test.cpp
     player-lifecycle-service-test.cpp
     player-decision-service-test.cpp
