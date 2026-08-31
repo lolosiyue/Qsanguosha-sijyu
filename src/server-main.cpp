@@ -5,7 +5,15 @@
 #include <QTimer>
 #include <QVariantMap>
 
-#if defined(Q_OS_UNIX)
+#if defined(Q_OS_WIN)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#elif defined(Q_OS_UNIX)
 #include <csignal>
 #endif
 
@@ -28,12 +36,39 @@ constexpr int CliUsageExitCode = 64;
 constexpr int LogFileExitCode = 73;
 constexpr int ConfigErrorExitCode = 78;
 
-#if defined(Q_OS_UNIX)
-volatile std::sig_atomic_t shutdownSignal = 0;
+#if defined(Q_OS_WIN)
+volatile LONG shutdownSignal = -1;
+
+BOOL WINAPI requestShutdown(DWORD controlType)
+{
+    switch (controlType) {
+    case CTRL_C_EVENT:
+    case CTRL_BREAK_EVENT:
+    case CTRL_CLOSE_EVENT:
+    case CTRL_LOGOFF_EVENT:
+    case CTRL_SHUTDOWN_EVENT:
+        InterlockedExchange(&shutdownSignal, static_cast<LONG>(controlType));
+        return TRUE;
+    default:
+        return FALSE;
+    }
+}
+
+int requestedShutdownCode()
+{
+    return static_cast<int>(InterlockedCompareExchange(&shutdownSignal, -1, -1));
+}
+#elif defined(Q_OS_UNIX)
+volatile std::sig_atomic_t shutdownSignal = -1;
 
 void requestShutdown(int signal)
 {
     shutdownSignal = signal;
+}
+
+int requestedShutdownCode()
+{
+    return static_cast<int>(shutdownSignal);
 }
 #endif
 
@@ -311,7 +346,14 @@ int main(int argc, char **argv)
         return 0;
     }
 
-#if defined(Q_OS_UNIX)
+#if defined(Q_OS_WIN)
+    if (!SetConsoleCtrlHandler(requestShutdown, TRUE)) {
+        logger.error(QStringLiteral("server"),
+            QStringLiteral("Unable to install the Windows console control handler"));
+        EngineBootstrap::shutdown();
+        return 1;
+    }
+#elif defined(Q_OS_UNIX)
     std::signal(SIGINT, requestShutdown);
     std::signal(SIGTERM, requestShutdown);
 #endif
@@ -320,17 +362,28 @@ int main(int argc, char **argv)
     {
         Server server(&app);
         ServerConsole console(&server, &app);
-#if defined(Q_OS_UNIX)
+#if defined(Q_OS_UNIX) || defined(Q_OS_WIN)
         QTimer shutdownTimer;
         shutdownTimer.setInterval(100);
         QObject::connect(&shutdownTimer, &QTimer::timeout, &app,
             [&app, &console, &logger]() {
-                if (shutdownSignal == 0)
+                const int shutdownCode = requestedShutdownCode();
+                if (shutdownCode < 0)
                     return;
+#if defined(Q_OS_WIN)
+                const QString message = QStringLiteral(
+                    "Shutdown requested by console control %1").arg(shutdownCode);
+                const QVariantMap details {
+                    {QStringLiteral("control_event"), shutdownCode},
+                };
+#else
                 const QString message = QStringLiteral("Shutdown requested by signal %1")
-                    .arg(shutdownSignal);
-                logger.info(QStringLiteral("server"), message, -1, QString(),
-                    {{QStringLiteral("signal"), int(shutdownSignal)}});
+                    .arg(shutdownCode);
+                const QVariantMap details {
+                    {QStringLiteral("signal"), shutdownCode},
+                };
+#endif
+                logger.info(QStringLiteral("server"), message, -1, QString(), details);
                 if (console.isInteractive())
                     console.writeLog(message);
                 app.quit();
@@ -392,6 +445,9 @@ int main(int argc, char **argv)
             CrashHandler::beginShutdown();
         }
     }
+#if defined(Q_OS_WIN)
+    SetConsoleCtrlHandler(requestShutdown, FALSE);
+#endif
     EngineBootstrap::shutdown();
     logger.info(QStringLiteral("server"), QStringLiteral("stopped"), -1, QString(),
         {{QStringLiteral("exit_code"), result}});

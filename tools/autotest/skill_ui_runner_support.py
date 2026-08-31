@@ -194,7 +194,9 @@ def build_gui(root: Path) -> None:
     cache = root / "builds" / "cmake-vs2026" / "CMakeCache.txt"
     if not cache.is_file():
         raise SystemExit(
-            "No configured build tree was found. Run the one-time command: cmake --preset vs2026-x64"
+            "No configured build tree was found under "
+            f"{root / 'builds' / 'cmake-vs2026'}. "
+            "Run the one-time command: cmake --preset vs2026-x64"
         )
     cmake = shutil.which("cmake") or cmake_from_cache(cache)
     if not cmake:

@@ -111,6 +111,7 @@ add_library(qsanguosha_protocol_v2_contract_support STATIC
     ${QSAN_TEST_ROOT}/src/core/protocol/protocol-payload-registry.cpp
     ${QSAN_TEST_ROOT}/src/core/protocol/protocol-v2-codec.cpp
     ${QSAN_TEST_ROOT}/src/core/protocol/session/session-payloads.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol/session/client-session-controller.cpp
     ${QSAN_TEST_ROOT}/src/core/protocol/skill-instance-message.cpp
     ${QSAN_TEST_ROOT}/src/core/protocol/state/player-ui-state.cpp
     ${QSAN_TEST_ROOT}/src/core/protocol/switch-context-message.cpp
@@ -346,6 +347,62 @@ qsan_add_ctest(qsanguosha_interaction_reply_adapter_contract
     LABELS "client-core;protocol;fast"
 )
 
+if(QSAN_BUILD_TUI)
+    add_executable(qsanguosha_tui_contract_tests
+        tui/tui-contract-test.cpp
+        ${QSAN_TEST_ROOT}/src/client/interaction-command-registry.cpp
+        ${QSAN_TEST_ROOT}/src/client/interaction-reply-encoder.cpp
+        ${QSAN_TEST_ROOT}/src/client/interaction-request-factory.cpp
+        ${QSAN_TEST_ROOT}/src/client/protocol-interaction-request-builder.cpp
+        ${QSAN_TEST_ROOT}/src/tui/tui-command.cpp
+        ${QSAN_TEST_ROOT}/src/tui/tui-interaction-view.cpp
+        ${QSAN_TEST_ROOT}/src/tui/tui-renderer.cpp
+        ${QSAN_TEST_ROOT}/src/tui/tui-script-runner.cpp
+    )
+    target_include_directories(qsanguosha_tui_contract_tests PRIVATE
+        ${QSAN_TEST_ROOT}/src/client
+        ${QSAN_TEST_ROOT}/src/client/core
+        ${QSAN_TEST_ROOT}/src/core
+        ${QSAN_TEST_ROOT}/src/tui
+    )
+    target_link_libraries(qsanguosha_tui_contract_tests PRIVATE
+        qsanguosha_client_core
+        qsanguosha_protocol_v2_contract_support
+        Qt6::Core
+    )
+    qsan_add_ctest(qsanguosha_tui_contract qsanguosha_tui_contract_tests
+        LABELS "client;tui;protocol;fast"
+        TIMEOUT 30
+    )
+
+    add_executable(qsanguosha_tui_live_tcp_tests
+        tui/tui-live-tcp-test.cpp
+        ${QSAN_TEST_ROOT}/src/client/client-live-session.cpp
+        ${QSAN_TEST_ROOT}/src/client/interaction-command-registry.cpp
+        ${QSAN_TEST_ROOT}/src/client/interaction-reply-coordinator.cpp
+        ${QSAN_TEST_ROOT}/src/client/interaction-reply-encoder.cpp
+        ${QSAN_TEST_ROOT}/src/client/interaction-request-factory.cpp
+        ${QSAN_TEST_ROOT}/src/client/protocol-interaction-request-builder.cpp
+    )
+    target_include_directories(qsanguosha_tui_live_tcp_tests PRIVATE
+        ${QSAN_TEST_ROOT}/src/client
+        ${QSAN_TEST_ROOT}/src/client/core
+        ${QSAN_TEST_ROOT}/src/core
+        ${QSAN_TEST_ROOT}/src/util
+    )
+    target_link_libraries(qsanguosha_tui_live_tcp_tests PRIVATE
+        qsanguosha_client_core
+        qsanguosha_engine
+        qsanguosha_protocol_v2_contract_support
+        Qt6::Core
+        Qt6::Network
+    )
+    qsan_add_ctest(qsanguosha_tui_live_tcp qsanguosha_tui_live_tcp_tests
+        LABELS "client;tui;protocol;network;fast"
+        TIMEOUT 15
+    )
+endif()
+
 # M3:打包契約。呢個 test 只讀 repository,唔會整包,所以每次 CI 都跑得起 ——
 # 真正整包同由成品 smoke 嗰啲喺 linux-package-ci.yml。
 add_test(NAME qsanguosha_packaging_contract
@@ -458,7 +515,7 @@ target_include_directories(qsanguosha_network_integration_tests PRIVATE
     ${QSAN_TEST_ROOT}/src/core
 )
 target_link_libraries(qsanguosha_network_integration_tests PRIVATE
-    qsanguosha_engine
+    qsanguosha_protocol_v2_contract_support
     Qt6::Core
     Qt6::Network
 )
