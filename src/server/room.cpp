@@ -4,6 +4,7 @@
 #include "card-lifetime-manager.h"
 #include "ai-decision-coordinator.h"
 #include "card-movement-service.h"
+#include "card-state-service.h"
 #include "extra-turn-scheduler.h"
 #include "game-snapshot-service.h"
 #include "request-coordinator.h"
@@ -11,6 +12,7 @@
 #include "room-notifier.h"
 #include "room-roster.h"
 #include "player-lifecycle-service.h"
+#include "player-state-service.h"
 #include "skill-runtime-coordinator.h"
 #include "protocol/card-provenance-message.h"
 #include "protocol/session/session-payloads.h"
@@ -201,6 +203,10 @@ Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionC
 	m_playerDecisions(std::make_unique<PlayerDecisionService>(
 		*this, static_cast<EventDispatcher &>(*this))),
 	m_cardMovement(std::make_unique<CardMovementService>(*this)),
+	m_playerState(std::make_unique<PlayerStateService>(
+		*this, *m_runtime, *m_notifier, *m_aiDecisions, *m_cardMovement,
+		static_cast<EventDispatcher &>(*this))),
+	m_cardState(std::make_unique<CardStateService>(*m_notifier)),
 	m_snapshotService(std::make_unique<GameSnapshotService>(*this)),
 	m_roster(std::make_unique<RoomRoster>()),
 	m_playerLifecycle(std::make_unique<PlayerLifecycleService>(
@@ -1303,10 +1309,7 @@ void Room::playAudioEffect(const QString&filename, bool superpose)
 
 void Room::setPlayerFlag(ServerPlayer*player, const QString&flag)
 {
-	if (flag.startsWith("-")&&!player->hasFlag(flag.mid(1)))
-		return;
-	player->setFlags(flag);
-	broadcastProperty(player, "flags", flag);
+	m_playerState->setPlayerFlag(player, flag);
 }
 
 void Room::_setAreaMark(ServerPlayer*player, int i, bool flag)
@@ -1326,117 +1329,7 @@ void Room::_setAreaMark(ServerPlayer*player, int i, bool flag)
 
 void Room::setPlayerProperty(ServerPlayer*player, const char*property_name, const QVariant&value)
 {
-	if (!player) return; // 防禦空檢查
-
-	const quint64 revisionBefore = m_runtime->stateRevision();
-	int old = player->getMaxHp();
-	bool same = player->property(property_name).toString() == value.toString();
-
-	// 安全修正：統一處理跨執行緒寫入，移除#ifdef QT_DEBUG 遮蔽
-	if (QThread::currentThread() == player->thread()) {
-		// 同一執行緒，直接安全寫入
-		player->setProperty(property_name, value);
-	}
-	else {
-		// 跨執行緒：發送信號交由主執行緒處理
-		// 由於已改用Qt::BlockingQueuedConnection，emit 會在此阻塞直到 slot 執行完畢才返回
-		emit signalSetProperty(player, property_name, value);
-	}
-	if (property_name == "hp" ||
-		property_name == "maxhp" ||
-		property_name == "weapon_area" ||
-		property_name == "armor_area" ||
-		property_name == "defensive_horse_area" ||
-		property_name == "offensive_horse_area" ||
-		property_name == "kingdom" ||
-		property_name == "chained")
-    {
-        player->refreshUIState();
-    }
-
-	broadcastProperty(player, property_name);
-
-	if (same) return;
-	if (m_runtime->stateRevision() == revisionBefore)
-		m_runtime->advanceStateRevision(RoomRuntime::PlayerPropertyChanged);
-
-	QString propertyName = QString(property_name);
-	if (propertyName == "hp"){
-		QVariant data = getTag("HpChangedData");
-		thread->trigger(HpChanged, this, player, data);
-	}else if (propertyName == "maxhp"){
-		MaxHpStruct maxhp(player, player->getMaxHp() - old);
-		QVariant data = QVariant::fromValue(maxhp);
-		thread->trigger(MaxHpChanged, this, player, data);
-	}else if (propertyName == "chained"){
-		thread->trigger(ChainStateChanged, this, player);
-	}else if (propertyName == "kingdom"){
-		QVariant data = value;
-		thread->trigger(KingdomChanged, this, player, data);
-	}else if (propertyName == "weapon_area"){
-		QVariantList list;
-		list << 0;
-		QVariant data = list;
-		if (value.toBool()){
-			thread->trigger(ObtainEquipArea, this, player, data);
-		} else {
-			if (player->getEquip(0))
-				throwCard(player->getEquip(0), CardMoveReason(CardMoveReason::S_REASON_THROW, player->objectName()), nullptr);
-			thread->trigger(ThrowEquipArea, this, player, data);
-		}
-	}else if (propertyName == "armor_area"){
-		QVariantList list;
-		list << 1;
-		QVariant data = list;
-		if (value.toBool()){
-			thread->trigger(ObtainEquipArea, this, player, data);
-		} else {
-			if (player->getEquip(1))
-				throwCard(player->getEquip(1), CardMoveReason(CardMoveReason::S_REASON_THROW, player->objectName()), nullptr);
-			thread->trigger(ThrowEquipArea, this, player, data);
-		}
-	}else if (propertyName == "defensive_horse_area"){
-		QVariantList list;
-		list << 2;
-		QVariant data = list;
-		if (value.toBool()){
-			thread->trigger(ObtainEquipArea, this, player, data);
-		} else {
-			if (player->getEquip(1))
-				throwCard(player->getEquip(1), CardMoveReason(CardMoveReason::S_REASON_THROW, player->objectName()), nullptr);
-			thread->trigger(ThrowEquipArea, this, player, data);
-		}
-	}else if (propertyName == "offensive_horse_area"){
-		QVariantList list;
-		list << 3;
-		QVariant data = list;
-		if (value.toBool()){
-			thread->trigger(ObtainEquipArea, this, player, data);
-		} else {
-			if (player->getEquip(3))
-				throwCard(player->getEquip(3), CardMoveReason(CardMoveReason::S_REASON_THROW, player->objectName()), nullptr);
-			thread->trigger(ThrowEquipArea, this, player, data);
-		}
-	}else if (propertyName == "treasure_area"){
-		QVariantList list;
-		list << 4;
-		QVariant data = list;
-		if (value.toBool()){
-			thread->trigger(ObtainEquipArea, this, player, data);
-		} else {
-			if (player->getEquip(4))
-				throwCard(player->getEquip(4), CardMoveReason(CardMoveReason::S_REASON_THROW, player->objectName()), nullptr);
-			thread->trigger(ThrowEquipArea, this, player, data);
-		}
-	}else if (propertyName == "hasjudgearea"){
-		if (player->hasJudgeArea()){
-			thread->trigger(ObtainJudgeArea, this, player);
-		} else {
-			throwCard(player->getJudgingAreaID(), CardMoveReason(CardMoveReason::S_REASON_THROW, player->objectName()), nullptr);
-			thread->trigger(ThrowJudgeArea, this, player);
-		}
-	}
-
+	m_playerState->setPlayerProperty(player, property_name, value);
 }
 
 void Room::slotSetProperty(ServerPlayer*player, const char*property_name, const QVariant&value)
@@ -1447,50 +1340,12 @@ void Room::slotSetProperty(ServerPlayer*player, const char*property_name, const 
 
 void Room::safeSetPlayerProperty(ServerPlayer*player, const char*property_name, const QVariant&value)
 {
-	if (!player) return;
-	const bool same = player->property(property_name).toString() == value.toString();
-	const quint64 revisionBefore = m_runtime->stateRevision();
-	if (QThread::currentThread() == player->thread())
-		player->setProperty(property_name, value);
-	else {
-		emit signalSetProperty(player, property_name, value);
-	}
-	if (!same && m_runtime->stateRevision() == revisionBefore)
-		m_runtime->advanceStateRevision(RoomRuntime::PlayerPropertyChanged);
+	m_playerState->safeSetPlayerProperty(player, property_name, value);
 }
 
 void Room::setPlayerMark(ServerPlayer*player, const QString&mark, int value, QList<ServerPlayer*> only_viewers)
 {
-	if (value==player->getMark(mark)) return;
-
-	if (mark.endsWith("Clear")&&value != 0&&!current) return;
-
-	bool trigger = game_state>0&&!(mark.endsWith("Clear")||mark.endsWith("_lun")||mark.endsWith("-Keep")||mark=="@HuJia"||mark.contains("Global_")||mark.contains("sys_")
-			||mark.contains("ExtraBf")||mark.contains("damage_point_")||(mark.startsWith("&")&&mark.endsWith("_num")));
-
-	MarkStruct mark_struct;
-	mark_struct.who = player;
-	mark_struct.name = mark;
-	mark_struct.count = value;
-	mark_struct.gain = value - player->getMark(mark);
-	QVariant data = QVariant::fromValue(mark_struct);
-	if(trigger){
-		if(thread->trigger(MarkChange, this, player, data))
-			return;
-		mark_struct = data.value<MarkStruct>();
-		if (mark_struct.count == player->getMark(mark)) return;
-	}
-	m_aiDecisions->setMarkVisibility(player, mark_struct.name, mark_struct.count, only_viewers);
-	player->setMark(mark_struct.name, mark_struct.count);
-
-	player->refreshUIState();
-
-	JsonArray arg;
-	arg << player->objectName() << mark_struct.name << mark_struct.count;
-	if (only_viewers.isEmpty()) doBroadcastNotify(S_COMMAND_SET_MARK, arg);
-	else doBroadcastNotify(only_viewers, S_COMMAND_SET_MARK, arg);
-
-	if (trigger) thread->trigger(MarkChanged, this, player, data);
+	m_playerState->setPlayerMark(player, mark, value, only_viewers);
 }
 
 void Room::clearClub(const QString &club_name){
@@ -1521,169 +1376,105 @@ QList<ServerPlayer *> Room::getPlayersWithNoClub() const{
 
 void Room::addPlayerMark(ServerPlayer*player, const QString&mark, int add_num, QList<ServerPlayer*> only_viewers)
 {
-	setPlayerMark(player, mark, player->getMark(mark)+add_num, only_viewers);
+	m_playerState->addPlayerMark(player, mark, add_num, only_viewers);
 }
 
 void Room::removePlayerMark(ServerPlayer*player, const QString&mark, int remove_num)
 {
-	setPlayerMark(player, mark, qMax(0, player->getMark(mark)-remove_num));
+	m_playerState->removePlayerMark(player, mark, remove_num);
 }
 
 void Room::setPlayerCardLimitation(ServerPlayer*player, const QString&limit_list,
 	const QString&pattern, bool single_turn, const QString&reason)
 {
-	player->setCardLimitation(limit_list, pattern, reason.isEmpty() ? objectName() : reason, single_turn);
-
-	QVariantMap arg{{QStringLiteral("schema_version"), 1},
-		{QStringLiteral("action"), QStringLiteral("set")},
-		{QStringLiteral("methods"), limit_list.split(QLatin1Char(','), Qt::SkipEmptyParts)},
-		{QStringLiteral("pattern"), pattern},
-		{QStringLiteral("reason"), reason},
-		{QStringLiteral("single_turn"), single_turn}};
-	doNotify(player, S_COMMAND_CARD_LIMITATION, arg);
+	m_playerState->setPlayerCardLimitation(player, limit_list, pattern, single_turn, reason);
 }
 
 void Room::removePlayerCardLimitation(ServerPlayer*player, const QString&limit_list,
 	const QString&pattern, const QString&reason)
 {
-	player->removeCardLimitation(limit_list, pattern, reason.isEmpty() ? objectName() : reason);
-
-	QVariantMap arg{{QStringLiteral("schema_version"), 1},
-		{QStringLiteral("action"), QStringLiteral("remove")},
-		{QStringLiteral("methods"), limit_list.split(QLatin1Char(','), Qt::SkipEmptyParts)},
-		{QStringLiteral("pattern"), pattern},
-		{QStringLiteral("reason"), reason}};
-	doNotify(player, S_COMMAND_CARD_LIMITATION, arg);
+	m_playerState->removePlayerCardLimitation(player, limit_list, pattern, reason);
 }
 
 void Room::removePlayerCardLimitationByReason(ServerPlayer*player, const QString&reason)
 {
-	player->removeCardLimitationByReason(reason);
-
-	QVariantMap arg{{QStringLiteral("schema_version"), 1},
-		{QStringLiteral("action"), QStringLiteral("remove_by_reason")},
-		{QStringLiteral("reason"), reason}};
-	doNotify(player, S_COMMAND_CARD_LIMITATION, arg);
+	m_playerState->removePlayerCardLimitationByReason(player, reason);
 }
 
 void Room::clearPlayerCardLimitation(ServerPlayer*player, bool single_turn)
 {
-	player->clearCardLimitation(single_turn);
-
-	QVariantMap arg{{QStringLiteral("schema_version"), 1},
-		{QStringLiteral("action"), QStringLiteral("clear")},
-		{QStringLiteral("single_turn"), single_turn}};
-	doNotify(player, S_COMMAND_CARD_LIMITATION, arg);
+	m_playerState->clearPlayerCardLimitation(player, single_turn);
 }
 
 void Room::setPlayerEquipsNullified(ServerPlayer*player, const QString&pattern,
 	const QString&reason, bool single_turn)
 {
-	player->addEquipsNullified(pattern, reason, single_turn);
-
-	QString fullPattern = pattern;
-	if (!pattern.contains("|.|.|"))
-		fullPattern = pattern + "|.|.|";
-
-	JsonArray arg;
-	arg << true << "effect" << fullPattern << reason << single_turn;
-	doNotify(player, S_COMMAND_CARD_LIMITATION, arg);
+	m_playerState->setPlayerEquipsNullified(player, pattern, reason, single_turn);
 }
 
 void Room::removePlayerEquipsNullified(ServerPlayer*player, const QString&pattern, const QString&reason)
 {
-	player->removeEquipsNullified(pattern, reason);
-
-	QString fullPattern = pattern;
-	if (!pattern.contains("|.|.|"))
-		fullPattern = pattern + "|.|.|";
-	if (!fullPattern.endsWith("$1") && !fullPattern.endsWith("$0"))
-		fullPattern = fullPattern + "$0";
-
-	JsonArray arg;
-	arg << false << "effect" << fullPattern << reason << false;
-	doNotify(player, S_COMMAND_CARD_LIMITATION, arg);
+	m_playerState->removePlayerEquipsNullified(player, pattern, reason);
 }
 
 void Room::addCardMark(int card_id, const QString&mark, int add_num, ServerPlayer*who)
 {
-	addCardMark(Sanguosha->getCard(card_id), mark, add_num, who);
+	m_cardState->addCardMark(card_id, mark, add_num, who);
 }
 
 void Room::addCardMark(const Card*card, const QString&mark, int add_num, ServerPlayer*who)
 {
-	if (!card) return;
-	setCardMark(card, mark, card->getMark(mark)+add_num, who);
+	m_cardState->addCardMark(card, mark, add_num, who);
 }
 
 void Room::removeCardMark(int card_id, const QString&mark, int remove_num)
 {
-	removeCardMark(Sanguosha->getCard(card_id), mark, remove_num);
+	m_cardState->removeCardMark(card_id, mark, remove_num);
 }
 
 void Room::removeCardMark(const Card*card, const QString&mark, int remove_num)
 {
-	if (!card) return;
-	setCardMark(card, mark, qMax(0, card->getMark(mark)-remove_num));
+	m_cardState->removeCardMark(card, mark, remove_num);
 }
 
 void Room::setCardMark(const Card*card, const QString&mark, int value, ServerPlayer*who)
 {
-	card->setMark(mark, value);
-	if (card->isVirtualCard()) return;
-	setCardMark(card->getId(), mark, value, who);
+	m_cardState->setCardMark(card, mark, value, who);
 }
 
 void Room::setCardMark(int card_id, const QString&mark, int value, ServerPlayer*who)
 {
-	Sanguosha->getCard(card_id)->setMark(mark, value);
-	JsonArray arg;
-	arg << card_id << mark << value;
-	if (who) doNotify(who, S_COMMAND_CARD_MARK, arg);
-	else doBroadcastNotify(S_COMMAND_CARD_MARK, arg);
+	m_cardState->setCardMark(card_id, mark, value, who);
 }
 
 void Room::setCardFlag(const Card*card, const QString&flag, ServerPlayer*who)
 {
-	card->setFlags(flag);
-	if (card->isVirtualCard()) return;
-	setCardFlag(card->getId(), flag, who);
+	m_cardState->setCardFlag(card, flag, who);
 }
 
 void Room::setCardFlag(int card_id, const QString&flag, ServerPlayer*who)
 {
-    Sanguosha->getCard(card_id)->setFlags(flag);
-	JsonArray arg;
-	arg << card_id << flag;
-	if (who) doNotify(who, S_COMMAND_CARD_FLAG, arg);
-	else doBroadcastNotify(S_COMMAND_CARD_FLAG, arg);
+	m_cardState->setCardFlag(card_id, flag, who);
 }
 
 void Room::clearCardFlag(const Card*card, ServerPlayer*who)
 {
-	setCardFlag(card,".",who);
+	m_cardState->clearCardFlag(card, who);
 }
 
 void Room::clearCardFlag(int card_id, ServerPlayer*who)
 {
-	clearCardFlag(Sanguosha->getCard(card_id),who);
+	m_cardState->clearCardFlag(card_id, who);
 }
 
 void Room::setCardTip(int card_id, const QString&tip)
 {
-	if (tip.isEmpty()) return;
-	if (tip.startsWith("-")) setCardFlag(card_id, "-cardTip:"+tip.mid(1));
-	else setCardFlag(card_id, "cardTip:"+tip);
+	m_cardState->setCardTip(card_id, tip);
 }
 
 void Room::clearCardTip(int card_id)
 {
-	Card*card = Sanguosha->getCard(card_id);
-	if (!card) return;
-	foreach(const QString&flag, card->getFlags()){
-		if (flag.startsWith("cardTip:"))
-			setCardFlag(card_id, "-"+flag);
-	}
+	m_cardState->clearCardTip(card_id);
 }
 
 void Room::addPlayerToRoster(ServerPlayer *player)
@@ -4550,48 +4341,12 @@ void Room::startGame()
 
 bool Room::notifyProperty(ServerPlayer*player, const ServerPlayer*owner, const char*property_name, const QString&value)
 {
-	QVariantMap arg{{QStringLiteral("schema_version"), 1},
-		{QStringLiteral("action"), QStringLiteral("property")},
-		{QStringLiteral("player_name"), owner == player
-			? QSanProtocol::S_PLAYER_SELF_REFERENCE_ID : owner->objectName()},
-		{QStringLiteral("property_name"), QString::fromLatin1(property_name)},
-		{QStringLiteral("string_value"), value.isEmpty()
-			? owner->property(property_name).toString() : value}};
-	return doNotify(player, S_COMMAND_SET_PROPERTY, arg);
+	return m_playerState->notifyProperty(player, owner, property_name, value);
 }
 
 bool Room::broadcastProperty(ServerPlayer*owner, const char*property_name, const QString&value)
 {
-	if (strcmp(property_name, "role") == 0)
-		owner->setShownRole(true);
-	owner->addProperty(property_name);
-
-	const QString propertyName = QString::fromLatin1(property_name);
-	const QString propertyValue = value.isEmpty()
-		? owner->property(property_name).toString() : value;
-	QVariantMap arg{{QStringLiteral("schema_version"), 1},
-		{QStringLiteral("action"), QStringLiteral("property")},
-		{QStringLiteral("player_name"), owner->objectName()},
-		{QStringLiteral("property_name"), propertyName},
-		{QStringLiteral("string_value"), propertyValue}};
-	if (propertyName == QLatin1String("general_pile_changed")) {
-		const QVariantMap pile = QJsonDocument::fromJson(propertyValue.toUtf8()).toVariant().toMap();
-		arg = QVariantMap{{QStringLiteral("schema_version"), 1},
-			{QStringLiteral("action"), QStringLiteral("general_pile")},
-			{QStringLiteral("player_name"), owner->objectName()},
-			{QStringLiteral("pile_name"), pile.value(QStringLiteral("pile_name"))},
-			{QStringLiteral("general_names"), pile.value(QStringLiteral("general_names"))},
-			{QStringLiteral("add"), pile.value(QStringLiteral("add"))}};
-	}
-	doBroadcastNotify(S_COMMAND_SET_PROPERTY, arg);
-
-	if (strcmp(property_name, "hp") == 0&&owner->getHp() > 0&&owner->hasFlag("Global_Dying")){
-		setPlayerFlag(owner, "-Global_Dying");
-		QStringList currentdying = getTag("CurrentDying").toStringList();
-		currentdying.removeOne(owner->objectName());
-		setTag("CurrentDying", currentdying);
-	}
-	return true;
+	return m_playerState->broadcastProperty(owner, property_name, value);
 }
 
 void Room::broadcastTagProperty(ServerPlayer *owner, const QString &tagKey, const QVariant &value)
