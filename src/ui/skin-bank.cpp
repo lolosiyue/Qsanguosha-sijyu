@@ -8,11 +8,24 @@
 #include "settings.h"
 #include "general.h"
 
+#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QPixmapCache>
 #include <QScreen>
 
 using namespace JsonUtils;
+
+namespace {
+QStringList availableFontFamilies()
+{
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+	return QFontDatabase::families();
+#else
+	QFontDatabase fontDatabase;
+	return fontDatabase.families();
+#endif
+}
+}
 
 QPixmap scaledPixmapForDevice(const QPixmap &source, const QSize &logicalSize,
     qreal deviceScale, Qt::AspectRatioMode aspectMode)
@@ -1769,8 +1782,7 @@ void IQSanComponentSkin::drawHorizontalText(QPainter &painter, const QRect &rect
 	painter.save();
 
 	QFont actualFont = font;
-	QFontDatabase fontDatabase;
-	QStringList availableFonts = fontDatabase.families();
+	const QStringList availableFonts = availableFontFamilies();
 
 	if (!availableFonts.contains(font.family())) {
 		QStringList fallbackFonts;
@@ -1822,8 +1834,7 @@ void IQSanComponentSkin::drawVerticalText(QPainter &painter, const QRect &rect,
 	painter.save();
 
 	QFont actualFont = font;
-	QFontDatabase fontDatabase;
-	QStringList availableFonts = fontDatabase.families();
+	const QStringList availableFonts = availableFontFamilies();
 
 	if (!availableFonts.contains(font.family())) {
 		QStringList fallbackFonts;
