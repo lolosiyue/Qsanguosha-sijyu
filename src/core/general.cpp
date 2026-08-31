@@ -1,5 +1,6 @@
 #include "general.h"
 #include "engine.h"
+#include "qt-collection-utils.h"
 #include "util.h"
 //#include "skill.h"
 //#include "package.h"
@@ -172,7 +173,7 @@ QList<const Skill *> General::getVisibleSkillList() const
 QSet<const Skill *> General::getVisibleSkills() const
 {
     QList<const Skill *> skills = getVisibleSkillList();
-    return QSet<const Skill *>(skills.begin(), skills.end());
+    return qsanToSet(skills);
 }
 
 QSet<const TriggerSkill *> General::getTriggerSkills() const

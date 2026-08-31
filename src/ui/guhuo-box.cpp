@@ -33,8 +33,7 @@ void paintFrame(QPainter *painter, const QRectF &outer, const QString &title)
     painter->setPen(QPen(dark, 1.0));
     painter->drawRect(rect.adjusted(4, 4, -4, -4));
     QFont font;
-    font.setFamilies(QStringList() << QStringLiteral("微軟正黑體")
-                                   << QStringLiteral("Microsoft JhengHei"));
+    font.setFamily(QStringLiteral("Microsoft JhengHei"));
     font.setPixelSize(18);
     font.setBold(true);
     painter->setFont(font);
@@ -112,8 +111,7 @@ void GuhuoBox::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidge
         const QRectF band(slot.left(), slot.center().y() - 32, slot.width(), 64);
         painter->fillRect(band, QColor(0, 0, 0, 175));
         QFont font;
-        font.setFamilies(QStringList() << QStringLiteral("微軟正黑體")
-                                       << QStringLiteral("Microsoft JhengHei"));
+        font.setFamily(QStringLiteral("Microsoft JhengHei"));
         font.setPixelSize(14);
         font.setBold(true);
         painter->setFont(font);

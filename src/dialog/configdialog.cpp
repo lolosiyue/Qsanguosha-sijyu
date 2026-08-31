@@ -1,5 +1,6 @@
 #include "configdialog.h"
 #include "ui_configdialog.h"
+#include "build-features.h"
 #include "settings.h"
 #include "roomscene.h"
 #include "mainwindow.h"
@@ -32,7 +33,8 @@ ConfigDialog::ConfigDialog(QWidget *parent)
             emit uiScalePreviewChanged(scale);
         }
     });
-    connect(ui->visualModeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) { if (!m_loading) previewVisualMode(); });
+    connect(ui->visualModeCombo, static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
+        this, [this](int) { if (!m_loading) previewVisualMode(); });
 
     // 這四個勾選遊戲內以 Config.value() 即時讀取,預覽需立即寫入 QSettings,取消時再復原
     connect(ui->noIndicatorCheckBox, &QCheckBox::toggled, this, [this](bool v) { if (!m_loading) Config.setValue("NoIndicator", v); });
@@ -48,6 +50,11 @@ ConfigDialog::ConfigDialog(QWidget *parent)
     // 效果 profile 同 --effects-profile 行同一個 VisualEffectsPolicy:呢度改嘅
     // 係同一個 object,唔係第二套設定。即時生效兼寫入 QSettings,取消時由
     // restoreVisualSettings() 復原。
+#if defined(QSAN_XP_LEGACY)
+    // XP is a fixed raster profile; do not expose an option that cannot take effect.
+    ui->effectsProfileLabel->hide();
+    ui->effectsProfileComboBox->hide();
+#else
     connect(ui->effectsProfileComboBox, QOverload<int>::of(&QComboBox::currentIndexChanged),
         this, [this](int index) {
             if (m_loading)
@@ -57,6 +64,7 @@ ConfigDialog::ConfigDialog(QWidget *parent)
                     ui->effectsProfileComboBox->itemData(index).toString(), &profile))
                 G_EFFECTS.setProfile(profile, true);
         });
+#endif
 
     connect(this, SIGNAL(accepted()), this, SLOT(saveConfig()));
     connect(this, SIGNAL(rejected()), this, SLOT(restoreVisualSettings()));
@@ -108,6 +116,9 @@ void ConfigDialog::loadConfig()
     ui->enableAnimatedGeneralsCheckBox->setChecked(Config.value("EnableAnimatedGenerals", true).toBool());
     ui->enablePointerEffectCheckBox->setChecked(Config.EnablePointerEffect);
 
+#if defined(QSAN_XP_LEGACY)
+    G_EFFECTS.setProfile(EffectsProfile::None, false);
+#else
     ui->effectsProfileComboBox->clear();
     ui->effectsProfileComboBox->addItem(tr("Full effects"), QStringLiteral("full"));
     ui->effectsProfileComboBox->addItem(tr("Reduced effects"), QStringLiteral("reduced"));
@@ -116,6 +127,7 @@ void ConfigDialog::loadConfig()
         const int index = ui->effectsProfileComboBox->findData(G_EFFECTS.profileName());
         ui->effectsProfileComboBox->setCurrentIndex(index >= 0 ? index : 0);
     }
+#endif
 
     ui->uiScaleSlider->setValue(qRound(Config.UIScale * 20.0));
     ui->uiScaleValueLabel->setText(QString::number(ui->uiScaleSlider->value() / 20.0, 'f', 2) + "x");
@@ -224,11 +236,13 @@ void ConfigDialog::restoreVisualSettings()
     Config.setValue("EnableAnimatedGenerals", m_visual.enableAnimatedGenerals);
     Config.EnablePointerEffect = m_visual.enablePointerEffect;
     Config.setValue("EnablePointerEffect", m_visual.enablePointerEffect);
+#if !defined(QSAN_XP_LEGACY)
     {
         EffectsProfile profile = EffectsProfileContract::defaultProfile();
         if (EffectsProfileContract::parseProfileName(m_visual.effectsProfile, &profile))
             G_EFFECTS.setProfile(profile, true);
     }
+#endif
 }
 
 void ConfigDialog::showFont(QLineEdit *lineedit, const QFont &font)
@@ -244,10 +258,15 @@ ConfigDialog::~ConfigDialog()
 
 void ConfigDialog::on_browseBgButton_clicked()
 {
+#if QSAN_ENABLE_VIDEO
+    const QString filter = tr("Images and videos (*.png *.bmp *.jpg *.jpeg *.gif *.webp *.mp4 *.webm *.mkv)");
+#else
+    const QString filter = tr("Images (*.png *.bmp *.jpg *.jpeg *.gif *.webp)");
+#endif
     QString filename = QFileDialog::getOpenFileName(this,
         tr("Select a background image"),
         "image/system/backdrop/",
-        tr("Images and videos (*.png *.bmp *.jpg *.jpeg *.gif *.webp *.mp4 *.webm *.mkv)"));
+        filter);
 
     if (!filename.isEmpty()) {
         QString app_path = QApplication::applicationDirPath();
