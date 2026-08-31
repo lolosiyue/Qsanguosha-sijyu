@@ -248,7 +248,7 @@ jobs:
       - name: Run TUI live Protocol V2 gate
         shell: pwsh
         run: |
-          cmake -B builds\cmake-vs2026 -D BUILD_TESTING=ON
+          cmake -S . -B builds\cmake-vs2026 -D BUILD_TESTING=ON
           if ($LASTEXITCODE -ne 0) { throw 'TUI test reconfigure failed' }
           cmake --build builds\cmake-vs2026 --config RelWithDebInfo `
             --target qsanguosha_tui_contract_tests qsanguosha_tui_live_tcp_tests `
