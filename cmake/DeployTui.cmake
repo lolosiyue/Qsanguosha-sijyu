@@ -31,7 +31,8 @@ endif()
 file(GLOB qsan_compiler_runtime
     "${QSAN_OUTPUT_DIR}/msvcp*.dll"
     "${QSAN_OUTPUT_DIR}/vcruntime*.dll")
-if(NOT qsan_compiler_runtime)
+file(GLOB qsan_vc_redist "${QSAN_OUTPUT_DIR}/vc_redist*.exe")
+if(NOT qsan_compiler_runtime AND NOT qsan_vc_redist)
     message(FATAL_ERROR "TUI package is missing the MSVC compiler runtime")
 endif()
 
