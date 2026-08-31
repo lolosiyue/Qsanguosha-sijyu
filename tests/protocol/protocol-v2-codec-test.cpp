@@ -68,6 +68,22 @@ bool validRoundTrip()
                   QStringLiteral("typed object round trip"));
 }
 
+bool nestedStringListEncode()
+{
+    const ProtocolV2Codec codec;
+    ProtocolMessage message = request();
+    message.payload = QVariantMap{
+        {QStringLiteral("schema_version"), 2},
+        {QStringLiteral("players"), QStringList{
+            QStringLiteral("sgs1"), QStringLiteral("sgs2")}}
+    };
+    QString error;
+    const QByteArray wire = codec.encode(message, &error);
+    return expect(!wire.isEmpty() && error.isEmpty()
+                      && wire.contains(QByteArrayLiteral("\"players\":[\"sgs1\",\"sgs2\"]")),
+                  QStringLiteral("nested QStringList encode"));
+}
+
 bool invalidPayloadEncode()
 {
     const ProtocolV2Codec codec;
@@ -160,6 +176,7 @@ bool envelopeAndCorrelation()
 int main()
 {
     const bool success = validRoundTrip()
+        && nestedStringListEncode()
         && invalidPayloadEncode()
         && invalidPayloadDecode()
         && envelopeAndCorrelation();

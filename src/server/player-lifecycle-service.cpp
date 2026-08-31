@@ -79,7 +79,8 @@ void PlayerLifecycleService::signup(ServerPlayer *player, const QString &screenN
     player->introduceTo(nullptr);
 
     if (isRobot) {
-        m_room.setReadyCommand(player, true);
+        ReadyPayload readyPayload;
+        m_room.setReadyCommand(player, readyPayload.toVariant());
     } else {
         const QString greetingStr = "<font color=#EEB422>已加入游戏</font>";
         ChatPayload greeting;
