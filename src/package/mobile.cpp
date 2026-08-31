@@ -3906,8 +3906,8 @@ mobilePackage::mobilePackage()
 	mobile_luyu->addSkill(new Shuxing);
 
 	General *luyu = new General(this, "luyu", "wei", 3);
-	luyu->addSkill(new Dingfa);
-	luyu->addSkill(new Shuxing);
+	luyu->addSkill("dingfa");
+	luyu->addSkill("shuxing");
 
 
 

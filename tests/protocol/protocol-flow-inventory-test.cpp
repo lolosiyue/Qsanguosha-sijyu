@@ -138,12 +138,12 @@ int main(int argc, char **argv)
 
     const QJsonObject summary = ProtocolPayloadRegistry::inventoryJson()
         .value(QStringLiteral("summary")).toObject();
-    if (summary.value(QStringLiteral("production_flow_count")).toInt() != 144
-        || summary.value(QStringLiteral("typed_registry_flow_count")).toInt() != 144
-        || summary.value(QStringLiteral("typed_complete")).toInt() != 144
+    if (summary.value(QStringLiteral("production_flow_count")).toInt() != 145
+        || summary.value(QStringLiteral("typed_registry_flow_count")).toInt() != 145
+        || summary.value(QStringLiteral("typed_complete")).toInt() != 145
         || summary.value(QStringLiteral("implicit_passthrough")).toInt() != 0
         || summary.value(QStringLiteral("unclassified_production_flow")).toInt() != 0) {
-        return fail(QStringLiteral("inventory summary is not 144/144 typed-complete"));
+        return fail(QStringLiteral("inventory summary is not 145/145 typed-complete"));
     }
     QTextStream(stdout) << "PROTOCOL_FLOW_MATRIX_OK flows="
                         << summary.value(QStringLiteral("production_flow_count")).toInt()

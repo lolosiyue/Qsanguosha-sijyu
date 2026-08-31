@@ -1,0 +1,40 @@
+#ifndef TUI_INTERACTION_VIEW_H
+#define TUI_INTERACTION_VIEW_H
+
+#include "core/client-interaction-view.h"
+#include "tui-renderer.h"
+
+#include <functional>
+
+class TuiInteractionView final : public IClientInteractionView
+{
+public:
+    using Writer = std::function<void(const QString &)>;
+    using CardTextResolver = std::function<QString(int)>;
+
+    TuiInteractionView(TuiRenderer *renderer, Writer writer,
+                       CardTextResolver cardTextResolver = CardTextResolver());
+
+    void presentRequest(const InteractionRequest &request) override;
+    void finishRequest(const InteractionRequest &request,
+                       const InteractionResponse &response) override;
+    void cancelRequest(const InteractionRequest &request,
+                       InteractionCancelReason reason) override;
+    void rejectResponse(const InteractionRequest &request,
+                        const InteractionResponse &response,
+                        const InteractionValidation &validation) override;
+
+    bool parseAnswer(const InteractionRequest &request, const QString &line,
+                     InteractionResponse *response, QString *error) const;
+
+private:
+    QList<int> parseIndexes(const QString &text, int size, QString *error) const;
+    QStringList parseNames(const QString &text, const QStringList &values,
+                           QString *error) const;
+
+    TuiRenderer *m_renderer = nullptr;
+    Writer m_writer;
+    CardTextResolver m_cardTextResolver;
+};
+
+#endif

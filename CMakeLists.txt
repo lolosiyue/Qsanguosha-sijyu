@@ -37,6 +37,10 @@ option(QSAN_BUILD_SERVER
     "Build the dedicated QSanguosha server"
     ${QSAN_BUILD_SERVER_DEFAULT}
 )
+option(QSAN_BUILD_TUI
+    "Build the Protocol V2 terminal client"
+    ON
+)
 
 # Audio backend。GUI client 用邊個實作由呢個變數單點決定，call site 冇任何
 # 平台 #ifdef：
@@ -338,6 +342,7 @@ add_library(qsanguosha_engine STATIC
     src/core/wrapped-card.cpp
     src/core/wrapped-card.h
     src/server/server.cpp
+    src/server/server-core.h
     src/server/server-connection-context.cpp
     src/server/server-connection-context.h
     src/server/ai.cpp
@@ -392,7 +397,6 @@ add_library(qsanguosha_engine STATIC
     "${qsan_swig_wrapper}"
 )
 
-set_source_files_properties(src/server/server-core.h PROPERTIES SKIP_AUTOMOC ON)
 set_source_files_properties(${QSAN_LUA_SOURCES} PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 list(REMOVE_ITEM QSAN_SOURCES src/util/game-snapshot.cpp)
 list(REMOVE_ITEM QSAN_SOURCES src/client/aux-skills.cpp)
@@ -487,6 +491,8 @@ set(QSAN_CLIENT_CORE_SOURCES
     src/client/core/card-eligibility-provider.h
     src/client/core/client-game-state.cpp
     src/client/core/client-game-state.h
+    src/client/core/client-game-state-reducer.cpp
+    src/client/core/client-game-state-reducer.h
     src/client/core/client-interaction-view.h
     src/client/core/client-interaction-presenter.h
     src/client/core/interaction-model.cpp
@@ -501,6 +507,7 @@ set_target_properties(qsanguosha_client_core PROPERTIES
 )
 target_include_directories(qsanguosha_client_core PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/client/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core
 )
 if(QSAN_BUILD_XP_LEGACY)
     target_include_directories(qsanguosha_client_core BEFORE PUBLIC
@@ -531,6 +538,150 @@ foreach(qsan_client_core_link IN LISTS qsan_client_core_links)
     endif()
 endforeach()
 
+if(QSAN_BUILD_TUI)
+    add_library(qsanguosha_tui_support STATIC
+        src/client/client-live-session.cpp
+        src/client/client-live-session.h
+        src/client/interaction-command-registry.cpp
+        src/client/interaction-command-registry.h
+        src/client/interaction-reply-coordinator.cpp
+        src/client/interaction-reply-coordinator.h
+        src/client/interaction-reply-encoder.cpp
+        src/client/interaction-reply-encoder.h
+        src/client/interaction-request-factory.cpp
+        src/client/interaction-request-factory.h
+        src/client/protocol-interaction-request-builder.cpp
+        src/client/protocol-interaction-request-builder.h
+        src/tui/tui-application-controller.cpp
+        src/tui/tui-application-controller.h
+        src/tui/tui-command.cpp
+        src/tui/tui-command.h
+        src/tui/tui-input.cpp
+        src/tui/tui-input.h
+        src/tui/tui-interaction-view.cpp
+        src/tui/tui-interaction-view.h
+        src/tui/tui-renderer.cpp
+        src/tui/tui-renderer.h
+        src/tui/tui-script-runner.cpp
+        src/tui/tui-script-runner.h
+    )
+    target_include_directories(qsanguosha_tui_support PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/client
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/client/core
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/package
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/tui
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+    )
+    target_compile_definitions(qsanguosha_tui_support PRIVATE QSAN_ENGINE_TEST_BUILD)
+    target_link_libraries(qsanguosha_tui_support PUBLIC
+        qsanguosha_client_core
+        Qt6::Core
+        Qt6::Network
+    )
+    target_link_libraries(qsanguosha_tui_support PRIVATE
+        qsanguosha_engine
+    )
+    # Static libraries can hide playback code from dumpbin/ldd. Reject every
+    # Replay source from the TUI frontend and Recorder/Replayer playback sources
+    # from its shared engine. The server-side Protocol V2 ReplayCodec remains a
+    # shared protocol implementation but has no TUI entry point or dependency.
+    foreach(qsan_tui_audit_target qsanguosha_engine qsanguosha_tui_support)
+        get_target_property(qsan_tui_audit_sources ${qsan_tui_audit_target} SOURCES)
+        foreach(qsan_tui_audit_source IN LISTS qsan_tui_audit_sources)
+            string(TOLOWER "${qsan_tui_audit_source}" qsan_tui_audit_source_lower)
+            set(qsan_tui_forbidden_source FALSE)
+            if(qsan_tui_audit_target STREQUAL "qsanguosha_tui_support"
+                    AND qsan_tui_audit_source_lower MATCHES "(^|/)replay[^/]*\\.")
+                set(qsan_tui_forbidden_source TRUE)
+            elseif(qsan_tui_audit_source_lower MATCHES
+                    "(^|/)(recorder|replayer)[^/]*\\.(c|cc|cpp|cxx|h|hpp)$")
+                set(qsan_tui_forbidden_source TRUE)
+            endif()
+            if(qsan_tui_forbidden_source)
+                message(FATAL_ERROR
+                    "${qsan_tui_audit_target} contains forbidden Replay playback source: ${qsan_tui_audit_source}")
+            endif()
+        endforeach()
+    endforeach()
+    if(MSVC)
+        target_compile_definitions(qsanguosha_tui_support PRIVATE
+            WIN64 _CRT_SECURE_NO_WARNINGS)
+        target_compile_options(qsanguosha_tui_support PRIVATE /utf-8 /bigobj /MP8)
+    endif()
+
+    add_executable(qsanguosha_tui src/tui/tui-main.cpp)
+    target_include_directories(qsanguosha_tui PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/client
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/tui
+    )
+    target_compile_definitions(qsanguosha_tui PRIVATE QSAN_ENGINE_TEST_BUILD)
+    target_link_libraries(qsanguosha_tui PRIVATE
+        qsanguosha_tui_support
+        "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>"
+        Qt6::Core
+        Qt6::Network
+    )
+    if(MSVC)
+        target_compile_definitions(qsanguosha_tui PRIVATE WIN64 _CRT_SECURE_NO_WARNINGS)
+        target_compile_options(qsanguosha_tui PRIVATE /utf-8 /bigobj /MP8)
+    endif()
+    set_target_properties(qsanguosha_tui PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/debug"
+        RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/release"
+        RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_CURRENT_SOURCE_DIR}/relwithdebinfo"
+        PDB_OUTPUT_DIRECTORY_DEBUG "${CMAKE_CURRENT_SOURCE_DIR}/debug"
+        PDB_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/release"
+        PDB_OUTPUT_DIRECTORY_RELWITHDEBINFO "${CMAKE_CURRENT_SOURCE_DIR}/relwithdebinfo"
+    )
+
+    if(WIN32)
+        get_filename_component(qsan_linker_directory "${CMAKE_LINKER}" DIRECTORY)
+        find_program(QSAN_DUMPBIN_EXECUTABLE
+            NAMES dumpbin.exe
+            HINTS
+                "${qsan_linker_directory}"
+                "$ENV{VCToolsInstallDir}/bin/Hostx64/x64"
+            REQUIRED
+        )
+    endif()
+    add_custom_command(TARGET qsanguosha_tui POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+            "-DQSAN_TUI_EXECUTABLE=$<TARGET_FILE:qsanguosha_tui>"
+            "-DQSAN_DUMPBIN=${QSAN_DUMPBIN_EXECUTABLE}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyTuiDependencies.cmake"
+        VERBATIM
+    )
+
+    if(WIN32)
+        find_program(QSAN_TUI_WINDEPLOYQT
+            NAMES windeployqt
+            HINTS "${QT6_INSTALL_PREFIX}/bin"
+            NO_DEFAULT_PATH
+            REQUIRED
+        )
+        add_custom_target(deploy-tui
+            COMMAND ${CMAKE_COMMAND}
+                "-DQSAN_CONFIG=$<CONFIG>"
+                "-DQSAN_EXECUTABLE=$<TARGET_FILE:qsanguosha_tui>"
+                "-DQSAN_WINDEPLOYQT=${QSAN_TUI_WINDEPLOYQT}"
+                "-DQSAN_DUMPBIN=${QSAN_DUMPBIN_EXECUTABLE}"
+                "-DQSAN_VS_INSTALL_DIR=${CMAKE_GENERATOR_INSTANCE}"
+                "-DQSAN_OUTPUT_DIR=${CMAKE_CURRENT_SOURCE_DIR}/dist/tui/$<CONFIG>"
+                "-DQSAN_ASSET_ROOT=${CMAKE_CURRENT_SOURCE_DIR}"
+                -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/DeployTui.cmake"
+            DEPENDS qsanguosha_tui
+            VERBATIM
+        )
+    endif()
+endif()
+
 if(QSAN_BUILD_SERVER)
     add_executable(qsanguosha_server
         src/server-main.cpp
@@ -542,12 +693,8 @@ if(QSAN_BUILD_SERVER)
         src/server/server-console.h
         src/server/server-logger.cpp
         src/server/server-logger.h
-        src/server/server-core.h
-        src/server/server-connection-context.cpp
-        src/server/server-connection-context.h
         src/server/server-status.h
     )
-    set_source_files_properties(src/server/server-core.h PROPERTIES SKIP_AUTOMOC OFF)
     target_include_directories(qsanguosha_server PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/src/core
@@ -753,6 +900,19 @@ if(UNIX AND QSAN_BUILD_SERVER)
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
         COMPONENT qsan_server
     )
+    if(QSAN_BUILD_TUI)
+        set_target_properties(qsanguosha_tui PROPERTIES
+            INSTALL_RPATH "$ORIGIN/${QSAN_BIN_TO_QT_LIB_RELATIVE}"
+        )
+        install(TARGETS qsanguosha_tui
+            RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+            COMPONENT qsan_tui
+        )
+        install(FILES docs/tui-client.md
+            DESTINATION "${CMAKE_INSTALL_DOCDIR}"
+            COMPONENT qsan_tui
+        )
+    endif()
     install(FILES docs/server.ini.example
         DESTINATION "${CMAKE_INSTALL_DOCDIR}"
         COMPONENT qsan_server
