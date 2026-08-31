@@ -31,7 +31,7 @@ static bool makeAIStateValue(const QVariant &source, QJsonValue &target,
         return true;
     }
 
-    switch (source.metaType().id()) {
+    switch (source.userType()) {
     case QMetaType::Bool:
         target = source.toBool();
         return true;

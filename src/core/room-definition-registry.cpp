@@ -36,7 +36,8 @@ void RoomDefinitionRegistry::clear()
         manager.setDomainBaseline(this, baselineAddresses);
     }
     const auto borrowedCard = [this](const Card *card) {
-        return card && (m_baselineAddresses.contains(card) || m_engine.cards.contains(card));
+        return card && (m_baselineAddresses.contains(card)
+            || m_engine.cards.contains(const_cast<Card *>(card)));
     };
     for (QObject *child : children) {
         QList<Card *> cards = child->findChildren<Card *>();
@@ -44,7 +45,7 @@ void RoomDefinitionRegistry::clear()
             cards.prepend(card);
         for (Card *card : cards) {
             if (borrowedCard(card)) {
-                card->setParent(m_engine.cards.contains(card) ? &m_engine : nullptr);
+                card->setParent(m_engine.cards.contains(const_cast<Card *>(card)) ? &m_engine : nullptr);
                 continue;
             }
             manager.observeCard(card);

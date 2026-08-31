@@ -1,5 +1,6 @@
 #include "player.h"
 #include "engine.h"
+#include "qt-collection-utils.h"
 #include "room.h"
 #include "skill-instance-utils.h"
 //#include "client.h"
@@ -1832,7 +1833,7 @@ QSet<const TriggerSkill *> Player::getTriggerSkills() const
 QSet<const Skill *> Player::getSkills(bool include_equip, bool visible_only) const
 {
     QList<const Skill *> skills = getSkillList(include_equip, visible_only);
-    return QSet<const Skill *>(skills.begin(), skills.end());
+    return qsanToSet(skills);
 }
 
 QList<const Skill *> Player::getSkillList(bool include_equip, bool visible_only) const
@@ -1855,7 +1856,7 @@ QList<const Skill *> Player::getSkillList(bool include_equip, bool visible_only)
 QSet<const Skill *> Player::getVisibleSkills(bool include_equip) const
 {
     QList<const Skill *> skills = getVisibleSkillList(include_equip);
-    return QSet<const Skill *>(skills.begin(), skills.end());
+    return qsanToSet(skills);
 }
 
 QList<const Skill *> Player::getVisibleSkillList(bool include_equip) const

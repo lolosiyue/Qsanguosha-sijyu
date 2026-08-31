@@ -1,4 +1,5 @@
 #include "roomthread1v1.h"
+#include "qt-collection-utils.h"
 #include "room.h"
 #include "engine.h"
 #include "settings.h"
@@ -27,7 +28,7 @@ void RoomThread1v1::run()
 
 	if (Config.value("1v1/UsingExtension", false).toBool()) {
 		QStringList banset = Config.value("Banlist/1v1").toStringList();
-		general_names = Sanguosha->getRandomGenerals(total_num, QSet<QString>(banset.begin(), banset.end()));
+		general_names = Sanguosha->getRandomGenerals(total_num, qsanToSet(banset));
 	} else {
 		//QStringList candidates;
 		if (rule == "Classical") {

@@ -44,8 +44,12 @@
 #include "gifchatbox.h"
 #include "giftitem.h"
 #include "sprite.h"
+#if QSAN_ENABLE_QML
 #include "EmbeddedQmlLoader.h"
+#endif
+#if QSAN_ENABLE_SPINE
 #include "SpineGlItem.h"
+#endif
 #include <QRegularExpression>
 #include "graphicspixmaphoveritem.h"
 #include "choosegeneraldialog.h"
@@ -58,7 +62,9 @@
 #include "effects/effects-completion.h"
 #include "effects/effects-policy.h"
 #include "lua.hpp"
+#if QSAN_ENABLE_SPINE
 #include <QOpenGLWidget>
+#endif
 #include <QMutexLocker>
 #include <QSet>
 #include <QMenu>
@@ -347,7 +353,9 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	connect(ClientInstance,SIGNAL(role_state_changed(QString)),this,SLOT(updateRoles(QString)));
 	connect(ClientInstance,SIGNAL(switch_control_context(QString)),this,SLOT(switchControlContext(QString)));
 	connect(ClientInstance,SIGNAL(event_received(const QVariant)),this,SLOT(handleGameEvent(const QVariant)));
+#if QSAN_ENABLE_QML
 	connect(ClientInstance,&Client::qml_interact,this,&RoomScene::onQmlInteract);
+#endif
 
 	connect(ClientInstance,SIGNAL(game_started()),this,SLOT(onGameStart()));
 	connect(ClientInstance,SIGNAL(game_over()),this,SLOT(onGameOver()));
@@ -619,6 +627,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	// spineEnabled() 為 false（REDUCED／NONE）就完全唔建立 controller：
 	// 冇 controller 就唔會有 skeleton、atlas texture 或者 GL 資源。所有
 	// call site 本身已經 null-guard，語意唔變。
+#if QSAN_ENABLE_SPINE
 	if (G_EFFECTS.spineEnabled()) {
 		_spineActionController = new CharacterSpineActionController(this, this);
 		_spineActionController->setAssetPathPrefix("image");
@@ -638,6 +647,7 @@ RoomScene::RoomScene(QMainWindow*main_window)
 		connect(_spineActionController, &CharacterSpineActionController::actionUnavailable,
 			this, [](const QString &, ActionType) {});
 	}
+#endif
 
 	pausing_item = new QGraphicsRectItem;
 	pausing_text = new QGraphicsSimpleTextItem(tr("Paused ..."));
@@ -752,12 +762,13 @@ RoomScene::~RoomScene()
 	if(RoomSceneInstance==this)
 		RoomSceneInstance = nullptr;
 
+#if QSAN_ENABLE_SPINE
 	_activeSpineItems.clear();
-
 	if (_spineActionController) {
 		delete _spineActionController;
 		_spineActionController = nullptr;
 	}
+#endif
 }
 
 void RoomScene::handleGameEvent(const QVariant&args)
@@ -955,6 +966,7 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		// ── Spine pop-out: register dynamic skin for the NEW hero ──
 		// This is the deferred activation path: if the new hero has a
 		// dynamic skin entry in JSON, register + preload + entrance now.
+#if QSAN_ENABLE_SPINE
 		if (_spineActionController && player) {
 			bool isPrimary = !isSecondaryHero;
 			int skinIndex = Config.value(QString("HeroSkin/%1").arg(newHeroName), 0).toInt();
@@ -968,6 +980,7 @@ void RoomScene::handleGameEvent(const QVariant&args)
 					QList<QPointF>(), isLocal);
 			}
 		}
+#endif
 
 		if(player!=Self) break;
 		qDebug() << "S_GAME_EVENT_CHANGE_HERO - processing for Self, isSecondaryHero:" << isSecondaryHero << "player->getGeneral2():" << (player->getGeneral2() ? player->getGeneral2()->objectName() : "null");
@@ -1327,6 +1340,7 @@ void RoomScene::adjustItems()
 	updateRoles(m_roleState);
 	setChatBoxVisible(chat_box_widget->isVisible());
 
+#if QSAN_ENABLE_SPINE
 	foreach (SpineGlItem *spineItem, _activeSpineItems) {
 		QRectF sr = sceneRect();
 		spineItem->setRenderRect(sr);
@@ -1334,6 +1348,7 @@ void RoomScene::adjustItems()
 		float cy = (float)(sr.height() / 2.0);
 		spineItem->setSpinePosition(QPointF(cx, cy));
 	}
+#endif
 
 	QMapIterator<QString,BubbleChatBox*> iter(bubbleChatBoxes);
 	while (iter.hasNext()){
@@ -1618,7 +1633,9 @@ void RoomScene::updateTable()
 	}
 
 	// ── Spine pop-out: refresh seat geometry after layout changes ──
+#if QSAN_ENABLE_SPINE
 	updateSpineSeatGeometry();
+#endif
 }
 
 void RoomScene::addPlayer(ClientPlayer*player)
@@ -3642,7 +3659,7 @@ void RoomScene::switchControlContext(const QString &target_name)
 			reason = CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
 		else {
 			static const QRegularExpression rx(
-				QRegularExpression::anchoredPattern(QStringLiteral("@@?([_A-Za-z]+)(\\d+)?!?")),
+				QStringLiteral("^@@?([_A-Za-z]+)(\\d+)?!?$"),
 				QRegularExpression::UseUnicodePropertiesOption);
 			if (rx.match(pattern).hasMatch() || status == Client::Responding)
 				reason = CardUseStruct::CARD_USE_REASON_RESPONSE;
@@ -3693,7 +3710,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 					reason = CardUseStruct::CARD_USE_REASON_RESPONSE_USE;
 				else{
 					static const QRegularExpression rx(
-						QRegularExpression::anchoredPattern(QStringLiteral("@@?([_A-Za-z]+)(\\d+)?!?")),
+						QStringLiteral("^@@?([_A-Za-z]+)(\\d+)?!?$"),
 						QRegularExpression::UseUnicodePropertiesOption);
 					if(rx.match(pattern).hasMatch()||newStatus==Client::Responding)
 						reason = CardUseStruct::CARD_USE_REASON_RESPONSE;
@@ -3751,7 +3768,7 @@ void RoomScene::updateStatus(Client::Status oldStatus,Client::Status newStatus)
 			? activeRequest->payloadAs<CardInteractionPayload>()->selection.pattern
 			: Sanguosha->getCurrentCardUsePattern();
 		static const QRegularExpression rx(
-			QRegularExpression::anchoredPattern(QStringLiteral("@@?([_A-Za-z]+)(\\d+)?!?")),
+			QStringLiteral("^@@?([_A-Za-z]+)(\\d+)?!?$"),
 			QRegularExpression::UseUnicodePropertiesOption);
 		const QRegularExpressionMatch match = rx.match(pattern);
 		if(match.hasMatch()){
@@ -4083,6 +4100,7 @@ void RoomScene::onAnytimeSkillDone(const QString &skill_name)
 	}
 }
 
+#if QSAN_ENABLE_QML
 void RoomScene::onQmlInteract(const QString &qmlPath, const QVariantMap &params)
 {
 	EmbeddedQmlLoader *loader = new EmbeddedQmlLoader(this);
@@ -4101,6 +4119,7 @@ void RoomScene::onQmlResultReady(const QVariant &result)
 {
 	ClientInstance->replyQml(result);
 }
+#endif
 
 void RoomScene::onDialogOptionSelectionChanged(bool hasSelection)
 {
@@ -4919,8 +4938,10 @@ void RoomScene::killPlayer(const QString&who)
 		general->lastWord();
 
 	// ── Spine pop-out: mark player dead → fade out any running action ──
+#if QSAN_ENABLE_SPINE
 	if (_spineActionController)
 		_spineActionController->setPlayerAlive(who, false);
+#endif
 }
 
 void RoomScene::revivePlayer(const QString&who)
@@ -4941,6 +4962,7 @@ void RoomScene::revivePlayer(const QString&who)
 	}
 
 	// ── Spine pop-out: revive → allow actions again + trigger entrance ──
+#if QSAN_ENABLE_SPINE
 	if (_spineActionController) {
 		qWarning("[RoomScene] revivePlayer '%s': marking alive + triggering entrance", qPrintable(who));
 		_spineActionController->setPlayerAlive(who, true);
@@ -4949,6 +4971,7 @@ void RoomScene::revivePlayer(const QString&who)
 		_spineActionController->triggerAction(who, ActionType::Entrance,
 		                                      QList<QPointF>(), isLocal);
 	}
+#endif
 }
 
 void RoomScene::takeAmazingGrace(ClientPlayer*taker,int card_id,bool move_cards)
@@ -5392,6 +5415,7 @@ void RoomScene::onGameStart()
 	// ── Spine pop-out: register skins + preload once game starts ──
 	// Only register and preload for players that actually have dynamic skins
 	// in the JSON config. Players without skins pay zero cost.
+#if QSAN_ENABLE_SPINE
 	registerDynamicSkinsForAllPlayers();
 	updateSpineSeatGeometry();
 	// Preload only players that got at least one skin registered
@@ -5439,6 +5463,7 @@ void RoomScene::onGameStart()
 			}
 		}
 	}
+#endif
 
 	// for tablebg change
 	if(Config.EnableAutoBackgroundChange&&Self){
@@ -5497,6 +5522,7 @@ void RoomScene::freeze()
 	main_window->setStatusBar(nullptr);
 
 	// ── Spine pop-out: cancel all running actions on game freeze ──
+#if QSAN_ENABLE_SPINE
 	if (_spineActionController) {
 		if (Self) _spineActionController->cancelAction(Self->objectName());
 		foreach (Photo *photo, photos) {
@@ -5504,6 +5530,7 @@ void RoomScene::freeze()
 			if (p) _spineActionController->cancelAction(p->objectName());
 		}
 	}
+#endif
 }
 
 void RoomScene::_cancelAllFocus()
@@ -5577,11 +5604,13 @@ void RoomScene::showSkillInvocation(const QString&who,const QString&skill_name)
 	//}
 
 	// ── Spine pop-out: trigger Special action on non-attack skill invocation ──
+#if QSAN_ENABLE_SPINE
 	if (_spineActionController && game_started) {
 		bool isLocal = (who == Self->objectName());
 		_spineActionController->triggerAction(who, ActionType::Special,
 		                                      QList<QPointF>(), isLocal);
 	}
+#endif
 }
 
 void RoomScene::removeLightBox()
@@ -5760,6 +5789,7 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
 		}
 	}
 #ifndef Q_OS_WINRT
+#if QSAN_ENABLE_QML
     else if(word.startsWith("skill=")){  // 重新启用武将特效的使用异步动画
         // 全屏 QML 技能特效只喺 FULL 行。REDUCED／NONE 直接清走 lightbox：
         // 呢個 rect 本身就係俾 QML 疊層蓋住嘅，冇疊層就唔可以留低。
@@ -5936,6 +5966,15 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
         removeItem(lightbox);
         delete lightbox;
     }
+#else
+    else if (word.startsWith("skill=") || word.startsWith("ghost=")) {
+        G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+        removeItem(lightbox);
+        delete lightbox;
+        return;
+    }
+#endif
+#if QSAN_ENABLE_SPINE
     else if(word.startsWith("spine=")){
         // Spine 动态全屏特效——render as QGraphicsItem (SpineGlItem)
         // NOTE: Cannot use QOpenGLWidget overlay because FitView already
@@ -6044,6 +6083,14 @@ void RoomScene::doLightboxAnimation(const QString&,const QStringList&args)
         delete lightbox;
         return;
     }
+#else
+    else if (word.startsWith("spine=")) {
+        G_EFFECTS.note(VisualEffectsPolicy::AnimationsSkipped);
+        removeItem(lightbox);
+        delete lightbox;
+        return;
+    }
+#endif
     else if (word.startsWith("background=")) {
         QString bg = word.mid(11);
         QPixmap pixmap = G_ROOM_SKIN.getPixmap("image/system/backdrop/" + bg);
@@ -6130,6 +6177,7 @@ void RoomScene::showIndicator(const QString&from,const QString&to)
 	}
 
 	// ── Spine pop-out: trigger Attack action on indicator (from → to) ──
+#if QSAN_ENABLE_SPINE
 	if (_spineActionController && game_started) {
 		bool isLocal = (from == Self->objectName());
 		QList<QPointF> targets;
@@ -6140,6 +6188,7 @@ void RoomScene::showIndicator(const QString&from,const QString&to)
 		_spineActionController->triggerAction(from, ActionType::Attack,
 		                                      targets, isLocal, dir);
 	}
+#endif
 }
 
 void RoomScene::doIndicate(const QString&,const QStringList&args)
@@ -7036,6 +7085,7 @@ void PromptInfoItem::paint(QPainter*painter,const QStyleOptionGraphicsItem*,QWid
 //  Spine pop-out action controller helpers
 // ═══════════════════════════════════════════════════════════════════════════
 
+#if QSAN_ENABLE_SPINE
 void RoomScene::registerDynamicSkinForPlayer(const QString &playerName,
                                               const QString &generalName,
                                               bool isPrimary)
@@ -7098,6 +7148,7 @@ void RoomScene::updateSpineSeatGeometry()
 			player->objectName(), rect.topLeft(), rect.size());
 	}
 }
+#endif
 
 void RoomScene::showGeneralPile(const QString &tag_name) {
 	if (Self == nullptr || tag_name.isEmpty())
