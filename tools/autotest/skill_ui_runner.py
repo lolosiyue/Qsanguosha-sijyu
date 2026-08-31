@@ -44,6 +44,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--inspect", metavar="CASE_STEM")
     parser.add_argument("--list-cases", action="store_true")
     parser.add_argument("--build", action="store_true")
+    parser.add_argument(
+        "--build-root",
+        type=Path,
+        help="Repository root that contains builds/cmake-vs2026 (defaults to repo root)",
+    )
     return parser.parse_args()
 
 
@@ -80,6 +85,8 @@ def discover_executable(explicit: Path | None) -> Path:
         raise SystemExit(f"runner executable not found: {candidate}")
     root = repo_root()
     candidates = (
+        root / "relwithdebinfo" / "QSanguosha.exe",
+        root / "builds" / "cmake-vs2026" / "RelWithDebInfo" / "QSanguosha.exe",
         root / "builds" / "cmake-vs2026" / "Debug" / "QSanguosha.exe",
         root / "debug" / "QSanguosha.exe",
     )
@@ -109,7 +116,8 @@ def main() -> int:
     if not cases:
         raise SystemExit("no case files found")
     if args.build:
-        build_gui(repo_root())
+        build_root = args.build_root.resolve() if args.build_root else repo_root()
+        build_gui(build_root)
 
     executable = discover_executable(args.exe)
     selected = [resolve_inspect_case(cases, args.inspect)] if args.inspect else cases
