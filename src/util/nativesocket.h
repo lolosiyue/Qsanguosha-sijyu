@@ -4,6 +4,10 @@
 #include "socket.h"
 #include "protocol/protocol-runtime.h"
 
+#include <QAbstractSocket>
+#include <QTcpServer>
+#include <QTcpSocket>
+
 class QUdpSocket;
 
 class NativeServerSocket : public ServerSocket

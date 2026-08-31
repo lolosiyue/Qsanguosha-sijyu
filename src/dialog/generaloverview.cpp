@@ -533,7 +533,7 @@ void GeneralOverview::addLines(const Skill *skill)
             }
         } else {
             static const QRegularExpression rx(
-                QRegularExpression::anchoredPattern(QStringLiteral(".+/(\\w+\\d?).ogg")),
+                QStringLiteral("^.+/(\\w+\\d?).ogg$"),
                 QRegularExpression::UseUnicodePropertiesOption);
             for (int i = 0; i < sources.length(); i++) {
                 const QRegularExpressionMatch match = rx.match(sources[i]);
@@ -921,7 +921,7 @@ void GeneralOverview::startSearch(bool include_hidden, const QString &nickname, 
             v_nickname.replace("?", ".");
             v_nickname.replace("*", ".*");
             const QRegularExpression rx(
-                QRegularExpression::anchoredPattern(v_nickname),
+                QStringLiteral("^(?:%1)$").arg(v_nickname),
                 QRegularExpression::UseUnicodePropertiesOption);
 
             QString g_nickname = Sanguosha->translate("#" + general_name);

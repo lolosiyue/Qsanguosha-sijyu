@@ -23,6 +23,9 @@ qml/home/nav/*.png
 debug/
 release/
 relwithdebinfo/
+xp-debug/
+xp-release/
+xp-relwithdebinfo/
 dmp/
 image/
 # 只忽略 repo 根目錄嘅音訊素材樹。未錨定嘅 "audio/" 會連 src/ui/audio/
@@ -35,6 +38,10 @@ artifacts/*
 !artifacts/client-core-interaction-matrix.json
 !artifacts/protocol-v2-flow-matrix.json
 assets/
+!legacy/xp/assets/
+legacy/xp/assets/*
+!legacy/xp/assets/packed-media/
+!legacy/xp/assets/packed-media/*
 resources/
 autotest-logs/
 .vs/

@@ -4,6 +4,7 @@
 //#include "skill.h"
 #include "yjcm2013.h"
 #include "engine.h"
+#include "qt-collection-utils.h"
 #include "maneuvering.h"
 //#include "json.h"
 #include "settings.h"
@@ -14698,9 +14699,9 @@ bool GreatJianjieYeyanCard::targetsFeasible(const QList<const Player*> &targets,
 
 	//We can only assign 2 damage to one player
 	//If we select only one target only once, we assign 3 damage to the target
-	if (QSet<const Player*>(targets.begin(), targets.end()).size() == 1)
+	if (qsanToSet(targets).size() == 1)
 		return true;
-	else if (QSet<const Player*>(targets.begin(), targets.end()).size() == 2)
+	else if (qsanToSet(targets).size() == 2)
 		return targets.size() == 3;
 	return false;
 }

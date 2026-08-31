@@ -13,8 +13,13 @@
 static QPalette buildColorSchemePalette(int scheme)
 {
     int s = qBound(0, scheme, 2);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     Qt::ColorScheme systemScheme = QGuiApplication::styleHints()->colorScheme();
     bool dark = (s == 2) || (s == 0 && systemScheme == Qt::ColorScheme::Dark);
+#else
+    // XP has no system dark-mode contract; System follows the classic light palette.
+    bool dark = (s == 2);
+#endif
 
     // 每次都新建 Fusion 实例,确保 standardPalette() 干净;直接复用旧 style 的
     // standardPalette 会拿到上一轮缓存的内容。

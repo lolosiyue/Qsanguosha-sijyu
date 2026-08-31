@@ -228,7 +228,8 @@ bool SkillInstanceMessage::tryParse(const QVariant &value)
     if (actionName == "snapshot"
         && object.value(QStringLiteral("entries")).userType() == QMetaType::QVariantList) {
         parsed.action = Snapshot;
-        foreach (const QVariant &entryValue, object.value(QStringLiteral("entries")).toList()) {
+        const QVariantList entries = object.value(QStringLiteral("entries")).toList();
+        foreach (const QVariant &entryValue, entries) {
             SkillInstanceEntryMessage entry;
             if (!entry.tryParse(entryValue))
                 return false;

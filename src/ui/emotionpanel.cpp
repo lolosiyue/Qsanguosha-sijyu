@@ -60,7 +60,11 @@ void EmotionItem::mousePressEvent(QMouseEvent *event)
     QLabel::mousePressEvent(event);
 }
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
 void EmotionItem::enterEvent(QEnterEvent *event)
+#else
+void EmotionItem::enterEvent(QEvent *event)
+#endif
 {
     if (m_movie && m_movie->isValid()) {
         m_movie->setScaledSize(QSize(36, 36));

@@ -1,0 +1,25 @@
+#ifndef QSAN_QT5_QDEADLINETIMER_H
+#define QSAN_QT5_QDEADLINETIMER_H
+
+#include <QElapsedTimer>
+
+class QDeadlineTimer
+{
+public:
+    explicit QDeadlineTimer(qint64 milliseconds = 0)
+        : m_timeout(milliseconds)
+    {
+        m_timer.start();
+    }
+
+    bool hasExpired() const
+    {
+        return m_timer.elapsed() >= m_timeout;
+    }
+
+private:
+    QElapsedTimer m_timer;
+    qint64 m_timeout;
+};
+
+#endif

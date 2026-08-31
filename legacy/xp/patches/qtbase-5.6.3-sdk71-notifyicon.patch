@@ -1,0 +1,15 @@
+diff --git a/src/widgets/util/qsystemtrayicon_win.cpp b/src/widgets/util/qsystemtrayicon_win.cpp
+--- a/src/widgets/util/qsystemtrayicon_win.cpp
++++ b/src/widgets/util/qsystemtrayicon_win.cpp
+@@ -80,1 +80,11 @@ static uint MYWM_TASKBARCREATED = 0;
++// The Windows 7.1A headers hide these Vista constants when targeting XP.
++// Qt already selects NOTIFYICON_VERSION at runtime on XP, so supplying the
++// numeric declarations preserves the original runtime fallback.
++#ifndef NIF_SHOWTIP
++#    define NIF_SHOWTIP 0x00000080
++#endif
++#ifndef NOTIFYICON_VERSION_4
++#    define NOTIFYICON_VERSION_4 4
++#endif
++
+ #define Q_MSGFLT_ALLOW 1
