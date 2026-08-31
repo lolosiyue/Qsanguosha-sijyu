@@ -1,0 +1,33 @@
+#ifndef QSAN_QT5_QBYTEARRAYVIEW_H
+#define QSAN_QT5_QBYTEARRAYVIEW_H
+
+#include <QByteArray>
+
+class QByteArrayView
+{
+public:
+    QByteArrayView()
+        : m_data(nullptr), m_size(0)
+    {
+    }
+
+    QByteArrayView(const QByteArray &bytes)
+        : m_data(bytes.constData()), m_size(bytes.size())
+    {
+    }
+
+    QByteArrayView(const char *data, int size)
+        : m_data(data), m_size(size)
+    {
+    }
+
+    const char *data() const { return m_data; }
+    int size() const { return m_size; }
+    bool isEmpty() const { return m_size == 0; }
+
+private:
+    const char *m_data;
+    int m_size;
+};
+
+#endif

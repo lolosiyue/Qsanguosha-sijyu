@@ -2,6 +2,7 @@
 
 #include "card.h"
 #include "engine.h"
+#include "qt-collection-utils.h"
 #include "server-info.h"
 
 #include <QFile>
@@ -18,7 +19,7 @@ QList<const Card *> collectCards()
 
     const bool cstring = !ServerInfo.DuringGame && QFile::exists(QStringLiteral("lua/ai/cstring"));
     const QList<int> availableIds = Sanguosha->getRandomCards(true);
-    const QSet<int> available(availableIds.cbegin(), availableIds.cend());
+    const QSet<int> available = qsanToSet(availableIds);
 
     const int count = Sanguosha->getCardCount();
     cards.reserve(count);

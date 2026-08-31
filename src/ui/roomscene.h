@@ -6,13 +6,16 @@
 //#include "table-pile.h"
 //#include "card.h"
 #include "client.h"
+#include "build-features.h"
 //#include "aux-skills.h"
 //#include "clientlogbox.h"
 //#include "chatwidget.h"
 #include "skin-bank.h"
 //#include "sprite.h"
 #include "timed-progressbar.h"
+#if QSAN_ENABLE_SPINE
 #include "CharacterSpineActionController.h"
+#endif
 
 class Window;
 class Button;
@@ -48,7 +51,7 @@ class GiftItem;
 class SpineGlItem;
 class PlayerCardBox;
 
-#ifndef Q_OS_WINRT
+#if !defined(Q_OS_WINRT) && QSAN_ENABLE_QML
 #include <QQmlEngine>
 #include <QQmlContext>
 #include <QQmlComponent>
@@ -471,6 +474,7 @@ private:
     bool pindian_success;
 
     // ─── Spine pop-out action controller ────────────────────────
+#if QSAN_ENABLE_SPINE
     CharacterSpineActionController *_spineActionController = nullptr;
 
     /// Active fullscreen SpineGlItem instances (for resize handling)
@@ -486,6 +490,7 @@ private:
 
     /// Update _spineActionController seat geometry for all photos + dashboard.
     void updateSpineSeatGeometry();
+#endif
 
     // re-layout attempts
     bool game_started;
@@ -509,7 +514,7 @@ private:
     void activateSkill(const ViewAsSkill *skill);
     bool applyPresentedDialogOption(const QString &optionName);
 
-#ifndef Q_OS_WINRT
+#if !defined(Q_OS_WINRT) && QSAN_ENABLE_QML
     // for animation effects
     QQmlEngine *_m_animationEngine;
     QQmlContext *_m_animationContext;
@@ -525,8 +530,10 @@ private slots:
     void onPresentedDialogSkillActivated();
     void onAnytimeSkillActivated();
     void onAnytimeSkillDone(const QString &skill_name);
+#if QSAN_ENABLE_QML
     void onQmlInteract(const QString &qmlPath, const QVariantMap &params);
     void onQmlResultReady(const QVariant &result);
+#endif
     void onSkillDeactivated();
     void onDialogOptionSelectionChanged(bool hasSelection);
     void doTimeout();

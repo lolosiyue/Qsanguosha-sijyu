@@ -122,8 +122,7 @@ void EffectsCompletion::completeNow(QObject *context, std::function<void()> call
     auto *guard = new EffectsCompletionGuard(nullptr, context, std::move(callback), 0);
     // QueuedConnection：唔可以喺 caller 嘅 stack 上面派 —— 重入正正就係
     // duration=0 動畫嘅老問題。
-    QMetaObject::invokeMethod(guard, &EffectsCompletionGuard::deliverNow,
-        Qt::QueuedConnection);
+    QMetaObject::invokeMethod(guard, "deliverNow", Qt::QueuedConnection);
 }
 
 quint64 EffectsCompletion::issuedCount()

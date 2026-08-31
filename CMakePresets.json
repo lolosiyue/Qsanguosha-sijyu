@@ -17,6 +17,23 @@
       }
     },
     {
+      "name": "xp-vs2017-x86",
+      "displayName": "Windows XP SP3 x86 legacy (Qt 5.6.3 / v141_xp)",
+      "generator": "Visual Studio 15 2017",
+      "architecture": "Win32",
+      "toolset": "v141_xp",
+      "toolchainFile": "${sourceDir}/legacy/xp/cmake/toolchain-v141-xp.cmake",
+      "binaryDir": "${sourceDir}/builds/cmake-xp-vs2017-x86",
+      "cacheVariables": {
+        "CMAKE_PREFIX_PATH": "$env{QSAN_XP_QTDIR}",
+        "BUILD_TESTING": "OFF",
+        "QSAN_BUILD_GUI": "ON",
+        "QSAN_BUILD_SERVER": "OFF",
+        "QSAN_BUILD_XP_LEGACY": "ON",
+        "QSAN_AUDIO_BACKEND": "FMOD"
+      }
+    },
+    {
       "name": "linux-server-gcc-debug",
       "displayName": "Linux dedicated server (GCC, Debug)",
       "generator": "Ninja",
@@ -65,6 +82,30 @@
       "name": "release",
       "configurePreset": "vs2026-x64",
       "configuration": "Release"
+    },
+    {
+      "name": "xp-debug",
+      "configurePreset": "xp-vs2017-x86",
+      "configuration": "Debug",
+      "targets": ["QSanguoshaXP"]
+    },
+    {
+      "name": "xp-release",
+      "configurePreset": "xp-vs2017-x86",
+      "configuration": "Release",
+      "targets": ["QSanguoshaXP"]
+    },
+    {
+      "name": "xp-deploy-debug",
+      "configurePreset": "xp-vs2017-x86",
+      "configuration": "Debug",
+      "targets": ["deploy-xp"]
+    },
+    {
+      "name": "xp-deploy-release",
+      "configurePreset": "xp-vs2017-x86",
+      "configuration": "Release",
+      "targets": ["deploy-xp"]
     },
     {
       "name": "relwithdebinfo-vs2026-x64",

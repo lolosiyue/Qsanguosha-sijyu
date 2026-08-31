@@ -2,6 +2,7 @@
 #define _MAIN_WINDOW_H
 
 #include "src/pch.h"
+#include "build-features.h"
 
 namespace Ui {
     class MainWindow;

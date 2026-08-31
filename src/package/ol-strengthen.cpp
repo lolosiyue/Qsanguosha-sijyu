@@ -5,6 +5,7 @@
 //#include "client.h"
 #include "clientplayer.h"
 #include "engine.h"
+#include "qt-collection-utils.h"
 #include "maneuvering.h"
 //#include "util.h"
 #include "wrapped-card.h"
@@ -2460,8 +2461,8 @@ public:
 		if (banned.isEmpty()) {
 			banned << "zuoci" << "guzhielai" << "dengshizai" << "yt_caochong" << "jiangboyue" << "ol_zuoci";
 		}
-		QSet<QString> remove_set = QSet<QString>(remove_list.begin(), remove_list.end());
-		return (QSet<QString>(all.begin(), all.end()) - banned - huashen_set - room_set - remove_set).values();
+		QSet<QString> remove_set = qsanToSet(remove_list);
+		return (qsanToSet(all) - banned - huashen_set - room_set - remove_set).values();
 	}
 
 	static void SelectSkill(ServerPlayer *zuoci)

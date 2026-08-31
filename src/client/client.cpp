@@ -1532,7 +1532,7 @@ Replayer *Client::getReplayer() const
 QString Client::getPlayerName(const QString &str)
 {
 	static const QRegularExpression rx(
-		QRegularExpression::anchoredPattern(QStringLiteral("sgs\\d+")),
+		QStringLiteral("^sgs\\d+$"),
 		QRegularExpression::UseUnicodePropertiesOption);
 	if (rx.match(str).hasMatch()) {
 		const ClientPlayer *player = getPlayer(str);

@@ -1,11 +1,14 @@
 #include "game-view.h"
 
+#include "build-features.h"
 #include "roomscene.h"
 #include "settings.h"
 #include "skin-bank.h"
 #include "startscene.h"
 
+#if !QSAN_USE_RASTER_VIEWPORT
 #include <QOpenGLWidget>
+#endif
 #include <QPainter>
 #include <QPixmapCache>
 #include <QResizeEvent>
@@ -20,9 +23,11 @@ FitView::FitView(QGraphicsScene *scene, QWidget *parent)
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setAlignment(Qt::AlignCenter);
     m_uiScale = qBound<qreal>(1.0, Config.UIScale, 2.0);
+#if !QSAN_USE_RASTER_VIEWPORT
     QOpenGLWidget *glWidget = new QOpenGLWidget(this);
     glWidget->setUpdateBehavior(QOpenGLWidget::PartialUpdate);
     setViewport(glWidget);
+#endif
     setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
 }
 

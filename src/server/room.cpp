@@ -1,4 +1,5 @@
 #include "room.h"
+#include "qt-collection-utils.h"
 #include "runtime-paths.h"
 #include "card-lifetime-manager.h"
 #include "ai-decision-coordinator.h"
@@ -2992,7 +2993,7 @@ void Room::run()
 			}
 		}
 		bing_list << jiang_list;
-		jiang_list = Sanguosha->getRandomGenerals(getPlayers().length()*4,QSet<QString>(bing_list.begin(),bing_list.end()));
+		jiang_list = Sanguosha->getRandomGenerals(getPlayers().length()*4, qsanToSet(bing_list));
 		foreach(ServerPlayer*player, getPlayers()){
 			if (player->getRole() == "rebel"){
 				lords.clear();
@@ -3023,7 +3024,7 @@ void Room::run()
 			god_list << list.takeFirst();
 		}
 		gui_list << god_list;
-		list = Sanguosha->getRandomGenerals(getPlayers().length()*4,QSet<QString>(gui_list.begin(),gui_list.end()));
+		list = Sanguosha->getRandomGenerals(getPlayers().length()*4, qsanToSet(gui_list));
 		foreach(ServerPlayer*player, getPlayers()){
 			if (player->getRole() == "rebel"){
 				lords.clear();

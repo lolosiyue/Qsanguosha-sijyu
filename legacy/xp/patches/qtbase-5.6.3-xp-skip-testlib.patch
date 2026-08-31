@@ -1,0 +1,11 @@
+diff --git a/src/src.pro b/src/src.pro
+--- a/src/src.pro
++++ b/src/src.pro
+@@ -147,6 +147,7 @@ SUBDIRS += src_tools_bootstrap src_tools_moc src_tools_rcc
+ TOOLS = src_tools_moc src_tools_rcc src_tools_qlalr
+ win32:SUBDIRS += src_winmain
+ SUBDIRS += src_network src_sql src_xml src_testlib
++equals(QMAKE_TARGET_OS, xp): SUBDIRS -= src_testlib
+ contains(QT_CONFIG, dbus) {
+     force_bootstrap|contains(QT_CONFIG, private_tests): \
+         SUBDIRS += src_tools_bootstrap_dbus

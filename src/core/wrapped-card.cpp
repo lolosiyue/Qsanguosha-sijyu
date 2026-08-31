@@ -2,8 +2,32 @@
 #include "card-lifetime-manager.h"
 
 #include <QMetaObject>
+#include <QSemaphore>
+#include <QTimer>
 
 namespace {
+template<typename Function>
+bool invokeBlocking(QObject *context, Function function)
+{
+    if (!context)
+        return false;
+    if (QThread::currentThread() == context->thread()) {
+        function();
+        return true;
+    }
+#if QT_VERSION < QT_VERSION_CHECK(5, 10, 0)
+    QSemaphore completed;
+    QTimer::singleShot(0, context, [function, &completed]() mutable {
+        function();
+        completed.release();
+    });
+    completed.acquire();
+    return true;
+#else
+    return QMetaObject::invokeMethod(context, function, Qt::BlockingQueuedConnection);
+#endif
+}
+
 bool moveCardToOwner(Card *card, QThread *ownerThread)
 {
     if (!card || !ownerThread || card->parent())
@@ -15,10 +39,10 @@ bool moveCardToOwner(Card *card, QThread *ownerThread)
         card->moveToThread(ownerThread);
         return card->thread() == ownerThread;
     }
-    const bool invoked = QMetaObject::invokeMethod(card, [&] {
+    const bool invoked = invokeBlocking(card, [&] {
         card->moveToThread(ownerThread);
         moved = card->thread() == ownerThread;
-    }, Qt::BlockingQueuedConnection);
+    });
     return invoked && moved;
 }
 
@@ -30,7 +54,7 @@ bool ownerDispatchAvailable(Card *card, QThread *ownerThread)
         return false;
     if (QThread::currentThread() == ownerThread)
         return true;
-    return QMetaObject::invokeMethod(card, [] {}, Qt::BlockingQueuedConnection);
+    return invokeBlocking(card, [] {});
 }
 
 bool destroyOwnedCard(Card *card)
@@ -41,8 +65,7 @@ bool destroyOwnedCard(Card *card)
         delete card;
         return true;
     }
-    return QMetaObject::invokeMethod(card, [card] { delete card; },
-                                     Qt::BlockingQueuedConnection);
+    return invokeBlocking(card, [card] { delete card; });
 }
 }
 
