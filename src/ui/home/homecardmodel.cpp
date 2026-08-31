@@ -142,7 +142,7 @@ QStringList propertyKeys(const Card *card, const char *propertyName)
     if (!card)
         return {};
     const QVariant value = card->property(propertyName);
-    if (value.metaType().id() == QMetaType::QStringList)
+    if (value.userType() == QMetaType::QStringList)
         return value.toStringList();
     const QString key = value.toString();
     return key.isEmpty() ? QStringList() : QStringList{key};
@@ -150,7 +150,7 @@ QStringList propertyKeys(const Card *card, const char *propertyName)
 
 QStringList filterStringList(const QVariant &value)
 {
-    if (value.metaType().id() == QMetaType::QStringList)
+    if (value.userType() == QMetaType::QStringList)
         return value.toStringList();
     QStringList result;
     const QVariantList values = value.toList();

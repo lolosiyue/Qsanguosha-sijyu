@@ -4,6 +4,7 @@
 //#include "standard.h"
 //#include "client.h"
 #include "engine.h"
+#include "qt-collection-utils.h"
 #include "maneuvering.h"
 #include "clientplayer.h"
 //#include "wrapped-card.h"
@@ -582,7 +583,7 @@ bool GreatYeyanCard::targetsFeasible(const QList<const Player *> &targets, const
 bool GreatYeyanCard::targetFilter(const QList<const Player *> &targets, const Player *to_select,
     const Player *, int &maxVotes) const
 {
-	if(QSet<const Player*>(targets.begin(),targets.end()).size()==2&&!targets.contains(to_select))
+	if(qsanToSet(targets).size()==2&&!targets.contains(to_select))
 		return false;
 	int i = 0;
 	foreach(const Player *player, targets)

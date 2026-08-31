@@ -2,6 +2,7 @@
 
 #include "ai.h"
 #include "engine.h"
+#include "qt-collection-utils.h"
 #include "event-dispatcher.h"
 #include "general.h"
 #include "json.h"
@@ -373,7 +374,7 @@ QString PlayerDecisionService::askForRole(ServerPlayer *player, const QStringLis
     m_room.tryPause();
     m_room.notifyMoveFocus(player, S_COMMAND_CHOOSE_ROLE_3V3);
 
-    QStringList squeezed = QSet<QString>(roles.begin(), roles.end()).values();
+    QStringList squeezed = qsanToSet(roles).values();
     QString result = "abstain";
 
     JsonArray arg;

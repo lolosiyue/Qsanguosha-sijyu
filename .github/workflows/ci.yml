@@ -169,6 +169,10 @@ jobs:
             if ($LASTEXITCODE -ne 0) {
               throw "TUI deployment failed with exit code $LASTEXITCODE"
             }
+            cmake --build --preset deploy-tui-release
+            if ($LASTEXITCODE -ne 0) {
+              throw "Release TUI deployment failed with exit code $LASTEXITCODE"
+            }
 
             $cache = 'builds\cmake-vs2026\CMakeCache.txt'
             Select-String -Path $cache -Pattern '^CMAKE_GENERATOR:INTERNAL=', '^CMAKE_GENERATOR_TOOLSET:INTERNAL=', '^Qt6_DIR:' |
@@ -248,6 +252,12 @@ jobs:
       - name: Run TUI live Protocol V2 gate
         shell: pwsh
         run: |
+          cmake -S . -B builds\cmake-vs2026 -D BUILD_TESTING=ON
+          if ($LASTEXITCODE -ne 0) { throw 'TUI test reconfigure failed' }
+          cmake --build builds\cmake-vs2026 --config RelWithDebInfo `
+            --target qsanguosha_tui_contract_tests qsanguosha_tui_live_tcp_tests `
+            --parallel 8
+          if ($LASTEXITCODE -ne 0) { throw 'TUI test build failed' }
           $env:PATH = "$env:QT_ROOT_DIR\bin;$env:PATH"
           & builds\cmake-vs2026\tests\RelWithDebInfo\qsanguosha_tui_contract_tests.exe
           if ($LASTEXITCODE -ne 0) { throw 'TUI contract gate failed' }
@@ -301,12 +311,12 @@ jobs:
           & builds\cmake-vs2026\tests\Debug\qsanguosha_tui_live_tcp_tests.exe
           if ($LASTEXITCODE -ne 0) { throw 'Windows Debug TUI live-session contract failed' }
 
-      - name: Build and package Windows Release TUI product
+      - name: Verify Windows Release TUI product
         shell: pwsh
         run: |
-          cmake --build builds\cmake-vs2026 --config Release `
-            --target deploy-tui --parallel 8
-          if ($LASTEXITCODE -ne 0) { throw 'Windows Release TUI package gate failed' }
+          if (-not (Test-Path -LiteralPath 'dist\tui\Release\qsanguosha_tui.exe')) {
+            throw 'Release TUI package is missing'
+          }
           & dist\tui\Release\qsanguosha_tui.exe --help
           if ($LASTEXITCODE -ne 0) { throw 'Windows Release TUI help smoke failed' }
           & dist\tui\Release\qsanguosha_tui.exe --version

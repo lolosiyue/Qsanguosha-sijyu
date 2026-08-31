@@ -183,7 +183,23 @@ void collectEnvInfo()
     }
 
     wchar_t locale[64] = {0};
-    if (GetUserDefaultLocaleName(locale, 64)) {
+#ifdef QSAN_XP_LEGACY
+    // GetUserDefaultLocaleName is Vista-only.  Build the same language-region
+    // shape from APIs exported by Windows XP so the executable has no hard import.
+    wchar_t language[16] = {0};
+    wchar_t country[16] = {0};
+    const LCID userLocale = GetUserDefaultLCID();
+    const bool hasLanguage = GetLocaleInfoW(userLocale, LOCALE_SISO639LANGNAME,
+        language, sizeof(language) / sizeof(language[0])) > 0;
+    const bool hasCountry = GetLocaleInfoW(userLocale, LOCALE_SISO3166CTRYNAME,
+        country, sizeof(country) / sizeof(country[0])) > 0;
+    if (hasLanguage && hasCountry)
+        _snwprintf(locale, sizeof(locale) / sizeof(locale[0]) - 1,
+            L"%s-%s", language, country);
+#else
+    GetUserDefaultLocaleName(locale, 64);
+#endif
+    if (locale[0] != L'\0') {
         char loc8[128] = {0};
         WideCharToMultiByte(CP_UTF8, 0, locale, -1, loc8, sizeof(loc8), nullptr, nullptr);
         appendEnv("系统区域: %s\r\n", loc8);

@@ -2,6 +2,7 @@
 //#include "general.h"
 //#include "settings.h"
 #include "engine.h"
+#include "qt-collection-utils.h"
 #include "standard.h"
 #include "clientplayer.h"
 //#include "client.h"
@@ -1181,7 +1182,7 @@ public:
         if (banned.isEmpty()) {
             banned << "zuoci" << "guzhielai" << "dengshizai" << "yt_caochong" << "jiangboyue" << "ol_zuoci";
         }
-        return (QSet<QString>(all.begin(), all.end()) - banned - huashen_set - room_set).values();
+        return (qsanToSet(all) - banned - huashen_set - room_set).values();
     }
 
     static void SelectSkill(ServerPlayer *zuoci)
