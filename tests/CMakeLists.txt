@@ -367,6 +367,25 @@ if(QSAN_BUILD_TUI)
         qsanguosha_protocol_v2_contract_support
         Qt6::Core
     )
+    add_executable(qsanguosha_tui_card_text_tests
+        tui/tui-card-text-test.cpp
+    )
+    target_include_directories(qsanguosha_tui_card_text_tests PRIVATE
+        ${QSAN_TEST_ROOT}/src/core
+        ${QSAN_TEST_ROOT}/src/tui
+    )
+    target_compile_definitions(qsanguosha_tui_card_text_tests PRIVATE
+        QSAN_ENGINE_TEST_BUILD
+    )
+    target_link_libraries(qsanguosha_tui_card_text_tests PRIVATE
+        qsanguosha_tui_support
+        Qt6::Core
+    )
+    qsan_add_ctest(qsanguosha_tui_card_text qsanguosha_tui_card_text_tests
+        LABELS "client;tui;fast"
+        TIMEOUT 120
+    )
+
     qsan_add_ctest(qsanguosha_tui_contract qsanguosha_tui_contract_tests
         LABELS "client;tui;protocol;fast"
         TIMEOUT 30
