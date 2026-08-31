@@ -826,6 +826,7 @@ void RoomThread::run()
 		room->removeDerivativeCards();
 		constructTriggerTable();
 		trigger(GameReady, room, nullptr);
+		room->markGameReadyCompleted();
 		if (room->getMode() == "06_3v3") {
 			run3v3(first, second, game_rule, first.first());
 		} else if (room->getMode() == "04_1v3") {

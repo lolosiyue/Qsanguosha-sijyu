@@ -358,6 +358,8 @@ add_library(qsanguosha_engine STATIC
     src/server/event-dispatcher.h
     src/server/extra-turn-scheduler.cpp
     src/server/extra-turn-scheduler.h
+    src/server/game-session-controller.cpp
+    src/server/game-session-controller.h
     src/server/game-snapshot-service.cpp
     src/server/game-snapshot-service.h
     src/server/gamerule.cpp

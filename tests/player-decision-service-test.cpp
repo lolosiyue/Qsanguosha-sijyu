@@ -1,4 +1,5 @@
 #include "engine-bootstrap.h"
+#include "game-session-controller.h"
 #include "ai.h"
 #include "card-movement-service.h"
 #include "card-lifetime-manager.h"
@@ -497,7 +498,10 @@ struct PlayerDecisionServiceTestAccess
 
     static void setGameState(Room &room, int state)
     {
-        room.game_state = state;
+        room.m_gameSession->m_state = state > 0
+            ? GameSessionController::State::Playing
+            : (state < 0 ? GameSessionController::State::Finished
+                         : GameSessionController::State::Waiting);
     }
 
     static QString askForOrder(Room &room, ServerPlayer *player, const QString &defaultChoice)
