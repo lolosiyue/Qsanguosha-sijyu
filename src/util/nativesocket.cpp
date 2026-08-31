@@ -114,6 +114,11 @@ void NativeClientSocket::connectToHost()
     socket->connectToHost(address, port);
 }
 
+void NativeClientSocket::connectToHost(const QString &host, quint16 port)
+{
+    socket->connectToHost(host, port);
+}
+
 void NativeClientSocket::getMessage()
 {
     const QSanProtocol::ProtocolFrameAppendResult result =
@@ -126,7 +131,9 @@ void NativeClientSocket::getMessage()
 
     for (const QByteArray &message : result.frames) {
 #ifndef QT_NO_DEBUG
-        qDebug().noquote() << "RX:" << QString::fromUtf8(message);
+        if (qEnvironmentVariableIsSet("QSAN_PROTOCOL_DEBUG_SENSITIVE"))
+            qDebug().noquote() << "RX (may contain private game state):"
+                               << QString::fromUtf8(message);
 #endif
         emit message_got(message);
     }
@@ -135,6 +142,12 @@ void NativeClientSocket::getMessage()
 void NativeClientSocket::disconnectFromHost()
 {
     socket->disconnectFromHost();
+}
+
+void NativeClientSocket::abort()
+{
+    m_frameBuffer.clear();
+    socket->abort();
 }
 
 void NativeClientSocket::send(const QByteArray &message)
@@ -148,7 +161,9 @@ void NativeClientSocket::send(const QByteArray &message)
     socket->write(message);
     socket->write("\n", 1);
 #ifndef QT_NO_DEBUG
-    qDebug().noquote() << "TX:" << QString::fromUtf8(message);
+    if (qEnvironmentVariableIsSet("QSAN_PROTOCOL_DEBUG_SENSITIVE"))
+        qDebug().noquote() << "TX (may contain private game state):"
+                           << QString::fromUtf8(message);
 #endif
     socket->flush();
 }
@@ -170,6 +185,16 @@ QString NativeClientSocket::peerName() const
 QString NativeClientSocket::peerAddress() const
 {
     return socket->peerAddress().toString();
+}
+
+QAbstractSocket::SocketError NativeClientSocket::lastError() const
+{
+    return socket->error();
+}
+
+QString NativeClientSocket::errorString() const
+{
+    return socket->errorString();
 }
 
 void NativeClientSocket::raiseError(QAbstractSocket::SocketError socket_error)
