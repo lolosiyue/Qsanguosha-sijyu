@@ -139,14 +139,61 @@ void TuiInteractionView::cancelRequest(const InteractionRequest &request,
     }
 }
 
+QString TuiInteractionView::rejectionText(const InteractionValidation &validation)
+{
+    switch (validation.rejection) {
+    case InteractionRejection::None:
+        return tr("作答無效");
+    case InteractionRejection::NoActiveRequest:
+        return tr("目前沒有等待作答的互動");
+    case InteractionRejection::RequestIdMismatch:
+        return tr("這個作答不屬於目前的互動");
+    case InteractionRejection::AlreadyCompleted:
+        return tr("這個互動已經作答過了");
+    case InteractionRejection::RequestCancelled:
+        return tr("這個互動已被取消");
+    case InteractionRejection::RequestExpired:
+        return tr("這個互動已逾時");
+    case InteractionRejection::KindMismatch:
+        return tr("作答的形式與這個互動不符");
+    case InteractionRejection::UnknownOption:
+        return tr("沒有這個選項");
+    case InteractionRejection::DisabledOption:
+        return tr("這個選項目前不可選");
+    case InteractionRejection::UnknownPlayer:
+        return tr("沒有這名玩家");
+    case InteractionRejection::DuplicatePlayer:
+        return tr("同一名玩家不可重複選擇");
+    case InteractionRejection::UnknownCard:
+        return tr("沒有這張牌");
+    case InteractionRejection::DisabledCard:
+        return tr("這張牌目前不可選");
+    case InteractionRejection::DuplicateCard:
+        return tr("同一張牌不可重複選擇");
+    case InteractionRejection::UnknownGeneral:
+        return tr("沒有這名武將");
+    case InteractionRejection::DuplicateGeneral:
+        return tr("同一名武將不可重複選擇");
+    case InteractionRejection::SelectionCountOutOfRange:
+        return tr("選擇的數量不符要求");
+    case InteractionRejection::NotCancelable:
+        return tr("這個互動不可取消");
+    }
+    return tr("作答無效");
+}
+
 void TuiInteractionView::rejectResponse(const InteractionRequest &request,
     const InteractionResponse &, const InteractionValidation &validation)
 {
-    if (m_writer) {
-        m_writer(tr("請求 %1 的作答無效：%2 %3")
-            .arg(request.requestId).arg(validation.reasonName(),
-                 TuiRenderer::sanitize(validation.detail, 512)));
-    }
+    if (!m_writer)
+        return;
+    const QString detail = TuiRenderer::sanitize(validation.detail, 512);
+    m_writer(detail.isEmpty()
+        ? tr("作答無效：%1").arg(rejectionText(validation))
+        : tr("作答無效：%1（%2）").arg(rejectionText(validation), detail));
+    // The request is still open, so show it again rather than leaving the
+    // player staring at an error with no prompt.
+    presentRequest(request);
 }
 
 QList<int> TuiInteractionView::parseIndexes(const QString &text, int size,

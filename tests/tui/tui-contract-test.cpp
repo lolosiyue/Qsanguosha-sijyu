@@ -695,6 +695,12 @@ void rendererContract()
     state.setPlayerValue(QStringLiteral("p1"), QStringLiteral("max_hp"), 4);
     state.setPlayerValue(QStringLiteral("p1"), QStringLiteral("state"),
                          QStringLiteral("trust"));
+    state.setPlayerValue(QStringLiteral("p1"), QStringLiteral("marks"),
+                         QVariantMap{{QStringLiteral("@fubi"), 1},
+                                     {QStringLiteral("Global_TurnCount"), 3},
+                                     {QStringLiteral("mtyanyi_phase-Clear"), 4}});
+    state.setPlayerValue(QStringLiteral("p1"), QStringLiteral("flags"),
+                         QStringList{QStringLiteral("CurrentPlayer")});
     state.setPlayerValue(QStringLiteral("p2"), QStringLiteral("screen_name"),
                          QStringLiteral("Bob"));
     state.setPlayerValue(QStringLiteral("p2"), QStringLiteral("alive"), false);
@@ -734,6 +740,48 @@ void rendererContract()
           "player snapshot shows public zones without leaking an opponent hand");
     check(plain.renderHand(state).contains(QStringLiteral("slash")),
           "self hand snapshot renders authorized card identity");
+    check(playersSnapshot.contains(QStringLiteral("@fubi"))
+              && !playersSnapshot.contains(QStringLiteral("Global_TurnCount"))
+              && !playersSnapshot.contains(QStringLiteral("mtyanyi_phase-Clear")),
+          "player snapshot shows game marks and hides engine bookkeeping");
+    check(!playersSnapshot.contains(QStringLiteral("CurrentPlayer")),
+          "player snapshot does not leak engine flags");
+
+    check(TuiRenderer::commandResultText(S_COMMAND_NETWORK_DELAY_TEST, true, QString()).isEmpty(),
+          "a successful internal command stays out of the transcript");
+    const QString trustResult = TuiRenderer::commandResultText(S_COMMAND_TRUST, true, QString());
+    check(!trustResult.isEmpty() && !trustResult.contains(QString::number(S_COMMAND_TRUST)),
+          "a command the player typed is confirmed by name, not by wire id");
+    check(TuiRenderer::commandResultText(S_COMMAND_NETWORK_DELAY_TEST, false,
+              QStringLiteral("boom")).contains(QStringLiteral("boom")),
+          "a failing command is always reported with its detail");
+
+    QStringList rejectionLines;
+    TuiInteractionView rejectView(&plain,
+        [&rejectionLines](const QString &line) { rejectionLines << line; },
+        [](int cardId) { return QString::number(cardId); });
+    const InteractionRequest rejected = cardRequest();
+    rejectView.rejectResponse(rejected, InteractionResponse(),
+        InteractionValidation::fail(InteractionRejection::SelectionCountOutOfRange,
+            QStringLiteral("request wants 2..2 cards but the reply has 1")));
+    const QString rejectionText = rejectionLines.join(QLatin1Char('\n'));
+    check(!rejectionText.contains(QStringLiteral("selection_count_out_of_range")),
+          "a rejected answer explains itself without an internal error code");
+    check(rejectionText.contains(QStringLiteral("2")),
+          "a rejected answer keeps the detail that says what was wrong");
+    check(rejectionLines.size() >= 2 && rejectionLines.last().contains(QStringLiteral("互動")),
+          "a rejected answer re-shows the prompt so the player can retry");
+
+    InteractionRequest anyCard = cardRequest();
+    std::get_if<CardInteractionPayload>(&anyCard.payload)->selection.pattern
+        = QStringLiteral(".");
+    check(!plain.renderInteraction(anyCard).contains(QStringLiteral("模式")),
+          "a wildcard card pattern is not shown as a raw dot");
+    InteractionRequest slashOnly = cardRequest();
+    std::get_if<CardInteractionPayload>(&slashOnly.payload)->selection.pattern
+        = QStringLiteral("slash");
+    check(plain.renderInteraction(slashOnly).contains(QStringLiteral("模式")),
+          "a real card pattern is still shown");
 
     TuiRenderer ansi(true);
     check(ansi.renderState(state).contains(QChar(0x1b)),

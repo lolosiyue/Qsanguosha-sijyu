@@ -18,6 +18,8 @@ public:
                          NameResolver nameResolver = {});
 
     static QString sanitize(const QString &text, qsizetype maximumLength = 4096);
+    // Feedback for a control command. Empty when there is nothing worth saying.
+    static QString commandResultText(int command, bool success, const QString &message);
     QString renderState(const ClientGameState &state) const;
     QString renderPlayers(const ClientGameState &state) const;
     QString renderHand(const ClientGameState &state) const;
