@@ -1,7 +1,7 @@
 #ifndef PCH_H
 #define PCH_H
 
-#ifdef _MSC_VER
+#if defined(_MSC_VER) && !defined(QSAN_XP_LEGACY)
 #pragma execution_character_set("utf-8")
 #endif
 
@@ -26,6 +26,10 @@
 #include <memory>
 #include <utility>
 
+#ifndef QSAN_ENABLE_QML
+#define QSAN_ENABLE_QML 1
+#endif
+
 #if __cplusplus < 201402L
 namespace std {
 template <class T, class... Args>
@@ -36,7 +40,7 @@ inline unique_ptr<T> make_unique(Args&&... args)
 }
 #endif
 
-#ifndef Q_OS_WINRT
+#if !defined(Q_OS_WINRT) && QSAN_ENABLE_QML
 #include <QtQml>
 #endif
 

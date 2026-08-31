@@ -1,0 +1,80 @@
+#ifndef QSAN_QT5_QRANDOMGENERATOR_H
+#define QSAN_QT5_QRANDOMGENERATOR_H
+
+#include <QtGlobal>
+
+#include <chrono>
+#include <limits>
+#include <random>
+
+class QRandomGenerator
+{
+public:
+    typedef quint32 result_type;
+
+    QRandomGenerator()
+        : m_engine(seedFromClock())
+    {
+    }
+
+    template <size_t N>
+    explicit QRandomGenerator(const quint32 (&seedWords)[N])
+    {
+        std::seed_seq sequence(seedWords, seedWords + N);
+        m_engine.seed(sequence);
+    }
+
+    static QRandomGenerator securelySeeded()
+    {
+        std::random_device device;
+        const quint32 seedWords[] = {
+            quint32(device()), quint32(device()),
+            quint32(seedFromClock()), quint32(seedFromClock() >> 32)
+        };
+        return QRandomGenerator(seedWords);
+    }
+
+    static QRandomGenerator *global()
+    {
+        static thread_local QRandomGenerator generator = securelySeeded();
+        return &generator;
+    }
+
+    static QRandomGenerator *system()
+    {
+        return global();
+    }
+
+    quint32 generate()
+    {
+        return m_engine();
+    }
+
+    quint64 generate64()
+    {
+        return (quint64(generate()) << 32) | quint64(generate());
+    }
+
+    int bounded(int upperExclusive)
+    {
+        if (upperExclusive <= 0)
+            return 0;
+        std::uniform_int_distribution<int> distribution(0, upperExclusive - 1);
+        return distribution(m_engine);
+    }
+
+    double generateDouble()
+    {
+        return std::generate_canonical<double, std::numeric_limits<double>::digits>(m_engine);
+    }
+
+private:
+    static quint64 seedFromClock()
+    {
+        return quint64(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+    }
+
+    std::mt19937 m_engine;
+};
+
+#endif

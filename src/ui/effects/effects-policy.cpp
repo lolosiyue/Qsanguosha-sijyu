@@ -12,6 +12,16 @@ VisualEffectsPolicy &VisualEffectsPolicy::instance()
 
 void VisualEffectsPolicy::initialize(const QStringList &arguments)
 {
+#ifdef QSAN_XP_LEGACY
+    Q_UNUSED(arguments);
+    m_profile = EffectsProfile::None;
+    m_source = QStringLiteral("xp-forced");
+    m_error.clear();
+    m_initialized = true;
+    qInfo("[effects] profile=none source=xp-forced");
+    return;
+#endif
+
     const EffectsProfileContract::Resolution resolution =
         EffectsProfileContract::resolve(arguments,
             Config.value(QString::fromLatin1(EffectsProfileContract::SettingsKey)));
@@ -28,6 +38,16 @@ void VisualEffectsPolicy::initialize(const QStringList &arguments)
 
 void VisualEffectsPolicy::setProfile(EffectsProfile profile, bool persist)
 {
+#ifdef QSAN_XP_LEGACY
+    Q_UNUSED(profile);
+    Q_UNUSED(persist);
+    m_profile = EffectsProfile::None;
+    m_source = QStringLiteral("xp-forced");
+    m_error.clear();
+    m_initialized = true;
+    return;
+#endif
+
     m_profile = profile;
     m_source = QStringLiteral("settings");
     m_error.clear();

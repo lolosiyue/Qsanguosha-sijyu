@@ -1769,7 +1769,8 @@ void IQSanComponentSkin::drawHorizontalText(QPainter &painter, const QRect &rect
 	painter.save();
 
 	QFont actualFont = font;
-	QStringList availableFonts = QFontDatabase::families();
+	QFontDatabase fontDatabase;
+	QStringList availableFonts = fontDatabase.families();
 
 	if (!availableFonts.contains(font.family())) {
 		QStringList fallbackFonts;
@@ -1821,7 +1822,8 @@ void IQSanComponentSkin::drawVerticalText(QPainter &painter, const QRect &rect,
 	painter.save();
 
 	QFont actualFont = font;
-	QStringList availableFonts = QFontDatabase::families();
+	QFontDatabase fontDatabase;
+	QStringList availableFonts = fontDatabase.families();
 
 	if (!availableFonts.contains(font.family())) {
 		QStringList fallbackFonts;

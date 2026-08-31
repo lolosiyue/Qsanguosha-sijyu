@@ -7,6 +7,7 @@
 #include "room.h"
 #include "roomthread.h"
 #include "engine.h"
+#include "qt-collection-utils.h"
 #include "nativesocket.h"
 #include "banpair.h"
 #include "server-info.h"
@@ -1270,7 +1271,7 @@ Select3v3GeneralDialog::Select3v3GeneralDialog(QDialog *parent)
 {
 	setWindowTitle(tr("Select generals in extend 3v3 mode"));
 	QStringList gs = Config.value("3v3/ExtensionGenerals").toStringList();
-	ex_generals = QSet<QString>(gs.begin(), gs.end());
+	ex_generals = qsanToSet(gs);
 	QVBoxLayout *layout = new QVBoxLayout;
 	tab_widget = new QTabWidget;
 	fillTabWidget();

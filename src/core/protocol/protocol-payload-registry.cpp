@@ -966,17 +966,16 @@ ProtocolFlowDescriptor flow(ProtocolMessageType type, ProtocolEndpoint source,
     descriptor.consumer = QString::fromLatin1(consumer);
     descriptor.currentPayloadShape = QStringLiteral("typed_object");
     descriptor.targetSchema = QString::fromLatin1(schema);
-    descriptor.requiredFields = {QStringLiteral("schema_version")};
+    descriptor.requiredFields = QStringList() << QStringLiteral("schema_version");
     descriptor.replyCommand = replyCommand;
     descriptor.correlation = correlation;
     descriptor.replayPolicy = replay;
     descriptor.parser = QStringLiteral("ProtocolPayloadRegistry::validateObjectPayload");
     descriptor.encoder = QStringLiteral("domain DTO::toVariant");
     descriptor.migrationStatus = QString::fromLatin1(status);
-    descriptor.productionEvidence = {
-        descriptor.producer,
-        descriptor.consumer
-    };
+    descriptor.productionEvidence = QStringList()
+        << descriptor.producer
+        << descriptor.consumer;
     return descriptor;
 }
 
@@ -1335,7 +1334,7 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
         {QStringLiteral("PreshowPayload"), {QStringLiteral("player_name"), QStringLiteral("states")}}
     };
     for (ProtocolFlowDescriptor &descriptor : result) {
-        descriptor.requiredFields = {QStringLiteral("schema_version")};
+        descriptor.requiredFields = QStringList() << QStringLiteral("schema_version");
         descriptor.requiredFields.append(requiredBySchema.value(descriptor.targetSchema));
         descriptor.currentPayloadShape = QStringLiteral("typed_object");
         descriptor.parser = descriptor.targetSchema == QLatin1String("InteractionRequestPayload")

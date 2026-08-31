@@ -1,4 +1,5 @@
 #include "engine.h"
+#include "qt-collection-utils.h"
 #include "runtime-paths.h"
 #include "version.h"
 #include "ai-data-store.h"
@@ -3086,7 +3087,7 @@ void Engine::godLottery(QSet<QString> &generalSet) const
 {
 	QStringList list = generalSet.values();
 	godLottery(list);
-	generalSet = QSet<QString>(list.begin(), list.end());
+	generalSet = qsanToSet(list);
 }
 
 QString Engine::getAiData() const
