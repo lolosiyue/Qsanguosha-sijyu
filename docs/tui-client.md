@@ -38,8 +38,12 @@ Room→Client 的機器可讀覆蓋表位於
 production flow 已逐條記錄 parser／DTO、reducer、affected state、renderer
 visibility、reconnect behavior 及 focused test。當前 gate 為 63/63 個
 state-bearing flow 有 reducer、29/29 個 interaction request 有 presenter、
-unclassified=0、silent drops=0。音訊是已登記的 text-mode no-op；其餘動畫、
-emotion 與 log 類流程會成為簡短 presentation event。
+unclassified=0、silent drops=0。音訊與動畫是已登記的 text-mode no-op；emotion
+與 log 類流程會成為 presentation event。戰鬥日誌（`S_COMMAND_LOG_SKILL`）與
+game event（`S_COMMAND_LOG_EVENT`）由 `src/tui/tui-log-text.cpp` 在 frontend
+組成句子：core 只保留 localization key 與 typed argument，翻譯與牌名解析都在
+連引擎的 TUI 這一層完成。分類異動後需以 `QSAN_TUI_COVERAGE_WRITE=1` 重跑
+`qsanguosha_tui_contract_tests` 重生上述 artifact。
 
 ## 啟動及 CLI
 

@@ -63,7 +63,8 @@ signals:
     void frontendMessageReceived(const QSanProtocol::ProtocolMessage &message);
     void stateChanged();
     void interactionRequested(const QSanProtocol::ProtocolMessage &message);
-    void presentationEvent(int command, const QString &text);
+    void presentationEvent(int command, const QString &text,
+                           const QVariant &payload);
     void commandResult(int command, bool success, const QString &message);
     void disconnected();
     void fatalError(int exitCode, const QString &code, const QString &message);
@@ -87,7 +88,14 @@ private:
     QHash<quint64, int> m_pendingRequests;
     QHash<quint64, qint64> m_requestStartedAt;
     ClientGameState m_pendingState;
-    QList<QPair<int, QString>> m_pendingPresentationEvents;
+    // Buffered while a STATE_SYNC is in flight, replayed once it commits.
+    struct PendingPresentationEvent
+    {
+        int command = 0;
+        QString text;
+        QVariant payload;
+    };
+    QList<PendingPresentationEvent> m_pendingPresentationEvents;
     QList<QSanProtocol::ProtocolMessage> m_pendingFrontendMessages;
     QString m_syncId;
     bool m_syncActive = false;

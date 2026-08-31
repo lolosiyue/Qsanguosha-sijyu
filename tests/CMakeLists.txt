@@ -386,6 +386,25 @@ if(QSAN_BUILD_TUI)
         TIMEOUT 120
     )
 
+    add_executable(qsanguosha_tui_log_text_tests
+        tui/tui-log-text-test.cpp
+    )
+    target_include_directories(qsanguosha_tui_log_text_tests PRIVATE
+        ${QSAN_TEST_ROOT}/src/core
+        ${QSAN_TEST_ROOT}/src/tui
+    )
+    target_compile_definitions(qsanguosha_tui_log_text_tests PRIVATE
+        QSAN_ENGINE_TEST_BUILD
+    )
+    target_link_libraries(qsanguosha_tui_log_text_tests PRIVATE
+        qsanguosha_tui_support
+        Qt6::Core
+    )
+    qsan_add_ctest(qsanguosha_tui_log_text qsanguosha_tui_log_text_tests
+        LABELS "client;tui;fast"
+        TIMEOUT 120
+    )
+
     qsan_add_ctest(qsanguosha_tui_contract qsanguosha_tui_contract_tests
         LABELS "client;tui;protocol;fast"
         TIMEOUT 30
