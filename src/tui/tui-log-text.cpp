@@ -61,6 +61,25 @@ QString cardsText(const QString &cardString)
     return text;
 }
 
+// The server wraps chat and system notices in the markup the desktop log box
+// renders. A text transcript must not show tags.
+QString stripMarkup(const QString &text)
+{
+    QString result;
+    result.reserve(text.size());
+    bool inTag = false;
+    for (QChar character : text) {
+        if (character == QLatin1Char('<')) {
+            inTag = true;
+        } else if (character == QLatin1Char('>')) {
+            inTag = false;
+        } else if (!inTag) {
+            result.append(character);
+        }
+    }
+    return result.trimmed();
+}
+
 } // namespace
 
 QString tuiSkillLogText(const QVariantMap &payload, const TuiPlayerNameResolver &playerName)
@@ -148,6 +167,14 @@ QString tuiPresentationEventText(int command, const QString &fallbackText,
         return tuiSkillLogText(payload.toMap(), playerName);
     case QSanProtocol::S_COMMAND_LOG_EVENT:
         return tuiGameEventText(payload.toMap(), playerName);
+    case QSanProtocol::S_COMMAND_SPEAK: {
+        const QVariantMap chat = payload.toMap();
+        const QString said = stripMarkup(chat.value(QStringLiteral("text")).toString());
+        if (said.isEmpty())
+            return QString();
+        return QStringLiteral("%1: %2").arg(
+            resolveName(playerName, chat.value(QStringLiteral("speaker")).toString()), said);
+    }
     case QSanProtocol::S_COMMAND_ANIMATE:
         return QString();
     default:

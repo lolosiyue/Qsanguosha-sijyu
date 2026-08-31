@@ -2,6 +2,7 @@
 
 #include "core/client-game-state.h"
 #include "core/interaction-model.h"
+#include "protocol.h"
 
 #include <QCoreApplication>
 #include <QHash>
@@ -82,6 +83,29 @@ QString TuiRenderer::sanitize(const QString &text, qsizetype maximumLength)
             break;
     }
     return result;
+}
+
+QString TuiRenderer::commandResultText(int command, bool success, const QString &message)
+{
+    static const QHash<int, QString> labels{
+        {QSanProtocol::S_COMMAND_SPEAK, tr("聊天")},
+        {QSanProtocol::S_COMMAND_TRUST, tr("託管")},
+        {QSanProtocol::S_COMMAND_ADD_ROBOT, tr("加入電腦玩家")},
+        {QSanProtocol::S_COMMAND_SURRENDER, tr("投降")}};
+    const QString label = labels.value(command);
+    const QString detail = sanitize(message, 512);
+    if (!success) {
+        const QString what = label.isEmpty()
+            ? tr("命令 %1").arg(command) : label;
+        return detail.isEmpty() ? tr("%1失敗").arg(what)
+                                : tr("%1失敗：%2").arg(what, detail);
+    }
+    // Delay probes and other housekeeping succeed constantly; only confirm what
+    // the player actually asked for.
+    if (label.isEmpty())
+        return QString();
+    return detail.isEmpty() ? tr("%1完成").arg(label)
+                            : tr("%1完成：%2").arg(label, detail);
 }
 
 QString TuiRenderer::heading(const QString &text) const
@@ -190,8 +214,9 @@ QString TuiRenderer::renderPlayers(const ClientGameState &state) const
     for (int i = 0; i < names.size(); ++i) {
         const QVariantMap player = state.player(names.at(i));
         const QString name = names.at(i);
-        const QString flags = player.value(QStringLiteral("flags"))
-            .toStringList().join(QLatin1Char(','));
+        // Flags are engine internals (CurrentPlayer, marshalling); the desktop
+        // client never shows them either.
+        const QString flags;
         const QList<int> equipment = state.cardsForPlayer(name, 1);
         const QList<int> judging = state.cardsForPlayer(name, 2);
         const QVariantMap piles = player.value(QStringLiteral("piles")).toMap();
@@ -199,10 +224,16 @@ QString TuiRenderer::renderPlayers(const ClientGameState &state) const
         for (auto it = piles.constBegin(); it != piles.constEnd(); ++it)
             pileSummary << QStringLiteral("%1:%2").arg(sanitize(it.key(), 64))
                 .arg(it.value().toList().size());
+        // Only "@" marks are meant for players; the rest are engine bookkeeping
+        // (turn counters, phase-clear helpers) that the desktop client also hides.
         QStringList marks;
         const QVariantMap markValues = player.value(QStringLiteral("marks")).toMap();
-        for (auto it = markValues.constBegin(); it != markValues.constEnd(); ++it)
-            marks << QStringLiteral("%1=%2").arg(sanitize(it.key(), 64), it.value().toString());
+        for (auto it = markValues.constBegin(); it != markValues.constEnd(); ++it) {
+            if (!it.key().startsWith(QLatin1Char('@')))
+                continue;
+            marks << QStringLiteral("%1=%2")
+                .arg(nameText(it.key()), sanitize(it.value().toString(), 64));
+        }
         const QString activity = name == current ? tr(" <回合>")
             : focus.contains(name) ? tr(" <焦點>") : QString();
         const QString stateName = player.value(QStringLiteral("state")).toString();
@@ -299,8 +330,12 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
         if (!value->selection.selectableCards.isEmpty())
             appendCards(&lines, value->selection.selectableCards,
                         value->selection.disabledCards, m_cardResolver);
-        if (!value->selection.pattern.isEmpty())
+        // "." is the engine's wildcard: every card qualifies, so saying so adds
+        // nothing but noise.
+        if (!value->selection.pattern.isEmpty()
+            && value->selection.pattern != QLatin1String(".")) {
             lines << tr("模式：%1").arg(sanitize(value->selection.pattern, 256));
+        }
         lines << tr("作答：card <精確牌字串> [-> 目標 ...]，或候選牌索引");
     } else if (const auto *value = request.payloadAs<GongxinInteractionPayload>()) {
         QList<int> disabled;
