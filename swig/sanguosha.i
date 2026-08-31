@@ -917,13 +917,6 @@ struct CardUseStruct {
     bool bypass_cost;
 };
 
-%extend CardUseStruct {
-	CardUseStruct(const Card *card, ServerPlayer *from, ServerPlayer *target,
-			bool isOwnerUse = true, const Card *whocard = nullptr, ServerPlayer *who = nullptr) {
-		return new CardUseStruct(card, from, target, isOwnerUse, whocard, who);
-	}
-}
-
 struct CardsMoveStruct {
 	CardsMoveStruct();
 	CardsMoveStruct(const QList<int>&ids, Player*from, Player*to, Player::Place from_place, Player::Place to_place, CardMoveReason reason);
