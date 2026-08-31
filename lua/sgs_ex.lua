@@ -835,7 +835,9 @@ function onNullified_DelayedTrick_movable(self,source,targets)
 		end--]]
 		local reason = sgs.CardMoveReason(sgs.CardMoveReason_S_REASON_TRANSFER,source:objectName(),self:getSkillName(),"")
 		reason.m_extraData:setValue(self:getRealCard())
-		reason.m_useStruct = sgs.CardUseStruct(self,nil,target)
+		local tos = sgs.SPlayerList()
+		tos:append(target)
+		reason.m_useStruct = sgs.CardUseStruct(self,nil,tos)
 		if target ~= source then
 			local data = sgs.QVariant()
 			data:setValue(reason.m_useStruct)
