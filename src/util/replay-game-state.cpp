@@ -6,6 +6,7 @@
 #include "protocol/protocol-message-utils.h"
 #include "protocol.h"
 #include "json.h"
+#include "player.h"
 
 #include <QFile>
 

@@ -108,6 +108,24 @@
       "targets": ["deploy-server"]
     },
     {
+      "name": "deploy-tui-debug",
+      "configurePreset": "vs2026-x64",
+      "configuration": "Debug",
+      "targets": ["deploy-tui"]
+    },
+    {
+      "name": "deploy-tui-release",
+      "configurePreset": "vs2026-x64",
+      "configuration": "Release",
+      "targets": ["deploy-tui"]
+    },
+    {
+      "name": "deploy-tui-relwithdebinfo-vs2026-x64",
+      "configurePreset": "vs2026-x64",
+      "configuration": "RelWithDebInfo",
+      "targets": ["deploy-tui"]
+    },
+    {
       "name": "linux-server-debug",
       "displayName": "Linux dedicated server (GCC, Debug)",
       "configurePreset": "linux-server-gcc-debug"
