@@ -1,6 +1,10 @@
 #ifndef _DETECTOR_H
 #define _DETECTOR_H
 
+#include <QHostAddress>
+#include <QObject>
+#include <QUdpSocket>
+
 class Detector : public QObject
 {
     Q_OBJECT

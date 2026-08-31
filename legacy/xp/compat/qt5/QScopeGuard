@@ -1,0 +1,41 @@
+#ifndef QSAN_QT5_QSCOPEGUARD_H
+#define QSAN_QT5_QSCOPEGUARD_H
+
+#include <utility>
+
+template <typename Function>
+class QScopeGuard
+{
+public:
+    explicit QScopeGuard(Function function)
+        : m_function(std::move(function)), m_active(true)
+    {
+    }
+
+    QScopeGuard(QScopeGuard &&other)
+        : m_function(std::move(other.m_function)), m_active(other.m_active)
+    {
+        other.m_active = false;
+    }
+
+    ~QScopeGuard()
+    {
+        if (m_active)
+            m_function();
+    }
+
+    QScopeGuard(const QScopeGuard &) = delete;
+    QScopeGuard &operator=(const QScopeGuard &) = delete;
+
+private:
+    Function m_function;
+    bool m_active;
+};
+
+template <typename Function>
+QScopeGuard<Function> qScopeGuard(Function function)
+{
+    return QScopeGuard<Function>(std::move(function));
+}
+
+#endif

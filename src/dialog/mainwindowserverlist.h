@@ -3,6 +3,12 @@
 
 #include "src/pch.h"
 
+#include <QAbstractSocket>
+#include <QHostAddress>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QTcpSocket>
+
 class DialogSLSettings;
 class MainWindowServerList;
 class ConnectionDialog;
