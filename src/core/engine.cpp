@@ -378,6 +378,19 @@ Engine::Engine(bool isManualMode)
     modes.insert("10pz", GameModeStruct("10pz", tr("10 players (0 renegade)"), 10));
     modes.insert("20p", GameModeStruct("20p", tr("20 players (1 renegade)"), 20));
 
+    auto applyModePolicies = [this](const QString &id, const QString &reward, const QString &win) {
+        modes[id].reward_policy = reward;
+        modes[id].win_policy = win;
+    };
+    applyModePolicies(QStringLiteral("03_1v2"), QStringLiteral("doudizhu"), QStringLiteral("identity"));
+    applyModePolicies(QStringLiteral("04_2v2"), QStringLiteral("happy"), QStringLiteral("team"));
+    applyModePolicies(QStringLiteral("06_3v3"), QStringLiteral("official3v3"), QStringLiteral("3v3"));
+    applyModePolicies(QStringLiteral("06_XMode"), QStringLiteral("none"), QStringLiteral("xmode"));
+    applyModePolicies(QStringLiteral("08_defense"), QStringLiteral("none"), QStringLiteral("team"));
+    applyModePolicies(QStringLiteral("04_boss"), QStringLiteral("none"), QStringLiteral("identity"));
+    applyModePolicies(QStringLiteral("05_ol"), QStringLiteral("none"), QStringLiteral("identity"));
+    applyModePolicies(QStringLiteral("06_ol"), QStringLiteral("none"), QStringLiteral("identity"));
+
     addModeGroup(QStringLiteral("身份模式"), QStringList()
                  << "02p" << "03p" << "04p" << "05p"
                  << "06p" << "06pd" << "07p"
@@ -1937,6 +1950,32 @@ void Engine::setGameModeLordWelfare(const QString &mode_id, bool lord_welfare)
         return;
     }
     modes[mode_id].lord_welfare = lord_welfare;
+}
+
+void Engine::setGameModeRewardPolicy(const QString &mode_id, const QString &reward_policy)
+{
+    if (!modes.contains(mode_id)) {
+        qWarning("Cannot set rewardPolicy for unknown mode '%s'.", qPrintable(mode_id));
+        return;
+    }
+    if (reward_policy.isEmpty()) {
+        qWarning("Cannot set an empty rewardPolicy for mode '%s'.", qPrintable(mode_id));
+        return;
+    }
+    modes[mode_id].reward_policy = reward_policy;
+}
+
+void Engine::setGameModeWinPolicy(const QString &mode_id, const QString &win_policy)
+{
+    if (!modes.contains(mode_id)) {
+        qWarning("Cannot set winPolicy for unknown mode '%s'.", qPrintable(mode_id));
+        return;
+    }
+    if (win_policy.isEmpty()) {
+        qWarning("Cannot set an empty winPolicy for mode '%s'.", qPrintable(mode_id));
+        return;
+    }
+    modes[mode_id].win_policy = win_policy;
 }
 
 void Engine::addModeGroup(const QString& groupName, const QStringList& modeIds)

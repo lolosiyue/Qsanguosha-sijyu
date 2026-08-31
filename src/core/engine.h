@@ -85,6 +85,8 @@ public:
 
     void setGameModeShuffleSeats(const QString &mode_id, bool shuffle_seats);
     void setGameModeLordWelfare(const QString &mode_id, bool lord_welfare);
+    void setGameModeRewardPolicy(const QString &mode_id, const QString &reward_policy);
+    void setGameModeWinPolicy(const QString &mode_id, const QString &win_policy);
 
     void addModeGroup(const QString& groupName, const QStringList& modeIds);
     QStringList getGroupModes(const QString& groupName) const;

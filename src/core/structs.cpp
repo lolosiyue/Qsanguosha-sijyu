@@ -293,14 +293,16 @@ QVariant CardMoveReason::toVariant() const
 
 // GameModeStruct implementation
 GameModeStruct::GameModeStruct()
-    : player_count(-1), is_scenario(false), is_mini_scene(false), shuffle_seats(true), lord_welfare(true)
+    : player_count(-1), reward_policy(QStringLiteral("identity")), win_policy(QStringLiteral("identity")),
+      is_scenario(false), is_mini_scene(false), shuffle_seats(true), lord_welfare(true)
 {
 }
 
 GameModeStruct::GameModeStruct(const QString &mode_id, const QString &display_name,
                                int player_count, const QString &roles)
-    : mode_id(mode_id), display_name(display_name), 
-      player_count(player_count), roles(roles), 
+    : mode_id(mode_id), display_name(display_name),
+      player_count(player_count), roles(roles),
+      reward_policy(QStringLiteral("identity")), win_policy(QStringLiteral("identity")),
       is_scenario(false), is_mini_scene(false), shuffle_seats(true), lord_welfare(true)
 {
     is_mini_scene = mode_id.contains("_mini_");

@@ -1764,6 +1764,8 @@ public:
 	bool addModes(const char*key, const char*value, const char*roles = "");
 	void setGameModeShuffleSeats(const char *mode_id, bool shuffle_seats);
 	void setGameModeLordWelfare(const char *mode_id, bool lord_welfare);
+	void setGameModeRewardPolicy(const char *mode_id, const char *reward_policy);
+	void setGameModeWinPolicy(const char *mode_id, const char *win_policy);
 
 	void addModeGroup(const char *groupName, QStringList modeIds);
 	QStringList getGroupModes(const char *groupName) const;
