@@ -16,6 +16,7 @@ public:
                        CardTextResolver cardTextResolver = CardTextResolver());
 
     void presentRequest(const InteractionRequest &request) override;
+    static QString rejectionText(const InteractionValidation &validation);
     void finishRequest(const InteractionRequest &request,
                        const InteractionResponse &response) override;
     void cancelRequest(const InteractionRequest &request,
