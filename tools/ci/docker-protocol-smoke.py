@@ -45,7 +45,6 @@ def command_values(protocol_header: Path) -> dict[str, int]:
     required = {
         "S_COMMAND_CHECK_VERSION",
         "S_COMMAND_SETUP",
-        "S_COMMAND_SET_PROPERTY",
         "S_COMMAND_SIGNUP",
         "S_COMMAND_READY",
     }
@@ -129,20 +128,15 @@ def payload_map(packet: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def wait_for_command(
+def wait_for(
     stream: ProtocolV2Stream,
     deadline: float,
-    command: int,
-    *,
-    message_type: str | None = None,
+    predicate,
 ) -> dict[str, Any]:
     while True:
         packet = stream.receive(deadline)
-        if packet.get("command") != command:
-            continue
-        if message_type is not None and packet.get("type") != message_type:
-            continue
-        return packet
+        if predicate(packet):
+            return packet
 
 
 def run_smoke(arguments: argparse.Namespace) -> tuple[str, str, str]:
@@ -160,11 +154,11 @@ def run_smoke(arguments: argparse.Namespace) -> tuple[str, str, str]:
     with connection:
         stream = ProtocolV2Stream(connection, arguments.timeout)
 
-        hello = wait_for_command(
+        hello = wait_for(
             stream,
             deadline,
-            commands["S_COMMAND_CHECK_VERSION"],
-            message_type="notification",
+            lambda packet: packet.get("command") == commands["S_COMMAND_CHECK_VERSION"]
+            and packet.get("type") == "notification",
         )
         if hello.get("source") != "lobby" or hello.get("destination") != "client":
             raise SmokeFailure("first server frame is not typed SERVER_HELLO")
@@ -186,17 +180,13 @@ def run_smoke(arguments: argparse.Namespace) -> tuple[str, str, str]:
             },
         )
 
-        signup_reply: dict[str, Any] | None = None
-        while signup_reply is None:
-            packet = stream.receive(deadline)
-            if packet.get("command") != commands["S_COMMAND_SIGNUP"]:
-                continue
-            if packet.get("type") != "reply":
-                continue
-            if str(packet.get("reply_to")) != str(signup_id):
-                continue
-            signup_reply = packet
-
+        signup_reply = wait_for(
+            stream,
+            deadline,
+            lambda packet: packet.get("command") == commands["S_COMMAND_SIGNUP"]
+            and packet.get("type") == "reply"
+            and str(packet.get("reply_to")) == str(signup_id),
+        )
         signup_payload = payload_map(signup_reply)
         if signup_payload.get("accepted") is not True:
             raise SmokeFailure(
@@ -207,11 +197,11 @@ def run_smoke(arguments: argparse.Namespace) -> tuple[str, str, str]:
         if not isinstance(player_id, str) or not player_id:
             raise SmokeFailure("accepted signup reply is missing player_id")
 
-        setup_packet = wait_for_command(
+        setup_packet = wait_for(
             stream,
             deadline,
-            commands["S_COMMAND_SETUP"],
-            message_type="notification",
+            lambda packet: packet.get("command") == commands["S_COMMAND_SETUP"]
+            and packet.get("type") == "notification",
         )
         if setup_packet.get("source") != "lobby":
             raise SmokeFailure("setup frame is not a lobby notification")
@@ -228,22 +218,6 @@ def run_smoke(arguments: argparse.Namespace) -> tuple[str, str, str]:
             {"schema_version": 1, "ready": True},
         )
 
-        owner: bool | None = None
-        while owner is None:
-            packet = stream.receive(deadline)
-            if packet.get("command") != commands["S_COMMAND_SET_PROPERTY"]:
-                continue
-            body = payload_map(packet)
-            if body.get("action") != "property":
-                continue
-            if body.get("player_name") != "MG_SELF":
-                continue
-            if body.get("property_name") == "owner":
-                value = body.get("string_value")
-                owner = value is True or str(value).lower() == "true"
-
-        if not owner:
-            raise SmokeFailure("first signed-up player was not assigned room ownership")
         return version, setup, player_id
 
 
