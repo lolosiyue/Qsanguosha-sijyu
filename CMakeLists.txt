@@ -353,6 +353,8 @@ add_library(qsanguosha_engine STATIC
     src/server/basicai.cpp
     src/server/card-movement-service.cpp
     src/server/card-movement-service.h
+    src/server/card-state-service.cpp
+    src/server/card-state-service.h
     src/server/event-dispatcher.h
     src/server/extra-turn-scheduler.cpp
     src/server/extra-turn-scheduler.h
@@ -373,6 +375,8 @@ add_library(qsanguosha_engine STATIC
     src/server/room-runtime.h
     src/server/player-lifecycle-service.cpp
     src/server/player-lifecycle-service.h
+    src/server/player-state-service.cpp
+    src/server/player-state-service.h
     src/server/skill-runtime-coordinator.cpp
     src/server/skill-runtime-coordinator.h
     src/server/room.cpp
