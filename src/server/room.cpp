@@ -6,6 +6,7 @@
 #include "card-movement-service.h"
 #include "card-state-service.h"
 #include "extra-turn-scheduler.h"
+#include "game-session-controller.h"
 #include "game-snapshot-service.h"
 #include "request-coordinator.h"
 #include "player-decision-service.h"
@@ -212,8 +213,9 @@ Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionC
 	m_playerLifecycle(std::make_unique<PlayerLifecycleService>(
 		*this, *m_roster, *m_skillRuntime, *m_cardMovement, *m_notifier,
 		static_cast<EventDispatcher &>(*this))),
+	m_gameSession(std::make_unique<GameSessionController>(*this)),
 	mode(mode), player_count(Sanguosha->getPlayerCount(mode)), current(nullptr),
-	game_state(0), game_paused(false),
+	game_paused(false),
 	thread(nullptr),//game_started(false), game_finished(false),
 	thread_3v3(nullptr), thread_xmode(nullptr), thread_1v1(nullptr),
 	scenario(Sanguosha->getScenario(mode)), m_surrenderRequestReceived(false), _virtual(false),
@@ -229,6 +231,7 @@ Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionC
 	const bool runtimeReady = m_runtime->initialize(&runtimeError);
 	if (!runtimeReady) {
 		qCritical("Room Lua runtime initialization failed: %s", qUtf8Printable(runtimeError));
+		m_gameSession->abort(GameSessionController::TerminationCause::InitializationFailure);
 		m_runtime->shutdownForInitFailure();
 	} else {
 		LuaRuntime::Binding luaBinding(m_runtime->lua());
@@ -285,7 +288,7 @@ bool Room::stopGameThreads(int timeoutMs)
 			disconnect(worker, nullptr, this, nullptr);
 	}
 
-	game_state = -1;
+	m_gameSession->abort(GameSessionController::TerminationCause::Shutdown);
 	{
 		QMutexLocker locker(&m_mutex);
 		game_paused = false;
@@ -316,7 +319,7 @@ bool Room::stopGameThreads(int timeoutMs)
 
 void Room::abortWaitingRequests()
 {
-	game_state = -1;
+	m_gameSession->abort(GameSessionController::TerminationCause::Shutdown);
 	{
 		QMutexLocker locker(&m_mutex);
 		game_paused = false;
@@ -657,98 +660,7 @@ QStringList Room::aliveRoles(ServerPlayer*except) const
 
 void Room::gameOver(const QString&winner)
 {
-	QVariant data = winner;
-
-	ServerPlayer* target = nullptr;
-
-	// 直接從全體玩家清單中尋找有效目標
-	// 優先順序：存活玩家 > RestPlayer > 任何玩家
-	foreach (ServerPlayer* p, getPlayers()) {
-		if (!p) continue;
-		// 生還玩家優先
-		if (p->isAlive()) {
-			target = p;
-			break;
-		}
-	}
-
-	// 降級策略：若無生還玩家，嘗試 RestPlayer
-	if (!target) {
-		foreach (ServerPlayer* p, getPlayers()) {
-			if (!p) continue;
-			if (p->property("RestPlayer").toBool()) {
-				target = p;
-				break;
-			}
-		}
-	}
-
-	// 最終降級：使用任何可用的玩家
-	if (!target) {
-		target = getPlayers().first();
-	}
-
-	thread->trigger(GameOver, this, target, data);
-
-	game_state = -1;
-
-	emit game_over(winner);
-
-	if (mode.contains("_mini_")){
-		QStringList winners = winner.split("+");
-		foreach(ServerPlayer*sp, getPlayers()){
-			if (!sp) continue;
-			if (sp->getState() != "robot"&&(winners.contains(sp->getRole())
-				|| winners.contains(sp->objectName()))){
-				QString id = Config.GameMode.mode_id;
-				id.replace("_mini_", "");
-				int current = id.toInt();
-				if (current < Sanguosha->getMiniSceneCounts()){
-					int stage = Config.value("MiniSceneStage", 1).toInt();
-					if (current + 1 > stage) Config.setValue("MiniSceneStage", current + 1);
-					id = QString(MiniScene::S_KEY_MINISCENE).arg(current + 1);
-					Config.setValue("GameMode", id);
-					Config.GameMode = Sanguosha->getGameMode(id);
-				}
-				break;
-			}
-		}
-	}
-	Config.AIDelay = Config.OriginAIDelay;
-
-	QString name = getTag("NextGameMode").toString();
-	if (!name.isEmpty()){
-		GameModeStruct nextMode = Sanguosha->getGameMode(name);
-		if (nextMode.isValid()) {
-			Config.GameMode = nextMode;
-			Config.setValue("GameMode", name);
-		} else {
-			qWarning("Next game mode '%s' is unavailable; keeping mode '%s'.",
-				qPrintable(name), qPrintable(Config.GameMode.mode_id));
-		}
-		removeTag("NextGameMode");
-	}
-	data = getTag("NextGameSecondGeneral");
-	if (data.canConvert<bool>()){
-		Config.Enable2ndGeneral = data.toBool();
-		Config.setValue("Enable2ndGeneral", data);
-		removeTag("NextGameSecondGeneral");
-	}
-
-	QStringList all_roles;
-	QList<ServerPlayer*> playersCopy = getPlayers();
-	foreach(ServerPlayer*player, playersCopy){
-		if (!player) continue;
-		all_roles << player->getRole();
-	}
-	const QStringList winnerTokens = winner == QLatin1String(".")
-		? QStringList() : winner.split(QLatin1Char('+'), Qt::SkipEmptyParts);
-	QVariantMap arg{{QStringLiteral("schema_version"), 1},
-		{QStringLiteral("standoff"), winner == QLatin1String(".")},
-		{QStringLiteral("winner_tokens"), winnerTokens},
-		{QStringLiteral("roles"), all_roles}};
-	doBroadcastNotify(S_COMMAND_GAME_OVER, arg);
-	throw GameFinished;
+	m_gameSession->gameOver(winner);
 }
 
 void Room::slashEffect(const SlashEffectStruct&effect)
@@ -1509,7 +1421,22 @@ bool Room::isFull() const
 
 bool Room::isFinished() const
 {
-	return game_state<0;
+	return m_gameSession->isTerminal();
+}
+
+bool Room::hasGameStarted() const
+{
+	return m_gameSession->hasGameStarted();
+}
+
+bool Room::isGamePlaying() const
+{
+	return m_gameSession->isPlaying();
+}
+
+void Room::markGameReadyCompleted()
+{
+	m_gameSession->markGameReadyCompleted();
 }
 
 bool Room::canPause(ServerPlayer*player) const
@@ -1758,130 +1685,7 @@ int Room::drawCard(bool isTop)
 
 void Room::prepareForStart()
 {
-	if (scenario){
-		bool already = false;
-		if (scenario->objectName() == "challengedeveloper"){
-			Config.EnableCheat = false;
-			Config.setValue("EnableCheat", false);
-
-			QList<ServerPlayer*> humans;
-			foreach(ServerPlayer*p, getPlayers()){
-				if (p->getState() != "robot")
-					humans << p;
-			}
-			if (!humans.isEmpty()){
-				already = true;
-				ServerPlayer*human = humans.at(qsanRandomBounded(humans.length()));
-				human->setGeneralName("sujiang");
-				broadcastProperty(human, "general");
-				human->setRole("lord");
-				broadcastProperty(human, "role");
-
-				foreach(ServerPlayer*p, getPlayers()){
-					if (p == human) continue;
-					p->setGeneralName("sujiang");
-					broadcastProperty(p, "general");
-					p->setRole("rebel");
-					broadcastProperty(p, "role");
-				}
-			}
-		}
-		if (!already){
-			QStringList generals, roles;
-			scenario->assign(generals, roles);
-			const QList<ServerPlayer *> players = getPlayers();
-			for (int i = 0; i < players.length(); i++){
-				ServerPlayer*player = players[i];
-				if (generals.length() > i){
-					player->setGeneralName(generals[i]);
-					broadcastProperty(player, "general");
-				}
-				player->setRole(roles[i]);
-				if (scenario->exposeRoles()||roles[i]=="lord")
-					broadcastProperty(player, "role");
-				else
-					notifyProperty(player, player, "role");
-			}
-		}
-		updateStateItem();
-	} else if (mode == "06_3v3" || mode == "06_XMode" || mode == "02_1v1"){
-		return;
-	} else {
-		GameModeStruct gameMode = Sanguosha->getGameMode(mode);
-		if (mode == "08_defense" || (Config.RandomSeat && gameMode.shuffle_seats)) {
-			QList<ServerPlayer *> players = getPlayers();
-			qsanShuffle(players);
-			replacePlayerOrder(players);
-		}
-		if (mode!="04_2v2"&&!Config.EnableHegemony&&Config.value("FreeAssign").toBool()){
-			ServerPlayer*owner = getOwner();
-			if (owner&&owner->isOnline()){
-				notifyMoveFocus(owner, S_COMMAND_CHOOSE_ROLE);
-				if(doRequest(owner, S_COMMAND_CHOOSE_ROLE, QVariant(), true)){
-					QVariant clientReply = owner->getClientReply();
-					if(clientReply.canConvert<JsonArray>()){
-						JsonArray replyArray = clientReply.value<JsonArray>();/*
-						if(Config.FreeAssignSelf){
-							QString name = replyArray.value(0).value<JsonArray>().value(0).toString();
-							QString role = replyArray.value(1).value<JsonArray>().value(0).toString();
-							owner = findChild<ServerPlayer*>(name);
-							owner->setRole(role);
-							QList<ServerPlayer*> all_players = getPlayers();
-							all_players.removeOne(owner);
-							QStringList roles = Sanguosha->getRoleList(mode);
-							roles.removeOne(role);
-							qsanShuffle(roles);
-							for (int i = 0; i < all_players.count(); i++){
-								all_players[i]->setRole(roles[i]);
-								if (mode.contains("_")||roles[i] == "lord")
-									broadcastProperty(all_players[i], "role", roles[i]);
-								else
-									notifyProperty(all_players[i], all_players[i], "role");
-							}
-						}else{*/
-							QList<ServerPlayer*> all_players = getPlayers();
-							QList<ServerPlayer*> players = all_players;
-							QStringList roles = Sanguosha->getRoleList(mode);
-							for (int i = 0; i < replyArray.value(0).value<JsonArray>().size(); i++){
-								QString name = replyArray.value(0).value<JsonArray>().value(i).toString();
-								QString role = replyArray.value(1).value<JsonArray>().value(i).toString();
-								owner = findChild<ServerPlayer*>(name);
-								players.swapItemsAt(i, players.indexOf(owner));
-								all_players.removeOne(owner);
-								roles.removeOne(role);
-								owner->setRole(role);
-							}
-							replacePlayerOrder(players);
-							qsanShuffle(roles);
-							for (int i = 0; i < all_players.count(); i++)
-								all_players[i]->setRole(roles[i]);
-			for (int i = 0; i < players.count(); i++){
-				if (Sanguosha->hasShowRoleMode(mode) || players[i]->getRole() == "lord")
-					broadcastProperty(players[i], "role");
-				else
-					notifyProperty(players[i], players[i], "role");
-			}
-						//}
-						adjustSeats();
-						return;
-					}
-				}
-			}
-		}
-		if (mode == "04_1v3" || mode == "04_boss"){
-			const QList<ServerPlayer *> players = getPlayers();
-			ServerPlayer*lord = players[qsanRandomBounded(4)];
-			for (int i = 0; i < 4; i++){
-				if (players[i] == lord) players[i]->setRole("lord");
-				else players[i]->setRole("rebel");
-				broadcastProperty(players[i], "role");
-			}
-			adjustSeats();
-			return;
-		}
-		assignRoles();
-	}
-	adjustSeats();
+	m_gameSession->prepareForStart();
 }
 
 void Room::reportDisconnection()
@@ -1926,7 +1730,7 @@ void Room::reportDisconnection()
 			// 殘留 RoomThread 再與下一局 Room 建構在 main 上互鎖。
 			if (player->m_isWaitingReply)
 				player->releaseLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
-			game_state = -1;
+			m_gameSession->abort(GameSessionController::TerminationCause::Disconnected);
 			emit game_over("");
 			return;
 		}
@@ -1949,7 +1753,7 @@ void Room::reportDisconnection()
 		}
 
 		if (!human_seat_remains){
-			game_state = -1;
+			m_gameSession->abort(GameSessionController::TerminationCause::Disconnected);
 			emit game_over("");
 			return;
 		}
@@ -2041,72 +1845,7 @@ void Room::processRequestCheat(ServerPlayer*player, const QVariant&arg)
 
 bool Room::makeSurrender(ServerPlayer*initiator)
 {
-	bool loyalGiveup = true;
-	int loyalAlive = 0;
-	bool renegadeGiveup = true;
-	int renegadeAlive = 0;
-	bool rebelGiveup = true;
-	int rebelAlive = 0;
-
-	// broadcast polling request
-	QList<ServerPlayer*> playersAlive;
-	foreach(ServerPlayer*player, getPlayers()){
-		QString playerRole = player->getRole();
-		if ((playerRole == "loyalist" || playerRole == "lord")&&player->isAlive()) loyalAlive++;
-		else if (playerRole == "rebel"&&player->isAlive()) rebelAlive++;
-		else if (playerRole == "renegade"&&player->isAlive()) renegadeAlive++;
-
-		if (player != initiator&&player->isAlive()&&player->isOnline()){
-			player->m_commandArgs = initiator->getGeneral()->objectName();
-			playersAlive << player;
-		}
-	}
-	doBroadcastRequest(playersAlive, S_COMMAND_SURRENDER);
-
-	// collect polls
-	foreach(ServerPlayer*player, playersAlive){
-		bool result = false;
-		if (!player->m_isClientResponseReady || !player->getClientReply().canConvert<bool>())
-			result = !player->isOnline();
-		else
-			result = player->getClientReply().toBool();
-
-		QString playerRole = player->getRole();
-		if (playerRole == "loyalist" || playerRole == "lord"){
-			loyalGiveup&= result;
-			if (player->isAlive()) loyalAlive++;
-		} else if (playerRole == "rebel"){
-			rebelGiveup&= result;
-			if (player->isAlive()) rebelAlive++;
-		} else if (playerRole == "renegade"){
-			renegadeGiveup&= result;
-			if (player->isAlive()) renegadeAlive++;
-		}
-	}
-
-	// vote counting
-	if (loyalGiveup&&renegadeGiveup&&!rebelGiveup)
-		gameOver("rebel");
-	else if (loyalGiveup&&!renegadeGiveup&&rebelGiveup)
-		gameOver("renegade");
-	else if (!loyalGiveup&&renegadeGiveup&&rebelGiveup)
-		gameOver("lord+loyalist");
-	else if (loyalGiveup&&renegadeGiveup&&rebelGiveup){
-		// if everyone give up, then ensure that the initiator doesn't win.
-		QString playerRole = initiator->getRole();
-		if (playerRole == "lord" || playerRole == "loyalist")
-			gameOver(renegadeAlive >= rebelAlive ? "renegade" : "rebel");
-		else if (playerRole == "renegade")
-			gameOver(loyalAlive >= rebelAlive ? "loyalist+lord" : "rebel");
-		else if (playerRole == "rebel")
-			gameOver(renegadeAlive >= loyalAlive ? "renegade" : "loyalist+lord");
-	}
-
-	m_surrenderRequestReceived = false;
-
-	initiator->setFlags("Global_ForbidSurrender");
-	doNotify(initiator, S_COMMAND_ENABLE_SURRENDER, QVariant(false));
-	return true;
+	return m_gameSession->makeSurrender(initiator);
 }
 
 void Room::processRequestSurrender(ServerPlayer*player, const QVariant &arg)
@@ -2137,7 +1876,7 @@ void Room::processClientPacket(
 #ifdef LOGNETWORK
 	emit Sanguosha->logNetworkMessage("recv "+player->objectName()+":"+request);
 #endif // LOGNETWORK
-	if (game_state<0){
+	if (isFinished()){
 		if (player&&player->isOnline()) {
 			DiagnosticPayload diagnostic;
 			diagnostic.code = QStringLiteral("game_over");
@@ -2222,8 +1961,8 @@ void Room::setReadyCommand(ServerPlayer *, const QVariant &payload)
     if (!ReadyPayload::parse(payload, &readyPayload))
         return;
 
-    if (readyPayload.ready && game_state < 1 && isFull())
-        start();
+	if (readyPayload.ready && isFull() && m_gameSession->requestStart())
+		start();
 }
 
 void Room::signup(ServerPlayer*player, const QString&screen_name, const QString&avatar, bool is_robot)
@@ -2231,399 +1970,13 @@ void Room::signup(ServerPlayer*player, const QString&screen_name, const QString&
 	m_playerLifecycle->signup(player, screen_name, avatar, is_robot);
 }
 
-void Room::assignGeneralsForPlayers(const QList<ServerPlayer*>&to_assign)
-{
-	QSet<QString> existed;
-	foreach(ServerPlayer*player, getPlayers()){
-		QString gn = player->getGeneralName();
-		if(gn.isEmpty()) continue;
-		existed << gn;
-		if(gn=="yinni_hide")
-			existed << player->property("yinni_general").toString();
-		gn = player->getGeneral2Name();
-		if(gn.isEmpty()) continue;
-		existed << gn;
-		if(gn=="yinni_hide")
-			existed << player->property("yinni_general2").toString();
-	}
-	if (Config.Enable2ndGeneral){
-		foreach(QString name, BanPair::getAllBanSet())
-			existed << name;
-		if (to_assign.first()->getGeneral()){
-			foreach(QString name, BanPair::getSecondBanSet())
-				existed << name;
-		}
-	}
 
-	const int max_choice = (Config.EnableHegemony&&Config.Enable2ndGeneral) ?
-		Config.value("HegemonyMaxChoice", 7).toInt() : Config.value("MaxChoice", 5).toInt();
-	const int total = Sanguosha->getGeneralCount();
-	const int max_available = (total - existed.size()) / to_assign.length();
-	const int choice_count = qMin(max_choice, max_available);
-	QStringList choices = Sanguosha->getRandomGenerals(total - existed.size(), existed);
-
-	if (Config.EnableHegemony){
-		if (to_assign.first()->getGeneral()){
-			foreach(ServerPlayer*sp, getPlayers()){
-				QStringList old_list = sp->getSelected();
-				sp->clearSelected();
-
-				//keep legal generals
-				foreach(QString name, old_list){
-					if (Sanguosha->getGeneral(name)->getKingdom() != sp->getGeneral()->getKingdom()
-						|| sp->findReasonable(old_list, true) == name){
-						sp->addToSelected(name);
-						old_list.removeOne(name);
-					}
-				}
-
-				//drop the rest and add new generals
-				while (old_list.length()){
-					QString choice = sp->findReasonable(choices);
-					sp->addToSelected(choice);
-					old_list.pop_front();
-					choices.removeOne(choice);
-				}
-			}
-			return;
-		}
-	}
-
-	foreach(ServerPlayer*player, to_assign){
-		player->clearSelected();
-		QStringList hidden;
-		for (int i = 0; i < choice_count; i++){
-			hidden << "unknown";
-			QString choice = player->findReasonable(choices, true);
-			if (choice.isEmpty()) break;
-			player->addToSelected(choice);
-			choices.removeOne(choice);
-		}
-		doAnimate(S_ANIMATE_HUASHEN, player->objectName(), hidden.join(":"));
-	}
-	if(thread) thread->delay();
-}
-
-void Room::assignGeneralsForPlayersOfJianGeDefenseMode(const QList<ServerPlayer*>&to_assign)
-{
-	QMap<QString, QSet<QString> > existed;
-	foreach(ServerPlayer*player, getPlayers()){
-		if (player->property("jiange_defense_type").toString() != "general")
-			continue;
-		if (player->getGeneral())
-			existed[player->getGeneral()->getKingdom()] << player->getGeneralName();
-		if (player->getGeneral2())
-			existed[player->getGeneral2()->getKingdom()] << player->getGeneral2Name();
-	}
-	if (Config.Enable2ndGeneral){
-		foreach(QString name, BanPair::getAllBanSet()){
-			const General*gen = Sanguosha->getGeneral(name);
-			if (gen) existed[gen->getKingdom()] << name;
-		}
-		if (to_assign.first()->getGeneral()){
-			foreach(QString name, BanPair::getSecondBanSet()){
-				const General*gen = Sanguosha->getGeneral(name);
-				if (gen) existed[gen->getKingdom()] << name;
-			}
-		}
-	}
-
-	QMap<QString, QStringList> general_choices;
-	foreach(QString key, Config.JianGeDefenseKingdoms.keys()){
-		QString kingdom = Config.JianGeDefenseKingdoms[key];
-		int total = Sanguosha->getGeneralCount(false, kingdom);
-		general_choices[kingdom] = Sanguosha->getRandomGenerals(total - existed[kingdom].size(), existed[kingdom], kingdom);
-	}
-
-	const int max_choice = Config.value("MaxChoice", 5).toInt();
-	foreach(ServerPlayer*player, to_assign){
-		QStringList choices;
-		int choice_count = 0;
-		QString kingdom = Config.JianGeDefenseKingdoms[player->getRole()];
-		QString jiange_defense_type = player->property("jiange_defense_type").toString();
-		if (jiange_defense_type == "machine"){
-			choices = Config.JianGeDefenseMachine[kingdom];
-			choice_count = choices.length();
-		} else if (jiange_defense_type == "soul"){
-			choices = Config.JianGeDefenseSoul[kingdom];
-			choice_count = choices.length();
-		} else{
-			int total = Sanguosha->getGeneralCount(false, kingdom);
-			int max_available = (total - existed[kingdom].size()) / 2;
-			choice_count = qMin(max_choice, max_available);
-			choices = general_choices[kingdom];
-		}
-
-		player->clearSelected();
-
-		for (int i = 0; i < choice_count; i++){
-			QString choice = player->findReasonable(choices, true);
-			if (choice.isEmpty()) break;
-			player->addToSelected(choice);
-			choices.removeOne(choice);
-			if (jiange_defense_type == "general")
-				general_choices[kingdom].removeOne(choice);
-		}
-	}
-}
 
 void Room::chooseGenerals(QList<ServerPlayer*> players)
 {
-	if (Config.Enable2ndGeneral)
-		Config.Enable2ndGeneral = mode!="02_1v1"&&mode!="06_3v3"&&mode!="06_XMode"&&mode!="04_1v3";
-	if (players.isEmpty()) players = getPlayers();
-	// for lord.
-	QString general = "sujiang";
-	ServerPlayer*the_lord = getLord();
-	if (players.contains(the_lord)){
-		// 自動化測試: headless 指定主公武將 (--test-general), 跳過隨機選將
-		const QString forcedName = Server::forcedHeadlessGeneral;
-		const bool forced = Server::isHeadlessMode && !forcedName.isEmpty()
-			&& Sanguosha->getGeneral(forcedName) != nullptr;
-		QStringList lord_list;
-		if (forced){
-			general = forcedName;
-		}else{
-			if (Config.EnableSame || mode == "03_1v2"){
-				lord_list = Sanguosha->getRandomGenerals(Config.value("MaxChoice", 5).toInt());
-				if(mode == "03_1v2"){
-					QStringList all_generals = Sanguosha->getLimitedGeneralNames();
-					qsanShuffle(all_generals);
-					foreach(QString general_name, all_generals){
-						if(general_name.contains("ddz_")&&!lord_list.contains(general_name)){
-							lord_list.prepend(general_name);
-							break;
-						}
-					}
-				}
-			}else
-				lord_list = Sanguosha->getRandomLords();
-			general = askForGeneral(the_lord, lord_list, QString(), "for_lord");
-		}
-		the_lord->setGeneralName(general);
-		notifyProperty(the_lord, the_lord, "general");
-		if (!Config.EnableBasara){
-			if (the_lord->hasHideSkill()){
-				setPlayerProperty(the_lord, "yinni_general", general);
-				general = "yinni_hide";
-				the_lord->setGeneralName(general);
-			}
-			if (mode != "03_1v2")
-				broadcastProperty(the_lord, "general", general);
-		}
-		players.removeOne(the_lord);
-		if (Config.EnableSame){
-			foreach(ServerPlayer*p, players){
-				p->setGeneralName(general);
-				if(general=="yinni_hide")
-					setPlayerProperty(p, "yinni_general", the_lord->property("yinni_general"));
-			}
-			Config.Enable2ndGeneral = false;
-			return;
-		}else if(Config.Enable2ndGeneral){
-			if(general=="yinni_hide") general = the_lord->property("yinni_general").toString();
-			lord_list = Sanguosha->getRandomGenerals(Config.value("MaxChoice", 5).toInt(),QSet<QString>()<<general);
-			// 自動化測試: headless 指定主公副將 (--test-general2), 否則隨機
-			const QString forced2Name = Server::forcedHeadlessGeneral2;
-			if (Server::isHeadlessMode && !forced2Name.isEmpty()
-				&& Sanguosha->getGeneral(forced2Name) != nullptr
-				&& forced2Name != general){
-				general = forced2Name;
-			}else{
-				general = askForGeneral(the_lord, lord_list);
-			}
-			the_lord->setGeneral2Name(general);
-			notifyProperty(the_lord, the_lord, "general2");
-			if (!Config.EnableBasara){
-				if (the_lord->hasHideSkill()){
-					setPlayerProperty(the_lord, "yinni_general2", general);
-					general = "yinni_hide";
-					the_lord->setGeneral2Name(general);
-				}
-				if (mode != "03_1v2")
-					broadcastProperty(the_lord, "general2", general);
-			}
-		}
-	}
-
-	assignGeneralsForPlayers(players);
-	foreach(ServerPlayer*player, players){
-		QStringList selected = player->getSelected();
-		selected = triggerPreSelectionSkills(player, selected, "for_general");
-		player->clearSelected();
-		foreach(const QString &gen, selected)
-			player->addToSelected(gen);
-		_setupChooseGeneralRequestArgs(player);
-	}
-
-	doBroadcastRequest(players, S_COMMAND_CHOOSE_GENERAL);
-	foreach(ServerPlayer*player, players){
-		QString clientChoice;
-		bool playerChose = false;
-		if (player->m_isClientResponseReady){
-			clientChoice = player->getClientReply().toString();
-			if (player->getSelected().contains(clientChoice) || Config.FreeChoose)
-				playerChose = true;
-		}
-		QString chosen;
-		if (playerChose)
-			chosen = clientChoice;
-		else
-			chosen = _chooseDefaultGeneral(player);
-
-		if (!playerChose)
-			triggerGeneralNotChosen(player, player->getSelected(), chosen, "for_general");
-
-		if (_setPlayerGeneral(player, chosen, true)){
-			if (player->hasHideSkill()){
-				setPlayerProperty(player, "yinni_general", player->getGeneralName());
-				player->setGeneralName("yinni_hide");
-			}
-			notifyProperty(player, player, "general");
-		}
-	}
-
-	if (Config.Enable2ndGeneral){
-		assignGeneralsForPlayers(players);
-		foreach(ServerPlayer*player, players)
-			_setupChooseGeneralRequestArgs(player);
-
-		doBroadcastRequest(players, S_COMMAND_CHOOSE_GENERAL);
-		foreach(ServerPlayer*player, players){
-			if ((player->m_isClientResponseReady&&_setPlayerGeneral(player, player->getClientReply().toString(), false))
-				||_setPlayerGeneral(player, _chooseDefaultGeneral(player), false)){
-				if(player->hasHideSkill(2)){
-					setPlayerProperty(player, "yinni_general2", player->getGeneral2Name());
-					player->setGeneral2Name("yinni_hide");
-				}
-				notifyProperty(player, player, "general2");
-			}
-		}
-	}
-
-	if (Config.EnableBasara){
-		foreach(ServerPlayer*player, getPlayers()){
-			QStringList names;
-			if (player->getGeneral()){
-				names.append(player->getGeneralName());
-				if(names.last()=="yinni_hide"){
-					names.takeLast();
-					names.append(player->property("yinni_general").toString());
-				}
-				player->setGeneralName("anjiang");
-				notifyProperty(player, player, "general");
-			}
-			if (player->getGeneral2()){
-				names.append(player->getGeneral2Name());
-				if(names.last()=="yinni_hide"){
-					names.takeLast();
-					names.append(player->property("yinni_genera2").toString());
-				}
-				player->setGeneral2Name("anjiang");
-				notifyProperty(player, player, "general2");
-			}
-			safeSetPlayerProperty(player, "basara_generals", names.join("+"));
-			notifyProperty(player, player, "basara_generals");
-		}
-	}else{
-		if (mode == "03_1v2"&&the_lord){
-			broadcastProperty(the_lord, "general");
-			if(Config.Enable2ndGeneral)
-				broadcastProperty(the_lord, "general2");
-		}
-	}
-	/*if (Config.value("EnableSUPERConvert", true).toBool()&&mode != "05_ol"){
-		foreach(ServerPlayer*p, getPlayers()){
-			QStringList choicelist;
-			foreach(QString gen, Sanguosha->getLimitedGeneralNames()){
-				if (p->getGeneralName().endsWith(gen.split("_").last()))
-					choicelist << gen;
-			}
-			QString to_cv;
-			if (choicelist.length() > 1){
-				AI*ai = p->getAI();
-				if (ai) to_cv = askForChoice(p, "gamerule", choicelist.join("+"));
-				else to_cv = askForGeneral(p, choicelist);
-				p->setGeneralName(to_cv);
-				if (Config.EnableBasara)
-					notifyProperty(p, p, "general", to_cv);
-				else
-					broadcastProperty(p, "general", to_cv);
-				if (Config.EnableSame){
-					foreach(ServerPlayer*p, players){
-						if (!p->isLord())
-						p->setGeneralName(to_cv);
-					}
-					Config.Enable2ndGeneral = false;
-					return;
-				}
-				to_cv = Sanguosha->getGeneral(to_cv)->getKingdom();
-				if (to_cv != p->getKingdom())
-					setPlayerProperty(p, "kingdom", to_cv);
-			}
-			if (p->getGeneral2()){
-				QStringList choicelis;
-				foreach(QString gen, Sanguosha->getLimitedGeneralNames()){
-					if (p->getGeneral2Name().endsWith(gen.split("_").last()))
-						choicelis << gen;
-				}
-				if (choicelis.length() > 1){
-					AI*ai = p->getAI();
-					if (ai) to_cv = askForChoice(p, "gamerule", choicelis.join("+"));
-					else to_cv = askForGeneral(p, choicelis);
-					p->setGeneral2Name(to_cv);
-					if (Config.EnableBasara)
-						notifyProperty(p, p, "general2", to_cv);
-					else
-						broadcastProperty(p, "general2", to_cv);
-					if (Config.EnableSame){
-						foreach(ServerPlayer*p, players){
-							if (!p->isLord())
-							p->setGeneralName(to_cv);
-						}
-					}
-				}
-			}
-		}
-	}*/
+	m_gameSession->chooseGenerals(players);
 }
 
-void Room::chooseGeneralsOfJianGeDefenseMode()
-{
-	QList<ServerPlayer*> to_assign = getPlayers();
-
-	assignGeneralsForPlayersOfJianGeDefenseMode(to_assign);
-	foreach(ServerPlayer*player, to_assign)
-		_setupChooseGeneralRequestArgs(player);
-
-	doBroadcastRequest(to_assign, S_COMMAND_CHOOSE_GENERAL);
-	foreach(ServerPlayer*player, to_assign){
-		if(player->m_isClientResponseReady&&_setPlayerGeneral(player, player->getClientReply().toString(), true)) continue;
-		QString result = _chooseDefaultGeneral(player);
-		if (player->property("jiange_defense_type").toString() != "general"){ // randomly chosen
-			QStringList selected = player->getSelected();
-			result = selected.at(qsanRandomBounded(selected.length()));
-		}
-		_setPlayerGeneral(player, result, true);
-	}
-
-	if (Config.Enable2ndGeneral){
-		QList<ServerPlayer*> to_assign;
-		foreach(ServerPlayer*p, getPlayers()){
-			if (p->property("jiange_defense_type").toString() == "general")
-				to_assign << p;
-		}
-		assignGeneralsForPlayersOfJianGeDefenseMode(to_assign);
-		foreach(ServerPlayer*player, to_assign)
-			_setupChooseGeneralRequestArgs(player);
-
-		doBroadcastRequest(to_assign, S_COMMAND_CHOOSE_GENERAL);
-		foreach(ServerPlayer*player, to_assign){
-			if (player->m_isClientResponseReady&&_setPlayerGeneral(player, player->getClientReply().toString(), false)) continue;
-			_setPlayerGeneral(player, _chooseDefaultGeneral(player), false);
-		}
-	}
-}
 
 bool Room::changeBGM(const QString&bgm_name, bool reset, QList<ServerPlayer*> to_assign)
 {
@@ -2641,274 +1994,12 @@ bool Room::changeBGM(const QString&bgm_name, bool reset, QList<ServerPlayer*> to
 
 void Room::run()
 {
-	LuaRuntime::Binding luaBinding(m_runtime->lua());
-	GameRng::Binding rngBinding(m_runtime->rng());
-	EngineRuntimeContextScope contextScope(*Sanguosha, this);
-	LogMessage seedLog;
-	seedLog.type = "#GameSeed";
-	seedLog.arg = QString::number(m_sessionConfig.seed);
-	sendLog(seedLog);
-	AIHumanized = Config.value("AIHumanized", true).toBool();
-	Config.AIDelay = Config.OriginAIDelay;
-	// Scale AIDelay down for large player counts (>8) to reduce lag in 20-player games.
-	// Formula: delay * 8 / playerCount, minimum 100 ms.
-	if (Config.AIDelay > 0) {
-		int n = getPlayers().length();
-		if (n > 8)
-			Config.AIDelay = qMax(Config.AIDelay * 8 / n, 100);
-	}
-
-	foreach(ServerPlayer*player, getPlayers()){
-		//Ensure that the game starts with all player's mutex locked
-		player->drainAllLocks();
-		player->releaseLock(ServerPlayer::SEMA_MUTEX);
-	}
-#ifdef AUDIO_SUPPORT
-	Audio::stopBGM();
-#endif
-
-	prepareForStart();
-	if (isFinished())
-		return;
-
-	bool using_countdown = !_virtual&&property("to_test").toString().isEmpty();
-
-#ifndef QT_NO_DEBUG
-	using_countdown = false;
-#endif
-
-	if (using_countdown){
-		for (int i = Config.CountDownSeconds; i >= 0; i--){
-			doBroadcastNotify(S_COMMAND_START_IN_X_SECONDS, i);
-			sleep(1);
-		}
-	} else
-		doBroadcastNotify(S_COMMAND_START_IN_X_SECONDS, QVariant(0));
-
-	if (isFinished())
-		return;
-
-	if (scenario&&!scenario->generalSelection()){
-	} else if (mode == "06_3v3"){
-		thread_3v3 = new RoomThread3v3(this);
-		thread_3v3->start();
-
-		connect(thread_3v3, SIGNAL(finished()), this, SLOT(startGame()));
-		connect(thread_3v3, SIGNAL(finished()), thread_3v3, SLOT(deleteLater()));
-		return;
-	} else if (mode == "06_XMode"){
-		thread_xmode = new RoomThreadXMode(this);
-		thread_xmode->start();
-
-		connect(thread_xmode, SIGNAL(finished()), this, SLOT(startGame()));
-		connect(thread_xmode, SIGNAL(finished()), thread_xmode, SLOT(deleteLater()));
-		return;
-	} else if (mode == "02_1v1"){
-		thread_1v1 = new RoomThread1v1(this);
-		thread_1v1->start();
-
-		connect(thread_1v1, SIGNAL(finished()), this, SLOT(startGame()));
-		connect(thread_1v1, SIGNAL(finished()), thread_1v1, SLOT(deleteLater()));
-		return;
-	} else if (mode == "04_1v3"){
-		ServerPlayer*lord = getPlayers().first();
-		QStringList lords;
-		lords = GetConfigFromLuaState(getLuaState(), "extra_boss").toStringList();
-		if(lords.isEmpty()){
-			setPlayerProperty(lord, "general", "shenlvbu1");
-		}else
-			setPlayerProperty(lord, "general", askForGeneral(lord, lords));
-
-		QStringList names;
-		QStringList hulao_gens;
-		hulao_gens = GetConfigFromLuaState(getLuaState(), "hulao_generals").toStringList();
-		foreach(QString gen_name, hulao_gens){
-			if (gen_name.startsWith("-")){ // means banned generals
-				names.removeOne(gen_name.mid(1));
-			} else if (gen_name.startsWith("package:")){
-				const Package*pack = Sanguosha->findChild<const Package*>(gen_name.mid(8));
-				if (pack){
-					foreach(const General*general, pack->findChildren<const General*>()){
-						if(general->isTotallyHidden()||names.contains(general->objectName())) continue;
-						if(!Config.AddGodGeneral&&general->getKingdoms().contains("god")) continue;
-						names << general->objectName();
-					}
-				}
-			} else if (!names.contains(gen_name))
-				names << gen_name;
-		}
-		qsanShuffle(names);
-		foreach(ServerPlayer*player, getPlayers()){
-			if (player == lord) continue;
-			lords.clear();
-			for (int i = 0; i < 3; i++){
-				lords << names.takeFirst();
-				if (names.isEmpty()) break;
-			}
-			setPlayerProperty(player, "general", askForGeneral(player, lords));
-		}
-	} else if (mode == "04_boss"){
-		QStringList boss_lv_1 = Config.BossGenerals.first().split("+");
-		if (Config.value("BossYanluo").toBool()){
-			boss_lv_1.clear();
-			boss_lv_1 << "yl_qinguang";
-		}
-		QStringList lords;
-		lords = GetConfigFromLuaState(getLuaState(), "extra_boss").toStringList();
-		if(lords.length()>0) boss_lv_1 = lords;
-		ServerPlayer*lord = getPlayers().first();
-
-		if (Config.value("OptionalBoss").toBool()){
-			setPlayerProperty(lord, "general", askForGeneral(lord, boss_lv_1));
-		} else
-			setPlayerProperty(lord, "general", boss_lv_1.at(qsanRandomBounded(boss_lv_1.length())));
-		setPlayerMark(lord, "BossMode_Boss", 1);
-
-		QList<ServerPlayer*> players = getPlayers();
-		players.removeOne(lord);
-		chooseGenerals(players);
-	} else if (mode == "05_ol"){
-		QStringList jiang_list, bing_list;
-		jiang_list << "godlai_zhangji" << "godlai_fanchou" << "godlai_niufudongxie" << "godlai_dongyue" << "godlai_lijue" << "godlai_guosi";
-		bing_list << "godlai_longxiang" << "godlai_huben" << "godlai_fengyao" << "godlai_baolve" << "godlai_feixiong_right" << "godlai_feixiong_right";
-		QStringList lords;
-		lords = GetConfigFromLuaState(getLuaState(), "extra_boss").toStringList();
-		if(lords.length()>0) jiang_list = lords;
-		foreach(ServerPlayer*player, getPlayers()){
-			if (player->isLord()){
-				QString jiang = askForGeneral(player, jiang_list);
-				setPlayerProperty(player, "general", jiang);
-				QString bing = bing_list[jiang_list.indexOf(jiang)];
-				foreach(ServerPlayer*p, getPlayers()){
-					if (p->getRole() == "loyalist"){
-						setPlayerProperty(p, "general", bing);
-						if (bing == "godlai_feixiong_right")
-							bing = "godlai_feixiong_left";
-					}
-				}
-			}
-		}
-		bing_list << jiang_list;
-		jiang_list = Sanguosha->getRandomGenerals(getPlayers().length()*4, qsanToSet(bing_list));
-		foreach(ServerPlayer*player, getPlayers()){
-			if (player->getRole() == "rebel"){
-				lords.clear();
-				for (int i = 0; i < 5; i++){
-					lords << jiang_list.takeFirst();
-					if (jiang_list.isEmpty()) break;
-				}
-				setPlayerProperty(player, "general", askForGeneral(player, lords));
-			}
-		}
-	} else if (mode == "06_ol"){
-		QStringList gui_list, list, god_list;
-		gui_list << "hundun" << "qiongqi" << "taowu" << "taotie" << "yingzhao" << "xiangliu" << "zhuyan" << "bifang";
-		QStringList lords;
-		lords = GetConfigFromLuaState(getLuaState(), "extra_boss").toStringList();
-		if(lords.length()>0) gui_list = lords;
-		foreach(ServerPlayer*player, getPlayers()){
-			if (player->getRole() == "loyalist")
-				setPlayerProperty(player, "general", "zhuyin");
-			else if (player->isLord())
-				setPlayerProperty(player, "general", askForGeneral(player, gui_list));
-		}
-		foreach(QString god, Sanguosha->getLimitedGeneralNames("god"))
-			if (god.contains("shen")) list << god;
-		qsanShuffle(list);
-		for (int i = 0; i < Config.value("fuck_god_spinbox", 3).toInt(); ++i){
-			if (list.isEmpty()) break;
-			god_list << list.takeFirst();
-		}
-		gui_list << god_list;
-		list = Sanguosha->getRandomGenerals(getPlayers().length()*4, qsanToSet(gui_list));
-		foreach(ServerPlayer*player, getPlayers()){
-			if (player->getRole() == "rebel"){
-				lords.clear();
-				for (int i = 0; i < 5; ++i)
-					lords << list.takeFirst();
-				QString general = askForGeneral(player, lords+god_list);
-				setPlayerProperty(player, "general", general);
-				god_list.removeOne(general);
-			}
-		}
-	} else if (mode == "08_defense"){
-		QStringList type_list;
-		type_list << "machine" << "general" << "soul" << "general"
-			<< "general" << "soul" << "general" << "machine";
-		const QList<ServerPlayer *> players = getPlayers();
-		for (int i = 0; i < 8; i++)
-			setPlayerProperty(players[i], "jiange_defense_type", type_list[i]);
-		chooseGeneralsOfJianGeDefenseMode();
-	} else if (Sanguosha->hasSkipGeneralSelection(mode)) {
-		foreach (ServerPlayer *player, getPlayers())
-			setPlayerProperty(player, "general", "anjiang");
-	} else
-		chooseGenerals();
-	if (isFinished())
-		return;
-	startGame();
-
-	if (_m_Id<1&&QFile::exists("lua/ai/cstring")){
-		QStringList pns,all_generals;
-		foreach(const General*general, Sanguosha->findChildren<const General*>()){
-			all_generals << general->objectName();
-			if(general->isTotallyHidden()) continue;
-			QString pn = general->objectName();
-			if(!QFile::exists("image/fullskin/generals/full/"+pn+".jpg"))
-				output(pn+"-full_jpg");
-			if(!QFile::exists("image/generals/card/"+pn+".jpg"))
-				output(pn+"-card_jpg");
-			if(!QFile::exists("audio/death/"+pn+".ogg"))
-				output(pn+"-death_ogg");
-			foreach(const Skill*vs, general->getVisibleSkillList()){
-				pn = vs->objectName();
-				if(pns.contains(pn)) continue;
-				if(vs->getSources().isEmpty())
-					output(pn+"-ogg");
-				if(Sanguosha->translate("$"+pn+"1").contains(pn))
-					output(pn+"-translate");
-				pns << pn;
-			}
-			foreach(QString pn, general->getRelatedSkillNames()){
-				if(pn.contains("#")||pns.contains(pn)) continue;
-				if(!QFile::exists("audio/skill/"+pn+".ogg")&&!QFile::exists("audio/skill/"+pn+"1.ogg"))
-					output(pn+"-ogg");
-				if(Sanguosha->translate("$"+pn+"1").contains(pn))
-					output(pn+"-translate");
-				pns << pn;
-			}
-		}
-		tag["AllGenerals"] = all_generals;
-	}
+	m_gameSession->run();
 }
 
 void Room::assignRoles()
 {
-	QStringList roles = Sanguosha->getRoleList(mode);
-	const bool showAllRoles = Sanguosha->hasShowRoleMode(mode)
-		|| (!Sanguosha->isCustomGameMode(mode) && mode.contains("_"));
-	if (mode == "04_2v2"){/*
-		roles.clear();
-		if (qsanRandomBounded(2)<1) roles << "loyalist" << "rebel" << "rebel" << "loyalist";
-		else roles << "rebel" << "loyalist" << "loyalist" << "rebel";*/
-		QList<ServerPlayer *> players = getPlayers();
-		qsanShuffle(players);
-		replacePlayerOrder(players);
-	} else if (mode == "02_1v1"){
-		roles.prepend(roles.takeLast());
-	}else if (mode != "08_defense"&&mode != "05_ol"&&mode != "06_ol")
-		qsanShuffle(roles);
-
-	const QList<ServerPlayer *> players = getPlayers();
-	for (int i = 0; i < players.count(); i++){
-		if (i >= roles.count()) break;
-		players[i]->setRole(roles[i]);
-		if (showAllRoles || (roles[i] == "lord"&&!ServerInfo.EnableHegemony))
-			//|| mode == "06_ol"|| mode == "05_ol" || mode == "04_1v3" || mode == "04_boss" || mode == "08_defense" || mode == "03_1v2" || mode == "04_2v2")
-			broadcastProperty(players[i], "role", roles[i]);
-		else
-			notifyProperty(players[i], players[i], "role");
-	}
+	m_gameSession->assignRoles();
 }
 
 void Room::swapSeat(ServerPlayer*a, ServerPlayer*b)
@@ -4252,91 +3343,7 @@ void Room::marshal(ServerPlayer*player)
 
 void Room::startGame()
 {
-	LuaRuntime::Binding luaBinding(m_runtime->lua());
-	GameRng::Binding rngBinding(m_runtime->rng());
-	EngineRuntimeContextScope contextScope(*Sanguosha, this);
-	m_roster->resetAliveToPlayers();
-	const QList<ServerPlayer *> players = getPlayers();
-	m_chatHistory.clear();/*
-	if (mode == "08_defense"){
-		QList<int> next_list;
-		next_list << 0 << 7 << 1 << 6 << 2 << 5 << 3 << 4;
-		for (int i = 0; i < player_count - 1; i++)
-			getPlayers()[next_list[i]]->setNext(getPlayers()[next_list[i+1]]);
-		getPlayers()[4]->setNext(getPlayers().first());
-	} else {*/
-		for (int i = 0; i < player_count - 1; i++)
-			players[i]->setNext(players[i+1]);
-		players.last()->setNext(players.first());
-	//}
-
-	foreach(ServerPlayer*player, players){
-		if (player->getGeneral()){
-			int max_hp = player->getGeneralMaxHp();
-
-			player->setMaxHp(max_hp);
-			player->setHp(qMin(player->getGeneralStartHp(),max_hp));
-
-			if (!Config.EnableBasara){
-				broadcastProperty(player, "general");
-				if(player->getGeneral2())
-					broadcastProperty(player, "general2");
-			}
-			if (mode == "02_1v1")
-				doBroadcastNotify(getOtherPlayers(player, true), S_COMMAND_REVEAL_GENERAL, JsonArray() << player->objectName() << player->getGeneralName());				
-
-			broadcastProperty(player, "hp");
-			broadcastProperty(player, "maxhp");
-			int hujia = player->getGeneralStartHujia();
-			if (hujia > 0) addPlayerMark(player, "@HuJia", hujia);
-
-			//if (mode == "06_3v3" || mode == "06_XMode")
-				//broadcastProperty(player, "role");
-		}
-		// setup AI
-		AI*ai = cloneAI(player);
-		ais << ai;
-		player->setAI(ai);
-	}
-
-	preparePlayers();
-	foreach (ServerPlayer *player, players)
-		player->refreshUIState();
-	foreach (ServerPlayer *receiver, players)
-		notifySkillInstanceSnapshot(receiver);
-
-	doBroadcastNotify(S_COMMAND_GAME_START, JsonUtils::toJsonArray(m_cardMovement->drawPile()));
-
-	game_state = 1;
-
-	Server*server = qobject_cast<Server*>(parent());
-	foreach(ServerPlayer*player, players){
-		// A trusted player is still a human connection: registering only
-		// "online" players left them out of name2objname, so reconnect could
-		// never find them.
-		if (!player->isOffline())
-			server->signupPlayer(player);
-	}
-
-	setCurrent(getAlivePlayers().first());
-
-	foreach(int card_id, m_cardMovement->drawPile())
-		setCardMapping(card_id, nullptr, Player::DrawPile);
-
-	doBroadcastNotify(S_COMMAND_UPDATE_PILE, m_cardMovement->drawPile().length());
-
-	if(!thread) thread = new RoomThread(this);
-
-	if(scenario){
-		const ScenarioRule*rule = scenario->getRule();
-		if (rule) thread->addTriggerSkill(rule);
-	}
-
-	if (mode != "02_1v1"&&mode != "06_3v3"&&mode != "06_XMode")
-		m_runtime->state().reset();
-	connect(thread, SIGNAL(started()), this, SIGNAL(game_start()));
-
-	if (!_virtual) thread->start();
+	m_gameSession->startGame();
 }
 
 bool Room::notifyProperty(ServerPlayer*player, const ServerPlayer*owner, const char*property_name, const QString&value)
@@ -5463,67 +4470,8 @@ QList<ServerPlayer*> Room::askForPlayersChosen(ServerPlayer*player, const QList<
 		notify_skill, sort_ActionOrder);
 }
 
-QStringList Room::triggerPreSelectionSkills(ServerPlayer *player, QStringList generals, const QString &reason)
-{
-	QSet<QString> processedSkills;
-	QStringList result = generals;
 
-	foreach (const QString &generalName, generals) {
-		const General *general = Sanguosha->getGeneral(generalName);
-		if (!general || !general->hasPreSelectionSkill()) continue;
 
-		foreach (const QString &skillName, general->getPreSelectionSkills()) {
-			if (processedSkills.contains(skillName)) continue;
-			processedSkills.insert(skillName);
-
-			const PreSelectionMetaSkill *skill = qobject_cast<const PreSelectionMetaSkill*>(Sanguosha->getSkill(skillName));
-			if (!skill) continue;
-
-			result = skill->onGeneralChoosing(this, player, result, reason);
-
-			QString activeSkills = skill->getActiveSkills();
-			if (!activeSkills.isEmpty()) {
-				QString existingActive = player->property("preselection_active_skills").toString();
-				if (!existingActive.isEmpty()) existingActive += ",";
-				existingActive += activeSkills;
-				setPlayerProperty(player, "preselection_active_skills", existingActive);
-			}
-		}
-	}
-
-	return result;
-}
-
-void Room::triggerGeneralNotChosen(ServerPlayer *player, const QStringList &generals, const QString &chosen, const QString &reason)
-{
-	const General *general = Sanguosha->getGeneral(chosen);
-	if (!general || !general->hasPreSelectionSkill()) return;
-
-	foreach (const QString &skillName, general->getPreSelectionSkills()) {
-		const PreSelectionMetaSkill *skill = qobject_cast<const PreSelectionMetaSkill*>(Sanguosha->getSkill(skillName));
-		if (!skill) continue;
-
-		skill->onGeneralNotChosen(this, player, generals, chosen, reason);
-
-		QString activeSkills = skill->getActiveSkills();
-		if (!activeSkills.isEmpty()) {
-			QString existingActive = player->property("preselection_active_skills").toString();
-			if (!existingActive.isEmpty()) existingActive += ",";
-			existingActive += activeSkills;
-			setPlayerProperty(player, "preselection_active_skills", existingActive);
-		}
-	}
-}
-
-void Room::_setupChooseGeneralRequestArgs(ServerPlayer*player)
-{
-	QStringList selected = player->getSelected();
-
-	JsonArray options = JsonUtils::toJsonArray(selected).value<JsonArray>();
-	if (Config.EnableBasara) options.append("anjiang(lord)");
-	else if(getLord()&&mode!="03_1v2") options.append(getLord()->getGeneralName()+"(lord)");
-	player->m_commandArgs = options;
-}
 
 QString Room::askForGeneral(ServerPlayer*player, const QStringList&generals, const QString&default_choice, const QString&reason)
 {
