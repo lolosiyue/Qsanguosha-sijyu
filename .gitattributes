@@ -1,2 +1,3 @@
 artifacts/client-core-interaction-matrix.json text eol=lf
 artifacts/protocol-v2-flow-matrix.json text eol=lf
+artifacts/tui-flow-coverage.json text eol=lf
