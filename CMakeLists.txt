@@ -628,6 +628,14 @@ if(QSAN_BUILD_TUI)
         Qt6::Core
         Qt6::Network
     )
+    if(WIN32)
+        # crash handler (crashhandler.cpp, Release only) needs dbghelp
+        target_link_libraries(qsanguosha_tui PRIVATE
+            "$<$<CONFIG:Release>:dbghelp>"
+            "$<$<CONFIG:Release>:user32>"
+            "$<$<CONFIG:Release>:gdi32>"
+        )
+    endif()
     if(MSVC)
         target_compile_definitions(qsanguosha_tui PRIVATE WIN64 _CRT_SECURE_NO_WARNINGS)
         target_compile_options(qsanguosha_tui PRIVATE /utf-8 /bigobj /MP8)
