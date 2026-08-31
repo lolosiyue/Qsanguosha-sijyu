@@ -30,6 +30,9 @@ trap cleanup EXIT
 git clone --depth 1 --filter=blob:none --sparse --branch "$ref" "$repo" "$clone_dir"
 git -C "$clone_dir" sparse-checkout set ai extensions lua
 fetched_commit=$(git -C "$clone_dir" rev-parse HEAD)
+if [[ -n "${GITHUB_ENV:-}" ]]; then
+    echo "QSAN_EXTENSIONS_COMMIT=$fetched_commit" >> "$GITHUB_ENV"
+fi
 
 ai_target="$root/lua/ai"
 extensions_target="$root/extensions"

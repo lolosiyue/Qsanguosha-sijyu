@@ -4,6 +4,10 @@
 #include "socket.h"
 #include "protocol/protocol-runtime.h"
 
+#include <QAbstractSocket>
+#include <QTcpServer>
+#include <QTcpSocket>
+
 class QUdpSocket;
 
 class NativeServerSocket : public ServerSocket
@@ -37,11 +41,15 @@ public:
     NativeClientSocket(QTcpSocket *socket);
 
     virtual void connectToHost();
+    void connectToHost(const QString &host, quint16 port);
     virtual void disconnectFromHost();
+    void abort();
     virtual void send(const QByteArray &message);
     virtual bool isConnected() const;
     virtual QString peerName() const;
     virtual QString peerAddress() const;
+    QAbstractSocket::SocketError lastError() const;
+    QString errorString() const;
 
 private slots:
     void getMessage();

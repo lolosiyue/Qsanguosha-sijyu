@@ -2,9 +2,11 @@ set(QSAN_SOURCES
     src/main.cpp
     src/client/aux-skills.cpp
     src/client/client.cpp
+    src/client/client-live-session.cpp
     src/client/clientplayer.cpp
     src/client/clientstruct.cpp
     src/client/desktop-interaction-view.cpp
+    src/client/interaction-command-registry.cpp
     src/client/interaction-descriptor-registry.cpp
     src/client/interaction-request-factory.cpp
     src/client/interaction-reply-coordinator.cpp

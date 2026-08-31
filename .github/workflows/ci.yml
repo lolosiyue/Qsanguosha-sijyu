@@ -11,6 +11,12 @@ on:
       - 'cmake/**'
       - 'src/client/**'
       - '!src/client/core/**'
+      - 'src/client/core/**'
+      - 'src/tui/**'
+      - 'tests/tui/**'
+      - 'artifacts/tui-flow-coverage.json'
+      - 'tools/autotest/tui_network_smoke.py'
+      - 'tools/autotest/tests/test_tui_network_smoke_contract.py'
       - 'src/core/audio.h'
       - 'src/core/json-gui.cpp'
       - 'src/core/oracle_helper.*'
@@ -50,7 +56,7 @@ jobs:
   build:
     name: Build (RelWithDebInfo, VS2026/v145)
     runs-on: windows-2025-vs2026
-    timeout-minutes: 90
+    timeout-minutes: 150
     steps:
       - name: Check out source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -159,6 +165,10 @@ jobs:
             if ($LASTEXITCODE -ne 0) {
               throw "Server deployment failed with exit code $LASTEXITCODE"
             }
+            cmake --build --preset deploy-tui-relwithdebinfo-vs2026-x64
+            if ($LASTEXITCODE -ne 0) {
+              throw "TUI deployment failed with exit code $LASTEXITCODE"
+            }
 
             $cache = 'builds\cmake-vs2026\CMakeCache.txt'
             Select-String -Path $cache -Pattern '^CMAKE_GENERATOR:INTERNAL=', '^CMAKE_GENERATOR_TOOLSET:INTERNAL=', '^Qt6_DIR:' |
@@ -177,7 +187,9 @@ jobs:
           $required = @(
             'relwithdebinfo\QSanguosha.exe',
             'relwithdebinfo\QSanguosha.pdb',
-            'relwithdebinfo\qsanguosha_server.exe'
+            'relwithdebinfo\qsanguosha_server.exe',
+            'relwithdebinfo\qsanguosha_tui.exe',
+            'dist\tui\RelWithDebInfo\qsanguosha_tui.exe'
           )
           if ($env:GITHUB_REF -eq 'refs/heads/main') {
             $required += 'builds\cmake-vs2026\CTestTestfile.cmake'
@@ -207,6 +219,12 @@ jobs:
           Get-ChildItem -Path relwithdebinfo -Directory | ForEach-Object {
             Copy-Item -LiteralPath $_.FullName -Destination $relWithDebInfoStage -Recurse
           }
+          Copy-Item -LiteralPath dist\tui\RelWithDebInfo -Destination ci-handoff\runtime\tui -Recurse
+
+          & dist\tui\RelWithDebInfo\qsanguosha_tui.exe --version
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged TUI --version failed' }
+          & dist\tui\RelWithDebInfo\qsanguosha_tui.exe --help
+          if ($LASTEXITCODE -ne 0) { throw 'Packaged TUI --help failed' }
 
           # 測試 target 定義喺 tests/ 子目錄，所以 MSVC 會將測試 exe 放喺
           # builds\cmake-vs2026\tests\RelWithDebInfo\，而唔係 build tree 根目錄。
@@ -226,6 +244,82 @@ jobs:
               throw 'No CTest executables were staged'
             }
           }
+
+      - name: Run TUI live Protocol V2 gate
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:QT_ROOT_DIR\bin;$env:PATH"
+          & builds\cmake-vs2026\tests\RelWithDebInfo\qsanguosha_tui_contract_tests.exe
+          if ($LASTEXITCODE -ne 0) { throw 'TUI contract gate failed' }
+          & builds\cmake-vs2026\tests\RelWithDebInfo\qsanguosha_tui_live_tcp_tests.exe
+          if ($LASTEXITCODE -ne 0) { throw 'TUI live TCP gate failed' }
+
+      - name: Run shared GUI and TUI client architecture regressions
+        shell: pwsh
+        run: |
+          $env:PATH = "$env:QT_ROOT_DIR\bin;$env:PATH"
+          New-Item -ItemType Directory -Path ci-logs -Force | Out-Null
+          $capabilitiesPath = Join-Path $PWD 'ci-logs\gui-local-response-capabilities.json'
+          $capabilitiesErrorPath = Join-Path $PWD 'ci-logs\gui-local-response-capabilities.stderr.log'
+          $capabilitiesProcess = Start-Process `
+            -FilePath (Resolve-Path 'relwithdebinfo\QSanguosha.exe').Path `
+            -ArgumentList '--local-response-ui-capabilities' `
+            -NoNewWindow -Wait -PassThru `
+            -RedirectStandardOutput $capabilitiesPath `
+            -RedirectStandardError $capabilitiesErrorPath
+          if ($capabilitiesProcess.ExitCode -ne 0) {
+            Get-Content $capabilitiesErrorPath -ErrorAction SilentlyContinue
+            throw "GUI local-response capability probe failed: exit $($capabilitiesProcess.ExitCode)"
+          }
+          $capabilitiesText = Get-Content $capabilitiesPath -Raw
+          $capabilities = $capabilitiesText | ConvertFrom-Json
+          if ($capabilities.schema_version -ne 1 -or
+              -not $capabilities.auto -or -not $capabilities.show -or
+              -not $capabilities.inspect) {
+            throw "Unexpected GUI local-response capabilities: $capabilitiesText"
+          }
+          & builds\cmake-vs2026\tests\RelWithDebInfo\qsanguosha_client_core_tests.exe `
+            --interaction-generator relwithdebinfo\QSanguosha.exe `
+            --interaction-matrix artifacts\client-core-interaction-matrix.json `
+            --generated-interaction-matrix ci-logs\generated-client-core-interaction-matrix.json
+          if ($LASTEXITCODE -ne 0) { throw 'Shared ClientCore production inventory failed' }
+          & builds\cmake-vs2026\tests\RelWithDebInfo\qsanguosha_interaction_reply_adapter_tests.exe
+          if ($LASTEXITCODE -ne 0) { throw 'GUI/TUI reply adapter contract failed' }
+          & builds\cmake-vs2026\tests\RelWithDebInfo\qsanguosha_local_response_ui_case_tests.exe
+          if ($LASTEXITCODE -ne 0) { throw 'GUI local-response case contract failed' }
+
+      - name: Build and run Windows Debug TUI targeted gates
+        shell: pwsh
+        run: |
+          cmake --build builds\cmake-vs2026 --config Debug `
+            --target qsanguosha_tui qsanguosha_tui_contract_tests qsanguosha_tui_live_tcp_tests `
+            --parallel 8
+          if ($LASTEXITCODE -ne 0) { throw 'Windows Debug TUI targeted build failed' }
+          $env:PATH = "$env:QT_ROOT_DIR\bin;$env:PATH"
+          & builds\cmake-vs2026\tests\Debug\qsanguosha_tui_contract_tests.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Windows Debug TUI contract failed' }
+          & builds\cmake-vs2026\tests\Debug\qsanguosha_tui_live_tcp_tests.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Windows Debug TUI live-session contract failed' }
+
+      - name: Build and package Windows Release TUI product
+        shell: pwsh
+        run: |
+          cmake --build builds\cmake-vs2026 --config Release `
+            --target deploy-tui --parallel 8
+          if ($LASTEXITCODE -ne 0) { throw 'Windows Release TUI package gate failed' }
+          & dist\tui\Release\qsanguosha_tui.exe --help
+          if ($LASTEXITCODE -ne 0) { throw 'Windows Release TUI help smoke failed' }
+          & dist\tui\Release\qsanguosha_tui.exe --version
+          if ($LASTEXITCODE -ne 0) { throw 'Windows Release TUI version smoke failed' }
+
+      - name: Upload Windows Release TUI product
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: qsanguosha-tui-windows-release-${{ github.sha }}-${{ github.run_attempt }}
+          path: dist/tui/Release
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
 
       - name: Upload RelWithDebInfo runtime
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
