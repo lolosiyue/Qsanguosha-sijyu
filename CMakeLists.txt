@@ -558,6 +558,8 @@ if(QSAN_BUILD_TUI)
         src/tui/tui-card-text.h
         src/tui/tui-command.cpp
         src/tui/tui-command.h
+        src/tui/tui-log-text.cpp
+        src/tui/tui-log-text.h
         src/tui/tui-input.cpp
         src/tui/tui-input.h
         src/tui/tui-interaction-view.cpp
