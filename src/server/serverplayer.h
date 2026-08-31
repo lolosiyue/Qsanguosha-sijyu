@@ -12,6 +12,8 @@ class ClientSocket;
 
 #include "player.h"
 #include "protocol.h"
+
+#include <QMutex>
 #include "protocol/protocol-runtime.h"
 #include "protocol/state/player-ui-state.h"
 
@@ -286,6 +288,11 @@ private:
     ClientSocket *socket;
     QSanProtocol::ProtocolCodecRouter m_protocolRouter;
     QSanProtocol::ProtocolMessageIdGenerator m_protocolMessageIds;
+    // Frames are numbered and queued under one lock, then written on this
+    // object's own thread, so message_id order always matches wire order even
+    // when the room thread and the main thread both send to this player.
+    QMutex m_outboundMutex;
+    QList<QByteArray> m_outboundFrames;
     quint64 m_connectionGeneration = 0;
     quint64 m_lastIncomingMessageId = 0;
     //QList<const Card *> handcards;
@@ -310,6 +317,7 @@ private:
 private slots:
     void getMessage(const QByteArray &message);
     void sendMessage(const QByteArray &message);
+    void flushOutbound();
 
 signals:
     void disconnected();

@@ -22,6 +22,9 @@
 #include "roomthread.h"
 #include "socket.h"
 
+#include <QMutexLocker>
+#include <QThread>
+
 using namespace QSanProtocol;
 
 const int ServerPlayer::S_NUM_SEMAPHORES = 6;
@@ -418,6 +421,7 @@ void ServerPlayer::adoptProtocolConnectionState(
 {
 	m_connectionGeneration = state.generation;
 	m_lastIncomingMessageId = state.lastIncomingMessageId;
+	QMutexLocker outboundLocker(&m_outboundMutex);
 	if (!m_protocolMessageIds.setNextValue(state.nextOutgoingMessageId))
 		m_protocolMessageIds.reset();
 }
@@ -540,6 +544,9 @@ void ServerPlayer::sendMessage(const QByteArray &message)
 
 quint64 ServerPlayer::sendProtocolMessage(ProtocolMessage message)
 {
+	// Numbering, encoding and queueing happen together: a frame numbered here
+	// must also be queued here, or a send from another thread could overtake it.
+	QMutexLocker outboundLocker(&m_outboundMutex);
 	if (message.messageId == 0)
 		message.messageId = m_protocolMessageIds.next();
 
@@ -578,8 +585,30 @@ quint64 ServerPlayer::sendProtocolMessage(ProtocolMessage message)
 			socket->disconnectFromHost();
 		return 0;
 	}
-	emit message_ready(encoded);
+	m_outboundFrames.append(encoded);
+	outboundLocker.unlock();
+
+	// message_ready is always emitted on this object's thread, so the socket is
+	// only ever written from the thread that owns it.
+	if (QThread::currentThread() == thread())
+		flushOutbound();
+	else
+		QMetaObject::invokeMethod(this, "flushOutbound", Qt::QueuedConnection);
 	return message.messageId;
+}
+
+void ServerPlayer::flushOutbound()
+{
+	forever {
+		QByteArray frame;
+		{
+			QMutexLocker locker(&m_outboundMutex);
+			if (m_outboundFrames.isEmpty())
+				return;
+			frame = m_outboundFrames.takeFirst();
+		}
+		emit message_ready(frame);
+	}
 }
 
 QString ServerPlayer::reportHeader() const

@@ -24,6 +24,7 @@ int runRoomNotifierTests();
 int runSkillRuntimeCoordinatorTests();
 int runRequestCoordinatorTests();
 int runPreGameLockTests();
+int runOutboundOrderingTests();
 int runCardMovementServiceTests();
 int runExtraTurnSchedulerTests();
 int runRoomRosterTests();
@@ -40,6 +41,8 @@ static int runSelectedSuite(const QString &suite, int argc, char **argv)
         return runRequestCoordinatorTests();
     if (suite == QLatin1String("pre-game-lock"))
         return runPreGameLockTests();
+    if (suite == QLatin1String("outbound-ordering"))
+        return runOutboundOrderingTests();
     if (suite == QLatin1String("card-movement"))
         return runCardMovementServiceTests();
     if (suite == QLatin1String("extra-turn"))
@@ -66,6 +69,7 @@ int main(int argc, char **argv)
         {QStringLiteral("skill-runtime"), {QStringLiteral("--suite"), QStringLiteral("skill-runtime")}},
         {QStringLiteral("request"), {QStringLiteral("--suite"), QStringLiteral("request")}},
         {QStringLiteral("pre-game-lock"), {QStringLiteral("--suite"), QStringLiteral("pre-game-lock")}},
+        {QStringLiteral("outbound-ordering"), {QStringLiteral("--suite"), QStringLiteral("outbound-ordering")}},
         {QStringLiteral("card-movement"), {QStringLiteral("--suite"), QStringLiteral("card-movement")}},
         {QStringLiteral("extra-turn"), {QStringLiteral("--suite"), QStringLiteral("extra-turn")}},
         {QStringLiteral("room-roster"), {QStringLiteral("--suite"), QStringLiteral("room-roster")}},
