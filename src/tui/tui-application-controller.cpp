@@ -3,6 +3,7 @@
 #include "card.h"
 #include "engine.h"
 #include "protocol-interaction-request-builder.h"
+#include "tui-card-text.h"
 #include "protocol/session/session-payloads.h"
 #include "tui-script-runner.h"
 
@@ -262,8 +263,7 @@ QString TuiApplicationController::resolveCardWireText(int cardId) const
 
 QString TuiApplicationController::resolveCardDisplayText(int cardId) const
 {
-    const Card *card = Sanguosha != nullptr ? Sanguosha->getCard(cardId) : nullptr;
-    return card != nullptr ? resolveNameText(card->objectName()) : tr("牌 %1").arg(cardId);
+    return tuiCardDisplayText(cardId);
 }
 
 QString TuiApplicationController::resolveNameText(const QString &name) const

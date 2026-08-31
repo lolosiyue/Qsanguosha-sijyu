@@ -554,6 +554,8 @@ if(QSAN_BUILD_TUI)
         src/client/protocol-interaction-request-builder.h
         src/tui/tui-application-controller.cpp
         src/tui/tui-application-controller.h
+        src/tui/tui-card-text.cpp
+        src/tui/tui-card-text.h
         src/tui/tui-command.cpp
         src/tui/tui-command.h
         src/tui/tui-input.cpp
