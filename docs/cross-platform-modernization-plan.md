@@ -2,7 +2,7 @@
 
 - Status: Approved Plan
 - Implementation: M1 Complete；M2、M3、M4、M5、M6 實作已落地但仍有驗收缺口；M5 已完成 Linux headless server 與 Linux GUI client 程式；M7–M9 尚未達驗收標準
-- Last Updated: 2026-08-31
+- Last Updated: 2026-09-01
 - Current audit anchor: L `debug@94e119f`（已合入 PR #21 package 對齊及 PR #22 Protocol V2 cutover）；下文分開記錄 source implementation、focused evidence、remote／live／manual acceptance，不能互相替代。
 - **規範性**：本文件是跨平台現代化與另一分支通用功能移植的唯一權威執行計劃；與既有 roadmap 或審計結論衝突時，以本文件為準。
 
@@ -17,7 +17,7 @@
 | 必須移植 | 引擎與 GUI 解耦、無頭伺服器、確定性隨機數、自動對戰、CMake、Qt 6、Lua 5.4、測試與 CI |
 | 優先移植 | 結構化日誌、崩潰／卡死報告、選包白名單、武將版本去重、通用安全與正確性修復 |
 | 完整移植 | 4K／高 DPI (High DPI)、向量文字與元件、主題切換、自適應介面、FPS／繪製性能面板 |
-| 後期移植 | LuaAI 觀測式除錯器、無效詢問跳過、單機立即投降、Android 客戶端 |
+| 後期移植 | LuaAI 觀測式除錯器、無效詢問跳過、Android 客戶端 |
 | 只建立差異帳本 | 另一分支的 AI 行為及策略修復；本計劃不改變目前 AI 決策 |
 | 不移植 | 武將／卡牌／擴充包內容、Trainer、LLM 伴侶、武將立繪編輯器、舊 MinGW 工作樹部署、未實作的遊戲記錄草案 |
 
@@ -208,7 +208,7 @@ CI 使用 `bundletool` 檢查 base 及 pack 大小：[Google Play app size limit
 
 - 無效詢問跳過預設關閉；是否可回答由伺服器權威判定，客戶端不得自行執行 Lua 技能可用性判斷。
 - 無懈可擊偏好保存在客戶端，只有伺服器宣告支援時啟用；摸牌或自己的回合開始時重置。
-- 單機或只有一名真人、其餘皆 AI 的房間允許立即投降；多人房間保留原投票及限速規則。
+- 單機或只有一名真人、其餘皆 AI 的房間允許立即投降；多人房間保留原投票及限速規則。2026-09-01 已依 Gitee `doom@a0eea006` 適配：除房主外全是 `robot`（含已陣亡真人仍算聯機）時可隨時投降並立刻結束；`PLAY_CARD` 仍走出牌階段原路徑；聯機投票與 5 秒限速不變。人工對局驗收尚未完成。
 - 移植長技能提示、手牌數提示、化身池查看、古惑宣告、帶標題選牌容器及唯一外部目標自動選擇，並重用本項目既有 presenter／PileContainer。
 
 ## 7. 通用缺陷修復

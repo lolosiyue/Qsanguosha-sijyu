@@ -6348,7 +6348,12 @@ void RoomScene::showServerInformation()
 
 void RoomScene::surrender()
 {
-	if(Self->getPhase()!=Player::Play){
+	// 單機(對 AI)：除自己外全是 robot，不限出牌階段。聯機維持原投票時機。
+	bool singlePlayer = true;
+	foreach(const ClientPlayer *p, ClientInstance->getPlayers()){
+		if(p!=Self && p->getState()!="robot"){ singlePlayer=false; break; }
+	}
+	if(!singlePlayer && Self->getPhase()!=Player::Play){
 		QMessageBox::warning(main_window,tr("Warning"),tr("You can only initiate a surrender poll at your play phase!"));
 		return;
 	}

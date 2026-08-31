@@ -102,6 +102,10 @@ public:
     void abortWaitingRequests();
     bool canPause(ServerPlayer*p) const;
     void tryPause();
+    // 單機(對 AI)：除房主外全是 robot。用於放寬隨時投降，已陣亡的其他真人仍算聯機。
+    bool isSinglePlayerMode() const;
+    // 單機投降就地消費：已收到投降且確為單機時 makeSurrender(房主)。由 RoomThread::delay 呼叫。
+    void trySinglePlayerSurrender();
     int getLack() const;
     QString getMode() const;
     const Scenario*getScenario() const;
