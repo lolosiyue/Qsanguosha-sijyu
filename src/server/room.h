@@ -35,8 +35,10 @@ class RoomRoster;
 class RequestCoordinator;
 class PlayerDecisionService;
 class CardMovementService;
+class CardStateService;
 class ExtraTurnScheduler;
 class PlayerLifecycleService;
+class PlayerStateService;
 class GameRule;
 class RoomThread;
 class RoomThread3v3;
@@ -70,6 +72,7 @@ public:
     friend class SkillRuntimeCoordinator;
     friend class RequestCoordinator;
     friend class CardMovementService;
+    friend class PlayerStateService;
     friend class PlayerLifecycleService;
     friend class PlayerDecisionService;
     friend class RoomRuntime;
@@ -725,6 +728,8 @@ private:
     std::unique_ptr<RequestCoordinator> m_requests;
     std::unique_ptr<PlayerDecisionService> m_playerDecisions;
     std::unique_ptr<CardMovementService> m_cardMovement;
+    std::unique_ptr<PlayerStateService> m_playerState;
+    std::unique_ptr<CardStateService> m_cardState;
     std::unique_ptr<GameSnapshotService> m_snapshotService;
     std::unique_ptr<RoomRoster> m_roster;
     std::unique_ptr<PlayerLifecycleService> m_playerLifecycle;
