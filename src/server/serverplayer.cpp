@@ -33,8 +33,12 @@ ServerPlayer::ServerPlayer(Room *room)
 {
 	qRegisterMetaType<ProtocolMessage>("QSanProtocol::ProtocolMessage");
 	semas = new QSemaphore *[S_NUM_SEMAPHORES];
+	// SEMA_MUTEX guards member access and must behave like an unlocked mutex
+	// from construction. Room::run() only hands out that first permit when the
+	// game starts, so without it every pre-game acquireLock() -- trustCommand,
+	// processResponse -- blocks the server main thread forever.
 	for (int i = 0; i < S_NUM_SEMAPHORES; i++)
-		semas[i] = new QSemaphore(0);
+		semas[i] = new QSemaphore(i == SEMA_MUTEX ? 1 : 0);
 	onsole_owner = this;
 
     const auto advanceProperty = [this]() {
