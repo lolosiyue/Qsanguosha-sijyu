@@ -177,6 +177,14 @@ bool jsonPayload(const QVariant &value, QJsonValue *output,
         *output = array;
         return true;
     }
+    case QMetaType::QStringList: {
+        QJsonArray array;
+        const QStringList values = value.toStringList();
+        for (const QString &entry : values)
+            array.append(entry);
+        *output = array;
+        return true;
+    }
     case QMetaType::QVariantMap: {
         QJsonObject object;
         const QVariantMap values = value.toMap();
