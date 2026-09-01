@@ -58,9 +58,6 @@ Wire payloads never use:
 Existing gameplay APIs may still construct domain values internally. The room
 boundary converts them once into their registered named object before Replay or
 TCP delivery. The client keeps the validated typed object during dispatch.
-`S_COMMAND_SHOW_ALL_CARDS` domain lists are still `[player_name, false, card_ids]`
-(Gongxin-shaped); the encoder drops the unused boolean so `card_ids` stays an
-integer list.
 
 All 29 production interactions, including `S_COMMAND_QML_INTERACT`, use direct
 typed request and reply schemas. Cancellation is represented by named boolean
@@ -93,9 +90,6 @@ payload range are rejected.
 `current` as before. Schema 1 without `room_id` remains accepted. A present
 `room_id` must be a non-negative integer and selects that waiting room; unknown,
 finished, started, or full rooms are rejected and do not create a new seat.
-`SignupReplyPayload` is schema 2. An accepted reply includes the assigned
-`room_id` (including `0`). Schema 1 accepted replies without `room_id` remain
-valid. Native GUI and TUI ignore the field.
 
 Decode is transactional: a failed decode does not mutate the output message.
 An encode failure returns an empty byte array and a diagnostic.
