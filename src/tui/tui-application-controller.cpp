@@ -1,8 +1,10 @@
 #include "tui-application-controller.h"
 
 #include "card.h"
+#include "client-move-log.h"
 #include "engine.h"
 #include "protocol-interaction-request-builder.h"
+#include "protocol.h"
 #include "skill.h"
 #include "tui-card-text.h"
 #include "tui-log-text.h"
@@ -11,6 +13,7 @@
 
 #include <QCoreApplication>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QSet>
 #include <QTextStream>
 #include <QTimer>
@@ -95,6 +98,8 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
         if (m_core.state()->gameValue(QStringLiteral("game_over")).toBool())
             writeOutput(m_renderer.renderState(*m_core.state()));
     });
+    connect(&m_session, &ClientLiveSession::frontendMessageReceived, this,
+        [this](const ProtocolMessage &message) { appendSynthesizedLogs(message); });
     connect(&m_session, &ClientLiveSession::presentationEvent, this,
         [this](int command, const QString &text, const QVariant &payload) {
             const QString line = presentationText(command, text, payload);
@@ -436,7 +441,14 @@ QString TuiApplicationController::resolveCardDisplayText(int cardId) const
 
 QString TuiApplicationController::resolveNameText(const QString &name) const
 {
-    if (Sanguosha == nullptr || name.isEmpty())
+    if (name.isEmpty())
+        return name;
+    static const QRegularExpression sgsName(
+        QStringLiteral("^sgs\\d+$"),
+        QRegularExpression::UseUnicodePropertiesOption);
+    if (sgsName.match(name).hasMatch())
+        return resolveLogPlayerName(name);
+    if (Sanguosha == nullptr)
         return name;
     const QString translated = Sanguosha->translate(name);
     return translated.isEmpty() ? name : translated;
@@ -492,11 +504,76 @@ QString TuiApplicationController::resolvePlayerName(const QString &objectName) c
     return objectName;
 }
 
+QString TuiApplicationController::resolveLogPlayerName(const QString &objectName) const
+{
+    const QVariantMap player = m_core.state()->player(objectName);
+    QString general = player.value(QStringLiteral("general")).toString();
+    if (general.isEmpty())
+        general = player.value(QStringLiteral("avatar")).toString();
+    if (general.isEmpty())
+        return objectName;
+    QString name = resolveNameText(general);
+    const QString deputy = player.value(QStringLiteral("deputy_general")).toString();
+    if (!deputy.isEmpty())
+        name += QLatin1Char('/') + resolveNameText(deputy);
+    return name;
+}
+
+void TuiApplicationController::appendSynthesizedLogs(const ProtocolMessage &message)
+{
+    if (message.type != ProtocolMessageType::Notification)
+        return;
+
+    if (message.command == S_COMMAND_GAME_START
+        || (message.command == S_COMMAND_STATE_SYNC
+            && message.payload.toMap().value(QStringLiteral("phase")).toString()
+                == QLatin1String("begin"))) {
+        m_renPile.clear();
+    }
+
+    QList<ClientLogRecord> records;
+    if (message.command == S_COMMAND_GET_CARD || message.command == S_COMMAND_LOSE_CARD) {
+        records = synthesizeCardMovementLogs(message.command, message.payload.toMap(),
+                                             &m_renPile);
+    } else if (message.command == S_COMMAND_CHANGE_HP) {
+        const QVariantMap payload = message.payload.toMap();
+        const QString who = payload.value(QStringLiteral("player_name")).toString();
+        records = synthesizeHpChangeLogs(
+            payload,
+            m_core.state()->playerValue(who, QStringLiteral("hp")).toInt(),
+            m_core.state()->playerValue(who, QStringLiteral("max_hp")).toInt());
+    } else if (message.command == S_COMMAND_CHANGE_MAXHP) {
+        const QVariantMap payload = message.payload.toMap();
+        const QString who = payload.value(QStringLiteral("player_name")).toString();
+        records = synthesizeMaxHpChangeLogs(
+            who,
+            m_core.state()->playerValue(who, QStringLiteral("hp")).toInt(),
+            m_core.state()->playerValue(who, QStringLiteral("max_hp")).toInt());
+    } else {
+        return;
+    }
+
+    const TuiPlayerNameResolver names = [this](const QString &objectName) {
+        return resolveLogPlayerName(objectName);
+    };
+    for (const ClientLogRecord &record : records) {
+        const QVariantMap map = record.toSkillLogMap();
+        const QString line = tuiSkillLogText(map, names);
+        if (line.isEmpty())
+            continue;
+        m_core.state()->appendPresentationEvent(S_COMMAND_LOG_SKILL, line, map);
+        writeOutput(line);
+    }
+}
+
 QString TuiApplicationController::presentationText(int command, const QString &fallbackText,
                                                    const QVariant &payload) const
 {
-    return tuiPresentationEventText(command, fallbackText, payload,
-        [this](const QString &objectName) { return resolvePlayerName(objectName); });
+    const TuiPlayerNameResolver names = [this, command](const QString &objectName) {
+        return command == S_COMMAND_SPEAK ? resolvePlayerName(objectName)
+                                          : resolveLogPlayerName(objectName);
+    };
+    return tuiPresentationEventText(command, fallbackText, payload, names);
 }
 
 QString TuiApplicationController::renderLog() const
