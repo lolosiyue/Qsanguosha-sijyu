@@ -642,6 +642,7 @@ add_executable(qsanguosha_server_tests
     room-roster-test.cpp
     player-lifecycle-service-test.cpp
     player-decision-service-test.cpp
+    game-snapshot-tags-test.cpp
 )
 qsan_link_engine_test(qsanguosha_server_tests)
 qsan_add_ctest(qsanguosha_server_unit qsanguosha_server_tests

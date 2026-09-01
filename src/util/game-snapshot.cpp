@@ -9,6 +9,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QJsonValue>
 #include <QDir>
 
 using namespace QSanProtocol;
@@ -290,7 +291,17 @@ GameSnapshot::GameSnapshot(Room *room, QObject *parent)
     m_state.drawPile = room->getDrawPile();
     m_state.discardPile = room->getDiscardPile();
 
-    m_state.roomTags = room->getAllTags();
+    // A snapshot must not co-own live Cards. Room tags carry self-leasing structs --
+    // a "UseHistory..." tag holds a CardUseStruct that owns a transient Card -- and
+    // the room worker retires those Cards on its way out (RoomRuntime::finalizeWorker
+    // -> CardLifetimeManager::finalizeWorkerDomain), which revokes the struct's lease
+    // whether or not the struct is still alive. A snapshot lives far longer than that:
+    // it dies with Room::m_snapshotService. Capturing tags verbatim therefore leaves
+    // the snapshot as the dangling last owner, and ~Room hands the freed Card to
+    // Card::deleteLater(). Round-tripping through QJsonValue keeps exactly what save()
+    // would have written (those structs already serialize to null) and drops every
+    // user-defined type, so nothing here can own a Card.
+    m_state.roomTags = QJsonValue::fromVariant(room->getAllTags()).toObject().toVariantMap();
 
     m_turnCount = m_state.turnCount;
 }
