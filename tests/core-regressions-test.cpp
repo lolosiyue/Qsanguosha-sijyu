@@ -38,26 +38,27 @@ bool hasEnumKey(const QMetaObject &metaObject, const char *enumName, const char 
 
 }
 
-// The Judge phase moves a delayed trick to the table with S_REASON_NO_BASIC,
-// a sentinel whose low nibble sits outside the 0x00-0x0A basic range so that no
-// "on discard" / "on use" trigger fires for it. Both whitelists -- this one in
-// structs.cpp and the wire one in protocol-payload-registry.cpp -- have to
-// accept it, or the move never survives a round trip.
+// The Judge phase moves a delayed trick to the table with S_MASK_BASIC_REASON
+// as the reason, a sentinel whose low nibble sits outside the 0x00-0x0A basic
+// range so that no "on discard" / "on use" trigger fires for it. Both
+// whitelists -- this one in structs.cpp and the wire one in
+// protocol-payload-registry.cpp -- have to accept it, or the move never
+// survives a round trip.
 int runCardMoveReasonTests()
 {
-    const CardMoveReason sentinel(CardMoveReason::S_REASON_NO_BASIC,
+    const CardMoveReason sentinel(CardMoveReason::S_MASK_BASIC_REASON,
                                   QStringLiteral("sgs1"), QString(),
                                   QStringLiteral("delayed_effect"));
     if ((sentinel.m_reason & CardMoveReason::S_MASK_BASIC_REASON)
         <= CardMoveReason::S_REASON_PUT) {
-        qCritical() << "S_REASON_NO_BASIC collides with a basic reason"
+        qCritical() << "S_MASK_BASIC_REASON collides with a basic reason"
                     << sentinel.m_reason;
         return 1;
     }
 
     CardMoveReason parsed;
     if (!parsed.tryParse(sentinel.toVariant())) {
-        qCritical() << "CardMoveReason::tryParse rejected S_REASON_NO_BASIC";
+        qCritical() << "CardMoveReason::tryParse rejected S_MASK_BASIC_REASON";
         return 2;
     }
     if (parsed.m_reason != sentinel.m_reason
@@ -75,7 +76,7 @@ int runCardMoveReasonTests()
         return 4;
     }
 
-    qInfo() << "CardMoveReason S_REASON_NO_BASIC regression passed";
+    qInfo() << "CardMoveReason S_MASK_BASIC_REASON regression passed";
     return 0;
 }
 

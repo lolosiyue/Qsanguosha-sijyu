@@ -5494,7 +5494,7 @@ void Room::breakCard(QList<int> ids,ServerPlayer*player)
 	CardsMoveStruct move;
 	move.card_ids = ids;
 	move.to_place = Player::PlaceTable;
-	move.reason = CardMoveReason(CardMoveReason::S_REASON_NO_BASIC, player?player->objectName():"", "BreakCard", "");
+	move.reason = CardMoveReason(CardMoveReason::S_MASK_BASIC_REASON, player?player->objectName():"", "BreakCard", "");
 	moveCardsAtomic(move, true, false);
 }
 
