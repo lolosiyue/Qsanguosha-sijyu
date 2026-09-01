@@ -23,6 +23,10 @@ export async function loadTranslations(): Promise<void> {
   cards = nextCards;
 }
 
+export function setTranslationsForTest(next: Record<string, string>): void {
+  table = { ...next };
+}
+
 export function tr(key: string): string {
   if (!key)
     return key;
