@@ -81,9 +81,9 @@ jobs:
           host: windows
           target: desktop
           arch: win64_msvc2022_64
-          modules: 'qt5compat qtmultimedia'
+          modules: 'qt5compat qtmultimedia qtwebsockets'
           cache: true
-          cache-key-prefix: qt-windows-2025-x64-6.11.1-win64_msvc2022_64-qt5compat-qtmultimedia-aqtmaster16db45a7-v2
+          cache-key-prefix: qt-windows-2025-x64-6.11.1-win64_msvc2022_64-qt5compat-qtmultimedia-qtwebsockets-aqtmaster16db45a7-v2
           # aqt 3.3.0 (最新 release) 不支援 Qt 6.11+ 的新 repo 目錄結構 (miurahr/aqtinstall#959)。
           # 修復已合併至 master 但未發佈；固定到此 commit 以取得 Qt 6.11+ 支援。
           aqtsource: 'git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e'

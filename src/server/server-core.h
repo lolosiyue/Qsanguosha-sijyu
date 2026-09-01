@@ -63,6 +63,7 @@ private:
                           const QString &code, const QString &detail);
 
     ServerSocket *server;
+    ServerSocket *websocketServer;
     Room *current;
     QSet<Room *> rooms;
     QList<QPointer<Room> > m_disposingRooms;

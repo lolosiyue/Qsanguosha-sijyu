@@ -61,6 +61,7 @@ jobs:
             python3-venv \
             qt6-5compat-dev \
             qt6-base-dev \
+            qt6-websockets-dev \
             '${{ matrix.compiler.package }}'
 
       - name: Install pinned SWIG

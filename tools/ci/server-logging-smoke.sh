@@ -48,7 +48,7 @@ printf '%s\n' shutdown \
         --signal=TERM \
         --kill-after=10s \
         "${timeout_seconds}s" \
-        "$server" --config "$server_config" --port 0 \
+        "$server" --config "$server_config" --port 0 --websocket-port 0 \
             --log-level info --log-format json --log-file "$structured_log" \
             >"$diagnostic_log" 2>&1
 status=${PIPESTATUS[1]}

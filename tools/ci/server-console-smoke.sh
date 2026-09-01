@@ -55,7 +55,7 @@ printf '%s\n' \
         --signal=TERM \
         --kill-after=10s \
         "${timeout_seconds}s" \
-        "$server" --config "$server_config" --port 0 >"$log_file" 2>&1
+        "$server" --config "$server_config" --port 0 --websocket-port 0 >"$log_file" 2>&1
 status=${PIPESTATUS[1]}
 set -e
 

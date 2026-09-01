@@ -487,6 +487,22 @@ qsan_add_ctest(qsanguosha_server_cli_contract qsanguosha_cli_tests
         --config ${QSAN_TEST_ROOT}/docs/server.ini.example
     TIMEOUT 180
 )
+
+add_executable(qsanguosha_websocket_gateway_tests
+    websocket-gateway-test.cpp
+)
+target_include_directories(qsanguosha_websocket_gateway_tests PRIVATE
+    ${QSAN_TEST_ROOT}/src/core
+)
+target_link_libraries(qsanguosha_websocket_gateway_tests PRIVATE
+    qsanguosha_protocol_v2_contract_support
+    Qt6::WebSockets
+)
+qsan_add_ctest(qsanguosha_websocket_gateway_contract qsanguosha_websocket_gateway_tests
+    LABELS "server;fast"
+    ARGS --server $<TARGET_FILE:qsanguosha_server>
+    TIMEOUT 60
+)
 # M3:執行期版面同資產清單。呢個 test 唔 link GUI,因為 resolver 同 manifest
 # 兩樣都住喺 engine —— dedicated server 一樣要靠佢哋搵到 lua/。
 add_executable(qsanguosha_runtime_paths_tests

@@ -71,9 +71,17 @@ registered presenter.
 
 ## Framing and errors
 
-Newline framing is external to the codec. A frame is at most 65,535 encoded
-bytes; over-limit or unterminated over-limit input closes the connection. CRLF
-is accepted at the framing boundary. JSON payload nesting is capped at 128.
+Newline framing is external to the codec and applies only to TCP.
+A TCP frame is at most 65,535 encoded bytes; over-limit or unterminated
+over-limit input closes the connection. CRLF is accepted at the TCP
+framing boundary.
+
+The dedicated server and GUI embedded server also listen for WebSocket
+clients on a separate port (default 9528). Each WebSocket text frame
+carries one encoded Protocol V2 JSON object; the gateway does not wrap
+the object in a newline. Binary frames, empty frames, frames larger than
+65,535 UTF-8 bytes, and frames that contain CR or LF are rejected. JSON
+payload nesting is capped at 128.
 Non-finite numbers, unsupported Qt metatypes, and integers outside the JSON-safe
 payload range are rejected.
 

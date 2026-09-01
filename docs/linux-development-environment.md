@@ -60,7 +60,7 @@ Protocol V2／WebSocket
 > Qt 6.11.1 `msvc2022_64`。
 >
 > dedicated server **唔受呢個下限限制** — server-only configure（`QSAN_BUILD_GUI=OFF`）
-> 只要 CMake 搵到 Qt6 Core／Network 就編到，可以繼續用 distro Qt（Ubuntu 24.04 的
+> 只要 CMake 搵到 Qt6 Core／Network／WebSockets 就編到，可以繼續用 distro Qt（Ubuntu 24.04 的
 > 6.4.2 亦可）。Linux Server CI 就係咁行。
 
 ## 2. 系統依賴
@@ -77,6 +77,7 @@ sudo apt install -y \
     ninja-build \
     qt6-5compat-dev \
     qt6-base-dev \
+    qt6-websockets-dev \
     swig
 ```
 
@@ -86,6 +87,7 @@ sudo apt install -y \
 - **cmake** — 建置系統
 - **ninja-build** — Ninja generator（快速）
 - **qt6-base-dev** — Qt6 Core／Network head 同 library（`/usr/lib/x86_64-linux-gnu/cmake/Qt6*`）
+- **qt6-websockets-dev** — Qt6 WebSockets（dedicated server 同 GUI 內嵌 server 的 WS 閘道）
 - **qt6-5compat-dev** — CTest replay 測試所需嘅 Qt6 Core5Compat；`BUILD_TESTING=OFF` 嘅 server-only build 唔需要
 - **swig** — 生成 C++／Lua binding
 
@@ -145,6 +147,7 @@ sudo apt install -y \
 | compiler / build | `build-essential`、`cmake`、`ninja-build` | — |
 | SWIG | `swig` | — |
 | Qt Base | `qt6-base-dev` / aqt base | `Core`、`Gui`、`Network`、`Widgets`、`OpenGLWidgets` |
+| Qt WebSockets | `qt6-websockets-dev` / aqt `-m qtwebsockets` | `WebSockets` |
 | Qt 5Compat | `qt6-5compat-dev` / aqt `-m qt5compat` | `Core5Compat` |
 | Qt Declarative / QML / Quick | `qt6-declarative-dev`（另 `qt6-declarative-dev-tools` 提供 `qmlcachegen`／`qmltyperegistrar`，一般由前者拉入）/ aqt base | `Qml`、`Quick`、`QuickControls2`、`QuickWidgets` |
 | Qt Multimedia | `qt6-multimedia-dev` / aqt `-m qtmultimedia` | `Multimedia` |
@@ -173,7 +176,7 @@ sudo apt install -y clang
 | `QSAN_BUILD_GUI` | `ON` | `OFF` | GUI client `QSanguosha` |
 | `QSAN_BUILD_SERVER` | `ON` | `ON` | dedicated server `qsanguosha_server` |
 
-Linux 預設 `OFF` 係為咗保護現有 Linux Server CI：server-only configure 只會 `find_package` Core／Network（加 `BUILD_TESTING=ON` 時嘅 Core5Compat／Gui），唔會因為 GUI source 存在而要求 Quick／Widgets／Multimedia。要 build Linux GUI 就顯式開 `-DQSAN_BUILD_GUI=ON`（下面嘅 preset 已經設定好）。
+Linux 預設 `OFF` 係為咗保護現有 Linux Server CI：server-only configure 只會 `find_package` Core／Network／WebSockets（加 `BUILD_TESTING=ON` 時嘅 Core5Compat／Gui），唔會因為 GUI source 存在而要求 Quick／Widgets／Multimedia。要 build Linux GUI 就顯式開 `-DQSAN_BUILD_GUI=ON`（下面嘅 preset 已經設定好）。
 
 `BUILD_TESTING=ON` 需要 `QSAN_BUILD_SERVER=ON`（CTest 直接驅動 `qsanguosha_server`），CMake 會喺 configure 階段 `FATAL_ERROR` 提示。
 
@@ -987,6 +990,7 @@ cp docs/server.ini.example server.ini
 | `-h`, `--help` | 顯示 help 後退出 |
 | `-v`, `--version` | 顯示版本後退出 |
 | `-p`, `--port <0-65535>` | TCP listen port；`0` 由 kernel 分配 ephemeral port |
+| `--websocket-port <0-65535>` | WebSocket listen port；`0` 由 kernel 分配 ephemeral port |
 | `--bind-address <value>` | 數字 IPv4／IPv6，或 `any`、`any-ipv4`、`any-ipv6` |
 | `-m`, `--game-mode <id>` | 今次使用嘅遊戲模式 |
 | `-n`, `--server-name <name>` | 對外顯示嘅伺服器名稱 |
@@ -1006,7 +1010,7 @@ cp docs/server.ini.example server.ini
 
 `--config` 支援完整 server-side 設定，包括：
 
-- 基本設定：`ServerName`、`GameMode`、`BindAddress`、`ServerPort`、操作／開局倒數。
+- 基本設定：`ServerName`、`GameMode`、`BindAddress`、`ServerPort`、`WebSocketPort`、操作／開局倒數。
 - 遊戲規則：`BanPackages`、`RandomSeat`、作弊／自由選將、雙將、同將、暗將、國戰、混戰及體力方案。
 - AI／服務：AI delay、禁聊、同 IP 限制、投降、手氣卡、Lua、神將、UPnP／列表伺服器。
 - 模式設定：`1v1/*`、`3v3/*`、`XMode/*`、`Banlist/*`。
@@ -1016,7 +1020,7 @@ cp docs/server.ini.example server.ini
 
 CLI 格式錯誤使用 exit code `64`，設定錯誤使用 `78`，初始化失敗係 `1`，listen 失敗係 `2`。Linux 上 `SIGINT`／`SIGTERM` 會 clean shutdown。CLI parser 位於 `src/server/server-command-line.cpp`，INI schema 位於 `src/server/server-config.cpp`，process 啟動流程位於 `src/server-main.cpp`。
 
-成功 listen 後會輸出 socket 實際綁定嘅 endpoint，例如 `Listening on 127.0.0.1:43817`；使用 `--port 0` 時，CI client 應由呢一行取得 kernel 分配嘅 port。
+成功 listen 後會輸出 socket 實際綁定嘅 endpoint，例如 `Listening on 127.0.0.1:43817`；使用 `--port 0` 時，CI client 應由呢一行取得 kernel 分配嘅 port。WebSocket 另寫 `WebSocket listening on 127.0.0.1:43818`；使用 `--websocket-port 0` 時由該行取得 WS port。多個測試實例應同時傳 `--port 0 --websocket-port 0`，避免搶預設 9528。
 
 ### Server Console
 
@@ -1194,7 +1198,7 @@ Linux Server CI 繼續用 distro Qt，唔會受 GUI 的 Qt 6.11 baseline 影響�
 
 ## 10. 常見問題
 
-- **搵唔到 Qt6**：確認裝咗 `qt6-base-dev`；啟用 CTest 時亦要裝 `qt6-5compat-dev`。亦可設定 `-DCMAKE_PREFIX_PATH=/path/to/qt6`。
+- **搵唔到 Qt6**：確認裝咗 `qt6-base-dev` 同 `qt6-websockets-dev`；啟用 CTest 時亦要裝 `qt6-5compat-dev`。亦可設定 `-DCMAKE_PREFIX_PATH=/path/to/qt6`。
 - **`QSAN_BUILD_GUI=ON` 之後 configure 話 Qt6 版本不相容**：GUI 要求 Qt ≥ 6.11。用 [2.2](#22-gui-clientqsan_build_guion) 的 aqt 步驟裝 Qt 6.11.1，再用 `CMAKE_PREFIX_PATH` 指過去。
 - **`QSAN_BUILD_GUI=ON` 之後 configure 話搵唔到 `LinguistTools`／`Quick`／`Multimedia`**：裝齊 [2.2](#22-gui-clientqsan_build_guion) 嘅 GUI 套件。Qt6 嘅 component config 必須同 `Qt6Config.cmake` 放喺同一個 cmake 目錄，所以唔可以只靠 `CMAKE_PREFIX_PATH` 指去另一個 prefix 補件（混用 distro Qt ＋ 另一個 prefix 唔會 work）。
 - **`ldd` 見到 `libQt6QuickTemplates2.so.6 => not found`**：Qt Quick Controls 嘅間接依賴。正常系統安裝唔會出現；如果 Qt 唔喺標準 loader path，要設定 `LD_LIBRARY_PATH`（`RUNPATH` 唔會傳遞到間接依賴）。

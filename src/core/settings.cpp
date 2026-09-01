@@ -361,6 +361,7 @@ void Settings::init()
     SurrenderAtDeath = value("SurrenderAtDeath", false).toBool();
     EnableLuckCard = value("EnableLuckCard", false).toBool();
     ServerPort = value("ServerPort", 9527u).toUInt();
+    WebSocketPort = value("WebSocketPort", 9528u).toUInt();
     BindAddress = value("BindAddress", "any").toString().trimmed().toLower();
     DisableLua = value("DisableLua", false).toBool();
     AddGodGeneral = value("AddGodGeneral", true).toBool();

@@ -87,8 +87,8 @@ def _backup_runtime_files(workdir, run_dir, run_id):
 
 
 def server_command(server_exe, mode, marker_file, port):
-    return [server_exe, "--port", str(port), "--game-mode", mode,
-            "--autotest-log", marker_file]
+    return [server_exe, "--port", str(port), "--websocket-port", "0",
+            "--game-mode", mode, "--autotest-log", marker_file]
 
 
 def restart_server(args, exe_root, workdir, mode, proc, marker_file, server_log, server_exe, reason):
