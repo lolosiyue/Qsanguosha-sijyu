@@ -39,6 +39,7 @@
 #include <QHashSeed>
 #include <QTimer>
 #include <QPointer>
+#include <QThread>
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #if !defined(QSAN_SERVER_CORE_ONLY)
@@ -51,6 +52,21 @@ using namespace QSanProtocol;
 
 namespace
 {
+// A QAbstractSocket may only be touched from the thread that owns it. Server
+// and the sockets it accepts both live on the main thread today, so this is a
+// direct call in practice; routing every teardown through it keeps the rule the
+// same one ServerPlayer::disconnectSocketFromOwnerThread() enforces, so a
+// caller arriving from a room thread cannot corrupt the socket's notifiers.
+void disconnectSocketFromOwnerThread(ClientSocket *socket)
+{
+	if (socket == nullptr)
+		return;
+	if (QThread::currentThread() == socket->thread())
+		socket->disconnectFromHost();
+	else
+		QMetaObject::invokeMethod(socket, "disconnectFromHost", Qt::QueuedConnection);
+}
+
 SetupPayload currentSetupPayload()
 {
 	SetupPayload payload;
@@ -1932,14 +1948,14 @@ void Server::processNewConnection(ClientSocket *socket)
 	QString addr = socket->peerAddress();
 
 	if (Config.value("BannedIP").toStringList().contains(addr)) {
-		socket->disconnectFromHost();
+		disconnectSocketFromOwnerThread(socket);
 		emit server_message(tr("Forbid the connection of address %1").arg(addr));
 		return;
 	}
 
 	if (Config.ForbidSIMC) {
 		if (addresses.contains(addr)) {
-			socket->disconnectFromHost();
+			disconnectSocketFromOwnerThread(socket);
 			emit server_message(tr("Forbid the connection of address %1").arg(addr));
 			return;
 		}
@@ -2007,8 +2023,7 @@ void Server::rejectConnection(ServerConnectionContext *context,
 	socket->timerSignup.stop();
 	QPointer<ClientSocket> guarded(socket);
 	QTimer::singleShot(0, this, [guarded]() {
-		if (guarded)
-			guarded->disconnectFromHost();
+		disconnectSocketFromOwnerThread(guarded);
 	});
 }
 
@@ -2052,7 +2067,7 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 				context->deleteLater();
 				player->setSocket(socket);
 				if (!sendSetup(player, &error)) {
-					socket->disconnectFromHost();
+					disconnectSocketFromOwnerThread(socket);
 					return;
 				}
 				player->getRoom()->reconnect(player, nullptr);
@@ -2096,7 +2111,7 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 	m_connectionContexts.remove(socket);
 	context->deleteLater();
 	if (!sendSetup(player, &error)) {
-		socket->disconnectFromHost();
+		disconnectSocketFromOwnerThread(socket);
 		return;
 	}
 	current->signup(player, signup.screenName, signup.avatar, false);
