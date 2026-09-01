@@ -676,6 +676,15 @@ private:
     quint64 m_nextMessageId = 1;
 };
 
+// A response-card reply travels as the domain array
+// [card_text, targets, activation_skill_name, activation_skill_instance_id];
+// commands such as SHOW_CARD and PINDIAN answer through that same reply.
+static QVariant responseCardReply(const QString &cardText,
+                                  const QVariantList &targets = QVariantList())
+{
+    return QVariantList{cardText, targets, QString(), 0};
+}
+
 struct DecisionFixture
 {
     DecisionProbe probe;
@@ -1751,7 +1760,7 @@ static bool cardShowSingletonClientAndRandom()
     CardTable onlineCards(online.room);
     giveHand(online.player, QList<int>{0, 1});
     ClientReplyAgent agent(online.room, online.player);
-    agent.replyByCommand.insert(S_COMMAND_SHOW_CARD, QVariant::fromValue(JsonArray() << QStringLiteral("1")));
+    agent.replyByCommand.insert(S_COMMAND_SHOW_CARD, responseCardReply(QStringLiteral("1")));
     const Card *clientShow = online.room.askForCardShow(
         online.player, online.other, QStringLiteral("rende"));
     if (!expect(clientShow == Sanguosha->getCard(1), "online CardShow parse is accepted")
@@ -1761,7 +1770,7 @@ static bool cardShowSingletonClientAndRandom()
         return false;
 
     online.probe.records.clear();
-    agent.replyByCommand.insert(S_COMMAND_SHOW_CARD, QVariant::fromValue(JsonArray() << QStringLiteral("not-a-card")));
+    agent.replyByCommand.insert(S_COMMAND_SHOW_CARD, responseCardReply(QStringLiteral("not-a-card")));
     qsanSeedRandom(6);
     const Card *invalidFirst = online.room.askForCardShow(
         online.player, online.other, QStringLiteral("rende"));
@@ -1818,8 +1827,7 @@ static bool pindianEmitsNoChoiceMade()
     CardTable onlineCards(online.room);
     giveHand(online.player, QList<int>{0, 1});
     ClientReplyAgent agent(online.room, online.player);
-    agent.replyByCommand.insert(S_COMMAND_PINDIAN,
-                                QVariant::fromValue(JsonArray() << QStringLiteral("1")));
+    agent.replyByCommand.insert(S_COMMAND_PINDIAN, responseCardReply(QStringLiteral("1")));
     const Card *clientCard = online.room.askForPindian(
         online.player, online.other, QStringLiteral("tianyi"));
     if (!expect(clientCard == Sanguosha->getCard(1), "online Pindian parse is accepted")
@@ -1828,7 +1836,7 @@ static bool pindianEmitsNoChoiceMade()
         return false;
 
     agent.replyByCommand.insert(S_COMMAND_PINDIAN,
-                                QVariant::fromValue(JsonArray() << QStringLiteral("not-a-card")));
+                                responseCardReply(QStringLiteral("not-a-card")));
     qsanSeedRandom(7);
     const Card *invalidFirst = online.room.askForPindian(
         online.player, online.other, QStringLiteral("tianyi"));
@@ -1888,8 +1896,7 @@ static bool pindianRaceBroadcastIndependentFallback()
     fromMixed.watch(mixed.player);
     toMixed.watch(mixed.other);
     ClientReplyAgent toAgent(mixed.room, mixed.other);
-    toAgent.replyByCommand.insert(S_COMMAND_PINDIAN,
-                                  QVariant::fromValue(JsonArray() << QStringLiteral("3")));
+    toAgent.replyByCommand.insert(S_COMMAND_PINDIAN, responseCardReply(QStringLiteral("3")));
     QList<const Card *> mixedCards = mixed.room.askForPindianRace(
         mixed.player, mixed.other, QStringLiteral("tianyi"));
     if (!expect(mixedCards.size() == 2 && mixedCards[0] == Sanguosha->getCard(1)
@@ -1914,10 +1921,9 @@ static bool pindianRaceBroadcastIndependentFallback()
     toHumans.watch(humans.other);
     ClientReplyAgent fromAgent(humans.room, humans.player);
     ClientReplyAgent otherAgent(humans.room, humans.other);
-    fromAgent.replyByCommand.insert(S_COMMAND_PINDIAN,
-                                    QVariant::fromValue(JsonArray() << QStringLiteral("0")));
+    fromAgent.replyByCommand.insert(S_COMMAND_PINDIAN, responseCardReply(QStringLiteral("0")));
     otherAgent.replyByCommand.insert(S_COMMAND_PINDIAN,
-                                     QVariant::fromValue(JsonArray() << QStringLiteral("not-a-card")));
+                                     responseCardReply(QStringLiteral("not-a-card")));
     qsanSeedRandom(8);
     QList<const Card *> independent = humans.room.askForPindianRace(
         humans.player, humans.other, QStringLiteral("tianyi"));
@@ -2009,9 +2015,8 @@ static bool cardResponseOverrideProvidedAndRetry()
     CardTable onlineCards(online.room);
     giveHand(online.player, QList<int>{0, 1}, &online.room);
     ClientReplyAgent agent(online.room, online.player);
-    JsonArray cardReply;
-    cardReply << Sanguosha->getCard(1)->toString() << QVariant::fromValue(JsonArray());
-    agent.replyByCommand.insert(S_COMMAND_RESPONSE_CARD, QVariant::fromValue(cardReply));
+    agent.replyByCommand.insert(S_COMMAND_RESPONSE_CARD,
+                                responseCardReply(Sanguosha->getCard(1)->toString()));
     const Card *clientCard = online.room.askForCard(
         online.player, QStringLiteral("."), QStringLiteral("@discard"), QVariant(),
         Card::MethodDiscard, nullptr, true);

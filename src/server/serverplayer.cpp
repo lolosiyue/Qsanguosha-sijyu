@@ -541,7 +541,8 @@ void ServerPlayer::sendMessage(const QByteArray &message)
 	}
 }
 
-quint64 ServerPlayer::sendProtocolMessage(ProtocolMessage message)
+quint64 ServerPlayer::sendProtocolMessage(ProtocolMessage message,
+	const std::function<void(quint64)> &onNumbered)
 {
 	// Numbering, encoding and queueing happen together: a frame numbered here
 	// must also be queued here, or a send from another thread could overtake it.
@@ -584,6 +585,10 @@ quint64 ServerPlayer::sendProtocolMessage(ProtocolMessage message)
 		disconnectSocketFromOwnerThread();
 		return 0;
 	}
+	// Still inside the outbound lock: the id is published before the frame can
+	// reach the socket, so a reply can never overtake the state that accepts it.
+	if (onNumbered)
+		onNumbered(message.messageId);
 	m_outboundFrames.append(encoded);
 	outboundLocker.unlock();
 

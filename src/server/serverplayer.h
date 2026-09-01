@@ -17,6 +17,9 @@ class ClientSocket;
 #include "protocol/protocol-runtime.h"
 #include "protocol/state/player-ui-state.h"
 
+#include <atomic>
+#include <functional>
+
 class ServerPlayer : public Player
 {
     Q_OBJECT
@@ -30,7 +33,12 @@ public:
     void adoptProtocolConnectionState(
         const QSanProtocol::ProtocolConnectionState &state);
     void kick();
-    quint64 sendProtocolMessage(QSanProtocol::ProtocolMessage message);
+    // onNumbered, when given, runs after the frame has been numbered and
+    // encoded but before it is queued for the socket, so a caller can publish
+    // the message id it is going to wait on before any reply can arrive.
+    quint64 sendProtocolMessage(QSanProtocol::ProtocolMessage message,
+                                const std::function<void(quint64)> &onNumbered
+                                    = std::function<void(quint64)>());
     QString reportHeader() const;
     //void drawCard(const Card *card);
     Room *getRoom() const;
@@ -251,7 +259,10 @@ public:
     {
         propertys.insert(property_name);
     }
-    quint64 m_expectedReplyMessageId = 0;
+    // Published from the sending thread before the request frame is queued and
+    // read by whichever thread parses the reply, so it is not covered by
+    // SEMA_MUTEX alone.
+    std::atomic<quint64> m_expectedReplyMessageId{0};
     bool m_isClientResponseReady; //Suggest whether a valid player's reponse has been received.
     bool m_isWaitingReply; // Suggest if the server player is waiting for client's response.
     QVariant m_cheatArgs; // Store the cheat code received from client.

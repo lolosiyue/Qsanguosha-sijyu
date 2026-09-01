@@ -244,15 +244,14 @@ bool RequestCoordinator::request(ServerPlayer *player, CommandType command,
         resultTarget = player;
     }
 
-    const quint64 requestMessageId = target->sendProtocolMessage(requestMessage);
-    target->acquireLock(ServerPlayer::SEMA_MUTEX);
-    target->m_expectedReplyMessageId = requestMessageId;
-    target->releaseLock(ServerPlayer::SEMA_MUTEX);
-    if (redirectedToController) {
-        player->acquireLock(ServerPlayer::SEMA_MUTEX);
-        player->m_expectedReplyMessageId = requestMessageId;
-        player->releaseLock(ServerPlayer::SEMA_MUTEX);
-    }
+    // The expected id has to be visible before the frame leaves, otherwise a
+    // reply that comes back fast enough is rejected for answering id 0.
+    target->sendProtocolMessage(requestMessage,
+        [target, player, redirectedToController](quint64 requestMessageId) {
+            target->m_expectedReplyMessageId = requestMessageId;
+            if (redirectedToController)
+                player->m_expectedReplyMessageId = requestMessageId;
+        });
     return !wait || getResult(resultTarget, timeOut);
 }
 
@@ -526,7 +525,7 @@ void RequestCoordinator::processResponse(
                                  .arg(message.command));
     else if (message.replyTo != player->m_expectedReplyMessageId)
         emit m_room.room_message(m_room.tr("Reply message id should be %1 instead of %2")
-                                 .arg(player->m_expectedReplyMessageId)
+                                 .arg(player->m_expectedReplyMessageId.load())
                                  .arg(message.replyTo));
     else
         success = true;

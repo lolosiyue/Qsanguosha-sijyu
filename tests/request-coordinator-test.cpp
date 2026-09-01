@@ -104,14 +104,17 @@ static bool acceptedReplyCompletesRequest(Room &room, ServerPlayer *player,
     if (recorder.parseFailed || request == nullptr)
         return false;
 
+    // The domain form of a response-card reply is
+    // [card_text, targets, activation_skill_name, activation_skill_instance_id].
+    const QVariant acceptedReply = QVariantList{QStringLiteral("accepted"),
+                                                QVariantList(), QString(), 0};
     ProtocolMessage reply;
-    if (!makeReply(S_COMMAND_RESPONSE_CARD, request->messageId,
-                   QStringLiteral("accepted"), &reply))
+    if (!makeReply(S_COMMAND_RESPONSE_CARD, request->messageId, acceptedReply, &reply))
         return false;
     RoomTestAccess::dispatch(room, player, reply);
 
     return room.getResult(player, 0)
-        && player->getClientReply() == QStringLiteral("accepted")
+        && player->getClientReply() == acceptedReply
         && !player->m_isWaitingReply
         && player->m_expectedReplyCommand == S_COMMAND_UNKNOWN;
 }
@@ -129,7 +132,7 @@ static bool mismatchedReplyTimesOut(Room &room, ServerPlayer *player,
 
     ProtocolMessage reply;
     if (!makeReply(S_COMMAND_MULTIPLE_CHOICE, request->messageId,
-                   0, &reply))
+                   QStringLiteral("mismatch"), &reply))
         return false;
     RoomTestAccess::dispatch(room, player, reply);
 
@@ -147,13 +150,24 @@ static bool requestCommandsAreStrict(Room &room, ServerPlayer *player,
         CommandType replyCommand;
         QVariant payload;
     };
+    // Requests carry typed payloads since the Protocol V2 cutover; an empty
+    // QVariant only encodes for the commands whose request has no payload.
+    auto requestPayload = [](CommandType command) -> QVariant {
+        if (command == S_COMMAND_MULTIPLE_CHOICE) {
+            return QVariantList{QStringLiteral("tuxi"), QStringLiteral("left+right"),
+                                QString(), QString()};
+        }
+        if (command == S_COMMAND_INVOKE_SKILL)
+            return QVariantList{QStringLiteral("tuxi"), QString()};
+        return QVariant();
+    };
     const QList<AliasCase> acceptedCases{
         {S_COMMAND_CHOOSE_DIRECTION, S_COMMAND_CHOOSE_DIRECTION, QStringLiteral("cw")},
         {S_COMMAND_LUCK_CARD, S_COMMAND_LUCK_CARD, true}
     };
     for (const auto &entry : acceptedCases) {
         recorder.clear();
-        if (!room.doRequest(player, entry.requestCommand, QVariant(), 0, false))
+        if (!room.doRequest(player, entry.requestCommand, requestPayload(entry.requestCommand), 0, false))
             return false;
         const RequestRecord *request = recorder.last(entry.requestCommand);
         if (recorder.parseFailed || request == nullptr)
@@ -175,7 +189,7 @@ static bool requestCommandsAreStrict(Room &room, ServerPlayer *player,
     };
     for (const auto &entry : rejectedAliases) {
         recorder.clear();
-        if (!room.doRequest(player, entry.requestCommand, QVariant(), 0, false))
+        if (!room.doRequest(player, entry.requestCommand, requestPayload(entry.requestCommand), 0, false))
             return false;
         const RequestRecord *request = recorder.last(entry.requestCommand);
         if (recorder.parseFailed || request == nullptr)

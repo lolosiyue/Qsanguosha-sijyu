@@ -70,6 +70,22 @@ public:
     bool parseFailed = false;
 };
 
+// S_COMMAND_LOG_EVENT carries a typed GameEventPayload since the Protocol V2
+// cutover, so the routing cases below need a real domain payload rather than a
+// placeholder string.  The wire form is the object the encoder builds from it.
+static QVariant playEffectBody(const QString &skillName)
+{
+    return QVariantList() << S_GAME_EVENT_PLAY_EFFECT << skillName << false << 1
+                          << QString();
+}
+
+static bool bodyIsPlayEffect(const QVariant &body, const QString &skillName)
+{
+    const QVariantMap object = body.toMap();
+    return object.value(QStringLiteral("event")).toInt() == S_GAME_EVENT_PLAY_EFFECT
+        && object.value(QStringLiteral("skill_name")).toString() == skillName;
+}
+
 static bool expectCount(const MessageRecorder &recorder, ServerPlayer *receiver,
                         CommandType command, int expected, const char *context)
 {
@@ -84,13 +100,13 @@ static bool directNotificationArrivesOnce(Room &room, MessageRecorder &recorder,
                                           ServerPlayer *player)
 {
     recorder.clear();
-    const QVariant body = QStringLiteral("direct");
-    room.doNotify(player, S_COMMAND_LOG_EVENT, body);
+    room.doNotify(player, S_COMMAND_LOG_EVENT, playEffectBody(QStringLiteral("direct")));
 
     const PacketRecord *record = recorder.first(player, S_COMMAND_LOG_EVENT);
     return !recorder.parseFailed
         && expectCount(recorder, player, S_COMMAND_LOG_EVENT, 1, "direct notify")
-        && record != nullptr && record->body == body;
+        && record != nullptr
+        && bodyIsPlayEffect(record->body, QStringLiteral("direct"));
 }
 
 static bool controllerReceivesLogicalPlayerNotification(Room &room, MessageRecorder &recorder,
@@ -100,7 +116,7 @@ static bool controllerReceivesLogicalPlayerNotification(Room &room, MessageRecor
 {
     room.setPlayerController(controlled, controller);
     recorder.clear();
-    room.doNotify(controlled, S_COMMAND_LOG_EVENT, QStringLiteral("controlled"));
+    room.doNotify(controlled, S_COMMAND_LOG_EVENT, playEffectBody(QStringLiteral("controlled")));
 
     return !recorder.parseFailed
         && expectCount(recorder, controlled, S_COMMAND_LOG_EVENT, 1, "controlled player notify")
@@ -118,7 +134,7 @@ static bool sharedControllerIsDeduplicated(Room &room, MessageRecorder &recorder
 
     recorder.clear();
     room.doBroadcastNotify(QList<ServerPlayer *>() << firstControlled << secondControlled,
-                           S_COMMAND_LOG_EVENT, QStringLiteral("controlled-broadcast"));
+                           S_COMMAND_LOG_EVENT, playEffectBody(QStringLiteral("controlled-broadcast")));
     if (recorder.parseFailed
         || !expectCount(recorder, controller, S_COMMAND_LOG_EVENT, 1,
                         "shared controller broadcast"))
@@ -127,7 +143,7 @@ static bool sharedControllerIsDeduplicated(Room &room, MessageRecorder &recorder
     recorder.clear();
     room.doBroadcastNotify(QList<ServerPlayer *>() << controller << firstControlled
                                                    << secondControlled,
-                           S_COMMAND_LOG_EVENT, QStringLiteral("full-broadcast"));
+                           S_COMMAND_LOG_EVENT, playEffectBody(QStringLiteral("full-broadcast")));
     return !recorder.parseFailed
         && expectCount(recorder, controller, S_COMMAND_LOG_EVENT, 1,
                        "controller included in broadcast");
@@ -181,12 +197,14 @@ static bool presentationPayloadsStayStable(Room &room, MessageRecorder &recorder
     recorder.clear();
     room.broadcastTagProperty(owner, QStringLiteral("sample"), QStringLiteral("value"));
     const PacketRecord *tagRecord = recorder.first(controller, S_COMMAND_SET_PROPERTY);
-    const QVariantList tagPayload = tagRecord ? tagRecord->body.toList() : QVariantList();
+    const QVariantMap tagPayload = tagRecord ? tagRecord->body.toMap() : QVariantMap();
     if (recorder.parseFailed
         || !expectCount(recorder, controller, S_COMMAND_SET_PROPERTY, 1, "tag property")
-        || tagPayload != (QVariantList() << owner->objectName()
-                                        << QStringLiteral("tag:sample")
-                                        << QStringLiteral("value")))
+        || tagPayload.value(QStringLiteral("action")).toString() != QStringLiteral("tag")
+        || tagPayload.value(QStringLiteral("player_name")).toString() != owner->objectName()
+        || tagPayload.value(QStringLiteral("tag_name")).toString() != QStringLiteral("sample")
+        || tagPayload.value(QStringLiteral("value_kind")).toString() != QStringLiteral("scalar")
+        || tagPayload.value(QStringLiteral("value")).toString() != QStringLiteral("value"))
         return false;
 
     recorder.clear();
@@ -210,20 +228,32 @@ static bool presentationPayloadsStayStable(Room &room, MessageRecorder &recorder
     log.arg = QStringLiteral("arg");
     room.sendLog(log, QList<ServerPlayer *>() << owner);
     const PacketRecord *logRecord = recorder.first(controller, S_COMMAND_LOG_SKILL);
+    // The wire carries JSON arrays, so the QStringList members of the logical
+    // payload come back as QVariantList; compare field by field instead of
+    // against the unsent QVariant.
+    const QVariantMap logPayload = logRecord ? logRecord->body.toMap() : QVariantMap();
     if (recorder.parseFailed
         || !expectCount(recorder, controller, S_COMMAND_LOG_SKILL, 1, "targeted log")
-        || logRecord == nullptr || logRecord->body != log.toVariant())
+        || logRecord == nullptr
+        || logPayload.value(QStringLiteral("log_type")).toString() != log.type
+        || logPayload.value(QStringLiteral("from_player")).toString() != owner->objectName()
+        || logPayload.value(QStringLiteral("to_players")).toStringList() != QStringList()
+        || logPayload.value(QStringLiteral("arguments")).toStringList()
+               != (QStringList() << log.arg << QString() << QString() << QString() << QString()))
         return false;
 
     recorder.clear();
     room.broadcastSkillInvoke(QStringLiteral("test_effect"), false, 2);
     const PacketRecord *effectRecord = recorder.first(controller, S_COMMAND_LOG_EVENT);
-    const QVariantList effectPayload = effectRecord ? effectRecord->body.toList() : QVariantList();
+    const QVariantMap effectPayload = effectRecord ? effectRecord->body.toMap() : QVariantMap();
     if (recorder.parseFailed
         || !expectCount(recorder, controller, S_COMMAND_LOG_EVENT, 1, "skill effect")
-        || effectPayload != (QVariantList() << S_GAME_EVENT_PLAY_EFFECT
-                                           << QStringLiteral("test_effect") << false << 2
-                                           << QString()))
+        || effectPayload.value(QStringLiteral("event")).toInt() != S_GAME_EVENT_PLAY_EFFECT
+        || effectPayload.value(QStringLiteral("skill_name")).toString()
+               != QStringLiteral("test_effect")
+        || effectPayload.value(QStringLiteral("category")).toString()
+               != QStringLiteral("female")
+        || effectPayload.value(QStringLiteral("audio_type")).toInt() != 2)
         return false;
 
     recorder.clear();
@@ -235,15 +265,20 @@ static bool presentationPayloadsStayStable(Room &room, MessageRecorder &recorder
     virtualCard.addSubcard(12);
     room.showVirtualCard(owner, &virtualCard, target);
     const PacketRecord *virtualRecord = recorder.first(controller, S_COMMAND_SHOW_VIRTUAL_CARD);
-    const QVariantList virtualPayload = virtualRecord ? virtualRecord->body.toList() : QVariantList();
+    const QVariantMap virtualPayload = virtualRecord ? virtualRecord->body.toMap() : QVariantMap();
     if (recorder.parseFailed
         || !expectCount(recorder, controller, S_COMMAND_SHOW_VIRTUAL_CARD, 1,
                         "virtual card display")
-        || virtualPayload != (QVariantList() << owner->objectName()
-                                            << QStringLiteral("test_virtual")
-                                            << QStringLiteral("heart") << 9
-                                            << QStringLiteral("test_skill")
-                                            << QStringLiteral("12") << target->objectName()))
+        || virtualPayload.value(QStringLiteral("player_name")).toString() != owner->objectName()
+        || virtualPayload.value(QStringLiteral("card_name")).toString()
+               != QStringLiteral("test_virtual")
+        || virtualPayload.value(QStringLiteral("suit")).toString() != QStringLiteral("heart")
+        || virtualPayload.value(QStringLiteral("number")).toInt() != 9
+        || virtualPayload.value(QStringLiteral("skill_name")).toString()
+               != QStringLiteral("test_skill")
+        || virtualPayload.value(QStringLiteral("subcard_ids")).toList() != (QVariantList() << 12)
+        || virtualPayload.value(QStringLiteral("target_player")).toString()
+               != target->objectName())
         return false;
 
     return true;
