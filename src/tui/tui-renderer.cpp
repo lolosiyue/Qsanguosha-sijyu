@@ -8,6 +8,8 @@
 #include <QHash>
 #include <QJsonArray>
 #include <QMap>
+#include <QRegularExpression>
+#include <QStringList>
 
 #include <functional>
 #include <utility>
@@ -79,6 +81,46 @@ TuiRenderer::TuiRenderer(bool ansiEnabled, CardResolver cardResolver,
     : m_ansiEnabled(ansiEnabled), m_cardResolver(std::move(cardResolver)),
       m_nameResolver(std::move(nameResolver))
 {
+}
+
+QString TuiRenderer::formatPrompt(const QString &prompt,
+                                  const std::function<QString(const QString &)> &translate,
+                                  const std::function<QString(const QString &)> &playerName)
+{
+    if (prompt.isEmpty())
+        return prompt;
+    const QStringList texts = prompt.split(QLatin1Char(':'));
+    const QString key = texts.at(0);
+    QString result = translate ? translate(key) : key;
+    if (result == key && key.endsWith(QLatin1String("-jink"))) {
+        result = texts.size() >= 3
+            ? QStringLiteral("%src 使用了【%dest】，请打出一张【闪】")
+            : QStringLiteral("%src 对你使用【杀】，你需使用【闪】抵消之");
+    }
+    const auto slotText = [&](const QString &token) {
+        if (token.isEmpty())
+            return token;
+        return translate ? translate(token) : token;
+    };
+    static const QRegularExpression sgsName(
+        QStringLiteral("^sgs\\d+$"),
+        QRegularExpression::UseUnicodePropertiesOption);
+    const auto slotPlayer = [&](const QString &token) {
+        if (token.isEmpty())
+            return token;
+        if (sgsName.match(token).hasMatch() && playerName)
+            return playerName(token);
+        return slotText(token);
+    };
+    if (texts.size() >= 5)
+        result.replace(QStringLiteral("%arg2"), slotText(texts.at(4)));
+    if (texts.size() >= 4)
+        result.replace(QStringLiteral("%arg"), slotText(texts.at(3)));
+    if (texts.size() >= 3)
+        result.replace(QStringLiteral("%dest"), slotPlayer(texts.at(2)));
+    if (texts.size() >= 2)
+        result.replace(QStringLiteral("%src"), slotPlayer(texts.at(1)));
+    return result;
 }
 
 QString TuiRenderer::sanitize(const QString &text, qsizetype maximumLength)
@@ -255,8 +297,8 @@ QString TuiRenderer::answerHint(const InteractionRequest &request) const
     case InteractionResponseShape::Cards:
         if (request.type == InteractionType::PlayCard) {
             return tr("作答：<編號> -> <目標編號>   例如 1 -> 2\n"
-                      "技能可帶手牌：<技能編號> <手牌編號>   例如 4 1\n"
-                      "無目標只寫編號。結束出牌：pass 或 /cancel");
+                      "技能＋手牌＋目標：<技能編號> <手牌編號> -> <目標編號>   例如 4 1 -> 2\n"
+                      "無目標只寫編號或技能編號。結束出牌：pass 或 /cancel");
         }
         if (request.type == InteractionType::ChooseCard) {
             const auto *value = request.payloadAs<CardInteractionPayload>();
@@ -431,8 +473,12 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
     QStringList lines{heading(interactionTitle(request))};
     if (!request.skillName.isEmpty())
         lines << tr("技能：%1").arg(nameText(request.skillName));
-    if (!request.prompt.isEmpty())
-        lines << tr("提示：%1").arg(sanitize(request.prompt, 1024));
+    if (!request.prompt.isEmpty()) {
+        const QString formatted = formatPrompt(request.prompt,
+            [this](const QString &key) { return nameText(key); },
+            [this](const QString &name) { return nameText(name); });
+        lines << tr("提示：%1").arg(sanitize(formatted, 1024));
+    }
 
     const int minimum = request.minSelection();
     const int maximum = request.maxSelection();
