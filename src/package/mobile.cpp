@@ -14759,7 +14759,7 @@ void QlJuejinCard::use(Room *room, ServerPlayer *source, QList<ServerPlayer *> &
 		const Card *c = Sanguosha->getCard(id);
 		if(c->isKindOf("Jink")||c->isKindOf("Peach")||c->isKindOf("Analeptic")){
 			if(room->getCardPlace(id)!=Player::PlaceSpecial&&room->getCardPlace(id)!=Player::PlaceTable){
-				CardsMoveStruct move = CardsMoveStruct(id,nullptr,Player::PlaceTable,CardMoveReason(CardMoveReason::S_REASON_NO_BASIC, source->objectName()));
+				CardsMoveStruct move = CardsMoveStruct(id,nullptr,Player::PlaceTable,CardMoveReason(CardMoveReason::S_MASK_BASIC_REASON, source->objectName()));
 				move.reason.m_skillName = "xiangsicunwei";
 				moves << move;
 			}
@@ -14808,7 +14808,7 @@ public:
 					const Card *c = Sanguosha->getCard(id);
 					if(c->isKindOf("Jink")||c->isKindOf("Peach")||c->isKindOf("Analeptic")){
 						if(room->getCardPlace(id)!=Player::PlaceSpecial&&room->getCardPlace(id)!=Player::PlaceTable){
-							CardsMoveStruct move1 = CardsMoveStruct(id,nullptr,Player::PlaceTable,CardMoveReason(CardMoveReason::S_REASON_NO_BASIC, ""));
+							CardsMoveStruct move1 = CardsMoveStruct(id,nullptr,Player::PlaceTable,CardMoveReason(CardMoveReason::S_MASK_BASIC_REASON, ""));
 							move1.reason.m_skillName = "xiangsicunwei";
 							moves << move1;
 						}
