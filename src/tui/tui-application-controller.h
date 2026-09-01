@@ -53,6 +53,8 @@ private:
     QString renderEquipment() const;
     QString renderLog() const;
     QString resolvePlayerName(const QString &objectName) const;
+    QString resolveLogPlayerName(const QString &objectName) const;
+    void appendSynthesizedLogs(const QSanProtocol::ProtocolMessage &message);
     QString presentationText(int command, const QString &fallbackText,
                              const QVariant &payload) const;
     QStringList completionExtraTokens() const;
@@ -70,6 +72,7 @@ private:
     bool m_exiting = false;
     bool m_gameOverMarked = false;
     QString m_lastMarkedSyncId;
+    QList<int> m_renPile;
 };
 
 #endif
