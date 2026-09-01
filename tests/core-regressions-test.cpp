@@ -8,9 +8,11 @@
 #include "room.h"
 #include "skill.h"
 #include "standard.h"
+#include "structs.h"
 
 #include <QDebug>
 #include <QMetaEnum>
+#include <QVariantMap>
 #include <QtGlobal>
 
 class Player;
@@ -34,6 +36,47 @@ bool hasEnumKey(const QMetaObject &metaObject, const char *enumName, const char 
     return ok;
 }
 
+}
+
+// The Judge phase moves a delayed trick to the table with S_REASON_NO_BASIC,
+// a sentinel whose low nibble sits outside the 0x00-0x0A basic range so that no
+// "on discard" / "on use" trigger fires for it. Both whitelists -- this one in
+// structs.cpp and the wire one in protocol-payload-registry.cpp -- have to
+// accept it, or the move never survives a round trip.
+int runCardMoveReasonTests()
+{
+    const CardMoveReason sentinel(CardMoveReason::S_REASON_NO_BASIC,
+                                  QStringLiteral("sgs1"), QString(),
+                                  QStringLiteral("delayed_effect"));
+    if ((sentinel.m_reason & CardMoveReason::S_MASK_BASIC_REASON)
+        <= CardMoveReason::S_REASON_PUT) {
+        qCritical() << "S_REASON_NO_BASIC collides with a basic reason"
+                    << sentinel.m_reason;
+        return 1;
+    }
+
+    CardMoveReason parsed;
+    if (!parsed.tryParse(sentinel.toVariant())) {
+        qCritical() << "CardMoveReason::tryParse rejected S_REASON_NO_BASIC";
+        return 2;
+    }
+    if (parsed.m_reason != sentinel.m_reason
+        || parsed.m_eventName != sentinel.m_eventName) {
+        qCritical() << "CardMoveReason round trip lost data" << parsed.m_reason
+                    << parsed.m_eventName;
+        return 3;
+    }
+
+    CardMoveReason bogus;
+    QVariantMap bogusObject = sentinel.toVariant().toMap();
+    bogusObject.insert(QStringLiteral("reason"), 0x7F);
+    if (bogus.tryParse(bogusObject)) {
+        qCritical() << "CardMoveReason::tryParse accepted an off-list reason";
+        return 4;
+    }
+
+    qInfo() << "CardMoveReason S_REASON_NO_BASIC regression passed";
+    return 0;
 }
 
 int runEnumReflectionTests()
