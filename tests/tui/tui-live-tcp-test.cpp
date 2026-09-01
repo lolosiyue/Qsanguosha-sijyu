@@ -393,7 +393,7 @@ int main(int argc, char *argv[])
         }
     });
     QObject::connect(&session, &ClientLiveSession::presentationEvent,
-        [&](int command, const QString &text) {
+        [&](int command, const QString &text, const QVariant &) {
             if (command != S_COMMAND_SPEAK || !text.contains(QStringLiteral("snapshot-chat")))
                 return;
             ++presentationCount;

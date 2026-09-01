@@ -500,7 +500,13 @@ InteractionValidation ClientCore::validateCards(const InteractionRequest &reques
 
         // 值域檢查對 enumerated 同非 enumerated 都成立:呢個唔係規則判斷,
         // 而係「client 由頭到尾都未見過呢個 id」。
-        if (!m_state.isKnownCardId(cardId)) {
+        // ChooseCard 暗手牌與 GUI PlayerCardBox 一樣回 -1；server 再挑第一張合法牌。
+        if (cardId < 0) {
+            if (request.type != InteractionType::ChooseCard || cardId != -1) {
+                return InteractionValidation::fail(InteractionRejection::UnknownCard,
+                    QStringLiteral("card id %1 is outside the client card id space").arg(cardId));
+            }
+        } else if (!m_state.isKnownCardId(cardId)) {
             return InteractionValidation::fail(InteractionRejection::UnknownCard,
                 QStringLiteral("card id %1 is outside the client card id space").arg(cardId));
         }

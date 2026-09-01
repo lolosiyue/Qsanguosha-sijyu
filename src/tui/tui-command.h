@@ -2,6 +2,7 @@
 #define TUI_COMMAND_H
 
 #include <QString>
+#include <QStringList>
 
 enum class TuiCommandType
 {
@@ -45,5 +46,14 @@ public:
     static bool parse(const QString &line, TuiCommandIntent *intent,
                       QString *error = nullptr);
 };
+
+struct TuiCompletion
+{
+    QString line;
+    QStringList matches;
+};
+
+QStringList tuiCommandNames();
+TuiCompletion completeTuiLine(const QString &line, const QStringList &extraTokens = {});
 
 #endif

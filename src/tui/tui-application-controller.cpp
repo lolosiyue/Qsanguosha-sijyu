@@ -3,6 +3,7 @@
 #include "card.h"
 #include "engine.h"
 #include "protocol-interaction-request-builder.h"
+#include "skill.h"
 #include "tui-card-text.h"
 #include "tui-log-text.h"
 #include "protocol/session/session-payloads.h"
@@ -13,6 +14,7 @@
 #include <QSet>
 #include <QTextStream>
 #include <QTimer>
+#include <variant>
 
 using namespace QSanProtocol;
 
@@ -32,7 +34,11 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
           [this](int cardId) { return resolveCardDisplayText(cardId); },
           [this](const QString &name) { return resolveNameText(name); }),
       m_view(&m_renderer, [this](const QString &text) { writeOutput(text); },
-             [this](int cardId) { return resolveCardWireText(cardId); }),
+             [this](int cardId) { return resolveCardWireText(cardId); },
+             [this](const QString &skillName, int instanceId, const QList<int> &subcards,
+                    QString *error) {
+                 return resolveSkillCardWireText(skillName, instanceId, subcards, error);
+             }),
       m_input(this)
 {
     m_core.setView(&m_view);
@@ -42,6 +48,9 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
     connect(&m_input, &TuiInput::inputError, this, [this](const QString &error) {
         writeError(error);
         requestExit(6);
+    });
+    connect(&m_input, &TuiInput::completionChoices, this, [this](const QStringList &matches) {
+        writeOutput(matches.join(QLatin1Char(' ')));
     });
     connect(&m_session, &ClientLiveSession::connectionChanged, this,
         [this](const QString &state) { writeOutput(tr("連線：%1").arg(state)); });
@@ -108,6 +117,17 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
                 requestExit(4);
                 return;
             }
+            if (auto *assignment = std::get_if<RoleAssignmentInteractionPayload>(
+                    &request.payload)) {
+                if (assignment->roles.isEmpty() && Sanguosha != nullptr) {
+                    assignment->roles = Sanguosha->getRoleList(
+                        m_core.state()->setup().value(QStringLiteral("game_mode")).toString());
+                }
+            }
+            if (auto *cards = std::get_if<CardInteractionPayload>(&request.payload)) {
+                if (request.type == InteractionType::PlayCard)
+                    fillPlaySkillCandidates(cards);
+            }
             if (request.timeoutMs <= 0) {
                 const int seconds = m_core.state()->setup().value(
                     QStringLiteral("operation_timeout")).toInt();
@@ -119,6 +139,7 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
                 requestExit(4);
                 return;
             }
+            trySkipRoleAssignment();
             if (m_script != nullptr)
                 m_script->notifyStateChanged();
         });
@@ -145,6 +166,12 @@ bool TuiApplicationController::start(QString *error)
     if (m_options.scriptFile.isEmpty()) {
         if (!m_input.start(error))
             return false;
+        m_input.setCompleter([this](const QString &line, QStringList *matches) {
+            const TuiCompletion done = completeTuiLine(line, completionExtraTokens());
+            if (matches != nullptr)
+                *matches = done.matches;
+            return done.line;
+        });
     } else {
         m_script = new TuiScriptRunner(&m_core,
             [this](const QString &line) { handleInputLine(line); }, this);
@@ -196,6 +223,22 @@ void TuiApplicationController::handleInputLine(const QString &line)
     }
     if (!m_session.submitInteractionResponse(std::move(response), &error))
         writeError(error.isEmpty() ? tr("作答已被拒絕") : error);
+}
+
+bool TuiApplicationController::trySkipRoleAssignment()
+{
+    if (!m_core.hasActiveRequest(InteractionType::ChooseRole))
+        return false;
+
+    InteractionResponse response = InteractionResponse::makeCancel(m_core.activeRequestId());
+    response.command = m_core.activeRequest().command;
+    QString error;
+    if (m_session.submitInteractionResponse(std::move(response), &error))
+        return true;
+
+    writeError(error.isEmpty() ? tr("無法略過身分分配") : error);
+    writeOutput(m_renderer.renderInteraction(m_core.activeRequest()));
+    return false;
 }
 
 void TuiApplicationController::handleCommand(const TuiCommandIntent &intent)
@@ -277,6 +320,113 @@ QString TuiApplicationController::resolveCardWireText(int cardId) const
 {
     const Card *card = Sanguosha != nullptr ? Sanguosha->getCard(cardId) : nullptr;
     return card != nullptr ? card->toString() : QString::number(cardId);
+}
+
+void TuiApplicationController::fillPlaySkillCandidates(CardInteractionPayload *payload) const
+{
+    if (payload == nullptr || Sanguosha == nullptr)
+        return;
+    const QString self = m_core.state()->selfName();
+    if (self.isEmpty())
+        return;
+
+    QSet<QString> seenKeys;
+    QSet<QString> seenNames;
+    auto addSkill = [&](const QString &name, int instanceId) {
+        const Skill *skill = Sanguosha->getSkill(name);
+        if (skill == nullptr || skill->isHideSkill() || !skill->isVisible())
+            return;
+        if (skill->inherits("FilterSkill"))
+            return;
+        if (ViewAsSkill::parseViewAsSkill(skill) == nullptr)
+            return;
+        const QString key = QStringLiteral("%1#%2").arg(name).arg(instanceId);
+        if (seenKeys.contains(key))
+            return;
+        if (instanceId <= 0 && seenNames.contains(name))
+            return;
+        seenKeys.insert(key);
+        if (instanceId > 0)
+            seenNames.insert(name);
+        SkillActivationCandidate candidate;
+        candidate.skillName = name;
+        candidate.instanceId = instanceId;
+        payload->skillCandidates.append(candidate);
+    };
+
+    const QVariantMap instances = m_core.state()->playerValue(
+        self, QStringLiteral("skill_instances")).toMap();
+    for (auto it = instances.constBegin(); it != instances.constEnd(); ++it) {
+        const QVariantMap entry = it.value().toMap();
+        if (!entry.value(QStringLiteral("visible"), true).toBool())
+            continue;
+        addSkill(entry.value(QStringLiteral("skill_name")).toString(),
+                 entry.value(QStringLiteral("instance_id")).toInt());
+    }
+    for (const QString &name : m_core.state()->playerValue(
+             self, QStringLiteral("skills")).toStringList()) {
+        addSkill(name, 0);
+    }
+    for (int cardId : m_core.state()->cardsForPlayer(self, 1)) {
+        const Card *equip = Sanguosha->getEngineCard(cardId);
+        if (equip != nullptr)
+            addSkill(equip->objectName(), 0);
+    }
+}
+
+QString TuiApplicationController::resolveSkillCardWireText(const QString &skillName,
+    int instanceId, const QList<int> &subcardIds, QString *error) const
+{
+    if (Sanguosha == nullptr) {
+        if (error != nullptr)
+            *error = tr("引擎尚未載入");
+        return QString();
+    }
+    const ViewAsSkill *viewAs = Sanguosha->getViewAsSkill(skillName);
+    if (viewAs == nullptr) {
+        if (error != nullptr)
+            *error = tr("沒有這個轉換技");
+        return QString();
+    }
+
+    const Card *card = nullptr;
+    if (const auto *v2 = dynamic_cast<const ViewAsSkillV2 *>(viewAs)) {
+        ActiveSkillRequest request;
+        request.reason = CardUseStruct::CARD_USE_REASON_PLAY;
+        request.selectedCardIds = subcardIds;
+        request.activationRef = SkillInstanceRef(m_core.state()->selfName(),
+            SkillInstanceKey(skillName, instanceId));
+        card = v2->createCard(request);
+    } else if (const auto *zero = qobject_cast<const ZeroCardViewAsSkill *>(viewAs)) {
+        card = zero->viewAs();
+    } else {
+        QList<const Card *> selected;
+        for (int cardId : subcardIds) {
+            const Card *subcard = Sanguosha->getEngineCard(cardId);
+            if (subcard == nullptr) {
+                if (error != nullptr)
+                    *error = tr("沒有這張牌");
+                return QString();
+            }
+            selected.append(subcard);
+        }
+        card = viewAs->viewAs(selected);
+    }
+    if (card == nullptr) {
+        if (error != nullptr) {
+            *error = subcardIds.isEmpty()
+                ? tr("此技能需要選手牌")
+                : tr("這些牌不能發動該技能");
+        }
+        return QString();
+    }
+
+    Card *mutableCard = const_cast<Card *>(card);
+    mutableCard->setActivationSkill(skillName, instanceId);
+    const QString text = card->toString();
+    if (card->isVirtualCard() && card->parent() == nullptr)
+        mutableCard->deleteLater();
+    return text;
 }
 
 QString TuiApplicationController::resolveCardDisplayText(int cardId) const
@@ -364,6 +514,52 @@ QString TuiApplicationController::renderLog() const
     }
     lines << rendered.mid(qMax(0, rendered.size() - 30));
     return lines.join(QLatin1Char('\n'));
+}
+
+QStringList TuiApplicationController::completionExtraTokens() const
+{
+    QStringList tokens;
+    QSet<QString> seen;
+    const auto add = [&](const QString &token) {
+        if (token.isEmpty() || seen.contains(token))
+            return;
+        seen.insert(token);
+        tokens.append(token);
+    };
+    if (!m_core.hasActiveRequest())
+        return tokens;
+    const InteractionRequest &request = m_core.activeRequest();
+    if (request.type == InteractionType::PlayCard) {
+        add(QStringLiteral("pass"));
+        add(QStringLiteral("過"));
+        add(QStringLiteral("不出"));
+    }
+    if (request.cancelable || request.type == InteractionType::PlayCard)
+        add(QStringLiteral("cancel"));
+    if (const auto *value = request.payloadAs<OptionInteractionPayload>()) {
+        for (const InteractionOption &option : value->options)
+            add(option.value);
+    }
+    if (const auto *value = request.payloadAs<ChooseOrderInteractionPayload>()) {
+        for (const InteractionOption &option : value->options)
+            add(option.value);
+    }
+    if (const auto *value = request.payloadAs<TriggerOrderInteractionPayload>()) {
+        for (const TriggerOrderOption &option : value->options)
+            add(option.responseValue);
+    }
+    QStringList players;
+    if (const auto *value = request.payloadAs<PlayerInteractionPayload>())
+        players = value->selection.selectablePlayers;
+    else if (const auto *value = request.payloadAs<CardInteractionPayload>())
+        players = value->optionalTargets;
+    else if (const auto *value = request.payloadAs<YijiInteractionPayload>())
+        players = value->targetPlayers;
+    for (int i = 0; i < players.size(); ++i) {
+        add(QString::number(i + 1));
+        add(players.at(i));
+    }
+    return tokens;
 }
 
 void TuiApplicationController::writeOutput(const QString &text)

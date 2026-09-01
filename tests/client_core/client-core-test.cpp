@@ -420,6 +420,24 @@ void testCardValidation()
     check(patternCore.validate(InteractionResponse::makeCards(patternId, QList<int>(),
             QStringLiteral("jink:qiaobian[spade:7]="))).accepted(),
         "a virtual card with no concrete id counts as one card");
+
+    ClientCore chooseCardCore;
+    chooseCardCore.state()->setCardIdSpace(160);
+    InteractionRequest chooseCard;
+    chooseCard.type = InteractionType::ChooseCard;
+    chooseCard.responseSchema = InteractionResponseShape::Cards;
+    CardInteractionPayload choosePayload;
+    choosePayload.selection.enumerated = false;
+    choosePayload.selection.minSelection = 0;
+    choosePayload.selection.maxSelection = 1;
+    choosePayload.hiddenHandCount = 3;
+    choosePayload.zoneFlags = QStringLiteral("he");
+    chooseCard.payload = choosePayload;
+    const quint64 chooseId = chooseCardCore.beginRequest(chooseCard);
+    check(chooseCardCore.validate(InteractionResponse::makeCards(chooseId, QList<int>() << -1)).accepted(),
+        "choose-card may submit an unknown-hand sentinel");
+    checkRejection(chooseCardCore.validate(InteractionResponse::makeCards(chooseId, QList<int>() << -2)),
+        InteractionRejection::UnknownCard, "choose-card still rejects other negative ids");
 }
 
 // ── exactly-once ────────────────────────────────────────────────────────
