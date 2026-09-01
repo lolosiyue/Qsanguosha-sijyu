@@ -3,12 +3,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "check:protocol": "node scripts/check-protocol-sync.mjs",
+    "check:translations": "node scripts/check-translations.mjs",
+    "test": "vitest run",
+    "dev": "node scripts/check-translations.mjs && vite",
+    "build": "node scripts/check-protocol-sync.mjs && node scripts/check-translations.mjs && tsc --noEmit && vitest run && vite build",
     "preview": "vite preview --host"
   },
   "devDependencies": {
     "typescript": "^5.9.2",
-    "vite": "^7.1.3"
+    "vite": "^7.1.3",
+    "vitest": "^3.2.4"
   }
 }

@@ -2,6 +2,14 @@ import { cardRecord, tr } from "./i18n";
 import {
   Command,
   GameEvent,
+  PLACE_DELAYED_TRICK,
+  PLACE_DISCARD,
+  PLACE_DRAW,
+  PLACE_EQUIP,
+  PLACE_HAND,
+  PLACE_JUDGE,
+  PLACE_SPECIAL,
+  PLACE_TABLE,
   asBool,
   asNumber,
   asNumberList,
@@ -26,15 +34,6 @@ interface LogRecord {
   arg5?: string;
 }
 
-const PLACE_HAND = 0;
-const PLACE_EQUIP = 1;
-const PLACE_DELAYED_TRICK = 2;
-const PLACE_JUDGE = 3;
-const PLACE_SPECIAL = 4;
-const DISCARD_PILE = 5;
-const DRAW_PILE = 6;
-const PLACE_TABLE = 7;
-const UNKNOWN_CARD_ID = -1;
 const REASON_PUT = 0x0a;
 const REASON_EXCLUSIVE = 0x68;
 const REASON_TURNOVER = 0x18;
@@ -42,6 +41,7 @@ const REASON_PREVIEW = 0x38;
 const REASON_SHUFFLE = 0x5a;
 const REASON_PUT_END = 0x6a;
 const REASON_TRANSFER = 0x09;
+const UNKNOWN_CARD_ID = -1;
 
 function phrase(key: string, fallback: string): string {
   const translated = tr(key);
@@ -66,7 +66,7 @@ function reasonMap(move: JsonObject): JsonObject {
 function shouldIgnoreDisplayMove(move: JsonObject): boolean {
   if (asString(move.to_pile).startsWith("#") || asString(move.from_pile).startsWith("#"))
     return true;
-  if (asNumber(move.to_place) === DISCARD_PILE) {
+  if (asNumber(move.to_place) === PLACE_DISCARD) {
     const fromPlace = asNumber(move.from_place);
     return fromPlace === PLACE_TABLE || fromPlace === PLACE_JUDGE;
   }
@@ -119,9 +119,9 @@ function synthesizeGetCardLogs(move: JsonObject): LogRecord[] {
   const hasFrom = fromPlayer.length > 0;
 
   if (toPlace === PLACE_HAND) {
-    if (fromPlace === DRAW_PILE)
+    if (fromPlace === PLACE_DRAW)
       logs.push(record("$DrawCards", toPlayer, [], cardString, count));
-    else if (fromPlace === DISCARD_PILE)
+    else if (fromPlace === PLACE_DISCARD)
       logs.push(record("$RecycleCard", toPlayer, [], cardString));
     else if (fromPlace === PLACE_SPECIAL)
       logs.push(record("#GotNCardFromPile", toPlayer, [fromPlayer], cardString,
@@ -155,7 +155,7 @@ function synthesizeGetCardLogs(move: JsonObject): LogRecord[] {
       if (unknown)
         type = "#LightningMove";
       logs.push(record(type, fromPlayer, [toPlayer], cardString, count));
-    } else if (toPlace === DRAW_PILE) {
+    } else if (toPlace === PLACE_DRAW) {
       if (reason === REASON_PUT && asString(reasonMap(move).skill_name) === "luck_card")
         return logs;
       let type = "$PutCard";
