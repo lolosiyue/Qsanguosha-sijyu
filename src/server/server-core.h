@@ -61,6 +61,9 @@ private:
                         quint64 requestId);
     void rejectConnection(ServerConnectionContext *context,
                           const QString &code, const QString &detail);
+    // name2objname only fills up when a game starts, so it cannot answer for
+    // players who are still sitting in the lobby.
+    bool screenNameInUse(const QString &screenName) const;
 
     ServerSocket *server;
     ServerSocket *websocketServer;
@@ -70,6 +73,9 @@ private:
     QHash<QString, ServerPlayer *> players;
     QSet<QString> addresses;
     QMultiHash<QString, QString> name2objname;
+    // Screen names claimed by connections that have signed up but whose game
+    // has not started yet; dropped again when the connection goes away.
+    QHash<ClientSocket *, QString> m_lobbyScreenNames;
     bool created_successfully;
     int playerCount;
     quint64 m_nextGameSeedIndex;

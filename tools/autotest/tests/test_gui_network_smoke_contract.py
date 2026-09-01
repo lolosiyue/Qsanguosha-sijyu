@@ -124,10 +124,17 @@ def test_client_exposes_transport_observation_without_changing_transport() -> No
     assert "emit server_reply(static_cast<int>(command));" in source, (
         "every client reply must be observable at the single reply funnel"
     )
-    # M2 explicitly must not touch the wire format.
+    # M2 explicitly must not touch the wire format: the observation seam is an
+    # extra emit, never a second way out to the socket.  Protocol V2 replies
+    # leave through the live session, correlated with the request being served.
     code = strip_comments(source)
-    assert "S_SRC_CLIENT | S_TYPE_REPLY | S_DEST_ROOM" in code, (
-        "the reply packet shape must be unchanged"
+    assert "m_liveSession->sendReply(command, arg, m_dispatchingRequestId, &error)" in code, (
+        "the reply packet must still leave through the live session's single "
+        "correlated reply path"
+    )
+    assert "Refusing uncorrelated Protocol V2 reply" in code, (
+        "an uncorrelated reply must be refused rather than sent with a guessed "
+        "request id"
     )
     print("PASS test_client_exposes_transport_observation_without_changing_transport")
 
