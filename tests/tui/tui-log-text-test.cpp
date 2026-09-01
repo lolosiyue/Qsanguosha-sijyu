@@ -169,6 +169,24 @@ int main(int argc, char **argv)
     check(chatText.contains(QStringLiteral("刘玄德")),
           "chat names the speaker, not their object name");
 
+    const QVariantMap emotion{{QStringLiteral("schema_version"), 1},
+        {QStringLiteral("player_name"), QStringLiteral("sgs3")},
+        {QStringLiteral("emotion"), QStringLiteral("thunder_slash")}};
+    check(tuiPresentationEventText(QSanProtocol::S_COMMAND_SET_EMOTION,
+              QStringLiteral("sgs3 emotion thunder_slash"), emotion, playerName).isEmpty(),
+          "emotion stays out of the transcript");
+
+    const QString useCard = tuiSkillLogText(
+        skillLog(QStringLiteral("#UseCard"), QStringLiteral("sgs1"),
+                 {QStringLiteral("sgs2")}, QString::number(cardId),
+                 {QString(), QString(), QString(), QString(), QString()}),
+        playerName);
+    check(!useCard.contains(QStringLiteral("#UseCard")),
+          "use-card log renders a sentence, not the raw log key");
+    check(useCard.contains(QStringLiteral("刘玄德")) && useCard.contains(QStringLiteral("曹孟德")),
+          "use-card log names the user and the target");
+    check(hasNoPlaceholders(useCard), "use-card log leaves no unfilled placeholder");
+
     const QVariantMap bgm{{QStringLiteral("schema_version"), 1},
         {QStringLiteral("event"), int(QSanProtocol::S_GAME_EVENT_CHANGE_BGM)},
         {QStringLiteral("path"), QStringLiteral("audio/system/test.ogg")},

@@ -29,6 +29,8 @@ private:
     QString heading(const QString &text) const;
     QString cardText(const ClientGameState &state, int cardId) const;
     QString nameText(const QString &name) const;
+    QString interactionTitle(const InteractionRequest &request) const;
+    QString answerHint(const InteractionRequest &request) const;
     bool m_ansiEnabled = false;
     CardResolver m_cardResolver;
     NameResolver m_nameResolver;

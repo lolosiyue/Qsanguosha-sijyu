@@ -2,6 +2,8 @@
 
 #include <QCoreApplication>
 #include <QHash>
+#include <QSet>
+#include <QtGlobal>
 
 namespace {
 
@@ -38,6 +40,70 @@ bool rejectsArgument(TuiCommandType type)
     }
 }
 
+const QHash<QString, TuiCommandType> &commandTable()
+{
+    static const QHash<QString, TuiCommandType> commands{
+        {QStringLiteral("/help"), TuiCommandType::Help},
+        {QStringLiteral("/status"), TuiCommandType::Status},
+        {QStringLiteral("/players"), TuiCommandType::Players},
+        {QStringLiteral("/hand"), TuiCommandType::Hand},
+        {QStringLiteral("/equip"), TuiCommandType::Equipment},
+        {QStringLiteral("/piles"), TuiCommandType::Piles},
+        {QStringLiteral("/skills"), TuiCommandType::Skills},
+        {QStringLiteral("/log"), TuiCommandType::Log},
+        {QStringLiteral("/chat"), TuiCommandType::Chat},
+        {QStringLiteral("/trust"), TuiCommandType::Trust},
+        {QStringLiteral("/addrobot"), TuiCommandType::AddRobot},
+        {QStringLiteral("/surrender"), TuiCommandType::Surrender},
+        {QStringLiteral("/reconnect"), TuiCommandType::Reconnect},
+        {QStringLiteral("/quit"), TuiCommandType::Quit},
+        {QStringLiteral("/cancel"), TuiCommandType::Cancel}
+    };
+    return commands;
+}
+
+QStringList argumentCandidates(const QString &command)
+{
+    if (command == QLatin1String("/trust"))
+        return {QStringLiteral("on"), QStringLiteral("off")};
+    if (command == QLatin1String("/addrobot"))
+        return {QStringLiteral("all")};
+    return {};
+}
+
+QString commonPrefix(const QStringList &matches)
+{
+    if (matches.isEmpty())
+        return {};
+    QString prefix = matches.first();
+    for (const QString &item : matches) {
+        int n = 0;
+        const int limit = int(qMin(prefix.size(), item.size()));
+        while (n < limit && prefix.at(n).toLower() == item.at(n).toLower())
+            ++n;
+        prefix.truncate(n);
+        if (prefix.isEmpty())
+            break;
+    }
+    return prefix;
+}
+
+QStringList matchingTokens(const QStringList &candidates, const QString &prefix)
+{
+    QSet<QString> seen;
+    QStringList matches;
+    for (const QString &candidate : candidates) {
+        if (candidate.isEmpty() || seen.contains(candidate))
+            continue;
+        if (!candidate.startsWith(prefix, Qt::CaseInsensitive))
+            continue;
+        seen.insert(candidate);
+        matches.append(candidate);
+    }
+    matches.sort(Qt::CaseInsensitive);
+    return matches;
+}
+
 } // namespace
 
 bool TuiCommandParser::parse(const QString &line, TuiCommandIntent *intent,
@@ -58,25 +124,8 @@ bool TuiCommandParser::parse(const QString &line, TuiCommandIntent *intent,
     const qsizetype separator = input.indexOf(QLatin1Char(' '));
     const QString keyword = (separator < 0 ? input : input.left(separator)).toLower();
     const QString argument = separator < 0 ? QString() : input.mid(separator + 1).trimmed();
-    static const QHash<QString, TuiCommandType> commands{
-        {QStringLiteral("/help"), TuiCommandType::Help},
-        {QStringLiteral("/status"), TuiCommandType::Status},
-        {QStringLiteral("/players"), TuiCommandType::Players},
-        {QStringLiteral("/hand"), TuiCommandType::Hand},
-        {QStringLiteral("/equip"), TuiCommandType::Equipment},
-        {QStringLiteral("/piles"), TuiCommandType::Piles},
-        {QStringLiteral("/skills"), TuiCommandType::Skills},
-        {QStringLiteral("/log"), TuiCommandType::Log},
-        {QStringLiteral("/chat"), TuiCommandType::Chat},
-        {QStringLiteral("/trust"), TuiCommandType::Trust},
-        {QStringLiteral("/addrobot"), TuiCommandType::AddRobot},
-        {QStringLiteral("/surrender"), TuiCommandType::Surrender},
-        {QStringLiteral("/reconnect"), TuiCommandType::Reconnect},
-        {QStringLiteral("/quit"), TuiCommandType::Quit},
-        {QStringLiteral("/cancel"), TuiCommandType::Cancel}
-    };
-    const auto found = commands.constFind(keyword);
-    if (found == commands.cend())
+    const auto found = commandTable().constFind(keyword);
+    if (found == commandTable().cend())
         return reject(error, tr("未知命令：%1").arg(keyword));
 
     TuiCommandIntent parsed;
@@ -112,4 +161,70 @@ bool TuiCommandParser::parse(const QString &line, TuiCommandIntent *intent,
     }
     *intent = parsed;
     return true;
+}
+
+QStringList tuiCommandNames()
+{
+    QStringList names = commandTable().keys();
+    names.sort(Qt::CaseInsensitive);
+    return names;
+}
+
+TuiCompletion completeTuiLine(const QString &line, const QStringList &extraTokens)
+{
+    TuiCompletion result;
+    result.line = line;
+    const QString trimmed = line.trimmed();
+    const bool trailingSpace = !line.isEmpty() && line.back().isSpace();
+    const qsizetype firstSpace = trimmed.indexOf(QLatin1Char(' '));
+    const QString firstWord = (firstSpace < 0 ? trimmed : trimmed.left(firstSpace)).toLower();
+    const bool completingCommand = trimmed.startsWith(QLatin1Char('/'))
+        && firstSpace < 0 && !trailingSpace;
+
+    QStringList pool;
+    if (completingCommand)
+        pool = tuiCommandNames();
+    else if (trimmed.startsWith(QLatin1Char('/')))
+        pool = argumentCandidates(firstWord);
+    else
+        pool = extraTokens;
+
+    QString prefix;
+    QString token;
+    if (line.isEmpty()) {
+        prefix.clear();
+        token.clear();
+    } else if (trailingSpace) {
+        prefix = line;
+        token.clear();
+    } else {
+        qsizetype lastSpace = -1;
+        for (qsizetype i = line.size() - 1; i >= 0; --i) {
+            if (line.at(i).isSpace()) {
+                lastSpace = i;
+                break;
+            }
+        }
+        if (lastSpace < 0) {
+            prefix.clear();
+            token = line;
+        } else {
+            prefix = line.left(lastSpace + 1);
+            token = line.mid(lastSpace + 1);
+        }
+    }
+
+    result.matches = matchingTokens(pool, token);
+    if (result.matches.isEmpty())
+        return result;
+    if (result.matches.size() == 1) {
+        result.line = prefix + result.matches.first();
+        if (completingCommand)
+            result.line.append(QLatin1Char(' '));
+        return result;
+    }
+    const QString shared = commonPrefix(result.matches);
+    if (!shared.isEmpty() && shared.size() > token.size())
+        result.line = prefix + shared;
+    return result;
 }

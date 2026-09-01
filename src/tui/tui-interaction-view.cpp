@@ -1,7 +1,9 @@
 #include "tui-interaction-view.h"
 
-#include <QJsonArray>
 #include <QCoreApplication>
+#include <QHash>
+#include <QtGlobal>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QRegularExpression>
@@ -52,6 +54,14 @@ QList<int> requestCards(const InteractionRequest &request)
     return {};
 }
 
+int hiddenHandSlots(const InteractionRequest &request)
+{
+    if (request.type != InteractionType::ChooseCard)
+        return 0;
+    const auto *value = request.payloadAs<CardInteractionPayload>();
+    return value != nullptr ? qMax(0, value->hiddenHandCount) : 0;
+}
+
 QStringList requestPlayers(const InteractionRequest &request)
 {
     if (const auto *value = request.payloadAs<PlayerInteractionPayload>())
@@ -67,6 +77,47 @@ bool cardTextAllowed(const InteractionRequest &request)
 {
     const auto *value = request.payloadAs<CardInteractionPayload>();
     return value != nullptr && value->cardTextAllowed;
+}
+
+QString canonicalRole(const QString &token, const QStringList &roles)
+{
+    const QString trimmed = token.trimmed();
+    if (trimmed.isEmpty())
+        return trimmed;
+    if (roles.contains(trimmed))
+        return trimmed;
+    static const QHash<QString, QString> aliases{
+        {QStringLiteral("主公"), QStringLiteral("lord")},
+        {QStringLiteral("地主"), QStringLiteral("lord")},
+        {QStringLiteral("忠臣"), QStringLiteral("loyalist")},
+        {QStringLiteral("反賊"), QStringLiteral("rebel")},
+        {QStringLiteral("反贼"), QStringLiteral("rebel")},
+        {QStringLiteral("農民"), QStringLiteral("rebel")},
+        {QStringLiteral("农民"), QStringLiteral("rebel")},
+        {QStringLiteral("內奸"), QStringLiteral("renegade")},
+        {QStringLiteral("内奸"), QStringLiteral("renegade")}};
+    const QString mapped = aliases.value(trimmed, trimmed.toLower());
+    if (roles.isEmpty() || roles.contains(mapped))
+        return mapped;
+    return trimmed;
+}
+
+QString canonicalPlayer(const QString &token, const QStringList &players, QString *error)
+{
+    bool numeric = false;
+    const int index = token.toInt(&numeric) - 1;
+    if (numeric) {
+        if (index >= 0 && index < players.size())
+            return players.at(index);
+        if (error != nullptr)
+            *error = tr("玩家編號 '%1' 超出範圍").arg(token);
+        return QString();
+    }
+    if (players.isEmpty() || players.contains(token))
+        return token;
+    if (error != nullptr)
+        *error = tr("玩家 '%1' 不可用").arg(token);
+    return QString();
 }
 
 bool parseActivationPrefix(QString *cardPart, QString *skillName,
@@ -111,14 +162,18 @@ bool parseActivationPrefix(QString *cardPart, QString *skillName,
 } // namespace
 
 TuiInteractionView::TuiInteractionView(TuiRenderer *renderer, Writer writer,
-                                       CardTextResolver cardTextResolver)
+                                       CardTextResolver cardTextResolver,
+                                       SkillCardResolver skillCardResolver)
     : m_renderer(renderer), m_writer(std::move(writer)),
-      m_cardTextResolver(std::move(cardTextResolver))
+      m_cardTextResolver(std::move(cardTextResolver)),
+      m_skillCardResolver(std::move(skillCardResolver))
 {
 }
 
 void TuiInteractionView::presentRequest(const InteractionRequest &request)
 {
+    if (request.type == InteractionType::ChooseRole)
+        return;
     if (m_renderer != nullptr && m_writer)
         m_writer(m_renderer->renderInteraction(request));
 }
@@ -126,6 +181,8 @@ void TuiInteractionView::presentRequest(const InteractionRequest &request)
 void TuiInteractionView::finishRequest(const InteractionRequest &request,
                                        const InteractionResponse &)
 {
+    if (request.type == InteractionType::ChooseRole)
+        return;
     if (m_writer)
         m_writer(tr("請求 %1 的作答已接受").arg(request.requestId));
 }
@@ -264,7 +321,10 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
     const QString text = line.trimmed();
     if (text.compare(QStringLiteral("cancel"), Qt::CaseInsensitive) == 0
         || text.compare(QStringLiteral("c"), Qt::CaseInsensitive) == 0
-        || text == QLatin1String("/cancel")) {
+        || text == QLatin1String("/cancel")
+        || text.compare(QStringLiteral("pass"), Qt::CaseInsensitive) == 0
+        || text == QStringLiteral("過")
+        || text == QStringLiteral("不出")) {
         *response = InteractionResponse::makeCancel(request.requestId);
         response->command = request.command;
         return true;
@@ -307,17 +367,62 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
         InteractionResponse value = InteractionResponse::makeCards(request.requestId, {});
         auto *answer = std::get_if<InteractionResponse::CardSelectionData>(&value.payload);
         const QList<int> candidates = requestCards(request);
+        const QList<SkillActivationCandidate> skills
+            = request.payloadAs<CardInteractionPayload>() != nullptr
+            ? request.payloadAs<CardInteractionPayload>()->skillCandidates
+            : QList<SkillActivationCandidate>{};
+        const int hiddenSlots = hiddenHandSlots(request);
+        const int indexCount = hiddenSlots + candidates.size() + skills.size();
         const QStringList cardTokens = splitTokens(cardPart);
-        bool indexSyntax = !cardTokens.isEmpty() && !candidates.isEmpty();
+        bool indexSyntax = !cardTokens.isEmpty() && indexCount > 0;
         static const QRegularExpression indexToken(QStringLiteral("^[0-9]+(?:-[0-9]+)?$"));
         for (const QString &token : cardTokens)
             indexSyntax = indexSyntax && indexToken.match(token).hasMatch();
         if (indexSyntax) {
-            const QList<int> indexes = parseIndexes(cardPart, candidates.size(), error);
+            const QList<int> indexes = parseIndexes(cardPart, indexCount, error);
             if (indexes.isEmpty())
                 return false;
-            for (int index : indexes)
-                answer->cardIds.append(candidates.at(index));
+            int skillIndex = -1;
+            QList<int> selectedCardIndexes;
+            for (int index : indexes) {
+                if (index < hiddenSlots) {
+                    answer->cardIds.append(-1);
+                    continue;
+                }
+                const int cardIndex = index - hiddenSlots;
+                if (cardIndex < candidates.size()) {
+                    selectedCardIndexes.append(cardIndex);
+                    continue;
+                }
+                if (skillIndex >= 0) {
+                    if (error != nullptr)
+                        *error = tr("一次只能發動一個技能");
+                    return false;
+                }
+                skillIndex = cardIndex - candidates.size();
+            }
+            if (skillIndex >= 0) {
+                const SkillActivationCandidate &skill = skills.at(skillIndex);
+                QList<int> subcardIds;
+                for (int cardIndex : selectedCardIndexes)
+                    subcardIds.append(candidates.at(cardIndex));
+                if (!m_skillCardResolver) {
+                    if (error != nullptr)
+                        *error = tr("無法組技能牌");
+                    return false;
+                }
+                const QString cardText = m_skillCardResolver(skill.skillName,
+                    skill.instanceId, subcardIds, error);
+                if (cardText.isEmpty())
+                    return false;
+                answer->cardText = cardText;
+                answer->subcardIds = subcardIds;
+                answer->activationSkillName = skill.skillName;
+                answer->activationSkillInstanceId = skill.instanceId;
+            } else {
+                for (int cardIndex : selectedCardIndexes)
+                    answer->cardIds.append(candidates.at(cardIndex));
+            }
         }
 
         if (!answer->cardIds.isEmpty()) {
@@ -376,23 +481,44 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
                 answer->targets.append(target);
             }
         }
-        answer->activationSkillName = activationSkillName;
-        answer->activationSkillInstanceId = activationSkillInstanceId;
+        if (!activationSkillName.isEmpty()) {
+            answer->activationSkillName = activationSkillName;
+            answer->activationSkillInstanceId = activationSkillInstanceId;
+        }
         *response = std::move(value);
         break;
     }
     case InteractionResponseShape::Assignment: {
+        const auto *assignment = request.payloadAs<RoleAssignmentInteractionPayload>();
+        const QStringList players = assignment != nullptr ? assignment->playerNames
+                                                          : QStringList();
+        const QStringList roles = assignment != nullptr ? assignment->roles
+                                                        : QStringList();
         QStringList names;
         QStringList values;
         for (const QString &token : splitTokens(text)) {
             const qsizetype equals = token.indexOf(QLatin1Char('='));
             if (equals <= 0 || equals == token.size() - 1) {
                 if (error != nullptr)
-                    *error = tr("身分分配必須使用 player=role");
+                    *error = tr("身分分配必須使用 玩家=身分，例如 1=主公");
                 return false;
             }
-            names.append(token.left(equals));
-            values.append(token.mid(equals + 1));
+            const QString player = canonicalPlayer(token.left(equals), players, error);
+            if (player.isEmpty())
+                return false;
+            const QString role = canonicalRole(token.mid(equals + 1), roles);
+            if (names.contains(player)) {
+                if (error != nullptr)
+                    *error = tr("玩家 '%1' 重複指定").arg(token.left(equals));
+                return false;
+            }
+            names.append(player);
+            values.append(role);
+        }
+        if (names.isEmpty()) {
+            if (error != nullptr)
+                *error = tr("必須為每位玩家指定身分");
+            return false;
         }
         *response = InteractionResponse::makeAssignment(request.requestId, names, values);
         break;

@@ -9,6 +9,8 @@
 #include "tui-renderer.h"
 
 #include <QFile>
+#include <QList>
+#include <QVariant>
 
 class TuiScriptRunner;
 
@@ -34,6 +36,7 @@ public slots:
 
 private:
     void handleCommand(const TuiCommandIntent &intent);
+    bool trySkipRoleAssignment();
     void writeOutput(const QString &text);
     void writeError(const QString &text);
     void writeAutomationMarker(const QString &marker);
@@ -42,6 +45,9 @@ private:
     QString resolveCardWireText(int cardId) const;
     QString resolveCardDisplayText(int cardId) const;
     QString resolveNameText(const QString &name) const;
+    QString resolveSkillCardWireText(const QString &skillName, int instanceId,
+                                     const QList<int> &subcardIds, QString *error) const;
+    void fillPlaySkillCandidates(CardInteractionPayload *payload) const;
     QString renderPiles() const;
     QString renderSkills() const;
     QString renderEquipment() const;
@@ -49,6 +55,7 @@ private:
     QString resolvePlayerName(const QString &objectName) const;
     QString presentationText(int command, const QString &fallbackText,
                              const QVariant &payload) const;
+    QStringList completionExtraTokens() const;
 
     TuiApplicationOptions m_options;
     ClientCore m_core;
