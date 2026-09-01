@@ -85,6 +85,9 @@ void ServerConsole::start()
         writeLine(QStringLiteral("Listening on %1:%2")
             .arg(snapshot.bindAddress)
             .arg(snapshot.port));
+        writeLine(QStringLiteral("WebSocket listening on %1:%2")
+            .arg(snapshot.bindAddress)
+            .arg(snapshot.websocketPort));
         writeLine(QStringLiteral("Mode: %1").arg(snapshot.gameMode));
         writeLine();
     }

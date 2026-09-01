@@ -8,6 +8,7 @@ struct ServerStatusSnapshot
     qint64 uptimeMs = 0;
     QString bindAddress;
     quint16 port = 0;
+    quint16 websocketPort = 0;
     QString gameMode;
     int roomCount = 0;
     int gamesRunning = 0;

@@ -56,7 +56,7 @@ server_config="$config_root/server.ini"
 printf '[General]\nGameMode=02p\nBindAddress=127.0.0.1\n' > "$server_config"
 
 XDG_CONFIG_HOME="$config_root" \
-    "$server" --config "$server_config" --port 0 >"$log_file" 2>&1 &
+    "$server" --config "$server_config" --port 0 --websocket-port 0 >"$log_file" 2>&1 &
 server_pid=$!
 
 listen_port=

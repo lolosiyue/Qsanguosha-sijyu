@@ -6,6 +6,7 @@ services:
     image: qsanguosha-server:local
     ports:
       - "9527:9527/tcp"
+      - "9528:9528/tcp"
     volumes:
       - qsanguosha-data:/data
       - ./packaging/docker/server.ini:/config/server.ini:ro

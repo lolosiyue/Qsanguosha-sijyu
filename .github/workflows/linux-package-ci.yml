@@ -83,9 +83,9 @@ jobs:
           host: linux
           target: desktop
           arch: linux_gcc_64
-          modules: 'qt5compat qtmultimedia'
+          modules: 'qt5compat qtmultimedia qtwebsockets'
           cache: true
-          cache-key-prefix: qt-ubuntu-24.04-x64-6.11.1-linux_gcc_64-qt5compat-qtmultimedia-aqtmaster16db45a7-v1
+          cache-key-prefix: qt-ubuntu-24.04-x64-6.11.1-linux_gcc_64-qt5compat-qtmultimedia-qtwebsockets-aqtmaster16db45a7-v1
           aqtsource: 'git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e'
 
       - name: Install build and packaging dependencies

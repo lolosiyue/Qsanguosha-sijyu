@@ -116,7 +116,7 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
 # 單一 Qt component 清單，按產品分層，避免 Windows／Linux 各自維護會漂移的兩份清單。
-set(QSAN_QT_COMPONENTS Core Network)
+set(QSAN_QT_COMPONENTS Core Network WebSockets)
 
 if(BUILD_TESTING)
     list(APPEND QSAN_QT_COMPONENTS
@@ -148,8 +148,9 @@ list(REMOVE_DUPLICATES QSAN_QT_COMPONENTS)
 # Qt 6.5 才加入的 API（例如 QStyleHints::colorScheme()），且 Windows 正式
 # toolchain 已經係 Qt 6.11.1，所以 GUI build 明確要求 6.11。
 #
-# server-only build 刻意唔套用呢個下限：dedicated server 只需要 Core／Network，
-# 要繼續可以用 distro 提供的 Qt 6.x（例如 Ubuntu 24.04 的 6.4.2）建置。
+# server-only build 刻意唔套用呢個下限：dedicated server 只需要
+# Core／Network／WebSockets，要繼續可以用 distro 提供的 Qt 6.x
+# （例如 Ubuntu 24.04 的 6.4.2）建置。
 set(QSAN_QT_GUI_MINIMUM_VERSION 6.11)
 
 if(QSAN_BUILD_GUI OR WIN32)
@@ -391,6 +392,8 @@ add_library(qsanguosha_engine STATIC
     src/server/serverplayer.cpp
     src/util/nativesocket.cpp
     src/util/nativesocket.h
+    src/util/websocketsocket.cpp
+    src/util/websocketsocket.h
     src/util/socket.h
     src/util/game-snapshot.cpp
     src/util/game-snapshot.h
@@ -467,6 +470,7 @@ target_precompile_headers(qsanguosha_engine PRIVATE
 target_link_libraries(qsanguosha_engine PUBLIC
     Qt6::Core
     Qt6::Network
+    Qt6::WebSockets
 )
 
 if(WIN32)
@@ -474,7 +478,7 @@ if(WIN32)
 endif()
 
 get_target_property(qsan_engine_links qsanguosha_engine LINK_LIBRARIES)
-set(_qsan_engine_qt_allowlist Qt6::Core Qt6::Network)
+set(_qsan_engine_qt_allowlist Qt6::Core Qt6::Network Qt6::WebSockets)
 foreach(qsan_engine_link IN LISTS qsan_engine_links)
     if(qsan_engine_link MATCHES "^Qt6::" AND NOT qsan_engine_link IN_LIST _qsan_engine_qt_allowlist)
         message(FATAL_ERROR "qsanguosha_engine links forbidden Qt target: ${qsan_engine_link}")
@@ -637,6 +641,7 @@ if(QSAN_BUILD_TUI)
         "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>"
         Qt6::Core
         Qt6::Network
+        Qt6::WebSockets
     )
     if(WIN32)
         # crash handler (crashhandler.cpp, Release only) needs dbghelp
@@ -733,6 +738,7 @@ if(QSAN_BUILD_SERVER)
         "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>"
         Qt6::Core
         Qt6::Network
+        Qt6::WebSockets
     )
     if(WIN32)
         target_link_libraries(qsanguosha_server PRIVATE Ws2_32 IPHLPAPI)
@@ -1188,6 +1194,7 @@ if(QSAN_BUILD_GUI)
         Qt6::Core
         Qt6::Gui
         Qt6::Network
+        Qt6::WebSockets
         Qt6::Widgets
     )
     if(QSAN_BUILD_XP_LEGACY)

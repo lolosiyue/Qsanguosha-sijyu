@@ -25,10 +25,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-cmake.ps1 -Confi
 
 ### 🐧 Linux（無頭伺服器）
 
-Linux 本階段只建置 **無頭伺服器**（`qsanguosha_server`），冇 GUI、冇 FMOD、冇 X11 依賴，只連結 `Qt6::Core` 同 `Qt6::Network`。
+Linux 本階段只建置 **無頭伺服器**（`qsanguosha_server`），冇 GUI、冇 FMOD、冇 X11 依賴，連結 `Qt6::Core`、`Qt6::Network` 同 `Qt6::WebSockets`。
 
 ```bash
-sudo apt install -y build-essential cmake ninja-build qt6-base-dev swig
+sudo apt install -y build-essential cmake ninja-build qt6-base-dev qt6-websockets-dev swig
 
 # GCC
 cmake -S . -B build-linux-gcc -G Ninja -DCMAKE_BUILD_TYPE=Debug \

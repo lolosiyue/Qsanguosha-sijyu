@@ -98,7 +98,7 @@ runtime_user=$(docker image inspect --format '{{.Config.User}}' "$image")
 [[ $(docker image inspect --format '{{.Config.WorkingDir}}' "$image") == /data ]]
 [[ $(docker image inspect --format '{{.Config.StopSignal}}' "$image") == SIGTERM ]]
 [[ $(docker image inspect --format '{{json .Config.ExposedPorts}}' "$image") \
-    == '{"9527/tcp":{}}' ]]
+    == '{"9527/tcp":{},"9528/tcp":{}}' ]]
 [[ $(docker image inspect --format '{{json .Config.Volumes}}' "$image") \
     == '{"/data":{}}' ]]
 docker run --rm --entrypoint /bin/sh "$image" -ec '

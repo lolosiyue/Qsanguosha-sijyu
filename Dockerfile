@@ -15,6 +15,7 @@ RUN apt-get update \
         ninja-build \
         python3-venv \
         qt6-base-dev \
+        qt6-websockets-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
@@ -62,6 +63,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
         libqt6network6 \
+        libqt6websockets6 \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 9527 qsanguosha \
     && useradd --uid 9527 --gid 9527 \
@@ -96,6 +98,7 @@ WORKDIR /data
 VOLUME ["/data"]
 
 EXPOSE 9527/tcp
+EXPOSE 9528/tcp
 STOPSIGNAL SIGTERM
 
 USER 9527:9527

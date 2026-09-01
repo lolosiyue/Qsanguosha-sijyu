@@ -75,6 +75,7 @@ const QList<SettingSpec> &settingSpecs()
         stringSetting("ServerName", "", false),
         stringSetting("GameMode", "02p", false),
         integerSetting("ServerPort", 9527, 0, 65535),
+        integerSetting("WebSocketPort", 9528, 0, 65535),
         integerSetting("DetectorPort", 9526, 0, 65535),
         {QStringLiteral("BindAddress"), ValueKind::BindAddress, QStringLiteral("any")},
         stringSetting("Address"),
