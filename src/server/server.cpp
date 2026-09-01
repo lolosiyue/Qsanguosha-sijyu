@@ -2093,7 +2093,7 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 			QStringLiteral("No matching player exists for reconnect"));
 		return;
 	}
-	if (name2objname.contains(signup.screenName)) {
+	if (screenNameInUse(signup.screenName)) {
 		rejectSignup(QStringLiteral("name_in_use"),
 			QStringLiteral("Screen name is already in use"));
 		return;
@@ -2108,6 +2108,9 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 	}
 
 	ServerPlayer *player = current->addSocket(socket);
+	// Claim the name for the lobby right away: name2objname is only written
+	// when the game starts, so until then nothing else would reject a duplicate.
+	m_lobbyScreenNames.insert(socket, signup.screenName);
 	SignupReplyPayload reply;
 	reply.accepted = true;
 	reply.reconnected = false;
@@ -2129,9 +2132,16 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 	emit playerJoined(player->objectName(), player->screenName(), current->getId());
 }
 
+bool Server::screenNameInUse(const QString &screenName) const
+{
+	return name2objname.contains(screenName)
+		|| m_lobbyScreenNames.key(screenName, nullptr) != nullptr;
+}
+
 void Server::cleanup()
 {
 	ClientSocket *socket = qobject_cast<ClientSocket *>(sender());
+	m_lobbyScreenNames.remove(socket);
 	if (ServerConnectionContext *context = m_connectionContexts.take(socket)) {
 		context->fail();
 		context->deleteLater();

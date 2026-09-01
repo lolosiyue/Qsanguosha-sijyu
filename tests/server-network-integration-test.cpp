@@ -354,18 +354,38 @@ bool runContract(const QString &serverPath, QString *error)
     duplicate.disconnect();
     primary.disconnect();
 
-    WireClient reconnect;
-    SignupReplyPayload reconnectReply;
-    if (!reconnect.connectAndAcceptHello(server.port(), error)
-        || !reconnect.signup(QStringLiteral("protocol-v2-live"), true,
-                             &reconnectReply, error)
-        || !reconnectReply.accepted || !reconnectReply.reconnected
-        || reconnectReply.playerId != primaryReply.playerId) {
+    // Dropping before the game starts means leaving the lobby: the seat and the
+    // screen name are released, so there is no session left to take over.
+    // Reconnect is an in-game affair, covered by the full-game flow.
+    WireClient staleReconnect;
+    SignupReplyPayload staleReconnectReply;
+    if (!staleReconnect.connectAndAcceptHello(server.port(), error)
+        || !staleReconnect.signup(QStringLiteral("protocol-v2-live"), true,
+                                  &staleReconnectReply, error)
+        || staleReconnectReply.accepted
+        || staleReconnectReply.errorCode
+               != QStringLiteral("reconnect_target_missing")) {
         if (error->isEmpty())
-            *error = QStringLiteral("reconnect did not preserve player identity");
+            *error = QStringLiteral("pre-game reconnect was not rejected as missing");
         return false;
     }
-    reconnect.disconnect();
+    staleReconnect.disconnect();
+
+    // The released name signs up again as a brand new player, never as a takeover.
+    WireClient rejoin;
+    SignupReplyPayload rejoinReply;
+    if (!rejoin.connectAndAcceptHello(server.port(), error)
+        || !rejoin.signup(QStringLiteral("protocol-v2-live"), false,
+                          &rejoinReply, error)
+        || !rejoinReply.accepted || rejoinReply.reconnected
+        || rejoinReply.playerId.isEmpty()
+        || rejoinReply.playerId == primaryReply.playerId) {
+        if (error->isEmpty())
+            *error = QStringLiteral("the released lobby name did not sign up afresh");
+        return false;
+    }
+    // rejoin stays connected through the shutdown: the room keeps a live seat,
+    // which is the ordinary path a dedicated server is stopped on.
 
     WireClient legacy;
     if (!legacy.connectAndAcceptHello(server.port(), error)

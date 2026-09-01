@@ -360,8 +360,11 @@ int runEngineSmokeTests()
     replayMessage.messageId = 1;
     replayMessage.command = QSanProtocol::S_COMMAND_ADD_PLAYER;
     replayMessage.hasPayload = true;
-    replayMessage.payload = QVariantList{
-        QStringLiteral("p1"), QStringLiteral("UGxheWVy"), QStringLiteral("caocao")};
+    replayMessage.payload = QVariantMap{
+        {QStringLiteral("schema_version"), 1},
+        {QStringLiteral("player_name"), QStringLiteral("p1")},
+        {QStringLiteral("screen_name"), QStringLiteral("UGxheWVy")},
+        {QStringLiteral("avatar"), QStringLiteral("caocao")}};
     QString wireError;
     if (QSanProtocol::ProtocolCodecRouter().encode(replayMessage, &wireError).isEmpty())
         return 4;
