@@ -43,10 +43,11 @@ struct SignupRequestPayload
 
 struct SignupReplyPayload
 {
-    static constexpr int SchemaVersion = 1;
+    static constexpr int SchemaVersion = 2;
     bool accepted = false;
     bool reconnected = false;
     QString playerId;
+    int roomId = 0;
     QString errorCode;
     QString message;
 

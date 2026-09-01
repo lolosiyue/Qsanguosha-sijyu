@@ -188,6 +188,7 @@ bool ClientLiveSession::consumeFrame(const QByteArray &frame, quint64 generation
         if (m_core != nullptr) {
             m_core->state()->setSelfName(reply.playerId);
             m_core->state()->setConnectionValue(QStringLiteral("reconnected"), reply.reconnected);
+            m_core->state()->setConnectionValue(QStringLiteral("room_id"), reply.roomId);
         }
         emit stateChanged();
         emit frontendMessageReceived(message);
