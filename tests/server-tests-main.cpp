@@ -32,6 +32,7 @@ int runGameSessionControllerTests();
 int runRoomRosterTests();
 int runPlayerLifecycleServiceTests(int argc, char **argv);
 int runPlayerDecisionServiceTests();
+int runGameSnapshotTagsTests();
 
 static int runSelectedSuite(const QString &suite, int argc, char **argv)
 {
@@ -57,6 +58,8 @@ static int runSelectedSuite(const QString &suite, int argc, char **argv)
         return runRoomRosterTests();
     if (suite == QLatin1String("player-lifecycle"))
         return runPlayerLifecycleServiceTests(argc, argv);
+    if (suite == QLatin1String("game-snapshot-tags"))
+        return runGameSnapshotTagsTests();
     if (suite == QLatin1String("player-decision"))
         return runPlayerDecisionServiceTests();
     return 64;
@@ -82,6 +85,7 @@ int main(int argc, char **argv)
         {QStringLiteral("game-session"), {QStringLiteral("--suite"), QStringLiteral("game-session")}},
         {QStringLiteral("room-roster"), {QStringLiteral("--suite"), QStringLiteral("room-roster")}},
         {QStringLiteral("player-lifecycle"), {QStringLiteral("--suite"), QStringLiteral("player-lifecycle")}},
+        {QStringLiteral("game-snapshot-tags"), {QStringLiteral("--suite"), QStringLiteral("game-snapshot-tags")}},
         {QStringLiteral("player-decision"), {QStringLiteral("--suite"), QStringLiteral("player-decision")}, 900000}
     });
 }
