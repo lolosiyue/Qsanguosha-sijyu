@@ -19522,7 +19522,7 @@ void ZuolianCard::use(Room*room, ServerPlayer*source, QList<ServerPlayer*> &targ
 		if(Sanguosha->getCard(id)->isKindOf("FireSlash")){
 			CardsMoveStruct move1(id, room->getCardOwner(ids.first()), Player::PlaceHand, CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, source->objectName()));
 			exchangeMove << move1;
-			CardsMoveStruct move2(ids.first(), nullptr, room->getCardPlace(id), CardMoveReason(CardMoveReason::S_MASK_BASIC_REASON, source->objectName()));
+			CardsMoveStruct move2(ids.first(), nullptr, room->getCardPlace(id), CardMoveReason(CardMoveReason::S_REASON_NO_BASIC, source->objectName()));
 			exchangeMove << move2;
 			ids.removeAt(0);
 			if(ids.isEmpty()) break;
@@ -19533,7 +19533,7 @@ void ZuolianCard::use(Room*room, ServerPlayer*source, QList<ServerPlayer*> &targ
 			if(Sanguosha->getCard(id)->isKindOf("ThunderSlash")){
 				CardsMoveStruct move1(id, room->getCardOwner(ids.first()), Player::PlaceHand, CardMoveReason(CardMoveReason::S_REASON_EXTRACTION, source->objectName()));
 				exchangeMove << move1;
-				CardsMoveStruct move2(ids.first(), nullptr, room->getCardPlace(id), CardMoveReason(CardMoveReason::S_MASK_BASIC_REASON, source->objectName()));
+				CardsMoveStruct move2(ids.first(), nullptr, room->getCardPlace(id), CardMoveReason(CardMoveReason::S_REASON_NO_BASIC, source->objectName()));
 				exchangeMove << move2;
 				ids.removeAt(0);
 				if(ids.isEmpty()) break;

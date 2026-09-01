@@ -343,6 +343,13 @@ public:
     static const int S_REASON_PUT_END = 0x6A;           //  move cards to end of drawpile
 
     static const int S_MASK_BASIC_REASON = 0x0F;
+
+    //  Deliberately matches no basic reason: (S_REASON_NO_BASIC & S_MASK_BASIC_REASON)
+    //  equals 0x0F, which is outside the 0x00-0x0A basic range, so none of the
+    //  "on discard" / "on use" skill triggers fire for such a move. Same value as
+    //  S_MASK_BASIC_REASON, kept as a separate name so wire validation can accept
+    //  it as a reason rather than as a mask.
+    static const int S_REASON_NO_BASIC = 0x0F;
 };
 
 struct CardsMoveOneTimeStruct {
