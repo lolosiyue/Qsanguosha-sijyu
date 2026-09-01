@@ -2099,15 +2099,45 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 		return;
 	}
 
-	if (!current || current->isFull() || current->isFinished()) {
+	Room *target = current;
+	if (signup.hasRoomId) {
+		target = nullptr;
+		foreach (Room *room, rooms) {
+			if (room && room->getId() == signup.roomId) {
+				target = room;
+				break;
+			}
+		}
+		if (target == nullptr) {
+			rejectSignup(QStringLiteral("room_not_found"),
+				QStringLiteral("Requested room does not exist"));
+			return;
+		}
+		if (target->isFinished()) {
+			rejectSignup(QStringLiteral("room_finished"),
+				QStringLiteral("Requested room has ended"));
+			return;
+		}
+		if (target->isRunning()) {
+			rejectSignup(QStringLiteral("room_started"),
+				QStringLiteral("Requested room has already started"));
+			return;
+		}
+		if (target->isFull()) {
+			rejectSignup(QStringLiteral("room_full"),
+				QStringLiteral("Requested room is full"));
+			return;
+		}
+	} else if (!current || current->isFull() || current->isFinished()) {
 		if (!createNewRoom()) {
 			rejectSignup(QStringLiteral("server_full"),
 				QStringLiteral("No room is available"));
 			return;
 		}
+		target = current;
 	}
 
-	ServerPlayer *player = current->addSocket(socket);
+	ServerPlayer *player = target->addSocket(socket);
 	// Claim the name for the lobby right away: name2objname is only written
 	// when the game starts, so until then nothing else would reject a duplicate.
 	m_lobbyScreenNames.insert(socket, signup.screenName);
@@ -2127,9 +2157,9 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 		disconnectSocketFromOwnerThread(socket);
 		return;
 	}
-	current->signup(player, signup.screenName, signup.avatar, false);
+	target->signup(player, signup.screenName, signup.avatar, false);
 	emit newPlayer(player);
-	emit playerJoined(player->objectName(), player->screenName(), current->getId());
+	emit playerJoined(player->objectName(), player->screenName(), target->getId());
 }
 
 bool Server::screenNameInUse(const QString &screenName) const

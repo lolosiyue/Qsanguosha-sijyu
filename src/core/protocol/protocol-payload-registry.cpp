@@ -437,6 +437,7 @@ bool validateGenericSchema(const QString &schema, const QVariant &value,
         {QStringLiteral("to_pile"), FieldShape::String},
         {QStringLiteral("event_name"), FieldShape::String},
         {QStringLiteral("player_id"), FieldShape::String},
+        {QStringLiteral("room_id"), FieldShape::Integer},
         {QStringLiteral("target_id"), FieldShape::String},
         {QStringLiteral("taker"), FieldShape::String},
         {QStringLiteral("rule"), FieldShape::String},
@@ -519,8 +520,18 @@ bool validateGenericSchema(const QString &schema, const QVariant &value,
 
 int expectedSchemaVersion(const QString &schema)
 {
-    return schema == QLatin1String("CardProvenancePayload")
-        ? CardProvenanceMessage::CurrentVersion : 1;
+    if (schema == QLatin1String("CardProvenancePayload"))
+        return CardProvenanceMessage::CurrentVersion;
+    if (schema == QLatin1String("SignupRequestPayload"))
+        return SignupRequestPayload::SchemaVersion;
+    return 1;
+}
+
+bool schemaVersionAllowed(const QString &schema, int version)
+{
+    if (schema == QLatin1String("SignupRequestPayload"))
+        return version == 1 || version == SignupRequestPayload::SchemaVersion;
+    return version == expectedSchemaVersion(schema);
 }
 
 bool validateKnownSchema(const QString &schema, const QVariant &value,
@@ -1056,6 +1067,7 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
     result.last().requiredFields << QStringLiteral("reconnect_requested")
                                  << QStringLiteral("screen_name")
                                  << QStringLiteral("avatar");
+    result.last().optionalFields << QStringLiteral("room_id");
     result.append(flow(ProtocolMessageType::Reply,
                        ProtocolEndpoint::Lobby, ProtocolEndpoint::Client,
                        S_COMMAND_SIGNUP, "S_COMMAND_SIGNUP",
@@ -1420,7 +1432,7 @@ bool ProtocolPayloadRegistry::validateObjectPayload(
     const int requiredSchemaVersion = expectedSchemaVersion(descriptor->targetSchema);
     if (!ProtocolMessageUtils::tryParseInt(
             object.value(QStringLiteral("schema_version")), schemaVersion)
-        || schemaVersion != requiredSchemaVersion) {
+        || !schemaVersionAllowed(descriptor->targetSchema, schemaVersion)) {
         return fail(error, QStringLiteral("%1 schema_version must be integral %2")
             .arg(descriptor->diagnosticName).arg(requiredSchemaVersion));
     }
@@ -1456,7 +1468,7 @@ bool ProtocolPayloadRegistry::encodeObjectPayload(
         int schemaVersion = 0;
         if (ProtocolMessageUtils::tryParseInt(
                 object.value(QStringLiteral("schema_version")), schemaVersion)
-            && schemaVersion == expectedSchemaVersion(descriptor->targetSchema)) {
+            && schemaVersionAllowed(descriptor->targetSchema, schemaVersion)) {
             if (!validateObjectPayload(encoded, error))
                 return false;
             *wireMessage = encoded;
