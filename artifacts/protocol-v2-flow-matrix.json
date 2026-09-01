@@ -3180,6 +3180,7 @@
             "optional_fields": [
                 "reconnected",
                 "player_id",
+                "room_id",
                 "error_code",
                 "message"
             ],

@@ -455,7 +455,8 @@ bool runWebSocketSignupRoomId(const QString &serverPath)
         return expect(false, qPrintable(error));
     if (!first.signup(QStringLiteral("room-host"), false, 0, &firstReply, &error))
         return expect(false, qPrintable(error));
-    if (!expect(firstReply.accepted, "first signup without room_id was rejected"))
+    if (!expect(firstReply.accepted, "first signup without room_id was rejected")
+        || !expect(firstReply.roomId == 0, "first signup reply room_id was not 0"))
         return false;
 
     RoomIdClient second;
@@ -506,7 +507,8 @@ bool runWebSocketSignupRoomId(const QString &serverPath)
         return expect(false, qPrintable(error));
     if (!joinNext.signup(QStringLiteral("next-guest"), true, 1, &joinReply, &error))
         return expect(false, qPrintable(error));
-    if (!expect(joinReply.accepted, "signup with room_id 1 was rejected"))
+    if (!expect(joinReply.accepted, "signup with room_id 1 was rejected")
+        || !expect(joinReply.roomId == 1, "signup reply for room_id 1 did not echo 1"))
         return false;
 
     first.close();

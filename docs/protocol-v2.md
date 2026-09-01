@@ -58,6 +58,9 @@ Wire payloads never use:
 Existing gameplay APIs may still construct domain values internally. The room
 boundary converts them once into their registered named object before Replay or
 TCP delivery. The client keeps the validated typed object during dispatch.
+`S_COMMAND_SHOW_ALL_CARDS` domain lists are still `[player_name, false, card_ids]`
+(Gongxin-shaped); the encoder drops the unused boolean so `card_ids` stays an
+integer list.
 
 All 29 production interactions, including `S_COMMAND_QML_INTERACT`, use direct
 typed request and reply schemas. Cancellation is represented by named boolean
@@ -77,7 +80,8 @@ over-limit input closes the connection. CRLF is accepted at the TCP
 framing boundary.
 
 The dedicated server and GUI embedded server also listen for WebSocket
-clients on a separate port (default 9528). Each WebSocket text frame
+clients on a separate port (default 9528), except the Windows XP Qt 5.6.3
+legacy build, which is TCP-only. Each WebSocket text frame
 carries one encoded Protocol V2 JSON object; the gateway does not wrap
 the object in a newline. Binary frames, empty frames, frames larger than
 65,535 UTF-8 bytes, and frames that contain CR or LF are rejected. JSON
@@ -89,6 +93,9 @@ payload range are rejected.
 `current` as before. Schema 1 without `room_id` remains accepted. A present
 `room_id` must be a non-negative integer and selects that waiting room; unknown,
 finished, started, or full rooms are rejected and do not create a new seat.
+`SignupReplyPayload` is schema 2. An accepted reply includes the assigned
+`room_id` (including `0`). Schema 1 accepted replies without `room_id` remain
+valid. Native GUI and TUI ignore the field.
 
 Decode is transactional: a failed decode does not mutate the output message.
 An encode failure returns an empty byte array and a diagnostic.
