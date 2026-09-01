@@ -453,6 +453,7 @@ def main():
     server_command = [
         server_exe,
         "--port", str(port),
+        "--websocket-port", "0",
         "--bind-address", "127.0.0.1",
         "--game-mode", args.mode,
         "--seed", str(args.seed),

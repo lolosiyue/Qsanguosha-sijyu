@@ -7,6 +7,7 @@ ServerName=QSanguosha Linux Server
 GameMode=10p
 BindAddress=any-ipv4
 ServerPort=9527
+WebSocketPort=9528
 DetectorPort=9526
 Address=
 OperationTimeout=15
