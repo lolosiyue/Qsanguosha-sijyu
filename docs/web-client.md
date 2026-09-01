@@ -31,6 +31,17 @@ overrides it. `?reconnect=1` sets `reconnect_requested`.
 `npm run preview` serves the production build with the same `/room/:id`
 fallback.
 
+`npm run build` runs the Protocol V2 drift check
+([`web/scripts/check-protocol-sync.mjs`](../web/scripts/check-protocol-sync.mjs)),
+a `translations.json` freshness check against `lang/zh_CN/*.lua`, `tsc --noEmit`,
+and `vitest run`. The drift check compares `protocol.ts` Command IDs and
+`replies.ts` `REPLY_COMMAND` to
+[`artifacts/protocol-v2-flow-matrix.json`](../artifacts/protocol-v2-flow-matrix.json)
+(command_id and request→reply pairing only; listed client-emitted field names
+are existence-checked, payload types are out of scope). `npm test` is vitest only.
+If translations.json is missing or older than the Lua tables, re-run the dump
+command above.
+
 ## Behaviour
 
 | Path | Signup |
