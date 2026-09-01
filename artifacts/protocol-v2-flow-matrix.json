@@ -3148,6 +3148,7 @@
             "message_type": "request",
             "migration_status": "complete",
             "optional_fields": [
+                "room_id"
             ],
             "parser": "ProtocolPayloadRegistry::validateObjectPayload",
             "producer": "Client",
