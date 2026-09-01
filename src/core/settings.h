@@ -59,6 +59,7 @@ public:
     bool SurrenderAtDeath;
     bool EnableLuckCard;
     ushort ServerPort;
+    ushort WebSocketPort;
     QString BindAddress;
     bool DisableLua;
     bool AddGodGeneral;

@@ -100,6 +100,8 @@ bool applyCommandLineOptions(const ServerCommandLineOptions &options, QString &e
     }
     if (options.port)
         Config.ServerPort = *options.port;
+    if (options.websocketPort)
+        Config.WebSocketPort = *options.websocketPort;
     if (options.bindAddress)
         Config.BindAddress = *options.bindAddress;
     if (options.serverName)
@@ -150,6 +152,7 @@ QVariantMap effectiveServerConfiguration()
     values.insert(QStringLiteral("ServerName"), Config.ServerName);
     values.insert(QStringLiteral("GameMode"), Config.GameMode.mode_id);
     values.insert(QStringLiteral("ServerPort"), Config.ServerPort);
+    values.insert(QStringLiteral("WebSocketPort"), Config.WebSocketPort);
     values.insert(QStringLiteral("DetectorPort"), Config.DetectorPort);
     values.insert(QStringLiteral("BindAddress"), Config.BindAddress);
     values.insert(QStringLiteral("Address"), Config.Address);
@@ -427,7 +430,8 @@ int main(int argc, char **argv)
             logger.error(QStringLiteral("server"),
                 QObject::tr("Unable to listen on the configured server endpoint"),
                 -1, QString(), {{QStringLiteral("address"), Config.BindAddress},
-                                {QStringLiteral("port"), Config.ServerPort}});
+                                {QStringLiteral("port"), Config.ServerPort},
+                                {QStringLiteral("websocket_port"), Config.WebSocketPort}});
             result = 2;
         } else {
             for (const QString &message : server.startupMessages())
@@ -439,6 +443,12 @@ int main(int argc, char **argv)
                     .arg(snapshot.bindAddress).arg(snapshot.port),
                 -1, QString(), {{QStringLiteral("address"), snapshot.bindAddress},
                                 {QStringLiteral("port"), snapshot.port},
+                                {QStringLiteral("mode"), snapshot.gameMode}});
+            logger.info(QStringLiteral("server"),
+                QStringLiteral("WebSocket listening on %1:%2")
+                    .arg(snapshot.bindAddress).arg(snapshot.websocketPort),
+                -1, QString(), {{QStringLiteral("address"), snapshot.bindAddress},
+                                {QStringLiteral("websocket_port"), snapshot.websocketPort},
                                 {QStringLiteral("mode"), snapshot.gameMode}});
             console.start();
             result = app.exec();

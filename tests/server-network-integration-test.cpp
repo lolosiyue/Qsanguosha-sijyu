@@ -68,6 +68,7 @@ public:
         m_process.setProgram(QFileInfo(serverPath).absoluteFilePath());
         m_process.setArguments({QStringLiteral("--config"), configPath,
                                 QStringLiteral("--port"), QStringLiteral("0"),
+                                QStringLiteral("--websocket-port"), QStringLiteral("0"),
                                 QStringLiteral("--ai-delay"), QStringLiteral("0"),
                                 QStringLiteral("--seed"), QStringLiteral("2026083001")});
         m_process.start();

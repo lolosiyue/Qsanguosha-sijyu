@@ -15,6 +15,7 @@ struct ServerCommandLineOptions
     bool checkConfig = false;
     bool jsonOutput = false;
     std::optional<quint16> port;
+    std::optional<quint16> websocketPort;
     std::optional<int> operationTimeout;
     std::optional<int> aiDelay;
     std::optional<bool> aiEnabled;

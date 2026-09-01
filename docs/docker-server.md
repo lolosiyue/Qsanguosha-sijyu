@@ -7,7 +7,7 @@ Ubuntu 24.04 runtime stage.
 ## Docker Compose
 
 The checked-in [`compose.yaml`](../compose.yaml) builds the image, publishes TCP
-port 9527, bind-mounts the Docker configuration read-only, and keeps writable
+port 9527 and WebSocket port 9528, bind-mounts the Docker configuration read-only, and keeps writable
 state in a named volume:
 
 ```bash
@@ -34,6 +34,7 @@ Run the server:
 docker run -d \
   --name qsanguosha \
   -p 9527:9527 \
+  -p 9528:9528 \
   -v qsanguosha-data:/data \
   -v "$PWD/server.ini:/config/server.ini:ro" \
   qsanguosha-server
@@ -47,7 +48,7 @@ docker stop --time 45 qsanguosha
 ```
 
 The default configuration binds `any-ipv4`, so normal bridge networking works
-with `-p 9527:9527`; host networking and privileged mode are not required.
+with `-p 9527:9527 -p 9528:9528`; host networking and privileged mode are not required.
 
 ## Filesystem and process contract
 

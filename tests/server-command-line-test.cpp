@@ -38,6 +38,7 @@ bool parsesCompleteOverrideSet()
     const ServerCommandLineResult result = parseServerCommandLine({
         QStringLiteral("server"),
         QStringLiteral("--port"), QStringLiteral("19527"),
+        QStringLiteral("--websocket-port"), QStringLiteral("19528"),
         QStringLiteral("--bind-address"), QStringLiteral("127.0.0.1"),
         QStringLiteral("--game-mode"), QStringLiteral("02p"),
         QStringLiteral("--server-name"), QStringLiteral("CLI server"),
@@ -56,6 +57,7 @@ bool parsesCompleteOverrideSet()
     });
     return expect(result.success, "complete CLI override parse failed")
         && expect(result.options.port == 19527, "port override mismatch")
+        && expect(result.options.websocketPort == 19528, "websocket port override mismatch")
         && expect(result.options.bindAddress == QStringLiteral("127.0.0.1"),
                   "bind-address override mismatch")
         && expect(result.options.gameMode == QStringLiteral("02p"), "game mode mismatch")
@@ -106,6 +108,18 @@ bool parsesEphemeralPort()
         && expect(*result.options.port == 0, "ephemeral port override mismatch");
 }
 
+bool parsesEphemeralWebSocketPort()
+{
+    const ServerCommandLineResult result = parseServerCommandLine({
+        QStringLiteral("server"), QStringLiteral("--websocket-port"), QStringLiteral("0")
+    });
+    return expect(result.success, "ephemeral websocket port CLI parse failed")
+        && expect(result.options.websocketPort.has_value(),
+                  "ephemeral websocket port override missing")
+        && expect(*result.options.websocketPort == 0,
+                  "ephemeral websocket port override mismatch");
+}
+
 bool rejectsInvalidArguments()
 {
     struct InvalidCase
@@ -118,6 +132,13 @@ bool rejectsInvalidArguments()
          QStringLiteral("invalid --port")},
         {{QStringLiteral("server"), QStringLiteral("--port"), QStringLiteral("65536")},
          QStringLiteral("invalid --port")},
+        {{QStringLiteral("server"), QStringLiteral("--websocket-port"), QStringLiteral("-1")},
+         QStringLiteral("invalid --websocket-port")},
+        {{QStringLiteral("server"), QStringLiteral("--websocket-port"), QStringLiteral("65536")},
+         QStringLiteral("invalid --websocket-port")},
+        {{QStringLiteral("server"), QStringLiteral("--websocket-port"), QStringLiteral("9528"),
+          QStringLiteral("--websocket-port"), QStringLiteral("9529")},
+         QStringLiteral("may only be specified once")},
         {{QStringLiteral("server"), QStringLiteral("--bind-address"), QStringLiteral("localhost")},
          QStringLiteral("invalid --bind-address")},
         {{QStringLiteral("server"), QStringLiteral("--operation-timeout"), QStringLiteral("-1")},
@@ -164,6 +185,7 @@ bool exposesDiscoverableHelp()
 {
     const QString help = serverCommandLineHelpText();
     return expect(help.contains(QStringLiteral("--bind-address")), "help omits bind address")
+        && expect(help.contains(QStringLiteral("--websocket-port")), "help omits websocket port")
         && expect(help.contains(QStringLiteral("--list-game-modes")), "help omits game mode listing")
         && expect(help.contains(QStringLiteral("--config")), "help omits config file")
         && expect(help.contains(QStringLiteral("--check-config")), "help omits config validation")
@@ -191,6 +213,7 @@ bool loadsAndValidatesConfigFiles()
         << "ServerName=Unit Test Server\n"
         << "GameMode=10p\n"
         << "ServerPort=9527\n"
+        << "WebSocketPort=9528\n"
         << "BindAddress=127.0.0.1\n"
         << "DisableChat=true\n"
         << "GeneralVersionDedup=true\n"
@@ -209,6 +232,8 @@ bool loadsAndValidatesConfigFiles()
     }
     if (!expect(valid.values.value(QStringLiteral("ServerPort")).toLongLong() == 9527,
                 "config port mismatch")
+        || !expect(valid.values.value(QStringLiteral("WebSocketPort")).toLongLong() == 9528,
+                   "config websocket port mismatch")
         || !expect(valid.values.value(QStringLiteral("DisableChat")).toBool(),
                    "config boolean mismatch")
         || !expect(valid.values.value(QStringLiteral("GeneralVersionDedup")).toBool(),
@@ -253,6 +278,8 @@ bool runsParserContract()
     if (!parsesShortOptions())
         passed = false;
     if (!parsesEphemeralPort())
+        passed = false;
+    if (!parsesEphemeralWebSocketPort())
         passed = false;
     if (!rejectsInvalidArguments())
         passed = false;
@@ -320,7 +347,9 @@ bool validatesHelpProcess(const QString &serverPath)
 {
     const ProcessResult result = runServerProcess(serverPath, {QStringLiteral("--help")});
     return processSucceeded(result, "--help")
-        && expect(result.output.contains("--bind-address"), "server --help omits --bind-address");
+        && expect(result.output.contains("--bind-address"), "server --help omits --bind-address")
+        && expect(result.output.contains("--websocket-port"),
+            "server --help omits --websocket-port");
 }
 
 bool validatesVersionProcess(const QString &serverPath)
@@ -346,6 +375,7 @@ bool validatesConfigPrecedenceProcess(const QString &serverPath, const QString &
     const ProcessResult result = runServerProcess(serverPath, {
         QStringLiteral("--config"), configPath,
         QStringLiteral("--port"), QStringLiteral("19527"),
+        QStringLiteral("--websocket-port"), QStringLiteral("19528"),
         QStringLiteral("--print-config"), QStringLiteral("--json")});
     if (!processSucceeded(result, "config precedence"))
         return false;
@@ -369,7 +399,9 @@ bool validatesConfigPrecedenceProcess(const QString &serverPath, const QString &
         && expect(config.value(QStringLiteral("GameMode")).toString() == QLatin1String("10p"),
             "config file game mode was not loaded")
         && expect(config.value(QStringLiteral("ServerPort")).toInt() == 19527,
-            "CLI port did not override config file");
+            "CLI port did not override config file")
+        && expect(config.value(QStringLiteral("WebSocketPort")).toInt() == 19528,
+            "CLI websocket port did not override config file");
 }
 }
 

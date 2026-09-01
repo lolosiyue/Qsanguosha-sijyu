@@ -9,6 +9,9 @@
 #include "engine.h"
 #include "qt-collection-utils.h"
 #include "nativesocket.h"
+#if !defined(QSAN_SERVER_DIALOGS_ONLY)
+#include "websocketsocket.h"
+#endif
 #include "banpair.h"
 #include "server-info.h"
 #include "server-connection-context.h"
@@ -1659,6 +1662,8 @@ Server::Server(QObject *parent)
 	connect(this, SIGNAL(server_message(QString)), this, SIGNAL(logMessage(QString)));
 	server = new NativeServerSocket;
 	server->setParent(this);
+	websocketServer = new WebSocketServerSocket;
+	websocketServer->setParent(this);
 	playerCount = 0;
 	m_nextGameSeedIndex = 0;
 
@@ -1672,6 +1677,7 @@ Server::Server(QObject *parent)
 	created_successfully = createNewRoom()!=nullptr;
 
 	connect(server, SIGNAL(new_connection(ClientSocket *)), this, SLOT(processNewConnection(ClientSocket *)));
+	connect(websocketServer, SIGNAL(new_connection(ClientSocket *)), this, SLOT(processNewConnection(ClientSocket *)));
 }
 
 void Server::broadcast(const QString &msg)
@@ -1689,6 +1695,7 @@ ServerStatusSnapshot Server::statusSnapshot() const
 	snapshot.uptimeMs = m_uptimeTimer.isValid() ? m_uptimeTimer.elapsed() : 0;
 	snapshot.bindAddress = server->listeningAddress();
 	snapshot.port = server->listeningPort();
+	snapshot.websocketPort = websocketServer->listeningPort();
 	snapshot.gameMode = Config.GameMode.mode_id;
 
 	const QList<RoomStatusSnapshot> roomItems = roomSnapshots();
@@ -1815,7 +1822,7 @@ void Server::broadcastAdminMessage(const QString &message)
 
 bool Server::listen()
 {
-	return created_successfully && server->listen();
+	return created_successfully && server->listen() && websocketServer->listen();
 }
 
 QStringList Server::startupMessages() const
@@ -1854,6 +1861,9 @@ QStringList Server::startupMessages() const
     items << tr("Listening on %1:%2")
         .arg(server->listeningAddress())
         .arg(server->listeningPort());
+    items << tr("WebSocket listening on %1:%2")
+        .arg(websocketServer->listeningAddress())
+        .arg(websocketServer->listeningPort());
     items << tr("Game mode is %1").arg(Sanguosha->getModeName(Config.GameMode.mode_id));
     items << tr("Player count is %1").arg(Sanguosha->getPlayerCount(Config.GameMode.mode_id));
     items << (Config.OperationNoLimit ? tr("There is no time limit")
@@ -2228,6 +2238,9 @@ void Server::checkUpnpAndListServer()
 		upnpPortMapping = new QtUpnpPortMapping();
 		connect(upnpPortMapping,SIGNAL(finished()),this,SLOT(upnpFinished()));
 		upnpPortMapping->addPortMapping(Config.ServerPort,Config.ServerPort,"Sanguosha",true);
+		if (Config.WebSocketPort != 0)
+			upnpPortMapping->addPortMapping(Config.WebSocketPort, Config.WebSocketPort,
+				"SanguoshaWS", true);
 		QTimer::singleShot(10000,this,SLOT(upnpTimeout()));
 	} else if(Config.value("serverconfig/addtolistserver").toBool())
 		addToListServer();

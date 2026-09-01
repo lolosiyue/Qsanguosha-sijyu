@@ -17,6 +17,9 @@ void configureParser(QCommandLineParser &parser)
     parser.addOption(QCommandLineOption({QStringLiteral("p"), QStringLiteral("port")},
         QStringLiteral("Listen on TCP port <port> (0-65535; 0 selects an ephemeral port)."),
         QStringLiteral("port")));
+    parser.addOption(QCommandLineOption(QStringLiteral("websocket-port"),
+        QStringLiteral("Listen for WebSocket clients on TCP port <port> (0-65535; 0 selects an ephemeral port)."),
+        QStringLiteral("port")));
     parser.addOption(QCommandLineOption(QStringLiteral("bind-address"),
         QStringLiteral("Bind to an IP address, any, any-ipv4, or any-ipv6."),
         QStringLiteral("address")));
@@ -185,6 +188,12 @@ ServerCommandLineResult parseServerCommandLine(const QStringList &arguments)
                                  integer, result.error))
             return result;
         result.options.port = static_cast<quint16>(integer);
+    }
+    if (parser.isSet(QStringLiteral("websocket-port"))) {
+        if (!parseBoundedInteger(parser, QStringLiteral("websocket-port"), 0, 65535,
+                                 integer, result.error))
+            return result;
+        result.options.websocketPort = static_cast<quint16>(integer);
     }
     if (parser.isSet(QStringLiteral("operation-timeout"))) {
         if (!parseBoundedInteger(parser, QStringLiteral("operation-timeout"), 0, 86400,
