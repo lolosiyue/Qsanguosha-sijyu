@@ -40,9 +40,15 @@ visibility、reconnect behavior 及 focused test。當前 gate 為 63/63 個
 state-bearing flow 有 reducer、29/29 個 interaction request 有 presenter、
 unclassified=0、silent drops=0。音訊與動畫是已登記的 text-mode no-op；emotion
 與 log 類流程會成為 presentation event。戰鬥日誌（`S_COMMAND_LOG_SKILL`）與
-game event（`S_COMMAND_LOG_EVENT`）由 `src/tui/tui-log-text.cpp` 在 frontend
-組成句子：core 只保留 localization key 與 typed argument，翻譯與牌名解析都在
-連引擎的 TUI 這一層完成。分類異動後需以 `QSAN_TUI_COVERAGE_WRITE=1` 重跑
+game event（`S_COMMAND_LOG_EVENT`）由 `src/tui/tui-log-text.cpp` 呼叫 Engine
+`formatClientLog` 組句：`#UseCard` 片語走 `lang/zh_CN/Common.lua` 的
+`#UseCardPhrase_*`，目標「自己」走 `#LogSelf`。摸牌／裝卸／體力等正常戰報大半
+不是 `sendLog`：TUI 在 reducer 之後的 `frontendMessageReceived` 用
+`src/client/core/client-move-log.cpp` 合成 `$DrawCards`／`$addRenPile`／`$removeRenPile`／`#GetHp` 等，再以
+`S_COMMAND_LOG_SKILL` 寫入 `presentationEvents`。仁區追蹤對齊 `RoomScene::RenPile`，
+`GAME_START`／`STATE_SYNC begin` 清空。`event 9`
+（`S_GAME_EVENT_UPDATE_SKILL`）仍不進戰報。core reducer 不把 GET_CARD 改成
+presentation。分類異動後需以 `QSAN_TUI_COVERAGE_WRITE=1` 重跑
 `qsanguosha_tui_contract_tests` 重生上述 artifact。
 
 ## 啟動及 CLI
@@ -62,6 +68,7 @@ debug\qsanguosha_tui.exe --host 127.0.0.1 --port 9527 `
 | `--log-file <path>` | 寫入已清理的語意輸出，不 dump raw/private payload |
 | `--script <path>` | 使用與真人相同的 input/controller pipeline |
 | `--asset-root <directory>` | 明確指定 runtime data root |
+| `--dump-translations <path>` | 初始化 Engine 後把翻譯表寫成 compact JSON 並結束；給 [`web-client.md`](web-client.md) 使用 |
 | `--help`／`--version` | UTF-8 usage／版本輸出，不初始化 GUI |
 
 固定 exit code：正常 `0`、CLI 使用錯誤 `2`、連線 `3`、Protocol `4`、
@@ -92,7 +99,8 @@ encoder。`reply_to` 保留完整 `quint64`。
 多選／範圍       1 3 5    或 1-4
 卡牌及目標       1 2 -> p1 p3
 固定牌字串       card <Card::toString()> -> p1
-技能牌           skill longdan#4: card 1 -> 2 3
+技能牌           4 1 -> 2（出牌階段編號：技能＋子卡＋目標）
+                 skill longdan#4: card 1 -> 2 3
 重新排列         1 3 | 2 4
 分配             cards 1 2 -> p1
 角色分配         p1=lord p2=rebel
