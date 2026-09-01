@@ -74,7 +74,7 @@ void GameRule::onPhaseProceed(ServerPlayer *player,Room *room) const
         while (tricks.length()>0&&player->isAlive()) {
             const Card *trick = tricks.takeLast();
 			if(room->getCardPlace(trick->getId())!=Player::PlaceDelayedTrick) continue;
-            CardMoveReason reason(CardMoveReason::S_REASON_NO_BASIC,player->objectName(),trick->getSkillName(),"delayed_effect");
+            CardMoveReason reason(CardMoveReason::S_MASK_BASIC_REASON,player->objectName(),trick->getSkillName(),"delayed_effect");
 			reason.m_extraData = QVariant::fromValue(trick);
             room->moveCardTo(trick,nullptr,Player::PlaceTable,reason,true);
             room->getThread()->delay(Config.S_JUDGE_LONG_DELAY);

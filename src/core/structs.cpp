@@ -65,7 +65,8 @@ bool isKnownCardMoveReason(int reason)
     case CardMoveReason::S_REASON_CHANGE_EQUIP:
     case CardMoveReason::S_REASON_SHUFFLE:
     case CardMoveReason::S_REASON_PUT_END:
-    case CardMoveReason::S_REASON_NO_BASIC:
+    //  Used as a reason by the game rule and a few skills; see structs.h.
+    case CardMoveReason::S_MASK_BASIC_REASON:
         return true;
     default:
         return false;
