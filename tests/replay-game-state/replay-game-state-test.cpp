@@ -40,10 +40,10 @@ ProtocolMessage gameSeedMessage(quint64 seed)
         {QStringLiteral("schema_version"), 1},
         {QStringLiteral("log_type"), QStringLiteral("#GameSeed")},
         {QStringLiteral("from_player"), QString()},
-        {QStringLiteral("to_players"), QStringList()},
+        {QStringLiteral("to_players"), QVariantList()},
         {QStringLiteral("card_string"), QString()},
         {QStringLiteral("arguments"),
-         QStringList{QString::number(seed), QString(), QString(), QString(), QString()}}
+         QVariantList{QString::number(seed), QString(), QString(), QString(), QString()}}
     };
     return notification(S_COMMAND_LOG_SKILL, log);
 }
