@@ -1,0 +1,10 @@
+# R2 執行期資源：image/audio/qml/font，object key 對齊倉庫相對路徑。
+# 公開下載根：https://pub-e2d34805bf014253b48296536619ae25.r2.dev
+name = "qsanguosha-r2"
+account_id = "4e4319b55e06ab50c4a4ca6eff285ff5"
+compatibility_date = "2026-09-01"
+
+[[r2_buckets]]
+binding = "RESOURCES"
+bucket_name = "qsanguosha-sijyu-resources"
+remote = true
