@@ -88,10 +88,12 @@ WebSocketClientSocket::WebSocketClientSocket(QWebSocket *socket)
     : socket(socket)
 {
     socket->setParent(this);
+#if QT_VERSION >= QT_VERSION_CHECK(5, 15, 0)
     socket->setMaxAllowedIncomingFrameSize(
         static_cast<quint64>(QSanProtocol::ProtocolFrameBuffer::MaxFrameSize));
     socket->setMaxAllowedIncomingMessageSize(
         static_cast<quint64>(QSanProtocol::ProtocolFrameBuffer::MaxFrameSize));
+#endif
     connect(socket, &QWebSocket::disconnected, this, &ClientSocket::disconnected);
     connect(socket, &QWebSocket::textMessageReceived,
             this, &WebSocketClientSocket::getMessage);
@@ -100,8 +102,11 @@ WebSocketClientSocket::WebSocketClientSocket(QWebSocket *socket)
 #if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     connect(socket, &QWebSocket::errorOccurred,
             this, &WebSocketClientSocket::raiseError);
-#else
+#elif QT_VERSION >= QT_VERSION_CHECK(5, 7, 0)
     connect(socket, QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::error),
+            this, &WebSocketClientSocket::raiseError);
+#else
+    connect(socket, static_cast<void (QWebSocket::*)(QAbstractSocket::SocketError)>(&QWebSocket::error),
             this, &WebSocketClientSocket::raiseError);
 #endif
     timerSignup.setSingleShot(true);

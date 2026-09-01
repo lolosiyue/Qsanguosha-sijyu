@@ -11,8 +11,9 @@
 | UI | Existing `QGraphicsScene` / `StartScene` classic UI |
 | Effects | Forced to `NONE`; the setting is hidden |
 | Audio | x86 FMOD Ex 4.44.53 in both Debug and Release |
-| Excluded features | QML, Spine, video and OpenGL |
+| Excluded features | QML, Spine, video, OpenGL, and the WebSocket gateway |
 | Excluded content | External `extensions/`; it is outside the XP compatibility promise |
+| Listen path | Native TCP `9527` only. Compact web / port `9528` is not part of this product |
 | Distribution | Portable folder or Joliet ISO with `INSTALL.CMD` |
 
 This is an opt-in legacy product. The normal `debug` target remains the Qt 6.11
