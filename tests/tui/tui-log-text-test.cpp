@@ -1,9 +1,11 @@
 #include "engine-bootstrap.h"
 #include "card.h"
+#include "client-move-log.h"
 #include "engine.h"
 #include "protocol.h"
 #include "tui-card-text.h"
 #include "tui-log-text.h"
+#include "tui-renderer.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -83,6 +85,24 @@ int main(int argc, char **argv)
     check(hasNoPlaceholders(trigger), "skill log leaves no unfilled placeholder");
     check(!trigger.startsWith(QStringLiteral("#TriggerSkill")),
           "skill log renders the template, not the raw log key");
+
+    const auto engineTranslate = [](const QString &key) {
+        return Sanguosha->translate(key);
+    };
+    const QString slashPrompt = TuiRenderer::formatPrompt(
+        QStringLiteral("slash-jink:sgs1"), engineTranslate, playerName);
+    check(slashPrompt.contains(QStringLiteral("刘玄德"))
+              && slashPrompt.contains(QStringLiteral("闪"))
+              && !slashPrompt.contains(QStringLiteral("slash-jink")),
+          "slash-jink prompt fills %src from the StandardPackage template");
+    const QString shootPrompt = TuiRenderer::formatPrompt(
+        QStringLiteral("shoot-jink:sgs2:pierce_shoot"), engineTranslate, playerName);
+    check(shootPrompt.contains(QStringLiteral("曹孟德"))
+              && shootPrompt.contains(QStringLiteral("闪"))
+              && !shootPrompt.contains(QStringLiteral("shoot-jink"))
+              && !shootPrompt.contains(QStringLiteral("%src"))
+              && !shootPrompt.contains(QStringLiteral("%dest")),
+          "shoot-jink prompt fills %src/%dest from the StandardPackage template");
 
     const int cardId = firstConcreteCardId();
     const QString discard = tuiSkillLogText(
@@ -185,7 +205,99 @@ int main(int argc, char **argv)
           "use-card log renders a sentence, not the raw log key");
     check(useCard.contains(QStringLiteral("刘玄德")) && useCard.contains(QStringLiteral("曹孟德")),
           "use-card log names the user and the target");
-    check(hasNoPlaceholders(useCard), "use-card log leaves no unfilled placeholder");
+    check(useCard.contains(QStringLiteral("使用")),
+          "plain use-card log uses the localized using phrase");
+
+    const QVariantMap drawMove{
+        {QStringLiteral("card_ids"), QVariantList{cardId}},
+        {QStringLiteral("from_place"), 6},
+        {QStringLiteral("to_place"), 0},
+        {QStringLiteral("from_player"), QString()},
+        {QStringLiteral("to_player"), QStringLiteral("sgs1")},
+        {QStringLiteral("from_pile"), QString()},
+        {QStringLiteral("to_pile"), QString()},
+        {QStringLiteral("reason"),
+         QVariantMap{{QStringLiteral("reason"), 0},
+                     {QStringLiteral("player_id"), QString()},
+                     {QStringLiteral("skill_name"), QString()},
+                     {QStringLiteral("event_name"), QString()},
+                     {QStringLiteral("target_id"), QString()}}}};
+    const QVariantMap getCard{{QStringLiteral("schema_version"), 1},
+        {QStringLiteral("moves"), QVariantList{drawMove}}};
+    const QList<ClientLogRecord> drawLogs =
+        synthesizeCardMovementLogs(QSanProtocol::S_COMMAND_GET_CARD, getCard);
+    check(drawLogs.size() == 1 && drawLogs.first().type == QLatin1String("$DrawCards"),
+          "draw-pile to hand synthesises $DrawCards, not a count-only key");
+    const QString drawText = tuiSkillLogText(drawLogs.first().toSkillLogMap(), playerName);
+    check(drawText.contains(QStringLiteral("刘玄德"))
+              && drawText.contains(tuiCardDisplayText(cardId)),
+          "synthesised draw log names the player and the card");
+    check(hasNoPlaceholders(drawText), "synthesised draw log leaves no unfilled placeholder");
+
+    QList<int> renPile;
+    const QVariantMap addRenMove{
+        {QStringLiteral("card_ids"), QVariantList{cardId}},
+        {QStringLiteral("from_place"), 0},
+        {QStringLiteral("to_place"), 7},
+        {QStringLiteral("from_player"), QStringLiteral("sgs1")},
+        {QStringLiteral("to_player"), QString()},
+        {QStringLiteral("from_pile"), QString()},
+        {QStringLiteral("to_pile"), QStringLiteral("ren_pile")},
+        {QStringLiteral("reason"),
+         QVariantMap{{QStringLiteral("reason"), 0},
+                     {QStringLiteral("player_id"), QStringLiteral("sgs1")},
+                     {QStringLiteral("skill_name"), QString()},
+                     {QStringLiteral("event_name"), QStringLiteral("addRenPile")},
+                     {QStringLiteral("target_id"), QString()}}}};
+    const QList<ClientLogRecord> addRenLogs = synthesizeCardMovementLogs(
+        QSanProtocol::S_COMMAND_GET_CARD,
+        QVariantMap{{QStringLiteral("schema_version"), 1},
+                    {QStringLiteral("moves"), QVariantList{addRenMove}}},
+        &renPile);
+    check(addRenLogs.size() == 1 && addRenLogs.first().type == QLatin1String("$addRenPile"),
+          "GET_CARD to table ren_pile synthesises $addRenPile");
+    check(renPile == QList<int>{cardId}, "addRenPile records the table id in local 仁区 state");
+    const QString addRenText = tuiSkillLogText(addRenLogs.first().toSkillLogMap(), playerName);
+    check(addRenText.contains(QStringLiteral("刘玄德"))
+              && addRenText.contains(tuiCardDisplayText(cardId)),
+          "addRenPile log names the player and the card");
+    check(hasNoPlaceholders(addRenText), "addRenPile log leaves no unfilled placeholder");
+
+    const QVariantMap removeRenMove{
+        {QStringLiteral("card_ids"), QVariantList{cardId}},
+        {QStringLiteral("from_place"), 7},
+        {QStringLiteral("to_place"), 5},
+        {QStringLiteral("from_player"), QString()},
+        {QStringLiteral("to_player"), QString()},
+        {QStringLiteral("from_pile"), QStringLiteral("ren_pile")},
+        {QStringLiteral("to_pile"), QString()},
+        {QStringLiteral("reason"),
+         QVariantMap{{QStringLiteral("reason"), 0},
+                     {QStringLiteral("player_id"), QString()},
+                     {QStringLiteral("skill_name"), QString()},
+                     {QStringLiteral("event_name"), QStringLiteral("removeRenPile")},
+                     {QStringLiteral("target_id"), QString()}}}};
+    const QList<ClientLogRecord> removeRenLogs = synthesizeCardMovementLogs(
+        QSanProtocol::S_COMMAND_LOSE_CARD,
+        QVariantMap{{QStringLiteral("schema_version"), 1},
+                    {QStringLiteral("moves"), QVariantList{removeRenMove}}},
+        &renPile);
+    check(removeRenLogs.size() == 1
+              && removeRenLogs.first().type == QLatin1String("$removeRenPile"),
+          "table to discard still logs $removeRenPile when the id is in 仁区");
+    check(renPile.isEmpty(), "removeRenPile clears the local 仁区 id");
+    const QString removeRenText = tuiSkillLogText(removeRenLogs.first().toSkillLogMap(), playerName);
+    check(removeRenText.contains(tuiCardDisplayText(cardId)),
+          "removeRenPile log shows the card");
+    check(hasNoPlaceholders(removeRenText), "removeRenPile log leaves no unfilled placeholder");
+
+    const QList<ClientLogRecord> ignoredTableLose = synthesizeCardMovementLogs(
+        QSanProtocol::S_COMMAND_LOSE_CARD,
+        QVariantMap{{QStringLiteral("schema_version"), 1},
+                    {QStringLiteral("moves"), QVariantList{removeRenMove}}},
+        &renPile);
+    check(ignoredTableLose.isEmpty(),
+          "table to discard without a matching 仁区 id does not log $removeRenPile");
 
     const QVariantMap bgm{{QStringLiteral("schema_version"), 1},
         {QStringLiteral("event"), int(QSanProtocol::S_GAME_EVENT_CHANGE_BGM)},

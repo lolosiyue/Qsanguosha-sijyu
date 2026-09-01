@@ -115,8 +115,18 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTORCC ON)
 
+# WebSockets 閘道用 QWebSocket::setMaxAllowedIncomingFrameSize（Qt 5.15+）
+# 與 QOverload（Qt 5.7+）。Qt 5.6.3／XP 編不過，原生 TCP 仍是該產品的 listen 路徑。
+set(QSAN_ENABLE_WEBSOCKETS ON)
+if(QSAN_BUILD_XP_LEGACY)
+    set(QSAN_ENABLE_WEBSOCKETS OFF)
+endif()
+
 # 單一 Qt component 清單，按產品分層，避免 Windows／Linux 各自維護會漂移的兩份清單。
-set(QSAN_QT_COMPONENTS Core Network WebSockets)
+set(QSAN_QT_COMPONENTS Core Network)
+if(QSAN_ENABLE_WEBSOCKETS)
+    list(APPEND QSAN_QT_COMPONENTS WebSockets)
+endif()
 
 if(BUILD_TESTING)
     list(APPEND QSAN_QT_COMPONENTS
@@ -149,8 +159,8 @@ list(REMOVE_DUPLICATES QSAN_QT_COMPONENTS)
 # toolchain 已經係 Qt 6.11.1，所以 GUI build 明確要求 6.11。
 #
 # server-only build 刻意唔套用呢個下限：dedicated server 只需要
-# Core／Network／WebSockets，要繼續可以用 distro 提供的 Qt 6.x
-# （例如 Ubuntu 24.04 的 6.4.2）建置。
+# Core／Network（Qt6 再加 WebSockets），要繼續可以用 distro 提供的 Qt 6.x
+# （例如 Ubuntu 24.04 的 6.4.2）建置。XP／Qt 5.6.3 不找 WebSockets。
 set(QSAN_QT_GUI_MINIMUM_VERSION 6.11)
 
 if(QSAN_BUILD_GUI OR WIN32)
@@ -177,6 +187,11 @@ else()
     endif()
 
     get_filename_component(QT_PREFIX "${Qt6_DIR}/../../.." ABSOLUTE)
+endif()
+
+set(QSAN_ENGINE_QT_LIBS Qt6::Core Qt6::Network)
+if(QSAN_ENABLE_WEBSOCKETS)
+    list(APPEND QSAN_ENGINE_QT_LIBS Qt6::WebSockets)
 endif()
 
 find_program(QSAN_SWIG_EXECUTABLE
@@ -392,8 +407,6 @@ add_library(qsanguosha_engine STATIC
     src/server/serverplayer.cpp
     src/util/nativesocket.cpp
     src/util/nativesocket.h
-    src/util/websocketsocket.cpp
-    src/util/websocketsocket.h
     src/util/socket.h
     src/util/game-snapshot.cpp
     src/util/game-snapshot.h
@@ -401,6 +414,8 @@ add_library(qsanguosha_engine STATIC
     src/util/crashhandler.h
     src/client/aux-skills.cpp
     src/client/aux-skills.h
+    src/client/client-log-formatter.cpp
+    src/client/client-log-formatter.h
     ${QSAN_ENGINE_PACKAGE_SOURCES}
     ${QSAN_LUA_SOURCES}
     "${qsan_swig_wrapper}"
@@ -444,6 +459,7 @@ if(QSAN_BUILD_XP_LEGACY)
         QSAN_ENABLE_QML=0
         QSAN_ENABLE_SPINE=0
         QSAN_ENABLE_VIDEO=0
+        QSAN_ENABLE_WEBSOCKETS=0
         QSAN_USE_RASTER_VIEWPORT=1
         WIN32
         WINVER=0x0501
@@ -467,18 +483,21 @@ target_precompile_headers(qsanguosha_engine PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core/engine-pch.h
 )
 
-target_link_libraries(qsanguosha_engine PUBLIC
-    Qt6::Core
-    Qt6::Network
-    Qt6::WebSockets
-)
+if(QSAN_ENABLE_WEBSOCKETS)
+    target_sources(qsanguosha_engine PRIVATE
+        src/util/websocketsocket.cpp
+        src/util/websocketsocket.h
+    )
+endif()
+
+target_link_libraries(qsanguosha_engine PUBLIC ${QSAN_ENGINE_QT_LIBS})
 
 if(WIN32)
     target_link_libraries(qsanguosha_engine PRIVATE Ws2_32 IPHLPAPI)
 endif()
 
 get_target_property(qsan_engine_links qsanguosha_engine LINK_LIBRARIES)
-set(_qsan_engine_qt_allowlist Qt6::Core Qt6::Network Qt6::WebSockets)
+set(_qsan_engine_qt_allowlist ${QSAN_ENGINE_QT_LIBS})
 foreach(qsan_engine_link IN LISTS qsan_engine_links)
     if(qsan_engine_link MATCHES "^Qt6::" AND NOT qsan_engine_link IN_LIST _qsan_engine_qt_allowlist)
         message(FATAL_ERROR "qsanguosha_engine links forbidden Qt target: ${qsan_engine_link}")
@@ -508,6 +527,8 @@ set(QSAN_CLIENT_CORE_SOURCES
     src/client/core/interaction-model.cpp
     src/client/core/interaction-model.h
     src/client/core/custom-interaction-registry.h
+    src/client/core/client-move-log.cpp
+    src/client/core/client-move-log.h
 )
 
 add_library(qsanguosha_client_core STATIC ${QSAN_CLIENT_CORE_SOURCES})
@@ -639,9 +660,7 @@ if(QSAN_BUILD_TUI)
     target_link_libraries(qsanguosha_tui PRIVATE
         qsanguosha_tui_support
         "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>"
-        Qt6::Core
-        Qt6::Network
-        Qt6::WebSockets
+        ${QSAN_ENGINE_QT_LIBS}
     )
     if(WIN32)
         # crash handler (crashhandler.cpp, Release only) needs dbghelp
@@ -736,9 +755,7 @@ if(QSAN_BUILD_SERVER)
     endif()
     target_link_libraries(qsanguosha_server PRIVATE
         "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>"
-        Qt6::Core
-        Qt6::Network
-        Qt6::WebSockets
+        ${QSAN_ENGINE_QT_LIBS}
     )
     if(WIN32)
         target_link_libraries(qsanguosha_server PRIVATE Ws2_32 IPHLPAPI)
@@ -1152,6 +1169,7 @@ if(QSAN_BUILD_GUI)
             QSAN_ENABLE_QML=0
             QSAN_ENABLE_SPINE=0
             QSAN_ENABLE_VIDEO=0
+            QSAN_ENABLE_WEBSOCKETS=0
             QSAN_USE_RASTER_VIEWPORT=1
             WIN32
             WINVER=0x0501
@@ -1191,10 +1209,8 @@ if(QSAN_BUILD_GUI)
 
     target_link_libraries(${QSAN_GUI_TARGET} PRIVATE
         qsanguosha_client_core
-        Qt6::Core
+        ${QSAN_ENGINE_QT_LIBS}
         Qt6::Gui
-        Qt6::Network
-        Qt6::WebSockets
         Qt6::Widgets
     )
     if(QSAN_BUILD_XP_LEGACY)
