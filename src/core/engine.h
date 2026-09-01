@@ -10,6 +10,7 @@
 #include "json.h"
 #include <QMutex>
 #include <QThread>
+#include <QVariantMap>
 
 // Recursive mutex with yield/restore support.
 // Unlike QRecursiveMutex, it allows atomically releasing all recursive
@@ -72,6 +73,7 @@ public:
 
     void addTranslationEntry(const QString &key, const QString &value);
     QString translate(const QString &to_translate, bool initial = false) const;
+    QVariantMap translationTable() const;
     QString getAiData() const;
     bool setAiData(const QString &json) const;
     lua_State *getLuaState() const;
