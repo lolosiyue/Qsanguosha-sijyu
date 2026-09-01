@@ -80,7 +80,7 @@ bool strictPayloadContracts(QString *error)
     }
 
     // The Judge phase flips a delayed trick onto the table with
-    // CardMoveReason::S_REASON_NO_BASIC (0x0F), a sentinel that deliberately
+    // CardMoveReason::S_MASK_BASIC_REASON (0x0F), a sentinel that deliberately
     // matches no basic reason. It is a real reason on the wire: rejecting it
     // drops the move and tears the connection down on every game where somebody
     // holds a delayed trick.
