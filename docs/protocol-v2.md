@@ -85,6 +85,11 @@ payload nesting is capped at 128.
 Non-finite numbers, unsupported Qt metatypes, and integers outside the JSON-safe
 payload range are rejected.
 
+`SignupRequestPayload` is schema 2. Native GUI and TUI omit `room_id` and join
+`current` as before. Schema 1 without `room_id` remains accepted. A present
+`room_id` must be a non-negative integer and selects that waiting room; unknown,
+finished, started, or full rooms are rejected and do not create a new seat.
+
 Decode is transactional: a failed decode does not mutate the output message.
 An encode failure returns an empty byte array and a diagnostic.
 
