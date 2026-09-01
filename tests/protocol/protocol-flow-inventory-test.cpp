@@ -115,6 +115,40 @@ bool strictPayloadContracts(QString *error)
         return false;
     }
     error->clear();
+
+    ProtocolMessage showAll;
+    showAll.version = ProtocolVersion::V2;
+    showAll.type = ProtocolMessageType::Notification;
+    showAll.source = ProtocolEndpoint::Room;
+    showAll.destination = ProtocolEndpoint::Client;
+    showAll.messageId = 1;
+    showAll.command = S_COMMAND_SHOW_ALL_CARDS;
+    showAll.hasPayload = true;
+    showAll.payload = QVariantList{
+        QStringLiteral("sgs1"),
+        false,
+        QVariantList{1, 2}
+    };
+    ProtocolMessage encoded;
+    if (!ProtocolPayloadRegistry::encodeObjectPayload(showAll, &encoded, error))
+        return false;
+    const QVariantMap showAllObject = encoded.payload.toMap();
+    if (showAllObject.value(QStringLiteral("player_name")).toString()
+            != QLatin1String("sgs1")
+        || showAllObject.value(QStringLiteral("card_ids")).toList()
+            != QVariantList{1, 2}) {
+        *error = QStringLiteral("Gongxin-shaped SHOW_ALL_CARDS did not map card_ids");
+        return false;
+    }
+
+    showAll.payload = QVariantList{QStringLiteral("sgs1"), QVariantList{3}};
+    if (!ProtocolPayloadRegistry::encodeObjectPayload(showAll, &encoded, error))
+        return false;
+    if (encoded.payload.toMap().value(QStringLiteral("card_ids")).toList()
+        != QVariantList{3}) {
+        *error = QStringLiteral("two-field SHOW_ALL_CARDS did not map card_ids");
+        return false;
+    }
     return true;
 }
 }
