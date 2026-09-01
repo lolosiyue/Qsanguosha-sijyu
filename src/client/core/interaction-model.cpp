@@ -108,6 +108,8 @@ QJsonObject requestPayloadToJson(const InteractionPayload &payload)
             object.insert(QStringLiteral("zone_flags"), value->zoneFlags);
         if (value->handCardsVisible)
             object.insert(QStringLiteral("hand_cards_visible"), true);
+        if (value->hiddenHandCount > 0)
+            object.insert(QStringLiteral("hidden_hand_count"), value->hiddenHandCount);
         if (value->includeEquip)
             object.insert(QStringLiteral("include_equip"), true);
         object.insert(QStringLiteral("card_text_allowed"), value->cardTextAllowed);
@@ -117,6 +119,17 @@ QJsonObject requestPayloadToJson(const InteractionPayload &payload)
         if (!value->suggestedDisabledCards.isEmpty())
             object.insert(QStringLiteral("suggested_disabled_cards"),
                 toJsonArray(value->suggestedDisabledCards));
+        if (!value->skillCandidates.isEmpty()) {
+            QJsonArray skills;
+            for (const SkillActivationCandidate &skill : value->skillCandidates) {
+                QJsonObject entry;
+                entry.insert(QStringLiteral("skill"), skill.skillName);
+                if (skill.instanceId > 0)
+                    entry.insert(QStringLiteral("instance_id"), skill.instanceId);
+                skills.append(entry);
+            }
+            object.insert(QStringLiteral("skill_candidates"), skills);
+        }
     } else if (const RoleAssignmentInteractionPayload *value = std::get_if<RoleAssignmentInteractionPayload>(&payload)) {
         object.insert(QStringLiteral("scheme"), value->scheme);
         object.insert(QStringLiteral("players"), toJsonArray(value->playerNames));

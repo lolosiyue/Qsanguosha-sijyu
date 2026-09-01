@@ -7,7 +7,9 @@
 #include <QCoreApplication>
 #include <QHash>
 #include <QJsonArray>
+#include <QMap>
 
+#include <functional>
 #include <utility>
 
 namespace {
@@ -46,14 +48,27 @@ void appendOptions(QStringList *lines, const QList<InteractionOption> &options)
 }
 
 void appendCards(QStringList *lines, const QList<int> &cards, const QList<int> &disabled,
-                 const TuiRenderer::CardResolver &resolver)
+                 const TuiRenderer::CardResolver &resolver, int startIndex = 1)
 {
     for (int i = 0; i < cards.size(); ++i) {
         const int cardId = cards.at(i);
         const QString display = resolver ? TuiRenderer::sanitize(resolver(cardId), 512)
                                          : tr("牌 %1").arg(cardId);
-        lines->append(tr("  [%1] %2（ID=%3）%4").arg(i + 1).arg(display).arg(cardId)
+        lines->append(tr("  [%1] %2（ID=%3）%4").arg(startIndex + i).arg(display).arg(cardId)
             .arg(disabled.contains(cardId) ? tr("（停用）") : QString()));
+    }
+}
+
+void appendPlayers(QStringList *lines, const QStringList &names,
+                   const std::function<QString(const QString &)> &resolve)
+{
+    for (int i = 0; i < names.size(); ++i) {
+        const QString objectName = names.at(i);
+        const QString shown = resolve(objectName);
+        lines->append(shown == objectName
+            ? QStringLiteral("  [%1] %2").arg(i + 1).arg(TuiRenderer::sanitize(objectName, 128))
+            : QStringLiteral("  [%1] %2（%3）").arg(i + 1)
+                .arg(TuiRenderer::sanitize(shown, 128), TuiRenderer::sanitize(objectName, 128)));
     }
 }
 
@@ -158,6 +173,118 @@ QString TuiRenderer::nameText(const QString &name) const
     if (fixed != labels.cend())
         return fixed.value();
     return sanitize(m_nameResolver ? m_nameResolver(name) : name, 256);
+}
+
+QString TuiRenderer::interactionTitle(const InteractionRequest &request) const
+{
+    switch (request.type) {
+    case InteractionType::ChooseRole:
+        return tr("分配身分");
+    case InteractionType::ChooseGeneral:
+    case InteractionType::AskGeneral:
+        return tr("選擇武將");
+    case InteractionType::ChooseDirection:
+        return tr("選擇座次方向");
+    case InteractionType::PlayCard:
+        return tr("出牌");
+    case InteractionType::ResponseCard:
+        return tr("打出牌");
+    case InteractionType::DiscardCard:
+        return tr("棄牌");
+    case InteractionType::ExchangeCard:
+        return tr("換牌");
+    case InteractionType::AskPeach:
+        return tr("求桃");
+    case InteractionType::Nullification:
+        return tr("無懈可擊");
+    case InteractionType::Choice:
+        return tr("選擇");
+    case InteractionType::SkillInvoke:
+        return tr("發動技能");
+    case InteractionType::ChoosePlayer:
+        return tr("選擇角色");
+    case InteractionType::ChooseCard:
+        return tr("選擇卡牌");
+    case InteractionType::ChooseSuit:
+        return tr("選擇花色");
+    case InteractionType::ChooseKingdom:
+        return tr("選擇勢力");
+    case InteractionType::AmazingGrace:
+        return tr("五穀豐登");
+    case InteractionType::SkillGuanxing:
+        return tr("觀星");
+    case InteractionType::SkillGongxin:
+        return tr("攻心");
+    case InteractionType::SkillYiji:
+        return tr("遺計");
+    case InteractionType::Pindian:
+        return tr("拼點");
+    case InteractionType::TriggerOrder:
+        return tr("技能發動順序");
+    case InteractionType::ArrangeGeneral:
+        return tr("排列武將");
+    case InteractionType::LuckCard:
+        return tr("手氣卡");
+    case InteractionType::Surrender:
+        return tr("投降");
+    default:
+        return tr("互動：%1").arg(interactionTypeName(request.type));
+    }
+}
+
+QString TuiRenderer::answerHint(const InteractionRequest &request) const
+{
+    switch (request.responseSchema) {
+    case InteractionResponseShape::Assignment: {
+        const auto *value = request.payloadAs<RoleAssignmentInteractionPayload>();
+        if (value == nullptr || value->playerNames.isEmpty())
+            return tr("作答：<玩家>=<身分>  例如 1=主公 2=反賊");
+        QStringList parts;
+        for (int i = 0; i < value->playerNames.size(); ++i) {
+            const QString role = (value->roles.size() == value->playerNames.size())
+                ? nameText(value->roles.at(i)) : QStringLiteral("?");
+            parts << QStringLiteral("%1=%2").arg(i + 1).arg(role);
+        }
+        return tr("作答：每位玩家寫 <編號>=<身分>，同一行以空白隔開\n範例：%1")
+            .arg(parts.join(QLatin1Char(' ')));
+    }
+    case InteractionResponseShape::Option:
+        return tr("作答：輸入選項編號，或括號後的原文（例如 1 或 lord）");
+    case InteractionResponseShape::Players:
+        return tr("作答：輸入玩家編號，可多選（例如 2 或 1 3）");
+    case InteractionResponseShape::Cards:
+        if (request.type == InteractionType::PlayCard) {
+            return tr("作答：<編號> -> <目標編號>   例如 1 -> 2\n"
+                      "技能可帶手牌：<技能編號> <手牌編號>   例如 4 1\n"
+                      "無目標只寫編號。結束出牌：pass 或 /cancel");
+        }
+        if (request.type == InteractionType::ChooseCard) {
+            const auto *value = request.payloadAs<CardInteractionPayload>();
+            if (value != nullptr && value->hiddenHandCount > 0) {
+                return tr("作答：輸入編號（例如 1）\n"
+                          "未知手牌選任一張即可，無需知道牌面");
+            }
+            return tr("作答：輸入牌編號（例如 1）");
+        }
+        if (request.type == InteractionType::DiscardCard
+            || request.type == InteractionType::ExchangeCard) {
+            return tr("作答：輸入牌編號，可多選（例如 1 3 或 1-3）");
+        }
+        if (request.type == InteractionType::AskPeach) {
+            return tr("作答：輸入桃的編號（例如 1）");
+        }
+        return tr("作答：輸入牌編號（例如 1）");
+    case InteractionResponseShape::Rearrangement:
+        return tr("作答：<放回牌堆頂的編號> | <放回牌堆底的編號>");
+    case InteractionResponseShape::Distribution:
+        return tr("作答：cards <牌編號> -> <玩家編號>");
+    case InteractionResponseShape::GeneralArrangement:
+        return tr("作答：依序輸入武將編號");
+    case InteractionResponseShape::Custom:
+        return tr("作答：一個 JSON 物件或陣列");
+    default:
+        return QString();
+    }
 }
 
 QString TuiRenderer::renderState(const ClientGameState &state) const
@@ -301,19 +428,55 @@ QString TuiRenderer::renderHand(const ClientGameState &state) const
 
 QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
 {
-    QStringList lines{heading(tr("互動"))};
-    lines << tr("類型：%1  請求：%2")
-        .arg(interactionTypeName(request.type)).arg(request.requestId);
+    QStringList lines{heading(interactionTitle(request))};
     if (!request.skillName.isEmpty())
         lines << tr("技能：%1").arg(nameText(request.skillName));
     if (!request.prompt.isEmpty())
         lines << tr("提示：%1").arg(sanitize(request.prompt, 1024));
-    lines << tr("選擇數：%1..%2  可取消=%3  逾時=%4ms")
-        .arg(request.minSelection()).arg(request.maxSelection())
-        .arg(request.cancelable ? tr("是") : tr("否"))
-        .arg(request.timeoutMs);
 
-    if (const auto *value = request.payloadAs<OptionInteractionPayload>()) {
+    const int minimum = request.minSelection();
+    const int maximum = request.maxSelection();
+    if (request.responseSchema != InteractionResponseShape::Assignment
+        && request.type != InteractionType::PlayCard
+        && (minimum > 0 || maximum > 0)) {
+        lines << tr("須選 %1 至 %2 項").arg(minimum).arg(maximum);
+    }
+    if (request.timeoutMs > 0)
+        lines << tr("限時 %1 秒").arg((request.timeoutMs + 999) / 1000);
+
+    if (const auto *value = request.payloadAs<RoleAssignmentInteractionPayload>()) {
+        lines << tr("為每位玩家指定一個身分。");
+        QMap<QString, int> roleCounts;
+        for (const QString &role : value->roles)
+            roleCounts[role] += 1;
+        if (!roleCounts.isEmpty()) {
+            QStringList needed;
+            for (auto it = roleCounts.constBegin(); it != roleCounts.constEnd(); ++it)
+                needed << tr("%1×%2").arg(nameText(it.key())).arg(it.value());
+            lines << tr("本局需要：%1").arg(needed.join(tr("、")));
+        }
+        lines << tr("玩家：");
+        for (int i = 0; i < value->playerNames.size(); ++i) {
+            const QString objectName = value->playerNames.at(i);
+            const QString shown = nameText(objectName);
+            lines << (shown == objectName
+                ? QStringLiteral("  [%1] %2").arg(i + 1).arg(sanitize(objectName, 128))
+                : QStringLiteral("  [%1] %2（%3）").arg(i + 1)
+                    .arg(sanitize(shown, 128), sanitize(objectName, 128)));
+        }
+        QStringList uniqueRoles;
+        for (const QString &role : value->roles) {
+            if (!uniqueRoles.contains(role))
+                uniqueRoles.append(role);
+        }
+        if (!uniqueRoles.isEmpty()) {
+            lines << tr("身分：");
+            for (const QString &role : uniqueRoles)
+                lines << QStringLiteral("  %1 = %2").arg(role, nameText(role));
+        }
+        if (value->playerNames.isEmpty())
+            lines << tr("（尚未收到玩家名單）");
+    } else if (const auto *value = request.payloadAs<OptionInteractionPayload>()) {
         QList<InteractionOption> localized = value->options;
         for (InteractionOption &option : localized) {
             if (option.label.isEmpty() || option.label == option.value)
@@ -325,18 +488,59 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
     } else if (const auto *value = request.payloadAs<PlayerInteractionPayload>()) {
         for (int i = 0; i < value->selection.selectablePlayers.size(); ++i)
             lines << QStringLiteral("  [%1] %2").arg(i + 1)
-                .arg(sanitize(value->selection.selectablePlayers.at(i), 128));
+                .arg(sanitize(nameText(value->selection.selectablePlayers.at(i)), 128));
     } else if (const auto *value = request.payloadAs<CardInteractionPayload>()) {
-        if (!value->selection.selectableCards.isEmpty())
+        const bool playCard = request.type == InteractionType::PlayCard;
+        const bool chooseCard = request.type == InteractionType::ChooseCard;
+        if (chooseCard && !value->sourcePlayer.isEmpty()) {
+            lines << tr("目標：%1")
+                .arg(sanitize(nameText(value->sourcePlayer), 128));
+        }
+        if (chooseCard && value->hiddenHandCount > 0) {
+            lines << tr("手牌（%1 張，牌面未知）：").arg(value->hiddenHandCount);
+            for (int i = 0; i < value->hiddenHandCount; ++i)
+                lines << tr("  [%1] 未知手牌").arg(i + 1);
+        }
+        if (playCard)
+            lines << tr("可選：");
+        if (!value->selection.selectableCards.isEmpty()) {
+            if (chooseCard && value->hiddenHandCount > 0)
+                lines << tr("可見：");
             appendCards(&lines, value->selection.selectableCards,
-                        value->selection.disabledCards, m_cardResolver);
-        // "." is the engine's wildcard: every card qualifies, so saying so adds
-        // nothing but noise.
+                        value->selection.disabledCards, m_cardResolver,
+                        chooseCard ? value->hiddenHandCount + 1 : 1);
+        }
+        if (playCard) {
+            const int skillStart = value->selection.selectableCards.size() + 1;
+            for (int i = 0; i < value->skillCandidates.size(); ++i) {
+                const SkillActivationCandidate &skill = value->skillCandidates.at(i);
+                const QString shown = nameText(skill.skillName);
+                lines << (skill.instanceId > 0
+                    ? tr("  [%1] %2（技能 #%3）").arg(skillStart + i)
+                        .arg(sanitize(shown, 128)).arg(skill.instanceId)
+                    : tr("  [%1] %2（技能）").arg(skillStart + i)
+                        .arg(sanitize(shown, 128)));
+            }
+            if (value->selection.selectableCards.isEmpty()
+                && value->skillCandidates.isEmpty()) {
+                lines << tr("  （尚無手牌清單，可先打 /hand）");
+            }
+        }
+        if (!value->fixedTargets.isEmpty()) {
+            lines << tr("固定目標：");
+            appendPlayers(&lines, value->fixedTargets,
+                          [this](const QString &name) { return nameText(name); });
+        }
+        if (!value->optionalTargets.isEmpty()) {
+            lines << (request.type == InteractionType::PlayCard
+                ? tr("目標玩家：") : tr("可選目標："));
+            appendPlayers(&lines, value->optionalTargets,
+                          [this](const QString &name) { return nameText(name); });
+        }
         if (!value->selection.pattern.isEmpty()
             && value->selection.pattern != QLatin1String(".")) {
             lines << tr("模式：%1").arg(sanitize(value->selection.pattern, 256));
         }
-        lines << tr("作答：card <精確牌字串> [-> 目標 ...]，或候選牌索引");
     } else if (const auto *value = request.payloadAs<GongxinInteractionPayload>()) {
         QList<int> disabled;
         for (int cardId : value->visibleCards) {
@@ -348,10 +552,8 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
     } else if (const auto *value = request.payloadAs<YijiInteractionPayload>()) {
         appendCards(&lines, value->cardIds, {}, m_cardResolver);
         lines << tr("接收者：%1").arg(value->targetPlayers.join(QLatin1Char(' ')));
-        lines << tr("作答：cards <索引> -> <接收者>");
     } else if (const auto *value = request.payloadAs<RearrangeCardsInteractionPayload>()) {
         appendCards(&lines, value->cardIds, {}, m_cardResolver);
-        lines << tr("作答：<頂部索引> | <底部索引>");
     } else if (const auto *value = request.payloadAs<AmazingGraceInteractionPayload>()) {
         appendCards(&lines, value->selection.selectableCards,
                     value->selection.disabledCards, m_cardResolver);
@@ -366,11 +568,12 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
                 .arg(value->options.at(i).instanceId);
     } else if (const auto *value = request.payloadAs<CustomInteractionPayload>()) {
         lines << tr("自訂類型：%1").arg(sanitize(value->typeName, 128));
-        lines << tr("作答：符合宣告回覆 schema 的 JSON 物件或陣列");
     }
-    if (request.cancelable)
-        lines << tr("可使用 /cancel");
-    lines << tr("範例：2 | 1 3 | 1-4 | card 2 -> p1 p3 | yes | top | bottom");
+    const QString hint = answerHint(request);
+    if (!hint.isEmpty())
+        lines << hint;
+    if (request.cancelable && request.type != InteractionType::PlayCard)
+        lines << tr("可輸入 /cancel 放棄");
     lines << QStringLiteral("> ");
     return lines.join(QLatin1Char('\n'));
 }

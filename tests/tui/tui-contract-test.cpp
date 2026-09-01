@@ -431,6 +431,25 @@ void builderContract()
     }
     check(complete, "all 29 V2 requests build canonical TUI interactions");
 
+    ProtocolMessage playCard;
+    playCard.type = ProtocolMessageType::Request;
+    playCard.source = ProtocolEndpoint::Room;
+    playCard.destination = ProtocolEndpoint::Client;
+    playCard.command = S_COMMAND_PLAY_CARD;
+    playCard.messageId = ++messageId;
+    playCard.hasPayload = true;
+    playCard.payload = samplePayload(S_COMMAND_PLAY_CARD);
+    state.addPlayer(QStringLiteral("p1"));
+    InteractionRequest playRequest;
+    QString playError;
+    check(ProtocolInteractionRequestBuilder::build(playCard, state, &playRequest, &playError)
+              && playRequest.payloadAs<CardInteractionPayload>() != nullptr
+              && playRequest.payloadAs<CardInteractionPayload>()->optionalTargets.contains(
+                  QStringLiteral("p1"))
+              && playRequest.payloadAs<CardInteractionPayload>()->optionalTargets.contains(
+                  QStringLiteral("p2")),
+          "play-card advertises numbered players as optional targets");
+
     ProtocolMessage trigger;
     trigger.type = ProtocolMessageType::Request;
     trigger.source = ProtocolEndpoint::Room;
@@ -476,6 +495,71 @@ void builderContract()
     custom.payload = unknown;
     check(!ProtocolInteractionRequestBuilder::build(custom, state, &request, &error),
           "unknown custom interaction type fails closed");
+}
+
+void chooseCardHiddenHandContract()
+{
+    ClientGameState state;
+    state.setSelfName(QStringLiteral("p1"));
+    state.addPlayer(QStringLiteral("p1"));
+    state.addPlayer(QStringLiteral("p2"));
+    state.setCardIdSpace(32);
+    state.setPlayerValue(QStringLiteral("p2"), QStringLiteral("hand_count"), 3);
+    state.setCardValue(20, QStringLiteral("owner"), QStringLiteral("p2"));
+    state.setCardValue(20, QStringLiteral("place"), 1);
+    state.setCardValue(20, QStringLiteral("card_name"), QStringLiteral("eight_diagram"));
+
+    ProtocolMessage message;
+    message.type = ProtocolMessageType::Request;
+    message.source = ProtocolEndpoint::Room;
+    message.destination = ProtocolEndpoint::Client;
+    message.command = S_COMMAND_CHOOSE_CARD;
+    message.messageId = 0x2001;
+    message.hasPayload = true;
+    QVariantMap payload = samplePayload(S_COMMAND_CHOOSE_CARD);
+    payload.insert(QStringLiteral("player"), QStringLiteral("p2"));
+    payload.insert(QStringLiteral("zone_flags"), QStringLiteral("he"));
+    payload.insert(QStringLiteral("hand_cards_visible"), false);
+    message.payload = payload;
+
+    InteractionRequest request;
+    QString error;
+    check(ProtocolInteractionRequestBuilder::build(message, state, &request, &error),
+          "choose-card with hidden hands builds");
+    const auto *cards = request.payloadAs<CardInteractionPayload>();
+    check(cards != nullptr && cards->hiddenHandCount == 3
+              && cards->selection.selectableCards == QList<int>{20}
+              && !cards->handCardsVisible,
+          "choose-card advertises hidden hand count without leaking hand ids");
+
+    TuiRenderer renderer(false);
+    const QString prompt = renderer.renderInteraction(request);
+    check(prompt.contains(QStringLiteral("手牌（3 張，牌面未知）"))
+              && prompt.contains(QStringLiteral("[1] 未知手牌"))
+              && prompt.contains(QStringLiteral("[3] 未知手牌"))
+              && !prompt.contains(QStringLiteral("ID=-1")),
+          "choose-card prompt lists unknown hands by count");
+
+    TuiInteractionView view(&renderer, [](const QString &) {});
+    InteractionResponse hidden;
+    check(view.parseAnswer(request, QStringLiteral("1"), &hidden, &error),
+          "choose-card hidden-hand index parses");
+    const auto *hiddenAnswer = hidden.payloadAs<InteractionResponse::CardSelectionData>();
+    check(hiddenAnswer != nullptr && hiddenAnswer->cardIds == QList<int>{-1},
+          "choose-card hidden-hand index replies with unknown sentinel");
+
+    InteractionResponse equip;
+    check(view.parseAnswer(request, QStringLiteral("4"), &equip, &error),
+          "choose-card visible equip index parses");
+    const auto *equipAnswer = equip.payloadAs<InteractionResponse::CardSelectionData>();
+    check(equipAnswer != nullptr && equipAnswer->cardIds == QList<int>{20},
+          "choose-card visible cards keep original ids");
+
+    ClientCore core;
+    *core.state() = state;
+    core.beginRequest(request);
+    check(core.submitResponse(hidden).accepted(),
+          "choose-card unknown-hand sentinel is accepted");
 }
 
 QString validAnswerFor(const InteractionRequest &request)
@@ -769,7 +853,7 @@ void rendererContract()
           "a rejected answer explains itself without an internal error code");
     check(rejectionText.contains(QStringLiteral("2")),
           "a rejected answer keeps the detail that says what was wrong");
-    check(rejectionLines.size() >= 2 && rejectionLines.last().contains(QStringLiteral("互動")),
+    check(rejectionLines.size() >= 2 && rejectionLines.last().contains(QStringLiteral("打出牌")),
           "a rejected answer re-shows the prompt so the player can retry");
 
     InteractionRequest anyCard = cardRequest();
@@ -782,6 +866,28 @@ void rendererContract()
         = QStringLiteral("slash");
     check(plain.renderInteraction(slashOnly).contains(QStringLiteral("模式")),
           "a real card pattern is still shown");
+
+    InteractionRequest playPrompt;
+    playPrompt.requestId = 0x200000010ULL;
+    playPrompt.command = S_COMMAND_PLAY_CARD;
+    playPrompt.type = InteractionType::PlayCard;
+    playPrompt.responseSchema = InteractionResponseShape::Cards;
+    playPrompt.cancelable = true;
+    CardInteractionPayload playPayload;
+    playPayload.selection.selectableCards = {7, 12};
+    playPayload.selection.minSelection = 0;
+    playPayload.selection.maxSelection = 1;
+    playPayload.optionalTargets = {QStringLiteral("sgs1"), QStringLiteral("sgs2")};
+    playPayload.skillCandidates = {SkillActivationCandidate{QStringLiteral("zhiheng"), 2}};
+    playPrompt.payload = playPayload;
+    const QString playText = plain.renderInteraction(playPrompt);
+    check(playText.contains(QStringLiteral("可選"))
+              && playText.contains(QStringLiteral("目標玩家"))
+              && playText.contains(QStringLiteral("結束出牌"))
+              && playText.contains(QStringLiteral("1 -> 2"))
+              && playText.contains(QStringLiteral("技能"))
+              && !playText.contains(QStringLiteral("須選")),
+          "play-card prompt lists cards, skills, numbered targets, and how to pass");
 
     TuiRenderer ansi(true);
     check(ansi.renderState(state).contains(QChar(0x1b)),
@@ -818,6 +924,25 @@ void commandContract()
           "read-only command rejects stray arguments");
     check(!TuiCommandParser::parse(QStringLiteral("/unknown"), &intent, &error),
           "unknown global command fails closed");
+
+    const TuiCompletion addRobot = completeTuiLine(QStringLiteral("/ad"), {});
+    check(addRobot.matches == QStringList{QStringLiteral("/addrobot")}
+              && addRobot.line == QStringLiteral("/addrobot "),
+          "tab completes a unique slash command and appends a space");
+    const TuiCompletion helpPrefix = completeTuiLine(QStringLiteral("/h"), {});
+    check(helpPrefix.matches.contains(QStringLiteral("/hand"))
+              && helpPrefix.matches.contains(QStringLiteral("/help"))
+              && helpPrefix.line == QStringLiteral("/h"),
+          "tab lists ambiguous slash commands and keeps the shared prefix");
+    const TuiCompletion robots = completeTuiLine(QStringLiteral("/addrobot a"), {});
+    check(robots.matches == QStringList{QStringLiteral("all")}
+              && robots.line == QStringLiteral("/addrobot all"),
+          "tab completes /addrobot all");
+    const TuiCompletion pass = completeTuiLine(
+        QStringLiteral("p"), {QStringLiteral("pass"), QStringLiteral("過")});
+    check(pass.matches == QStringList{QStringLiteral("pass")}
+              && pass.line == QStringLiteral("pass"),
+          "tab completes interaction tokens such as pass");
 }
 
 void syncContract()
@@ -850,7 +975,15 @@ void terminalContract()
           "terminal output strips escape and control bytes");
 
     TuiRenderer renderer(false);
-    TuiInteractionView view(&renderer, [](const QString &) {});
+    TuiInteractionView view(&renderer, [](const QString &) {},
+        TuiInteractionView::CardTextResolver(),
+        [](const QString &skill, int instanceId, const QList<int> &subcards, QString *) {
+            QStringList ids;
+            for (int id : subcards)
+                ids.append(QString::number(id));
+            return QStringLiteral("@%1Card[no_suit:0]=%2#%3")
+                .arg(skill, ids.join(QLatin1Char('+')), QString::number(instanceId));
+        });
     InteractionResponse response;
     QString error;
     const InteractionRequest option = optionRequest();
@@ -872,6 +1005,45 @@ void terminalContract()
           "card range and target parser uses advertised candidates");
     check(!view.parseAnswer(cards, QStringLiteral("4"), &response, &error),
           "out-of-range card index is rejected");
+
+    InteractionRequest play = cards;
+    play.command = S_COMMAND_PLAY_CARD;
+    play.type = InteractionType::PlayCard;
+    auto *playPayload = std::get_if<CardInteractionPayload>(&play.payload);
+    playPayload->optionalTargets = {QStringLiteral("sgs1"), QStringLiteral("sgs2")};
+    check(view.parseAnswer(play, QStringLiteral("1 -> 2"), &response, &error)
+              && response.payloadAs<InteractionResponse::CardSelectionData>() != nullptr
+              && response.payloadAs<InteractionResponse::CardSelectionData>()->cardIds
+                    == QList<int>({7})
+              && response.payloadAs<InteractionResponse::CardSelectionData>()->targets
+                    == QStringList({QStringLiteral("sgs2")}),
+          "play-card 1 -> 2 maps the second numbered player");
+    check(view.parseAnswer(play, QStringLiteral("pass"), &response, &error)
+              && response.payloadAs<InteractionResponse::CancelData>() != nullptr,
+          "play-card accepts pass as end-of-phase cancel");
+    check(view.parseAnswer(play, QStringLiteral("過"), &response, &error)
+              && response.payloadAs<InteractionResponse::CancelData>() != nullptr,
+          "play-card accepts 過 as end-of-phase cancel");
+
+    playPayload->skillCandidates = {SkillActivationCandidate{QStringLiteral("zhiheng"), 2}};
+    check(view.parseAnswer(play, QStringLiteral("4"), &response, &error)
+              && response.payloadAs<InteractionResponse::CardSelectionData>() != nullptr
+              && response.payloadAs<InteractionResponse::CardSelectionData>()->cardIds.isEmpty()
+              && response.payloadAs<InteractionResponse::CardSelectionData>()->cardText
+                    .contains(QStringLiteral("zhiheng"))
+              && response.payloadAs<InteractionResponse::CardSelectionData>()
+                    ->activationSkillName == QLatin1String("zhiheng")
+              && response.payloadAs<InteractionResponse::CardSelectionData>()
+                    ->activationSkillInstanceId == 2
+              && response.payloadAs<InteractionResponse::CardSelectionData>()->subcardIds.isEmpty(),
+          "play-card skill index uses the numbered SkillCard candidate");
+    check(view.parseAnswer(play, QStringLiteral("4 1"), &response, &error)
+              && response.payloadAs<InteractionResponse::CardSelectionData>() != nullptr
+              && response.payloadAs<InteractionResponse::CardSelectionData>()->subcardIds
+                    == QList<int>({7})
+              && response.payloadAs<InteractionResponse::CardSelectionData>()
+                    ->activationSkillName == QLatin1String("zhiheng"),
+          "play-card skill index can take hand cards as subcards");
 
     check(view.parseAnswer(cards,
               QStringLiteral("skill longdan#4: card 1 -> 2"), &response, &error)
@@ -1019,6 +1191,7 @@ int main(int argc, char *argv[])
     }
     registryContract();
     builderContract();
+    chooseCardHiddenHandContract();
     interactionRoundTripContract();
     reducerContract();
     coverageContract();

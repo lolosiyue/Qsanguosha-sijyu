@@ -96,14 +96,28 @@ QString tuiSkillLogText(const QVariantMap &payload, const TuiPlayerNameResolver 
 
     const QString from = resolveName(playerName,
         payload.value(QStringLiteral("from_player")).toString());
-    if (!from.isEmpty())
-        text.replace(QStringLiteral("%from"), from);
 
     QStringList targets;
     for (const QString &objectName
          : payload.value(QStringLiteral("to_players")).toStringList()) {
         targets << resolveName(playerName, objectName);
     }
+
+    // Desktop ClientLogBox synthesises #UseCard; lang had no template, so the
+    // transcript used to print the raw key.
+    if (type == QLatin1String("#UseCard")) {
+        if (text == type) {
+            text = targets.isEmpty()
+                ? QCoreApplication::translate("QSanguoshaTui", "%from 使用了 %card")
+                : QCoreApplication::translate("QSanguoshaTui", "%from 對 %to 使用了 %card");
+        } else if (!targets.isEmpty() && !text.contains(QStringLiteral("%to"))) {
+            text.append(QCoreApplication::translate("QSanguoshaTui", "，目標是 %to"));
+        }
+    }
+
+    if (!from.isEmpty())
+        text.replace(QStringLiteral("%from"), from);
+
     if (!targets.isEmpty())
         text.replace(QStringLiteral("%to"), targets.join(QStringLiteral("、")));
 
@@ -176,6 +190,8 @@ QString tuiPresentationEventText(int command, const QString &fallbackText,
             resolveName(playerName, chat.value(QStringLiteral("speaker")).toString()), said);
     }
     case QSanProtocol::S_COMMAND_ANIMATE:
+    case QSanProtocol::S_COMMAND_SET_EMOTION:
+        // Desktop-only presentation: a text transcript has nothing to show.
         return QString();
     default:
         return fallbackText;
