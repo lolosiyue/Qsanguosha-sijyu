@@ -79,6 +79,24 @@ bool strictPayloadContracts(QString *error)
         return false;
     }
 
+    // The Judge phase flips a delayed trick onto the table with
+    // CardMoveReason::S_REASON_NO_BASIC (0x0F), a sentinel that deliberately
+    // matches no basic reason. It is a real reason on the wire: rejecting it
+    // drops the move and tears the connection down on every game where somebody
+    // holds a delayed trick.
+    QVariantMap sentinelReason = reason;
+    sentinelReason.insert(QStringLiteral("reason"), 0x0F);
+    sentinelReason.insert(QStringLiteral("skill_name"), QString());
+    sentinelReason.insert(QStringLiteral("event_name"), QStringLiteral("delayed_effect"));
+    QVariantMap sentinelMove = move;
+    sentinelMove.insert(QStringLiteral("from_place"), 2);  // Player::PlaceDelayedTrick
+    sentinelMove.insert(QStringLiteral("to_place"), 7);    // Player::PlaceTable
+    sentinelMove.insert(QStringLiteral("reason"), sentinelReason);
+    movement.insert(QStringLiteral("moves"), QVariantList{sentinelMove});
+    message.payload = movement;
+    if (!ProtocolPayloadRegistry::validateObjectPayload(message, error))
+        return false;
+
     QVariantMap gameEvent {
         {QStringLiteral("schema_version"), 1},
         {QStringLiteral("event"), S_GAME_EVENT_PLAY_EFFECT},

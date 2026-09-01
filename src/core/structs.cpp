@@ -65,6 +65,7 @@ bool isKnownCardMoveReason(int reason)
     case CardMoveReason::S_REASON_CHANGE_EQUIP:
     case CardMoveReason::S_REASON_SHUFFLE:
     case CardMoveReason::S_REASON_PUT_END:
+    case CardMoveReason::S_REASON_NO_BASIC:
         return true;
     default:
         return false;

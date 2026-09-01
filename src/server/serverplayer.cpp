@@ -406,7 +406,7 @@ void ServerPlayer::setSocket(ClientSocket *socket)
 		if (this->socket) {
 			this->disconnect(this->socket);
 			this->socket->disconnect(this);
-			this->socket->disconnectFromHost();
+			disconnectSocketFromOwnerThread();
 			this->socket->deleteLater();
 		}
 
@@ -429,7 +429,7 @@ void ServerPlayer::adoptProtocolConnectionState(
 void ServerPlayer::kick()
 {
 	room->notifyProperty(this, this, "flags", "is_kicked");
-	if (socket != nullptr) socket->disconnectFromHost();
+	disconnectSocketFromOwnerThread();
 	setSocket(nullptr);
 }
 
@@ -442,8 +442,7 @@ void ServerPlayer::getMessage(const QByteArray &message)
 		qWarning().noquote() << reportHeader()
 			<< (result.success ? QStringLiteral("Non-monotonic Protocol V2 message_id")
 				: QStringLiteral("Protocol decode failed: %1").arg(result.detail));
-		if (socket != nullptr)
-			socket->disconnectFromHost();
+		disconnectSocketFromOwnerThread();
 		return;
 	}
 	m_lastIncomingMessageId = decoded.messageId;
@@ -555,9 +554,9 @@ quint64 ServerPlayer::sendProtocolMessage(ProtocolMessage message)
 	if (ProtocolGameplayPayloadRegistry::isMigratedFlow(message)) {
 		if (!ProtocolGameplayPayloadRegistry::encodeForWire(
 				message, &canonical, &error)) {
-			qWarning().noquote() << reportHeader() << "Protocol payload encode failed:" << error;
-			if (socket != nullptr)
-				socket->disconnectFromHost();
+			qWarning().noquote() << reportHeader() << "Protocol payload encode failed: command"
+				<< message.command << ":" << error;
+			disconnectSocketFromOwnerThread();
 			return 0;
 		}
 	} else {
@@ -566,23 +565,23 @@ quint64 ServerPlayer::sendProtocolMessage(ProtocolMessage message)
 	if (!ProtocolPayloadRegistry::encodeObjectPayload(
 			canonical, &canonical, &error)
 		|| !ProtocolPayloadRegistry::validateObjectPayload(canonical, &error)) {
-		qWarning().noquote() << reportHeader() << "Protocol payload encode failed:" << error;
-		if (socket != nullptr)
-			socket->disconnectFromHost();
+		qWarning().noquote() << reportHeader() << "Protocol payload encode failed: command"
+			<< message.command << ":" << error;
+		disconnectSocketFromOwnerThread();
 		return 0;
 	}
 	const QByteArray encoded = ProtocolV2Codec().encode(canonical, &error);
 	if (encoded.isEmpty()) {
-		qWarning().noquote() << reportHeader() << "Protocol encode failed:" << error;
-		if (socket != nullptr)
-			socket->disconnectFromHost();
+		qWarning().noquote() << reportHeader() << "Protocol encode failed: command"
+			<< message.command << ":" << error;
+		disconnectSocketFromOwnerThread();
 		return 0;
 	}
 
 	if (recordBuffer && !recordBuffer->recordMessage(canonical, &error)) {
-		qWarning().noquote() << reportHeader() << "Replay recording failed:" << error;
-		if (socket != nullptr)
-			socket->disconnectFromHost();
+		qWarning().noquote() << reportHeader() << "Replay recording failed: command"
+			<< message.command << ":" << error;
+		disconnectSocketFromOwnerThread();
 		return 0;
 	}
 	m_outboundFrames.append(encoded);
@@ -595,6 +594,20 @@ quint64 ServerPlayer::sendProtocolMessage(ProtocolMessage message)
 	else
 		QMetaObject::invokeMethod(this, "flushOutbound", Qt::QueuedConnection);
 	return message.messageId;
+}
+
+void ServerPlayer::disconnectSocketFromOwnerThread()
+{
+	if (socket == nullptr)
+		return;
+	// A QAbstractSocket may only be touched from the thread that owns it, and
+	// that owner is the main thread, not this player's thread. Encode, validate
+	// and replay failures are reported from the room thread, so the teardown has
+	// to hop the same way flushOutbound() makes the writes hop.
+	if (QThread::currentThread() == socket->thread())
+		socket->disconnectFromHost();
+	else
+		QMetaObject::invokeMethod(socket, "disconnectFromHost", Qt::QueuedConnection);
 }
 
 void ServerPlayer::flushOutbound()
