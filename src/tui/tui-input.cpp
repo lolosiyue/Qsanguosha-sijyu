@@ -4,6 +4,8 @@
 #include <QStringDecoder>
 #include <QTextStream>
 
+#include <utility>
+
 #ifdef Q_OS_WIN
 #include <QWinEventNotifier>
 #include <windows.h>
@@ -36,6 +38,11 @@ TuiInput::TuiInput(QObject *parent)
 TuiInput::~TuiInput()
 {
     stop();
+}
+
+void TuiInput::setCompleter(std::function<QString(const QString &, QStringList *)> completer)
+{
+    m_completer = std::move(completer);
 }
 
 bool TuiInput::start(QString *error)
@@ -153,6 +160,10 @@ void TuiInput::readWindowsInput()
                     emit interruptRequested();
                     continue;
                 }
+                if (key.wVirtualKeyCode == VK_TAB) {
+                    completeWindowsLine();
+                    continue;
+                }
                 if (key.wVirtualKeyCode == VK_RETURN) {
                     QTextStream(stdout) << '\n' << Qt::flush;
                     emit lineReady(m_consoleLine);
@@ -205,6 +216,38 @@ void TuiInput::readWindowsInput()
         return;
     }
     appendBytes(QByteArray(bytes, static_cast<qsizetype>(read)));
+}
+
+void TuiInput::completeWindowsLine()
+{
+    if (!m_completer)
+        return;
+    QStringList matches;
+    const QString next = m_completer(m_consoleLine, &matches);
+    if (matches.size() > 1) {
+        QTextStream(stdout) << '\n' << Qt::flush;
+        emit completionChoices(matches);
+        m_consoleLine = next;
+        QTextStream(stdout) << m_consoleLine << Qt::flush;
+        return;
+    }
+    if (matches.isEmpty() && next == m_consoleLine)
+        return;
+    rewriteWindowsLine(next);
+}
+
+void TuiInput::rewriteWindowsLine(const QString &next)
+{
+    QTextStream out(stdout);
+    const int oldWidth = int(m_consoleLine.size());
+    out << '\r' << next;
+    const int pad = oldWidth - int(next.size());
+    if (pad > 0) {
+        out << QString(pad, QLatin1Char(' '));
+        out << QString(pad, QLatin1Char('\b'));
+    }
+    out << Qt::flush;
+    m_consoleLine = next;
 }
 #else
 void TuiInput::readUnixInput(int descriptor)

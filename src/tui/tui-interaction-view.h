@@ -4,6 +4,7 @@
 #include "core/client-interaction-view.h"
 #include "tui-renderer.h"
 
+#include <QList>
 #include <functional>
 
 class TuiInteractionView final : public IClientInteractionView
@@ -11,9 +12,12 @@ class TuiInteractionView final : public IClientInteractionView
 public:
     using Writer = std::function<void(const QString &)>;
     using CardTextResolver = std::function<QString(int)>;
+    using SkillCardResolver = std::function<QString(const QString &, int,
+                                                    const QList<int> &, QString *)>;
 
     TuiInteractionView(TuiRenderer *renderer, Writer writer,
-                       CardTextResolver cardTextResolver = CardTextResolver());
+                       CardTextResolver cardTextResolver = CardTextResolver(),
+                       SkillCardResolver skillCardResolver = SkillCardResolver());
 
     void presentRequest(const InteractionRequest &request) override;
     static QString rejectionText(const InteractionValidation &validation);
@@ -36,6 +40,7 @@ private:
     TuiRenderer *m_renderer = nullptr;
     Writer m_writer;
     CardTextResolver m_cardTextResolver;
+    SkillCardResolver m_skillCardResolver;
 };
 
 #endif

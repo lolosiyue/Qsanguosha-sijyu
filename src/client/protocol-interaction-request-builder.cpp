@@ -93,6 +93,19 @@ QList<int> knownZoneCards(const ClientGameState &state, const QString &player,
     return result;
 }
 
+int hiddenHandCountFor(const ClientGameState &state, const QString &player,
+                       const QString &zones, bool handCardsVisible)
+{
+    if (!zones.contains(QLatin1Char('h')))
+        return 0;
+    if (player == state.selfName() || handCardsVisible)
+        return 0;
+    const int counted = state.playerValue(player, QStringLiteral("hand_count")).toInt();
+    if (counted > 0)
+        return counted;
+    return state.cardsForPlayer(player, 0).size();
+}
+
 const CustomInteractionRegistry &tuiCustomInteractionRegistry()
 {
     static const CustomInteractionRegistry registry = []() {
@@ -220,6 +233,9 @@ bool ProtocolInteractionRequestBuilder::build(const ProtocolMessage &message,
         CardInteractionPayload value = cardPayload(knownSelfCards(state, false), 0, 1, false);
         value.cardTextAllowed = true;
         value.virtualCardAllowed = true;
+        // Numbered 1 -> 2 grammar maps through optionalTargets; leave this
+        // empty and "2" is sent as the object name "2", not sgs2.
+        value.optionalTargets = state.playerNames();
         payload = value;
         cancelable = true;
         break;
@@ -331,6 +347,8 @@ bool ProtocolInteractionRequestBuilder::build(const ProtocolMessage &message,
         value.sourcePlayer = sourcePlayer;
         value.zoneFlags = zoneFlags;
         value.handCardsVisible = handCardsVisible;
+        value.hiddenHandCount = hiddenHandCountFor(
+            state, sourcePlayer, zoneFlags, handCardsVisible);
         value.selection.handlingMethod = object.value(QStringLiteral("handling_method"), -1).toInt();
         value.selection.disabledCards = integers(object.value(QStringLiteral("disabled_card_ids")));
         payload = value;

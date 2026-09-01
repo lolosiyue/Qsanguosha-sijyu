@@ -127,6 +127,12 @@ struct PlayerInteractionPayload
     PlayerSelectionState selection;
 };
 
+struct SkillActivationCandidate
+{
+    QString skillName;
+    int instanceId = 0;
+};
+
 struct CardInteractionPayload
 {
     CardSelectionState selection;
@@ -135,6 +141,8 @@ struct CardInteractionPayload
     QStringList optionalTargets;
     QString zoneFlags;
     bool handCardsVisible = false;
+    // Face-down opponent hands in askForCardChosen. Count is public; faces are not.
+    int hiddenHandCount = 0;
     bool includeEquip = false;
     bool cardTextAllowed = false;
     bool virtualCardAllowed = false;
@@ -142,6 +150,8 @@ struct CardInteractionPayload
     // makes the server-provided selectableCards list authoritative.
     QList<int> suggestedCards;
     QList<int> suggestedDisabledCards;
+    // Play-phase ViewAsSkill / SkillCard buttons, numbered after hand cards.
+    QList<SkillActivationCandidate> skillCandidates;
 };
 
 struct RoleAssignmentInteractionPayload
