@@ -113,6 +113,7 @@ bool isKnownCardMoveReason(int reason)
 {
     static const QSet<int> reasons {
         0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A,
+        0x0F,   // S_REASON_NO_BASIC
         0x11, 0x12, 0x13, 0x17, 0x18, 0x19, 0x1A,
         0x23, 0x27, 0x28, 0x29, 0x2A,
         0x33, 0x37, 0x38, 0x39, 0x3A,
@@ -177,11 +178,28 @@ bool validateCardMovementPayload(const QVariantMap &object, QString *error)
             || !requireReason(QStringLiteral("target_id"), FieldShape::String)) {
             return false;
         }
+        const QVariant rawReason = reason.value(QStringLiteral("reason"));
         int reasonValue = -1;
-        ProtocolMessageUtils::tryParseInt(reason.value(QStringLiteral("reason")), reasonValue);
+        const bool reasonParsed
+            = ProtocolMessageUtils::tryParseInt(rawReason, reasonValue);
         if (!isKnownCardMoveReason(reasonValue)) {
-            return fail(error, QStringLiteral("%1 move %2 has an unknown reason")
-                .arg(schema).arg(index));
+            // Name the value and its origin: an off-list reason is otherwise
+            // indistinguishable from a wrong type or an unparsable field, and
+            // the move is dropped before it ever reaches the wire.
+            const QString reasonText = reasonParsed
+                ? QStringLiteral("0x%1").arg(reasonValue, 0, 16)
+                : QStringLiteral("unparsable");
+            return fail(error,
+                QStringLiteral("%1 move %2 has an unknown reason %3 "
+                               "(type %4, player %5, skill %6, event %7, place %8 -> %9)")
+                    .arg(schema).arg(index)
+                    .arg(reasonText,
+                         QString::fromLatin1(rawReason.typeName() != nullptr
+                                                 ? rawReason.typeName() : "null"),
+                         reason.value(QStringLiteral("player_id")).toString(),
+                         reason.value(QStringLiteral("skill_name")).toString(),
+                         reason.value(QStringLiteral("event_name")).toString())
+                    .arg(fromPlace).arg(toPlace));
         }
     }
     return true;

@@ -1306,7 +1306,7 @@ void YanxiaoCard::onUse(Room *room, CardUseStruct &card_use) const
 	}else if(hasFlag("JINGYIN"))
 		x = 0;
     room->broadcastSkillInvoke("yanxiao", x, card_use.from);
-    CardMoveReason reason(CardMoveReason::S_MASK_BASIC_REASON, card_use.from->objectName(), "yanxiao", "");
+    CardMoveReason reason(CardMoveReason::S_REASON_NO_BASIC, card_use.from->objectName(), "yanxiao", "");
 	room->moveCardTo(this,nullptr,Player::PlaceTable,reason,true);
     DelayedTrick::onUse(room, card_use);
 }

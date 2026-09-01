@@ -285,6 +285,10 @@ protected:
     static const int S_NUM_SEMAPHORES;
 
 private:
+    // Tears the connection down on the socket's own thread. Room-thread callers
+    // must never touch QAbstractSocket directly.
+    void disconnectSocketFromOwnerThread();
+
     ClientSocket *socket;
     QSanProtocol::ProtocolCodecRouter m_protocolRouter;
     QSanProtocol::ProtocolMessageIdGenerator m_protocolMessageIds;

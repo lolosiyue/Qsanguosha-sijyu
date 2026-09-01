@@ -6,6 +6,7 @@ int runEngineSmokeTests();
 int runLuaCompatibilityTests();
 int runEngineSelfBridgeTests();
 int runCardParseTests();
+int runCardMoveReasonTests();
 int runEnumReflectionTests();
 int runPackagePolicyTests();
 int runMigratedGeneralPackageTests();
@@ -31,6 +32,9 @@ int main(int argc, char **argv)
         const int cardParse = runCardParseTests();
         if (cardParse != 0)
             return cardParse;
+        const int cardMoveReason = runCardMoveReasonTests();
+        if (cardMoveReason != 0)
+            return 150 + cardMoveReason;
         return runEnumReflectionTests();
     };
 
@@ -40,6 +44,8 @@ int main(int argc, char **argv)
         return runEngineSelfBridgeTests();
     if (suite == QLatin1String("card-parse"))
         return runCardParseTests();
+    if (suite == QLatin1String("card-move-reason"))
+        return runCardMoveReasonTests();
     if (suite == QLatin1String("enum-reflection"))
         return runEnumReflectionTests();
     if (suite == QLatin1String("lua-compat"))
