@@ -444,12 +444,13 @@ int main(int argc, char **argv)
                 -1, QString(), {{QStringLiteral("address"), snapshot.bindAddress},
                                 {QStringLiteral("port"), snapshot.port},
                                 {QStringLiteral("mode"), snapshot.gameMode}});
-            logger.info(QStringLiteral("server"),
-                QStringLiteral("WebSocket listening on %1:%2")
-                    .arg(snapshot.bindAddress).arg(snapshot.websocketPort),
-                -1, QString(), {{QStringLiteral("address"), snapshot.bindAddress},
-                                {QStringLiteral("websocket_port"), snapshot.websocketPort},
-                                {QStringLiteral("mode"), snapshot.gameMode}});
+            if (snapshot.websocketPort != 0)
+                logger.info(QStringLiteral("server"),
+                    QStringLiteral("WebSocket listening on %1:%2")
+                        .arg(snapshot.bindAddress).arg(snapshot.websocketPort),
+                    -1, QString(), {{QStringLiteral("address"), snapshot.bindAddress},
+                                    {QStringLiteral("websocket_port"), snapshot.websocketPort},
+                                    {QStringLiteral("mode"), snapshot.gameMode}});
             console.start();
             result = app.exec();
             CrashHandler::beginShutdown();
