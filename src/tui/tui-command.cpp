@@ -112,14 +112,14 @@ bool TuiCommandParser::parse(const QString &line, TuiCommandIntent *intent,
     if (error != nullptr)
         error->clear();
     if (intent == nullptr)
-        return reject(error, tr("命令 intent 輸出不可為 null"));
+        return reject(error, tr("命令 intent 输出不可为 null"));
     *intent = TuiCommandIntent();
 
     const QString input = line.trimmed();
     if (!input.startsWith(QLatin1Char('/')))
-        return reject(error, tr("全域命令必須以 '/' 開頭"));
+        return reject(error, tr("全域命令必须以 '/' 开头"));
     if (input.size() > 4096)
-        return reject(error, tr("命令超過 4096 字元"));
+        return reject(error, tr("命令超过 4096 字元"));
 
     const qsizetype separator = input.indexOf(QLatin1Char(' '));
     const QString keyword = (separator < 0 ? input : input.left(separator)).toLower();
@@ -131,10 +131,10 @@ bool TuiCommandParser::parse(const QString &line, TuiCommandIntent *intent,
     TuiCommandIntent parsed;
     parsed.type = found.value();
     if (rejectsArgument(parsed.type) && !argument.isEmpty())
-        return reject(error, tr("%1 不接受參數").arg(keyword));
+        return reject(error, tr("%1 不接受参数").arg(keyword));
     if (parsed.type == TuiCommandType::Chat) {
         if (argument.isEmpty())
-            return reject(error, tr("/chat 必須包含文字"));
+            return reject(error, tr("/chat 必须包含文字"));
         if (argument.size() > 1000)
             return reject(error, tr("/chat 最多 1000 字元"));
         parsed.text = argument;
@@ -156,7 +156,7 @@ bool TuiCommandParser::parse(const QString &line, TuiCommandIntent *intent,
             bool ok = false;
             parsed.count = argument.toInt(&ok);
             if (!ok || parsed.count <= 0 || parsed.count > 64)
-                return reject(error, tr("/addrobot 只接受 'all' 或 1 至 64 的數量"));
+                return reject(error, tr("/addrobot 只接受 'all' 或 1 至 64 的数量"));
         }
     }
     *intent = parsed;
