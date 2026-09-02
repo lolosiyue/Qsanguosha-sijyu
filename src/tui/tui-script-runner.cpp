@@ -25,7 +25,7 @@ TuiScriptRunner::TuiScriptRunner(ClientCore *core, LineSink sink, QObject *paren
 {
     m_waitTimer.setSingleShot(true);
     connect(&m_waitTimer, &QTimer::timeout, this, [this]() {
-        fail(tr("腳本在第 %1 行等待逾時").arg(m_index + 1));
+        fail(tr("脚本在第 %1 行等待逾时").arg(m_index + 1));
     });
 }
 
@@ -34,7 +34,7 @@ bool TuiScriptRunner::load(const QString &path, QString *error)
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         if (error != nullptr)
-            *error = tr("無法開啟腳本：%1").arg(file.errorString());
+            *error = tr("无法开启脚本：%1").arg(file.errorString());
         return false;
     }
     m_lines = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'));
@@ -162,7 +162,7 @@ bool TuiScriptRunner::assertCondition(const QStringList &tokens, QString *error)
     if (conditionMatches(tokens))
         return true;
     if (error != nullptr)
-        *error = tr("腳本斷言失敗：%1").arg(tokens.join(QLatin1Char(' ')));
+        *error = tr("脚本断言失败：%1").arg(tokens.join(QLatin1Char(' ')));
     return false;
 }
 

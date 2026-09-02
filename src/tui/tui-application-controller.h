@@ -45,6 +45,7 @@ private:
     QString resolveCardWireText(int cardId) const;
     QString resolveCardDisplayText(int cardId) const;
     QString resolveNameText(const QString &name) const;
+    static QString resolveGeneralKingdom(const QString &generalName);
     QString resolveSkillCardWireText(const QString &skillName, int instanceId,
                                      const QList<int> &subcardIds, QString *error) const;
     void fillPlaySkillCandidates(CardInteractionPayload *payload) const;
