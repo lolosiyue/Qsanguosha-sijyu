@@ -77,7 +77,8 @@ Battle log lines are composed in [`web/src/log-text.ts`](../web/src/log-text.ts)
 matching the desktop `ClientLogBox` templates rather than `split` + `tr()`.
 Interaction `prompt` strings from `askForCard` / `askForDiscard` /
 `askForPlayerChosen` use the same colon list as GUI `Client::formatPromptList`
-(`key:%src:%dest:%arg:%arg2`); do not `tr()` the raw wire string. Dump
+(`key:%src:%dest:%arg:%arg2`); C++ TUI/GUI share `formatClientPromptList` in
+`src/client/core/client-prompt.cpp`. Do not `tr()` the raw wire string. Dump
 translations after editing `lang/zh_CN/Package/StandardPackage.lua` so keys such
 as `shoot-jink` are in `web/public/translations.json`.
 `LOG_SKILL` fills lang placeholders; `#UseCard` uses `#UseCardPhrase_*` from the

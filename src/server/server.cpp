@@ -10,9 +10,7 @@
 #include "build-features.h"
 #include "qt-collection-utils.h"
 #include "nativesocket.h"
-#if !defined(QSAN_SERVER_DIALOGS_ONLY) && QSAN_ENABLE_WEBSOCKETS
-#include "websocketsocket.h"
-#endif
+#include "websocket-gateway.h"
 #include "banpair.h"
 #include "server-info.h"
 #include "server-connection-context.h"
@@ -1679,11 +1677,9 @@ Server::Server(QObject *parent)
 	connect(this, SIGNAL(server_message(QString)), this, SIGNAL(logMessage(QString)));
 	server = new NativeServerSocket;
 	server->setParent(this);
-	websocketServer = nullptr;
-#if QSAN_ENABLE_WEBSOCKETS
-	websocketServer = new WebSocketServerSocket;
-	websocketServer->setParent(this);
-#endif
+	websocketServer = qsanCreateWebSocketServer();
+	if (websocketServer != nullptr)
+		websocketServer->setParent(this);
 	playerCount = 0;
 	m_nextGameSeedIndex = 0;
 
@@ -1697,9 +1693,8 @@ Server::Server(QObject *parent)
 	created_successfully = createNewRoom()!=nullptr;
 
 	connect(server, SIGNAL(new_connection(ClientSocket *)), this, SLOT(processNewConnection(ClientSocket *)));
-#if QSAN_ENABLE_WEBSOCKETS
-	connect(websocketServer, SIGNAL(new_connection(ClientSocket *)), this, SLOT(processNewConnection(ClientSocket *)));
-#endif
+	if (websocketServer != nullptr)
+		connect(websocketServer, SIGNAL(new_connection(ClientSocket *)), this, SLOT(processNewConnection(ClientSocket *)));
 }
 
 void Server::broadcast(const QString &msg)

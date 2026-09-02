@@ -29,6 +29,7 @@
 #include "server/server-core.h"
 #include "server/server-logger.h"
 #include "crashhandler.h"
+#include "websocket-gateway.h"
 
 namespace
 {
@@ -363,6 +364,9 @@ int main(int argc, char **argv)
     Server::isHeadlessMode = true;
     int result;
     {
+#if QSAN_ENABLE_WEBSOCKETS
+        qsanLinkWebSocketGateway();
+#endif
         Server server(&app);
         ServerConsole console(&server, &app);
 #if defined(Q_OS_UNIX) || defined(Q_OS_WIN)
