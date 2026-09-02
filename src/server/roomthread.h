@@ -3,6 +3,9 @@
 
 #include "structs.h"
 
+#include <QHash>
+#include <QSet>
+
 class GameRule;
 
 struct LogMessage
@@ -46,6 +49,10 @@ public:
     bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, QVariant &data);
     bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *target);
 
+    // Invalidates only the client-facing distanceTo_* synchronization cache.
+    // Server-side game rules continue to call Player::distanceTo() directly.
+    void markDistanceCacheDirty(const char *source = nullptr);
+
     void addPlayerSkills(ServerPlayer *player, bool invoke_game_start = false);
 
     void addTriggerSkill(const TriggerSkill *skill);
@@ -62,12 +69,38 @@ protected:
     virtual void run();
 
 private:
+    struct DistanceRefreshProfile {
+        quint64 flushCount = 0;
+        quint64 orderedPairCount = 0;
+        quint64 changedPropertyCount = 0;
+        qint64 totalElapsedNs = 0;
+        qint64 maxFlushNs = 0;
+        qint64 distanceCalculationNs = 0;
+        qint64 comparisonNs = 0;
+        qint64 propertySyncNs = 0;
+        QHash<QString, quint64> dirtySourceCounts;
+        QHash<QString, quint64> flushSourceCounts;
+    };
+
     void _handleTurnBroken3v3(QList<ServerPlayer *> &first, QList<ServerPlayer *> &second, GameRule *game_rule);
     void _handleTurnBrokenHulaoPass(ServerPlayer *shenlvbu, QList<ServerPlayer *> league, GameRule *game_rule, int stage);
     void _handleTurnBrokenNormal(GameRule *game_rule);
     bool triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, QVariant &data);
+    void refreshDistanceCacheIfDirty(Room *room);
+    void flushOutermostDeferredWork(Room *room);
+    void emitDistanceRefreshProfile() const;
+    const QByteArray &distancePropertyName(const ServerPlayer *player);
 
     Room *room;
+    bool m_playerUiStateDirty = false;
+    bool m_distanceCacheDirty = false;
+    bool m_distanceRefreshProfilingEnabled;
+    int m_profileRoomId;
+    QString m_profileMode;
+    DistanceRefreshProfile m_distanceRefreshProfile;
+    QSet<QString> m_pendingDistanceDirtySources;
+    QHash<const ServerPlayer *, QByteArray> m_distancePropertyNames;
+    QHash<const ServerPlayer *, QHash<const ServerPlayer *, int>> m_lastBroadcastDistances;
     QString order;
 
     QList<TriggerSkill *> skill_table[NumOfEvents];

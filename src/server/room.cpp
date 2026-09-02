@@ -1633,6 +1633,8 @@ bool Room::hasLuaRuntime() const
 void Room::setFixedDistance(Player*from, const Player*to, int distance)
 {
 	from->setFixedDistance(to, distance);
+	if (thread)
+		thread->markDistanceCacheDirty("SetFixedDistance");
 
 	JsonArray arg;
 	arg << from->objectName() << to->objectName() << distance << true;
@@ -1642,6 +1644,8 @@ void Room::setFixedDistance(Player*from, const Player*to, int distance)
 void Room::removeFixedDistance(Player*from, const Player*to, int distance)
 {
 	from->removeFixedDistance(to, distance);
+	if (thread)
+		thread->markDistanceCacheDirty("RemoveFixedDistance");
 
 	JsonArray arg;
 	arg << from->objectName() << to->objectName() << distance << false;

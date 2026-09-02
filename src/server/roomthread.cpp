@@ -9,7 +9,12 @@
 #include "skill-instance-utils.h"
 #include "crashhandler.h"
 #include <QDebug>
+#include <QElapsedTimer>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QScopeGuard>
+
+#include <cstdio>
 
 #ifdef QSAN_UI_LIBRARY_AVAILABLE
 #pragma message WARN("UI elements detected in server side!!!")
@@ -498,8 +503,70 @@ QString EventTriplet::toString() const
 }
 
 RoomThread::RoomThread(Room*room)
-	: room(room)
+	: room(room),
+	  m_distanceRefreshProfilingEnabled(Config.value("RoomThreadPerfTrace", false).toBool()),
+	  m_profileRoomId(room ? room->getId() : -1),
+	  m_profileMode(room ? room->getMode() : QString())
 {
+	if (m_distanceRefreshProfilingEnabled) {
+		connect(this, &QThread::finished, this,
+			&RoomThread::emitDistanceRefreshProfile, Qt::DirectConnection);
+	}
+}
+
+static QJsonObject distanceRefreshCounterObject(const QHash<QString, quint64> &counts)
+{
+	QJsonObject object;
+	QStringList sources = counts.keys();
+	sources.sort();
+	foreach (const QString &source, sources)
+		object.insert(source, qint64(counts.value(source)));
+	return object;
+}
+
+void RoomThread::emitDistanceRefreshProfile() const
+{
+	QJsonObject payload;
+	payload.insert(QStringLiteral("room_id"), m_profileRoomId);
+	payload.insert(QStringLiteral("mode"), m_profileMode);
+	payload.insert(QStringLiteral("flush_count"), qint64(m_distanceRefreshProfile.flushCount));
+	payload.insert(QStringLiteral("ordered_pair_count"), qint64(m_distanceRefreshProfile.orderedPairCount));
+	payload.insert(QStringLiteral("changed_property_count"), qint64(m_distanceRefreshProfile.changedPropertyCount));
+	payload.insert(QStringLiteral("total_elapsed_ns"), m_distanceRefreshProfile.totalElapsedNs);
+	payload.insert(QStringLiteral("max_flush_ns"), m_distanceRefreshProfile.maxFlushNs);
+	payload.insert(QStringLiteral("distance_calculation_ns"), m_distanceRefreshProfile.distanceCalculationNs);
+	payload.insert(QStringLiteral("comparison_ns"), m_distanceRefreshProfile.comparisonNs);
+	payload.insert(QStringLiteral("property_sync_ns"), m_distanceRefreshProfile.propertySyncNs);
+	payload.insert(QStringLiteral("dirty_source_counts"),
+		distanceRefreshCounterObject(m_distanceRefreshProfile.dirtySourceCounts));
+	payload.insert(QStringLiteral("flush_source_counts"),
+		distanceRefreshCounterObject(m_distanceRefreshProfile.flushSourceCounts));
+
+	const QByteArray json = QJsonDocument(payload).toJson(QJsonDocument::Compact);
+	std::fprintf(stdout, "ROOMTHREAD_PERF %s\n", json.constData());
+	std::fflush(stdout);
+}
+
+void RoomThread::markDistanceCacheDirty(const char *source)
+{
+	m_distanceCacheDirty = true;
+	if (!m_distanceRefreshProfilingEnabled || !source || !*source)
+		return;
+
+	const QString sourceName = QString::fromLatin1(source);
+	++m_distanceRefreshProfile.dirtySourceCounts[sourceName];
+	m_pendingDistanceDirtySources.insert(sourceName);
+}
+
+const QByteArray &RoomThread::distancePropertyName(const ServerPlayer *player)
+{
+	auto it = m_distancePropertyNames.constFind(player);
+	if (it == m_distancePropertyNames.constEnd()) {
+		m_distancePropertyNames.insert(player,
+			QByteArrayLiteral("distanceTo_") + player->objectName().toLatin1());
+		it = m_distancePropertyNames.constFind(player);
+	}
+	return it.value();
 }
 
 void RoomThread::addPlayerSkills(ServerPlayer*player, bool invoke_game_start)
@@ -1163,6 +1230,118 @@ bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPl
 	return broken;
 }
 
+void RoomThread::refreshDistanceCacheIfDirty(Room *room)
+{
+	if (!room || !m_distanceCacheDirty) return;
+
+	// Clear before rebuilding so nested events can schedule a later refresh.
+	m_distanceCacheDirty = false;
+	QSet<QString> dirtySources;
+	if (m_distanceRefreshProfilingEnabled) {
+		dirtySources = m_pendingDistanceDirtySources;
+		m_pendingDistanceDirtySources.clear();
+	}
+
+	QElapsedTimer timer;
+	if (m_distanceRefreshProfilingEnabled)
+		timer.start();
+
+	QList<ServerPlayer *> players = room->getAlivePlayers();
+	foreach (ServerPlayer *player, players)
+		distancePropertyName(player);
+
+	quint64 changedPropertyCount = 0;
+	qint64 distanceCalculationNs = 0;
+	qint64 comparisonNs = 0;
+	qint64 propertySyncNs = 0;
+	QElapsedTimer phaseTimer;
+	foreach(ServerPlayer *from, players) {
+		QHash<const ServerPlayer *, int> &lastDistances = m_lastBroadcastDistances[from];
+		foreach(ServerPlayer *to, players) {
+			if (from == to) continue;
+
+			if (m_distanceRefreshProfilingEnabled)
+				phaseTimer.start();
+			const int distance = from->distanceTo(to, 0);
+			if (m_distanceRefreshProfilingEnabled)
+				distanceCalculationNs += phaseTimer.nsecsElapsed();
+
+			const QByteArray &propertyName = distancePropertyName(to);
+			if (m_distanceRefreshProfilingEnabled)
+				phaseTimer.start();
+			const auto lastDistance = lastDistances.constFind(to);
+			const bool unchanged = lastDistance != lastDistances.constEnd()
+				&& lastDistance.value() == distance;
+			if (m_distanceRefreshProfilingEnabled)
+				comparisonNs += phaseTimer.nsecsElapsed();
+			if (unchanged) continue;
+
+			if (m_distanceRefreshProfilingEnabled)
+				phaseTimer.start();
+			room->safeSetPlayerProperty(from, propertyName.constData(), distance);
+			room->broadcastProperty(from, propertyName.constData());
+			lastDistances.insert(to, distance);
+			if (m_distanceRefreshProfilingEnabled) {
+				propertySyncNs += phaseTimer.nsecsElapsed();
+				++changedPropertyCount;
+			}
+		}
+	}
+
+	if (m_distanceRefreshProfilingEnabled) {
+		const quint64 playerCount = quint64(players.length());
+		const qint64 elapsedNs = timer.nsecsElapsed();
+		++m_distanceRefreshProfile.flushCount;
+		m_distanceRefreshProfile.orderedPairCount += playerCount * (playerCount > 0 ? playerCount - 1 : 0);
+		m_distanceRefreshProfile.changedPropertyCount += changedPropertyCount;
+		m_distanceRefreshProfile.totalElapsedNs += elapsedNs;
+		m_distanceRefreshProfile.maxFlushNs = qMax(m_distanceRefreshProfile.maxFlushNs, elapsedNs);
+		m_distanceRefreshProfile.distanceCalculationNs += distanceCalculationNs;
+		m_distanceRefreshProfile.comparisonNs += comparisonNs;
+		m_distanceRefreshProfile.propertySyncNs += propertySyncNs;
+		foreach (const QString &source, dirtySources)
+			++m_distanceRefreshProfile.flushSourceCounts[source];
+	}
+}
+
+void RoomThread::flushOutermostDeferredWork(Room *room)
+{
+	if (!room || !event_stack.isEmpty()) return;
+
+	if (m_playerUiStateDirty) {
+		// PlayerUIState owns the existing server-to-client UI notification path.
+		m_playerUiStateDirty = false;
+		foreach (ServerPlayer *player, room->getAlivePlayers())
+			player->refreshUIState();
+	}
+
+	refreshDistanceCacheIfDirty(room);
+
+	if (room->hasPendingSummons())
+		room->processPendingSummons();
+
+	room->processPendingAnytimeSkills();
+}
+
+static const char *distanceDirtySourceName(TriggerEvent triggerEvent)
+{
+	switch (triggerEvent) {
+	case HpChanged: return "HpChanged";
+	case MaxHpChanged: return "MaxHpChanged";
+	case CardsMoveOneTime: return "CardsMoveOneTime";
+	case EventAcquireSkill: return "EventAcquireSkill";
+	case EventLoseSkill: return "EventLoseSkill";
+	case EventSkillAmountChanged: return "EventSkillAmountChanged";
+	case MarkChanged: return "MarkChanged";
+	case KingdomChanged: return "KingdomChanged";
+	case Death: return "Death";
+	case Revive: return "Revive";
+	case TurnStart: return "TurnStart";
+	case GameStart: return "GameStart";
+	default: return nullptr;
+	}
+}
+
 bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*target, QVariant &data)
 {
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
@@ -1233,37 +1412,16 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 		}
 		std::stable_sort(skill_table[triggerEvent].begin(), skill_table[triggerEvent].end(), CompareByPriority);
 	}
-	bool need_check_handmax = false;
-	bool need_check_distance_cache = false;
-    switch (triggerEvent) {
-        case HpChanged:
-        case MaxHpChanged:
-        case CardsMoveOneTime:
-        case EventAcquireSkill:
-        case EventLoseSkill:
-        case EventSkillAmountChanged:
-        case MarkChanged:
-        case KingdomChanged:
-        case Death:
-        case Revive:
-        case TurnStart:
-        case GameStart:
-            need_check_handmax = true;
-			need_check_distance_cache = true;
-            break;
-        default:
-            break;
-    }
-    if (need_check_handmax) {
-		room->setTag("HandMaxDirty", QVariant(true));
-    }
-	if (need_check_distance_cache) {
-		room->setTag("DistanceCacheDirty", QVariant(true));
+	const char *dirtySource = distanceDirtySourceName(triggerEvent);
+	if (dirtySource) {
+		m_playerUiStateDirty = true;
+		markDistanceCacheDirty(dirtySource);
 	}
 	try {
 		broken = triggerV2Skills(triggerEvent, room, target, data);
 		if (broken) {
 			event_stack.pop_back();
+			flushOutermostDeferredWork(room);
 			return broken;
 		}
 		QList<TriggerSkill*>triggered;
@@ -1290,72 +1448,12 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 		}
 		if (target) target->getSmartAI()->filterEvent(triggerEvent, target, data);
 		event_stack.pop_back();// pop event stack
-
-		if (event_stack.isEmpty()) {
-			if (room->getTag("HandMaxDirty").toBool()) {
-				room->setTag("HandMaxDirty", false);
-				foreach(ServerPlayer*p, room->getAlivePlayers()){
-					p->refreshUIState();
-				}
-			}
-
-if (room->getTag("DistanceCacheDirty").toBool()) {
-                room->setTag("DistanceCacheDirty", false);
-                QList<ServerPlayer *> players = room->getAlivePlayers();
-                foreach(ServerPlayer *from, players) {
-                    foreach(ServerPlayer *to, players) {
-                        if (from == to) continue;
-                        int cached_distance = from->distanceTo(to, 0);
-                        QString prop_name = QString("distanceTo_%1").arg(to->objectName());
-                        QByteArray prop_name_latin = prop_name.toLatin1();
-                        if (from->property(prop_name_latin.constData()).toInt() == cached_distance) continue;
-                        room->safeSetPlayerProperty(from, prop_name_latin.constData(), cached_distance);
-                        room->broadcastProperty(from, prop_name_latin.constData());
-                    }
-                }
-            }
-
-            if (room->hasPendingSummons()) {
-                room->processPendingSummons();
-            }
-
-			room->processPendingAnytimeSkills();
-        }
+		flushOutermostDeferredWork(room);
 
     }catch (TriggerEvent throwed_event) {
 		if (target) target->getSmartAI()->filterEvent(triggerEvent, target, data);
 		event_stack.pop_back();// pop event stack
-
-		if (event_stack.isEmpty()) {
-			if (room->getTag("HandMaxDirty").toBool()) {
-				room->setTag("HandMaxDirty", false);
-				foreach(ServerPlayer*p, room->getAlivePlayers()){
-					p->refreshUIState();
-				}
-			}
-
-if (room->getTag("DistanceCacheDirty").toBool()) {
-                room->setTag("DistanceCacheDirty", false);
-                QList<ServerPlayer *> players = room->getAlivePlayers();
-                foreach(ServerPlayer *from, players) {
-                    foreach(ServerPlayer *to, players) {
-                        if (from == to) continue;
-                        int cached_distance = from->distanceTo(to, 0);
-                        QString prop_name = QString("distanceTo_%1").arg(to->objectName());
-                        QByteArray prop_name_latin = prop_name.toLatin1();
-                        if (from->property(prop_name_latin.constData()).toInt() == cached_distance) continue;
-                        room->safeSetPlayerProperty(from, prop_name_latin.constData(), cached_distance);
-                        room->broadcastProperty(from, prop_name_latin.constData());
-                    }
-                }
-            }
-
-            if (room->hasPendingSummons()) {
-                room->processPendingSummons();
-            }
-
-			room->processPendingAnytimeSkills();
-        }
+		flushOutermostDeferredWork(room);
         throw throwed_event;
 	}
 	//room->tryPause();
