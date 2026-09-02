@@ -507,8 +507,18 @@ if(QSAN_ENABLE_WEBSOCKETS)
         QSAN_SERVER_CORE_ONLY
     )
     target_link_libraries(qsanguosha_websocket PUBLIC
-        qsanguosha_engine
         Qt6::WebSockets
+    )
+    # engine 只提供 compile usage requirement,唔可以做 link item。static
+    # library 的 PRIVATE 依然會以 $<LINK_ONLY:> 傳去 consumer,而 executable
+    # 那邊是 $<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>;同一個 link item
+    # 帶兩種 feature,CMake 3.28(Ubuntu 24.04 / Docker builder 的 apt cmake)會
+    # fatal「Impossible to link target ... has already occurred with the
+    # feature 'WHOLE_ARCHIVE'」。新版 CMake 放寬咗,所以 GitHub runner 預裝的
+    # cmake 見唔到,只有 Docker CI 會紅。用 $<COMPILE_ONLY:> 斬斷傳遞,真正連
+    # engine 的責任留返畀最終 executable。
+    target_link_libraries(qsanguosha_websocket PRIVATE
+        "$<COMPILE_ONLY:qsanguosha_engine>"
     )
     if(MSVC)
         target_compile_definitions(qsanguosha_websocket PRIVATE WIN64 _CRT_SECURE_NO_WARNINGS)
@@ -654,8 +664,16 @@ if(QSAN_BUILD_TUI)
         Qt6::Core
         Qt6::Network
     )
+    # engine 只提供 compile usage requirement,唔可以做 link item。static
+    # library 的 PRIVATE 依然會以 $<LINK_ONLY:> 傳去 consumer,而 executable
+    # 那邊是 $<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>;同一個 link item
+    # 帶兩種 feature,CMake 3.28(Ubuntu 24.04 / Docker builder 的 apt cmake)會
+    # fatal「Impossible to link target ... has already occurred with the
+    # feature 'WHOLE_ARCHIVE'」。新版 CMake 放寬咗,所以 GitHub runner 預裝的
+    # cmake 見唔到,只有 Docker CI 會紅。用 $<COMPILE_ONLY:> 斬斷傳遞,真正連
+    # engine 的責任留返畀最終 executable。
     target_link_libraries(qsanguosha_tui_support PRIVATE
-        qsanguosha_engine
+        "$<COMPILE_ONLY:qsanguosha_engine>"
     )
     # Static libraries can hide playback code from dumpbin/ldd. Reject every
     # Replay source from the TUI frontend and Recorder/Replayer playback sources
