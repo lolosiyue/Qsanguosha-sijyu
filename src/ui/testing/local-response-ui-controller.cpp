@@ -277,6 +277,7 @@ bool LocalResponseUiController::bootstrap(QString *error)
     SignupReplyPayload signupPayload;
     signupPayload.accepted = true;
     signupPayload.playerId = selfName;
+    signupPayload.roomId = 0;
     ProtocolMessage signupReply;
     signupReply.type = ProtocolMessageType::Reply;
     signupReply.source = ProtocolEndpoint::Lobby;

@@ -134,11 +134,14 @@ private:
     quint16 m_wsPort = 0;
 };
 
-QByteArray encodeSignup(quint64 messageId, QString *error)
+QByteArray encodeSignup(quint64 messageId, const QString &screenName,
+                        bool hasRoomId, int roomId, QString *error)
 {
     SignupRequestPayload request;
-    request.screenName = QStringLiteral("ws-gateway");
+    request.screenName = screenName;
     request.avatar = QStringLiteral("caocao");
+    request.hasRoomId = hasRoomId;
+    request.roomId = roomId;
     ProtocolMessage message;
     message.type = ProtocolMessageType::Request;
     message.source = ProtocolEndpoint::Client;
@@ -222,7 +225,8 @@ bool runWebSocketHelloSignup(quint16 wsPort)
                    "hello type mismatch"))
         return false;
 
-    const QByteArray signupRequest = encodeSignup(1, &error);
+    const QByteArray signupRequest = encodeSignup(
+        1, QStringLiteral("ws-gateway"), false, 0, &error);
     if (signupRequest.isEmpty())
         return expect(false, qPrintable(error));
     if (socket.sendTextMessage(QString::fromUtf8(signupRequest)) == 0)
@@ -303,6 +307,217 @@ bool runBinaryFrameRejected(quint16 wsPort)
                   "server did not close after a binary WebSocket frame");
 }
 
+bool runSignupRoomIdPayloadContract()
+{
+    SignupRequestPayload omitted;
+    omitted.screenName = QStringLiteral("native");
+    omitted.avatar = QStringLiteral("caocao");
+    const QVariantMap encoded = omitted.toVariant();
+    if (!expect(encoded.value(QStringLiteral("schema_version")).toInt() == 2,
+                "signup encode did not use schema 2")
+        || !expect(!encoded.contains(QStringLiteral("room_id")),
+                   "signup encode included room_id without hasRoomId"))
+        return false;
+
+    SignupRequestPayload parsed;
+    QString error;
+    if (!expect(SignupRequestPayload::parse(encoded, &parsed, &error),
+                qPrintable(error))
+        || !expect(!parsed.hasRoomId, "omitted room_id was treated as present"))
+        return false;
+
+    const QVariantMap schema1{
+        {QStringLiteral("schema_version"), 1},
+        {QStringLiteral("reconnect_requested"), false},
+        {QStringLiteral("screen_name"), QStringLiteral("legacy")},
+        {QStringLiteral("avatar"), QStringLiteral("caocao")}
+    };
+    if (!expect(SignupRequestPayload::parse(schema1, &parsed, &error),
+                qPrintable(error))
+        || !expect(!parsed.hasRoomId, "schema 1 signup should omit room_id"))
+        return false;
+
+    QVariantMap schema1WithRoom = schema1;
+    schema1WithRoom.insert(QStringLiteral("room_id"), 0);
+    if (!expect(!SignupRequestPayload::parse(schema1WithRoom, &parsed, &error),
+                "schema 1 signup accepted room_id"))
+        return false;
+
+    SignupRequestPayload targeted;
+    targeted.screenName = QStringLiteral("web");
+    targeted.avatar = QStringLiteral("caocao");
+    targeted.hasRoomId = true;
+    targeted.roomId = 0;
+    if (!expect(SignupRequestPayload::parse(targeted.toVariant(), &parsed, &error),
+                qPrintable(error))
+        || !expect(parsed.hasRoomId && parsed.roomId == 0,
+                   "schema 2 room_id 0 was not preserved"))
+        return false;
+
+    QVariantMap negative = targeted.toVariant();
+    negative.insert(QStringLiteral("room_id"), -1);
+    return expect(!SignupRequestPayload::parse(negative, &parsed, &error),
+                  "negative room_id was accepted");
+}
+
+class RoomIdClient
+{
+public:
+    bool open(quint16 wsPort, QString *error)
+    {
+        QObject::connect(&socket, &QWebSocket::connected, [&]() { connected = true; });
+        QObject::connect(&socket, &QWebSocket::textMessageReceived,
+            [&](const QString &text) { frames.append(text.toUtf8()); });
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+        QObject::connect(&socket, &QWebSocket::errorOccurred,
+            [&](QAbstractSocket::SocketError) { lastError = socket.errorString(); });
+#else
+        QObject::connect(&socket, QOverload<QAbstractSocket::SocketError>::of(&QWebSocket::error),
+            [&](QAbstractSocket::SocketError) { lastError = socket.errorString(); });
+#endif
+        socket.open(QUrl(QStringLiteral("ws://127.0.0.1:%1/").arg(wsPort)));
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < 15000 && frames.isEmpty() && lastError.isEmpty())
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+        if (!connected) {
+            *error = lastError.isEmpty() ? QStringLiteral("WebSocket did not connect") : lastError;
+            return false;
+        }
+        if (frames.isEmpty()) {
+            *error = QStringLiteral("WebSocket hello was not received");
+            return false;
+        }
+        ProtocolMessage hello;
+        if (!decodeMessage(frames.first(), &hello, error))
+            return false;
+        if (hello.command != S_COMMAND_CHECK_VERSION) {
+            *error = QStringLiteral("first WS frame was not hello");
+            return false;
+        }
+        return true;
+    }
+
+    bool signup(const QString &name, bool hasRoomId, int roomId,
+                SignupReplyPayload *reply, QString *error)
+    {
+        const int before = frames.size();
+        const QByteArray request = encodeSignup(
+            static_cast<quint64>(before + 1), name, hasRoomId, roomId, error);
+        if (request.isEmpty())
+            return false;
+        if (socket.sendTextMessage(QString::fromUtf8(request)) == 0) {
+            *error = QStringLiteral("failed to send WebSocket signup");
+            return false;
+        }
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < 15000) {
+            QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+            for (int i = before; i < frames.size(); ++i) {
+                ProtocolMessage message;
+                if (!decodeMessage(frames.at(i), &message, error))
+                    return false;
+                if (message.command != S_COMMAND_SIGNUP
+                    || message.type != ProtocolMessageType::Reply)
+                    continue;
+                return SignupReplyPayload::parse(message.payload, reply, error);
+            }
+        }
+        *error = QStringLiteral("signup reply was not received");
+        return false;
+    }
+
+    void close()
+    {
+        socket.close();
+        waitForDisconnect(&socket, 5000);
+    }
+
+    QWebSocket socket;
+    QList<QByteArray> frames;
+    QString lastError;
+    bool connected = false;
+};
+
+bool runWebSocketSignupRoomId(const QString &serverPath)
+{
+    QString error;
+    LiveServer server;
+    if (!server.start(serverPath, &error)) {
+        qCritical().noquote() << error;
+        return false;
+    }
+
+    RoomIdClient first;
+    SignupReplyPayload firstReply;
+    if (!first.open(server.wsPort(), &error))
+        return expect(false, qPrintable(error));
+    if (!first.signup(QStringLiteral("room-host"), false, 0, &firstReply, &error))
+        return expect(false, qPrintable(error));
+    if (!expect(firstReply.accepted, "first signup without room_id was rejected")
+        || !expect(firstReply.roomId == 0, "first signup reply room_id was not 0"))
+        return false;
+
+    RoomIdClient second;
+    SignupReplyPayload secondReply;
+    if (!second.open(server.wsPort(), &error))
+        return expect(false, qPrintable(error));
+    if (!second.signup(QStringLiteral("room-guest"), true, 0, &secondReply, &error))
+        return expect(false, qPrintable(error));
+    if (!expect(secondReply.accepted, "signup with room_id 0 was rejected"))
+        return false;
+
+    RoomIdClient missing;
+    SignupReplyPayload missingReply;
+    if (!missing.open(server.wsPort(), &error))
+        return expect(false, qPrintable(error));
+    if (!missing.signup(QStringLiteral("missing-room"), true, 99, &missingReply, &error))
+        return expect(false, qPrintable(error));
+    if (!expect(!missingReply.accepted
+                && missingReply.errorCode == QLatin1String("room_not_found"),
+                "unknown room_id was not rejected as room_not_found"))
+        return false;
+    missing.close();
+
+    RoomIdClient full;
+    SignupReplyPayload fullReply;
+    if (!full.open(server.wsPort(), &error))
+        return expect(false, qPrintable(error));
+    if (!full.signup(QStringLiteral("full-room"), true, 0, &fullReply, &error))
+        return expect(false, qPrintable(error));
+    if (!expect(!fullReply.accepted
+                && fullReply.errorCode == QLatin1String("room_full"),
+                "full room_id was not rejected as room_full"))
+        return false;
+    full.close();
+
+    RoomIdClient nextCurrent;
+    SignupReplyPayload nextReply;
+    if (!nextCurrent.open(server.wsPort(), &error))
+        return expect(false, qPrintable(error));
+    if (!nextCurrent.signup(QStringLiteral("next-host"), false, 0, &nextReply, &error))
+        return expect(false, qPrintable(error));
+    if (!expect(nextReply.accepted, "signup without room_id after a full current failed"))
+        return false;
+
+    RoomIdClient joinNext;
+    SignupReplyPayload joinReply;
+    if (!joinNext.open(server.wsPort(), &error))
+        return expect(false, qPrintable(error));
+    if (!joinNext.signup(QStringLiteral("next-guest"), true, 1, &joinReply, &error))
+        return expect(false, qPrintable(error));
+    if (!expect(joinReply.accepted, "signup with room_id 1 was rejected")
+        || !expect(joinReply.roomId == 1, "signup reply for room_id 1 did not echo 1"))
+        return false;
+
+    first.close();
+    second.close();
+    nextCurrent.close();
+    joinNext.close();
+    return true;
+}
+
 }
 
 int main(int argc, char **argv)
@@ -336,12 +551,16 @@ int main(int argc, char **argv)
     }
 
     const QList<NamedCase> cases = {
+        {QStringLiteral("signup-room-id-payload"),
+         [&]() { return runSignupRoomIdPayloadContract(); }},
         {QStringLiteral("ws-hello-signup"),
          [&]() { return runWebSocketHelloSignup(server.wsPort()); }},
         {QStringLiteral("tcp-newline-hello"),
          [&]() { return runTcpNewlineHello(server.tcpPort()); }},
         {QStringLiteral("ws-binary-rejected"),
          [&]() { return runBinaryFrameRejected(server.wsPort()); }},
+        {QStringLiteral("ws-signup-room-id"),
+         [&]() { return runWebSocketSignupRoomId(serverPath); }},
     };
 
     int passedCount = 0;

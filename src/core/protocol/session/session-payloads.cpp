@@ -206,10 +206,13 @@ bool ServerHelloPayload::parse(const QVariant &value, ServerHelloPayload *payloa
 
 QVariantMap SignupRequestPayload::toVariant() const
 {
-    return {{QStringLiteral("schema_version"), SchemaVersion},
-            {QStringLiteral("reconnect_requested"), reconnectRequested},
-            {QStringLiteral("screen_name"), screenName},
-            {QStringLiteral("avatar"), avatar}};
+    QVariantMap object{{QStringLiteral("schema_version"), SchemaVersion},
+                       {QStringLiteral("reconnect_requested"), reconnectRequested},
+                       {QStringLiteral("screen_name"), screenName},
+                       {QStringLiteral("avatar"), avatar}};
+    if (hasRoomId)
+        object.insert(QStringLiteral("room_id"), roomId);
+    return object;
 }
 
 bool SignupRequestPayload::parse(const QVariant &value, SignupRequestPayload *payload,
@@ -217,11 +220,18 @@ bool SignupRequestPayload::parse(const QVariant &value, SignupRequestPayload *pa
 {
     if (payload == nullptr)
         return fail(error, QStringLiteral("SignupRequestPayload output is null"));
-    QVariantMap object;
+    if (value.userType() != QMetaType::QVariantMap)
+        return fail(error, QStringLiteral("SignupRequestPayload must be an object"));
+    const QVariantMap object = value.toMap();
+    int schemaVersion = 0;
+    if (!ProtocolMessageUtils::tryParseInt(
+            object.value(QStringLiteral("schema_version")), schemaVersion)
+        || (schemaVersion != 1 && schemaVersion != SchemaVersion)) {
+        return fail(error, QStringLiteral("SignupRequestPayload schema_version must be integral 1 or 2"));
+    }
     SignupRequestPayload parsed;
-    if (!objectWithSchema(value, &object, QStringLiteral("SignupRequestPayload"), error)
-        || !requiredBool(object, QStringLiteral("reconnect_requested"),
-                         &parsed.reconnectRequested, QStringLiteral("SignupRequestPayload"), error)
+    if (!requiredBool(object, QStringLiteral("reconnect_requested"),
+                      &parsed.reconnectRequested, QStringLiteral("SignupRequestPayload"), error)
         || !requiredString(object, QStringLiteral("screen_name"), &parsed.screenName,
                            QStringLiteral("SignupRequestPayload"), error)
         || !requiredString(object, QStringLiteral("avatar"), &parsed.avatar,
@@ -230,6 +240,18 @@ bool SignupRequestPayload::parse(const QVariant &value, SignupRequestPayload *pa
     }
     if (parsed.screenName.trimmed().isEmpty())
         return fail(error, QStringLiteral("SignupRequestPayload.screen_name must not be empty"));
+    if (object.contains(QStringLiteral("room_id"))) {
+        if (schemaVersion != SchemaVersion) {
+            return fail(error, QStringLiteral("SignupRequestPayload.room_id requires schema_version 2"));
+        }
+        int parsedRoomId = 0;
+        if (!ProtocolMessageUtils::tryParseInt(object.value(QStringLiteral("room_id")), parsedRoomId)
+            || parsedRoomId < 0) {
+            return fail(error, QStringLiteral("SignupRequestPayload.room_id must be a non-negative integer"));
+        }
+        parsed.hasRoomId = true;
+        parsed.roomId = parsedRoomId;
+    }
     *payload = parsed;
     return true;
 }
@@ -241,6 +263,7 @@ QVariantMap SignupReplyPayload::toVariant() const
     if (accepted) {
         result.insert(QStringLiteral("reconnected"), reconnected);
         result.insert(QStringLiteral("player_id"), playerId);
+        result.insert(QStringLiteral("room_id"), roomId);
     } else {
         result.insert(QStringLiteral("error_code"), errorCode);
         result.insert(QStringLiteral("message"), message);
@@ -253,11 +276,18 @@ bool SignupReplyPayload::parse(const QVariant &value, SignupReplyPayload *payloa
 {
     if (payload == nullptr)
         return fail(error, QStringLiteral("SignupReplyPayload output is null"));
-    QVariantMap object;
+    if (value.userType() != QMetaType::QVariantMap)
+        return fail(error, QStringLiteral("SignupReplyPayload must be an object"));
+    const QVariantMap object = value.toMap();
+    int schemaVersion = 0;
+    if (!ProtocolMessageUtils::tryParseInt(
+            object.value(QStringLiteral("schema_version")), schemaVersion)
+        || (schemaVersion != 1 && schemaVersion != SchemaVersion)) {
+        return fail(error, QStringLiteral("SignupReplyPayload schema_version must be integral 1 or 2"));
+    }
     SignupReplyPayload parsed;
-    if (!objectWithSchema(value, &object, QStringLiteral("SignupReplyPayload"), error)
-        || !requiredBool(object, QStringLiteral("accepted"), &parsed.accepted,
-                         QStringLiteral("SignupReplyPayload"), error)) {
+    if (!requiredBool(object, QStringLiteral("accepted"), &parsed.accepted,
+                      QStringLiteral("SignupReplyPayload"), error)) {
         return false;
     }
     if (parsed.accepted) {
@@ -267,6 +297,19 @@ bool SignupReplyPayload::parse(const QVariant &value, SignupReplyPayload *payloa
                                QStringLiteral("SignupReplyPayload"), error)
             || parsed.playerId.isEmpty()) {
             return fail(error, QStringLiteral("accepted SignupReplyPayload requires player_id and reconnected"));
+        }
+        if (object.contains(QStringLiteral("room_id"))) {
+            if (schemaVersion != SchemaVersion) {
+                return fail(error, QStringLiteral("SignupReplyPayload.room_id requires schema_version 2"));
+            }
+            int parsedRoomId = 0;
+            if (!ProtocolMessageUtils::tryParseInt(object.value(QStringLiteral("room_id")), parsedRoomId)
+                || parsedRoomId < 0) {
+                return fail(error, QStringLiteral("SignupReplyPayload.room_id must be a non-negative integer"));
+            }
+            parsed.roomId = parsedRoomId;
+        } else if (schemaVersion == SchemaVersion) {
+            return fail(error, QStringLiteral("accepted SignupReplyPayload schema 2 requires room_id"));
         }
     } else if (!requiredString(object, QStringLiteral("error_code"), &parsed.errorCode,
                                QStringLiteral("SignupReplyPayload"), error)

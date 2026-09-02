@@ -176,7 +176,7 @@ sudo apt install -y clang
 | `QSAN_BUILD_GUI` | `ON` | `OFF` | GUI client `QSanguosha` |
 | `QSAN_BUILD_SERVER` | `ON` | `ON` | dedicated server `qsanguosha_server` |
 
-Linux 預設 `OFF` 係為咗保護現有 Linux Server CI：server-only configure 只會 `find_package` Core／Network／WebSockets（加 `BUILD_TESTING=ON` 時嘅 Core5Compat／Gui），唔會因為 GUI source 存在而要求 Quick／Widgets／Multimedia。要 build Linux GUI 就顯式開 `-DQSAN_BUILD_GUI=ON`（下面嘅 preset 已經設定好）。
+Linux 預設 `OFF` 係為咗保護現有 Linux Server CI：server-only configure 只會 `find_package` Core／Network／WebSockets（加 `BUILD_TESTING=ON` 時嘅 Core5Compat／Gui），唔會因為 GUI source 存在而要求 Quick／Widgets／Multimedia。要 build Linux GUI 就顯式開 `-DQSAN_BUILD_GUI=ON`（下面嘅 preset 已經設定好）。Windows XP／Qt 5.6.3 的 `QSAN_BUILD_XP_LEGACY` 會從 `QSAN_QT_COMPONENTS` 拿掉 WebSockets，引擎亦不編 `websocketsocket.cpp`。
 
 `BUILD_TESTING=ON` 需要 `QSAN_BUILD_SERVER=ON`（CTest 直接驅動 `qsanguosha_server`），CMake 會喺 configure 階段 `FATAL_ERROR` 提示。
 

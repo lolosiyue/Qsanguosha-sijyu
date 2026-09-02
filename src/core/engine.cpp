@@ -1006,6 +1006,14 @@ QString Engine::translate(const QString &to_translate, bool initial) const
 	return (initial?engine_translations:translations).value(to_translate, to_translate);
 }
 
+QVariantMap Engine::translationTable() const
+{
+    QVariantMap table;
+    for (auto it = translations.constBegin(); it != translations.constEnd(); ++it)
+        table.insert(it.key(), it.value());
+    return table;
+}
+
 int Engine::getRoleIndex() const
 {
 	if (ServerInfo.GameMode == "06_3v3" || ServerInfo.GameMode == "06_XMode")

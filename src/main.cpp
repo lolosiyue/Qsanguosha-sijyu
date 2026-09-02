@@ -39,6 +39,7 @@
 #include "testing/multimedia-smoke-controller.h"
 #include "testing/network-ui-smoke-controller.h"
 #include "testing/ui-startup-smoke-controller.h"
+#include "websocket-gateway.h"
 
 int main(int argc, char *argv[]) {
     CrashHandler::install();
@@ -328,6 +329,9 @@ int main(int argc, char *argv[]) {
     if (qobject_cast<QApplication *>(qApp))
         qApp->setFont(UiConfig.AppFont);
     BanPair::loadBanPairs();
+#if QSAN_ENABLE_WEBSOCKETS
+    qsanLinkWebSocketGateway();
+#endif
 
     bool hasTestScenarioArgument = qApp->arguments().contains("--test-scenario");
     foreach (const QString &arg, qApp->arguments()) {

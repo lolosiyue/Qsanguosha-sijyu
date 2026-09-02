@@ -56,6 +56,7 @@
 | `QSanguosha` | Windows／Linux GUI 客戶端及本地遊戲入口 |
 | `qsanguosha_server` | Windows／Linux 無頭伺服器，使用 `QCoreApplication` |
 | `qsanguosha_tui` | Windows／Linux live TCP Protocol V2 客戶端；`QCoreApplication` + Qt Core／Network；Replay 永久不支援，GUI dependency 禁止 |
+| Web compact (`web/`) | 瀏覽器 TypeScript SPA；WebSocket 9528；不進 `qsanguosha_engine` |
 | Android app target | Qt GUI／Quick／Widgets／Multimedia 客戶端；不提供公開專用伺服器，但單機可建立內嵌房間 |
 | `crashreporter` | Windows 純 Win32／DbgHelp 診斷工具 |
 | CTest targets | 單元、整合、Lua、自動對戰及性能測試 |
@@ -203,6 +204,7 @@ CI 使用 `bundletool` 檢查 base 及 pack 大小：[Google Play app size limit
   PNG 明確拒絕。
 - 新格式保留時間軸、快照、視角切換與觀看途中玩家接管；TUI 永久不實作 Replay。
 - 伺服器能力宣告、無效詢問跳過、AI 除錯狀態及控制命令仍是後續交付項；本次 V2 cutover 的 typed payload／欄位驗證不代表上述 UX／除錯功能已完成。
+- Web compact client 位於 [`web-client.md`](web-client.md)：Vite 靜態 SPA、`/room/<roomId>` 上座、複製連結／QR、29 項互動；PWA 與桌面級 Browser UI 仍是後續。
 
 ### 6.4 通用體驗
 
