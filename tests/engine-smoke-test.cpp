@@ -3,6 +3,7 @@
 #include "aux-skills.h"
 #include "card.h"
 #include "game-snapshot.h"
+#include "general.h"
 #include "json.h"
 #include "player.h"
 #include "player-ui-state-builder.h"
@@ -334,6 +335,56 @@ static bool roomSnapshotFacadePersistsAndRetrievesSnapshot()
     return valid;
 }
 
+// Four packages used to define the same global class name twice (Zhijie,
+// Jiejie, Xingluan, Juanjia). Those constructors are implicitly inline, so the
+// linker silently kept one definition and both generals ended up sharing it --
+// taoheng got ol_cuiyuan's "zhijie" instead of its own "th_zhijie", and
+// mobilebs_xinxianying got HayatePackage's "hayate_jiejie" instead of "jiejie".
+// Nothing diagnoses that at build time, so pin the affected generals to their
+// skills. This catches a swap only where the two classes register different
+// skill IDs; Xingluan and Juanjia took their ID from the caller, so their
+// collisions swapped the implementation silently and only the rename fixes them.
+static bool collidingSkillNamesStayWithTheirOwnGenerals()
+{
+    // HayatePackage is compiled in but absent from lua/config.lua's
+    // package_names, so its general only has to hold up when it is loaded.
+    static const struct {
+        const char *general;
+        const char *skill;
+        bool required;
+    } expectations[] = {
+        {"taoheng", "th_zhijie", true},
+        {"ol_cuiyuan", "zhijie", true},
+        {"hayate_hakaze", "hayate_jiejie", false},
+        {"mobilebs_xinxianying", "jiejie", true},
+        {"ol_fanchou", "olxingluan", true},
+        {"fanchou", "xingluan", true},
+        {"shendianwei", "juanjia", true},
+    };
+
+    bool ok = true;
+    for (const auto &expectation : expectations) {
+        const QString generalName = QString::fromLatin1(expectation.general);
+        const QString skillName = QString::fromLatin1(expectation.skill);
+        const General *general = Sanguosha->getGeneral(generalName);
+        if (!general) {
+            if (expectation.required) {
+                qCritical() << "general not loaded:" << generalName;
+                ok = false;
+            }
+            continue;
+        }
+        if (!general->hasSkill(skillName)) {
+            QStringList actual;
+            foreach (const Skill *skill, general->getSkillList())
+                actual << skill->objectName();
+            qCritical() << generalName << "lost" << skillName << "- it owns" << actual;
+            ok = false;
+        }
+    }
+    return ok;
+}
+
 int runEngineSmokeTests()
 {
     ServerInfoStruct info;
@@ -401,6 +452,9 @@ int runEngineSmokeTests()
 
     if (!roomSnapshotFacadePersistsAndRetrievesSnapshot())
         return 120;
+
+    if (!collidingSkillNamesStayWithTheirOwnGenerals())
+        return 130;
 
     qInfo() << "qsanguosha_engine smoke passed";
     return 0;

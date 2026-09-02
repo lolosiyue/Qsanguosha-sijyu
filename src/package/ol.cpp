@@ -12588,10 +12588,10 @@ public:
 	}
 };
 
-class Xingluan : public TriggerSkill
+class OlXingluan : public TriggerSkill
 {
 public:
-	Xingluan(const QString &xingluan) : TriggerSkill(xingluan), xingluan(xingluan)
+	OlXingluan(const QString &xingluan) : TriggerSkill(xingluan), xingluan(xingluan)
 	{
 		events << CardFinished;
 		frequency = Frequent;
@@ -30346,7 +30346,7 @@ OLCcxhPackage::OLCcxhPackage()
 
 
 	General*ol_fanchou = new General(this, "ol_fanchou*xh_tianzhu", "qun", 4);
-	ol_fanchou->addSkill(new Xingluan("olxingluan"));
+	ol_fanchou->addSkill(new OlXingluan("olxingluan"));
 
 	General*ol_tadun = new General(this, "ol_tadun*xh_tianzhu", "qun", 4);
 	ol_tadun->addSkill(new OLLuanzhan);
