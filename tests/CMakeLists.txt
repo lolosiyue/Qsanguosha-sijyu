@@ -591,6 +591,7 @@ add_executable(qsanguosha_runtime_tests
     card-lifetime-shutdown/shutdown_protocol_test.cpp
     lua-runtime-isolation-test.cpp
     room-runtime-isolation-test.cpp
+    room-runtime-lua-teardown-test.cpp
 )
 set_source_files_properties(
     card-lifetime-event-lease/card-lifetime-event-lease-test.cpp
