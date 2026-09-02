@@ -164,6 +164,7 @@ private:
     bool preflightTakeover(const QString &snapshotPath, const QString &seatName,
                            QString *error) const;
     bool stopReplayForTakeover(Replayer *replayer, QString *error) const;
+    void startConnectionWithReconnect(bool reconnectRequested);
     void rollbackTakeover(const QString &reason);
     void reopenReplay(const ReplayRestoreState &state);
     void applyReplayRestoreState(const ReplayRestoreState &state);
