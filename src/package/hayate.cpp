@@ -2197,10 +2197,10 @@ public:
 };
 
 
-class Jiejie : public TriggerSkill
+class HayateJiejie : public TriggerSkill
 {
 public:
-    Jiejie() : TriggerSkill("hayate_jiejie")
+    HayateJiejie() : TriggerSkill("hayate_jiejie")
     {
         frequency = NotFrequent;
         events << DamageInflicted;
@@ -2571,7 +2571,7 @@ HayatePackage::HayatePackage()
 
     General *hakaze = new General(this, "hayate_hakaze", "magic", 3, false);
     hakaze->addSkill(new Moju);
-    hakaze->addSkill(new Jiejie);
+    hakaze->addSkill(new HayateJiejie);
 
     General *nagase = new General(this, "hayate_nagase", "real", 3, false);
     nagase->addSkill(new Qifen);
