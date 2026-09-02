@@ -27,7 +27,9 @@
 #include "room-runtime.h"
 #include "miniscenarios.h"
 
+#include "ai-probe.h"
 #include "skill-set-generation.h"
+#include <QElapsedTimer>
 #include "guandu-scenario.h"
 #include "couple-scenario.h"
 #include "boss-mode-scenario.h"
@@ -664,6 +666,7 @@ QList<const ProhibitSkill*> Engine::getProhibitSkills() const
 // 7. 修復 getDistanceSkills
 QList<const DistanceSkill*> Engine::getDistanceSkills() const
 {
+    AiProbe::ScopedProbe probe(AiProbe::Slot_getDistanceSkills);
     RoomRuntime *runtime = currentRoomRuntime();
     return mergedRuntimeSkills(runtime, m_skillRegistry.distanceSkills(), m_luaSkillNames,
                                runtime ? runtime->distanceSkills() : QList<const DistanceSkill *>());
@@ -2529,6 +2532,7 @@ const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card,
     }
     QString method_name = method_map.value(method, "");
 	if(method_name=="") return nullptr;
+    if (AiProbe::enabled()) AiProbe::bump(AiProbe::Slot_isCardLimited);
 
     bool locked = lua_mutex.tryLock();
     if (!locked) {
@@ -2555,6 +2559,7 @@ const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card,
     const QObject *room = player ? player->parent() : nullptr;
     const quint64 gen = SkillSet::generation();
     if (gen != s_ownedGen || room != s_ownedRoom) {
+        AiProbe::ScopedProbe rebuildProbe(AiProbe::Slot_limitOwnerRebuild);
         s_ownedNames.clear();
         if (player) {
             foreach (const Player *p, player->getSiblings(true)) {
@@ -2567,19 +2572,33 @@ const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card,
         s_ownedRoom = room;
     }
     auto ownedByAnyone = [](const QString &skillName) {
+        AiProbe::ScopedProbe probe(AiProbe::Slot_limitOwnerFilter);
         return s_ownedNames.contains(skillName);
     };
+    // 對拍模式 (QSAN_LIMIT_FILTER_VERIFY=1): 不跳過任何技能, 照舊全部評估,
+    // 但只要「會被過濾掉的技能其實命中了」就記錄下來。行為與未過濾版完全相同,
+    // 用來證明過濾條件沒有漏掉真正成立的限制。
+    static const bool s_filterVerify = !qgetenv("QSAN_LIMIT_FILTER_VERIFY").isEmpty()
+                                       && qgetenv("QSAN_LIMIT_FILTER_VERIFY") != "0";
 
     if (card->inherits("SkillCard") && method == card->getHandlingMethod()) {
         foreach (int id, card->getSubcards()) {
             const Card*c = Sanguosha->getCard(id);
             foreach (const CardLimitSkill*skill, getCardLimitSkills()) {
-                if (!ownedByAnyone(skill->objectName())) continue;
+                const bool ownedHere = ownedByAnyone(skill->objectName());
+                if (!ownedHere && !s_filterVerify) continue;
                 if (skill->limitList(player,c).contains(method_name)){
+					QElapsedTimer probeTimer;
+					if (AiProbe::enabled()) probeTimer.start();
 					QString pattern = skill->limitPattern(player,c);
+					if (AiProbe::enabled())
+						AiProbe::recordLimitPattern(skill->objectName(), c->objectName(), probeTimer.nsecsElapsed());
 					if(pattern.isEmpty()) continue;
 					if(isHandcard) pattern.replace("hand", ".");
                     if(matchExpPattern(pattern,player,c)) {
+                        if (!ownedHere)
+                            qWarning().noquote() << "[LIMIT_FILTER_MISS]" << skill->objectName()
+                                                 << "card=" << c->objectName();
                         ret = skill;
                         goto end_check;
                     }
@@ -2588,12 +2607,20 @@ const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card,
         }
     } else {
         foreach (const CardLimitSkill*skill, getCardLimitSkills()) {
-            if (!ownedByAnyone(skill->objectName())) continue;
+            const bool ownedHere = ownedByAnyone(skill->objectName());
+            if (!ownedHere && !s_filterVerify) continue;
             if (skill->limitList(player,card).contains(method_name)){
+				QElapsedTimer probeTimer;
+				if (AiProbe::enabled()) probeTimer.start();
 				QString pattern = skill->limitPattern(player,card);
+				if (AiProbe::enabled())
+					AiProbe::recordLimitPattern(skill->objectName(), card->objectName(), probeTimer.nsecsElapsed());
 				if(pattern.isEmpty()) continue;
 				if(isHandcard) pattern.replace("hand", ".");
                 if(matchExpPattern(pattern,player,card)) {
+                    if (!ownedHere)
+                        qWarning().noquote() << "[LIMIT_FILTER_MISS]" << skill->objectName()
+                                             << "card=" << card->objectName();
                     ret = skill;
                     goto end_check;
                 }
@@ -2769,6 +2796,7 @@ QString findLegacySkillHolderName(const Player *anchor, const QString &skillName
 
 int Engine::correctDistance(const Player*from, const Player*to, bool fixed) const
 {
+    AiProbe::ScopedProbe probe(AiProbe::Slot_correctDistance);
     bool locked = lua_mutex.tryLock();
     if (!locked) {
         if (from && from->inherits("ClientPlayer")) return 0;
@@ -2778,8 +2806,10 @@ int Engine::correctDistance(const Player*from, const Player*to, bool fixed) cons
 
     int correct = 0;
     foreach (const DistanceSkill *skill, getDistanceSkills()) {
+        AiProbe::ScopedProbe iterProbe(AiProbe::Slot_distIter);
         const DistanceSkillV2 *v2 = dynamic_cast<const DistanceSkillV2 *>(skill);
         if (!v2) {
+            AiProbe::ScopedProbe legacyProbe(AiProbe::Slot_distLegacy);
             if (fixed) {
                 const int value = skill->getFixed(from, to);
                 if (value > correct) correct = value;
@@ -2789,6 +2819,7 @@ int Engine::correctDistance(const Player*from, const Player*to, bool fixed) cons
             continue;
         }
 
+        AiProbe::ScopedProbe v2Probe(AiProbe::Slot_distV2);
         const QList<CorrectSkillResult> results = evaluateCorrectSkill(
             v2, v2->getHolderSelector(), from, to, nullptr, -1, true, fixed);
         correct = fixed ? maximumApplicableResult(results, correct)
@@ -3031,6 +3062,7 @@ bool Engine::hasResidueUnlimited(const Player *from, const Card *card, const Pla
 
 bool Engine::correctSkillValidity(const Player*player, const Skill*skill) const
 {
+    if (AiProbe::enabled()) AiProbe::bump(AiProbe::Slot_correctSkillValidity);
     if (player && player->isClientPlayer()) {
         return true; 
     }

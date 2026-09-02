@@ -11,6 +11,7 @@
 #include "wrapped-card.h"
 #include "card-lifetime-manager.h"
 #include <src/util/ThreadSafeHelper.h>
+#include "ai-probe.h"
 #include "skill-set-generation.h"
 
 Player::Player(QObject *parent)
@@ -322,6 +323,7 @@ void Player::removeAttackRangePair(const Player *player)
 
 int Player::distanceTo(const Player *other, int distance_fix) const
 {
+    if (AiProbe::enabled()) AiProbe::bump(AiProbe::Slot_distanceTo);
 	if (!other || this == other)
 		return 0;
 	if(other->seat<0)
@@ -488,6 +490,7 @@ bool Player::isLord() const
 
 bool Player::hasSkill(const QString &skill_name, bool include_lose) const
 {
+    AiProbe::ScopedProbe probe(AiProbe::Slot_hasSkill);
     if(skill_name.isEmpty()) return false;
 
     QString baseName;
@@ -611,6 +614,7 @@ bool Player::hasLordSkill(const Skill *skill, bool include_lose) const
 
 bool Player::isSkillInvalid(const Skill *skill, int instanceId) const
 {
+    if (AiProbe::enabled()) AiProbe::bump(AiProbe::Slot_isSkillInvalid);
     if (!skill) return false;
 
     if (skill->property("IgnoreInvalidity").toBool())
@@ -1853,6 +1857,7 @@ QSet<const Skill *> Player::getSkills(bool include_equip, bool visible_only) con
 
 QList<const Skill *> Player::getSkillList(bool include_equip, bool visible_only) const
 {
+    if (AiProbe::enabled()) AiProbe::bump(AiProbe::Slot_getSkillList);
     QList<const Skill *> skillList;
     QSet<QString> added;
     // 從 SSOT m_skillInstances 派生（已解析 baseName）
