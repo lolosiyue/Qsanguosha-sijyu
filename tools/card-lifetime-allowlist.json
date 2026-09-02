@@ -51,6 +51,11 @@
       "site": "src/core/wrapped-card.cpp:68",
       "category": "raw_delete",
       "reason": "quiescent WrappedCard owner-thread dispatch"
+    },
+    {
+      "site": "src/tui/tui-play-skills.cpp:123",
+      "category": "upcast_delete",
+      "reason": "TUI-only temporary view-as card; QObject::deleteLater bypasses Card::deleteLater, which drains the global lifetime manager"
     }
   ],
   "legacy_patterns": [],
