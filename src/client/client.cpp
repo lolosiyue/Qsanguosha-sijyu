@@ -16,7 +16,6 @@
 #include "choosegeneraldialog.h"
 #include "nativesocket.h"
 #include "recorder.h"
-#include "replay-takeover.h"
 #include "json.h"
 #include "clientplayer.h"
 #include "clientstruct.h"
@@ -67,10 +66,11 @@ static ClientPlayer *getControlRootPlayer(ClientPlayer *player)
 	return player;
 }
 
-Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedSocket)
+Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedSocket,
+               bool takeoverRecord)
 	: QObject(parent), m_isDiscardActionRefusable(true), m_bossLevel(0),
 	status(NotActive), alive_count(1), swap_pile(0), add_round(0), _m_roomState(true),
-	m_client_lua(nullptr), m_original_self(nullptr), m_takeoverManager(nullptr),
+	m_client_lua(nullptr), m_original_self(nullptr),
 	m_liveSession(nullptr), m_interactionCore(nullptr), m_desktopInteractionView(nullptr),
 	m_dispatchingRequestId(0)
 {
@@ -218,7 +218,7 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 		injectedSocket->setParent(this);
 
 	if (filename.isEmpty()) {
-		recorder = new Recorder(this);
+		recorder = new Recorder(this, takeoverRecord);
 		m_isDisconnected = false;
 
 		replayer = nullptr;
@@ -274,10 +274,6 @@ Client::~Client()
 	if (m_client_lua) {
 		lua_close(m_client_lua);
 		m_client_lua = nullptr;
-	}
-	if (m_takeoverManager) {
-		delete m_takeoverManager;
-		m_takeoverManager = nullptr;
 	}
 	ClientInstance = nullptr;
 }
@@ -396,11 +392,6 @@ void Client::replyToServer(CommandType command, const QVariant &arg)
 		QString error;
 		if (!m_liveSession->sendReply(command, arg, m_dispatchingRequestId, &error))
 			failProtocol(error);
-	} else if (isTakeoverMode() && m_pendingTakeoverRequestId != 0) {
-		if (m_takeoverManager->submitPlayerResponse(
-				command, arg, m_pendingTakeoverRequestId)) {
-			m_pendingTakeoverRequestId = 0;
-		}
 	}
 	emit server_reply(static_cast<int>(command));
 }
@@ -3528,61 +3519,4 @@ void Client::setBrokenEquips(const QVariant &card_var)
 
     ClientPlayer *player = getPlayer(who);
     player->setBrokenEquips(card_ids);
-}
-
-bool Client::isTakeoverMode() const
-{
-    return m_takeoverManager && m_takeoverManager->isTakeoverEnabled();
-}
-
-void Client::processTakeoverRequest(const ProtocolMessage &message)
-{
-    if (!isTakeoverMode() || message.type != ProtocolMessageType::Request)
-        return;
-    m_pendingTakeoverRequestId = message.messageId;
-    processServerRequest(message);
-}
-
-QString Client::getTakeoverTarget() const
-{
-    return m_takeoverManager ? m_takeoverManager->getTakeoverTarget() : QString();
-}
-
-void Client::enableTakeover(const QString &playerName)
-{
-    if (!replayer || playerName.isEmpty())
-        return;
-
-    if (!m_takeoverManager) {
-        m_takeoverManager = new ReplayTakeoverManager(replayer, this);
-    }
-
-    m_takeoverManager->setTakeoverTarget(playerName);
-    m_takeoverManager->enableTakeover();
-
-    ClientPlayer *target = getPlayer(playerName);
-    if (target) {
-        setSelf(target);
-        emit switch_control_context(playerName);
-    }
-}
-
-void Client::disableTakeover()
-{
-    m_pendingTakeoverRequestId = 0;
-    if (m_takeoverManager) {
-        m_takeoverManager->disableTakeover();
-    }
-
-    if (m_original_self) {
-        setSelf(m_original_self);
-        emit switch_control_context(m_original_self->objectName());
-    }
-}
-
-void Client::saveTakeoverReplay(const QString &filepath)
-{
-    if (m_takeoverManager) {
-        m_takeoverManager->saveNewReplay(filepath);
-    }
 }

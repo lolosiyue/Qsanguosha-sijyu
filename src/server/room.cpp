@@ -27,6 +27,7 @@
 #include "ai.h"
 #include "card-lifetime-manager.h"
 #include "scenario.h"
+#include "takeover-scenario.h"
 #include "gamerule.h"
 #include "banpair.h"
 #include "roomthread3v3.h"
@@ -228,6 +229,27 @@ Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionC
 	_m_isFirstSurrenderRequest = true;
 	_m_timeSinceLastSurrenderRequest.start();
 
+	if (m_sessionConfig.takeover) {
+		auto takeover = std::make_unique<TakeoverScenario>(
+			m_sessionConfig.takeoverSnapshotPath,
+			m_sessionConfig.takeoverSeatName);
+		QString compatibilityError;
+		if (!takeover->isLoaded()) {
+			m_takeoverError = takeover->loadError();
+		} else if (takeover->snapshot()->getState().gameMode != mode) {
+			m_takeoverError = QStringLiteral("takeover snapshot game mode does not match the room");
+		} else if (!GameSnapshot::validateRuntimeCompatibility(
+			takeover->snapshot()->getState(), &compatibilityError)) {
+			m_takeoverError = compatibilityError;
+		} else {
+			player_count = takeover->getPlayerCount();
+			scenario = takeover.get();
+		}
+		m_ownedScenario = std::move(takeover);
+		if (!m_takeoverError.isEmpty())
+			qCritical().noquote() << "Takeover room rejected:" << m_takeoverError;
+	}
+
 	m_runtime->seedRandom(m_sessionConfig.seed);
 	GameRng::Binding rngBinding(m_runtime->rng());
 	QString runtimeError;
@@ -370,7 +392,89 @@ QString Room::getCurrentExtraTurnReason() const
 
 SkillInstanceRef Room::getCurrentExtraTurnSourceRef() const
 {
-    return m_extraTurns->currentSourceRef();
+	return m_extraTurns->currentSourceRef();
+}
+
+bool Room::isTakeoverReady() const
+{
+	return !m_sessionConfig.takeover || (takeoverScenario() && m_takeoverError.isEmpty());
+}
+
+QString Room::takeoverError() const
+{
+	return m_takeoverError;
+}
+
+TakeoverScenario *Room::takeoverScenario() const
+{
+	return m_sessionConfig.takeover
+		? qobject_cast<TakeoverScenario *>(m_ownedScenario.get()) : nullptr;
+}
+
+QVariantList Room::snapshotPendingExtraTurns() const
+{
+	QVariantList result;
+	for (const ExtraTurnScheduler::SnapshotRequest &request
+	     : m_extraTurns->pendingRequestsSnapshot()) {
+		QVariantList phases;
+		for (int phase : request.phases)
+			phases << phase;
+		QVariantMap key{{QStringLiteral("skillName"), request.sourceRef.key.skillName},
+		                {QStringLiteral("instanceID"), request.sourceRef.key.instanceID}};
+		QVariantMap sourceRef{{QStringLiteral("ownerObjectName"), request.sourceRef.ownerObjectName},
+		                      {QStringLiteral("key"), key}};
+		result << QVariantMap{{QStringLiteral("playerObjectName"), request.playerObjectName},
+		                      {QStringLiteral("phases"), phases},
+		                      {QStringLiteral("reason"), request.reason},
+		                      {QStringLiteral("sourceRef"), sourceRef}};
+	}
+	return result;
+}
+
+bool Room::restorePendingExtraTurns(
+	const QVariantList &requests,
+	const QMap<QString, ServerPlayer *> &runtimeBySnapshotSeat,
+	QString *error)
+{
+	QList<ExtraTurnScheduler::SnapshotRequest> restored;
+	for (const QVariant &value : requests) {
+		const QVariantMap map = value.toMap();
+		ExtraTurnScheduler::SnapshotRequest request;
+		const QString snapshotPlayer = map.value(QStringLiteral("playerObjectName")).toString();
+		ServerPlayer *runtimePlayer = runtimeBySnapshotSeat.value(snapshotPlayer, nullptr);
+		if (!runtimePlayer) {
+			if (error)
+				*error = QStringLiteral("pending extra turn references an unknown player");
+			return false;
+		}
+		request.playerObjectName = runtimePlayer->objectName();
+		for (const QVariant &phase : map.value(QStringLiteral("phases")).toList())
+			request.phases << phase.toInt();
+		request.reason = map.value(QStringLiteral("reason")).toString();
+
+		const QVariantMap source = map.value(QStringLiteral("sourceRef")).toMap();
+		const QString snapshotOwner = source.value(QStringLiteral("ownerObjectName")).toString();
+		const QVariantMap key = source.value(QStringLiteral("key")).toMap();
+		if (!snapshotOwner.isEmpty()) {
+			ServerPlayer *runtimeOwner = runtimeBySnapshotSeat.value(snapshotOwner, nullptr);
+			if (!runtimeOwner) {
+				if (error)
+					*error = QStringLiteral("pending extra turn references an unknown skill owner");
+				return false;
+			}
+			request.sourceRef = SkillInstanceRef(
+				runtimeOwner->objectName(),
+				SkillInstanceKey(key.value(QStringLiteral("skillName")).toString(),
+				                 key.value(QStringLiteral("instanceID")).toInt()));
+		}
+		restored << request;
+	}
+
+	return m_extraTurns->restorePendingRequests(
+		restored,
+		[this](const QString &objectName) {
+			return findPlayerByObjectName(objectName, true);
+		}, error);
 }
 
 void Room::processScheduledExtraTurns()
@@ -460,6 +564,11 @@ QList<ServerPlayer*> Room::getOtherPlayers(ServerPlayer*except, bool include_dea
 QList<ServerPlayer*> Room::getAlivePlayers() const
 {
 	return m_roster->alivePlayers();
+}
+
+void Room::rebuildAlivePlayers()
+{
+	m_roster->rebuildAlive();
 }
 
 QList<ServerPlayer *> Room::getPathBetween(ServerPlayer *from, ServerPlayer *to, bool include_from, bool include_to) const
@@ -1449,6 +1558,38 @@ bool Room::isGamePlaying() const
 void Room::markGameReadyCompleted()
 {
 	m_gameSession->markGameReadyCompleted();
+	if (isTakeoverSession())
+		emit takeover_ready();
+}
+
+void Room::reportTakeoverFailure(const QString &error)
+{
+	m_takeoverError = error;
+	emit takeover_failed(error);
+}
+
+void Room::syncTakeoverPlayerState()
+{
+	static const QList<const char *> properties = {
+		"general", "general2", "kingdom", "hp", "maxhp", "seat",
+		"player_seat", "faceup", "alive", "chained", "role_shown",
+		"general_showed", "general2_showed", "gender", "state"
+	};
+	for (ServerPlayer *player : getPlayers()) {
+		for (const char *property : properties)
+			broadcastProperty(player, property);
+		if (Sanguosha->hasShowRoleMode(mode) || player->isLord() || player->isDead())
+			broadcastProperty(player, "role");
+		else
+			notifyProperty(player, player, "role");
+		player->refreshUIState();
+	}
+	for (ServerPlayer *receiver : getPlayers())
+		notifySkillInstanceSnapshot(receiver);
+	for (ServerPlayer *player : getPlayers()) {
+		if (player->isDead())
+			doBroadcastNotify(S_COMMAND_KILL_PLAYER, player->objectName());
+	}
 }
 
 bool Room::canPause(ServerPlayer*player) const
@@ -1634,7 +1775,7 @@ void Room::setFixedDistance(Player*from, const Player*to, int distance)
 {
 	from->setFixedDistance(to, distance);
 	if (thread)
-		thread->markDistanceCacheDirty("SetFixedDistance");
+		thread->markDistanceCacheDirty();
 
 	JsonArray arg;
 	arg << from->objectName() << to->objectName() << distance << true;
@@ -1645,7 +1786,7 @@ void Room::removeFixedDistance(Player*from, const Player*to, int distance)
 {
 	from->removeFixedDistance(to, distance);
 	if (thread)
-		thread->markDistanceCacheDirty("RemoveFixedDistance");
+		thread->markDistanceCacheDirty();
 
 	JsonArray arg;
 	arg << from->objectName() << to->objectName() << distance << false;
@@ -5692,6 +5833,16 @@ GameSnapshot* Room::getSnapshot(int turnCount) const
 	return m_snapshotService->getSnapshot(turnCount);
 }
 
+GameSnapshot* Room::getSnapshotBySerial(quint64 turnSerial) const
+{
+	return m_snapshotService->getSnapshotBySerial(turnSerial);
+}
+
+QString Room::getSnapshotSessionId() const
+{
+	return m_snapshotService->getSessionId();
+}
+
 QString Room::getSnapshotDir() const
 {
 	return m_snapshotService->getSnapshotDir();
@@ -5705,6 +5856,11 @@ void Room::setReplayPath(const QString &path)
 QString Room::getReplayPath() const
 {
 	return m_snapshotService->getReplayPath();
+}
+
+bool Room::finalizeSnapshotManifest(const QString &replayPath, QString *error) const
+{
+	return m_snapshotService->finalizeManifest(replayPath, error);
 }
 
 void Room::initializeReplayRecordPath()

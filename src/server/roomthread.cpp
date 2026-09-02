@@ -9,7 +9,6 @@
 #include "skill-instance-utils.h"
 #include "crashhandler.h"
 #include <QDebug>
-#include <QElapsedTimer>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QScopeGuard>
@@ -504,43 +503,21 @@ QString EventTriplet::toString() const
 
 RoomThread::RoomThread(Room*room)
 	: room(room),
-	  m_distanceRefreshProfilingEnabled(Config.value("RoomThreadPerfTrace", false).toBool()),
+	  m_perfTraceEnabled(Config.value("RoomThreadPerfTrace", false).toBool()),
 	  m_profileRoomId(room ? room->getId() : -1),
 	  m_profileMode(room ? room->getMode() : QString())
 {
-	if (m_distanceRefreshProfilingEnabled) {
+	if (m_perfTraceEnabled) {
 		connect(this, &QThread::finished, this,
-			&RoomThread::emitDistanceRefreshProfile, Qt::DirectConnection);
+			&RoomThread::emitPerfTrace, Qt::DirectConnection);
 	}
 }
 
-static QJsonObject distanceRefreshCounterObject(const QHash<QString, quint64> &counts)
-{
-	QJsonObject object;
-	QStringList sources = counts.keys();
-	sources.sort();
-	foreach (const QString &source, sources)
-		object.insert(source, qint64(counts.value(source)));
-	return object;
-}
-
-void RoomThread::emitDistanceRefreshProfile() const
+void RoomThread::emitPerfTrace() const
 {
 	QJsonObject payload;
 	payload.insert(QStringLiteral("room_id"), m_profileRoomId);
 	payload.insert(QStringLiteral("mode"), m_profileMode);
-	payload.insert(QStringLiteral("flush_count"), qint64(m_distanceRefreshProfile.flushCount));
-	payload.insert(QStringLiteral("ordered_pair_count"), qint64(m_distanceRefreshProfile.orderedPairCount));
-	payload.insert(QStringLiteral("changed_property_count"), qint64(m_distanceRefreshProfile.changedPropertyCount));
-	payload.insert(QStringLiteral("total_elapsed_ns"), m_distanceRefreshProfile.totalElapsedNs);
-	payload.insert(QStringLiteral("max_flush_ns"), m_distanceRefreshProfile.maxFlushNs);
-	payload.insert(QStringLiteral("distance_calculation_ns"), m_distanceRefreshProfile.distanceCalculationNs);
-	payload.insert(QStringLiteral("comparison_ns"), m_distanceRefreshProfile.comparisonNs);
-	payload.insert(QStringLiteral("property_sync_ns"), m_distanceRefreshProfile.propertySyncNs);
-	payload.insert(QStringLiteral("dirty_source_counts"),
-		distanceRefreshCounterObject(m_distanceRefreshProfile.dirtySourceCounts));
-	payload.insert(QStringLiteral("flush_source_counts"),
-		distanceRefreshCounterObject(m_distanceRefreshProfile.flushSourceCounts));
 	payload.insert(QStringLiteral("trigger_dispatch"),
 		QJsonObject::fromVariantMap(triggerDispatchProfile()));
 
@@ -564,15 +541,9 @@ QVariantMap RoomThread::triggerDispatchProfile() const
 	};
 }
 
-void RoomThread::markDistanceCacheDirty(const char *source)
+void RoomThread::markDistanceCacheDirty()
 {
 	m_distanceCacheDirty = true;
-	if (!m_distanceRefreshProfilingEnabled || !source || !*source)
-		return;
-
-	const QString sourceName = QString::fromLatin1(source);
-	++m_distanceRefreshProfile.dirtySourceCounts[sourceName];
-	m_pendingDistanceDirtySources.insert(sourceName);
 }
 
 const QByteArray &RoomThread::distancePropertyName(const ServerPlayer *player)
@@ -822,6 +793,11 @@ void RoomThread::actionNormal(GameRule*game_rule)
 {
 	try {
 		forever{
+			// This is the sole resumable boundary: capture synchronously while
+			// the previous turn is fully quiescent, immediately before the
+			// complete top-level TurnStart dispatch. Extra turns enter TurnStart
+			// from GameRule and therefore never pass through this hook.
+			room->saveSnapshot("turn");
 			trigger(TurnStart, room, room->getCurrent());
 			if (room->isFinished()) break;
 			room->setCurrent(room->getCurrent()->getNextGamePlayer());
@@ -989,7 +965,7 @@ void RoomThread::sortTriggerSkills(TriggerEvent triggerEvent, Room *targetRoom, 
 			v2_skill_table[triggerEvent].end(), compareByPriority);
 	}
 
-	if (m_distanceRefreshProfilingEnabled) {
+	if (m_perfTraceEnabled) {
 		++m_triggerDispatchProfile.priorityRebuildCount;
 		m_triggerDispatchProfile.prioritySkillCount += skills.length();
 		++m_triggerDispatchProfile.prioritySortCount;
@@ -1031,12 +1007,12 @@ static QString skillInstanceRuntimeKey(const ServerPlayer *owner, const QString 
 bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, QVariant &data)
 {
 	const QList<TriggerSkill *> v2_skills = v2_skill_table[triggerEvent];
-	if (m_distanceRefreshProfilingEnabled) {
+	if (m_perfTraceEnabled) {
 		++m_triggerDispatchProfile.v2DispatchCount;
 		m_triggerDispatchProfile.v2CandidateCount += v2_skills.length();
 	}
 	if (v2_skills.isEmpty()) {
-		if (m_distanceRefreshProfilingEnabled)
+		if (m_perfTraceEnabled)
 			++m_triggerDispatchProfile.v2EmptyDispatchCount;
 		return false;
 	}
@@ -1286,71 +1262,27 @@ void RoomThread::refreshDistanceCacheIfDirty(Room *room)
 
 	// Clear before rebuilding so nested events can schedule a later refresh.
 	m_distanceCacheDirty = false;
-	QSet<QString> dirtySources;
-	if (m_distanceRefreshProfilingEnabled) {
-		dirtySources = m_pendingDistanceDirtySources;
-		m_pendingDistanceDirtySources.clear();
-	}
-
-	QElapsedTimer timer;
-	if (m_distanceRefreshProfilingEnabled)
-		timer.start();
-
 	QList<ServerPlayer *> players = room->getAlivePlayers();
 	foreach (ServerPlayer *player, players)
 		distancePropertyName(player);
 
-	quint64 changedPropertyCount = 0;
-	qint64 distanceCalculationNs = 0;
-	qint64 comparisonNs = 0;
-	qint64 propertySyncNs = 0;
-	QElapsedTimer phaseTimer;
 	foreach(ServerPlayer *from, players) {
 		QHash<const ServerPlayer *, int> &lastDistances = m_lastBroadcastDistances[from];
 		foreach(ServerPlayer *to, players) {
 			if (from == to) continue;
 
-			if (m_distanceRefreshProfilingEnabled)
-				phaseTimer.start();
 			const int distance = from->distanceTo(to, 0);
-			if (m_distanceRefreshProfilingEnabled)
-				distanceCalculationNs += phaseTimer.nsecsElapsed();
 
 			const QByteArray &propertyName = distancePropertyName(to);
-			if (m_distanceRefreshProfilingEnabled)
-				phaseTimer.start();
 			const auto lastDistance = lastDistances.constFind(to);
 			const bool unchanged = lastDistance != lastDistances.constEnd()
 				&& lastDistance.value() == distance;
-			if (m_distanceRefreshProfilingEnabled)
-				comparisonNs += phaseTimer.nsecsElapsed();
 			if (unchanged) continue;
 
-			if (m_distanceRefreshProfilingEnabled)
-				phaseTimer.start();
 			room->safeSetPlayerProperty(from, propertyName.constData(), distance);
 			room->broadcastProperty(from, propertyName.constData());
 			lastDistances.insert(to, distance);
-			if (m_distanceRefreshProfilingEnabled) {
-				propertySyncNs += phaseTimer.nsecsElapsed();
-				++changedPropertyCount;
-			}
 		}
-	}
-
-	if (m_distanceRefreshProfilingEnabled) {
-		const quint64 playerCount = quint64(players.length());
-		const qint64 elapsedNs = timer.nsecsElapsed();
-		++m_distanceRefreshProfile.flushCount;
-		m_distanceRefreshProfile.orderedPairCount += playerCount * (playerCount > 0 ? playerCount - 1 : 0);
-		m_distanceRefreshProfile.changedPropertyCount += changedPropertyCount;
-		m_distanceRefreshProfile.totalElapsedNs += elapsedNs;
-		m_distanceRefreshProfile.maxFlushNs = qMax(m_distanceRefreshProfile.maxFlushNs, elapsedNs);
-		m_distanceRefreshProfile.distanceCalculationNs += distanceCalculationNs;
-		m_distanceRefreshProfile.comparisonNs += comparisonNs;
-		m_distanceRefreshProfile.propertySyncNs += propertySyncNs;
-		foreach (const QString &source, dirtySources)
-			++m_distanceRefreshProfile.flushSourceCounts[source];
 	}
 }
 
@@ -1373,29 +1305,36 @@ void RoomThread::flushOutermostDeferredWork(Room *room)
 	room->processPendingAnytimeSkills();
 }
 
-static const char *distanceDirtySourceName(TriggerEvent triggerEvent)
+static bool invalidatesDistanceCache(TriggerEvent triggerEvent)
 {
 	switch (triggerEvent) {
-	case HpChanged: return "HpChanged";
-	case MaxHpChanged: return "MaxHpChanged";
-	case CardsMoveOneTime: return "CardsMoveOneTime";
-	case EventAcquireSkill: return "EventAcquireSkill";
-	case EventLoseSkill: return "EventLoseSkill";
-	case EventSkillAmountChanged: return "EventSkillAmountChanged";
-	case MarkChanged: return "MarkChanged";
-	case KingdomChanged: return "KingdomChanged";
-	case Death: return "Death";
-	case Revive: return "Revive";
-	case TurnStart: return "TurnStart";
-	case GameStart: return "GameStart";
-	default: return nullptr;
+	case HpChanged:
+	case MaxHpChanged:
+	case CardsMoveOneTime:
+	case EventAcquireSkill:
+	case EventLoseSkill:
+	case EventSkillAmountChanged:
+	case MarkChanged:
+	case KingdomChanged:
+	case Death:
+	case Revive:
+	case TurnStart:
+	case GameStart:
+		return true;
+	default:
+		return false;
 	}
 }
 
 bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*target, QVariant &data)
 {
+	// Room APIs used by TakeoverRule must update containers and notifications
+	// without replaying historical gameplay triggers during reconstruction.
+	if (room && room->isRestoringTakeoverSnapshot())
+		return false;
+
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
-	if (m_distanceRefreshProfilingEnabled)
+	if (m_perfTraceEnabled)
 		++m_triggerDispatchProfile.triggerCount;
 	// push it to event stack
 	EventTriplet triplet(triggerEvent, room, target);
@@ -1450,10 +1389,9 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 		}
 	}*/
 	sortTriggerSkills(triggerEvent, room, false);
-	const char *dirtySource = distanceDirtySourceName(triggerEvent);
-	if (dirtySource) {
+	if (invalidatesDistanceCache(triggerEvent)) {
 		m_playerUiStateDirty = true;
-		markDistanceCacheDirty(dirtySource);
+		markDistanceCacheDirty();
 	}
 	try {
 		broken = triggerV2Skills(triggerEvent, room, target, data);
@@ -1465,7 +1403,7 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 		QList<TriggerSkill*>triggered;
 		for (int i = 0; i < skill_table[triggerEvent].length(); i++) {
 			TriggerSkill*ts = skill_table[triggerEvent][i];
-			if (m_distanceRefreshProfilingEnabled)
+			if (m_perfTraceEnabled)
 				++m_triggerDispatchProfile.mainTableCandidateVisitCount;
 			if (m_triggerSkillTraits.value(ts).v2) continue;
 			if (triggered.contains(ts)) continue;

@@ -3,6 +3,7 @@
 
 #include "src/pch.h"
 #include "build-features.h"
+#include "structs.h"
 
 namespace Ui {
     class MainWindow;
@@ -20,6 +21,7 @@ class QStackedWidget;
 class QQuickWidget;
 class HomeController;
 class PointerEffectOverlay;
+class Replayer;
 
 class BroadcastBox : public QDialog
 {
@@ -108,6 +110,10 @@ private:
 
 public slots:
     void startConnection();
+    // Starts a new live branch from a validated replay snapshot.  The
+    // operation is deliberately two phase: the old replay is kept restorable
+    // until the takeover server has accepted the first live client.
+    void startTakeoverGame(const QString &snapshotPath, const QString &seatName);
 
 private slots:
     void on_actionAbout_GPLv3_triggered();
@@ -144,6 +150,27 @@ private slots:
     void on_actionView_ban_list_triggered();
 
     void on_actionManage_Ban_IP_triggered();
+
+private:
+    struct ReplayRestoreState {
+        QString path;
+        int pairIndex = 0;
+        QString perspective;
+        GameModeStruct previousGameMode;
+        bool wasPaused = true;
+        bool valid = false;
+    };
+
+    bool preflightTakeover(const QString &snapshotPath, const QString &seatName,
+                           QString *error) const;
+    bool stopReplayForTakeover(Replayer *replayer, QString *error) const;
+    void rollbackTakeover(const QString &reason);
+    void reopenReplay(const ReplayRestoreState &state);
+    void applyReplayRestoreState(const ReplayRestoreState &state);
+
+    ReplayRestoreState m_replayRestoreState;
+    bool m_takeoverInProgress = false;
+    bool m_takeoverGameStarted = false;
 };
 
 #endif

@@ -71,6 +71,18 @@ public:
     void shutdown();
     void seed(quint64 seed);
 
+    // AI decisions use an RNG independent from the gameplay/runtime RNG.  The
+    // state is deliberately exposed as the stable GameRng::State DTO so a
+    // takeover snapshot can resume AI random choices without restoring the
+    // SmartAI Lua heap (the historical AI mind is intentionally fresh).
+    GameRng::State exportRngState() const;
+    GameRng::State rngState() const { return exportRngState(); }
+    bool restoreRngState(const GameRng::State &state, QString *error = nullptr);
+    bool restore(const GameRng::State &state, QString *error = nullptr)
+    {
+        return restoreRngState(state, error);
+    }
+
     LuaRuntime &lua() { return m_lua; }
     const LuaRuntime &lua() const { return m_lua; }
     AiRouteRegistry &routes() { return m_routes; }

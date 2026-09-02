@@ -24,7 +24,6 @@ class DesktopInteractionView;
 class QTextDocument;
 class ClientSocket;
 class ClientLiveSession;
-class ReplayTakeoverManager;
 
 class Client : public QObject, public EngineRuntimeContext,
     public IClientInteractionPresenter
@@ -63,7 +62,8 @@ public:
     Q_ENUM(Status)
 
     // injectedSocket ownership is transferred to Client when it is non-null.
-    explicit Client(QObject *parent, const QString &filename = "", ClientSocket *injectedSocket = nullptr);
+    explicit Client(QObject *parent, const QString &filename = "", ClientSocket *injectedSocket = nullptr,
+                    bool takeoverRecord = false);
     ~Client();
 
     // cheat functions
@@ -79,12 +79,6 @@ public:
     void requestSurrender();
 
     bool isReplayState() const { return nullptr != replayer; }
-    bool isTakeoverMode() const;
-    QString getTakeoverTarget() const;
-    void enableTakeover(const QString &playerName);
-    void disableTakeover();
-    void saveTakeoverReplay(const QString &filepath);
-    void processTakeoverRequest(const QSanProtocol::ProtocolMessage &message);
 
     void disconnectFromHost();
     void replyToServer(QSanProtocol::CommandType command, const QVariant &arg = QVariant());
@@ -384,8 +378,6 @@ private:
     QStringList ban_packages;
     Recorder *recorder;
     Replayer *replayer;
-    ReplayTakeoverManager *m_takeoverManager;
-    quint64 m_pendingTakeoverRequestId = 0;
     QTextDocument *lines_doc, *prompt_doc;
     int pile_num;
     QString skill_to_invoke;
