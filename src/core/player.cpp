@@ -11,6 +11,7 @@
 #include "wrapped-card.h"
 #include "card-lifetime-manager.h"
 #include <src/util/ThreadSafeHelper.h>
+#include "skill-set-generation.h"
 
 Player::Player(QObject *parent)
     : QObject(parent), owner(false), general(nullptr), general2(nullptr),
@@ -497,7 +498,10 @@ bool Player::hasSkill(const QString &skill_name, bool include_lose) const
     if (queryInstanceId > 0) {
         ownsViaInstances = hasSkillInstance(baseName, queryInstanceId);
     } else {
-        ownsViaInstances = m_skillInstances.contains(baseName) && !m_skillInstances[baseName].isEmpty();
+        // constFind: 舊寫法查兩次, 而且 const 版 QMap::operator[] 是 by-value 多載,
+        // 會把整個內層 QMap<int, SkillInstance> 深拷貝一份。
+        const auto it = m_skillInstances.constFind(baseName);
+        ownsViaInstances = (it != m_skillInstances.constEnd()) && !it->isEmpty();
     }
 
     if (!ownsViaInstances) return false;
@@ -536,7 +540,8 @@ bool Player::ownsSkill(const QString &skill_name) const
 
     if (queryInstanceId > 0)
         return hasSkillInstance(baseName, queryInstanceId);
-    return m_skillInstances.contains(baseName) && !m_skillInstances[baseName].isEmpty();
+    const auto it = m_skillInstances.constFind(baseName);
+    return (it != m_skillInstances.constEnd()) && !it->isEmpty();
 }
 
 bool Player::hasSkill(const Skill *skill, bool include_lose) const
@@ -682,7 +687,8 @@ int Player::acquireSkill(const QString &skill_name, bool head, int instanceId)
     targetSet.insert(formatted);
 
     if (createdDirectly)
-        emit skill_set_changed();
+        SkillSet::bump();
+    emit skill_set_changed();
 
     return instanceId;
 }
@@ -703,11 +709,13 @@ void Player::detachSkill(const QString &skill_name)
         foreach (const QString &s, toRemove)
             changed = acquired_skills.removeOne(s) || changed;
         if (changed)
-            emit skill_set_changed();
+            SkillSet::bump();
+    emit skill_set_changed();
     } else {
         const bool removedInstance = removeSkillInstance(base, instId);
         if (acquired_skills.removeOne(skill_name) && !removedInstance)
-            emit skill_set_changed();
+            SkillSet::bump();
+    emit skill_set_changed();
     }
 }
 
@@ -737,11 +745,13 @@ void Player::detachSkill(const QString &skill_name, bool head)
         foreach (const QString &s, toRemove2)
             changed = acquired_skills.removeOne(s) || changed;
         if (changed)
-            emit skill_set_changed();
+            SkillSet::bump();
+    emit skill_set_changed();
     } else {
         const bool removedInstance = removeSkillInstance(base, instId);
         if (targetSet.remove(skill_name) && !removedInstance)
-            emit skill_set_changed();
+            SkillSet::bump();
+    emit skill_set_changed();
     }
 }
 
@@ -755,7 +765,8 @@ void Player::detachAllSkills()
     head_acquired_skills.clear();
     deputy_acquired_skills.clear();
     if (changed)
-        emit skill_set_changed();
+        SkillSet::bump();
+    emit skill_set_changed();
 }
 
 void Player::addSkill(const QString &skill_name)
@@ -799,7 +810,8 @@ void Player::loseSkill(const QString &skill_name)
     auto outerIt = m_skillInstances.find(skill_name);
     if (outerIt == m_skillInstances.end()) {
         if (removedLegacySkill)
-            emit skill_set_changed();
+            SkillSet::bump();
+    emit skill_set_changed();
         return;
     }
     int targetId = -1;
@@ -815,7 +827,8 @@ void Player::loseSkill(const QString &skill_name)
         foreach (const SkillInstanceKey &child, children)
             removeSkillInstance(child.skillName, child.instanceID);
     } else if (removedLegacySkill) {
-        emit skill_set_changed();
+        SkillSet::bump();
+    emit skill_set_changed();
     }
 }
 
@@ -828,7 +841,8 @@ void Player::loseSkill(const QString &skill_name, bool head)
     auto outerIt = m_skillInstances.find(skill_name);
     if (outerIt == m_skillInstances.end()) {
         if (removedLegacySkill)
-            emit skill_set_changed();
+            SkillSet::bump();
+    emit skill_set_changed();
         return;
     }
     int targetBind = head ? 1 : 2;
@@ -845,7 +859,8 @@ void Player::loseSkill(const QString &skill_name, bool head)
         foreach (const SkillInstanceKey &child, children)
             removeSkillInstance(child.skillName, child.instanceID);
     } else if (removedLegacySkill) {
-        emit skill_set_changed();
+        SkillSet::bump();
+    emit skill_set_changed();
     }
 }
 
@@ -1972,6 +1987,7 @@ int Player::createSkillInstance(const QString &skillName, SkillInstanceSource so
     inst.state = QVariantMap();
 
     m_skillInstances[skillName][nextId] = inst;
+    SkillSet::bump();
     emit skill_set_changed();
     return nextId;
 }
@@ -2020,6 +2036,7 @@ bool Player::removeSkillInstance(const QString &skillName, int instanceID)
         if (!innateRemains)
             skills.removeOne(skillName);
     }
+    SkillSet::bump();
     emit skill_set_changed();
     return true;
 }
@@ -2078,7 +2095,8 @@ void Player::clearSkillInstances()
     head_acquired_skills.clear();
     deputy_acquired_skills.clear();
     if (changed)
-        emit skill_set_changed();
+        SkillSet::bump();
+    emit skill_set_changed();
 }
 
 void Player::upsertSkillInstance(const SkillInstance &instance)
@@ -2104,6 +2122,7 @@ void Player::upsertSkillInstance(const SkillInstance &instance)
         else if (instance.bindHead == 2)
             deputy_acquired_skills.insert(formatted);
     }
+    SkillSet::bump();
     emit skill_set_changed();
 }
 
