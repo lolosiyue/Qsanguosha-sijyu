@@ -93,39 +93,39 @@ int main(int argc, char *argv[])
     QCoreApplication::setApplicationVersion(QString::fromLatin1(QSanVersion::Number));
 
     QCommandLineParser parser;
-    parser.setApplicationDescription(tr("QSanguosha Protocol V2 終端客戶端"));
+    parser.setApplicationDescription(tr("QSanguosha Protocol V2 终端客户端"));
     const QCommandLineOption helpOption(
         QStringList{QStringLiteral("?"), QStringLiteral("h"), QStringLiteral("help"),
                     QStringLiteral("help-all")},
-        tr("顯示命令列選項說明"));
+        tr("显示命令列选项说明"));
     const QCommandLineOption versionOption(
         QStringList{QStringLiteral("v"), QStringLiteral("version")},
-        tr("顯示版本資訊"));
+        tr("显示版本资讯"));
 
     const QCommandLineOption hostOption(QStringLiteral("host"),
-        tr("伺服器主機名稱或位址"), QStringLiteral("host"),
+        tr("伺服器主机名称或位址"), QStringLiteral("host"),
         QStringLiteral("127.0.0.1"));
     const QCommandLineOption portOption(QStringLiteral("port"),
-        tr("伺服器 TCP 連接埠"), QStringLiteral("port"), QStringLiteral("9527"));
+        tr("伺服器 TCP 连接埠"), QStringLiteral("port"), QStringLiteral("9527"));
     const QCommandLineOption nameOption(QStringLiteral("name"),
-        tr("玩家顯示名稱"), QStringLiteral("name"), QStringLiteral("TUI"));
+        tr("玩家显示名称"), QStringLiteral("name"), QStringLiteral("TUI"));
     const QCommandLineOption avatarOption(QStringLiteral("avatar"),
-        tr("玩家頭像識別字"), QStringLiteral("avatar"),
+        tr("玩家头像识别字"), QStringLiteral("avatar"),
         QStringLiteral("caocao"));
     const QCommandLineOption reconnectOption(QStringLiteral("reconnect"),
-        tr("初次登入時請求重連"));
+        tr("初次登入时请求重连"));
     const QCommandLineOption plainOption(QStringLiteral("plain"),
-        tr("使用確定性的純文字輸出"));
+        tr("使用确定性的纯文字输出"));
     const QCommandLineOption noColorOption(QStringLiteral("no-color"),
-        tr("即使在終端也停用 ANSI 色彩"));
+        tr("即使在终端也停用 ANSI 色彩"));
     const QCommandLineOption languageOption(QStringLiteral("language"),
-        tr("設定程序語系"), QStringLiteral("locale"));
+        tr("设定程序语系"), QStringLiteral("locale"));
     const QCommandLineOption logFileOption(QStringLiteral("log-file"),
-        tr("將清理後的語意輸出附加至檔案"), QStringLiteral("path"));
+        tr("将清理后的语意输出附加至档案"), QStringLiteral("path"));
     const QCommandLineOption scriptOption(QStringLiteral("script"),
-        tr("從腳本執行命令與斷言"), QStringLiteral("path"));
+        tr("从脚本执行命令与断言"), QStringLiteral("path"));
     const QCommandLineOption assetRootOption(QStringLiteral("asset-root"),
-        tr("使用明確的執行期資料根目錄"), QStringLiteral("directory"));
+        tr("使用明确的执行期资料根目录"), QStringLiteral("directory"));
 
     parser.addOptions({helpOption, versionOption, hostOption, portOption, nameOption,
         avatarOption, reconnectOption, plainOption, noColorOption, languageOption,
@@ -141,7 +141,7 @@ int main(int argc, char *argv[])
         || rawArguments.contains(QStringLiteral("--help-all"))) {
         QString helpText = parser.helpText();
         helpText.replace(QStringLiteral("Usage:"), tr("用法："));
-        helpText.replace(QStringLiteral("Options:"), tr("選項："));
+        helpText.replace(QStringLiteral("Options:"), tr("选项："));
         writeUtf8(stdout, helpText);
         return 0;
     }
@@ -157,21 +157,21 @@ int main(int argc, char *argv[])
     bool portOk = false;
     const int port = parser.value(portOption).toInt(&portOk);
     if (!portOk || port < 1 || port > 65535)
-        return usageError(tr("--port 必須是 1 至 65535 的整數"));
+        return usageError(tr("--port 必须是 1 至 65535 的整数"));
     const QString host = parser.value(hostOption).trimmed();
     const QString screenName = parser.value(nameOption).trimmed();
     const QString avatar = parser.value(avatarOption).trimmed();
     if (host.isEmpty())
-        return usageError(tr("--host 不可為空"));
+        return usageError(tr("--host 不可为空"));
     if (screenName.isEmpty())
-        return usageError(tr("--name 不可為空"));
+        return usageError(tr("--name 不可为空"));
     if (avatar.isEmpty())
-        return usageError(tr("--avatar 不可為空"));
+        return usageError(tr("--avatar 不可为空"));
 
     if (parser.isSet(languageOption)) {
         const QLocale locale(parser.value(languageOption));
         if (locale.language() == QLocale::C)
-            return usageError(tr("--language 不是可識別的語系"));
+            return usageError(tr("--language 不是可识别的语系"));
         QLocale::setDefault(locale);
     }
 

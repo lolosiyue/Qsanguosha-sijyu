@@ -534,7 +534,7 @@ void chooseCardHiddenHandContract()
 
     TuiRenderer renderer(false);
     const QString prompt = renderer.renderInteraction(request);
-    check(prompt.contains(QStringLiteral("手牌（3 張，牌面未知）"))
+    check(prompt.contains(QStringLiteral("手牌（3 张，牌面未知）"))
               && prompt.contains(QStringLiteral("[1] 未知手牌"))
               && prompt.contains(QStringLiteral("[3] 未知手牌"))
               && !prompt.contains(QStringLiteral("ID=-1")),
@@ -725,6 +725,38 @@ void reducerContract()
     check(renderer.renderHand(semantic).contains(QStringLiteral("ID=7")),
           "hand renderer snapshot includes a known card identity");
 
+    // Player::getPhaseString() puts a name on the wire; projecting it as an
+    // integer turned every phase into 0.
+    ClientGameStateReducer::applyNotification(&semantic, S_COMMAND_SET_PROPERTY,
+        QVariantMap{{QStringLiteral("schema_version"), 1},
+                    {QStringLiteral("action"), QStringLiteral("property")},
+                    {QStringLiteral("player_name"), QStringLiteral("p1")},
+                    {QStringLiteral("property_name"), QStringLiteral("phase")},
+                    {QStringLiteral("string_value"), QStringLiteral("play")}});
+    check(semantic.gameValue(QStringLiteral("current_phase")).toString()
+              == QLatin1String("play"),
+          "a phase property keeps the name the server sent");
+
+    // The server only marshals the discard pile on a state sync, so the count
+    // has to follow the moves.
+    ClientGameState piles;
+    const auto moveTo = [&piles](int command, const QVariantList &cardIds, int place) {
+        ClientGameStateReducer::applyNotification(&piles, command,
+            QVariantMap{{QStringLiteral("schema_version"), 1},
+                        {QStringLiteral("moves"), QVariantList{QVariantMap{
+                {QStringLiteral("card_ids"), cardIds},
+                {QStringLiteral("to_player"), QString()},
+                {QStringLiteral("to_place"), place},
+                {QStringLiteral("to_pile"), QString()}}}}});
+    };
+    moveTo(S_COMMAND_LOSE_CARD, QVariantList{4, 5}, 5);
+    moveTo(S_COMMAND_LOSE_CARD, QVariantList{5, 6}, 5);
+    check(piles.gameValue(QStringLiteral("discard_pile")).toList().size() == 3,
+          "discarded cards reach the discard pile exactly once");
+    moveTo(S_COMMAND_GET_CARD, QVariantList{5}, 0);
+    check(piles.gameValue(QStringLiteral("discard_pile")).toList().size() == 2,
+          "a card recovered from the discard pile leaves it");
+
     ClientGameState selfReference;
     const QVariantMap objectName{{QStringLiteral("schema_version"), 1},
         {QStringLiteral("action"), QStringLiteral("property")},
@@ -809,14 +841,51 @@ void rendererContract()
     state.setGameValue(QStringLiteral("draw_pile_count"), 42);
     state.setGameValue(QStringLiteral("discard_pile"), QVariantList{1, 2});
 
+    state.setPlayerValue(QStringLiteral("p2"), QStringLiteral("general"),
+                         QStringLiteral("zhangfei"));
+
     TuiRenderer plain(false);
     const QString stateSnapshot = plain.renderState(state);
     const QString playersSnapshot = plain.renderPlayers(state);
-    check(stateSnapshot.contains(QStringLiteral("延遲=12ms"))
-              && stateSnapshot.contains(QStringLiteral("階段：出牌階段"))
+    // Stands in for the engine: lang lookups, screen names, and the kingdom a
+    // general belongs to.
+    const TuiRenderer engineBacked(false, TuiRenderer::Resolvers{
+        {},
+        [](const QString &key) {
+            static const QHash<QString, QString> lang{
+                {QStringLiteral("wei"), QStringLiteral("魏")},
+                {QStringLiteral("shu"), QStringLiteral("蜀")},
+                {QStringLiteral("caocao"), QStringLiteral("曹操")},
+                {QStringLiteral("zhangfei"), QStringLiteral("张飞")},
+                {QStringLiteral("lord"), QStringLiteral("主公")},
+                {QStringLiteral("savage-assault-slash"),
+                 QStringLiteral("%src 用了南蛮入侵，请打出一张杀")}};
+            return lang.value(key, key);
+        },
+        [](const QString &objectName) {
+            return objectName == QLatin1String("p1") ? QStringLiteral("Alice") : QString();
+        },
+        [](const QString &general) {
+            return general == QLatin1String("zhangfei") ? QStringLiteral("shu") : QString();
+        }});
+    const QString namedStateSnapshot = engineBacked.renderState(state);
+    const QString namedPlayersSnapshot = engineBacked.renderPlayers(state);
+    check(namedStateSnapshot.contains(QStringLiteral("Alice（p1）")),
+          "the status line names the current player instead of showing an id alone");
+    check(namedStateSnapshot.contains(QStringLiteral("状态=进行中")),
+          "the room status reads as a game state, not as a socket state");
+    // The server never broadcasts the kingdom property for a general it already
+    // named, so an empty one is read off the general.
+    check(namedPlayersSnapshot.contains(QStringLiteral("武将=曹操 势力=魏"))
+              && namedPlayersSnapshot.contains(QStringLiteral("武将=张飞 势力=蜀")),
+          "a player with no kingdom property borrows the general's kingdom");
+    check(!namedPlayersSnapshot.contains(QStringLiteral("曹操/")),
+          "a player with no deputy general shows no dangling separator");
+    check(stateSnapshot.contains(QStringLiteral("延迟=12ms"))
+              && stateSnapshot.contains(QStringLiteral("阶段：出牌阶段"))
               && !stateSnapshot.contains(QChar(0x1b)),
           "plain renderer snapshot covers connection room turn and phase");
-    check(playersSnapshot.contains(QStringLiteral("身分=隱藏"))
+    check(playersSnapshot.contains(QStringLiteral("身分=隐藏"))
               && playersSnapshot.contains(QStringLiteral("生存=死亡"))
               && playersSnapshot.contains(QStringLiteral("crossbow"))
               && playersSnapshot.contains(QStringLiteral("indulgence"))
@@ -881,12 +950,35 @@ void rendererContract()
     playPayload.skillCandidates = {SkillActivationCandidate{QStringLiteral("zhiheng"), 2}};
     playPrompt.payload = playPayload;
     const QString playText = plain.renderInteraction(playPrompt);
-    check(playText.contains(QStringLiteral("可選"))
-              && playText.contains(QStringLiteral("目標玩家"))
-              && playText.contains(QStringLiteral("結束出牌"))
+    // A prompt carries object names only; without a resolver the renderer has
+    // nothing better to show, but it must never invent one either.
+    check(playText.contains(QStringLiteral("sgs1")),
+          "targets fall back to the object name when no screen name is known");
+    TuiRenderer named(false, TuiRenderer::Resolvers{
+        {}, {}, [](const QString &objectName) {
+            return objectName == QLatin1String("sgs1") ? QStringLiteral("时语") : QString();
+        }, {}});
+    const QString namedPlayText = named.renderInteraction(playPrompt);
+    check(namedPlayText.contains(QStringLiteral("时语（sgs1）"))
+              && namedPlayText.contains(QStringLiteral("sgs2")),
+          "targets show the screen name and keep the object name beside it");
+    InteractionRequest keyedPrompt = cardRequest();
+    keyedPrompt.prompt = QStringLiteral("savage-assault-slash:p1");
+    const QString keyedPromptText = engineBacked.renderInteraction(keyedPrompt);
+    check(!keyedPromptText.contains(QStringLiteral("savage-assault-slash"))
+              && keyedPromptText.contains(QStringLiteral("Alice"))
+              && !keyedPromptText.contains(QStringLiteral("%src")),
+          "a prompt key is rendered as its sentence with the players filled in");
+    InteractionRequest markupPrompt = cardRequest();
+    markupPrompt.prompt = QStringLiteral("choose<br/> <b>Source</b>: zhiheng");
+    check(!plain.renderInteraction(markupPrompt).contains(QLatin1Char('<')),
+          "a prompt written for the desktop log box renders as plain text");
+    check(playText.contains(QStringLiteral("可选"))
+              && playText.contains(QStringLiteral("目标玩家"))
+              && playText.contains(QStringLiteral("结束出牌"))
               && playText.contains(QStringLiteral("1 -> 2"))
               && playText.contains(QStringLiteral("技能"))
-              && !playText.contains(QStringLiteral("須選")),
+              && !playText.contains(QStringLiteral("须选")),
           "play-card prompt lists cards, skills, numbered targets, and how to pass");
 
     TuiRenderer ansi(true);
@@ -897,11 +989,18 @@ void rendererContract()
     check(plain.renderPlayers(waiting).contains(QStringLiteral("等待玩家")),
           "waiting-room snapshot is explicit");
     state.setGameValue(QStringLiteral("game_over"), true);
+    state.setGameValue(QStringLiteral("status"), QStringLiteral("game_over"));
     state.setGameValue(QStringLiteral("result"), QVariantMap{
         {QStringLiteral("winner_tokens"), QVariantList{QStringLiteral("lord")}},
         {QStringLiteral("standoff"), false}});
-    check(plain.renderState(state).contains(QStringLiteral("遊戲結束：勝方=lord")),
+    check(plain.renderState(state).contains(QStringLiteral("游戏结束：胜方=lord")),
           "game-over snapshot includes the authorized result");
+    check(engineBacked.renderState(state).contains(QStringLiteral("胜方=主公"))
+              && engineBacked.renderState(state).contains(QStringLiteral("状态=已结束")),
+          "the result and the room status are named, not left as wire tokens");
+    check(TuiInteractionView::cancelReasonText(InteractionCancelReason::Expired)
+              != interactionCancelReasonName(InteractionCancelReason::Expired),
+          "a cancelled request says why in the player's language");
 }
 
 void commandContract()
@@ -939,7 +1038,7 @@ void commandContract()
               && robots.line == QStringLiteral("/addrobot all"),
           "tab completes /addrobot all");
     const TuiCompletion pass = completeTuiLine(
-        QStringLiteral("p"), {QStringLiteral("pass"), QStringLiteral("過")});
+        QStringLiteral("p"), {QStringLiteral("pass"), QStringLiteral("过")});
     check(pass.matches == QStringList{QStringLiteral("pass")}
               && pass.line == QStringLiteral("pass"),
           "tab completes interaction tokens such as pass");
@@ -1021,9 +1120,9 @@ void terminalContract()
     check(view.parseAnswer(play, QStringLiteral("pass"), &response, &error)
               && response.payloadAs<InteractionResponse::CancelData>() != nullptr,
           "play-card accepts pass as end-of-phase cancel");
-    check(view.parseAnswer(play, QStringLiteral("過"), &response, &error)
+    check(view.parseAnswer(play, QStringLiteral("过"), &response, &error)
               && response.payloadAs<InteractionResponse::CancelData>() != nullptr,
-          "play-card accepts 過 as end-of-phase cancel");
+          "play-card accepts 过 as end-of-phase cancel");
 
     playPayload->skillCandidates = {SkillActivationCandidate{QStringLiteral("zhiheng"), 2}};
     check(view.parseAnswer(play, QStringLiteral("4"), &response, &error)

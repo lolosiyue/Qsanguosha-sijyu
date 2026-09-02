@@ -4,6 +4,7 @@
 #include "protocol.h"
 #include "tui-card-text.h"
 #include "tui-log-text.h"
+#include "tui-renderer.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -186,6 +187,43 @@ int main(int argc, char **argv)
     check(useCard.contains(QStringLiteral("刘玄德")) && useCard.contains(QStringLiteral("曹孟德")),
           "use-card log names the user and the target");
     check(hasNoPlaceholders(useCard), "use-card log leaves no unfilled placeholder");
+
+    // lang writes several templates for the desktop log box; #AskForPeaches asks
+    // for a <b><font>桃</font></b>.
+    const QString peaches = tuiSkillLogText(
+        skillLog(QStringLiteral("#AskForPeaches"), QStringLiteral("sgs1"),
+                 {QStringLiteral("sgs2")}, QString(),
+                 {QStringLiteral("2"), QString(), QString(), QString(), QString()}),
+        playerName);
+    check(!peaches.contains(QLatin1Char('<')) && !peaches.contains(QLatin1Char('>')),
+          "a log template written with markup renders as plain text");
+    check(peaches.contains(Sanguosha->translate(QStringLiteral("peach"))),
+          "stripping the markup keeps the word it wrapped");
+
+    check(TuiRenderer::plainText(QStringLiteral("闪[方块7]<br>使用同名的牌可获得 <b>1</b> 枚G币"))
+              == QStringLiteral("闪[方块7] 使用同名的牌可获得 1 枚G币"),
+          "a line break survives as a separator instead of gluing two sentences");
+    check(TuiRenderer::plainText(QStringLiteral("a<br/>b<br />c")) == QStringLiteral("a b c"),
+          "every spelling of the break tag is recognised");
+    check(TuiRenderer::plainText(QStringLiteral("3 < 4")) == QStringLiteral("3 < 4"),
+          "an unterminated tag is treated as the text a player typed");
+    check(TuiRenderer::plainText(QStringLiteral("&lt;b&gt; &amp; &nbsp;x"))
+              == QStringLiteral("<b> & x"),
+          "escaped characters are unescaped once, not re-read as tags");
+
+    // lang has no template for the "played in response" variant, so the log box
+    // synthesises the sentence and so must the transcript.
+    const QString respond = tuiSkillLogText(
+        skillLog(QStringLiteral("#UseCard_Resp"), QStringLiteral("sgs1"), {},
+                 QString::number(cardId),
+                 {QString(), QString(), QString(), QString(), QString()}),
+        playerName);
+    check(!respond.contains(QStringLiteral("#UseCard_Resp"))
+              && respond.contains(QStringLiteral("刘玄德"))
+              && respond.contains(tuiCardDisplayText(cardId)),
+          "a played-in-response log renders a sentence, not the raw log key");
+    check(respond != useCard,
+          "playing a card in response is not narrated as using it");
 
     const QVariantMap bgm{{QStringLiteral("schema_version"), 1},
         {QStringLiteral("event"), int(QSanProtocol::S_GAME_EVENT_CHANGE_BGM)},

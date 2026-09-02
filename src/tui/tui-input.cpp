@@ -52,7 +52,7 @@ bool TuiInput::start(QString *error)
 #ifdef Q_OS_WIN
     HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
     if (input == nullptr || input == INVALID_HANDLE_VALUE)
-        return fail(error, tr("標準輸入控制代碼不可用"));
+        return fail(error, tr("标准输入控制代码不可用"));
     m_inputHandle = input;
     DWORD mode = 0;
     m_consoleInput = GetConsoleMode(input, &mode) != 0;
@@ -60,7 +60,7 @@ bool TuiInput::start(QString *error)
         m_originalConsoleMode = mode;
         mode &= ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT);
         if (!SetConsoleMode(input, mode))
-            return fail(error, tr("無法啟用非同步終端輸入"));
+            return fail(error, tr("无法启用非同步终端输入"));
     }
     auto *notifier = new QWinEventNotifier(input, this);
     m_notifier = notifier;
@@ -105,7 +105,7 @@ void TuiInput::appendBytes(const QByteArray &bytes)
             break;
         if (newline > 16384) {
             m_buffer.clear();
-            emit inputError(tr("輸入行超過 16384 bytes"));
+            emit inputError(tr("输入行超过 16384 bytes"));
             return;
         }
         QByteArray line = m_buffer.left(newline);
@@ -116,7 +116,7 @@ void TuiInput::appendBytes(const QByteArray &bytes)
     }
     if (m_buffer.size() > 16384) {
         m_buffer.clear();
-        emit inputError(tr("輸入行超過 16384 bytes"));
+        emit inputError(tr("输入行超过 16384 bytes"));
     }
 }
 
@@ -125,7 +125,7 @@ void TuiInput::emitBufferedLine(const QByteArray &line)
     QStringDecoder decoder(QStringDecoder::Utf8);
     const QString decoded = decoder.decode(line);
     if (decoder.hasError()) {
-        emit inputError(tr("輸入不是有效的 UTF-8"));
+        emit inputError(tr("输入不是有效的 UTF-8"));
         return;
     }
     emit lineReady(decoded);
@@ -140,14 +140,14 @@ void TuiInput::readWindowsInput()
     if (m_consoleInput) {
         DWORD available = 0;
         if (!GetNumberOfConsoleInputEvents(input, &available)) {
-            emit inputError(tr("無法檢查終端輸入"));
+            emit inputError(tr("无法检查终端输入"));
             return;
         }
         while (available > 0) {
             INPUT_RECORD records[64];
             DWORD read = 0;
             if (!ReadConsoleInputW(input, records, qMin<DWORD>(available, DWORD(64)), &read)) {
-                emit inputError(tr("無法讀取終端輸入"));
+                emit inputError(tr("无法读取终端输入"));
                 return;
             }
             for (DWORD i = 0; i < read; ++i) {
@@ -177,7 +177,7 @@ void TuiInput::readWindowsInput()
                     const QChar character(static_cast<ushort>(key.uChar.UnicodeChar));
                     if (!character.isNull()) {
                         if (m_consoleLine.size() >= 16384) {
-                            emit inputError(tr("輸入行超過 16384 字元"));
+                            emit inputError(tr("输入行超过 16384 字元"));
                             return;
                         }
                         m_consoleLine.append(character);
@@ -207,7 +207,7 @@ void TuiInput::readWindowsInput()
             stop();
             return;
         }
-        emit inputError(tr("無法讀取重新導向的標準輸入"));
+        emit inputError(tr("无法读取重新导向的标准输入"));
         return;
     }
     if (read == 0) {
@@ -267,6 +267,6 @@ void TuiInput::readUnixInput(int descriptor)
         stop();
         return;
     }
-    emit inputError(tr("無法讀取標準輸入"));
+    emit inputError(tr("无法读取标准输入"));
 }
 #endif
