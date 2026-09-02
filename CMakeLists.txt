@@ -269,6 +269,7 @@ add_library(qsanguosha_engine STATIC
     src/core/card-lifetime-manager.cpp
     src/core/card-lifetime-manager.h
     src/core/card.h
+    src/core/skill-set-generation.h
     src/core/ai-data-store.cpp
     src/core/ai-data-store.h
     src/core/asset-manifest.cpp

@@ -5702,12 +5702,20 @@ public:
 
 	QString limitPattern(const Player *target, const Card *card) const
 	{
+		// 先檢查標記再算距離: distanceTo() 在 server 端要跑兩趟 Engine::correctDistance,
+		// 每趟都會重建距離技能表並對全場逐一 hasSkill; 20 人局裡把它放在迴圈最前面
+		// 會讓「場上根本沒有 oljieqianxi」的常見情形付出全部代價。語意不變。
 		foreach (const Player *p, target->getAliveSiblings()) {//获取其他角色
-			if(p->distanceTo(target)!=1) continue;
+			bool marked = false;
 			foreach (QString m, p->getMarkNames()) {
-				if(m.contains("&oljieqianxi+")&&m.contains(card->getColorString()))
-					return card->toString();
+				if(m.contains("&oljieqianxi+")&&m.contains(card->getColorString())){
+					marked = true;
+					break;
+				}
 			}
+			if(!marked) continue;
+			if(p->distanceTo(target)==1)
+				return card->toString();
 		}
 		return "";
 	}
