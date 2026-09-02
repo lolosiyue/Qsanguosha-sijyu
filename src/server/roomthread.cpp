@@ -781,6 +781,9 @@ void RoomThread::run()
 		Sanguosha->unregisterRoom();
 	});
 	auto workerFinal = qScopeGuard([this]() {
+		// finalizeWorker() closes the room's Lua states, so the crash handler
+		// has to drop its lua_State before that and not after.
+		CrashHandler::setLuaState(nullptr);
 		room->roomRuntime()->finalizeWorker();
 	});
 
