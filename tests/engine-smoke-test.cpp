@@ -2,9 +2,11 @@
 #include "engine.h"
 #include "aux-skills.h"
 #include "card.h"
+#include "game-rng.h"
 #include "game-snapshot.h"
 #include "general.h"
 #include "json.h"
+#include "lua-runtime.h"
 #include "player.h"
 #include "player-ui-state-builder.h"
 #include "protocol.h"
@@ -12,8 +14,10 @@
 #include "record-buffer.h"
 #include "replay/replay-codec.h"
 #include "room.h"
+#include "room-runtime.h"
 #include "server-info.h"
 #include "serverplayer.h"
+#include "settings.h"
 #include "skill.h"
 #include "skill-instance-utils.h"
 #include "skill-registry.h"
@@ -312,26 +316,54 @@ static bool roomSnapshotFacadePersistsAndRetrievesSnapshot()
         return false;
     }
 
-    Room room(nullptr, QStringLiteral("02_1v1"));
+    const bool oldEnableAI = Config.EnableAI;
+    const bool oldDisableLua = Config.DisableLua;
+    Config.EnableAI = true;
+    Config.DisableLua = false;
+
+    Room room(nullptr, QStringLiteral("02p"));
+    ServerPlayer *first = RoomTestAccess::addPlayer(room, QStringLiteral("snapshot-first"));
+    ServerPlayer *second = RoomTestAccess::addPlayer(room, QStringLiteral("snapshot-second"));
+    first->setState(QStringLiteral("robot"));
+    second->setState(QStringLiteral("robot"));
+    first->setGeneral(Sanguosha->getGeneral(QStringLiteral("caocao")));
+    second->setGeneral(Sanguosha->getGeneral(QStringLiteral("guanyu")));
+    first->setRole(QStringLiteral("lord"));
+    second->setRole(QStringLiteral("rebel"));
+    first->setSeat(1);
+    first->setPlayerSeat(1);
+    second->setSeat(2);
+    second->setPlayerSeat(2);
+    RoomTestAccess::startVirtualGame(room);
+    room.setCurrent(first);
+    first->setPhase(Player::NotActive);
+
     const QString replayPath = temporaryDir.filePath(QStringLiteral("snapshot-facade.replay.txt"));
     room.setReplayPath(replayPath);
     room.setTag(QStringLiteral("TurnLengthCount"), 7);
 
+    LuaRuntime::Binding luaBinding(room.roomRuntime()->lua());
+    GameRng::Binding rngBinding(room.roomRuntime()->rng());
+    EngineRuntimeContextScope contextScope(*Sanguosha, &room);
     room.saveSnapshot(QStringLiteral("turn"));
 
-    GameSnapshot *snapshot = room.getSnapshot(7);
+    GameSnapshot *snapshot = room.getSnapshotBySerial(1);
     const QString snapshotDir = GameSnapshot::getSnapshotDir(replayPath);
     const QString snapshotPath = snapshotDir + QStringLiteral("/")
-        + GameSnapshot::generateSnapshotFilename(7, QStringLiteral("turn"));
+        + GameSnapshot::generateSnapshotFilename(1, QStringLiteral("turn"));
     const bool valid = room.getReplayPath() == replayPath
         && room.getSnapshotDir() == snapshotDir
         && QFileInfo::exists(snapshotPath)
         && snapshot
+        && snapshot->getTurnCount() == 7
+        && snapshot->getTurnSerial() == 1
         && snapshot->getReplayPath() == replayPath
         && snapshot->getSnapshotType() == QStringLiteral("turn")
-        && snapshot->getDescription() == QStringLiteral("Turn 7");
+        && snapshot->getDescription() == QStringLiteral("Turn 1");
     if (!valid)
         qCritical() << "Room snapshot facade did not preserve persisted snapshot state";
+    Config.EnableAI = oldEnableAI;
+    Config.DisableLua = oldDisableLua;
     return valid;
 }
 

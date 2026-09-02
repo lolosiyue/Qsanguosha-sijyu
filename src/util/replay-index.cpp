@@ -141,14 +141,12 @@ bool ReplayIndex::parseMessage(const ProtocolMessage &message, ReplayNode &node)
         const QVariantMap object = body.toMap();
         const QString mark = object.value(QStringLiteral("mark_name")).toString();
         if (mark == "Global_TurnCount") {
-            const int turnCount = object.value(QStringLiteral("value")).toInt();
-            if (turnCount > m_lastTurnCount) {
-                node.type = ReplayNodeType::TurnStart;
-                node.turnCount = turnCount;
-                node.description = tr("Turn %1").arg(turnCount);
-                m_lastTurnCount = turnCount;
-                return true;
-            }
+            node.type = ReplayNodeType::TurnStart;
+            node.playerName = object.value(QStringLiteral("player_name")).toString();
+            node.playerTurnCount = object.value(QStringLiteral("value")).toInt();
+            node.turnCount = ++m_lastTurnCount;
+            node.description = tr("Turn %1").arg(node.turnCount);
+            return !node.playerName.isEmpty() && node.playerTurnCount > 0;
         }
         break;
     }
@@ -187,49 +185,8 @@ bool ReplayIndex::parseMessage(const ProtocolMessage &message, ReplayNode &node)
 
 void ReplayIndex::loadSnapshots()
 {
-    if (m_snapshotPath.isEmpty())
-        return;
-
-    QDir dir(m_snapshotPath);
-    if (!dir.exists())
-        return;
-
-    QStringList filters;
-    filters << "*.json";
-    QStringList files = dir.entryList(filters, QDir::Files, QDir::Name);
-
-    foreach (const QString &file, files) {
-        QString filepath = m_snapshotPath + "/" + file;
-
-        QFile f(filepath);
-        if (!f.open(QIODevice::ReadOnly))
-            continue;
-
-        QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
-        f.close();
-
-        QVariantMap root = doc.toVariant().toMap();
-        // Current snapshots store turnCount under state; retain the legacy
-        // top-level fallback so old snapshot directories remain usable.
-        const QVariantMap state = root.value("state").toMap();
-        const int turnCount = state.contains("turnCount")
-            ? state.value("turnCount").toInt()
-            : root.value("turnCount").toInt();
-        QString type = root["snapshotType"].toString();
-
-        for (int i = 0; i < m_nodes.size(); i++) {
-            if (m_nodes[i].turnCount == turnCount) {
-                bool match = false;
-                if (type == "turn" && m_nodes[i].type == ReplayNodeType::TurnStart)
-                    match = true;
-                else if (type == "death" && m_nodes[i].type == ReplayNodeType::PlayerDeath)
-                    match = true;
-
-                if (match) {
-                    m_nodes[i].snapshotIndex = i;
-                    break;
-                }
-            }
-        }
-    }
+    // Snapshot discovery is deliberately owned by Replayer's strict manifest
+    // verifier. ReplayIndex must never revive the old directory-scan contract.
+    for (ReplayNode &node : m_nodes)
+        node.snapshotIndex = -1;
 }

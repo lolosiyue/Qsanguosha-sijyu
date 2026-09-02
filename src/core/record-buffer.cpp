@@ -1,6 +1,6 @@
 #include "record-buffer.h"
 
-#include <QFile>
+#include <QSaveFile>
 
 RecordBuffer::RecordBuffer(const QString &gameVersion,
                            const QString &modName,
@@ -36,9 +36,13 @@ bool RecordBuffer::saveText(const QString &filename) const
     if (!filename.endsWith(".txt"))
         return false;
 
-    QFile file(filename);
+    QSaveFile file(filename);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
         return false;
     const QByteArray data = rawReplayData();
-    return file.write(data) == data.size();
+    if (file.write(data) != data.size()) {
+        file.cancelWriting();
+        return false;
+    }
+    return file.commit();
 }

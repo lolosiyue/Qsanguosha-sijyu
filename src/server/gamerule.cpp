@@ -320,8 +320,6 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
         room->addPlayerMark(player,"Global_TurnCount");
         room->setPlayerMark(player,"damage_point_round",0);
 
-        room->saveSnapshot("turn");
-
         if(room->getTag("Global_ExtraTurn" + player->objectName()).toBool())
 			room->addPlayerMark(player,"@extra_turn");
 		else if(player==room->getAlivePlayers().first()) {
@@ -1258,7 +1256,6 @@ bool GameRule::trigger(TriggerEvent triggerEvent,Room *room,ServerPlayer *player
     }
 case BuryVictim: {
         DeathStruct death = data.value<DeathStruct>();
-        room->saveSnapshot("death", death.who->objectName());
         player->bury();
         if(room->getTag("SkipNormalDeathProcess").toBool())
             return false;

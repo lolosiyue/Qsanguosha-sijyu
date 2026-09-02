@@ -422,6 +422,20 @@ void AiLuaRuntime::seed(quint64 seed)
     m_lua.setSeed(aiSeed);
 }
 
+GameRng::State AiLuaRuntime::exportRngState() const
+{
+    return m_rng.exportState();
+}
+
+bool AiLuaRuntime::restoreRngState(const GameRng::State &state, QString *error)
+{
+    // math.random is sandboxed to m_rng, so restoring this generator is
+    // sufficient even while the auxiliary Lua VM is already initialized.
+    // Do not restore SmartAI Lua globals: takeover intentionally creates a
+    // fresh AI mind and only resumes its deterministic random stream.
+    return m_rng.restoreState(state, error);
+}
+
 AIResult AiLuaRuntime::decideShadow(const AIRequest &request)
 {
     AIResult result;

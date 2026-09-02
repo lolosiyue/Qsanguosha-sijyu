@@ -22,7 +22,8 @@ class Server : public QObject
     Q_OBJECT
 
 public:
-    explicit Server(QObject *parent);
+    explicit Server(QObject *parent,
+                    const GameSessionConfig &initialSessionConfig = GameSessionConfig());
 
     friend class BanIpDialog;
 
@@ -46,6 +47,7 @@ public:
     QStringList startupMessages() const;
     void daemonize();
     Room *createNewRoom();
+    void setNextGameSessionConfig(const GameSessionConfig &config);
     void signupPlayer(ServerPlayer *player);
     void checkUpnpAndListServer();
     void startHeadlessGame();
@@ -79,6 +81,8 @@ private:
     bool created_successfully;
     int playerCount;
     quint64 m_nextGameSeedIndex;
+    GameSessionConfig m_nextSessionConfig;
+    bool m_hasNextSessionConfig = false;
     QElapsedTimer m_uptimeTimer;
     QHash<Room *, qint64> m_roomCreatedAtMs;
     QHash<ClientSocket *, ServerConnectionContext *> m_connectionContexts;
@@ -114,6 +118,8 @@ signals:
     // 自動化測試: 房間對局開始/結束標記
     void roomGameStarted(int roomId, const QString &mode);
     void roomGameOver(int roomId, const QString &mode, const QString &winner);
+    void takeoverReady();
+    void takeoverFailed(const QString &error);
 };
 
 #endif

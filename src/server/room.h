@@ -17,6 +17,7 @@
 class ProhibitSkill;
 class ProhibitPindianSkill;
 class Scenario;
+class TakeoverScenario;
 class TrickCard;
 class GameSnapshot;
 
@@ -95,6 +96,12 @@ public:
         return _m_Id;
     }
     quint64 getGameSeed() const { return m_sessionConfig.seed; }
+    bool isTakeoverSession() const { return m_sessionConfig.takeover; }
+    bool isTakeoverReady() const;
+    QString takeoverError() const;
+    bool isRestoringTakeoverSnapshot() const { return m_takeoverRestoring; }
+    void setRestoringTakeoverSnapshot(bool restoring) { m_takeoverRestoring = restoring; }
+    TakeoverScenario *takeoverScenario() const;
     bool isFull() const;
     bool isFinished() const;
     // 喚醒 doRequest / pause 等待, 不 join worker。供 gameOver 回收前使用
@@ -119,6 +126,10 @@ public:
     bool isCurrentExtraTurn() const;
     QString getCurrentExtraTurnReason() const;
     SkillInstanceRef getCurrentExtraTurnSourceRef() const;
+    QVariantList snapshotPendingExtraTurns() const;
+    bool restorePendingExtraTurns(const QVariantList &requests,
+                                  const QMap<QString, ServerPlayer *> &runtimeBySnapshotSeat,
+                                  QString *error = nullptr);
     ServerPlayer*getActualController(ServerPlayer*player) const;
     void setPlayerController(ServerPlayer *target, ServerPlayer *controller = nullptr);
     void syncControllerPileVisible(ServerPlayer *target, ServerPlayer *controller);
@@ -128,6 +139,7 @@ public:
     QList<ServerPlayer*> getPlayers() const;
     QList<ServerPlayer*> getAllPlayers(bool include_dead = false) const;
     QList<ServerPlayer*> getAlivePlayers() const;
+    void rebuildAlivePlayers();
     void clearClub(const QString &club_name);
     QList<ServerPlayer *> getPlayersByClub(const QString &club_name) const;
     QList<ServerPlayer *> getPlayersWithNoClub() const;
@@ -438,10 +450,15 @@ public:
 
     void saveSnapshot(const QString &type = "turn", const QString &playerName = QString());
     GameSnapshot* getSnapshot(int turnCount) const;
+    GameSnapshot* getSnapshotBySerial(quint64 turnSerial) const;
+    QString getSnapshotSessionId() const;
     QString getSnapshotDir() const;
     void setReplayPath(const QString &path);
     QString getReplayPath() const;
+    bool finalizeSnapshotManifest(const QString &replayPath, QString *error = nullptr) const;
     void initializeReplayRecordPath();
+    void reportTakeoverFailure(const QString &error);
+    void syncTakeoverPlayerState();
 
     void sortByActionOrder(QList<ServerPlayer*>&players);
 
@@ -769,11 +786,14 @@ private:
     bool _m_isFirstSurrenderRequest; // We allow the first surrender poll to go through regardless of the timer.
 
     QVariantMap tag;
+    std::unique_ptr<Scenario> m_ownedScenario;
     const Scenario*scenario;
 
     bool m_surrenderRequestReceived;
     bool _virtual;
     GameSessionConfig m_sessionConfig;
+    QString m_takeoverError;
+    bool m_takeoverRestoring = false;
 
     JsonArray m_fillAGarg;
     QList<JsonArray> m_takeAGargs;
@@ -832,6 +852,8 @@ signals:
     void room_message(const QString&msg);
     void game_start();
     void game_over(const QString&winner);
+    void takeover_ready();
+    void takeover_failed(const QString &error);
     void signalSetProperty(ServerPlayer*player, const char*property_name, const QVariant&value);
 };
 

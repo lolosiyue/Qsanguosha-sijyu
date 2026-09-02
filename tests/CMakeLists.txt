@@ -697,6 +697,18 @@ qsan_add_ctest(qsanguosha_replay_v2_contract qsanguosha_replay_v2_tests
     LABELS "replay;protocol;fast"
 )
 
+add_executable(qsanguosha_takeover_snapshot_tests
+    takeover-snapshot/takeover-snapshot-test.cpp
+    ${QSAN_TEST_ROOT}/src/core/replay/replay-container.cpp
+    ${QSAN_TEST_ROOT}/src/util/recorder.cpp
+    ${QSAN_TEST_ROOT}/src/util/replay-index.cpp
+)
+qsan_link_engine_test(qsanguosha_takeover_snapshot_tests)
+qsan_add_ctest(qsanguosha_takeover_snapshot_contract qsanguosha_takeover_snapshot_tests
+    LABELS "replay;server;fast"
+    TIMEOUT 60
+)
+
 add_executable(qsanguosha_ui_tests
     photo-layout-fit-test.cpp
 )
