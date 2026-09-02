@@ -25,10 +25,11 @@ struct ReplayNode
     QString description;
     QString playerName;
     int turnCount;
+    int playerTurnCount;
     int snapshotIndex;
 
     ReplayNode() : pairIndex(-1), elapsed(0), type(ReplayNodeType::TurnStart),
-                   turnCount(0), snapshotIndex(-1) {}
+                   turnCount(0), playerTurnCount(0), snapshotIndex(-1) {}
 };
 
 class ReplayIndex : public QObject

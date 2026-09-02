@@ -53,7 +53,7 @@ public:
 
     // Invalidates only the client-facing distanceTo_* synchronization cache.
     // Server-side game rules continue to call Player::distanceTo() directly.
-    void markDistanceCacheDirty(const char *source = nullptr);
+    void markDistanceCacheDirty();
 
     void addPlayerSkills(ServerPlayer *player, bool invoke_game_start = false);
 
@@ -71,19 +71,6 @@ protected:
     virtual void run();
 
 private:
-    struct DistanceRefreshProfile {
-        quint64 flushCount = 0;
-        quint64 orderedPairCount = 0;
-        quint64 changedPropertyCount = 0;
-        qint64 totalElapsedNs = 0;
-        qint64 maxFlushNs = 0;
-        qint64 distanceCalculationNs = 0;
-        qint64 comparisonNs = 0;
-        qint64 propertySyncNs = 0;
-        QHash<QString, quint64> dirtySourceCounts;
-        QHash<QString, quint64> flushSourceCounts;
-    };
-
     struct TriggerDispatchProfile {
         quint64 triggerCount = 0;
         quint64 priorityRebuildCount = 0;
@@ -108,18 +95,16 @@ private:
     void sortTriggerSkills(TriggerEvent triggerEvent, Room *room, bool includeLose);
     void refreshDistanceCacheIfDirty(Room *room);
     void flushOutermostDeferredWork(Room *room);
-    void emitDistanceRefreshProfile() const;
+    void emitPerfTrace() const;
     const QByteArray &distancePropertyName(const ServerPlayer *player);
 
     Room *room;
     bool m_playerUiStateDirty = false;
     bool m_distanceCacheDirty = false;
-    bool m_distanceRefreshProfilingEnabled;
+    bool m_perfTraceEnabled;
     int m_profileRoomId;
     QString m_profileMode;
-    DistanceRefreshProfile m_distanceRefreshProfile;
     TriggerDispatchProfile m_triggerDispatchProfile;
-    QSet<QString> m_pendingDistanceDirtySources;
     QHash<const ServerPlayer *, QByteArray> m_distancePropertyNames;
     QHash<const ServerPlayer *, QHash<const ServerPlayer *, int>> m_lastBroadcastDistances;
     QString order;

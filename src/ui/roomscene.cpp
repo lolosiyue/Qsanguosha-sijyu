@@ -23,6 +23,7 @@
 #include "playercardbox.h"
 #include "cardcontainer.h"
 #include "recorder.h"
+#include "game-snapshot.h"
 #include "replay-timeline.h"
 #include "replay-index.h"
 #include "indicatoritem.h"
@@ -71,6 +72,15 @@
 #include <QDateTime>
 #include <QFile>
 #include <QTextStream>
+#include <QApplication>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QLabel>
+#include <QPushButton>
+#include <QComboBox>
+#include <QMessageBox>
+#include <QVBoxLayout>
+#include <QStandardItemModel>
 
 static QDialog *dialogForSkill(const Skill *skill, QWidget *parent = nullptr)
 {
@@ -1109,7 +1119,7 @@ QGraphicsPixmapItem*RoomScene::createDashboardButtons()
 
 QRectF ReplayerControlBar::boundingRect() const
 {
-	return QRectF(0,0,S_BUTTON_WIDTH*4+S_BUTTON_GAP*3,S_BUTTON_HEIGHT);
+	return QRectF(0,0,S_BUTTON_WIDTH*5+S_BUTTON_GAP*4+52,S_BUTTON_HEIGHT);
 }
 
 void ReplayerControlBar::paint(QPainter*,const QStyleOptionGraphicsItem*,QWidget*)
@@ -1133,6 +1143,16 @@ ReplayerControlBar::ReplayerControlBar(Dashboard*dashboard)
 	play->setPos(step*2,0);
 	speed_up->setPos(step*3,0);
 
+	// This is a normal widget instead of a skin button because takeover is a
+	// new action and old skin packs do not contain a replay/takeover sprite.
+	takeover_button = new QPushButton(tr("接管"));
+	takeover_button->setFixedSize(52, S_BUTTON_HEIGHT);
+	QGraphicsProxyWidget *takeoverWidget = new QGraphicsProxyWidget(this);
+	takeoverWidget->setWidget(takeover_button);
+	takeoverWidget->setPos(step*4, 0);
+	connect(takeover_button, &QPushButton::clicked,
+		this, &ReplayerControlBar::requestTakeover);
+
 	time_label = new QLabel;
 	time_label->setAttribute(Qt::WA_NoSystemBackground);
 	time_label->setText("-----------------------------------------------------");
@@ -1142,7 +1162,7 @@ ReplayerControlBar::ReplayerControlBar(Dashboard*dashboard)
 
 	QGraphicsProxyWidget*widget = new QGraphicsProxyWidget(this);
 	widget->setWidget(time_label);
-	widget->setPos(step*4,0);
+	widget->setPos(step*5,0);
 
 	Replayer*replayer = ClientInstance->getReplayer();
 	connect(play,SIGNAL(clicked()),replayer,SLOT(toggle()));
@@ -1157,6 +1177,100 @@ ReplayerControlBar::ReplayerControlBar(Dashboard*dashboard)
 	setPos(S_BUTTON_GAP,-S_BUTTON_GAP-S_BUTTON_HEIGHT);
 
 	duration_str = FormatTime(replayer->getDuration());
+	updateTakeoverAvailability();
+	connect(replayer, &Replayer::seek_finished,
+		this, &ReplayerControlBar::updateTakeoverAvailability);
+	connect(replayer, &Replayer::node_reached,
+		this, [this](int) { updateTakeoverAvailability(); });
+}
+
+void ReplayerControlBar::updateTakeoverAvailability()
+{
+	if (!takeover_button)
+		return;
+	Replayer *replayer = ClientInstance ? ClientInstance->getReplayer() : nullptr;
+	takeover_button->setEnabled(replayer
+		&& replayer->getNearestTakeoverNodeAtOrBeforeCurrent() >= 0);
+}
+
+void ReplayerControlBar::requestTakeover()
+{
+	Replayer *replayer = ClientInstance ? ClientInstance->getReplayer() : nullptr;
+	if (!replayer)
+		return;
+
+	const int nodeIndex = replayer->getNearestTakeoverNodeAtOrBeforeCurrent();
+	GameSnapshot *snapshot = replayer->getSnapshot(nodeIndex);
+	if (nodeIndex < 0 || !snapshot)
+		return;
+
+	const GlobalSnapshot state = snapshot->getState();
+	QList<int> aliveRows;
+	QDialog dialog(QApplication::activeWindow());
+	dialog.setWindowTitle(tr("接管座位"));
+	QVBoxLayout *layout = new QVBoxLayout(&dialog);
+	layout->addWidget(new QLabel(tr("選擇要接管的座位："), &dialog));
+	QComboBox *seatBox = new QComboBox(&dialog);
+
+	int preferredRow = -1;
+	RoomScene *roomScene = qobject_cast<RoomScene *>(scene());
+	QString preferredSeat = roomScene ? roomScene->m_currentPerspective : QString();
+	bool preferredAlive = false;
+	for (const PlayerSnapshot &player : state.players) {
+		if (player.objectName == preferredSeat && player.alive)
+			preferredAlive = true;
+	}
+	if (!preferredAlive)
+		preferredSeat = state.currentPlayer;
+
+	for (const PlayerSnapshot &player : state.players) {
+		const QString label = player.screenName.isEmpty()
+			? player.objectName
+			: QStringLiteral("%1 (%2)").arg(player.screenName, player.objectName);
+		seatBox->addItem(label, player.objectName);
+		const int row = seatBox->count() - 1;
+		if (player.alive)
+			aliveRows << row;
+		else if (QStandardItemModel *model = qobject_cast<QStandardItemModel *>(seatBox->model()))
+			if (QStandardItem *item = model->item(row))
+				item->setEnabled(false);
+		if (player.objectName == preferredSeat && player.alive)
+			preferredRow = row;
+	}
+	if (preferredRow >= 0)
+		seatBox->setCurrentIndex(preferredRow);
+	else if (!aliveRows.isEmpty())
+		seatBox->setCurrentIndex(aliveRows.first());
+	else
+		return;
+	layout->addWidget(seatBox);
+
+	QDialogButtonBox *buttons = new QDialogButtonBox(
+		QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+	layout->addWidget(buttons);
+	connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+	connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+	if (dialog.exec() != QDialog::Accepted)
+		return;
+
+	const QString seatName = seatBox->currentData().toString();
+	if (seatName.isEmpty() || !aliveRows.contains(seatBox->currentIndex()))
+		return;
+
+	QString actor = state.currentPlayer;
+	for (const PlayerSnapshot &player : state.players) {
+		if (player.objectName == state.currentPlayer) {
+			actor = player.screenName.isEmpty() ? player.objectName : player.screenName;
+			break;
+		}
+	}
+	const QString prompt = tr("從第 %1 回合（%2 的回合）接管？")
+		.arg(QString::number(snapshot->getTurnSerial()), actor);
+	if (QMessageBox::question(QApplication::activeWindow(), tr("接管"), prompt,
+		QMessageBox::Yes | QMessageBox::No, QMessageBox::No) != QMessageBox::Yes)
+		return;
+
+	emit takeoverRequested(replayer->getTakeoverSnapshotPath(nodeIndex), seatName);
 }
 
 QString ReplayerControlBar::FormatTime(int secs)
@@ -1174,11 +1288,14 @@ void ReplayerControlBar::setSpeed(qreal speed)
 void ReplayerControlBar::setTime(int secs)
 {
 	time_label->setText(QString("<b>x%1 </b> [%2/%3]").arg(speed).arg(FormatTime(secs)).arg(duration_str));
+	updateTakeoverAvailability();
 }
 
 void RoomScene::createReplayControlBar()
 {
 	m_replayControl = new ReplayerControlBar(dashboard);
+	connect(m_replayControl, &ReplayerControlBar::takeoverRequested,
+		this, &RoomScene::takeoverRequested);
 }
 
 void RoomScene::createReplayTimeline()
@@ -4462,7 +4579,15 @@ void RoomScene::saveReplayRecord()
 		QStandardPaths::writableLocation(QStandardPaths::HomeLocation),
 		tr("Pure text replay file (*.txt);;Image replay file (*.png)"));
 
-	if(!filename.isEmpty()) ClientInstance->save(filename);
+	if (filename.isEmpty() || !ClientInstance->save(filename))
+		return;
+
+	Room *room = Sanguosha->currentRoom();
+	if (room && !filename.endsWith(QStringLiteral(".png"), Qt::CaseInsensitive)) {
+		QString error;
+		if (!room->finalizeSnapshotManifest(filename, &error))
+			qWarning().noquote() << "Replay snapshot manifest was not saved:" << error;
+	}
 }
 
 ScriptExecutor::ScriptExecutor(QWidget*parent)
@@ -7025,7 +7150,9 @@ void RoomScene::recorderAutoSave()
 	if(ClientInstance->getReplayer()||!Config.value("recorder/autosave",true).toBool())
 		return;
 
-	if(Config.value("recorder/networkonly",true).toBool()){
+	Room *room = Sanguosha->currentRoom();
+	const bool takeoverSession = room && room->isTakeoverSession();
+	if(Config.value("recorder/networkonly",true).toBool() && !takeoverSession){
 		bool is_network = false;
 		foreach(const ClientPlayer*player,ClientInstance->getPlayers()){
 			is_network = player!=Self&&player->getState()!="robot";
@@ -7036,13 +7163,19 @@ void RoomScene::recorderAutoSave()
 	}
 
 	QString filename;
-	Room *room = Sanguosha->currentRoom();
 	if (room && !room->getReplayPath().isEmpty())
 		filename = room->getReplayPath();
 	else {
 		filename = QSanRuntimePaths::recordDir()+"/"+QDateTime::currentDateTime().toString("yyyy年MM月dd日HH时mm分ss秒")+".txt";
 	}
-	ClientInstance->save(filename);
+	if (!ClientInstance->save(filename))
+		return;
+
+	if (room) {
+		QString error;
+		if (!room->finalizeSnapshotManifest(filename, &error))
+			qWarning().noquote() << "Replay snapshot manifest was not saved:" << error;
+	}
 }
 
 PromptInfoItem::PromptInfoItem(QGraphicsItem*parent)

@@ -432,6 +432,7 @@ public:
 
     void setTag(const QString &key, const QVariant &value);
     QVariant getTag(const QString &key, const QVariant &defaultValue = QVariant()) const;
+    QVariantMap getAllTags() const { return tag; }
     void removeTag(const QString &key);
     void clearTags();
 

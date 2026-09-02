@@ -181,7 +181,8 @@ int Card::getNumber() const
 	}
 	if(objectName().contains("_zhizhe_")){
 		const Card*zhizhe = Sanguosha->getCard(m_id);
-		if(zhizhe) return zhizhe->getNumber();
+		// Unused Zhizhe placeholders resolve to themselves until replaced.
+		if(zhizhe && zhizhe != this) return zhizhe->getNumber();
 	}
 	return 0;
 }
@@ -232,7 +233,7 @@ Card::Suit Card::getSuit() const
 	}
 	if(objectName().contains("_zhizhe_")){
 		const Card*zhizhe = Sanguosha->getCard(m_id);
-		if(zhizhe) return zhizhe->getSuit();
+		if(zhizhe && zhizhe != this) return zhizhe->getSuit();
 	}
 	return NoSuit;
 }

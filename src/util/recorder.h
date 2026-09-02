@@ -5,6 +5,9 @@
 #include <QMutex>
 #include <QImage>
 #include <QThread>
+#include <QMap>
+
+#include <atomic>
 
 #include "record-buffer.h"
 #include "replay/replay-codec.h"
@@ -42,6 +45,7 @@ public:
 
     int getDuration() const;
     qreal getSpeed();
+    bool isPlaying();
     QString getPath() const;
     int getCurrentPairIndex() const;
     qint64 getCurrentElapsed() const;
@@ -55,6 +59,17 @@ public:
 
     ReplayIndex* getIndex() const;
     GameSnapshot* getSnapshot(int nodeIndex) const;
+
+    // Returns the exact eligible node at the current position, or the latest
+    // eligible node before it.  Future snapshots are never offered.
+    int getNearestTakeoverNodeAtOrBefore(int pairIndex) const;
+    int getNearestTakeoverNodeAtOrBeforeCurrent() const;
+    QString getTakeoverSnapshotPath(int nodeIndex) const;
+    bool hasTakeoverSnapshots() const;
+
+    // Stop playback and wait for the replay thread to leave run().  This is
+    // required before the replay Client is destroyed during takeover.
+    bool stopAndWait(unsigned long timeout = 5000);
 
     int m_commandSeriesCounter;
 
@@ -79,7 +94,7 @@ private:
     qreal speed;
     bool playing;
     bool m_seeking;
-    int m_currentPairIndex;
+    std::atomic<int> m_currentPairIndex;
     QMutex mutex;
     QSemaphore play_sem;
 
@@ -91,6 +106,10 @@ private:
 
     ReplayIndex *m_index;
     QList<GameSnapshot*> m_snapshots;
+    QMap<int, QString> m_takeoverSnapshotPaths;
+    QMap<int, GameSnapshot*> m_takeoverSnapshotsByNode;
+    bool m_takeoverSnapshotsValid;
+    bool m_stopRequested;
 
 signals:
     void command_parsed(const QSanProtocol::ProtocolMessage &message);

@@ -1,5 +1,16 @@
 -- This is the start script of QSanguosha
 
+-- Takeover state is opt-in and explicit: extensions register a versioned
+-- export/restore pair; the C++ runtime never serializes the Lua VM itself.
+do
+	local registerTakeoverStateProvider = rawget(_G, "__qsan_register_takeover_state_provider")
+	if registerTakeoverStateProvider then
+		function sgs.RegisterTakeoverStateProvider(name, version, export, restore)
+			return registerTakeoverStateProvider(name, version, export, restore)
+		end
+	end
+end
+
 package.path = package.path .. ";./lua/lib/?.lua"
 
 dofile "lua/utilities.lua"
