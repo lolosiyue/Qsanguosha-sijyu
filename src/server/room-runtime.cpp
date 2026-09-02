@@ -57,6 +57,13 @@ RoomRuntime::~RoomRuntime()
 
 void RoomRuntime::finalizeWorker()
 {
+    // Lua can outlive the worker: a Lua-owned QVariant boxing a CardUseStruct
+    // keeps that struct's owning QSharedPointer alive until lua_close(), which
+    // used to run in shutdownFinal(). Retiring the domain first left those
+    // deleters pointing at freed Cards. Close the room's Lua states here so the
+    // finalizers hand ownership back while the Cards are still alive.
+    m_ai.shutdown();
+    m_lua.shutdown();
     releaseShutdownRoots();
     quint64 retired = 0;
     if (!globalCardLifetimeManager().finalizeWorkerDomain(this, &retired)) {

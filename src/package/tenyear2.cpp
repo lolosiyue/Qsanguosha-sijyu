@@ -29953,10 +29953,10 @@ public:
 	}
 };
 
-class Zhijie : public TriggerSkill
+class ThZhijie : public TriggerSkill
 {
 public:
-	Zhijie(): TriggerSkill("th_zhijie")
+	ThZhijie(): TriggerSkill("th_zhijie")
 	{
 		events << Damage;
         frequency = Skill::Compulsory;
@@ -33207,7 +33207,7 @@ General*caobao = new General(this,"caobao","qun",4);
 
 	General*taoheng = new General(this,"taoheng","wu",4);
 	taoheng->addSkill(new ZhijieBf);
-	taoheng->addSkill(new Zhijie);
+	taoheng->addSkill(new ThZhijie);
 	taoheng->addSkill(new Weiwei);
 	General*zhangyu = new General(this,"zhangyu","shu",3);
 	zhangyu->addSkill(new Xiangchen);
