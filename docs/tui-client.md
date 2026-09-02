@@ -43,9 +43,12 @@ unclassified=0、silent drops=0。音訊與動畫是已登記的 text-mode no-op
 game event（`S_COMMAND_LOG_EVENT`）由 `src/tui/tui-log-text.cpp` 呼叫 Engine
 `formatClientLog` 組句：`#UseCard` 片語走 `lang/zh_CN/Common.lua` 的
 `#UseCardPhrase_*`，目標「自己」走 `#LogSelf`。摸牌／裝卸／體力等正常戰報大半
-不是 `sendLog`：TUI 在 reducer 之後的 `frontendMessageReceived` 用
+不是 `sendLog`：`src/tui/tui-synthesized-log.cpp` 在 reducer 之後用
 `src/client/core/client-move-log.cpp` 合成 `$DrawCards`／`$addRenPile`／`$removeRenPile`／`#GetHp` 等，再以
-`S_COMMAND_LOG_SKILL` 寫入 `presentationEvents`。仁區追蹤對齊 `RoomScene::RenPile`，
+`S_COMMAND_LOG_SKILL` 寫入 `presentationEvents`。互動 `prompt` 由
+`src/client/core/client-prompt.cpp` 組句（與 GUI `Client::formatPromptList` 同一套
+colon list：`key:%src:%dest:%arg:%arg2`）。出牌階段 ViewAs／SkillCard 清單與
+`viewAs` 組線在 `src/tui/tui-play-skills.cpp`。仁區追蹤對齊 `RoomScene::RenPile`，
 `GAME_START`／`STATE_SYNC begin` 清空。`event 9`
 （`S_GAME_EVENT_UPDATE_SKILL`）仍不進戰報。core reducer 不把 GET_CARD 改成
 presentation。分類異動後需以 `QSAN_TUI_COVERAGE_WRITE=1` 重跑
@@ -177,7 +180,7 @@ cmake --build --preset deploy-tui-debug
 Windows package 位於 `dist/tui/<Configuration>`，只含 executable、Qt
 Core／Network runtime、必要 network plugins、Lua、extensions、translation、LICENSE
 與 core runtime data。禁止 image、audio、video、QML、Replay、FMOD、Qt Gui／Widgets／
-Quick／QML／Multimedia／OpenGL。Post-link 與 extracted-package smoke 都執行
+Quick／QML／Multimedia／OpenGL／WebSockets。Post-link 與 extracted-package smoke 都執行
 dependency gate、`--help` 及 `--version`。Linux 以 `qsan_tui` component 安裝 binary，
 共用既有 `qsan_data`。
 

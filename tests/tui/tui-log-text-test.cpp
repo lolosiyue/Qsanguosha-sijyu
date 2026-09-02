@@ -1,11 +1,16 @@
 #include "engine-bootstrap.h"
 #include "card.h"
+#include "client-game-state.h"
 #include "client-move-log.h"
 #include "engine.h"
+#include "interaction-model.h"
 #include "protocol.h"
+#include "protocol/protocol-message.h"
 #include "tui-card-text.h"
 #include "tui-log-text.h"
+#include "tui-play-skills.h"
 #include "tui-renderer.h"
+#include "tui-synthesized-log.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -305,6 +310,87 @@ int main(int argc, char **argv)
         {QStringLiteral("stop_current"), true}};
     check(tuiGameEventText(bgm, playerName).isEmpty(),
           "a presentation-only game event stays out of the transcript");
+
+    ClientGameState state;
+    state.setSelfName(QStringLiteral("sgs1"));
+    state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("general"),
+                         QStringLiteral("liubei"));
+    state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("hp"), 3);
+    state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("max_hp"), 4);
+    check(tuiResolveLogPlayerName(state, QStringLiteral("sgs1"))
+              .contains(Sanguosha->translate(QStringLiteral("liubei"))),
+          "log player name uses the general translation, not sgs1");
+
+    CardInteractionPayload play;
+    state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("skills"),
+                         QStringList{QStringLiteral("zhiheng"), QStringLiteral("hongyan"),
+                                     QStringLiteral("rende")});
+    tuiFillPlaySkillCandidates(state, &play);
+    QStringList names;
+    for (const SkillActivationCandidate &skill : play.skillCandidates)
+        names << skill.skillName;
+    check(names.contains(QStringLiteral("zhiheng")) && names.contains(QStringLiteral("rende")),
+          "play-phase list includes ViewAsSkill names");
+    check(!names.contains(QStringLiteral("hongyan")),
+          "play-phase list excludes FilterSkill");
+
+    int slashId = -1;
+    for (int id = 0; id < Sanguosha->getCardCount(); ++id) {
+        const Card *engineCard = Sanguosha->getEngineCard(id);
+        if (engineCard != nullptr && engineCard->isKindOf("Slash")
+            && engineCard->getSuit() != Card::NoSuit) {
+            slashId = id;
+            break;
+        }
+    }
+    check(slashId >= 0, "engine has a concrete slash for skill-card wire text");
+    if (slashId >= 0) {
+        QString error;
+        const QString empty = tuiResolveSkillCardWireText(QStringLiteral("sgs1"),
+            QStringLiteral("zhiheng"), 0, {}, &error);
+        check(empty.isEmpty() && error.contains(QStringLiteral("選手牌")),
+              "zhiheng with no subcards is rejected before the wire");
+        error.clear();
+        const QString wire = tuiResolveSkillCardWireText(QStringLiteral("sgs1"),
+            QStringLiteral("longdan"), 0, {slashId}, &error);
+        check(error.isEmpty() && wire.contains(QStringLiteral("jink"), Qt::CaseInsensitive)
+                  && wire.contains(QStringLiteral("longdan")),
+              "longdan+slash viewAs produces a virtual jink card string");
+        error.clear();
+        const QString zhiheng = tuiResolveSkillCardWireText(QStringLiteral("sgs1"),
+            QStringLiteral("zhiheng"), 0, {slashId}, &error);
+        check(error.isEmpty() && zhiheng.contains(QStringLiteral("zhiheng"), Qt::CaseInsensitive),
+              "zhiheng+subcard viewAs produces a SkillCard wire string");
+    }
+
+    QList<int> frontendRen{99};
+    ProtocolMessage start;
+    start.type = ProtocolMessageType::Notification;
+    start.command = S_COMMAND_GAME_START;
+    start.payload = QVariantMap{{QStringLiteral("schema_version"), 1}};
+    tuiAppendSynthesizedLogs(&state, &frontendRen, start, nullptr);
+    check(frontendRen.isEmpty(), "GAME_START clears frontend 仁区 tracking");
+
+    QStringList drawn;
+    ProtocolMessage getCardMessage;
+    getCardMessage.type = ProtocolMessageType::Notification;
+    getCardMessage.command = S_COMMAND_GET_CARD;
+    getCardMessage.payload = QVariantMap{
+        {QStringLiteral("schema_version"), 1},
+        {QStringLiteral("moves"),
+         QVariantList{QVariantMap{
+             {QStringLiteral("card_ids"), QVariantList{cardId}},
+             {QStringLiteral("from_place"), 6},
+             {QStringLiteral("to_place"), 0},
+             {QStringLiteral("from_player"), QString()},
+             {QStringLiteral("to_player"), QStringLiteral("sgs1")},
+             {QStringLiteral("to_pile"), QString()}}}}};
+    tuiAppendSynthesizedLogs(&state, &frontendRen, getCardMessage,
+        [&](const QString &line) { drawn << line; });
+    check(!drawn.isEmpty() && drawn.first().contains(Sanguosha->translate(QStringLiteral("liubei"))),
+          "GET_CARD from the draw pile synthesises a named $DrawCards line");
+    check(!state.presentationEvents().isEmpty(),
+          "synthesised movement logs are stored as LOG_SKILL presentation events");
 
     std::printf("[AUTOTEST] TUI_LOG_TEXT_RESULT status=%s trigger=%s discard=%s damage=%s\n",
         failures == 0 ? "PASS" : "FAIL", trigger.toUtf8().constData(),
