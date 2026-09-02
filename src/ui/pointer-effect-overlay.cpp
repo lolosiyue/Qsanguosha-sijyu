@@ -906,7 +906,9 @@ HomePointerFxItem::HomePointerFxItem(QQuickItem *parent)
     setMipmap(false);
     // NVIDIA：FramebufferObject + Plus 混合會在 nvoglv64 對 nullptr 讀取 (0xC0000005)
     setRenderTarget(QQuickPaintedItem::Image);
-    m_timer.setInterval(16);
+    // Keep the software Image target at half of the 1920x1080 design canvas.
+    setTextureSize(QSize(960, 540));
+    m_timer.setInterval(32);
     connect(&m_timer, &QTimer::timeout, this, &HomePointerFxItem::onFrame);
     connect(this, &QQuickItem::windowChanged, this, [this](QQuickWindow *win) {
         if (win) {
@@ -915,6 +917,7 @@ HomePointerFxItem::HomePointerFxItem(QQuickItem *parent)
             m_timer.stop();
             applyCursor(false);
             m_fx.reset();
+            m_lastPainted = QRect();
             m_hadContent = false;
         }
     });
@@ -953,7 +956,10 @@ void HomePointerFxItem::onFrame()
         if (m_hadContent) {
             m_fx.reset();
             m_hadContent = false;
-            update();
+            const QRect dirty = m_lastPainted;
+            m_lastPainted = QRect();
+            if (!dirty.isEmpty())
+                update(dirty.adjusted(-4, -4, 4, 4));
         }
         return;
     }
@@ -963,8 +969,11 @@ void HomePointerFxItem::onFrame()
     applyCursor(inside);
     const QRect dirty = m_fx.tick(pos, inside, QGuiApplication::mouseButtons());
     const bool content = !dirty.isEmpty();
-    if (content || m_hadContent)
-        update();
+    const QRect itemRect = QRectF(0, 0, width(), height()).toAlignedRect();
+    const QRect toPaint = dirty.united(m_lastPainted).intersected(itemRect);
+    if (!toPaint.isEmpty())
+        update(toPaint.adjusted(-4, -4, 4, 4));
+    m_lastPainted = dirty.intersected(itemRect);
     m_hadContent = content;
 }
 
