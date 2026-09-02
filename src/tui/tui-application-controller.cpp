@@ -2,6 +2,7 @@
 
 #include "card.h"
 #include "engine.h"
+#include "general.h"
 #include "protocol-interaction-request-builder.h"
 #include "protocol.h"
 #include "tui-card-text.h"
@@ -34,8 +35,11 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
     QObject *parent)
     : QObject(parent), m_options(options), m_session(&m_core, this),
       m_renderer(options.ansiEnabled,
-          [this](int cardId) { return resolveCardDisplayText(cardId); },
-          [this](const QString &name) { return resolveNameText(name); }),
+          TuiRenderer::Resolvers{
+              [this](int cardId) { return resolveCardDisplayText(cardId); },
+              [this](const QString &name) { return resolveNameText(name); },
+              [this](const QString &objectName) { return resolvePlayerName(objectName); },
+              [](const QString &general) { return resolveGeneralKingdom(general); }}),
       m_view(&m_renderer, [this](const QString &text) { writeOutput(text); },
              [this](int cardId) { return resolveCardWireText(cardId); },
              [this](const QString &skillName, int instanceId, const QList<int> &subcards,
@@ -56,10 +60,10 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
         writeOutput(matches.join(QLatin1Char(' ')));
     });
     connect(&m_session, &ClientLiveSession::connectionChanged, this,
-        [this](const QString &state) { writeOutput(tr("連線：%1").arg(state)); });
+        [this](const QString &state) { writeOutput(tr("连线：%1").arg(state)); });
     connect(&m_session, &ClientLiveSession::sessionActive, this, [this](bool reconnected) {
-        writeOutput(reconnected ? tr("已重連；等待原子狀態快照")
-                                : tr("Protocol V2 工作階段已啟用"));
+        writeOutput(reconnected ? tr("已重连；等待原子状态快照")
+                                : tr("Protocol V2 工作阶段已启用"));
         // The server does not echo our own screen name back, so record the one
         // we signed up with; every view then names us the same way.
         const QString self = m_core.state()->selfName();
@@ -74,7 +78,7 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
             payload.trusted = true;
             QString error;
             if (!m_session.sendControl(S_COMMAND_TRUST, payload.toVariant(), &error))
-                writeError(tr("重連後無法恢復託管：%1").arg(error));
+                writeError(tr("重连后无法恢复托管：%1").arg(error));
         }
         if (m_script != nullptr)
             m_script->notifyStateChanged();
@@ -140,7 +144,7 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
                     request.timeoutMs = static_cast<qint64>(seconds) * 1000 + 5000;
             }
             if (m_core.beginRequest(std::move(request)) == 0) {
-                writeError(tr("無法啟用伺服器互動"));
+                writeError(tr("无法启用伺服器互动"));
                 requestExit(4);
                 return;
             }
@@ -161,7 +165,7 @@ bool TuiApplicationController::start(QString *error)
         m_log.setFileName(m_options.logFile);
         if (!m_log.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
             if (error != nullptr)
-                *error = tr("無法開啟記錄檔：%1").arg(m_log.errorString());
+                *error = tr("无法开启记录档：%1").arg(m_log.errorString());
             return false;
         }
     }
@@ -194,7 +198,7 @@ bool TuiApplicationController::start(QString *error)
         m_script->start();
     }
 
-    writeOutput(tr("QSanguosha 終端客戶端－輸入 /help 查看命令"));
+    writeOutput(tr("QSanguosha 终端客户端－输入 /help 查看命令"));
     m_session.connectToServer(m_options.session);
     return true;
 }
@@ -217,7 +221,7 @@ void TuiApplicationController::handleInputLine(const QString &line)
         return;
     }
     if (!m_core.hasActiveRequest()) {
-        writeError(tr("目前沒有互動；輸入 /help 查看命令"));
+        writeError(tr("目前没有互动；输入 /help 查看命令"));
         return;
     }
     InteractionResponse response;
@@ -227,7 +231,7 @@ void TuiApplicationController::handleInputLine(const QString &line)
         return;
     }
     if (!m_session.submitInteractionResponse(std::move(response), &error))
-        writeError(error.isEmpty() ? tr("作答已被拒絕") : error);
+        writeError(error.isEmpty() ? tr("作答已被拒绝") : error);
 }
 
 bool TuiApplicationController::trySkipRoleAssignment()
@@ -241,7 +245,7 @@ bool TuiApplicationController::trySkipRoleAssignment()
     if (m_session.submitInteractionResponse(std::move(response), &error))
         return true;
 
-    writeError(error.isEmpty() ? tr("無法略過身分分配") : error);
+    writeError(error.isEmpty() ? tr("无法略过身分分配") : error);
     writeOutput(m_renderer.renderInteraction(m_core.activeRequest()));
     return false;
 }
@@ -253,15 +257,15 @@ void TuiApplicationController::handleCommand(const TuiCommandIntent &intent)
         TuiCommandType::Hand, TuiCommandType::Equipment, TuiCommandType::Piles,
         TuiCommandType::Skills, TuiCommandType::Log, TuiCommandType::Quit};
     if (m_core.hasActiveRequest() && !promptSafeCommands.contains(intent.type)) {
-        writeError(tr("提示期間只可使用唯讀命令、/cancel 與 /quit"));
+        writeError(tr("提示期间只可使用唯读命令、/cancel 与 /quit"));
         return;
     }
     if (intent.type == TuiCommandType::Help) {
         writeOutput(tr(
             "/help /status /players /hand /equip /piles /skills /log\n"
-            "/chat <文字> /trust [on|off] /addrobot [all|數量] /surrender /reconnect /quit\n"
-            "提示作答：索引、標籤、範圍（1-3）、card <牌字串> -> 目標、"
-            "頂部 | 底部、cards <索引> -> 玩家、/cancel"));
+            "/chat <文字> /trust [on|off] /addrobot [all|数量] /surrender /reconnect /quit\n"
+            "提示作答：索引、标签、范围（1-3）、card <牌字串> -> 目标、"
+            "顶部 | 底部、cards <索引> -> 玩家、/cancel"));
     } else if (intent.type == TuiCommandType::Status) {
         writeOutput(m_renderer.renderState(*m_core.state()));
     } else if (intent.type == TuiCommandType::Players) {
@@ -278,14 +282,14 @@ void TuiApplicationController::handleCommand(const TuiCommandIntent &intent)
         writeOutput(renderLog());
     } else if (intent.type == TuiCommandType::Cancel) {
         if (!m_core.hasActiveRequest()) {
-            writeError(tr("目前沒有互動"));
+            writeError(tr("目前没有互动"));
             return;
         }
         InteractionResponse response = InteractionResponse::makeCancel(m_core.activeRequestId());
         response.command = m_core.activeRequest().command;
         QString error;
         if (!m_session.submitInteractionResponse(std::move(response), &error))
-            writeError(error.isEmpty() ? tr("此請求不可取消") : error);
+            writeError(error.isEmpty() ? tr("此请求不可取消") : error);
     } else if (intent.type == TuiCommandType::Chat) {
         ChatPayload payload;
         payload.text = TuiRenderer::sanitize(intent.text, 1000);
@@ -344,6 +348,14 @@ QString TuiApplicationController::resolveCardDisplayText(int cardId) const
     return tuiCardDisplayText(cardId);
 }
 
+QString TuiApplicationController::resolveGeneralKingdom(const QString &generalName)
+{
+    if (Sanguosha == nullptr || generalName.isEmpty())
+        return QString();
+    const General *general = Sanguosha->getGeneral(generalName);
+    return general == nullptr ? QString() : general->getKingdom();
+}
+
 QString TuiApplicationController::resolveNameText(const QString &name) const
 {
     if (name.isEmpty())
@@ -365,9 +377,9 @@ QString TuiApplicationController::renderPiles() const
     const QVariantMap piles = player.value(QStringLiteral("piles")).toMap();
     QStringList lines{tr("== 牌堆 ==")};
     for (auto it = piles.constBegin(); it != piles.constEnd(); ++it)
-        lines << tr("%1：%2 張").arg(TuiRenderer::sanitize(it.key(), 128))
+        lines << tr("%1：%2 张").arg(TuiRenderer::sanitize(it.key(), 128))
             .arg(it.value().toList().size());
-    lines << tr("牌堆：%1  棄牌：%2")
+    lines << tr("牌堆：%1  弃牌：%2")
         .arg(m_core.state()->gameValue(QStringLiteral("draw_pile_count")).toInt())
         .arg(m_core.state()->gameValue(QStringLiteral("discard_pile")).toList().size());
     return lines.join(QLatin1Char('\n'));
@@ -385,7 +397,7 @@ QString TuiApplicationController::renderSkills() const
 
 QString TuiApplicationController::renderEquipment() const
 {
-    QStringList lines{tr("== 裝備 ==")};
+    QStringList lines{tr("== 装备 ==")};
     const QList<int> equipment = m_core.state()->cardsForPlayer(
         m_core.state()->selfName(), 1);
     for (int cardId : equipment)
@@ -432,7 +444,7 @@ QString TuiApplicationController::presentationText(int command, const QString &f
 
 QString TuiApplicationController::renderLog() const
 {
-    QStringList lines{tr("== 記錄 ==")};
+    QStringList lines{tr("== 记录 ==")};
     const QVariantList events = m_core.state()->presentationEvents();
     QStringList rendered;
     for (const QVariant &entry : events) {
@@ -462,7 +474,7 @@ QStringList TuiApplicationController::completionExtraTokens() const
     const InteractionRequest &request = m_core.activeRequest();
     if (request.type == InteractionType::PlayCard) {
         add(QStringLiteral("pass"));
-        add(QStringLiteral("過"));
+        add(QStringLiteral("过"));
         add(QStringLiteral("不出"));
     }
     if (request.cancelable || request.type == InteractionType::PlayCard)

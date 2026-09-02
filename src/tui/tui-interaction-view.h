@@ -21,6 +21,7 @@ public:
 
     void presentRequest(const InteractionRequest &request) override;
     static QString rejectionText(const InteractionValidation &validation);
+    static QString cancelReasonText(InteractionCancelReason reason);
     void finishRequest(const InteractionRequest &request,
                        const InteractionResponse &response) override;
     void cancelRequest(const InteractionRequest &request,

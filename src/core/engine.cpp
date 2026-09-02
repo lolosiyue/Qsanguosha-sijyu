@@ -797,7 +797,6 @@ void Engine::addPackage(Package*package)
 
 	QList<const Skill*> sks = package->getSkills();
 	sks << package->findChildren<const Skill*>();
-	qDebug() << "Engine::addPackage -" << package->objectName() << "skills count:" << sks.size();
     foreach (const Skill*skill, sks) {
 		if (!skill) {
 			qWarning() << "Engine::addPackage - found nullptr skill in package:" << package->objectName();

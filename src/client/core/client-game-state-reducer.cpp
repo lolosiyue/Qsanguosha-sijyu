@@ -5,9 +5,15 @@
 
 #include <QSet>
 
+#include <algorithm>
+
 using namespace QSanProtocol;
 
 namespace {
+
+// Player::DiscardPile. The core deliberately does not link the engine, so the
+// place ordinal is spelled out the same way the hand and equip ones already are.
+constexpr int kDiscardPilePlace = 5;
 
 QStringList strings(const QVariant &value)
 {
@@ -67,6 +73,10 @@ void adjustHandCount(ClientGameState *state, const QString &player, int delta)
 
 void applyCardMovement(ClientGameState *state, int command, const QVariantMap &object)
 {
+    // The server only marshals the whole discard pile on a state sync, so the
+    // count has to follow the moves in and out of Player::DiscardPile.
+    QVariantList discardPile = state->gameValue(QStringLiteral("discard_pile")).toList();
+    bool discardPileChanged = false;
     for (const QVariant &entry : object.value(QStringLiteral("moves")).toList()) {
         const QVariantMap move = entry.toMap();
         const QString fromPlayer = resolvePlayerName(
@@ -87,8 +97,21 @@ void applyCardMovement(ClientGameState *state, int command, const QVariantMap &o
             state->setCardValue(cardId, QStringLiteral("pile"), pile);
             state->setCardValue(cardId, QStringLiteral("open"),
                                 move.value(QStringLiteral("open")));
+
+            const auto known = std::find_if(discardPile.cbegin(), discardPile.cend(),
+                [cardId](const QVariant &entry) { return entry.toInt() == cardId; });
+            const bool discarded = place == kDiscardPilePlace;
+            if (discarded && known == discardPile.cend()) {
+                discardPile.append(cardId);
+                discardPileChanged = true;
+            } else if (!discarded && known != discardPile.cend()) {
+                discardPile.erase(known);
+                discardPileChanged = true;
+            }
         }
     }
+    if (discardPileChanged)
+        state->setGameValue(QStringLiteral("discard_pile"), discardPile);
 }
 
 void appendOrRemove(QStringList *values, const QString &value, bool add);
@@ -151,10 +174,11 @@ void applyPlayerProperty(ClientGameState *state, const QVariantMap &object)
     else if (property == QLatin1String("handcard_num"))
         stateKey = QStringLiteral("hand_count");
 
+    // "phase" is not here: Player::getPhaseString() puts a name ("play") on the
+    // wire, and toInt() would turn every phase into 0.
     static const QSet<QString> integerProperties{QStringLiteral("hp"),
         QStringLiteral("maxhp"), QStringLiteral("seat"),
-        QStringLiteral("player_seat"), QStringLiteral("phase"),
-        QStringLiteral("handcard_num")};
+        QStringLiteral("player_seat"), QStringLiteral("handcard_num")};
     static const QSet<QString> booleanProperties{QStringLiteral("alive"),
         QStringLiteral("chained"), QStringLiteral("faceup"),
         QStringLiteral("removed"), QStringLiteral("owner"),
