@@ -39,6 +39,10 @@ public:
     // tags dropped, <br> and friends turned into a separator, entities
     // unescaped.
     static QString plainText(const QString &markup);
+    // askForCard-style wire prompts: key:%src:%dest:%arg:%arg2, via formatClientPromptList.
+    static QString formatPrompt(const QString &prompt,
+                                const std::function<QString(const QString &)> &translate,
+                                const std::function<QString(const QString &)> &playerName = {});
     // Feedback for a control command. Empty when there is nothing worth saying.
     static QString commandResultText(int command, bool success, const QString &message);
     QString renderState(const ClientGameState &state) const;
@@ -54,8 +58,6 @@ private:
     // "時語（sgs1）" -- a script and /players still speak object names.
     QString playerLabel(const QString &objectName) const;
     QString gameStatusText(const QString &status) const;
-    // The prompt the desktop client parses as key:src:dest:arg:arg2.
-    QString promptText(const QString &prompt) const;
     QString kingdomText(const QVariantMap &player) const;
     QString interactionTitle(const InteractionRequest &request) const;
     QString answerHint(const InteractionRequest &request) const;

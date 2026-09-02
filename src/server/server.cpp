@@ -7,11 +7,10 @@
 #include "room.h"
 #include "roomthread.h"
 #include "engine.h"
+#include "build-features.h"
 #include "qt-collection-utils.h"
 #include "nativesocket.h"
-#if !defined(QSAN_SERVER_DIALOGS_ONLY)
-#include "websocketsocket.h"
-#endif
+#include "websocket-gateway.h"
 #include "banpair.h"
 #include "server-info.h"
 #include "server-connection-context.h"
@@ -1678,8 +1677,9 @@ Server::Server(QObject *parent)
 	connect(this, SIGNAL(server_message(QString)), this, SIGNAL(logMessage(QString)));
 	server = new NativeServerSocket;
 	server->setParent(this);
-	websocketServer = new WebSocketServerSocket;
-	websocketServer->setParent(this);
+	websocketServer = qsanCreateWebSocketServer();
+	if (websocketServer != nullptr)
+		websocketServer->setParent(this);
 	playerCount = 0;
 	m_nextGameSeedIndex = 0;
 
@@ -1693,7 +1693,8 @@ Server::Server(QObject *parent)
 	created_successfully = createNewRoom()!=nullptr;
 
 	connect(server, SIGNAL(new_connection(ClientSocket *)), this, SLOT(processNewConnection(ClientSocket *)));
-	connect(websocketServer, SIGNAL(new_connection(ClientSocket *)), this, SLOT(processNewConnection(ClientSocket *)));
+	if (websocketServer != nullptr)
+		connect(websocketServer, SIGNAL(new_connection(ClientSocket *)), this, SLOT(processNewConnection(ClientSocket *)));
 }
 
 void Server::broadcast(const QString &msg)
@@ -1711,7 +1712,7 @@ ServerStatusSnapshot Server::statusSnapshot() const
 	snapshot.uptimeMs = m_uptimeTimer.isValid() ? m_uptimeTimer.elapsed() : 0;
 	snapshot.bindAddress = server->listeningAddress();
 	snapshot.port = server->listeningPort();
-	snapshot.websocketPort = websocketServer->listeningPort();
+	snapshot.websocketPort = websocketServer ? websocketServer->listeningPort() : 0;
 	snapshot.gameMode = Config.GameMode.mode_id;
 
 	const QList<RoomStatusSnapshot> roomItems = roomSnapshots();
@@ -1838,7 +1839,14 @@ void Server::broadcastAdminMessage(const QString &message)
 
 bool Server::listen()
 {
-	return created_successfully && server->listen() && websocketServer->listen();
+	if (!created_successfully || !server->listen())
+		return false;
+	// Qt 5.6.3／XP 不編 WebSockets；TCP 成敗不得綁在 WS bind 上。
+#if QSAN_ENABLE_WEBSOCKETS
+	if (websocketServer == nullptr || !websocketServer->listen())
+		return false;
+#endif
+	return true;
 }
 
 QStringList Server::startupMessages() const
@@ -1877,9 +1885,12 @@ QStringList Server::startupMessages() const
     items << tr("Listening on %1:%2")
         .arg(server->listeningAddress())
         .arg(server->listeningPort());
-    items << tr("WebSocket listening on %1:%2")
-        .arg(websocketServer->listeningAddress())
-        .arg(websocketServer->listeningPort());
+#if QSAN_ENABLE_WEBSOCKETS
+    if (websocketServer != nullptr)
+        items << tr("WebSocket listening on %1:%2")
+            .arg(websocketServer->listeningAddress())
+            .arg(websocketServer->listeningPort());
+#endif
     items << tr("Game mode is %1").arg(Sanguosha->getModeName(Config.GameMode.mode_id));
     items << tr("Player count is %1").arg(Sanguosha->getPlayerCount(Config.GameMode.mode_id));
     items << (Config.OperationNoLimit ? tr("There is no time limit")
@@ -2067,6 +2078,7 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 				reply.accepted = true;
 				reply.reconnected = true;
 				reply.playerId = player->objectName();
+				reply.roomId = player->getRoom()->getId();
 				QString error;
 				if (!context->sendSignupReply(reply, requestId, &error)) {
 					rejectConnection(context, QStringLiteral("signup_reply_failed"), error);
@@ -2099,15 +2111,45 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 		return;
 	}
 
-	if (!current || current->isFull() || current->isFinished()) {
+	Room *target = current;
+	if (signup.hasRoomId) {
+		target = nullptr;
+		foreach (Room *room, rooms) {
+			if (room && room->getId() == signup.roomId) {
+				target = room;
+				break;
+			}
+		}
+		if (target == nullptr) {
+			rejectSignup(QStringLiteral("room_not_found"),
+				QStringLiteral("Requested room does not exist"));
+			return;
+		}
+		if (target->isFinished()) {
+			rejectSignup(QStringLiteral("room_finished"),
+				QStringLiteral("Requested room has ended"));
+			return;
+		}
+		if (target->isRunning()) {
+			rejectSignup(QStringLiteral("room_started"),
+				QStringLiteral("Requested room has already started"));
+			return;
+		}
+		if (target->isFull()) {
+			rejectSignup(QStringLiteral("room_full"),
+				QStringLiteral("Requested room is full"));
+			return;
+		}
+	} else if (!current || current->isFull() || current->isFinished()) {
 		if (!createNewRoom()) {
 			rejectSignup(QStringLiteral("server_full"),
 				QStringLiteral("No room is available"));
 			return;
 		}
+		target = current;
 	}
 
-	ServerPlayer *player = current->addSocket(socket);
+	ServerPlayer *player = target->addSocket(socket);
 	// Claim the name for the lobby right away: name2objname is only written
 	// when the game starts, so until then nothing else would reject a duplicate.
 	m_lobbyScreenNames.insert(socket, signup.screenName);
@@ -2115,6 +2157,7 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 	reply.accepted = true;
 	reply.reconnected = false;
 	reply.playerId = player->objectName();
+	reply.roomId = target->getId();
 	QString error;
 	if (!context->sendSignupReply(reply, requestId, &error)) {
 		rejectConnection(context, QStringLiteral("signup_reply_failed"), error);
@@ -2127,9 +2170,9 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 		disconnectSocketFromOwnerThread(socket);
 		return;
 	}
-	current->signup(player, signup.screenName, signup.avatar, false);
+	target->signup(player, signup.screenName, signup.avatar, false);
 	emit newPlayer(player);
-	emit playerJoined(player->objectName(), player->screenName(), current->getId());
+	emit playerJoined(player->objectName(), player->screenName(), target->getId());
 }
 
 bool Server::screenNameInUse(const QString &screenName) const
@@ -2263,9 +2306,11 @@ void Server::checkUpnpAndListServer()
 		upnpPortMapping = new QtUpnpPortMapping();
 		connect(upnpPortMapping,SIGNAL(finished()),this,SLOT(upnpFinished()));
 		upnpPortMapping->addPortMapping(Config.ServerPort,Config.ServerPort,"Sanguosha",true);
+#if QSAN_ENABLE_WEBSOCKETS
 		if (Config.WebSocketPort != 0)
 			upnpPortMapping->addPortMapping(Config.WebSocketPort, Config.WebSocketPort,
 				"SanguoshaWS", true);
+#endif
 		QTimer::singleShot(10000,this,SLOT(upnpTimeout()));
 	} else if(Config.value("serverconfig/addtolistserver").toBool())
 		addToListServer();

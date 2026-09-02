@@ -1,5 +1,6 @@
 #include "tui-renderer.h"
 
+#include "client-prompt.h"
 #include "core/client-game-state.h"
 #include "core/interaction-model.h"
 #include "protocol.h"
@@ -10,7 +11,9 @@
 #include <QList>
 #include <QMap>
 #include <QPair>
+#include <QRegularExpression>
 #include <QSet>
+#include <QStringList>
 
 #include <functional>
 #include <utility>
@@ -80,6 +83,23 @@ void appendPlayers(QStringList *lines, const QStringList &names,
 TuiRenderer::TuiRenderer(bool ansiEnabled, Resolvers resolvers)
     : m_ansiEnabled(ansiEnabled), m_resolvers(std::move(resolvers))
 {
+}
+
+QString TuiRenderer::formatPrompt(const QString &prompt,
+                                  const std::function<QString(const QString &)> &translate,
+                                  const std::function<QString(const QString &)> &playerName)
+{
+    static const QRegularExpression sgsName(
+        QStringLiteral("^sgs\\d+$"),
+        QRegularExpression::UseUnicodePropertiesOption);
+    const auto slotPlayer = [&](const QString &token) {
+        if (token.isEmpty())
+            return token;
+        if (sgsName.match(token).hasMatch() && playerName)
+            return playerName(token);
+        return translate ? translate(token) : token;
+    };
+    return formatClientPrompt(prompt, translate, slotPlayer);
 }
 
 QString TuiRenderer::sanitize(const QString &text, qsizetype maximumLength)
@@ -201,9 +221,6 @@ QString TuiRenderer::playerText(const QString &objectName) const
     return shown.isEmpty() ? objectName : shown;
 }
 
-// A prompt arrives in the shape the desktop client parses in
-// Client::formatPromptList(): a lang key followed by the source player, the
-// destination player and up to two arguments, all joined by ":".
 // The room status is its own vocabulary: "active" here means the game is under
 // way, not that the socket is up.
 QString TuiRenderer::gameStatusText(const QString &status) const
@@ -214,29 +231,6 @@ QString TuiRenderer::gameStatusText(const QString &status) const
         {QStringLiteral("game_over"), tr("已结束")}};
     const auto fixed = labels.constFind(status.toLower());
     return fixed != labels.cend() ? fixed.value() : nameText(status);
-}
-
-QString TuiRenderer::promptText(const QString &prompt) const
-{
-    const QStringList parts = prompt.split(QLatin1Char(':'));
-    const auto translated = [this](const QString &key) {
-        if (key.isEmpty() || !m_resolvers.name)
-            return key;
-        const QString text = m_resolvers.name(key);
-        return text.isEmpty() ? key : text;
-    };
-
-    QString text = translated(parts.first());
-    // %arg2 first: replacing %arg before it would eat the shared prefix.
-    if (parts.size() >= 5)
-        text.replace(QStringLiteral("%arg2"), translated(parts.at(4)));
-    if (parts.size() >= 4)
-        text.replace(QStringLiteral("%arg"), translated(parts.at(3)));
-    if (parts.size() >= 3)
-        text.replace(QStringLiteral("%dest"), playerText(parts.at(2)));
-    if (parts.size() >= 2)
-        text.replace(QStringLiteral("%src"), playerText(parts.at(1)));
-    return text;
 }
 
 // The server never broadcasts the kingdom property, so fall back to the
@@ -378,8 +372,8 @@ QString TuiRenderer::answerHint(const InteractionRequest &request) const
     case InteractionResponseShape::Cards:
         if (request.type == InteractionType::PlayCard) {
             return tr("作答：<编号> -> <目标编号>   例如 1 -> 2\n"
-                      "技能可带手牌：<技能编号> <手牌编号>   例如 4 1\n"
-                      "无目标只写编号。结束出牌：pass 或 /cancel");
+                      "技能＋手牌＋目标：<技能编号> <手牌编号> -> <目标编号>   例如 4 1 -> 2\n"
+                      "无目标只写编号或技能编号。结束出牌：pass 或 /cancel");
         }
         if (request.type == InteractionType::ChooseCard) {
             const auto *value = request.payloadAs<CardInteractionPayload>();
@@ -562,8 +556,14 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
     QStringList lines{heading(interactionTitle(request))};
     if (!request.skillName.isEmpty())
         lines << tr("技能：%1").arg(nameText(request.skillName));
-    if (!request.prompt.isEmpty())
-        lines << tr("提示：%1").arg(sanitize(plainText(promptText(request.prompt)), 1024));
+    if (!request.prompt.isEmpty()) {
+        // The %src/%dest slots are object names, so they resolve to screen
+        // names rather than through the lang table.
+        const QString formatted = formatPrompt(request.prompt,
+            [this](const QString &key) { return nameText(key); },
+            [this](const QString &name) { return playerText(name); });
+        lines << tr("提示：%1").arg(sanitize(plainText(formatted), 1024));
+    }
 
     const int minimum = request.minSelection();
     const int maximum = request.maxSelection();

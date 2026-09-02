@@ -28,7 +28,7 @@ endif()
 
 string(TOLOWER "${qsan_dependencies}" qsan_dependencies_lower)
 foreach(qsan_forbidden_dependency
-        qt6gui qt6widgets qt6quick qt6qml qt6multimedia qt6opengl
+        qt6gui qt6widgets qt6quick qt6qml qt6multimedia qt6opengl qt6websockets
         fmod recorder replayer)
     if(qsan_dependencies_lower MATCHES "${qsan_forbidden_dependency}")
         message(FATAL_ERROR

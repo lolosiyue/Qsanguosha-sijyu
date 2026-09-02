@@ -437,6 +437,7 @@ bool validateGenericSchema(const QString &schema, const QVariant &value,
         {QStringLiteral("to_pile"), FieldShape::String},
         {QStringLiteral("event_name"), FieldShape::String},
         {QStringLiteral("player_id"), FieldShape::String},
+        {QStringLiteral("room_id"), FieldShape::Integer},
         {QStringLiteral("target_id"), FieldShape::String},
         {QStringLiteral("taker"), FieldShape::String},
         {QStringLiteral("rule"), FieldShape::String},
@@ -519,8 +520,22 @@ bool validateGenericSchema(const QString &schema, const QVariant &value,
 
 int expectedSchemaVersion(const QString &schema)
 {
-    return schema == QLatin1String("CardProvenancePayload")
-        ? CardProvenanceMessage::CurrentVersion : 1;
+    if (schema == QLatin1String("CardProvenancePayload"))
+        return CardProvenanceMessage::CurrentVersion;
+    if (schema == QLatin1String("SignupRequestPayload"))
+        return SignupRequestPayload::SchemaVersion;
+    if (schema == QLatin1String("SignupReplyPayload"))
+        return SignupReplyPayload::SchemaVersion;
+    return 1;
+}
+
+bool schemaVersionAllowed(const QString &schema, int version)
+{
+    if (schema == QLatin1String("SignupRequestPayload"))
+        return version == 1 || version == SignupRequestPayload::SchemaVersion;
+    if (schema == QLatin1String("SignupReplyPayload"))
+        return version == 1 || version == SignupReplyPayload::SchemaVersion;
+    return version == expectedSchemaVersion(schema);
 }
 
 bool validateKnownSchema(const QString &schema, const QVariant &value,
@@ -640,6 +655,26 @@ bool positionalPayload(const QVariant &value,
         object.insert(QString::fromLatin1(field), values.at(index++));
     *output = object;
     return true;
+}
+
+// Room still builds the Gongxin-shaped domain list
+// [player_name, false, card_ids]. Wire ShowAllCardsPayload is
+// {player_name, card_ids}; mapping the leftover bool onto card_ids
+// fail-closes the socket.
+bool encodeShowAllCardsPayload(const QVariant &value, QVariantMap *output,
+                               QString *error)
+{
+    if (value.userType() != QMetaType::QVariantList)
+        return fail(error, QStringLiteral("protocol payload must be a positional domain list"));
+    const QVariantList args = value.toList();
+    if (args.size() >= 3) {
+        bool skipped = false;
+        if (ProtocolMessageUtils::tryParseBool(args.at(1), skipped)) {
+            return positionalPayload(QVariantList{args.at(0), args.at(2)},
+                                     {"player_name", "card_ids"}, output, error);
+        }
+    }
+    return positionalPayload(value, {"player_name", "card_ids"}, output, error);
 }
 
 bool scalarPayload(const QVariant &value, const char *field,
@@ -794,7 +829,7 @@ bool encodeRoomNotificationPayload(int command, const QVariant &value,
     case S_COMMAND_INVOKE_SKILL:
         return positionalPayload(value, {"skill_name", "player_name"}, output, error);
     case S_COMMAND_SHOW_ALL_CARDS:
-        return positionalPayload(value, {"player_name", "card_ids"}, output, error);
+        return encodeShowAllCardsPayload(value, output, error);
     case S_COMMAND_ANIMATE:
         return positionalPayload(value, {"animation", "first_argument", "second_argument"}, output, error);
     case S_COMMAND_FIXED_DISTANCE:
@@ -1056,6 +1091,7 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
     result.last().requiredFields << QStringLiteral("reconnect_requested")
                                  << QStringLiteral("screen_name")
                                  << QStringLiteral("avatar");
+    result.last().optionalFields << QStringLiteral("room_id");
     result.append(flow(ProtocolMessageType::Reply,
                        ProtocolEndpoint::Lobby, ProtocolEndpoint::Client,
                        S_COMMAND_SIGNUP, "S_COMMAND_SIGNUP",
@@ -1066,6 +1102,7 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
     result.last().requiredFields << QStringLiteral("accepted");
     result.last().optionalFields << QStringLiteral("reconnected")
                                  << QStringLiteral("player_id")
+                                 << QStringLiteral("room_id")
                                  << QStringLiteral("error_code")
                                  << QStringLiteral("message");
     result.append(flow(ProtocolMessageType::Notification,
@@ -1420,7 +1457,7 @@ bool ProtocolPayloadRegistry::validateObjectPayload(
     const int requiredSchemaVersion = expectedSchemaVersion(descriptor->targetSchema);
     if (!ProtocolMessageUtils::tryParseInt(
             object.value(QStringLiteral("schema_version")), schemaVersion)
-        || schemaVersion != requiredSchemaVersion) {
+        || !schemaVersionAllowed(descriptor->targetSchema, schemaVersion)) {
         return fail(error, QStringLiteral("%1 schema_version must be integral %2")
             .arg(descriptor->diagnosticName).arg(requiredSchemaVersion));
     }
@@ -1456,7 +1493,7 @@ bool ProtocolPayloadRegistry::encodeObjectPayload(
         int schemaVersion = 0;
         if (ProtocolMessageUtils::tryParseInt(
                 object.value(QStringLiteral("schema_version")), schemaVersion)
-            && schemaVersion == expectedSchemaVersion(descriptor->targetSchema)) {
+            && schemaVersionAllowed(descriptor->targetSchema, schemaVersion)) {
             if (!validateObjectPayload(encoded, error))
                 return false;
             *wireMessage = encoded;
