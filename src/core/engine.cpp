@@ -27,6 +27,7 @@
 #include "room-runtime.h"
 #include "miniscenarios.h"
 
+#include "skill-set-generation.h"
 #include "guandu-scenario.h"
 #include "couple-scenario.h"
 #include "boss-mode-scenario.h"
@@ -2538,10 +2539,42 @@ const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card,
 
     const CardLimitSkill *ret = nullptr;
 
+    // 擁有者過濾。所有 CardLimitSkill 的 limitList() 實作都回傳常數字串, 真正的守門
+    // 條件埋在 limitPattern() 裡, 所以場上根本沒人擁有的限制技也會被完整評估一次 ——
+    // 20 人局實測 #OLJieQianxiLimit 單次決策花掉 33.8 秒, 而該局沒有任何人有這個技能。
+    // 這些技能一律掛在某個武將身上 (General::addSkill -> Room -> Player::addSkill,
+    // 連 # 開頭的輔助技也會建立 SourceHelper 實例), 因此「全場沒有任何人擁有」時它
+    // 不可能成立。用 getSiblings(true) 而非 getAliveSiblings: 死亡玩家留下的標記可能
+    // 還在, 保守地讓其限制技維持啟用。
+    // 這個集合每回合只變幾次, 但單次 AI 決策會查數萬次, 所以照技能集合世代快取起來,
+    // 只有真的有人增減技能時才重建 (重建走 getSkillList, 貴但罕見)。
+    static thread_local quint64 s_ownedGen = 0;
+    static thread_local const QObject *s_ownedRoom = nullptr;
+    static thread_local QSet<QString> s_ownedNames;
+
+    const QObject *room = player ? player->parent() : nullptr;
+    const quint64 gen = SkillSet::generation();
+    if (gen != s_ownedGen || room != s_ownedRoom) {
+        s_ownedNames.clear();
+        if (player) {
+            foreach (const Player *p, player->getSiblings(true)) {
+                if (!p) continue;
+                foreach (const Skill *owned, p->getSkillList(true, false))
+                    if (owned) s_ownedNames.insert(owned->objectName());
+            }
+        }
+        s_ownedGen = gen;
+        s_ownedRoom = room;
+    }
+    auto ownedByAnyone = [](const QString &skillName) {
+        return s_ownedNames.contains(skillName);
+    };
+
     if (card->inherits("SkillCard") && method == card->getHandlingMethod()) {
         foreach (int id, card->getSubcards()) {
             const Card*c = Sanguosha->getCard(id);
             foreach (const CardLimitSkill*skill, getCardLimitSkills()) {
+                if (!ownedByAnyone(skill->objectName())) continue;
                 if (skill->limitList(player,c).contains(method_name)){
 					QString pattern = skill->limitPattern(player,c);
 					if(pattern.isEmpty()) continue;
@@ -2555,6 +2588,7 @@ const CardLimitSkill*Engine::isCardLimited(const Player*player, const Card*card,
         }
     } else {
         foreach (const CardLimitSkill*skill, getCardLimitSkills()) {
+            if (!ownedByAnyone(skill->objectName())) continue;
             if (skill->limitList(player,card).contains(method_name)){
 				QString pattern = skill->limitPattern(player,card);
 				if(pattern.isEmpty()) continue;
