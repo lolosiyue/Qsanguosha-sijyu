@@ -656,6 +656,16 @@ qsan_add_ctest(qsanguosha_server_unit qsanguosha_server_tests
     TIMEOUT 1800
 )
 
+add_executable(qsanguosha_roomthread_perf_tests
+    roomthread-perf-main.cpp
+    roomthread-deferred-state-test.cpp
+)
+qsan_link_engine_test(qsanguosha_roomthread_perf_tests)
+qsan_add_ctest(qsanguosha_roomthread_perf qsanguosha_roomthread_perf_tests
+    LABELS "server;fast"
+    TIMEOUT 30
+)
+
 add_executable(qsanguosha_replay_tests
     replay-game-state/replay-game-state-test.cpp
     ${QSAN_TEST_ROOT}/src/util/replay-game-state.cpp

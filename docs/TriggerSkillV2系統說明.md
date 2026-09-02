@@ -2168,6 +2168,8 @@ end
 
 `TriggerSkillV2::triggerable()` 可只回傳 base name；RoomThread 會依 owner 的有效實例展開。若回傳 `skill#N`，則只執行該有效實例。`record()` 也按有效實例各執行一次。
 
+> **2026-09-02 效能契約**：`RoomThread::addTriggerSkill()` 會同步建立每事件的 V2 分表，dispatch 不再以 `inherits("TriggerSkillV2")` 掃描整張主表。主表與 V2 分表使用同一組當次、每房優先序值做 `stable_sort`；排序不再改寫全域共享 `TriggerSkill::dynamic_priority`。`record()` 仍對每個 V2 技能分別取得 `getAllPlayers(true)`，保留前一個 callback 改變 roster 後、下一個技能可觀察到新狀態的語意。
+
 > **2026-08-05 修正**：Lua `on_record` 為 **5 參數**（`skill, event, room, player, ctx`），第 5 參為 `SkillContext` 引用；早期 7 參數草案（多塞 `data/owner`）已回退（swig/luaskills.i `lua_pcall(L, 5)`，2026-08-05 與 H 權威版對齊）。下方為現行簽名：
 
 ```lua
