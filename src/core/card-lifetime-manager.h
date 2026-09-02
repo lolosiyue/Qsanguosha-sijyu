@@ -10,6 +10,7 @@
 #include <QVariant>
 #include <QtGlobal>
 
+#include <atomic>
 #include <memory>
 #include <initializer_list>
 
@@ -83,6 +84,14 @@ struct CardLifetimeGauge {
     quint64 peak_wrapper_count = 0;
 };
 
+struct CardLifetimeMutexProfile {
+    bool enabled = false;
+    quint64 lock_count = 0;
+    quint64 contended_count = 0;
+    qint64 wait_ns = 0;
+    qint64 max_wait_ns = 0;
+};
+
 struct CardLifetimeToken {
     const void *address = nullptr;
     quint64 generation = 0;
@@ -95,7 +104,8 @@ class CardLifetimeManager final
 {
 public:
     explicit CardLifetimeManager(CardLifetimeMode mode = defaultCardLifetimeMode(),
-                                 QThread *ownerThread = nullptr);
+                                 QThread *ownerThread = nullptr,
+                                 bool enableMutexProfile = false);
     ~CardLifetimeManager();
 
     CardLifetimeManager(const CardLifetimeManager &) = delete;
@@ -178,6 +188,7 @@ public:
 
     CardLifetimeGauge gauge() const;
     CardLifetimeGauge gaugeForDomain(const void *domain) const;
+    CardLifetimeMutexProfile mutexProfile() const;
     void dumpDomain(const void *domain) const;
     quint64 entryCount() const;
     QSet<const void *> entryAddresses() const;
@@ -199,6 +210,23 @@ public:
     static const char *opaqueVariantError();
 
 private:
+    class ProfiledMutex final
+    {
+    public:
+        explicit ProfiledMutex(bool enabled = false);
+        void lock();
+        void unlock() noexcept;
+        CardLifetimeMutexProfile profile() const;
+
+    private:
+        QMutex m_mutex;
+        const bool m_enabled;
+        std::atomic<quint64> m_lockCount{0};
+        std::atomic<quint64> m_contendedCount{0};
+        std::atomic<qint64> m_waitNs{0};
+        std::atomic<qint64> m_maxWaitNs{0};
+    };
+
     struct Entry {
         std::shared_ptr<CardLifetimeToken> token;
         quint64 wrappers = 0;
@@ -252,7 +280,7 @@ private:
     void reapDeadLocked(const std::shared_ptr<const CardLifetimeToken> &token);
     void updatePeaksLocked();
 
-    mutable QMutex m_mutex;
+    mutable ProfiledMutex m_mutex;
     QHash<const void *, Entry> m_entries;
     QHash<const CardLifetimeToken *, Entry> m_deadEntries;
     QHash<const void *, WrapperBinding> m_wrappers;

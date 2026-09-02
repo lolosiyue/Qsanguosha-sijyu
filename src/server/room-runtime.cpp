@@ -361,6 +361,16 @@ void RoomRuntime::emitFinalGauge(const CardLifetimeGauge &gauge)
     marker.insert(QStringLiteral("factory_unclaimed_delta"), qint64(gauge.factory_unclaimed - m_baselineFactoryUnclaimed));
     marker.insert(QStringLiteral("unknown_unclaimed_delta"), qint64(gauge.unknown_unclaimed - m_baselineUnknownUnclaimed));
     marker.insert(QStringLiteral("actually_destroyed_delta"), qint64(gauge.actually_destroyed - m_baselineActuallyDestroyed));
+    const CardLifetimeMutexProfile mutexProfile = manager.mutexProfile();
+    if (mutexProfile.enabled) {
+        QJsonObject mutexProfileObject;
+        mutexProfileObject.insert(QStringLiteral("scope"), QStringLiteral("process_cumulative"));
+        mutexProfileObject.insert(QStringLiteral("lock_count"), qint64(mutexProfile.lock_count));
+        mutexProfileObject.insert(QStringLiteral("contended_count"), qint64(mutexProfile.contended_count));
+        mutexProfileObject.insert(QStringLiteral("wait_ns"), mutexProfile.wait_ns);
+        mutexProfileObject.insert(QStringLiteral("max_wait_ns"), mutexProfile.max_wait_ns);
+        marker.insert(QStringLiteral("mutex_profile"), mutexProfileObject);
+    }
     const QByteArray markerJson = QJsonDocument(marker).toJson(QJsonDocument::Compact);
     std::fprintf(stdout, "CARD_LIFETIME_ZERO %s\n", markerJson.constData());
     std::fflush(stdout);
