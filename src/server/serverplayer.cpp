@@ -1480,8 +1480,8 @@ void ServerPlayer::marshal(ServerPlayer *player) const
 	if (isChained())
 		room->notifyProperty(player, this, "chained");
 
-	foreach(const char *property_name, propertys)
-		room->notifyProperty(player, this, property_name);
+	foreach(const QByteArray &property_name, propertys)
+		room->notifyProperty(player, this, property_name.constData());
 
 	room->notifyPlayerUIState(player, this, m_uiState);
 
