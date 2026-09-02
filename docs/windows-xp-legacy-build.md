@@ -1,22 +1,27 @@
-# Windows XP SP3 x86 legacy build
+# Windows XP SP3 / Win7 x86 legacy build
 
 ## Support boundary
 
 | Item | XP legacy product |
 |---|---|
-| OS / architecture | Windows XP SP3 x86 |
+| OS / architecture | Windows XP SP3 x86 and Windows 7 x86 (same PE32 binary and portable payload) |
 | Supported room size | 2–10 players |
 | 20-player room | Connection may be attempted; compatibility is not promised |
 | Executable | One `QSanguoshaXP.exe`; use `-server` to host |
 | UI | Existing `QGraphicsScene` / `StartScene` classic UI |
 | Effects | Forced to `NONE`; the setting is hidden |
 | Audio | x86 FMOD Ex 4.44.53 in both Debug and Release |
-| Excluded features | QML, Spine, video and OpenGL |
+| Excluded features | QML, Spine, video, OpenGL, and the WebSocket gateway |
 | Excluded content | External `extensions/`; it is outside the XP compatibility promise |
+| Listen path | Native TCP `9527` only. Compact web / port `9528` is not part of this product |
 | Distribution | Portable folder or Joliet ISO with `INSTALL.CMD` |
 
 This is an opt-in legacy product. The normal `debug` target remains the Qt 6.11
 x64 development build and does not inherit the XP toolchain or feature cuts.
+
+There is no separate Win7 build tier. The `v141_xp` / Qt 5.6.3 x86 artifact is
+the only legacy deliverable; Win7 x86 is covered by upward compatibility of the
+same portable folder or ISO `PAYLOAD/` tree.
 
 ## Toolchain and Qt baseline
 
@@ -97,6 +102,25 @@ the target directory, then performs a clean `xcopy /E` installation to
 `C:\QSanguoshaXP`. CAB extraction is intentionally not used because XP
 `expand.exe` flattens destination subdirectories. `-ReuseStage` may be used
 when only `AUTORUN.INF`, `INSTALL.CMD` or `RUNXP.CMD` changed.
+
+## Win7 x86 VM acceptance (same portable payload)
+
+Win7 x86 validation reuses the exact portable Release folder produced by
+`-Deploy` (or the ISO `PAYLOAD/` extracted from that folder). Do not build,
+deploy, or gate a second Win7-specific payload.
+
+Recommended guest checks on Windows 7 x86 SP1:
+
+1. copy or install the same portable tree used for XP acceptance;
+2. launch `QSanguoshaXP.exe` and confirm the classic `StartScene` main window;
+3. start `-server` on the guest and connect with `-connect:127.0.0.1`;
+4. exercise 125% system DPI scaling and confirm the window remains usable;
+5. run `legacy/xp/tools/check-xp-pe.ps1` against the deployed root to confirm
+   the tree is still x86 and free of forbidden post-XP direct imports.
+
+Win7-specific regressions (DPI, UAC, audio device enumeration) are tracked
+separately from the XP SP3 guest evidence below; passing XP acceptance does not
+by itself close the Win7 x86 gate.
 
 ## Acceptance evidence and residual limits
 

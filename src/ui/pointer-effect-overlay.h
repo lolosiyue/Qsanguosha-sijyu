@@ -151,6 +151,7 @@ private:
 
     PointerFxEngine m_fx;
     QTimer m_timer;
+    QRect m_lastPainted;
     bool m_cursorOverridden = false;
     bool m_hadContent = false;
 };

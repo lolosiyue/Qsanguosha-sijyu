@@ -845,6 +845,49 @@ void rendererContract()
                          QStringLiteral("zhangfei"));
 
     TuiRenderer plain(false);
+    const auto translatePrompt = [](const QString &key) {
+        if (key == QLatin1String("shoot-jink"))
+            return QStringLiteral("%src 使用了【%dest】，请打出一张【闪】");
+        if (key == QLatin1String("slash-jink"))
+            return QStringLiteral("%src 对你使用【杀】，你需使用【闪】抵消之");
+        if (key == QLatin1String("pierce_shoot"))
+            return QStringLiteral("pierce_shoot");
+        return key;
+    };
+    const auto playerPrompt = [](const QString &name) {
+        return name == QLatin1String("sgs2") ? QStringLiteral("曹孟德") : name;
+    };
+    const QString shootJink = TuiRenderer::formatPrompt(
+        QStringLiteral("shoot-jink:sgs2:pierce_shoot"), translatePrompt, playerPrompt);
+    check(shootJink.contains(QStringLiteral("曹孟德"))
+              && shootJink.contains(QStringLiteral("pierce_shoot"))
+              && shootJink.contains(QStringLiteral("闪"))
+              && !shootJink.contains(QStringLiteral("shoot-jink"))
+              && !shootJink.contains(QStringLiteral("%src")),
+          "askForCard prompt list fills %src/%dest instead of showing the wire key");
+    const QString slashJink = TuiRenderer::formatPrompt(
+        QStringLiteral("slash-jink:sgs1"), translatePrompt,
+        [](const QString &name) {
+            return name == QLatin1String("sgs1") ? QStringLiteral("刘玄德") : name;
+        });
+    check(slashJink.contains(QStringLiteral("刘玄德"))
+              && slashJink.contains(QStringLiteral("杀"))
+              && !slashJink.contains(QStringLiteral("slash-jink")),
+          "slash-jink prompt list uses the same colon substitutions");
+    InteractionRequest jinkPrompt;
+    jinkPrompt.prompt = QStringLiteral("shoot-jink:sgs2:pierce_shoot");
+    // The %src/%dest slots hold object names, so they go to the player
+    // resolver; only the key and the arguments are lang lookups.
+    const TuiRenderer promptNamed(false, TuiRenderer::Resolvers{
+        {}, translatePrompt,
+        [](const QString &objectName) {
+            return objectName == QLatin1String("sgs2") ? QStringLiteral("曹孟德") : QString();
+        }, {}});
+    const QString jinkText = promptNamed.renderInteraction(jinkPrompt);
+    check(jinkText.contains(QStringLiteral("曹孟德"))
+              && jinkText.contains(QStringLiteral("闪"))
+              && !jinkText.contains(QStringLiteral("shoot-jink")),
+          "interaction renderer expands askForCard prompts");
     const QString stateSnapshot = plain.renderState(state);
     const QString playersSnapshot = plain.renderPlayers(state);
     // Stands in for the engine: lang lookups, screen names, and the kingdom a
@@ -863,7 +906,9 @@ void rendererContract()
             return lang.value(key, key);
         },
         [](const QString &objectName) {
-            return objectName == QLatin1String("p1") ? QStringLiteral("Alice") : QString();
+            // "sgs1" is the shape a wire prompt slots a player in as.
+            return objectName == QLatin1String("p1") || objectName == QLatin1String("sgs1")
+                ? QStringLiteral("Alice") : QString();
         },
         [](const QString &general) {
             return general == QLatin1String("zhangfei") ? QStringLiteral("shu") : QString();
@@ -963,7 +1008,7 @@ void rendererContract()
               && namedPlayText.contains(QStringLiteral("sgs2")),
           "targets show the screen name and keep the object name beside it");
     InteractionRequest keyedPrompt = cardRequest();
-    keyedPrompt.prompt = QStringLiteral("savage-assault-slash:p1");
+    keyedPrompt.prompt = QStringLiteral("savage-assault-slash:sgs1");
     const QString keyedPromptText = engineBacked.renderInteraction(keyedPrompt);
     check(!keyedPromptText.contains(QStringLiteral("savage-assault-slash"))
               && keyedPromptText.contains(QStringLiteral("Alice"))
@@ -977,6 +1022,7 @@ void rendererContract()
               && playText.contains(QStringLiteral("目标玩家"))
               && playText.contains(QStringLiteral("结束出牌"))
               && playText.contains(QStringLiteral("1 -> 2"))
+              && playText.contains(QStringLiteral("4 1 -> 2"))
               && playText.contains(QStringLiteral("技能"))
               && !playText.contains(QStringLiteral("须选")),
           "play-card prompt lists cards, skills, numbered targets, and how to pass");
@@ -1143,6 +1189,20 @@ void terminalContract()
               && response.payloadAs<InteractionResponse::CardSelectionData>()
                     ->activationSkillName == QLatin1String("zhiheng"),
           "play-card skill index can take hand cards as subcards");
+    check(view.parseAnswer(play, QStringLiteral("4 1 -> 2"), &response, &error)
+              && response.payloadAs<InteractionResponse::CardSelectionData>() != nullptr
+              && response.payloadAs<InteractionResponse::CardSelectionData>()->cardIds.isEmpty()
+              && response.payloadAs<InteractionResponse::CardSelectionData>()->cardText
+                    .contains(QStringLiteral("zhiheng"))
+              && response.payloadAs<InteractionResponse::CardSelectionData>()->subcardIds
+                    == QList<int>({7})
+              && response.payloadAs<InteractionResponse::CardSelectionData>()->targets
+                    == QStringList({QStringLiteral("sgs2")})
+              && response.payloadAs<InteractionResponse::CardSelectionData>()
+                    ->activationSkillName == QLatin1String("zhiheng")
+              && response.payloadAs<InteractionResponse::CardSelectionData>()
+                    ->activationSkillInstanceId == 2,
+          "play-card skill index plus subcards plus numbered target stays a SkillCard");
 
     check(view.parseAnswer(cards,
               QStringLiteral("skill longdan#4: card 1 -> 2"), &response, &error)

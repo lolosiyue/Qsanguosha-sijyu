@@ -3148,6 +3148,7 @@
             "message_type": "request",
             "migration_status": "complete",
             "optional_fields": [
+                "room_id"
             ],
             "parser": "ProtocolPayloadRegistry::validateObjectPayload",
             "producer": "Client",
@@ -3179,6 +3180,7 @@
             "optional_fields": [
                 "reconnected",
                 "player_id",
+                "room_id",
                 "error_code",
                 "message"
             ],
