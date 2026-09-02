@@ -66,6 +66,7 @@ static bool parseSyntheticSeed(int argc, char **argv, quint64 &seed)
 
 int runLuaRuntimeIsolationTests();
 int runRoomRuntimeIsolationTests();
+int runRoomRuntimeLuaTeardownTests();
 int runCardLifetimeTests();
 int runCardLifetimeSyntheticTests(int actorCount, quint64 seed);
 int runCardLifetimeLegacyRedTests();
@@ -106,6 +107,7 @@ int main(int argc, char **argv)
         return runIsolatedTestCases("RUNTIME_CONTRACT_RESULT", {
             {QStringLiteral("lua-runtime"), {QStringLiteral("--suite"), QStringLiteral("lua-runtime")}},
             {QStringLiteral("room-runtime"), {QStringLiteral("--suite"), QStringLiteral("room-runtime")}},
+            {QStringLiteral("room-lua-teardown"), {QStringLiteral("--suite"), QStringLiteral("room-lua-teardown")}},
             {QStringLiteral("card-lifetime"), {QStringLiteral("--suite"), QStringLiteral("card-lifetime")}, 600000},
             {QStringLiteral("card-lifetime-lua"), {QStringLiteral("--suite"), QStringLiteral("card-lifetime-lua")}},
             {QStringLiteral("synthetic-30"), {
@@ -117,6 +119,8 @@ int main(int argc, char **argv)
         return runLuaRuntimeIsolationTests();
     if (suite == QLatin1String("room-runtime"))
         return runRoomRuntimeIsolationTests();
+    if (suite == QLatin1String("room-lua-teardown"))
+        return runRoomRuntimeLuaTeardownTests();
     if (suite == QLatin1String("card-lifetime"))
     {
         return runCardLifetimeTests();
