@@ -3,6 +3,7 @@
 #include "skill.h"
 #include "structs.h"
 
+#include <QElapsedTimer>
 #include <QMutexLocker>
 #include <QSet>
 
@@ -34,14 +35,63 @@ CardLifetimeMode defaultCardLifetimeMode()
     return CardLifetimeMode::ManagedReclaim;
 }
 
+CardLifetimeManager::ProfiledMutex::ProfiledMutex(bool enabled)
+    : m_enabled(enabled)
+{
+}
+
+void CardLifetimeManager::ProfiledMutex::lock()
+{
+    if (!m_enabled) {
+        m_mutex.lock();
+        return;
+    }
+
+    m_lockCount.fetch_add(1, std::memory_order_relaxed);
+    if (m_mutex.tryLock())
+        return;
+
+    m_contendedCount.fetch_add(1, std::memory_order_relaxed);
+    QElapsedTimer timer;
+    timer.start();
+    m_mutex.lock();
+    const qint64 waitNs = timer.nsecsElapsed();
+    m_waitNs.fetch_add(waitNs, std::memory_order_relaxed);
+
+    qint64 observedMax = m_maxWaitNs.load(std::memory_order_relaxed);
+    while (waitNs > observedMax
+           && !m_maxWaitNs.compare_exchange_weak(observedMax, waitNs,
+                                                 std::memory_order_relaxed)) {
+    }
+}
+
+void CardLifetimeManager::ProfiledMutex::unlock() noexcept
+{
+    m_mutex.unlock();
+}
+
+CardLifetimeMutexProfile CardLifetimeManager::ProfiledMutex::profile() const
+{
+    CardLifetimeMutexProfile result;
+    result.enabled = m_enabled;
+    result.lock_count = m_lockCount.load(std::memory_order_relaxed);
+    result.contended_count = m_contendedCount.load(std::memory_order_relaxed);
+    result.wait_ns = m_waitNs.load(std::memory_order_relaxed);
+    result.max_wait_ns = m_maxWaitNs.load(std::memory_order_relaxed);
+    return result;
+}
+
 CardLifetimeManager &globalCardLifetimeManager()
 {
-    static CardLifetimeManager manager;
+    static CardLifetimeManager manager(defaultCardLifetimeMode(), nullptr,
+        qEnvironmentVariableIntValue("QSAN_CARD_LIFETIME_MUTEX_TRACE") > 0);
     return manager;
 }
 
-CardLifetimeManager::CardLifetimeManager(CardLifetimeMode mode, QThread *ownerThread)
-    : m_mode(mode), m_ownerThread(ownerThread ? ownerThread : QThread::currentThread())
+CardLifetimeManager::CardLifetimeManager(CardLifetimeMode mode, QThread *ownerThread,
+                                         bool enableMutexProfile)
+    : m_mutex(enableMutexProfile), m_mode(mode),
+      m_ownerThread(ownerThread ? ownerThread : QThread::currentThread())
 {
     QMutexLocker lock(&associationMutex);
     managers.insert(this);
@@ -66,6 +116,11 @@ CardLifetimeManager::~CardLifetimeManager()
 
 CardLifetimeMode CardLifetimeManager::mode() const { return m_mode; }
 QThread *CardLifetimeManager::ownerThread() const { return m_ownerThread; }
+
+CardLifetimeMutexProfile CardLifetimeManager::mutexProfile() const
+{
+    return m_mutex.profile();
+}
 
 std::shared_ptr<const CardLifetimeToken> CardLifetimeManager::observeLive(const void *card,
                                                                             bool originalOwner)
