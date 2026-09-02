@@ -841,9 +841,14 @@ void rendererContract()
           "slash-jink prompt list uses the same colon substitutions");
     InteractionRequest jinkPrompt;
     jinkPrompt.prompt = QStringLiteral("shoot-jink:sgs2:pierce_shoot");
-    TuiRenderer named(false, {}, playerPrompt);
+    TuiRenderer named(false, {}, [&](const QString &key) {
+        if (key == QLatin1String("sgs2"))
+            return QStringLiteral("曹孟德");
+        return translatePrompt(key);
+    });
     check(named.renderInteraction(jinkPrompt).contains(QStringLiteral("曹孟德"))
-              && named.renderInteraction(jinkPrompt).contains(QStringLiteral("闪")),
+              && named.renderInteraction(jinkPrompt).contains(QStringLiteral("闪"))
+              && !named.renderInteraction(jinkPrompt).contains(QStringLiteral("shoot-jink")),
           "interaction renderer expands askForCard prompts");
     const QString stateSnapshot = plain.renderState(state);
     const QString playersSnapshot = plain.renderPlayers(state);
