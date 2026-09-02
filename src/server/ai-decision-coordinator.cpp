@@ -7,6 +7,10 @@
 
 #include <cmath>
 #include <QJsonArray>
+#include "ai-probe.h"
+#include "skill-set-generation.h"
+#include <QElapsedTimer>
+#include <QLoggingCategory>
 
 namespace {
 
@@ -422,6 +426,31 @@ bool AiDecisionCoordinator::decide(ServerPlayer *player, const AIRequest &reques
     if (!player || !player->getAI()) return false;
     const QString callbackName = request.kind == AIRequest::Activate
         ? QStringLiteral("activate") : QStringLiteral("askForUseCard");
+    // 診斷插樁: 量測單次 AI 決策的耗時與熱點呼叫次數 (QSAN_AI_PROBE=1 才啟用)。
+    QElapsedTimer probeTimer;
+    if (AiProbe::enabled()) {
+        AiProbe::reset();
+        probeTimer.start();
+    }
+    struct ProbeGuard {
+        const QElapsedTimer &timer;
+        const ServerPlayer *who;
+        const QString &callback;
+        const AIRequest &req;
+        ~ProbeGuard()
+        {
+            if (!AiProbe::enabled()) return;
+            const qint64 ms = timer.elapsed();
+            if (ms < AiProbe::reportThresholdMs()) return;
+            qWarning().noquote() << QString("[AI_PROBE] %1 method=%2 pattern=%3 prompt=%4 elapsed=%5ms %6")
+                .arg(who ? who->objectName() : QStringLiteral("?"))
+                .arg(callback)
+                .arg(req.pattern.isEmpty() ? QStringLiteral("-") : req.pattern)
+                .arg(req.prompt.isEmpty() ? QStringLiteral("-") : req.prompt)
+                .arg(ms)
+                .arg(AiProbe::report() + QString(" skillgen=%1").arg(SkillSet::generation()));
+        }
+    } probeGuard{probeTimer, player, callbackName, request};
     const QString skillName = request.hasSkillActionContext
         ? request.skillActionContext.getActivationSkillName() : QString();
     const AiRoute route = m_room.roomRuntime()->ai().routes().routeFor(request.kind,
