@@ -257,7 +257,7 @@ public:
     }
     inline void addProperty(const char *property_name)
     {
-        propertys.insert(property_name);
+        propertys.insert(QByteArray(property_name));
     }
     // Published from the sending thread before the request frame is queued and
     // read by whichever thread parses the reply, so it is not covered by
@@ -325,7 +325,7 @@ private:
     QDateTime test_time;
     QString m_clientResponseString;
     QVariant _m_clientResponse;
-    QSet<const char *> propertys;
+    QSet<QByteArray> propertys;
     PlayerUIState m_uiState;
     QStringList m_pendingAnytimeSkills;
 
