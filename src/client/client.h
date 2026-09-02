@@ -63,7 +63,7 @@ public:
 
     // injectedSocket ownership is transferred to Client when it is non-null.
     explicit Client(QObject *parent, const QString &filename = "", ClientSocket *injectedSocket = nullptr,
-                    bool takeoverRecord = false);
+                    bool takeoverRecord = false, bool initialReconnectRequested = false);
     ~Client();
 
     // cheat functions

@@ -500,7 +500,7 @@ void MainWindow::on_actionStart_Server_triggered()
 			on_actionMinimize_to_system_tray_triggered();
 	} else {
 		Config.HostAddress = "127.0.0.1";
-		startConnection();
+		startConnectionWithReconnect(false);
 	}
 }
 
@@ -521,7 +521,7 @@ void MainWindow::startLocalConsoleGame()
 
 	server->checkUpnpAndListServer();
 	Config.HostAddress = "127.0.0.1";
-	startConnection();
+	startConnectionWithReconnect(false);
 }
 
 bool MainWindow::preflightTakeover(const QString &snapshotPath,
@@ -733,7 +733,7 @@ void MainWindow::startTakeoverGame(const QString &snapshotPath, const QString &s
 	}
 	server->checkUpnpAndListServer();
 	Config.HostAddress = QStringLiteral("127.0.0.1");
-	startConnection();
+	startConnectionWithReconnect(false);
 	QTimer::singleShot(15000, this, [this]() {
 		if (m_takeoverInProgress)
 			rollbackTakeover(tr("Takeover session did not become ready in time"));
@@ -886,7 +886,15 @@ void MainWindow::checkVersion(const QString &server_version, const QString &serv
 
 void MainWindow::startConnection()
 {
-	Client *client = new Client(this, QString(), nullptr, m_takeoverInProgress);
+	startConnectionWithReconnect(Config.value("EnableReconnection", false).toBool());
+}
+
+void MainWindow::startConnectionWithReconnect(bool reconnectRequested)
+{
+	// A newly created in-process server has no reconnect target; local callers
+	// explicitly pass false while external connections retain the saved option.
+	Client *client = new Client(this, QString(), nullptr, m_takeoverInProgress,
+		reconnectRequested);
 
 	connect(client, SIGNAL(version_checked(QString, QString, int)), SLOT(checkVersion(QString, QString, int)));
 	connect(client, SIGNAL(error_message(QString)), SLOT(networkError(QString)));

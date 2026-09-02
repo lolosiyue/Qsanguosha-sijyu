@@ -67,7 +67,7 @@ static ClientPlayer *getControlRootPlayer(ClientPlayer *player)
 }
 
 Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedSocket,
-               bool takeoverRecord)
+               bool takeoverRecord, bool initialReconnectRequested)
 	: QObject(parent), m_isDiscardActionRefusable(true), m_bossLevel(0),
 	status(NotActive), alive_count(1), swap_pile(0), add_round(0), _m_roomState(true),
 	m_client_lua(nullptr), m_original_self(nullptr),
@@ -239,7 +239,8 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 		ClientLiveSessionOptions options;
 		options.screenName = Config.UserName;
 		options.avatar = Config.UserAvatar;
-		options.reconnectRequested = Config.value("EnableReconnection").toBool();
+		options.reconnectRequested = initialReconnectRequested;
+		options.fallbackToFreshSignup = initialReconnectRequested;
 		options.automaticSignup = false;
 		options.host = Config.HostAddress;
 		options.port = Config.value("ServerPort", "9527").toString().toUShort();
