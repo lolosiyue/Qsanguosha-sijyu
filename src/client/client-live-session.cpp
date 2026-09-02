@@ -180,6 +180,13 @@ bool ClientLiveSession::consumeFrame(const QByteArray &frame, quint64 generation
             return false;
         }
         if (!reply.accepted) {
+            if (m_reconnectAttempt && m_options.fallbackToFreshSignup
+                && reply.errorCode == QLatin1String("reconnect_target_missing")) {
+                // The desktop checkbox historically means "reconnect if possible".
+                // Start a fresh connection when the server has no seat to restore.
+                beginConnection(false);
+                return true;
+            }
             fail(5, reply.errorCode.isEmpty() ? QStringLiteral("signup_rejected") : reply.errorCode,
                  reply.message);
             return false;
