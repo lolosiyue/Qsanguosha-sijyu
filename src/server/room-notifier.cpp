@@ -114,6 +114,14 @@ void RoomNotifier::sendLog(const LogMessage &log, const QList<ServerPlayer *> &p
         if (!log.arg.isEmpty()) msg += QString(" | %1").arg(log.arg);
         if (!log.arg2.isEmpty()) msg += QString(" | %1").arg(log.arg2);
         if (log.from) msg += QString(" | from: %1").arg(log.from->objectName());
+        if (!log.to.isEmpty()) {
+            QStringList names;
+            foreach (ServerPlayer *p, log.to) {
+                if (p) names << p->objectName();
+            }
+            if (!names.isEmpty()) msg += QString(" | to: %1").arg(names.join(","));
+        }
+        if (!log.card_str.isEmpty()) msg += QString(" | card: %1").arg(log.card_str);
         Server::writeHeadlessLog(msg);
     }
     if (players.isEmpty())
