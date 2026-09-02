@@ -379,6 +379,7 @@ if(QSAN_BUILD_TUI)
     )
     target_link_libraries(qsanguosha_tui_card_text_tests PRIVATE
         qsanguosha_tui_support
+        qsanguosha_engine
         Qt6::Core
     )
     qsan_add_ctest(qsanguosha_tui_card_text qsanguosha_tui_card_text_tests
@@ -400,6 +401,7 @@ if(QSAN_BUILD_TUI)
     )
     target_link_libraries(qsanguosha_tui_log_text_tests PRIVATE
         qsanguosha_tui_support
+        qsanguosha_engine
         Qt6::Core
     )
     qsan_add_ctest(qsanguosha_tui_log_text qsanguosha_tui_log_text_tests
