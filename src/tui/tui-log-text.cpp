@@ -4,6 +4,7 @@
 #include "engine.h"
 #include "protocol.h"
 #include "tui-card-text.h"
+#include "tui-renderer.h"
 
 #include <QCoreApplication>
 #include <QStringList>
@@ -61,25 +62,6 @@ QString cardsText(const QString &cardString)
     return text;
 }
 
-// The server wraps chat and system notices in the markup the desktop log box
-// renders. A text transcript must not show tags.
-QString stripMarkup(const QString &text)
-{
-    QString result;
-    result.reserve(text.size());
-    bool inTag = false;
-    for (QChar character : text) {
-        if (character == QLatin1Char('<')) {
-            inTag = true;
-        } else if (character == QLatin1Char('>')) {
-            inTag = false;
-        } else if (!inTag) {
-            result.append(character);
-        }
-    }
-    return result.trimmed();
-}
-
 } // namespace
 
 QString tuiSkillLogText(const QVariantMap &payload, const TuiPlayerNameResolver &playerName)
@@ -103,15 +85,23 @@ QString tuiSkillLogText(const QVariantMap &payload, const TuiPlayerNameResolver 
         targets << resolveName(playerName, objectName);
     }
 
-    // Desktop ClientLogBox synthesises #UseCard; lang had no template, so the
-    // transcript used to print the raw key.
-    if (type == QLatin1String("#UseCard")) {
+    // Desktop ClientLogBox synthesises the whole #UseCard family; lang carries a
+    // template for some of them and none for "#UseCard" and "#UseCard_Resp", so
+    // the transcript used to print the raw key.
+    if (type.startsWith(QLatin1String("#UseCard"))) {
         if (text == type) {
+            // The suffix is the verb, exactly as ClientLogBox reads it.
+            const QString verb = type.endsWith(QLatin1String("_Resp"))
+                ? QCoreApplication::translate("QSanguoshaTui", "打出了")
+                : type.endsWith(QLatin1String("_Recast"))
+                    ? QCoreApplication::translate("QSanguoshaTui", "重铸了")
+                    : QCoreApplication::translate("QSanguoshaTui", "使用了");
             text = targets.isEmpty()
-                ? QCoreApplication::translate("QSanguoshaTui", "%from 使用了 %card")
-                : QCoreApplication::translate("QSanguoshaTui", "%from 對 %to 使用了 %card");
+                ? QCoreApplication::translate("QSanguoshaTui", "%from %1 %card").arg(verb)
+                : QCoreApplication::translate("QSanguoshaTui", "%from 对 %to %1 %card")
+                      .arg(verb);
         } else if (!targets.isEmpty() && !text.contains(QStringLiteral("%to"))) {
-            text.append(QCoreApplication::translate("QSanguoshaTui", "，目標是 %to"));
+            text.append(QCoreApplication::translate("QSanguoshaTui", "，目标是 %to"));
         }
     }
 
@@ -134,7 +124,9 @@ QString tuiSkillLogText(const QVariantMap &payload, const TuiPlayerNameResolver 
         text.replace(QLatin1String(placeholders[i]), translateOrKeep(arguments.at(i)));
     }
 
-    return text.trimmed();
+    // lang writes several templates for the desktop log box, tags and all --
+    // "#AskForPeaches" asks for a <b><font>桃</font></b>.
+    return TuiRenderer::plainText(text);
 }
 
 QString tuiGameEventText(const QVariantMap &payload, const TuiPlayerNameResolver &playerName)
@@ -154,16 +146,16 @@ QString tuiGameEventText(const QVariantMap &payload, const TuiPlayerNameResolver
     // own, so rendering them here would print every line twice.
     switch (payload.value(QStringLiteral("event")).toInt()) {
     case QSanProtocol::S_GAME_EVENT_PLAYER_QUITDYING:
-        return text("%1 脫離瀕死").arg(who("player_name"));
+        return text("%1 脱离濒死").arg(who("player_name"));
     case QSanProtocol::S_GAME_EVENT_PLAYER_REFORM:
         return text("%1 重整").arg(who("player_name"));
     case QSanProtocol::S_GAME_EVENT_CHANGE_HERO:
         // send_log tells us the server already narrated this one.
         if (payload.value(QStringLiteral("send_log")).toBool())
             return QString();
-        return text("%1 變更武將為 %2").arg(who("player_name"), named("general_name"));
+        return text("%1 变更武将为 %2").arg(who("player_name"), named("general_name"));
     case QSanProtocol::S_GAME_EVENT_HUASHEN:
-        return text("%1 因「%2」化身為 %3")
+        return text("%1 因「%2」化身为 %3")
             .arg(who("player_name"), named("skill_name"), named("general_name"));
     default:
         // Audio, animation, avatars, hand sorting and the skill-cache events
@@ -183,7 +175,7 @@ QString tuiPresentationEventText(int command, const QString &fallbackText,
         return tuiGameEventText(payload.toMap(), playerName);
     case QSanProtocol::S_COMMAND_SPEAK: {
         const QVariantMap chat = payload.toMap();
-        const QString said = stripMarkup(chat.value(QStringLiteral("text")).toString());
+        const QString said = TuiRenderer::plainText(chat.value(QStringLiteral("text")).toString());
         if (said.isEmpty())
             return QString();
         return QStringLiteral("%1: %2").arg(
