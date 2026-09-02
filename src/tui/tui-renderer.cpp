@@ -1,5 +1,6 @@
 #include "tui-renderer.h"
 
+#include "client-prompt.h"
 #include "core/client-game-state.h"
 #include "core/interaction-model.h"
 #include "protocol.h"
@@ -87,21 +88,6 @@ QString TuiRenderer::formatPrompt(const QString &prompt,
                                   const std::function<QString(const QString &)> &translate,
                                   const std::function<QString(const QString &)> &playerName)
 {
-    if (prompt.isEmpty())
-        return prompt;
-    const QStringList texts = prompt.split(QLatin1Char(':'));
-    const QString key = texts.at(0);
-    QString result = translate ? translate(key) : key;
-    if (result == key && key.endsWith(QLatin1String("-jink"))) {
-        result = texts.size() >= 3
-            ? QStringLiteral("%src 使用了【%dest】，请打出一张【闪】")
-            : QStringLiteral("%src 对你使用【杀】，你需使用【闪】抵消之");
-    }
-    const auto slotText = [&](const QString &token) {
-        if (token.isEmpty())
-            return token;
-        return translate ? translate(token) : token;
-    };
     static const QRegularExpression sgsName(
         QStringLiteral("^sgs\\d+$"),
         QRegularExpression::UseUnicodePropertiesOption);
@@ -110,17 +96,9 @@ QString TuiRenderer::formatPrompt(const QString &prompt,
             return token;
         if (sgsName.match(token).hasMatch() && playerName)
             return playerName(token);
-        return slotText(token);
+        return translate ? translate(token) : token;
     };
-    if (texts.size() >= 5)
-        result.replace(QStringLiteral("%arg2"), slotText(texts.at(4)));
-    if (texts.size() >= 4)
-        result.replace(QStringLiteral("%arg"), slotText(texts.at(3)));
-    if (texts.size() >= 3)
-        result.replace(QStringLiteral("%dest"), slotPlayer(texts.at(2)));
-    if (texts.size() >= 2)
-        result.replace(QStringLiteral("%src"), slotPlayer(texts.at(1)));
-    return result;
+    return formatClientPrompt(prompt, translate, slotPlayer);
 }
 
 QString TuiRenderer::sanitize(const QString &text, qsizetype maximumLength)

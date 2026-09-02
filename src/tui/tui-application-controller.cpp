@@ -1,14 +1,14 @@
 #include "tui-application-controller.h"
 
 #include "card.h"
-#include "client-move-log.h"
 #include "engine.h"
 #include "protocol-interaction-request-builder.h"
 #include "protocol.h"
-#include "skill.h"
 #include "tui-card-text.h"
 #include "tui-log-text.h"
 #include "protocol/session/session-payloads.h"
+#include "tui-play-skills.h"
+#include "tui-synthesized-log.h"
 #include "tui-script-runner.h"
 
 #include <QCoreApplication>
@@ -329,109 +329,14 @@ QString TuiApplicationController::resolveCardWireText(int cardId) const
 
 void TuiApplicationController::fillPlaySkillCandidates(CardInteractionPayload *payload) const
 {
-    if (payload == nullptr || Sanguosha == nullptr)
-        return;
-    const QString self = m_core.state()->selfName();
-    if (self.isEmpty())
-        return;
-
-    QSet<QString> seenKeys;
-    QSet<QString> seenNames;
-    auto addSkill = [&](const QString &name, int instanceId) {
-        const Skill *skill = Sanguosha->getSkill(name);
-        if (skill == nullptr || skill->isHideSkill() || !skill->isVisible())
-            return;
-        if (skill->inherits("FilterSkill"))
-            return;
-        if (ViewAsSkill::parseViewAsSkill(skill) == nullptr)
-            return;
-        const QString key = QStringLiteral("%1#%2").arg(name).arg(instanceId);
-        if (seenKeys.contains(key))
-            return;
-        if (instanceId <= 0 && seenNames.contains(name))
-            return;
-        seenKeys.insert(key);
-        if (instanceId > 0)
-            seenNames.insert(name);
-        SkillActivationCandidate candidate;
-        candidate.skillName = name;
-        candidate.instanceId = instanceId;
-        payload->skillCandidates.append(candidate);
-    };
-
-    const QVariantMap instances = m_core.state()->playerValue(
-        self, QStringLiteral("skill_instances")).toMap();
-    for (auto it = instances.constBegin(); it != instances.constEnd(); ++it) {
-        const QVariantMap entry = it.value().toMap();
-        if (!entry.value(QStringLiteral("visible"), true).toBool())
-            continue;
-        addSkill(entry.value(QStringLiteral("skill_name")).toString(),
-                 entry.value(QStringLiteral("instance_id")).toInt());
-    }
-    for (const QString &name : m_core.state()->playerValue(
-             self, QStringLiteral("skills")).toStringList()) {
-        addSkill(name, 0);
-    }
-    for (int cardId : m_core.state()->cardsForPlayer(self, 1)) {
-        const Card *equip = Sanguosha->getEngineCard(cardId);
-        if (equip != nullptr)
-            addSkill(equip->objectName(), 0);
-    }
+    tuiFillPlaySkillCandidates(*m_core.state(), payload);
 }
 
 QString TuiApplicationController::resolveSkillCardWireText(const QString &skillName,
     int instanceId, const QList<int> &subcardIds, QString *error) const
 {
-    if (Sanguosha == nullptr) {
-        if (error != nullptr)
-            *error = tr("引擎尚未載入");
-        return QString();
-    }
-    const ViewAsSkill *viewAs = Sanguosha->getViewAsSkill(skillName);
-    if (viewAs == nullptr) {
-        if (error != nullptr)
-            *error = tr("沒有這個轉換技");
-        return QString();
-    }
-
-    const Card *card = nullptr;
-    if (const auto *v2 = dynamic_cast<const ViewAsSkillV2 *>(viewAs)) {
-        ActiveSkillRequest request;
-        request.reason = CardUseStruct::CARD_USE_REASON_PLAY;
-        request.selectedCardIds = subcardIds;
-        request.activationRef = SkillInstanceRef(m_core.state()->selfName(),
-            SkillInstanceKey(skillName, instanceId));
-        card = v2->createCard(request);
-    } else if (const auto *zero = qobject_cast<const ZeroCardViewAsSkill *>(viewAs)) {
-        card = zero->viewAs();
-    } else {
-        QList<const Card *> selected;
-        for (int cardId : subcardIds) {
-            const Card *subcard = Sanguosha->getEngineCard(cardId);
-            if (subcard == nullptr) {
-                if (error != nullptr)
-                    *error = tr("沒有這張牌");
-                return QString();
-            }
-            selected.append(subcard);
-        }
-        card = viewAs->viewAs(selected);
-    }
-    if (card == nullptr) {
-        if (error != nullptr) {
-            *error = subcardIds.isEmpty()
-                ? tr("此技能需要選手牌")
-                : tr("這些牌不能發動該技能");
-        }
-        return QString();
-    }
-
-    Card *mutableCard = const_cast<Card *>(card);
-    mutableCard->setActivationSkill(skillName, instanceId);
-    const QString text = card->toString();
-    if (card->isVirtualCard() && card->parent() == nullptr)
-        mutableCard->deleteLater();
-    return text;
+    return tuiResolveSkillCardWireText(m_core.state()->selfName(), skillName, instanceId,
+                                       subcardIds, error);
 }
 
 QString TuiApplicationController::resolveCardDisplayText(int cardId) const
@@ -506,64 +411,13 @@ QString TuiApplicationController::resolvePlayerName(const QString &objectName) c
 
 QString TuiApplicationController::resolveLogPlayerName(const QString &objectName) const
 {
-    const QVariantMap player = m_core.state()->player(objectName);
-    QString general = player.value(QStringLiteral("general")).toString();
-    if (general.isEmpty())
-        general = player.value(QStringLiteral("avatar")).toString();
-    if (general.isEmpty())
-        return objectName;
-    QString name = resolveNameText(general);
-    const QString deputy = player.value(QStringLiteral("deputy_general")).toString();
-    if (!deputy.isEmpty())
-        name += QLatin1Char('/') + resolveNameText(deputy);
-    return name;
+    return tuiResolveLogPlayerName(*m_core.state(), objectName);
 }
 
 void TuiApplicationController::appendSynthesizedLogs(const ProtocolMessage &message)
 {
-    if (message.type != ProtocolMessageType::Notification)
-        return;
-
-    if (message.command == S_COMMAND_GAME_START
-        || (message.command == S_COMMAND_STATE_SYNC
-            && message.payload.toMap().value(QStringLiteral("phase")).toString()
-                == QLatin1String("begin"))) {
-        m_renPile.clear();
-    }
-
-    QList<ClientLogRecord> records;
-    if (message.command == S_COMMAND_GET_CARD || message.command == S_COMMAND_LOSE_CARD) {
-        records = synthesizeCardMovementLogs(message.command, message.payload.toMap(),
-                                             &m_renPile);
-    } else if (message.command == S_COMMAND_CHANGE_HP) {
-        const QVariantMap payload = message.payload.toMap();
-        const QString who = payload.value(QStringLiteral("player_name")).toString();
-        records = synthesizeHpChangeLogs(
-            payload,
-            m_core.state()->playerValue(who, QStringLiteral("hp")).toInt(),
-            m_core.state()->playerValue(who, QStringLiteral("max_hp")).toInt());
-    } else if (message.command == S_COMMAND_CHANGE_MAXHP) {
-        const QVariantMap payload = message.payload.toMap();
-        const QString who = payload.value(QStringLiteral("player_name")).toString();
-        records = synthesizeMaxHpChangeLogs(
-            who,
-            m_core.state()->playerValue(who, QStringLiteral("hp")).toInt(),
-            m_core.state()->playerValue(who, QStringLiteral("max_hp")).toInt());
-    } else {
-        return;
-    }
-
-    const TuiPlayerNameResolver names = [this](const QString &objectName) {
-        return resolveLogPlayerName(objectName);
-    };
-    for (const ClientLogRecord &record : records) {
-        const QVariantMap map = record.toSkillLogMap();
-        const QString line = tuiSkillLogText(map, names);
-        if (line.isEmpty())
-            continue;
-        m_core.state()->appendPresentationEvent(S_COMMAND_LOG_SKILL, line, map);
-        writeOutput(line);
-    }
+    tuiAppendSynthesizedLogs(m_core.state(), &m_renPile, message,
+        [this](const QString &line) { writeOutput(line); });
 }
 
 QString TuiApplicationController::presentationText(int command, const QString &fallbackText,

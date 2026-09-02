@@ -190,9 +190,6 @@ else()
 endif()
 
 set(QSAN_ENGINE_QT_LIBS Qt6::Core Qt6::Network)
-if(QSAN_ENABLE_WEBSOCKETS)
-    list(APPEND QSAN_ENGINE_QT_LIBS Qt6::WebSockets)
-endif()
 
 find_program(QSAN_SWIG_EXECUTABLE
     NAMES swig swig.exe
@@ -408,6 +405,8 @@ add_library(qsanguosha_engine STATIC
     src/util/nativesocket.cpp
     src/util/nativesocket.h
     src/util/socket.h
+    src/util/websocket-gateway.cpp
+    src/util/websocket-gateway.h
     src/util/game-snapshot.cpp
     src/util/game-snapshot.h
     src/util/crashhandler.cpp
@@ -483,14 +482,42 @@ target_precompile_headers(qsanguosha_engine PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src/core/engine-pch.h
 )
 
+target_link_libraries(qsanguosha_engine PUBLIC ${QSAN_ENGINE_QT_LIBS})
+
 if(QSAN_ENABLE_WEBSOCKETS)
-    target_sources(qsanguosha_engine PRIVATE
+    add_library(qsanguosha_websocket STATIC
         src/util/websocketsocket.cpp
         src/util/websocketsocket.h
     )
+    set_target_properties(qsanguosha_websocket PROPERTIES
+        AUTOMOC ON
+        POSITION_INDEPENDENT_CODE ON
+    )
+    target_include_directories(qsanguosha_websocket PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+    )
+    target_compile_definitions(qsanguosha_websocket PRIVATE
+        QSAN_ENGINE_BUILD
+        QSAN_SERVER_CORE_ONLY
+    )
+    target_link_libraries(qsanguosha_websocket PUBLIC
+        qsanguosha_engine
+        Qt6::WebSockets
+    )
+    if(MSVC)
+        target_compile_definitions(qsanguosha_websocket PRIVATE WIN64 _CRT_SECURE_NO_WARNINGS)
+        target_compile_options(qsanguosha_websocket PRIVATE /utf-8 /bigobj /MP8)
+    endif()
 endif()
 
-target_link_libraries(qsanguosha_engine PUBLIC ${QSAN_ENGINE_QT_LIBS})
+function(qsan_link_websocket_gateway target)
+    if(QSAN_ENABLE_WEBSOCKETS)
+        target_link_libraries(${target} PRIVATE qsanguosha_websocket)
+    endif()
+endfunction()
 
 if(WIN32)
     target_link_libraries(qsanguosha_engine PRIVATE Ws2_32 IPHLPAPI)
@@ -529,6 +556,8 @@ set(QSAN_CLIENT_CORE_SOURCES
     src/client/core/custom-interaction-registry.h
     src/client/core/client-move-log.cpp
     src/client/core/client-move-log.h
+    src/client/core/client-prompt.cpp
+    src/client/core/client-prompt.h
 )
 
 add_library(qsanguosha_client_core STATIC ${QSAN_CLIENT_CORE_SOURCES})
@@ -591,6 +620,10 @@ if(QSAN_BUILD_TUI)
         src/tui/tui-command.h
         src/tui/tui-log-text.cpp
         src/tui/tui-log-text.h
+        src/tui/tui-play-skills.cpp
+        src/tui/tui-play-skills.h
+        src/tui/tui-synthesized-log.cpp
+        src/tui/tui-synthesized-log.h
         src/tui/tui-input.cpp
         src/tui/tui-input.h
         src/tui/tui-interaction-view.cpp
@@ -662,6 +695,7 @@ if(QSAN_BUILD_TUI)
         "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>"
         ${QSAN_ENGINE_QT_LIBS}
     )
+    # TUI is a TCP client. Do not qsan_link_websocket_gateway() here.
     if(WIN32)
         # crash handler (crashhandler.cpp, Release only) needs dbghelp
         target_link_libraries(qsanguosha_tui PRIVATE
@@ -757,6 +791,7 @@ if(QSAN_BUILD_SERVER)
         "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>"
         ${QSAN_ENGINE_QT_LIBS}
     )
+    qsan_link_websocket_gateway(qsanguosha_server)
     if(WIN32)
         target_link_libraries(qsanguosha_server PRIVATE Ws2_32 IPHLPAPI)
         # crash handler(crashhandler.cpp, Release 啟用)需要
@@ -1225,6 +1260,7 @@ if(QSAN_BUILD_GUI)
             "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>"
         )
     endif()
+    qsan_link_websocket_gateway(${QSAN_GUI_TARGET})
     if(NOT QSAN_BUILD_XP_LEGACY)
         target_link_libraries(${QSAN_GUI_TARGET} PRIVATE
             Qt6::Multimedia

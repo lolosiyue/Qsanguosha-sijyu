@@ -1,4 +1,5 @@
 #include "websocketsocket.h"
+#include "websocket-gateway.h"
 
 #include "protocol/protocol-runtime.h"
 #include "settings.h"
@@ -201,4 +202,18 @@ bool WebSocketClientSocket::isValidProtocolFrame(const QByteArray &message)
         && message.size() <= QSanProtocol::ProtocolFrameBuffer::MaxFrameSize
         && !message.contains('\n')
         && !message.contains('\r');
+}
+
+namespace {
+
+ServerSocket *makeWebSocketServer()
+{
+    return new WebSocketServerSocket;
+}
+
+} // namespace
+
+void qsanLinkWebSocketGateway()
+{
+    qsanSetWebSocketServerFactory(&makeWebSocketServer);
 }

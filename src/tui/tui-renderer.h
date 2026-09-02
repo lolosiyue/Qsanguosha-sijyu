@@ -18,7 +18,7 @@ public:
                          NameResolver nameResolver = {});
 
     static QString sanitize(const QString &text, qsizetype maximumLength = 4096);
-    // askForCard-style wire prompts: key:%src:%dest:%arg:%arg2, same as Client::formatPromptList.
+    // askForCard-style wire prompts: key:%src:%dest:%arg:%arg2, via formatClientPromptList.
     static QString formatPrompt(const QString &prompt,
                                 const std::function<QString(const QString &)> &translate,
                                 const std::function<QString(const QString &)> &playerName = {});

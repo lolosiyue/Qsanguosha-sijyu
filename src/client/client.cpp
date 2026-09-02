@@ -1,5 +1,6 @@
 #include "client.h"
 #include "client-core.h"
+#include "client-prompt.h"
 #include "client-live-session.h"
 #include "client-game-state-reducer.h"
 #include "desktop-interaction-view.h"
@@ -1563,20 +1564,9 @@ void Client::onPlayerInvokeSkill(bool invoke)
 
 QString Client::formatPromptList(const QStringList &texts)
 {
-	QString prompt = Sanguosha->translate(texts.at(0));
-	if (texts.length() >= 5)
-		prompt.replace("%arg2", Sanguosha->translate(texts.at(4)));
-
-	if (texts.length() >= 4)
-		prompt.replace("%arg", Sanguosha->translate(texts.at(3)));
-
-	if (texts.length() >= 3)
-		prompt.replace("%dest", getPlayerName(texts.at(2)));
-
-	if (texts.length() >= 2)
-		prompt.replace("%src", getPlayerName(texts.at(1)));
-
-	return prompt;
+	return formatClientPromptList(texts,
+		[](const QString &key) { return Sanguosha->translate(key); },
+		[this](const QString &name) { return getPlayerName(name); });
 }
 
 QString Client::setPromptList(const QStringList &texts)
