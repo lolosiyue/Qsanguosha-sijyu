@@ -67,7 +67,7 @@ debug\qsanguosha_tui.exe --host 127.0.0.1 --port 9527 `
 | `--name <name>`／`--avatar <general>` | typed signup 資料 |
 | `--reconnect` | 初次 signup 即請求接管既有玩家 |
 | `--plain`／`--no-color` | 關閉 ANSI；非 TTY 或 `NO_COLOR` 亦自動關閉 |
-| `--language <locale>` | 設定 Qt locale，TUI 固定文字預設繁體中文 |
+| `--language <locale>` | 設定 Qt locale，TUI 固定文字預設簡體中文 |
 | `--log-file <path>` | 寫入已清理的語意輸出，不 dump raw/private payload |
 | `--script <path>` | 使用與真人相同的 input/controller pipeline |
 | `--asset-root <directory>` | 明確指定 runtime data root |
@@ -119,7 +119,7 @@ type 或 legacy `qml_path` 會 fail closed，不讀取 QML path。
 
 牌名、武將、勢力、模式及技能顯示使用 Engine translation；wire card text 另以
 精確 `Card::toString()` 保留，顯示翻譯不會改動 protocol response。所有固定文字
-經 `QCoreApplication::translate("QSanguoshaTui", ...)`，缺翻譯時安全退回繁體中文
+經 `QCoreApplication::translate("QSanguoshaTui", ...)`，缺翻譯時安全退回簡體中文
 source text／object name。
 
 ## State、輸入與安全

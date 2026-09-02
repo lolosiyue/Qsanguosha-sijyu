@@ -72,13 +72,13 @@ QString tuiResolveSkillCardWireText(const QString &selfName, const QString &skil
 {
     if (Sanguosha == nullptr) {
         if (error != nullptr)
-            *error = tr("引擎尚未載入");
+            *error = tr("引擎尚未载入");
         return QString();
     }
     const ViewAsSkill *viewAs = Sanguosha->getViewAsSkill(skillName);
     if (viewAs == nullptr) {
         if (error != nullptr)
-            *error = tr("沒有這個轉換技");
+            *error = tr("没有这个转换技");
         return QString();
     }
 
@@ -98,7 +98,7 @@ QString tuiResolveSkillCardWireText(const QString &selfName, const QString &skil
             const Card *subcard = Sanguosha->getEngineCard(cardId);
             if (subcard == nullptr) {
                 if (error != nullptr)
-                    *error = tr("沒有這張牌");
+                    *error = tr("没有这张牌");
                 return QString();
             }
             selected.append(subcard);
@@ -108,8 +108,8 @@ QString tuiResolveSkillCardWireText(const QString &selfName, const QString &skil
     if (card == nullptr) {
         if (error != nullptr) {
             *error = subcardIds.isEmpty()
-                ? tr("此技能需要選手牌")
-                : tr("這些牌不能發動該技能");
+                ? tr("此技能需要选手牌")
+                : tr("这些牌不能发动该技能");
         }
         return QString();
     }

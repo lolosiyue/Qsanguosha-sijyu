@@ -86,16 +86,18 @@ QString canonicalRole(const QString &token, const QStringList &roles)
         return trimmed;
     if (roles.contains(trimmed))
         return trimmed;
+    // Typed by the player, so both scripts are accepted whichever one the
+    // interface itself is written in.
     static const QHash<QString, QString> aliases{
         {QStringLiteral("主公"), QStringLiteral("lord")},
         {QStringLiteral("地主"), QStringLiteral("lord")},
         {QStringLiteral("忠臣"), QStringLiteral("loyalist")},
-        {QStringLiteral("反賊"), QStringLiteral("rebel")},
         {QStringLiteral("反贼"), QStringLiteral("rebel")},
-        {QStringLiteral("農民"), QStringLiteral("rebel")},
+        {QStringLiteral("反賊"), QStringLiteral("rebel")},
         {QStringLiteral("农民"), QStringLiteral("rebel")},
-        {QStringLiteral("內奸"), QStringLiteral("renegade")},
-        {QStringLiteral("内奸"), QStringLiteral("renegade")}};
+        {QStringLiteral("農民"), QStringLiteral("rebel")},
+        {QStringLiteral("内奸"), QStringLiteral("renegade")},
+        {QStringLiteral("內奸"), QStringLiteral("renegade")}};
     const QString mapped = aliases.value(trimmed, trimmed.toLower());
     if (roles.isEmpty() || roles.contains(mapped))
         return mapped;
@@ -110,7 +112,7 @@ QString canonicalPlayer(const QString &token, const QStringList &players, QStrin
         if (index >= 0 && index < players.size())
             return players.at(index);
         if (error != nullptr)
-            *error = tr("玩家編號 '%1' 超出範圍").arg(token);
+            *error = tr("玩家编号 '%1' 超出范围").arg(token);
         return QString();
     }
     if (players.isEmpty() || players.contains(token))
@@ -130,7 +132,7 @@ bool parseActivationPrefix(QString *cardPart, QString *skillName,
     const qsizetype separator = cardPart->indexOf(QLatin1Char(':'));
     if (separator < 7) {
         if (error != nullptr)
-            *error = tr("技能牌格式必須是 'skill <名稱>[#實例]: <牌>'");
+            *error = tr("技能牌格式必须是 'skill <名称>[#实例]: <牌>'");
         return false;
     }
     QString activation = cardPart->mid(6, separator - 6).trimmed();
@@ -142,14 +144,14 @@ bool parseActivationPrefix(QString *cardPart, QString *skillName,
         instanceId = activation.mid(hash + 1).toInt(&ok);
         if (!ok || instanceId <= 0) {
             if (error != nullptr)
-                *error = tr("啟用技能實例必須是正整數");
+                *error = tr("启用技能实例必须是正整数");
             return false;
         }
         activation.truncate(hash);
     }
     if (activation.isEmpty() || cardPart->isEmpty()) {
         if (error != nullptr)
-            *error = tr("必須提供啟用技能與牌運算式");
+            *error = tr("必须提供启用技能与牌运算式");
         return false;
     }
     if (skillName != nullptr)
@@ -184,15 +186,30 @@ void TuiInteractionView::finishRequest(const InteractionRequest &request,
     if (request.type == InteractionType::ChooseRole)
         return;
     if (m_writer)
-        m_writer(tr("請求 %1 的作答已接受").arg(request.requestId));
+        m_writer(tr("请求 %1 的作答已接受").arg(request.requestId));
+}
+
+QString TuiInteractionView::cancelReasonText(InteractionCancelReason reason)
+{
+    switch (reason) {
+    case InteractionCancelReason::Superseded:
+        return tr("伺服器已改问别的事");
+    case InteractionCancelReason::Expired:
+        return tr("已逾时");
+    case InteractionCancelReason::Abandoned:
+        return tr("已放弃");
+    case InteractionCancelReason::Disconnected:
+        return tr("连线中断或本局结束");
+    }
+    return tr("已取消");
 }
 
 void TuiInteractionView::cancelRequest(const InteractionRequest &request,
                                        InteractionCancelReason reason)
 {
     if (m_writer) {
-        m_writer(tr("請求 %1 已取消：%2")
-            .arg(request.requestId).arg(interactionCancelReasonName(reason)));
+        m_writer(tr("请求 %1 已取消：%2")
+            .arg(request.requestId).arg(cancelReasonText(reason)));
     }
 }
 
@@ -200,43 +217,43 @@ QString TuiInteractionView::rejectionText(const InteractionValidation &validatio
 {
     switch (validation.rejection) {
     case InteractionRejection::None:
-        return tr("作答無效");
+        return tr("作答无效");
     case InteractionRejection::NoActiveRequest:
-        return tr("目前沒有等待作答的互動");
+        return tr("目前没有等待作答的互动");
     case InteractionRejection::RequestIdMismatch:
-        return tr("這個作答不屬於目前的互動");
+        return tr("这个作答不属于目前的互动");
     case InteractionRejection::AlreadyCompleted:
-        return tr("這個互動已經作答過了");
+        return tr("这个互动已经作答过了");
     case InteractionRejection::RequestCancelled:
-        return tr("這個互動已被取消");
+        return tr("这个互动已被取消");
     case InteractionRejection::RequestExpired:
-        return tr("這個互動已逾時");
+        return tr("这个互动已逾时");
     case InteractionRejection::KindMismatch:
-        return tr("作答的形式與這個互動不符");
+        return tr("作答的形式与这个互动不符");
     case InteractionRejection::UnknownOption:
-        return tr("沒有這個選項");
+        return tr("没有这个选项");
     case InteractionRejection::DisabledOption:
-        return tr("這個選項目前不可選");
+        return tr("这个选项目前不可选");
     case InteractionRejection::UnknownPlayer:
-        return tr("沒有這名玩家");
+        return tr("没有这名玩家");
     case InteractionRejection::DuplicatePlayer:
-        return tr("同一名玩家不可重複選擇");
+        return tr("同一名玩家不可重复选择");
     case InteractionRejection::UnknownCard:
-        return tr("沒有這張牌");
+        return tr("没有这张牌");
     case InteractionRejection::DisabledCard:
-        return tr("這張牌目前不可選");
+        return tr("这张牌目前不可选");
     case InteractionRejection::DuplicateCard:
-        return tr("同一張牌不可重複選擇");
+        return tr("同一张牌不可重复选择");
     case InteractionRejection::UnknownGeneral:
-        return tr("沒有這名武將");
+        return tr("没有这名武将");
     case InteractionRejection::DuplicateGeneral:
-        return tr("同一名武將不可重複選擇");
+        return tr("同一名武将不可重复选择");
     case InteractionRejection::SelectionCountOutOfRange:
-        return tr("選擇的數量不符要求");
+        return tr("选择的数量不符要求");
     case InteractionRejection::NotCancelable:
-        return tr("這個互動不可取消");
+        return tr("这个互动不可取消");
     }
-    return tr("作答無效");
+    return tr("作答无效");
 }
 
 void TuiInteractionView::rejectResponse(const InteractionRequest &request,
@@ -246,8 +263,8 @@ void TuiInteractionView::rejectResponse(const InteractionRequest &request,
         return;
     const QString detail = TuiRenderer::sanitize(validation.detail, 512);
     m_writer(detail.isEmpty()
-        ? tr("作答無效：%1").arg(rejectionText(validation))
-        : tr("作答無效：%1（%2）").arg(rejectionText(validation), detail));
+        ? tr("作答无效：%1").arg(rejectionText(validation))
+        : tr("作答无效：%1（%2）").arg(rejectionText(validation), detail));
     // The request is still open, so show it again rather than leaving the
     // player staring at an error with no prompt.
     presentRequest(request);
@@ -268,13 +285,13 @@ QList<int> TuiInteractionView::parseIndexes(const QString &text, int size,
             lastOk = firstOk;
         if (!firstOk || !lastOk || first < 1 || last < first || last > size) {
             if (error != nullptr)
-                *error = tr("選擇索引 '%1' 超出範圍").arg(token);
+                *error = tr("选择索引 '%1' 超出范围").arg(token);
             return {};
         }
         for (int index = first; index <= last; ++index) {
             if (seen.contains(index)) {
                 if (error != nullptr)
-                    *error = tr("選擇索引 %1 重複").arg(index);
+                    *error = tr("选择索引 %1 重复").arg(index);
                 return {};
             }
             seen.insert(index);
@@ -282,7 +299,7 @@ QList<int> TuiInteractionView::parseIndexes(const QString &text, int size,
         }
     }
     if (result.isEmpty() && error != nullptr)
-        *error = tr("選擇不可為空");
+        *error = tr("选择不可为空");
     return result;
 }
 
@@ -298,13 +315,13 @@ QStringList TuiInteractionView::parseNames(const QString &text,
             ? values.at(index) : token;
         if (!values.contains(value) || result.contains(value)) {
             if (error != nullptr)
-                *error = tr("玩家 '%1' 不可用或重複").arg(token);
+                *error = tr("玩家 '%1' 不可用或重复").arg(token);
             return {};
         }
         result.append(value);
     }
     if (result.isEmpty() && error != nullptr)
-        *error = tr("玩家選擇不可為空");
+        *error = tr("玩家选择不可为空");
     return result;
 }
 
@@ -315,7 +332,7 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
         error->clear();
     if (response == nullptr) {
         if (error != nullptr)
-            *error = tr("互動回覆輸出不可為 null");
+            *error = tr("互动回复输出不可为 null");
         return false;
     }
     const QString text = line.trimmed();
@@ -323,6 +340,7 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
         || text.compare(QStringLiteral("c"), Qt::CaseInsensitive) == 0
         || text == QLatin1String("/cancel")
         || text.compare(QStringLiteral("pass"), Qt::CaseInsensitive) == 0
+        || text == QStringLiteral("过")
         || text == QStringLiteral("過")
         || text == QStringLiteral("不出")) {
         *response = InteractionResponse::makeCancel(request.requestId);
@@ -396,7 +414,7 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
                 }
                 if (skillIndex >= 0) {
                     if (error != nullptr)
-                        *error = tr("一次只能發動一個技能");
+                        *error = tr("一次只能发动一个技能");
                     return false;
                 }
                 skillIndex = cardIndex - candidates.size();
@@ -408,7 +426,7 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
                     subcardIds.append(candidates.at(cardIndex));
                 if (!m_skillCardResolver) {
                     if (error != nullptr)
-                        *error = tr("無法組技能牌");
+                        *error = tr("无法组技能牌");
                     return false;
                 }
                 const QString cardText = m_skillCardResolver(skill.skillName,
@@ -444,12 +462,12 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
             }
             if (numericOnly && candidates.isEmpty()) {
                 if (error != nullptr)
-                    *error = tr("數字牌索引需要已授權候選清單");
+                    *error = tr("数字牌索引需要已授权候选清单");
                 return false;
             }
             if (!cardTextAllowed(request) && !cardPart.isEmpty()) {
                 if (error != nullptr)
-                    *error = tr("此請求不允許語意牌字串");
+                    *error = tr("此请求不允许语意牌字串");
                 return false;
             }
             answer->cardText = cardPart;
@@ -464,7 +482,7 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
                 QSet<QString> unique(targets.begin(), targets.end());
                 if (targets.isEmpty() || unique.size() != targets.size()) {
                     if (error != nullptr)
-                        *error = tr("目標選擇為空或重複");
+                        *error = tr("目标选择为空或重复");
                     return false;
                 }
             } else {
@@ -475,7 +493,7 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
             for (const QString &target : targets) {
                 if (answer->targets.contains(target)) {
                     if (error != nullptr)
-                        *error = tr("目標 '%1' 重複").arg(target);
+                        *error = tr("目标 '%1' 重复").arg(target);
                     return false;
                 }
                 answer->targets.append(target);
@@ -500,7 +518,7 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
             const qsizetype equals = token.indexOf(QLatin1Char('='));
             if (equals <= 0 || equals == token.size() - 1) {
                 if (error != nullptr)
-                    *error = tr("身分分配必須使用 玩家=身分，例如 1=主公");
+                    *error = tr("身分分配必须使用 玩家=身分，例如 1=主公");
                 return false;
             }
             const QString player = canonicalPlayer(token.left(equals), players, error);
@@ -509,7 +527,7 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
             const QString role = canonicalRole(token.mid(equals + 1), roles);
             if (names.contains(player)) {
                 if (error != nullptr)
-                    *error = tr("玩家 '%1' 重複指定").arg(token.left(equals));
+                    *error = tr("玩家 '%1' 重复指定").arg(token.left(equals));
                 return false;
             }
             names.append(player);
@@ -517,7 +535,7 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
         }
         if (names.isEmpty()) {
             if (error != nullptr)
-                *error = tr("必須為每位玩家指定身分");
+                *error = tr("必须为每位玩家指定身分");
             return false;
         }
         *response = InteractionResponse::makeAssignment(request.requestId, names, values);
@@ -527,7 +545,7 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
         const QStringList halves = text.split(QLatin1Char('|'));
         if (halves.size() != 2) {
             if (error != nullptr)
-                *error = tr("排列必須使用 '<頂部> | <底部>'");
+                *error = tr("排列必须使用 '<顶部> | <底部>'");
             return false;
         }
         const QList<int> cards = requestCards(request);
@@ -552,7 +570,7 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
         const QStringList halves = text.split(QStringLiteral("->"));
         if (halves.size() != 2) {
             if (error != nullptr)
-                *error = tr("分配必須使用 'cards <索引> -> <玩家>'");
+                *error = tr("分配必须使用 'cards <索引> -> <玩家>'");
             return false;
         }
         QString selection = halves.first().trimmed();
@@ -588,7 +606,7 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
         const QJsonDocument document = QJsonDocument::fromJson(text.toUtf8(), &parseError);
         if (parseError.error != QJsonParseError::NoError || document.isNull()) {
             if (error != nullptr)
-                *error = tr("自訂作答必須是有效 JSON");
+                *error = tr("自订作答必须是有效 JSON");
             return false;
         }
         const auto *custom = request.payloadAs<CustomInteractionPayload>();
@@ -601,7 +619,7 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
     }
     case InteractionResponseShape::None:
         if (error != nullptr)
-            *error = tr("互動沒有回覆 schema");
+            *error = tr("互动没有回复 schema");
         return false;
     }
     response->command = request.command;

@@ -5,6 +5,7 @@
 #include "engine.h"
 #include "protocol.h"
 #include "tui-card-text.h"
+#include "tui-renderer.h"
 
 #include <QStringList>
 
@@ -24,23 +25,6 @@ QString resolveName(const TuiPlayerNameResolver &playerName, const QString &obje
         return QString();
     const QString resolved = playerName ? playerName(objectName) : QString();
     return resolved.isEmpty() ? objectName : resolved;
-}
-
-QString stripMarkup(const QString &text)
-{
-    QString result;
-    result.reserve(text.size());
-    bool inTag = false;
-    for (QChar character : text) {
-        if (character == QLatin1Char('<')) {
-            inTag = true;
-        } else if (character == QLatin1Char('>')) {
-            inTag = false;
-        } else if (!inTag) {
-            result.append(character);
-        }
-    }
-    return result.trimmed();
 }
 
 ClientLogFormatStyle tuiLogStyle(const TuiPlayerNameResolver &playerName)
@@ -90,7 +74,10 @@ ClientLogFormatRequest requestFromSkillLog(const QVariantMap &payload)
 
 QString tuiSkillLogText(const QVariantMap &payload, const TuiPlayerNameResolver &playerName)
 {
-    return formatClientLog(requestFromSkillLog(payload), tuiLogStyle(playerName));
+    // lang writes several templates for the desktop log box, tags and all --
+    // "#AskForPeaches" asks for a <b><font>桃</font></b>.
+    return TuiRenderer::plainText(
+        formatClientLog(requestFromSkillLog(payload), tuiLogStyle(playerName)));
 }
 
 QString tuiGameEventText(const QVariantMap &payload, const TuiPlayerNameResolver &playerName)
@@ -118,7 +105,7 @@ QString tuiGameEventText(const QVariantMap &payload, const TuiPlayerNameResolver
     default:
         return QString();
     }
-    return formatClientLog(request, tuiLogStyle(playerName));
+    return TuiRenderer::plainText(formatClientLog(request, tuiLogStyle(playerName)));
 }
 
 QString tuiPresentationEventText(int command, const QString &fallbackText,
@@ -132,7 +119,7 @@ QString tuiPresentationEventText(int command, const QString &fallbackText,
         return tuiGameEventText(payload.toMap(), playerName);
     case QSanProtocol::S_COMMAND_SPEAK: {
         const QVariantMap chat = payload.toMap();
-        const QString said = stripMarkup(chat.value(QStringLiteral("text")).toString());
+        const QString said = TuiRenderer::plainText(chat.value(QStringLiteral("text")).toString());
         if (said.isEmpty())
             return QString();
         return QStringLiteral("%1: %2").arg(
