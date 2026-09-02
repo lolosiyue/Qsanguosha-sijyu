@@ -25,6 +25,7 @@ struct ClientLiveSessionOptions
     QString screenName = QStringLiteral("TUI");
     QString avatar = QStringLiteral("caocao");
     bool reconnectRequested = false;
+    bool fallbackToFreshSignup = false;
     bool automaticSignup = true;
     int connectTimeoutMs = 10000;
     int handshakeTimeoutMs = 30000;
