@@ -66,7 +66,7 @@ private:
     bool screenNameInUse(const QString &screenName) const;
 
     ServerSocket *server;
-    ServerSocket *websocketServer;
+    ServerSocket *websocketServer = nullptr;
     Room *current;
     QSet<Room *> rooms;
     QList<QPointer<Room> > m_disposingRooms;

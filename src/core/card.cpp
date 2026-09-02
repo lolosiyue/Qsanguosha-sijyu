@@ -29,6 +29,14 @@ const Card::Suit Card::AllSuits[4] = {
 
 static unsigned int cardId = 0;
 
+static const Card *roomOrEngineCard(int id)
+{
+    if (Sanguosha == nullptr)
+        return nullptr;
+    const Card *card = Sanguosha->getCard(id);
+    return card != nullptr ? card : Sanguosha->getEngineCard(id);
+}
+
 static void restoreSkillExecutionIdentity(Room *room, qint64 executionID,
                                           SkillContext &context, ServerPlayer *acceptedInvoker)
 {
@@ -166,8 +174,11 @@ int Card::getNumber() const
 		}
 	}*/
 	if(m_number>0) return m_number;
-	if(isVirtualCard()&&subcards.size()==1)
-		return Sanguosha->getCard(subcards.first())->getNumber();
+	if(isVirtualCard()&&subcards.size()==1) {
+		const Card *sub = roomOrEngineCard(subcards.first());
+		if (sub != nullptr)
+			return sub->getNumber();
+	}
 	if(objectName().contains("_zhizhe_")){
 		const Card*zhizhe = Sanguosha->getCard(m_id);
 		if(zhizhe) return zhizhe->getNumber();
@@ -206,10 +217,14 @@ Card::Suit Card::getSuit() const
 	if(m_suit>-1&&m_suit<6) return m_suit;
 
 	if(isVirtualCard()&&subcards.length()>0){
-		if(subcards.length()==1) return Sanguosha->getCard(subcards.first())->getSuit();
-		Color color = Sanguosha->getCard(subcards.first())->getColor();
+		const Card *first = roomOrEngineCard(subcards.first());
+		if (first == nullptr)
+			return NoSuit;
+		if(subcards.length()==1) return first->getSuit();
+		Color color = first->getColor();
 		for (int i = 1; i < subcards.length(); i++) {
-			if (color!=Sanguosha->getCard(subcards[i])->getColor())
+			const Card *sub = roomOrEngineCard(subcards[i]);
+			if (sub == nullptr || color != sub->getColor())
 				return NoSuit;
 		}
 		if(color == Red) return NoSuitRed;

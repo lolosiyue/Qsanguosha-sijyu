@@ -29,10 +29,12 @@ struct ServerHelloPayload
 
 struct SignupRequestPayload
 {
-    static constexpr int SchemaVersion = 1;
+    static constexpr int SchemaVersion = 2;
     bool reconnectRequested = false;
     QString screenName;
     QString avatar;
+    bool hasRoomId = false;
+    int roomId = 0;
 
     QVariantMap toVariant() const;
     static bool parse(const QVariant &value, SignupRequestPayload *payload,
@@ -41,10 +43,11 @@ struct SignupRequestPayload
 
 struct SignupReplyPayload
 {
-    static constexpr int SchemaVersion = 1;
+    static constexpr int SchemaVersion = 2;
     bool accepted = false;
     bool reconnected = false;
     QString playerId;
+    int roomId = 0;
     QString errorCode;
     QString message;
 

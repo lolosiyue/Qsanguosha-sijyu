@@ -77,13 +77,19 @@ over-limit input closes the connection. CRLF is accepted at the TCP
 framing boundary.
 
 The dedicated server and GUI embedded server also listen for WebSocket
-clients on a separate port (default 9528). Each WebSocket text frame
+clients on a separate port (default 9528), except the Windows XP Qt 5.6.3
+legacy build, which is TCP-only. Each WebSocket text frame
 carries one encoded Protocol V2 JSON object; the gateway does not wrap
 the object in a newline. Binary frames, empty frames, frames larger than
 65,535 UTF-8 bytes, and frames that contain CR or LF are rejected. JSON
 payload nesting is capped at 128.
 Non-finite numbers, unsupported Qt metatypes, and integers outside the JSON-safe
 payload range are rejected.
+
+`SignupRequestPayload` is schema 2. Native GUI and TUI omit `room_id` and join
+`current` as before. Schema 1 without `room_id` remains accepted. A present
+`room_id` must be a non-negative integer and selects that waiting room; unknown,
+finished, started, or full rooms are rejected and do not create a new seat.
 
 Decode is transactional: a failed decode does not mutate the output message.
 An encode failure returns an empty byte array and a diagnostic.

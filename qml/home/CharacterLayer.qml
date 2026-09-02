@@ -26,32 +26,6 @@ Item {
         asynchronous: true
         cache: true
 
-        transform: Translate {
-            id: idleBob
-            y: 0
-        }
-
-        SequentialAnimation {
-            running: character.visible
-            loops: Animation.Infinite
-
-            NumberAnimation {
-                target: idleBob
-                property: "y"
-                to: 4
-                duration: 2400
-                easing.type: Easing.InOutSine
-            }
-
-            NumberAnimation {
-                target: idleBob
-                property: "y"
-                to: -4
-                duration: 2400
-                easing.type: Easing.InOutSine
-            }
-        }
-
         onStatusChanged: {
             if (status === Image.Error)
                 console.error("Character load failed:", source)

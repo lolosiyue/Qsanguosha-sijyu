@@ -1,12 +1,12 @@
 #include "tui-log-text.h"
 
 #include "card.h"
+#include "client-log-formatter.h"
 #include "engine.h"
 #include "protocol.h"
 #include "tui-card-text.h"
 #include "tui-renderer.h"
 
-#include <QCoreApplication>
 #include <QStringList>
 
 namespace {
@@ -27,141 +27,85 @@ QString resolveName(const TuiPlayerNameResolver &playerName, const QString &obje
     return resolved.isEmpty() ? objectName : resolved;
 }
 
-// A log carries either one card string (possibly virtual) or a "+" joined list
-// of concrete ids, the same two shapes the desktop log box accepts.
-QString cardsText(const QString &cardString)
+ClientLogFormatStyle tuiLogStyle(const TuiPlayerNameResolver &playerName)
 {
-    if (cardString.isEmpty() || Sanguosha == nullptr)
-        return QString();
+    ClientLogFormatStyle style;
+    style.cardJoin = QStringLiteral("、");
+    style.toJoin = QStringLiteral("、");
+    style.phrases = engineUseCardPhrases();
+    style.translate = [](const QString &key) { return translateOrKeep(key); };
+    style.cardLogName = [](const Card *card) {
+        if (card->getId() >= 0)
+            return tuiCardDisplayText(card->getId());
+        QString name = translateOrKeep(card->objectName());
+        const QString skill = translateOrKeep(card->getSkillName());
+        if (!skill.isEmpty() && skill != name)
+            name = QStringLiteral("%1（%2）").arg(name, skill);
+        return name;
+    };
+    style.playerName = [playerName](const QString &name) {
+        return resolveName(playerName, name);
+    };
+    return style;
+}
 
-    QStringList names;
-    bool allNumeric = true;
-    const QStringList tokens = cardString.split(QLatin1Char('+'), Qt::SkipEmptyParts);
-    for (const QString &token : tokens) {
-        bool ok = false;
-        const int id = token.toInt(&ok);
-        if (!ok) {
-            allNumeric = false;
-            break;
-        }
-        names << tuiCardDisplayText(id);
-    }
-    if (allNumeric && !names.isEmpty())
-        return names.join(QStringLiteral("、"));
-
-    const Card *card = Card::Parse(cardString);
-    if (card == nullptr)
-        return cardString;
-    if (!card->isVirtualCard())
-        return tuiCardDisplayText(card->getId());
-
-    QString text = translateOrKeep(card->objectName());
-    const QString skill = translateOrKeep(card->getSkillName());
-    if (!skill.isEmpty())
-        text = QCoreApplication::translate("QSanguoshaTui", "%1（%2）").arg(text, skill);
-    return text;
+ClientLogFormatRequest requestFromSkillLog(const QVariantMap &payload)
+{
+    ClientLogFormatRequest request;
+    request.type = payload.value(QStringLiteral("log_type")).toString();
+    request.from = payload.value(QStringLiteral("from_player")).toString();
+    request.tos = payload.value(QStringLiteral("to_players")).toStringList();
+    request.cardString = payload.value(QStringLiteral("card_string")).toString();
+    const QStringList arguments = payload.value(QStringLiteral("arguments")).toStringList();
+    if (arguments.size() > 0)
+        request.arg = arguments.at(0);
+    if (arguments.size() > 1)
+        request.arg2 = arguments.at(1);
+    if (arguments.size() > 2)
+        request.arg3 = arguments.at(2);
+    if (arguments.size() > 3)
+        request.arg4 = arguments.at(3);
+    if (arguments.size() > 4)
+        request.arg5 = arguments.at(4);
+    return request;
 }
 
 } // namespace
 
 QString tuiSkillLogText(const QVariantMap &payload, const TuiPlayerNameResolver &playerName)
 {
-    const QString type = payload.value(QStringLiteral("log_type")).toString();
-    if (type.isEmpty())
-        return QString();
-    // The desktop log box draws a rule here; lang carries no template for it.
-    if (type == QLatin1String("$AppendSeparator"))
-        return QStringLiteral("--------");
-
-    // The localized template carries the sentence; the payload only fills it in.
-    QString text = translateOrKeep(type);
-
-    const QString from = resolveName(playerName,
-        payload.value(QStringLiteral("from_player")).toString());
-
-    QStringList targets;
-    for (const QString &objectName
-         : payload.value(QStringLiteral("to_players")).toStringList()) {
-        targets << resolveName(playerName, objectName);
-    }
-
-    // Desktop ClientLogBox synthesises the whole #UseCard family; lang carries a
-    // template for some of them and none for "#UseCard" and "#UseCard_Resp", so
-    // the transcript used to print the raw key.
-    if (type.startsWith(QLatin1String("#UseCard"))) {
-        if (text == type) {
-            // The suffix is the verb, exactly as ClientLogBox reads it.
-            const QString verb = type.endsWith(QLatin1String("_Resp"))
-                ? QCoreApplication::translate("QSanguoshaTui", "打出了")
-                : type.endsWith(QLatin1String("_Recast"))
-                    ? QCoreApplication::translate("QSanguoshaTui", "重铸了")
-                    : QCoreApplication::translate("QSanguoshaTui", "使用了");
-            text = targets.isEmpty()
-                ? QCoreApplication::translate("QSanguoshaTui", "%from %1 %card").arg(verb)
-                : QCoreApplication::translate("QSanguoshaTui", "%from 对 %to %1 %card")
-                      .arg(verb);
-        } else if (!targets.isEmpty() && !text.contains(QStringLiteral("%to"))) {
-            text.append(QCoreApplication::translate("QSanguoshaTui", "，目标是 %to"));
-        }
-    }
-
-    if (!from.isEmpty())
-        text.replace(QStringLiteral("%from"), from);
-
-    if (!targets.isEmpty())
-        text.replace(QStringLiteral("%to"), targets.join(QStringLiteral("、")));
-
-    const QString cards = cardsText(payload.value(QStringLiteral("card_string")).toString());
-    if (!cards.isEmpty())
-        text.replace(QStringLiteral("%card"), cards);
-
-    // arg5 first: replacing %arg before %arg2 would eat the shared prefix.
-    const QStringList arguments = payload.value(QStringLiteral("arguments")).toStringList();
-    static const char *placeholders[] = {"%arg", "%arg2", "%arg3", "%arg4", "%arg5"};
-    for (int i = arguments.size() - 1; i >= 0; --i) {
-        if (i >= int(sizeof(placeholders) / sizeof(placeholders[0])))
-            continue;
-        text.replace(QLatin1String(placeholders[i]), translateOrKeep(arguments.at(i)));
-    }
-
     // lang writes several templates for the desktop log box, tags and all --
     // "#AskForPeaches" asks for a <b><font>桃</font></b>.
-    return TuiRenderer::plainText(text);
+    return TuiRenderer::plainText(
+        formatClientLog(requestFromSkillLog(payload), tuiLogStyle(playerName)));
 }
 
 QString tuiGameEventText(const QVariantMap &payload, const TuiPlayerNameResolver &playerName)
 {
-    const auto text = [](const char *source) {
-        return QCoreApplication::translate("QSanguoshaTui", source);
-    };
-    const auto who = [&](const char *field) {
-        return resolveName(playerName, payload.value(QLatin1String(field)).toString());
-    };
-    const auto named = [&](const char *field) {
-        return translateOrKeep(payload.value(QLatin1String(field)).toString());
-    };
-
-    // Only events the battle log cannot express reach the transcript. Dying,
-    // skill changes, judge results and pindian all have log templates of their
-    // own, so rendering them here would print every line twice.
+    ClientLogFormatRequest request;
+    request.from = payload.value(QStringLiteral("player_name")).toString();
     switch (payload.value(QStringLiteral("event")).toInt()) {
     case QSanProtocol::S_GAME_EVENT_PLAYER_QUITDYING:
-        return text("%1 脱离濒死").arg(who("player_name"));
+        request.type = QStringLiteral("#QuitDying");
+        break;
     case QSanProtocol::S_GAME_EVENT_PLAYER_REFORM:
-        return text("%1 重整").arg(who("player_name"));
+        request.type = QStringLiteral("#PlayerReform");
+        break;
     case QSanProtocol::S_GAME_EVENT_CHANGE_HERO:
-        // send_log tells us the server already narrated this one.
         if (payload.value(QStringLiteral("send_log")).toBool())
             return QString();
-        return text("%1 变更武将为 %2").arg(who("player_name"), named("general_name"));
+        request.type = QStringLiteral("#ChangeHero");
+        request.arg = payload.value(QStringLiteral("general_name")).toString();
+        break;
     case QSanProtocol::S_GAME_EVENT_HUASHEN:
-        return text("%1 因「%2」化身为 %3")
-            .arg(who("player_name"), named("skill_name"), named("general_name"));
+        request.type = QStringLiteral("#HuaShen");
+        request.arg = payload.value(QStringLiteral("skill_name")).toString();
+        request.arg2 = payload.value(QStringLiteral("general_name")).toString();
+        break;
     default:
-        // Audio, animation, avatars, hand sorting and the skill-cache events
-        // drive desktop presentation or state the text client shows elsewhere.
         return QString();
     }
+    return TuiRenderer::plainText(formatClientLog(request, tuiLogStyle(playerName)));
 }
 
 QString tuiPresentationEventText(int command, const QString &fallbackText,
@@ -183,7 +127,6 @@ QString tuiPresentationEventText(int command, const QString &fallbackText,
     }
     case QSanProtocol::S_COMMAND_ANIMATE:
     case QSanProtocol::S_COMMAND_SET_EMOTION:
-        // Desktop-only presentation: a text transcript has nothing to show.
         return QString();
     default:
         return fallbackText;

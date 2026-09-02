@@ -1,3 +1,4 @@
+#include "card.h"
 #include "core/engine-bootstrap.h"
 #include "core/engine.h"
 #include "core/runtime-paths.h"
@@ -8,6 +9,10 @@
 #include <QCommandLineParser>
 #include <QCoreApplication>
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLocale>
 #include <QStringConverter>
 #include <QTextStream>
@@ -126,10 +131,13 @@ int main(int argc, char *argv[])
         tr("从脚本执行命令与断言"), QStringLiteral("path"));
     const QCommandLineOption assetRootOption(QStringLiteral("asset-root"),
         tr("使用明确的执行期资料根目录"), QStringLiteral("directory"));
+    const QCommandLineOption dumpTranslationsOption(
+        QStringLiteral("dump-translations"),
+        tr("把 Engine 翻譯表写成 JSON 后结束"), QStringLiteral("path"));
 
     parser.addOptions({helpOption, versionOption, hostOption, portOption, nameOption,
         avatarOption, reconnectOption, plainOption, noColorOption, languageOption,
-        logFileOption, scriptOption, assetRootOption});
+        logFileOption, scriptOption, assetRootOption, dumpTranslationsOption});
 
     // QCommandLineParser's automatic help path uses the Windows local code page
     // when stdout is redirected. Emit these two process-local responses as UTF-8
@@ -154,19 +162,22 @@ int main(int argc, char *argv[])
     }
     parser.process(app);
 
+    const bool dumpTranslations = parser.isSet(dumpTranslationsOption);
     bool portOk = false;
     const int port = parser.value(portOption).toInt(&portOk);
-    if (!portOk || port < 1 || port > 65535)
-        return usageError(tr("--port 必须是 1 至 65535 的整数"));
     const QString host = parser.value(hostOption).trimmed();
     const QString screenName = parser.value(nameOption).trimmed();
     const QString avatar = parser.value(avatarOption).trimmed();
-    if (host.isEmpty())
-        return usageError(tr("--host 不可为空"));
-    if (screenName.isEmpty())
-        return usageError(tr("--name 不可为空"));
-    if (avatar.isEmpty())
-        return usageError(tr("--avatar 不可为空"));
+    if (!dumpTranslations) {
+        if (!portOk || port < 1 || port > 65535)
+            return usageError(tr("--port 必须是 1 至 65535 的整数"));
+        if (host.isEmpty())
+            return usageError(tr("--host 不可为空"));
+        if (screenName.isEmpty())
+            return usageError(tr("--name 不可为空"));
+        if (avatar.isEmpty())
+            return usageError(tr("--avatar 不可为空"));
+    }
 
     if (parser.isSet(languageOption)) {
         const QLocale locale(parser.value(languageOption));
@@ -199,6 +210,57 @@ int main(int argc, char *argv[])
     if (!EngineBootstrap::initialize(false, &error)) {
         QTextStream(stderr) << "TUI_ERROR engine: " << error << '\n';
         return RuntimeExitCode;
+    }
+    if (parser.isSet(dumpTranslationsOption)) {
+        const QString path = parser.value(dumpTranslationsOption);
+        if (path.trimmed().isEmpty()) {
+            EngineBootstrap::shutdown();
+            return usageError(tr("--dump-translations 需要输出路徑"));
+        }
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            QTextStream(stderr) << "TUI_ERROR dump_translations: cannot write "
+                                << path << '\n';
+            EngineBootstrap::shutdown();
+            return RuntimeExitCode;
+        }
+        const QJsonDocument document(
+            QJsonObject::fromVariantMap(Sanguosha->translationTable()));
+        const QByteArray bytes = document.toJson(QJsonDocument::Compact);
+        if (file.write(bytes) != bytes.size()) {
+            QTextStream(stderr) << "TUI_ERROR dump_translations: short write\n";
+            EngineBootstrap::shutdown();
+            return RuntimeExitCode;
+        }
+
+        QJsonObject cards;
+        for (int id = 0; id < Sanguosha->getCardCount(); ++id) {
+            const Card *card = Sanguosha->getEngineCard(id);
+            if (card == nullptr)
+                continue;
+            QJsonObject entry;
+            entry.insert(QStringLiteral("object_name"), card->objectName());
+            entry.insert(QStringLiteral("suit"), card->getSuitString());
+            entry.insert(QStringLiteral("number"), card->getNumber());
+            cards.insert(QString::number(id), entry);
+        }
+        const QString cardsPath = QFileInfo(path).dir().filePath(QStringLiteral("cards.json"));
+        QFile cardsFile(cardsPath);
+        if (!cardsFile.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            QTextStream(stderr) << "TUI_ERROR dump_translations: cannot write "
+                                << cardsPath << '\n';
+            EngineBootstrap::shutdown();
+            return RuntimeExitCode;
+        }
+        const QByteArray cardBytes = QJsonDocument(cards).toJson(QJsonDocument::Compact);
+        if (cardsFile.write(cardBytes) != cardBytes.size()) {
+            QTextStream(stderr) << "TUI_ERROR dump_translations: cards short write\n";
+            EngineBootstrap::shutdown();
+            return RuntimeExitCode;
+        }
+
+        EngineBootstrap::shutdown();
+        return 0;
     }
     QObject::disconnect(&app, SIGNAL(aboutToQuit()), Sanguosha, SLOT(deleteLater()));
 
