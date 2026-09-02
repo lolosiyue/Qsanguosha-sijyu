@@ -1,5 +1,6 @@
 #include "engine-bootstrap.h"
 #include "engine.h"
+#include "card-lifetime-manager.h"
 #include "protocol.h"
 #include "protocol/protocol-message.h"
 #include "protocol/protocol-runtime.h"
@@ -7,6 +8,7 @@
 #include "room.h"
 #include "roomthread.h"
 #include "serverplayer.h"
+#include "settings.h"
 #include "skill.h"
 
 #include <QDebug>
@@ -16,6 +18,86 @@
 using namespace QSanProtocol;
 
 namespace {
+
+class SettingsOverrideGuard
+{
+public:
+    SettingsOverrideGuard(const QString &key, const QVariant &value)
+        : m_previous(Config.valueOverrides())
+    {
+        QVariantMap overrides = m_previous;
+        overrides.insert(key, value);
+        Config.setValueOverrides(overrides);
+    }
+
+    ~SettingsOverrideGuard()
+    {
+        Config.setValueOverrides(m_previous);
+    }
+
+private:
+    QVariantMap m_previous;
+};
+
+class OrderedV2Probe : public TriggerSkillV2
+{
+public:
+    OrderedV2Probe(const QString &name, TriggerEvent event, int priority,
+                   QStringList *order)
+        : TriggerSkillV2(name), m_priority(priority), m_order(order)
+    {
+        events << event;
+    }
+
+    int getPriority(TriggerEvent) const override
+    {
+        return m_priority;
+    }
+
+    TriggerList triggerable(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override
+    {
+        if (m_order)
+            m_order->append(objectName());
+        return {};
+    }
+
+    bool trigger(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override
+    {
+        return false;
+    }
+
+private:
+    int m_priority;
+    QStringList *m_order;
+};
+
+class LegacyPriorityProbe : public TriggerSkill
+{
+public:
+    LegacyPriorityProbe(const QString &name, TriggerEvent event, int priority)
+        : TriggerSkill(name), m_priority(priority)
+    {
+        events << event;
+    }
+
+    int getPriority(TriggerEvent) const override
+    {
+        return m_priority;
+    }
+
+    bool triggerable(ServerPlayer *, Room *, TriggerEvent, ServerPlayer *, QVariant) const override
+    {
+        return false;
+    }
+
+    bool trigger(TriggerEvent, Room *, ServerPlayer *, QVariant &) const override
+    {
+        return false;
+    }
+
+private:
+    int m_priority;
+};
 
 class BreakAfterDirtyV2Skill : public TriggerSkillV2
 {
@@ -227,6 +309,92 @@ static bool fixedDistanceChangesInvalidateDistanceSync()
     return true;
 }
 
+static bool v2PartitionPreservesOrderAndPrivatePriorityState()
+{
+    SettingsOverrideGuard profiling(QStringLiteral("RoomThreadPerfTrace"), true);
+    QStringList v2Order;
+    OrderedV2Probe low(QStringLiteral("test-roomthread-v2-low"), DrawNCards, 1, &v2Order);
+    OrderedV2Probe highFirst(QStringLiteral("test-roomthread-v2-high-first"),
+                             DrawNCards, 3, &v2Order);
+    OrderedV2Probe highSecond(QStringLiteral("test-roomthread-v2-high-second"),
+                              DrawNCards, 3, &v2Order);
+    LegacyPriorityProbe legacy(QStringLiteral("test-roomthread-legacy"), ChoiceMade, 2);
+    Room room(nullptr, QStringLiteral("02_1v1"));
+    RoomTestAccess::attachThread(room);
+    room.getThread()->addTriggerSkill(&low);
+    room.getThread()->addTriggerSkill(&highFirst);
+    room.getThread()->addTriggerSkill(&highSecond);
+    room.getThread()->addTriggerSkill(&legacy);
+
+    // Shared Skill definitions must remain untouched by per-Room ordering.
+    low.setDynamicPriority(-101.0);
+    highFirst.setDynamicPriority(-202.0);
+    highSecond.setDynamicPriority(-303.0);
+
+    QVariant data;
+    room.getThread()->trigger(ChoiceMade, &room, nullptr, data);
+    const QVariantMap afterLegacy = room.getThread()->triggerDispatchProfile();
+    if (afterLegacy.value(QStringLiteral("v2_candidate_count")).toLongLong() != 0
+        || afterLegacy.value(QStringLiteral("v2_empty_dispatch_count")).toLongLong() != 1) {
+        std::fprintf(stderr, "legacy-only event visited V2 candidates\n");
+        return false;
+    }
+
+    room.getThread()->trigger(DrawNCards, &room, nullptr, data);
+    const QVariantMap profile = room.getThread()->triggerDispatchProfile();
+    const QStringList expectedOrder{
+        QStringLiteral("test-roomthread-v2-high-first"),
+        QStringLiteral("test-roomthread-v2-high-second"),
+        QStringLiteral("test-roomthread-v2-low")
+    };
+    const bool passed = v2Order == expectedOrder
+        && low.getDynamicPriority() == -101.0
+        && highFirst.getDynamicPriority() == -202.0
+        && highSecond.getDynamicPriority() == -303.0
+        && profile.value(QStringLiteral("trigger_count")).toLongLong() == 2
+        && profile.value(QStringLiteral("priority_rebuild_count")).toLongLong() == 1
+        && profile.value(QStringLiteral("priority_skill_count")).toLongLong() == 3
+        && profile.value(QStringLiteral("priority_sort_count")).toLongLong() == 2
+        && profile.value(QStringLiteral("v2_dispatch_count")).toLongLong() == 2
+        && profile.value(QStringLiteral("v2_empty_dispatch_count")).toLongLong() == 1
+        && profile.value(QStringLiteral("v2_candidate_count")).toLongLong() == 3
+        && profile.value(QStringLiteral("main_table_candidate_visit_count")).toLongLong() == 4;
+    if (!passed) {
+        std::fprintf(stderr,
+            "RoomThread perf profile/order mismatch: order=%d trigger=%lld rebuild=%lld "
+            "skills=%lld sorts=%lld v2_dispatch=%lld v2_empty=%lld v2_candidates=%lld "
+            "main_table_candidates=%lld\n",
+            int(v2Order.length()),
+            profile.value(QStringLiteral("trigger_count")).toLongLong(),
+            profile.value(QStringLiteral("priority_rebuild_count")).toLongLong(),
+            profile.value(QStringLiteral("priority_skill_count")).toLongLong(),
+            profile.value(QStringLiteral("priority_sort_count")).toLongLong(),
+            profile.value(QStringLiteral("v2_dispatch_count")).toLongLong(),
+            profile.value(QStringLiteral("v2_empty_dispatch_count")).toLongLong(),
+            profile.value(QStringLiteral("v2_candidate_count")).toLongLong(),
+            profile.value(QStringLiteral("main_table_candidate_visit_count")).toLongLong());
+    }
+    return passed;
+}
+
+static bool cardLifetimeMutexProfileCountsLocks()
+{
+    CardLifetimeManager disabled(CardLifetimeMode::ObserveOnly, nullptr, false);
+    disabled.enterScope();
+    disabled.leaveScope();
+    const CardLifetimeMutexProfile disabledProfile = disabled.mutexProfile();
+    if (disabledProfile.enabled || disabledProfile.lock_count != 0)
+        return false;
+
+    CardLifetimeManager enabled(CardLifetimeMode::ObserveOnly, nullptr, true);
+    enabled.enterScope();
+    enabled.leaveScope();
+    const CardLifetimeMutexProfile profile = enabled.mutexProfile();
+    return profile.enabled && profile.lock_count == 2
+        && profile.contended_count <= profile.lock_count
+        && profile.wait_ns >= profile.max_wait_ns;
+}
+
 }
 
 int runRoomThreadDeferredStateTests()
@@ -245,5 +413,24 @@ int runRoomThreadDeferredStateTests()
         return 3;
     }
     qInfo() << "RoomThread deferred state regression passed";
+    return 0;
+}
+
+int runRoomThreadPerfTests()
+{
+    QString error;
+    if (!EngineBootstrap::initialize(false, &error)) {
+        qCritical() << "engine initialization failed:" << error;
+        return 1;
+    }
+    if (!v2PartitionPreservesOrderAndPrivatePriorityState()) {
+        qCritical() << "RoomThread V2 partition/private priority regression failed";
+        return 2;
+    }
+    if (!cardLifetimeMutexProfileCountsLocks()) {
+        qCritical() << "CardLifetime mutex profile regression failed";
+        return 3;
+    }
+    qInfo() << "ROOMTHREAD_PERF_TEST_RESULT status=PASS";
     return 0;
 }

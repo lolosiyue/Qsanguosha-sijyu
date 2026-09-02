@@ -29,6 +29,7 @@ multi-case suite 必須逐案例輸出 PASS/FAIL、繼續執行仍可安全隔�
 | `qsanguosha_runtime_contract` | lua-runtime、room-runtime、card-lifetime、card-lifetime-lua、synthetic-30 | `qsanguosha_runtime_tests --suite <name>` |
 | `qsanguosha_card_lifetime_stress` | synthetic-50 | `qsanguosha_runtime_tests --suite card-lifetime-synthetic-50 --seed <seed>` |
 | `qsanguosha_card_lifetime_source_check` | ownership ledger/static ingress check | 直接執行 `tools/check-card-lifetime.py` |
+| `qsanguosha_roomthread_perf` | V2 分表、優先序保序、Room 私有排序鍵、mutex profile 契約 | 直接執行 `qsanguosha_roomthread_perf_tests` |
 | `qsanguosha_card_overview_contract` | classifier、model | 直接執行原 classifier/model executable |
 
 ## Coverage migration

@@ -48,3 +48,13 @@ combined with runtime counters; a clean scan alone is not an ownership proof.
 The current source scan reports legacy deletion ingress separately. These sites
 remain explicitly selected by their owning boundary; the process default is ManagedReclaim after PR7, while ObserveOnly remains available for compatibility characterization; they are
 not silently treated as managed reclaim.
+
+## Mutex contention diagnostics
+
+Set `QSAN_CARD_LIFETIME_MUTEX_TRACE=1` before process startup to instrument the
+single authoritative manager mutex. When enabled, `CARD_LIFETIME_ZERO` includes
+a process-cumulative `mutex_profile` with lock count, contended count, total wait
+nanoseconds and maximum wait nanoseconds. The trace adds an atomic counter and an
+optimistic `tryLock()` to each acquisition, so trace runs are diagnostic evidence,
+not timing acceptance. The profile does not attribute contention to a Room/domain
+and does not include the separate card-association mutex.

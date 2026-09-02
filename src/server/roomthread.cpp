@@ -541,10 +541,27 @@ void RoomThread::emitDistanceRefreshProfile() const
 		distanceRefreshCounterObject(m_distanceRefreshProfile.dirtySourceCounts));
 	payload.insert(QStringLiteral("flush_source_counts"),
 		distanceRefreshCounterObject(m_distanceRefreshProfile.flushSourceCounts));
+	payload.insert(QStringLiteral("trigger_dispatch"),
+		QJsonObject::fromVariantMap(triggerDispatchProfile()));
 
 	const QByteArray json = QJsonDocument(payload).toJson(QJsonDocument::Compact);
 	std::fprintf(stdout, "ROOMTHREAD_PERF %s\n", json.constData());
 	std::fflush(stdout);
+}
+
+QVariantMap RoomThread::triggerDispatchProfile() const
+{
+	return QVariantMap{
+		{QStringLiteral("trigger_count"), qint64(m_triggerDispatchProfile.triggerCount)},
+		{QStringLiteral("priority_rebuild_count"), qint64(m_triggerDispatchProfile.priorityRebuildCount)},
+		{QStringLiteral("priority_skill_count"), qint64(m_triggerDispatchProfile.prioritySkillCount)},
+		{QStringLiteral("priority_sort_count"), qint64(m_triggerDispatchProfile.prioritySortCount)},
+		{QStringLiteral("v2_dispatch_count"), qint64(m_triggerDispatchProfile.v2DispatchCount)},
+		{QStringLiteral("v2_empty_dispatch_count"), qint64(m_triggerDispatchProfile.v2EmptyDispatchCount)},
+		{QStringLiteral("v2_candidate_count"), qint64(m_triggerDispatchProfile.v2CandidateCount)},
+		{QStringLiteral("main_table_candidate_visit_count"),
+		 qint64(m_triggerDispatchProfile.mainTableCandidateVisitCount)}
+	};
 }
 
 void RoomThread::markDistanceCacheDirty(const char *source)
@@ -933,22 +950,52 @@ const QList<EventTriplet>*RoomThread::getEventStack() const
 	return &event_stack;
 }
 
-static bool CompareByPriority(TriggerSkill* a, TriggerSkill* b)
+void RoomThread::sortTriggerSkills(TriggerEvent triggerEvent, Room *targetRoom, bool includeLose)
 {
-	if (a->getDynamicPriority() != b->getDynamicPriority()) {
-		return a->getDynamicPriority() > b->getDynamicPriority();
+	QList<TriggerSkill *> &skills = skill_table[triggerEvent];
+	if (skills.length() < 2)
+		return;
+
+	const QList<ServerPlayer *> players = targetRoom->getAllPlayers(true);
+	QHash<const TriggerSkill *, double> priorities;
+	priorities.reserve(skills.length());
+	foreach (TriggerSkill *skill, skills) {
+		double len = players.length();
+		double priority = skill->getPriority(triggerEvent);
+		foreach (ServerPlayer *player, players) {
+			if (player->hasSkill(skill->objectName(), includeLose)) {
+				priority += len / 100.0;
+				break;
+			}
+			--len;
+		}
+		priorities.insert(skill, priority);
 	}
 
-	bool a_is_equip_or_rule = a->inherits("WeaponSkill") || a->inherits("ArmorSkill") ||
-		a->inherits("TreasureSkill") || a->inherits("GameRule");
+	const auto compareByPriority = [this, &priorities](TriggerSkill *a, TriggerSkill *b) {
+		const double aPriority = priorities.value(a);
+		const double bPriority = priorities.value(b);
+		if (aPriority != bPriority)
+			return aPriority > bPriority;
 
-	bool b_is_equip_or_rule = b->inherits("WeaponSkill") || b->inherits("ArmorSkill") ||
-		b->inherits("TreasureSkill") || b->inherits("GameRule");
+		const bool aEquipOrRule = m_triggerSkillTraits.value(a).equipOrRule;
+		const bool bEquipOrRule = m_triggerSkillTraits.value(b).equipOrRule;
+		return !aEquipOrRule && bEquipOrRule;
+	};
 
-	if (!a_is_equip_or_rule && b_is_equip_or_rule) {
-		return true;
+	std::stable_sort(skills.begin(), skills.end(), compareByPriority);
+	if (v2_skill_table[triggerEvent].length() > 1) {
+		std::stable_sort(v2_skill_table[triggerEvent].begin(),
+			v2_skill_table[triggerEvent].end(), compareByPriority);
 	}
-	return false;
+
+	if (m_distanceRefreshProfilingEnabled) {
+		++m_triggerDispatchProfile.priorityRebuildCount;
+		m_triggerDispatchProfile.prioritySkillCount += skills.length();
+		++m_triggerDispatchProfile.prioritySortCount;
+		if (v2_skill_table[triggerEvent].length() > 1)
+			++m_triggerDispatchProfile.prioritySortCount;
+	}
 }
 
 static QStringList mergeSkillNames(const QStringList &names)
@@ -983,13 +1030,16 @@ static QString skillInstanceRuntimeKey(const ServerPlayer *owner, const QString 
 
 bool RoomThread::triggerV2Skills(TriggerEvent triggerEvent, Room *room, ServerPlayer *target, QVariant &data)
 {
-	QList<const TriggerSkill *> v2_skills;
-	foreach (TriggerSkill *ts, skill_table[triggerEvent]) {
-		if (ts->inherits("TriggerSkillV2"))
-			v2_skills << ts;
+	const QList<TriggerSkill *> v2_skills = v2_skill_table[triggerEvent];
+	if (m_distanceRefreshProfilingEnabled) {
+		++m_triggerDispatchProfile.v2DispatchCount;
+		m_triggerDispatchProfile.v2CandidateCount += v2_skills.length();
 	}
-	if (v2_skills.isEmpty())
+	if (v2_skills.isEmpty()) {
+		if (m_distanceRefreshProfilingEnabled)
+			++m_triggerDispatchProfile.v2EmptyDispatchCount;
 		return false;
+	}
 
 	QMap<QString, int> triggerCounts;
 	QMap<QString, int> maxMultipliers;
@@ -1345,6 +1395,8 @@ static const char *distanceDirtySourceName(TriggerEvent triggerEvent)
 bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*target, QVariant &data)
 {
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
+	if (m_distanceRefreshProfilingEnabled)
+		++m_triggerDispatchProfile.triggerCount;
 	// push it to event stack
 	EventTriplet triplet(triggerEvent, room, target);
 	event_stack.push_back(triplet);
@@ -1397,21 +1449,7 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 			}
 		}
 	}*/
-	if(skill_table[triggerEvent].length()>1){
-		QList<ServerPlayer*> players = room->getAllPlayers(true);
-		foreach (TriggerSkill*skill, skill_table[triggerEvent]) {
-			double len = players.length(), priority = skill->getPriority(triggerEvent);
-			foreach (ServerPlayer*p, players) {
-				if (p->hasSkill(skill->objectName())) {
-					priority += len/100.0;
-					break;
-				}
-				len--;
-			}
-			skill->setDynamicPriority(priority);
-		}
-		std::stable_sort(skill_table[triggerEvent].begin(), skill_table[triggerEvent].end(), CompareByPriority);
-	}
+	sortTriggerSkills(triggerEvent, room, false);
 	const char *dirtySource = distanceDirtySourceName(triggerEvent);
 	if (dirtySource) {
 		m_playerUiStateDirty = true;
@@ -1427,7 +1465,9 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 		QList<TriggerSkill*>triggered;
 		for (int i = 0; i < skill_table[triggerEvent].length(); i++) {
 			TriggerSkill*ts = skill_table[triggerEvent][i];
-			if (ts->inherits("TriggerSkillV2")) continue;
+			if (m_distanceRefreshProfilingEnabled)
+				++m_triggerDispatchProfile.mainTableCandidateVisitCount;
+			if (m_triggerSkillTraits.value(ts).v2) continue;
 			if (triggered.contains(ts)) continue;
 			triggered << ts;
 			if(triggerEvent==EnterDying||triggerEvent==Dying||triggerEvent==AskForPeaches){
@@ -1471,24 +1511,20 @@ void RoomThread::addTriggerSkill(const TriggerSkill*skill)
 {
 	if (!skill || skillSet.contains(skill)) return;
 	skillSet << skill;
+	TriggerSkillTraits traits;
+	traits.v2 = skill->inherits("TriggerSkillV2");
+	traits.gameRule = skill->inherits("GameRule");
+	traits.equipOrRule = traits.gameRule || skill->inherits("WeaponSkill")
+		|| skill->inherits("ArmorSkill") || skill->inherits("TreasureSkill");
+	m_triggerSkillTraits.insert(skill, traits);
 	foreach (TriggerEvent event, skill->getTriggerEvents()) {
-		skill_table[event] << const_cast<TriggerSkill*>(skill);
+		TriggerSkill *registeredSkill = const_cast<TriggerSkill *>(skill);
+		skill_table[event] << registeredSkill;
+		if (traits.v2)
+			v2_skill_table[event] << registeredSkill;
 		if(skill_table[event].length()<2) continue;
-		if(skill->inherits("GameRule")||room->getTag("TurnLengthCount").toInt()>0){
-			QList<ServerPlayer*> players = room->getAllPlayers(true);
-			foreach (TriggerSkill*ts, skill_table[event]) {
-				double len = players.length(), priority = ts->getPriority(event);
-				foreach (ServerPlayer*p, players) {
-					if (p->hasSkill(ts->objectName(),true)) {
-						priority += len/100.0;
-						break;
-					}
-					len--;
-				}
-				ts->setDynamicPriority(priority);
-			}
-			std::stable_sort(skill_table[event].begin(), skill_table[event].end(), CompareByPriority);
-		}
+		if (traits.gameRule || room->getTag("TurnLengthCount").toInt() > 0)
+			sortTriggerSkills(event, room, true);
 	}
 	if (skill->isVisible()) {
 		foreach (const Skill*rs, Sanguosha->getRelatedSkills(skill->objectName()))
