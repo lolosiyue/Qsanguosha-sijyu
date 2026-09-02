@@ -7,12 +7,24 @@
 #include <QList>
 #include <QString>
 
+#include <functional>
+
 class Room;
 class ServerPlayer;
 
 class ExtraTurnScheduler
 {
 public:
+    struct SnapshotRequest
+    {
+        QString playerObjectName;
+        QList<int> phases;
+        QString reason;
+        SkillInstanceRef sourceRef;
+    };
+
+    using PlayerResolver = std::function<ServerPlayer *(const QString &objectName)>;
+
     explicit ExtraTurnScheduler(Room &room);
 
     int schedule(ServerPlayer *player, const QString &reason,
@@ -22,6 +34,11 @@ public:
     bool isCurrentExtraTurn() const;
     QString currentReason() const;
     SkillInstanceRef currentSourceRef() const;
+
+    QList<SnapshotRequest> pendingRequestsSnapshot() const;
+    bool restorePendingRequests(const QList<SnapshotRequest> &requests,
+                                const PlayerResolver &resolver,
+                                QString *error = nullptr);
 
     void process();
     void execute(ServerPlayer *player, QList<Player::Phase> phases,

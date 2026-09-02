@@ -1,9 +1,10 @@
 # Replay V2 contract
 
-## Format
+Replay V2 is the only supported recording and playback format. The format is
+UTF-8 JSON Lines: one header object followed by zero or more timeline-event
+objects.
 
-Replay V2 is the only supported recording and playback format. It is UTF-8 JSON
-Lines: one header object followed by zero or more timeline-event objects.
+## Format
 
 Header:
 
@@ -20,43 +21,93 @@ Event:
 `elapsed_ms` is a canonical non-negative decimal string and must be monotonic.
 Embedded messages use the same typed Protocol V2 registry and full-range
 `quint64` identities as TCP. Duplicate or missing message IDs, invalid reply
-correlation, unregistered flows, or replay-policy violations fail the whole
+correlation, unregistered flows, and replay-policy violations reject the whole
 load transaction.
 
 Replay V1, headerless recordings, Protocol V1 arrays, and partial fallback are
-not supported. No converter is provided.
+not supported. There is no converter. Snapshot loading is also a breaking
+cutover: a snapshot must use the current schema and older or unknown snapshot
+schemas are rejected.
 
-## PNG Replay container
+## PNG container
 
-The PNG container stores the compressed Replay V2 JSONL bytes inside lossless
-RGBA pixels. Its purpose is transport: a recording can be shared through
-systems that accept PNG images more reliably than arbitrary replay files. It is
-not a screenshot and does not alter the replay timeline.
-
-The embedded container has a fixed magic marker, container version, big-endian
+The PNG container transports compressed Replay V2 JSONL bytes in lossless RGBA
+pixels. It is not a screenshot and does not alter the replay timeline. The
+embedded container has a fixed magic marker, container version, big-endian
 compressed size, and SHA-256 digest. Ordinary PNGs, unknown container versions,
-truncated data, and corrupted payloads are rejected. The decompressed bytes are
-then parsed by the same strict Replay V2 reader.
+truncated data, and corrupted payloads are rejected by the same strict reader.
 
-## Playback and takeover
+PNG recordings never expose branch-and-play takeover. A PNG replay is therefore
+playback-only, even when its embedded header identifies a takeover branch.
 
-The existing replay features remain available:
+## Playback and branch-and-play takeover
 
-- timeline and indexed seeking;
-- perspective switching;
-- snapshots and reconstructed game state;
-- watching-time player takeover.
+Normal playback provides timeline seeking, perspective switching, and indexed
+state reconstruction. Takeover creates a new local game from a validated
+snapshot; it does not resume or mutate the historical server.
 
-Takeover does not resume the historical server. `ReplayTakeoverManager` pauses
-playback at an eligible recorded request, lets the viewer or AI provide a typed
-reply, records that reply with the exact `reply_to`, and continues on a new
-takeover Replay V2 branch. Passive replays reject client-to-room replies;
-takeover recordings admit them only under the registered takeover policy.
+A takeover node is eligible only when all of the following are true:
 
-Saving a takeover branch never overwrites the source recording.
+- it is in an ordinary fixed-player mode such as `02p`, not a scenario,
+  mini-scene, hegemony, 1v1, 3v3, XMode, Hulao, boss, or defense controller;
+- it is at a top-level normal `actionNormal()` boundary before the first real
+  `TurnStart` of that turn;
+- no nested extra turn is executing at that boundary;
+- every physical card is in a stable, ordered zone; transient table, WuGu, or
+  unknown locations make that node ineligible;
+- gameplay Lua and SmartAI are enabled in the recorded configuration;
+- all required snapshot data and registered Lua provider state are present and
+  valid.
+
+The selected seat must be alive. The original `gameMode` is retained; takeover
+is session metadata, not a mode change. The selected seat is controlled by the
+viewer, while every other seat is created as a fresh `SmartAI`. Historical AI
+decision state is not restored.
+
+Snapshot reconstruction suppresses nested gameplay-event dispatch while Room
+APIs rebuild marks, skills, and card zones. This prevents historical restore
+operations from firing live skills before the branch's first `TurnStart`.
+
+The snapshot captures and validates, as one transaction:
+
+- player identity, role/general assignment, core properties, marks, flags,
+  piles, history, tags, and JSON-safe dynamic attributes;
+- every card object and every card-zone order, including wrapped-card state;
+- skill instances, including parent/child relationships, amounts, and
+  registered private state;
+- the pending extra-turn queue;
+- gameplay RNG and AI RNG, each with `algorithm`, `seed`, and `drawCount`;
+- versioned Lua takeover-provider state, limited to JSON-safe values.
+
+Lua state that belongs to an unregistered VM or provider, including opaque
+private state without a registered serializer, makes the node ineligible. A
+snapshot is not written as eligible unless catalog, package, card, mode,
+schema, and provider validation succeeds.
+
+Each replay session has a manifest binding the session identity, source replay
+SHA-256, and every snapshot SHA-256. The manifest and all referenced snapshots
+must verify before a takeover game is created.
+
+The branch is recorded with `Recorder(..., true)` and a Replay V2 header with
+`takeover:true`. It is always written to a new file; the source replay is never
+overwritten.
+
+## Startup failure and rollback
+
+Starting a takeover is transactional. Before destroying the replay client, the
+implementation saves the source filename, playback position, perspective, and
+paused state. The replay client is stopped safely, then the local server and
+client are started and the snapshot is restored before the first real
+`TurnStart`.
+
+If listening, connecting, robot completion, catalog/provider validation, or
+state restoration fails, the local takeover session is closed and the original
+replay is reopened at its saved position, perspective, and paused state. The
+failure reason is shown to the user. Returning to the home screen is required
+only when the original replay itself cannot be reopened.
 
 ## TUI boundary
 
 TUI has no Replay playback, PNG-container, timeline, perspective-switch, or
-takeover implementation. This is intentional and permanent for the current
-scope; JSON/TUI protocol cases are not Replay evidence.
+branch-and-play takeover implementation. JSON/TUI protocol cases are not Replay
+evidence.

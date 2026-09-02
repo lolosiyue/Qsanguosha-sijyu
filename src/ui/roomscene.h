@@ -50,6 +50,7 @@ class EffectAnimation;
 class GiftItem;
 class SpineGlItem;
 class PlayerCardBox;
+class QPushButton;
 
 #if !defined(Q_OS_WINRT) && QSAN_ENABLE_QML
 #include <QQmlEngine>
@@ -147,6 +148,11 @@ public slots:
     void setTime(int secs);
     void setSpeed(qreal speed);
 
+signals:
+    // MainWindow owns the transactional teardown/restart.  The control bar
+    // only chooses a verified snapshot and a live seat key.
+    void takeoverRequested(const QString &snapshotPath, const QString &seatObjectName);
+
 protected:
     virtual void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
     static const int S_BUTTON_GAP = 3;
@@ -154,7 +160,11 @@ protected:
     static const int S_BUTTON_HEIGHT = 21;
 
 private:
+    void requestTakeover();
+    void updateTakeoverAvailability();
+
     QLabel *time_label;
+    QPushButton *takeover_button;
     QString duration_str;
     qreal speed;
 };
@@ -173,6 +183,7 @@ public:
 class RoomScene : public QGraphicsScene
 {
     Q_OBJECT
+    friend class ReplayerControlBar;
     friend class LocalResponseUiProbe;
     friend class NetworkUiSmokeController;
     friend class NetworkUiSmokeResponder;
@@ -613,6 +624,7 @@ void onGameStart();
 
 
 signals:
+    void takeoverRequested(const QString &snapshotPath, const QString &seatObjectName);
     void restart();
     void return_to_start();
     void game_over_dialog_rejected();

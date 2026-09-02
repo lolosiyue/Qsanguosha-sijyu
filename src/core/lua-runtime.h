@@ -3,9 +3,11 @@
 
 #include "card-lifetime-manager.h"
 
+#include <QHash>
 #include <QMutex>
 #include <QString>
 #include <QThread>
+#include <QVariant>
 
 #include <atomic>
 #include <cstddef>
@@ -29,6 +31,10 @@ public:
     void setMemoryLimits(size_t softLimit, size_t hardLimit);
     bool addPackagePath(const QString &pattern, QString *error = nullptr);
     bool loadScript(const QString &path, QString *error = nullptr);
+    // Takeover state is an explicit, versioned provider contract.  The Lua VM
+    // itself is deliberately never serialized.
+    bool exportTakeoverState(QVariantMap &state, QString *error = nullptr);
+    bool restoreTakeoverState(const QVariantMap &state, QString *error = nullptr);
     void shutdown();
 
     void setLifetimeDomain(const void *domain) { m_lifetimeDomain = domain; }
@@ -94,6 +100,18 @@ private:
     static QMutex &registryMutex();
     static void *memoryAllocator(void *userData, void *pointer,
                                  size_t oldSize, size_t newSize);
+    static int luaRegisterTakeoverStateProvider(lua_State *state);
+
+    struct TakeoverStateProvider {
+        int version = 0;
+        int exportRef = -2; // LUA_NOREF; keep the public header Lua-independent.
+        int restoreRef = -2;
+    };
+
+    bool registerTakeoverStateProvider(const QString &name, int version,
+                                       int exportRef, int restoreRef,
+                                       QString *error = nullptr);
+    void clearTakeoverStateProviders();
 
     void adoptCurrentThread();
     bool beginInvocation();
@@ -111,6 +129,7 @@ private:
     std::atomic<Lifecycle> m_lifecycle{Lifecycle::Running};
     MemoryState m_memory;
     const void *m_lifetimeDomain = nullptr;
+    QHash<QString, TakeoverStateProvider> m_takeoverStateProviders;
 };
 
 class LuaCallbackRef

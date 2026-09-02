@@ -18,6 +18,9 @@
 #include "clientstruct.h"
 #include "client.h"
 #include "clientplayer.h"
+#include "game-session-config.h"
+#include "game-snapshot.h"
+#include "replay-index.h"
 #include "settings.h"
 #include "button.h"
 #include "build-features.h"
@@ -38,6 +41,12 @@
 #include <QTimer>
 #include <QDateTime>
 #include <QFile>
+#include <QFileInfo>
+#include <QDir>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QMetaObject>
+#include <QCryptographicHash>
 #include <QTextStream>
 #if QSAN_ENABLE_QML
 #include <QQmlContext>
@@ -47,6 +56,7 @@
 #endif
 #include <QFile>
 #include <QDebug>
+#include <algorithm>
 
 MainWindow::MainWindow(QWidget *parent)
 	: QMainWindow(parent), ui(new Ui::MainWindow), server(nullptr)
@@ -514,10 +524,304 @@ void MainWindow::startLocalConsoleGame()
 	startConnection();
 }
 
+bool MainWindow::preflightTakeover(const QString &snapshotPath,
+	const QString &seatName, QString *error) const
+{
+	const auto fail = [error](const QString &message) {
+		if (error)
+			*error = message;
+		return false;
+	};
+
+	if (snapshotPath.isEmpty() || seatName.isEmpty())
+		return fail(tr("Takeover requires a snapshot and a seat"));
+
+	if (!m_replayRestoreState.valid || m_replayRestoreState.path.endsWith(
+		QStringLiteral(".png"), Qt::CaseInsensitive)) {
+		return fail(tr("Takeover is available only for a text replay with snapshots"));
+	}
+
+	const QFileInfo snapshotInfo(snapshotPath);
+	if (!snapshotInfo.isFile())
+		return fail(tr("Snapshot file does not exist"));
+
+	// The manifest is the pairing boundary between a replay and its snapshots.
+	// Replayer performs the hash/schema verification; checking its presence here
+	// prevents a direct path from accidentally bypassing that contract.
+	const QString snapshotDir = GameSnapshot::getSnapshotDir(m_replayRestoreState.path);
+	if (QDir::cleanPath(snapshotInfo.absolutePath()) != QDir::cleanPath(snapshotDir))
+		return fail(tr("Snapshot is not in the selected replay's snapshot directory"));
+	const QFileInfo manifestInfo(snapshotDir + QLatin1String("/manifest.json"));
+	if (!manifestInfo.isFile())
+		return fail(tr("Replay snapshot manifest is missing"));
+
+	QFile manifestFile(manifestInfo.absoluteFilePath());
+	if (!manifestFile.open(QIODevice::ReadOnly))
+		return fail(tr("Replay snapshot manifest cannot be opened"));
+	QJsonParseError parseError;
+	const QJsonDocument manifest = QJsonDocument::fromJson(manifestFile.readAll(), &parseError);
+	if (parseError.error != QJsonParseError::NoError || !manifest.isObject())
+		return fail(tr("Replay snapshot manifest is invalid"));
+	const QJsonObject manifestObject = manifest.object();
+	if (manifestObject.value(QStringLiteral("schema")).toString()
+		!= QStringLiteral("qsanguosha-takeover-manifest-v1")) {
+		return fail(tr("Replay snapshot manifest schema is unsupported"));
+	}
+	if (manifestObject.value(QStringLiteral("sessionId")).toString().isEmpty()
+		|| !manifestObject.value(QStringLiteral("snapshots")).isArray())
+		return fail(tr("Replay snapshot manifest is incomplete"));
+
+	QFile replayFile(m_replayRestoreState.path);
+	if (!replayFile.open(QIODevice::ReadOnly))
+		return fail(tr("The source replay cannot be opened"));
+	const QByteArray replayHash = QCryptographicHash::hash(
+		replayFile.readAll(), QCryptographicHash::Sha256).toHex();
+	if (QString::fromLatin1(replayHash)
+		!= manifestObject.value(QStringLiteral("replaySha256")).toString()) {
+		return fail(tr("Replay and snapshot manifest do not match"));
+	}
+
+	QByteArray snapshotBytes;
+	QFile snapshotHashFile(snapshotInfo.absoluteFilePath());
+	if (snapshotHashFile.open(QIODevice::ReadOnly))
+		snapshotBytes = snapshotHashFile.readAll();
+	else
+		return fail(tr("Snapshot cannot be opened"));
+	const QString snapshotHash = QString::fromLatin1(
+		QCryptographicHash::hash(snapshotBytes, QCryptographicHash::Sha256).toHex());
+	bool manifestEntryFound = false;
+	QString manifestTurnSerial;
+	QString manifestPlayerName;
+	int manifestPlayerTurnCount = 0;
+	for (const QJsonValue &entryValue : manifestObject.value(QStringLiteral("snapshots")).toArray()) {
+		const QJsonObject entry = entryValue.toObject();
+		if (entry.value(QStringLiteral("file")).toString() != snapshotInfo.fileName())
+			continue;
+		if (manifestEntryFound)
+			return fail(tr("Snapshot is listed more than once in the manifest"));
+		manifestEntryFound = true;
+		if (entry.value(QStringLiteral("sha256")).toString() != snapshotHash)
+			return fail(tr("Snapshot and manifest do not match"));
+		manifestTurnSerial = entry.value(QStringLiteral("turnSerial")).toString();
+		manifestPlayerName = entry.value(QStringLiteral("playerName")).toString();
+		manifestPlayerTurnCount = entry.value(
+			QStringLiteral("playerTurnCount")).toInt(0);
+	}
+	if (!manifestEntryFound)
+		return fail(tr("Snapshot is not listed in the replay manifest"));
+
+	GameSnapshot snapshot(snapshotPath);
+	if (!snapshot.isEligible())
+		return fail(snapshot.getError().isEmpty()
+			? tr("This snapshot is not eligible for takeover")
+			: snapshot.getError());
+
+	const GlobalSnapshot state = snapshot.getState();
+	int expectedPlayerTurnCount = 1;
+	bool currentPlayerFound = false;
+	for (const PlayerSnapshot &player : state.players) {
+		if (player.objectName != state.currentPlayer)
+			continue;
+		expectedPlayerTurnCount = player.marks.value(
+			QStringLiteral("Global_TurnCount"), 0) + 1;
+		currentPlayerFound = true;
+		break;
+	}
+	if (manifestTurnSerial != QString::number(snapshot.getTurnSerial())
+		|| !currentPlayerFound || manifestPlayerName != state.currentPlayer
+		|| manifestPlayerTurnCount != expectedPlayerTurnCount)
+		return fail(tr("Snapshot timeline identity does not match the manifest"));
+	if (!state.unsupportedState.isEmpty() || state.players.isEmpty())
+		return fail(tr("Snapshot contains unsupported or incomplete state"));
+	if (state.currentPlayer.isEmpty() || !state.seatOrder.contains(state.currentPlayer))
+		return fail(tr("Snapshot has no valid current player"));
+
+	QString compatibilityError;
+	if (!GameSnapshot::validateRuntimeCompatibility(state, &compatibilityError))
+		return fail(compatibilityError);
+
+	const auto playerIt = std::find_if(state.players.cbegin(), state.players.cend(),
+		[&seatName](const PlayerSnapshot &player) {
+			return player.objectName == seatName;
+		});
+	if (playerIt == state.players.cend())
+		return fail(tr("Selected seat is not present in the snapshot"));
+	if (!playerIt->alive)
+		return fail(tr("A dead seat cannot be selected for takeover"));
+
+	return true;
+}
+
+bool MainWindow::stopReplayForTakeover(Replayer *replayer, QString *error) const
+{
+	if (replayer == nullptr)
+		return true;
+
+	if (!replayer->stopAndWait(5000)) {
+		if (error)
+			*error = tr("Replay worker could not be stopped safely");
+		return false;
+	}
+	return true;
+}
+
+void MainWindow::startTakeoverGame(const QString &snapshotPath, const QString &seatName)
+{
+	Client *oldClient = ClientInstance;
+	Replayer *oldReplayer = oldClient ? oldClient->getReplayer() : nullptr;
+	if (oldReplayer == nullptr || !oldReplayer->isValid()) {
+		QMessageBox::warning(this, tr("Takeover"),
+			tr("Takeover can only be started from a valid replay"));
+		return;
+	}
+
+	ReplayRestoreState restore;
+	restore.path = oldReplayer->getPath();
+	restore.pairIndex = oldReplayer->getCurrentPairIndex();
+	restore.perspective = Self ? Self->objectName() : QString();
+	restore.previousGameMode = Config.GameMode;
+	restore.wasPaused = true;
+	restore.valid = true;
+
+	restore.wasPaused = !oldReplayer->isPlaying();
+
+	m_replayRestoreState = restore;
+	QString error;
+	if (!preflightTakeover(snapshotPath, seatName, &error)) {
+		QMessageBox::warning(this, tr("Takeover"), error);
+		m_replayRestoreState = ReplayRestoreState();
+		return;
+	}
+
+	if (!stopReplayForTakeover(oldReplayer, &error)) {
+		QMessageBox::warning(this, tr("Takeover"), error);
+		return;
+	}
+
+	// Teardown happens only after preflight and replay-worker quiescence.  The
+	// saved restore state is retained until the new branch has really started.
+	oldClient->disconnectFromHost();
+	delete oldClient;
+
+	m_takeoverInProgress = true;
+	m_takeoverGameStarted = false;
+	GameSnapshot selectedSnapshot(snapshotPath);
+	const GlobalSnapshot state = selectedSnapshot.getState();
+	Config.GameMode = Sanguosha->getGameMode(state.gameMode);
+	GameSessionConfig sessionConfig;
+	sessionConfig.takeover = true;
+	sessionConfig.takeoverSnapshotPath = snapshotPath;
+	sessionConfig.takeoverSeatName = seatName;
+	bool seedOk = false;
+	if (!state.gameplayRng.seed.isEmpty()) {
+		const quint64 seed = state.gameplayRng.seed.toULongLong(&seedOk);
+		if (seedOk)
+			sessionConfig.seed = seed;
+	}
+	server = new Server(this, sessionConfig);
+	connect(server, &Server::takeoverReady, this, [this]() {
+		m_takeoverGameStarted = true;
+		m_takeoverInProgress = false;
+		m_replayRestoreState = ReplayRestoreState();
+	});
+	connect(server, &Server::takeoverFailed,
+		this, &MainWindow::rollbackTakeover);
+
+	if (!server->listen()) {
+		rollbackTakeover(tr("Can not start takeover server"));
+		return;
+	}
+	server->checkUpnpAndListServer();
+	Config.HostAddress = QStringLiteral("127.0.0.1");
+	startConnection();
+	QTimer::singleShot(15000, this, [this]() {
+		if (m_takeoverInProgress)
+			rollbackTakeover(tr("Takeover session did not become ready in time"));
+	});
+}
+
+void MainWindow::rollbackTakeover(const QString &reason)
+{
+	if (!reason.isEmpty())
+		qWarning().noquote() << "Takeover failed:" << reason;
+
+	const ReplayRestoreState restore = m_replayRestoreState;
+	m_takeoverInProgress = false;
+	m_takeoverGameStarted = false;
+	if (restore.valid && restore.previousGameMode.isValid())
+		Config.GameMode = restore.previousGameMode;
+
+	if (ClientInstance) {
+		ClientInstance->disconnectFromHost();
+		delete ClientInstance;
+		ClientInstance = nullptr;
+	}
+	if (server) {
+		delete server;
+		server = nullptr;
+	}
+
+	showHomePage();
+	if (restore.valid)
+		reopenReplay(restore);
+	else if (!reason.isEmpty())
+		QMessageBox::warning(this, tr("Takeover"), reason);
+}
+
+void MainWindow::reopenReplay(const ReplayRestoreState &state)
+{
+	if (state.path.isEmpty())
+		return;
+
+	Client *client = new Client(this, state.path);
+	Replayer *replayer = client->getReplayer();
+	if (replayer == nullptr || !replayer->isValid()) {
+		const QString detail = replayer ? replayer->errorString()
+			: tr("Replay loader is unavailable");
+		delete client;
+		QMessageBox::warning(this, tr("Replay error"), detail);
+		return;
+	}
+
+	QMetaObject::Connection *restoreConnection = new QMetaObject::Connection;
+	*restoreConnection = connect(client, &Client::server_connected, this,
+		[this, client, state, restoreConnection]() {
+		enterRoom();
+		// The setup notification has already materialized the replay players.
+		// Disconnect before seeking so replay setup does not create a second UI.
+		disconnect(*restoreConnection);
+		delete restoreConnection;
+		QTimer::singleShot(0, this, [this, state]() {
+			applyReplayRestoreState(state);
+		});
+	});
+	client->signup();
+}
+
+void MainWindow::applyReplayRestoreState(const ReplayRestoreState &state)
+{
+	if (!ClientInstance || !ClientInstance->getReplayer())
+		return;
+
+	Replayer *replayer = ClientInstance->getReplayer();
+	if (state.pairIndex > 0)
+		replayer->seekToPosition(state.pairIndex);
+
+	if (!state.perspective.isEmpty()) {
+		ClientPlayer *target = ClientInstance->getPlayer(state.perspective);
+		if (target)
+			ClientInstance->setSelf(target);
+	}
+
+	if (state.wasPaused == replayer->isPlaying())
+		replayer->toggle();
+}
+
 void MainWindow::checkVersion(const QString &server_version, const QString &server_mod, int card_num)
 {
 	// 自動化測試: 略過 MOD/卡牌數/版本檢查, 直接 signup (server/client 為不同 target, 載入套件數可能不同)
-	const bool autotest = Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty();
+	const bool autotest = !m_takeoverInProgress
+		&& (Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty());
 	if (autotest) {
 		QFile diag("client_autotest_diag.log");
 		if (diag.open(QIODevice::Append | QIODevice::Text)) {
@@ -536,11 +840,19 @@ void MainWindow::checkVersion(const QString &server_version, const QString &serv
 	}
 
 	if (Sanguosha->getMODName() != server_mod) {
+		if (m_takeoverInProgress) {
+			rollbackTakeover(tr("Takeover server MOD does not match the client"));
+			return;
+		}
 		QMessageBox::warning(this, tr("Warning"), tr("Client MOD name is not same as the server!"));
 		return;
 	}
 
 	if (Sanguosha->getCardCount() != card_num) {
+		if (m_takeoverInProgress) {
+			rollbackTakeover(tr("Takeover server card catalog does not match the client"));
+			return;
+		}
 		QMessageBox::warning(this, tr("Warning"), "你与服务器的卡牌数或将包数不同，无法加入游戏！");
 		return;
 	}
@@ -555,6 +867,10 @@ void MainWindow::checkVersion(const QString &server_version, const QString &serv
 	}
 
 	client->disconnectFromHost();
+	if (m_takeoverInProgress) {
+		rollbackTakeover(tr("Takeover server and client versions do not match"));
+		return;
+	}
 
 	QString text = tr("Server version is %1, client version is %2 <br/>").arg(server_version).arg(client_version);
 	if (server_version > client_version)
@@ -570,7 +886,7 @@ void MainWindow::checkVersion(const QString &server_version, const QString &serv
 
 void MainWindow::startConnection()
 {
-	Client *client = new Client(this);
+	Client *client = new Client(this, QString(), nullptr, m_takeoverInProgress);
 
 	connect(client, SIGNAL(version_checked(QString, QString, int)), SLOT(checkVersion(QString, QString, int)));
 	connect(client, SIGNAL(error_message(QString)), SLOT(networkError(QString)));
@@ -610,6 +926,10 @@ void MainWindow::on_actionReplay_triggered()
 
 void MainWindow::networkError(const QString &error_msg)
 {
+	if (m_takeoverInProgress) {
+		rollbackTakeover(error_msg);
+		return;
+	}
 	if (isVisible())
 		QMessageBox::warning(this, tr("Network error"), error_msg);
 }
@@ -679,19 +999,28 @@ void MainWindow::enterRoom()
 	connect(room_scene, SIGNAL(restart()), this, SLOT(startConnection()));
 	connect(room_scene, SIGNAL(return_to_start()), this, SLOT(showHomePage()));
 	connect(room_scene, SIGNAL(game_over_dialog_rejected()), this, SLOT(enableDialogButtons()));
+	connect(room_scene, &RoomScene::takeoverRequested,
+		this, &MainWindow::startTakeoverGame);
 
 	showGamePage(room_scene);
 
 	// 自動化測試: --auto-robots 由 owner 自動填滿 AI (填滿後伺服器端自動開局)
-	if (Config.AutoAddRobots) {
+	if (Config.AutoAddRobots || m_takeoverInProgress) {
+		const bool takeoverRobotFill = m_takeoverInProgress;
 		QFile diag("client_autotest_diag.log");
-		if (diag.open(QIODevice::Append | QIODevice::Text)) {
+		if (Config.AutoAddRobots && diag.open(QIODevice::Append | QIODevice::Text)) {
 			QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
 				<< " enterRoom: AutoAddRobots on, players=" << ClientInstance->getPlayers().length() << "\n";
 		}
 		QTimer *autoRobotTimer = new QTimer(room_scene);
 		autoRobotTimer->setInterval(300);
-		QObject::connect(autoRobotTimer, &QTimer::timeout, room_scene, [autoRobotTimer]() {
+		QObject::connect(autoRobotTimer, &QTimer::timeout, room_scene,
+			[this, autoRobotTimer, takeoverRobotFill]() {
+			if (!ClientInstance || (takeoverRobotFill && !m_takeoverInProgress)) {
+				autoRobotTimer->stop();
+				autoRobotTimer->deleteLater();
+				return;
+			}
 			bool anyOwner = false;
 			foreach (const ClientPlayer *p, ClientInstance->getPlayers()) {
 				if (p->isOwner()) {
@@ -700,7 +1029,7 @@ void MainWindow::enterRoom()
 				}
 			}
 			QFile diag("client_autotest_diag.log");
-			if (diag.open(QIODevice::Append | QIODevice::Text)) {
+			if (Config.AutoAddRobots && diag.open(QIODevice::Append | QIODevice::Text)) {
 				QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
 					<< " tick: players=" << ClientInstance->getPlayers().length()
 					<< " anyOwner=" << anyOwner << "\n";

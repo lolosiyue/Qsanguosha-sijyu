@@ -11,6 +11,13 @@
 
 namespace {
 
+bool failRestore(QString *error, const QString &message)
+{
+    if (error)
+        *error = message;
+    return false;
+}
+
 class ScopedCallback
 {
 public:
@@ -82,6 +89,77 @@ QString ExtraTurnScheduler::currentReason() const
 SkillInstanceRef ExtraTurnScheduler::currentSourceRef() const
 {
     return m_contexts.isEmpty() ? SkillInstanceRef() : m_contexts.last().sourceRef;
+}
+
+QList<ExtraTurnScheduler::SnapshotRequest> ExtraTurnScheduler::pendingRequestsSnapshot() const
+{
+    QList<SnapshotRequest> snapshot;
+    snapshot.reserve(m_requests.size());
+    for (const Request &request : m_requests) {
+        SnapshotRequest item;
+        if (request.player)
+            item.playerObjectName = request.player->objectName();
+        item.phases.reserve(request.phases.size());
+        for (Player::Phase phase : request.phases)
+            item.phases << static_cast<int>(phase);
+        item.reason = request.reason;
+        item.sourceRef = request.sourceRef;
+        snapshot << item;
+    }
+    return snapshot;
+}
+
+bool ExtraTurnScheduler::restorePendingRequests(const QList<SnapshotRequest> &requests,
+                                                const PlayerResolver &resolver,
+                                                QString *error)
+{
+    if (m_processing)
+        return failRestore(error, QStringLiteral("cannot restore extra turns while processing"));
+    if (!resolver)
+        return failRestore(error, QStringLiteral("extra-turn player resolver is missing"));
+
+    QList<Request> restored;
+    restored.reserve(requests.size());
+    for (const SnapshotRequest &item : requests) {
+        if (item.playerObjectName.isEmpty())
+            return failRestore(error, QStringLiteral("extra-turn request has no player"));
+
+        ServerPlayer *player = resolver(item.playerObjectName);
+        if (!player || player->getRoom() != &m_room)
+            return failRestore(error, QStringLiteral("extra-turn request has an invalid player: %1")
+                               .arg(item.playerObjectName));
+
+        QList<Player::Phase> phases;
+        phases.reserve(item.phases.size());
+        for (int phaseValue : item.phases) {
+            if (phaseValue < static_cast<int>(Player::RoundStart)
+                || phaseValue > static_cast<int>(Player::Finish))
+                return failRestore(error, QStringLiteral("extra-turn request has an invalid phase"));
+            phases << static_cast<Player::Phase>(phaseValue);
+        }
+
+        const SkillInstanceRef &sourceRef = item.sourceRef;
+        const bool hasSourceRef = !sourceRef.ownerObjectName.isEmpty()
+            || !sourceRef.key.skillName.isEmpty() || sourceRef.key.instanceID != 0;
+        if (hasSourceRef && !sourceRef.isValid())
+            return failRestore(error, QStringLiteral("extra-turn request has an invalid skill reference"));
+        if (sourceRef.isValid()) {
+            ServerPlayer *owner = resolver(sourceRef.ownerObjectName);
+            if (!owner || owner->getRoom() != &m_room
+                || !owner->findSkillInstance(sourceRef.key.skillName, sourceRef.key.instanceID))
+                return failRestore(error, QStringLiteral("extra-turn request skill owner is invalid"));
+        }
+
+        Request request;
+        request.player = player;
+        request.phases = phases;
+        request.reason = item.reason;
+        request.sourceRef = sourceRef;
+        restored << request;
+    }
+
+    m_requests = restored;
+    return true;
 }
 
 void ExtraTurnScheduler::restoreRequests(const QList<Request> &requests)

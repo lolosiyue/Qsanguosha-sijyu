@@ -25,6 +25,8 @@ void RoomRoster::insertAfter(ServerPlayer *before, ServerPlayer *player, bool ad
 void RoomRoster::replacePlayers(const QList<ServerPlayer *> &players)
 {
     m_players = players;
+    rebuildAlive();
+    relinkPlayers();
 }
 
 QList<ServerPlayer *> RoomRoster::players() const

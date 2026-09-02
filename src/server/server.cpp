@@ -1670,7 +1670,7 @@ int ServerDialog::config()
 
 #if !defined(QSAN_SERVER_DIALOGS_ONLY)
 
-Server::Server(QObject *parent)
+Server::Server(QObject *parent, const GameSessionConfig &initialSessionConfig)
 	: QObject(parent)//, created_successfully(true)
 {
 	m_uptimeTimer.start();
@@ -1682,6 +1682,10 @@ Server::Server(QObject *parent)
 		websocketServer->setParent(this);
 	playerCount = 0;
 	m_nextGameSeedIndex = 0;
+	if (initialSessionConfig.takeover) {
+		m_nextSessionConfig = initialSessionConfig;
+		m_hasNextSessionConfig = true;
+	}
 
 	upnpPortMapping=nullptr;
 	networkReply=nullptr;
@@ -1930,11 +1934,20 @@ void Server::daemonize()
 Room *Server::createNewRoom()
 {
 	waitForDisposingRooms();
-	const GameSessionConfig sessionConfig = gameSessionConfig(m_nextGameSeedIndex++);
+	GameSessionConfig sessionConfig;
+	if (m_hasNextSessionConfig) {
+		sessionConfig = m_nextSessionConfig;
+		m_hasNextSessionConfig = false;
+	} else {
+		sessionConfig = gameSessionConfig(m_nextGameSeedIndex++);
+	}
 	qInfo().noquote() << "Game Seed:" << QString::number(sessionConfig.seed);
 	current = new Room(this, Config.GameMode.mode_id, sessionConfig);
-	if (!current->hasLuaRuntime()) {
+	if (!current->hasLuaRuntime() || !current->isTakeoverReady()) {
+		if (!current->takeoverError().isEmpty())
+			qWarning().noquote() << "Cannot create takeover room:" << current->takeoverError();
 		delete current;
+		current = nullptr;
 		return nullptr;
 	}
 	rooms.insert(current);
@@ -1958,8 +1971,20 @@ Room *Server::createNewRoom()
 		[this, createdRoom](const QString &winner) {
 			emit roomGameOver(createdRoom->getId(), createdRoom->getMode(), winner);
 		});
+	connect(createdRoom, &Room::takeover_ready,
+		this, &Server::takeoverReady);
+	connect(createdRoom, &Room::takeover_failed,
+		this, &Server::takeoverFailed);
 
 	return current;
+}
+
+void Server::setNextGameSessionConfig(const GameSessionConfig &config)
+{
+	// The override is consumed by exactly one Room. This keeps takeover state
+	// local to the new localhost server instead of leaking through global Config.
+	m_nextSessionConfig = config;
+	m_hasNextSessionConfig = true;
 }
 
 void Server::processNewConnection(ClientSocket *socket)

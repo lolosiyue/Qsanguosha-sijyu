@@ -11,6 +11,62 @@
 class Room;
 class ServerPlayer;
 
+// A distinct on-disk contract. Legacy partial snapshots must never be used
+// for takeover: a node is either lossless or ineligible.
+struct RngSnapshot
+{
+    QString algorithm;
+    QString seed;
+    QString drawCount;
+
+    QVariantMap serialize() const;
+    static RngSnapshot deserialize(const QVariantMap &map);
+};
+
+struct SkillInstanceSnapshot
+{
+    QString skillName;
+    int instanceID = 0;
+    int source = 0;
+    QString parentSkillName;
+    int parentInstanceID = 0;
+    QString parentRefOwner;
+    QString parentRefSkillName;
+    int parentRefInstanceID = 0;
+    bool visible = true;
+    bool hasAmountOverride = false;
+    int amountOverride = 0;
+    int bindHead = 0;
+    QVariantMap state;
+    QVariantMap correctState;
+
+    QVariantMap serialize() const;
+    static SkillInstanceSnapshot deserialize(const QVariantMap &map);
+};
+
+struct CardSnapshot
+{
+    int id = -1;
+    QString objectName;
+    QString className;
+    QString suit;
+    int suitId = -1;
+    int number = -1;
+    QString skillName;
+    int skillInstanceId = 0;
+    QString sourceSkillName;
+    int sourceSkillInstanceId = 0;
+    QString activationSkillName;
+    int activationSkillInstanceId = 0;
+    bool modified = false;
+    QStringList flags;
+    QMap<QString, int> marks;
+    QVariantMap tags;
+
+    QVariantMap serialize() const;
+    static CardSnapshot deserialize(const QVariantMap &map);
+};
+
 struct PlayerSnapshot
 {
     QString objectName;
@@ -19,17 +75,17 @@ struct PlayerSnapshot
     QString general2;
     QString kingdom;
     QString role;
-    int hp;
-    int maxhp;
-    int seat;
-    int playerSeat;
-    bool alive;
-    bool faceup;
-    bool chained;
-    bool owner;
-    bool roleShown;
-    bool generalShowed;
-    bool general2Showed;
+    int hp = 0;
+    int maxhp = 0;
+    int seat = 0;
+    int playerSeat = 0;
+    bool alive = false;
+    bool faceup = true;
+    bool chained = false;
+    bool owner = false;
+    bool roleShown = false;
+    bool generalShowed = false;
+    bool general2Showed = false;
     QString gender;
     QString state;
 
@@ -40,9 +96,11 @@ struct PlayerSnapshot
     QMap<QString, int> marks;
     QStringList flags;
     QStringList skills;
-
     QMap<QString, int> history;
     QMap<int, int> equipAreas;
+    QVariantMap dynamicProperties;
+    QVariantMap tags;
+    QList<SkillInstanceSnapshot> skillInstances;
 
     QVariantMap serialize() const;
     static PlayerSnapshot deserialize(const QVariantMap &map);
@@ -53,8 +111,9 @@ struct PlayerSnapshot
 
 struct GlobalSnapshot
 {
-    int turnCount;
-    int roundCount;
+    int turnCount = 0;
+    int roundCount = 0;
+    quint64 turnSerial = 0;
     QString currentPlayer;
     QString currentPhase;
     QString gameMode;
@@ -65,8 +124,22 @@ struct GlobalSnapshot
     QList<PlayerSnapshot> players;
     QStringList seatOrder;
 
+    // Every physical card and its current room mapping.
+    QList<CardSnapshot> cards;
+    QMap<int, int> cardPlaces;
+    QMap<int, QString> cardOwners;
+
     QVariantMap roomTags;
     QStringList chatHistory;
+    QVariantMap catalogFingerprint;
+    QVariantMap configFingerprint;
+    RngSnapshot gameplayRng;
+    RngSnapshot aiRng;
+    QVariantList pendingExtraTurns;
+    QVariantMap luaTakeoverState;
+    QStringList unsupportedState;
+    bool eligible = true;
+    QString ineligibleReason;
 
     QVariantMap serialize() const;
     static GlobalSnapshot deserialize(const QVariantMap &map);
@@ -77,6 +150,9 @@ class GameSnapshot : public QObject
     Q_OBJECT
 
 public:
+    static constexpr int TakeoverSchemaVersion = 2;
+    static QString takeoverFormat();
+
     explicit GameSnapshot(QObject *parent = nullptr);
     explicit GameSnapshot(Room *room, QObject *parent = nullptr);
     explicit GameSnapshot(const QString &filepath, QObject *parent = nullptr);
@@ -89,6 +165,8 @@ public:
 
     int getTurnCount() const;
     void setTurnCount(int turn);
+    quint64 getTurnSerial() const;
+    void setTurnSerial(quint64 serial);
     QDateTime getTimestamp() const;
     QString getReplayPath() const;
     void setReplayPath(const QString &path);
@@ -97,9 +175,15 @@ public:
     void setSnapshotType(const QString &type);
     QString getDescription() const;
     void setDescription(const QString &desc);
+    bool isEligible() const;
+    QString getError() const;
 
     static QString getSnapshotDir(const QString &replayPath);
     static QString generateSnapshotFilename(int turnCount, const QString &type, const QString &playerName = QString());
+    static QVariantMap currentCatalogFingerprint();
+    static QVariantMap currentConfigFingerprint(const QString &gameMode = QString());
+    static bool validateRuntimeCompatibility(const GlobalSnapshot &state,
+                                             QString *error = nullptr);
 
 private:
     GlobalSnapshot m_state;
@@ -107,7 +191,8 @@ private:
     QString m_replayPath;
     QString m_snapshotType;
     QString m_description;
-    int m_turnCount;
+    int m_turnCount = 0;
+    QString m_error;
 };
 
 #endif

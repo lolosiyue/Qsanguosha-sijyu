@@ -16,6 +16,7 @@
 #include "roomthread3v3.h"
 #include "roomthreadxmode.h"
 #include "scenario.h"
+#include "takeover-scenario.h"
 #include "server.h"
 #include "server-info.h"
 #include "serverplayer.h"
@@ -25,6 +26,7 @@
 #include <QFile>
 #include <QScopeGuard>
 #include <QSet>
+#include <algorithm>
 
 using namespace QSanProtocol;
 
@@ -211,6 +213,51 @@ void GameSessionController::prepareForStart()
 {
 	m_preparationPhase = PreparationPhase::AssigningRoles;
 	auto phaseReset = qScopeGuard([this]() { m_preparationPhase = PreparationPhase::None; });
+	if (TakeoverScenario *takeover = m_room.takeoverScenario()) {
+		takeover->bindRuntimePlayers(&m_room);
+		const GlobalSnapshot state = takeover->snapshot()->getState();
+		QList<ServerPlayer *> orderedPlayers;
+		for (const QString &snapshotSeat : state.seatOrder) {
+			ServerPlayer *runtimePlayer = takeover->runtimePlayer(snapshotSeat);
+			if (!runtimePlayer) {
+				qCritical() << "Takeover seat binding is incomplete:" << snapshotSeat;
+				return;
+			}
+			orderedPlayers << runtimePlayer;
+		}
+		if (orderedPlayers.size() != m_room.getPlayers().size()) {
+			qCritical() << "Takeover seat binding has the wrong player count";
+			return;
+		}
+		m_room.replacePlayerOrder(orderedPlayers);
+		for (int i = 0; i < state.seatOrder.size(); ++i) {
+			ServerPlayer *runtimePlayer = orderedPlayers.at(i);
+			const QString snapshotSeat = state.seatOrder.at(i);
+			const auto saved = std::find_if(
+				state.players.cbegin(), state.players.cend(),
+				[&snapshotSeat](const PlayerSnapshot &player) {
+					return player.objectName == snapshotSeat;
+				});
+			if (saved == state.players.cend()) {
+				qCritical() << "Takeover snapshot seat has no player:" << snapshotSeat;
+				return;
+			}
+			runtimePlayer->setSeat(i + 1);
+			runtimePlayer->setPlayerSeat(i + 1);
+			runtimePlayer->setGeneralName(saved->general);
+			runtimePlayer->setGeneral2Name(saved->general2);
+			runtimePlayer->setRole(saved->role);
+			m_room.broadcastProperty(runtimePlayer, "general");
+			if (!saved->general2.isEmpty())
+				m_room.broadcastProperty(runtimePlayer, "general2");
+			if (Sanguosha->hasShowRoleMode(m_room.getMode()) || runtimePlayer->isLord())
+				m_room.broadcastProperty(runtimePlayer, "role");
+			else
+				m_room.notifyProperty(runtimePlayer, runtimePlayer, "role");
+		}
+		m_room.updateStateItem();
+		return;
+	}
 	if (m_room.scenario){
 		bool already = false;
 		if (m_room.scenario->objectName() == "challengedeveloper"){

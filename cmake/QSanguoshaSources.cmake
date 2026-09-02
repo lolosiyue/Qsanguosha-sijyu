@@ -96,6 +96,7 @@ set(QSAN_SOURCES
     src/scenario/miniscenarios.cpp
     src/scenario/scenario.cpp
     src/scenario/scenerule.cpp
+    src/scenario/takeover-scenario.cpp
     src/scenario/zombie-scenario.cpp
     src/spine/Animation.cpp
     src/spine/AnimationState.cpp
@@ -169,7 +170,6 @@ set(QSAN_SOURCES
     src/util/recorder.cpp
     src/util/replay-game-state.cpp
     src/util/replay-index.cpp
-    src/util/replay-takeover.cpp
 )
 
 set(QSAN_LUA_SOURCES
@@ -291,6 +291,7 @@ set(QSAN_MOC_HEADERS
     src/scenario/guandu-scenario.h
     src/scenario/miniscenarios.h
     src/scenario/scenario.h
+    src/scenario/takeover-scenario.h
     src/scenario/zombie-scenario.h
     src/server/server.h
     src/ui/bubblechatbox.h
@@ -342,7 +343,6 @@ set(QSAN_MOC_HEADERS
     src/util/recorder.h
     src/util/replay-game-state.h
     src/util/replay-index.h
-    src/util/replay-takeover.h
     src/util/socket.h
 )
 

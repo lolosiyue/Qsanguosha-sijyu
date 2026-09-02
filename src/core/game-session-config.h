@@ -2,6 +2,7 @@
 #define QSAN_GAME_SESSION_CONFIG_H
 
 #include <QRandomGenerator>
+#include <QString>
 
 struct GameSessionConfig
 {
@@ -16,6 +17,9 @@ struct GameSessionConfig
     }
 
     quint64 seed;
+    bool takeover = false;
+    QString takeoverSnapshotPath;
+    QString takeoverSeatName;
 };
 
 #endif
