@@ -2268,24 +2268,6 @@ public:
 	}
 };
 
-class Juanjia : public GameStartSkill
-{
-public:
-	Juanjia() : GameStartSkill("juanjia")
-	{
-		frequency = Compulsory;
-	}
-
-	void onGameStart(ServerPlayer *player) const{
-		Room *room = player->getRoom();
-
-		room->sendCompulsoryTriggerLog(player, this);
-		player->throwEquipArea(1);
-		player->addEquipArea(0);
-
-	}
-};
-
 
 
 
