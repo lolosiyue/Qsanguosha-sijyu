@@ -65,7 +65,16 @@ public:
     int getNearestTakeoverNodeAtOrBefore(int pairIndex) const;
     int getNearestTakeoverNodeAtOrBeforeCurrent() const;
     QString getTakeoverSnapshotPath(int nodeIndex) const;
+    QString getTakeoverManifestPath() const;
+    QStringList getTakeoverSnapshotPaths() const;
     bool hasTakeoverSnapshots() const;
+
+    // Freeze playback immediately before the next replay event is dispatched.
+    // The boundary signal is queued behind every previously dispatched event,
+    // so Client can capture an exactly aligned state before releasing it.
+    quint64 requestStateCaptureBoundary();
+    bool releaseStateCaptureBoundary(quint64 requestId);
+    bool cancelStateCaptureBoundary(quint64 requestId);
 
     // Stop playback and wait for the replay thread to leave run().  This is
     // required before the replay Client is destroyed during takeover.
@@ -86,17 +95,33 @@ protected:
     virtual void run();
 
 private:
+    enum class StateCaptureState
+    {
+        Idle,
+        Requested,
+        Reached
+    };
+
     void buildIndex();
     void loadSnapshots();
     void emitCommand(int pairIndex);
+    bool waitForStateCaptureBoundary();
+    bool waitWhilePlaybackPaused();
 
     QString filename;
     qreal speed;
     bool playing;
     bool m_seeking;
+    quint64 m_seekGeneration;
     std::atomic<int> m_currentPairIndex;
     QMutex mutex;
+    QMutex m_dispatchMutex;
     QSemaphore play_sem;
+    QSemaphore m_stateCaptureSemaphore;
+
+    StateCaptureState m_stateCaptureState;
+    quint64 m_stateCaptureRequestId;
+    bool m_stateCaptureResumePlaying;
 
     QList<QSanReplay::ReplayEvent> m_events;
     QSanReplay::ReplayLoadError m_loadError;
@@ -113,10 +138,13 @@ private:
 
 signals:
     void command_parsed(const QSanProtocol::ProtocolMessage &message);
+    void replayEventDispatched(const QSanProtocol::ProtocolMessage &message,
+                               int pairIndex, qint64 elapsedMs);
     void elasped(int secs);
     void speed_changed(qreal speed);
     void node_reached(int nodeIndex);
     void seek_finished();
+    void stateCaptureBoundaryReached(quint64 requestId);
 };
 
 #endif

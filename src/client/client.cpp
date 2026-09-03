@@ -258,8 +258,10 @@ Client::Client(QObject *parent, const QString &filename, ClientSocket *injectedS
 		recorder = nullptr;
 
 		replayer = new Replayer(this, filename);
-		connect(replayer, &Replayer::command_parsed,
-			this, &Client::processReplayMessage);
+		connect(replayer, &Replayer::replayEventDispatched,
+			this, &Client::processReplayEvent, Qt::QueuedConnection);
+		connect(replayer, &Replayer::stateCaptureBoundaryReached,
+			this, &Client::captureReplayStateAtBoundary, Qt::QueuedConnection);
 	}
 }
 
@@ -493,6 +495,32 @@ void Client::disconnectFromHost()
 void Client::processReplayMessage(const ProtocolMessage &message)
 {
 	dispatchProtocolMessage(message, true);
+}
+
+void Client::processReplayEvent(const ProtocolMessage &message,
+	int pairIndex, qint64 elapsedMs)
+{
+	// Record the coordinate before dispatch. Notification reduction happens
+	// before any presentation callback can enter a nested GUI event loop, so a
+	// barrier handled re-entrantly still reports the event whose state is live.
+	const int previousPairIndex = m_lastReplayPairIndex;
+	const qint64 previousElapsedMs = m_lastReplayElapsedMs;
+	m_lastReplayPairIndex = pairIndex;
+	m_lastReplayElapsedMs = elapsedMs;
+	if (!dispatchProtocolMessage(message, true)) {
+		m_lastReplayPairIndex = previousPairIndex;
+		m_lastReplayElapsedMs = previousElapsedMs;
+	}
+}
+
+void Client::captureReplayStateAtBoundary(quint64 requestId)
+{
+	// This slot is queued behind every preceding replayEventDispatched signal
+	// from the same Replayer.  The reducer state and reported pair index are
+	// therefore an exact post-event boundary, not a GUI timing approximation.
+	emit replayStateCaptureReady(requestId,
+		m_interactionCore ? m_interactionCore->toJson() : QJsonObject(),
+		m_lastReplayPairIndex, m_lastReplayElapsedMs);
 }
 
 void Client::processLiveProtocolMessage(const ProtocolMessage &message)

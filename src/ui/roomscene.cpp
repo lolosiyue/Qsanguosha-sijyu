@@ -23,6 +23,7 @@
 #include "playercardbox.h"
 #include "cardcontainer.h"
 #include "recorder.h"
+#include "replay-diagnostic-exporter.h"
 #include "game-snapshot.h"
 #include "replay-timeline.h"
 #include "replay-index.h"
@@ -70,8 +71,13 @@
 #include <QSet>
 #include <QMenu>
 #include <QDateTime>
+#include <QDir>
 #include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
+#include <QStandardPaths>
 #include <QTextStream>
+#include <QTimer>
 #include <QApplication>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -769,6 +775,14 @@ void RoomScene::exitOnsoleContext()
 
 RoomScene::~RoomScene()
 {
+	if (m_pendingReplayCaptureId != 0 && ClientInstance
+		&& ClientInstance->getReplayer()) {
+		ClientInstance->getReplayer()->cancelStateCaptureBoundary(
+			m_pendingReplayCaptureId);
+	}
+	if (m_replayExportInProgress && QApplication::overrideCursor())
+		QApplication::restoreOverrideCursor();
+
 	if(RoomSceneInstance==this)
 		RoomSceneInstance = nullptr;
 
@@ -1119,7 +1133,11 @@ QGraphicsPixmapItem*RoomScene::createDashboardButtons()
 
 QRectF ReplayerControlBar::boundingRect() const
 {
-	return QRectF(0,0,S_BUTTON_WIDTH*5+S_BUTTON_GAP*4+52,S_BUTTON_HEIGHT);
+	// Four skin buttons, two 52px text actions and the same 49px allowance
+	// the original control bar reserved after its time-label origin.
+	return QRectF(0, 0,
+		(S_BUTTON_WIDTH + S_BUTTON_GAP) * 4 + (52 + S_BUTTON_GAP) * 2 + 49,
+		S_BUTTON_HEIGHT);
 }
 
 void ReplayerControlBar::paint(QPainter*,const QStyleOptionGraphicsItem*,QWidget*)
@@ -1127,6 +1145,8 @@ void ReplayerControlBar::paint(QPainter*,const QStyleOptionGraphicsItem*,QWidget
 }
 
 ReplayerControlBar::ReplayerControlBar(Dashboard*dashboard)
+	: time_label(nullptr), takeover_button(nullptr), export_button(nullptr),
+	  speed(1.0), export_in_progress(false)
 {
 	QSanButton*play,*uniform,*slow_down,*speed_up;
 
@@ -1153,6 +1173,15 @@ ReplayerControlBar::ReplayerControlBar(Dashboard*dashboard)
 	connect(takeover_button, &QPushButton::clicked,
 		this, &ReplayerControlBar::requestTakeover);
 
+	export_button = new QPushButton(QStringLiteral("匯出"));
+	export_button->setToolTip(QStringLiteral("匯出 Bug 診斷包"));
+	export_button->setFixedSize(52, S_BUTTON_HEIGHT);
+	QGraphicsProxyWidget *exportWidget = new QGraphicsProxyWidget(this);
+	exportWidget->setWidget(export_button);
+	exportWidget->setPos(step*4 + 52 + S_BUTTON_GAP, 0);
+	connect(export_button, &QPushButton::clicked,
+		this, &ReplayerControlBar::exportRequested);
+
 	time_label = new QLabel;
 	time_label->setAttribute(Qt::WA_NoSystemBackground);
 	time_label->setText("-----------------------------------------------------");
@@ -1162,14 +1191,15 @@ ReplayerControlBar::ReplayerControlBar(Dashboard*dashboard)
 
 	QGraphicsProxyWidget*widget = new QGraphicsProxyWidget(this);
 	widget->setWidget(time_label);
-	widget->setPos(step*5,0);
+	widget->setPos(step*4 + (52 + S_BUTTON_GAP)*2, 0);
 
 	Replayer*replayer = ClientInstance->getReplayer();
 	connect(play,SIGNAL(clicked()),replayer,SLOT(toggle()));
 	connect(uniform,SIGNAL(clicked()),replayer,SLOT(uniform()));
 	connect(slow_down,SIGNAL(clicked()),replayer,SLOT(slowDown()));
 	connect(speed_up,SIGNAL(clicked()),replayer,SLOT(speedUp()));
-	connect(replayer,SIGNAL(elasped(int)),this,SLOT(setTime(int)));
+	connect(replayer, &Replayer::elasped, this, &ReplayerControlBar::setTime,
+		Qt::QueuedConnection);
 	connect(replayer,SIGNAL(speed_changed(qreal)),this,SLOT(setSpeed(qreal)));
 
 	speed = replayer->getSpeed();
@@ -1186,11 +1216,23 @@ ReplayerControlBar::ReplayerControlBar(Dashboard*dashboard)
 
 void ReplayerControlBar::updateTakeoverAvailability()
 {
-	if (!takeover_button)
-		return;
 	Replayer *replayer = ClientInstance ? ClientInstance->getReplayer() : nullptr;
-	takeover_button->setEnabled(replayer
-		&& replayer->getNearestTakeoverNodeAtOrBeforeCurrent() >= 0);
+	if (takeover_button) {
+		takeover_button->setEnabled(!export_in_progress && replayer
+			&& replayer->getNearestTakeoverNodeAtOrBeforeCurrent() >= 0);
+	}
+	if (export_button) {
+		export_button->setEnabled(!export_in_progress && replayer
+			&& replayer->isValid()
+			&& replayer->getPath().endsWith(QStringLiteral(".txt"), Qt::CaseInsensitive)
+			&& replayer->hasTakeoverSnapshots());
+	}
+}
+
+void ReplayerControlBar::setExportInProgress(bool inProgress)
+{
+	export_in_progress = inProgress;
+	updateTakeoverAvailability();
 }
 
 void ReplayerControlBar::requestTakeover()
@@ -1296,6 +1338,166 @@ void RoomScene::createReplayControlBar()
 	m_replayControl = new ReplayerControlBar(dashboard);
 	connect(m_replayControl, &ReplayerControlBar::takeoverRequested,
 		this, &RoomScene::takeoverRequested);
+	connect(m_replayControl, &ReplayerControlBar::exportRequested,
+		this, &RoomScene::exportReplayDiagnosticBundle);
+	connect(ClientInstance, &Client::replayStateCaptureReady,
+		this, &RoomScene::onReplayStateCaptureReady);
+	Replayer *replayer = ClientInstance->getReplayer();
+	connect(replayer, &QThread::finished, this, [this]() {
+		if (!m_replayExportInProgress || m_pendingReplayCaptureId == 0)
+			return;
+		finishReplayDiagnosticExport(QJsonObject(), false,
+			QStringLiteral("Replay 已播放完畢，無法建立事件 barrier"));
+	});
+}
+
+void RoomScene::setReplayExportInProgress(bool inProgress)
+{
+	m_replayExportInProgress = inProgress;
+	if (m_replayControl) {
+		m_replayControl->setEnabled(!inProgress);
+		m_replayControl->setExportInProgress(inProgress);
+	}
+	if (m_replayTimeline)
+		m_replayTimeline->setEnabled(!inProgress);
+}
+
+void RoomScene::exportReplayDiagnosticBundle()
+{
+	if (m_replayExportInProgress || !ClientInstance)
+		return;
+
+	Replayer *replayer = ClientInstance->getReplayer();
+	if (!replayer || !replayer->isValid()
+		|| !replayer->getPath().endsWith(QStringLiteral(".txt"), Qt::CaseInsensitive)
+		|| !replayer->hasTakeoverSnapshots())
+		return;
+
+	const QFileInfo replayInfo(replayer->getPath());
+	const QString timestamp = QDateTime::currentDateTimeUtc().toString(
+		QStringLiteral("yyyyMMdd'T'HHmmss'Z'"));
+	const QString defaultName = QStringLiteral("%1-bug-%2.qsgbug.zip")
+		.arg(replayInfo.completeBaseName(), timestamp);
+	QString outputPath = QFileDialog::getSaveFileName(main_window,
+		QStringLiteral("匯出 Bug 診斷包"),
+		QDir(replayInfo.absolutePath()).filePath(defaultName),
+		QStringLiteral("QSanguosha Bug 診斷包 (*.qsgbug.zip)"));
+	if (outputPath.isEmpty())
+		return;
+	if (outputPath.endsWith(QStringLiteral(".qsgbug.zip"), Qt::CaseInsensitive)) {
+		// Keep the canonical extension selected by the dialog.
+	} else if (outputPath.endsWith(QStringLiteral(".qsgbug"), Qt::CaseInsensitive))
+		outputPath += QStringLiteral(".zip");
+	else if (outputPath.endsWith(QStringLiteral(".zip"), Qt::CaseInsensitive)) {
+		outputPath.chop(4);
+		outputPath += QStringLiteral(".qsgbug.zip");
+	} else {
+		outputPath += QStringLiteral(".qsgbug.zip");
+	}
+
+	m_pendingReplayBundlePath = outputPath;
+	setReplayExportInProgress(true);
+	QApplication::setOverrideCursor(Qt::WaitCursor);
+
+	const quint64 requestId = replayer->requestStateCaptureBoundary();
+	if (requestId == 0) {
+		finishReplayDiagnosticExport(QJsonObject(), false,
+			QStringLiteral("Replay 已結束或事件 barrier 無法建立"));
+		return;
+	}
+	m_pendingReplayCaptureId = requestId;
+
+	QTimer::singleShot(2000, this, [this, requestId]() {
+		if (!m_replayExportInProgress
+			|| m_pendingReplayCaptureId != requestId)
+			return;
+		finishReplayDiagnosticExport(QJsonObject(), false,
+			QStringLiteral("等待精確事件 barrier 逾時 2 秒"));
+	});
+}
+
+void RoomScene::onReplayStateCaptureReady(quint64 requestId,
+	const QJsonObject &clientCore, int lastAppliedPairIndex, qint64 elapsedMs)
+{
+	if (!m_replayExportInProgress
+		|| requestId != m_pendingReplayCaptureId) {
+		Replayer *replayer = ClientInstance ? ClientInstance->getReplayer() : nullptr;
+		if (replayer)
+			replayer->releaseStateCaptureBoundary(requestId);
+		return;
+	}
+
+	QJsonObject stateNow{
+		{QStringLiteral("schemaVersion"), 1},
+		{QStringLiteral("restorable"), false},
+		{QStringLiteral("alignment"), lastAppliedPairIndex < 0
+			? QStringLiteral("before-first-event")
+			: QStringLiteral("after-event")},
+		{QStringLiteral("lastAppliedPairIndex"), lastAppliedPairIndex},
+		{QStringLiteral("elapsedMs"), elapsedMs},
+		{QStringLiteral("clientCore"), clientCore}
+	};
+	finishReplayDiagnosticExport(stateNow, true, QString());
+}
+
+void RoomScene::finishReplayDiagnosticExport(const QJsonObject &stateNow,
+	bool includeStateNow, const QString &stateNowOmission)
+{
+	Replayer *replayer = ClientInstance ? ClientInstance->getReplayer() : nullptr;
+	ReplayDiagnosticExportResult result;
+	if (!replayer) {
+		result.error = QStringLiteral("Replay 已關閉");
+	} else {
+		ReplayDiagnosticExportRequest request;
+		request.replayPath = replayer->getPath();
+		request.manifestPath = replayer->getTakeoverManifestPath();
+		request.snapshotPaths = replayer->getTakeoverSnapshotPaths();
+		request.includeStateNow = includeStateNow;
+		request.stateNow = stateNow;
+		request.stateNowOmission = stateNowOmission;
+		request.includeDiagnostics = true;
+		request.diagnostics = ReplayDiagnosticExporter::createDiagnostics(*replayer);
+		result = ReplayDiagnosticExporter::exportBundle(
+			m_pendingReplayBundlePath, request);
+	}
+
+	const quint64 requestId = m_pendingReplayCaptureId;
+	if (requestId != 0 && replayer) {
+		if (includeStateNow)
+			replayer->releaseStateCaptureBoundary(requestId);
+		else
+			replayer->cancelStateCaptureBoundary(requestId);
+	}
+	m_pendingReplayCaptureId = 0;
+	setReplayExportInProgress(false);
+	if (QApplication::overrideCursor())
+		QApplication::restoreOverrideCursor();
+
+	const QString outputPath = m_pendingReplayBundlePath;
+	m_pendingReplayBundlePath.clear();
+	if (!result.success) {
+		QMessageBox::critical(main_window, QStringLiteral("匯出失敗"),
+			result.error.isEmpty() ? QStringLiteral("無法建立診斷包") : result.error);
+		return;
+	}
+
+	QString stateStatus = QStringLiteral("已包含");
+	if (result.omittedFiles.contains(QStringLiteral("state-now.json"))) {
+		stateStatus = QStringLiteral("已省略：%1").arg(
+			result.omittedFiles.value(QStringLiteral("state-now.json")));
+	}
+	QString diagnosticsStatus = QStringLiteral("已包含");
+	if (result.omittedFiles.contains(QStringLiteral("diagnostics.json"))) {
+		diagnosticsStatus = QStringLiteral("已省略：%1").arg(
+			result.omittedFiles.value(QStringLiteral("diagnostics.json")));
+	}
+
+	QMessageBox::information(main_window, QStringLiteral("匯出完成"),
+		QStringLiteral("診斷包：%1\nstate-now.json：%2\ndiagnostics.json：%3\n\n"
+			"注意：Replay snapshot 可能包含本機路徑；Replay 與 state-now "
+			"也可能包含玩家名稱、聊天、房間或連線中繼資料。")
+			.arg(QDir::toNativeSeparators(outputPath), stateStatus,
+				diagnosticsStatus));
 }
 
 void RoomScene::createReplayTimeline()
@@ -1314,7 +1516,8 @@ void RoomScene::createReplayTimeline()
 
 	connect(m_replayTimeline, &ReplayTimeline::timeChanged, this, &RoomScene::onReplayTimelineTimeChanged);
 	connect(m_replayTimeline, &ReplayTimeline::nodeClicked, this, &RoomScene::onReplayTimelineNodeClicked);
-	connect(ClientInstance->getReplayer(), &Replayer::elasped, this, &RoomScene::updateReplayTimeline);
+	connect(ClientInstance->getReplayer(), &Replayer::elasped,
+		this, &RoomScene::updateReplayTimeline, Qt::QueuedConnection);
 
 	m_replayTimeline->setPos(100, sceneRect().height() - 50);
 }

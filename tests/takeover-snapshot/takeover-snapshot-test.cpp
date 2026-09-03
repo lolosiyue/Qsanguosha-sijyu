@@ -6,6 +6,7 @@
 #include "player.h"
 #include "protocol.h"
 #include "recorder.h"
+#include "replay-diagnostic-exporter.h"
 #include "replay/replay-codec.h"
 #include "room.h"
 #include "room-runtime.h"
@@ -14,8 +15,11 @@
 #include "takeover-scenario.h"
 
 #include <algorithm>
+#include <functional>
 #include <QCoreApplication>
 #include <QCryptographicHash>
+#include <QElapsedTimer>
+#include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -78,6 +82,84 @@ QJsonObject readObject(const QString &path)
 QByteArray sha256(const QByteArray &bytes)
 {
     return QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex();
+}
+
+quint16 readLe16(const QByteArray &bytes, qsizetype offset)
+{
+    return static_cast<quint16>(static_cast<unsigned char>(bytes.at(offset)))
+        | (static_cast<quint16>(static_cast<unsigned char>(bytes.at(offset + 1))) << 8);
+}
+
+quint32 readLe32(const QByteArray &bytes, qsizetype offset)
+{
+    return static_cast<quint32>(readLe16(bytes, offset))
+        | (static_cast<quint32>(readLe16(bytes, offset + 2)) << 16);
+}
+
+quint32 crc32(const QByteArray &bytes)
+{
+    quint32 crc = 0xffffffffU;
+    for (char byte : bytes) {
+        crc ^= static_cast<unsigned char>(byte);
+        for (int bit = 0; bit < 8; ++bit)
+            crc = (crc >> 1) ^ (0xedb88320U & (0U - (crc & 1U)));
+    }
+    return ~crc;
+}
+
+bool readStoreZip(const QString &path, QMap<QString, QByteArray> *entries)
+{
+    QFile file(path);
+    if (!entries || !file.open(QIODevice::ReadOnly))
+        return false;
+    const QByteArray bytes = file.readAll();
+    const QByteArray endSignature("PK\x05\x06", 4);
+    const qsizetype endOffset = bytes.lastIndexOf(endSignature);
+    if (endOffset < 0 || endOffset + 22 > bytes.size())
+        return false;
+
+    const quint16 entryCount = readLe16(bytes, endOffset + 10);
+    qsizetype centralOffset = readLe32(bytes, endOffset + 16);
+    for (quint16 i = 0; i < entryCount; ++i) {
+        if (centralOffset + 46 > bytes.size()
+            || bytes.mid(centralOffset, 4) != QByteArray("PK\x01\x02", 4)
+            || readLe16(bytes, centralOffset + 10) != 0)
+            return false;
+        const quint32 expectedCrc = readLe32(bytes, centralOffset + 16);
+        const quint32 size = readLe32(bytes, centralOffset + 24);
+        const quint16 nameLength = readLe16(bytes, centralOffset + 28);
+        const quint16 extraLength = readLe16(bytes, centralOffset + 30);
+        const quint16 commentLength = readLe16(bytes, centralOffset + 32);
+        const quint32 localOffset = readLe32(bytes, centralOffset + 42);
+        if (centralOffset + 46 + nameLength + extraLength + commentLength
+                > bytes.size()
+            || static_cast<qsizetype>(localOffset) + 30 > bytes.size()
+            || bytes.mid(localOffset, 4) != QByteArray("PK\x03\x04", 4))
+            return false;
+
+        const QByteArray nameBytes = bytes.mid(centralOffset + 46, nameLength);
+        const quint16 localNameLength = readLe16(bytes, localOffset + 26);
+        const quint16 localExtraLength = readLe16(bytes, localOffset + 28);
+        const qsizetype dataOffset = localOffset + 30
+            + localNameLength + localExtraLength;
+        if (dataOffset + size > bytes.size())
+            return false;
+        const QByteArray data = bytes.mid(dataOffset, size);
+        if (crc32(data) != expectedCrc)
+            return false;
+        entries->insert(QString::fromUtf8(nameBytes), data);
+        centralOffset += 46 + nameLength + extraLength + commentLength;
+    }
+    return true;
+}
+
+bool spinUntil(const std::function<bool()> &predicate, int timeoutMs)
+{
+    QElapsedTimer timer;
+    timer.start();
+    while (!predicate() && timer.elapsed() < timeoutMs)
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+    return predicate();
 }
 
 GlobalSnapshot validSnapshotState(quint64 turnSerial, int turnCount)
@@ -227,6 +309,311 @@ QByteArray validReplay()
     };
     return writer.appendEvent(2, message, &error)
         ? writer.rawReplayData() : QByteArray();
+}
+
+QByteArray barrierReplay()
+{
+    QSanReplay::ReplayWriter writer(QStringLiteral("test"),
+                                    QStringLiteral("test"), false);
+    QString error;
+    QSanProtocol::ProtocolMessage message;
+    message.type = QSanProtocol::ProtocolMessageType::Notification;
+    message.source = QSanProtocol::ProtocolEndpoint::Room;
+    message.destination = QSanProtocol::ProtocolEndpoint::Client;
+    message.command = QSanProtocol::S_COMMAND_SET_MARK;
+    message.hasPayload = true;
+    message.payload = QVariantMap{
+        {QStringLiteral("schema_version"), 1},
+        {QStringLiteral("player_name"), QStringLiteral("p1")},
+        {QStringLiteral("mark_name"), QStringLiteral("barrier")},
+        {QStringLiteral("value"), 1}
+    };
+    if (!writer.appendEvent(0, message, &error))
+        return {};
+    message.payload = QVariantMap{
+        {QStringLiteral("schema_version"), 1},
+        {QStringLiteral("player_name"), QStringLiteral("p1")},
+        {QStringLiteral("mark_name"), QStringLiteral("barrier")},
+        {QStringLiteral("value"), 2}
+    };
+    return writer.appendEvent(1000, message, &error)
+        ? writer.rawReplayData() : QByteArray();
+}
+
+bool replayStateCaptureBarrierIsEventAligned()
+{
+    QTemporaryDir directory;
+    const QString replayPath = directory.filePath(QStringLiteral("barrier.txt"));
+    if (!expect(directory.isValid() && writeBytes(replayPath, barrierReplay()),
+                QStringLiteral("write barrier replay")))
+        return false;
+
+    bool ok = true;
+    Replayer playing(nullptr, replayPath);
+    QObject playingReceiver;
+    int appliedPairIndex = -1;
+    int pairIndexAtBoundary = -2;
+    bool boundaryReached = false;
+    quint64 playingRequestId = 0;
+    QObject::connect(&playing, &Replayer::replayEventDispatched,
+                     &playingReceiver,
+                     [&](const QSanProtocol::ProtocolMessage &, int pairIndex,
+                         qint64) {
+        appliedPairIndex = pairIndex;
+    }, Qt::QueuedConnection);
+    QObject::connect(&playing, &Replayer::stateCaptureBoundaryReached,
+                     &playingReceiver, [&](quint64 requestId) {
+        pairIndexAtBoundary = appliedPairIndex;
+        boundaryReached = true;
+        Q_UNUSED(requestId);
+    });
+    playing.start();
+    ok = expect(spinUntil([&]() { return appliedPairIndex == 0; }, 500),
+                QStringLiteral("first replay event applied")) && ok;
+    playingRequestId = playing.requestStateCaptureBoundary();
+    ok = expect(playingRequestId != 0,
+                QStringLiteral("playing capture requested")) && ok;
+    ok = expect(spinUntil([&]() { return boundaryReached; }, 500),
+                QStringLiteral("playing capture reached during delay")) && ok;
+    ok = expect(pairIndexAtBoundary == 0,
+                QStringLiteral("capture follows last applied event")) && ok;
+    playing.toggle();
+    playing.seekToPosition(1);
+    ok = expect(!playing.isPlaying() && appliedPairIndex == 0,
+                QStringLiteral("capture boundary blocks playback controls")) && ok;
+    ok = expect(playing.releaseStateCaptureBoundary(playingRequestId)
+                    && playing.isPlaying(),
+                QStringLiteral("playing state restored after capture")) && ok;
+    playing.stopAndWait(1000);
+
+    Replayer paused(nullptr, replayPath);
+    QObject pausedReceiver;
+    bool pausedBoundaryReached = false;
+    QObject::connect(&paused, &Replayer::stateCaptureBoundaryReached,
+                     &pausedReceiver, [&](quint64 requestId) {
+        pausedBoundaryReached = true;
+        paused.releaseStateCaptureBoundary(requestId);
+    });
+    paused.start();
+    paused.toggle();
+    const quint64 pausedRequestId = paused.requestStateCaptureBoundary();
+    ok = expect(pausedRequestId != 0,
+                QStringLiteral("paused capture requested")) && ok;
+    ok = expect(spinUntil([&]() { return pausedBoundaryReached; }, 500),
+                QStringLiteral("paused capture reached")) && ok;
+    ok = expect(!paused.isPlaying(),
+                QStringLiteral("paused state restored after capture")) && ok;
+    paused.stopAndWait(1000);
+
+    Replayer seeking(nullptr, replayPath);
+    QObject seekingReceiver;
+    QList<int> seekAppliedPairIndexes;
+    QList<int> seekElapsedSeconds;
+    QObject::connect(&seeking, &Replayer::replayEventDispatched,
+                     &seekingReceiver,
+                     [&](const QSanProtocol::ProtocolMessage &, int pairIndex,
+                         qint64) {
+        seekAppliedPairIndexes.append(pairIndex);
+    }, Qt::QueuedConnection);
+    QObject::connect(&seeking, &Replayer::elasped,
+                     &seekingReceiver,
+                     [&](int seconds) {
+        seekElapsedSeconds.append(seconds);
+    }, Qt::QueuedConnection);
+    seeking.start();
+    ok = expect(spinUntil([&]() { return seekAppliedPairIndexes.contains(0); }, 500),
+                QStringLiteral("seek fixture first event applied")) && ok;
+    seeking.seekToPosition(0);
+    ok = expect(spinUntil([&]() { return !seeking.isRunning(); }, 2500),
+                QStringLiteral("seek worker reaches target end")) && ok;
+    ok = expect(!seekAppliedPairIndexes.isEmpty()
+                    && seekAppliedPairIndexes.constLast() == 1
+                    && seekAppliedPairIndexes.count(1) == 1,
+                QStringLiteral("playing seek dispatches target exactly once")) && ok;
+    ok = expect(seekElapsedSeconds.count(1) == 1,
+                QStringLiteral("playing seek suppresses stale elapsed time")) && ok;
+    seeking.stopAndWait(1000);
+
+    Replayer cancelled(nullptr, replayPath);
+    QObject cancelledReceiver;
+    int cancelledAppliedPairIndex = -1;
+    QObject::connect(&cancelled, &Replayer::replayEventDispatched,
+                     &cancelledReceiver,
+                     [&](const QSanProtocol::ProtocolMessage &, int pairIndex,
+                         qint64) {
+        cancelledAppliedPairIndex = pairIndex;
+    }, Qt::QueuedConnection);
+    cancelled.start();
+    ok = expect(spinUntil([&]() { return cancelledAppliedPairIndex == 0; }, 500),
+                QStringLiteral("cancel fixture first event applied")) && ok;
+    const quint64 cancelledRequestId = cancelled.requestStateCaptureBoundary();
+    ok = expect(cancelledRequestId != 0
+                    && cancelled.cancelStateCaptureBoundary(cancelledRequestId),
+                QStringLiteral("capture request can be cancelled")) && ok;
+    ok = expect(spinUntil([&]() { return cancelledAppliedPairIndex == 1; }, 1500),
+                QStringLiteral("cancel restores playing state")) && ok;
+    cancelled.stopAndWait(1000);
+    return ok;
+}
+
+bool diagnosticExporterWritesCanonicalBundle()
+{
+    QTemporaryDir directory;
+    if (!expect(directory.isValid(), QStringLiteral("bundle temporary directory")))
+        return false;
+
+    const QByteArray replayData = validReplay();
+    const QString replayPath = directory.filePath(QStringLiteral("export-source.txt"));
+    if (!expect(writeBytes(replayPath, replayData),
+                QStringLiteral("write bundle replay")))
+        return false;
+
+    const QString snapshotDir = GameSnapshot::getSnapshotDir(replayPath);
+    const QString snapshotPath = snapshotDir + QStringLiteral("/turn_001_turn.json");
+    GameSnapshot snapshot;
+    snapshot.setState(validSnapshotState(1, 0));
+    snapshot.setReplayPath(replayPath);
+    snapshot.setSnapshotType(QStringLiteral("turn"));
+    if (!expect(snapshot.save(snapshotPath), QStringLiteral("write bundle snapshot")))
+        return false;
+
+    QFile snapshotFile(snapshotPath);
+    if (!snapshotFile.open(QIODevice::ReadOnly))
+        return false;
+    const QByteArray snapshotData = snapshotFile.readAll();
+
+    QJsonObject manifestEntry{
+        {QStringLiteral("file"), QStringLiteral("turn_001_turn.json")},
+        {QStringLiteral("sha256"), QString::fromLatin1(sha256(snapshotData))},
+        {QStringLiteral("turnSerial"), QStringLiteral("1")},
+        {QStringLiteral("playerName"), QStringLiteral("p1")},
+        {QStringLiteral("playerTurnCount"), 1}
+    };
+    const QJsonObject manifest{
+        {QStringLiteral("schema"), QStringLiteral("qsanguosha-takeover-manifest-v1")},
+        {QStringLiteral("sessionId"), QStringLiteral("bundle-session")},
+        {QStringLiteral("replaySha256"), QString::fromLatin1(sha256(replayData))},
+        {QStringLiteral("snapshots"), QJsonArray{manifestEntry}}
+    };
+    const QByteArray manifestData = QJsonDocument(manifest).toJson(QJsonDocument::Compact);
+    const QString manifestPath = snapshotDir + QStringLiteral("/manifest.json");
+    if (!expect(writeBytes(manifestPath, manifestData),
+                QStringLiteral("write bundle manifest")))
+        return false;
+
+    Replayer replayer(nullptr, replayPath);
+    if (!expect(replayer.hasTakeoverSnapshots(),
+                QStringLiteral("bundle source verified by Replayer")))
+        return false;
+
+    ReplayDiagnosticExportRequest request;
+    request.replayPath = replayPath;
+    request.manifestPath = replayer.getTakeoverManifestPath();
+    request.snapshotPaths = replayer.getTakeoverSnapshotPaths();
+    request.includeStateNow = true;
+    request.stateNow = QJsonObject{
+        {QStringLiteral("schemaVersion"), 1},
+        {QStringLiteral("restorable"), false},
+        {QStringLiteral("alignment"), QStringLiteral("after-event")},
+        {QStringLiteral("lastAppliedPairIndex"), 0},
+        {QStringLiteral("elapsedMs"), 2},
+        {QStringLiteral("clientCore"), QJsonObject{{QStringLiteral("fixture"), true}}}
+    };
+    request.includeDiagnostics = true;
+    request.diagnostics = ReplayDiagnosticExporter::createDiagnostics(replayer);
+
+    const ReplayDiagnosticExportResult overwriteResult =
+        ReplayDiagnosticExporter::exportBundle(replayPath, request);
+    bool ok = expect(!overwriteResult.success,
+                     QStringLiteral("export refuses to overwrite replay source"));
+    QFile replayAfterRefusal(replayPath);
+    ok = expect(replayAfterRefusal.open(QIODevice::ReadOnly)
+                    && replayAfterRefusal.readAll() == replayData,
+                QStringLiteral("replay survives refused overwrite")) && ok;
+
+    const QString unrelatedPath = directory.filePath(QStringLiteral("turn_999_turn.json"));
+    ok = expect(writeBytes(unrelatedPath, QByteArrayLiteral("unrelated")),
+                QStringLiteral("write unrelated snapshot candidate")) && ok;
+    ReplayDiagnosticExportRequest outsideRequest = request;
+    outsideRequest.snapshotPaths = QStringList{unrelatedPath};
+    const ReplayDiagnosticExportResult outsideResult =
+        ReplayDiagnosticExporter::exportBundle(
+            directory.filePath(QStringLiteral("outside.qsgbug.zip")),
+            outsideRequest);
+    ok = expect(!outsideResult.success,
+                QStringLiteral("export rejects snapshot outside sidecar")) && ok;
+
+    const QString outputPath = directory.filePath(QStringLiteral("fixture.qsgbug.zip"));
+    const ReplayDiagnosticExportResult result =
+        ReplayDiagnosticExporter::exportBundle(outputPath, request);
+    ok = expect(result.success, QStringLiteral("export diagnostic bundle")) && ok;
+
+    QMap<QString, QByteArray> archive;
+    ok = expect(readStoreZip(outputPath, &archive),
+                QStringLiteral("read standard store-only ZIP")) && ok;
+    const QStringList expectedPaths{
+        QStringLiteral("bundle.json"),
+        QStringLiteral("replay.txt"),
+        QStringLiteral("replay.snapshots/manifest.json"),
+        QStringLiteral("replay.snapshots/turn_001_turn.json"),
+        QStringLiteral("state-now.json"),
+        QStringLiteral("diagnostics.json")
+    };
+    for (const QString &path : expectedPaths)
+        ok = expect(archive.contains(path), QStringLiteral("bundle contains %1").arg(path)) && ok;
+    ok = expect(archive.value(QStringLiteral("replay.txt")) == replayData,
+                QStringLiteral("bundle preserves replay bytes")) && ok;
+    ok = expect(archive.value(QStringLiteral("replay.snapshots/manifest.json"))
+                    == manifestData,
+                QStringLiteral("bundle preserves manifest bytes")) && ok;
+    ok = expect(archive.value(QStringLiteral("replay.snapshots/turn_001_turn.json"))
+                    == snapshotData,
+                QStringLiteral("bundle preserves snapshot bytes")) && ok;
+
+    const QJsonObject bundle = QJsonDocument::fromJson(
+        archive.value(QStringLiteral("bundle.json"))).object();
+    ok = expect(bundle.value(QStringLiteral("schema")).toString()
+                    == QStringLiteral("qsanguosha-bug-bundle-v1"),
+                QStringLiteral("bundle schema")) && ok;
+    const QJsonArray files = bundle.value(QStringLiteral("files")).toArray();
+    ok = expect(files.size() == 5, QStringLiteral("bundle payload inventory")) && ok;
+    for (const QJsonValue &value : files) {
+        const QJsonObject item = value.toObject();
+        const QString path = item.value(QStringLiteral("path")).toString();
+        const QByteArray bytes = archive.value(path);
+        ok = expect(item.value(QStringLiteral("size")).toInteger() == bytes.size(),
+                    QStringLiteral("bundle size for %1").arg(path)) && ok;
+        ok = expect(item.value(QStringLiteral("sha256")).toString().toLatin1()
+                        == sha256(bytes),
+                    QStringLiteral("bundle SHA-256 for %1").arg(path)) && ok;
+    }
+    ok = expect(!QJsonDocument(request.diagnostics).toJson().contains(
+                    directory.path().toUtf8()),
+                QStringLiteral("diagnostics omit absolute source path")) && ok;
+
+    request.includeStateNow = false;
+    request.stateNow = QJsonObject();
+    request.stateNowOmission = QStringLiteral("fixture barrier timeout");
+    const QString omissionPath = directory.filePath(QStringLiteral("omitted.qsgbug.zip"));
+    const ReplayDiagnosticExportResult omissionResult =
+        ReplayDiagnosticExporter::exportBundle(omissionPath, request);
+    QMap<QString, QByteArray> omissionArchive;
+    ok = expect(omissionResult.success
+                    && readStoreZip(omissionPath, &omissionArchive),
+                QStringLiteral("export bundle with omitted state")) && ok;
+    ok = expect(!omissionArchive.contains(QStringLiteral("state-now.json")),
+                QStringLiteral("omitted state is absent")) && ok;
+    const QJsonObject omissionManifest = QJsonDocument::fromJson(
+        omissionArchive.value(QStringLiteral("bundle.json"))).object();
+    const QJsonArray omitted = omissionManifest.value(
+        QStringLiteral("omitted")).toArray();
+    ok = expect(omitted.size() == 1
+                    && omitted.first().toObject().value(QStringLiteral("path")).toString()
+                        == QStringLiteral("state-now.json")
+                    && omitted.first().toObject().value(QStringLiteral("reason")).toString()
+                        == QStringLiteral("fixture barrier timeout"),
+                QStringLiteral("bundle records omission reason")) && ok;
+    return ok;
 }
 
 bool manifestBindsReplayAndRejectsTamper()
@@ -446,6 +833,10 @@ int main(int argc, char **argv)
     bool ok = snapshotRoundTripAndStrictSchema();
     QTextStream(stderr) << "[takeover] manifest binding\n";
     ok = manifestBindsReplayAndRejectsTamper() && ok;
+    QTextStream(stderr) << "[takeover] replay state capture barrier\n";
+    ok = replayStateCaptureBarrierIsEventAligned() && ok;
+    QTextStream(stderr) << "[takeover] diagnostic bundle export\n";
+    ok = diagnosticExporterWritesCanonicalBundle() && ok;
     QTextStream(stderr) << "[takeover] room restore\n";
     ok = takeoverRestoresRoomState() && ok;
     QTextStream(stderr) << "[takeover] complete\n";
