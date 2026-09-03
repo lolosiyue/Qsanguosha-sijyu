@@ -275,7 +275,19 @@ public:
 
     struct CommonLayout
     {
+        CommonLayout()
+            : m_cardCompactNameBackgroundColor(255, 250, 240, 255)
+            , m_cardCompactNameTextColor(48, 48, 48, 255)
+            , m_cardCompactNameBorderColor(160, 145, 120, 255)
+            , m_cardCompactNameMaxWidth(36)
+        {
+        }
+
         // card related
+        QColor m_cardCompactNameBackgroundColor;
+        QColor m_cardCompactNameTextColor;
+        QColor m_cardCompactNameBorderColor;
+        int m_cardCompactNameMaxWidth;
         int m_cardNormalWidth;
         int m_cardNormalHeight;
         QRect m_cardMainArea;
