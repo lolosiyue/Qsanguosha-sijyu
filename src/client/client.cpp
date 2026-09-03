@@ -1082,7 +1082,8 @@ void Client::getCards(const QVariant &arg)
 	for (int i = 0; i < args.length(); i++) {
 		CardsMoveStruct move;
 		QList<int> actual_card_ids;
-		JsonUtils::tryParse(args[i].value<JsonArray>().first(), actual_card_ids);
+		// V2 wire 的每個 move 係具名欄位 map；card_ids 係未遮罩嘅原始 id 列表
+		JsonUtils::tryParse(args[i].toMap().value(QStringLiteral("card_ids")), actual_card_ids);
 		if (move.tryParse(args[i])){
 			ClientPlayer *to = getPlayer(move.to_player_name);
 			move.from = getPlayer(move.from_player_name);
@@ -1093,7 +1094,7 @@ void Client::getCards(const QVariant &arg)
 				to->changePile(move.to_pile_name, true, move.card_ids);
 			else {
 				if(move.to_place == Player::PlaceHand)
-					to->addHandIds(args[i].value<JsonArray>());
+					to->addHandIds(actual_card_ids);
 				foreach(int card_id, move.card_ids){
 					if (move.to_place == Player::DrawPile) pile_num++;
 					else if (move.to_place == Player::DiscardPile) discarded_list.prepend(card_id);
@@ -1135,7 +1136,8 @@ void Client::loseCards(const QVariant &arg)
 	for (int i = 0; i < args.length(); i++) {
 		CardsMoveStruct move;
 		QList<int> actual_card_ids;
-		JsonUtils::tryParse(args[i].value<JsonArray>().first(), actual_card_ids);
+		// V2 wire 的每個 move 係具名欄位 map；card_ids 係未遮罩嘅原始 id 列表
+		JsonUtils::tryParse(args[i].toMap().value(QStringLiteral("card_ids")), actual_card_ids);
 		if (move.tryParse(args[i])){
 			ClientPlayer *from = getPlayer(move.from_player_name);
 			ClientPlayer *to = getPlayer(move.to_player_name);
@@ -1168,7 +1170,7 @@ void Client::loseCards(const QVariant &arg)
 					//_loseSingleCard(card_id, move); // DDHEJ->DDHEJ, DDH/EJ->EJ
 				}
 				if(move.from_place == Player::PlaceHand)
-					from->removeHandIds(args[i].value<JsonArray>());
+					from->removeHandIds(actual_card_ids);
 				if(SWAP) from->setFlags("-S_REASON_SWAP");
 			}
 			moves.append(move);

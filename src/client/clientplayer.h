@@ -29,8 +29,8 @@ public:
     explicit ClientPlayer(Client *client);
     QList<const Card *> getHandcards() const override;
     QList<int> handCards() const;
-    void addHandIds(JsonArray args);
-    void removeHandIds(JsonArray args);
+    void addHandIds(const QList<int> &card_ids);
+    void removeHandIds(const QList<int> &card_ids);
     void setKnownCards(QList<int> card_ids);
     void setKnownCards(QList<const Card*> cards);
     QList<const Card *> getKnownCards() const;

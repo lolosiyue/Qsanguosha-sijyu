@@ -37,6 +37,20 @@ QAtomicInteger<quint64> &nextGeneration()
 
 thread_local LuaRuntime *currentRuntime = nullptr;
 
+void drainLifetimeDomain(CardLifetimeManager &manager, const void *domain)
+{
+    QList<QPointer<QObject>> retiredObjects;
+    manager.drainDomain(domain, &retiredObjects);
+    if (!QCoreApplication::instance())
+        return;
+
+    // Do not dispatch another Room's queued destructor while this runtime closes.
+    for (const QPointer<QObject> &object : std::as_const(retiredObjects))
+        if (object)
+            QCoreApplication::sendPostedEvents(
+                object.data(), QEvent::DeferredDelete);
+}
+
 struct LuaTableGuard {
     QSet<const void *> &tables;
     const void *pointer;
@@ -356,9 +370,8 @@ void LuaRuntime::shutdown()
                                                        m_generation, m_state);
     currentRuntime = this;
     CardLifetimeManager &manager = globalCardLifetimeManager();
-    manager.drain();
-    if (QCoreApplication::instance())
-        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    const void *domain = lifetimeDomain();
+    drainLifetimeDomain(manager, domain);
     {
         QMutexLocker locker(&registryMutex());
         runtimeRegistry().remove(m_state);
@@ -367,12 +380,10 @@ void LuaRuntime::shutdown()
     lua_State *closingState = m_state;
     lua_close(closingState);
     m_state = nullptr;
-    manager.releaseWrapperBindings(lifetimeDomain(), this, m_generation, closingState);
-    manager.drain();
-    if (QCoreApplication::instance())
-        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
-    manager.drain();
-    manager.unregisterRuntimeDomain(lifetimeDomain(), this, m_generation, closingState);
+    manager.releaseWrapperBindings(domain, this, m_generation, closingState);
+    drainLifetimeDomain(manager, domain);
+    manager.drainDomain(domain);
+    manager.unregisterRuntimeDomain(domain, this, m_generation, closingState);
     m_lifecycle.store(Lifecycle::Closed, std::memory_order_release);
     currentRuntime = previousRuntime;
     CardLifetimeManager::setCurrentRuntimeContext(previousContext.domain,
