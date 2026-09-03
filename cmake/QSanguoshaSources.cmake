@@ -168,6 +168,7 @@ set(QSAN_SOURCES
     src/util/detector.cpp
     src/util/game-snapshot.cpp
     src/util/recorder.cpp
+    src/util/replay-diagnostic-exporter.cpp
     src/util/replay-game-state.cpp
     src/util/replay-index.cpp
 )
