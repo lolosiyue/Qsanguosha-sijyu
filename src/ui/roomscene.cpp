@@ -2610,6 +2610,13 @@ void RoomScene::chooseGeneral(const QStringList&generals)
 					pick = candidates.at(UiRng::bounded(candidates.size()));
 			}
 		}
+		QStringList selectableGenerals;
+		foreach (const QString &general, generals) {
+			if (!general.contains("(lord)"))
+				selectableGenerals << general;
+		}
+		if (!selectableGenerals.contains(pick) && !selectableGenerals.isEmpty())
+			pick = selectableGenerals.at(UiRng::bounded(selectableGenerals.size()));
 		QFile diag("client_autotest_diag.log");
 		if (diag.open(QIODevice::Append | QIODevice::Text)) {
 			QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")

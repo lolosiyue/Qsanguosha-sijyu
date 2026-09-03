@@ -3,6 +3,7 @@
 #include <QMetaType>
 #include <QVariantList>
 #include <QVariantMap>
+#include <cmath>
 #include <limits>
 
 namespace
@@ -39,6 +40,17 @@ bool tryParseInt(const QVariant &value, int &result)
     case QMetaType::ULongLong: {
         const qulonglong number = value.toULongLong();
         if (number > static_cast<qulonglong>(std::numeric_limits<int>::max()))
+            return false;
+        result = static_cast<int>(number);
+        return true;
+    }
+    case QMetaType::Double: {
+        // Qt 5 decodes every JSON number as double. Accept only values that
+        // preserve the integer wire contract exactly.
+        const double number = value.toDouble();
+        if (number < std::numeric_limits<int>::min()
+            || number > std::numeric_limits<int>::max()
+            || number != std::floor(number))
             return false;
         result = static_cast<int>(number);
         return true;

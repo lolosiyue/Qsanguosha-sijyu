@@ -33,6 +33,9 @@
 #include <QSet>
 #include <QJsonDocument>
 #include <QDebug>
+#include <QDateTime>
+#include <QFile>
+#include <QTextStream>
 
 using namespace std;
 using namespace QSanProtocol;
@@ -1433,6 +1436,13 @@ void Client::startGame(const QVariant &pile)
 
 	setAvailableCards(pile.toMap());
 	//alive_count = findChildren<ClientPlayer *>().count();
+	if (Config.AutoAddRobots) {
+		QFile diag("client_autotest_diag.log");
+		if (diag.open(QIODevice::Append | QIODevice::Text)) {
+			QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
+				<< " GAME_STARTED players=" << m_players.length() << "\n";
+		}
+	}
 
 	emit game_started();
 }
@@ -2187,6 +2197,13 @@ void Client::gameOver(const QVariant &arg)
 		ClientPlayer *p = (ClientPlayer*)m_players.at(i);
 		p->setProperty("win",winners.contains(p->objectName())||winners.contains(roles.at(i)));
 		p->setRole(roles.at(i));
+	}
+	if (Config.AutoAddRobots) {
+		QFile diag("client_autotest_diag.log");
+		if (diag.open(QIODevice::Append | QIODevice::Text)) {
+			QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
+				<< " GAME_OVER victory=" << Self->property("win").toBool() << "\n";
+		}
 	}
 
 	Sanguosha->unregisterRoom();
