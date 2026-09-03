@@ -283,6 +283,17 @@ QT_QPA_PLATFORM=xcb ./debug/QSanguosha \
 QT_QPA_PLATFORM=offscreen ./debug/QSanguosha --ui-startup-smoke
 ```
 
+首頁 render host 的開發用 A/B 可加以下參數；預設仍是 `widget`：
+
+```bash
+./debug/QSanguosha --ui-startup-smoke --home-render-host=widget
+./debug/QSanguosha --ui-startup-smoke --home-render-host=view
+```
+
+report 的 `home_scene.render_host`、`root_width`、`root_height` 可確認實際 host
+與有效畫布尺寸。`view` 使用 `QQuickView`＋`createWindowContainer()`，只影響首頁；
+進房後既有 `QGraphicsView` 路徑不變。
+
 ### Stage 與結果 marker
 
 每個 stage 一行 `UI_STARTUP_STAGE`，最後一定有一行 `UI_STARTUP_RESULT`：
@@ -310,7 +321,7 @@ result marker，所以 CI 可以將「marker 缺失」直接當失敗。
 | `QApplication` 已建立 | `qobject_cast<QApplication *>(qApp)` |
 | Engine/runtime 已就緒 | `Sanguosha != nullptr`，回報版本同武將數 |
 | `MainWindow` 已建立並顯示 | `isVisible()` ＋ `windowHandle() != nullptr` |
-| HomeScene/QML 已載入 | `QQuickWidget::Ready` ＋ `rootObject() != nullptr` |
+| HomeScene/QML 已載入 | 選定 host 回報 `Ready`，且 `rootObject() != nullptr`、尺寸大於零 |
 | event loop 真的行過 | 入到 `exec()` 之後的 queued callback |
 | top-level GUI object 捱得住 startup | 再行 250ms event loop 後 MainWindow 同 QML root 仍然生存 |
 
@@ -337,7 +348,7 @@ result marker，所以 CI 可以將「marker 缺失」直接當失敗。
 Clean checkout **冇入庫** `qml/home/icons/`、`image/system/backdrop/` 等 optional
 美術資源，所以啟動時會見到一批 `QML Image: Cannot open: ...` warning。呢啲會被
 分類為 optional asset warning 記錄落 report，**唔會**升級成 fatal——真正的 QML
-component 失敗係由 `QQuickWidget::Error` 判定，兩者唔會混淆。
+component 失敗係由選定 host 的 `Error` 狀態判定，兩者唔會混淆。
 
 ### CI／本機一鍵驗證
 

@@ -34,9 +34,13 @@
 #include "audio.h"
 #endif
 #include <QStackedWidget>
+#include <QLabel>
+#include <QProgressBar>
+#include <QVBoxLayout>
 #if QSAN_ENABLE_QML
 #include <QQuickWidget>
 #include <QQuickItem>
+#include <QQuickView>
 #endif
 #include <QTimer>
 #include <QDateTime>
@@ -57,6 +61,27 @@
 #include <QFile>
 #include <QDebug>
 #include <algorithm>
+
+namespace {
+
+QString requestedHomeRenderHost()
+{
+    const QString prefix = QStringLiteral("--home-render-host=");
+    const QStringList arguments = QCoreApplication::arguments();
+    for (const QString &argument : arguments) {
+        if (!argument.startsWith(prefix))
+            continue;
+        const QString value = argument.mid(prefix.size()).trimmed().toLower();
+        if (value == QLatin1String("widget") || value == QLatin1String("view"))
+            return value;
+        qWarning().noquote() << "Unknown home render host:" << value
+                            << "(using widget)";
+        break;
+    }
+    return QStringLiteral("widget");
+}
+
+}
 
 MainWindow::MainWindow(QWidget *parent)
 	: QMainWindow(parent), ui(new Ui::MainWindow), server(nullptr)
@@ -89,16 +114,32 @@ MainWindow::MainWindow(QWidget *parent)
 #if QSAN_ENABLE_QML
 	homeController = new HomeController(this);
 	connect(config_dialog, &ConfigDialog::liveVisualChanged, homeController, &HomeController::notifyVisualSettings);
-	homeView = new QQuickWidget(pageStack);
+	m_homeRenderHost = requestedHomeRenderHost();
+	if (m_homeRenderHost == QLatin1String("view")) {
+		homeWindow = new QQuickView;
+		homeWindow->setResizeMode(QQuickView::SizeRootObjectToView);
+		// HomeScene has no implicit size. Seed the native window before it is
+		// embedded; afterwards the container owns geometry and keeps it synced.
+		const QSize initialHomeSize = Config.value(
+			QStringLiteral("WindowSize"), QSize(1366, 706)).toSize();
+		homeWindow->resize(initialHomeSize.expandedTo(QSize(1, 1)));
+		homePageWidget = QWidget::createWindowContainer(homeWindow, pageStack);
+		homePageWidget->setObjectName(QStringLiteral("homeQuickViewContainer"));
+		homePageWidget->setFocusPolicy(Qt::StrongFocus);
+	} else {
+		homeWidget = new QQuickWidget(pageStack);
+		homeWidget->setResizeMode(QQuickWidget::SizeRootObjectToView);
+		homePageWidget = homeWidget;
+	}
+	qInfo().noquote() << "Home render host:" << m_homeRenderHost;
 #endif
 	gameView = new FitView(nullptr, this);
 
 #if QSAN_ENABLE_QML
-	homeView->setResizeMode(QQuickWidget::SizeRootObjectToView);
-	homeView->setClearColor(QColor(QStringLiteral("#0B1A2E")));
-
-	pageStack->addWidget(homeView);
+	setHomeSceneClearColor(QColor(QStringLiteral("#0B1A2E")));
+	pageStack->addWidget(homePageWidget);
 #endif
+	setupLocalLoadingPage();
 	pageStack->addWidget(gameView);
 
 	setCentralWidget(pageStack);
@@ -129,62 +170,52 @@ void MainWindow::setupHomePage()
 	qInfo().noquote() << "Home QRC exists:"
 		<< QFile::exists(QStringLiteral(":/QSanguosha/Home/HomeScene.qml"));
 
-	homeView->setResizeMode(QQuickWidget::SizeRootObjectToView);
-	homeView->setClearColor(homeController && homeController->isDarkTheme()
+	setHomeSceneClearColor(homeController && homeController->isDarkTheme()
 		? QColor(QStringLiteral("#0B1A2E"))
 		: QColor(QStringLiteral("#DCEEFF")));
 
-	connect(homeView, &QQuickWidget::statusChanged, this,
-		[this](QQuickWidget::Status status) {
-			qInfo().noquote()
-				<< "Home QML status:" << status;
+	if (homeWidget) {
+		connect(homeWidget, &QQuickWidget::statusChanged, this,
+			[this](QQuickWidget::Status status) {
+				const HomeSceneLoadState state = status == QQuickWidget::Ready
+					? HomeSceneLoadState::Ready
+					: status == QQuickWidget::Error
+						? HomeSceneLoadState::Error
+						: status == QQuickWidget::Loading
+							? HomeSceneLoadState::Loading : HomeSceneLoadState::Null;
+				updateHomeSceneLoadState(state);
+			});
+	} else if (homeWindow) {
+		connect(homeWindow, &QQuickView::statusChanged, this,
+			[this](QQuickView::Status status) {
+				const HomeSceneLoadState state = status == QQuickView::Ready
+					? HomeSceneLoadState::Ready
+					: status == QQuickView::Error
+						? HomeSceneLoadState::Error
+						: status == QQuickView::Loading
+							? HomeSceneLoadState::Loading : HomeSceneLoadState::Null;
+				updateHomeSceneLoadState(state);
+			});
+	}
 
-			if (status == QQuickWidget::Null || status == QQuickWidget::Loading) {
-				// reloadHomePage() 會先 setSource(QUrl()) 再重新載入；重載期間
-				// 唔算 ready，但亦唔算錯誤。
-				m_homeSceneReady = false;
-				return;
-			}
-
-			if (status == QQuickWidget::Ready) {
-				m_homeSceneError.clear();
-				m_homeSceneReady = homeView->rootObject() != nullptr;
-				if (m_homeSceneReady) {
-					emit homeSceneReady();
-				} else {
-					m_homeSceneError =
-						QStringLiteral("HomeScene reported Ready without a QML root object");
-					emit homeSceneFailed(m_homeSceneError);
-				}
-				return;
-			}
-
-			QStringList errorTexts;
-			const auto errors = homeView->errors();
-			for (const QQmlError &error : errors) {
-				qCritical().noquote() << error.toString();
-				errorTexts << error.toString();
-			}
-			m_homeSceneReady = false;
-			m_homeSceneError = errorTexts.isEmpty()
-				? QStringLiteral("HomeScene failed to load (no QQmlError reported)")
-				: errorTexts.join(QLatin1Char('\n'));
-			emit homeSceneFailed(m_homeSceneError);
-		});
-
-	homeView->rootContext()->setContextProperty(
+	homeRootContext()->setContextProperty(
 		QStringLiteral("homeController"), homeController);
-	homeView->rootContext()->setContextProperty(
+	homeRootContext()->setContextProperty(
 		QStringLiteral("Config"), &Config);
 
 	const QString qmlImportPath = QStringLiteral(QT_QML_IMPORT_PATH);
 	qInfo().noquote() << "QML import path:" << qmlImportPath;
-	homeView->engine()->addImportPath(qmlImportPath);
+	homeQmlEngine()->addImportPath(qmlImportPath);
 
 	qmlRegisterType<HomePointerFxItem>(
 		"QSanguosha.HomeFx", 1, 0, "HomePointerFx");
 
-	homeView->setSource(homeUrl);
+	setHomeSceneSource(homeUrl);
+	connect(homeController, &HomeController::qmlSceneRequested, this,
+		[this](const QUrl &source) {
+			setHomeSceneSource(source);
+			focusHomeScene();
+		});
 
 	connect(homeController, &HomeController::quickJoinRequested,
 		this, &MainWindow::startLocalConsoleGame);
@@ -230,9 +261,29 @@ QString MainWindow::homeSceneError() const
 	return m_homeSceneError;
 }
 
-QQuickWidget *MainWindow::homeSceneView() const
+QQuickItem *MainWindow::homeSceneRootObject() const
 {
-	return homeView;
+#if QSAN_ENABLE_QML
+	return homeWidget ? homeWidget->rootObject()
+		: homeWindow ? homeWindow->rootObject() : nullptr;
+#else
+	return nullptr;
+#endif
+}
+
+QUrl MainWindow::homeSceneSource() const
+{
+#if QSAN_ENABLE_QML
+	return homeWidget ? homeWidget->source()
+		: homeWindow ? homeWindow->source() : QUrl();
+#else
+	return QUrl();
+#endif
+}
+
+QString MainWindow::homeRenderHostName() const
+{
+	return m_homeRenderHost;
 }
 
 HomeController *MainWindow::homeSceneController() const
@@ -243,18 +294,151 @@ HomeController *MainWindow::homeSceneController() const
 void MainWindow::reloadHomePage()
 {
 #if QSAN_ENABLE_QML
-	if (pageStack->currentWidget() != homeView)
+	if (pageStack->currentWidget() != homePageWidget)
 		return;
 
-	homeView->setSource(QUrl());
-	homeView->setSource(QUrl(QStringLiteral("qrc:/QSanguosha/Home/HomeScene.qml")));
+	setHomeSceneSource(QUrl());
+	setHomeSceneSource(QUrl(QStringLiteral("qrc:/QSanguosha/Home/HomeScene.qml")));
 	setUiScale(Config.UIScale);
-	homeView->setFocus();
+	focusHomeScene();
 #else
 	changeBackground();
 	refitScene();
 #endif
 }
+
+void MainWindow::setupLocalLoadingPage()
+{
+	localLoadingPage = new QWidget(pageStack);
+	localLoadingPage->setObjectName(QStringLiteral("localRoomLoadingPage"));
+	localLoadingPage->setStyleSheet(QStringLiteral(
+		"#localRoomLoadingPage { background: #0B1A2E; color: #E7F1FF; }"
+		"QLabel { color: #E7F1FF; }"));
+
+	QVBoxLayout *layout = new QVBoxLayout(localLoadingPage);
+	layout->setContentsMargins(48, 48, 48, 48);
+	layout->addStretch();
+
+	QLabel *title = new QLabel(tr("Preparing local game"), localLoadingPage);
+	QFont titleFont = title->font();
+	titleFont.setPointSize(qMax(18, titleFont.pointSize() + 8));
+	titleFont.setBold(true);
+	title->setFont(titleFont);
+	title->setAlignment(Qt::AlignCenter);
+	layout->addWidget(title);
+
+	localLoadingStatus = new QLabel(localLoadingPage);
+	localLoadingStatus->setAlignment(Qt::AlignCenter);
+	localLoadingStatus->setWordWrap(true);
+	layout->addSpacing(16);
+	layout->addWidget(localLoadingStatus);
+
+	localLoadingProgress = new QProgressBar(localLoadingPage);
+	localLoadingProgress->setRange(0, 0);
+	localLoadingProgress->setTextVisible(false);
+	localLoadingProgress->setMaximumWidth(420);
+	layout->addSpacing(12);
+	layout->addWidget(localLoadingProgress, 0, Qt::AlignHCenter);
+	layout->addStretch();
+
+	pageStack->addWidget(localLoadingPage);
+}
+
+void MainWindow::showLocalLoadingPage(const QString &status)
+{
+	if (localLoadingStatus)
+		localLoadingStatus->setText(status);
+	if (localLoadingProgress)
+		localLoadingProgress->show();
+	menuBar()->hide();
+	pageStack->setCurrentWidget(localLoadingPage);
+#if QSAN_ENABLE_QML
+	if (m_pointerOverlay)
+		m_pointerOverlay->setPageEnabled(false);
+#endif
+}
+
+#if QSAN_ENABLE_QML
+QQmlContext *MainWindow::homeRootContext() const
+{
+	return homeWidget ? homeWidget->rootContext()
+		: homeWindow ? homeWindow->rootContext() : nullptr;
+}
+
+QQmlEngine *MainWindow::homeQmlEngine() const
+{
+	return homeWidget ? homeWidget->engine()
+		: homeWindow ? homeWindow->engine() : nullptr;
+}
+
+QStringList MainWindow::homeQmlErrors() const
+{
+	QStringList errorTexts;
+	const QList<QQmlError> errors = homeWidget ? homeWidget->errors()
+		: homeWindow ? homeWindow->errors() : QList<QQmlError>();
+	for (const QQmlError &error : errors) {
+		qCritical().noquote() << error.toString();
+		errorTexts << error.toString();
+	}
+	return errorTexts;
+}
+
+void MainWindow::setHomeSceneSource(const QUrl &source)
+{
+	if (homeWidget)
+		homeWidget->setSource(source);
+	else if (homeWindow)
+		homeWindow->setSource(source);
+}
+
+void MainWindow::setHomeSceneClearColor(const QColor &color)
+{
+	if (homeWidget)
+		homeWidget->setClearColor(color);
+	else if (homeWindow)
+		homeWindow->setColor(color);
+}
+
+void MainWindow::focusHomeScene()
+{
+	if (homePageWidget)
+		homePageWidget->setFocus();
+	if (homeWindow)
+		homeWindow->requestActivate();
+	if (QQuickItem *root = homeSceneRootObject())
+		root->forceActiveFocus();
+}
+
+void MainWindow::updateHomeSceneLoadState(HomeSceneLoadState state)
+{
+	qInfo().noquote() << "Home QML status:" << static_cast<int>(state)
+		<< "host:" << m_homeRenderHost;
+	if (state == HomeSceneLoadState::Null || state == HomeSceneLoadState::Loading) {
+		// reloadHomePage() clears the source first. Reloading is neither ready nor failed.
+		m_homeSceneReady = false;
+		return;
+	}
+	if (state == HomeSceneLoadState::Ready) {
+		m_homeSceneError.clear();
+		m_homeSceneReady = homeSceneRootObject() != nullptr;
+		if (m_homeSceneReady)
+			emit homeSceneReady();
+		else {
+			m_homeSceneError =
+				QStringLiteral("HomeScene reported Ready without a QML root object");
+			emit homeSceneFailed(m_homeSceneError);
+		}
+		return;
+	}
+
+	const QStringList errorTexts = homeQmlErrors();
+	m_homeSceneReady = false;
+	m_homeSceneError = errorTexts.isEmpty()
+		? QStringLiteral("HomeScene failed to load (no QQmlError reported)")
+		: errorTexts.join(QLatin1Char('\n'));
+	emit homeSceneFailed(m_homeSceneError);
+}
+#endif
 
 void MainWindow::showHomePage()
 {
@@ -309,8 +493,8 @@ void MainWindow::showHomePage()
 #if QSAN_ENABLE_QML
 	homeController->refreshCharacterImage();
 	homeController->refreshPlayerInfo();
-	pageStack->setCurrentWidget(homeView);
-	homeView->setFocus();
+	pageStack->setCurrentWidget(homePageWidget);
+	focusHomeScene();
 	if (m_pointerOverlay)
 		m_pointerOverlay->setPageEnabled(false);
 #else
@@ -452,8 +636,8 @@ void MainWindow::setUiScale(qreal scale)
 	if (gameView)
 		gameView->setUiScale(scale);
 #if QSAN_ENABLE_QML
-	if (homeView && homeView->rootObject())
-		homeView->rootObject()->setProperty("uiScale", scale);
+	if (QQuickItem *root = homeSceneRootObject())
+		root->setProperty("uiScale", scale);
 #endif
 }
 
@@ -511,17 +695,54 @@ void MainWindow::startLocalConsoleGame()
 		server = nullptr;
 	}
 
-	server = new Server(this);
+	showLocalLoadingPage(tr("Initializing local rules and AI..."));
+	Server *pendingServer = new Server(this, GameSessionConfig(),
+		Server::InitialRoomPolicy::Deferred);
+	server = pendingServer;
+	connect(pendingServer, &Server::initialRoomReady, this,
+		[this, pendingServer]() {
+			if (server == pendingServer)
+				completeLocalRoomStart();
+		});
+	connect(pendingServer, &Server::initialRoomFailed, this,
+		[this, pendingServer](const QString &error) {
+			if (server == pendingServer)
+				failLocalRoomStart(error);
+		});
+
+	QString error;
+	if (!pendingServer->prepareInitialRoomAsync(&error))
+		failLocalRoomStart(error);
+}
+
+void MainWindow::completeLocalRoomStart()
+{
+	if (!server)
+		return;
+	showLocalLoadingPage(tr("Starting local server..."));
 	if (!server->listen()) {
-		QMessageBox::warning(this, tr("Warning"), tr("Can not start server!"));
-		server->deleteLater();
-		server = nullptr;
+		failLocalRoomStart(tr("Can not start server!"));
 		return;
 	}
 
 	server->checkUpnpAndListServer();
-	Config.HostAddress = "127.0.0.1";
-	startConnectionWithReconnect(false);
+	Config.HostAddress = QStringLiteral("127.0.0.1");
+	showLocalLoadingPage(tr("Connecting to local room..."));
+	QTimer::singleShot(0, this, [this]() {
+		if (server)
+			startConnectionWithReconnect(false);
+	});
+}
+
+void MainWindow::failLocalRoomStart(const QString &error)
+{
+	Server *failedServer = server;
+	server = nullptr;
+	if (failedServer)
+		failedServer->deleteLater();
+	showHomePage();
+	QMessageBox::warning(this, tr("Warning"), error.isEmpty()
+		? tr("Can not prepare local room!") : error);
 }
 
 bool MainWindow::preflightTakeover(const QString &snapshotPath,

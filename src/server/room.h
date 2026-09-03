@@ -46,6 +46,7 @@ class RoomThread;
 class RoomThread3v3;
 class RoomThreadXMode;
 class RoomThread1v1;
+class Server;
 
 //#include "serverplayer.h"
 //#include "roomthread.h"
@@ -78,6 +79,7 @@ public:
     friend class PlayerLifecycleService;
     friend class PlayerDecisionService;
     friend class GameSessionController;
+    friend class Server;
     friend class RoomRuntime;
     friend struct RoomTestAccess;
     friend struct PlayerLifecycleServiceTestAccess;
@@ -86,8 +88,14 @@ public:
     typedef void (Room::*Callback)(ServerPlayer*, const QVariant&);
     typedef bool (Room::*ResponseVerifyFunction)(ServerPlayer*, const QVariant&, void*);
 
+    enum class RuntimeInitializationPolicy {
+        Immediate,
+        Deferred
+    };
+
     explicit Room(QObject*parent, const QString&mode,
-                  const GameSessionConfig &sessionConfig = GameSessionConfig());
+                  const GameSessionConfig &sessionConfig = GameSessionConfig(),
+                  RuntimeInitializationPolicy runtimePolicy = RuntimeInitializationPolicy::Immediate);
     ~Room();
     ServerPlayer*addSocket(ClientSocket*socket);
     ServerPlayer*addAIPlayer();
@@ -697,6 +705,7 @@ protected:
     int _m_Id;
 
 private:
+    bool completeRuntimeInitialization(bool runtimeReady, const QString &runtimeError);
     void addPlayerToRoster(ServerPlayer *player);
     void removePlayerFromRoster(ServerPlayer *player);
     void replacePlayerOrder(const QList<ServerPlayer *> &players);

@@ -68,11 +68,11 @@ QImage tintCopy(const QImage &src, const QRect &srcRect, const QColor &tint, qre
     return piece;
 }
 
-QPixmap bakeTintedPixmap(const QImage &src, const QColor &tint, qreal emission)
+QImage bakeTintedImage(const QImage &src, const QColor &tint, qreal emission)
 {
     if (src.isNull())
         return {};
-    return QPixmap::fromImage(tintCopy(src, src.rect(), tint, emission));
+    return tintCopy(src, src.rect(), tint, emission);
 }
 
 QImage makeCircleMask()
@@ -219,11 +219,11 @@ PointerFxEngine::PointerFxEngine()
     const QImage circle = loadAsset(QStringLiteral("FX_TEX_Circle_01.png"), true);
     const QImage ring = loadAsset(QStringLiteral("FX_TEX_Grad_Ring3.png"), false);
     const QImage triangle = loadAsset(QStringLiteral("FX_TEX_Triangle_02_1.png"), false);
-    m_circlePm = QPixmap::fromImage(circle);
-    m_circleBluePm = bakeTintedPixmap(circle, QColor::fromRgbF(0.24056602, 0.39061815, 1.0), 2.0);
-    m_ringPm = QPixmap::fromImage(ring);
-    m_ringBluePm = bakeTintedPixmap(ring, QColor(76, 167, 255), 3.2);
-    m_trianglePm = bakeTintedPixmap(triangle, QColor::fromRgbF(0.3726415, 0.7731873, 1.0), 1.86);
+    m_circleImage = circle;
+    m_circleBlueImage = bakeTintedImage(circle, QColor::fromRgbF(0.24056602, 0.39061815, 1.0), 2.0);
+    m_ringImage = ring;
+    m_ringBlueImage = bakeTintedImage(ring, QColor(76, 167, 255), 3.2);
+    m_triangleImage = bakeTintedImage(triangle, QColor::fromRgbF(0.3726415, 0.7731873, 1.0), 1.86);
 
     const QImage cursorImage = loadAsset(QStringLiteral("PCIcon_MousePoint.png"));
     if (!cursorImage.isNull()) {
@@ -235,6 +235,7 @@ PointerFxEngine::PointerFxEngine()
 
 void PointerFxEngine::reset()
 {
+    QMutexLocker locker(&m_mutex);
     m_trailPoints.clear();
     m_clickEffects.clear();
     m_moveParticles.clear();
@@ -245,26 +246,31 @@ void PointerFxEngine::reset()
 
 qreal PointerFxEngine::elapsed() const
 {
+    QMutexLocker locker(&m_mutex);
     return m_clock.elapsed();
 }
 
 bool PointerFxEngine::hasBaCursor() const
 {
+    QMutexLocker locker(&m_mutex);
     return m_hasBaCursor;
 }
 
 QCursor PointerFxEngine::baCursor() const
 {
+    QMutexLocker locker(&m_mutex);
     return m_baCursor;
 }
 
 bool PointerFxEngine::hasContent() const
 {
+    QMutexLocker locker(&m_mutex);
     return hasVisibleContent(m_clock.elapsed());
 }
 
 QRect PointerFxEngine::tick(const QPointF &localPos, bool inside, Qt::MouseButtons buttons)
 {
+    QMutexLocker locker(&m_mutex);
     const qreal now = m_clock.elapsed();
     if (inside) {
         const Qt::MouseButtons pressed = buttons & ~m_prevButtons;
@@ -282,6 +288,7 @@ QRect PointerFxEngine::tick(const QPointF &localPos, bool inside, Qt::MouseButto
 
 void PointerFxEngine::paint(QPainter &painter)
 {
+    QMutexLocker locker(&m_mutex);
     const qreal now = m_clock.elapsed();
     painter.setRenderHint(QPainter::Antialiasing, true);
     drawTrail(painter, now);
@@ -632,10 +639,10 @@ void PointerFxEngine::drawClickEffects(QPainter &painter, qreal now)
             const qreal mix = flashProgress < blueTime ? flashProgress / blueTime : 1.0;
             const QSizeF size(diameter * 1.34, diameter * 1.34);
             if (1.0 - mix > 0.01)
-                drawSprite(painter, m_circlePm, m_circlePm.rect(), effect.position,
+                drawSprite(painter, m_circleImage, m_circleImage.rect(), effect.position,
                            size, 0, fade * (1.0 - mix) * kEffectOpacity);
             if (mix > 0.01)
-                drawSprite(painter, m_circleBluePm, m_circleBluePm.rect(), effect.position,
+                drawSprite(painter, m_circleBlueImage, m_circleBlueImage.rect(), effect.position,
                            size, 0, fade * mix * kEffectOpacity);
         }
 
@@ -656,10 +663,10 @@ void PointerFxEngine::drawClickEffects(QPainter &painter, qreal now)
                 : (progress >= 0.5 ? 1.0 : (progress - 0.1118) / 0.3882);
             const QSizeF size(scale, scale);
             if (1.0 - mix > 0.01)
-                drawSprite(painter, m_ringPm, m_ringPm.rect(), effect.position,
+                drawSprite(painter, m_ringImage, m_ringImage.rect(), effect.position,
                            size, rotation, opacity * (1.0 - mix));
             if (mix > 0.01)
-                drawSprite(painter, m_ringBluePm, m_ringBluePm.rect(), effect.position,
+                drawSprite(painter, m_ringBlueImage, m_ringBlueImage.rect(), effect.position,
                            size, rotation, opacity * mix);
         }
     }
@@ -668,10 +675,10 @@ void PointerFxEngine::drawClickEffects(QPainter &painter, qreal now)
 void PointerFxEngine::drawTriangles(QPainter &painter, qreal now,
                                          const QVector<TriangleParticle> &particles)
 {
-    if (m_trianglePm.isNull())
+    if (m_triangleImage.isNull())
         return;
 
-    const int halfW = qMax(1, m_trianglePm.width() / 2);
+    const int halfW = qMax(1, m_triangleImage.width() / 2);
     for (const TriangleParticle &particle : particles) {
         const qreal simulatedAge = (now - particle.startedAt) / 1000.0 / kDurationScale;
         const qreal progress = simulatedAge / particle.lifetime;
@@ -686,17 +693,17 @@ void PointerFxEngine::drawTriangles(QPainter &painter, qreal now,
             continue;
 
         const QRect src = particle.alternateFrame
-            ? QRect(halfW, 0, m_trianglePm.width() - halfW, m_trianglePm.height())
-            : QRect(0, 0, halfW, m_trianglePm.height());
-        drawSprite(painter, m_trianglePm, src, position, QSizeF(size, size), 0, opacity);
+            ? QRect(halfW, 0, m_triangleImage.width() - halfW, m_triangleImage.height())
+            : QRect(0, 0, halfW, m_triangleImage.height());
+        drawSprite(painter, m_triangleImage, src, position, QSizeF(size, size), 0, opacity);
     }
 }
 
-void PointerFxEngine::drawSprite(QPainter &painter, const QPixmap &pixmap, const QRectF &src,
+void PointerFxEngine::drawSprite(QPainter &painter, const QImage &image, const QRectF &src,
                                       const QPointF &center, const QSizeF &size, qreal rotationRad,
                                       qreal opacity)
 {
-    if (pixmap.isNull() || opacity <= 0.0 || size.width() <= 0.0 || size.height() <= 0.0)
+    if (image.isNull() || opacity <= 0.0 || size.width() <= 0.0 || size.height() <= 0.0)
         return;
 
     painter.save();
@@ -704,8 +711,8 @@ void PointerFxEngine::drawSprite(QPainter &painter, const QPixmap &pixmap, const
     painter.rotate(qRadiansToDegrees(rotationRad));
     painter.setCompositionMode(QPainter::CompositionMode_Plus);
     painter.setOpacity(qBound(0.0, opacity, 1.0));
-    painter.drawPixmap(QRectF(-size.width() * 0.5, -size.height() * 0.5, size.width(), size.height()),
-                       pixmap, src);
+    painter.drawImage(QRectF(-size.width() * 0.5, -size.height() * 0.5, size.width(), size.height()),
+                      image, src);
     painter.restore();
 }
 
