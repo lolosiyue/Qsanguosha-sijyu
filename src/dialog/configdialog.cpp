@@ -66,8 +66,11 @@ ConfigDialog::ConfigDialog(QWidget *parent)
         });
 #endif
 
-    connect(this, SIGNAL(accepted()), this, SLOT(saveConfig()));
-    connect(this, SIGNAL(rejected()), this, SLOT(restoreVisualSettings()));
+    // 指標式 connect:restoreVisualSettings() 唔喺 slots: 區,舊嘅 SLOT() 字串
+    // 喺 runtime 先報 "No such slot" 然後靜靜咁唔接 —— 即係㩒取消都唔會還原
+    // 已經即時套用兼寫咗入 QSettings 嘅預覽設定。指標式會喺編譯期擋住呢件事。
+    connect(this, &QDialog::accepted, this, &ConfigDialog::saveConfig);
+    connect(this, &QDialog::rejected, this, &ConfigDialog::restoreVisualSettings);
 
     QFont font = UiConfig.AppFont;
     showFont(ui->appFontLineEdit, font);

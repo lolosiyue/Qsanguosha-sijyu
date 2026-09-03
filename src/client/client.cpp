@@ -4,6 +4,7 @@
 #include "client-live-session.h"
 #include "client-game-state-reducer.h"
 #include "desktop-interaction-view.h"
+#include "interaction-command-registry.h"
 #include "interaction-descriptor-registry.h"
 #include "interaction-request-factory.h"
 #include "interaction-reply-coordinator.h"
@@ -682,11 +683,19 @@ bool Client::submitInteractionResponse(InteractionResponse response)
 	if (m_interactionCore == nullptr || !m_interactionCore->hasActiveRequest())
 		return false;
 	if (m_liveSession != nullptr) {
+		// Protocol V2 之下答案由 ClientLiveSession 直接寫上線,唔會行
+		// replyToServer(),所以 server_reply 要喺呢度補返 —— 否則呢個 signal
+		// 喺真網絡對局入面永遠唔會 emit,只有冇 live session 嘅 legacy 路徑先有。
+		// descriptor 要喺 submit 之前攞:submit 成功會清走 active request。
+		const InteractionCommandDescriptor *wire
+			= InteractionCommandRegistry::find(m_interactionCore->activeRequest().type);
 		QString error;
 		const bool accepted = m_liveSession->submitInteractionResponse(
 			std::move(response), &error);
 		if (!accepted && !error.isEmpty())
 			qWarning().noquote() << error;
+		if (accepted && wire != nullptr)
+			emit server_reply(static_cast<int>(wire->command));
 		return accepted;
 	}
 	const ClientInteractionDescriptor *descriptor
@@ -2542,6 +2551,12 @@ void Client::askForSinglePeach(const QVariant &arg)
 	payload.selection.minSelection = 1;
 	payload.selection.maxSelection = 1;
 	payload.fixedTargets << dying->objectName();
+	// onPlayerResponseCard() 對實牌同 virtual card 一律送 card->toString()
+	// 做 cardText(server 兩邊都係 Card::Parse 收),所以呢類 request 一定要
+	// 收得起 cardText —— 唔係嘅話 ClientCore 會當 malformed_response 掉咗,
+	// client 由頭到尾冇答過,要等到 server 嘅 operation timeout。
+	payload.cardTextAllowed = true;
+	payload.virtualCardAllowed = true;
 	InteractionRequest request = makeInteractionRequest(
 		InteractionType::AskPeach, payload, true);
 	request.prompt = prompt_doc->toHtml();
@@ -2559,6 +2574,12 @@ void Client::askForCardShow(const QVariant &requestor)
 	payload.selection.pattern = QStringLiteral(".");
 	payload.selection.minSelection = 1;
 	payload.selection.maxSelection = 1;
+	// onPlayerResponseCard() 對實牌同 virtual card 一律送 card->toString()
+	// 做 cardText(server 兩邊都係 Card::Parse 收),所以呢類 request 一定要
+	// 收得起 cardText —— 唔係嘅話 ClientCore 會當 malformed_response 掉咗,
+	// client 由頭到尾冇答過,要等到 server 嘅 operation timeout。
+	payload.cardTextAllowed = true;
+	payload.virtualCardAllowed = true;
 	InteractionRequest request = makeInteractionRequest(
 		InteractionType::ShowCard, payload, false);
 	request.prompt = prompt_doc->toHtml();

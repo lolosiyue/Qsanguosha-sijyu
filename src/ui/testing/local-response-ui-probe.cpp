@@ -145,8 +145,9 @@ QJsonObject LocalResponseUiProbe::snapshot() const
     collectCardItems(m_scene->m_playerCardBox, &playerBoxCards);
     for (CardItem *item : playerBoxCards)
         appendSurfaceCard(item, QStringLiteral("player_card_box"));
-    for (CardItem *item : m_scene->card_container->getItems())
-        appendSurfaceCard(item, QStringLiteral("card_container"));
+    if (m_scene->card_container)
+        for (CardItem *item : m_scene->card_container->getItems())
+            appendSurfaceCard(item, QStringLiteral("card_container"));
     QList<CardItem *> guanxingCards;
     collectCardItems(m_scene->m_guanxingBox, &guanxingCards);
     for (CardItem *item : guanxingCards)
@@ -158,10 +159,10 @@ QJsonObject LocalResponseUiProbe::snapshot() const
         { QStringLiteral("open"), m_scene->m_playerCardBox && m_scene->m_playerCardBox->isVisible() }
     });
     surfaces.insert(QStringLiteral("card_container"), QJsonObject {
-        { QStringLiteral("open"), m_scene->card_container->isVisible() }
+        { QStringLiteral("open"), m_scene->card_container && m_scene->card_container->isVisible() }
     });
     surfaces.insert(QStringLiteral("guanxing"), QJsonObject {
-        { QStringLiteral("open"), m_scene->m_guanxingBox->isVisible() }
+        { QStringLiteral("open"), m_scene->m_guanxingBox && m_scene->m_guanxingBox->isVisible() }
     });
     root.insert(QStringLiteral("surfaces"), surfaces);
 
@@ -170,6 +171,13 @@ QJsonObject LocalResponseUiProbe::snapshot() const
         Photo *photo = it.value();
         QJsonObject player;
         player.insert(QStringLiteral("object_name"), it.key());
+        // probe 只係報告工具:遇到殘缺狀態要照報出嚟,唔可以自己 crash —— 佢
+        // 專門喺失敗路徑先行,喺度 crash 會連原本嗰個失敗證據都一齊燒埋。
+        if (photo == nullptr) {
+            player.insert(QStringLiteral("missing"), true);
+            players.append(player);
+            continue;
+        }
         player.insert(QStringLiteral("enabled"), photo->isEnabled());
         player.insert(QStringLiteral("selected"), photo->isSelected());
         player.insert(QStringLiteral("visible"), photo->isVisible());
