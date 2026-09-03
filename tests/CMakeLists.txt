@@ -84,6 +84,9 @@ add_executable(qsanguosha_core_tests
     ${QSAN_TEST_ROOT}/src/core/replay/replay-container.cpp
     ${QSAN_TEST_ROOT}/src/util/recorder.cpp
     ${QSAN_TEST_ROOT}/src/util/replay-index.cpp
+    # takeover-snapshot-test.cpp calls ReplayDiagnosticExporter (added by cb5340a on the
+    # other side of merge 7fdf0c6); the fold in bf1f85d never picked this source up.
+    ${QSAN_TEST_ROOT}/src/util/replay-diagnostic-exporter.cpp
 )
 set_source_files_properties(card-overview-classifier-test.cpp
     PROPERTIES COMPILE_DEFINITIONS main=runCardOverviewClassifierTests)
@@ -620,25 +623,7 @@ qsan_add_ctest(qsanguosha_replay_v2_contract qsanguosha_replay_v2_tests
     LABELS "replay;protocol;fast"
 )
 
-add_executable(qsanguosha_takeover_snapshot_tests
-    takeover-snapshot/takeover-snapshot-test.cpp
-    ${QSAN_TEST_ROOT}/src/core/replay/replay-container.cpp
-    ${QSAN_TEST_ROOT}/src/util/recorder.cpp
-    ${QSAN_TEST_ROOT}/src/util/replay-diagnostic-exporter.cpp
-    ${QSAN_TEST_ROOT}/src/util/replay-index.cpp
-)
-qsan_link_engine_test(qsanguosha_takeover_snapshot_tests)
-qsan_add_ctest(qsanguosha_takeover_snapshot_contract qsanguosha_takeover_snapshot_tests
-    LABELS "replay;server;fast"
-    TIMEOUT 60
-)
-
-add_executable(qsanguosha_ui_tests
-    photo-layout-fit-test.cpp
-)
-target_include_directories(qsanguosha_ui_tests PRIVATE
-    ${QSAN_TEST_ROOT}/src/ui
-)
-qsan_add_ctest(qsanguosha_photo_layout_fit qsanguosha_ui_tests
-    LABELS "ui;fast"
-)
+# qsanguosha_takeover_snapshot_tests and qsanguosha_ui_tests used to live here. They
+# duplicated the sources and the CTest names that bf1f85d had already folded into
+# qsanguosha_core_tests; the merge 7fdf0c6 kept both sides, so add_test() failed with
+# "test NAME ... already exists" and the project would not configure at all.

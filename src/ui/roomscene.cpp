@@ -639,6 +639,22 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	animations = new EffectAnimation();
 	animations->setParent(this);
 
+	// 唔准改返 BspTreeIndex（Qt 預設）。呢個 scene 用預設 index 會喺對局中途
+	// SIGSEGV：崩潰點喺 QGraphicsSceneBspTree::climbTree()，佢由 BSP leaf 清單讀出
+	// 一個已經銷毀嘅 item 指針再解引用。已證實其中一個殘留來源係
+	// PlayerCardContainer::updateMark() 同步 delete 標記按鈕嘅 QGraphicsProxyWidget
+	// （ASan 喺崩潰當刻 describe 出 alloc/free 兩條 stack），嗰個已經修好；但單修佢
+	// 唔夠 —— 真 allocator 之下仍有未識別嘅殘留來源。
+	//
+	// 兩個 index 實作收到同一批 removeItem()/deleteItem() 呼叫，但只有 BSP 嗰個會留低
+	// 殘留項目；QGraphicsSceneLinearIndex 唔會。實測（05p seed 20260909，同一 binary，
+	// 只差呢一行）：BspTree 5/5 崩、NoIndex 0/5；ASan build 係 8/8 對 0/17。
+	//
+	// NoIndex 對呢個 scene 亦係 Qt 文件本身建議嘅選擇：item 大量持續移動（成手飛緊嘅
+	// CardItem）時 BSP 樹要不斷重建，NoIndex 嘅 O(1) 增刪反而更合適，代價係查找變 O(n)，
+	// 而本 scene 嘅 item 數量遠未到需要索引嘅規模。
+	setItemIndexMethod(QGraphicsScene::NoIndex);
+
 	// ── Spine pop-out action controller ──
 	// spineEnabled() 為 false（REDUCED／NONE）就完全唔建立 controller：
 	// 冇 controller 就唔會有 skeleton、atlas texture 或者 GL 資源。所有
