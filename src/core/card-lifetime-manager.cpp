@@ -1353,6 +1353,25 @@ quint64 CardLifetimeManager::releaseWrapperBindings(const void *domain,
 
 quint64 CardLifetimeManager::drain()
 {
+    return drainImpl(nullptr, nullptr);
+}
+
+quint64 CardLifetimeManager::drainDomain(
+    const void *domain, QList<QPointer<QObject>> *retiredObjects)
+{
+    if (!domain) {
+        if (retiredObjects)
+            retiredObjects->clear();
+        return 0;
+    }
+    return drainImpl(domain, retiredObjects);
+}
+
+quint64 CardLifetimeManager::drainImpl(
+    const void *domain, QList<QPointer<QObject>> *retiredObjects)
+{
+    if (retiredObjects)
+        retiredObjects->clear();
     struct Candidate {
         std::shared_ptr<const CardLifetimeToken> token;
         QObject *object = nullptr;
@@ -1366,6 +1385,8 @@ quint64 CardLifetimeManager::drain()
             return 0;
         reconcileDestroyedLocked();
         for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it) {
+            if (domain && (it->domain != domain || it->baselineDomain == domain))
+                continue;
             const bool domainBlocked = m_domainActiveScopes.value(it->domain, 0) > 0
                 || m_domainLuaPins.value(it->domain, 0) > 0;
             if (!domainBlocked && it->pending && !it->nativeDelete && it->wrappers == 0
@@ -1386,6 +1407,7 @@ quint64 CardLifetimeManager::drain()
         auto it = m_entries.find(candidate.token->address);
         if (it == m_entries.end() || it->token.get() != candidate.token.get()
             || it->token->generation != candidate.token->generation
+            || (domain && (it->domain != domain || it->baselineDomain == domain))
              || it->object != candidate.object
              || it->affinityThread != candidate.affinityThread
              || m_domainActiveScopes.value(it->domain, 0) > 0
@@ -1410,8 +1432,12 @@ quint64 CardLifetimeManager::drain()
         }
     }
     for (QObject *object : objects)
-        if (object)
+        if (object) {
+            const QPointer<QObject> guardedObject(object);
             object->QObject::deleteLater();
+            if (retiredObjects)
+                retiredObjects->append(guardedObject);
+        }
     return destroyed;
 }
 

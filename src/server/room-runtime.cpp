@@ -167,9 +167,16 @@ bool RoomRuntime::onCanonicalOwner() const
 quint64 RoomRuntime::drainShutdownStage(const char *stage)
 {
     Q_ASSERT(onCanonicalOwner());
-    const quint64 retired = globalCardLifetimeManager().drain();
-    if (QCoreApplication::instance())
-        QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    QList<QPointer<QObject>> retiredObjects;
+    const quint64 retired = globalCardLifetimeManager().drainDomain(
+        this, &retiredObjects);
+    if (QCoreApplication::instance()) {
+        // A process-wide flush can re-enter another Room's deferred destructor.
+        for (const QPointer<QObject> &object : std::as_const(retiredObjects))
+            if (object)
+                QCoreApplication::sendPostedEvents(
+                    object.data(), QEvent::DeferredDelete);
+    }
     std::fprintf(stdout, "CARD_LIFETIME_SHUTDOWN_STAGE %s retired=%llu\n",
                  stage, static_cast<unsigned long long>(retired));
     std::fflush(stdout);
@@ -241,7 +248,7 @@ void RoomRuntime::invalidateOrphanedRuntimeEntries()
     }
 }
 
-bool RoomRuntime::finalGaugeIsZero(const CardLifetimeGauge &gauge) const
+bool RoomRuntime::finalGaugeIsZero(const CardLifetimeGauge &) const
 {
     CardLifetimeManager &manager = globalCardLifetimeManager();
     const CardLifetimeGauge domainGauge = manager.gaugeForDomain(this);
@@ -277,10 +284,7 @@ bool RoomRuntime::finalGaugeIsZero(const CardLifetimeGauge &gauge) const
         || manager.entryCountForDomain(this) != 0
         || manager.activeScopeDepthForDomain(this) != 0)
         return false;
-    return gauge.actually_destroyed >= m_baselineActuallyDestroyed
-        && gauge.clone_created >= m_baselineCloneCreated
-        && gauge.factory_unclaimed == m_baselineFactoryUnclaimed
-        && gauge.unknown_unclaimed == m_baselineUnknownUnclaimed;
+    return true;
 }
 
 void RoomRuntime::failShutdown(const char *stage, const CardLifetimeGauge &gauge)

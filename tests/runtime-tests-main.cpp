@@ -91,7 +91,8 @@ int main(int argc, char **argv)
             if (requestedCase == QLatin1String("worker")
                 || requestedCase == QLatin1String("lease")
                 || requestedCase == QLatin1String("reservation")
-                || requestedCase == QLatin1String("lua-pin")) {
+                || requestedCase == QLatin1String("lua-pin")
+                || requestedCase == QLatin1String("overlap")) {
                 char *fixtureArgv[] = {argv[0], argv[3], nullptr};
                 return runCardLifetimeShutdownFixture(2, fixtureArgv);
             }
