@@ -1316,6 +1316,21 @@ bool QSanRoomSkin::_loadLayoutConfig(const QVariant &layout)
 {
 	JsonObject layoutConfig = layout.value<JsonObject>();
 	JsonObject config = layoutConfig[S_SKIN_KEY_COMMON].value<JsonObject>();
+	_m_commonLayout.m_cardCompactNameBackgroundColor = QColor(255, 250, 240, 255);
+	_m_commonLayout.m_cardCompactNameTextColor = QColor(48, 48, 48, 255);
+	_m_commonLayout.m_cardCompactNameBorderColor = QColor(160, 145, 120, 255);
+	_m_commonLayout.m_cardCompactNameMaxWidth = 36;
+	tryParse(config["cardCompactNameBackgroundColor"],
+		_m_commonLayout.m_cardCompactNameBackgroundColor);
+	tryParse(config["cardCompactNameTextColor"],
+		_m_commonLayout.m_cardCompactNameTextColor);
+	tryParse(config["cardCompactNameBorderColor"],
+		_m_commonLayout.m_cardCompactNameBorderColor);
+	int cardCompactNameMaxWidth = 0;
+	if (tryParse(config["cardCompactNameMaxWidth"], cardCompactNameMaxWidth)
+		&& cardCompactNameMaxWidth > 0) {
+		_m_commonLayout.m_cardCompactNameMaxWidth = cardCompactNameMaxWidth;
+	}
 	tryParse(config["cardNormalHeight"], _m_commonLayout.m_cardNormalHeight);
 	tryParse(config["cardNormalWidth"], _m_commonLayout.m_cardNormalWidth);
 	tryParse(config["hpExtraSpaceHolder"], _m_commonLayout.m_hpExtraSpaceHolder);

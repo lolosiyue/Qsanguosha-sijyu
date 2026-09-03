@@ -71,6 +71,7 @@ public:
     }
 
     void setConvertedCardName(const QString &cardObjectName, const QString &name);
+    void setCompactHandNameWidth(qreal width);
 
     void setFrozen(bool is_frozen);
 
@@ -132,6 +133,7 @@ private:
     bool m_virtualCardBlack;
     QString m_convertedCardObjectName;
     QString m_convertedCardName;
+    qreal m_compactHandNameWidth;
     QString _m_avatarName;
     QPointF home_pos;
     QPointF _m_lastMousePressScenePos;
