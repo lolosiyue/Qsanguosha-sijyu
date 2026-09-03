@@ -700,6 +700,7 @@ void Dashboard::_addHandCard(CardItem *card_item, bool prepend, const QString &f
 	card_item->setEnabled(false);
 
     card_item->setHomeOpacity(1.0);
+    card_item->setCompactHandNameWidth(0.0);
     card_item->setRotation(0.0);
     card_item->setFlag(ItemIsFocusable);
     //if (Config.EnableSuperDrag)
@@ -1365,11 +1366,26 @@ void Dashboard::_adjustCards()
     QSanRoomSkin::DashboardLayout *layout = (QSanRoomSkin::DashboardLayout *)_m_layout;
     int middleWidth = _m_width - layout->m_leftWidth - layout->m_rightWidth - getButtonWidgetWidth();
     QRect rowRect = QRect(layout->m_leftWidth, layout->m_normalHeight - cardHeight - 3, middleWidth, cardHeight);
+    auto disperseRow = [this, &rowRect](QList<CardItem *> &cards) {
+        qreal compactNameWidth = 0.0;
+        if (cards.length() > 1) {
+            const qreal cardWidth = G_COMMON_LAYOUT.m_cardNormalWidth;
+            const qreal step = qMin(cardWidth,
+                (rowRect.width() - cardWidth) / (cards.length() - 1));
+            // The name strip belongs only to rows that are actually compressed.
+            if (step < cardWidth)
+                compactNameWidth = qMin(qMax<qreal>(0.0, step),
+                    qMax<qreal>(0.0, G_COMMON_LAYOUT.m_cardCompactNameMaxWidth));
+        }
+        foreach (CardItem *card, cards)
+            card->setCompactHandNameWidth(compactNameWidth);
+        _disperseCards(cards, rowRect, Qt::AlignLeft, true, true);
+    };
     for (int i = 0; i < maxCards; i++)
         row.push_back(m_handCards[i]);
 
     _m_highestZ = n;
-    _disperseCards(row, rowRect, Qt::AlignLeft, true, true);
+    disperseRow(row);
 
     if(maxCards<n){
 		row.clear();
@@ -1378,7 +1394,7 @@ void Dashboard::_adjustCards()
 			row.push_back(m_handCards[i]);
 
 		_m_highestZ = 0;
-		_disperseCards(row, rowRect, Qt::AlignLeft, true, true);
+		disperseRow(row);
 	}
 
     for (int i = 0; i < n; i++) {
@@ -1520,6 +1536,7 @@ QList<CardItem *> Dashboard::removeHandCards(const QList<int> &card_ids)
         if (card_item == selected) selected = nullptr;
         Q_ASSERT(card_item);
         if (card_item) {
+            card_item->setCompactHandNameWidth(0.0);
             animations->effectOut(card_item);
             m_handCards.removeOne(card_item);
             card_item->disconnect(this);
