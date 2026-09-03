@@ -1,4 +1,6 @@
 set(QSAN_TEST_ROOT "${CMAKE_SOURCE_DIR}")
+# 呢個目錄入面起嘅 target 全部收落 Visual Studio 嘅 "Tests" solution folder。
+set(CMAKE_FOLDER "Tests")
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 set(QSAN_ENGINE_TEST_INCLUDES
