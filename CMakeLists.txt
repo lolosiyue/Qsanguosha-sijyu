@@ -2,7 +2,20 @@ cmake_minimum_required(VERSION 3.28)
 
 project(QSanguosha LANGUAGES C CXX)
 
-include(CTest)
+# CTest 只係用嚟跑本機同 CI 嘅測試,由頭到尾冇用過 CDash。include(CTest) 除咗
+# BUILD_TESTING option 同 enable_testing() 之外,仲會多開 28 個
+# Continuous*/Nightly*/Experimental* dashboard target —— Visual Studio 會將每一個
+# 都變成 solution 入面一個 project,佔咗成個 solution 一半以上。所以只取要用嗰兩樣。
+option(BUILD_TESTING "Build the testing tree." ON)
+if(BUILD_TESTING)
+    enable_testing()
+endif()
+
+# Visual Studio / Xcode: 將 test 同 CMake 自帶嘅 ALL_BUILD／ZERO_CHECK／RUN_TESTS
+# 之類收埋落 solution folder,唔好喺根目錄平鋪。Ninja／Makefile 會忽略呢兩個屬性。
+set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+set_property(GLOBAL PROPERTY PREDEFINED_TARGETS_FOLDER "CMake")
+
 include(GNUInstallDirs)
 
 # Windows XP is an opt-in legacy product built from the same source tree.  It
@@ -1523,3 +1536,16 @@ endif()
 if(BUILD_TESTING)
     add_subdirectory(tests)
 endif()
+
+# Visual Studio solution 分組:三個產品執行檔留喺根目錄,中介靜態庫收埋。
+# 用 if(TARGET) 係因為 server-only／XP legacy 配置唔會起齊全部。
+foreach(qsan_library
+    qsanguosha_engine
+    qsanguosha_websocket
+    qsanguosha_client_core
+    qsanguosha_tui_support
+)
+    if(TARGET ${qsan_library})
+        set_property(TARGET ${qsan_library} PROPERTY FOLDER "Libraries")
+    endif()
+endforeach()
