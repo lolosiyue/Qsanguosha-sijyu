@@ -29,6 +29,19 @@ constexpr quint32 ZipDataDescriptorSignature = 0x08074b50;
 constexpr quint32 ZipCentralHeaderSignature = 0x02014b50;
 constexpr quint32 ZipEndSignature = 0x06054b50;
 
+QString currentUtcIsoDateWithMilliseconds()
+{
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+#if QT_VERSION >= QT_VERSION_CHECK(5, 8, 0)
+    return now.toString(Qt::ISODateWithMs);
+#else
+    const QString seconds = now.toString(Qt::ISODate);
+    return seconds.left(19)
+        + QStringLiteral(".%1").arg(now.time().msec(), 3, 10, QLatin1Char('0'))
+        + seconds.mid(19);
+#endif
+}
+
 struct PayloadRecord
 {
     QString path;
@@ -384,8 +397,7 @@ QJsonObject bundleManifest(const ReplayDiagnosticExportRequest &request,
     return QJsonObject{
         {QStringLiteral("schema"), QStringLiteral("qsanguosha-bug-bundle-v1")},
         {QStringLiteral("schemaVersion"), 1},
-        {QStringLiteral("createdAtUtc"),
-            QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+        {QStringLiteral("createdAtUtc"), currentUtcIsoDateWithMilliseconds()},
         {QStringLiteral("sourceReplay"), QFileInfo(request.replayPath).fileName()},
         {QStringLiteral("files"), files},
         {QStringLiteral("omitted"), omittedFiles},
@@ -487,8 +499,7 @@ QJsonObject ReplayDiagnosticExporter::createDiagnostics(const Replayer &replayer
 
     return QJsonObject{
         {QStringLiteral("schemaVersion"), 1},
-        {QStringLiteral("createdAtUtc"),
-            QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)},
+        {QStringLiteral("createdAtUtc"), currentUtcIsoDateWithMilliseconds()},
         {QStringLiteral("gameVersion"), QString::fromLatin1(QSanVersion::Number)},
 #if defined(QT_DEBUG)
         {QStringLiteral("buildMode"), QStringLiteral("debug")},

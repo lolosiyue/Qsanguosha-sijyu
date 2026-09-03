@@ -8,6 +8,7 @@
 #include <QSet>
 
 #include <cstdio>
+#include <mutex>
 
 namespace {
 QMutex associationMutex;
@@ -104,7 +105,7 @@ CardLifetimeManager::~CardLifetimeManager()
         QMutexLocker lock(&associationMutex);
         managers.remove(this);
     }
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     m_wrappers.clear();
     m_changeEdges.clear();
     m_tagBindings.clear();
@@ -127,7 +128,7 @@ std::shared_ptr<const CardLifetimeToken> CardLifetimeManager::observeLive(const 
 {
     if (!card)
         return {};
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     auto found = m_entries.find(card);
     if (found != m_entries.end()) {
         if (found->token->live)
@@ -206,7 +207,7 @@ CardLifetimeManager *CardLifetimeManager::enterLuaPinForCurrentThread()
             continue;
         bool matches = false;
         {
-            QMutexLocker lock(&manager->m_mutex);
+            std::lock_guard<ProfiledMutex> lock(manager->m_mutex);
             for (const RuntimeRegistration &registration : std::as_const(
                      manager->m_runtimeRegistrations)) {
                 if (registration.domain == currentDomain
@@ -265,7 +266,7 @@ std::shared_ptr<const CardLifetimeToken> CardLifetimeManager::observeCard(Card *
         return {};
     bool connectDestroyed = false;
     {
-        QMutexLocker lock(&m_mutex);
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
         const auto found = m_entries.find(card);
         if (found != m_entries.end() && found->token.get() == token.get()) {
             if (originalOwner && found->token->state == CardLifetimeState::ObservedExternal) {
@@ -297,7 +298,7 @@ std::shared_ptr<const CardLifetimeToken> CardLifetimeManager::recordFactoryClone
     const auto token = observeCard(card);
     if (!token)
         return {};
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     Entry *entry = entryFor(token);
     if (!entry)
         return {};
@@ -320,7 +321,7 @@ std::shared_ptr<const CardLifetimeToken> CardLifetimeManager::recordFactoryClone
 void CardLifetimeManager::recordOwningFactoryResult(
     const std::shared_ptr<const CardLifetimeToken> &token)
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     Entry *entry = entryFor(token);
     if (!entry || entry->factoryUnclaimed || entry->unknownUnclaimed)
         return;
@@ -333,7 +334,7 @@ void CardLifetimeManager::recordDeferredDelete(Card *card)
     if (!card)
         return;
     {
-        QMutexLocker lock(&m_mutex);
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
         auto found = m_entries.find(card);
         if (found != m_entries.end()) {
             if (!found->token->live || found->pending || found->nativeDelete
@@ -345,7 +346,7 @@ void CardLifetimeManager::recordDeferredDelete(Card *card)
         }
     }
     const auto token = observeCard(card, card->parent() != nullptr);
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     Entry *entry = entryFor(token);
     if (!entry || entry->pending || entry->nativeDelete || entry->deleteBypass)
         return;
@@ -355,7 +356,7 @@ void CardLifetimeManager::recordDeferredDelete(Card *card)
 
 std::shared_ptr<const CardLifetimeToken> CardLifetimeManager::liveToken(const void *card) const
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     const auto found = m_entries.constFind(card);
     if (found == m_entries.cend() || !found->token->live)
         return {};
@@ -367,7 +368,7 @@ QThread *CardLifetimeManager::affinityThread(
 {
     if (!token)
         return nullptr;
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     const auto found = m_entries.constFind(token->address);
     if (found == m_entries.cend() || found->token.get() != token.get()
         || found->token->generation != token->generation || !found->token->live)
@@ -380,7 +381,7 @@ bool CardLifetimeManager::isBaselineToken(
 {
     if (!domain || !token)
         return false;
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     const auto found = m_entries.constFind(token->address);
     return found != m_entries.cend() && found->token.get() == token.get()
         && found->token->generation == token->generation
@@ -553,7 +554,7 @@ bool CardLifetimeManager::invalidateIfObserved(const void *card)
 {
     bool invalidated = false;
     {
-        QMutexLocker lock(&m_mutex);
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
         invalidated = invalidateIfObservedLocked(card, nullptr);
     }
     if (!invalidated)
@@ -573,7 +574,7 @@ bool CardLifetimeManager::invalidateIfObserved(
         return false;
     bool invalidated = false;
     {
-        QMutexLocker lock(&m_mutex);
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
         invalidated = invalidateIfObservedLocked(token->address, token.get());
     }
     if (!invalidated)
@@ -592,7 +593,7 @@ void CardLifetimeManager::notifyDestroyed(Card *card)
         return;
     bool removeAssociation = false;
     {
-        QMutexLocker lock(&m_mutex);
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
         auto found = m_entries.find(card);
         if (found == m_entries.end())
             return;
@@ -668,13 +669,13 @@ void CardLifetimeManager::reconcileDestroyedLocked()
 
 bool CardLifetimeManager::isLive(const std::shared_ptr<const CardLifetimeToken> &token) const
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     return entryFor(token) != nullptr;
 }
 
 bool CardLifetimeManager::isLive(const void *card) const
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     const auto found = m_entries.constFind(card);
     return found != m_entries.cend() && found->token->live;
 }
@@ -682,7 +683,7 @@ bool CardLifetimeManager::isLive(const void *card) const
 CardLifetimeState CardLifetimeManager::state(
     const std::shared_ptr<const CardLifetimeToken> &token) const
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     const Entry *entry = entryFor(token);
     return entry ? entry->token->state
                  : (token ? token->state : CardLifetimeState::Dead);
@@ -690,7 +691,7 @@ CardLifetimeState CardLifetimeManager::state(
 
 bool CardLifetimeManager::requestNativeDelete(const std::shared_ptr<const CardLifetimeToken> &token)
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     Entry *entry = entryFor(token);
     if (!entry) { ++m_gauge.stale_access; return false; }
     if (entry->token->originalOwner || entry->token->state == CardLifetimeState::Adopted) {
@@ -711,7 +712,7 @@ bool CardLifetimeManager::requestNativeDelete(const std::shared_ptr<const CardLi
 
 bool CardLifetimeManager::markAdopted(const std::shared_ptr<const CardLifetimeToken> &token)
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     Entry *entry = entryFor(token);
     if (!entry)
         return false;
@@ -729,7 +730,7 @@ bool CardLifetimeManager::markAdopted(const std::shared_ptr<const CardLifetimeTo
 
 bool CardLifetimeManager::reserveAdoption(const std::shared_ptr<const CardLifetimeToken> &token)
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     Entry *entry = entryFor(token);
     if (!entry || !entry->token->live) {
         ++m_gauge.adoption_failed;
@@ -743,7 +744,7 @@ bool CardLifetimeManager::reserveAdoption(const std::shared_ptr<const CardLifeti
 void CardLifetimeManager::cancelAdoption(const std::shared_ptr<const CardLifetimeToken> &token,
                                          bool transferFailed)
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     Entry *entry = entryFor(token);
     if (entry && entry->adoptionReservations > 0)
         --entry->adoptionReservations;
@@ -758,7 +759,7 @@ void CardLifetimeManager::cancelAdoption(const std::shared_ptr<const CardLifetim
 bool CardLifetimeManager::requestLuaDelete(const std::shared_ptr<const CardLifetimeToken> &token,
                                            QByteArray *error)
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     Entry *entry = entryFor(token);
     if (!entry) {
         ++m_gauge.unknown_card_delete;
@@ -787,7 +788,7 @@ bool CardLifetimeManager::requestLuaDelete(const std::shared_ptr<const CardLifet
 
 bool CardLifetimeManager::requestLuaDelete(const void *card, QByteArray *error)
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     const auto found = m_entries.find(card);
     if (found == m_entries.end() || !found->token->live) {
         ++m_gauge.unknown_card_delete;
@@ -815,7 +816,7 @@ bool CardLifetimeManager::requestLuaDelete(const void *card, QByteArray *error)
 
 bool CardLifetimeManager::rejectOpaqueVariant(QByteArray *error)
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     ++m_gauge.unknown_qvariant_card_payload;
     if (error)
         *error = opaqueVariantError();
@@ -824,7 +825,7 @@ bool CardLifetimeManager::rejectOpaqueVariant(QByteArray *error)
 
 bool CardLifetimeManager::retainWrapper(const std::shared_ptr<const CardLifetimeToken> &token)
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     Entry *entry = entryFor(token);
     if (!entry) { ++m_gauge.stale_access; return false; }
     ++entry->wrappers;
@@ -835,7 +836,7 @@ bool CardLifetimeManager::retainWrapper(const std::shared_ptr<const CardLifetime
 
 bool CardLifetimeManager::releaseWrapper(const std::shared_ptr<const CardLifetimeToken> &token)
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     Entry *entry = entryForLease(token);
     if (!entry || entry->wrappers == 0)
         return false;
@@ -847,7 +848,7 @@ bool CardLifetimeManager::releaseWrapper(const std::shared_ptr<const CardLifetim
 
 bool CardLifetimeManager::retainNativeLease(const std::shared_ptr<const CardLifetimeToken> &token)
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     Entry *entry = entryFor(token);
     if (!entry) {
         ++m_gauge.stale_access;
@@ -861,7 +862,7 @@ bool CardLifetimeManager::retainNativeLease(const std::shared_ptr<const CardLife
 
 bool CardLifetimeManager::releaseNativeLease(const std::shared_ptr<const CardLifetimeToken> &token)
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     Entry *entry = entryForLease(token);
     if (!entry || entry->nativeLeases == 0)
         return false;
@@ -880,7 +881,7 @@ bool CardLifetimeManager::addChangeEdge(Card *source, const Card *target)
     const auto targetToken = observeLive(target);
     if (!sourceToken || !targetToken)
         return false;
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     if (source == target) {
         ++m_gauge.change_list_self_cycle;
         ++m_gauge.blocked_by_legacy_change_list;
@@ -924,7 +925,7 @@ void CardLifetimeManager::removeChangeEdges(const Card *card)
 {
     if (!card)
         return;
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     for (auto it = m_changeEdges.begin(); it != m_changeEdges.end();) {
         if (it->source == card || it->target == card) {
             it = m_changeEdges.erase(it);
@@ -946,7 +947,7 @@ bool CardLifetimeManager::bindTag(const void *container, const QByteArray &key, 
     releaseTag(container, key);
     if (!retainNativeLease(token))
         return false;
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     m_tagBindings.push_back(TagBinding{container, key, token});
     return true;
 }
@@ -955,7 +956,7 @@ void CardLifetimeManager::releaseTag(const void *container, const QByteArray &ke
 {
     std::shared_ptr<const CardLifetimeToken> token;
     {
-        QMutexLocker lock(&m_mutex);
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
         for (auto it = m_tagBindings.begin(); it != m_tagBindings.end(); ++it) {
             if (it->container == container && it->key == key) {
                 token = it->token;
@@ -972,7 +973,7 @@ void CardLifetimeManager::releaseTags(const void *container)
 {
     QList<std::shared_ptr<const CardLifetimeToken>> tokens;
     {
-        QMutexLocker lock(&m_mutex);
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
         for (auto it = m_tagBindings.begin(); it != m_tagBindings.end();) {
             if (it->container == container) {
                 tokens.push_back(it->token);
@@ -1000,7 +1001,7 @@ void CardLifetimeManager::retainEventPayload(const void *owner,
         if (token && retainNativeLease(token))
             tokens.push_back(token);
     }
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     if (!tokens.isEmpty())
         m_eventLeases.insert(owner, std::move(tokens));
 }
@@ -1009,7 +1010,7 @@ void CardLifetimeManager::releaseEventPayload(const void *owner)
 {
     QList<std::shared_ptr<const CardLifetimeToken>> tokens;
     {
-        QMutexLocker lock(&m_mutex);
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
         auto found = m_eventLeases.find(owner);
         if (found == m_eventLeases.end())
             return;
@@ -1026,7 +1027,7 @@ quint64 CardLifetimeManager::releaseEventPayloads(const void *domain)
         return 0;
     QList<std::shared_ptr<const CardLifetimeToken>> tokens;
     {
-        QMutexLocker lock(&m_mutex);
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
         for (auto owner = m_eventLeases.begin(); owner != m_eventLeases.end();) {
             QList<std::shared_ptr<const CardLifetimeToken>> &heldTokens = owner.value();
             for (auto held = heldTokens.begin(); held != heldTokens.end();) {
@@ -1135,7 +1136,7 @@ bool CardLifetimeManager::retainVariantPayload(const void *owner, const QVariant
             return true;
         if (typeName && (QByteArray(typeName).contains("Card") || QByteArray(typeName).contains("card"))) {
             if (error) *error = opaqueVariantError();
-            QMutexLocker lock(&m_mutex);
+            std::lock_guard<ProfiledMutex> lock(m_mutex);
             ++m_gauge.unknown_qvariant_card_payload;
             return false;
         }
@@ -1153,7 +1154,7 @@ bool CardLifetimeManager::retainVariantPayload(const void *owner, const QVariant
         }
         tokens.push_back(token);
     }
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     if (!tokens.isEmpty()) m_eventLeases.insert(owner, std::move(tokens));
     return true;
 }
@@ -1166,7 +1167,7 @@ bool CardLifetimeManager::retainVariantTag(const void *container, const QByteArr
     releaseVariantTag(container, key);
     QList<std::shared_ptr<const CardLifetimeToken>> tokens;
     {
-        QMutexLocker lock(&m_mutex);
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
         auto found = m_eventLeases.find(container);
         if (found != m_eventLeases.end()) {
             tokens = std::move(found.value());
@@ -1182,7 +1183,7 @@ void CardLifetimeManager::releaseVariantTag(const void *container, const QByteAr
 {
     QList<std::shared_ptr<const CardLifetimeToken>> tokens;
     {
-        QMutexLocker lock(&m_mutex);
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
         auto outer = m_variantTags.find(container);
         if (outer == m_variantTags.end()) return;
         auto inner = outer->find(key);
@@ -1198,7 +1199,7 @@ void CardLifetimeManager::releaseVariantTags(const void *container)
 {
     QList<std::shared_ptr<const CardLifetimeToken>> tokens;
     {
-        QMutexLocker lock(&m_mutex);
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
         auto outer = m_variantTags.find(container);
         if (outer == m_variantTags.end()) return;
         for (auto inner = outer->begin(); inner != outer->end(); ++inner)
@@ -1214,7 +1215,7 @@ bool CardLifetimeManager::bindWrapper(const void *wrapper,
 {
     if (!wrapper)
         return false;
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     Entry *entry = entryFor(token);
     if (!entry)
         return false;
@@ -1242,7 +1243,7 @@ bool CardLifetimeManager::bindWrapper(const void *wrapper,
 std::shared_ptr<const CardLifetimeToken> CardLifetimeManager::wrapperBinding(
     const void *wrapper, bool *originalOwner) const
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     const auto found = m_wrappers.constFind(wrapper);
     if (found == m_wrappers.cend())
         return {};
@@ -1259,7 +1260,7 @@ std::shared_ptr<const CardLifetimeToken> CardLifetimeManager::wrapperBinding(
 std::shared_ptr<const CardLifetimeToken> CardLifetimeManager::releaseWrapperBinding(
     const void *wrapper, bool *originalOwner)
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     auto found = m_wrappers.find(wrapper);
     if (found == m_wrappers.end())
         return {};
@@ -1287,7 +1288,7 @@ quint64 CardLifetimeManager::releaseWrapperBindings(const void *domain)
     if (!domain)
         return 0;
     QList<std::shared_ptr<const CardLifetimeToken>> owningTokens;
-    QMutexLocker lock(&m_mutex);
+    std::unique_lock<ProfiledMutex> lock(m_mutex);
     quint64 released = 0;
     for (auto it = m_wrappers.begin(); it != m_wrappers.end();) {
         if (it->domain != domain) {
@@ -1324,7 +1325,7 @@ quint64 CardLifetimeManager::releaseWrapperBindings(const void *domain,
     QList<std::shared_ptr<const CardLifetimeToken>> owningTokens;
     quint64 released = 0;
     {
-        QMutexLocker lock(&m_mutex);
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
         for (auto it = m_wrappers.begin(); it != m_wrappers.end();) {
             if (it->domain != domain || it->runtimeIdentity != identity
                 || it->runtimeGeneration != generation || it->runtimeState != state) {
@@ -1379,7 +1380,7 @@ quint64 CardLifetimeManager::drainImpl(
     };
     QVector<Candidate> candidates;
     {
-        QMutexLocker lock(&m_mutex);
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
         if (m_mode != CardLifetimeMode::ManagedReclaim
             || (m_ownerThread && QThread::currentThread() != m_ownerThread))
             return 0;
@@ -1403,7 +1404,7 @@ quint64 CardLifetimeManager::drainImpl(
     for (const Candidate &candidate : std::as_const(candidates)) {
         if (candidate.affinityThread && candidate.affinityThread != QThread::currentThread())
             continue;
-        QMutexLocker lock(&m_mutex);
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
         auto it = m_entries.find(candidate.token->address);
         if (it == m_entries.end() || it->token.get() != candidate.token.get()
             || it->token->generation != candidate.token->generation
@@ -1456,7 +1457,7 @@ bool CardLifetimeManager::finalizeWorkerDomain(const void *domain, quint64 *reti
     };
     QVector<Candidate> candidates;
     {
-        QMutexLocker lock(&m_mutex);
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
         reconcileDestroyedLocked();
         if (m_domainActiveScopes.value(domain, 0) != 0
             || m_domainLuaPins.value(domain, 0) != 0)
@@ -1506,7 +1507,7 @@ bool CardLifetimeManager::finalizeWorkerDomain(const void *domain, quint64 *reti
             delete candidate.object.data();
 
     {
-        QMutexLocker lock(&m_mutex);
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
         reconcileDestroyedLocked();
         for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it) {
             if (it->domain != domain || it->baselineDomain == domain
@@ -1525,14 +1526,14 @@ bool CardLifetimeManager::finalizeWorkerDomain(const void *domain, quint64 *reti
 
 CardLifetimeGauge CardLifetimeManager::gauge() const
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     const_cast<CardLifetimeManager *>(this)->reconcileDestroyedLocked();
     return m_gauge;
 }
 
 CardLifetimeGauge CardLifetimeManager::gaugeForDomain(const void *domain) const
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     CardLifetimeGauge result;
     for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it) {
         if (it->domain != domain || it->baselineDomain == domain)
@@ -1572,7 +1573,7 @@ void CardLifetimeManager::registerRuntimeDomain(const void *domain, const void *
 {
     if (!domain || !identity || generation == 0)
         return;
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     for (const RuntimeRegistration &registration : std::as_const(m_runtimeRegistrations)) {
         if (registration.domain == domain && registration.identity == identity
             && registration.generation == generation && registration.state == state)
@@ -1589,7 +1590,7 @@ void CardLifetimeManager::registerRuntimeDomain(const void *domain, const void *
 void CardLifetimeManager::unregisterRuntimeDomain(const void *domain, const void *identity,
                                                   quint64 generation, lua_State *state)
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     for (auto it = m_runtimeRegistrations.begin(); it != m_runtimeRegistrations.end(); ++it) {
         if (it->domain == domain && it->identity == identity
             && it->generation == generation && it->state == state) {
@@ -1610,7 +1611,7 @@ CardLifetimeGauge CardLifetimeManager::gaugeForRuntime(const void *domain,
                                                        quint64 generation,
                                                        lua_State *state) const
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     CardLifetimeGauge result;
     for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it) {
         if (it->domain != domain || it->runtimeIdentity != identity
@@ -1653,7 +1654,7 @@ CardLifetimeGauge CardLifetimeManager::gaugeForRuntime(const void *domain,
 void CardLifetimeManager::setDomainBaseline(const void *domain,
                                              const QSet<const void *> &addresses)
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     QHash<const void *, quint64> generations;
     for (const void *address : addresses) {
         const auto found = m_entries.constFind(address);
@@ -1671,14 +1672,14 @@ void CardLifetimeManager::setDomainBaseline(const void *domain,
 
 void CardLifetimeManager::unregisterDomainBaseline(const void *domain)
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     m_domainBaselines.remove(domain);
 }
 
 void CardLifetimeManager::dumpDomain(const void *domain) const
 {
     QList<const void *> liveAddresses;
-    QMutexLocker lock(&m_mutex);
+    std::unique_lock<ProfiledMutex> lock(m_mutex);
     quint64 live = 0;
     quint64 original = 0;
     quint64 external = 0;
@@ -1726,13 +1727,13 @@ void CardLifetimeManager::dumpDomain(const void *domain) const
 
 quint64 CardLifetimeManager::entryCount() const
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     return static_cast<quint64>(m_entries.size());
 }
 
 QSet<const void *> CardLifetimeManager::entryAddresses() const
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     QSet<const void *> addresses;
     for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it)
         addresses.insert(it.key());
@@ -1741,7 +1742,7 @@ QSet<const void *> CardLifetimeManager::entryAddresses() const
 
 QSet<const void *> CardLifetimeManager::entryAddressesForDomain(const void *domain) const
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     QSet<const void *> addresses;
     for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it)
         if (it->domain == domain && it->baselineDomain != domain)
@@ -1751,7 +1752,7 @@ QSet<const void *> CardLifetimeManager::entryAddressesForDomain(const void *doma
 
 quint64 CardLifetimeManager::entryCountForDomain(const void *domain) const
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     quint64 count = 0;
     for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it)
         if (it->domain == domain && it->baselineDomain != domain)
@@ -1761,26 +1762,26 @@ quint64 CardLifetimeManager::entryCountForDomain(const void *domain) const
 
 quint64 CardLifetimeManager::activeScopeDepth() const
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     return m_activeScopes;
 }
 
 quint64 CardLifetimeManager::activeScopeDepthForDomain(const void *domain) const
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     return m_domainActiveScopes.value(domain, 0);
 }
 
 void CardLifetimeManager::enterScope()
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     ++m_activeScopes;
     ++m_domainActiveScopes[currentDomain];
 }
 
 void CardLifetimeManager::leaveScope()
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     if (m_activeScopes > 0)
         --m_activeScopes;
     auto found = m_domainActiveScopes.find(currentDomain);
@@ -1794,7 +1795,7 @@ void CardLifetimeManager::leaveScope()
 
 void CardLifetimeManager::enterLuaPin()
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     ++m_luaPins;
     ++m_gauge.lua_pins;
     ++m_domainLuaPins[currentDomain];
@@ -1804,7 +1805,7 @@ void CardLifetimeManager::enterLuaPin()
 
 void CardLifetimeManager::leaveLuaPin()
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     if (m_luaPins > 0)
         --m_luaPins;
     if (m_gauge.lua_pins > 0)
@@ -1834,13 +1835,13 @@ void CardLifetimeManager::leaveLuaPin()
 
 quint64 CardLifetimeManager::luaPinDepth() const
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     return m_luaPins;
 }
 
 bool CardLifetimeManager::resetForTest()
 {
-    QMutexLocker lock(&m_mutex);
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
     for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it) {
         if (it->token->live || it->pending || it->wrappers > 0 || it->nativeLeases > 0
             || it->adoptionReservations > 0 || it->object != nullptr)

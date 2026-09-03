@@ -185,7 +185,7 @@ bool isJsonSafeVariant(const QVariant &value, QString &error, int depth = 0)
     if (!value.isValid() || value.isNull())
         return true;
 
-    switch (value.metaType().id()) {
+    switch (value.userType()) {
     case QMetaType::Bool:
     case QMetaType::Int:
     case QMetaType::UInt:
@@ -237,7 +237,7 @@ bool isJsonSafeVariant(const QVariant &value, QString &error, int depth = 0)
     }
     default:
         error = QStringLiteral("takeover provider state contains unsupported QVariant type: %1")
-                    .arg(QString::fromLatin1(value.metaType().name()));
+                    .arg(QString::fromLatin1(value.typeName()));
         return false;
     }
 }
@@ -253,7 +253,7 @@ bool pushVariant(lua_State *state, const QVariant &value, QString &error, int de
         return true;
     }
 
-    switch (value.metaType().id()) {
+    switch (value.userType()) {
     case QMetaType::Bool:
         lua_pushboolean(state, value.toBool());
         return true;
@@ -322,7 +322,7 @@ bool pushVariant(lua_State *state, const QVariant &value, QString &error, int de
     }
     default:
         error = QStringLiteral("takeover provider state contains unsupported QVariant type: %1")
-                    .arg(QString::fromLatin1(value.metaType().name()));
+                    .arg(QString::fromLatin1(value.typeName()));
         return false;
     }
 }
@@ -650,9 +650,9 @@ bool LuaRuntime::restoreTakeoverState(const QVariantMap &state, QString *error)
         if (!entry.contains(QStringLiteral("version"))
             || !entry.contains(QStringLiteral("state"))
             || versionValue.toInt() != provider.version
-            || (versionValue.metaType().id() != QMetaType::Int
-                && versionValue.metaType().id() != QMetaType::LongLong
-                && versionValue.metaType().id() != QMetaType::Double)) {
+            || (versionValue.userType() != QMetaType::Int
+                && versionValue.userType() != QMetaType::LongLong
+                && versionValue.userType() != QMetaType::Double)) {
             if (error)
                 *error = QStringLiteral("takeover provider '%1' is missing or has a version mismatch")
                              .arg(name);

@@ -47,7 +47,12 @@ void BubbleChatBox::paint(QPainter *painter, const QStyleOptionGraphicsItem *, Q
 
 QPainterPath BubbleChatBox::shape() const
 {
-    QRegion maskRegion(QBitmap::fromPixmap(backgroundPixmap.mask().scaled(rect.size().toSize())));
+    const QPixmap scaledMask = backgroundPixmap.mask().scaled(rect.size().toSize());
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    QRegion maskRegion(QBitmap::fromPixmap(scaledMask));
+#else
+    QRegion maskRegion = QRegion(QBitmap(scaledMask));
+#endif
     QPainterPath path;
     path.addRegion(maskRegion);
     return path;

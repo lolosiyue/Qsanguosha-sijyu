@@ -76,7 +76,12 @@ void QSanButton::setSize(QSize newSize)
     }
     Q_ASSERT(!_m_bgPixmap[0].isNull());
     QPixmap pixmap = _m_bgPixmap[0];
-    _m_mask = QRegion(QBitmap::fromPixmap(pixmap.mask().scaled(newSize)));
+    const QPixmap scaledMask = pixmap.mask().scaled(newSize);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    _m_mask = QRegion(QBitmap::fromPixmap(scaledMask));
+#else
+    _m_mask = QRegion(QBitmap(scaledMask));
+#endif
 }
 
 void QSanButton::setRect(QRect rect)
