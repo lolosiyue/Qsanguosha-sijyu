@@ -495,10 +495,13 @@ void PlayerCardContainer::updatePile(const QString &pile_name)
     QList<int> pile = m_player->getPile(pile_name);
     if (pile.isEmpty()) {
         if (_m_privatePiles.contains(pile_name)) {
-			_m_privatePiles[pile_name]->widget()->deleteLater();
-			_m_privatePiles[pile_name]->setWidget(nullptr);
-            delete _m_privatePiles[pile_name];
-            _m_privatePiles.remove(pile_name);
+			QGraphicsProxyWidget *proxy = _m_privatePiles.take(pile_name);
+			if (proxy->widget())
+				proxy->widget()->deleteLater();
+			proxy->setWidget(nullptr);
+			if (proxy->scene())
+				proxy->scene()->removeItem(proxy);
+			proxy->deleteLater();
         }
     } else {
         // retrieve menu and create a new pile if necessary
@@ -558,8 +561,13 @@ void PlayerCardContainer::updateGeneralPile(const QString &pile_name)
 
     if (generals.isEmpty()) {
         if (_m_privatePiles.contains(pile_name)) {
-            _m_privatePiles[pile_name]->deleteLater();
-            _m_privatePiles.remove(pile_name);
+			QGraphicsProxyWidget *proxy = _m_privatePiles.take(pile_name);
+			if (proxy->widget())
+				proxy->widget()->deleteLater();
+			proxy->setWidget(nullptr);
+			if (proxy->scene())
+				proxy->scene()->removeItem(proxy);
+			proxy->deleteLater();
         }
     } else {
         QPushButton *button;
@@ -639,10 +647,13 @@ void PlayerCardContainer::updateMark(const QString &mark_name, int mark_num)
 
     if (mark_num==0) {
         if (_m_privatePiles.contains(mark_name)) {
-			_m_privatePiles[mark_name]->widget()->deleteLater();
-			_m_privatePiles[mark_name]->setWidget(nullptr);
-            delete _m_privatePiles[mark_name];
-            _m_privatePiles.remove(mark_name);
+			QGraphicsProxyWidget *proxy = _m_privatePiles.take(mark_name);
+			if (proxy->widget())
+				proxy->widget()->deleteLater();
+			proxy->setWidget(nullptr);
+			if (proxy->scene())
+				proxy->scene()->removeItem(proxy);
+			proxy->deleteLater();
         }
     } else {
         QPushButton *button = new QPushButton;
