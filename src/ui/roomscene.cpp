@@ -1988,7 +1988,7 @@ void RoomScene::addPlayer(ClientPlayer*player)
 
 void RoomScene::removePlayer(const QString&player_name)
 {
-	Photo*photo = name2photo[player_name];
+	Photo*photo = name2photo.value(player_name, nullptr);
 	if(photo){
 		photo->setPlayer(nullptr);
 		name2photo.remove(player_name);
@@ -3172,14 +3172,14 @@ QString RoomScene::_translateMovement(const CardsMoveStruct&move)
 	if(move.reason.m_playerId==Self->objectName())
 		playerName = QString("%1(%2)").arg(Self->getGeneral()->getBriefName()).arg(Sanguosha->translate("yourself"));
 	else{
-		Photo*srcPhoto = name2photo[move.reason.m_playerId];
+		Photo*srcPhoto = name2photo.value(move.reason.m_playerId, nullptr);
 		if(srcPhoto) playerName = srcPhoto->getPlayer()->getGeneral()->getBriefName();
 	}
 
 	if(move.reason.m_targetId==Self->objectName())
 		targetName = QString("%1%2(%3)").arg(Sanguosha->translate("use upon")).arg(Self->getGeneral()->getBriefName()).arg(Sanguosha->translate("yourself"));
 	else{
-		Photo*dstPhoto = name2photo[move.reason.m_targetId];
+		Photo*dstPhoto = name2photo.value(move.reason.m_targetId, nullptr);
 		if(dstPhoto) targetName = Sanguosha->translate("use upon").append(dstPhoto->getPlayer()->getGeneral()->getBriefName());
 	}
 
@@ -4518,10 +4518,22 @@ void RoomScene::doCancelButton()
 		break;
 	}
 	case Client::AskForShowOrPindian: {
+		// 展示／拼點係強制回應(minSelection=1、cancelable=false):送空答案會
+		// 俾 ClientCore 當「取消一個唔准取消嘅 request」擋落嚟,結果係 client
+		// 由頭到尾冇覆過,玩家要等到 server 嘅 operation timeout 先過到。
+		// server 收到空答案本來就係自己 getRandomHandCard()(player-decision-
+		// service.cpp askForCardShow／askForPindian),所以呢度改為本機交一張
+		// 手牌出去:同樣係「唔揀就隨便一張」,但即刻答得到。
+		const Card *fallback = dashboard->getSelected();
+		if (fallback == nullptr && Self != nullptr) {
+			const QList<const Card *> handcards = Self->getHandcards();
+			if (!handcards.isEmpty())
+				fallback = handcards.first();
+		}
 		dashboard->unselectAll();
 		prompt_box->disappear();
 		dashboard->stopPending();
-		ClientInstance->onPlayerResponseCard(nullptr);
+		ClientInstance->onPlayerResponseCard(fallback);
 		break;
 	}
 	case Client::Discarding:
@@ -5252,7 +5264,11 @@ void RoomScene::killPlayer(const QString&who)
 		foreach (const Skill*skill,Self->getVisibleSkills())
 			detachSkill(skill->objectName());*/
 	} else {
-		Photo*photo = name2photo[who];
+		Photo*photo = name2photo.value(who, nullptr);
+		if(photo==nullptr){
+			qWarning().noquote() << "RoomScene::killPlayer: no photo for" << who;
+			return;
+		}
 		photo->stopHuaShen();
 		photo->killPlayer();
 		photo->setFrame(Photo::S_FRAME_NO_FRAME);
@@ -5283,7 +5299,11 @@ void RoomScene::revivePlayer(const QString&who)
 		updateSkillButtons();
 		//dashboard->updateAvatarTooltip();
 	} else {
-		Photo*photo = name2photo[who];
+		Photo*photo = name2photo.value(who, nullptr);
+		if(photo==nullptr){
+			qWarning().noquote() << "RoomScene::revivePlayer: no photo for" << who;
+			return;
+		}
 		photo->revivePlayer();
 		item2player.insert(photo,photo->getPlayer());
 		//photo->updateAvatarTooltip();
@@ -5874,7 +5894,7 @@ void RoomScene::moveFocus(const QStringList&players,Countdown countdown,int comm
 {
 	_cancelAllFocus();
 	foreach (QString player,players){
-		Photo*photo = name2photo[player];
+		Photo*photo = name2photo.value(player, nullptr);
 		if(photo){
 			if(ServerInfo.OperationTimeout>0&&command!=S_COMMAND_NULLIFICATION)
 				photo->showProgressBar(countdown);
@@ -5894,7 +5914,7 @@ void RoomScene::setEmotion(const QString&who,const QString&emotion)
 		Sanguosha->playAudioEffect(G_ROOM_SKIN.getPlayerAudioEffectPath(emotion.split("/").last(),QString("equip")));
 	}
 
-	Photo*photo = name2photo[who];
+	Photo*photo = name2photo.value(who, nullptr);
 	if(photo){
 		photo->setEmotion(emotion,emotion.contains("question"));
 	}else if(G_EFFECTS.animationsEnabled()){
