@@ -1049,6 +1049,9 @@ int runCardLifetimeTests()
         {QStringLiteral("--suite"), QStringLiteral("card-lifetime-wrapped-adoption")});
     const LifetimeChildReceipt shutdownReceipt = runLifetimeChild(
         {QStringLiteral("--suite"), QStringLiteral("card-lifetime-shutdown")});
+    const LifetimeChildReceipt overlapReceipt = runLifetimeChild(
+        {QStringLiteral("--suite"), QStringLiteral("card-lifetime-shutdown"),
+         QStringLiteral("overlap")});
     const bool eventProtocol = normalLifetimeChild(eventReceipt)
         && eventReceipt.standardOutput.contains("CARD_EVENT_LEASE checks=")
         && eventReceipt.standardOutput.contains("failures=0");
@@ -1062,6 +1065,10 @@ int runCardLifetimeTests()
         && shutdownReceipt.shutdownStages == QList<QString>{QStringLiteral("preclose"),
             QStringLiteral("lua-close"), QStringLiteral("postclose")}
         && shutdownReceipt.shutdownFailures.isEmpty();
+    const bool overlapShutdownProtocol = normalLifetimeChild(overlapReceipt)
+        && overlapReceipt.markerCount("CARD_LIFETIME_ZERO") == 2
+        && overlapReceipt.markerCount("CARD_LIFETIME_OVERLAP PASS") == 1
+        && overlapReceipt.shutdownFailures.isEmpty();
     const QList<QPair<QString, QString>> shutdownCases = {
         {QStringLiteral("worker"), QStringLiteral("managed_live")},
         {QStringLiteral("lease"), QStringLiteral("native_leases")},
@@ -1087,17 +1094,19 @@ int runCardLifetimeTests()
     integrated.insert(QStringLiteral("event_lease"), eventProtocol);
     integrated.insert(QStringLiteral("wrapped_adoption"), adoptionProtocol);
     integrated.insert(QStringLiteral("shutdown"), shutdownProtocol);
+    integrated.insert(QStringLiteral("shutdown_overlap"), overlapShutdownProtocol);
     integrated.insert(QStringLiteral("shutdown_adversarial"), adversarialShutdown);
     integrated.insert(QStringLiteral("normal_receipts"), QJsonArray{
         lifetimeChildSummary(eventReceipt), lifetimeChildSummary(adoptionReceipt),
-        lifetimeChildSummary(shutdownReceipt)});
+        lifetimeChildSummary(shutdownReceipt), lifetimeChildSummary(overlapReceipt)});
     integrated.insert(QStringLiteral("adversarial_receipts"), adversarialReceipts);
     fprintf(stdout, "CARD_LIFETIME_INTEGRATED %s\n",
             QJsonDocument(integrated).toJson(QJsonDocument::Compact).constData());
     return defaultModeRegression && blocker12Regression && residualGaugeRegression
         && blocker4CoreRegression
         && eventProtocol && adoptionProtocol
-        && shutdownProtocol && adversarialShutdown ? 0 : 72;
+        && shutdownProtocol && overlapShutdownProtocol
+        && adversarialShutdown ? 0 : 72;
 }
 
 int runCardLifetimeLegacyRedTests()

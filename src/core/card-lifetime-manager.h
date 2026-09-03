@@ -3,6 +3,7 @@
 
 #include <QByteArray>
 #include <QHash>
+#include <QList>
 #include <QMutex>
 #include <QObject>
 #include <QPointer>
@@ -177,6 +178,8 @@ public:
     quint64 releaseWrapperBindings(const void *domain, const void *identity,
                                    quint64 generation, lua_State *state);
     quint64 drain();
+    quint64 drainDomain(const void *domain,
+                        QList<QPointer<QObject>> *retiredObjects = nullptr);
     bool finalizeWorkerDomain(const void *domain, quint64 *retired = nullptr);
 
     void registerRuntimeDomain(const void *domain, const void *identity,
@@ -278,6 +281,8 @@ private:
     void classifyPhysicalDestructionLocked(Entry &entry);
     void reconcileDestroyedLocked();
     void reapDeadLocked(const std::shared_ptr<const CardLifetimeToken> &token);
+    quint64 drainImpl(const void *domain,
+                      QList<QPointer<QObject>> *retiredObjects);
     void updatePeaksLocked();
 
     mutable ProfiledMutex m_mutex;

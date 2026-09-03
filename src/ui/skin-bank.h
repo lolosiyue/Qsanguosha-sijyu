@@ -47,6 +47,11 @@ public:
     class QSanShadowTextFont : public QSanSimpleTextFont
     {
     public:
+        // tryParse leaves the shadow fields untouched when the skin key is absent
+        // (e.g. dashboard has no "extraSkillFont"), so the PODs need safe defaults;
+        // radius -1 means "no shadow" (same default tryParse uses for short arrays)
+        // and keeps garbage values out of QRect math in Debug checked-integer builds.
+        QSanShadowTextFont() : m_shadowRadius(-1), m_shadowDecadeFactor(0.0) {}
         int m_shadowRadius;
         double m_shadowDecadeFactor;
         QPoint m_shadowOffset;

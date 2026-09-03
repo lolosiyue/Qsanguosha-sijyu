@@ -189,11 +189,9 @@ void ClientPlayer::retainVisibleKnownHandcards()
 	known_cards = visible_cards;
 }
 
-void ClientPlayer::addHandIds(JsonArray args)
+void ClientPlayer::addHandIds(const QList<int> &card_ids)
 {
-	QList<int> ids;
-	JsonUtils::tryParse(args.first(), ids);
-	foreach(int id, ids){
+	foreach(int id, card_ids){
 		Player::addCard(id,PlaceHand);
 		if(hand_ids.contains(id)) continue;
 		hand_ids << id;
@@ -202,11 +200,9 @@ void ClientPlayer::addHandIds(JsonArray args)
 		qsanShuffle(hand_ids);
 }
 
-void ClientPlayer::removeHandIds(JsonArray args)
+void ClientPlayer::removeHandIds(const QList<int> &card_ids)
 {
-	QList<int> ids;
-	JsonUtils::tryParse(args.first(), ids);
-	foreach(int id, ids){
+	foreach(int id, card_ids){
 		Player::removeCard(id,PlaceHand);
 		hand_ids.removeAll(id);
 	}
