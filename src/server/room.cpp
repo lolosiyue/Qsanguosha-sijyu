@@ -195,7 +195,8 @@ void Room::clearControllerPileVisible(ServerPlayer *target, ServerPlayer *contro
 	}
 }
 
-Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionConfig)
+Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionConfig,
+	RuntimeInitializationPolicy runtimePolicy)
 	: QThread(parent), m_runtime(std::make_unique<RoomRuntime>(this)),
 	m_skillRuntime(std::make_unique<SkillRuntimeCoordinator>(*this)),
 	m_aiDecisions(std::make_unique<AiDecisionCoordinator>(*this, *m_skillRuntime)),
@@ -251,21 +252,33 @@ Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionC
 	}
 
 	m_runtime->seedRandom(m_sessionConfig.seed);
-	GameRng::Binding rngBinding(m_runtime->rng());
-	QString runtimeError;
-	const bool runtimeReady = m_runtime->initialize(&runtimeError);
-	if (!runtimeReady) {
-		qCritical("Room Lua runtime initialization failed: %s", qUtf8Printable(runtimeError));
-		m_gameSession->abort(GameSessionController::TerminationCause::InitializationFailure);
-		m_runtime->shutdownForInitFailure();
-	} else {
-		LuaRuntime::Binding luaBinding(m_runtime->lua());
-		EngineRuntimeContextScope contextScope(*Sanguosha, this);
-		m_cardMovement->drawPile() = Sanguosha->getRandomCards(true);
+	if (runtimePolicy == RuntimeInitializationPolicy::Immediate) {
+		GameRng::Binding rngBinding(m_runtime->rng());
+		QString runtimeError;
+		const bool runtimeReady = m_runtime->initialize(&runtimeError);
+		completeRuntimeInitialization(runtimeReady, runtimeError);
 	}
 
 	//connect(this,SIGNAL(signalSetProperty(ServerPlayer*,const char*,QVariant)),this, SLOT(slotSetProperty(ServerPlayer*,const char*,QVariant)),Qt::QueuedConnection);
 	connect(this, SIGNAL(signalSetProperty(ServerPlayer*, const char*, QVariant)), this, SLOT(slotSetProperty(ServerPlayer*, const char*, QVariant)), Qt::BlockingQueuedConnection);
+}
+
+bool Room::completeRuntimeInitialization(bool runtimeReady, const QString &runtimeError)
+{
+	if (!runtimeReady) {
+		qCritical("Room Lua runtime initialization failed: %s", qUtf8Printable(runtimeError));
+		m_gameSession->abort(GameSessionController::TerminationCause::InitializationFailure);
+		m_runtime->shutdownForInitFailure();
+		return false;
+	}
+
+	// Deferred initialization hands the Lua owner and definition QObject tree
+	// back before this main-thread-only publication step creates the draw pile.
+	GameRng::Binding rngBinding(m_runtime->rng());
+	LuaRuntime::Binding luaBinding(m_runtime->lua());
+	EngineRuntimeContextScope contextScope(*Sanguosha, this);
+	m_cardMovement->drawPile() = Sanguosha->getRandomCards(true);
+	return true;
 }
 
 Room::~Room()

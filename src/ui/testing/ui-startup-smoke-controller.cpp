@@ -14,7 +14,6 @@
 #include <QMutex>
 #include <QMutexLocker>
 #include <QQuickItem>
-#include <QQuickWidget>
 #include <QSaveFile>
 #include <QTimer>
 #include <QWindow>
@@ -317,18 +316,23 @@ void UiStartupSmokeController::onHomeSceneReady()
             UiStartupSmokeReport::SetupFailed);
         return;
     }
-    QQuickWidget *view = m_mainWindow->homeSceneView();
-    QQuickItem *root = view ? view->rootObject() : nullptr;
-    if (!view || !root) {
+    QQuickItem *root = m_mainWindow->homeSceneRootObject();
+    if (!root) {
         finish(false, QStringLiteral("home_scene"),
             QStringLiteral("HomeScene reported Ready without a QML root object"),
             UiStartupSmokeReport::QmlLoadFailed);
         return;
     }
+    if (root->width() <= 0 || root->height() <= 0) {
+        if (!failIfDeadlineExceeded(QStringLiteral("home_scene")))
+            QTimer::singleShot(25, this, &UiStartupSmokeController::onHomeSceneReady);
+        return;
+    }
 
     m_homeSceneReady = true;
     emitStage(QStringLiteral("home_scene"), true, QJsonObject{
-        {QStringLiteral("source"), view->source().toString()},
+        {QStringLiteral("source"), m_mainWindow->homeSceneSource().toString()},
+        {QStringLiteral("render_host"), m_mainWindow->homeRenderHostName()},
         {QStringLiteral("root_class"), QString::fromLatin1(root->metaObject()->className())},
         {QStringLiteral("root_width"), root->width()},
         {QStringLiteral("root_height"), root->height()},
@@ -371,14 +375,13 @@ void UiStartupSmokeController::onSettled()
             UiStartupSmokeReport::SetupFailed);
         return;
     }
-    QQuickWidget *view = m_mainWindow->homeSceneView();
-    if (!view || !view->rootObject()) {
+    QQuickItem *root = m_mainWindow->homeSceneRootObject();
+    if (!root) {
         finish(false, QStringLiteral("shutdown"),
             QStringLiteral("HomeScene root object did not survive startup"),
             UiStartupSmokeReport::QmlLoadFailed);
         return;
     }
-    QQuickItem *root = view->rootObject();
     if (m_startupPage == QLatin1String("cards")) {
         if (!root->property("cardsReadyForSmoke").toBool()) {
             if (!failIfDeadlineExceeded(QStringLiteral("shutdown")))
