@@ -4,6 +4,7 @@
 #include <QCursor>
 #include <QElapsedTimer>
 #include <QImage>
+#include <QMutex>
 #include <QPixmap>
 #include <QPointF>
 #include <QQuickPaintedItem>
@@ -64,7 +65,7 @@ private:
     void drawTrail(QPainter &painter, qreal now);
     void drawClickEffects(QPainter &painter, qreal now);
     void drawTriangles(QPainter &painter, qreal now, const QVector<TriangleParticle> &particles);
-    void drawSprite(QPainter &painter, const QPixmap &pixmap, const QRectF &src,
+    void drawSprite(QPainter &painter, const QImage &image, const QRectF &src,
                     const QPointF &center, const QSizeF &size, qreal rotationRad,
                     qreal opacity);
     static QImage loadAsset(const QString &fileName, bool luminanceAsAlpha = false);
@@ -84,12 +85,13 @@ private:
     static QColor triangleColor(qreal progress);
     static QColor trailColor(qreal progress);
 
+    mutable QMutex m_mutex;
     QElapsedTimer m_clock;
-    QPixmap m_circlePm;
-    QPixmap m_circleBluePm;
-    QPixmap m_ringPm;
-    QPixmap m_ringBluePm;
-    QPixmap m_trianglePm;
+    QImage m_circleImage;
+    QImage m_circleBlueImage;
+    QImage m_ringImage;
+    QImage m_ringBlueImage;
+    QImage m_triangleImage;
     QCursor m_baCursor;
     QVector<TrailPoint> m_trailPoints;
     QVector<ClickEffect> m_clickEffects;

@@ -17,8 +17,6 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QStyleHints>
-#include <QPointer>
-#include <QQuickWidget>
 #include <QTimer>
 #include <QRegularExpression>
 #include <QImage>
@@ -720,19 +718,9 @@ void HomeController::startServer()
 
 void HomeController::switchQmlScene(const QUrl &source)
 {
-    QObject *window = parent();
-    QPointer<QQuickWidget> view = window ? window->findChild<QQuickWidget *>() : nullptr;
-    if (!view) {
-        emit qmlSceneRequested(source);
-        return;
-    }
-
-    // QML onClicked 仍在堆疊上時不可同步 setSource（會銷毀呼叫端 root item）。
-    QTimer::singleShot(0, this, [this, view, source]() {
-        if (!view)
-            return;
-        view->setSource(source);
-        view->setFocus();
+    // QML onClicked remains on the stack here. Let MainWindow replace the
+    // source after the handler returns, independent of the selected host.
+    QTimer::singleShot(0, this, [this, source]() {
         emit qmlSceneRequested(source);
     });
 }

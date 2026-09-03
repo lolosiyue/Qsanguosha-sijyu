@@ -22,8 +22,15 @@ class Server : public QObject
     Q_OBJECT
 
 public:
+    enum class InitialRoomPolicy {
+        Immediate,
+        Deferred
+    };
+
     explicit Server(QObject *parent,
-                    const GameSessionConfig &initialSessionConfig = GameSessionConfig());
+                    const GameSessionConfig &initialSessionConfig = GameSessionConfig(),
+                    InitialRoomPolicy initialRoomPolicy = InitialRoomPolicy::Immediate);
+    ~Server() override;
 
     friend class BanIpDialog;
 
@@ -47,6 +54,7 @@ public:
     QStringList startupMessages() const;
     void daemonize();
     Room *createNewRoom();
+    bool prepareInitialRoomAsync(QString *error = nullptr);
     void setNextGameSessionConfig(const GameSessionConfig &config);
     void signupPlayer(ServerPlayer *player);
     void checkUpnpAndListServer();
@@ -54,6 +62,8 @@ public:
     void startTestGame(const QString &scenarioFile, bool headless);
 
 private:
+    GameSessionConfig takeNextGameSessionConfig();
+    Room *publishRoom(Room *room);
     GameSessionConfig gameSessionConfig(quint64 sessionIndex) const;
     void scheduleDisposeRoom(Room *room);
     void waitForDisposingRooms();
@@ -87,6 +97,7 @@ private:
     QHash<Room *, qint64> m_roomCreatedAtMs;
     QHash<ClientSocket *, ServerConnectionContext *> m_connectionContexts;
     quint64 m_nextConnectionGeneration = 1;
+    QThread *m_roomPreparationThread = nullptr;
 
     static bool s_hasGameSeed;
     static quint64 s_gameSeedBase;
@@ -118,6 +129,8 @@ signals:
     // 自動化測試: 房間對局開始/結束標記
     void roomGameStarted(int roomId, const QString &mode);
     void roomGameOver(int roomId, const QString &mode, const QString &winner);
+    void initialRoomReady();
+    void initialRoomFailed(const QString &error);
     void takeoverReady();
     void takeoverFailed(const QString &error);
 };

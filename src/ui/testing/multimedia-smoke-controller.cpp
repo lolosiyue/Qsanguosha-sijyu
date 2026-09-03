@@ -17,7 +17,6 @@
 #include <QMutex>
 #include <QMutexLocker>
 #include <QQuickItem>
-#include <QQuickWidget>
 #include <QSaveFile>
 #include <QTimer>
 #include <QVariantMap>
@@ -491,8 +490,7 @@ void MultimediaSmokeController::stageVideo()
         return;
     }
     // 播唔到唔係失敗，只要靜態背景頂得住而且 HomeScene 仲喺度。
-    QQuickWidget *view = m_mainWindow ? m_mainWindow->homeSceneView() : nullptr;
-    if (!view || !view->rootObject()) {
+    if (!m_mainWindow || !m_mainWindow->homeSceneRootObject()) {
         failStage(QStringLiteral("video"),
             QStringLiteral("HomeScene root object did not survive the video stage"), details);
         return;

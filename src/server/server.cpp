@@ -69,6 +69,35 @@ void disconnectSocketFromOwnerThread(ClientSocket *socket)
 		QMetaObject::invokeMethod(socket, "disconnectFromHost", Qt::QueuedConnection);
 }
 
+class RoomInitializationThread final : public QThread
+{
+public:
+	RoomInitializationThread(RoomRuntime *runtime, QThread *returnThread, QObject *parent)
+		: QThread(parent), m_runtime(runtime), m_returnThread(returnThread)
+	{
+	}
+
+	bool runtimeReady() const { return m_runtimeReady; }
+	QString errorString() const { return m_error; }
+
+protected:
+	void run() override
+	{
+		GameRng::Binding rngBinding(m_runtime->rng());
+		m_runtimeReady = m_runtime->initialize(&m_error);
+
+		QString handoffError;
+		if (!m_runtime->definitions().moveOwnedObjectsToThread(m_returnThread, &handoffError))
+			qFatal("Room definition QObject handoff failed: %s", qUtf8Printable(handoffError));
+	}
+
+private:
+	RoomRuntime *m_runtime;
+	QThread *m_returnThread;
+	bool m_runtimeReady = false;
+	QString m_error;
+};
+
 SetupPayload currentSetupPayload()
 {
 	SetupPayload payload;
@@ -1670,8 +1699,9 @@ int ServerDialog::config()
 
 #if !defined(QSAN_SERVER_DIALOGS_ONLY)
 
-Server::Server(QObject *parent, const GameSessionConfig &initialSessionConfig)
-	: QObject(parent)//, created_successfully(true)
+Server::Server(QObject *parent, const GameSessionConfig &initialSessionConfig,
+	InitialRoomPolicy initialRoomPolicy)
+	: QObject(parent), current(nullptr), created_successfully(false)
 {
 	m_uptimeTimer.start();
 	connect(this, SIGNAL(server_message(QString)), this, SIGNAL(logMessage(QString)));
@@ -1694,11 +1724,21 @@ Server::Server(QObject *parent, const GameSessionConfig &initialSessionConfig)
 	//synchronize ServerInfo on the server side to avoid ambiguous usage of Config and ServerInfo
 	ServerInfo.parse(Sanguosha->getSetupString());
 
-	created_successfully = createNewRoom()!=nullptr;
+	if (initialRoomPolicy == InitialRoomPolicy::Immediate)
+		created_successfully = createNewRoom()!=nullptr;
 
 	connect(server, SIGNAL(new_connection(ClientSocket *)), this, SLOT(processNewConnection(ClientSocket *)));
 	if (websocketServer != nullptr)
 		connect(websocketServer, SIGNAL(new_connection(ClientSocket *)), this, SLOT(processNewConnection(ClientSocket *)));
+}
+
+Server::~Server()
+{
+	if (m_roomPreparationThread && m_roomPreparationThread->isRunning()) {
+		// Lua initialization is not safely cancellable. Window shutdown waits for
+		// the bounded one-shot worker instead of terminating it with live objects.
+		m_roomPreparationThread->wait();
+	}
 }
 
 void Server::broadcast(const QString &msg)
@@ -1934,25 +1974,35 @@ void Server::daemonize()
 Room *Server::createNewRoom()
 {
 	waitForDisposingRooms();
-	GameSessionConfig sessionConfig;
-	if (m_hasNextSessionConfig) {
-		sessionConfig = m_nextSessionConfig;
-		m_hasNextSessionConfig = false;
-	} else {
-		sessionConfig = gameSessionConfig(m_nextGameSeedIndex++);
-	}
+	const GameSessionConfig sessionConfig = takeNextGameSessionConfig();
 	qInfo().noquote() << "Game Seed:" << QString::number(sessionConfig.seed);
-	current = new Room(this, Config.GameMode.mode_id, sessionConfig);
-	if (!current->hasLuaRuntime() || !current->isTakeoverReady()) {
-		if (!current->takeoverError().isEmpty())
-			qWarning().noquote() << "Cannot create takeover room:" << current->takeoverError();
-		delete current;
-		current = nullptr;
+	Room *room = new Room(this, Config.GameMode.mode_id, sessionConfig);
+	if (!room->hasLuaRuntime() || !room->isTakeoverReady()) {
+		if (!room->takeoverError().isEmpty())
+			qWarning().noquote() << "Cannot create takeover room:" << room->takeoverError();
+		delete room;
 		return nullptr;
 	}
-	rooms.insert(current);
-	m_roomCreatedAtMs.insert(current, m_uptimeTimer.elapsed());
-	Room *createdRoom = current;
+	return publishRoom(room);
+}
+
+GameSessionConfig Server::takeNextGameSessionConfig()
+{
+	if (m_hasNextSessionConfig) {
+		m_hasNextSessionConfig = false;
+		return m_nextSessionConfig;
+	}
+	return gameSessionConfig(m_nextGameSeedIndex++);
+}
+
+Room *Server::publishRoom(Room *room)
+{
+	if (!room)
+		return nullptr;
+	current = room;
+	rooms.insert(room);
+	m_roomCreatedAtMs.insert(room, m_uptimeTimer.elapsed());
+	Room *createdRoom = room;
 	connect(createdRoom, &QObject::destroyed, this,
 		[this, createdRoom]() { m_roomCreatedAtMs.remove(createdRoom); });
 
@@ -1963,7 +2013,7 @@ Room *Server::createNewRoom()
 			else
 				emit server_message(message);
 		});
-	connect(current, SIGNAL(game_over(QString)), this, SLOT(gameOver()));
+	connect(createdRoom, SIGNAL(game_over(QString)), this, SLOT(gameOver()));
 	connect(createdRoom, &Room::game_start, this, [this, createdRoom]() {
 		emit roomGameStarted(createdRoom->getId(), createdRoom->getMode());
 	});
@@ -1976,7 +2026,62 @@ Room *Server::createNewRoom()
 	connect(createdRoom, &Room::takeover_failed,
 		this, &Server::takeoverFailed);
 
-	return current;
+	return room;
+}
+
+bool Server::prepareInitialRoomAsync(QString *error)
+{
+	if (current || m_roomPreparationThread) {
+		if (error)
+			*error = tr("Initial room preparation is already active");
+		return false;
+	}
+
+	waitForDisposingRooms();
+	const GameSessionConfig sessionConfig = takeNextGameSessionConfig();
+	qInfo().noquote() << "Game Seed:" << QString::number(sessionConfig.seed);
+	Room *room = new Room(this, Config.GameMode.mode_id, sessionConfig,
+		Room::RuntimeInitializationPolicy::Deferred);
+	if (!room->isTakeoverReady()) {
+		const QString detail = room->takeoverError().isEmpty()
+			? tr("Initial room validation failed") : room->takeoverError();
+		delete room;
+		if (error)
+			*error = detail;
+		return false;
+	}
+
+	RoomInitializationThread *worker = new RoomInitializationThread(
+		room->roomRuntime(), thread(), this);
+	QString handoffError;
+	if (!room->roomRuntime()->definitions().moveOwnedObjectsToThread(worker, &handoffError)) {
+		delete worker;
+		delete room;
+		if (error)
+			*error = handoffError;
+		return false;
+	}
+
+	m_roomPreparationThread = worker;
+	connect(worker, &QThread::finished, this, [this, worker, room]() {
+		m_roomPreparationThread = nullptr;
+		worker->deleteLater();
+
+		const QString runtimeError = worker->errorString();
+		if (!room->completeRuntimeInitialization(worker->runtimeReady(), runtimeError)) {
+			created_successfully = false;
+			delete room;
+			emit initialRoomFailed(runtimeError.isEmpty()
+				? tr("Local room initialization failed") : runtimeError);
+			return;
+		}
+
+		publishRoom(room);
+		created_successfully = true;
+		emit initialRoomReady();
+	}, Qt::QueuedConnection);
+	worker->start(QThread::LowPriority);
+	return true;
 }
 
 void Server::setNextGameSessionConfig(const GameSessionConfig &config)
