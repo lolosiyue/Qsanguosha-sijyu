@@ -26,6 +26,7 @@ void CardItem::_initialize()
     m_virtualCardBlack = true;
     m_convertedCardObjectName.clear();
     m_convertedCardName.clear();
+    m_compactHandNameWidth = 0.0;
     auto_back = true;
     frozen = false;
     resetTransform();
@@ -110,6 +111,15 @@ void CardItem::setConvertedCardName(const QString &cardObjectName, const QString
 {
     m_convertedCardObjectName = cardObjectName;
     m_convertedCardName = name;
+    update();
+}
+
+void CardItem::setCompactHandNameWidth(qreal width)
+{
+    const qreal boundedWidth = qMax<qreal>(0.0, width);
+    if (qAbs(m_compactHandNameWidth - boundedWidth) < 0.01)
+        return;
+    m_compactHandNameWidth = boundedWidth;
     update();
 }
 
@@ -393,6 +403,61 @@ void CardItem::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidge
         static QBrush painter_brush(QColor(255, 215, 0, 64));
         painter->setBrush(painter_brush);
         painter->drawRect(G_COMMON_LAYOUT.m_cardMainArea);
+    }
+
+    if (m_compactHandNameWidth > 0.0 && card) {
+        const QRect mainArea = G_COMMON_LAYOUT.m_cardMainArea;
+        const int labelTop = qMax(G_COMMON_LAYOUT.m_cardSuitArea.bottom(),
+            G_COMMON_LAYOUT.m_cardNumberArea.bottom()) + 3;
+        const qreal labelWidth = qMin<qreal>(m_compactHandNameWidth, mainArea.width());
+        const QRectF labelRect(mainArea.left(), labelTop, labelWidth,
+            mainArea.bottom() - labelTop + 1);
+
+        if (labelRect.width() >= 4.0 && labelRect.height() >= 12.0) {
+            painter->save();
+            painter->fillRect(labelRect, G_COMMON_LAYOUT.m_cardCompactNameBackgroundColor);
+            painter->setPen(QPen(G_COMMON_LAYOUT.m_cardCompactNameBorderColor, 1.0));
+            painter->setBrush(Qt::NoBrush);
+            painter->drawRect(labelRect.adjusted(0.5, 0.5, -0.5, -0.5));
+
+            QRect textRect = labelRect.adjusted(2.0, 3.0, -2.0, -3.0).toAlignedRect();
+            IQSanComponentSkin::QSanSimpleTextFont nameFont = G_COMMON_LAYOUT.m_cardFootnoteFont;
+            nameFont.m_vertical = true;
+            nameFont.m_color = G_COMMON_LAYOUT.m_cardCompactNameTextColor;
+
+            QString displayName = Sanguosha->translate(card->objectName());
+            if (displayName.isEmpty())
+                displayName = card->objectName();
+
+            const int minimumFontSize = 8;
+            auto requiredHeight = [&nameFont, &displayName]() {
+                return displayName.length() * nameFont.m_fontSize.height()
+                    + qMax(0, displayName.length() - 1) * nameFont.m_spacing;
+            };
+            while ((nameFont.m_fontSize.width() > textRect.width()
+                       || requiredHeight() > textRect.height())
+                && (nameFont.m_fontSize.width() > minimumFontSize
+                    || nameFont.m_fontSize.height() > minimumFontSize)) {
+                nameFont.m_fontSize.setWidth(qMax(minimumFontSize,
+                    nameFont.m_fontSize.width() - 1));
+                nameFont.m_fontSize.setHeight(qMax(minimumFontSize,
+                    nameFont.m_fontSize.height() - 1));
+            }
+
+            const int characterHeight = nameFont.m_fontSize.height() + nameFont.m_spacing;
+            const int maxCharacters = characterHeight > 0
+                ? qMax(1, (textRect.height() + nameFont.m_spacing) / characterHeight)
+                : 0;
+            if (maxCharacters > 0 && displayName.length() > maxCharacters) {
+                displayName = maxCharacters == 1
+                    ? QStringLiteral("…")
+                    : displayName.left(maxCharacters - 1) + QStringLiteral("…");
+            }
+
+            nameFont.paintText(painter, textRect,
+                Qt::AlignHCenter | Qt::AlignTop, displayName);
+            painter->restore();
+        }
     }
 
     if (!m_convertedCardName.isEmpty()) {
