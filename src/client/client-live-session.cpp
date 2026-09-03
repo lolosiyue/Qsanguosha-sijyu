@@ -473,7 +473,7 @@ void ClientLiveSession::startPhaseTimeout(const QString &phase, int timeoutMs)
         if (currentGeneration == m_session.generation())
             fail(phase == QLatin1String("connect") ? 3 : 4,
                  QStringLiteral("timeout"), phase + QStringLiteral(" timed out"));
-    }, Qt::SingleShotConnection);
+    });
     m_phaseTimer.start(qMax(1, timeoutMs));
 }
 

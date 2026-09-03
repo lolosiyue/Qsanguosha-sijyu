@@ -216,6 +216,20 @@ bool playerUIStateMessages()
                 "PlayerUIState empty lists"))
         return false;
 
+    QVariantMap qt5JsonNumbers = expected.toVariant().toMap();
+    qt5JsonNumbers.insert("handMax", double(expected.handMax));
+    qt5JsonNumbers.insert("offensiveDistance", double(expected.offensiveDistance));
+    qt5JsonNumbers.insert("defensiveDistance", double(expected.defensiveDistance));
+    if (!expect(parsed.tryParse(qt5JsonNumbers) && parsed == expected,
+                "PlayerUIState Qt5 JSON integer doubles"))
+        return false;
+
+    QVariantMap fractionalNumber = qt5JsonNumbers;
+    fractionalNumber.insert("handMax", 4.5);
+    if (!expect(!parsed.tryParse(fractionalNumber),
+                "PlayerUIState rejects fractional JSON numbers"))
+        return false;
+
     PlayerUIStateMessage expectedMessage;
     expectedMessage.playerName = "sgs1";
     expectedMessage.state = expected;

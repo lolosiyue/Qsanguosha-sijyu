@@ -42,8 +42,14 @@ if (-not (Test-Path -LiteralPath $VBoxManage -PathType Leaf)) {
 $script:GuestCredential = $null
 
 function Invoke-VBox([string[]]$Arguments, [switch]$AllowFailure) {
-    $lines = @(& $VBoxManage @Arguments 2>&1 | ForEach-Object { $_.ToString() })
-    $exitCode = $LASTEXITCODE
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $lines = @(& $VBoxManage @Arguments 2>&1 | ForEach-Object { $_.ToString() })
+        $exitCode = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
     $output = $lines -join [Environment]::NewLine
     if ($exitCode -ne 0 -and -not $AllowFailure) {
         throw "VBoxManage failed ($exitCode): $output"
@@ -117,8 +123,9 @@ function Invoke-GuestProgram(
     } else {
         $arguments += @('--wait-stdout', '--wait-stderr')
     }
+    $arguments += '--'
+    $arguments += $Program
     if ($ProgramArguments.Count -gt 0) {
-        $arguments += '--'
         $arguments += $ProgramArguments
     }
     return Invoke-GuestControl -Subcommand 'run' -Arguments $arguments -AllowFailure:$AllowFailure
@@ -326,7 +333,7 @@ switch ($Action) {
         $resolvedHostDirectory = (Resolve-Path -LiteralPath $HostPath).Path
         $result = Invoke-GuestControl `
             -Subcommand 'copyfrom' `
-            -Arguments @("--target-directory=$resolvedHostDirectory", $GuestPath)
+            -Arguments @('--recursive', "--target-directory=$resolvedHostDirectory", $GuestPath)
         Write-Output $result.Output
     }
 

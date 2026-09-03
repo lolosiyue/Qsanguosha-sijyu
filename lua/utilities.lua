@@ -89,6 +89,11 @@ function string:split(delimiter)
 	return result
 end
 
+-- Core AI must not depend on an optional extension helper being loaded first.
+function string:contains(substr)
+	return string.find(self,substr,1,true)~=nil
+end
+
 function table:contains(element,compare_objectName)
 	if #self<1 then return false end
 	if compare_objectName then
