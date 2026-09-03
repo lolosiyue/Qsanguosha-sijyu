@@ -99,10 +99,7 @@ file(COPY_FILE "${qsan_fmod_runtime}" "${qsan_output_dir}/${qsan_fmod_name}"
     ONLY_IF_DIFFERENT)
 file(WRITE "${qsan_output_dir}/qt.conf" "[Paths]\nPlugins=.\n")
 
-set(qsan_required_asset_directories lua lang qss skins image)
-# Third-party extensions are outside the XP compatibility promise and may use
-# newer Lua syntax. Keep the legacy bundle limited to the supported core data.
-file(REMOVE_RECURSE "${qsan_output_dir}/extensions")
+set(qsan_required_asset_directories lua lang qss skins image extensions)
 set(qsan_optional_asset_directories audio etc listserver)
 find_program(QSAN_ROBOCOPY robocopy REQUIRED)
 function(qsan_copy_asset_directory qsan_asset_dir qsan_required)
@@ -121,7 +118,8 @@ function(qsan_copy_asset_directory qsan_asset_dir qsan_required)
             "${qsan_output_dir}/${qsan_asset_dir}"
             /MIR /COPY:DAT /DCOPY:DAT /R:1 /W:1 /MT:8
             /NFL /NDL /NJH /NJS /NP
-            /XF *.qml *.qmlc *.mp4 *.webm *.mkv
+            /XD .git
+            /XF .stignore *.bak *.bak-* *.qml *.qmlc *.mp4 *.webm *.mkv
         RESULT_VARIABLE qsan_robocopy_result
     )
     if(qsan_robocopy_result GREATER_EQUAL 8)
@@ -136,7 +134,10 @@ function(qsan_copy_asset_directory qsan_asset_dir qsan_required)
         "${qsan_output_dir}/${qsan_asset_dir}/*.webm"
         "${qsan_output_dir}/${qsan_asset_dir}/*.mkv"
         "${qsan_output_dir}/${qsan_asset_dir}/Thumbs.db"
-        "${qsan_output_dir}/${qsan_asset_dir}/desktop.ini")
+        "${qsan_output_dir}/${qsan_asset_dir}/desktop.ini"
+        "${qsan_output_dir}/${qsan_asset_dir}/.stignore"
+        "${qsan_output_dir}/${qsan_asset_dir}/*.bak"
+        "${qsan_output_dir}/${qsan_asset_dir}/*.bak-*")
     if(qsan_excluded_assets)
         file(REMOVE ${qsan_excluded_assets})
     endif()
@@ -153,12 +154,6 @@ foreach(qsan_asset_file qt_zh_CN.qm sanguosha.qm assets-manifest.json)
         file(COPY_FILE "${QSAN_ASSET_ROOT}/${qsan_asset_file}"
             "${qsan_output_dir}/${qsan_asset_file}" ONLY_IF_DIFFERENT)
     endif()
-endforeach()
-
-foreach(qsan_helper_file AUTORUN.INF INSTALL-XP.CMD ACCEPTANCE-XP.CMD)
-    file(COPY_FILE
-        "${CMAKE_CURRENT_LIST_DIR}/../assets/${qsan_helper_file}"
-        "${qsan_output_dir}/${qsan_helper_file}" ONLY_IF_DIFFERENT)
 endforeach()
 
 message(STATUS "Portable XP ${QSAN_CONFIG} folder: ${qsan_output_dir}")

@@ -12,7 +12,7 @@
 | Effects | Forced to `NONE`; the setting is hidden |
 | Audio | x86 FMOD Ex 4.44.53 in both Debug and Release |
 | Excluded features | QML, Spine, video, OpenGL, and the WebSocket gateway |
-| Excluded content | External `extensions/`; it is outside the XP compatibility promise |
+| Runtime content | Full local `lua/`, `lua/ai/`, and `extensions/` snapshot from `-AssetRoot` |
 | Listen path | Native TCP `9527` only. Compact web / port `9528` is not part of this product |
 | Distribution | Portable folder or Joliet ISO with `INSTALL.CMD` |
 
@@ -75,7 +75,10 @@ powershell -NoProfile -ExecutionPolicy Bypass `
 ```
 
 The deterministic deploy target copies Qt, plugins, VC/UCRT DLLs, FMOD and
-supported runtime assets. It removes QML/video files and external extensions.
+the local runtime assets, including the complete `extensions/` directory. It
+removes QML/video files plus repository and synchronization metadata. Record
+the source SHA and deployed extension hashes with acceptance evidence because
+the external extension repository can change independently.
 FMOD binaries must come from a distribution source whose licence has been
 approved; they are not committed by this branch.
 
@@ -135,11 +138,62 @@ VirtualBox guest:
    `-connect:127.0.0.1` entered the waiting room;
 4. Qt 5.6.3, QtNetwork and FMOD loaded without an XP loader failure.
 
+The 2026-09-03 rerun used `debug@c622ec7f` plus the current local runtime tree.
+The deployed and guest-recovered `QSanguoshaXP.exe` both had SHA-256
+`CB35818991831458FACF1684BB1FBDBA7B8067471852C70ED4D13E8220A925AD`.
+
+| Gate | Result |
+|---|---|
+| Win32 Release build, PE 5.01 and import checks | PASS |
+| Full local `extensions/` deployment | PASS: 106/106 files, SHA-256 differences 0 |
+| Local TCP 9527 connection and `AutoAddRobots` | PASS |
+| General selection | Progressed with a valid offered general |
+| Actual `GAME_STARTED` marker within 60 seconds | NOT OBSERVED |
+| `GAME_OVER` | NOT OBSERVED |
+| Guest and host VirtualBox process cleanup | PASS |
+
+The server repeatedly failed to create the per-game snapshot directory under
+the XP `NetworkService` profile after general selection. This is the next
+diagnostic lead, not yet a proven cause of the missing game start. Evidence is
+under `builds/xp-poc/xp-logs-20260903-debug-c622ec7-runtime/`. This run is not a
+complete gameplay acceptance pass.
+
+A same-day follow-up isolated the actual blocker: Qt 5.6 converts JSON numbers
+to `QVariant::Double`, while `PlayerUIState::tryParseInt()` only accepted the
+integer QVariant metatypes. The client therefore rejected an otherwise valid
+`PlayerUiStatePayload` before `Client::startGame()`. The parser now accepts only
+finite, exactly integral doubles within the `int` range; fractional and
+out-of-range values remain invalid. A focused protocol executable covers both
+the Qt 5 representation and the rejection case.
+
+The rebuilt `debug@c622ec7f` package and the guest-recovered executable both had
+SHA-256
+`F173B5E5441E9CD91443C08B5A9EDCA7DAE7430C2110C7BB46FD575711A692DC`.
+The follow-up used the complete local runtime and all 106 `extensions/` files
+in `03_1v2`, seed `20260903`, with zero AI delay.
+
+| Follow-up gate | Result |
+|---|---|
+| Win32 Release build, PE 5.01 and import checks | PASS |
+| Source/package/guest `extensions/` equality | PASS: 106/106 files, SHA-256 differences 0 |
+| Local TCP 9527 connection and `AutoAddRobots` | PASS |
+| `GAME_STARTED` | PASS: 22:47:13.388, 3 players |
+| `GAME_OVER` | PASS: 22:48:46.532, client defeat, 93.144 seconds after start |
+| Server final lifetime gauge | PASS: `CARD_LIFETIME_ZERO` |
+| Guest/host process cleanup | PASS: no running VM, `VBoxHeadless`, or `VirtualBoxVM`; VM state is `aborted` after the authorized forced host-process stop |
+
+Evidence is under
+`builds/xp-poc/xp-logs-20260903-fullgame-c622ec7-runtime/final/`. The snapshot
+directory warning still repeats on XP, but the completed match proves that it
+is not the game-start blocker. It remains a separate diagnostic item.
+
 VirtualBox 7.0.2 on the host crashed when VM audio was enabled, so the VM used
 `audio=none`. FMOD load/initialization is covered, but audible playback remains
-a physical/alternate-hypervisor acceptance gate. Rooms above 10 players,
-external extensions and 20-player memory/load behavior remain outside the
-compatibility commitment.
+a physical/alternate-hypervisor acceptance gate. Rooms above 10 players and
+20-player memory/load behavior remain outside the compatibility commitment.
+Packaging all local extensions proves deployment completeness; individual
+third-party extension behavior still requires gameplay coverage for the exact
+deployed snapshot.
 
 ## VirtualBox Guest Control automation
 
@@ -182,9 +236,9 @@ powershell -NoProfile -ExecutionPolicy Bypass `
   -HostPath builds\xp-poc\guest-logs
 ```
 
-`CopyFromGuest` deliberately requires an existing host destination directory;
-passing a nonexistent filename as the destination causes VirtualBox
-`VERR_FILE_NOT_FOUND`.
+`CopyFromGuest` recursively accepts a guest file or directory and deliberately
+requires an existing host destination directory; passing a nonexistent filename
+as the destination causes VirtualBox `VERR_FILE_NOT_FOUND`.
 
 ### Visible XP desktop
 

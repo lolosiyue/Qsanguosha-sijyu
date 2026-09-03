@@ -91,8 +91,13 @@ void NativeClientSocket::init()
 {
     connect(socket, SIGNAL(disconnected()), this, SIGNAL(disconnected()));
     connect(socket, SIGNAL(readyRead()), this, SLOT(getMessage()));
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
     connect(socket, SIGNAL(errorOccurred(QAbstractSocket::SocketError)),
         this, SLOT(raiseError(QAbstractSocket::SocketError)));
+#else
+    connect(socket, SIGNAL(error(QAbstractSocket::SocketError)),
+        this, SLOT(raiseError(QAbstractSocket::SocketError)));
+#endif
     connect(socket, SIGNAL(connected()), this, SIGNAL(connected()));
 }
 

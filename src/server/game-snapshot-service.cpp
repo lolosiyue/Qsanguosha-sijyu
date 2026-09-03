@@ -103,8 +103,11 @@ QString GameSnapshotService::getSnapshotDir() const
 void GameSnapshotService::setReplayPath(const QString &path)
 {
     m_replayPath = path;
-    if (!path.isEmpty() && m_sessionId.isEmpty())
-        m_sessionId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    if (!path.isEmpty() && m_sessionId.isEmpty()) {
+        m_sessionId = QUuid::createUuid().toString();
+        m_sessionId.remove(QLatin1Char('{'));
+        m_sessionId.remove(QLatin1Char('}'));
+    }
 }
 
 QString GameSnapshotService::getReplayPath() const

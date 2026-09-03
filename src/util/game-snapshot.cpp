@@ -25,6 +25,27 @@
 
 namespace {
 
+QString isoDateWithMilliseconds(const QDateTime &value)
+{
+#if QT_VERSION >= QT_VERSION_CHECK(5, 8, 0)
+    return value.toString(Qt::ISODateWithMs);
+#else
+    const QString seconds = value.toString(Qt::ISODate);
+    return seconds.left(19)
+        + QStringLiteral(".%1").arg(value.time().msec(), 3, 10, QLatin1Char('0'))
+        + seconds.mid(19);
+#endif
+}
+
+QDateTime fromIsoDateWithMilliseconds(const QString &value)
+{
+#if QT_VERSION >= QT_VERSION_CHECK(5, 8, 0)
+    return QDateTime::fromString(value, Qt::ISODateWithMs);
+#else
+    return QDateTime::fromString(value, Qt::ISODate);
+#endif
+}
+
 QVariantList intsToVariant(const QList<int> &values)
 {
     QVariantList result;
@@ -83,7 +104,7 @@ bool isJsonSafe(const QVariant &value, const QString &path, QString *error)
     if (!value.isValid() || value.isNull())
         return true;
 
-    switch (value.typeId()) {
+    switch (value.userType()) {
     case QMetaType::Bool:
     case QMetaType::Int:
     case QMetaType::UInt:
@@ -1190,7 +1211,7 @@ bool GameSnapshot::save(const QString &filepath)
     QVariantMap root;
     root[QStringLiteral("format")] = takeoverFormat();
     root[QStringLiteral("schemaVersion")] = TakeoverSchemaVersion;
-    root[QStringLiteral("timestamp")] = m_timestamp.toString(Qt::ISODateWithMs);
+    root[QStringLiteral("timestamp")] = isoDateWithMilliseconds(m_timestamp);
     root[QStringLiteral("replayPath")] = m_replayPath;
     root[QStringLiteral("snapshotType")] = m_snapshotType;
     root[QStringLiteral("description")] = m_description;
@@ -1292,7 +1313,8 @@ bool GameSnapshot::load(const QString &filepath)
         m_error = jsonError;
         return false;
     }
-    m_timestamp = QDateTime::fromString(root.value(QStringLiteral("timestamp")).toString(), Qt::ISODateWithMs);
+    m_timestamp = fromIsoDateWithMilliseconds(
+        root.value(QStringLiteral("timestamp")).toString());
     if (!m_timestamp.isValid()) {
         m_error = QStringLiteral("snapshot timestamp is invalid");
         return false;

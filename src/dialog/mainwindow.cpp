@@ -1054,8 +1054,8 @@ void MainWindow::checkVersion(const QString &server_version, const QString &serv
 		}
 		Client *client = qobject_cast<Client *>(sender());
 		if (client) {
-			client->signup();
 			connect(client, SIGNAL(server_connected()), SLOT(enterRoom()));
+			client->signup();
 		}
 		return;
 	}
@@ -1082,8 +1082,8 @@ void MainWindow::checkVersion(const QString &server_version, const QString &serv
 	QString client_version = Sanguosha->getVersionNumber();
 
 	if (server_version == client_version) {
-		client->signup();
 		connect(client, SIGNAL(server_connected()), SLOT(enterRoom()));
+		client->signup();
 		return;
 	}
 

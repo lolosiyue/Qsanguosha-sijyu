@@ -55,6 +55,11 @@ public:
         return (quint64(generate()) << 32) | quint64(generate());
     }
 
+    void discard(quint64 count)
+    {
+        m_engine.discard(count);
+    }
+
     int bounded(int upperExclusive)
     {
         if (upperExclusive <= 0)

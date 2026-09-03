@@ -29,6 +29,7 @@
         "BUILD_TESTING": "OFF",
         "QSAN_BUILD_GUI": "ON",
         "QSAN_BUILD_SERVER": "OFF",
+        "QSAN_BUILD_TUI": "OFF",
         "QSAN_BUILD_XP_LEGACY": "ON",
         "QSAN_AUDIO_BACKEND": "FMOD"
       }

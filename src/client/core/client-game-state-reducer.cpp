@@ -98,13 +98,13 @@ void applyCardMovement(ClientGameState *state, int command, const QVariantMap &o
             state->setCardValue(cardId, QStringLiteral("open"),
                                 move.value(QStringLiteral("open")));
 
-            const auto known = std::find_if(discardPile.cbegin(), discardPile.cend(),
+            const auto known = std::find_if(discardPile.begin(), discardPile.end(),
                 [cardId](const QVariant &entry) { return entry.toInt() == cardId; });
             const bool discarded = place == kDiscardPilePlace;
-            if (discarded && known == discardPile.cend()) {
+            if (discarded && known == discardPile.end()) {
                 discardPile.append(cardId);
                 discardPileChanged = true;
-            } else if (!discarded && known != discardPile.cend()) {
+            } else if (!discarded && known != discardPile.end()) {
                 discardPile.erase(known);
                 discardPileChanged = true;
             }
