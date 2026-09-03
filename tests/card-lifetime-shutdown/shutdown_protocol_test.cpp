@@ -7,6 +7,7 @@
 #include "structs.h"
 
 #include <QCoreApplication>
+#include <QEvent>
 #include <QThread>
 
 namespace {
@@ -44,11 +45,53 @@ int runNormal(RoomRuntime &runtime)
     CARD_LIFETIME_CHECK(workerToken && workerToken->state == CardLifetimeState::Dead);
     CARD_LIFETIME_CHECK(globalCardLifetimeManager().releaseWrapper(workerToken));
 
+    QPointer<Card> ownerCard = new DummyCard;
+    CardLifetimeManager &manager = globalCardLifetimeManager();
+    const auto ownerToken = manager.observeCard(ownerCard.data());
+    CARD_LIFETIME_CHECK(ownerToken && manager.requestNativeDelete(ownerToken));
     CARD_LIFETIME_CHECK(runtime.shutdownState() == RoomRuntime::ShutdownState::Running);
     runtime.shutdownFinal();
     CARD_LIFETIME_CHECK(runtime.shutdownState() == RoomRuntime::ShutdownState::Closed);
+    CARD_LIFETIME_CHECK(ownerCard.isNull());
+    CARD_LIFETIME_CHECK(ownerToken->state == CardLifetimeState::Dead);
     runtime.shutdownFinal();
     CARD_LIFETIME_CHECK(runtime.shutdownState() == RoomRuntime::ShutdownState::Closed);
+    return 0;
+}
+
+int runOverlappingRooms(RoomRuntime &runtime)
+{
+    CardLifetimeManager &manager = globalCardLifetimeManager();
+    auto *otherRoom = new Room(nullptr, QStringLiteral("03_1v2"));
+    QPointer<Room> otherRoomGuard(otherRoom);
+    RoomRuntime *otherRuntime = otherRoom->roomRuntime();
+    const quint64 baselineUnknown = manager.gauge().unknown_unclaimed;
+
+    const void *previousDomain = CardLifetimeManager::setCurrentDomain(&runtime);
+    QPointer<Card> outerUnclaimed = new DummyCard;
+    const auto outerToken = manager.observeCard(outerUnclaimed.data());
+    manager.recordOwningFactoryResult(outerToken);
+    CardLifetimeManager::setCurrentDomain(previousDomain);
+    CARD_LIFETIME_CHECK(outerToken);
+    CARD_LIFETIME_CHECK(manager.gauge().unknown_unclaimed == baselineUnknown + 1);
+
+    otherRuntime->shutdownFinal();
+    CARD_LIFETIME_CHECK(otherRuntime->shutdownState() == RoomRuntime::ShutdownState::Closed);
+    CARD_LIFETIME_CHECK(otherRoomGuard);
+    CARD_LIFETIME_CHECK(manager.isLive(outerToken));
+
+    CARD_LIFETIME_CHECK(manager.requestNativeDelete(outerToken));
+    otherRoom->deleteLater();
+    runtime.shutdownFinal();
+    CARD_LIFETIME_CHECK(runtime.shutdownState() == RoomRuntime::ShutdownState::Closed);
+    CARD_LIFETIME_CHECK(otherRoomGuard);
+    CARD_LIFETIME_CHECK(outerUnclaimed.isNull());
+    CARD_LIFETIME_CHECK(!manager.isLive(outerToken));
+    CARD_LIFETIME_CHECK(manager.gauge().unknown_unclaimed == baselineUnknown);
+
+    QCoreApplication::sendPostedEvents(otherRoomGuard.data(), QEvent::DeferredDelete);
+    CARD_LIFETIME_CHECK(otherRoomGuard.isNull());
+    std::fprintf(stdout, "CARD_LIFETIME_OVERLAP PASS\n");
     return 0;
 }
 
@@ -114,5 +157,7 @@ int main(int argc, char **argv)
         return runNonzeroReservation(runtime);
     if (argc > 1 && QString::fromLocal8Bit(argv[1]) == QLatin1String("lua-pin"))
         return runNonzeroLuaPin(runtime);
+    if (argc > 1 && QString::fromLocal8Bit(argv[1]) == QLatin1String("overlap"))
+        return runOverlappingRooms(runtime);
     return runNormal(runtime);
 }
