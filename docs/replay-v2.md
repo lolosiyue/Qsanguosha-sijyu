@@ -92,6 +92,57 @@ The branch is recorded with `Recorder(..., true)` and a Replay V2 header with
 `takeover:true`. It is always written to a new file; the source replay is never
 overwritten.
 
+## Bug diagnostic bundle
+
+The Replay control bar can export a currently open text replay with a verified
+takeover manifest as a `*.qsgbug.zip` diagnostic bundle. This is a thin export
+layer, not another snapshot or restore format. The ZIP32 archive uses stored
+entries and contains these fixed paths:
+
+```text
+bundle.json
+replay.txt
+replay.snapshots/manifest.json
+replay.snapshots/turn_*.json
+state-now.json
+diagnostics.json
+```
+
+`replay.txt`, the takeover manifest, and every snapshot accepted when the
+`Replayer` was constructed are copied byte-for-byte. Export does not repeat the
+takeover schema or SHA-256 validation. A later external modification can
+therefore produce a bundle that a future loader rejects; unreadable core files
+instead fail the atomic export without leaving a partial archive.
+
+`bundle.json` identifies the source by basename only and records the size and
+SHA-256 of every packaged payload. It also records optional-file omission
+reasons. Existing snapshots retain their original `replayPath` metadata, which
+can contain a local absolute path; the GUI warns about this when export
+finishes. Replay payloads and `state-now.json` can also contain player names,
+chat text, room metadata, or connection metadata. Only `diagnostics.json` is
+intentionally restricted to the sanitized fields listed below.
+
+`state-now.json` is diagnostic and explicitly has `restorable:false`. During
+playback, `Replayer` stops immediately before the next event and queues a
+barrier to the same `Client` receiver as preceding replay events. The client
+captures `ClientCore::toJson()` only after those events have been applied, and
+records the exact `lastAppliedPairIndex` and `elapsedMs`. Playback remains
+quiesced until the atomic ZIP write finishes, then returns to its previous
+playing or paused state. If the barrier cannot be reached within two seconds,
+the file is omitted rather than replaced with an approximate state. Timeline
+seeks and background playback share a serialized dispatch boundary, so an old
+worker cursor cannot be delivered after the seek history.
+
+`diagnostics.json` contains the game version, build mode, compiler, Qt compile
+and runtime versions, OS/CPU architecture, and replay counts. It does not
+contain environment variables, hostname, IP address, or an absolute executable
+path. The game build is identified by `QSanVersion::Number`; no executable hash
+or Git metadata is generated.
+
+There is no `--load-repro` command. A future loader must validate the extracted
+takeover manifest and delegate restoration to the existing
+`GameSessionConfig` and `TakeoverScenario` path.
+
 ## Startup failure and rollback
 
 Starting a takeover is transactional. Before destroying the replay client, the

@@ -140,3 +140,86 @@ VirtualBox 7.0.2 on the host crashed when VM audio was enabled, so the VM used
 a physical/alternate-hypervisor acceptance gate. Rooms above 10 players,
 external extensions and 20-player memory/load behavior remain outside the
 compatibility commitment.
+
+## VirtualBox Guest Control automation
+
+Use `tools/xp-vm-control.ps1` for the repeatable host-to-guest operations. It
+starts the known VM, waits for Guest Additions, runs console commands, copies
+files, launches a GUI command in the visible XP desktop, shuts the VM down, and
+can explicitly restore a named snapshot. It does not change the VM network or
+take screenshots.
+
+Create the ignored, current-Windows-user-bound credential once. Do not commit
+the generated XML or any plaintext password file:
+
+```powershell
+Get-Credential CodexQA |
+  Export-Clixml builds\xp-poc\CodexQA.credential.xml
+```
+
+Start the VirtualBox console and wait for usable Guest Control:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File tools/xp-vm-control.ps1 -Action Start
+
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File tools/xp-vm-control.ps1 -Action Status
+```
+
+Use `RunGuest` for non-GUI commands and logs:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File tools/xp-vm-control.ps1 -Action RunGuest `
+  -GuestCommand C:\WINDOWS\system32\cmd.exe `
+  -GuestArguments /c,type,C:\QSanguoshaXP\client.log
+
+New-Item -ItemType Directory builds\xp-poc\guest-logs -Force
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File tools/xp-vm-control.ps1 -Action CopyFromGuest `
+  -GuestPath C:\QSanguoshaXP\client.log `
+  -HostPath builds\xp-poc\guest-logs
+```
+
+`CopyFromGuest` deliberately requires an existing host destination directory;
+passing a nonexistent filename as the destination causes VirtualBox
+`VERR_FILE_NOT_FOUND`.
+
+### Visible XP desktop
+
+The current VM's visible Explorer desktop logs in as `Administrator`, while
+Guest Control authenticates as `CodexQA`. A normal `guestcontrol run/start`
+GUI process therefore exists on a non-visible desktop even when `tasklist`
+reports session `Console`.
+
+Put the desired working-directory and arguments in a guest `.cmd` file, copy it
+to a path without spaces, then schedule it through XP `AT /interactive`:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File tools/xp-vm-control.ps1 -Action RunInteractive `
+  -GuestCommandLine C:\QSanguoshaXP\run-xp-local-gui.cmd `
+  -ExpectedProcess QSanguoshaXP.exe
+```
+
+The command runs at the next guest minute and can take up to 60 seconds to
+appear. The script records existing PIDs and polls `tasklist` for a new process
+when `-ExpectedProcess` is supplied.
+VirtualBox 7.0.2 can inject keyboard scan codes and capture screenshots but has
+no `controlvm mouseputstate`; prefer Guest Control, application logs and
+deterministic command files, using screenshots only at UI milestones.
+
+Shut down cleanly before restoring the disposable verified snapshot:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File tools/xp-vm-control.ps1 -Action Stop
+
+powershell -NoProfile -ExecutionPolicy Bypass `
+  -File tools/xp-vm-control.ps1 -Action RestoreSnapshot `
+  -SnapshotName '<verified snapshot name>'
+```
+
+`Stop` does not hard-power-off by default. Use `-ForcePowerOff` only when the
+guest shutdown has timed out and discarding the current guest state is safe.

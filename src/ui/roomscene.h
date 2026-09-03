@@ -143,6 +143,7 @@ public:
     ReplayerControlBar(Dashboard *dashboard);
     static QString FormatTime(int secs);
     virtual QRectF boundingRect() const;
+    void setExportInProgress(bool inProgress);
 
 public slots:
     void setTime(int secs);
@@ -152,6 +153,7 @@ signals:
     // MainWindow owns the transactional teardown/restart.  The control bar
     // only chooses a verified snapshot and a live seat key.
     void takeoverRequested(const QString &snapshotPath, const QString &seatObjectName);
+    void exportRequested();
 
 protected:
     virtual void paint(QPainter *painter, const QStyleOptionGraphicsItem *option, QWidget *widget);
@@ -165,8 +167,10 @@ private:
 
     QLabel *time_label;
     QPushButton *takeover_button;
+    QPushButton *export_button;
     QString duration_str;
     qreal speed;
+    bool export_in_progress;
 };
 
 class PromptInfoItem : public QGraphicsTextItem
@@ -415,6 +419,9 @@ private:
     ReplayTimeline *m_replayTimeline;
     QAction *m_switchPerspectiveAction;
     QString m_currentPerspective;
+    QString m_pendingReplayBundlePath;
+    quint64 m_pendingReplayCaptureId = 0;
+    bool m_replayExportInProgress = false;
 
     struct _MoveCardsClassifier
     {
@@ -459,6 +466,13 @@ private:
     QGraphicsPixmapItem *createDashboardButtons();
     void createReplayControlBar();
     void createReplayTimeline();
+    void exportReplayDiagnosticBundle();
+    void onReplayStateCaptureReady(quint64 requestId,
+        const QJsonObject &clientCore, int lastAppliedPairIndex,
+        qint64 elapsedMs);
+    void finishReplayDiagnosticExport(const QJsonObject &stateNow,
+        bool includeStateNow, const QString &stateNowOmission);
+    void setReplayExportInProgress(bool inProgress);
     void updateReplayTimeline(int secs);
     void onReplayTimelineTimeChanged(int secs);
     void onReplayTimelineNodeClicked(int nodeIndex);
