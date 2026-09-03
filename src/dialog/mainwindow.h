@@ -18,7 +18,13 @@ class QTextEdit;
 class ConnectionDialog;
 class ConfigDialog;
 class QStackedWidget;
+class QLabel;
+class QProgressBar;
+class QQuickItem;
 class QQuickWidget;
+class QQuickView;
+class QQmlContext;
+class QQmlEngine;
 class HomeController;
 class PointerEffectOverlay;
 class Replayer;
@@ -61,7 +67,9 @@ public:
     bool isHomeSceneReady() const;
     bool hasHomeSceneError() const;
     QString homeSceneError() const;
-    QQuickWidget *homeSceneView() const;
+    QQuickItem *homeSceneRootObject() const;
+    QUrl homeSceneSource() const;
+    QString homeRenderHostName() const;
     // M2B-A multimedia smoke 的觀測點：影片背景的結果狀態由 HomeController 持有，
     // 呢度只係將已有的 object 公開出嚟，唔會另外複製一次首頁載入流程。
     HomeController *homeSceneController() const;
@@ -86,6 +94,13 @@ private:
         Game
     };
 
+    enum class HomeSceneLoadState {
+        Null,
+        Loading,
+        Ready,
+        Error
+    };
+
 private slots:
     void setupHomePage();
     void showHomePage();
@@ -94,9 +109,29 @@ private slots:
     void restoreFromConfig();
 
 private:
+    void setupLocalLoadingPage();
+    void showLocalLoadingPage(const QString &status);
+    void completeLocalRoomStart();
+    void failLocalRoomStart(const QString &error);
+#if QSAN_ENABLE_QML
+    QQmlContext *homeRootContext() const;
+    QQmlEngine *homeQmlEngine() const;
+    QStringList homeQmlErrors() const;
+    void setHomeSceneSource(const QUrl &source);
+    void setHomeSceneClearColor(const QColor &color);
+    void focusHomeScene();
+    void updateHomeSceneLoadState(HomeSceneLoadState state);
+#endif
+
     QStackedWidget *pageStack = nullptr;
-    QQuickWidget *homeView = nullptr;
+    QWidget *homePageWidget = nullptr;
+    QQuickWidget *homeWidget = nullptr;
+    QQuickView *homeWindow = nullptr;
+    QString m_homeRenderHost = QStringLiteral("widget");
     FitView *gameView = nullptr;
+    QWidget *localLoadingPage = nullptr;
+    QLabel *localLoadingStatus = nullptr;
+    QProgressBar *localLoadingProgress = nullptr;
     QGraphicsScene *scene = nullptr;
     Ui::MainWindow *ui = nullptr;
     ConnectionDialog *connection_dialog = nullptr;

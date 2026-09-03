@@ -8,10 +8,48 @@
 #include "package.h"
 
 #include <QDebug>
+#include <QThread>
 
 RoomDefinitionRegistry::RoomDefinitionRegistry(Engine &engine)
     : m_engine(engine), m_nextCardId(int(engine.cards.size()))
 {
+}
+
+bool RoomDefinitionRegistry::moveOwnedObjectsToThread(QThread *targetThread, QString *error)
+{
+    if (!targetThread) {
+        if (error)
+            *error = QStringLiteral("Room definition target thread is null");
+        return false;
+    }
+    if (m_definitionRoot.thread() != QThread::currentThread()) {
+        if (error)
+            *error = QStringLiteral("Room definitions can only move from their owning thread");
+        return false;
+    }
+
+    QObjectList ownedObjects{&m_definitionRoot};
+    ownedObjects.append(m_definitionRoot.findChildren<QObject *>());
+    for (const QObject *object : std::as_const(ownedObjects)) {
+        if (object && object->thread() != QThread::currentThread()) {
+            if (error)
+                *error = QStringLiteral("Room definition QObject tree has mixed affinity");
+            return false;
+        }
+    }
+
+    // Packages and every QObject they own follow this single root. This lets
+    // deferred initialization create them on the worker and hand them back as
+    // one affinity-safe tree before the Room is published on the main thread.
+    m_definitionRoot.moveToThread(targetThread);
+    for (const QObject *object : std::as_const(ownedObjects)) {
+        if (object && object->thread() != targetThread) {
+            if (error)
+                *error = QStringLiteral("Room definition QObject affinity handoff failed");
+            return false;
+        }
+    }
+    return true;
 }
 
 void RoomDefinitionRegistry::clear()

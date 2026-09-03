@@ -15,6 +15,7 @@ class Engine;
 class General;
 class LuaSkillCard;
 class Package;
+class QThread;
 
 class RoomDefinitionRegistry
 {
@@ -23,6 +24,7 @@ public:
 
     void setBaselineAddresses(const QSet<const void *> &addresses) { m_baselineAddresses = addresses; }
     void clear();
+    bool moveOwnedObjectsToThread(QThread *targetThread, QString *error = nullptr);
 
     void addPackage(Package *package);
     void setPackage(Package *package);
