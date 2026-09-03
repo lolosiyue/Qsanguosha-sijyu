@@ -54,7 +54,9 @@ QImage QSanUiUtils::produceShadow(const QImage &image, QColor shadowColor, int r
 
 void QSanUiUtils::shadowCleanUp(void *data)
 {
-    free(data);
+    // produceShadow() allocates with new uchar[], so this must not be free():
+    // ASan flags the mismatch as alloc-dealloc-mismatch on the very first Photo.
+    delete[] static_cast<uchar *>(data);
 }
 
 void QSanUiUtils::makeGray(QPixmap &pixmap)
