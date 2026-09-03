@@ -400,6 +400,8 @@ private:
     ClientGameState m_pendingStateSyncState;
     bool m_stateSyncActive = false;
     QString m_stateSyncId;
+    int m_lastReplayPairIndex = -1;
+    qint64 m_lastReplayElapsedMs = 0;
 
     void beginInteraction(InteractionRequest request);
     bool dispatchProtocolMessage(const QSanProtocol::ProtocolMessage &message,
@@ -426,6 +428,9 @@ public slots:
     void processReplayMessage(const QSanProtocol::ProtocolMessage &message);
 
 private slots:
+    void processReplayEvent(const QSanProtocol::ProtocolMessage &message,
+                            int pairIndex, qint64 elapsedMs);
+    void captureReplayStateAtBoundary(quint64 requestId);
     void processLiveProtocolMessage(const QSanProtocol::ProtocolMessage &message);
     bool processServerRequest(const QSanProtocol::ProtocolMessage &message);
     void notifyRoleChange(const QString &new_role);
@@ -439,6 +444,10 @@ public slots:
     void onPlayerChooseOrder();
 
 signals:
+    void replayStateCaptureReady(quint64 requestId,
+                                 const QJsonObject &clientCore,
+                                 int lastAppliedPairIndex,
+                                 qint64 elapsedMs);
     void version_checked(const QString &version_number, const QString &mod_name, int card_num);
     void server_connected();
     void error_message(const QString &msg);

@@ -701,6 +701,7 @@ add_executable(qsanguosha_takeover_snapshot_tests
     takeover-snapshot/takeover-snapshot-test.cpp
     ${QSAN_TEST_ROOT}/src/core/replay/replay-container.cpp
     ${QSAN_TEST_ROOT}/src/util/recorder.cpp
+    ${QSAN_TEST_ROOT}/src/util/replay-diagnostic-exporter.cpp
     ${QSAN_TEST_ROOT}/src/util/replay-index.cpp
 )
 qsan_link_engine_test(qsanguosha_takeover_snapshot_tests)
