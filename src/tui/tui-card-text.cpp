@@ -7,11 +7,17 @@
 
 QString tuiCardDisplayText(int cardId)
 {
-    // Engine::getCard() resolves through the current room context, which the
-    // text client never registers, so it always returns null here and every
-    // card degraded to its raw id. getEngineCard() reads the engine's own card
-    // table and needs no room.
-    const Card *card = Sanguosha != nullptr ? Sanguosha->getEngineCard(cardId) : nullptr;
+    // Prefer the room's own copy: a card the server has rewritten (a suit or a
+    // name changed by a skill) only differs from the printed card there.
+    // Engine::getCard() resolves through the registered room context, so it is
+    // null whenever no game is running -- getEngineCard() reads the engine's own
+    // table and needs no room, which is the right answer then.
+    const Card *card = nullptr;
+    if (Sanguosha != nullptr) {
+        card = Sanguosha->getCard(cardId);
+        if (card == nullptr)
+            card = Sanguosha->getEngineCard(cardId);
+    }
     if (card == nullptr)
         return QCoreApplication::translate("QSanguoshaTui", "牌 %1").arg(cardId);
 
