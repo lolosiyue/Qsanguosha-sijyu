@@ -394,7 +394,7 @@ int main(int argc, char **argv)
     state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("skills"),
                          QStringList{QStringLiteral("zhiheng"), QStringLiteral("hongyan"),
                                      QStringLiteral("rende")});
-    tuiFillPlaySkillCandidates(state, &play);
+    tuiFillSkillCandidates(state, QString(), &play);
     QStringList names;
     for (const SkillActivationCandidate &skill : play.skillCandidates)
         names << skill.skillName;

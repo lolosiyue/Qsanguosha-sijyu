@@ -681,7 +681,9 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
                         playCard ? m_resolvers.cardTargets : TuiRenderer::CardTargetResolver(),
                         value->optionalTargets);
         }
-        if (playCard) {
+        // Skills are numbered after the cards wherever the prompt offers any:
+        // answering a slash with Wusheng is as much an activation as playing it.
+        if (!value->skillCandidates.isEmpty()) {
             const int skillStart = value->selection.selectableCards.size() + 1;
             for (int i = 0; i < value->skillCandidates.size(); ++i) {
                 const SkillActivationCandidate &skill = value->skillCandidates.at(i);
@@ -695,16 +697,20 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
                     if (other.skillName == skill.skillName)
                         ++sameName;
                 }
+                const QString hint = m_resolvers.skillHint
+                    ? m_resolvers.skillHint(skill.skillName, skill.instanceId) : QString();
+                const QString mark = hint.isEmpty()
+                    ? QString() : tr("，%1").arg(sanitize(hint, 64));
                 lines << (skill.instanceId > 0 && sameName > 1
-                    ? tr("  [%1] %2（技能 #%3）").arg(skillStart + i)
-                        .arg(sanitize(shown, 128)).arg(skill.instanceId)
-                    : tr("  [%1] %2（技能）").arg(skillStart + i)
-                        .arg(sanitize(shown, 128)));
+                    ? tr("  [%1] %2（技能 #%3%4）").arg(skillStart + i)
+                        .arg(sanitize(shown, 128)).arg(skill.instanceId).arg(mark)
+                    : tr("  [%1] %2（技能%3）").arg(skillStart + i)
+                        .arg(sanitize(shown, 128), mark));
             }
-            if (value->selection.selectableCards.isEmpty()
-                && value->skillCandidates.isEmpty()) {
-                lines << tr("  （尚无手牌列表，可先打 /hand）");
-            }
+        }
+        if (playCard && value->selection.selectableCards.isEmpty()
+            && value->skillCandidates.isEmpty()) {
+            lines << tr("  （尚无手牌列表，可先打 /hand）");
         }
         if (!value->fixedTargets.isEmpty()) {
             lines << tr("固定目标：");
