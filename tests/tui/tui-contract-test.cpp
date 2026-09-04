@@ -1104,6 +1104,23 @@ void rendererContract()
     check(twinText.contains(QStringLiteral("技能 #1")) && twinText.contains(QStringLiteral("技能 #2")),
           "two instances of one skill are told apart by their instance id");
 
+    // Answering a slash with Wusheng is a skill activation, so a response
+    // prompt has to number its skills after the cards the way play does.
+    InteractionRequest respondingPrompt = cardRequest();
+    std::get_if<CardInteractionPayload>(&respondingPrompt.payload)->skillCandidates = {
+        SkillActivationCandidate{QStringLiteral("wusheng"), 0}};
+    const QString respondingText = plain.renderInteraction(respondingPrompt);
+    check(respondingText.contains(QStringLiteral("[4] wusheng（技能）")),
+          "a response prompt lists its skills, numbered after the cards");
+    TuiRenderer marked(false, TuiRenderer::Resolvers{
+        {}, {}, {}, {}, {}, {}, {}, {},
+        [](const QString &skillName, int) {
+            return skillName == QLatin1String("wusheng") ? QStringLiteral("不可用") : QString();
+        }});
+    check(marked.renderInteraction(respondingPrompt)
+              .contains(QStringLiteral("wusheng（技能，不可用）")),
+          "a skill that cannot answer this prompt is marked, not hidden");
+
     InteractionRequest keyedPrompt = cardRequest();
     keyedPrompt.prompt = QStringLiteral("savage-assault-slash:sgs1");
     const QString keyedPromptText = engineBacked.renderInteraction(keyedPrompt);

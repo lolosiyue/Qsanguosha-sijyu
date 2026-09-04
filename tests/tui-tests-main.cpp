@@ -8,6 +8,7 @@
 int runTuiCardTextTests(int argc, char **argv);
 int runTuiClientPlayerTests(int argc, char **argv);
 int runTuiLogTextTests(int argc, char **argv);
+int runTuiPlaySkillsTests(int argc, char **argv);
 int runTuiContractTests(int argc, char *argv[]);
 int runTuiLiveTcpTests(int argc, char *argv[]);
 
@@ -21,6 +22,8 @@ int main(int argc, char **argv)
         return runTuiClientPlayerTests(argc, argv);
     if (suite == QLatin1String("log-text"))
         return runTuiLogTextTests(argc, argv);
+    if (suite == QLatin1String("play-skills"))
+        return runTuiPlaySkillsTests(argc, argv);
     if (suite == QLatin1String("contract"))
         return runTuiContractTests(argc, argv);
     if (suite == QLatin1String("live-tcp"))
@@ -34,6 +37,8 @@ int main(int argc, char **argv)
         {QStringLiteral("client-player"),
             {QStringLiteral("--suite"), QStringLiteral("client-player")}},
         {QStringLiteral("log-text"), {QStringLiteral("--suite"), QStringLiteral("log-text")}},
+        {QStringLiteral("play-skills"),
+            {QStringLiteral("--suite"), QStringLiteral("play-skills")}},
         {QStringLiteral("contract"), {QStringLiteral("--suite"), QStringLiteral("contract")}},
         {QStringLiteral("live-tcp"), {QStringLiteral("--suite"), QStringLiteral("live-tcp")}}
     });

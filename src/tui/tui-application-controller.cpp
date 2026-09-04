@@ -60,7 +60,10 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
               [this](int cardId) { return resolveCardHint(cardId); },
               [this](const QString &objectName) { return resolvePlayerHint(objectName); },
               [this](int cardId) { return resolveCardTargets(cardId); },
-              [this](int cardId) { return resolveHandCardHint(cardId); }}),
+              [this](int cardId) { return resolveHandCardHint(cardId); },
+              [this](const QString &skillName, int instanceId) {
+                  return resolveSkillHint(skillName, instanceId);
+              }}),
       m_view(&m_renderer, [this](const QString &text) { writeOutput(text); },
              [this](int cardId) { return resolveCardWireText(cardId); },
              [this](const QString &skillName, int instanceId, const QList<int> &subcards,
@@ -141,6 +144,7 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
                     CardUseStruct::CARD_USE_REASON_UNKNOWN, QString());
                 m_hintType = InteractionType::None;
                 m_hintReason = CardUseStruct::CARD_USE_REASON_UNKNOWN;
+                m_skillReason = CardUseStruct::CARD_USE_REASON_UNKNOWN;
                 m_hintPattern.clear();
             }
             appendSynthesizedLogs(message);
@@ -174,9 +178,14 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
                         m_core.state()->setup().value(QStringLiteral("game_mode")).toString());
                 }
             }
+            // The prompt's own pattern decides which skills are on offer, so
+            // it has to be read before the list is built.
+            m_skillReason = CardUseStruct::CARD_USE_REASON_UNKNOWN;
             if (auto *cards = std::get_if<CardInteractionPayload>(&request.payload)) {
-                if (request.type == InteractionType::PlayCard)
-                    fillPlaySkillCandidates(cards);
+                m_skillReason = tuiSkillPromptReason(request.type,
+                    cards->selection.handlingMethod, cards->selection.pattern);
+                if (m_skillReason != CardUseStruct::CARD_USE_REASON_UNKNOWN)
+                    fillSkillCandidates(request.type, cards);
             }
             if (request.timeoutMs <= 0) {
                 const int seconds = m_core.state()->setup().value(
@@ -521,9 +530,20 @@ QString TuiApplicationController::resolveCardWireText(int cardId) const
     return card != nullptr ? card->toString() : QString::number(cardId);
 }
 
-void TuiApplicationController::fillPlaySkillCandidates(CardInteractionPayload *payload) const
+void TuiApplicationController::fillSkillCandidates(InteractionType type,
+    CardInteractionPayload *payload) const
 {
-    tuiFillPlaySkillCandidates(*m_core.state(), payload);
+    // The play phase has no pattern of its own; anywhere else the server's
+    // pattern may name the one skill it will take an answer from.
+    tuiFillSkillCandidates(*m_core.state(),
+        type == InteractionType::PlayCard ? QString() : payload->selection.pattern, payload);
+}
+
+QString TuiApplicationController::resolveSkillHint(const QString &skillName, int instanceId) const
+{
+    if (m_skillReason == CardUseStruct::CARD_USE_REASON_UNKNOWN)
+        return QString();
+    return tuiSkillActivationHint(skillName, instanceId, m_skillReason, m_hintPattern);
 }
 
 QString TuiApplicationController::resolveSkillCardWireText(const QString &skillName,

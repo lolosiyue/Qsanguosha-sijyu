@@ -329,6 +329,7 @@ if(QSAN_BUILD_TUI)
         tui/tui-card-text-test.cpp
         tui/tui-client-player-test.cpp
         tui/tui-log-text-test.cpp
+        tui/tui-play-skills-test.cpp
         tui/tui-contract-test.cpp
         tui/tui-live-tcp-test.cpp
         ${QSAN_TEST_ROOT}/src/client/client-live-session.cpp
@@ -349,6 +350,8 @@ if(QSAN_BUILD_TUI)
         PROPERTIES COMPILE_DEFINITIONS main=runTuiClientPlayerTests)
     set_source_files_properties(tui/tui-log-text-test.cpp
         PROPERTIES COMPILE_DEFINITIONS main=runTuiLogTextTests)
+    set_source_files_properties(tui/tui-play-skills-test.cpp
+        PROPERTIES COMPILE_DEFINITIONS main=runTuiPlaySkillsTests)
     set_source_files_properties(tui/tui-contract-test.cpp
         PROPERTIES COMPILE_DEFINITIONS main=runTuiContractTests)
     set_source_files_properties(tui/tui-live-tcp-test.cpp
@@ -383,6 +386,11 @@ if(QSAN_BUILD_TUI)
     )
     qsan_add_ctest(qsanguosha_tui_log_text qsanguosha_tui_tests
         SUITE log-text
+        LABELS "client;tui;fast"
+        TIMEOUT 120
+    )
+    qsan_add_ctest(qsanguosha_tui_play_skills qsanguosha_tui_tests
+        SUITE play-skills
         LABELS "client;tui;fast"
         TIMEOUT 120
     )
