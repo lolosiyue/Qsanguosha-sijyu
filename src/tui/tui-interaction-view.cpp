@@ -180,26 +180,35 @@ void TuiInteractionView::presentRequest(const InteractionRequest &request)
         m_writer(m_renderer->renderInteraction(request));
 }
 
+QString TuiInteractionView::requestTitle(const InteractionRequest &request) const
+{
+    // The wire request id is bookkeeping between the client core and the
+    // server; a player has no way to act on it, so name the prompt instead.
+    if (m_renderer != nullptr)
+        return m_renderer->interactionTitle(request);
+    return tr("互动");
+}
+
 void TuiInteractionView::finishRequest(const InteractionRequest &request,
                                        const InteractionResponse &)
 {
     if (request.type == InteractionType::ChooseRole)
         return;
     if (m_writer)
-        m_writer(tr("请求 %1 的作答已接受").arg(request.requestId));
+        m_writer(tr("%1：作答已接受").arg(requestTitle(request)));
 }
 
 QString TuiInteractionView::cancelReasonText(InteractionCancelReason reason)
 {
     switch (reason) {
     case InteractionCancelReason::Superseded:
-        return tr("伺服器已改问别的事");
+        return tr("服务器已改问别的事");
     case InteractionCancelReason::Expired:
-        return tr("已逾时");
+        return tr("已超时");
     case InteractionCancelReason::Abandoned:
         return tr("已放弃");
     case InteractionCancelReason::Disconnected:
-        return tr("连线中断或本局结束");
+        return tr("连接中断或本局结束");
     }
     return tr("已取消");
 }
@@ -208,8 +217,8 @@ void TuiInteractionView::cancelRequest(const InteractionRequest &request,
                                        InteractionCancelReason reason)
 {
     if (m_writer) {
-        m_writer(tr("请求 %1 已取消：%2")
-            .arg(request.requestId).arg(cancelReasonText(reason)));
+        m_writer(tr("%1 已取消：%2")
+            .arg(requestTitle(request), cancelReasonText(reason)));
     }
 }
 
@@ -227,7 +236,7 @@ QString TuiInteractionView::rejectionText(const InteractionValidation &validatio
     case InteractionRejection::RequestCancelled:
         return tr("这个互动已被取消");
     case InteractionRejection::RequestExpired:
-        return tr("这个互动已逾时");
+        return tr("这个互动已超时");
     case InteractionRejection::KindMismatch:
         return tr("作答的形式与这个互动不符");
     case InteractionRejection::UnknownOption:
@@ -462,12 +471,12 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
             }
             if (numericOnly && candidates.isEmpty()) {
                 if (error != nullptr)
-                    *error = tr("数字牌索引需要已授权候选清单");
+                    *error = tr("数字牌索引需要已授权候选列表");
                 return false;
             }
             if (!cardTextAllowed(request) && !cardPart.isEmpty()) {
                 if (error != nullptr)
-                    *error = tr("此请求不允许语意牌字串");
+                    *error = tr("此请求不允许语义牌字符串");
                 return false;
             }
             answer->cardText = cardPart;
@@ -518,7 +527,7 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
             const qsizetype equals = token.indexOf(QLatin1Char('='));
             if (equals <= 0 || equals == token.size() - 1) {
                 if (error != nullptr)
-                    *error = tr("身分分配必须使用 玩家=身分，例如 1=主公");
+                    *error = tr("身份分配必须使用 玩家=身份，例如 1=主公");
                 return false;
             }
             const QString player = canonicalPlayer(token.left(equals), players, error);
@@ -535,7 +544,7 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
         }
         if (names.isEmpty()) {
             if (error != nullptr)
-                *error = tr("必须为每位玩家指定身分");
+                *error = tr("必须为每位玩家指定身份");
             return false;
         }
         *response = InteractionResponse::makeAssignment(request.requestId, names, values);
@@ -606,7 +615,7 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
         const QJsonDocument document = QJsonDocument::fromJson(text.toUtf8(), &parseError);
         if (parseError.error != QJsonParseError::NoError || document.isNull()) {
             if (error != nullptr)
-                *error = tr("自订作答必须是有效 JSON");
+                *error = tr("自定义作答必须是有效 JSON");
             return false;
         }
         const auto *custom = request.payloadAs<CustomInteractionPayload>();
