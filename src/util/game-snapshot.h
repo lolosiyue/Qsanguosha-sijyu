@@ -11,6 +11,14 @@
 class Room;
 class ServerPlayer;
 
+namespace GameSnapshotTags {
+// 技能好興喺 room／player tag 裡面擺一個 ServerPlayer*(房內另一名玩家)。指標
+// 本身唔係 JSON 值, 但佢指嘅嘢喺 snapshot 內部已經有名(players[].objectName),
+// 所以捕捉時換成 {"__player": "<objectName>"} 呢個單鍵標記無損咁記低,
+// restore 再按名解返 runtime 指標(takeover-scenario.cpp)。
+inline constexpr char PlayerRefKey[] = "__player";
+}
+
 // A distinct on-disk contract. Legacy partial snapshots must never be used
 // for takeover: a node is either lossless or ineligible.
 struct RngSnapshot
