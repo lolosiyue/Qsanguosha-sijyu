@@ -149,7 +149,37 @@ bool strictPayloadContracts(QString *error)
         *error = QStringLiteral("two-field SHOW_ALL_CARDS did not map card_ids");
         return false;
     }
-    return true;
+
+    // Room::takeAG(nullptr, ...) — "剔走一張冇人拿嘅牌" —— 送出嘅 domain list
+    // 第一格係 null QVariant。Client::takeAG 以「冇 taker 欄位」代表呢個情況,
+    // 而 taker 係 FieldShape::String, 所以 encoder 必須略過該欄; 照原樣送出會
+    // 驗證失敗, 令 to_notify 入面每一個真人 socket 被 fail-closed 斷線。
+    ProtocolMessage takeAG = roomNotification(S_COMMAND_TAKE_AMAZING_GRACE, {});
+    takeAG.payload = QVariantList{QVariant(), 7, false};
+    if (!ProtocolPayloadRegistry::encodeObjectPayload(takeAG, &encoded, error))
+        return false;
+    const QVariantMap anonymousTake = encoded.payload.toMap();
+    if (anonymousTake.contains(QStringLiteral("taker"))) {
+        *error = QStringLiteral("a null taker must be omitted, not forwarded");
+        return false;
+    }
+    if (anonymousTake.value(QStringLiteral("card_id")).toInt() != 7
+        || anonymousTake.value(QStringLiteral("move_cards")).toBool()) {
+        *error = QStringLiteral("anonymous TAKE_AMAZING_GRACE lost its card");
+        return false;
+    }
+    if (!ProtocolPayloadRegistry::validateObjectPayload(encoded, error))
+        return false;
+
+    takeAG.payload = QVariantList{QStringLiteral("sgs1"), 7, true};
+    if (!ProtocolPayloadRegistry::encodeObjectPayload(takeAG, &encoded, error))
+        return false;
+    if (encoded.payload.toMap().value(QStringLiteral("taker")).toString()
+        != QLatin1String("sgs1")) {
+        *error = QStringLiteral("a real taker must survive the encoder");
+        return false;
+    }
+    return ProtocolPayloadRegistry::validateObjectPayload(encoded, error);
 }
 }
 

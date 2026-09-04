@@ -677,6 +677,22 @@ bool encodeShowAllCardsPayload(const QVariant &value, QVariantMap *output,
     return positionalPayload(value, {"player_name", "card_ids"}, output, error);
 }
 
+// Room::takeAG(nullptr, ...) means "the card was discarded, nobody took it"
+// and puts a null QVariant in the taker slot. Client::takeAG tells that case
+// apart by the field being absent, so the encoder has to drop the field:
+// forwarding the null fails the String shape and fail-closes every socket in
+// to_notify, and an empty string would make the client resolve a null taker.
+bool encodeTakeAmazingGracePayload(const QVariant &value, QVariantMap *output,
+                                   QString *error)
+{
+    if (!positionalPayload(value, {"taker", "card_id", "move_cards"}, output, error))
+        return false;
+    const QVariant taker = output->value(QStringLiteral("taker"));
+    if (!taker.isValid() || taker.isNull() || taker.toString().isEmpty())
+        output->remove(QStringLiteral("taker"));
+    return true;
+}
+
 bool scalarPayload(const QVariant &value, const char *field,
                    QVariantMap *output)
 {
@@ -853,7 +869,7 @@ bool encodeRoomNotificationPayload(int command, const QVariant &value,
     case S_COMMAND_FILL_AMAZING_GRACE:
         return positionalPayload(value, {"card_ids", "disabled_card_ids"}, output, error);
     case S_COMMAND_TAKE_AMAZING_GRACE:
-        return positionalPayload(value, {"taker", "card_id", "move_cards"}, output, error);
+        return encodeTakeAmazingGracePayload(value, output, error);
     case S_COMMAND_TAKE_GENERAL:
         return positionalPayload(value, {"player_name", "general_name", "rule"}, output, error);
     case S_COMMAND_RECOVER_GENERAL:
@@ -1378,7 +1394,8 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
         {QStringLiteral("WeaponRangePayload"), {QStringLiteral("weapon_name"), QStringLiteral("range")}},
         {QStringLiteral("MirrorGuanxingPayload"), {QStringLiteral("action")}},
         {QStringLiteral("FillAmazingGracePayload"), {QStringLiteral("card_ids"), QStringLiteral("disabled_card_ids")}},
-        {QStringLiteral("TakeAmazingGracePayload"), {QStringLiteral("taker"), QStringLiteral("card_id"), QStringLiteral("move_cards")}},
+        // taker is optional: it is absent when nobody took the card.
+        {QStringLiteral("TakeAmazingGracePayload"), {QStringLiteral("card_id"), QStringLiteral("move_cards")}},
         {QStringLiteral("FillGeneralsPayload"), {QStringLiteral("general_names")}},
         {QStringLiteral("TakeGeneralPayload"), {QStringLiteral("player_name"), QStringLiteral("general_name"), QStringLiteral("rule")}},
         {QStringLiteral("RecoverGeneralPayload"), {QStringLiteral("index"), QStringLiteral("general_name")}},
