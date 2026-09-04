@@ -38,8 +38,14 @@ ClientLogFormatStyle tuiLogStyle(const TuiPlayerNameResolver &playerName)
     // room context the text client never registers: %card then resolved to
     // nothing and equip / damage-source lines lost their card entirely. No room
     // means no filtered card either, so both branches read the engine table.
-    style.cardById = [](int id, bool) -> const Card * {
-        return Sanguosha != nullptr ? Sanguosha->getEngineCard(id) : nullptr;
+    style.cardById = [](int id, bool useRoomCard) -> const Card * {
+        if (Sanguosha == nullptr)
+            return nullptr;
+        // $JudgeResult / $PasteCard want the card as the room currently holds
+        // it; the room is only registered while a game is running, so fall back
+        // to the printed card either way.
+        const Card *card = useRoomCard ? Sanguosha->getCard(id) : nullptr;
+        return card != nullptr ? card : Sanguosha->getEngineCard(id);
     };
     style.cardLogName = [](const Card *card) {
         if (card->getId() >= 0)

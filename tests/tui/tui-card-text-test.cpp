@@ -1,7 +1,12 @@
 #include "engine-bootstrap.h"
 #include "card.h"
 #include "engine.h"
+#include "client-game-state.h"
 #include "tui-card-text.h"
+#include "tui-room-context.h"
+
+#include "protocol.h"
+#include "protocol/protocol-message.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -20,8 +25,6 @@ void check(bool condition, const char *what)
     }
 }
 
-// The text client has no room context, so anything resolved through
-// Engine::getCard() comes back null and every card degrades to its raw id.
 int firstConcreteCardId()
 {
     for (int id = 0; id < Sanguosha->getCardCount(); ++id) {
@@ -68,6 +71,57 @@ int main(int argc, char **argv)
     const QString unknown = tuiCardDisplayText(Sanguosha->getCardCount() + 4096);
     check(unknown.contains(QString::number(Sanguosha->getCardCount() + 4096)),
           "an unknown id degrades to a readable placeholder");
+
+    // Outside a game nothing is registered, so the engine's own table is the
+    // only answer Engine::getCard() can give.
+    check(Sanguosha->getCard(cardId) == nullptr,
+          "no room is registered before a game starts");
+
+    ClientGameState state;
+    TuiRoomContext room(&state);
+    room.enterGame();
+    check(room.isActive(), "entering a game registers the room");
+    Card *roomCard = Sanguosha->getCard(cardId);
+    check(roomCard != nullptr, "a registered room resolves cards through Engine::getCard()");
+    check(roomCard != nullptr && roomCard->getId() == cardId,
+          "the room hands back the card that was asked for");
+    check(tuiCardDisplayText(cardId) == text,
+          "an untouched card reads the same inside a room as outside one");
+
+    // What the room is for: the server rewrites a card and the text client has
+    // to show the new face, not the printed one.
+    const Card::Suit otherSuit = card->getSuit() == Card::Heart ? Card::Spade : Card::Heart;
+    const int otherNumber = card->getNumber() == 5 ? 6 : 5;
+    QSanProtocol::ProtocolMessage update;
+    update.command = QSanProtocol::S_COMMAND_UPDATE_CARD;
+    update.payload = QVariantMap{{QStringLiteral("action"), QStringLiteral("update")},
+        {QStringLiteral("card_id"), cardId},
+        {QStringLiteral("suit"), static_cast<int>(otherSuit)},
+        {QStringLiteral("number"), otherNumber},
+        {QStringLiteral("card_name"), card->objectName()},
+        {QStringLiteral("skill_name"), QString()},
+        {QStringLiteral("object_name"), card->objectName()},
+        {QStringLiteral("flags"), QStringList()}};
+    room.applyMessage(update);
+    const QString rewritten = tuiCardDisplayText(cardId);
+    check(rewritten.contains(QString::number(otherNumber)),
+          "a card the server rewrote shows its new number");
+    check(rewritten != text, "a rewritten card no longer reads as the printed card");
+
+    QSanProtocol::ProtocolMessage reset;
+    reset.command = QSanProtocol::S_COMMAND_UPDATE_CARD;
+    reset.payload = QVariantMap{{QStringLiteral("action"), QStringLiteral("reset")},
+        {QStringLiteral("card_id"), cardId}};
+    room.applyMessage(reset);
+    check(tuiCardDisplayText(cardId) == text, "resetting a card restores the printed face");
+
+    QSanProtocol::ProtocolMessage over;
+    over.command = QSanProtocol::S_COMMAND_GAME_OVER;
+    room.applyMessage(over);
+    check(!room.isActive() && Sanguosha->getCard(cardId) == nullptr,
+          "the room hands the thread back when the game ends");
+    check(tuiCardDisplayText(cardId) == text,
+          "card text still resolves once the room is gone");
 
     std::printf("[AUTOTEST] TUI_CARD_TEXT_RESULT status=%s sample_id=%d text=%s\n",
         failures == 0 ? "PASS" : "FAIL", cardId, text.toUtf8().constData());

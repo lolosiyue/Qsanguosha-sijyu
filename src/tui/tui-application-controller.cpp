@@ -33,7 +33,8 @@ QString tr(const char *source)
 
 TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &options,
     QObject *parent)
-    : QObject(parent), m_options(options), m_session(&m_core, this),
+    : QObject(parent), m_options(options), m_roomContext(m_core.state()),
+      m_session(&m_core, this),
       m_renderer(options.ansiEnabled,
           TuiRenderer::Resolvers{
               [this](int cardId) { return resolveCardDisplayText(cardId); },
@@ -106,7 +107,12 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
             writeOutput(m_renderer.renderState(*m_core.state()));
     });
     connect(&m_session, &ClientLiveSession::frontendMessageReceived, this,
-        [this](const ProtocolMessage &message) { appendSynthesizedLogs(message); });
+        [this](const ProtocolMessage &message) {
+            // The room has to be registered before anything renders a card, so
+            // it goes first: card text resolves through it.
+            m_roomContext.applyMessage(message);
+            appendSynthesizedLogs(message);
+        });
     connect(&m_session, &ClientLiveSession::presentationEvent, this,
         [this](int command, const QString &text, const QVariant &payload) {
             const QString line = presentationText(command, text, payload);
