@@ -127,6 +127,26 @@ int main(int argc, char **argv)
           "damage log names both sides");
     check(hasNoPlaceholders(damage), "damage log leaves no unfilled placeholder");
 
+    // #Install and #DamageCard put %card outside the #UseCard branch, so they
+    // go through genericCards() rather than the engine-card path use lines take.
+    const QString install = tuiSkillLogText(
+        skillLog(QStringLiteral("#Install"), QStringLiteral("sgs1"), {},
+                 QString::number(cardId), {QString(), QString(), QString(), QString(), QString()}),
+        playerName);
+    check(install.contains(tuiCardDisplayText(cardId)),
+          "an equip log names the card that was equipped");
+    check(hasNoPlaceholders(install), "equip log leaves no unfilled placeholder");
+
+    const QString damageCard = tuiSkillLogText(
+        skillLog(QStringLiteral("#DamageCard"), QStringLiteral("sgs1"),
+                 {QStringLiteral("sgs2")}, QString::number(cardId),
+                 {QStringLiteral("1"), QStringLiteral("fire"), QString(), QString(), QString()}),
+        playerName);
+    check(damageCard.contains(tuiCardDisplayText(cardId)),
+          "a damage log names the card that dealt it");
+    check(!damageCard.contains(QStringLiteral("（）")),
+          "a damage log never shows an empty card bracket");
+
     const QString unknown = tuiSkillLogText(
         skillLog(QStringLiteral("#NoSuchLogTypeHere"), QStringLiteral("sgs1"), {}, QString(),
                  {QString(), QString(), QString(), QString(), QString()}),
@@ -134,7 +154,7 @@ int main(int argc, char **argv)
     check(unknown.contains(QStringLiteral("#NoSuchLogTypeHere")),
           "an unknown log type degrades to its key instead of vanishing");
 
-    for (const QString &text : {trigger, discard, damage, unknown}) {
+    for (const QString &text : {trigger, discard, damage, install, damageCard, unknown}) {
         check(!text.contains(QLatin1Char('<')) && !text.contains(QChar(0x1b)),
               "log text is plain: no markup and no escape sequences");
     }
