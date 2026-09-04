@@ -74,6 +74,14 @@ private:
                                      const QList<int> &subcardIds, QString *error) const;
     void fillSkillCandidates(InteractionType type, CardInteractionPayload *payload) const;
     QString resolveSkillHint(const QString &skillName, int instanceId) const;
+    // The packages this game left out, as the setup message listed them. The
+    // desktop reads them off the engine-wide ServerInfo, which the text client
+    // never fills in.
+    QStringList bannedPackages() const;
+    // Puts the declaration a dialog skill asks for -- Guhuo's named card,
+    // Tiansuan's choice -- where the skill reads it, before its card is built.
+    bool applySkillDeclaration(const QString &skillName, const QString &declaration,
+                               QString *error) const;
     QString renderPiles() const;
     QString renderSkills() const;
     QString renderEquipment() const;

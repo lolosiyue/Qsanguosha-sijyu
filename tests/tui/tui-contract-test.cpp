@@ -1,4 +1,5 @@
 #include "client-game-state.h"
+#include "engine-bootstrap.h"
 #include "client-game-state-reducer.h"
 #include "client-core.h"
 #include "interaction-command-registry.h"
@@ -19,6 +20,8 @@
 #include <QSet>
 #include <QTemporaryDir>
 #include <QTimer>
+
+#include <QDebug>
 
 #include <cstdio>
 #include <limits>
@@ -1328,6 +1331,65 @@ void terminalContract()
                     ->activationSkillInstanceId == 2,
           "play-card skill index plus subcards plus numbered target stays a SkillCard");
 
+    // A Guhuo-shaped skill needs one more word than its menu number: the card
+    // it declares, written on the skill's own index.
+    QString declaredSkill;
+    QString declaredOption;
+    int declarationCalls = 0;
+    TuiInteractionView declaring(&renderer, [](const QString &) {},
+        TuiInteractionView::CardTextResolver(),
+        [](const QString &skill, int instanceId, const QList<int> &subcards, QString *) {
+            QStringList ids;
+            for (int id : subcards)
+                ids.append(QString::number(id));
+            return QStringLiteral("@%1Card[no_suit:0]=%2#%3")
+                .arg(skill, ids.join(QLatin1Char('+')), QString::number(instanceId));
+        },
+        [&](const QString &skill, const QString &option, QString *declarationError) {
+            ++declarationCalls;
+            declaredSkill = skill;
+            declaredOption = option;
+            if (option.isEmpty() || option == QLatin1String("nope")) {
+                if (declarationError != nullptr)
+                    *declarationError = QStringLiteral("可声明：slash、jink");
+                return false;
+            }
+            return true;
+        });
+    check(declaring.parseAnswer(play, QStringLiteral("4=slash"), &response, &error)
+              && declaredSkill == QLatin1String("zhiheng")
+              && declaredOption == QLatin1String("slash")
+              && response.payloadAs<InteractionResponse::CardSelectionData>() != nullptr
+              && response.payloadAs<InteractionResponse::CardSelectionData>()->cardText
+                    .contains(QStringLiteral("zhiheng")),
+          "a declaration on the skill index reaches the skill and still builds its card");
+    check(declaring.parseAnswer(play, QStringLiteral("1 4=slash"), &response, &error)
+              && response.payloadAs<InteractionResponse::CardSelectionData>()->subcardIds
+                    == QList<int>({7}),
+          "a declared activation still takes its subcards");
+    declaredOption = QStringLiteral("stale");
+    check(!declaring.parseAnswer(play, QStringLiteral("4"), &response, &error)
+              && declaredOption.isEmpty() && !error.isEmpty(),
+          "an activation with nothing declared asks the skill, and reports what it said");
+    check(!declaring.parseAnswer(play, QStringLiteral("4=nope"), &response, &error)
+              && !error.isEmpty(),
+          "a declaration the skill refuses stops the answer");
+    const int callsBefore = declarationCalls;
+    check(!declaring.parseAnswer(play, QStringLiteral("1=slash 4"), &response, &error)
+              && error.contains(QStringLiteral("技能编号"))
+              && declarationCalls == callsBefore,
+          "a declaration written on a card index is refused before the skill is asked");
+    check(!declaring.parseAnswer(play, QStringLiteral("1=slash"), &response, &error)
+              && error.contains(QStringLiteral("技能编号")),
+          "a declaration with no activation at all is refused");
+    check(!declaring.parseAnswer(play, QStringLiteral("1=slash 2=jink 4"), &response, &error)
+              && error.contains(QStringLiteral("一次只能声明")),
+          "two declarations in one answer are refused");
+    check(declaring.parseAnswer(play, QStringLiteral("1 -> 2"), &response, &error)
+              && response.payloadAs<InteractionResponse::CardSelectionData>()->cardIds
+                    == QList<int>({7}),
+          "an answer that activates nothing never asks about declarations");
+
     check(view.parseAnswer(cards,
               QStringLiteral("skill longdan#4: card 1 -> 2"), &response, &error)
               && response.payloadAs<InteractionResponse::CardSelectionData>() != nullptr
@@ -1457,6 +1519,14 @@ void scriptContract()
 int main(int argc, char *argv[])
 {
     QCoreApplication app(argc, argv);
+    // Every string the renderer and the answer parser produce is fetched by
+    // key out of lang/<language>/TUICommon.lua, which the engine loads. The
+    // assertions below read that text, so the engine has to be up first.
+    QString engineError;
+    if (!EngineBootstrap::initialize(false, &engineError)) {
+        qCritical() << "engine initialization failed:" << engineError;
+        return 1;
+    }
     const QStringList arguments = app.arguments();
     const int coverageOption = arguments.indexOf(QStringLiteral("--write-coverage"));
     if (coverageOption >= 0) {
@@ -1485,5 +1555,6 @@ int main(int argc, char *argv[])
     scriptContract();
     std::printf("[AUTOTEST] TUI_CONTRACT_RESULT status=%s failures=%d\n",
                 failures == 0 ? "PASS" : "FAIL", failures);
+    EngineBootstrap::shutdown();
     return failures == 0 ? 0 : 1;
 }

@@ -3,9 +3,11 @@
 #include "client-game-state.h"
 #include "engine.h"
 #include "interaction-model.h"
+#include "standard.h"
 #include "tui-client-player.h"
 #include "tui-play-skills.h"
 #include "tui-room-context.h"
+#include "tui-skill-dialog.h"
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -52,6 +54,16 @@ CardInteractionPayload fill(const ClientGameState &state, const QString &pattern
     CardInteractionPayload payload;
     tuiFillSkillCandidates(state, pattern, &payload);
     return payload;
+}
+
+const TuiSkillDeclaration *findDeclaration(const QList<TuiSkillDeclaration> &declarations,
+                                           const char *name)
+{
+    for (const TuiSkillDeclaration &declaration : declarations) {
+        if (declaration.name == QLatin1String(name))
+            return &declaration;
+    }
+    return nullptr;
 }
 
 } // namespace
@@ -184,6 +196,110 @@ int main(int argc, char **argv)
     check(!tuiSkillActivationHint(QStringLiteral("tuxi"), 0,
               CardUseStruct::CARD_USE_REASON_PLAY, QString()).isEmpty(),
           "a response-only skill is not playable in the play phase");
+
+    // ---- Declaration dialogs -------------------------------------------
+    // The desktop pops a GuhuoDialog before a Guhuo-shaped skill can build its
+    // card; without one the text client could type the skill's number and get
+    // nothing back. NosGuhuo is the plain case: basics and non-delayed tricks,
+    // play only.
+    check(tuiSkillDeclarations(QStringLiteral("wusheng"), {}).isEmpty(),
+          "a skill with no dialog asks for no declaration");
+    check(!tuiSkillNeedsDeclaration(QStringLiteral("wusheng"), {}),
+          "a skill with no dialog needs no declaration");
+
+    if (Sanguosha->getSkill(QStringLiteral("nosguhuo")) == nullptr) {
+        std::printf("[SKIP] nosguhuo is not in this build; dialog checks skipped\n");
+    } else {
+        room.setCardUseContext(CardUseStruct::CARD_USE_REASON_PLAY, QString());
+        const QList<TuiSkillDeclaration> declarations
+            = tuiSkillDeclarations(QStringLiteral("nosguhuo"), {});
+        check(!declarations.isEmpty(), "a guhuo dialog offers the cards it can declare");
+        check(findDeclaration(declarations, "slash") != nullptr && findDeclaration(declarations, "jink") != nullptr,
+              "the basic half of the dialog is on offer");
+        check(findDeclaration(declarations, "dismantlement") != nullptr,
+              "the trick half of the dialog is on offer");
+        check(findDeclaration(declarations, "indulgence") == nullptr,
+              "a delayed trick stays out of a dialog that did not ask for one");
+        check(findDeclaration(declarations, "peach") != nullptr && !findDeclaration(declarations, "peach")->enabled,
+              "an unplayable declaration is listed and marked, never dropped");
+        check(tuiSkillNeedsDeclaration(QStringLiteral("nosguhuo"), {}),
+              "a skill whose dialog is open has to be told what to declare");
+
+        // Banned packages are the server's, and the text client has to pass
+        // them in: nothing ever fills the engine-wide ServerInfo here. The one
+        // card is spread over several packages, so ban every package holding
+        // it rather than assume which one that is.
+        QStringList holders;
+        for (const BasicCard *engineCard : Sanguosha->findChildren<const BasicCard *>()) {
+            if (engineCard->objectName() == QLatin1String("thunder_slash")
+                && !holders.contains(engineCard->getPackage()))
+                holders << engineCard->getPackage();
+        }
+        check(!holders.isEmpty(), "the thunder slash comes from somewhere");
+        const QList<TuiSkillDeclaration> trimmed
+            = tuiSkillDeclarations(QStringLiteral("nosguhuo"), holders);
+        check(findDeclaration(trimmed, "thunder_slash") == nullptr,
+              "a banned package's cards are not on offer");
+        check(trimmed.size() < declarations.size(),
+              "banning a package narrows the dialog rather than emptying it");
+
+        QString error;
+        check(!tuiApplySkillDeclaration(QStringLiteral("nosguhuo"), QString(), {}, &error)
+                  && !error.isEmpty(),
+              "activating without a declaration is refused, with the listing to fix it");
+        check(error.contains(QStringLiteral("slash")),
+              "the refusal says what can be declared");
+        error.clear();
+        check(!tuiApplySkillDeclaration(QStringLiteral("nosguhuo"),
+                  QStringLiteral("no_such_card"), {}, &error) && !error.isEmpty(),
+              "a declaration the dialog never offered is refused");
+        check(QSanEngine::Self->getTag(QStringLiteral("nosguhuo")).isNull(),
+              "a refused declaration leaves nothing behind for viewAs() to find");
+
+        error.clear();
+        check(tuiApplySkillDeclaration(QStringLiteral("nosguhuo"), QStringLiteral("slash"),
+                  {}, &error) && error.isEmpty(),
+              "a declaration the dialog offers is accepted");
+        const Card *declared
+            = QSanEngine::Self->getTag(QStringLiteral("nosguhuo")).value<const Card *>();
+        check(declared != nullptr && declared->objectName() == QLatin1String("slash"),
+              "the declared card lands where the skill's viewAs() reads it");
+        check(declared != nullptr
+                  && declared->getSkillName() == QLatin1String("nosguhuo"),
+              "the declared card carries the skill that named it");
+
+        // What the dialog is for: NosGuhuo::viewAs() hands back nothing at all
+        // until the declaration is sitting in the tag, so the text client used
+        // to be unable to build the card no matter what it typed.
+        QSanEngine::Self->removeTag(QStringLiteral("nosguhuo"));
+        QString buildError;
+        check(tuiResolveSkillCardWireText(QStringLiteral("sgs1"),
+                  QStringLiteral("nosguhuo"), 0, {1}, &buildError).isEmpty(),
+              "an undeclared guhuo builds no card, which is why the dialog exists");
+        buildError.clear();
+        check(tuiApplySkillDeclaration(QStringLiteral("nosguhuo"),
+                  QStringLiteral("dismantlement"), {}, &buildError) && buildError.isEmpty(),
+              "a trick out of the dialog's right half can be declared too");
+        const QString wire = tuiResolveSkillCardWireText(QStringLiteral("sgs1"),
+            QStringLiteral("nosguhuo"), 0, {1}, &buildError);
+        check(!wire.isEmpty() && wire.contains(QStringLiteral("dismantlement")),
+              "a declared guhuo builds the card it named, and the wire says which");
+
+        // The same skill outside the play phase: GuhuoDialog::shouldPopup() is
+        // false, so the desktop never asks and neither does this.
+        room.setCardUseContext(CardUseStruct::CARD_USE_REASON_RESPONSE,
+                               QStringLiteral("slash"));
+        check(tuiSkillDeclarations(QStringLiteral("nosguhuo"), {}).isEmpty(),
+              "a play-only dialog stays shut when the prompt is not a play");
+        check(!tuiSkillNeedsDeclaration(QStringLiteral("nosguhuo"), {}),
+              "a dialog that stays shut does not hold the answer up");
+        error.clear();
+        check(tuiApplySkillDeclaration(QStringLiteral("nosguhuo"), QString(), {}, &error),
+              "no declaration is needed while the dialog is shut");
+        check(QSanEngine::Self->getTag(QStringLiteral("nosguhuo")).isNull(),
+              "the previous declaration is cleared, not carried into the next answer");
+        room.setCardUseContext(CardUseStruct::CARD_USE_REASON_UNKNOWN, QString());
+    }
 
     players.clear();
     room.leaveGame();

@@ -1,8 +1,8 @@
 #include "tui-script-runner.h"
+#include "tui-text.h"
 
 #include "core/client-core.h"
 
-#include <QCoreApplication>
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -13,11 +13,6 @@
 
 namespace {
 
-QString tr(const char *source)
-{
-    return QCoreApplication::translate("QSanguoshaTui", source);
-}
-
 } // namespace
 
 TuiScriptRunner::TuiScriptRunner(ClientCore *core, LineSink sink, QObject *parent)
@@ -25,7 +20,7 @@ TuiScriptRunner::TuiScriptRunner(ClientCore *core, LineSink sink, QObject *paren
 {
     m_waitTimer.setSingleShot(true);
     connect(&m_waitTimer, &QTimer::timeout, this, [this]() {
-        fail(tr("脚本在第 %1 行等待超时").arg(m_index + 1));
+        fail(tuiText("tui_script_timeout").arg(m_index + 1));
     });
 }
 
@@ -34,7 +29,7 @@ bool TuiScriptRunner::load(const QString &path, QString *error)
     QFile file(path);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         if (error != nullptr)
-            *error = tr("无法打开脚本：%1").arg(file.errorString());
+            *error = tuiText("tui_script_open_failed").arg(file.errorString());
         return false;
     }
     m_lines = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'));
@@ -162,7 +157,7 @@ bool TuiScriptRunner::assertCondition(const QStringList &tokens, QString *error)
     if (conditionMatches(tokens))
         return true;
     if (error != nullptr)
-        *error = tr("脚本断言失败：%1").arg(tokens.join(QLatin1Char(' ')));
+        *error = tuiText("tui_script_assert_failed").arg(tokens.join(QLatin1Char(' ')));
     return false;
 }
 
@@ -198,7 +193,7 @@ void TuiScriptRunner::advance()
         if (tokens.first().compare(QStringLiteral("assert"), Qt::CaseInsensitive) == 0) {
             QString error;
             if (!assertCondition(tokens.mid(1), &error)) {
-                fail(tr("第 %1 行：%2").arg(m_index + 1).arg(error));
+                fail(tuiText("tui_script_line").arg(m_index + 1).arg(error));
                 return;
             }
             ++m_index;
