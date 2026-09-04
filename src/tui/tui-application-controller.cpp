@@ -40,7 +40,9 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
               [this](int cardId) { return resolveCardDisplayText(cardId); },
               [this](const QString &name) { return resolveNameText(name); },
               [this](const QString &objectName) { return resolvePlayerName(objectName); },
-              [](const QString &general) { return resolveGeneralKingdom(general); }}),
+              [](const QString &general) { return resolveGeneralKingdom(general); },
+              [this](int cardId) { return resolveCardHint(cardId); },
+              [this](const QString &objectName) { return resolvePlayerHint(objectName); }}),
       m_view(&m_renderer, [this](const QString &text) { writeOutput(text); },
              [this](int cardId) { return resolveCardWireText(cardId); },
              [this](const QString &skillName, int instanceId, const QList<int> &subcards,
@@ -119,6 +121,9 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
             if (!m_core.hasActiveRequest()) {
                 m_roomContext.setCardUseContext(
                     CardUseStruct::CARD_USE_REASON_UNKNOWN, QString());
+                m_hintType = InteractionType::None;
+                m_hintReason = CardUseStruct::CARD_USE_REASON_UNKNOWN;
+                m_hintPattern.clear();
             }
             appendSynthesizedLogs(message);
         });
@@ -178,6 +183,9 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
                 }
             }
             m_roomContext.setCardUseContext(reason, usePattern);
+            m_hintType = request.type;
+            m_hintReason = reason;
+            m_hintPattern = usePattern;
             if (m_core.beginRequest(std::move(request)) == 0) {
                 writeError(tr("无法启用服务器互动"));
                 requestExit(4);
@@ -389,6 +397,51 @@ QString TuiApplicationController::resolveGeneralKingdom(const QString &generalNa
         return QString();
     const General *general = Sanguosha->getGeneral(generalName);
     return general == nullptr ? QString() : general->getKingdom();
+}
+
+QString TuiApplicationController::resolveCardHint(int cardId) const
+{
+    if (Sanguosha == nullptr)
+        return QString();
+    const ClientPlayer *self = m_players.self();
+    // getCard() only answers inside a game; before one there is nothing to say.
+    const Card *card = Sanguosha->getCard(cardId);
+    if (self == nullptr || card == nullptr)
+        return QString();
+
+    // Same questions RoomScene::enableTargets() asks, in the same order.
+    if (m_hintType == InteractionType::PlayCard) {
+        if (self->isCardLimited(card, Card::MethodUse))
+            return tr("（受限）");
+        return card->isAvailable(self) ? QString() : tr("（不可用）");
+    }
+    if (m_hintType == InteractionType::DiscardCard) {
+        return self->isCardLimited(card, Card::MethodDiscard) ? tr("（受限）") : QString();
+    }
+
+    Card::HandlingMethod method = card->getHandlingMethod();
+    if (m_hintReason == CardUseStruct::CARD_USE_REASON_RESPONSE
+        && method == Card::MethodUse) {
+        method = Card::MethodResponse;
+    }
+    if (self->isCardLimited(card, method))
+        return tr("（受限）");
+    QString pattern = m_hintPattern;
+    if (pattern.endsWith(QLatin1Char('!')))
+        pattern.chop(1);
+    if (pattern.isEmpty() || pattern == QLatin1String("."))
+        return QString();
+    return Sanguosha->matchPattern(pattern, self, card) ? QString() : tr("（不符）");
+}
+
+QString TuiApplicationController::resolvePlayerHint(const QString &objectName) const
+{
+    const ClientPlayer *self = m_players.self();
+    const ClientPlayer *target = m_players.player(objectName);
+    if (self == nullptr || target == nullptr || self == target)
+        return QString();
+    const int distance = self->distanceTo(target);
+    return distance > 0 ? tr(" 距离%1").arg(distance) : QString();
 }
 
 QString TuiApplicationController::resolveNameText(const QString &name) const
