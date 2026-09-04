@@ -49,17 +49,22 @@ public:
     QString renderPlayers(const ClientGameState &state) const;
     QString renderHand(const ClientGameState &state) const;
     QString renderInteraction(const InteractionRequest &request) const;
+    // The player-facing name of a prompt, used to talk about a request
+    // without exposing its wire id.
+    QString interactionTitle(const InteractionRequest &request) const;
+    // A wire token (connection state, phase, role, general, ...) as the player
+    // should read it: a fixed label when the protocol owns the vocabulary,
+    // otherwise whatever the engine translation table says.
+    QString nameText(const QString &name) const;
 
 private:
     QString heading(const QString &text) const;
     QString cardText(const ClientGameState &state, int cardId) const;
-    QString nameText(const QString &name) const;
     QString playerText(const QString &objectName) const;
     // "時語（sgs1）" -- a script and /players still speak object names.
     QString playerLabel(const QString &objectName) const;
     QString gameStatusText(const QString &status) const;
     QString kingdomText(const QVariantMap &player) const;
-    QString interactionTitle(const InteractionRequest &request) const;
     QString answerHint(const InteractionRequest &request) const;
     bool m_ansiEnabled = false;
     Resolvers m_resolvers;

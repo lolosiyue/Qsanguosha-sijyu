@@ -117,9 +117,9 @@ bool TuiCommandParser::parse(const QString &line, TuiCommandIntent *intent,
 
     const QString input = line.trimmed();
     if (!input.startsWith(QLatin1Char('/')))
-        return reject(error, tr("全域命令必须以 '/' 开头"));
+        return reject(error, tr("全局命令必须以 '/' 开头"));
     if (input.size() > 4096)
-        return reject(error, tr("命令超过 4096 字元"));
+        return reject(error, tr("命令超过 4096 字符"));
 
     const qsizetype separator = input.indexOf(QLatin1Char(' '));
     const QString keyword = (separator < 0 ? input : input.left(separator)).toLower();
@@ -136,7 +136,7 @@ bool TuiCommandParser::parse(const QString &line, TuiCommandIntent *intent,
         if (argument.isEmpty())
             return reject(error, tr("/chat 必须包含文字"));
         if (argument.size() > 1000)
-            return reject(error, tr("/chat 最多 1000 字元"));
+            return reject(error, tr("/chat 最多 1000 字符"));
         parsed.text = argument;
     } else if (parsed.type == TuiCommandType::Trust) {
         if (argument.isEmpty()) {

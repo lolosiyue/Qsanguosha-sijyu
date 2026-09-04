@@ -52,7 +52,7 @@ bool TuiInput::start(QString *error)
 #ifdef Q_OS_WIN
     HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
     if (input == nullptr || input == INVALID_HANDLE_VALUE)
-        return fail(error, tr("标准输入控制代码不可用"));
+        return fail(error, tr("标准输入句柄不可用"));
     m_inputHandle = input;
     DWORD mode = 0;
     m_consoleInput = GetConsoleMode(input, &mode) != 0;
@@ -60,7 +60,7 @@ bool TuiInput::start(QString *error)
         m_originalConsoleMode = mode;
         mode &= ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT);
         if (!SetConsoleMode(input, mode))
-            return fail(error, tr("无法启用非同步终端输入"));
+            return fail(error, tr("无法启用异步终端输入"));
     }
     auto *notifier = new QWinEventNotifier(input, this);
     m_notifier = notifier;
@@ -177,7 +177,7 @@ void TuiInput::readWindowsInput()
                     const QChar character(static_cast<ushort>(key.uChar.UnicodeChar));
                     if (!character.isNull()) {
                         if (m_consoleLine.size() >= 16384) {
-                            emit inputError(tr("输入行超过 16384 字元"));
+                            emit inputError(tr("输入行超过 16384 字符"));
                             return;
                         }
                         m_consoleLine.append(character);
@@ -207,7 +207,7 @@ void TuiInput::readWindowsInput()
             stop();
             return;
         }
-        emit inputError(tr("无法读取重新导向的标准输入"));
+        emit inputError(tr("无法读取重定向的标准输入"));
         return;
     }
     if (read == 0) {

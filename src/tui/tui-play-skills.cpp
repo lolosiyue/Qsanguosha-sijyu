@@ -72,7 +72,7 @@ QString tuiResolveSkillCardWireText(const QString &selfName, const QString &skil
 {
     if (Sanguosha == nullptr) {
         if (error != nullptr)
-            *error = tr("引擎尚未载入");
+            *error = tr("引擎尚未加载");
         return QString();
     }
     const ViewAsSkill *viewAs = Sanguosha->getViewAsSkill(skillName);
@@ -108,7 +108,7 @@ QString tuiResolveSkillCardWireText(const QString &selfName, const QString &skil
     if (card == nullptr) {
         if (error != nullptr) {
             *error = subcardIds.isEmpty()
-                ? tr("此技能需要选手牌")
+                ? tr("此技能需要选择手牌")
                 : tr("这些牌不能发动该技能");
         }
         return QString();

@@ -102,38 +102,38 @@ int main(int argc, char *argv[])
     const QCommandLineOption helpOption(
         QStringList{QStringLiteral("?"), QStringLiteral("h"), QStringLiteral("help"),
                     QStringLiteral("help-all")},
-        tr("显示命令列选项说明"));
+        tr("显示命令行选项帮助"));
     const QCommandLineOption versionOption(
         QStringList{QStringLiteral("v"), QStringLiteral("version")},
-        tr("显示版本资讯"));
+        tr("显示版本信息"));
 
     const QCommandLineOption hostOption(QStringLiteral("host"),
-        tr("伺服器主机名称或位址"), QStringLiteral("host"),
+        tr("服务器主机名称或地址"), QStringLiteral("host"),
         QStringLiteral("127.0.0.1"));
     const QCommandLineOption portOption(QStringLiteral("port"),
-        tr("伺服器 TCP 连接埠"), QStringLiteral("port"), QStringLiteral("9527"));
+        tr("服务器 TCP 端口"), QStringLiteral("port"), QStringLiteral("9527"));
     const QCommandLineOption nameOption(QStringLiteral("name"),
         tr("玩家显示名称"), QStringLiteral("name"), QStringLiteral("TUI"));
     const QCommandLineOption avatarOption(QStringLiteral("avatar"),
-        tr("玩家头像识别字"), QStringLiteral("avatar"),
+        tr("玩家头像标识"), QStringLiteral("avatar"),
         QStringLiteral("caocao"));
     const QCommandLineOption reconnectOption(QStringLiteral("reconnect"),
-        tr("初次登入时请求重连"));
+        tr("初次登录时请求重连"));
     const QCommandLineOption plainOption(QStringLiteral("plain"),
-        tr("使用确定性的纯文字输出"));
+        tr("使用确定性的纯文本输出"));
     const QCommandLineOption noColorOption(QStringLiteral("no-color"),
-        tr("即使在终端也停用 ANSI 色彩"));
+        tr("即使在终端也禁用 ANSI 色彩"));
     const QCommandLineOption languageOption(QStringLiteral("language"),
-        tr("设定程序语系"), QStringLiteral("locale"));
+        tr("设置程序语言"), QStringLiteral("locale"));
     const QCommandLineOption logFileOption(QStringLiteral("log-file"),
-        tr("将清理后的语意输出附加至档案"), QStringLiteral("path"));
+        tr("将清理后的语义输出追加到文件"), QStringLiteral("path"));
     const QCommandLineOption scriptOption(QStringLiteral("script"),
         tr("从脚本执行命令与断言"), QStringLiteral("path"));
     const QCommandLineOption assetRootOption(QStringLiteral("asset-root"),
-        tr("使用明确的执行期资料根目录"), QStringLiteral("directory"));
+        tr("使用明确的运行时数据根目录"), QStringLiteral("directory"));
     const QCommandLineOption dumpTranslationsOption(
         QStringLiteral("dump-translations"),
-        tr("把 Engine 翻譯表写成 JSON 后结束"), QStringLiteral("path"));
+        tr("把 Engine 翻译表写成 JSON 后结束"), QStringLiteral("path"));
 
     parser.addOptions({helpOption, versionOption, hostOption, portOption, nameOption,
         avatarOption, reconnectOption, plainOption, noColorOption, languageOption,
@@ -182,7 +182,7 @@ int main(int argc, char *argv[])
     if (parser.isSet(languageOption)) {
         const QLocale locale(parser.value(languageOption));
         if (locale.language() == QLocale::C)
-            return usageError(tr("--language 不是可识别的语系"));
+            return usageError(tr("--language 不是可识别的语言"));
         QLocale::setDefault(locale);
     }
 
@@ -215,7 +215,7 @@ int main(int argc, char *argv[])
         const QString path = parser.value(dumpTranslationsOption);
         if (path.trimmed().isEmpty()) {
             EngineBootstrap::shutdown();
-            return usageError(tr("--dump-translations 需要输出路徑"));
+            return usageError(tr("--dump-translations 需要输出路径"));
         }
         QFile file(path);
         if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {

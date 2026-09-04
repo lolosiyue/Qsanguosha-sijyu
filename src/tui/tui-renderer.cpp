@@ -49,7 +49,7 @@ void appendOptions(QStringList *lines, const QList<InteractionOption> &options)
         const InteractionOption &option = options.at(i);
         lines->append(QStringLiteral("  [%1] %2%3").arg(i + 1)
             .arg(option.label.isEmpty() ? option.value : option.label,
-                 option.enabled ? QString() : tr("（停用）")));
+                 option.enabled ? QString() : tr("（禁用）")));
     }
 }
 
@@ -61,7 +61,7 @@ void appendCards(QStringList *lines, const QList<int> &cards, const QList<int> &
         const QString display = resolver ? TuiRenderer::sanitize(resolver(cardId), 512)
                                          : tr("牌 %1").arg(cardId);
         lines->append(tr("  [%1] %2（ID=%3）%4").arg(startIndex + i).arg(display).arg(cardId)
-            .arg(disabled.contains(cardId) ? tr("（停用）") : QString()));
+            .arg(disabled.contains(cardId) ? tr("（禁用）") : QString()));
     }
 }
 
@@ -267,10 +267,10 @@ QString TuiRenderer::nameText(const QString &name) const
         return name;
     static const QHash<QString, QString> labels{
         {QStringLiteral("idle"), tr("闲置")},
-        {QStringLiteral("connecting"), tr("连线中")},
+        {QStringLiteral("connecting"), tr("连接中")},
         {QStringLiteral("reconnecting"), tr("重连中")},
-        {QStringLiteral("handshake"), tr("交握中")},
-        {QStringLiteral("active"), tr("已连线")},
+        {QStringLiteral("handshake"), tr("握手中")},
+        {QStringLiteral("active"), tr("已连接")},
         {QStringLiteral("disconnected"), tr("已中断")},
         {QStringLiteral("failed"), tr("失败")},
         {QStringLiteral("waiting"), tr("等待中")},
@@ -296,7 +296,7 @@ QString TuiRenderer::interactionTitle(const InteractionRequest &request) const
 {
     switch (request.type) {
     case InteractionType::ChooseRole:
-        return tr("分配身分");
+        return tr("分配身份");
     case InteractionType::ChooseGeneral:
     case InteractionType::AskGeneral:
         return tr("选择武将");
@@ -355,14 +355,14 @@ QString TuiRenderer::answerHint(const InteractionRequest &request) const
     case InteractionResponseShape::Assignment: {
         const auto *value = request.payloadAs<RoleAssignmentInteractionPayload>();
         if (value == nullptr || value->playerNames.isEmpty())
-            return tr("作答：<玩家>=<身分>  例如 1=主公 2=反贼");
+            return tr("作答：<玩家>=<身份>  例如 1=主公 2=反贼");
         QStringList parts;
         for (int i = 0; i < value->playerNames.size(); ++i) {
             const QString role = (value->roles.size() == value->playerNames.size())
                 ? nameText(value->roles.at(i)) : QStringLiteral("?");
             parts << QStringLiteral("%1=%2").arg(i + 1).arg(role);
         }
-        return tr("作答：每位玩家写 <编号>=<身分>，同一行以空白隔开\n范例：%1")
+        return tr("作答：每位玩家写 <编号>=<身份>，同一行以空白隔开\n示例：%1")
             .arg(parts.join(QLatin1Char(' ')));
     }
     case InteractionResponseShape::Option:
@@ -398,7 +398,7 @@ QString TuiRenderer::answerHint(const InteractionRequest &request) const
     case InteractionResponseShape::GeneralArrangement:
         return tr("作答：依序输入武将编号");
     case InteractionResponseShape::Custom:
-        return tr("作答：一个 JSON 物件或阵列");
+        return tr("作答：一个 JSON 对象或数组");
     default:
         return QString();
     }
@@ -410,7 +410,7 @@ QString TuiRenderer::renderState(const ClientGameState &state) const
     const QVariantMap setup = state.setup();
     const QVariantMap game = state.game();
     QStringList lines{heading(tr("QSanguosha 终端客户端"))};
-    lines << tr("连线：%1  %2:%3  延迟=%4ms  重连=%5")
+    lines << tr("连接：%1  %2:%3  延迟=%4ms  重连=%5")
         .arg(nameText(connection.value(QStringLiteral("state"), QStringLiteral("idle")).toString()),
              connection.value(QStringLiteral("host")).toString(),
              connection.value(QStringLiteral("port")).toString(),
@@ -419,7 +419,7 @@ QString TuiRenderer::renderState(const ClientGameState &state) const
                  : QStringLiteral("?"),
              connection.value(QStringLiteral("reconnected")).toBool()
                  ? tr("是") : tr("否"));
-    lines << tr("伺服器：%1  版本=%2  MOD=%3")
+    lines << tr("服务器：%1  版本=%2  MOD=%3")
         .arg(sanitize(setup.value(QStringLiteral("server_name")).toString(), 256),
              sanitize(connection.value(QStringLiteral("game_version")).toString(), 128),
              sanitize(connection.value(QStringLiteral("mod_name")).toString(), 128));
@@ -495,7 +495,7 @@ QString TuiRenderer::renderPlayers(const ClientGameState &state) const
             ? nameText(player.value(QStringLiteral("general")).toString())
             : tr("%1/%2").arg(
                 nameText(player.value(QStringLiteral("general")).toString()), deputy);
-        lines << tr("    武将=%1 势力=%2 体力=%3/%4 生存=%5 网路=%6 身分=%7 手牌=%8")
+        lines << tr("    武将=%1 势力=%2 体力=%3/%4 生存=%5 网络=%6 身份=%7 手牌=%8")
             .arg(generals, kingdomText(player))
             .arg(player.value(QStringLiteral("hp")).toInt())
             .arg(player.value(QStringLiteral("max_hp")).toInt())
@@ -521,7 +521,7 @@ QString TuiRenderer::renderPlayers(const ClientGameState &state) const
                  sanitize(pileSummary.join(QStringLiteral(", ")), 512),
                  sanitize(marks.join(QStringLiteral(", ")), 512),
                  flags.isEmpty() ? QString()
-                     : tr(" 旗标=[%1]").arg(sanitize(flags, 256)));
+                     : tr(" 标志=[%1]").arg(sanitize(flags, 256)));
     }
     if (names.isEmpty())
         lines << tr("（等待玩家）");
@@ -547,7 +547,7 @@ QString TuiRenderer::renderHand(const ClientGameState &state) const
                      ? tr(" 可用") : QString());
     }
     if (index == 0)
-        lines << tr("（没有可见的手牌身分）");
+        lines << tr("（没有可见的手牌）");
     return lines.join(QLatin1Char('\n'));
 }
 
@@ -576,7 +576,7 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
         lines << tr("限时 %1 秒").arg((request.timeoutMs + 999) / 1000);
 
     if (const auto *value = request.payloadAs<RoleAssignmentInteractionPayload>()) {
-        lines << tr("为每位玩家指定一个身分。");
+        lines << tr("为每位玩家指定一个身份。");
         QMap<QString, int> roleCounts;
         for (const QString &role : value->roles)
             roleCounts[role] += 1;
@@ -595,7 +595,7 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
                 uniqueRoles.append(role);
         }
         if (!uniqueRoles.isEmpty()) {
-            lines << tr("身分：");
+            lines << tr("身份：");
             for (const QString &role : uniqueRoles)
                 lines << QStringLiteral("  %1 = %2").arg(role, nameText(role));
         }
@@ -647,7 +647,7 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
             }
             if (value->selection.selectableCards.isEmpty()
                 && value->skillCandidates.isEmpty()) {
-                lines << tr("  （尚无手牌清单，可先打 /hand）");
+                lines << tr("  （尚无手牌列表，可先打 /hand）");
             }
         }
         if (!value->fixedTargets.isEmpty()) {
@@ -693,7 +693,7 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
                 .arg(nameText(value->options.at(i).skillName))
                 .arg(value->options.at(i).instanceId);
     } else if (const auto *value = request.payloadAs<CustomInteractionPayload>()) {
-        lines << tr("自订类型：%1").arg(sanitize(value->typeName, 128));
+        lines << tr("自定义类型：%1").arg(sanitize(value->typeName, 128));
     }
     const QString hint = answerHint(request);
     if (!hint.isEmpty())
