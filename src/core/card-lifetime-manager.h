@@ -199,6 +199,10 @@ public:
     void setDomainBaseline(const void *domain, const QSet<const void *> &addresses);
     void unregisterDomainBaseline(const void *domain);
     quint64 entryCountForDomain(const void *domain) const;
+    // domain 已經放手(token 唔再 live)但 QObject 仲生存嘅 entry 對應嘅物件。
+    // reapDeadLocked 唔會刪走一個 object 未死嘅 entry, 所以收工前要畀 caller
+    // 有機會 flush 佢哋嘅 DeferredDelete。仲 live 嘅唔會交出嚟。
+    QList<QPointer<QObject>> retiredDomainObjects(const void *domain) const;
     quint64 activeScopeDepth() const;
     quint64 activeScopeDepthForDomain(const void *domain) const;
     void enterScope();

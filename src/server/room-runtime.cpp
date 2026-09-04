@@ -176,6 +176,19 @@ quint64 RoomRuntime::drainShutdownStage(const char *stage)
             if (object)
                 QCoreApplication::sendPostedEvents(
                     object.data(), QEvent::DeferredDelete);
+        // drainDomain 只交返佢自己 retire 嗰批(entry->pending)。其他人直接
+        // deleteLater() 落去嘅 domain 物件(例如 CardUseStruct 放走自己擁有嘅牌)
+        // 唔會出現喺嗰個名單度; 而 reapDeadLocked 只要 QObject 未死就唔會刪
+        // entry, 於是 entryCountForDomain() 永遠唔會歸零, 收工檢查必然失敗。
+        // 逐個 object 派送(唔用 process-wide flush), 同上面一樣唔會撞到另一個
+        // Room 嘅 deferred destructor; 亦只碰 domain 已經放手嗰批。
+        const QList<QPointer<QObject>> lingering =
+            globalCardLifetimeManager().retiredDomainObjects(this);
+        for (const QPointer<QObject> &object : lingering) {
+            if (object && object->thread() == QThread::currentThread())
+                QCoreApplication::sendPostedEvents(
+                    object.data(), QEvent::DeferredDelete);
+        }
     }
     std::fprintf(stdout, "CARD_LIFETIME_SHUTDOWN_STAGE %s retired=%llu\n",
                  stage, static_cast<unsigned long long>(retired));
@@ -289,7 +302,14 @@ bool RoomRuntime::finalGaugeIsZero(const CardLifetimeGauge &) const
 
 void RoomRuntime::failShutdown(const char *stage, const CardLifetimeGauge &gauge)
 {
-    std::fprintf(stderr, "ROOM_RUNTIME_FAIL stage=%s live=%llu pending=%llu reservations=%llu wrappers=%llu leases=%llu pins=%llu entries=%llu\n",
+    // 傳入嘅 gauge 係全域數字, 一個健康嘅 process 都會有非零值(engine 的牌定義
+    // 就佔咗幾千個 entry)。真正被檢查嘅係 domain-scoped 嗰組, 所以兩組都要印,
+    // 否則 log 上見到嘅數字同失敗原因對唔上。
+    CardLifetimeManager &manager = globalCardLifetimeManager();
+    const CardLifetimeGauge domainGauge = manager.gaugeForDomain(this);
+    // 一行一個 marker: card-lifetime contract 會數 "ROOM_RUNTIME_FAIL" 出現
+    // 次數, 所以 domain 數字要併埋落同一行, 唔可以另起一個同名前綴嘅 marker。
+    std::fprintf(stderr, "ROOM_RUNTIME_FAIL stage=%s live=%llu pending=%llu reservations=%llu wrappers=%llu leases=%llu pins=%llu entries=%llu domain_live=%llu domain_unclaimed=%llu domain_pending=%llu domain_reservations=%llu domain_wrappers=%llu domain_leases=%llu domain_pins=%llu domain_edges=%llu domain_entries=%llu domain_scopes=%llu\n",
                  stage,
                  static_cast<unsigned long long>(gauge.managed_live),
                  static_cast<unsigned long long>(gauge.pending_delete),
@@ -297,7 +317,18 @@ void RoomRuntime::failShutdown(const char *stage, const CardLifetimeGauge &gauge
                  static_cast<unsigned long long>(gauge.wrapper_leases),
                  static_cast<unsigned long long>(gauge.native_leases),
                  static_cast<unsigned long long>(gauge.lua_pins),
-                 static_cast<unsigned long long>(globalCardLifetimeManager().entryCount()));
+                 static_cast<unsigned long long>(globalCardLifetimeManager().entryCount()),
+                 static_cast<unsigned long long>(domainGauge.managed_live),
+                 static_cast<unsigned long long>(domainGauge.factory_unclaimed
+                                                 + domainGauge.unknown_unclaimed),
+                 static_cast<unsigned long long>(domainGauge.pending_delete),
+                 static_cast<unsigned long long>(domainGauge.adoption_reserved),
+                 static_cast<unsigned long long>(domainGauge.wrapper_leases),
+                 static_cast<unsigned long long>(domainGauge.native_leases),
+                 static_cast<unsigned long long>(domainGauge.lua_pins),
+                 static_cast<unsigned long long>(domainGauge.sidecar_edges),
+                 static_cast<unsigned long long>(manager.entryCountForDomain(this)),
+                 static_cast<unsigned long long>(manager.activeScopeDepthForDomain(this)));
     m_shutdownState = ShutdownState::Failed;
     restorePreviousDomain();
     QJsonObject details;
@@ -310,6 +341,15 @@ void RoomRuntime::failShutdown(const char *stage, const CardLifetimeGauge &gauge
     details.insert(QStringLiteral("sidecar_edges"), qint64(gauge.sidecar_edges));
     details.insert(QStringLiteral("entries"), qint64(globalCardLifetimeManager().entryCount()));
     details.insert(QStringLiteral("active_scopes"), qint64(globalCardLifetimeManager().activeScopeDepth()));
+    details.insert(QStringLiteral("domain_managed_live"), qint64(domainGauge.managed_live));
+    details.insert(QStringLiteral("domain_pending_delete"), qint64(domainGauge.pending_delete));
+    details.insert(QStringLiteral("domain_adoption_reserved"), qint64(domainGauge.adoption_reserved));
+    details.insert(QStringLiteral("domain_wrapper_leases"), qint64(domainGauge.wrapper_leases));
+    details.insert(QStringLiteral("domain_native_leases"), qint64(domainGauge.native_leases));
+    details.insert(QStringLiteral("domain_lua_pins"), qint64(domainGauge.lua_pins));
+    details.insert(QStringLiteral("domain_sidecar_edges"), qint64(domainGauge.sidecar_edges));
+    details.insert(QStringLiteral("domain_entries"), qint64(manager.entryCountForDomain(this)));
+    details.insert(QStringLiteral("domain_active_scopes"), qint64(manager.activeScopeDepthForDomain(this)));
     const QByteArray failure = QJsonDocument(details).toJson(QJsonDocument::Compact);
     std::fprintf(stderr, "CARD_LIFETIME_SHUTDOWN_FAILED stage=%s %s\n",
                  stage, failure.constData());
