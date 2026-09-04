@@ -10,6 +10,23 @@
 #include <cstdio>
 #include <mutex>
 
+// CardTagOwner 只係 tag 上嘅擁有權包裝, 但讀取端一律用 value<const Card*>()
+// (tenyear.cpp 的 Juchui / ThJizhanmc / ThZhuitao, 同 swig/qvariant.i 的
+// QVariant::toCard())。冇 converter 嘅話 QVariant 會靜靜地還 nullptr,
+// 技能唔會發動亦唔會報錯, 所以喺呢度一次過補返兩個方向。
+static struct CardTagOwnerConverterRegistrar {
+    CardTagOwnerConverterRegistrar()
+    {
+        qRegisterMetaType<CardTagOwner>("CardTagOwner");
+        QMetaType::registerConverter<CardTagOwner, Card *>(
+            [](const CardTagOwner &owner) { return owner.card; });
+        QMetaType::registerConverter<CardTagOwner, const Card *>(
+            [](const CardTagOwner &owner) {
+                return static_cast<const Card *>(owner.card);
+            });
+    }
+} cardTagOwnerConverterRegistrar;
+
 namespace {
 QMutex associationMutex;
 QHash<const void *, CardLifetimeManager *> cardAssociations;
@@ -1678,7 +1695,6 @@ void CardLifetimeManager::unregisterDomainBaseline(const void *domain)
 
 void CardLifetimeManager::dumpDomain(const void *domain) const
 {
-    QList<const void *> liveAddresses;
     std::unique_lock<ProfiledMutex> lock(m_mutex);
     quint64 live = 0;
     quint64 original = 0;
@@ -1703,18 +1719,32 @@ void CardLifetimeManager::dumpDomain(const void *domain) const
         if (it->object)
             ++withObject;
     }
-    quint64 printed = 0;
-    for (auto it = m_entries.cbegin(); it != m_entries.cend() && printed < 128; ++it) {
-        if (it->domain != domain || !it->token->live
-            || it->baselineDomain == domain)
+    // 失敗條件計嘅係 entryCountForDomain(), 佢唔理 token->live。所以呢度要連
+    // 已經唔 live 但仲掛喺 domain 上嘅 entry 一齊列出嚟, 否則 live=0 嘅時候
+    // 一行都唔會印, 睇 log 嘅人淨係見到一個「4」而唔知係邊四個。
+    struct DomainEntryLine {
+        const void *address;
+        const QObject *object;
+        bool live;
+        bool pending;
+        int state;
+    };
+    QList<DomainEntryLine> lines;
+    for (auto it = m_entries.cbegin(); it != m_entries.cend() && lines.size() < 128; ++it) {
+        if (it->domain != domain || it->baselineDomain == domain)
             continue;
-        liveAddresses.push_back(it.key());
-        ++printed;
+        lines.push_back({it.key(), it->object.data(), it->token->live, it->pending,
+                         static_cast<int>(it->token->state)});
     }
     entries = static_cast<quint64>(m_entries.size());
     lock.unlock();
-    for (const void *address : liveAddresses)
-        std::fprintf(stderr, "CARD_LIFETIME_DOMAIN_ENTRY address=%p\n", address);
+    for (const DomainEntryLine &line : lines) {
+        std::fprintf(stderr,
+                     "CARD_LIFETIME_DOMAIN_ENTRY address=%p object=%p class=%s live=%d pending=%d state=%d\n",
+                     line.address, static_cast<const void *>(line.object),
+                     line.object ? line.object->metaObject()->className() : "-",
+                     line.live ? 1 : 0, line.pending ? 1 : 0, line.state);
+    }
     std::fprintf(stderr, "CARD_LIFETIME_DOMAIN_DUMP live=%llu original=%llu external=%llu adopted=%llu pending=%llu object=%llu entries=%llu\n",
                  static_cast<unsigned long long>(live),
                  static_cast<unsigned long long>(original),
@@ -1758,6 +1788,22 @@ quint64 CardLifetimeManager::entryCountForDomain(const void *domain) const
         if (it->domain == domain && it->baselineDomain != domain)
             ++count;
     return count;
+}
+
+QList<QPointer<QObject>> CardLifetimeManager::retiredDomainObjects(const void *domain) const
+{
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
+    QList<QPointer<QObject>> objects;
+    for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it) {
+        if (it->domain != domain || it->baselineDomain == domain)
+            continue;
+        // 只交出 domain 已經放手嘅(token 唔再 live)。仲 live 嘅牌可能只係
+        // 排咗一個 deleteLater 等 event loop, 提早派送會喺人哋腳下拆咗佢。
+        if (it->token->live || it->object.isNull())
+            continue;
+        objects.append(it->object);
+    }
+    return objects;
 }
 
 quint64 CardLifetimeManager::activeScopeDepth() const
