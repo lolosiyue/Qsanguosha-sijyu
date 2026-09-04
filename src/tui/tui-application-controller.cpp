@@ -34,7 +34,7 @@ QString tr(const char *source)
 TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &options,
     QObject *parent)
     : QObject(parent), m_options(options), m_roomContext(m_core.state()),
-      m_session(&m_core, this),
+      m_players(m_core.state()), m_session(&m_core, this),
       m_renderer(options.ansiEnabled,
           TuiRenderer::Resolvers{
               [this](int cardId) { return resolveCardDisplayText(cardId); },
@@ -60,6 +60,8 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
     connect(&m_input, &TuiInput::completionChoices, this, [this](const QStringList &matches) {
         writeOutput(matches.join(QLatin1Char(' ')));
     });
+    m_roomContext.setOwnerResolver(
+        [this](int cardId) { return m_players.cardOwner(cardId); });
     connect(&m_session, &ClientLiveSession::connectionChanged, this,
         [this](const QString &state) {
             // The session reports the wire token; the player reads the label.
@@ -111,6 +113,13 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
             // The room has to be registered before anything renders a card, so
             // it goes first: card text resolves through it.
             m_roomContext.applyMessage(message);
+            // Cards resolve through the room, so the room goes first and the
+            // players -- which reach for their equipment through it -- second.
+            m_players.sync();
+            if (!m_core.hasActiveRequest()) {
+                m_roomContext.setCardUseContext(
+                    CardUseStruct::CARD_USE_REASON_UNKNOWN, QString());
+            }
             appendSynthesizedLogs(message);
         });
     connect(&m_session, &ClientLiveSession::presentationEvent, this,
@@ -152,6 +161,23 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
                 if (seconds > 0)
                     request.timeoutMs = static_cast<qint64>(seconds) * 1000 + 5000;
             }
+            // Legality questions the renderer asks while the prompt is up read
+            // the reason and pattern off the room, so set them before the
+            // request goes live.
+            CardUseStruct::CardUseReason reason = CardUseStruct::CARD_USE_REASON_UNKNOWN;
+            QString usePattern;
+            if (const auto *cards = std::get_if<CardInteractionPayload>(&request.payload)) {
+                usePattern = cards->selection.pattern;
+                if (request.type == InteractionType::PlayCard) {
+                    reason = CardUseStruct::CARD_USE_REASON_PLAY;
+                    usePattern.clear();
+                } else {
+                    reason = cards->selection.handlingMethod == Card::MethodUse
+                        ? CardUseStruct::CARD_USE_REASON_RESPONSE_USE
+                        : CardUseStruct::CARD_USE_REASON_RESPONSE;
+                }
+            }
+            m_roomContext.setCardUseContext(reason, usePattern);
             if (m_core.beginRequest(std::move(request)) == 0) {
                 writeError(tr("无法启用服务器互动"));
                 requestExit(4);

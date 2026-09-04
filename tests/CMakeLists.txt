@@ -327,6 +327,7 @@ if(QSAN_BUILD_TUI)
     add_executable(qsanguosha_tui_tests
         tui-tests-main.cpp
         tui/tui-card-text-test.cpp
+        tui/tui-client-player-test.cpp
         tui/tui-log-text-test.cpp
         tui/tui-contract-test.cpp
         tui/tui-live-tcp-test.cpp
@@ -336,6 +337,7 @@ if(QSAN_BUILD_TUI)
         ${QSAN_TEST_ROOT}/src/client/interaction-reply-encoder.cpp
         ${QSAN_TEST_ROOT}/src/client/interaction-request-factory.cpp
         ${QSAN_TEST_ROOT}/src/client/protocol-interaction-request-builder.cpp
+        ${QSAN_TEST_ROOT}/src/tui/tui-client-player.cpp
         ${QSAN_TEST_ROOT}/src/tui/tui-command.cpp
         ${QSAN_TEST_ROOT}/src/tui/tui-interaction-view.cpp
         ${QSAN_TEST_ROOT}/src/tui/tui-renderer.cpp
@@ -343,6 +345,8 @@ if(QSAN_BUILD_TUI)
     )
     set_source_files_properties(tui/tui-card-text-test.cpp
         PROPERTIES COMPILE_DEFINITIONS main=runTuiCardTextTests)
+    set_source_files_properties(tui/tui-client-player-test.cpp
+        PROPERTIES COMPILE_DEFINITIONS main=runTuiClientPlayerTests)
     set_source_files_properties(tui/tui-log-text-test.cpp
         PROPERTIES COMPILE_DEFINITIONS main=runTuiLogTextTests)
     set_source_files_properties(tui/tui-contract-test.cpp
@@ -369,6 +373,11 @@ if(QSAN_BUILD_TUI)
     )
     qsan_add_ctest(qsanguosha_tui_card_text qsanguosha_tui_tests
         SUITE card-text
+        LABELS "client;tui;fast"
+        TIMEOUT 120
+    )
+    qsan_add_ctest(qsanguosha_tui_client_player qsanguosha_tui_tests
+        SUITE client-player
         LABELS "client;tui;fast"
         TIMEOUT 120
     )
