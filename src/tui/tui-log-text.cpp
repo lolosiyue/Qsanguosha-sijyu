@@ -34,6 +34,13 @@ ClientLogFormatStyle tuiLogStyle(const TuiPlayerNameResolver &playerName)
     style.toJoin = QStringLiteral("、");
     style.phrases = engineUseCardPhrases();
     style.translate = [](const QString &key) { return translateOrKeep(key); };
+    // Without this the formatter falls back to Engine::getCard(), which needs a
+    // room context the text client never registers: %card then resolved to
+    // nothing and equip / damage-source lines lost their card entirely. No room
+    // means no filtered card either, so both branches read the engine table.
+    style.cardById = [](int id, bool) -> const Card * {
+        return Sanguosha != nullptr ? Sanguosha->getEngineCard(id) : nullptr;
+    };
     style.cardLogName = [](const Card *card) {
         if (card->getId() >= 0)
             return tuiCardDisplayText(card->getId());
