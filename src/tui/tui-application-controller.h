@@ -46,6 +46,10 @@ private:
     void requestExit(int code);
     QString resolveCardWireText(int cardId) const;
     QString resolveCardDisplayText(int cardId) const;
+    // What the engine says about a candidate for the request being answered.
+    // Advisory only: the parser still accepts whatever the player types.
+    QString resolveCardHint(int cardId) const;
+    QString resolvePlayerHint(const QString &objectName) const;
     QString resolveNameText(const QString &name) const;
     static QString resolveGeneralKingdom(const QString &generalName);
     QString resolveSkillCardWireText(const QString &skillName, int instanceId,
@@ -79,6 +83,11 @@ private:
     bool m_exiting = false;
     bool m_gameOverMarked = false;
     QString m_lastMarkedSyncId;
+    // The question the active request is asking, kept so the hint resolvers do
+    // not have to reach into ClientCore while it is presenting.
+    InteractionType m_hintType = InteractionType::None;
+    CardUseStruct::CardUseReason m_hintReason = CardUseStruct::CARD_USE_REASON_UNKNOWN;
+    QString m_hintPattern;
     QList<int> m_renPile;
 };
 

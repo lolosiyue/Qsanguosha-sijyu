@@ -1025,6 +1025,28 @@ void rendererContract()
     check(namedPlayText.contains(QStringLiteral("时语（sgs1）"))
               && namedPlayText.contains(QStringLiteral("sgs2")),
           "targets show the screen name and keep the object name beside it");
+
+    // Engine advice is rendered beside a candidate, never instead of it: a
+    // wrong hint must not be able to hide a legal answer.
+    TuiRenderer advised(false, TuiRenderer::Resolvers{
+        {}, {}, {}, {},
+        [](int cardId) { return cardId == 7 ? QStringLiteral("（不可用）") : QString(); },
+        [](const QString &objectName) {
+            return objectName == QLatin1String("sgs2") ? QStringLiteral(" 距离2") : QString();
+        }});
+    const QString advisedText = advised.renderInteraction(playPrompt);
+    check(advisedText.contains(QStringLiteral("（不可用）")),
+          "a card the engine rules out is marked");
+    check(advisedText.contains(QStringLiteral("ID=7")) && advisedText.contains(QStringLiteral("ID=12")),
+          "an advised card is still listed and still selectable");
+    check(advisedText.contains(QStringLiteral("距离2")),
+          "a target carries the distance the engine worked out");
+    InteractionRequest disabledPrompt = playPrompt;
+    std::get_if<CardInteractionPayload>(&disabledPrompt.payload)->selection.disabledCards = {7};
+    const QString disabledText = advised.renderInteraction(disabledPrompt);
+    check(disabledText.contains(QStringLiteral("（禁用）"))
+              && !disabledText.contains(QStringLiteral("（不可用）")),
+          "the server's own disabled marker wins over engine advice");
     InteractionRequest keyedPrompt = cardRequest();
     keyedPrompt.prompt = QStringLiteral("savage-assault-slash:sgs1");
     const QString keyedPromptText = engineBacked.renderInteraction(keyedPrompt);
