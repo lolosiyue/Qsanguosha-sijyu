@@ -164,11 +164,11 @@ bool probeResidualGaugeProducersAndDomainIsolation()
     const auto pendingToken = isolation.observeLive(&pendingA);
     const bool pendingRequested = pendingToken && isolation.requestNativeDelete(pendingToken);
     CardLifetimeManager::setCurrentDomain(&domainB);
-    isolation.enterScope();
+    const void *isolatedScope = isolation.enterScope();
     isolation.enterLuaPin();
     const quint64 isolatedDrain = isolation.drain();
     isolation.leaveLuaPin();
-    isolation.leaveScope();
+    isolation.leaveScope(isolatedScope);
     CardLifetimeManager::setCurrentDomain(previousDomain);
     const bool crossDomainIsolation = pendingRequested && isolatedDrain == 1
         && isolation.state(pendingToken) == CardLifetimeState::Retired;

@@ -93,16 +93,28 @@ void RoomRuntime::shutdownFinal()
     }
 
     const CardLifetimeGauge workerGauge = globalCardLifetimeManager().gauge();
-    if (globalCardLifetimeManager().activeScopeDepthForDomain(this) != 0
-        || globalCardLifetimeManager().gaugeForDomain(this).lua_pins != 0)
+    const quint64 workerScopes =
+        globalCardLifetimeManager().activeScopeDepthForDomain(this);
+    const quint64 workerPins =
+        globalCardLifetimeManager().gaugeForDomain(this).lua_pins;
+    if (workerScopes != 0 || workerPins != 0) {
+        // 呢兩個數字幾微秒之後就會歸零(揸住嘅 thread 啱啱收工), 所以要喺檢查
+        // 嗰刻抄低, 唔可以留返畀 failShutdown 再讀一次。
+        reportShutdownBlockers("worker-final", workerScopes, workerPins);
         failShutdown("worker-final", workerGauge);
+    }
 
     releaseShutdownRoots();
     drainShutdownStage("preclose");
     const CardLifetimeGauge precloseGauge = globalCardLifetimeManager().gauge();
-    if (globalCardLifetimeManager().activeScopeDepthForDomain(this) != 0
-        || globalCardLifetimeManager().gaugeForDomain(this).lua_pins != 0)
+    const quint64 precloseScopes =
+        globalCardLifetimeManager().activeScopeDepthForDomain(this);
+    const quint64 preclosePins =
+        globalCardLifetimeManager().gaugeForDomain(this).lua_pins;
+    if (precloseScopes != 0 || preclosePins != 0) {
+        reportShutdownBlockers("preclose", precloseScopes, preclosePins);
         failShutdown("preclose", precloseGauge);
+    }
 
     m_ai.shutdown();
     m_lua.shutdown();
@@ -298,6 +310,22 @@ bool RoomRuntime::finalGaugeIsZero(const CardLifetimeGauge &) const
         || manager.activeScopeDepthForDomain(this) != 0)
         return false;
     return true;
+}
+
+void RoomRuntime::reportShutdownBlockers(const char *stage, quint64 scopes,
+                                         quint64 luaPins)
+{
+    const QByteArray holders = globalCardLifetimeManager()
+        .describeDomainScopeHolders(this).join(QLatin1Char(',')).toUtf8();
+    std::fprintf(stderr,
+                 "ROOM_RUNTIME_BLOCKED stage=%s scopes=%llu lua_pins=%llu current=%llx owner=%llx holders=%s\n",
+                 stage, static_cast<unsigned long long>(scopes),
+                 static_cast<unsigned long long>(luaPins),
+                 static_cast<unsigned long long>(
+                     reinterpret_cast<quintptr>(QThread::currentThread())),
+                 static_cast<unsigned long long>(reinterpret_cast<quintptr>(
+                     m_room ? m_room->QObject::thread() : nullptr)),
+                 holders.isEmpty() ? "-" : holders.constData());
 }
 
 void RoomRuntime::failShutdown(const char *stage, const CardLifetimeGauge &gauge)

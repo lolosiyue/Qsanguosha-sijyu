@@ -380,15 +380,13 @@ static bool v2PartitionPreservesOrderAndPrivatePriorityState()
 static bool cardLifetimeMutexProfileCountsLocks()
 {
     CardLifetimeManager disabled(CardLifetimeMode::ObserveOnly, nullptr, false);
-    disabled.enterScope();
-    disabled.leaveScope();
+    disabled.leaveScope(disabled.enterScope());
     const CardLifetimeMutexProfile disabledProfile = disabled.mutexProfile();
     if (disabledProfile.enabled || disabledProfile.lock_count != 0)
         return false;
 
     CardLifetimeManager enabled(CardLifetimeMode::ObserveOnly, nullptr, true);
-    enabled.enterScope();
-    enabled.leaveScope();
+    enabled.leaveScope(enabled.enterScope());
     const CardLifetimeMutexProfile profile = enabled.mutexProfile();
     return profile.enabled && profile.lock_count == 2
         && profile.contended_count <= profile.lock_count

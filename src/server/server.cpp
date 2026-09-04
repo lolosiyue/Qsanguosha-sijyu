@@ -75,6 +75,8 @@ public:
 	RoomInitializationThread(RoomRuntime *runtime, QThread *returnThread, QObject *parent)
 		: QThread(parent), m_runtime(runtime), m_returnThread(returnThread)
 	{
+		// 收工診斷要講得出係邊條 thread 揸住 card-lifetime scope。
+		setObjectName(QStringLiteral("RoomInitializationThread"));
 	}
 
 	bool runtimeReady() const { return m_runtimeReady; }

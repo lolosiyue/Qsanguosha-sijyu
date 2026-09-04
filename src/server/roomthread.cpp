@@ -507,6 +507,8 @@ RoomThread::RoomThread(Room*room)
 	  m_profileRoomId(room ? room->getId() : -1),
 	  m_profileMode(room ? room->getMode() : QString())
 {
+	// 收工檢查要講得出係邊條 thread 仲揸住 card-lifetime scope, 所以畀個名佢。
+	setObjectName(QStringLiteral("RoomThread(room %1)").arg(m_profileRoomId));
 	if (m_perfTraceEnabled) {
 		connect(this, &QThread::finished, this,
 			&RoomThread::emitPerfTrace, Qt::DirectConnection);

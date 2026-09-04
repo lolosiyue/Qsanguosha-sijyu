@@ -3,6 +3,7 @@
 #include "skill.h"
 #include "structs.h"
 
+#include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QMutexLocker>
 #include <QSet>
@@ -1818,25 +1819,61 @@ quint64 CardLifetimeManager::activeScopeDepthForDomain(const void *domain) const
     return m_domainActiveScopes.value(domain, 0);
 }
 
-void CardLifetimeManager::enterScope()
+const void *CardLifetimeManager::enterScope(const char *site)
 {
     std::lock_guard<ProfiledMutex> lock(m_mutex);
     ++m_activeScopes;
-    ++m_domainActiveScopes[currentDomain];
+    const void *domain = currentDomain;
+    ++m_domainActiveScopes[domain];
+    m_domainScopeSites[domain].append({site, QThread::currentThread()});
+    return domain;
 }
 
-void CardLifetimeManager::leaveScope()
+void CardLifetimeManager::leaveScope(const void *domain)
 {
     std::lock_guard<ProfiledMutex> lock(m_mutex);
     if (m_activeScopes > 0)
         --m_activeScopes;
-    auto found = m_domainActiveScopes.find(currentDomain);
+    if (domain != currentDomain) {
+        // 唔係錯誤, 但值得知: 有人喺 scope 入面換咗 domain。扣返入嗰陣嗰個。
+        std::fprintf(stderr, "CARD_LIFETIME_SCOPE_DOMAIN_MOVED entered=%llx current=%llx\n",
+                     static_cast<unsigned long long>(reinterpret_cast<quintptr>(domain)),
+                     static_cast<unsigned long long>(reinterpret_cast<quintptr>(currentDomain)));
+    }
+    auto found = m_domainActiveScopes.find(domain);
     if (found != m_domainActiveScopes.end()) {
         if (*found > 0)
             --*found;
         if (*found == 0)
             m_domainActiveScopes.erase(found);
     }
+    auto sites = m_domainScopeSites.find(domain);
+    if (sites != m_domainScopeSites.end() && !sites->isEmpty()) {
+        sites->removeLast();
+        if (sites->isEmpty())
+            m_domainScopeSites.erase(sites);
+    }
+}
+
+QStringList CardLifetimeManager::describeDomainScopeHolders(const void *domain) const
+{
+    std::lock_guard<ProfiledMutex> lock(m_mutex);
+    QStringList result;
+    const auto sites = m_domainScopeSites.constFind(domain);
+    if (sites == m_domainScopeSites.cend())
+        return result;
+    QThread *mainThread = QCoreApplication::instance()
+        ? QCoreApplication::instance()->thread() : nullptr;
+    for (const ScopeSite &site : *sites) {
+        QString who = site.thread ? site.thread->objectName() : QStringLiteral("null");
+        if (who.isEmpty())
+            who = site.thread == mainThread ? QStringLiteral("main")
+                                            : QStringLiteral("anon");
+        result << QStringLiteral("%1@%2(%3)")
+            .arg(QString::fromLatin1(site.function ? site.function : "?"), who,
+                 QString::number(reinterpret_cast<quintptr>(site.thread), 16));
+    }
+    return result;
 }
 
 void CardLifetimeManager::enterLuaPin()
