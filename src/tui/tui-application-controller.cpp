@@ -1,4 +1,5 @@
 #include "tui-application-controller.h"
+#include "tui-text.h"
 
 #include "card.h"
 #include "engine.h"
@@ -9,6 +10,7 @@
 #include "tui-log-text.h"
 #include "protocol/session/session-payloads.h"
 #include "tui-play-skills.h"
+#include "tui-skill-dialog.h"
 #include "tui-synthesized-log.h"
 #include "tui-script-runner.h"
 
@@ -23,11 +25,6 @@
 using namespace QSanProtocol;
 
 namespace {
-
-QString tr(const char *source)
-{
-    return QCoreApplication::translate("QSanguoshaTui", source);
-}
 
 // The words that walk back a half-composed play, matching the ones
 // TuiInteractionView accepts for giving up on a prompt.
@@ -69,6 +66,9 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
              [this](const QString &skillName, int instanceId, const QList<int> &subcards,
                     QString *error) {
                  return resolveSkillCardWireText(skillName, instanceId, subcards, error);
+             },
+             [this](const QString &skillName, const QString &declaration, QString *error) {
+                 return applySkillDeclaration(skillName, declaration, error);
              }),
       m_input(this)
 {
@@ -88,11 +88,11 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
     connect(&m_session, &ClientLiveSession::connectionChanged, this,
         [this](const QString &state) {
             // The session reports the wire token; the player reads the label.
-            writeOutput(tr("连接：%1").arg(m_renderer.nameText(state)));
+            writeOutput(tuiText("tui_event_connection").arg(m_renderer.nameText(state)));
         });
     connect(&m_session, &ClientLiveSession::sessionActive, this, [this](bool reconnected) {
-        writeOutput(reconnected ? tr("已重连；等待原子状态快照")
-                                : tr("Protocol V2 会话已启用"));
+        writeOutput(reconnected ? tuiText("tui_event_reconnected")
+                                : tuiText("tui_event_session_ready"));
         // The server does not echo our own screen name back, so record the one
         // we signed up with; every view then names us the same way.
         const QString self = m_core.state()->selfName();
@@ -107,7 +107,7 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
             payload.trusted = true;
             QString error;
             if (!m_session.sendControl(S_COMMAND_TRUST, payload.toVariant(), &error))
-                writeError(tr("重连后无法恢复托管：%1").arg(error));
+                writeError(tuiText("tui_event_trust_restore_failed").arg(error));
         }
         if (m_script != nullptr)
             m_script->notifyStateChanged();
@@ -220,7 +220,7 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
             // half way through composing.
             clearPendingActivation();
             if (m_core.beginRequest(std::move(request)) == 0) {
-                writeError(tr("无法启用服务器互动"));
+                writeError(tuiText("tui_error_begin_request"));
                 requestExit(4);
                 return;
             }
@@ -241,7 +241,7 @@ bool TuiApplicationController::start(QString *error)
         m_log.setFileName(m_options.logFile);
         if (!m_log.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
             if (error != nullptr)
-                *error = tr("无法打开日志文件：%1").arg(m_log.errorString());
+                *error = tuiText("tui_error_log_open").arg(m_log.errorString());
             return false;
         }
     }
@@ -274,7 +274,7 @@ bool TuiApplicationController::start(QString *error)
         m_script->start();
     }
 
-    writeOutput(tr("QSanguosha 终端客户端－输入 /help 查看命令"));
+    writeOutput(tuiText("tui_banner"));
     m_session.connectToServer(m_options.session);
     return true;
 }
@@ -316,7 +316,7 @@ bool TuiApplicationController::checkPlayAnswer(const InteractionResponse &respon
         // the desktop adds them one click at a time.
         if (!card->targetFilter(chosen, target, self)) {
             if (error != nullptr) {
-                *error = tr("%1 不能指定 %2 为目标").arg(
+                *error = tuiText("tui_play_target_invalid").arg(
                     m_renderer.nameText(card->objectName()), resolvePlayerName(name));
             }
             return false;
@@ -326,8 +326,8 @@ bool TuiApplicationController::checkPlayAnswer(const InteractionResponse &respon
     if (!card->targetFixed() && !card->targetsFeasible(chosen, self)) {
         if (error != nullptr) {
             *error = chosen.isEmpty()
-                ? tr("%1 还需要指定目标").arg(m_renderer.nameText(card->objectName()))
-                : tr("%1 的目标数量不对").arg(m_renderer.nameText(card->objectName()));
+                ? tuiText("tui_play_target_missing").arg(m_renderer.nameText(card->objectName()))
+                : tuiText("tui_play_target_count").arg(m_renderer.nameText(card->objectName()));
         }
         return false;
     }
@@ -344,14 +344,14 @@ bool TuiApplicationController::beginTargetStage(const QString &firstLine,
 
     m_pending.active = true;
     m_pending.firstLine = firstLine;
-    QStringList lines{tr("已组出 %1，请指定目标：")
+    QStringList lines{tuiText("tui_target_stage_header")
         .arg(m_renderer.nameText(card->objectName()))};
     for (const QString &name : advice.targets) {
         const qsizetype index = m_hintTargets.indexOf(name);
-        lines << tr("  [%1] %2%3").arg(index >= 0 ? index + 1 : 0)
+        lines << tuiText("tui_target_stage_line").arg(index >= 0 ? index + 1 : 0)
             .arg(resolvePlayerName(name), resolvePlayerHint(name));
     }
-    lines << tr("输入目标编号（多个用空格）。放弃这次组牌：pass");
+    lines << tuiText("tui_target_stage_hint");
     writeOutput(lines.join(QLatin1Char('\n')));
     return true;
 }
@@ -379,7 +379,7 @@ void TuiApplicationController::handleInputLine(const QString &line)
         return;
     }
     if (!m_core.hasActiveRequest()) {
-        writeError(tr("目前没有互动；输入 /help 查看命令"));
+        writeError(tuiText("tui_no_request_hint"));
         return;
     }
 
@@ -395,12 +395,12 @@ void TuiApplicationController::handleInputLine(const QString &line)
     if (wasPending) {
         if (isAbandonToken(answer)) {
             clearPendingActivation();
-            writeOutput(tr("已放弃这次组牌"));
+            writeOutput(tuiText("tui_activation_abandoned"));
             return;
         }
         // Stage two replays the player's own first line with the targets
         // appended, so there is exactly one answer parser.
-        answer = tr("%1 -> %2").arg(m_pending.firstLine, answer);
+        answer = tuiText("tui_replay_line").arg(m_pending.firstLine, answer);
         m_pending.active = false;
     }
 
@@ -423,14 +423,14 @@ void TuiApplicationController::handleInputLine(const QString &line)
                 return;
             }
             m_pending.active = wasPending;
-            writeError(tr("%1（要照样送出请在开头加 !）").arg(reason));
+            writeError(tuiText("tui_play_rejected").arg(reason));
             return;
         }
     }
 
     clearPendingActivation();
     if (!m_session.submitInteractionResponse(std::move(response), &error))
-        writeError(error.isEmpty() ? tr("作答已被拒绝") : error);
+        writeError(error.isEmpty() ? tuiText("tui_answer_rejected") : error);
 }
 
 bool TuiApplicationController::trySkipRoleAssignment()
@@ -444,7 +444,7 @@ bool TuiApplicationController::trySkipRoleAssignment()
     if (m_session.submitInteractionResponse(std::move(response), &error))
         return true;
 
-    writeError(error.isEmpty() ? tr("无法跳过身份分配") : error);
+    writeError(error.isEmpty() ? tuiText("tui_role_skip_failed") : error);
     writeOutput(m_renderer.renderInteraction(m_core.activeRequest()));
     return false;
 }
@@ -456,15 +456,11 @@ void TuiApplicationController::handleCommand(const TuiCommandIntent &intent)
         TuiCommandType::Hand, TuiCommandType::Equipment, TuiCommandType::Piles,
         TuiCommandType::Skills, TuiCommandType::Log, TuiCommandType::Quit};
     if (m_core.hasActiveRequest() && !promptSafeCommands.contains(intent.type)) {
-        writeError(tr("提示期间只可使用只读命令、/cancel 与 /quit"));
+        writeError(tuiText("tui_command_readonly_only"));
         return;
     }
     if (intent.type == TuiCommandType::Help) {
-        writeOutput(tr(
-            "/help /status /players /hand /equip /piles /skills /log\n"
-            "/chat <文字> /trust [on|off] /addrobot [all|数量] /surrender /reconnect /quit\n"
-            "提示作答：索引、标签、范围（1-3）、card <牌字符串> -> 目标、"
-            "顶部 | 底部、cards <索引> -> 玩家、/cancel"));
+        writeOutput(tuiText("tui_help"));
     } else if (intent.type == TuiCommandType::Status) {
         writeOutput(m_renderer.renderState(*m_core.state()));
     } else if (intent.type == TuiCommandType::Players) {
@@ -481,14 +477,14 @@ void TuiApplicationController::handleCommand(const TuiCommandIntent &intent)
         writeOutput(renderLog());
     } else if (intent.type == TuiCommandType::Cancel) {
         if (!m_core.hasActiveRequest()) {
-            writeError(tr("目前没有互动"));
+            writeError(tuiText("tui_no_request"));
             return;
         }
         InteractionResponse response = InteractionResponse::makeCancel(m_core.activeRequestId());
         response.command = m_core.activeRequest().command;
         QString error;
         if (!m_session.submitInteractionResponse(std::move(response), &error))
-            writeError(error.isEmpty() ? tr("此请求不可取消") : error);
+            writeError(error.isEmpty() ? tuiText("tui_request_not_cancellable") : error);
     } else if (intent.type == TuiCommandType::Chat) {
         ChatPayload payload;
         payload.text = TuiRenderer::sanitize(intent.text, 1000);
@@ -539,11 +535,28 @@ void TuiApplicationController::fillSkillCandidates(InteractionType type,
         type == InteractionType::PlayCard ? QString() : payload->selection.pattern, payload);
 }
 
+QStringList TuiApplicationController::bannedPackages() const
+{
+    return m_core.state()->setup().value(QStringLiteral("ban_packages")).toStringList();
+}
+
 QString TuiApplicationController::resolveSkillHint(const QString &skillName, int instanceId) const
 {
     if (m_skillReason == CardUseStruct::CARD_USE_REASON_UNKNOWN)
         return QString();
-    return tuiSkillActivationHint(skillName, instanceId, m_skillReason, m_hintPattern);
+    const QString hint = tuiSkillActivationHint(skillName, instanceId, m_skillReason,
+                                                m_hintPattern);
+    if (!hint.isEmpty())
+        return hint;
+    // A skill whose dialog is open needs one more word from the player than
+    // the menu number, so the listing has to say so before they type it.
+    return tuiSkillNeedsDeclaration(skillName, bannedPackages()) ? tuiText("tui_hint_declaration_required") : QString();
+}
+
+bool TuiApplicationController::applySkillDeclaration(const QString &skillName,
+    const QString &declaration, QString *error) const
+{
+    return tuiApplySkillDeclaration(skillName, declaration, bannedPackages(), error);
 }
 
 QString TuiApplicationController::resolveSkillCardWireText(const QString &skillName,
@@ -583,11 +596,11 @@ QString TuiApplicationController::resolveCardHint(int cardId) const
     // Same questions RoomScene::enableTargets() asks, in the same order.
     if (m_hintType == InteractionType::PlayCard) {
         if (self->isCardLimited(card, Card::MethodUse))
-            return tr("（受限）");
-        return card->isAvailable(self) ? QString() : tr("（不可用）");
+            return tuiText("tui_hint_restricted");
+        return card->isAvailable(self) ? QString() : tuiText("tui_hint_unavailable");
     }
     if (m_hintType == InteractionType::DiscardCard) {
-        return self->isCardLimited(card, Card::MethodDiscard) ? tr("（受限）") : QString();
+        return self->isCardLimited(card, Card::MethodDiscard) ? tuiText("tui_hint_restricted") : QString();
     }
 
     Card::HandlingMethod method = card->getHandlingMethod();
@@ -596,13 +609,13 @@ QString TuiApplicationController::resolveCardHint(int cardId) const
         method = Card::MethodResponse;
     }
     if (self->isCardLimited(card, method))
-        return tr("（受限）");
+        return tuiText("tui_hint_restricted");
     QString pattern = m_hintPattern;
     if (pattern.endsWith(QLatin1Char('!')))
         pattern.chop(1);
     if (pattern.isEmpty() || pattern == QLatin1String("."))
         return QString();
-    return Sanguosha->matchPattern(pattern, self, card) ? QString() : tr("（不符）");
+    return Sanguosha->matchPattern(pattern, self, card) ? QString() : tuiText("tui_hint_mismatch");
 }
 
 TuiRenderer::CardTargets TuiApplicationController::cardTargetAdvice(const Card *card) const
@@ -642,8 +655,8 @@ QString TuiApplicationController::resolveHandCardHint(int cardId) const
     if (self == nullptr || card == nullptr)
         return QString();
     if (self->isCardLimited(card, Card::MethodUse))
-        return tr(" 受限");
-    return card->isAvailable(self) ? tr(" 可用") : QString();
+        return tuiText("tui_hand_hint_restricted");
+    return card->isAvailable(self) ? tuiText("tui_hand_hint_available") : QString();
 }
 
 QString TuiApplicationController::resolvePlayerHint(const QString &objectName) const
@@ -653,7 +666,7 @@ QString TuiApplicationController::resolvePlayerHint(const QString &objectName) c
     if (self == nullptr || target == nullptr || self == target)
         return QString();
     const int distance = self->distanceTo(target);
-    return distance > 0 ? tr(" 距离%1").arg(distance) : QString();
+    return distance > 0 ? tuiText("tui_hand_hint_distance").arg(distance) : QString();
 }
 
 QString TuiApplicationController::resolveNameText(const QString &name) const
@@ -675,11 +688,11 @@ QString TuiApplicationController::renderPiles() const
 {
     const QVariantMap player = m_core.state()->player(m_core.state()->selfName());
     const QVariantMap piles = player.value(QStringLiteral("piles")).toMap();
-    QStringList lines{tr("== 牌堆 ==")};
+    QStringList lines{tuiText("tui_piles_header")};
     for (auto it = piles.constBegin(); it != piles.constEnd(); ++it)
-        lines << tr("%1：%2 张").arg(TuiRenderer::sanitize(it.key(), 128))
+        lines << tuiText("tui_pile_line").arg(TuiRenderer::sanitize(it.key(), 128))
             .arg(it.value().toList().size());
-    lines << tr("牌堆：%1  弃牌：%2")
+    lines << tuiText("tui_pile_summary")
         .arg(m_core.state()->gameValue(QStringLiteral("draw_pile_count")).toInt())
         .arg(m_core.state()->gameValue(QStringLiteral("discard_pile")).toList().size());
     return lines.join(QLatin1Char('\n'));
@@ -691,20 +704,20 @@ QString TuiApplicationController::renderSkills() const
     QStringList translated;
     for (const QString &skill : player.value(QStringLiteral("skills")).toStringList())
         translated << resolveNameText(skill);
-    return tr("== 技能 ==\n%1").arg(TuiRenderer::sanitize(
+    return tuiText("tui_skills_section").arg(TuiRenderer::sanitize(
         translated.join(QLatin1Char(' ')), 2048));
 }
 
 QString TuiApplicationController::renderEquipment() const
 {
-    QStringList lines{tr("== 装备 ==")};
+    QStringList lines{tuiText("tui_equipment_header")};
     const QList<int> equipment = m_core.state()->cardsForPlayer(
         m_core.state()->selfName(), 1);
     for (int cardId : equipment)
         lines << QStringLiteral("ID=%1 %2").arg(cardId)
             .arg(TuiRenderer::sanitize(resolveCardDisplayText(cardId), 512));
     if (equipment.isEmpty())
-        lines << tr("（空）");
+        lines << tuiText("tui_empty");
     return lines.join(QLatin1Char('\n'));
 }
 
@@ -744,7 +757,7 @@ QString TuiApplicationController::presentationText(int command, const QString &f
 
 QString TuiApplicationController::renderLog() const
 {
-    QStringList lines{tr("== 记录 ==")};
+    QStringList lines{tuiText("tui_log_header")};
     const QVariantList events = m_core.state()->presentationEvents();
     QStringList rendered;
     for (const QVariant &entry : events) {

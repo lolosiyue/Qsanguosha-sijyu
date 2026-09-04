@@ -1,11 +1,11 @@
 #include "tui-renderer.h"
+#include "tui-text.h"
 
 #include "client-prompt.h"
 #include "core/client-game-state.h"
 #include "core/interaction-model.h"
 #include "protocol.h"
 
-#include <QCoreApplication>
 #include <QHash>
 #include <QJsonArray>
 #include <QList>
@@ -19,11 +19,6 @@
 #include <utility>
 
 namespace {
-
-QString tr(const char *source)
-{
-    return QCoreApplication::translate("QSanguoshaTui", source);
-}
 
 QString joinIntegers(const QList<int> &values)
 {
@@ -49,7 +44,7 @@ void appendOptions(QStringList *lines, const QList<InteractionOption> &options)
         const InteractionOption &option = options.at(i);
         lines->append(QStringLiteral("  [%1] %2%3").arg(i + 1)
             .arg(option.label.isEmpty() ? option.value : option.label,
-                 option.enabled ? QString() : tr("（禁用）")));
+                 option.enabled ? QString() : tuiText("tui_card_disabled")));
     }
 }
 
@@ -60,9 +55,9 @@ QString targetNote(const TuiRenderer::CardTargets &advice, const QStringList &ta
     if (!advice.known)
         return QString();
     if (advice.targetFixed)
-        return tr("  无需选目标");
+        return tuiText("tui_targets_not_needed");
     if (advice.targets.isEmpty())
-        return tr("  无可选目标");
+        return tuiText("tui_targets_unavailable");
     QStringList numbers;
     for (const QString &name : advice.targets) {
         const qsizetype index = targetOrder.indexOf(name);
@@ -71,7 +66,7 @@ QString targetNote(const TuiRenderer::CardTargets &advice, const QStringList &ta
         numbers << (index >= 0 ? QStringLiteral("[%1]").arg(index + 1)
                                : TuiRenderer::sanitize(name, 64));
     }
-    return tr("  可选目标：%1").arg(numbers.join(QString()));
+    return tuiText("tui_targets_optional").arg(numbers.join(QString()));
 }
 
 void appendCards(QStringList *lines, const QList<int> &cards, const QList<int> &disabled,
@@ -83,15 +78,15 @@ void appendCards(QStringList *lines, const QList<int> &cards, const QList<int> &
     for (int i = 0; i < cards.size(); ++i) {
         const int cardId = cards.at(i);
         const QString display = resolver ? TuiRenderer::sanitize(resolver(cardId), 512)
-                                         : tr("牌 %1").arg(cardId);
-        QString note = disabled.contains(cardId) ? tr("（禁用）") : QString();
+                                         : tuiText("tui_card_unknown").arg(cardId);
+        QString note = disabled.contains(cardId) ? tuiText("tui_card_disabled") : QString();
         const bool serverDisabled = !note.isEmpty();
         if (note.isEmpty() && hint)
             note = TuiRenderer::sanitize(hint(cardId), 64);
         // Only worth asking where the card could go if it can be played at all.
         if (!serverDisabled && note.isEmpty() && targets)
             note += targetNote(targets(cardId), targetOrder);
-        lines->append(tr("  [%1] %2（ID=%3）%4").arg(startIndex + i).arg(display).arg(cardId)
+        lines->append(tuiText("tui_card_line").arg(startIndex + i).arg(display).arg(cardId)
             .arg(note));
     }
 }
@@ -206,25 +201,29 @@ QString TuiRenderer::plainText(const QString &text)
 
 QString TuiRenderer::commandResultText(int command, bool success, const QString &message)
 {
-    static const QHash<int, QString> labels{
-        {QSanProtocol::S_COMMAND_SPEAK, tr("聊天")},
-        {QSanProtocol::S_COMMAND_TRUST, tr("托管")},
-        {QSanProtocol::S_COMMAND_ADD_ROBOT, tr("加入电脑玩家")},
-        {QSanProtocol::S_COMMAND_SURRENDER, tr("投降")}};
-    const QString label = labels.value(command);
+    // Keys, not text: a static table built on the first call would freeze
+    // whatever tuiText() answered back then, including the bare key it answers
+    // before the engine is up.
+    static const QHash<int, const char *> labels{
+        {QSanProtocol::S_COMMAND_SPEAK, "tui_command_label_speak"},
+        {QSanProtocol::S_COMMAND_TRUST, "tui_command_label_trust"},
+        {QSanProtocol::S_COMMAND_ADD_ROBOT, "tui_command_label_add_robot"},
+        {QSanProtocol::S_COMMAND_SURRENDER, "tui_command_label_surrender"}};
+    const QString label = labels.contains(command)
+        ? tuiText(labels.value(command)) : QString();
     const QString detail = sanitize(message, 512);
     if (!success) {
         const QString what = label.isEmpty()
-            ? tr("命令 %1").arg(command) : label;
-        return detail.isEmpty() ? tr("%1失败").arg(what)
-                                : tr("%1失败：%2").arg(what, detail);
+            ? tuiText("tui_command_label_generic").arg(command) : label;
+        return detail.isEmpty() ? tuiText("tui_command_failed").arg(what)
+                                : tuiText("tui_command_failed_detail").arg(what, detail);
     }
     // Delay probes and other housekeeping succeed constantly; only confirm what
     // the player actually asked for.
     if (label.isEmpty())
         return QString();
-    return detail.isEmpty() ? tr("%1完成").arg(label)
-                            : tr("%1完成：%2").arg(label, detail);
+    return detail.isEmpty() ? tuiText("tui_command_done").arg(label)
+                            : tuiText("tui_command_done_detail").arg(label, detail);
 }
 
 QString TuiRenderer::heading(const QString &text) const
@@ -245,7 +244,7 @@ QString TuiRenderer::cardText(const ClientGameState &state, int cardId) const
             card.value(QStringLiteral("suit")).toString(),
             card.value(QStringLiteral("number")).toString()).trimmed();
     }
-    return tr("牌 %1").arg(cardId);
+    return tuiText("tui_card_unknown").arg(cardId);
 }
 
 QString TuiRenderer::playerText(const QString &objectName) const
@@ -260,12 +259,12 @@ QString TuiRenderer::playerText(const QString &objectName) const
 // way, not that the socket is up.
 QString TuiRenderer::gameStatusText(const QString &status) const
 {
-    static const QHash<QString, QString> labels{
-        {QStringLiteral("waiting"), tr("等待中")},
-        {QStringLiteral("active"), tr("进行中")},
-        {QStringLiteral("game_over"), tr("已结束")}};
+    static const QHash<QString, const char *> labels{
+        {QStringLiteral("waiting"), "tui_game_status_waiting"},
+        {QStringLiteral("active"), "tui_game_status_active"},
+        {QStringLiteral("game_over"), "tui_game_status_over"}};
     const auto fixed = labels.constFind(status.toLower());
-    return fixed != labels.cend() ? fixed.value() : nameText(status);
+    return fixed != labels.cend() ? tuiText(fixed.value()) : nameText(status);
 }
 
 // The server never broadcasts the kingdom property, so fall back to the
@@ -285,14 +284,14 @@ QString TuiRenderer::kingdomText(const QVariantMap &player) const
             shown << nameText(one);
         return shown.join(QLatin1Char('/'));
     }
-    return kingdom.isEmpty() ? tr("未知") : nameText(kingdom);
+    return kingdom.isEmpty() ? tuiText("tui_kingdom_unknown") : nameText(kingdom);
 }
 
 QString TuiRenderer::playerLabel(const QString &objectName) const
 {
     const QString shown = playerText(objectName);
     return shown == objectName ? sanitize(objectName, 128)
-                               : tr("%1（%2）").arg(sanitize(shown, 128),
+                               : tuiText("tui_player_label").arg(sanitize(shown, 128),
                                                    sanitize(objectName, 128));
 }
 
@@ -300,30 +299,30 @@ QString TuiRenderer::nameText(const QString &name) const
 {
     if (name.isEmpty())
         return name;
-    static const QHash<QString, QString> labels{
-        {QStringLiteral("idle"), tr("闲置")},
-        {QStringLiteral("connecting"), tr("连接中")},
-        {QStringLiteral("reconnecting"), tr("重连中")},
-        {QStringLiteral("handshake"), tr("握手中")},
-        {QStringLiteral("active"), tr("已连接")},
-        {QStringLiteral("disconnected"), tr("已中断")},
-        {QStringLiteral("failed"), tr("失败")},
-        {QStringLiteral("waiting"), tr("等待中")},
-        {QStringLiteral("online"), tr("上线")},
-        {QStringLiteral("offline"), tr("离线")},
-        {QStringLiteral("robot"), tr("机器人")},
-        {QStringLiteral("trust"), tr("托管")},
-        {QStringLiteral("not_active"), tr("未行动")},
-        {QStringLiteral("round_start"), tr("回合开始")},
-        {QStringLiteral("start"), tr("准备阶段")},
-        {QStringLiteral("judge"), tr("判定阶段")},
-        {QStringLiteral("draw"), tr("摸牌阶段")},
-        {QStringLiteral("play"), tr("出牌阶段")},
-        {QStringLiteral("discard"), tr("弃牌阶段")},
-        {QStringLiteral("finish"), tr("结束阶段")}};
+    static const QHash<QString, const char *> labels{
+        {QStringLiteral("idle"), "tui_name_idle"},
+        {QStringLiteral("connecting"), "tui_name_connecting"},
+        {QStringLiteral("reconnecting"), "tui_name_reconnecting"},
+        {QStringLiteral("handshake"), "tui_name_handshake"},
+        {QStringLiteral("active"), "tui_name_active"},
+        {QStringLiteral("disconnected"), "tui_name_disconnected"},
+        {QStringLiteral("failed"), "tui_name_failed"},
+        {QStringLiteral("waiting"), "tui_name_waiting"},
+        {QStringLiteral("online"), "tui_name_online"},
+        {QStringLiteral("offline"), "tui_name_offline"},
+        {QStringLiteral("robot"), "tui_name_robot"},
+        {QStringLiteral("trust"), "tui_name_trust"},
+        {QStringLiteral("not_active"), "tui_name_not_active"},
+        {QStringLiteral("round_start"), "tui_name_round_start"},
+        {QStringLiteral("start"), "tui_name_phase_start"},
+        {QStringLiteral("judge"), "tui_name_phase_judge"},
+        {QStringLiteral("draw"), "tui_name_phase_draw"},
+        {QStringLiteral("play"), "tui_name_phase_play"},
+        {QStringLiteral("discard"), "tui_name_phase_discard"},
+        {QStringLiteral("finish"), "tui_name_phase_finish"}};
     const auto fixed = labels.constFind(name.toLower());
     if (fixed != labels.cend())
-        return fixed.value();
+        return tuiText(fixed.value());
     return sanitize(m_resolvers.name ? m_resolvers.name(name) : name, 256);
 }
 
@@ -331,56 +330,56 @@ QString TuiRenderer::interactionTitle(const InteractionRequest &request) const
 {
     switch (request.type) {
     case InteractionType::ChooseRole:
-        return tr("分配身份");
+        return tuiText("tui_interaction_assign_roles");
     case InteractionType::ChooseGeneral:
     case InteractionType::AskGeneral:
-        return tr("选择武将");
+        return tuiText("tui_interaction_choose_general");
     case InteractionType::ChooseDirection:
-        return tr("选择座次方向");
+        return tuiText("tui_interaction_choose_direction");
     case InteractionType::PlayCard:
-        return tr("出牌");
+        return tuiText("tui_interaction_play_card");
     case InteractionType::ResponseCard:
-        return tr("打出牌");
+        return tuiText("tui_interaction_response_card");
     case InteractionType::DiscardCard:
-        return tr("弃牌");
+        return tuiText("tui_interaction_discard_card");
     case InteractionType::ExchangeCard:
-        return tr("换牌");
+        return tuiText("tui_interaction_exchange_card");
     case InteractionType::AskPeach:
-        return tr("求桃");
+        return tuiText("tui_interaction_ask_peach");
     case InteractionType::Nullification:
-        return tr("无懈可击");
+        return tuiText("tui_interaction_nullification");
     case InteractionType::Choice:
-        return tr("选择");
+        return tuiText("tui_interaction_choice");
     case InteractionType::SkillInvoke:
-        return tr("发动技能");
+        return tuiText("tui_interaction_invoke_skill");
     case InteractionType::ChoosePlayer:
-        return tr("选择角色");
+        return tuiText("tui_interaction_choose_player");
     case InteractionType::ChooseCard:
-        return tr("选择卡牌");
+        return tuiText("tui_interaction_choose_card");
     case InteractionType::ChooseSuit:
-        return tr("选择花色");
+        return tuiText("tui_interaction_choose_suit");
     case InteractionType::ChooseKingdom:
-        return tr("选择势力");
+        return tuiText("tui_interaction_choose_kingdom");
     case InteractionType::AmazingGrace:
-        return tr("五谷丰登");
+        return tuiText("tui_interaction_amazing_grace");
     case InteractionType::SkillGuanxing:
-        return tr("观星");
+        return tuiText("tui_interaction_guanxing");
     case InteractionType::SkillGongxin:
-        return tr("攻心");
+        return tuiText("tui_interaction_gongxin");
     case InteractionType::SkillYiji:
-        return tr("遗计");
+        return tuiText("tui_interaction_yiji");
     case InteractionType::Pindian:
-        return tr("拼点");
+        return tuiText("tui_interaction_pindian");
     case InteractionType::TriggerOrder:
-        return tr("技能发动顺序");
+        return tuiText("tui_interaction_skill_order");
     case InteractionType::ArrangeGeneral:
-        return tr("排列武将");
+        return tuiText("tui_interaction_arrange_generals");
     case InteractionType::LuckCard:
-        return tr("手气卡");
+        return tuiText("tui_interaction_luck_card");
     case InteractionType::Surrender:
-        return tr("投降");
+        return tuiText("tui_interaction_surrender");
     default:
-        return tr("互动：%1").arg(interactionTypeName(request.type));
+        return tuiText("tui_interaction_generic").arg(interactionTypeName(request.type));
     }
 }
 
@@ -390,50 +389,47 @@ QString TuiRenderer::answerHint(const InteractionRequest &request) const
     case InteractionResponseShape::Assignment: {
         const auto *value = request.payloadAs<RoleAssignmentInteractionPayload>();
         if (value == nullptr || value->playerNames.isEmpty())
-            return tr("作答：<玩家>=<身份>  例如 1=主公 2=反贼");
+            return tuiText("tui_answer_role_example");
         QStringList parts;
         for (int i = 0; i < value->playerNames.size(); ++i) {
             const QString role = (value->roles.size() == value->playerNames.size())
                 ? nameText(value->roles.at(i)) : QStringLiteral("?");
             parts << QStringLiteral("%1=%2").arg(i + 1).arg(role);
         }
-        return tr("作答：每位玩家写 <编号>=<身份>，同一行以空白隔开\n示例：%1")
+        return tuiText("tui_answer_role_assignment")
             .arg(parts.join(QLatin1Char(' ')));
     }
     case InteractionResponseShape::Option:
-        return tr("作答：输入选项编号，或括号后的原文（例如 1 或 lord）");
+        return tuiText("tui_answer_option");
     case InteractionResponseShape::Players:
-        return tr("作答：输入玩家编号，可多选（例如 2 或 1 3）");
+        return tuiText("tui_answer_players");
     case InteractionResponseShape::Cards:
         if (request.type == InteractionType::PlayCard) {
-            return tr("作答：<编号> -> <目标编号>   例如 1 -> 2\n"
-                      "技能牌：先写 <技能编号> <手牌编号>，再按提示选目标   例如 8 1\n"
-                      "无目标只写编号或技能编号。结束出牌：pass 或 /cancel");
+            return tuiText("tui_answer_play_card");
         }
         if (request.type == InteractionType::ChooseCard) {
             const auto *value = request.payloadAs<CardInteractionPayload>();
             if (value != nullptr && value->hiddenHandCount > 0) {
-                return tr("作答：输入编号（例如 1）\n"
-                          "未知手牌选任一张即可，无需知道牌面");
+                return tuiText("tui_answer_choose_card_hidden");
             }
-            return tr("作答：输入牌编号（例如 1）");
+            return tuiText("tui_answer_card_single");
         }
         if (request.type == InteractionType::DiscardCard
             || request.type == InteractionType::ExchangeCard) {
-            return tr("作答：输入牌编号，可多选（例如 1 3 或 1-3）");
+            return tuiText("tui_answer_card_multi");
         }
         if (request.type == InteractionType::AskPeach) {
-            return tr("作答：输入桃的编号（例如 1）");
+            return tuiText("tui_answer_ask_peach");
         }
-        return tr("作答：输入牌编号（例如 1）");
+        return tuiText("tui_answer_card_single");
     case InteractionResponseShape::Rearrangement:
-        return tr("作答：<放回牌堆顶的编号> | <放回牌堆底的编号>");
+        return tuiText("tui_answer_rearrangement");
     case InteractionResponseShape::Distribution:
-        return tr("作答：cards <牌编号> -> <玩家编号>");
+        return tuiText("tui_answer_distribution");
     case InteractionResponseShape::GeneralArrangement:
-        return tr("作答：依序输入武将编号");
+        return tuiText("tui_answer_arrangement");
     case InteractionResponseShape::Custom:
-        return tr("作答：一个 JSON 对象或数组");
+        return tuiText("tui_answer_custom");
     default:
         return QString();
     }
@@ -444,8 +440,8 @@ QString TuiRenderer::renderState(const ClientGameState &state) const
     const QVariantMap connection = state.connection();
     const QVariantMap setup = state.setup();
     const QVariantMap game = state.game();
-    QStringList lines{heading(tr("QSanguosha 终端客户端"))};
-    lines << tr("连接：%1  %2:%3  延迟=%4ms  重连=%5")
+    QStringList lines{heading(tuiText("tui_status_title"))};
+    lines << tuiText("tui_status_connection")
         .arg(nameText(connection.value(QStringLiteral("state"), QStringLiteral("idle")).toString()),
              connection.value(QStringLiteral("host")).toString(),
              connection.value(QStringLiteral("port")).toString(),
@@ -453,19 +449,19 @@ QString TuiRenderer::renderState(const ClientGameState &state) const
                  ? connection.value(QStringLiteral("latency_ms")).toString()
                  : QStringLiteral("?"),
              connection.value(QStringLiteral("reconnected")).toBool()
-                 ? tr("是") : tr("否"));
-    lines << tr("服务器：%1  版本=%2  MOD=%3")
+                 ? tuiText("tui_yes") : tuiText("tui_no"));
+    lines << tuiText("tui_status_server")
         .arg(sanitize(setup.value(QStringLiteral("server_name")).toString(), 256),
              sanitize(connection.value(QStringLiteral("game_version")).toString(), 128),
              sanitize(connection.value(QStringLiteral("mod_name")).toString(), 128));
-    lines << tr("房间：模式=%1 玩家=%2 就绪=%3 状态=%4")
+    lines << tuiText("tui_status_room")
         .arg(nameText(setup.value(QStringLiteral("game_mode")).toString()))
         .arg(setup.value(QStringLiteral("player_count")).toInt())
         .arg(connection.value(QStringLiteral("ready")).toBool()
-                 ? tr("是") : tr("否"),
+                 ? tuiText("tui_yes") : tuiText("tui_no"),
              gameStatusText(game.value(QStringLiteral("status"),
                  QStringLiteral("waiting")).toString()));
-    lines << tr("自己：%1  当前玩家：%2  阶段：%3  轮次：%4  牌堆：%5  弃牌：%6")
+    lines << tuiText("tui_status_self")
         .arg(playerLabel(state.selfName()),
              playerLabel(game.value(QStringLiteral("current_player")).toString()),
              nameText(game.value(QStringLiteral("current_phase")).toString()))
@@ -479,17 +475,17 @@ QString TuiRenderer::renderState(const ClientGameState &state) const
              : stringList(result.value(QStringLiteral("winner_tokens")))) {
             winners << nameText(token);
         }
-        lines << tr("游戏结束：胜方=%1 平局=%2")
-            .arg(sanitize(winners.join(tr("、")), 512),
+        lines << tuiText("tui_status_game_over")
+            .arg(sanitize(winners.join(tuiText("tui_list_separator")), 512),
                  result.value(QStringLiteral("standoff")).toBool()
-                     ? tr("是") : tr("否"));
+                     ? tuiText("tui_yes") : tuiText("tui_no"));
     }
     return lines.join(QLatin1Char('\n'));
 }
 
 QString TuiRenderer::renderPlayers(const ClientGameState &state) const
 {
-    QStringList lines{heading(tr("玩家"))};
+    QStringList lines{heading(tuiText("tui_section_players"))};
     const QStringList names = state.playerNames();
     const QStringList focus = stringList(
         state.gameValue(QStringLiteral("focus")));
@@ -517,10 +513,10 @@ QString TuiRenderer::renderPlayers(const ClientGameState &state) const
             marks << QStringLiteral("%1=%2")
                 .arg(nameText(it.key()), sanitize(it.value().toString(), 64));
         }
-        const QString activity = name == current ? tr(" <回合>")
-            : focus.contains(name) ? tr(" <焦点>") : QString();
+        const QString activity = name == current ? tuiText("tui_mark_turn")
+            : focus.contains(name) ? tuiText("tui_mark_focus") : QString();
         const QString stateName = player.value(QStringLiteral("state")).toString();
-        lines << tr("[%1] 座位=%2 %3（%4）%5")
+        lines << tuiText("tui_player_line")
             .arg(i + 1).arg(player.value(QStringLiteral("seat")).toInt())
             .arg(sanitize(player.value(QStringLiteral("screen_name"), name).toString(), 128),
                  sanitize(name, 128), activity);
@@ -528,17 +524,17 @@ QString TuiRenderer::renderPlayers(const ClientGameState &state) const
             player.value(QStringLiteral("deputy_general")).toString());
         const QString generals = deputy.isEmpty()
             ? nameText(player.value(QStringLiteral("general")).toString())
-            : tr("%1/%2").arg(
+            : tuiText("tui_hp_pair").arg(
                 nameText(player.value(QStringLiteral("general")).toString()), deputy);
-        lines << tr("    武将=%1 势力=%2 体力=%3/%4 生存=%5 网络=%6 身份=%7 手牌=%8")
+        lines << tuiText("tui_player_detail")
             .arg(generals, kingdomText(player))
             .arg(player.value(QStringLiteral("hp")).toInt())
             .arg(player.value(QStringLiteral("max_hp")).toInt())
             .arg(player.value(QStringLiteral("alive"), true).toBool()
-                     ? tr("存活") : tr("死亡"),
-                 stateName.isEmpty() ? tr("未知") : nameText(stateName),
+                     ? tuiText("tui_alive") : tuiText("tui_dead"),
+                 stateName.isEmpty() ? tuiText("tui_state_unknown") : nameText(stateName),
                  sanitize(player.value(QStringLiteral("role")).toString().isEmpty()
-                         ? tr("隐藏")
+                         ? tuiText("tui_role_hidden")
                          : nameText(player.value(QStringLiteral("role")).toString()), 64))
             .arg(player.value(QStringLiteral("hand_count"),
                     state.cardsForPlayer(name, 0).size()).toInt());
@@ -550,22 +546,22 @@ QString TuiRenderer::renderPlayers(const ClientGameState &state) const
         for (int cardId : judging)
             judgeText << QStringLiteral("%1:%2").arg(cardId)
                 .arg(cardText(state, cardId));
-        lines << tr("    装备=[%1] 判定=[%2] 私有牌堆=[%3] 标记=[%4]%5")
+        lines << tuiText("tui_player_zones")
             .arg(sanitize(equipText.join(QStringLiteral(", ")), 1024),
                  sanitize(judgeText.join(QStringLiteral(", ")), 1024),
                  sanitize(pileSummary.join(QStringLiteral(", ")), 512),
                  sanitize(marks.join(QStringLiteral(", ")), 512),
                  flags.isEmpty() ? QString()
-                     : tr(" 标志=[%1]").arg(sanitize(flags, 256)));
+                     : tuiText("tui_player_flags").arg(sanitize(flags, 256)));
     }
     if (names.isEmpty())
-        lines << tr("（等待玩家）");
+        lines << tuiText("tui_waiting_players");
     return lines.join(QLatin1Char('\n'));
 }
 
 QString TuiRenderer::renderHand(const ClientGameState &state) const
 {
-    QStringList lines{heading(tr("手牌"))};
+    QStringList lines{heading(tuiText("tui_section_hand"))};
     const QString self = state.selfName();
     const QVariantList cards = state.toJson().value(QStringLiteral("cards")).toArray().toVariantList();
     int index = 0;
@@ -581,13 +577,13 @@ QString TuiRenderer::renderHand(const ClientGameState &state) const
         // even a populated one would have marked every card in hand. The
         // engine answers the question that was meant.
         const int cardId = card.value(QStringLiteral("id")).toInt();
-        lines << tr("[%1] ID=%2 %3%4")
+        lines << tuiText("tui_hand_line")
             .arg(++index).arg(cardId)
             .arg(cardText(state, cardId),
                  m_resolvers.handHint ? sanitize(m_resolvers.handHint(cardId), 64) : QString());
     }
     if (index == 0)
-        lines << tr("（没有可见的手牌）");
+        lines << tuiText("tui_hand_empty");
     return lines.join(QLatin1Char('\n'));
 }
 
@@ -595,14 +591,14 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
 {
     QStringList lines{heading(interactionTitle(request))};
     if (!request.skillName.isEmpty())
-        lines << tr("技能：%1").arg(nameText(request.skillName));
+        lines << tuiText("tui_prompt_skills").arg(nameText(request.skillName));
     if (!request.prompt.isEmpty()) {
         // The %src/%dest slots are object names, so they resolve to screen
         // names rather than through the lang table.
         const QString formatted = formatPrompt(request.prompt,
             [this](const QString &key) { return nameText(key); },
             [this](const QString &name) { return playerText(name); });
-        lines << tr("提示：%1").arg(sanitize(plainText(formatted), 1024));
+        lines << tuiText("tui_prompt_tip").arg(sanitize(plainText(formatted), 1024));
     }
 
     const int minimum = request.minSelection();
@@ -610,23 +606,23 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
     if (request.responseSchema != InteractionResponseShape::Assignment
         && request.type != InteractionType::PlayCard
         && (minimum > 0 || maximum > 0)) {
-        lines << tr("须选 %1 至 %2 项").arg(minimum).arg(maximum);
+        lines << tuiText("tui_prompt_selection_range").arg(minimum).arg(maximum);
     }
     if (request.timeoutMs > 0)
-        lines << tr("限时 %1 秒").arg((request.timeoutMs + 999) / 1000);
+        lines << tuiText("tui_prompt_timeout").arg((request.timeoutMs + 999) / 1000);
 
     if (const auto *value = request.payloadAs<RoleAssignmentInteractionPayload>()) {
-        lines << tr("为每位玩家指定一个身份。");
+        lines << tuiText("tui_prompt_role_assignment");
         QMap<QString, int> roleCounts;
         for (const QString &role : value->roles)
             roleCounts[role] += 1;
         if (!roleCounts.isEmpty()) {
             QStringList needed;
             for (auto it = roleCounts.constBegin(); it != roleCounts.constEnd(); ++it)
-                needed << tr("%1×%2").arg(nameText(it.key())).arg(it.value());
-            lines << tr("本局需要：%1").arg(needed.join(tr("、")));
+                needed << tuiText("tui_role_count").arg(nameText(it.key())).arg(it.value());
+            lines << tuiText("tui_role_requirement").arg(needed.join(tuiText("tui_list_separator")));
         }
-        lines << tr("玩家：");
+        lines << tuiText("tui_label_players");
         appendPlayers(&lines, value->playerNames,
                       [this](const QString &name) { return playerText(name); });
         QStringList uniqueRoles;
@@ -635,12 +631,12 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
                 uniqueRoles.append(role);
         }
         if (!uniqueRoles.isEmpty()) {
-            lines << tr("身份：");
+            lines << tuiText("tui_label_roles");
             for (const QString &role : uniqueRoles)
                 lines << QStringLiteral("  %1 = %2").arg(role, nameText(role));
         }
         if (value->playerNames.isEmpty())
-            lines << tr("（尚未收到玩家名单）");
+            lines << tuiText("tui_players_unknown");
     } else if (const auto *value = request.payloadAs<OptionInteractionPayload>()) {
         QList<InteractionOption> localized = value->options;
         for (InteractionOption &option : localized) {
@@ -657,19 +653,19 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
         const bool playCard = request.type == InteractionType::PlayCard;
         const bool chooseCard = request.type == InteractionType::ChooseCard;
         if (chooseCard && !value->sourcePlayer.isEmpty()) {
-            lines << tr("目标：%1")
+            lines << tuiText("tui_label_target")
                 .arg(sanitize(playerText(value->sourcePlayer), 128));
         }
         if (chooseCard && value->hiddenHandCount > 0) {
-            lines << tr("手牌（%1 张，牌面未知）：").arg(value->hiddenHandCount);
+            lines << tuiText("tui_hidden_hand_header").arg(value->hiddenHandCount);
             for (int i = 0; i < value->hiddenHandCount; ++i)
-                lines << tr("  [%1] 未知手牌").arg(i + 1);
+                lines << tuiText("tui_hidden_hand_line").arg(i + 1);
         }
         if (playCard)
-            lines << tr("可选：");
+            lines << tuiText("tui_label_choices");
         if (!value->selection.selectableCards.isEmpty()) {
             if (chooseCard && value->hiddenHandCount > 0)
-                lines << tr("可见：");
+                lines << tuiText("tui_label_visible");
             appendCards(&lines, value->selection.selectableCards,
                         value->selection.disabledCards, m_resolvers.card,
                         playCard || request.type == InteractionType::ResponseCard
@@ -700,34 +696,34 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
                 const QString hint = m_resolvers.skillHint
                     ? m_resolvers.skillHint(skill.skillName, skill.instanceId) : QString();
                 const QString mark = hint.isEmpty()
-                    ? QString() : tr("，%1").arg(sanitize(hint, 64));
+                    ? QString() : tuiText("tui_skill_hint_suffix").arg(sanitize(hint, 64));
                 lines << (skill.instanceId > 0 && sameName > 1
-                    ? tr("  [%1] %2（技能 #%3%4）").arg(skillStart + i)
+                    ? tuiText("tui_skill_line_instance").arg(skillStart + i)
                         .arg(sanitize(shown, 128)).arg(skill.instanceId).arg(mark)
-                    : tr("  [%1] %2（技能%3）").arg(skillStart + i)
+                    : tuiText("tui_skill_line").arg(skillStart + i)
                         .arg(sanitize(shown, 128), mark));
             }
         }
         if (playCard && value->selection.selectableCards.isEmpty()
             && value->skillCandidates.isEmpty()) {
-            lines << tr("  （尚无手牌列表，可先打 /hand）");
+            lines << tuiText("tui_hand_list_missing");
         }
         if (!value->fixedTargets.isEmpty()) {
-            lines << tr("固定目标：");
+            lines << tuiText("tui_label_fixed_targets");
             appendPlayers(&lines, value->fixedTargets,
                           [this](const QString &name) { return playerText(name); },
                           m_resolvers.playerHint);
         }
         if (!value->optionalTargets.isEmpty()) {
             lines << (request.type == InteractionType::PlayCard
-                ? tr("目标玩家：") : tr("可选目标："));
+                ? tuiText("tui_label_play_targets") : tuiText("tui_label_optional_targets"));
             appendPlayers(&lines, value->optionalTargets,
                           [this](const QString &name) { return playerText(name); },
                           m_resolvers.playerHint);
         }
         if (!value->selection.pattern.isEmpty()
             && value->selection.pattern != QLatin1String(".")) {
-            lines << tr("模式：%1").arg(sanitize(value->selection.pattern, 256));
+            lines << tuiText("tui_label_pattern").arg(sanitize(value->selection.pattern, 256));
         }
     } else if (const auto *value = request.payloadAs<GongxinInteractionPayload>()) {
         QList<int> disabled;
@@ -736,10 +732,10 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
                 disabled.append(cardId);
         }
         appendCards(&lines, value->visibleCards, disabled, m_resolvers.card, {});
-        lines << tr("可选：%1").arg(joinIntegers(value->selectableCards));
+        lines << tuiText("tui_label_choices_inline").arg(joinIntegers(value->selectableCards));
     } else if (const auto *value = request.payloadAs<YijiInteractionPayload>()) {
         appendCards(&lines, value->cardIds, {}, m_resolvers.card, {});
-        lines << tr("接收者：");
+        lines << tuiText("tui_label_recipients");
         appendPlayers(&lines, value->targetPlayers,
                       [this](const QString &name) { return playerText(name); });
     } else if (const auto *value = request.payloadAs<RearrangeCardsInteractionPayload>()) {
@@ -757,13 +753,13 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
                 .arg(nameText(value->options.at(i).skillName))
                 .arg(value->options.at(i).instanceId);
     } else if (const auto *value = request.payloadAs<CustomInteractionPayload>()) {
-        lines << tr("自定义类型：%1").arg(sanitize(value->typeName, 128));
+        lines << tuiText("tui_label_custom_type").arg(sanitize(value->typeName, 128));
     }
     const QString hint = answerHint(request);
     if (!hint.isEmpty())
         lines << hint;
     if (request.cancelable && request.type != InteractionType::PlayCard)
-        lines << tr("可输入 /cancel 放弃");
+        lines << tuiText("tui_cancel_hint");
     lines << QStringLiteral("> ");
     return lines.join(QLatin1Char('\n'));
 }
