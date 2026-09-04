@@ -34,6 +34,7 @@ public:
                      InteractionResponse *response, QString *error) const;
 
 private:
+    QString requestTitle(const InteractionRequest &request) const;
     QList<int> parseIndexes(const QString &text, int size, QString *error) const;
     QStringList parseNames(const QString &text, const QStringList &values,
                            QString *error) const;

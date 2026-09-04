@@ -60,10 +60,13 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
         writeOutput(matches.join(QLatin1Char(' ')));
     });
     connect(&m_session, &ClientLiveSession::connectionChanged, this,
-        [this](const QString &state) { writeOutput(tr("连线：%1").arg(state)); });
+        [this](const QString &state) {
+            // The session reports the wire token; the player reads the label.
+            writeOutput(tr("连接：%1").arg(m_renderer.nameText(state)));
+        });
     connect(&m_session, &ClientLiveSession::sessionActive, this, [this](bool reconnected) {
         writeOutput(reconnected ? tr("已重连；等待原子状态快照")
-                                : tr("Protocol V2 工作阶段已启用"));
+                                : tr("Protocol V2 会话已启用"));
         // The server does not echo our own screen name back, so record the one
         // we signed up with; every view then names us the same way.
         const QString self = m_core.state()->selfName();
@@ -144,7 +147,7 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
                     request.timeoutMs = static_cast<qint64>(seconds) * 1000 + 5000;
             }
             if (m_core.beginRequest(std::move(request)) == 0) {
-                writeError(tr("无法启用伺服器互动"));
+                writeError(tr("无法启用服务器互动"));
                 requestExit(4);
                 return;
             }
@@ -165,7 +168,7 @@ bool TuiApplicationController::start(QString *error)
         m_log.setFileName(m_options.logFile);
         if (!m_log.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
             if (error != nullptr)
-                *error = tr("无法开启记录档：%1").arg(m_log.errorString());
+                *error = tr("无法打开日志文件：%1").arg(m_log.errorString());
             return false;
         }
     }
@@ -245,7 +248,7 @@ bool TuiApplicationController::trySkipRoleAssignment()
     if (m_session.submitInteractionResponse(std::move(response), &error))
         return true;
 
-    writeError(error.isEmpty() ? tr("无法略过身分分配") : error);
+    writeError(error.isEmpty() ? tr("无法跳过身份分配") : error);
     writeOutput(m_renderer.renderInteraction(m_core.activeRequest()));
     return false;
 }
@@ -257,14 +260,14 @@ void TuiApplicationController::handleCommand(const TuiCommandIntent &intent)
         TuiCommandType::Hand, TuiCommandType::Equipment, TuiCommandType::Piles,
         TuiCommandType::Skills, TuiCommandType::Log, TuiCommandType::Quit};
     if (m_core.hasActiveRequest() && !promptSafeCommands.contains(intent.type)) {
-        writeError(tr("提示期间只可使用唯读命令、/cancel 与 /quit"));
+        writeError(tr("提示期间只可使用只读命令、/cancel 与 /quit"));
         return;
     }
     if (intent.type == TuiCommandType::Help) {
         writeOutput(tr(
             "/help /status /players /hand /equip /piles /skills /log\n"
             "/chat <文字> /trust [on|off] /addrobot [all|数量] /surrender /reconnect /quit\n"
-            "提示作答：索引、标签、范围（1-3）、card <牌字串> -> 目标、"
+            "提示作答：索引、标签、范围（1-3）、card <牌字符串> -> 目标、"
             "顶部 | 底部、cards <索引> -> 玩家、/cancel"));
     } else if (intent.type == TuiCommandType::Status) {
         writeOutput(m_renderer.renderState(*m_core.state()));
