@@ -1,9 +1,9 @@
 #include "tui-card-text.h"
+#include "tui-text.h"
 
 #include "card.h"
 #include "engine.h"
 
-#include <QCoreApplication>
 
 QString tuiCardDisplayText(int cardId)
 {
@@ -19,7 +19,7 @@ QString tuiCardDisplayText(int cardId)
             card = Sanguosha->getEngineCard(cardId);
     }
     if (card == nullptr)
-        return QCoreApplication::translate("QSanguoshaTui", "牌 %1").arg(cardId);
+        return tuiText("tui_card_unknown").arg(cardId);
 
     QString name = Sanguosha->translate(card->objectName());
     if (name.isEmpty())

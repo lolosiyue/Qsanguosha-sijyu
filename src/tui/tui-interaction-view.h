@@ -14,10 +14,18 @@ public:
     using CardTextResolver = std::function<QString(int)>;
     using SkillCardResolver = std::function<QString(const QString &, int,
                                                     const QList<int> &, QString *)>;
+    // Applies the declaration a dialog skill asks for -- the card Guhuo names,
+    // the choice Tiansuan makes -- before its card is built. An empty option
+    // only clears the last one; false means the answer cannot go through, and
+    // the error already lists what the skill would accept.
+    using SkillDeclarationResolver = std::function<bool(const QString &, const QString &,
+                                                        QString *)>;
 
     TuiInteractionView(TuiRenderer *renderer, Writer writer,
                        CardTextResolver cardTextResolver = CardTextResolver(),
-                       SkillCardResolver skillCardResolver = SkillCardResolver());
+                       SkillCardResolver skillCardResolver = SkillCardResolver(),
+                       SkillDeclarationResolver skillDeclarationResolver
+                           = SkillDeclarationResolver());
 
     void presentRequest(const InteractionRequest &request) override;
     static QString rejectionText(const InteractionValidation &validation);
@@ -43,6 +51,7 @@ private:
     Writer m_writer;
     CardTextResolver m_cardTextResolver;
     SkillCardResolver m_skillCardResolver;
+    SkillDeclarationResolver m_skillDeclarationResolver;
 };
 
 #endif

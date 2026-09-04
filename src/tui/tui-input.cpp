@@ -1,6 +1,6 @@
 #include "tui-input.h"
+#include "tui-text.h"
 
-#include <QCoreApplication>
 #include <QStringDecoder>
 #include <QTextStream>
 
@@ -15,11 +15,6 @@
 #endif
 
 namespace {
-
-QString tr(const char *source)
-{
-    return QCoreApplication::translate("QSanguoshaTui", source);
-}
 
 bool fail(QString *error, const QString &detail)
 {
@@ -52,7 +47,7 @@ bool TuiInput::start(QString *error)
 #ifdef Q_OS_WIN
     HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
     if (input == nullptr || input == INVALID_HANDLE_VALUE)
-        return fail(error, tr("标准输入句柄不可用"));
+        return fail(error, tuiText("tui_input_no_handle"));
     m_inputHandle = input;
     DWORD mode = 0;
     m_consoleInput = GetConsoleMode(input, &mode) != 0;
@@ -60,7 +55,7 @@ bool TuiInput::start(QString *error)
         m_originalConsoleMode = mode;
         mode &= ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT);
         if (!SetConsoleMode(input, mode))
-            return fail(error, tr("无法启用异步终端输入"));
+            return fail(error, tuiText("tui_input_async_failed"));
     }
     auto *notifier = new QWinEventNotifier(input, this);
     m_notifier = notifier;
@@ -105,7 +100,7 @@ void TuiInput::appendBytes(const QByteArray &bytes)
             break;
         if (newline > 16384) {
             m_buffer.clear();
-            emit inputError(tr("输入行超过 16384 bytes"));
+            emit inputError(tuiText("tui_input_line_too_long_bytes"));
             return;
         }
         QByteArray line = m_buffer.left(newline);
@@ -116,7 +111,7 @@ void TuiInput::appendBytes(const QByteArray &bytes)
     }
     if (m_buffer.size() > 16384) {
         m_buffer.clear();
-        emit inputError(tr("输入行超过 16384 bytes"));
+        emit inputError(tuiText("tui_input_line_too_long_bytes"));
     }
 }
 
@@ -125,7 +120,7 @@ void TuiInput::emitBufferedLine(const QByteArray &line)
     QStringDecoder decoder(QStringDecoder::Utf8);
     const QString decoded = decoder.decode(line);
     if (decoder.hasError()) {
-        emit inputError(tr("输入不是有效的 UTF-8"));
+        emit inputError(tuiText("tui_input_invalid_utf8"));
         return;
     }
     emit lineReady(decoded);
@@ -140,14 +135,14 @@ void TuiInput::readWindowsInput()
     if (m_consoleInput) {
         DWORD available = 0;
         if (!GetNumberOfConsoleInputEvents(input, &available)) {
-            emit inputError(tr("无法检查终端输入"));
+            emit inputError(tuiText("tui_input_peek_failed"));
             return;
         }
         while (available > 0) {
             INPUT_RECORD records[64];
             DWORD read = 0;
             if (!ReadConsoleInputW(input, records, qMin<DWORD>(available, DWORD(64)), &read)) {
-                emit inputError(tr("无法读取终端输入"));
+                emit inputError(tuiText("tui_input_read_failed"));
                 return;
             }
             for (DWORD i = 0; i < read; ++i) {
@@ -177,7 +172,7 @@ void TuiInput::readWindowsInput()
                     const QChar character(static_cast<ushort>(key.uChar.UnicodeChar));
                     if (!character.isNull()) {
                         if (m_consoleLine.size() >= 16384) {
-                            emit inputError(tr("输入行超过 16384 字符"));
+                            emit inputError(tuiText("tui_input_line_too_long_chars"));
                             return;
                         }
                         m_consoleLine.append(character);
@@ -207,7 +202,7 @@ void TuiInput::readWindowsInput()
             stop();
             return;
         }
-        emit inputError(tr("无法读取重定向的标准输入"));
+        emit inputError(tuiText("tui_input_redirect_failed"));
         return;
     }
     if (read == 0) {
@@ -267,6 +262,6 @@ void TuiInput::readUnixInput(int descriptor)
         stop();
         return;
     }
-    emit inputError(tr("无法读取标准输入"));
+    emit inputError(tuiText("tui_input_stdin_failed"));
 }
 #endif

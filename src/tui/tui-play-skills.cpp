@@ -1,4 +1,5 @@
 #include "tui-play-skills.h"
+#include "tui-text.h"
 
 #include "card.h"
 #include "client-game-state.h"
@@ -6,17 +7,11 @@
 #include "skill.h"
 #include "tui-client-player.h"
 
-#include <QCoreApplication>
 #include <QObject>
 #include <QRegularExpression>
 #include <QSet>
 
 namespace {
-
-QString tr(const char *source)
-{
-    return QCoreApplication::translate("QSanguoshaTui", source);
-}
 
 } // namespace
 
@@ -75,11 +70,11 @@ QString tuiSkillActivationHint(const QString &skillName, int instanceId,
     const Player *self = QSanEngine::Self;
     const ViewAsSkill *skill = Sanguosha->getViewAsSkill(skillName);
     if (skill == nullptr)
-        return tr("不可用");
+        return tuiText("tui_skill_unavailable");
 
     const auto *activeSkill = dynamic_cast<const ViewAsSkillV2 *>(skill);
     if (activeSkill == nullptr)
-        return skill->isAvailable(self, reason, pattern) ? QString() : tr("不可用");
+        return skill->isAvailable(self, reason, pattern) ? QString() : tuiText("tui_skill_unavailable");
 
     // V2 asks canActivate() rather than the isEnabledAt* pair, and the
     // activation instance has to exist and be valid first -- the same order
@@ -91,9 +86,9 @@ QString tuiSkillActivationHint(const QString &skillName, int instanceId,
         const bool hasInstance = self->hasSkillInstance(skill->objectName(), instanceId);
         if ((!hasInstance && !continuesEffect)
             || (hasInstance && self->isSkillInvalid(skill->objectName(), instanceId)))
-            return tr("不可用");
+            return tuiText("tui_skill_unavailable");
     } else if (!self->hasSkill(skill->objectName()) && !continuesEffect) {
-        return tr("不可用");
+        return tuiText("tui_skill_unavailable");
     }
 
     ActiveSkillRequest request;
@@ -102,7 +97,7 @@ QString tuiSkillActivationHint(const QString &skillName, int instanceId,
     request.initiator = self;
     request.activationRef = SkillInstanceRef(self->objectName(),
         SkillInstanceKey(skill->objectName(), instanceId));
-    return activeSkill->canActivate(request) ? QString() : tr("不可用");
+    return activeSkill->canActivate(request) ? QString() : tuiText("tui_skill_unavailable");
 }
 
 void tuiFillSkillCandidates(const ClientGameState &state, const QString &pattern,
@@ -188,13 +183,13 @@ QString tuiResolveSkillCardWireText(const QString &selfName, const QString &skil
         *builtCard = nullptr;
     if (Sanguosha == nullptr) {
         if (error != nullptr)
-            *error = tr("引擎尚未加载");
+            *error = tuiText("tui_engine_not_loaded");
         return QString();
     }
     const ViewAsSkill *viewAs = Sanguosha->getViewAsSkill(skillName);
     if (viewAs == nullptr) {
         if (error != nullptr)
-            *error = tr("没有这个转换技");
+            *error = tuiText("tui_skill_not_view_as");
         return QString();
     }
 
@@ -214,7 +209,7 @@ QString tuiResolveSkillCardWireText(const QString &selfName, const QString &skil
             const Card *subcard = Sanguosha->getEngineCard(cardId);
             if (subcard == nullptr) {
                 if (error != nullptr)
-                    *error = tr("没有这张牌");
+                    *error = tuiText("tui_skill_card_missing");
                 return QString();
             }
             selected.append(subcard);
@@ -224,8 +219,8 @@ QString tuiResolveSkillCardWireText(const QString &selfName, const QString &skil
     if (card == nullptr) {
         if (error != nullptr) {
             *error = subcardIds.isEmpty()
-                ? tr("此技能需要选择手牌")
-                : tr("这些牌不能发动该技能");
+                ? tuiText("tui_skill_needs_cards")
+                : tuiText("tui_skill_cards_rejected");
         }
         return QString();
     }
