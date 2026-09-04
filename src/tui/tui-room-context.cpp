@@ -102,12 +102,21 @@ RoomState *TuiRoomContext::roomState()
     return &m_roomState;
 }
 
-const Player *TuiRoomContext::cardOwner(int) const
+void TuiRoomContext::setCardUseContext(CardUseStruct::CardUseReason reason,
+                                       const QString &pattern)
 {
-    // The text client has no client-side Player objects yet, so it cannot name
-    // an owner. Returning null keeps every engine query that asks for one at
-    // exactly the answer it already got before this context existed.
-    return nullptr;
+    m_roomState.setCurrentCardUseReason(reason);
+    m_roomState.setCurrentCardUsePattern(pattern);
+}
+
+void TuiRoomContext::setOwnerResolver(OwnerResolver resolver)
+{
+    m_ownerResolver = std::move(resolver);
+}
+
+const Player *TuiRoomContext::cardOwner(int cardId) const
+{
+    return m_ownerResolver ? m_ownerResolver(cardId) : nullptr;
 }
 
 Player::Place TuiRoomContext::cardPlace(int cardId) const

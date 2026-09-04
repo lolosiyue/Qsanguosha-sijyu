@@ -6,6 +6,7 @@
 #include <QCoreApplication>
 
 int runTuiCardTextTests(int argc, char **argv);
+int runTuiClientPlayerTests(int argc, char **argv);
 int runTuiLogTextTests(int argc, char **argv);
 int runTuiContractTests(int argc, char *argv[]);
 int runTuiLiveTcpTests(int argc, char *argv[]);
@@ -16,6 +17,8 @@ int main(int argc, char **argv)
     const QString suite = parseSuite(argc, argv);
     if (suite == QLatin1String("card-text"))
         return runTuiCardTextTests(argc, argv);
+    if (suite == QLatin1String("client-player"))
+        return runTuiClientPlayerTests(argc, argv);
     if (suite == QLatin1String("log-text"))
         return runTuiLogTextTests(argc, argv);
     if (suite == QLatin1String("contract"))
@@ -28,6 +31,8 @@ int main(int argc, char **argv)
     QCoreApplication application(argc, argv);
     return runIsolatedTestCases("TUI_CONTRACT_RESULT", {
         {QStringLiteral("card-text"), {QStringLiteral("--suite"), QStringLiteral("card-text")}},
+        {QStringLiteral("client-player"),
+            {QStringLiteral("--suite"), QStringLiteral("client-player")}},
         {QStringLiteral("log-text"), {QStringLiteral("--suite"), QStringLiteral("log-text")}},
         {QStringLiteral("contract"), {QStringLiteral("--suite"), QStringLiteral("contract")}},
         {QStringLiteral("live-tcp"), {QStringLiteral("--suite"), QStringLiteral("live-tcp")}}

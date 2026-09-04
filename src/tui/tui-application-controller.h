@@ -6,6 +6,7 @@
 #include "tui-command.h"
 #include "tui-input.h"
 #include "tui-interaction-view.h"
+#include "tui-client-player.h"
 #include "tui-renderer.h"
 #include "tui-room-context.h"
 
@@ -66,6 +67,7 @@ private:
     // Owns the room the engine resolves cards through; no QObject parent,
     // it is a value member the controller destroys itself.
     TuiRoomContext m_roomContext;
+    TuiPlayerModel m_players;
     ClientLiveSession m_session;
     TuiRenderer m_renderer;
     TuiInteractionView m_view;
