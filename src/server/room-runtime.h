@@ -119,6 +119,7 @@ public:
 private:
     bool onCanonicalOwner() const;
     quint64 drainShutdownStage(const char *stage);
+    void reportShutdownBlockers(const char *stage, quint64 scopes, quint64 luaPins);
     void releaseShutdownRoots();
     bool finalGaugeIsZero(const CardLifetimeGauge &gauge) const;
     void failShutdown(const char *stage, const CardLifetimeGauge &gauge);

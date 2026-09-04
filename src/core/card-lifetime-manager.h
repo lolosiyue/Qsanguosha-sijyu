@@ -5,6 +5,7 @@
 #include <QHash>
 #include <QList>
 #include <QMutex>
+#include <QStringList>
 #include <QObject>
 #include <QPointer>
 #include <QThread>
@@ -205,8 +206,13 @@ public:
     QList<QPointer<QObject>> retiredDomainObjects(const void *domain) const;
     quint64 activeScopeDepth() const;
     quint64 activeScopeDepthForDomain(const void *domain) const;
-    void enterScope();
-    void leaveScope();
+    // 仲揸住 domain scope 嘅「函數@thread」清單, 只為診斷。
+    QStringList describeDomainScopeHolders(const void *domain) const;
+    // scope 必須認住入嗰陣嘅 domain: thread-local 嘅 currentDomain 可以喺 scope
+    // 中途被 setCurrentDomain() 換走(收工路徑就係咁做), 到出嗰陣先讀就會扣錯
+    // 個 bucket, 令原本個 domain 永遠停喺 1, 收工檢查就死喺度。
+    const void *enterScope(const char *site = nullptr);
+    void leaveScope(const void *domain);
     void enterLuaPin();
     void leaveLuaPin();
     quint64 luaPinDepth() const;
@@ -303,6 +309,15 @@ private:
     quint64 m_activeScopes = 0;
     quint64 m_luaPins = 0;
     QHash<const void *, quint64> m_domainActiveScopes;
+    // 邊個函數、邊條 thread 仲揸住 domain 嘅 scope。收工檢查失敗嗰陣要講得出,
+    // 因為 gauge 幾微秒之後就會歸零, 淨係印個數字睇唔出邊個 worker 未收乾淨。
+    // site 係 __builtin_FUNCTION() 嘅靜態字串, 所以擺指標入去唔使配記憶體;
+    // 要格式化就等到報告嗰陣先做, 唔好拖慢每一次玩家決策。
+    struct ScopeSite {
+        const char *function = nullptr;
+        QThread *thread = nullptr;
+    };
+    QHash<const void *, QList<ScopeSite>> m_domainScopeSites;
     QHash<const void *, quint64> m_domainLuaPins;
     QHash<const void *, QHash<quint64, quint64>> m_runtimeLuaPins;
     QHash<const void *, QHash<const void *, quint64>> m_domainBaselines;
@@ -317,15 +332,25 @@ private:
     CardLifetimeGauge m_gauge;
 };
 
+// MSVC 冇 __builtin_FUNCTION(); 冇佢就淨係少咗個名, 唔影響行為。
+#if defined(__GNUC__) || defined(__clang__)
+#  define QSAN_CARD_SCOPE_SITE __builtin_FUNCTION()
+#else
+#  define QSAN_CARD_SCOPE_SITE nullptr
+#endif
+
 class CardLifetimeScope final
 {
 public:
-    explicit CardLifetimeScope(CardLifetimeManager &manager) : m_manager(&manager) { m_manager->enterScope(); }
-    ~CardLifetimeScope() { if (m_manager) m_manager->leaveScope(); }
+    explicit CardLifetimeScope(CardLifetimeManager &manager,
+                               const char *site = QSAN_CARD_SCOPE_SITE)
+        : m_manager(&manager), m_domain(manager.enterScope(site)) {}
+    ~CardLifetimeScope() { if (m_manager) m_manager->leaveScope(m_domain); }
     CardLifetimeScope(const CardLifetimeScope &) = delete;
     CardLifetimeScope &operator=(const CardLifetimeScope &) = delete;
 private:
     CardLifetimeManager *m_manager;
+    const void *m_domain;
 };
 
 class CardLifetimeLease final
