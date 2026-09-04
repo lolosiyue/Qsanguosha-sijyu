@@ -139,6 +139,45 @@ int main(int argc, char **argv)
               "a slash already used this turn is not available again");
     }
 
+    // targetFilter()/targetsFeasible() are what turn "which cards" into "which
+    // cards, aimed where" -- both take plain Player pointers, so the text
+    // client can ask them the same way RoomScene does before anything is
+    // clicked.
+    if (slashId >= 0) {
+        room.setCardUseContext(CardUseStruct::CARD_USE_REASON_PLAY, QString());
+        state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("history"), QVariantMap{});
+        players.sync();
+        const Card *slash = Sanguosha->getCard(slashId);
+        ClientPlayer *other = players.player(QStringLiteral("sgs2"));
+        check(slash != nullptr && !slash->targetFilter({}, self, self),
+              "a slash cannot be aimed at the player using it");
+        check(slash != nullptr && slash->targetFilter({}, other, self),
+              "a slash can be aimed at a reachable opponent");
+        check(slash != nullptr && !slash->targetsFeasible({}, self),
+              "a slash with no target chosen is not a finished play");
+        check(slash != nullptr && slash->targetsFeasible({other}, self),
+              "a slash with one target is");
+        // Out of range is the case a pattern match or isAvailable() never sees.
+        state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("distanceTo_sgs2"), 9);
+        players.sync();
+        check(slash != nullptr && !slash->targetFilter({}, other, self),
+              "a slash cannot reach a target beyond the attack range");
+        state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("distanceTo_sgs2"), 1);
+        // Put the spent slash back: the crossbow check below is about lifting
+        // exactly this limit.
+        state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("history"),
+                             QVariantMap{{QStringLiteral("Slash"), 1}});
+        players.sync();
+    }
+
+    // A card that fixes its own targets never asks the player for one.
+    const int exNihiloId = firstCardOfClass("ExNihilo");
+    if (exNihiloId >= 0) {
+        const Card *exNihilo = Sanguosha->getCard(exNihiloId);
+        check(exNihilo != nullptr && exNihilo->targetFixed(),
+              "a self-targeting trick reports a fixed target");
+    }
+
     // Card limitations are on the wire too, and isCardLimited() is the one
     // judgement the client genuinely runs the engine for.
     const int peachId = firstCardOfClass("Peach");

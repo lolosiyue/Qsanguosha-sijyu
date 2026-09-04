@@ -1047,6 +1047,63 @@ void rendererContract()
     check(disabledText.contains(QStringLiteral("（禁用）"))
               && !disabledText.contains(QStringLiteral("（不可用）")),
           "the server's own disabled marker wins over engine advice");
+    // Where a card may be aimed is the other half of the advice: the menu
+    // numbers the engine's answer against the target list printed below it.
+    TuiRenderer aimed(false, TuiRenderer::Resolvers{
+        {}, {}, {}, {}, {}, {},
+        [](int cardId) {
+            TuiRenderer::CardTargets advice;
+            advice.known = true;
+            if (cardId == 7)
+                advice.targetFixed = true;
+            else
+                advice.targets = {QStringLiteral("sgs2")};
+            return advice;
+        }});
+    const QString aimedText = aimed.renderInteraction(playPrompt);
+    check(aimedText.contains(QStringLiteral("可选目标：[2]")),
+          "a card's legal targets are numbered the way the target list is");
+    check(aimedText.contains(QStringLiteral("无需选目标")),
+          "a card that picks its own targets says so instead");
+    TuiRenderer stuck(false, TuiRenderer::Resolvers{
+        {}, {}, {}, {}, {}, {},
+        [](int) {
+            TuiRenderer::CardTargets advice;
+            advice.known = true;
+            return advice;
+        }});
+    check(stuck.renderInteraction(playPrompt).contains(QStringLiteral("无可选目标")),
+          "a card with nowhere to go is called out -- isAvailable() misses this");
+    check(stuck.renderInteraction(playPrompt).contains(QStringLiteral("ID=7")),
+          "a card with no legal target is still listed and still selectable");
+    // Advice is only worth printing for a card that could be played at all.
+    TuiRenderer both(false, TuiRenderer::Resolvers{
+        {}, {}, {}, {},
+        [](int cardId) { return cardId == 7 ? QStringLiteral("（不可用）") : QString(); },
+        {},
+        [](int) {
+            TuiRenderer::CardTargets advice;
+            advice.known = true;
+            advice.targets = {QStringLiteral("sgs2")};
+            return advice;
+        }});
+    const QString bothText = both.renderInteraction(playPrompt);
+    check(bothText.contains(QStringLiteral("ID=7）（不可用）"))
+              && bothText.count(QStringLiteral("可选目标")) == 1,
+          "an unplayable card is not also given a target list");
+
+    // The instance id is not the number to type, so it only appears when one
+    // skill is offered more than once.
+    check(!aimedText.contains(QStringLiteral("技能 #")),
+          "a skill offered once is numbered by the menu alone");
+    InteractionRequest twinPrompt = playPrompt;
+    std::get_if<CardInteractionPayload>(&twinPrompt.payload)->skillCandidates = {
+        SkillActivationCandidate{QStringLiteral("zhiheng"), 1},
+        SkillActivationCandidate{QStringLiteral("zhiheng"), 2}};
+    const QString twinText = plain.renderInteraction(twinPrompt);
+    check(twinText.contains(QStringLiteral("技能 #1")) && twinText.contains(QStringLiteral("技能 #2")),
+          "two instances of one skill are told apart by their instance id");
+
     InteractionRequest keyedPrompt = cardRequest();
     keyedPrompt.prompt = QStringLiteral("savage-assault-slash:sgs1");
     const QString keyedPromptText = engineBacked.renderInteraction(keyedPrompt);
@@ -1062,7 +1119,6 @@ void rendererContract()
               && playText.contains(QStringLiteral("目标玩家"))
               && playText.contains(QStringLiteral("结束出牌"))
               && playText.contains(QStringLiteral("1 -> 2"))
-              && playText.contains(QStringLiteral("4 1 -> 2"))
               && playText.contains(QStringLiteral("技能"))
               && !playText.contains(QStringLiteral("须选")),
           "play-card prompt lists cards, skills, numbered targets, and how to pass");
