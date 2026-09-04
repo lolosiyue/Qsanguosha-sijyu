@@ -21,6 +21,12 @@ public:
     // General name -> its kingdom. The server never broadcasts the kingdom
     // property, so it is read off the general the way Player::getKingdom() does.
     using KingdomResolver = std::function<QString(const QString &)>;
+    // What the engine says about a candidate in the request being answered --
+    // "不可用", "不符" and so on, already worded. Empty means nothing to add.
+    // The renderer never acts on it: an advisory that turns out wrong must not
+    // be able to hide a legal answer.
+    using CardHintResolver = std::function<QString(int)>;
+    using PlayerHintResolver = std::function<QString(const QString &)>;
 
     // Everything the renderer needs the engine for. Each one is optional; an
     // absent resolver means the raw value is shown.
@@ -30,6 +36,8 @@ public:
         NameResolver name;
         PlayerResolver player;
         KingdomResolver kingdom;
+        CardHintResolver cardHint;
+        PlayerHintResolver playerHint;
     };
 
     explicit TuiRenderer(bool ansiEnabled = false, Resolvers resolvers = {});
