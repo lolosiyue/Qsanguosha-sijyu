@@ -54,27 +54,35 @@ void appendOptions(QStringList *lines, const QList<InteractionOption> &options)
 }
 
 void appendCards(QStringList *lines, const QList<int> &cards, const QList<int> &disabled,
-                 const TuiRenderer::CardResolver &resolver, int startIndex = 1)
+                 const TuiRenderer::CardResolver &resolver,
+                 const TuiRenderer::CardHintResolver &hint, int startIndex = 1)
 {
     for (int i = 0; i < cards.size(); ++i) {
         const int cardId = cards.at(i);
         const QString display = resolver ? TuiRenderer::sanitize(resolver(cardId), 512)
                                          : tr("牌 %1").arg(cardId);
+        QString note = disabled.contains(cardId) ? tr("（禁用）") : QString();
+        if (note.isEmpty() && hint)
+            note = TuiRenderer::sanitize(hint(cardId), 64);
         lines->append(tr("  [%1] %2（ID=%3）%4").arg(startIndex + i).arg(display).arg(cardId)
-            .arg(disabled.contains(cardId) ? tr("（禁用）") : QString()));
+            .arg(note));
     }
 }
 
 void appendPlayers(QStringList *lines, const QStringList &names,
-                   const std::function<QString(const QString &)> &resolve)
+                   const std::function<QString(const QString &)> &resolve,
+                   const TuiRenderer::PlayerHintResolver &hint = {})
 {
     for (int i = 0; i < names.size(); ++i) {
         const QString objectName = names.at(i);
         const QString shown = resolve(objectName);
+        const QString note = hint ? TuiRenderer::sanitize(hint(objectName), 64) : QString();
         lines->append(shown == objectName
-            ? QStringLiteral("  [%1] %2").arg(i + 1).arg(TuiRenderer::sanitize(objectName, 128))
-            : QStringLiteral("  [%1] %2（%3）").arg(i + 1)
-                .arg(TuiRenderer::sanitize(shown, 128), TuiRenderer::sanitize(objectName, 128)));
+            ? QStringLiteral("  [%1] %2%3").arg(i + 1)
+                .arg(TuiRenderer::sanitize(objectName, 128), note)
+            : QStringLiteral("  [%1] %2（%3）%4").arg(i + 1)
+                .arg(TuiRenderer::sanitize(shown, 128), TuiRenderer::sanitize(objectName, 128),
+                     note));
     }
 }
 
@@ -632,6 +640,11 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
                 lines << tr("可见：");
             appendCards(&lines, value->selection.selectableCards,
                         value->selection.disabledCards, m_resolvers.card,
+                        playCard || request.type == InteractionType::ResponseCard
+                            || request.type == InteractionType::AskPeach
+                            || request.type == InteractionType::Nullification
+                            || request.type == InteractionType::DiscardCard
+                            ? m_resolvers.cardHint : TuiRenderer::CardHintResolver(),
                         chooseCard ? value->hiddenHandCount + 1 : 1);
         }
         if (playCard) {
@@ -653,13 +666,15 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
         if (!value->fixedTargets.isEmpty()) {
             lines << tr("固定目标：");
             appendPlayers(&lines, value->fixedTargets,
-                          [this](const QString &name) { return playerText(name); });
+                          [this](const QString &name) { return playerText(name); },
+                          m_resolvers.playerHint);
         }
         if (!value->optionalTargets.isEmpty()) {
             lines << (request.type == InteractionType::PlayCard
                 ? tr("目标玩家：") : tr("可选目标："));
             appendPlayers(&lines, value->optionalTargets,
-                          [this](const QString &name) { return playerText(name); });
+                          [this](const QString &name) { return playerText(name); },
+                          m_resolvers.playerHint);
         }
         if (!value->selection.pattern.isEmpty()
             && value->selection.pattern != QLatin1String(".")) {
@@ -671,18 +686,18 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
             if (!value->selectableCards.contains(cardId))
                 disabled.append(cardId);
         }
-        appendCards(&lines, value->visibleCards, disabled, m_resolvers.card);
+        appendCards(&lines, value->visibleCards, disabled, m_resolvers.card, {});
         lines << tr("可选：%1").arg(joinIntegers(value->selectableCards));
     } else if (const auto *value = request.payloadAs<YijiInteractionPayload>()) {
-        appendCards(&lines, value->cardIds, {}, m_resolvers.card);
+        appendCards(&lines, value->cardIds, {}, m_resolvers.card, {});
         lines << tr("接收者：");
         appendPlayers(&lines, value->targetPlayers,
                       [this](const QString &name) { return playerText(name); });
     } else if (const auto *value = request.payloadAs<RearrangeCardsInteractionPayload>()) {
-        appendCards(&lines, value->cardIds, {}, m_resolvers.card);
+        appendCards(&lines, value->cardIds, {}, m_resolvers.card, {});
     } else if (const auto *value = request.payloadAs<AmazingGraceInteractionPayload>()) {
         appendCards(&lines, value->selection.selectableCards,
-                    value->selection.disabledCards, m_resolvers.card);
+                    value->selection.disabledCards, m_resolvers.card, {});
     } else if (const auto *value = request.payloadAs<ArrangeGeneralsInteractionPayload>()) {
         for (int i = 0; i < value->generalNames.size(); ++i)
             lines << QStringLiteral("  [%1] %2").arg(i + 1)
