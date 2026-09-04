@@ -12,6 +12,7 @@ import argparse
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -19,7 +20,7 @@ from dataclasses import dataclass
 from typing import Final, TypeAlias
 
 from runner_common import (HEADLESS_HEADER, common_args, describe_exit,
-                           hex_exit, is_crash_code, kill_pid,
+                           find_exe, hex_exit, is_crash_code, kill_pid,
                            log_dir_for, log_has_smart_ai_failure,
                            parse_headless_log, qt_console_env,
                            resolve_workdir, spawn, stamp, tail_lines,
@@ -27,7 +28,37 @@ from runner_common import (HEADLESS_HEADER, common_args, describe_exit,
                            HEADLESS_FINISHED)
 
 MAX_SEED: Final[int] = (1 << 32) - 1
-REGISTERED_REAL_MODES: Final[frozenset[str]] = frozenset({"08p"})
+# 模式 ID 以 registry 為準。首選向 qsanguosha_server --list-game-modes 問, 問唔到
+# 先用呢個靜態表 (2026-09-04 的 registry 內容) 兜底 —— 唔好淨係寫死一個模式,
+# 之前寫死 {"08p"} 令 --modes 05p 直接 exit 2, 但產品路徑本身完全正常。
+FALLBACK_REAL_MODES: Final[frozenset[str]] = frozenset({
+    "02_1v1", "02p", "03_1v2", "03p", "04_1v3", "04_2v2", "04_boss", "04p",
+    "05_ol", "05p", "06_3v3", "06_XMode", "06_ol", "06p", "06pd", "07p",
+    "08_defense", "08p", "08pd", "08pz", "09p", "10p", "10pd", "10pz", "20p",
+})
+
+
+def registered_real_modes(exe_root: str) -> frozenset[str]:
+    """向 server registry 問實際註冊咗嘅模式 ID; 失敗就用靜態表。"""
+    try:
+        server = find_exe(exe_root, "qsanguosha_server")
+    except FileNotFoundError:
+        return FALLBACK_REAL_MODES
+    try:
+        out = subprocess.run([server, "--list-game-modes"], capture_output=True,
+                             text=True, timeout=60, cwd=resolve_workdir(exe_root))
+    except (OSError, subprocess.SubprocessError):
+        return FALLBACK_REAL_MODES
+    if out.returncode != 0:
+        return FALLBACK_REAL_MODES
+    modes = set()
+    for line in out.stdout.splitlines()[1:]:  # 第一行係 "ID\tPLAYERS\tNAME"
+        parts = line.split("\t")
+        if len(parts) >= 2 and parts[0].strip():
+            modes.add(parts[0].strip())
+    return frozenset(modes) if modes else FALLBACK_REAL_MODES
+
+
 PER_GAME_TIMEOUT: Final[int] = int(
     os.environ.get("QSAN_HEADLESS_PER_GAME_TIMEOUT", "3600")
 )  # 可由環境變數覆寫的每局有界上限 (秒)
@@ -219,6 +250,11 @@ def validate_final_gauges(
     orphan_failures: list[str] = []
     current_game: int | None = None
     completed: set[int] = set()
+    # 產品係喺下一局嘅 banner 印咗之後先拆房, 所以第 N 局嘅 FINAL_GAUGE 通常出
+    # 喺 "Starting headless game N+1" 之後, 最後一局嗰個更加喺 done 之後。用
+    # 「已完成但未收到 marker」嘅 FIFO 對號, 唔可以照 current_game 歸屬,
+    # 否則第 1 局永遠 missing, 最後一個 marker 永遠 marker-outside-game。
+    awaiting_marker: list[int] = []
     done_seen = False
     marker_count = 0
     for line in _ordered_log_lines(headless_log, process_log):
@@ -231,6 +267,8 @@ def validate_final_gauges(
         if finished is not None:
             game = int(finished.group(1))
             completed.add(game)
+            if game not in awaiting_marker:
+                awaiting_marker.append(game)
             current_game = game
             continue
         if HEADLESS_DONE.search(line):
@@ -241,10 +279,14 @@ def validate_final_gauges(
         if not found:
             continue
         marker_count += 1
-        if current_game is None or done_seen:
+        if awaiting_marker:
+            target_game = awaiting_marker.pop(0)
+        elif current_game is not None and not done_seen:
+            target_game = current_game
+        else:
             orphan_failures.append("marker-outside-game")
             continue
-        stage = "completed" if current_game in completed else "early"
+        stage = "completed" if target_game in completed else "early"
         if payload is None:
             observation = GaugeObservation(
                 stage=stage,
@@ -266,7 +308,7 @@ def validate_final_gauges(
                 parse_failure=failure,
                 nonzero_fields=nonzero,
             )
-        observations.setdefault(current_game, []).append(observation)
+        observations.setdefault(target_game, []).append(observation)
 
     rows: list[GaugeRow] = []
     all_failures = list(orphan_failures)
@@ -474,11 +516,12 @@ def main():
         print("錯誤: 沒有指定模式", file=sys.stderr)
         return 1
 
-    illegal_modes = sorted(set(modes) - REGISTERED_REAL_MODES)
+    known_modes = registered_real_modes(args.exe_root)
+    illegal_modes = sorted(set(modes) - known_modes)
     if illegal_modes:
         print(
-            "unsupported product mode(s): %s; only 20p is registered"
-            % ", ".join(illegal_modes),
+            "unsupported product mode(s): %s; registered modes: %s"
+            % (", ".join(illegal_modes), ", ".join(sorted(known_modes))),
             file=sys.stderr,
         )
         return 2
