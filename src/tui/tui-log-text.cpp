@@ -134,6 +134,12 @@ QString tuiPresentationEventText(int command, const QString &fallbackText,
     }
     case QSanProtocol::S_COMMAND_ANIMATE:
     case QSanProtocol::S_COMMAND_SET_EMOTION:
+    // The desktop answers these with a skill bubble on the avatar and a table
+    // repaint; its log box stays silent, and the battle log already carries
+    // #InvokeSkill / #TriggerSkill for anything worth reading. Without this the
+    // transcript shows the reducer's own debug text ("sgs2 invoked eight_diagram").
+    case QSanProtocol::S_COMMAND_INVOKE_SKILL:
+    case QSanProtocol::S_COMMAND_CHANGE_TABLE_BG:
         return QString();
     default:
         return fallbackText;
