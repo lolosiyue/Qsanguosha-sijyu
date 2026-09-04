@@ -255,13 +255,13 @@ jobs:
           cmake -S . -B builds\cmake-vs2026 -D BUILD_TESTING=ON
           if ($LASTEXITCODE -ne 0) { throw 'TUI test reconfigure failed' }
           cmake --build builds\cmake-vs2026 --config RelWithDebInfo `
-            --target qsanguosha_tui_contract_tests qsanguosha_tui_live_tcp_tests `
+            --target qsanguosha_tui_tests `
             --parallel 8
           if ($LASTEXITCODE -ne 0) { throw 'TUI test build failed' }
           $env:PATH = "$env:QT_ROOT_DIR\bin;$env:PATH"
-          & builds\cmake-vs2026\tests\RelWithDebInfo\qsanguosha_tui_contract_tests.exe
+          & builds\cmake-vs2026\tests\RelWithDebInfo\qsanguosha_tui_tests.exe --suite contract
           if ($LASTEXITCODE -ne 0) { throw 'TUI contract gate failed' }
-          & builds\cmake-vs2026\tests\RelWithDebInfo\qsanguosha_tui_live_tcp_tests.exe
+          & builds\cmake-vs2026\tests\RelWithDebInfo\qsanguosha_tui_tests.exe --suite live-tcp
           if ($LASTEXITCODE -ne 0) { throw 'TUI live TCP gate failed' }
 
       - name: Run shared GUI and TUI client architecture regressions
@@ -293,22 +293,22 @@ jobs:
             --interaction-matrix artifacts\client-core-interaction-matrix.json `
             --generated-interaction-matrix ci-logs\generated-client-core-interaction-matrix.json
           if ($LASTEXITCODE -ne 0) { throw 'Shared ClientCore production inventory failed' }
-          & builds\cmake-vs2026\tests\RelWithDebInfo\qsanguosha_interaction_reply_adapter_tests.exe
+          & builds\cmake-vs2026\tests\RelWithDebInfo\qsanguosha_protocol_tests.exe --suite reply-adapter
           if ($LASTEXITCODE -ne 0) { throw 'GUI/TUI reply adapter contract failed' }
-          & builds\cmake-vs2026\tests\RelWithDebInfo\qsanguosha_local_response_ui_case_tests.exe
+          & builds\cmake-vs2026\tests\RelWithDebInfo\qsanguosha_core_tests.exe --suite local-response-case-parser
           if ($LASTEXITCODE -ne 0) { throw 'GUI local-response case contract failed' }
 
       - name: Build and run Windows Debug TUI targeted gates
         shell: pwsh
         run: |
           cmake --build builds\cmake-vs2026 --config Debug `
-            --target qsanguosha_tui qsanguosha_tui_contract_tests qsanguosha_tui_live_tcp_tests `
+            --target qsanguosha_tui qsanguosha_tui_tests `
             --parallel 8
           if ($LASTEXITCODE -ne 0) { throw 'Windows Debug TUI targeted build failed' }
           $env:PATH = "$env:QT_ROOT_DIR\bin;$env:PATH"
-          & builds\cmake-vs2026\tests\Debug\qsanguosha_tui_contract_tests.exe
+          & builds\cmake-vs2026\tests\Debug\qsanguosha_tui_tests.exe --suite contract
           if ($LASTEXITCODE -ne 0) { throw 'Windows Debug TUI contract failed' }
-          & builds\cmake-vs2026\tests\Debug\qsanguosha_tui_live_tcp_tests.exe
+          & builds\cmake-vs2026\tests\Debug\qsanguosha_tui_tests.exe --suite live-tcp
           if ($LASTEXITCODE -ne 0) { throw 'Windows Debug TUI live-session contract failed' }
 
       - name: Verify Windows Release TUI product
