@@ -53,17 +53,44 @@ void appendOptions(QStringList *lines, const QList<InteractionOption> &options)
     }
 }
 
+// Turns the engine's opinion about a card's targets into the tail of its menu
+// line, numbered the way the target list below is numbered.
+QString targetNote(const TuiRenderer::CardTargets &advice, const QStringList &targetOrder)
+{
+    if (!advice.known)
+        return QString();
+    if (advice.targetFixed)
+        return tr("  无需选目标");
+    if (advice.targets.isEmpty())
+        return tr("  无可选目标");
+    QStringList numbers;
+    for (const QString &name : advice.targets) {
+        const qsizetype index = targetOrder.indexOf(name);
+        // A legal target the prompt did not offer is the server's call, not
+        // ours; name it rather than dropping it.
+        numbers << (index >= 0 ? QStringLiteral("[%1]").arg(index + 1)
+                               : TuiRenderer::sanitize(name, 64));
+    }
+    return tr("  可选目标：%1").arg(numbers.join(QString()));
+}
+
 void appendCards(QStringList *lines, const QList<int> &cards, const QList<int> &disabled,
                  const TuiRenderer::CardResolver &resolver,
-                 const TuiRenderer::CardHintResolver &hint, int startIndex = 1)
+                 const TuiRenderer::CardHintResolver &hint, int startIndex = 1,
+                 const TuiRenderer::CardTargetResolver &targets = {},
+                 const QStringList &targetOrder = {})
 {
     for (int i = 0; i < cards.size(); ++i) {
         const int cardId = cards.at(i);
         const QString display = resolver ? TuiRenderer::sanitize(resolver(cardId), 512)
                                          : tr("牌 %1").arg(cardId);
         QString note = disabled.contains(cardId) ? tr("（禁用）") : QString();
+        const bool serverDisabled = !note.isEmpty();
         if (note.isEmpty() && hint)
             note = TuiRenderer::sanitize(hint(cardId), 64);
+        // Only worth asking where the card could go if it can be played at all.
+        if (!serverDisabled && note.isEmpty() && targets)
+            note += targetNote(targets(cardId), targetOrder);
         lines->append(tr("  [%1] %2（ID=%3）%4").arg(startIndex + i).arg(display).arg(cardId)
             .arg(note));
     }
@@ -380,7 +407,7 @@ QString TuiRenderer::answerHint(const InteractionRequest &request) const
     case InteractionResponseShape::Cards:
         if (request.type == InteractionType::PlayCard) {
             return tr("作答：<编号> -> <目标编号>   例如 1 -> 2\n"
-                      "技能＋手牌＋目标：<技能编号> <手牌编号> -> <目标编号>   例如 4 1 -> 2\n"
+                      "技能牌：先写 <技能编号> <手牌编号>，再按提示选目标   例如 8 1\n"
                       "无目标只写编号或技能编号。结束出牌：pass 或 /cancel");
         }
         if (request.type == InteractionType::ChooseCard) {
@@ -547,12 +574,17 @@ QString TuiRenderer::renderHand(const ClientGameState &state) const
         if (card.value(QStringLiteral("owner")).toString() != self
             || card.value(QStringLiteral("place")).toInt() != 0)
             continue;
+        // This used to read game.available_cards, which nothing ever fills:
+        // S_COMMAND_AVAILABLE_CARDS has handlers on both clients and no sender
+        // anywhere, and the desktop's own available_cards is the whole draw
+        // pile from GAME_START (used only to tell whether a game is on), so
+        // even a populated one would have marked every card in hand. The
+        // engine answers the question that was meant.
+        const int cardId = card.value(QStringLiteral("id")).toInt();
         lines << tr("[%1] ID=%2 %3%4")
-            .arg(++index).arg(card.value(QStringLiteral("id")).toInt())
-            .arg(cardText(state, card.value(QStringLiteral("id")).toInt()),
-                 state.gameValue(QStringLiteral("available_cards")).toList().contains(
-                     card.value(QStringLiteral("id")))
-                     ? tr(" 可用") : QString());
+            .arg(++index).arg(cardId)
+            .arg(cardText(state, cardId),
+                 m_resolvers.handHint ? sanitize(m_resolvers.handHint(cardId), 64) : QString());
     }
     if (index == 0)
         lines << tr("（没有可见的手牌）");
@@ -645,14 +677,25 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
                             || request.type == InteractionType::Nullification
                             || request.type == InteractionType::DiscardCard
                             ? m_resolvers.cardHint : TuiRenderer::CardHintResolver(),
-                        chooseCard ? value->hiddenHandCount + 1 : 1);
+                        chooseCard ? value->hiddenHandCount + 1 : 1,
+                        playCard ? m_resolvers.cardTargets : TuiRenderer::CardTargetResolver(),
+                        value->optionalTargets);
         }
         if (playCard) {
             const int skillStart = value->selection.selectableCards.size() + 1;
             for (int i = 0; i < value->skillCandidates.size(); ++i) {
                 const SkillActivationCandidate &skill = value->skillCandidates.at(i);
                 const QString shown = nameText(skill.skillName);
-                lines << (skill.instanceId > 0
+                // The instance id is not the number to type -- that is the menu
+                // index -- so printing it beside every skill just puts two
+                // numbers on the line and invites the wrong one. It earns its
+                // place only when one skill is offered more than once.
+                int sameName = 0;
+                for (const SkillActivationCandidate &other : value->skillCandidates) {
+                    if (other.skillName == skill.skillName)
+                        ++sameName;
+                }
+                lines << (skill.instanceId > 0 && sameName > 1
                     ? tr("  [%1] %2（技能 #%3）").arg(skillStart + i)
                         .arg(sanitize(shown, 128)).arg(skill.instanceId)
                     : tr("  [%1] %2（技能）").arg(skillStart + i)
