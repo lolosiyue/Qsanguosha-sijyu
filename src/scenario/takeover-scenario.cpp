@@ -68,6 +68,8 @@ void restoreSkills(Room *room, ServerPlayer *player,
     }
 }
 
+QVariant resolvePlayerRefs(const QVariant &value, const TakeoverScenario *scenario);
+
 void restorePlayer(Room *room, TakeoverScenario *scenario, ServerPlayer *player,
                    const PlayerSnapshot &snapshot)
 {
@@ -139,7 +141,7 @@ void restorePlayer(Room *room, TakeoverScenario *scenario, ServerPlayer *player,
         player->setProperty(key.toUtf8().constData(), snapshot.dynamicProperties.value(key));
     player->clearTags();
     foreach (const QString &key, snapshot.tags.keys())
-        player->setTag(key, snapshot.tags.value(key));
+        player->setTag(key, resolvePlayerRefs(snapshot.tags.value(key), scenario));
     restoreHistory(room, player, snapshot.history);
 
     // Equip-area capacity is part of the gameplay state.  The normal general
@@ -269,13 +271,40 @@ bool restoreCards(Room *room, TakeoverScenario *scenario)
     return true;
 }
 
-void restoreRoomTags(Room *room, const QVariantMap &tags)
+// GameSnapshot 捕捉時把 tag 內的 ServerPlayer* 換成 {"__player": "<objectName>"}
+// （見 game-snapshot.cpp 的 normalizePlayerRefs）。呢度按名解返 runtime 指標,
+// 解唔到就放一個 null ServerPlayer*, 唔好留低一個技能睇唔明的 map。
+QVariant resolvePlayerRefs(const QVariant &value, const TakeoverScenario *scenario)
+{
+    if (value.userType() == QMetaType::QVariantList) {
+        QVariantList list = value.toList();
+        for (QVariant &item : list)
+            item = resolvePlayerRefs(item, scenario);
+        return list;
+    }
+    if (value.userType() != QMetaType::QVariantMap)
+        return value;
+    QVariantMap map = value.toMap();
+    const QString refKey = QString::fromLatin1(GameSnapshotTags::PlayerRefKey);
+    if (map.size() == 1 && map.contains(refKey)) {
+        ServerPlayer *player = scenario
+            ? scenario->runtimePlayer(map.value(refKey).toString())
+            : nullptr;
+        return QVariant::fromValue(player);
+    }
+    for (auto it = map.begin(); it != map.end(); ++it)
+        it.value() = resolvePlayerRefs(it.value(), scenario);
+    return map;
+}
+
+void restoreRoomTags(Room *room, const QVariantMap &tags,
+                     const TakeoverScenario *scenario)
 {
     const QStringList existingKeys = room->getAllTags().keys();
     for (const QString &key : existingKeys)
         room->removeTag(key);
     foreach (const QString &key, tags.keys())
-        room->setTag(key, tags.value(key));
+        room->setTag(key, resolvePlayerRefs(tags.value(key), scenario));
 }
 
 bool restoreRng(Room *room, const GlobalSnapshot &state)
@@ -530,7 +559,7 @@ bool TakeoverRule::restore(Room *room) const
         qWarning() << "Takeover snapshot card state could not be restored";
         return false;
     }
-    restoreRoomTags(room, state.roomTags);
+    restoreRoomTags(room, state.roomTags, scenario);
 
     if (!restoreRng(room, state)) {
         qWarning() << "Takeover snapshot has an invalid RNG state";
