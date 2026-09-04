@@ -65,7 +65,7 @@ void GameSnapshotService::saveSnapshot(const QString &type, const QString &playe
         m_snapshots.append(snapshot);
     } else {
         qWarning() << "GameSnapshotService: failed to save eligible turn snapshot"
-                   << filepath;
+                   << filepath << "reason:" << snapshot->getError();
         delete snapshot;
     }
 }
