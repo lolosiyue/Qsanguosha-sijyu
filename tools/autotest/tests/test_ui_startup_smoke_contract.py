@@ -94,11 +94,11 @@ def test_startup_smoke_reuses_the_product_startup_path() -> None:
         "the startup smoke must create the real MainWindow, not a stand-in"
     )
     assert "qApp->exec()" in text, "the startup smoke must enter the Qt event loop"
-    assert "homeSceneView()" in text, (
-        "the startup smoke must inspect the real HomeScene QQuickWidget"
+    assert "homeSceneRootObject()" in text, (
+        "the startup smoke must inspect the real HomeScene QML root MainWindow owns"
     )
-    assert "rootObject()" in text, (
-        "the ready condition must require a live QML root object"
+    assert "MainWindow::homeSceneReady" in text, (
+        "the ready condition must come from MainWindow's own HomeScene signal"
     )
 
     # No duplicated HomeScene bootstrap: the smoke observes MainWindow, it does
@@ -137,14 +137,14 @@ def test_ready_condition_is_not_a_bare_timer() -> None:
 
 def test_mainwindow_exposes_a_home_scene_seam_without_changing_startup() -> None:
     header = read(MAINWINDOW_H)
-    for member in ("isHomeSceneReady", "homeSceneError", "homeSceneView",
+    for member in ("isHomeSceneReady", "homeSceneError", "homeSceneRootObject",
                    "homeSceneReady", "homeSceneFailed"):
         assert member in header, f"MainWindow is missing the {member} startup seam"
 
     source = read(MAINWINDOW_CPP)
     # The seam has to hang off the pre-existing statusChanged handler; it must not
     # introduce a second QML load or change what normal startup does.
-    assert source.count("homeView->setSource(homeUrl)") == 1, (
+    assert source.count("setHomeSceneSource(homeUrl)") == 1, (
         "setupHomePage() must still load HomeScene exactly once"
     )
     assert "emit homeSceneReady()" in source
