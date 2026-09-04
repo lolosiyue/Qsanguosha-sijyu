@@ -6,6 +6,8 @@
 #include <QObject>
 #include <QVariantMap>
 
+#include <functional>
+
 #include "engine-runtime-context.h"
 #include "room-state.h"
 
@@ -41,6 +43,18 @@ public:
     // room's card table; everything else is ignored.
     void applyMessage(const QSanProtocol::ProtocolMessage &message);
 
+    // Who holds a card is a question only the client-side player model can
+    // answer; without one the engine gets the same null it always got here.
+    using OwnerResolver = std::function<const Player *(int cardId)>;
+    void setOwnerResolver(OwnerResolver resolver);
+
+    // Card legality reads these off the room: Slash::targetFilter() only counts
+    // the per-turn slash limit when the reason is PLAY, and view-as skills ask
+    // for the pattern. The desktop keeps them in step with its own status
+    // (Client::setStatus / Client::activate); here they follow the request the
+    // player is answering.
+    void setCardUseContext(CardUseStruct::CardUseReason reason, const QString &pattern);
+
     QObject *runtimeObject() override;
     RoomState *roomState() override;
     const Player *cardOwner(int cardId) const override;
@@ -51,6 +65,7 @@ private:
     void applyCardUpdate(const QVariantMap &payload);
 
     const ClientGameState *m_state;
+    OwnerResolver m_ownerResolver;
     RoomState m_roomState;
     bool m_active = false;
 };
