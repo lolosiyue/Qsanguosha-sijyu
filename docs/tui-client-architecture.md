@@ -46,6 +46,10 @@ Qt Core／Network 上的 line-oriented text client。
 - `SkillDialogInfo` 已能描述 `guhuo`、`juguan`、`tiansuan` 三種 Lua skill dialog。
 - `src/tui/tui-skill-dialog.*` 以無 widget 方式重現這三種 dialog 的選項枚舉、啟用判斷
   與 `Self` tag 寫入；TUI 在技能編號後寫 `=<牌名>` 即可宣告（選牌 + 選視為牌）。
+- TUI 的界面文字全部離開了原始碼：`src/tui` 只寫 key，經 `tuiText()` 查
+  `lang/<語言>/TUICommon.lua`（254 條，與 `Common.lua` 同一個 `lua/sanguosha.lua`
+  載入路徑）。查不到即原樣印出 key，所以缺一條看得見；例外只有 `tui-main.cpp` 的
+  命令行說明（在引擎起來之前就要印）與玩家輸入時接受的簡繁別名。
 
 ### 2.2 尚未具備完整純文字 client 的部分
 
