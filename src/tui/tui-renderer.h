@@ -27,6 +27,8 @@ public:
     // be able to hide a legal answer.
     using CardHintResolver = std::function<QString(int)>;
     using PlayerHintResolver = std::function<QString(const QString &)>;
+    // Same advisory, for an offered skill: name and activation instance in.
+    using SkillHintResolver = std::function<QString(const QString &, int)>;
 
     // Which players the engine would let a card be aimed at, asked before the
     // player has picked anything -- Card::targetFilter() with an empty
@@ -56,6 +58,7 @@ public:
         // /hand is read outside any request, so it asks the play-phase
         // question unconditionally rather than following the active prompt.
         CardHintResolver handHint;
+        SkillHintResolver skillHint;
     };
 
     explicit TuiRenderer(bool ansiEnabled = false, Resolvers resolvers = {});
