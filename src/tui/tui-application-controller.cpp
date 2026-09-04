@@ -29,6 +29,22 @@ QString tr(const char *source)
     return QCoreApplication::translate("QSanguoshaTui", source);
 }
 
+// The words that walk back a half-composed play, matching the ones
+// TuiInteractionView accepts for giving up on a prompt.
+bool isAbandonToken(const QString &text)
+{
+    return text.compare(QStringLiteral("pass"), Qt::CaseInsensitive) == 0
+        || text.compare(QStringLiteral("cancel"), Qt::CaseInsensitive) == 0
+        || text == QStringLiteral("过") || text == QStringLiteral("過");
+}
+
+bool isSkillActivation(const InteractionResponse &response)
+{
+    const auto *cards = std::get_if<InteractionResponse::CardSelectionData>(&response.payload);
+    return cards != nullptr && !cards->activationSkillName.isEmpty()
+        && cards->targets.isEmpty();
+}
+
 } // namespace
 
 TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &options,
@@ -42,7 +58,9 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
               [this](const QString &objectName) { return resolvePlayerName(objectName); },
               [](const QString &general) { return resolveGeneralKingdom(general); },
               [this](int cardId) { return resolveCardHint(cardId); },
-              [this](const QString &objectName) { return resolvePlayerHint(objectName); }}),
+              [this](const QString &objectName) { return resolvePlayerHint(objectName); },
+              [this](int cardId) { return resolveCardTargets(cardId); },
+              [this](int cardId) { return resolveHandCardHint(cardId); }}),
       m_view(&m_renderer, [this](const QString &text) { writeOutput(text); },
              [this](int cardId) { return resolveCardWireText(cardId); },
              [this](const QString &skillName, int instanceId, const QList<int> &subcards,
@@ -186,6 +204,12 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
             m_hintType = request.type;
             m_hintReason = reason;
             m_hintPattern = usePattern;
+            m_hintTargets.clear();
+            if (const auto *cards = std::get_if<CardInteractionPayload>(&request.payload))
+                m_hintTargets = cards->optionalTargets;
+            // A prompt the server replaced abandons whatever the player was
+            // half way through composing.
+            clearPendingActivation();
             if (m_core.beginRequest(std::move(request)) == 0) {
                 writeError(tr("无法启用服务器互动"));
                 requestExit(4);
@@ -246,6 +270,88 @@ bool TuiApplicationController::start(QString *error)
     return true;
 }
 
+const Card *TuiApplicationController::answerCard(const InteractionResponse &response) const
+{
+    if (Sanguosha == nullptr)
+        return nullptr;
+    const auto *cards = std::get_if<InteractionResponse::CardSelectionData>(&response.payload);
+    if (cards == nullptr)
+        return nullptr;
+    // A card the player picked outright is the room's own copy.
+    if (cards->cardIds.size() == 1)
+        return Sanguosha->getCard(cards->cardIds.first());
+    // Anything else is a card the view just composed. Card::Parse() would
+    // rebuild it, but it ends in Card::deleteLater() -> drain(), which reaps
+    // pending engine cards and leaves Lua skills indexing a nil card, so use
+    // the instance the resolver kept instead. Nothing to say without one.
+    return cards->activationSkillName.isEmpty() ? nullptr : m_builtSkillCard;
+}
+
+bool TuiApplicationController::checkPlayAnswer(const InteractionResponse &response,
+                                               QString *error) const
+{
+    const ClientPlayer *self = m_players.self();
+    const Card *card = answerCard(response);
+    if (self == nullptr || card == nullptr)
+        return true;
+    const auto *cards = std::get_if<InteractionResponse::CardSelectionData>(&response.payload);
+    if (cards == nullptr)
+        return true;
+
+    QList<const Player *> chosen;
+    for (const QString &name : cards->targets) {
+        const ClientPlayer *target = m_players.player(name);
+        if (target == nullptr)
+            return true;   // nothing to check against; let the server decide
+        // Each target has to be legal given the ones before it, which is how
+        // the desktop adds them one click at a time.
+        if (!card->targetFilter(chosen, target, self)) {
+            if (error != nullptr) {
+                *error = tr("%1 不能指定 %2 为目标").arg(
+                    m_renderer.nameText(card->objectName()), resolvePlayerName(name));
+            }
+            return false;
+        }
+        chosen.append(target);
+    }
+    if (!card->targetFixed() && !card->targetsFeasible(chosen, self)) {
+        if (error != nullptr) {
+            *error = chosen.isEmpty()
+                ? tr("%1 还需要指定目标").arg(m_renderer.nameText(card->objectName()))
+                : tr("%1 的目标数量不对").arg(m_renderer.nameText(card->objectName()));
+        }
+        return false;
+    }
+    return true;
+}
+
+bool TuiApplicationController::beginTargetStage(const QString &firstLine,
+                                                const InteractionResponse &response)
+{
+    const Card *card = answerCard(response);
+    const TuiRenderer::CardTargets advice = cardTargetAdvice(card);
+    if (!advice.known || advice.targetFixed || advice.targets.isEmpty())
+        return false;
+
+    m_pending.active = true;
+    m_pending.firstLine = firstLine;
+    QStringList lines{tr("已组出 %1，请指定目标：")
+        .arg(m_renderer.nameText(card->objectName()))};
+    for (const QString &name : advice.targets) {
+        const qsizetype index = m_hintTargets.indexOf(name);
+        lines << tr("  [%1] %2%3").arg(index >= 0 ? index + 1 : 0)
+            .arg(resolvePlayerName(name), resolvePlayerHint(name));
+    }
+    lines << tr("输入目标编号（多个用空格）。放弃这次组牌：pass");
+    writeOutput(lines.join(QLatin1Char('\n')));
+    return true;
+}
+
+void TuiApplicationController::clearPendingActivation()
+{
+    m_pending = PendingActivation{};
+}
+
 void TuiApplicationController::handleInputLine(const QString &line)
 {
     if (m_exiting)
@@ -267,12 +373,53 @@ void TuiApplicationController::handleInputLine(const QString &line)
         writeError(tr("目前没有互动；输入 /help 查看命令"));
         return;
     }
+
+    QString answer = input;
+    // A leading "!" waives the local check. The engine's verdict is advice
+    // built from a client-side copy of the table; if it ever disagrees with the
+    // server there has to be a way through, or a wrong hint becomes a wall.
+    const bool forced = answer.startsWith(QLatin1Char('!'));
+    if (forced)
+        answer = answer.mid(1).trimmed();
+
+    const bool wasPending = m_pending.active;
+    if (wasPending) {
+        if (isAbandonToken(answer)) {
+            clearPendingActivation();
+            writeOutput(tr("已放弃这次组牌"));
+            return;
+        }
+        // Stage two replays the player's own first line with the targets
+        // appended, so there is exactly one answer parser.
+        answer = tr("%1 -> %2").arg(m_pending.firstLine, answer);
+        m_pending.active = false;
+    }
+
     InteractionResponse response;
     QString error;
-    if (!m_view.parseAnswer(m_core.activeRequest(), input, &response, &error)) {
+    if (!m_view.parseAnswer(m_core.activeRequest(), answer, &response, &error)) {
         writeError(error);
+        m_pending.active = wasPending;
         return;
     }
+
+    if (!forced && m_hintType == InteractionType::PlayCard) {
+        QString reason;
+        if (!checkPlayAnswer(response, &reason)) {
+            // A skill card is composed before its targets are known, so the
+            // first thing a bare activation needs is not a complaint but the
+            // list of places it can go.
+            if (!wasPending && isSkillActivation(response)
+                && beginTargetStage(input, response)) {
+                return;
+            }
+            m_pending.active = wasPending;
+            writeError(tr("%1（要照样送出请在开头加 !）").arg(reason));
+            return;
+        }
+    }
+
+    clearPendingActivation();
     if (!m_session.submitInteractionResponse(std::move(response), &error))
         writeError(error.isEmpty() ? tr("作答已被拒绝") : error);
 }
@@ -382,8 +529,12 @@ void TuiApplicationController::fillPlaySkillCandidates(CardInteractionPayload *p
 QString TuiApplicationController::resolveSkillCardWireText(const QString &skillName,
     int instanceId, const QList<int> &subcardIds, QString *error) const
 {
+    // Keep the card the wire text was made from: the legality checks below run
+    // in this same event handler and would otherwise have to parse the string
+    // back, which drains the engine's card lifetime manager.
+    m_builtSkillCard = nullptr;
     return tuiResolveSkillCardWireText(m_core.state()->selfName(), skillName, instanceId,
-                                       subcardIds, error);
+                                       subcardIds, error, &m_builtSkillCard);
 }
 
 QString TuiApplicationController::resolveCardDisplayText(int cardId) const
@@ -432,6 +583,47 @@ QString TuiApplicationController::resolveCardHint(int cardId) const
     if (pattern.isEmpty() || pattern == QLatin1String("."))
         return QString();
     return Sanguosha->matchPattern(pattern, self, card) ? QString() : tr("（不符）");
+}
+
+TuiRenderer::CardTargets TuiApplicationController::cardTargetAdvice(const Card *card) const
+{
+    TuiRenderer::CardTargets advice;
+    const ClientPlayer *self = m_players.self();
+    if (card == nullptr || self == nullptr)
+        return advice;
+    advice.known = true;
+    if (card->targetFixed())
+        return advice.targetFixed = true, advice;
+    // Card::targetFilter() with nothing selected yet is exactly the question
+    // RoomScene asks to decide which photos light up before the first click.
+    // The candidate set is the one the server offered, so a target the prompt
+    // withheld never appears just because the engine would allow it.
+    for (const QString &name : m_hintTargets) {
+        const ClientPlayer *target = m_players.player(name);
+        if (target != nullptr && card->targetFilter({}, target, self))
+            advice.targets.append(name);
+    }
+    return advice;
+}
+
+TuiRenderer::CardTargets TuiApplicationController::resolveCardTargets(int cardId) const
+{
+    if (Sanguosha == nullptr)
+        return {};
+    return cardTargetAdvice(Sanguosha->getCard(cardId));
+}
+
+QString TuiApplicationController::resolveHandCardHint(int cardId) const
+{
+    if (Sanguosha == nullptr)
+        return QString();
+    const ClientPlayer *self = m_players.self();
+    const Card *card = Sanguosha->getCard(cardId);
+    if (self == nullptr || card == nullptr)
+        return QString();
+    if (self->isCardLimited(card, Card::MethodUse))
+        return tr(" 受限");
+    return card->isAvailable(self) ? tr(" 可用") : QString();
 }
 
 QString TuiApplicationController::resolvePlayerHint(const QString &objectName) const

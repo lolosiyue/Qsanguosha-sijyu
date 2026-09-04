@@ -68,8 +68,11 @@ void tuiFillPlaySkillCandidates(const ClientGameState &state, CardInteractionPay
 }
 
 QString tuiResolveSkillCardWireText(const QString &selfName, const QString &skillName,
-                                    int instanceId, const QList<int> &subcardIds, QString *error)
+                                    int instanceId, const QList<int> &subcardIds, QString *error,
+                                    const Card **builtCard)
 {
+    if (builtCard != nullptr)
+        *builtCard = nullptr;
     if (Sanguosha == nullptr) {
         if (error != nullptr)
             *error = tr("引擎尚未加载");
@@ -117,6 +120,8 @@ QString tuiResolveSkillCardWireText(const QString &selfName, const QString &skil
     Card *mutableCard = const_cast<Card *>(card);
     mutableCard->setActivationSkill(skillName, instanceId);
     const QString text = card->toString();
+    if (builtCard != nullptr)
+        *builtCard = card;
     // Card::deleteLater() also drain()s the global lifetime manager and can
     // reap unrelated pending engine cards. Queue only this temporary virtual.
     if (card->isVirtualCard() && card->parent() == nullptr)
