@@ -221,6 +221,18 @@ int main(int argc, char **argv)
               QStringLiteral("sgs3 emotion thunder_slash"), emotion, playerName).isEmpty(),
           "emotion stays out of the transcript");
 
+    // The skill bubble and the table background are things the desktop draws;
+    // the reducer's placeholder text for them must not reach the transcript.
+    const QVariantMap invoked{{QStringLiteral("schema_version"), 1},
+        {QStringLiteral("player_name"), QStringLiteral("sgs2")},
+        {QStringLiteral("skill_name"), QStringLiteral("eight_diagram")}};
+    check(tuiPresentationEventText(QSanProtocol::S_COMMAND_INVOKE_SKILL,
+              QStringLiteral("sgs2 invoked eight_diagram"), invoked, playerName).isEmpty(),
+          "a skill invocation cue stays out of the transcript");
+    check(tuiPresentationEventText(QSanProtocol::S_COMMAND_CHANGE_TABLE_BG,
+              QStringLiteral("presentation event 89"), QVariantMap(), playerName).isEmpty(),
+          "a table background change stays out of the transcript");
+
     const QString useCard = tuiSkillLogText(
         skillLog(QStringLiteral("#UseCard"), QStringLiteral("sgs1"),
                  {QStringLiteral("sgs2")}, QString::number(cardId),
