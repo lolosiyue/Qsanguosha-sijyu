@@ -95,10 +95,9 @@ jobs:
           cmake --build 'build/linux-${{ matrix.compiler.id }}' \
             --target \
               qsanguosha_tui \
-              qsanguosha_protocol_v2_tests \
-              qsanguosha_network_integration_tests \
-              qsanguosha_tui_contract_tests \
-              qsanguosha_tui_live_tcp_tests \
+              qsanguosha_protocol_tests \
+              qsanguosha_server_support_tests \
+              qsanguosha_tui_tests \
             --parallel
 
       - name: Build with ${{ matrix.compiler.name }}
@@ -129,16 +128,17 @@ jobs:
 
       # Level 2 覆蓋真實 TCP handshake／signup；Level 1 與 shutdown smoke 重疊，
       # Level 3 完整 02p 對局只留給 main 的 full CTest。
-      - name: Run protocol V2 contract directly
+      # bf1f85d 把 25 個測試執行檔合併成 6 個, 每個用 --suite 揀子案。
+      - name: Run protocol contract suites directly
         if: github.ref != 'refs/heads/main'
-        run: 'build/linux-${{ matrix.compiler.id }}/tests/qsanguosha_protocol_v2_tests'
+        run: 'build/linux-${{ matrix.compiler.id }}/tests/qsanguosha_protocol_tests'
 
       - name: Run TUI Protocol V2 contract and live TCP gates
         run: |
           python3 -m py_compile tools/autotest/tui_network_smoke.py
           python3 tools/autotest/tests/test_tui_network_smoke_contract.py
-          'build/linux-${{ matrix.compiler.id }}/tests/qsanguosha_tui_contract_tests'
-          'build/linux-${{ matrix.compiler.id }}/tests/qsanguosha_tui_live_tcp_tests'
+          'build/linux-${{ matrix.compiler.id }}/tests/qsanguosha_tui_tests' --suite contract
+          'build/linux-${{ matrix.compiler.id }}/tests/qsanguosha_tui_tests' --suite live-tcp
 
       - name: Prepare isolated TUI core-game runtime
         if: env.QSAN_FULL_SERVER_CI == 'true' && matrix.compiler.id == 'gcc'
@@ -174,8 +174,8 @@ jobs:
       - name: Run daily network integration level 2
         if: env.QSAN_FULL_SERVER_CI != 'true'
         run: |
-          'build/linux-${{ matrix.compiler.id }}/tests/qsanguosha_network_integration_tests' \
-            --level 2 \
+          'build/linux-${{ matrix.compiler.id }}/tests/qsanguosha_server_support_tests' \
+            --suite network-integration \
             --server "$GITHUB_WORKSPACE/relwithdebinfo/qsanguosha_server" \
             | tee 'ci-logs/network-level2-${{ matrix.compiler.id }}.log'
 
