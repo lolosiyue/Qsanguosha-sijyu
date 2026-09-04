@@ -930,7 +930,7 @@ void rendererContract()
               && stateSnapshot.contains(QStringLiteral("阶段：出牌阶段"))
               && !stateSnapshot.contains(QChar(0x1b)),
           "plain renderer snapshot covers connection room turn and phase");
-    check(playersSnapshot.contains(QStringLiteral("身分=隐藏"))
+    check(playersSnapshot.contains(QStringLiteral("身份=隐藏"))
               && playersSnapshot.contains(QStringLiteral("生存=死亡"))
               && playersSnapshot.contains(QStringLiteral("crossbow"))
               && playersSnapshot.contains(QStringLiteral("indulgence"))
@@ -969,6 +969,24 @@ void rendererContract()
           "a rejected answer keeps the detail that says what was wrong");
     check(rejectionLines.size() >= 2 && rejectionLines.last().contains(QStringLiteral("打出牌")),
           "a rejected answer re-shows the prompt so the player can retry");
+
+    QStringList lifecycleLines;
+    TuiInteractionView lifecycleView(&plain,
+        [&lifecycleLines](const QString &line) { lifecycleLines << line; });
+    const InteractionRequest lifecycle = cardRequest();
+    const QString wireId = QString::number(lifecycle.requestId);
+    lifecycleView.finishRequest(lifecycle, InteractionResponse());
+    lifecycleView.cancelRequest(lifecycle, InteractionCancelReason::Expired);
+    check(lifecycleLines.size() == 2, "an accepted and a cancelled request each say so once");
+    const QString lifecycleText = lifecycleLines.join(QLatin1Char('\n'));
+    check(!lifecycleText.contains(wireId),
+          "request lifecycle lines never show the wire request id");
+    check(lifecycleLines.at(0).contains(QStringLiteral("打出牌")),
+          "an accepted answer names the prompt it answered");
+    check(lifecycleLines.at(1).contains(QStringLiteral("打出牌"))
+              && lifecycleLines.at(1).contains(
+                  TuiInteractionView::cancelReasonText(InteractionCancelReason::Expired)),
+          "a cancelled request names the prompt and why it went away");
 
     InteractionRequest anyCard = cardRequest();
     std::get_if<CardInteractionPayload>(&anyCard.payload)->selection.pattern
@@ -1047,6 +1065,17 @@ void rendererContract()
     check(TuiInteractionView::cancelReasonText(InteractionCancelReason::Expired)
               != interactionCancelReasonName(InteractionCancelReason::Expired),
           "a cancelled request says why in the player's language");
+
+    // ClientLiveSession::connectionChanged carries these wire tokens straight
+    // to the transcript, so every one of them needs a label.
+    bool connectionStatesNamed = true;
+    for (const QString &token : {QStringLiteral("connecting"), QStringLiteral("reconnecting"),
+             QStringLiteral("handshake"), QStringLiteral("active"),
+             QStringLiteral("disconnected"), QStringLiteral("failed")}) {
+        if (plain.nameText(token) == token)
+            connectionStatesNamed = false;
+    }
+    check(connectionStatesNamed, "every connection state reads as words, not as a wire token");
 }
 
 void commandContract()

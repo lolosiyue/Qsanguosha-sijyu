@@ -385,7 +385,7 @@ int main(int argc, char **argv)
         QString error;
         const QString empty = tuiResolveSkillCardWireText(QStringLiteral("sgs1"),
             QStringLiteral("zhiheng"), 0, {}, &error);
-        check(empty.isEmpty() && error.contains(QStringLiteral("选手牌")),
+        check(empty.isEmpty() && error.contains(QStringLiteral("选择手牌")),
               "zhiheng with no subcards is rejected before the wire");
         error.clear();
         const QString wire = tuiResolveSkillCardWireText(QStringLiteral("sgs1"),
