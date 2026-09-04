@@ -72,7 +72,8 @@ private:
     static QString resolveGeneralKingdom(const QString &generalName);
     QString resolveSkillCardWireText(const QString &skillName, int instanceId,
                                      const QList<int> &subcardIds, QString *error) const;
-    void fillPlaySkillCandidates(CardInteractionPayload *payload) const;
+    void fillSkillCandidates(InteractionType type, CardInteractionPayload *payload) const;
+    QString resolveSkillHint(const QString &skillName, int instanceId) const;
     QString renderPiles() const;
     QString renderSkills() const;
     QString renderEquipment() const;
@@ -105,6 +106,9 @@ private:
     // not have to reach into ClientCore while it is presenting.
     InteractionType m_hintType = InteractionType::None;
     CardUseStruct::CardUseReason m_hintReason = CardUseStruct::CARD_USE_REASON_UNKNOWN;
+    // The reason a skill would be activated under, which is not the card-hint
+    // reason: prompts that take cards but no skills leave this UNKNOWN.
+    CardUseStruct::CardUseReason m_skillReason = CardUseStruct::CARD_USE_REASON_UNKNOWN;
     QString m_hintPattern;
     // Who the active prompt offers as a target, so the engine is only ever
     // asked about players the server already put on the menu.
