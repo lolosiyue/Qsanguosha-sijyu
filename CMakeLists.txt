@@ -667,6 +667,8 @@ if(QSAN_BUILD_TUI)
         src/tui/tui-text.h
         src/tui/tui-input.cpp
         src/tui/tui-input.h
+        src/tui/tui-line-editor.cpp
+        src/tui/tui-line-editor.h
         src/tui/tui-interaction-view.cpp
         src/tui/tui-interaction-view.h
         src/tui/tui-renderer.cpp
