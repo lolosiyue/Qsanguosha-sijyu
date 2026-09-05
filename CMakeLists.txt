@@ -659,6 +659,8 @@ if(QSAN_BUILD_TUI)
         src/tui/tui-synthesized-log.h
         src/tui/tui-target-advice.cpp
         src/tui/tui-target-advice.h
+        src/tui/tui-text-width.cpp
+        src/tui/tui-text-width.h
         src/tui/tui-text.cpp
         src/tui/tui-text.h
         src/tui/tui-input.cpp
