@@ -35,6 +35,13 @@ bool isAbandonToken(const QString &text)
         || text == QStringLiteral("过") || text == QStringLiteral("過");
 }
 
+// The words that close a target list the engine would still let grow.
+bool isAcceptToken(const QString &text)
+{
+    return text.compare(QStringLiteral("ok"), Qt::CaseInsensitive) == 0
+        || text == QStringLiteral("确定") || text == QStringLiteral("確定");
+}
+
 bool isSkillActivation(const InteractionResponse &response)
 {
     const auto *cards = std::get_if<InteractionResponse::CardSelectionData>(&response.payload);
@@ -200,10 +207,17 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
             QString usePattern;
             if (const auto *cards = std::get_if<CardInteractionPayload>(&request.payload)) {
                 usePattern = cards->selection.pattern;
-                if (request.type == InteractionType::PlayCard) {
-                    reason = CardUseStruct::CARD_USE_REASON_PLAY;
+                if (request.type == InteractionType::PlayCard)
                     usePattern.clear();
-                } else {
+                // The same table the skill list is built from. Ask-for-peach
+                // and nullification name no handling method on the wire, and
+                // both are presented as a use, which a second rule derived from
+                // the wire alone got wrong.
+                reason = tuiSkillPromptReason(request.type, cards->selection.handlingMethod,
+                                              cards->selection.pattern);
+                if (reason == CardUseStruct::CARD_USE_REASON_UNKNOWN) {
+                    // Prompts that offer no skills still need a reason for the
+                    // card hints to read.
                     reason = cards->selection.handlingMethod == Card::MethodUse
                         ? CardUseStruct::CARD_USE_REASON_RESPONSE_USE
                         : CardUseStruct::CARD_USE_REASON_RESPONSE;
@@ -296,63 +310,99 @@ const Card *TuiApplicationController::answerCard(const InteractionResponse &resp
     return cards->activationSkillName.isEmpty() ? nullptr : m_builtSkillCard;
 }
 
-bool TuiApplicationController::checkPlayAnswer(const InteractionResponse &response,
-                                               QString *error) const
+TuiPlayerLookup TuiApplicationController::playerLookup() const
 {
-    const ClientPlayer *self = m_players.self();
+    return [this](const QString &name) -> const Player * { return m_players.player(name); };
+}
+
+bool TuiApplicationController::targetGateOpen() const
+{
+    return m_hintType == InteractionType::PlayCard
+        || (m_hintType == InteractionType::ResponseCard
+            && m_hintReason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE);
+}
+
+TuiTargetStep TuiApplicationController::targetStep(const Card *card,
+                                                   const QStringList &chosen) const
+{
+    return tuiTargetStep(card, chosen, m_hintTargets, playerLookup(), m_players.self());
+}
+
+bool TuiApplicationController::checkPlayAnswer(const InteractionResponse &response,
+                                               QString *error, bool *incomplete) const
+{
+    if (incomplete != nullptr)
+        *incomplete = false;
     const Card *card = answerCard(response);
-    if (self == nullptr || card == nullptr)
-        return true;
     const auto *cards = std::get_if<InteractionResponse::CardSelectionData>(&response.payload);
-    if (cards == nullptr)
+    if (card == nullptr || cards == nullptr)
         return true;
 
-    QList<const Player *> chosen;
-    for (const QString &name : cards->targets) {
-        const ClientPlayer *target = m_players.player(name);
-        if (target == nullptr)
-            return true;   // nothing to check against; let the server decide
-        // Each target has to be legal given the ones before it, which is how
-        // the desktop adds them one click at a time.
-        if (!card->targetFilter(chosen, target, self)) {
-            if (error != nullptr) {
-                *error = tuiText("tui_play_target_invalid").arg(
-                    m_renderer.nameText(card->objectName()), resolvePlayerName(name));
-            }
-            return false;
-        }
-        chosen.append(target);
-    }
-    if (!card->targetFixed() && !card->targetsFeasible(chosen, self)) {
-        if (error != nullptr) {
-            *error = chosen.isEmpty()
-                ? tuiText("tui_play_target_missing").arg(m_renderer.nameText(card->objectName()))
-                : tuiText("tui_play_target_count").arg(m_renderer.nameText(card->objectName()));
-        }
-        return false;
-    }
-    return true;
+    const QString reason = tuiValidateTargets(card, cards->targets, playerLookup(),
+        m_players.self(),
+        [this](const QString &name) { return m_renderer.nameText(name); },
+        [this](const QString &name) { return resolvePlayerName(name); },
+        incomplete);
+    if (reason.isEmpty())
+        return true;
+    if (error != nullptr)
+        *error = reason;
+    return false;
 }
 
 bool TuiApplicationController::beginTargetStage(const QString &firstLine,
                                                 const InteractionResponse &response)
 {
-    const Card *card = answerCard(response);
-    const TuiRenderer::CardTargets advice = cardTargetAdvice(card);
-    if (!advice.known || advice.targetFixed || advice.targets.isEmpty())
-        return false;
+    // Whatever the player already aimed at stays aimed at: the line is cut at
+    // the arrow so stage two can put the whole list back after it.
+    m_pending.firstLine = firstLine.section(QStringLiteral("->"), 0, 0).trimmed();
+    m_pending.chosen.clear();
+    if (resumeTargetStage(response))
+        return true;
+    m_pending.firstLine.clear();
+    return false;
+}
 
-    m_pending.active = true;
-    m_pending.firstLine = firstLine;
-    QStringList lines{tuiText("tui_target_stage_header")
-        .arg(m_renderer.nameText(card->objectName()))};
-    for (const QString &name : advice.targets) {
-        const qsizetype index = m_hintTargets.indexOf(name);
-        lines << tuiText("tui_target_stage_line").arg(index >= 0 ? index + 1 : 0)
-            .arg(resolvePlayerName(name), resolvePlayerHint(name));
+void TuiApplicationController::printTargetStage(const Card *card,
+                                                const TuiTargetStep &step)
+{
+    const QString shown = m_renderer.nameText(card->objectName());
+    QStringList lines;
+    if (m_pending.chosen.isEmpty()) {
+        lines << tuiText("tui_target_stage_header").arg(shown);
+    } else {
+        QStringList picked;
+        for (const QString &name : m_pending.chosen)
+            picked << resolvePlayerName(name);
+        lines << tuiText("tui_target_stage_more").arg(shown, picked.join(QStringLiteral("、")));
     }
-    lines << tuiText("tui_target_stage_hint");
+    for (const QString &name : step.candidates) {
+        const qsizetype index = m_hintTargets.indexOf(name);
+        QString note = resolvePlayerHint(name);
+        const int votes = step.maxVotes.value(name, 1);
+        if (votes > 1)
+            note += tuiText("tui_target_stage_votes").arg(votes);
+        lines << tuiText("tui_target_stage_line").arg(index >= 0 ? index + 1 : 0)
+            .arg(resolvePlayerName(name), note);
+    }
+    // A list that is already a legal play can be sent as it stands; one that is
+    // not has nothing to offer but more targets.
+    lines << tuiText(step.feasible ? "tui_target_stage_hint_done" : "tui_target_stage_hint");
     writeOutput(lines.join(QLatin1Char('\n')));
+}
+
+bool TuiApplicationController::resumeTargetStage(const InteractionResponse &response)
+{
+    const Card *card = answerCard(response);
+    const auto *cards = std::get_if<InteractionResponse::CardSelectionData>(&response.payload);
+    if (card == nullptr || cards == nullptr)
+        return false;
+    const TuiTargetStep step = targetStep(card, cards->targets);
+    if (!step.known || step.fixed || step.candidates.isEmpty())
+        return false;
+    m_pending.active = true;
+    m_pending.chosen = cards->targets;
+    printTargetStage(card, step);
     return true;
 }
 
@@ -392,15 +442,27 @@ void TuiApplicationController::handleInputLine(const QString &line)
         answer = answer.mid(1).trimmed();
 
     const bool wasPending = m_pending.active;
+    bool accepted = false;
     if (wasPending) {
         if (isAbandonToken(answer)) {
             clearPendingActivation();
             writeOutput(tuiText("tui_activation_abandoned"));
             return;
         }
-        // Stage two replays the player's own first line with the targets
-        // appended, so there is exactly one answer parser.
-        answer = tuiText("tui_replay_line").arg(m_pending.firstLine, answer);
+        // Stage two replays the player's own first line with every target
+        // picked so far, so there is exactly one answer parser and one place
+        // that decides what is legal.
+        accepted = isAcceptToken(answer);
+        static const QRegularExpression whitespace(QStringLiteral("\\s+"));
+        QStringList targets = m_pending.chosen;
+        if (!accepted)
+            targets += answer.split(whitespace, Qt::SkipEmptyParts);
+        if (targets.isEmpty()) {
+            writeError(tuiText("tui_target_stage_empty"));
+            return;
+        }
+        answer = tuiText("tui_replay_line").arg(m_pending.firstLine,
+                                                targets.join(QLatin1Char(' ')));
         m_pending.active = false;
     }
 
@@ -412,20 +474,39 @@ void TuiApplicationController::handleInputLine(const QString &line)
         return;
     }
 
-    if (!forced && m_hintType == InteractionType::PlayCard) {
+    if (!forced && targetGateOpen()) {
         QString reason;
-        if (!checkPlayAnswer(response, &reason)) {
+        bool incomplete = false;
+        if (!checkPlayAnswer(response, &reason, &incomplete)) {
             // A skill card is composed before its targets are known, so the
             // first thing a bare activation needs is not a complaint but the
             // list of places it can go.
-            if (!wasPending && isSkillActivation(response)
+            // A card that has some targets but not enough is in the same
+            // position: what it needs is the rest of the menu, not a refusal.
+            if (!wasPending && (isSkillActivation(response) || incomplete)
                 && beginTargetStage(input, response)) {
                 return;
             }
+            // Half way through a target list, "not finished" is not a mistake:
+            // keep what was accepted and ask for the rest.
+            if (wasPending && incomplete && resumeTargetStage(response))
+                return;
             m_pending.active = wasPending;
             writeError(tuiText("tui_play_rejected").arg(reason));
+            if (wasPending) {
+                // The refused token is dropped; whatever was already accepted
+                // stays, with its menu printed again.
+                const Card *card = answerCard(response);
+                if (card != nullptr)
+                    printTargetStage(card, targetStep(card, m_pending.chosen));
+            }
             return;
         }
+        // Legal so far, but a card that could still take another target waits
+        // for the player to say it is done rather than firing on the first
+        // one that happens to be feasible.
+        if (wasPending && !accepted && resumeTargetStage(response))
+            return;
     }
 
     clearPendingActivation();
@@ -620,22 +701,16 @@ QString TuiApplicationController::resolveCardHint(int cardId) const
 
 TuiRenderer::CardTargets TuiApplicationController::cardTargetAdvice(const Card *card) const
 {
+    // Nothing selected yet is exactly the question RoomScene asks to decide
+    // which photos light up before the first click. The candidate set is the
+    // one the server offered, so a target the prompt withheld never appears
+    // just because the engine would allow it.
+    const TuiTargetStep step = targetStep(card, {});
     TuiRenderer::CardTargets advice;
-    const ClientPlayer *self = m_players.self();
-    if (card == nullptr || self == nullptr)
-        return advice;
-    advice.known = true;
-    if (card->targetFixed())
-        return advice.targetFixed = true, advice;
-    // Card::targetFilter() with nothing selected yet is exactly the question
-    // RoomScene asks to decide which photos light up before the first click.
-    // The candidate set is the one the server offered, so a target the prompt
-    // withheld never appears just because the engine would allow it.
-    for (const QString &name : m_hintTargets) {
-        const ClientPlayer *target = m_players.player(name);
-        if (target != nullptr && card->targetFilter({}, target, self))
-            advice.targets.append(name);
-    }
+    advice.known = step.known;
+    advice.targetFixed = step.fixed;
+    advice.targets = step.candidates;
+    advice.maxVotes = step.maxVotes;
     return advice;
 }
 

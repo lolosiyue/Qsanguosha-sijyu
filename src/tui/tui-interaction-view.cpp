@@ -311,7 +311,7 @@ QList<int> TuiInteractionView::parseIndexes(const QString &text, int size,
 
 QStringList TuiInteractionView::parseNames(const QString &text,
                                            const QStringList &values,
-                                           QString *error) const
+                                           QString *error, bool allowRepeats) const
 {
     QStringList result;
     for (const QString &token : splitTokens(text)) {
@@ -319,7 +319,7 @@ QStringList TuiInteractionView::parseNames(const QString &text,
         const int index = token.toInt(&numeric) - 1;
         const QString value = numeric && index >= 0 && index < values.size()
             ? values.at(index) : token;
-        if (!values.contains(value) || result.contains(value)) {
+        if (!values.contains(value) || (!allowRepeats && result.contains(value))) {
             if (error != nullptr)
                 *error = tuiText("tui_error_player_invalid").arg(token);
             return {};
@@ -526,25 +526,21 @@ bool TuiInteractionView::parseAnswer(const InteractionRequest &request,
             QStringList targets;
             if (candidates.isEmpty()) {
                 targets = splitTokens(targetPart);
-                QSet<QString> unique(targets.begin(), targets.end());
-                if (targets.isEmpty() || unique.size() != targets.size()) {
+                if (targets.isEmpty()) {
                     if (error != nullptr)
                         *error = tuiText("tui_error_targets_invalid");
                     return false;
                 }
             } else {
-                targets = parseNames(targetPart, candidates, error);
+                targets = parseNames(targetPart, candidates, error, true);
                 if (targets.isEmpty())
                     return false;
             }
-            for (const QString &target : targets) {
-                if (answer->targets.contains(target)) {
-                    if (error != nullptr)
-                        *error = tuiText("tui_error_target_duplicate").arg(target);
-                    return false;
-                }
-                answer->targets.append(target);
-            }
+            // Whether a repeat is legal is the engine's answer, not the
+            // parser's: tuiValidateTargets() counts votes before anything is
+            // sent. Rejecting every repeat here made Collateral's second half
+            // and GreatYeyanCard's three votes unanswerable.
+            answer->targets.append(targets);
         }
         if (!activationSkillName.isEmpty()) {
             answer->activationSkillName = activationSkillName;

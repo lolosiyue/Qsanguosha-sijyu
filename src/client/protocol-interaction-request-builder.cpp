@@ -246,6 +246,12 @@ bool ProtocolInteractionRequestBuilder::build(const ProtocolMessage &message,
         value.selection.handlingMethod = object.value(QStringLiteral("handling_method"), -1).toInt();
         value.cardTextAllowed = true;
         value.virtualCardAllowed = true;
+        // A response that is a use can carry targets -- a skill's card aimed at
+        // two people, a slash the prompt asks to be used on someone -- and the
+        // numbered "1 -> 2" grammar resolves through this list. Leave it empty
+        // and "2" travels as the object name "2" rather than sgs2. Whether the
+        // prompt shows a target list at all follows the handling method.
+        value.optionalTargets = state.playerNames();
         payload = value;
         cancelable = !value.selection.pattern.endsWith(QLatin1Char('!'));
         break;

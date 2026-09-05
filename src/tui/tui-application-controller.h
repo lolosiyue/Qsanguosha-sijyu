@@ -9,6 +9,7 @@
 #include "tui-client-player.h"
 #include "tui-renderer.h"
 #include "tui-room-context.h"
+#include "tui-target-advice.h"
 
 #include <QFile>
 #include <QList>
@@ -52,6 +53,15 @@ private:
     QString resolvePlayerHint(const QString &objectName) const;
     // Where the engine would let this card be aimed, before anything is picked.
     TuiRenderer::CardTargets cardTargetAdvice(const Card *card) const;
+    // Object name -> our copy of that player, for the target-advice functions.
+    TuiPlayerLookup playerLookup() const;
+    // Which players can still be named, given the ones already picked.
+    TuiTargetStep targetStep(const Card *card, const QStringList &chosen) const;
+    // Whether an answer to the active prompt is worth running the engine over.
+    // Play, and the one response the desktop also keeps target selection live
+    // for: RoomScene::updateStatus() turns MethodUse into RespondingUse, and
+    // enableTargets() runs in that state.
+    bool targetGateOpen() const;
     TuiRenderer::CardTargets resolveCardTargets(int cardId) const;
     // /hand asks the play-phase question whether or not a prompt is up.
     QString resolveHandCardHint(int cardId) const;
@@ -63,10 +73,21 @@ private:
     // Runs the engine over a finished play-card answer the way the desktop's
     // OK button does. Returns false with a reason the player can act on.
     // Never consulted unless the player is answering a play-card prompt.
-    bool checkPlayAnswer(const InteractionResponse &response, QString *error) const;
+    // incomplete comes back true when nothing named was illegal and the answer
+    // is merely unfinished, which is what a half-collected target list looks
+    // like.
+    bool checkPlayAnswer(const InteractionResponse &response, QString *error,
+                         bool *incomplete = nullptr) const;
     // Stage one of a two-part activation: the skill card is built but has no
     // targets yet. Prints the candidates and remembers the line to replay.
     bool beginTargetStage(const QString &firstLine, const InteractionResponse &response);
+    // The target menu, printed again after every pick so a multi-target card
+    // shows what is still legal rather than only its opening move.
+    void printTargetStage(const Card *card, const TuiTargetStep &step);
+    // Keeps a half-collected target list open: records what was accepted and
+    // prints what can still be named. False when there is nothing left to name
+    // and the answer should go to the server.
+    bool resumeTargetStage(const InteractionResponse &response);
     void clearPendingActivation();
     QString resolveNameText(const QString &name) const;
     static QString resolveGeneralKingdom(const QString &generalName);
@@ -128,6 +149,10 @@ private:
     {
         bool active = false;
         QString firstLine;
+        // Targets accepted so far, as object names. Stage two re-sends the
+        // whole list every time, so there is still one parser and one place
+        // that decides what is legal.
+        QStringList chosen;
     };
     PendingActivation m_pending;
     // The card the last skill activation was built from, valid only for the

@@ -18,6 +18,9 @@
 #include <functional>
 #include <utility>
 
+// Card::HandlingMethod only; nothing here calls into the engine.
+#include "card.h"
+
 namespace {
 
 QString joinIntegers(const QList<int> &values)
@@ -63,8 +66,12 @@ QString targetNote(const TuiRenderer::CardTargets &advice, const QStringList &ta
         const qsizetype index = targetOrder.indexOf(name);
         // A legal target the prompt did not offer is the server's call, not
         // ours; name it rather than dropping it.
-        numbers << (index >= 0 ? QStringLiteral("[%1]").arg(index + 1)
-                               : TuiRenderer::sanitize(name, 64));
+        QString entry = index >= 0 ? QStringLiteral("[%1]").arg(index + 1)
+                                   : TuiRenderer::sanitize(name, 64);
+        const int votes = advice.maxVotes.value(name, 1);
+        if (votes > 1)
+            entry += tuiText("tui_targets_votes").arg(votes);
+        numbers << entry;
     }
     return tuiText("tui_targets_optional").arg(numbers.join(QString()));
 }
@@ -652,6 +659,12 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
     } else if (const auto *value = request.payloadAs<CardInteractionPayload>()) {
         const bool playCard = request.type == InteractionType::PlayCard;
         const bool chooseCard = request.type == InteractionType::ChooseCard;
+        // A response that is a use is the other prompt where the desktop keeps
+        // target selection live (RoomScene::updateStatus turns MethodUse into
+        // RespondingUse, and enableTargets() runs there). Every other response
+        // takes a card and nothing else, so it gets no target list at all.
+        const bool respondingUse = request.type == InteractionType::ResponseCard
+            && value->selection.handlingMethod == Card::MethodUse;
         if (chooseCard && !value->sourcePlayer.isEmpty()) {
             lines << tuiText("tui_label_target")
                 .arg(sanitize(playerText(value->sourcePlayer), 128));
@@ -674,7 +687,8 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
                             || request.type == InteractionType::DiscardCard
                             ? m_resolvers.cardHint : TuiRenderer::CardHintResolver(),
                         chooseCard ? value->hiddenHandCount + 1 : 1,
-                        playCard ? m_resolvers.cardTargets : TuiRenderer::CardTargetResolver(),
+                        playCard || respondingUse ? m_resolvers.cardTargets
+                                                  : TuiRenderer::CardTargetResolver(),
                         value->optionalTargets);
         }
         // Skills are numbered after the cards wherever the prompt offers any:
@@ -714,7 +728,8 @@ QString TuiRenderer::renderInteraction(const InteractionRequest &request) const
                           [this](const QString &name) { return playerText(name); },
                           m_resolvers.playerHint);
         }
-        if (!value->optionalTargets.isEmpty()) {
+        if (!value->optionalTargets.isEmpty()
+            && (respondingUse || request.type != InteractionType::ResponseCard)) {
             lines << (request.type == InteractionType::PlayCard
                 ? tuiText("tui_label_play_targets") : tuiText("tui_label_optional_targets"));
             appendPlayers(&lines, value->optionalTargets,
