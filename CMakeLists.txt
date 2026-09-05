@@ -650,8 +650,11 @@ if(QSAN_BUILD_TUI)
         src/tui/tui-log-text.h
         src/tui/tui-play-skills.cpp
         src/tui/tui-play-skills.h
+        src/tui/tui-presenter.h
         src/tui/tui-skill-dialog.cpp
         src/tui/tui-skill-dialog.h
+        src/tui/tui-stream-presenter.cpp
+        src/tui/tui-stream-presenter.h
         src/tui/tui-synthesized-log.cpp
         src/tui/tui-synthesized-log.h
         src/tui/tui-target-advice.cpp

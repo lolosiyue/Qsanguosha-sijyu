@@ -13,6 +13,7 @@
 #include "tui-skill-dialog.h"
 #include "tui-synthesized-log.h"
 #include "tui-script-runner.h"
+#include "tui-stream-presenter.h"
 
 #include <QCoreApplication>
 #include <QJsonObject>
@@ -77,7 +78,8 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
              [this](const QString &skillName, const QString &declaration, QString *error) {
                  return applySkillDeclaration(skillName, declaration, error);
              }),
-      m_input(this)
+      m_input(this),
+      m_presenter(std::make_unique<TuiStreamPresenter>())
 {
     m_core.setView(&m_view);
     connect(&m_input, &TuiInput::lineReady, this, &TuiApplicationController::handleInputLine);
@@ -896,14 +898,14 @@ QStringList TuiApplicationController::completionExtraTokens() const
 void TuiApplicationController::writeOutput(const QString &text)
 {
     const QString safe = TuiRenderer::sanitize(text, 16384);
-    QTextStream(stdout) << safe << '\n' << Qt::flush;
+    m_presenter->writeOutput(safe);
     appendLogLine(safe);
 }
 
 void TuiApplicationController::writeError(const QString &text)
 {
     const QString safe = TuiRenderer::sanitize(text, 4096);
-    QTextStream(stderr) << "TUI_ERROR " << safe << '\n' << Qt::flush;
+    m_presenter->writeError(safe);
     appendLogLine(QStringLiteral("TUI_ERROR %1").arg(safe));
 }
 
