@@ -28,6 +28,14 @@ enum class TuiKey {
     PageUp,
     PageDown,
     Interrupt,
+    // Readline-style kill commands. Not in the plan's original interface
+    // sketch, but required by the byte-to-key table in the same spec and by
+    // the project's input-handling section: dropping them silently (as an
+    // earlier revision of this file did) was ruled a spec gap, not a valid
+    // reading of an enum that was never meant to be frozen.
+    KillToLineStart,  // Ctrl+U: erase from line start to the cursor
+    KillToLineEnd,    // Ctrl+K: erase from the cursor to line end
+    KillPreviousWord, // Ctrl+W: erase the word immediately before the cursor
 };
 
 struct TuiKeyEvent {
