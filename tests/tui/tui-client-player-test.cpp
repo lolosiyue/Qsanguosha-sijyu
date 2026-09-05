@@ -185,14 +185,25 @@ int main(int argc, char **argv)
         const Card *peach = Sanguosha->getCard(peachId);
         check(peach != nullptr && !self->isCardLimited(peach, Card::MethodUse),
               "an unrestricted card is not limited");
+        // Shaped as S_COMMAND_CARD_LIMITATION puts it on the wire: "methods" is
+        // a string list, and the reducer stores that entry unchanged.
         state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("card_limitations"),
-            QVariantList{QVariantMap{{QStringLiteral("limit_list"), QStringLiteral("use")},
+            QVariantList{QVariantMap{
+                {QStringLiteral("methods"), QVariantList{QStringLiteral("use")}},
                 {QStringLiteral("pattern"), QStringLiteral("Peach")},
                 {QStringLiteral("reason"), QStringLiteral("test")},
                 {QStringLiteral("single_turn"), false}}});
         players.sync();
         check(peach != nullptr && self->isCardLimited(peach, Card::MethodUse),
               "a limitation the server sent is enforced locally");
+        // An entry with no usable method is dropped rather than handed to the
+        // engine, whose method table asserts on anything it does not know.
+        state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("card_limitations"),
+            QVariantList{QVariantMap{{QStringLiteral("methods"), QVariantList{}},
+                {QStringLiteral("pattern"), QStringLiteral("Peach")}}});
+        players.sync();
+        check(peach != nullptr && !self->isCardLimited(peach, Card::MethodUse),
+              "an empty method list limits nothing and does not abort");
     }
 
     // Prohibit / TargetMod / AttackRange all walk skill lists that Lua packages
