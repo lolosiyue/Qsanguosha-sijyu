@@ -69,20 +69,39 @@ extern "C" void tuiTerminalSignalHandler(int number)
         ::write(int(g_wakeWriteFd), &token, 1);
 }
 
-// --- The separate, lighter-weight SIGINT exit for tuiInstallInterruptHandler ---
+// --- Shared SIGINT state, and the one handler that unifies its two owners ---
 //
 // Classic mode never takes the terminal into raw mode or the alternate
-// screen, so it has nothing in common with the state above: no restore
-// sequence, no SIGWINCH/SIGSEGV/SIGABRT handling, just Ctrl+C mapped to a
-// callback. Kept as its own self-pipe rather than folded into TuiTerminal's
-// so classic mode never needs a TuiTerminal instance at all.
+// screen, so it has nothing in common with the restore-sequence state above
+// except SIGINT itself: both TuiTerminal::enter() and
+// tuiInstallInterruptHandler() (the latter installed unconditionally by
+// TuiInput on Unix, in both classic and board mode) need to own it. This
+// self-pipe stays separate from TuiTerminal's wake pipe so classic mode
+// never needs a TuiTerminal instance at all -- but, unlike that pipe, the
+// *signal handler* for SIGINT below is shared rather than duplicated, so
+// installing one of these two owners can never silently disable the other.
 int g_interruptWakePipe[2] = { -1, -1 };
 std::function<void()> g_interruptCallback;
 QSocketNotifier *g_interruptNotifier = nullptr;
 
-extern "C" void tuiInterruptSignalHandler(int /* number */)
+// sigaction() only ever keeps the *last* installed handler for a given
+// signal. Before this function existed, TuiTerminal::enter() and
+// tuiInstallInterruptHandler() each installed their own SIGINT handler, so
+// whichever ran second silently disabled the first: depending on install
+// order, Ctrl+C then either restored the terminal without disconnecting, or
+// disconnected without restoring the terminal -- and board mode runs both.
+// Routing both installers through this one function instead makes the
+// install idempotent (reinstalling the same function changes nothing), so
+// the order stops mattering. Each half below is inert when its owner was
+// never installed: g_restoreLength stays 0 with no TuiTerminal entered, and
+// g_interruptWakePipe[1] stays -1 with no tuiInstallInterruptHandler call.
+extern "C" void tuiSigintSignalHandler(int /* number */)
 {
+    if (g_restoreLength > 0 && g_restoreFd >= 0)
+        ::write(int(g_restoreFd), g_restoreBytes, size_t(g_restoreLength));
     const char token = 'i';
+    if (g_wakeWriteFd >= 0)
+        ::write(int(g_wakeWriteFd), &token, 1);
     if (g_interruptWakePipe[1] >= 0)
         ::write(g_interruptWakePipe[1], &token, 1);
 }
@@ -90,6 +109,25 @@ extern "C" void tuiInterruptSignalHandler(int /* number */)
 #endif // Q_OS_UNIX
 
 } // namespace
+
+#if defined(Q_OS_UNIX)
+// Deliberately not `static` and not inside the anonymous namespace above:
+// this is the one sigaction(SIGINT, ...) call that both TuiTerminal::enter()
+// and tuiInstallInterruptHandler() make (see tuiSigintSignalHandler for why
+// sharing it matters), and giving it external linkage lets
+// tests/tui/tui-terminal-test.cpp forward-declare and call it directly --
+// the only way to exercise TuiTerminal's half of the ordering invariant
+// without a real terminal to carry enter() past its isatty() gate.
+void tuiInstallSharedSigintHandler()
+{
+    struct sigaction action;
+    std::memset(&action, 0, sizeof(action));
+    action.sa_handler = tuiSigintSignalHandler;
+    sigemptyset(&action.sa_mask);
+    action.sa_flags = 0;
+    ::sigaction(SIGINT, &action, nullptr);
+}
+#endif
 
 TuiTerminal::TuiTerminal(int inFd, int outFd, QObject *parent)
     : QObject(parent)
@@ -105,6 +143,22 @@ TuiTerminal::~TuiTerminal()
 
 bool TuiTerminal::enter(QString *error)
 {
+    // A second enter() while the terminal is still taken must not re-run
+    // tcgetattr(): that would capture the *already-raw*, unechoed termios as
+    // the new "original", so leave() would then restore the terminal to
+    // that raw state instead of the user's real shell settings -- silently
+    // wrecking the shell, the exact failure this class exists to prevent.
+    // Nothing calls enter() twice today, but a later caller retrying after a
+    // failed board-mode start is a reasonable thing to write, so this guard
+    // needs to exist before that caller does. Mirrors leave()'s own
+    // compare_exchange re-entrancy guard rather than leaving enter()
+    // asymmetric with it.
+    if (!m_left.load()) {
+        if (error != nullptr)
+            *error = QStringLiteral("tui: terminal already entered; call leave() first");
+        return false;
+    }
+
 #if defined(Q_OS_UNIX)
     if (::isatty(m_outFd) != 1 || ::isatty(m_inFd) != 1) {
         if (error != nullptr)
@@ -182,9 +236,13 @@ bool TuiTerminal::enter(QString *error)
     action.sa_handler = tuiTerminalSignalHandler;
     sigemptyset(&action.sa_mask);
     action.sa_flags = 0;
-    const int handledSignals[] = { SIGWINCH, SIGINT, SIGTERM, SIGHUP, SIGSEGV, SIGABRT };
+    const int handledSignals[] = { SIGWINCH, SIGTERM, SIGHUP, SIGSEGV, SIGABRT };
     for (int signalNumber : handledSignals)
         ::sigaction(signalNumber, &action, nullptr);
+    // SIGINT is installed separately, through the same function
+    // tuiInstallInterruptHandler() also calls, so the two never fight over
+    // which handler wins -- see tuiSigintSignalHandler's comment.
+    tuiInstallSharedSigintHandler();
 
     m_notifier = new QSocketNotifier(m_wakePipe[0], QSocketNotifier::Read, this);
     connect(m_notifier, &QSocketNotifier::activated, this,
@@ -216,9 +274,18 @@ void TuiTerminal::leave()
     struct sigaction action;
     std::memset(&action, 0, sizeof(action));
     action.sa_handler = SIG_DFL;
-    const int handledSignals[] = { SIGWINCH, SIGINT, SIGTERM, SIGHUP, SIGSEGV, SIGABRT };
+    const int handledSignals[] = { SIGWINCH, SIGTERM, SIGHUP, SIGSEGV, SIGABRT };
     for (int signalNumber : handledSignals)
         ::sigaction(signalNumber, &action, nullptr);
+    // SIGINT is shared with tuiInstallInterruptHandler() (see
+    // tuiSigintSignalHandler): only drop it to the default disposition here
+    // if that installer never ran. If it did, SIGINT must keep pointing at
+    // the shared handler -- clearing g_restoreLength/g_wakeWriteFd below
+    // already makes TuiTerminal's half of that handler inert, so leaving the
+    // sigaction in place costs nothing and keeps Ctrl+C still reaching
+    // interruptRequested() after this TuiTerminal goes away.
+    if (g_interruptNotifier == nullptr)
+        ::sigaction(SIGINT, &action, nullptr);
     g_restoreLength = 0;
     g_restoreFd = -1;
     g_wakeWriteFd = -1;
@@ -269,14 +336,26 @@ QByteArray TuiTerminal::restoreSequence()
 #if defined(Q_OS_UNIX)
 void TuiTerminal::drainWakePipe()
 {
-    char token = 0;
     // O_NONBLOCK on the read end makes the last read() in the loop fail with
-    // EAGAIN instead of blocking once the pipe runs dry.
-    while (::read(m_wakePipe[0], &token, 1) == 1) {
-        if (token == 'w')
-            emit resized();
-        else
-            emit interrupted();
+    // EAGAIN instead of blocking once the pipe runs dry; EINTR is retried
+    // rather than treated as "done" so a signal landing mid-drain cannot
+    // make this return before the pipe is actually empty. QSocketNotifier is
+    // level-triggered so a premature EINTR exit would not hang -- the
+    // notifier would just fire again -- but there is no reason to leave
+    // bytes sitting in the pipe until the next event-loop turn either.
+    for (;;) {
+        char token = 0;
+        const ssize_t n = ::read(m_wakePipe[0], &token, 1);
+        if (n == 1) {
+            if (token == 'w')
+                emit resized();
+            else
+                emit interrupted();
+            continue;
+        }
+        if (n < 0 && errno == EINTR)
+            continue;
+        break; // EAGAIN (drained) or an unexpected error: nothing more to read
     }
 }
 #endif
@@ -299,19 +378,25 @@ void tuiInstallInterruptHandler(std::function<void()> callback)
     g_interruptNotifier = new QSocketNotifier(g_interruptWakePipe[0], QSocketNotifier::Read);
     QObject::connect(g_interruptNotifier, &QSocketNotifier::activated, g_interruptNotifier,
         [](QSocketDescriptor, QSocketNotifier::Type) {
-            char token = 0;
-            while (::read(g_interruptWakePipe[0], &token, 1) == 1) {
-                if (g_interruptCallback)
-                    g_interruptCallback();
+            // See TuiTerminal::drainWakePipe() for why EINTR is retried
+            // rather than treated as end-of-data.
+            for (;;) {
+                char token = 0;
+                const ssize_t n = ::read(g_interruptWakePipe[0], &token, 1);
+                if (n == 1) {
+                    if (g_interruptCallback)
+                        g_interruptCallback();
+                    continue;
+                }
+                if (n < 0 && errno == EINTR)
+                    continue;
+                break;
             }
         });
 
-    struct sigaction action;
-    std::memset(&action, 0, sizeof(action));
-    action.sa_handler = tuiInterruptSignalHandler;
-    sigemptyset(&action.sa_mask);
-    action.sa_flags = 0;
-    ::sigaction(SIGINT, &action, nullptr);
+    // Installed through the same function TuiTerminal::enter() uses for
+    // SIGINT, not a separate sigaction() call -- see tuiSigintSignalHandler.
+    tuiInstallSharedSigintHandler();
 #else
     // Windows gets a graceful Ctrl+C exit from TuiInput's own console event
     // loop (ReadConsoleInputW watching for a control-key chord), which is
