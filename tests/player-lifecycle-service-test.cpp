@@ -395,6 +395,33 @@ static bool signupKeepsHumanPacketOrderAndRobotState()
                   "human greeting precedes the network-delay probe");
 }
 
+static bool humanSignupNotifiesOwnConnectionState()
+{
+    Room room(nullptr, QStringLiteral("03_1v2"));
+    ServerPlayer *human = room.addSocket(nullptr);
+    MessageRecorder recorder;
+    recorder.watch(human);
+    room.signup(human, QStringLiteral("Human"), QStringLiteral("liubei"), false);
+
+    // Everybody else's connection state reaches a client through a broadcast,
+    // but nothing ever broadcasts the joining player's own state, so without
+    // this notify a text client renders its own row as "unknown".
+    bool notified = false;
+    for (const PacketRecord &record : recorder.records) {
+        if (record.command != S_COMMAND_SET_PROPERTY)
+            continue;
+        const QVariantMap body = record.body.toMap();
+        if (body.value(QStringLiteral("property_name")).toString() != QStringLiteral("state"))
+            continue;
+        notified = body.value(QStringLiteral("player_name")).toString()
+                == QString::fromLatin1(S_PLAYER_SELF_REFERENCE_ID)
+            && body.value(QStringLiteral("string_value")).toString() == QStringLiteral("online");
+    }
+
+    return expect(!recorder.parseFailed, "human signup packets parse")
+        && expect(notified, "human signup notifies the player of its own connection state");
+}
+
 static bool marshalReplaysDynamicPlayerInProtocolOrder()
 {
     Room room(nullptr, QStringLiteral("03_1v2"));
@@ -474,6 +501,8 @@ int runPlayerLifecycleServiceTests(int argc, char **argv)
         return 11;
     if (shouldRun("marshal-reconnect") && !marshalReplaysDynamicPlayerInProtocolOrder())
         return 12;
+    if (shouldRun("signup-self-state") && !humanSignupNotifiesOwnConnectionState())
+        return 13;
 
     if (!selectedCase.isEmpty()
         && selectedCase != QStringLiteral("construction")
@@ -486,7 +515,8 @@ int runPlayerLifecycleServiceTests(int argc, char **argv)
         && selectedCase != QStringLiteral("hero-cancel")
         && selectedCase != QStringLiteral("general-mutation")
         && selectedCase != QStringLiteral("signup")
-        && selectedCase != QStringLiteral("marshal-reconnect"))
+        && selectedCase != QStringLiteral("marshal-reconnect")
+        && selectedCase != QStringLiteral("signup-self-state"))
         return 64;
 
     qInfo() << "player lifecycle service behavior passed";
