@@ -333,6 +333,7 @@ if(QSAN_BUILD_TUI)
         tui/tui-target-advice-test.cpp
         tui/tui-contract-test.cpp
         tui/tui-live-tcp-test.cpp
+        tui/tui-presenter-test.cpp
         ${QSAN_TEST_ROOT}/src/client/client-live-session.cpp
         ${QSAN_TEST_ROOT}/src/client/interaction-command-registry.cpp
         ${QSAN_TEST_ROOT}/src/client/interaction-reply-coordinator.cpp
@@ -360,6 +361,8 @@ if(QSAN_BUILD_TUI)
         PROPERTIES COMPILE_DEFINITIONS main=runTuiContractTests)
     set_source_files_properties(tui/tui-live-tcp-test.cpp
         PROPERTIES COMPILE_DEFINITIONS main=runTuiLiveTcpTests)
+    set_source_files_properties(tui/tui-presenter-test.cpp
+        PROPERTIES COMPILE_DEFINITIONS main=runTuiPresenterTests)
     target_include_directories(qsanguosha_tui_tests PRIVATE
         ${QSAN_TEST_ROOT}/src/client
         ${QSAN_TEST_ROOT}/src/client/core
@@ -412,6 +415,11 @@ if(QSAN_BUILD_TUI)
         SUITE live-tcp
         LABELS "client;tui;protocol;network;fast"
         TIMEOUT 15
+    )
+    qsan_add_ctest(qsanguosha_tui_presenter qsanguosha_tui_tests
+        SUITE presenter
+        LABELS "client;tui;fast"
+        TIMEOUT 120
     )
 endif()
 
