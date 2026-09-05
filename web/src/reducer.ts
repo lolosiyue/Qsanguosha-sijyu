@@ -52,7 +52,14 @@ function adjustHandCount(state: ClientGameState, player: string, delta: number):
   state.setPlayerValue(player, "hand_count", count);
 }
 
+// Player::DiscardPile, as it arrives in a move's to_place.
+const DISCARD_PILE_PLACE = 5;
+
 function applyCardMovement(state: ClientGameState, command: number, object: JsonObject): void {
+  // The server marshals the whole discard pile only on a state sync, so the
+  // pile has to follow the moves in and out of Player::DiscardPile.
+  const discardPile = integers(state.gameValue("discard_pile"));
+  let discardPileChanged = false;
   const moves = Array.isArray(object.moves) ? object.moves : [];
   for (const entry of moves) {
     if (!isObject(entry))
@@ -72,8 +79,20 @@ function applyCardMovement(state: ClientGameState, command: number, object: Json
       state.setCardValue(cardId, "place", place);
       state.setCardValue(cardId, "pile", pile);
       state.setCardValue(cardId, "open", entry.open ?? false);
+
+      const known = discardPile.indexOf(cardId);
+      const discarded = place === DISCARD_PILE_PLACE;
+      if (discarded && known < 0) {
+        discardPile.push(cardId);
+        discardPileChanged = true;
+      } else if (!discarded && known >= 0) {
+        discardPile.splice(known, 1);
+        discardPileChanged = true;
+      }
     }
   }
+  if (discardPileChanged)
+    state.setGameValue("discard_pile", discardPile);
 }
 
 function appendOrRemove(values: string[], value: string, add: boolean): string[] {
@@ -195,7 +214,9 @@ function applyPlayerProperty(state: ClientGameState, object: JsonObject): void {
   else if (property === "handcard_num")
     stateKey = "hand_count";
 
-  const integerProperties = new Set(["hp", "maxhp", "seat", "player_seat", "phase", "handcard_num"]);
+  // "phase" is not here: Player::getPhaseString() puts a name ("play") on the
+  // wire, and coercing it to a number would turn every phase into 0.
+  const integerProperties = new Set(["hp", "maxhp", "seat", "player_seat", "handcard_num"]);
   const booleanProperties = new Set([
     "alive", "chained", "faceup", "removed", "owner", "hasjudgearea", "RestPlayer"
   ]);
@@ -208,6 +229,14 @@ function applyPlayerProperty(state: ClientGameState, object: JsonObject): void {
   if (property === "flags") {
     let flags = strings(state.playerValue(player, "flags"));
     const flag = asString(value);
+    // "." is not a flag: Player::setFlags() reads it as "clear them all"
+    // (player.cpp:219) and the server ends every turn with one
+    // (gamerule.cpp:411). Appending it instead leaves actioned, CurrentPlayer
+    // and every turn-scoped package flag set for the rest of the game.
+    if (flag === ".") {
+      state.setPlayerValue(player, "flags", []);
+      return;
+    }
     const remove = flag.startsWith("-");
     flags = appendOrRemove(flags, remove ? flag.slice(1) : flag, !remove);
     state.setPlayerValue(player, "flags", flags);
@@ -495,7 +524,14 @@ export function applyNotification(
       const marks = isRecord(state.card(cardId)?.marks)
         ? { ...state.card(cardId)!.marks as JsonObject }
         : {};
-      marks[asString(payload.mark_name)] = payload.value ?? 0;
+      const markName = asString(payload.mark_name);
+      // removeCardMark() reaches zero and stops (card-state-service.cpp:39),
+      // and Card::setMark() drops the entry rather than storing a zero
+      // (card.cpp:948) -- the same rule setPlayerMark already follows.
+      if (asNumber(payload.value) === 0)
+        delete marks[markName];
+      else
+        marks[markName] = payload.value ?? 0;
       state.setCardValue(cardId, "marks", marks);
       break;
     }
@@ -503,6 +539,15 @@ export function applyNotification(
       const cardId = asNumber(payload.card_id);
       let flags = strings(state.card(cardId)?.flags);
       const flag = asString(payload.flag);
+      // Card::setFlags() clears on "." (card.cpp:998), and the server sends one
+      // every time a card moves (card-movement-service.cpp:169).
+      if (flag === ".") {
+        state.setCardValue(cardId, "flags", []);
+        // A card's marks are flags in the engine ("cardMark:<name>:<value>",
+        // card.cpp:942), so clearing the flags clears them too.
+        state.setCardValue(cardId, "marks", {});
+        break;
+      }
       flags = appendOrRemove(flags, flag.startsWith("-") ? flag.slice(1) : flag, !flag.startsWith("-"));
       state.setCardValue(cardId, "flags", flags);
       break;
