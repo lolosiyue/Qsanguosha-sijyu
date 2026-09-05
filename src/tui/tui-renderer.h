@@ -1,7 +1,9 @@
 #ifndef TUI_RENDERER_H
 #define TUI_RENDERER_H
 
+#include <QHash>
 #include <QString>
+#include <QStringList>
 #include <QVariantMap>
 
 #include <functional>
@@ -41,6 +43,10 @@ public:
         bool known = false;      // the engine had an opinion at all
         bool targetFixed = false; // the card picks its own targets
         QStringList targets;      // object names that pass as a first target
+        // How many times each of them may be named. Above one is the answer
+        // Collateral and GreatYeyanCard give, and the only way the player can
+        // tell that naming somebody twice is allowed.
+        QHash<QString, int> maxVotes;
     };
     using CardTargetResolver = std::function<CardTargets(int)>;
 

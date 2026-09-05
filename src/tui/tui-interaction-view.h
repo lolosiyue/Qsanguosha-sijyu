@@ -44,8 +44,12 @@ public:
 private:
     QString requestTitle(const InteractionRequest &request) const;
     QList<int> parseIndexes(const QString &text, int size, QString *error) const;
+    // allowRepeats is for card targets: a card whose targetFilter() hands back
+    // more than one vote for a player -- Collateral, GreatYeyanCard -- is meant
+    // to be aimed at that player again, and only the engine knows how often.
+    // The name list stays a syntax check; the count is the controller's call.
     QStringList parseNames(const QString &text, const QStringList &values,
-                           QString *error) const;
+                           QString *error, bool allowRepeats = false) const;
 
     TuiRenderer *m_renderer = nullptr;
     Writer m_writer;
