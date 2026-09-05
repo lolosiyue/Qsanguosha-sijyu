@@ -335,6 +335,7 @@ if(QSAN_BUILD_TUI)
         tui/tui-live-tcp-test.cpp
         tui/tui-presenter-test.cpp
         tui/tui-text-width-test.cpp
+        tui/tui-screen-test.cpp
         ${QSAN_TEST_ROOT}/src/client/client-live-session.cpp
         ${QSAN_TEST_ROOT}/src/client/interaction-command-registry.cpp
         ${QSAN_TEST_ROOT}/src/client/interaction-reply-coordinator.cpp
@@ -366,6 +367,8 @@ if(QSAN_BUILD_TUI)
         PROPERTIES COMPILE_DEFINITIONS main=runTuiPresenterTests)
     set_source_files_properties(tui/tui-text-width-test.cpp
         PROPERTIES COMPILE_DEFINITIONS main=runTuiTextWidthTests)
+    set_source_files_properties(tui/tui-screen-test.cpp
+        PROPERTIES COMPILE_DEFINITIONS main=runTuiScreenTests)
     target_include_directories(qsanguosha_tui_tests PRIVATE
         ${QSAN_TEST_ROOT}/src/client
         ${QSAN_TEST_ROOT}/src/client/core
@@ -426,6 +429,11 @@ if(QSAN_BUILD_TUI)
     )
     qsan_add_ctest(qsanguosha_tui_text_width qsanguosha_tui_tests
         SUITE text-width
+        LABELS "client;tui;fast"
+        TIMEOUT 120
+    )
+    qsan_add_ctest(qsanguosha_tui_screen qsanguosha_tui_tests
+        SUITE screen
         LABELS "client;tui;fast"
         TIMEOUT 120
     )

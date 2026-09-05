@@ -672,6 +672,8 @@ if(QSAN_BUILD_TUI)
         src/tui/tui-resolvers.h
         src/tui/tui-room-context.cpp
         src/tui/tui-room-context.h
+        src/tui/tui-screen.cpp
+        src/tui/tui-screen.h
         src/tui/tui-script-runner.cpp
         src/tui/tui-script-runner.h
     )
