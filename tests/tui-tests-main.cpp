@@ -1,4 +1,4 @@
-// TUI 嘅四個測試共用執行檔。佢哋嘅 link 面本身就係同一個超集
+// TUI 嘅測試共用執行檔。佢哋嘅 link 面本身就係同一個超集
 // (client_core + tui_support + engine + protocol v2 support + Core/Network),
 // 分開只係多三個 Visual Studio project。每個 suite 依然行喺自己嘅 process。
 #include "test-suite.h"
@@ -9,6 +9,7 @@ int runTuiCardTextTests(int argc, char **argv);
 int runTuiClientPlayerTests(int argc, char **argv);
 int runTuiLogTextTests(int argc, char **argv);
 int runTuiPlaySkillsTests(int argc, char **argv);
+int runTuiTargetAdviceTests(int argc, char **argv);
 int runTuiContractTests(int argc, char *argv[]);
 int runTuiLiveTcpTests(int argc, char *argv[]);
 
@@ -24,6 +25,8 @@ int main(int argc, char **argv)
         return runTuiLogTextTests(argc, argv);
     if (suite == QLatin1String("play-skills"))
         return runTuiPlaySkillsTests(argc, argv);
+    if (suite == QLatin1String("target-advice"))
+        return runTuiTargetAdviceTests(argc, argv);
     if (suite == QLatin1String("contract"))
         return runTuiContractTests(argc, argv);
     if (suite == QLatin1String("live-tcp"))
@@ -39,6 +42,8 @@ int main(int argc, char **argv)
         {QStringLiteral("log-text"), {QStringLiteral("--suite"), QStringLiteral("log-text")}},
         {QStringLiteral("play-skills"),
             {QStringLiteral("--suite"), QStringLiteral("play-skills")}},
+        {QStringLiteral("target-advice"),
+            {QStringLiteral("--suite"), QStringLiteral("target-advice")}},
         {QStringLiteral("contract"), {QStringLiteral("--suite"), QStringLiteral("contract")}},
         {QStringLiteral("live-tcp"), {QStringLiteral("--suite"), QStringLiteral("live-tcp")}}
     });

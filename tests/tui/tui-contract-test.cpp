@@ -1,3 +1,4 @@
+#include "card.h"
 #include "client-game-state.h"
 #include "engine-bootstrap.h"
 #include "client-game-state-reducer.h"
@@ -452,6 +453,25 @@ void builderContract()
               && playRequest.payloadAs<CardInteractionPayload>()->optionalTargets.contains(
                   QStringLiteral("p2")),
           "play-card advertises numbered players as optional targets");
+
+    // A response that is a use can carry targets too, and the numbered
+    // "1 -> 2" grammar only resolves through this list.
+    ProtocolMessage responseCard;
+    responseCard.type = ProtocolMessageType::Request;
+    responseCard.source = ProtocolEndpoint::Room;
+    responseCard.destination = ProtocolEndpoint::Client;
+    responseCard.command = S_COMMAND_RESPONSE_CARD;
+    responseCard.messageId = ++messageId;
+    responseCard.hasPayload = true;
+    responseCard.payload = samplePayload(S_COMMAND_RESPONSE_CARD);
+    InteractionRequest responseRequest;
+    QString responseError;
+    check(ProtocolInteractionRequestBuilder::build(responseCard, state, &responseRequest,
+                                                   &responseError)
+              && responseRequest.payloadAs<CardInteractionPayload>() != nullptr
+              && responseRequest.payloadAs<CardInteractionPayload>()->optionalTargets.contains(
+                  QStringLiteral("p1")),
+          "response-card advertises the same numbered players");
 
     ProtocolMessage trigger;
     trigger.type = ProtocolMessageType::Request;
@@ -1094,6 +1114,44 @@ void rendererContract()
     check(bothText.contains(QStringLiteral("ID=7）（不可用）"))
               && bothText.count(QStringLiteral("可选目标")) == 1,
           "an unplayable card is not also given a target list");
+    // A player who may be named more than once is the only thing that says so.
+    TuiRenderer repeated(false, TuiRenderer::Resolvers{
+        {}, {}, {}, {}, {}, {},
+        [](int) {
+            TuiRenderer::CardTargets advice;
+            advice.known = true;
+            advice.targets = {QStringLiteral("sgs2")};
+            advice.maxVotes.insert(QStringLiteral("sgs2"), 3);
+            return advice;
+        }});
+    check(repeated.renderInteraction(playPrompt).contains(QStringLiteral("[2]×3")),
+          "a target that takes three votes is marked with the count");
+
+    // Target selection follows the desktop: live for a response that is a use,
+    // dead for every other response, which takes a card and nothing else.
+    InteractionRequest usePrompt;
+    usePrompt.requestId = 0x200000011ULL;
+    usePrompt.command = S_COMMAND_RESPONSE_CARD;
+    usePrompt.type = InteractionType::ResponseCard;
+    usePrompt.responseSchema = InteractionResponseShape::Cards;
+    CardInteractionPayload usePayload;
+    usePayload.selection.selectableCards = {7};
+    usePayload.selection.maxSelection = 1;
+    usePayload.selection.handlingMethod = Card::MethodUse;
+    usePayload.optionalTargets = {QStringLiteral("sgs1"), QStringLiteral("sgs2")};
+    usePrompt.payload = usePayload;
+    const QString useText = aimed.renderInteraction(usePrompt);
+    check(useText.contains(QStringLiteral("可选目标：")),
+          "a response that is a use lists the players it may be aimed at");
+    check(useText.contains(QStringLiteral("无需选目标")),
+          "and carries the same per-card advice the play phase gets");
+
+    InteractionRequest replyPrompt = usePrompt;
+    std::get_if<CardInteractionPayload>(&replyPrompt.payload)->selection.handlingMethod
+        = Card::MethodResponse;
+    const QString replyText = aimed.renderInteraction(replyPrompt);
+    check(!replyText.contains(QStringLiteral("可选目标")),
+          "a plain response is not handed a player list it cannot use");
 
     // The instance id is not the number to type, so it only appears when one
     // skill is offered more than once.
