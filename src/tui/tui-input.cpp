@@ -41,6 +41,11 @@ void TuiInput::setCompleter(std::function<QString(const QString &, QStringList *
     m_completer = std::move(completer);
 }
 
+void TuiInput::setRawMode(bool enabled)
+{
+    m_rawMode = enabled;
+}
+
 bool TuiInput::start(QString *error)
 {
     if (m_running)
@@ -98,6 +103,10 @@ void TuiInput::stop()
 
 void TuiInput::appendBytes(const QByteArray &bytes)
 {
+    if (m_rawMode) {
+        emit rawBytes(bytes);
+        return;
+    }
     m_buffer.append(bytes);
     while (true) {
         const qsizetype newline = m_buffer.indexOf('\n');
@@ -138,6 +147,17 @@ void TuiInput::readWindowsInput()
     if (input == nullptr)
         return;
     if (m_consoleInput) {
+        if (m_rawMode) {
+            // TuiTerminal does not yet take a Windows console into raw mode
+            // (see tui-terminal.h), so there is no byte stream to hand
+            // TuiKeyDecoder from here -- the console still hands us decoded
+            // INPUT_RECORDs, not bytes. Rather than guess at re-encoding
+            // those into a byte stream nothing has asked for yet, raw mode
+            // on an interactive Windows console is a no-op until that
+            // support exists; the redirected-input path below still works,
+            // since it already flows through appendBytes()'s own dispatch.
+            return;
+        }
         DWORD available = 0;
         if (!GetNumberOfConsoleInputEvents(input, &available)) {
             emit inputError(tuiText("tui_input_peek_failed"));

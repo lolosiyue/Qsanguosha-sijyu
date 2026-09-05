@@ -19,6 +19,10 @@ public:
     bool start(QString *error = nullptr);
     void stop();
     void setCompleter(std::function<QString(const QString &, QStringList *)> completer);
+    // Off by default, so the classic client keeps assembling lines itself
+    // and its behaviour is untouched. When on, TuiInput stops decoding
+    // bytes itself and only forwards them via rawBytes(); see that signal.
+    void setRawMode(bool enabled);
 
 signals:
     void lineReady(const QString &line);
@@ -26,6 +30,15 @@ signals:
     void interruptRequested();
     void inputError(const QString &message);
     void completionChoices(const QStringList &matches);
+    // Raw mode only: bytes exactly as the terminal delivered them, including
+    // half-finished escape sequences and split UTF-8 code points --
+    // TuiKeyDecoder owns reassembling those, not TuiInput. TuiInput must
+    // never also emit lineReady while raw mode is on: grammar, ClientCore
+    // and the reply encoder all assume a single line-assembly path, and a
+    // second one racing the line editor's own lineReady (fired later by the
+    // presenter once a line is actually finished) would let a half-typed
+    // line reach the wire.
+    void rawBytes(const QByteArray &bytes);
 
 private:
     void appendBytes(const QByteArray &bytes);
@@ -45,6 +58,7 @@ private:
     QObject *m_notifier = nullptr;
     QByteArray m_buffer;
     bool m_running = false;
+    bool m_rawMode = false;
 };
 
 #endif
