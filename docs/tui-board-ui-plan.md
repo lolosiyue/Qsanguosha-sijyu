@@ -584,7 +584,8 @@ constexpr Range wideRanges[] = {
     {0x3400, 0x4DBF}, {0x4E00, 0x9FFF}, {0xA000, 0xA4CF},
     {0xAC00, 0xD7A3}, {0xF900, 0xFAFF}, {0xFE10, 0xFE19},
     {0xFE30, 0xFE6F}, {0xFF00, 0xFF60}, {0xFFE0, 0xFFE6},
-    {0x1F300, 0x1F64F}, {0x1F900, 0x1F9FF}, {0x20000, 0x3FFFD},
+    {0x1F000, 0x1F0FF}, {0x1F300, 0x1F64F}, {0x1F900, 0x1F9FF},
+    {0x20000, 0x3FFFD},
 };
 
 // Combining marks and other zero-width code points.
@@ -910,6 +911,7 @@ git commit -m "feat(tui): add a diffing character grid for the board UI"
 - Consumes: 無。
 - Produces:
   - `class TuiTerminal : public QObject`
+    - `explicit TuiTerminal(int inFd = STDIN_FILENO, int outFd = STDOUT_FILENO, QObject *parent = nullptr)` — 收 fd 而非寫死 `STDIN_FILENO`／`STDOUT_FILENO`。測試傳 pipe fd，非 TTY 路徑因此確定成立；若寫死，喺開發者終端直接跑測試會真係把該終端切入 raw mode 與 alternate screen。
     - `bool enter(QString *error)` — 存 termios、關 `ICANON|ECHO`（**保留 `ISIG`**）、`ESC[?1049h`、隱藏游標、裝 signal handler。失敗回 false 並填 `error`。
     - `void leave()` — 還原；可重入，第二次是 no-op。
     - `QSize size() const` — 目前 `rows × cols`；查不到時回 `QSize(24, 80)`。
@@ -931,6 +933,8 @@ git commit -m "feat(tui): add a diffing character grid for the board UI"
 
 #include <QCoreApplication>
 #include <QSize>
+
+#include <unistd.h>
 
 #include <cstdio>
 
@@ -959,12 +963,14 @@ int main(int argc, char **argv)
     check(!restore.isEmpty() && restore.size() < 64,
           "the sequence stays small enough to write from a signal handler");
 
-    TuiTerminal terminal;
-    // Tests run with stdout redirected, so entering must fail rather than
-    // wedge the harness -- and must say why.
+    // A pipe, never the real terminal: a test that entered raw mode and the
+    // alternate screen for real would wreck the shell it was launched from.
+    int pipeFds[2] = {-1, -1};
+    check(::pipe(pipeFds) == 0, "the test opens a pipe to stand in for a terminal");
+    TuiTerminal terminal(pipeFds[0], pipeFds[1]);
     QString error;
     const bool entered = terminal.enter(&error);
-    check(!entered, "entering without a terminal fails");
+    check(!entered, "entering on something that is not a terminal fails");
     check(!error.isEmpty(), "and reports a reason a player can act on");
 
     const QSize fallback = terminal.size();
@@ -993,7 +999,7 @@ Expected: FAIL，`fatal error: tui-terminal.h: No such file or directory`
 
 - [ ] **Step 4: 實作 TuiTerminal**
 
-`enter()` 依序：`isatty(STDOUT_FILENO)` 與 `isatty(STDIN_FILENO)` 皆須為真，否則填 `error` 回 false；`tcgetattr` 存起原始 termios；複製一份清掉 `ICANON | ECHO`，**保留 `ISIG`**，`VMIN = 1`、`VTIME = 0`，`tcsetattr(TCSAFLUSH)`；寫 `ESC[?1049h` 與 `ESC[?25l`；裝 `SIGWINCH`、`SIGINT`、`SIGTERM`、`SIGHUP`、`SIGSEGV`、`SIGABRT` handler。
+`enter()` 依序：`isatty(m_outFd)` 與 `isatty(m_inFd)` 皆須為真，否則填 `error` 回 false；`tcgetattr` 存起原始 termios；複製一份清掉 `ICANON | ECHO`，**保留 `ISIG`**，`VMIN = 1`、`VTIME = 0`，`tcsetattr(TCSAFLUSH)`；寫 `ESC[?1049h` 與 `ESC[?25l`；裝 `SIGWINCH`、`SIGINT`、`SIGTERM`、`SIGHUP`、`SIGSEGV`、`SIGABRT` handler。
 
 handler 只做 async-signal-safe 的事：
 
@@ -1018,7 +1024,7 @@ extern "C" void tuiSignalHandler(int number)
 
 `leave()` 用 `std::atomic<bool>` 守住重入；還原 termios、寫 `restoreSequence()`、把 signal 設回 `SIG_DFL`、關 self-pipe。解構函式呼叫 `leave()`；另在 `enter()` 成功後把 `leave()` 接上 `QCoreApplication::aboutToQuit`。
 
-`size()` 用 `ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws)`；失敗或回傳 0 時用 `QSize(80, 24)`（`QSize(width, height)` = `(cols, rows)`，注意測試斷言的是 `height()==24`）。
+`size()` 用 `ioctl(m_outFd, TIOCGWINSZ, &ws)`；失敗或回傳 0 時用 `QSize(80, 24)`（`QSize(width, height)` = `(cols, rows)`，注意測試斷言的是 `height()==24`）。
 
 - [ ] **Step 5: 補上 Unix 的 SIGINT 出口**
 
@@ -1065,12 +1071,14 @@ raw mode 之後沒有人幫你組行。這一層把按鍵變回一行文字，�
 
 **Files:**
 - Create: `src/tui/tui-line-editor.h`, `src/tui/tui-line-editor.cpp`
+- Modify: `src/tui/tui-input.h`, `src/tui/tui-input.cpp`（拆出位元組來源，見 Step 5）
 - Modify: `CMakeLists.txt:628`, `tests/CMakeLists.txt`, `tests/tui-tests-main.cpp`
 - Test: `tests/tui/tui-line-editor-test.cpp`
 
 **Interfaces:**
 - Consumes: `tuiDisplayWidth`（Task 3）。
 - Produces:
+  - `TuiInput` 新增 signal `void rawBytes(const QByteArray &bytes)` 與 `void setRawMode(bool enabled)`。raw 模式開啟時 `TuiInput` **只**發 `rawBytes`，不再自行組行、不發 `lineReady`；關閉時行為與今日逐位元組相同。Task 9 消費 `rawBytes`。
   - `enum class TuiKey { None, Char, Left, Right, Home, End, Backspace, Delete, Enter, Tab, Escape, Up, Down, PageUp, PageDown, Interrupt };`
   - `struct TuiKeyEvent { TuiKey key = TuiKey::None; QString text; };`
   - `class TuiKeyDecoder`：`QVector<TuiKeyEvent> feed(const QByteArray &bytes)` — 帶未完成緩衝的狀態機，處理跨 read 斷開的 escape sequence。
@@ -1230,15 +1238,52 @@ Expected: FAIL，`fatal error: tui-line-editor.h: No such file or directory`
 
 `TuiLineEditor` 以 `QString m_text` 與 `int m_cursor`（字元索引）為狀態；`cursorColumn()` 回傳 `tuiDisplayWidth(m_text.left(m_cursor))`。歷史為 `QStringList`，只在記憶體，不落磁碟。長度上限 16384，達到後丟棄後續輸入字元，與現行 `tui-input.cpp` 一致。
 
-- [ ] **Step 5: 執行測試,確認通過**
+- [ ] **Step 5: 把 TuiInput 拆成位元組來源與行組裝**
 
-Run: `cmake --build build-linux-gcc --target qsanguosha_tui_tests -j8 && ./build-linux-gcc/tests/qsanguosha_tui_tests --suite line-editor`
+spec §2.2 要求這個拆分，而 board 模式沒有它就收不到任何按鍵。`TuiInput` 今日在兩個平台上都自行組行；加一個 raw 模式，開啟時只把位元組原樣發出：
+
+`src/tui/tui-input.h` 加：
+
+```cpp
+signals:
+    // Raw mode only: bytes exactly as the terminal delivered them, including
+    // half-finished escape sequences. TuiKeyDecoder owns the reassembly.
+    void rawBytes(const QByteArray &bytes);
+
+public:
+    // Off by default, so the classic client keeps assembling lines itself and
+    // its behaviour is untouched.
+    void setRawMode(bool enabled);
+```
+
+`src/tui/tui-input.cpp`：`appendBytes()` 與 Windows console 分支各自在開頭加一道分流：
+
+```cpp
+    if (m_rawMode) {
+        emit rawBytes(bytes);
+        return;
+    }
+```
+
+raw 模式下 `TuiInput` **不得**發出 `lineReady`——那條線改由 Task 9 的 presenter 在
+`handleKey()` 交出完成的一行時發出，這正是不變式 2 的落地路徑。classic 模式
+`m_rawMode` 永遠為 false，行為逐位元組不變。
+
+- [ ] **Step 6: 執行測試,確認通過**
+
+Run: `cmake --build build-linux-gcc --target qsanguosha_tui_tests qsanguosha_tui -j8 && ./build-linux-gcc/tests/qsanguosha_tui_tests --suite line-editor`
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: 確認 classic 未受影響**
+
+Run: `ctest --test-dir build-linux-gcc -L tui --output-on-failure`
+Expected: 全部 PASS。raw 模式預設關閉，既有 suite 一條都不應變色。
+
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/tui/tui-line-editor.h src/tui/tui-line-editor.cpp CMakeLists.txt \
+git add src/tui/tui-line-editor.h src/tui/tui-line-editor.cpp \
+        src/tui/tui-input.h src/tui/tui-input.cpp CMakeLists.txt \
         tests/CMakeLists.txt tests/tui-tests-main.cpp tests/tui/tui-line-editor-test.cpp
 git commit -m "feat(tui): assemble lines from keys, keeping lineReady the one exit"
 ```
@@ -1339,7 +1384,9 @@ int main(int argc, char **argv)
 
     // 20p is not a special case: it is the same paging path a 9 player game
     // takes in an 80x24 terminal.
-    const TuiBoardGeometry twenty = tuiComputeBoardGeometry(40, 120, 20, 1);
+    // 120x40 fits 39 cells, so twenty players would sit on one page there --
+    // the crowding only shows at a size a player actually has.
+    const TuiBoardGeometry twenty = tuiComputeBoardGeometry(24, 80, 20, 1);
     const TuiBoardGeometry nineSmall = tuiComputeBoardGeometry(24, 80, 9, 1);
     check(twenty.pageCount > 1 && nineSmall.pageCount > 1,
           "both crowded cases page rather than degrade to a list");
@@ -1689,8 +1736,8 @@ bool TuiBoardPresenter::handleKey(const TuiKeyEvent &event, QString *submitted)
 }
 ```
 
-`src/tui/tui-application-controller.cpp`：board 模式下，`TuiInput` 發出的原始位元組經
-`TuiKeyDecoder` 解成按鍵，逐個交 `handleKey()`；`submitted` 非空時發出**既有的**
+`src/tui/tui-application-controller.cpp`：board 模式下呼叫 `m_input.setRawMode(true)`，
+接上 Task 6 產生的 `TuiInput::rawBytes`，經 `TuiKeyDecoder` 解成按鍵，逐個交 `handleKey()`；`submitted` 非空時發出**既有的**
 `lineReady(QString)`。這一步是不變式 2 的落地位——board 不得繞過 `handleInputLine()`
 自行組裝任何回覆。
 
