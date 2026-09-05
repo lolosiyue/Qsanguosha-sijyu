@@ -500,9 +500,25 @@ QString TuiRenderer::renderPlayers(const ClientGameState &state) const
     for (int i = 0; i < names.size(); ++i) {
         const QVariantMap player = state.player(names.at(i));
         const QString name = names.at(i);
-        // Flags are engine internals (CurrentPlayer, marshalling); the desktop
-        // client never shows them either.
-        const QString flags;
+        // Most flags are engine internals (CurrentPlayer, marshalling) and stay
+        // hidden, but four of them are how the desktop tells the player what is
+        // going on: PlayerCardContainer::refresh()
+        // (generic-cardcontainer-ui.cpp:1237-1240) draws an icon for each.
+        QStringList states;
+        const QStringList playerFlags = stringList(
+            player.value(QStringLiteral("flags")));
+        if (player.value(QStringLiteral("chained")).toBool())
+            states << tuiText("tui_state_chained");
+        // faceup is broadcast only when it changes, so a player the server
+        // never mentioned is still face up.
+        if (!player.value(QStringLiteral("faceup"), true).toBool())
+            states << tuiText("tui_state_face_down");
+        if (playerFlags.contains(QStringLiteral("actioned")))
+            states << tuiText("tui_state_actioned");
+        if (player.value(QStringLiteral("alive"), true).toBool()
+            && playerFlags.contains(QStringLiteral("Global_Dying"))) {
+            states << tuiText("tui_state_dying");
+        }
         const QList<int> equipment = state.cardsForPlayer(name, 1);
         const QList<int> judging = state.cardsForPlayer(name, 2);
         const QVariantMap piles = player.value(QStringLiteral("piles")).toMap();
@@ -558,8 +574,9 @@ QString TuiRenderer::renderPlayers(const ClientGameState &state) const
                  sanitize(judgeText.join(QStringLiteral(", ")), 1024),
                  sanitize(pileSummary.join(QStringLiteral(", ")), 512),
                  sanitize(marks.join(QStringLiteral(", ")), 512),
-                 flags.isEmpty() ? QString()
-                     : tuiText("tui_player_flags").arg(sanitize(flags, 256)));
+                 states.isEmpty() ? QString()
+                     : tuiText("tui_player_states").arg(
+                           states.join(tuiText("tui_list_separator"))));
     }
     if (names.isEmpty())
         lines << tuiText("tui_waiting_players");
