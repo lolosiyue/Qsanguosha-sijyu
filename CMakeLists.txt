@@ -667,6 +667,7 @@ if(QSAN_BUILD_TUI)
         src/tui/tui-interaction-view.h
         src/tui/tui-renderer.cpp
         src/tui/tui-renderer.h
+        src/tui/tui-resolvers.h
         src/tui/tui-room-context.cpp
         src/tui/tui-room-context.h
         src/tui/tui-script-runner.cpp
