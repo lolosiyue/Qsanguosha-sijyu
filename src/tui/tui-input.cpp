@@ -1,4 +1,5 @@
 #include "tui-input.h"
+#include "tui-terminal.h"
 #include "tui-text.h"
 
 #include <QStringDecoder>
@@ -69,6 +70,10 @@ bool TuiInput::start(QString *error)
         [this](QSocketDescriptor descriptor, QSocketNotifier::Type) {
             readUnixInput(static_cast<int>(descriptor));
         });
+    // Ctrl+C used to be the terminal driver's business on Unix, which killed the
+    // process without a graceful disconnect -- docs/tui-client.md claimed
+    // otherwise. Both platforms now leave through the same signal.
+    tuiInstallInterruptHandler([this]() { emit interruptRequested(); });
 #endif
     m_running = true;
     return true;
