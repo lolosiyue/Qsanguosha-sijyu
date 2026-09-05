@@ -473,6 +473,47 @@ void builderContract()
                   QStringLiteral("p1")),
           "response-card advertises the same numbered players");
 
+    // Choose-general is enumerated only when the server really does restrict
+    // the answer to the listed candidates. Under FreeChoose (and the scripted
+    // modes) the server takes any general name, so an enumerated payload would
+    // make ClientCore reject the reply before it ever reaches the room.
+    ProtocolMessage chooseGeneral;
+    chooseGeneral.type = ProtocolMessageType::Request;
+    chooseGeneral.source = ProtocolEndpoint::Room;
+    chooseGeneral.destination = ProtocolEndpoint::Client;
+    chooseGeneral.command = S_COMMAND_CHOOSE_GENERAL;
+    chooseGeneral.hasPayload = true;
+    chooseGeneral.payload = samplePayload(S_COMMAND_CHOOSE_GENERAL);
+
+    const auto buildChooseGeneral = [&](const QVariantMap &setup) {
+        ClientGameState generalState;
+        generalState.setSelfName(QStringLiteral("p1"));
+        generalState.setSetup(setup);
+        chooseGeneral.messageId = ++messageId;
+        InteractionRequest generalRequest;
+        QString generalError;
+        const bool built = ProtocolInteractionRequestBuilder::build(
+            chooseGeneral, generalState, &generalRequest, &generalError);
+        const auto *generalPayload = generalRequest.payloadAs<OptionInteractionPayload>();
+        return built && generalPayload != nullptr && generalPayload->options.size() == 2
+            ? (generalPayload->enumerated ? 1 : 0) : -1;
+    };
+
+    check(buildChooseGeneral(QVariantMap{{QStringLiteral("game_mode"), QStringLiteral("03_1v2")},
+                                         {QStringLiteral("free_choose"), false}}) == 1,
+          "choose-general enumerates its candidates on an ordinary server");
+    check(buildChooseGeneral(QVariantMap{{QStringLiteral("game_mode"), QStringLiteral("03_1v2")},
+                                         {QStringLiteral("free_choose"), true}}) == 0,
+          "FreeChoose leaves choose-general unenumerated so an unlisted general is accepted");
+    check(buildChooseGeneral(QVariantMap{
+              {QStringLiteral("game_mode"), QStringLiteral("custom_scenario")},
+              {QStringLiteral("free_choose"), false}}) == 0,
+          "custom scenarios leave choose-general unenumerated");
+    check(buildChooseGeneral(QVariantMap{
+              {QStringLiteral("game_mode"), QStringLiteral("_mini_01")},
+              {QStringLiteral("free_choose"), false}}) == 0,
+          "mini scenarios leave choose-general unenumerated");
+
     ProtocolMessage trigger;
     trigger.type = ProtocolMessageType::Request;
     trigger.source = ProtocolEndpoint::Room;

@@ -164,7 +164,16 @@ bool ProtocolInteractionRequestBuilder::build(const ProtocolMessage &message,
         QStringList values = strings(object.value(QStringLiteral("candidates")));
         if (values.isEmpty())
             values = strings(message.payload);
-        payload = optionPayload(values);
+        OptionInteractionPayload value = optionPayload(values);
+        // PlayerDecisionService::askForGeneral() takes any general name under
+        // these three, so the candidate list is a menu rather than the legal
+        // set; enumerating it would make ClientCore reject the reply first.
+        const QVariantMap setup = state.setup();
+        const QString gameMode = setup.value(QStringLiteral("game_mode")).toString();
+        value.enumerated = !setup.value(QStringLiteral("free_choose")).toBool()
+            && !gameMode.startsWith(QStringLiteral("_mini_"))
+            && gameMode != QStringLiteral("custom_scenario");
+        payload = value;
         cancelable = false;
         break;
     }
