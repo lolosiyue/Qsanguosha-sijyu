@@ -14,6 +14,7 @@ int runTuiContractTests(int argc, char *argv[]);
 int runTuiLiveTcpTests(int argc, char *argv[]);
 int runTuiPresenterTests(int argc, char **argv);
 int runTuiTextWidthTests(int argc, char **argv);
+int runTuiScreenTests(int argc, char **argv);
 
 int main(int argc, char **argv)
 {
@@ -37,6 +38,8 @@ int main(int argc, char **argv)
         return runTuiPresenterTests(argc, argv);
     if (suite == QLatin1String("text-width"))
         return runTuiTextWidthTests(argc, argv);
+    if (suite == QLatin1String("screen"))
+        return runTuiScreenTests(argc, argv);
     if (!suite.isEmpty())
         return 64;
 
@@ -53,6 +56,7 @@ int main(int argc, char **argv)
         {QStringLiteral("contract"), {QStringLiteral("--suite"), QStringLiteral("contract")}},
         {QStringLiteral("live-tcp"), {QStringLiteral("--suite"), QStringLiteral("live-tcp")}},
         {QStringLiteral("presenter"), {QStringLiteral("--suite"), QStringLiteral("presenter")}},
-        {QStringLiteral("text-width"), {QStringLiteral("--suite"), QStringLiteral("text-width")}}
+        {QStringLiteral("text-width"), {QStringLiteral("--suite"), QStringLiteral("text-width")}},
+        {QStringLiteral("screen"), {QStringLiteral("--suite"), QStringLiteral("screen")}}
     });
 }
