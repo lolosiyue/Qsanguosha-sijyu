@@ -739,6 +739,71 @@ void reducerContract()
             {QStringLiteral("card_ids"), QVariantList{9}},
             {QStringLiteral("to_player"), QStringLiteral("p1")},
             {QStringLiteral("to_place"), 1}, {QStringLiteral("to_pile"), QString()}}}}});
+    // Player::setFlags() treats "." as "clear them all" (player.cpp:219), and
+    // the server ends every turn with it (gamerule.cpp:411). Storing it as a
+    // flag instead leaves actioned, CurrentPlayer and every turn-scoped
+    // package flag set on the client for the rest of the game.
+    const auto setFlag = [](ClientGameState *target, const QString &flag) {
+        ClientGameStateReducer::applyNotification(target, S_COMMAND_SET_PROPERTY,
+            QVariantMap{{QStringLiteral("schema_version"), 1},
+                        {QStringLiteral("player_name"), QStringLiteral("p1")},
+                        {QStringLiteral("action"), QStringLiteral("property")},
+                        {QStringLiteral("property_name"), QStringLiteral("flags")},
+                        {QStringLiteral("string_value"), flag}});
+    };
+    setFlag(&semantic, QStringLiteral("CurrentPlayer"));
+    setFlag(&semantic, QStringLiteral("actioned"));
+    setFlag(&semantic, QStringLiteral("-actioned"));
+    check(semantic.playerValue(QStringLiteral("p1"), QStringLiteral("flags"))
+                  .toStringList() == QStringList{QStringLiteral("CurrentPlayer")},
+          "a negated flag is removed and the others are kept");
+    setFlag(&semantic, QStringLiteral("actioned"));
+    setFlag(&semantic, QStringLiteral("."));
+    check(semantic.playerValue(QStringLiteral("p1"), QStringLiteral("flags"))
+                  .toStringList().isEmpty(),
+          "a \".\" flag update clears the flags the way Player::setFlags does");
+
+    // Card::setFlags() reads "." the same way (card.cpp:998), and the server
+    // clears a card's flags on every move (card-movement-service.cpp:169) by
+    // sending exactly that.
+    const auto setCardFlag = [](ClientGameState *target, const QString &flag) {
+        ClientGameStateReducer::applyNotification(target, S_COMMAND_CARD_FLAG,
+            QVariantMap{{QStringLiteral("schema_version"), 1},
+                        {QStringLiteral("card_id"), 7},
+                        {QStringLiteral("flag"), flag}});
+    };
+    setCardFlag(&semantic, QStringLiteral("visible"));
+    setCardFlag(&semantic, QStringLiteral("cardTip:x"));
+    setCardFlag(&semantic, QStringLiteral("-visible"));
+    check(semantic.card(7).value(QStringLiteral("flags")).toStringList()
+              == QStringList{QStringLiteral("cardTip:x")},
+          "a negated card flag is removed and the others are kept");
+    setCardFlag(&semantic, QStringLiteral("."));
+    check(semantic.card(7).value(QStringLiteral("flags")).toStringList().isEmpty(),
+          "a \".\" card flag update clears the flags the way Card::setFlags does");
+
+    // A card's marks live inside its flags in the engine (card.cpp:942 writes
+    // "cardMark:<name>:<value>"), so the two sentinels the engine implements
+    // there have to reach the reducer's separate marks map as well:
+    // removeCardMark() sends a value of 0 and Card::setMark() drops the entry
+    // (card.cpp:948), and clearCardFlag() wipes marks along with the flags.
+    const auto setCardMark = [](ClientGameState *target, const QString &mark, int value) {
+        ClientGameStateReducer::applyNotification(target, S_COMMAND_CARD_MARK,
+            QVariantMap{{QStringLiteral("schema_version"), 1},
+                        {QStringLiteral("card_id"), 7},
+                        {QStringLiteral("mark_name"), mark},
+                        {QStringLiteral("value"), value}});
+    };
+    setCardMark(&semantic, QStringLiteral("kept"), 2);
+    setCardMark(&semantic, QStringLiteral("spent"), 1);
+    setCardMark(&semantic, QStringLiteral("spent"), 0);
+    check(semantic.card(7).value(QStringLiteral("marks")).toMap()
+              == QVariantMap{{QStringLiteral("kept"), 2}},
+          "a card mark set to zero is removed, not stored as zero");
+    setCardFlag(&semantic, QStringLiteral("."));
+    check(semantic.card(7).value(QStringLiteral("marks")).toMap().isEmpty(),
+          "clearing a card's flags clears the marks the engine keeps among them");
+
     check(semantic.playerValue(QStringLiteral("p1"), QStringLiteral("skills"))
                   .toStringList().contains(QStringLiteral("jizhi"))
               && semantic.cardsForPlayer(QStringLiteral("p1"), 0) == QList<int>({7, 8})
@@ -839,13 +904,22 @@ void rendererContract()
                                      {QStringLiteral("Global_TurnCount"), 3},
                                      {QStringLiteral("mtyanyi_phase-Clear"), 4}});
     state.setPlayerValue(QStringLiteral("p1"), QStringLiteral("flags"),
-                         QStringList{QStringLiteral("CurrentPlayer")});
+                         QStringList{QStringLiteral("CurrentPlayer"),
+                                     QStringLiteral("actioned"),
+                                     QStringLiteral("Global_Dying")});
+    state.setPlayerValue(QStringLiteral("p1"), QStringLiteral("chained"), true);
+    state.setPlayerValue(QStringLiteral("p1"), QStringLiteral("faceup"), false);
     state.setPlayerValue(QStringLiteral("p2"), QStringLiteral("screen_name"),
                          QStringLiteral("Bob"));
     state.setPlayerValue(QStringLiteral("p2"), QStringLiteral("alive"), false);
     state.setPlayerValue(QStringLiteral("p2"), QStringLiteral("state"),
                          QStringLiteral("offline"));
     state.setPlayerValue(QStringLiteral("p2"), QStringLiteral("hand_count"), 1);
+    // A dead player keeps the dying flag until the next turn clears it; the
+    // desktop only lights the save-me icon while isAlive() (generic-
+    // cardcontainer-ui.cpp:1240).
+    state.setPlayerValue(QStringLiteral("p2"), QStringLiteral("flags"),
+                         QStringList{QStringLiteral("Global_Dying")});
     state.setCardValue(7, QStringLiteral("owner"), QStringLiteral("p1"));
     state.setCardValue(7, QStringLiteral("place"), 0);
     state.setCardValue(7, QStringLiteral("card_name"), QStringLiteral("slash"));
@@ -967,6 +1041,22 @@ void rendererContract()
           "player snapshot shows game marks and hides engine bookkeeping");
     check(!playersSnapshot.contains(QStringLiteral("CurrentPlayer")),
           "player snapshot does not leak engine flags");
+    // The four states the desktop draws as icons on every photo
+    // (generic-cardcontainer-ui.cpp:1237-1240). Without them the player cannot
+    // tell who is chained, who is turned over, or who is asking for a peach.
+    check(playersSnapshot.contains(
+              QStringLiteral("状态=[铁索、翻面、已行动、濒死]")),
+          "player snapshot shows chained, face-down, acted and dying");
+    check(playersSnapshot.count(QStringLiteral("濒死")) == 1,
+          "a dead player is not still reported as dying");
+    // p2 is the last player printed, so its block is everything past its
+    // heading. The server broadcasts faceup only when it changes, and a player
+    // it never mentioned is still face up.
+    const QString secondPlayerBlock = playersSnapshot.mid(
+        playersSnapshot.indexOf(QStringLiteral("（p2）")));
+    check(!secondPlayerBlock.contains(QStringLiteral("翻面"))
+              && !secondPlayerBlock.contains(QStringLiteral("状态=")),
+          "a player the server never turned over is not reported face down");
 
     check(TuiRenderer::commandResultText(S_COMMAND_NETWORK_DELAY_TEST, true, QString()).isEmpty(),
           "a successful internal command stays out of the transcript");
