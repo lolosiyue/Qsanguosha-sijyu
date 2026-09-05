@@ -7,6 +7,7 @@
 #include "tui-input.h"
 #include "tui-interaction-view.h"
 #include "tui-client-player.h"
+#include "tui-presenter.h"
 #include "tui-renderer.h"
 #include "tui-room-context.h"
 #include "tui-target-advice.h"
@@ -14,6 +15,8 @@
 #include <QFile>
 #include <QList>
 #include <QVariant>
+
+#include <memory>
 
 class TuiScriptRunner;
 
@@ -125,6 +128,9 @@ private:
     TuiInteractionView m_view;
     TuiInput m_input;
     TuiScriptRunner *m_script = nullptr;
+    // Installed once at construction and never swapped: switching UI mode
+    // mid-session is deliberately out of scope.
+    std::unique_ptr<TuiPresenter> m_presenter;
     QFile m_log;
     bool m_logFailed = false;
     bool m_trusted = false;
