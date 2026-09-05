@@ -15,11 +15,12 @@
 // the answer is submitted.
 struct TuiCardTargets
 {
-    bool known = false;
-    bool targetFixed = false;
-    QStringList targets;
+    bool known = false;      // the engine had an opinion at all
+    bool targetFixed = false; // the card picks its own targets
+    QStringList targets;      // object names that pass as a first target
     // How many times each of them may be named. Above one is the answer
-    // Collateral and GreatYeyanCard give.
+    // Collateral and GreatYeyanCard give, and the only way the player can
+    // tell that naming somebody twice is allowed.
     QHash<QString, int> maxVotes;
 };
 
@@ -30,12 +31,24 @@ struct TuiResolvers
 {
     std::function<QString(int)> card;
     std::function<QString(const QString &)> name;
+    // Object name -> the screen name the player picked. A prompt carries only
+    // object names, and renderInteraction() has no ClientGameState to look them
+    // up in, so the controller hands its own resolver over.
     std::function<QString(const QString &)> player;
+    // General name -> its kingdom. The server never broadcasts the kingdom
+    // property, so it is read off the general the way Player::getKingdom() does.
     std::function<QString(const QString &)> kingdom;
+    // What the engine says about a candidate in the request being answered --
+    // "不可用", "不符" and so on, already worded. Empty means nothing to add.
+    // The renderer never acts on it: an advisory that turns out wrong must not
+    // be able to hide a legal answer.
     std::function<QString(int)> cardHint;
     std::function<QString(const QString &)> playerHint;
     std::function<TuiCardTargets(int)> cardTargets;
+    // /hand is read outside any request, so it asks the play-phase
+    // question unconditionally rather than following the active prompt.
     std::function<QString(int)> handHint;
+    // Same advisory, for an offered skill: name and activation instance in.
     std::function<QString(const QString &, int)> skillHint;
 };
 
