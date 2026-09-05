@@ -260,8 +260,22 @@ void TuiPlayerModel::syncPlayer(Entry *entry, const QVariantMap &data,
         player->clearCardLimitation();
         for (const QVariant &value : data.value(QStringLiteral("card_limitations")).toList()) {
             const QVariantMap limitation = value.toMap();
-            player->setCardLimitation(
-                limitation.value(QStringLiteral("limit_list")).toString(),
+            // The reducer keeps the wire entry as it arrived, and the wire says
+            // "methods" -- a string list, joined here the way the desktop joins
+            // it (client.cpp:1506). Reading a key the server never sends handed
+            // Player::setCardLimitation() an empty string, whose one empty
+            // token walks into Engine::getCardHandlingMethod()'s Q_ASSERT and
+            // takes the client down the first time anything is limited.
+            QStringList methods;
+            for (const QVariant &method :
+                     limitation.value(QStringLiteral("methods")).toList()) {
+                const QString name = method.toString();
+                if (!name.isEmpty())
+                    methods.append(name);
+            }
+            if (methods.isEmpty())
+                continue;
+            player->setCardLimitation(methods.join(QLatin1Char(',')),
                 limitation.value(QStringLiteral("pattern")).toString(),
                 limitation.value(QStringLiteral("reason")).toString(),
                 limitation.value(QStringLiteral("single_turn")).toBool());
