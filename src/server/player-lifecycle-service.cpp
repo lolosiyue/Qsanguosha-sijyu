@@ -70,6 +70,10 @@ void PlayerLifecycleService::signup(ServerPlayer *player, const QString &screenN
 
     if (!isRobot) {
         m_room.notifyProperty(player, player, "objectName");
+        // Everyone else's connection state arrives through a broadcast, but
+        // nothing broadcasts a player's own state until it changes, so tell
+        // the joining client about itself here.
+        m_room.notifyProperty(player, player, "state");
         if (!m_room.getOwner()) {
             player->setOwner(true);
             m_room.notifyProperty(player, player, "owner");
