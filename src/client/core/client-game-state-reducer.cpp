@@ -192,6 +192,15 @@ void applyPlayerProperty(ClientGameState *state, const QVariantMap &object)
     if (property == QLatin1String("flags")) {
         QStringList flags = state->playerValue(player, QStringLiteral("flags")).toStringList();
         const QString flag = value.toString();
+        // "." is not a flag: Player::setFlags() reads it as "clear them all"
+        // (player.cpp:219), and the server ends every turn with one
+        // (gamerule.cpp:411). Appending it instead leaves actioned,
+        // CurrentPlayer and every turn-scoped package flag set for the rest of
+        // the game -- nothing else ever removes them.
+        if (flag == QLatin1String(".")) {
+            state->setPlayerValue(player, QStringLiteral("flags"), QStringList());
+            return;
+        }
         const bool remove = flag.startsWith(QLatin1Char('-'));
         appendOrRemove(&flags, remove ? flag.mid(1) : flag, !remove);
         state->setPlayerValue(player, QStringLiteral("flags"), flags);
@@ -611,8 +620,16 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
     case S_COMMAND_CARD_MARK: {
         const int cardId = object.value(QStringLiteral("card_id")).toInt();
         QVariantMap marks = state->card(cardId).value(QStringLiteral("marks")).toMap();
-        marks.insert(object.value(QStringLiteral("mark_name")).toString(),
-                     object.value(QStringLiteral("value")));
+        const QString mark = object.value(QStringLiteral("mark_name")).toString();
+        const QVariant value = object.value(QStringLiteral("value"));
+        // removeCardMark() reaches zero and stops (card-state-service.cpp:39),
+        // and Card::setMark() drops the entry rather than storing a zero
+        // (card.cpp:948) -- the same rule ClientGameState::setPlayerMark
+        // already follows for a player.
+        if (value.toInt() == 0)
+            marks.remove(mark);
+        else
+            marks.insert(mark, value);
         state->setCardValue(cardId, QStringLiteral("marks"), marks);
         break;
     }
@@ -620,6 +637,18 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
         const int cardId = object.value(QStringLiteral("card_id")).toInt();
         QStringList flags = state->card(cardId).value(QStringLiteral("flags")).toStringList();
         const QString flag = object.value(QStringLiteral("flag")).toString();
+        // Card::setFlags() clears on "." (card.cpp:998), and the server sends
+        // one every time a card moves (card-movement-service.cpp:169) or a
+        // response is resolved. Appending it would leave visible and cardTip:
+        // flags on the card for the rest of the game.
+        if (flag == QLatin1String(".")) {
+            state->setCardValue(cardId, QStringLiteral("flags"), QStringList());
+            // A card's marks are flags in the engine ("cardMark:<name>:<value>",
+            // card.cpp:942), so clearing the flags clears them too. They are a
+            // separate map here and would otherwise survive.
+            state->setCardValue(cardId, QStringLiteral("marks"), QVariantMap());
+            break;
+        }
         appendOrRemove(&flags, flag.startsWith(QLatin1Char('-')) ? flag.mid(1) : flag,
                        !flag.startsWith(QLatin1Char('-')));
         state->setCardValue(cardId, QStringLiteral("flags"), flags);
