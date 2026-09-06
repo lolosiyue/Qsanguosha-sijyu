@@ -53,7 +53,7 @@ QString firstCandidatePlayer(const InteractionRequest &request)
 } // namespace
 
 TuiBoardPresenter::TuiBoardPresenter(QSize size, TuiResolvers resolvers, TuiTerminal *terminal)
-    : m_boardView(std::move(resolvers)), m_terminal(terminal)
+    : m_boardView(std::move(resolvers)), m_terminal(terminal), m_terminalReady(terminal == nullptr)
 {
     setViewportSize(size);
     if (terminal != nullptr) {
@@ -289,8 +289,41 @@ void TuiBoardPresenter::repaint()
         flushToTerminal();
 }
 
+void TuiBoardPresenter::terminalEntered()
+{
+    if (m_terminalReady)
+        return;
+    m_terminalReady = true;
+    // The frame(s) painted between construction and this call were computed
+    // (setViewportSize()'s forced-full-repaint flag, and any state that
+    // arrived since) but never flushed -- see flushToTerminal() below, which
+    // returns before calling TuiScreen::flush() while not ready specifically
+    // so that flag survives untouched until now.
+    //
+    // schedulePaint() rather than a direct repaint() call: this function
+    // runs synchronously inside TuiApplicationController::start(), before
+    // QCoreApplication::exec() has started the event loop. A direct
+    // repaint() here would do this presenter's first real terminal write
+    // (and, transitively, whatever a resize's TuiTerminal::resized()
+    // connection or ClientLiveSession's own startup does after it) from
+    // that pre-exec() context instead of from inside the event loop like
+    // every later repaint. QTimer::singleShot(0, ...) still fires as soon
+    // as exec() starts, so the frame appears immediately either way; it
+    // just does so from the same place every other repaint runs from.
+    schedulePaint();
+}
+
 void TuiBoardPresenter::flushToTerminal()
 {
+    if (!m_terminalReady) {
+        // Hold the frame -- see terminalEntered(). Must return before
+        // TuiScreen::flush() below: flush() unconditionally commits its diff
+        // state (m_previous = m_current), so calling it here and merely
+        // discarding the string would make the *next* real flush() -- once
+        // terminalEntered() runs -- see no change and emit nothing, silently
+        // losing the held frame.
+        return;
+    }
     const QString diff = m_screen.flush();
     if (diff.isEmpty())
         return;

@@ -345,6 +345,14 @@ bool TuiApplicationController::start(QString *error)
                 *error = tuiText("tui_error_terminal_enter").arg(terminalError);
             return false;
         }
+        // m_boardPresenter was constructed (and already ran one
+        // setViewportSize()/repaint()) well before this point, but held that
+        // frame instead of writing it -- see TuiBoardPresenter::flushToTerminal()
+        // and terminalEntered(). Only now, with enter() having actually put the
+        // terminal in the alternate screen, is it safe to let that frame (or any
+        // frame) reach the real terminal; releasing it here is what keeps "enter()
+        // failed" meaning "nothing was drawn at all".
+        m_boardPresenter->terminalEntered();
     }
     if (!m_options.logFile.isEmpty()) {
         m_log.setFileName(m_options.logFile);
