@@ -5,6 +5,7 @@
 
 #include <QCoreApplication>
 
+int runTuiBoardLayoutTests(int argc, char **argv);
 int runTuiCardTextTests(int argc, char **argv);
 int runTuiClientPlayerTests(int argc, char **argv);
 int runTuiLogTextTests(int argc, char **argv);
@@ -22,6 +23,8 @@ int main(int argc, char **argv)
 {
     // 子 suite 各自會起自己嘅 QCoreApplication。
     const QString suite = parseSuite(argc, argv);
+    if (suite == QLatin1String("board-layout"))
+        return runTuiBoardLayoutTests(argc, argv);
     if (suite == QLatin1String("card-text"))
         return runTuiCardTextTests(argc, argv);
     if (suite == QLatin1String("client-player"))
@@ -51,6 +54,8 @@ int main(int argc, char **argv)
 
     QCoreApplication application(argc, argv);
     return runIsolatedTestCases("TUI_CONTRACT_RESULT", {
+        {QStringLiteral("board-layout"),
+            {QStringLiteral("--suite"), QStringLiteral("board-layout")}},
         {QStringLiteral("card-text"), {QStringLiteral("--suite"), QStringLiteral("card-text")}},
         {QStringLiteral("client-player"),
             {QStringLiteral("--suite"), QStringLiteral("client-player")}},
