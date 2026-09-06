@@ -31,3 +31,13 @@ void TuiStreamPresenter::shutdown()
 {
     // Nothing to give back: this presenter never took the terminal over.
 }
+
+void TuiStreamPresenter::stateChanged(const ClientGameState &)
+{
+    // The line client prints what it is told to print; it has no view to refresh.
+}
+
+void TuiStreamPresenter::interactionChanged(const InteractionRequest *)
+{
+    // Likewise: TuiInteractionView already wrote the prompt through writeOutput().
+}
