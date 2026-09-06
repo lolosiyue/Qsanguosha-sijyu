@@ -4,6 +4,7 @@
 #include "version.h"
 
 #include <QCoreApplication>
+#include <QDeadlineTimer>
 #include <QSocketNotifier>
 
 #include <cerrno>
@@ -13,6 +14,15 @@
 #if defined(Q_OS_UNIX)
 #include <fcntl.h>
 #include <unistd.h>
+#elif defined(Q_OS_WIN)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <io.h>
+#include <windows.h>
 #endif
 
 namespace
@@ -53,6 +63,103 @@ QString tableRow(const QStringList &columns, const QList<int> &widths)
 }
 }
 
+#if defined(Q_OS_WIN)
+ConsoleInputThread::ConsoleInputThread(bool interactive, QObject *parent)
+    : QThread(parent), m_interactive(interactive)
+{
+}
+
+void ConsoleInputThread::run()
+{
+    // The owner needs the native thread to CancelSynchronousIo() the blocking
+    // read below when the console is torn down.
+    m_threadId.store(::GetCurrentThreadId(), std::memory_order_release);
+
+    if (m_interactive)
+        readFromConsole();
+    else
+        readFromPipe();
+}
+
+void ConsoleInputThread::readFromConsole()
+{
+    const HANDLE stdinHandle = ::GetStdHandle(STD_INPUT_HANDLE);
+    // In line-input mode ReadConsoleW returns CR LF terminated lines unless the
+    // 4 KiB chunk fills first; scanning for '\n' and keeping the remainder also
+    // covers pasted lines longer than one chunk. UTF-16 arrives directly, so
+    // "say 中文" is unaffected by the console codepage.
+    wchar_t chunk[4096];
+    QString pending;
+    bool endOfInput = false;
+    while (!isInterruptionRequested()) {
+        DWORD count = 0;
+        if (!::ReadConsoleW(stdinHandle, chunk,
+                DWORD(sizeof(chunk) / sizeof(chunk[0])), &count, nullptr)) {
+            // Aborted (Ctrl+C or CancelSynchronousIo) or console error.
+            break;
+        }
+        if (count == 0) {
+            endOfInput = true; // Ctrl+Z.
+            break;
+        }
+        pending.append(reinterpret_cast<const QChar *>(chunk), int(count));
+        for (;;) {
+            const qsizetype newline = pending.indexOf(QLatin1Char('\n'));
+            if (newline < 0)
+                break;
+            QString line = pending.left(newline);
+            pending.remove(0, newline + 1);
+            if (line.endsWith(QLatin1Char('\r')))
+                line.chop(1);
+            emit lineReceived(line);
+        }
+    }
+    if (endOfInput && !pending.isEmpty()) {
+        if (pending.endsWith(QLatin1Char('\r')))
+            pending.chop(1);
+        emit lineReceived(pending);
+    }
+    emit inputClosed();
+}
+
+void ConsoleInputThread::readFromPipe()
+{
+    const HANDLE stdinHandle = ::GetStdHandle(STD_INPUT_HANDLE);
+    // Piped input is assumed to be UTF-8, matching the Unix reader.
+    char chunk[4096];
+    QByteArray pending;
+    bool endOfInput = false;
+    while (!isInterruptionRequested()) {
+        DWORD count = 0;
+        if (!::ReadFile(stdinHandle, chunk, DWORD(sizeof(chunk)), &count, nullptr)) {
+            const DWORD error = ::GetLastError();
+            endOfInput = error == ERROR_BROKEN_PIPE || error == ERROR_HANDLE_EOF;
+            break;
+        }
+        if (count == 0) {
+            endOfInput = true;
+            break;
+        }
+        pending.append(chunk, int(count));
+        for (;;) {
+            const qsizetype newline = pending.indexOf('\n');
+            if (newline < 0)
+                break;
+            QByteArray bytes = pending.left(newline);
+            pending.remove(0, newline + 1);
+            if (bytes.endsWith('\r'))
+                bytes.chop(1);
+            emit lineReceived(QString::fromUtf8(bytes));
+        }
+        if (pending.size() > MaximumInputBufferSize)
+            pending.clear(); // Same discard rule as the Unix path.
+    }
+    if (endOfInput && !pending.isEmpty())
+        emit lineReceived(QString::fromUtf8(pending));
+    emit inputClosed();
+}
+#endif
+
 ServerConsole::ServerConsole(Server *server, QObject *parent)
     : QObject(parent), m_server(server), m_output(stdout)
 {
@@ -63,6 +170,8 @@ ServerConsole::~ServerConsole()
 #if defined(Q_OS_UNIX)
     if (m_restoreStdinFlags)
         ::fcntl(STDIN_FILENO, F_SETFL, m_originalStdinFlags);
+#elif defined(Q_OS_WIN)
+    stopInputThread();
 #endif
 }
 
@@ -75,7 +184,9 @@ void ServerConsole::start()
 #if defined(Q_OS_UNIX)
     m_interactive = ::isatty(STDIN_FILENO) == 1;
 #else
-    m_interactive = true;
+    // _isatty rather than GetFileType: a NUL device reports FILE_TYPE_CHAR but
+    // is not a terminal, and piped stdin must take the non-interactive path.
+    m_interactive = ::_isatty(_fileno(stdin)) != 0;
 #endif
 
     const ServerStatusSnapshot snapshot = m_server->statusSnapshot();
@@ -104,6 +215,19 @@ void ServerConsole::start()
     connect(m_stdinNotifier, &QSocketNotifier::activated, this,
         [this](QSocketDescriptor, QSocketNotifier::Type) { readStandardInput(); });
     m_acceptingInput = true;
+    showPrompt();
+#elif defined(Q_OS_WIN)
+    const HANDLE stdinHandle = ::GetStdHandle(STD_INPUT_HANDLE);
+    if (!stdinHandle || stdinHandle == INVALID_HANDLE_VALUE)
+        return;
+
+    m_inputThread = new ConsoleInputThread(m_interactive, this);
+    connect(m_inputThread, &ConsoleInputThread::lineReceived,
+        this, &ServerConsole::handleConsoleLine, Qt::QueuedConnection);
+    connect(m_inputThread, &ConsoleInputThread::inputClosed,
+        this, &ServerConsole::handleInputClosed, Qt::QueuedConnection);
+    m_acceptingInput = true;
+    m_inputThread->start();
     showPrompt();
 #endif
 }
@@ -177,6 +301,54 @@ void ServerConsole::processBufferedInput()
             showPrompt();
     }
 }
+
+#if defined(Q_OS_WIN)
+void ServerConsole::stopInputThread()
+{
+    if (!m_inputThread)
+        return;
+
+    if (m_inputThread->isRunning()) {
+        m_inputThread->requestInterruption();
+        // The worker blocks in a synchronous console read; cancel that pending
+        // I/O so it can observe the interruption instead of hanging the join.
+        const DWORD threadId = static_cast<DWORD>(m_inputThread->nativeThreadId());
+        if (threadId != 0) {
+            if (const HANDLE handle = ::OpenThread(THREAD_TERMINATE, FALSE, threadId)) {
+                ::CancelSynchronousIo(handle);
+                ::CloseHandle(handle);
+            }
+        }
+        if (!m_inputThread->wait(QDeadlineTimer(2000))) {
+            // Still blocked: leak the object instead of destroying a running
+            // QThread; the OS thread ends with the process.
+            m_inputThread->setParent(nullptr);
+            return;
+        }
+    }
+    delete m_inputThread;
+    m_inputThread = nullptr;
+}
+
+void ServerConsole::handleConsoleLine(const QString &line)
+{
+    if (!m_acceptingInput)
+        return;
+    m_promptVisible = false;
+    m_handlingCommand = true;
+    executeCommand(line);
+    m_handlingCommand = false;
+    if (m_acceptingInput)
+        showPrompt();
+}
+
+void ServerConsole::handleInputClosed()
+{
+    if (m_interactive && m_promptVisible)
+        m_output << Qt::endl;
+    disableInput();
+}
+#endif
 
 void ServerConsole::executeCommand(const QString &line)
 {
