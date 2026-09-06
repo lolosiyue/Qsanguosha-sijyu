@@ -28,10 +28,23 @@
 //   2. For the board side, real player-facing view actions -- paging,
 //      opening and closing the overlay, resizing twice -- are interleaved
 //      between the request arriving and the answer being submitted, called
-//      through TuiBoardPresenter's own public entry points (setPage(),
-//      toggleOverlay(), setViewportSize()), not a stub standing in for them.
-//      If any of those ever grew a path back into ClientCore, this is where
-//      it would show up.
+//      through TuiBoardPresenter's own public entry points, not a stub
+//      standing in for them: setViewportSize() directly (the null-terminal
+//      constructor's own documented substitute for a real resize signal),
+//      and paging/overlay-close/the answer itself as real TuiKeyEvents fed
+//      to handleKey() -- the same entry point
+//      TuiApplicationController::handleBoardKeyEvents feeds decoded keys to
+//      in production (see typeThroughBoard()). Routing the answer itself
+//      through handleKey() matters: an earlier revision of this file called
+//      setPage()/toggleOverlay()/setViewportSize() as bare methods and fed
+//      parseAnswer() a fixed string directly, which cannot ever observe a
+//      bug in TuiLineEditor (the one component genuinely exclusive to board
+//      mode -- TuiInput's classic-mode reading never constructs one) because
+//      nothing in that shape of test ever calls into it. A mutation
+//      experiment confirmed exactly that blind spot before this shape was
+//      adopted; see the second experiment in task-11-report.md.
+//      If any of those ever grew a path back into ClientCore, or corrupted
+//      what TuiLineEditor assembles, this is where it would show up.
 //   3. The comparison is field-by-field on the resulting InteractionWireReply
 //      (command, the full 64-bit replyTo, payload) rather than string
 //      equality, and there is a standing assertion that replyTo actually
@@ -62,6 +75,7 @@
 #include "protocol.h"
 #include "tui-board-presenter.h"
 #include "tui-interaction-view.h"
+#include "tui-line-editor.h"
 #include "tui-presenter.h"
 #include "tui-renderer.h"
 #include "tui-resolvers.h"
@@ -254,19 +268,25 @@ struct RunOutcome
     QStringList presentedOutput;
 };
 
+// What actually turns a (possibly view-action-interleaved) session into a
+// submitted InteractionResponse. The classic flow is just parseAnswer() with
+// a fixed string; the board flow (typeThroughBoard(), below) is real
+// keystrokes through the presenter's own line editor.
+using AnswerFlow = std::function<bool(TuiInteractionView &, const InteractionRequest &,
+    InteractionResponse *, QString *)>;
+
 // Wires a fresh ClientCore to `presenter` exactly the way
 // TuiApplicationController's constructor does (see its own comment on the
 // requestStarted/responseAccepted/requestCancelled connections), begins
-// `request`, runs `interleave` (empty for the classic run; real view actions
-// for the board run) between the request arriving and the answer being
-// submitted, then parses and submits `answer` through
+// `request`, then hands off to `answerFlow` to produce a response -- either
+// straight through parseAnswer() (classic) or by typing through the board's
+// own key path (typeThroughBoard()) -- before submitting it through
 // InteractionReplyCoordinator::submit -- the same coordinator function
 // ClientLiveSession::submitInteractionResponse calls in production, rather
 // than reaching around it to call the reply encoder directly.
 RunOutcome runThroughPresenter(TuiPresenter *presenter, TuiRenderer *renderer,
     const ClientGameState &baseState, const InteractionCommandDescriptor &descriptor,
-    const InteractionRequest &request, const QString &answer,
-    const std::function<void()> &interleave)
+    const InteractionRequest &request, const AnswerFlow &answerFlow)
 {
     RunOutcome outcome;
 
@@ -304,12 +324,9 @@ RunOutcome runThroughPresenter(TuiPresenter *presenter, TuiRenderer *renderer,
     // actions below run against it.
     QCoreApplication::processEvents();
 
-    if (interleave)
-        interleave();
-
     InteractionResponse response;
     QString error;
-    if (!view.parseAnswer(core.activeRequest(), answer, &response, &error)) {
+    if (!answerFlow(view, core.activeRequest(), &response, &error)) {
         std::printf("  %s parse failed: %s\n", descriptor.commandName, qPrintable(error));
         return outcome;
     }
@@ -330,6 +347,67 @@ RunOutcome runThroughPresenter(TuiPresenter *presenter, TuiRenderer *renderer,
 bool wireRepliesEqual(const InteractionWireReply &a, const InteractionWireReply &b)
 {
     return a.command == b.command && a.replyTo == b.replyTo && a.payload == b.payload;
+}
+
+// Types `answer` through TuiBoardPresenter's own key path -- TuiKeyEvents
+// into handleKey(), exactly the way TuiApplicationController::
+// handleBoardKeyEvents feeds decoded keys in production -- with paging,
+// an overlay open/close and two resizes landing both before typing starts
+// and again in the middle of it.
+//
+// This exists because setPage()/toggleOverlay()/setViewportSize() called as
+// bare methods (an earlier revision of this file did exactly that) can
+// never touch what gets submitted: none of the three so much as look at
+// TuiBoardPresenter's embedded TuiLineEditor. TuiLineEditor is also the one
+// piece of this whole harness that is genuinely board-only -- TuiInput's
+// classic-mode reading never constructs one at all -- so it is the one place
+// a "board mode changed what the server receives" bug could actually live,
+// and the one place routing input through handleKey() rather than calling
+// parseAnswer() with a fixed string lets this test see it.
+bool typeThroughBoard(TuiBoardPresenter &board, TuiInteractionView &view,
+    const InteractionRequest &request, const QString &answer,
+    InteractionResponse *response, QString *error)
+{
+    QString submitted;
+    // The overlay has no dedicated open key (production opens it from inside
+    // writeOutput() when the text runs long); closing it is a real key,
+    // though, so exercise that one for real.
+    board.toggleOverlay(QStringLiteral("ui-parity-test overlay"));
+    board.handleKey(TuiKeyEvent{TuiKey::Escape, QString()}, &submitted);
+
+    board.handleKey(TuiKeyEvent{TuiKey::PageDown, QString()}, &submitted);
+    board.handleKey(TuiKeyEvent{TuiKey::PageUp, QString()}, &submitted);
+    // The null-terminal constructor's own documented substitute for a real
+    // resize signal (see TuiBoardPresenter's constructor comment).
+    board.setViewportSize(QSize(80, 24));
+    board.setViewportSize(QSize(120, 40));
+
+    QString submittedLine;
+    bool haveLine = false;
+    const int mid = answer.size() / 2;
+    for (int i = 0; i < answer.size(); ++i) {
+        if (i == mid) {
+            // The same view actions again, this time landing mid-keystroke --
+            // exactly where a leak into the line buffer would corrupt what
+            // the player meant to type.
+            board.handleKey(TuiKeyEvent{TuiKey::PageDown, QString()}, &submitted);
+            board.handleKey(TuiKeyEvent{TuiKey::PageUp, QString()}, &submitted);
+            board.setViewportSize(QSize(100, 30));
+            board.setViewportSize(QSize(120, 40));
+        }
+        board.handleKey(TuiKeyEvent{TuiKey::Char, QString(answer.at(i))}, &submitted);
+        if (!submitted.isEmpty() && !haveLine) {
+            // Would only happen if handleKey() misfired an early Enter --
+            // none of this file's answers carry a literal newline.
+            submittedLine = submitted;
+            haveLine = true;
+        }
+    }
+    if (!haveLine) {
+        board.handleKey(TuiKeyEvent{TuiKey::Enter, QString()}, &submitted);
+        submittedLine = submitted;
+    }
+    return view.parseAnswer(request, submittedLine, response, error);
 }
 
 // The invariant this whole feature rests on, run for every one of the 29
@@ -368,24 +446,31 @@ void uiChoiceNeverChangesTheWire()
         }
         const QString answer = validAnswerFor(request);
 
-        // -- Classic mode: no view actions at all. --
+        // -- Classic mode: parseAnswer() with the fixed answer, no view
+        // actions at all. --
         TuiStreamPresenter classicPresenter([](const QString &) {}, [](const QString &) {});
+        const AnswerFlow classicFlow = [&answer](TuiInteractionView &flowView,
+                const InteractionRequest &flowRequest, InteractionResponse *flowResponse,
+                QString *flowError) {
+            return flowView.parseAnswer(flowRequest, answer, flowResponse, flowError);
+        };
         const RunOutcome classic = runThroughPresenter(&classicPresenter, &renderer, baseState,
-            descriptor, request, answer, {});
+            descriptor, request, classicFlow);
 
         // -- Board mode: deliberately noisy. Every local view action a
         // player can take, interleaved between the request landing and the
-        // answer going out, through the presenter's real entry points. --
+        // answer being typed, through the presenter's real entry points --
+        // including handleKey(), so the answer itself goes in through the
+        // same key path a player's fingers would use (see
+        // typeThroughBoard()). --
         TuiBoardPresenter board(QSize(120, 40), resolvers);
+        const AnswerFlow boardFlow = [&board, &answer](TuiInteractionView &flowView,
+                const InteractionRequest &flowRequest, InteractionResponse *flowResponse,
+                QString *flowError) {
+            return typeThroughBoard(board, flowView, flowRequest, answer, flowResponse, flowError);
+        };
         const RunOutcome boardOutcome = runThroughPresenter(&board, &renderer, baseState,
-            descriptor, request, answer, [&board]() {
-                board.setPage(board.page() + 1);
-                board.setPage(board.page() - 1);
-                board.toggleOverlay(QStringLiteral("ui-parity-test overlay"));
-                board.toggleOverlay(QString());
-                board.setViewportSize(QSize(80, 24));
-                board.setViewportSize(QSize(120, 40));
-            });
+            descriptor, request, boardFlow);
 
         // ChooseRole is the one registered interaction TuiInteractionView
         // deliberately never renders (see its own presentRequest(): the
