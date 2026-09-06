@@ -642,6 +642,8 @@ if(QSAN_BUILD_TUI)
         src/tui/tui-application-controller.h
         src/tui/tui-board-layout.cpp
         src/tui/tui-board-layout.h
+        src/tui/tui-board-view.cpp
+        src/tui/tui-board-view.h
         src/tui/tui-card-text.cpp
         src/tui/tui-card-text.h
         src/tui/tui-client-player.cpp
