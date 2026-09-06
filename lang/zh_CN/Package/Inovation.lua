@@ -133,7 +133,7 @@ return {
 	
 	["chengmeng"]="承梦",
 	["yanjubu"]="「演剧部」",
-	[":chengmeng"]="\n社团技，「演剧部」。\n加入条件：其他角色于当前角色摸牌阶段外获得牌时，你可以询问其是否加入「演剧部」。每轮限询问一次。\n社团效果：每有一名你以外的演剧部角色，「演剧部」角色判定区可以额外放置一张【键】。",
+	[":chengmeng"]="\n<a href=\"#clubskill\">社团技，</a>「演剧部」。\n<a href=\"#clubskilladd\">加入条件：</a>其他角色于当前角色摸牌阶段外获得牌时，你可以询问其是否加入「演剧部」。每轮限询问一次。\n<a href=\"#clubskilleffect\">社团效果：</a>每有一名你以外的演剧部角色，「演剧部」角色判定区可以额外放置一张【键】。",
     ["chengmeng_accept"] =  "接受古河渚邀请并加入「演剧部」",
 
 	["dingxin"] = "町心",
@@ -367,57 +367,6 @@ return {
 
 
 
-	["xushu"] = "虚数",
-	["$xushu1"] = "（咒语）",
-	["$xushu2"] = "太碍眼了！",
-	["$xushu3"] = "哈哈..哈哈..哈哈哈哈哈。",
-	["$xushu4"] = "能够给你的，只有后悔和绝望。",
-	[":xushu"] = "锁定技。对你造成的伤害和你造成的伤害视为体力流失。准备阶段开始时，你需令一名其他角色流失一点体力。",
-
-	["xishou"] = "吸收",
-	["$xishou1"] = "和我一起溶解吧。",
-	["$xishou2"] = "死吧，呵呵呵呵呵。",
-	["$xishou3"] = "安心吧，大家都会死的。",
-	[":xishou"] = "一名其他角色进入濒死时，你可以获得其一个技能并回复一点体力。",
-
-	["shengbei"] = "圣杯",
-	["$shengbei1"] = "不会停下的，妨碍我的话就毁掉你。",
-	[":shengbei"] = "锁定技。回合开始前，弃置你判定区内的所有牌，若你背面朝上，将你的武将牌翻面。你的摸牌数+3，你的手牌上限+3。",
-
-	["@kage"] = "影",
-	["caoying"] = "操影",
-	["$caoying1"] = "如果非要妨碍我的话就抹杀你。",
-	["$caoying2"] = "消失吧！",
-	["$caoying3"] = "明明就，明明就因为你我才......",
-	["$caoying4"] = "那么，来玩玩吧。",
-	[":caoying"] = "其他角色指定你为目标时，获得一个“影”标记。一名角色流失体力时，你可以弃置其“影”标记，然后弃置其相同数量的牌。",
-
-	["shengjian_black"] = "黑·约束胜利之剑",
-	["$shengjian_black1"] = "好吧，我就陪你玩玩。",
-	["$shengjian_black2"] = "消失吧！",
-	["$shengjian_black3"] = "同吾之极光一同消逝吧！Excalibur！！",
-	["$shengjian_black4"] = "被吾之剑光吞噬吧，Excalibur！！！",
-	[":shengjian_black"] = "当你失去体力时，你可以对一名其他角色造成X点伤害，X为你和其装备区牌的差，然后弃置其所有的装备牌。",
-
-	["inovation_DarkSakura1"] = "黑化间桐樱",
-	["&inovation_DarkSakura1"] = "黑化间桐樱",
-	["@inovation_DarkSakura1"] = "Fate/Stay Night",
-	["#inovation_DarkSakura1"] = "间桐家的御主",
-	["~inovation_DarkSakura1"] = "哎，学长...我...到底做了什么...",
-	["designer:inovation_DarkSakura1"] = "Sword Elucidator",
-	["cv:inovation_DarkSakura1"] = "下屋则子",
-	["illustrator:inovation_DarkSakura1"] = "月本葵",
-
-
-	["inovation_DarkSakura2"] = "黑化间桐樱（圣杯模式）",
-	["&inovation_DarkSakura2"] = "黑化间桐樱（圣杯模式）",
-	["@inovation_DarkSakura2"] = "Fate/Stay Night",
-	["#inovation_DarkSakura2"] = "间桐家的圣杯",
-	["~inovation_DarkSakura2"] = "哎，学长...我...到底做了什么...",
-	["designer:inovation_DarkSakura2"] = "Sword Elucidator",
-	["cv:inovation_DarkSakura2"] = "下屋则子",
-	["illustrator:inovation_DarkSakura2"] = "皇♦小J",
-
 	["Takamakuri"] = "鹰捲",
 	["$Takamakuri1"] = "鹰捲，不是毒!",
 	["$Takamakuri2"] = "人体中蕴藏着一种由微细脉冲电流引发的震动，鹰捲能将这一震动振幅。",
@@ -583,7 +532,7 @@ return {
 	["$xingjian3"] = "让翅膀，乘风而动！",
 	["xingjian_skip"] = "获得兰花的一张牌，然后跳过你的摸牌阶段。",
 	["xingjian_throw"] = "令兰花获得一张你的装备。",
-	[":xingjian"] = "光环。出牌阶段开始时。\n发动条件：你的血量不多于原光环发动者。\n效果：所有其他角色于回合开始时，若装备区有牌，其需选择一项：你获得其一张装备，或获得你一张牌并跳过摸牌阶段。\n合并光环：妖精",
+	[":xingjian"] = "<a href=\"#auraskill\">光环。</a>出牌阶段开始时。\n发动条件：你的血量不多于原光环发动者。\n效果：所有其他角色于回合开始时，若装备区有牌，其需选择一项：你获得其一张装备，或获得你一张牌并跳过摸牌阶段。\n合并光环：妖精",
 	["goutong"] = "沟通",
 	["$goutong1"] = "空气清新，天空澄澈。",
 	["$goutong2"] = "人生是！1！2！Deculture!我要加油！",
