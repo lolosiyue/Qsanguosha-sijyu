@@ -6,6 +6,7 @@
 #include <QCoreApplication>
 
 int runTuiBoardLayoutTests(int argc, char **argv);
+int runTuiBoardPresenterTests(int argc, char **argv);
 int runTuiBoardViewTests(int argc, char **argv);
 int runTuiCardTextTests(int argc, char **argv);
 int runTuiClientPlayerTests(int argc, char **argv);
@@ -26,6 +27,8 @@ int main(int argc, char **argv)
     const QString suite = parseSuite(argc, argv);
     if (suite == QLatin1String("board-layout"))
         return runTuiBoardLayoutTests(argc, argv);
+    if (suite == QLatin1String("board-presenter"))
+        return runTuiBoardPresenterTests(argc, argv);
     if (suite == QLatin1String("board-view"))
         return runTuiBoardViewTests(argc, argv);
     if (suite == QLatin1String("card-text"))
@@ -59,6 +62,8 @@ int main(int argc, char **argv)
     return runIsolatedTestCases("TUI_CONTRACT_RESULT", {
         {QStringLiteral("board-layout"),
             {QStringLiteral("--suite"), QStringLiteral("board-layout")}},
+        {QStringLiteral("board-presenter"),
+            {QStringLiteral("--suite"), QStringLiteral("board-presenter")}},
         {QStringLiteral("board-view"),
             {QStringLiteral("--suite"), QStringLiteral("board-view")}},
         {QStringLiteral("card-text"), {QStringLiteral("--suite"), QStringLiteral("card-text")}},

@@ -114,7 +114,7 @@ TUICommonTranslationTable = {
 	["tui_answer_arrangement"] = "作答：依序输入武将编号",
 	["tui_answer_custom"] = "作答：一个 JSON 对象或数组",
 	["tui_cancel_hint"] = "可输入 /cancel 放弃",
-	["tui_help"] = "/help /status /players /hand /equip /piles /skills /log\n/chat <文字> /trust [on|off] /addrobot [all|数量] /surrender /reconnect /quit\n提示作答：索引、标签、范围（1-3）、card <牌字符串> -> 目标、顶部 | 底部、cards <索引> -> 玩家、/cancel",
+	["tui_help"] = "/help /status /players /hand /equip /piles /skills /log\n/chat <文字> /trust [on|off] /addrobot [all|数量] /surrender /reconnect /quit\n/board <页码>（仅 board 模式，翻页，不影响作答）\n提示作答：索引、标签、范围（1-3）、card <牌字符串> -> 目标、顶部 | 底部、cards <索引> -> 玩家、/cancel",
 
 	-- 局面渲染
 	["tui_section_players"] = "玩家",
@@ -276,6 +276,8 @@ TUICommonTranslationTable = {
 	["tui_error_chat_too_long"] = "/chat 最多 1000 字符",
 	["tui_error_trust_args"] = "/trust 只接受 'on' 或 'off'",
 	["tui_error_addrobot_args"] = "/addrobot 只接受 'all' 或 1 至 64 的数量",
+	["tui_error_board_args"] = "/board 需要一个从 1 开始的页码",
+	["tui_error_board_inactive"] = "/board 仅在 board 模式下可用",
 	["tui_command_readonly_only"] = "提示期间只可使用只读命令、/cancel 与 /quit",
 	["tui_no_request"] = "目前没有互动",
 	["tui_no_request_hint"] = "目前没有互动；输入 /help 查看命令",

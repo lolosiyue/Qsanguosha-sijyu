@@ -52,7 +52,8 @@ const QHash<QString, TuiCommandType> &commandTable()
         {QStringLiteral("/surrender"), TuiCommandType::Surrender},
         {QStringLiteral("/reconnect"), TuiCommandType::Reconnect},
         {QStringLiteral("/quit"), TuiCommandType::Quit},
-        {QStringLiteral("/cancel"), TuiCommandType::Cancel}
+        {QStringLiteral("/cancel"), TuiCommandType::Cancel},
+        {QStringLiteral("/board"), TuiCommandType::Board}
     };
     return commands;
 }
@@ -143,6 +144,12 @@ bool TuiCommandParser::parse(const QString &line, TuiCommandIntent *intent,
         } else {
             return reject(error, tuiText("tui_error_trust_args"));
         }
+    } else if (parsed.type == TuiCommandType::Board) {
+        bool ok = false;
+        const int page = argument.toInt(&ok);
+        if (!ok || page < 1)
+            return reject(error, tuiText("tui_error_board_args"));
+        parsed.page = page;
     } else if (parsed.type == TuiCommandType::AddRobot) {
         if (argument.isEmpty()
             || argument.compare(QStringLiteral("all"), Qt::CaseInsensitive) == 0) {
