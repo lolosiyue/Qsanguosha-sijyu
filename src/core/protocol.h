@@ -209,7 +209,8 @@ namespace QSanProtocol {
         S_GAME_EVENT_CHANGE_BGM,
         S_GAME_EVENT_AVATAR_ICON,
         S_GAME_EVENT_SORT_HAND,
-        S_GAME_EVENT_SHOW_GENERAL
+        S_GAME_EVENT_SHOW_GENERAL,
+        S_GAME_EVENT_AKARIN
     };
 
     enum AnimateType

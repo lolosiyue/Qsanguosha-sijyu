@@ -4152,6 +4152,21 @@ void Room::setEmotion(ServerPlayer*target, const QString&emotion)
 	doBroadcastNotify(S_COMMAND_SET_EMOTION, arg);
 }
 
+void Room::akarinPlayer(ServerPlayer*player, ServerPlayer*to)
+{
+	m_playerState->akarinPlayer(player, to);
+}
+
+void Room::removeAkarinEffect(ServerPlayer*player, ServerPlayer*to)
+{
+	m_playerState->removeAkarinEffect(player, to);
+}
+
+bool Room::isAkarin(ServerPlayer*player, ServerPlayer*to) const
+{
+	return m_playerState->isAkarin(player, to);
+}
+
 void Room::setLoopEmotion(ServerPlayer*target, const QString&emotion)
 {
     // TODO: setLoopEmotion 尚未正確實現
@@ -4661,13 +4676,26 @@ QList<const Card*> Room::askForPindianRace(ServerPlayer*from, ServerPlayer*to, c
 ServerPlayer*Room::askForPlayerChosen(ServerPlayer*player, const QList<ServerPlayer*>&targets, const QString&skillName,
 	const QString&prompt, bool optional, bool notify_skill)
 {
-	return m_playerDecisions->askForPlayerChosen(player, targets, skillName, prompt, optional, notify_skill);
+	QList<ServerPlayer *> visible_targets;
+	foreach (ServerPlayer *target, targets) {
+		// Akarin visibility is viewer-specific: hide only targets invisible to this chooser.
+		if (!isAkarin(target, player))
+			visible_targets << target;
+	}
+	return m_playerDecisions->askForPlayerChosen(
+		player, visible_targets, skillName, prompt, optional, notify_skill);
 }
 
 QList<ServerPlayer*> Room::askForPlayersChosen(ServerPlayer*player, const QList<ServerPlayer*>&targets, const QString&skillName,
 					int min_num, int max_num, const QString&prompt, bool notify_skill, bool sort_ActionOrder)
 {
-	return m_playerDecisions->askForPlayersChosen(player, targets, skillName, min_num, max_num, prompt,
+	QList<ServerPlayer *> visible_targets;
+	foreach (ServerPlayer *target, targets) {
+		// Apply the same viewer-specific filter before clamping multi-select bounds.
+		if (!isAkarin(target, player))
+			visible_targets << target;
+	}
+	return m_playerDecisions->askForPlayersChosen(player, visible_targets, skillName, min_num, max_num, prompt,
 		notify_skill, sort_ActionOrder);
 }
 

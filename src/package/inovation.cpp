@@ -12,71 +12,6 @@
 #include "json.h"
 #include "settings.h"
 
-namespace {
-
-QString akarinStatusKey(const ServerPlayer *player)
-{
-    return "inovation_akarin_status_" + player->objectName();
-}
-
-void applyAkarinEffect(Room *room, ServerPlayer *player, ServerPlayer *viewer = nullptr)
-{
-    if (!player)
-        return;
-
-    QStringList viewers = room->getTag(akarinStatusKey(player)).toStringList();
-    if (viewer && viewers.contains(viewer->objectName()))
-        return;
-
-    room->setEmotion(player, "akarin");
-
-    LogMessage log;
-    log.type = viewer ? "$AkarinPlayer" : "$AkarinPlayerToAll";
-    log.from = player;
-    if (viewer) {
-        log.to << viewer;
-        room->sendLog(log, viewer);
-        viewers << viewer->objectName();
-    } else {
-        room->sendLog(log);
-        for (ServerPlayer *other : room->getOtherPlayers(player)) {
-            if (!viewers.contains(other->objectName()))
-                viewers << other->objectName();
-        }
-    }
-    room->setTag(akarinStatusKey(player), viewers);
-}
-
-void removeAkarinEffect(Room *room, ServerPlayer *player, ServerPlayer *viewer = nullptr)
-{
-    if (!player)
-        return;
-
-    const QString tagName = akarinStatusKey(player);
-    QStringList viewers = room->getTag(tagName).toStringList();
-    if (viewer && !viewers.contains(viewer->objectName()))
-        return;
-
-    LogMessage log;
-    log.type = viewer ? "$RemoveAkarin" : "$RemoveAkarinToAll";
-    log.from = player;
-    if (viewer) {
-        log.to << viewer;
-        room->sendLog(log, viewer);
-        viewers.removeAll(viewer->objectName());
-    } else {
-        room->sendLog(log);
-        viewers.clear();
-    }
-
-    if (viewers.isEmpty())
-        room->removeTag(tagName);
-    else
-        room->setTag(tagName, viewers);
-}
-
-}
-
 //mapo tofu
 MapoTofu::MapoTofu(Card::Suit suit, int number)
     : BasicCard(suit, number)
@@ -167,7 +102,7 @@ public:
             if (akarin->getPhase() == Player::Discard)
                 akarin->setMark("inovation_SE_Touming_num", akarin->getHandcardNum());
             else if (akarin->getPhase() == Player::RoundStart && akarin->getMark("touming_used") > 0){
-                removeAkarinEffect(room, akarin);
+                room->removeAkarinEffect(akarin);
                 akarin->setMark("touming_used", 0);
             }
         }
@@ -181,7 +116,7 @@ public:
                     return false;
                 room->broadcastSkillInvoke(objectName());
                 room->doLightbox("inovation_SE_Touming$", 1500);
-                applyAkarinEffect(room, akarin);
+                room->akarinPlayer(akarin);
                 akarin->setMark("touming_used", 1);
                 akarin->drawCards((room->getAlivePlayers().length() + 1)/2);
             }
@@ -190,7 +125,7 @@ public:
             DeathStruct death = data.value<DeathStruct>();
             if (death.who != akarin)
                 return false;
-            removeAkarinEffect(room, akarin);
+            room->removeAkarinEffect(akarin);
         }
 
         return false;
@@ -206,7 +141,7 @@ public:
 
     void onSkillDetached(Room *room, ServerPlayer *player) const
     {
-        removeAkarinEffect(room, player);
+        room->removeAkarinEffect(player);
     }
 };
 
@@ -267,13 +202,13 @@ public:
             foreach(ServerPlayer* p, room->getAlivePlayers()){
                 if (p->getMark("@inovation_huanxing_target") > 0){
                     p->loseMark("@inovation_huanxing_target");
-                    removeAkarinEffect(room, use.to.at(0), p);
+                    room->removeAkarinEffect(use.to.at(0), p);
                 }
             }
             use.from->gainMark("@inovation_huanxing_target");
             room->broadcastSkillInvoke(objectName(), qsanRandomBounded(4) + 1);
             room->doLightbox("inovation_huanxing$", 300);
-            applyAkarinEffect(room, use.to.at(0), use.from);
+            room->akarinPlayer(use.to.at(0), use.from);
             use.to.at(0)->setMark("disappear", 1);
             return true;
         }
@@ -283,7 +218,7 @@ public:
             foreach(ServerPlayer* p, room->getAlivePlayers()){
                 if (p->getMark("@inovation_huanxing_target") > 0){
                     p->loseMark("@inovation_huanxing_target");
-                    removeAkarinEffect(room, nao, p);
+                    room->removeAkarinEffect(nao, p);
                 }
             }
 
@@ -3300,7 +3235,7 @@ public:
                 if (p->getMark("@Jianshi_akarin")){
                     foreach(ServerPlayer *q, room->getOtherPlayers(p)){
                         if (!q->hasSkill(objectName())){
-                            removeAkarinEffect(room, p, q);
+                            room->removeAkarinEffect(p, q);
                         }
                     }
                     p->loseAllMarks("@Jianshi_akarin");
@@ -3311,7 +3246,7 @@ public:
             target->gainMark("@Jianshi_akarin");
             foreach(ServerPlayer *p, room->getOtherPlayers(target)){
                 if (!p->hasSkill(objectName())){
-                    applyAkarinEffect(room, target, p);
+                    room->akarinPlayer(target, p);
                 }
             }
 
@@ -3323,7 +3258,7 @@ public:
                     if (p->getMark("@Jianshi_akarin")){
                         foreach(ServerPlayer *q, room->getOtherPlayers(p)){
                             if (!q->hasSkill(objectName())){
-                                removeAkarinEffect(room, p, q);
+                                room->removeAkarinEffect(p, q);
                             }
                         }
                         p->loseAllMarks("@Jianshi_akarin");
@@ -3349,7 +3284,7 @@ public:
             if (p->getMark("@Jianshi_akarin")){
                 foreach(ServerPlayer *q, room->getOtherPlayers(p)){
                     if (!q->hasSkill(objectName())){
-                        removeAkarinEffect(room, p, q);
+                        room->removeAkarinEffect(p, q);
                     }
                 }
                 p->loseAllMarks("@Jianshi_akarin");
