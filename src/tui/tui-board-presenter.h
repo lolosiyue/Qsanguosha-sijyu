@@ -82,6 +82,12 @@ public:
     // TuiScreen::toPlainText(). Production never reads this; it writes the
     // frame straight to the terminal instead (see flushToTerminal()).
     QString screenText() const { return m_screen.toPlainText(); }
+    // Test-only accessor: how many times repaint() has actually run. Exists
+    // solely so a test can prove stateChanged()/interactionChanged()'s
+    // pending-flag coalescing does something -- several calls within one
+    // event-loop turn, then one pump, should move this by exactly one, not
+    // by however many notifications were sent.
+    int repaintCountForTest() const { return m_repaintCount; }
 
 private:
     void schedulePaint();
@@ -129,6 +135,8 @@ private:
     QString m_notice;
 
     bool m_repaintPending = false;
+    // Backs repaintCountForTest() above.
+    int m_repaintCount = 0;
 };
 
 #endif

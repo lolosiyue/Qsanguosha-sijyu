@@ -260,6 +260,98 @@ void testOverlayKeyPriority()
           "and the same key still reaches the line editor instead of being eaten");
 }
 
+void testOverlayScrollKeys()
+{
+    TuiBoardPresenter presenter(QSize(80, 24), testResolvers());
+    ClientGameState state = fivePlayerState(QStringLiteral("sgs1"));
+    presenter.stateChanged(state);
+    pumpEvents();
+
+    // More lines than an 80x24 screen's overlay can show at once (visible
+    // rows = screen rows - 1, the last row being the scroll/close hint), so
+    // scrolling actually moves what's on screen instead of being a no-op
+    // that would pass whether or not scrolling was wired up at all.
+    // Zero-padded to two digits so no line's marker is a substring of
+    // another's (unpadded "OVERLAYLINE1" would also match "OVERLAYLINE10"
+    // through "OVERLAYLINE19", which would still be on screen after a
+    // one-line scroll and make the very check this test exists for pass
+    // vacuously).
+    QStringList lines;
+    for (int i = 1; i <= 30; ++i)
+        lines << QStringLiteral("OVERLAYLINE%1").arg(i, 2, 10, QLatin1Char('0'));
+    presenter.writeOutput(lines.join(QLatin1Char('\n')));
+    check(presenter.screenText().contains(QStringLiteral("OVERLAYLINE01"))
+              && !presenter.screenText().contains(QStringLiteral("OVERLAYLINE30")),
+          "the overlay opens scrolled to the top, taller than one screen");
+
+    QString submitted;
+    auto sendKey = [&](TuiKey key) { return presenter.handleKey(TuiKeyEvent{key, QString()}, &submitted); };
+
+    check(sendKey(TuiKey::Down), "Down is consumed while the overlay is open");
+    check(!presenter.screenText().contains(QStringLiteral("OVERLAYLINE01")),
+          "Down scrolled line 1 off the top");
+    check(presenter.screenText().contains(QStringLiteral("OVERLAYLINE02")),
+          "Down still shows line 2 (scrolled by one, not by a full page)");
+    check(!presenter.screenText().contains(QString::fromUtf8("牌堆")),
+          "Down did not close the overlay back to the board");
+
+    check(sendKey(TuiKey::Up), "Up is consumed while the overlay is open");
+    check(presenter.screenText().contains(QStringLiteral("OVERLAYLINE01")),
+          "Up scrolled back up to line 1");
+    check(!presenter.screenText().contains(QString::fromUtf8("牌堆")),
+          "Up did not close the overlay back to the board");
+
+    check(sendKey(TuiKey::PageDown), "PageDown is consumed while the overlay is open");
+    check(!presenter.screenText().contains(QStringLiteral("OVERLAYLINE01")),
+          "PageDown scrolled past the first line");
+    check(presenter.screenText().contains(QStringLiteral("OVERLAYLINE30")),
+          "PageDown reaches the last line (30 lines, 23 visible -> max scroll 7)");
+    check(!presenter.screenText().contains(QString::fromUtf8("牌堆")),
+          "PageDown did not close the overlay back to the board");
+
+    check(sendKey(TuiKey::PageUp), "PageUp is consumed while the overlay is open");
+    check(presenter.screenText().contains(QStringLiteral("OVERLAYLINE01")),
+          "PageUp scrolled back to the top");
+    check(!presenter.screenText().contains(QString::fromUtf8("牌堆")),
+          "PageUp did not close the overlay back to the board");
+
+    // None of the four scroll keys reached the line editor: close the
+    // overlay and submit, and the line must be empty -- an arrow/page key
+    // wrongly routed to TuiLineEditor::handle() would still not insert text
+    // (Up/Down browse an empty history, PageUp/PageDown are no-ops there
+    // too), so the real proof is that Enter has nothing to submit at all.
+    check(sendKey(TuiKey::Escape), "Esc closes the overlay after the scroll checks");
+    presenter.handleKey(TuiKeyEvent{TuiKey::Enter, QString()}, &submitted);
+    check(submitted.isEmpty(),
+          "none of the four scroll keys reached the line editor's buffer");
+}
+
+void testRepaintCoalescing()
+{
+    TuiBoardPresenter presenter(QSize(80, 24), testResolvers());
+    // Constructing the presenter already repaints once (setViewportSize()
+    // forces a full frame), so this measures the delta rather than an
+    // absolute count.
+    const int before = presenter.repaintCountForTest();
+
+    ClientGameState first = fivePlayerState(QStringLiteral("sgs2"));
+    ClientGameState second = fivePlayerState(QStringLiteral("sgs3"));
+    const InteractionRequest request = choosePlayerRequest({QStringLiteral("sgs4")});
+
+    // Three notifications inside one event-loop turn -- no pumpEvents()
+    // between them -- must still coalesce into exactly one repaint. This is
+    // schedulePaint()'s whole reason to exist (a pending flag plus a single
+    // QTimer::singleShot(0, ...)); a presenter that repainted synchronously
+    // on every notification would leave this at 3, not 1.
+    presenter.stateChanged(first);
+    presenter.stateChanged(second);
+    presenter.interactionChanged(&request);
+    pumpEvents();
+
+    check(presenter.repaintCountForTest() == before + 1,
+          "three notifications in one event-loop turn coalesce into exactly one repaint");
+}
+
 void testPagingNeverTouchesTheEditorLine()
 {
     // Invariant 1's structural half: a view action must not be able to
@@ -294,6 +386,8 @@ int main(int argc, char **argv)
     testAutoFollowAcrossPages();
     testWriteErrorNotice();
     testOverlayKeyPriority();
+    testOverlayScrollKeys();
+    testRepaintCoalescing();
     testPagingNeverTouchesTheEditorLine();
 
     std::printf("[AUTOTEST] TUI_BOARD_PRESENTER_RESULT status=%s\n",

@@ -60,6 +60,14 @@ public:
     // callers can size a layout without a special no-terminal case.
     QSize size() const;
 
+    // The fd output should actually be written to. A caller that wants to
+    // write bytes to "the terminal" (a presenter flushing a frame, say) must
+    // go through this rather than assuming STDOUT_FILENO -- this class was
+    // given an fd-taking constructor precisely so a test could hand it a
+    // pipe instead of the process's real stdout, and writing past this
+    // accessor would put that assumption right back.
+    int outFd() const { return m_outFd; }
+
     // The exact bytes written to leave the alternate screen, show the cursor
     // and drop any SGR attribute still in force. leave() and the signal
     // handler both write this same sequence; it exists as its own function
