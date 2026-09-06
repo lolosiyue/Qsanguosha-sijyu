@@ -39,7 +39,7 @@ int main(int argc, char **argv)
     check(wide.usable, "a large terminal is usable");
     check(wide.cellCols >= 3, "120 columns fit the full three region ring");
     check(wide.pageCount == 1, "five players fit on one page there");
-    check(wide.slots.size() == 4, "every opponent gets a slot");
+    check(wide.seatSlots.size() == 4, "every opponent gets a slot");
     check(!overlaps(wide.room, wide.log) && !overlaps(wide.room, wide.hand)
           && !overlaps(wide.hand, wide.input),
           "panes never overlap");
@@ -56,14 +56,14 @@ int main(int argc, char **argv)
     // Seat order is the property that survives every degradation step.
     for (int players : {2, 3, 5, 8, 10, 20}) {
         const TuiBoardGeometry geometry = tuiComputeBoardGeometry(40, 120, players, 1);
-        check(geometry.slots.size() == players - 1,
+        check(geometry.seatSlots.size() == players - 1,
               "every opponent is placed exactly once at any player count");
         QSet<int> offsets;
-        for (const TuiSeatSlot &slot : geometry.slots)
+        for (const TuiSeatSlot &slot : geometry.seatSlots)
             offsets.insert(slot.seatOffset);
         check(offsets.size() == players - 1, "no seat offset is duplicated or dropped");
         check(offsets.contains(1), "the player's downstream neighbour is always placed");
-        for (const TuiSeatSlot &slot : geometry.slots) {
+        for (const TuiSeatSlot &slot : geometry.seatSlots) {
             check(slot.page >= 0 && slot.page < geometry.pageCount,
                   "every slot lands on a real page");
         }

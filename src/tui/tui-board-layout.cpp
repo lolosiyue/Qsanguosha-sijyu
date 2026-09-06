@@ -146,14 +146,14 @@ TuiBoardGeometry tuiComputeBoardGeometry(int rows, int cols, int playerCount, in
         CellHeight, roomCols};
 
     const QVector<std::pair<int, int>> gridCells = orderedGridCells(cellCols, cellRows);
-    geometry.slots.reserve(opponentCount);
+    geometry.seatSlots.reserve(opponentCount);
     for (int idx = 0; idx < opponentCount; ++idx) {
         TuiSeatSlot slot;
         slot.seatOffset = idx + 1;
         slot.page = idx / capacity;
         const int posInPage = idx % capacity;
         slot.rect = gridCellRect(gridCells.at(posInPage), geometry.room, roomCols);
-        geometry.slots.append(slot);
+        geometry.seatSlots.append(slot);
     }
 
     return geometry;
