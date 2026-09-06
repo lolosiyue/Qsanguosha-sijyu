@@ -1398,6 +1398,62 @@ static bool playerChosenClientInvalidOptionalAndTimeout()
                   "optional cancel emits no ChoiceMade");
 }
 
+static bool akarinTargetsAreHiddenFromChooser()
+{
+    DecisionFixture fixture;
+    ServerPlayer *visible = PlayerDecisionServiceTestAccess::addPlayer(
+        fixture.room, QStringLiteral("decision-visible"));
+    const QList<ServerPlayer *> targets{fixture.other, visible};
+    RequestRecorder recorder;
+    recorder.watch(fixture.player);
+
+    fixture.room.akarinPlayer(fixture.other, fixture.player);
+    if (!expect(fixture.room.isAkarin(fixture.other, fixture.player),
+                "Akarin state is active for the chooser"))
+        return false;
+
+    ServerPlayer *single = fixture.room.askForPlayerChosen(
+        fixture.player, targets, QStringLiteral("tuxi"));
+    if (!expect(single == visible,
+                "askForPlayerChosen excludes a target hidden from the chooser"))
+        return false;
+
+    QList<ServerPlayer *> multiple = fixture.room.askForPlayersChosen(
+        fixture.player, targets, QStringLiteral("tuxi"), 2, 2);
+    if (!expect(multiple == QList<ServerPlayer *>{visible},
+                "askForPlayersChosen filters Akarin before clamping selection bounds"))
+        return false;
+
+    fixture.room.akarinPlayer(visible, fixture.player);
+    recorder.records.clear();
+    recorder.notifications.clear();
+    fixture.probe.records.clear();
+    single = fixture.room.askForPlayerChosen(
+        fixture.player, targets, QStringLiteral("tuxi"));
+    multiple = fixture.room.askForPlayersChosen(
+        fixture.player, targets, QStringLiteral("tuxi"), 2, 2);
+    if (!expect(single == nullptr,
+                "askForPlayerChosen returns nullptr when every target is Akarin")
+        || !expect(multiple.isEmpty(),
+                   "askForPlayersChosen returns an empty list when every target is Akarin")
+        || !expect(!recorder.contains(S_COMMAND_CHOOSE_PLAYER),
+                   "empty Akarin candidates send no choose-player request")
+        || !expect(!recorder.containsNotification(S_COMMAND_MOVE_FOCUS),
+                   "empty Akarin candidates send no stale move-focus notification")
+        || !expect(fixture.probe.payloads(ChoiceMade).isEmpty(),
+                   "empty Akarin candidates emit no ChoiceMade event"))
+        return false;
+
+    fixture.room.removeAkarinEffect(fixture.other, fixture.player);
+    fixture.room.removeAkarinEffect(visible, fixture.player);
+    fixture.ai()->hasPlayerChosenValue = true;
+    fixture.ai()->playerChosenValue = fixture.other;
+    single = fixture.room.askForPlayerChosen(
+        fixture.player, targets, QStringLiteral("tuxi"));
+    return expect(single == fixture.other,
+                  "removing Akarin restores the target to player selection");
+}
+
 static bool playersChosenMinMaxSortAndNegativeMin()
 {
     DecisionFixture fixture;
@@ -2584,19 +2640,20 @@ int runPlayerDecisionServiceTests()
     run(orderAndRolePreserveLegacyFallbacks, "order-role", 13);
     run(playerChosenEmptySingletonOverrideAndNotify, "player-chosen", 14);
     run(playerChosenClientInvalidOptionalAndTimeout, "player-chosen-client", 15);
-    run(playersChosenMinMaxSortAndNegativeMin, "players-chosen", 16);
-    run(playersChosenClientFillAndNotify, "players-chosen-client", 17);
-    run(agEmptySingletonRefusableInvalidAndClient, "ask-for-ag", 18);
-    run(cardChosenOverrideFallbackVisibleAndClient, "card-chosen", 19);
-    run(cardShowSingletonClientAndRandom, "card-show", 20);
-    run(pindianEmitsNoChoiceMade, "pindian", 21);
-    run(pindianRaceBroadcastIndependentFallback, "pindian-race", 22);
-    run(cardResponseOverrideProvidedAndRetry, "card-response", 23);
-    run(discardExchangeYijiAndGuanxing, "discard-yiji-guanxing", 24);
-    run(activateUseCardAndSlashFlags, "activate-use-card", 25);
-    run(nullificationPeachTriggerOrderAndResidual, "reactive-trigger-order", 26);
-    run(trickEffectTagPreservesNullificationTarget, "tag-discriminator", 27);
-    run(aiDelayIsHonoredWhenConfigured, "ai-delay", 28);
+    run(akarinTargetsAreHiddenFromChooser, "player-chosen-akarin", 16);
+    run(playersChosenMinMaxSortAndNegativeMin, "players-chosen", 17);
+    run(playersChosenClientFillAndNotify, "players-chosen-client", 18);
+    run(agEmptySingletonRefusableInvalidAndClient, "ask-for-ag", 19);
+    run(cardChosenOverrideFallbackVisibleAndClient, "card-chosen", 20);
+    run(cardShowSingletonClientAndRandom, "card-show", 21);
+    run(pindianEmitsNoChoiceMade, "pindian", 22);
+    run(pindianRaceBroadcastIndependentFallback, "pindian-race", 23);
+    run(cardResponseOverrideProvidedAndRetry, "card-response", 24);
+    run(discardExchangeYijiAndGuanxing, "discard-yiji-guanxing", 25);
+    run(activateUseCardAndSlashFlags, "activate-use-card", 26);
+    run(nullificationPeachTriggerOrderAndResidual, "reactive-trigger-order", 27);
+    run(trickEffectTagPreservesNullificationTarget, "tag-discriminator", 28);
+    run(aiDelayIsHonoredWhenConfigured, "ai-delay", 29);
 
     Config.AIDelay = savedAIDelay;
     Config.OriginAIDelay = savedOriginAIDelay;

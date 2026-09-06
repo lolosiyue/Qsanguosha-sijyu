@@ -1113,6 +1113,13 @@ void RoomScene::handleGameEvent(const QVariant&args)
 		player->sortHandCards(cardIds);
 		break;
 	}
+	case S_GAME_EVENT_AKARIN: {
+		Photo *photo = name2photo.value(
+			event.value(QStringLiteral("player_name")).toString(), nullptr);
+		if (photo)
+			photo->setVisible(!event.value(QStringLiteral("hidden")).toBool());
+		break;
+	}
 	default:
 		break;
 	}

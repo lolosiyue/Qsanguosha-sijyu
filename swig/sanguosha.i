@@ -2404,6 +2404,9 @@ public:
 
 	void setEmotion(ServerPlayer*target, const char*emotion);
 	void setLoopEmotion(ServerPlayer*target, const char*emotion);
+	void akarinPlayer(ServerPlayer*player, ServerPlayer*to = nullptr);
+	void removeAkarinEffect(ServerPlayer*player, ServerPlayer*to = nullptr);
+	bool isAkarin(ServerPlayer*player, ServerPlayer*to = nullptr) const;
 	void changeTableBg(const char*tableBg);
 	void changeBackground(const char*name, QList<ServerPlayer*> players = QList<ServerPlayer*>());
 	void reversePlayOrder();
