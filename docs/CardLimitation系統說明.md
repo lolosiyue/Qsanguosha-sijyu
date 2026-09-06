@@ -214,14 +214,25 @@ local skill = sgs.CreateCardLimitSkill{
 
 ### moveCardsAtomic
 
-`src/server/room.cpp` 中的 `moveCardsAtomic()` 方法在移動牌之前會檢查 `canMove()`：
+`Room::moveCardsAtomic()`（src/server/room.cpp:3665-3673，兩個 overload）已委派 `CardMovementService::moveCardsAtomic()`；移動限制的過濾邏輯位於 `src/server/card-movement-service.cpp`（:815-829），在移動牌之前依目的地分流檢查：
 
 ```cpp
-foreach(int id, move.card_ids){
-    if (move.from && !move.from->canMove(move.from, id))
-        continue;  // 跳過不可移動的牌
-    filtered_move.card_ids << id;
+// card-movement-service.cpp — 逐張檢查（move.from 為空時直接放行）
+bool allowed = true;
+switch (move.to_place) {
+case Player::PlaceHand:
+    allowed = move.from->canGet(move.from, id);   // 取得目的地：檢查 get（含 move）限制
+    break;
+case Player::PlaceEquip:
+case Player::PlaceDelayedTrick:
+case Player::PlaceJudge:
+    allowed = move.from->canMove(move.from, id);  // 場上目的地：檢查 move 限制
+    break;
+default:
+    break;  // 其餘目的地（如棄牌堆）放行
 }
+if (!allowed) continue;  // 跳過不可移動的牌
+filteredMove.card_ids << id;
 ```
 
 ### canMoveField / moveField

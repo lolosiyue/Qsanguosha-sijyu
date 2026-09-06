@@ -1,7 +1,7 @@
 # 現代化改造與重構路線圖（Modernization Roadmap）
 
 > **歷史文件（存檔）**：2026-07-20 全倉靜態審計快照，僅供歷史參考與技術債量化基線；**內文所述「現況」不得作為規範**。已推翻／過時內容：
-> - §1 硬性約束（qmake／Qt 5.14.2／`QSanguosha.pro`）：**已被 CMake 3.28+ 與 Qt 6.5.3 取代**（MSVC 2019 x64；見 `CMakeLists.txt`／`CMakePresets.json`、AGENTS.md §7）；C++17 約束維持。
+> - §1 硬性約束（qmake／Qt 5.14.2／`QSanguosha.pro`）：**已被 CMake 3.28+ 與 Qt 6.11.1 取代**（Qt 6.5.3／MSVC 2019 x64 僅為中間基線，現行為 VS 2026 v145；見 `CMakeLists.txt`／`CMakePresets.json`、AGENTS.md §7）；C++17 約束維持。
 > - §2 的 `qrand/qsrand`、`qShuffle`、`QRegExp` 數量是歷史基線。2026-08-30 已完成真遷移：遊戲邏輯改用 `GameRng`／`qsanRandomBounded()`／`qsanShuffle()`，UI 改用獨立 `UiRng`，並移除 PCH shim、`QRegExp`、`QTextCodec` 與 `Core5Compat`；正文舊數字不代表現況。
 > - §8/§9 提及的 `QSanguosha.pro` 已不存在（CMakeLists.txt 取代）；FMOD 音訊仍保留。
 > - **現行決策一律以 [跨平台現代化與功能移植計劃](cross-platform-modernization-plan.md) 為準**（含 Qt 6.11.1／Lua 5.4.8 長期基線）。
@@ -88,7 +88,7 @@
 
 | 項目 | 現況 |
 |------|------|
-| 單元測試 | 無 QTest；僅 Lua Test Runner（`lua/test/`：runner + 10 模板 + 3 範例，見 `docs/lua-test-system.md`） |
+| 單元測試 | 無 QTest；僅 Lua Test Runner（`lua/test/`：runner + 10 模板 + 3 範例，見 `docs/lua-test-system.md`（已移除）） |
 | CI | 無 `.github/`、無任何 CI 設定 |
 | QML 化 | `qml/` 目錄為空；`ui-script/` 35 個 QML 僅作特效浮層（`EmbeddedQmlLoader`，`roomscene.cpp:3781/5424/5489`），主 UI 為 QGraphicsView |
 | Lua 規模 | `extensions/` 106 檔、`lua/` 180 檔（含 `lua/ai/` 156 檔） |
@@ -100,8 +100,8 @@
 | 範式 | 來源文件 | 手法 | 適用場景 |
 |------|----------|------|----------|
 | 值物件（Value Object）+ 註冊表（Registry）+ Lua DSL | `docs/GameModeStruct_重構說明.md` | `QString` → struct、Engine 註冊 API、`createMode{}` | 協議資料型別化 |
-| 薄 Presenter + 協議隔離 + 三階段漸進 | `docs/guhuo-dialog-refactor.md`、`docs/guhuo-juguan-presenter-impact.md` | ①抽離邏輯為可重用 API → ②薄 presenter → ③穩定後才換 UI 載體；AI 依賴 room tag 協議故不受 UI 重構波及 | 一切 UI 層重構 |
-| Headless 測試鉤子 | `docs/lua-test-system.md` | `--lua-test` + `Room::registerTestOverride()` 攔截 6 個 askFor* | 重構期回歸保護 |
+| 薄 Presenter + 協議隔離 + 三階段漸進 | `docs/guhuo-dialog-refactor.md`、`docs/guhuo-juguan-presenter-impact.md`（已移除） | ①抽離邏輯為可重用 API → ②薄 presenter → ③穩定後才換 UI 載體；AI 依賴 room tag 協議故不受 UI 重構波及 | 一切 UI 層重構 |
+| Headless 測試鉤子 | `docs/lua-test-system.md`（已移除） | `--lua-test` + `Room::registerTestOverride()` 攔截 6 個 askFor* | 重構期回歸保護 |
 
 ---
 

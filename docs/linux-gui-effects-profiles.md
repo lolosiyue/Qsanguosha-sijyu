@@ -177,7 +177,8 @@ one `EFFECTS_PROFILE_RESULT`, exactly one `EFFECTS_RESULT`, and
 Flags: `--effects-smoke`, `--effects-profile <p>`, `--effects-report <path>`,
 `--effects-timeout-ms <n>`, `--effects-fixtures <dir>`.
 
-Exit codes: `0` pass, `2` policy, `3` completion, `4` asset fallback, `5`
+Exit codes: `0` pass, `1` setup failure (QApplication/engine/MainWindow not
+created), `2` policy, `3` completion, `4` asset fallback, `5`
 budget/shutdown, `6` timeout, `7` invalid arguments, `8` internal.
 
 The smoke asserts behaviour, never pixels. Screenshots are failure artifacts,
@@ -204,7 +205,7 @@ runner has no art assets and crashes in the rendering path regardless of branch.
 ### Unit contract
 
 ```bash
-ctest --test-dir build/linux-gui-gcc -R qsanguosha_effects_profile_contract -V
+ctest --test-dir builds/cmake-linux-gui-gcc-debug -R qsanguosha_effects_profile_contract -V
 ```
 
 ## CI

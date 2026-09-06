@@ -24,12 +24,17 @@ python tools\autotest\headless_runner.py `
 `--exe`／`--seed` 為必填 (runner 契約無隱式執行檔發現／隱式種子, 見
 `docs/lua-ext-spec.md`); seed 須為 unsigned 32-bit, 慣例用當日日期
 `yyyyMMdd` (如 20260828, 建議用 `run_headless.bat` 自動生成並隨日期前進)。
+`--modes` 預設 `20p`。模式 ID 以 server registry 為準: runner 會用
+`--exe-root` 下的 `qsanguosha_server.exe` 跑 `--list-game-modes` 查詢
+(查不到時改用內建靜態兜底表), 未註冊的模式直接 exit 2。
 `--parallel` 為同時執行的 **process 總數**：模式數 ≥ parallel 時每個模式
 一個 process；模式數不足時同一模式開多份 (round-robin)，每份獨立 log
 (`<mode>-N.log` / `<mode>-N-headless.log`)。例: `--modes 08p --parallel 10`
 = 10 個 08p process 同時跑。注意多 process 同時打 08p 對 CPU/RAM 負載高。
 
-輸出: `tools\autotest\autotest-logs\headless\<mode>[-N].log` + `summary-headless-<時間>.csv`
+輸出: `tools\autotest\autotest-logs\headless\<時間戳>-<pid>\<mode>[-N].log`
++ `<mode>[-N]-headless.log`; 彙總表 `summary-headless-<時間>.csv` 在
+`autotest-logs\` 根目錄。
 
 ## network_runner.py — 真實網路測試 (串行)
 
@@ -51,7 +56,9 @@ python tools\autotest\network_runner.py `
     --modes 20p --runs 1 --general s4_huangzhong --general2 zhenji
 ```
 
-輸出: `tools\autotest\autotest-logs\network\<mode>\server.log` / `runN.log` + `summary-network-<時間>.csv`
+輸出: `tools\autotest\autotest-logs\network\<時間戳>\<mode>\server.log` / `runN.log`
++ `summary-network-<時間>.csv` (彙總表在 `autotest-logs\` 根目錄)。
+`--modes` 預設 `10p,20p,02_1v1,05p`、`--runs` 預設 2、`--general` 預設 `zhenji`。
 
 `--port` 可指定 server 監聽 port (預設 9527); 平行跑多份時各自指定。
 
@@ -62,7 +69,7 @@ python tools\autotest\network_runner.py `
 
 一個獨立的 `qsanguosha_server` process + 一個獨立的 GUI client process, 中間走
 真正的 TCP。client 以 `--network-ui-smoke` 啟動, 由真正的 RoomScene/Dashboard
-回答 askFor (撳真正的 CardItem / Photo / 按鈕), 打完一局後自己乾淨退出:
+回答 askFor (按下真正的 CardItem / Photo / 按鈕), 打完一局後自己乾淨退出:
 
 ```bash
 # Linux 本機 (WSLg, 用現有 DISPLAY)
@@ -123,7 +130,7 @@ QML media component、乾淨關閉。**不要求真的聽到聲音** — CI runn
 
 ## tools/ci/linux-gui-effects-smoke.sh — 效果 profile 合約 (Linux GUI M2B-B)
 
-同 multimedia smoke 一樣係「起一個 GUI process, 驗它印出的 structured
+同 multimedia smoke 一樣是「起一個 GUI process, 驗它印出的 structured
 marker」。一個 profile 一次執行。
 
 ```bash
@@ -134,14 +141,14 @@ done
 ```
 
 驗 `EFFECTS_STAGE` / `EFFECTS_PROFILE_RESULT` / `EFFECTS_RESULT` 三種 marker:
-profile 解析（要求嘅 profile 一定要真係行到, 而且 resolution source 要係
+profile 解析（要求的 profile 必須真正執行得到, 而且 resolution source 必須是
 `cli`）、exactly-once completion、frame animation／GIF／Spine 的缺資產降級、
 每個 profile 的物件預算、乾淨關閉。**不比較 pixel** — screenshot 只作
 failure artifact。
 
 `gui_network_smoke.py --effects-profile <p>` 則用真 TCP 打完一整局來證明
-「跳咗動畫都唔會卡死」; `none` 嗰次會額外驗成局打完之後 Spine／QMovie／
-QML 疊層／video object 全部係 0。
+「跳過動畫也不會卡死」; `none` 那次會額外驗證整局打完之後 Spine／QMovie／
+QML 疊層／video object 全部為 0。
 
 契約細節與 exit code 對照見
 `docs/linux-development-environment.md` §4.8。
@@ -160,9 +167,10 @@ QML 疊層／video object 全部係 0。
 
 | 參數 | 目標 | 說明 |
 |---|---|---|
-| `--headless --game-mode <id> --games <N>` | QSanguosha.exe | headless 壓力測試指定模式與局數 (預設 08p/10000) |
+| `--headless --game-mode <id> --games <N>` | QSanguosha.exe | headless 壓力測試指定模式與局數 (局數預設 10000; 未給 `--game-mode` 時用 config.ini 的 `GameMode`) |
 | `--game-mode <id>` | qsanguosha_server.exe | 網路伺服器覆寫 GameMode |
 | `--test-general <名>` | QSanguosha.exe | 自動選將 (FreeChoose; 1v1 用 x0) |
+| `--test-general2 <名>` | QSanguosha.exe | 雙將模式自動選副將 |
 | `--auto-robots` | QSanguosha.exe | owner 進房自動填 AI 並開局 |
 | stdout `[AUTOTEST] game start/over <winner>` | qsanguosha_server.exe | runner 結束偵測 |
 

@@ -1,7 +1,7 @@
 # SkillCard V2 時機橋接計劃
 
-> **存檔文件（舊構想，非實作規格）**：僅作需求來源與歷史參考，**不得作為實作依據**。現行契約見 [ViewAsSkillV2 現代化重構計劃](active-skill-v2-refactor-plan.md) §1（「舊 Bridge 文件只作需求來源，不是實作規格。本文件的鎖定規則優先」）。
-> **與現行契約直接衝突**：本文件以 Room Tag 傳遞 SkillContext（`"SkillCardContext_" + skillName + "_" + instanceId`、`"ViewAsContext_"…` Tag Key）的設計已被否決——現行 `ActiveSkillExecution` 以 Room 內 registry + `executionID` 定位（active-skill-v2-refactor-plan.md §5.2：「不得用 Room Tag 或卡牌指標作 execution 唯一鍵」；§6.2：「不得使用 Room Tag 保存 Active execution context」）。
+> **存檔文件（舊構想，非實作規格）**：僅作需求來源與歷史參考，**不得作為實作依據**。本文件的修改清單（bypass_cost、`SkillCard` 的 `m_skillInstanceId`、Lua `on_validate`、`EventSkillEffectTarget` 橋接等）大多已以不同形式落地於現行程式碼。現行契約見 [ViewAsSkillV2 現代化重構計劃](active-skill-v2-refactor-plan.md) §1（「舊 Bridge 文件只作需求來源，不是實作規格。本文件的鎖定規則優先」）。
+> **與現行契約的差異**：本文件以 Room Tag 傳遞 SkillContext（`"SkillCardContext_" + skillName + "_" + instanceId`、`"ViewAsContext_"…` Tag Key）的設計已改為 **registry 主路徑、Tag 僅殘留為 fallback**——現行 `SkillExecutionRegistry`（src/core/skill-execution-registry.h）經 `Room::beginSkillExecution`／`findSkillExecution`／`getSkillExecutionContext`（room.h:697-700）以 `executionID` 定位 context（active-skill-v2-refactor-plan.md §5.2：「不得用 Room Tag 或卡牌指標作 execution 唯一鍵」；§6.2：「不得使用 Room Tag 保存 Active execution context」）；僅 `executionID == 0` 時仍以 Room Tag 讀寫 fallback（room.cpp:2817-2822、2884-2886；gamerule.cpp:1164-1166）。
 > 需求面（SkillCard／ViewAs 虛擬牌均須進入七個 `EventSkill*` 攔截時機）已由 [active-skill-v2-refactor-plan.md](active-skill-v2-refactor-plan.md) 承接。
 
 ## 目標

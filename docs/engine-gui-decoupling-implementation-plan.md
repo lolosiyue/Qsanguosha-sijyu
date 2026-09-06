@@ -1,28 +1,28 @@
 # 引擎與 GUI 解耦實作計畫 (Engine/GUI Decoupling Implementation Plan)
 
-- Status: **Implemented**（契約已全部落地，2026-08-09 確認；僅 `Skill::getDialog()` 舊路徑殘留，見 §1 註記；工具鏈已於 2026-08-18 升級至 VS 2026 v145 + Qt 6.11.1 `msvc2022_64`，契約本身不變）
+- Status: **Partially Implemented**（原標「Implemented／契約已全部落地」與 2026-09-06 現狀不符：§3.1 dialog 遷移、§3.4 server-info 拆分、§4.1 dialog 搬移、§5.1 manifest 拆分、§3.7 record-analysis 移出均未完成，見各節「現況」註記；工具鏈已於 2026-08-18 升級至 VS 2026 v145 + Qt 6.11.1 `msvc2022_64`）
 - Parent Plan: `docs/cross-platform-modernization-plan.md`
 - Milestone: M1
-- Last Updated: 2026-08-21
+- Last Updated: 2026-09-06
 - Scope: Windows x64、Qt 6.11.1 `msvc2022_64`、VS 2026 v145（原 2026-08-09 為 Qt 6.5.3／MSVC 2019 過渡基線，已升級）
 
-> **實作狀態（2026-08-09 對照）**：以下 §1 完成標準 1-7 與 §3 契約（SkillDialogInfo／EngineRuntimeContext／audioEffectRequested／EngineBootstrap／SkillDialogRegistry／server-main／deploy-server／allowlist gate）均已落地並通過 build。殘留項：`Skill::getDialog()`（skill.h:179）與 `class QDialog` 前向宣告（skill.h:5）仍在 engine，§3.1 的「遷移完成後搜尋結果必須為零」尚未達成；此為唯一未完成條目。
+> **現況摘要（2026-09-06 實測）**：本計畫僅部分落地。SkillDialogInfo／EngineRuntimeContext／audioEffectRequested／EngineBootstrap／server-main／allowlist gate 等契約本體已存在；但 `SkillDialogRegistry::create` 僅處理 `guhuo`／`juguan`／`tiansuan` 三種 type（`src/ui/skill-dialog-registry.cpp`），dialog 顯示為雙軌——`src/ui/roomscene.cpp` 的 `dialogForSkill()` 先試 `getDialogInfo()`、fallback 舊 `getDialog()`，舊路徑仍有 34 處 `QDialog *getDialog() const` 殘留於 17 檔。§3.4／§3.7／§4.1／§5.1 的搬移與拆分未執行。此外，後續架構演進已超越本計畫範圍：ClientCore（`src/client/core/`，QtCore-only STATIC target）、GameSessionController（`src/server/game-session-controller.*`）、WebSocket 閘道（`src/util/websocket-gateway.*`）均不在本計畫的 target／所有權表中，詳見 §2 註記。
 
 ## 1. 完成標準
 
 本階段只有在下列條件全部成立時才算完成：
 
-| # | 完成標準 | 狀態（2026-08-09） |
+| # | 完成標準 | 狀態（2026-09-06 實測行號） |
 |---|---|---|
-| 1 | `qsanguosha_engine` 可作為 `STATIC` library 獨立編譯。 | ✅ CMakeLists.txt:76 |
-| 2 | engine 的 Qt module allowlist 只有 `Qt6::Core`、`Qt6::Network`。 | ✅ CMakeLists.txt:166-169 + 175-179 gate |
+| 1 | `qsanguosha_engine` 可作為 `STATIC` library 獨立編譯。 | ✅ CMakeLists.txt:278 |
+| 2 | engine 的 Qt module allowlist 只有 `Qt6::Core`、`Qt6::Network`。 | ✅ CMakeLists.txt:205（`QSAN_ENGINE_QT_LIBS`）+ 552-556 gate |
 | 3 | engine 不包含或傳遞 QtGui、QtWidgets、QtQml、QtQuick、QtMultimedia、Core5Compat、FMOD、FreeType 或 Spine 依賴。 | ✅ link allowlist gate 強制（`getDialog()` 殘留見下方註記） |
-| 4 | Windows 網路所需的 `Ws2_32`、`IPHLPAPI` 等 system library 可用 `if(WIN32)` 連結。 | ✅ CMakeLists.txt:171-173 |
-| 5 | `QSanguosha` GUI 與獨立 `qsanguosha_server` 都連結同一份 engine，不重複編譯 engine `.cpp`。 | ✅ `WHOLE_ARCHIVE:qsanguosha_engine`（CMakeLists.txt:256/344） |
+| 4 | Windows 網路所需的 `Ws2_32`、`IPHLPAPI` 等 system library 可用 `if(WIN32)` 連結。 | ✅ CMakeLists.txt:548-550 |
+| 5 | `QSanguosha` GUI 與獨立 `qsanguosha_server` 都連結同一份 engine，不重複編譯 engine `.cpp`。 | ✅ `WHOLE_ARCHIVE:qsanguosha_engine`（GUI CMakeLists.txt:1304／server 835） |
 | 6 | 現有 GUI 開服、PC Console Start、控制其他角色、Lua skill dialog、音效與 client replay 行為無回歸。 | ✅ 人工驗收通過 |
 | 7 | 專用 server 可在 CMD 顯示啟動資訊及 runtime log，且可用 `Ctrl+C` 正常結束。 | ✅ `qsanguosha_server.exe`（server-main.cpp） |
 
-> **唯一殘留**：`Skill::getDialog()`（skill.h:179）與 `class QDialog` 前向宣告（skill.h:5）仍在 engine 標頭；§3.1 的「遷移完成後 engine 中 `QDialog`／`getDialog()` 搜尋結果為零」尚未達成。其餘 §3 契約（SkillDialogInfo／EngineRuntimeContext／audioEffectRequested／EngineBootstrap／SkillDialogRegistry／server log API）均已落地。
+> **殘留項（2026-09-06）**：`Skill::getDialog()`（skill.h:179）與 `class QDialog` 前向宣告（skill.h:6）仍在 engine 標頭；§3.1 的「遷移完成後 engine 中 `QDialog`／`getDialog()` 搜尋結果為零」尚未達成。§3.4／§3.7／§4.1／§5.1 的搬移與拆分亦未執行，詳見各節「現況」註記。SkillDialogInfo／EngineRuntimeContext／audioEffectRequested／EngineBootstrap／server log API 契約本體已落地。
 
 本階段不升級 Qt、MSVC、Lua 或網路協定，不修改卡牌平衡，也不修改 `include/`、`lib/` 內第三方內容。
 
@@ -36,6 +36,8 @@
 | `engine-smoke-test` | bootstrap、Lua、package、dialog metadata、shutdown smoke | `WHOLE_ARCHIVE:qsanguosha_engine` 及 Qt Core／Network |
 
 `src/client/client.cpp` 與 `ClientPlayer` 留在 GUI target。package、scenario、server 與 Lua 不得包含 `clientplayer.h`，也不得使用 `ClientInstance`。
+
+> **現況（2026-09-06）**：實際建置圖已超出本表：`qsanguosha_client_core`（`src/client/core/`，QtCore-only STATIC target，CMakeLists.txt:589，自有 Qt allowlist gate 且刻意不連 engine）、`GameSessionController`（`src/server/game-session-controller.*`，編入 engine 來源清單）、`qsanguosha_websocket`＋`src/util/websocket-gateway.*`（`QSAN_ENABLE_WEBSOCKETS` 選用）與 `qsanguosha_tui`（`src/tui/`）均已存在；engine-smoke-test 已移至 `tests/engine-smoke-test.cpp`（`tests/CMakeLists.txt`，SUITE `engine-smoke`）。
 
 ## 3. 已鎖定契約
 
@@ -74,9 +76,9 @@ struct SkillDialogInfo
 | `huomo` | 無額外參數 |
 | `caozhao` | `objectName` |
 
-現況基線為 59 個 active `getDialog()` override、21 個 package/scenario 檔及 11 種 dialog。遷移完成後，engine source 中 `QDialog`、`getDialog()` 與 package dialog class 定義的搜尋結果必須為零。
+原規劃基線為 59 個 active `getDialog()` override、21 個 package/scenario 檔及 11 種 dialog。遷移完成後，engine source 中 `QDialog`、`getDialog()` 與 package dialog class 定義的搜尋結果必須為零。
 
-> **2026-08-09 狀態**：11 種 dialog 已全部改走 `SkillDialogInfo`＋`SkillDialogRegistry`（skill-dialog-registry.cpp/h 於 GUI），59 個 override 已遷移；唯一未清零者為 `Skill::getDialog()` 本身（skill.h:179）與 `class QDialog` 前向宣告（skill.h:5）——引擎中的舊路徑殘留，需日後移除。
+> **現況（2026-09-06）**：遷移僅部分完成，原「11 種 dialog 已全部改走 SkillDialogInfo＋SkillDialogRegistry、59 個 override 已遷移」的宣稱與現狀不符。實測：`SkillDialogInfo` API 本體已落地（`Skill::getDialogInfo()`，skill.h:178，與 `getDialog()` skill.h:179 並存），`getDialogInfo() const override` 全庫僅 15 處（`src/core/lua-wrapper.h` 4 處、package 檔 11 處）；`SkillDialogRegistry::create`（`src/ui/skill-dialog-registry.cpp`）僅處理上表 `guhuo`／`juguan`／`tiansuan` 三種 type，其餘 8 種 type 無 registry 分支；舊路徑仍殘留 34 處 `QDialog *getDialog() const`（17 檔，含 skill.h:179 基底宣告與 `lua-wrapper.h` 4 處）。GUI 顯示採雙軌：`src/ui/roomscene.cpp` 的 `dialogForSkill()` 先試 `getDialogInfo()`→`SkillDialogRegistry::create`，再 fallback 舊 `getDialog()`。
 
 ### 3.2 Lua 與 SWIG 相容
 
@@ -122,6 +124,8 @@ public:
 - `applyColorScheme()`、`applyVisualMode()`、font 載入與 GUI warning 移到 GUI。
 - `src/client/clientstruct.*` 拆成 `src/core/server-info.*` 與 GUI `serverinfowidget.*`，遷移後移除舊檔。
 
+> **現況（2026-09-06）**：僅半落地——`src/core/server-info.h/.cpp` 已存在並承載 `ServerInfoStruct`；但 `ServerInfoWidget` 仍在 `src/client/clientstruct.h`，GUI 端未建立 `serverinfowidget.*`，`src/client/clientstruct.*` 舊檔未移除。
+
 ### 3.5 顏色、JSON 與 Core5Compat
 
 ```cpp
@@ -155,7 +159,7 @@ signals:
 | `RecordBuffer` | engine，封包記錄與純文字 replay |
 | `RecorderImageCodec` | GUI，`TXT2PNG`／`PNG2TXT` |
 | `Recorder` | GUI/client，組合 buffer 與 image codec |
-| `record-analysis` | GUI/client；從 `src/core` 移出 |
+| `record-analysis` | GUI/client；從 `src/core` 移出（**未落地**：`src/core/record-analysis.*` 仍在 core，並編入 engine 來源清單 `cmake/QSanguoshaSources.cmake` 的 `QSAN_SOURCES`／`QSAN_MOC_HEADERS`） |
 
 - `ServerPlayer` 使用 `RecordBuffer`，不依賴 `QImage`。
 - GUI client 保留 `.txt`／`.png` replay。
@@ -184,6 +188,8 @@ signals:
 - `src/dialog/banlistdialog.*`
 - `src/dialog/select3v3generaldialog.*`
 - `src/dialog/bossmodecustomassigndialog.*`
+
+> **現況（2026-09-06）**：未搬移。`Select3v3GeneralDialog`／`BanlistDialog`／`ServerDialog`／`BossModeCustomAssignDialog` 仍在 `src/server/server.h`（以 `QSAN_SERVER_CORE_ONLY` 條件包住），`src/dialog/` 下無對應檔案。
 
 ### 4.2 共用 bootstrap
 
@@ -240,6 +246,8 @@ QSAN_SPINE_SOURCES
 ```
 
 禁止使用 source glob。每個 `.cpp` 只能由一個 target 編譯。
+
+> **現況（2026-09-06）**：未拆分。`cmake/QSanguoshaSources.cmake` 仍是 `QSAN_SOURCES`／`QSAN_LUA_SOURCES`／`QSAN_MOC_HEADERS`／`QSAN_FORMS` 四個清單，無 `QSAN_ENGINE_SOURCES`／`QSAN_GUI_SOURCES` 等變數；engine target 於 `CMakeLists.txt:278` 以內嵌來源清單定義（`add_library(qsanguosha_engine STATIC ...)`）。
 
 ### 5.2 Engine target 與 PCH
 
