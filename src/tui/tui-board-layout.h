@@ -23,20 +23,6 @@ struct TuiSeatSlot
 // pure data -- tui-board-layout.cpp never touches a TuiScreen, a socket, or
 // any global state -- which is what makes it cheap to test at every terminal
 // size and player count instead of only a handful of "supported" ones.
-// Qt's "slots" keyword macro (qtmetamacros.h) rewrites the bare word to
-// nothing when QT_NO_KEYWORDS is not defined -- which is how this project
-// builds -- so a struct member literally named `slots`, and every later use
-// of it as `geometry.slots`, would silently vanish under the preprocessor
-// before the compiler ever sees them. Undefine it for good once this header
-// has been included: nothing else in tui-board-layout.{h,cpp} or its test
-// declares a QObject, so there is no bare "slots:"/"signals:" access
-// specifier anywhere downstream that needs the macro restored. A future
-// header that both needs the member name AND declares a Q_OBJECT class
-// should use Q_SLOTS explicitly rather than relying on this one back.
-#ifdef slots
-#undef slots
-#endif
-
 struct TuiBoardGeometry
 {
     bool usable = false;
@@ -49,7 +35,11 @@ struct TuiBoardGeometry
     int capacity = 0;
     int pageCount = 1;
     int cellCols = 0;
-    QVector<TuiSeatSlot> slots;
+    // Not `slots`: that bare word is Qt's own keyword macro (qtmetamacros.h),
+    // and undefining it to allow a member of that name breaks every QObject
+    // declared later in the same translation unit that uses bare
+    // "slots:"/"signals:" syntax -- do not rename this back.
+    QVector<TuiSeatSlot> seatSlots;
 };
 
 // Lays out the board for a terminal of `rows` rows by `cols` columns.
