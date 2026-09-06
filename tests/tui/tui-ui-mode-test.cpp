@@ -5,6 +5,11 @@
 #include "tui-ui-mode.h"
 
 #include <QCoreApplication>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QIODevice>
+#include <QStandardPaths>
 #include <QString>
 #include <QTemporaryDir>
 
@@ -94,6 +99,22 @@ int main(int argc, char **argv)
     check(tuiResolveUiMode(conflictingPipe).conflict,
           "--ui board with redirected output is also a conflict");
 
+    // Rows 1-3 all resolve to Classic on the automatic path, so their
+    // relative order is invisible there -- it only shows up in which one
+    // names itself when two apply at once and --ui board turns it into an
+    // error. --script (row 1) must win over --plain (row 3).
+    TuiUiModeInputs doubleForcing = inputs;
+    doubleForcing.hasScript = true;
+    doubleForcing.plain = true;
+    doubleForcing.flag = QStringLiteral("board");
+    const TuiUiModeDecision doubleForcingConflict = tuiResolveUiMode(doubleForcing);
+    check(doubleForcingConflict.conflict,
+          "two forcing conditions at once is still a conflict");
+    check(doubleForcingConflict.conflictReason.contains(QStringLiteral("--script")),
+          "the table's row order names --script (row 1) ahead of --plain (row 3)");
+    check(!doubleForcingConflict.conflictReason.contains(QStringLiteral("--plain")),
+          "and does not also name the lower-priority condition");
+
     // Row 5: an explicit choice with nothing forcing it is followed exactly.
     TuiUiModeInputs explicitBoard = inputs;
     explicitBoard.flag = QStringLiteral("board");
@@ -117,6 +138,30 @@ int main(int argc, char **argv)
     check(tuiResolveUiMode(rememberedClassic).mode == TuiUiMode::Classic,
           "a saved classic choice is used too");
 
+    // Row 5 must be checked *ahead of* row 6: an explicit flag has to beat
+    // a saved choice even when both are set on the same call, not merely
+    // when the other field happens to be empty (the two blocks above never
+    // set both at once, so a swapped if/else order would still pass them).
+    TuiUiModeInputs explicitOverridesSavedBoard = inputs;
+    explicitOverridesSavedBoard.flag = QStringLiteral("classic");
+    explicitOverridesSavedBoard.savedChoice = QStringLiteral("board");
+    const TuiUiModeDecision explicitOverridesSavedBoardDecision =
+        tuiResolveUiMode(explicitOverridesSavedBoard);
+    check(explicitOverridesSavedBoardDecision.mode == TuiUiMode::Classic,
+          "an explicit --ui classic overrides a saved board choice");
+    check(!explicitOverridesSavedBoardDecision.askUser,
+          "an explicit flag never asks, even with a saved choice present");
+
+    TuiUiModeInputs explicitOverridesSavedClassic = inputs;
+    explicitOverridesSavedClassic.flag = QStringLiteral("board");
+    explicitOverridesSavedClassic.savedChoice = QStringLiteral("classic");
+    const TuiUiModeDecision explicitOverridesSavedClassicDecision =
+        tuiResolveUiMode(explicitOverridesSavedClassic);
+    check(explicitOverridesSavedClassicDecision.mode == TuiUiMode::Board,
+          "an explicit --ui board overrides a saved classic choice");
+    check(!explicitOverridesSavedClassicDecision.askUser,
+          "and never asks either");
+
     // Row 7: nothing forced, nothing saved -- ask once.
     check(tuiResolveUiMode(inputs).askUser,
           "a bare tty run with no saved choice asks once");
@@ -128,6 +173,36 @@ int main(int argc, char **argv)
     badFlag.flag = QStringLiteral("fancy");
     check(tuiResolveUiMode(badFlag).conflict, "an unknown --ui value is a usage error");
     check(!tuiResolveUiMode(badFlag).askUser, "and does not also ask");
+
+    // tuiSavedUiMode() must not crash or propagate garbage when ui-mode.ini
+    // exists but is not what it wrote: it should read back the same as "no
+    // saved choice" (row 7 asks instead of trusting nonsense), not throw a
+    // Qt warning through to the player or hand back the raw bytes. This
+    // writes straight into the same XDG_CONFIG_HOME temp directory set up
+    // above -- tuiUiModeSettingsPath() is private to tui-ui-mode.cpp, but it
+    // is documented (tui-ui-mode.h) to sit at
+    // QStandardPaths::AppConfigLocation + "/ui-mode.ini", so the test can
+    // reach the same file without tui-ui-mode.cpp exposing a path override.
+    {
+        const QString settingsPath =
+            QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation)
+            + QStringLiteral("/ui-mode.ini");
+        check(QDir().mkpath(QFileInfo(settingsPath).absolutePath()),
+              "the temp config directory can be created");
+        QFile garbage(settingsPath);
+        check(garbage.open(QIODevice::WriteOnly | QIODevice::Truncate),
+              "a garbage ui-mode.ini can be written for the test");
+        // Not just unparseable syntax -- also a recognised key with a value
+        // that is neither "classic" nor "board", and a NUL byte partway
+        // through a line, to touch both tuiSavedUiMode()'s own value check
+        // and QSettings' own INI parser.
+        static const char garbageBytes[] =
+            "[General]\nui_mode=neither-classic-nor-board\n{{{not valid ini at all\x01\x02";
+        garbage.write(garbageBytes, sizeof(garbageBytes) - 1);
+        garbage.close();
+        check(tuiSavedUiMode().isEmpty(),
+              "a corrupt ui-mode.ini is treated as no saved choice, not a crash");
+    }
 
     // tuiSavedUiMode()/tuiSaveUiMode(): the QSettings round trip tui-main.cpp
     // relies on to remember an answer across runs.
