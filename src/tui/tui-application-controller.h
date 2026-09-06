@@ -31,11 +31,10 @@ struct TuiApplicationOptions
     bool ansiEnabled = false;
     QString logFile;
     QString scriptFile;
-    // Not reachable from any CLI flag yet -- the mode-decision table
+    // Set by tui-main.cpp from tuiResolveUiMode()'s decision
     // (docs/tui-board-ui.md §6.1: --ui, TTY detection, QSettings, the
-    // connect-time prompt) is a separate piece of work. This only lets the
-    // board-mode wiring below (TuiBoardPresenter, raw-byte key decoding) be
-    // constructed and exercised ahead of whatever eventually flips it on.
+    // connect-time prompt all live in tui-ui-mode.h/.cpp, not here) --
+    // TuiUiMode::Board turns into true, everything else leaves this false.
     bool boardMode = false;
 };
 
