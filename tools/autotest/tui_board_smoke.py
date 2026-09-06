@@ -8,15 +8,35 @@ without a real controlling terminal. This script opens one with
 real ``qsanguosha_server``, and checks:
 
 1. Entering board mode switches to the alternate screen.
-2. A resize (``TIOCSWINSZ`` + ``SIGWINCH``) repaints: the client must emit a
+2. Nothing is written to the terminal before that alternate-screen-enter
+   sequence -- the board's first frame must not land on the user's real
+   (primary) screen ahead of the takeover.
+3. A resize (``TIOCSWINSZ`` + ``SIGWINCH``) repaints: the client must emit a
    fresh full frame, which starts by homing the cursor.
-3. ``SIGINT`` restores the terminal: alternate screen left, cursor shown.
-4. The client exits 0 -- a graceful shutdown, not a kill.
-5. The SAME SIGINT that restored the terminal also disconnected gracefully.
+4. That resize repaint happens INSIDE the alternate screen: no
+   alternate-screen-leave sequence appears anywhere between entering board
+   mode and the post-resize repaint. A repaint alone does not prove this --
+   the client could leave the alternate screen and then repaint the exact
+   same content on the primary screen, which is exactly the defect this
+   assertion exists to catch (see §2 below).
+5. ``SIGINT`` restores the terminal: alternate screen left, cursor shown.
+6. The client exits 0 -- a graceful shutdown, not a kill.
+7. The SAME SIGINT that restored the terminal also disconnected gracefully.
    ``TuiTerminal::enter()`` and ``tuiInstallInterruptHandler()`` share one
    SIGINT handler (see ``src/tui/tui-terminal.cpp``); the unit test can only
    prove the installer is idempotent, not that a real SIGINT under a real
    terminal does both jobs at once. This is that proof.
+
+Assertions 2 and 4 were added after the first version of this script passed
+cleanly with two real defects still present (see
+.superpowers/sdd/tui-board-ui-plan/task-12-report.md §2 for the full
+writeup): a presenter that painted its first frame before the terminal took
+over the alternate screen, and a SIGWINCH handler that unconditionally left
+the alternate screen on every resize. Assertion 3 alone stayed green through
+both -- it only checked that *a* full frame appeared, never that the session
+was still in the alternate screen when it did. Both defects are now fixed in
+``src/tui``; assertions 2 and 4 exist so a regression of either one turns
+this script red instead of staying silently green.
 
 This is a LOCAL GATE and must never run in CI: CI runners have no stable pty,
 and adding this there would only produce intermittent red (see
@@ -38,6 +58,7 @@ import os
 import select
 import signal
 import struct
+import subprocess
 import sys
 import termios
 import time
@@ -119,6 +140,33 @@ def read_until(master_fd, patterns, timeout, buf, start=0):
     return found()
 
 
+def require_ui_option(tui_exe):
+    """Fail loudly if tui_exe predates ``--ui`` instead of silently running a
+    stale build that cannot do what this whole script exists to test.
+
+    ``find_exe()``'s search order (release, then relwithdebinfo, then debug)
+    exists so a stale local *debug* build never shadows a freshly built *CI*
+    configuration -- see runner_common.py's own comment. In a local dev tree
+    the inverse can happen: a stale relwithdebinfo/ or release/ build sits
+    around from before ``--ui`` existed, `find_exe()` still finds it first,
+    and every assertion this script makes would otherwise fail with a
+    confusing "Unknown option 'ui'" instead of the actual terminal-handling
+    result being tested. Flipping the search order to always prefer debug/
+    would just trade this failure mode for the one the CI-oriented order was
+    written to prevent, so this checks the binary directly instead."""
+    try:
+        result = subprocess.run([tui_exe, "--help"], capture_output=True, timeout=15, text=True)
+    except Exception as exc:  # noqa: BLE001 - any failure here means "can't tell, so ask"
+        raise SystemExit("could not run %r --help to check for --ui support: %s"
+                          % (tui_exe, exc))
+    if "--ui" not in (result.stdout + result.stderr):
+        raise SystemExit(
+            "%r does not advertise --ui in its --help output -- this looks like a build "
+            "from before board mode existed. Rebuild qsanguosha_tui, or pass --tui to point "
+            "explicitly at a fresh one (find_exe()'s release/relwithdebinfo/debug search "
+            "order can pick up a stale binary in a local dev tree)." % tui_exe)
+
+
 def waitpid_timeout(pid, timeout):
     """Poll waitpid(WNOHANG) up to timeout. Returns (exited, status)."""
     deadline = time.time() + timeout
@@ -195,6 +243,7 @@ def main(argv=None):
     server_exe = (os.path.abspath(args.server) if args.server
                   else find_exe(exe_root, "qsanguosha_server"))
     tui_exe = os.path.abspath(args.tui) if args.tui else find_exe(exe_root, "qsanguosha_tui")
+    require_ui_option(tui_exe)
     workdir = os.path.abspath(args.workdir) if args.workdir else resolve_workdir(exe_root)
 
     port = args.port or free_tcp_port()
@@ -207,7 +256,9 @@ def main(argv=None):
     problems = []
     results = {
         "alt_screen_enter": False,
+        "no_draw_before_alt_screen": False,
         "resize_repaint": False,
+        "resize_stays_in_alt_screen": False,
         "sigint_restores_terminal": False,
         "clean_exit_code": None,
         "single_sigint_shared_handler": False,
@@ -248,20 +299,58 @@ def main(argv=None):
                 problems.append("never saw alternate-screen enter sequence %r"
                                  % ALT_SCREEN_ENTER)
 
-            # 2. Resize repaints rather than tearing: after TIOCSWINSZ +
+            # 2. Nothing reaches the terminal before that enter sequence: the
+            #    board's first frame must not land on the user's real
+            #    (primary) screen ahead of the takeover. enter() writes the
+            #    enter sequence as literally its first bytes to the terminal
+            #    (see TuiTerminal::enter()), and nothing before start() ever
+            #    calls it -- so the byte string preceding the enter sequence
+            #    must be empty, not merely free of anything that "looks like"
+            #    a frame.
+            enter_offset = bytes(buf).find(ALT_SCREEN_ENTER)
+            if enter_offset < 0:
+                problems.append("cannot check pre-enter output: alternate screen was never "
+                                 "entered")
+            else:
+                preamble = bytes(buf[:enter_offset])
+                results["no_draw_before_alt_screen"] = (preamble == b"")
+                if not results["no_draw_before_alt_screen"]:
+                    problems.append(
+                        "%d byte(s) written to the terminal before the alternate-screen-enter "
+                        "sequence: %r" % (len(preamble), preamble[:200]))
+
+            # 3 & 4. Resize repaints rather than tearing: after TIOCSWINSZ +
             #    SIGWINCH the client must emit a full frame, which starts by
-            #    homing the cursor. Only bytes written *after* the resize
-            #    count -- the initial connect/waiting-room draw already put
-            #    at least one cursor-home in buf.
+            #    homing the cursor (3) -- and that repaint must happen INSIDE
+            #    the alternate screen, i.e. no alternate-screen-leave sequence
+            #    appears anywhere between entering board mode and the
+            #    post-resize repaint (4). Only bytes written *after* the
+            #    resize count for (3) -- the initial connect/waiting-room
+            #    draw already put at least one cursor-home in buf; (4) spans
+            #    from the enter sequence itself, since leaving the screen at
+            #    any point after entering and before this repaint is the
+            #    defect being guarded against.
             before = len(buf)
             set_winsize(master_fd, 40, 120)
             os.kill(client_pid, signal.SIGWINCH)
             read_until(master_fd, [CURSOR_HOME], args.resize_timeout, buf, start=before)
-            results["resize_repaint"] = CURSOR_HOME in bytes(buf[before:])
+            after_resize = len(buf)
+            results["resize_repaint"] = CURSOR_HOME in bytes(buf[before:after_resize])
             if not results["resize_repaint"]:
                 problems.append("no cursor-home full frame after SIGWINCH")
 
-            # 3 & 5. One SIGINT must both restore the terminal and disconnect
+            if enter_offset < 0:
+                problems.append("cannot check alt-screen continuity: alternate screen was "
+                                 "never entered")
+            else:
+                span = bytes(buf[enter_offset:after_resize])
+                results["resize_stays_in_alt_screen"] = ALT_SCREEN_LEAVE not in span
+                if not results["resize_stays_in_alt_screen"]:
+                    problems.append(
+                        "alternate screen was left between entering board mode and the "
+                        "post-resize repaint -- the resize repainted on the primary screen")
+
+            # 5 & 7. One SIGINT must both restore the terminal and disconnect
             #    gracefully -- the assertion Task 5 left for a real pty to
             #    prove, since a unit test cannot get enter() past isatty().
             tail_start = len(buf)
@@ -278,7 +367,7 @@ def main(argv=None):
             if not cursor_shown:
                 problems.append("cursor was not restored after SIGINT")
 
-            # 4. The client exited cleanly rather than being killed.
+            # 6. The client exited cleanly rather than being killed.
             exit_code = None
             if not exited:
                 problems.append("client did not exit within %ss of SIGINT"
@@ -294,7 +383,7 @@ def main(argv=None):
             if exit_code != 0:
                 problems.append("client exit code was %r, expected 0" % (exit_code,))
 
-            # This IS assertion 5: both halves above came from the one
+            # This IS assertion 7: both halves above came from the one
             # SIGINT sent above, not from a second signal or a fallback kill.
             results["single_sigint_shared_handler"] = (
                 results["sigint_restores_terminal"] and exit_code == 0)
@@ -327,7 +416,8 @@ def main(argv=None):
     ok = not problems
     print("[AUTOTEST] TUI_BOARD_PTY_RESULT status=%s port=%d transcript=%s"
           % ("PASS" if ok else "FAIL", port, transcript_path))
-    for name in ("alt_screen_enter", "resize_repaint", "sigint_restores_terminal",
+    for name in ("alt_screen_enter", "no_draw_before_alt_screen", "resize_repaint",
+                 "resize_stays_in_alt_screen", "sigint_restores_terminal",
                  "clean_exit_code", "single_sigint_shared_handler"):
         print("  - %s: %s" % (name, results.get(name)))
     for problem in problems:

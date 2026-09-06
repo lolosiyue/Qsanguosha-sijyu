@@ -45,10 +45,19 @@ volatile sig_atomic_t g_wakeWriteFd = -1;
 
 extern "C" void tuiTerminalSignalHandler(int number)
 {
-    // First priority, unconditionally: get the terminal back. If a resize
-    // races a crash, or two fatal signals race each other, worst case is a
-    // handful of redundant writes of the same bytes.
-    if (g_restoreLength > 0 && g_restoreFd >= 0)
+    // Get the terminal back for every signal here that actually ends the
+    // session -- the fatal ones below, and SIGTERM/SIGHUP, which fall
+    // through to the same "please shut down" path afterwards. SIGWINCH is
+    // deliberately excluded: a plain resize does not end anything, and
+    // writing the restore sequence for it would leave the alternate screen
+    // (and re-show the cursor) on every window resize, with nothing after it
+    // ever re-entering the alternate screen -- the resize repaint below only
+    // ever emits a fresh frame, never `\x1b[?1049h` again. If a resize
+    // happens to race a real fatal signal, that signal's own invocation of
+    // this same handler still writes the restore bytes; the only thing lost
+    // by excluding SIGWINCH is a redundant write of bytes the fatal signal
+    // was going to write anyway.
+    if (number != SIGWINCH && g_restoreLength > 0 && g_restoreFd >= 0)
         ::write(int(g_restoreFd), g_restoreBytes, size_t(g_restoreLength));
 
     if (number == SIGSEGV || number == SIGABRT) {
