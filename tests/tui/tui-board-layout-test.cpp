@@ -3,6 +3,7 @@
 #include <QCoreApplication>
 #include <QSet>
 
+#include <algorithm>
 #include <cstdio>
 
 namespace {
@@ -21,6 +22,101 @@ bool overlaps(const TuiRect &a, const TuiRect &b)
 {
     return a.row < b.row + b.rows && b.row < a.row + a.rows
         && a.col < b.col + b.cols && b.col < a.col + a.cols;
+}
+
+// Walks one page's seats the way a player reading the screen would, and
+// returns their seatOffsets in that visual order. Column membership is
+// worked out from the rects themselves (leftmost column seen = "left",
+// rightmost = "right", anything else = "top"), not from any constant the
+// implementation uses internally, so this stays a black-box check of the
+// ring rule rather than a restatement of tui-board-layout.cpp's own math:
+//
+//   - a single column (left == right): read top to bottom.
+//   - two columns, nothing between them: read row by row, right before left
+//     within a row -- the alternating ladder's own order.
+//   - three or more columns: the right column bottom to top, then the top
+//     row(s) right to left, then the left column top to bottom -- the ring
+//     RoomScene::updateTable() draws (regionIndex 4/6 seats are appended in
+//     seat order, 1/7 and 3/5 seats are prepended, so the right column and
+//     the top row both read backwards relative to the left column).
+QVector<int> ringOrderOffsets(const TuiBoardGeometry &geometry, int page)
+{
+    QVector<const TuiSeatSlot *> onPage;
+    for (const TuiSeatSlot &slot : geometry.seatSlots) {
+        if (slot.page == page)
+            onPage.append(&slot);
+    }
+    if (onPage.isEmpty())
+        return {};
+
+    int minCol = onPage.first()->rect.col;
+    int maxCol = onPage.first()->rect.col;
+    for (const TuiSeatSlot *slot : onPage) {
+        minCol = std::min(minCol, slot->rect.col);
+        maxCol = std::max(maxCol, slot->rect.col);
+    }
+
+    QVector<int> order;
+    if (minCol == maxCol) {
+        std::sort(onPage.begin(), onPage.end(),
+            [](const TuiSeatSlot *a, const TuiSeatSlot *b) { return a->rect.row < b->rect.row; });
+        for (const TuiSeatSlot *slot : onPage)
+            order.append(slot->seatOffset);
+        return order;
+    }
+
+    bool hasMiddle = false;
+    for (const TuiSeatSlot *slot : onPage) {
+        if (slot->rect.col != minCol && slot->rect.col != maxCol)
+            hasMiddle = true;
+    }
+    if (!hasMiddle) {
+        std::sort(onPage.begin(), onPage.end(), [](const TuiSeatSlot *a, const TuiSeatSlot *b) {
+            if (a->rect.row != b->rect.row)
+                return a->rect.row < b->rect.row;
+            return a->rect.col > b->rect.col;
+        });
+        for (const TuiSeatSlot *slot : onPage)
+            order.append(slot->seatOffset);
+        return order;
+    }
+
+    QVector<const TuiSeatSlot *> right;
+    QVector<const TuiSeatSlot *> top;
+    QVector<const TuiSeatSlot *> left;
+    for (const TuiSeatSlot *slot : onPage) {
+        if (slot->rect.col == maxCol)
+            right.append(slot);
+        else if (slot->rect.col == minCol)
+            left.append(slot);
+        else
+            top.append(slot);
+    }
+    std::sort(right.begin(), right.end(),
+        [](const TuiSeatSlot *a, const TuiSeatSlot *b) { return a->rect.row > b->rect.row; });
+    std::sort(top.begin(), top.end(), [](const TuiSeatSlot *a, const TuiSeatSlot *b) {
+        if (a->rect.row != b->rect.row)
+            return a->rect.row < b->rect.row;
+        return a->rect.col > b->rect.col;
+    });
+    std::sort(left.begin(), left.end(),
+        [](const TuiSeatSlot *a, const TuiSeatSlot *b) { return a->rect.row < b->rect.row; });
+    for (const TuiSeatSlot *slot : right)
+        order.append(slot->seatOffset);
+    for (const TuiSeatSlot *slot : top)
+        order.append(slot->seatOffset);
+    for (const TuiSeatSlot *slot : left)
+        order.append(slot->seatOffset);
+    return order;
+}
+
+bool isAscendingFrom1(const QVector<int> &offsets)
+{
+    for (int i = 0; i < offsets.size(); ++i) {
+        if (offsets.at(i) != i + 1)
+            return false;
+    }
+    return true;
 }
 
 } // namespace
@@ -75,6 +171,14 @@ int main(int argc, char **argv)
         check(columns.size() > 1, "opponents are not all piled into a single column");
     }
 
+    check(isAscendingFrom1(ringOrderOffsets(wide, 0)),
+          "walking the ring (right bottom-to-top, top right-to-left, left top-to-bottom) "
+          "visits five players' seats in seatOffset order");
+
+    const TuiBoardGeometry wideEight = tuiComputeBoardGeometry(40, 120, 8, 1);
+    check(isAscendingFrom1(ringOrderOffsets(wideEight, 0)),
+          "the same ring walk visits eight players' seats in seatOffset order");
+
     // A two-column size: no width for a top row, so the ladder alternates
     // right/left starting from the downstream neighbour on the right.
     const TuiBoardGeometry twoColumn = tuiComputeBoardGeometry(24, 70, 3, 1);
@@ -97,6 +201,8 @@ int main(int argc, char **argv)
         check(haveFirst && haveSecond && firstRect.col > secondRect.col,
               "the two-column alternation starts on the right");
     }
+    check(isAscendingFrom1(ringOrderOffsets(twoColumn, 0)),
+          "the same walk still visits the two-column case in seatOffset order");
 
     // A tall one-column size: the stack runs top to bottom in seatOffset order.
     const TuiBoardGeometry stacked = tuiComputeBoardGeometry(30, 60, 5, 1);
@@ -116,6 +222,8 @@ int main(int argc, char **argv)
         }
         check(inOrder, "the single-column stack runs top to bottom in seatOffset order");
     }
+    check(isAscendingFrom1(ringOrderOffsets(stacked, 0)),
+          "the same walk still visits the one-column case in seatOffset order");
 
     // The floor case: one column of cells, so the ring degrades to a stack and
     // five players need more than one page.
