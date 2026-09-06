@@ -21,6 +21,7 @@ int runTuiScreenTests(int argc, char **argv);
 int runTuiTerminalTests(int argc, char **argv);
 int runTuiLineEditorTests(int argc, char **argv);
 int runTuiUiModeTests(int argc, char **argv);
+int runTuiUiParityTests(int argc, char **argv);
 
 int main(int argc, char **argv)
 {
@@ -58,6 +59,8 @@ int main(int argc, char **argv)
         return runTuiLineEditorTests(argc, argv);
     if (suite == QLatin1String("ui-mode"))
         return runTuiUiModeTests(argc, argv);
+    if (suite == QLatin1String("ui-parity"))
+        return runTuiUiParityTests(argc, argv);
     if (!suite.isEmpty())
         return 64;
 
@@ -85,6 +88,7 @@ int main(int argc, char **argv)
         {QStringLiteral("terminal"), {QStringLiteral("--suite"), QStringLiteral("terminal")}},
         {QStringLiteral("line-editor"),
             {QStringLiteral("--suite"), QStringLiteral("line-editor")}},
-        {QStringLiteral("ui-mode"), {QStringLiteral("--suite"), QStringLiteral("ui-mode")}}
+        {QStringLiteral("ui-mode"), {QStringLiteral("--suite"), QStringLiteral("ui-mode")}},
+        {QStringLiteral("ui-parity"), {QStringLiteral("--suite"), QStringLiteral("ui-parity")}}
     });
 }
