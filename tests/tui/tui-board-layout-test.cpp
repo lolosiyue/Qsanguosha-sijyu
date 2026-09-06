@@ -46,6 +46,77 @@ int main(int argc, char **argv)
     check(wide.log.cols >= 22 && wide.log.cols <= 34, "the log pane stays within its clamp");
     check(wide.self.row > wide.room.row, "self sits at the bottom of the room pane");
 
+    // Regions must match the desktop, not just be internally consistent with
+    // each other: every row of RoomScene's s_regularSeatIndex opens with a
+    // right-side region, so the downstream neighbour sits at the player's
+    // right there, and the ring must actually reach the top row instead of
+    // piling every opponent down one column.
+    {
+        const TuiRect *firstRect = nullptr;
+        const TuiRect *lastRect = nullptr;
+        const int lastOffset = static_cast<int>(wide.seatSlots.size());
+        QSet<int> columns;
+        bool sawTopRow = false;
+        for (const TuiSeatSlot &slot : wide.seatSlots) {
+            if (slot.seatOffset == 1)
+                firstRect = &slot.rect;
+            if (slot.seatOffset == lastOffset)
+                lastRect = &slot.rect;
+            columns.insert(slot.rect.col);
+            if (slot.rect.row == wide.room.row)
+                sawTopRow = true;
+        }
+        const int midCol = wide.room.col + wide.room.cols / 2;
+        check(firstRect != nullptr && firstRect->col > midCol,
+              "the downstream neighbour sits to the player's right, matching the desktop");
+        check(lastRect != nullptr && lastRect->col < midCol,
+              "the last opponent wraps around to the player's left");
+        check(sawTopRow, "the ring actually reaches the top row, not just one column");
+        check(columns.size() > 1, "opponents are not all piled into a single column");
+    }
+
+    // A two-column size: no width for a top row, so the ladder alternates
+    // right/left starting from the downstream neighbour on the right.
+    const TuiBoardGeometry twoColumn = tuiComputeBoardGeometry(24, 70, 3, 1);
+    check(twoColumn.cellCols == 2, "70 columns leave room for exactly two cell columns");
+    {
+        TuiRect firstRect;
+        TuiRect secondRect;
+        bool haveFirst = false;
+        bool haveSecond = false;
+        for (const TuiSeatSlot &slot : twoColumn.seatSlots) {
+            if (slot.seatOffset == 1) {
+                firstRect = slot.rect;
+                haveFirst = true;
+            }
+            if (slot.seatOffset == 2) {
+                secondRect = slot.rect;
+                haveSecond = true;
+            }
+        }
+        check(haveFirst && haveSecond && firstRect.col > secondRect.col,
+              "the two-column alternation starts on the right");
+    }
+
+    // A tall one-column size: the stack runs top to bottom in seatOffset order.
+    const TuiBoardGeometry stacked = tuiComputeBoardGeometry(30, 60, 5, 1);
+    check(stacked.cellCols == 1, "60 columns leave room for a single cell column");
+    check(stacked.capacity >= 4, "tall enough that all four opponents share one page");
+    {
+        int previousRow = -1;
+        bool inOrder = true;
+        for (int offset = 1; offset <= 4; ++offset) {
+            for (const TuiSeatSlot &slot : stacked.seatSlots) {
+                if (slot.seatOffset == offset) {
+                    if (slot.rect.row <= previousRow)
+                        inOrder = false;
+                    previousRow = slot.rect.row;
+                }
+            }
+        }
+        check(inOrder, "the single-column stack runs top to bottom in seatOffset order");
+    }
+
     // The floor case: one column of cells, so the ring degrades to a stack and
     // five players need more than one page.
     const TuiBoardGeometry floorSize = tuiComputeBoardGeometry(18, 60, 5, 1);
