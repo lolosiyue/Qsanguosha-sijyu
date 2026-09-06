@@ -3,16 +3,19 @@
 本矩陣記錄核心重構的實際驗證證據。它不授權遷移任何正式技能；正式技能仍須依
 [遷移規範](active-skill-v2-migration-guide.md) 逐項人工審議。
 
+現況（2026-09-06）：`lua/test/` 範例 suite 已隨 commit `a904221` 整個刪除，測試基建改由
+CTest suites 與 `tools/autotest/` 承擔；下文仍引用 `lua/test/` 之處均標記為已移除或失效。
+
 ## 已自動驗證
 
 | 範圍 | 證據 | 結果 |
 |---|---|---|
-| instance 名稱、attached parent、execution registry、usage reference 與 reservation ledger 純邏輯 | `tests/skill-instance-utils/skill-instance-utils-test` | 既有案例曾通過；Ticket 13 新增 shared-root、owner isolation、nested、pay/cancel release、bypass commit、reset、Custom 與 finished-once 案例，待本機 Qt toolchain 執行 |
+| instance 名稱、attached parent、execution registry、usage reference 與 reservation ledger 純邏輯 | `tests/skill-instance-utils/skill-instance-utils-test` | Ticket 13 案例（shared-root、owner isolation、nested、pay/cancel release、bypass commit、reset、Custom、finished-once）已寫入 fixture 並以本機 toolchain 編譯出 `tests/skill-instance-utils/release/skill-instance-utils-test.exe`；該獨立 binary 未納入 CTest，SkillInstanceUtils／reservation 邏輯另由 CTest 註冊的 `qsanguosha_engine_smoke` 與 `qsanguosha_server_unit`（`skill-runtime-coordinator-test.cpp`）覆蓋 |
 | replay provenance V2 cross-owner | `tests/replay-game-state/replay-game-state-test` | 通過 |
 | replay provenance V1 compatibility | 同上 | 通過；owner 採 initiator best-effort fallback |
 | malformed provenance | 同上 | 通過；拒絕 payload |
 | Play／pure response 的 V2 early-exit 與控制事件收束 | `Room::useCard()`、`Room::askForCard()` | 已整合；pay/cancel 釋放未提交 reservation；`StageChange`／`TurnBroken` 發 `Finished(NoResult)` 最多一次並重新拋出原控制事件 |
-| Lua `n`／`response_or_use`／`expand_pile`／dialog／`base_amount`／`get_usage_ref` smoke 與 Room 初始化 | `lua/test/examples/test_active_skill_v2_usage_ref.lua` | 待執行；驗證 ViewAs factory 欄位（含裸名稱、`#`、`%`、`/` 前綴字串與三種 dialog）、amount 優先序與 usage ref；assertion 失敗必須回傳非零 |
+| Lua `n`／`response_or_use`／`expand_pile`／dialog／`base_amount`／`get_usage_ref` smoke 與 Room 初始化 | `lua/test/examples/test_active_skill_v2_usage_ref.lua` | 已失效：`lua/test/` 已於 commit `a904221` 刪除（superseded by autotest tooling），由 CTest／`tools/autotest` 取代；ViewAs factory 欄位（含裸名稱、`#`、`%`、`/` 前綴字串與三種 dialog）、amount 優先序與 usage ref 的 Lua smoke 尚未在現行基建重建等價案例 |
 | 全專案 C++／SWIG 整合 | `tools/build-release.ps1` Release x64 | 2026-07-30 已以 CMake／MSVC 2019 建置通過；build tree 的 SWIG wrapper 已自動生成並編譯通過 |
 
 ## `~test` 手動整合場景
@@ -26,12 +29,11 @@
 `active_skill_v2_quota_root` 在開局把前者 attached 給其他玩家，讓多個入口共用同一 root quota；
 `active_skill_v2_custom_usage_test` 驗證 `Limit_Custom` 只由作者邏輯讀寫，不會自動呼叫 generic
 `addUsage()`。它們只供下列手動場景使用，不得改動正常武將包。
-`lua/test/examples/test_active_skill_v2_usage_ref.lua` 是等價 Lua fixture：它以
+原本另有等價 Lua fixture `lua/test/examples/test_active_skill_v2_usage_ref.lua`（以
 `sgs.CreateViewAsSkillV2` 與 `sgs.CreateTriggerSkillV2` 驗證 `n`、`response_or_use`、
 `guhuo_type`／`juguan_type`／`tiansuan_type`、`base_amount`／有效值優先序、`get_usage_ref` callback、
-舊欄位遷移提示及錯誤回傳 fail-closed，且不會將測試武將包載入一般對局。
-執行入口為：
-`QSanguosha.exe --lua-test lua/test/examples/test_active_skill_v2_usage_ref.lua`。
+舊欄位遷移提示及錯誤回傳 fail-closed），已隨 `lua/test/` 於 commit `a904221` 整個移除；
+`--lua-test` 執行入口不再存在，Lua 端驗證須改經 CTest／`tools/autotest` 途徑。
 
 | 場景 | 入口 | 期望結果 |
 |---|---|---|
@@ -79,15 +81,16 @@
   allowlist。矩陣須在不載入 askForUseCard dispatcher 時，分別證明 `activate` 與直接
   `use_card` handler 都以 `(self, request)` 取得相同 `SmartAIView`／`PlayerView`／
   `CardView`／`SkillView`，且 malformed viewer snapshot 會在 handler 前 fail-closed。
-- 第一個正式 `sgs.ai_skill_use` handler 已搬入：`standard-ai.lua` 的 `@@lianying` 確定
-  單目標分支以 isolated `ai_skill_use[pattern] = function(self, prompt, request)` 註冊，必須
-  透過 `SmartAIView`／`PlayerView` 與 C++ 注入的 `sgs.Player_Play` 得出和 Legacy 一致的
-  回傳；需要額外 userdata／友方排序的分支維持 `NotCovered`。
+- 第一個正式 `sgs.ai_skill_use` handler 已搬入：`standard-ai.lua` 的 `@@lianying` 以 isolated
+  `ai_skill_use["@@lianying"] = function(self)` 註冊（isolated dispatcher 以
+  `(self, request.prompt, request)` 呼叫，此 handler 只用 `self`），Play phase 且
+  `lianying` mark 為 1 時回傳結構化 table `{kind = "use_card", card = "@LianyingCard=.-><player>"}`、
+  其餘回傳 `nil`，而非 legacy 字串；需要額外 userdata／友方排序的分支維持 `NotCovered`。
 - production allowlist script 的頂層無限迴圈須在 initialization instruction budget 內停用
   Isolated VM 並讓 Room 繼續 legacy；超長字串、過多牌／目標須 fail-closed，audit 只保留
   capped 摘要，不得隨 Lua payload 線性放大 C++ heap。
 - `DoLuaScript()` 在 `--headless` 下會以 `qCritical` 報告 Lua 載入錯誤而非開啟 modal dialog，讓本機自動化可取得失敗原因；GUI 模式維持既有對話框。
-- `LuaViewAsSkillV2`、選用 AI callback、provenance V2 與 execution audit 曾完成編譯整合；Ticket 13 的 wrapper、quota ledger、immutable provenance 與中斷收束修改仍待重新編譯，再以合成技能自動化端到端驗證。
+- `LuaViewAsSkillV2`、選用 AI callback、provenance V2 與 execution audit 曾完成編譯整合；Ticket 13 的 wrapper、quota ledger、immutable provenance 與中斷收束修改均已納入 CMake 建置並編譯通過（SWIG wrapper 由 root `CMakeLists.txt` 的 `add_custom_command` 在 `swig/*.i` 變更時自動生成於 build tree），後續以合成技能自動化端到端驗證。
 - `@@skill` 指名回應的 client 自動啟動已改為按 activation instance 呼叫 `canActivate()`；Lua factory 對舊
   `response_pattern` 會以遷移提示 fail-fast。factory smoke 已涵蓋提示文字，實際人類 UI 指名回應仍待
   Room lifecycle／GUI fixture 實跑。

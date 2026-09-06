@@ -2,8 +2,9 @@
 
 - Status: Approved Plan
 - Implementation: M1 Complete；M2、M3、M4、M5、M6 實作已落地但仍有驗收缺口；M5 已完成 Linux headless server 與 Linux GUI client 程式；M7–M9 尚未達驗收標準
-- Last Updated: 2026-09-01
+- Last Updated: 2026-09-06
 - Current audit anchor: L `debug@94e119f`（已合入 PR #21 package 對齊及 PR #22 Protocol V2 cutover）；下文分開記錄 source implementation、focused evidence、remote／live／manual acceptance，不能互相替代。
+- **2026-09-06 增補**：狀態欄舊日期（2026-09-01）之後的演進不逐項重寫，僅列要點——（1）新增 TUI 產品線 `qsanguosha_tui`（Protocol V2 終端客戶端，`QSAN_BUILD_TUI` 預設 ON）；（2）CTest consolidation：`tests/CMakeLists.txt` 已將多個 suite 合併入共用測試執行檔（實測 11 個測試執行檔，如 `qsanguosha_core_tests`／`qsanguosha_protocol_tests`／`qsanguosha_tui_tests` 等，每 suite 仍行自己 process）；（3）GUI reconnect fallback（commit `918fc84`「Add fallback to fresh signup on reconnect failure」）；（4）新增 opt-in Windows XP／Qt 5.6.3 legacy 產品（範圍豁免見 §2 註記）。
 - **規範性**：本文件是跨平台現代化與另一分支通用功能移植的唯一權威執行計劃；與既有 roadmap 或審計結論衝突時，以本文件為準。
 
 ## 1. 來源、目的與範圍
@@ -28,16 +29,19 @@
 | Windows x64 | 完整 GUI、內嵌／獨立伺服器、崩潰報告、開發者符號包 | FMOD |
 | Ubuntu 24.04 x64 | 無頭伺服器、安裝目錄、啟動腳本、systemd unit 範例 | Null |
 | Android | 後期正式客戶端、單機內嵌房間、Google Play AAB＋Play Asset Delivery | Qt Multimedia |
+| Windows XP legacy（opt-in） | 獨立 legacy target（`QSAN_BUILD_XP_LEGACY`，非主線交付）；見 [`windows-xp-legacy-build.md`](windows-xp-legacy-build.md) | FMOD |
 
 | 項目 | 固定基線 |
 |---|---|
 | C++ | C++17 |
 | Windows 編譯器 | Visual Studio 2026 v145 x64（官方 Qt kit 為 `msvc2022_64`） |
-| Qt | Qt 6.11.1，一次性切換，不維護 Qt 5 相容層 |
+| Qt | Qt 6.11.1，一次性切換，不維護 Qt 5 相容層（Windows XP legacy opt-in 為範圍豁免，見下註記） |
 | Lua | Lua 5.4.8，提供專案實際需要的 Lua 5.2 相容層 |
 | 建置系統 | CMake 4.2+、`CMakePresets.json`、Visual Studio 2026 Open Folder |
 | Android | min API 28、target/compile API 36、NDK r27c、JDK 21 |
 | Android ABI | Google Play 正式版僅 `arm64-v8a`；`x86_64` 僅供 CI／模擬器 |
+
+> **範圍豁免（2026-09-06）**：`QSAN_BUILD_XP_LEGACY` 為 opt-in 的 Windows XP legacy 獨立 target（preset `xp-vs2017-x86`、`find_package(Qt5 5.6.3 EXACT REQUIRED)`，見 [`windows-xp-legacy-build.md`](windows-xp-legacy-build.md)），不受上表「Qt 6.11.1、不維護 Qt 5 相容層」基線約束；上表交付平台已補列該 opt-in 產品。
 
 官方基線資料：
 
@@ -58,7 +62,7 @@
 | `qsanguosha_tui` | Windows／Linux live TCP Protocol V2 客戶端；`QCoreApplication` + Qt Core／Network；Replay 永久不支援，GUI dependency 禁止 |
 | Web compact (`web/`) | 瀏覽器 TypeScript SPA；WebSocket 9528；不進 `qsanguosha_engine` |
 | Android app target | Qt GUI／Quick／Widgets／Multimedia 客戶端；不提供公開專用伺服器，但單機可建立內嵌房間 |
-| `crashreporter` | Windows 純 Win32／DbgHelp 診斷工具 |
+| `crashreporter` | Windows 純 Win32／DbgHelp 診斷工具（2026-09-06 複核：未落地——CMake 無此 target，實際以 `src/util/crashhandler.cpp` 內嵌於產品） |
 | CTest targets | 單元、整合、Lua、自動對戰及性能測試 |
 
 CMake 必須啟用 AUTOMOC、AUTOUIC、AUTORCC，管理資源、翻譯、安裝規則與平台條件來源。2026-07-30 已先完成 Windows x64 過渡建置：CMake 3.28+、Qt 6.5.3、MSVC 2019、單一 `QSanguosha` target，並移除 qmake、舊 `.sln`／`.vcxproj` 及舊 Makefile 入口。此過渡建置已通過 Debug／Release，保留既有 FMOD、Breakpad、SWIG、翻譯與輸出路徑；尚未完成 `qsanguosha_engine` 邊界，也不取代最終 Qt 6.11.1／MSVC 2022→2026／Lua 5.4.8 基線。（該邊界已於 2026-08-09 完成見 §10 M1；Windows 工具鏈已於 2026-08-18 升級至 VS 2026 v145 + Qt 6.11.1 `msvc2022_64`。）
@@ -311,7 +315,7 @@ M1 已完成（2026-08-09 對照 CMakeLists.txt 確認）：`qsanguosha_engine` 
 
 ## 12. 固定假設與不在本計劃範圍
 
-- 正式桌面客戶端先以 Windows 為唯一 GUI 交付平台；Ubuntu 本階段只交付無頭伺服器。
+- 正式桌面客戶端先以 Windows 為唯一 GUI 交付平台；Ubuntu 本階段只交付無頭伺服器。（2026-09-06：另新增 opt-in Windows XP／Qt 5.6.3 legacy 產品，屬範圍豁免，見 §2 註記。）
 - Android 正式渠道固定為 Google Play AAB＋Play Asset Delivery，正式 ABI 固定為 `arm64-v8a`；其他商店、側載完整資產包及 32 位 ABI 不屬本階段。
 - Android `minSdk` 固定為 API 28，`targetSdk` 固定為 API 36；若 Google Play 政策在實作時提高要求，只允許向上調整 target，不降低 minSdk。
 - 不承諾舊客戶端與新協定永久互通；以明確版本協商、拒絕訊息及受控遷移為準。

@@ -1,5 +1,7 @@
 # TriggerSkillV2 系統說明
 
+> 本文行號為 2026-09-06 實測，僅供輔助對照；程式碼重構後行號會漂移，請一律以符號／函式名搜尋定位。
+
 > **2026-08-09 校對**：本文件已同步現行實作（skill-instance-refactor-plan.md:332 的待更新標記已清除）。多實例模型以 [`skill-instance-refactor-plan.md`](skill-instance-refactor-plan.md) §2 為權威；SkillContext 現行欄位見 §核心資料結構。
 
 ## 概述
@@ -38,7 +40,7 @@ typedef QMap<ServerPlayer*, QStringList> TriggerList;
 
 ### SkillContext 結構
 
-**位置**: `src/core/skill.h`（2026-08-09 對照現行實作，struct 位於 skill.h:11-58）
+**位置**: `src/core/skill.h` 的 `struct SkillContext`（2026-09-06 對照現行實作，現約 :12-59）
 
 ```cpp
 struct SkillContext {
@@ -81,14 +83,14 @@ struct SkillContext {
 
 ### Instance ID 機制（現行模型）
 
-**已停用**：`Skill::m_instanceId`／`m_globalInstanceCount`（舊 Skill 物件級 ID）自 2026-07-16 重構後已廢止，現僅為 skill.h:227-228 的未使用宣告（死碼）；`Skill::getInstanceId()` 已刪除。
+**已停用**：`Skill::m_instanceId`／`m_globalInstanceCount`（舊 Skill 物件級 ID）自 2026-07-16 重構後已廢止，現僅為 `src/core/skill.h` 中該二成員的未使用宣告（現約 :228-229，死碼）；`Skill::getInstanceId()` 已刪除。
 
 現行模型（權威：`docs/skill-instance-refactor-plan.md` §2）：
 
 | 項目 | 說明 |
 |------|------|
 | `Skill` 物件 | Engine 全域共享定義，**不持有** instanceID，不 clone |
-| 權威容器 | `Player::m_skillInstances` = `QMap<QString, QMap<int, SkillInstance>>`（player.h:481，Single Source of Truth） |
+| 權威容器 | `Player::m_skillInstances` = `QMap<QString, QMap<int, SkillInstance>>`（src/core/player.h，現約 :483，Single Source of Truth） |
 | ID 分配 | `Player::m_nextSkillInstanceIds` 每技能名單調遞增，**永不重用** |
 | ID 範圍 | 同一 `(player, skillName)` 內唯一；`0` = wildcard／未指定 |
 | `#N` 字串 | 僅為相容派生格式（`acquired_skills` 等舊容器同步用），非權威資料 |
@@ -106,8 +108,8 @@ struct SkillContext {
 ## TriggerSkillV2 類定義
 
 ### 位置
-- Header: `src/core/skill.h` (line 452)
-- Implementation: `src/core/skill.cpp` (line 562-648)
+- Header: `src/core/skill.h` 的 `class TriggerSkillV2`（現約 :453）
+- Implementation: `src/core/skill.cpp` 的 `TriggerSkillV2` 建構式與各虛方法（現約 :823-932）
 
 ### 虛方法
 
@@ -228,7 +230,7 @@ ctx = ctx_data.value<SkillContext>();  // 取回修改後的 ctx
 
 ## TriggerEvent 時機枚舉
 
-**位置**: `src/core/structs.h` (line 844-850；EventSkillWillInvoke/EventSkillPay/EventSkillTargetConfirming/EventSkillInvoking/EventSkillEffect/EventSkillEffectTarget/EventSkillEffectFinished)
+**位置**: `src/core/structs.h` 的 `enum TriggerEvent`：`EventSkillWillInvoke`／`EventSkillPay`／`EventSkillTargetConfirming`／`EventSkillInvoking`／`EventSkillEffect`／`EventSkillEffectTarget`／`EventSkillEffectFinished`（現約 :898-904）
 
 | 枚舉值 | 觸發時機 | 典型應用 | data 類型 |
 |--------|----------|----------|-----------|
@@ -244,7 +246,7 @@ ctx = ctx_data.value<SkillContext>();  // 取回修改後的 ctx
 
 ### LuaTriggerSkillV2
 
-**位置**: `src/core/lua-wrapper.h` (line 78)
+**位置**: `src/core/lua-wrapper.h` 的 `class LuaTriggerSkillV2`（現約 :78）
 
 ### 回调函数
 
@@ -264,7 +266,7 @@ ctx = ctx_data.value<SkillContext>();  // 取回修改後的 ctx
 
 ### Lua 工廠函數
 
-**位置**: `lua/sgs_ex.lua` (line 80)
+**位置**: `lua/sgs_ex.lua` 的 `sgs.CreateTriggerSkillV2` 工廠函數（現約 :80）
 
 ```lua
 sgs.CreateTriggerSkillV2 {
@@ -661,7 +663,7 @@ return self:objectName().."->"..table.concat(targets, "+")
 const TriggerSkill *getTriggerSkill(const QString &skill_name) const;
 const TriggerSkill *getTriggerSkill(const QString &skill_name, int instanceId) const;
 // 註：instanceId 參數僅為相容保留，實作直接回傳 getTriggerSkill(skill_name)
-// （engine.cpp:2205-2207）；無 m_triggerSkillsByInstance 容器
+// （engine.cpp:2446-2449）；無 m_triggerSkillsByInstance 容器
 ```
 
 ### Player 類（玩家層實例 API）
@@ -685,13 +687,13 @@ QList<int> getValidSkillInstanceIds(const QString &skill_name) const;     // 過
 | 呼叫方式 | 行為 |
 |---------|------|
 | `acquireSkill(player, "baGua")` | `Player::acquireSkill` 自動分配新 instanceId（max+1） |
-| `acquireSkill(player, "baGua#3")` | **無效**：`Sanguosha->getSkill("baGua#3")` 查找失敗直接回 0（room.cpp:8655-8658） |
+| `acquireSkill(player, "baGua#3")` | **無效**：`Sanguosha->getSkill("baGua#3")` 查找失敗直接回 0（守衛在 `src/server/skill-runtime-coordinator.cpp` 的 `SkillRuntimeCoordinator::acquireSkill`，現約 :345-347；`Room::acquireSkill` 於 `src/server/room.cpp` 委派，現約 :4099-4107） |
 | `acquireSkill(player, skillPtr)` | 委派到 `acquireSkill(player, skill->objectName(), ...)`，同樣自動分配 |
 | `Player::acquireSkill("baGua", head, 3)` | **精確指定 instanceId=3**（僅 Player 層第 3 參數支援；已存在同名同 ID 則自動重分配） |
 
 ## parseSkillName 格式解析
 
-**位置**: `TriggerSkillV2::parseSkillName`（src/core/skill.cpp:932）；`#` 段實際解析委託 `SkillInstanceUtils::parseName`（src/core/skill-instance-utils.cpp:87，處理隱藏技能 `#` 開頭）
+**位置**: `TriggerSkillV2::parseSkillName`（`src/core/skill.cpp`，現約 :932）；`#` 段實際解析委託 `SkillInstanceUtils::parseName`（`src/core/skill-instance-utils.cpp`，現約 :87，處理隱藏技能 `#` 開頭）
 
 ```
 格式: source'name*multiplier#instanceId
@@ -829,7 +831,7 @@ struct SkillContext {
 | 方法 | 說明 |
 |------|------|
 | `getBaseAmount()` | 返回技能基礎數值，預設 1 |
-| `getEffectiveAmount(ctx)` | 返回有效數值（`ctx.hasModifiedAmount()` 時用 `modified_amount`，否則用已填入的 `ctx.amount`；實作見 skill.cpp:925） |
+| `getEffectiveAmount(ctx)` | 返回有效數值（`ctx.hasModifiedAmount()` 時用 `modified_amount`，否則用已填入的 `ctx.amount`；實作見 `src/core/skill.cpp` 的 `TriggerSkillV2::getEffectiveAmount`，現約 :925） |
 
 ### Lua 技能定義
 
@@ -891,7 +893,7 @@ getEffectiveAmount(ctx) 返回值：
 
 ### SkillContext 結構
 
-**位置**: `src/core/skill.h` (line 11-58；與 §核心資料結構 同一結構，此處僅列次數相關欄位)
+**位置**: `src/core/skill.h` 的 `struct SkillContext`（現約 :12-59；與 §核心資料結構 同一結構，此處僅列次數相關欄位）
 
 ```cpp
 struct SkillContext {
@@ -923,7 +925,7 @@ struct SkillContext {
 };
 ```
 
-**使用次數歸屬**: 以 `SkillInstanceRef`（`sourceRef`／`activationRef`，含 owner objectName + skillName + instanceID）為唯一鍵；`getUsageHolder()`（skill.cpp:1462）依 ref 的 owner 解析實際持有者，無法解析時依 `owner` → `invoker` → `initiator` 順序找 Room 並記 `qWarning`。適用於放權等跨角色發動情境。
+**使用次數歸屬**: 以 `SkillInstanceRef`（`sourceRef`／`activationRef`，含 owner objectName + skillName + instanceID）為唯一鍵；`getUsageHolder()`（`src/core/skill.cpp` 的 `Skill::getUsageHolder`，現約 :1462）依 ref 的 owner 解析實際持有者，無法解析時依 `owner` → `invoker` → `initiator` 順序找 Room 並記 `qWarning`。適用於放權等跨角色發動情境。
 
 ### SkillLimitScope 枚舉
 
@@ -942,7 +944,7 @@ enum LimitScope {
 
 ### Mark 命名格式
 
-實作：`SkillInstanceUtils::formatUsageMarkKey`（skill-instance-utils.cpp:19）＝ `Usage_技能名_實例ID{後綴}`；後綴由 `Skill::getUsageTagKey`（skill.cpp:1499）依 scope 決定。
+實作：`SkillInstanceUtils::formatUsageMarkKey`（`src/core/skill-instance-utils.cpp`，現約 :19）＝ `Usage_技能名_實例ID{後綴}`；後綴由 `Skill::getUsageTagKey`（`src/core/skill.cpp`，現約 :1499）依 scope 決定。
 
 | Scope | Tag Key | 自動清除時機 |
 |-------|---------|-------------|
@@ -1125,7 +1127,7 @@ local baGua = sgs.CreateTriggerSkillV2 {
 
 #### Player 類
 
-**位置**: `src/core/player.h` (line 171-172)
+**位置**: `src/core/player.h` 的 `Player::isSkillInvalid` 兩個 overload（現約 :171-172）
 
 ```cpp
 bool isSkillInvalid(const Skill *skill) const;
@@ -1134,7 +1136,7 @@ bool isSkillInvalid(const QString &skill_name, int instanceId = 0) const;
 
 #### Room 類
 
-**位置**: `src/server/room.h` (line 363；addSkillInvalidity / removeSkillInvalidity / clearSkillInvalidityBySource)
+**位置**: `src/server/room.h` 的 `Room` 宣告：`addSkillInvalidity`／`removeSkillInvalidity`／`clearSkillInvalidityBySource`（現約 :426-428）
 
 ```cpp
 void addSkillInvalidity(ServerPlayer *target, const QString &skillName,
@@ -1148,7 +1150,7 @@ void clearSkillInvalidityBySource(ServerPlayer *source);
 
 ### isEquipSkill 虛方法
 
-**位置**: `src/core/skill.h` (line 205)
+**位置**: `src/core/skill.h` 的 `Skill::isEquipSkill` 虛方法（現約 :205）
 
 用於判斷是否為裝備技（裝備技不受 `"all"` 失效影響）：
 
@@ -1161,7 +1163,7 @@ void clearSkillInvalidityBySource(ServerPlayer *source);
 
 ### 觸發過濾
 
-**位置**: `src/server/roomthread.cpp` (line 791；`triggerV2Skills()` 內 `isSkillInvalid()` 過濾；`#` 解析走集中 helper)
+**位置**: `src/server/roomthread.cpp` 的 `RoomThread::triggerV2Skills()`（現約 :1009 起；函式內 `isSkillInvalid()` 過濾約 :1080-1082；`#` 解析走集中 helper）
 
 在 `triggerV2Skills()` 中，`triggerable()` 返回的技能會經過 `isSkillInvalid()` 檢查（實作節錄）：
 
@@ -1181,7 +1183,7 @@ if (instanceId > 0) {
 
 ### 自動清理
 
-**位置**: `src/server/gamerule.cpp` (line 1242；BuryVictim 內 `clearSkillInvalidityBySource(player)`)
+**位置**: `src/server/gamerule.cpp` 的 `GameRule::trigger()` 內 `case BuryVictim`（現約 :1257）的 `clearSkillInvalidityBySource(player)`（現約 :1262）
 
 當武將死亡時（`BuryVictim`），自動清理該武將造成的所有失效狀態：
 
@@ -1195,7 +1197,7 @@ case BuryVictim: {
 
 ### TriggerEvent 觸發
 
-**位置**: `src/core/structs.h` (line 840-841；EventSkillInvalidated / EventSkillValidityRestored)
+**位置**: `src/core/structs.h` 的 `enum TriggerEvent`：`EventSkillInvalidated`／`EventSkillValidityRestored`（現約 :894-895）
 
 新增兩個 TriggerEvent 用於監聽技能失效狀態變更：
 
@@ -1536,7 +1538,7 @@ struct SkillContext {
 
 ```
 EventSkillWillInvoke
-EventSkillAskForChoice  // 新增：詢問選擇前觸發，其他技能可修改選項
+EventAskForChoice  // 新增：詢問選擇前觸發，其他技能可修改選項
 EventSkillPay
 EventSkillTargetConfirming
 ...

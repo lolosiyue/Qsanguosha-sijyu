@@ -97,7 +97,7 @@ image/fullskin/dynamicSkin/[generalName]/dynamicSkin/
 ### 路徑判斷邏輯
 
 ```cpp
-// src/ui/CharacterSpineActionController.cpp:295-303
+// src/ui/CharacterSpineActionController.cpp:302-308
 static QString buildDynamicSkinRoot(const QString &resolvedGeneral, int skinIndex)
 {
     if (skinIndex > 0) {
@@ -183,7 +183,7 @@ static QString buildDynamicSkinRoot(const QString &resolvedGeneral, int skinInde
 皮膚索引從配置中讀取：
 
 ```cpp
-// src/ui/roomscene.cpp:6538
+// src/ui/roomscene.cpp:7480（其餘讀取點：:858、:865、:1012、:5799、:5807、:5820、:5829）
 int skinIndex = Config.value(QString("HeroSkin/%1").arg(generalName), 0).toInt();
 ```
 
@@ -208,7 +208,7 @@ int skinIndex = Config.value(QString("HeroSkin/%1").arg(generalName), 0).toInt()
 ## 相關文檔
 
 - **完整皮膚系統說明**：請參考 `hero-skin-guide.md`
-- **程式碼參考**：`src/ui/CharacterSpineActionController.cpp:295-303`
+- **程式碼參考**：`src/ui/CharacterSpineActionController.cpp:302-308`
 
 ---
 

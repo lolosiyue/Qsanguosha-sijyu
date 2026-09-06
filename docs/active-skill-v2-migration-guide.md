@@ -234,15 +234,20 @@ AI use_func / ai_skill_use_func
 ### 13.1 通用 AIRequest／AIResult 與 VM 遷移
 
 - 新 AI 邊界只使用 value-only `AIRequest`／`AIResult`。`activate` 與 `askForUseCard`
-  共用同一 gate；`ActionKind` 區分出牌、回應與取消，`AIResult` 在提交前轉成
-  `CardActionSpec`，由 Room 驗證 result 回送同一 request 的 revision、牌／目標 ID 與 quota。
-  權威 gameplay revision ledger 尚未接入，純 request/query 不得推進 revision。
+  共用同一 gate；`AIRequest::DecisionKind { Activate, UseCard }` 區分決策種類，
+  `AIResult::ActionKind { Pass, UseCard }` 僅兩值——出牌與回應共用 `UseCard`、取消為
+  `Pass`；`AIResult` 在提交前轉成 `CardActionSpec`，由 Room 驗證 result 回送同一 request
+  的 revision、牌／目標 ID 與 quota。權威 gameplay revision ledger 已接入：僅權威狀態變更
+  （`CardsMoved`／`PlayerPropertyChanged`）經 `RoomRuntime::advanceStateRevision()` 推進
+  （見 src/server/room-runtime.h、card-movement-service.cpp、player-state-service.cpp），
+  純 request/query 不得推進 revision。
 - ActiveSkillV2 的 activation/source identity 與 quota 僅作
-  `AIRequest.SkillActionContext`，不可另建技能專用 request/result，也不可把 instance ID
-  編碼進技能名稱或舊字串。
+  `AIRequest.skillActionContext`（型別 `AiSkillActionContext`，見 src/server/ai.h），
+  不可另建技能專用 request/result，也不可把 instance ID 編碼進技能名稱或舊字串。
 - 每個 Room 的 `AiLuaRuntime` 與 Gameplay Lua VM 分離，兩者均由 `RoomThread` 同步執行。
-  第一階段 Isolated handler 只取得 value-only request、`AiData` 與 decision-scoped `AiRng`；
-  完整 `AIWorldView` 尚未接入，未遷移 legacy AI 仍留在 Gameplay VM。
+  Isolated handler 取得 value-only request（含完整 `AIWorldView`，經
+  `AIRequest::worldView` 攜帶，由 src/server/ai-runtime.cpp 的 `pushAIWorldView()` 填入）、
+  `AiData` 與 decision-scoped `AiRng`；未遷移 legacy AI 仍留在 Gameplay VM。
 - `LegacyDirect` 僅供過渡；`LegacyAdapted` 將舊 `activate`／`askForUseCard` 結果複製成
   `AIResult`，再走通用 Room 驗證 gate。
 - 第一階段 `Isolated Shadow` 以同一 request 與獨立 deterministic `AiRng` 計算，只產生
@@ -310,5 +315,6 @@ V2 映射：
 
 - 本文件只建立規範。
 - 沒有正式技能獲准在核心 Ticket 1–12 內遷移。
-- 第一批實作只可加入 console tests 與 `~test` 合成技能。
+- 第一批實作的測試走既有自動化基建：CTest（`tests/CMakeLists.txt` 的 `qsan_add_ctest()`）
+  與 `tools/autotest/headless_runner.py`，並可加入 `~test` 合成技能。
 

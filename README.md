@@ -83,12 +83,13 @@ layout, the packaging pipeline and that decision.
 
 A Linux build produces the **headless server** (`qsanguosha_server`) by default —
 no GUI, no FMOD, no X11 dependency, linking `Qt6::Core`, `Qt6::Network`, and
-`Qt6::WebSockets`.
+`Qt6::WebSockets`. The Protocol V2 terminal client `qsanguosha_tui` is built and
+installed by default as well (see [docs/tui-client.md](docs/tui-client.md)).
 Add `-DQSAN_BUILD_GUI=ON` for the GUI client; that needs Qt 6.11 or newer, which
 is beyond what current distributions package.
 
 ```bash
-sudo apt install -y build-essential cmake ninja-build qt6-base-dev qt6-websockets-dev qt6-5compat-dev swig
+sudo apt install -y build-essential cmake ninja-build qt6-base-dev qt6-websockets-dev swig
 
 # GCC
 cmake -S . -B build-linux-gcc -G Ninja -DCMAKE_BUILD_TYPE=Debug \

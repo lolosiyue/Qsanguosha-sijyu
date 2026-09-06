@@ -53,7 +53,7 @@ end
 
 ### 2.2 `addAiSkills` 方式（新檔案推薦）
 
-定義於 `smart-ai.lua:8869`，流暢 API：
+定義於 `smart-ai.lua:8803`，流暢 API：
 
 ```lua
 addAiSkills("my_skill").getTurnUseCard = function(self)
@@ -125,14 +125,14 @@ end
 | `self:willSkipPlayPhase(player)` | 是否會跳過出牌階段 |
 | `self:hasSkills(skillList, player)` | 是否有列表中任一技能 |
 | `self:ajustDamage(from, to, dmg, card)` | 計算修正後傷害 |
-| `hasManjuanEffect(player)` | 是否有滿寵技能影響 |
+| `hasManjuanEffect(player)` | 是否有滿寵技能影響（定義於 `lua/ai/bgm-ai.lua`） |
 | `hasJueqingEffect(from, to, nature)` | 是否有絕情效果 |
 
 ---
 
 ## 4. 全域註冊表（Global Registration Tables）
 
-以下為 `smart-ai.lua:44-134` 定義的核心回呼表。
+以下為 `smart-ai.lua:62-152` 定義的核心回呼表。
 
 ### 4.1 技能觸發決策
 
@@ -277,7 +277,7 @@ AI 自己發起拼點時，`SmartAI:askForPindian` 會優先讀取
 
 ViewAsSkillV2 不另設平行 callback 表；出牌階段沿用 `ai_fill_skill`／
 `ai_skill_use_func`，特定詢問沿用 `ai_skill_use[pattern]`。新簽名只增加選用的
-`request` 參數，Lua 5.2 會忽略多餘參數，因此舊 AI 不需修改。
+`request` 參數，Lua 5.4 會忽略多餘參數，因此舊 AI 不需修改。
 
 Play phase 空閒時機：
 
@@ -556,14 +556,16 @@ end
 
 ## 8. 工具函數與全域輔助
 
-### 8.1 定義於 `lua/sgs_ex.lua`
+### 8.1 定義於 `lua/utilities.lua`
+
+由 `lua/sanguosha.lua` 以 `dofile` 載入（sanguosha.lua:16）。
 
 | 函數 | 說明 |
 |------|------|
 | `sgs.QList2Table(ql)` | QList 轉 Lua Table |
 | `sgs.qlist(obj)` | 迭代 QList |
 | `sgs.list(obj)` | 通用迭代（支援 QList 與 Table） |
-| `RandomList(tbl)` | 隨機順序列表 |
+| `RandomList(tbl)` | 隨機順序列表（定義於 `extensions/addFunction.lua`） |
 
 ### 8.2 定義於 `smart-ai.lua`
 
@@ -575,9 +577,9 @@ end
 | `getKnownCard(player, ...)` | 獲取已知的特定牌數量 |
 | `getCardsNum(name, player, from)` | 計算指定牌總數 |
 | `getKnownCards(player, from)` | 獲取所有已知牌 |
-| `hasManjuanEffect(player)` | 是否有滿寵技能影響 |
+| `hasManjuanEffect(player)` | 是否有滿寵技能影響（定義於 `lua/ai/bgm-ai.lua`） |
 | `hasJueqingEffect(from, to, nature)` | 是否有絕情效果 |
-| `dummyCard(name)` | 建立虛擬卡用於判斷 |
+| `dummyCard(name)` | 建立虛擬卡用於判斷（SWIG 導出的 C++ 全域函數，`src/core/util.h`） |
 | `dumpGameState(room, card)` | 除錯用狀態傾印 |
 
 ---
@@ -658,9 +660,10 @@ end
 
 ## 14. 檔案載入順序
 
-1. `lua/sgs_ex.lua` — 基礎 API（CreateTriggerSkill 等）
-2. `lua/ai/smart-ai.lua` — SmartAI 類別與全域表
-3. `lua/ai/{套件}-ai.lua` — 各套件 AI（依賴關係自行處理）
+1. `lua/config.lua` — 設定載入（`src/server/room-runtime.cpp:469`）
+2. `lua/sanguosha.lua` — 主載入入口：內部依序 `dofile` `lua/utilities.lua`（工具函數，sgs.QList2Table 等）與 `lua/sgs_ex.lua`（基礎 API，CreateTriggerSkill 等）（sanguosha.lua:16-17）
+3. `lua/ai/smart-ai.lua` — SmartAI 類別與全域表（`src/server/room-runtime.cpp:474`）
+4. `lua/ai/{套件}-ai.lua` — 各套件 AI（依賴關係自行處理）
 
 套件級檔案內無明確載入依賴 — 所有 AI 檔案均在伺服器啟動時載入，並填入全域表。
 

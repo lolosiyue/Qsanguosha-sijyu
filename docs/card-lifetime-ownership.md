@@ -14,11 +14,11 @@ before they are exposed to Lua or a managed Room domain.
 | `Card::Parse` temporary cards | native Card pointer | parser scope | scope exit | caller thread | PR1 / PR3 |
 | `DummyCard` decision paths | native Card pointer | decision boundary | safe point | Room thread | PR1 / PR6 |
 | `CardMoveReason::m_extraData` | QVariant Card payload | move reason | dispatch/copy end | Room thread | PR1 / PR5 |
-| `CardUseStruct::m_ownedCard` | native Card pointer | use struct | use completion | Room thread | PR1 / PR5 |
-| `Player::ComboMovesCard` | tagged QVariant Card pointer | Player tag | overwrite/clear | Room thread | PR1 / PR5 |
-| `gamerule.cpp:556 ComboMovesCard` | direct Card delete | Room game-rule cleanup | immediate legacy delete | Room thread | PR1 / PR4 |
+| `CardUseStruct::m_ownedCard` | owned smart pointer `OwnedCardPtr` | use struct | use completion | Room thread | PR1 / PR5 |
+| `Player::ComboMovesCard` | tagged QVariant `CardTagOwner` payload | Player tag | overwrite/clear | Room thread | PR1 / PR5 |
+| `gamerule.cpp:556 ComboMovesCard` | `CardTagOwner` tag payload (`QVariant::fromValue(CardTagOwner{...})`) | Room game-rule cleanup | deferred legacy deleteLater (`owner.card->deleteLater()`) plus tag remove | Room thread | PR1 / PR4 |
 | `gamerule.cpp:1345 judge card` | Card deferred delete | judge cleanup | deferred legacy deleteLater | Room thread | PR1 / PR4 |
-| `generic-cardcontainer-ui.cpp:1208 simulated equips` | Card deferred delete | UI simulation cleanup | deferred legacy deleteLater | UI thread | PR1 / PR4 |
+| `generic-cardcontainer-ui.cpp:990-1231 simulated equips` | Card deferred delete | UI simulation cleanup | deferred legacy deleteLater | UI thread | PR1 / PR4 |
 | `RoomState::m_cards` | WrappedCard map | RoomState | reset/destructor | `Room::thread()` | PR1 / PR5 / PR7 |
 | `Player::equips` | outer WrappedCard pointer | RoomState | Room mutation | `Room::thread()` | PR1 / PR4 |
 | `ai-runtime` Lua callback | Lua invocation scope | runtime | pcall return | runtime owner | PR1 / PR2 / PR6 |
