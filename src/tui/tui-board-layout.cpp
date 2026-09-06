@@ -36,45 +36,74 @@ int ceilDiv(int numerator, int denominator)
     return (numerator + denominator - 1) / denominator;
 }
 
-// The ordered list of opponent-grid cells (row, col) that seats fill in seat
-// order, for one page. Shape depends only on cellCols -- the degradation
-// ladder from spec 3.6 -- and is identical on every page, so paging never
-// changes which physical cell a given (seatOffset - 1) % capacity lands in.
+// The ordered list of opponent-grid cells (row, col) that the `n` seats on
+// one page fill, in seat order. Shape depends on cellCols -- the degradation
+// ladder from spec 3.6 -- and, for the ring (cellCols >= 3), on `n` itself:
+// see below for why the split cannot be a fixed function of the grid alone.
 //
 // This reduces RoomScene::updateTable()'s s_regularSeatIndex (roomscene.cpp,
 // ~line 1771) to the same three regions it ultimately buckets into. Per the
 // diagram at roomscene.cpp:~1848 ("| 4 | table | 3 |", region 5 = 0+3, region
 // 6 = 2+4) regions 3 and 5 sit on the RIGHT (x = col2, AlignRight) and 4 and
-// 6 sit on the LEFT (x = pad, AlignLeft); 1 and 7 are the top row. Every row
-// of s_regularSeatIndex opens with a right-side region, so on the desktop
-// the downstream neighbour (seatOffset 1) sits at the player's right -- the
-// walk below starts there for the same reason: someone who knows the desktop
-// client should be able to tell at a glance who is downstream.
+// 6 sit on the LEFT (x = pad, AlignLeft); 1 and 7 are the top row.
 //
-// Rows are interleaved right/top/left -- rather than exhausting one whole
-// column before moving to the next -- so a handful of opponents in a tall
-// grid still visits all three regions instead of piling straight down one
-// column: with 4 opponents and cellRows = 10 an exhaust-one-column-first walk
-// would place all 4 in the right column and never touch the top or the left,
-// which is not a ring, just a list.
+// The WITHIN-region direction also comes from the desktop, not just the
+// region membership: RoomScene::updateTable() (roomscene.cpp:~1949) appends
+// left-column (4/6) seats in seat order but PREPENDS top-row and right-column
+// (1/7, 3/5) seats, and _dispersePhotos then lays each region's list out
+// left-to-right (top) or top-to-bottom (sides) in list order. Net effect: the
+// right column reads bottom-to-top, the top row reads right-to-left, and the
+// left column reads top-to-bottom -- one continuous counter-clockwise ring
+// starting at the player's right. That is the one thing this function must
+// reproduce exactly, because it is the whole mechanism by which a player who
+// knows the desktop client can tell at a glance who is downstream; how many
+// seats each region gets is not (the desktop grows the side columns to keep
+// a fixed-size photo from getting too tall on a canvas, which does not apply
+// to a scrolling character grid, so that growth table is not reproduced).
 //
-// The desktop instead grows the left/right column *counts* as the seat count
-// rises, balancing them so no side gets too tall for a fixed-size photo on a
-// canvas -- a constraint that does not apply to a scrolling character grid,
-// so that balancing table is not reproduced verbatim here.
-QVector<std::pair<int, int>> orderedGridCells(int cellCols, int cellRows)
+// The side/top split is computed from `n`, the actual population of this
+// page, rather than from cellRows*cellCols: a fixed split sized for a full
+// page (up to `capacity` seats) would let a handful of opponents exhaust the
+// right column's full height before ever reaching the top or the left --
+// visually a list, not a ring. Growing the sides by roughly a quarter of `n`
+// keeps a small page's ring proportioned to what is actually on it.
+QVector<std::pair<int, int>> orderedGridCells(int cellCols, int cellRows, int n)
 {
     QVector<std::pair<int, int>> cells;
     if (cellCols >= 3) {
-        for (int r = 0; r < cellRows; ++r) {
-            cells.append({r, cellCols - 1}); // right column
-            for (int c = 1; c < cellCols - 1; ++c)
-                cells.append({r, c});        // top row(s), middle columns
-            cells.append({r, 0});            // left column
+        const int topWidth = cellCols - 2; // middle columns available per row
+        int side = std::min({cellRows, (n + 3) / 4, n / 2});
+        int top = n - 2 * side;
+        // A tall, narrow grid (few middle columns, many seats) can still
+        // overflow the top strip even with both sides at their maximum
+        // height; hand the sides more of the population until it fits, which
+        // capacity() guarantees is possible by the time side == cellRows.
+        while (top > topWidth * cellRows && side < cellRows) {
+            ++side;
+            top = n - 2 * side;
         }
+
+        // Right column, bottom to top -- nearest the player first.
+        for (int i = 0; i < side; ++i)
+            cells.append({cellRows - 1 - i, cellCols - 1});
+
+        // Top row(s), right to left, filling one row before starting the
+        // next.
+        int placed = 0;
+        for (int r = 0; placed < top; ++r) {
+            for (int c = topWidth; c >= 1 && placed < top; --c, ++placed)
+                cells.append({r, c});
+        }
+
+        // Left column, top to bottom.
+        for (int i = 0; i < side; ++i)
+            cells.append({i, 0});
     } else if (cellCols == 2) {
         // No width left for a top row: alternate right/left starting from
-        // the downstream neighbour on the right.
+        // the downstream neighbour on the right. (This is the TUI's own
+        // degradation, with no desktop equivalent, so it keeps the spec's
+        // original top-to-bottom alternation rather than the ring's
+        // bottom-to-top reversal.)
         for (int r = 0; r < cellRows; ++r) {
             cells.append({r, 1});
             cells.append({r, 0});
@@ -156,15 +185,24 @@ TuiBoardGeometry tuiComputeBoardGeometry(int rows, int cols, int playerCount, in
     geometry.self = TuiRect{geometry.room.row + roomRows - CellHeight, geometry.room.col,
         CellHeight, roomCols};
 
-    const QVector<std::pair<int, int>> gridCells = orderedGridCells(cellCols, cellRows);
+    // Each page gets its own ring, sized to that page's own population (see
+    // orderedGridCells) rather than one grid-wide list reused via modulo --
+    // every page before the last is full (`capacity` seats), but the last
+    // page's ring is proportioned to however many seats actually land on it.
     geometry.seatSlots.reserve(opponentCount);
-    for (int idx = 0; idx < opponentCount; ++idx) {
-        TuiSeatSlot slot;
-        slot.seatOffset = idx + 1;
-        slot.page = idx / capacity;
-        const int posInPage = idx % capacity;
-        slot.rect = gridCellRect(gridCells.at(posInPage), geometry.room, roomCols);
-        geometry.seatSlots.append(slot);
+    int remaining = opponentCount;
+    int seatOffset = 1;
+    for (int page = 0; remaining > 0; ++page) {
+        const int pageSize = std::min(capacity, remaining);
+        const QVector<std::pair<int, int>> gridCells = orderedGridCells(cellCols, cellRows, pageSize);
+        for (int i = 0; i < pageSize; ++i) {
+            TuiSeatSlot slot;
+            slot.seatOffset = seatOffset++;
+            slot.page = page;
+            slot.rect = gridCellRect(gridCells.at(i), geometry.room, roomCols);
+            geometry.seatSlots.append(slot);
+        }
+        remaining -= pageSize;
     }
 
     return geometry;
