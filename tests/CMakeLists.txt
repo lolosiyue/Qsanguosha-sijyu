@@ -341,6 +341,7 @@ if(QSAN_BUILD_TUI)
         tui/tui-screen-test.cpp
         tui/tui-terminal-test.cpp
         tui/tui-line-editor-test.cpp
+        tui/tui-ui-mode-test.cpp
         ${QSAN_TEST_ROOT}/src/client/client-live-session.cpp
         ${QSAN_TEST_ROOT}/src/client/interaction-command-registry.cpp
         ${QSAN_TEST_ROOT}/src/client/interaction-reply-coordinator.cpp
@@ -358,6 +359,7 @@ if(QSAN_BUILD_TUI)
         ${QSAN_TEST_ROOT}/src/tui/tui-target-advice.cpp
         ${QSAN_TEST_ROOT}/src/tui/tui-terminal.cpp
         ${QSAN_TEST_ROOT}/src/tui/tui-line-editor.cpp
+        ${QSAN_TEST_ROOT}/src/tui/tui-ui-mode.cpp
     )
     set_source_files_properties(tui/tui-board-layout-test.cpp
         PROPERTIES COMPILE_DEFINITIONS main=runTuiBoardLayoutTests)
@@ -389,6 +391,8 @@ if(QSAN_BUILD_TUI)
         PROPERTIES COMPILE_DEFINITIONS main=runTuiTerminalTests)
     set_source_files_properties(tui/tui-line-editor-test.cpp
         PROPERTIES COMPILE_DEFINITIONS main=runTuiLineEditorTests)
+    set_source_files_properties(tui/tui-ui-mode-test.cpp
+        PROPERTIES COMPILE_DEFINITIONS main=runTuiUiModeTests)
     target_include_directories(qsanguosha_tui_tests PRIVATE
         ${QSAN_TEST_ROOT}/src/client
         ${QSAN_TEST_ROOT}/src/client/core
@@ -480,6 +484,11 @@ if(QSAN_BUILD_TUI)
     )
     qsan_add_ctest(qsanguosha_tui_line_editor qsanguosha_tui_tests
         SUITE line-editor
+        LABELS "client;tui;fast"
+        TIMEOUT 120
+    )
+    qsan_add_ctest(qsanguosha_tui_ui_mode qsanguosha_tui_tests
+        SUITE ui-mode
         LABELS "client;tui;fast"
         TIMEOUT 120
     )
