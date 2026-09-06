@@ -480,6 +480,9 @@ public:
 
     void setEmotion(ServerPlayer*target, const QString&emotion);
     void setLoopEmotion(ServerPlayer*target, const QString&emotion);
+    void akarinPlayer(ServerPlayer*player, ServerPlayer*to = nullptr);
+    void removeAkarinEffect(ServerPlayer*player, ServerPlayer*to = nullptr);
+    bool isAkarin(ServerPlayer*player, ServerPlayer*to = nullptr) const;
 
     void changeTableBg(const QString&tableBg);
     void changeBackground(const QString name, QList<ServerPlayer *> players = QList<ServerPlayer *>());

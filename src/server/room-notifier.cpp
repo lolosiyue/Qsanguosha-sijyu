@@ -162,6 +162,15 @@ void RoomNotifier::broadcastSkillInvoke(const QString &skillName, bool isMale, i
     doBroadcastNotify(S_COMMAND_LOG_EVENT, args);
 }
 
+void RoomNotifier::notifyAkarinVisibility(ServerPlayer *player, bool hidden,
+                                          const QList<ServerPlayer *> &viewers)
+{
+    if (!player || viewers.isEmpty()) return;
+    JsonArray args;
+    args << S_GAME_EVENT_AKARIN << player->objectName() << hidden;
+    doBroadcastNotify(viewers, S_COMMAND_LOG_EVENT, args);
+}
+
 void RoomNotifier::broadcastTagProperty(ServerPlayer *owner, const QString &tagKey,
                                         const QVariant &value)
 {
