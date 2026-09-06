@@ -7,11 +7,12 @@
 #include <QTimer>
 
 #include <algorithm>
-#include <cstdio>
 #include <utility>
 
 #if defined(Q_OS_UNIX)
 #include <unistd.h>
+#else
+#include <io.h>
 #endif
 
 namespace {
@@ -245,6 +246,7 @@ void TuiBoardPresenter::scrollOverlay(TuiKey key)
 void TuiBoardPresenter::repaint()
 {
     m_repaintPending = false;
+    ++m_repaintCount;
 
     if (m_state != nullptr) {
         const TuiBoardGeometry geometry =
@@ -293,18 +295,15 @@ void TuiBoardPresenter::flushToTerminal()
     if (diff.isEmpty())
         return;
     const QByteArray bytes = diff.toUtf8();
+    // Through TuiTerminal::outFd(), not an assumed STDOUT_FILENO: this class
+    // was given an fd-taking constructor precisely so its output target is
+    // explicit rather than assumed, and writing past that accessor would put
+    // the assumption right back (a TuiTerminal built over some other fd pair
+    // -- a test harness, say -- would otherwise silently not see this output).
+    const int fd = m_terminal->outFd();
 #if defined(Q_OS_UNIX)
-    // TuiTerminal itself exposes no write() (it only takes the terminal into
-    // raw mode / the alternate screen and hands back size()/enter()/leave()),
-    // and every production caller constructs it over the process's real
-    // stdin/stdout, so writing here goes straight to that fd rather than
-    // through the TuiTerminal object. A TuiTerminal built over some other fd
-    // pair (a test harness, say) would not see this output -- there is no
-    // such caller today, but a future one should add a real write() to
-    // TuiTerminal rather than relying on this.
-    ::write(STDOUT_FILENO, bytes.constData(), static_cast<size_t>(bytes.size()));
+    ::write(fd, bytes.constData(), static_cast<size_t>(bytes.size()));
 #else
-    std::fwrite(bytes.constData(), 1, static_cast<size_t>(bytes.size()), stdout);
-    std::fflush(stdout);
+    _write(fd, bytes.constData(), static_cast<unsigned int>(bytes.size()));
 #endif
 }
