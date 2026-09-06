@@ -72,6 +72,7 @@ debug\qsanguosha_tui.exe --host 127.0.0.1 --port 9527 `
 | `--script <path>` | 使用與真人相同的 input/controller pipeline |
 | `--asset-root <directory>` | 明確指定 runtime data root |
 | `--dump-translations <path>` | 初始化 Engine 後把翻譯表寫成 compact JSON 並結束；給 [`web-client.md`](web-client.md) 使用 |
+| `--ui <classic\|board>` | 界面模式；不帶旗標且 stdin／stdout 皆為 TTY 時，啟動前詢問一次並可記住這次選擇（見下方「Board 模式」） |
 | `--help`／`--version` | UTF-8 usage／版本輸出，不初始化 GUI |
 
 固定 exit code：正常 `0`、CLI 使用錯誤 `2`、連線 `3`、Protocol `4`、
@@ -83,12 +84,15 @@ debug\qsanguosha_tui.exe --host 127.0.0.1 --port 9527 `
 /help /status /players /hand /equip /piles /skills /log
 /chat <text> /trust [on|off] /addrobot [all|count]
 /surrender /reconnect /quit
+/board <頁碼>
 ```
 
 `/chat`、`/trust`、`/addrobot` 與 `/surrender` 先產生 typed intent，再由
 controller 送到 live session；command parser 不建立 wire payload。Active prompt
 期間只接受 `/cancel`、`/quit` 與唯讀查詢命令，避免 slash command 被誤認為
-interaction answer。
+interaction answer。`/board` 只在 board 模式下可用，是純本地視圖指令（翻到指定
+頁碼），不產生 wire 訊息，也不受上述「active prompt 期間只接受唯讀查詢」限制
+影響作答（見下方「Board 模式」）。
 
 ## Interaction grammar
 
@@ -132,9 +136,44 @@ log 與 game-over。Renderer 只列出自己已知手牌、公開區域與 serve
 stdin 由 Windows waitable console handle 或 Unix `QSocketNotifier` 非同步讀取，不在
 Qt event loop 執行 blocking `getline()`，也不由 worker thread 修改 state。EOF、
 Ctrl+C 及 `/quit` 都會取消 active interaction、graceful disconnect，並恢復 Windows
-console mode 與 UTF-8 前的 code page。Server／chat／username 輸出的 ANSI escape
-與 control character 會清理；command 4096 字元、chat 1000 字元，renderer/log
-亦有長度上限。
+console mode 與 UTF-8 前的 code page。
+
+兩平台現在共用同一條 `TuiInput::interruptRequested` 路徑：Windows 由 console 分支
+送出，Unix 由 `tuiInstallInterruptHandler()` 安裝的 SIGINT handler 送出——board 模式
+下這個 handler 與 `TuiTerminal::enter()` 的終端還原共用同一個 `sigaction(SIGINT, ...)`
+安裝點，兩者裝哪個都不會使另一個失效（見下方「Board 模式」）。這是修正過的行為：
+在此之前 `interruptRequested` 只有 Windows console 分支會 emit，Linux 上完全沒有
+對應處理，Ctrl+C 走的是預設 SIGINT 行為，直接終止行程，不會 graceful disconnect。
+Server／chat／username 輸出的 ANSI escape 與 control character 會清理；command
+4096 字元、chat 1000 字元，renderer/log 亦有長度上限。
+
+## Board 模式
+
+`--ui board`（或啟動時詢問後選擇 board）把輸出換成全螢幕 ASCII 牌桌，取代 classic
+的逐行輸出；兩者共用同一套 `lineReady(QString)` 輸入出口、`ClientCore` 與 reply
+encoder，parser 不知道自己在哪個模式（見上方「共用架構」與
+[`tui-board-ui.md`](tui-board-ui.md) §1、§2）。畫面分四塊：房間區（座位環，開局前
+顯示等待室：伺服器、模式、人數進度、已加入玩家）、戰報／訊息欄、手牌欄、輸入欄
+（提示行＋一行行編輯，支援 ←→／Tab／↑↓）。
+
+座位放不下時走容量分頁而非降級列表：房間區標題顯示 `‹頁碼/總頁數›`，`PgUp`／
+`PgDn` 或 `/board <頁碼>` 翻頁；回合轉換或互動請求彈出時自動翻到相關頁，手動翻頁
+只壓住自動跟隨到下一次回合轉換或下一個請求為止。`/players`、`/log`、`/hand` 等
+長內容改走全螢幕 overlay（而非把牌桌擠出畫面），內容即 classic 排版本身，
+`Esc`／`q`／空格關閉，方向鍵／`PgUp`／`PgDn` 捲動。
+
+終端尺寸下限 `60×18`；小於此值不強行繪製，顯示提示訊息並持續接收訊息與正常作答，
+放大到足夠即恢復繪製（詳見 `tui-board-ui.md` §3.5）。
+
+**Windows 上暫不提供 board 模式**：`TuiTerminal` 在 Windows 上只有安全的空實作
+（raw mode／alternate screen 皆未實作），因此明確指定 `--ui board` 會以 exit code
+`2` 拒絕並說明原因，未指定 `--ui` 的自動判斷路徑則靜默退回 classic。這不是暫時的
+潤飾缺口，而是需要另外設計 Windows console API 對應行為的後續工作。
+
+**證據紀律**：board 模式在 CI 完全無法執行（CI runner 沒有穩定的 pty），因此
+「board 可用」這個結論只由本機 `tools/autotest/tui_board_smoke.py`（raw mode／
+`SIGWINCH`／終端還原）與 `tests/tui/*-test.cpp` 的 golden test 支撐；CI 綠燈不得
+被當成 board 模式本身可用的證明（見 `tui-board-ui.md` §7.5）。
 
 ## Reconnect
 

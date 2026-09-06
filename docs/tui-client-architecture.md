@@ -50,6 +50,27 @@ Qt Core／Network 上的 line-oriented text client。
   `lang/<語言>/TUICommon.lua`（254 條，與 `Common.lua` 同一個 `lua/sanguosha.lua`
   載入路徑）。查不到即原樣印出 key，所以缺一條看得見；例外只有 `tui-main.cpp` 的
   命令行說明（在引擎起來之前就要印）與玩家輸入時接受的簡繁別名。
+- `TuiApplicationController` 與輸出之間現在插了一層 `TuiPresenter` 介面
+  （[`tui-board-ui.md`](tui-board-ui.md) §2）：controller 的 21 個 `writeOutput()`
+  呼叫點、所有 slot 接線與 `--script` 路徑都不知道自己在哪個模式，實際輸出交給
+  下面兩種實作之一：
+
+  ```text
+  TuiApplicationController
+    └── TuiPresenter *              啟動時決定，controller 不知道自己在哪個模式
+          ├── TuiStreamPresenter    classic：包住現有 TuiRenderer + QTextStream(stdout)
+          └── TuiBoardPresenter     board
+                ├── TuiTerminal     raw mode / alternate screen / 尺寸 / SIGWINCH / 還原
+                ├── TuiScreen       cell grid 幀緩衝 + diff → 最小 ANSI
+                ├── TuiBoardLayout  純函數：(rows, cols, 玩家數) → pane rect + 座位幾何
+                └── TuiBoardView    讀 ClientGameState 畫入 TuiScreen
+  ```
+
+  `TuiStreamPresenter` 只是把既有 classic 行為（`TuiRenderer` 逐行輸出）搬進這層介面，
+  逐位元組不變；`TuiBoardPresenter` 是全螢幕 ASCII 牌桌（board 模式），兩者共用同一個
+  `lineReady(QString)` 輸入出口與 `ClientCore` 驗證路徑，parser 完全不感知呈現層的
+  存在。詳細分頁、overlay、Windows 限制與驗收證據見 [`tui-client.md`](tui-client.md)
+  的「Board 模式」一節與 `tui-board-ui.md` 全文。
 
 ### 2.2 尚未具備完整純文字 client 的部分
 
