@@ -42,35 +42,42 @@ int ceilDiv(int numerator, int denominator)
 // changes which physical cell a given (seatOffset - 1) % capacity lands in.
 //
 // This reduces RoomScene::updateTable()'s s_regularSeatIndex (roomscene.cpp,
-// ~line 1771) to the same three regions it ultimately buckets into (3/5 ->
-// left, 1/7 -> top, 4/6 -> right), walked in a fixed left/top/right order
-// instead of the desktop's count-balancing table: the desktop grows the left
-// and right columns as the seat count rises so no side gets too tall, which
-// matters for a fixed-size photo on a canvas. In a scrolling character grid
-// that balancing has no payoff -- a plain walk already satisfies the one
-// property the layout actually needs to guarantee (every seatOffset placed
-// exactly once, in order) -- so the simpler walk is what is implemented here.
+// ~line 1771) to the same three regions it ultimately buckets into. Per the
+// diagram at roomscene.cpp:~1848 ("| 4 | table | 3 |", region 5 = 0+3, region
+// 6 = 2+4) regions 3 and 5 sit on the RIGHT (x = col2, AlignRight) and 4 and
+// 6 sit on the LEFT (x = pad, AlignLeft); 1 and 7 are the top row. Every row
+// of s_regularSeatIndex opens with a right-side region, so on the desktop
+// the downstream neighbour (seatOffset 1) sits at the player's right -- the
+// walk below starts there for the same reason: someone who knows the desktop
+// client should be able to tell at a glance who is downstream.
+//
+// Rows are interleaved right/top/left -- rather than exhausting one whole
+// column before moving to the next -- so a handful of opponents in a tall
+// grid still visits all three regions instead of piling straight down one
+// column: with 4 opponents and cellRows = 10 an exhaust-one-column-first walk
+// would place all 4 in the right column and never touch the top or the left,
+// which is not a ring, just a list.
+//
+// The desktop instead grows the left/right column *counts* as the seat count
+// rises, balancing them so no side gets too tall for a fixed-size photo on a
+// canvas -- a constraint that does not apply to a scrolling character grid,
+// so that balancing table is not reproduced verbatim here.
 QVector<std::pair<int, int>> orderedGridCells(int cellCols, int cellRows)
 {
     QVector<std::pair<int, int>> cells;
     if (cellCols >= 3) {
-        // Left column, downstream neighbour first (top to bottom); then the
-        // top row(s) across the middle columns, left to right; then the
-        // right column, top to bottom.
-        for (int r = 0; r < cellRows; ++r)
-            cells.append({r, 0});
         for (int r = 0; r < cellRows; ++r) {
+            cells.append({r, cellCols - 1}); // right column
             for (int c = 1; c < cellCols - 1; ++c)
-                cells.append({r, c});
+                cells.append({r, c});        // top row(s), middle columns
+            cells.append({r, 0});            // left column
         }
-        for (int r = 0; r < cellRows; ++r)
-            cells.append({r, cellCols - 1});
     } else if (cellCols == 2) {
-        // No width left for a top row: alternate left/right starting from
-        // the downstream neighbour.
+        // No width left for a top row: alternate right/left starting from
+        // the downstream neighbour on the right.
         for (int r = 0; r < cellRows; ++r) {
-            cells.append({r, 0});
             cells.append({r, 1});
+            cells.append({r, 0});
         }
     } else {
         // A single cell-column: just stack downward from the downstream
@@ -126,7 +133,11 @@ TuiBoardGeometry tuiComputeBoardGeometry(int rows, int cols, int playerCount, in
     // terminal takes exactly the same "does it fit, and if not, page" path a
     // 20-player game takes in the same terminal; there is deliberately no
     // branch anywhere in this function that asks "is this a lot of
-    // players?". One cell is reserved for the central draw/discard pile.
+    // players?". One cell is reserved for the central draw/discard pile --
+    // except in the degenerate 1x1 grid (reachable at exactly 60x18 with
+    // handLines >= 4), where max(1, ...) hands that single cell to a seat
+    // instead: a page that seats nobody is worse than a page with no visible
+    // pile marker.
     const int capacity = std::max(1, cellCols * cellRows - 1);
 
     geometry.usable = true;
