@@ -45,6 +45,22 @@ public:
     // signal keeps the viewport in sync (see the constructor body).
     explicit TuiBoardPresenter(QSize size, TuiResolvers resolvers, TuiTerminal *terminal = nullptr);
 
+    // Called by the controller once TuiTerminal::enter() has actually put the
+    // terminal into the alternate screen (see start() in
+    // tui-application-controller.cpp). Before this runs, flushToTerminal()
+    // holds every frame instead of writing it: this presenter is constructed,
+    // and paints its first frame, well before enter() has run, and writing
+    // that frame straight to the terminal's raw fd at that point would land on
+    // the user's real (primary) screen instead of the alternate one -- an
+    // ordering bug, not a cosmetic one, since those bytes would then persist
+    // in the shell's scrollback after the alternate screen is later left. If
+    // enter() never succeeds, this is never called, and nothing this
+    // presenter draws ever reaches the terminal. Safe to call more than once;
+    // only the first call does anything. No-op when constructed without a
+    // real terminal (the unit test's form): flushToTerminal() already never
+    // touches a null m_terminal, so there is nothing here to hold back.
+    void terminalEntered();
+
     void writeOutput(const QString &text) override;
     void writeError(const QString &text) override;
     void shutdown() override;
@@ -137,6 +153,12 @@ private:
     bool m_repaintPending = false;
     // Backs repaintCountForTest() above.
     int m_repaintCount = 0;
+
+    // Gates flushToTerminal() until terminalEntered() releases it (see that
+    // method's comment). Starts true when there is no real terminal to guard
+    // against (m_terminal == nullptr, the unit test's construction form), so
+    // that form's behaviour is unchanged.
+    bool m_terminalReady;
 };
 
 #endif
