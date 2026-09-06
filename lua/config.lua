@@ -22,6 +22,10 @@ config = {
 		wakeskill = "#800080",
 		lordskill = "#FFA500",
 		oppphskill = "#008000",
+		auraskill = "#fabf14",
+		clubskill = "#f2a0a1",
+		clubskilladd = "#f2a0a1",
+		clubskilleffect = "#f2a0a1",
 		changeskill = "#FFC0CB",
 		hideskill = "#EE82EE",
 		turnskill = "#008000",
@@ -73,7 +77,8 @@ config = {
 			"Special1v1,Special1v1Ext,Special3v3,Special3v3Ext,"..
 			"Happy2v2,JianGeDefense,BossMode",
 		h_other = "Miscellaneous,Doudizhu,Assassins,Godlailailai,HulaoPass,"..
-			"TaiwanSP,TaiwanYJCM,BGM,BGMDIY,Test,Wisdom,Ling,Yitian,Yinhu,Maotu,Zombine,Dream",
+			"TaiwanSP,TaiwanYJCM,BGM,BGMDIY,Test,Wisdom,Ling,Yitian,Yinhu,Maotu,Zombine,Dream,"..
+			"Hayate,Inovation",
 	},
 
 	hulao_generals = {
