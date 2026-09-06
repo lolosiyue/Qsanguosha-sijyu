@@ -326,6 +326,7 @@ if(QSAN_BUILD_TUI)
     # 本身一行都冇改過 —— main() 靠 COMPILE_DEFINITIONS 改名。
     add_executable(qsanguosha_tui_tests
         tui-tests-main.cpp
+        tui/tui-board-layout-test.cpp
         tui/tui-card-text-test.cpp
         tui/tui-client-player-test.cpp
         tui/tui-log-text-test.cpp
@@ -344,6 +345,7 @@ if(QSAN_BUILD_TUI)
         ${QSAN_TEST_ROOT}/src/client/interaction-reply-encoder.cpp
         ${QSAN_TEST_ROOT}/src/client/interaction-request-factory.cpp
         ${QSAN_TEST_ROOT}/src/client/protocol-interaction-request-builder.cpp
+        ${QSAN_TEST_ROOT}/src/tui/tui-board-layout.cpp
         ${QSAN_TEST_ROOT}/src/tui/tui-client-player.cpp
         ${QSAN_TEST_ROOT}/src/tui/tui-command.cpp
         ${QSAN_TEST_ROOT}/src/tui/tui-interaction-view.cpp
@@ -353,6 +355,8 @@ if(QSAN_BUILD_TUI)
         ${QSAN_TEST_ROOT}/src/tui/tui-terminal.cpp
         ${QSAN_TEST_ROOT}/src/tui/tui-line-editor.cpp
     )
+    set_source_files_properties(tui/tui-board-layout-test.cpp
+        PROPERTIES COMPILE_DEFINITIONS main=runTuiBoardLayoutTests)
     set_source_files_properties(tui/tui-card-text-test.cpp
         PROPERTIES COMPILE_DEFINITIONS main=runTuiCardTextTests)
     set_source_files_properties(tui/tui-client-player-test.cpp
@@ -394,6 +398,11 @@ if(QSAN_BUILD_TUI)
         qsanguosha_protocol_v2_contract_support
         Qt6::Core
         Qt6::Network
+    )
+    qsan_add_ctest(qsanguosha_tui_board_layout qsanguosha_tui_tests
+        SUITE board-layout
+        LABELS "client;tui;fast"
+        TIMEOUT 120
     )
     qsan_add_ctest(qsanguosha_tui_card_text qsanguosha_tui_tests
         SUITE card-text
