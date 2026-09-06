@@ -671,6 +671,8 @@ if(QSAN_BUILD_TUI)
         src/tui/tui-text-width.h
         src/tui/tui-text.cpp
         src/tui/tui-text.h
+        src/tui/tui-ui-mode.cpp
+        src/tui/tui-ui-mode.h
         src/tui/tui-input.cpp
         src/tui/tui-input.h
         src/tui/tui-line-editor.cpp

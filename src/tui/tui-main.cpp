@@ -4,6 +4,8 @@
 #include "core/runtime-paths.h"
 #include "core/version.h"
 #include "tui-application-controller.h"
+#include "tui-text.h"
+#include "tui-ui-mode.h"
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
@@ -15,8 +17,12 @@
 #include <QJsonObject>
 #include <QLocale>
 #include <QStringConverter>
+#include <QStringList>
 #include <QTextStream>
 #include <QTranslator>
+
+#include <iostream>
+#include <string>
 
 #if defined(Q_OS_WIN)
 #include <qt_windows.h>
@@ -67,6 +73,16 @@ bool outputIsTerminal()
     return GetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), &mode) != FALSE;
 #else
     return isatty(fileno(stdout)) != 0;
+#endif
+}
+
+bool inputIsTerminal()
+{
+#if defined(Q_OS_WIN)
+    DWORD mode = 0;
+    return GetConsoleMode(GetStdHandle(STD_INPUT_HANDLE), &mode) != FALSE;
+#else
+    return isatty(fileno(stdin)) != 0;
 #endif
 }
 
@@ -134,10 +150,12 @@ int main(int argc, char *argv[])
     const QCommandLineOption dumpTranslationsOption(
         QStringLiteral("dump-translations"),
         tr("把 Engine 翻译表写成 JSON 后结束"), QStringLiteral("path"));
+    const QCommandLineOption uiOption(QStringLiteral("ui"),
+        tr("界面模式：classic 或 board"), QStringLiteral("mode"));
 
     parser.addOptions({helpOption, versionOption, hostOption, portOption, nameOption,
         avatarOption, reconnectOption, plainOption, noColorOption, languageOption,
-        logFileOption, scriptOption, assetRootOption, dumpTranslationsOption});
+        logFileOption, scriptOption, assetRootOption, dumpTranslationsOption, uiOption});
 
     // QCommandLineParser's automatic help path uses the Windows local code page
     // when stdout is redirected. Emit these two process-local responses as UTF-8
@@ -177,6 +195,57 @@ int main(int argc, char *argv[])
             return usageError(tr("--name 不可为空"));
         if (avatar.isEmpty())
             return usageError(tr("--avatar 不可为空"));
+    }
+
+    // The mode decision itself (docs/tui-board-ui.md §6.1) is a pure
+    // function of these five facts; gathering isatty()/QSettings state here,
+    // once, is what keeps tuiResolveUiMode() itself free of environment
+    // access and therefore testable with plain structs. A conflict is a
+    // usage error like the ones just above, so it is checked here too --
+    // before EngineBootstrap::initialize(), same as every other --xxx
+    // validation in this function.
+    TuiUiModeDecision uiDecision;
+    if (!dumpTranslations) {
+        TuiUiModeInputs uiInputs;
+        uiInputs.flag = parser.isSet(uiOption) ? parser.value(uiOption) : QString();
+        uiInputs.hasScript = parser.isSet(scriptOption);
+        uiInputs.stdoutIsTty = outputIsTerminal();
+        uiInputs.stdinIsTty = inputIsTerminal();
+        uiInputs.plain = parser.isSet(plainOption) || parser.isSet(noColorOption)
+            || qEnvironmentVariableIsSet("NO_COLOR");
+        uiInputs.savedChoice = tuiSavedUiMode();
+        uiDecision = tuiResolveUiMode(uiInputs);
+        if (uiDecision.conflict)
+            return usageError(uiDecision.conflictReason);
+
+#if defined(Q_OS_WIN)
+        // TuiTerminal has no Windows implementation: Task 5 left safe stubs
+        // there, and this machine has no Windows toolchain to develop
+        // against, so writing blind Windows console code would be worse
+        // than saying plainly that board mode is not available yet.
+        // tuiResolveUiMode() itself stays platform-agnostic -- §6.1's table
+        // does not vary by platform, only Windows's ability to honour a
+        // Board result does -- so the unavailability is applied once, here,
+        // to whatever it decided. An explicit --ui board is a usage error
+        // (the player asked for something that cannot be delivered); the
+        // automatic and remembered paths just fall back and say why, the
+        // same quiet-fallback allowance §6.1 already grants the automatic
+        // path on every platform.
+        if (uiDecision.askUser) {
+            uiDecision.askUser = false;
+            uiDecision.mode = TuiUiMode::Classic;
+            writeUtf8(stdout,
+                tr("Windows 上尚不支持 board 模式（TuiTerminal 未实现），已使用 classic 界面\n"));
+        } else if (uiDecision.mode == TuiUiMode::Board) {
+            if (uiInputs.flag == QStringLiteral("board")) {
+                return usageError(
+                    tr("board 模式在 Windows 上尚未支持（TuiTerminal 未实现）"));
+            }
+            uiDecision.mode = TuiUiMode::Classic;
+            writeUtf8(stdout,
+                tr("Windows 上尚不支持 board 模式（TuiTerminal 未实现），已使用 classic 界面\n"));
+        }
+#endif
     }
 
     if (parser.isSet(languageOption)) {
@@ -264,6 +333,32 @@ int main(int argc, char *argv[])
     }
     QObject::disconnect(&app, SIGNAL(aboutToQuit()), Sanguosha, SLOT(deleteLater()));
 
+    // The one-time startup question (§6.1's last row): only reached when
+    // tuiResolveUiMode() found stdin *and* stdout to be real terminals, no
+    // --script, no --plain/--no-color/NO_COLOR, no --ui and nothing saved --
+    // so this is also the only place in main() that ever blocks on stdin,
+    // and it does so before ClientLiveSession::connectToServer() runs
+    // (inside controller.start(), further below), never after: there must
+    // be no state where the client is connected but sitting at a menu.
+    // tuiText() needs Sanguosha, so this can only run after
+    // EngineBootstrap::initialize() above -- unlike the usage-error messages
+    // near the top of main(), which run before the engine exists and so use
+    // tr() instead.
+    if (uiDecision.askUser) {
+        writeUtf8(stdout, tuiText("tui_ui_mode_prompt"));
+        std::string rawLine;
+        std::getline(std::cin, rawLine);
+        const QStringList tokens = QString::fromStdString(rawLine)
+            .simplified().split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        const QString modeToken = tokens.value(0).toLower();
+        const bool remember = tokens.size() > 1
+            && tokens.at(1).compare(QStringLiteral("remember"), Qt::CaseInsensitive) == 0;
+        uiDecision.mode = modeToken == QStringLiteral("board") ? TuiUiMode::Board
+                                                                : TuiUiMode::Classic;
+        if (remember)
+            tuiSaveUiMode(uiDecision.mode);
+    }
+
     TuiApplicationOptions options;
     options.session.host = host;
     options.session.port = static_cast<quint16>(port);
@@ -274,6 +369,7 @@ int main(int argc, char *argv[])
         && !parser.isSet(noColorOption) && !qEnvironmentVariableIsSet("NO_COLOR");
     options.logFile = parser.value(logFileOption);
     options.scriptFile = parser.value(scriptOption);
+    options.boardMode = (uiDecision.mode == TuiUiMode::Board);
 
     int result = RuntimeExitCode;
     {

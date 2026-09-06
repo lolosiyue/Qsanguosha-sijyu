@@ -82,12 +82,10 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
              }),
       m_input(this)
 {
-    // Board mode is not reachable from any CLI flag yet (see
-    // TuiApplicationOptions::boardMode); this only wires it up so that the
-    // switch a later task adds has something real to flip. m_terminal is
-    // constructed but never enter()'d here -- taking the terminal into raw
-    // mode and the alternate screen is the mode-decision task's job
-    // (docs/tui-board-ui.md §4.1/§6.1), not this one's.
+    // m_terminal is constructed but not enter()'d here -- taking the
+    // terminal into raw mode and the alternate screen only makes sense once
+    // start() has confirmed the rest of startup will go ahead, so that call
+    // lives in start() instead (see there for the exit-6-on-failure path).
     if (m_options.boardMode) {
         m_terminal = std::make_unique<TuiTerminal>();
         auto boardPresenter = std::make_unique<TuiBoardPresenter>(m_terminal->size(),
@@ -335,6 +333,19 @@ TuiApplicationController::~TuiApplicationController() = default;
 
 bool TuiApplicationController::start(QString *error)
 {
+    // Board mode's terminal takeover happens here, before anything else in
+    // startup: a failure (not a real terminal, tcgetattr/tcsetattr denied,
+    // ...) must stop the run before a log file is opened or a socket is
+    // touched, and surfaces to main() as exit code 6 -- the same path any
+    // other start() failure already takes.
+    if (m_options.boardMode) {
+        QString terminalError;
+        if (!m_terminal->enter(&terminalError)) {
+            if (error != nullptr)
+                *error = tuiText("tui_error_terminal_enter").arg(terminalError);
+            return false;
+        }
+    }
     if (!m_options.logFile.isEmpty()) {
         m_log.setFileName(m_options.logFile);
         if (!m_log.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
