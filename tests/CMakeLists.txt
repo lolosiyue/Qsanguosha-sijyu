@@ -327,6 +327,7 @@ if(QSAN_BUILD_TUI)
     add_executable(qsanguosha_tui_tests
         tui-tests-main.cpp
         tui/tui-board-layout-test.cpp
+        tui/tui-board-presenter-test.cpp
         tui/tui-board-view-test.cpp
         tui/tui-card-text-test.cpp
         tui/tui-client-player-test.cpp
@@ -347,6 +348,7 @@ if(QSAN_BUILD_TUI)
         ${QSAN_TEST_ROOT}/src/client/interaction-request-factory.cpp
         ${QSAN_TEST_ROOT}/src/client/protocol-interaction-request-builder.cpp
         ${QSAN_TEST_ROOT}/src/tui/tui-board-layout.cpp
+        ${QSAN_TEST_ROOT}/src/tui/tui-board-presenter.cpp
         ${QSAN_TEST_ROOT}/src/tui/tui-board-view.cpp
         ${QSAN_TEST_ROOT}/src/tui/tui-client-player.cpp
         ${QSAN_TEST_ROOT}/src/tui/tui-command.cpp
@@ -359,6 +361,8 @@ if(QSAN_BUILD_TUI)
     )
     set_source_files_properties(tui/tui-board-layout-test.cpp
         PROPERTIES COMPILE_DEFINITIONS main=runTuiBoardLayoutTests)
+    set_source_files_properties(tui/tui-board-presenter-test.cpp
+        PROPERTIES COMPILE_DEFINITIONS main=runTuiBoardPresenterTests)
     set_source_files_properties(tui/tui-board-view-test.cpp
         PROPERTIES COMPILE_DEFINITIONS main=runTuiBoardViewTests)
     set_source_files_properties(tui/tui-card-text-test.cpp
@@ -406,6 +410,11 @@ if(QSAN_BUILD_TUI)
     )
     qsan_add_ctest(qsanguosha_tui_board_layout qsanguosha_tui_tests
         SUITE board-layout
+        LABELS "client;tui;fast"
+        TIMEOUT 120
+    )
+    qsan_add_ctest(qsanguosha_tui_board_presenter qsanguosha_tui_tests
+        SUITE board-presenter
         LABELS "client;tui;fast"
         TIMEOUT 120
     )

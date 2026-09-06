@@ -1,6 +1,7 @@
 #ifndef TUI_BOARD_VIEW_H
 #define TUI_BOARD_VIEW_H
 
+#include "tui-board-layout.h"
 #include "tui-resolvers.h"
 
 #include <QString>
@@ -45,6 +46,22 @@ public:
 
     void render(TuiScreen *screen, const ClientGameState &state,
                 const TuiBoardViewState &view) const;
+
+    // The layout render() would use for this state and viewport. Exposed so
+    // TuiBoardPresenter can answer "how many pages are there" and "which page
+    // is player X on" (auto-follow, docs/tui-board-ui.md §3.6) from the same
+    // hand-line-count and seat-order math render() already owns, instead of
+    // keeping a second copy that could silently drift from what actually gets
+    // drawn.
+    TuiBoardGeometry computeGeometry(const ClientGameState &state, int rows, int cols) const;
+
+    // Which page (0-based) `name`'s seat lands on within `geometry` -- pass
+    // the geometry this same view just computed for the same state. Returns
+    // 0 before GAME_START (no ring exists yet), for the self player (the self
+    // cell never pages), and for a name that never got a seat: there is
+    // nothing to page to in any of those cases.
+    int pageForPlayer(const ClientGameState &state, const TuiBoardGeometry &geometry,
+                       const QString &name) const;
 
 private:
     TuiResolvers m_resolvers;

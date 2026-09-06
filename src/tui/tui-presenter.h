@@ -5,6 +5,9 @@
 
 #include <functional>
 
+class ClientGameState;
+struct InteractionRequest;
+
 // Where the controller's output goes. The controller sanitizes and writes the
 // log file itself, so --log-file content stays identical no matter which
 // presenter is installed; a presenter only decides where text lands on screen.
@@ -19,6 +22,17 @@ public:
     // Called once before the process exits, on every path that unwinds. A
     // presenter that took the terminal over gives it back here.
     virtual void shutdown() = 0;
+
+    // The two board-mode hooks. The controller calls both unconditionally,
+    // whichever presenter is installed -- it does not (and must not) know
+    // that a board mode exists; see TuiStreamPresenter's own no-op bodies for
+    // why that presenter has nothing to do with either call. TuiBoardPresenter
+    // is the one implementation that repaints from them (docs/tui-board-ui.md
+    // §3.6).
+    virtual void stateChanged(const ClientGameState &state) = 0;
+    // nullptr means no request is in flight right now -- answered, cancelled,
+    // superseded, or none has ever arrived.
+    virtual void interactionChanged(const InteractionRequest *request) = 0;
 };
 
 #endif

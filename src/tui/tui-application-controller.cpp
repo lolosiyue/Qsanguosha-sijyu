@@ -9,11 +9,13 @@
 #include "tui-card-text.h"
 #include "tui-log-text.h"
 #include "protocol/session/session-payloads.h"
+#include "tui-board-presenter.h"
 #include "tui-play-skills.h"
 #include "tui-skill-dialog.h"
 #include "tui-synthesized-log.h"
 #include "tui-script-runner.h"
 #include "tui-stream-presenter.h"
+#include "tui-terminal.h"
 
 #include <QCoreApplication>
 #include <QJsonObject>
@@ -78,10 +80,53 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
              [this](const QString &skillName, const QString &declaration, QString *error) {
                  return applySkillDeclaration(skillName, declaration, error);
              }),
-      m_input(this),
-      m_presenter(std::make_unique<TuiStreamPresenter>())
+      m_input(this)
 {
+    // Board mode is not reachable from any CLI flag yet (see
+    // TuiApplicationOptions::boardMode); this only wires it up so that the
+    // switch a later task adds has something real to flip. m_terminal is
+    // constructed but never enter()'d here -- taking the terminal into raw
+    // mode and the alternate screen is the mode-decision task's job
+    // (docs/tui-board-ui.md §4.1/§6.1), not this one's.
+    if (m_options.boardMode) {
+        m_terminal = std::make_unique<TuiTerminal>();
+        auto boardPresenter = std::make_unique<TuiBoardPresenter>(m_terminal->size(),
+            TuiResolvers{
+                [this](int cardId) { return resolveCardDisplayText(cardId); },
+                [this](const QString &name) { return resolveNameText(name); },
+                [this](const QString &objectName) { return resolvePlayerName(objectName); },
+                [](const QString &general) { return resolveGeneralKingdom(general); },
+                [this](int cardId) { return resolveCardHint(cardId); },
+                [this](const QString &objectName) { return resolvePlayerHint(objectName); },
+                [this](int cardId) { return resolveCardTargets(cardId); },
+                [this](int cardId) { return resolveHandCardHint(cardId); },
+                [this](const QString &skillName, int instanceId) {
+                    return resolveSkillHint(skillName, instanceId);
+                }},
+            m_terminal.get());
+        m_boardPresenter = boardPresenter.get();
+        m_presenter = std::move(boardPresenter);
+    } else {
+        m_presenter = std::make_unique<TuiStreamPresenter>();
+    }
+
     m_core.setView(&m_view);
+    // The presenter's other hook: begin/end of the one request ClientCore
+    // ever tracks at a time. requestStarted fires (with the new request
+    // already installed as activeRequest()) both for a fresh request and for
+    // one that superseded an unanswered one -- cancelActiveRequest() runs
+    // first in that case and already fired requestCancelled(nullptr-ing the
+    // presenter), so the net effect for a superseded request is
+    // nullptr-then-request, which is exactly what should end up on screen.
+    connect(&m_core, &ClientCore::requestStarted, this, [this](quint64) {
+        m_presenter->interactionChanged(&m_core.activeRequest());
+    });
+    connect(&m_core, &ClientCore::responseAccepted, this, [this](quint64) {
+        m_presenter->interactionChanged(nullptr);
+    });
+    connect(&m_core, &ClientCore::requestCancelled, this, [this](quint64, int) {
+        m_presenter->interactionChanged(nullptr);
+    });
     connect(&m_input, &TuiInput::lineReady, this, &TuiApplicationController::handleInputLine);
     connect(&m_input, &TuiInput::endOfInput, this, [this]() { requestExit(0); });
     connect(&m_input, &TuiInput::interruptRequested, this, [this]() { requestExit(0); });
@@ -92,6 +137,31 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
     connect(&m_input, &TuiInput::completionChoices, this, [this](const QStringList &matches) {
         writeOutput(matches.join(QLatin1Char(' ')));
     });
+    if (m_options.boardMode) {
+        // Board mode's whole reason to exist: TuiInput stops assembling
+        // lines itself (setRawMode(true), see tui-input.h) and hands this
+        // controller raw bytes instead, which get decoded into keys and
+        // handed to the presenter -- the only two wires board mode needed
+        // that classic mode never had. Classic mode (the `else` above, and
+        // every path below when m_options.boardMode is false) is completely
+        // untouched by any of this.
+        m_input.setRawMode(true);
+        m_escTimer = new QTimer(this);
+        m_escTimer->setSingleShot(true);
+        connect(m_escTimer, &QTimer::timeout, this, [this]() {
+            handleBoardKeyEvents(m_keyDecoder.resolvePendingEscape());
+        });
+        connect(&m_input, &TuiInput::rawBytes, this, [this](const QByteArray &bytes) {
+            handleBoardKeyEvents(m_keyDecoder.feed(bytes));
+            // Restarted after every chunk rather than only when a lone ESC
+            // is actually left pending: resolvePendingEscape() is a no-op
+            // when nothing is parked (its own doc comment in
+            // tui-line-editor.h), so this is simpler than adding an "is one
+            // pending" query to TuiKeyDecoder's public interface just for
+            // this one caller.
+            m_escTimer->start(20);
+        });
+    }
     m_roomContext.setOwnerResolver(
         [this](int cardId) { return m_players.cardOwner(cardId); });
     connect(&m_session, &ClientLiveSession::connectionChanged, this,
@@ -122,6 +192,12 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
             m_script->notifyStateChanged();
     });
     connect(&m_session, &ClientLiveSession::stateChanged, this, [this]() {
+        // Unconditional, whichever presenter is installed: TuiStreamPresenter's
+        // override is a no-op (it has no view to refresh), TuiBoardPresenter's
+        // is the repaint trigger the whole board depends on. This is the one
+        // call site that has to run on every ClientGameState change, which is
+        // exactly what ClientLiveSession::stateChanged already fires on.
+        m_presenter->stateChanged(*m_core.state());
         const QString syncId = m_core.state()->connectionValue(
             QStringLiteral("sync_id")).toString();
         if (m_core.state()->connectionValue(QStringLiteral("sync_phase"))
@@ -250,6 +326,12 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
             requestExit(exitCode);
         });
 }
+
+// Out-of-line so unique_ptr<TuiTerminal>'s destructor is instantiated here,
+// where tui-terminal.h (included above) makes TuiTerminal a complete type,
+// rather than at every translation unit that merely includes this class's
+// header (see the declaration's own comment).
+TuiApplicationController::~TuiApplicationController() = default;
 
 bool TuiApplicationController::start(QString *error)
 {
@@ -413,6 +495,24 @@ void TuiApplicationController::clearPendingActivation()
     m_pending = PendingActivation{};
 }
 
+void TuiApplicationController::handleBoardKeyEvents(const QVector<TuiKeyEvent> &events)
+{
+    if (m_boardPresenter == nullptr)
+        return;
+    for (const TuiKeyEvent &event : events) {
+        QString submitted;
+        m_boardPresenter->handleKey(event, &submitted);
+        // handleInputLine() -- not a re-emitted lineReady -- is the actual
+        // invariant: TuiInput must never emit lineReady itself while raw
+        // mode is on (tui-input.h), and a completed board line reaching the
+        // exact same slot that signal always drove is what "one input exit"
+        // means here, not which mechanism (signal vs. direct call) delivers
+        // it.
+        if (!submitted.isEmpty())
+            handleInputLine(submitted);
+    }
+}
+
 void TuiApplicationController::handleInputLine(const QString &line)
 {
     if (m_exiting)
@@ -534,10 +634,14 @@ bool TuiApplicationController::trySkipRoleAssignment()
 
 void TuiApplicationController::handleCommand(const TuiCommandIntent &intent)
 {
+    // /board is a view action -- it stays legal mid-prompt for the same
+    // reason Players/Hand/etc. do: paging never blocks answering
+    // (docs/tui-board-ui.md §3.6, "分頁永遠不會是「答不到題」的原因").
     static const QSet<TuiCommandType> promptSafeCommands{TuiCommandType::Cancel,
         TuiCommandType::Help, TuiCommandType::Status, TuiCommandType::Players,
         TuiCommandType::Hand, TuiCommandType::Equipment, TuiCommandType::Piles,
-        TuiCommandType::Skills, TuiCommandType::Log, TuiCommandType::Quit};
+        TuiCommandType::Skills, TuiCommandType::Log, TuiCommandType::Quit,
+        TuiCommandType::Board};
     if (m_core.hasActiveRequest() && !promptSafeCommands.contains(intent.type)) {
         writeError(tuiText("tui_command_readonly_only"));
         return;
@@ -600,6 +704,14 @@ void TuiApplicationController::handleCommand(const TuiCommandIntent &intent)
         m_session.reconnect();
     } else if (intent.type == TuiCommandType::Quit) {
         requestExit(0);
+    } else if (intent.type == TuiCommandType::Board) {
+        // Local view state only -- this branch never calls into m_session or
+        // m_core (design invariant 1). m_boardPresenter is null in classic
+        // mode, where there is no page to turn to.
+        if (m_boardPresenter != nullptr)
+            m_boardPresenter->setPage(intent.page - 1);
+        else
+            writeError(tuiText("tui_error_board_inactive"));
     }
 }
 

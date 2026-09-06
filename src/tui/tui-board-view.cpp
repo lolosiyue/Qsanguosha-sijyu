@@ -504,6 +504,33 @@ void drawInput(TuiScreen &screen, const TuiBoardGeometry &geom, const TuiBoardVi
     screen.putText(geom.input.row + 1, cursorCol, QStringLiteral("▌"), TuiAttr::Current);
 }
 
+// Shared by render() and the public computeGeometry() so the two can never
+// disagree about which page an opponent lands on: the hand-line estimate
+// depends on the actual hand entries, and duplicating that computation
+// instead of factoring it out is exactly how a presenter's idea of "page 2"
+// would end up one page off from what render() actually draws there.
+// `handLinesOut`, when not null, receives the wrapped hand-pane text so
+// render() can draw it without re-running layoutHandLines() a second time;
+// computeGeometry()'s callers only ever want the geometry, so they leave it
+// null.
+TuiBoardGeometry geometryFor(const TuiResolvers &resolvers, const ClientGameState &state,
+                            int rows, int cols, QStringList *handLinesOut = nullptr)
+{
+    QStringList handEntries;
+    const QList<int> handCards = state.cardsForPlayer(state.selfName(), Player::PlaceHand);
+    for (int cardId : handCards)
+        handEntries << QStringLiteral("[%1]%2").arg(handEntries.size() + 1)
+            .arg(cardName(resolvers, cardId));
+    QStringList handLines;
+    const int handInteriorWidth = std::max(1, cols - 2);
+    const int handLineCount = layoutHandLines(handEntries, handInteriorWidth, &handLines);
+    if (handLinesOut != nullptr)
+        *handLinesOut = handLines;
+
+    const int playerCount = std::max(1, static_cast<int>(state.playerNames().size()));
+    return tuiComputeBoardGeometry(rows, cols, playerCount, handLineCount);
+}
+
 } // namespace
 
 TuiBoardView::TuiBoardView(TuiResolvers resolvers) : m_resolvers(std::move(resolvers))
@@ -518,18 +545,8 @@ void TuiBoardView::render(TuiScreen *screen, const ClientGameState &state,
 
     const int rows = screen->rows();
     const int cols = screen->cols();
-
-    QStringList handEntries;
-    const QList<int> handCards = state.cardsForPlayer(state.selfName(), Player::PlaceHand);
-    for (int cardId : handCards)
-        handEntries << QStringLiteral("[%1]%2").arg(handEntries.size() + 1)
-            .arg(cardName(m_resolvers, cardId));
     QStringList handLines;
-    const int handInteriorWidth = std::max(1, cols - 2);
-    const int handLineCount = layoutHandLines(handEntries, handInteriorWidth, &handLines);
-
-    const int playerCount = std::max(1, static_cast<int>(state.playerNames().size()));
-    const TuiBoardGeometry geom = tuiComputeBoardGeometry(rows, cols, playerCount, handLineCount);
+    const TuiBoardGeometry geom = geometryFor(m_resolvers, state, rows, cols, &handLines);
 
     screen->clear();
 
@@ -561,4 +578,30 @@ void TuiBoardView::render(TuiScreen *screen, const ClientGameState &state,
     drawLog(*screen, geom, view.logLines);
     drawHand(*screen, geom, handLines);
     drawInput(*screen, geom, view);
+}
+
+TuiBoardGeometry TuiBoardView::computeGeometry(const ClientGameState &state, int rows, int cols) const
+{
+    return geometryFor(m_resolvers, state, rows, cols);
+}
+
+int TuiBoardView::pageForPlayer(const ClientGameState &state, const TuiBoardGeometry &geometry,
+                                const QString &name) const
+{
+    if (name.isEmpty() || name == state.selfName())
+        return 0; // the self cell is fixed at the bottom of the room; it never pages
+    if (!isGameStarted(state))
+        return 0; // no seat ring exists before GAME_START
+
+    const QStringList order = seatOrderFromSelf(state);
+    const qsizetype index = order.indexOf(name);
+    if (index < 0)
+        return 0; // not a seated opponent -- nothing to page to
+
+    const int seatOffset = static_cast<int>(index) + 1;
+    for (const TuiSeatSlot &slot : geometry.seatSlots) {
+        if (slot.seatOffset == seatOffset)
+            return slot.page;
+    }
+    return 0;
 }

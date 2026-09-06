@@ -7,6 +7,7 @@
 #include "tui-input.h"
 #include "tui-interaction-view.h"
 #include "tui-client-player.h"
+#include "tui-line-editor.h"
 #include "tui-presenter.h"
 #include "tui-renderer.h"
 #include "tui-room-context.h"
@@ -15,10 +16,14 @@
 #include <QFile>
 #include <QList>
 #include <QVariant>
+#include <QVector>
 
 #include <memory>
 
+class QTimer;
+class TuiBoardPresenter;
 class TuiScriptRunner;
+class TuiTerminal;
 
 struct TuiApplicationOptions
 {
@@ -26,6 +31,12 @@ struct TuiApplicationOptions
     bool ansiEnabled = false;
     QString logFile;
     QString scriptFile;
+    // Not reachable from any CLI flag yet -- the mode-decision table
+    // (docs/tui-board-ui.md §6.1: --ui, TTY detection, QSettings, the
+    // connect-time prompt) is a separate piece of work. This only lets the
+    // board-mode wiring below (TuiBoardPresenter, raw-byte key decoding) be
+    // constructed and exercised ahead of whatever eventually flips it on.
+    bool boardMode = false;
 };
 
 class TuiApplicationController final : public QObject
@@ -35,6 +46,12 @@ class TuiApplicationController final : public QObject
 public:
     explicit TuiApplicationController(const TuiApplicationOptions &options,
                                       QObject *parent = nullptr);
+    // Declared (rather than left implicit) and defined in the .cpp, where
+    // TuiTerminal and TuiBoardPresenter are complete types: the implicit
+    // destructor unique_ptr<TuiTerminal>/unique_ptr<TuiPresenter> would
+    // otherwise need is generated wherever this header is included, and
+    // tui-main.cpp never includes tui-terminal.h.
+    ~TuiApplicationController() override;
     bool start(QString *error = nullptr);
 
 public slots:
@@ -42,6 +59,12 @@ public slots:
 
 private:
     void handleCommand(const TuiCommandIntent &intent);
+    // Board mode only: feeds decoded keys to m_boardPresenter one at a time
+    // and, for any that complete a line, calls handleInputLine() directly --
+    // the same slot TuiInput::lineReady drives in classic mode -- rather than
+    // inventing a second way for a line to reach the parser (design
+    // invariant 2, docs/tui-board-ui.md).
+    void handleBoardKeyEvents(const QVector<TuiKeyEvent> &events);
     bool trySkipRoleAssignment();
     void writeOutput(const QString &text);
     void writeError(const QString &text);
@@ -128,9 +151,29 @@ private:
     TuiInteractionView m_view;
     TuiInput m_input;
     TuiScriptRunner *m_script = nullptr;
+    // Only constructed in board mode; classic mode never touches raw
+    // termios/alternate-screen state at all. Declared before m_presenter so
+    // it outlives the TuiBoardPresenter that holds a non-owning pointer to it
+    // (members unwind in reverse declaration order).
+    std::unique_ptr<TuiTerminal> m_terminal;
     // Installed once at construction and never swapped: switching UI mode
     // mid-session is deliberately out of scope.
     std::unique_ptr<TuiPresenter> m_presenter;
+    // Non-owning alias into m_presenter, set only when m_options.boardMode
+    // constructed a TuiBoardPresenter -- lets handleCommand()'s /board branch
+    // and the raw-key path below reach board-only methods (setPage(),
+    // handleKey()) that are not part of the generic TuiPresenter interface,
+    // without a dynamic_cast at every call site. Stays null in classic mode,
+    // where both call sites are simply unreachable dead branches.
+    TuiBoardPresenter *m_boardPresenter = nullptr;
+    // Board mode only: decodes TuiInput::rawBytes() into TuiKeyEvents fed to
+    // m_boardPresenter->handleKey(). Unused (and unfed) in classic mode.
+    TuiKeyDecoder m_keyDecoder;
+    // Board mode only: resolves a lone ESC byte that might still be the
+    // first byte of a split escape sequence (tui-line-editor.h's own
+    // resolvePendingEscape() comment). Owned with `this` as parent, so no
+    // explicit teardown is needed.
+    QTimer *m_escTimer = nullptr;
     QFile m_log;
     bool m_logFailed = false;
     bool m_trusted = false;

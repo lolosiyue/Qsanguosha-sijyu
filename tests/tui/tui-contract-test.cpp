@@ -1385,6 +1385,15 @@ void commandContract()
           "read-only command rejects stray arguments");
     check(!TuiCommandParser::parse(QStringLiteral("/unknown"), &intent, &error),
           "unknown global command fails closed");
+    check(TuiCommandParser::parse(QStringLiteral("/board 2"), &intent, &error)
+              && intent.type == TuiCommandType::Board && intent.page == 2,
+          "/board parses a 1-based page number");
+    check(!TuiCommandParser::parse(QStringLiteral("/board 0"), &intent, &error)
+              && !error.isEmpty(),
+          "/board rejects a page below 1");
+    check(!TuiCommandParser::parse(QStringLiteral("/board"), &intent, &error)
+              && !error.isEmpty(),
+          "/board requires a page argument");
 
     const TuiCompletion addRobot = completeTuiLine(QStringLiteral("/ad"), {});
     check(addRobot.matches == QStringList{QStringLiteral("/addrobot")}

@@ -15,6 +15,8 @@ public:
     void writeOutput(const QString &text) override;
     void writeError(const QString &text) override;
     void shutdown() override;
+    void stateChanged(const ClientGameState &state) override;
+    void interactionChanged(const InteractionRequest *request) override;
 
 private:
     Sink m_out;
