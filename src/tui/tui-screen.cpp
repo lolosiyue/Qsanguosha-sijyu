@@ -217,12 +217,20 @@ QString TuiScreen::flush()
 
     if (m_fullRepaint) {
         // Nothing to diff the first frame against: paint everything. One
-        // "go home" escape plus a plain newline between rows is enough,
-        // because every row is being repainted in full anyway.
+        // "go home" escape plus a plain newline BETWEEN rows is enough,
+        // because every row is being repainted in full anyway. The
+        // separator goes between rows only, never after the last one: a
+        // terminal whose height exactly equals the screen's own row count
+        // has no scrollback room to absorb a trailing "\r\n" after the
+        // bottom row, so emitting one there scrolls the alternate screen up
+        // by a line, carrying the top border off screen and leaving every
+        // absolute-position escape the diff path emits afterwards addressed
+        // against a screen that has silently shifted underneath it.
         output += QStringLiteral("\x1b[H");
         for (int row = 0; row < m_rows; ++row) {
+            if (row > 0)
+                output += QStringLiteral("\r\n");
             output += renderRun(row, 0, m_cols);
-            output += QStringLiteral("\r\n");
         }
     } else {
         // The property that makes the board usable over a slow link: only the
