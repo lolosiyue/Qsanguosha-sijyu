@@ -7,6 +7,7 @@ int runLuaCompatibilityTests();
 int runEngineSelfBridgeTests();
 int runCardParseTests();
 int runCardMoveReasonTests();
+int runClientTargetEvaluatorTests();
 int runEnumReflectionTests();
 int runPackagePolicyTests();
 int runMigratedGeneralPackageTests();
@@ -64,6 +65,9 @@ int main(int argc, char **argv)
         const int cardMoveReason = runCardMoveReasonTests();
         if (cardMoveReason != 0)
             return 150 + cardMoveReason;
+        const int targetEvaluator = runClientTargetEvaluatorTests();
+        if (targetEvaluator != 0)
+            return 160 + targetEvaluator;
         return runEnumReflectionTests();
     };
 
@@ -75,6 +79,8 @@ int main(int argc, char **argv)
         return runCardParseTests();
     if (suite == QLatin1String("card-move-reason"))
         return runCardMoveReasonTests();
+    if (suite == QLatin1String("client-target-evaluator"))
+        return runClientTargetEvaluatorTests();
     if (suite == QLatin1String("enum-reflection"))
         return runEnumReflectionTests();
     if (suite == QLatin1String("lua-compat"))
