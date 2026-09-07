@@ -428,3 +428,6 @@ function(qsan_finalize_client_runtime_links)
     endif()
 endfunction()
 cmake_language(DEFER CALL qsan_finalize_client_runtime_links)
+
+# Opt-in native verification consumer; no frontend dependency.
+include(cmake/QSanguoshaRulesFixtures.cmake)
