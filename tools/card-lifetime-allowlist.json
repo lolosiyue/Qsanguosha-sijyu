@@ -33,7 +33,7 @@
     "`ai-runtime` Lua callback",
     "`gamerule.cpp:1345 judge card`",
     "`gamerule.cpp:556 ComboMovesCard`",
-    "`generic-cardcontainer-ui.cpp:1208 simulated equips`",
+    "`generic-cardcontainer-ui.cpp:990-1231 simulated equips`",
     "ordinary RoomThread"
   ],
   "legacy_sites": [
@@ -53,9 +53,24 @@
       "reason": "quiescent WrappedCard owner-thread dispatch"
     },
     {
-      "site": "src/tui/tui-play-skills.cpp:123",
+      "site": "src/package/inovation.cpp:1170",
+      "category": "raw_delete",
+      "reason": "legacy Shouyang decision scope owns the temporary DummyCard until synchronous obtainCard returns"
+    },
+    {
+      "site": "src/package/inovation.cpp:3762",
+      "category": "raw_delete",
+      "reason": "legacy InovationFengzhuVS probe owns the cloned candidate; it is never returned or stored"
+    },
+    {
+      "site": "src/tui/tui-play-skills.cpp:236",
       "category": "upcast_delete",
       "reason": "TUI-only temporary view-as card; QObject::deleteLater bypasses Card::deleteLater, which drains the global lifetime manager"
+    },
+    {
+      "site": "src/tui/tui-skill-dialog.cpp:82",
+      "category": "raw_delete",
+      "reason": "TUI dialog builder owns the duplicate clone before insertion into the option cache or any player tag"
     }
   ],
   "legacy_patterns": [],

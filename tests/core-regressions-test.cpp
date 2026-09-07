@@ -6,11 +6,13 @@
 #include "package.h"
 #include "player.h"
 #include "room.h"
+#include "runtime/client-target-evaluator.h"
 #include "skill.h"
 #include "standard.h"
 #include "structs.h"
 
 #include <QDebug>
+#include <QHash>
 #include <QMetaEnum>
 #include <QVariantMap>
 #include <QtGlobal>
@@ -35,6 +37,76 @@ bool hasEnumKey(const QMetaObject &metaObject, const char *enumName, const char 
     metaObject.enumerator(enumIndex).keyToValue(key, &ok);
     return ok;
 }
+
+class TargetEvaluatorPlayer final : public Player
+{
+public:
+    TargetEvaluatorPlayer(QObject *parent, const QString &name)
+        : Player(parent)
+    {
+        setObjectName(name);
+    }
+
+    int aliveCount(bool includeRemoved = false) const override
+    {
+        Q_UNUSED(includeRemoved);
+        return 3;
+    }
+
+    QString getGameMode() const override
+    {
+        return QStringLiteral("03p");
+    }
+
+    // The synthetic card only reads objectName(); it never traverses seats.
+    Player *getNextAlive(int = 1) const override { return nullptr; }
+    Player *getLastAlive(int = 1) const override { return nullptr; }
+};
+
+class MultiVoteTargetCard final : public Card
+{
+public:
+    explicit MultiVoteTargetCard(bool fixed = false)
+        : Card(Card::NoSuit, 0, fixed)
+    {
+        setObjectName(QStringLiteral("client_rules_target_test"));
+    }
+
+    QString getType() const override
+    {
+        return QStringLiteral("skill");
+    }
+
+    QString getSubtype() const override
+    {
+        return QString();
+    }
+
+    CardType getTypeId() const override
+    {
+        return TypeSkill;
+    }
+
+    bool targetsFeasible(const QList<const Player *> &targets,
+                         const Player *self) const override
+    {
+        Q_UNUSED(self);
+        return targets.size() == 2;
+    }
+
+    bool targetFilter(const QList<const Player *> &targets,
+                      const Player *toSelect, const Player *self,
+                      int &maxVotes) const override
+    {
+        Q_UNUSED(targets);
+        Q_UNUSED(self);
+        maxVotes = toSelect != nullptr
+            && toSelect->objectName() == QLatin1String("sgs2") ? 2 : 1;
+        // Deliberately false: Collateral-style cards communicate legality
+        // through maxVotes, which is what the desktop target UI consumes.
+        return false;
+    }
+};
 
 }
 
@@ -77,6 +149,95 @@ int runCardMoveReasonTests()
     }
 
     qInfo() << "CardMoveReason S_MASK_BASIC_REASON regression passed";
+    return 0;
+}
+
+int runClientTargetEvaluatorTests()
+{
+    QObject owner;
+    TargetEvaluatorPlayer self(&owner, QStringLiteral("sgs1"));
+    TargetEvaluatorPlayer second(&owner, QStringLiteral("sgs2"));
+    TargetEvaluatorPlayer third(&owner, QStringLiteral("sgs3"));
+
+    QHash<QString, const Player *> players{
+        {self.objectName(), &self},
+        {second.objectName(), &second},
+        {third.objectName(), &third}
+    };
+    const ClientRules::PlayerLookup lookup
+        = [&players](const QString &name) { return players.value(name, nullptr); };
+    const QStringList pool{QStringLiteral("sgs2"), QStringLiteral("sgs3")};
+
+    MultiVoteTargetCard card;
+    const ClientRules::TargetStep first
+        = ClientRules::targetStep(&card, {}, pool, lookup, &self);
+    if (!first.known || first.fixed || first.feasible
+        || first.maxVotes.value(QStringLiteral("sgs2")) != 2
+        || first.maxVotes.value(QStringLiteral("sgs3")) != 1) {
+        qCritical() << "client target evaluator lost initial maxVotes semantics";
+        return 1;
+    }
+
+    const ClientRules::TargetStep repeated
+        = ClientRules::targetStep(&card, {QStringLiteral("sgs2")}, pool, lookup, &self);
+    if (!repeated.candidates.contains(QStringLiteral("sgs2"))
+        || repeated.maxVotes.value(QStringLiteral("sgs2")) != 2) {
+        qCritical() << "client target evaluator rejected a legal repeated vote";
+        return 2;
+    }
+
+    const ClientRules::TargetValidation valid
+        = ClientRules::validateTargets(
+            &card,
+            {QStringLiteral("sgs2"), QStringLiteral("sgs2")},
+            lookup, &self);
+    if (!valid.known || !valid.valid || valid.incomplete) {
+        qCritical() << "client target evaluator rejected a legal two-vote target";
+        return 3;
+    }
+
+    const ClientRules::TargetValidation overLimit
+        = ClientRules::validateTargets(
+            &card,
+            {QStringLiteral("sgs3"), QStringLiteral("sgs3")},
+            lookup, &self);
+    if (!overLimit.known || overLimit.valid || overLimit.incomplete
+        || overLimit.reason != ClientRules::TargetValidationReason::VoteLimitExceeded
+        || overLimit.targetName != QLatin1String("sgs3")) {
+        qCritical() << "client target evaluator did not report a vote overflow";
+        return 4;
+    }
+
+    const ClientRules::TargetValidation incomplete
+        = ClientRules::validateTargets(
+            &card, {QStringLiteral("sgs2")}, lookup, &self);
+    if (!incomplete.known || incomplete.valid || !incomplete.incomplete
+        || incomplete.reason != ClientRules::TargetValidationReason::TargetCount) {
+        qCritical() << "client target evaluator lost incomplete target state";
+        return 5;
+    }
+
+    const ClientRules::TargetValidation unknown
+        = ClientRules::validateTargets(
+            &card, {QStringLiteral("missing")}, lookup, &self);
+    if (unknown.known) {
+        qCritical() << "client target evaluator guessed from missing player state";
+        return 6;
+    }
+
+    MultiVoteTargetCard fixed(true);
+    const ClientRules::TargetStep fixedStep
+        = ClientRules::targetStep(&fixed, {}, pool, lookup, &self);
+    const ClientRules::TargetValidation fixedValidation
+        = ClientRules::validateTargets(
+            &fixed, {QStringLiteral("missing")}, lookup, &self);
+    if (!fixedStep.known || !fixedStep.fixed || !fixedStep.feasible
+        || !fixedValidation.known || !fixedValidation.valid) {
+        qCritical() << "client target evaluator broke target-fixed semantics";
+        return 7;
+    }
+
+    qInfo() << "client target evaluator regression passed";
     return 0;
 }
 
