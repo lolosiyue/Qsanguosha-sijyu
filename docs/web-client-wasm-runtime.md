@@ -67,24 +67,42 @@ Frontend-neutral state projection now lives under `src/client/runtime/`:
 - TUI uses `ClientRoomContext` through a compatibility alias and delegates its
   player projection to the shared helper.
 
-The TUI `ClientPlayer` class declaration intentionally remains in the TUI
-adapter for this slice. Its `Q_OBJECT` meta-object name is part of existing
-engine behaviour: client rule paths rely on `inherits("ClientPlayer")`. Moving
-that class is deferred until the build graph can explicitly own its AUTOMOC
-source in a shared runtime target.
+## Third vertical slice: explicit runtime target
 
-This boundary lets a future native fixture runner and WASM frontend reuse
-room/card projection without depending on terminal presentation code while the
-current TUI keeps the same class identity and public surface.
+`ClientPlayer` and its player-model implementation now live in
+`src/client/runtime/client-player-model.*` and are compiled by the dedicated
+`qsanguosha_client_runtime` static library.
+
+The exact global Qt meta-object name remains `ClientPlayer`. This is deliberate:
+existing engine client paths use `inherits("ClientPlayer")` to choose
+client-visible/cached rule behaviour rather than server-only evaluation.
+Moving the implementation therefore must not rename the class.
+
+`src/tui/tui-client-player.*` is now only a compatibility adapter: the old
+`TuiPlayerModel` spelling aliases the shared `ClientPlayerModel`, while the
+implementation and AUTOMOC ownership belong to the runtime target. TUI links
+that target rather than owning a second player-model implementation.
+
+The runtime library is intentionally engine-facing but does not propagate a
+normal `qsanguosha_engine` link. Final products choose the engine link policy;
+TUI currently requires `WHOLE_ARCHIVE` for package registrars, and a second
+normal engine link would conflict with that CMake link feature. The runtime
+itself propagates `ClientCore`, Qt Core and Qt Network dependencies. Qt Network
+is currently required by the engine headers' non-desktop precompiled-header
+path; the runtime also exports `QSAN_ENGINE_TEST_BUILD` so consumers use that
+path without supplying frontend-specific compile settings.
+
+This is the first build artifact that a native fixture runner and a future WASM
+target can consume without compiling presentation code from `src/tui/`.
 
 ## Next slices
 
-1. Promote the client-player/model implementation into an explicit
-   `qsanguosha_client_runtime` target while preserving the `ClientPlayer`
-   meta-object contract.
-2. Add a selection evaluator that combines card selection, ViewAs construction,
+1. Add a selection evaluator that combines card selection, ViewAs construction,
    target evaluation, and canonical reply encoding.
-3. Add a native fixture runner and a WebAssembly build of the same runtime.
+2. Add a native fixture runner that links `qsanguosha_client_runtime` directly
+   and records deterministic selection fixtures.
+3. Add the first WebAssembly build of the same runtime and compare its fixture
+   output against the native runner.
 4. Run that runtime in a dedicated Web Worker and replace
    `web/src/eligibility.ts` one interaction at a time.
 5. Add ruleset/card-registry hashes before loading extension content.
