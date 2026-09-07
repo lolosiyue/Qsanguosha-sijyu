@@ -393,8 +393,19 @@ void tuiInstallInterruptHandler(std::function<void()> callback)
                 char token = 0;
                 const ssize_t n = ::read(g_interruptWakePipe[0], &token, 1);
                 if (n == 1) {
-                    if (g_interruptCallback)
-                        g_interruptCallback();
+                    // Call a copy, not the global itself. The callback's own
+                    // work reaches TuiInput::stop(), which calls
+                    // tuiClearInterruptHandler() -- destroying the
+                    // std::function while it is executing. That survives
+                    // today only because the installed lambda captures a bare
+                    // `this` small enough to live in the function's inline
+                    // buffer and touches nothing after the emit; a capture one
+                    // pointer larger is heap-allocated and this becomes a
+                    // use-after-free, which is a shape this repo has been
+                    // bitten by before.
+                    std::function<void()> callback = g_interruptCallback;
+                    if (callback)
+                        callback();
                     continue;
                 }
                 if (n < 0 && errno == EINTR)

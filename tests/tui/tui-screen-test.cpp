@@ -105,6 +105,33 @@ int main(int argc, char **argv)
               "empty trailing element left by a separator after it");
     }
 
+    // A control character reaching a cell would be written into the stream
+    // verbatim by flush(). A bare LF inside an absolutely-positioned diff run
+    // scrolls the alternate screen exactly the way C1's trailing separator
+    // did, and a TAB moves the cursor an unpredictable distance -- and the C1
+    // assertions above cannot see either, because they count "\r\n". This is
+    // reachable in production: TuiRenderer::sanitize() deliberately preserves
+    // \n and \t for classic mode, so a multi-line error message arrives at
+    // the board's panes with them intact.
+    {
+        TuiScreen controls;
+        controls.resize(6, 20);
+        controls.putText(0, 0, QStringLiteral("x"));
+        (void)controls.flush(); // Leave the full-repaint path behind.
+        controls.putText(3, 2, QStringLiteral("line1\nline2"));
+        controls.putText(4, 2, QStringLiteral("a\tb"));
+        const QString diff = controls.flush();
+        check(!diff.contains(QLatin1Char('\n')),
+              "a newline in drawn text never reaches the diff stream as a raw LF");
+        check(!diff.contains(QLatin1Char('\t')),
+              "a tab in drawn text never reaches the diff stream as a raw TAB");
+        check(controls.toPlainText().split(QLatin1Char('\n')).size() == 6,
+              "an embedded newline does not invent an extra row in the grid");
+        check(controls.toPlainText().contains(QStringLiteral("line1 line2")),
+              "the control character becomes a space rather than being dropped, "
+              "so the surrounding text stays legible and correctly spaced");
+    }
+
     std::printf("[AUTOTEST] TUI_SCREEN_RESULT status=%s\n", failures == 0 ? "PASS" : "FAIL");
     return failures == 0 ? 0 : 1;
 }

@@ -110,6 +110,18 @@ void TuiScreen::putText(int row, int col, const QString &text, TuiAttr attr, int
             break; // Clipping, not wrapping: a torn row is worse than a cut word.
 
         QChar glyph = *it;
+        // A control character has no cell width and no glyph, but it would be
+        // written into the stream verbatim by flush(): a bare LF inside an
+        // absolutely-positioned diff run scrolls the alternate screen exactly
+        // the way the trailing row separator used to (see the full-repaint
+        // comment below), and a TAB moves the cursor an unpredictable
+        // distance. TuiRenderer::sanitize() deliberately keeps \n and \t
+        // because classic mode needs them, so text reaching a cell grid can
+        // still carry them -- a multi-line error message is the common case.
+        // Substitute a space here, at the one choke point every pane draws
+        // through, rather than trusting each caller to strip them.
+        if (glyph.unicode() < 0x20 || glyph.unicode() == 0x7f)
+            glyph = QLatin1Char(' ');
         char32_t code = glyph.unicode();
         if (glyph.isHighSurrogate() && (it + 1) != elided.end() && (it + 1)->isLowSurrogate()) {
             // A non-BMP code point needs both surrogate units to identify, but

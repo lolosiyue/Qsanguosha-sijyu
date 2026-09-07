@@ -490,10 +490,15 @@ void drawHand(TuiScreen &screen, const TuiBoardGeometry &geom, const QStringList
 // third row to give a notice of its own), row 2 is what has been typed so
 // far plus a cursor glyph -- a real character, not just an attribute, so a
 // monochrome terminal still sees where typing will land.
-void drawInput(TuiScreen &screen, const TuiBoardGeometry &geom, const TuiBoardViewState &view)
+// col/width are the caller's, not the rect's: input.cols measures only the
+// room's width (see drawFrame's note above) while the drawn input row spans
+// the full board, so the framed path passes the frame's own insets. The
+// below-the-floor path (§3.5) draws no frame and passes the whole width --
+// hard-coding col 1 / cols-2 there wasted a column at each edge on exactly
+// the size where every column counts.
+void drawInput(TuiScreen &screen, const TuiBoardGeometry &geom, const TuiBoardViewState &view,
+               int col, int width)
 {
-    const int col = 1;
-    const int width = screen.cols() - 2;
     const bool hasNotice = !view.notice.isEmpty();
     screen.putText(geom.input.row, col, tuiPadTo(hasNotice ? view.notice : view.promptLine, width),
                    hasNotice ? TuiAttr::Danger : TuiAttr::Normal);
@@ -573,7 +578,7 @@ void TuiBoardView::render(TuiScreen *screen, const ClientGameState &state,
         if (inputRows > 0) {
             TuiBoardGeometry minimal;
             minimal.input = TuiRect{rows - inputRows, 0, inputRows, cols};
-            drawInput(*screen, minimal, view);
+            drawInput(*screen, minimal, view, 0, cols);
         }
         return;
     }
@@ -600,7 +605,7 @@ void TuiBoardView::render(TuiScreen *screen, const ClientGameState &state,
 
     drawLog(*screen, geom, view.logLines);
     drawHand(*screen, geom, handLines);
-    drawInput(*screen, geom, view);
+    drawInput(*screen, geom, view, 1, screen->cols() - 2);
 }
 
 TuiBoardGeometry TuiBoardView::computeGeometry(const ClientGameState &state, int rows, int cols) const
