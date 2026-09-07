@@ -1,3 +1,6 @@
+// Keep first: the shared room context must compile without frontend includes.
+#include "runtime/client-room-context.h"
+
 #include "engine-bootstrap.h"
 #include "card.h"
 #include "engine.h"
