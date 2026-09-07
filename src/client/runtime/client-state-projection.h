@@ -1,6 +1,7 @@
 #ifndef CLIENT_STATE_PROJECTION_H
 #define CLIENT_STATE_PROJECTION_H
 
+#include "card.h"
 #include "player.h"
 
 #include <QSet>
