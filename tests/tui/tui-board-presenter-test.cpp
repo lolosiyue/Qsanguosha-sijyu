@@ -388,6 +388,59 @@ void testPagingNeverTouchesTheEditorLine()
     check(presenter.page() == 1, "PageDown actually moved the page");
 }
 
+void testMultiLineErrorDoesNotTearTheFrame()
+{
+    // The failed-connection message I4 made visible is itself multi-line
+    // ("network_error: ... \n reason: ..."), and writeError() used to store
+    // it unsplit -- so the notice row received cells holding a raw LF and the
+    // frame scrolled. The prompt row must collapse it to one line, and the
+    // grid must still report exactly its own row count.
+    TuiBoardPresenter presenter(QSize(80, 24), testResolvers());
+    ClientGameState state = fivePlayerState(QStringLiteral("sgs1"));
+    presenter.stateChanged(state);
+    pumpEvents();
+
+    presenter.writeError(QString::fromUtf8("network_error: 连接失败\nreason: 拒绝连接"));
+    const QString text = presenter.screenText();
+    check(text.split(QLatin1Char('\n')).size() == 24,
+          "a multi-line error leaves the grid at exactly its own row count");
+    check(text.contains(QString::fromUtf8("network_error: 连接失败 reason: 拒绝连接")),
+          "the notice row shows the whole message on one line, spaced not torn");
+}
+
+void testDumpsRenderFullWidth()
+{
+    // The I3 fix routed only the six commands §5.2 names literally, which
+    // dropped /help and /status from the overlay set -- they had been getting
+    // one from the line-count heuristic. Both are long static listings, not
+    // the "short message / command feedback" §5.2's category 1 describes, and
+    // truncated to the log pane's ~24 columns /help is unreadable. They are
+    // dumps; the spec's list was under-specified rather than deliberate.
+    //
+    // What this proves is the "why": a dump's full-width lines survive the
+    // overlay and would not survive the log pane. The routing itself (which
+    // TuiCommandType branch calls writeDump) is a controller concern with no
+    // injection seam here -- it is covered by the parity suite, which drives
+    // the real controller in both modes and would fail if classic's bytes
+    // moved.
+    TuiBoardPresenter presenter(QSize(80, 24), testResolvers());
+    ClientGameState state = fivePlayerState(QStringLiteral("sgs1"));
+    presenter.stateChanged(state);
+    pumpEvents();
+
+    const QString help = QStringLiteral(
+        "/help /status /players /hand /equip /piles /skills /log\n"
+        "/chat /trust /addrobot /surrender /reconnect /quit\n"
+        "/board <page>\n"
+        "prompt help text that would be cut off in the log pane");
+    presenter.writeDump(help);
+    const QString text = presenter.screenText();
+    check(!text.contains(QString::fromUtf8("牌堆")),
+          "a dump takes the whole screen rather than the log pane's few columns");
+    check(text.contains(QStringLiteral("prompt help text that would be cut off in the log pane")),
+          "the overlay shows a full-width line that the log pane would have elided");
+}
+
 void testRepaintBeforeAnyState()
 {
     // I4: before ClientCore ever pushes a state -- construction, or (the
@@ -462,6 +515,8 @@ int main(int argc, char **argv)
     testOverlayScrollKeys();
     testRepaintCoalescing();
     testPagingNeverTouchesTheEditorLine();
+    testMultiLineErrorDoesNotTearTheFrame();
+    testDumpsRenderFullWidth();
     testRepaintBeforeAnyState();
     testCompletionWorksInBoardMode();
 

@@ -212,7 +212,7 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
         if (m_script != nullptr)
             m_script->notifyStateChanged();
         if (m_core.state()->gameValue(QStringLiteral("game_over")).toBool())
-            writeOutput(m_renderer.renderState(*m_core.state()));
+            writeDump(m_renderer.renderState(*m_core.state()));
     });
     connect(&m_session, &ClientLiveSession::frontendMessageReceived, this,
         [this](const ProtocolMessage &message) {
@@ -675,7 +675,7 @@ void TuiApplicationController::handleCommand(const TuiCommandIntent &intent)
         return;
     }
     if (intent.type == TuiCommandType::Help) {
-        writeOutput(tuiText("tui_help"));
+        writeDump(tuiText("tui_help"));
     } else if (intent.type == TuiCommandType::Status) {
         writeOutput(m_renderer.renderState(*m_core.state()));
     } else if (intent.type == TuiCommandType::Players) {
