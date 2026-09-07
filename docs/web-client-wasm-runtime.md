@@ -35,11 +35,11 @@ TypeScript / DOM
 The server remains authoritative. A browser-side positive result is only a
 preview; submitted replies are still validated by the server.
 
-## First vertical slice
+## First vertical slice: target evaluation
 
-The first extraction is `src/client/runtime/client-target-evaluator.h`.
-It moves the engine-facing target-selection calculation out of TUI-specific
-presentation code without changing TUI behaviour.
+`src/client/runtime/client-target-evaluator.h` moves the engine-facing target
+selection calculation out of TUI presentation code without changing TUI
+behaviour.
 
 The evaluator deliberately preserves three native-client semantics:
 
@@ -52,20 +52,36 @@ The evaluator deliberately preserves three native-client semantics:
    are owned by the current server interaction context.
 
 Missing client-visible player state produces an **unknown** result, not a local
-rejection. This rule is important for the future WASM bridge: incomplete
-projection must never silently turn into "illegal".
+rejection. Incomplete projection must never silently turn into "illegal".
 
-`src/tui/tui-target-advice.*` now adapts this presentation-neutral result to TUI
-localized error text. The engine regression suite covers multi-vote,
-target-fixed, incomplete, and unknown-state cases.
+## Second vertical slice: shared state projection
+
+Frontend-neutral state projection now lives under `src/client/runtime/`:
+
+- `client-state-projection.h` applies normalized `ClientGameState` player data
+  to an engine `Player`, including scalar/dynamic properties, flags, marks,
+  history, card limitations, and visible skill changes.
+- `client-room-context.h` owns the client-side `RoomState`, registers the
+  `EngineRuntimeContext`, applies live `UPDATE_CARD` changes to `WrappedCard`,
+  exposes card owner/place lookups, and carries card-use reason/pattern.
+- TUI uses `ClientRoomContext` through a compatibility alias and delegates its
+  player projection to the shared helper.
+
+The TUI `ClientPlayer` class declaration intentionally remains in the TUI
+adapter for this slice. Its `Q_OBJECT` meta-object name is part of existing
+engine behaviour: client rule paths rely on `inherits("ClientPlayer")`. Moving
+that class is deferred until the build graph can explicitly own its AUTOMOC
+source in a shared runtime target.
+
+This boundary lets a future native fixture runner and WASM frontend reuse
+room/card projection without depending on terminal presentation code while the
+current TUI keeps the same class identity and public surface.
 
 ## Next slices
 
-The next changes should keep the same direction and avoid exporting raw
-`Player*`, `Card*`, or `Room*` pointers to JavaScript:
-
-1. Extract TUI's client-side Player/RoomState projection into
-   `src/client/runtime/`.
+1. Promote the client-player/model implementation into an explicit
+   `qsanguosha_client_runtime` target while preserving the `ClientPlayer`
+   meta-object contract.
 2. Add a selection evaluator that combines card selection, ViewAs construction,
    target evaluation, and canonical reply encoding.
 3. Add a native fixture runner and a WebAssembly build of the same runtime.
