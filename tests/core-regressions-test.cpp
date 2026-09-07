@@ -57,6 +57,10 @@ public:
     {
         return QStringLiteral("03p");
     }
+
+    // The synthetic card only reads objectName(); it never traverses seats.
+    Player *getNextAlive(int = 1) const override { return nullptr; }
+    Player *getLastAlive(int = 1) const override { return nullptr; }
 };
 
 class MultiVoteTargetCard final : public Card
