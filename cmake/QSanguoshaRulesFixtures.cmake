@@ -51,6 +51,7 @@ if(BUILD_TESTING)
             --runner "$<TARGET_FILE:qsanguosha_rules_fixture_runner>"
             --fixtures "${qsan_fixture_dir}/fixtures"
             --asset-root "${CMAKE_CURRENT_SOURCE_DIR}"
+            --builtin-assets
             --artifacts "${CMAKE_CURRENT_BINARY_DIR}/client-rules-fixtures"
     )
     set_tests_properties(qsanguosha_client_rules_fixtures PROPERTIES

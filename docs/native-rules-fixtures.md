@@ -38,10 +38,25 @@ ctest --test-dir build/debug -R '^qsanguosha_client_rules_fixture' --output-on-f
 `qsanguosha_client_rules_fixtures` runs every checked-in fixture twice in fresh
 processes, once with `QT_HASH_SEED=0` and once with the default randomized seed.
 It verifies explicit semantic expectations and byte-identical JSON, then checks
-six malformed-input/error cases. A mismatch, crash, timeout, missing executable,
+nine malformed-input/dependency error cases. A mismatch, crash, timeout, missing executable,
 missing package, missing output or wrong error diagnostic fails the test; none
 is converted into a skip. Outputs and separate stdout/stderr logs are retained
 under `<build>/client-rules-fixtures/`.
+
+CTest and the Linux/Windows PR gates pass `--builtin-assets`: the harness copies
+the five required repository files (`lua/config.lua`, `lua/sanguosha.lua`,
+`lua/utilities.lua`, `lua/sgs_ex.lua`, `lua/lib/json.lua`) to a fresh asset root.
+All configured native packages are still registered by the real engine. No
+external extensions, AI, artwork or personal settings are loaded. This makes the
+checked-in native scenes reproducible independently of ignored local content.
+The borrowed Tuxi scene includes the real `tuxi` target-limit mark.
+
+To test a complete extension set, invoke the harness without `--builtin-assets`
+and supply that set through `--asset-root`. Its full registry fingerprint is
+still compared without normalization. For example, the current external
+`qhstandard.lua` randomizes a registered card's suit/number during bootstrap;
+that content correctly fails the deterministic comparison. Extension parity
+requires a matched, deterministic content set and is not claimed by these gates.
 
 Each child starts in a temporary working directory with private XDG/AppData
 paths. This must happen **before process startup**, because global `Settings
@@ -50,7 +65,7 @@ engine user-data root. For manual Windows runs, likewise launch from an empty
 working directory and use absolute fixture/output/asset paths; `--asset-root`
 alone does not isolate pre-existing preferences.
 
-The stdlib-only comparator also has nine self-tests, independent of Qt:
+The stdlib-only comparator also has ten self-tests, independent of Qt:
 
 ```sh
 python tests/client_runtime/check-fixtures.py --self-test
