@@ -1898,6 +1898,7 @@ bool Server::listen()
 QStringList Server::startupMessages() const
 {
     QStringList addresses;
+#ifndef QT_NO_NETWORKINTERFACE
     foreach (const QHostAddress &address, QNetworkInterface::allAddresses()) {
         const QString item = address.toString();
         const quint32 ipv4 = address.toIPv4Address();
@@ -1906,6 +1907,7 @@ QStringList Server::startupMessages() const
 
         addresses << item;
     }
+#endif
 
     addresses.sort();
     QStringList items;
