@@ -272,15 +272,26 @@ escape sequence parser 必須處理**跨 read 斷開的序列**（`ESC [` 與 `D
 
 ### 5.2 board 模式下的文字輸出
 
-`TuiBoardPresenter::writeOutput()` 分三路：
+輸出分三路，而且**由呼叫端明寫走哪一路**，不由行數猜：
 
-1. **短訊息／戰報／命令回饋** → 右側 pane 的 scrollback。戰報 pane 同時是
-   訊息 pane，不另開區域。
-2. **長 dump**（`/players` `/log` `/hand` `/skills` `/piles` `/equip`）→
-   全螢幕 overlay，↑↓／PgUp／PgDn 捲動。**overlay 內容直接由現有
-   `TuiRenderer` 產生**，classic 的排版原封不動，不為 board 重寫一次。
+1. **短訊息／戰報／命令回饋／互動提示**（`writeOutput()`）→ 右側 pane 的
+   scrollback。戰報 pane 同時是訊息 pane，不另開區域。互動提示動輒 4–20 行，
+   一律走這路：`writeOutput()` **不論多長都不開 overlay**。
+2. **長 dump**（`writeDump()`：`/players` `/log` `/hand` `/skills` `/piles`
+   `/equip` `/help` `/status`）→ 全螢幕 overlay，↑↓／PgUp／PgDn 捲動。
+   **overlay 內容直接由現有 `TuiRenderer` 產生**，classic 的排版原封不動，
+   不為 board 重寫一次。分界線是「這是不是一份靜態長清單」，不是行數：
+   `/help` 與 `/status` 同樣是長清單，塞進 24 欄的 log pane 會被截到不可讀，
+   所以與其餘六個同路。classic 的 `writeDump()` 就是 `writeOutput()`，
+   所以這個分岔對 classic 的輸出逐位元組沒有影響。
 3. **錯誤**（`writeError`）→ 輸入區上方提示行，下次輸入時清除；同時進
-   scrollback，不會一閃即逝。
+   scrollback，不會一閃即逝。多行錯誤在提示行併成一行（提示行只有一行），
+   進 scrollback 時則逐行拆開。
+
+任何進到 cell grid 的文字都不得帶控制字元：`TuiRenderer::sanitize()` 為了
+classic 刻意保留 `\n`／`\t`，而 grid 內一個裸 LF 會令 alternate screen 捲動，
+效果與 §4 那個尾隨換行完全一樣。`TuiScreen::putText()` 是唯一入口，在該處
+一律換成空白。
 
 Overlay 關閉：`Esc`／`q`／空白鍵關閉並吞掉該鍵；其他可打印字元關閉 overlay
 **並送入行編輯器**，不吃掉使用者打的第一個字。

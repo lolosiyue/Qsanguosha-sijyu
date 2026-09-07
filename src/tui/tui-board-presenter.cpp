@@ -93,8 +93,15 @@ void TuiBoardPresenter::writeError(const QString &text)
     // also joins the scrollback, so it survives past that one frame instead
     // of flashing and vanishing the moment something else redraws the prompt
     // row (spec §5.2: "同時進 scrollback，不會一閃即逝").
-    m_notice = text;
-    appendScrollback(text);
+    // The prompt row is one row: a multi-line error collapses to a single
+    // spaced line there and is elided like any other text. The scrollback
+    // gets it split, one entry per line, the same as writeOutput() -- so a
+    // long error stays readable in the log pane instead of becoming one
+    // over-long entry that only its first screenful survives.
+    const QStringList lines = text.split(QLatin1Char('\n'));
+    m_notice = lines.join(QLatin1Char(' '));
+    for (const QString &line : lines)
+        appendScrollback(line);
     repaint();
 }
 
