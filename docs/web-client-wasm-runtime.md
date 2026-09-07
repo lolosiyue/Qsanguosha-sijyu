@@ -116,6 +116,13 @@ response, response-use, named skill prompt and play-phase request reach
 `canActivate`, `canSelectCard`, `cardSelectionFeasible` and `createCard` with the
 same context the native client is currently answering.
 
+Set `ClientRoomContext::setCardUseContext()` before each selection query; there
+is no separate per-request override that could disagree with legacy callbacks
+reading the engine context. Ordered selections reject duplicate physical IDs,
+and zero-card skills reject supplied subcards. V2 activation is checked again
+with the completed selection before construction. Server-named legacy prompts
+retain the desktop's borrowed-skill behaviour without changing player marks.
+
 Legacy ViewAs subcards also resolve through `Engine::getCard()` rather than the
 printed engine-card table. That means an `UPDATE_CARD`/WrappedCard change seen by
 the client remains visible during selection instead of silently reverting to
@@ -125,6 +132,11 @@ The result type contains a transient native `Card*` only for native callers that
 must finish rule evaluation in the same event handler. A JS/WASM binding must
 never export that pointer; it copies the canonical card text and structured
 selection result before crossing the boundary.
+
+The `tui-play-skills` regression suite also calls the shared API directly to
+cover borrowed prompts, wrapped-card filtering, V2 context and ordered
+selection, target evaluation, and response encoding. These are native checks;
+native/WASM fixture parity remains a later slice.
 
 ## Next slices
 

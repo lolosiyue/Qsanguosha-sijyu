@@ -156,7 +156,7 @@ inline SkillActivationResult evaluateSkillActivation(
     CardUseStruct::CardUseReason reason, const QString &pattern)
 {
     SkillActivationResult result;
-    if (Sanguosha == nullptr || QSanEngine::Self == nullptr)
+    if (Sanguosha == nullptr || Sanguosha->currentRoomState() == nullptr || QSanEngine::Self == nullptr)
         return result;
 
     result.known = true;
@@ -169,7 +169,14 @@ inline SkillActivationResult evaluateSkillActivation(
 
     const auto *activeSkill = dynamic_cast<const ViewAsSkillV2 *>(skill);
     if (activeSkill == nullptr) {
-        result.available = skill->isAvailable(self, reason, pattern);
+        // The desktop permits a server-named legacy response without owning
+        // the skill (RoomScene temporarily grants its Effect mark).
+        const bool namedResponse = patternSkillName(pattern) == skillName
+            && (reason == CardUseStruct::CARD_USE_REASON_RESPONSE
+                || reason == CardUseStruct::CARD_USE_REASON_RESPONSE_USE);
+        result.available = namedResponse
+            ? skill->isEnabledAtResponse(self, pattern)
+            : skill->isAvailable(self, reason, pattern);
         result.status = result.available
             ? SkillActivationStatus::Available : SkillActivationStatus::Unavailable;
         return result;
@@ -224,11 +231,8 @@ struct SkillCardBuildRequest
     QList<int> subcardIds;
     QStringList selectedTargets;
     QString userString;
-    CardUseStruct::CardUseReason reason = CardUseStruct::CARD_USE_REASON_UNKNOWN;
-    QString pattern;
-    // Runtime frontends normally set the room context before querying. Keeping
-    // this true makes TUI/native/WASM consume the exact same reason/pattern.
-    bool useCurrentContext = true;
+    // Set ClientRoomContext before querying. Legacy callbacks read it through
+    // Engine, so an independent reason/pattern override would split the query.
 };
 
 struct SkillCardBuildResult
@@ -249,7 +253,7 @@ struct SkillCardBuildResult
 inline SkillCardBuildResult buildSkillCard(const SkillCardBuildRequest &input)
 {
     SkillCardBuildResult result;
-    if (Sanguosha == nullptr) {
+    if (Sanguosha == nullptr || Sanguosha->currentRoomState() == nullptr) {
         result.status = SkillCardBuildStatus::EngineUnavailable;
         return result;
     }
@@ -266,15 +270,21 @@ inline SkillCardBuildResult buildSkillCard(const SkillCardBuildRequest &input)
         return result;
     }
 
-    SkillCardBuildRequest requestData = input;
-    if (requestData.useCurrentContext) {
-        requestData.reason = Sanguosha->getCurrentCardUseReason();
-        requestData.pattern = Sanguosha->getCurrentCardUsePattern();
+    const SkillCardBuildRequest &requestData = input;
+    const auto reason = Sanguosha->getCurrentCardUseReason();
+    const QString pattern = Sanguosha->getCurrentCardUsePattern();
+    QSet<int> seen;
+    for (int cardId : requestData.subcardIds) {
+        if (seen.contains(cardId)) {
+            result.status = SkillCardBuildStatus::CardRejected;
+            return result;
+        }
+        seen.insert(cardId);
     }
 
     const SkillActivationResult activation = evaluateSkillActivation(
         requestData.skillName, requestData.instanceId,
-        requestData.reason, requestData.pattern);
+        reason, pattern);
     if (activation.known && !activation.available) {
         result.status = SkillCardBuildStatus::ActivationUnavailable;
         return result;
@@ -283,8 +293,8 @@ inline SkillCardBuildResult buildSkillCard(const SkillCardBuildRequest &input)
     const Card *card = nullptr;
     if (const auto *v2 = dynamic_cast<const ViewAsSkillV2 *>(viewAs)) {
         ActiveSkillRequest request;
-        request.reason = requestData.reason;
-        request.pattern = requestData.pattern;
+        request.reason = reason;
+        request.pattern = pattern;
         request.initiator = self;
         request.activationRef = SkillInstanceRef(self->objectName(),
             SkillInstanceKey(requestData.skillName, requestData.instanceId));
@@ -307,9 +317,13 @@ inline SkillCardBuildResult buildSkillCard(const SkillCardBuildRequest &input)
             result.status = SkillCardBuildStatus::IncompleteSelection;
             return result;
         }
+        // As in Dashboard::updatePending(), activation must also accept the
+        // completed selection, not just the initial skill-button query.
+        if (!v2->canActivate(request)) {
+            result.status = SkillCardBuildStatus::ActivationUnavailable;
+            return result;
+        }
         card = v2->createCard(request);
-    } else if (const auto *zero = qobject_cast<const ZeroCardViewAsSkill *>(viewAs)) {
-        card = zero->viewAs();
     } else {
         QList<const Card *> selected;
         for (int cardId : requestData.subcardIds) {
