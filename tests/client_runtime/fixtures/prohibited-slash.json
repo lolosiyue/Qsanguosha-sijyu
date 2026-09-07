@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "name": "prohibited-slash",
+  "self": "sgs1",
+  "setup": {"mode": "02p"},
+  "players": [
+    {"name": "sgs1", "properties": {
+      "seat": 1, "general": "guanyu", "hp": 4, "max_hp": 4,
+      "alive": true, "role": "loyalist", "hand_count": 1, "hand_max": 4,
+      "phase": "play", "skills": [], "distanceTo_sgs2": 1
+    }},
+    {"name": "sgs2", "properties": {
+      "seat": 2, "general": "zhugeliang", "hp": 4, "max_hp": 4,
+      "alive": true, "role": "loyalist", "hand_count": 0, "hand_max": 4,
+      "skills": ["kongcheng"], "distanceTo_sgs1": 1
+    }}
+  ],
+  "cards": [
+    {"key": "attack", "selector": {"name": "slash", "suit": "spade"}, "owner": "sgs1", "place": "hand"}
+  ],
+  "queries": [
+    {
+      "name": "kongcheng-prohibits-slash", "request_id": "42", "reason": "play", "pattern": "",
+      "card": "attack", "targets": ["sgs2"], "target_pool": ["sgs1", "sgs2"],
+      "expect": {"can_confirm": false, "target_validation": {"known": true, "reason": "invalid_target", "target": "sgs2"}}
+    }
+  ]
+}
