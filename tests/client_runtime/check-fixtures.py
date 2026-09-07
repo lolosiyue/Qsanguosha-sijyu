@@ -114,6 +114,10 @@ def invoke(args: argparse.Namespace, fixture: Path, tag: str, deterministic_hash
         env["QT_HASH_SEED"] = "0"
     else:
         env.pop("QT_HASH_SEED", None)
+    if error_text is not None:
+        # CLI diagnostics must survive Qt logging filters and Windows' default
+        # debug-output routing when the child has redirected standard streams.
+        env["QT_LOGGING_RULES"] = "*.critical=false"
     # Settings Config is constructed before main(): isolate its Windows
     # config.ini (CWD) and Unix QSettings (XDG) before launching the process.
     with tempfile.TemporaryDirectory(prefix="rules-", dir=args.artifacts) as scratch:

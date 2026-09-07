@@ -132,6 +132,9 @@ status; never accept an old file after a failed run.
 Exit codes: 0 success, 2 CLI/JSON/version/input errors, 3 bootstrap/assets errors,
 4 fixture/evaluation-contract errors, 5 output errors. Engine faults still
 produce a nonzero process status and fail the harness.
+CLI diagnostics go directly to stderr, independently of Qt logging filters or
+Windows debug-output routing; the negative tests explicitly disable Qt critical
+logging to preserve this contract.
 
 The result contains a registry SHA-256, the resolved card-key mapping, and one
 entry per query with build status, card text, next target candidates/maxVotes,
