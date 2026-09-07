@@ -222,7 +222,13 @@ public:
     }
     inline bool tryAcquireLock(SemaphoreType type, int timeout = 0)
     {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
+        // Static Qt builds need the deadline overload; the old wrapper may
+        // have been omitted from the prebuilt library.
+        return semas[type]->tryAcquire(1, QDeadlineTimer(timeout));
+#else
         return semas[type]->tryAcquire(1, timeout);
+#endif
     }
     inline void releaseLock(SemaphoreType type)
     {

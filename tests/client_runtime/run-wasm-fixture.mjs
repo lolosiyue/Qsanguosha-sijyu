@@ -5,9 +5,19 @@ import { readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/pro
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
+import { setTimeout, clearTimeout } from 'node:timers';
 
 const LIMIT = 1024 * 1024;
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+
+// Qt 6.11.1 QWasmTimer names window directly and expects numeric timer IDs.
+// Forward only that timer contract to Node; DOM/storage APIs stay absent.
+export function createQtTimerHost() {
+  return Object.freeze({
+    setTimeout(callback, delay) { return Number(setTimeout(callback, delay)); },
+    clearTimeout(id) { clearTimeout(id); },
+  });
+}
 
 export function parseManifest(bytes) {
   const value = JSON.parse(Buffer.from(bytes).toString('utf8'));
@@ -34,6 +44,22 @@ export function verifyEmbeddedAssets(fs, manifestBytes) {
   const embedded = Buffer.from(fs.readFile('/assets/fixture-assets.json'));
   if (!embedded.equals(Buffer.from(manifestBytes))) {
     throw new Error('WASM embedded asset manifest differs from its sidecar');
+  }
+  const files = [];
+  function inventory(directory) {
+    for (const name of fs.readdir(directory)) {
+      if (name === '.' || name === '..') continue;
+      const file = `${directory}/${name}`;
+      const mode = fs.lstat(file).mode;
+      if (fs.isDir(mode)) inventory(file);
+      else if (fs.isFile(mode)) files.push(file.slice('/assets/'.length));
+      else throw new Error(`unexpected WASM embedded asset type: ${file}`);
+    }
+  }
+  inventory('/assets');
+  const expected = ['fixture-assets.json', ...manifest.files.map(entry => entry.path)].sort();
+  if (JSON.stringify(files.sort()) !== JSON.stringify(expected)) {
+    throw new Error('WASM embedded asset inventory differs from its sidecar');
   }
   for (const entry of manifest.files) {
     const bytes = Buffer.from(fs.readFile(`/assets/${entry.path}`));
@@ -77,7 +103,6 @@ export async function executeFixture(factory, input, manifestBytes, {
   options.preRun = [module => {
     const fs = (module || options).FS;
     if (!fs) throw new Error('WASM module does not export FS');
-    verifyEmbeddedAssets(fs, manifestBytes);
     fs.mkdirTree('/work');
     fs.mkdirTree('/home/fixture/config');
     fs.mkdirTree('/home/fixture/data');
@@ -89,6 +114,9 @@ export async function executeFixture(factory, input, manifestBytes, {
   if (aborted || typeof module._qsan_run_fixture !== 'function' || !module.FS) {
     throw new Error('WASM initialization failed or fixture export is missing');
   }
+  // Emscripten 4.0.7 installs --embed-file data during initRuntime, after
+  // preRun. Verify it once initialization finishes, before engine bootstrap.
+  verifyEmbeddedAssets(module.FS, manifestBytes);
   const status = module._qsan_run_fixture();
   if (aborted || !Number.isInteger(status) || status !== 0) {
     throw new Error(`WASM fixture exit ${status}`);
@@ -104,6 +132,9 @@ export async function executeFixture(factory, input, manifestBytes, {
 }
 
 export async function main(argv = process.argv.slice(2)) {
+  if (!Array.isArray(globalThis.navigator?.languages)) {
+    throw new Error('Node 22+ with built-in navigator.languages is required by Qt WASM');
+  }
   const { values } = parseArgs({ args: argv, options: {
     module: { type: 'string' }, manifest: { type: 'string' },
     fixture: { type: 'string' }, output: { type: 'string' },
@@ -135,6 +166,8 @@ export async function main(argv = process.argv.slice(2)) {
   }
   const { default: factory } = await import(pathToFileURL(modulePath).href);
   if (typeof factory !== 'function') throw new Error('module must export an Emscripten factory');
+  if (globalThis.window !== undefined) throw new Error('fixture host requires an isolated Node process');
+  globalThis.window = createQtTimerHost();
   const result = await executeFixture(factory, input, manifestBytes, {
     wasmBinary, hashSeed: process.env.QT_HASH_SEED, loggingRules: process.env.QT_LOGGING_RULES,
   });

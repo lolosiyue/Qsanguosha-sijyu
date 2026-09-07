@@ -92,10 +92,15 @@ jobs:
           cache: true
           cache-key-prefix: qsan-wasm-fixtures-6.11.1-singlethread-v1
           aqtsource: 'git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e'
+      - name: Install Node host with native navigator support
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
       - name: Run host adapter and comparison self-tests
         run: |
-          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
-          "$EMSDK_NODE" --test tests/client_runtime/run-wasm-fixture.test.mjs
+          echo "QSAN_FIXTURE_NODE=$(command -v node)" >> "$GITHUB_ENV"
+          node --version > artifacts/wasm-fixtures/node-version.txt
+          node --test tests/client_runtime/run-wasm-fixture.test.mjs
           python3 tests/client_runtime/check-wasm-fixtures.py --self-test
           python3 tests/client_runtime/check-fixtures.py --self-test
       - name: Compile and link the real engine for WASM
@@ -103,9 +108,9 @@ jobs:
           set -o pipefail
           source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
           em++ --version > artifacts/wasm-fixtures/emscripten-version.txt
-          emcmake cmake -S . -B build/rules-wasm -G Ninja \
+          cmake -S . -B build/rules-wasm -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$QT_ROOT_DIR/lib/cmake/Qt6/qt.toolchain.cmake" \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" -DQt6_DIR="$QT_ROOT_DIR/lib/cmake/Qt6" \
             -DQT_HOST_PATH="$QSAN_FIXTURE_HOST_QT" \
             -DBUILD_TESTING=OFF -DQSAN_BUILD_GUI=OFF -DQSAN_BUILD_TUI=OFF \
             -DQSAN_BUILD_SERVER=OFF -DQSAN_BUILD_RULES_FIXTURE_RUNNER=OFF \
@@ -121,7 +126,7 @@ jobs:
             --native-runner "$GITHUB_WORKSPACE/build/rules-native/qsanguosha_rules_fixture_runner" \
             --wasm-module "$module_dir/qsanguosha_rules_fixture_wasm.mjs" \
             --manifest "$module_dir/qsanguosha_rules_fixture_wasm.assets.json" \
-            --node "$EMSDK_NODE" --fixtures "$GITHUB_WORKSPACE/tests/client_runtime/fixtures" \
+            --node "$QSAN_FIXTURE_NODE" --fixtures "$GITHUB_WORKSPACE/tests/client_runtime/fixtures" \
             --asset-root "$GITHUB_WORKSPACE" --artifacts "$GITHUB_WORKSPACE/artifacts/wasm-fixtures"
       - name: Upload evidence even if compilation or parity fails
         if: always()

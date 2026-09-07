@@ -375,7 +375,11 @@ ServerPlayer *RequestCoordinator::getRaceResult(QList<ServerPlayer *> players, C
             time_t remainTime = timeOut - timer.elapsed();
             if (remainTime < 0)
                 remainTime = 0;
+#if QT_VERSION >= QT_VERSION_CHECK(6, 6, 0)
+            acquired = m_raceRequestSemaphore.tryAcquire(1, QDeadlineTimer(static_cast<int>(remainTime)));
+#else
             acquired = m_raceRequestSemaphore.tryAcquire(1, remainTime);
+#endif
         }
         bool roomSemaphoreHeld = false;
         if (!acquired)

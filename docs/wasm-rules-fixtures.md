@@ -2,9 +2,15 @@
 
 This is the next verification slice after the native runner in PR #29. It is
 **not a browser client**, a production Worker API, or proof that the complete
-engine is already portable. Keep the PR in draft until a real Qt/Emscripten
-compile, link and fixture execution all pass. Host-adapter self-tests and CMake
-syntax/graph probes do not satisfy that gate.
+engine is already portable. Acceptance requires a real Qt/Emscripten compile,
+link and fixture execution. Host-adapter self-tests and CMake syntax/graph
+probes do not satisfy that gate.
+
+The 2026-09-08 local probe built both backends with Qt 6.11.1 and executed the
+WASM module with Emscripten 4.0.7 / Node 22.23.2. Four scenes / twelve queries
+passed in eight fresh positive processes per backend, with byte-identical
+native/WASM results and nine expected failures per backend. The checked-in CI
+repeats this gate and retains the parity summary, hashes and logs.
 
 ## What is shared
 
@@ -21,7 +27,7 @@ fresh module and host process. A second invocation of the same module is an
 error; this is not a reusable game-session lifecycle API.
 
 The initial host is Node, with a modularized `.mjs` loader plus a `.wasm` binary.
-It deliberately adds no DOM shims, WebSocket transport, browser UI, pthread pool
+It adds no DOM implementation, WebSocket transport, browser UI, pthread pool
 or Node filesystem mount. A successful Node run would prove this fixture path,
 not browser/Worker compatibility.
 
@@ -34,6 +40,13 @@ into the cross compiler's dependency search. The source package inventory and
 final engine WHOLE_ARCHIVE policy are retained, with unresolved symbols treated
 as errors. Server/platform objects still in the engine must genuinely compile;
 they are not replaced with fake-success rule stubs.
+
+Run fixtures with **Node 22+**, whose built-in `navigator.languages` is used by
+Qt's system locale. Emscripten's bundled Node 20 remains its compiler helper;
+it cannot host this Qt fixture. The host provides a narrow `window` timer bridge
+because Qt 6.11.1's `QWasmTimer` hard-codes that name. Its only methods are
+`setTimeout` and `clearTimeout`, backed by real Node timers with numeric IDs.
+No document, storage, navigator replacement or other window API is supplied.
 
 Build the native comparison binary first in a separate build directory:
 
@@ -49,15 +62,32 @@ Then cross-compile (the Qt/Emscripten SDKs must already be installed):
 
 ```sh
 source "$EMSDK/emsdk_env.sh"
-emcmake cmake -S . -B build/rules-wasm -G Ninja \
+cmake -S . -B build/rules-wasm -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE="$QT_WASM/lib/cmake/Qt6/qt.toolchain.cmake" \
   -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-  -DCMAKE_PREFIX_PATH="$QT_WASM" -DQt6_DIR="$QT_WASM/lib/cmake/Qt6" \
   -DQT_HOST_PATH="$QT_NATIVE" \
   -DBUILD_TESTING=OFF -DQSAN_BUILD_GUI=OFF -DQSAN_BUILD_TUI=OFF \
   -DQSAN_BUILD_SERVER=OFF -DQSAN_BUILD_RULES_FIXTURE_RUNNER=OFF \
   -DQSAN_BUILD_WASM_RULES_FIXTURES=ON
 cmake --build build/rules-wasm --target qsanguosha_rules_fixture_wasm
 ```
+
+Use the Qt kit's toolchain file: it chains Emscripten and adds the cross Qt
+package roots. `emcmake` plus `Qt6_DIR` alone does not resolve Qt Core and its
+dependencies. Start a fresh build directory when changing toolchains.
+
+The fixture links Embind because Qt Core itself uses `emscripten::val`. The
+shared server sources omit address enumeration when Qt defines
+`QT_NO_NETWORKINTERFACE`, and use the equivalent `QDeadlineTimer` semaphore
+overload on Qt 6.6+ (the static WASM kit omits the old timeout wrapper symbol).
+Qt 5.6 keeps its original timeout overload. No semaphore implementation or
+gameplay dependency is stubbed out for the cross build.
+
+Only this fixture target selects a filename-based INI backend for the global
+`Settings` object. The host creates `/work` and changes MEMFS CWD before static
+initialization, so `config.ini` stays inside that fresh module. Qt's
+organization/scope constructor probes browser cookies even with `IniFormat`;
+the filename constructor avoids that browser API without DOM shims.
 
 The WASM option defaults OFF. Existing native products and native fixture CTests
 keep their previous build path. Cross builds require all native products,
@@ -71,7 +101,10 @@ Output under `build/rules-wasm/rules-wasm/RelWithDebInfo/`:
 - `qsanguosha_rules_fixture_wasm.assets.json`
 
 C++ uses Emscripten's compatible exception mode, not native Wasm exception
-extensions. Stack/initial-memory settings are probe configuration, not measured
+extensions. Debug/RelWithDebInfo links reset `-g` with `-g0`, then use `-g2` to
+retain function names without full DWARF; the initial full-DWARF `wasm-opt`
+process used about 9 GiB locally.
+Stack/initial-memory settings are probe configuration, not measured
 production requirements or a promise about download size/performance.
 
 ## Matched content, not just matched card names
@@ -89,6 +122,11 @@ checks the embedded manifest and each embedded file against that sidecar.
 Missing/extra files or changed bytes fail. No registry/fingerprint mismatch is
 normalized away.
 
+Emscripten 4.0.7 installs embedded files during runtime initialization, after
+`preRun`. Asset verification therefore runs after the module factory resolves
+and before the fixture export starts EngineBootstrap. Host tests model this
+ordering; eagerly populating a fake filesystem would hide startup failures.
+
 This is the `builtin-v1` fixture profile. PR #29 identified randomized bootstrap
 registration in external content; this probe does not silently weaken that
 check, alter the external script or claim extension parity. These hashes are
@@ -102,7 +140,7 @@ python3 tests/client_runtime/check-wasm-fixtures.py \
   --native-runner "$PWD/build/rules-native/qsanguosha_rules_fixture_runner" \
   --wasm-module "$module_dir/qsanguosha_rules_fixture_wasm.mjs" \
   --manifest "$module_dir/qsanguosha_rules_fixture_wasm.assets.json" \
-  --node "$EMSDK_NODE" --fixtures "$PWD/tests/client_runtime/fixtures" \
+  --node node --fixtures "$PWD/tests/client_runtime/fixtures" \
   --asset-root "$PWD" --artifacts "$PWD/artifacts/wasm-fixtures"
 ```
 
