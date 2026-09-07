@@ -22,6 +22,9 @@ if(NOT qsan_wasm_compiler_status EQUAL 0 OR NOT qsan_wasm_emscripten_version STR
 endif()
 
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
+# Only this fixture build uses a filename-based INI in the host's fresh MEMFS.
+set_property(SOURCE src/core/settings.cpp APPEND PROPERTY
+    COMPILE_DEFINITIONS QSAN_WASM_RULES_FIXTURES)
 set(qsan_wasm_fixture_dir "${CMAKE_CURRENT_SOURCE_DIR}/tests/client_runtime")
 set(qsan_wasm_assets "${CMAKE_CURRENT_BINARY_DIR}/rules-wasm-builtin")
 execute_process(
@@ -68,6 +71,11 @@ set_property(TARGET qsanguosha_rules_fixture_wasm APPEND PROPERTY LINK_DEPENDS
     ${qsan_wasm_asset_dependencies} "${qsan_wasm_assets}/fixture-assets.json")
 target_link_options(qsanguosha_rules_fixture_wasm PRIVATE
     --no-entry
+    --bind
+    # Keep function names for traps without carrying full-engine DWARF through
+    # wasm-opt, which used about 9 GiB in the initial local link.
+    "$<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>:-g0>"
+    "$<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>:-g2>"
     -fexceptions
     -sDISABLE_EXCEPTION_CATCHING=0
     -sMODULARIZE=1

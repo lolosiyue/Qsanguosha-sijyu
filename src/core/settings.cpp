@@ -182,7 +182,7 @@ const int Settings::S_JUDGE_ANIMATION_DURATION = 1200;
 const int Settings::S_JUDGE_LONG_DELAY = 800;
 
 Settings::Settings()
-#ifdef Q_OS_WIN32
+#if defined(Q_OS_WIN32) || defined(QSAN_WASM_RULES_FIXTURES)
     : QSettings("config.ini", QSettings::IniFormat)
 #elif defined(ANDROID)
     : QSettings(getAndroidConfigPath(), QSettings::IniFormat)
