@@ -1768,6 +1768,7 @@ ServerStatusSnapshot Server::statusSnapshot() const
 
 	snapshot.aiEnabled = Config.EnableAI;
 	snapshot.luaEnabled = !Config.DisableLua;
+	snapshot.maintenance = m_maintenanceMode;
 	return snapshot;
 }
 
@@ -1782,9 +1783,13 @@ QList<RoomStatusSnapshot> Server::roomSnapshots() const
 
 		RoomStatusSnapshot snapshot;
 		snapshot.id = room->getId();
+		// The game runs on RoomThread, started by GameSessionController::run(); the
+		// Room's own QThread finishes soon after the game starts, so isRunning() alone
+		// reports a game in progress as waiting. Check the session state as well.
 		snapshot.state = disposing || room->isFinished()
 			? QStringLiteral("disposing")
-			: (room->isRunning() ? QStringLiteral("playing") : QStringLiteral("waiting"));
+			: ((room->isRunning() || room->hasGameStarted())
+				? QStringLiteral("playing") : QStringLiteral("waiting"));
 		snapshot.gameMode = room->getMode();
 		snapshot.playerCount = room->getPlayers().size();
 		snapshot.playerCapacity = snapshot.playerCount + room->getLack();
@@ -1871,6 +1876,189 @@ void Server::broadcastAdminMessage(const QString &message)
 {
 	broadcast(message);
 	emit server_message(tr("Administrator broadcast: %1").arg(message));
+}
+
+bool Server::setMaintenanceMode(bool enabled)
+{
+	if (m_maintenanceMode == enabled)
+		return false;
+	m_maintenanceMode = enabled;
+	// The listener still accepts; refusal happens at signup so the client gets a meaningful reason.
+	emit server_message(enabled
+		? tr("Maintenance mode enabled; new signups are refused")
+		: tr("Maintenance mode disabled"));
+	return true;
+}
+
+Room *Server::findRoom(int roomId) const
+{
+	foreach (Room *room, rooms) {
+		if (room && room->getId() == roomId)
+			return room;
+	}
+	return nullptr;
+}
+
+Room *Server::resolveWaitingRoom(int roomId, QString *error) const
+{
+	Room *room = nullptr;
+	if (roomId < 0) {
+		room = current;
+		if (!room) {
+			if (error)
+				*error = tr("No room is waiting; give a room id");
+			return nullptr;
+		}
+	} else {
+		room = findRoom(roomId);
+		if (!room) {
+			if (error)
+				*error = tr("Room not found: %1").arg(roomId);
+			return nullptr;
+		}
+	}
+	if (room->isFinished()) {
+		if (error)
+			*error = tr("Room %1 has ended").arg(room->getId());
+		return nullptr;
+	}
+	if (room->isRunning() || room->hasGameStarted()) {
+		if (error)
+			*error = tr("Room %1 has a game in progress").arg(room->getId());
+		return nullptr;
+	}
+	return room;
+}
+
+void Server::retireRoom(Room *room, bool kickPlayers)
+{
+	if (!room)
+		return;
+	rooms.remove(room);
+
+	if (kickPlayers) {
+		// Players in a waiting room never leave through gameOver, so disconnect them.
+		// Robots have no socket; kick() is a harmless no-op for them.
+		foreach (ServerPlayer *player, room->getPlayers()) {
+			if (player)
+				player->kick();
+		}
+	}
+	foreach (ServerPlayer *player, room->findChildren<ServerPlayer *>()) {
+		name2objname.remove(player->screenName(), player->objectName());
+		players.remove(player->objectName());
+	}
+
+	if (current == room)
+		current = nullptr;
+	room->abortWaitingRequests();
+	scheduleDisposeRoom(room);
+}
+
+bool Server::closeRoom(int roomId, QString *error)
+{
+	Room *room = findRoom(roomId);
+	if (!room) {
+		if (error)
+			*error = tr("Room not found: %1").arg(roomId);
+		return false;
+	}
+	if (room->isRunning() || room->hasGameStarted()) {
+		if (error)
+			*error = tr("Room %1 has a game in progress; use end-game").arg(roomId);
+		return false;
+	}
+	retireRoom(room, true);
+	emit server_message(tr("Administrator closed room %1").arg(roomId));
+	return true;
+}
+
+int Server::closeWaitingRooms()
+{
+	QList<Room *> targets;
+	foreach (Room *room, rooms) {
+		if (room && !room->isRunning() && !room->hasGameStarted())
+			targets << room;
+	}
+	foreach (Room *room, targets) {
+		const int roomId = room->getId();
+		retireRoom(room, true);
+		emit server_message(tr("Administrator closed room %1").arg(roomId));
+	}
+	return targets.size();
+}
+
+bool Server::endRoomGame(int roomId, QString *error)
+{
+	Room *room = findRoom(roomId);
+	if (!room) {
+		if (error)
+			*error = tr("Room not found: %1").arg(roomId);
+		return false;
+	}
+	if (room->isFinished()) {
+		if (error)
+			*error = tr("Room %1 has already ended").arg(roomId);
+		return false;
+	}
+	if (!room->isRunning() && !room->hasGameStarted()) {
+		if (error)
+			*error = tr("Room %1 has no game in progress; use close").arg(roomId);
+		return false;
+	}
+	room->requestAdminTermination();
+	emit server_message(tr("Administrator ended the game in room %1").arg(roomId));
+	return true;
+}
+
+int Server::addRoomRobots(int roomId, int count, QString *error)
+{
+	Room *room = resolveWaitingRoom(roomId, error);
+	if (!room)
+		return -1;
+	if (count == 0)
+		return 0;
+	const int lack = room->getLack();
+	if (lack <= 0) {
+		if (error)
+			*error = tr("Room %1 is already full").arg(room->getId());
+		return -1;
+	}
+
+	const int before = room->getPlayers().size();
+	AddRobotPayload payload;
+	payload.fillRemaining = count < 0;
+	payload.count = count < 0 ? 0 : qMin(count, lack);
+	// Same entry point as GUI fillRobots() / TUI /addrobot. nullptr means the admin;
+	// addRobotCommand only rejects human requests from non-owners.
+	room->addRobotCommand(nullptr, payload.toVariant());
+	return room->getPlayers().size() - before;
+}
+
+bool Server::startRoomGame(int roomId, QString *error)
+{
+	Room *room = resolveWaitingRoom(roomId, error);
+	if (!room)
+		return false;
+	if (!room->isFull()) {
+		AddRobotPayload payload;
+		payload.fillRemaining = true;
+		room->addRobotCommand(nullptr, payload.toVariant());
+		// Adding the last robot starts the game through signup's ready path; the console sends no READY.
+		if (room->isRunning() || room->hasGameStarted())
+			return true;
+	}
+	if (!room->isFull()) {
+		if (error)
+			*error = tr("Room %1 could not be filled").arg(room->getId());
+		return false;
+	}
+	if (!room->forceStart()) {
+		if (error)
+			*error = tr("Room %1 refused to start").arg(room->getId());
+		return false;
+	}
+	return true;
 }
 
 bool Server::listen()
@@ -2289,6 +2477,13 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 			QStringLiteral("No matching player exists for reconnect"));
 		return;
 	}
+	// Maintenance only blocks new joins. The reconnect branch above has already returned,
+	// so games in progress and connected players are unaffected.
+	if (m_maintenanceMode) {
+		rejectSignup(QStringLiteral("server_maintenance"),
+			QStringLiteral("Server is in maintenance mode and is not accepting new players"));
+		return;
+	}
 	if (screenNameInUse(signup.screenName)) {
 		rejectSignup(QStringLiteral("name_in_use"),
 			QStringLiteral("Screen name is already in use"));
@@ -2396,17 +2591,8 @@ void Server::gameOver()
 	Room *room = qobject_cast<Room *>(sender());
 	if (!room)
 		return;
-	rooms.remove(room);
-
-	foreach(ServerPlayer *player, room->findChildren<ServerPlayer *>()) {
-		name2objname.remove(player->screenName(), player->objectName());
-		players.remove(player->objectName());
-    }
-
-	if (current == room)
-		current = nullptr;
-	room->abortWaitingRequests();
-	scheduleDisposeRoom(room);
+	// Normal ending: players already got GAME_OVER, so do not disconnect them.
+	retireRoom(room, false);
 }
 
 void Server::beginShutdown()

@@ -2135,6 +2135,8 @@ void PlayerDecisionService::activate(ServerPlayer*player, CardUseStruct&card_use
 	} else {
 		bool success = m_room.doRequest(player, S_COMMAND_PLAY_CARD, player->objectName(), true);
 
+		// The play-phase request bypasses Room::doRequest's end-game check, so check here.
+		m_room.tryAdminTermination();
 		if (m_room.m_surrenderRequestReceived){
 			m_room.makeSurrender(player);
 			if (m_room.isGamePlaying()) activate(player, card_use);

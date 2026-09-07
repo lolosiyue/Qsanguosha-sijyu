@@ -44,6 +44,10 @@ public:
     ServerLogger &operator=(const ServerLogger &) = delete;
 
     bool start(const ServerLogConfiguration &configuration, QString &error);
+    // Live reconfiguration: the new destination must be writable before it replaces the
+    // old one. On failure the old configuration stays intact, so output never goes silent.
+    bool reconfigure(const ServerLogConfiguration &configuration, QString &error);
+    ServerLogConfiguration configuration() const;
     void stop();
 
     void log(ServerLogLevel level, const QString &component, const QString &message,
@@ -70,9 +74,13 @@ private:
 
     static std::atomic<ServerLogger *> s_activeLogger;
 
+    // log() runs on both room and main threads while reconfigure() changes the
+    // configuration on main. The level is an atomic early-out; every other field is
+    // read and written under m_mutex.
+    std::atomic<int> m_activeLevel { static_cast<int>(ServerLogLevel::Info) };
     ServerLogConfiguration m_configuration;
     QFile m_file;
-    QMutex m_mutex;
+    mutable QMutex m_mutex;
     QtMessageHandler m_previousHandler = nullptr;
     bool m_started = false;
 };

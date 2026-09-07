@@ -139,9 +139,74 @@ bool ServerLogger::start(const ServerLogConfiguration &configuration, QString &e
     }
 
     m_configuration = configuration;
+    m_activeLevel.store(static_cast<int>(configuration.level),
+                        std::memory_order_release);
     m_previousHandler = qInstallMessageHandler(&ServerLogger::qtMessageHandler);
     m_started = true;
     return true;
+}
+
+bool ServerLogger::reconfigure(const ServerLogConfiguration &configuration,
+                               QString &error)
+{
+    if (!m_started) {
+        error = QStringLiteral("server logger is not running");
+        return false;
+    }
+
+    QMutexLocker locker(&m_mutex);
+    const QString previousPath = m_configuration.filePath;
+    if (previousPath == configuration.filePath) {
+        // Same destination: leave the open file alone and only swap level / format.
+        m_configuration = configuration;
+        m_activeLevel.store(static_cast<int>(configuration.level),
+                            std::memory_order_release);
+        return true;
+    }
+
+    // Probe the new file first; if it cannot be opened, change nothing and keep logging to the old one.
+    if (!configuration.filePath.isEmpty()) {
+        QFile probe(configuration.filePath);
+        if (!probe.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+            error = QStringLiteral("unable to open log file '%1': %2")
+                .arg(configuration.filePath, probe.errorString());
+            return false;
+        }
+        probe.close();
+    }
+
+    if (m_file.isOpen()) {
+        m_file.flush();
+        m_file.close();
+    }
+    if (!configuration.filePath.isEmpty()) {
+        m_file.setFileName(configuration.filePath);
+        if (!m_file.open(QIODevice::WriteOnly | QIODevice::Append | QIODevice::Text)) {
+            error = QStringLiteral("unable to open log file '%1': %2")
+                .arg(configuration.filePath, m_file.errorString());
+            // The probe passed but the open still failed: fall back to the old destination,
+            // and to stdout if even that cannot be reopened. Never go silent.
+            if (!previousPath.isEmpty()) {
+                m_file.setFileName(previousPath);
+                if (!m_file.open(QIODevice::WriteOnly | QIODevice::Append
+                                 | QIODevice::Text)) {
+                    m_configuration.filePath.clear();
+                }
+            }
+            return false;
+        }
+    }
+
+    m_configuration = configuration;
+    m_activeLevel.store(static_cast<int>(configuration.level),
+                        std::memory_order_release);
+    return true;
+}
+
+ServerLogConfiguration ServerLogger::configuration() const
+{
+    QMutexLocker locker(&m_mutex);
+    return m_configuration;
 }
 
 void ServerLogger::stop()
@@ -165,12 +230,14 @@ void ServerLogger::log(ServerLogLevel level, const QString &component,
                        const QString &message, int roomId,
                        const QString &playerId, const QVariantMap &fields)
 {
-    if (!m_started || static_cast<int>(level) < static_cast<int>(m_configuration.level))
+    if (!m_started
+        || static_cast<int>(level) < m_activeLevel.load(std::memory_order_acquire))
         return;
 
+    // Format under the lock too: reconfigure() may replace m_configuration.format.
+    QMutexLocker locker(&m_mutex);
     const QByteArray record = formatRecord(level, component, message, roomId,
                                            playerId, fields) + '\n';
-    QMutexLocker locker(&m_mutex);
     if (m_file.isOpen()) {
         m_file.write(record);
         m_file.flush();

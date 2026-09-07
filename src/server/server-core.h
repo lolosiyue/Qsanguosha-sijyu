@@ -52,6 +52,21 @@ public:
     QList<PlayerStatusSnapshot> playerSnapshots() const;
     bool kickPlayer(const QString &id);
     void broadcastAdminMessage(const QString &message);
+    // Runtime console controls. Everything is addressed by room id / player id;
+    // callers never get a Room or ServerPlayer pointer.
+    bool isMaintenanceMode() const { return m_maintenanceMode; }
+    // Returns whether the flag actually changed.
+    bool setMaintenanceMode(bool enabled);
+    // Dissolve a waiting room: kick its players and reclaim it. Use endRoomGame for a game in progress.
+    bool closeRoom(int roomId, QString *error = nullptr);
+    // Dissolve every waiting room; returns how many were dissolved.
+    int closeWaitingRooms();
+    // End a game in progress through the normal gameOver path; takes effect at a room-thread safe point.
+    bool endRoomGame(int roomId, QString *error = nullptr);
+    // count < 0 fills the room; roomId < 0 means the current waiting room. Returns robots added.
+    int addRoomRobots(int roomId, int count, QString *error = nullptr);
+    // Fill with robots and let the ready path start the game; a full room that never started is started as if ready.
+    bool startRoomGame(int roomId, QString *error = nullptr);
     bool listen();
     QStringList startupMessages() const;
     void daemonize();
@@ -84,6 +99,11 @@ private:
     // name2objname only fills up when a game starts, so it cannot answer for
     // players who are still sitting in the lobby.
     bool screenNameInUse(const QString &screenName) const;
+    Room *findRoom(int roomId) const;
+    // roomId < 0 picks the current room; the room must still be waiting.
+    Room *resolveWaitingRoom(int roomId, QString *error) const;
+    // Reclaim path shared by gameOver() and closeRoom().
+    void retireRoom(Room *room, bool kickPlayers);
 
     ServerSocket *server;
     ServerSocket *websocketServer = nullptr;
@@ -97,6 +117,7 @@ private:
     // has not started yet; dropped again when the connection goes away.
     QHash<ClientSocket *, QString> m_lobbyScreenNames;
     bool created_successfully;
+    bool m_maintenanceMode = false;
     int playerCount;
     quint64 m_nextGameSeedIndex;
     GameSessionConfig m_nextSessionConfig;

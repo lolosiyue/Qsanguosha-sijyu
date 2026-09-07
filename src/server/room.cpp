@@ -1308,6 +1308,46 @@ void Room::waitForApplicationForeground()
 		m_waitCond.wait(locker.mutex());
 }
 
+void Room::requestAdminTermination()
+{
+	if (isFinished())
+		return;
+	m_adminTerminationRequested.store(true, std::memory_order_release);
+	// Same technique as processRequestSurrender: wake only seats actually waiting for a
+	// reply, and leave the room semaphore alone (unblockWaits would skew its idle count).
+	foreach (ServerPlayer *player, getPlayers()) {
+		if (player && player->m_isWaitingReply)
+			player->releaseLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
+	}
+	QMutexLocker locker(&m_mutex);
+	game_paused = false;
+	m_waitCond.wakeAll();
+}
+
+void Room::tryAdminTermination()
+{
+	if (!m_adminTerminationRequested.load(std::memory_order_acquire))
+		return;
+	// Before Playing (e.g. still choosing generals) keep the flag for the first in-game
+	// safe point; gameOver needs the thread and seated players.
+	if (!isGamePlaying() || isFinished() || getPlayers().isEmpty())
+		return;
+	m_adminTerminationRequested.store(false, std::memory_order_release);
+	// "." is the existing draw result (see CardMovementService::swapPile). It broadcasts
+	// GAME_OVER and throws GameFinished, which RoomThread::run catches.
+	gameOver(QStringLiteral("."));
+}
+
+bool Room::forceStart()
+{
+	if (isRunning() || hasGameStarted() || isFinished() || !isFull())
+		return false;
+	if (!m_gameSession->requestStart())
+		return false;
+	start();
+	return true;
+}
+
 ServerPlayer*Room::getCurrent() const
 {
 	return current;
@@ -2304,6 +2344,8 @@ bool Room::doRequest(ServerPlayer*player, QSanProtocol::CommandType command, con
 {
 	bool result = m_requests->request(player, command, arg,
 		ServerInfo.getCommandTimeout(command, S_SERVER_INSTANCE), wait);
+	if (wait && command != S_COMMAND_PLAY_CARD)
+		tryAdminTermination();
 	if (wait && command != S_COMMAND_PLAY_CARD
 		&& m_surrenderRequestReceived && isSinglePlayerMode())
 		makeSurrender(player);
@@ -2395,6 +2437,9 @@ ServerPlayer *Room::getRequestTarget(ServerPlayer *player) const
 bool Room::doRequest(ServerPlayer*player, QSanProtocol::CommandType command, const QVariant&arg, time_t timeOut, bool wait)
 {
 	bool result = m_requests->request(player, command, arg, timeOut, wait);
+	// console end-game shares the surrender safe points. PLAY_CARD keeps the play-phase path.
+	if (wait && command != S_COMMAND_PLAY_CARD)
+		tryAdminTermination();
 	// In single-player against AI, end the current flow when surrender interrupts a Slash/Jink or Peach prompt. PLAY_CARD still follows the normal play-phase path.
 	if (wait && command != S_COMMAND_PLAY_CARD
 		&& m_surrenderRequestReceived && isSinglePlayerMode())

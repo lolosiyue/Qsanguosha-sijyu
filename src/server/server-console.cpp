@@ -1,12 +1,17 @@
 #include "server-console.h"
 
 #include "server-core.h"
+#include "server-logger.h"
 #include "version.h"
 
 #include <QCoreApplication>
 #if !defined(QSAN_XP_LEGACY)
 #include <QDeadlineTimer>
 #endif
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QSocketNotifier>
 
 #include <cerrno>
@@ -49,6 +54,26 @@ QString durationText(qint64 milliseconds)
         .arg(hours, 2, 10, QLatin1Char('0'))
         .arg(minutes, 2, 10, QLatin1Char('0'))
         .arg(seconds, 2, 10, QLatin1Char('0'));
+}
+
+QString compactJson(const QJsonObject &object)
+{
+    return QString::fromUtf8(QJsonDocument(object).toJson(QJsonDocument::Compact));
+}
+
+QJsonValue optionalRoomId(int roomId)
+{
+    return roomId >= 0 ? QJsonValue(roomId) : QJsonValue(QJsonValue::Null);
+}
+
+// Always returns -1 for "not a valid id"; the caller reports the error.
+int parseRoomId(const QString &text, bool *ok)
+{
+    bool parsed = false;
+    const int value = text.toInt(&parsed);
+    if (ok)
+        *ok = parsed && value >= 0;
+    return parsed ? value : -1;
 }
 
 QString tableRow(const QStringList &columns, const QList<int> &widths)
@@ -194,8 +219,8 @@ void ConsoleInputThread::readFromPipe()
 }
 #endif
 
-ServerConsole::ServerConsole(Server *server, QObject *parent)
-    : QObject(parent), m_server(server), m_output(stdout)
+ServerConsole::ServerConsole(Server *server, ServerLogger *logger, QObject *parent)
+    : QObject(parent), m_server(server), m_logger(logger), m_output(stdout)
 {
 }
 
@@ -407,20 +432,40 @@ void ServerConsole::executeCommand(const QString &line)
         else
             printHelp();
     } else if (command == QLatin1String("status")) {
-        if (!arguments.isEmpty())
-            writeLine(QStringLiteral("Usage: status"));
+        if (arguments == QLatin1String("--json"))
+            printStatusJson();
+        else if (!arguments.isEmpty())
+            writeLine(QStringLiteral("Usage: status [--json]"));
         else
             printStatus();
     } else if (command == QLatin1String("players")) {
-        if (!arguments.isEmpty())
-            writeLine(QStringLiteral("Usage: players"));
+        if (arguments == QLatin1String("--json"))
+            printPlayersJson();
+        else if (!arguments.isEmpty())
+            writeLine(QStringLiteral("Usage: players [--json]"));
         else
             printPlayers();
     } else if (command == QLatin1String("rooms")) {
-        if (!arguments.isEmpty())
-            writeLine(QStringLiteral("Usage: rooms"));
+        if (arguments == QLatin1String("--json"))
+            printRoomsJson();
+        else if (!arguments.isEmpty())
+            writeLine(QStringLiteral("Usage: rooms [--json]"));
         else
             printRooms();
+    } else if (command == QLatin1String("close")) {
+        handleClose(arguments);
+    } else if (command == QLatin1String("end-game")) {
+        handleEndGame(arguments);
+    } else if (command == QLatin1String("maintenance")) {
+        handleMaintenance(arguments);
+    } else if (command == QLatin1String("addrobot")) {
+        handleAddRobot(arguments);
+    } else if (command == QLatin1String("start")) {
+        handleStart(arguments);
+    } else if (command == QLatin1String("log-level")
+        || command == QLatin1String("log-format")
+        || command == QLatin1String("log-file")) {
+        handleLogCommand(command, arguments);
     } else if (command == QLatin1String("say")) {
         if (arguments.isEmpty()) {
             writeLine(QStringLiteral("Usage: say <message>"));
@@ -452,13 +497,21 @@ void ServerConsole::executeCommand(const QString &line)
 void ServerConsole::printHelp()
 {
     writeLine(QStringLiteral("Available commands:"));
-    writeLine(QStringLiteral("  help                 Show this help."));
-    writeLine(QStringLiteral("  status               Show server status."));
-    writeLine(QStringLiteral("  players              List connected players."));
-    writeLine(QStringLiteral("  rooms                List rooms."));
-    writeLine(QStringLiteral("  say <message>         Broadcast an administrator message."));
-    writeLine(QStringLiteral("  kick <player-id>      Disconnect a player by exact ID."));
-    writeLine(QStringLiteral("  shutdown             Shut down the server cleanly."));
+    writeLine(QStringLiteral("  help                      Show this help."));
+    writeLine(QStringLiteral("  status [--json]           Show server status."));
+    writeLine(QStringLiteral("  players [--json]          List connected players."));
+    writeLine(QStringLiteral("  rooms [--json]            List rooms."));
+    writeLine(QStringLiteral("  close <room-id>|all       Dissolve a waiting room."));
+    writeLine(QStringLiteral("  end-game <room-id>        End the game running in a room."));
+    writeLine(QStringLiteral("  addrobot [n|all] [room]   Add robots to a waiting room."));
+    writeLine(QStringLiteral("  start [room-id]           Fill a waiting room and start it."));
+    writeLine(QStringLiteral("  maintenance on|off        Refuse or accept new signups."));
+    writeLine(QStringLiteral("  log-level <level>         debug, info, warning or error."));
+    writeLine(QStringLiteral("  log-format <text|json>    Switch the log record format."));
+    writeLine(QStringLiteral("  log-file <path|off>       Redirect the log to a file or stdout."));
+    writeLine(QStringLiteral("  say <message>             Broadcast an administrator message."));
+    writeLine(QStringLiteral("  kick <player-id>          Disconnect a player by exact ID."));
+    writeLine(QStringLiteral("  shutdown                  Shut down the server cleanly."));
 }
 
 void ServerConsole::printStatus()
@@ -482,6 +535,48 @@ void ServerConsole::printStatus()
     item(QStringLiteral("Robots:"), QString::number(snapshot.robotCount));
     item(QStringLiteral("AI:"), enabledText(snapshot.aiEnabled));
     item(QStringLiteral("Lua:"), enabledText(snapshot.luaEnabled));
+    item(QStringLiteral("Maintenance:"), enabledText(snapshot.maintenance));
+    if (m_logger) {
+        const ServerLogConfiguration log = m_logger->configuration();
+        item(QStringLiteral("Log level:"), serverLogLevelName(log.level));
+        item(QStringLiteral("Log format:"),
+            log.format == ServerLogFormat::Json ? QStringLiteral("json")
+                                                : QStringLiteral("text"));
+        item(QStringLiteral("Log file:"),
+            log.filePath.isEmpty() ? QStringLiteral("(stdout)") : log.filePath);
+    }
+}
+
+void ServerConsole::printStatusJson()
+{
+    const ServerStatusSnapshot snapshot = m_server->statusSnapshot();
+    // Minimal field set mirroring ServerStatusSnapshot; no stable schema version is promised.
+    QJsonObject object {
+        {QStringLiteral("uptime_ms"), double(snapshot.uptimeMs)},
+        {QStringLiteral("bind_address"), snapshot.bindAddress},
+        {QStringLiteral("port"), snapshot.port},
+        {QStringLiteral("websocket_port"), snapshot.websocketPort},
+        {QStringLiteral("game_mode"), snapshot.gameMode},
+        {QStringLiteral("rooms"), snapshot.roomCount},
+        {QStringLiteral("games_running"), snapshot.gamesRunning},
+        {QStringLiteral("players"), snapshot.playerCount},
+        {QStringLiteral("online"), snapshot.onlineCount},
+        {QStringLiteral("robots"), snapshot.robotCount},
+        {QStringLiteral("ai_enabled"), snapshot.aiEnabled},
+        {QStringLiteral("lua_enabled"), snapshot.luaEnabled},
+        {QStringLiteral("maintenance"), snapshot.maintenance},
+    };
+    if (m_logger) {
+        const ServerLogConfiguration log = m_logger->configuration();
+        object.insert(QStringLiteral("log"), QJsonObject {
+            {QStringLiteral("level"), serverLogLevelName(log.level)},
+            {QStringLiteral("format"), log.format == ServerLogFormat::Json
+                ? QStringLiteral("json") : QStringLiteral("text")},
+            {QStringLiteral("file"), log.filePath.isEmpty()
+                ? QJsonValue(QJsonValue::Null) : QJsonValue(log.filePath)},
+        });
+    }
+    writeLine(compactJson(object));
 }
 
 void ServerConsole::printPlayers()
@@ -506,6 +601,20 @@ void ServerConsole::printPlayers()
             player.roomId >= 0 ? QString::number(player.roomId) : QStringLiteral("-"),
             player.state }, widths));
     }
+}
+
+void ServerConsole::printPlayersJson()
+{
+    QJsonArray items;
+    for (const PlayerStatusSnapshot &player : m_server->playerSnapshots()) {
+        items.append(QJsonObject {
+            {QStringLiteral("id"), player.id},
+            {QStringLiteral("name"), player.name},
+            {QStringLiteral("room_id"), optionalRoomId(player.roomId)},
+            {QStringLiteral("state"), player.state},
+        });
+    }
+    writeLine(compactJson({{QStringLiteral("players"), items}}));
 }
 
 void ServerConsole::printRooms()
@@ -533,6 +642,184 @@ void ServerConsole::printRooms()
         writeLine(tableRow({ QString::number(room.id), room.state, room.gameMode,
             QStringLiteral("%1/%2").arg(room.playerCount).arg(room.playerCapacity),
             durationText(room.uptimeMs) }, widths));
+    }
+}
+
+void ServerConsole::printRoomsJson()
+{
+    QJsonArray items;
+    for (const RoomStatusSnapshot &room : m_server->roomSnapshots()) {
+        items.append(QJsonObject {
+            {QStringLiteral("id"), room.id},
+            {QStringLiteral("state"), room.state},
+            {QStringLiteral("game_mode"), room.gameMode},
+            {QStringLiteral("players"), room.playerCount},
+            {QStringLiteral("capacity"), room.playerCapacity},
+            {QStringLiteral("uptime_ms"), room.uptimeMs >= 0
+                ? QJsonValue(double(room.uptimeMs)) : QJsonValue(QJsonValue::Null)},
+        });
+    }
+    writeLine(compactJson({{QStringLiteral("rooms"), items}}));
+}
+
+void ServerConsole::handleClose(const QString &arguments)
+{
+    if (arguments.isEmpty()) {
+        writeLine(QStringLiteral("Usage: close <room-id>|all"));
+        return;
+    }
+    if (arguments.compare(QLatin1String("all"), Qt::CaseInsensitive) == 0) {
+        const int closed = m_server->closeWaitingRooms();
+        writeLine(closed == 0
+            ? QStringLiteral("No waiting room to close.")
+            : QStringLiteral("Waiting rooms closed: %1").arg(closed));
+        return;
+    }
+    bool ok = false;
+    const int roomId = parseRoomId(arguments, &ok);
+    if (!ok) {
+        writeLine(QStringLiteral("Usage: close <room-id>|all"));
+        return;
+    }
+    QString error;
+    if (m_server->closeRoom(roomId, &error))
+        writeLine(QStringLiteral("Room closed: %1").arg(roomId));
+    else
+        writeLine(error);
+}
+
+void ServerConsole::handleEndGame(const QString &arguments)
+{
+    bool ok = false;
+    const int roomId = parseRoomId(arguments, &ok);
+    if (!ok) {
+        writeLine(QStringLiteral("Usage: end-game <room-id>"));
+        return;
+    }
+    QString error;
+    if (m_server->endRoomGame(roomId, &error)) {
+        // The game ends at the room thread's next safe point; don't claim it has ended yet.
+        writeLine(QStringLiteral(
+            "End of game requested for room %1; it ends at the next safe point.")
+            .arg(roomId));
+    } else {
+        writeLine(error);
+    }
+}
+
+void ServerConsole::handleMaintenance(const QString &arguments)
+{
+    const QString value = arguments.toLower();
+    if (value != QLatin1String("on") && value != QLatin1String("off")) {
+        writeLine(QStringLiteral("Usage: maintenance on|off"));
+        return;
+    }
+    const bool enable = value == QLatin1String("on");
+    if (m_server->setMaintenanceMode(enable)) {
+        writeLine(enable
+            ? QStringLiteral("Maintenance mode enabled; new signups are refused.")
+            : QStringLiteral("Maintenance mode disabled."));
+    } else {
+        writeLine(QStringLiteral("Maintenance mode is already %1.")
+            .arg(enabledText(enable)));
+    }
+}
+
+void ServerConsole::handleAddRobot(const QString &arguments)
+{
+    const QStringList parts = arguments.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+    if (parts.size() > 2) {
+        writeLine(QStringLiteral("Usage: addrobot [n|all] [room-id]"));
+        return;
+    }
+    int count = -1; // Fill the room by default.
+    if (!parts.isEmpty() && parts.at(0).compare(QLatin1String("all"),
+            Qt::CaseInsensitive) != 0) {
+        bool ok = false;
+        count = parts.at(0).toInt(&ok);
+        if (!ok || count <= 0) {
+            writeLine(QStringLiteral("Usage: addrobot [n|all] [room-id]"));
+            return;
+        }
+    }
+    int roomId = -1;
+    if (parts.size() == 2) {
+        bool ok = false;
+        roomId = parseRoomId(parts.at(1), &ok);
+        if (!ok) {
+            writeLine(QStringLiteral("Usage: addrobot [n|all] [room-id]"));
+            return;
+        }
+    }
+
+    QString error;
+    const int added = m_server->addRoomRobots(roomId, count, &error);
+    if (added < 0) {
+        writeLine(error);
+        return;
+    }
+    writeLine(QStringLiteral("Robots added: %1").arg(added));
+}
+
+void ServerConsole::handleStart(const QString &arguments)
+{
+    int roomId = -1;
+    if (!arguments.isEmpty()) {
+        bool ok = false;
+        roomId = parseRoomId(arguments, &ok);
+        if (!ok) {
+            writeLine(QStringLiteral("Usage: start [room-id]"));
+            return;
+        }
+    }
+    QString error;
+    if (m_server->startRoomGame(roomId, &error))
+        writeLine(QStringLiteral("Game started."));
+    else
+        writeLine(error);
+}
+
+void ServerConsole::handleLogCommand(const QString &command, const QString &arguments)
+{
+    if (!m_logger) {
+        writeLine(QStringLiteral("Logging is not managed by this console."));
+        return;
+    }
+    ServerLogConfiguration configuration = m_logger->configuration();
+    if (command == QLatin1String("log-level")) {
+        if (!parseServerLogLevel(arguments, configuration.level)) {
+            writeLine(QStringLiteral("Usage: log-level <debug|info|warning|error>"));
+            return;
+        }
+    } else if (command == QLatin1String("log-format")) {
+        if (!parseServerLogFormat(arguments, configuration.format)) {
+            writeLine(QStringLiteral("Usage: log-format <text|json>"));
+            return;
+        }
+    } else {
+        if (arguments.isEmpty()) {
+            writeLine(QStringLiteral("Usage: log-file <path|off>"));
+            return;
+        }
+        configuration.filePath = arguments.compare(QLatin1String("off"),
+            Qt::CaseInsensitive) == 0 ? QString() : arguments;
+    }
+
+    QString error;
+    if (!m_logger->reconfigure(configuration, error)) {
+        writeLine(QStringLiteral("Log configuration unchanged: %1").arg(error));
+        return;
+    }
+    if (command == QLatin1String("log-level")) {
+        writeLine(QStringLiteral("Log level: %1")
+            .arg(serverLogLevelName(configuration.level)));
+    } else if (command == QLatin1String("log-format")) {
+        writeLine(QStringLiteral("Log format: %1")
+            .arg(configuration.format == ServerLogFormat::Json
+                ? QStringLiteral("json") : QStringLiteral("text")));
+    } else {
+        writeLine(QStringLiteral("Log file: %1").arg(configuration.filePath.isEmpty()
+            ? QStringLiteral("(stdout)") : configuration.filePath));
     }
 }
 

@@ -8,6 +8,7 @@
 
 class QSocketNotifier;
 class Server;
+class ServerLogger;
 
 #if defined(Q_OS_WIN)
 #include <atomic>
@@ -41,7 +42,9 @@ private:
 class ServerConsole final : public QObject
 {
 public:
-    explicit ServerConsole(Server *server, QObject *parent = nullptr);
+    // logger may be nullptr: an embedded console without one just lacks the log-* commands.
+    explicit ServerConsole(Server *server, ServerLogger *logger = nullptr,
+                           QObject *parent = nullptr);
     ~ServerConsole() override;
 
     void start();
@@ -54,8 +57,17 @@ private:
     void executeCommand(const QString &line);
     void printHelp();
     void printStatus();
+    void printStatusJson();
     void printPlayers();
+    void printPlayersJson();
     void printRooms();
+    void printRoomsJson();
+    void handleClose(const QString &arguments);
+    void handleEndGame(const QString &arguments);
+    void handleMaintenance(const QString &arguments);
+    void handleAddRobot(const QString &arguments);
+    void handleStart(const QString &arguments);
+    void handleLogCommand(const QString &command, const QString &arguments);
     void writeLine(const QString &line = QString());
     void showPrompt();
     void disableInput();
@@ -67,6 +79,7 @@ private:
 #endif
 
     Server *m_server;
+    ServerLogger *m_logger;
     QTextStream m_output;
     QByteArray m_inputBuffer;
     bool m_started = false;
