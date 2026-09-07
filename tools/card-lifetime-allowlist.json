@@ -63,9 +63,9 @@
       "reason": "legacy InovationFengzhuVS probe owns the cloned candidate; it is never returned or stored"
     },
     {
-      "site": "src/tui/tui-play-skills.cpp:236",
+      "site": "src/client/runtime/client-selection-runtime.h:358",
       "category": "upcast_delete",
-      "reason": "TUI-only temporary view-as card; QObject::deleteLater bypasses Card::deleteLater, which drains the global lifetime manager"
+      "reason": "Native client runtime temporary view-as card; QObject::deleteLater bypasses Card::deleteLater, which drains the global lifetime manager"
     },
     {
       "site": "src/tui/tui-skill-dialog.cpp:82",
