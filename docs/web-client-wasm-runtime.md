@@ -69,7 +69,7 @@ Frontend-neutral state projection now lives under `src/client/runtime/`:
 
 ## Third vertical slice: explicit runtime target
 
-`ClientPlayer` and its player-model implementation now live in
+`ClientPlayer` and its player-model implementation live in
 `src/client/runtime/client-player-model.*` and are compiled by the dedicated
 `qsanguosha_client_runtime` static library.
 
@@ -78,7 +78,7 @@ existing engine client paths use `inherits("ClientPlayer")` to choose
 client-visible/cached rule behaviour rather than server-only evaluation.
 Moving the implementation therefore must not rename the class.
 
-`src/tui/tui-client-player.*` is now only a compatibility adapter: the old
+`src/tui/tui-client-player.*` is only a compatibility adapter: the old
 `TuiPlayerModel` spelling aliases the shared `ClientPlayerModel`, while the
 implementation and AUTOMOC ownership belong to the runtime target. TUI links
 that target rather than owning a second player-model implementation.
@@ -92,20 +92,51 @@ is currently required by the engine headers' non-desktop precompiled-header
 path; the runtime also exports `QSAN_ENGINE_TEST_BUILD` so consumers use that
 path without supplying frontend-specific compile settings.
 
-This is the first build artifact that a native fixture runner and a future WASM
-target can consume without compiling presentation code from `src/tui/`.
+## Fourth vertical slice: shared selection runtime
+
+`src/client/runtime/client-selection-runtime.h` now owns the engine-facing
+selection helpers that were previously embedded in `tui-play-skills.cpp`.
+TUI remains a localized adapter over these presentation-neutral results.
+
+The shared API provides:
+
+- prompt-pattern to ViewAs-skill resolution;
+- interaction/handling-method to native `CardUseReason` mapping;
+- visible ViewAs skill candidate discovery;
+- native activation availability checks for legacy ViewAs and ViewAsSkillV2;
+- ordered subcard validation and native ViewAs card construction;
+- target-step and finished-target evaluation through the shared target
+  evaluator;
+- canonical `InteractionResponse::CardSelectionData` construction. The existing
+  `InteractionReplyEncoder` remains the single Protocol V2 wire encoder.
+
+ViewAsSkillV2 construction no longer invents `CARD_USE_REASON_PLAY`. The build
+request consumes the current `ClientRoomContext` reason and pattern, so a
+response, response-use, named skill prompt and play-phase request reach
+`canActivate`, `canSelectCard`, `cardSelectionFeasible` and `createCard` with the
+same context the native client is currently answering.
+
+Legacy ViewAs subcards also resolve through `Engine::getCard()` rather than the
+printed engine-card table. That means an `UPDATE_CARD`/WrappedCard change seen by
+the client remains visible during selection instead of silently reverting to
+the card's original catalog face.
+
+The result type contains a transient native `Card*` only for native callers that
+must finish rule evaluation in the same event handler. A JS/WASM binding must
+never export that pointer; it copies the canonical card text and structured
+selection result before crossing the boundary.
 
 ## Next slices
 
-1. Add a selection evaluator that combines card selection, ViewAs construction,
-   target evaluation, and canonical reply encoding.
-2. Add a native fixture runner that links `qsanguosha_client_runtime` directly
-   and records deterministic selection fixtures.
-3. Add the first WebAssembly build of the same runtime and compare its fixture
+1. Add a native fixture runner that links `qsanguosha_client_runtime` directly
+   and records deterministic physical-card and ViewAs selection fixtures.
+2. Add the first WebAssembly build of the same runtime and compare its fixture
    output against the native runner.
-4. Run that runtime in a dedicated Web Worker and replace
+3. Run that runtime in a dedicated Web Worker and replace
    `web/src/eligibility.ts` one interaction at a time.
-5. Add ruleset/card-registry hashes before loading extension content.
+4. Add ruleset/card-registry hashes before loading extension content.
+5. Extend the selection result with remaining player-view facts such as
+   explicit distance/attack-range presentation where the Web UI needs them.
 
 The Web UI should not grow new hard-coded weapon, target, or extension tables
 while this migration is in progress.
