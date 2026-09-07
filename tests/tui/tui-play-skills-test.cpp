@@ -3,6 +3,8 @@
 #include "client-game-state.h"
 #include "engine.h"
 #include "interaction-model.h"
+#include "interaction-reply-encoder.h"
+#include "runtime/client-selection-runtime.h"
 #include "standard.h"
 #include "tui-client-player.h"
 #include "tui-play-skills.h"
@@ -17,6 +19,49 @@
 namespace {
 
 int failures = 0;
+
+class SelectionProbe final : public ViewAsSkillV2
+{
+public:
+    SelectionProbe() : ViewAsSkillV2("selection_runtime_probe", 2) {}
+
+    CardUseStruct::CardUseReason expectedReason = CardUseStruct::CARD_USE_REASON_UNKNOWN;
+    QString expectedPattern;
+    mutable QList<QList<int>> prefixes;
+    mutable ActiveSkillRequest created;
+    mutable int creates = 0;
+    bool rejectCompleted = false;
+
+    bool matches(const ActiveSkillRequest &request) const
+    {
+        return request.reason == expectedReason && request.pattern == expectedPattern
+            && request.initiator == QSanEngine::Self
+            && request.activationRef.key.skillName == objectName();
+    }
+
+    bool canActivate(const ActiveSkillRequest &request) const override
+    {
+        return matches(request) && !(rejectCompleted && request.selectedCardIds.size() == 2);
+    }
+
+    bool canSelectCard(const ActiveSkillRequest &request, const Card *candidate) const override
+    {
+        prefixes.append(request.selectedCardIds);
+        return matches(request) && ViewAsSkillV2::canSelectCard(request, candidate);
+    }
+
+    bool cardSelectionFeasible(const ActiveSkillRequest &request) const override
+    {
+        return matches(request) && ViewAsSkillV2::cardSelectionFeasible(request);
+    }
+
+    const Card *createCard(const ActiveSkillRequest &request) const override
+    {
+        ++creates;
+        created = request;
+        return matches(request) ? ViewAsSkillV2::createCard(request) : nullptr;
+    }
+};
 
 void check(bool condition, const char *what)
 {
@@ -77,6 +122,10 @@ int main(int argc, char **argv)
         qCritical() << "engine initialization failed:" << error;
         return 1;
     }
+
+    auto *probe = new SelectionProbe;
+    probe->setParent(Sanguosha);
+    Sanguosha->addSkills({probe});
 
     // A pattern that names one skill is the server saying "only this skill's
     // card answers". Same shape RoomScene matches at Client::Responding.
@@ -210,6 +259,14 @@ int main(int argc, char **argv)
     if (Sanguosha->getSkill(QStringLiteral("nosguhuo")) == nullptr) {
         std::printf("[SKIP] nosguhuo is not in this build; dialog checks skipped\n");
     } else {
+        // The builder now checks activation and viewFilter as the desktop does.
+        // Give the fixture the skill and the hand card it actually selects.
+        state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("skills"),
+            QStringList{QStringLiteral("wusheng"), QStringLiteral("tuxi"),
+                        QStringLiteral("nosguhuo")});
+        state.setCardValue(1, QStringLiteral("owner"), QStringLiteral("sgs1"));
+        state.setCardValue(1, QStringLiteral("place"), static_cast<int>(Player::PlaceHand));
+        players.sync();
         room.setCardUseContext(CardUseStruct::CARD_USE_REASON_PLAY, QString());
         const QList<TuiSkillDeclaration> declarations
             = tuiSkillDeclarations(QStringLiteral("nosguhuo"), {});
@@ -301,8 +358,159 @@ int main(int argc, char **argv)
         room.setCardUseContext(CardUseStruct::CARD_USE_REASON_UNKNOWN, QString());
     }
 
-    players.clear();
+    // A server-named legacy skill can be lent for one prompt. GUI temporarily
+    // grants the Effect mark; the runtime must allow it without mutating state.
+    state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("skills"),
+        QStringList{QStringLiteral("wusheng"), probe->objectName()});
+    players.sync();
+    room.setCardUseContext(CardUseStruct::CARD_USE_REASON_RESPONSE, QStringLiteral("@@tuxi"));
+    ClientRules::SkillCardBuildRequest borrowedRequest;
+    borrowedRequest.selfName = QStringLiteral("sgs1");
+    borrowedRequest.skillName = QStringLiteral("tuxi");
+    check(ClientRules::buildSkillCard(borrowedRequest).built(),
+          "a named legacy response builds without owning the skill");
+    check(players.self()->getMark(QStringLiteral("ViewAsSkill_tuxiEffect")) == 0,
+          "borrowed activation leaves no Effect mark behind");
+    borrowedRequest.subcardIds = {1};
+    check(ClientRules::buildSkillCard(borrowedRequest).status
+              == ClientRules::SkillCardBuildStatus::CardRejected,
+          "zero-card skills reject supplied subcards instead of ignoring them");
+
+    // UPDATE_CARD must affect legacy filtering and construction. Start with a
+    // catalog-black card, then expose it to the client as a red Slash.
+    int blackId = -1;
+    for (int id = 0; id < Sanguosha->getCardCount(); ++id) {
+        if (Sanguosha->getEngineCard(id)->isBlack()) {
+            blackId = id;
+            break;
+        }
+    }
+    check(blackId >= 0, "the catalog supplies a black card for the wrapped-card regression");
+    if (blackId >= 0) {
+        state.setCardValue(blackId, QStringLiteral("owner"), QStringLiteral("sgs1"));
+        state.setCardValue(blackId, QStringLiteral("place"), static_cast<int>(Player::PlaceHand));
+        players.sync();
+        room.setCardUseContext(CardUseStruct::CARD_USE_REASON_RESPONSE, QStringLiteral("slash"));
+        ClientRules::SkillCardBuildRequest wusheng;
+        wusheng.selfName = QStringLiteral("sgs1");
+        wusheng.skillName = QStringLiteral("wusheng");
+        wusheng.subcardIds = {blackId};
+        check(ClientRules::buildSkillCard(wusheng).status
+                  == ClientRules::SkillCardBuildStatus::CardRejected,
+              "Wusheng rejects a black subcard before UPDATE_CARD");
+        QSanProtocol::ProtocolMessage update;
+        update.command = QSanProtocol::S_COMMAND_UPDATE_CARD;
+        update.payload = QVariantMap{{QStringLiteral("card_id"), blackId},
+            {QStringLiteral("card_name"), QStringLiteral("slash")},
+            {QStringLiteral("object_name"), QStringLiteral("slash")},
+            {QStringLiteral("suit"), static_cast<int>(Card::Heart)},
+            {QStringLiteral("number"), 7}};
+        room.applyMessage(update);
+        const auto built = ClientRules::buildSkillCard(wusheng);
+        check(built.built() && built.nativeCard->getSuit() == Card::Heart
+                  && Sanguosha->getEngineCard(blackId)->isBlack(),
+              "legacy filtering and construction use the current wrapped face");
+        wusheng.subcardIds = {blackId, blackId};
+        check(ClientRules::buildSkillCard(wusheng).status
+                  == ClientRules::SkillCardBuildStatus::CardRejected,
+              "legacy selection rejects repeated physical subcards");
+    }
+
+    ClientRules::SkillCardBuildRequest v2;
+    v2.selfName = QStringLiteral("sgs1");
+    v2.skillName = probe->objectName();
+    v2.subcardIds = {1, 2};
+    v2.selectedTargets = {QStringLiteral("sgs2")};
+    v2.userString = QStringLiteral("declared");
+    const QList<CardUseStruct::CardUseReason> reasons{
+        CardUseStruct::CARD_USE_REASON_PLAY, CardUseStruct::CARD_USE_REASON_RESPONSE,
+        CardUseStruct::CARD_USE_REASON_RESPONSE_USE, CardUseStruct::CARD_USE_REASON_RESPONSE};
+    const QStringList patterns{QString(), QStringLiteral("jink"), QStringLiteral("slash"),
+                              QStringLiteral("@@selection_runtime_probe")};
+    for (int i = 0; i < reasons.size(); ++i) {
+        probe->expectedReason = reasons[i];
+        probe->expectedPattern = patterns[i];
+        probe->prefixes.clear();
+        room.setCardUseContext(reasons[i], patterns[i]);
+        const auto built = ClientRules::buildSkillCard(v2);
+        check(built.built(), "V2 builds under play, response, response-use and named contexts");
+        check(probe->prefixes == QList<QList<int>>{{}, {1}},
+              "V2 filtering receives ordered selection prefixes");
+        check(probe->created.selectedCardIds == v2.subcardIds
+                  && probe->created.selectedTargetNames == v2.selectedTargets
+                  && probe->created.userString == v2.userString,
+              "V2 creation receives the completed selection and declaration");
+    }
+    const int creates = probe->creates;
+    v2.subcardIds = {1, 1};
+    check(ClientRules::buildSkillCard(v2).status == ClientRules::SkillCardBuildStatus::CardRejected,
+          "V2 rejects repeated physical subcards");
+    v2.subcardIds = {1};
+    check(ClientRules::buildSkillCard(v2).status == ClientRules::SkillCardBuildStatus::IncompleteSelection,
+          "V2 rejects incomplete selections");
+    v2.subcardIds = {1, Sanguosha->getCardCount() + 1};
+    check(ClientRules::buildSkillCard(v2).status == ClientRules::SkillCardBuildStatus::MissingSubcard,
+          "V2 rejects nonexistent subcards");
+    v2.subcardIds = {1, 2};
+    v2.instanceId = 999999;
+    check(ClientRules::buildSkillCard(v2).status == ClientRules::SkillCardBuildStatus::ActivationUnavailable,
+          "V2 rejects an unowned skill instance");
+    v2.instanceId = 0;
+    probe->rejectCompleted = true;
+    check(ClientRules::buildSkillCard(v2).status == ClientRules::SkillCardBuildStatus::ActivationUnavailable,
+          "V2 activation rechecks the completed selection before creation");
+    check(probe->creates == creates, "rejected selections never reach createCard");
+    probe->rejectCompleted = false;
+
+    // Direct shared selection -> canonical response -> existing wire encoder.
+    room.setCardUseContext(CardUseStruct::CARD_USE_REASON_PLAY, QString());
+    ClientRules::CardSelectionDraft draft;
+    draft.cardId = blackId; // now a wrapped Slash
+    draft.targetPool = {QStringLiteral("sgs1"), QStringLiteral("sgs2")};
+    const ClientRules::PlayerLookup lookup = [&players](const QString &name) {
+        return players.player(name);
+    };
+    auto evaluation = ClientRules::evaluateCardSelection(draft, lookup, players.self());
+    check(evaluation.cardReady && !evaluation.canConfirm
+              && evaluation.nextTargets.candidates.contains(QStringLiteral("sgs2")),
+          "physical Slash selection needs a legal target");
+    draft.selectedTargets = {QStringLiteral("sgs1")};
+    check(!ClientRules::evaluateCardSelection(draft, lookup, players.self()).canConfirm,
+          "shared selection rejects a Slash aimed at self");
+    draft.selectedTargets = {QStringLiteral("sgs2")};
+    evaluation = ClientRules::evaluateCardSelection(draft, lookup, players.self());
+    check(evaluation.canConfirm, "shared selection accepts the completed physical Slash");
+    InteractionRequest interaction;
+    interaction.requestId = 42;
+    interaction.command = QSanProtocol::S_COMMAND_PLAY_CARD;
+    auto response = ClientRules::makeCardSelectionResponse(interaction, draft, evaluation);
+    auto *answer = std::get_if<InteractionResponse::CardSelectionData>(&response.payload);
+    check(answer && answer->cardIds == QList<int>{blackId}
+              && answer->targets == draft.selectedTargets && response.requestId == 42,
+          "physical response preserves the request, card ID and targets");
+    draft.skill = v2;
+    probe->expectedReason = CardUseStruct::CARD_USE_REASON_PLAY;
+    probe->expectedPattern.clear();
+    evaluation = ClientRules::evaluateCardSelection(draft, lookup, players.self());
+    check(evaluation.cardReady && probe->created.selectedTargetNames == draft.selectedTargets,
+          "shared ViewAs selection passes the chosen targets to the builder");
+    response = ClientRules::makeCardSelectionResponse(interaction, draft, evaluation);
+    answer = std::get_if<InteractionResponse::CardSelectionData>(&response.payload);
+    check(answer && answer->cardIds.isEmpty() && answer->subcardIds == v2.subcardIds
+              && answer->activationSkillName == v2.skillName,
+          "ViewAs response keeps subcards separate from physical selection IDs");
+    const auto wire = InteractionReplyEncoder::cardResponse(interaction, response);
+    const QVariantMap wireData = wire.payload.toMap();
+    check(wire.replyTo == 42 && wire.command == QSanProtocol::S_COMMAND_RESPONSE_CARD
+              && wireData.value(QStringLiteral("card_text")).toString() == evaluation.cardText
+              && wireData.value(QStringLiteral("activation_skill_name")).toString() == v2.skillName
+              && wireData.value(QStringLiteral("activation_skill_instance_id")).toInt() == 0,
+          "shared response uses the existing canonical card-response wire encoding");
+
     room.leaveGame();
+    check(ClientRules::buildSkillCard(v2).status == ClientRules::SkillCardBuildStatus::EngineUnavailable,
+          "a missing room context is rejected without dereferencing RoomState");
+    players.clear();
 
     std::printf("[AUTOTEST] TUI_PLAY_SKILLS_RESULT status=%s\n",
         failures == 0 ? "PASS" : "FAIL");

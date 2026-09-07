@@ -47,7 +47,6 @@ QString tuiResolveSkillCardWireText(const QString &selfName, const QString &skil
     request.subcardIds = subcardIds;
     // The active ClientRoomContext already carries the prompt's exact reason
     // and pattern. This replaces the old V2-only hard-coded PLAY request.
-    request.useCurrentContext = true;
 
     const ClientRules::SkillCardBuildResult result
         = ClientRules::buildSkillCard(request);
@@ -70,6 +69,7 @@ QString tuiResolveSkillCardWireText(const QString &selfName, const QString &skil
         *error = tuiText("tui_skill_card_missing");
         break;
     case ClientRules::SkillCardBuildStatus::IncompleteSelection:
+    case ClientRules::SkillCardBuildStatus::CreateRejected:
         *error = subcardIds.isEmpty()
             ? tuiText("tui_skill_needs_cards")
             : tuiText("tui_skill_cards_rejected");
@@ -79,7 +79,6 @@ QString tuiResolveSkillCardWireText(const QString &selfName, const QString &skil
         *error = tuiText("tui_skill_unavailable");
         break;
     case ClientRules::SkillCardBuildStatus::CardRejected:
-    case ClientRules::SkillCardBuildStatus::CreateRejected:
         *error = tuiText("tui_skill_cards_rejected");
         break;
     case ClientRules::SkillCardBuildStatus::Unknown:
