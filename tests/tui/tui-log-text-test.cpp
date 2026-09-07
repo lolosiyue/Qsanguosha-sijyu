@@ -9,6 +9,8 @@
 #include "tui-card-text.h"
 #include "tui-log-text.h"
 #include "tui-play-skills.h"
+#include "tui-client-player.h"
+#include "tui-room-context.h"
 #include "tui-renderer.h"
 #include "tui-synthesized-log.h"
 
@@ -414,18 +416,31 @@ int main(int argc, char **argv)
     }
     check(slashId >= 0, "engine has a concrete slash for skill-card wire text");
     if (slashId >= 0) {
+        state.setPlayerNames({QStringLiteral("sgs1")});
+        state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("skills"),
+            QStringList{QStringLiteral("zhiheng"), QStringLiteral("longdan")});
+        state.setCardValue(slashId, QStringLiteral("owner"), QStringLiteral("sgs1"));
+        state.setCardValue(slashId, QStringLiteral("place"), static_cast<int>(Player::PlaceHand));
+        TuiRoomContext room(&state);
+        TuiPlayerModel players(&state);
+        room.setOwnerResolver([&players](int id) { return players.cardOwner(id); });
+        room.enterGame();
+        players.sync();
+        room.setCardUseContext(CardUseStruct::CARD_USE_REASON_PLAY, QString());
         QString error;
         const QString empty = tuiResolveSkillCardWireText(QStringLiteral("sgs1"),
             QStringLiteral("zhiheng"), 0, {}, &error);
         check(empty.isEmpty() && error.contains(QStringLiteral("选择手牌")),
               "zhiheng with no subcards is rejected before the wire");
         error.clear();
+        room.setCardUseContext(CardUseStruct::CARD_USE_REASON_RESPONSE, QStringLiteral("jink"));
         const QString wire = tuiResolveSkillCardWireText(QStringLiteral("sgs1"),
             QStringLiteral("longdan"), 0, {slashId}, &error);
         check(error.isEmpty() && wire.contains(QStringLiteral("jink"), Qt::CaseInsensitive)
                   && wire.contains(QStringLiteral("longdan")),
               "longdan+slash viewAs produces a virtual jink card string");
         error.clear();
+        room.setCardUseContext(CardUseStruct::CARD_USE_REASON_PLAY, QString());
         const QString zhiheng = tuiResolveSkillCardWireText(QStringLiteral("sgs1"),
             QStringLiteral("zhiheng"), 0, {slashId}, &error);
         check(error.isEmpty() && zhiheng.contains(QStringLiteral("zhiheng"), Qt::CaseInsensitive),

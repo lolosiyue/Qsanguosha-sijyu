@@ -368,6 +368,7 @@ add_library(qsanguosha_client_runtime STATIC
     src/client/runtime/client-player-model.cpp
     src/client/runtime/client-player-model.h
     src/client/runtime/client-room-context.h
+    src/client/runtime/client-selection-runtime.h
     src/client/runtime/client-state-projection.h
     src/client/runtime/client-target-evaluator.h
 )
