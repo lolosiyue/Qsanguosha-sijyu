@@ -358,3 +358,70 @@ set(QSAN_FORMS
     src/dialog/mainwindow.ui
     src/dialog/mainwindowserverlist.ui
 )
+
+# Presentation-neutral client rule runtime. It owns the non-desktop ClientPlayer
+# meta-object and state model used by TUI today and by native/WASM frontends
+# later. Keep engine linkage at the final product: the TUI deliberately links
+# qsanguosha_engine with WHOLE_ARCHIVE, and propagating a second normal engine
+# link through this static library would conflict with that CMake link feature.
+add_library(qsanguosha_client_runtime STATIC
+    src/client/runtime/client-player-model.cpp
+    src/client/runtime/client-player-model.h
+    src/client/runtime/client-room-context.h
+    src/client/runtime/client-state-projection.h
+    src/client/runtime/client-target-evaluator.h
+)
+set_target_properties(qsanguosha_client_runtime PROPERTIES
+    AUTOMOC ON
+    POSITION_INDEPENDENT_CODE ON
+    FOLDER "Libraries"
+)
+target_include_directories(qsanguosha_client_runtime PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/client
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/client/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/client/runtime
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/package
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/scenario
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+)
+target_compile_definitions(qsanguosha_client_runtime PRIVATE QSAN_ENGINE_TEST_BUILD)
+target_link_libraries(qsanguosha_client_runtime PUBLIC Qt6::Core)
+
+if(QSAN_BUILD_XP_LEGACY)
+    target_include_directories(qsanguosha_client_runtime BEFORE PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/legacy/xp/compat/qt5
+    )
+    target_compile_definitions(qsanguosha_client_runtime PRIVATE
+        QSAN_XP_LEGACY
+        WIN32
+        WINVER=0x0501
+        _WIN32_WINNT=0x0501
+    )
+endif()
+
+if(MSVC)
+    target_compile_definitions(qsanguosha_client_runtime PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(qsanguosha_client_runtime PRIVATE /utf-8 /bigobj)
+    if(QSAN_BUILD_XP_LEGACY)
+        target_compile_options(qsanguosha_client_runtime PRIVATE
+            "/FI${CMAKE_CURRENT_SOURCE_DIR}/legacy/xp/compat/qt5/qsan-qt5-compat.h")
+    endif()
+endif()
+
+# ClientCore and the TUI targets are declared later by the root CMakeLists and
+# tests/CMakeLists. Defer the target-to-target edges until the directory is
+# complete so the runtime target stays in the shared source inventory without
+# duplicating root build logic.
+function(qsan_finalize_client_runtime_links)
+    if(TARGET qsanguosha_client_core)
+        target_link_libraries(qsanguosha_client_runtime PUBLIC qsanguosha_client_core)
+    endif()
+    if(TARGET qsanguosha_tui_support)
+        target_link_libraries(qsanguosha_tui_support PUBLIC qsanguosha_client_runtime)
+    endif()
+endfunction()
+cmake_language(DEFER CALL qsan_finalize_client_runtime_links)
