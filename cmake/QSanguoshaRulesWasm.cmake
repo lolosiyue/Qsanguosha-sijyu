@@ -112,3 +112,6 @@ function(qsan_finalize_wasm_fixture_options)
     endforeach()
 endfunction()
 cmake_language(DEFER CALL qsan_finalize_wasm_fixture_options)
+
+# Explicit browser verification target; not part of the default Node build.
+include("${CMAKE_CURRENT_LIST_DIR}/QSanguoshaRulesWorker.cmake")
