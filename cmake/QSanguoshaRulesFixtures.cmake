@@ -3,11 +3,15 @@ include_guard(GLOBAL)
 # Available with TUI/GUI/server products disabled. Default-on only for tests;
 # ordinary product packaging need not ship this development executable.
 option(QSAN_BUILD_RULES_FIXTURE_RUNNER "Build the native client-rules JSON fixture runner" ${BUILD_TESTING})
-if(NOT QSAN_BUILD_RULES_FIXTURE_RUNNER)
+option(QSAN_BUILD_WASM_RULES_FIXTURES "Build the experimental Emscripten rules fixture module" OFF)
+if(NOT QSAN_BUILD_RULES_FIXTURE_RUNNER AND NOT QSAN_BUILD_WASM_RULES_FIXTURES)
     return()
 endif()
 if(QSAN_BUILD_XP_LEGACY)
     message(FATAL_ERROR "The rules fixture runner currently requires the normal Qt 6 toolchain")
+endif()
+if(EMSCRIPTEN AND NOT QSAN_BUILD_WASM_RULES_FIXTURES)
+    message(FATAL_ERROR "Use the explicit QSAN_BUILD_WASM_RULES_FIXTURES cross-build option")
 endif()
 
 set(qsan_fixture_dir "${CMAKE_CURRENT_SOURCE_DIR}/tests/client_runtime")
@@ -18,6 +22,11 @@ add_library(qsanguosha_rules_fixture_support STATIC
 target_include_directories(qsanguosha_rules_fixture_support PUBLIC "${qsan_fixture_dir}")
 target_link_libraries(qsanguosha_rules_fixture_support PUBLIC qsanguosha_client_runtime)
 set_target_properties(qsanguosha_rules_fixture_support PROPERTIES FOLDER "Tests")
+
+if(QSAN_BUILD_WASM_RULES_FIXTURES)
+    include("${CMAKE_CURRENT_LIST_DIR}/QSanguoshaRulesWasm.cmake")
+    return()
+endif()
 
 add_executable(qsanguosha_rules_fixture_runner
     "${qsan_fixture_dir}/selection-fixture-main.cpp"
