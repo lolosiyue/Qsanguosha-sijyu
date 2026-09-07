@@ -120,6 +120,9 @@ public:
     int repaintCountForTest() const { return m_repaintCount; }
 
 private:
+    // Colour and control bytes a cell grid cannot hold, removed on the way in.
+    static QString plainForGrid(const QString &text);
+
     void schedulePaint();
     void repaint();
     void flushToTerminal();

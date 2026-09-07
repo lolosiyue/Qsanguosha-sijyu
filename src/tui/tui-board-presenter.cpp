@@ -2,6 +2,7 @@
 
 #include "client-game-state.h"
 #include "interaction-model.h"
+#include "tui-renderer.h"
 #include "tui-terminal.h"
 
 #include <QTimer>
@@ -62,6 +63,18 @@ TuiBoardPresenter::TuiBoardPresenter(QSize size, TuiResolvers resolvers, TuiTerm
     }
 }
 
+// A cell grid has nowhere to put an escape sequence: TuiScreen::putText()
+// substitutes a space for the ESC and keeps the rest, so a colour change
+// arrives as a visible "[1;36m" in front of the text it was meant to colour.
+// The board is the presenter that cannot render what the controller may hand
+// it (TuiStreamPresenter can, and does), so the board is where colour is
+// dropped -- not upstream, which would make --log-file and the controller's
+// write path depend on the installed presenter.
+QString TuiBoardPresenter::plainForGrid(const QString &text)
+{
+    return TuiRenderer::sanitize(text, text.size());
+}
+
 void TuiBoardPresenter::writeOutput(const QString &text)
 {
     // Every non-dump message -- banners, connection/status lines, chat,
@@ -72,7 +85,7 @@ void TuiBoardPresenter::writeOutput(const QString &text)
     // covered the board with a full-screen overlay on nearly every server
     // request instead of letting it flow into the log pane like this. Only
     // writeDump() (the six named long-dump commands) may open an overlay.
-    const QStringList lines = text.split(QLatin1Char('\n'));
+    const QStringList lines = plainForGrid(text).split(QLatin1Char('\n'));
     for (const QString &line : lines)
         appendScrollback(line);
     repaint();
@@ -84,7 +97,7 @@ void TuiBoardPresenter::writeDump(const QString &text)
     // /skills, /piles, /equip) take the whole screen rather than scrolling
     // the board out of view. The text itself is whatever TuiRenderer already
     // built for that command -- this class never generates or reformats it.
-    toggleOverlay(text);
+    toggleOverlay(plainForGrid(text));
 }
 
 void TuiBoardPresenter::writeError(const QString &text)
@@ -98,7 +111,7 @@ void TuiBoardPresenter::writeError(const QString &text)
     // gets it split, one entry per line, the same as writeOutput() -- so a
     // long error stays readable in the log pane instead of becoming one
     // over-long entry that only its first screenful survives.
-    const QStringList lines = text.split(QLatin1Char('\n'));
+    const QStringList lines = plainForGrid(text).split(QLatin1Char('\n'));
     m_notice = lines.join(QLatin1Char(' '));
     for (const QString &line : lines)
         appendScrollback(line);
