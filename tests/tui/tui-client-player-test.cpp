@@ -1,3 +1,6 @@
+// Keep first: the shared projection must compile without frontend includes.
+#include "runtime/client-state-projection.h"
+
 #include "engine-bootstrap.h"
 #include "card.h"
 #include "client-game-state.h"
