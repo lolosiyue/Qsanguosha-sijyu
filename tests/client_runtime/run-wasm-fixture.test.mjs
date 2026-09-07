@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
-import { executeFixture, parseManifest, verifyEmbeddedAssets } from './run-wasm-fixture.mjs';
+import { createQtTimerHost, executeFixture, parseManifest, verifyEmbeddedAssets } from './run-wasm-fixture.mjs';
 
 const content = Buffer.from('return {}\n');
 const manifest = Buffer.from(JSON.stringify({ schema_version: 1, profile: 'builtin-v1', files: [
@@ -14,13 +14,22 @@ const result = Buffer.from('{"schema_version":1,"request_id":"184467440737095516
 function fakeFactory({ status = 0, payload = result, damage, missingExport = false,
   abort = false, onRun } = {}) {
   return async options => {
-    const files = new Map([
+    const embedded = new Map([
       ['/assets/fixture-assets.json', manifest], ['/assets/lua/config.lua', content],
     ]);
-    damage?.(files);
+    damage?.(embedded);
+    const files = new Map();
     options.ENV = {};
     options.FS = {
       mkdirTree() {}, chdir(directory) { assert.equal(directory, '/work'); },
+      readdir(directory) {
+        return ['.', '..', ...new Set([...files.keys()]
+          .filter(name => name.startsWith(`${directory}/`))
+          .map(name => name.slice(directory.length + 1).split('/')[0]))];
+      },
+      lstat(name) { return { mode: files.has(name) ? 'file' : 'directory' }; },
+      isDir(mode) { return mode === 'directory'; },
+      isFile(mode) { return mode === 'file'; },
       writeFile(name, bytes) { files.set(name, Buffer.from(bytes)); },
       readFile(name) {
         if (!files.has(name)) throw new Error(`missing ${name}`);
@@ -29,6 +38,9 @@ function fakeFactory({ status = 0, payload = result, damage, missingExport = fal
     };
     for (const callback of options.preInit) callback();
     for (const callback of options.preRun) callback(options);
+    // Real Emscripten 4.0.7 installs --embed-file data in initRuntime, after
+    // preRun. Eager fake assets previously hid the host's lifecycle bug.
+    for (const [name, bytes] of embedded) files.set(name, bytes);
     if (!missingExport) options._qsan_run_fixture = () => {
       assert.equal(options.noInitialRun, true);
       assert.equal(options.ENV.HOME, '/home/fixture');
@@ -41,6 +53,23 @@ function fakeFactory({ status = 0, payload = result, damage, missingExport = fal
   };
 }
 const quiet = { printErr() {} };
+
+test('Qt timer bridge schedules asynchronously and cancels numeric Node timer IDs', async () => {
+  const host = createQtTimerHost();
+  assert.deepEqual(Object.keys(host).sort(), ['clearTimeout', 'setTimeout']);
+  let cancelledRan = false;
+  const cancelled = host.setTimeout(() => { cancelledRan = true; }, 0);
+  assert.equal(typeof cancelled, 'number');
+  host.clearTimeout(cancelled);
+  let fired = false;
+  const done = new Promise(resolve => {
+    const id = host.setTimeout(() => { fired = true; resolve(); }, 0);
+    assert.equal(typeof id, 'number');
+  });
+  assert.equal(fired, false);
+  await done;
+  assert.equal(cancelledRan, false);
+});
 
 test('preserves all native bytes, large ID strings, target order and duplicate votes', async () => {
   assert.deepEqual(await executeFixture(fakeFactory(), Buffer.from('{}'), manifest, quiet), result);
@@ -75,6 +104,13 @@ test('rejects mismatched embedded content', async () => {
 });
 test('rejects mismatched sidecar', () => {
   assert.throws(() => verifyEmbeddedAssets({ readFile() { return Buffer.from('{}'); } }, manifest), /sidecar/);
+});
+test('rejects unlisted embedded Lua content before invoking the CLI', async () => {
+  let invoked = false;
+  await assert.rejects(executeFixture(fakeFactory({ damage(files) {
+    files.set('/assets/lua/extra.lua', Buffer.from('unexpected bootstrap code'));
+  }, onRun() { invoked = true; } }), Buffer.from('{}'), manifest, quiet), /asset inventory/);
+  assert.equal(invoked, false);
 });
 test('rejects invalid and duplicate manifest paths', () => {
   const parsed = JSON.parse(manifest);
