@@ -1,0 +1,137 @@
+name: WASM rules fixture probe
+
+on:
+  pull_request:
+    branches: [debug, main]
+    paths:
+      - 'CMakeLists.txt'
+      - 'cmake/**'
+      - 'src/client/**'
+      - 'src/core/**'
+      - 'src/package/**'
+      - 'src/scenario/**'
+      - 'src/server/**'
+      - 'src/util/**'
+      - 'src/lua/**'
+      - 'swig/**'
+      - 'lua/**'
+      - 'tests/client_runtime/**'
+      - 'tools/ci/requirements.txt'
+      - '.github/workflows/wasm-rules-fixtures.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wasm-rules-fixtures-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: 2
+
+jobs:
+  parity:
+    name: Qt 6.11.1 / Emscripten 4.0.7 native-WASM probe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Prepare evidence and build dependencies
+        run: |
+          mkdir -p artifacts/wasm-fixtures
+          printf '{"schema_version":1,"status":"NOT_RUN"}\n' > artifacts/wasm-fixtures/parity-summary.json
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y cmake ninja-build g++ python3-venv libgl1
+          python3 -m venv "$RUNNER_TEMP/qsan-fixture-tools"
+          "$RUNNER_TEMP/qsan-fixture-tools/bin/python" -m pip install --require-hashes -r tools/ci/requirements.txt
+          echo "$RUNNER_TEMP/qsan-fixture-tools/bin" >> "$GITHUB_PATH"
+      - name: Install native Qt
+        uses: jurplel/install-qt-action/action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: '6.11.1'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          modules: qtwebsockets
+          dir: ${{ runner.temp }}/qsan-fixture-qt
+          cache: true
+          cache-key-prefix: qsan-native-fixtures-6.11.1-v1
+          aqtsource: 'git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e'
+      - name: Build the actual native baseline without any product frontend
+        run: |
+          set -o pipefail
+          echo "QSAN_FIXTURE_HOST_QT=$QT_ROOT_DIR" >> "$GITHUB_ENV"
+          cmake -S . -B build/rules-native -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
+            -DBUILD_TESTING=OFF -DQSAN_BUILD_GUI=OFF -DQSAN_BUILD_TUI=OFF \
+            -DQSAN_BUILD_SERVER=OFF -DQSAN_BUILD_RULES_FIXTURE_RUNNER=ON \
+            2>&1 | tee artifacts/wasm-fixtures/native-configure.log
+          cmake --build build/rules-native --target qsanguosha_rules_fixture_runner \
+            2>&1 | tee artifacts/wasm-fixtures/native-build.log
+      - name: Install the version-matched Emscripten SDK
+        run: |
+          git clone --depth 1 --branch 4.0.7 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
+          "$RUNNER_TEMP/emsdk/emsdk" install 4.0.7
+          "$RUNNER_TEMP/emsdk/emsdk" activate 4.0.7
+      - name: Install Qt WASM single-thread kit
+        uses: jurplel/install-qt-action/action@d325aaf2a8baeeda41ad0b5d39f84a6af9bcf005 # v4.3.0
+        with:
+          version: '6.11.1'
+          host: all_os
+          target: wasm
+          arch: wasm_singlethread
+          modules: qtwebsockets
+          dir: ${{ runner.temp }}/qsan-fixture-qt
+          cache: true
+          cache-key-prefix: qsan-wasm-fixtures-6.11.1-singlethread-v1
+          aqtsource: 'git+https://github.com/miurahr/aqtinstall.git@16db45a70b5905ad596941b223469bc86a56901e'
+      - name: Run host adapter and comparison self-tests
+        run: |
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          "$EMSDK_NODE" --test tests/client_runtime/run-wasm-fixture.test.mjs
+          python3 tests/client_runtime/check-wasm-fixtures.py --self-test
+          python3 tests/client_runtime/check-fixtures.py --self-test
+      - name: Compile and link the real engine for WASM
+        run: |
+          set -o pipefail
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          em++ --version > artifacts/wasm-fixtures/emscripten-version.txt
+          emcmake cmake -S . -B build/rules-wasm -G Ninja \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" -DQt6_DIR="$QT_ROOT_DIR/lib/cmake/Qt6" \
+            -DQT_HOST_PATH="$QSAN_FIXTURE_HOST_QT" \
+            -DBUILD_TESTING=OFF -DQSAN_BUILD_GUI=OFF -DQSAN_BUILD_TUI=OFF \
+            -DQSAN_BUILD_SERVER=OFF -DQSAN_BUILD_RULES_FIXTURE_RUNNER=OFF \
+            -DQSAN_BUILD_WASM_RULES_FIXTURES=ON \
+            2>&1 | tee artifacts/wasm-fixtures/wasm-configure.log
+          cmake --build build/rules-wasm --target qsanguosha_rules_fixture_wasm \
+            2>&1 | tee artifacts/wasm-fixtures/wasm-build.log
+      - name: Execute matched-content native and WASM fixtures
+        run: |
+          source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
+          module_dir="$GITHUB_WORKSPACE/build/rules-wasm/rules-wasm/RelWithDebInfo"
+          python3 tests/client_runtime/check-wasm-fixtures.py \
+            --native-runner "$GITHUB_WORKSPACE/build/rules-native/qsanguosha_rules_fixture_runner" \
+            --wasm-module "$module_dir/qsanguosha_rules_fixture_wasm.mjs" \
+            --manifest "$module_dir/qsanguosha_rules_fixture_wasm.assets.json" \
+            --node "$EMSDK_NODE" --fixtures "$GITHUB_WORKSPACE/tests/client_runtime/fixtures" \
+            --asset-root "$GITHUB_WORKSPACE" --artifacts "$GITHUB_WORKSPACE/artifacts/wasm-fixtures"
+      - name: Upload evidence even if compilation or parity fails
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: wasm-rules-fixtures-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            artifacts/wasm-fixtures/**
+            build/rules-wasm/rules-wasm/**
+            build/rules-wasm/CMakeCache.txt
+            build/rules-native/CMakeCache.txt
+          if-no-files-found: warn
+          retention-days: 7
