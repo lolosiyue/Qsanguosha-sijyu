@@ -166,12 +166,16 @@ void testAutoFollowAndOverlay()
     presenter.interactionChanged(nullptr);
     pumpEvents();
 
-    // 3. Long dumps do not scroll the board away.
+    // 3. A named dump command (/players etc.) opens as an overlay --
+    // writeDump(), never writeOutput() (spec §5.2; see I3 in the review
+    // this fixes: writeOutput() itself must never open an overlay no matter
+    // how many lines it is, since real interaction prompts are routinely
+    // 4-20 lines and must stay on the normal board instead).
     const QString longPlayersDump = QStringLiteral(
         "座位=1 曹操\n座位=2 张飞\n座位=3 貂蝉\n座位=4 孙权");
-    presenter.writeOutput(longPlayersDump);
+    presenter.writeDump(longPlayersDump);
     check(presenter.screenText().contains(QString::fromUtf8("座位=")),
-          "a long dump opens as an overlay");
+          "a named dump command opens as an overlay");
     presenter.toggleOverlay(QString());
     check(presenter.screenText().contains(QString::fromUtf8("牌堆")),
           "closing the overlay puts the board back");
@@ -180,6 +184,20 @@ void testAutoFollowAndOverlay()
     presenter.writeOutput(QString::fromUtf8("时语 打出【闪】"));
     check(presenter.screenText().contains(QString::fromUtf8("打出")),
           "a short message joins the log scrollback");
+
+    // 5. A long interaction-prompt-shaped block (writeOutput(), several
+    // lines, no dump command involved) must NOT open an overlay -- this is
+    // exactly what I3 in the review found broken: the old line-count
+    // heuristic promoted anything over 3 lines, covering the board on
+    // nearly every server request.
+    presenter.writeOutput(QStringLiteral(
+        "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8"));
+    check(presenter.screenText().contains(QString::fromUtf8("牌堆")),
+          "a long writeOutput() block leaves the normal board on screen -- "
+          "an overlay would have replaced the frame/pile furniture entirely");
+    check(presenter.screenText().contains(QStringLiteral("line8")),
+          "and the block's own text still reached the log pane rather than "
+          "being dropped");
 }
 
 void testAutoFollowAcrossPages()
@@ -237,7 +255,7 @@ void testOverlayKeyPriority()
     presenter.stateChanged(state);
     pumpEvents();
 
-    presenter.writeOutput(QStringLiteral("line1\nline2\nline3\nline4"));
+    presenter.writeDump(QStringLiteral("line1\nline2\nline3\nline4"));
     check(presenter.screenText().contains(QStringLiteral("line1")),
           "the overlay is open with its content on screen");
 
@@ -251,7 +269,7 @@ void testOverlayKeyPriority()
 
     // Re-open, then close it with a printable key that must still reach the
     // editor -- the player's first typed character is never lost.
-    presenter.writeOutput(QStringLiteral("line1\nline2\nline3\nline4"));
+    presenter.writeDump(QStringLiteral("line1\nline2\nline3\nline4"));
     TuiKeyEvent letter{TuiKey::Char, QStringLiteral("x")};
     presenter.handleKey(letter, &submitted);
     check(!presenter.screenText().contains(QStringLiteral("line1")),
@@ -279,7 +297,7 @@ void testOverlayScrollKeys()
     QStringList lines;
     for (int i = 1; i <= 30; ++i)
         lines << QStringLiteral("OVERLAYLINE%1").arg(i, 2, 10, QLatin1Char('0'));
-    presenter.writeOutput(lines.join(QLatin1Char('\n')));
+    presenter.writeDump(lines.join(QLatin1Char('\n')));
     check(presenter.screenText().contains(QStringLiteral("OVERLAYLINE01"))
               && !presenter.screenText().contains(QStringLiteral("OVERLAYLINE30")),
           "the overlay opens scrolled to the top, taller than one screen");
@@ -370,6 +388,61 @@ void testPagingNeverTouchesTheEditorLine()
     check(presenter.page() == 1, "PageDown actually moved the page");
 }
 
+void testRepaintBeforeAnyState()
+{
+    // I4: before ClientCore ever pushes a state -- construction, or (the
+    // case that actually matters to a player) a connection that fails
+    // outright, e.g. `qsanguosha_tui --ui board --port 1` never gets a
+    // ClientGameState at all -- repaint() used to fall straight through to
+    // `m_screen.clear()` and stop. That rendered zero non-space characters:
+    // a player watching a failed connection saw a blank alternate screen
+    // with no clue anything had gone wrong, even though writeError() had
+    // already handed it a real message by that point.
+    TuiBoardPresenter presenter(QSize(80, 24), testResolvers());
+    // The constructor's own setViewportSize() call already ran one repaint
+    // with no state ever installed -- this alone must not be blank.
+    check(!presenter.screenText().trimmed().isEmpty(),
+          "the very first frame, before any stateChanged(), is not blank");
+
+    presenter.writeError(QString::fromUtf8("无法连接到服务器"));
+    check(presenter.screenText().contains(QString::fromUtf8("无法连接到服务器")),
+          "a startup error still reaches the screen with no game state ever installed");
+}
+
+void testCompletionWorksInBoardMode()
+{
+    // I6: TuiInput::setCompleter() has no effect in board mode, because
+    // board mode puts TuiInput in raw mode and TuiInput returns before ever
+    // reaching its own line-assembly completer (tui-input.cpp's
+    // appendBytes() short-circuits straight to emitting rawBytes()). The
+    // controller has to install the exact same completer on the board
+    // presenter's own TuiLineEditor instead (TuiBoardPresenter::
+    // setCompleter(), forwarding to m_editor), or Tab silently does nothing
+    // while board mode is active.
+    TuiBoardPresenter presenter(QSize(80, 24), testResolvers());
+    ClientGameState state = fivePlayerState(QStringLiteral("sgs1"));
+    presenter.stateChanged(state);
+    pumpEvents();
+
+    presenter.setCompleter([](const QString &line, QStringList *matches) {
+        if (matches != nullptr)
+            *matches = QStringList{QStringLiteral("/status")};
+        return line == QStringLiteral("/sta") ? QStringLiteral("/status") : line;
+    });
+
+    QString submitted;
+    for (const QChar ch : QStringLiteral("/sta"))
+        presenter.handleKey(TuiKeyEvent{TuiKey::Char, QString(ch)}, &submitted);
+    check(presenter.screenText().contains(QStringLiteral("/sta"))
+              && !presenter.screenText().contains(QStringLiteral("/status")),
+          "the typed prefix is on screen before Tab is pressed");
+
+    presenter.handleKey(TuiKeyEvent{TuiKey::Tab, QString()}, &submitted);
+    check(presenter.screenText().contains(QStringLiteral("/status")),
+          "Tab completion reaches the board's own line editor and the "
+          "completed text is drawn into the input pane");
+}
+
 } // namespace
 
 int main(int argc, char **argv)
@@ -389,6 +462,8 @@ int main(int argc, char **argv)
     testOverlayScrollKeys();
     testRepaintCoalescing();
     testPagingNeverTouchesTheEditorLine();
+    testRepaintBeforeAnyState();
+    testCompletionWorksInBoardMode();
 
     std::printf("[AUTOTEST] TUI_BOARD_PRESENTER_RESULT status=%s\n",
         failures == 0 ? "PASS" : "FAIL");

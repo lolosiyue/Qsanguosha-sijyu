@@ -401,20 +401,44 @@ void testBoardTooSmall()
     // A state barely needs to exist here: render() bails out on geometry
     // before it ever looks at seats, so an empty (but self-named) state is
     // enough to exercise the usable == false path (tui-board-view.cpp
-    // around line 536-538).
+    // around line 553).
     ClientGameState state;
     state.setSelfName(QStringLiteral("sgs1"));
 
     TuiScreen screen;
     screen.resize(14, 52); // rows, cols -- below the 60x18 floor (spec §3.5)
     TuiBoardView view(testResolvers());
-    view.render(&screen, state, TuiBoardViewState{});
+    // spec §3.5: "提示行與輸入行是最後才犧牲的兩行" -- an interaction request
+    // must still be answerable below the size floor, so a real prompt and
+    // whatever the player has already typed must still reach the screen
+    // (this is the I7 fix: the old implementation drew only the too-small
+    // message and returned, dropping prompt+input along with everything
+    // else no matter how much room was actually available for them).
+    TuiBoardViewState viewState;
+    viewState.promptLine = QString::fromUtf8("出牌阶段");
+    viewState.inputLine = QStringLiteral("1 -> p2");
+    viewState.inputCursorColumn = 7;
+    view.render(&screen, state, viewState);
 
     const QString text = screen.toPlainText();
     check(text.contains(QStringLiteral("60×18")),
           "the too-small message names the required size");
     check(text.contains(QStringLiteral("52×14")),
           "the too-small message names the actual (too small) size");
+    check(text.contains(QStringLiteral("1 -> p2")),
+          "the input line the player already typed still reaches the screen");
+
+    // Not just present anywhere -- on the screen's actual bottom row, the
+    // same place drawInput() puts it once the board is usable. A fix that
+    // drew the input line above the message, or the message on top of it,
+    // would pass a bare contains() check but still leave the room/message
+    // sacrificed second instead of first.
+    const QStringList lines = text.split(QLatin1Char('\n'));
+    check(lines.size() == 14, "toPlainText() still reports every row, blank or not");
+    check(lines.value(lines.size() - 1).contains(QStringLiteral("1 -> p2")),
+          "the input row is the screen's last row, not sacrificed ahead of the message");
+    check(lines.value(lines.size() - 2).contains(QString::fromUtf8("出牌阶段")),
+          "the prompt row sits directly above the input row, exactly as drawInput() lays them out");
     compareGolden(QStringLiteral("board-too-small"), text);
 }
 

@@ -18,6 +18,14 @@ public:
 
     virtual ~TuiPresenter() = default;
     virtual void writeOutput(const QString &text) = 0;
+    // Exactly the six long-dump commands' output (/players, /log, /hand,
+    // /skills, /piles, /equip -- spec §5.2): the one kind of output board
+    // mode is allowed to take the whole screen for. Everything else --
+    // interaction prompts included, which routinely run longer than any of
+    // these dumps -- goes through writeOutput() and must never trigger an
+    // overlay on its own; only the caller naming one of those six commands
+    // may call this instead of writeOutput().
+    virtual void writeDump(const QString &text) = 0;
     virtual void writeError(const QString &text) = 0;
     // Called once before the process exits, on every path that unwinds. A
     // presenter that took the terminal over gives it back here.

@@ -22,11 +22,6 @@ namespace {
 // views of "recent output" never disagree about how much history survives.
 constexpr int kScrollbackLimit = 200;
 
-// A dump long enough to be worth its own overlay rather than eating the log
-// pane's few visible lines (spec §5.2). Exactly the boundary the plan pins:
-// "> 3" lines, not ">= 3".
-constexpr int kOverlayLineThreshold = 3;
-
 // The one player-shaped candidate a request names first, across the payload
 // shapes that carry one at all. This only feeds auto-follow's "which page do
 // I show" question -- the full candidate list a player can actually answer
@@ -69,18 +64,27 @@ TuiBoardPresenter::TuiBoardPresenter(QSize size, TuiResolvers resolvers, TuiTerm
 
 void TuiBoardPresenter::writeOutput(const QString &text)
 {
+    // Every non-dump message -- banners, connection/status lines, chat,
+    // command feedback, and interaction prompts (spec §5.2's category 1) --
+    // regardless of how many lines it happens to be. Interaction prompts
+    // routinely run 4-20 lines, well past what an old line-count heuristic
+    // here used to treat as "long enough for an overlay"; that heuristic
+    // covered the board with a full-screen overlay on nearly every server
+    // request instead of letting it flow into the log pane like this. Only
+    // writeDump() (the six named long-dump commands) may open an overlay.
     const QStringList lines = text.split(QLatin1Char('\n'));
-    if (lines.size() > kOverlayLineThreshold) {
-        // spec §5.2: a long dump (/players, /log, /hand, /skills, /piles,
-        // /equip) takes the whole screen rather than scrolling the board out
-        // of view. The text itself is whatever TuiRenderer already built for
-        // that command -- this class never generates or reformats it.
-        toggleOverlay(text);
-        return;
-    }
     for (const QString &line : lines)
         appendScrollback(line);
     repaint();
+}
+
+void TuiBoardPresenter::writeDump(const QString &text)
+{
+    // spec §5.2: exactly the six long-dump commands (/players, /log, /hand,
+    // /skills, /piles, /equip) take the whole screen rather than scrolling
+    // the board out of view. The text itself is whatever TuiRenderer already
+    // built for that command -- this class never generates or reformats it.
+    toggleOverlay(text);
 }
 
 void TuiBoardPresenter::writeError(const QString &text)
@@ -137,6 +141,11 @@ void TuiBoardPresenter::interactionChanged(const InteractionRequest *request)
         followPlayer(firstCandidatePlayer(*request));
     }
     schedulePaint();
+}
+
+void TuiBoardPresenter::setCompleter(std::function<QString(const QString &, QStringList *)> completer)
+{
+    m_editor.setCompleter(std::move(completer));
 }
 
 void TuiBoardPresenter::setPage(int page)
@@ -280,9 +289,30 @@ void TuiBoardPresenter::repaint()
         m_viewState.logLines = m_scrollback;
         m_boardView.render(&m_screen, *m_state, m_viewState);
     } else {
-        // No state has arrived yet (construction, or setViewportSize() fired
-        // before the first stateChanged()): nothing to draw.
-        m_screen.clear();
+        // No game state has arrived yet: construction, setViewportSize()
+        // firing before the first stateChanged(), or (the case that actually
+        // matters to a player) a connection that never gets that far at all
+        // -- `qsanguosha_tui --ui board --port 1` fails before ClientCore
+        // ever sees a state push. Blanking the screen here used to mean that
+        // failure rendered zero non-space characters: the alternate screen
+        // came up, nothing was ever drawn into it, and the player saw a
+        // plain empty terminal with no clue anything had gone wrong, even
+        // though writeError()/writeOutput() had already put a real message
+        // in m_notice/m_scrollback by this point.
+        //
+        // Render through the exact same path used once a real state exists,
+        // against a placeholder empty ClientGameState instead of skipping
+        // straight to screen.clear(): TuiBoardView treats an empty state
+        // exactly like a game that has not started yet (§3.3's waiting
+        // room), which is a reasonable enough thing to show, and it comes
+        // with the frame drawn and the log/notice panes wired up for free --
+        // so a startup error still lands somewhere the player can see it.
+        ClientGameState empty;
+        m_viewState.notice = m_notice;
+        m_viewState.inputLine = m_editor.text();
+        m_viewState.inputCursorColumn = m_editor.cursorColumn();
+        m_viewState.logLines = m_scrollback;
+        m_boardView.render(&m_screen, empty, m_viewState);
     }
 
     if (m_terminal != nullptr)
