@@ -373,7 +373,7 @@ int main(int argc, char **argv)
         qsanLinkWebSocketGateway();
 #endif
         Server server(&app);
-        ServerConsole console(&server, &app);
+        ServerConsole console(&server, &logger, &app);
 #if defined(Q_OS_UNIX) || defined(Q_OS_WIN)
         QTimer shutdownTimer;
         shutdownTimer.setInterval(100);

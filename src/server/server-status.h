@@ -17,6 +17,7 @@ struct ServerStatusSnapshot
     int robotCount = 0;
     bool aiEnabled = false;
     bool luaEnabled = false;
+    bool maintenance = false;
 };
 
 struct RoomStatusSnapshot

@@ -170,6 +170,15 @@ public:
     bool isApplicationBackgrounded() const;
     qint64 applicationActiveElapsed() const;
     void waitForApplicationForeground();
+    // console end-game: the main thread only sets a flag and wakes seats waiting for a
+    // reply; the room thread finishes with gameOver(".") at a safe point, the same
+    // normal path surrender takes.
+    void requestAdminTermination();
+    // Consumes the end-game flag at a room-thread safe point; throws GameFinished.
+    void tryAdminTermination();
+    // console start: when the room is full but nobody sent READY, start the game the
+    // way setReadyCommand does.
+    bool forceStart();
     bool canPause(ServerPlayer*p) const;
     void tryPause();
     // Single-player against AI: everyone except the host is a robot. Used to allow surrender at any time; dead human players still make the room multiplayer.
@@ -1138,6 +1147,8 @@ private:
     const Scenario*scenario;
 
     bool m_surrenderRequestReceived;
+    // console end-game flag: written by the main thread, read by the room thread.
+    std::atomic<bool> m_adminTerminationRequested { false };
     bool _virtual;
     GameSessionConfig m_sessionConfig;
     QString m_takeoverError;

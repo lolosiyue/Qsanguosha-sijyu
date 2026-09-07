@@ -881,24 +881,42 @@ Mode: 10p
 server> status
 server> players
 server> rooms
+server> maintenance on
+server> end-game 0
 server> say Server maintenance in 10 minutes
 server> kick p001
 server> shutdown
 ```
 
-首版固定提供 7 個 command：
-
 | Command | 用途 |
 |---|---|
 | `help` | 顯示 command help |
-| `status` | 顯示 uptime、listen endpoint、模式、房間／玩家數、AI／Lua 狀態 |
-| `players` | 顯示玩家 ID、名稱、房間及連線狀態 |
-| `rooms` | 顯示房間 ID、狀態、模式、人數及 uptime |
+| `status [--json]` | 顯示 uptime、listen endpoint、模式、房間／玩家數、AI／Lua、維護旗標與 log 組態 |
+| `players [--json]` | 顯示玩家 ID、名稱、房間及連線狀態 |
+| `rooms [--json]` | 顯示房間 ID、狀態、模式、人數及 uptime |
+| `close <room-id>\|all` | 解散等待房：斷開等待者並回收房間。進行中的局要用 `end-game` |
+| `end-game <room-id>` | 結束進行中的局，走正常 `GAME_OVER` 收束路徑（和局），room thread 到下一個安全點才生效 |
+| `addrobot [n\|all] [room-id]` | 為等待房補 AI；省略 room-id 取當前等待房。補滿後由既有 ready 路徑自然開局 |
+| `start [room-id]` | 補滿機器人並開局；房已滿但沒人送 `READY` 時直接開 |
+| `maintenance on\|off` | 拒絕／恢復新 signup。已連線玩家、進行中的局與斷線重連不受影響 |
+| `log-level <debug\|info\|warning\|error>` | 線上調整 log 等級 |
+| `log-format <text\|json>` | 線上切換 log 記錄格式 |
+| `log-file <path\|off>` | 線上改寫 log 目的地；`off` 回到 stdout。新目的地開不到就保留原組態並回報 |
 | `say <message>` | 以管理員訊息廣播到所有房間 |
 | `kick <player-id>` | 按 `players` 顯示的精確 ID 斷開玩家 |
 | `shutdown` | 經正常 Qt shutdown 流程停止 server |
 
-Console 只經 `Server` 的 snapshot／管理 API 操作，不會持有 `Room *` 或 `ServerPlayer *`。stdin 使用 Qt socket notifier 非阻塞讀取；stdin 關閉時只停用 console，server 仍繼續運行，適合由 systemd 配合 signal 管理。
+`--json` 是單行 compact JSON，只承諾對齊 `ServerStatusSnapshot`／`RoomStatusSnapshot`／
+`PlayerStatusSnapshot` 的最小欄位集，不做穩定 schema 版本承諾；自動化正路仍然是
+`--autotest-log` marker。
+
+Console 只經 `Server` 的 snapshot／管理 API 操作，不會持有 `Room *` 或 `ServerPlayer *`；
+房間層級指令一律以 room id 定址。stdin 使用 Qt socket notifier 非阻塞讀取；stdin 關閉時只停用
+console，server 仍繼續運行，適合由 systemd 配合 signal 管理。
+
+`end-game` 由 main thread 設定旗標，只喚醒正在等待回覆的玩家；room thread 在
+`Room::doRequest`、`RoomThread::delay`、`PlayerDecisionService::activate` 等安全點執行
+`gameOver(".")`。不可改用 `abortWaitingRequests()`：該路徑會以 Shutdown 中止對局，而非正常收束。
 
 ### Production logging
 
@@ -999,6 +1017,14 @@ QSAN_SERVER_SMOKE_TIMEOUT_SECONDS=8 \
 QSAN_SERVER_SMOKE_TIMEOUT_SECONDS=8 \
     bash tools/ci/server-console-smoke.sh \
     debug/qsanguosha_server /tmp/server-console.log
+```
+
+維護模式與進行中對局的 `end-game` 需要真實 client 才能驗證，由另一個本機 gate 負責
+（未納入 CI，因為需要啟動完整對局引擎）：
+
+```bash
+python3 tools/ci/server-console-control-smoke.py \
+    debug/qsanguosha_server --log-file /tmp/server-console-control.log
 ```
 
 ### 9.2 Linux GUI 驗證政策

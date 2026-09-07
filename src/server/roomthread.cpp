@@ -3333,4 +3333,6 @@ void RoomThread::delay(long secs)
 	room->throwIfStopRequested();
 	// Frequent single-player surrender check: AI passes here each step. Outside single-player or without a signal, this costs one bool check.
 	room->trySinglePlayerSurrender();
+	// console end-game uses this frequent safe point too: an all-AI game never waits in doRequest.
+	room->tryAdminTermination();
 }
