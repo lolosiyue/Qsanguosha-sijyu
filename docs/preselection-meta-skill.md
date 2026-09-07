@@ -16,7 +16,7 @@
 | 基底類型 | `src/core/skill.h` / `skill.cpp` | 定義 `PreSelectionMetaSkill`、兩個回調、`active_skills` 字串 |
 | 武將掛載 | `src/core/general.h` / `general.cpp` | 以 `preselection_skills` 保存武將上的 PreSelection 技能名 |
 | 註冊入口 | `src/core/engine.cpp` | `Engine::addPackage()` 掃描武將額外技能；若技能繼承 `PreSelectionMetaSkill`，就呼叫 `General::addPreSelectionSkill()` |
-| 選將觸發 | `src/server/room.cpp` | `triggerPreSelectionSkills()` 與 `triggerGeneralNotChosen()` 負責真正回調 |
+| 選將觸發 | `src/server/game-session-controller.cpp` | `GameSessionController::triggerPreSelectionSkills()` 與 `GameSessionController::triggerGeneralNotChosen()` 負責真正回調 |
 | 開局回放 | `src/server/gamerule.cpp` | `GameStart` 時讀取 `preselection_active_skills`，再把對應 `TriggerSkill` 加進 `RoomThread` |
 | Lua 工廠 | `lua/sgs_ex.lua` | `sgs.CreatePreSelectionMetaSkill(spec)` 建立 Lua 版技能物件 |
 
@@ -29,8 +29,8 @@ Package 載入
   -> General::addPreSelectionSkill(skill_name)
 
 選將分配
-  -> Room::assignGeneralsForPlayers()
-  -> Room::triggerPreSelectionSkills(player, selected, "for_general")
+  -> GameSessionController::assignGeneralsForPlayers()
+  -> GameSessionController::triggerPreSelectionSkills(player, selected, "for_general")
   -> 逐個候選武將檢查 preselection_skills
   -> 呼叫 on_general_choosing()
   -> 如有 active_skills，立刻寫入 player.property("preselection_active_skills")
@@ -38,7 +38,7 @@ Package 載入
 
 若玩家未提交有效選擇
   -> 系統挑出 default general
-  -> Room::triggerGeneralNotChosen(player, selected, chosen, "for_general")
+  -> GameSessionController::triggerGeneralNotChosen(player, selected, chosen, "for_general")
   -> 只對最終被系統指派的 chosen general 回調 on_general_not_chosen()
   -> 如有 active_skills，再次追加到 preselection_active_skills
 
@@ -55,7 +55,7 @@ Package 載入
 
 - 觸發時機在候選列表生成之後、送出 `S_COMMAND_CHOOSE_GENERAL` 之前
 - 回調收到的是「當前最新版本」的 `generals`；若前一個 PreSelection 技能已改過列表，後一個技能會看到改後結果
-- 同一輪候選中，同名 PreSelection 技能只會執行一次；`Room::triggerPreSelectionSkills()` 內部有 `processedSkills` 去重
+- 同一輪候選中，同名 PreSelection 技能只會執行一次；`GameSessionController::triggerPreSelectionSkills()` 內部有 `processedSkills` 去重
 
 ### 2. `on_general_not_chosen()` 不是「所有落選武將都會回調」
 
@@ -72,7 +72,7 @@ Package 載入
 
 ### 4. `reason` 目前不要過度假設
 
-- 這條 PreSelection 路徑在本地分支的直接接線點是 `Room::chooseGenerals()`，目前傳入的是 `"for_general"`
+- 這條 PreSelection 路徑在本地分支的直接接線點是 `GameSessionController::chooseGenerals()`（`src/server/game-session-controller.cpp`），目前傳入的是 `"for_general"`
 - `Room::askForGeneral()` 仍可能收到 `"for_lord"`、`"qiexie"` 等原因字串，但那不代表它們已自動接上 `triggerPreSelectionSkills()`
 - 若你的 Lua 邏輯要分流，建議先對 `reason` 做白名單判斷，不要把未接線的情境當成既定行為
 

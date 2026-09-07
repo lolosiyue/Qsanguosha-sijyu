@@ -39,7 +39,10 @@ NativeClientSocket -> ClientLiveSession -> typed ProtocolMessage
 Production GUI 不再自行擁有第二套 socket decoder 或 gameplay reducer。GUI-only
 presentation 仍留在既有 `Client` facade；TUI-only rendering 留在 `src/tui`。Reconnect
 通知在 `STATE_SYNC begin/end` 之間 reduce 到 staging state，完成後才原子替換，且
-舊 generation 的 pending response 不會重送。
+舊 generation 的 pending response 不會重送。When the GUI preference enables
+reconnection and the server replies `reconnect_target_missing`, `ClientLiveSession`
+automatically opens one fresh (non-reconnect) connection as a fallback; this is
+GUI-only — TUI does not enable it.
 
 ## QML interaction
 

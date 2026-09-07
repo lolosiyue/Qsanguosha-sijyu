@@ -23,9 +23,9 @@ cmake --build --preset release
 powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-cmake.ps1 -Configuration Release
 ```
 
-### 🐧 Linux（無頭伺服器）
+### 🐧 Linux
 
-Linux 本階段只建置 **無頭伺服器**（`qsanguosha_server`），冇 GUI、冇 FMOD、冇 X11 依賴，連結 `Qt6::Core`、`Qt6::Network` 同 `Qt6::WebSockets`。
+Linux 預設建置 **無頭伺服器**（`qsanguosha_server`），無 GUI、無 FMOD、無 X11 依賴，連結 `Qt6::Core`、`Qt6::Network` 與 `Qt6::WebSockets`；**Protocol V2 終端客戶端**（`qsanguosha_tui`）亦會一併建置安裝（見 [`docs/tui-client.md`](docs/tui-client.md)）。需要 GUI client 時加 `-DQSAN_BUILD_GUI=ON`，並指向 Qt 6.11 或更新版本（可用 `CMakePresets.json` 的 `linux-gui-gcc-debug` preset；目前發行版套件尚未提供 Qt 6.11，詳見 Linux 開發指南）。
 
 ```bash
 sudo apt install -y build-essential cmake ninja-build qt6-base-dev qt6-websockets-dev swig

@@ -40,8 +40,8 @@ visibility、reconnect behavior 及 focused test。當前 gate 為 63/63 個
 state-bearing flow 有 reducer、29/29 個 interaction request 有 presenter、
 unclassified=0、silent drops=0。音訊與動畫是已登記的 text-mode no-op；emotion
 與 log 類流程會成為 presentation event。戰鬥日誌（`S_COMMAND_LOG_SKILL`）與
-game event（`S_COMMAND_LOG_EVENT`）由 `src/tui/tui-log-text.cpp` 呼叫 Engine
-`formatClientLog` 組句：`#UseCard` 片語走 `lang/zh_CN/Common.lua` 的
+game event（`S_COMMAND_LOG_EVENT`）由 `src/tui/tui-log-text.cpp` 呼叫 client
+log formatter（`src/client/client-log-formatter`）的 `formatClientLog` 組句：`#UseCard` 片語走 `lang/zh_CN/Common.lua` 的
 `#UseCardPhrase_*`，目標「自己」走 `#LogSelf`。摸牌／裝卸／體力等正常戰報大半
 不是 `sendLog`：`src/tui/tui-synthesized-log.cpp` 在 reducer 之後用
 `src/client/core/client-move-log.cpp` 合成 `$DrawCards`／`$addRenPile`／`$removeRenPile`／`#GetHp` 等，再以

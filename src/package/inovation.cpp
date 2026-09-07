@@ -12,71 +12,6 @@
 #include "json.h"
 #include "settings.h"
 
-namespace {
-
-QString akarinStatusKey(const ServerPlayer *player)
-{
-    return "inovation_akarin_status_" + player->objectName();
-}
-
-void applyAkarinEffect(Room *room, ServerPlayer *player, ServerPlayer *viewer = nullptr)
-{
-    if (!player)
-        return;
-
-    QStringList viewers = room->getTag(akarinStatusKey(player)).toStringList();
-    if (viewer && viewers.contains(viewer->objectName()))
-        return;
-
-    room->setEmotion(player, "akarin");
-
-    LogMessage log;
-    log.type = viewer ? "$AkarinPlayer" : "$AkarinPlayerToAll";
-    log.from = player;
-    if (viewer) {
-        log.to << viewer;
-        room->sendLog(log, viewer);
-        viewers << viewer->objectName();
-    } else {
-        room->sendLog(log);
-        for (ServerPlayer *other : room->getOtherPlayers(player)) {
-            if (!viewers.contains(other->objectName()))
-                viewers << other->objectName();
-        }
-    }
-    room->setTag(akarinStatusKey(player), viewers);
-}
-
-void removeAkarinEffect(Room *room, ServerPlayer *player, ServerPlayer *viewer = nullptr)
-{
-    if (!player)
-        return;
-
-    const QString tagName = akarinStatusKey(player);
-    QStringList viewers = room->getTag(tagName).toStringList();
-    if (viewer && !viewers.contains(viewer->objectName()))
-        return;
-
-    LogMessage log;
-    log.type = viewer ? "$RemoveAkarin" : "$RemoveAkarinToAll";
-    log.from = player;
-    if (viewer) {
-        log.to << viewer;
-        room->sendLog(log, viewer);
-        viewers.removeAll(viewer->objectName());
-    } else {
-        room->sendLog(log);
-        viewers.clear();
-    }
-
-    if (viewers.isEmpty())
-        room->removeTag(tagName);
-    else
-        room->setTag(tagName, viewers);
-}
-
-}
-
 //mapo tofu
 MapoTofu::MapoTofu(Card::Suit suit, int number)
     : BasicCard(suit, number)
@@ -167,7 +102,7 @@ public:
             if (akarin->getPhase() == Player::Discard)
                 akarin->setMark("inovation_SE_Touming_num", akarin->getHandcardNum());
             else if (akarin->getPhase() == Player::RoundStart && akarin->getMark("touming_used") > 0){
-                removeAkarinEffect(room, akarin);
+                room->removeAkarinEffect(akarin);
                 akarin->setMark("touming_used", 0);
             }
         }
@@ -181,7 +116,7 @@ public:
                     return false;
                 room->broadcastSkillInvoke(objectName());
                 room->doLightbox("inovation_SE_Touming$", 1500);
-                applyAkarinEffect(room, akarin);
+                room->akarinPlayer(akarin);
                 akarin->setMark("touming_used", 1);
                 akarin->drawCards((room->getAlivePlayers().length() + 1)/2);
             }
@@ -190,7 +125,7 @@ public:
             DeathStruct death = data.value<DeathStruct>();
             if (death.who != akarin)
                 return false;
-            removeAkarinEffect(room, akarin);
+            room->removeAkarinEffect(akarin);
         }
 
         return false;
@@ -206,7 +141,7 @@ public:
 
     void onSkillDetached(Room *room, ServerPlayer *player) const
     {
-        removeAkarinEffect(room, player);
+        room->removeAkarinEffect(player);
     }
 };
 
@@ -267,13 +202,13 @@ public:
             foreach(ServerPlayer* p, room->getAlivePlayers()){
                 if (p->getMark("@inovation_huanxing_target") > 0){
                     p->loseMark("@inovation_huanxing_target");
-                    removeAkarinEffect(room, use.to.at(0), p);
+                    room->removeAkarinEffect(use.to.at(0), p);
                 }
             }
             use.from->gainMark("@inovation_huanxing_target");
             room->broadcastSkillInvoke(objectName(), qsanRandomBounded(4) + 1);
             room->doLightbox("inovation_huanxing$", 300);
-            applyAkarinEffect(room, use.to.at(0), use.from);
+            room->akarinPlayer(use.to.at(0), use.from);
             use.to.at(0)->setMark("disappear", 1);
             return true;
         }
@@ -283,7 +218,7 @@ public:
             foreach(ServerPlayer* p, room->getAlivePlayers()){
                 if (p->getMark("@inovation_huanxing_target") > 0){
                     p->loseMark("@inovation_huanxing_target");
-                    removeAkarinEffect(room, nao, p);
+                    room->removeAkarinEffect(nao, p);
                 }
             }
 
@@ -733,232 +668,6 @@ public:
         return false;
     }
 };
-
-//Dark Sakura
-class Xushu : public TriggerSkill
-{
-public:
-    Xushu() : TriggerSkill("xushu")
-    {
-        frequency = Compulsory;
-        events << Predamage << EventPhaseStart;
-    }
-
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
-    {
-        if (triggerEvent == Predamage){
-            DamageStruct damage = data.value<DamageStruct>();
-            if (damage.from->hasSkill(objectName()) || damage.to->hasSkill(objectName())) {
-                if (damage.from->hasSkill(objectName(), 1)){
-                    if (damage.reason != "shengjian_black")
-                        room->broadcastSkillInvoke(objectName());
-                    room->sendCompulsoryTriggerLog(damage.from, objectName());
-                }
-                else{
-                    if (damage.to->getHp() > 4)
-                        room->broadcastSkillInvoke(objectName(), 2);
-                    room->sendCompulsoryTriggerLog(damage.to, objectName());
-                }
-                room->loseHp(damage.to, damage.damage);
-
-                return true;
-            }
-        }
-        else if (triggerEvent == EventPhaseStart){
-            if (!player->hasSkill(objectName()) || player->getPhase() != Player::RoundStart)
-                return false;
-            room->loseHp(room->askForPlayerChosen(player, room->getOtherPlayers(player), objectName()));
-            room->broadcastSkillInvoke(objectName(), qsanRandomBounded(2) + 3);
-        }
-
-        return false;
-    }
-
-    bool triggerable(const ServerPlayer *target) const
-    {
-        return target != NULL;
-    }
-};
-
-//xishou
-class Xishou : public TriggerSkill
-{
-public:
-    Xishou() : TriggerSkill("xishou")
-    {
-        frequency = Frequent;
-        events << Dying;
-    }
-
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
-    {
-        if (triggerEvent == Dying){
-            DyingStruct dying = data.value<DyingStruct>();
-            ServerPlayer *sakura = room->findPlayerBySkillName(objectName());
-            if (!sakura || dying.who == sakura || !player->hasSkill(objectName()))
-                return false;
-            QList<const Skill *> list = dying.who->getVisibleSkillList();
-            QStringList choices;
-            foreach(const Skill *skill, list){
-                if (!sakura->hasSkill(skill))
-                    choices.append(skill->objectName());
-            }
-            if (choices.length() == 0 || !sakura->askForSkillInvoke(objectName(), data))
-                return false;
-
-            QString choice = room->askForChoice(sakura, objectName(), choices.join("+"), data);
-            room->broadcastSkillInvoke(objectName());
-            if (!sakura->hasSkill(choice))
-                room->acquireSkill(sakura, choice);
-            room->recover(sakura, RecoverStruct(sakura));
-        }
-
-        return false;
-    }
-
-    bool triggerable(const ServerPlayer *target) const
-    {
-        return target != NULL;
-    }
-};
-
-//shengbei
-//Dark Sakura
-class Shengbei : public TriggerSkill
-{
-public:
-    Shengbei() : TriggerSkill("shengbei")
-    {
-        frequency = Compulsory;
-        events << DrawNCards << TurnStart;
-    }
-
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
-    {
-        if (triggerEvent == DrawNCards){
-            if (player->hasSkill(objectName())){
-                data.setValue(data.toInt() + 3);
-            }
-        }
-        else if (triggerEvent == TurnStart){
-            if (player->hasSkill(objectName())){
-                bool do_voice = true;
-                if (!player->faceUp()){
-                    room->broadcastSkillInvoke(objectName());
-                    player->turnOver();
-                    do_voice = false;
-                }
-                if (player->getJudgingArea().length() > 0){
-                    foreach(const Card* card, player->getJudgingArea()){
-                        room->throwCard(card, player);
-                    }
-                    if (do_voice)
-                        room->broadcastSkillInvoke(objectName());
-                }
-            }
-        }
-        return false;
-    }
-};
-
-class ShengbeiMaxCards : public MaxCardsSkill
-{
-public:
-    ShengbeiMaxCards() : MaxCardsSkill("#shengbei")
-    {
-    }
-
-    int getFixed(const Player *target) const
-    {
-        if (target->hasSkill("shengbei"))
-            return target->getHp() + 3;
-        else
-            return -1;
-    }
-};
-
-//caoying
-class Caoying : public TriggerSkill
-{
-public:
-    Caoying() : TriggerSkill("caoying")
-    {
-        frequency = Frequent;
-        events << TargetConfirmed << HpLost;
-    }
-
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
-    {
-        if (triggerEvent == TargetConfirmed){
-            CardUseStruct use = data.value<CardUseStruct>();
-            foreach(ServerPlayer *p, use.to){
-                if (p->hasSkill(objectName()) && p == player && !use.from->hasSkill(objectName())){
-                    use.from->gainMark("@kage");
-                }
-            }
-        }
-        else if (triggerEvent == HpLost){
-            if (player->getMark("@kage") == 0)
-                return false;
-            ServerPlayer *sakura = room->findPlayerBySkillName(objectName());
-            if (!sakura)
-                return false;
-            if (sakura->askForSkillInvoke(objectName(), data)){
-                room->broadcastSkillInvoke(objectName());
-                for (int i = 0; i < player->getMark("@kage"); i++){
-                    if (!player->isNude()){
-                        room->throwCard(room->askForCardChosen(sakura, player, "he", objectName()), player, sakura);
-                    }
-                    else{
-                        break;
-                    }
-                }
-                player->loseAllMarks("@kage");
-            }
-        }
-
-        return false;
-    }
-
-    bool triggerable(const ServerPlayer *target) const
-    {
-        return target != NULL;
-    }
-};
-
-class ShengjianBlack : public TriggerSkill
-{
-public:
-    ShengjianBlack() : TriggerSkill("shengjian_black")
-    {
-        frequency = Frequent;
-        events << HpLost;
-    }
-
-    bool trigger(TriggerEvent triggerEvent, Room *room, ServerPlayer *player, QVariant &data) const
-    {
-        if (triggerEvent == HpLost){
-            if (player->hasSkill(objectName()) && player->askForSkillInvoke(objectName(), data)){
-                ServerPlayer *p = room->askForPlayerChosen(player, room->getOtherPlayers(player), objectName());
-                if (!p)
-                    return false;
-                room->broadcastSkillInvoke(objectName());
-                DamageStruct damage;
-                damage.from = player;
-                damage.to = p;
-                damage.reason = "shengjian_black";
-                damage.damage = abs(player->getEquips().length() - p->getEquips().length());
-                room->damage(damage);
-                foreach(const Card* card, p->getEquips()){
-                    room->throwCard(card, p, player);
-                }
-            }
-        }
-        return false;
-    }
-};
-
-
 
 //chuangzao
 
@@ -3300,7 +3009,7 @@ public:
                 if (p->getMark("@Jianshi_akarin")){
                     foreach(ServerPlayer *q, room->getOtherPlayers(p)){
                         if (!q->hasSkill(objectName())){
-                            removeAkarinEffect(room, p, q);
+                            room->removeAkarinEffect(p, q);
                         }
                     }
                     p->loseAllMarks("@Jianshi_akarin");
@@ -3311,7 +3020,7 @@ public:
             target->gainMark("@Jianshi_akarin");
             foreach(ServerPlayer *p, room->getOtherPlayers(target)){
                 if (!p->hasSkill(objectName())){
-                    applyAkarinEffect(room, target, p);
+                    room->akarinPlayer(target, p);
                 }
             }
 
@@ -3323,7 +3032,7 @@ public:
                     if (p->getMark("@Jianshi_akarin")){
                         foreach(ServerPlayer *q, room->getOtherPlayers(p)){
                             if (!q->hasSkill(objectName())){
-                                removeAkarinEffect(room, p, q);
+                                room->removeAkarinEffect(p, q);
                             }
                         }
                         p->loseAllMarks("@Jianshi_akarin");
@@ -3349,7 +3058,7 @@ public:
             if (p->getMark("@Jianshi_akarin")){
                 foreach(ServerPlayer *q, room->getOtherPlayers(p)){
                     if (!q->hasSkill(objectName())){
-                        removeAkarinEffect(room, p, q);
+                        room->removeAkarinEffect(p, q);
                     }
                 }
                 p->loseAllMarks("@Jianshi_akarin");
@@ -5154,19 +4863,6 @@ InovationPackage::InovationPackage()
     General *hugh = new General(this, "inovation_Hugh", "magic", 3, true, true);
     hugh->addSkill(new Shoushi);
     hugh->addSkill(new Kaiqi);
-
-    General *sakura = new General(this, "inovation_DarkSakura1", "magic", 8, false, true);
-    sakura->addSkill(new Xushu);
-    sakura->addSkill(new Xishou);
-
-    General *sakura2 = new General(this, "inovation_DarkSakura2", "magic", 4, false, true);
-    sakura2->addSkill("xushu");
-    sakura2->addSkill("xishou");
-    sakura2->addSkill(new Shengbei);
-    sakura2->addSkill(new ShengbeiMaxCards);
-    related_skills.insert("shengbei", "#shengbei");
-    sakura2->addSkill(new Caoying);
-    sakura2->addSkill(new ShengjianBlack);
 
     QList<Card *> cards;
     cards << new KeyTrick(Card::Heart, 10)

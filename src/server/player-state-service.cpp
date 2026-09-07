@@ -8,6 +8,7 @@
 #include "room.h"
 #include "room-notifier.h"
 #include "room-runtime.h"
+#include "roomthread.h"
 #include "serverplayer.h"
 #include "standard.h"
 
@@ -17,6 +18,15 @@
 #include <cstring>
 
 using namespace QSanProtocol;
+
+namespace {
+
+QString akarinStatusKey(const ServerPlayer *player)
+{
+	return QStringLiteral("inovation_akarin_status_") + player->objectName();
+}
+
+}
 
 PlayerStateService::PlayerStateService(Room &room, RoomRuntime &runtime,
 	RoomNotifier &notifier, AiDecisionCoordinator &aiDecisions,
@@ -33,6 +43,77 @@ void PlayerStateService::setPlayerFlag(ServerPlayer *player, const QString &flag
 		return;
 	player->setFlags(flag);
 	broadcastProperty(player, "flags", flag);
+}
+
+void PlayerStateService::akarinPlayer(ServerPlayer *player, ServerPlayer *to)
+{
+	if (!player) return;
+
+	const QString tagName = akarinStatusKey(player);
+	QStringList viewers = m_room.getTag(tagName).toStringList();
+	if (to && viewers.contains(to->objectName())) return;
+
+	m_room.setEmotion(player, QStringLiteral("akarin"));
+	LogMessage log;
+	log.type = to ? QStringLiteral("$AkarinPlayer")
+	              : QStringLiteral("$AkarinPlayerToAll");
+	log.from = player;
+
+	QList<ServerPlayer *> recipients;
+	if (to) {
+		log.to << to;
+		recipients << to;
+		viewers << to->objectName();
+	} else {
+		recipients = m_room.getOtherPlayers(player);
+		foreach (ServerPlayer *other, recipients) {
+			if (other && !viewers.contains(other->objectName()))
+				viewers << other->objectName();
+		}
+	}
+	m_notifier.sendLog(log, to ? recipients : QList<ServerPlayer *>());
+	m_notifier.notifyAkarinVisibility(player, true, recipients);
+	m_room.setTag(tagName, viewers);
+}
+
+void PlayerStateService::removeAkarinEffect(ServerPlayer *player, ServerPlayer *to)
+{
+	if (!player) return;
+
+	const QString tagName = akarinStatusKey(player);
+	const QVariant stored = m_room.getTag(tagName);
+	if (!stored.isValid()) return;
+
+	QStringList viewers = stored.toStringList();
+	if (to && !viewers.contains(to->objectName())) return;
+
+	LogMessage log;
+	log.type = to ? QStringLiteral("$RemoveAkarin")
+	              : QStringLiteral("$RemoveAkarinToAll");
+	log.from = player;
+	QList<ServerPlayer *> recipients;
+	if (to) {
+		log.to << to;
+		recipients << to;
+		viewers.removeAll(to->objectName());
+	} else {
+		recipients = m_room.getOtherPlayers(player);
+		viewers.clear();
+	}
+	m_notifier.sendLog(log, to ? recipients : QList<ServerPlayer *>());
+	m_notifier.notifyAkarinVisibility(player, false, recipients);
+
+	if (viewers.isEmpty())
+		m_room.removeTag(tagName);
+	else
+		m_room.setTag(tagName, viewers);
+}
+
+bool PlayerStateService::isAkarin(ServerPlayer *player, ServerPlayer *to) const
+{
+	if (!player || !to) return false;
+	return m_room.getTag(akarinStatusKey(player)).toStringList()
+		.contains(to->objectName());
 }
 
 void PlayerStateService::setPlayerProperty(ServerPlayer *player,

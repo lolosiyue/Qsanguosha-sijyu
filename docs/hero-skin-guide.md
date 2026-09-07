@@ -85,8 +85,9 @@ hero-skin/
 - **搜尋邏輯**：
   ```cpp
   // 自動將 full.png → full.gif
-  gifPath.replace(QRegExp("\\.(jpg|png)$", Qt::CaseInsensitive), ".gif");
+  gifPath.replace(QRegularExpression("\\.(jpg|png)$", QRegularExpression::CaseInsensitiveOption), ".gif");
   ```
+  路徑含 `/full/` 而非 `/full/gif/` 時（如預設皮膚圖），會先嘗試 `/full/gif/` 子目錄下的同名 GIF，找不到才退回原路徑（`src/ui/graphicspixmaphoveritem.cpp:276-294`）。
 - **必要**：否
 
 ### card.jpg（卡片圖）
@@ -263,7 +264,7 @@ image/fullskin/dynamicSkin/[generalName]/dynamicSkin/
 ### 路徑判斷邏輯
 
 ```cpp
-// src/ui/CharacterSpineActionController.cpp:295-303
+// src/ui/CharacterSpineActionController.cpp:302-308
 static QString buildDynamicSkinRoot(const QString &resolvedGeneral, int skinIndex)
 {
     if (skinIndex > 0) {

@@ -471,7 +471,7 @@ export function playerSelectable(
 ): boolean {
   if (command === Command.CHOOSE_PLAYER) {
     const allowed = asStringList(payload.players);
-    return allowed.length === 0 || allowed.includes(player);
+    return allowed.includes(player);
   }
   if (useMode(command) !== "play")
     return false;

@@ -33,6 +33,8 @@ public:
     void broadcastSkillInvoke(const QString &skillName, const QString &category);
     void broadcastSkillInvoke(const QString &skillName, bool isMale, int type,
                               const QString &playerName);
+    void notifyAkarinVisibility(ServerPlayer *player, bool hidden,
+                                const QList<ServerPlayer *> &viewers);
     void broadcastTagProperty(ServerPlayer *owner, const QString &tagKey,
                               const QVariant &value);
     void notifyPlayerUIState(ServerPlayer *owner, const PlayerUIState &state);

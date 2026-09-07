@@ -73,14 +73,15 @@ Inspector actions 只驅動 production UI 的既有 probe／signal／slot；repl
 python tools\autotest\skill_ui_runner.py --list-cases
 ```
 
-目前案例：
+目前案例（28 個；runner 以 `rglob("*.json")` 全列，與 `--list-cases` 輸出一致）：
 
 ```text
+ask_for_ag
+ask_for_card_chosen
 ask_for_card_response
 ask_for_card_view_as_skill
-ask_for_card_chosen
-ask_for_ag
 ask_for_choice
+ask_for_choice_v2
 ask_for_discard
 ask_for_exchange
 ask_for_gongxin
@@ -89,7 +90,20 @@ ask_for_player_chosen
 ask_for_skill_invoke_no
 ask_for_skill_invoke_yes
 ask_for_yiji
+choose_direction_v2_identity
+choose_general_v1
+choose_general_v2
+choose_kingdom_v1
+choose_kingdom_v2
+choose_order_v1
+choose_order_v2
+choose_suit_v1
+choose_suit_v2
 extension_real_askfor
+invoke_skill_v2
+luck_card_v2_identity
+surrender_v1
+surrender_v2
 ```
 
 執行全部 Auto cases：
@@ -128,8 +142,10 @@ Inspect 不會設定 `QT_QPA_PLATFORM=offscreen`、`CREATE_NO_WINDOW` 或程序 
 Executable 探測順序為：
 
 1. `--exe <path>`
-2. `builds/cmake-vs2026/Debug/QSanguosha.exe`
-3. `debug/QSanguosha.exe`
+2. `relwithdebinfo/QSanguosha.exe`
+3. `builds/cmake-vs2026/RelWithDebInfo/QSanguosha.exe`
+4. `builds/cmake-vs2026/Debug/QSanguosha.exe`
+5. `debug/QSanguosha.exe`
 
 Runner 會先呼叫 capability command，不會把舊 executable 開到 lobby：
 
@@ -212,10 +228,12 @@ ctest --test-dir builds/cmake-vs2026 -C Debug --output-on-failure
 ## F1.1 更新（2026-08-29）
 
 上方 ClientCore 段落保留的是 F1 首個五-command slice 的歷史快照。F1.1 已把
-`Client::m_interactions` 的 29 個 built-in commands 全部遷移；現有 14 個可見 GUI case
+`Client::m_interactions` 的 29 個 built-in commands 全部遷移；現有 28 個可見 GUI case
 仍使用 production RoomScene／Dashboard／dialog surface，protocol fixture test 另逐一覆蓋
 29 個 command 名稱與 serial。QML 現在有 versioned structured model 與 registry policy；
-舊 QML surface 透過明確 `legacy.qml` adapter 保留，不再是無界定的 passthrough。
+Protocol V2 cutover（commit `16a49c9`）已整個移除 `legacy.qml` adapter，`S_COMMAND_QML_INTERACT`
+與其餘 built-in interaction 一樣走 direct typed 分支，權威描述見
+`docs/protocol-v2.md` 與 `docs/client-core-interaction-model.md`。
 
 `qsanguosha_ui_runner_contract` 在一般 `BUILD_TESTING` 下合併 local-response parser、
 startup/network CLI 與 skill UI runner；它仍驗證 capability probe、stem resolution
@@ -230,4 +248,4 @@ startup/network CLI 與 skill UI runner；它仍驗證 capability probe、stem r
 | Explicit legacy adapter | 0 | removed；QML 使用相同 direct typed path |
 | Implicit passthrough | 0 | built-in interaction 全部由 production descriptor registry 登記 |
 
-目前 local-response UI suite 的 14 個 production GUI cases 仍是可見操作與 wire capture 的主要回歸集合；這不代表只有 14 個 canonical interaction。Production matrix 由 `debug/QSanguosha.exe --interaction-inventory` 生成，CTest 另以 fake recorder 實際 dispatch 29/29 presenters。完整架構與特殊語意見 `docs/client-core-interaction-model.md`。
+目前 local-response UI suite 的 28 個 production GUI cases 仍是可見操作與 wire capture 的主要回歸集合；這不代表只有 28 個 canonical interaction。Production matrix 由 `debug/QSanguosha.exe --interaction-inventory` 生成，CTest 另以 fake recorder 實際 dispatch 29/29 presenters。完整架構與特殊語意見 `docs/client-core-interaction-model.md`。
