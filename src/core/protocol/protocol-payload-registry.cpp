@@ -212,7 +212,7 @@ bool validateGameEventPayload(const QVariantMap &object, QString *error)
     if (!ProtocolMessageUtils::tryParseInt(
             object.value(QStringLiteral("event")), event)
         || event < S_GAME_EVENT_PLAYER_DYING
-        || event > S_GAME_EVENT_SHOW_GENERAL) {
+        || event > S_GAME_EVENT_AKARIN) {
         return fail(error, QStringLiteral("GameEventPayload event is unknown"));
     }
     const auto require = [&](const QString &field, FieldShape shape) {
@@ -282,6 +282,9 @@ bool validateGameEventPayload(const QVariantMap &object, QString *error)
     case S_GAME_EVENT_SORT_HAND:
         return require(QStringLiteral("player_name"), FieldShape::String)
             && require(QStringLiteral("card_ids"), FieldShape::IntegerList);
+    case S_GAME_EVENT_AKARIN:
+        return require(QStringLiteral("player_name"), FieldShape::String)
+            && require(QStringLiteral("hidden"), FieldShape::Boolean);
     case S_GAME_EVENT_PREPARE_SKILL:
     case S_GAME_EVENT_UPDATE_SKILL:
     case S_GAME_EVENT_SHOW_GENERAL:
@@ -494,6 +497,7 @@ bool validateGenericSchema(const QString &schema, const QVariant &value,
         {QStringLiteral("send_log"), FieldShape::Boolean},
         {QStringLiteral("paused"), FieldShape::Boolean},
         {QStringLiteral("stop_current"), FieldShape::Boolean},
+        {QStringLiteral("hidden"), FieldShape::Boolean},
         {QStringLiteral("open"), FieldShape::Boolean},
         {QStringLiteral("player_names"), FieldShape::StringList},
         {QStringLiteral("winner_tokens"), FieldShape::StringList},
@@ -727,7 +731,7 @@ bool encodeGameEventPayload(const QVariant &value, QVariantMap *output,
     const QVariantList args = value.toList();
     int event = -1;
     if (args.isEmpty() || !ProtocolMessageUtils::tryParseInt(args.first(), event)
-        || event < S_GAME_EVENT_PLAYER_DYING || event > S_GAME_EVENT_SHOW_GENERAL) {
+        || event < S_GAME_EVENT_PLAYER_DYING || event > S_GAME_EVENT_AKARIN) {
         return fail(error, QStringLiteral("GameEventPayload event is unknown"));
     }
     QVariantMap object = schemaObject();
@@ -799,6 +803,9 @@ bool encodeGameEventPayload(const QVariant &value, QVariantMap *output,
         object.insert(QStringLiteral("card_ids"), cardIds);
         break;
     }
+    case S_GAME_EVENT_AKARIN:
+        copy(1, "player_name"); copy(2, "hidden");
+        break;
     case S_GAME_EVENT_PREPARE_SKILL:
     case S_GAME_EVENT_UPDATE_SKILL:
     case S_GAME_EVENT_SHOW_GENERAL:

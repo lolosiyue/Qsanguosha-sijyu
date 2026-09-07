@@ -116,6 +116,30 @@ bool strictPayloadContracts(QString *error)
     }
     error->clear();
 
+    ProtocolMessage akarinEvent = roomNotification(S_COMMAND_LOG_EVENT, {});
+    akarinEvent.payload = QVariantList{
+        S_GAME_EVENT_AKARIN, QStringLiteral("sgs1"), true
+    };
+    ProtocolMessage encodedAkarin;
+    if (!ProtocolPayloadRegistry::encodeObjectPayload(akarinEvent, &encodedAkarin, error))
+        return false;
+    QVariantMap akarinPayload = encodedAkarin.payload.toMap();
+    if (akarinPayload.value(QStringLiteral("event")).toInt() != S_GAME_EVENT_AKARIN
+        || akarinPayload.value(QStringLiteral("player_name")).toString()
+               != QLatin1String("sgs1")
+        || !akarinPayload.value(QStringLiteral("hidden")).toBool()
+        || !ProtocolPayloadRegistry::validateObjectPayload(encodedAkarin, error)) {
+        *error = QStringLiteral("Akarin game event did not preserve its typed payload");
+        return false;
+    }
+    akarinPayload.insert(QStringLiteral("hidden"), QStringLiteral("true"));
+    encodedAkarin.payload = akarinPayload;
+    if (ProtocolPayloadRegistry::validateObjectPayload(encodedAkarin, error)) {
+        *error = QStringLiteral("wrongly typed Akarin visibility was accepted");
+        return false;
+    }
+    error->clear();
+
     ProtocolMessage showAll;
     showAll.version = ProtocolVersion::V2;
     showAll.type = ProtocolMessageType::Notification;

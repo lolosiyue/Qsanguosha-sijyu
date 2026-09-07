@@ -12,7 +12,7 @@
 
 - 保留既有 `RoomScene::onSkillActivated()` → `Dashboard::startPending()` 流程
 - 在 `GuhuoDialog` / `JuguanDialog` 抽出可重用 API：`prepareOptions()`、`getOptionNames()`、`getOptionCard()`、`applyOption()`、`shouldPopup()`、`hasEnabledOptions()`
-- 共享 dialog 只保留選項準備與可用性判斷；`GuhuoSlash` / `NosGuhuoSlash` / `OLGuhuoSlash` 等狀態仍留在各自 `validate()` / `validateInResponse()` 路徑
+- 共享 dialog 只保留選項準備與可用性判斷；`GuhuoSlash` / `NosGuhuoSlash`（OL 路徑為 `OLGuhuoSlash`）僅作為 player tag 字串存在（`wind.cpp` / `ol-strengthen.cpp` 以 `setTag()` / `removeTag()` 維護），實際結算仍留在 `GuhuoCard` 等的 `validate()` / `validateInResponse()` 路徑
 - `normal_slash` 改為獨立 clone card，避免不同選項共用同一個 `Card *`
 
 ### 第二階段：新增 Dashboard presenter
@@ -119,6 +119,11 @@ juguan_type = "slash,duel!"          -- ! 後綴：強制彈窗
 tiansuan_type = "hp,hand"
 ```
 
+## OL Guhuo 中央聲明/翻牌提示（GuhuoBox）
+
+- `src/ui/guhuo-box.h` 新增 `GuhuoBox`（`QSanSelectableItem` 衍生）：蠱惑聲明牌的中央提示，聲明時顯示牌背、結算時翻開實際牌
+- 事件鏈：`src/package/ol-strengthen.cpp` 的 `showGuhuoBox()` 以 `S_COMMAND_LOG_EVENT` 廣播 `"guhuo_box"`（分 `declare` / `reveal` / `clear` 三階段）→ `src/client/client.cpp` 解析後 `emit guhuoBox(...)` → `src/ui/roomscene.cpp` `connect(ClientInstance, &Client::guhuoBox, m_guhuoBox, &GuhuoBox::doGuhuoBox)` 顯示
+
 ## 修改檔案清單
 
 ### Dashboard
@@ -132,15 +137,15 @@ tiansuan_type = "hp,hand"
 
 | 檔案 | 變更 |
 |------|------|
-| `src/package/wind.h` | 新增 `getAvailableCards()`、`getSkillName()`、`_getBasicCards()`、`_getTrickCards()` |
-| `src/package/wind.cpp` | 實作 `getAvailableCards()` |
+| `src/ui/package-dialogs.h` | `GuhuoDialog` 類別宣告新增 `prepareOptions()`、`getOptionNames()`、`getOptionCard()`、`applyOption()`、`shouldPopup()`、`hasEnabledOptions()` |
+| `src/package/wind.cpp` | 實作上述 API |
 
 ### JuguanDialog
 
 | 檔案 | 變更 |
 |------|------|
-| `src/package/ol.h` | 新增 `getAvailableCards()`、`getSkillName()` |
-| `src/package/ol.cpp` | 實作 `getAvailableCards()` |
+| `src/ui/package-dialogs.h` | `JuguanDialog` 類別宣告新增同一組選項 API |
+| `src/package/ol.cpp` | 實作上述 API |
 
 ### RoomScene
 

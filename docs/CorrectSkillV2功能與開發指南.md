@@ -349,7 +349,7 @@ RoomScene 收到信號後重新驗證技能按鈕、選牌狀態與目標預覽�
 | 核心程式與 SWIG | 已完成 |
 | Release x64 編譯 | 已通過，0 errors |
 | C++／Lua fixture | 已建立 |
-| 本機 executable runtime | `-1073741701 / 0xC000007B`，未能啟動 |
+| 本機 executable runtime | 正常運作；專案已遷 CMake＋Qt 6.11.1（VS 2026 x64），`debug/QSanguosha.exe` 可正常啟動 |
 | CorrectSkillV2 正式技能 | 尚未開放 |
 | TriggerV2 正式技能 | 可小量新增並附獨立回歸 |
 | ViewAsSkillV2 正式技能 | 尚未開放 |
@@ -368,5 +368,5 @@ CorrectSkillV2 必須在可正常啟動的環境完成 Room lifecycle、client r
 | Lua factory | `lua/sgs_ex.lua` |
 | SWIG Lua callback | `swig/luaskills.i` |
 | C++ 測試 fixture | `src/package/standard-generals.cpp` 的 `~test` package |
-| Lua factory smoke | `lua/test/examples/test_correct_skill_v2.lua` |
-| Room integration fixture | `lua/test/examples/test_correct_skill_v2_room.lua` |
+| Lua factory smoke | 已移除：`lua/test/examples/test_correct_skill_v2.lua` 已隨 `lua/test/` 於 commit `a904221` 刪除，由 CTest／`tools/autotest` 取代 |
+| Room integration fixture | 已移除：`lua/test/examples/test_correct_skill_v2_room.lua` 已隨 `lua/test/` 於 commit `a904221` 刪除，由 CTest／`tools/autotest` 取代 |

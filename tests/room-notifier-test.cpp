@@ -284,6 +284,88 @@ static bool presentationPayloadsStayStable(Room &room, MessageRecorder &recorder
     return true;
 }
 
+static bool akarinVisibilityFollowsRecipients(Room &room, MessageRecorder &recorder,
+                                              ServerPlayer *controller,
+                                              ServerPlayer *subject,
+                                              ServerPlayer *viewer)
+{
+    room.setPlayerController(viewer, controller);
+    recorder.clear();
+    room.akarinPlayer(subject, viewer);
+
+    const PacketRecord *hiddenRecord = recorder.first(viewer, S_COMMAND_LOG_EVENT);
+    const QVariantMap hiddenPayload = hiddenRecord
+        ? hiddenRecord->body.toMap() : QVariantMap();
+    if (recorder.parseFailed
+        || !expectCount(recorder, viewer, S_COMMAND_LOG_EVENT, 1, "Akarin viewer")
+        || !expectCount(recorder, controller, S_COMMAND_LOG_EVENT, 1,
+                        "Akarin controller")
+        || !expectCount(recorder, subject, S_COMMAND_LOG_EVENT, 0,
+                        "Akarin subject")
+        || hiddenPayload.value(QStringLiteral("event")).toInt() != S_GAME_EVENT_AKARIN
+        || hiddenPayload.value(QStringLiteral("player_name")).toString()
+               != subject->objectName()
+        || !hiddenPayload.value(QStringLiteral("hidden")).toBool()
+        || !room.isAkarin(subject, viewer)) {
+        return false;
+    }
+
+    recorder.clear();
+    room.akarinPlayer(subject, viewer);
+    if (!expectCount(recorder, viewer, S_COMMAND_LOG_EVENT, 0,
+                     "duplicate Akarin apply")) {
+        return false;
+    }
+
+    recorder.clear();
+    room.removeAkarinEffect(subject, viewer);
+    const PacketRecord *shownRecord = recorder.first(viewer, S_COMMAND_LOG_EVENT);
+    const QVariantMap shownPayload = shownRecord
+        ? shownRecord->body.toMap() : QVariantMap();
+    if (recorder.parseFailed
+        || !expectCount(recorder, viewer, S_COMMAND_LOG_EVENT, 1, "Akarin restore")
+        || !expectCount(recorder, controller, S_COMMAND_LOG_EVENT, 1,
+                        "Akarin restore controller")
+        || shownPayload.value(QStringLiteral("event")).toInt() != S_GAME_EVENT_AKARIN
+        || shownPayload.value(QStringLiteral("player_name")).toString()
+               != subject->objectName()
+        || shownPayload.value(QStringLiteral("hidden")).toBool()
+        || room.isAkarin(subject, viewer)) {
+        return false;
+    }
+
+    recorder.clear();
+    room.removeAkarinEffect(subject, viewer);
+    if (!expectCount(recorder, viewer, S_COMMAND_LOG_EVENT, 0,
+                     "duplicate Akarin removal")) {
+        return false;
+    }
+
+    recorder.clear();
+    room.akarinPlayer(subject);
+    if (recorder.parseFailed
+        || !expectCount(recorder, controller, S_COMMAND_LOG_EVENT, 1,
+                        "global Akarin controller")
+        || !expectCount(recorder, viewer, S_COMMAND_LOG_EVENT, 1,
+                        "global Akarin viewer")
+        || !expectCount(recorder, subject, S_COMMAND_LOG_EVENT, 0,
+                        "global Akarin subject")
+        || !room.isAkarin(subject, controller)
+        || !room.isAkarin(subject, viewer)) {
+        return false;
+    }
+
+    recorder.clear();
+    room.removeAkarinEffect(subject);
+    return !recorder.parseFailed
+        && expectCount(recorder, controller, S_COMMAND_LOG_EVENT, 1,
+                       "global Akarin restore controller")
+        && expectCount(recorder, viewer, S_COMMAND_LOG_EVENT, 1,
+                       "global Akarin restore viewer")
+        && !room.isAkarin(subject, controller)
+        && !room.isAkarin(subject, viewer);
+}
+
 }
 
 int runRoomNotifierTests()
@@ -323,6 +405,10 @@ int runRoomNotifierTests()
     if (!presentationPayloadsStayStable(room, recorder, controller,
                                         firstControlled, secondControlled))
         return 6;
+    qInfo() << "room notifier test: Akarin visibility";
+    if (!akarinVisibilityFollowsRecipients(room, recorder, controller,
+                                           firstControlled, secondControlled))
+        return 7;
 
     qInfo() << "room notifier behavior passed";
     return 0;
