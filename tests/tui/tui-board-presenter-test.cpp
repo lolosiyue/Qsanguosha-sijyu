@@ -248,6 +248,37 @@ void testWriteErrorNotice()
           "the keystroke that clears the notice still reaches the line editor");
 }
 
+// A cell grid cannot hold an escape sequence: TuiScreen::putText() substitutes
+// a space for every control byte, which turns "ESC [ 1 ; 3 6 m" into a visible
+// "[1;36m" sitting in the log pane in front of every prompt title. The board is
+// the presenter that cannot render colour it is handed, so it is the presenter
+// that has to drop it -- the controller must keep feeding both presenters the
+// same string (see TuiPresenter's own comment on --log-file staying identical
+// whichever presenter is installed), and TuiStreamPresenter does render it.
+void testAnsiSequenceNeverReachesTheGrid()
+{
+    TuiBoardPresenter presenter(QSize(80, 24), testResolvers());
+    ClientGameState state = fivePlayerState(QStringLiteral("sgs1"));
+    presenter.stateChanged(state);
+    pumpEvents();
+
+    presenter.writeOutput(QString::fromUtf8("\x1b[1;36m选择武将\x1b[0m"));
+    pumpEvents();
+
+    const QString screen = presenter.screenText();
+    check(screen.contains(QString::fromUtf8("选择武将")),
+          "the coloured text itself still reaches the log pane");
+    check(!screen.contains(QStringLiteral("[1;36m")) && !screen.contains(QStringLiteral("[0m")),
+          "an SGR sequence leaves no bracket junk behind in the cell grid");
+
+    presenter.writeError(QString::fromUtf8("\x1b[31m连接已断开\x1b[0m"));
+    pumpEvents();
+    const QString afterError = presenter.screenText();
+    check(afterError.contains(QString::fromUtf8("连接已断开"))
+              && !afterError.contains(QStringLiteral("[31m")),
+          "writeError() drops the escape sequence the same way");
+}
+
 void testOverlayKeyPriority()
 {
     TuiBoardPresenter presenter(QSize(80, 24), testResolvers());
@@ -511,6 +542,7 @@ int main(int argc, char **argv)
     testAutoFollowAndOverlay();
     testAutoFollowAcrossPages();
     testWriteErrorNotice();
+    testAnsiSequenceNeverReachesTheGrid();
     testOverlayKeyPriority();
     testOverlayScrollKeys();
     testRepaintCoalescing();

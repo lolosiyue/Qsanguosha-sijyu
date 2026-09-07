@@ -1035,25 +1035,31 @@ QStringList TuiApplicationController::completionExtraTokens() const
     return tokens;
 }
 
+// The screen and the log file are sanitized separately and on purpose. The
+// log file is a plain transcript, so it never carries colour; the presenter
+// may, because TuiRenderer::heading() writes one and TuiStreamPresenter can
+// render it. Sanitizing once and sharing the result is what silently broke
+// both: the shared pass dropped the ESC byte and left "[1;36m" behind as
+// text, so classic printed the parameters instead of colouring the heading
+// and the board put them in its cell grid. Which sanitizer is used still does
+// not depend on the mode -- a presenter that cannot render colour drops it
+// itself -- so --log-file content stays identical either way (TuiPresenter).
 void TuiApplicationController::writeOutput(const QString &text)
 {
-    const QString safe = TuiRenderer::sanitize(text, 16384);
-    m_presenter->writeOutput(safe);
-    appendLogLine(safe);
+    m_presenter->writeOutput(TuiRenderer::sanitizePresentable(text, 16384));
+    appendLogLine(TuiRenderer::sanitize(text, 16384));
 }
 
 void TuiApplicationController::writeDump(const QString &text)
 {
-    const QString safe = TuiRenderer::sanitize(text, 16384);
-    m_presenter->writeDump(safe);
-    appendLogLine(safe);
+    m_presenter->writeDump(TuiRenderer::sanitizePresentable(text, 16384));
+    appendLogLine(TuiRenderer::sanitize(text, 16384));
 }
 
 void TuiApplicationController::writeError(const QString &text)
 {
-    const QString safe = TuiRenderer::sanitize(text, 4096);
-    m_presenter->writeError(safe);
-    appendLogLine(QStringLiteral("TUI_ERROR %1").arg(safe));
+    m_presenter->writeError(TuiRenderer::sanitizePresentable(text, 4096));
+    appendLogLine(QStringLiteral("TUI_ERROR %1").arg(TuiRenderer::sanitize(text, 4096)));
 }
 
 void TuiApplicationController::writeAutomationMarker(const QString &marker)
