@@ -232,12 +232,14 @@ jobs:
 
           # 測試 target 定義喺 tests/ 子目錄，所以 MSVC 會將測試 exe 放喺
           # builds\cmake-vs2026\tests\RelWithDebInfo\，而唔係 build tree 根目錄。
-          # 頂層 CTestTestfile.cmake 只有 subdirs("tests")，真正嘅 add_test() 喺
-          # tests\CTestTestfile.cmake，兩個都要 stage，layout 亦要原樣保留
+          # rules fixture runner 喺頂層，其餘測試喺 tests/；兩層都要 stage，
+          # CTestTestfile.cmake 同 executable layout 亦要原樣保留
           # (生成嘅 CTestTestfile.cmake 內含絕對路徑)。
           if ($env:GITHUB_REF -eq 'refs/heads/main') {
             $ctestStage = 'ci-handoff\ctest\builds\cmake-vs2026'
             New-Item -ItemType Directory -Path "$ctestStage\tests\RelWithDebInfo" -Force | Out-Null
+            New-Item -ItemType Directory -Path "$ctestStage\RelWithDebInfo" -Force | Out-Null
+            Copy-Item -LiteralPath builds\cmake-vs2026\RelWithDebInfo\qsanguosha_rules_fixture_runner.exe -Destination "$ctestStage\RelWithDebInfo"
             Copy-Item -LiteralPath builds\cmake-vs2026\CTestTestfile.cmake -Destination $ctestStage
             Copy-Item -LiteralPath builds\cmake-vs2026\CMakeCache.txt -Destination $ctestStage
             New-Item -ItemType Directory -Path "$ctestStage\generated" -Force | Out-Null
@@ -263,6 +265,23 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'TUI contract gate failed' }
           & builds\cmake-vs2026\tests\RelWithDebInfo\qsanguosha_tui_tests.exe --suite live-tcp
           if ($LASTEXITCODE -ne 0) { throw 'TUI live TCP gate failed' }
+
+      - name: Run native client rules fixtures
+        shell: pwsh
+        run: |
+          cmake --build builds\cmake-vs2026 --config RelWithDebInfo `
+            --target qsanguosha_rules_fixture_runner --parallel 8
+          if ($LASTEXITCODE -ne 0) { throw 'Native rules fixture build failed' }
+          $env:PATH = "$env:QT_ROOT_DIR\bin;$env:PATH"
+          python tests/client_runtime/check-fixtures.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw 'Native rules fixture harness failed' }
+          python tests/client_runtime/check-fixtures.py `
+            --runner builds/cmake-vs2026/RelWithDebInfo/qsanguosha_rules_fixture_runner.exe `
+            --fixtures tests/client_runtime/fixtures `
+            --asset-root "$env:GITHUB_WORKSPACE" `
+            --builtin-assets `
+            --artifacts ci-logs/client-rules-fixtures
+          if ($LASTEXITCODE -ne 0) { throw 'Native rules fixtures failed' }
 
       - name: Run shared GUI and TUI client architecture regressions
         shell: pwsh

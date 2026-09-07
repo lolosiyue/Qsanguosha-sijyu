@@ -98,11 +98,22 @@ jobs:
               qsanguosha_protocol_tests \
               qsanguosha_server_support_tests \
               qsanguosha_tui_tests \
+              qsanguosha_rules_fixture_runner \
             --parallel
 
       - name: Build with ${{ matrix.compiler.name }}
         if: github.event_name != 'push' || github.ref != 'refs/heads/debug'
         run: cmake --build 'build/linux-${{ matrix.compiler.id }}' --parallel
+
+      - name: Run native client rules fixtures
+        run: |
+          python3 tests/client_runtime/check-fixtures.py --self-test
+          python3 tests/client_runtime/check-fixtures.py \
+            --runner 'build/linux-${{ matrix.compiler.id }}/qsanguosha_rules_fixture_runner' \
+            --fixtures tests/client_runtime/fixtures \
+            --asset-root "$GITHUB_WORKSPACE" \
+            --builtin-assets \
+            --artifacts 'ci-logs/client-rules-fixtures-${{ matrix.compiler.id }}'
 
       - name: Build and verify deploy-server
         if: env.QSAN_FULL_SERVER_CI == 'true'
