@@ -9,13 +9,12 @@
 #include <QCoreApplication>
 #include <QSize>
 
-#include <unistd.h>
-
 #include <cstdio>
 #include <cstring>
 
 #if defined(Q_OS_UNIX)
 #include <csignal>
+#include <unistd.h>
 
 // Not declared in tui-terminal.h -- tuiInstallSharedSigintHandler() is the
 // internal sigaction(SIGINT, ...) call shared by TuiTerminal::enter() and
@@ -52,10 +51,13 @@ int main(int argc, char **argv)
     check(!restore.isEmpty() && restore.size() < 64,
           "the sequence stays small enough to write from a signal handler");
 
-    // A pipe, never the real terminal: a test that entered raw mode and the
-    // alternate screen for real would wreck the shell it was launched from.
     int pipeFds[2] = {-1, -1};
+#if defined(Q_OS_UNIX)
+    // A pipe, never the real terminal: entering raw mode for real would
+    // wreck the shell the test was launched from.
     check(::pipe(pipeFds) == 0, "the test opens a pipe to stand in for a terminal");
+#endif
+    // Other platforms reject raw mode before inspecting the descriptors.
     TuiTerminal terminal(pipeFds[0], pipeFds[1]);
     QString error;
     const bool entered = terminal.enter(&error);
@@ -69,6 +71,16 @@ int main(int argc, char **argv)
     terminal.leave();
     terminal.leave();
     check(true, "leaving twice is a no-op and does not crash");
+
+#if defined(Q_OS_UNIX)
+    if (pipeFds[0] >= 0)
+        ::close(pipeFds[0]);
+    if (pipeFds[1] >= 0)
+        ::close(pipeFds[1]);
+#else
+    check(error.contains(QStringLiteral("not implemented")),
+          "unsupported platforms explain why raw mode is unavailable");
+#endif
 
     // enter()'s re-entry guard (skip straight to the isatty() failure when
     // already entered, rather than re-running tcgetattr()) only has an
