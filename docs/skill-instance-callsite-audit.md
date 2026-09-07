@@ -1,6 +1,6 @@
 # 技能實例舊呼叫點人工審核清單
 
-> **存檔快照（2026-08-21 校對）**：本文為 2026-07-16 靜態審核快照，只記錄與分類。`acquireSkill()` 呼叫點現況已漂移（文檔 660 處 vs 現況約 1,500 處），**本文計數與清單不得當現況**。現行規格以 [`skill-instance-refactor-plan.md`](skill-instance-refactor-plan.md) 為準。
+> **存檔快照（2026-08-21 校對；2026-09-06 統計複測）**：本文為 2026-07-16 靜態審核快照，只記錄與分類。`acquireSkill()` 呼叫點現況已漂移（文檔 660 處 vs 現況約 705 處：src 的 cpp/h 約 200 處＋extensions/lua 約 505 處），**本文計數與清單不得當現況**。現行規格以 [`skill-instance-refactor-plan.md`](skill-instance-refactor-plan.md) 為準。
 
 盤點日期：2026-07-16。此文件只記錄與分類，不批量修改 `acquireSkill()` 呼叫點。
 
@@ -25,10 +25,10 @@
 | 類別 | 數量 |
 |---|---:|
 | `acquireSkill(` | 660 |
-| `detachSkillFromPlayer(` | 563 |
+| `detachSkillFromPlayer(` | 594 |
 | C++ `Room::acquireSkill` 呼叫 | 156 |
 | 同行已有 `hasSkill` guard | 22 |
-| Lua 已遷移 typed `SkillChangeStruct` 讀取 | 244 |
+| Lua 已遷移 typed `SkillChangeStruct` 讀取 | 206 |
 | C++ 已遷移 typed `SkillChangeStruct` 讀取 | 8 |
 
 ### acquire 呼叫分布
@@ -96,7 +96,7 @@ if change.skillName == self:objectName() then
 end
 ```
 
-第一輪同行掃描遷移 97 點；第二輪 ±4 行近鄰掃描再遷移 147 點。完成後同範圍的舊 `data:toString()` 殘留為 0，共 244 個 Lua typed 讀取。
+第一輪同行掃描遷移 97 點；第二輪 ±4 行近鄰掃描再遷移 147 點。完成當時同範圍的舊 `data:toString()` 殘留為 0；2026-09-06 複測，同行 `data:toString()` 殘留 14 處（全部集中在 `extensions/temp/extraheg.lua`），Lua typed `toSkillChange()` 讀取現約 206 處。
 
 原 Lua 同行字串 listener 的高密度檔案：
 

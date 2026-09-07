@@ -2,6 +2,8 @@
 
 本文件記錄 `extensions/` 下 Lua 腳本的撰寫慣例、API 用法與最佳實踐。
 
+> 本文行號為 2026-09-06 實測，僅供輔助對照；Lua／C++ 檔案重構後行號會漂移，請一律以符號／工廠函式名搜尋定位。
+
 ---
 
 ## 1. 檔案結構
@@ -27,6 +29,8 @@
 ```lua
 module("extensions.meizl", package.seeall)
 ```
+
+此寫法依賴 `CreateLuaState` 安裝的相容層（`src/core/util.cpp` 提供 legacy `module()` 與 `package.seeall`），於 Lua 5.4 執行期仍可運作。
 
 ### 風格 B：無 `module()`（新檔案皆此風格）
 
@@ -1251,23 +1255,25 @@ local reason = sgs.CardMoveReason(
 
 ## 15. 技能類型速查表
 
-| 建構子 | 用途 | 檔案位置 |
+> 以「建構子」欄的工廠函式名為主定位；行號欄為 2026-09-06 實測輔助值，重構後會漂移。
+
+| 建構子 | 用途 | `sgs_ex.lua` 行號（輔助） |
 |--------|------|----------|
 | `sgs.CreateTriggerSkill` | 事件觸發技 | `lua/sgs_ex.lua:22` |
 | `sgs.CreateTriggerSkillV2` | V2 觸發技 | `lua/sgs_ex.lua:80` |
-| `sgs.CreateViewAsSkill` | 轉化技（n 張牌） | `lua/sgs_ex.lua:928` |
+| `sgs.CreateViewAsSkill` | 轉化技（n 張牌） | `lua/sgs_ex.lua:930` |
 | `sgs.CreateViewAsSkillV2` | V2 轉化技 | `lua/sgs_ex.lua:136` |
-| `sgs.CreateOneCardViewAsSkill` | 單牌轉化 | `lua/sgs_ex.lua:956` |
-| `sgs.CreateZeroCardViewAsSkill` | 零牌轉化 | `lua/sgs_ex.lua:977` |
+| `sgs.CreateOneCardViewAsSkill` | 單牌轉化 | `lua/sgs_ex.lua:958` |
+| `sgs.CreateZeroCardViewAsSkill` | 零牌轉化 | `lua/sgs_ex.lua:979` |
 | `sgs.CreateSkillCard` | 技能卡牌 | `lua/sgs_ex.lua:526` |
 | `sgs.CreateBasicCard` | 基本牌 | `lua/sgs_ex.lua:571` |
-| `sgs.CreateTrickCard` | 錦囊牌 | `lua/sgs_ex.lua:867` |
-| `sgs.CreateEquipCard` | 裝備牌（通用） | `lua/sgs_ex.lua:989` |
-| `sgs.CreateWeapon` | 武器 | `lua/sgs_ex.lua:1033` |
-| `sgs.CreateArmor` | 防具 | `lua/sgs_ex.lua:1038` |
-| `sgs.CreateOffensiveHorse` | 進攻馬 | `lua/sgs_ex.lua:1043` |
-| `sgs.CreateDefensiveHorse` | 防禦馬 | `lua/sgs_ex.lua:1048` |
-| `sgs.CreateTreasure` | 寶物 | `lua/sgs_ex.lua:1053` |
+| `sgs.CreateTrickCard` | 錦囊牌 | `lua/sgs_ex.lua:869` |
+| `sgs.CreateEquipCard` | 裝備牌（通用） | `lua/sgs_ex.lua:991` |
+| `sgs.CreateWeapon` | 武器 | `lua/sgs_ex.lua:1035` |
+| `sgs.CreateArmor` | 防具 | `lua/sgs_ex.lua:1040` |
+| `sgs.CreateOffensiveHorse` | 進攻馬 | `lua/sgs_ex.lua:1045` |
+| `sgs.CreateDefensiveHorse` | 防禦馬 | `lua/sgs_ex.lua:1050` |
+| `sgs.CreateTreasure` | 寶物 | `lua/sgs_ex.lua:1055` |
 | `sgs.CreateDistanceSkill` | 距離修正 | `lua/sgs_ex.lua:285` |
 | `sgs.CreateDistanceSkillV2` | 距離修正（V2） | `lua/sgs_ex.lua:309` |
 | `sgs.CreateMaxCardsSkill` | 手牌上限修正 | `lua/sgs_ex.lua:319` |
@@ -1292,10 +1298,10 @@ local reason = sgs.CardMoveReason(
 | `sgs.CreateBattleArraySkill` | 陣法技 | `lua/sgs_ex.lua:511` |
 | `sgs.CreateScenario` | 場景模式 | `lua/sgs_ex.lua:226` |
 | `sgs.CreateScenarioRule` | 場景規則 | `lua/sgs_ex.lua:194` |
-| `sgs.CreateCardActionButton` | 卡牌動作按鈕 | `lua/sgs_ex.lua:1074` |
-| `sgs.SetCardActionButtons` | 設定卡牌按鈕 | `lua/sgs_ex.lua:1106` |
-| `sgs.LoadTranslationTable` | 翻譯表載入 | `lua/sgs_ex.lua:1058` |
-| `sgs.LoadSkinTransltionTable` | 皮膚翻譯載入 | `lua/sgs_ex.lua:1064` |
+| `sgs.CreateCardActionButton` | 卡牌動作按鈕 | `lua/sgs_ex.lua:1076` |
+| `sgs.SetCardActionButtons` | 設定卡牌按鈕 | `lua/sgs_ex.lua:1108` |
+| `sgs.LoadTranslationTable` | 翻譯表載入 | `lua/sgs_ex.lua:1060` |
+| `sgs.LoadSkinTransltionTable` | 皮膚翻譯載入 | `lua/sgs_ex.lua:1066` |
 
 ---
 
@@ -1451,7 +1457,7 @@ room:scheduleExtraTurn(target, self:objectName())
 ## 20. 相容性注意事項
 
 - **避免 C++20 語法**：編譯器可能不支援
-- **Lua 5.2 標準**：不使用 Lua 5.3+ 特有的函數
+- **Lua 5.4 執行期**：引擎內嵌 Lua 5.4.8（`src/lua/lua.h`）；`CreateLuaState` 已安裝相容層（`src/core/util.cpp`），提供 `bit32.band` 與 legacy `module()`／`package.seeall`，5.2 慣例代碼仍可執行
 - **module() 已棄用**：新檔案不應使用 `module()`，直接以 `sgs.Package` 開頭
 - **SWIG 綁定**：修改 `src/core/` `src/server/` 的公開 API 後須更新 `swig/*.i`
 - **Q_SKILL 巨集**：Lua 技能無需此巨集，僅供 C++ 技能使用

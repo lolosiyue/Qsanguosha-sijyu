@@ -1,10 +1,12 @@
 # ViewAsSkillV2 與 SkillCard／ViewAsSkill 現代化重構計劃
 
+> 現況（2026-09-06）：核心契約（`SkillInstanceRef`／`ActiveSkillRequest`／usage ref 等）已落地並已 SWIG 暴露（`swig/sanguosha.i`）；本計劃狀態為大部分落地，各 ticket 進度見 §19。
+
 ## 1. 文件定位
 
 本文件是 `ViewAsSkillV2`、舊 `SkillCard/ViewAsSkill` 過渡橋接及相關多實例整合的權威設計契約與分批實作票據。
 
-程式基線以 `H:\Program file\Game\sgs\Qsgs\github\QSanguosha-v2` 的 `main` 分支為準。`L:\finaldebug\QSanguosha-v2` 是較早的 `view_as_skillV2` 先行實驗分支，只可用來理解舊構想，不得反向覆蓋 main 的較新多實例實作。
+`L:\finaldebug\QSanguosha-v2` 現為本倉庫的主開發分支 `debug` 工作樹，已包含 Protocol V2 cutover（16a49c9）、GameSessionController（eadf59b）、TUI 與 Qt 6.11.1 工具鏈；早先「`view_as_skillV2` 先行實驗分支、不得反向覆蓋 main」的定位已不適用。`H:\Program file\Game\sgs\Qsgs\github\QSanguosha-v2`（分支 `doom`）為主工作樹，負責提交與合併。
 
 依賴文件：
 
@@ -570,19 +572,25 @@ V2 custom proxy：
   request 參數，無需遷移。
 - AI 不建立技能專用的 C++↔Lua 邊界；所有決策統一以 value-only `AIRequest` 輸入與
   `AIResult` 輸出承載。`activate` 與 `askForUseCard` 共用同一個 request/result gate，
-  由 `ActionKind` 區分出牌、回應與取消，結果再轉成 `CardActionSpec` 交給 Room 權威驗證。
-- ActiveSkillV2 的 activation/source identity 與 quota 只作 `AIRequest.SkillActionContext`，
+  `AIRequest::DecisionKind { Activate, UseCard }` 區分決策種類，
+  `AIResult::ActionKind { Pass, UseCard }` 僅兩值——出牌與回應共用 `UseCard`、取消為
+  `Pass`；結果再轉成 `CardActionSpec` 交給 Room 權威驗證。
+- ActiveSkillV2 的 activation/source identity 與 quota 只作
+  `AIRequest.skillActionContext`（型別 `AiSkillActionContext`，見 src/server/ai.h），
   不另建專用 AI request/result 類型，也不把技能名稱或 instance ID 塞入舊字串。
 
 ### 14.4 AI VM 與 Gameplay VM 分離
 
-- 每個 Room 擁有一個 `AiLuaRuntime`；Gameplay Lua VM 不直接暴露給 Isolated AI。第一階段
-  Isolated handler 只取得可序列化 `AIRequest` 欄位與受控 `AiData`，完整 `AIWorldView`
-  尚未接入；未遷移 legacy AI 仍留在 Gameplay VM。
+- 每個 Room 擁有一個 `AiLuaRuntime`；Gameplay Lua VM 不直接暴露給 Isolated AI。Isolated
+  handler 取得可序列化 `AIRequest` 欄位（含完整 `AIWorldView`，經 `AIRequest::worldView`
+  攜帶，由 src/server/ai-runtime.cpp 的 `pushAIWorldView()` 填入）與受控 `AiData`；
+  未遷移 legacy AI 仍留在 Gameplay VM。
 - AI callback 結束前只可產生 value（`CardActionSpec`、target ID、user string）；不得保存
   `Card*`、`ServerPlayer*`、Lua userdata 或跨 callback 的執行指標。`AIResult` 必須回送同一
-  request 的 `stateRevision`；權威 gameplay revision ledger 尚未接入，純 request/query
-  不得自行推進 revision。
+  request 的 `stateRevision`；權威 gameplay revision ledger 已接入——僅權威狀態變更
+  （`CardsMoved`／`PlayerPropertyChanged`）經 `RoomRuntime::advanceStateRevision()` 推進
+  （見 src/server/room-runtime.h、card-movement-service.cpp、player-state-service.cpp），
+  純 request/query 不得自行推進 revision。
 - AI VM 只載入 `AiIsolatedScripts` allowlist 指定的 handler，採 decision-scoped `AiRng`。
   AI VM 錯誤或 instruction budget 超限時，本次 decision 回到該玩家現有 legacy AI，
   callback 返回後才重建 VM。
@@ -913,6 +921,8 @@ instruction budget 保護，超限即停用該 Room 的 Isolated VM、保留 leg
 - `docs/active-skill-v2-migration-guide.md`
 - 本文件狀態表
 
+> 補註（2026-09-06）：`tests/active-skill-v2/` 至今未成立；測試收束改走 CTest（`qsanguosha_engine_smoke`／`qsanguosha_server_unit` 內 skill-instance 相關案例）與 `tests/skill-instance-utils/`。
+
 交付：
 
 - 純邏輯 console tests。
@@ -987,7 +997,7 @@ source identity 清除的是 root 配額。
 - `swig/luaskills.i`
 - `swig/sanguosha.i`
 - 工具重產的 `swig/sanguosha_wrap.cxx`
-- `lua/test/runner.lua`、`src/main.cpp`（Lua smoke 必須執行 `:assert()` 並以非零狀態回報失敗）
+- CTest 與 `tools/autotest/` 基建（原 `lua/test/runner.lua` 已隨 `lua/test/` 移除，commit a904221；Lua smoke 必須執行 `:assert()` 並以非零狀態回報失敗）
 
 交付：
 
@@ -1056,7 +1066,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools/build-release.ps1
 - 2026-07-29 `@@skill` 指名回應 bridge 補齊：client 依同名技能按鈕解析精確 activation instance，並以包含 reason／pattern 的 `ActiveSkillRequest` 呼叫 `canActivate()`；legacy `response_pattern`／`isAvailable()` 分支保持不變。Lua V2 factory 對舊 `response_pattern` 以遷移提示 fail-fast，尚待 GUI／Room lifecycle 實跑。
 - 2026-07-21 client UI bridge 補齊：通用 `ActiveSkillCard` 的 target preview 會建立只讀 `ActiveSkillRequest`，並委派 `canSelectTarget()`／`targetsFeasible()`；技能按鈕以精確 activation instance 呼叫 `canActivate()`，Dashboard 裝備區亦改用 `canSelectCard()`。所有 legacy `ViewAsSkill`／普通 Card 分支及網路協議保持不變；新增 `active_skill_v2_proxy_ui_test` 手動 fixture，尚待完整工具鏈實跑。
 - ViewAsSkillV2 amount 擴充：C++／Lua 已加入 `base_amount`、`getBaseAmount()` 與 `getEffectiveAmount(ctx)`；Play、pure response 與候選配額 context 均在生命週期開始時以 base amount 初始化。配額例外維持由 `Limit_Custom` 統一負責，不另增語意重複的 `isUsageExempt`。
-- Ticket 13：核心與 fixture 完成（2026-07-20）。配額策略已收斂為單一 `getUsageRef(ctx)`：預設 activation、覆寫可選 immutable source，移除 `UsageIdentity` enum／setter／Lua 常數；保留 legacy activation fallback、source fail-closed、root-source 配額解析與 Lua `get_usage_ref` callback。generic scope 以 committed mark + counted reservation 支援巢狀重入，pay failure／Pay cancel／`StageChange`／`TurnBroken` 會釋放未提交 reservation，bypass 仍 commit。Play 與 pure response 的控制事件會補發 `EffectFinished(NoResult)` 最多一次並重新拋出原事件；effect／target hooks 後會還原 immutable provenance。legacy instance-0 reset 已恢復，`Limit_Custom` 不建立 generic reservation且不自動 add/reset。`tests/skill-instance-utils` 與 `~test` 已補 shared-root、owner isolation、nested、failure/cancel、bypass、reset、Custom 與 finished-once fixture；Lua callback smoke 位於 `lua/test/examples/test_active_skill_v2_usage_ref.lua`。2026-07-30 已以 CMake／MSVC 2019 完成 Release x64，build tree 的 SWIG wrapper 亦已自動生成並編譯通過；console／Lua smoke／Room lifecycle 仍待實跑。
+- Ticket 13：核心與 fixture 完成（2026-07-20）。配額策略已收斂為單一 `getUsageRef(ctx)`：預設 activation、覆寫可選 immutable source，移除 `UsageIdentity` enum／setter／Lua 常數；保留 legacy activation fallback、source fail-closed、root-source 配額解析與 Lua `get_usage_ref` callback。generic scope 以 committed mark + counted reservation 支援巢狀重入，pay failure／Pay cancel／`StageChange`／`TurnBroken` 會釋放未提交 reservation，bypass 仍 commit。Play 與 pure response 的控制事件會補發 `EffectFinished(NoResult)` 最多一次並重新拋出原事件；effect／target hooks 後會還原 immutable provenance。legacy instance-0 reset 已恢復，`Limit_Custom` 不建立 generic reservation且不自動 add/reset。`tests/skill-instance-utils` 與 `~test` 已補 shared-root、owner isolation、nested、failure/cancel、bypass、reset、Custom 與 finished-once fixture；Lua callback smoke 位於 `lua/test/examples/test_active_skill_v2_usage_ref.lua`。2026-07-30 已以 CMake 完成 Release x64（現行工具鏈為 Qt 6.11.1／VS 2026 v145，見 `tools/build-release.ps1`），build tree 的 SWIG wrapper 亦已自動生成並編譯通過；console／Lua smoke／Room lifecycle 仍待實跑。
 - Ticket 10：完成（2026-07-17）。已加入 `LuaViewAsSkillV2`、`sgs.CreateViewAsSkillV2`、read-only `ActiveSkillRequest` getters 與所有 query/cost/pay/target/effect callbacks；Lua callback error 均 fail-closed，effect 的 nil 結果為 `ContinueEffects`。`swig/sanguosha_wrap.cxx` 已由 `tools/swig/swig.exe` 重新產生。驗證：Release x64 0 errors。
 - Ticket 11：進行中。已加入 provenance V2（cross-owner source/activation refs）、V1 replay fallback、選用 request-aware AI callback、server-only execution audit 與 replay parser fixture；Play bridge 的 cost/pay/cancel/invalid early exits 現均會 Finished/audit 收束。V2 AI callback 已回傳綁定當前 activation 的 `{ cards, targets, user_string }` 結果，Room 以 server-created proxy 將 choices 送入既有 resolver；尚缺 AI/lifecycle 合成技能端到端場景。
 - Ticket 12：進行中。已加入 replay console fixture、驗證矩陣與 `~test` V2 C++/Lua 合成技能；尚缺自動化完整 Room lifecycle matrix。

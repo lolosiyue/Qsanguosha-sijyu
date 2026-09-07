@@ -430,10 +430,12 @@ ServerPlayer *PlayerDecisionService::askForPlayerChosen(
     bool notify_skill)
 {
     CardLifetimeScope cardScope(globalCardLifetimeManager());
-    m_room.tryPause();
-    m_room.notifyMoveFocus(player, S_COMMAND_CHOOSE_PLAYER);
+    // Empty candidate sets are resolved server-side and must not leave clients
+    // focused on a request that will never arrive.
     if (targets.isEmpty())
         return nullptr;
+    m_room.tryPause();
+    m_room.notifyMoveFocus(player, S_COMMAND_CHOOSE_PLAYER);
     ServerPlayer *choice = targets.first();
     LogMessage log;
     log.arg = skillName;
@@ -502,6 +504,9 @@ QList<ServerPlayer *> PlayerDecisionService::askForPlayersChosen(
     bool notify_skill, bool sort_ActionOrder)
 {
     CardLifetimeScope cardScope(globalCardLifetimeManager());
+    // Apply the same no-request contract to multi-select after Akarin filtering.
+    if (targets.isEmpty())
+        return QList<ServerPlayer *>();
     m_room.tryPause();
     min_num = qMin(min_num, targets.length());
     max_num = qMin(max_num, targets.length());

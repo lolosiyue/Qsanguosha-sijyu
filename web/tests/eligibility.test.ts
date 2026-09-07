@@ -66,4 +66,14 @@ describe("eligibility", () => {
     state.setCardValue(8, "place", PLACE_EQUIP);
     expect(playerSelectable(state, Command.PLAY_CARD, {}, "sgs2", 3, [], "")).toBe(false);
   });
+
+  it("treats an empty CHOOSE_PLAYER list as no selectable players", () => {
+    const state = twoSeats();
+    expect(
+      playerSelectable(state, Command.CHOOSE_PLAYER, { players: [] }, "sgs1", -1, [], ""),
+    ).toBe(false);
+    expect(
+      playerSelectable(state, Command.CHOOSE_PLAYER, { players: [] }, "sgs2", -1, [], ""),
+    ).toBe(false);
+  });
 });

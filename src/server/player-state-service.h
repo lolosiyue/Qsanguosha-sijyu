@@ -21,6 +21,9 @@ public:
 		EventDispatcher &eventDispatcher);
 
 	void setPlayerFlag(ServerPlayer *player, const QString &flag);
+	void akarinPlayer(ServerPlayer *player, ServerPlayer *to);
+	void removeAkarinEffect(ServerPlayer *player, ServerPlayer *to);
+	bool isAkarin(ServerPlayer *player, ServerPlayer *to) const;
 	void setPlayerProperty(ServerPlayer *player, const char *propertyName,
 		const QVariant &value);
 	void safeSetPlayerProperty(ServerPlayer *player, const char *propertyName,
