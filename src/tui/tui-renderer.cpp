@@ -139,13 +139,96 @@ QString TuiRenderer::formatPrompt(const QString &prompt,
     return formatClientPrompt(prompt, translate, slotPlayer);
 }
 
-QString TuiRenderer::sanitize(const QString &text, qsizetype maximumLength)
+namespace {
+
+// Index just past the escape sequence beginning at `begin` (which must point
+// at an ESC). Dropping the ESC on its own -- what this file used to do -- is
+// not sanitizing: every byte after it ("[1;36m") is ordinary printable text
+// and survived onto the screen, which is exactly how a prompt title came out
+// reading "[1;36m选择武将[0m". The whole sequence has to go, or none of it.
+qsizetype escapeSequenceEnd(const QString &text, qsizetype begin)
+{
+    const qsizetype size = text.size();
+    qsizetype cursor = begin + 1;
+    if (cursor >= size)
+        return cursor;
+    const QChar introducer = text.at(cursor);
+    if (introducer == QLatin1Char('[')) {
+        // CSI: parameter and intermediate bytes are 0x20-0x3f, the final byte
+        // is 0x40-0x7e. An unterminated sequence swallows what is left rather
+        // than spilling its parameters onto the screen.
+        ++cursor;
+        while (cursor < size && text.at(cursor).unicode() >= 0x20
+               && text.at(cursor).unicode() <= 0x3f) {
+            ++cursor;
+        }
+        if (cursor < size && text.at(cursor).unicode() >= 0x40
+            && text.at(cursor).unicode() <= 0x7e) {
+            ++cursor;
+        }
+        return cursor;
+    }
+    if (introducer == QLatin1Char(']')) {
+        // OSC: runs to BEL or to ST (ESC backslash).
+        ++cursor;
+        while (cursor < size) {
+            const ushort value = text.at(cursor).unicode();
+            if (value == 0x07)
+                return cursor + 1;
+            if (value == 0x1b) {
+                return (cursor + 1 < size && text.at(cursor + 1) == QLatin1Char('\\'))
+                    ? cursor + 2 : cursor + 1;
+            }
+            ++cursor;
+        }
+        return cursor;
+    }
+    return cursor + 1;
+}
+
+// "ESC [ <digits and semicolons> m" -- a colour change and nothing else. It is
+// the only escape TuiRenderer itself writes, and the only one a presenter is
+// allowed to receive: cursor movement, screen clears and mode switches from
+// server-derived text must never reach a terminal.
+bool isSelectGraphicRendition(const QString &text, qsizetype begin, qsizetype end)
+{
+    if (end - begin < 3 || text.at(begin + 1) != QLatin1Char('[')
+        || text.at(end - 1) != QLatin1Char('m')) {
+        return false;
+    }
+    for (qsizetype index = begin + 2; index < end - 1; ++index) {
+        const QChar character = text.at(index);
+        if (!character.isDigit() && character != QLatin1Char(';'))
+            return false;
+    }
+    return true;
+}
+
+QString sanitizeText(const QString &text, qsizetype maximumLength, bool keepColour)
 {
     QString result;
     result.reserve(qMin(text.size(), maximumLength));
-    for (QChar character : text) {
+    // A colour left in force when the length cap cuts the text short would
+    // bleed into whatever the terminal prints next, so the reset is restored
+    // at the end. Colour bytes themselves are invisible and do not count
+    // against maximumLength, which measures what the reader actually sees.
+    bool colourInForce = false;
+    for (qsizetype index = 0; index < text.size();) {
+        const QChar character = text.at(index);
         const ushort value = character.unicode();
-        if (value == 0x1b || value == 0x7f)
+        if (value == 0x1b) {
+            const qsizetype end = escapeSequenceEnd(text, index);
+            if (keepColour && isSelectGraphicRendition(text, index, end)) {
+                const QString sequence = text.mid(index, end - index);
+                result.append(sequence);
+                colourInForce = sequence != QStringLiteral("\x1b[0m")
+                    && sequence != QStringLiteral("\x1b[m");
+            }
+            index = end;
+            continue;
+        }
+        ++index;
+        if (value == 0x7f)
             continue;
         if (value < 0x20 && character != QLatin1Char('\t')
             && character != QLatin1Char('\n')) {
@@ -155,7 +238,21 @@ QString TuiRenderer::sanitize(const QString &text, qsizetype maximumLength)
         if (result.size() >= maximumLength)
             break;
     }
+    if (colourInForce)
+        result.append(QStringLiteral("\x1b[0m"));
     return result;
+}
+
+} // namespace
+
+QString TuiRenderer::sanitize(const QString &text, qsizetype maximumLength)
+{
+    return sanitizeText(text, maximumLength, false);
+}
+
+QString TuiRenderer::sanitizePresentable(const QString &text, qsizetype maximumLength)
+{
+    return sanitizeText(text, maximumLength, true);
 }
 
 // Chat, system notices and several lang templates are written for the markup

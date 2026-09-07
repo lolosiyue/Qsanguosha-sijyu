@@ -1438,11 +1438,32 @@ void syncContract()
 
 void terminalContract()
 {
+    // Dropping the ESC byte alone is what left "[31m" visible on screen: the
+    // parameter bytes of the sequence are ordinary printable characters, so
+    // everything after the ESC survived as literal text. A sanitizer that
+    // removes the escape must remove the whole escape.
     const QString sanitized = TuiRenderer::sanitize(
         QString::fromLatin1("safe\x1b[31m\x01text"), 32);
     check(!sanitized.contains(QChar(0x1b)) && !sanitized.contains(QChar(0x01))
-              && sanitized.contains(QStringLiteral("safe[31mtext")),
-          "terminal output strips escape and control bytes");
+              && sanitized == QStringLiteral("safetext"),
+          "terminal output strips whole escape sequences, not just the ESC byte");
+
+    // Text on its way to a presenter takes the other pass: a colour this
+    // program wrote survives, so classic mode colours a heading instead of
+    // printing its parameters, while everything that could move the cursor or
+    // clear the screen still goes -- server-derived text reaches here too.
+    const QString coloured = QString::fromLatin1("\x1b[1;36m选择武将\x1b[0m");
+    check(TuiRenderer::sanitizePresentable(coloured, 64) == coloured,
+          "a colour change survives on its way to a presenter");
+    check(TuiRenderer::sanitizePresentable(
+              QString::fromLatin1("\x1b[2Ja\x1b[?1049hb\x1b""cc"), 64)
+                  == QStringLiteral("abc"),
+          "screen clears, mode switches and bare escapes never reach a presenter");
+    // Cut mid-colour, the tail would otherwise leak the attribute into
+    // whatever the terminal prints next.
+    const QString truncated = TuiRenderer::sanitizePresentable(coloured, 2);
+    check(truncated.endsWith(QString::fromLatin1("\x1b[0m")),
+          "a colour cut short by the length cap is still closed");
 
     TuiRenderer renderer(false);
     TuiInteractionView view(&renderer, [](const QString &) {},

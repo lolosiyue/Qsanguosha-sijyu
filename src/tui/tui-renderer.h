@@ -27,7 +27,14 @@ public:
 
     explicit TuiRenderer(bool ansiEnabled = false, Resolvers resolvers = {});
 
+    // Everything a terminal must never be handed: control bytes and complete
+    // escape sequences, colour included. This is what the --log-file
+    // transcript and any text a cell grid has to hold are built from.
     static QString sanitize(const QString &text, qsizetype maximumLength = 4096);
+    // The same, except that a bare colour change ("ESC [ ... m") this class
+    // wrote itself survives. Only for text on its way to a presenter that can
+    // render it -- never for the log file, and never for a cell grid.
+    static QString sanitizePresentable(const QString &text, qsizetype maximumLength = 4096);
     // Server text written for the desktop log box, rendered for a terminal:
     // tags dropped, <br> and friends turned into a separator, entities
     // unescaped.
