@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "name": "borrowed-tuxi",
+  "self": "sgs1",
+  "setup": {"mode": "02p"},
+  "players": [
+    {"name": "sgs1", "properties": {
+      "seat": 1, "general": "guanyu", "hp": 4, "max_hp": 4,
+      "alive": true, "role": "loyalist", "hand_count": 1, "hand_max": 4,
+      "phase": "play", "skills": [], "marks": {"tuxi": 2}, "distanceTo_sgs2": 1
+    }},
+    {"name": "sgs2", "properties": {
+      "seat": 2, "general": "liubei", "hp": 4, "max_hp": 4,
+      "alive": true, "role": "loyalist", "hand_count": 2, "hand_max": 4,
+      "skills": [], "distanceTo_sgs1": 1
+    }}
+  ],
+  "cards": [
+    {"key": "attack", "selector": {"name": "slash", "suit": "spade"}, "owner": "sgs1", "place": "hand"}
+  ],
+  "queries": [
+    {
+      "name": "named-unowned-skill", "request_id": "81", "reason": "response", "pattern": "@@tuxi",
+      "skill": {"name": "tuxi", "subcards": []}, "targets": ["sgs2"], "target_pool": ["sgs1", "sgs2"],
+      "expect": {"can_confirm": true, "build_status": "built", "response": {"card_ids": [], "subcard_ids": [], "activation_skill_name": "tuxi"}}
+    },
+    {
+      "name": "zero-card-rejects-input", "request_id": "82", "reason": "response", "pattern": "@@tuxi",
+      "skill": {"name": "tuxi", "subcards": ["attack"]}, "targets": ["sgs2"],
+      "expect": {"can_confirm": false, "build_status": "card_rejected"}
+    }
+  ]
+}
