@@ -214,6 +214,8 @@ QJsonObject evaluate(const QJsonObject &query, Scene &scene, const QMap<QString,
         const QJsonObject skill = asObject(query.value(QStringLiteral("skill")), QStringLiteral("skill"));
         draft.skill.selfName = scene.state.selfName();
         draft.skill.skillName = requiredText(skill, QStringLiteral("name"));
+        require(Sanguosha->getSkill(draft.skill.skillName) != nullptr,
+                QStringLiteral("fixture requires skill: ") + draft.skill.skillName);
         draft.skill.instanceId = skill.contains(QStringLiteral("instance_id"))
             ? integer(skill, QStringLiteral("instance_id"), 0, 2147483647) : 0;
         draft.skill.userString = text(skill, QStringLiteral("user_string"));

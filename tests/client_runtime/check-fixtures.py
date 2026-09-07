@@ -8,12 +8,22 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 from typing import Any
+
+
+def stage_builtin_assets(source: Path, destination: Path) -> None:
+    """Copy the explicit bootstrap closure; never load untracked extensions."""
+    for relative in ("lua/config.lua", "lua/sanguosha.lua", "lua/utilities.lua",
+                     "lua/sgs_ex.lua", "lua/lib/json.lua"):
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source / relative, target)
 
 
 def expect_subset(actual: Any, expected: Any, where: str = "result") -> None:
@@ -80,7 +90,15 @@ def verify_result(fixture: dict[str, Any], result: dict[str, Any]) -> None:
             expect_subset(actual["wire"], {"reply_to": source["request_id"],
                                          "payload": {"card_text": actual["card_text"]}})
             expected_skill = source.get("skill", {})
+            resolved = result["resolved_cards"]
             expect_subset(actual["response"], {
+                "card_ids": [resolved[source["card"]]["id"]] if "card" in source else [],
+                "subcard_ids": [resolved[key]["id"] for key in expected_skill.get("subcards", [])],
+                "activation_skill_name": expected_skill.get("name", ""),
+                "activation_skill_instance_id": expected_skill.get("instance_id", 0)})
+            expect_subset(actual["wire"]["payload"], {
+                "schema_version": 1, "cancelled": False,
+                "targets": source.get("targets", []),
                 "activation_skill_name": expected_skill.get("name", ""),
                 "activation_skill_instance_id": expected_skill.get("instance_id", 0)})
         else:
@@ -166,11 +184,48 @@ def check(args: argparse.Namespace) -> None:
     path = invalid / "schema.json"
     path.write_text(json.dumps(damaged), encoding="utf-8")
     invoke(args, path, "negative-schema", True, "schema_version=1")
+    for dependency in ("card", "general", "skill"):
+        damaged = copy.deepcopy(baseline)
+        if dependency == "card":
+            damaged["cards"][0]["selector"]["name"] = "missing-fixture-card"
+            diagnostic = "no registered card matches fixture key"
+        elif dependency == "general":
+            damaged["players"][0]["properties"]["general"] = "missing-fixture-general"
+            diagnostic = "fixture requires general"
+        else:
+            damaged["queries"] = [damaged["queries"][0]]
+            damaged["queries"][0].pop("card")
+            damaged["queries"][0]["skill"] = {"name": "missing-fixture-skill"}
+            diagnostic = "fixture requires skill"
+        path = invalid / f"missing-{dependency}.json"
+        path.write_text(json.dumps(damaged), encoding="utf-8")
+        invoke(args, path, f"negative-missing-{dependency}", True, diagnostic)
     print(f"[AUTOTEST] CLIENT_RULES_FIXTURES_RESULT status=PASS fixtures={len(paths)} "
-          f"queries={count} deterministic_runs={len(paths) * 2} negative_cases=6")
+          f"queries={count} deterministic_runs={len(paths) * 2} negative_cases=9")
 
 
 class HarnessTests(unittest.TestCase):
+    def test_builtin_assets_exclude_external_content(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            for relative in ("lua/config.lua", "lua/sanguosha.lua", "lua/utilities.lua",
+                             "lua/sgs_ex.lua", "lua/lib/json.lua", "extensions/random.lua",
+                             "lua/ai/smart-ai.lua", "lua/luaoldenemy_lib.lua"):
+                path = source / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(relative, encoding="utf-8")
+            destination = root / "staged"
+            stage_builtin_assets(source, destination)
+            self.assertEqual(len(list(destination.rglob("*.lua"))), 5)
+            self.assertFalse((destination / "extensions").exists())
+            self.assertFalse((destination / "lua/ai").exists())
+            self.assertFalse((destination / "lua/luaoldenemy_lib.lua").exists())
+            self.assertEqual((destination / "lua/lib/json.lua").read_text(), "lua/lib/json.lua")
+            (source / "lua/config.lua").unlink()
+            with self.assertRaises(FileNotFoundError):
+                stage_builtin_assets(source, root / "incomplete")
+
     def test_process_configuration_is_isolated(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory).resolve()
@@ -231,6 +286,8 @@ def main() -> int:
     parser.add_argument("--runner", type=Path)
     parser.add_argument("--fixtures", type=Path)
     parser.add_argument("--asset-root", type=Path)
+    parser.add_argument("--builtin-assets", action="store_true",
+                        help="Stage only the repository bootstrap Lua files, without external extensions")
     parser.add_argument("--artifacts", type=Path)
     args = parser.parse_args()
     if args.self_test:
@@ -253,7 +310,15 @@ def main() -> int:
     if not args.runner.is_file():
         parser.error("runner executable does not exist")
     try:
-        check(args)
+        if args.builtin_assets:
+            args.artifacts.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(prefix="builtin-assets-", dir=args.artifacts) as directory:
+                root = Path(directory)
+                stage_builtin_assets(args.asset_root, root)
+                args.asset_root = root
+                check(args)
+        else:
+            check(args)
     except (AssertionError, OSError, ValueError, subprocess.TimeoutExpired) as error:
         print(f"[AUTOTEST] CLIENT_RULES_FIXTURES_RESULT status=FAIL detail={error}", file=sys.stderr)
         return 1

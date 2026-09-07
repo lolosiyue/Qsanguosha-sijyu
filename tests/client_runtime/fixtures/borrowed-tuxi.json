@@ -7,7 +7,7 @@
     {"name": "sgs1", "properties": {
       "seat": 1, "general": "guanyu", "hp": 4, "max_hp": 4,
       "alive": true, "role": "loyalist", "hand_count": 1, "hand_max": 4,
-      "phase": "play", "skills": [], "distanceTo_sgs2": 1
+      "phase": "play", "skills": [], "marks": {"tuxi": 2}, "distanceTo_sgs2": 1
     }},
     {"name": "sgs2", "properties": {
       "seat": 2, "general": "liubei", "hp": 4, "max_hp": 4,
