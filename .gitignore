@@ -69,9 +69,4 @@ lua/luaoldenemy_lib.lua
 lua/test/
 lua/examples/
 etc/testScenes/active-skill-v2-lua-smoke.txt
-
-# Cloudflare Wrangler 本機狀態／密鑰（OAuth 在使用者目錄，不入庫）
 .wrangler/
-tools/r2/.wrangler/
-tools/r2/.env
-tools/r2/.dev.vars
