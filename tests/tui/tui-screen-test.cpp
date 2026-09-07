@@ -69,6 +69,42 @@ int main(int argc, char **argv)
     screen.clear();
     check(lineAt(screen, 1).isEmpty(), "clear empties every cell");
 
+    // C1 (2026-09 review): the full-repaint path used to append "\r\n" after
+    // EVERY row, including the last one. On a terminal whose height exactly
+    // equals the screen's row count that trailing separator scrolls the
+    // alternate screen up by a line -- the top border is lost, and every
+    // absolute-position escape the diff path emits afterwards addresses rows
+    // against a screen that has silently shifted underneath it. This is the
+    // one part of the whole suite that examines flush()'s actual byte
+    // stream with geometry intact rather than toPlainText(), which strips
+    // positioning and would never have caught this.
+    {
+        TuiScreen repaintScreen;
+        constexpr int rows = 6;
+        constexpr int cols = 10;
+        repaintScreen.resize(rows, cols);
+        for (int row = 0; row < rows; ++row)
+            repaintScreen.putText(row, 0, QStringLiteral("row%1").arg(row));
+        const QString frame = repaintScreen.flush();
+
+        const int separatorCount = frame.count(QStringLiteral("\r\n"));
+        check(separatorCount == rows - 1,
+              "a full repaint emits exactly one row separator between each "
+              "pair of rows (rows - 1 total), never trailing after the last");
+        check(!frame.endsWith(QStringLiteral("\r\n")),
+              "the full repaint's byte stream does not end with a row separator");
+        // Belt and braces: the separator must not appear anywhere after the
+        // last row's own content starts, i.e. splitting on it must produce
+        // exactly `rows` chunks (one per row, nothing empty trailing).
+        const QStringList chunks = frame.split(QStringLiteral("\r\n"));
+        check(chunks.size() == rows,
+              "splitting the full-repaint stream on the row separator yields "
+              "exactly one chunk per row");
+        check(!chunks.isEmpty() && !chunks.last().isEmpty(),
+              "the last chunk (the bottom row) is real row content, not an "
+              "empty trailing element left by a separator after it");
+    }
+
     std::printf("[AUTOTEST] TUI_SCREEN_RESULT status=%s\n", failures == 0 ? "PASS" : "FAIL");
     return failures == 0 ? 0 : 1;
 }

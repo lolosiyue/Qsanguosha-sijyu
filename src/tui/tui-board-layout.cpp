@@ -177,7 +177,15 @@ TuiBoardGeometry tuiComputeBoardGeometry(int rows, int cols, int playerCount, in
     geometry.pageCount = std::max(1, ceilDiv(opponentCount, capacity));
 
     geometry.room = TuiRect{1, 1, roomRows, roomCols};
-    geometry.log = TuiRect{1, roomCols + 2, rows - 2, logCols};
+    // The log pane sits beside the room pane, not beside the whole screen:
+    // its height must be bounded by the same region the room pane is
+    // (roomRows), not by the screen's own row count minus the frame
+    // (rows - 2). Using rows - 2 here let the log pane claim rows the
+    // hand/input panes below the room pane already own, so the newest lines
+    // drawLog() writes there were silently overwritten by drawHand()/
+    // drawInput() afterwards -- the log always looked several messages
+    // stale even though the data was written correctly.
+    geometry.log = TuiRect{1, roomCols + 2, roomRows, logCols};
     geometry.hand = TuiRect{roomRows + 2, 1, handRows, roomCols};
     geometry.input = TuiRect{roomRows + handRows + 3, 1, inputRows, roomCols};
     // The player's own cell sits at the bottom of the room pane, the same

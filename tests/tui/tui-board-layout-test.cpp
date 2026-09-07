@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <utility>
 
 namespace {
 
@@ -141,6 +142,25 @@ int main(int argc, char **argv)
           "panes never overlap");
     check(wide.log.cols >= 22 && wide.log.cols <= 34, "the log pane stays within its clamp");
     check(wide.self.row > wide.room.row, "self sits at the bottom of the room pane");
+
+    // C2 (2026-09 review): the log pane's rect used to claim `rows - 2`
+    // (screen height minus the outer frame) instead of being bounded by the
+    // same region the room pane occupies. At 24x100 that made the room pane
+    // 17 rows tall but let the log pane claim 22 -- five rows into territory
+    // drawHand()/drawInput() draw over afterwards, so the newest log lines
+    // were silently overwritten and the pane always looked stale. The log
+    // pane's height must equal the room pane's, and its own bottom edge must
+    // never extend past the room pane's bottom edge, at every size checked
+    // here -- not just the one the review happened to catch.
+    for (const auto &size : {std::pair<int, int>{24, 100}, std::pair<int, int>{18, 60},
+             std::pair<int, int>{40, 120}, std::pair<int, int>{24, 80}}) {
+        const TuiBoardGeometry geometry = tuiComputeBoardGeometry(size.first, size.second, 5, 1);
+        check(geometry.usable, "the C2 regression sizes stay above the 60x18 floor");
+        check(geometry.log.rows == geometry.room.rows,
+              "the log pane's height matches the room pane's height exactly");
+        check(geometry.log.row + geometry.log.rows <= geometry.room.row + geometry.room.rows,
+              "the log pane's bottom edge never extends past the room pane's");
+    }
 
     // Regions must match the desktop, not just be internally consistent with
     // each other: every row of RoomScene's s_regularSeatIndex opens with a
