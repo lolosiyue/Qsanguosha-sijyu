@@ -414,3 +414,10 @@ void tuiInstallInterruptHandler(std::function<void()> callback)
     (void)callback;
 #endif
 }
+
+void tuiClearInterruptHandler()
+{
+#if defined(Q_OS_UNIX)
+    g_interruptCallback = std::function<void()>();
+#endif
+}

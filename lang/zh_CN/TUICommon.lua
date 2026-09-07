@@ -22,6 +22,7 @@ TUICommonTranslationTable = {
 	-- 界面模式（--ui、启动询问；两条一次性用量表示式在 tui-main.cpp 明写，未列
 	-- 在此，因为它们要在引擎起来之前打印，见本文件顶部说明）
 	["tui_ui_mode_prompt"] = "选择界面：输入 classic（经典文字界面）或 board（全屏牌桌），直接回车默认 classic。\n在后面加 remember 可记住这次选择，下次不再询问，例如：board remember\n> ",
+	["tui_ui_mode_save_failed"] = "未能记住这次选择（无法写入设置文件），下次启动仍会询问",
 	["tui_error_terminal_enter"] = "无法进入 board 模式所需的终端：%1",
 
 	-- 通用词与标记

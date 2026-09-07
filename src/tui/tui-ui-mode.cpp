@@ -112,9 +112,17 @@ QString tuiSavedUiMode()
     return QString();
 }
 
-void tuiSaveUiMode(TuiUiMode mode)
+bool tuiSaveUiMode(TuiUiMode mode)
 {
     QSettings settings(tuiUiModeSettingsPath(), QSettings::IniFormat);
     settings.setValue(UiModeKey,
         mode == TuiUiMode::Board ? QStringLiteral("board") : QStringLiteral("classic"));
+    // setValue() only stages the write; sync() is what actually touches the
+    // filesystem and is what status() reports on afterwards (an unwritable
+    // config directory, a read-only filesystem, etc. would otherwise fail
+    // silently -- the ini would just never appear, and the next run would
+    // ask the startup question again with no indication why "remember"
+    // didn't work).
+    settings.sync();
+    return settings.status() == QSettings::NoError;
 }

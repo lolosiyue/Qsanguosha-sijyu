@@ -213,6 +213,31 @@ int main(int argc, char **argv)
     check(tuiSavedUiMode() == QStringLiteral("classic"),
           "saving again overwrites the previous choice");
 
+    check(tuiSaveUiMode(TuiUiMode::Board), "a normal save reports success");
+
+    // Minor fix from the 2026-09 review: tuiSaveUiMode() used to ignore
+    // QSettings::status() entirely and always return void, so a write
+    // failure (an unwritable config directory, say) looked identical to a
+    // successful save -- the player would be told "remembered" and the very
+    // next run would ask the startup question again with no clue why.
+    // Force a real write failure the same way the corrupt-ini block above
+    // reached the settings file: put something at the exact path
+    // QSettings needs to write, that it structurally cannot write through
+    // -- a directory, rather than a regular file it lacks permission for
+    // (permission checks do not apply the same way to a root-run test
+    // process; the file-vs-directory type mismatch does).
+    {
+        const QString settingsPath =
+            QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation)
+            + QStringLiteral("/ui-mode.ini");
+        check(QFile::remove(settingsPath),
+              "the ini file written by the round trip above can be removed");
+        check(QDir().mkpath(settingsPath),
+              "a directory can be created at the exact path the ini file needs");
+        check(!tuiSaveUiMode(TuiUiMode::Board),
+              "tuiSaveUiMode() reports failure when QSettings cannot actually write");
+    }
+
     std::printf("[AUTOTEST] TUI_UI_MODE_RESULT status=%s\n", failures == 0 ? "PASS" : "FAIL");
     return failures == 0 ? 0 : 1;
 }

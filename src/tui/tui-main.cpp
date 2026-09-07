@@ -355,8 +355,8 @@ int main(int argc, char *argv[])
             && tokens.at(1).compare(QStringLiteral("remember"), Qt::CaseInsensitive) == 0;
         uiDecision.mode = modeToken == QStringLiteral("board") ? TuiUiMode::Board
                                                                 : TuiUiMode::Classic;
-        if (remember)
-            tuiSaveUiMode(uiDecision.mode);
+        if (remember && !tuiSaveUiMode(uiDecision.mode))
+            writeUtf8(stdout, tuiText("tui_ui_mode_save_failed"));
     }
 
     TuiApplicationOptions options;
