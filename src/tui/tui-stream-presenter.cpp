@@ -17,6 +17,11 @@ void TuiStreamPresenter::writeOutput(const QString &text)
     QTextStream(stdout) << line << Qt::flush;
 }
 
+void TuiStreamPresenter::writeDump(const QString &text)
+{
+    writeOutput(text);
+}
+
 void TuiStreamPresenter::writeError(const QString &text)
 {
     const QString line = QStringLiteral("TUI_ERROR ") + text + QLatin1Char('\n');

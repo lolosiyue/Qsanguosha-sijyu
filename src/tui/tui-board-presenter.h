@@ -12,16 +12,21 @@
 #include <QString>
 #include <QStringList>
 
+#include <functional>
+
 class ClientGameState;
 struct InteractionRequest;
 class TuiTerminal;
 
 // Assembles TuiBoardView + TuiScreen + TuiLineEditor into the one object the
 // controller talks to once board mode is running: it repaints on
-// stateChanged()/interactionChanged(), routes writeOutput()/writeError()
-// between the log scrollback and a full-screen overlay, and turns decoded
-// keys into either a view action (paging, scrolling, opening/closing the
-// overlay) or a line-editor keystroke.
+// stateChanged()/interactionChanged(), sends writeOutput() to the log
+// scrollback and writeDump() to a full-screen overlay (spec §5.2 -- only the
+// six long-dump commands ever call writeDump(); everything else, interaction
+// prompts included, is writeOutput() and never opens an overlay no matter how
+// many lines it is), and turns decoded keys into either a view action
+// (paging, scrolling, opening/closing the overlay) or a line-editor
+// keystroke.
 //
 // Design invariant 1 (docs/tui-board-ui.md): a view action never touches the
 // wire. That is not a convention this class has to remember to honour --
@@ -62,6 +67,7 @@ public:
     void terminalEntered();
 
     void writeOutput(const QString &text) override;
+    void writeDump(const QString &text) override;
     void writeError(const QString &text) override;
     void shutdown() override;
     void stateChanged(const ClientGameState &state) override;
@@ -85,6 +91,14 @@ public:
     // /hand, /skills, /piles and /equip (spec §5.2) -- this class never
     // builds that text itself.
     void toggleOverlay(const QString &content);
+    // Forwards to the embedded TuiLineEditor's own setCompleter() (spec
+    // §5.1: "Tab 補全，直接重用現有 m_completer"). The controller installs the
+    // exact same completer function on TuiInput for classic mode; board mode
+    // never assembles lines through TuiInput at all (raw mode hands this
+    // presenter individual keys instead, see tui-application-controller.cpp's
+    // handleBoardKeyEvents()), so without this call board mode's line editor
+    // never learns about completion and Tab does nothing there.
+    void setCompleter(std::function<QString(const QString &, QStringList *)> completer);
     // Rebuilds the character grid for a new terminal size and forces one
     // full frame; TuiScreen's own diff resumes after (spec §3.8).
     void setViewportSize(QSize size);

@@ -368,12 +368,21 @@ bool TuiApplicationController::start(QString *error)
     if (m_options.scriptFile.isEmpty()) {
         if (!m_input.start(error))
             return false;
-        m_input.setCompleter([this](const QString &line, QStringList *matches) {
+        auto completer = [this](const QString &line, QStringList *matches) {
             const TuiCompletion done = completeTuiLine(line, completionExtraTokens());
             if (matches != nullptr)
                 *matches = done.matches;
             return done.line;
-        });
+        };
+        // Classic mode assembles lines in TuiInput itself, so it gets the
+        // completer there. Board mode's TuiInput is in raw mode and never
+        // reaches TuiInput's own line-assembly code at all (see the raw-mode
+        // wiring above) -- its line editor lives inside m_boardPresenter
+        // instead, so the exact same completer function has to be installed
+        // there too, or Tab silently does nothing in board mode (I6).
+        m_input.setCompleter(completer);
+        if (m_boardPresenter != nullptr)
+            m_boardPresenter->setCompleter(completer);
     } else {
         m_script = new TuiScriptRunner(&m_core,
             [this](const QString &line) { handleInputLine(line); }, this);
@@ -670,17 +679,17 @@ void TuiApplicationController::handleCommand(const TuiCommandIntent &intent)
     } else if (intent.type == TuiCommandType::Status) {
         writeOutput(m_renderer.renderState(*m_core.state()));
     } else if (intent.type == TuiCommandType::Players) {
-        writeOutput(m_renderer.renderPlayers(*m_core.state()));
+        writeDump(m_renderer.renderPlayers(*m_core.state()));
     } else if (intent.type == TuiCommandType::Hand) {
-        writeOutput(m_renderer.renderHand(*m_core.state()));
+        writeDump(m_renderer.renderHand(*m_core.state()));
     } else if (intent.type == TuiCommandType::Equipment) {
-        writeOutput(renderEquipment());
+        writeDump(renderEquipment());
     } else if (intent.type == TuiCommandType::Piles) {
-        writeOutput(renderPiles());
+        writeDump(renderPiles());
     } else if (intent.type == TuiCommandType::Skills) {
-        writeOutput(renderSkills());
+        writeDump(renderSkills());
     } else if (intent.type == TuiCommandType::Log) {
-        writeOutput(renderLog());
+        writeDump(renderLog());
     } else if (intent.type == TuiCommandType::Cancel) {
         if (!m_core.hasActiveRequest()) {
             writeError(tuiText("tui_no_request"));
@@ -1030,6 +1039,13 @@ void TuiApplicationController::writeOutput(const QString &text)
 {
     const QString safe = TuiRenderer::sanitize(text, 16384);
     m_presenter->writeOutput(safe);
+    appendLogLine(safe);
+}
+
+void TuiApplicationController::writeDump(const QString &text)
+{
+    const QString safe = TuiRenderer::sanitize(text, 16384);
+    m_presenter->writeDump(safe);
     appendLogLine(safe);
 }
 

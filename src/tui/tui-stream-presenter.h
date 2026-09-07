@@ -13,6 +13,10 @@ public:
     explicit TuiStreamPresenter(Sink out = {}, Sink err = {});
 
     void writeOutput(const QString &text) override;
+    // Classic mode has no overlay concept -- every dump just prints, the
+    // same as writeOutput(). See tui-presenter.h for why this override
+    // exists at all.
+    void writeDump(const QString &text) override;
     void writeError(const QString &text) override;
     void shutdown() override;
     void stateChanged(const ClientGameState &state) override;
