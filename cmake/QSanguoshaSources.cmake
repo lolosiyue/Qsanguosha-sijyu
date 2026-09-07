@@ -388,8 +388,10 @@ target_include_directories(qsanguosha_client_runtime PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src/server
     ${CMAKE_CURRENT_SOURCE_DIR}/src/util
 )
-target_compile_definitions(qsanguosha_client_runtime PRIVATE QSAN_ENGINE_TEST_BUILD)
-target_link_libraries(qsanguosha_client_runtime PUBLIC Qt6::Core)
+# Public engine headers select the non-desktop PCH with this definition and
+# include QtNetwork from it. Consumers need both requirements too.
+target_compile_definitions(qsanguosha_client_runtime PUBLIC QSAN_ENGINE_TEST_BUILD)
+target_link_libraries(qsanguosha_client_runtime PUBLIC Qt6::Core Qt6::Network)
 
 if(QSAN_BUILD_XP_LEGACY)
     target_include_directories(qsanguosha_client_runtime BEFORE PUBLIC

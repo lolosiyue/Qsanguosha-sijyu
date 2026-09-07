@@ -319,6 +319,16 @@ qsan_add_ctest(qsanguosha_client_core_contract qsanguosha_client_core_tests
     TIMEOUT 120
 )
 
+# Compile the public runtime surface using only its own usage requirements.
+# No engine/TUI target may mask missing includes or compile definitions here.
+# Keep this check enabled when the TUI product is disabled as well.
+add_library(qsanguosha_client_runtime_headers_test OBJECT
+    client_core/client-runtime-headers-test.cpp
+)
+target_link_libraries(qsanguosha_client_runtime_headers_test PRIVATE
+    qsanguosha_client_runtime
+)
+
 if(QSAN_BUILD_TUI)
     # 四個 TUI 測試住喺同一個執行檔:佢哋嘅 link 面本身係同一個超集
     # (live-tcp 已經同時 link engine 同 protocol v2 support),夾埋只係少咗

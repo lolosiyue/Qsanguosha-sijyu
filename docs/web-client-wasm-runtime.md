@@ -87,7 +87,10 @@ The runtime library is intentionally engine-facing but does not propagate a
 normal `qsanguosha_engine` link. Final products choose the engine link policy;
 TUI currently requires `WHOLE_ARCHIVE` for package registrars, and a second
 normal engine link would conflict with that CMake link feature. The runtime
-itself only propagates `ClientCore` and Qt Core dependencies.
+itself propagates `ClientCore`, Qt Core and Qt Network dependencies. Qt Network
+is currently required by the engine headers' non-desktop precompiled-header
+path; the runtime also exports `QSAN_ENGINE_TEST_BUILD` so consumers use that
+path without supplying frontend-specific compile settings.
 
 This is the first build artifact that a native fixture runner and a future WASM
 target can consume without compiling presentation code from `src/tui/`.
