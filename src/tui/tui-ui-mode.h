@@ -51,6 +51,10 @@ TuiUiModeDecision tuiResolveUiMode(const TuiUiModeInputs &inputs);
 // QSettings under QStandardPaths::AppConfigLocation; this is the first use
 // of QSettings anywhere in the TUI.
 QString tuiSavedUiMode();
-void tuiSaveUiMode(TuiUiMode mode);
+// Returns false when QSettings could not actually persist the choice (e.g.
+// an unwritable config directory) -- the caller should tell the player
+// rather than silently claiming the choice was remembered when the next run
+// will just ask again.
+bool tuiSaveUiMode(TuiUiMode mode);
 
 #endif

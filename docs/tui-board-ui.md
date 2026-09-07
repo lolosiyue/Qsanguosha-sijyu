@@ -30,8 +30,12 @@ board 模式專屬的新指令（`/board` 除外）。
 2. **`lineReady(QString)` 是唯一輸入出口。** parser、`ClientCore`、reply
    encoder 三層不知道 UI 模式存在，兩套 UI 交出的 `InteractionResponse`
    必須逐欄相同。
-3. **classic 行為零改動。** 除 §6.2 明列的一項共同修正外，classic 模式的輸出
-   與現有實作逐位元組相同。
+3. **classic 行為零改動。** 除下列兩項刻意的例外，classic 模式的輸出與現有
+   實作逐位元組相同：一是 §6.2 明列的 Linux Ctrl+C 修正（原本完全沒有
+   graceful disconnect，屬修正而非退化）；二是 `/board` 指令本身的加入——它
+   出現在 classic 的 `/help` 文字、Tab 補全清單與（board 模式專屬指令在
+   classic 下被拒絕時的）錯誤訊息路徑中，這是 classic 為了讓玩家知道 board
+   模式存在而必須承載的最小接觸面，不是又一個未列出的偏差。
 
 不變式 1 與 2 由 §7.2 的 parity 測試釘死，不依賴 code review。
 
@@ -244,8 +248,9 @@ Windows 輪詢 `GetConsoleScreenBufferInfo`。收到即重建 grid 並強制全�
 對 Linux 而言不成立。
 
 保留 `ISIG` 並補上 handler 後，兩個平台共用同一個 `interruptRequested` 出口。
-**這是本設計唯一會改變 classic 模式行為的改動**，且是修正而非退化；
-`docs/tui-client.md` 該段須同步更新。
+**這是本設計唯一會改變 classic 既有輸出/行為的修正型改動**（`/board` 指令的
+加入是另一項刻意的例外，但那是新增一個入口，不是改動既有路徑的行為——見 §1
+不變式 3），且是修正而非退化；`docs/tui-client.md` 該段須同步更新。
 
 ## 5. 輸入
 

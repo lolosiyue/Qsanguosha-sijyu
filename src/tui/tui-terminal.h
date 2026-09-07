@@ -113,4 +113,20 @@ private:
 // signal at all.
 void tuiInstallInterruptHandler(std::function<void()> callback);
 
+// Drops whatever callback tuiInstallInterruptHandler() last installed,
+// without touching the shared self-pipe/signal-handler plumbing installed
+// alongside it (that stays for the rest of the process, as documented
+// above -- there is only ever one controlling terminal, and the shared
+// SIGINT handler is meant to live exactly as long as the process does).
+// Call this when the object a callback captures (typically a TuiInput*) is
+// about to be destroyed: tuiInstallInterruptHandler()'s own callback is a
+// bare capture with no lifetime tracking of its own, so a SIGINT delivered
+// (or one already queued in the self-pipe, drained on the next event-loop
+// turn) after that object is gone would otherwise invoke a dangling
+// pointer -- this repo has a documented history of exactly this shape of
+// teardown use-after-free elsewhere. Production never destroys its one
+// TuiInput before the process exits, so this is mainly what keeps a test
+// harness that constructs and destroys more than one TuiInput safe.
+void tuiClearInterruptHandler();
+
 #endif
