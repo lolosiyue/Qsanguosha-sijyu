@@ -551,7 +551,30 @@ void TuiBoardView::render(TuiScreen *screen, const ClientGameState &state,
     screen->clear();
 
     if (!geom.usable) {
-        screen->putText(rows / 2, 0, tuiPadTo(geom.unusableReason, cols));
+        // spec §3.5: "提示行與輸入行是最後才犧牲的兩行" -- below the size
+        // floor the room/log/hand panes are what go away, never the
+        // prompt/input rows, because they are the only way a player can
+        // still act while waiting for the window to grow (an interaction
+        // request must still be answerable in this state). The previous
+        // implementation had the order backwards: it drew one centred
+        // message and returned, which sacrificed prompt+input on every
+        // single too-small frame right along with the rest of the board.
+        //
+        // Reserve up to the last two rows for exactly the same prompt+input
+        // drawInput() draws once the board is usable -- fed a minimal
+        // geometry, since tuiComputeBoardGeometry() never computed a real
+        // `input` rect for this path (bailing out with usable=false is
+        // precisely what happened instead) -- and use whatever is left
+        // above that for the "too small" message itself.
+        const int inputRows = std::min(2, rows);
+        const int messageRows = rows - inputRows;
+        if (messageRows > 0)
+            screen->putText(messageRows / 2, 0, tuiPadTo(geom.unusableReason, cols));
+        if (inputRows > 0) {
+            TuiBoardGeometry minimal;
+            minimal.input = TuiRect{rows - inputRows, 0, inputRows, cols};
+            drawInput(*screen, minimal, view);
+        }
         return;
     }
 

@@ -372,14 +372,31 @@ int main(int argc, char *argv[])
     options.boardMode = (uiDecision.mode == TuiUiMode::Board);
 
     int result = RuntimeExitCode;
+    bool startupFailed = false;
     {
         TuiApplicationController controller(options);
         if (!controller.start(&error)) {
-            QTextStream(stderr) << "TUI_ERROR startup: " << error << '\n';
+            // Do NOT write the error here: in board mode, start() may have
+            // already taken the terminal into the alternate screen (e.g. it
+            // fails later, at --log-file open, well after
+            // TuiTerminal::enter() succeeded) and controller (with it, its
+            // TuiTerminal member) is still alive at this point in the
+            // block -- its RAII restore (~TuiTerminal(), §4.1) has not run
+            // yet. Writing to stderr now would paint straight into the
+            // alternate screen buffer and lose the message the moment the
+            // screen is left, which is exactly what used to happen: a
+            // startup failure produced a blank terminal with the real error
+            // sitting, invisibly, in scrollback nobody ever sees again.
+            // Record the failure and defer the write past the closing brace
+            // below, where `controller` (and its terminal, if entered) has
+            // already been destroyed and the primary screen is back.
+            startupFailed = true;
         } else {
             result = app.exec();
         }
     }
+    if (startupFailed)
+        QTextStream(stderr) << "TUI_ERROR startup: " << error << '\n';
     EngineBootstrap::shutdown();
     return result;
 }

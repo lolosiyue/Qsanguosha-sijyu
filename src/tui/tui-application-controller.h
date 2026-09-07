@@ -66,6 +66,11 @@ private:
     void handleBoardKeyEvents(const QVector<TuiKeyEvent> &events);
     bool trySkipRoleAssignment();
     void writeOutput(const QString &text);
+    // Only for the six long-dump commands (/players, /log, /hand, /skills,
+    // /piles, /equip -- spec §5.2); everything else, including interaction
+    // prompts, stays on writeOutput() so board mode never opens an overlay
+    // for anything but these.
+    void writeDump(const QString &text);
     void writeError(const QString &text);
     void writeAutomationMarker(const QString &marker);
     bool appendLogLine(const QString &line);
