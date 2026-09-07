@@ -97,6 +97,13 @@ void TuiInput::stop()
         SetConsoleMode(static_cast<HANDLE>(m_inputHandle), m_originalConsoleMode);
     m_inputHandle = nullptr;
     m_consoleInput = false;
+#else
+    // start()'s tuiInstallInterruptHandler() call handed the shared
+    // self-pipe a `[this]() { emit interruptRequested(); }` closure. That
+    // global has no idea this TuiInput is about to be destroyed, so drop it
+    // here rather than leaving a dangling `this` behind for a SIGINT
+    // delivered (or already queued) after this point to call into.
+    tuiClearInterruptHandler();
 #endif
     m_running = false;
 }

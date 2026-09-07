@@ -167,8 +167,11 @@ encoder，parser 不知道自己在哪個模式（見上方「共用架構」與
 
 **Windows 上暫不提供 board 模式**：`TuiTerminal` 在 Windows 上只有安全的空實作
 （raw mode／alternate screen 皆未實作），因此明確指定 `--ui board` 會以 exit code
-`2` 拒絕並說明原因，未指定 `--ui` 的自動判斷路徑則靜默退回 classic。這不是暫時的
-潤飾缺口，而是需要另外設計 Windows console API 對應行為的後續工作。
+`2` 拒絕並說明原因；未指定 `--ui` 的自動判斷路徑（或記憶路徑選中 board）則退回
+classic，但不是靜默的——`tui-main.cpp` 會印一行說明（「Windows 上尚不支持 board
+模式（TuiTerminal 未实现），已使用 classic 界面」）到 stdout，讓使用者知道自己
+沒有拿到 board。這不是暫時的潤飾缺口，而是需要另外設計 Windows console API 對應
+行為的後續工作。
 
 **證據紀律**：board 模式在 CI 完全無法執行（CI runner 沒有穩定的 pty），因此
 「board 可用」這個結論只由本機 `tools/autotest/tui_board_smoke.py`（raw mode／

@@ -131,6 +131,35 @@ int main(int argc, char **argv)
 
         (void)interruptCallbackRegistered;
     }
+
+    {
+        // Minor fix from the 2026-09 review: tuiInstallInterruptHandler()'s
+        // callback is a bare capture with no lifetime tracking of its own
+        // (typically `[this]() { emit interruptRequested(); }` from a
+        // TuiInput -- see tui-input.cpp), and the global that holds it used
+        // to never get cleared. This repo has a documented history of
+        // exactly this shape of teardown use-after-free elsewhere, so this
+        // proves the actual mechanism meant to prevent it here: raise a
+        // real SIGINT and pump the event loop to prove the self-pipe ->
+        // QSocketNotifier -> callback path genuinely fires (not just that
+        // sigaction() reports a handler installed, which the block above
+        // already covers), then clear it and prove a second SIGINT does
+        // NOT fire the (now-cleared) callback again.
+        int callCount = 0;
+        tuiInstallInterruptHandler([&callCount]() { ++callCount; });
+
+        check(::raise(SIGINT) == 0, "a SIGINT can be raised for this test");
+        QCoreApplication::processEvents();
+        check(callCount == 1, "a raised SIGINT actually reaches the installed callback");
+
+        tuiClearInterruptHandler();
+        check(::raise(SIGINT) == 0, "a second SIGINT can be raised after clearing");
+        QCoreApplication::processEvents();
+        check(callCount == 1,
+              "tuiClearInterruptHandler() stops a cleared callback from firing again "
+              "-- this is what keeps a SIGINT delivered after a TuiInput is destroyed "
+              "from invoking a dangling pointer");
+    }
 #endif
 
     std::printf("[AUTOTEST] TUI_TERMINAL_RESULT status=%s\n", failures == 0 ? "PASS" : "FAIL");

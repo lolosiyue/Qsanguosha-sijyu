@@ -7,12 +7,13 @@ namespace {
 // The SGR code for each attribute, applied on its own (never stacked -- see
 // the reset-before-apply comment in TuiScreen::flush()). Normal needs none:
 // a run that never leaves Normal never emits an SGR at all, which is most of
-// the board's own text. The actual colours are a placeholder palette; nothing
-// in this task consumes TuiAttr for anything but the "does it round-trip"
-// check, so the choices only need to be distinct and defensible for later
-// callers (kingdom banners in gold, the current player's turn in reverse
-// video, lethal HP and dead generals both reading as "faded" in different
-// ways).
+// the board's own text. The actual colours are a placeholder palette, but
+// TuiAttr is no longer just a "does it round-trip" placeholder itself --
+// tui-board-view.cpp now applies Bold/Danger/Current/Dead for real (the
+// self cell, notices, the input cursor, dying/dead players), so the
+// distinctions below are load-bearing: kingdom banners in gold, the current
+// player's turn in reverse video, lethal HP and dead generals both reading
+// as "faded" in different ways.
 QString attrToSgr(TuiAttr attr)
 {
     switch (attr) {
