@@ -95,9 +95,19 @@ export function renderCard(
     return button;
   button.addEventListener("click", () => {
     const mode = session.interaction ? useMode(session.interaction.command) : "free";
+    const nativeRules = !!session.interaction && bind.rules.supports(session.interaction.command);
+    if (nativeRules && !bind.isCardClickable(cardId))
+      return;
     if (hidden) {
       ui.selectedCards = [-1];
       ui.hiddenIndex = hiddenIndex;
+    } else if (nativeRules && ui.selectedOption) {
+      // ViewAs callbacks consume subcards in click order, without duplicate IDs.
+      ui.selectedCards = ui.selectedCards.includes(cardId)
+        ? ui.selectedCards.filter((id) => id !== cardId)
+        : [...ui.selectedCards, cardId];
+      ui.selectedPlayers = [];
+      ui.hiddenIndex = -1;
     } else if (mode === "play" || mode === "response") {
       ui.selectedCards = ui.selectedCards.includes(cardId) ? [] : [cardId];
       ui.selectedPlayers = [];

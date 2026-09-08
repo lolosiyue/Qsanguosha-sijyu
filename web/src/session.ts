@@ -42,6 +42,8 @@ type Listener = () => void;
 
 export class LiveSession {
   readonly state = new ClientGameState();
+  generation = 0;
+  revision = 0;
   phase: SessionPhase = "idle";
   error = "";
   interaction: ActiveInteraction | null = null;
@@ -55,6 +57,8 @@ export class LiveSession {
   private pending: ClientGameState | null = null;
   private listeners = new Set<Listener>();
   private renPile: number[] = [];
+
+  get synchronizing(): boolean { return this.syncActive; }
 
   onChange(listener: Listener): () => void {
     this.listeners.add(listener);
@@ -106,6 +110,7 @@ export class LiveSession {
         return;
       this.phase = "failed";
       this.error = this.error || "連線已關閉";
+      this.disconnect();
       this.notify();
     });
     this.notify();
@@ -116,6 +121,9 @@ export class LiveSession {
     this.socket = null;
     this.syncActive = false;
     this.pending = null;
+    ++this.generation;
+    ++this.revision;
+    this.interaction = null;
   }
 
   sendControl(command: number, payload: JsonObject): void {
@@ -131,6 +139,10 @@ export class LiveSession {
   }
 
   sendReply(command: number, replyTo: string, payload: JsonObject): void {
+    // DOM handlers and Worker previews can outlive a request or STATE_SYNC.
+    if (this.phase !== "active" || this.syncActive || !this.interaction
+        || this.interaction.command !== command || this.interaction.messageId !== replyTo)
+      throw new Error("詢問已更新，請重新選擇");
     this.send({
       v: 2,
       type: "reply",
@@ -143,6 +155,7 @@ export class LiveSession {
     });
     this.interaction = null;
     this.interactionError = "";
+    ++this.revision;
     this.notify();
   }
 
@@ -187,6 +200,7 @@ export class LiveSession {
     const incoming = BigInt(message.message_id);
     if (incoming <= this.lastIncoming)
       throw new Error("message_id must increase");
+    ++this.revision;
 
     if (this.phase === "connecting" || this.phase === "hello") {
       if (message.command !== Command.CHECK_VERSION
@@ -301,6 +315,7 @@ export class LiveSession {
         this.pending = this.state.clone();
         this.pending.resetGameplayState();
         this.syncActive = true;
+        this.interaction = null;
         this.syncId = syncId;
         this.renPile = [];
         target = this.pending;
@@ -314,6 +329,8 @@ export class LiveSession {
     }
 
     if (message.type === "notification") {
+      if (message.command === Command.GAME_OVER)
+        this.interaction = null;
       if (message.command === Command.GAME_START)
         this.renPile = [];
       const reduction = applyNotification(target, message.command, message.payload);

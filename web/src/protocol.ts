@@ -233,7 +233,7 @@ export function decodeMessage(text: string): ProtocolMessage {
   return message;
 }
 
-export function isObject(value: JsonValue | undefined): value is JsonObject {
+export function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
