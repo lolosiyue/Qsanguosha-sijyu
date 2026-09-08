@@ -16,6 +16,8 @@ on:
       - 'swig/**'
       - 'lua/**'
       - 'tests/client_runtime/**'
+      - 'web/**'
+      - 'tools/package-web-runtime.py'
       - 'tools/ci/requirements.txt'
       - '.github/workflows/wasm-rules-fixtures.yml'
   workflow_dispatch:
@@ -49,6 +51,8 @@ jobs:
           printf '{"schema_version":1,"status":"NOT_RUN"}\n' > artifacts/wasm-fixtures/parity-summary.json
           mkdir -p artifacts/wasm-fixtures/browser-probe
           printf '{"schema_version":1,"status":"NOT_RUN"}\n' > artifacts/wasm-fixtures/browser-probe/browser-parity-summary.json
+          mkdir -p artifacts/wasm-fixtures/production-session
+          printf '{"schema_version":1,"status":"NOT_RUN"}\n' > artifacts/wasm-fixtures/production-session/session-summary.json
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y cmake ninja-build g++ python3-venv libgl1
           python3 -m venv "$RUNNER_TEMP/qsan-fixture-tools"
@@ -74,9 +78,15 @@ jobs:
             -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" \
             -DBUILD_TESTING=OFF -DQSAN_BUILD_GUI=OFF -DQSAN_BUILD_TUI=OFF \
             -DQSAN_BUILD_SERVER=OFF -DQSAN_BUILD_RULES_FIXTURE_RUNNER=ON \
+            -DQSAN_BUILD_RULES_SESSION_TESTS=ON \
             2>&1 | tee artifacts/wasm-fixtures/native-configure.log
-          cmake --build build/rules-native --target qsanguosha_rules_fixture_runner \
+          cmake --build build/rules-native --target qsanguosha_rules_fixture_runner qsanguosha_rules_session_probe \
             2>&1 | tee artifacts/wasm-fixtures/native-build.log
+      - name: Execute native production-session lifecycle
+        run: |
+          python3 tests/client_runtime/check-rules-session.py --native-only \
+            --native-runner "$GITHUB_WORKSPACE/build/rules-native/qsanguosha_rules_session_probe" \
+            --asset-root "$GITHUB_WORKSPACE" --artifacts "$GITHUB_WORKSPACE/artifacts/wasm-fixtures/session-native"
       - name: Install the version-matched Emscripten SDK
         run: |
           git clone --depth 1 --branch 4.0.7 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"
@@ -106,6 +116,14 @@ jobs:
           python3 tests/client_runtime/check-browser-fixtures.py --self-test
           python3 tests/client_runtime/check-wasm-fixtures.py --self-test
           python3 tests/client_runtime/check-fixtures.py --self-test
+          python3 tests/client_runtime/check-rules-session.py --self-test
+      - name: Test production controller and compile the production Worker
+        run: |
+          npm ci --prefix web
+          node --experimental-vm-modules --test tests/client_runtime/rules-controller.test.mjs
+          node web/node_modules/typescript/bin/tsc web/src/rules-worker.ts \
+            --outDir artifacts/wasm-fixtures/production-worker --target ES2022 --module ES2022 \
+            --lib ES2022,DOM --strict --skipLibCheck
       - name: Compile and link the real engine for WASM
         run: |
           set -o pipefail
@@ -117,9 +135,10 @@ jobs:
             -DQT_HOST_PATH="$QSAN_FIXTURE_HOST_QT" \
             -DBUILD_TESTING=OFF -DQSAN_BUILD_GUI=OFF -DQSAN_BUILD_TUI=OFF \
             -DQSAN_BUILD_SERVER=OFF -DQSAN_BUILD_RULES_FIXTURE_RUNNER=OFF \
+            -DQSAN_BUILD_RULES_SESSION_TESTS=OFF -DQSAN_BUILD_WASM_WEB_CLIENT=ON \
             -DQSAN_BUILD_WASM_RULES_FIXTURES=ON \
             2>&1 | tee artifacts/wasm-fixtures/wasm-configure.log
-          cmake --build build/rules-wasm --target qsanguosha_rules_fixture_wasm qsanguosha_rules_fixture_worker \
+          cmake --build build/rules-wasm --target qsanguosha_rules_fixture_wasm qsanguosha_rules_fixture_worker qsanguosha_client_wasm \
             2>&1 | tee artifacts/wasm-fixtures/wasm-build.log
       - name: Execute matched-content native and WASM fixtures
         run: |
@@ -146,6 +165,20 @@ jobs:
             --asset-root "$GITHUB_WORKSPACE" \
             --artifacts "$GITHUB_WORKSPACE/artifacts/wasm-fixtures/browser-probe" \
             2>&1 | tee artifacts/wasm-fixtures/browser-probe/gate.log
+      - name: Execute real persistent production Worker/native session parity
+        run: |
+          set -o pipefail
+          browser="$(command -v google-chrome || command -v chromium || true)"
+          test -n "$browser"
+          module_dir="$GITHUB_WORKSPACE/build/rules-wasm/web-wasm/RelWithDebInfo"
+          python3 tests/client_runtime/check-rules-session.py \
+            --native-runner "$GITHUB_WORKSPACE/build/rules-native/qsanguosha_rules_session_probe" \
+            --wasm-module "$module_dir/qsanguosha_client_wasm.mjs" \
+            --manifest "$module_dir/qsanguosha_client_wasm.assets.json" \
+            --worker-script "$GITHUB_WORKSPACE/artifacts/wasm-fixtures/production-worker/rules-worker.js" \
+            --browser "$browser" --asset-root "$GITHUB_WORKSPACE" \
+            --artifacts "$GITHUB_WORKSPACE/artifacts/wasm-fixtures/production-session" \
+            2>&1 | tee artifacts/wasm-fixtures/production-session/gate.log
       - name: Upload evidence even if compilation or parity fails
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -154,6 +187,7 @@ jobs:
           path: |
             artifacts/wasm-fixtures/**
             build/rules-wasm/rules-wasm/**
+            build/rules-wasm/web-wasm/**
             build/rules-wasm/CMakeCache.txt
             build/rules-native/CMakeCache.txt
           if-no-files-found: warn
