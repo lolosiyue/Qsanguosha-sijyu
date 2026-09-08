@@ -21,6 +21,11 @@ add_library(qsanguosha_rules_session STATIC
     src/client/runtime/client-rules-host.cpp
     src/client/runtime/client-rules-host.h
     src/client/interaction-reply-encoder.cpp
+    src/client/runtime/client-rules-ingress.cpp
+    src/client/runtime/client-rules-ingress.h
+    src/client/protocol-interaction-request-builder.cpp
+    src/client/interaction-request-factory.cpp
+    src/client/interaction-command-registry.cpp
 )
 target_link_libraries(qsanguosha_rules_session PUBLIC qsanguosha_client_runtime)
 set_target_properties(qsanguosha_rules_session PROPERTIES FOLDER "Libraries")
@@ -62,6 +67,35 @@ if(BUILD_TESTING)
         LABELS "client;client-runtime" TIMEOUT 240 RUN_SERIAL TRUE)
     if(WIN32)
         set_property(TEST qsanguosha_rules_session_lifecycle PROPERTY ENVIRONMENT_MODIFICATION
+            "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
+    endif()
+endif()
+
+# First W3 slice: the same raw-frame stream implementation is reachable from
+# native verification and the production WASM module. No frontend links here.
+add_executable(qsanguosha_rules_ingress_probe tests/client_runtime/rules-ingress-probe.cpp)
+target_link_libraries(qsanguosha_rules_ingress_probe PRIVATE
+    qsanguosha_rules_session "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>")
+set_target_properties(qsanguosha_rules_ingress_probe PROPERTIES FOLDER "Tests")
+if(WIN32)
+    set_target_properties(qsanguosha_rules_ingress_probe PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/tests/$<CONFIG>")
+    target_link_libraries(qsanguosha_rules_ingress_probe PRIVATE
+        "$<$<CONFIG:Release>:dbghelp>" "$<$<CONFIG:Release>:user32>" "$<$<CONFIG:Release>:gdi32>")
+endif()
+if(MSVC)
+    target_compile_options(qsanguosha_rules_ingress_probe PRIVATE /utf-8 /bigobj)
+endif()
+if(BUILD_TESTING)
+    add_test(NAME qsanguosha_rules_ingress
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/client_runtime/check-rules-ingress.py"
+            --native-runner "$<TARGET_FILE:qsanguosha_rules_ingress_probe>"
+            --asset-root "${CMAKE_CURRENT_SOURCE_DIR}"
+            --artifacts "${CMAKE_CURRENT_BINARY_DIR}/rules-ingress")
+    set_tests_properties(qsanguosha_rules_ingress PROPERTIES
+        LABELS "client;client-runtime" TIMEOUT 240 RUN_SERIAL TRUE)
+    if(WIN32)
+        set_property(TEST qsanguosha_rules_ingress PROPERTY ENVIRONMENT_MODIFICATION
             "PATH=path_list_prepend:$<TARGET_FILE_DIR:Qt6::Core>")
     endif()
 endif()
