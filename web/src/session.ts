@@ -10,6 +10,7 @@ import {
   type JsonObject,
   type ProtocolMessage
 } from "./protocol";
+import { isRulesIdentity, rulesCompatibilityError, rulesErrorMessage } from "./rules-identity";
 import { applyNotification } from "./reducer";
 import { appendSynthesizedLogs } from "./log-text";
 import { ClientGameState } from "./state";
@@ -57,6 +58,12 @@ export class LiveSession {
   private pending: ClientGameState | null = null;
   private listeners = new Set<Listener>();
   private renPile: number[] = [];
+  private rulesBundle: JsonObject | null = null;
+  private rulesProvider: ((session: LiveSession) => Promise<JsonObject>) | null = null;
+
+  setRulesProvider(provider: (session: LiveSession) => Promise<JsonObject>): void {
+    this.rulesProvider = provider;
+  }
 
   get synchronizing(): boolean { return this.syncActive; }
 
@@ -86,6 +93,26 @@ export class LiveSession {
     this.state.reset();
     this.state.setConnectionValue("ws_url", options.wsUrl);
     this.state.setConnectionValue("screen_name", options.screenName);
+    this.rulesBundle = null;
+    this.notify();
+    const generation = this.generation;
+    // Load before opening the socket, so download time cannot consume signup's deadline.
+    void Promise.resolve().then(() => {
+      if (generation !== this.generation) return null;
+      if (!this.rulesProvider) throw new Error("rules_reload_required");
+      return this.rulesProvider(this);
+    }).then(identity => {
+      if (generation !== this.generation) return;
+      if (!isRulesIdentity(identity)) throw new Error("rules_identity_invalid");
+      this.rulesBundle = identity;
+      this.openSocket(options);
+    }).catch(error => {
+      if (generation === this.generation)
+        this.fail(error instanceof Error ? error.message : String(error));
+    });
+  }
+
+  private openSocket(options: SessionOptions): void {
     const socket = new WebSocket(options.wsUrl);
     this.socket = socket;
     socket.addEventListener("message", (event) => {
@@ -191,7 +218,7 @@ export class LiveSession {
 
   private fail(detail: string): void {
     this.phase = "failed";
-    this.error = detail;
+    this.error = rulesErrorMessage(detail);
     this.disconnect();
     this.notify();
   }
@@ -202,19 +229,25 @@ export class LiveSession {
       throw new Error("message_id must increase");
     ++this.revision;
 
-    if (this.phase === "connecting" || this.phase === "hello") {
+    if (message.command === Command.WARN && message.type === "notification")
+      throw new Error(asString(message.payload.code) || asString(message.payload.message));
+
+    if (this.phase === "connecting") {
       if (message.command !== Command.CHECK_VERSION
           || message.type !== "notification"
           || message.source !== "lobby")
         throw new Error("first frame must be SERVER_HELLO");
       this.lastIncoming = incoming;
       this.phase = "hello";
+      const compatibility = rulesCompatibilityError(message.payload.rules_bundle, this.rulesBundle);
+      if (compatibility) throw new Error(compatibility);
       this.state.setCardIdSpace(asNumber(message.payload.card_count));
       const signup: JsonObject = {
         schema_version: 2,
         reconnect_requested: options.reconnect,
         screen_name: options.screenName,
-        avatar: options.avatar
+        avatar: options.avatar,
+        rules_bundle: this.rulesBundle
       };
       if (options.roomId !== undefined)
         signup.room_id = options.roomId;
@@ -239,7 +272,7 @@ export class LiveSession {
         throw new Error("expected correlated SIGNUP reply");
       this.lastIncoming = incoming;
       if (!asBool(message.payload.accepted)) {
-        throw new Error(asString(message.payload.message, asString(message.payload.error_code)));
+        throw new Error(asString(message.payload.error_code) || asString(message.payload.message));
       }
       this.state.setSelfName(asString(message.payload.player_id));
       this.state.setConnectionValue("reconnected", asBool(message.payload.reconnected));

@@ -1,3 +1,10 @@
 artifacts/client-core-interaction-matrix.json text eol=lf
 artifacts/protocol-v2-flow-matrix.json text eol=lf
 artifacts/tui-flow-coverage.json text eol=lf
+
+# The builtin rules closure is hashed as bytes on native and WASM builds.
+lua/config.lua text eol=lf
+lua/sanguosha.lua text eol=lf
+lua/utilities.lua text eol=lf
+lua/sgs_ex.lua text eol=lf
+lua/lib/json.lua text eol=lf

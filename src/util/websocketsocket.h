@@ -41,6 +41,7 @@ public:
     bool isConnected() const override;
     QString peerName() const override;
     QString peerAddress() const override;
+    bool requiresRulesBundle() const override { return true; }
 
 private slots:
     void getMessage(const QString &message);

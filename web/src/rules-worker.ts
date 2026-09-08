@@ -1,4 +1,8 @@
+import { RULES_BRIDGE_SCHEMA, verifyDeploymentBundle, verifyNativeIdentity } from "./rules-identity";
+
 // A persistent native rules session. Browser messages never supply module URLs.
+declare const __QSAN_RULES_DEPLOYMENT_ID__: string;
+
 const INPUT_LIMIT = 4 * 1024 * 1024;
 const OUTPUT_LIMIT = 8 * 1024 * 1024;
 const MANIFEST_LIMIT = 65536;
@@ -18,6 +22,7 @@ interface WasmFs {
 interface RulesModule {
   FS: WasmFs;
   ENV: Record<string, string>;
+  _qsan_client_bridge_schema(): number;
   _qsan_client_initialize(): number;
   _qsan_client_evaluate(): number;
   _qsan_client_shutdown(): number;
@@ -169,15 +174,27 @@ async function initialize(requestGeneration: number): Promise<void> {
   const moduleUrl = new URL("/rules/qsanguosha_client_wasm.mjs", worker.location.href);
   const wasmUrl = new URL("/rules/qsanguosha_client_wasm.wasm", worker.location.href);
   const manifestUrl = new URL("/rules/qsanguosha_client_wasm.assets.json", worker.location.href);
-  const [wasmBinary, manifestBytes] = await Promise.all([
+  const bundleUrl = new URL("/rules/qsanguosha_client_wasm.bundle.json", worker.location.href);
+  const [wasmBinary, manifestBytes, moduleBytes, bundleBytes] = await Promise.all([
     download(wasmUrl), download(manifestUrl, MANIFEST_LIMIT),
+    download(moduleUrl, 16 * 1024 * 1024), download(bundleUrl, MANIFEST_LIMIT),
   ]);
+  await verifyDeploymentBundle(bundleBytes,
+    typeof __QSAN_RULES_DEPLOYMENT_ID__ === "string" ? __QSAN_RULES_DEPLOYMENT_ID__ : "", {
+    "qsanguosha_client_wasm.mjs": moduleBytes,
+    "qsanguosha_client_wasm.wasm": wasmBinary,
+    "qsanguosha_client_wasm.assets.json": manifestBytes,
+  });
   if (wasmBinary.length < 8
       || ![0, 97, 115, 109, 1, 0, 0, 0].every((value, index) => wasmBinary[index] === value)) {
     throw new Error("Missing or invalid WebAssembly binary");
   }
   parseManifest(manifestBytes);
-  const { default: factory } = await import(/* @vite-ignore */ moduleUrl.href);
+  // Import precisely the bytes just verified, avoiding a second cached fetch.
+  const verifiedUrl = URL.createObjectURL(new Blob([ownedBuffer(moduleBytes)], { type: "text/javascript" }));
+  let factory;
+  try { ({ default: factory } = await import(/* @vite-ignore */ verifiedUrl)); }
+  finally { URL.revokeObjectURL(verifiedUrl); }
   if (typeof factory !== "function") throw new Error("WASM module must export an Emscripten factory");
   // Qt's Worker timer implementation names window; provide only real timers.
   worker.window = Object.freeze({
@@ -217,7 +234,9 @@ async function initialize(requestGeneration: number): Promise<void> {
     fs.chdir("/work");
   });
   runtime = await factory(options) as RulesModule;
-  if (aborted || !runtime?.FS || typeof runtime._qsan_client_initialize !== "function"
+  if (aborted || !runtime?.FS || typeof runtime._qsan_client_bridge_schema !== "function"
+      || runtime._qsan_client_bridge_schema() !== RULES_BRIDGE_SCHEMA
+      || typeof runtime._qsan_client_initialize !== "function"
       || typeof runtime._qsan_client_evaluate !== "function"
       || typeof runtime._qsan_client_shutdown !== "function") {
     throw new Error("WASM initialization failed or client runtime exports are missing");
@@ -229,7 +248,7 @@ async function initialize(requestGeneration: number): Promise<void> {
   const status = runtime._qsan_client_initialize();
   if (aborted || status !== 0) throw new Error(`WASM client initialization failed (${status})`);
   const info: unknown = JSON.parse(decoder.decode(readOutput(runtime.FS, "/work/init.json")));
-  if (!record(info) || info.schema_version !== 1 || !integer(info.card_count, 1)
+  if (!record(info) || info.schema_version !== RULES_BRIDGE_SCHEMA || !integer(info.card_count, 1)
       || !Array.isArray(info.registry) || info.registry.length !== info.card_count) {
     throw new Error("WASM returned an invalid card registry");
   }
@@ -244,6 +263,7 @@ async function initialize(requestGeneration: number): Promise<void> {
     }
     ids.add(entry.id);
   }
+  await verifyNativeIdentity(info.rules_bundle);
   phase = "ready";
   worker.postMessage({ schema_version: 1, type: "ready", generation, info });
 }
