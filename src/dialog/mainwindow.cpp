@@ -21,9 +21,10 @@
 #include "game-session-config.h"
 #include "game-snapshot.h"
 #include "replay-takeover-validation.h"
+// 自動化測試診斷同 --asset-root 轉發都用 QSanRuntimePaths，唔止 XP legacy 路徑。
+#include "runtime-paths.h"
 #ifdef QSAN_XP_LEGACY
 #include "local-server-controller.h"
-#include "runtime-paths.h"
 #include <QInputDialog>
 #endif
 #include "replay-index.h"
