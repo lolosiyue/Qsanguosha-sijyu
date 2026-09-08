@@ -11,6 +11,7 @@
 #include <QMutex>
 #include <QThread>
 #include <QVariantMap>
+#include <QJsonObject>
 
 // Recursive mutex with yield/restore support.
 // Unlike QRecursiveMutex, it allows atomically releasing all recursive
@@ -102,6 +103,8 @@ public:
     void addPackage(Package *package);
     void addBanPackage(const QString &package_name);
     QList<const Package *> getPackages() const;
+    const QStringList &rulesPackageOrder() const { return m_rulesPackageOrder; }
+    QJsonObject rulesBundleIdentity() const;
     QMap<QString, QStringList> getPackageMap() const;
     Package *getPackage(const QString &package_name);
     void setPackage(Package *package);
@@ -252,6 +255,8 @@ public:
 
 private:
     friend class EngineRuntimeContextScope;
+    QJsonObject m_rulesLuaSnapshot;
+    QStringList m_rulesPackageOrder;
     friend class RoomDefinitionRegistry;
 
     EngineRuntimeContext *swapCurrentRoomContext(EngineRuntimeContext *context);

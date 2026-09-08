@@ -753,3 +753,20 @@ qsan_add_ctest(qsanguosha_replay_v2_contract qsanguosha_replay_v2_tests
 # duplicated the sources and the CTest names that bf1f85d had already folded into
 # qsanguosha_core_tests; the merge 7fdf0c6 kept both sides, so add_test() failed with
 # "test NAME ... already exists" and the project would not configure at all.
+
+# Small protocol identity gate: runs without Engine, a Room, or network timers.
+add_executable(qsanguosha_rules_identity_tests
+    protocol/rules-bundle-identity-test.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol/rules-bundle-identity.cpp
+    ${QSAN_TEST_ROOT}/src/core/protocol/session/session-payloads.cpp)
+target_include_directories(qsanguosha_rules_identity_tests PRIVATE ${QSAN_TEST_ROOT}/src/core)
+target_link_libraries(qsanguosha_rules_identity_tests PRIVATE Qt6::Core)
+if(MSVC)
+    target_compile_options(qsanguosha_rules_identity_tests PRIVATE /utf-8)
+endif()
+add_test(NAME qsanguosha_rules_identity COMMAND qsanguosha_rules_identity_tests)
+set_tests_properties(qsanguosha_rules_identity PROPERTIES LABELS "protocol;fast" TIMEOUT 15)
+
+add_test(NAME qsanguosha_rules_bundle_harness
+    COMMAND "${Python3_EXECUTABLE}" "${QSAN_TEST_ROOT}/tests/client_runtime/check-rules-bundle.py" --self-test)
+set_tests_properties(qsanguosha_rules_bundle_harness PROPERTIES LABELS "client;protocol;fast" TIMEOUT 15)

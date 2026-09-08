@@ -1,4 +1,6 @@
 #include "client-rules-session.h"
+#include "rules-bundle-exporter.h"
+#include "protocol/rules-bundle-identity.h"
 
 #include "client-room-context.h"
 #include "client-selection-runtime.h"
@@ -546,20 +548,13 @@ QStringList declarations(const ClientRules::SkillCardBuildRequest &draft,
 QJsonObject ClientRulesSession::registry() const
 {
     require(Sanguosha != nullptr, QStringLiteral("engine_unavailable"));
-    QJsonArray cards;
-    for (int id = 0; id < Sanguosha->getCardCount(); ++id) {
-        const Card *card = Sanguosha->getEngineCard(id);
-        require(card != nullptr, QStringLiteral("incomplete_card_registry"));
-        cards.append(QJsonObject{{QStringLiteral("id"), id},
-            {QStringLiteral("object_name"), card->objectName()},
-            {QStringLiteral("suit"), static_cast<int>(card->getSuit())},
-            {QStringLiteral("number"), card->getNumber()},
-            {QStringLiteral("class_name"), card->getClassName()},
-            {QStringLiteral("package"), card->getPackage()}});
-    }
-    return {{QStringLiteral("schema_version"), 1},
-            {QStringLiteral("card_count"), Sanguosha->getCardCount()},
-            {QStringLiteral("registry"), cards}};
+    QJsonObject result = QSanRules::exportRegistry(*Sanguosha);
+    const auto identity = Sanguosha->rulesBundleIdentity();
+    require(QSanRules::validate(identity), QStringLiteral("rules_content_unsupported"));
+    // New initialization contract makes old hosts fail before issuing queries.
+    result.insert(QStringLiteral("schema_version"), QSanRules::BridgeSchema);
+    result.insert(QStringLiteral("rules_bundle"), identity);
+    return result;
 }
 
 QJsonObject ClientRulesSession::evaluate(const QJsonObject &input) const

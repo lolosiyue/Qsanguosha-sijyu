@@ -308,6 +308,10 @@ add_library(qsanguosha_engine STATIC
     src/core/version.h
     src/core/engine-bootstrap.cpp
     src/core/engine-bootstrap.h
+    src/core/rules-bundle-exporter.cpp
+    src/core/rules-bundle-exporter.h
+    src/core/protocol/rules-bundle-identity.cpp
+    src/core/protocol/rules-bundle-identity.h
     src/core/general.cpp
     src/core/general.h
     src/core/game-rng.cpp
@@ -469,6 +473,8 @@ if(QSAN_BUILD_XP_LEGACY)
         ${CMAKE_CURRENT_SOURCE_DIR}/legacy/xp/compat/qt5
     )
 endif()
+
+include(cmake/QSanguoshaRulesIdentity.cmake)
 
 target_compile_definitions(qsanguosha_engine PRIVATE
     QSAN_ENGINE_BUILD

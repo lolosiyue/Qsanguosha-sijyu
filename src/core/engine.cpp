@@ -1,4 +1,5 @@
 #include "engine.h"
+#include "rules-bundle-exporter.h"
 #include "qt-collection-utils.h"
 #include "runtime-paths.h"
 #include "version.h"
@@ -307,6 +308,8 @@ Engine::Engine(bool isManualMode)
 #endif // LOGNETWORK
 
     Sanguosha = this;
+
+    m_rulesLuaSnapshot = QSanRules::builtinLuaSnapshot();
 
     m_bootstrapLua = std::make_unique<LuaRuntime>(LuaRuntime::Bootstrap);
     QString bootstrapError;
@@ -744,6 +747,7 @@ void Engine::addPackage(Package*package)
     if (findChild<const Package*>(package->objectName()))
         return;
 
+    m_rulesPackageOrder.append(package->objectName());
     package->setParent(this);
     //sp_convert_pairs.unite(package->getConvertPairs());
     const auto &packagePatterns = package->getPatterns();
@@ -858,6 +862,11 @@ QList<const Package*> Engine::getPackages() const
         if (!m_luaPackageNames.contains(package->objectName())
             && !runtime->package(package->objectName())) result << package;
     return result;
+}
+
+QJsonObject Engine::rulesBundleIdentity() const
+{
+    return QSanRules::exportIdentity(*this, m_rulesLuaSnapshot);
 }
 
 Package*Engine::getPackage(const QString &package_name)

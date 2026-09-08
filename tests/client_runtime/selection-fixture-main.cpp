@@ -1,5 +1,8 @@
 #include "selection-fixture.h"
 #include "engine-bootstrap.h"
+#include "engine.h"
+#include "rules-bundle-exporter.h"
+#include "protocol/rules-bundle-identity.h"
 #include "runtime-paths.h"
 
 #include <QCommandLineParser>
@@ -32,6 +35,7 @@ int main(int argc, char **argv)
     QCommandLineParser parser;
     parser.setApplicationDescription(QStringLiteral("Replay one client-rules fixture without a frontend or server."));
     parser.addHelpOption();
+    parser.addOption(QCommandLineOption(QStringLiteral("export-rules-bundle"), QStringLiteral("Export the native runtime registry and rules identity")));
     parser.addOption(QCommandLineOption(QStringLiteral("fixture"), QStringLiteral("Input JSON fixture"), QStringLiteral("file")));
     parser.addOption(QCommandLineOption(QStringLiteral("output"), QStringLiteral("Output JSON file (written atomically on success)"), QStringLiteral("file")));
     parser.addOption(QCommandLineOption(QStringLiteral("asset-root"), QStringLiteral("Engine data directory"), QStringLiteral("directory")));
@@ -40,33 +44,37 @@ int main(int argc, char **argv)
         return 2;
     }
     if (parser.isSet(QStringLiteral("help"))) parser.showHelp();
-    if (!parser.isSet(QStringLiteral("fixture")) || !parser.isSet(QStringLiteral("output"))
+    const bool exportBundle = parser.isSet(QStringLiteral("export-rules-bundle"));
+    if (parser.isSet(QStringLiteral("fixture")) == exportBundle || !parser.isSet(QStringLiteral("output"))
         || !parser.positionalArguments().isEmpty()) {
-        QTextStream(stderr) << "--fixture and --output are required; positional arguments are not supported" << Qt::endl;
+        QTextStream(stderr) << "specify --fixture or --export-rules-bundle, plus --output; positional arguments are not supported" << Qt::endl;
         return 2;
     }
     // Resolve before the asset resolver intentionally changes CWD.
     const QString inputPath = QFileInfo(parser.value(QStringLiteral("fixture"))).absoluteFilePath();
     const QString outputPath = QFileInfo(parser.value(QStringLiteral("output"))).absoluteFilePath();
-    if (inputPath == outputPath || (QFileInfo::exists(outputPath)
-        && QFileInfo(inputPath).canonicalFilePath() == QFileInfo(outputPath).canonicalFilePath())) {
+    if (!exportBundle && (inputPath == outputPath || (QFileInfo::exists(outputPath)
+        && QFileInfo(inputPath).canonicalFilePath() == QFileInfo(outputPath).canonicalFilePath()))) {
         QTextStream(stderr) << "output must not overwrite the input fixture" << Qt::endl;
         return 2;
     }
-    QFile input(inputPath);
-    if (!input.open(QIODevice::ReadOnly)) {
-        QTextStream(stderr) << input.errorString() << Qt::endl;
-        return 2;
-    }
-    constexpr qint64 limit = 1024 * 1024;
-    const QByteArray bytes = input.read(limit + 1);
-    QJsonParseError parseError;
-    const QJsonDocument document = QJsonDocument::fromJson(bytes, &parseError);
-    if (bytes.size() > limit || parseError.error != QJsonParseError::NoError || !document.isObject()
-        || document.object().value(QStringLiteral("schema_version")) != QJsonValue(1)) {
-        QTextStream(stderr) << "fixture must be a schema_version=1 JSON object of at most 1 MiB: "
-                            << parseError.errorString() << Qt::endl;
-        return 2;
+    QJsonDocument document;
+    if (!exportBundle) {
+        QFile input(inputPath);
+        if (!input.open(QIODevice::ReadOnly)) {
+            QTextStream(stderr) << input.errorString() << Qt::endl;
+            return 2;
+        }
+        constexpr qint64 limit = 1024 * 1024;
+        const QByteArray bytes = input.read(limit + 1);
+        QJsonParseError parseError;
+        document = QJsonDocument::fromJson(bytes, &parseError);
+        if (bytes.size() > limit || parseError.error != QJsonParseError::NoError || !document.isObject()
+            || document.object().value(QStringLiteral("schema_version")) != QJsonValue(1)) {
+            QTextStream(stderr) << "fixture must be a schema_version=1 JSON object of at most 1 MiB: "
+                                << parseError.errorString() << Qt::endl;
+            return 2;
+        }
     }
     QTemporaryDir userData;
     if (!userData.isValid()) {
@@ -85,7 +93,16 @@ int main(int argc, char **argv)
         return 3;
     }
     QJsonObject result;
-    if (!ClientRulesFixtures::run(document.object(), &result, &error)) {
+    if (exportBundle) {
+        result = QSanRules::exportRegistry(*Sanguosha);
+        const auto identity = Sanguosha->rulesBundleIdentity();
+        if (!QSanRules::validate(identity)) {
+            QTextStream(stderr) << "rules_content_unsupported" << Qt::endl;
+            return 4;
+        }
+        result.insert(QStringLiteral("schema_version"), QSanRules::BridgeSchema);
+        result.insert(QStringLiteral("rules_bundle"), identity);
+    } else if (!ClientRulesFixtures::run(document.object(), &result, &error)) {
         QTextStream(stderr) << "fixture failed: " << error << Qt::endl;
         return 4;
     }

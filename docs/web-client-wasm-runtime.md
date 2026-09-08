@@ -4,10 +4,10 @@ This document records the migration boundary for replacing the Web client's
 hand-written gameplay eligibility rules with the same C++/Lua rule
 implementation used by native clients.
 
-The persistent runtime and Web client integration described below are source
-implementation on top of PR #31. No configure, compile, rebuild, test, artifact
-packaging or browser acceptance was performed for this implementation. Earlier
-Node/Worker fixture results do not establish production runtime acceptance.
+The persistent runtime builds on PR #31. W2 adds a shared native rules identity
+and mandatory WebSocket admission gate; see [rules-bundle-identity.md](rules-bundle-identity.md)
+for the current contract and verification boundaries. Earlier Node/Worker fixture
+results do not establish production runtime acceptance.
 
 ## Target architecture
 
@@ -209,6 +209,7 @@ Generated artifacts under `build/web-wasm/web-wasm/RelWithDebInfo/`:
 | `qsanguosha_client_wasm.mjs` | ES module factory `createQSanguoshaClient`, Worker environment |
 | `qsanguosha_client_wasm.wasm` | Persistent C++/Lua runtime |
 | `qsanguosha_client_wasm.assets.json` | Embedded `builtin-v1` bootstrap manifest |
+| `qsanguosha_client_wasm.bundle.json` | Build-generated pairing hashes and bridge version; pinned into the Web loader during its build |
 
 Exports are `_qsan_client_initialize`, `_qsan_client_evaluate` and
 `_qsan_client_shutdown`; Emscripten exposes `FS` and `ENV` to the host. The module
@@ -218,7 +219,7 @@ are configuration, not browser memory/performance acceptance.
 
 | Export | MEMFS/JSON contract |
 |---|---|
-| `_qsan_client_initialize` | Initializes once and writes `/work/init.json`: schema 1, `card_count`, and numeric-ID registry entries with object name, integer suit, number, class and package |
+| `_qsan_client_initialize` | Initializes once and writes `/work/init.json`: schema 2, native `rules_bundle`, `card_count`, and numeric-ID registry entries with object name, integer suit, number, class and package |
 | `_qsan_client_evaluate` | Reads `/work/request.json` (at most 4 MiB), writes `/work/result.json` with generation/revision/request identity, `known`, reason, selectable cards/skills/targets, `can_confirm`, canonical card text and wire payload |
 | `_qsan_client_shutdown` | Ends the engine lifetime; the closed module cannot initialize again |
 
@@ -238,13 +239,13 @@ python3 tools/package-web-runtime.py \
 
 Alternatively, `cmake --build build/web-wasm --target package-web-runtime` first
 builds the runtime dependency, then runs the same packaging command. The tool
-requires all three artifacts, checks the WASM header and shared manifest schema,
+requires all four artifacts, checks the WASM header and shared manifest schema,
 and publishes only those fixed generated names. It does not execute the module
 or provide runtime acceptance. The Worker verifies embedded asset bytes when
 the application starts.
 
 Package before the Web frontend's normal Vite build so `public/rules` is copied
-into `dist/rules`. Deploy all three artifacts together at `/rules/`, serve
+into `dist/rules`. Deploy all four artifacts together at `/rules/`, serve
 `.mjs` as JavaScript and `.wasm` as `application/wasm`, and configure the server's
 SPA fallback after the static `/rules/` route. Missing artifacts must return a
 visible runtime failure rather than an HTML application shell masquerading as
@@ -263,3 +264,12 @@ from this integration. The server remains authoritative for every reply.
 
 The Web UI should not grow new hard-coded weapon, target, or extension tables
 while this migration is in progress.
+
+## W2 rules identity
+
+The follow-up contract is defined in [rules-bundle-identity.md](rules-bundle-identity.md).
+Initialization now uses bridge schema 2 with the shared native `rules_bundle`.
+Package the fourth generated `.bundle.json` artifact before building the Web
+frontend. WebSocket signup requires this identity, including reconnect; legacy
+TCP clients may still omit it. The old three-file/initialization-schema-1 recipe
+above describes the PR31 baseline and is superseded by W2 for new deployments.

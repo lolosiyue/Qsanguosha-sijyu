@@ -176,10 +176,13 @@ bool StateSyncPayload::parse(const QVariant &value, StateSyncPayload *payload,
 
 QVariantMap ServerHelloPayload::toVariant() const
 {
-    return {{QStringLiteral("schema_version"), SchemaVersion},
+    QVariantMap result{{QStringLiteral("schema_version"), SchemaVersion},
             {QStringLiteral("game_version"), gameVersion},
             {QStringLiteral("mod_name"), modName},
             {QStringLiteral("card_count"), cardCount}};
+    if (!rulesBundle.isEmpty())
+        result.insert(QStringLiteral("rules_bundle"), rulesBundle.toVariantMap());
+    return result;
 }
 
 bool ServerHelloPayload::parse(const QVariant &value, ServerHelloPayload *payload,
@@ -200,6 +203,11 @@ bool ServerHelloPayload::parse(const QVariant &value, ServerHelloPayload *payloa
     }
     if (parsed.cardCount < 0)
         return fail(error, QStringLiteral("ServerHelloPayload.card_count must be non-negative"));
+    if (object.contains(QStringLiteral("rules_bundle"))) {
+        if (object.value(QStringLiteral("rules_bundle")).userType() != QMetaType::QVariantMap)
+            return fail(error, QStringLiteral("ServerHelloPayload.rules_bundle must be an object"));
+        parsed.rulesBundle = QJsonObject::fromVariantMap(object.value(QStringLiteral("rules_bundle")).toMap());
+    }
     *payload = parsed;
     return true;
 }
@@ -212,6 +220,8 @@ QVariantMap SignupRequestPayload::toVariant() const
                        {QStringLiteral("avatar"), avatar}};
     if (hasRoomId)
         object.insert(QStringLiteral("room_id"), roomId);
+    if (hasRulesBundle)
+        object.insert(QStringLiteral("rules_bundle"), rulesBundle.toVariantMap());
     return object;
 }
 
@@ -230,6 +240,12 @@ bool SignupRequestPayload::parse(const QVariant &value, SignupRequestPayload *pa
         return fail(error, QStringLiteral("SignupRequestPayload schema_version must be integral 1 or 2"));
     }
     SignupRequestPayload parsed;
+    parsed.hasRulesBundle = object.contains(QStringLiteral("rules_bundle"));
+    if (parsed.hasRulesBundle) {
+        if (object.value(QStringLiteral("rules_bundle")).userType() != QMetaType::QVariantMap)
+            return fail(error, QStringLiteral("SignupRequestPayload.rules_bundle must be an object"));
+        parsed.rulesBundle = QJsonObject::fromVariantMap(object.value(QStringLiteral("rules_bundle")).toMap());
+    }
     if (!requiredBool(object, QStringLiteral("reconnect_requested"),
                       &parsed.reconnectRequested, QStringLiteral("SignupRequestPayload"), error)
         || !requiredString(object, QStringLiteral("screen_name"), &parsed.screenName,

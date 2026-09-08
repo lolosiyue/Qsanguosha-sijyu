@@ -4,6 +4,7 @@
 #include <QString>
 #include <QStringList>
 #include <QVariantMap>
+#include <QJsonObject>
 
 namespace QSanProtocol {
 
@@ -21,6 +22,7 @@ struct ServerHelloPayload
     QString gameVersion;
     QString modName;
     int cardCount = 0;
+    QJsonObject rulesBundle;
 
     QVariantMap toVariant() const;
     static bool parse(const QVariant &value, ServerHelloPayload *payload,
@@ -35,6 +37,8 @@ struct SignupRequestPayload
     QString avatar;
     bool hasRoomId = false;
     int roomId = 0;
+    bool hasRulesBundle = false;
+    QJsonObject rulesBundle;
 
     QVariantMap toVariant() const;
     static bool parse(const QVariant &value, SignupRequestPayload *payload,
