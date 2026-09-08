@@ -30,6 +30,7 @@ public:
     virtual bool isConnected() const = 0;
     virtual QString peerName() const = 0;
     virtual QString peerAddress() const = 0;
+    virtual bool requiresRulesBundle() const { return false; }
     QTimer timerSignup;
 
 public slots:

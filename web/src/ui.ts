@@ -139,6 +139,7 @@ function app(): HTMLElement {
 }
 
 const rules = new RulesController(() => render());
+session.setRulesProvider(activeSession => rules.initialize(activeSession));
 let selectionRequest = "";
 
 const bind: UiBind = {

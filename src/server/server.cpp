@@ -3,6 +3,7 @@
 #else
 #include "server.h"
 #endif
+#include "protocol/rules-bundle-identity.h"
 #include "settings.h"
 #include "room.h"
 #include "roomthread.h"
@@ -2135,6 +2136,7 @@ void Server::processNewConnection(ClientSocket *socket)
 	hello.gameVersion = Sanguosha->getVersionNumber();
 	hello.modName = Sanguosha->getMODName();
 	hello.cardCount = Sanguosha->getCardCount();
+    hello.rulesBundle = Sanguosha->rulesBundleIdentity();
 	QString error;
 	if (!context->sendHello(hello, &error)) {
 		rejectConnection(context, QStringLiteral("server_hello_failed"), error);
@@ -2206,6 +2208,22 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 		context->sendSignupReply(reply, requestId, &ignored);
 		rejectConnection(context, code, message);
 	};
+
+    // Gate both signup and reconnect before any Room/player ownership changes.
+    const QString rulesError = signup.hasRulesBundle && !QSanRules::validate(signup.rulesBundle)
+        ? QStringLiteral("rules_identity_invalid")
+        : QSanRules::compatibilityError(Sanguosha->rulesBundleIdentity(), signup.rulesBundle,
+                                        socket->requiresRulesBundle());
+    if (!rulesError.isEmpty()) {
+        const QString message = rulesError == QLatin1String("rules_version_mismatch")
+            ? tr("規則版本不相符；請更新至與伺服器相同的版本。")
+            : (rulesError == QLatin1String("rules_content_unsupported")
+                || rulesError == QLatin1String("rules_interaction_unsupported"))
+                ? tr("此內容包不受支援；請使用伺服器支援的規則套件。")
+                : tr("需要重新載入；請重新整理頁面以載入配對的規則套件。");
+        rejectSignup(rulesError, message);
+        return;
+    }
 
 	if (signup.reconnectRequested) {
 		bool has = false;

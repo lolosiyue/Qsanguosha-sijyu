@@ -24,6 +24,8 @@ export function connectForm(bind: UiBind): HTMLElement {
     el("label", {}, ["重連 ", reconnect]),
     submit
   );
+  if (session.phase === "connecting")
+    form.append(el("p", { class: "status" }, ["正在載入並核對規則版本…"]));
   if (session.error)
     form.append(el("p", { class: "error" }, [session.error]));
   form.addEventListener("submit", (event) => {

@@ -1,5 +1,7 @@
+import { RULES_BRIDGE_SCHEMA, isRulesIdentity, rulesErrorMessage } from "./rules-identity";
 import { cardRecord, installRulesCardCatalog } from "./i18n";
 import { Command, asString, isObject, type JsonObject } from "./protocol";
+import { INTERACTION_COMMANDS } from "./replies";
 import type { LiveSession } from "./session";
 
 export interface RulesSelection {
@@ -56,6 +58,20 @@ export class RulesController {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private session: LiveSession | null = null;
   private disposed = false;
+  private identity: JsonObject | null = null;
+  private identityWait: { resolve(value: JsonObject): void; reject(error: Error): void } | null = null;
+
+  initialize(session: LiveSession): Promise<JsonObject> {
+    this.releaseWorker();
+    this.session = session;
+    this.generation = session.generation;
+    this.error = "";
+    if (this.disposed) return Promise.reject(new Error("rules_reload_required"));
+    return new Promise((resolve, reject) => {
+      this.identityWait = { resolve, reject };
+      this.startWorker();
+    });
+  }
 
   constructor(private readonly onChange: () => void) {}
 
@@ -164,7 +180,7 @@ export class RulesController {
     if (message.type === "error")
       throw new Error(asString(message.error) || "WASM 規則執行失敗");
     if (message.type === "ready") {
-      if (this.ready || !isObject(message.info) || message.info.schema_version !== 1
+      if (this.ready || !isObject(message.info) || message.info.schema_version !== RULES_BRIDGE_SCHEMA
           || !Number.isSafeInteger(message.info.card_count) || !Array.isArray(message.info.registry))
         throw new Error("WASM 卡牌目錄格式錯誤");
       const count = message.info.card_count as number;
@@ -185,11 +201,19 @@ export class RulesController {
           throw new Error("cards.json 與 WASM 規則套件不符；請部署同版本資源");
         records.push(entry);
       }
+      if (!isRulesIdentity(message.info.rules_bundle)) throw new Error("rules_identity_invalid");
+      this.identity = message.info.rules_bundle;
+      const supported = new Set<number>(INTERACTION_COMMANDS);
+      if (Object.keys(this.identity.interaction_schemas as JsonObject).some(command => !supported.has(Number(command))))
+        throw new Error("rules_interaction_unsupported");
       installRulesCardCatalog(records);
       this.registryCount = count;
       this.ready = true;
       this.clearTimeout();
       this.status = "ready";
+      const waiting = this.identityWait;
+      this.identityWait = null;
+      waiting?.resolve(this.identity);
       this.sendLatest();
       this.onChange();
       return;
@@ -257,14 +281,19 @@ export class RulesController {
   }
 
   private fail(message: string, notify = true): void {
+    this.identityWait?.reject(new Error(message));
+    this.identityWait = null;
     this.releaseWorker();
     this.status = "failed";
-    this.error = message;
+    this.error = rulesErrorMessage(message);
     if (notify)
       this.onChange();
   }
 
   private releaseWorker(): void {
+    this.identityWait?.reject(new Error("rules_reload_required"));
+    this.identityWait = null;
+    this.identity = null;
     this.clearTimeout();
     const old = this.worker;
     this.worker = null;

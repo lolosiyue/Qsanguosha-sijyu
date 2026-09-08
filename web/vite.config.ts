@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -7,6 +8,11 @@ import { defineConfig, type Plugin } from "vite";
 const root = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(root, "..");
 const imageRoot = path.resolve(repoRoot, "image");
+// Bind this Web loader to the deployment emitted by the native/WASM build.
+// An unprovisioned frontend can build, but cannot enable native rules at runtime.
+const bundlePath = path.resolve(root, "public/rules/qsanguosha_client_wasm.bundle.json");
+const deploymentId = fs.existsSync(bundlePath)
+  ? createHash("sha256").update(fs.readFileSync(bundlePath)).digest("hex") : "";
 
 const MIME: Record<string, string> = {
   ".png": "image/png",
@@ -125,6 +131,7 @@ function localImagePlugin(): Plugin {
 }
 
 export default defineConfig({
+  define: { __QSAN_RULES_DEPLOYMENT_ID__: JSON.stringify(deploymentId) },
   appType: "spa",
   server: {
     host: true,

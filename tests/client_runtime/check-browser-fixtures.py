@@ -38,8 +38,9 @@ def parity_tools():
 
 class ProbeServer:
     """Serve an exact file allowlist on loopback, with a fresh unguessable run path."""
-    def __init__(self, routes: dict[str, Any]):
+    def __init__(self, routes: dict[str, Any], root_routes: dict[str, Any] | None = None):
         self.routes = routes
+        self.root_routes = root_routes or {}
         self.prefix = '/' + secrets.token_hex(24)
         self.done = threading.Event()
         self.stopping = threading.Event()
@@ -66,7 +67,7 @@ class ProbeServer:
                 with probe.lock:
                     probe.requests.append(self.path)
                 key = self.path[len(probe.prefix):] if self.path.startswith(probe.prefix + '/') else ''
-                item = probe.routes.get(key)
+                item = probe.routes.get(key) if key else probe.root_routes.get(self.path)
                 if item is STALLED:
                     probe.stopping.wait(30)
                     self.reply(503)
@@ -129,9 +130,9 @@ class ProbeServer:
 
 
 def browser_report(browser: Path, routes: dict[str, Any], artifacts: Path,
-                   timeout: int, browser_args: list[str]) -> dict[str, Any]:
+                   timeout: int, browser_args: list[str], root_routes: dict[str, Any] | None = None) -> dict[str, Any]:
     artifacts.mkdir(parents=True, exist_ok=True)
-    with ProbeServer(routes) as server, tempfile.TemporaryDirectory(prefix='browser-', dir=artifacts) as profile:
+    with ProbeServer(routes, root_routes) as server, tempfile.TemporaryDirectory(prefix='browser-', dir=artifacts) as profile:
         command = [str(browser), '--headless=new', '--disable-gpu', '--no-first-run',
                    '--no-default-browser-check', '--disable-background-networking', '--disable-extensions',
                    '--disable-dev-shm-usage', '--enable-logging=stderr', '--user-data-dir=' + profile, *browser_args,
