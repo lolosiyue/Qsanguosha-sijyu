@@ -191,7 +191,11 @@ jobs:
           runtime="$GITHUB_WORKSPACE/build/rules-wasm/web-wasm/RelWithDebInfo"
           python3 tools/package-web-runtime.py --module "$runtime/qsanguosha_client_wasm.mjs" --destination web/public/rules
           node web/scripts/build-rules-probe.mjs build/rules-browser-probe
+          # Keep external server AI out of the source/WASM bootstrap tree.
+          mkdir -p build/rules-server-ai
+          bash tools/ci/fetch-extensions.sh "$GITHUB_WORKSPACE/build/rules-server-ai"
           python3 tests/client_runtime/check-rules-bundle.py \
+            --server-ai-root "$GITHUB_WORKSPACE/build/rules-server-ai" \
             --native-runner "$GITHUB_WORKSPACE/build/rules-native/qsanguosha_rules_fixture_runner" \
             --server "$GITHUB_WORKSPACE/build/rules-native/qsanguosha_server" \
             --browser "$browser" --probe "$GITHUB_WORKSPACE/build/rules-browser-probe" \

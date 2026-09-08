@@ -35,8 +35,9 @@ QJsonObject builtinLuaSnapshot()
                 return {};
         }
     }
-    // Extra executable content is not silently assigned the builtin profile,
-    // even when its package is banned or DisableLua is set.
+    // AI policy is server-owned, not part of the client rules closure. Keep
+    // the exception path-specific; arbitrary Lua libraries/extensions remain
+    // unsupported, and even server-only content must not use symlinks.
     for (const char *root : {"lua", "extensions", "lang"}) {
         if (QFileInfo(QLatin1String(root)).isSymLink()) return {};
         QDirIterator it(QLatin1String(root), QDir::Files | QDir::Dirs | QDir::Hidden | QDir::NoDotAndDotDot,
@@ -45,8 +46,10 @@ QJsonObject builtinLuaSnapshot()
             const QString path = QDir::cleanPath(it.next());
             if (it.fileInfo().isSymLink())
                 return {};
+            const bool serverOnlyAi = path.startsWith(QLatin1String("lua/ai/"))
+                || path == QLatin1String("lua/lib/middleclass.lua");
             if (it.fileInfo().isFile() && path.endsWith(QLatin1String(".lua"), Qt::CaseInsensitive)
-                && !files.contains(path))
+                && !files.contains(path) && !serverOnlyAi)
                 return {};
         }
     }

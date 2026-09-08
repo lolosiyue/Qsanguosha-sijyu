@@ -9,6 +9,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import socket
 import subprocess
 import tempfile
@@ -37,16 +38,62 @@ def read_frame(stream):
         raise AssertionError("missing or oversized protocol frame")
     return json.loads(line)
 
-def export_native(args, assets, scratch, env, tag):
+def export_native(args, assets, scratch, env, tag, unsupported=False):
     output = args.artifacts / (tag + ".json")
     result = subprocess.run([str(args.native_runner), "--export-rules-bundle", "--output", str(output),
                              "--asset-root", str(assets)], env=env, cwd=scratch,
                             capture_output=True, timeout=60, check=False)
     (args.artifacts / (tag + ".stdout.log")).write_bytes(result.stdout)
     (args.artifacts / (tag + ".stderr.log")).write_bytes(result.stderr)
+    if unsupported:
+        if (result.returncode != 4 or output.exists()
+                or b"rules_content_unsupported" not in result.stderr):
+            raise AssertionError("extra rules Lua was not rejected: " + tag)
+        return None
     if result.returncode or not output.is_file():
         raise AssertionError("native rules export failed: " + tag)
     return json.loads(output.read_bytes())
+
+
+def stage_server_ai(source, destination):
+    """Deploy server policy separately; never add it to the WASM asset closure."""
+    ai = source / "lua/ai"
+    paths = [(path, Path("lua/ai") / path.relative_to(ai), source)
+             for directory in (ai, ai / "isolated") for path in sorted(directory.glob("*.lua"))]
+    if not (ai / "smart-ai.lua").is_file():
+        raise AssertionError("server AI source is missing lua/ai/smart-ai.lua")
+    paths.append((ROOT / "lua/lib/middleclass.lua", Path("lua/lib/middleclass.lua"), ROOT))
+    for path, relative, base in paths:
+        # Check ancestors too: copying must not hide a symlink from the exporter.
+        if any(parent.is_symlink() for parent in (path, *path.parents)
+               if parent == base or base in parent.parents):
+            raise AssertionError("symlinked server AI source")
+        target = destination / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, target)
+
+
+def check_server_ai_identity(args, assets, scratch, env, baseline):
+    stage_server_ai(args.server_ai_root, assets)
+    if export_native(args, assets, scratch, env, "native-server-ai") != baseline:
+        raise AssertionError("server-only AI changed client rules identity")
+    for index, relative in enumerate(("lua/ai/smart-ai.lua", "lua/lib/middleclass.lua")):
+        path = assets / relative
+        original = path.read_bytes()
+        try:
+            path.write_bytes(original + b"\n-- server-only policy revision\n")
+            if export_native(args, assets, scratch, env, f"native-ai-revision-{index}") != baseline:
+                raise AssertionError("server-only AI revision changed client rules identity")
+        finally:
+            path.write_bytes(original)
+    # A similar name outside the dedicated AI directory must not bypass rules checks.
+    for index, relative in enumerate(("lua/ai-extra.lua", "lua/lib/middleclass-extra.lua")):
+        path = assets / relative
+        try:
+            path.write_text("-- unsupported rules content\n", encoding="utf-8")
+            export_native(args, assets, scratch, env, f"native-extra-lua-{index}", unsupported=True)
+        finally:
+            path.unlink()
 
 
 def negative_exports(args, assets, scratch, env, baseline):
@@ -89,6 +136,7 @@ def check(args):
                     "APPDATA": str(scratch / "appdata"), "LOCALAPPDATA": str(scratch / "localappdata")})
         identity = export_native(args, assets, scratch, env, "native-rules")
         variants = negative_exports(args, assets, scratch, env, identity)
+        check_server_ai_identity(args, assets, scratch, env, identity)
         tcp, ws = free_port(), free_port()
         while ws == tcp:
             ws = free_port()
@@ -153,6 +201,7 @@ def check(args):
                     raise AssertionError("stale production Web loader was not rejected: " + str(stale))
                 report["checks"].append(label)
                 report["legacy_tcp_accepted"] = True
+                report["server_ai_excluded_from_identity"] = True
                 (args.artifacts / "rules-bundle-summary.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
             finally:
                 if server.poll() is None:
@@ -165,6 +214,24 @@ def check(args):
     print("PASS: native/WASM identity, live admission and legacy TCP")
 
 class PackagingTests(unittest.TestCase):
+    def test_server_ai_staging_excludes_other_runtime_content(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, destination = root / "source", root / "server"
+            for relative in ("lua/ai/smart-ai.lua", "lua/ai/isolated/ask-for-use-card.lua",
+                             "lua/ai/logs/runtime.lua", "lua/ai/.git/private.lua",
+                             "lua/luaoldenemy_lib.lua", "extensions/random.lua"):
+                path = source / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("-- fixture\n", encoding="utf-8")
+            stage_server_ai(source, destination)
+            self.assertEqual({p.relative_to(destination).as_posix() for p in destination.rglob("*")
+                              if p.is_file()}, {"lua/ai/smart-ai.lua", "lua/ai/isolated/ask-for-use-card.lua",
+                                                "lua/lib/middleclass.lua"})
+            self.assertTrue((source / "extensions/random.lua").is_file())
+            with self.assertRaisesRegex(AssertionError, "missing lua/ai/smart-ai.lua"):
+                stage_server_ai(root / "missing", root / "incomplete")
+
     def test_build_manifest_detects_every_artifact_change(self):
         packaging = module("packaging", ROOT / "tools/package-web-runtime.py")
         with tempfile.TemporaryDirectory() as root:
@@ -185,8 +252,14 @@ class PackagingTests(unittest.TestCase):
         browser = module("browser", ROOT / "tests/client_runtime/check-browser-fixtures.py")
         import urllib.request
         import urllib.error
-        with browser.ProbeServer({}, {"/rules/allowed.mjs": b"verified"}) as server:
-            self.assertEqual(urllib.request.urlopen(server.origin + "/rules/allowed.mjs").read(), b"verified")
+        with browser.ProbeServer({"/browser/assets/probe.js": b"probe"},
+                                 {"/rules/allowed.mjs": b"verified"}) as server:
+            with urllib.request.urlopen(server.origin + "/rules/allowed.mjs") as response:
+                self.assertEqual(response.read(), b"verified")
+                self.assertEqual(response.headers.get_content_type(), "text/javascript")
+            with urllib.request.urlopen(server.url + "/browser/assets/probe.js") as response:
+                self.assertEqual(response.read(), b"probe")
+                self.assertEqual(response.headers.get_content_type(), "text/javascript")
             with self.assertRaises(urllib.error.HTTPError):
                 urllib.request.urlopen(server.origin + "/rules/unknown.mjs")
 
@@ -196,6 +269,8 @@ if __name__ == "__main__":
         unittest.main(argv=[sys.argv[0]])
     else:
         parser = argparse.ArgumentParser(description=__doc__)
+        parser.add_argument("--server-ai-root", type=lambda value: Path(value).resolve(), default=ROOT,
+                            help="server-only deployment source containing lua/ai (default: repository)")
         for option in ("native-runner", "server", "browser", "probe", "runtime", "artifacts"):
             parser.add_argument("--" + option, type=lambda value: Path(value).resolve(), required=True)
         check(parser.parse_args())

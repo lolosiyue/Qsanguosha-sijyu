@@ -61,11 +61,26 @@ including a C++ skill change that leaves all card/skill names intact.
 line-ending differences into byte hashes.
 
 Use an isolated deployment asset root containing that closure. Extra Lua in
-`lua`, `extensions` or `lang`, symlinked content, custom scenario files in asset
+`lua`, `extensions` or `lang` (except the server-only AI paths below), symlinked content, custom scenario files in asset
 or user-data `etc`, and Lua search/init environment overrides are unsupported in
 W2. A normal expanded desktop data tree may therefore continue serving legacy TCP
 while rejecting Web with `rules_content_unsupported`. W2 does not enable extension
 support or dynamically download server-provided modules.
+
+AI is server-owned policy. Files under `lua/ai/` and the exact AI dependency
+`lua/lib/middleclass.lua` are permitted in the server deployment, but excluded
+from `lua_hash` and the WASM asset manifest. A server AI revision therefore does
+not require a new Web download. The five shared rules files remain byte-matched;
+the exception does not cover sibling paths such as `lua/ai-extra.lua`, other
+libraries, extensions, translations or scenarios. Symlinks remain rejected,
+including inside the AI directory.
+
+This classification is a deployment contract, not a Lua sandbox: the server
+operator must use these paths for AI policy, not register additional game rules
+through them. Identity proves shared client-rule compatibility, not identical AI
+decisions. The existing Room startup still loads SmartAI even with `--ai off`,
+so a server deployment must provision the AI scripts and middleclass separately.
+The Web runtime continues to ship only the five shared rules files.
 
 Replacing content on disk does not relabel an already loaded Engine: its captured
 snapshot must still match when identity is requested. Deploy a new complete bundle
@@ -120,7 +135,34 @@ Fixture parity remains a separate gate. No local CTest or long gameplay gate is
 required by this implementation; local focused checks do not establish real WASM,
 browser or full repository CI acceptance.
 
-### Local implementation evidence (2026-09-08)
+The admission harness accepts `--server-ai-root` (default: repository root),
+copies its `lua/ai/*.lua` and `lua/ai/isolated/*.lua` into its private server
+deployment, and adds the repository's `lua/lib/middleclass.lua`. It does not copy
+extensions, other libraries or AI runtime data. CI fetches the external runtime
+into a separate build directory for this purpose. Native exports must be equal
+before/after AI deployment and AI byte changes, while similarly named extra Lua
+files must still fail export. These assertions precede the real server/Web gate.
+
+### Server-only AI local acceptance (2026-09-08)
+
+Validated the uncommitted server-only AI change on `debug` base `52d73b9` using
+Qt 6.11.1 / Emscripten 4.0.7 and real Windows Chrome:
+
+| Layer | Result |
+|---|---|
+| Targeted rebuild | Native server, native exporter and production WASM linked |
+| Server-only content | AI deployment and changes to SmartAI/middleclass preserve identity; similarly named extra Lua rejects |
+| Harness checks | W2 3 and shared HTTP/browser 6 passed; Vite `.js` MIME handling corrected |
+| Actual browser admission | Native/WASM identities equal, Web signup active, legacy TCP accepted |
+| Rejection paths | Eight invalid signup cases including reconnect, plus stale paired WASM rejected by old Web loader |
+| Web artifacts | TypeScript and direct Vite build passed; build/public/dist runtime hashes matched |
+
+No full gameplay or remote CI was run. The aggregate npm build stopped at its
+existing stale translation artifact check; direct Vite output does not establish
+that aggregate gate. Server startup also logged an external `inovation-ai.lua`
+missing-field warning, so this admission result is not full AI gameplay acceptance.
+
+### Original local implementation evidence (2026-09-08)
 
 Checked in the W2 working tree based on PR31 `311a494`; these results are not
 remote CI or production browser acceptance.
