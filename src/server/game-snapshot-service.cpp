@@ -7,6 +7,8 @@
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
+#include <QMutexLocker>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -62,6 +64,8 @@ void GameSnapshotService::saveSnapshot(const QString &type, const QString &playe
     // GameSnapshot owns the atomic QSaveFile write. A failed node is omitted
     // and never affects the running game.
     if (snapshot->save(filepath)) {
+        // Snapshot construction and Lua export above remain outside this lock.
+        QMutexLocker lock(&m_snapshotMutex);
         m_snapshots.append(snapshot);
     } else {
         qWarning() << "GameSnapshotService: failed to save eligible turn snapshot"
@@ -72,6 +76,7 @@ void GameSnapshotService::saveSnapshot(const QString &type, const QString &playe
 
 GameSnapshot *GameSnapshotService::getSnapshot(int turnCount) const
 {
+    QMutexLocker lock(&m_snapshotMutex);
     foreach (GameSnapshot *snapshot, m_snapshots) {
         if (snapshot->getTurnCount() == turnCount)
             return snapshot;
@@ -81,6 +86,7 @@ GameSnapshot *GameSnapshotService::getSnapshot(int turnCount) const
 
 GameSnapshot *GameSnapshotService::getSnapshotBySerial(quint64 turnSerial) const
 {
+    QMutexLocker lock(&m_snapshotMutex);
     foreach (GameSnapshot *snapshot, m_snapshots) {
         if (snapshot->getTurnSerial() == turnSerial)
             return snapshot;
@@ -122,6 +128,9 @@ QString GameSnapshotService::getSessionId() const
 
 bool GameSnapshotService::finalizeManifest(const QString &replayPath, QString *error) const
 {
+    // The helper's control thread may export while RoomThread publishes a turn.
+    // Entries are immutable after publication; no Room/Lua callbacks occur here.
+    QMutexLocker lock(&m_snapshotMutex);
     auto fail = [error](const QString &message) {
         if (error)
             *error = message;
@@ -142,6 +151,8 @@ bool GameSnapshotService::finalizeManifest(const QString &replayPath, QString *e
 
     const QString sourceSnapshotDir = getSnapshotDir();
     const QString manifestDir = GameSnapshot::getSnapshotDir(replayPath);
+    if (QFileInfo(manifestDir).isSymLink())
+        return fail(QStringLiteral("invalid snapshot output directory"));
     QDir dir;
     if (!dir.exists(manifestDir) && !dir.mkpath(manifestDir))
         return fail(QStringLiteral("cannot create snapshot directory: %1").arg(manifestDir));
@@ -154,6 +165,8 @@ bool GameSnapshotService::finalizeManifest(const QString &replayPath, QString *e
             static_cast<int>(snapshot->getTurnSerial()), QStringLiteral("turn"));
         const QString sourcePath = sourceSnapshotDir + QStringLiteral("/") + fileName;
         const QString targetPath = manifestDir + QStringLiteral("/") + fileName;
+        if (QFileInfo(targetPath).isSymLink())
+            return fail(QStringLiteral("invalid snapshot output file"));
         QFile snapshotFile(sourcePath);
         if (!snapshotFile.open(QIODevice::ReadOnly))
             return fail(QStringLiteral("cannot open snapshot: %1").arg(sourcePath));
@@ -202,11 +215,68 @@ bool GameSnapshotService::finalizeManifest(const QString &replayPath, QString *e
     manifest.insert(QStringLiteral("snapshots"), entries);
 
     const QString path = manifestDir + QStringLiteral("/manifest.json");
+    if (QFileInfo(path).isSymLink())
+        return fail(QStringLiteral("invalid snapshot manifest output"));
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly))
         return fail(QStringLiteral("cannot write manifest: %1").arg(path));
     const QByteArray payload = QJsonDocument(manifest).toJson(QJsonDocument::Indented);
     if (file.write(payload) != payload.size() || !file.commit())
         return fail(QStringLiteral("cannot commit manifest: %1").arg(path));
+    return true;
+}
+
+bool GameSnapshotService::copyFinalizedManifest(const QString &sourceManifestPath,
+                                               const QString &replayPath, QString *error)
+{
+    const auto fail = [error](const QString &message) {
+        if (error) *error = message;
+        return false;
+    };
+    QFile source(sourceManifestPath), replay(replayPath);
+    if (!source.open(QIODevice::ReadOnly) || !replay.open(QIODevice::ReadOnly))
+        return fail(QStringLiteral("cannot open finalized snapshots or replay"));
+    QJsonParseError parseError;
+    QJsonDocument document = QJsonDocument::fromJson(source.readAll(), &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject())
+        return fail(QStringLiteral("invalid finalized snapshot manifest"));
+    QJsonObject manifest = document.object();
+    if (manifest.value(QStringLiteral("schema")).toString() != QStringLiteral("qsanguosha-takeover-manifest-v1")
+        || manifest.value(QStringLiteral("sessionId")).toString().isEmpty()
+        || !manifest.value(QStringLiteral("snapshots")).isArray())
+        return fail(QStringLiteral("incomplete finalized snapshot manifest"));
+    const QString targetDir = GameSnapshot::getSnapshotDir(replayPath);
+    if (QFileInfo(targetDir).isSymLink() || !QDir().mkpath(targetDir))
+        return fail(QStringLiteral("invalid snapshot output directory"));
+    const QDir sourceDir = QFileInfo(sourceManifestPath).absoluteDir();
+    for (const QJsonValue &value : manifest.value(QStringLiteral("snapshots")).toArray()) {
+        const QJsonObject entry = value.toObject();
+        const QString name = entry.value(QStringLiteral("file")).toString();
+        if (name.isEmpty() || QFileInfo(name).fileName() != name || name.contains(QLatin1Char(':'))
+            || name.contains(QLatin1Char('\\')) || !name.endsWith(QStringLiteral(".json")))
+            return fail(QStringLiteral("invalid finalized snapshot filename"));
+        QFile input(sourceDir.filePath(name));
+        if (!input.open(QIODevice::ReadOnly))
+            return fail(QStringLiteral("cannot read finalized snapshot"));
+        const QByteArray bytes = input.readAll();
+        if (QString::fromLatin1(QCryptographicHash::hash(bytes, QCryptographicHash::Sha256).toHex())
+            != entry.value(QStringLiteral("sha256")).toString())
+            return fail(QStringLiteral("finalized snapshot hash mismatch"));
+        const QString targetPath = QDir(targetDir).filePath(name);
+        if (QFileInfo(targetPath).isSymLink())
+            return fail(QStringLiteral("invalid snapshot output file"));
+        QSaveFile output(targetPath);
+        if (!output.open(QIODevice::WriteOnly) || output.write(bytes) != bytes.size() || !output.commit())
+            return fail(QStringLiteral("cannot copy finalized snapshot"));
+    }
+    manifest.insert(QStringLiteral("replaySha256"), QString::fromLatin1(
+        QCryptographicHash::hash(replay.readAll(), QCryptographicHash::Sha256).toHex()));
+    const QString targetManifest = QDir(targetDir).filePath(QStringLiteral("manifest.json"));
+    if (QFileInfo(targetManifest).isSymLink())
+        return fail(QStringLiteral("invalid snapshot manifest output"));
+    QSaveFile output(targetManifest);
+    const QByteArray bytes = QJsonDocument(manifest).toJson(QJsonDocument::Indented);
+    if (!output.open(QIODevice::WriteOnly) || output.write(bytes) != bytes.size() || !output.commit())
+        return fail(QStringLiteral("cannot write copied snapshot manifest"));
     return true;
 }

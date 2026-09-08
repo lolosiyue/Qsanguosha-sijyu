@@ -1,3 +1,4 @@
+# Canonical XP build/deploy entry point; the CMake XP presets are implementation details.
 [CmdletBinding()]
 param(
     [ValidateSet("Debug", "Release")]
@@ -140,6 +141,7 @@ try {
     $outputDir = if ($Configuration -eq "Debug") { "xp-debug" } else { "xp-release" }
     $peCheckArguments = @{
         Executable = Join-Path $repoRoot "$outputDir\QSanguoshaXP.exe"
+        ServerExecutable = Join-Path $repoRoot "$outputDir\QSanguoshaXPServer.exe"
         QtRoot = $QtRoot
         Configuration = $Configuration
     }
@@ -151,6 +153,7 @@ try {
             [IO.Path]::GetFullPath($DeployRoot)
         }
         $peCheckArguments.Executable = Join-Path $portableRoot "QSanguoshaXP.exe"
+        $peCheckArguments.ServerExecutable = Join-Path $portableRoot "QSanguoshaXPServer.exe"
         $peCheckArguments.FmodRuntime = Join-Path $portableRoot $fmodName
         $peCheckArguments.DeploymentRoot = $portableRoot
     }

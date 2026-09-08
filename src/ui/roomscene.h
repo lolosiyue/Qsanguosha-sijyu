@@ -51,6 +51,9 @@ class GiftItem;
 class SpineGlItem;
 class PlayerCardBox;
 class QPushButton;
+#ifdef QSAN_XP_LEGACY
+class LocalServerController;
+#endif
 
 #if !defined(Q_OS_WINRT) && QSAN_ENABLE_QML
 #include <QQmlEngine>
@@ -532,6 +535,12 @@ private:
     QString _m_bgMusicPath;
 
     void recorderAutoSave();
+#ifdef QSAN_XP_LEGACY
+    LocalServerController *localReplayController() const;
+    void finalizeLocalReplay(const QString &filename, bool reportFailure);
+    QString m_xpReplayGeneration;
+    QHash<QString, bool> m_xpReplayExports;
+#endif
     bool shouldUseDashboardDialogPresenter(QDialog *dialog) const;
     void wireSkillDialog(QSanSkillButton *button, QDialog *dialog);
     void presentSkillDialog(QSanSkillButton *button, QDialog *dialog);

@@ -11,7 +11,47 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+foreach ($required in @('QSanguoshaXP.exe', 'QSanguoshaXPServer.exe', 'xp-payload-manifest.json')) {
+    if (!(Test-Path -LiteralPath (Join-Path $SourceDirectory $required) -PathType Leaf)) {
+        throw "Incomplete XP portable pair: $required"
+    }
+}
 $source = (Resolve-Path -LiteralPath $SourceDirectory).Path
+function Assert-PayloadManifest([string]$Root) {
+    $manifest = Get-Content -LiteralPath (Join-Path $Root 'xp-payload-manifest.json') -Raw | ConvertFrom-Json
+    $executables = @($manifest.executables)
+    $runtimeFiles = @($manifest.runtimeFiles)
+    if ($manifest.schema -ne 1 -or
+        [string]::IsNullOrWhiteSpace($manifest.buildIdentity) -or
+        $executables.Count -ne 2 -or
+        $runtimeFiles.Count -eq 0) {
+        throw "Invalid XP payload manifest: $Root"
+    }
+    $names = @('QSanguoshaXP.exe', 'QSanguoshaXPServer.exe')
+    for ($index = 0; $index -lt 2; $index++) {
+        $path = Join-Path $Root $names[$index]
+        $entry = $executables[$index]
+        $file = Get-Item -LiteralPath $path
+        $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($entry.path -cne $names[$index] -or
+            $entry.bytes -ne $file.Length -or
+            $entry.sha256 -cne $hash) {
+            throw "XP executable pair hash mismatch: $Root / $($names[$index])"
+        }
+    }
+    foreach ($entry in $runtimeFiles) {
+        $path = [IO.Path]::GetFullPath((Join-Path $Root $entry.path))
+        if (!$path.StartsWith($Root + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Manifest path escapes its payload root'
+        }
+        $file = Get-Item -LiteralPath $path
+        $hash = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($file.Length -ne $entry.bytes -or $hash -cne $entry.sha256) {
+            throw "XP runtime hash mismatch: $($entry.path)"
+        }
+    }
+}
+Assert-PayloadManifest $source
 $destination = [IO.Path]::GetFullPath($IsoPath)
 $temporary = "$destination.partial"
 $stage = "$destination.stage"
@@ -34,6 +74,11 @@ if ($ReuseStage) {
     }
     if (!(Test-Path -LiteralPath (Join-Path $stage "PAYLOAD\XP-PAYLOAD.OK") -PathType Leaf)) {
         throw "Reusable ISO stage is incomplete: $stage"
+    }
+    Assert-PayloadManifest (Join-Path $stage 'PAYLOAD')
+    if ((Get-FileHash -LiteralPath (Join-Path $source 'xp-payload-manifest.json')).Hash -ne
+        (Get-FileHash -LiteralPath (Join-Path $stage 'PAYLOAD/xp-payload-manifest.json')).Hash) {
+        throw 'Reusable ISO stage belongs to a different runtime manifest; rebuild the stage.'
     }
 } elseif (Test-Path -LiteralPath $stage) {
     if (!$Force) {
@@ -76,8 +121,11 @@ $image = New-Object -ComObject IMAPI2FS.MsftFileSystemImage
 $image.ChooseImageDefaultsForMediaType(12)
 $image.FileSystemsToCreate = 3
 $image.VolumeName = $VolumeLabel
+Write-Output "XP_ISO_TREE_START=$([DateTime]::UtcNow.ToString('o'))"
 $image.Root.AddTree($stage, $false)
+Write-Output "XP_ISO_TREE_READY=$([DateTime]::UtcNow.ToString('o'))"
 $result = $image.CreateResultImage()
+Write-Output "XP_ISO_IMAGE_READY=$([DateTime]::UtcNow.ToString('o'))"
 if (!("QSanComStreamCopy" -as [type])) {
     Add-Type -Path (Join-Path $PSScriptRoot "ComStreamCopy.cs")
 }

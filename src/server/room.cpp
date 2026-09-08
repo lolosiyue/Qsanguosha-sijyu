@@ -5930,7 +5930,11 @@ void Room::initializeReplayRecordPath()
 	const QString recordDir = QSanRuntimePaths::recordDir();
 
 	const QString replayPath = recordDir + QStringLiteral("/")
+#ifdef QSAN_XP_LEGACY
+		+ QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss-zzz"))
+#else
 		+ QDateTime::currentDateTime().toString(QStringLiteral("yyyy年MM月dd日HH时mm分ss秒"))
+#endif
 		+ QStringLiteral(".txt");
 	setReplayPath(replayPath);
 }

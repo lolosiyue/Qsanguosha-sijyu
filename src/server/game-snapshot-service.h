@@ -2,6 +2,7 @@
 #define GAME_SNAPSHOT_SERVICE_H
 
 #include <QList>
+#include <QMutex>
 #include <QString>
 #include <QtGlobal>
 
@@ -28,9 +29,13 @@ public:
     // Called after Recorder has atomically written the replay.  The manifest
     // binds that replay and every eligible snapshot by SHA-256.
     bool finalizeManifest(const QString &replayPath, QString *error = nullptr) const;
+    // Export a completed room's immutable snapshot set after its Room is gone.
+    static bool copyFinalizedManifest(const QString &sourceManifestPath,
+                                     const QString &replayPath, QString *error = nullptr);
 
 private:
     Room &m_room;
+    mutable QMutex m_snapshotMutex;
     QList<GameSnapshot *> m_snapshots;
     QString m_replayPath;
     QString m_sessionId;

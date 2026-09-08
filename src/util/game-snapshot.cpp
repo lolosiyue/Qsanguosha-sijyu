@@ -191,7 +191,7 @@ QVariant normalizePlayerRefs(const QVariant &value)
     }
     if (!value.isValid() || value.isNull())
         return value;
-    if (!value.metaType().flags().testFlag(QMetaType::PointerToQObject))
+    if (!QMetaType::typeFlags(value.userType()).testFlag(QMetaType::PointerToQObject))
         return value;
     const Player *player = qobject_cast<const Player *>(value.value<QObject *>());
     if (!player)

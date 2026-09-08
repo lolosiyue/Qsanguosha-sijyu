@@ -2,6 +2,9 @@
 #include "lua.hpp"
 #include "card.h"
 #include "game-rng.h"
+#ifdef QSAN_XP_LEGACY
+#include "legacy/xp/src/xp-lua-paths.h"
+#endif
 
 #include <QCoreApplication>
 #include <QDebug>
@@ -184,7 +187,11 @@ void installGameRandom(lua_State *L)
 
 bool installLua52Compatibility(lua_State *L)
 {
-    if (luaL_dostring(L, kLua52Compatibility) == LUA_OK)
+    if (luaL_dostring(L, kLua52Compatibility) == LUA_OK
+#ifdef QSAN_XP_LEGACY
+        && XpLuaPaths::install(L)
+#endif
+    )
         return true;
 
     const char *error = lua_tostring(L, -1);

@@ -24,8 +24,12 @@
 #include "room.h"
 //#include "serverplayer.h"
 #include "settings.h"
+#ifdef QSAN_XP_LEGACY
+#include "local-server-controller.h"
+#include <QJsonArray>
+#endif
 
-BanIpDialog::BanIpDialog(QWidget *parent, Server *server)
+BanIpDialog::BanIpDialog(QWidget *parent, Server *server, bool quiet)
     : QDialog(parent), server(server)
 {
     /*
@@ -83,7 +87,7 @@ BanIpDialog::BanIpDialog(QWidget *parent, Server *server)
     if (server) {
         connect(server, &Server::newPlayer, this, &BanIpDialog::addPlayer);
         loadIPList();
-    } else
+    } else if (!quiet)
         QMessageBox::warning(this, tr("Warning!"), tr("There is no server running!"));
 
     loadBannedList();
@@ -93,6 +97,22 @@ BanIpDialog::BanIpDialog(QWidget *parent, Server *server)
 
 void BanIpDialog::loadIPList()
 {
+#ifdef QSAN_XP_LEGACY
+    if (controller) {
+        const QString selected = left->currentItem() ? left->currentItem()->data(Qt::UserRole).toString() : QString();
+        left->clear();
+        if (controller->generation() != generation) return;
+        for (const QJsonValue &entry : controller->status().value("players").toArray()) {
+            const QJsonObject player = entry.toObject();
+            if (player.value("state").toString() == "robot" || player.value("state").toString() == "offline") continue;
+            auto item = new QListWidgetItem(player.value("name").toString() + "::" + player.value("ip").toString(), left);
+            item->setData(Qt::UserRole, player.value("id").toString());
+            item->setData(Qt::UserRole + 1, player.value("ip").toString());
+            if (item->data(Qt::UserRole).toString() == selected) left->setCurrentItem(item);
+        }
+        return;
+    }
+#endif
     left->clear();
 
     foreach (Room *room, server->rooms) {
@@ -116,6 +136,9 @@ void BanIpDialog::insertClicked()
     int row = left->currentRow();
     if (row != -1) {
         QString ip = left->currentItem()->text().split("::").last();
+#ifdef QSAN_XP_LEGACY
+        if (controller) ip = left->currentItem()->data(Qt::UserRole + 1).toString();
+#endif
 
         if (ip.startsWith("127.")) {
             QMessageBox::warning(this, tr("Warning!"), tr("This is your local Loopback Address and can't be banned!"));
@@ -135,6 +158,13 @@ void BanIpDialog::removeClicked()
 
 void BanIpDialog::kickClicked()
 {
+#ifdef QSAN_XP_LEGACY
+    if (controller) {
+        if (left->currentItem() && controller->generation() == generation)
+            controller->request("kick", {{"player", left->currentItem()->data(Qt::UserRole).toString()}});
+        return;
+    }
+#endif
     int row = left->currentRow();
     if (row != -1) {
         ServerPlayer *p = sp_list[row];
@@ -154,6 +184,13 @@ void BanIpDialog::save()
         ip_set << right->item(i)->text();
 
     QStringList ips = ip_set.values();
+#ifdef QSAN_XP_LEGACY
+    if (controller) {
+        if (controller->generation() == generation)
+            controller->request("ban_ips", {{"ips", QJsonArray::fromStringList(ips)}});
+        return;
+    }
+#endif
     Config.setValue("BannedIP", ips);
 }
 
@@ -177,4 +214,22 @@ void BanIpDialog::removePlayer()
         }
     }
 }
+
+#ifdef QSAN_XP_LEGACY
+BanIpDialog::BanIpDialog(QWidget *parent, LocalServerController *managed)
+    : BanIpDialog(parent, static_cast<Server *>(nullptr), true)
+{
+    controller = managed;
+    generation = managed->generation();
+    connect(managed, &LocalServerController::statusChanged, this,
+        [this](const QJsonObject &) { loadIPList(); });
+    connect(managed, &LocalServerController::stopped, this, &QDialog::reject);
+    loadIPList();
+    if (!managed->isReady()) {
+        QTimer::singleShot(0, this, &QDialog::reject);
+        return;
+    }
+    managed->request("status");
+}
+#endif
 

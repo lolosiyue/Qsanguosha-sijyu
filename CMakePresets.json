@@ -88,13 +88,13 @@
       "name": "xp-debug",
       "configurePreset": "xp-vs2017-x86",
       "configuration": "Debug",
-      "targets": ["QSanguoshaXP"]
+      "targets": ["QSanguoshaXP", "QSanguoshaXPServer"]
     },
     {
       "name": "xp-release",
       "configurePreset": "xp-vs2017-x86",
       "configuration": "Release",
-      "targets": ["QSanguoshaXP"]
+      "targets": ["QSanguoshaXP", "QSanguoshaXPServer"]
     },
     {
       "name": "xp-deploy-debug",

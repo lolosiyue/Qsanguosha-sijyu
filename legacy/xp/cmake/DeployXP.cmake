@@ -1,6 +1,7 @@
 foreach(required
         QSAN_CONFIG
         QSAN_EXECUTABLE
+        QSAN_SERVER_EXECUTABLE
         QSAN_ASSET_ROOT
         QSAN_QT_ROOT
         QSAN_VC_REDIST_DIR
@@ -9,6 +10,12 @@ foreach(required
         message(FATAL_ERROR "${required} is required")
     endif()
 endforeach()
+
+# Check the pair before mutating an existing deployment. A missing helper must
+# never produce a superficially complete single-executable portable folder.
+if(NOT EXISTS "${QSAN_SERVER_EXECUTABLE}")
+    message(FATAL_ERROR "XP server executable is missing: ${QSAN_SERVER_EXECUTABLE}")
+endif()
 
 if(QSAN_CONFIG STREQUAL "Debug")
     set(qsan_debug_suffix d)
@@ -45,6 +52,17 @@ if(DEFINED QSAN_DEPLOY_ROOT AND NOT "${QSAN_DEPLOY_ROOT}" STREQUAL "")
 else()
     set(qsan_output_dir "${qsan_build_output_dir}")
 endif()
+if(NOT "${qsan_output_dir}/QSanguoshaXPServer.exe" STREQUAL "${QSAN_SERVER_EXECUTABLE}")
+    file(COPY_FILE "${QSAN_SERVER_EXECUTABLE}" "${qsan_output_dir}/QSanguoshaXPServer.exe" ONLY_IF_DIFFERENT)
+endif()
+# An interrupted deployment must not retain a previous completion manifest.
+# Remove obsolete split manifests as well so one file remains authoritative.
+file(REMOVE
+    "${qsan_output_dir}/xp-payload-manifest.json"
+    "${qsan_output_dir}/xp-payload-manifest.json.partial"
+    "${qsan_output_dir}/xp-build-identity.txt"
+    "${qsan_output_dir}/xp-executables.sha256"
+    "${qsan_output_dir}/xp-executables.sha256.partial")
 set(qsan_qt_libraries Core Gui Network Widgets)
 foreach(qsan_qt_library IN LISTS qsan_qt_libraries)
     set(qsan_qt_dll
@@ -156,4 +174,25 @@ foreach(qsan_asset_file qt_zh_CN.qm sanguosha.qm assets-manifest.json)
     endif()
 endforeach()
 
+# Both programs expose a lightweight identity query before Engine/bootstrap.
+# Verify pairing after DLL deployment, then publish the sole completion manifest last.
+foreach(program QSanguoshaXP QSanguoshaXPServer)
+    execute_process(COMMAND "${qsan_output_dir}/${program}.exe" --xp-build-id
+        OUTPUT_VARIABLE ${program}_identity OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE identity_result TIMEOUT 10)
+    if(NOT identity_result EQUAL 0 OR "${${program}_identity}" STREQUAL "")
+        message(FATAL_ERROR "Cannot verify deployed ${program} identity (${identity_result})")
+    endif()
+endforeach()
+if(NOT QSanguoshaXP_identity STREQUAL QSanguoshaXPServer_identity)
+    message(FATAL_ERROR "XP GUI/server build identity mismatch")
+endif()
+execute_process(COMMAND powershell -NoProfile -ExecutionPolicy Bypass
+    -File "${CMAKE_CURRENT_LIST_DIR}/../tools/write-xp-manifest.ps1"
+    -PayloadRoot "${qsan_output_dir}"
+    -BuildIdentity "${QSanguoshaXP_identity}"
+    RESULT_VARIABLE manifest_result)
+if(NOT manifest_result EQUAL 0)
+    message(FATAL_ERROR "XP payload manifest generation failed (${manifest_result})")
+endif()
 message(STATUS "Portable XP ${QSAN_CONFIG} folder: ${qsan_output_dir}")

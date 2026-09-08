@@ -50,6 +50,8 @@ char g_envInfo[8192] = {0};
 // 主线程 ID 与启动时刻 —— 崩溃时用来判断崩在哪个线程、进程已运行多久。
 DWORD g_mainThreadId = 0;
 ULONGLONG g_startTick = 0;
+wchar_t g_dumpDirectory[MAX_PATH] = L"dmp";
+wchar_t g_configPath[MAX_PATH] = L"config.ini";
 
 // GetTickCount64 在部分 SDK 头里要 _WIN32_WINNT>=0x0600 才声明,运行时取地址绕开。
 ULONGLONG tickCount64()
@@ -282,7 +284,13 @@ void buildPrefix(wchar_t *out, size_t cch)
 {
     SYSTEMTIME st;
     GetLocalTime(&st);
-    wsprintfW(out, L"dmp\\crash-%04d%02d%02d-%02d%02d%02d-%S-%S",
+#ifdef QSAN_XP_LEGACY
+    _snwprintf_s(out, cch > 32 ? cch - 32 : cch, _TRUNCATE,
+              L"%s\\crash-%04d%02d%02d-%02d%02d%02d-%S-%S",
+#else
+    wsprintfW(out, L"%s\\crash-%04d%02d%02d-%02d%02d%02d-%S-%S",
+#endif
+              g_dumpDirectory,
               st.wYear, st.wMonth, st.wDay,
               st.wHour, st.wMinute, st.wSecond,
               g_version,         // 游戏版本号,由 setVersion 在 Engine 构造后登记
@@ -484,7 +492,7 @@ void copyConfigIni(const wchar_t *prefix)
 {
     wchar_t dst[MAX_PATH];
     wsprintfW(dst, L"%s-config.ini", prefix);
-    CopyFileW(L"config.ini", dst, FALSE);
+    CopyFileW(g_configPath, dst, FALSE);
 }
 
 // 把崩溃线程当前的 Lua 调用栈(.lua 文件名 + 行号)写进已打开的摘要文件 h。
@@ -557,7 +565,7 @@ void handleCrash(const char *reason, EXCEPTION_POINTERS *pointers)
     if (InterlockedExchange(&g_handling, 1) != 0)
         return;
 
-    CreateDirectoryW(L"dmp", nullptr);
+    CreateDirectoryW(g_dumpDirectory, nullptr);
 
     wchar_t prefix[MAX_PATH];
     buildPrefix(prefix, MAX_PATH);
@@ -596,6 +604,18 @@ namespace CrashHandler {
 
 void install()
 {
+#ifdef QSAN_XP_LEGACY
+    // Cache native paths before a crash: the handler must not allocate through
+    // Qt, and an installation/CD directory is not a writable diagnostics root.
+    wchar_t root[160] = {0};
+    const DWORD length = GetEnvironmentVariableW(L"QSAN_USER_DATA_ROOT", root, 160);
+    if (!length || length >= 160) GetTempPathW(160, root);
+    CreateDirectoryW(root, nullptr);
+    wsprintfW(g_dumpDirectory, L"%s\\dmp", root);
+    const DWORD configLength = GetEnvironmentVariableW(L"QSAN_XP_SETTINGS", g_configPath, MAX_PATH);
+    if (!configLength || configLength >= MAX_PATH)
+        wsprintfW(g_configPath, L"%s\\config.ini", root);
+#endif
     g_mainThreadId = GetCurrentThreadId();
     g_startTick = tickCount64();
     SetUnhandledExceptionFilter(sehFilter);
@@ -684,7 +704,7 @@ void reportHang()
         return;
 
     if (!g_shuttingDown) {
-        CreateDirectoryW(L"dmp", nullptr);
+        CreateDirectoryW(g_dumpDirectory, nullptr);
 
         wchar_t prefix[MAX_PATH];
         buildPrefix(prefix, MAX_PATH);

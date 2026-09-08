@@ -11,13 +11,18 @@ mkdir "%TARGET%" || goto failed
 echo Copying portable files...
 xcopy "%~dp0PAYLOAD\*" "%TARGET%\" /E /I /H /Y /Q > nul || goto failed
 if not exist "%TARGET%\XP-PAYLOAD.OK" goto failed
+if not exist "%TARGET%\QSanguoshaXP.exe" goto failed
+if not exist "%TARGET%\QSanguoshaXPServer.exe" goto failed
+if not exist "%TARGET%\xp-payload-manifest.json" goto failed
 if not exist "%TARGET%\lua\config.lua" goto failed
 if not exist "%TARGET%\platforms\qwindows.dll" goto failed
+"%TARGET%\QSanguoshaXP.exe" --xp-verify-pair || goto failed
 
 :installed
 if /I "%~1"=="/NoLaunch" exit /b 0
 cd /d "%TARGET%"
 start "" "%TARGET%\QSanguoshaXP.exe"
+if /I "%~1"=="/Acceptance" echo launched> "%TARGET%\XP-ACCEPTANCE-LAUNCHED.TXT"
 exit /b 0
 
 :failed
