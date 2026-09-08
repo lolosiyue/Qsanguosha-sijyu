@@ -54,6 +54,10 @@ option(QSAN_BUILD_TUI
     "Build the Protocol V2 terminal client"
     ON
 )
+option(QSAN_BUILD_WASM_WEB_CLIENT
+    "Build the persistent Web Worker client-rules runtime with Emscripten"
+    OFF
+)
 
 # Audio backend。GUI client 用邊個實作由呢個變數單點決定，call site 冇任何
 # 平台 #ifdef：

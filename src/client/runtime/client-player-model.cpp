@@ -108,6 +108,59 @@ int ClientPlayer::getMaxCards() const
     return Player::getMaxCards();
 }
 
+void ClientPlayer::applyVisibleZones(const QVariantMap &data)
+{
+    // removed has a native setter but no Q_PROPERTY in Player.
+    setRemoved(data.value(QStringLiteral("removed")).toBool());
+    piles.clear();
+    const QVariantMap visiblePiles = data.value(QStringLiteral("piles")).toMap();
+    for (auto it = visiblePiles.constBegin(); it != visiblePiles.constEnd(); ++it) {
+        QList<int> ids;
+        // Hidden IDs still contribute to public pile size, as in the desktop
+        // ClientPlayer::syncPileCards(). Candidate enumeration excludes them.
+        for (const QVariant &value : it.value().toList())
+            ids.append(value.toInt());
+        piles.insert(it.key(), ids);
+    }
+    general_piles.clear();
+    const QVariantMap visibleGenerals = data.value(QStringLiteral("general_piles")).toMap();
+    for (auto it = visibleGenerals.constBegin(); it != visibleGenerals.constEnd(); ++it)
+        general_piles.insert(it.key(), it.value().toStringList());
+
+    // These containers are read directly by native card/skill methods, beyond
+    // the scalar Player properties already applied by the shared projection.
+    for (const Card *card : Player::getHandcards())
+        Player::removeCard(card->getId(), Player::PlaceHand);
+    for (const Card *card : getHandcards())
+        drawCard(card);
+    for (const Card *card : getJudgingArea())
+        removeDelayedTrick(card);
+    if (m_state != nullptr && Sanguosha != nullptr) {
+        for (int id : m_state->cardsForPlayer(objectName(), Player::PlaceDelayedTrick)) {
+            if (const Card *card = Sanguosha->getCard(id))
+                addDelayedTrick(card);
+        }
+    }
+    const QVariantMap tags = data.value(QStringLiteral("tags")).toMap();
+    clearTags();
+    for (auto it = tags.constBegin(); it != tags.constEnd(); ++it)
+        setTag(it.key(), it.value());
+    const QVariantMap areas = data.value(QStringLiteral("equip_areas")).toMap();
+    for (auto it = areas.constBegin(); it != areas.constEnd(); ++it) {
+        bool ok = false;
+        const int area = it.key().toInt(&ok);
+        if (ok && area >= 0 && area < 5)
+            setEquipAreaCount(area, qMax(0, it.value().toInt()));
+    }
+    QList<int> shown, broken;
+    for (const QVariant &value : data.value(QStringLiteral("shown_hand_cards")).toList())
+        shown.append(value.toInt());
+    for (const QVariant &value : data.value(QStringLiteral("broken_equipment")).toList())
+        broken.append(value.toInt());
+    setShownHandcards(shown);
+    setBrokenEquips(broken);
+}
+
 ClientPlayerModel::ClientPlayerModel(const ClientGameState *state)
     : m_state(state)
 {

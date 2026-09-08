@@ -5,6 +5,7 @@ import {
   useMode
 } from "./eligibility";
 import { LiveSession, defaultWsUrl, parseRoute } from "./session";
+import { RulesController } from "./rules-client";
 import {
   applySceneBackground,
   defaultTableBgUrl,
@@ -15,7 +16,7 @@ import { connectForm, sharePanel, waitingRoom } from "./ui-connect";
 import { el } from "./ui-dom";
 import { dashboardView, logView, tableView } from "./ui-room";
 import { interactionView } from "./ui-interaction";
-import type { UiBind, UiState } from "./ui-types";
+import type { RulesSelection, UiBind, UiState } from "./ui-types";
 
 const session = new LiveSession();
 const route = parseRoute();
@@ -33,6 +34,7 @@ const ui: UiState = {
   assignments: {},
   qmlText: "{}",
   skillInstance: 0,
+  ruleDeclaration: "",
   logPinned: true,
   hiddenIndex: -1
 };
@@ -41,9 +43,23 @@ function currentCardId(): number {
   return ui.selectedCards.find((id) => id >= 0) ?? -1;
 }
 
+function rulesSelection(): RulesSelection {
+  return {
+    card_ids: [...ui.selectedCards],
+    targets: [...ui.selectedPlayers],
+    skill_name: ui.selectedOption,
+    skill_instance_id: ui.skillInstance,
+    user_string: ui.ruleDeclaration
+  };
+}
+
 function pruneSelection(): void {
   const interaction = session.interaction;
   if (!interaction)
+    return;
+  // Native candidates describe the next step, not the already selected cards.
+  // Keep the ordered draft so an invalidated selection can still be removed.
+  if (rules.supports(interaction.command))
     return;
   const { command, payload } = interaction;
   const skill = ui.selectedOption;
@@ -58,6 +74,12 @@ function isCardClickable(cardId: number): boolean {
   const interaction = session.interaction;
   if (!interaction)
     return false;
+  if (rules.supports(interaction.command)) {
+    if (ui.selectedCards.includes(cardId))
+      return true;
+    const result = rules.current(session, rulesSelection()) ? rules.result : null;
+    return !!result?.known && result.selectable_cards.includes(cardId);
+  }
   return cardSelectable(session.state, interaction.command, interaction.payload, cardId, ui.selectedOption);
 }
 
@@ -65,6 +87,10 @@ function isPlayerClickable(name: string): boolean {
   const interaction = session.interaction;
   if (!interaction)
     return false;
+  if (rules.supports(interaction.command)) {
+    const result = rules.current(session, rulesSelection()) ? rules.result : null;
+    return !!result?.known && result.next_targets.candidates.includes(name);
+  }
   const cardId = currentCardId();
   if (interaction.command === Command.CHOOSE_PLAYER)
     return playerSelectable(session.state, interaction.command, interaction.payload, name, cardId, ui.selectedPlayers, ui.selectedOption);
@@ -80,15 +106,31 @@ function resetSelection(): void {
   ui.selectedPlayers = [];
   ui.selectedOption = "";
   ui.skillInstance = 0;
+  ui.ruleDeclaration = "";
   ui.hiddenIndex = -1;
+  ui.top = [];
+  ui.bottom = [];
+  ui.assignments = {};
+  ui.qmlText = "{}";
 }
 
 function togglePlayer(name: string): void {
   if (!isPlayerClickable(name))
     return;
+  if (session.interaction && rules.supports(session.interaction.command)) {
+    // Repeated names are ordered target votes; native maxVotes controls additions.
+    ui.selectedPlayers = [...ui.selectedPlayers, name];
+    render();
+    return;
+  }
   ui.selectedPlayers = ui.selectedPlayers.includes(name)
     ? ui.selectedPlayers.filter((item) => item !== name)
     : [...ui.selectedPlayers, name];
+  render();
+}
+
+function removeTarget(index: number): void {
+  ui.selectedPlayers = ui.selectedPlayers.filter((_name, selectedIndex) => selectedIndex !== index);
   render();
 }
 
@@ -96,20 +138,32 @@ function app(): HTMLElement {
   return document.getElementById("app") as HTMLElement;
 }
 
+const rules = new RulesController(() => render());
+let selectionRequest = "";
+
 const bind: UiBind = {
   session,
+  rules,
   ui,
   route,
   render,
   currentCardId,
+  rulesSelection,
   isCardClickable,
   isPlayerClickable,
   togglePlayer,
+  removeTarget,
   resetSelection
 };
 
 export function render(): void {
+  const request = `${session.generation}:${session.interaction?.messageId ?? ""}`;
+  if (request !== selectionRequest) {
+    selectionRequest = request;
+    resetSelection();
+  }
   pruneSelection();
+  rules.update(session, rulesSelection());
   const root = app();
   root.replaceChildren();
   const shell = el("div", { class: "app" });
@@ -159,6 +213,11 @@ export function start(): void {
         session.interactionError = error instanceof Error ? error.message : String(error);
       }
     });
+  });
+  window.addEventListener("pagehide", (event) => {
+    // A back/forward-cache restoration resumes this same controller instance.
+    if (!event.persisted)
+      rules.dispose();
   });
   render();
 }
