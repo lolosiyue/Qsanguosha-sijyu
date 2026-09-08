@@ -320,14 +320,9 @@ export function interactionView(bind: UiBind): HTMLElement {
     root.append(el("p", { class: "status", role: "status" }, [
       evaluation?.known ? "規則已就緒" : ({
         idle: "準備規則資料", loading: "載入規則中", evaluating: "判定選擇中",
-        failed: "規則載入或執行失敗", unsupported: "目前內容不受此規則套件支援"
+        failed: "規則預覽已停用；請重新連線", unsupported: "目前內容不受此規則套件支援"
       } as Record<string, string>)[rules.status] || "等待規則判定"
     ]));
-    if (rules.status === "failed") {
-      const retry = el("button", {}, ["重新載入規則"]);
-      retry.addEventListener("click", () => rules.retry());
-      root.append(retry);
-    }
     if (rules.error || (evaluation && !evaluation.known))
       root.append(el("p", { class: "error" }, [
         rules.error || `目前無法判定：${evaluation?.reason || "缺少規則資料"}`

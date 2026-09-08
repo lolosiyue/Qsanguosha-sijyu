@@ -41,10 +41,12 @@ export interface ActiveInteraction {
 
 type Listener = () => void;
 
+// The native rules runtime observes exact transport bytes in arrival order.
+export type FrameSink = (generation: number, outgoing: boolean, frame: string) => void;
+
 export class LiveSession {
   readonly state = new ClientGameState();
   generation = 0;
-  revision = 0;
   phase: SessionPhase = "idle";
   error = "";
   interaction: ActiveInteraction | null = null;
@@ -60,6 +62,11 @@ export class LiveSession {
   private renPile: number[] = [];
   private rulesBundle: JsonObject | null = null;
   private rulesProvider: ((session: LiveSession) => Promise<JsonObject>) | null = null;
+  private frameSink: FrameSink | null = null;
+
+  setFrameSink(sink: FrameSink | null): void {
+    this.frameSink = sink;
+  }
 
   setRulesProvider(provider: (session: LiveSession) => Promise<JsonObject>): void {
     this.rulesProvider = provider;
@@ -122,6 +129,8 @@ export class LiveSession {
         this.fail("binary frames are rejected");
         return;
       }
+      // Deliver the exact bytes before this reducer forms any opinion of them.
+      this.frameSink?.(this.generation, false, event.data);
       try {
         this.handle(decodeMessage(event.data), options);
       } catch (error) {
@@ -149,7 +158,6 @@ export class LiveSession {
     this.syncActive = false;
     this.pending = null;
     ++this.generation;
-    ++this.revision;
     this.interaction = null;
   }
 
@@ -182,7 +190,6 @@ export class LiveSession {
     });
     this.interaction = null;
     this.interactionError = "";
-    ++this.revision;
     this.notify();
   }
 
@@ -213,7 +220,9 @@ export class LiveSession {
   private send(message: ProtocolMessage): void {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN)
       throw new Error("WebSocket is not open");
-    this.socket.send(encodeMessage(message));
+    const frame = encodeMessage(message);
+    this.socket.send(frame);
+    this.frameSink?.(this.generation, true, frame);
   }
 
   private fail(detail: string): void {
@@ -227,7 +236,6 @@ export class LiveSession {
     const incoming = BigInt(message.message_id);
     if (incoming <= this.lastIncoming)
       throw new Error("message_id must increase");
-    ++this.revision;
 
     if (message.command === Command.WARN && message.type === "notification")
       throw new Error(asString(message.payload.code) || asString(message.payload.message));
