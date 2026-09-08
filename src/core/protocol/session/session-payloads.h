@@ -21,6 +21,8 @@ struct ServerHelloPayload
     QString gameVersion;
     QString modName;
     int cardCount = 0;
+    // Optional extension. Absence preserves the legacy HELLO wire shape.
+    QVariantMap rulesIdentity;
 
     QVariantMap toVariant() const;
     static bool parse(const QVariant &value, ServerHelloPayload *payload,

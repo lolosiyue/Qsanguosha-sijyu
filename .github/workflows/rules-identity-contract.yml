@@ -1,0 +1,87 @@
+name: Rules identity contract
+
+on:
+  pull_request:
+    branches: [debug, main]
+    paths:
+      - 'src/core/protocol/session/session-payloads.*'
+      - 'src/core/protocol/session/rules-identity.h'
+      - 'src/core/protocol/protocol-message-utils.h'
+      - 'src/core/protocol.h'
+      - 'web/src/rules-identity.ts'
+      - 'web/package.json'
+      - 'web/package-lock.json'
+      - 'tests/client_runtime/rules_identity/**'
+      - '.github/workflows/rules-identity-contract.yml'
+  push:
+    branches: [debug, main]
+    paths:
+      - 'src/core/protocol/session/session-payloads.*'
+      - 'src/core/protocol/session/rules-identity.h'
+      - 'src/core/protocol/protocol-message-utils.h'
+      - 'src/core/protocol.h'
+      - 'web/src/rules-identity.ts'
+      - 'web/package.json'
+      - 'web/package-lock.json'
+      - 'tests/client_runtime/rules_identity/**'
+      - '.github/workflows/rules-identity-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rules-identity-contract-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    name: Shared Qt Core / TypeScript identity contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Prepare evidence and Qt Core build tools
+        run: |
+          mkdir -p artifacts/rules-identity
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y cmake ninja-build g++ qt6-base-dev
+      - name: Build and execute the native contract and HELLO tests
+        run: |
+          set -o pipefail
+          cmake -S tests/client_runtime/rules_identity -B build/rules-identity -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug 2>&1 | tee artifacts/rules-identity/configure.log
+          cmake --build build/rules-identity --parallel 2 2>&1 | tee artifacts/rules-identity/build.log
+          ctest --test-dir build/rules-identity --verbose --output-on-failure \
+            --output-junit "$GITHUB_WORKSPACE/artifacts/rules-identity/ctest.xml" \
+            2>&1 | tee artifacts/rules-identity/native.log
+      - name: Install Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '22'
+      - name: Compile the actual TypeScript comparator and execute the same vectors
+        run: |
+          set -o pipefail
+          npm ci --prefix web --ignore-scripts
+          ./web/node_modules/.bin/tsc web/src/rules-identity.ts \
+            --target es2022 --module es2022 --moduleResolution bundler \
+            --strict --skipLibCheck --outDir build/rules-identity-js
+          printf '{"type":"module"}\n' > build/rules-identity-js/package.json
+          node tests/client_runtime/rules_identity/check.mjs \
+            build/rules-identity-js/rules-identity.js \
+            tests/client_runtime/rules_identity/vectors.json \
+            2>&1 | tee artifacts/rules-identity/typescript.log
+      - name: Preserve contract evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: rules-identity-contract-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/rules-identity/**
+          if-no-files-found: warn
+          retention-days: 7

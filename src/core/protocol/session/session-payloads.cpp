@@ -176,10 +176,13 @@ bool StateSyncPayload::parse(const QVariant &value, StateSyncPayload *payload,
 
 QVariantMap ServerHelloPayload::toVariant() const
 {
-    return {{QStringLiteral("schema_version"), SchemaVersion},
+    QVariantMap result{{QStringLiteral("schema_version"), SchemaVersion},
             {QStringLiteral("game_version"), gameVersion},
             {QStringLiteral("mod_name"), modName},
             {QStringLiteral("card_count"), cardCount}};
+    if (!rulesIdentity.isEmpty())
+        result.insert(QStringLiteral("rules_identity"), rulesIdentity);
+    return result;
 }
 
 bool ServerHelloPayload::parse(const QVariant &value, ServerHelloPayload *payload,
@@ -200,6 +203,12 @@ bool ServerHelloPayload::parse(const QVariant &value, ServerHelloPayload *payloa
     }
     if (parsed.cardCount < 0)
         return fail(error, QStringLiteral("ServerHelloPayload.card_count must be non-negative"));
+    if (object.contains(QStringLiteral("rules_identity"))) {
+        const QVariant identity = object.value(QStringLiteral("rules_identity"));
+        if (identity.userType() != QMetaType::QVariantMap)
+            return fail(error, QStringLiteral("ServerHelloPayload.rules_identity must be an object"));
+        parsed.rulesIdentity = identity.toMap();
+    }
     *payload = parsed;
     return true;
 }
