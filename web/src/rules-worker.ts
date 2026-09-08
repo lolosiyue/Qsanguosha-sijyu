@@ -7,6 +7,7 @@ const INPUT_LIMIT = 4 * 1024 * 1024;
 const OUTPUT_LIMIT = 8 * 1024 * 1024;
 const MANIFEST_LIMIT = 65536;
 const decoder = new TextDecoder("utf-8", { fatal: true });
+const encoder = new TextEncoder();
 
 interface WasmFs {
   readFile(path: string): Uint8Array;
@@ -24,7 +25,7 @@ interface RulesModule {
   ENV: Record<string, string>;
   _qsan_client_bridge_schema(): number;
   _qsan_client_initialize(): number;
-  _qsan_client_evaluate(): number;
+  _qsan_client_stream(): number;
   _qsan_client_shutdown(): number;
 }
 
@@ -237,7 +238,7 @@ async function initialize(requestGeneration: number): Promise<void> {
   if (aborted || !runtime?.FS || typeof runtime._qsan_client_bridge_schema !== "function"
       || runtime._qsan_client_bridge_schema() !== RULES_BRIDGE_SCHEMA
       || typeof runtime._qsan_client_initialize !== "function"
-      || typeof runtime._qsan_client_evaluate !== "function"
+      || typeof runtime._qsan_client_stream !== "function"
       || typeof runtime._qsan_client_shutdown !== "function") {
     throw new Error("WASM initialization failed or client runtime exports are missing");
   }
@@ -264,22 +265,55 @@ async function initialize(requestGeneration: number): Promise<void> {
     ids.add(entry.id);
   }
   await verifyNativeIdentity(info.rules_bundle);
+  // Arm raw-frame ingress before the transport exists. This permanently locks
+  // out the external-snapshot entry, so no browser state can replace the
+  // native one for the rest of this Engine's life.
+  const armed = runStream({ schema_version: 1, action: "reset", generation: requestGeneration });
+  if (armed.success !== true) {
+    throw new Error(`WASM stream reset rejected: ${String(armed.reason)}`);
+  }
   phase = "ready";
   worker.postMessage({ schema_version: 1, type: "ready", generation, info });
 }
 
-function evaluate(message: Record<string, unknown>): void {
-  if (phase !== "ready" || !runtime || aborted) throw new Error("WASM runtime is unavailable");
-  if (!integer(message.id, 1) || !(message.input instanceof ArrayBuffer)
-      || message.input.byteLength === 0 || message.input.byteLength > INPUT_LIMIT) {
-    throw new Error("WASM request must contain an id and 1 byte to 4 MiB of JSON");
+// One operation per native call; the host reads and replaces fixed paths.
+function runStream(operation: Record<string, unknown>): Record<string, unknown> {
+  if (!runtime || aborted) throw new Error("WASM runtime is unavailable");
+  const bytes = encoder.encode(JSON.stringify(operation));
+  if (bytes.byteLength === 0 || bytes.byteLength > INPUT_LIMIT) {
+    throw new Error("WASM stream operation must be 1 byte to 4 MiB of JSON");
   }
-  runtime.FS.writeFile("/work/request.json", new Uint8Array(message.input));
-  const status = runtime._qsan_client_evaluate();
-  if (aborted || status !== 0) throw new Error(`WASM client evaluation failed (${status})`);
-  // Own the output before transferring it; never detach growable WASM memory.
-  const bytes = ownedBuffer(readOutput(runtime.FS, "/work/result.json"));
-  worker.postMessage({ schema_version: 1, type: "result", generation, id: message.id, bytes }, [bytes]);
+  runtime.FS.writeFile("/work/stream.json", bytes);
+  const status = runtime._qsan_client_stream();
+  if (aborted || status !== 0) throw new Error(`WASM stream operation failed (${status})`);
+  const result: unknown = JSON.parse(decoder.decode(readOutput(runtime.FS, "/work/stream-result.json")));
+  if (!record(result) || result.schema_version !== 1 || typeof result.success !== "boolean"
+      || typeof result.reason !== "string" || !record(result.status)) {
+    throw new Error("WASM returned an invalid stream result");
+  }
+  return result;
+}
+
+// Frames and queries only. A reset belongs to initialization, never to a
+// message: replaying it would silently discard committed native state.
+function stream(message: Record<string, unknown>): void {
+  if (phase !== "ready" || !runtime || aborted) throw new Error("WASM runtime is unavailable");
+  if (!integer(message.id, 1) || !Array.isArray(message.ops) || message.ops.length === 0
+      || message.ops.length > 256) {
+    throw new Error("WASM stream request must contain an id and 1 to 256 operations");
+  }
+  const results: Record<string, unknown>[] = [];
+  for (const operation of message.ops as unknown[]) {
+    if (!record(operation) || operation.schema_version !== 1 || operation.generation !== generation
+        || (operation.action !== "frame" && operation.action !== "query")) {
+      throw new Error("WASM stream operations must be current-generation frames or queries");
+    }
+    const result = runStream(operation);
+    results.push(result);
+    // A rejected operation ends the batch; the controller decides what is fatal.
+    if (result.success !== true) break;
+  }
+  worker.postMessage({ schema_version: 1, type: "stream", generation, id: message.id, results });
 }
 
 function dispose(requestGeneration: number): void {
@@ -312,7 +346,7 @@ async function receive(value: unknown): Promise<void> {
     }
     if (message.type === "dispose") dispose(requestGeneration);
     else if (message.type === "initialize") await initialize(requestGeneration);
-    else if (message.type === "evaluate") evaluate(message);
+    else if (message.type === "stream") stream(message);
     else throw new Error("Unknown WASM Worker request");
   } catch (error) {
     phase = "failed";

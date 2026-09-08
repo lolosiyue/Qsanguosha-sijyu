@@ -16,12 +16,11 @@ players, cards, setup, patterns, or a snapshot.
 same implementation in the native probe and the actual production WASM product.
 No separate test evaluator or JavaScript gameplay rules are introduced.
 
-**This is W3a, not the complete Web cutover.** Existing `rules-client.ts`,
-`rules-worker.ts`, Web transport/UI and snapshot callers are unchanged. The new
-entry is exercised with a focused browser ABI probe, not represented as a live
-WebSocket/DOM game acceptance test. W3b must wire lossless transport delivery and
-acknowledged revisions into the real controller and remove the external snapshot
-path there before W3 is complete. W4 projection and W5 submission work remain.
+**W3b has since moved the real Web client onto this entry.** `rules-worker.ts`
+and `rules-client.ts` no longer call the external-snapshot bridge at all; see
+"Web client cutover" below. The stream entry is still exercised by a focused
+browser ABI probe, not by a live WebSocket/DOM game acceptance test. W4
+projection and W5 submission work remain.
 
 ## Stream ABI
 
@@ -52,8 +51,8 @@ stream failure makes later queries unavailable until a newer reset. An obsolete
 generation cannot mutate or poison the newer stream. Runtime shutdown is terminal.
 
 Once a host successfully opts into `reset`, its old external-snapshot `evaluate`
-entry rejects with `stream_snapshot_api_disabled`. The normal old Web host does
-not opt in yet, so it retains its current behavior until W3b.
+entry rejects with `stream_snapshot_api_disabled`. The Web host now opts in
+during initialization, so that entry is dead for every shipped browser session.
 
 ## Native state and request contracts
 
@@ -83,9 +82,43 @@ not opt in yet, so it retains its current behavior until W3b.
 The internal adapter to the existing evaluator uses `ClientGameState::toJson()`
 plus the native roster. It is not a browser-supplied snapshot or a second reducer.
 The native request builder validates and materializes the request, but the existing
-production evaluator still interprets its own card-query prompt. W3b/W5 must
+production evaluator still interprets its own card-query prompt. W5 must
 consolidate that final prompt adaptation, expiry and final submission validation.
 Observing an already sent reply verifies correlation, **not server game legality**.
+
+## Web client cutover
+
+`LiveSession` exposes one frame sink. It publishes each incoming frame's exact
+bytes on arrival, before its own decoder forms any opinion of them, and each
+outgoing frame only after `send()` has actually put it on the socket, so the
+runtime observes the true transport order including Signup and Ready. The sink
+is registered while the rules Worker loads, which already precedes the socket,
+so no frame of a connection can be missed. Frames are tagged with the session
+generation; a frame from an obsolete connection is dropped by the controller.
+
+`rules-worker.ts` performs `reset` as the last step of initialization, so its
+`ready` message means ingress is armed and the external snapshot entry is
+already locked out for that Engine's life. Its remaining message carries only
+`frame` and `query` operations; a `reset` is never accepted from a message,
+because replaying one would silently discard committed native state. Operations
+are applied one per native call, in order, and a rejected operation ends the
+batch.
+
+`RulesController` no longer composes players, cards, setup or card id space for
+the runtime. It sends the observed frames and, once they are all acknowledged,
+a selection plus the generation/revision/request the runtime itself reported.
+Reducer revisions are never used for correlation: the two counters advance on
+different events, and the reducer runs ahead of the Worker. A query is issued
+only when the queue is drained, the reported state is active, not failed, not
+synchronizing, and its request matches the one the UI is showing; a refused
+query is not reissued at the same revision. A result stops being displayable as
+soon as a newer frame is observed.
+
+A refused frame is preview-only: the controller marks itself failed, releases
+the Engine and leaves the session running on the TS reducer, which keeps driving
+the UI as a shadow. There is no retry, because an Engine created after the fact
+cannot be given the frames the failed one already consumed; recovery is a new
+connection.
 
 ## Deployment compatibility
 
@@ -118,6 +151,11 @@ its real stream export. They receive operations and pinned artifact hashes, neve
 expected outputs. The tester verifies embedded content with the existing host
 helper and compares registry identity and all result bytes without normalization.
 This test host is not a replacement for W2's production verified deployment loader.
+
+The Web controller itself is covered by `tests/client_runtime/rules-controller.test.mjs`,
+which links the real controller against a Worker/timer/catalog double. It proves
+frame order, native correlation, sync and backlog gating and the preview-only
+failure policy; it executes no WASM and is not browser evidence.
 
 Checks cover native Hello/Signup/Ready, actual card movement and Slash selection,
 mark updates and stale revision, sync isolation and commit, old request rejection,
