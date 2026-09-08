@@ -1,15 +1,10 @@
 include_guard(GLOBAL)
+include("${CMAKE_CURRENT_LIST_DIR}/QSanguoshaRulesSession.cmake")
 
-# This product owns a persistent session, not the one-shot fixture evaluator.
-# Keep its source closure out of native products until they opt into this API.
-add_executable(qsanguosha_client_wasm
-    src/client/runtime/client-rules-session.cpp
-    src/client/runtime/client-rules-session.h
-    src/client/runtime/client-rules-wasm.cpp
-    src/client/interaction-reply-encoder.cpp
-)
+# The production Worker and native probe link the same session/lifecycle code.
+add_executable(qsanguosha_client_wasm src/client/runtime/client-rules-wasm.cpp)
 target_link_libraries(qsanguosha_client_wasm PRIVATE
-    qsanguosha_client_runtime
+    qsanguosha_rules_session
     "$<LINK_LIBRARY:WHOLE_ARCHIVE,qsanguosha_engine>"
 )
 set_target_properties(qsanguosha_client_wasm PROPERTIES
