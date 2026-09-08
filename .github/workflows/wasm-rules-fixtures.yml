@@ -120,14 +120,13 @@ jobs:
           python3 tests/client_runtime/check-fixtures.py --self-test
           python3 tests/client_runtime/check-rules-session.py --self-test
           python3 tests/client_runtime/check-rules-bundle.py --self-test
-      - name: Test production controller and compile the production Worker
+      - name: Test production controller and type-check the production Worker
         run: |
           npm ci --prefix web
           node --experimental-vm-modules --test tests/client_runtime/rules-controller.test.mjs
           npm --prefix web test -- tests/rules-identity.test.ts
           node web/node_modules/typescript/bin/tsc web/src/rules-worker.ts \
-            --outDir artifacts/wasm-fixtures/production-worker --target ES2022 --module ES2022 \
-            --lib ES2022,DOM --strict --skipLibCheck
+            --noEmit --target ES2022 --module ES2022 --lib ES2022,DOM --strict --skipLibCheck
       - name: Compile and link the real engine for WASM
         run: |
           set -o pipefail
@@ -169,6 +168,11 @@ jobs:
             --asset-root "$GITHUB_WORKSPACE" \
             --artifacts "$GITHUB_WORKSPACE/artifacts/wasm-fixtures/browser-probe" \
             2>&1 | tee artifacts/wasm-fixtures/browser-probe/gate.log
+      - name: Bundle the production Worker against the built deployment
+        run: |
+          module_dir="$GITHUB_WORKSPACE/build/rules-wasm/web-wasm/RelWithDebInfo"
+          node web/scripts/build-rules-worker.mjs artifacts/wasm-fixtures/production-worker \
+            "$module_dir/qsanguosha_client_wasm.bundle.json"
       - name: Execute real persistent production Worker/native session parity
         run: |
           set -o pipefail

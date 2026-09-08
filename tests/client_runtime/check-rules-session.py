@@ -152,6 +152,7 @@ class Server:
 def browser_run(args, baseline: dict) -> dict:
     module = args.wasm_module
     binary = module.with_suffix('.wasm')
+    bundle = module.with_suffix('.bundle.json')
     assert binary.read_bytes()[:8] == b'\0asm\1\0\0\0', 'missing WASM binary'
     requests = [{'label': item['label'], 'request': item['request']} for item in baseline['calls']]
     # Do not serve expected outputs to the browser. It must call the native exports.
@@ -159,7 +160,8 @@ def browser_run(args, baseline: dict) -> dict:
         '/probe.mjs': HERE / 'browser/rules-session-page.mjs', '/rules-worker.mjs': args.worker_script,
         '/input.json': json.dumps(requests).encode(), '/rules/qsanguosha_client_wasm.mjs': module,
         '/rules/qsanguosha_client_wasm.wasm': binary,
-        '/rules/qsanguosha_client_wasm.assets.json': args.manifest}
+        '/rules/qsanguosha_client_wasm.assets.json': args.manifest,
+        '/rules/qsanguosha_client_wasm.bundle.json': bundle}
     with Server(routes) as server, tempfile.TemporaryDirectory(prefix='chrome-', dir=args.artifacts) as profile:
         command = [str(args.browser), '--headless=new', '--disable-gpu', '--no-first-run',
             '--no-default-browser-check', '--disable-background-networking', '--disable-extensions',
