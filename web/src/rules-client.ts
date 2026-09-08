@@ -1,6 +1,6 @@
 import { RULES_BRIDGE_SCHEMA, isRulesIdentity, rulesErrorMessage } from "./rules-identity";
 import { cardRecord, installRulesCardCatalog } from "./i18n";
-import { Command, asString, isObject, type JsonObject } from "./protocol";
+import { Command, asNumber, asString, isObject, type JsonObject } from "./protocol";
 import { INTERACTION_COMMANDS } from "./replies";
 import type { LiveSession } from "./session";
 
@@ -28,21 +28,31 @@ export interface RulesEvaluation {
   wire: { command: number; reply_to: string; payload: JsonObject } | null;
 }
 
-interface Query {
-  key: string;
+// The committed native view of the connection. The browser never computes it.
+interface NativeStatus {
   generation: number;
   revision: number;
   requestId: string;
-  bytes: Uint8Array<ArrayBuffer>;
+  active: boolean;
+  synchronizing: boolean;
+  failed: boolean;
 }
 
-const encoder = new TextEncoder();
-const decoder = new TextDecoder("utf-8", { fatal: true });
-const INPUT_LIMIT = 4 * 1024 * 1024;
-const OUTPUT_LIMIT = 8 * 1024 * 1024;
+interface Query {
+  key: string;
+  revision: number;
+  requestId: string;
+}
 
-// One Engine per connection, one evaluation in flight, and only the newest
-// queued selection. A changed request/state invalidates a preview immediately.
+const UNBOUND: NativeStatus = { generation: -1, revision: -1, requestId: "",
+  active: false, synchronizing: false, failed: false };
+// Frames are small and already validated by the native decoder one at a time.
+const FRAME_BATCH = 64;
+const FRAME_BACKLOG = 4096;
+
+// One Engine per connection, fed the exact transport frames in arrival order.
+// Native state is the only rules state: a query carries a selection plus the
+// correlation the runtime itself reported, never a browser-composed snapshot.
 export class RulesController {
   result: RulesEvaluation | null = null;
   status = "idle";
@@ -51,8 +61,12 @@ export class RulesController {
   private generation = -1;
   private ready = false;
   private registryCount = 0;
-  private desired: Query | null = null;
-  private inFlight: { query: Query; id: number } | null = null;
+  private frames: Record<string, unknown>[] = [];
+  private desired: { requestId: string; selection: RulesSelection } | null = null;
+  private desiredKey = "";
+  private rejectedKey = "";
+  private native: NativeStatus = UNBOUND;
+  private inFlight: { query: Query | null; id: number } | null = null;
   private resultKey = "";
   private sequence = 0;
   private timer: ReturnType<typeof setTimeout> | undefined;
@@ -67,6 +81,8 @@ export class RulesController {
     this.generation = session.generation;
     this.error = "";
     if (this.disposed) return Promise.reject(new Error("rules_reload_required"));
+    // The socket opens only after this resolves, so no frame can be missed.
+    session.setFrameSink((generation, outgoing, frame) => this.observe(generation, outgoing, frame));
     return new Promise((resolve, reject) => {
       this.identityWait = { resolve, reject };
       this.startWorker();
@@ -80,14 +96,36 @@ export class RulesController {
       Command.NULLIFICATION].some((value) => value === command);
   }
 
-  private key(session: LiveSession, selection: RulesSelection): string {
-    return JSON.stringify([session.generation, session.revision,
-      session.interaction?.messageId, session.interaction?.command, selection]);
+  // Correlation is the runtime's own generation/revision/request, not the
+  // reducer's: the two count different events and the Worker trails the socket.
+  private key(revision: number, requestId: string, selection: RulesSelection): string {
+    return JSON.stringify([this.generation, revision, requestId, selection]);
+  }
+
+  private idle(): boolean {
+    return this.frames.length === 0 && this.inFlight === null;
   }
 
   current(session: LiveSession, selection: RulesSelection): boolean {
-    return !this.disposed && !session.synchronizing && session.phase === "active"
-      && this.result !== null && this.resultKey === this.key(session, selection);
+    return !this.disposed && this.result !== null && this.idle()
+      && session.phase === "active" && !session.synchronizing
+      && this.generation === session.generation
+      && this.native.requestId === (session.interaction?.messageId ?? "")
+      && this.resultKey === this.key(this.native.revision, this.native.requestId, selection);
+  }
+
+  // Exact bytes, in transport order, including every frame this client sent.
+  private observe(generation: number, outgoing: boolean, frame: string): void {
+    if (this.disposed || generation !== this.generation || !this.worker
+        || this.status === "failed")
+      return;
+    if (this.frames.length >= FRAME_BACKLOG) {
+      this.fail("規則串流積壓過多；請重新連線");
+      return;
+    }
+    this.frames.push({ schema_version: 1, action: "frame", generation,
+      direction: outgoing ? "outgoing" : "incoming", frame });
+    this.pump();
   }
 
   update(session: LiveSession, selection: RulesSelection): void {
@@ -104,45 +142,19 @@ export class RulesController {
     if (session.phase !== "active" || session.synchronizing || !interaction
         || !this.supports(interaction.command)) {
       this.desired = null;
-      this.result = null;
-      this.resultKey = "";
+      this.desiredKey = "";
       return;
     }
-    const key = this.key(session, selection);
-    if (key === this.desired?.key)
+    const key = JSON.stringify([interaction.messageId, selection]);
+    if (key === this.desiredKey)
       return;
-    this.result = null;
-    this.resultKey = "";
-    // Failures stay visible until an explicit retry or a new connection.
+    this.desired = { requestId: interaction.messageId, selection };
+    this.desiredKey = key;
+    // Failures stay visible until a new connection; a fresh Engine cannot be
+    // given the frames this one already consumed.
     if (this.status === "failed")
       return;
-    const state = session.state;
-    const bytes = encoder.encode(JSON.stringify({
-      schema_version: 1,
-      generation: session.generation,
-      revision: session.revision,
-      request_id: interaction.messageId,
-      command: interaction.command,
-      payload: interaction.payload,
-      state: {
-        connection: state.connection, setup: state.setup, game: state.game,
-        self_name: state.selfName, player_names: state.playerNames,
-        players: state.playerNames.map((name) => state.players.get(name)), cards: [...state.cards.values()],
-        card_id_space: state.cardIdSpace
-      },
-      selection
-    }));
-    if (bytes.byteLength > INPUT_LIMIT) {
-      this.fail("可見遊戲狀態超過 WASM 輸入上限", false);
-      return;
-    }
-    this.desired = { key, generation: session.generation, revision: session.revision,
-      requestId: interaction.messageId, bytes };
-    if (!this.worker) {
-      this.startWorker();
-      return;
-    }
-    this.sendLatest();
+    this.pump();
   }
 
   private startWorker(): void {
@@ -214,59 +226,87 @@ export class RulesController {
       const waiting = this.identityWait;
       this.identityWait = null;
       waiting?.resolve(this.identity);
-      this.sendLatest();
+      this.pump();
       this.onChange();
       return;
     }
-    if (message.type !== "result" || !this.inFlight || message.id !== this.inFlight.id)
+    if (message.type !== "stream" || !this.inFlight || message.id !== this.inFlight.id)
       throw new Error("WASM Worker 查詢關聯不符");
-    const raw = (message as unknown as { bytes: unknown }).bytes;
-    if (!(raw instanceof ArrayBuffer) || raw.byteLength > OUTPUT_LIMIT)
-      throw new Error("WASM 規則結果大小或型別錯誤");
-    const parsed: unknown = JSON.parse(decoder.decode(raw));
+    const results = (message as unknown as { results: unknown }).results;
+    if (!Array.isArray(results) || results.length === 0)
+      throw new Error("WASM 規則串流回覆格式錯誤");
+    const last: unknown = results[results.length - 1];
+    if (!isObject(last) || last.schema_version !== 1 || typeof last.success !== "boolean"
+        || typeof last.reason !== "string")
+      throw new Error("WASM 規則串流回覆格式錯誤");
     const query = this.inFlight.query;
     this.inFlight = null;
     this.clearTimeout();
-    if (!isEvaluation(parsed) || parsed.generation !== query.generation
-        || parsed.revision !== query.revision || parsed.request_id !== query.requestId)
-      throw new Error("WASM 規則結果格式或 request 不符");
-    // Main-thread state may already have changed before the next animation frame.
-    if (this.desired?.key === query.key && this.session?.generation === query.generation
-        && this.session.revision === query.revision && !this.session.synchronizing
-        && this.session.interaction?.messageId === query.requestId) {
+    // The runtime reports what it has committed; the browser never assumes it.
+    this.native = nativeStatus(last.status);
+    if (this.native.generation !== this.generation)
+      throw new Error("WASM 規則串流連線不符");
+    if (!last.success) {
+      // A refused frame leaves native state unusable until a new connection.
+      // A refused query only means this exact selection has no committed answer.
+      if (query === null) {
+        this.fail(last.reason);
+        return;
+      }
+      this.rejectedKey = query.key;
+      this.result = null;
+      this.resultKey = "";
+      this.status = "unsupported";
+      this.error = rulesErrorMessage(last.reason);
+    } else if (query !== null) {
+      const parsed: unknown = last.evaluation;
+      if (!isEvaluation(parsed) || parsed.generation !== this.generation
+          || parsed.revision !== query.revision || parsed.request_id !== query.requestId)
+        throw new Error("WASM 規則結果格式或 request 不符");
       this.result = parsed;
       this.resultKey = query.key;
       this.status = parsed.known ? "ready" : "unsupported";
       this.error = parsed.known ? "" : parsed.reason;
     }
-    this.sendLatest();
+    this.pump();
     this.onChange();
   }
 
-  private sendLatest(): void {
-    if (!this.worker || !this.ready || this.inFlight || !this.desired
-        || this.resultKey === this.desired.key)
+  // Ingest every observed frame before answering anything: a query may only run
+  // against fully committed state, and STATE_SYNC is native's own gate.
+  private pump(): void {
+    if (this.disposed || !this.worker || !this.ready || this.inFlight || this.status === "failed")
       return;
-    if (this.session?.generation !== this.desired.generation
-        || this.session.revision !== this.desired.revision || this.session.synchronizing
-        || this.session.interaction?.messageId !== this.desired.requestId) {
-      this.desired = null;
+    if (this.frames.length) {
+      this.dispatch(this.frames.splice(0, FRAME_BATCH), null);
       return;
     }
+    const desired = this.desired;
+    if (!desired || this.native.generation !== this.generation || !this.native.active
+        || this.native.failed || this.native.synchronizing
+        || this.native.requestId !== desired.requestId)
+      return;
+    const key = this.key(this.native.revision, desired.requestId, desired.selection);
+    if (key === this.resultKey || key === this.rejectedKey)
+      return;
     if (this.session?.state.cardIdSpace !== this.registryCount) {
       this.fail("伺服器卡牌目錄與 builtin WASM 不符；需要相符的規則套件", false);
       return;
     }
-    const query = this.desired;
-    const id = ++this.sequence;
-    this.inFlight = { query, id };
     this.status = "evaluating";
     this.error = "";
-    this.armTimeout(10000, "WASM 規則查詢逾時；請重新連線");
-    // Transfer a copy; the latest queued input remains owned by this controller.
-    const bytes = query.bytes.slice();
-    this.worker.postMessage({ schema_version: 1, type: "evaluate",
-      generation: this.generation, id, input: bytes.buffer }, [bytes.buffer]);
+    this.dispatch([{ schema_version: 1, action: "query", generation: this.generation,
+      revision: this.native.revision, request_id: desired.requestId,
+      selection: { ...desired.selection } }],
+      { key, revision: this.native.revision, requestId: desired.requestId });
+  }
+
+  private dispatch(ops: Record<string, unknown>[], query: Query | null): void {
+    const id = ++this.sequence;
+    this.inFlight = { query, id };
+    this.armTimeout(10000, "WASM 規則串流逾時；請重新連線");
+    this.worker?.postMessage({ schema_version: 1, type: "stream",
+      generation: this.generation, id, ops });
   }
 
   private armTimeout(milliseconds: number, message: string): void {
@@ -298,7 +338,11 @@ export class RulesController {
     const old = this.worker;
     this.worker = null;
     this.ready = false;
+    this.frames = [];
+    this.native = UNBOUND;
     this.desired = null;
+    this.desiredKey = "";
+    this.rejectedKey = "";
     this.inFlight = null;
     this.result = null;
     this.resultKey = "";
@@ -322,18 +366,21 @@ export class RulesController {
 
   dispose(): void {
     this.disposed = true;
+    this.session?.setFrameSink(null);
     this.releaseWorker();
     this.status = "idle";
   }
+}
 
-  retry(): void {
-    if (this.disposed || this.status !== "failed")
-      return;
-    this.releaseWorker();
-    this.status = "idle";
-    this.error = "";
-    this.onChange();
-  }
+function nativeStatus(value: unknown): NativeStatus {
+  if (!isObject(value) || !Number.isSafeInteger(value.generation)
+      || !Number.isSafeInteger(value.revision) || typeof value.request_id !== "string"
+      || typeof value.active !== "boolean" || typeof value.synchronizing !== "boolean"
+      || typeof value.failed !== "boolean")
+    throw new Error("WASM 規則串流狀態格式錯誤");
+  return { generation: asNumber(value.generation), revision: asNumber(value.revision),
+    requestId: asString(value.request_id), active: value.active,
+    synchronizing: value.synchronizing, failed: value.failed };
 }
 
 function isEvaluation(value: unknown): value is RulesEvaluation {
