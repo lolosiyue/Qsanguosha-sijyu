@@ -41,6 +41,10 @@ public:
     QList<const Card *> getHandcards() const override;
     int getMaxCards() const override;
 
+    // Full visible snapshots used by the browser runtime. The incremental TUI
+    // projection keeps its existing behavior until it adopts this boundary.
+    void applyVisibleZones(const QVariantMap &data);
+
 private:
     Player *seatStep(int step) const;
 

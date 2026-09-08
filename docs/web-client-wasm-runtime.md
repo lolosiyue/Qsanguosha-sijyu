@@ -4,11 +4,16 @@ This document records the migration boundary for replacing the Web client's
 hand-written gameplay eligibility rules with the same C++/Lua rule
 implementation used by native clients.
 
+The persistent runtime and Web client integration described below are source
+implementation on top of PR #31. No configure, compile, rebuild, test, artifact
+packaging or browser acceptance was performed for this implementation. Earlier
+Node/Worker fixture results do not establish production runtime acceptance.
+
 ## Target architecture
 
 The browser keeps the TypeScript/DOM presentation layer. Gameplay rule queries
 move behind a small client-runtime API that can be compiled natively for TUI
-and tests and, later, to WebAssembly.
+and tests and to WebAssembly for the browser's dedicated Worker.
 
 ```text
 Protocol V2 frames
@@ -135,20 +140,126 @@ selection result before crossing the boundary.
 
 The `tui-play-skills` regression suite also calls the shared API directly to
 cover borrowed prompts, wrapped-card filtering, V2 context and ordered
-selection, target evaluation, and response encoding. These are native checks;
-native/WASM fixture parity remains a later slice.
+selection, target evaluation, and response encoding. Separate native/WASM
+fixture consumers cover their recorded scenes; neither suite establishes the
+production browser session's acceptance.
 
-## Next slices
+## Persistent Web runtime
 
-1. Add a native fixture runner that links `qsanguosha_client_runtime` directly
-   and records deterministic physical-card and ViewAs selection fixtures.
-2. Add the first WebAssembly build of the same runtime and compare its fixture
-   output against the native runner.
-3. Run that runtime in a dedicated Web Worker and replace
-   `web/src/eligibility.ts` one interaction at a time.
-4. Add ruleset/card-registry hashes before loading extension content.
-5. Extend the selection result with remaining player-view facts such as
-   explicit distance/attack-range presentation where the Web UI needs them.
+The fixture targets remain separate consumers. `qsanguosha_client_wasm` links
+the existing `qsanguosha_client_runtime`, whole engine/package registrations,
+`InteractionReplyEncoder`, and the production `ClientRulesSession`/WASM entry
+sources. It does not link `qsanguosha_rules_fixture_support`, the fixture
+evaluator, or a renamed fixture CLI main. Native product source inventories are
+unchanged by this opt-in product.
+
+The WASM entry keeps one QCoreApplication/engine alive across requests.
+`ClientRulesSession` creates a fresh projected scene from the client-visible
+snapshot for each selection query, so removed properties and stale wrapped
+cards cannot leak between snapshots. C++ owns physical-card,
+ViewAs and target evaluation, then copies JSON results across the boundary;
+Card/Player pointers remain inside the module. Decimal request IDs remain
+strings. Browser request identity, state revision and selection revision prevent
+late results from confirming a newer prompt or selection.
+
+The dedicated Worker loads one module per session and verifies the sidecar,
+embedded manifest and embedded file hashes before initializing the engine. Its
+module URL is fixed to the application origin, not supplied by game packets.
+The TypeScript/DOM frontend continues to own Protocol V2 transport and display.
+Native confirmation uses the existing C++ reply encoder's payload.
+
+The initial deployment is still `builtin-v1`. It embeds only the five Lua
+bootstrap files already selected by the native fixture staging function; it
+does not copy ignored extensions, AI, local configuration or the checkout into
+MEMFS. The manifest preserves schema 1, profile, ordered file paths, sizes and
+SHA-256 fields. A matching asset manifest does not prove arbitrary server
+extension compatibility or a complete ruleset/ABI agreement. Unknown or
+unsupported content must not enable confirmation through guessed TS rules.
+
+## Production build and packaging
+
+The existing baseline is Qt **6.11.1**, Emscripten **4.0.7**, the single-thread
+WASM Qt kit and a matching native Qt host-tool installation. This uses Qt Core
+and Network in a Worker; it does not ship a Qt Widgets/Quick browser UI. The
+root dependency graph also finds Qt WebSockets. Configure and build are explicit
+follow-up commands, not steps executed for this source implementation:
+
+```sh
+source "$EMSDK/emsdk_env.sh"
+cmake -S . -B build/web-wasm -G Ninja \
+  -DCMAKE_TOOLCHAIN_FILE="$QT_WASM/lib/cmake/Qt6/qt.toolchain.cmake" \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo -DQT_HOST_PATH="$QT_NATIVE" \
+  -DBUILD_TESTING=OFF -DQSAN_BUILD_GUI=OFF -DQSAN_BUILD_TUI=OFF \
+  -DQSAN_BUILD_SERVER=OFF -DQSAN_BUILD_RULES_FIXTURE_RUNNER=OFF \
+  -DQSAN_BUILD_WASM_RULES_FIXTURES=OFF -DQSAN_BUILD_WASM_WEB_CLIENT=ON
+cmake --build build/web-wasm --target qsanguosha_client_wasm
+```
+
+`QSAN_BUILD_WASM_WEB_CLIENT` defaults OFF and works independently of
+`QSAN_BUILD_WASM_RULES_FIXTURES`. Both may be ON in the same cross build; they
+reuse one asset recipe and exception model while retaining distinct targets,
+entry points and output directories. Native products, the native fixture runner
+and `BUILD_TESTING` must be OFF for that cross build. The production session
+sources are compiled only by the production WASM target.
+
+Generated artifacts under `build/web-wasm/web-wasm/RelWithDebInfo/`:
+
+| Artifact | Contract |
+|---|---|
+| `qsanguosha_client_wasm.mjs` | ES module factory `createQSanguoshaClient`, Worker environment |
+| `qsanguosha_client_wasm.wasm` | Persistent C++/Lua runtime |
+| `qsanguosha_client_wasm.assets.json` | Embedded `builtin-v1` bootstrap manifest |
+
+Exports are `_qsan_client_initialize`, `_qsan_client_evaluate` and
+`_qsan_client_shutdown`; Emscripten exposes `FS` and `ENV` to the host. The module
+has no `main` entry, permits memory growth, starts with 128 MiB memory and an
+8 MiB stack, and preserves the fixture's exception mode. These inherited sizes
+are configuration, not browser memory/performance acceptance.
+
+| Export | MEMFS/JSON contract |
+|---|---|
+| `_qsan_client_initialize` | Initializes once and writes `/work/init.json`: schema 1, `card_count`, and numeric-ID registry entries with object name, integer suit, number, class and package |
+| `_qsan_client_evaluate` | Reads `/work/request.json` (at most 4 MiB), writes `/work/result.json` with generation/revision/request identity, `known`, reason, selectable cards/skills/targets, `can_confirm`, canonical card text and wire payload |
+| `_qsan_client_shutdown` | Ends the engine lifetime; the closed module cannot initialize again |
+
+The host must establish isolated MEMFS configuration in `preRun`, then verify
+embedded assets after the Emscripten factory resolves and before initialization.
+Queries run serially. The main-thread controller discards stale generation or
+revision results. Failure disposes the Worker; explicit rule reload or a new
+connection creates a fresh Worker.
+
+Builds do not modify `web/public`. To package already-built artifacts:
+
+```sh
+python3 tools/package-web-runtime.py \
+  --module build/web-wasm/web-wasm/RelWithDebInfo/qsanguosha_client_wasm.mjs \
+  --destination web/public/rules
+```
+
+Alternatively, `cmake --build build/web-wasm --target package-web-runtime` first
+builds the runtime dependency, then runs the same packaging command. The tool
+requires all three artifacts, checks the WASM header and shared manifest schema,
+and publishes only those fixed generated names. It does not execute the module
+or provide runtime acceptance. The Worker verifies embedded asset bytes when
+the application starts.
+
+Package before the Web frontend's normal Vite build so `public/rules` is copied
+into `dist/rules`. Deploy all three artifacts together at `/rules/`, serve
+`.mjs` as JavaScript and `.wasm` as `application/wasm`, and configure the server's
+SPA fallback after the static `/rules/` route. Missing artifacts must return a
+visible runtime failure rather than an HTML application shell masquerading as
+the module. Use HTTPS or localhost for the Worker's Web Crypto asset checks.
+
+## Remaining acceptance and scope
+
+Production compile/link, repeated-query and lifecycle execution, native/WASM
+parity for live snapshots, actual browser interaction/reconnect acceptance and
+deployment checks remain unperformed. Fixture probes continue to document their
+own scope in [wasm-rules-fixtures.md](wasm-rules-fixtures.md).
+
+Arbitrary extension loading and complete server/runtime ruleset negotiation
+remain outside `builtin-v1`; no claim of arbitrary-extension parity follows
+from this integration. The server remains authoritative for every reply.
 
 The Web UI should not grow new hard-coded weapon, target, or extension tables
 while this migration is in progress.
