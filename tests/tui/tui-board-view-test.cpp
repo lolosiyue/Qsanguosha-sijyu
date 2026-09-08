@@ -45,7 +45,8 @@ void compareGolden(const QString &name, const QString &actual)
         return;
     }
     QFile file(goldenPath(name));
-    if (!file.open(QIODevice::ReadOnly)) {
+    // Golden files are text: Git may check them out as CRLF on Windows.
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         ++failures;
         std::printf("[FAIL] missing golden %s\n", qPrintable(name));
         return;

@@ -165,17 +165,24 @@ encoder，parser 不知道自己在哪個模式（見上方「共用架構」與
 終端尺寸下限 `60×18`；小於此值不強行繪製，顯示提示訊息並持續接收訊息與正常作答，
 放大到足夠即恢復繪製（詳見 `tui-board-ui.md` §3.5）。
 
-**Windows 上暫不提供 board 模式**：`TuiTerminal` 在 Windows 上只有安全的空實作
-（raw mode／alternate screen 皆未實作），因此明確指定 `--ui board` 會以 exit code
-`2` 拒絕並說明原因；未指定 `--ui` 的自動判斷路徑（或記憶路徑選中 board）則退回
-classic，但不是靜默的——`tui-main.cpp` 會印一行說明（「Windows 上尚不支持 board
-模式（TuiTerminal 未实现），已使用 classic 界面」）到 stdout，讓使用者知道自己
-沒有拿到 board。這不是暫時的潤飾缺口，而是需要另外設計 Windows console API 對應
-行為的後續工作。
+**Windows board 模式**：需要支援 VT output 的原生主控台（例如現代 conhost／
+Windows Terminal），stdin／stdout 都必須是主控台。`TuiTerminal` 保存並還原
+console mode、UTF-8 code page 與游標，進入 alternate screen，以 100ms 輪詢
+viewport 尺寸觸發重繪；`TuiInput` 將 `ReadConsoleInputW` 的 UTF-16 按鍵紀錄
+轉成共用行編輯器的 UTF-8／CSI 輸入，支援中文、surrogate pair、重複鍵與既有
+方向鍵／Tab／歷史／翻頁／清除快捷鍵。Ctrl+C 與 Ctrl+Break 走正常斷線出口；
+關閉主控台及 fatal signal 採 best-effort 還原。
 
-**證據紀律**：board 模式在 CI 完全無法執行（CI runner 沒有穩定的 pty），因此
-「board 可用」這個結論只由本機 `tools/autotest/tui_board_smoke.py`（raw mode／
-`SIGWINCH`／終端還原）與 `tests/tui/*-test.cpp` 的 golden test 支撐；CI 綠燈不得
+啟動前先探測 VT output 能力並立即還原探測用 mode；只有不支援的主控台才在
+明確指定 `--ui board` 時以 exit `2` 拒絕。自動／記憶路徑遇到不支援的主控台
+會說明原因並改用 classic。`--plain`、`NO_COLOR`、script 及 redirected IO 的
+既有規則不變。Windows 可直接執行 `qsanguosha_tui_tests --suite terminal`：
+測試自行建立私有隱藏主控台，驗證按鍵、畫面角落、中文字、縮放與 mode 還原，
+不接管執行測試者的主控台。
+
+**證據紀律**：Windows 私有主控台測試可驗證 console 後端；Unix 終端驗證仍用
+本機 `tools/autotest/tui_board_smoke.py`（raw mode／`SIGWINCH`／終端還原）。
+這些測試及 `tests/tui/*-test.cpp` 的 golden test 不取代真人對局驗收；CI 綠燈不得
 被當成 board 模式本身可用的證明（見 `tui-board-ui.md` §7.5）。
 
 ## Reconnect

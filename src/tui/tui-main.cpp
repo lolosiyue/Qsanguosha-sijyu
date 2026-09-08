@@ -6,6 +6,7 @@
 #include "tui-application-controller.h"
 #include "tui-text.h"
 #include "tui-ui-mode.h"
+#include "tui-terminal.h"
 
 #include <QCommandLineOption>
 #include <QCommandLineParser>
@@ -219,31 +220,18 @@ int main(int argc, char *argv[])
             return usageError(uiDecision.conflictReason);
 
 #if defined(Q_OS_WIN)
-        // TuiTerminal has no Windows implementation: Task 5 left safe stubs
-        // there, and this machine has no Windows toolchain to develop
-        // against, so writing blind Windows console code would be worse
-        // than saying plainly that board mode is not available yet.
-        // tuiResolveUiMode() itself stays platform-agnostic -- §6.1's table
-        // does not vary by platform, only Windows's ability to honour a
-        // Board result does -- so the unavailability is applied once, here,
-        // to whatever it decided. An explicit --ui board is a usage error
-        // (the player asked for something that cannot be delivered); the
-        // automatic and remembered paths just fall back and say why, the
-        // same quiet-fallback allowance §6.1 already grants the automatic
-        // path on every platform.
-        if (uiDecision.askUser) {
+        // Only offer board when this console really accepts VT output. The
+        // probe restores its mode; TuiTerminal owns the later actual takeover.
+        if ((uiDecision.askUser || uiDecision.mode == TuiUiMode::Board)
+            && !TuiTerminal::supportsWindowsConsole()) {
+            if (uiInputs.flag == QStringLiteral("board")) {
+                return usageError(
+                    tr("board 模式需要支持虚拟终端输出的 Windows 控制台"));
+            }
             uiDecision.askUser = false;
             uiDecision.mode = TuiUiMode::Classic;
             writeUtf8(stdout,
-                tr("Windows 上尚不支持 board 模式（TuiTerminal 未实现），已使用 classic 界面\n"));
-        } else if (uiDecision.mode == TuiUiMode::Board) {
-            if (uiInputs.flag == QStringLiteral("board")) {
-                return usageError(
-                    tr("board 模式在 Windows 上尚未支持（TuiTerminal 未实现）"));
-            }
-            uiDecision.mode = TuiUiMode::Classic;
-            writeUtf8(stdout,
-                tr("Windows 上尚不支持 board 模式（TuiTerminal 未实现），已使用 classic 界面\n"));
+                tr("Windows 控制台不支持虚拟终端输出，已使用 classic 界面\n"));
         }
 #endif
     }

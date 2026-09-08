@@ -57,7 +57,7 @@ bool TuiInput::start(QString *error)
     m_inputHandle = input;
     DWORD mode = 0;
     m_consoleInput = GetConsoleMode(input, &mode) != 0;
-    if (m_consoleInput) {
+    if (m_consoleInput && !m_rawMode) {
         m_originalConsoleMode = mode;
         mode &= ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT);
         if (!SetConsoleMode(input, mode))
@@ -89,14 +89,21 @@ void TuiInput::stop()
     if (!m_running)
         return;
     if (m_notifier != nullptr) {
+#ifdef Q_OS_WIN
+        static_cast<QWinEventNotifier *>(m_notifier)->setEnabled(false);
+#endif
         m_notifier->deleteLater();
         m_notifier = nullptr;
     }
 #ifdef Q_OS_WIN
-    if (m_consoleInput && m_inputHandle != nullptr)
+    // Board console modes belong to TuiTerminal. Restoring the mode observed
+    // AFTER its enter() here would put the shell back into raw mode on unwind.
+    if (m_consoleInput && !m_rawMode && m_inputHandle != nullptr)
         SetConsoleMode(static_cast<HANDLE>(m_inputHandle), m_originalConsoleMode);
     m_inputHandle = nullptr;
     m_consoleInput = false;
+    m_highSurrogate = QChar();
+    m_surrogateRepeat = 0;
 #else
     // start()'s tuiInstallInterruptHandler() call handed the shared
     // self-pipe a `[this]() { emit interruptRequested(); }` closure. That
@@ -154,17 +161,6 @@ void TuiInput::readWindowsInput()
     if (input == nullptr)
         return;
     if (m_consoleInput) {
-        if (m_rawMode) {
-            // TuiTerminal does not yet take a Windows console into raw mode
-            // (see tui-terminal.h), so there is no byte stream to hand
-            // TuiKeyDecoder from here -- the console still hands us decoded
-            // INPUT_RECORDs, not bytes. Rather than guess at re-encoding
-            // those into a byte stream nothing has asked for yet, raw mode
-            // on an interactive Windows console is a no-op until that
-            // support exists; the redirected-input path below still works,
-            // since it already flows through appendBytes()'s own dispatch.
-            return;
-        }
         DWORD available = 0;
         if (!GetNumberOfConsoleInputEvents(input, &available)) {
             emit inputError(tuiText("tui_input_peek_failed"));
@@ -177,14 +173,65 @@ void TuiInput::readWindowsInput()
                 emit inputError(tuiText("tui_input_read_failed"));
                 return;
             }
-            for (DWORD i = 0; i < read; ++i) {
+            for (DWORD i = 0; i < read && m_running; ++i) {
                 if (records[i].EventType != KEY_EVENT || !records[i].Event.KeyEvent.bKeyDown)
                     continue;
                 const KEY_EVENT_RECORD &key = records[i].Event.KeyEvent;
                 const bool control = (key.dwControlKeyState
                     & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) != 0;
-                if (control && key.wVirtualKeyCode == 'C') {
+                const bool alt = (key.dwControlKeyState
+                    & (LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED)) != 0;
+                if (control && key.wVirtualKeyCode == 'C' && (!m_rawMode || !alt)) {
                     emit interruptRequested();
+                    continue;
+                }
+                if (m_rawMode) {
+                    // Windows supplies UTF-16 key records, not VT input bytes.
+                    // Encode only the existing decoder's vocabulary; all line
+                    // editing and submission still happen in TuiLineEditor.
+                    QByteArray bytes;
+                    const QChar character(static_cast<ushort>(key.uChar.UnicodeChar));
+                    if (control && !alt && key.wVirtualKeyCode >= 'A'
+                        && key.wVirtualKeyCode <= 'Z') {
+                        bytes.append(char(key.wVirtualKeyCode - 'A' + 1));
+                    } else {
+                        switch (key.wVirtualKeyCode) {
+                        case VK_LEFT: bytes = "\x1b[D"; break;
+                        case VK_RIGHT: bytes = "\x1b[C"; break;
+                        case VK_UP: bytes = "\x1b[A"; break;
+                        case VK_DOWN: bytes = "\x1b[B"; break;
+                        case VK_HOME: bytes = "\x1b[H"; break;
+                        case VK_END: bytes = "\x1b[F"; break;
+                        case VK_DELETE: bytes = "\x1b[3~"; break;
+                        case VK_PRIOR: bytes = "\x1b[5~"; break;
+                        case VK_NEXT: bytes = "\x1b[6~"; break;
+                        case VK_BACK: bytes = "\x7f"; break;
+                        case VK_RETURN: bytes = "\r"; break;
+                        case VK_TAB: bytes = "\t"; break;
+                        case VK_ESCAPE: bytes = "\x1b"; break;
+                        default: break;
+                        }
+                    }
+                    unsigned short repeat = qMax<WORD>(1, key.wRepeatCount);
+                    if (!bytes.isEmpty()) {
+                        m_highSurrogate = QChar();
+                    } else if (character.isHighSurrogate()) {
+                        m_highSurrogate = character;
+                        m_surrogateRepeat = repeat;
+                        continue;
+                    } else if (character.isLowSurrogate()) {
+                        if (m_highSurrogate.isNull())
+                            continue;
+                        bytes = (QString(m_highSurrogate) + character).toUtf8();
+                        repeat = qMin(repeat, m_surrogateRepeat);
+                        m_highSurrogate = QChar();
+                    } else if (!character.isNull()) {
+                        m_highSurrogate = QChar();
+                        bytes = QString(character).toUtf8();
+                    }
+                    // Modifier-only and IME intermediate records carry no text.
+                    if (!bytes.isEmpty())
+                        emit rawBytes(bytes.repeated(repeat));
                     continue;
                 }
                 if (key.wVirtualKeyCode == VK_TAB) {
@@ -212,7 +259,7 @@ void TuiInput::readWindowsInput()
                     }
                 }
             }
-            if (!GetNumberOfConsoleInputEvents(input, &available))
+            if (!m_running || !GetNumberOfConsoleInputEvents(input, &available))
                 break;
         }
         return;
