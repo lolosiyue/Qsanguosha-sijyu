@@ -77,8 +77,10 @@ class ProbeServer:
                     return
                 try:
                     body = item.read_bytes() if isinstance(item, Path) else item
-                    mime = {'.mjs': 'text/javascript', '.json': 'application/json',
-                            '.html': 'text/html', '.wasm': 'application/wasm'}.get(Path(key).suffix,
+                    # Production Vite emits .js modules; root runtime routes
+                    # need their own path too, rather than the empty prefix key.
+                    mime = {'.mjs': 'text/javascript', '.js': 'text/javascript', '.json': 'application/json',
+                            '.html': 'text/html', '.wasm': 'application/wasm'}.get(Path(key or self.path).suffix,
                                                                                  'application/octet-stream')
                     self.reply(200, body, mime)
                 except OSError:
