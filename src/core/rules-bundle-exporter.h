@@ -3,7 +3,7 @@
 #include <QJsonObject>
 class Engine;
 namespace QSanRules {
-// Captured before Engine loads Lua. W2 accepts only the controlled builtin closure.
+// Captured before Engine loads Lua. Server-only AI is excluded from the closure.
 QJsonObject builtinLuaSnapshot();
 QJsonObject exportIdentity(const Engine &engine, const QJsonObject &loadedLua);
 QJsonObject exportRegistry(const Engine &engine);
