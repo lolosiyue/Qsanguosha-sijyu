@@ -217,7 +217,7 @@ jobs:
           python3 tests/client_runtime/check-rules-bundle.py \
             --server-ai-root "$GITHUB_WORKSPACE/build/rules-server-ai" \
             --native-runner "$GITHUB_WORKSPACE/build/rules-native/qsanguosha_rules_fixture_runner" \
-            --server "$GITHUB_WORKSPACE/build/rules-native/qsanguosha_server" \
+            --server "$GITHUB_WORKSPACE/relwithdebinfo/qsanguosha_server" \
             --browser "$browser" --probe "$GITHUB_WORKSPACE/build/rules-browser-probe" \
             --runtime "$runtime" --artifacts "$GITHUB_WORKSPACE/artifacts/wasm-fixtures/rules-bundle" \
             2>&1 | tee artifacts/wasm-fixtures/rules-bundle-gate.log
