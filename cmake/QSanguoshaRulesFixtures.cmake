@@ -1,5 +1,8 @@
 include_guard(GLOBAL)
 
+# Also register the opt-in production-session consumer when fixtures are OFF.
+include("${CMAKE_CURRENT_LIST_DIR}/QSanguoshaRulesSession.cmake")
+
 # Available with TUI/GUI/server products disabled. Default-on only for tests;
 # ordinary product packaging need not ship this development executable.
 option(QSAN_BUILD_RULES_FIXTURE_RUNNER "Build the native client-rules JSON fixture runner" ${BUILD_TESTING})
