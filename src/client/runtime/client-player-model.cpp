@@ -3,10 +3,52 @@
 #include "client-game-state.h"
 #include "engine.h"
 #include "client-state-projection.h"
+#include "protocol/skill-instance-message.h"
 
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QPair>
+#include <QSet>
 
 #include <algorithm>
+
+namespace {
+
+QList<int> variantInts(const QVariant &value)
+{
+    if (value.userType() == QMetaType::QVariantList) {
+        QList<int> result;
+        for (const QVariant &entry : value.toList())
+            result.append(entry.toInt());
+        return result;
+    }
+    if (!value.isValid() || value.isNull())
+        return {};
+    bool ok = false;
+    const int number = value.toInt(&ok);
+    return ok ? QList<int>{number} : QList<int>{};
+}
+
+QStringList variantStrings(const QVariant &value)
+{
+    if (value.userType() == QMetaType::QStringList)
+        return value.toStringList();
+    QStringList result;
+    for (const QVariant &entry : value.toList()) {
+        const QString name = entry.toString();
+        if (!name.isEmpty())
+            result.append(name);
+    }
+    return result;
+}
+
+QJsonObject metricValue(bool known, const QJsonValue &value)
+{
+    return QJsonObject{{QStringLiteral("known"), known},
+        {QStringLiteral("value"), known ? value : QJsonValue(QJsonValue::Null)}};
+}
+
+} // namespace
 
 ClientPlayer::ClientPlayer(const ClientGameState *state, const ClientPlayerModel *model,
                            QObject *parent)
@@ -161,6 +203,101 @@ void ClientPlayer::applyVisibleZones(const QVariantMap &data)
     setBrokenEquips(broken);
 }
 
+void ClientPlayer::applyRuleEffects(const QVariantMap &data)
+{
+    // Missing skill_instances is an empty snapshot, not "keep the previous
+    // instances". Reconnect and later syncs would otherwise retain stale effects.
+    clearSkillInstances();
+    const QVariantMap instances = data.value(QStringLiteral("skill_instances")).toMap();
+    for (auto it = instances.constBegin(); it != instances.constEnd(); ++it) {
+        SkillInstanceEntryMessage instance;
+        if (!instance.tryParse(it.value()) || instance.ownerName != objectName())
+            continue;
+        if (Sanguosha != nullptr && Sanguosha->getSkill(instance.instance.skillName) == nullptr)
+            continue;
+        upsertSkillInstance(instance.instance);
+        // Private state is owner-only on the wire. Apply it when present;
+        // do not invent empty maps for other players.
+        if (!instance.privateState.isEmpty()) {
+            setSkillInstanceState(instance.instance.skillName,
+                instance.instance.instanceID, instance.privateState);
+        }
+    }
+    // ATTACH_SKILL and UI-derived visible skills can exist alongside an
+    // instance snapshot. Do not lose them when replacing its instances.
+    for (const QString &skill : variantStrings(data.value(QStringLiteral("skills")))) {
+        if (getSkillInstanceIds(skill).isEmpty())
+            addSkill(skill);
+    }
+
+    const QList<const Player *> others = getSiblings();
+    QSet<const Player *> keptDistances;
+    const QVariantMap distances = data.value(QStringLiteral("fixed_distances")).toMap();
+    auto clearDistancesTo = [this](const Player *other) {
+        if (other == nullptr)
+            return;
+        QSet<int> unique;
+        for (int value : fixed_distance.values(other))
+            unique.insert(value);
+        for (int value : unique)
+            removeFixedDistance(other, value);
+    };
+    for (auto it = distances.constBegin(); it != distances.constEnd(); ++it) {
+        const Player *other = m_model != nullptr ? m_model->player(it.key()) : nullptr;
+        if (other == nullptr)
+            continue;
+        keptDistances.insert(other);
+        clearDistancesTo(other);
+        for (int value : variantInts(it.value()))
+            setFixedDistance(other, value);
+    }
+    for (const Player *other : others) {
+        if (other == nullptr || keptDistances.contains(other))
+            continue;
+        clearDistancesTo(other);
+    }
+
+    while (!attack_range_pair.isEmpty())
+        removeAttackRangePair(attack_range_pair.first());
+    for (const QString &name : variantStrings(data.value(QStringLiteral("attack_range_pairs")))) {
+        const Player *other = m_model != nullptr ? m_model->player(name) : nullptr;
+        if (other != nullptr)
+            insertAttackRangePair(other);
+    }
+}
+
+QJsonObject ClientPlayer::metrics() const
+{
+    QJsonObject distanceTo;
+    QJsonObject inAttackRange;
+    const QVariantMap data = m_state != nullptr ? m_state->player(objectName()) : QVariantMap();
+    const QVariantMap distances = data.value(QStringLiteral("fixed_distances")).toMap();
+    const QStringList names = m_state != nullptr ? m_state->playerNames() : QStringList();
+    for (const QString &name : names) {
+        if (name == objectName())
+            continue;
+        const Player *other = m_model != nullptr ? m_model->player(name) : nullptr;
+        const bool hasFixed = !variantInts(distances.value(name)).isEmpty();
+        const QByteArray cachedName = QString(QStringLiteral("distanceTo_") + name).toLatin1();
+        const QVariant cached = property(cachedName.constData());
+        const bool distanceKnown = hasFixed || cached.isValid();
+        distanceTo.insert(name, metricValue(distanceKnown,
+            distanceKnown && other != nullptr ? this->distanceTo(other) : QJsonValue(QJsonValue::Null)));
+        const bool paired = other != nullptr && attack_range_pair.contains(other);
+        const bool rangeKnown = paired || distanceKnown;
+        inAttackRange.insert(name, metricValue(rangeKnown,
+            rangeKnown && other != nullptr ? inMyAttackRange(other) : QJsonValue(QJsonValue::Null)));
+    }
+    const QVariant handMax = data.value(QStringLiteral("hand_max"));
+    const bool handMaxKnown = data.contains(QStringLiteral("hand_max"));
+    return QJsonObject{
+        {QStringLiteral("handMax"), metricValue(handMaxKnown,
+            handMaxKnown ? handMax.toInt() : QJsonValue(QJsonValue::Null))},
+        {QStringLiteral("attackRange"), metricValue(true, getAttackRange())},
+        {QStringLiteral("distanceTo"), distanceTo},
+        {QStringLiteral("inAttackRange"), inAttackRange}};
+}
+
 ClientPlayerModel::ClientPlayerModel(const ClientGameState *state)
     : m_state(state)
 {
@@ -198,6 +335,16 @@ const Player *ClientPlayerModel::cardOwner(int cardId) const
     return owner.isEmpty() ? nullptr : player(owner);
 }
 
+QJsonObject ClientPlayerModel::metrics() const
+{
+    QJsonObject result;
+    for (auto it = m_players.constBegin(); it != m_players.constEnd(); ++it) {
+        if (it.value().player != nullptr)
+            result.insert(it.key(), it.value().player->metrics());
+    }
+    return result;
+}
+
 void ClientPlayerModel::sync()
 {
     if (m_state == nullptr)
@@ -221,9 +368,9 @@ void ClientPlayerModel::sync()
         }
         const QVariantMap data = m_state->player(name);
         const QList<int> equipped = m_state->cardsForPlayer(name, Player::PlaceEquip);
-        if (entry.applied == data && entry.equipped == equipped)
-            continue;
-        syncPlayer(&entry, data, equipped);
+        if (entry.applied != data)
+            syncPlayer(&entry, data);
+        reconcileEquips(entry.player, equipped);
         entry.applied = data;
         entry.equipped = equipped;
     }
@@ -232,22 +379,27 @@ void ClientPlayerModel::sync()
     setEngineSelf(self());
 }
 
-void ClientPlayerModel::syncPlayer(Entry *entry, const QVariantMap &data,
-                                   const QList<int> &equipped)
+void ClientPlayerModel::syncPlayer(Entry *entry, const QVariantMap &data)
 {
     ClientPlayer *projected = entry->player;
     ClientRules::applyPlayerState(projected, data, entry->applied);
+    projected->applyVisibleZones(data);
+    projected->applyRuleEffects(data);
+}
 
-    if (Sanguosha == nullptr || equipped == entry->equipped)
+void ClientPlayerModel::reconcileEquips(ClientPlayer *projected, const QList<int> &equipped)
+{
+    if (projected == nullptr || Sanguosha == nullptr)
         return;
 
-    for (const Card *worn : projected->getEquips()) {
-        if (worn != nullptr && !equipped.contains(worn->getEffectiveId()))
-            projected->removeEquip(worn);
+    // Always rebind. UPDATE_CARD/reset keep the same wrapper ID, but the inner
+    // card class/location can change; skipping a matching ID would keep a stale sort.
+    const QList<const Card *> worn = projected->getEquips();
+    for (const Card *card : worn) {
+        if (card != nullptr)
+            projected->removeEquip(card);
     }
     for (int cardId : equipped) {
-        if (projected->getEquipsId().contains(cardId))
-            continue;
         if (const Card *equip = Sanguosha->getCard(cardId))
             projected->setEquip(equip);
     }

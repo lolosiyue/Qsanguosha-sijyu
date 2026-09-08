@@ -142,6 +142,21 @@ void loadScene(const QJsonObject &data, Scene &scene)
         }
         for (const QString &skill : strings(person.value(QStringLiteral("skills"))))
             require(Sanguosha->getSkill(skill) != nullptr, QStringLiteral("unsupported_skill:") + skill);
+        const QJsonObject instances = person.value(QStringLiteral("skill_instances")).toObject();
+        for (auto instance = instances.constBegin(); instance != instances.constEnd(); ++instance) {
+            SkillInstanceEntryMessage instanceEntry;
+            require(instanceEntry.tryParse(instance.value().toVariant()) && instanceEntry.ownerName == name,
+                    QStringLiteral("invalid_skill_instance"));
+            require(Sanguosha->getSkill(instanceEntry.instance.skillName) != nullptr,
+                    QStringLiteral("unsupported_skill:") + instanceEntry.instance.skillName);
+        }
+        const QJsonObject distances = person.value(QStringLiteral("fixed_distances")).toObject();
+        for (auto distance = distances.constBegin(); distance != distances.constEnd(); ++distance)
+            require(names.contains(distance.key()), QStringLiteral("unknown_distance_player"));
+        if (person.contains(QStringLiteral("attack_range_pairs"))) {
+            for (const QString &other : strings(person.value(QStringLiteral("attack_range_pairs"))))
+                require(names.contains(other), QStringLiteral("unknown_range_player"));
+        }
         const QJsonObject generalPiles = person.value(QStringLiteral("general_piles")).toObject();
         for (auto pile = generalPiles.constBegin(); pile != generalPiles.constEnd(); ++pile) {
             for (const QString &general : strings(pile.value()))
@@ -195,75 +210,8 @@ void loadScene(const QJsonObject &data, Scene &scene)
     scene.room.enterGame();
     // Fresh RoomState means modified=false always restores the printed card,
     // even when the JS reducer retains old UPDATE_CARD fields after a reset.
-    for (int id : suppliedIds) {
-        const QVariantMap data = scene.state.card(id);
-        if (data.value(QStringLiteral("modified")).toBool()) {
-            const QString name = data.value(QStringLiteral("card_name")).toString();
-            WrappedCard *wrapped = qobject_cast<WrappedCard *>(scene.room.card(id));
-            require(wrapped != nullptr, QStringLiteral("incomplete_card_state"));
-            // UPDATE_CARD carries the class name (e.g. Slash), whereas hasCard
-            // searches deck object names. Use the shared clone/adoption path
-            // and reject a failed clone instead of retaining the printed card.
-            Card *updated = Sanguosha->cloneCard(name,
-                static_cast<Card::Suit>(data.value(QStringLiteral("suit")).toInt()),
-                data.value(QStringLiteral("number")).toInt(),
-                data.value(QStringLiteral("flags")).toStringList());
-            require(updated != nullptr, QStringLiteral("unsupported_card:") + name);
-            updated->setId(id);
-            updated->setSkillName(data.value(QStringLiteral("skill_name")).toString());
-            const QString objectName = data.value(QStringLiteral("object_name")).toString();
-            if (!objectName.isEmpty())
-                updated->setObjectName(objectName);
-            wrapped->copyEverythingFrom(updated);
-            require(wrapped->getRealCard() == updated, QStringLiteral("card_update_failed"));
-        }
-        Card *card = scene.room.card(id);
-        require(card != nullptr, QStringLiteral("incomplete_card_state"));
-        if (data.contains(QStringLiteral("flags"))) {
-            card->setFlags(QStringLiteral("."));
-            for (const QString &flag : data.value(QStringLiteral("flags")).toStringList())
-                card->setFlags(flag);
-        }
-        const QVariantMap marks = data.value(QStringLiteral("marks")).toMap();
-        for (auto it = marks.constBegin(); it != marks.constEnd(); ++it)
-            card->setMark(it.key(), it.value().toInt());
-    }
+    require(scene.room.projectStateCards(), QStringLiteral("card_update_failed"));
     scene.players.sync();
-    for (const QString &name : names) {
-        ClientPlayer *player = scene.players.player(name);
-        const QVariantMap data = scene.state.player(name);
-        player->applyVisibleZones(data);
-        const QVariantMap instances = data.value(QStringLiteral("skill_instances")).toMap();
-        if (data.contains(QStringLiteral("skill_instances")))
-            player->clearSkillInstances();
-        for (auto it = instances.constBegin(); it != instances.constEnd(); ++it) {
-            SkillInstanceEntryMessage instance;
-            require(instance.tryParse(it.value()) && instance.ownerName == name,
-                    QStringLiteral("invalid_skill_instance"));
-            require(Sanguosha->getSkill(instance.instance.skillName) != nullptr,
-                    QStringLiteral("unsupported_skill:") + instance.instance.skillName);
-            player->upsertSkillInstance(instance.instance);
-            player->setSkillInstanceState(instance.instance.skillName,
-                instance.instance.instanceID, instance.privateState);
-        }
-        // ATTACH_SKILL and UI-derived visible skills can exist alongside an
-        // instance snapshot. Do not lose them when replacing its instances.
-        for (const QString &skill : data.value(QStringLiteral("skills")).toStringList()) {
-            if (player->getSkillInstanceIds(skill).isEmpty())
-                player->addSkill(skill);
-        }
-        const QVariantMap distances = data.value(QStringLiteral("fixed_distances")).toMap();
-        for (auto distance = distances.constBegin(); distance != distances.constEnd(); ++distance) {
-            const Player *other = scene.players.player(distance.key());
-            require(other != nullptr, QStringLiteral("unknown_distance_player"));
-            player->setFixedDistance(other, distance.value().toInt());
-        }
-        for (const QVariant &otherName : data.value(QStringLiteral("attack_range_pairs")).toList()) {
-            const Player *other = scene.players.player(otherName.toString());
-            require(other != nullptr, QStringLiteral("unknown_range_player"));
-            player->insertAttackRangePair(other);
-        }
-    }
     const QVariant handCount = scene.state.playerValue(self, QStringLiteral("hand_count"));
     require(!handCount.isValid()
             || handCount.toInt() == scene.state.cardsForPlayer(self, Player::PlaceHand).size(),
@@ -569,6 +517,7 @@ QJsonObject ClientRulesSession::evaluate(const QJsonObject &input) const
         {QStringLiteral("declarations"), QJsonArray()},
         {QStringLiteral("next_targets"), QJsonObject{
             {QStringLiteral("candidates"), QJsonArray()}, {QStringLiteral("max_votes"), QJsonObject()}}},
+        {QStringLiteral("player_metrics"), QJsonObject()},
         {QStringLiteral("wire"), QJsonValue(QJsonValue::Null)}};
     try {
         require(Sanguosha != nullptr && Sanguosha->currentRoomContext() == nullptr,
@@ -583,6 +532,7 @@ QJsonObject ClientRulesSession::evaluate(const QJsonObject &input) const
         require(validId && idPattern.match(idText).hasMatch(), QStringLiteral("invalid_request_id"));
         Scene scene;
         loadScene(object(input.value(QStringLiteral("state")), QStringLiteral("state")), scene);
+        output.insert(QStringLiteral("player_metrics"), scene.players.metrics());
         const Prompt prompt = makePrompt(input, scene, id);
         // UNKNOWN is the native context for neutral/discard physical responses.
         scene.room.setCardUseContext(prompt.reason, prompt.cards.selection.pattern);

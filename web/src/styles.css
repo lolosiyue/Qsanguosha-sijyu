@@ -191,6 +191,10 @@ img.logo {
   background: linear-gradient(transparent, #1a120ef0);
   font-size: 0.72rem;
 }
+.photo-meta .hand-count,
+.photo-meta .range-info {
+  color: #f4e6c8;
+}
 .photo-meta .magatamas {
   display: flex;
   align-items: center;

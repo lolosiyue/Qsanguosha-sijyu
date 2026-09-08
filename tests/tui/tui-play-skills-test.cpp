@@ -13,6 +13,7 @@
 
 #include <QCoreApplication>
 #include <QDebug>
+#include <QJsonObject>
 
 #include <cstdio>
 
@@ -506,6 +507,111 @@ int main(int argc, char **argv)
               && wireData.value(QStringLiteral("activation_skill_name")).toString() == v2.skillName
               && wireData.value(QStringLiteral("activation_skill_instance_id")).toInt() == 0,
           "shared response uses the existing canonical card-response wire encoding");
+
+    state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("fixed_distances"),
+        QVariantMap{{QStringLiteral("sgs2"), QVariantList{2, 4}}});
+    players.sync();
+    check(players.self()->distanceTo(players.player(QStringLiteral("sgs2"))) == 2,
+          "stacked fixed distances 2 and 4 use the native min");
+    state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("fixed_distances"),
+        QVariantMap{{QStringLiteral("sgs2"), QVariantList{2}}});
+    players.sync();
+    check(players.self()->distanceTo(players.player(QStringLiteral("sgs2"))) == 2,
+          "removing 4 leaves the stacked 2");
+    state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("fixed_distances"), QVariantMap());
+    state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("distanceTo_sgs2"), 3);
+    players.sync();
+    check(players.self()->distanceTo(players.player(QStringLiteral("sgs2"))) == 3,
+          "without a fixed pair the client reads the synced distanceTo_* cache");
+
+    QVariantMap instance{
+        {QStringLiteral("owner_name"), QStringLiteral("sgs1")},
+        {QStringLiteral("skill_name"), QStringLiteral("wusheng")},
+        {QStringLiteral("instance_id"), 1},
+        {QStringLiteral("source"), 0},
+        {QStringLiteral("parent_owner"), QStringLiteral("sgs1")},
+        {QStringLiteral("parent_skill"), QString()},
+        {QStringLiteral("parent_instance_id"), 0},
+        {QStringLiteral("visible"), true},
+        {QStringLiteral("bind_head"), 1},
+        {QStringLiteral("has_amount_override"), true},
+        {QStringLiteral("amount"), 2},
+        {QStringLiteral("correct_state"), QVariantMap{{QStringLiteral("shown"), 1}}}};
+    state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("skill_instances"),
+        QVariantMap{{QStringLiteral("wusheng#1"), instance}});
+    state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("skills"),
+        QStringList{QStringLiteral("wusheng")});
+    players.sync();
+    check(players.self()->hasSkillInstance(QStringLiteral("wusheng"), 1)
+              && players.self()->getSkillInstanceAmountOverride(QStringLiteral("wusheng"), 1) == 2
+              && players.self()->getSkillInstanceCorrectState(QStringLiteral("wusheng"), 1)
+                     .value(QStringLiteral("shown")).toInt() == 1,
+          "skill instance amount and public correctState are projected");
+    state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("tags"),
+        QVariantMap{{QStringLiteral("SkillInvalidityRecords"),
+            QStringList{QStringLiteral("wusheng|src|reason")}}});
+    players.sync();
+    check(players.self()->isSkillInvalid(QStringLiteral("wusheng")),
+          "SkillInvalidityRecords disable the projected skill");
+    state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("tags"), QVariantMap());
+    state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("skill_instances"), QVariantMap());
+    players.sync();
+    check(!players.self()->hasSkillInstance(QStringLiteral("wusheng"), 1),
+          "removing the instance snapshot drops the old instance");
+
+    state.setPlayerValue(QStringLiteral("sgs1"), QStringLiteral("hand_max"), 6);
+    players.sync();
+    const QJsonObject metrics = players.metrics().value(QStringLiteral("sgs1")).toObject();
+    check(players.self()->getMaxCards() == 6
+              && metrics.value(QStringLiteral("handMax")).toObject().value(QStringLiteral("known")).toBool()
+              && metrics.value(QStringLiteral("handMax")).toObject().value(QStringLiteral("value")).toInt() == 6,
+          "handMax metrics use the synced UI value");
+    check(metrics.value(QStringLiteral("distanceTo")).toObject().value(QStringLiteral("sgs2"))
+              .toObject().value(QStringLiteral("known")).toBool(),
+          "distanceTo metrics are known from the synced cache");
+
+    int weaponId = -1;
+    for (int id = 0; id < Sanguosha->getCardCount(); ++id) {
+        if (Sanguosha->getEngineCard(id)->isKindOf("Weapon")) {
+            weaponId = id;
+            break;
+        }
+    }
+    check(weaponId >= 0, "the catalog supplies a weapon for same-ID equip refresh");
+    if (weaponId >= 0) {
+        state.setCardValue(weaponId, QStringLiteral("owner"), QStringLiteral("sgs1"));
+        state.setCardValue(weaponId, QStringLiteral("place"), static_cast<int>(Player::PlaceEquip));
+        players.sync();
+        const QString original = players.self()->getWeapon()
+            ? players.self()->getWeapon()->objectName() : QString();
+        const QString rewritten = original == QLatin1String("kylin_bow")
+            ? QStringLiteral("blade") : QStringLiteral("kylin_bow");
+        QSanProtocol::ProtocolMessage rewrite;
+        rewrite.command = QSanProtocol::S_COMMAND_UPDATE_CARD;
+        rewrite.payload = QVariantMap{{QStringLiteral("card_id"), weaponId},
+            {QStringLiteral("card_name"), rewritten},
+            {QStringLiteral("object_name"), rewritten},
+            {QStringLiteral("suit"), static_cast<int>(Card::Heart)},
+            {QStringLiteral("number"), 5}};
+        room.applyMessage(rewrite);
+        players.sync();
+        check(players.self()->getWeapon()
+                  && players.self()->getWeapon()->objectName() == rewritten,
+              "UPDATE_CARD on an equipped ID refreshes the worn card");
+        rewrite.payload = QVariantMap{{QStringLiteral("card_id"), weaponId},
+            {QStringLiteral("action"), QStringLiteral("reset")}};
+        room.applyMessage(rewrite);
+        players.sync();
+        check(players.self()->getWeapon()
+                  && players.self()->getWeapon()->objectName() == original,
+              "UPDATE_CARD reset restores the printed equipped card");
+    }
+
+    state.resetGameplayState();
+    players.sync();
+    check(players.player(QStringLiteral("sgs1")) == nullptr
+              && players.self() == nullptr,
+          "gameplay reset drops projected piles, tags and effects before reconnect");
 
     room.leaveGame();
     check(ClientRules::buildSkillCard(v2).status == ClientRules::SkillCardBuildStatus::EngineUnavailable,

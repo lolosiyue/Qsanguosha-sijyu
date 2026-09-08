@@ -107,31 +107,61 @@ public:
         return m_roomState.getCard(cardId);
     }
 
+    bool projectStateCards()
+    {
+        if (!m_active || Sanguosha == nullptr || m_state == nullptr)
+            return false;
+        for (int id : m_state->cardIds()) {
+            const QVariantMap data = m_state->card(id);
+            if (data.value(QStringLiteral("modified")).toBool()) {
+                QVariantMap payload = data;
+                payload.insert(QStringLiteral("card_id"), id);
+                if (!applyCardUpdate(payload))
+                    return false;
+            }
+            Card *card = m_roomState.getCard(id);
+            if (card == nullptr)
+                continue;
+            if (data.contains(QStringLiteral("flags"))) {
+                card->setFlags(QStringLiteral("."));
+                for (const QString &flag : data.value(QStringLiteral("flags")).toStringList())
+                    card->setFlags(flag);
+            }
+            const QVariantMap marks = data.value(QStringLiteral("marks")).toMap();
+            for (auto it = marks.constBegin(); it != marks.constEnd(); ++it)
+                card->setMark(it.key(), it.value().toInt());
+        }
+        return true;
+    }
+
 private:
-    void applyCardUpdate(const QVariantMap &payload)
+    bool applyCardUpdate(const QVariantMap &payload)
     {
         if (!m_active || Sanguosha == nullptr)
-            return;
+            return false;
         const int cardId = payload.value(QStringLiteral("card_id")).toInt();
         if (payload.value(QStringLiteral("action")).toString() == QLatin1String("reset")) {
             m_roomState.resetCard(cardId);
-            return;
+            return true;
         }
 
         WrappedCard *wrapped = qobject_cast<WrappedCard *>(m_roomState.getCard(cardId));
         if (wrapped == nullptr)
-            return;
+            return false;
         Card *updated = Sanguosha->cloneCard(
             payload.value(QStringLiteral("card_name")).toString(),
             static_cast<Card::Suit>(payload.value(QStringLiteral("suit")).toInt()),
             payload.value(QStringLiteral("number")).toInt(),
             payload.value(QStringLiteral("flags")).toStringList());
         if (updated == nullptr)
-            return;
+            return false;
         updated->setId(cardId);
         updated->setSkillName(payload.value(QStringLiteral("skill_name")).toString());
-        updated->setObjectName(payload.value(QStringLiteral("object_name")).toString());
+        const QString objectName = payload.value(QStringLiteral("object_name")).toString();
+        if (!objectName.isEmpty())
+            updated->setObjectName(objectName);
         wrapped->copyEverythingFrom(updated);
+        return wrapped->getRealCard() == updated;
     }
 
     const ClientGameState *m_state;

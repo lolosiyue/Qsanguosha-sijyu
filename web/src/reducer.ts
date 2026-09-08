@@ -103,6 +103,20 @@ function appendOrRemove(values: string[], value: string, add: boolean): string[]
   return values;
 }
 
+// Native Player::fixed_distance is a QMultiHash. A leftover single int is the old shape.
+function fixedDistanceValues(stored: JsonValue | undefined): number[] {
+  if (Array.isArray(stored))
+    return stored.map((entry) => asNumber(entry));
+  if (typeof stored === "number" && Number.isFinite(stored))
+    return [stored];
+  if (typeof stored === "string" && stored.trim() !== "") {
+    const parsed = Number(stored);
+    if (Number.isFinite(parsed))
+      return [parsed];
+  }
+  return [];
+}
+
 function appendSkill(state: ClientGameState, player: string, skill: string): void {
   if (!player || !skill)
     return;
@@ -563,10 +577,15 @@ export function applyNotification(
       break;
     case Command.SYNC_PILE: {
       const player = resolvePlayerName(state, payload.player_name);
+      const pileName = asString(payload.pile_name);
       const piles = isRecord(state.playerValue(player, "piles"))
         ? { ...state.playerValue(player, "piles") as JsonObject }
         : {};
-      piles[asString(payload.pile_name)] = payload.card_ids ?? [];
+      const cardIds = integers(payload.card_ids);
+      if (pileName && cardIds.length === 0)
+        delete piles[pileName];
+      else if (pileName)
+        piles[pileName] = payload.card_ids ?? [];
       state.setPlayerValue(player, "piles", piles);
       break;
     }
@@ -618,24 +637,33 @@ export function applyNotification(
     case Command.FIXED_DISTANCE: {
       const from = resolvePlayerName(state, payload.from_player);
       const to = resolvePlayerName(state, payload.to_player);
+      const distance = asNumber(payload.distance);
       const distances = isRecord(state.playerValue(from, "fixed_distances"))
         ? { ...state.playerValue(from, "fixed_distances") as JsonObject }
         : {};
+      let values = fixedDistanceValues(distances[to]);
       if (asBool(payload.set))
-        distances[to] = asNumber(payload.distance);
+        values = [...values, distance];
       else
+        values = values.filter((entry) => entry !== distance);
+      if (values.length === 0)
         delete distances[to];
+      else
+        distances[to] = values;
       state.setPlayerValue(from, "fixed_distances", distances);
       break;
     }
     case Command.ATTACK_RANGE: {
       const from = resolvePlayerName(state, payload.from_player);
       const to = resolvePlayerName(state, payload.to_player);
-      const pairs = appendOrRemove(
-        strings(state.playerValue(from, "attack_range_pairs")),
-        to,
-        asBool(payload.set)
-      );
+      const pairs = strings(state.playerValue(from, "attack_range_pairs"));
+      if (asBool(payload.set))
+        pairs.push(to);
+      else {
+        const index = pairs.indexOf(to);
+        if (index >= 0)
+          pairs.splice(index, 1);
+      }
       state.setPlayerValue(from, "attack_range_pairs", pairs);
       break;
     }
