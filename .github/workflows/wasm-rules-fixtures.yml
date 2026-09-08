@@ -55,6 +55,8 @@ jobs:
           printf '{"schema_version":1,"status":"NOT_RUN"}\n' > artifacts/wasm-fixtures/production-session/session-summary.json
           mkdir -p artifacts/wasm-fixtures/rules-bundle
           printf '{"schema_version":1,"status":"NOT_RUN"}\n' > artifacts/wasm-fixtures/rules-bundle/rules-bundle-summary.json
+          mkdir -p artifacts/wasm-fixtures/rules-ingress
+          printf '{"schema_version":1,"status":"NOT_RUN","browser":"NOT_RUN"}\n' > artifacts/wasm-fixtures/rules-ingress/ingress-summary.json
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y cmake ninja-build g++ python3-venv libgl1
           python3 -m venv "$RUNNER_TEMP/qsan-fixture-tools"
@@ -82,7 +84,7 @@ jobs:
             -DQSAN_BUILD_SERVER=ON -DQSAN_BUILD_RULES_FIXTURE_RUNNER=ON \
             -DQSAN_BUILD_RULES_SESSION_TESTS=ON \
             2>&1 | tee artifacts/wasm-fixtures/native-configure.log
-          cmake --build build/rules-native --target qsanguosha_rules_fixture_runner qsanguosha_rules_session_probe qsanguosha_server \
+          cmake --build build/rules-native --target qsanguosha_rules_fixture_runner qsanguosha_rules_session_probe qsanguosha_rules_ingress_probe qsanguosha_server \
             2>&1 | tee artifacts/wasm-fixtures/native-build.log
       - name: Execute native production-session lifecycle
         run: |
@@ -120,6 +122,7 @@ jobs:
           python3 tests/client_runtime/check-fixtures.py --self-test
           python3 tests/client_runtime/check-rules-session.py --self-test
           python3 tests/client_runtime/check-rules-bundle.py --self-test
+          python3 tests/client_runtime/check-rules-ingress.py --self-test
       - name: Test production controller and compile the production Worker
         run: |
           npm ci --prefix web
@@ -144,6 +147,19 @@ jobs:
             2>&1 | tee artifacts/wasm-fixtures/wasm-configure.log
           cmake --build build/rules-wasm --target qsanguosha_rules_fixture_wasm qsanguosha_rules_fixture_worker qsanguosha_client_wasm \
             2>&1 | tee artifacts/wasm-fixtures/wasm-build.log
+      - name: Execute native raw-frame ingress and production WASM stream parity
+        run: |
+          set -o pipefail
+          browser="$(command -v google-chrome || command -v chromium || true)"
+          test -n "$browser" || { echo "Chromium is required for ingress acceptance" >&2; exit 1; }
+          module_dir="$GITHUB_WORKSPACE/build/rules-wasm/web-wasm/RelWithDebInfo"
+          python3 tests/client_runtime/check-rules-ingress.py \
+            --native-runner "$GITHUB_WORKSPACE/build/rules-native/qsanguosha_rules_ingress_probe" \
+            --wasm-module "$module_dir/qsanguosha_client_wasm.mjs" \
+            --manifest "$module_dir/qsanguosha_client_wasm.assets.json" \
+            --browser "$browser" --asset-root "$GITHUB_WORKSPACE" \
+            --artifacts "$GITHUB_WORKSPACE/artifacts/wasm-fixtures/rules-ingress" \
+            2>&1 | tee artifacts/wasm-fixtures/rules-ingress/gate.log
       - name: Execute matched-content native and WASM fixtures
         run: |
           source "$RUNNER_TEMP/emsdk/emsdk_env.sh"
