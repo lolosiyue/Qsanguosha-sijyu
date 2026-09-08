@@ -49,8 +49,10 @@ benchmark or exhaustive extension/callback-purity coverage.
 ## Production browser gate
 
 Build `qsanguosha_client_wasm` with the existing Qt 6.11.1/Emscripten 4.0.7
-cross-build, `QSAN_BUILD_WASM_WEB_CLIENT=ON`, native products/tests OFF. Compile
-`web/src/rules-worker.ts` with the repository TypeScript compiler (see workflow).
+cross-build, `QSAN_BUILD_WASM_WEB_CLIENT=ON`, native products/tests OFF. Bundle
+`web/src/rules-worker.ts` with `web/scripts/build-rules-worker.mjs`, passing the
+build's `qsanguosha_client_wasm.bundle.json` so the Worker is bound to the
+deployment it is tested against, exactly as the shipped loader is.
 Then run the same Python harness without `--native-only`, adding `--wasm-module`,
 `--manifest`, `--worker-script` and `--browser`.
 
