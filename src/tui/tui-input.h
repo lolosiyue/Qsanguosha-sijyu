@@ -30,8 +30,8 @@ signals:
     void interruptRequested();
     void inputError(const QString &message);
     void completionChoices(const QStringList &matches);
-    // Raw mode only: bytes exactly as the terminal delivered them, including
-    // half-finished escape sequences and split UTF-8 code points --
+    // Raw mode only: terminal bytes on Unix, or UTF-8/CSI encoded from native
+    // key records on Windows, including split sequences and code points --
     // TuiKeyDecoder owns reassembling those, not TuiInput. TuiInput must
     // never also emit lineReady while raw mode is on: grammar, ClientCore
     // and the reply encoder all assume a single line-assembly path, and a
@@ -51,6 +51,8 @@ private:
     unsigned long m_originalConsoleMode = 0;
     QString m_consoleLine;
     bool m_consoleInput = false;
+    QChar m_highSurrogate;
+    unsigned short m_surrogateRepeat = 0;
 #else
     void readUnixInput(int descriptor);
 #endif

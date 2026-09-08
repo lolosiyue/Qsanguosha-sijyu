@@ -88,6 +88,8 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
     // lives in start() instead (see there for the exit-6-on-failure path).
     if (m_options.boardMode) {
         m_terminal = std::make_unique<TuiTerminal>();
+        connect(m_terminal.get(), &TuiTerminal::interrupted, this,
+            [this]() { requestExit(0); });
         auto boardPresenter = std::make_unique<TuiBoardPresenter>(m_terminal->size(),
             TuiResolvers{
                 [this](int cardId) { return resolveCardDisplayText(cardId); },

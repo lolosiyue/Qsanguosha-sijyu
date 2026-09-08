@@ -364,6 +364,9 @@ if(QSAN_BUILD_TUI)
         ${QSAN_TEST_ROOT}/src/tui/tui-board-view.cpp
         ${QSAN_TEST_ROOT}/src/tui/tui-client-player.cpp
         ${QSAN_TEST_ROOT}/src/tui/tui-command.cpp
+        # Keep TuiInput's moc in the same target as the other directly built
+        # TUI objects; pulling the support library's combined moc duplicates them.
+        ${QSAN_TEST_ROOT}/src/tui/tui-input.cpp
         ${QSAN_TEST_ROOT}/src/tui/tui-interaction-view.cpp
         ${QSAN_TEST_ROOT}/src/tui/tui-renderer.cpp
         ${QSAN_TEST_ROOT}/src/tui/tui-script-runner.cpp
