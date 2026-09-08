@@ -2,6 +2,7 @@
 #define CLIENT_RULES_HOST_H
 
 #include "client-rules-session.h"
+#include "client-rules-ingress.h"
 #include <QString>
 #include <memory>
 
@@ -22,6 +23,8 @@ public:
     int initialize();
     int evaluate();
     int shutdown();
+    // Additive stream envelope v1. No change to the existing W2 bridge exports.
+    int stream();
 
 private:
     enum class Phase { New, Ready, Closed };
@@ -37,6 +40,8 @@ private:
     char *m_argv[2] = {m_name, nullptr};
     std::unique_ptr<QCoreApplication> m_application;
     ClientRulesSession m_session;
+    ClientRulesIngress m_ingress;
+    bool m_streamEnabled = false;
 };
 
 #endif

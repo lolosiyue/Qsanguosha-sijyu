@@ -8,11 +8,24 @@ import test from 'node:test';
 
 const require = createRequire(new URL('../../web/package.json', import.meta.url));
 const ts = require(process.env.QSAN_TYPESCRIPT || 'typescript');
-const source = readFileSync(new URL('../../web/src/rules-client.ts', import.meta.url), 'utf8');
-const compiled = ts.transpileModule(source, { compilerOptions: {
-  target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022,
-} }).outputText;
-const Command = { PLAY_CARD: 1, RESPONSE_CARD: 2, ASK_PEACH: 3, NULLIFICATION: 4 };
+
+// Pure-logic production modules are linked for real: the doubles below stand in
+// only for the browser Worker, the timers and the i18n card catalog. Command
+// numbers, the bridge schema and the identity predicate therefore come from the
+// shipped sources instead of a copy that can silently drift out of date.
+const REAL_MODULES = new Set(['./protocol', './replies', './rules-identity']);
+
+function transpile(name) {
+  const source = readFileSync(new URL(`../../web/src/${name}.ts`, import.meta.url), 'utf8');
+  return ts.transpileModule(source, { compilerOptions: {
+    target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ES2022,
+  } }).outputText;
+}
+
+function sourceModule(name, context) {
+  return new vm.SourceTextModule(transpile(name), { context,
+    initializeImportMeta(meta) { meta.url = `http://localhost/${name}.js`; } });
+}
 
 async function setup() {
   const workers = [], timers = new Map();
@@ -36,19 +49,24 @@ async function setup() {
     this.setExport('cardRecord', () => undefined);
     this.setExport('installRulesCardCatalog', () => {});
   }, { context });
-  const protocol = new vm.SyntheticModule(['Command', 'asString', 'isObject'], function () {
-    this.setExport('Command', Command);
-    this.setExport('asString', value => typeof value === 'string' ? value : '');
-    this.setExport('isObject', value => value !== null && typeof value === 'object' && !Array.isArray(value));
-  }, { context });
-  const module = new vm.SourceTextModule(compiled, { context,
-    initializeImportMeta(meta) { meta.url = 'http://localhost/rules-client.js'; } });
+  const real = new Map();
+  const module = sourceModule('rules-client', context);
   await module.link(name => {
     if (name === './i18n') return catalog;
-    if (name === './protocol') return protocol;
-    throw new Error('Unmocked production dependency: ' + name);
+    if (!REAL_MODULES.has(name)) throw new Error('Unmocked production dependency: ' + name);
+    if (!real.has(name)) real.set(name, sourceModule(name.slice(2), context));
+    return real.get(name);
   });
   await module.evaluate();
+  const { Command } = real.get('./protocol').namespace;
+  const { RULES_BRIDGE_SCHEMA } = real.get('./rules-identity').namespace;
+  // Format-valid identity: isRulesIdentity() checks shape, not hash provenance,
+  // and every declared interaction schema must name a supported command.
+  const digest = 'a'.repeat(64);
+  const bundle = { schema_version: 1, protocol_version: 2, bridge_schema: RULES_BRIDGE_SCHEMA,
+    ruleset: 'standard', content_profile: 'builtin-v1', bundle_id: digest, cpp_hash: digest,
+    card_registry_hash: digest, lua_hash: digest, bindings_abi: digest, packages: ['standard'],
+    interaction_schemas: { [Command.PLAY_CARD]: digest, [Command.RESPONSE_CARD]: digest } };
   const controller = new module.namespace.RulesController(() => {});
   const session = { generation: 1, revision: 1, synchronizing: false, phase: 'active',
     interaction: { messageId: '18446744073709551615', command: Command.PLAY_CARD, payload: {} },
@@ -58,7 +76,8 @@ async function setup() {
   const selection = { card_ids: [0], targets: ['b'], skill_name: '', skill_instance_id: 0, user_string: '' };
   function ready(worker = workers.at(-1), generation = session.generation) {
     worker.emit({ schema_version: 1, type: 'ready', generation,
-      info: { schema_version: 1, card_count: 1, registry: [{ id: 0, object_name: 'slash', suit: 0, number: 7 }] } });
+      info: { schema_version: RULES_BRIDGE_SCHEMA, card_count: 1, rules_bundle: bundle,
+        registry: [{ id: 0, object_name: 'slash', suit: 0, number: 7 }] } });
   }
   function result(worker = workers.at(-1), changes = {}) {
     const sent = worker.sent.filter(value => value.type === 'evaluate').at(-1);

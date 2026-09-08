@@ -18,3 +18,6 @@ extern "C" EMSCRIPTEN_KEEPALIVE int qsan_client_bridge_schema()
 extern "C" EMSCRIPTEN_KEEPALIVE int qsan_client_initialize() { return host.initialize(); }
 extern "C" EMSCRIPTEN_KEEPALIVE int qsan_client_evaluate() { return host.evaluate(); }
 extern "C" EMSCRIPTEN_KEEPALIVE int qsan_client_shutdown() { return host.shutdown(); }
+
+// Raw-frame ingress is additive and opt-in; its own envelope is versioned.
+extern "C" EMSCRIPTEN_KEEPALIVE int qsan_client_stream() { return host.stream(); }
