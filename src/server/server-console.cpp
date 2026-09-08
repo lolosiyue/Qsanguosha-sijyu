@@ -4,7 +4,9 @@
 #include "version.h"
 
 #include <QCoreApplication>
+#if !defined(QSAN_XP_LEGACY)
 #include <QDeadlineTimer>
+#endif
 #include <QSocketNotifier>
 
 #include <cerrno>
@@ -84,6 +86,26 @@ void ConsoleInputThread::run()
 void ConsoleInputThread::readFromConsole()
 {
     const HANDLE stdinHandle = ::GetStdHandle(STD_INPUT_HANDLE);
+#ifdef QSAN_XP_LEGACY
+    // XP cannot cancel a synchronous ReadConsoleW. Read individual input
+    // records only after readiness, so interruption always has a bounded join.
+    QString pending;
+    while (!isInterruptionRequested()) {
+        if (::WaitForSingleObject(stdinHandle, 25) != WAIT_OBJECT_0)
+            continue;
+        INPUT_RECORD record;
+        DWORD count = 0;
+        if (!::ReadConsoleInputW(stdinHandle, &record, 1, &count)) break;
+        if (!count || record.EventType != KEY_EVENT || !record.Event.KeyEvent.bKeyDown) continue;
+        const wchar_t ch = record.Event.KeyEvent.uChar.UnicodeChar;
+        if (ch == L'\r') { emit lineReceived(pending); pending.clear(); }
+        else if (ch == L'\b') { if (!pending.isEmpty()) pending.chop(1); }
+        else if (ch && pending.size() < MaximumInputBufferSize) pending.append(QChar(ch));
+        DWORD written = 0;
+        if (ch) ::WriteConsoleW(GetStdHandle(STD_OUTPUT_HANDLE), &ch, 1, &written, nullptr);
+    }
+    emit inputClosed();
+#else
     // In line-input mode ReadConsoleW returns CR LF terminated lines unless the
     // 4 KiB chunk fills first; scanning for '\n' and keeping the remainder also
     // covers pasted lines longer than one chunk. UTF-16 arrives directly, so
@@ -120,6 +142,7 @@ void ConsoleInputThread::readFromConsole()
         emit lineReceived(pending);
     }
     emit inputClosed();
+#endif
 }
 
 void ConsoleInputThread::readFromPipe()
@@ -131,6 +154,17 @@ void ConsoleInputThread::readFromPipe()
     bool endOfInput = false;
     while (!isInterruptionRequested()) {
         DWORD count = 0;
+#ifdef QSAN_XP_LEGACY
+        // Anonymous QProcess stdin pipes support PeekNamedPipe on XP. Never
+        // enter ReadFile until bytes exist; a live empty pipe remains stoppable.
+        if (::GetFileType(stdinHandle) == FILE_TYPE_PIPE) {
+            DWORD available = 0;
+            if (!::PeekNamedPipe(stdinHandle, nullptr, 0, nullptr, &available, nullptr)) {
+                endOfInput = true; break;
+            }
+            if (!available) { msleep(25); continue; }
+        }
+#endif
         if (!::ReadFile(stdinHandle, chunk, DWORD(sizeof(chunk)), &count, nullptr)) {
             const DWORD error = ::GetLastError();
             endOfInput = error == ERROR_BROKEN_PIPE || error == ERROR_HANDLE_EOF;
@@ -310,6 +344,10 @@ void ServerConsole::stopInputThread()
 
     if (m_inputThread->isRunning()) {
         m_inputThread->requestInterruption();
+#ifdef QSAN_XP_LEGACY
+        if (!m_inputThread->wait(1000))
+            qFatal("XP console reader failed its bounded shutdown");
+#else
         // The worker blocks in a synchronous console read; cancel that pending
         // I/O so it can observe the interruption instead of hanging the join.
         const DWORD threadId = static_cast<DWORD>(m_inputThread->nativeThreadId());
@@ -325,6 +363,7 @@ void ServerConsole::stopInputThread()
             m_inputThread->setParent(nullptr);
             return;
         }
+#endif
     }
     delete m_inputThread;
     m_inputThread = nullptr;

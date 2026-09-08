@@ -10,6 +10,10 @@
 #include "carditem.h"
 #include "engine.h"
 #include "room.h"
+#ifdef QSAN_XP_LEGACY
+#include "mainwindow.h"
+#include "local-server-controller.h"
+#endif
 #include "client.h"
 #include "settings.h"
 #include "cardcontainer.h"
@@ -242,6 +246,26 @@ RoomScene::RoomScene(QMainWindow*main_window)
 	  m_presentedDialogSkillButton(nullptr), m_presentedDialog(nullptr)
 {
 	setParent(main_window);
+#ifdef QSAN_XP_LEGACY
+	MainWindow *ownerWindow = qobject_cast<MainWindow *>(main_window);
+	LocalServerController *owner = ownerWindow ? ownerWindow->localServerController() : nullptr;
+	if (owner && owner->isReady() && !owner->hostOnly()
+		&& Config.HostAddress == owner->endpoint() && !ClientInstance->getReplayer()) {
+		m_xpReplayGeneration = owner->generation();
+		connect(owner, &LocalServerController::replayFinalized, this,
+			[this, owner](const QString &path, bool ok, const QString &detail) {
+				if (owner->generation() != m_xpReplayGeneration || !m_xpReplayExports.contains(path)) return;
+				const bool reportFailure = m_xpReplayExports.take(path);
+				if (ok) qInfo().noquote() << "Replay snapshot manifest saved:" << path;
+				else {
+					qWarning().noquote() << "Replay snapshot manifest was not saved:" << detail;
+					if (reportFailure && detail != QStringLiteral("cancelled"))
+						QMessageBox::warning(this->main_window, tr("Save replay record"),
+							tr("The replay was saved, but its takeover snapshots could not be saved: %1").arg(detail));
+				}
+			});
+	}
+#endif
 
 	m_choiceDialog = nullptr;
     m_playerCardBox = nullptr;
@@ -2640,7 +2664,7 @@ void RoomScene::chooseGeneral(const QStringList&generals)
 		}
 		if (!selectableGenerals.contains(pick) && !selectableGenerals.isEmpty())
 			pick = selectableGenerals.at(UiRng::bounded(selectableGenerals.size()));
-		QFile diag("client_autotest_diag.log");
+		QFile diag(QSanRuntimePaths::userDataPath("client_autotest_diag.log"));
 		if (diag.open(QIODevice::Append | QIODevice::Text)) {
 			QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
 				<< " chooseGeneral: ask#=" << m_autoPickGeneralAskCount
@@ -4824,8 +4848,19 @@ void RoomScene::saveReplayRecord()
 		QStandardPaths::writableLocation(QStandardPaths::HomeLocation),
 		tr("Pure text replay file (*.txt);;Image replay file (*.png)"));
 
-	if (filename.isEmpty() || !ClientInstance->save(filename))
+	if (filename.isEmpty()) return;
+#ifdef QSAN_XP_LEGACY
+	if (m_xpReplayExports.contains(QFileInfo(filename).absoluteFilePath())) return;
+#endif
+	if (!ClientInstance->save(filename))
 		return;
+
+#ifdef QSAN_XP_LEGACY
+	if (localReplayController() && !filename.endsWith(QStringLiteral(".png"), Qt::CaseInsensitive)) {
+		finalizeLocalReplay(filename, true);
+		return;
+	}
+#endif
 
 	Room *room = Sanguosha->currentRoom();
 	if (room && !filename.endsWith(QStringLiteral(".png"), Qt::CaseInsensitive)) {
@@ -7404,7 +7439,11 @@ void RoomScene::recorderAutoSave()
 		return;
 
 	Room *room = Sanguosha->currentRoom();
-	const bool takeoverSession = room && room->isTakeoverSession();
+	bool takeoverSession = room && room->isTakeoverSession();
+#ifdef QSAN_XP_LEGACY
+	LocalServerController *owner = localReplayController();
+	if (owner) takeoverSession = owner->takeoverSession();
+#endif
 	if(Config.value("recorder/networkonly",true).toBool() && !takeoverSession){
 		bool is_network = false;
 		foreach(const ClientPlayer*player,ClientInstance->getPlayers()){
@@ -7419,10 +7458,25 @@ void RoomScene::recorderAutoSave()
 	if (room && !room->getReplayPath().isEmpty())
 		filename = room->getReplayPath();
 	else {
+#ifdef QSAN_XP_LEGACY
+		// Stable ASCII paths also keep the XP snapshot sidecar portable across locales.
+		filename = QSanRuntimePaths::recordDir()+"/"+QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss-zzz")+".txt";
+#else
 		filename = QSanRuntimePaths::recordDir()+"/"+QDateTime::currentDateTime().toString("yyyy年MM月dd日HH时mm分ss秒")+".txt";
+#endif
 	}
+#ifdef QSAN_XP_LEGACY
+	if (m_xpReplayExports.contains(QFileInfo(filename).absoluteFilePath())) return;
+#endif
 	if (!ClientInstance->save(filename))
 		return;
+
+#ifdef QSAN_XP_LEGACY
+	if (owner) {
+		finalizeLocalReplay(filename, false);
+		return;
+	}
+#endif
 
 	if (room) {
 		QString error;
@@ -7430,6 +7484,30 @@ void RoomScene::recorderAutoSave()
 			qWarning().noquote() << "Replay snapshot manifest was not saved:" << error;
 	}
 }
+
+#ifdef QSAN_XP_LEGACY
+LocalServerController *RoomScene::localReplayController() const
+{
+	MainWindow *window = qobject_cast<MainWindow *>(main_window);
+	LocalServerController *owner = window ? window->localServerController() : nullptr;
+	return owner && owner->active() && !owner->hostOnly() && !m_xpReplayGeneration.isEmpty()
+		&& owner->generation() == m_xpReplayGeneration ? owner : nullptr;
+}
+
+void RoomScene::finalizeLocalReplay(const QString &filename, bool reportFailure)
+{
+	LocalServerController *owner = localReplayController();
+	const QString path = QFileInfo(filename).absoluteFilePath();
+	m_xpReplayExports.insert(path, reportFailure);
+	// Only the owned helper can access this game's authoritative snapshots.
+	if (!owner || !Self || owner->finalizeReplay(path, Self->objectName()).isEmpty()) {
+		m_xpReplayExports.remove(path);
+		qWarning().noquote() << "Replay snapshot export could not be queued:" << path;
+		if (reportFailure)
+			QMessageBox::warning(main_window, tr("Save replay record"), tr("The local server is not ready to save takeover snapshots."));
+	}
+}
+#endif
 
 PromptInfoItem::PromptInfoItem(QGraphicsItem*parent)
 	: QGraphicsTextItem(parent)

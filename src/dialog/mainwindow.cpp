@@ -20,6 +20,12 @@
 #include "clientplayer.h"
 #include "game-session-config.h"
 #include "game-snapshot.h"
+#include "replay-takeover-validation.h"
+#ifdef QSAN_XP_LEGACY
+#include "local-server-controller.h"
+#include "runtime-paths.h"
+#include <QInputDialog>
+#endif
 #include "replay-index.h"
 #include "settings.h"
 #include "button.h"
@@ -140,6 +146,9 @@ MainWindow::MainWindow(QWidget *parent)
 	pageStack->addWidget(homePageWidget);
 #endif
 	setupLocalLoadingPage();
+#ifdef QSAN_XP_LEGACY
+	setupLocalServerController();
+#endif
 	pageStack->addWidget(gameView);
 
 	setCentralWidget(pageStack);
@@ -442,6 +451,18 @@ void MainWindow::updateHomeSceneLoadState(HomeSceneLoadState state)
 
 void MainWindow::showHomePage()
 {
+#ifdef QSAN_XP_LEGACY
+	if (localServer && localServer->active()) {
+		if (localServer->hostOnly() && localServer->isReady()) {
+			StartScene *management = new StartScene;
+			management->switchToServer(localServer);
+			showGamePage(management);
+			return;
+		}
+		localServer->stop();
+	}
+	m_localClientPending = false;
+#endif
 	ServerInfo.DuringGame = false;
 	delete systray;
 	systray = nullptr;
@@ -564,6 +585,16 @@ void MainWindow::restoreFromConfig()
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+#ifdef QSAN_XP_LEGACY
+	if (localServer && localServer->active()) {
+		event->ignore();
+		m_closeAfterServer = true;
+		if (ClientInstance) ClientInstance->disconnectFromHost();
+		showLocalLoadingPage(tr("Stopping local server..."));
+		localServer->stop();
+		return;
+	}
+#endif
 	// 主視窗被關 = 正常退出。此後退出清理階段(Engine 析構、Lua 關閉、
 	// __gc 終結器經 SWIG 回調 C++ 物件)出的崩潰不再上報 —— 玩家已主動退出。
 	CrashHandler::beginShutdown();
@@ -657,11 +688,21 @@ void MainWindow::on_actionExit_triggered()
 
 void MainWindow::on_actionStart_Server_triggered()
 {
+#ifdef QSAN_XP_LEGACY
+	if (localServer->active()) return;
+#endif
 	static ServerDialog *dialog = new ServerDialog(this);
 	int accept_type = dialog->config();
 	if (accept_type == 0)
 		return;
 
+#ifdef QSAN_XP_LEGACY
+	showLocalLoadingPage(tr("Starting local server..."));
+	GameSessionConfig session;
+	const QVariant seed = qApp->property("xpGameSeed");
+	if (seed.isValid()) session.seed = seed.toULongLong();
+	localServer->start(LocalServerController::Ownership::OwnedHost, accept_type == 1, session);
+#else
 	server = new Server(this);
 	if (!server->listen()) {
 		QMessageBox::warning(this, tr("Warning"), tr("Can not start server!"));
@@ -686,10 +727,58 @@ void MainWindow::on_actionStart_Server_triggered()
 		Config.HostAddress = "127.0.0.1";
 		startConnectionWithReconnect(false);
 	}
+#endif
 }
+
+#ifdef QSAN_XP_LEGACY
+void MainWindow::setupLocalServerController()
+{
+	localServer = new LocalServerController(this);
+	QPushButton *cancel = new QPushButton(tr("Cancel"), localLoadingPage);
+	localLoadingPage->layout()->addWidget(cancel);
+	connect(cancel, &QPushButton::clicked, this, [this]() {
+		if (m_takeoverInProgress) rollbackTakeover(QString());
+		else { localServer->stop(); showHomePage(); }
+	});
+	connect(localServer, &LocalServerController::progress, this,
+		[this](const QString &phase) { if (!m_closeAfterServer) showLocalLoadingPage(phase); });
+	connect(localServer, &LocalServerController::ready, this, &MainWindow::completeLocalRoomStart);
+	connect(localServer, &LocalServerController::failed, this, [this](const QString &error) {
+		if (m_closeAfterServer) return;
+		if (m_takeoverInProgress) rollbackTakeover(error);
+		else failLocalRoomStart(error);
+	});
+	connect(localServer, &LocalServerController::takeoverReady, this, [this]() {
+		m_takeoverGameStarted = true;
+		m_takeoverInProgress = false;
+		m_replayRestoreState = ReplayRestoreState();
+	});
+	connect(localServer, &LocalServerController::takeoverFailed, this, &MainWindow::rollbackTakeover);
+	connect(localServer, &LocalServerController::stopped, this, [this](bool graceful) {
+		if (!graceful) qWarning("XP helper exit was not a completed graceful shutdown");
+		if (m_closeAfterServer) { close(); return; }
+		ui->actionStart_Game->disconnect();
+		connect(ui->actionStart_Game, SIGNAL(triggered()), connection_dialog, SLOT(exec()));
+		ui->actionStart_Server->setEnabled(true);
+	});
+	connect(localServer, &LocalServerController::commandResult, this,
+		[this](const QString &, bool ok, const QJsonObject &body) {
+			if (!ok && !m_closeAfterServer && body.value("code").toString() != "cancelled")
+				QMessageBox::warning(this, tr("Server command failed"), body.value("code").toString());
+		});
+}
+#endif
 
 void MainWindow::startLocalConsoleGame()
 {
+#ifdef QSAN_XP_LEGACY
+	if (localServer->active()) return;
+	showLocalLoadingPage(tr("Initializing local rules and AI..."));
+	GameSessionConfig session;
+	const QVariant seed = qApp->property("xpGameSeed");
+	if (seed.isValid()) session.seed = seed.toULongLong();
+	localServer->start(LocalServerController::Ownership::OwnedPrivate, false, session);
+#else
 	if (server) {
 		server->deleteLater();
 		server = nullptr;
@@ -713,10 +802,27 @@ void MainWindow::startLocalConsoleGame()
 	QString error;
 	if (!pendingServer->prepareInitialRoomAsync(&error))
 		failLocalRoomStart(error);
+#endif
 }
 
 void MainWindow::completeLocalRoomStart()
 {
+#ifdef QSAN_XP_LEGACY
+	if (!localServer->isReady()) return;
+	if (localServer->hostOnly()) {
+		ui->actionStart_Game->disconnect();
+		connect(ui->actionStart_Game, SIGNAL(triggered()), this, SLOT(startGameInAnotherInstance()));
+		StartScene *management = new StartScene;
+		management->switchToServer(localServer);
+		showGamePage(management);
+		if (Config.value("EnableMinimizeDialog").toBool()) on_actionMinimize_to_system_tray_triggered();
+		return;
+	}
+	Config.HostAddress = localServer->endpoint();
+	m_localClientPending = true;
+	showLocalLoadingPage(tr("Connecting to local room..."));
+	startConnectionWithReconnect(false);
+#else
 	if (!server)
 		return;
 	showLocalLoadingPage(tr("Starting local server..."));
@@ -732,10 +838,14 @@ void MainWindow::completeLocalRoomStart()
 		if (server)
 			startConnectionWithReconnect(false);
 	});
+#endif
 }
 
 void MainWindow::failLocalRoomStart(const QString &error)
 {
+#ifdef QSAN_XP_LEGACY
+	localServer->stop();
+#endif
 	Server *failedServer = server;
 	server = nullptr;
 	if (failedServer)
@@ -746,131 +856,10 @@ void MainWindow::failLocalRoomStart(const QString &error)
 }
 
 bool MainWindow::preflightTakeover(const QString &snapshotPath,
-	const QString &seatName, QString *error) const
+    const QString &seatName, QString *error) const
 {
-	const auto fail = [error](const QString &message) {
-		if (error)
-			*error = message;
-		return false;
-	};
-
-	if (snapshotPath.isEmpty() || seatName.isEmpty())
-		return fail(tr("Takeover requires a snapshot and a seat"));
-
-	if (!m_replayRestoreState.valid || m_replayRestoreState.path.endsWith(
-		QStringLiteral(".png"), Qt::CaseInsensitive)) {
-		return fail(tr("Takeover is available only for a text replay with snapshots"));
-	}
-
-	const QFileInfo snapshotInfo(snapshotPath);
-	if (!snapshotInfo.isFile())
-		return fail(tr("Snapshot file does not exist"));
-
-	// The manifest is the pairing boundary between a replay and its snapshots.
-	// Replayer performs the hash/schema verification; checking its presence here
-	// prevents a direct path from accidentally bypassing that contract.
-	const QString snapshotDir = GameSnapshot::getSnapshotDir(m_replayRestoreState.path);
-	if (QDir::cleanPath(snapshotInfo.absolutePath()) != QDir::cleanPath(snapshotDir))
-		return fail(tr("Snapshot is not in the selected replay's snapshot directory"));
-	const QFileInfo manifestInfo(snapshotDir + QLatin1String("/manifest.json"));
-	if (!manifestInfo.isFile())
-		return fail(tr("Replay snapshot manifest is missing"));
-
-	QFile manifestFile(manifestInfo.absoluteFilePath());
-	if (!manifestFile.open(QIODevice::ReadOnly))
-		return fail(tr("Replay snapshot manifest cannot be opened"));
-	QJsonParseError parseError;
-	const QJsonDocument manifest = QJsonDocument::fromJson(manifestFile.readAll(), &parseError);
-	if (parseError.error != QJsonParseError::NoError || !manifest.isObject())
-		return fail(tr("Replay snapshot manifest is invalid"));
-	const QJsonObject manifestObject = manifest.object();
-	if (manifestObject.value(QStringLiteral("schema")).toString()
-		!= QStringLiteral("qsanguosha-takeover-manifest-v1")) {
-		return fail(tr("Replay snapshot manifest schema is unsupported"));
-	}
-	if (manifestObject.value(QStringLiteral("sessionId")).toString().isEmpty()
-		|| !manifestObject.value(QStringLiteral("snapshots")).isArray())
-		return fail(tr("Replay snapshot manifest is incomplete"));
-
-	QFile replayFile(m_replayRestoreState.path);
-	if (!replayFile.open(QIODevice::ReadOnly))
-		return fail(tr("The source replay cannot be opened"));
-	const QByteArray replayHash = QCryptographicHash::hash(
-		replayFile.readAll(), QCryptographicHash::Sha256).toHex();
-	if (QString::fromLatin1(replayHash)
-		!= manifestObject.value(QStringLiteral("replaySha256")).toString()) {
-		return fail(tr("Replay and snapshot manifest do not match"));
-	}
-
-	QByteArray snapshotBytes;
-	QFile snapshotHashFile(snapshotInfo.absoluteFilePath());
-	if (snapshotHashFile.open(QIODevice::ReadOnly))
-		snapshotBytes = snapshotHashFile.readAll();
-	else
-		return fail(tr("Snapshot cannot be opened"));
-	const QString snapshotHash = QString::fromLatin1(
-		QCryptographicHash::hash(snapshotBytes, QCryptographicHash::Sha256).toHex());
-	bool manifestEntryFound = false;
-	QString manifestTurnSerial;
-	QString manifestPlayerName;
-	int manifestPlayerTurnCount = 0;
-	for (const QJsonValue &entryValue : manifestObject.value(QStringLiteral("snapshots")).toArray()) {
-		const QJsonObject entry = entryValue.toObject();
-		if (entry.value(QStringLiteral("file")).toString() != snapshotInfo.fileName())
-			continue;
-		if (manifestEntryFound)
-			return fail(tr("Snapshot is listed more than once in the manifest"));
-		manifestEntryFound = true;
-		if (entry.value(QStringLiteral("sha256")).toString() != snapshotHash)
-			return fail(tr("Snapshot and manifest do not match"));
-		manifestTurnSerial = entry.value(QStringLiteral("turnSerial")).toString();
-		manifestPlayerName = entry.value(QStringLiteral("playerName")).toString();
-		manifestPlayerTurnCount = entry.value(
-			QStringLiteral("playerTurnCount")).toInt(0);
-	}
-	if (!manifestEntryFound)
-		return fail(tr("Snapshot is not listed in the replay manifest"));
-
-	GameSnapshot snapshot(snapshotPath);
-	if (!snapshot.isEligible())
-		return fail(snapshot.getError().isEmpty()
-			? tr("This snapshot is not eligible for takeover")
-			: snapshot.getError());
-
-	const GlobalSnapshot state = snapshot.getState();
-	int expectedPlayerTurnCount = 1;
-	bool currentPlayerFound = false;
-	for (const PlayerSnapshot &player : state.players) {
-		if (player.objectName != state.currentPlayer)
-			continue;
-		expectedPlayerTurnCount = player.marks.value(
-			QStringLiteral("Global_TurnCount"), 0) + 1;
-		currentPlayerFound = true;
-		break;
-	}
-	if (manifestTurnSerial != QString::number(snapshot.getTurnSerial())
-		|| !currentPlayerFound || manifestPlayerName != state.currentPlayer
-		|| manifestPlayerTurnCount != expectedPlayerTurnCount)
-		return fail(tr("Snapshot timeline identity does not match the manifest"));
-	if (!state.unsupportedState.isEmpty() || state.players.isEmpty())
-		return fail(tr("Snapshot contains unsupported or incomplete state"));
-	if (state.currentPlayer.isEmpty() || !state.seatOrder.contains(state.currentPlayer))
-		return fail(tr("Snapshot has no valid current player"));
-
-	QString compatibilityError;
-	if (!GameSnapshot::validateRuntimeCompatibility(state, &compatibilityError))
-		return fail(compatibilityError);
-
-	const auto playerIt = std::find_if(state.players.cbegin(), state.players.cend(),
-		[&seatName](const PlayerSnapshot &player) {
-			return player.objectName == seatName;
-		});
-	if (playerIt == state.players.cend())
-		return fail(tr("Selected seat is not present in the snapshot"));
-	if (!playerIt->alive)
-		return fail(tr("A dead seat cannot be selected for takeover"));
-
-	return true;
+    return validateReplayTakeover(m_replayRestoreState.valid ? m_replayRestoreState.path : QString(),
+                                 snapshotPath, seatName, error);
 }
 
 bool MainWindow::stopReplayForTakeover(Replayer *replayer, QString *error) const
@@ -888,6 +877,9 @@ bool MainWindow::stopReplayForTakeover(Replayer *replayer, QString *error) const
 
 void MainWindow::startTakeoverGame(const QString &snapshotPath, const QString &seatName)
 {
+#ifdef QSAN_XP_LEGACY
+	if (localServer->active()) return;
+#endif
 	Client *oldClient = ClientInstance;
 	Replayer *oldReplayer = oldClient ? oldClient->getReplayer() : nullptr;
 	if (oldReplayer == nullptr || !oldReplayer->isValid()) {
@@ -939,6 +931,11 @@ void MainWindow::startTakeoverGame(const QString &snapshotPath, const QString &s
 		if (seedOk)
 			sessionConfig.seed = seed;
 	}
+#ifdef QSAN_XP_LEGACY
+	showLocalLoadingPage(tr("Preparing replay takeover..."));
+	localServer->start(LocalServerController::Ownership::OwnedPrivate, false,
+		sessionConfig, m_replayRestoreState.path);
+#else
 	server = new Server(this, sessionConfig);
 	connect(server, &Server::takeoverReady, this, [this]() {
 		m_takeoverGameStarted = true;
@@ -959,10 +956,14 @@ void MainWindow::startTakeoverGame(const QString &snapshotPath, const QString &s
 		if (m_takeoverInProgress)
 			rollbackTakeover(tr("Takeover session did not become ready in time"));
 	});
+#endif
 }
 
 void MainWindow::rollbackTakeover(const QString &reason)
 {
+#ifdef QSAN_XP_LEGACY
+	localServer->stop();
+#endif
 	if (!reason.isEmpty())
 		qWarning().noquote() << "Takeover failed:" << reason;
 
@@ -1044,7 +1045,7 @@ void MainWindow::checkVersion(const QString &server_version, const QString &serv
 	const bool autotest = !m_takeoverInProgress
 		&& (Config.AutoAddRobots || !Config.AutoPickGeneral.isEmpty());
 	if (autotest) {
-		QFile diag("client_autotest_diag.log");
+		QFile diag(QSanRuntimePaths::userDataPath("client_autotest_diag.log"));
 		if (diag.open(QIODevice::Append | QIODevice::Text)) {
 			QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
 				<< " checkVersion(autotest): server_mod='" << server_mod
@@ -1159,6 +1160,13 @@ void MainWindow::networkError(const QString &error_msg)
 		rollbackTakeover(error_msg);
 		return;
 	}
+#ifdef QSAN_XP_LEGACY
+	if (m_localClientPending) {
+		m_localClientPending = false;
+		failLocalRoomStart(error_msg);
+		return;
+	}
+#endif
 	if (isVisible())
 		QMessageBox::warning(this, tr("Network error"), error_msg);
 }
@@ -1173,6 +1181,11 @@ void BackLoader::preload()
 
 void MainWindow::enterRoom()
 {
+#ifdef QSAN_XP_LEGACY
+	m_localClientPending = false;
+	// A private ephemeral endpoint is session state, not a saved address.
+	if (!localServer->active())
+#endif
 	if (!Config.HistoryIPs.contains(Config.HostAddress)) {
 		Config.HistoryIPs << Config.HostAddress;
 		Config.HistoryIPs.sort();
@@ -1236,7 +1249,7 @@ void MainWindow::enterRoom()
 	// 自動化測試: --auto-robots 由 owner 自動填滿 AI (填滿後伺服器端自動開局)
 	if (Config.AutoAddRobots || m_takeoverInProgress) {
 		const bool takeoverRobotFill = m_takeoverInProgress;
-		QFile diag("client_autotest_diag.log");
+		QFile diag(QSanRuntimePaths::userDataPath("client_autotest_diag.log"));
 		if (Config.AutoAddRobots && diag.open(QIODevice::Append | QIODevice::Text)) {
 			QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
 				<< " enterRoom: AutoAddRobots on, players=" << ClientInstance->getPlayers().length() << "\n";
@@ -1257,7 +1270,7 @@ void MainWindow::enterRoom()
 					break;
 				}
 			}
-			QFile diag("client_autotest_diag.log");
+			QFile diag(QSanRuntimePaths::userDataPath("client_autotest_diag.log"));
 			if (Config.AutoAddRobots && diag.open(QIODevice::Append | QIODevice::Text)) {
 				QTextStream(&diag) << QDateTime::currentDateTime().toString("HH:mm:ss.zzz")
 					<< " tick: players=" << ClientInstance->getPlayers().length()
@@ -1290,7 +1303,14 @@ void MainWindow::enableDialogButtons()
 
 void MainWindow::startGameInAnotherInstance()
 {
+#ifdef QSAN_XP_LEGACY
+	if (!localServer->isReady()) return;
+	QProcess::startDetached(QApplication::applicationFilePath(),
+		QStringList() << ("-connect:" + localServer->endpoint())
+		<< "--asset-root" << QSanRuntimePaths::assetRoot(), QApplication::applicationDirPath());
+#else
 	QProcess::startDetached(QApplication::applicationFilePath(), QStringList());
+#endif
 }
 
 void MainWindow::on_actionGeneral_Overview_triggered()
@@ -1519,6 +1539,16 @@ void BroadcastBox::accept()
 
 void MainWindow::on_actionBroadcast_triggered()
 {
+#ifdef QSAN_XP_LEGACY
+	if (!localServer->isReady()) {
+		QMessageBox::warning(this, tr("Warning"), tr("Server is not started yet!"));
+		return;
+	}
+	bool accepted = false;
+	const QString text = QInputDialog::getMultiLineText(this, tr("Broadcast"),
+		tr("Please input the message to broadcast"), QString(), &accepted);
+	if (accepted && !text.isEmpty()) localServer->request("broadcast", {{"message", text}});
+#else
 	Server *server = findChild<Server *>();
 	if (server == nullptr) {
 		QMessageBox::warning(this, tr("Warning"), tr("Server is not started yet!"));
@@ -1527,6 +1557,7 @@ void MainWindow::on_actionBroadcast_triggered()
 
 	static BroadcastBox *dialog = new BroadcastBox(server, this);
 	dialog->exec();
+#endif
 }
 
 void MainWindow::on_actionAcknowledgement_triggered()
@@ -1548,7 +1579,12 @@ void MainWindow::on_actionAcknowledgement_triggered()
 
 void MainWindow::on_actionManage_Ban_IP_triggered()
 {
+#ifdef QSAN_XP_LEGACY
+	BanIpDialog *dlg = new BanIpDialog(this, localServer);
+	dlg->setAttribute(Qt::WA_DeleteOnClose);
+#else
 	static BanIpDialog *dlg = new BanIpDialog(this, server);
+#endif
 	dlg->show();
 }
 

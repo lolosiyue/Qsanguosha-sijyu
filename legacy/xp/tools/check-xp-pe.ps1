@@ -2,6 +2,7 @@
 param(
     [Parameter(Mandatory = $true)]
     [string]$Executable,
+    [string]$ServerExecutable,
     [Parameter(Mandatory = $true)]
     [string]$QtRoot,
     [ValidateSet("Debug", "Release")]
@@ -12,6 +13,12 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+if ([string]::IsNullOrWhiteSpace($ServerExecutable)) {
+    $ServerExecutable = Join-Path (Split-Path -Parent $Executable) 'QSanguoshaXPServer.exe'
+}
+if (!(Test-Path -LiteralPath $ServerExecutable -PathType Leaf)) {
+    throw "XP server executable is missing: $ServerExecutable"
+}
 
 function Get-PortableExecutableHeader([string]$Path) {
     $bytes = [IO.File]::ReadAllBytes($Path)
@@ -76,6 +83,7 @@ if (!(Test-Path -LiteralPath $Dumpbin -PathType Leaf)) {
 $debugSuffix = if ($Configuration -eq "Debug") { "d" } else { "" }
 $inputs = @(
     [pscustomobject]@{ Path = [IO.Path]::GetFullPath($Executable); RequireXpHeader = $true },
+    [pscustomobject]@{ Path = [IO.Path]::GetFullPath($ServerExecutable); RequireXpHeader = $true },
     [pscustomobject]@{ Path = [IO.Path]::GetFullPath((Join-Path $QtRoot "bin\Qt5Core${debugSuffix}.dll")); RequireXpHeader = $false },
     [pscustomobject]@{ Path = [IO.Path]::GetFullPath((Join-Path $QtRoot "bin\Qt5Gui${debugSuffix}.dll")); RequireXpHeader = $false },
     [pscustomobject]@{ Path = [IO.Path]::GetFullPath((Join-Path $QtRoot "bin\Qt5Network${debugSuffix}.dll")); RequireXpHeader = $false },
@@ -94,6 +102,7 @@ if (![string]::IsNullOrWhiteSpace($FmodRuntime)) {
 $postXpImports = @(
     "AddDllDirectory",
     "CancelIoEx",
+    "CancelSynchronousIo",
     "CreateSymbolicLinkW",
     "GetFileInformationByHandleEx",
     "GetFinalPathNameByHandleW",
@@ -134,6 +143,13 @@ foreach ($input in $inputs) {
 }
 
 Write-Output "XP_IMPORTS_OK checked=$($inputs.Count)"
+
+$serverImports = (& $Dumpbin /nologo /imports $ServerExecutable 2>&1) -join "`n"
+if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect XP server imports' }
+if ($serverImports -match '(?im)^\s*(Qt5(?:Gui|Widgets|Quick\w*|Qml\w*|Multimedia\w*|OpenGL\w*)d?\.dll|fmod\w*\.dll|spine\w*\.dll)\s*$') {
+    throw "XP server imports a forbidden GUI/audio module: $($Matches[1])"
+}
+Write-Output 'XP_SERVER_MODULE_IMPORTS_OK'
 
 if (![string]::IsNullOrWhiteSpace($DeploymentRoot)) {
     if (!(Test-Path -LiteralPath $DeploymentRoot -PathType Container)) {

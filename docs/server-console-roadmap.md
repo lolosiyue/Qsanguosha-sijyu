@@ -1,8 +1,8 @@
 # Server 執行期主控台路線圖（Server Console Roadmap）
 
-> 版本：2026-09-07 ｜ 狀態：計劃（未排程）
-> 範圍：`qsanguosha_server`（Qt 6 x64）執行期 console 的功能補齊，以及 XP legacy 產品 `-server` 帶局模式的 console 接入。
-> 不動範圍：Protocol V1/V2 wire、SWIG 綁定、`executeCommand()`（現約 `server-console.cpp:353`）既有指令層語意。
+> 版本：2026-09-08 ｜ 狀態：Qt 6 console 功能待辦；XP console 剩餘實機驗收
+> 範圍：`qsanguosha_server`（Qt 6 x64）執行期 console 的功能補齊，以及 XP legacy 產品剩餘 console／交付驗收。
+> 不動範圍：Protocol V1/V2 wire、SWIG 綁定、`executeCommand()`（現約 `server-console.cpp:392`）既有指令層語意。
 
 ---
 
@@ -12,11 +12,11 @@
 |------|------|
 | 指令集 | `help`／`status`／`players`／`rooms`／`say <msg>`／`kick <id>`／`shutdown` 共 7 個 |
 | 指令層 | `ServerConsole`（`server-console.h:41`），指令在主執行緒執行，`m_handlingCommand` 維護 prompt 語意 |
-| 輸入架構 | Unix：`QSocketNotifier` 非阻塞讀（現約 `server-console.cpp:216`）；Windows：`ConsoleInputThread`（`server-console.h:18`）worker 逐行讀取後 queued 派發（2026-09-07 `0ec8fa2`） |
+| 輸入架構 | Unix：`QSocketNotifier` 非阻塞讀（現約 `server-console.cpp:212`）；Windows：`ConsoleInputThread`（`server-console.h:18`）worker 逐行讀取後 queued 派發（2026-09-07 `0ec8fa2`） |
 | 互動判定 | `_isatty`／`isatty`；piped 時不印 banner／prompt、log 不重複回顯 |
 | 中文輸入 | TTY 走 `ReadConsoleW` 取 UTF-16，不受 codepage 影響；pipe 假設 UTF-8 |
 | 驗收基準 | `tools/ci/server-console-smoke.sh`：七指令 piped 逐行執行、`shutdown` 後 `exit_code=0` |
-| 平台覆蓋 | Linux／macOS（Unix 路徑）與 Windows x64（Qt 6）已覆蓋；XP legacy 產品帶局模式無 console（見 §3） |
+| 平台覆蓋 | Linux／macOS（Unix 路徑）與 Windows x64（Qt 6）已覆蓋；XP legacy 的 GUI／helper console 路徑仍在 Qt 5.6／XP 相容驗證中（見 §3） |
 
 ---
 
@@ -24,7 +24,6 @@
 
 | 嚴重度 | 層級 | 缺口 | 說明 | 狀態 |
 |--------|------|------|------|------|
-| 高 | 平台死區 | Windows 無法輸入指令 | stdin 讀取整段包在 `#if defined(Q_OS_UNIX)`，主要開發／部署平台 win32 上整組指令是半死碼 | **已完成**（`0ec8fa2`，piped 冒煙 PASS） |
 | 高 | 控制 | 無房間層級處置 | `kick` 只能踢人；不能關閉指定房、強制結束進行中的局、清掉卡死的等待房。Server 亦無對應公開方法（`roomSnapshots()`（`server-core.h:49`）唯讀） | 計劃 |
 | 中 | 控制 | 無維護模式 | 不能「停止收新玩家但不斷現有局」，只能 `shutdown` 一刀切 | 計劃 |
 | 中 | 控制 | 無機器人／開局介入 | 等待房缺人時 console 無法補 robot 或強制開局；`setNextGameSessionConfig`（`server-core.h:58`）與 `startHeadlessGame`（`server-core.h:61`）已存在但未接 console | 計劃 |
@@ -55,7 +54,7 @@
 | 項目 | 內容 |
 |------|------|
 | 新指令 | `addrobot [n\|all]`（等待房補 AI）、`start`（強制開局） |
-| 既有能力 | `setNextGameSessionConfig`（server.cpp:2089）、`startHeadlessGame`（server.cpp:2609）存在但僅服務 headless／自動化路徑，未接 console |
+| 既有能力 | `setNextGameSessionConfig`（server.cpp:2106）、`startHeadlessGame`（server.cpp:2626）存在但僅服務 headless／自動化路徑，未接 console |
 | 開局路徑 | 機器人補滿後由 robot `signup` 的 ready 路徑自然開局（與 GUI `fillRobots()`／TUI `/addrobot` 同一機制），console 不另送 `READY` |
 | 邊界 | 僅等待房可介入；進行中的局不在本指令範圍（由 §2.1 `end-game` 處理） |
 | 驗證 | smoke：等待房 `addrobot all` → 觀察 `GAME_START` marker |
@@ -85,29 +84,19 @@
 
 | 項目 | 現況 |
 |------|------|
-| 產品形態 | 單一 `QSanguoshaXP.exe`，`-server` 帶局（見 `docs/windows-xp-legacy-build.md`） |
-| 帶局路徑 | `xp-main.cpp` serverMode 分支（現約 `:109` 判定、`:139` 起執行）直接 `new Server`＋`listen()`＋`exec()`，**未實例化 `ServerConsole`**——XP 帶局目前沒有任何執行期 console |
-| 建置閘 | `QSAN_BUILD_XP_LEGACY` 時 `QSAN_BUILD_SERVER_DEFAULT OFF`（現約 `CMakeLists.txt:44`）；`server-console.cpp` 只列在 `qsanguosha_server` target，故 `0ec8fa2` 不影響 XP client exe |
-| 相容層 | `legacy/xp/compat/qt5/qsan-qt5-compat.h`（`/FI` 強制含入）已提供 `qsizetype`、`Qt::endl`；`QDeadlineTimer` shim 是 `hasExpired()` 輪詢計時器，**不是**可傳給 `QThread::wait()` 的時限物件 |
+| 產品形態 | 配對的 `QSanguoshaXP.exe` GUI＋`QSanguoshaXPServer.exe` dedicated helper；`-server` 仍是 GUI 的相容轉送入口（見 `docs/windows-xp-legacy-build.md`） |
+| 帶局路徑 | `xp-main.cpp` 先以 `QCoreApplication` 把 `-server` 轉送給 `QSanguoshaXPServer.exe`；GUI 本地房則由 `LocalServerController` 管理 helper，實際 server／console 入口在 `xp-server-main.cpp`＋共用 dedicated entry sources |
+| 建置閘 | `QSAN_BUILD_XP_LEGACY` 由 `legacy/xp/cmake/XPServer.cmake` 建立配對 helper；Qt 5.6 Debug／Release build、PE 5.01 與 post-XP import gate 已通過，剩餘 guest runtime 驗收 |
 
-### 3.2 實作計畫
+### 3.2 剩餘驗收
 
-| 步驟 | 內容 | 層級 |
-|------|------|------|
-| 1. `CancelSynchronousIo` 動態化 | 該函式是 Vista+ 的 kernel32 匯出；**靜態 import 會令 `QSanguoshaXP.exe` 在 XP 載入期直接「入口點找不到」**。改 `GetProcAddress` 動態解析（`stopInputThread`，現約 `server-console.cpp:306`）；XP 取不到就跳過 cancel、直接洩漏 detach——與現行逾時路徑同一後果，process 結束時 OS 收掉 worker。`OpenThread` 為 XP 既有匯出，可靜態使用 | 致命（載入期），必改 |
-| 2. `wait()` 版本分流 | `wait(QDeadlineTimer(2000))` 在 Qt 5.6 編譯不過（只有 `wait(unsigned long)`）。以 `QT_VERSION` 分流：Qt5→`wait(2000)`；Qt6 維持 `QDeadlineTimer` 寫法 | 編譯期，必改 |
-| 3. 來源接線 | `server-console.cpp`／`.h` 加入 XP exe 來源清單（嵌入式 console，不新增獨立 XP server target，維持單一 exe 產品邊界） | 建置 |
-| 4. `xp-main.cpp` 實例化 | serverMode 分支建立 `ServerConsole` 並 `start()`；對齊 `server-main.cpp` 慣例：`SetConsoleCtrlHandler`（xp-main 現未安裝）與 `Server::isHeadlessMode`（`server-core.h:39`，xp-main 現未設定） | 接線 |
-| 5. API 面檢查 | `ReadConsoleW`／`ReadFile`／`_isatty`／`GetStdHandle`／`GetCurrentThreadId`／`std::atomic` 均為 XP SP3 x86 可用；程式碼無 64-bit 假設（`DWORD`／`HANDLE`／atomic 在 win32 皆 32-bit）；4 KiB wchar 分段緩衝在預設 1 MB stack 內 | 已核可 |
-
-### 3.3 驗證
-
-| 項目 | 方式 |
-|------|------|
-| piped | XP SP3 VM 內 `echo status \| QSanguoshaXP.exe -server` 逐行執行、`shutdown` 乾淨退出 |
-| TTY | VM 實機開 console 驗 prompt／中文 `say`／Ctrl+C |
-| 產品閘 | 維持 `windows-xp-legacy-build.md` 的 PE 5.01 gate、post-XP import 掃描（動態 `GetProcAddress` 不進 import table，可過掃）與 guest runtime 驗收 |
-| 流程 | 依 [Style]：XP 工作在新 feature branch，完成後合回 `debug`；不與 Qt6 主線混驗 |
+| 項目 | 尚需取得的證據 |
+|------|----------------|
+| piped console | XP SP3 VM 內以 pipe 送入 `status`／`shutdown`，確認逐行執行及乾淨退出 |
+| TTY console | XP／Win7 真 console 驗 prompt、中文 `say`、Ctrl+C／關閉流程 |
+| GUI／helper | 指定 QA VM 驗本地房、host management（broadcast／kick／ban）、reconnect、Replay takeover／rollback 及 helper 清理 |
+| Portable／ISO | 由單一 manifest 的完整 Release payload 建 ISO，在乾淨 guest 從唯讀媒體安裝並重驗配對／啟動 |
+| Memory A/B | 以相同素材、seed、模式與人數比較舊單程序及 GUI＋helper 的 process-private／address-space 基線 |
 
 ---
 
@@ -120,6 +109,5 @@
 | 3 | 機器人／開局介入（§2.3） | 接既有 Server 方法，無新邊界 |
 | 4 | 房間層級處置（§2.1） | 需新增 Server→Room queued 路徑，影響面最大 |
 | 5 | 維護模式（§2.2） | 依賴 signup 拒絕語意與 client 顯示配合 |
-| 6 | XP 32-bit server console（§3） | 相容修補獨立於 Qt6 主線，可與 1–2 並行 |
 
 > 全部項目共同驗證規則：`tools/ci/server-console-smoke.sh` 為 piped 驗收基準並逐項擴充；遵 AGENTS.md §7.6／§7.7（整批修改、targeted compile、60 秒內 focused check，長 gate 交遠端 CI）。

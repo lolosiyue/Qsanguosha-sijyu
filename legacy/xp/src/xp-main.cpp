@@ -8,6 +8,12 @@
 #include <QTextStream>
 #include <QTime>
 #include <QTranslator>
+#include <QProcess>
+#include <QProcessEnvironment>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QStandardPaths>
 
 #include "audio.h"
 #include "banpair.h"
@@ -20,6 +26,8 @@
 #include "runtime-paths.h"
 #include "server.h"
 #include "settings.h"
+#include "xp-control-protocol.h"
+#include "legacy/xp/tests/xp-gui-acceptance.h"
 
 namespace
 {
@@ -27,7 +35,8 @@ QFile *xpStartupLog = Q_NULLPTR;
 
 void appendEarlyStartupStage(const char *stage)
 {
-    FILE *log = fopen("QSanguoshaXP-early.log", "ab");
+    const QString path = qEnvironmentVariable("QSAN_USER_DATA_ROOT") + "/QSanguoshaXP-early.log";
+    FILE *log = _wfopen(reinterpret_cast<const wchar_t *>(path.utf16()), L"ab");
     if (log == Q_NULLPTR)
         return;
     fprintf(log, "%s\r\n", stage);
@@ -90,7 +99,10 @@ int configureSeed(const QStringList &arguments)
         ? QString() : candidate;
     QString error;
     if (Server::configureGameSeed(seedText, &error))
+    {
+        QCoreApplication::instance()->setProperty("xpGameSeed", seedText);
         return 0;
+    }
 
     fprintf(stderr, "%s\n", qPrintable(error));
     return 1;
@@ -99,14 +111,70 @@ int configureSeed(const QStringList &arguments)
 
 int main(int argc, char *argv[])
 {
-    appendEarlyStartupStage("main entered");
-    CrashHandler::install();
-    appendEarlyStartupStage("crash handler installed");
-
     QStringList earlyArguments;
     for (int i = 1; i < argc; ++i)
         earlyArguments << QString::fromLocal8Bit(argv[i]);
     const bool serverMode = hasArgument(earlyArguments, QStringLiteral("-server"));
+
+    if (earlyArguments.contains("--xp-build-id")) {
+        printf("%s\n", qPrintable(XpControl::buildIdentity()));
+        return 0;
+    }
+    if (earlyArguments.contains("--xp-verify-pair")) {
+        QCoreApplication verifier(argc, argv);
+        const QDir root(verifier.applicationDirPath());
+        QFile manifest(root.filePath("xp-payload-manifest.json"));
+        if (!manifest.open(QIODevice::ReadOnly)) return 74;
+        QJsonParseError parseError;
+        const QJsonDocument document = QJsonDocument::fromJson(manifest.readAll(), &parseError);
+        if (parseError.error != QJsonParseError::NoError || !document.isObject()) return 74;
+        const QJsonObject payload = document.object();
+        const QJsonArray executables = payload.value("executables").toArray();
+        if (payload.value("schema").toInt() != 1
+            || payload.value("buildIdentity").toString() != XpControl::buildIdentity()
+            || executables.size() != 2) return 74;
+        const QStringList names{"QSanguoshaXP.exe", "QSanguoshaXPServer.exe"};
+        for (int index = 0; index < names.size(); ++index) {
+            const QJsonObject entry = executables.at(index).toObject();
+            const QFileInfo file(root.filePath(names.at(index)));
+            if (entry.value("path").toString() != names.at(index)
+                || entry.value("bytes").toDouble() != double(file.size())
+                || entry.value("sha256").toString() != XpControl::fileHash(file.absoluteFilePath()))
+                return 74;
+        }
+        return 0;
+    }
+
+    if (serverMode) {
+        // Compatibility launcher never initializes GUI or game Engine.
+        QCoreApplication launcher(argc, argv);
+        QProcess helper;
+        QStringList arguments = launcher.arguments().mid(1);
+        arguments.removeAll("-server");
+        const QString executable = QDir(launcher.applicationDirPath()).absoluteFilePath("QSanguoshaXPServer.exe");
+        helper.setProcessChannelMode(QProcess::ForwardedChannels);
+        helper.setInputChannelMode(QProcess::ForwardedInputChannel);
+        helper.setWorkingDirectory(launcher.applicationDirPath());
+        QObject::connect(&helper, static_cast<void(QProcess::*)(int, QProcess::ExitStatus)>(&QProcess::finished),
+            &launcher, [&launcher](int code, QProcess::ExitStatus status) {
+                launcher.exit(status == QProcess::NormalExit ? code : 1);
+            });
+        QObject::connect(&helper, static_cast<void(QProcess::*)(QProcess::ProcessError)>(&QProcess::error),
+            &launcher, [&launcher, &helper](QProcess::ProcessError) {
+                fprintf(stderr, "XP server launch failed: %s\n", qPrintable(helper.errorString()));
+                launcher.exit(1);
+            });
+        helper.start(executable, arguments);
+        return launcher.exec();
+    }
+
+    // Writable profile data is explicit; assets may be on read-only media.
+    if (qEnvironmentVariable("QSAN_USER_DATA_ROOT").isEmpty())
+        qsanXpSetEnvironment("QSAN_USER_DATA_ROOT", qEnvironmentVariable("APPDATA") + "/QSanguoshaXP");
+    QDir().mkpath(qEnvironmentVariable("QSAN_USER_DATA_ROOT"));
+    appendEarlyStartupStage("main entered");
+    CrashHandler::install();
+    appendEarlyStartupStage("crash handler installed");
 
     const QDir executableDirectory = QFileInfo(
         QString::fromLocal8Bit(argv[0])).absoluteDir();
@@ -120,14 +188,12 @@ int main(int argc, char *argv[])
     QCoreApplication::setAttribute(Qt::AA_UseHighDpiPixmaps);
 
     appendEarlyStartupStage("constructing application");
-    QCoreApplication *application = serverMode
-        ? static_cast<QCoreApplication *>(new QCoreApplication(argc, argv))
-        : static_cast<QCoreApplication *>(new QApplication(argc, argv));
+    QCoreApplication *application = new QApplication(argc, argv);
     appendEarlyStartupStage("application constructed");
     application->setApplicationName(QStringLiteral("QSanguoshaXP"));
     application->setApplicationVersion(QStringLiteral("XP-SP3-x86"));
     application->addLibraryPath(application->applicationDirPath());
-    installXpStartupLog(application->applicationDirPath());
+    installXpStartupLog(qEnvironmentVariable("QSAN_USER_DATA_ROOT"));
     appendEarlyStartupStage("Qt startup log installed");
     qDebug("XP startup: application initialized");
 
@@ -137,6 +203,13 @@ int main(int argc, char *argv[])
         return 6;
     }
     qDebug("XP startup: runtime paths resolved");
+
+    // Preserve portable preferences on the first profile-based launch.
+    if (Config.allKeys().isEmpty()) {
+        QSettings previous(QSanRuntimePaths::assetPath("config.ini"), QSettings::IniFormat);
+        for (const QString &key : previous.allKeys()) Config.setValue(key, previous.value(key));
+        Config.sync();
+    }
 
     qsanSeedRandom(QTime(0, 0, 0).secsTo(QTime::currentTime()));
     if (configureSeed(application->arguments()) != 0)
@@ -160,23 +233,6 @@ int main(int argc, char *argv[])
     G_EFFECTS.initialize(application->arguments());
     BanPair::loadBanPairs();
 
-    if (serverMode) {
-        Server *server = new Server(application);
-        printf("Server is starting on port %u\n", Config.ServerPort);
-        fflush(stdout);
-        if (!server->listen()) {
-            fprintf(stderr, "Starting failed\n");
-            delete server;
-            CrashHandler::beginShutdown();
-            return 2;
-        }
-        printf("Starting successfully\n");
-        fflush(stdout);
-        const int result = application->exec();
-        CrashHandler::beginShutdown();
-        return result;
-    }
-
     QApplication *guiApplication = qobject_cast<QApplication *>(application);
     Q_ASSERT(guiApplication != Q_NULLPTR);
     UiConfig.init();
@@ -193,6 +249,7 @@ int main(int argc, char *argv[])
     MainWindow *mainWindow = new MainWindow;
     Sanguosha->setParent(mainWindow);
     mainWindow->show();
+    XpGuiAcceptance::install(mainWindow);
 
 #ifdef AUDIO_SUPPORT
     QObject::connect(Sanguosha, &Engine::audioEffectRequested,
@@ -217,12 +274,14 @@ int main(int argc, char *argv[])
             continue;
         argument.remove(0, QStringLiteral("-connect:").size());
         Config.HostAddress = argument;
-        Config.setValue(QStringLiteral("HostAddress"), argument);
+        // A supplied endpoint may be an owned session's ephemeral port.
+        // Keep command-line connection overrides out of persistent preferences.
         mainWindow->startConnection();
         break;
     }
 
     const int result = application->exec();
     CrashHandler::beginShutdown();
-    return result;
+    const QVariant acceptanceResult = application->property("xpAcceptanceExitCode");
+    return acceptanceResult.isValid() ? acceptanceResult.toInt() : result;
 }

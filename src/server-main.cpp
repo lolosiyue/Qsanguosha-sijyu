@@ -188,7 +188,11 @@ QVariantMap effectiveServerConfiguration()
 }
 }
 
+#ifdef QSAN_XP_LEGACY
+int qsanStandaloneServerMain(int argc, char **argv)
+#else
 int main(int argc, char **argv)
+#endif
 {
     // QHash may initialize while parsing the command line. Select deterministic
     // hashing before QCoreApplication whenever a game seed was requested.

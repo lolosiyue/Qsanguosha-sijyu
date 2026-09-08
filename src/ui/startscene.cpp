@@ -6,6 +6,10 @@
 #include "effects/effects-policy.h"
 #include "qsan-selectable-item.h"
 #include "server.h"
+#ifdef QSAN_XP_LEGACY
+#include "local-server-controller.h"
+#include <QJsonArray>
+#endif
 
 StartScene::StartScene()
 {
@@ -111,7 +115,8 @@ void StartScene::switchToServer(Server *server)
 	}
 
 	printServerInfo();
-	connect(server, SIGNAL(logMessage(QString)), server_log, SLOT(append(QString)));
+	if (server)
+		connect(server, SIGNAL(logMessage(QString)), server_log, SLOT(append(QString)));
 	update();
 	//QString logt = server_log->toPlainText();
 }
@@ -155,6 +160,23 @@ void StartScene::keyPressEvent(QKeyEvent *event)
 		break;
 	}
 }
+
+#ifdef QSAN_XP_LEGACY
+void StartScene::switchToServer(LocalServerController *controller)
+{
+	// Reuse classic presentation without an in-process Server pointer.
+	switchToServer(static_cast<Server *>(nullptr));
+	server_log->document()->setMaximumBlockCount(1000);
+	for (const QString &message : controller->startupMessages()) server_log->append(message.toHtmlEscaped());
+	connect(controller, &LocalServerController::logMessage, server_log,
+		[this](const QString &message) { server_log->append(message.toHtmlEscaped()); });
+	connect(controller, &LocalServerController::statusChanged, server_log,
+		[this](const QJsonObject &status) {
+			server_log->setToolTip(tr("Rooms: %1; players: %2")
+				.arg(status.value("rooms").toArray().size()).arg(status.value("players").toArray().size()));
+		});
+}
+#endif
 
 void StartScene::selectButton(int index)
 {

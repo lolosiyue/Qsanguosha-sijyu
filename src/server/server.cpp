@@ -1705,6 +1705,13 @@ Server::Server(QObject *parent, const GameSessionConfig &initialSessionConfig,
 	InitialRoomPolicy initialRoomPolicy)
 	: QObject(parent), current(nullptr), created_successfully(false)
 {
+#ifdef QSAN_XP_LEGACY
+	// XP hosting is exclusively owned by QSanguoshaXPServer. Catch any missed
+	// GUI entry instead of silently recreating an embedded room/AI runtime.
+	if (qApp && qApp->inherits("QApplication"))
+		qFatal("XP GUI attempted to construct a Server runtime");
+	qInfo("XP server runtime created pid=%lld", QCoreApplication::applicationPid());
+#endif
 	m_uptimeTimer.start();
 	connect(this, SIGNAL(server_message(QString)), this, SIGNAL(logMessage(QString)));
 	server = new NativeServerSocket;
@@ -1830,6 +1837,7 @@ QList<PlayerStatusSnapshot> Server::playerSnapshots() const
 		PlayerStatusSnapshot snapshot;
 		snapshot.id = player->objectName();
 		snapshot.name = player->screenName();
+		snapshot.ip = player->getIp();
 		Room *room = player->getRoom();
 		if (room)
 			snapshot.roomId = room->getId();

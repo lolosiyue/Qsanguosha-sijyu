@@ -254,6 +254,8 @@ if(QSAN_BUILD_XP_LEGACY)
         src/ui/SpineIndicatorLine.cpp
     )
     list(PREPEND QSAN_SOURCES legacy/xp/src/xp-main.cpp)
+    list(APPEND QSAN_SOURCES legacy/xp/src/local-server-controller.cpp)
+    list(APPEND QSAN_MOC_HEADERS legacy/xp/src/local-server-controller.h)
 
     list(FILTER QSAN_MOC_HEADERS EXCLUDE REGEX "^src/ui/home/")
     list(REMOVE_ITEM QSAN_MOC_HEADERS
@@ -280,6 +282,8 @@ set_source_files_properties(src/server/server.cpp PROPERTIES
 )
 
 add_library(qsanguosha_engine STATIC
+    src/core/replay-takeover-validation.cpp
+    src/core/replay-takeover-validation.h
     src/core/banpair.cpp
     src/core/banpair.h
     src/core/card.cpp
@@ -826,8 +830,7 @@ if(QSAN_BUILD_TUI)
     endif()
 endif()
 
-if(QSAN_BUILD_SERVER)
-    add_executable(qsanguosha_server
+set(QSAN_DEDICATED_ENTRY_SOURCES
         src/server-main.cpp
         src/server/server-command-line.cpp
         src/server/server-command-line.h
@@ -839,6 +842,11 @@ if(QSAN_BUILD_SERVER)
         src/server/server-logger.h
         src/server/server-status.h
     )
+if(QSAN_BUILD_XP_LEGACY)
+    include(legacy/xp/cmake/XPServer.cmake)
+endif()
+if(QSAN_BUILD_SERVER)
+    add_executable(qsanguosha_server ${QSAN_DEDICATED_ENTRY_SOURCES})
     target_include_directories(qsanguosha_server PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/src/core
@@ -1418,6 +1426,8 @@ if(QSAN_BUILD_GUI)
     endif()
 
     if(QSAN_BUILD_XP_LEGACY)
+        target_include_directories(${QSAN_GUI_TARGET} PRIVATE "${CMAKE_SOURCE_DIR}/legacy/xp/src")
+        target_link_libraries(${QSAN_GUI_TARGET} PRIVATE qsan_xp_control)
         set(QSAN_XP_ASSET_ROOT "${CMAKE_CURRENT_SOURCE_DIR}" CACHE PATH
             "Asset root copied into the portable XP folder")
         set(QSAN_XP_FMOD_RUNTIME_DEBUG "" CACHE FILEPATH
@@ -1436,6 +1446,7 @@ if(QSAN_BUILD_GUI)
             COMMAND ${CMAKE_COMMAND}
                 -DQSAN_CONFIG=$<CONFIG>
                 -DQSAN_EXECUTABLE=$<TARGET_FILE:${QSAN_GUI_TARGET}>
+                -DQSAN_SERVER_EXECUTABLE=$<TARGET_FILE:QSanguoshaXPServer>
                 -DQSAN_ASSET_ROOT=${QSAN_XP_ASSET_ROOT}
                 -DQSAN_QT_ROOT=${QSAN_XP_QT_ROOT}
                 -DQSAN_VC_REDIST_DIR=${QSAN_XP_VC_REDIST_DIR}
@@ -1444,7 +1455,7 @@ if(QSAN_BUILD_GUI)
                 -DQSAN_FMOD_RUNTIME_DEBUG=${QSAN_XP_FMOD_RUNTIME_DEBUG}
                 -DQSAN_FMOD_RUNTIME_RELEASE=${QSAN_XP_FMOD_RUNTIME_RELEASE}
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/legacy/xp/cmake/DeployXP.cmake
-            DEPENDS ${QSAN_GUI_TARGET}
+            DEPENDS ${QSAN_GUI_TARGET} QSanguoshaXPServer
             VERBATIM
         )
     endif()
