@@ -12,6 +12,9 @@
 #include <QJsonDocument>
 #include <QSaveFile>
 #include <stdexcept>
+#include <QSet>
+#include <cmath>
+#include <limits>
 
 namespace {
 bool writeJson(const QString &path, const QJsonObject &value)
@@ -112,6 +115,8 @@ int ClientRulesHost::evaluate()
     QFile::remove(path);
     if (m_phase != Phase::Ready)
         return fail(path, QStringLiteral("engine_unavailable"), 3);
+    if (m_streamEnabled)
+        return fail(path, QStringLiteral("stream_snapshot_api_disabled"), 2);
     try {
         QFile input(file("request.json"));
         if (!input.open(QIODevice::ReadOnly))
@@ -134,14 +139,124 @@ int ClientRulesHost::evaluate()
     }
 }
 
+int ClientRulesHost::stream()
+{
+    const QString path = file("stream-result.json");
+    QFile::remove(path);
+    if (m_phase != Phase::Ready)
+        return fail(path, QStringLiteral("engine_unavailable"), 3);
+    try {
+        QFile source(file("stream.json"));
+        if (!source.open(QIODevice::ReadOnly)) {
+            m_ingress.invalidate();
+            return fail(path, QStringLiteral("cannot_read_stream_operation"), 2);
+        }
+        const QByteArray bytes = source.read(4 * 1024 * 1024 + 1);
+        QJsonParseError parseError;
+        const QJsonDocument document = QJsonDocument::fromJson(bytes, &parseError);
+        if (bytes.size() > 4 * 1024 * 1024 || parseError.error != QJsonParseError::NoError
+            || !document.isObject()) {
+            m_ingress.invalidate();
+            return fail(path, QStringLiteral("invalid_stream_json"), 2);
+        }
+        const QJsonObject operation = document.object();
+        const auto index = [](const QJsonValue &value) {
+            const double number = value.toDouble(-1);
+            return value.isDouble() && std::isfinite(number) && number >= 0
+                && number <= std::numeric_limits<int>::max() && number == std::floor(number);
+        };
+        const QString action = operation.value(QStringLiteral("action")).toString();
+        const int generation = index(operation.value(QStringLiteral("generation")))
+            ? operation.value(QStringLiteral("generation")).toInt() : -1;
+        QSet<QString> fields{QStringLiteral("schema_version"), QStringLiteral("action"),
+                             QStringLiteral("generation")};
+        if (action == QLatin1String("frame"))
+            fields.unite({QStringLiteral("direction"), QStringLiteral("frame")});
+        else if (action == QLatin1String("query"))
+            fields.unite({QStringLiteral("revision"), QStringLiteral("request_id"), QStringLiteral("selection")});
+        QString reason;
+        bool success = false;
+        QJsonObject response;
+        bool shape = operation.value(QStringLiteral("schema_version")) == QJsonValue(1)
+            && generation >= 0 && operation.size() == fields.size();
+        for (auto it = operation.constBegin(); it != operation.constEnd(); ++it)
+            shape = shape && fields.contains(it.key());
+        if (!shape) {
+            // Losing a current-generation frame would make all later state suspect.
+            if (action == QLatin1String("frame")
+                && generation == m_ingress.status().value(QStringLiteral("generation")).toInt())
+                m_ingress.invalidate();
+            reason = QStringLiteral("invalid_stream_operation");
+        } else if (action == QLatin1String("reset")) {
+            success = m_ingress.reset(generation,
+                m_session.registry().value(QStringLiteral("rules_bundle")).toObject(), &reason);
+            m_streamEnabled = m_streamEnabled || success;
+        } else if (action == QLatin1String("frame")) {
+            const QString direction = operation.value(QStringLiteral("direction")).toString();
+            if (!operation.value(QStringLiteral("frame")).isString()
+                || (direction != QLatin1String("incoming") && direction != QLatin1String("outgoing"))) {
+                if (generation == m_ingress.status().value(QStringLiteral("generation")).toInt())
+                    m_ingress.invalidate();
+                reason = QStringLiteral("invalid_stream_frame");
+            } else {
+                success = m_ingress.acceptFrame(generation, direction == QLatin1String("outgoing"),
+                    operation.value(QStringLiteral("frame")).toString().toUtf8(), &reason);
+            }
+        } else if (action == QLatin1String("query")) {
+            QJsonObject query;
+            if (!index(operation.value(QStringLiteral("revision")))
+                || !operation.value(QStringLiteral("request_id")).isString()
+                || !operation.value(QStringLiteral("selection")).isObject()) {
+                reason = QStringLiteral("invalid_stream_query");
+            } else if (m_ingress.prepareQuery(generation,
+                    operation.value(QStringLiteral("revision")).toInt(),
+                    operation.value(QStringLiteral("request_id")).toString(),
+                    operation.value(QStringLiteral("selection")).toObject(), &query, &reason)) {
+                ServerInfoScope scope;
+                response.insert(QStringLiteral("evaluation"), m_session.evaluate(query));
+                success = true;
+            }
+        } else if (action == QLatin1String("view")) {
+            if (generation != m_ingress.status().value(QStringLiteral("generation")).toInt())
+                reason = QStringLiteral("stream_stale_generation");
+            else {
+                response.insert(QStringLiteral("state"), m_ingress.view());
+                success = true;
+            }
+        } else {
+            reason = QStringLiteral("unknown_stream_action");
+        }
+        response.insert(QStringLiteral("schema_version"), 1);
+        response.insert(QStringLiteral("success"), success);
+        response.insert(QStringLiteral("reason"), reason);
+        response.insert(QStringLiteral("status"), m_ingress.status());
+        if (!success) {
+            response.insert(QStringLiteral("can_confirm"), false);
+            response.insert(QStringLiteral("wire"), QJsonValue(QJsonValue::Null));
+        }
+        if (!writeJson(path, response)) {
+            m_ingress.invalidate();
+            return fail(path, QStringLiteral("cannot_write_stream_result"), 5);
+        }
+        return 0;
+    } catch (const std::exception &error) {
+        m_ingress.invalidate();
+        return fail(path, QString::fromUtf8(error.what()), 4);
+    } catch (...) {
+        m_ingress.invalidate();
+        return fail(path, QStringLiteral("native_stream_failed"), 4);
+    }
+}
+
 int ClientRulesHost::shutdown()
 {
     if (m_phase == Phase::Closed)
         return 0;
     m_phase = Phase::Closed;
+    m_ingress.invalidate();
     releaseEngine();
     // No successful registry/reply remains available after graceful shutdown.
-    for (const char *name : {"init.json", "result.json", "request.json"})
+    for (const char *name : {"init.json", "result.json", "request.json", "stream.json", "stream-result.json"})
         QFile::remove(file(name));
     return 0;
 }

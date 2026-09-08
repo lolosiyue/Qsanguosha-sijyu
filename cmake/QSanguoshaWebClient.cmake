@@ -14,7 +14,7 @@ set_target_properties(qsanguosha_client_wasm PROPERTIES
 )
 qsan_configure_wasm_rules_module(qsanguosha_client_wasm
     createQSanguoshaClient worker
-    "['_qsan_client_bridge_schema','_qsan_client_initialize','_qsan_client_evaluate','_qsan_client_shutdown']")
+    "['_qsan_client_bridge_schema','_qsan_client_initialize','_qsan_client_evaluate','_qsan_client_shutdown','_qsan_client_stream']")
 set_property(TARGET qsanguosha_client_wasm APPEND PROPERTY LINK_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/tools/package-web-runtime.py")
 add_custom_command(TARGET qsanguosha_client_wasm POST_BUILD

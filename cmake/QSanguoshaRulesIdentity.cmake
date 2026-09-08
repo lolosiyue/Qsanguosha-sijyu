@@ -27,6 +27,14 @@ file(GLOB_RECURSE qsan_rules_bindings CONFIGURE_DEPENDS RELATIVE "${CMAKE_CURREN
 file(GLOB_RECURSE qsan_rules_protocol CONFIGURE_DEPENDS RELATIVE "${CMAKE_CURRENT_SOURCE_DIR}"
     src/core/protocol/*.cpp src/core/protocol/*.h)
 list(APPEND qsan_rules_protocol src/core/protocol.h src/core/protocol.cpp)
+# These shared client adapters live above src/client/core and are not captured
+# by that recursive glob. Their semantics now participate in native ingress.
+list(APPEND qsan_rules_sources
+    src/client/protocol-interaction-request-builder.cpp src/client/protocol-interaction-request-builder.h
+    src/client/interaction-request-factory.cpp src/client/interaction-request-factory.h
+    src/client/interaction-command-registry.cpp src/client/interaction-command-registry.h
+    src/client/interaction-reply-encoder.cpp src/client/interaction-reply-encoder.h
+    cmake/QSanguoshaRulesSession.cmake cmake/QSanguoshaWebClient.cmake)
 qsan_rules_source_hash(QSAN_RULES_CPP_HASH ${qsan_rules_sources}
     cmake/QSanguoshaSources.cmake CMakeLists.txt cmake/QSanguoshaRulesIdentity.cmake)
 qsan_rules_source_hash(QSAN_RULES_BINDINGS_HASH ${qsan_rules_bindings}
