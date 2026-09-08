@@ -159,26 +159,48 @@ function pileRow(bind: UiBind, player: string): HTMLElement {
 }
 
 function skillBar(bind: UiBind): HTMLElement {
-  const { ui } = bind;
+  const { ui, session, rules } = bind;
   const row = el("div", { class: "skill-bar" });
   const skills = visibleSkills(bind);
+  const nativeRules = !!session.interaction && rules.supports(session.interaction.command);
+  const evaluation = nativeRules && rules.current(session, bind.rulesSelection()) ? rules.result : null;
+  // A server-named borrowed prompt can expose a ViewAs skill absent from the portrait.
+  for (const candidate of evaluation?.skills ?? []) {
+    if (!skills.some((skill) => skill.name === candidate.name && skill.instanceId === candidate.instance_id))
+      skills.push({ name: candidate.name, instanceId: candidate.instance_id });
+  }
+  if (nativeRules && ui.selectedOption
+      && !skills.some((skill) => skill.name === ui.selectedOption && skill.instanceId === ui.skillInstance))
+    skills.push({ name: ui.selectedOption, instanceId: ui.skillInstance });
   if (skills.length === 0)
     return row;
   for (const skill of skills) {
-    const selected = ui.selectedOption === skill.name;
+    const selected = ui.selectedOption === skill.name && ui.skillInstance === skill.instanceId;
     const desc = skillDescription(skill.name);
     const button = el("button", {
       class: `skill-btn${selected ? " primary" : ""}`,
       title: desc || tr(skill.name)
     }, [tr(skill.name)]);
+    const available = !!evaluation?.known && evaluation.skills.some((candidate) =>
+      candidate.name === skill.name && candidate.instance_id === skill.instanceId && candidate.available);
+    // Descriptions remain visible; only native ViewAs candidates can be activated.
+    if (!selected && (!nativeRules || !available))
+      button.disabled = true;
     button.addEventListener("click", () => {
-      if (ui.selectedOption === skill.name) {
+      const current = rules.current(session, bind.rulesSelection()) ? rules.result : null;
+      if (!selected && (!current?.known || !current.skills.some((candidate) =>
+        candidate.name === skill.name && candidate.instance_id === skill.instanceId && candidate.available)))
+        return;
+      if (selected) {
         ui.selectedOption = "";
         ui.skillInstance = 0;
       } else {
         ui.selectedOption = skill.name;
         ui.skillInstance = skill.instanceId;
       }
+      ui.selectedCards = [];
+      ui.selectedPlayers = [];
+      ui.ruleDeclaration = "";
       bind.render();
     });
     row.append(button);
