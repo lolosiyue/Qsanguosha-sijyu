@@ -1,5 +1,6 @@
 #ifndef _GENERAL_H
 #define _GENERAL_H
+#include <QSet>
 
 class Skill;
 class TriggerSkill;

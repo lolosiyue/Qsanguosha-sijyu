@@ -7,7 +7,7 @@
 | OS / architecture | Windows XP SP3 x86 and Windows 7 x86 (same PE32 binary and portable payload) |
 | Supported room size | 2–10 players |
 | 20-player room | Connection may be attempted; compatibility is not promised |
-| Executable | One `QSanguoshaXP.exe`; use `-server` to host |
+| Executables | Paired `QSanguoshaXP.exe` GUI and `QSanguoshaXPServer.exe` dedicated helper; `QSanguoshaXP.exe -server` remains the compatibility launcher |
 | UI | Existing `QGraphicsScene` / `StartScene` classic UI |
 | Effects | Forced to `NONE`; the setting is hidden |
 | Audio | x86 FMOD Ex 4.44.53 in both Debug and Release |
@@ -18,6 +18,9 @@
 
 This is an opt-in legacy product. The normal `debug` target remains the Qt 6.11
 x64 development build and does not inherit the XP toolchain or feature cuts.
+The portable XP payload contains both paired executables: the GUI starts the
+dedicated helper for local hosting, while `QSanguoshaXP.exe -server` forwards
+to that helper for compatibility with the historical command line.
 
 There is no separate Win7 build tier. The `v141_xp` / Qt 5.6.3 x86 artifact is
 the only legacy deliverable; Win7 x86 is covered by upward compatibility of the
@@ -30,6 +33,10 @@ same portable folder or ISO `PAYLOAD/` tree.
 - Windows SDK 7.1A system libraries plus the v141 Universal CRT
 - Official Qt 5.6.3 MSVC 2015 x86 development/runtime tree
 - `/Zc:threadSafeInit-` for the XP target
+
+`legacy/xp/tools/build-xp.ps1` is the only supported XP build/deploy entry point.
+The `xp-vs2017-x86`, `xp-debug`, `xp-release` and `xp-deploy-*` CMake presets are
+implementation details used by that script, not a second public workflow.
 
 Pass the Qt tree explicitly. It must contain `bin/qmake.exe`, the Qt CMake
 packages, Release and Debug DLLs, and the required plugins:
@@ -79,14 +86,27 @@ the local runtime assets, including the complete `extensions/` directory. It
 removes QML/video files plus repository and synchronization metadata. Record
 the source SHA and deployed extension hashes with acceptance evidence because
 the external extension repository can change independently.
+`xp-payload-manifest.json` is the single completion and integrity manifest: it
+binds the paired executables, build identity and deployed runtime files. Do not
+restore the obsolete split `xp-build-identity.txt` or `xp-executables.sha256`
+artifacts.
 FMOD binaries must come from a distribution source whose licence has been
 approved; they are not committed by this branch.
 
-Server mode uses the same executable:
+The compatibility server launcher is:
 
 ```powershell
 QSanguoshaXP.exe -server
 ```
+
+The command forwards to the paired `QSanguoshaXPServer.exe`; do not remove the
+helper from the portable folder or ISO. The GUI's local hosting, private games
+and replay takeover also start that helper directly through the local server
+controller.
+Managed helper stdout and stderr are retained under the writable user data root
+as `logs/xp-server-<session>.stdout.log` and
+`logs/xp-server-<session>.stderr.log`. They are diagnostic artifacts only and
+do not determine helper readiness.
 
 ## ISO media
 
@@ -100,9 +120,12 @@ powershell -NoProfile -ExecutionPolicy Bypass `
   -VolumeLabel QSAN_XP
 ```
 
-The ISO keeps the portable tree under `PAYLOAD/`. `INSTALL.CMD` first leaves
+The ISO keeps the portable tree under `PAYLOAD/` and must contain both paired
+executables. `INSTALL.CMD` first leaves
 the target directory, then performs a clean `xcopy /E` installation to
-`C:\QSanguoshaXP`. CAB extraction is intentionally not used because XP
+`C:\QSanguoshaXP`. `RUNXP.CMD` is only the acceptance wrapper; it reuses
+`INSTALL.CMD` and requests the acceptance launch marker instead of duplicating
+the installation and launch logic. CAB extraction is intentionally not used because XP
 `expand.exe` flattens destination subdirectories. `-ReuseStage` may be used
 when only `AUTORUN.INF`, `INSTALL.CMD` or `RUNXP.CMD` changed.
 
@@ -116,7 +139,8 @@ Recommended guest checks on Windows 7 x86 SP1:
 
 1. copy or install the same portable tree used for XP acceptance;
 2. launch `QSanguoshaXP.exe` and confirm the classic `StartScene` main window;
-3. start `-server` on the guest and connect with `-connect:127.0.0.1`;
+3. start the compatibility launcher (`QSanguoshaXP.exe -server`) on the guest
+   and connect with `-connect:127.0.0.1`;
 4. exercise 125% system DPI scaling and confirm the window remains usable;
 5. run `legacy/xp/tools/check-xp-pe.ps1` against the deployed root to confirm
    the tree is still x86 and free of forbidden post-XP direct imports.
@@ -134,7 +158,7 @@ VirtualBox guest:
    `platforms/qwindows.dll`;
 2. the classic `StartScene` reached the main window with effects forced to
    `NONE`;
-3. the same EXE started a local server and a client using
+3. the paired GUI/helper started a local server and a client using
    `-connect:127.0.0.1` entered the waiting room;
 4. Qt 5.6.3, QtNetwork and FMOD loaded without an XP loader failure.
 
@@ -194,6 +218,13 @@ a physical/alternate-hypervisor acceptance gate. Rooms above 10 players and
 Packaging all local extensions proves deployment completeness; individual
 third-party extension behavior still requires gameplay coverage for the exact
 deployed snapshot.
+
+The split-process Replay takeover/rollback, reconnect and management GUI flows
+have not yet completed XP guest acceptance. Until those flows are exercised on
+the designated VM, a missing PASS is an open acceptance gate rather than a
+confirmed product defect. The opt-in GUI acceptance driver now waits for room
+ownership after `roomSceneCreated`, so slow helper initialization cannot consume
+the automatic AI-fill window before that scene exists.
 
 ## VirtualBox Guest Control automation
 

@@ -24,13 +24,19 @@
 class Server;
 class QListWidget;
 class ServerPlayer;
+#ifdef QSAN_XP_LEGACY
+class LocalServerController;
+#endif
 
 class BanIpDialog : public QDialog
 {
     Q_OBJECT
 
 public:
-    BanIpDialog(QWidget *parent, Server *server);
+    BanIpDialog(QWidget *parent, Server *server, bool quiet = false);
+#ifdef QSAN_XP_LEGACY
+    BanIpDialog(QWidget *parent, LocalServerController *controller);
+#endif
 
 private:
     QListWidget *left;
@@ -38,6 +44,10 @@ private:
 
     Server *server;
     QList<ServerPlayer *> sp_list;
+#ifdef QSAN_XP_LEGACY
+    LocalServerController *controller = nullptr;
+    QString generation;
+#endif
 
     void loadIPList();
     void loadBannedList();

@@ -10,6 +10,9 @@
 class Button;
 class QSanSelectableItem;
 class Server;
+#ifdef QSAN_XP_LEGACY
+class LocalServerController;
+#endif
 
 class StartScene : public QGraphicsScene
 {
@@ -21,6 +24,9 @@ public:
     void addButton(QAction *action);
     void setServerLogBackground();
     void switchToServer(Server *server);
+#ifdef QSAN_XP_LEGACY
+    void switchToServer(LocalServerController *controller);
+#endif
 
 protected:
     virtual void keyPressEvent(QKeyEvent *event);

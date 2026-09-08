@@ -28,6 +28,9 @@ class QQmlEngine;
 class HomeController;
 class PointerEffectOverlay;
 class Replayer;
+#ifdef QSAN_XP_LEGACY
+class LocalServerController;
+#endif
 
 class BroadcastBox : public QDialog
 {
@@ -53,6 +56,7 @@ public:
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
+    friend class XpGuiAcceptance;
 
 public:
     explicit MainWindow(QWidget *parent = 0);
@@ -61,6 +65,9 @@ public:
     QGraphicsScene *getScene();
     void refitScene();
     void setUiScale(qreal scale);
+#ifdef QSAN_XP_LEGACY
+    LocalServerController *localServerController() const { return localServer; }
+#endif
 
     // Linux GUI M1 startup smoke 用的觀測點。HomeScene 的載入結果本身就係
     // MainWindow 的狀態，喺度公開出嚟，測試就唔使另外複製一份啟動流程。
@@ -138,6 +145,12 @@ private:
     ConfigDialog *config_dialog = nullptr;
     QSystemTrayIcon *systray = nullptr;
     Server *server = nullptr;
+#ifdef QSAN_XP_LEGACY
+    LocalServerController *localServer = nullptr;
+    bool m_closeAfterServer = false;
+    bool m_localClientPending = false;
+    void setupLocalServerController();
+#endif
     HomeController *homeController = nullptr;
     PointerEffectOverlay *m_pointerOverlay = nullptr;
     bool m_homeSceneReady = false;

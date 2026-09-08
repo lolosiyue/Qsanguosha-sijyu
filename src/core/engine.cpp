@@ -301,7 +301,7 @@ private:
 Engine::Engine(bool isManualMode)
 {
 #ifdef LOGNETWORK
-	logFile.setFileName("netmsg.log");
+	logFile.setFileName(QSanRuntimePaths::userDataPath("netmsg.log"));
 	logFile.open(QIODevice::WriteOnly|QIODevice::Text);
     connect(this, SIGNAL(logNetworkMessage(QString)), this, SLOT(handleNetworkMessage(QString)),Qt::QueuedConnection);
 #endif // LOGNETWORK

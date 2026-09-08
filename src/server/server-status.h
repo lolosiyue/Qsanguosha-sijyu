@@ -33,6 +33,7 @@ struct PlayerStatusSnapshot
 {
     QString id;
     QString name;
+    QString ip;
     int roomId = -1;
     QString state;
 };

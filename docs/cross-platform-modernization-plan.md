@@ -41,7 +41,7 @@
 | Android | min API 28、target/compile API 36、NDK r27c、JDK 21 |
 | Android ABI | Google Play 正式版僅 `arm64-v8a`；`x86_64` 僅供 CI／模擬器 |
 
-> **範圍豁免（2026-09-06）**：`QSAN_BUILD_XP_LEGACY` 為 opt-in 的 Windows XP legacy 獨立 target（preset `xp-vs2017-x86`、`find_package(Qt5 5.6.3 EXACT REQUIRED)`，見 [`windows-xp-legacy-build.md`](windows-xp-legacy-build.md)），不受上表「Qt 6.11.1、不維護 Qt 5 相容層」基線約束；上表交付平台已補列該 opt-in 產品。
+> **範圍豁免（2026-09-06）**：`QSAN_BUILD_XP_LEGACY` 為 opt-in 的 Windows XP legacy 獨立 target（正式入口為 `legacy/xp/tools/build-xp.ps1`；其內部使用 `xp-vs2017-x86` preset 與 `find_package(Qt5 5.6.3 EXACT REQUIRED)`，見 [`windows-xp-legacy-build.md`](windows-xp-legacy-build.md)），不受上表「Qt 6.11.1、不維護 Qt 5 相容層」基線約束；上表交付平台已補列該 opt-in 產品。
 
 官方基線資料：
 

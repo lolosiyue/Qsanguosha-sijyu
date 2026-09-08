@@ -236,7 +236,11 @@ QByteArray ServerLogger::formatRecord(ServerLogLevel level,
                                       const QVariantMap &fields) const
 {
     const QString timestamp = QDateTime::currentDateTimeUtc()
+#if QT_VERSION < QT_VERSION_CHECK(5, 8, 0)
+        .toString(QStringLiteral("yyyy-MM-dd'T'HH:mm:ss.zzz'Z'"));
+#else
         .toString(Qt::ISODateWithMs);
+#endif
     const QString cleanComponent = normalizedComponent(component);
     const QString cleanMessage = normalizedMessage(message);
 
