@@ -7,6 +7,7 @@
 #include "player.h"
 
 #include <QHash>
+#include <QJsonObject>
 #include <QObject>
 #include <QString>
 #include <QVariantMap>
@@ -41,9 +42,11 @@ public:
     QList<const Card *> getHandcards() const override;
     int getMaxCards() const override;
 
-    // Full visible snapshots used by the browser runtime. The incremental TUI
-    // projection keeps its existing behavior until it adopts this boundary.
+    // Full visible snapshots used by TUI and the browser runtime.
     void applyVisibleZones(const QVariantMap &data);
+    void applyRuleEffects(const QVariantMap &data);
+
+    QJsonObject metrics() const;
 
 private:
     Player *seatStep(int step) const;
@@ -67,6 +70,7 @@ public:
     ClientPlayer *player(const QString &objectName) const;
     ClientPlayer *self() const;
     const Player *cardOwner(int cardId) const;
+    QJsonObject metrics() const;
 
 private:
     struct Entry
@@ -76,7 +80,8 @@ private:
         QList<int> equipped;
     };
 
-    void syncPlayer(Entry *entry, const QVariantMap &data, const QList<int> &equipped);
+    void syncPlayer(Entry *entry, const QVariantMap &data);
+    void reconcileEquips(ClientPlayer *projected, const QList<int> &equipped);
 
     const ClientGameState *m_state;
     // Player::getSiblings() walks parent()->findChildren<Player *>(), so all

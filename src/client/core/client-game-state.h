@@ -40,6 +40,7 @@ public:
     bool isKnownCardId(int cardId) const;
     void setCardValue(int cardId, const QString &key, const QVariant &value);
     QVariantMap card(int cardId) const;
+    QList<int> cardIds() const;
     QList<int> cardsForPlayer(const QString &playerName, int place = -1) const;
 
     void recordFlow(int command, const QVariant &payload);

@@ -165,6 +165,11 @@ QVariantMap ClientGameState::card(int cardId) const
     return m_cards.value(cardId);
 }
 
+QList<int> ClientGameState::cardIds() const
+{
+    return m_cards.keys();
+}
+
 QList<int> ClientGameState::cardsForPlayer(const QString &playerName, int place) const
 {
     QList<int> result;

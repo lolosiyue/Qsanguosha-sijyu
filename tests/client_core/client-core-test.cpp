@@ -5,8 +5,10 @@
 // QApplication、RoomScene 或者一局真遊戲先驗到。真正嘅 desktop 呈現由
 // --local-response-ui runner 喺 GUI build 度驗。
 #include "client-core.h"
+#include "client-game-state-reducer.h"
 #include "client-interaction-view.h"
 #include "interaction-model.h"
+#include "protocol.h"
 
 #include <QCoreApplication>
 #include <QEventLoop>
@@ -730,6 +732,182 @@ void testGameState()
         "reset clears the client game state");
 }
 
+void testRulesProjectionReducer()
+{
+    using namespace QSanProtocol;
+    ClientGameState state;
+    state.setSelfName(QStringLiteral("sgs1"));
+    state.setPlayerNames(QStringList() << QStringLiteral("sgs1") << QStringLiteral("sgs2"));
+
+    auto notify = [&state](int command, const QVariantMap &payload) {
+        return ClientGameStateReducer::applyNotification(&state, command, payload);
+    };
+    auto distances = [&state]() {
+        return state.playerValue(QStringLiteral("sgs1"), QStringLiteral("fixed_distances")).toMap();
+    };
+
+    notify(S_COMMAND_FIXED_DISTANCE, {
+        {QStringLiteral("from_player"), QStringLiteral("sgs1")},
+        {QStringLiteral("to_player"), QStringLiteral("sgs2")},
+        {QStringLiteral("distance"), 2},
+        {QStringLiteral("set"), true}});
+    notify(S_COMMAND_FIXED_DISTANCE, {
+        {QStringLiteral("from_player"), QStringLiteral("sgs1")},
+        {QStringLiteral("to_player"), QStringLiteral("sgs2")},
+        {QStringLiteral("distance"), 4},
+        {QStringLiteral("set"), true}});
+    QVariantList stacked = distances().value(QStringLiteral("sgs2")).toList();
+    check(stacked.size() == 2 && stacked.at(0).toInt() == 2 && stacked.at(1).toInt() == 4,
+        "fixed distance 2 and 4 stack as a set");
+
+    notify(S_COMMAND_FIXED_DISTANCE, {
+        {QStringLiteral("from_player"), QStringLiteral("sgs1")},
+        {QStringLiteral("to_player"), QStringLiteral("sgs2")},
+        {QStringLiteral("distance"), 4},
+        {QStringLiteral("set"), false}});
+    stacked = distances().value(QStringLiteral("sgs2")).toList();
+    check(stacked.size() == 1 && stacked.at(0).toInt() == 2,
+        "removing 4 leaves the stacked 2");
+
+    notify(S_COMMAND_FIXED_DISTANCE, {
+        {QStringLiteral("from_player"), QStringLiteral("sgs1")},
+        {QStringLiteral("to_player"), QStringLiteral("sgs2")},
+        {QStringLiteral("distance"), 2},
+        {QStringLiteral("set"), false}});
+    check(!distances().contains(QStringLiteral("sgs2")),
+        "removing the last stacked distance deletes the pair");
+
+    notify(S_COMMAND_ATTACK_RANGE, {
+        {QStringLiteral("from_player"), QStringLiteral("sgs1")},
+        {QStringLiteral("to_player"), QStringLiteral("sgs2")},
+        {QStringLiteral("set"), true}});
+    notify(S_COMMAND_ATTACK_RANGE, {
+        {QStringLiteral("from_player"), QStringLiteral("sgs1")},
+        {QStringLiteral("to_player"), QStringLiteral("sgs2")},
+        {QStringLiteral("set"), true}});
+    QStringList pairs = state.playerValue(QStringLiteral("sgs1"),
+        QStringLiteral("attack_range_pairs")).toStringList();
+    check(pairs.size() == 2 && pairs.count(QStringLiteral("sgs2")) == 2,
+        "attack-range pairs append instead of collapsing to a set");
+    notify(S_COMMAND_ATTACK_RANGE, {
+        {QStringLiteral("from_player"), QStringLiteral("sgs1")},
+        {QStringLiteral("to_player"), QStringLiteral("sgs2")},
+        {QStringLiteral("set"), false}});
+    pairs = state.playerValue(QStringLiteral("sgs1"),
+        QStringLiteral("attack_range_pairs")).toStringList();
+    check(pairs.size() == 1 && pairs.first() == QStringLiteral("sgs2"),
+        "removing one attack-range pair leaves the stacked copy");
+
+    notify(S_COMMAND_SYNC_PILE, {
+        {QStringLiteral("player_name"), QStringLiteral("sgs1")},
+        {QStringLiteral("pile_name"), QStringLiteral("wooden_ox")},
+        {QStringLiteral("card_ids"), QVariantList{7, 8}}});
+    check(state.playerValue(QStringLiteral("sgs1"), QStringLiteral("piles")).toMap()
+              .value(QStringLiteral("wooden_ox")).toList().size() == 2,
+          "SYNC_PILE stores a visible pile");
+    notify(S_COMMAND_SYNC_PILE, {
+        {QStringLiteral("player_name"), QStringLiteral("sgs1")},
+        {QStringLiteral("pile_name"), QStringLiteral("wooden_ox")},
+        {QStringLiteral("card_ids"), QVariantList{}}});
+    check(!state.playerValue(QStringLiteral("sgs1"), QStringLiteral("piles")).toMap()
+              .contains(QStringLiteral("wooden_ox")),
+          "an empty SYNC_PILE deletes the pile key");
+
+    notify(S_COMMAND_SET_PROPERTY, {
+        {QStringLiteral("player_name"), QStringLiteral("sgs1")},
+        {QStringLiteral("action"), QStringLiteral("tag")},
+        {QStringLiteral("tag_name"), QStringLiteral("SkillInvalidityRecords")},
+        {QStringLiteral("value"), QStringList{QStringLiteral("wusheng|src|reason")}}});
+    check(state.playerValue(QStringLiteral("sgs1"), QStringLiteral("tags")).toMap()
+              .contains(QStringLiteral("SkillInvalidityRecords")),
+          "a player tag is stored");
+    notify(S_COMMAND_SET_PROPERTY, {
+        {QStringLiteral("player_name"), QStringLiteral("sgs1")},
+        {QStringLiteral("action"), QStringLiteral("tag")},
+        {QStringLiteral("tag_name"), QStringLiteral("SkillInvalidityRecords")},
+        {QStringLiteral("value_kind"), QStringLiteral("removed")}});
+    check(!state.playerValue(QStringLiteral("sgs1"), QStringLiteral("tags")).toMap()
+              .contains(QStringLiteral("SkillInvalidityRecords")),
+          "value_kind=removed deletes the tag");
+
+    QVariantMap instance{
+        {QStringLiteral("owner_name"), QStringLiteral("sgs1")},
+        {QStringLiteral("skill_name"), QStringLiteral("wusheng")},
+        {QStringLiteral("instance_id"), 1},
+        {QStringLiteral("source"), 0},
+        {QStringLiteral("parent_owner"), QStringLiteral("sgs1")},
+        {QStringLiteral("parent_skill"), QString()},
+        {QStringLiteral("parent_instance_id"), 0},
+        {QStringLiteral("visible"), true},
+        {QStringLiteral("bind_head"), 1},
+        {QStringLiteral("has_amount_override"), false}};
+    notify(S_COMMAND_SKILL_INSTANCE, {
+        {QStringLiteral("action"), QStringLiteral("upsert")},
+        {QStringLiteral("entry"), instance}});
+    notify(S_COMMAND_SKILL_INSTANCE, {
+        {QStringLiteral("action"), QStringLiteral("amount")},
+        {QStringLiteral("owner_name"), QStringLiteral("sgs1")},
+        {QStringLiteral("skill_name"), QStringLiteral("wusheng")},
+        {QStringLiteral("instance_id"), 1},
+        {QStringLiteral("has_amount_override"), true},
+        {QStringLiteral("amount"), 3}});
+    notify(S_COMMAND_SKILL_INSTANCE, {
+        {QStringLiteral("action"), QStringLiteral("correct_state")},
+        {QStringLiteral("owner_name"), QStringLiteral("sgs1")},
+        {QStringLiteral("skill_name"), QStringLiteral("wusheng")},
+        {QStringLiteral("instance_id"), 1},
+        {QStringLiteral("operation"), QStringLiteral("set")},
+        {QStringLiteral("key"), QStringLiteral("public")},
+        {QStringLiteral("value"), 9}});
+    const QVariantMap stored = state.playerValue(QStringLiteral("sgs1"),
+        QStringLiteral("skill_instances")).toMap().value(QStringLiteral("wusheng#1")).toMap();
+    check(stored.value(QStringLiteral("has_amount_override")).toBool()
+              && stored.value(QStringLiteral("amount")).toInt() == 3,
+          "skill instance amount patches the stored entry");
+    check(stored.value(QStringLiteral("correct_state")).toMap().value(QStringLiteral("public")).toInt() == 9,
+          "public correct_state is stored on the instance");
+
+    notify(S_COMMAND_UPDATE_PLAYER_UI_STATE, {
+        {QStringLiteral("player_name"), QStringLiteral("sgs1")},
+        {QStringLiteral("state"), QVariantMap{{QStringLiteral("handMax"), 5}}}});
+    check(state.playerValue(QStringLiteral("sgs1"), QStringLiteral("hand_max")).toInt() == 5,
+          "handMax from UI state is the synced hand limit");
+
+    notify(S_COMMAND_UPDATE_CARD, {
+        {QStringLiteral("card_id"), 11},
+        {QStringLiteral("card_name"), QStringLiteral("slash")},
+        {QStringLiteral("suit"), 2},
+        {QStringLiteral("number"), 7}});
+    check(state.card(11).value(QStringLiteral("modified")).toBool(),
+          "UPDATE_CARD marks the card modified");
+    notify(S_COMMAND_UPDATE_CARD, {
+        {QStringLiteral("card_id"), 11},
+        {QStringLiteral("action"), QStringLiteral("reset")}});
+    check(!state.card(11).value(QStringLiteral("modified")).toBool(),
+          "UPDATE_CARD reset clears the modified flag");
+
+    notify(S_COMMAND_FIXED_DISTANCE, {
+        {QStringLiteral("from_player"), QStringLiteral("sgs1")},
+        {QStringLiteral("to_player"), QStringLiteral("sgs2")},
+        {QStringLiteral("distance"), 1},
+        {QStringLiteral("set"), true}});
+    notify(S_COMMAND_SYNC_PILE, {
+        {QStringLiteral("player_name"), QStringLiteral("sgs1")},
+        {QStringLiteral("pile_name"), QStringLiteral("old")},
+        {QStringLiteral("card_ids"), QVariantList{1}}});
+    notify(S_COMMAND_SET_PROPERTY, {
+        {QStringLiteral("player_name"), QStringLiteral("sgs1")},
+        {QStringLiteral("action"), QStringLiteral("tag")},
+        {QStringLiteral("tag_name"), QStringLiteral("stale")},
+        {QStringLiteral("value"), 1}});
+    state.resetGameplayState();
+    check(state.playerNames().isEmpty()
+              && state.playerValue(QStringLiteral("sgs1"), QStringLiteral("piles")).toMap().isEmpty()
+              && state.playerValue(QStringLiteral("sgs1"), QStringLiteral("tags")).toMap().isEmpty()
+              && state.playerValue(QStringLiteral("sgs1"), QStringLiteral("fixed_distances")).toMap().isEmpty(),
+          "STATE_SYNC begin clears old piles, tags and effects");
+}
+
 class FakeEligibilityProvider : public ICardEligibilityProvider
 {
 public:
@@ -1153,6 +1331,7 @@ int main(int argc, char **argv)
     testViewContract();
     testReentrantAnswer();
     testGameState();
+    testRulesProjectionReducer();
     testStructuredModels();
     testEligibilityHints();
     testSpecialInteractionSemantics();
