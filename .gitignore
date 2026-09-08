@@ -70,3 +70,4 @@ lua/test/
 lua/examples/
 etc/testScenes/active-skill-v2-lua-smoke.txt
 .wrangler/
+web/public/rules/

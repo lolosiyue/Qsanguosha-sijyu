@@ -74,3 +74,9 @@ export function cardRecord(cardId: number): JsonObject | undefined {
   const entry = cards[String(cardId)];
   return entry;
 }
+
+// A deployed runtime supplies its own card names when an optional desktop dump
+// is absent. The controller checks existing records before installing these.
+export function installRulesCardCatalog(registry: JsonObject[]): void {
+  cards = Object.fromEntries(registry.map((entry) => [String(entry.id), { ...entry }]));
+}
