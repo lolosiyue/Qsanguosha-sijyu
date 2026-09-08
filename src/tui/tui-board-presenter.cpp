@@ -10,12 +10,6 @@
 #include <algorithm>
 #include <utility>
 
-#if defined(Q_OS_UNIX)
-#include <unistd.h>
-#else
-#include <io.h>
-#endif
-
 namespace {
 
 // The scrollback cap /log has always used (tui-application-controller.cpp's
@@ -377,16 +371,7 @@ void TuiBoardPresenter::flushToTerminal()
     const QString diff = m_screen.flush();
     if (diff.isEmpty())
         return;
-    const QByteArray bytes = diff.toUtf8();
-    // Through TuiTerminal::outFd(), not an assumed STDOUT_FILENO: this class
-    // was given an fd-taking constructor precisely so its output target is
-    // explicit rather than assumed, and writing past that accessor would put
-    // the assumption right back (a TuiTerminal built over some other fd pair
-    // -- a test harness, say -- would otherwise silently not see this output).
-    const int fd = m_terminal->outFd();
-#if defined(Q_OS_UNIX)
-    ::write(fd, bytes.constData(), static_cast<size_t>(bytes.size()));
-#else
-    _write(fd, bytes.constData(), static_cast<unsigned int>(bytes.size()));
-#endif
+    // The terminal owns the descriptor and platform byte-writing contract.
+    // In particular, _write's text-mode CRLF conversion corrupts VT frames.
+    m_terminal->write(diff.toUtf8());
 }

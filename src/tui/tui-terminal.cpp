@@ -2,8 +2,10 @@
 
 #include <QCoreApplication>
 #include <QSocketNotifier>
+#include <QTimer>
 
 #include <cstring>
+#include <csignal>
 
 #if defined(Q_OS_UNIX)
 #include <cerrno>
@@ -12,9 +14,124 @@
 #include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
+#elif defined(Q_OS_WIN)
+#include <qt_windows.h>
+#include <io.h>
+#endif
+
+#if defined(Q_OS_WIN)
+// Only Win32/POD state is accessed by console-control and fatal callbacks.
+// The SRW lock prevents leave() from deleting it under a control-handler thread.
+struct TuiWindowsTerminalState {
+    HANDLE input = INVALID_HANDLE_VALUE;
+    HANDLE output = INVALID_HANDLE_VALUE;
+    DWORD inputMode = 0;
+    DWORD outputMode = 0;
+    UINT inputCodePage = 0;
+    UINT outputCodePage = 0;
+    CONSOLE_CURSOR_INFO cursor{};
+    WORD attributes = 0;
+    bool alternateScreen = false;
+    bool restored = false;
+    std::atomic<bool> interruptPending{false};
+    using SignalHandler = void (*)(int);
+    SignalHandler previousAbort = SIG_DFL;
+    SignalHandler previousSegv = SIG_DFL;
+};
 #endif
 
 namespace {
+
+#if defined(Q_OS_WIN)
+SRWLOCK g_windowsTerminalLock = SRWLOCK_INIT;
+TuiWindowsTerminalState *g_windowsTerminal = nullptr;
+
+HANDLE windowsHandle(int fd)
+{
+    // Negative descriptors otherwise invoke the CRT invalid-parameter handler.
+    return fd < 0 ? INVALID_HANDLE_VALUE : reinterpret_cast<HANDLE>(_get_osfhandle(fd));
+}
+
+bool writeWindowsBytes(HANDLE handle, const char *bytes, qsizetype length)
+{
+    while (length > 0) {
+        DWORD written = 0;
+        DWORD chunk = static_cast<DWORD>(qMin<qsizetype>(length, 32768));
+        // Each console write must end on a UTF-8 boundary even for large
+        // frames. Do not leave half a CJK/emoji character in another call.
+        if (chunk < length) {
+            while (chunk > 0 && (static_cast<unsigned char>(bytes[chunk]) & 0xc0) == 0x80)
+                --chunk;
+            if (chunk == 0)
+                return false;
+        }
+        if (!WriteFile(handle, bytes, chunk, &written, nullptr) || written == 0)
+            return false;
+        bytes += written;
+        length -= written;
+    }
+    return true;
+}
+
+DWORD windowsOutputMode(DWORD mode)
+{
+    // Full frames contain explicit CRLF between exactly-full rows. Delayed
+    // wrapping keeps the bottom-right cell from scrolling the board away.
+    return mode | ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING
+        | ENABLE_WRAP_AT_EOL_OUTPUT | DISABLE_NEWLINE_AUTO_RETURN;
+}
+
+void restoreWindowsTerminal(TuiWindowsTerminalState *state)
+{
+    if (state->restored)
+        return;
+    state->restored = true;
+    if (state->alternateScreen) {
+        static const char restore[] = "\x1b[?1049l\x1b[?25h\x1b[0m";
+        writeWindowsBytes(state->output, restore, sizeof(restore) - 1);
+    }
+    // Leave the alternate buffer while VT is still enabled, then restore the
+    // original buffer's attributes, cursor, modes and code pages exactly.
+    SetConsoleTextAttribute(state->output, state->attributes);
+    SetConsoleCursorInfo(state->output, &state->cursor);
+    SetConsoleMode(state->input, state->inputMode);
+    SetConsoleMode(state->output, state->outputMode);
+    SetConsoleCP(state->inputCodePage);
+    SetConsoleOutputCP(state->outputCodePage);
+}
+
+BOOL WINAPI windowsControlHandler(DWORD event)
+{
+    if (event != CTRL_C_EVENT && event != CTRL_BREAK_EVENT && event != CTRL_CLOSE_EVENT
+        && event != CTRL_LOGOFF_EVENT && event != CTRL_SHUTDOWN_EVENT)
+        return FALSE;
+    AcquireSRWLockExclusive(&g_windowsTerminalLock);
+    const bool owned = g_windowsTerminal != nullptr;
+    if (owned) {
+        if (event == CTRL_C_EVENT || event == CTRL_BREAK_EVENT)
+            g_windowsTerminal->interruptPending.store(true);
+        else
+            restoreWindowsTerminal(g_windowsTerminal);
+    }
+    ReleaseSRWLockExclusive(&g_windowsTerminalLock);
+    // C/Break are handed to Qt by the poll timer. Close/logoff must restore
+    // synchronously: Windows need not give the Qt event loop another turn.
+    return owned && (event == CTRL_C_EVENT || event == CTRL_BREAK_EVENT);
+}
+
+void windowsFatalSignalHandler(int number)
+{
+    // Best effort if a fault occurs during enter/leave itself; never deadlock
+    // a fatal callback on the lock that its interrupted thread already owns.
+    if (TryAcquireSRWLockExclusive(&g_windowsTerminalLock)) {
+        if (g_windowsTerminal != nullptr)
+            restoreWindowsTerminal(g_windowsTerminal);
+        ReleaseSRWLockExclusive(&g_windowsTerminalLock);
+    }
+    std::signal(number, SIG_DFL);
+    std::raise(number);
+}
+#endif
 
 #if defined(Q_OS_UNIX)
 
@@ -262,6 +379,78 @@ bool TuiTerminal::enter(QString *error)
 
     m_left.store(false);
     return true;
+#elif defined(Q_OS_WIN)
+    AcquireSRWLockExclusive(&g_windowsTerminalLock);
+    if (g_windowsTerminal != nullptr) {
+        ReleaseSRWLockExclusive(&g_windowsTerminalLock);
+        if (error != nullptr)
+            *error = QStringLiteral("tui: another terminal already owns this console");
+        return false;
+    }
+    auto *state = new TuiWindowsTerminalState;
+    state->input = windowsHandle(m_inFd);
+    state->output = windowsHandle(m_outFd);
+    CONSOLE_SCREEN_BUFFER_INFO info{};
+    if (!GetConsoleMode(state->input, &state->inputMode)
+        || !GetConsoleMode(state->output, &state->outputMode)
+        || !GetConsoleCursorInfo(state->output, &state->cursor)
+        || !GetConsoleScreenBufferInfo(state->output, &info)) {
+        delete state;
+        ReleaseSRWLockExclusive(&g_windowsTerminalLock);
+        if (error != nullptr)
+            *error = QStringLiteral("tui: board needs a Windows console for stdin and stdout");
+        return false;
+    }
+    state->attributes = info.wAttributes;
+    state->inputCodePage = GetConsoleCP();
+    state->outputCodePage = GetConsoleOutputCP();
+    // ReadConsoleInputW remains the reader. Disable VT INPUT so it keeps
+    // delivering INPUT_RECORDs, and QuickEdit so selection cannot pause IO.
+    const DWORD inputMode = (state->inputMode | ENABLE_EXTENDED_FLAGS | ENABLE_WINDOW_INPUT)
+        & ~(ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT | ENABLE_PROCESSED_INPUT
+            | ENABLE_QUICK_EDIT_MODE | ENABLE_VIRTUAL_TERMINAL_INPUT | ENABLE_MOUSE_INPUT);
+    bool entered = SetConsoleMode(state->output, windowsOutputMode(state->outputMode))
+        && SetConsoleMode(state->input, inputMode)
+        && SetConsoleCP(CP_UTF8) && SetConsoleOutputCP(CP_UTF8);
+    if (entered) {
+        state->alternateScreen = true; // also unwind a partially written enter sequence
+        static const char enter[] = "\x1b[?1049h\x1b[?25l";
+        entered = writeWindowsBytes(state->output, enter, sizeof(enter) - 1);
+    }
+    if (entered)
+        entered = SetConsoleCtrlHandler(windowsControlHandler, TRUE) != FALSE;
+    if (!entered) {
+        const DWORD code = GetLastError();
+        restoreWindowsTerminal(state);
+        delete state;
+        ReleaseSRWLockExclusive(&g_windowsTerminalLock);
+        if (error != nullptr)
+            *error = QStringLiteral("tui: Windows console setup failed (error %1)").arg(code);
+        return false;
+    }
+    state->previousAbort = std::signal(SIGABRT, windowsFatalSignalHandler);
+    state->previousSegv = std::signal(SIGSEGV, windowsFatalSignalHandler);
+    g_windowsTerminal = m_windowsState = state;
+    m_left.store(false);
+    ReleaseSRWLockExclusive(&g_windowsTerminalLock);
+
+    m_lastSize = size();
+    m_pollTimer = new QTimer(this);
+    connect(m_pollTimer, &QTimer::timeout, this, [this]() {
+        if (m_windowsState->interruptPending.exchange(false)) {
+            emit interrupted();
+            return;
+        }
+        const QSize current = size();
+        if (current != m_lastSize) {
+            m_lastSize = current;
+            emit resized();
+        }
+    });
+    m_pollTimer->start(100);
+    if (QCoreApplication *app = QCoreApplication::instance())
+        connect(app, &QCoreApplication::aboutToQuit, this, &TuiTerminal::leave);
+    return true;
 #else
     if (error != nullptr)
         *error = QStringLiteral("tui: raw-mode terminal support is not implemented on this "
@@ -319,8 +508,58 @@ void TuiTerminal::leave()
         ::close(m_wakePipe[1]);
         m_wakePipe[1] = -1;
     }
+#elif defined(Q_OS_WIN)
+    bool expected = false;
+    if (!m_left.compare_exchange_strong(expected, true))
+        return;
+    delete m_pollTimer;
+    m_pollTimer = nullptr;
+    AcquireSRWLockExclusive(&g_windowsTerminalLock);
+    auto *state = m_windowsState;
+    restoreWindowsTerminal(state);
+    g_windowsTerminal = nullptr;
+    if (state->previousAbort != SIG_ERR)
+        std::signal(SIGABRT, state->previousAbort);
+    if (state->previousSegv != SIG_ERR)
+        std::signal(SIGSEGV, state->previousSegv);
+    m_windowsState = nullptr;
+    SetConsoleCtrlHandler(windowsControlHandler, FALSE);
+    ReleaseSRWLockExclusive(&g_windowsTerminalLock);
+    delete state;
 #endif
 }
+
+bool TuiTerminal::write(const QByteArray &bytes) const
+{
+#if defined(Q_OS_WIN)
+    return writeWindowsBytes(windowsHandle(m_outFd), bytes.constData(), bytes.size());
+#else
+    qsizetype offset = 0;
+    while (offset < bytes.size()) {
+        const ssize_t written = ::write(m_outFd, bytes.constData() + offset,
+            static_cast<size_t>(bytes.size() - offset));
+        if (written < 0 && errno == EINTR)
+            continue;
+        if (written <= 0)
+            return false;
+        offset += written;
+    }
+    return true;
+#endif
+}
+
+#if defined(Q_OS_WIN)
+bool TuiTerminal::supportsWindowsConsole()
+{
+    HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD mode = 0;
+    if (!GetConsoleMode(output, &mode))
+        return false;
+    if (!SetConsoleMode(output, windowsOutputMode(mode)))
+        return false;
+    return SetConsoleMode(output, mode) != FALSE;
+}
+#endif
 
 QSize TuiTerminal::size() const
 {
@@ -329,6 +568,14 @@ QSize TuiTerminal::size() const
     std::memset(&ws, 0, sizeof(ws));
     if (::ioctl(m_outFd, TIOCGWINSZ, &ws) == 0 && ws.ws_row > 0 && ws.ws_col > 0)
         return QSize(int(ws.ws_col), int(ws.ws_row)); // QSize(width, height) == (cols, rows)
+#elif defined(Q_OS_WIN)
+    CONSOLE_SCREEN_BUFFER_INFO info{};
+    if (GetConsoleScreenBufferInfo(windowsHandle(m_outFd), &info)) {
+        const QSize viewport(info.srWindow.Right - info.srWindow.Left + 1,
+            info.srWindow.Bottom - info.srWindow.Top + 1);
+        if (viewport.width() > 0 && viewport.height() > 0)
+            return viewport;
+    }
 #endif
     return QSize(80, 24); // width, height -- i.e. 80 cols x 24 rows
 }

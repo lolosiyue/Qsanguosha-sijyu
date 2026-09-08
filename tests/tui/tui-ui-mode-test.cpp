@@ -37,9 +37,26 @@ int main(int argc, char **argv)
     // throwaway directory instead of the real user config location --
     // otherwise running this suite would leave (or read) a stray
     // ui-mode.ini in whatever account happens to run the tests.
+#if defined(Q_OS_WIN)
+    // Windows ignores XDG_CONFIG_HOME. Use a uniquely owned, auto-removed
+    // application config directory under its actual Known Folder instead.
+    QTemporaryDir configHome(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+        + QStringLiteral("/qsan-tui-ui-mode-XXXXXX"));
+    QCoreApplication::setApplicationName(QFileInfo(configHome.path()).fileName());
+#else
     QTemporaryDir configHome;
+#endif
     check(configHome.isValid(), "a temp directory for QStandardPaths is created");
+    if (!configHome.isValid())
+        return 1;
     qputenv("XDG_CONFIG_HOME", configHome.path().toUtf8());
+#if defined(Q_OS_WIN)
+    if (QDir::cleanPath(QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation))
+        != QDir::cleanPath(configHome.path())) {
+        check(false, "Windows settings stay inside the test's temporary directory");
+        return 1;
+    }
+#endif
 
     TuiUiModeInputs inputs;
     inputs.stdoutIsTty = true;

@@ -13,8 +13,7 @@
 #include <unistd.h>
 #else
 // Pulled in unconditionally so the constructor's default arguments below
-// compile on every platform qsanguosha_tui targets, even though raw-mode
-// entry itself is Unix-only for now (see tui-terminal.cpp). <unistd.h> is not
+// compile on every platform qsanguosha_tui targets. <unistd.h> is not
 // available under MSVC, so these mirror its well-known values.
 #ifndef STDIN_FILENO
 #define STDIN_FILENO 0
@@ -25,11 +24,17 @@
 #endif
 
 class QSocketNotifier;
+class QTimer;
+#if defined(Q_OS_WIN)
+struct TuiWindowsTerminalState;
+#endif
 
 // Takes the terminal into raw mode and the alternate screen for the ASCII
 // board UI, and hands it back on every path that unwinds -- normal shutdown,
 // SIGINT/SIGTERM/SIGHUP, and a crash (SIGSEGV/SIGABRT). See tui-terminal.cpp
 // for why the signal handler has to be written the way it is.
+// Windows uses console control events, viewport polling and best-effort fatal
+// signal restoration; console modes and code pages have one owner here.
 //
 // Constructed with fds rather than reaching for STDIN_FILENO/STDOUT_FILENO
 // itself so a test can hand it a pipe: entering raw mode and the alternate
@@ -68,6 +73,15 @@ public:
     // accessor would put that assumption right back.
     int outFd() const { return m_outFd; }
 
+    // Writes UTF-8/VT bytes without the Windows CRT's text-mode translation.
+    // Also honours injected pipe descriptors used by the presenter tests.
+    bool write(const QByteArray &bytes) const;
+
+#if defined(Q_OS_WIN)
+    // Probe VT support before the startup question; restore the mode at once.
+    static bool supportsWindowsConsole();
+#endif
+
     // The exact bytes written to leave the alternate screen, show the cursor
     // and drop any SGR attribute still in force. leave() and the signal
     // handler both write this same sequence; it exists as its own function
@@ -101,6 +115,10 @@ private:
     void *m_savedTermios = nullptr;
     int m_wakePipe[2] = { -1, -1 };
     QSocketNotifier *m_notifier = nullptr;
+#elif defined(Q_OS_WIN)
+    TuiWindowsTerminalState *m_windowsState = nullptr;
+    QTimer *m_pollTimer = nullptr;
+    QSize m_lastSize;
 #endif
 };
 

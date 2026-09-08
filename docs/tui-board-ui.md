@@ -320,9 +320,14 @@ Overlay 關閉：`Esc`／`q`／空白鍵關閉並吞掉該鍵；其他可打印�
 ### 6.2 平台
 
 **Windows**：除現有 UTF-8 code page 切換外，board 另需
-`ENABLE_VIRTUAL_TERMINAL_PROCESSING`。設不到（舊 conhost）即 board 不可能運行：
+`ENABLE_VIRTUAL_TERMINAL_PROCESSING` 與 `DISABLE_NEWLINE_AUTO_RETURN`，避免滿寬
+畫面在最後一格立即捲動。設不到（舊 conhost）即 board 不可能運行：
 明寫 `--ui board` 則 exit 2 並說明；自動／記憶路徑退回 classic 並印一行說明。
-所有 console mode 改動依現行做法在結束時還原。
+所有 console mode、code page 與游標改動由 `TuiTerminal` 統一還原。
+輸入沿用 `ReadConsoleInputW`，不啟用 VT input；native key records 轉成共用
+decoder 的 UTF-8／CSI，`TuiInput` 在 board 下不再另存或還原 console mode。
+Ctrl+Break 經原子旗標交回 Qt event loop；關閉主控台與 fatal signal 的還原路徑
+只用 Win32，不在系統 callback 存取 QObject。
 
 **Unix**：`termios`、`TIOCGWINSZ`、`SIGWINCH`，全部 POSIX，無新依賴。
 
