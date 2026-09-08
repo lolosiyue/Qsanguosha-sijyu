@@ -2,6 +2,7 @@
 
 #include "protocol.h"
 #include "socket.h"
+#include "rules-bundle-identity.h"
 
 using namespace QSanProtocol;
 
@@ -46,7 +47,11 @@ bool ServerConnectionContext::sendHello(
     message.destination = ProtocolEndpoint::Client;
     message.command = S_COMMAND_CHECK_VERSION;
     message.hasPayload = true;
-    message.payload = payload.toVariant();
+    // Additive metadata: existing typed readers ignore this optional member.
+    // Never replace the legacy version/count fields or require a new SIGNUP.
+    QVariantMap hello = payload.toVariant();
+    hello.insert(QStringLiteral("rules_bundle"), QSanRulesIdentity::current());
+    message.payload = hello;
     return send(message, error);
 }
 

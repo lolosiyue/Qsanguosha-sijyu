@@ -80,13 +80,20 @@ jobs:
             -DQSAN_BUILD_SERVER=OFF -DQSAN_BUILD_RULES_FIXTURE_RUNNER=ON \
             -DQSAN_BUILD_RULES_SESSION_TESTS=ON \
             2>&1 | tee artifacts/wasm-fixtures/native-configure.log
-          cmake --build build/rules-native --target qsanguosha_rules_fixture_runner qsanguosha_rules_session_probe \
+          cmake --build build/rules-native --target qsanguosha_rules_fixture_runner qsanguosha_rules_session_probe qsanguosha_rules_identity_probe \
             2>&1 | tee artifacts/wasm-fixtures/native-build.log
       - name: Execute native production-session lifecycle
         run: |
           python3 tests/client_runtime/check-rules-session.py --native-only \
             --native-runner "$GITHUB_WORKSPACE/build/rules-native/qsanguosha_rules_session_probe" \
             --asset-root "$GITHUB_WORKSPACE" --artifacts "$GITHUB_WORKSPACE/artifacts/wasm-fixtures/session-native"
+      - name: Verify rules identity and additive HELLO compatibility
+        run: |
+          python3 tests/client_runtime/check-rules-identity.py --self-test
+          python3 tests/client_runtime/check-rules-identity.py \
+            --runner "$GITHUB_WORKSPACE/build/rules-native/qsanguosha_rules_identity_probe" \
+            --asset-root "$GITHUB_WORKSPACE" \
+            --artifacts "$GITHUB_WORKSPACE/artifacts/wasm-fixtures/rules-identity"
       - name: Install the version-matched Emscripten SDK
         run: |
           git clone --depth 1 --branch 4.0.7 https://github.com/emscripten-core/emsdk.git "$RUNNER_TEMP/emsdk"

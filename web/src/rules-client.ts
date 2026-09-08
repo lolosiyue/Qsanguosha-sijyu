@@ -1,5 +1,6 @@
 import { cardRecord, installRulesCardCatalog } from "./i18n";
 import { Command, asString, isObject, type JsonObject } from "./protocol";
+import { readRulesIdentity, rulesIdentityError } from "./rules-identity";
 import type { LiveSession } from "./session";
 
 export interface RulesSelection {
@@ -49,6 +50,7 @@ export class RulesController {
   private generation = -1;
   private ready = false;
   private registryCount = 0;
+  private runtimeIdentity: unknown = null;
   private desired: Query | null = null;
   private inFlight: { query: Query; id: number } | null = null;
   private resultKey = "";
@@ -71,6 +73,7 @@ export class RulesController {
 
   current(session: LiveSession, selection: RulesSelection): boolean {
     return !this.disposed && !session.synchronizing && session.phase === "active"
+      && !rulesIdentityError(session.state.connection.rules_bundle, this.runtimeIdentity)
       && this.result !== null && this.resultKey === this.key(session, selection);
   }
 
@@ -90,6 +93,14 @@ export class RulesController {
       this.desired = null;
       this.result = null;
       this.resultKey = "";
+      return;
+    }
+    const remote = readRulesIdentity(session.state.connection.rules_bundle);
+    const identityError = !remote ? "server_rules_identity_missing_or_unsupported"
+      : remote.card_count !== session.state.cardIdSpace ? "rules_identity_mismatch:card_count"
+      : this.ready ? rulesIdentityError(remote, this.runtimeIdentity) : "";
+    if (identityError) {
+      this.fail(`規則套件不相符：${identityError}；請部署相符的 server／WASM 內容`, false);
       return;
     }
     const key = this.key(session, selection);
@@ -171,6 +182,11 @@ export class RulesController {
       const registry = message.info.registry;
       if (count <= 0 || registry.length !== count)
         throw new Error("WASM 卡牌目錄不完整");
+      const identity = readRulesIdentity(message.info.rules_bundle);
+      const identityError = rulesIdentityError(this.session?.state.connection.rules_bundle, identity);
+      if (identityError || identity?.card_count !== count)
+        throw new Error(`規則套件不相符：${identityError || "rules_identity_mismatch:card_count"}`);
+      this.runtimeIdentity = JSON.parse(JSON.stringify(identity));
       const records: JsonObject[] = [];
       for (let id = 0; id < count; ++id) {
         const entry = registry[id];
@@ -206,6 +222,8 @@ export class RulesController {
     if (!isEvaluation(parsed) || parsed.generation !== query.generation
         || parsed.revision !== query.revision || parsed.request_id !== query.requestId)
       throw new Error("WASM 規則結果格式或 request 不符");
+    const identityError = rulesIdentityError(this.session?.state.connection.rules_bundle, this.runtimeIdentity);
+    if (identityError) throw new Error(`規則套件不相符：${identityError}`);
     // Main-thread state may already have changed before the next animation frame.
     if (this.desired?.key === query.key && this.session?.generation === query.generation
         && this.session.revision === query.revision && !this.session.synchronizing
@@ -227,6 +245,11 @@ export class RulesController {
         || this.session.revision !== this.desired.revision || this.session.synchronizing
         || this.session.interaction?.messageId !== this.desired.requestId) {
       this.desired = null;
+      return;
+    }
+    const identityError = rulesIdentityError(this.session?.state.connection.rules_bundle, this.runtimeIdentity);
+    if (identityError) {
+      this.fail(`規則套件不相符：${identityError}`, false);
       return;
     }
     if (this.session?.state.cardIdSpace !== this.registryCount) {
@@ -269,6 +292,7 @@ export class RulesController {
     const old = this.worker;
     this.worker = null;
     this.ready = false;
+    this.runtimeIdentity = null;
     this.desired = null;
     this.inFlight = null;
     this.result = null;

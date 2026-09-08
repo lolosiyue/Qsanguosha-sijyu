@@ -1,3 +1,9 @@
 artifacts/client-core-interaction-matrix.json text eol=lf
 artifacts/protocol-v2-flow-matrix.json text eol=lf
 artifacts/tui-flow-coverage.json text eol=lf
+# builtin-v1 is a byte-identical rules content profile across native/WASM.
+lua/config.lua text eol=lf
+lua/sanguosha.lua text eol=lf
+lua/utilities.lua text eol=lf
+lua/sgs_ex.lua text eol=lf
+lua/lib/json.lua text eol=lf

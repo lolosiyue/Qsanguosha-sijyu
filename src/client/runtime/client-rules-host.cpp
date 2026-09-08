@@ -4,6 +4,7 @@
 #include "engine-bootstrap.h"
 #include "runtime-paths.h"
 #include "server-info.h"
+#include "rules-bundle-identity.h"
 
 #include <QCoreApplication>
 #include <QDir>
@@ -92,7 +93,9 @@ int ClientRulesHost::initialize()
                 throw std::runtime_error((QStringLiteral("engine_initialization_failed:") + error).toStdString());
             m_phase = Phase::Ready;
         }
-        if (!writeJson(path, m_session.registry()))
+        QJsonObject registry = m_session.registry();
+        registry.insert(QStringLiteral("rules_bundle"), QJsonObject::fromVariantMap(QSanRulesIdentity::current()));
+        if (!writeJson(path, registry))
             throw std::runtime_error("cannot_write_registry");
         return 0;
     } catch (const std::exception &error) {

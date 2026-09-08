@@ -1,5 +1,8 @@
 include_guard(GLOBAL)
 
+# Identity is needed by the server even with all session probes/products off.
+include("${CMAKE_CURRENT_LIST_DIR}/QSanguoshaRulesIdentity.cmake")
+
 set(qsan_session_tests_default OFF)
 if(BUILD_TESTING AND NOT EMSCRIPTEN AND NOT QSAN_BUILD_XP_LEGACY)
     set(qsan_session_tests_default ON)

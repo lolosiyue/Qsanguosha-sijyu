@@ -210,6 +210,9 @@ export class LiveSession {
       this.lastIncoming = incoming;
       this.phase = "hello";
       this.state.setCardIdSpace(asNumber(message.payload.card_count));
+      // Connection-scoped identity survives gameplay STATE_SYNC, but reset()
+      // on a new connection cannot inherit a previous server's attestation.
+      this.state.setConnectionValue("rules_bundle", message.payload.rules_bundle ?? null);
       const signup: JsonObject = {
         schema_version: 2,
         reconnect_requested: options.reconnect,
