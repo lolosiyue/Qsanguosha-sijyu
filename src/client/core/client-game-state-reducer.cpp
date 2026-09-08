@@ -36,6 +36,17 @@ QList<int> integers(const QVariant &value)
     return result;
 }
 
+// Native Player::fixed_distance is a QMultiHash: set inserts one value, remove
+// drops every matching (player, distance) pair. A single int is the old shape.
+QVariantList fixedDistanceValues(const QVariant &stored)
+{
+    if (stored.userType() == QMetaType::QVariantList)
+        return stored.toList();
+    if (!stored.isValid() || stored.isNull())
+        return {};
+    return QVariantList{stored};
+}
+
 QVariantList variants(const QList<int> &values)
 {
     QVariantList result;
@@ -666,9 +677,17 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
     case S_COMMAND_SYNC_PILE: {
         const QString player = resolvePlayerName(
             state, object.value(QStringLiteral("player_name")));
+        const QString pileName = object.value(QStringLiteral("pile_name")).toString();
         QVariantMap piles = state->playerValue(player, QStringLiteral("piles")).toMap();
-        piles.insert(object.value(QStringLiteral("pile_name")).toString(),
-                     object.value(QStringLiteral("card_ids")));
+        const QList<int> cardIds = integers(object.value(QStringLiteral("card_ids")));
+        // Native changePile drops an empty pile key. SYNC_PILE with no IDs is
+        // the same deletion, not a leftover empty special zone after reconnect.
+        if (pileName.isEmpty())
+            break;
+        if (cardIds.isEmpty())
+            piles.remove(pileName);
+        else
+            piles.insert(pileName, object.value(QStringLiteral("card_ids")));
         state->setPlayerValue(player, QStringLiteral("piles"), piles);
         break;
     }
@@ -732,12 +751,22 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
             state, object.value(QStringLiteral("from_player")));
         const QString to = resolvePlayerName(
             state, object.value(QStringLiteral("to_player")));
+        const int distance = object.value(QStringLiteral("distance")).toInt();
         QVariantMap distances = state->playerValue(
             from, QStringLiteral("fixed_distances")).toMap();
-        if (object.value(QStringLiteral("set")).toBool())
-            distances.insert(to, object.value(QStringLiteral("distance")));
-        else
+        QVariantList values = fixedDistanceValues(distances.value(to));
+        if (object.value(QStringLiteral("set")).toBool()) {
+            values.append(distance);
+        } else {
+            for (qsizetype i = values.size() - 1; i >= 0; --i) {
+                if (values.at(i).toInt() == distance)
+                    values.removeAt(i);
+            }
+        }
+        if (values.isEmpty())
             distances.remove(to);
+        else
+            distances.insert(to, values);
         state->setPlayerValue(from, QStringLiteral("fixed_distances"), distances);
         break;
     }
@@ -748,7 +777,11 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
             state, object.value(QStringLiteral("to_player")));
         QStringList pairs = state->playerValue(
             from, QStringLiteral("attack_range_pairs")).toStringList();
-        appendOrRemove(&pairs, to, object.value(QStringLiteral("set")).toBool());
+        // Native attack_range_pair is a QList: insert appends, remove is removeOne.
+        if (object.value(QStringLiteral("set")).toBool())
+            pairs.append(to);
+        else
+            pairs.removeOne(to);
         state->setPlayerValue(from, QStringLiteral("attack_range_pairs"), pairs);
         break;
     }

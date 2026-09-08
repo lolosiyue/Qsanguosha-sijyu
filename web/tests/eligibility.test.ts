@@ -50,6 +50,12 @@ describe("eligibility", () => {
     expect(distanceTo(state, "sgs1", "sgs2")).toBe(1);
   });
 
+  it("uses the minimum stacked fixed distance", () => {
+    const state = twoSeats();
+    state.setPlayerValue("sgs1", "fixed_distances", { sgs2: [2, 4] });
+    expect(distanceTo(state, "sgs1", "sgs2")).toBe(2);
+  });
+
   it("adds a defensive horse to the distance", () => {
     const state = twoSeats();
     state.setCardValue(8, "object_name", "dilu");

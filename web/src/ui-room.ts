@@ -5,7 +5,7 @@ import {
   magatamaUrl,
   roleIconUrls
 } from "./assets";
-import { formatPresentationEvent, logPlayerName } from "./log-text";
+import { playerHandLabel, targetRangeLabel } from "./player-metrics";
 import { tr } from "./i18n";
 import {
   Command,
@@ -46,6 +46,9 @@ function photoCard(bind: UiBind, name: string, kind: "photo" | "dash"): HTMLElem
   const general = playerGeneralName(player);
   const selected = ui.selectedPlayers.includes(name);
   const clickable = bind.isPlayerClickable(name);
+  const nativeRules = !!session.interaction && bind.rules.supports(session.interaction.command);
+  const evaluation = nativeRules && bind.rules.current(session, bind.rulesSelection())
+    ? bind.rules.result : null;
   const button = el("button", {
     class: `${kind}${name === session.state.selfName ? " self" : ""}${player?.alive === false ? " dead" : ""}${selected ? " selected" : ""}${kind === "photo" && !clickable ? " disabled" : ""}`
   });
@@ -63,14 +66,17 @@ function photoCard(bind: UiBind, name: string, kind: "photo" | "dash"): HTMLElem
   const mag = el("div", { class: "magatamas" });
   mag.append(assetImg([magatamaUrl(hp)], "", "magatama"));
   mag.append(el("span", {}, [`${hp}/${maxHp}`]));
-  const handCount = asNumber(session.state.playerValue(name, "hand_count"));
   const meta = el("div", { class: "photo-meta" });
   meta.append(
     el("strong", { class: "screen-name" }, [asString(player?.screen_name, name)]),
     el("div", { class: "general-name" }, [tr(general)]),
     mag,
-    el("div", { class: "hand-count" }, [`手${handCount}`])
+    el("div", { class: "hand-count" }, [playerHandLabel(session.state, name, evaluation)])
   );
+  if (name !== session.state.selfName)
+    meta.append(el("div", { class: "range-info" }, [
+      targetRangeLabel(session.state, session.state.selfName, name, evaluation)
+    ]));
   art.append(meta);
   button.append(art);
   button.addEventListener("click", () => bind.togglePlayer(name));

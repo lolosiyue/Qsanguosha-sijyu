@@ -25,6 +25,7 @@ export interface RulesEvaluation {
   skills: { name: string; instance_id: number; available: boolean }[];
   declarations: string[];
   next_targets: { candidates: string[]; max_votes: Record<string, number> };
+  player_metrics?: JsonObject;
   wire: { command: number; reply_to: string; payload: JsonObject } | null;
 }
 

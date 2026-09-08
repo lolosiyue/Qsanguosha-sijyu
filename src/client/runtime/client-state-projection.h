@@ -36,7 +36,10 @@ inline const QSet<QString> &structuredPlayerStateKeys()
         QStringLiteral("tags"), QStringLiteral("ui_state"),
         QStringLiteral("equip_areas"), QStringLiteral("skill_descriptions"),
         QStringLiteral("card_descriptions"), QStringLiteral("revealed_general"),
-        QStringLiteral("offensive_distance"), QStringLiteral("defensive_distance")};
+        QStringLiteral("offensive_distance"), QStringLiteral("defensive_distance"),
+        QStringLiteral("fixed_distances"), QStringLiteral("attack_range_pairs"),
+        QStringLiteral("shown_hand_cards"), QStringLiteral("broken_equipment"),
+        QStringLiteral("known_cards"), QStringLiteral("removed")};
     return keys;
 }
 

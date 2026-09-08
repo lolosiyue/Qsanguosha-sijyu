@@ -157,4 +157,86 @@ describe("reducer", () => {
     expect(result.success).toBe(true);
     expect(result.eventText).toBe("");
   });
+
+  it("stacks fixed distances 2 and 4 and removes them one value at a time", () => {
+    const state = new ClientGameState();
+    const setDistance = (distance: number, set: boolean) =>
+      applyNotification(state, Command.FIXED_DISTANCE, {
+        schema_version: 1,
+        from_player: "sgs1",
+        to_player: "sgs2",
+        distance,
+        set
+      });
+    setDistance(2, true);
+    setDistance(4, true);
+    expect(state.playerValue("sgs1", "fixed_distances")).toEqual({ sgs2: [2, 4] });
+    setDistance(4, false);
+    expect(state.playerValue("sgs1", "fixed_distances")).toEqual({ sgs2: [2] });
+    setDistance(2, false);
+    expect(state.playerValue("sgs1", "fixed_distances")).toEqual({});
+  });
+
+  it("keeps stacked attack-range pairs until each copy is removed", () => {
+    const state = new ClientGameState();
+    const setPair = (set: boolean) =>
+      applyNotification(state, Command.ATTACK_RANGE, {
+        schema_version: 1,
+        from_player: "sgs1",
+        to_player: "sgs2",
+        set
+      });
+    setPair(true);
+    setPair(true);
+    expect(state.playerValue("sgs1", "attack_range_pairs")).toEqual(["sgs2", "sgs2"]);
+    setPair(false);
+    expect(state.playerValue("sgs1", "attack_range_pairs")).toEqual(["sgs2"]);
+  });
+
+  it("deletes an empty SYNC_PILE instead of keeping a stale zone", () => {
+    const state = new ClientGameState();
+    applyNotification(state, Command.SYNC_PILE, {
+      schema_version: 1,
+      player_name: "sgs1",
+      pile_name: "wooden_ox",
+      card_ids: [7, 8]
+    });
+    expect((state.playerValue("sgs1", "piles") as { wooden_ox: number[] }).wooden_ox).toEqual([7, 8]);
+    applyNotification(state, Command.SYNC_PILE, {
+      schema_version: 1,
+      player_name: "sgs1",
+      pile_name: "wooden_ox",
+      card_ids: []
+    });
+    expect(state.playerValue("sgs1", "piles")).toEqual({});
+  });
+
+  it("clears piles, tags and effects on gameplay reset", () => {
+    const state = new ClientGameState();
+    applyNotification(state, Command.SYNC_PILE, {
+      schema_version: 1,
+      player_name: "sgs1",
+      pile_name: "old",
+      card_ids: [1]
+    });
+    applyNotification(state, Command.SET_PROPERTY, {
+      schema_version: 1,
+      player_name: "sgs1",
+      action: "tag",
+      tag_name: "stale",
+      value: 1
+    });
+    applyNotification(state, Command.FIXED_DISTANCE, {
+      schema_version: 1,
+      from_player: "sgs1",
+      to_player: "sgs2",
+      distance: 1,
+      set: true
+    });
+    state.resetGameplayState();
+    expect(state.playerNames).toEqual([]);
+    expect(state.playerValue("sgs1", "piles")).toBeUndefined();
+    expect(state.playerValue("sgs1", "tags")).toBeUndefined();
+    expect(state.playerValue("sgs1", "fixed_distances")).toBeUndefined();
+  });
 });

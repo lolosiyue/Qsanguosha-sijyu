@@ -157,10 +157,15 @@ export function distanceTo(state: ClientGameState, from: string, to: string, dis
   if (!from || !to || from === to)
     return 0;
   const fixed = isObject(state.playerValue(from, "fixed_distances"))
-    ? asNumber((state.playerValue(from, "fixed_distances") as JsonObject)[to], -1)
-    : -1;
-  if (fixed >= 0)
-    return Math.max(fixed, 1);
+    ? (state.playerValue(from, "fixed_distances") as JsonObject)[to]
+    : undefined;
+  const values = Array.isArray(fixed)
+    ? fixed.map((entry) => asNumber(entry))
+    : typeof fixed === "number"
+      ? [fixed]
+      : [];
+  if (values.length > 0)
+    return Math.min(...values);
   const alive = aliveNames(state).length;
   const gap = Math.abs(seatOf(state, from) - seatOf(state, to));
   let right = Math.min(alive - gap, gap);
