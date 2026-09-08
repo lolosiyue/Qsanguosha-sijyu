@@ -1,13 +1,24 @@
 # Web compact client
 
 TypeScript compact SPA in [`web/`](../web/). It talks Protocol V2 over the
-existing WebSocket gateway (default `9528`). It does not embed the C++ engine,
-Replay, PWA, or WSS.
+existing WebSocket gateway (default `9528`). Card-selection rules run in a
+dedicated Web Worker using the opt-in C++/Lua WASM build target, while the
+browser keeps TypeScript/DOM presentation. This PR #31 follow-up is
+source implementation only: no tests, configure, compile, rebuild, artifact
+packaging or browser acceptance were run for this change.
 
 ## Run
 
 The dedicated server (or GUI embedded server) must already be listening.
 Vite only serves HTML.
+
+Build and package the production WASM runtime into `web/public/rules` as
+described in [web-client-wasm-runtime.md](web-client-wasm-runtime.md#production-build-and-packaging)
+before serving the Web client. It requires the `.mjs`, `.wasm` and
+`.assets.json` artifacts from the same runtime output directory. The Worker
+loads them at `/rules/qsanguosha_client_wasm.*`; an absent or mismatched runtime
+disables positive card-selection confirmation and shows the failure reason.
+The source checkout does not contain prebuilt runtime binaries.
 
 ```powershell
 # terminal 1
@@ -90,12 +101,24 @@ session like `RoomScene::RenPile` and cleared on `GAME_START` / `STATE_SYNC begi
 (`event` 9) stays out of the pane. Dump translations after editing
 `lang/zh_CN/Common.lua` or package tables such as `StandardPackage.lua`.
 
-All 29 production interactions have a GUI-style widget. Play and response
-prompts grey out illegal cards and Photos using the same three checks as
-desktop `Dashboard::enableCards` / `Card::targetFilter`: response `pattern`,
-`CARD_LIMITATION`, and seat distance / attack range. Unknown extension cards
-stay selectable; the Room is still authoritative. Unknown commands are
-shown as a visible failure plus cancel. Vite serves the local `image/` tree at
+All 29 production interactions have a GUI-style widget. `PLAY_CARD`,
+`RESPONSE_CARD`, `ASK_PEACH` and `NULLIFICATION` use the persistent native
+rules runtime for physical-card availability, ViewAs subcard construction and
+target selection. Cards, skills and Photos are enabled only by the current
+native selection result. Ordered subcards and repeated target votes are kept;
+already-selected cards/skills can be deselected and target votes withdrawn.
+Successful confirmation sends the canonical C++ reply payload only while its
+request ID, state and selection revisions still match the current interaction.
+
+Loading, evaluating, unsupported content and runtime failures are visible in
+the prompt and disable positive confirmation. Cancel remains available, and
+`PLAY_CARD` retains its end-play action. A failed Worker is discarded; the
+reload-rules button or a new connection creates a fresh runtime. The deployed profile is currently
+`builtin-v1`; arbitrary extension content is not covered and does not fall
+back to TypeScript skill-card guesses. The Room remains authoritative.
+Unknown commands are shown as a visible failure plus cancel.
+
+Vite serves the local `image/` tree at
 `/assets/` (dev and preview). Hand and prompt cards use
 `image/card/<object_name>.jpg` with `unknown.jpg` fallback; hidden cards use
 `image/system/card-back.png`; seats, waiting-room avatars, and choose-general
@@ -107,4 +130,5 @@ without local art falls back to unknown / text.
 
 ## Out of scope
 
-PWA, HTTPS/WSS, Qt WASM, desktop-complete RoomScene, browser-local server.
+PWA, HTTPS/WSS gateway setup, a Qt Widgets/Quick browser UI, desktop-complete
+RoomScene, browser-local server, and arbitrary extension WASM packaging/parity.

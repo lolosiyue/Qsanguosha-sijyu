@@ -6,8 +6,10 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 import { setTimeout, clearTimeout } from 'node:timers';
+import { INPUT_LIMIT as LIMIT, embeddedAssetFiles, executeFixture as executeHostedFixture,
+  parseManifest } from './wasm-fixture-host.mjs';
 
-const LIMIT = 1024 * 1024;
+export { parseManifest };
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
 // Qt 6.11.1 QWasmTimer names window directly and expects numeric timer IDs.
@@ -19,116 +21,21 @@ export function createQtTimerHost() {
   });
 }
 
-export function parseManifest(bytes) {
-  const value = JSON.parse(Buffer.from(bytes).toString('utf8'));
-  if (value.schema_version !== 1 || value.profile !== 'builtin-v1'
-      || !Array.isArray(value.files) || value.files.length === 0) {
-    throw new Error('unsupported/empty WASM asset manifest');
-  }
-  const seen = new Set();
-  for (const entry of value.files) {
-    if (typeof entry.path !== 'string' || !entry.path.startsWith('lua/')
-        || !/^[A-Za-z0-9_./-]+\.lua$/.test(entry.path)
-        || entry.path.split('/').some(part => !part || part === '.' || part === '..')
-        || seen.has(entry.path) || !/^[0-9a-f]{64}$/.test(entry.sha256)
-        || !Number.isSafeInteger(entry.size) || entry.size <= 0) {
-      throw new Error('invalid/duplicate WASM asset manifest entry');
-    }
-    seen.add(entry.path);
-  }
-  return value;
-}
-
+// Retain the Node adapter's synchronous public contract for existing callers.
 export function verifyEmbeddedAssets(fs, manifestBytes) {
-  const manifest = parseManifest(manifestBytes);
-  const embedded = Buffer.from(fs.readFile('/assets/fixture-assets.json'));
-  if (!embedded.equals(Buffer.from(manifestBytes))) {
-    throw new Error('WASM embedded asset manifest differs from its sidecar');
-  }
-  const files = [];
-  function inventory(directory) {
-    for (const name of fs.readdir(directory)) {
-      if (name === '.' || name === '..') continue;
-      const file = `${directory}/${name}`;
-      const mode = fs.lstat(file).mode;
-      if (fs.isDir(mode)) inventory(file);
-      else if (fs.isFile(mode)) files.push(file.slice('/assets/'.length));
-      else throw new Error(`unexpected WASM embedded asset type: ${file}`);
-    }
-  }
-  inventory('/assets');
-  const expected = ['fixture-assets.json', ...manifest.files.map(entry => entry.path)].sort();
-  if (JSON.stringify(files.sort()) !== JSON.stringify(expected)) {
-    throw new Error('WASM embedded asset inventory differs from its sidecar');
-  }
-  for (const entry of manifest.files) {
-    const bytes = Buffer.from(fs.readFile(`/assets/${entry.path}`));
-    if (bytes.length !== entry.size || sha256(bytes) !== entry.sha256) {
+  for (const entry of embeddedAssetFiles(fs, manifestBytes)) {
+    if (sha256(entry.bytes) !== entry.sha256) {
       throw new Error(`WASM embedded asset hash mismatch: ${entry.path}`);
     }
   }
 }
 
-// factory is injectable solely to test this host without a Qt toolchain. A mock
-// passing these tests is not evidence that a real WASM module compiles or runs.
 export async function executeFixture(factory, input, manifestBytes, {
-  hashSeed, loggingRules, printErr = line => process.stderr.write(`${line}\n`),
-  wasmBinary,
+  printErr = line => process.stderr.write(`${line}\n`), ...options
 } = {}) {
-  if (input.length > LIMIT) {
-    throw new Error('fixture must be a schema_version=1 JSON object of at most 1 MiB');
-  }
-  parseManifest(manifestBytes);
-  let aborted = false;
-  const options = {
-    noInitialRun: true,
-    noExitRuntime: true,
-    ...(wasmBinary ? { wasmBinary } : {}),
-    print: printErr,
-    printErr,
-    onAbort(reason) { aborted = true; printErr(`WASM abort: ${reason}`); },
-  };
-  // ENV must be set before static Settings Config is constructed. No NODEFS,
-  // host home-directory mounts, external extensions, or browser DOM shims.
-  options.preInit = [() => {
-    if (!options.ENV) throw new Error('WASM module does not export ENV before initialization');
-    Object.assign(options.ENV, {
-      HOME: '/home/fixture', XDG_CONFIG_HOME: '/home/fixture/config',
-      XDG_DATA_HOME: '/home/fixture/data', TMPDIR: '/tmp',
-    });
-    if (hashSeed === '0') options.ENV.QT_HASH_SEED = '0';
-    else delete options.ENV.QT_HASH_SEED;
-    if (loggingRules !== undefined) options.ENV.QT_LOGGING_RULES = loggingRules;
-  }];
-  options.preRun = [module => {
-    const fs = (module || options).FS;
-    if (!fs) throw new Error('WASM module does not export FS');
-    fs.mkdirTree('/work');
-    fs.mkdirTree('/home/fixture/config');
-    fs.mkdirTree('/home/fixture/data');
-    fs.mkdirTree('/tmp');
-    fs.chdir('/work');
-    fs.writeFile('/work/input.json', input);
-  }];
-  const module = await factory(options);
-  if (aborted || typeof module._qsan_run_fixture !== 'function' || !module.FS) {
-    throw new Error('WASM initialization failed or fixture export is missing');
-  }
-  // Emscripten 4.0.7 installs --embed-file data during initRuntime, after
-  // preRun. Verify it once initialization finishes, before engine bootstrap.
-  verifyEmbeddedAssets(module.FS, manifestBytes);
-  const status = module._qsan_run_fixture();
-  if (aborted || !Number.isInteger(status) || status !== 0) {
-    throw new Error(`WASM fixture exit ${status}`);
-  }
-  const result = Buffer.from(module.FS.readFile('/work/output.json'));
-  const parsed = JSON.parse(result.toString('utf8'));
-  if (!parsed || Array.isArray(parsed) || parsed.schema_version !== 1) {
-    throw new Error('WASM fixture returned no valid result object');
-  }
-  // Preserve C++ canonical bytes. In particular, do not coerce uint64 strings,
-  // sort arrays, drop fields, or normalize away a registry difference.
-  return result;
+  return Buffer.from(await executeHostedFixture(factory, input, manifestBytes, {
+    ...options, printErr, hashBytes: sha256,
+  }));
 }
 
 export async function main(argv = process.argv.slice(2)) {

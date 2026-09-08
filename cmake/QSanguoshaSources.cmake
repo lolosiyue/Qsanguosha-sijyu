@@ -431,3 +431,8 @@ cmake_language(DEFER CALL qsan_finalize_client_runtime_links)
 
 # Opt-in native verification consumer; no frontend dependency.
 include(cmake/QSanguoshaRulesFixtures.cmake)
+
+if(QSAN_BUILD_WASM_WEB_CLIENT)
+    include(cmake/QSanguoshaRulesWasm.cmake)
+    include(cmake/QSanguoshaWebClient.cmake)
+endif()

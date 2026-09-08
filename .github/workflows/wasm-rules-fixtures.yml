@@ -47,6 +47,8 @@ jobs:
         run: |
           mkdir -p artifacts/wasm-fixtures
           printf '{"schema_version":1,"status":"NOT_RUN"}\n' > artifacts/wasm-fixtures/parity-summary.json
+          mkdir -p artifacts/wasm-fixtures/browser-probe
+          printf '{"schema_version":1,"status":"NOT_RUN"}\n' > artifacts/wasm-fixtures/browser-probe/browser-parity-summary.json
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y cmake ninja-build g++ python3-venv libgl1
           python3 -m venv "$RUNNER_TEMP/qsan-fixture-tools"
@@ -100,7 +102,8 @@ jobs:
         run: |
           echo "QSAN_FIXTURE_NODE=$(command -v node)" >> "$GITHUB_ENV"
           node --version > artifacts/wasm-fixtures/node-version.txt
-          node --test tests/client_runtime/run-wasm-fixture.test.mjs
+          node --test tests/client_runtime/run-wasm-fixture.test.mjs tests/client_runtime/browser/fixture-worker-client.test.mjs
+          python3 tests/client_runtime/check-browser-fixtures.py --self-test
           python3 tests/client_runtime/check-wasm-fixtures.py --self-test
           python3 tests/client_runtime/check-fixtures.py --self-test
       - name: Compile and link the real engine for WASM
@@ -116,7 +119,7 @@ jobs:
             -DQSAN_BUILD_SERVER=OFF -DQSAN_BUILD_RULES_FIXTURE_RUNNER=OFF \
             -DQSAN_BUILD_WASM_RULES_FIXTURES=ON \
             2>&1 | tee artifacts/wasm-fixtures/wasm-configure.log
-          cmake --build build/rules-wasm --target qsanguosha_rules_fixture_wasm \
+          cmake --build build/rules-wasm --target qsanguosha_rules_fixture_wasm qsanguosha_rules_fixture_worker \
             2>&1 | tee artifacts/wasm-fixtures/wasm-build.log
       - name: Execute matched-content native and WASM fixtures
         run: |
@@ -128,6 +131,21 @@ jobs:
             --manifest "$module_dir/qsanguosha_rules_fixture_wasm.assets.json" \
             --node "$QSAN_FIXTURE_NODE" --fixtures "$GITHUB_WORKSPACE/tests/client_runtime/fixtures" \
             --asset-root "$GITHUB_WORKSPACE" --artifacts "$GITHUB_WORKSPACE/artifacts/wasm-fixtures"
+      - name: Execute real Chromium Dedicated Worker/native parity
+        run: |
+          set -o pipefail
+          browser="$(command -v google-chrome || command -v chromium || true)"
+          test -n "$browser" || { echo "Chromium is required for Worker acceptance" >&2; exit 1; }
+          "$browser" --version > artifacts/wasm-fixtures/browser-probe/browser-version.txt
+          module_dir="$GITHUB_WORKSPACE/build/rules-wasm/rules-wasm/RelWithDebInfo"
+          python3 tests/client_runtime/check-browser-fixtures.py \
+            --native-runner "$GITHUB_WORKSPACE/build/rules-native/qsanguosha_rules_fixture_runner" \
+            --wasm-module "$module_dir/qsanguosha_rules_fixture_worker.mjs" \
+            --manifest "$module_dir/qsanguosha_rules_fixture_worker.assets.json" \
+            --browser "$browser" --fixtures "$GITHUB_WORKSPACE/tests/client_runtime/fixtures" \
+            --asset-root "$GITHUB_WORKSPACE" \
+            --artifacts "$GITHUB_WORKSPACE/artifacts/wasm-fixtures/browser-probe" \
+            2>&1 | tee artifacts/wasm-fixtures/browser-probe/gate.log
       - name: Upload evidence even if compilation or parity fails
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

@@ -1,5 +1,4 @@
 import { assetImg, generalFaceUrls } from "./assets";
-import { targetsAreFeasible, useMode } from "./eligibility";
 import { formatInteractionPrompt, tr } from "./i18n";
 import { logPlayerName } from "./log-text";
 import {
@@ -14,8 +13,8 @@ import {
   asStringList,
   type JsonObject
 } from "./protocol";
-import { replyForCommand } from "./replies";
-import { renderCard, skillBaseName, visibleSkills } from "./ui-cards";
+import { replyCommand, replyForCommand } from "./replies";
+import { cardLabel, renderCard } from "./ui-cards";
 import { waitingRoom } from "./ui-connect";
 import { el, hasCommand } from "./ui-dom";
 import type { UiBind } from "./ui-types";
@@ -52,17 +51,8 @@ const INTERACTION_TITLES: Record<number, string> = {
   [Command.QML_INTERACT]: "互動"
 };
 
-function playCardText(bind: UiBind, cardIds: number[], skillName: string): string {
+function physicalCardText(bind: UiBind, cardIds: number[]): string {
   const ids = cardIds.filter((id) => id >= 0);
-  const sub = ids.length > 0 ? ids.join("+") : ".";
-  if (skillName) {
-    const base = skillBaseName(skillName);
-    if (base.includes("_")
-        || /^(nos|ol|tw|mobile|tenyear|jx|yj|js|sp|mt|mou|new)/u.test(base))
-      return `#${base}:${sub}:`;
-    const klass = `${base.charAt(0).toUpperCase()}${base.slice(1)}Card`;
-    return `@${klass}=${sub}`;
-  }
   if (ids.length === 1) {
     const card = bind.session.state.card(ids[0]);
     return asString(card?.card_string) || String(ids[0]);
@@ -324,18 +314,92 @@ export function interactionView(bind: UiBind): HTMLElement {
     return root;
   }
 
-  if (hasCommand(command, [
-    Command.PLAY_CARD, Command.RESPONSE_CARD, Command.ASK_PEACH,
-    Command.NULLIFICATION, Command.SHOW_CARD, Command.PINDIAN,
-    Command.EXCHANGE_CARD, Command.DISCARD_CARD
-  ])) {
-    const skills = visibleSkills(bind);
-    if (command === Command.PLAY_CARD && skills.length) {
-      const selected = ui.selectedOption ? tr(ui.selectedOption) : "未選";
-      root.append(el("p", {}, [`技能（再點一次取消）：${selected}`]));
+  if (bind.rules.supports(command)) {
+    const { rules } = bind;
+    const evaluation = rules.current(session, bind.rulesSelection()) ? rules.result : null;
+    root.append(el("p", { class: "status", role: "status" }, [
+      evaluation?.known ? "規則已就緒" : ({
+        idle: "準備規則資料", loading: "載入規則中", evaluating: "判定選擇中",
+        failed: "規則載入或執行失敗", unsupported: "目前內容不受此規則套件支援"
+      } as Record<string, string>)[rules.status] || "等待規則判定"
+    ]));
+    if (rules.status === "failed") {
+      const retry = el("button", {}, ["重新載入規則"]);
+      retry.addEventListener("click", () => rules.retry());
+      root.append(retry);
+    }
+    if (rules.error || (evaluation && !evaluation.known))
+      root.append(el("p", { class: "error" }, [
+        rules.error || `目前無法判定：${evaluation?.reason || "缺少規則資料"}`
+      ]));
+    else if (evaluation?.reason)
+      root.append(el("p", { class: "status" }, [({
+        select_one_card: "請選擇一張牌", incomplete_card_selection: "請繼續選擇子卡",
+        declaration_required: "請先選擇宣告", invalid_declaration: "請重新選擇宣告",
+        incomplete_targets: "請選擇合適目標", skill_unavailable: "目前無法發動此技能",
+        subcard_rejected: "請移除不符合技能條件的子卡", card_unavailable: "目前無法使用此牌",
+        card_limited: "此牌受到使用限制", pattern_mismatch: "此牌不符合目前詢問",
+        target_prohibited: "此牌無法指定該目標"
+      } as Record<string, string>)[evaluation.reason] || "目前選擇無法確認"]));
+    if (ui.selectedOption)
+      root.append(el("p", {}, [`技能（再點一次取消）：${tr(ui.selectedOption)}`]));
+    if (evaluation?.declarations.length) {
+      const declaration = el("select");
+      const placeholder = el("option", { value: "" }, ["請選擇宣告"]);
+      placeholder.disabled = true;
+      declaration.append(placeholder);
+      for (const value of evaluation.declarations)
+        declaration.append(el("option", { value }, [tr(value)]));
+      declaration.value = evaluation.declarations.includes(ui.ruleDeclaration) ? ui.ruleDeclaration : "";
+      declaration.addEventListener("change", () => {
+        const current = rules.current(session, bind.rulesSelection()) ? rules.result : null;
+        if (session.interaction !== interaction || !current?.declarations.includes(declaration.value)) {
+          bind.render();
+          return;
+        }
+        // Native rules own declaration choices; changing one invalidates its subcards and targets.
+        ui.ruleDeclaration = declaration.value;
+        ui.selectedCards = [];
+        ui.selectedPlayers = [];
+        bind.render();
+      });
+      root.append(el("label", { class: "field" }, ["宣告 ", declaration]));
+    }
+
+    // Keep explicit removal controls even if a state change hides a selected card
+    // or removes a target from the native next-step candidates.
+    if (ui.selectedCards.length) {
+      const cards = el("div", { class: "cards" });
+      ui.selectedCards.forEach((id, index) => {
+        const remove = el("button", {}, [`${index + 1}. ${cardLabel(bind, id)} ×`]);
+        remove.title = "移除此牌";
+        remove.addEventListener("click", () => {
+          if (session.interaction !== interaction)
+            return;
+          ui.selectedCards = ui.selectedCards.filter((_id, selectedIndex) => selectedIndex !== index);
+          ui.selectedPlayers = [];
+          bind.render();
+        });
+        cards.append(remove);
+      });
+      root.append(el("p", {}, [ui.selectedOption ? "子卡順序" : "已選牌"]), cards);
+    }
+    if (ui.selectedPlayers.length) {
+      const targets = el("div", { class: "cards" });
+      ui.selectedPlayers.forEach((name, index) => {
+        const remove = el("button", {}, [`${index + 1}. ${logPlayerName(session.state, name)} ×`]);
+        remove.title = "撤回這一票";
+        remove.addEventListener("click", () => {
+          if (session.interaction === interaction)
+            bind.removeTarget(index);
+        });
+        targets.append(remove);
+      });
+      root.append(el("p", {}, ["目標順序（點 × 撤回一票）"]), targets);
     }
     const extras = [...new Set(
-      asNumberList(payload.card_ids).concat(asNumberList(payload.enabled_card_ids))
+      asNumberList(payload.card_ids).concat(
+        asNumberList(payload.enabled_card_ids), evaluation?.selectable_cards ?? [])
     )].filter((id) => {
       const owner = asString(session.state.card(id)?.owner);
       return owner !== session.state.selfName;
@@ -347,29 +411,42 @@ export function interactionView(bind: UiBind): HTMLElement {
       root.append(el("p", {}, ["額外可選牌"]), row);
     }
     const ok = el("button", { class: "primary" }, ["送出"]);
-    const mode = useMode(command);
-    const cardId = bind.currentCardId();
-    const playBlocked = mode === "play" && !ui.selectedOption
-      && (cardId < 0 || !targetsAreFeasible(session.state, session.state.selfName, cardId, ui.selectedPlayers));
-    const responseBlocked = mode === "response" && cardId < 0;
-    if (playBlocked || responseBlocked)
-      ok.setAttribute("disabled", "true");
+    ok.disabled = !evaluation?.known || !evaluation.can_confirm || !evaluation.wire;
+    ok.addEventListener("click", () => submit(() => {
+      const current = rules.current(session, bind.rulesSelection()) ? rules.result : null;
+      if (!current?.known || !current.can_confirm || !current.wire)
+        throw new Error("規則尚未完成目前選擇的判定");
+      if (current.wire.command !== replyCommand(command) || current.wire.reply_to !== messageId)
+        throw new Error("此規則結果已不屬於目前詢問");
+      // The native reply encoder owns skill card text and activation metadata.
+      return current.wire.payload;
+    }));
+    const pass = command === Command.PLAY_CARD ? el("button", {}, ["結束出牌"]) : cancel;
+    if (command === Command.PLAY_CARD)
+      pass.addEventListener("click", () => submit(() => replyForCommand(command, { cancelled: true })));
+    root.append(el("p", {}, ["依序選牌，再點目標頭像加一票；已選項目可單獨移除"]), ok, pass);
+    return root;
+  }
+
+  if (hasCommand(command, [Command.SHOW_CARD, Command.PINDIAN, Command.EXCHANGE_CARD, Command.DISCARD_CARD])) {
+    const extras = [...new Set(
+      asNumberList(payload.card_ids).concat(asNumberList(payload.enabled_card_ids))
+    )].filter((id) => asString(session.state.card(id)?.owner) !== session.state.selfName);
+    if (extras.length) {
+      const row = el("div", { class: "cards" });
+      for (const id of extras)
+        row.append(renderCard(bind, id, ui.selectedCards.includes(id), false, -1, bind.isCardClickable(id), !bind.isCardClickable(id)));
+      root.append(el("p", {}, ["額外可選牌"]), row);
+    }
+    const ok = el("button", { class: "primary" }, ["送出"]);
     ok.addEventListener("click", () => {
       if (command === Command.EXCHANGE_CARD || command === Command.DISCARD_CARD) {
         submit(() => replyForCommand(command, { cardIds: ui.selectedCards }));
         return;
       }
-      submit(() => replyForCommand(command, {
-        cardText: playCardText(bind, ui.selectedCards.filter((id) => id >= 0), ui.selectedOption),
-        targets: ui.selectedPlayers,
-        skillName: ui.selectedOption,
-        instanceId: ui.skillInstance
-      }));
+      submit(() => replyForCommand(command, { cardText: physicalCardText(bind, ui.selectedCards) }));
     });
-    const pass = command === Command.PLAY_CARD ? el("button", {}, ["結束出牌"]) : cancel;
-    if (command === Command.PLAY_CARD)
-      pass.addEventListener("click", () => submit(() => replyForCommand(command, { cancelled: true })));
-    root.append(el("p", {}, ["點 Dashboard 技能（可再點取消），選手牌／裝備，再點目標 Photo，然後送出"]), ok, pass);
+    root.append(el("p", {}, ["選牌後送出"]), ok, cancel);
     return root;
   }
 
