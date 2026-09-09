@@ -1,5 +1,5 @@
 import { RULES_BRIDGE_SCHEMA, isRulesIdentity, rulesErrorMessage, verifyNativeIdentity, canonical } from "./rules-identity";
-import { installRulesCardCatalog } from "./i18n";
+import { installRulesCardCatalog, installRulesTranslations, resetRulesTranslations, validateRulesTranslations } from "./i18n";
 import { Command, asNumber, asString, isObject, type JsonObject } from "./protocol";
 import { INTERACTION_COMMANDS } from "./replies";
 import type { LiveSession } from "./session";
@@ -124,6 +124,7 @@ export class RulesController {
   private code: JsonObject | null = null;
   private content: JsonObject | null = null;
   private admitted = false;
+  private pendingTranslations: unknown = null;
   private prepareWait: { resolve(): void; reject(error: Error): void } | null = null;
 
   async initialize(session: LiveSession, hello?: JsonObject): Promise<JsonObject | null> {
@@ -176,6 +177,7 @@ export class RulesController {
       await this.loadContent(identity, content);
     }
     if (generation !== session.generation || this.disposed) throw new Error("rules_reload_required");
+    installRulesTranslations(this.pendingTranslations);
     this.admitted = true;
     this.saveCache(identity, content);
     this.pump();
@@ -353,10 +355,12 @@ export class RulesController {
       }
       if (!isRulesIdentity(message.info.rules_bundle)) throw new Error("rules_identity_invalid");
       this.identity = message.info.rules_bundle;
+      const translations = validateRulesTranslations(message.info.translations);
       const supported = new Set<number>(INTERACTION_COMMANDS);
       if (Object.keys(this.identity.interaction_schemas as JsonObject).some(command => !supported.has(Number(command))))
         throw new Error("rules_interaction_unsupported");
       installRulesCardCatalog(records);
+      this.pendingTranslations = translations;
       this.registryCount = count;
       this.ready = true;
       this.clearTimeout();
@@ -474,6 +478,8 @@ export class RulesController {
     this.code = null;
     this.content = null;
     this.admitted = false;
+    this.pendingTranslations = null;
+    resetRulesTranslations();
     this.identityWait?.reject(new Error("rules_reload_required"));
     this.identityWait = null;
     this.identity = null;

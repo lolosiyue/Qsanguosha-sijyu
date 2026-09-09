@@ -102,6 +102,7 @@ int main(int argc, char **argv)
         }
         result.insert(QStringLiteral("schema_version"), QSanRules::BridgeSchema);
         result.insert(QStringLiteral("rules_bundle"), identity);
+        result.insert(QStringLiteral("translations"), QJsonObject::fromVariantMap(Sanguosha->translationTable()));
         const auto content = QSanRules::exportContentManifest(*Sanguosha);
         if (content.isEmpty()) {
             QTextStream(stderr) << "rules_content_unsupported" << Qt::endl;

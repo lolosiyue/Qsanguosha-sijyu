@@ -339,8 +339,11 @@ def check(args):
         assets = scratch / "assets"
         # G4 must exercise one real declared extension, not only synthetic
         # builtin bootstrap content.
-        native.stage_builtin_assets(ROOT, assets, ["extensions/addFunction.lua",
-            "extensions/sijyu.lua", "extensions/animecard.lua"], extension_root=args.extension_root)
+        manifest_tool = module("extension-manifest", ROOT / "tools/generate-extension-manifest.py")
+        presentations = manifest_tool.presentation_files(ROOT)
+        declarations = ["extensions/addFunction.lua;lang=" + ",".join(presentations),
+                        "extensions/sijyu.lua", "extensions/animecard.lua"]
+        native.stage_builtin_assets(ROOT, assets, declarations, extension_root=args.extension_root)
         env = os.environ.copy()
         env.update({"QSAN_ASSET_ROOT": str(assets), "QSAN_USER_DATA_ROOT": str(scratch / "userdata"),
                     "XDG_CONFIG_HOME": str(scratch / "config"), "XDG_DATA_HOME": str(scratch / "data"),
@@ -356,6 +359,30 @@ def check(args):
             timeout=60, check=False)
         if package.returncode != 0:
             raise AssertionError("native rules content packaging failed: " + package.stderr)
+        # Same rules manifest with one presentation byte changed.  Exporting
+        # the second staged tree proves bundle identity is stable while the
+        # content manifest and native translation table change.
+        changed_assets = scratch / "changed-assets"
+        shutil.copytree(assets, changed_assets)
+        translation_file = changed_assets / "lang/zh_CN/Package/StandardPackage.lua"
+        original_translation = translation_file.read_bytes()
+        anchor = b'["slash"] = "' + "杀".encode() + b'"'
+        if original_translation.count(anchor) != 1:
+            raise AssertionError("slash translation anchor changed")
+        translation_file.write_bytes(original_translation.replace(anchor,
+            b'["slash"] = "TEST' + "杀".encode() + b'"'))
+        changed_identity = export_native(args, changed_assets, scratch, env, "native-presentation-changed")
+        if changed_identity["rules_bundle"] != identity["rules_bundle"]:
+            raise AssertionError("presentation edit changed rules identity")
+        changed_content_root = scratch / "rules-content-changed"
+        changed_content_root.mkdir()
+        changed_package = subprocess.run([
+            "python3", str(ROOT / "tools/package-rules-content.py"),
+            "--bundle", str(args.artifacts / "native-presentation-changed.json"),
+            "--asset-root", str(changed_assets), "--destination", str(changed_content_root)],
+            capture_output=True, text=True, timeout=60, check=False)
+        if changed_package.returncode != 0:
+            raise AssertionError("changed rules content packaging failed: " + changed_package.stderr)
         variants = negative_exports(args, assets, scratch, env, identity)
         check_server_ai_identity(args, assets, scratch, env, identity)
         tcp, ws = free_port(), free_port()
@@ -421,6 +448,13 @@ def check(args):
                 content_routes = {route for route in root_routes if route.startswith("/rules/content/")}
                 if not content_routes.issubset(set(requests)):
                     raise AssertionError("browser did not fetch every declared rules content hash")
+                presentation_entries = {entry["path"]: entry for entry in content.get("files", [])
+                                        if entry.get("path", "").startswith("lang/")}
+                presentation_routes = {"/rules/content/" + entry["sha256"]
+                                       for entry in presentation_entries.values()}
+                if set(presentation_entries) != set(presentations) \
+                        or not presentation_routes.issubset(set(requests)):
+                    raise AssertionError("browser did not fetch every declared presentation translation")
                 if any(route.endswith("assets.json") for route in requests):
                     raise AssertionError("production Worker fetched removed assets.json")
                 routes["/case.json"] = json.dumps({"ws": f"ws://127.0.0.1:{ws}", "expect_code_mismatch": True}).encode()
@@ -463,6 +497,23 @@ def check(args):
                 if any(route.startswith("/rules/content/") for route in stale_requests):
                     raise AssertionError("code mismatch fetched rules content before rejection")
                 report["checks"].append(label)
+                changed_content = changed_identity["rules_content"]
+                for entry in changed_content.get("files", []):
+                    if entry.get("role") == "ai":
+                        continue
+                    path = changed_content_root / entry["sha256"]
+                    if not path.is_file():
+                        raise AssertionError("changed packaged content missing: " + entry["path"])
+                    root_routes["/rules/content/" + entry["sha256"]] = path
+                routes["/case.json"] = json.dumps({"ws": f"ws://127.0.0.1:{ws}",
+                    "expect_presentation_change": True, "changed_translations": changed_identity["translations"],
+                    "native": changed_identity, "variants": variants}).encode()
+                changed_report = browser.browser_report(args.browser, routes,
+                    args.artifacts / "presentation-changed", 120, [], root_routes)
+                changed_label = "Web displays changed presentation translation"
+                if changed_report.get("status") != "PASS" or changed_label not in changed_report.get("checks", []):
+                    raise AssertionError("changed presentation was not rendered: " + str(changed_report))
+                report["checks"].append(changed_label)
                 report["legacy_tcp_accepted"] = True
                 report["server_ai_excluded_from_identity"] = True
                 (args.artifacts / "rules-bundle-summary.json").write_text(json.dumps(report, indent=2), encoding="utf-8")

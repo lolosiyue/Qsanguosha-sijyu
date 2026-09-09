@@ -886,6 +886,7 @@ QJsonObject ClientRulesSession::registry() const
     // New initialization contract makes old hosts fail before issuing queries.
     result.insert(QStringLiteral("schema_version"), QSanRules::BridgeSchema);
     result.insert(QStringLiteral("rules_bundle"), identity);
+    result.insert(QStringLiteral("translations"), QJsonObject::fromVariantMap(Sanguosha->translationTable()));
     result.insert(QStringLiteral("extension_files"), QJsonArray::fromStringList(
         QDir(QSanRuntimePaths::assetPath(QStringLiteral("extensions"))).entryList(
             QStringList{QStringLiteral("*.lua")}, QDir::Files, QDir::Name)));
