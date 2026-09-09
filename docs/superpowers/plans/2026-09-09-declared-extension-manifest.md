@@ -47,7 +47,7 @@ G1/G2 包含追加 ID 保留、同集合換序、缺檔與未宣告內容、libr
 驗收結果：Qt 6.11.1 原生 build 通過；focused CTest **8/8**（含原生 G1/G2、既有選牌 fixtures）；Web identity **9/9**、controller **11/11**、TypeScript 型別檢查及 WASM harness self-test **12/12** 通過。
 驗收紀錄見 `artifacts/declared-manifest-20260909/`。
 
-完整工作目錄仍可能有未宣告的 `lua/chat_config.lua`、`lua/lib/sqlite3.lua` 或翻譯檔，
+完整工作目錄仍可能有未宣告的 `lua/chat_config.lua`、`lua/lib/sqlite3.lua` 等非翻譯內容，
 身份閘會繼續拒絕；P1 測試通過不表示已完成正式內容部署或 P2 的原生／WASM 對等驗收。
 
 ## Global Constraints
@@ -1218,10 +1218,10 @@ git commit -m "feat(protocol): split code identity from content identity"
 - 身份帶 `code_id`,前端可在下載內容之前判斷 runtime 是否相容
 - `content_profile` 為 `declared-v1`,舊 client 乾脆失敗
 
-**本計劃刻意延後(不是遺漏):** `lua/sanguosha.lua:145-160` 的翻譯載入仍用
-`sgs.GetFileNames` 掃三個 `lang/` 目錄。spec §2.4 已判定它不是阻塞項 —— 它在
-`addSkills` 之後執行,最壞後果只是重複翻譯 key 蓋錯,不影響 card ID。改為照宣告
-載入可另行處理；P2 配送已透過宣告清單與精確 FS 檢查限制可见內容。
+**翻譯載入保留目錄掃描（使用者確認，2026-09-09）：** 不需要取代
+`sgs.GetFileNames`；117 個翻譯檔已加入配送宣告，WASM native 翻譯會在協商通過後
+傳給 Web 顯示。`translations.json` 已由原生 TUI 產生，完整 Web build 與成品
+Chromium 啟動／翻譯資產驗收通過。詳見設計文件的「翻譯配送與成品補驗」。
 
 **已完成(P2/P3，2026-09-09):** production WASM 內容已分離，Hello/hash 配送、
 Worker 預熱／重建與原生 discard/exchange 已實作；`eligibility.ts` 及測試已刪除。

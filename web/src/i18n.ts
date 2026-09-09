@@ -1,6 +1,7 @@
 import type { JsonObject } from "./protocol";
 
 let table: Record<string, string> = {};
+let staticTable: Record<string, string> = {};
 let cards: Record<string, JsonObject> = {};
 
 async function loadJson<T>(path: string, fallback: T): Promise<T> {
@@ -19,12 +20,38 @@ export async function loadTranslations(): Promise<void> {
     loadJson<Record<string, string>>("/translations.json", {}),
     loadJson<Record<string, JsonObject>>("/cards.json", {})
   ]);
-  table = nextTable;
+  staticTable = validStringMap(nextTable);
+  table = { ...staticTable };
   cards = nextCards;
 }
 
 export function setTranslationsForTest(next: Record<string, string>): void {
-  table = { ...next };
+  staticTable = validStringMap(next);
+  table = { ...staticTable };
+}
+
+function validStringMap(value: unknown): Record<string, string> {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    throw new Error("rules_identity_invalid");
+  const result: Record<string, string> = Object.create(null) as Record<string, string>;
+  for (const [key, text] of Object.entries(value)) {
+    if (typeof text !== "string")
+      throw new Error("rules_identity_invalid");
+    result[key] = text;
+  }
+  return result;
+}
+
+export function validateRulesTranslations(value: unknown): Record<string, string> {
+  return validStringMap(value);
+}
+
+export function installRulesTranslations(next: unknown): void {
+  table = { ...staticTable, ...validateRulesTranslations(next) };
+}
+
+export function resetRulesTranslations(): void {
+  table = { ...staticTable };
 }
 
 export function tr(key: string): string {

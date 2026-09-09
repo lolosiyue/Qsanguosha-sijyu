@@ -29,8 +29,7 @@ pattern、棄牌限制與回覆都由 native runtime 決定。交換牌不套用
   snapshot ABI 驗證；production Worker 仍只接受 raw frame ingress。
 - 既有 ingress corpus：每輪 78 operations，native／Chromium WASM 通過。
 - 聚焦 CTest 8/8、Web 57/57、Controller 16/16、TypeScript 與 Vite 編譯通過。
-  本機缺少未入庫的 `web/public/translations.json`，獨立翻譯資產檢查未通過；
-  不把 Vite 編譯視為完整發佈包驗收。
+  翻譯資產的後續補驗見下一節。
 
 證據目錄：`artifacts/extension-compatibility-20260909/` 的 `bundle-final/`、
 `session-browser-final/`、`ingress3/`。一般 native CTest 維持 builtin-only；
@@ -55,20 +54,47 @@ HTTP 服務把 `web/public/rules/content/` 映射至 `/rules/content/`；內容�
 SHA-256，可設 immutable cache。只改已宣告 Lua 不需要重建 WASM；更改 C++、
 bindings 或互動 schema 仍需重建並重新配對 Web loader。
 
-這次驗收不等於整個本地擴展集合已完成宣告：未宣告的 chat_config、sqlite3、
-lang 等仍會被身份閘拒絕。翻譯載入器目前仍按 §2.4 掃描 language 目錄；配送與
-精確 FS 驗證已把瀏覽器可見檔案限制在宣告內，改成顯式翻譯迭代仍可另外處理。
+### 翻譯配送與成品補驗（2026-09-09）
+
+**保留 `lua/sanguosha.lua` 的 language 目錄掃描。** 使用者已確認不需要替換
+載入方式；宣告只限定配送集合，不要求翻譯改為逐條宣告載入。
+
+- 117 個 `lang/zh_CN` Lua（根目錄 15、Audio 45、Package 57）已作為 presentation
+  宣告掛在既有第一條 `addFunction.lua` 上，102 個 script 順序不變。生成器與
+  清單檢查器會核對磁碟集合；不依賴 Git，可用於發布資產樹。
+- Native init 另行匯出 `translationTable()`，不放進 card registry hash。Web 在
+  Hello 協商通過後才安裝 native 翻譯，保留靜態 UI 字串；Worker 更換會清掉上一份
+  動態翻譯。預熱未獲准前不會改動 Web 顯示。
+- 真 Chromium 驗證 `slash` 與 sijyu 翻譯等於 native；修改已宣告翻譯後，
+  rules identity 完全相同，Web 仍能顯示新的 `TEST杀` 字串。改動只發生在測試副本。
+- 原生 TUI 產生 `translations.json`（74,721 keys）與 `cards.json`（1,195 records）；
+  `npm run build` 完整通過。資產檢查會拒絕空 map、錯誤 JSON、非字串值及缺少 slash，
+  保留合法的空翻譯字串。
+- 成品 `web/dist` 由獨立 HTTP allowlist 服務，Chromium 實際載入其 hashed JS/CSS、
+  翻譯與卡牌資料，顯示連線表單；mjs/wasm 配對 hash 通過。另驗證成品內三個真實
+  擴展加完整翻譯的 125 個 content 檔案，其 size/hash 與 native manifest 相符。
+  缺少 optional logo／favicon／game-ui-config 不影響此次啟動驗收。
+
+重現靜態翻譯資產與成品啟動驗收：
+
+```sh
+./relwithdebinfo/qsanguosha_tui --asset-root . \
+  --dump-translations web/public/translations.json
+npm --prefix web run build
+python3 tests/client_runtime/check-web-distribution.py --dist web/dist \
+  --browser /path/to/chromium --artifacts artifacts/web-distribution
+```
+
+內容 hash 檔仍使用上一節的 native export／package 流程，在 Web build 前放入
+`web/public/rules/content`。本次可重查的證據在 `artifacts/translations-20260909/`：
+`bundle/`、`distribution-final/`、`distribution-content-summary.json`。
 
 ### 尚未完成與範圍界線
 
-1. **完整本地內容宣告與對等驗收**：補齊 chat_config、sqlite3、lang 等的角色與依賴；
-   目前通過的真實三擴展案例不能代替全部內容。完整舊載入／新 manifest 的 registry
-   對照也尚未完成，目前只有初始 102 條的 QDir 順序對照與合成 G1 測試。
-2. **顯式翻譯載入**：把 language 目錄掃描改成依宣告逐檔載入；目前配送已限制
-   瀏覽器可見集合，這項仍未實作。
-3. **發佈資產驗收**：產生 `web/public/translations.json`，通過翻譯檢查，並從完整
-   發佈成品驗證內容路由與資產。現有測試不是完整發佈驗收。
-4. **追加順序守衛**：初始清單測試仍要求 filename 排序；第一次追加排序位置不在
+1. **其他完整本地內容宣告與對等驗收**：chat_config、sqlite3 等仍需角色與依賴
+   決策。117 個翻譯檔已補齊；三擴展＋翻譯成品驗收不代表全部本地擴展已可部署。
+   完整舊載入／新 manifest 的 registry 對照仍未完成。
+2. **追加順序守衛**：初始清單測試仍要求 filename 排序；第一次追加排序位置不在
    末尾的檔名之前，需改為保護既有 manifest 前綴。
 
 完整對局依使用者要求免測；pthread、瀏覽器單機、效能與記憶體上限明文不屬於

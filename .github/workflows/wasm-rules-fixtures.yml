@@ -127,11 +127,13 @@ jobs:
           python3 tests/client_runtime/check-rules-session.py --self-test
           python3 tests/client_runtime/check-rules-bundle.py --self-test
           python3 tools/package-rules-content.py --self-test
+          python3 tests/client_runtime/check-web-distribution.py --self-test
           python3 tests/client_runtime/check-rules-ingress.py --self-test
       - name: Test production controller and type-check the production Worker
         run: |
           npm ci --prefix web
           node --experimental-vm-modules --test tests/client_runtime/rules-controller.test.mjs
+          node --test web/scripts/check-translations.test.mjs
           npm --prefix web test
           node web/node_modules/typescript/bin/tsc web/src/rules-worker.ts \
             --noEmit --target ES2022 --module ES2022 --lib ES2022,DOM --strict --skipLibCheck
