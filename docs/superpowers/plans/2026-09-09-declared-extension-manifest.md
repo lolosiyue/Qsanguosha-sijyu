@@ -12,6 +12,44 @@
 
 **後續計劃(不在本計劃內):** P2 內容配送(spec §4、G3、G4);P3 TS fallback 清除(spec §5、G5)。
 
+## 2026-09-09 實作紀錄
+
+P1 五個 task、P2 配送與 P3 TS fallback 清除均已實作並完成聚焦驗收。
+下方未勾選的 Step 是原始實作配方，並非目前待辦；未逐 task 拆成五個 commit，
+本次按完整功能一併提交。最新驗收與剩餘工作以設計文件的實作紀錄為準。
+
+實作時修正了下方範例的幾個問題，以下述結果為準：
+
+- `code_id` 不同依 spec §3.7 回 `rules_version_mismatch`；C++ 與 Web 都重算並驗證子封印，不能只驗總封印。
+- 新增 `lang` 宣告會改變 `config.lua` 位元組；驗收比較的是**同一份宣告**下修改翻譯前後的身份。
+- G1 使用三個確實帶牌的合成擴展，並比較同一集合的不同順序；空 Package 無法證明 card ID 穩定性。
+- `stage_builtin_assets()` 預設明確寫入空 manifest，保持既有 native/WASM 核心 fixtures 一致；只有顯式傳入條目才複製 script、libs、lang。
+- `ai` 宣告是可選 server policy，client 不必備有該檔；在磁碟上存在時仍須遵守 symlink 禁令。
+- Engine 嚴格要求 `extension_names` 是連續字串陣列，拒絕錯誤型別、稀疏陣列及額外 key。
+- Lua 以宣告的精確檔案路徑建立 preload，再 `require`；合法的 `probe.one.lua` 不會誤查成 `probe/one.lua`。
+- 使用實際 Qt 6.11.1 `QDir::entryList(QDir::Files)` 核對初始 102 個條目，與宣告逐項一致。此為順序遷移證據，並非完整外部內容的雙次 registry hash 比較。
+- BanPackages 採來源守衛；沒有宣稱以未被產品讀取的測試環境變數完成動態驗證。
+- 修正既有 fixture runner 編譯阻塞：`ClientPlayer` 改經 protected 唯讀 accessor 讀取 Player 的 fixed distance／attack range 容器，規則行為不變。
+
+原生驗收命令（計劃下方的 `qsanguosha_selection_fixture` 是過期 target 名）：
+
+```sh
+cmake --build build/linux-gui-gcc --target qsanguosha_rules_fixture_runner \
+  qsanguosha_rules_identity_tests qsanguosha_rules_content_manifest_tests -j 4
+python3 tests/client_runtime/check-rules-bundle.py --native-only \
+  --native-runner build/linux-gui-gcc/qsanguosha_rules_fixture_runner \
+  --artifacts artifacts/declared-manifest-20260909/native
+```
+
+`qsanguosha_rules_manifest_native` 已註冊進 CTest，只 bootstrap／匯出身份，不跑對局。
+G1/G2 包含追加 ID 保留、同集合換序、缺檔與未宣告內容、library hash、翻譯／AI 排除、
+懸空及 AI symlink，以及載入期間改寫 library 後不可重新標記 VM 的反例。
+驗收結果：Qt 6.11.1 原生 build 通過；focused CTest **8/8**（含原生 G1/G2、既有選牌 fixtures）；Web identity **9/9**、controller **11/11**、TypeScript 型別檢查及 WASM harness self-test **12/12** 通過。
+驗收紀錄見 `artifacts/declared-manifest-20260909/`。
+
+完整工作目錄仍可能有未宣告的 `lua/chat_config.lua`、`lua/lib/sqlite3.lua` 或翻譯檔，
+身份閘會繼續拒絕；P1 測試通過不表示已完成正式內容部署或 P2 的原生／WASM 對等驗收。
+
 ## Global Constraints
 
 以下每條逐字取自 spec,適用於本計劃每一個 task:
@@ -1183,7 +1221,10 @@ git commit -m "feat(protocol): split code identity from content identity"
 **本計劃刻意延後(不是遺漏):** `lua/sanguosha.lua:145-160` 的翻譯載入仍用
 `sgs.GetFileNames` 掃三個 `lang/` 目錄。spec §2.4 已判定它不是阻塞項 —— 它在
 `addSkills` 之後執行,最壞後果只是重複翻譯 key 蓋錯,不影響 card ID。改為照宣告
-載入屬 P2 的配送工作。
+載入可另行處理；P2 配送已透過宣告清單與精確 FS 檢查限制可见內容。
 
-**尚未完成(P2):** `.wasm` 仍然 `--embed-file` 內容;瀏覽器仍未執行期取內容。
-**尚未完成(P3):** `eligibility.ts` 的 `ANCESTORS` 仍在棄牌/交換牌路徑上生效。
+**已完成(P2/P3，2026-09-09):** production WASM 內容已分離，Hello/hash 配送、
+Worker 預熱／重建與原生 discard/exchange 已實作；`eligibility.ts` 及測試已刪除。
+真實 sijyu＋animecard 的 native/WASM 一致性與聚焦驗收記錄見
+[設計文件](../specs/2026-09-09-extension-compatibility-scope-design.md#2026-09-09-實作與驗收)。
+未測完整對局（依使用者要求）；提交狀態見 Git 歷史。

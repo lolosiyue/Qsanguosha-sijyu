@@ -1,5 +1,6 @@
 #include "client-rules-session.h"
 #include "rules-bundle-exporter.h"
+#include "runtime-paths.h"
 #include "protocol/rules-bundle-identity.h"
 
 #include "client-room-context.h"
@@ -13,6 +14,7 @@
 #include "skill-instance-utils.h"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QEvent>
 #include <QJsonArray>
 #include <QSet>
@@ -245,6 +247,25 @@ struct Prompt
     bool enumerated = false;
 };
 
+QList<int> discardSelectableCards(const Scene &scene, const QString &pattern,
+                                  bool includeEquip, bool applyDiscardLimit)
+{
+    QList<int> result = scene.state.cardsForPlayer(scene.state.selfName(), Player::PlaceHand);
+    if (includeEquip)
+        result.append(scene.state.cardsForPlayer(scene.state.selfName(), Player::PlaceEquip));
+    const Player *self = scene.players.self();
+    for (auto it = result.begin(); it != result.end();) {
+        const Card *card = Sanguosha->getCard(*it, false);
+        if (card == nullptr || (applyDiscardLimit
+                && self->isCardLimited(card, Card::MethodDiscard))
+            || !Sanguosha->matchPattern(pattern, self, card))
+            it = result.erase(it);
+        else
+            ++it;
+    }
+    return result;
+}
+
 // The structured request built by ProtocolInteractionRequestBuilder, forwarded
 // by ClientRulesIngress. Enumerated prompts read their contract from here so
 // the set/count semantics have exactly one implementation.
@@ -268,6 +289,30 @@ Prompt makePrompt(const QJsonObject &input, const QJsonObject &interaction,
     prompt.request.skillName = interaction.value(QStringLiteral("skill")).toString();
     const int cardCount = Sanguosha->getCardCount();
     switch (prompt.request.command) {
+    case S_COMMAND_EXCHANGE_CARD:
+    case S_COMMAND_DISCARD_CARD: {
+        prompt.request.type = prompt.request.command == S_COMMAND_EXCHANGE_CARD
+            ? InteractionType::ExchangeCard : InteractionType::DiscardCard;
+        prompt.enumerated = true;
+        prompt.request.cancelable = interaction.value(QStringLiteral("cancelable")).toBool()
+            || payload.value(QStringLiteral("optional")).toBool();
+        prompt.cards.selection.pattern = payload.value(QStringLiteral("pattern")).toString();
+        if (prompt.cards.selection.pattern.isEmpty())
+            prompt.cards.selection.pattern = QStringLiteral(".");
+        prompt.cards.selection.handlingMethod = Card::MethodDiscard;
+        prompt.cards.selection.minSelection = integer(payload.value(QStringLiteral("min_cards")), 0,
+                                                       std::numeric_limits<int>::max());
+        prompt.cards.selection.maxSelection = integer(payload.value(QStringLiteral("max_cards")),
+                                                       prompt.cards.selection.minSelection,
+                                                       std::numeric_limits<int>::max());
+        prompt.cards.includeEquip = payload.value(QStringLiteral("include_equip")).toBool();
+        prompt.cards.selection.selectableCards = discardSelectableCards(
+            scene, prompt.cards.selection.pattern, prompt.cards.includeEquip,
+            prompt.request.type == InteractionType::DiscardCard);
+        prompt.cards.selection.enumerated = true;
+        prompt.request.payload = prompt.cards;
+        break;
+    }
     case S_COMMAND_PLAY_CARD:
         prompt.request.type = InteractionType::PlayCard;
         prompt.cards.selection.handlingMethod = Card::MethodUse;
@@ -725,6 +770,17 @@ void evaluateEnumerated(const Prompt &prompt, const QJsonObject &selection,
         else
             response = InteractionResponse::makeDistribution(prompt.request.requestId,
                                                              chosen, targets.first());
+    } else if (const auto *value = prompt.request.payloadAs<CardInteractionPayload>()) {
+        selectable = value->selection.selectableCards;
+        minimum = value->selection.minSelection;
+        maximum = value->selection.maxSelection;
+        if (chosen.size() < minimum || chosen.size() > maximum)
+            reason = QStringLiteral("selection_count_out_of_range");
+        else if (!std::all_of(chosen.constBegin(), chosen.constEnd(),
+                              [&selectable](int id) { return selectable.contains(id); }))
+            reason = QStringLiteral("card_unavailable");
+        else
+            response = InteractionResponse::makeCards(prompt.request.requestId, chosen);
     } else {
         require(false, QStringLiteral("unsupported_command"));
     }
@@ -830,6 +886,9 @@ QJsonObject ClientRulesSession::registry() const
     // New initialization contract makes old hosts fail before issuing queries.
     result.insert(QStringLiteral("schema_version"), QSanRules::BridgeSchema);
     result.insert(QStringLiteral("rules_bundle"), identity);
+    result.insert(QStringLiteral("extension_files"), QJsonArray::fromStringList(
+        QDir(QSanRuntimePaths::assetPath(QStringLiteral("extensions"))).entryList(
+            QStringList{QStringLiteral("*.lua")}, QDir::Files, QDir::Name)));
     return result;
 }
 

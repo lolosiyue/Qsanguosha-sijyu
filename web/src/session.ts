@@ -61,14 +61,14 @@ export class LiveSession {
   private listeners = new Set<Listener>();
   private renPile: number[] = [];
   private rulesBundle: JsonObject | null = null;
-  private rulesProvider: ((session: LiveSession) => Promise<JsonObject>) | null = null;
+  private rulesProvider: ((session: LiveSession, hello?: JsonObject) => Promise<JsonObject | null>) | null = null;
   private frameSink: FrameSink | null = null;
 
   setFrameSink(sink: FrameSink | null): void {
     this.frameSink = sink;
   }
 
-  setRulesProvider(provider: (session: LiveSession) => Promise<JsonObject>): void {
+  setRulesProvider(provider: (session: LiveSession, hello?: JsonObject) => Promise<JsonObject | null>): void {
     this.rulesProvider = provider;
   }
 
@@ -103,14 +103,14 @@ export class LiveSession {
     this.rulesBundle = null;
     this.notify();
     const generation = this.generation;
-    // Load before opening the socket, so download time cannot consume signup's deadline.
+    // Prepare code and optionally warm the last successful content before connecting.
     void Promise.resolve().then(() => {
       if (generation !== this.generation) return null;
       if (!this.rulesProvider) throw new Error("rules_reload_required");
       return this.rulesProvider(this);
     }).then(identity => {
       if (generation !== this.generation) return;
-      if (!isRulesIdentity(identity)) throw new Error("rules_identity_invalid");
+      if (identity !== null && !isRulesIdentity(identity)) throw new Error("rules_identity_invalid");
       this.rulesBundle = identity;
       this.openSocket(options);
     }).catch(error => {
@@ -247,32 +247,47 @@ export class LiveSession {
         throw new Error("first frame must be SERVER_HELLO");
       this.lastIncoming = incoming;
       this.phase = "hello";
-      const compatibility = rulesCompatibilityError(message.payload.rules_bundle, this.rulesBundle);
-      if (compatibility) throw new Error(compatibility);
       this.state.setCardIdSpace(asNumber(message.payload.card_count));
-      const signup: JsonObject = {
-        schema_version: 2,
-        reconnect_requested: options.reconnect,
-        screen_name: options.screenName,
-        avatar: options.avatar,
-        rules_bundle: this.rulesBundle
-      };
-      if (options.roomId !== undefined)
-        signup.room_id = options.roomId;
-      this.signupId = nextId(this.outgoing);
-      this.send({
-        v: 2,
-        type: "request",
-        source: "client",
-        destination: "lobby",
-        message_id: this.signupId,
-        command: Command.SIGNUP,
-        payload: signup
+      const generation = this.generation;
+      void Promise.resolve().then(() => {
+        if (generation !== this.generation || this.phase !== "hello") return null;
+        if (!this.rulesProvider) throw new Error("rules_reload_required");
+        return this.rulesProvider(this, message.payload);
+      }).then(identity => {
+        if (generation !== this.generation || this.phase !== "hello") return;
+        const compatibility = rulesCompatibilityError(message.payload.rules_bundle, identity);
+        if (compatibility) throw new Error(compatibility);
+        this.rulesBundle = identity;
+        const signup: JsonObject = {
+          schema_version: 2,
+          reconnect_requested: options.reconnect,
+          screen_name: options.screenName,
+          avatar: options.avatar,
+          rules_bundle: identity
+        };
+        if (options.roomId !== undefined)
+          signup.room_id = options.roomId;
+        this.signupId = nextId(this.outgoing);
+        this.send({
+          v: 2,
+          type: "request",
+          source: "client",
+          destination: "lobby",
+          message_id: this.signupId,
+          command: Command.SIGNUP,
+          payload: signup
+        });
+        this.phase = "signup";
+        this.notify();
+      }).catch(error => {
+        if (generation === this.generation)
+          this.fail(error instanceof Error ? error.message : String(error));
       });
-      this.phase = "signup";
-      this.notify();
       return;
     }
+
+    if (this.phase === "hello")
+      throw new Error("unexpected frame before rules negotiation completed");
 
     if (this.phase === "signup") {
       if (message.command !== Command.SIGNUP || message.type !== "reply"

@@ -102,6 +102,12 @@ int main(int argc, char **argv)
         }
         result.insert(QStringLiteral("schema_version"), QSanRules::BridgeSchema);
         result.insert(QStringLiteral("rules_bundle"), identity);
+        const auto content = QSanRules::exportContentManifest(*Sanguosha);
+        if (content.isEmpty()) {
+            QTextStream(stderr) << "rules_content_unsupported" << Qt::endl;
+            return 4;
+        }
+        result.insert(QStringLiteral("rules_content"), content);
     } else if (!ClientRulesFixtures::run(document.object(), &result, &error)) {
         QTextStream(stderr) << "fixture failed: " << error << Qt::endl;
         return 4;

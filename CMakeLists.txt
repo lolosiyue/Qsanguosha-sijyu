@@ -297,6 +297,7 @@ add_library(qsanguosha_engine STATIC
     src/core/ai-data-store.h
     src/core/asset-manifest.cpp
     src/core/asset-manifest.h
+    src/core/rules-content-manifest.cpp
     src/core/runtime-paths.cpp
     src/core/runtime-paths.h
     src/core/engine.cpp

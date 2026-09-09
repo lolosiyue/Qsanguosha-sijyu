@@ -5,8 +5,7 @@ import {
   cardFaceUrl
 } from "./assets";
 import { cardRecord, tr } from "./i18n";
-import { useMode } from "./eligibility";
-import { asBool, asNumber, asString, asStringList, isObject } from "./protocol";
+import { asBool, asNumber, asString, asStringList, isObject, useMode } from "./protocol";
 import { el } from "./ui-dom";
 import type { UiBind } from "./ui-types";
 

@@ -102,13 +102,21 @@ def native_run(args, assets, fixed):
     verify_native(report)
     return report
 
-def browser_run(args, baseline):
+def browser_run(args, baseline, assets):
     server_class = load('check-rules-session.py').Server
-    module, binary, manifest = args.wasm_module, args.wasm_module.with_suffix('.wasm'), args.manifest
+    module, binary = args.wasm_module, args.wasm_module.with_suffix('.wasm')
     require(binary.read_bytes()[:8] == b'\0asm\1\0\0\0', 'invalid real WASM binary')
+    content_files = []
+    for path in sorted(assets.rglob('*.lua')):
+        relative = path.relative_to(assets).as_posix()
+        if relative.startswith('lua/ai/') or relative == 'lua/lib/middleclass.lua':
+            continue
+        data = path.read_bytes()
+        content_files.append({'path': relative, 'role': 'rules', 'size': len(data), 'sha256': digest(data)})
+    content = {'schema_version': 1, 'profile': 'declared-v1', 'files': content_files}
     plan = {'operations': [{'label': r['label'], 'operation': r['operation']} for r in baseline['records']],
             'hashes': {'module': digest(module.read_bytes()), 'binary': digest(binary.read_bytes()),
-                       'manifest': digest(manifest.read_bytes())}}
+                       }, 'content': content}
     # Never serve baseline responses: the page must call the actual C exports.
     routes = {'/index.html': b'<!doctype html><meta charset="utf-8"><script type="module" src="/probe.mjs"></script>',
               '/probe.mjs': HERE / 'browser/rules-ingress-page.mjs',
@@ -116,8 +124,10 @@ def browser_run(args, baseline):
               '/wasm-fixture-host.mjs': HERE / 'wasm-fixture-host.mjs',
               '/input.json': json.dumps(plan).encode(),
               '/browser/qsanguosha_client_wasm.mjs': module,
-              '/browser/qsanguosha_client_wasm.wasm': binary,
-              '/browser/qsanguosha_client_wasm.assets.json': manifest}
+              '/browser/qsanguosha_client_wasm.wasm': binary}
+    for entry in content_files:
+        root_path = assets / entry['path']
+        routes['/rules/content/' + entry['sha256']] = root_path
     with server_class(routes) as server, tempfile.TemporaryDirectory(prefix='chrome-', dir=args.artifacts) as profile:
         command = [str(args.browser), '--headless=new', '--disable-gpu', '--no-first-run',
                    '--no-default-browser-check', '--disable-background-networking', '--disable-extensions',
@@ -196,8 +206,8 @@ def main():
     for name in ['native_runner', 'asset_root', 'artifacts']:
         if getattr(args, name) is None: parser.error('--' + name.replace('_', '-') + ' required')
     browser_mode = any([args.wasm_module, args.manifest, args.browser])
-    if browser_mode and not all([args.wasm_module, args.manifest, args.browser]):
-        parser.error('browser mode requires --wasm-module, --manifest and --browser')
+    if browser_mode and not all([args.wasm_module, args.browser]):
+        parser.error('browser mode requires --wasm-module and --browser')
     for key, value in vars(args).items():
         if isinstance(value, Path): setattr(args, key, value.resolve())
     args.artifacts.mkdir(parents=True, exist_ok=True)
@@ -212,12 +222,12 @@ def main():
             baseline = native_run(args, assets, True)
             repeated = native_run(args, assets, False)
             require(json.dumps(baseline, sort_keys=True) == json.dumps(repeated, sort_keys=True), 'native hash-seed drift')
-        summary['native'] = 'PASS'
-        summary['operations_per_run'] = len(baseline['records'])
-        summary['native_runner_sha256'] = digest(args.native_runner.read_bytes())
-        if browser_mode:
-            summary['hashes'] = browser_run(args, baseline)
-            summary['browser'] = 'PASS'
+            summary['native'] = 'PASS'
+            summary['operations_per_run'] = len(baseline['records'])
+            summary['native_runner_sha256'] = digest(args.native_runner.read_bytes())
+            if browser_mode:
+                summary['hashes'] = browser_run(args, baseline, assets)
+                summary['browser'] = 'PASS'
         summary['status'] = 'PASS'
         return 0
     except Exception as error:

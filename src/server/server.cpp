@@ -4,6 +4,7 @@
 #include "server.h"
 #endif
 #include "protocol/rules-bundle-identity.h"
+#include "rules-bundle-exporter.h"
 #include "settings.h"
 #include "room.h"
 #include "roomthread.h"
@@ -2135,8 +2136,10 @@ void Server::processNewConnection(ClientSocket *socket)
 	ServerHelloPayload hello;
 	hello.gameVersion = Sanguosha->getVersionNumber();
 	hello.modName = Sanguosha->getMODName();
-	hello.cardCount = Sanguosha->getCardCount();
+    hello.cardCount = Sanguosha->getCardCount();
     hello.rulesBundle = Sanguosha->rulesBundleIdentity();
+    if (QSanRules::validate(hello.rulesBundle))
+        hello.rulesContent = QSanRules::exportContentManifest(*Sanguosha);
 	QString error;
 	if (!context->sendHello(hello, &error)) {
 		rejectConnection(context, QStringLiteral("server_hello_failed"), error);

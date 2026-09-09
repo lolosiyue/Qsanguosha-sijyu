@@ -43,6 +43,43 @@ Engine*Sanguosha = nullptr;
 
 namespace {
 
+QSanRules::ContentManifest readContentManifest(lua_State *lua)
+{
+    const int top = lua_gettop(lua);
+    const auto invalid = [lua, top]() {
+        lua_settop(lua, top);
+        QSanRules::ContentManifest result;
+        result.error = QStringLiteral("extension_names must be a dense array of strings");
+        return result;
+    };
+    lua_getglobal(lua, "config");
+    if (!lua_istable(lua, -1)) return invalid();
+    lua_pushliteral(lua, "extension_names");
+    lua_rawget(lua, -2);
+    if (!lua_istable(lua, -1)) return invalid();
+    const lua_Integer length = static_cast<lua_Integer>(lua_rawlen(lua, -1));
+    lua_Integer count = 0;
+    lua_pushnil(lua);
+    while (lua_next(lua, -2)) {
+        if (!lua_isinteger(lua, -2) || lua_tointeger(lua, -2) < 1
+            || lua_tointeger(lua, -2) > length || lua_type(lua, -1) != LUA_TSTRING)
+            return invalid();
+        ++count;
+        lua_pop(lua, 1);
+    }
+    if (count != length) return invalid();
+    QStringList entries;
+    for (lua_Integer index = 1; index <= length; ++index) {
+        lua_rawgeti(lua, -1, index);
+        size_t size = 0;
+        const char *value = lua_tolstring(lua, -1, &size);
+        entries.append(QString::fromUtf8(value, static_cast<int>(size)));
+        lua_pop(lua, 1);
+    }
+    lua_settop(lua, top);
+    return QSanRules::parseContentManifest(entries);
+}
+
 template<typename T>
 QList<const T *> mergedRuntimeSkills(RoomRuntime *runtime, const QList<const T *> &bootstrap,
                                      const QSet<QString> &runtimeDefinitionNames,
@@ -299,6 +336,13 @@ private:
     QList<ManualSkill*> m_skills;
 };
 
+QStringList Engine::rulesDeclaredList(const QString &key) const
+{
+    if (key == QLatin1String("extension_names"))
+        return QSanRules::manifestScripts(m_rulesContentManifest);
+    return {};
+}
+
 Engine::Engine(bool isManualMode)
 {
 #ifdef LOGNETWORK
@@ -309,7 +353,7 @@ Engine::Engine(bool isManualMode)
 
     Sanguosha = this;
 
-    m_rulesLuaSnapshot = QSanRules::builtinLuaSnapshot();
+    m_rulesLuaSnapshot = QSanRules::coreLuaSnapshot();
 
     m_bootstrapLua = std::make_unique<LuaRuntime>(LuaRuntime::Bootstrap);
     QString bootstrapError;
@@ -333,6 +377,22 @@ Engine::Engine(bool isManualMode)
     removed_hidden_generals = GetConfigFromLuaState(bootstrapLua, "removed_hidden_generals").toStringList();
     extra_default_lords = GetConfigFromLuaState(bootstrapLua, "extra_default_lords").toStringList();
     removed_default_lords = GetConfigFromLuaState(bootstrapLua, "removed_default_lords").toStringList();
+
+    m_rulesContentManifest = readContentManifest(bootstrapLua);
+    if (!m_rulesContentManifest.isValid()) {
+        qCritical() << "invalid extension_names declaration:" << m_rulesContentManifest.error;
+        exit(1);
+    }
+    // config.lua was captured before execution. Its declaration selects phase
+    // two, which still precedes all extension code; never relabel a loaded VM.
+    const QJsonObject declared = QSanRules::declaredLuaSnapshot(m_rulesContentManifest);
+    if (m_rulesLuaSnapshot.isEmpty() || !QSanRules::contentScanIsDeclared(m_rulesContentManifest)
+        || declared.size() != QSanRules::manifestHashedFiles(m_rulesContentManifest).size()) {
+        m_rulesLuaSnapshot = {};
+    } else {
+        for (auto it = declared.begin(); it != declared.end(); ++it)
+            m_rulesLuaSnapshot.insert(it.key(), it.value());
+    }
 
     const QVariantMap configuredPackages =
         GetConfigFromLuaState(bootstrapLua, "package_names").toMap();
