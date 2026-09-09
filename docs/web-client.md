@@ -110,6 +110,23 @@ already-selected cards/skills can be deselected and target votes withdrawn.
 Successful confirmation sends the canonical C++ reply payload only while its
 request ID, state and selection revisions still match the current interaction.
 
+`SKILL_GUANXING`, `SKILL_GONGXIN` and `SKILL_YIJI` keep their existing
+renderers and take their selectable set, count contract and reply from the same
+runtime. Their sets and bounds come from the shared ClientCore
+`InteractionRequest` the runtime forwards, not from a second reading of the wire
+payload, and confirmation sends the registry encoder's payload. The skill
+effect itself is never reimplemented in WASM.
+
+The unit of coverage is the interaction shape, not the general. Each ViewAs
+candidate reports its declared subcard amount, committed usage under the skill's
+limit scope, instance invalidation and expand pile, so a disabled button says
+why. Only the runtime's `available` enables activation; the rest is display.
+Selectable cards carry the zone they sit in — hand, equip, hand pile, expand
+pile or a sibling's pile — and the prompt groups them by that zone instead of
+inferring it from ownership. `guhuo`, `juguan` and `tiansuan` declarations are
+enumerated by the runtime and chosen before subcards; changing one drops the
+subcards and targets it invalidated.
+
 Loading, evaluating, unsupported content and runtime failures are visible in
 the prompt and disable positive confirmation. Cancel remains available, and
 `PLAY_CARD` retains its end-play action. A failed Worker is discarded; the
