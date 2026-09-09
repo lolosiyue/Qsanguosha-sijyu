@@ -251,6 +251,54 @@ SPA fallback after the static `/rules/` route. Missing artifacts must return a
 visible runtime failure rather than an HTML application shell masquerading as
 the module. Use HTTPS or localhost for the Worker's Web Crypto asset checks.
 
+## Structured interaction contract
+
+`ClientRulesIngress` already builds the shared ClientCore `InteractionRequest`
+through `ProtocolInteractionRequestBuilder`. `prepareQuery` now forwards that
+built request as `interaction` beside the raw `command`/`payload`, and
+`ClientRulesSession` consumes it. Enumerated prompts therefore take their
+selectable set, counts and reply shape from one implementation rather than a
+second reading of the wire payload in the session, and the browser renders from
+the same structured object it is echoed in `evaluate`'s result.
+
+`S_COMMAND_SKILL_GUANXING`, `S_COMMAND_SKILL_GONGXIN` and `S_COMMAND_SKILL_YIJI`
+are answered on that enumerated path. The session validates the draft against
+the typed payload — a rearrangement must partition the whole set inside its
+top/bottom bounds, gongxin names exactly one selectable card, yiji stays inside
+`min_cards`/`max_cards` and names one offered recipient — and then encodes the
+reply with `InteractionCommandRegistry`'s own encoder for that command. No skill
+effect is evaluated: those prompts resolve on the Room side.
+
+`guhuo`, `juguan` and `tiansuan` declarations keep their existing native
+enumeration — each candidate is probed through `applyDeclaration`, so the
+offered list is the one the desktop dialog would allow rather than any string
+that happens to clone a card. The evaluation also carries the skill's
+`SkillDialogInfo` as `declaration_dialog`, so a shell implements the three
+dialog shapes once instead of one branch per general.
+
+The card-use path additionally reports, per ViewAs candidate, the declared
+subcard amount (`ViewAsSkillV2::getN`, or the zero/one-card base classes),
+committed usage read from the projected limit-scope mark, instance
+invalidation, `isResponseOrUse` and the expand pile. These are display and
+sizing hints; `canActivate`, `canSelectCard` and `cardSelectionFeasible` remain
+the only legality decisions. Selectable and selected card ids are also reported
+with the zone they occupy — hand, equip, hand pile, expand pile or a sibling
+player's pile.
+
+### Preview purity
+
+A query is a preview, never a move:
+
+- The projected `Scene` (state, room context, players) is constructed and
+  destroyed per query, so declaration tags, marks and history changes cannot
+  reach the next query or the committed client state. A `guhuo`/`juguan`
+  probe's tag is removed before the player's actual choice is applied.
+- Usage is only read. Nothing calls `Skill::addUsage`, so opening a skill,
+  enumerating its declarations or previewing a card never spends a use.
+- `evaluate` binds a throwaway `GameRng` for its whole body, so a rule callback
+  that draws randomness cannot advance the process-wide fallback stream that a
+  later query would observe.
+
 ## Remaining acceptance and scope
 
 Production compile/link, repeated-query and lifecycle execution, native/WASM

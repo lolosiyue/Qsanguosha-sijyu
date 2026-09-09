@@ -4,16 +4,20 @@
 
 #include "client-room-context.h"
 #include "client-selection-runtime.h"
+#include "game-rng.h"
+#include "interaction-command-registry.h"
 #include "interaction-reply-encoder.h"
 #include "protocol/skill-instance-message.h"
 #include "server-info.h"
 #include "skill-dialog-info.h"
+#include "skill-instance-utils.h"
 
 #include <QCoreApplication>
 #include <QEvent>
 #include <QJsonArray>
 #include <QSet>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
@@ -62,6 +66,15 @@ QList<int> cardIds(const QJsonValue &value, int count)
         result.append(id);
     }
     return result;
+}
+
+// An absent list is an empty selection, not a malformed query: the browser
+// only sends the dimensions the current prompt actually has.
+QList<int> optionalCardIds(const QJsonValue &value, int count)
+{
+    if (value.isUndefined() || value.isNull())
+        return {};
+    return cardIds(value, count);
 }
 
 QJsonArray jsonIds(const QList<int> &ids)
@@ -226,9 +239,17 @@ struct Prompt
     const Player *fixedTarget = nullptr;
     bool targetsOwnedByPrompt = false;
     bool nonUseResponse = false;
+    // Enumerated prompts answer out of a set the Room already sent. They never
+    // build a ViewAs card and never re-implement the skill's effect here; the
+    // shared ClientCore payload owns the set, the counts and the reply shape.
+    bool enumerated = false;
 };
 
-Prompt makePrompt(const QJsonObject &input, const Scene &scene, quint64 requestId)
+// The structured request built by ProtocolInteractionRequestBuilder, forwarded
+// by ClientRulesIngress. Enumerated prompts read their contract from here so
+// the set/count semantics have exactly one implementation.
+Prompt makePrompt(const QJsonObject &input, const QJsonObject &interaction,
+                  const Scene &scene, quint64 requestId)
 {
     using namespace QSanProtocol;
     Prompt prompt;
@@ -236,6 +257,16 @@ Prompt makePrompt(const QJsonObject &input, const Scene &scene, quint64 requestI
     prompt.request.command = integer(input.value(QStringLiteral("command")), 0,
                                     std::numeric_limits<int>::max());
     const QJsonObject payload = object(input.value(QStringLiteral("payload")), QStringLiteral("payload"));
+    const QJsonObject typed = interaction.value(QStringLiteral("payload")).isObject()
+        ? interaction.value(QStringLiteral("payload")).toObject() : QJsonObject();
+    require(!interaction.contains(QStringLiteral("command"))
+            || integer(interaction.value(QStringLiteral("command")), 0,
+                       std::numeric_limits<int>::max()) == prompt.request.command,
+            QStringLiteral("interaction_command_mismatch"));
+    prompt.request.cancelable = interaction.value(QStringLiteral("cancelable")).toBool();
+    prompt.request.prompt = interaction.value(QStringLiteral("prompt")).toString();
+    prompt.request.skillName = interaction.value(QStringLiteral("skill")).toString();
+    const int cardCount = Sanguosha->getCardCount();
     switch (prompt.request.command) {
     case S_COMMAND_PLAY_CARD:
         prompt.request.type = InteractionType::PlayCard;
@@ -269,8 +300,69 @@ Prompt makePrompt(const QJsonObject &input, const Scene &scene, quint64 requestI
         prompt.cards.selection.handlingMethod = Card::MethodUse;
         prompt.targetsOwnedByPrompt = true;
         break;
+    case S_COMMAND_SKILL_GUANXING: {
+        prompt.request.type = InteractionType::SkillGuanxing;
+        prompt.enumerated = true;
+        RearrangeCardsInteractionPayload value;
+        value.cardIds = cardIds(typed.value(QStringLiteral("cards")), cardCount);
+        const QString mode = typed.value(QStringLiteral("mode")).toString();
+        value.mode = mode == QLatin1String("up_only") ? RearrangementMode::UpOnly
+            : mode == QLatin1String("down_only") ? RearrangementMode::DownOnly
+            : RearrangementMode::BothSides;
+        const int total = value.cardIds.size();
+        value.minTop = integer(typed.value(QStringLiteral("min_top")), 0, total);
+        value.maxTop = integer(typed.value(QStringLiteral("max_top")), 0, total);
+        value.minBottom = integer(typed.value(QStringLiteral("min_bottom")), 0, total);
+        value.maxBottom = integer(typed.value(QStringLiteral("max_bottom")), 0, total);
+        value.mirrored = typed.value(QStringLiteral("mirrored")).toBool();
+        require(value.minTop <= value.maxTop && value.minBottom <= value.maxBottom
+                && value.minTop + value.minBottom <= total
+                && value.maxTop + value.maxBottom >= total,
+                QStringLiteral("invalid_rearrangement_bounds"));
+        prompt.request.payload = value;
+        break;
+    }
+    case S_COMMAND_SKILL_GONGXIN: {
+        prompt.request.type = InteractionType::SkillGongxin;
+        prompt.enumerated = true;
+        GongxinInteractionPayload value;
+        value.targetPlayer = typed.value(QStringLiteral("target_player")).toString();
+        require(scene.players.player(value.targetPlayer) != nullptr,
+                QStringLiteral("unknown_gongxin_target"));
+        value.visibleCards = cardIds(typed.value(QStringLiteral("visible_cards")), cardCount);
+        value.selectableCards = cardIds(typed.value(QStringLiteral("selectable_cards")), cardCount);
+        value.allowHeartOperation = typed.value(QStringLiteral("allow_heart_operation")).toBool();
+        prompt.request.payload = value;
+        break;
+    }
+    case S_COMMAND_SKILL_YIJI: {
+        prompt.request.type = InteractionType::SkillYiji;
+        prompt.enumerated = true;
+        YijiInteractionPayload value;
+        value.cardIds = cardIds(typed.value(QStringLiteral("cards")), cardCount);
+        value.targetPlayers = strings(typed.value(QStringLiteral("target_players")));
+        for (const QString &name : value.targetPlayers) {
+            require(scene.state.playerNames().contains(name), QStringLiteral("unknown_yiji_target"));
+        }
+        value.minCards = integer(typed.value(QStringLiteral("min_cards")), 0, value.cardIds.size());
+        value.maxCards = integer(typed.value(QStringLiteral("max_cards")), 0, value.cardIds.size());
+        value.remainingCount = integer(typed.value(QStringLiteral("remaining_count")), 0,
+                                       value.cardIds.size());
+        require(value.minCards <= value.maxCards, QStringLiteral("invalid_yiji_bounds"));
+        prompt.request.payload = value;
+        break;
+    }
     default:
         throw std::runtime_error("unsupported_command");
+    }
+    if (prompt.enumerated) {
+        // The shared registry, not this file, decides the reply shape/encoder.
+        const auto *descriptor = InteractionCommandRegistry::find(
+            static_cast<CommandType>(prompt.request.command));
+        require(descriptor != nullptr && descriptor->type == prompt.request.type,
+                QStringLiteral("unsupported_command"));
+        prompt.request.responseSchema = descriptor->responseShape;
+        return prompt;
     }
     prompt.reason = ClientRules::skillPromptReason(prompt.request.type,
         prompt.cards.selection.handlingMethod, prompt.cards.selection.pattern);
@@ -447,6 +539,242 @@ QString applyDeclaration(const ClientRules::SkillCardBuildRequest &draft,
     return {};
 }
 
+// Where a selectable card physically sits, so a shell can group hand, equip,
+// hand pile and expand pile without guessing from ownership.
+QString cardZone(int id, const Scene &scene)
+{
+    const QString self = scene.state.selfName();
+    if (scene.state.cardsForPlayer(self, Player::PlaceHand).contains(id))
+        return QStringLiteral("hand");
+    if (scene.state.cardsForPlayer(self, Player::PlaceEquip).contains(id))
+        return QStringLiteral("equip");
+    if (scene.players.self()->getHandPile().contains(id))
+        return QStringLiteral("hand_pile");
+    const Player *owner = scene.players.cardOwner(id);
+    if (owner != nullptr && owner->objectName() != self)
+        return QStringLiteral("sibling_pile");
+    return QStringLiteral("expand_pile");
+}
+
+QJsonObject zoneMap(const QList<int> &ids, const Scene &scene)
+{
+    QJsonObject result;
+    for (int id : ids) {
+        const QString key = QString::number(id);
+        if (!result.contains(key))
+            result.insert(key, cardZone(id, scene));
+    }
+    return result;
+}
+
+QString limitScopeName(Skill::LimitScope scope)
+{
+    switch (scope) {
+    case Skill::Limit_Round: return QStringLiteral("round");
+    case Skill::Limit_Turn: return QStringLiteral("turn");
+    case Skill::Limit_Phase: return QStringLiteral("phase");
+    case Skill::Limit_Game: return QStringLiteral("game");
+    case Skill::Limit_Custom: return QStringLiteral("custom");
+    case Skill::Limit_None: break;
+    }
+    return QStringLiteral("none");
+}
+
+// Committed usage only. This reads the projected mark the Room already sent;
+// a preview never adds one, so opening a skill cannot spend a use.
+int committedUsage(const Skill *skill, const QString &name, int instanceId, const Scene &scene)
+{
+    QString suffix;
+    switch (skill->getLimitScope()) {
+    case Skill::Limit_Turn: suffix = QStringLiteral("-Clear"); break;
+    case Skill::Limit_Round: suffix = QStringLiteral("_lun"); break;
+    case Skill::Limit_Phase:
+        suffix = skill->getPhaseName().isEmpty()
+            ? QStringLiteral("-PhaseClear")
+            : QStringLiteral("-") + skill->getPhaseName() + QStringLiteral("Clear");
+        break;
+    case Skill::Limit_Game: suffix = QStringLiteral("_game"); break;
+    default: return -1;
+    }
+    const QString key = SkillInstanceUtils::formatUsageMarkKey(name, instanceId, suffix);
+    if (key.isEmpty())
+        return -1;
+    return scene.players.self()->getMark(key);
+}
+
+QString activationStatusName(ClientRules::SkillActivationStatus status)
+{
+    switch (status) {
+    case ClientRules::SkillActivationStatus::Available: return QStringLiteral("available");
+    case ClientRules::SkillActivationStatus::MissingSkill: return QStringLiteral("missing_skill");
+    case ClientRules::SkillActivationStatus::InvalidInstance: return QStringLiteral("invalid_instance");
+    case ClientRules::SkillActivationStatus::Unavailable: return QStringLiteral("unavailable");
+    case ClientRules::SkillActivationStatus::Unknown: break;
+    }
+    return QStringLiteral("unknown");
+}
+
+// Presentation detail for one ViewAs candidate: the declared subcard amount,
+// the committed usage and whether the instance is invalidated. None of it is a
+// rule decision; canActivate/cardSelectionFeasible remain authoritative.
+QJsonObject skillDetail(const SkillActivationCandidate &candidate,
+                        const ClientRules::SkillActivationResult &activation,
+                        const Scene &scene)
+{
+    const ViewAsSkill *viewAs = Sanguosha->getViewAsSkill(candidate.skillName);
+    const Skill *skill = Sanguosha->getSkill(candidate.skillName);
+    int minimum = -1;
+    int maximum = -1;
+    bool v2 = false;
+    if (const auto *active = dynamic_cast<const ViewAsSkillV2 *>(viewAs)) {
+        v2 = true;
+        // n == 0 means the skill decides through cardSelectionFeasible, so the
+        // amount stays unconstrained rather than being reported as "zero card".
+        if (active->getN() > 0) {
+            minimum = active->getN();
+            maximum = minimum;
+        }
+    } else if (dynamic_cast<const ZeroCardViewAsSkill *>(viewAs) != nullptr) {
+        minimum = 0;
+        maximum = 0;
+    } else if (dynamic_cast<const OneCardViewAsSkill *>(viewAs) != nullptr) {
+        minimum = 1;
+        maximum = 1;
+    }
+    QJsonObject entry{{QStringLiteral("name"), candidate.skillName},
+        {QStringLiteral("instance_id"), candidate.instanceId},
+        {QStringLiteral("available"), activation.known && activation.available},
+        {QStringLiteral("status"), activationStatusName(activation.status)},
+        {QStringLiteral("v2"), v2},
+        {QStringLiteral("subcard_min"), minimum},
+        {QStringLiteral("subcard_max"), maximum},
+        {QStringLiteral("usage_scope"), QStringLiteral("none")},
+        {QStringLiteral("usage_used"), -1},
+        {QStringLiteral("invalid"), false},
+        {QStringLiteral("response_or_use"), viewAs != nullptr && viewAs->isResponseOrUse()},
+        {QStringLiteral("expand_pile"), viewAs != nullptr ? viewAs->getExpandPile() : QString()}};
+    if (skill != nullptr) {
+        entry.insert(QStringLiteral("usage_scope"), limitScopeName(skill->getLimitScope()));
+        entry.insert(QStringLiteral("usage_used"),
+                     committedUsage(skill, candidate.skillName, candidate.instanceId, scene));
+        entry.insert(QStringLiteral("invalid"),
+                     scene.players.self()->isSkillInvalid(candidate.skillName, candidate.instanceId));
+    }
+    return entry;
+}
+
+bool sameCardSet(QList<int> left, QList<int> right)
+{
+    std::sort(left.begin(), left.end());
+    std::sort(right.begin(), right.end());
+    return left == right;
+}
+
+// Enumerated prompts: validate the draft against the shared ClientCore payload
+// and hand the canonical reply back through the registry's own encoder.
+void evaluateEnumerated(const Prompt &prompt, const QJsonObject &selection,
+                        QJsonObject *output)
+{
+    const int count = Sanguosha->getCardCount();
+    const QList<int> chosen = optionalCardIds(selection.value(QStringLiteral("card_ids")), count);
+    const QStringList targets = strings(selection.value(QStringLiteral("targets")));
+    QList<int> selectable;
+    QStringList candidates;
+    QString reason;
+    InteractionResponse response;
+    int minimum = prompt.request.minSelection();
+    int maximum = prompt.request.maxSelection();
+
+    if (const auto *value = prompt.request.payloadAs<RearrangeCardsInteractionPayload>()) {
+        selectable = value->cardIds;
+        const QList<int> top = optionalCardIds(selection.value(QStringLiteral("top")), count);
+        const QList<int> bottom = optionalCardIds(selection.value(QStringLiteral("bottom")), count);
+        QList<int> merged = top;
+        merged.append(bottom);
+        QSet<int> unique(merged.constBegin(), merged.constEnd());
+        if (unique.size() != merged.size() || !sameCardSet(merged, value->cardIds))
+            reason = QStringLiteral("rearrangement_incomplete");
+        else if (top.size() < value->minTop || top.size() > value->maxTop
+                 || bottom.size() < value->minBottom || bottom.size() > value->maxBottom)
+            reason = QStringLiteral("rearrangement_out_of_range");
+        else
+            response = InteractionResponse::makeRearrangement(prompt.request.requestId, top, bottom);
+    } else if (const auto *value = prompt.request.payloadAs<GongxinInteractionPayload>()) {
+        selectable = value->selectableCards;
+        // Gongxin answers with exactly one card id; the shared payload carries
+        // the visible/selectable split rather than a count.
+        minimum = 1;
+        maximum = 1;
+        if (chosen.size() != 1)
+            reason = QStringLiteral("select_one_card");
+        else if (!selectable.contains(chosen.first()))
+            reason = QStringLiteral("card_unavailable");
+        else
+            response = InteractionResponse::makeCards(prompt.request.requestId, chosen);
+    } else if (const auto *value = prompt.request.payloadAs<YijiInteractionPayload>()) {
+        selectable = value->cardIds;
+        candidates = value->targetPlayers;
+        const bool known = std::all_of(chosen.constBegin(), chosen.constEnd(),
+            [&selectable](int id) { return selectable.contains(id); });
+        if (!known)
+            reason = QStringLiteral("card_unavailable");
+        else if (chosen.size() < value->minCards || chosen.size() > value->maxCards)
+            reason = QStringLiteral("selection_count_out_of_range");
+        else if (targets.size() != 1 || !candidates.contains(targets.first()))
+            reason = QStringLiteral("incomplete_targets");
+        else
+            response = InteractionResponse::makeDistribution(prompt.request.requestId,
+                                                             chosen, targets.first());
+    } else {
+        require(false, QStringLiteral("unsupported_command"));
+    }
+
+    output->insert(QStringLiteral("selectable_cards"), jsonIds(selectable));
+    output->insert(QStringLiteral("selection_min"), minimum);
+    output->insert(QStringLiteral("selection_max"), maximum);
+    output->insert(QStringLiteral("next_targets"), QJsonObject{
+        {QStringLiteral("candidates"), QJsonArray::fromStringList(candidates)},
+        {QStringLiteral("max_votes"), QJsonObject()}});
+    if (!reason.isEmpty()) {
+        output->insert(QStringLiteral("reason"), reason);
+        return;
+    }
+    response.command = prompt.request.command;
+    const auto *descriptor = InteractionCommandRegistry::find(
+        static_cast<QSanProtocol::CommandType>(prompt.request.command));
+    require(descriptor != nullptr && descriptor->replyEncoder != nullptr,
+            QStringLiteral("unsupported_command"));
+    const auto wire = descriptor->replyEncoder(prompt.request, response);
+    require(wire.command != QSanProtocol::S_COMMAND_UNKNOWN
+            && wire.replyTo == prompt.request.requestId,
+            QStringLiteral("reply_encoding_failed"));
+    output->insert(QStringLiteral("can_confirm"), true);
+    output->insert(QStringLiteral("wire"), QJsonObject{
+        {QStringLiteral("command"), static_cast<int>(wire.command)},
+        {QStringLiteral("reply_to"), QString::number(wire.replyTo)},
+        {QStringLiteral("payload"), QJsonValue::fromVariant(wire.payload)}});
+}
+
+// The dialog shape a skill declares, so a shell implements guhuo / juguan /
+// tiansuan once instead of one branch per general.
+QJsonObject declarationDialog(const QString &skillName)
+{
+    const Skill *skill = Sanguosha->getSkill(skillName);
+    if (skill == nullptr)
+        return {};
+    SkillDialogInfo info = skill->getDialogInfo();
+    if (!info.isValid()) {
+        const ViewAsSkill *viewAs = Sanguosha->getViewAsSkill(skillName);
+        if (viewAs != nullptr)
+            info = viewAs->getDialogInfo();
+    }
+    if (!info.isValid())
+        return {};
+    return {{QStringLiteral("type"), info.type},
+        {QStringLiteral("object_name"), info.objectName},
+        {QStringLiteral("parameters"), QJsonObject::fromVariantMap(info.parameters)}};
+}
+
 QStringList declarations(const ClientRules::SkillCardBuildRequest &draft,
                          const Prompt &prompt, Scene &scene)
 {
@@ -507,6 +835,11 @@ QJsonObject ClientRulesSession::registry() const
 
 QJsonObject ClientRulesSession::evaluate(const QJsonObject &input) const
 {
+    // A preview must not draw from any shared stream. Binding a throwaway
+    // generator keeps an accidental random call inside this query instead of
+    // advancing the process-wide fallback the next query would observe.
+    GameRng previewRng;
+    GameRng::Binding previewRngBinding(previewRng);
     QJsonObject output{{QStringLiteral("schema_version"), 1},
         {QStringLiteral("generation"), input.value(QStringLiteral("generation"))},
         {QStringLiteral("revision"), input.value(QStringLiteral("revision"))},
@@ -515,6 +848,10 @@ QJsonObject ClientRulesSession::evaluate(const QJsonObject &input) const
         {QStringLiteral("can_confirm"), false}, {QStringLiteral("card_text"), QString()},
         {QStringLiteral("selectable_cards"), QJsonArray()}, {QStringLiteral("skills"), QJsonArray()},
         {QStringLiteral("declarations"), QJsonArray()},
+        {QStringLiteral("declaration_dialog"), QJsonObject()},
+        {QStringLiteral("card_zones"), QJsonObject()},
+        {QStringLiteral("selection_min"), 0}, {QStringLiteral("selection_max"), 0},
+        {QStringLiteral("interaction"), QJsonObject()},
         {QStringLiteral("next_targets"), QJsonObject{
             {QStringLiteral("candidates"), QJsonArray()}, {QStringLiteral("max_votes"), QJsonObject()}}},
         {QStringLiteral("player_metrics"), QJsonObject()},
@@ -533,10 +870,22 @@ QJsonObject ClientRulesSession::evaluate(const QJsonObject &input) const
         Scene scene;
         loadScene(object(input.value(QStringLiteral("state")), QStringLiteral("state")), scene);
         output.insert(QStringLiteral("player_metrics"), scene.players.metrics());
-        const Prompt prompt = makePrompt(input, scene, id);
+        const QJsonObject interaction = input.value(QStringLiteral("interaction")).isObject()
+            ? input.value(QStringLiteral("interaction")).toObject() : QJsonObject();
+        // The shell renders sets and counts from the shared ClientCore request,
+        // not from a second reading of the wire payload.
+        output.insert(QStringLiteral("interaction"), interaction);
+        const Prompt prompt = makePrompt(input, interaction, scene, id);
+        const QJsonObject selectionDraft = object(input.value(QStringLiteral("selection")),
+                                                  QStringLiteral("selection"));
+        if (prompt.enumerated) {
+            output.insert(QStringLiteral("known"), true);
+            evaluateEnumerated(prompt, selectionDraft, &output);
+            return output;
+        }
         // UNKNOWN is the native context for neutral/discard physical responses.
         scene.room.setCardUseContext(prompt.reason, prompt.cards.selection.pattern);
-        const QJsonObject selection = object(input.value(QStringLiteral("selection")), QStringLiteral("selection"));
+        const QJsonObject &selection = selectionDraft;
         const QList<int> selectedCards = cardIds(selection.value(QStringLiteral("card_ids")),
                                                  Sanguosha->getCardCount());
         ClientRules::CardSelectionDraft draft;
@@ -558,9 +907,7 @@ QJsonObject ClientRulesSession::evaluate(const QJsonObject &input) const
         for (const SkillActivationCandidate &candidate : candidates.skillCandidates) {
             const auto activation = ClientRules::evaluateSkillActivation(candidate.skillName,
                 candidate.instanceId, prompt.reason, prompt.cards.selection.pattern);
-            skills.append(QJsonObject{{QStringLiteral("name"), candidate.skillName},
-                {QStringLiteral("instance_id"), candidate.instanceId},
-                {QStringLiteral("available"), activation.known && activation.available}});
+            skills.append(skillDetail(candidate, activation, scene));
             if (candidate.skillName == draft.skill.skillName
                 && candidate.instanceId == draft.skill.instanceId) {
                 selectedSkillKnown = true;
@@ -574,6 +921,18 @@ QJsonObject ClientRulesSession::evaluate(const QJsonObject &input) const
                 QStringLiteral("unsupported_skill:") + namedSkill);
         output.insert(QStringLiteral("skills"), skills);
         output.insert(QStringLiteral("known"), true);
+        // One physical card, or the declared subcard amount of the chosen skill.
+        // -1 means the skill answers through cardSelectionFeasible instead.
+        output.insert(QStringLiteral("selection_min"), 1);
+        output.insert(QStringLiteral("selection_max"), 1);
+        for (const QJsonValue &entry : skills) {
+            const QJsonObject detail = entry.toObject();
+            if (!usingSkill || detail.value(QStringLiteral("name")).toString() != draft.skill.skillName
+                || detail.value(QStringLiteral("instance_id")).toInt() != draft.skill.instanceId)
+                continue;
+            output.insert(QStringLiteral("selection_min"), detail.value(QStringLiteral("subcard_min")));
+            output.insert(QStringLiteral("selection_max"), detail.value(QStringLiteral("subcard_max")));
+        }
         if (usingSkill) {
             require(Sanguosha->getViewAsSkill(draft.skill.skillName) != nullptr,
                     QStringLiteral("unsupported_skill:") + draft.skill.skillName);
@@ -583,6 +942,8 @@ QJsonObject ClientRulesSession::evaluate(const QJsonObject &input) const
             }
             const QStringList options = declarations(draft.skill, prompt, scene);
             output.insert(QStringLiteral("declarations"), QJsonArray::fromStringList(options));
+            output.insert(QStringLiteral("declaration_dialog"),
+                          declarationDialog(draft.skill.skillName));
             const QString declaration = options.isEmpty() && draft.skill.userString.isEmpty()
                 ? QString() : applyDeclaration(draft.skill, prompt, scene);
             if (!declaration.isEmpty()) {
@@ -603,6 +964,7 @@ QJsonObject ClientRulesSession::evaluate(const QJsonObject &input) const
                     next.append(candidate);
             }
             output.insert(QStringLiteral("selectable_cards"), jsonIds(next));
+            output.insert(QStringLiteral("card_zones"), zoneMap(next + selectedCards, scene));
         } else {
             QList<int> selectable;
             for (int candidate : physicalCardPool(scene, prompt)) {
@@ -621,6 +983,7 @@ QJsonObject ClientRulesSession::evaluate(const QJsonObject &input) const
                     selectable.append(candidate);
             }
             output.insert(QStringLiteral("selectable_cards"), jsonIds(selectable));
+            output.insert(QStringLiteral("card_zones"), zoneMap(selectable + selectedCards, scene));
             if (selectedCards.size() != 1) {
                 output.insert(QStringLiteral("reason"), QStringLiteral("select_one_card"));
                 return output;

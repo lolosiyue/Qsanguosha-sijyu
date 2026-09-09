@@ -1,4 +1,4 @@
-import { Command, asBool, asString } from "./protocol";
+import { Command, asBool, asNumberList, asString } from "./protocol";
 import {
   cardSelectable,
   playerSelectable,
@@ -49,8 +49,31 @@ function rulesSelection(): RulesSelection {
     targets: [...ui.selectedPlayers],
     skill_name: ui.selectedOption,
     skill_instance_id: ui.skillInstance,
-    user_string: ui.ruleDeclaration
+    user_string: ui.ruleDeclaration,
+    top: [...ui.top],
+    bottom: [...ui.bottom]
   };
+}
+
+// A rearrangement prompt starts as "everything on top". Seed it before the
+// first native query so the runtime never judges an empty draft the shell is
+// about to replace anyway.
+function seedSelection(): void {
+  const interaction = session.interaction;
+  if (!interaction || interaction.command !== Command.SKILL_GUANXING)
+    return;
+  const ids = asNumberList(interaction.payload.card_ids ?? interaction.payload.cards);
+  const known = new Set(ids);
+  // A state change can retire a card mid-draft; drop it instead of sending it.
+  ui.top = ui.top.filter((id) => known.has(id));
+  ui.bottom = ui.bottom.filter((id) => known.has(id));
+  // A down-only rearrangement has no top area, so start every card where the
+  // prompt can actually accept it.
+  const start = asString(interaction.payload.mode) === "down_only" ? ui.bottom : ui.top;
+  for (const id of ids) {
+    if (!ui.top.includes(id) && !ui.bottom.includes(id))
+      start.push(id);
+  }
 }
 
 function pruneSelection(): void {
@@ -117,6 +140,12 @@ function resetSelection(): void {
 function togglePlayer(name: string): void {
   if (!isPlayerClickable(name))
     return;
+  // Enumerated prompts name one recipient; only card-use prompts count votes.
+  if (session.interaction && rules.enumerated(session.interaction.command)) {
+    ui.selectedPlayers = ui.selectedPlayers.includes(name) ? [] : [name];
+    render();
+    return;
+  }
   if (session.interaction && rules.supports(session.interaction.command)) {
     // Repeated names are ordered target votes; native maxVotes controls additions.
     ui.selectedPlayers = [...ui.selectedPlayers, name];
@@ -164,6 +193,7 @@ export function render(): void {
     resetSelection();
   }
   pruneSelection();
+  seedSelection();
   rules.update(session, rulesSelection());
   const root = app();
   root.replaceChildren();
