@@ -58,6 +58,7 @@ async function setup(options = {}) {
       } else if (value.type === 'initialize') {
         this.emit({ schema_version: 1, type: 'ready', generation: value.generation,
           info: { schema_version: RULES_BRIDGE_SCHEMA, card_count: 1, rules_bundle: bundle,
+            translations: { native_key: 'native' },
             registry: [{ id: 0, object_name: 'slash', suit: 0, number: 7 }] } });
       }
     }
@@ -70,9 +71,18 @@ async function setup(options = {}) {
     localStorage,
     setTimeout(fn, ms) { const id = ++timerId; timers.set(id, { fn, ms }); return id; },
     clearTimeout(id) { timers.delete(id); }, console });
-  const catalog = new vm.SyntheticModule(['cardRecord', 'installRulesCardCatalog'], function () {
+  const translationCalls = [];
+  const catalog = new vm.SyntheticModule(['cardRecord', 'installRulesCardCatalog', 'installRulesTranslations', 'resetRulesTranslations', 'validateRulesTranslations'], function () {
     this.setExport('cardRecord', () => undefined);
     this.setExport('installRulesCardCatalog', () => {});
+    this.setExport('installRulesTranslations', value => translationCalls.push(value));
+    this.setExport('resetRulesTranslations', () => translationCalls.push('reset'));
+    this.setExport('validateRulesTranslations', value => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)
+          || Object.values(value).some(item => typeof item !== 'string'))
+        throw new Error('rules_identity_invalid');
+      return value;
+    });
   }, { context });
   const real = new Map();
   const module = sourceModule('rules-client', context);
@@ -124,6 +134,7 @@ async function setup(options = {}) {
   function ready(worker = workers.at(-1), generation = session.generation) {
     worker.emit({ schema_version: 1, type: 'ready', generation,
       info: { schema_version: RULES_BRIDGE_SCHEMA, card_count: 1, rules_bundle: bundle,
+        translations: { native_key: 'native' },
         registry: [{ id: 0, object_name: 'slash', suit: 0, number: 7 }] } });
   }
   function frame(text, outgoing = false, generation = session.generation) {
@@ -180,7 +191,7 @@ async function setup(options = {}) {
       `qsan-rules-bundle-v1\0${canonical(altered)}`));
     return altered;
   }
-  return { controller, session, selection, workers, timers, ready, frame, pending, ack, connect,
+  return { controller, session, selection, workers, timers, translationCalls, ready, frame, pending, ack, connect,
     bundle, content, code, mismatchedBundle };
 }
 
@@ -206,6 +217,7 @@ test('a matching local content cache prepares one Worker and skips negotiation f
   assert.equal(identity.bundle_id, s.bundle.bundle_id);
   assert.equal(s.workers.length, 1);
   assert.equal(s.workers[0].sent.filter(value => value.type === 'initialize').length, 1);
+  assert.equal(s.translationCalls.some(value => value && value.native_key === 'native'), false);
   s.controller.dispose();
 });
 
@@ -236,6 +248,7 @@ test('frames remain queued until content negotiation succeeds', async () => {
 test('changed content replaces the Worker and stale replies cannot mutate the new generation', async () => {
   const s = await setup();
   await s.connect();
+  assert.equal(s.translationCalls.filter(value => value && value.native_key === 'native').length, 1);
   const old = s.workers[0];
   s.session.generation = 2;
   const changed = { ...s.content, files: [{ path: 'lua/config.lua', role: 'rules', size: 1, sha256: 'c'.repeat(64) }] };
@@ -250,6 +263,7 @@ test('changed content replaces the Worker and stale replies cannot mutate the ne
   await initialized;
   assert.equal(s.workers.length, 3);
   assert.equal(s.controller.status, 'ready');
+  assert.equal(s.translationCalls.filter(value => value && value.native_key === 'native').length, 2);
   s.controller.dispose();
 });
 

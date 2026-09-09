@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 from pathlib import Path
 import re
 import subprocess
@@ -10,6 +11,14 @@ import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
+
+_GENERATOR_SPEC = importlib.util.spec_from_file_location(
+    "extension_manifest_generator", ROOT / "tools/generate-extension-manifest.py")
+if _GENERATOR_SPEC is None or _GENERATOR_SPEC.loader is None:
+    raise RuntimeError("missing extension manifest generator")
+_GENERATOR = importlib.util.module_from_spec(_GENERATOR_SPEC)
+_GENERATOR_SPEC.loader.exec_module(_GENERATOR)
+presentation_files = _GENERATOR.presentation_files
 
 
 def declared_entries(config_text: str) -> list[str]:
@@ -43,6 +52,11 @@ def on_disk(root: Path) -> list[str]:
 def check(root: Path) -> None:
     declared = declared_entries((root / "lua/config.lua").read_text(encoding="utf-8"))
     scripts = [entry.split(";", 1)[0] for entry in declared]
+    lang = []
+    for entry in declared:
+        for field in entry.split(";")[1:]:
+            if field.startswith("lang="):
+                lang.extend(path for path in field[5:].split(",") if path)
     disk = on_disk(root)
     if len(scripts) != len(set(scripts)):
         raise AssertionError("extension_names contains duplicate scripts")
@@ -54,6 +68,16 @@ def check(root: Path) -> None:
         raise AssertionError("declared extensions are missing from disk: " + ", ".join(extra))
     if scripts != disk:
         raise AssertionError("declared order does not match the migrated filename order")
+    if len(lang) != len(set(lang)):
+        raise AssertionError("extension_names contains duplicate lang paths")
+    expected_lang = presentation_files(root)
+    if sorted(lang) != expected_lang:
+        missing = sorted(set(expected_lang) - set(lang))
+        extra = sorted(set(lang) - set(expected_lang))
+        detail = []
+        if missing: detail.append("missing " + ", ".join(missing))
+        if extra: detail.append("undeclared " + ", ".join(extra))
+        raise AssertionError("declared lang files do not match disk: " + "; ".join(detail))
 
 
 class SelfTest(unittest.TestCase):
@@ -121,6 +145,63 @@ class SelfTest(unittest.TestCase):
             (root / "lua").mkdir()
             (root / "lua/config.lua").write_text(self.config([]))
             check(root)
+
+    def test_presentation_files_rejects_dangling_symlink(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            (root / "lang/zh_CN").mkdir(parents=True)
+            (root / "lang/zh_CN/missing.lua").symlink_to(root / "gone.lua")
+            with self.assertRaisesRegex(ValueError, "contains a symlink"):
+                presentation_files(root)
+
+    def test_presentation_files_rejects_symlink_parent(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            (root / "real").mkdir()
+            (root / "lang").symlink_to(root / "real", target_is_directory=True)
+            with self.assertRaisesRegex(ValueError, "must not be a symlink"):
+                presentation_files(root)
+
+    def test_presentation_files_rejects_symlink_above_asset_root(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            (root / "real/assets/lang").mkdir(parents=True)
+            (root / "alias").symlink_to(root / "real", target_is_directory=True)
+            with self.assertRaisesRegex(ValueError, "symlinked parents"):
+                presentation_files(root / "alias/assets")
+
+    def test_generator_attaches_sorted_language_files_to_first_script(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            (root / "extensions").mkdir()
+            (root / "extensions/a.lua").write_text("")
+            (root / "extensions/b.lua").write_text("")
+            (root / "lang/zh_CN/Package").mkdir(parents=True)
+            (root / "lang/zh_CN/Z.lua").write_text("")
+            (root / "lang/zh_CN/A.lua").write_text("")
+            result = subprocess.run(
+                [sys.executable, str(ROOT / "tools/generate-extension-manifest.py"), str(root)],
+                capture_output=True, text=True, check=True)
+            lines = result.stdout.splitlines()
+            self.assertIn("extensions/a.lua;lang=lang/zh_CN/A.lua,lang/zh_CN/Z.lua", lines[1])
+            self.assertNotIn(";lang=", lines[2])
+
+    def test_declared_language_set_must_match_disk(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            (root / "extensions").mkdir()
+            (root / "extensions/a.lua").write_text("")
+            (root / "lang/zh_CN").mkdir(parents=True)
+            (root / "lang/zh_CN/Common.lua").write_text("")
+            (root / "lua").mkdir()
+            (root / "lua/config.lua").write_text(self.config(["extensions/a.lua"]))
+            with self.assertRaisesRegex(AssertionError, "declared lang files"):
+                check(root)
 
     def test_missing_extra_duplicate_and_order_are_errors(self):
         import tempfile

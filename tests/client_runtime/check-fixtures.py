@@ -79,7 +79,9 @@ def stage_builtin_assets(source: Path, destination: Path,
             if key != "ai":
                 paths.extend(path for path in value.split(",") if path)
         for relative in paths:
-            content_root = extension_root or source
+            # Translation files are repository presentation assets even when
+            # executable extension sources come from an external checkout.
+            content_root = source if relative.startswith("lang/") else (extension_root or source)
             source_path = content_root / relative
             if any(path.is_symlink() for path in (source_path, *source_path.parents)
                    if path == content_root or content_root in path.parents):

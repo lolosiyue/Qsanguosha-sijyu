@@ -2,6 +2,7 @@ import { RulesController } from "../../../web/src/rules-client";
 import { LiveSession } from "../../../web/src/session";
 import { Command, decodeMessage, encodeMessage, type JsonObject } from "../../../web/src/protocol";
 import { canonical, sha256, rulesErrorMessage } from "../../../web/src/rules-identity";
+import { tr } from "../../../web/src/i18n";
 
 const root = new URL("../", location.href);
 const config = await (await fetch(new URL("case.json", root))).json();
@@ -55,6 +56,8 @@ try {
     serverHello = hello;
     if (hello && config.expect_code_mismatch)
       hello = { ...hello, rules_bundle: await seal({ ...(hello.rules_bundle as JsonObject), cpp_hash: "f".repeat(64) }) };
+    if (hello && config.expect_presentation_change)
+      hello = { ...hello, rules_content: config.native.rules_content };
     const loaded = await rules.initialize(active, hello);
     if (loaded !== null) identity = loaded;
     return loaded;
@@ -82,6 +85,22 @@ try {
     ensure(serverHello !== undefined && serverHello.rules_content !== undefined,
       "server hello carries declared rules_content");
     ensure(canonical(identity!) === canonical(config.native.rules_bundle), "native/WASM exporter identity equality");
+    const translations = config.native.translations as JsonObject;
+    ensure(translations !== undefined && typeof translations.slash === "string"
+      && translations.slash !== "slash" && tr("slash") === translations.slash,
+      "Web translation matches native slash translation");
+    const extensionKey = Object.keys(translations).find(key => key.startsWith("sijyu_"));
+    ensure(extensionKey !== undefined && typeof translations[extensionKey] === "string"
+      && translations[extensionKey] !== extensionKey && tr(extensionKey) === translations[extensionKey],
+      "Web translation matches native extension translation");
+    if (config.expect_presentation_change === true) {
+      const changed = config.changed_translations as JsonObject;
+      ensure(typeof changed.slash === "string" && changed.slash !== "slash"
+        && tr("slash") === changed.slash,
+        "Web displays changed presentation translation");
+      ensure(canonical(identity!) === canonical(config.native.rules_bundle),
+        "presentation change preserves rules identity");
+    }
     session.disconnect(); rules.dispose();
     await rejected("old-web", null, "rules_identity_required");
     await rejected("bad-seal", { ...identity!, lua_hash: "0".repeat(64) }, "rules_identity_invalid");
