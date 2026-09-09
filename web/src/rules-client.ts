@@ -10,6 +10,26 @@ export interface RulesSelection {
   skill_name: string;
   skill_instance_id: number;
   user_string: string;
+  // Rearrangement prompts answer with two ordered lists instead of one set.
+  top: number[];
+  bottom: number[];
+}
+
+// Native detail for one ViewAs candidate. Only `available` decides activation;
+// the rest explains a disabled button and sizes the subcard step.
+export interface RulesSkill {
+  name: string;
+  instance_id: number;
+  available: boolean;
+  status: string;
+  v2: boolean;
+  subcard_min: number;
+  subcard_max: number;
+  usage_scope: string;
+  usage_used: number;
+  invalid: boolean;
+  response_or_use: boolean;
+  expand_pile: string;
 }
 
 export interface RulesEvaluation {
@@ -22,11 +42,36 @@ export interface RulesEvaluation {
   can_confirm: boolean;
   card_text: string;
   selectable_cards: number[];
-  skills: { name: string; instance_id: number; available: boolean }[];
+  // Zone of each selectable/selected card: hand, equip, hand_pile, expand_pile
+  // or sibling_pile. A shell groups by this instead of guessing from ownership.
+  card_zones: Record<string, string>;
+  selection_min: number;
+  selection_max: number;
+  // The shared ClientCore InteractionRequest this answer belongs to.
+  interaction: JsonObject;
+  skills: RulesSkill[];
   declarations: string[];
+  // SkillDialogInfo for the selected skill: guhuo, juguan, tiansuan or empty.
+  // The shell implements the shape, never a per-general branch.
+  declaration_dialog: JsonObject;
   next_targets: { candidates: string[]; max_votes: Record<string, number> };
   player_metrics?: JsonObject;
   wire: { command: number; reply_to: string; payload: JsonObject } | null;
+}
+
+// Prompts whose whole answer is native: a set the Room already sent, its
+// count contract and the canonical reply. No ViewAs card is built for these.
+const ENUMERATED_COMMANDS: readonly number[] = [
+  Command.SKILL_GUANXING, Command.SKILL_GONGXIN, Command.SKILL_YIJI
+];
+
+const NATIVE_COMMANDS: readonly number[] = [
+  Command.PLAY_CARD, Command.RESPONSE_CARD, Command.ASK_PEACH, Command.NULLIFICATION,
+  ...ENUMERATED_COMMANDS
+];
+
+export function isEnumeratedCommand(command: number): boolean {
+  return ENUMERATED_COMMANDS.includes(command);
 }
 
 // The committed native view of the connection. The browser never computes it.
@@ -93,8 +138,13 @@ export class RulesController {
   constructor(private readonly onChange: () => void) {}
 
   supports(command: number): boolean {
-    return [Command.PLAY_CARD, Command.RESPONSE_CARD, Command.ASK_PEACH,
-      Command.NULLIFICATION].some((value) => value === command);
+    return NATIVE_COMMANDS.includes(command);
+  }
+
+  // True while the shell should read its set and counts from the native
+  // structured request rather than from raw wire payload fields.
+  enumerated(command: number): boolean {
+    return isEnumeratedCommand(command);
   }
 
   // Correlation is the runtime's own generation/revision/request, not the
@@ -261,7 +311,7 @@ export class RulesController {
       this.error = rulesErrorMessage(last.reason);
     } else if (query !== null) {
       const parsed: unknown = last.evaluation;
-      if (!isEvaluation(parsed) || parsed.generation !== this.generation
+      if (!isRulesEvaluation(parsed) || parsed.generation !== this.generation
           || parsed.revision !== query.revision || parsed.request_id !== query.requestId)
         throw new Error("WASM 規則結果格式或 request 不符");
       this.result = parsed;
@@ -384,15 +434,28 @@ function nativeStatus(value: unknown): NativeStatus {
     synchronizing: value.synchronizing, failed: value.failed };
 }
 
-function isEvaluation(value: unknown): value is RulesEvaluation {
+function isSkill(skill: unknown): boolean {
+  return isObject(skill) && typeof skill.name === "string"
+    && Number.isSafeInteger(skill.instance_id) && typeof skill.available === "boolean"
+    && typeof skill.status === "string" && typeof skill.v2 === "boolean"
+    && typeof skill.invalid === "boolean" && typeof skill.response_or_use === "boolean"
+    && typeof skill.usage_scope === "string" && typeof skill.expand_pile === "string"
+    && Number.isSafeInteger(skill.subcard_min) && Number.isSafeInteger(skill.subcard_max)
+    && Number.isSafeInteger(skill.usage_used);
+}
+
+export function isRulesEvaluation(value: unknown): value is RulesEvaluation {
   if (!isObject(value) || value.schema_version !== 1 || typeof value.known !== "boolean"
       || typeof value.can_confirm !== "boolean" || typeof value.reason !== "string"
       || typeof value.card_text !== "string" || !Array.isArray(value.selectable_cards)
       || !value.selectable_cards.every((id) => Number.isSafeInteger(id) && Number(id) >= 0)
+      || !isObject(value.card_zones)
+      || !Object.values(value.card_zones).every((zone) => typeof zone === "string")
+      || !Number.isSafeInteger(value.selection_min) || !Number.isSafeInteger(value.selection_max)
+      || !isObject(value.interaction)
       || !Array.isArray(value.declarations) || !value.declarations.every((name) => typeof name === "string")
-      || !Array.isArray(value.skills) || !value.skills.every((skill) => isObject(skill)
-        && typeof skill.name === "string" && Number.isSafeInteger(skill.instance_id)
-        && typeof skill.available === "boolean") || !isObject(value.next_targets)
+      || !isObject(value.declaration_dialog)
+      || !Array.isArray(value.skills) || !value.skills.every(isSkill) || !isObject(value.next_targets)
       || !Array.isArray(value.next_targets.candidates)
       || !value.next_targets.candidates.every((name) => typeof name === "string")
       || !isObject(value.next_targets.max_votes)

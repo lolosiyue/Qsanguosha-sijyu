@@ -284,6 +284,10 @@ bool ClientRulesIngress::prepareQuery(int generation, int revision, const QStrin
         {QStringLiteral("generation"), m_generation}, {QStringLiteral("revision"), m_revision},
         {QStringLiteral("request_id"), requestId}, {QStringLiteral("command"), m_request.command},
         {QStringLiteral("payload"), QJsonValue::fromVariant(m_request.payload)},
+        // The shared ClientCore request built by ProtocolInteractionRequestBuilder.
+        // Enumerated prompts take their set/count contract from here rather than
+        // re-deriving one from the wire payload in a second place.
+        {QStringLiteral("interaction"), m_interaction.toJson()},
         {QStringLiteral("state"), snapshot(m_state)}, {QStringLiteral("selection"), selection}};
     return true;
 }

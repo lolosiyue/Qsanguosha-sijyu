@@ -81,7 +81,8 @@ async function setup() {
     setFrameSink(value) { sink = value; },
     interaction: { messageId: REQUEST, command: Command.PLAY_CARD, payload: {} },
     state: { cardIdSpace: 1 } };
-  const selection = { card_ids: [0], targets: ['b'], skill_name: '', skill_instance_id: 0, user_string: '' };
+  const selection = { card_ids: [0], targets: ['b'], skill_name: '', skill_instance_id: 0,
+    user_string: '', top: [], bottom: [] };
   const status = { generation: 1, revision: 0, request_id: '', active: true,
     synchronizing: false, failed: false };
   function ready(worker = workers.at(-1), generation = session.generation) {
@@ -105,7 +106,9 @@ async function setup() {
     const body = query && success && evaluation !== null ? {
       schema_version: 1, generation: query.generation, revision: query.revision,
       request_id: query.request_id, known, reason: '', can_confirm: false, card_text: '',
-      selectable_cards: [0], skills: [], declarations: [],
+      selectable_cards: [0], card_zones: { 0: 'hand' }, selection_min: 1, selection_max: 1,
+      interaction: { type: 'PlayCard', payload: {} }, skills: [], declarations: [],
+      declaration_dialog: {},
       next_targets: { candidates: ['b'], max_votes: { b: 1 } }, wire: null, ...evaluation,
     } : null;
     const results = message.ops.map((operation, index) => ({ schema_version: 1,

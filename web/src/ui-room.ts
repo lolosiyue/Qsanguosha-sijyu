@@ -6,6 +6,7 @@ import {
   roleIconUrls
 } from "./assets";
 import { playerHandLabel, targetRangeLabel } from "./player-metrics";
+import { formatPresentationEvent, logPlayerName } from "./log-text";
 import { tr } from "./i18n";
 import {
   Command,
@@ -20,6 +21,7 @@ import {
   isObject
 } from "./protocol";
 import type { PlayerState } from "./state";
+import type { RulesSkill } from "./rules-client";
 import { renderCard, skillBaseName, visibleSkills } from "./ui-cards";
 import { el } from "./ui-dom";
 import { interactionView } from "./ui-interaction";
@@ -27,6 +29,31 @@ import type { UiBind } from "./ui-types";
 
 function playerGeneralName(player: PlayerState | undefined): string {
   return asString(player?.general) || asString(player?.avatar);
+}
+
+const SKILL_STATUS_TEXT: Record<string, string> = {
+  missing_skill: "此規則套件沒有這個技能",
+  invalid_instance: "此技能實例已失效或不屬於你",
+  unavailable: "目前條件不允許發動",
+  unknown: "規則尚未判定"
+};
+
+// Why a candidate is greyed out, in the runtime's own words. Presentation only:
+// the button is enabled by `available`, never by this text.
+function skillHint(skill: RulesSkill | undefined, description: string): string {
+  if (!skill)
+    return description;
+  const notes: string[] = [];
+  if (!skill.available)
+    notes.push(SKILL_STATUS_TEXT[skill.status] ?? "目前無法發動");
+  if (skill.subcard_min >= 0)
+    notes.push(skill.subcard_min === skill.subcard_max
+      ? `子卡 ${skill.subcard_min} 張` : `子卡 ${skill.subcard_min}–${skill.subcard_max} 張`);
+  if (skill.usage_scope !== "none" && skill.usage_used >= 0)
+    notes.push(`已用 ${skill.usage_used} 次`);
+  if (skill.invalid)
+    notes.push("實例失效");
+  return [description, ...notes].filter((line) => line).join("\n");
 }
 
 function skillDescription(skillName: string): string {
@@ -183,12 +210,15 @@ function skillBar(bind: UiBind): HTMLElement {
   for (const skill of skills) {
     const selected = ui.selectedOption === skill.name && ui.skillInstance === skill.instanceId;
     const desc = skillDescription(skill.name);
+    const detail = evaluation?.known
+      ? evaluation.skills.find((candidate) =>
+        candidate.name === skill.name && candidate.instance_id === skill.instanceId)
+      : undefined;
     const button = el("button", {
       class: `skill-btn${selected ? " primary" : ""}`,
-      title: desc || tr(skill.name)
+      title: skillHint(detail, desc || tr(skill.name))
     }, [tr(skill.name)]);
-    const available = !!evaluation?.known && evaluation.skills.some((candidate) =>
-      candidate.name === skill.name && candidate.instance_id === skill.instanceId && candidate.available);
+    const available = !!detail?.available;
     // Descriptions remain visible; only native ViewAs candidates can be activated.
     if (!selected && (!nativeRules || !available))
       button.disabled = true;
