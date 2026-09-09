@@ -2,7 +2,7 @@ import { isObject, type JsonObject } from "./protocol";
 
 export const RULES_BRIDGE_SCHEMA = 2;
 const hash = /^[0-9a-f]{64}$/;
-const hashKeys = ["bundle_id", "cpp_hash", "card_registry_hash", "lua_hash", "bindings_abi"];
+const hashKeys = ["bundle_id", "code_id", "cpp_hash", "card_registry_hash", "lua_hash", "bindings_abi"];
 
 export function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
@@ -42,7 +42,12 @@ export async function verifyNativeIdentity(value: unknown): Promise<JsonObject> 
   delete unsigned.bundle_id;
   if (await sha256(new TextEncoder().encode(`qsan-rules-bundle-v1\0${canonical(unsigned)}`)) !== value.bundle_id)
     throw new Error("rules_identity_invalid");
-  if (value.content_profile !== "builtin-v1") throw new Error("rules_content_unsupported");
+  const code = { protocol_version: value.protocol_version, bridge_schema: value.bridge_schema,
+    cpp_hash: value.cpp_hash, bindings_abi: value.bindings_abi,
+    interaction_schemas: value.interaction_schemas };
+  if (await sha256(new TextEncoder().encode(`qsan-rules-code-v1\0${canonical(code)}`)) !== value.code_id)
+    throw new Error("rules_identity_invalid");
+  if (value.content_profile !== "declared-v1") throw new Error("rules_content_unsupported");
   if (value.bridge_schema !== RULES_BRIDGE_SCHEMA) throw new Error("rules_reload_required");
   return value;
 }
@@ -50,13 +55,13 @@ export async function verifyNativeIdentity(value: unknown): Promise<JsonObject> 
 export function rulesCompatibilityError(server: unknown, client: unknown): string {
   if (isObject(server) && server.error_code === "rules_content_unsupported") return "rules_content_unsupported";
   if (!isRulesIdentity(server) || !isRulesIdentity(client)) return "rules_reload_required";
-  if (server.content_profile !== "builtin-v1" || client.content_profile !== server.content_profile)
+  if (server.content_profile !== "declared-v1" || client.content_profile !== server.content_profile)
     return "rules_content_unsupported";
-  if (client.bridge_schema !== server.bridge_schema || client.bindings_abi !== server.bindings_abi)
-    return "rules_reload_required";
   const supported = client.interaction_schemas as JsonObject;
   if (Object.entries(server.interaction_schemas as JsonObject).some(([key, value]) => supported[key] !== value))
     return "rules_interaction_unsupported";
+  if (server.code_id !== client.code_id)
+    return "rules_version_mismatch";
   return canonical(server) === canonical(client) ? "" : "rules_version_mismatch";
 }
 

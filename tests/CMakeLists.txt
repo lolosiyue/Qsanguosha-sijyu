@@ -770,3 +770,32 @@ set_tests_properties(qsanguosha_rules_identity PROPERTIES LABELS "protocol;fast"
 add_test(NAME qsanguosha_rules_bundle_harness
     COMMAND "${Python3_EXECUTABLE}" "${QSAN_TEST_ROOT}/tests/client_runtime/check-rules-bundle.py" --self-test)
 set_tests_properties(qsanguosha_rules_bundle_harness PROPERTIES LABELS "client;protocol;fast" TIMEOUT 15)
+
+# Pure-data manifest contract: no Engine, Lua state, or filesystem.
+add_executable(qsanguosha_rules_content_manifest_tests
+    protocol/rules-content-manifest-test.cpp
+    ${QSAN_TEST_ROOT}/src/core/rules-content-manifest.cpp)
+target_include_directories(qsanguosha_rules_content_manifest_tests PRIVATE ${QSAN_TEST_ROOT}/src/core)
+target_link_libraries(qsanguosha_rules_content_manifest_tests PRIVATE Qt6::Core)
+if(MSVC)
+    target_compile_options(qsanguosha_rules_content_manifest_tests PRIVATE /utf-8)
+endif()
+add_test(NAME qsanguosha_rules_content_manifest COMMAND qsanguosha_rules_content_manifest_tests)
+set_tests_properties(qsanguosha_rules_content_manifest PROPERTIES LABELS "protocol;fast" TIMEOUT 15)
+
+add_test(NAME qsanguosha_extension_manifest
+    COMMAND "${Python3_EXECUTABLE}" "${QSAN_TEST_ROOT}/tests/client_runtime/check-extension-manifest.py"
+            --root "${QSAN_TEST_ROOT}")
+set_tests_properties(qsanguosha_extension_manifest PROPERTIES LABELS "client;protocol;fast" TIMEOUT 15)
+add_test(NAME qsanguosha_extension_manifest_selftest
+    COMMAND "${Python3_EXECUTABLE}" "${QSAN_TEST_ROOT}/tests/client_runtime/check-extension-manifest.py"
+            --self-test)
+set_tests_properties(qsanguosha_extension_manifest_selftest PROPERTIES LABELS "client;protocol;fast" TIMEOUT 15)
+
+if(TARGET qsanguosha_rules_fixture_runner)
+    add_test(NAME qsanguosha_rules_manifest_native
+        COMMAND "${Python3_EXECUTABLE}" "${QSAN_TEST_ROOT}/tests/client_runtime/check-rules-bundle.py"
+                --native-only --native-runner "$<TARGET_FILE:qsanguosha_rules_fixture_runner>"
+                --artifacts "${CMAKE_CURRENT_BINARY_DIR}/rules-manifest-native")
+    set_tests_properties(qsanguosha_rules_manifest_native PROPERTIES LABELS "client;protocol" TIMEOUT 180)
+endif()

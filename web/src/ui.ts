@@ -1,9 +1,4 @@
-import { Command, asBool, asNumberList, asString } from "./protocol";
-import {
-  cardSelectable,
-  playerSelectable,
-  useMode
-} from "./eligibility";
+import { Command, asBool, asNumberList, asString, asStringList } from "./protocol";
 import { LiveSession, defaultWsUrl, parseRoute } from "./session";
 import { RulesController } from "./rules-client";
 import {
@@ -76,23 +71,6 @@ function seedSelection(): void {
   }
 }
 
-function pruneSelection(): void {
-  const interaction = session.interaction;
-  if (!interaction)
-    return;
-  // Native candidates describe the next step, not the already selected cards.
-  // Keep the ordered draft so an invalidated selection can still be removed.
-  if (rules.supports(interaction.command))
-    return;
-  const { command, payload } = interaction;
-  const skill = ui.selectedOption;
-  ui.selectedCards = ui.selectedCards.filter((id) =>
-    id < 0 || cardSelectable(session.state, command, payload, id, skill));
-  const cardId = currentCardId();
-  ui.selectedPlayers = ui.selectedPlayers.filter((name) =>
-    playerSelectable(session.state, command, payload, name, cardId, ui.selectedPlayers, skill));
-}
-
 function isCardClickable(cardId: number): boolean {
   const interaction = session.interaction;
   if (!interaction)
@@ -103,7 +81,7 @@ function isCardClickable(cardId: number): boolean {
     const result = rules.current(session, rulesSelection()) ? rules.result : null;
     return !!result?.known && result.selectable_cards.includes(cardId);
   }
-  return cardSelectable(session.state, interaction.command, interaction.payload, cardId, ui.selectedOption);
+  return true;
 }
 
 function isPlayerClickable(name: string): boolean {
@@ -114,14 +92,9 @@ function isPlayerClickable(name: string): boolean {
     const result = rules.current(session, rulesSelection()) ? rules.result : null;
     return !!result?.known && result.next_targets.candidates.includes(name);
   }
-  const cardId = currentCardId();
   if (interaction.command === Command.CHOOSE_PLAYER)
-    return playerSelectable(session.state, interaction.command, interaction.payload, name, cardId, ui.selectedPlayers, ui.selectedOption);
-  if (useMode(interaction.command) !== "play")
-    return false;
-  if (!ui.selectedOption && cardId < 0)
-    return false;
-  return playerSelectable(session.state, interaction.command, interaction.payload, name, cardId, ui.selectedPlayers, ui.selectedOption);
+    return asStringList(interaction.payload.players).includes(name);
+  return false;
 }
 
 function resetSelection(): void {
@@ -168,7 +141,7 @@ function app(): HTMLElement {
 }
 
 const rules = new RulesController(() => render());
-session.setRulesProvider(activeSession => rules.initialize(activeSession));
+session.setRulesProvider((activeSession, hello) => rules.initialize(activeSession, hello));
 let selectionRequest = "";
 
 const bind: UiBind = {
@@ -192,7 +165,6 @@ export function render(): void {
     selectionRequest = request;
     resetSelection();
   }
-  pruneSelection();
   seedSelection();
   rules.update(session, rulesSelection());
   const root = app();

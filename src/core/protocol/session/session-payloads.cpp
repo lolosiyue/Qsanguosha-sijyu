@@ -182,6 +182,8 @@ QVariantMap ServerHelloPayload::toVariant() const
             {QStringLiteral("card_count"), cardCount}};
     if (!rulesBundle.isEmpty())
         result.insert(QStringLiteral("rules_bundle"), rulesBundle.toVariantMap());
+    if (!rulesContent.isEmpty())
+        result.insert(QStringLiteral("rules_content"), rulesContent.toVariantMap());
     return result;
 }
 
@@ -207,6 +209,11 @@ bool ServerHelloPayload::parse(const QVariant &value, ServerHelloPayload *payloa
         if (object.value(QStringLiteral("rules_bundle")).userType() != QMetaType::QVariantMap)
             return fail(error, QStringLiteral("ServerHelloPayload.rules_bundle must be an object"));
         parsed.rulesBundle = QJsonObject::fromVariantMap(object.value(QStringLiteral("rules_bundle")).toMap());
+    }
+    if (object.contains(QStringLiteral("rules_content"))) {
+        if (object.value(QStringLiteral("rules_content")).userType() != QMetaType::QVariantMap)
+            return fail(error, QStringLiteral("ServerHelloPayload.rules_content must be an object"));
+        parsed.rulesContent = QJsonObject::fromVariantMap(object.value(QStringLiteral("rules_content")).toMap());
     }
     *payload = parsed;
     return true;

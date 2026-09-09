@@ -1,8 +1,78 @@
 # 讓正式使用的擴展包進入相容範圍 — 設計
 
 日期:2026-09-09
-狀態:設計已確認,未實作
+狀態:P1／P2／P3 已實作並完成聚焦驗收（2026-09-09）
 基線:`debug` @ `401e7f3`,即 W1/W2/W3b 之後
+
+## 2026-09-09 實作與驗收
+
+P2 production WASM 已移除內嵌內容；fixture WASM 保留原有內嵌測試資產。
+Worker 先準備 code，收到 Hello 的 `rules_content` 後先比 `code_id`，再從
+同源固定 `/rules/content/<sha256>` 取檔、驗 size/hash、注入 `/assets`，最後
+初始化 Engine 並核對完整身份。注入後同時檢查 FS 精確集合與原生
+`QDir` 的 extension 檔案集合。WebSocket 的 30 秒 admission deadline 沒有延長。
+上次成功的 manifest 可在連線前預熱；內容不同會換 Worker，協商前的 frame
+會保留到新 runtime 獲准使用。
+
+P3 已刪除 `eligibility.ts` 與其 ancestor 表；discard/exchange 的候選牌、
+pattern、棄牌限制與回覆都由 native runtime 決定。交換牌不套用棄牌限制。
+
+驗收使用 `addFunction.lua`、`sijyu.lua`、`animecard.lua`：前者提供 sijyu 的
+`addToSkills` 依賴；sijyu 本身只有技能牌，實體牌測試使用 animecard 的裝備牌。
+沒有修改外部擴展內容，也沒有測完整對局。
+
+- G3/G4：真實 Chromium production Worker／server Hello／SIGNUP 通過；native/WASM
+  身份相等；合法但不同的 code_id 在零內容請求下被拒絕；改一 byte 的內容被拒絕；
+  舊 Web loader 與新 WASM 配對被拒絕。內容換 Worker／舊回覆失效另由 Controller 測試驗證。
+- G5：native 與 WASM snapshot ABI 各兩輪、每輪 18 queries，逐位元組相同；含真實
+  擴展牌 class、花色、裝備位置、棄牌限制、交換及重複選牌。測試 Worker 只用於
+  snapshot ABI 驗證；production Worker 仍只接受 raw frame ingress。
+- 既有 ingress corpus：每輪 78 operations，native／Chromium WASM 通過。
+- 聚焦 CTest 8/8、Web 57/57、Controller 16/16、TypeScript 與 Vite 編譯通過。
+  本機缺少未入庫的 `web/public/translations.json`，獨立翻譯資產檢查未通過；
+  不把 Vite 編譯視為完整發佈包驗收。
+
+證據目錄：`artifacts/extension-compatibility-20260909/` 的 `bundle-final/`、
+`session-browser-final/`、`ingress3/`。一般 native CTest 維持 builtin-only；
+真擴展 snapshot gate 需加 `--with-extensions`，CI 透過 `--extension-root`
+讀取另外下載的外部內容，不污染 source tree。
+
+### 內容部署
+
+先從同一份完整宣告的 server 資產樹匯出，再打包內容；不由 Web 自行生成規則身份。
+
+```sh
+build/linux-gui-gcc/qsanguosha_rules_fixture_runner \
+  --asset-root /path/to/declared-assets --export-rules-bundle --output rules-export.json
+python3 tools/package-rules-content.py --bundle rules-export.json \
+  --asset-root /path/to/declared-assets --destination web/public/rules/content
+python3 tools/package-web-runtime.py \
+  --module build/rules-wasm/web-wasm/RelWithDebInfo/qsanguosha_client_wasm.mjs \
+  --destination web/public/rules
+```
+
+HTTP 服務把 `web/public/rules/content/` 映射至 `/rules/content/`；內容檔名就是
+SHA-256，可設 immutable cache。只改已宣告 Lua 不需要重建 WASM；更改 C++、
+bindings 或互動 schema 仍需重建並重新配對 Web loader。
+
+這次驗收不等於整個本地擴展集合已完成宣告：未宣告的 chat_config、sqlite3、
+lang 等仍會被身份閘拒絕。翻譯載入器目前仍按 §2.4 掃描 language 目錄；配送與
+精確 FS 驗證已把瀏覽器可見檔案限制在宣告內，改成顯式翻譯迭代仍可另外處理。
+
+### 尚未完成與範圍界線
+
+1. **完整本地內容宣告與對等驗收**：補齊 chat_config、sqlite3、lang 等的角色與依賴；
+   目前通過的真實三擴展案例不能代替全部內容。完整舊載入／新 manifest 的 registry
+   對照也尚未完成，目前只有初始 102 條的 QDir 順序對照與合成 G1 測試。
+2. **顯式翻譯載入**：把 language 目錄掃描改成依宣告逐檔載入；目前配送已限制
+   瀏覽器可見集合，這項仍未實作。
+3. **發佈資產驗收**：產生 `web/public/translations.json`，通過翻譯檢查，並從完整
+   發佈成品驗證內容路由與資產。現有測試不是完整發佈驗收。
+4. **追加順序守衛**：初始清單測試仍要求 filename 排序；第一次追加排序位置不在
+   末尾的檔名之前，需改為保護既有 manifest 前綴。
+
+完整對局依使用者要求免測；pthread、瀏覽器單機、效能與記憶體上限明文不屬於
+本輪。瀏覽器單機另需執行緒、loopback 傳輸、AI 配送與對局生命週期，見 §7。
 
 ## 0. 一句話
 

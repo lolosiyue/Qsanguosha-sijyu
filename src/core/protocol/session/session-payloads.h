@@ -23,6 +23,7 @@ struct ServerHelloPayload
     QString modName;
     int cardCount = 0;
     QJsonObject rulesBundle;
+    QJsonObject rulesContent;
 
     QVariantMap toVariant() const;
     static bool parse(const QVariant &value, ServerHelloPayload *payload,

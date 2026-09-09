@@ -2,6 +2,7 @@
 #include "client-rules-host.h"
 #include "client-player-model.h"
 #include "engine.h"
+#include "rules-bundle-exporter.h"
 #include "protocol.h"
 #include "server-info.h"
 
@@ -76,14 +77,49 @@ QJsonObject request(int count, int cardId, bool skill = false)
             {"targets", skill ? QJsonArray() : QJsonArray{"sgs2"}},
             {"skill_name", skill ? "wusheng" : ""}, {"skill_instance_id", 0}, {"user_string", ""}}}};
 }
+
+QJsonObject discardRequest(int count, int cardId, bool exchange,
+                           const QString &pattern = QStringLiteral("."),
+                           int place = Player::PlaceHand, bool includeEquip = false,
+                           bool duplicate = false, bool discardLimited = false)
+{
+    auto value = request(count, cardId);
+    auto state = value.value("state").toObject();
+    auto players = state.value("players").toArray();
+    auto self = players.at(0).toObject();
+    self.insert("hand_count", place == Player::PlaceHand ? 1 : 0);
+    self.insert("card_limitations", discardLimited
+        ? QJsonArray{QJsonObject{{"methods", QJsonArray{"discard"}},
+            {"pattern", pattern}, {"reason", "probe"}, {"single_turn", false}}}
+        : QJsonArray());
+    players[0] = self;
+    state.insert("players", players);
+    auto cards = state.value("cards").toArray();
+    auto card = cards.at(0).toObject();
+    card.insert("place", place);
+    cards[0] = card;
+    state.insert("cards", cards);
+    value.insert("state", state);
+    value.insert("command", static_cast<int>(exchange ? QSanProtocol::S_COMMAND_EXCHANGE_CARD
+                                                       : QSanProtocol::S_COMMAND_DISCARD_CARD));
+    value.insert("payload", QJsonObject{{"min_cards", duplicate ? 2 : 1},
+        {"max_cards", duplicate ? 2 : 1}, {"include_equip", includeEquip}, {"pattern", pattern}});
+    value.insert("selection", QJsonObject{{"card_ids", duplicate
+        ? QJsonArray{cardId, cardId} : QJsonArray{cardId}},
+        {"targets", QJsonArray()}});
+    return value;
+}
 }
 
 int main(int argc, char **argv)
 {
     try {
         // No QCoreApplication here: the production host must create and own it.
-        check(argc == 5 && QString::fromLocal8Bit(argv[1]) == "--asset-root"
+        check((argc == 5 || argc == 6) && QString::fromLocal8Bit(argv[1]) == "--asset-root"
             && QString::fromLocal8Bit(argv[3]) == "--output", "expected --asset-root DIR --output FILE");
+        const bool withExtensions = argc == 6
+            && QString::fromLocal8Bit(argv[5]) == "--with-extensions";
+        check(argc != 6 || withExtensions, "unknown probe option");
         const QString assets = QDir(QString::fromLocal8Bit(argv[2])).absolutePath();
         const QString output = QDir::current().absoluteFilePath(QString::fromLocal8Bit(argv[4]));
         const QString work = QDir::current().absoluteFilePath("work");
@@ -98,6 +134,8 @@ int main(int argc, char **argv)
         check(host.initialize() == 0, "production initialization failed");
         const QByteArray registryBytes = read(work + "/init.json");
         const QJsonObject registry = parse(registryBytes);
+        const QJsonObject contentManifest = QSanRules::exportContentManifest(*Sanguosha);
+        check(!contentManifest.isEmpty(), "production host did not export rules content manifest");
         Engine *const engine = Sanguosha;
         auto *const lua = engine->getLuaState();
         QCoreApplication *const application = QCoreApplication::instance();
@@ -105,14 +143,24 @@ int main(int argc, char **argv)
         check(host.initialize() == 0 && read(work + "/init.json") == registryBytes
             && Sanguosha == engine && QCoreApplication::instance() == application,
               "repeated initialize must preserve the live instance and registry");
-        int slash = -1, red = -1;
+        int slash = -1, red = -1, extensionCard = -1;
+        QString extensionClass, extensionSuit;
         for (const auto &entry : registry.value("registry").toArray()) {
             const auto card = entry.toObject();
             if (slash < 0 && card.value("object_name") == QJsonValue("slash")) slash = card.value("id").toInt();
             const int suit = card.value("suit").toInt();
             if (red < 0 && (suit == Card::Heart || suit == Card::Diamond)) red = card.value("id").toInt();
+            if (extensionCard < 0 && card.value("package").toString().contains("animecard", Qt::CaseInsensitive)) {
+                extensionCard = card.value("id").toInt();
+                extensionClass = card.value("class_name").toString();
+                extensionSuit = suit == Card::Heart ? QStringLiteral("heart")
+                    : suit == Card::Diamond ? QStringLiteral("diamond")
+                    : suit == Card::Club ? QStringLiteral("club") : QStringLiteral("spade");
+            }
         }
         check(slash >= 0 && red >= 0, "builtin registry must supply Slash and a red subcard");
+        if (withExtensions)
+            check(extensionCard >= 0 && !extensionClass.isEmpty(), "declared animecard extension card missing");
         const int count = registry.value("card_count").toInt();
         ServerInfo.GameMode = "host-sentinel";
         ServerInfo.GameRuleMode = "sentinel-rule";
@@ -128,7 +176,7 @@ int main(int argc, char **argv)
             const QByteArray bytes = read(resultPath);
             const auto result = parse(bytes);
             check(result.value("known") == QJsonValue(known)
-                && result.value("can_confirm") == QJsonValue(confirm), "query semantic assertion failed");
+                && result.value("can_confirm") == QJsonValue(confirm), label);
             check(result.value("request_id") == input.value("request_id"), "uint64 request identity changed");
             if (confirm) check(result.value("wire").toObject().value("reply_to") == input.value("request_id"),
                                "canonical wire identity changed");
@@ -167,6 +215,29 @@ int main(int argc, char **argv)
         evaluate("wrong_schema", bad, false, false);
         const auto viewAs = request(count, red, true);
         evaluate("wusheng_response", viewAs, true, true);
+        evaluate("discard_method", discardRequest(count, slash, false), true, true);
+        evaluate("exchange_method", discardRequest(count, slash, true), true, true);
+        if (withExtensions) {
+            evaluate("extension_class_pattern",
+                discardRequest(count, extensionCard, false, extensionClass), true, true);
+            evaluate("extension_suit_pattern",
+                discardRequest(count, extensionCard, false, QStringLiteral(".|") + extensionSuit + QStringLiteral("|.|hand"),
+                              Player::PlaceHand, false), true, true);
+            // ExpPattern's place operand is defined for virtual cards' subcards;
+            // a physical card is proved to be equipped by the state place and
+            // include_equip pool, while its native class pattern remains active.
+            auto equip = discardRequest(count, extensionCard, false, extensionClass,
+                                        Player::PlaceEquip, true);
+            evaluate("extension_equip_pattern", equip, true, true);
+            evaluate("extension_discard_limited", discardRequest(count, extensionCard, false,
+                extensionClass, Player::PlaceHand, false, false, true), true, false);
+            evaluate("extension_exchange_ignores_discard_limit", discardRequest(count, extensionCard, true,
+                extensionClass, Player::PlaceHand, false, false, true), true, true);
+            const auto duplicate = evaluate("extension_duplicate_selection", discardRequest(count, extensionCard, true,
+                extensionClass, Player::PlaceHand, false, true), false, false);
+            check(parse(duplicate).value("reason").toString() == QStringLiteral("duplicate_card_ids"),
+                  "duplicate selection must fail at input validation");
+        }
         check(evaluate("A_after_ViewAs", a, true, true) == first, "temporary ViewAs contaminated A");
         // Transport failures are checked natively; the Worker intentionally
         // treats them as fatal and must be replaced rather than reused.
@@ -186,12 +257,17 @@ int main(int argc, char **argv)
         const auto terminal = parse(read(resultPath));
         check(terminal.value("wire").isNull() && terminal.value("can_confirm") == QJsonValue(false),
               "closed host exposed a successful reply");
+        QJsonArray nativeChecks{"preinit", "idempotent_init", "same_engine_lua",
+            "server_info_restore", "self_context_cleanup", "deferred_delete", "A_B_A",
+            "invalid_scene_recovery", "ViewAs_cleanup", "discard_method", "exchange_method"};
+        if (withExtensions)
+            nativeChecks << "extension_class_pattern" << "extension_suit_pattern" << "extension_equip_pattern"
+                << "extension_discard_limited" << "extension_exchange_ignores_discard_limit"
+                << "extension_duplicate_selection";
+        nativeChecks << "bad_json_recovery" << "graceful_shutdown" << "terminal_shutdown";
         write(output, encode({{"schema_version", 1}, {"status", "PASS"},
-            {"registry", registry}, {"calls", calls},
-            {"native_checks", QJsonArray{"preinit", "idempotent_init", "same_engine_lua",
-                "server_info_restore", "self_context_cleanup", "deferred_delete", "A_B_A",
-                "invalid_scene_recovery", "ViewAs_cleanup", "bad_json_recovery",
-                "graceful_shutdown", "terminal_shutdown"}}}));
+            {"registry", registry}, {"rules_content", contentManifest}, {"calls", calls},
+            {"native_checks", nativeChecks}}));
         std::fprintf(stderr, "[AUTOTEST] RULES_SESSION_LIFECYCLE status=PASS\n");
         return 0;
     } catch (const std::exception &error) {

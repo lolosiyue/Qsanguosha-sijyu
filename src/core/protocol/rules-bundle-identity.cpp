@@ -20,8 +20,20 @@ QString digest(const QString &domain, const QJsonValue &value)
         domain.toUtf8() + '\0' + canonical(value), QCryptographicHash::Sha256).toHex());
 }
 
+QJsonObject sealCode(QJsonObject identity)
+{
+    QJsonObject code;
+    for (const char *key : {"protocol_version", "bridge_schema", "cpp_hash",
+                            "bindings_abi", "interaction_schemas"})
+        code.insert(QLatin1String(key), identity.value(QLatin1String(key)));
+    identity.remove(QStringLiteral("code_id"));
+    identity.insert(QStringLiteral("code_id"), digest(QStringLiteral("qsan-rules-code-v1"), code));
+    return identity;
+}
+
 QJsonObject seal(QJsonObject identity)
 {
+    identity = sealCode(identity);
     identity.remove(QStringLiteral("bundle_id"));
     identity.insert(QStringLiteral("bundle_id"), digest(QStringLiteral("qsan-rules-bundle-v1"), identity));
     return identity;
@@ -40,7 +52,7 @@ bool validate(const QJsonObject &identity)
         || identity.value(QStringLiteral("ruleset")).toString().isEmpty()
         || identity.value(QStringLiteral("content_profile")).toString().isEmpty())
         return false;
-    for (const char *key : {"bundle_id", "cpp_hash", "card_registry_hash", "lua_hash", "bindings_abi"})
+    for (const char *key : {"bundle_id", "code_id", "cpp_hash", "card_registry_hash", "lua_hash", "bindings_abi"})
         if (!hash.match(identity.value(QLatin1String(key)).toString()).hasMatch())
             return false;
     const auto packages = identity.value(QStringLiteral("packages"));
@@ -59,6 +71,9 @@ bool validate(const QJsonObject &identity)
     for (auto it = object.begin(); it != object.end(); ++it)
         if (it.key().isEmpty() || !hash.match(it.value().toString()).hasMatch())
             return false;
+    if (sealCode(identity).value(QStringLiteral("code_id"))
+        != identity.value(QStringLiteral("code_id")))
+        return false;
     return seal(identity).value(QStringLiteral("bundle_id")) == identity.value(QStringLiteral("bundle_id"));
 }
 
@@ -68,17 +83,16 @@ QString compatibilityError(const QJsonObject &server, const QJsonObject &client,
         return required ? QStringLiteral("rules_identity_required") : QString();
     if (!validate(client))
         return QStringLiteral("rules_identity_invalid");
-    if (!validate(server) || server.value(QStringLiteral("content_profile")) != QLatin1String("builtin-v1")
+    if (!validate(server) || server.value(QStringLiteral("content_profile")) != QLatin1String("declared-v1")
         || client.value(QStringLiteral("content_profile")) != server.value(QStringLiteral("content_profile")))
         return QStringLiteral("rules_content_unsupported");
-    if (client.value(QStringLiteral("bridge_schema")) != server.value(QStringLiteral("bridge_schema"))
-        || client.value(QStringLiteral("bindings_abi")) != server.value(QStringLiteral("bindings_abi")))
-        return QStringLiteral("rules_reload_required");
     const auto requiredSchemas = server.value(QStringLiteral("interaction_schemas")).toObject();
     const auto supportedSchemas = client.value(QStringLiteral("interaction_schemas")).toObject();
     for (auto it = requiredSchemas.begin(); it != requiredSchemas.end(); ++it)
         if (supportedSchemas.value(it.key()) != it.value())
             return QStringLiteral("rules_interaction_unsupported");
+    if (server.value(QStringLiteral("code_id")) != client.value(QStringLiteral("code_id")))
+        return QStringLiteral("rules_version_mismatch");
     if (server.value(QStringLiteral("bundle_id")) != client.value(QStringLiteral("bundle_id")))
         return QStringLiteral("rules_version_mismatch");
     return {};

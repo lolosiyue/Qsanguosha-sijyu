@@ -1422,6 +1422,8 @@ QList<ProtocolFlowDescriptor> buildDescriptors()
         if (descriptor.targetSchema == QLatin1String("ServerHelloPayload")
             || descriptor.targetSchema == QLatin1String("SignupRequestPayload"))
             descriptor.optionalFields.append(QStringLiteral("rules_bundle"));
+        if (descriptor.targetSchema == QLatin1String("ServerHelloPayload"))
+            descriptor.optionalFields.append(QStringLiteral("rules_content"));
         descriptor.currentPayloadShape = QStringLiteral("typed_object");
         descriptor.parser = descriptor.targetSchema == QLatin1String("InteractionRequestPayload")
             || descriptor.targetSchema == QLatin1String("InteractionReplyPayload")

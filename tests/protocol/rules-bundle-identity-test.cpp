@@ -43,7 +43,7 @@ QJsonObject identity()
         {QStringLiteral("protocol_version"), 2},
         {QStringLiteral("bridge_schema"), QSanRules::BridgeSchema},
         {QStringLiteral("ruleset"), QStringLiteral("sijyu")},
-        {QStringLiteral("content_profile"), QStringLiteral("builtin-v1")},
+        {QStringLiteral("content_profile"), QStringLiteral("declared-v1")},
         {QStringLiteral("cpp_hash"), QSanRules::digest(QStringLiteral("cpp"), QStringLiteral("rules-v1"))},
         {QStringLiteral("card_registry_hash"), QSanRules::digest(QStringLiteral("cards"), cards())},
         {QStringLiteral("lua_hash"), luaHash(QStringLiteral("return 1"))},
@@ -131,10 +131,10 @@ bool matchingAndMismatchingBundles()
         || !expectError(server, changed(server, QStringLiteral("ruleset"), QStringLiteral("other-ruleset")),
                         true, QStringLiteral("rules_version_mismatch"), QStringLiteral("different ruleset"))
         || !expectError(server, changed(server, QStringLiteral("bridge_schema"), 1),
-                        true, QStringLiteral("rules_reload_required"), QStringLiteral("old bridge requires reload"))
+                        true, QStringLiteral("rules_version_mismatch"), QStringLiteral("old bridge changes code identity"))
         || !expectError(server, changed(server, QStringLiteral("bindings_abi"),
                             QSanRules::digest(QStringLiteral("abi"), QStringLiteral("bindings-v0"))),
-                        true, QStringLiteral("rules_reload_required"), QStringLiteral("old bindings require reload"))) {
+                        true, QStringLiteral("rules_version_mismatch"), QStringLiteral("old bindings change code identity"))) {
         return false;
     }
 
@@ -158,11 +158,40 @@ bool matchingAndMismatchingBundles()
                        QStringLiteral("equal unsupported profiles cannot opt into extension support"));
 }
 
+bool codeIdentityIsSeparable()
+{
+    QJsonObject server = identity();
+    QJsonObject client = identity();
+    if (!expect(server.value(QStringLiteral("code_id")).toString().size() == 64,
+                QStringLiteral("sealed identity carries a code_id")))
+        return false;
+
+    client.insert(QStringLiteral("lua_hash"), luaHash(QStringLiteral("other")));
+    client = QSanRules::seal(client);
+    if (!expect(client.value(QStringLiteral("code_id")) == server.value(QStringLiteral("code_id")),
+                QStringLiteral("content change leaves code_id untouched"))
+        || !expect(QSanRules::compatibilityError(server, client, true)
+                       == QStringLiteral("rules_version_mismatch"),
+                   QStringLiteral("content divergence reports a version mismatch")))
+        return false;
+
+    QJsonObject other = identity();
+    other.insert(QStringLiteral("bindings_abi"), QString(64, QLatin1Char('a')));
+    other = QSanRules::seal(other);
+    return expect(other.value(QStringLiteral("code_id")) != server.value(QStringLiteral("code_id")),
+                  QStringLiteral("bindings change moves code_id"))
+        && expect(QSanRules::compatibilityError(server, other, true)
+                      == QStringLiteral("rules_version_mismatch"),
+                  QStringLiteral("code divergence is reported without content comparison"));
+}
+
 bool invalidIdentitiesRejected()
 {
     const QJsonObject server = identity();
     QJsonObject tampered = server;
     tampered.insert(QStringLiteral("lua_hash"), luaHash(QStringLiteral("return 3")));
+    QJsonObject tamperedCodeId = server;
+    tamperedCodeId.insert(QStringLiteral("code_id"), QString(64, QLatin1Char('f')));
     QJsonObject falseBundle = server;
     falseBundle.insert(QStringLiteral("bundle_id"), QString(64, QLatin1Char('0')));
     const QJsonObject fractional = changed(server, QStringLiteral("bridge_schema"), 2.5);
@@ -171,7 +200,7 @@ bool invalidIdentitiesRejected()
         QJsonArray{QStringLiteral("standard"), QStringLiteral("standard")});
     const QJsonObject unsupportedProtocol = changed(server, QStringLiteral("protocol_version"), 3);
     const QJsonObject unsupportedIdentity = changed(server, QStringLiteral("schema_version"), 2);
-    for (const QJsonObject &client : {tampered, falseBundle, fractional, malformedHash,
+    for (const QJsonObject &client : {tampered, tamperedCodeId, falseBundle, fractional, malformedHash,
                                      duplicatePackage, unsupportedProtocol, unsupportedIdentity}) {
         if (!expect(!QSanRules::validate(client), QStringLiteral("invalid identity fails validation"))
             || !expectError(server, client, true, QStringLiteral("rules_identity_invalid"),
@@ -275,7 +304,7 @@ bool sessionRoundTrips()
 int main()
 {
     if (!canonicalContract() || !matchingAndMismatchingBundles()
-        || !invalidIdentitiesRejected() || !sessionRoundTrips()) {
+        || !codeIdentityIsSeparable() || !invalidIdentitiesRejected() || !sessionRoundTrips()) {
         return 1;
     }
     QTextStream(stdout) << "rules bundle identity: " << caseCount << " checks passed\n";

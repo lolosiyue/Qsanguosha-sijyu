@@ -1,5 +1,5 @@
-import { RULES_BRIDGE_SCHEMA, isRulesIdentity, rulesErrorMessage } from "./rules-identity";
-import { cardRecord, installRulesCardCatalog } from "./i18n";
+import { RULES_BRIDGE_SCHEMA, isRulesIdentity, rulesErrorMessage, verifyNativeIdentity, canonical } from "./rules-identity";
+import { installRulesCardCatalog } from "./i18n";
 import { Command, asNumber, asString, isObject, type JsonObject } from "./protocol";
 import { INTERACTION_COMMANDS } from "./replies";
 import type { LiveSession } from "./session";
@@ -67,7 +67,7 @@ const ENUMERATED_COMMANDS: readonly number[] = [
 
 const NATIVE_COMMANDS: readonly number[] = [
   Command.PLAY_CARD, Command.RESPONSE_CARD, Command.ASK_PEACH, Command.NULLIFICATION,
-  ...ENUMERATED_COMMANDS
+  Command.DISCARD_CARD, Command.EXCHANGE_CARD, ...ENUMERATED_COMMANDS
 ];
 
 export function isEnumeratedCommand(command: number): boolean {
@@ -121,18 +121,100 @@ export class RulesController {
   private identity: JsonObject | null = null;
   private identityWait: { resolve(value: JsonObject): void; reject(error: Error): void } | null = null;
 
-  initialize(session: LiveSession): Promise<JsonObject> {
-    this.releaseWorker();
-    this.session = session;
-    this.generation = session.generation;
-    this.error = "";
-    if (this.disposed) return Promise.reject(new Error("rules_reload_required"));
-    // The socket opens only after this resolves, so no frame can be missed.
-    session.setFrameSink((generation, outgoing, frame) => this.observe(generation, outgoing, frame));
+  private code: JsonObject | null = null;
+  private content: JsonObject | null = null;
+  private admitted = false;
+  private prepareWait: { resolve(): void; reject(error: Error): void } | null = null;
+
+  async initialize(session: LiveSession, hello?: JsonObject): Promise<JsonObject | null> {
+    const generation = session.generation;
+    if (!hello) {
+      this.releaseWorker();
+      this.session = session;
+      this.generation = generation;
+      this.error = "";
+      if (this.disposed) throw new Error("rules_reload_required");
+      // Capture Hello even while a new content VM is being prepared.
+      session.setFrameSink((value, outgoing, frame) => this.observe(value, outgoing, frame));
+      await this.prepareWorker();
+      if (generation !== session.generation || generation !== this.generation || this.disposed)
+        throw new Error("rules_reload_required");
+      const cached = this.readCache();
+      if (cached && cached.identity.code_id === this.code?.code_id) {
+        try {
+          await this.loadContent(cached.identity, cached.content);
+          if (generation !== session.generation || generation !== this.generation || this.disposed)
+            throw new Error("rules_reload_required");
+          return this.identity;
+        } catch {
+          if (generation !== session.generation || generation !== this.generation || this.disposed)
+            throw new Error("rules_reload_required");
+          this.clearCache();
+          this.releaseWorker();
+          await this.prepareWorker();
+        }
+      }
+      return null;
+    }
+    const identity = await verifyNativeIdentity(hello.rules_bundle);
+    if (generation !== session.generation || generation !== this.generation || this.disposed)
+      throw new Error("rules_reload_required");
+    if (identity.code_id !== this.code?.code_id) throw new Error("rules_version_mismatch");
+    if (!isObject(hello.rules_content)) throw new Error("rules_content_unsupported");
+    const content = hello.rules_content;
+    if (!this.ready || this.identity?.bundle_id !== identity.bundle_id
+        || canonical(this.content) !== canonical(content)) {
+      if (this.ready || this.status === "failed") {
+        const frames = this.frames;
+        this.releaseWorker();
+        this.frames = frames;
+        await this.prepareWorker();
+        if (generation !== session.generation || generation !== this.generation || this.disposed)
+          throw new Error("rules_reload_required");
+        if (identity.code_id !== this.code?.code_id) throw new Error("rules_version_mismatch");
+      }
+      await this.loadContent(identity, content);
+    }
+    if (generation !== session.generation || this.disposed) throw new Error("rules_reload_required");
+    this.admitted = true;
+    this.saveCache(identity, content);
+    this.pump();
+    return this.identity;
+  }
+
+  private prepareWorker(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.identityWait = { resolve, reject };
+      this.prepareWait = { resolve, reject };
       this.startWorker();
     });
+  }
+
+  private loadContent(identity: JsonObject, content: JsonObject): Promise<JsonObject> {
+    this.content = content;
+    this.status = "loading";
+    return new Promise((resolve, reject) => {
+      this.identityWait = { resolve, reject };
+      this.armTimeout(25000, "rules_reload_required");
+      this.worker?.postMessage({ schema_version: 1, type: "initialize", generation: this.generation,
+        identity, content });
+    });
+  }
+
+  private readCache(): { identity: JsonObject; content: JsonObject } | null {
+    try {
+      const value: unknown = JSON.parse(localStorage.getItem("qsan-rules-content-v1") ?? "null");
+      return isObject(value) && isRulesIdentity(value.identity) && isObject(value.content)
+        ? { identity: value.identity, content: value.content } : null;
+    } catch { return null; }
+  }
+
+  private saveCache(identity: JsonObject, content: JsonObject): void {
+    try { localStorage.setItem("qsan-rules-content-v1", JSON.stringify({ identity, content })); }
+    catch { /* Storage is optional; the next connection can negotiate from Hello. */ }
+  }
+
+  private clearCache(): void {
+    try { localStorage.removeItem("qsan-rules-content-v1"); } catch { /* Optional cache. */ }
   }
 
   constructor(private readonly onChange: () => void) {}
@@ -231,7 +313,7 @@ export class RulesController {
           this.fail("無法讀取 WASM Worker 回覆");
       });
       this.armTimeout(30000, "WASM 載入逾時；請確認 rules 資源已部署");
-      worker.postMessage({ schema_version: 1, type: "initialize", generation: this.generation });
+      worker.postMessage({ schema_version: 1, type: "prepare", generation: this.generation });
     } catch (error) {
       this.fail(error instanceof Error ? error.message : String(error), false);
     }
@@ -242,6 +324,17 @@ export class RulesController {
       throw new Error("WASM Worker 回覆版本或連線不符");
     if (message.type === "error")
       throw new Error(asString(message.error) || "WASM 規則執行失敗");
+    if (message.type === "prepared") {
+      if (!this.prepareWait || !isObject(message.code) || typeof message.code.code_id !== "string")
+        throw new Error("rules_identity_invalid");
+      this.code = message.code;
+      this.clearTimeout();
+      this.status = "prepared";
+      const waiting = this.prepareWait;
+      this.prepareWait = null;
+      waiting.resolve();
+      return;
+    }
     if (message.type === "ready") {
       if (this.ready || !isObject(message.info) || message.info.schema_version !== RULES_BRIDGE_SCHEMA
           || !Number.isSafeInteger(message.info.card_count) || !Array.isArray(message.info.registry))
@@ -256,12 +349,6 @@ export class RulesController {
         if (!isObject(entry) || entry.id !== id || typeof entry.object_name !== "string"
             || typeof entry.suit !== "number" || typeof entry.number !== "number")
           throw new Error("WASM 卡牌目錄識別不符");
-        const existing = cardRecord(id);
-        const nativeSuit = ["spade", "club", "heart", "diamond", "no_suit_black",
-          "no_suit_red", "no_suit"][entry.suit];
-        if (existing && (existing.object_name !== entry.object_name || existing.number !== entry.number
-            || (existing.suit !== entry.suit && existing.suit !== nativeSuit)))
-          throw new Error("cards.json 與 WASM 規則套件不符；請部署同版本資源");
         records.push(entry);
       }
       if (!isRulesIdentity(message.info.rules_bundle)) throw new Error("rules_identity_invalid");
@@ -326,7 +413,7 @@ export class RulesController {
   // Ingest every observed frame before answering anything: a query may only run
   // against fully committed state, and STATE_SYNC is native's own gate.
   private pump(): void {
-    if (this.disposed || !this.worker || !this.ready || this.inFlight || this.status === "failed")
+    if (this.disposed || !this.worker || !this.ready || !this.admitted || this.inFlight || this.status === "failed")
       return;
     if (this.frames.length) {
       this.dispatch(this.frames.splice(0, FRAME_BATCH), null);
@@ -341,7 +428,7 @@ export class RulesController {
     if (key === this.resultKey || key === this.rejectedKey)
       return;
     if (this.session?.state.cardIdSpace !== this.registryCount) {
-      this.fail("伺服器卡牌目錄與 builtin WASM 不符；需要相符的規則套件", false);
+      this.fail("伺服器卡牌目錄與已載入規則不符；需要相符的規則套件", false);
       return;
     }
     this.status = "evaluating";
@@ -382,6 +469,11 @@ export class RulesController {
   }
 
   private releaseWorker(): void {
+    this.prepareWait?.reject(new Error("rules_reload_required"));
+    this.prepareWait = null;
+    this.code = null;
+    this.content = null;
+    this.admitted = false;
     this.identityWait?.reject(new Error("rules_reload_required"));
     this.identityWait = null;
     this.identity = null;

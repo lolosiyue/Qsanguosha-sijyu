@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { webcrypto } from 'node:crypto';
 import vm from 'node:vm';
 import test from 'node:test';
 
@@ -28,13 +29,21 @@ function sourceModule(name, context) {
 }
 
 const REQUEST = '18446744073709551615';
+const EXCHANGE_CARD = 6;
+const DISCARD_CARD = 7;
 
 // Worker messages are built inside the vm realm; compare their shape, not the
 // realm their prototypes came from.
 const plain = value => JSON.parse(JSON.stringify(value));
 
-async function setup() {
+async function setup(options = {}) {
   const workers = [], timers = new Map();
+  const storage = new Map();
+  const localStorage = {
+    getItem(key) { return storage.has(key) ? storage.get(key) : null; },
+    setItem(key, value) { storage.set(key, String(value)); },
+    removeItem(key) { storage.delete(key); },
+  };
   let timerId = 0;
   class Worker {
     listeners = new Map(); sent = []; terminated = false;
@@ -42,13 +51,23 @@ async function setup() {
     addEventListener(type, fn) {
       this.listeners.set(type, [...(this.listeners.get(type) || []), fn]);
     }
-    postMessage(value) { this.sent.push(value); }
+    postMessage(value) {
+      this.sent.push(value);
+      if (value.type === 'prepare') {
+        this.emit({ schema_version: 1, type: 'prepared', generation: value.generation, code });
+      } else if (value.type === 'initialize') {
+        this.emit({ schema_version: 1, type: 'ready', generation: value.generation,
+          info: { schema_version: RULES_BRIDGE_SCHEMA, card_count: 1, rules_bundle: bundle,
+            registry: [{ id: 0, object_name: 'slash', suit: 0, number: 7 }] } });
+      }
+    }
     terminate() { this.terminated = true; }
     emit(data, type = 'message') {
       for (const fn of this.listeners.get(type) || []) fn(type === 'message' ? { data } : data);
     }
   }
-  const context = vm.createContext({ Worker, URL, TextEncoder, TextDecoder, ArrayBuffer,
+  const context = vm.createContext({ Worker, URL, TextEncoder, TextDecoder, ArrayBuffer, crypto: webcrypto,
+    localStorage,
     setTimeout(fn, ms) { const id = ++timerId; timers.set(id, { fn, ms }); return id; },
     clearTimeout(id) { timers.delete(id); }, console });
   const catalog = new vm.SyntheticModule(['cardRecord', 'installRulesCardCatalog'], function () {
@@ -66,13 +85,30 @@ async function setup() {
   await module.evaluate();
   const { Command } = real.get('./protocol').namespace;
   const { RULES_BRIDGE_SCHEMA } = real.get('./rules-identity').namespace;
-  // Format-valid identity: isRulesIdentity() checks shape, not hash provenance,
-  // and every declared interaction schema must name a supported command.
+  // Build a genuinely sealed server identity: verifyNativeIdentity is the real
+  // production predicate, so tests cannot accidentally accept fake hashes.
   const digest = 'a'.repeat(64);
+  const code = { protocol_version: 2, bridge_schema: RULES_BRIDGE_SCHEMA, cpp_hash: digest,
+    bindings_abi: digest,
+    interaction_schemas: { [Command.PLAY_CARD]: digest, [Command.RESPONSE_CARD]: digest,
+      [Command.DISCARD_CARD]: digest, [Command.EXCHANGE_CARD]: digest } };
+  const sha = async bytes => [...new Uint8Array(await webcrypto.subtle.digest('SHA-256', bytes))]
+    .map(value => value.toString(16).padStart(2, '0')).join('');
+  const canonical = value => Array.isArray(value) ? `[${value.map(canonical).join(',')}]`
+    : value !== null && typeof value === 'object'
+      ? `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`
+      : JSON.stringify(value);
+  code.code_id = await sha(new TextEncoder().encode(`qsan-rules-code-v1\0${canonical({ ...code })}`));
   const bundle = { schema_version: 1, protocol_version: 2, bridge_schema: RULES_BRIDGE_SCHEMA,
-    ruleset: 'standard', content_profile: 'builtin-v1', bundle_id: digest, cpp_hash: digest,
+    ruleset: 'standard', content_profile: 'declared-v1',
+    cpp_hash: digest,
     card_registry_hash: digest, lua_hash: digest, bindings_abi: digest, packages: ['standard'],
-    interaction_schemas: { [Command.PLAY_CARD]: digest, [Command.RESPONSE_CARD]: digest } };
+    interaction_schemas: code.interaction_schemas, code_id: code.code_id };
+  bundle.bundle_id = await sha(new TextEncoder().encode(
+    `qsan-rules-bundle-v1\0${canonical(bundle)}`));
+  const content = { schema_version: 1, profile: 'declared-v1', files: [] };
+  if (options.cached)
+    localStorage.setItem('qsan-rules-content-v1', JSON.stringify({ identity: bundle, content }));
   const controller = new module.namespace.RulesController(() => {});
   let sink = null;
   // The controller owns rules state entirely; the session only supplies frames,
@@ -122,20 +158,35 @@ async function setup() {
   // Reach a queryable connection: one observed frame acknowledged with the
   // request the runtime itself committed.
   async function connect() {
-    const initialized = controller.initialize(session);
-    ready();
+    await controller.initialize(session);
+    const initialized = controller.initialize(session, { rules_bundle: bundle, rules_content: content });
+    // verifyNativeIdentity performs two asynchronous WebCrypto checks before
+    // posting initialize; let those checks install identityWait first.
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
     await initialized;
     frame('{"hello":1}');
     ack({ revision: 7, request_id: REQUEST });
   }
-  return { controller, session, selection, workers, timers, ready, frame, pending, ack, connect };
+  async function mismatchedBundle() {
+    const { code_id: ignored, ...unsignedCode } = code;
+    const alteredCode = { ...unsignedCode, cpp_hash: 'b'.repeat(64) };
+    alteredCode.code_id = await sha(new TextEncoder().encode(
+      `qsan-rules-code-v1\0${canonical({ ...unsignedCode, cpp_hash: alteredCode.cpp_hash })}`));
+    const altered = { ...bundle, cpp_hash: alteredCode.cpp_hash, code_id: alteredCode.code_id };
+    delete altered.bundle_id;
+    altered.bundle_id = await sha(new TextEncoder().encode(
+      `qsan-rules-bundle-v1\0${canonical(altered)}`));
+    return altered;
+  }
+  return { controller, session, selection, workers, timers, ready, frame, pending, ack, connect,
+    bundle, content, code, mismatchedBundle };
 }
 
 test('frames reach the runtime in transport order and carry no browser snapshot', async () => {
   const s = await setup();
-  const initialized = s.controller.initialize(s.session);
-  s.ready();
-  await initialized;
+  await s.connect();
   s.frame('{"in":1}');
   s.frame('{"out":1}', true);
   const first = s.pending();
@@ -146,6 +197,59 @@ test('frames reach the runtime in transport order and carry no browser snapshot'
     direction: 'outgoing', frame: '{"out":1}' }]);
   s.ack({ revision: 2 });
   assert.equal(s.workers.length, 1);
+  s.controller.dispose();
+});
+
+test('a matching local content cache prepares one Worker and skips negotiation fetch', async () => {
+  const s = await setup({ cached: true });
+  const identity = await s.controller.initialize(s.session);
+  assert.equal(identity.bundle_id, s.bundle.bundle_id);
+  assert.equal(s.workers.length, 1);
+  assert.equal(s.workers[0].sent.filter(value => value.type === 'initialize').length, 1);
+  s.controller.dispose();
+});
+
+test('Hello code mismatch is rejected before content or Worker initialize dispatch', async () => {
+  const s = await setup();
+  await s.controller.initialize(s.session);
+  const worker = s.workers[0];
+  await assert.rejects(s.controller.initialize(s.session,
+    { rules_bundle: await s.mismatchedBundle(), rules_content: s.content }),
+    /rules_version_mismatch/);
+  assert.equal(worker.sent.some(value => value.type === 'initialize'), false);
+  s.controller.dispose();
+});
+
+test('frames remain queued until content negotiation succeeds', async () => {
+  const s = await setup();
+  const prepared = s.controller.initialize(s.session);
+  s.frame('{"before":1}');
+  await prepared;
+  assert.equal(s.workers[0].sent.some(value => value.type === 'initialize'), false);
+  const initialized = s.controller.initialize(s.session,
+    { rules_bundle: s.bundle, rules_content: s.content });
+  await initialized;
+  assert.equal(s.pending().ops[0].action, 'frame');
+  s.controller.dispose();
+});
+
+test('changed content replaces the Worker and stale replies cannot mutate the new generation', async () => {
+  const s = await setup();
+  await s.connect();
+  const old = s.workers[0];
+  s.session.generation = 2;
+  const changed = { ...s.content, files: [{ path: 'lua/config.lua', role: 'rules', size: 1, sha256: 'c'.repeat(64) }] };
+  await s.controller.initialize(s.session);
+  const initialized = s.controller.initialize(s.session,
+    { rules_bundle: s.bundle, rules_content: changed });
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  old.emit({ schema_version: 1, type: 'ready', generation: 1,
+    info: { schema_version: 2, card_count: 1, rules_bundle: s.bundle, registry: [{ id: 0, object_name: 'stale', suit: 0, number: 1 }] } });
+  await initialized;
+  assert.equal(s.workers.length, 3);
+  assert.equal(s.controller.status, 'ready');
   s.controller.dispose();
 });
 
@@ -160,6 +264,20 @@ test('queries correlate on the runtime revision and request, not the reducer', a
   assert.equal(s.controller.current(s.session, s.selection), true);
   assert.equal(s.controller.result.request_id, '18446744073709551615');
   s.controller.dispose();
+});
+
+test('discard and exchange prompts are queried through native selectable sets', async () => {
+  for (const command of [DISCARD_CARD, EXCHANGE_CARD]) {
+    const s = await setup();
+    s.session.interaction = { messageId: REQUEST, command, payload: { pattern: "basic" } };
+    await s.connect();
+    assert.equal(s.controller.supports(command), true);
+    s.controller.update(s.session, s.selection);
+    assert.equal(s.pending().ops.at(-1).action, 'query');
+    s.ack({ evaluation: { selectable_cards: [0], selection_min: 1, selection_max: 1 } });
+    assert.equal(s.controller.current(s.session, s.selection), true);
+    s.controller.dispose();
+  }
 });
 
 test('an unacknowledged frame or an uncommitted STATE_SYNC blocks every query', async () => {

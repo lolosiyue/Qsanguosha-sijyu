@@ -3,6 +3,7 @@
 
 //#include "card.h"
 #include "skill.h"
+#include "rules-content-manifest.h"
 #include "skill-registry.h"
 #include "engine-runtime-context.h"
 #include "lua-runtime.h"
@@ -103,6 +104,8 @@ public:
     void addPackage(Package *package);
     void addBanPackage(const QString &package_name);
     QList<const Package *> getPackages() const;
+    const QSanRules::ContentManifest &rulesContentManifest() const { return m_rulesContentManifest; }
+    QStringList rulesDeclaredList(const QString &key) const;
     const QStringList &rulesPackageOrder() const { return m_rulesPackageOrder; }
     QJsonObject rulesBundleIdentity() const;
     QMap<QString, QStringList> getPackageMap() const;
@@ -255,6 +258,7 @@ public:
 
 private:
     friend class EngineRuntimeContextScope;
+    QSanRules::ContentManifest m_rulesContentManifest;
     QJsonObject m_rulesLuaSnapshot;
     QStringList m_rulesPackageOrder;
     friend class RoomDefinitionRegistry;

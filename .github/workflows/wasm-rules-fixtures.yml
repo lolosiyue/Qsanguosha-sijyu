@@ -112,6 +112,10 @@ jobs:
         uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
         with:
           node-version: '22'
+      - name: Fetch declared extension fixtures and server AI
+        run: |
+          mkdir -p build/rules-server-ai
+          bash tools/ci/fetch-extensions.sh "$GITHUB_WORKSPACE/build/rules-server-ai"
       - name: Run host adapter and comparison self-tests
         run: |
           echo "QSAN_FIXTURE_NODE=$(command -v node)" >> "$GITHUB_ENV"
@@ -122,12 +126,13 @@ jobs:
           python3 tests/client_runtime/check-fixtures.py --self-test
           python3 tests/client_runtime/check-rules-session.py --self-test
           python3 tests/client_runtime/check-rules-bundle.py --self-test
+          python3 tools/package-rules-content.py --self-test
           python3 tests/client_runtime/check-rules-ingress.py --self-test
       - name: Test production controller and type-check the production Worker
         run: |
           npm ci --prefix web
           node --experimental-vm-modules --test tests/client_runtime/rules-controller.test.mjs
-          npm --prefix web test -- tests/rules-identity.test.ts
+          npm --prefix web test
           node web/node_modules/typescript/bin/tsc web/src/rules-worker.ts \
             --noEmit --target ES2022 --module ES2022 --lib ES2022,DOM --strict --skipLibCheck
       - name: Compile and link the real engine for WASM
@@ -155,7 +160,6 @@ jobs:
           python3 tests/client_runtime/check-rules-ingress.py \
             --native-runner "$GITHUB_WORKSPACE/build/rules-native/qsanguosha_rules_ingress_probe" \
             --wasm-module "$module_dir/qsanguosha_client_wasm.mjs" \
-            --manifest "$module_dir/qsanguosha_client_wasm.assets.json" \
             --browser "$browser" --asset-root "$GITHUB_WORKSPACE" \
             --artifacts "$GITHUB_WORKSPACE/artifacts/wasm-fixtures/rules-ingress" \
             2>&1 | tee artifacts/wasm-fixtures/rules-ingress/gate.log
@@ -189,17 +193,16 @@ jobs:
           module_dir="$GITHUB_WORKSPACE/build/rules-wasm/web-wasm/RelWithDebInfo"
           node web/scripts/build-rules-worker.mjs artifacts/wasm-fixtures/production-worker \
             "$module_dir/qsanguosha_client_wasm.bundle.json"
-      - name: Execute real persistent production Worker/native session parity
+      - name: Execute persistent native/WASM snapshot parity with real extensions
         run: |
           set -o pipefail
           browser="$(command -v google-chrome || command -v chromium || true)"
           test -n "$browser"
           module_dir="$GITHUB_WORKSPACE/build/rules-wasm/web-wasm/RelWithDebInfo"
-          python3 tests/client_runtime/check-rules-session.py \
+          python3 tests/client_runtime/check-rules-session.py --with-extensions \
+            --extension-root "$GITHUB_WORKSPACE/build/rules-server-ai" \
             --native-runner "$GITHUB_WORKSPACE/build/rules-native/qsanguosha_rules_session_probe" \
             --wasm-module "$module_dir/qsanguosha_client_wasm.mjs" \
-            --manifest "$module_dir/qsanguosha_client_wasm.assets.json" \
-            --worker-script "$GITHUB_WORKSPACE/artifacts/wasm-fixtures/production-worker/rules-worker.js" \
             --browser "$browser" --asset-root "$GITHUB_WORKSPACE" \
             --artifacts "$GITHUB_WORKSPACE/artifacts/wasm-fixtures/production-session" \
             2>&1 | tee artifacts/wasm-fixtures/production-session/gate.log
@@ -211,10 +214,8 @@ jobs:
           runtime="$GITHUB_WORKSPACE/build/rules-wasm/web-wasm/RelWithDebInfo"
           python3 tools/package-web-runtime.py --module "$runtime/qsanguosha_client_wasm.mjs" --destination web/public/rules
           node web/scripts/build-rules-probe.mjs build/rules-browser-probe
-          # Keep external server AI out of the source/WASM bootstrap tree.
-          mkdir -p build/rules-server-ai
-          bash tools/ci/fetch-extensions.sh "$GITHUB_WORKSPACE/build/rules-server-ai"
           python3 tests/client_runtime/check-rules-bundle.py \
+            --extension-root "$GITHUB_WORKSPACE/build/rules-server-ai" \
             --server-ai-root "$GITHUB_WORKSPACE/build/rules-server-ai" \
             --native-runner "$GITHUB_WORKSPACE/build/rules-native/qsanguosha_rules_fixture_runner" \
             --server "$GITHUB_WORKSPACE/relwithdebinfo/qsanguosha_server" \

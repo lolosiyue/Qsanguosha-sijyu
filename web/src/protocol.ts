@@ -126,6 +126,19 @@ export const Command = {
   STATE_SYNC: 133
 } as const;
 
+export type CardUseMode = "play" | "response" | "discard" | "free";
+
+export function useMode(command: number): CardUseMode {
+  if (command === Command.PLAY_CARD)
+    return "play";
+  if (command === Command.RESPONSE_CARD || command === Command.ASK_PEACH
+      || command === Command.NULLIFICATION)
+    return "response";
+  if (command === Command.DISCARD_CARD || command === Command.EXCHANGE_CARD)
+    return "discard";
+  return "free";
+}
+
 export const GameEvent = {
   PLAYER_DYING: 0,
   PLAYER_QUITDYING: 1,

@@ -1,5 +1,4 @@
 // Test host for the REAL production C ABI; no snapshot projector/gameplay code.
-import { embeddedAssetFiles } from '../wasm-fixture-host.mjs';
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
 let used = false;
@@ -22,11 +21,10 @@ self.onmessage = async event => {
       && self.window === undefined, 'not an isolated Dedicated Worker');
     const plan = event.data;
     require(Array.isArray(plan.operations) && plan.operations.length > 0, 'missing stream corpus');
-    const [javascript, wasmBinary, manifest] = await Promise.all([
-      bytes('./qsanguosha_client_wasm.mjs'), bytes('./qsanguosha_client_wasm.wasm'),
-      bytes('./qsanguosha_client_wasm.assets.json'),
+    const [javascript, wasmBinary] = await Promise.all([
+      bytes('./qsanguosha_client_wasm.mjs'), bytes('./qsanguosha_client_wasm.wasm')
     ]);
-    for (const [name, content] of [['module', javascript], ['binary', wasmBinary], ['manifest', manifest]]) {
+    for (const [name, content] of [['module', javascript], ['binary', wasmBinary]]) {
       require(await hash(content) === plan.hashes[name], `test deployment hash mismatch: ${name}`);
     }
     // Compile the exact bytes checked by this harness, not a second HTTP fetch.
@@ -53,10 +51,27 @@ self.onmessage = async event => {
     }];
     const module = await factory(options);
     require(!aborted && typeof module._qsan_client_stream === 'function', 'stream export missing/initialization aborted');
-    for (const entry of embeddedAssetFiles(module.FS, manifest)) {
-      require(await hash(entry.bytes) === entry.sha256, 'embedded rules bytes differ');
+    const content = plan.content;
+    require(content?.schema_version === 1 && content.profile === 'declared-v1'
+      && Array.isArray(content.files), 'missing declared content manifest');
+    module.FS.mkdirTree('/assets');
+    for (const entry of content.files) {
+      if (entry.role === 'ai') continue;
+      const response = await fetch('/rules/content/' + entry.sha256, { cache: 'force-cache', redirect: 'error' });
+      require(response.ok && !response.redirected, 'content download failed: ' + entry.path);
+      const contentBytes = new Uint8Array(await response.arrayBuffer());
+      require(contentBytes.length === entry.size && await hash(contentBytes) === entry.sha256,
+        'declared rules bytes differ: ' + entry.path);
+      const path = '/assets/' + entry.path;
+      module.FS.mkdirTree(path.slice(0, path.lastIndexOf('/')));
+      module.FS.writeFile(path, contentBytes);
     }
-    require(module._qsan_client_initialize() === 0, 'native initialize failed');
+    const initialized = module._qsan_client_initialize();
+    if (initialized !== 0) {
+      let reason = '';
+      try { reason = decoder.decode(module.FS.readFile('/work/init.json')); } catch {}
+      require(false, 'native initialize failed: ' + reason);
+    }
     const registry = JSON.parse(decoder.decode(module.FS.readFile('/work/init.json')));
     const records = [];
     for (const { label, operation } of plan.operations) {
