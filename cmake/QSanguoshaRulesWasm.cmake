@@ -53,8 +53,14 @@ endforeach()
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${qsan_wasm_asset_dependencies})
 
 function(qsan_configure_wasm_rules_module target factory environment exports)
-    set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS
-        ${qsan_wasm_asset_dependencies} "${qsan_wasm_assets}/fixture-assets.json")
+    # Only fixture hosts embed their fixed test inputs. The production runtime
+    # must remain byte-for-byte independent of the selected Lua content.
+    if(NOT ARGV4 STREQUAL "CONTENT_FREE")
+        set_property(TARGET ${target} APPEND PROPERTY LINK_DEPENDS
+            ${qsan_wasm_asset_dependencies} "${qsan_wasm_assets}/fixture-assets.json")
+        target_link_options(${target} PRIVATE
+            "SHELL:--embed-file \"${qsan_wasm_assets}@/assets\"")
+    endif()
     target_link_options(${target} PRIVATE
         --no-entry
         --bind
@@ -76,7 +82,6 @@ function(qsan_configure_wasm_rules_module target factory environment exports)
         -sSTACK_SIZE=8388608
         -sINITIAL_MEMORY=134217728
         -sERROR_ON_UNDEFINED_SYMBOLS=1
-        "SHELL:--embed-file \"${qsan_wasm_assets}@/assets\""
     )
 endfunction()
 

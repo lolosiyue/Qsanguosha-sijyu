@@ -13,6 +13,7 @@
 %native(Print) int Print(lua_State *lua);
 %native(AddTranslationEntry) int AddTranslationEntry(lua_State *lua);
 %native(GetConfig) int GetConfig(lua_State *lua);
+%native(GetConfigList) int GetConfigList(lua_State *lua);
 %native(SetConfig) int SetConfig(lua_State *lua);
 %native(GetProperty) int GetProperty(lua_State *lua);
 %native(Alert) int Alert(lua_State *lua);
@@ -52,6 +53,19 @@ static int AddTranslationEntry(lua_State *lua)
 	Sanguosha->addTranslationEntry(key, value);
 
 	return 0;
+}
+
+static int GetConfigList(lua_State *lua)
+{
+    const char *key = luaL_checkstring(lua, 1);
+    const QStringList values = Sanguosha->rulesDeclaredList(QString::fromUtf8(key));
+    lua_createtable(lua, values.size(), 0);
+    for (int i = 0; i < values.size(); ++i) {
+        const QByteArray value = values.at(i).toUtf8();
+        lua_pushlstring(lua, value.constData(), value.size());
+        lua_rawseti(lua, -2, i + 1);
+    }
+    return 1;
 }
 
 static int GetConfig(lua_State *lua)

@@ -1,4 +1,5 @@
-import { RULES_BRIDGE_SCHEMA, verifyDeploymentBundle, verifyNativeIdentity } from "./rules-identity";
+import { RULES_BRIDGE_SCHEMA, canonical, sha256, verifyDeploymentBundle, verifyNativeIdentity } from "./rules-identity";
+import { fetchContent, installContent, validateContentManifest, verifyInstalledContent } from "./rules-content";
 
 // A persistent native rules session. Browser messages never supply module URLs.
 declare const __QSAN_RULES_DEPLOYMENT_ID__: string;
@@ -24,6 +25,7 @@ interface RulesModule {
   FS: WasmFs;
   ENV: Record<string, string>;
   _qsan_client_bridge_schema(): number;
+  _qsan_client_code_identity(): number;
   _qsan_client_initialize(): number;
   _qsan_client_stream(): number;
   _qsan_client_shutdown(): number;
@@ -42,9 +44,6 @@ interface FactoryOptions {
   preInit: (() => void)[];
   preRun: ((module?: RulesModule) => void)[];
 }
-
-interface AssetEntry { path: string; size: number; sha256: string }
-interface AssetManifest { schema_version: 1; profile: "builtin-v1"; files: AssetEntry[] }
 
 // The project also compiles DOM code. Keep this Worker surface narrow instead of
 // mixing the conflicting DOM and WebWorker ambient libraries into tsconfig.
@@ -101,58 +100,6 @@ function readOutput(fs: WasmFs, path: string): Uint8Array {
   return bytes;
 }
 
-function parseManifest(bytes: Uint8Array): AssetManifest {
-  const value: unknown = JSON.parse(decoder.decode(bytes));
-  if (!record(value) || value.schema_version !== 1 || value.profile !== "builtin-v1"
-      || !Array.isArray(value.files) || value.files.length === 0) {
-    throw new Error("Unsupported or empty WASM asset manifest");
-  }
-  const seen = new Set<string>();
-  for (const entry of value.files as unknown[]) {
-    if (!record(entry) || typeof entry.path !== "string" || !entry.path.startsWith("lua/")
-        || !/^[A-Za-z0-9_./-]+\.lua$/.test(entry.path)
-        || entry.path.split("/").some(part => !part || part === "." || part === "..")
-        || seen.has(entry.path) || typeof entry.sha256 !== "string"
-        || !/^[0-9a-f]{64}$/.test(entry.sha256) || !integer(entry.size, 1)) {
-      throw new Error("Invalid or duplicate WASM asset manifest entry");
-    }
-    seen.add(entry.path);
-  }
-  return value as unknown as AssetManifest;
-}
-
-async function verifyAssets(fs: WasmFs, manifestBytes: Uint8Array): Promise<void> {
-  const manifest = parseManifest(manifestBytes);
-  const embedded = fs.readFile("/assets/fixture-assets.json");
-  if (embedded.length !== manifestBytes.length
-      || !embedded.every((value, index) => value === manifestBytes[index])) {
-    throw new Error("WASM embedded manifest differs from its sidecar");
-  }
-  const files: string[] = [];
-  function inventory(directory: string): void {
-    for (const name of fs.readdir(directory)) {
-      if (name === "." || name === "..") continue;
-      const path = `${directory}/${name}`;
-      const mode = fs.lstat(path).mode;
-      if (fs.isDir(mode)) inventory(path);
-      else if (fs.isFile(mode)) files.push(path.slice("/assets/".length));
-      else throw new Error(`Unexpected WASM embedded asset type: ${path}`);
-    }
-  }
-  inventory("/assets");
-  const expected = ["fixture-assets.json", ...manifest.files.map(entry => entry.path)].sort();
-  if (JSON.stringify(files.sort()) !== JSON.stringify(expected)) {
-    throw new Error("WASM embedded asset inventory differs from its sidecar");
-  }
-  for (const entry of manifest.files) {
-    const bytes = fs.readFile(`/assets/${entry.path}`);
-    if (bytes.length !== entry.size) throw new Error(`WASM asset size mismatch: ${entry.path}`);
-    const digest = await crypto.subtle.digest("SHA-256", ownedBuffer(bytes));
-    const hash = [...new Uint8Array(digest)].map(value => value.toString(16).padStart(2, "0")).join("");
-    if (hash !== entry.sha256) throw new Error(`WASM asset hash mismatch: ${entry.path}`);
-  }
-}
-
 async function download(url: URL, limit?: number): Promise<Uint8Array> {
   const response = await fetch(url, { cache: "no-store", credentials: "omit", redirect: "error" });
   if (!response.ok) throw new Error(`WASM download failed: HTTP ${response.status}`);
@@ -164,7 +111,7 @@ async function download(url: URL, limit?: number): Promise<Uint8Array> {
   return bytes;
 }
 
-async function initialize(requestGeneration: number): Promise<void> {
+async function prepare(requestGeneration: number): Promise<void> {
   if (phase !== "new") throw new Error("WASM Worker has already been initialized");
   generation = requestGeneration;
   phase = "initializing";
@@ -174,23 +121,19 @@ async function initialize(requestGeneration: number): Promise<void> {
   }
   const moduleUrl = new URL("/rules/qsanguosha_client_wasm.mjs", worker.location.href);
   const wasmUrl = new URL("/rules/qsanguosha_client_wasm.wasm", worker.location.href);
-  const manifestUrl = new URL("/rules/qsanguosha_client_wasm.assets.json", worker.location.href);
   const bundleUrl = new URL("/rules/qsanguosha_client_wasm.bundle.json", worker.location.href);
-  const [wasmBinary, manifestBytes, moduleBytes, bundleBytes] = await Promise.all([
-    download(wasmUrl), download(manifestUrl, MANIFEST_LIMIT),
-    download(moduleUrl, 16 * 1024 * 1024), download(bundleUrl, MANIFEST_LIMIT),
+  const [wasmBinary, moduleBytes, bundleBytes] = await Promise.all([
+    download(wasmUrl), download(moduleUrl, 16 * 1024 * 1024), download(bundleUrl, MANIFEST_LIMIT),
   ]);
   await verifyDeploymentBundle(bundleBytes,
     typeof __QSAN_RULES_DEPLOYMENT_ID__ === "string" ? __QSAN_RULES_DEPLOYMENT_ID__ : "", {
     "qsanguosha_client_wasm.mjs": moduleBytes,
     "qsanguosha_client_wasm.wasm": wasmBinary,
-    "qsanguosha_client_wasm.assets.json": manifestBytes,
   });
   if (wasmBinary.length < 8
       || ![0, 97, 115, 109, 1, 0, 0, 0].every((value, index) => wasmBinary[index] === value)) {
     throw new Error("Missing or invalid WebAssembly binary");
   }
-  parseManifest(manifestBytes);
   // Import precisely the bytes just verified, avoiding a second cached fetch.
   const verifiedUrl = URL.createObjectURL(new Blob([ownedBuffer(moduleBytes)], { type: "text/javascript" }));
   let factory;
@@ -237,14 +180,36 @@ async function initialize(requestGeneration: number): Promise<void> {
   runtime = await factory(options) as RulesModule;
   if (aborted || !runtime?.FS || typeof runtime._qsan_client_bridge_schema !== "function"
       || runtime._qsan_client_bridge_schema() !== RULES_BRIDGE_SCHEMA
+      || typeof runtime._qsan_client_code_identity !== "function"
       || typeof runtime._qsan_client_initialize !== "function"
       || typeof runtime._qsan_client_stream !== "function"
       || typeof runtime._qsan_client_shutdown !== "function") {
     throw new Error("WASM initialization failed or client runtime exports are missing");
   }
-  // Emscripten installs embedded data after preRun. No Engine runs until every
-  // embedded byte and the complete inventory agree with the downloaded sidecar.
-  await verifyAssets(runtime.FS, manifestBytes);
+  const codeStatus = runtime._qsan_client_code_identity();
+  if (aborted || codeStatus !== 0) throw new Error(`WASM code identity failed (${codeStatus})`);
+  const code = JSON.parse(decoder.decode(readOutput(runtime.FS, "/work/code.json")));
+  if (!record(code) || code.protocol_version !== 2 || code.bridge_schema !== RULES_BRIDGE_SCHEMA
+      || typeof code.cpp_hash !== "string" || typeof code.bindings_abi !== "string"
+      || !record(code.interaction_schemas) || typeof code.code_id !== "string")
+    throw new Error("WASM returned an invalid code identity");
+  const unsignedCode = { protocol_version: code.protocol_version, bridge_schema: code.bridge_schema,
+    cpp_hash: code.cpp_hash, bindings_abi: code.bindings_abi,
+    interaction_schemas: code.interaction_schemas };
+  if (await sha256(encoder.encode(`qsan-rules-code-v1\0${canonical(unsignedCode)}`)) !== code.code_id)
+    throw new Error("rules_identity_invalid");
+  worker.postMessage({ schema_version: 1, type: "prepared", generation, code });
+}
+
+async function initialize(requestGeneration: number, serverIdentity: unknown, contentValue: unknown): Promise<void> {
+  if (phase !== "initializing" || !runtime || aborted) throw new Error("rules_reload_required");
+  const server = await verifyNativeIdentity(serverIdentity);
+  const code = JSON.parse(decoder.decode(readOutput(runtime.FS, "/work/code.json")));
+  if (!record(code) || code.code_id !== server.code_id) throw new Error("rules_version_mismatch");
+  const content = validateContentManifest(contentValue);
+  const files = await fetchContent(content);
+  installContent(runtime.FS, files);
+  await verifyInstalledContent(runtime.FS, content);
   if (aborted) throw new Error("WASM initialization aborted");
   const status = runtime._qsan_client_initialize();
   if (aborted || status !== 0) throw new Error(`WASM client initialization failed (${status})`);
@@ -264,7 +229,12 @@ async function initialize(requestGeneration: number): Promise<void> {
     }
     ids.add(entry.id);
   }
-  await verifyNativeIdentity(info.rules_bundle);
+  const declaredExtensions = content.files.filter(entry => entry.role === "rules"
+    && entry.path.startsWith("extensions/")).map(entry => entry.path.slice("extensions/".length)).sort();
+  if (canonical(info.extension_files) !== canonical(declaredExtensions))
+    throw new Error("rules_content_unsupported");
+  const native = await verifyNativeIdentity(info.rules_bundle);
+  if (canonical(native) !== canonical(server)) throw new Error("rules_version_mismatch");
   // Arm raw-frame ingress before the transport exists. This permanently locks
   // out the external-snapshot entry, so no browser state can replace the
   // native one for the rest of this Engine's life.
@@ -345,7 +315,8 @@ async function receive(value: unknown): Promise<void> {
       throw new Error("Invalid WASM Worker message");
     }
     if (message.type === "dispose") dispose(requestGeneration);
-    else if (message.type === "initialize") await initialize(requestGeneration);
+    else if (message.type === "prepare") await prepare(requestGeneration);
+    else if (message.type === "initialize") await initialize(requestGeneration, message.identity, message.content);
     else if (message.type === "stream") stream(message);
     else throw new Error("Unknown WASM Worker request");
   } catch (error) {

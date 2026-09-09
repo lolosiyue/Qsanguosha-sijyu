@@ -17,26 +17,28 @@ dofile "lua/utilities.lua"
 dofile "lua/sgs_ex.lua"
 
 local package_names = {}
-for _, script in ipairs(sgs.GetFileNames("extensions")) do
-	if script:match(".+%.lua$") then
-		local loaded = require("extensions."..script:sub(script:find("%w+")))
-		if sgs.GetConfig("DisableLua", false) then continue end
-		if type(loaded) == "table" and loaded.hidden ~= true then -- need to consider the compatibility of 'module'
-			if #loaded > 0 then
-				for _, extension in ipairs(loaded) do
-					if extension:inherits("Package") then
-						table.insert(package_names, extension:objectName())
-						sgs.Sanguosha:addPackage(extension)
-					end
+for _, script in ipairs(sgs.GetConfigList("extension_names")) do
+	local module_name = "extensions." .. script:match("^extensions/(.+)%.lua$")
+	-- Load the declared path exactly: require's dotted-name search would turn
+	-- a valid filename such as probe.one.lua into probe/one.lua.
+	package.preload[module_name] = assert(loadfile(script))
+	local loaded = require(module_name)
+	if sgs.GetConfig("DisableLua", false) then continue end
+	if type(loaded) == "table" and loaded.hidden ~= true then -- need to consider the compatibility of 'module'
+		if #loaded > 0 then
+			for _, extension in ipairs(loaded) do
+				if extension:inherits("Package") then
+					table.insert(package_names, extension:objectName())
+					sgs.Sanguosha:addPackage(extension)
 				end
-			else
-				table.insert(package_names, loaded.extension:objectName())
-				sgs.Sanguosha:addPackage(loaded.extension)
 			end
-		elseif type(loaded) == "userdata" and loaded:inherits("Package") then
-			table.insert(package_names, loaded:objectName())
-			sgs.Sanguosha:addPackage(loaded)
+		else
+			table.insert(package_names, loaded.extension:objectName())
+			sgs.Sanguosha:addPackage(loaded.extension)
 		end
+	elseif type(loaded) == "userdata" and loaded:inherits("Package") then
+		table.insert(package_names, loaded:objectName())
+		sgs.Sanguosha:addPackage(loaded)
 	end
 end
 if not sgs.Sanguosha:isGameLuaRuntime() then

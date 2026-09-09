@@ -237,7 +237,7 @@ void ClientPlayer::applyRuleEffects(const QVariantMap &data)
         if (other == nullptr)
             return;
         QSet<int> unique;
-        for (int value : fixed_distance.values(other))
+        for (int value : fixedDistances().values(other))
             unique.insert(value);
         for (int value : unique)
             removeFixedDistance(other, value);
@@ -257,8 +257,8 @@ void ClientPlayer::applyRuleEffects(const QVariantMap &data)
         clearDistancesTo(other);
     }
 
-    while (!attack_range_pair.isEmpty())
-        removeAttackRangePair(attack_range_pair.first());
+    while (!attackRangePairs().isEmpty())
+        removeAttackRangePair(attackRangePairs().first());
     for (const QString &name : variantStrings(data.value(QStringLiteral("attack_range_pairs")))) {
         const Player *other = m_model != nullptr ? m_model->player(name) : nullptr;
         if (other != nullptr)
@@ -283,7 +283,7 @@ QJsonObject ClientPlayer::metrics() const
         const bool distanceKnown = hasFixed || cached.isValid();
         distanceTo.insert(name, metricValue(distanceKnown,
             distanceKnown && other != nullptr ? this->distanceTo(other) : QJsonValue(QJsonValue::Null)));
-        const bool paired = other != nullptr && attack_range_pair.contains(other);
+        const bool paired = other != nullptr && attackRangePairs().contains(other);
         const bool rangeKnown = paired || distanceKnown;
         inAttackRange.insert(name, metricValue(rangeKnown,
             rangeKnown && other != nullptr ? inMyAttackRange(other) : QJsonValue(QJsonValue::Null)));

@@ -465,6 +465,9 @@ public:
 
 
 protected:
+    const QMultiHash<const Player *, int> &fixedDistances() const { return fixed_distance; }
+    const QList<const Player *> &attackRangePairs() const { return attack_range_pair; }
+
     QMap<QString, int> marks;
     QMap<QString, QList<int> > piles;
     QMap<QString, QStringList> general_piles;

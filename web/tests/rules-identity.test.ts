@@ -7,13 +7,16 @@ import { Command, decodeMessage, encodeMessage, type JsonObject } from "../src/p
 vi.stubGlobal("crypto", webcrypto);
 const h = "a".repeat(64);
 async function seal(value: JsonObject): Promise<JsonObject> {
-  const result = { ...value }; delete result.bundle_id;
+  const result = { ...value }; delete result.bundle_id; delete result.code_id;
+  const code = { protocol_version: result.protocol_version, bridge_schema: result.bridge_schema,
+    cpp_hash: result.cpp_hash, bindings_abi: result.bindings_abi, interaction_schemas: result.interaction_schemas };
+  result.code_id = await sha256(new TextEncoder().encode(`qsan-rules-code-v1\0${canonical(code)}`));
   result.bundle_id = await sha256(new TextEncoder().encode(`qsan-rules-bundle-v1\0${canonical(result)}`));
   return result;
 }
 async function bundle(): Promise<JsonObject> {
   return seal({ schema_version: 1, protocol_version: 2, bridge_schema: 2, ruleset: "sijyu",
-    content_profile: "builtin-v1", cpp_hash: h, card_registry_hash: h, lua_hash: h, bindings_abi: h,
+    content_profile: "declared-v1", cpp_hash: h, card_registry_hash: h, lua_hash: h, bindings_abi: h,
     packages: ["standard", "wind"], interaction_schemas: { "1": h, "2": h } });
 }
 
@@ -41,6 +44,28 @@ describe("rules identity", () => {
     expect(rulesCompatibilityError(value, value)).toBe("");
     await expect(verifyNativeIdentity({ ...value, lua_hash: "b".repeat(64) })).rejects.toThrow("rules_identity_invalid");
   });
+  it("binds code_id to every code field and excludes content fields", async () => {
+    const base = await bundle();
+    const fakeCode = { ...base, code_id: "f".repeat(64) };
+    delete fakeCode.bundle_id;
+    fakeCode.bundle_id = await sha256(new TextEncoder().encode(`qsan-rules-bundle-v1\0${canonical(fakeCode)}`));
+    await expect(verifyNativeIdentity(fakeCode)).rejects.toThrow("rules_identity_invalid");
+    const codeChanges: JsonObject[] = [
+      { protocol_version: 3 }, { bridge_schema: 1 }, { cpp_hash: "b".repeat(64) },
+      { bindings_abi: "b".repeat(64) }, { interaction_schemas: { "1": "b".repeat(64) } }];
+    for (const change of codeChanges) {
+      const changed = await seal({ ...base, ...change });
+      expect(changed.code_id).not.toBe(base.code_id);
+    }
+    const contentChanges: JsonObject[] = [
+      { ruleset: "other" }, { content_profile: "declared-v2" },
+      { packages: ["wind", "standard"] }, { card_registry_hash: "b".repeat(64) },
+      { lua_hash: "b".repeat(64) }];
+    for (const change of contentChanges) {
+      const changed = await seal({ ...base, ...change });
+      expect(changed.code_id).toBe(base.code_id);
+    }
+  });
   it("rejects reordered packages/cards and altered same-name Lua content", async () => {
     const base = await bundle();
     for (const diff of [{ packages: ["wind", "standard"] }, { card_registry_hash: "b".repeat(64) }, { lua_hash: "b".repeat(64) }]) {
@@ -49,8 +74,8 @@ describe("rules identity", () => {
   });
   it("distinguishes reload, unsupported interactions, profile, and missing metadata", async () => {
     const base = await bundle();
-    expect(rulesCompatibilityError(base, { ...base, bridge_schema: 1 })).toBe("rules_reload_required");
-    expect(rulesCompatibilityError(base, { ...base, bindings_abi: "b".repeat(64) })).toBe("rules_reload_required");
+    expect(rulesCompatibilityError(base, await seal({ ...base, bridge_schema: 1 }))).toBe("rules_version_mismatch");
+    expect(rulesCompatibilityError(base, await seal({ ...base, bindings_abi: "b".repeat(64) }))).toBe("rules_version_mismatch");
     expect(rulesCompatibilityError(base, { ...base, interaction_schemas: { "1": h } })).toBe("rules_interaction_unsupported");
     expect(rulesCompatibilityError(base, { ...base, content_profile: "extension-v1" })).toBe("rules_content_unsupported");
     expect(rulesCompatibilityError({}, base)).toBe("rules_reload_required");
@@ -86,11 +111,18 @@ describe("live rules handshake", () => {
   it("waits for runtime before connecting, then signs up with that exact identity", async () => {
     vi.stubGlobal("WebSocket", Socket);
     const session = new LiveSession(); const identity = await bundle();
-    let ready!: (value: JsonObject) => void;
-    session.setRulesProvider(() => new Promise(resolve => { ready = resolve; }));
+    let prepareReady!: (value: JsonObject) => void;
+    let helloReady!: (value: JsonObject) => void;
+    let calls = 0;
+    session.setRulesProvider((_session, hello) => new Promise(resolve => {
+      if (hello) helloReady = resolve; else prepareReady = resolve;
+      ++calls;
+    }));
     session.connect(options); await settle(); expect(Socket.instances).toHaveLength(0);
-    ready(identity); await settle(); const socket = Socket.instances[0];
+    prepareReady(identity); await settle(); const socket = Socket.instances[0];
     socket.frame(Command.CHECK_VERSION, { schema_version: 1, game_version: "v", mod_name: "sijyu", card_count: 2, rules_bundle: identity });
+    await settle(); expect(calls).toBe(2); expect(socket.sent).toHaveLength(0);
+    helloReady(identity); await settle();
     expect(socket.sent).toHaveLength(1); expect(socket.sent[0].payload.rules_bundle).toEqual(identity);
     expect(session.phase).toBe("signup");
     socket.frame(Command.SIGNUP, { schema_version: 2, accepted: true, reconnected: false, player_id: "p1", room_id: 1 }, "2", "reply", socket.sent[0].message_id);
@@ -105,8 +137,34 @@ describe("live rules handshake", () => {
       const session = new LiveSession(); session.setRulesProvider(async () => identity);
       session.connect({ ...options, reconnect: true }); await settle(); const socket = Socket.instances.at(-1)!;
       socket.frame(Command.CHECK_VERSION, { schema_version: 1, card_count: 2, ...(server ? { rules_bundle: server } : {}) });
+      await settle();
       expect(session.phase).toBe("failed"); expect(socket.sent).toHaveLength(0); expect(socket.closed).toBe(true);
     }
+  });
+  it("rejects frames and stale Hello completion while Hello rules remain pending", async () => {
+    vi.stubGlobal("WebSocket", Socket); const identity = await bundle();
+    let resolveHello!: (value: JsonObject) => void;
+    let calls = 0;
+    const session = new LiveSession();
+    session.setRulesProvider((_session, hello) => {
+      ++calls;
+      if (!hello) return Promise.resolve(identity);
+      return new Promise(resolve => { resolveHello = resolve; });
+    });
+    session.connect(options); await settle(); const socket = Socket.instances[0];
+    socket.frame(Command.CHECK_VERSION, { schema_version: 1, card_count: 2, rules_bundle: identity });
+    await settle(); expect(session.phase).toBe("hello"); expect(calls).toBe(2);
+    socket.frame(Command.SPEAK, { schema_version: 1, text: "too soon" }, "2");
+    await settle(); expect(session.phase).toBe("failed"); expect(socket.sent).toHaveLength(0);
+    resolveHello(identity); await settle(); expect(socket.sent).toHaveLength(0);
+
+    const second = new LiveSession(); let resolveSecond!: (value: JsonObject) => void;
+    second.setRulesProvider((_session, hello) => hello
+      ? new Promise(resolve => { resolveSecond = resolve; }) : Promise.resolve(identity));
+    second.connect(options); await settle(); const secondSocket = Socket.instances.at(-1)!;
+    secondSocket.frame(Command.CHECK_VERSION, { schema_version: 1, card_count: 2, rules_bundle: identity });
+    await settle(); second.disconnect(); resolveSecond(identity); await settle();
+    expect(secondSocket.sent).toHaveLength(0);
   });
   it("does not revive a cancelled generation or connect after loader failure", async () => {
     vi.stubGlobal("WebSocket", Socket); const identity = await bundle();

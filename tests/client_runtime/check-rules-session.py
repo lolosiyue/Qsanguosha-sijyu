@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Production session lifecycle/native-to-real-Worker parity. No fixture evaluator."""
+"""Native/WASM session snapshot ABI parity; production Workers use stream ingress."""
 from __future__ import annotations
 
 import argparse
@@ -21,11 +21,25 @@ import time
 import unittest
 
 HERE = Path(__file__).resolve().parent
-LABELS = ['A', 'B_incomplete', 'A_after_B', 'invalid_scene', 'A_after_invalid',
-          'numeric_request_id', 'wrong_schema', 'wusheng_response', 'A_after_ViewAs', 'A_after_bad_json']
-CHECKS = ['preinit', 'idempotent_init', 'same_engine_lua', 'server_info_restore',
+P1_G4_MANIFEST = ['extensions/addFunction.lua', 'extensions/sijyu.lua', 'extensions/animecard.lua']
+BASE_LABELS = ['A', 'B_incomplete', 'A_after_B', 'invalid_scene', 'A_after_invalid',
+          'numeric_request_id', 'wrong_schema', 'wusheng_response', 'discard_method',
+          'exchange_method']
+EXTENSION_LABELS = ['extension_class_pattern', 'extension_suit_pattern',
+          'extension_equip_pattern', 'extension_discard_limited',
+          'extension_exchange_ignores_discard_limit', 'extension_duplicate_selection']
+TAIL_LABELS = ['A_after_ViewAs', 'A_after_bad_json']
+BASE_CHECKS = ['preinit', 'idempotent_init', 'same_engine_lua', 'server_info_restore',
           'self_context_cleanup', 'deferred_delete', 'A_B_A', 'invalid_scene_recovery',
-          'ViewAs_cleanup', 'bad_json_recovery', 'graceful_shutdown', 'terminal_shutdown']
+          'ViewAs_cleanup', 'discard_method', 'exchange_method',
+          'bad_json_recovery',
+          'graceful_shutdown', 'terminal_shutdown']
+
+def labels_for(with_extensions: bool) -> list[str]:
+    return BASE_LABELS + (EXTENSION_LABELS if with_extensions else []) + TAIL_LABELS
+
+def checks_for(with_extensions: bool) -> list[str]:
+    return BASE_CHECKS[:11] + (EXTENSION_LABELS if with_extensions else []) + BASE_CHECKS[11:]
 
 
 def load(name: str):
@@ -37,42 +51,50 @@ def load(name: str):
     return module
 
 
-def verify_native(value: dict) -> None:
+def verify_native(value: dict, with_extensions: bool | None = None) -> None:
+    if with_extensions is None:
+        with_extensions = any(item.get('label') in EXTENSION_LABELS for item in value.get('calls', []))
+    labels, checks = labels_for(with_extensions), checks_for(with_extensions)
     assert type(value.get('schema_version')) is int and value['schema_version'] == 1 and value.get('status') == 'PASS', 'native gate did not pass'
-    assert value.get('native_checks') == CHECKS, 'native lifecycle coverage changed'
+    assert value.get('native_checks') == checks, 'native lifecycle coverage changed'
     calls = value.get('calls', [])
-    assert [item['label'] for item in calls] == LABELS, 'native corpus changed or was truncated'
+    assert [item['label'] for item in calls] == labels, 'native corpus changed or was truncated'
     for item in calls:
         result = json.loads(item['response_utf8'])
-        expected_known = item['label'] not in ('invalid_scene', 'numeric_request_id', 'wrong_schema')
-        expected_confirm = expected_known and item['label'] != 'B_incomplete'
+        expected_known = item['label'] not in ('invalid_scene', 'numeric_request_id', 'wrong_schema',
+                                               'extension_duplicate_selection')
+        expected_confirm = expected_known and item['label'] not in (
+            'B_incomplete', 'extension_discard_limited', 'extension_duplicate_selection')
         assert result['known'] is expected_known and result['can_confirm'] is expected_confirm
         assert result['request_id'] == item['request']['request_id'], 'request identity drift'
         if expected_confirm:
             assert result['wire']['reply_to'] == '18446744073709551615', 'uint64 wire identity drift'
         else:
             assert result['wire'] is None, 'unusable selection published a reply'
-    for index in (2, 4, 8, 9):
-        assert calls[index]['response_utf8'] == calls[0]['response_utf8'], 'A-B-A/recovery drift'
+    for label in ('A_after_B', 'A_after_invalid', 'A_after_ViewAs', 'A_after_bad_json'):
+        index = next((i for i, item in enumerate(calls) if item.get('label') == label), -1)
+        assert index >= 0 and calls[index]['response_utf8'] == calls[0]['response_utf8'], 'A-B-A/recovery drift'
 
 
 def verify_browser(value: dict, baseline: dict) -> None:
     verify_native(baseline)
+    labels = labels_for(any(item.get('label') in EXTENSION_LABELS for item in baseline.get('calls', [])))
     assert value.get('status') == 'COMPLETE', 'browser failed: ' + str(value.get('error'))
     rounds = value.get('rounds')
     assert isinstance(rounds, list) and len(rounds) == 2, 'missing fresh Worker round'
     for run in rounds:
         assert json.dumps(run['registry'], sort_keys=True) == json.dumps(baseline['registry'], sort_keys=True), 'production registry drift'
         records = run['records']
-        assert [item['label'] for item in records] == LABELS, 'missing/reordered/duplicate browser query'
-        assert run['events'] == ['ready'] + ['result'] * len(LABELS) + ['disposed'], 'no graceful disposal'
+        assert [item['label'] for item in records] == labels, 'missing/reordered/duplicate browser query'
+        assert run['events'] == ['ready'] + ['result'] * len(labels) + ['disposed'], 'no graceful disposal'
         for actual, expected in zip(records, baseline['calls']):
             assert actual['response_utf8'] == expected['response_utf8'], 'native/Worker bytes differ: ' + actual['label']
     assert 'evaluation failed (2)' in value.get('transportError', ''), 'wrong fatal transport failure'
     assert value.get('recovery') == baseline['calls'][0]['response_utf8'], 'fresh Worker recovery mismatch'
 
 
-def native_run(runner: Path, assets: Path, artifacts: Path, fixed: bool) -> dict:
+def native_run(runner: Path, assets: Path, artifacts: Path, fixed: bool,
+               with_extensions: bool = False) -> dict:
     artifacts.mkdir(parents=True, exist_ok=True)
     output = artifacts / 'result.json'
     output.unlink(missing_ok=True)
@@ -84,7 +106,10 @@ def native_run(runner: Path, assets: Path, artifacts: Path, fixed: bool) -> dict
         for key, sub in (('HOME', 'home'), ('XDG_CONFIG_HOME', 'config'), ('XDG_DATA_HOME', 'data'),
                          ('APPDATA', 'appdata'), ('LOCALAPPDATA', 'localappdata')):
             env[key] = str(root / sub)
-        child = subprocess.run([str(runner), '--asset-root', str(assets), '--output', str(output)],
+        command = [str(runner), '--asset-root', str(assets), '--output', str(output)]
+        if with_extensions:
+            command.append('--with-extensions')
+        child = subprocess.run(command,
                                cwd=root, env=env, capture_output=True, timeout=120, check=False)
     (artifacts / 'stdout.log').write_bytes(child.stdout)
     (artifacts / 'stderr.log').write_bytes(child.stderr)
@@ -149,7 +174,7 @@ class Server:
         self.thread.join(timeout=5)
 
 
-def browser_run(args, baseline: dict) -> dict:
+def browser_run(args, baseline: dict, assets: Path) -> dict:
     module = args.wasm_module
     binary = module.with_suffix('.wasm')
     bundle = module.with_suffix('.bundle.json')
@@ -157,11 +182,32 @@ def browser_run(args, baseline: dict) -> dict:
     requests = [{'label': item['label'], 'request': item['request']} for item in baseline['calls']]
     # Do not serve expected outputs to the browser. It must call the native exports.
     routes = {'/index.html': b'<!doctype html><meta charset="utf-8"><body>Running production session<script type="module" src="/probe.mjs"></script>',
-        '/probe.mjs': HERE / 'browser/rules-session-page.mjs', '/rules-worker.mjs': args.worker_script,
+        '/probe.mjs': HERE / 'browser/rules-session-page.mjs',
+        '/rules-worker.mjs': HERE / 'browser/rules-session-test-worker.mjs',
         '/input.json': json.dumps(requests).encode(), '/rules/qsanguosha_client_wasm.mjs': module,
         '/rules/qsanguosha_client_wasm.wasm': binary,
-        '/rules/qsanguosha_client_wasm.assets.json': args.manifest,
         '/rules/qsanguosha_client_wasm.bundle.json': bundle}
+    routes['/hello.json'] = json.dumps({'rules_bundle': baseline['registry'].get('rules_bundle', {}),
+                                        'rules_content': baseline.get('rules_content', {})}).encode()
+    # Production WASM has no embedded asset sidecar.  Declared rules content
+    # is served by content hash; the Hello negotiation supplies this manifest
+    # to the Worker.
+    content_manifest = baseline.get('rules_content', {})
+    if not content_manifest:
+        try:
+            content_manifest = json.loads(bundle.read_bytes()).get('rules_content', {})
+        except (OSError, ValueError):
+            content_manifest = {}
+    for entry in content_manifest.get('files', []):
+        if entry.get('role') == 'ai':
+            continue
+        source = assets / entry['path']
+        if not source.is_file():
+            raise AssertionError('missing declared production content: ' + entry['path'])
+        data = source.read_bytes()
+        if len(data) != entry['size'] or hashlib.sha256(data).hexdigest() != entry['sha256']:
+            raise AssertionError('declared production content hash mismatch: ' + entry['path'])
+        routes['/rules/content/' + entry['sha256']] = source
     with Server(routes) as server, tempfile.TemporaryDirectory(prefix='chrome-', dir=args.artifacts) as profile:
         command = [str(args.browser), '--headless=new', '--disable-gpu', '--no-first-run',
             '--no-default-browser-check', '--disable-background-networking', '--disable-extensions',
@@ -195,7 +241,7 @@ class VerifierTests(unittest.TestCase):
     def sample(self):
         # Deliberately synthetic data: these tests exercise only the verifier.
         calls = []
-        for label in LABELS:
+        for label in labels_for(False):
             known = label not in ('invalid_scene', 'numeric_request_id', 'wrong_schema')
             confirm = known and label != 'B_incomplete'
             result = {'known': known, 'can_confirm': confirm,
@@ -203,11 +249,11 @@ class VerifierTests(unittest.TestCase):
                       'wire': {'reply_to': '18446744073709551615'} if confirm else None}
             calls.append({'label': label, 'request': {'request_id': '18446744073709551615'},
                           'response_utf8': json.dumps(result)})
-        baseline = {'schema_version': 1, 'status': 'PASS', 'native_checks': CHECKS,
+        baseline = {'schema_version': 1, 'status': 'PASS', 'native_checks': checks_for(False),
                     'registry': {'card_count': 1}, 'calls': calls}
         run = {'registry': baseline['registry'],
                'records': [{'label': item['label'], 'response_utf8': item['response_utf8']} for item in calls],
-               'events': ['ready'] + ['result'] * len(LABELS) + ['disposed']}
+               'events': ['ready'] + ['result'] * len(labels_for(False)) + ['disposed']}
         report = {'status': 'COMPLETE', 'rounds': [copy.deepcopy(run), copy.deepcopy(run)],
                   'transportError': 'WASM client evaluation failed (2)',
                   'recovery': calls[0]['response_utf8']}
@@ -270,14 +316,19 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--self-test', action='store_true')
     parser.add_argument('--native-only', action='store_true')
+    parser.add_argument('--with-extensions', action='store_true',
+                        help='stage and exercise the opt-in real extension card corpus')
+    parser.add_argument('--extension-root', type=Path,
+                        help='external extensions checkout used by --with-extensions')
     for key in ('native-runner', 'asset-root', 'artifacts', 'wasm-module', 'manifest', 'worker-script', 'browser'):
         parser.add_argument('--' + key, type=Path)
     parser.add_argument('--browser-arg', action='append', default=[])
     args = parser.parse_args()
     if args.self_test:
         return 0 if unittest.TextTestRunner(verbosity=2).run(unittest.defaultTestLoader.loadTestsFromTestCase(VerifierTests)).wasSuccessful() else 1
+    args.extension_root = args.extension_root.resolve() if args.extension_root is not None else args.asset_root
     required = ['native_runner', 'asset_root', 'artifacts']
-    if not args.native_only: required += ['wasm_module', 'manifest', 'worker_script', 'browser']
+    if not args.native_only: required += ['wasm_module', 'browser']
     for name in required:
         if getattr(args, name) is None: parser.error('--' + name.replace('_', '-') + ' is required')
         setattr(args, name, getattr(args, name).resolve())
@@ -287,17 +338,19 @@ def main() -> int:
     try:
         with tempfile.TemporaryDirectory(prefix='assets-', dir=args.artifacts) as directory:
             assets = Path(directory)
-            load('check-fixtures.py').stage_builtin_assets(args.asset_root, assets)
-            if not args.native_only:
-                load('check-wasm-fixtures.py').check_assets(assets, json.loads(args.manifest.read_bytes()))
-            baseline = native_run(args.native_runner, assets, args.artifacts / 'native-first', True)
-            second = native_run(args.native_runner, assets, args.artifacts / 'native-second', False)
+            manifest = P1_G4_MANIFEST if args.with_extensions else ()
+            load('check-fixtures.py').stage_builtin_assets(args.asset_root, assets, manifest,
+                                                           extension_root=args.extension_root)
+            baseline = native_run(args.native_runner, assets, args.artifacts / 'native-first', True,
+                                  args.with_extensions)
+            second = native_run(args.native_runner, assets, args.artifacts / 'native-second', False,
+                                args.with_extensions)
             assert (args.artifacts / 'native-first/result.json').read_bytes() == (args.artifacts / 'native-second/result.json').read_bytes(), 'fresh-process/hash-seed production output drift'
-            if not args.native_only: browser_run(args, baseline)
-        summary = {'schema_version': 1, 'status': 'PASS', 'scope': 'production-session',
-                   'native_processes': 2, 'queries_per_process': len(LABELS),
+            if not args.native_only: browser_run(args, baseline, assets)
+        summary = {'schema_version': 1, 'status': 'PASS', 'scope': 'session-snapshot-abi',
+                   'native_processes': 2, 'queries_per_process': len(labels_for(args.with_extensions)),
                    'browser': 'NOT_RUN' if args.native_only else 'PASS'}
-        for name in ['native_runner'] + ([] if args.native_only else ['wasm_module', 'manifest', 'worker_script']):
+        for name in ['native_runner'] + ([] if args.native_only else ['wasm_module']):
             summary[name + '_sha256'] = hashlib.sha256(getattr(args, name).read_bytes()).hexdigest()
         if not args.native_only:
             summary['wasm_sha256'] = hashlib.sha256(args.wasm_module.with_suffix('.wasm').read_bytes()).hexdigest()

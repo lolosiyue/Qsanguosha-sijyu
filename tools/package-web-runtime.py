@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Publish the four generated Web client runtime artifacts (stdlib only)."""
+"""Publish the three generated Web client runtime artifacts (stdlib only)."""
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import hashlib
 import re
@@ -19,7 +18,7 @@ def deployment_bundle(module: Path) -> dict:
     match = re.search(r"constexpr int BridgeSchema = (\d+);", header.read_text(encoding="utf-8"))
     if not match:
         raise ValueError("native bridge schema is missing")
-    sources = [module, module.with_suffix(".wasm"), module.with_suffix(".assets.json")]
+    sources = [module, module.with_suffix(".wasm")]
     return {"schema_version": 1, "bridge_schema": int(match.group(1)),
             "files": {source.name: hashlib.sha256(source.read_bytes()).hexdigest() for source in sources}}
 
@@ -38,23 +37,13 @@ def package(module: Path, destination: Path) -> None:
     if module.is_symlink():
         raise ValueError("runtime module must not be a symlink")
     module = module.resolve(strict=True)
-    sources = [module, module.with_suffix(".wasm"), module.with_suffix(".assets.json")]
+    sources = [module, module.with_suffix(".wasm")]
     for source in sources:
         if not source.is_file() or source.is_symlink() or source.stat().st_size == 0:
             raise ValueError(f"missing, empty or symlinked runtime artifact: {source}")
     with sources[1].open("rb") as binary:
         if binary.read(8) != b"\x00asm\x01\x00\x00\x00":
             raise ValueError("invalid WebAssembly binary")
-
-    # Reuse the build's manifest schema; packaging never runs a fixture or
-    # loads the generated JS/WASM. The Worker checks embedded bytes on startup.
-    harness = Path(__file__).resolve().parents[1] / "tests/client_runtime/check-wasm-fixtures.py"
-    spec = importlib.util.spec_from_file_location("qsan_wasm_asset_manifest", harness)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("cannot load the shared WASM asset manifest validator")
-    validator = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(validator)
-    validator.validate_manifest(json.loads(sources[2].read_bytes()))
 
     # Refuse changed artifacts after the build, rather than blessing a mixed
     # loader/binary by generating a fresh manifest during publication.

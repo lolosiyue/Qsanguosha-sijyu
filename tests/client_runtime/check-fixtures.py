@@ -17,13 +17,76 @@ from unittest.mock import patch
 from typing import Any
 
 
-def stage_builtin_assets(source: Path, destination: Path) -> None:
-    """Copy the explicit bootstrap closure; never load untracked extensions."""
-    for relative in ("lua/config.lua", "lua/sanguosha.lua", "lua/utilities.lua",
-                     "lua/sgs_ex.lua", "lua/lib/json.lua"):
+CORE_BOOTSTRAP = ("lua/config.lua", "lua/sanguosha.lua", "lua/utilities.lua",
+                  "lua/sgs_ex.lua", "lua/lib/json.lua")
+
+
+def _declared_from_config(config: str) -> list[str]:
+    """Inspect a staged flat array in harness assertions; never execute Lua."""
+    block = re.search(r"extension_names\s*=\s*\{(.*?)\}", config, re.S)
+    if block is None:
+        raise AssertionError("config.lua has no extension_names block")
+    return re.findall(r'"([^"\n]+)"', block.group(1))
+
+
+def _rewrite_extension_names(config: str, extension_names: list[str]) -> str:
+    value = ",\n".join(f'\t\t"{name}"' for name in extension_names)
+    replacement = "extension_names = {\n" + value + "\n\t}"
+    rewritten, count = re.subn(r"extension_names\s*=\s*\{.*?\}", replacement,
+                               config, count=1, flags=re.S)
+    if count:
+        return rewritten
+    # Synthetic sources may not contain the field yet.  Insert beside the
+    # package manifest so the staged config is always self-contained.
+    marker = "\tpackage_names = {"
+    if marker in config:
+        return config.replace(marker, replacement + ",\n\n" + marker, 1)
+    raise AssertionError("config.lua has no insertion point for extension_names")
+
+
+def stage_builtin_assets(source: Path, destination: Path,
+                         extension_names: list[str] | tuple[str, ...] = (),
+                         *, extension_root: Path | None = None) -> None:
+    """Stage bootstrap plus exactly the declared extension content closure.
+
+    ``extension_names`` is an ordered list of manifest entries.  The default
+    is deliberately an empty manifest: legacy callers stage builtin-only
+    assets and cannot inherit the repository's root manifest accidentally.
+    The helper copies scripts, ``libs`` and ``lang`` satellites, while server
+    AI remains outside the browser/client asset closure.
+    """
+    config = (source / "lua/config.lua").read_text(encoding="utf-8")
+    declarations = list(extension_names)
+    config = _rewrite_extension_names(config, declarations)
+    for relative in CORE_BOOTSTRAP:
         target = destination / relative
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source / relative, target)
+        if relative == "lua/config.lua":
+            target.write_text(config, encoding="utf-8")
+        else:
+            shutil.copyfile(source / relative, target)
+
+    for entry in declarations:
+        fields = entry.split(";")
+        script = fields[0]
+        paths = [script]
+        seen_keys: set[str] = set()
+        for field in fields[1:]:
+            key, separator, value = field.partition("=")
+            if not separator or key in seen_keys or key not in {"libs", "lang", "ai"}:
+                raise AssertionError(f"invalid extension declaration: {entry}")
+            seen_keys.add(key)
+            if key != "ai":
+                paths.extend(path for path in value.split(",") if path)
+        for relative in paths:
+            content_root = extension_root or source
+            source_path = content_root / relative
+            if any(path.is_symlink() for path in (source_path, *source_path.parents)
+                   if path == content_root or content_root in path.parents):
+                raise AssertionError(f"symlinked fixture asset: {relative}")
+            target = destination / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source_path, target)
 
 
 def expect_subset(actual: Any, expected: Any, where: str = "result") -> None:
@@ -219,6 +282,8 @@ class HarnessTests(unittest.TestCase):
                 path = source / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text(relative, encoding="utf-8")
+            (source / "lua/config.lua").write_text("config = {\n\tpackage_names = {}\n}\n",
+                                                   encoding="utf-8")
             destination = root / "staged"
             stage_builtin_assets(source, destination)
             self.assertEqual(len(list(destination.rglob("*.lua"))), 5)
@@ -229,6 +294,40 @@ class HarnessTests(unittest.TestCase):
             (source / "lua/config.lua").unlink()
             with self.assertRaises(FileNotFoundError):
                 stage_builtin_assets(source, root / "incomplete")
+
+    def test_declared_assets_stage_ordered_script_and_full_satellite_closure(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            for relative in CORE_BOOTSTRAP:
+                path = source / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(relative, encoding="utf-8")
+            (source / "lua/config.lua").write_text(
+                'config = {\n\tpackage_names = {},\n\n\textension_names = {\n'
+                '\t\t"extensions/second.lua"\n\t},\n}\n', encoding="utf-8")
+            for relative in ("extensions/first.lua", "extensions/second.lua",
+                             "lua/custom/second-lib.lua", "lang/zh_CN/Package/Second.lua",
+                             "lua/ai/second-ai.lua"):
+                path = source / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(relative, encoding="utf-8")
+            destination = root / "staged"
+            declarations = [
+                "extensions/first.lua;libs=lua/custom/second-lib.lua;lang=lang/zh_CN/Package/Second.lua;ai=lua/ai/second-ai.lua",
+                "extensions/second.lua"]
+            stage_builtin_assets(source, destination, declarations)
+            self.assertEqual(_declared_from_config((destination / "lua/config.lua").read_text()), declarations)
+            self.assertTrue((destination / "extensions/first.lua").is_file())
+            self.assertTrue((destination / "extensions/second.lua").is_file())
+            self.assertTrue((destination / "lua/custom/second-lib.lua").is_file())
+            self.assertTrue((destination / "lang/zh_CN/Package/Second.lua").is_file())
+            self.assertFalse((destination / "lua/ai").exists())
+
+            empty = root / "empty"
+            stage_builtin_assets(source, empty, [])
+            self.assertEqual(_declared_from_config((empty / "lua/config.lua").read_text()), [])
+            self.assertFalse((empty / "extensions").exists())
 
     def test_process_configuration_is_isolated(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
