@@ -53,7 +53,8 @@ Thumbs.db
 /extensions/
 /tools/swig/
 
-# GUI/client-only assets and bundled Windows libraries
+# GUI/client-only assets and bundled Windows libraries. lang/ stays in the
+# context: lua/config.lua declares it as content the server must hold for Web.
 /artifacts/
 /assets/
 /audio/
@@ -62,7 +63,6 @@ Thumbs.db
 /hero-skin/
 /image/
 /include/
-/lang/
 /lib/
 /listserver/
 /qml/

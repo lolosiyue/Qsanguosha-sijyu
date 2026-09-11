@@ -3,7 +3,10 @@ FROM ubuntu:24.04 AS builder
 ARG DEBIAN_FRONTEND=noninteractive
 ARG CMAKE_BUILD_PARALLEL_LEVEL=2
 ARG QSAN_EXTENSIONS_REPO=https://github.com/lolosiyue/extensions.git
-ARG QSAN_EXTENSIONS_REF=main
+# Pinned to the extension set that lua/config.lua declares in extension_names.
+# Web signup is refused when an extension file is undeclared or missing, so
+# bump this commit together with that list.
+ARG QSAN_EXTENSIONS_REF=f2071da7350a2bb97131197ed73c74aa3ec6a2f4
 
 RUN apt-get update \
     && apt-get install --yes --no-install-recommends \
@@ -52,8 +55,15 @@ RUN cmake -S /src -B /build -G Ninja \
     && test -f /staging/opt/qsanguosha/share/qsanguosha/lua/ai/smart-ai.lua \
     && test -f /staging/opt/qsanguosha/share/qsanguosha/lua/ai/isolated/ask-for-use-card.lua \
     && test -d /staging/opt/qsanguosha/share/qsanguosha/extensions \
+    && test -f /staging/opt/qsanguosha/share/qsanguosha/lang/zh_CN/Common.lua \
     && ldd /staging/opt/qsanguosha/bin/qsanguosha_server \
     && ! ldd /staging/opt/qsanguosha/bin/qsanguosha_server | grep -q 'not found'
+
+# The Web admission gate (declared-v1) rejects Lua that lua/config.lua does not
+# declare. chat_config.lua only feeds the GUI chat panel and lib/sqlite3.lua has
+# no caller, so the dedicated server image leaves both out.
+RUN rm /staging/opt/qsanguosha/share/qsanguosha/lua/chat_config.lua \
+        /staging/opt/qsanguosha/share/qsanguosha/lua/lib/sqlite3.lua
 
 
 FROM ubuntu:24.04 AS runtime
@@ -80,6 +90,9 @@ COPY --from=builder \
 COPY --from=builder \
     /staging/opt/qsanguosha/share/qsanguosha/extensions \
     /opt/qsanguosha/extensions
+COPY --from=builder \
+    /staging/opt/qsanguosha/share/qsanguosha/lang \
+    /opt/qsanguosha/lang
 COPY packaging/docker/server.ini /config/server.ini
 COPY packaging/docker/entrypoint.sh /usr/local/bin/qsanguosha-entrypoint
 
@@ -92,6 +105,7 @@ RUN chmod -R a-w /opt/qsanguosha \
 
 ENV HOME=/data \
     XDG_CONFIG_HOME=/data/.config \
+    QSAN_ASSET_ROOT=/data \
     PATH="/opt/qsanguosha/bin:${PATH}"
 
 WORKDIR /data
