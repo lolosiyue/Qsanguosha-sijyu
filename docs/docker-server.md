@@ -53,18 +53,27 @@ with `-p 9527:9527 -p 9528:9528`; host networking and privileged mode are not re
 ## Filesystem and process contract
 
 - `/opt/qsanguosha/bin/qsanguosha_server` is the immutable server binary.
-- `/opt/qsanguosha/lua` and `/opt/qsanguosha/extensions` are bundled immutable
-  runtime resources fetched during the image build.
+- `/opt/qsanguosha/lua`, `/opt/qsanguosha/extensions` and `/opt/qsanguosha/lang`
+  are bundled immutable runtime resources. Extensions are fetched during the
+  image build from the commit pinned by `QSAN_EXTENSIONS_REF`, which must match
+  the `extension_names` list in `lua/config.lua`.
 - `/config/server.ini` is the server configuration. The Compose bind mount is
   read-only.
-- `/data` is the working directory and persistent writable state/save volume.
-  Relative legacy writes such as `GER.lua` therefore resolve to
-  `/data/GER.lua`.
-- `/data/lua` and `/data/extensions` are entrypoint-managed symlinks to the
-  immutable resources under `/opt/qsanguosha`. These two `/data` names are
-  reserved and must not be replaced with regular files or directories.
+- `/data` is the asset root (`QSAN_ASSET_ROOT`), the working directory and the
+  persistent writable state/save volume. Relative legacy writes such as
+  `GER.lua` therefore resolve to `/data/GER.lua`.
+- `/data/lua`, `/data/extensions` and `/data/lang` are read-only copies of the
+  resources under `/opt/qsanguosha`, replaced by the entrypoint on every start
+  and tracked by `/data/.qsanguosha-managed-<name>` markers. They are copies
+  rather than symlinks because Web signup requires a `declared-v1` rules
+  identity, whose content scan rejects symlinks. Volumes created by earlier
+  images, which held symlinks here, are migrated automatically. These names are
+  reserved: an unmanaged file or directory at one of them stops the container.
+- The server image leaves out `lua/chat_config.lua` (GUI chat phrases) and the
+  unused `lua/lib/sqlite3.lua`, because `lua/config.lua` does not declare them.
 - `HOME` and `XDG_CONFIG_HOME` also resolve under `/data`, keeping runtime state
-  in the persistent volume.
+  in the persistent volume. Because the asset root is explicit, per-user data
+  such as `record/` and AI data lives under `/data/.local/share/QSanguosha`.
 
 The image runs as the dedicated `qsanguosha` account with UID/GID `9527:9527`.
 Bind-mounted host data must be writable by that identity. The entrypoint uses
@@ -82,7 +91,9 @@ bash tools/ci/docker-server-smoke.sh
 
 The smoke test builds the final image, validates `--version` and
 `--check-config`, verifies non-root execution and runtime-image hygiene, starts
-a published container, performs the version/setup/signup protocol sequence,
+a published container, performs the version/setup/signup protocol sequence
+(requiring the hello to advertise a sealed `declared-v1` rules identity, without
+which every Web client is refused),
 uses `docker stop` to verify graceful SIGTERM handling, and recreates a
 container against the same named volume to verify persistence. Diagnostics are
 written to `ci-logs/docker/`.

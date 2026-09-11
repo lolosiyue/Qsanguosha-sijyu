@@ -70,7 +70,7 @@ link 任何 GUI Qt library；packaging CI 每次都驗證這兩點。
 
 資料目錄是「有才裝」：`install(DIRECTORY)` 遇到一個不存在的來源目錄會直接
 fatal，而不是每個 build context 都具備全部內容 —— Docker server image 的
-`.dockerignore` 就特意剔除 `lang/`、`qss/`、`skins/`、`ui-script/`，
+`.dockerignore` 就特意剔除 `qss/`、`skins/`、`ui-script/`，
 `extensions/` 也是在 build 過程中 fetch 回來的。所以這些目錄藏在
 `QSAN_DATA_DIRECTORIES` / `QSAN_GUI_DATA_DIRECTORIES` 後面，逐個
 `if(EXISTS)` 檢查。

@@ -943,8 +943,8 @@ if(UNIX)
     # 資產清單:安裝樹入面實際有乜嘢係「冇咗行唔到」、乜嘢係「冇咗只係少啲
     # 聲畫」。GUI 專用資產只有喺 GUI build 先至列入 required。
     # 唔係每個 build context 都有齊呢啲目錄:Docker server image 嘅
-    # .dockerignore 就特登剔走 GUI/client 資產(lang/、qss/、skins/、
-    # ui-script/),而 extensions/ 同 lua/ai/ 係 build 入面 fetch 返嚟。
+    # .dockerignore 就特登剔走 GUI/client 資產(qss/、skins/、ui-script/),
+    # 而 extensions/ 同 lua/ai/ 係 build 入面 fetch 返嚟。
     # install(DIRECTORY) 撞到唔存在嘅目錄會直接 fatal,所以逐個檢查存在先裝;
     # 「應該有但係冇」由資產清單負責大聲講出嚟,而唔係喺 install 中途炸。
     set(QSAN_DATA_DIRECTORIES lua)
