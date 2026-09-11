@@ -134,14 +134,18 @@ private:
     quint16 m_wsPort = 0;
 };
 
+// An empty rulesBundle omits rules_bundle from the signup, as legacy TCP does.
 QByteArray encodeSignup(quint64 messageId, const QString &screenName,
-                        bool hasRoomId, int roomId, QString *error)
+                        bool hasRoomId, int roomId, const QJsonObject &rulesBundle,
+                        QString *error)
 {
     SignupRequestPayload request;
     request.screenName = screenName;
     request.avatar = QStringLiteral("caocao");
     request.hasRoomId = hasRoomId;
     request.roomId = roomId;
+    request.hasRulesBundle = !rulesBundle.isEmpty();
+    request.rulesBundle = rulesBundle;
     ProtocolMessage message;
     message.type = ProtocolMessageType::Request;
     message.source = ProtocolEndpoint::Client;
@@ -162,6 +166,24 @@ bool decodeMessage(const QByteArray &frame, ProtocolMessage *message, QString *e
         return true;
     *error = decoded.detail;
     return false;
+}
+
+// WebSocket admission requires the client's rules bundle identity to match
+// the server's (docs/rules-bundle-identity.md). This client is built from the
+// same tree as the server, so it answers with the identity the hello advertises,
+// the same bundle a matching Web client would send. A server whose content is
+// not declared-v1 advertises {"error_code": ...} in place of an identity.
+bool helloRulesBundle(const ProtocolMessage &hello, QJsonObject *bundle, QString *error)
+{
+    ServerHelloPayload payload;
+    if (!ServerHelloPayload::parse(hello.payload, &payload, error))
+        return false;
+    if (payload.rulesBundle.isEmpty()) {
+        *error = QStringLiteral("WebSocket hello did not advertise a rules bundle");
+        return false;
+    }
+    *bundle = payload.rulesBundle;
+    return true;
 }
 
 bool waitForDisconnect(QWebSocket *socket, int timeoutMs)
@@ -224,9 +246,26 @@ bool runWebSocketHelloSignup(quint16 wsPort)
         || !expect(hello.type == ProtocolMessageType::Notification,
                    "hello type mismatch"))
         return false;
+    QJsonObject rulesBundle;
+    if (!helloRulesBundle(hello, &rulesBundle, &error))
+        return expect(false, qPrintable(error));
+
+    // An expanded data tree (undeclared Lua, etc/ scenarios; the repository
+    // checkout is one) serves legacy TCP but must refuse every Web client.
+    // Framing is still checked on the refusal.
+    const QString identityError = rulesBundle.value(QStringLiteral("error_code")).toString();
+    const bool admissible = identityError.isEmpty();
+    if (!admissible) {
+        if (!expect(identityError == QLatin1String("rules_content_unsupported"),
+                    "hello advertised an unexpected rules identity error"))
+            return false;
+        qInfo().noquote() << "[INFO] server content is not declared-v1;"
+                          << "WebSocket signup is expected to be rejected";
+    }
 
     const QByteArray signupRequest = encodeSignup(
-        1, QStringLiteral("ws-gateway"), false, 0, &error);
+        1, QStringLiteral("ws-gateway"), false, 0,
+        admissible ? rulesBundle : QJsonObject(), &error);
     if (signupRequest.isEmpty())
         return expect(false, qPrintable(error));
     if (socket.sendTextMessage(QString::fromUtf8(signupRequest)) == 0)
@@ -253,8 +292,16 @@ bool runWebSocketHelloSignup(quint16 wsPort)
     SignupReplyPayload payload;
     if (!SignupReplyPayload::parse(reply.payload, &payload, &error))
         return expect(false, qPrintable(error));
-    if (!expect(payload.accepted, "signup was not accepted"))
+    if (admissible) {
+        if (!payload.accepted)
+            qCritical().noquote() << "signup rejected:" << payload.errorCode << payload.message;
+        if (!expect(payload.accepted, "signup was not accepted"))
+            return false;
+    } else if (!expect(!payload.accepted
+                           && payload.errorCode == QLatin1String("rules_identity_required"),
+                       "WebSocket signup to an undeclared-content server was not rejected")) {
         return false;
+    }
 
     socket.close();
     return true;
@@ -360,7 +407,7 @@ bool runSignupRoomIdPayloadContract()
                   "negative room_id was accepted");
 }
 
-class RoomIdClient
+class WebSocketSignupClient
 {
 public:
     bool open(quint16 wsPort, QString *error)
@@ -395,15 +442,16 @@ public:
             *error = QStringLiteral("first WS frame was not hello");
             return false;
         }
-        return true;
+        return helloRulesBundle(hello, &rulesBundle, error);
     }
 
     bool signup(const QString &name, bool hasRoomId, int roomId,
-                SignupReplyPayload *reply, QString *error)
+                SignupReplyPayload *reply, QString *error, bool sendRulesBundle = true)
     {
         const int before = frames.size();
         const QByteArray request = encodeSignup(
-            static_cast<quint64>(before + 1), name, hasRoomId, roomId, error);
+            static_cast<quint64>(before + 1), name, hasRoomId, roomId,
+            sendRulesBundle ? rulesBundle : QJsonObject(), error);
         if (request.isEmpty())
             return false;
         if (socket.sendTextMessage(QString::fromUtf8(request)) == 0) {
@@ -437,10 +485,110 @@ public:
     QWebSocket socket;
     QList<QByteArray> frames;
     QString lastError;
+    QJsonObject rulesBundle;
     bool connected = false;
 };
 
-bool runWebSocketSignupRoomId(const QString &serverPath)
+// Legacy TCP admission needs no rules bundle, and the room_id rules do not
+// depend on the transport, so they stay testable from an expanded data tree.
+class TcpSignupClient
+{
+public:
+    bool open(quint16 tcpPort, QString *error)
+    {
+        socket.connectToHost(QHostAddress::LocalHost, tcpPort);
+        if (!socket.waitForConnected(5000)) {
+            *error = socket.errorString();
+            return false;
+        }
+        ProtocolMessage hello;
+        return waitFor(S_COMMAND_CHECK_VERSION, ProtocolMessageType::Notification, &hello, error);
+    }
+
+    bool signup(const QString &name, bool hasRoomId, int roomId,
+                SignupReplyPayload *reply, QString *error)
+    {
+        QByteArray request = encodeSignup(1, name, hasRoomId, roomId, QJsonObject(), error);
+        if (request.isEmpty())
+            return false;
+        request.append('\n');
+        if (socket.write(request) != request.size() || !socket.waitForBytesWritten(5000)) {
+            *error = socket.errorString();
+            return false;
+        }
+        ProtocolMessage message;
+        if (!waitFor(S_COMMAND_SIGNUP, ProtocolMessageType::Reply, &message, error))
+            return false;
+        return SignupReplyPayload::parse(message.payload, reply, error);
+    }
+
+    void close()
+    {
+        socket.disconnectFromHost();
+        if (socket.state() != QAbstractSocket::UnconnectedState)
+            socket.waitForDisconnected(5000);
+    }
+
+private:
+    bool waitFor(int command, ProtocolMessageType type, ProtocolMessage *result, QString *error)
+    {
+        QElapsedTimer timer;
+        timer.start();
+        while (timer.elapsed() < 15000) {
+            for (qsizetype i = 0; i < messages.size(); ++i) {
+                if (messages.at(i).command == command && messages.at(i).type == type) {
+                    *result = messages.takeAt(i);
+                    return true;
+                }
+            }
+            if (socket.bytesAvailable() == 0 && !socket.waitForReadyRead(50)) {
+                if (socket.state() == QAbstractSocket::UnconnectedState) {
+                    *error = QStringLiteral("TCP connection closed while waiting for a frame");
+                    return false;
+                }
+                continue;
+            }
+            const ProtocolFrameAppendResult framed = frames.append(socket.readAll());
+            if (!framed.success) {
+                *error = framed.detail;
+                return false;
+            }
+            for (const QByteArray &frame : framed.frames) {
+                ProtocolMessage message;
+                if (!decodeMessage(frame, &message, error))
+                    return false;
+                messages.append(message);
+            }
+        }
+        *error = QStringLiteral("timed out waiting for a TCP frame");
+        return false;
+    }
+
+    QTcpSocket socket;
+    ProtocolFrameBuffer frames;
+    QList<ProtocolMessage> messages;
+};
+
+// The documented WebSocket admission contract: a signup without a rules
+// bundle is rejected before any Room or player binding.
+bool runWebSocketSignupRequiresRulesBundle(quint16 wsPort)
+{
+    QString error;
+    WebSocketSignupClient client;
+    SignupReplyPayload reply;
+    if (!client.open(wsPort, &error))
+        return expect(false, qPrintable(error));
+    if (!client.signup(QStringLiteral("no-rules-bundle"), false, 0, &reply, &error, false))
+        return expect(false, qPrintable(error));
+    const bool rejected = expect(!reply.accepted
+                                     && reply.errorCode == QLatin1String("rules_identity_required"),
+                                 "WebSocket signup without a rules bundle was not rejected "
+                                 "as rules_identity_required");
+    client.close();
+    return rejected;
+}
+
+bool runTcpSignupRoomId(const QString &serverPath)
 {
     QString error;
     LiveServer server;
@@ -449,9 +597,9 @@ bool runWebSocketSignupRoomId(const QString &serverPath)
         return false;
     }
 
-    RoomIdClient first;
+    TcpSignupClient first;
     SignupReplyPayload firstReply;
-    if (!first.open(server.wsPort(), &error))
+    if (!first.open(server.tcpPort(), &error))
         return expect(false, qPrintable(error));
     if (!first.signup(QStringLiteral("room-host"), false, 0, &firstReply, &error))
         return expect(false, qPrintable(error));
@@ -459,18 +607,18 @@ bool runWebSocketSignupRoomId(const QString &serverPath)
         || !expect(firstReply.roomId == 0, "first signup reply room_id was not 0"))
         return false;
 
-    RoomIdClient second;
+    TcpSignupClient second;
     SignupReplyPayload secondReply;
-    if (!second.open(server.wsPort(), &error))
+    if (!second.open(server.tcpPort(), &error))
         return expect(false, qPrintable(error));
     if (!second.signup(QStringLiteral("room-guest"), true, 0, &secondReply, &error))
         return expect(false, qPrintable(error));
     if (!expect(secondReply.accepted, "signup with room_id 0 was rejected"))
         return false;
 
-    RoomIdClient missing;
+    TcpSignupClient missing;
     SignupReplyPayload missingReply;
-    if (!missing.open(server.wsPort(), &error))
+    if (!missing.open(server.tcpPort(), &error))
         return expect(false, qPrintable(error));
     if (!missing.signup(QStringLiteral("missing-room"), true, 99, &missingReply, &error))
         return expect(false, qPrintable(error));
@@ -480,9 +628,9 @@ bool runWebSocketSignupRoomId(const QString &serverPath)
         return false;
     missing.close();
 
-    RoomIdClient full;
+    TcpSignupClient full;
     SignupReplyPayload fullReply;
-    if (!full.open(server.wsPort(), &error))
+    if (!full.open(server.tcpPort(), &error))
         return expect(false, qPrintable(error));
     if (!full.signup(QStringLiteral("full-room"), true, 0, &fullReply, &error))
         return expect(false, qPrintable(error));
@@ -492,18 +640,18 @@ bool runWebSocketSignupRoomId(const QString &serverPath)
         return false;
     full.close();
 
-    RoomIdClient nextCurrent;
+    TcpSignupClient nextCurrent;
     SignupReplyPayload nextReply;
-    if (!nextCurrent.open(server.wsPort(), &error))
+    if (!nextCurrent.open(server.tcpPort(), &error))
         return expect(false, qPrintable(error));
     if (!nextCurrent.signup(QStringLiteral("next-host"), false, 0, &nextReply, &error))
         return expect(false, qPrintable(error));
     if (!expect(nextReply.accepted, "signup without room_id after a full current failed"))
         return false;
 
-    RoomIdClient joinNext;
+    TcpSignupClient joinNext;
     SignupReplyPayload joinReply;
-    if (!joinNext.open(server.wsPort(), &error))
+    if (!joinNext.open(server.tcpPort(), &error))
         return expect(false, qPrintable(error));
     if (!joinNext.signup(QStringLiteral("next-guest"), true, 1, &joinReply, &error))
         return expect(false, qPrintable(error));
@@ -555,12 +703,14 @@ int main(int argc, char **argv)
          [&]() { return runSignupRoomIdPayloadContract(); }},
         {QStringLiteral("ws-hello-signup"),
          [&]() { return runWebSocketHelloSignup(server.wsPort()); }},
+        {QStringLiteral("ws-signup-requires-rules-bundle"),
+         [&]() { return runWebSocketSignupRequiresRulesBundle(server.wsPort()); }},
         {QStringLiteral("tcp-newline-hello"),
          [&]() { return runTcpNewlineHello(server.tcpPort()); }},
         {QStringLiteral("ws-binary-rejected"),
          [&]() { return runBinaryFrameRejected(server.wsPort()); }},
-        {QStringLiteral("ws-signup-room-id"),
-         [&]() { return runWebSocketSignupRoomId(serverPath); }},
+        {QStringLiteral("tcp-signup-room-id"),
+         [&]() { return runTcpSignupRoomId(serverPath); }},
     };
 
     int passedCount = 0;
