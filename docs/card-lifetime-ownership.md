@@ -22,6 +22,7 @@ before they are exposed to Lua or a managed Room domain.
 | `RoomState::m_cards` | WrappedCard map | RoomState | reset/destructor | `Room::thread()` | PR1 / PR5 / PR7 |
 | `Player::equips` | outer WrappedCard pointer | RoomState | Room mutation | `Room::thread()` | PR1 / PR4 |
 | `ai-runtime` Lua callback | Lua invocation scope | runtime | pcall return | runtime owner | PR1 / PR2 / PR6 |
+| `RoomInitializationThread` Lua-held Cards | observed Card objects, including parentless/pending Cards | unpublished Room domain | normal Lua/native release and domain drain | worker pushes remaining Card trees to canonical owner and refreshes manager snapshots before publication | initialization handoff |
 | ordinary RoomThread | transient Card domain | Room | worker-final/shutdown | `Room::thread()` | PR1 / PR6 |
 | 1v1 RoomThread | transient Card domain | Room | worker-final/shutdown | `Room::thread()` | PR1 / PR6 |
 | 3v3 RoomThread | transient Card domain | Room | worker-final/shutdown | `Room::thread()` | PR1 / PR6 |
@@ -58,3 +59,33 @@ nanoseconds and maximum wait nanoseconds. The trace adds an atomic counter and a
 optimistic `tryLock()` to each acquisition, so trace runs are diagnostic evidence,
 not timing acceptance. The profile does not attribute contention to a Room/domain
 and does not include the separate card-association mutex.
+
+## Initialization worker handoff
+
+Before publishing an asynchronously initialized Room, the worker returns the
+definition QObject tree, then calls `handoffInitializedDomain()`. That second
+step moves remaining live domain-owned Card roots and refreshes the manager's affinity
+snapshots, including Cards already moved with definitions. It does not retire
+Cards, drop wrappers/leases, or close the Lua states. The unpublished domain must
+have no active invocation scopes or Lua pins; foreign domains and baseline Cards
+are excluded. Retired objects keep their existing deferred-deletion cleanup path.
+QObject operations run outside the manager mutex.
+The completion callback joins the worker before publishing the Room, so deferred
+deletions left on that worker finish before the owner can close the domain.
+
+`CARD_LIFETIME_INITIALIZATION_HANDOFF` reports the number of objects still on the
+initialization worker, the roots moved, and the tracked snapshots refreshed.
+Shutdown domain entries include cached affinity addresses and all drain blockers.
+An initialization QThread may already be destroyed by shutdown, so its diagnostic
+address must not be dereferenced. A live, pending entry has not passed the manager
+retirement gate; repeating DeferredDelete dispatch cannot advance that entry.
+
+The runtime test executable exposes two direct focused suites:
+
+- `--suite card-lifetime-initialization-handoff`: no Engine assets; covers detached
+  Cards, definition-tree affinity snapshots, wrapper/native lease retention, scope
+  rejection, baseline/domain isolation, and reclamation after the worker dies.
+- `--suite card-lifetime-initial-room-close`: uses production async Room creation
+  and immediately destroys the waiting Room, without gameplay or network clients.
+  Use the matching Qt runtime PATH and enforce a 60-second external timeout locally.
+  This tests core Room shutdown, not the GUI return-home event sequence.

@@ -73,6 +73,8 @@ int runCardLifetimeLegacyRedTests();
 int runCardLifetimeRoomStateTests();
 int runCardLifetimeLuaTests();
 int runCardLifetimeDerivedCardConversionTests();
+int runCardLifetimeInitialRoomCloseTests();
+int runCardLifetimeInitializationHandoffTests();
 int runCardLifetimeEventLeaseFixture(int argc, char **argv);
 int runCardLifetimeWrappedAdoptionFixture(int argc, char **argv);
 int runCardLifetimeShutdownFixture(int argc, char **argv);
@@ -109,6 +111,8 @@ int main(int argc, char **argv)
             {QStringLiteral("lua-runtime"), {QStringLiteral("--suite"), QStringLiteral("lua-runtime")}},
             {QStringLiteral("room-runtime"), {QStringLiteral("--suite"), QStringLiteral("room-runtime")}},
             {QStringLiteral("room-lua-teardown"), {QStringLiteral("--suite"), QStringLiteral("room-lua-teardown")}},
+            {QStringLiteral("initial-room-close"), {QStringLiteral("--suite"), QStringLiteral("card-lifetime-initial-room-close")}, 60000},
+            {QStringLiteral("initialization-handoff"), {QStringLiteral("--suite"), QStringLiteral("card-lifetime-initialization-handoff")}, 10000},
             {QStringLiteral("card-lifetime"), {QStringLiteral("--suite"), QStringLiteral("card-lifetime")}, 600000},
             {QStringLiteral("card-lifetime-lua"), {QStringLiteral("--suite"), QStringLiteral("card-lifetime-lua")}},
             {QStringLiteral("synthetic-30"), {
@@ -130,6 +134,10 @@ int main(int argc, char **argv)
         return runCardLifetimeLuaTests();
     if (suite == QLatin1String("card-lifetime-derived-card-red"))
         return runCardLifetimeDerivedCardConversionTests();
+    if (suite == QLatin1String("card-lifetime-initial-room-close"))
+        return runCardLifetimeInitialRoomCloseTests();
+    if (suite == QLatin1String("card-lifetime-initialization-handoff"))
+        return runCardLifetimeInitializationHandoffTests();
     if (suite == QLatin1String("card-lifetime-synthetic-30")
         || suite == QLatin1String("card-lifetime-synthetic-50")) {
         quint64 seed = 0;
