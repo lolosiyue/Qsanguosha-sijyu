@@ -64,6 +64,7 @@ add_executable(qsanguosha_core_tests
     engine-smoke-test.cpp
     lua-compat-test.cpp
     core-regressions-test.cpp
+    equips-nullified-test.cpp
     package-policy-test.cpp
     package-ownership-test.cpp
     card-overview-classifier-test.cpp
@@ -102,6 +103,8 @@ set_source_files_properties(takeover-snapshot/takeover-snapshot-test.cpp
     PROPERTIES COMPILE_DEFINITIONS main=runTakeoverSnapshotTests)
 set_source_files_properties(photo-layout-fit-test.cpp
     PROPERTIES COMPILE_DEFINITIONS main=runPhotoLayoutFitTests)
+set_source_files_properties(equips-nullified-test.cpp
+    PROPERTIES COMPILE_DEFINITIONS main=runEquipsNullifiedTests)
 qsan_link_engine_test(qsanguosha_core_tests)
 target_include_directories(qsanguosha_core_tests PRIVATE
     ${QSAN_TEST_ROOT}/src/ui
@@ -129,6 +132,10 @@ qsan_add_ctest(qsanguosha_photo_layout_fit qsanguosha_core_tests
 qsan_add_ctest(qsanguosha_engine_smoke qsanguosha_core_tests
     SUITE engine-smoke
     LABELS fast
+)
+qsan_add_ctest(qsanguosha_equips_nullified qsanguosha_core_tests
+    SUITE equips-nullified
+    LABELS "gameplay;fast"
 )
 qsan_add_ctest(qsanguosha_enum_reflection qsanguosha_core_tests
     SUITE enum-reflection
