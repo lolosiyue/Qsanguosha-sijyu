@@ -239,4 +239,41 @@ describe("reducer", () => {
     expect(state.playerValue("sgs1", "tags")).toBeUndefined();
     expect(state.playerValue("sgs1", "fixed_distances")).toBeUndefined();
   });
+
+  it("drops skills only a replaced instance backed on a SKILL_INSTANCE snapshot", () => {
+    const state = new ClientGameState();
+    const entry = (skill: string) => ({
+      owner_name: "p1",
+      skill_name: skill,
+      instance_id: 1,
+      source: 0,
+      parent_owner: "p1",
+      parent_skill: "",
+      parent_instance_id: 0,
+      visible: true,
+      bind_head: 1,
+      has_amount_override: false
+    });
+    applyNotification(state, Command.SKILL_INSTANCE, {
+      schema_version: 1,
+      action: "upsert",
+      entry: entry("wusheng")
+    });
+    applyNotification(state, Command.ATTACH_SKILL, {
+      schema_version: 1,
+      player_name: "p1",
+      skill_name: "jizhi"
+    });
+    const result = applyNotification(state, Command.SKILL_INSTANCE, {
+      schema_version: 1,
+      action: "snapshot",
+      entries: [entry("paoxiao")]
+    });
+    expect(result.success).toBe(true);
+    expect(Object.keys(state.playerValue("p1", "skill_instances") as object)).toEqual(["paoxiao#1"]);
+    const skills = state.playerValue("p1", "skills") as string[];
+    expect(skills).not.toContain("wusheng");
+    expect(skills).toContain("paoxiao");
+    expect(skills).toContain("jizhi");
+  });
 });
