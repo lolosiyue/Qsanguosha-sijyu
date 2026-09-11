@@ -739,8 +739,16 @@ void testRulesProjectionReducer()
     state.setSelfName(QStringLiteral("sgs1"));
     state.setPlayerNames(QStringList() << QStringLiteral("sgs1") << QStringLiteral("sgs2"));
 
-    auto notify = [&state](int command, const QVariantMap &payload) {
-        return ClientGameStateReducer::applyNotification(&state, command, payload);
+    // Room notifications without schema_version are rejected before they touch
+    // state, which would leave every "is stored" check below failing and every
+    // "is deleted" check passing without testing anything.
+    auto notify = [&state](int command, QVariantMap payload) {
+        payload.insert(QStringLiteral("schema_version"), 1);
+        const ClientStateReduction result =
+            ClientGameStateReducer::applyNotification(&state, command, payload);
+        check(result.success,
+              qPrintable(QStringLiteral("notification %1 is accepted").arg(command)));
+        return result;
     };
     auto distances = [&state]() {
         return state.playerValue(QStringLiteral("sgs1"), QStringLiteral("fixed_distances")).toMap();
