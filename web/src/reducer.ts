@@ -459,12 +459,33 @@ export function applyNotification(
     case Command.SKILL_INSTANCE: {
       const action = asString(payload.action);
       if (action === "snapshot") {
-        for (const player of state.playerNames)
+        // A snapshot replaces every instance, so treat it like a remove of
+        // each old one: a skill name only a replaced instance backed leaves
+        // "skills". ATTACH_SKILL and UI-state names were never backed.
+        const instanceSkills = (player: string): Set<string> => {
+          const names = new Set<string>();
+          const instances = state.playerValue(player, "skill_instances");
+          if (isRecord(instances))
+            for (const value of Object.values(instances as JsonObject))
+              if (isObject(value))
+                names.add(asString(value.skill_name));
+          return names;
+        };
+        const replaced = new Map<string, Set<string>>();
+        for (const player of state.playerNames) {
+          replaced.set(player, instanceSkills(player));
           state.setPlayerValue(player, "skill_instances", {});
+        }
         const entries = Array.isArray(payload.entries) ? payload.entries : [];
         for (const entry of entries)
           if (isObject(entry))
             storeSkillInstance(state, entry);
+        for (const [player, names] of replaced) {
+          const present = instanceSkills(player);
+          for (const skill of names)
+            if (!present.has(skill))
+              removeSkill(state, player, skill);
+        }
       } else if (action === "upsert" && isObject(payload.entry)) {
         storeSkillInstance(state, payload.entry);
       } else {
