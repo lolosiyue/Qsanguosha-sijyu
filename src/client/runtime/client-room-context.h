@@ -29,6 +29,9 @@ public:
 
     ~ClientRoomContext() override
     {
+        // Owners declare the player model after the room, so it is already
+        // gone -- along with every pointer it held into these cards.
+        m_beforeCardsFreed = nullptr;
         leaveGame();
     }
 
@@ -36,6 +39,11 @@ public:
     {
         if (Sanguosha == nullptr)
             return;
+        // A second GAME_START without a GAME_OVER (reconnect) re-deals cards
+        // the players may still be wearing. After a GAME_OVER they wear
+        // nothing, but their zones were last projected with no room at all,
+        // so they still have to hear that the next sync must project again.
+        releaseCards();
         Sanguosha->registerRoom(this);
         m_roomState.reset();
         m_active = true;
@@ -45,6 +53,7 @@ public:
     {
         if (!m_active)
             return;
+        releaseCards();
         m_active = false;
         if (Sanguosha != nullptr)
             Sanguosha->unregisterRoom();
@@ -76,6 +85,15 @@ public:
     void setOwnerResolver(OwnerResolver resolver)
     {
         m_ownerResolver = std::move(resolver);
+    }
+
+    // Runs while the room's cards are still alive and registered, just before
+    // they are freed. Players hold raw pointers into them (equipment, hand,
+    // judging area) and every Player removal reads the card, so they have to
+    // let go here: afterwards there is no safe way to.
+    void setBeforeCardsFreed(std::function<void()> handler)
+    {
+        m_beforeCardsFreed = std::move(handler);
     }
 
     void setCardUseContext(CardUseStruct::CardUseReason reason, const QString &pattern)
@@ -135,6 +153,12 @@ public:
     }
 
 private:
+    void releaseCards()
+    {
+        if (m_beforeCardsFreed)
+            m_beforeCardsFreed();
+    }
+
     bool applyCardUpdate(const QVariantMap &payload)
     {
         if (!m_active || Sanguosha == nullptr)
@@ -166,6 +190,7 @@ private:
 
     const ClientGameState *m_state;
     OwnerResolver m_ownerResolver;
+    std::function<void()> m_beforeCardsFreed;
     RoomState m_roomState;
     bool m_active = false;
 };

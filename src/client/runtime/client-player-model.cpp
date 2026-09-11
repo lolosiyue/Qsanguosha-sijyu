@@ -273,6 +273,22 @@ void ClientPlayer::applyRuleEffects(const QVariantMap &data)
     }
 }
 
+void ClientPlayer::releaseRoomCards()
+{
+    // Every removal reads the card it drops, which is why this has to run
+    // before the room frees them rather than after.
+    for (const Card *card : Player::getHandcards())
+        Player::removeCard(card->getId(), Player::PlaceHand);
+    for (const Card *card : getJudgingArea())
+        removeDelayedTrick(card);
+    // By ID, not getEquips(): that only lists wrappers whose inner card is an
+    // EquipCard, and setEquip() stores any wrapper.
+    for (int id : getEquipsId()) {
+        if (const Card *card = Sanguosha != nullptr ? Sanguosha->getCard(id) : nullptr)
+            removeEquip(card);
+    }
+}
+
 QJsonObject ClientPlayer::metrics() const
 {
     QJsonObject distanceTo;
@@ -377,6 +393,9 @@ void ClientPlayerModel::sync()
         const QList<int> equipped = m_state->cardsForPlayer(name, Player::PlaceEquip);
         if (entry.applied != data)
             syncPlayer(&entry, data);
+        else if (entry.cardsReleased)
+            entry.player->applyVisibleZones(data);
+        entry.cardsReleased = false;
         reconcileEquips(entry.player, equipped);
         entry.applied = data;
         entry.equipped = equipped;
@@ -384,6 +403,18 @@ void ClientPlayerModel::sync()
 
     m_selfName = m_state->selfName();
     setEngineSelf(self());
+}
+
+void ClientPlayerModel::releaseCards()
+{
+    for (Entry &entry : m_players) {
+        if (entry.player == nullptr)
+            continue;
+        entry.player->releaseRoomCards();
+        // Not by forgetting `applied`: applyPlayerState() diffs against it, and
+        // an empty baseline would miss a mark or flag cleared in the meantime.
+        entry.cardsReleased = true;
+    }
 }
 
 void ClientPlayerModel::syncPlayer(Entry *entry, const QVariantMap &data)

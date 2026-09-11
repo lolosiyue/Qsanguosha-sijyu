@@ -164,6 +164,7 @@ TuiApplicationController::TuiApplicationController(const TuiApplicationOptions &
     }
     m_roomContext.setOwnerResolver(
         [this](int cardId) { return m_players.cardOwner(cardId); });
+    m_roomContext.setBeforeCardsFreed([this]() { m_players.releaseCards(); });
     connect(&m_session, &ClientLiveSession::connectionChanged, this,
         [this](const QString &state) {
             // The session reports the wire token; the player reads the label.
