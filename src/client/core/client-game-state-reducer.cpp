@@ -15,6 +15,12 @@ namespace {
 // place ordinal is spelled out the same way the hand and equip ones already are.
 constexpr int kDiscardPilePlace = 5;
 
+// QSanProtocol::S_PLAYER_SELF_REFERENCE_ID. protocol.h only declares it; the
+// definition is in the engine's protocol.cpp, so naming it here breaks the link
+// of anything that uses this reducer without the engine. The TUI contract
+// test feeds the engine constant through the reducer, which catches drift.
+const QLatin1String kSelfReferenceId("MG_SELF");
+
 QStringList strings(const QVariant &value)
 {
     if (value.canConvert<QStringList>()) {
@@ -58,7 +64,7 @@ QVariantList variants(const QList<int> &values)
 QString resolvePlayerName(const ClientGameState *state, const QVariant &value)
 {
     const QString name = value.toString();
-    return name == QLatin1String(S_PLAYER_SELF_REFERENCE_ID) ? state->selfName() : name;
+    return name == kSelfReferenceId ? state->selfName() : name;
 }
 
 bool booleanValue(const QVariant &value)
@@ -164,7 +170,7 @@ void applyPlayerProperty(ClientGameState *state, const QVariantMap &object)
         const QString objectName = value.toString();
         if (!objectName.isEmpty()) {
             if (object.value(QStringLiteral("player_name")).toString()
-                == QLatin1String(S_PLAYER_SELF_REFERENCE_ID)) {
+                == kSelfReferenceId) {
                 state->setSelfName(objectName);
             }
             player = objectName;
