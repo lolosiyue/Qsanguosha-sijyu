@@ -4,6 +4,8 @@
 #include "engine-bootstrap.h"
 #include "lua-runtime.h"
 #include "room-test-access.h"
+#include "server-core.h"
+#include "settings.h"
 #include "wrapped-card.h"
 
 #include <QByteArray>
@@ -1452,6 +1454,125 @@ int runCardLifetimeLuaTests()
         && aliasMetatables && stockNonCard && duplicateGcReleasedOnce
         && duplicateGcIdempotent && owningCloneDestroyedOnce
         && wrapperLeasesReleased ? 0 : 71;
+}
+
+int runCardLifetimeInitializationHandoffTests()
+{
+    // This regression does not depend on Engine assets or Lua load time.
+    globalCardLifetimeManager();
+    QThread *owner = QThread::currentThread();
+    CardLifetimeManager manager(CardLifetimeMode::ManagedReclaim, owner);
+    int domain = 0;
+    int otherDomain = 0;
+    QPointer<QObject> definitions;
+    QPointer<Card> detached;
+    QPointer<Card> child;
+    QPointer<Card> retiredOnWorker;
+    std::shared_ptr<const CardLifetimeToken> detachedToken;
+    std::shared_ptr<const CardLifetimeToken> childToken;
+    std::unique_ptr<QThread> worker(QThread::create([&] {
+        const void *previous = CardLifetimeManager::setCurrentDomain(&domain);
+        definitions = new QObject;
+        child = new DummyCard;
+        child->setParent(definitions);
+        childToken = manager.observeCard(child);
+        detached = new DummyCard;
+        detachedToken = manager.observeCard(detached);
+        CARD_LIFETIME_CHECK(manager.retainWrapper(detachedToken));
+        CARD_LIFETIME_CHECK(manager.retainNativeLease(detachedToken));
+        CARD_LIFETIME_CHECK(manager.requestLuaDelete(detachedToken));
+        CardLifetimeManager::setCurrentDomain(&otherDomain);
+        auto *other = new DummyCard;
+        const auto otherToken = manager.observeCard(other);
+        CardLifetimeManager::setCurrentDomain(&domain);
+        auto *baseline = new DummyCard;
+        const auto baselineToken = manager.observeCard(baseline);
+        manager.setDomainBaseline(&domain, {baseline});
+        retiredOnWorker = new DummyCard;
+        const auto retiredToken = manager.observeCard(retiredOnWorker);
+        CARD_LIFETIME_CHECK(manager.invalidateIfObserved(retiredToken));
+        retiredOnWorker->QObject::deleteLater();
+
+        // The definition child moves with its tree but retains a stale snapshot;
+        // the Lua-held parentless Card remains on the initialization worker.
+        definitions->moveToThread(owner);
+        CARD_LIFETIME_CHECK(child->thread() == owner);
+        CARD_LIFETIME_CHECK(manager.affinityThread(childToken) == QThread::currentThread());
+        const void *scopeDomain = manager.enterScope("init-handoff-test");
+        QString error;
+        CARD_LIFETIME_CHECK(!manager.handoffInitializedDomain(&domain, owner, &error));
+        CARD_LIFETIME_CHECK(detached->thread() == QThread::currentThread());
+        manager.leaveScope(scopeDomain);
+        CARD_LIFETIME_CHECK(manager.handoffInitializedDomain(&domain, owner, &error));
+        CARD_LIFETIME_CHECK(detached->thread() == owner);
+        CARD_LIFETIME_CHECK(manager.affinityThread(detachedToken) == owner);
+        CARD_LIFETIME_CHECK(manager.affinityThread(childToken) == owner);
+        CARD_LIFETIME_CHECK(other->thread() == QThread::currentThread());
+        CARD_LIFETIME_CHECK(manager.affinityThread(otherToken) == QThread::currentThread());
+        CARD_LIFETIME_CHECK(baseline->thread() == QThread::currentThread());
+        CARD_LIFETIME_CHECK(manager.affinityThread(baselineToken) == QThread::currentThread());
+        CARD_LIFETIME_CHECK(retiredOnWorker->thread() == QThread::currentThread());
+        delete other;
+        delete baseline;
+        CardLifetimeManager::setCurrentDomain(previous);
+    }));
+    worker->start();
+    CARD_LIFETIME_CHECK(worker->wait(5000));
+    worker.reset();
+    // QThread finish processes its own deferred deletions; handoff must not
+    // transfer already-retired objects to the concurrently running owner.
+    CARD_LIFETIME_CHECK(retiredOnWorker.isNull());
+    CARD_LIFETIME_CHECK(manager.liveToken(detached) == detachedToken);
+    CARD_LIFETIME_CHECK(detachedToken->state == CardLifetimeState::PendingDelete);
+    CARD_LIFETIME_CHECK(manager.gaugeForDomain(&domain).wrapper_leases == 1);
+    CARD_LIFETIME_CHECK(manager.gaugeForDomain(&domain).native_leases == 1);
+    CARD_LIFETIME_CHECK(manager.drainDomain(&domain) == 0);
+    CARD_LIFETIME_CHECK(manager.releaseWrapper(detachedToken));
+    CARD_LIFETIME_CHECK(manager.drainDomain(&domain) == 0);
+    CARD_LIFETIME_CHECK(manager.releaseNativeLease(detachedToken));
+    CARD_LIFETIME_CHECK(manager.requestNativeDelete(childToken));
+    QList<QPointer<QObject>> retired;
+    CARD_LIFETIME_CHECK(manager.drainDomain(&domain, &retired) == 2);
+    for (const QPointer<QObject> &object : std::as_const(retired))
+        if (object)
+            QCoreApplication::sendPostedEvents(object, QEvent::DeferredDelete);
+    CARD_LIFETIME_CHECK(detached.isNull() && child.isNull());
+    CARD_LIFETIME_CHECK(manager.entryCountForDomain(&domain) == 0);
+    CARD_LIFETIME_CHECK(manager.entryCountForDomain(&otherDomain) == 0);
+    delete definitions.data();
+    std::fprintf(stdout, "CARD_LIFETIME_INITIALIZATION_HANDOFF_TEST PASS\n");
+    return 0;
+}
+
+int runCardLifetimeInitialRoomCloseTests()
+{
+    QString error;
+    CARD_LIFETIME_CHECK(EngineBootstrap::initialize(false, &error));
+    Config.GameMode = QStringLiteral("03_1v2");
+    {
+        // Use the production worker without starting gameplay or opening a listener.
+        Server server(nullptr, GameSessionConfig(), Server::InitialRoomPolicy::Deferred);
+        QEventLoop loop;
+        bool ready = false;
+        QObject::connect(&server, &Server::initialRoomReady, &loop, [&] {
+            ready = true;
+            loop.quit();
+        });
+        QObject::connect(&server, &Server::initialRoomFailed, &loop,
+                         [&](const QString &detail) { error = detail; loop.quit(); });
+        CARD_LIFETIME_CHECK(server.prepareInitialRoomAsync(&error));
+        loop.exec();
+        CARD_LIFETIME_CHECK(ready);
+        const QList<Room *> rooms = server.findChildren<Room *>();
+        CARD_LIFETIME_CHECK(rooms.size() == 1);
+        Room *room = rooms.first();
+        const void *domain = room->roomRuntime();
+        delete room;
+        CARD_LIFETIME_CHECK(globalCardLifetimeManager().entryCountForDomain(domain) == 0);
+    }
+    EngineBootstrap::shutdown();
+    std::fprintf(stdout, "CARD_LIFETIME_INITIAL_ROOM_CLOSE PASS\n");
+    return 0;
 }
 
 int runCardLifetimeDerivedCardConversionTests()

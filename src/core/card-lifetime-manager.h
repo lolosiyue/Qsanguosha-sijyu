@@ -181,6 +181,10 @@ public:
     quint64 drain();
     quint64 drainDomain(const void *domain,
                         QList<QPointer<QObject>> *retiredObjects = nullptr);
+    // Call on the initialization worker before publishing the quiescent domain.
+    // Transfers live Cards only; preserves pending deletion and all leases.
+    bool handoffInitializedDomain(const void *domain, QThread *targetThread,
+                                  QString *error = nullptr);
     bool finalizeWorkerDomain(const void *domain, quint64 *retired = nullptr);
 
     void registerRuntimeDomain(const void *domain, const void *identity,

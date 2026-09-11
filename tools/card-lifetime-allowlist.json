@@ -27,6 +27,7 @@
     "`DummyCard` decision paths",
     "`Player::ComboMovesCard`",
     "`Player::equips`",
+    "`RoomInitializationThread` Lua-held Cards",
     "`RoomState::m_cards`",
     "`SkillContext` QVariant payload",
     "`WrappedCard::m_card`",

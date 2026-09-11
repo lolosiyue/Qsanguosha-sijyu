@@ -7,6 +7,7 @@
 #include "rules-bundle-exporter.h"
 #include "settings.h"
 #include "room.h"
+#include "card-lifetime-manager.h"
 #include "roomthread.h"
 #include "engine.h"
 #include "build-features.h"
@@ -93,6 +94,11 @@ protected:
 		QString handoffError;
 		if (!m_runtime->definitions().moveOwnedObjectsToThread(m_returnThread, &handoffError))
 			qFatal("Room definition QObject handoff failed: %s", qUtf8Printable(handoffError));
+		// Definitions have returned to the canonical owner; transfer remaining
+		// Lua-held Cards and refresh their lifetime-manager affinity snapshots.
+		if (!globalCardLifetimeManager().handoffInitializedDomain(
+			m_runtime, m_returnThread, &handoffError))
+			qFatal("Room initialization Card handoff failed: %s", qUtf8Printable(handoffError));
 	}
 
 private:
@@ -2078,6 +2084,10 @@ bool Server::prepareInitialRoomAsync(QString *error)
 
 	m_roomPreparationThread = worker;
 	connect(worker, &QThread::finished, this, [this, worker, room]() {
+		// finished precedes deferred deletion and thread-local cleanup. Complete
+		// that cleanup before exposing the runtime to its canonical owner.
+		if (!worker->wait())
+			qFatal("Room initialization worker cleanup did not complete");
 		m_roomPreparationThread = nullptr;
 		worker->deleteLater();
 

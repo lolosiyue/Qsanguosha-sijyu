@@ -1460,6 +1460,148 @@ quint64 CardLifetimeManager::drainImpl(
     return destroyed;
 }
 
+bool CardLifetimeManager::handoffInitializedDomain(const void *domain,
+                                                    QThread *targetThread,
+                                                    QString *error)
+{
+    if (error)
+        error->clear();
+    const QThread *sourceThread = QThread::currentThread();
+    auto fail = [error](const QString &detail) {
+        if (error)
+            *error = detail;
+        return false;
+    };
+    if (!domain)
+        return fail(QStringLiteral("Room initialization domain is null"));
+    if (!targetThread)
+        return fail(QStringLiteral("Room initialization target thread is null"));
+    if (targetThread != m_ownerThread)
+        return fail(QStringLiteral("Room initialization target is not the card owner thread"));
+    if (sourceThread == targetThread)
+        return fail(QStringLiteral("Room initialization handoff source and target are equal"));
+
+    struct Candidate {
+        const void *address = nullptr;
+        std::shared_ptr<const CardLifetimeToken> token;
+        QPointer<QObject> object;
+    };
+    QVector<Candidate> candidates;
+    {
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
+        if (m_domainActiveScopes.value(domain, 0) != 0
+            || m_domainLuaPins.value(domain, 0) != 0) {
+            return fail(QStringLiteral(
+                "Room initialization domain still has active scopes or Lua pins"));
+        }
+        for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it) {
+            // Retired objects may already have a DeferredDelete queued. They
+            // stay on the existing cleanup path; QPointer is not a lifetime pin.
+            if (it->domain != domain || it->baselineDomain != nullptr
+                || !it->token->live || !it->physical || it->object.isNull())
+                continue;
+            if (it->affinityThread != sourceThread && it->affinityThread != targetThread) {
+                return fail(QStringLiteral(
+                    "Room initialization Card has an unexpected cached affinity thread"));
+            }
+            candidates.push_back({it.key(), it->token, it->object});
+        }
+    }
+
+    QSet<QObject *> selectedObjects;
+    for (const Candidate &candidate : std::as_const(candidates))
+        if (candidate.object)
+            selectedObjects.insert(candidate.object.data());
+
+    QSet<QObject *> roots;
+    QSet<QObject *> movingObjects;
+    quint64 sourceObjects = 0;
+    for (const Candidate &candidate : std::as_const(candidates)) {
+        QObject *object = candidate.object.data();
+        if (!object)
+            continue;
+        const QThread *actualThread = object->thread();
+        if (actualThread == targetThread)
+            continue;
+        if (actualThread != sourceThread)
+            return fail(QStringLiteral(
+                "Room initialization Card has an unexpected actual affinity thread"));
+
+        ++sourceObjects;
+        QObject *root = object;
+        while (root->parent())
+            root = root->parent();
+        // Only move a root selected from this domain; never detach an object
+        // from an untracked QObject tree to make the handoff appear complete.
+        if (!selectedObjects.contains(root) || qobject_cast<Card *>(root) == nullptr)
+            return fail(QStringLiteral(
+                "Room initialization Card is attached to an untracked QObject tree"));
+        roots.insert(root);
+    }
+
+    for (QObject *root : std::as_const(roots)) {
+        movingObjects.insert(root);
+        const QObjectList descendants = root->findChildren<QObject *>();
+        for (QObject *object : descendants)
+            movingObjects.insert(object);
+    }
+    for (QObject *object : std::as_const(movingObjects)) {
+        if (!object || object->thread() != sourceThread)
+            return fail(QStringLiteral(
+                "Room initialization QObject tree has mixed affinity"));
+    }
+
+    {
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
+        // The manager mutex must not be held while Qt sends ThreadChange
+        // notifications. Check the full tree first, while its ownership map
+        // is stable, so a foreign or baseline Card is never reparented.
+        for (QObject *object : std::as_const(movingObjects)) {
+            const auto found = m_entries.constFind(object);
+            if (found == m_entries.cend())
+                continue;
+            if (found->domain != domain || found->baselineDomain != nullptr)
+                return fail(QStringLiteral(
+                    "Room initialization QObject tree contains a foreign or baseline Card"));
+        }
+    }
+
+    for (QObject *root : std::as_const(roots))
+        root->moveToThread(targetThread);
+
+    for (const Candidate &candidate : std::as_const(candidates)) {
+        if (candidate.object && candidate.object->thread() != targetThread)
+            return fail(QStringLiteral("Room initialization Card affinity handoff failed"));
+    }
+
+    quint64 tracked = 0;
+    {
+        std::lock_guard<ProfiledMutex> lock(m_mutex);
+        for (const Candidate &candidate : std::as_const(candidates)) {
+            QObject *object = candidate.object.data();
+            if (!object)
+                continue;
+            auto found = m_entries.find(candidate.address);
+            if (found == m_entries.end() || found->token.get() != candidate.token.get()
+                || found->token->generation != candidate.token->generation
+                || found->domain != domain || found->baselineDomain != nullptr
+                || found->object.data() != object)
+                return fail(QStringLiteral(
+                    "Room initialization Card lifetime entry changed during handoff"));
+            found->affinityThread = targetThread;
+            ++tracked;
+        }
+    }
+
+    std::fprintf(stdout,
+                 "CARD_LIFETIME_INITIALIZATION_HANDOFF source_objects=%llu roots=%llu tracked=%llu\n",
+                 static_cast<unsigned long long>(sourceObjects),
+                 static_cast<unsigned long long>(roots.size()),
+                 static_cast<unsigned long long>(tracked));
+    std::fflush(stdout);
+    return true;
+}
+
 bool CardLifetimeManager::finalizeWorkerDomain(const void *domain, quint64 *retired)
 {
     if (retired)
@@ -1704,6 +1846,8 @@ void CardLifetimeManager::dumpDomain(const void *domain) const
     quint64 pending = 0;
     quint64 withObject = 0;
     quint64 entries = 0;
+    const quint64 domainScopes = m_domainActiveScopes.value(domain, 0);
+    const quint64 domainPins = m_domainLuaPins.value(domain, 0);
     for (auto it = m_entries.cbegin(); it != m_entries.cend(); ++it) {
         if (it->domain != domain || it->baselineDomain == domain)
             continue;
@@ -1725,35 +1869,61 @@ void CardLifetimeManager::dumpDomain(const void *domain) const
     // 一行都唔會印, 睇 log 嘅人淨係見到一個「4」而唔知係邊四個。
     struct DomainEntryLine {
         const void *address;
-        const QObject *object;
+        const void *object;
+        QByteArray className;
+        QThread *cachedAffinity;
         bool live;
         bool pending;
         int state;
+        quint64 wrappers;
+        quint64 nativeLeases;
+        quint64 reservations;
+        bool nativeDelete;
+        bool anyChangeEdge;
     };
     QList<DomainEntryLine> lines;
     for (auto it = m_entries.cbegin(); it != m_entries.cend() && lines.size() < 128; ++it) {
         if (it->domain != domain || it->baselineDomain == domain)
             continue;
-        lines.push_back({it.key(), it->object.data(), it->token->live, it->pending,
-                         static_cast<int>(it->token->state)});
+        const QObject *object = it->object.data();
+        const bool anyChangeEdge = std::any_of(
+            m_changeEdges.cbegin(), m_changeEdges.cend(), [&](const ChangeEdge &edge) {
+                return edge.sourceToken.get() == it->token.get()
+                    || edge.targetToken.get() == it->token.get();
+            });
+        lines.push_back({it.key(), static_cast<const void *>(object),
+                         object ? QByteArray(object->metaObject()->className()) : QByteArray("-"),
+                         it->affinityThread, it->token->live, it->pending,
+                         static_cast<int>(it->token->state), it->wrappers,
+                         it->nativeLeases, it->adoptionReservations, it->nativeDelete,
+                         anyChangeEdge});
     }
     entries = static_cast<quint64>(m_entries.size());
     lock.unlock();
     for (const DomainEntryLine &line : lines) {
         std::fprintf(stderr,
-                     "CARD_LIFETIME_DOMAIN_ENTRY address=%p object=%p class=%s live=%d pending=%d state=%d\n",
+                     "CARD_LIFETIME_DOMAIN_ENTRY address=%p object=%p class=%s live=%d pending=%d state=%d cached_affinity=%p wrappers=%llu native_leases=%llu reservations=%llu native_delete=%d change_edge=%d domain_scopes=%llu domain_pins=%llu\n",
                      line.address, static_cast<const void *>(line.object),
-                     line.object ? line.object->metaObject()->className() : "-",
-                     line.live ? 1 : 0, line.pending ? 1 : 0, line.state);
+                     line.className.constData(), line.live ? 1 : 0,
+                     line.pending ? 1 : 0, line.state,
+                     static_cast<const void *>(line.cachedAffinity),
+                     static_cast<unsigned long long>(line.wrappers),
+                     static_cast<unsigned long long>(line.nativeLeases),
+                     static_cast<unsigned long long>(line.reservations),
+                     line.nativeDelete ? 1 : 0, line.anyChangeEdge ? 1 : 0,
+                     static_cast<unsigned long long>(domainScopes),
+                     static_cast<unsigned long long>(domainPins));
     }
-    std::fprintf(stderr, "CARD_LIFETIME_DOMAIN_DUMP live=%llu original=%llu external=%llu adopted=%llu pending=%llu object=%llu entries=%llu\n",
+    std::fprintf(stderr, "CARD_LIFETIME_DOMAIN_DUMP live=%llu original=%llu external=%llu adopted=%llu pending=%llu object=%llu entries=%llu domain_scopes=%llu domain_pins=%llu\n",
                  static_cast<unsigned long long>(live),
                  static_cast<unsigned long long>(original),
                  static_cast<unsigned long long>(external),
                  static_cast<unsigned long long>(adopted),
                  static_cast<unsigned long long>(pending),
                  static_cast<unsigned long long>(withObject),
-                 static_cast<unsigned long long>(entries));
+                 static_cast<unsigned long long>(entries),
+                 static_cast<unsigned long long>(domainScopes),
+                 static_cast<unsigned long long>(domainPins));
 }
 
 quint64 CardLifetimeManager::entryCount() const
