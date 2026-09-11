@@ -11,6 +11,7 @@ int runClientTargetEvaluatorTests();
 int runEnumReflectionTests();
 int runPackagePolicyTests();
 int runMigratedGeneralPackageTests();
+int runEquipsNullifiedTests();
 // 以下 suite 本身係獨立 test 檔嘅 main(),由 CMake 用 COMPILE_DEFINITIONS
 // main=... 改名夾埋入嚟,所以簽名保持同原本一模一樣。
 int runCardOverviewClassifierTests(int argc, char **argv);
@@ -68,11 +69,16 @@ int main(int argc, char **argv)
         const int targetEvaluator = runClientTargetEvaluatorTests();
         if (targetEvaluator != 0)
             return 160 + targetEvaluator;
+        const int equipsNullified = runEquipsNullifiedTests();
+        if (equipsNullified != 0)
+            return 170 + equipsNullified;
         return runEnumReflectionTests();
     };
 
     if (suite.isEmpty() || suite == QLatin1String("engine-smoke"))
         return runAll();
+    if (suite == QLatin1String("equips-nullified"))
+        return runEquipsNullifiedTests();
     if (suite == QLatin1String("self-bridge"))
         return runEngineSelfBridgeTests();
     if (suite == QLatin1String("card-parse"))

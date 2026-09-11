@@ -295,23 +295,39 @@ player->setCardLimitation("discard", "Slash", "", true);
 
 ### 概述
 
-裝備無效化系統用於讓裝備對特定玩家無效，實現「A 的裝備對 B 無效」的互動。此系統基於 CardLimitation 擴展而來。
+裝備無效化系統用於讓某個玩家的裝備在特定來源面前失效，實現「A 的裝備對 B 無效，但對 C 仍然有效」的互動。此系統建立在 CardLimitation 之上：限制仍然存在傳入玩家的 `effect` limitation 清單裡，但比對工作由 `Player::isEquipsNullified()` 負責。
+
+**重要語意**：限制永遠存在「裝備持有者」身上，`target:` 欄位指的是「來源玩家」。
+
+```cpp
+// 讓 A 的防具對來自 B 的效應無效（A 是持有者，B 是來源）
+room->setPlayerEquipsNullified(
+    a,                                        // 限制掛在 A 身上
+    "Armor|.|.|.|target:" + b->objectName(), // target: 之後是來源玩家
+    "skill_name",
+    true
+);
+
+a->hasArmorEffect("eight_diagram", b); // false：對來源 B 已無效
+a->hasArmorEffect("eight_diagram", c); // true ：對其他來源仍有效
+a->hasArmorEffect("eight_diagram");    // true ：沒有來源上下文時不套用 target 規則
+```
 
 ### API 說明
 
 #### Player 方法
 
 ```cpp
-// 設置裝備無效
+// 設置裝備無效（限制掛在 this 身上）
 void addEquipsNullified(const QString &pattern, const QString &reason = "", bool single_turn = true);
 
 // 移除裝備無效
 void removeEquipsNullified(const QString &pattern, const QString &reason = "", bool single_turn = true);
 
-// 檢查裝備是否無效
+// 檢查裝備是否無效；sourcePlayer 為來源玩家，nullptr 代表沒有來源上下文
 bool isEquipsNullified(const Card *card, const Player *sourcePlayer = nullptr) const;
 
-// 檢查是否有對特定玩家有效的武器/防具
+// 檢查是否有對特定來源有效的武器/防具
 bool hasWeapon(const QString &weapon_name, const Player *sourcePlayer = nullptr, bool need_area = true) const;
 bool hasArmorEffect(const QString &armor_name, const Player *sourcePlayer = nullptr, bool need_area = true) const;
 ```
@@ -319,7 +335,7 @@ bool hasArmorEffect(const QString &armor_name, const Player *sourcePlayer = null
 #### Room 方法
 
 ```cpp
-// 設置裝備無效（同步至客戶端）
+// 設置裝備無效（同步至客戶端）；限制掛在 player 身上
 void setPlayerEquipsNullified(ServerPlayer*player, const QString&pattern, 
                               const QString&reason, bool single_turn);
 
@@ -329,7 +345,7 @@ void removePlayerEquipsNullified(ServerPlayer*player, const QString&pattern, con
 
 ### Pattern 格式擴展
 
-裝備無效化支援目標玩家標識：
+裝備無效化支援來源玩家標識：
 
 ```
 Armor|.|.|.|target:playerName
@@ -341,7 +357,22 @@ Armor|.|.|.|target:playerName
 | . | 花色（任意） |
 | . | 數值（任意） |
 | . | 區域（任意） |
-| target:playerName | 目標玩家名稱（可選） |
+| target:playerName | 來源玩家名稱（可選） |
+
+`target:` 是 EquipsNullified 專屬的上下文條件，**不是**通用 CardLimitation 的第五欄。`ExpPattern` 只解析前四欄，所以帶 `target:` 的 pattern 由 `Player::isEquipsNullified()` 自行拆解；一般 `isCardLimited()` 路徑看不到它。
+
+- 沒有 `target:` → 對所有來源無效
+- `target:B` → 只對來源 B 無效（B 以外的來源、以及沒有來源上下文時都不套用）
+
+簡寫會被補成完整四欄，兩種寫法等價：
+
+| 寫法 | 實際存入 limitation 的 pattern |
+|------|------|
+| `"Armor"` | `Armor|.|.|.` |
+| `"Armor|red"` | `Armor|red|.|.` |
+| `"Armor|.|.|.|target:B"` | `Armor|.|.|.|target:B`（已滿四欄，原樣保留） |
+
+（`addEquipsNullified()`／`removeEquipsNullified()` 會把不足四欄的 pattern 逐欄補 `.`；`removeEquipsNullified()` 要用與加入時相同的簡寫才對得上。）
 
 ### 使用範例
 
@@ -349,7 +380,7 @@ Armor|.|.|.|target:playerName
 
 ```cpp
 // A 的防具對 B 無效
-room->setPlayerEquipsNullified(b, "Armor|.|.|.|target:" + a->objectName(), "skill_name", true);
+room->setPlayerEquipsNullified(a, "Armor|.|.|.|target:" + b->objectName(), "skill_name", true);
 
 // 檢查 A 的裝備對 B 是否無效
 if (!a->isEquipsNullified(armorCard, b)) {
@@ -362,27 +393,27 @@ if (a->hasArmorEffect("eight_diagram", b)) {
 }
 
 // 移除裝備無效化
-room->removePlayerEquipsNullified(b, "Armor", "skill_name");
+room->removePlayerEquipsNullified(a, "Armor|.|.|.|target:" + b->objectName(), "skill_name");
 ```
 
 #### Lua 使用
 
 ```lua
--- 設置裝備無效
-room:setPlayerEquipsNullified(target, "Armor|.|.|.|target:" .. source:objectName(), "skill", true)
+-- 設置裝備無效（限制掛在 owner 身上，來源是 source）
+room:setPlayerEquipsNullified(owner, "Armor|.|.|.|target:" .. source:objectName(), "skill", true)
 
 -- 檢查裝備是否無效
-if not source:isEquipsNullified(card, target) then
-    -- 裝備對 target 有效
+if not owner:isEquipsNullified(card, source) then
+    -- 裝備對 source 有效
 end
 
--- 檢查是否有對特定玩家有效的防具
+-- 檢查是否有對特定來源有效的防具
 if player:hasArmorEffect("eight_diagram", attacker) then
     -- 防具對 attacker 有效
 end
 
 -- 移除裝備無效化
-room:removePlayerEquipsNullified(target, "Armor", "skill")
+room:removePlayerEquipsNullified(owner, "Armor|.|.|.|target:" .. source:objectName(), "skill")
 ```
 
 ### 向後相容
@@ -392,7 +423,7 @@ room:removePlayerEquipsNullified(target, "Armor", "skill")
 | 現有 API | 處理方式 |
 |----------|----------|
 | `addEquipsNullified(pattern, single_turn)` | 內部調用新 API，reason 預設為空 |
-| `isEquipsNullified(card)` | 內部調用新 API，sourcePlayer 預設為 nullptr（全局檢查） |
+| `isEquipsNullified(card)` | `sourcePlayer` 預設為 nullptr，等同「沒有來源上下文」：只套用無 `target:` 的規則 |
 | `hasWeapon(weapon_name)` | 內部調用新 API，sourcePlayer 預設為 nullptr |
 
 ---
