@@ -223,11 +223,18 @@ void ClientPlayer::applyRuleEffects(const QVariantMap &data)
                 instance.instance.instanceID, instance.privateState);
         }
     }
-    // ATTACH_SKILL and UI-derived visible skills can exist alongside an
-    // instance snapshot. Do not lose them when replacing its instances.
-    for (const QString &skill : variantStrings(data.value(QStringLiteral("skills")))) {
-        if (getSkillInstanceIds(skill).isEmpty())
-            addSkill(skill);
+    // A state that has never carried skill_instances (legacy scenes, fixtures)
+    // only lists skill names, so give each one an innate instance. Once the
+    // server has sent instances for this player they are authoritative, as in
+    // Client::syncSkillInstances(): ATTACH_SKILL arrives with its own upsert,
+    // and the UI-state skill lists are display-only. Synthesising here would
+    // resurrect a removed instance under the server's id (the counter was just
+    // cleared, so it comes back as #1) and keep the skill usable.
+    if (!data.contains(QStringLiteral("skill_instances"))) {
+        for (const QString &skill : variantStrings(data.value(QStringLiteral("skills")))) {
+            if (getSkillInstanceIds(skill).isEmpty())
+                addSkill(skill);
+        }
     }
 
     const QList<const Player *> others = getSiblings();
