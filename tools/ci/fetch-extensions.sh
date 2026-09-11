@@ -27,8 +27,13 @@ cleanup()
 }
 trap cleanup EXIT
 
-git clone --depth 1 --filter=blob:none --sparse --branch "$ref" "$repo" "$clone_dir"
+# QSAN_EXTENSIONS_REF may be a branch, tag or full commit id. `clone --branch`
+# cannot take a commit id, so fetch the ref into an empty sparse repository.
+git init --quiet "$clone_dir"
+git -C "$clone_dir" remote add origin "$repo"
 git -C "$clone_dir" sparse-checkout set ai extensions lua
+git -C "$clone_dir" fetch --quiet --depth 1 --filter=blob:none origin "$ref"
+git -C "$clone_dir" checkout --quiet --detach FETCH_HEAD
 fetched_commit=$(git -C "$clone_dir" rev-parse HEAD)
 if [[ -n "${GITHUB_ENV:-}" ]]; then
     echo "QSAN_EXTENSIONS_COMMIT=$fetched_commit" >> "$GITHUB_ENV"
