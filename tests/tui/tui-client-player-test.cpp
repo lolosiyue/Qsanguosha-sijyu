@@ -72,6 +72,7 @@ int main(int argc, char **argv)
     TuiRoomContext room(&state);
     TuiPlayerModel players(&state);
     room.setOwnerResolver([&players](int cardId) { return players.cardOwner(cardId); });
+    room.setBeforeCardsFreed([&players]() { players.releaseCards(); });
     room.enterGame();
     players.sync();
 
@@ -259,6 +260,47 @@ int main(int argc, char **argv)
         players.sync();
         check(slash != nullptr && slash->isAvailable(self),
               "the crossbow lifts the slash limit, client-side");
+    }
+
+    // GAME_OVER frees every room card while the players still wear, hold and
+    // judge them, and the TUI syncs the players in the same message handler.
+    // Everything checked straight after GAME_OVER reads only the containers,
+    // never a card, so a regression shows up as a FAIL rather than a UAF.
+    const int indulgenceId = firstCardOfClass("Indulgence");
+    ClientPlayer *judged = players.player(QStringLiteral("sgs2"));
+    if (crossbowId >= 0 && slashId >= 0 && indulgenceId >= 0 && judged != nullptr) {
+        state.setCardValue(indulgenceId, QStringLiteral("owner"), QStringLiteral("sgs2"));
+        state.setCardValue(indulgenceId, QStringLiteral("place"),
+                           static_cast<int>(Player::PlaceDelayedTrick));
+        state.setPlayerValue(QStringLiteral("sgs2"), QStringLiteral("tags"),
+                             QVariantMap{{QStringLiteral("resync"), 1}});
+        players.sync();
+        check(self->hasEquip() && !self->Player::getHandcards().isEmpty()
+                  && !judged->getJudgingArea().isEmpty(),
+              "the table is set: a worn crossbow, a held slash, a pending indulgence");
+
+        QSanProtocol::ProtocolMessage over;
+        over.command = QSanProtocol::S_COMMAND_GAME_OVER;
+        room.applyMessage(over);
+        check(!self->hasEquip(), "GAME_OVER strips worn equipment before freeing it");
+        check(self->Player::getHandcards().isEmpty(),
+              "GAME_OVER strips held cards before freeing them");
+        check(judged->getJudgingArea().isEmpty(),
+              "GAME_OVER strips delayed tricks before freeing them");
+
+        if (!self->hasEquip()) {
+            players.sync();
+            check(!self->hasEquip() && self->getWeapon() == nullptr,
+                  "the sync after GAME_OVER does not reach for a freed card");
+
+            room.enterGame();
+            players.sync();
+            check(self->getWeapon() != nullptr
+                      && self->getEquipsId() == QList<int>{crossbowId},
+                  "the next game projects the equipment again");
+            check(judged->getJudgingArea().size() == 1,
+                  "the next game projects the delayed trick again");
+        }
     }
 
     players.clear();
