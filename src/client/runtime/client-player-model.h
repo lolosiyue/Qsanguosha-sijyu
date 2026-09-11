@@ -45,6 +45,9 @@ public:
     // Full visible snapshots used by TUI and the browser runtime.
     void applyVisibleZones(const QVariantMap &data);
     void applyRuleEffects(const QVariantMap &data);
+    // Drops every room card this player wears, holds or is judged by. Only
+    // valid while those cards are still alive.
+    void releaseRoomCards();
 
     QJsonObject metrics() const;
 
@@ -66,6 +69,9 @@ public:
 
     void sync();
     void clear();
+    // Wire to ClientRoomContext::setBeforeCardsFreed(): the next sync()
+    // projects every player's zones again against whatever room exists then.
+    void releaseCards();
 
     ClientPlayer *player(const QString &objectName) const;
     ClientPlayer *self() const;
@@ -78,6 +84,9 @@ private:
         ClientPlayer *player = nullptr;
         QVariantMap applied;
         QList<int> equipped;
+        // Set by releaseCards(): an unchanged snapshot still has zones to
+        // project again, since the cards behind them were dropped.
+        bool cardsReleased = false;
     };
 
     void syncPlayer(Entry *entry, const QVariantMap &data);
