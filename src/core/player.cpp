@@ -1168,19 +1168,29 @@ bool Player::isLocked(const Card *card, bool isHandcard) const
 	return isCardLimited(card, Card::MethodUse, isHandcard);
 }
 
+// EquipsNullified 的 pattern 沿用 ExpPattern 的四欄格式（卡名／花色／點數／區域）。
+// 只寫卡名的簡寫（例如 "Armor"、"Armor|red"）要在這裡補成四欄，不可以直接接上
+// "|.|.|"：那樣會得到 `Armor|.|.|`，第四欄是空字串而不是通配符 "."，
+// ExpPattern::matchOne() 的區域判斷會直接回 false，令限制靜靜失效。
+static QString normalizedEquipsNullifiedPattern(const QString &pattern)
+{
+	QString normalized = pattern;
+	int fields = pattern.count('|') + 1;
+	while (fields < 4) {
+		normalized += "|.";
+		++fields;
+	}
+	return normalized;
+}
+
 void Player::addEquipsNullified(const QString &pattern, const QString &reason, bool single_turn)
 {
-	QString _pattern = pattern;
-	if (!pattern.contains("|.|.|"))
-		_pattern = pattern + "|.|.|";
-	setCardLimitation("effect", _pattern, reason, single_turn);
+	setCardLimitation("effect", normalizedEquipsNullifiedPattern(pattern), reason, single_turn);
 }
 
 void Player::removeEquipsNullified(const QString &pattern, const QString &reason, bool single_turn)
 {
-	QString _pattern = pattern;
-	if (!pattern.contains("|.|.|"))
-		_pattern = pattern + "|.|.|";
+	QString _pattern = normalizedEquipsNullifiedPattern(pattern);
 	if (!_pattern.endsWith("$1") && !_pattern.endsWith("$0"))
 		_pattern = single_turn ? _pattern + "$1" : _pattern + "$0";
 	removeCardLimitation("effect", _pattern, reason);
@@ -1189,22 +1199,33 @@ void Player::removeEquipsNullified(const QString &pattern, const QString &reason
 bool Player::isEquipsNullified(const Card *card, const Player *sourcePlayer) const
 {
 	if (!card) return false;
-	
+
 	QString basePattern = card->objectName();
 	if (basePattern.isEmpty()) return false;
-	
-	QString pattern = basePattern + "|.|.|";
-	if (isCardLimited(card, Card::MethodEffect))
-		return true;
-	
-	if (sourcePlayer) {
-		QString targetPattern = basePattern + "|.|.|.|target:" + sourcePlayer->objectName();
-		Card *tempCard = Sanguosha->cloneCard(basePattern);
-		tempCard->deleteLater();
-		if (isCardLimited(tempCard, Card::MethodEffect))
+
+	// `|target:<objectName>` 是 EquipsNullified 專屬的來源玩家條件：ExpPattern
+	// 只解析卡名／花色／點數／區域四欄，所以帶 target 的 pattern 不能在通用
+	// CardLimitation 路徑處理，必須在這裡自己拆出來。否則 target 會被丟掉，
+	// 令「只對某個來源無效」退化成「對所有人無效」。
+	const QString targetMarker = QStringLiteral("|target:");
+	foreach (QString pattern, card_limitation.value(Card::MethodEffect)) {
+		pattern.chop(2); // $0（永久）／$1（單回合）後綴
+
+		QString targetName;
+		const int markerPos = pattern.lastIndexOf(targetMarker);
+		if (markerPos >= 0) {
+			targetName = pattern.mid(markerPos + targetMarker.length());
+			pattern = pattern.left(markerPos);
+
+			// 只對指定來源生效；沒有來源上下文時不套用。
+			if (sourcePlayer == nullptr || sourcePlayer->objectName() != targetName)
+				continue;
+		}
+
+		if (Sanguosha->matchExpPattern(pattern, this, card))
 			return true;
 	}
-	
+
 	return false;
 }
 
