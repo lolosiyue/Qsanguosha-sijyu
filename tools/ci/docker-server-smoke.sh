@@ -213,12 +213,19 @@ if [[ $server_output == *'AI Lua runtime disabled:'* ]]; then
 fi
 
 log 'checking PID 1 identity and writable persistent data'
-docker exec "$server_container" /bin/sh -ec '
+docker exec "$server_container" /bin/sh -exc '
     set -- $(grep "^Uid:" /proc/1/status)
     test "$2" -eq 9527
     test "$(readlink /proc/1/exe)" = /opt/qsanguosha/bin/qsanguosha_server
-    test "$(readlink /data/lua)" = /opt/qsanguosha/lua
-    test "$(readlink /data/extensions)" = /opt/qsanguosha/extensions
+    # declared-v1 rejects symlinks, so the entrypoint installs read-only copies.
+    for resource in lua extensions lang; do
+        test -d "/data/$resource"
+        test ! -L "/data/$resource"
+        test ! -w "/data/$resource"
+        test -f "/data/.qsanguosha-managed-$resource"
+        test ! -e "/data/.$resource.staging"
+        diff -r "/opt/qsanguosha/$resource" "/data/$resource" >/dev/null
+    done
     test -w /data
     printf "%s\n" docker-persistence-ok > /data/.docker-smoke-sentinel
 '
@@ -253,10 +260,19 @@ docker create \
     --name "$persistence_container" \
     --mount "type=volume,source=$volume,target=/data" \
     --entrypoint /bin/sh \
-    "$image" -ec '
+    "$image" -exc '
         test "$(cat /data/.docker-smoke-sentinel)" = docker-persistence-ok
-        test "$(readlink /data/lua)" = /opt/qsanguosha/lua
-        test "$(readlink /data/extensions)" = /opt/qsanguosha/extensions
+        # A restart reinstalls the managed copies over the read-only ones the
+        # previous container left in the volume, and keeps everything else.
+        /usr/local/bin/qsanguosha-entrypoint --version
+        test "$(cat /data/.docker-smoke-sentinel)" = docker-persistence-ok
+        for resource in lua extensions lang; do
+            test -d "/data/$resource"
+            test ! -L "/data/$resource"
+            test ! -w "/data/$resource"
+            test -f "/data/.qsanguosha-managed-$resource"
+            test ! -e "/data/.$resource.staging"
+        done
     ' >/dev/null
 docker start --attach "$persistence_container"
 docker rm "$persistence_container" >/dev/null
