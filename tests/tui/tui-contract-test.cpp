@@ -913,6 +913,47 @@ void reducerContract()
         QVariantMap{{QStringLiteral("player_name"), QStringLiteral("p9")}});
     check(!invalid.success && selfReference.toJson() == beforeInvalid,
           "invalid unversioned payload does not mutate state");
+
+    // A SKILL_INSTANCE snapshot replaces every instance (the server sends one
+    // on a general change and on reconnect), so a name only an old instance
+    // backed must leave "skills", while an ATTACH_SKILL name stays.
+    ClientGameState instances;
+    const auto instanceEntry = [](const QString &skill) {
+        return QVariantMap{{QStringLiteral("owner_name"), QStringLiteral("p1")},
+            {QStringLiteral("skill_name"), skill},
+            {QStringLiteral("instance_id"), 1},
+            {QStringLiteral("source"), 0},
+            {QStringLiteral("parent_owner"), QStringLiteral("p1")},
+            {QStringLiteral("parent_skill"), QString()},
+            {QStringLiteral("parent_instance_id"), 0},
+            {QStringLiteral("visible"), true},
+            {QStringLiteral("bind_head"), 1},
+            {QStringLiteral("has_amount_override"), false}};
+    };
+    ClientGameStateReducer::applyNotification(&instances, S_COMMAND_SKILL_INSTANCE,
+        QVariantMap{{QStringLiteral("schema_version"), 1},
+                    {QStringLiteral("action"), QStringLiteral("upsert")},
+                    {QStringLiteral("entry"), instanceEntry(QStringLiteral("wusheng"))}});
+    ClientGameStateReducer::applyNotification(&instances, S_COMMAND_ATTACH_SKILL,
+        QVariantMap{{QStringLiteral("schema_version"), 1},
+                    {QStringLiteral("player_name"), QStringLiteral("p1")},
+                    {QStringLiteral("skill_name"), QStringLiteral("jizhi")}});
+    const ClientStateReduction snapshot = ClientGameStateReducer::applyNotification(
+        &instances, S_COMMAND_SKILL_INSTANCE,
+        QVariantMap{{QStringLiteral("schema_version"), 1},
+                    {QStringLiteral("action"), QStringLiteral("snapshot")},
+                    {QStringLiteral("entries"),
+                     QVariantList{instanceEntry(QStringLiteral("paoxiao"))}}});
+    const QStringList snapshotSkills = instances.playerValue(
+        QStringLiteral("p1"), QStringLiteral("skills")).toStringList();
+    check(snapshot.success
+              && instances.playerValue(QStringLiteral("p1"), QStringLiteral("skill_instances"))
+                     .toMap().keys() == QStringList{QStringLiteral("paoxiao#1")},
+          "a skill instance snapshot replaces the stored instances");
+    check(!snapshotSkills.contains(QStringLiteral("wusheng"))
+              && snapshotSkills.contains(QStringLiteral("paoxiao"))
+              && snapshotSkills.contains(QStringLiteral("jizhi")),
+          "a skill instance snapshot drops skills only a replaced instance backed");
 }
 
 void rendererContract()

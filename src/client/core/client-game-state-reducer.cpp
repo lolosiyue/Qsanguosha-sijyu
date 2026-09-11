@@ -554,10 +554,32 @@ ClientStateReduction ClientGameStateReducer::applyNotification(
     case S_COMMAND_SKILL_INSTANCE: {
         const QString action = object.value(QStringLiteral("action")).toString();
         if (action == QLatin1String("snapshot")) {
-            for (const QString &player : state->playerNames())
+            // A snapshot replaces every instance, so treat it like a remove of
+            // each old one: a skill name only a replaced instance backed leaves
+            // "skills". ATTACH_SKILL and UI-state names were never backed.
+            QMap<QString, QStringList> replaced;
+            for (const QString &player : state->playerNames()) {
+                for (const QVariant &value : state->playerValue(
+                         player, QStringLiteral("skill_instances")).toMap()) {
+                    const QString skill = value.toMap().value(QStringLiteral("skill_name")).toString();
+                    if (!replaced[player].contains(skill))
+                        replaced[player].append(skill);
+                }
                 state->setPlayerValue(player, QStringLiteral("skill_instances"), QVariantMap());
+            }
             for (const QVariant &entryValue : object.value(QStringLiteral("entries")).toList()) {
                 storeSkillInstance(state, entryValue.toMap());
+            }
+            for (auto it = replaced.constBegin(); it != replaced.constEnd(); ++it) {
+                QStringList present;
+                for (const QVariant &value : state->playerValue(
+                         it.key(), QStringLiteral("skill_instances")).toMap()) {
+                    present.append(value.toMap().value(QStringLiteral("skill_name")).toString());
+                }
+                for (const QString &skill : it.value()) {
+                    if (!present.contains(skill))
+                        removeSkill(state, it.key(), skill);
+                }
             }
         } else if (action == QLatin1String("upsert")) {
             storeSkillInstance(state, object.value(QStringLiteral("entry")).toMap());
