@@ -1585,6 +1585,22 @@ if(UNIX AND QSAN_BUILD_GUI)
     )
 endif()
 
+# glibc floor(Linux x86_64):喺 glibc 2.43 嘅發行版 link,acosf／atan2f／sqrtf 會綁到
+# 2.43 新版 symbol,GUI 就喺 Ubuntu 24.04 等舊啲嘅系統開唔到。--wrap 將呼叫轉去
+# src/util/linux-glibc-compat.c,再由佢叫每個 x86_64 libm 都有嘅 GLIBC_2.2.5 版本。
+# ctest qsanguosha_glibc_floor 會指出下一個要咁樣釘住嘅 symbol。
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+    add_library(qsanguosha_glibc_compat OBJECT src/util/linux-glibc-compat.c)
+    foreach(qsan_glibc_target QSanguosha qsanguosha_server qsanguosha_tui)
+        if(TARGET ${qsan_glibc_target})
+            target_sources(${qsan_glibc_target} PRIVATE $<TARGET_OBJECTS:qsanguosha_glibc_compat>)
+            target_link_options(${qsan_glibc_target} PRIVATE
+                "LINKER:--wrap=acosf,--wrap=atan2f,--wrap=sqrtf")
+            target_link_libraries(${qsan_glibc_target} PRIVATE m)
+        endif()
+    endforeach()
+endif()
+
 if(BUILD_TESTING)
     add_subdirectory(tests)
 endif()
