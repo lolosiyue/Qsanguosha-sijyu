@@ -44,10 +44,10 @@ extensions_target="$root/extensions"
 lua_target="$root/lua"
 mkdir -p "$ai_target" "$extensions_target" "$lua_target"
 
-# Copy whole .lua trees, not just the top level: the repository keeps content in
-# subdirectories (extensions/temp, ai/isolated, ai/temp) and a flat copy drops it.
-# Losing extensions/temp is not a quiet degradation - the engine then fails to
-# bootstrap with "extensions/gaoda.lua: attempt to concatenate a nil value".
+# lua/ai/ is the one subtree the declared-v1 content scan exempts, so AI is copied
+# whole: the repository keeps content in ai/isolated and ai/temp, and a flat copy
+# drops it.  That is not a quiet degradation - the engine then fails to bootstrap
+# with "extensions/gaoda.lua: attempt to concatenate a nil value".
 copy_lua_tree()
 {
     local source=$1 target=$2
@@ -55,9 +55,20 @@ copy_lua_tree()
     ( cd "$source" && find . -type f -name '*.lua' -exec cp -f --parents -- {} "$target/" \; )
 }
 
+# extensions/ and lua/ stay flat.  lua/config.lua's extension_names is the only list
+# the loader reads, so a nested .lua adds nothing the engine can use; it only makes
+# contentScanIsDeclared() reject the bundle, and the server then answers
+# rules_bundle={"error_code": "rules_content_unsupported"} and refuses every Web client.
+copy_lua_top_level()
+{
+    local source=$1 target=$2
+    [[ -d "$source" ]] || return 0
+    find "$source" -maxdepth 1 -type f -name '*.lua' -exec cp -f -- {} "$target/" \;
+}
+
 copy_lua_tree "$clone_dir/ai" "$ai_target"
-copy_lua_tree "$clone_dir/extensions" "$extensions_target"
-copy_lua_tree "$clone_dir/lua" "$lua_target"
+copy_lua_top_level "$clone_dir/extensions" "$extensions_target"
+copy_lua_top_level "$clone_dir/lua" "$lua_target"
 
 # Workaround (upstream bug in lolosiyue/extensions): the AI load loop uses the
 # lowercased package name as filename ("lua/ai/"..sl), but the files on disk are
@@ -77,12 +88,16 @@ if [[ ! -f "$lua_target/luaoldenemy_lib.lua" ]]; then
     echo 'lua is incomplete: luaoldenemy_lib.lua is missing after fetch' >&2
     exit 1
 fi
-# Every .lua the upstream repository has must exist here: a silently thinner copy is
-# what "attempt to concatenate a nil value" during engine bootstrap looks like.
+# Every .lua the upstream repository has must exist here, apart from the undeclared
+# nested extension and lua content the copy deliberately leaves behind: a silently
+# thinner copy is what "attempt to concatenate a nil value" during engine bootstrap
+# looks like.  case patterns match "/" like any other character, so the nested
+# patterns have to come first.
 missing=0
 while IFS= read -r relative; do
     case $relative in
         ai/*) destination="$ai_target/${relative#ai/}" ;;
+        extensions/*/*|lua/*/*) continue ;;
         extensions/*) destination="$root/$relative" ;;
         lua/*) destination="$root/$relative" ;;
         *) continue ;;
@@ -111,7 +126,7 @@ if [[ ! -f "$ai_target/isolated-facades.lua" ]]; then
 fi
 
 ai_count=$(find "$ai_target" -type f -name '*.lua' | wc -l)
-extensions_count=$(find "$extensions_target" -type f -name '*.lua' | wc -l)
+extensions_count=$(find "$extensions_target" -maxdepth 1 -type f -name '*.lua' | wc -l)
 lua_count=$(find "$lua_target" -maxdepth 1 -type f -name '*.lua' | wc -l)
 if (( ai_count == 0 || extensions_count == 0 || lua_count == 0 )); then
     echo 'Fetched runtime Lua content is empty' >&2
