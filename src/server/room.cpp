@@ -58,6 +58,27 @@ using namespace QSanProtocol;
 
 namespace {
 
+static bool shutdownTraceEnabled()
+{
+	return qEnvironmentVariableIsSet("QSAN_XP_SHUTDOWN_TRACE");
+}
+
+static void traceRoomWorkers(const char *event, const Room *room,
+	const QList<const QThread *> &workers)
+{
+	if (!shutdownTraceEnabled() || room == nullptr)
+		return;
+	const char *names[] = {"3v3", "xmode", "1v1", "roomthread", "room"};
+	QStringList states;
+	for (int i = 0; i < workers.size(); ++i) {
+		if (workers[i] == nullptr)
+			continue;
+		states << QStringLiteral("%1=%2").arg(names[i]).arg(workers[i]->isRunning() ? "running" : "stopped");
+	}
+	qInfo().noquote() << QStringLiteral("shutdown_trace room=%1 event=%2 workers=%3")
+		.arg(room->getId()).arg(QString::fromLatin1(event)).arg(states.join(','));
+}
+
 static const char *kControllerNameTag = "Controller_Name";
 
 static QVariantMap makeChatMessage(const QString &speaker, const QString &text)
@@ -284,11 +305,22 @@ bool Room::completeRuntimeInitialization(bool runtimeReady, const QString &runti
 
 Room::~Room()
 {
+    traceRoomWorkers("dtor_enter", this, {thread_3v3.data(), thread_xmode.data(),
+		thread_1v1.data(), thread, this});
     globalCardLifetimeManager().releaseVariantTags(this);
-	if (!stopGameThreads(10000))
+	const bool stopped = stopGameThreads(10000);
+	if (shutdownTraceEnabled())
+		qInfo().noquote() << QStringLiteral("shutdown_trace room=%1 event=dtor_stop_result stopped=%2")
+			.arg(getId()).arg(stopped ? "true" : "false");
+	if (!stopped)
 		qFatal("Room worker did not stop before runtime destruction");
-	if (m_runtime)
+	if (m_runtime) {
+		if (shutdownTraceEnabled())
+			qInfo().noquote() << QStringLiteral("shutdown_trace room=%1 event=shutdownFinal_enter").arg(getId());
 		m_runtime->shutdownFinal();
+		if (shutdownTraceEnabled())
+			qInfo().noquote() << QStringLiteral("shutdown_trace room=%1 event=shutdownFinal_exit").arg(getId());
+	}
 	delete thread_3v3.data();
 	delete thread_xmode.data();
 	delete thread_1v1.data();
@@ -299,6 +331,8 @@ Room::~Room()
 		delete player;
 	if (thread != nullptr)
 		delete thread;
+	if (shutdownTraceEnabled())
+		qInfo().noquote() << QStringLiteral("shutdown_trace room=%1 event=dtor_exit").arg(getId());
 }
 
 bool Room::dispatch(TriggerEvent event, ServerPlayer *target, QVariant &data)
@@ -325,6 +359,25 @@ bool Room::stopGameThreads(int timeoutMs)
 	// RoomRuntime::shutdownFinal() without waiting for it to finish would hit it still
 	// holding a CardLifetimeScope inside askForGeneral, and the shutdown check would
 	// immediately qFatal (server exit 6).
+	requestStopGameThreads();
+	QList<QThread *> workers;
+	workers << thread_3v3.data() << thread_xmode.data() << thread_1v1.data()
+		<< thread << this;
+
+	QElapsedTimer timer;
+	timer.start();
+	foreach (QThread *worker, workers) {
+		if (!worker || worker == QThread::currentThread() || !worker->isRunning())
+			continue;
+		const int remaining = qMax(0, timeoutMs - int(timer.elapsed()));
+		if (remaining == 0 || !worker->wait(remaining))
+			return false;
+	}
+	return true;
+}
+
+void Room::requestStopGameThreads()
+{
 	QList<QThread *> workers;
 	workers << thread_3v3.data() << thread_xmode.data() << thread_1v1.data()
 		<< thread << this;
@@ -332,6 +385,8 @@ bool Room::stopGameThreads(int timeoutMs)
 		if (worker && worker != this)
 			disconnect(worker, nullptr, this, nullptr);
 	}
+	traceRoomWorkers("request_stop", this, {thread_3v3.data(), thread_xmode.data(),
+		thread_1v1.data(), thread, this});
 
 	m_gameSession->abort(GameSessionController::TerminationCause::Shutdown);
 	{
@@ -350,14 +405,14 @@ bool Room::stopGameThreads(int timeoutMs)
 		worker->requestInterruption();
 		worker->quit();
 	}
+}
 
-	QElapsedTimer timer;
-	timer.start();
-	foreach (QThread *worker, workers) {
-		if (!worker || worker == QThread::currentThread() || !worker->isRunning())
-			continue;
-		const int remaining = qMax(0, timeoutMs - int(timer.elapsed()));
-		if (remaining == 0 || !worker->wait(remaining))
+bool Room::allGameThreadsStopped() const
+{
+	const QList<const QThread *> workers = {
+		thread_3v3.data(), thread_xmode.data(), thread_1v1.data(), thread, this};
+	for (const QThread *worker : workers) {
+		if (worker && worker != QThread::currentThread() && worker->isRunning())
 			return false;
 	}
 	return true;

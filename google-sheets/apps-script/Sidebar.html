@@ -1,0 +1,50 @@
+<!doctype html>
+<html><head><base target="_top"><style>
+body{font:13px Arial,sans-serif;padding:10px;color:#202124}h3{margin:0 0 8px}label{display:block;margin-top:8px}input,select,button{box-sizing:border-box;width:100%;margin-top:3px;padding:6px}button{cursor:pointer}.grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:8px}.status{white-space:pre-wrap;background:#f1f3f4;padding:8px;margin-top:8px;min-height:32px}.error{color:#b31412}.ok{color:#137333}.muted{color:#5f6368;font-size:12px}img{max-width:100%;max-height:180px;margin-top:8px}
+</style></head><body>
+<h3>QSanGuosha Sheets</h3><div class="muted">牌桌與互動在工作表呈現；本側欄只處理連線、更新與控制。</div>
+<label>HTTPS 服務網址<input id="endpoint" autocomplete="url" placeholder="https://…"></label>
+<label>一次性配對碼<input id="code" autocomplete="one-time-code"></label><button onclick="pairNow()">配對</button>
+<div class="grid"><button onclick="invoke('setupWorkbook','工作表已準備')">建立工作表</button><button onclick="invoke('retryPending','已重試待確認指令')">重試待確認指令</button><button onclick="invoke('hostFromSheet','已送出開房')">依工作表開房</button><button onclick="invoke('connectFromSheet','已送出連線')">依工作表連線</button><button onclick="invoke('readyFromSheet','已準備')">準備</button><button onclick="invoke('unreadyFromSheet','已取消準備')">取消準備</button><button onclick="invoke('addRobotFromSheet','已加入 AI')">加入 AI</button><button onclick="invoke('reconnect','已要求重連')">重連</button><button onclick="invoke('previewSheetDraft','已送出預檢')">預檢目前選取</button><button onclick="invoke('submitSheetDraft','已送出動作')">提交目前選取</button><button onclick="invoke('cancelDraft','已取消互動')">取消互動</button><button onclick="invoke('surrenderFromSheet','已送出投降')">投降</button></div>
+<p class="muted">聊天內容填在 QSAN Room 的 B8。</p><button onclick="invoke('chatFromSheet','聊天已送出')">送出工作表聊天</button>
+<div class="grid"><button onclick="invoke('trustFromSheet','已託管')">託管</button><button onclick="invoke('untrustFromSheet','已取消託管')">取消託管</button></div>
+<p class="muted">在牌桌、互動或目錄選取一列，再查詢詳情。</p><button onclick="invoke('detailsFromSheet','詳情已更新')">查詢目前列詳情</button><button onclick="invoke('catalogFromSheet','目錄已更新')">載入房間目錄</button>
+<div class="grid"><button onclick="startPolling()">開始更新</button><button id="stop-updates" onclick="stopPolling()">停止更新</button></div><button onclick="leave()">關閉本文件會話</button><button onclick="invoke('abandonPair','已清除過期配對')">清除過期配對</button>
+<div id="status" class="status">讀取連線狀態中…</div><img id="detailImage" hidden alt="詳情圖片">
+<script>
+let inflight=false,timer=null,epoch=0,backoff=2000,polling=false,lastError='';
+const $=id=>document.getElementById(id);
+// Stopping polling stays reachable while a Google request is in flight.
+function busy(v){inflight=v;document.querySelectorAll('button').forEach(b=>{if(b.id!=='stop-updates')b.disabled=v})}
+function show(x,f){
+  let text=typeof x==='string'?x:(x&&x.error)||(x&&x.lastError)||(x&&x.status)||f||'操作完成';
+  if(x&&x.gameOver)text='GAME_OVER\n勝方：'+(x.winner||'請查看牌桌結果');
+  else if(x&&x.prompt)text+='\n'+x.prompt;
+  if(x&&(x.error||x.lastError))lastError=x.error||x.lastError;
+  $('status').textContent=lastError?lastError+'\n'+text:text;
+  $('status').className='status '+(lastError?'error':'ok');
+  if(x&&Object.prototype.hasOwnProperty.call(x,'detailImage')){
+    const image=x.detailImage||'';
+    $('detailImage').hidden=!/^data:image\/(png|jpeg|gif);base64,/.test(image);
+    if(!$('detailImage').hidden)$('detailImage').src=image;
+  }
+}
+function schedule(){if(timer)clearTimeout(timer);timer=null;if(polling&&!inflight)timer=setTimeout(tick,backoff)}
+function call(name,args,onOk,isPoll){
+  if(inflight)return;if(timer)clearTimeout(timer);timer=null;busy(true);const serial=epoch;
+  google.script.run.withSuccessHandler(x=>{
+    busy(false);if(serial!==epoch){schedule();return;}
+    backoff=2000;if(!isPoll)lastError='';(onOk||show)(x);schedule();
+  }).withFailureHandler(e=>{
+    busy(false);if(serial!==epoch){schedule();return;}
+    backoff=Math.min(backoff*2,30000);show({error:e.message||String(e)});schedule();
+  })[name].apply(null,args||[]);
+}
+function invoke(name,f){call(name,[],x=>show(x,f),false)}
+function pairNow(){call('pair',[$('endpoint').value,$('code').value],x=>{show(x,'配對成功');$('code').value='';polling=!!x.paired;},false)}
+function tick(){timer=null;if(polling)call('poll',[],x=>show(x,'已更新'),true)}
+function startPolling(){polling=true;schedule()}
+function stopPolling(){polling=false;epoch++;if(timer)clearTimeout(timer);timer=null;show('已停止自動更新')}
+function leave(){if(inflight)return;stopPolling();call('disconnect',[],x=>show(x&&x.ok===false?x:'已正常關閉會話'),false)}
+call('getClientState',[],s=>{if(s.endpoint)$('endpoint').value=s.endpoint;polling=!!s.paired;show(s,s.paired?'恢復更新中…':'請先配對主機');},false);
+</script></body></html>

@@ -1,4 +1,4 @@
-foreach(required QSAN_CONFIG QSAN_EXECUTABLE QSAN_WINDEPLOYQT QSAN_QML_DIR)
+foreach(required QSAN_CONFIG QSAN_EXECUTABLE QSAN_WINDEPLOYQT QSAN_QML_DIRS)
     if(NOT DEFINED ${required})
         message(FATAL_ERROR "${required} is required")
     endif()
@@ -10,11 +10,18 @@ else()
     set(deploy_configuration --release)
 endif()
 
+set(QSAN_QML_DIRS_ARG)
+foreach(qml_dir IN LISTS QSAN_QML_DIRS)
+    list(APPEND QSAN_QML_DIRS_ARG --qmldir "${qml_dir}")
+endforeach()
+
 execute_process(
     COMMAND "${QSAN_WINDEPLOYQT}"
         "${deploy_configuration}"
         --compiler-runtime
-        --qmldir "${QSAN_QML_DIR}"
+        # Keep QML scanning bounded to the two source roots. Scanning the
+        # repository root also traverses generated build trees and can hang.
+        ${QSAN_QML_DIRS_ARG}
         "${QSAN_EXECUTABLE}"
     RESULT_VARIABLE deploy_result
 )

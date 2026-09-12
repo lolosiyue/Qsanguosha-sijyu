@@ -53,6 +53,58 @@ private slots:
         QCOMPARE(view.value(QStringLiteral("logs")).toArray().size(), 1);
     }
 
+    void snapshotFormatsPromptWithoutChangingRawIdentity()
+    {
+        ClientCore core;
+        core.state()->setSelfName(QStringLiteral("sgs1"));
+        core.state()->setPlayerValue(QStringLiteral("sgs2"), QStringLiteral("screen_name"),
+                                     QStringLiteral("甲"));
+        core.state()->setPlayerValue(QStringLiteral("sgs3"), QStringLiteral("screen_name"),
+                                     QStringLiteral("乙"));
+        InteractionRequest request;
+        request.type = InteractionType::ResponseCard;
+        request.prompt = QStringLiteral("<b>%src</b> → %dest：%arg %arg2:sgs2:sgs3:2:slash");
+        request.cancelable = true;
+        core.beginRequest(request);
+
+        const QJsonObject view = ExcelView::snapshotView(core, QString());
+        QCOMPARE(view.value(QStringLiteral("prompt")).toString(),
+                 QStringLiteral("%src → %dest：%arg %arg2:sgs2:sgs3:2:slash"));
+        QCOMPARE(view.value(QStringLiteral("prompt_text")).toString(),
+                 QStringLiteral("甲 → 乙：2 slash"));
+        request.prompt = QStringLiteral("@unknown_prompt");
+        core.beginRequest(request);
+        QCOMPARE(ExcelView::snapshotView(core, QString()).value(QStringLiteral("prompt_text")).toString(),
+                 QStringLiteral("@unknown_prompt"));
+    }
+
+    void interactionUiUsesTypedCardCandidates()
+    {
+        ClientCore core;
+        InteractionRequest request;
+        request.type = InteractionType::ResponseCard;
+        request.payload = CardInteractionPayload();
+        auto *cards = std::get_if<CardInteractionPayload>(&request.payload);
+        cards->selection.selectableCards = {4, 7};
+        cards->selection.disabledCards = {7};
+        cards->selection.enumerated = true;
+        core.beginRequest(request);
+        core.state()->setSelfName(QStringLiteral("self"));
+        core.state()->setCardValue(4, QStringLiteral("owner"), QStringLiteral("self"));
+        core.state()->setCardValue(4, QStringLiteral("place"), 0);
+        core.state()->setCardValue(7, QStringLiteral("owner"), QStringLiteral("self"));
+        core.state()->setCardValue(7, QStringLiteral("place"), 0);
+
+        const QJsonArray offered = ExcelView::interactionUi(core, QString())
+            .value(QStringLiteral("cards")).toArray();
+        QCOMPARE(offered.size(), 2);
+        QCOMPARE(offered.first().toObject().value(QStringLiteral("id")).toString(),
+                 QStringLiteral("4"));
+        QCOMPARE(offered.first().toObject().value(QStringLiteral("enabled")).toBool(), true);
+        QCOMPARE(offered.last().toObject().value(QStringLiteral("id")).toString(), QStringLiteral("7"));
+        QCOMPARE(offered.last().toObject().value(QStringLiteral("enabled")).toBool(), false);
+    }
+
     void detailsRejectsUnknownKey()
     {
         ClientCore core;

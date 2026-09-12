@@ -1,0 +1,127 @@
+{
+  "frontend": "google-apps-script-cell-main",
+  "sheets": [
+    "QSAN Board",
+    "QSAN Actions",
+    "QSAN Room",
+    "QSAN Catalog",
+    "QSAN Details",
+    "QSAN Log"
+  ],
+  "sidebar": "connection/update control only",
+  "typed_presenters": 28,
+  "native_typed_presenters": 29,
+  "required_typed_presenters": 28,
+  "excluded_interactions": [
+    {
+      "command": "qml_interact",
+      "custom_type": "qsanguosha.qml",
+      "reason": "user-approved exclusion",
+      "acceptance": "not-required",
+      "on_request": "explicit error; no fabricated reply"
+    }
+  ],
+  "presenter_mapping": {
+    "option": [
+      "choose_general",
+      "choose_direction",
+      "choice",
+      "choose_suit",
+      "choose_kingdom",
+      "skill_invoke",
+      "trigger_order",
+      "choose_order",
+      "choose_role_3v3",
+      "surrender",
+      "luck_card",
+      "ask_general"
+    ],
+    "cards": [
+      "exchange_card",
+      "ask_peach",
+      "skill_gongxin",
+      "play_card",
+      "response_card",
+      "discard_card",
+      "nullification",
+      "show_card",
+      "amazing_grace",
+      "pindian",
+      "choose_card"
+    ],
+    "players": [
+      "choose_player"
+    ],
+    "assignment": [
+      "choose_role"
+    ],
+    "rearrangement": [
+      "skill_guanxing"
+    ],
+    "distribution": [
+      "skill_yiji"
+    ],
+    "general_arrangement": [
+      "arrange_general"
+    ]
+  },
+  "transport": "https-gateway-v1",
+  "json_in_cells": false,
+  "activex": false,
+  "modal_forms": false,
+  "stable_ids": true,
+  "snapshot": {
+    "request_identity": [
+      "generation",
+      "revision",
+      "request_id"
+    ],
+    "sequence": "string"
+  },
+  "selection": {
+    "cards": "toggle unique",
+    "targets": "ordered-repeated",
+    "skills": "name plus instance",
+    "preflight": "exact immutable draft and current identity gate",
+    "cancel": "request.cancelable"
+  },
+  "controls": [
+    "connect",
+    "host",
+    "local AI",
+    "catalog",
+    "ready",
+    "unready",
+    "chat",
+    "trust",
+    "untrust",
+    "surrender",
+    "reconnect",
+    "add_robot",
+    "disconnect",
+    "details",
+    "typed room settings",
+    "mode/avatar/package selection"
+  ],
+  "acceptance": {
+    "first_game": "05p one human plus four AI",
+    "countdown": false,
+    "each_player_own_document": true,
+    "extensions": "all native extensions",
+    "game_over": "human operated to GAME_OVER with winner and clean session shutdown"
+  },
+  "known_gaps": [
+    "No native Sheets target build or focused test execution in this checkpoint",
+    "No live Google authorization, Apps Script deployment or worksheet acceptance",
+    "28 source mappings are not 28 passed interaction tests",
+    "Human 05p game, multiplayer, helper cleanup and CI acceptance not run",
+    "Complex object-valued room settings retain native defaults; worksheet edits support primitive settings and string lists"
+  ],
+  "implementation": {
+    "transport": "apps-script/Client.gs",
+    "drafts": "apps-script/Draft.gs",
+    "cells": "apps-script/Table.gs",
+    "native": "src/sheets/sheets-main.cpp",
+    "gateway": "google-sheets/gateway.py"
+  }
+}
