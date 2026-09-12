@@ -282,6 +282,10 @@ int UiStartupSmokeController::execute()
             QStringLiteral("event loop exited before the startup smoke completed"),
             UiStartupSmokeReport::SetupFailed);
     }
+    // Same as the effects smoke: tear the window (and its QML engine) down while
+    // QApplication is still alive, or a QML load still in flight crashes in the type
+    // loader thread through QStandardPaths::writableLocation().
+    delete m_mainWindow.data();
     return m_exitCode != UiStartupSmokeReport::Passed ? m_exitCode : rc;
 }
 

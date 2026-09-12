@@ -321,9 +321,15 @@ void MainWindow::setupHomePage()
 	homeRootContext()->setContextProperty(
 		QStringLiteral("Config"), &Config);
 
+	// QT_QML_IMPORT_PATH is the build machine's Qt qml/ directory.  A packaged layout
+	// ships its own QML modules behind bin/qt.conf; adding the build path there makes the
+	// bundle load that machine's QML plugins whenever the Qt happens to exist (e.g. on the
+	// packager's own machine), which hides a broken bundle.
 	const QString qmlImportPath = QStringLiteral(QT_QML_IMPORT_PATH);
-	qInfo().noquote() << "QML import path:" << qmlImportPath;
-	homeQmlEngine()->addImportPath(qmlImportPath);
+	if (!QSanRuntimePaths::isPackaged() && !qmlImportPath.isEmpty() && QDir(qmlImportPath).exists()) {
+		qInfo().noquote() << "QML import path:" << qmlImportPath;
+		homeQmlEngine()->addImportPath(qmlImportPath);
+	}
 
 	qmlRegisterType<HomePointerFxItem>(
 		"QSanguosha.HomeFx", 1, 0, "HomePointerFx");

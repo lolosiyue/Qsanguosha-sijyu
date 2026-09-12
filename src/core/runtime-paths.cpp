@@ -354,6 +354,11 @@ QString customSceneDir()
     return path;
 }
 
+bool isPackaged()
+{
+    return assetRootIsPackaged(g_resolution.assetRootSource);
+}
+
 QString sourceName(AssetRootSource source)
 {
     switch (source) {

@@ -175,6 +175,31 @@ qsan_add_ctest(qsanguosha_enum_reflection qsanguosha_core_tests
     SUITE enum-reflection
     LABELS "qt6;fast"
 )
+qsan_add_ctest(qsanguosha_user_name qsanguosha_core_tests
+    SUITE user-name
+    LABELS "client;fast"
+)
+
+# glibc floor:喺新發行版 link 會靜靜綁到最新嘅 symbol version(glibc 2.43 重新
+# version 咗 acosf／atan2f／sqrtf),出嚟嘅 binary 喺 Ubuntu 24.04 開唔到。
+# src/util/linux-glibc-compat.c 釘住已知嗰幾個;呢個 test 捉下一個。
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64)$")
+    set(QSAN_GLIBC_FLOOR "2.38" CACHE STRING "Newest glibc symbol version a Linux executable may need")
+    set(qsan_glibc_floor_binaries "")
+    foreach(qsan_glibc_target QSanguosha qsanguosha_server qsanguosha_tui)
+        if(TARGET ${qsan_glibc_target})
+            list(APPEND qsan_glibc_floor_binaries "$<TARGET_FILE:${qsan_glibc_target}>")
+        endif()
+    endforeach()
+    if(qsan_glibc_floor_binaries)
+        add_test(NAME qsanguosha_glibc_floor
+            COMMAND ${Python3_EXECUTABLE}
+                ${QSAN_TEST_ROOT}/tools/packaging/check-glibc-floor.py
+                --max ${QSAN_GLIBC_FLOOR} ${qsan_glibc_floor_binaries}
+        )
+        set_tests_properties(qsanguosha_glibc_floor PROPERTIES LABELS "packaging;fast")
+    endif()
+endif()
 
 add_test(NAME qsanguosha_qt6_api_debt
     COMMAND "${Python3_EXECUTABLE}"
@@ -571,6 +596,18 @@ add_test(NAME qsanguosha_packaging_contract
 set_tests_properties(qsanguosha_packaging_contract PROPERTIES
     WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
     LABELS "packaging;fast"
+)
+
+# 執行期 Lua 內容係由另一個 repository fetch 返嚟嘅:漏咗 subdirectory(extensions/temp、
+# ai/temp)唔會即刻報錯,要等到 engine bootstrap 先炸。呢個 test 用 fixture repository 驗 fetch 本身。
+add_test(NAME qsanguosha_fetch_extensions_contract
+    COMMAND ${Python3_EXECUTABLE}
+        ${QSAN_TEST_ROOT}/tools/autotest/tests/test_fetch_extensions_contract.py
+)
+set_tests_properties(qsanguosha_fetch_extensions_contract PROPERTIES
+    WORKING_DIRECTORY "${QSAN_TEST_ROOT}"
+    LABELS "packaging;fast"
+    TIMEOUT 120
 )
 
 add_test(NAME qsanguosha_ui_runner_contract
