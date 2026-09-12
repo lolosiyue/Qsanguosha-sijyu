@@ -6,7 +6,7 @@ import {
   defaultTableBgUrl,
   lobbyBackgroundUrl
 } from "./backdrop";
-import { assetImg } from "./assets";
+import { assetImg, fullskinUrls } from "./assets";
 import { connectForm, sharePanel, waitingRoom } from "./ui-connect";
 import { el } from "./ui-dom";
 import { dashboardView, logView, tableView } from "./ui-room";
@@ -14,12 +14,15 @@ import { interactionView } from "./ui-interaction";
 import type { RulesSelection, UiBind, UiState } from "./ui-types";
 import { SoloController } from "./solo-client";
 import { localReturnHome, soloSetup } from "./ui-solo";
+import { setupBoardLayout } from "./ui-seat-layout";
 
 const session = new LiveSession();
 const route = parseRoute();
 const solo = new SoloController(() => render());
 let soloAvailable = false;
 let localWaitingGeneration = -1;
+let disposeBoardLayout = () => {};
+let countdownInterval: ReturnType<typeof setInterval> | undefined;
 
 const ui: UiState = {
   name: localStorage.getItem("qsan-name") || "web-player",
@@ -36,7 +39,8 @@ const ui: UiState = {
   skillInstance: 0,
   ruleDeclaration: "",
   logPinned: true,
-  hiddenIndex: -1
+  hiddenIndex: -1,
+  presentation: { chatDraft: "" }
 };
 
 function currentCardId(): number {
@@ -145,6 +149,71 @@ function app(): HTMLElement {
   return document.getElementById("app") as HTMLElement;
 }
 
+interface FocusSnapshot { key: string; value?: string; start: number | null; end: number | null; request: string; }
+
+function focusKey(node: HTMLElement): string {
+  if (node.dataset.focusKey || node.id) return node.dataset.focusKey || node.id;
+  if (node.matches(".card")) {
+    const zone = node.closest(".hand, .dash-equips, .dash-piles, .interaction-content, .photo-judge, .table-pile");
+    return `${zone?.className}:card:${node.dataset.cardId}:${node.dataset.cardLabel}`;
+  }
+  const optionGroup = node.closest(".general-pick, .interaction-content .cards, .interaction-actions");
+  return node instanceof HTMLButtonElement && optionGroup ? `${optionGroup.className}:${node.textContent}` : "";
+}
+
+function captureFocus(): FocusSnapshot | null {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) return null;
+  const key = focusKey(active);
+  const input = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement || active instanceof HTMLSelectElement ? active : null;
+  return key ? { key, value: input?.value, start: input && "selectionStart" in input ? input.selectionStart : null,
+    end: input && "selectionEnd" in input ? input.selectionEnd : null,
+    request: `${session.generation}:${session.interaction?.messageId ?? ""}` } : null;
+}
+
+function restoreFocus(snapshot: FocusSnapshot | null): void {
+  if (!snapshot) return;
+  const target = [...app().querySelectorAll<HTMLElement>("[data-focus-key], [id], button")]
+    .find((node) => focusKey(node) === snapshot.key);
+  if (!target || target instanceof HTMLButtonElement && target.disabled) return;
+  if (target instanceof HTMLButtonElement && snapshot.request !== `${session.generation}:${session.interaction?.messageId ?? ""}`) return;
+  // Re-rendering replaces the node; retain in-progress search/chat text as well as caret.
+  if (snapshot.value !== undefined && (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement))
+    target.value = snapshot.value;
+  target.focus({ preventScroll: true });
+  if (snapshot.start !== null && (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement))
+    target.setSelectionRange(snapshot.start, snapshot.end ?? snapshot.start);
+}
+
+function finishRender(shell: HTMLElement, focus: FocusSnapshot | null): void {
+  const timer = shell.querySelector<HTMLElement>(".interaction-deadline");
+  if (timer) {
+    // Never restart the gameplay clock on a selection or on a resize.
+    const update = () => {
+      const remaining = session.remainingInteractionMs();
+      timer.hidden = remaining === null;
+      if (remaining !== null) timer.textContent = `剩餘 ${Math.ceil(remaining / 1000)} 秒`;
+    };
+    update();
+    countdownInterval = setInterval(update, 250);
+  }
+  restoreFocus(focus);
+}
+
+function readablePhase(): string {
+  if (asBool(session.state.gameValue("game_over"))) return "對局已結束";
+  switch (session.phase) {
+    case "connecting": return "正在連線";
+    case "hello": return "正在核對規則";
+    case "signup": return "正在加入房間";
+    case "setup": return "房間準備中";
+    case "active": return "對局進行中";
+    case "finished": return "對局已完成";
+    case "failed": return "連線中斷";
+    default: return "尚未連線";
+  }
+}
+
 function startSolo(options: import("./solo-client").SoloOptions): void {
   ui.name = localStorage.getItem("qsan-name") || "web-player";
   ui.avatar = localStorage.getItem("qsan-avatar") || "caocao";
@@ -183,6 +252,10 @@ const bind: UiBind = {
 };
 
 export function render(): void {
+  const focus = captureFocus();
+  disposeBoardLayout();
+  disposeBoardLayout = () => {};
+  clearInterval(countdownInterval);
   const request = `${session.generation}:${session.interaction?.messageId ?? ""}`;
   if (request !== selectionRequest) {
     selectionRequest = request;
@@ -193,17 +266,26 @@ export function render(): void {
   const root = app();
   root.replaceChildren();
   const shell = el("div", { class: "app" });
-  if (session.phase === "idle" || session.phase === "failed") {
+  if (session.phase === "idle" || session.phase === "connecting" || session.phase === "failed") {
     applySceneBackground(lobbyBackgroundUrl());
     const logo = assetImg(["/assets/logo/logo.png"], "", "logo");
     logo.alt = "QSanguosha";
     shell.className = "app idle";
-    shell.append(logo);
+    const intro = el("section", { class: "home-hero", "aria-labelledby": "home-title" }, [
+      logo,
+      assetImg(fullskinUrls("caocao"), "", "hero-portrait"),
+      el("p", { class: "eyebrow" }, ["QSANGUOSHA · ONLINE / SOLO"]),
+      el("h1", { id: "home-title" }, ["太陽神三國殺", el("span", {}, ["時語版"])]),
+      el("p", { class: "hero-copy" }, ["在熟悉的牌局裡，與朋友相逢；也可以隨時開一局單機，讓策略從第一張牌開始。"]),
+      el("div", { class: "hero-art-note" }, ["選好座位，讓每一手牌說話。"])
+    ]);
+    const entries = el("section", { class: "home-entries", "aria-label": "開始遊戲" }, [connectForm(bind)]);
     if (soloAvailable)
-      shell.append(soloSetup({ controller: solo, session, name: ui.name, avatar: ui.avatar,
+      entries.append(soloSetup({ controller: solo, session, name: ui.name, avatar: ui.avatar,
         render, start: startSolo, home: () => render() }));
-    shell.append(connectForm(bind));
+    shell.append(intro, entries);
     root.append(shell);
+    finishRender(shell, focus);
     return;
   }
   const toolbar = el("div", { class: "toolbar" });
@@ -214,7 +296,7 @@ export function render(): void {
       render, start: startSolo, home: returnHome }));
   toolbar.append(el("strong", {}, ["QSanguosha"]));
   toolbar.append(el("span", { class: "status" }, [
-    `${asBool(session.state.gameValue("game_over")) ? "game_over" : session.phase} ${asString(session.state.connectionValue("room_id"))}`
+    `${readablePhase()}${asString(session.state.connectionValue("room_id")) ? ` · 房號 ${asString(session.state.connectionValue("room_id"))}` : ""}`
   ]));
   const tableBg = asString(session.state.gameValue("table_bg")) || defaultTableBgUrl();
   applySceneBackground(tableBg);
@@ -233,11 +315,14 @@ export function render(): void {
       shell.append(view);
     }
     root.append(shell);
+    finishRender(shell, focus);
     return;
   }
   shell.className = "app room";
   shell.append(toolbar, tableView(bind), logView(bind), dashboardView(bind));
   root.append(shell);
+  disposeBoardLayout = setupBoardLayout(shell, bind);
+  finishRender(shell, focus);
 }
 
 export function start(): void {
@@ -255,6 +340,8 @@ export function start(): void {
     });
   });
   window.addEventListener("pagehide", (event) => {
+    disposeBoardLayout();
+    clearInterval(countdownInterval);
     solo.terminate();
     // A back/forward-cache restoration resumes this same controller instance.
     if (!event.persisted)

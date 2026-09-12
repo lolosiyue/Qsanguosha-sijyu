@@ -18,6 +18,21 @@ export interface UiState {
   ruleDeclaration: string;
   logPinned: boolean;
   hiddenIndex: number;
+  /** Presentation-only state; protocol and reducer state remain authoritative. */
+  presentation?: UiPresentationState;
+}
+
+export interface UiPresentationState {
+  focusPlayer?: string;
+  browsedSeatIndex?: number;
+  seatFilter?: "all" | "legal";
+  battleFilter?: "all" | "mine" | "damage" | "skill";
+  chatDraft?: string;
+  chatScrollTop?: number;
+  chatPinned?: boolean;
+  battleScrollTop?: number;
+  seatScrollLeft?: number;
+  mobileLogCollapsed?: boolean;
 }
 
 export interface UiBind {
