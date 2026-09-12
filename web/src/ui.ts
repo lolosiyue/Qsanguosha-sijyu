@@ -12,9 +12,14 @@ import { el } from "./ui-dom";
 import { dashboardView, logView, tableView } from "./ui-room";
 import { interactionView } from "./ui-interaction";
 import type { RulesSelection, UiBind, UiState } from "./ui-types";
+import { SoloController } from "./solo-client";
+import { localReturnHome, soloSetup } from "./ui-solo";
 
 const session = new LiveSession();
 const route = parseRoute();
+const solo = new SoloController(() => render());
+let soloAvailable = false;
+let localWaitingGeneration = -1;
 
 const ui: UiState = {
   name: localStorage.getItem("qsan-name") || "web-player",
@@ -140,6 +145,24 @@ function app(): HTMLElement {
   return document.getElementById("app") as HTMLElement;
 }
 
+function startSolo(options: import("./solo-client").SoloOptions): void {
+  ui.name = localStorage.getItem("qsan-name") || "web-player";
+  ui.avatar = localStorage.getItem("qsan-avatar") || "caocao";
+  session.connect({
+    wsUrl: "local",
+    screenName: ui.name,
+    avatar: ui.avatar,
+    reconnect: false,
+    local: true,
+    transportFactory: () => solo.createTransport(options)
+  });
+}
+
+function returnHome(): void {
+  if (!session.isLocal) return;
+  void solo.close().finally(() => window.location.reload());
+}
+
 const rules = new RulesController(() => render());
 session.setRulesProvider((activeSession, hello) => rules.initialize(activeSession, hello));
 let selectionRequest = "";
@@ -175,19 +198,33 @@ export function render(): void {
     const logo = assetImg(["/assets/logo/logo.png"], "", "logo");
     logo.alt = "QSanguosha";
     shell.className = "app idle";
-    shell.append(logo, connectForm(bind));
+    shell.append(logo);
+    if (soloAvailable)
+      shell.append(soloSetup({ controller: solo, session, name: ui.name, avatar: ui.avatar,
+        render, start: startSolo, home: () => render() }));
+    shell.append(connectForm(bind));
     root.append(shell);
     return;
   }
   const toolbar = el("div", { class: "toolbar" });
-  toolbar.append(sharePanel(bind, true));
+  if (!session.isLocal)
+    toolbar.append(sharePanel(bind, true));
+  if (session.isLocal)
+    toolbar.append(localReturnHome({ controller: solo, session, name: ui.name, avatar: ui.avatar,
+      render, start: startSolo, home: returnHome }));
   toolbar.append(el("strong", {}, ["QSanguosha"]));
   toolbar.append(el("span", { class: "status" }, [
-    `${session.phase} ${asString(session.state.connectionValue("room_id"))}`
+    `${asBool(session.state.gameValue("game_over")) ? "game_over" : session.phase} ${asString(session.state.connectionValue("room_id"))}`
   ]));
   const tableBg = asString(session.state.gameValue("table_bg")) || defaultTableBgUrl();
   applySceneBackground(tableBg);
-  if (!asBool(session.state.gameValue("started"))) {
+  if (!asBool(session.state.gameValue("started"))
+      && !asBool(session.state.gameValue("game_over"))) {
+    if (session.isLocal && session.phase === "active" && localWaitingGeneration !== session.generation) {
+      localWaitingGeneration = session.generation;
+      session.addRobots();
+      session.setReady(true);
+    }
     shell.className = "app wait";
     shell.append(toolbar, waitingRoom(bind));
     if (session.interaction) {
@@ -218,9 +255,21 @@ export function start(): void {
     });
   });
   window.addEventListener("pagehide", (event) => {
+    solo.terminate();
     // A back/forward-cache restoration resumes this same controller instance.
     if (!event.persisted)
       rules.dispose();
   });
+  window.addEventListener("pageshow", (event) => {
+    if (event.persisted && soloAvailable)
+      window.location.reload();
+  });
+  void fetch("/solo/enabled.json", { cache: "no-store" }).then((response) => {
+    if (!response.ok) return null;
+    return response.json() as Promise<{ schema_version?: number }>;
+  }).then((marker) => {
+    soloAvailable = marker?.schema_version === 1;
+    render();
+  }).catch(() => render());
   render();
 }

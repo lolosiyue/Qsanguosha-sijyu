@@ -203,6 +203,10 @@ export function interactionView(bind: UiBind): HTMLElement {
   const { session, ui } = bind;
   const root = el("section", { class: "prompt" });
   const interaction = session.interaction;
+  if (asBool(session.state.gameValue("game_over"))) {
+    root.append(el("p", { class: "status" }, ["遊戲已結束"]));
+    return root;
+  }
   if (!interaction) {
     if (!asBool(session.state.gameValue("started")))
       return waitingRoom(bind);

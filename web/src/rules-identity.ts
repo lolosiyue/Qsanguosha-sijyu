@@ -37,6 +37,9 @@ export async function sha256(bytes: Uint8Array): Promise<string> {
 }
 
 export async function verifyNativeIdentity(value: unknown): Promise<JsonObject> {
+  // The server can reject its content before it has a valid identity to seal.
+  if (isObject(value) && value.error_code === "rules_content_unsupported")
+    throw new Error("rules_content_unsupported");
   if (!isRulesIdentity(value)) throw new Error("rules_identity_invalid");
   const unsigned = { ...value };
   delete unsigned.bundle_id;

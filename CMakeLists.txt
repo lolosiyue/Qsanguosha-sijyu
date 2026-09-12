@@ -54,10 +54,34 @@ option(QSAN_BUILD_TUI
     "Build the Protocol V2 terminal client"
     ON
 )
+option(QSAN_BUILD_EXCEL
+    "Build the opt-in Windows Excel bridge"
+    OFF
+)
+option(QSAN_BUILD_EXCEL_TESTS
+    "Build opt-in native Excel focused test executables"
+    OFF
+)
+if(QSAN_BUILD_EXCEL AND NOT WIN32)
+    message(FATAL_ERROR "QSAN_BUILD_EXCEL is available on Windows only")
+endif()
 option(QSAN_BUILD_WASM_WEB_CLIENT
     "Build the persistent Web Worker client-rules runtime with Emscripten"
     OFF
 )
+option(QSAN_BUILD_WASM_SOLO
+    "Build the browser-hosted single-player server Worker (multithreaded Qt)"
+    OFF
+)
+if(QSAN_BUILD_WASM_SOLO)
+    if(NOT EMSCRIPTEN)
+        message(FATAL_ERROR "QSAN_BUILD_WASM_SOLO requires the Emscripten toolchain")
+    endif()
+    # pthread changes the entire ABI, including libraries compiled in this tree.
+    # Use a separate wasm_multithread build directory, never the client-only kit.
+    add_compile_options(-pthread)
+    add_link_options(-pthread)
+endif()
 
 # Audio backend。GUI client 用邊個實作由呢個變數單點決定，call site 冇任何
 # 平台 #ifdef：
@@ -167,6 +191,13 @@ if(QSAN_BUILD_GUI)
             Widgets
         )
     endif()
+endif()
+
+if(QSAN_BUILD_EXCEL AND QSAN_AUDIO_BACKEND STREQUAL "QT")
+    list(APPEND QSAN_QT_COMPONENTS Multimedia)
+endif()
+if(QSAN_BUILD_EXCEL_TESTS)
+    list(APPEND QSAN_QT_COMPONENTS Test)
 endif()
 
 list(REMOVE_DUPLICATES QSAN_QT_COMPONENTS)
@@ -639,20 +670,65 @@ foreach(qsan_client_core_link IN LISTS qsan_client_core_links)
     endif()
 endforeach()
 
+# Shared live session/request layer for TUI and native adapters. Keep all
+# presentation code in its consumers so the Excel bridge never links TUI.
+add_library(qsanguosha_client_session STATIC
+    src/client/client-live-session.cpp
+    src/client/client-live-session.h
+    src/client/interaction-command-registry.cpp
+    src/client/interaction-command-registry.h
+    src/client/interaction-reply-coordinator.cpp
+    src/client/interaction-reply-coordinator.h
+    src/client/interaction-reply-encoder.cpp
+    src/client/interaction-reply-encoder.h
+    src/client/interaction-request-factory.cpp
+    src/client/interaction-request-factory.h
+    src/client/protocol-interaction-request-builder.cpp
+    src/client/protocol-interaction-request-builder.h
+)
+set_target_properties(qsanguosha_client_session PROPERTIES
+    AUTOMOC ON
+    POSITION_INDEPENDENT_CODE ON
+    FOLDER "Libraries"
+)
+target_include_directories(qsanguosha_client_session PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/client
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/client/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/core
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/lua
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/server
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/util
+)
+target_compile_definitions(qsanguosha_client_session PRIVATE QSAN_ENGINE_TEST_BUILD)
+target_link_libraries(qsanguosha_client_session PUBLIC
+    qsanguosha_client_core
+    qsanguosha_client_runtime
+    Qt6::Core
+    Qt6::Network
+)
+target_link_libraries(qsanguosha_client_session PRIVATE
+    "$<COMPILE_ONLY:qsanguosha_engine>"
+)
+if(QSAN_BUILD_XP_LEGACY)
+    target_include_directories(qsanguosha_client_session BEFORE PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/legacy/xp/compat/qt5
+    )
+    target_compile_definitions(qsanguosha_client_session PRIVATE
+        QSAN_XP_LEGACY WIN32 WINVER=0x0501 _WIN32_WINNT=0x0501)
+endif()
+
+if(MSVC)
+    target_compile_definitions(qsanguosha_client_session PRIVATE _CRT_SECURE_NO_WARNINGS)
+    target_compile_options(qsanguosha_client_session PRIVATE /utf-8 /bigobj /MP8)
+    if(QSAN_BUILD_XP_LEGACY)
+        target_compile_options(qsanguosha_client_session PRIVATE
+            "/FI${CMAKE_CURRENT_SOURCE_DIR}/legacy/xp/compat/qt5/qsan-qt5-compat.h")
+    endif()
+endif()
+
 if(QSAN_BUILD_TUI)
     add_library(qsanguosha_tui_support STATIC
-        src/client/client-live-session.cpp
-        src/client/client-live-session.h
-        src/client/interaction-command-registry.cpp
-        src/client/interaction-command-registry.h
-        src/client/interaction-reply-coordinator.cpp
-        src/client/interaction-reply-coordinator.h
-        src/client/interaction-reply-encoder.cpp
-        src/client/interaction-reply-encoder.h
-        src/client/interaction-request-factory.cpp
-        src/client/interaction-request-factory.h
-        src/client/protocol-interaction-request-builder.cpp
-        src/client/protocol-interaction-request-builder.h
         src/tui/tui-application-controller.cpp
         src/tui/tui-application-controller.h
         src/tui/tui-board-layout.cpp
@@ -719,6 +795,7 @@ if(QSAN_BUILD_TUI)
     target_compile_definitions(qsanguosha_tui_support PRIVATE QSAN_ENGINE_TEST_BUILD)
     target_link_libraries(qsanguosha_tui_support PUBLIC
         qsanguosha_client_core
+        qsanguosha_client_session
         Qt6::Core
         Qt6::Network
     )
@@ -851,6 +928,9 @@ set(QSAN_DEDICATED_ENTRY_SOURCES
     )
 if(QSAN_BUILD_XP_LEGACY)
     include(legacy/xp/cmake/XPServer.cmake)
+endif()
+if(QSAN_BUILD_EXCEL)
+    include(cmake/QSanguoshaExcel.cmake)
 endif()
 if(QSAN_BUILD_SERVER)
     add_executable(qsanguosha_server ${QSAN_DEDICATED_ENTRY_SOURCES})
@@ -1327,6 +1407,7 @@ if(QSAN_BUILD_GUI)
 
     target_link_libraries(${QSAN_GUI_TARGET} PRIVATE
         qsanguosha_client_core
+        qsanguosha_client_session
         ${QSAN_ENGINE_QT_LIBS}
         Qt6::Gui
         Qt6::Widgets

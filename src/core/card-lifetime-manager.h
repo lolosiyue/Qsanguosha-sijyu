@@ -181,6 +181,12 @@ public:
     quint64 drain();
     quint64 drainDomain(const void *domain,
                         QList<QPointer<QObject>> *retiredObjects = nullptr);
+    // Register a running game's worker; ordinary drains skip its domain.
+    bool beginTurnReclamation(const void *domain);
+    // Call on the registered worker after its final domain cleanup.
+    void endTurnReclamation(const void *domain);
+    // Drain pending, unowned transient Cards on the registered worker thread.
+    quint64 drainTurnDomain(const void *domain);
     // Call on the initialization worker before publishing the quiescent domain.
     // Transfers live Cards only; preserves pending deletion and all leases.
     bool handoffInitializedDomain(const void *domain, QThread *targetThread,
@@ -296,7 +302,8 @@ private:
     void reconcileDestroyedLocked();
     void reapDeadLocked(const std::shared_ptr<const CardLifetimeToken> &token);
     quint64 drainImpl(const void *domain,
-                      QList<QPointer<QObject>> *retiredObjects);
+                      QList<QPointer<QObject>> *retiredObjects,
+                      bool turnBoundary = false);
     void updatePeaksLocked();
 
     mutable ProfiledMutex m_mutex;
@@ -333,6 +340,9 @@ private:
         CardLifetimeGauge baseline;
     };
     QList<RuntimeRegistration> m_runtimeRegistrations;
+    // Identity only: remove registration before the worker exits; never
+    // dereference these QThread pointers to test whether an owner is alive.
+    QHash<const void *, QThread *> m_turnReclaimThreads;
     CardLifetimeGauge m_gauge;
 };
 

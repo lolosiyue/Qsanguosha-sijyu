@@ -248,6 +248,8 @@ bool sessionRoundTrips()
     signup.roomId = 7;
     signup.hasRulesBundle = true;
     signup.rulesBundle = bundle;
+    signup.hasMaxPlayers = true;
+    signup.maxPlayers = 10;
     const QVariantMap signupWire = wireRoundTrip(signup.toVariant());
     SignupRequestPayload parsedSignup;
     if (!expect(signupWire.value(QStringLiteral("schema_version")).toInt() == 2,
@@ -258,9 +260,14 @@ bool sessionRoundTrips()
                    QStringLiteral("reconnect Signup metadata survives JSON round trip"))) {
         return false;
     }
+    if (!expect(parsedSignup.hasMaxPlayers && parsedSignup.maxPlayers == 10,
+                QStringLiteral("optional Signup frontend capacity survives JSON round trip"))) {
+        return false;
+    }
 
     signup.hasRulesBundle = false;
     signup.hasRoomId = false;
+    signup.hasMaxPlayers = false;
     for (int schemaVersion : {1, 2}) {
         QVariantMap legacy = signup.toVariant();
         legacy.insert(QStringLiteral("schema_version"), schemaVersion);
@@ -294,6 +301,15 @@ bool sessionRoundTrips()
                     QStringLiteral("Signup rejects non-object metadata"))
             || !expect(!ServerHelloPayload::parse(wireRoundTrip(badHello), &parsedHello, &error),
                        QStringLiteral("Hello rejects non-object metadata"))) {
+            return false;
+        }
+    }
+    for (const QVariant &invalidMax : {QVariant(-1), QVariant(1), QVariant(1001),
+                                       QVariant(2.5), QVariant(QStringLiteral("18446744073709551616"))}) {
+        QVariantMap badSignup = signupWire;
+        badSignup.insert(QStringLiteral("max_players"), invalidMax);
+        if (!expect(!SignupRequestPayload::parse(wireRoundTrip(badSignup), &parsedSignup, &error),
+                    QStringLiteral("Signup rejects invalid frontend capacity"))) {
             return false;
         }
     }

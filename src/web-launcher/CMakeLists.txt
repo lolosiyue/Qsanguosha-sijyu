@@ -1,0 +1,12 @@
+cmake_minimum_required(VERSION 3.24)
+project(QSanguoshaWebLauncher LANGUAGES CXX)
+if(NOT WIN32 OR NOT MSVC OR NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    message(FATAL_ERROR "The portable launcher requires Windows x64 MSVC")
+endif()
+add_executable(qsanguosha_web_launcher WIN32 web-launcher.cpp)
+target_compile_features(qsanguosha_web_launcher PRIVATE cxx_std_17)
+target_compile_options(qsanguosha_web_launcher PRIVATE /utf-8 /W4 /EHsc)
+target_compile_definitions(qsanguosha_web_launcher PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_link_libraries(qsanguosha_web_launcher PRIVATE ws2_32 shell32 user32 ole32)
+# The downloadable package must not require a separately installed CRT or Qt.
+set_property(TARGET qsanguosha_web_launcher PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

@@ -659,6 +659,7 @@ void RoomThread::_handleTurnBroken3v3(QList<ServerPlayer*> &first, QList<ServerP
 		if (!player->hasFlag("actioned"))
 			room->setPlayerFlag(player, "actioned");
 
+		reclaimCompletedTurn();
 		ServerPlayer*next = find3v3Next(first, second);
 		run3v3(first, second, game_rule, next);
 	}catch (TriggerEvent triggerEvent) {
@@ -760,6 +761,7 @@ void RoomThread::actionHulaoPass(ServerPlayer*shenlvbu, QList<ServerPlayer*> lea
 				}
 			}
 
+			reclaimCompletedTurn();
 			room->setCurrent(shenlvbu);
 			actionHulaoPass(shenlvbu, league, game_rule, 2);
 		} else if (triggerEvent == TurnBroken) {
@@ -781,6 +783,7 @@ void RoomThread::_handleTurnBrokenHulaoPass(ServerPlayer*shenlvbu, QList<ServerP
 			if (player != shenlvbu && stage == 1)
 				room->setPlayerFlag(player, "actioned");
 		}
+		reclaimCompletedTurn();
 		room->setCurrent(next);
 		actionHulaoPass(shenlvbu, league, game_rule, stage);
 	}catch (TriggerEvent triggerEvent) {
@@ -822,6 +825,7 @@ void RoomThread::_handleTurnBrokenNormal(GameRule*game_rule)
 			game_rule->trigger(EventPhaseEnd, room, player);
 			player->changePhase(player->getPhase(), Player::NotActive);
 		}
+		reclaimCompletedTurn();
 		room->setCurrent(next);
 		actionNormal(game_rule);
 	}catch (TriggerEvent triggerEvent) {
@@ -842,12 +846,24 @@ void RoomThread::run()
 		CrashHandler::setLuaState(nullptr);
 		Sanguosha->unregisterRoom();
 	});
+	bool turnReclamationRegistered = false;
+	auto turnReclaimCleanup = qScopeGuard([this, &turnReclamationRegistered]() {
+		if (turnReclamationRegistered)
+			globalCardLifetimeManager().endTurnReclamation(room->roomRuntime());
+	});
 	auto workerFinal = qScopeGuard([this]() {
 		// finalizeWorker() closes the room's Lua states, so the crash handler
 		// has to drop its lua_State before that and not after.
 		CrashHandler::setLuaState(nullptr);
 		room->roomRuntime()->finalizeWorker();
 	});
+	// Keep this domain out of opportunistic/global drains until worker-final
+	// cleanup has completed. Only this registered worker may drain at turn end.
+	turnReclamationRegistered = globalCardLifetimeManager().beginTurnReclamation(room->roomRuntime());
+	if (!turnReclamationRegistered) {
+		qWarning("Cannot register the Room worker for turn-end Card reclamation");
+		return;
+	}
 
 	foreach(const TriggerSkill*triggerSkill, Sanguosha->getGlobalTriggerSkills())
 		addTriggerSkill(triggerSkill);
@@ -1335,6 +1351,24 @@ bool RoomThread::trigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*targ
 	if (room && room->isRestoringTakeoverSnapshot())
 		return false;
 
+	const bool outerTurn = triggerEvent == TurnStart && event_stack.isEmpty();
+	const bool broken = dispatchTrigger(triggerEvent, room, target, data);
+	// dispatchTrigger's CardLifetimeScope and deferred work must finish first.
+	// Exceptions skip this point: their mode-specific phase cleanup owns the
+	// boundary. Nested extra turns wait until the outer invocation returns.
+	if (outerTurn)
+		reclaimCompletedTurn();
+	return broken;
+}
+
+void RoomThread::reclaimCompletedTurn()
+{
+	if (room && event_stack.isEmpty() && room->roomRuntime())
+		room->roomRuntime()->reclaimTurnCards();
+}
+
+bool RoomThread::dispatchTrigger(TriggerEvent triggerEvent, Room*room, ServerPlayer*target, QVariant &data)
+{
 	CardLifetimeScope cardScope(globalCardLifetimeManager());
 	if (m_perfTraceEnabled)
 		++m_triggerDispatchProfile.triggerCount;

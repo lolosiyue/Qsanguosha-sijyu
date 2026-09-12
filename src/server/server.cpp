@@ -1710,7 +1710,7 @@ int ServerDialog::config()
 #if !defined(QSAN_SERVER_DIALOGS_ONLY)
 
 Server::Server(QObject *parent, const GameSessionConfig &initialSessionConfig,
-	InitialRoomPolicy initialRoomPolicy)
+	InitialRoomPolicy initialRoomPolicy, ServerSocket *injectedSocket)
 	: QObject(parent), current(nullptr), created_successfully(false)
 {
 #ifdef QSAN_XP_LEGACY
@@ -1722,11 +1722,16 @@ Server::Server(QObject *parent, const GameSessionConfig &initialSessionConfig,
 #endif
 	m_uptimeTimer.start();
 	connect(this, SIGNAL(server_message(QString)), this, SIGNAL(logMessage(QString)));
-	server = new NativeServerSocket;
-	server->setParent(this);
-	websocketServer = qsanCreateWebSocketServer();
-	if (websocketServer != nullptr)
-		websocketServer->setParent(this);
+	if (injectedSocket != nullptr) {
+		server = injectedSocket;
+		server->setParent(this);
+	} else {
+		server = new NativeServerSocket;
+		server->setParent(this);
+		websocketServer = qsanCreateWebSocketServer();
+		if (websocketServer != nullptr)
+			websocketServer->setParent(this);
+	}
 	playerCount = 0;
 	m_nextGameSeedIndex = 0;
 	if (initialSessionConfig.takeover) {
@@ -2247,6 +2252,12 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 				QString state = player->getState();
 				if (state != "offline" && state != "robot") continue;
 				if (player->getRoom()->isFinished()) continue;
+				if (signup.hasMaxPlayers && signup.maxPlayers > 0
+					&& Sanguosha->getPlayerCount(player->getRoom()->getMode()) > signup.maxPlayers) {
+					rejectSignup(QStringLiteral("frontend_player_limit"),
+						QStringLiteral("The room exceeds the frontend player limit"));
+					return;
+				}
 				SignupReplyPayload reply;
 				reply.accepted = true;
 				reply.reconnected = true;
@@ -2320,6 +2331,12 @@ void Server::finalizeSignup(ServerConnectionContext *context,
 			return;
 		}
 		target = current;
+	}
+	if (signup.hasMaxPlayers && signup.maxPlayers > 0
+		&& Sanguosha->getPlayerCount(target->getMode()) > signup.maxPlayers) {
+		rejectSignup(QStringLiteral("frontend_player_limit"),
+			QStringLiteral("The room exceeds the frontend player limit"));
+		return;
 	}
 
 	ServerPlayer *player = target->addSocket(socket);

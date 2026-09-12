@@ -2,6 +2,7 @@ import {
   asBool,
   asNumber,
   asString,
+  asStringList,
   Command,
   decodeMessage,
   encodeMessage,
@@ -23,6 +24,7 @@ export type SessionPhase =
   | "signup"
   | "setup"
   | "active"
+  | "finished"
   | "failed";
 
 export interface SessionOptions {
@@ -31,6 +33,17 @@ export interface SessionOptions {
   avatar: string;
   reconnect: boolean;
   roomId?: number;
+  local?: boolean;
+  transportFactory?: () => SessionTransport;
+}
+
+// Both transports carry the same Protocol V2 frames and native rules ingress.
+export interface SessionTransport {
+  readonly readyState: number;
+  send(frame: string): void;
+  close(): void;
+  addEventListener(type: "message", listener: (event: MessageEvent) => void): void;
+  addEventListener(type: "error" | "close", listener: () => void): void;
 }
 
 export interface ActiveInteraction {
@@ -51,7 +64,8 @@ export class LiveSession {
   error = "";
   interaction: ActiveInteraction | null = null;
   interactionError = "";
-  private socket: WebSocket | null = null;
+  private socket: SessionTransport | null = null;
+  private local = false;
   private outgoing = { value: 0n };
   private lastIncoming = 0n;
   private signupId = "";
@@ -63,6 +77,38 @@ export class LiveSession {
   private rulesBundle: JsonObject | null = null;
   private rulesProvider: ((session: LiveSession, hello?: JsonObject) => Promise<JsonObject | null>) | null = null;
   private frameSink: FrameSink | null = null;
+  private focusDeadline: number | null = null;
+  private focusCommand = Command.MOVE_FOCUS as number;
+  private interactionDeadline: number | null = null;
+  private interactionTimer: ReturnType<typeof setTimeout> | undefined;
+
+  private clearInteraction(): void {
+    if (this.interactionTimer !== undefined)
+      clearTimeout(this.interactionTimer);
+    this.interactionTimer = undefined;
+    this.interactionDeadline = null;
+    this.interaction = null;
+    this.interactionError = "";
+  }
+
+  private armInteractionExpiry(): void {
+    if (!this.interaction || this.interactionDeadline === null)
+      return;
+    const generation = this.generation;
+    const requestId = this.interaction.messageId;
+    const remaining = this.interactionDeadline - performance.now();
+    if (remaining <= 0) {
+      this.clearInteraction();
+      return;
+    }
+    this.interactionTimer = setTimeout(() => {
+      if (generation !== this.generation || this.interaction?.messageId !== requestId)
+        return;
+      this.interactionTimer = undefined;
+      this.armInteractionExpiry();
+      this.notify();
+    }, Math.min(remaining, 2147483647));
+  }
 
   setFrameSink(sink: FrameSink | null): void {
     this.frameSink = sink;
@@ -73,6 +119,7 @@ export class LiveSession {
   }
 
   get synchronizing(): boolean { return this.syncActive; }
+  get isLocal(): boolean { return this.local; }
 
   onChange(listener: Listener): () => void {
     this.listeners.add(listener);
@@ -86,6 +133,7 @@ export class LiveSession {
 
   connect(options: SessionOptions): void {
     this.disconnect();
+    this.local = options.local === true;
     this.outgoing = { value: 0n };
     this.lastIncoming = 0n;
     this.signupId = "";
@@ -120,7 +168,7 @@ export class LiveSession {
   }
 
   private openSocket(options: SessionOptions): void {
-    const socket = new WebSocket(options.wsUrl);
+    const socket: SessionTransport = options.transportFactory?.() ?? new WebSocket(options.wsUrl);
     this.socket = socket;
     socket.addEventListener("message", (event) => {
       if (this.socket !== socket)
@@ -138,12 +186,21 @@ export class LiveSession {
       }
     });
     socket.addEventListener("error", () => {
-      if (this.socket === socket)
-        this.fail("WebSocket 連線失敗");
+      if (this.socket === socket && this.phase === "finished") {
+        this.disconnect();
+        this.notify();
+      } else if (this.socket === socket)
+        this.fail(this.local ? "單機對局執行失敗" : "WebSocket 連線失敗");
     });
     socket.addEventListener("close", () => {
       if (this.socket !== socket || this.phase === "failed")
         return;
+      // A completed game remains readable after the server closes its socket.
+      if (this.phase === "finished") {
+        this.disconnect();
+        this.notify();
+        return;
+      }
       this.phase = "failed";
       this.error = this.error || "連線已關閉";
       this.disconnect();
@@ -153,15 +210,19 @@ export class LiveSession {
   }
 
   disconnect(): void {
-    this.socket?.close();
+    const socket = this.socket;
     this.socket = null;
+    socket?.close();
     this.syncActive = false;
     this.pending = null;
     ++this.generation;
-    this.interaction = null;
+    this.focusDeadline = null;
+    this.clearInteraction();
   }
 
   sendControl(command: number, payload: JsonObject): void {
+    if (this.phase === "finished")
+      throw new Error("對局已結束");
     this.send({
       v: 2,
       type: "notification",
@@ -178,6 +239,12 @@ export class LiveSession {
     if (this.phase !== "active" || this.syncActive || !this.interaction
         || this.interaction.command !== command || this.interaction.messageId !== replyTo)
       throw new Error("詢問已更新，請重新選擇");
+    // Timers may be throttled in background tabs; never send after the deadline.
+    if (this.interactionDeadline !== null && performance.now() >= this.interactionDeadline) {
+      this.clearInteraction();
+      this.notify();
+      throw new Error("詢問已逾時");
+    }
     this.send({
       v: 2,
       type: "reply",
@@ -188,8 +255,7 @@ export class LiveSession {
       command: replyCommand(command),
       payload
     });
-    this.interaction = null;
-    this.interactionError = "";
+    this.clearInteraction();
     this.notify();
   }
 
@@ -226,6 +292,8 @@ export class LiveSession {
   }
 
   private fail(detail: string): void {
+    // Keep the wire/runtime reason available when the UI groups compatibility errors.
+    console.warn("Web session failed:", detail);
     this.phase = "failed";
     this.error = rulesErrorMessage(detail);
     this.disconnect();
@@ -351,12 +419,19 @@ export class LiveSession {
     }
 
     if (message.type === "request" && message.destination === "client") {
+      if (this.phase === "finished")
+        return;
+      this.clearInteraction();
       this.interaction = {
         command: message.command,
         messageId: message.message_id,
         payload: message.payload
       };
-      this.interactionError = "";
+      // MOVE_FOCUS precedes the request; consume its deadline only once.
+      this.interactionDeadline = this.focusCommand === Command.MOVE_FOCUS || this.focusCommand === message.command
+        ? this.focusDeadline : null;
+      this.focusDeadline = null;
+      this.armInteractionExpiry();
       this.notify();
       return;
     }
@@ -371,7 +446,8 @@ export class LiveSession {
         this.pending = this.state.clone();
         this.pending.resetGameplayState();
         this.syncActive = true;
-        this.interaction = null;
+        this.focusDeadline = null;
+        this.clearInteraction();
         this.syncId = syncId;
         this.renPile = [];
         target = this.pending;
@@ -386,12 +462,28 @@ export class LiveSession {
 
     if (message.type === "notification") {
       if (message.command === Command.GAME_OVER)
-        this.interaction = null;
+        this.clearInteraction();
       if (message.command === Command.GAME_START)
         this.renPile = [];
       const reduction = applyNotification(target, message.command, message.payload);
       if (!reduction.success)
         throw new Error(reduction.detail);
+      if (message.command === Command.MOVE_FOCUS && !this.syncActive) {
+        this.focusDeadline = null;
+        this.focusCommand = asNumber(message.payload.command, Command.MOVE_FOCUS);
+        if (!asStringList(target.gameValue("focus")).includes(this.state.selfName)) {
+          this.clearInteraction();
+        } else {
+          const countdown = message.payload.countdown;
+          // Countdown::USE_SPECIFIED carries milliseconds; zero maximum is unlimited.
+          // NO_LIMIT and unresolved USE_DEFAULT must not invent a local timeout.
+          if (isObject(countdown) && countdown.type === 1
+              && Number.isSafeInteger(countdown.maximum) && Number(countdown.maximum) > 0
+              && Number.isSafeInteger(countdown.current) && Number(countdown.current) >= 0)
+            this.focusDeadline = performance.now()
+              + Math.max(0, Number(countdown.maximum) - Number(countdown.current));
+        }
+      }
       appendSynthesizedLogs(target, message.command, message.payload, this.renPile);
     }
 
@@ -405,6 +497,12 @@ export class LiveSession {
       this.syncActive = false;
       this.syncId = "";
       this.pending = null;
+    }
+    // Wait for an atomic snapshot commit before presenting a restored result.
+    if (!this.syncActive && asBool(this.state.gameValue("game_over"))) {
+      this.focusDeadline = null;
+      this.clearInteraction();
+      this.phase = "finished";
     }
     this.notify();
   }

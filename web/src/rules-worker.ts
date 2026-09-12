@@ -234,7 +234,11 @@ async function initialize(requestGeneration: number, serverIdentity: unknown, co
   if (canonical(info.extension_files) !== canonical(declaredExtensions))
     throw new Error("rules_content_unsupported");
   const native = await verifyNativeIdentity(info.rules_bundle);
-  if (canonical(native) !== canonical(server)) throw new Error("rules_version_mismatch");
+  if (canonical(native) !== canonical(server)) {
+    const fields = [...new Set([...Object.keys(native), ...Object.keys(server)])]
+      .filter(key => canonical(native[key]) !== canonical(server[key]));
+    throw new Error(`rules_version_mismatch: identity fields ${fields.join(", ")}`);
+  }
   // Arm raw-frame ingress before the transport exists. This permanently locks
   // out the external-snapshot entry, so no browser state can replace the
   // native one for the rest of this Engine's life.

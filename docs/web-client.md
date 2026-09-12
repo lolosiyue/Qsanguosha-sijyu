@@ -76,6 +76,20 @@ descriptions from the translation table.
 The idle screen shows `image/logo/logo.png` instead of the
 `QSanguosha idle` toolbar title.
 
+`GAME_OVER` retains the server's result on the board: winner tokens are matched
+against player names and the ordered result roles, and `standoff` shows a draw.
+The result replaces gameplay prompts and remains visible after the server closes
+the connection. A disconnect before a result is still reported as a failure.
+
+Requests consume the preceding `MOVE_FOCUS` specified countdown in milliseconds,
+measured from receipt of that notification. An elapsed deadline clears the prompt;
+reply submission checks the same deadline even if a background tab delays timers.
+Focus moving away from the local player also cancels the old prompt, while a
+multi-player focus containing that player remains valid. No-limit, zero-maximum,
+and unresolved default countdowns do not invent a local deadline. Timers are
+discarded on replacement, reply, disconnect, state synchronization, and game end;
+the browser does not synthesize a timeout reply or alter server decisions.
+
 Connect uses `config.ini` `BackgroundImage`; the waiting room uses
 `TableBgImage`. After `GAME_START`, `EnableAutoBackgroundChange` loads the
 lord kingdom table (`skins/fulldefaultSkin.image.json` `tableBg*`); battle
