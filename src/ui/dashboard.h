@@ -178,6 +178,9 @@ public:
 public slots:
     virtual void updateAvatar();
     void refreshLayout();
+    void setTouchUiEnabled(bool enabled);
+    void setTouchTargetMinimum(qreal minimumSize);
+    void setApplicationSuspended(bool suspended, bool offline);
 
     void sortCards();
     void beginSorting();
@@ -317,6 +320,7 @@ protected:
     PixmapAnimation *_m_equipBorders[S_EQUIP_AREA_LENGTH];
     QSanSkillButton *_m_equipSkillBtns[S_EQUIP_AREA_LENGTH];
     bool _m_isEquipsAnimOn[S_EQUIP_AREA_LENGTH];
+    bool m_touchUiEnabled = false;
 
     int _findEquipSkillButtonIndex(const QString &skillName) const;
     QSanSkillButton *_getEquipSkillButton(const CardItem *equip) const;
@@ -362,6 +366,7 @@ private slots:
     void onCardItemThrown();
     void onCardItemHover();
     void onCardItemLeaveHover();
+    void onCardItemLongPressed(CardItem *card);
     void onMarkChanged();
     void _onHoverCardDestroyed(QObject *obj);
     void _onDialogOptionClicked(const QString &optionName);
@@ -372,6 +377,7 @@ signals:
     void dialogOptionSelectionChanged(bool hasSelection);
     void progressBarTimedOut();
     void cardActionButtonClicked(const QString &buttonId, int cardId);
+    void cardPreviewRequested(CardItem *card);
 };
 
 #endif

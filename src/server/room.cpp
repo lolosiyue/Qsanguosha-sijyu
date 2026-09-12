@@ -217,12 +217,13 @@ Room::Room(QObject*parent, const QString&mode, const GameSessionConfig &sessionC
 		static_cast<EventDispatcher &>(*this))),
 	m_gameSession(std::make_unique<GameSessionController>(*this)),
 	mode(mode), player_count(Sanguosha->getPlayerCount(mode)), current(nullptr),
-	game_paused(false),
+	game_paused(false), application_backgrounded(false), application_active_elapsed(0),
 	thread(nullptr),//game_started(false), game_finished(false),
 	thread_3v3(nullptr), thread_xmode(nullptr), thread_1v1(nullptr),
 	scenario(Sanguosha->getScenario(mode)), m_surrenderRequestReceived(false), _virtual(false),
 	m_sessionConfig(sessionConfig)
 {
+	application_elapsed_timer.start();
 	static int s_global_room_id = 0;
 	_m_Id = s_global_room_id++;
 	_m_lastMovementId = 0;
@@ -335,6 +336,7 @@ bool Room::stopGameThreads(int timeoutMs)
 	{
 		QMutexLocker locker(&m_mutex);
 		game_paused = false;
+		application_backgrounded = false;
 		m_waitCond.wakeAll();
 	}
 	foreach (ServerPlayer *player, getPlayers())
@@ -366,11 +368,48 @@ void Room::abortWaitingRequests()
 	{
 		QMutexLocker locker(&m_mutex);
 		game_paused = false;
+		application_backgrounded = false;
 		m_waitCond.wakeAll();
 	}
 	foreach (ServerPlayer *player, getPlayers())
 		player->releaseLock(ServerPlayer::SEMA_COMMAND_INTERACTIVE);
 	m_requests->unblockWaits();
+}
+
+void Room::setApplicationBackgrounded(bool backgrounded)
+{
+	// Lifecycle suspension belongs to the in-process AI room only.
+	if (!isSinglePlayerMode())
+		return;
+	QMutexLocker locker(&m_mutex);
+	if (application_backgrounded == backgrounded)
+		return;
+	if (backgrounded)
+		application_active_elapsed += application_elapsed_timer.elapsed();
+	application_backgrounded = backgrounded;
+	application_elapsed_timer.restart();
+	if (!application_backgrounded)
+		m_waitCond.wakeAll();
+}
+
+bool Room::isApplicationBackgrounded() const
+{
+	QMutexLocker locker(&m_mutex);
+	return application_backgrounded;
+}
+
+qint64 Room::applicationActiveElapsed() const
+{
+	QMutexLocker locker(&m_mutex);
+	return application_active_elapsed
+		+ (application_backgrounded ? 0 : application_elapsed_timer.elapsed());
+}
+
+void Room::waitForApplicationForeground()
+{
+	QMutexLocker locker(&m_mutex);
+	while (application_backgrounded)
+		m_waitCond.wait(locker.mutex());
 }
 
 ServerPlayer*Room::getCurrent() const
@@ -1649,18 +1688,18 @@ void Room::trySinglePlayerSurrender()
 void Room::tryPause()
 {
 	//tag["callback"] = true;
-	if (canPause(getOwner())){
+	if (canPause(getOwner()) || isApplicationBackgrounded()){
 		QMutexLocker locker(&m_mutex);
 		// Use a timed wait instead of unconditional wait: if the owner
 		// disconnects while game_paused == true no one will ever call
 		// wakeAll(), which would leave the room thread frozen at 0% CPU.
 		const unsigned long kPauseCheckIntervalMs = 500;
-		while (game_paused){
+		while (game_paused || application_backgrounded){
 			bool woken = m_waitCond.wait(locker.mutex(), kPauseCheckIntervalMs);
 			// If we timed out (not woken by wakeAll), re-evaluate canPause:
 			// if the owner has gone offline, canPause() returns false and we
 			// break out of the deadlock automatically.
-			if (!woken && !canPause(getOwner())){
+			if (!woken && !application_backgrounded && !canPause(getOwner())){
 				game_paused = false;
 				break;
 			}

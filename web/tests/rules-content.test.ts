@@ -4,7 +4,8 @@ import { fetchContent, installContent, validateContentManifest, verifyInstalledC
 const core = ["lua/config.lua", "lua/sanguosha.lua", "lua/utilities.lua", "lua/sgs_ex.lua", "lua/lib/json.lua"];
 const hash = "a".repeat(64);
 function manifest(extra: Record<string, unknown>[] = []) {
-  return { schema_version: 1, profile: "declared-v1", files: [
+  return { schema_version: 2, profile: "declared-v2",
+    runtime_content: { schema_version: 2, profile: "declared-v2", extensions: [] }, files: [
     ...core.map(path => ({ path, role: "rules", size: 1, sha256: hash })), ...extra
   ] };
 }
@@ -17,6 +18,22 @@ describe("rules content delivery", () => {
       { path: "lua/middleclass.lua", role: "rules", size: 0, sha256: hash }
     ]));
     expect(value.files).toHaveLength(8);
+  });
+
+  it("uses the same extension role boundaries as the native descriptor", () => {
+    const value = { ...manifest(), runtime_content: { schema_version: 2, profile: "declared-v2", extensions: [{
+      name: "x", script: "extensions/x.lua", dependencies: [], libs: [], lang: [], ai: ["lua/lib/middleclass.lua"]
+    }] } };
+    expect(validateContentManifest(value).runtime_content.extensions[0].ai).toEqual(["lua/lib/middleclass.lua"]);
+    for (const fields of [
+      { ai: ["lua/ai/../core.lua"] }, { libs: ["lua/config.lua"] },
+      { libs: ["lua/lib/x.lua", "lua/lib/x.lua"] }, { lang: ["lang/../core.lua"] }
+    ]) {
+      const extension = { ...value.runtime_content.extensions[0], ...fields };
+      expect(() => validateContentManifest({ ...value, runtime_content: {
+        ...value.runtime_content, extensions: [extension]
+      } })).toThrow("rules_content_unsupported");
+    }
   });
 
   it("rejects traversal, duplicates, and AI outside the AI directory", () => {
@@ -33,7 +50,8 @@ describe("rules content delivery", () => {
     const bytes = new TextEncoder().encode("x");
     const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))]
       .map(value => value.toString(16).padStart(2, "0")).join("");
-    const value = { schema_version: 1, profile: "declared-v1", files: [
+    const value = { schema_version: 2, profile: "declared-v2",
+      runtime_content: { schema_version: 2, profile: "declared-v2", extensions: [] }, files: [
       ...core.map(path => ({ path, role: "rules", size: 1, sha256: digest })),
       { path: "extensions/x.lua", role: "rules", size: 1, sha256: digest }
     ] };
@@ -62,7 +80,8 @@ describe("rules content delivery", () => {
 
   it("requires the installed asset inventory to match exactly", async () => {
     const emptyHash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
-    const value = { schema_version: 1, profile: "declared-v1", files: core.map(path =>
+    const value = { schema_version: 2, profile: "declared-v2",
+      runtime_content: { schema_version: 2, profile: "declared-v2", extensions: [] }, files: core.map(path =>
       ({ path, role: "rules", size: 0, sha256: emptyHash })) };
     const files = new Map<string, Uint8Array>();
     const fs = {
@@ -77,7 +96,18 @@ describe("rules content delivery", () => {
       isDir(mode: number) { return mode === 2; }, isFile(mode: number) { return mode === 1; },
       unlink(path: string) { files.delete(path); }, rmdir() {}
     };
-    installContent(fs, new Map(core.map(path => [`${path}`, new Uint8Array()] as const)));
+    installContent(fs, new Map(core.map(path => [`${path}`, new Uint8Array()] as const)),
+      validateContentManifest(value).runtime_content);
+    await verifyInstalledContent(fs, value);
+    const descriptorPath = "/assets/runtime-content.json";
+    const descriptor = files.get(descriptorPath)!;
+    files.delete(descriptorPath);
+    await expect(verifyInstalledContent(fs, value)).rejects.toThrow("rules_reload_required");
+    files.set(descriptorPath, new TextEncoder().encode(JSON.stringify({
+      ...value.runtime_content, extensions: [{ name: "injected", path: "extensions/injected.lua" }]
+    })));
+    await expect(verifyInstalledContent(fs, value)).rejects.toThrow("rules_reload_required");
+    files.set(descriptorPath, descriptor);
     await verifyInstalledContent(fs, value);
     files.set("/assets/stale.lua", new Uint8Array());
     await expect(verifyInstalledContent(fs, value)).rejects.toThrow("rules_reload_required");

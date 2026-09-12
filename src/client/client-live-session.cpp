@@ -386,6 +386,12 @@ bool ClientLiveSession::requestSignup(QString *error)
     signup.reconnectRequested = m_reconnectAttempt;
     signup.screenName = m_options.screenName;
     signup.avatar = m_options.avatar;
+    // Protocol V2 admission always carries the owning product's local
+    // identity, including reconnects and native TCP sessions.
+    if (!m_options.localRulesBundle.isEmpty()) {
+        signup.hasRulesBundle = true;
+        signup.rulesBundle = m_options.localRulesBundle;
+    }
     if (m_options.maxPlayerCount > 0) {
         signup.hasMaxPlayers = true;
         signup.maxPlayers = m_options.maxPlayerCount;

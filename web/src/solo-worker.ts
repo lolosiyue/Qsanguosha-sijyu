@@ -111,7 +111,7 @@ async function prepare(): Promise<void> {
     if (!fs) throw new Error("單機執行環境缺少檔案系統");
     for (const path of ["/work", "/userdata/config", "/userdata/data", "/tmp"]) fs.mkdirTree(path);
     fs.chdir("/work");
-    installContent(fs, files);
+    installContent(fs, files, content.runtime_content);
   }];
   // Files are shipped together and hash-checked above, never chosen by messages.
   const { default: factory } = await import(/* @vite-ignore */ moduleUrl);

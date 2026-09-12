@@ -532,6 +532,51 @@ void Dashboard::refreshLayout()
     }
 }
 
+void Dashboard::setTouchUiEnabled(bool enabled)
+{
+    m_touchUiEnabled = enabled;
+    setTouchTargetMinimum(enabled ? 48.0 : 0.0);
+}
+
+void Dashboard::setTouchTargetMinimum(qreal minimumTouchSize)
+{
+    const QList<QSanButton *> controls = {
+        m_btnReverseSelection, m_btnFilterCard, m_btnSortHandcard,
+        m_btnNoNullification, m_btnShefu, m_btnRenPile
+    };
+    for (QSanButton *button : controls) {
+        if (button)
+            button->setTouchTargetMinimum(minimumTouchSize);
+    }
+    for (int i = 0; i < S_EQUIP_AREA_LENGTH; ++i) {
+        if (_m_equipSkillBtns[i])
+            _m_equipSkillBtns[i]->setTouchTargetMinimum(minimumTouchSize);
+    }
+    if (_m_skillDock) {
+        for (QSanInvokeSkillButton *button : _m_skillDock->getAllSkillButtons())
+            button->setTouchTargetMinimum(minimumTouchSize);
+    }
+    if (m_secondarySkillDock) {
+        for (QSanInvokeSkillButton *button : m_secondarySkillDock->getAllSkillButtons())
+            button->setTouchTargetMinimum(minimumTouchSize);
+    }
+}
+
+void Dashboard::setApplicationSuspended(bool suspended, bool offline)
+{
+    PlayerCardContainer::setApplicationSuspended(suspended, offline);
+    if (!suspended)
+        return;
+    for (CardItem *card : m_handCards) {
+        if (card)
+            card->cancelTouchPreview();
+    }
+    for (int i = 0; i < S_EQUIP_AREA_LENGTH; ++i) {
+        if (_m_equipCards[i])
+            _m_equipCards[i]->cancelTouchPreview();
+    }
+}
+
 void Dashboard::_updateFrames()
 {
     const QSanRoomSkin::DashboardLayout *layout = _dlayout;
@@ -718,6 +763,7 @@ void Dashboard::_addHandCard(CardItem *card_item, bool prepend, const QString &f
     connect(card_item, SIGNAL(thrown()), this, SLOT(onCardItemThrown()));
     connect(card_item, SIGNAL(enter_hover()), this, SLOT(onCardItemHover()));
     connect(card_item, SIGNAL(leave_hover()), this, SLOT(onCardItemLeaveHover()));
+    connect(card_item, SIGNAL(touchPreviewRequested(CardItem *)), this, SLOT(onCardItemLongPressed(CardItem *)));
     connect(card_item, SIGNAL(mark_changed()), this, SLOT(onMarkChanged()));
     connect(card_item, SIGNAL(actionButtonClicked(QString,int)), this, SIGNAL(cardActionButtonClicked(QString,int)));
     m_hoverDestroyConnections.insert(card_item,
@@ -902,6 +948,8 @@ QSanSkillButton *Dashboard::addSkillButton(const QString &skillName, bool isPrim
             }
 
             _m_equipSkillBtns[i] = new QSanInvokeSkillButton(this);
+            if (m_touchUiEnabled)
+                _m_equipSkillBtns[i]->setTouchTargetMinimum(48.0);
             _m_equipSkillBtns[i]->setSkill(Sanguosha->getSkill(skillName));
             _m_equipSkillBtns[i]->setVisible(false);
             _m_equipSkillBtns[i]->setObjectName(skillName);
@@ -924,7 +972,10 @@ QSanSkillButton *Dashboard::addSkillButton(const QString &skillName, bool isPrim
         dock = m_secondarySkillDock;
     }
 
-    return dock->addSkillButtonByName(skillName);
+    QSanSkillButton *button = dock->addSkillButtonByName(skillName);
+    if (m_touchUiEnabled && button)
+        button->setTouchTargetMinimum(48.0);
+    return button;
 }
 
 QSanSkillButton *Dashboard::removeSkillButton(const QString &skillName)
@@ -1198,6 +1249,12 @@ void Dashboard::cardTip()
 	foreach(CardItem *h, m_handCards)
 		h->hideFootnote();
 	adjustCards(true);
+}
+
+void Dashboard::onCardItemLongPressed(CardItem *card)
+{
+    if (card != nullptr)
+        emit cardPreviewRequested(card);
 }
 
 void Dashboard::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)

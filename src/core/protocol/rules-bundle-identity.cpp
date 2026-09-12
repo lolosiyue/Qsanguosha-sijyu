@@ -83,7 +83,7 @@ QString compatibilityError(const QJsonObject &server, const QJsonObject &client,
         return required ? QStringLiteral("rules_identity_required") : QString();
     if (!validate(client))
         return QStringLiteral("rules_identity_invalid");
-    if (!validate(server) || server.value(QStringLiteral("content_profile")) != QLatin1String("declared-v1")
+    if (!validate(server) || server.value(QStringLiteral("content_profile")) != QLatin1String("declared-v2")
         || client.value(QStringLiteral("content_profile")) != server.value(QStringLiteral("content_profile")))
         return QStringLiteral("rules_content_unsupported");
     const auto requiredSchemas = server.value(QStringLiteral("interaction_schemas")).toObject();

@@ -5,6 +5,10 @@
 #include <QFileInfo>
 #include <QStandardPaths>
 
+#ifdef Q_OS_ANDROID
+#include "android_assets.h"
+#endif
+
 #ifndef QSAN_BIN_TO_DATA_RELATIVE
 // bin/ 相對 share/qsanguosha/ 的位置，由 CMake 依 GNUInstallDirs 算出。
 // 刻意用相對路徑而唔係 CMAKE_INSTALL_FULL_DATADIR：binary 入面唔應該
@@ -129,6 +133,7 @@ bool assetRootIsPackaged(AssetRootSource source)
     case AssetRootSource::Environment:
     case AssetRootSource::InstalledPrefix:
     case AssetRootSource::PortableBundle:
+    case AssetRootSource::AndroidApplicationData:
         return true;
     case AssetRootSource::WorkingDirectory:
     case AssetRootSource::ApplicationDir:
@@ -141,6 +146,11 @@ bool assetRootIsPackaged(AssetRootSource source)
 
 QString xdgUserDataRoot()
 {
+#ifdef Q_OS_ANDROID
+    // 設定／紀錄與可編輯的 Lua runtime 分開，全部留在 app 私有空間。
+    const QString appData = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    return appData.isEmpty() ? QString() : QDir(appData).filePath(QStringLiteral("userdata"));
+#else
     // 刻意唔靠 QCoreApplication 嘅 organizationName／applicationName：
     // 呢兩個值喺 GUI 同 dedicated server 之間唔一定一樣，但兩者要寫入同一個
     // 使用者資料目錄。
@@ -149,6 +159,7 @@ QString xdgUserDataRoot()
     if (generic.isEmpty())
         return QDir::homePath() + QStringLiteral("/.local/share/QSanguosha");
     return generic + QStringLiteral("/QSanguosha");
+#endif
 }
 }
 
@@ -182,6 +193,26 @@ bool resolve(const QStringList &arguments, QString *error)
             acceptExplicitRoot(envRoot, QStringLiteral("QSAN_ASSET_ROOT"),
                                AssetRootSource::Environment, &failed);
     }
+
+#ifdef Q_OS_ANDROID
+    if (g_resolution.error.isEmpty() && g_resolution.assetRoot.isEmpty()) {
+        // QApplication 已建立；每次啟動只補缺少的隨包檔，不覆蓋使用者擴展。
+        // 釋出失敗不能退回另一份規則，也不能帶著部分 runtime 建立 Engine。
+        const QString prepared = QCoreApplication::instance()
+            ? QCoreApplication::instance()->property("androidRuntimeRoot").toString() : QString();
+        const QString root = prepared.isEmpty() ? AndroidAssets::getWritableDataPath() : prepared;
+        // The content store has already composed this immutable tree. Never patch
+        // a live version in place: unchanged files may share hardlinked inodes.
+        if (prepared.isEmpty() && !AndroidAssets::copyAssetsToWritableLocation(&g_resolution.error)) {
+            recordCandidate(QStringLiteral("android-app-data"), root,
+                            QStringLiteral("extraction-failed"));
+        } else if (!tryCandidate(root, QStringLiteral("android-app-data"),
+                                 AssetRootSource::AndroidApplicationData)) {
+            g_resolution.error = QStringLiteral("The Android runtime is missing core Lua files: %1")
+                                     .arg(root);
+        }
+    }
+#endif
 
     if (g_resolution.error.isEmpty() && g_resolution.assetRoot.isEmpty()
         && !g_resolution.applicationDir.isEmpty()) {
@@ -227,7 +258,9 @@ bool resolve(const QStringList &arguments, QString *error)
     if (g_resolution.error.isEmpty()) {
         // 過渡橋樑：engine／skin bank 仍然用 "lua/..."、"image/..." 相對路徑。
         // 一次過改 CWD 令佢哋指向解析出嚟嘅 asset root，而唔係使用者嘅 CWD。
-        QDir::setCurrent(g_resolution.assetRoot);
+        if (!QDir::setCurrent(g_resolution.assetRoot))
+            g_resolution.error = QStringLiteral("Unable to enter the QSanguosha data directory: %1")
+                                     .arg(g_resolution.assetRoot);
     }
 
     if (error != nullptr)
@@ -333,6 +366,8 @@ QString sourceName(AssetRootSource source)
         return QStringLiteral("application-dir");
     case AssetRootSource::ApplicationParent:
         return QStringLiteral("application-parent");
+    case AssetRootSource::AndroidApplicationData:
+        return QStringLiteral("android-app-data");
     case AssetRootSource::None:
         break;
     }

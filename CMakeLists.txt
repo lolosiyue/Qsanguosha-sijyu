@@ -31,7 +31,7 @@ endif()
 
 # 產品選項：GUI client 與 dedicated server 各自獨立，平台只決定預設值，
 # 不再由平台永久決定產品是否存在。
-if(WIN32)
+if(WIN32 OR ANDROID)
     set(QSAN_BUILD_GUI_DEFAULT ON)
 else()
     set(QSAN_BUILD_GUI_DEFAULT OFF)
@@ -43,6 +43,8 @@ option(QSAN_BUILD_GUI
 )
 if(QSAN_BUILD_XP_LEGACY)
     set(QSAN_BUILD_SERVER_DEFAULT OFF)
+elseif(ANDROID)
+    set(QSAN_BUILD_SERVER_DEFAULT OFF)
 else()
     set(QSAN_BUILD_SERVER_DEFAULT ON)
 endif()
@@ -50,9 +52,14 @@ option(QSAN_BUILD_SERVER
     "Build the dedicated QSanguosha server"
     ${QSAN_BUILD_SERVER_DEFAULT}
 )
+if(ANDROID)
+    set(QSAN_BUILD_TUI_DEFAULT OFF)
+else()
+    set(QSAN_BUILD_TUI_DEFAULT ON)
+endif()
 option(QSAN_BUILD_TUI
     "Build the Protocol V2 terminal client"
-    ON
+    ${QSAN_BUILD_TUI_DEFAULT}
 )
 option(QSAN_BUILD_EXCEL
     "Build the opt-in Windows Excel bridge"
@@ -134,7 +141,7 @@ if(WIN32)
             message(FATAL_ERROR "The Windows CMake build supports the Visual Studio 2026 v145 toolchain only")
         endif()
     endif()
-elseif(NOT UNIX)
+elseif(NOT UNIX AND NOT ANDROID)
     message(FATAL_ERROR "Unsupported platform")
 endif()
 
@@ -237,13 +244,30 @@ else()
     get_filename_component(QT_PREFIX "${Qt6_DIR}/../../.." ABSOLUTE)
 endif()
 
+if(ANDROID)
+    include(cmake/QSanguoshaAndroid.cmake)
+endif()
+
 set(QSAN_ENGINE_QT_LIBS Qt6::Core Qt6::Network)
 
-find_program(QSAN_SWIG_EXECUTABLE
-    NAMES swig swig.exe
-    HINTS "${CMAKE_CURRENT_SOURCE_DIR}/tools/swig"
-    REQUIRED
-)
+if(ANDROID)
+    # SWIG is a host executable even while the generated wrapper is compiled
+    # for Android. Do not let the Android toolchain redirect this lookup.
+    find_program(QSAN_SWIG_EXECUTABLE
+        NAMES swig swig.exe
+        HINTS
+            "$ENV{QSAN_QT_HOST_PATH}/bin"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tools/swig"
+        NO_CMAKE_FIND_ROOT_PATH
+        REQUIRED
+    )
+else()
+    find_program(QSAN_SWIG_EXECUTABLE
+        NAMES swig swig.exe
+        HINTS "${CMAKE_CURRENT_SOURCE_DIR}/tools/swig"
+        REQUIRED
+    )
+endif()
 
 file(GLOB qsan_swig_interfaces CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/swig/*.i"
@@ -268,6 +292,7 @@ add_custom_command(
 set_source_files_properties("${qsan_swig_wrapper}" PROPERTIES GENERATED TRUE)
 
 include(cmake/QSanguoshaSources.cmake)
+include(cmake/QSanguoshaAndroidAssets.cmake)
 
 if(QSAN_BUILD_XP_LEGACY)
     # XP keeps the current rules/client/server sources, but never compiles the
@@ -479,6 +504,18 @@ add_library(qsanguosha_engine STATIC
     ${QSAN_LUA_SOURCES}
     "${qsan_swig_wrapper}"
 )
+
+if(ANDROID)
+    target_sources(qsanguosha_engine PRIVATE
+        src/core/android_assets.cpp
+        src/core/android_assets.h
+        src/core/android-content-store.cpp
+        src/core/android-content-store.h
+        src/core/android-zip-reader.cpp
+        src/core/android-zip-reader.h
+    )
+    target_link_libraries(qsanguosha_engine PUBLIC z)
+endif()
 
 set_source_files_properties(${QSAN_LUA_SOURCES} PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 list(REMOVE_ITEM QSAN_SOURCES src/util/game-snapshot.cpp)
@@ -996,7 +1033,7 @@ endif()
 #
 # server-only 安裝因此唔會拉到任何 GUI 資產,亦唔會拉到 Qt GUI runtime。
 # ---------------------------------------------------------------------------
-if(UNIX)
+if(UNIX AND NOT ANDROID)
     set(QSAN_DATA_INSTALL_DIR "${CMAKE_INSTALL_DATADIR}/qsanguosha")
 
     # bin/ 望去 share/qsanguosha/ 的相對路徑。runtime resolver 用呢個而唔用
@@ -1122,7 +1159,7 @@ if(UNIX)
     )
 endif()
 
-if(UNIX AND QSAN_BUILD_SERVER)
+if(UNIX AND NOT ANDROID AND QSAN_BUILD_SERVER)
     set(QSAN_SYSTEMD_SERVICE_FILE
         "${CMAKE_CURRENT_BINARY_DIR}/qsanguosha-server.service")
     configure_file(
@@ -1193,11 +1230,28 @@ if(QSAN_BUILD_GUI)
         qt_add_executable(${QSAN_GUI_TARGET} WIN32
             ${QSAN_GUI_SOURCES}
         )
+    elseif(ANDROID)
+        set(QSAN_GUI_TARGET QSanguosha)
+        # Keep Android target creation in its own directory. The target must
+        # use MANUAL_FINALIZATION so all resources, links and QML roots below
+        # are present before Qt generates deployment settings.
+        add_subdirectory(cmake/android-app)
     else()
         set(QSAN_GUI_TARGET QSanguosha)
         qt_add_executable(${QSAN_GUI_TARGET}
             ${QSAN_GUI_SOURCES}
         )
+    endif()
+
+    if(ANDROID)
+        target_sources(${QSAN_GUI_TARGET} PRIVATE
+            src/dialog/android-content-dialog.cpp
+            src/dialog/android-content-dialog.h
+            src/dialog/android-dialog-fit.cpp
+            src/dialog/android-dialog-fit.h
+        )
+        qsan_configure_android_target(${QSAN_GUI_TARGET})
+        qsan_add_android_runtime_assets(${QSAN_GUI_TARGET})
     endif()
 
     if(NOT QSAN_BUILD_XP_LEGACY)
@@ -1475,10 +1529,14 @@ if(QSAN_BUILD_GUI)
                 "$<$<CONFIG:Release>:${qsan_library_dir}/fmodex.lib>"
             )
         endif()
+    elseif(ANDROID)
+        # FreeType is supplied by the Android toolchain and must remain a
+        # static target; never search the host's desktop installation.
+        target_link_libraries(${QSAN_GUI_TARGET} PRIVATE Freetype::Freetype)
     else()
         # Linux 使用系統 Freetype；不 link 任何 bundled *.lib，亦不需要 FMOD。
         find_package(Freetype REQUIRED)
-        target_link_libraries(QSanguosha PRIVATE Freetype::Freetype)
+        target_link_libraries(${QSAN_GUI_TARGET} PRIVATE Freetype::Freetype)
     endif()
 
     if(MSVC)
@@ -1495,6 +1553,13 @@ if(QSAN_BUILD_GUI)
         set(qsan_gui_debug_output "${CMAKE_CURRENT_SOURCE_DIR}/xp-debug")
         set(qsan_gui_release_output "${CMAKE_CURRENT_SOURCE_DIR}/xp-release")
         set(qsan_gui_relwithdebinfo_output "${CMAKE_CURRENT_SOURCE_DIR}/xp-relwithdebinfo")
+    elseif(ANDROID)
+        # Android qt_add_executable() creates a shared MODULE in the build
+        # tree. Keep its ABI-specific output beside the Ninja build files so
+        # androiddeployqt can package it without touching the source tree.
+        set(qsan_gui_debug_output "${CMAKE_CURRENT_BINARY_DIR}")
+        set(qsan_gui_release_output "${CMAKE_CURRENT_BINARY_DIR}")
+        set(qsan_gui_relwithdebinfo_output "${CMAKE_CURRENT_BINARY_DIR}")
     else()
         set(qsan_gui_debug_output "${CMAKE_CURRENT_SOURCE_DIR}/debug")
         set(qsan_gui_release_output "${CMAKE_CURRENT_SOURCE_DIR}/release")
@@ -1550,13 +1615,33 @@ if(QSAN_BUILD_GUI)
 
     if(NOT QSAN_BUILD_XP_LEGACY)
         set(translation_source "${CMAKE_CURRENT_SOURCE_DIR}/builds/sanguosha.ts")
+        if(ANDROID)
+            set(qsan_translation_output "${CMAKE_CURRENT_BINARY_DIR}/translations")
+        else()
+            set(qsan_translation_output "${CMAKE_CURRENT_SOURCE_DIR}")
+        endif()
         set_source_files_properties("${translation_source}" PROPERTIES
-            OUTPUT_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}"
+            OUTPUT_LOCATION "${qsan_translation_output}"
         )
         qt_add_lrelease(${QSAN_GUI_TARGET}
             TS_FILES "${translation_source}"
             QM_FILES_OUTPUT_VARIABLE qsan_qm_files
         )
+
+        if(ANDROID)
+            get_filename_component(qsan_android_qt_prefix "${Qt6_DIR}/../../.." ABSOLUTE)
+            file(GLOB qsan_android_qt_translations
+                "${qsan_android_qt_prefix}/translations/qt*_zh_CN.qm")
+            set(qsan_android_translations ${qsan_qm_files} ${qsan_android_qt_translations})
+            foreach(qsan_android_translation IN LISTS qsan_android_translations)
+                get_filename_component(qsan_android_translation_name "${qsan_android_translation}" NAME)
+                set_source_files_properties("${qsan_android_translation}" PROPERTIES
+                    QT_RESOURCE_ALIAS "${qsan_android_translation_name}")
+            endforeach()
+            qt_add_resources(${QSAN_GUI_TARGET} qsan_android_translations
+                PREFIX "/assets/translations"
+                FILES ${qsan_android_translations})
+        endif()
 
         qt_add_lupdate(${QSAN_GUI_TARGET}
             TS_FILES "${translation_source}"
@@ -1603,6 +1688,13 @@ if(QSAN_BUILD_GUI)
             VERBATIM
         )
     endif()
+
+    if(ANDROID)
+        # qt_add_executable() was declared with MANUAL_FINALIZATION in the
+        # Android child directory. Finalize only after the complete GUI graph
+        # (qrc resources, audio, translations and links) is assembled.
+        qt_finalize_target(${QSAN_GUI_TARGET})
+    endif()
 endif()
 
 if(WIN32)
@@ -1615,7 +1707,7 @@ if(WIN32)
 endif()
 source_group("Generated" FILES "${qsan_swig_wrapper}")
 
-if(UNIX AND QSAN_BUILD_GUI)
+if(UNIX AND NOT ANDROID AND QSAN_BUILD_GUI)
     set_target_properties(QSanguosha PROPERTIES
         INSTALL_RPATH "$ORIGIN/${QSAN_BIN_TO_QT_LIB_RELATIVE}"
     )

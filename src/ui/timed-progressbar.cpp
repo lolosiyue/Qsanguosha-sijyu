@@ -1,6 +1,7 @@
 #include "timed-progressbar.h"
 #include "clientstruct.h"
 #include "skin-bank.h"
+#include <QCoreApplication>
 
 void TimedProgressBar::show()
 {
@@ -13,7 +14,8 @@ void TimedProgressBar::show()
         killTimer(m_timer);
         m_timer = 0;
     }
-    m_timer = startTimer(m_step);
+    if (!(m_applicationSuspended && m_suspendOffline))
+        m_timer = startTimer(m_step);
     this->setMaximum(m_max);
     this->setValue(m_val);
     QProgressBar::show();
@@ -37,6 +39,10 @@ void TimedProgressBar::timerEvent(QTimerEvent *)
     bool doHide = false;
     int val = 0;
     m_mutex.lock();
+    if (m_applicationSuspended && m_suspendOffline) {
+        m_mutex.unlock();
+        return;
+    }
     m_val += m_step;
     if (m_val >= m_max) {
         m_val = m_max;
@@ -46,13 +52,28 @@ void TimedProgressBar::timerEvent(QTimerEvent *)
             killTimer(m_timer);
             m_timer = 0;
         }
-        emitTimeout = true;
+        emitTimeout = !(m_applicationSuspended && !m_suspendOffline);
     }
     val = m_val;
     m_mutex.unlock();
     this->setValue(val);
     if (doHide) hide();
     if (emitTimeout) emit timedOut();
+}
+
+void TimedProgressBar::setApplicationSuspended(bool suspended, bool offline)
+{
+    m_mutex.lock();
+    const bool wasOfflineSuspended = m_applicationSuspended && m_suspendOffline;
+    m_applicationSuspended = suspended;
+    m_suspendOffline = offline;
+    if (suspended && offline && m_timer != 0) {
+        killTimer(m_timer);
+        m_timer = 0;
+    } else if (!suspended && wasOfflineSuspended && isVisible() && m_hasTimer && m_timer == 0) {
+        m_timer = startTimer(m_step);
+    }
+    m_mutex.unlock();
 }
 
 using namespace QSanProtocol;
@@ -62,6 +83,10 @@ QSanCommandProgressBar::QSanCommandProgressBar()
     m_step = Config.S_PROGRESS_BAR_UPDATE_INTERVAL;
     m_hasTimer = ServerInfo.OperationTimeout > 0;
     m_instanceType = S_CLIENT_INSTANCE;
+    if (QCoreApplication *app = QCoreApplication::instance()) {
+        m_applicationSuspended = app->property("qsan.application_suspended").toBool();
+        m_suspendOffline = app->property("qsan.application_suspended_offline").toBool();
+    }
 }
 
 void QSanCommandProgressBar::setCountdown(CommandType command)

@@ -369,6 +369,7 @@ bool ExcelBridge::connectionOptions(const QJsonObject &args, ClientLiveSessionOp
     options->expectedGameVersion = Sanguosha->getVersionNumber();
     options->expectedModName = Sanguosha->getMODName();
     options->expectedRulesBundle = Sanguosha->rulesBundleIdentity();
+    options->localRulesBundle = options->expectedRulesBundle;
     options->fallbackToFreshSignup = false;
     return true;
 }

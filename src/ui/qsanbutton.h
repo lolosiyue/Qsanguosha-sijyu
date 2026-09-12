@@ -42,6 +42,8 @@ public:
         return _m_style;
     }
     void setRect(QRect rect);
+    // Expands only the interactive envelope; the painted button and layout stay unchanged.
+    void setTouchTargetMinimum(qreal minimumSize);
     virtual QRectF boundingRect() const;
     bool insideButton(QPointF pos) const;
     void setEnabled(bool enabled);
@@ -65,6 +67,8 @@ protected:
     QString _m_buttonName;
     QRegion _m_mask;
     QSize _m_size;
+    qreal _m_touchTargetPadding = 0.0;
+    qreal _m_touchTargetMinimum = 0.0;
     // @todo: currently this is an extremely dirty hack. Refactor the button states to
     // get rid of it.
     bool _m_mouseEntered;
@@ -72,7 +76,9 @@ protected:
 private:
     void _init(const QSize &size);
     bool _isMouseInside(const QPointF &pos) const {
-        return _m_mask.contains(QPoint(pos.x(), pos.y()));
+        return _m_touchTargetPadding > 0.0
+            ? boundingRect().contains(pos)
+            : _m_mask.contains(QPoint(pos.x(), pos.y()));
     }
 
 signals:

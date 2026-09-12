@@ -146,6 +146,10 @@ Windows 先驗證現有 FMOD Ex 4.44 與 MSVC 2022 x64 的連結、啟動及壓�
 
 ## 5. Android 資產與發布架構
 
+> 2026-09-12 首版決策更新：採 APK 直接安裝與手動聲畫 ZIP 匯入，Google Play／AAB／PAD
+> 延後。擴展部署依 `TODO/human` 的逐檔釋出方式，接線與未完成範圍見
+> [Android 擴展實體目錄](android-extension-runtime.md)。以下 PAD 設計保留為後續渠道參考。
+
 | 類型 | 檔案數 | 未壓縮體積 |
 |---|---:|---:|
 | 音訊 | 約 15,363 | 約 1.09 GiB |

@@ -20,6 +20,9 @@ void CardItem::_initialize()
     _m_showFootnote = true;
     m_isSelected = false;
     m_isShiny = false;
+#ifdef Q_OS_ANDROID
+    m_touchLongPressTriggered = false;
+#endif
     m_hasVirtualCardVisual = false;
     m_virtualCardSuit = Card::NoSuit;
     m_virtualCardNumber = 0;
@@ -259,6 +262,15 @@ bool CardItem::isEquipped() const
 void CardItem::setFrozen(bool is_frozen)
 {
     frozen = is_frozen;
+    if (frozen) cancelTouchPreview();
+}
+
+void CardItem::cancelTouchPreview()
+{
+#ifdef Q_OS_ANDROID
+    m_touchLongPressTimer.stop();
+    m_touchLongPressTriggered = false;
+#endif
 }
 
 CardItem *CardItem::FindItem(const QList<CardItem *> &items, int card_id)
@@ -280,11 +292,24 @@ void CardItem::mousePressEvent(QGraphicsSceneMouseEvent *mouseEvent)
 {
     if (frozen) return;
     _m_lastMousePressScenePos = mapToParent(mouseEvent->pos());
+#ifdef Q_OS_ANDROID
+    m_touchLongPressTriggered = false;
+    m_touchLongPressTimer.start(500, this);
+#endif
 }
 
 void CardItem::mouseReleaseEvent(QGraphicsSceneMouseEvent *mouseEvent)
 {
     if (frozen) return;
+
+#ifdef Q_OS_ANDROID
+    m_touchLongPressTimer.stop();
+    if (m_touchLongPressTriggered) {
+        m_touchLongPressTriggered = false;
+        mouseEvent->accept();
+        return;
+    }
+#endif
 
     QPointF totalMove = mapToParent(mouseEvent->pos()) - _m_lastMousePressScenePos;
     if (totalMove.x() * totalMove.x() + totalMove.y() * totalMove.y() < _S_MOVE_JITTER_TOLERANCE)
@@ -297,8 +322,36 @@ void CardItem::mouseReleaseEvent(QGraphicsSceneMouseEvent *mouseEvent)
     }
 }
 
+#ifdef Q_OS_ANDROID
+bool CardItem::sceneEvent(QEvent *event)
+{
+    if (event->type() == QEvent::TouchCancel || event->type() == QEvent::UngrabMouse)
+        cancelTouchPreview();
+    return QGraphicsObject::sceneEvent(event);
+}
+
+void CardItem::timerEvent(QTimerEvent *event)
+{
+    if (event->timerId() != m_touchLongPressTimer.timerId()) {
+        QGraphicsObject::timerEvent(event);
+        return;
+    }
+    m_touchLongPressTimer.stop();
+    if (!frozen && isEnabled()
+        && !QCoreApplication::instance()->property("qsan.application_suspended").toBool()) {
+        m_touchLongPressTriggered = true;
+        emit touchPreviewRequested(this);
+    }
+}
+#endif
+
 void CardItem::mouseMoveEvent(QGraphicsSceneMouseEvent *mouseEvent)
 {
+#ifdef Q_OS_ANDROID
+    const QPointF touchMove = mapToParent(mouseEvent->pos()) - _m_lastMousePressScenePos;
+    if (touchMove.x() * touchMove.x() + touchMove.y() * touchMove.y() >= _S_MOVE_JITTER_TOLERANCE)
+        m_touchLongPressTimer.stop();
+#endif
     if (!(flags() & QGraphicsItem::ItemIsMovable)) return;
     QPointF newPos = mapToParent(mouseEvent->pos());
     QPointF totalMove = newPos - _m_lastMousePressScenePos;

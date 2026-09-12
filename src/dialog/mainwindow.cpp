@@ -10,6 +10,9 @@
 #include "pixmapanimation.h"
 #include "record-analysis.h"
 #include "banipdialog.h"
+#ifdef Q_OS_ANDROID
+#include "android-content-dialog.h"
+#endif
 #include "recorder.h"
 #include "lua.hpp"
 #include "engine.h"
@@ -17,6 +20,11 @@
 #include "configdialog.h"
 #include "clientstruct.h"
 #include "client.h"
+#ifdef Q_OS_ANDROID
+#include "client-live-session.h"
+#include "room.h"
+#include "protocol/session/session-payloads.h"
+#endif
 #include "clientplayer.h"
 #include "game-session-config.h"
 #include "game-snapshot.h"
@@ -48,6 +56,15 @@
 #include <QProgressBar>
 #include <QPushButton>
 #include <QVBoxLayout>
+#ifdef Q_OS_ANDROID
+#include <QMenu>
+#include <QPointer>
+#include <QToolButton>
+#include <QInputMethod>
+#include <QSaveFile>
+#include <QStandardPaths>
+#include <QWindow>
+#endif
 #if QSAN_ENABLE_QML
 #include <QQuickWidget>
 #include <QQuickItem>
@@ -240,8 +257,16 @@ MainWindow::MainWindow(QWidget *parent)
 	m_pointerOverlay = new PointerEffectOverlay(this);
 #endif
 	restoreFromConfig();
+#ifdef Q_OS_ANDROID
+	setupAndroidUi();
+	connect(qGuiApp, &QGuiApplication::applicationStateChanged, this,
+		&MainWindow::handleApplicationStateChanged);
+#endif
 
 	setupHomePage();
+#ifdef Q_OS_ANDROID
+	restoreAndroidOfflineMarker();
+#endif
 	showHomePage();
 
 	addAction(ui->actionShow_Hide_Menu);
@@ -602,6 +627,17 @@ void MainWindow::updateHomeSceneLoadState(HomeSceneLoadState state)
 
 void MainWindow::showHomePage()
 {
+#ifdef Q_OS_ANDROID
+	m_androidAwaitingStateSync = false;
+	gameView->setEnabled(!m_androidApplicationBackgrounded);
+	menuBar()->setEnabled(!m_androidApplicationBackgrounded);
+	m_androidLocalRoomActive = false;
+	m_androidLocalServerListening = false;
+	clearAndroidOfflineMarker();
+	qApp->setProperty("androidOfflineRoomDead", false);
+	if (m_androidMenuButton)
+		m_androidMenuButton->hide();
+#endif
 #ifdef QSAN_XP_LEGACY
 	if (localServer && localServer->active()) {
 		if (localServer->hostOnly() && localServer->isReady()) {
@@ -715,7 +751,168 @@ void MainWindow::showGamePage(QGraphicsScene *newScene)
 	if (m_pointerOverlay)
 		m_pointerOverlay->setPageEnabled(true);
 #endif
+#ifdef Q_OS_ANDROID
+	updateAndroidSafeArea();
+	if (m_androidMenuButton)
+		m_androidMenuButton->show();
+#endif
 }
+
+#ifdef Q_OS_ANDROID
+void MainWindow::setupAndroidUi()
+{
+	m_androidMenuButton = new QToolButton(pageStack);
+	m_androidMenuButton->setObjectName(QStringLiteral("androidOverflowButton"));
+	m_androidMenuButton->setText(QStringLiteral("\u22EE"));
+	m_androidMenuButton->setToolTip(tr("More actions"));
+	m_androidMenuButton->setMinimumSize(QSize(52, 52));
+	m_androidMenuButton->setAutoRaise(false);
+	m_androidMenu = new QMenu(m_androidMenuButton);
+	m_androidMenu->addAction(tr("Resources and extensions..."), this, [this]() {
+		AndroidContentDialog::openManager(this);
+	});
+	m_androidMenu->addSeparator();
+	m_androidMenu->addAction(ui->actionView_Discarded);
+	m_androidMenu->addAction(ui->actionView_distance);
+	m_androidMenu->addAction(ui->actionView_Maxcards);
+	m_androidMenu->addAction(ui->actionServerInformation);
+	m_androidMenu->addAction(ui->actionSaveRecord);
+	m_androidMenu->addAction(ui->actionPause_Resume);
+	m_androidMenu->addAction(ui->actionHide_Show_chat_box);
+	m_androidMenu->addAction(ui->actionSurrender);
+	m_androidMenuButton->setMenu(m_androidMenu);
+	m_androidMenuButton->setPopupMode(QToolButton::InstantPopup);
+	m_androidMenuButton->hide();
+	updateAndroidSafeArea();
+}
+
+void MainWindow::updateAndroidSafeArea()
+{
+	if (!m_androidMenuButton || !pageStack)
+		return;
+	QMargins margins;
+	if (windowHandle())
+		margins = windowHandle()->safeAreaMargins();
+	const QRect windowRect = geometry();
+	QRect keyboardRect = qApp->inputMethod()->keyboardRectangle().toRect();
+	if (QWindow *focusWindow = QGuiApplication::focusWindow())
+		keyboardRect.translate(focusWindow->mapToGlobal(QPoint(0, 0)));
+	if (!keyboardRect.isEmpty() && windowRect.intersects(keyboardRect))
+		margins.setBottom(qMax(margins.bottom(), qBound(0,
+			windowRect.bottom() - keyboardRect.top() + 1, windowRect.height())));
+	const int right = qMax(8, margins.right() + 8);
+	const int top = qMax(8, margins.top() + 8);
+	m_androidMenuButton->move(pageStack->width() - m_androidMenuButton->width() - right, top);
+	gameView->setSafeAreaMargins(margins);
+	if (scene) {
+		if (RoomScene *roomScene = qobject_cast<RoomScene *>(scene))
+			roomScene->setSafeAreaMargins(margins);
+	}
+}
+
+void MainWindow::updateAndroidLocalRoomLifecycle(bool backgrounded)
+{
+	if (!server || !m_androidLocalRoomActive)
+		return;
+	const QList<Room *> rooms = server->findChildren<Room *>();
+	for (Room *room : rooms) {
+		if (room && room->isSinglePlayerMode()) {
+			room->setApplicationBackgrounded(backgrounded);
+			return;
+		}
+	}
+}
+
+void MainWindow::handleApplicationStateChanged(Qt::ApplicationState state)
+{
+	const bool backgrounded = state != Qt::ApplicationActive;
+	qApp->setProperty("qsan.application_suspended", backgrounded);
+	qApp->setProperty("qsan.application_suspended_offline", m_androidLocalRoomActive);
+	if (backgrounded == m_androidApplicationBackgrounded) {
+		updateAndroidSafeArea();
+		return;
+	}
+	m_androidApplicationBackgrounded = backgrounded;
+	menuBar()->setEnabled(!backgrounded && !m_androidAwaitingStateSync);
+	if (gameView)
+		gameView->setEnabled(!backgrounded && !m_androidAwaitingStateSync);
+	if (m_androidMenuButton)
+		m_androidMenuButton->setEnabled(!backgrounded && !m_androidAwaitingStateSync);
+	if (RoomScene *roomScene = qobject_cast<RoomScene *>(scene))
+		roomScene->setApplicationSuspended(backgrounded, m_androidLocalRoomActive);
+#ifdef AUDIO_SUPPORT
+	Audio::setApplicationSuspended(backgrounded);
+#endif
+	if (backgrounded) {
+		updateAndroidLocalRoomLifecycle(true);
+		return;
+	}
+	updateAndroidLocalRoomLifecycle(false);
+	if (!m_androidLocalRoomActive && qobject_cast<RoomScene *>(scene)
+		&& ClientInstance && !ClientInstance->isReplayState()) {
+		// A reconnect snapshot reconstructs legacy ClientPlayer and card models.
+		// Destroy their scene first, while Self and ClientInstance still refer to
+		// the old client; its destructor must not clear a newly created Self.
+		m_androidAwaitingStateSync = true;
+		gameView->setEnabled(false);
+		menuBar()->setEnabled(false);
+		if (m_androidMenuButton) m_androidMenuButton->setEnabled(false);
+		showLocalLoadingPage(tr("Reconnecting to the game..."));
+		gameView->setScene(nullptr);
+		delete scene;
+		scene = nullptr;
+		ClientInstance->disconnect(this);
+		ClientInstance->disconnectFromHost();
+		delete ClientInstance;
+		startConnectionWithReconnect(true);
+	}
+	if (m_androidLocalRoomWaitingForForeground) {
+		m_androidLocalRoomWaitingForForeground = false;
+		QTimer::singleShot(0, this, [this]() { completeLocalRoomStart(); });
+	}
+	updateAndroidSafeArea();
+}
+
+QString MainWindow::androidOfflineMarkerPath() const
+{
+	return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
+		+ QStringLiteral("/userdata/offline-session.json");
+}
+
+void MainWindow::writeAndroidOfflineMarker(const QString &reason)
+{
+	const QString path = androidOfflineMarkerPath();
+	QDir().mkpath(QFileInfo(path).absolutePath());
+	QSaveFile file(path);
+	if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+		return;
+	QJsonObject marker;
+	marker.insert(QStringLiteral("state"), QStringLiteral("dead"));
+	marker.insert(QStringLiteral("reason"), reason);
+	marker.insert(QStringLiteral("timestamp"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+	file.write(QJsonDocument(marker).toJson(QJsonDocument::Compact));
+	file.commit();
+}
+
+void MainWindow::clearAndroidOfflineMarker()
+{
+	QFile::remove(androidOfflineMarkerPath());
+}
+
+void MainWindow::restoreAndroidOfflineMarker()
+{
+	QFile file(androidOfflineMarkerPath());
+	if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+		return;
+	const QJsonObject marker = QJsonDocument::fromJson(file.readAll()).object();
+	file.close();
+	clearAndroidOfflineMarker();
+	if (marker.value(QStringLiteral("state")).toString() != QLatin1String("dead"))
+		return;
+	QMessageBox::information(this, tr("Local game stopped"),
+		tr("The previous offline game stopped unexpectedly. A new local game can be started from the home page."));
+}
+#endif
 
 void MainWindow::restoreFromConfig()
 {
@@ -736,6 +933,10 @@ void MainWindow::restoreFromConfig()
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
+#ifdef Q_OS_ANDROID
+	// A completed close is a normal exit; leave the marker only for process death.
+	clearAndroidOfflineMarker();
+#endif
 #ifdef QSAN_XP_LEGACY
 	if (localServer && localServer->active()) {
 		event->ignore();
@@ -785,6 +986,9 @@ void MainWindow::resizeEvent(QResizeEvent *event)
 {
 	QMainWindow::resizeEvent(event);
 	reportWindowState(this);
+#ifdef Q_OS_ANDROID
+	updateAndroidSafeArea();
+#endif
 }
 
 void MainWindow::moveEvent(QMoveEvent *event)
@@ -839,6 +1043,10 @@ void MainWindow::on_actionExit_triggered()
 
 void MainWindow::on_actionStart_Server_triggered()
 {
+#ifdef Q_OS_ANDROID
+	startLocalConsoleGame();
+	return;
+#endif
 #ifdef QSAN_XP_LEGACY
 	if (localServer->active()) return;
 #endif
@@ -923,6 +1131,13 @@ void MainWindow::setupLocalServerController()
 
 void MainWindow::startLocalConsoleGame()
 {
+#ifdef Q_OS_ANDROID
+	// The first offline game is gated on the private media bundle being complete.
+	if (!AndroidContentDialog::prepareForGame())
+		return;
+	m_androidLocalRoomActive = true;
+	writeAndroidOfflineMarker(QStringLiteral("process_started"));
+#endif
 #ifdef QSAN_XP_LEGACY
 	if (localServer->active()) return;
 	showLocalLoadingPage(tr("Initializing local rules and AI..."));
@@ -977,16 +1192,39 @@ void MainWindow::completeLocalRoomStart()
 #else
 	if (!server)
 		return;
+	#ifdef Q_OS_ANDROID
+	if (QGuiApplication::applicationState() != Qt::ApplicationActive) {
+		m_androidLocalRoomWaitingForForeground = true;
+		updateAndroidLocalRoomLifecycle(true);
+		showLocalLoadingPage(tr("Local room is ready; waiting for foreground..."));
+		return;
+	}
+	#endif
 	showLocalLoadingPage(tr("Starting local server..."));
+	#ifdef Q_OS_ANDROID
+	if (!m_androidLocalServerListening && !server->listen()) {
+	#else
 	if (!server->listen()) {
+	#endif
 		failLocalRoomStart(tr("Can not start server!"));
 		return;
 	}
+	#ifdef Q_OS_ANDROID
+	m_androidLocalServerListening = true;
+	#endif
 
+	#ifndef Q_OS_ANDROID
 	server->checkUpnpAndListServer();
+	#endif
 	Config.HostAddress = QStringLiteral("127.0.0.1");
 	showLocalLoadingPage(tr("Connecting to local room..."));
 	QTimer::singleShot(0, this, [this]() {
+		#ifdef Q_OS_ANDROID
+		if (QGuiApplication::applicationState() != Qt::ApplicationActive) {
+			m_androidLocalRoomWaitingForForeground = true;
+			return;
+		}
+		#endif
 		if (server)
 			startConnectionWithReconnect(false);
 	});
@@ -1000,9 +1238,16 @@ void MainWindow::failLocalRoomStart(const QString &error)
 #endif
 	Server *failedServer = server;
 	server = nullptr;
+#ifdef Q_OS_ANDROID
+	m_androidLocalRoomWaitingForForeground = false;
+	m_androidLocalRoomActive = false;
+	m_androidLocalServerListening = false;
+#endif
 	if (failedServer)
 		failedServer->deleteLater();
 	showHomePage();
+#ifdef Q_OS_ANDROID
+#endif
 	QMessageBox::warning(this, tr("Warning"), error.isEmpty()
 		? tr("Can not prepare local room!") : error);
 }
@@ -1207,12 +1452,19 @@ void MainWindow::checkVersion(const QString &server_version, const QString &serv
 		}
 		Client *client = qobject_cast<Client *>(sender());
 		if (client) {
-			connect(client, SIGNAL(server_connected()), SLOT(enterRoom()));
+			connect(client, SIGNAL(server_connected()), this, SLOT(enterRoom()), Qt::UniqueConnection);
 			client->signup();
 		}
 		return;
 	}
 
+#ifdef Q_OS_ANDROID
+	if (m_androidAwaitingStateSync && (Sanguosha->getMODName() != server_mod
+		|| Sanguosha->getCardCount() != card_num || Sanguosha->getVersionNumber() != server_version)) {
+		networkError(tr("The server rules or version changed; the game cannot be restored."));
+		return;
+	}
+#endif
 	if (Sanguosha->getMODName() != server_mod) {
 		if (m_takeoverInProgress) {
 			rollbackTakeover(tr("Takeover server MOD does not match the client"));
@@ -1235,7 +1487,7 @@ void MainWindow::checkVersion(const QString &server_version, const QString &serv
 	QString client_version = Sanguosha->getVersionNumber();
 
 	if (server_version == client_version) {
-		connect(client, SIGNAL(server_connected()), SLOT(enterRoom()));
+		connect(client, SIGNAL(server_connected()), this, SLOT(enterRoom()), Qt::UniqueConnection);
 		client->signup();
 		return;
 	}
@@ -1267,8 +1519,32 @@ void MainWindow::startConnectionWithReconnect(bool reconnectRequested)
 {
 	// A newly created in-process server has no reconnect target; local callers
 	// explicitly pass false while external connections retain the saved option.
+	bool fallbackToFreshSignup = true;
+#ifdef Q_OS_ANDROID
+	// Foreground recovery must restore this seat, never silently join a new room.
+	fallbackToFreshSignup = !m_androidAwaitingStateSync;
+#endif
 	Client *client = new Client(this, QString(), nullptr, m_takeoverInProgress,
-		reconnectRequested);
+		reconnectRequested, fallbackToFreshSignup);
+#ifdef Q_OS_ANDROID
+	for (ClientLiveSession *session : client->findChildren<ClientLiveSession *>()) {
+		connect(session, &ClientLiveSession::frontendMessageReceived, client,
+			[this, client](const QSanProtocol::ProtocolMessage &message) {
+				if (client != ClientInstance || !m_androidAwaitingStateSync
+					|| message.command != QSanProtocol::S_COMMAND_STATE_SYNC) return;
+				QSanProtocol::StateSyncPayload sync;
+				QString error;
+				if (QSanProtocol::StateSyncPayload::parse(message.payload, &sync, &error)
+					&& sync.phase == QLatin1String("end")) {
+					m_androidAwaitingStateSync = false;
+					gameView->setEnabled(!m_androidApplicationBackgrounded);
+					menuBar()->setEnabled(!m_androidApplicationBackgrounded);
+					if (m_androidMenuButton)
+						m_androidMenuButton->setEnabled(!m_androidApplicationBackgrounded);
+				}
+			});
+	}
+#endif
 
 	connect(client, SIGNAL(version_checked(QString, QString, int)), SLOT(checkVersion(QString, QString, int)));
 	connect(client, SIGNAL(error_message(QString)), SLOT(networkError(QString)));
@@ -1308,6 +1584,25 @@ void MainWindow::on_actionReplay_triggered()
 
 void MainWindow::networkError(const QString &error_msg)
 {
+#ifdef Q_OS_ANDROID
+	if (m_androidAwaitingStateSync) {
+		// The session may still be dispatching its fatal-error signal. Tear down
+		// after that stack unwinds, with the scene preceding its player models.
+		QPointer<Client> failedClient = ClientInstance;
+		QTimer::singleShot(0, this, [this, failedClient, error_msg]() {
+			if (!failedClient || failedClient != ClientInstance) return;
+			gameView->setScene(nullptr);
+			delete scene;
+			scene = nullptr;
+			failedClient->disconnect(this);
+			failedClient->disconnectFromHost();
+			delete failedClient.data();
+			showHomePage();
+			if (isVisible()) QMessageBox::warning(this, tr("Network error"), error_msg);
+		});
+		return;
+	}
+#endif
 	if (m_takeoverInProgress) {
 		rollbackTakeover(error_msg);
 		return;
@@ -1351,6 +1646,11 @@ void MainWindow::enterRoom()
 	ui->actionReturn_to_Main_Menu->setEnabled(false);
 
 	RoomScene *room_scene = new RoomScene(this);
+#ifdef Q_OS_ANDROID
+	room_scene->setTouchUiEnabled(true);
+	room_scene->setApplicationSuspended(m_androidApplicationBackgrounded,
+		m_androidLocalRoomActive);
+#endif
 	ui->actionView_Discarded->setEnabled(true);
 	ui->actionView_distance->setEnabled(true);
 	ui->actionView_Maxcards->setEnabled(true);
@@ -1397,6 +1697,9 @@ void MainWindow::enterRoom()
 		this, &MainWindow::startTakeoverGame);
 
 	showGamePage(room_scene);
+#ifdef Q_OS_ANDROID
+	updateAndroidSafeArea();
+#endif
 
 	// 自動化測試: --auto-robots 由 owner 自動填滿 AI (填滿後伺服器端自動開局)
 	if (Config.AutoAddRobots || m_takeoverInProgress) {

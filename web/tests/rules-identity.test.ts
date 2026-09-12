@@ -16,7 +16,7 @@ async function seal(value: JsonObject): Promise<JsonObject> {
 }
 async function bundle(): Promise<JsonObject> {
   return seal({ schema_version: 1, protocol_version: 2, bridge_schema: 2, ruleset: "sijyu",
-    content_profile: "declared-v1", cpp_hash: h, card_registry_hash: h, lua_hash: h, bindings_abi: h,
+    content_profile: "declared-v2", cpp_hash: h, card_registry_hash: h, lua_hash: h, bindings_abi: h,
     packages: ["standard", "wind"], interaction_schemas: { "1": h, "2": h } });
 }
 

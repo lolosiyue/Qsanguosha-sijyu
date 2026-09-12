@@ -24,6 +24,7 @@
 #include <QOpenGLShaderProgram>
 #include <QOpenGLBuffer>
 #include <QHash>
+#include <QPointer>
 #include <QRectF>
 #include <memory>
 #include <functional>
@@ -31,6 +32,8 @@
 // Full spine-cpp includes needed for inheritance and types used in this header
 #include <spine/TextureLoader.h>
 #include <spine/SpineString.h>
+
+class QOpenGLWidget;
 
 // Forward declarations – spine-cpp types (definitions not needed here)
 namespace spine {
@@ -54,9 +57,12 @@ public:
 
     /// Get QOpenGLTexture from opaque handle.
     static QOpenGLTexture *getTexture(void *handle);
+    void releaseTextures();
+    void reloadTextures();
 
 private:
-    QList<QOpenGLTexture *> _textures;
+    struct TexturePage;
+    QList<TexturePage *> _textures;
 };
 
 /// A fullscreen (or sized) QGraphicsItem that renders a Spine animation
@@ -174,6 +180,10 @@ signals:
 
 private slots:
     void onTimer();
+    void onContextAboutToBeDestroyed();
+#ifdef Q_OS_ANDROID
+    void onApplicationStateChanged(Qt::ApplicationState state);
+#endif
 
 private:
     void initGL();
@@ -247,6 +257,11 @@ private:
     QVector<GLuint> _indices;
     int _vertexCount;   ///< Actual vertex count this frame (avoids clear+append)
     int _indexCount;    ///< Actual index count this frame
+
+    // CPU Spine state survives context loss; only GPU resources are rebuilt.
+    QPointer<QOpenGLContext> _glContext;
+    QPointer<QOpenGLWidget> _glViewport;
+    bool _pausedForBackground = false;
 };
 
 #endif // SPINE_GL_ITEM_H

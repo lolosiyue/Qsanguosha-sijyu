@@ -43,7 +43,7 @@ QJsonObject identity()
         {QStringLiteral("protocol_version"), 2},
         {QStringLiteral("bridge_schema"), QSanRules::BridgeSchema},
         {QStringLiteral("ruleset"), QStringLiteral("sijyu")},
-        {QStringLiteral("content_profile"), QStringLiteral("declared-v1")},
+        {QStringLiteral("content_profile"), QStringLiteral("declared-v2")},
         {QStringLiteral("cpp_hash"), QSanRules::digest(QStringLiteral("cpp"), QStringLiteral("rules-v1"))},
         {QStringLiteral("card_registry_hash"), QSanRules::digest(QStringLiteral("cards"), cards())},
         {QStringLiteral("lua_hash"), luaHash(QStringLiteral("return 1"))},

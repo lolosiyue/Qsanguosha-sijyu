@@ -5,6 +5,7 @@
 #include "roomscene.h"
 #include "skill-instance-utils.h"
 #include <QMutexLocker>
+#include <QtMath>
 
 QSanButton::QSanButton(QGraphicsItem *parent) : QGraphicsObject(parent)
 {
@@ -59,7 +60,9 @@ bool QSanButton::isMouseInside() const
 
 QRectF QSanButton::boundingRect() const
 {
-    return QRectF(0, 0, _m_size.width(), _m_size.height());
+    return QRectF(0, 0, _m_size.width(), _m_size.height()).adjusted(
+        -_m_touchTargetPadding, -_m_touchTargetPadding,
+        _m_touchTargetPadding, _m_touchTargetPadding);
 }
 
 void QSanButton::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWidget *)
@@ -69,7 +72,9 @@ void QSanButton::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWid
 
 void QSanButton::setSize(QSize newSize)
 {
+    prepareGeometryChange();
     _m_size = newSize;
+    setTouchTargetMinimum(_m_touchTargetMinimum);
     if (_m_size.width() == 0 || _m_size.height() == 0) {
         _m_mask = QRegion();
         return;
@@ -88,6 +93,26 @@ void QSanButton::setRect(QRect rect)
 {
     setSize(rect.size());
     setPos(rect.topLeft());
+}
+
+void QSanButton::setTouchTargetMinimum(qreal minimumSize)
+{
+    _m_touchTargetMinimum = qMax<qreal>(0.0, minimumSize);
+    qreal sx = 1.0, sy = 1.0;
+    if (scene() && !scene()->views().isEmpty()) {
+        // Include parent/dashboard scaling, not only fitInView's transform.
+        const QTransform transform = deviceTransform(scene()->views().first()->viewportTransform());
+        sx = qMax<qreal>(0.01, qSqrt(transform.m11() * transform.m11() + transform.m12() * transform.m12()));
+        sy = qMax<qreal>(0.01, qSqrt(transform.m21() * transform.m21() + transform.m22() * transform.m22()));
+    }
+    const qreal padding = qMax<qreal>(0.0, qMax(
+        (_m_touchTargetMinimum / sx - _m_size.width()) / 2.0,
+        (_m_touchTargetMinimum / sy - _m_size.height()) / 2.0));
+    if (qFuzzyCompare(_m_touchTargetPadding, padding))
+        return;
+    prepareGeometryChange();
+    _m_touchTargetPadding = padding;
+    update();
 }
 
 void QSanButton::setStyle(ButtonStyle style)
@@ -119,7 +144,7 @@ void QSanButton::setState(QSanButton::ButtonState state)
 
 bool QSanButton::insideButton(QPointF pos) const
 {
-    return _m_mask.contains(QPoint(pos.x(), pos.y()));
+    return _isMouseInside(pos);
 }
 
 void QSanButton::hoverEnterEvent(QGraphicsSceneHoverEvent *event)

@@ -1,234 +1,212 @@
-#ifdef ANDROID
-
 #include "android_assets.h"
-//#include <QStandardPaths>
-//#include <QFile>
-//#include <QDebug>
-//#include <QDirIterator>
+
+#include <QDir>
+#include <QDirIterator>
+#include <QDebug>
+#include <QFile>
+#include <QFileInfo>
+#include <QStandardPaths>
+#include <QTemporaryFile>
+
+namespace {
+
+bool setError(QString *error, const QString &message)
+{
+    if (error)
+        *error = message;
+    qWarning("Android asset deployment failed: %s", qPrintable(message));
+    return false;
+}
+
+bool isSafeRelativePath(const QString &path, QString *error)
+{
+    QString portablePath = path;
+    portablePath.replace('\\', '/');
+    const QStringList parts = portablePath.split('/', Qt::KeepEmptyParts);
+    if (portablePath.isEmpty() || portablePath.startsWith('/') || portablePath.contains(':'))
+        return setError(error, QStringLiteral("asset path is not relative: %1").arg(path));
+
+    for (const QString &part : parts) {
+        if (part.isEmpty() || part == QStringLiteral(".") || part == QStringLiteral(".."))
+            return setError(error, QStringLiteral("asset path contains an invalid component: %1").arg(path));
+    }
+    return true;
+}
+
+QString resourcePathFor(const QString &assetPath)
+{
+    return QStringLiteral(":/assets/") + assetPath;
+}
+
+} // namespace
 
 QString AndroidAssets::getWritableDataPath()
 {
-    // Use external storage so users can access and modify files
-    QString externalPath = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
-    QString gamePath = externalPath + "/QSanguosha";
+    const QString appDataPath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (appDataPath.isEmpty())
+        return {};
 
-    // Fallback to app-specific external storage if generic fails
-	//if(externalPath.isEmpty()){
-        gamePath = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-	//}
-    return gamePath;
+    // Android's application data path can have a legitimate system symlink in
+    // its ancestry; canonicalize that trusted root before creating runtime/.
+    const QFileInfo appDataInfo(appDataPath);
+    const QString canonicalAppDataPath = appDataInfo.canonicalFilePath();
+    const QString stableAppDataPath = canonicalAppDataPath.isEmpty()
+        ? appDataInfo.absoluteFilePath()
+        : canonicalAppDataPath;
+    return QDir(stableAppDataPath).filePath(QStringLiteral("runtime"));
 }
 
-bool AndroidAssets::ensureDirectoryExists(const QString &path)
+bool AndroidAssets::ensureDirectoryExists(const QString &path, QString *error)
 {
-    static QDir dir;
-    if (!dir.exists(path)) {
-        return dir.mkpath(path);
-    }
-    return true;
-}
+    if (path.isEmpty())
+        return setError(error, QStringLiteral("target directory is empty"));
 
-bool AndroidAssets::copyAssetFile(const QString &assetPath, const QString &targetPath)
-{
-    // Check if target file already exists and is newer
-    if (QFile::exists(targetPath)) {
-        // For now, skip existing files to avoid overwriting user data
+    const QFileInfo pathInfo(path);
+    const QString absolutePath = pathInfo.absoluteFilePath();
+    const QFileInfo existingInfo(absolutePath);
+
+    // Never follow a child symlink while creating the private runtime tree.
+    if (existingInfo.isSymLink())
+        return setError(error, QStringLiteral("target directory is a symbolic link: %1").arg(absolutePath));
+    if (existingInfo.exists()) {
+        if (!existingInfo.isDir())
+            return setError(error, QStringLiteral("target path is not a directory: %1").arg(absolutePath));
+        const QString parentPath = QFileInfo(absolutePath).dir().absolutePath();
+        if (parentPath != absolutePath && !ensureDirectoryExists(parentPath, error))
+            return false;
         return true;
     }
-    // Ensure target directory exists
-    QFileInfo targetInfo(targetPath);
-    if (!ensureDirectoryExists(targetInfo.absolutePath())) {
-        qWarning() << "Failed to create directory:" << targetInfo.absolutePath();
+
+    const QString parentPath = QFileInfo(absolutePath).dir().absolutePath();
+    if (parentPath != absolutePath && !ensureDirectoryExists(parentPath, error))
         return false;
+
+    QDir parentDir(parentPath);
+    const QString directoryName = QFileInfo(absolutePath).fileName();
+    if (!parentDir.mkdir(directoryName)) {
+        const QFileInfo createdInfo(absolutePath);
+        if (!createdInfo.exists() || createdInfo.isSymLink() || !createdInfo.isDir())
+            return setError(error, QStringLiteral("cannot create target directory: %1").arg(absolutePath));
     }
-    // Copy from assets (Qt resource system)
-    QString resourcePath = "assets:/" + assetPath;
-    QFile sourceFile(resourcePath);
-    
-    if (!sourceFile.exists()) {
-        qWarning() << "Asset file not found:" << resourcePath;
-        return false;
-    }
-    
-    if (!sourceFile.copy(targetPath)) {
-        qWarning() << "Failed to copy asset:" << assetPath << "to" << targetPath;
-        return false;
-    }
-    
-    // Make the copied file writable
-    QFile::setPermissions(targetPath, QFile::ReadOwner | QFile::WriteOwner | QFile::ReadGroup | QFile::ReadOther);
-    
     return true;
 }
 
-bool AndroidAssets::copyAssetDir(const QString &assetDir, const QString &targetDir)
+bool AndroidAssets::copyAssetFile(const QString &assetPath,
+                                  const QString &targetPath,
+                                  QString *error)
 {
-    if (!ensureDirectoryExists(targetDir)) {
-        qWarning() << "Failed to create target directory:" << targetDir;
+    QString portableAssetPath = assetPath;
+    portableAssetPath.replace('\\', '/');
+    if (!isSafeRelativePath(portableAssetPath, error))
         return false;
-    }
-    
-    QString resourceDir = "assets:/" + assetDir;
-    QDirIterator it(resourceDir, QDirIterator::Subdirectories);
-    
-    bool success = true;
-    while (it.hasNext()) {
-        QString assetFile = it.next();
-        QFileInfo info(assetFile);
-        
-        if (info.isFile()) {
-            QString relativePath = assetFile.mid(resourceDir.length() + 1);
-            QString targetFile = targetDir + "/" + relativePath;
-            
-            if (!copyAssetFile(assetDir + "/" + relativePath, targetFile)) {
-                success = false;
-            }
-        }
-    }
-    
-    return success;
-}
 
-bool AndroidAssets::copyAssetsToWritableLocation()
-{
-    QString dataPath = getWritableDataPath();
-	if (QFile::exists(dataPath + "/config.ini"))
-		return true;
-    
-    bool success = true;
-	
-    // Copy essential directories
-    QStringList assetDirs = {
-        "audio",
-        "diy",
-        "dmp",
-        "doc",
-        "etc",
-        "extensions",
-        "font",
-        "iconengines",
-        "image",
-        "imageformats",
-        "lang",
-        "listserver",
-        "lua",
-        "platforminputcontexts",
-        "platforms",
-        "qmltooling",
-        "QtQuick.2",
-        "scenarios",
-        "skins",
-        //"sqldrivers",
-        "translations",
-        "virtualkeyboard",
-        "ui-script"
-    };
-    for (const QString &dir : assetDirs) {
-        QString targetDir = dataPath + "/" + dir;
-        if (!copyAssetDir(dir, targetDir)) {
-            success = false;
-        }
-    }
-    
-    // Copy essential files
-    QStringList assetFiles = {
-        "config.ini",
-        "sanguosha.qm",
-        "qt_zh_CN.qm"
-    };
-    
-    for (const QString &file : assetFiles) {
-        QString targetFile = dataPath + "/" + file;
-        if (!copyAssetFile(file, targetFile)) {
-            success = false;
-        }
-    }
-    
-    return success;
-}
-
-bool AndroidAssets::createDefaultConfig(const QString &configPath)
-{
-    QFile configFile(configPath);
-    if (!configFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        qWarning() << "Failed to create config file:" << configPath;
+    const QFileInfo targetInfo(targetPath);
+    if (targetInfo.isSymLink())
+        return setError(error, QStringLiteral("target file is a symbolic link: %1").arg(targetPath));
+    if (!ensureDirectoryExists(targetInfo.absolutePath(), error))
         return false;
+    if (targetInfo.exists()) {
+        if (!targetInfo.isFile())
+            return setError(error, QStringLiteral("target path is not a regular file: %1").arg(targetPath));
+        // TODO/human preserves the user's writable copy on every startup.
+        return true;
     }
 
-    QTextStream out(&configFile);
+    QFile sourceFile(resourcePathFor(portableAssetPath));
+    if (!sourceFile.open(QIODevice::ReadOnly))
+        return setError(error, QStringLiteral("asset file is missing or unreadable: %1").arg(portableAssetPath));
 
-    // Write default Android configuration
-    out << "[General]\n";
-    out << "GameMode=02p\n";
-    out << "UserName=Player\n";
-    out << "ServerName=Player's server\n";
-    out << "Address=\n";
-    out << "HostAddress=127.0.0.1\n";
-    out << "ServerPort=9527\n";
-    out << "EnableAI=true\n";
-    out << "AIDelay=1000\n";
-    out << "EnableBgMusic=false\n";  // Disabled for Android
-    out << "EnableEffects=true\n";
-    out << "BGMVolume=1.0\n";
-    out << "EffectVolume=1.0\n";
-    out << "BackgroundImage=image/system/backdrop/new-version.jpg\n";
-    out << "UseFullSkin=true\n";
-    out << "EnableHotKey=false\n";  // Disabled for Android
-    out << "NeverNullifyMyTrick=false\n";
-    out << "EnableLastWord=true\n";
-    out << "BubbleChatboxKeepTime=2000\n";
-    out << "CountDownSeconds=3\n";
-    out << "OperationTimeout=15\n";
-    out << "OperationNoLimit=false\n";
-    out << "EnableAutoTarget=true\n";
-    out << "EnableIntellectualSelection=true\n";
-    out << "EnableDoubleClick=true\n";
-    out << "EnableAutoPreshow=false\n";
-    out << "EnableAutoSaveRecord=false\n";
-    out << "RecordSavePath=records\n";
-    out << "NetworkInterface=\n";
-    out << "ChatFont=@Arial,9,-1,5,50,0,0,0,0,0\n";
-    out << "UIFont=@Arial,9,-1,5,50,0,0,0,0,0\n";
-    out << "TextEditFont=@Arial,9,-1,5,50,0,0,0,0,0\n";
+    // Publish only after the complete qrc file has been written and flushed.
+    const QString temporaryTemplate = QDir(targetInfo.absolutePath())
+        .filePath(QStringLiteral(".qsanguosha-asset-XXXXXX"));
+    QTemporaryFile temporaryFile(temporaryTemplate);
+    if (!temporaryFile.open())
+        return setError(error, QStringLiteral("cannot create temporary asset file beside: %1").arg(targetPath));
 
-    configFile.close();
+    auto cleanup = [&temporaryFile]() {
+        temporaryFile.close();
+    };
+
+    QByteArray buffer(64 * 1024, Qt::Uninitialized);
+    while (!sourceFile.atEnd()) {
+        const qint64 bytesRead = sourceFile.read(buffer.data(), buffer.size());
+        if (bytesRead <= 0 || temporaryFile.write(buffer.constData(), bytesRead) != bytesRead) {
+            cleanup();
+            return setError(error, QStringLiteral("cannot write temporary asset file: %1").arg(targetPath));
+        }
+    }
+    if (sourceFile.error() != QFile::NoError) {
+        cleanup();
+        return setError(error, QStringLiteral("cannot read asset file: %1").arg(portableAssetPath));
+    }
+    if (!temporaryFile.flush()) {
+        cleanup();
+        return setError(error, QStringLiteral("cannot flush temporary asset file: %1").arg(targetPath));
+    }
+    temporaryFile.close();
+
+    // A concurrent importer may have created the file; never replace it.
+    const QFileInfo publishedInfo(targetPath);
+    if (publishedInfo.isSymLink() || publishedInfo.exists()) {
+        if (publishedInfo.isSymLink() || !publishedInfo.isFile())
+            return setError(error, QStringLiteral("target appeared as a non-file: %1").arg(targetPath));
+        return true;
+    }
+
+    if (!temporaryFile.rename(targetPath)) {
+        return setError(error, QStringLiteral("cannot publish asset file: %1").arg(targetPath));
+    }
+    temporaryFile.setAutoRemove(false);
     return true;
 }
 
-bool AndroidAssets::checkQmlFilesExist()
+bool AndroidAssets::copyAssetDir(const QString &assetDir,
+                                 const QString &targetDir,
+                                 QString *error)
 {
-    QString dataPath = getWritableDataPath();
-    QString uiScriptDir = dataPath + "/ui-script";
-
-    // 确保ui-script目录存在
-    if (!ensureDirectoryExists(uiScriptDir)) {
-        qWarning() << "Failed to create ui-script directory:" << uiScriptDir;
+    QString portableAssetDir = assetDir;
+    portableAssetDir.replace('\\', '/');
+    if (!portableAssetDir.isEmpty() && !isSafeRelativePath(portableAssetDir, error))
         return false;
+    if (!ensureDirectoryExists(targetDir, error))
+        return false;
+
+    const QString resourceDir = portableAssetDir.isEmpty()
+        ? QStringLiteral(":/assets")
+        : resourcePathFor(portableAssetDir);
+    QDir resourceDirectory(resourceDir);
+    if (!resourceDirectory.exists())
+        return setError(error, QStringLiteral("asset directory is missing: %1").arg(resourceDir));
+
+    QDirIterator iterator(resourceDir, QDir::Files, QDirIterator::Subdirectories);
+    int copiedFiles = 0;
+    while (iterator.hasNext()) {
+        const QString sourcePath = iterator.next();
+        const QString relativePath = resourceDirectory.relativeFilePath(sourcePath);
+        if (!isSafeRelativePath(relativePath, error))
+            return false;
+
+        const QString assetPath = portableAssetDir.isEmpty()
+            ? relativePath
+            : portableAssetDir + '/' + relativePath;
+        const QString targetPath = QDir(targetDir).filePath(relativePath);
+        if (!copyAssetFile(assetPath, targetPath, error))
+            return false;
+        ++copiedFiles;
     }
 
-    // 检查关键QML文件是否存在
-    QStringList essentialQmlFiles = {
-        "animation.qml",
-        "Default.qml"
-    };
-
-    bool allExist = true;
-    for (const QString &qmlFile : essentialQmlFiles) {
-        QString targetPath = uiScriptDir + "/" + qmlFile;
-        if (QFile::exists(targetPath)) {
-            qDebug() << "QML file exists:" << qmlFile;
-        } else {
-            qWarning() << "QML file missing:" << qmlFile << "at" << targetPath;
-            allExist = false;
-        }
-    }
-
-    if (!allExist) {
-        qWarning() << "Some essential QML files are missing.";
-        qWarning() << "Please manually copy QML files to:" << uiScriptDir;
-    }
-
-    return allExist;
+    if (copiedFiles == 0)
+        return setError(error, QStringLiteral("asset directory is empty: %1").arg(resourceDir));
+    return true;
 }
 
-#endif // ANDROID
+bool AndroidAssets::copyAssetsToWritableLocation(QString *error)
+{
+    if (error)
+        error->clear();
+
+    const QString dataPath = getWritableDataPath();
+    if (dataPath.isEmpty())
+        return setError(error, QStringLiteral("app data location is unavailable"));
+    return copyAssetDir(QString(), dataPath, error);
+}

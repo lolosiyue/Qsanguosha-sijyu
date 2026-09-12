@@ -113,7 +113,9 @@ def browser_run(args, baseline, assets):
             continue
         data = path.read_bytes()
         content_files.append({'path': relative, 'role': 'rules', 'size': len(data), 'sha256': digest(data)})
-    content = {'schema_version': 1, 'profile': 'declared-v1', 'files': content_files}
+    content = {'schema_version': 2, 'profile': 'declared-v2',
+               'runtime_content': {'schema_version': 2, 'profile': 'declared-v2', 'extensions': []},
+               'files': content_files}
     plan = {'operations': [{'label': r['label'], 'operation': r['operation']} for r in baseline['records']],
             'hashes': {'module': digest(module.read_bytes()), 'binary': digest(binary.read_bytes()),
                        }, 'content': content}

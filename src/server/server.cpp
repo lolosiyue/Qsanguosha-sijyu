@@ -171,7 +171,7 @@ ServerDialog::ServerDialog(QWidget *parent)
 {
 	setWindowTitle(tr("Start server"));
 
-#ifdef ANDROID
+#ifdef Q_OS_ANDROID
     // Android: Adjust dialog size based on device type
     QScreen *screen = QApplication::primaryScreen();
     if (screen) {
@@ -208,7 +208,7 @@ ServerDialog::ServerDialog(QWidget *parent)
 	tab_widget->addTab(createAdvancedTab(), tr("Advanced"));
 	tab_widget->addTab(createMiscTab(), tr("Miscellaneous"));
 
-#ifdef ANDROID
+#ifdef Q_OS_ANDROID
     // Android: Ensure tab widget uses full width
     tab_widget->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 #endif
@@ -217,7 +217,7 @@ ServerDialog::ServerDialog(QWidget *parent)
     layout->addWidget(tab_widget);
     layout->addLayout(createButtonLayout());
 
-#ifdef ANDROID
+#ifdef Q_OS_ANDROID
     // Android: Minimize margins to use more space
     layout->setContentsMargins(5, 5, 5, 5);
     layout->setSpacing(5);
@@ -357,7 +357,7 @@ QWidget *ServerDialog::createPackageTab()
 	QScrollArea *scroll = new QScrollArea;
 	scroll->setWidget(sectionsContainer);
 	scroll->setWidgetResizable(true);
-#ifndef ANDROID
+#ifndef Q_OS_ANDROID
 	scroll->setMinimumWidth(sectionsContainer->sizeHint().width() + 24);
 #endif
 
@@ -1906,6 +1906,10 @@ void Server::broadcastAdminMessage(const QString &message)
 
 bool Server::listen()
 {
+#ifdef Q_OS_ANDROID
+	// The mobile first release hosts only the embedded offline room.
+	Config.BindAddress = QStringLiteral("127.0.0.1");
+#endif
 	if (!created_successfully || !server->listen())
 		return false;
 	// Qt 5.6.3／XP 不編 WebSockets；TCP 成敗不得綁在 WS bind 上。
@@ -2231,7 +2235,7 @@ void Server::finalizeSignup(ServerConnectionContext *context,
     const QString rulesError = signup.hasRulesBundle && !QSanRules::validate(signup.rulesBundle)
         ? QStringLiteral("rules_identity_invalid")
         : QSanRules::compatibilityError(Sanguosha->rulesBundleIdentity(), signup.rulesBundle,
-                                        socket->requiresRulesBundle());
+                                        true);
     if (!rulesError.isEmpty()) {
         const QString message = rulesError == QLatin1String("rules_version_mismatch")
             ? tr("規則版本不相符；請更新至與伺服器相同的版本。")

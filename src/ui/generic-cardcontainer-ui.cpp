@@ -21,6 +21,12 @@
 
 using namespace QSanProtocol;
 
+void PlayerCardContainer::setApplicationSuspended(bool suspended, bool offline)
+{
+    if (_m_progressBar)
+        _m_progressBar->setApplicationSuspended(suspended, offline);
+}
+
 namespace {
 
 qint64 currentCardMoveMonitorMs()
