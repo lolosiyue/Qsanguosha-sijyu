@@ -11,9 +11,12 @@
 
 目前這條鏈路的核心入口如下：
 - `Room::askForQml()`：server 端發起請求
-- `Client::qml_interact`：client 端轉發到 UI
+- `Client::askForQml`：client 端解析結構化 payload 後轉發到 UI
 - `RoomScene::onQmlInteract()`：建立嵌入式 QML overlay
 - `EmbeddedQmlLoader::qmlResultReady`：把 QML 結果送回 client/server
+
+互動層（request/response 序列化、matrix gate）的權威契約見
+[client-core-interaction-model.md](client-core-interaction-model.md)；本文聚焦 QML overlay 端的契約與用法。
 
 ## 完整流程
 
@@ -21,10 +24,20 @@
 Server
   Room::askForQml(player, qmlPath, params, timeout)
     -> notifyMoveFocus(player, S_COMMAND_QML_INTERACT)
-    -> doRequest(player, S_COMMAND_QML_INTERACT, [qmlPath, params], timeout, true)
+    -> doRequest(player, S_COMMAND_QML_INTERACT, payload, timeout, true)
+       payload = { "schema_version": 1,
+                   "type": "qsanguosha.qml",
+                   "title": "",
+                   "payload": { "qml_path": qmlPath, "parameters": params },
+                   "response_schema": { "type": "json" } }
 
 Client
   Client::askForQml(arg)
+    -> 非 QVariantMap 的 payload 直接 failProtocol 拒收
+       ("rejecting non-object Protocol V2 custom interaction")
+    -> 解析 CustomInteractionPayload（取 "interaction" map）
+    -> m_customInteractionRegistry.supports(type, schema_version) 未註冊即拒收
+    -> presentQmlInteraction(request) 取出 qml_path／parameters
     -> emit qml_interact(qmlPath, params)
     -> setStatus(AskForQml)
 
@@ -82,7 +95,7 @@ params["title"] = "請選擇一項";
 params["timeout"] = 15000;
 params["choices"] = QStringList() << "draw" << "recover";
 
-QVariant result = room->askForQml(player, "ui-script/qml/ChooseOption.qml", params, 15000);
+QVariant result = room->askForQml(player, "ui-script/ChooseOption.qml", params, 15000);
 if (result.isValid()) {
     QVariantMap map = result.toMap();
     QString choice = map.value("choice").toString();
@@ -165,8 +178,15 @@ Item {
 
 ## 協議與狀態補充
 
-- 協議命令使用 `S_COMMAND_QML_INTERACT`
-- 目前不需要另外在 request/response pair 表裡補映射，`Room::doRequest()` 對未特別映射的命令，預設就會期待同命令回覆
+- 協議命令使用 `S_COMMAND_QML_INTERACT`；wire payload 是**結構化物件**（欄位見「完整流程」），
+  不是 Protocol V2 之前的 `[qmlPath, params]` 位置式陣列。client 端對非物件 payload 直接
+  `failProtocol` 拒收（`src/client/client.cpp` 的 `Client::askForQml`）。
+- `type`（`qsanguosha.qml`）與 `schema_version` 必須通過 client 端
+  `m_customInteractionRegistry.supports()` 檢查；未註冊的型別／schema 會被
+  "rejecting unsupported structured custom interaction" 拒收。
+- 回覆經 `Client::replyQml` → `submitInteractionResponse(InteractionResponse::makeCustom(...))`
+  走統一的互動回應序列化；request/reply 權威描述見
+  [client-core-interaction-model.md](client-core-interaction-model.md)。
 - `Client::setStatus(AskForQml)` 會把 client 帶到 `AskForQml = 0x10`
 - 由於目前 `ClientStatusBasicMask = 0x0F`，這個狀態在部分 masked 判斷下會等價於 `NotActive`，剛好能在 overlay 顯示期間壓住底層房間互動
 

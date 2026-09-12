@@ -26,19 +26,21 @@ M2B-B 的定義固定為 **一個 client 三個效果 profile（full／reduced�
 NONE 不建立 Spine／QMovie／video object**；它**不包括**「畫面看起來一樣」——
 CI runner 沒有正式美術資產，pixel diff 不會做 blocking gate。
 
-以下全部 **未完成**，不在 M0／M1／M2／M2B-A／M2B-B 範圍：
+仍未完成，不在 M0／M1／M2／M2B-A／M2B-B 範圍：
 
 ```text
-Linux .deb packaging（M3.1）
-Android／直版 UI／WASM
+Linux .deb packaging（M3.1；deferred，見 linux-packaging.md）
+直版（portrait）UI
 ```
+
+> 2026-09-12 更新：Android 原生執行期已落地（`a3d2e30`；見 [`android-build.md`](android-build.md)／[`android-first-release.md`](android-first-release.md)）；WASM 已有 Web client 與 solo 離線包建置入口（`QSAN_BUILD_WASM_WEB_CLIENT`／`QSAN_BUILD_WASM_SOLO`；見 [`web-client-wasm-runtime.md`](web-client-wasm-runtime.md)／[`browser-solo.md`](browser-solo.md)）。兩者不再列為未完成。
 
 > ⚠️ `--local-response-ui-capabilities` 在建立 `QApplication` 之前就直接回傳 JSON，所以它是
 > **binary capability smoke**，不是 GUI／offscreen startup smoke。真正的 `QApplication`／
 > `MainWindow`／`HomeScene` 啟動驗證是 M1 的 `--ui-startup-smoke`（見 [§4.5](#45-linux-gui-m1-startup-smoke)）。
 
 - Status: Linux Server Complete；Linux GUI M0（configure／compile／link）Complete；Linux GUI M1（GUI startup）Complete；Linux GUI M2（network game）Complete；Linux GUI M2B-A（multimedia）Complete；Linux GUI M2B-B（effects profiles）Complete
-- Last Updated: 2026-09-06
+- Last Updated: 2026-09-12
 - 對應 Windows 開發環境請見 [`README.md`](../README.md) 的 🛠️ Development Environment section。
 
 ## 1. 平台基線
