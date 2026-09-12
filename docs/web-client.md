@@ -15,8 +15,10 @@ Vite only serves HTML.
 Build and package the production WASM runtime into `web/public/rules` as
 described in [web-client-wasm-runtime.md](web-client-wasm-runtime.md#production-build-and-packaging)
 before serving the Web client. It requires the `.mjs`, `.wasm` and
-`.assets.json` artifacts from the same runtime output directory. The Worker
-loads them at `/rules/qsanguosha_client_wasm.*`; an absent or mismatched runtime
+`.bundle.json` artifacts from the same runtime output directory (the retired
+`.assets.json` file is no longer produced). The Worker
+loads them at `/rules/qsanguosha_client_wasm.*` and verifies the deployment
+bundle manifest; an absent or mismatched runtime
 disables positive card-selection confirmation and shows the failure reason.
 The source checkout does not contain prebuilt runtime binaries.
 
@@ -40,7 +42,10 @@ connects to `ws://<same-host>:9528` unless `?ws=` or the connection form
 overrides it. `?reconnect=1` sets `reconnect_requested`.
 
 `npm run preview` serves the production build with the same `/room/:id`
-fallback.
+fallback. `web/preview.html` is a separate development entry (`npm run dev`
+only): it renders the in-room UI with simulated data through
+[`web/src/ui-preview.ts`](../web/src/ui-preview.ts) — no socket, Worker or
+server is started — for styling and layout iteration.
 
 `npm run build` runs the Protocol V2 drift check
 ([`web/scripts/check-protocol-sync.mjs`](../web/scripts/check-protocol-sync.mjs)),
@@ -144,8 +149,10 @@ subcards and targets it invalidated.
 Loading, evaluating, unsupported content and runtime failures are visible in
 the prompt and disable positive confirmation. Cancel remains available, and
 `PLAY_CARD` retains its end-play action. A failed Worker is discarded; the
-reload-rules button or a new connection creates a fresh runtime. The deployed profile is currently
-`builtin-v1`; arbitrary extension content is not covered and does not fall
+reload-rules button or a new connection creates a fresh runtime. The deployed
+content profile is currently
+`declared-v2` (verified by [`web/src/rules-identity.ts`](../web/src/rules-identity.ts) against
+the sealed bundle identity); arbitrary extension content is not covered and does not fall
 back to TypeScript skill-card guesses. The Room remains authoritative.
 Unknown commands are shown as a visible failure plus cancel.
 

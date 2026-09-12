@@ -356,13 +356,40 @@ RoomScene 收到信號後重新驗證技能按鈕、選牌狀態與目標預覽�
 
 CorrectSkillV2 必須在可正常啟動的環境完成 Room lifecycle、client reconnect、隱藏 metadata 及 legacy 對局回歸，才可開始遷移正式技能。
 
+### 16.1 Room integration 期望（自 correct-skill-v2-test-matrix 併入，2026-09-12）
+
+現行驗證載體為 C++ `~test` fixture（`src/package/standard-generals.cpp`，技能以 `#correct_v2_*_test` 命名；System fixture 預設不貢獻，僅 primary 的 `correct_v2_system_enabled` mark 大於零才啟用）。原 Lua factory smoke 與 Room integration fixture 已隨 `lua/test/` 刪除（commit `a904221`），由 CTest＋`tools/autotest/` 取代。多實例 Room integration 驗證應滿足：
+
+| 案例 | 期望 |
+|---|---|
+| 同一玩家 Primary 兩實例 | 兩次 callback、signed 值相加 |
+| 另一玩家同名同 ID | 不污染 Primary 的 holder 集合 |
+| Secondary 無 `to` | 零貢獻 |
+| Participants | primary／secondary 去重 |
+| AllHolders | 全場存活 holder 各實例 |
+| System | 無 ref、共享 base、只計算一次 |
+| amount set/add/reset | 零與負數保留；reset 回 base |
+| Changing modify/cancel | 修改值生效；取消不寫入、不發 Changed |
+| 同 ref 遞迴 | nested 寫入回傳 false |
+| correctState | 單 key set/remove 只影響指定實例 |
+| exact invalidity | 只排除指定 instanceID |
+| fixed | 適用結果取最大 |
+| TargetMod Residue `-1` | `hasResidueUnlimited()` 為 true |
+| 其他 `-1` | 保留有號整數，不轉 1000 |
+
+待補環境驗證：
+
+- 兩個實際 client 的 snapshot 重連、amount/state delta 與隱藏 metadata 權限封包。
+- Legacy Mashu、MaxCards、TargetMod、AttackRange 的實際對局回歸錄像／快照。
+- ViewAsSkillV2 的 Play、response-use、pure response、nullification、AI、UI 與中斷 lifecycle；未通過前仍不開放正式技能填充。
+
 ## 17. 相關檔案
 
 | 內容 | 位置 |
 |---|---|
 | Engine 規格摘要 | [`engine-correct-skills.md`](engine-correct-skills.md) |
-| 驗證矩陣 | [`correct-skill-v2-test-matrix.md`](correct-skill-v2-test-matrix.md) |
-| 多實例總體設計 | [`skill-instance-refactor-plan.md`](skill-instance-refactor-plan.md)（現行權威；舊 [`multi-skill-instance-design.md`](multi-skill-instance-design.md) 設計未採納，僅存檔） |
+| 驗證矩陣 | 原 `correct-skill-v2-test-matrix.md` 已於 2026-09-12 併入 §16.1 後刪除（其「待重審」狀態欄一併棄置，未重審項見 §16.1 待補清單） |
+| 多實例總體設計 | [`skill-instance-refactor-plan.md`](skill-instance-refactor-plan.md)（現行權威；舊「multi-skill-instance-design」設計未採納，原文檔 2026-09-12 已刪除，見 git 歷史） |
 | C++ 類別與 context | `src/core/skill.h`、`src/core/skill.cpp` |
 | amount／correctState Room API | `src/server/room.h`、`src/server/room.cpp` |
 | Lua factory | `lua/sgs_ex.lua` |

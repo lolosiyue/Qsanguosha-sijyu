@@ -78,17 +78,44 @@ hero-skin/
 - **用途**：長期循環播放的動畫頭像
 - **播放行為**：
   - 載入後立即播放並持續循環
-  - 若 GIF 不存在或配置關閉，顯示 `full.png` 靜態圖
+  - 若 GIF 不存在或配置關閉，自動回退顯示 `full.png` 靜態圖
 - **啟用條件**：
-  1. 檔案存在於皮膚目錄
-  2. 配置 `EnableAnimatedGenerals = true`（預設啟用）
-- **搜尋邏輯**：
-  ```cpp
-  // 自動將 full.png → full.gif
-  gifPath.replace(QRegularExpression("\\.(jpg|png)$", QRegularExpression::CaseInsensitiveOption), ".gif");
-  ```
-  路徑含 `/full/` 而非 `/full/gif/` 時（如預設皮膚圖），會先嘗試 `/full/gif/` 子目錄下的同名 GIF，找不到才退回原路徑（`src/ui/graphicspixmaphoveritem.cpp:276-294`）。
+  1. 檔案存在（查找規則見下表）
+  2. 配置 `EnableAnimatedGenerals = true`（預設啟用；設定介面為 `ConfigDialog` 的 **Environment** 分頁「Enable animated generals (GIF)」勾選項，低配機器可關閉以節省記憶體）
 - **必要**：否
+
+#### GIF 查找規則（`src/ui/graphicspixmaphoveritem.cpp` 的 `setGeneralImage`，現約 :276-313）
+
+| 場景 | 靜態圖路徑 | GIF 路徑 |
+|------|-----------|---------|
+| 預設皮膚（skinIndex = 0） | `image/fullskin/generals/full/關羽.jpg` | 先找 `/full/gif/` 子目錄 `gif/關羽.gif`，不存在則回退同目錄 `關羽.gif` |
+| heroskin（skinIndex > 0） | `hero-skin/關羽/1/full.png` | 僅同目錄 `hero-skin/關羽/1/full.gif`（無 `/gif/` 子目錄） |
+
+查找順序與實碼一致：
+
+1. **靜態圖路徑推導**：將 `.jpg`／`.png` 後綴替換為 `.gif`（忽略大小寫）。
+2. **資源別名（最後檢查）**：命中 `animatedgeneral` 別名且檔案存在時，覆蓋目錄搜尋結果（優先權最高）。
+
+#### animatedgeneral 資源別名（選填）
+
+需要跨目錄復用或特殊命名的 GIF，可在 Lua 初始化時註冊 `animatedgeneral` 別名：
+
+```lua
+-- 同目錄下的別名檔
+sgs.Sanguosha:addResourceAlias("animatedgeneral", "關羽", "關羽_动画版.gif")
+
+-- 支援完整路徑
+sgs.Sanguosha:addResourceAlias("animatedgeneral", "關羽", "image/special/關羽_animated.gif")
+```
+
+- 查找 key 是靜態圖檔名去掉尾綴 `_N` 的部分（如 `關羽_1` → `關羽`）；heroskin 不能按皮膚編號註冊個別別名。
+- 別名在目錄搜尋**之後**才檢查；別名檔存在時覆蓋目錄搜尋結果。
+
+#### 顯示機制與皮膚切換相容
+
+- 以 `QMovie` 載入播放，經 `QGraphicsProxyWidget` 把承載 `QMovie` 的 `QLabel` 嵌入 `QGraphicsScene`；`zValue = -1` 使 GIF 置於靜態層下方，不遮擋皮膚切換特效。
+- 切換皮膚時：暫停並隱藏當前 GIF → 顯示靜態圖播放切換特效 → 切換完成後重新載入並顯示 GIF。
+- 僅支援 `.gif` 格式；頭像更新的呼叫點在 `src/ui/generic-cardcontainer-ui.cpp`，設定介面在 `src/dialog/configdialog.ui/cpp`。
 
 ### card.jpg（卡片圖）
 
@@ -590,6 +617,7 @@ sgs.LoadSkinTransltionTable(t)
 
 ## 更新日誌
 
+- 2026-09-12：併入 `武将立绘GIF动图功能说明.md`（已刪除）的 GIF 查找規則表、`animatedgeneral` 別名、ConfigDialog 開關與顯示機制說明，統一行號參照為「符號（現約 :NNN）」
 - 2026-08-09：移除已廢除的 `heroskin/dynamicSkin/` 舊路徑說明（完整範例／特殊規則改為 `buildDynamicSkinRoot` 現行路徑）；修正各程式碼行號參照
 - 2026-06-07：新增 `addResourceAliasList` API，支援一對多皮膚目錄映射
 - 2026-06-07：新增皮膚索引計算邏輯說明

@@ -12,11 +12,11 @@
 
 - [玩家技能多實例重構計劃](skill-instance-refactor-plan.md)
 - [TriggerSkillV2 系統說明](TriggerSkillV2系統說明.md)
-- [SkillCard V2 Bridge 舊構想](SkillCard-V2Bridge計劃.md)
+- SkillCard V2 Bridge 舊構想（`SkillCard-V2Bridge計劃.md`，2026-09-12 作為存檔文件刪除；需求已併入本文件，原文可自 git 歷史查閱）
 - [ViewAsSkillV2 舊技能遷移規範](active-skill-v2-migration-guide.md)
 - [ViewAsSkillV2 驗證矩陣](active-skill-v2-test-matrix.md)
 
-舊 Bridge 文件只作需求來源，不是實作規格。本文件的鎖定規則優先。
+舊 Bridge 構想只作需求來源，不是實作規格。本文件的鎖定規則優先。
 
 ## 2. 目標與非目標
 

@@ -107,3 +107,23 @@ Replay in qsanguosha_tui: Permanently Unsupported
 Protocol V1: Unsupported
 GUI dependencies in qsanguosha_tui: Forbidden
 ```
+
+## Retired designs
+
+The following designs are not part of production and carry no compatibility
+guarantee. Their standalone marker files were removed on 2026-09-12; this
+section is the authoritative tombstone.
+
+- **Protocol V1**: the legacy codec, message adapter, `Packet` facade, array
+  envelope and wire compatibility guarantees were removed by the V2 breaking
+  cutover. Old clients and Protocol V1 recordings are rejected; no downgrade or
+  converter is provided.
+- **Runtime protocol switch**: `S_COMMAND_PROTOCOL_SWITCH`, OFFER/ACK/COMMIT
+  states and per-connection active/preferred-version branches were removed. A
+  connection starts and remains on Protocol V2.
+- **Capability negotiation**: there is no advertisement, selection, fallback,
+  or mixed V1/V2 room behavior; both endpoints require Protocol V2 from the
+  first TCP frame. W2 rules-bundle metadata rides the existing V2 Hello/Signup
+  with mandatory verification on WebSocket and does not revive version
+  selection or fallback (see
+  [`rules-bundle-identity.md`](rules-bundle-identity.md)).

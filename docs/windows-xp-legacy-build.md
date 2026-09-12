@@ -108,6 +108,85 @@ as `logs/xp-server-<session>.stdout.log` and
 `logs/xp-server-<session>.stderr.log`. They are diagnostic artifacts only and
 do not determine helper readiness.
 
+## GUI/helper process boundary
+
+The GUI/helper process split is implemented; the merged design notes below were
+absorbed from the retired `windows-xp-process-split.md` (removed 2026-09-12).
+Its old acceptance-record table is superseded by the evidence section of this
+document.
+
+The private control transport is QLocalServer/QLocalSocket, unrelated to
+gameplay TCP/Protocol V2. Frames have a four-byte big-endian length followed by
+a JSON object. Maximum payload is 256 KiB; input and queued output are bounded.
+All messages carry version, session, generation and decimal-string request ID.
+Seeds and generation are decimal strings. JSON numeric fields accept only
+finite integral values in range.
+
+The GUI listens with `UserAccessOption` and a fresh CryptoAPI random token for
+each launch. The helper receives the token through its environment, removes it
+immediately, and authenticates before receiving initialization. Tokens never
+enter ordinary logs, game packets or command lines. This prevents
+accidental/cross-user attachment; it does not defend against a debugger running
+with the same Windows identity.
+
+States: `Idle -> Launching -> Handshaking -> Initializing -> Ready -> Stopping
+-> Idle`. Failure also stops the owned process before permitting reuse. Every
+callback is tied to its QProcess and generation. External/standalone processes
+are never adopted. Startup, authentication, requests, takeover and shutdown
+have explicit deadlines. QProcess owns the process handle. A helper also opens
+and verifies its parent's creation time before engine initialization and
+retains that handle: PID reuse cannot attach it to another process. A native
+wait thread observes parent death even during Lua initialization; this
+emergency exit is forced, never graceful. Normal control loss requests the
+existing server/room/engine cleanup. A shutdown timeout kills only the owned
+QProcess and records the incomplete phase.
+
+GUI entries that start a managed helper, and the checks each requires:
+
+| Entry | Split behavior | Required check |
+|---|---|---|
+| ServerDialog, join locally | OwnedHost helper, ready then native TCP signup | owner, AI, selected settings, port conflict |
+| ServerDialog, server only | OwnedHost, management events and discovery in helper | management, another client, no second helper |
+| startLocalConsoleGame | OwnedPrivate helper, loopback port 0 | cancel, retry, AI game |
+| complete/failLocalRoomStart | authenticated ready/error/exit | no premature connection |
+| startTakeoverGame | OwnedPrivate with snapshot/replay/manifest hashes | live takeover readiness |
+| rollbackTakeover | stop owned helper, retain replay restore state | position, perspective, pause |
+| startConnection/reconnect/restart | same Client, reuse ready owned endpoint | no new helper, external isolation |
+| showHomePage/gotoStartScene | stop private/joined host; retain host-only management | no orphan, repeat start |
+| closeEvent | asynchronous shutdown then exit notification | initialization, game, takeover, timeout |
+| BroadcastBox | bounded broadcast command with reply | delivery/error |
+| BanIpDialog | player snapshot, kick/ban command, owner persists ack | offline player, stale result |
+| StartScene | controller log/status signals | bounded log, endpoint |
+| -connect | unchanged, never owns remote server | remote process remains alive |
+| -server | early QCore forwarding to standalone helper | args, exit code, missing helper |
+| QSanguoshaXPServer | standalone dedicated CLI or managed helper | no GUI/audio modules |
+
+The GUI captures a session-local INI before launch; all primitive persisted
+values, lists and extension keys plus active game settings are preserved. The
+helper's Settings object is bound to that INI before static initialization, and
+overrides are installed before EngineBootstrap. The GUI owns persistent
+settings. Ban changes are persisted only after a correlated successful reply.
+Assets are shared read-only; runtime data, logs, replay/snapshot pairs and
+diagnostics use the user's writable data root.
+
+Ready means validated settings, paired source build, matching rules manifest,
+initialized runtime, prepared initial room and a successfully bound native
+socket. Private sessions bind 127.0.0.1:0 in the helper; the actual socket
+remains bound. Host sessions use the configured endpoint and
+discovery/listing behavior. Takeover_ready is distinct from ready and commits
+rollback data only after the existing `Server::takeoverReady` signal.
+
+### 20-player memory acceptance methodology (pending)
+
+Memory acceptance must be frozen after measuring the original payload and
+before measuring the new payload. Record private bytes, working set,
+VirtualQueryEx address map (committed/reserved/free and largest free region),
+handles, threads, system commit and stage markers at one-second intervals, with
+identical assets, seed, mode and player count. Never substitute working set for
+address-space pressure. Report both maximum per-process pressure and combined
+private bytes. No threshold or PASS is claimed before that baseline exists.
+20 players remains exploratory.
+
 ## ISO media
 
 Create the XP-compatible ISO from a completed portable Release folder:

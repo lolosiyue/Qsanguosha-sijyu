@@ -4,7 +4,7 @@ set -eu
 
 # The image sets QSAN_ASSET_ROOT=/data, so the server reads its rules content
 # from the volume and legacy relative writes land there too. Web clients are
-# only admitted when that tree holds real files: the declared-v1 content scan
+# only admitted when that tree holds real files: the declared-v2 content scan
 # rejects symlinks. Each start therefore replaces /data/<resource> with a fresh
 # read-only copy of the image's content. A marker beside the copy (never inside
 # it, where the scan would see it) records that this image owns the name.
