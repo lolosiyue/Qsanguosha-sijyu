@@ -56,6 +56,9 @@ const Resolution &resolution();
 QString applicationDir();
 QString assetRoot();
 QString userDataRoot();
+// asset root 係咪打包版面（--asset-root／QSAN_ASSET_ROOT／安裝樹／可攜包）。
+// 未 resolve 或者開發樹就係 false。
+bool isPackaged();
 
 // assetRoot 下面嘅唯讀資產。relative 為空時等於 assetRoot()。
 QString assetPath(const QString &relative);
