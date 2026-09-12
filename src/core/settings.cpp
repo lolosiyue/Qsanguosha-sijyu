@@ -227,6 +227,23 @@ QVariantMap Settings::valueOverrides() const
     return m_valueOverrides;
 }
 
+QString Settings::resolveUserName(const QString &stored, const QString &legacyStored)
+{
+    for (const QString &candidate : {stored, legacyStored}) {
+        const QString name = candidate.trimmed();
+        if (!name.isEmpty())
+            return name;
+    }
+    // USERNAME only exists on Windows; a POSIX login has USER, and LOGNAME where even
+    // that is missing.  Containers, systemd units and `env -i` can have neither.
+    for (const char *variable : {"USERNAME", "USER", "LOGNAME"}) {
+        const QString name = qEnvironmentVariable(variable).trimmed();
+        if (!name.isEmpty())
+            return name;
+    }
+    return QStringLiteral("Player");
+}
+
 #ifdef ANDROID
 QString Settings::getAndroidConfigPath()
 {
@@ -373,11 +390,14 @@ void Settings::init()
     AddGodGeneral = value("AddGodGeneral", true).toBool();
     GeneralVersionDedup = value("GeneralVersionDedup", false).toBool();
 
+    // Every writer (ConnectionDialog, test-scenario startup) stores "UserName"; Linux
+    // builds used to read "USERNAME", so a name chosen there was lost on restart.
 #ifdef Q_OS_WIN32
-    UserName = value("UserName", qgetenv("USERNAME")).toString();
+    const QString legacyUserName;
 #else
-    UserName = value("USERNAME", qgetenv("USER")).toString();
+    const QString legacyUserName = value("USERNAME").toString();
 #endif
+    UserName = resolveUserName(value("UserName").toString(), legacyUserName);
 
     if (UserName == "Admin" || UserName == "Administrator")
         UserName = tr("Sanguosha-fans");

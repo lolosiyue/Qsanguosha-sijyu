@@ -273,6 +273,11 @@ int MultimediaSmokeController::execute()
             QStringLiteral("event loop exited before the multimedia smoke completed"),
             MultimediaSmokeReport::SetupFailed);
     }
+    // Same shutdown race as the effects smoke: destroy the window, and with it the
+    // QQuickWidget's QML engine, while QApplication still exists.  A QML load still in
+    // flight otherwise crashes in the type loader thread inside
+    // QStandardPaths::writableLocation() after main() returns.
+    delete m_mainWindow.data();
     return m_exitCode != MultimediaSmokeReport::Passed ? m_exitCode : rc;
 }
 

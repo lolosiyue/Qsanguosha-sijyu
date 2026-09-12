@@ -186,7 +186,9 @@ bool userDataFollowsWhetherTheRootIsPackaged()
         return expect(false, "the development tree did not resolve");
     const bool developmentWritesInPlace =
         expect(samePath(QSanRuntimePaths::userDataRoot(), QSanRuntimePaths::assetRoot()),
-               "a development tree must keep writing beside the game");
+               "a development tree must keep writing beside the game")
+        && expect(!QSanRuntimePaths::isPackaged(),
+                  "a development tree must not be reported as packaged");
 
     QSanRuntimePaths::resetForTesting();
     const QString packaged = directory.filePath(QStringLiteral("packaged"));
@@ -195,6 +197,7 @@ bool userDataFollowsWhetherTheRootIsPackaged()
     if (!QSanRuntimePaths::resolve(argv({QStringLiteral("--asset-root"), packaged})))
         return expect(false, "the packaged root did not resolve");
     return developmentWritesInPlace
+        && expect(QSanRuntimePaths::isPackaged(), "an --asset-root root must be reported as packaged")
         && expect(!samePath(QSanRuntimePaths::userDataRoot(), QSanRuntimePaths::assetRoot()),
                   "a packaged root must not be used as the user data directory")
         && expect(!normalized(QSanRuntimePaths::recordDir())
