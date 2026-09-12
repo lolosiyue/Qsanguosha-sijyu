@@ -65,7 +65,7 @@ with `-p 9527:9527 -p 9528:9528`; host networking and privileged mode are not re
 - `/data/lua`, `/data/extensions` and `/data/lang` are read-only copies of the
   resources under `/opt/qsanguosha`, replaced by the entrypoint on every start
   and tracked by `/data/.qsanguosha-managed-<name>` markers. They are copies
-  rather than symlinks because Web signup requires a `declared-v1` rules
+  rather than symlinks because Web signup requires a `declared-v2` rules
   identity, whose content scan rejects symlinks. Volumes created by earlier
   images, which held symlinks here, are migrated automatically. These names are
   reserved: an unmanaged file or directory at one of them stops the container.
@@ -92,7 +92,7 @@ bash tools/ci/docker-server-smoke.sh
 The smoke test builds the final image, validates `--version` and
 `--check-config`, verifies non-root execution and runtime-image hygiene, starts
 a published container, performs the version/setup/signup protocol sequence
-(requiring the hello to advertise a sealed `declared-v1` rules identity, without
+(requiring the hello to advertise a sealed `declared-v2` rules identity, without
 which every Web client is refused),
 uses `docker stop` to verify graceful SIGTERM handling, and recreates a
 container against the same named volume to verify persistence. Diagnostics are

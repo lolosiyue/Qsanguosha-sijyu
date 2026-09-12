@@ -59,7 +59,7 @@ RUN cmake -S /src -B /build -G Ninja \
     && ldd /staging/opt/qsanguosha/bin/qsanguosha_server \
     && ! ldd /staging/opt/qsanguosha/bin/qsanguosha_server | grep -q 'not found'
 
-# The Web admission gate (declared-v1) rejects Lua that lua/config.lua does not
+# The Web admission gate (declared-v2) rejects Lua that lua/config.lua does not
 # declare. chat_config.lua only feeds the GUI chat panel and lib/sqlite3.lua has
 # no caller, so the dedicated server image leaves both out.
 RUN rm /staging/opt/qsanguosha/share/qsanguosha/lua/chat_config.lua \

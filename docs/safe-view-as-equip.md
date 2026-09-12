@@ -29,25 +29,16 @@
 - ~~`sgs.SafeTurnHandCardToEquip(room, player, card_id, equip_name, skill_name)`~~
 - ~~`sgs.SafeTurnHandCardToZhizheEquip(room, player, card_id, area, skill_name)`~~
 
-### Lua 用法示例
+### Lua 端的正確做法
 
-```lua
--- 把一张手牌按“武器位”安全视为装備并装上
-local ok = sgs.SafeTurnHandCardToZhizheEquip(room, player, card_id, 0, "my_skill")
-if not ok then
-    return false
-end
-```
+Lua 沒有可呼叫的 `sgs.SafeTurn*` API；同等安全路徑須在各自技能內，對照 `safeTurnCardToEquip` 的順序自行實作：
 
-```lua
--- 指定具体装備名（必须是 EquipCard）
-local ok = sgs.SafeTurnHandCardToEquip(room, player, card_id, "_zhizhe_armor", "my_skill")
-if not ok then
-    return false
-end
-```
+1. `cloneCard(目標裝備名, 原牌花色, 原牌點數)` 產生真正的裝備子類（必須確認結果為 `EquipCard`）。
+2. 以 `WrappedCard::takeOver`（或 Lua 同等手段）接管原手牌 ID。
+3. 走完整換裝移動流程（先換下舊裝備，再移入裝備區）。
 
 ## 額外提醒
 
-- 若你要“視為某張真實裝備（如 `crossbow`）”，同樣可用 `SafeTurnHandCardToEquip`，但要確保該名稱對應 `EquipCard`。
-- 若技能只允許某些類別（武器/防具/坐騎/寶物），先限制選擇，再調用安全函式。
+- 要「視為某張真實裝備（如 `crossbow`）」時，`cloneCard` 的名稱必須對應真正的 `EquipCard` 子類。
+- 若技能只允許某些類別（武器／防具／坐騎／寶物），先在選牌階段限制，再進入換裝流程。
+- 若需要通用 Lua API，須先將 C++ helper 抽為共用工具並經 SWIG 暴露（尚未落地，見上方更正）。

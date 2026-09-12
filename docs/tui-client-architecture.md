@@ -1,14 +1,14 @@
 # 純文字 Client 架構研究
 
-- 狀態：設計提案
-- 日期：2026-08-30
+- 狀態：已實作——設計提案（2026-08-30）的 classic 行模式與 board 模式均已交付；使用現況見 [`tui-client.md`](tui-client.md)
+- 日期：2026-08-30（2026-09-12 修訂現況標記與 §2.2 缺口狀態）
 - 前置依賴：Protocol V2、Client core／UI 完整解耦（由其他 PR 處理）
 
 ## 1. 定義與結論
 
 此處的 TUI 是「在 terminal 內運作的純文字 client」，不是用字元模擬 GUI。
 
-介面固定為：
+classic（line）模式的介面契約：
 
 - stdout 逐行追加遊戲事件、狀態及可接受指令；
 - stdin 每行輸入一條完整命令；
@@ -17,8 +17,12 @@
 - 不使用 mouse、方向鍵、terminal raw mode、alternate screen 或 terminal 尺寸排版；
 - 每行文字只表達資料或操作，不以所在位置代表 UI 狀態。
 
-因此不需要 FTXUI、ncurses、notcurses 或自製 ANSI renderer。`qsanguosha_tui` 應是
-Qt Core／Network 上的 line-oriented text client。
+因此 classic 模式不需要 FTXUI、ncurses、notcurses 或自製 ANSI renderer。`qsanguosha_tui`
+classic 模式是 Qt Core／Network 上的 line-oriented text client。
+
+> 2026-09-08 起另有 **board 模式**（`TuiBoardPresenter`）：按
+> [`tui-board-ui.md`](tui-board-ui.md) 使用 raw mode／alternate screen／游標控制與
+> terminal 尺寸排版，**不受上表約束**；兩模式共用同一 `ClientCore`、parser 與驗證路徑。
 
 目標資料流分為四層：
 
@@ -39,9 +43,9 @@ Qt Core／Network 上的 line-oriented text client。
 ### 2.1 已有能力
 
 - `qsanguosha_client_core` 只連結 `Qt6::Core`。
-- 28 類 canonical interaction 已有 typed request／response；另有 1 類明確標示的 legacy
-  `QML_INTERACT` adapter。29 類均已有 request id、deadline、validation 與 exactly-once
-  completion。
+- 29 類 production interaction（含 `QML_INTERACT`）均為 direct typed request／reply，
+  具 request id、deadline、validation 與 exactly-once completion（見
+  [`client-core-interaction-model.md`](client-core-interaction-model.md)）。
 - typed interaction 的 V1 wire reply 已集中經 `LegacyV1InteractionReplyAdapter`。
 - `SkillDialogInfo` 已能描述 `guhuo`、`juguan`、`tiansuan` 三種 Lua skill dialog。
 - `src/tui/tui-skill-dialog.*` 以無 widget 方式重現這三種 dialog 的選項枚舉、啟用判斷
@@ -72,21 +76,25 @@ Qt Core／Network 上的 line-oriented text client。
   存在。詳細分頁、overlay、Windows 限制與驗收證據見 [`tui-client.md`](tui-client.md)
   的「Board 模式」一節與 `tui-board-ui.md` 全文。
 
-### 2.2 尚未具備完整純文字 client 的部分
+### 2.2 當時的缺口與現況（2026-09-12 修訂）
 
-- `ClientGameState` 目前只有玩家名稱、生存狀態及 card id space，不是完整局面。
-- `Client` 仍建立 `ClientPlayer`、`QTextDocument`、`QFont`、`QMessageBox` 與
-  `DesktopInteractionView`。
-- `RoomScene` 直接讀取 `ClientInstance`／`Self`，並接收大量 `ClientPlayer *`、HTML
-  字串及 GUI 型別 signal。
-- 出牌、回應、view-as skill、目標選擇與 `targetsFeasible()` 等規則仍由
-  `RoomScene`／`Dashboard` 驅動；目前沒有 production `ICardEligibilityProvider` 能向
-  非 GUI client 提供完整 action candidates。
-- C++ package 仍有大量 `QDialog *getDialog()` override；任意 `QML_INTERACT` 仍屬
-  legacy escape hatch。
+下列為 2026-08-30 提案時的缺口；實作後多數已解決：
 
-只把 prompt 逐行印出仍不能完成一局。關鍵前置工作是把完整狀態、房間操作及出牌／技能
-合法性移到 Client core 邊界。
+- ~~`ClientGameState` 只有玩家名稱、生存狀態及 card id space~~ → 現為完整局面投影
+  （`src/client/core/client-game-state.h`：玩家欄位、牌區、技能、`cardsForPlayer()` 等），
+  board 模式即以其驅動。
+- ~~規則查詢沒有 production provider~~ → 共用選牌 runtime 已落地：
+  `src/client/runtime/client-selection-runtime.h`／`client-target-evaluator.h` 由 TUI 與
+  Web WASM 共用；Web 另經 `ClientRulesSession`／`ClientRulesIngress` 使用完整 native rules
+  （見 [`native-rules-ingress.md`](native-rules-ingress.md)）。
+- 仍成立：`Client`／GUI 主程式仍建立 `ClientPlayer`、`QTextDocument`、`DesktopInteractionView`
+  等 GUI 型別；`RoomScene` 仍直接讀 `ClientInstance`／`Self`；C++ package 仍有約 34 處
+  `QDialog *getDialog()` override（見
+  [`engine-gui-decoupling-implementation-plan.md`](engine-gui-decoupling-implementation-plan.md)）。
+  TUI／Web 產品本身不連結這些 GUI 路徑。
+
+「只把 prompt 逐行印出不能完成一局」的前置工作，已由 Client core 解耦
+（`ClientLiveSession`／`ClientCore`）與共用選牌 runtime 的落地實現。
 
 ## 3. 上游解耦 PR 的必要契約
 
@@ -146,16 +154,19 @@ target filter 及 `targetsFeasible()`。純文字 client 只提交 id 與 semant
 
 - 所有必需的 C++ `getDialog()` 與 QML interaction 應轉成通用 schema 或具名 structured
   interaction contract。
-- V2 hello 宣告 `frontend=text`、interaction schema version 及支援的 custom type。
+- 連線能力以 Protocol V2 靜態契約表達：兩端自第一幀即為 V2，**沒有版本協商**
+  （原構想的 capability negotiation 已退役，見 [`protocol-v2.md`](protocol-v2.md)
+  「Retired designs」）；不相容的 custom interaction 由 client 端
+  `CustomInteractionRegistry` 依 type／schema 拒收；rules 內容以 W2 rules-bundle
+  identity（`declared-v2`）於 WebSocket 握手強制驗證（見
+  [`rules-bundle-identity.md`](rules-bundle-identity.md)）。
 - server 在入房／開局前拒絕不相容 package；不得在對局中才送出未知 prompt 而永久等待。
-- capability negotiation 與 wire reject 由 Protocol V2 PR 實作；純文字 client 只提供
-  capability 清單及輸出 normalized error。
 
 ## 4. 產品範圍
 
 ### 4.1 首個完整版本必須支援
 
-- 連線、版本／能力協商、登入、選房／模式、ready、房主開局與加 AI；
+- 連線、登入、選房／模式、ready、房主開局與加 AI；
 - 斷線通知、重新連線、完整 resync、退出；
 - 所有玩家與牌區的可見狀態、牌局日誌、聊天；
 - 選將、選角色、選項、玩家、花色、勢力、技能確認、trigger order；
