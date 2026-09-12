@@ -27,6 +27,8 @@ qml/home/nav/*.png
 debug/
 release/
 relwithdebinfo/
+/excel-debug/
+/excel-release/
 xp-debug/
 xp-release/
 xp-relwithdebinfo/
